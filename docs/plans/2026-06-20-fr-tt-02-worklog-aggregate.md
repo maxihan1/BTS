@@ -79,13 +79,21 @@ ADR 정정. 권한 표기 VIEW → **BROWSE** (집계는 cross-issue 목록 성�
 - 다른 프로젝트 worklog 제외(project key 필터)
 - `deleted_at` 있는 worklog/issue 제외
 - 빈 결과 → `emptyList`
+- **NFR(N4)**: 5,000건 시드 후 `by=issue` 집계 p95 < 500ms 측정(`@Tag("performance")` 또는 측정 로그). 미달 시 GREEN에서 집계 전용 인덱스 추가.
 - 실패 메시지(예상): `WorklogAggregateRepository` 클래스 없음
 
 **GREEN**:
-- `enum WorklogAggregateDimension { ISSUE, USER, PERIOD }`, `enum AggregateGranularity { DAY, WEEK, MONTH }`
-- `data class WorklogAggregateRow(groupKey: String, timeSpentSeconds: Long, worklogCount: Int)` — 리포는 SQL 집계만. groupKey = by=issue→`issues.key` / by=user→`author_id::text` / by=period→`to_char(date_trunc(granularity, started_at), 'YYYY-MM-DD')`. displayName(cross-BC)은 서비스 책임.
+- 도메인 파일(`WorklogAggregate.kt`)에 **enum + VO 전부** 정의(N2 — Bucket/Result도 여기, Task 2가 의존):
+  - `enum WorklogAggregateDimension { ISSUE, USER, PERIOD }`
+  - `enum AggregateGranularity(val sqlLiteral: String) { DAY("day"), WEEK("week"), MONTH("month") }` — **SQL 리터럴을 enum 속성으로 고정**(화이트리스트, 외부 입력 비삽입)
+  - `data class WorklogAggregateRow(groupKey: String, timeSpentSeconds: Long, worklogCount: Int)`
+  - `data class WorklogAggregateBucket(key: String, label: String, timeSpentSeconds: Long, worklogCount: Int)`
+  - `data class WorklogAggregateResult(buckets: List<WorklogAggregateBucket>, totalTimeSpentSeconds: Long)`
+- 리포는 SQL 집계만. groupKey = by=issue→`issues.key` / by=user→`author_id::text` / by=period→`to_char(date_trunc(<리터럴>, started_at), 'YYYY-MM-DD')`. displayName(cross-BC)은 서비스 책임.
 - `WorklogAggregateRepository.aggregate(projectKey, dimension, granularity, from, to): List<WorklogAggregateRow>` — jOOQ: `worklogs w JOIN issues i ON ... AND i.deleted_at IS NULL JOIN projects p ON ... AND p.deleted_at IS NULL WHERE p.key=:project AND w.deleted_at IS NULL [AND w.started_at >= :from] [AND w.started_at < :toExcl] GROUP BY <dim>`. `@Transactional(readOnly=true)`.
-- period date_trunc는 `DSL.field("date_trunc({0}, {1})", ...)` 파라미터 바인딩(SQL 인젝션 방지 — granularity는 enum→안전 리터럴).
+- **★B2 — date_trunc는 bind 파라미터 금지**: PostgreSQL은 `date_trunc($1, col)`의 첫 인자 bind를 거부(unknown 타입 추론 실패)한다. granularity는 **enum→`DSL.inline(granularity.sqlLiteral)` 안전 리터럴**로 삽입(`AggregateGranularity` 화이트리스트라 인젝션 불가). `DSL.field("date_trunc({0},{1})", DSL.param(...))` 같은 bind 경로 사용 금지.
+- **★C1 — SUM nullable 처리**: `SUM(time_spent_seconds)`는 행 0건 그룹에서 NULL/jOOQ `BigDecimal`. `record.get(sumField)?.toLong() ?: 0L`로 받음(`!!` 금지, 절대규칙 §1.3).
+- project=BTS, by=issue/user/period 모든 분기에서 cartesian product 없음(worklogs→issues→projects는 각 N:1, base=worklogs라 SUM 정확).
 
 **REFACTOR**: dimension별 groupKey 표현식 헬퍼 추출 + KDoc.
 
@@ -101,10 +109,13 @@ ADR 정정. 권한 표기 VIEW → **BROWSE** (집계는 cross-issue 목록 성�
 **RED**: `WorklogAggregateServiceTest` (mockk — repo/resolver/userLookup stub).
 - 권한 없음(`resolver.hasPermission(actor, BROWSE, IssueScope.Project(key))=false`) → `IssueAccessDeniedException`(403)
 - 권한 있음 → repo 호출 → 버킷 매핑
-- `by=user` → `UserLookupPort.findDisplayNamesByIds`로 label 채움, 미존재 시 빈 문자열(fail-safe). exactly 호출 1회(불필요 조회 0 — by≠user면 호출 안 함)
+- `by=user` → `UserLookupPort.findDisplayNamesByIds`로 label 채움, 미존재 시 빈 문자열(fail-safe). exactly 호출 1회
+- **C5** — `by=issue`·`by=period` 케이스: `verify(exactly = 0) { userLookup.findDisplayNamesByIds(any()) }`(불필요 cross-BC 조회 0 박제)
 - `by=issue|period` → label = groupKey
+- `by=user` groupKey(UUID text)→UUID 변환은 DB cast 값이라 안전하나 `runCatching`/명시 변환으로 `!!` 회피(C2)
 - `totalTimeSpentSeconds` = 버킷 합
 - 정렬: issue/user DESC(동률 label ASC), period ASC
+- **C3** — `from > to` 검증은 컨트롤러 책임(Task 3). 서비스 직접 호출자 없음. 서비스는 전달된 from/to를 그대로 WHERE에 적용(방어 불필요, but 단위 테스트에 from>to→빈 결과 1건 박제로 의도 명시)
 
 **GREEN**:
 - `aggregate(actorId, projectKey, dimension, granularity, from, to): WorklogAggregateResult`
@@ -121,22 +132,23 @@ ADR 정정. 권한 표기 VIEW → **BROWSE** (집계는 cross-issue 목록 성�
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/worklog/aggregate/web/WorklogAggregateController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/worklog/aggregate/web/dto/WorklogAggregateResponse.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/worklog/aggregate/web/WorklogAggregateControllerTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/worklog/aggregate/web/WorklogAggregateController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/worklog/aggregate/web/dto/WorklogAggregateResponse.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/worklog/aggregate/web/WorklogAggregateExceptionHandler.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/worklog/aggregate/web/WorklogAggregateControllerTest.kt`]
 - depends-on: [2]
 
-**RED**: `WorklogAggregateControllerTest` (HTTP 통합 — Testcontainers + 실 권한 stub).
+**RED**: `WorklogAggregateControllerTest` (HTTP 통합 — Testcontainers, 시드는 **Task 1 리포지토리 테스트의 시드 헬퍼 재사용**(C4 — 빈 배열 200으로 가짜그린 회피), 권한은 stub resolver 주입).
 - `by=issue|user|period` 각 200 + 응답 구조(data.buckets/total/by/granularity/from/to)
 - 400: `project` 누락 / `by` 무효 / `granularity` 무효 / `from`·`to` 형식 무효 / `from > to`
-- 401: 미인증(actor 추출 먼저 → 리소스 probe 방지)
-- 403: 권한 없는 프로젝트
+- **C6** — `by=issue` + `granularity=month` 동반 전달 → 200 + 응답 `granularity=null`(E2 관대 처리, 400 아님)
+- 401: 미인증 **+ nil-UUID·비-UUID actor(B3)** — actor 추출 먼저 → 리소스 probe 방지
+- 403: 권한 없는 프로젝트(누출 차단)
 - worklog 0 → 200 + `buckets: []`, `totalTimeSpentSeconds: 0`
 
 **GREEN**:
 - `@RestController @RequestMapping("/api/v1/worklogs")`, `@GetMapping("/aggregate")`
-- 쿼리 파라미터는 **String으로 받아 수동 검증**(enum 자동 바인딩의 MethodArgumentTypeMismatch→500 변질 회피, FR-TT-01 컨트롤러 선례). `project` blank→400, `by` enum 파싱 무효→400, `granularity` 기본 day·무효→400, `from`/`to` `LocalDate.parse` 무효→400, `from>to`→400.
-- `actor = CurrentActor.current()` 최상단(미인증 401, probe 방지).
+- 쿼리 파라미터는 **String으로 받아 수동 검증**(enum 자동 바인딩의 MethodArgumentTypeMismatch→500 변질 회피, FR-TT-01 컨트롤러 선례). `project` blank→400, `by` enum 파싱 무효→400, `granularity` 기본 day·무효→400, `from`/`to` `LocalDate.parse` 무효→400, `from>to`→400. `by≠period`면 granularity 무시(응답 null).
+- `actor = CurrentActor.current()` 최상단(미인증·nil-UUID 401, probe 방지).
 - `service.aggregate(...)` → `WorklogAggregateResponse.from(...)` → `DataResponse`.
-- 예외 매핑: 기존 worklog 패턴 재사용 — `ResponseStatusException`(400), `IssueAccessDeniedException`→403, `IssueNotFoundException`→404. **신규 컨트롤러라 기존 `WorklogExceptionHandler`가 `@RestControllerAdvice` basePackage로 커버하는지 확인**(미커버 시 전용 핸들러 추가 — catch-all이 401/400을 500으로 삼키지 않게 명시 핸들러, 메모리 catch-all-exceptionhandler-swallows / bulk-operation-exception-handler 패턴).
+- **★B1 — 전용 예외 핸들러 신규(확정)**: `WorklogAggregateExceptionHandler` `@RestControllerAdvice(basePackages = ["com.bts.issue.worklog.aggregate.web"])`. **검증 결과 신규 컨트롤러는 기존 핸들러 둘 다 미커버**(`WorklogExceptionHandler`=assignableTypes WorklogController 한정 / `IssueExceptionHandler`=basePackages `...adapter.inbound.rest` 한정). BC 선례(`LinkExceptionHandler`/`VersionExceptionHandler`/`BulkOperationExceptionHandler`의 basePackages 패턴)와 일관. 매핑: `ResponseStatusException`은 상태코드 보존(400/401), `IssueAccessDeniedException`→403. catch-all `Exception`→500 핸들러는 두지 않음(401/400 삼킴 방지, 메모리 catch-all-exceptionhandler-swallows).
 
 **REFACTOR**: 파라미터 검증 helper 추출 + KDoc(엔드포인트 표).
 
@@ -150,6 +162,21 @@ ADR 정정. 권한 표기 VIEW → **BROWSE** (집계는 cross-issue 목록 성�
 - TDD 강제: yes (test 커밋이 feat 커밋보다 먼저)
 - 범위: 백엔드 D1~D5만. D6(프론트 표+recharts)/D7(E2E)는 후속 PR
 - 추가 검증: ktlint + detekt(aggregate) + 모듈 전체 test. init_codegen 미러 불요(신규 스키마 0)
-- 리스크: (1) jOOQ date_trunc 표현식 — granularity enum→안전 리터럴 바인딩. (2) 신규 컨트롤러 예외 핸들러 커버리지 — basePackage 확인 필수. (3) period 버킷 타임존 UTC 고정(spec E6).
+- 신규 파일 4개(`WorklogAggregate.kt`/`...Repository.kt`/`...Service.kt`/`...Controller.kt`/`...ExceptionHandler.kt`/`...Response.kt`) L1 한국어 헤더 주석 필수(N3, 글로벌 CLAUDE.md §6)
+- 리스크(eng-review로 해소): (1) date_trunc bind param→`DSL.inline` 리터럴 확정(B2). (2) 신규 컨트롤러 전용 예외 핸들러 확정(B1, 코드 검증 완료). (3) period 버킷 타임존 UTC 고정(spec E6).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (독립 backend 적대적 리뷰, 2026-06-20)
+
+초기 종합 판정 **BLOCKED** → plan 보강으로 **해소**(아래 전부 반영 완료).
+
+**BLOCKER 2건 (반영)**.
+- **B1. 예외 핸들러 미커버** — 신규 `WorklogAggregateController`는 `WorklogExceptionHandler`(assignableTypes=WorklogController)·`IssueExceptionHandler`(basePackages `...adapter.inbound.rest`) 둘 다 미커버 → 401/403이 500으로 변질 위험. **코드 직접 검증 완료**. → Task 3에 전용 `WorklogAggregateExceptionHandler`(basePackages `...worklog.aggregate.web`) 확정. BC 선례(link/version/bulk) 일관.
+- **B2. date_trunc bind param 오류** — `date_trunc($1, col)`은 PostgreSQL이 거부. → `DSL.inline(AggregateGranularity.sqlLiteral)` 안전 리터럴(enum 화이트리스트)로 정정.
+
+**CONCERN 6건 (반영)**. C1 SUM nullable `?:0L`(`!!` 금지) / C3 from>to 컨트롤러 책임 명시 / C4 Task1 시드 헬퍼 재사용(빈배열 가짜그린 회피) / C5 by≠user면 userLookup 0회 박제 / C6 by=issue+granularity→null 케이스 / B3(격하) nil-UUID 401 케이스.
+
+**NIT (반영)**. N2 Bucket/Result domain 패키지 배치 / N3 파일헤더 한국어 / N4 NFR 5,000건 케이스. N1(groupKey String) 단순성 수용.
+
+**보강 후 BLOCKER: 없음.** 권한 누출(BROWSE+Project scope 게이트)·cartesian 없음(N:1)·probe 방지(actor 선추출)·BC 격리(포트 창구) 확인.
