@@ -54,6 +54,14 @@ export const RECIPIENT_ROLES = [
 export type RecipientRole = (typeof RECIPIENT_ROLES)[number]
 
 /**
+ * 백엔드가 해석하지 않는(automation BC 부재) 수신자 역할.
+ * 정책 폼 드롭다운 비활성 처리용.
+ * 백엔드 enum/지원범위 변경 시 동반 갱신(recipientRoleLabels·recipientRoleDescriptions와 함께).
+ * 근거 ADR docs/decisions/2026-06-11-notification-policy-bc-bootstrap.md §결정3(동작하지 않는 설정 리스크).
+ */
+export const UNSUPPORTED_RECIPIENT_ROLES = ['RULE_OWNER'] as const satisfies readonly RecipientRole[]
+
+/**
  * 백엔드 NotificationChannel enum의 프론트 미러 (enum NAME 형식).
  * 서버에서 "EMAIL" 형태로 내려옴.
  */

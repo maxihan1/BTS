@@ -1,9 +1,11 @@
 // 알림 정책 i18n 라벨 단위 테스트 — enum 9/9/5 종 누락 0 + 미지 값 fallback + 페이지 문자열 검증
 
 import { describe, it, expect } from 'vitest'
+import { RECIPIENT_ROLES } from '@/api/notification-policies'
 import {
   eventTypeLabels,
   recipientRoleLabels,
+  recipientRoleDescriptions,
   channelLabels,
   notificationPolicyLabels,
   labelFor,
@@ -280,5 +282,69 @@ describe('notificationPolicyLabels', () => {
     it('generic 에러 메시지가 존재한다', () => {
       expect(notificationPolicyLabels.error.generic).toBeTruthy()
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// recipientRoleDescriptions — NAME 9종 설명 단일출처
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('recipientRoleDescriptions', () => {
+  // RECIPIENT_ROLES를 진실 출처로 사용 — 프론트 미러와 descriptions 정합 보장
+
+  it('RECIPIENT_ROLES 9종 키를 정확히 보유한다 (누락 0)', () => {
+    const missingKeys = RECIPIENT_ROLES.filter((key) => !(key in recipientRoleDescriptions))
+    expect(missingKeys).toEqual([])
+  })
+
+  it('recipientRoleDescriptions에 잉여 키가 없다 (RECIPIENT_ROLES 초과 0)', () => {
+    const knownSet = new Set<string>(RECIPIENT_ROLES)
+    const surplusKeys = Object.keys(recipientRoleDescriptions).filter((key) => !knownSet.has(key))
+    expect(surplusKeys).toEqual([])
+  })
+
+  it('각 값이 비어있지 않은 문자열이다', () => {
+    const emptyValues = RECIPIENT_ROLES.filter((key) => {
+      const val = recipientRoleDescriptions[key]
+      return !val || val.trim() === ''
+    })
+    expect(emptyValues).toEqual([])
+  })
+
+  it('어떤 값도 콜론(:)으로 끝나지 않는다 (한국어 콜론 종결 금지)', () => {
+    const colonTerminated = Object.entries(recipientRoleDescriptions).filter(([, val]) =>
+      val.trimEnd().endsWith(':'),
+    )
+    expect(colonTerminated).toEqual([])
+  })
+
+  it('RULE_OWNER 설명에 "미지원" 문구가 포함된다 (무동작 안내)', () => {
+    expect(recipientRoleDescriptions['RULE_OWNER']).toContain('미지원')
+  })
+
+  it('WATCHER 설명에 "구독" 문구가 포함된다 (recipientRoleLabels 용어 정합)', () => {
+    expect(recipientRoleDescriptions['WATCHER']).toContain('구독')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// notificationPolicyLabels.form — 신규 키 (Task 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('notificationPolicyLabels.form 신규 키 (Task 3)', () => {
+  it('recipientUnsupportedSuffix 키가 존재한다', () => {
+    expect(notificationPolicyLabels.form.recipientUnsupportedSuffix).toBeTruthy()
+  })
+
+  it('recipientUnsupportedHint 키가 존재한다', () => {
+    expect(notificationPolicyLabels.form.recipientUnsupportedHint).toBeTruthy()
+  })
+
+  it('recipientUnsupportedSuffix 값이 콜론으로 끝나지 않는다', () => {
+    expect(notificationPolicyLabels.form.recipientUnsupportedSuffix.trimEnd().endsWith(':')).toBe(false)
+  })
+
+  it('recipientUnsupportedHint 값이 콜론으로 끝나지 않는다', () => {
+    expect(notificationPolicyLabels.form.recipientUnsupportedHint.trimEnd().endsWith(':')).toBe(false)
   })
 })

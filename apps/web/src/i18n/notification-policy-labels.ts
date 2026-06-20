@@ -62,6 +62,31 @@ export const recipientRoleLabels: Record<string, string> = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// recipientRoleDescriptions — enum NAME 9종 한국어 설명
+// 백엔드 RecipientRole enum/지원범위 변경 시 이 객체 + recipientRoleLabels + (api)UNSUPPORTED_RECIPIENT_ROLES 동반 갱신.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 수신자 역할 enum NAME(e.g. `"REPORTER"`) → 드롭다운 인라인 설명.
+ *
+ * - 각 역할이 "누구에게 알림이 가는지"를 한 줄로 설명하는 단일출처.
+ * - `recipientRoleLabels`와 **같은 용어** 위에서 부연 — 별도 용어 도입 금지.
+ * - RULE_OWNER는 현재 미지원(automation BC 부재) → "미지원" 문구 포함 필수.
+ * - 미지 값은 UI에서 `labelFor(recipientRoleDescriptions, key)` 경유 시 원문 fallback.
+ */
+export const recipientRoleDescriptions: Record<string, string> = {
+  REPORTER: '이슈를 등록한 보고자',
+  ASSIGNEE: '현재 담당자',
+  PREVIOUS_ASSIGNEE: '직전 담당자 1명',
+  WATCHER: '이슈를 구독(지켜보기)한 사용자',
+  COMPONENT_LEAD: '이슈가 속한 컴포넌트의 담당자',
+  MENTIONED: '본문·댓글에서 @로 멘션된 사용자',
+  PROJECT_MEMBER: '프로젝트의 모든 멤버',
+  PROJECT_ADMIN: '프로젝트 관리자',
+  RULE_OWNER: '자동화 규칙 소유자 (현재 미지원)',
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // channelLabels — enum NAME 5종
 // 백엔드 NotificationChannel enum 추가 시 이 객체 + CHANNELS 미러도 갱신.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -122,6 +147,10 @@ export const notificationPolicyLabels = {
     channel: '채널',
     /** 정책 추가 버튼 텍스트 */
     addButton: '정책 추가',
+    /** 미지원 수신자 역할 옵션 라벨 접미사 */
+    recipientUnsupportedSuffix: '(미지원)',
+    /** 미지원 수신자 역할 상시 안내 — 폼 하단에 항상 표시 */
+    recipientUnsupportedHint: '규칙 소유자는 자동화 기능 도입 전까지 선택할 수 없습니다.',
   },
 
   /** 인라인 액션 버튼 */

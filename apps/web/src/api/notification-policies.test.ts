@@ -6,6 +6,7 @@ import { ApiError } from './client'
 import {
   NOTIFICATION_EVENT_TYPES,
   RECIPIENT_ROLES,
+  UNSUPPORTED_RECIPIENT_ROLES,
   CHANNELS,
   notificationPolicySchema,
   policyCatalogSchema,
@@ -142,6 +143,16 @@ describe('enum 미러', () => {
     expect(CHANNELS).toContain('SLACK')
     expect(CHANNELS).toContain('TEAMS')
     expect(CHANNELS).toContain('WEBHOOK')
+  })
+
+  it('T-NP-E4: UNSUPPORTED_RECIPIENT_ROLES가 RULE_OWNER를 포함한다', () => {
+    expect(UNSUPPORTED_RECIPIENT_ROLES).toContain('RULE_OWNER')
+  })
+
+  it('T-NP-E5: UNSUPPORTED_RECIPIENT_ROLES의 모든 원소가 RECIPIENT_ROLES의 부분집합이다 (오타 drift 차단)', () => {
+    for (const role of UNSUPPORTED_RECIPIENT_ROLES) {
+      expect(RECIPIENT_ROLES).toContain(role)
+    }
   })
 })
 
