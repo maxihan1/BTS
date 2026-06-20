@@ -24,15 +24,17 @@ FR-TT-01의 worklog 조회는 단일 이슈 종속(`/api/v1/issues/{key}/worklog
 FR-TT-01 ADR D1을 계승한다. 집계는 `worklogs` + `issues` JOIN 읽기 전용이라 issue-tracking BC에
 구현한다(agile-planning 모듈 부트스트랩 안 함). product의 agile-planning §5.2 논리 라벨은 유지.
 
-### D2. 권한 범위 — 프로젝트 단위 + Project scope VIEW 권한
+### D2. 권한 범위 — 프로젝트 단위 + Project scope BROWSE 권한
 
 - `GET /api/v1/worklogs/aggregate`는 **`project` 파라미터를 필수**로 받는다(단일 프로젝트 집계).
-- actor가 해당 프로젝트에 대해 `IssuePermissionResolver.hasPermission(actor, VIEW_ISSUE, IssueScope.Project(projectId))`
+- actor가 해당 프로젝트에 대해 `IssuePermissionResolver.hasPermission(actor, BROWSE, IssueScope.Project(projectKey))`
   를 만족할 때만 집계를 반환한다. 미보유 시 403.
+- **권한 선택 — BROWSE(VIEW 아님)**. 집계는 단건 이슈 조회(VIEW)가 아니라 프로젝트의 이슈들을 가로지르는
+  목록·보고 성격이므로 `BROWSE`(프로젝트 이슈 목록 조회, BROWSE_PROJECT 매트릭스)가 의미상 정확하다.
 - **개별 이슈 보안수준(IssueSecurityDecider/security level)은 집계에 반영하지 않는다.** FR-TT-01 ADR D4의
   단순성 결정("이슈 VIEW 권한만, 항목별 가시성 없음")을 계승. 집계는 본질적으로 프로젝트 관리 보고서이며,
   이슈별 security level을 반영하면 집계 쿼리가 N개 이슈 권한 평가로 변질되어 성능·복잡도가 폭증한다.
-- **근거**. 누출의 핵심 위험은 cross-project 혼입이다. project scope VIEW 게이트가 이를 차단한다.
+- **근거**. 누출의 핵심 위험은 cross-project 혼입이다. project scope BROWSE 게이트가 이를 차단한다.
   프로젝트 내부의 미세 가시성은 1K 사내 협업 규모에서 즉시 필요성이 낮다(필요 시 후속 FR).
 
 ### D3. 계산 방식 — 실시간 SQL 집계 (머티뷰 회피)
@@ -64,7 +66,7 @@ actor 추출을 리소스 조회보다 먼저 수행(FR-TT-01 컨트롤러 패�
 
 - 신규 도메인 타입. `WorklogAggregateDimension` enum(ISSUE/USER/PERIOD), 집계 결과 VO(`WorklogAggregateBucket` 등).
 - 신규 엔티티/스키마 없음(읽기 전용). 추가 인덱스는 D3 성능 검토 결과에 따라 조건부.
-- 신규 컨트롤러 + 서비스 + 리포지토리 집계 쿼리. 권한은 project scope VIEW 재사용.
+- 신규 컨트롤러 + 서비스 + 리포지토리 집계 쿼리. 권한은 project scope BROWSE 재사용.
 - 트랜잭션. 읽기 전용(`@Transactional(readOnly = true)`).
 
 ## 미해결 (spec 위임)

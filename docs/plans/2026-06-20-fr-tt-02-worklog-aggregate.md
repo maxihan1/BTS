@@ -42,9 +42,23 @@ classify 결과: slug=fr-tt-02-worklog-aggregate, type=backend, agent=backend-en
 - **엔드포인트**: `GET /api/v1/worklogs/aggregate?project=&by=&from=&to=&granularity=` (신규 cross-issue 컨트롤러)
 - **관련 ADR**: [docs/adr/2026-06-20-worklog-aggregate-model.md](../adr/2026-06-20-worklog-aggregate-model.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-20-fr-tt-02-worklog-aggregate.md](../specs/2026-06-20-fr-tt-02-worklog-aggregate.md)
+
+핵심 요약.
+- `GET /api/v1/worklogs/aggregate?project=&by={issue|user|period}&granularity=&from=&to=` (읽기 전용, jOOQ GROUP BY)
+- 권한 = `BROWSE` + `IssueScope.Project(key)` (VIEW 아님 — 목록/보고 성격). 미보유 403, 미인증 401
+- worklogs JOIN issues JOIN projects, 셋 다 `deleted_at IS NULL`. 응답 = 버킷 배열 + `totalTimeSpentSeconds`
+- by=issue→issueKey 라벨 / by=user→displayName(UserLookupPort, 실패 시 "") / by=period→date_trunc UTC 버킷
+- 신규 스키마 0(인덱스는 NFR 미달 시 조건부). NFR: 5,000건 p95 < 500ms
+
+ADR 정정. 권한 표기 VIEW → **BROWSE** (집계는 cross-issue 목록 성격, BROWSE_PROJECT 매트릭스가 정확).
+
+## Brainstorming Check
+
+✅ 통과 (self-review 1-pass — 정의된 FR이라 office-hours 스킵, Maxi 3종 결정으로 핵심 갈림길 사전 확정).
+보강 항목. period sparse 정책 · granularity 오용 관대 처리 · total 필드 · 프로젝트 존재 probe 방지(404→빈결과) · 타임존 UTC 고정 · 페이지네이션 부재 명시.
 
 ## Plan (← /bts-plan 채움)
 
