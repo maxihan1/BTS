@@ -196,4 +196,34 @@ FR-BD-02 보드 필터. 칸반 보드 조회 API(`GET /api/v1/boards/{id}`)에 �
 - 추가 검증: ktlint/detekt, ArchUnit BC 격리, 전체 `./gradlew test`(머지 게이트), NFR1(200건 p95<1.5s).
 - 신규 마이그레이션/스키마: 0. init_codegen.sql 변경 없음.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-20, 집중 독립 리뷰)
+
+**BLOCKER: 없음.**
+
+- ✅ 트랜잭션: getBoard `@Transactional(readOnly=true)` 유지, 필터는 같은 읽기 트랜잭션 내 WHERE. 쓰기 없음.
+- ✅ 보안: 필터는 `buildActiveSecureWhere`(visibility) **뒤에 AND**로만 추가 — 보안 등급 precedence 불변(EC8). jOOQ bind value(주입 안전).
+- ✅ truncated: 필터 WHERE → LIMIT+1 순서 유지(필터 적용 후 truncated 판정, EC7). Task 2 RED가 명시 검증.
+- ✅ 카테시안: component EXISTS 서브쿼리 강제(JOIN 금지). Task 2 GREEN 명시.
+- ✅ 빈 필터 무조건분기 0 추가 → EC2 바이트 동일(FR-BD-01 회귀). Task 2/3 RED 회귀 테스트.
+- ✅ wave: T2(issue-tracking)·T3(agile-planning) 파일 겹침 0, 포트 비파괴 오버로드로 컴파일 유지 → 병렬 성립.
+
+- ⚠️ **CONCERN-1 (impl 필수)**. T3의 agile-planning 테스트 fake port는 **3-인자 메서드를 override**해야 한다.
+  2-인자만 override하면 service의 3-인자 호출이 default(무필터 위임)로 빠져 filter가 드롭됨 → "filter 수신 단언"이
+  성립 불가(가짜그린/불가). → fake는 3-인자 override + filter 캡처. 같은 이유로 contract test의 filter-aware fake도 3-인자.
+- ⚠️ **CONCERN-2 (verify)**. 파서 400(`ResponseStatusException`)이 BoardExceptionHandler catch-all에 500으로
+  삼켜지지 않는지 확인(catch-all-exceptionhandler-swallows-responsestatusexception). 단 같은 모듈
+  `BoardApplicationService.validateIssueProject`가 이미 `ResponseStatusException(400)`을 쓰므로 통과 경로 established —
+  T3 통합테스트(형식오류→400)가 회귀 시 적발. 저위험.
+
+### plan-devex-review (2026-06-20, API 계약)
+
+- ✅ 하위호환: GET /boards/{id}에 선택 쿼리파라미터 추가 — 무필터=기존 동작. v1/v2 분리 불요.
+- ✅ 400 패턴: `ResponseStatusException(400)`은 이 모듈 기존 400(E8)과 동일 봉투 — 일관.
+- 📝 **노트-1 (선택 최적화)**. label 필드내 OR은 `LABELS @> ARRAY[a] OR @> ARRAY[b]` 대신 overlap `LABELS && ARRAY[a,b]`
+  단일 술어로 가능(GIN 활용 동일). 구현자 재량.
+- 📝 **노트-2 (merge 단계)**. product `agile-planning.md` §2.2 D1~D5 `[x]` 마킹 + D6/D7 후속 명시 + dashboard regen.
+  FR 카운트 불변(기존 FR)이라 verify-master-plan 영향 없음.
+
+**판정**: 진행 가(BLOCKER 0). CONCERN-1/2는 impl 가이드로 인계.
