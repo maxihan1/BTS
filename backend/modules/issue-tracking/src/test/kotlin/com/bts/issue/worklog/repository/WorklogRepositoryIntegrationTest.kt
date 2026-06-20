@@ -31,7 +31,6 @@ import java.util.UUID
  * - T2-B. findById — 단건 조회 성공.
  * - T2-C. update — 값 변경 후 findById 에 반영.
  * - T2-D. softDelete — 삭제 후 findByIssueId 에서 제외.
- * - T2-E. sumTimeSpentByIssue — 활성 합계만 집계 (소프트 삭제분 제외).
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class WorklogRepositoryIntegrationTest : IssueTestcontainersBase() {
@@ -225,31 +224,5 @@ class WorklogRepositoryIntegrationTest : IssueTestcontainersBase() {
         assertThat(remaining[0].id).isEqualTo(w2.id)
 
         assertThat(worklogRepository.findById(w1.id)).isNull()
-    }
-
-    // ── T2-E. sumTimeSpentByIssue ─────────────────────────────────────────────
-
-    /**
-     * Given  워크로그 3건 insert (1800 + 3600 + 7200), 이 중 1건 softDelete
-     * When   sumTimeSpentByIssue(issueId)
-     * Then   소프트 삭제 제외 활성 합계 = 1800 + 7200 = 9000.
-     */
-    @Test
-    @Order(5)
-    fun `T2-E - sumTimeSpentByIssue 는 소프트 삭제 제외 활성 합계만 반환`() {
-        val issue = insertIssue(1L)
-        val w1 = buildWorklog(issue.id.value, timeSpentSeconds = 1800)
-        val w2 = buildWorklog(issue.id.value, timeSpentSeconds = 3600)
-        val w3 = buildWorklog(issue.id.value, timeSpentSeconds = 7200)
-        worklogRepository.insert(w1)
-        worklogRepository.insert(w2)
-        worklogRepository.insert(w3)
-
-        // w2 소프트 삭제 → 합계에서 3600 제외
-        worklogRepository.softDelete(w2.id)
-
-        val sum = worklogRepository.sumTimeSpentByIssue(issue.id.value)
-
-        assertThat(sum).isEqualTo(9000)
     }
 }

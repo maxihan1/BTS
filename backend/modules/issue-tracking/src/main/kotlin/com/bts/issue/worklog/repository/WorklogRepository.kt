@@ -6,7 +6,6 @@ import com.bts.issue.jooq.tables.references.WORKLOGS
 import com.bts.issue.worklog.domain.Worklog
 import org.jooq.DSLContext
 import org.jooq.Record
-import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
@@ -29,7 +28,6 @@ import java.util.UUID
  * - [findById] — id 기준 단건 조회.
  * - [update] — 소요 시간·시작 시각·코멘트 수정 및 `updated_at` 갱신.
  * - [softDelete] — `deleted_at` 설정 (소프트 삭제).
- * - [sumTimeSpentByIssue] — issueId 기준 활성 워크로그의 `time_spent_seconds` 합계.
  */
 @Repository
 class WorklogRepository(
@@ -143,30 +141,6 @@ class WorklogRepository(
                 .and(WORKLOGS.DELETED_AT.isNull)
                 .execute()
         return rows > 0
-    }
-
-    /**
-     * `issue_id = issueId` 인 활성 워크로그의 `time_spent_seconds` 합계를 반환한다.
-     *
-     * `deleted_at IS NULL` 필터로 소프트 삭제분을 제외한다.
-     * 활성 워크로그가 없으면 `COALESCE` 로 0을 반환한다.
-     *
-     * @param issueId 집계할 이슈 UUID.
-     * @return 소요 시간 합계(초). 활성 워크로그 없으면 0.
-     */
-    @Transactional(readOnly = true)
-    fun sumTimeSpentByIssue(issueId: UUID): Int {
-        log.debug("sumTimeSpentByIssue issueId={}", issueId)
-        return dsl.select(
-            DSL.coalesce(DSL.sum(WORKLOGS.TIME_SPENT_SECONDS), DSL.inline(0)),
-        )
-            .from(WORKLOGS)
-            .where(WORKLOGS.ISSUE_ID.eq(issueId))
-            .and(WORKLOGS.DELETED_AT.isNull)
-            .fetchOne()
-            ?.value1()
-            ?.toInt()
-            ?: 0
     }
 
     // ── private helpers ───────────────────────────────────────────────────────

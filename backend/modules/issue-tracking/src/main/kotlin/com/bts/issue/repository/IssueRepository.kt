@@ -1306,9 +1306,14 @@ class IssueRepository(
                 .set(ISSUES.REMAINING_ESTIMATE_SECONDS, remainingExpr)
                 .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
                 .where(ISSUES.ID.eq(issueId))
+                // 소프트삭제 이슈는 갱신 대상에서 제외 — updateFields 와 동일 불변식 (DATA.md §1.2 #7).
+                // WorklogService.create 는 이미 findByKey(DELETED_AT IS NULL) 로 이슈를 resolve 하므로
+                // 정상 경로에서는 이 조건이 0행을 반환하지 않는다.
+                // 소프트삭제 레이스 윈도우(findByKey 통과 후 동시 삭제 커밋)에서만 0행 → error().
+                .and(ISSUES.DELETED_AT.isNull)
                 .returningResult(ISSUES.TIME_SPENT_SECONDS, ISSUES.REMAINING_ESTIMATE_SECONDS)
                 .fetchOne()
-                ?: error("recomputeTimeSpentWithDecrement: issueId=$issueId 에 해당하는 이슈가 없음")
+                ?: error("recomputeTimeSpentWithDecrement: issueId=$issueId 에 해당하는 이슈가 없음(소프트삭제 또는 미존재)")
         return RollupResult(
             timeSpent = record.get(ISSUES.TIME_SPENT_SECONDS) ?: 0,
             remaining = record.get(ISSUES.REMAINING_ESTIMATE_SECONDS),
@@ -1345,9 +1350,11 @@ class IssueRepository(
                 .set(ISSUES.REMAINING_ESTIMATE_SECONDS, newRemaining)
                 .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
                 .where(ISSUES.ID.eq(issueId))
+                // 소프트삭제 이슈 갱신 방지 — recomputeTimeSpentWithDecrement 와 동일 불변식.
+                .and(ISSUES.DELETED_AT.isNull)
                 .returningResult(ISSUES.TIME_SPENT_SECONDS, ISSUES.REMAINING_ESTIMATE_SECONDS)
                 .fetchOne()
-                ?: error("recomputeTimeSpentSetRemaining: issueId=$issueId 에 해당하는 이슈가 없음")
+                ?: error("recomputeTimeSpentSetRemaining: issueId=$issueId 에 해당하는 이슈가 없음(소프트삭제 또는 미존재)")
         return RollupResult(
             timeSpent = record.get(ISSUES.TIME_SPENT_SECONDS) ?: 0,
             remaining = record.get(ISSUES.REMAINING_ESTIMATE_SECONDS),
@@ -1379,9 +1386,11 @@ class IssueRepository(
                 .set(ISSUES.TIME_SPENT_SECONDS, timeSpentSubquery.asField<Int>())
                 .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
                 .where(ISSUES.ID.eq(issueId))
+                // 소프트삭제 이슈 갱신 방지 — recomputeTimeSpentWithDecrement 와 동일 불변식.
+                .and(ISSUES.DELETED_AT.isNull)
                 .returningResult(ISSUES.TIME_SPENT_SECONDS, ISSUES.REMAINING_ESTIMATE_SECONDS)
                 .fetchOne()
-                ?: error("recomputeTimeSpent: issueId=$issueId 에 해당하는 이슈가 없음")
+                ?: error("recomputeTimeSpent: issueId=$issueId 에 해당하는 이슈가 없음(소프트삭제 또는 미존재)")
         return RollupResult(
             timeSpent = record.get(ISSUES.TIME_SPENT_SECONDS) ?: 0,
             remaining = record.get(ISSUES.REMAINING_ESTIMATE_SECONDS),

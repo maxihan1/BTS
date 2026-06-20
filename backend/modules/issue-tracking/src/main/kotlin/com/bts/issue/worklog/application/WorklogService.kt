@@ -199,12 +199,19 @@ class WorklogService(
         val newStartedAt = startedAt ?: existing.startedAt
         val newComment = comment ?: existing.comment
 
-        worklogRepository.update(
-            id = worklogId,
-            timeSpentSeconds = newTimeSpent,
-            startedAt = newStartedAt,
-            comment = newComment,
-        )
+        val updatedRows =
+            worklogRepository.update(
+                id = worklogId,
+                timeSpentSeconds = newTimeSpent,
+                startedAt = newStartedAt,
+                comment = newComment,
+            )
+        // 동시 삭제 레이스 방어 — step1 findById 통과 후 다른 트랜잭션이 삭제를 커밋한 경우.
+        // 정상 단일 경로에서는 step1 findById(DELETED_AT IS NULL) 가 null 반환 → 위 IssueNotFoundException(404).
+        // 이 가드는 step1 통과 이후 커밋된 동시 삭제 윈도우만 방어한다.
+        if (updatedRows == 0) {
+            throw IssueNotFoundException(issueKey)
+        }
 
         issueRepository.recomputeTimeSpent(issue.id.value)
 
@@ -261,7 +268,13 @@ class WorklogService(
             throw IssueAccessDeniedException(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
         }
 
-        worklogRepository.softDelete(worklogId)
+        val deleted = worklogRepository.softDelete(worklogId)
+        // 동시 삭제 레이스 방어 — step1 findById 통과 후 다른 트랜잭션이 삭제를 커밋한 경우.
+        // 정상 단일 경로에서는 step1 findById(DELETED_AT IS NULL) 가 null 반환 → 위 IssueNotFoundException(404).
+        // 이 가드는 step1 통과 이후 커밋된 동시 삭제 윈도우만 방어한다.
+        if (!deleted) {
+            throw IssueNotFoundException(issueKey)
+        }
         issueRepository.recomputeTimeSpent(issue.id.value)
 
         log.info(
