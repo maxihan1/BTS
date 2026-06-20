@@ -474,4 +474,46 @@ class WorkflowStateCatalogImplTest {
         val newState = result.first { it.key == "new" }
         assertThat(newState.isDone).isFalse()
     }
+
+    // ── category — 실제 StateCategory 값이 매핑되어야 한다 ───────────────────────
+
+    @Test
+    fun `listStates maps category from domain StateCategory — open=TODO, in-progress=IN_PROGRESS, done=DONE`() {
+        val result: List<WorkflowStateView> =
+            txTemplate.execute {
+                // software-default 워크플로우: open(TODO), in-progress(IN_PROGRESS), done(DONE)
+                catalog.listStates(ProjectKey(PROJECT_ASSIGNED_KEY), issueTypeKey = null)
+            }!!
+
+        assertThat(result.first { it.key == "open" }.category)
+            .describedAs("open 상태는 TODO 카테고리이어야 한다")
+            .isEqualTo("TODO")
+        assertThat(result.first { it.key == "in-progress" }.category)
+            .describedAs("in-progress 상태는 IN_PROGRESS 카테고리이어야 한다")
+            .isEqualTo("IN_PROGRESS")
+        assertThat(result.first { it.key == "done" }.category)
+            .describedAs("done 상태는 DONE 카테고리이어야 한다 — default 값 'TODO'로 통과하면 실패")
+            .isEqualTo("DONE")
+    }
+
+    // ── displayOrder — 실제 display_order 값이 매핑되어야 한다 ────────────────────
+
+    @Test
+    fun `listStates maps displayOrder from domain WorkflowState — open=0, in-progress=1, done=2`() {
+        val result: List<WorkflowStateView> =
+            txTemplate.execute {
+                // software-default 워크플로우: open(0), in-progress(1), done(2)
+                catalog.listStates(ProjectKey(PROJECT_ASSIGNED_KEY), issueTypeKey = null)
+            }!!
+
+        assertThat(result.first { it.key == "open" }.displayOrder)
+            .describedAs("open 상태의 displayOrder 는 0 이어야 한다")
+            .isEqualTo(0)
+        assertThat(result.first { it.key == "in-progress" }.displayOrder)
+            .describedAs("in-progress 상태의 displayOrder 는 1 이어야 한다")
+            .isEqualTo(1)
+        assertThat(result.first { it.key == "done" }.displayOrder)
+            .describedAs("done 상태의 displayOrder 는 2 이어야 한다 — default 값 0 으로 통과하면 실패")
+            .isEqualTo(2)
+    }
 }
