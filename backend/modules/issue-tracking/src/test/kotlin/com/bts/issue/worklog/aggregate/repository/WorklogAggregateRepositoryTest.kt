@@ -72,8 +72,9 @@ class WorklogAggregateRepositoryTest : IssueTestcontainersBase() {
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
+    private fun requireTaskTypeId(): IssueTypeId {
+        return requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
+    }
 
     @Suppress("NestedBlockDepth")
     private fun loadTaskTypeId(): IssueTypeId =
@@ -196,13 +197,14 @@ class WorklogAggregateRepositoryTest : IssueTestcontainersBase() {
         insertWorklog(issueId = issue2.id.value, timeSpentSeconds = 7200)
         insertWorklog(issueId = issue2.id.value, timeSpentSeconds = 900)
 
-        val rows = aggregateRepository.aggregate(
-            projectKey = "TPRJ",
-            dimension = WorklogAggregateDimension.ISSUE,
-            granularity = null,
-            from = null,
-            to = null,
-        )
+        val rows =
+            aggregateRepository.aggregate(
+                projectKey = "TPRJ",
+                dimension = WorklogAggregateDimension.ISSUE,
+                granularity = null,
+                from = null,
+                to = null,
+            )
 
         assertThat(rows).hasSize(2)
         val byKey = rows.associateBy { it.groupKey }
@@ -238,13 +240,14 @@ class WorklogAggregateRepositoryTest : IssueTestcontainersBase() {
         insertWorklog(issueId = issue.id.value, authorId = author2, timeSpentSeconds = 1800)
         insertWorklog(issueId = issue.id.value, authorId = author2, timeSpentSeconds = 900)
 
-        val rows = aggregateRepository.aggregate(
-            projectKey = "TPRJ",
-            dimension = WorklogAggregateDimension.USER,
-            granularity = null,
-            from = null,
-            to = null,
-        )
+        val rows =
+            aggregateRepository.aggregate(
+                projectKey = "TPRJ",
+                dimension = WorklogAggregateDimension.USER,
+                granularity = null,
+                from = null,
+                to = null,
+            )
 
         assertThat(rows).hasSize(2)
         val byKey = rows.associateBy { it.groupKey }
@@ -286,13 +289,14 @@ class WorklogAggregateRepositoryTest : IssueTestcontainersBase() {
             startedAt = Instant.parse("2024-06-15T10:00:00Z"),
         )
 
-        val rows = aggregateRepository.aggregate(
-            projectKey = "TPRJ",
-            dimension = WorklogAggregateDimension.PERIOD,
-            granularity = AggregateGranularity.DAY,
-            from = null,
-            to = null,
-        )
+        val rows =
+            aggregateRepository.aggregate(
+                projectKey = "TPRJ",
+                dimension = WorklogAggregateDimension.PERIOD,
+                granularity = AggregateGranularity.DAY,
+                from = null,
+                to = null,
+            )
 
         assertThat(rows).hasSize(3)
         val keys = rows.map { it.groupKey }.toSet()
@@ -325,13 +329,14 @@ class WorklogAggregateRepositoryTest : IssueTestcontainersBase() {
             startedAt = Instant.parse("2024-06-10T10:00:00Z"),
         )
 
-        val rows = aggregateRepository.aggregate(
-            projectKey = "TPRJ",
-            dimension = WorklogAggregateDimension.PERIOD,
-            granularity = AggregateGranularity.WEEK,
-            from = null,
-            to = null,
-        )
+        val rows =
+            aggregateRepository.aggregate(
+                projectKey = "TPRJ",
+                dimension = WorklogAggregateDimension.PERIOD,
+                granularity = AggregateGranularity.WEEK,
+                from = null,
+                to = null,
+            )
 
         // 같은 주 합산 → 2건 버킷
         assertThat(rows).hasSize(2)
@@ -365,13 +370,14 @@ class WorklogAggregateRepositoryTest : IssueTestcontainersBase() {
             startedAt = Instant.parse("2024-06-10T10:00:00Z"),
         )
 
-        val rows = aggregateRepository.aggregate(
-            projectKey = "TPRJ",
-            dimension = WorklogAggregateDimension.PERIOD,
-            granularity = AggregateGranularity.MONTH,
-            from = null,
-            to = null,
-        )
+        val rows =
+            aggregateRepository.aggregate(
+                projectKey = "TPRJ",
+                dimension = WorklogAggregateDimension.PERIOD,
+                granularity = AggregateGranularity.MONTH,
+                from = null,
+                to = null,
+            )
 
         assertThat(rows).hasSize(2)
         val keys = rows.map { it.groupKey }.toSet()
@@ -407,13 +413,14 @@ class WorklogAggregateRepositoryTest : IssueTestcontainersBase() {
         val from = Instant.parse("2024-06-10T00:00:00Z")
         val to = Instant.parse("2024-06-15T00:00:00Z") // to 당일 포함 — 구현은 <to+1일 exclusive
 
-        val rows = aggregateRepository.aggregate(
-            projectKey = "TPRJ",
-            dimension = WorklogAggregateDimension.ISSUE,
-            granularity = null,
-            from = from,
-            to = to,
-        )
+        val rows =
+            aggregateRepository.aggregate(
+                projectKey = "TPRJ",
+                dimension = WorklogAggregateDimension.ISSUE,
+                granularity = null,
+                from = from,
+                to = to,
+            )
 
         assertThat(rows).hasSize(1)
         assertThat(rows[0].timeSpentSeconds).isEqualTo(2000L)
@@ -455,13 +462,14 @@ class WorklogAggregateRepositoryTest : IssueTestcontainersBase() {
         }
         insertWorklog(issueId = otherIssueId, timeSpentSeconds = 9999)
 
-        val rows = aggregateRepository.aggregate(
-            projectKey = "TPRJ",
-            dimension = WorklogAggregateDimension.ISSUE,
-            granularity = null,
-            from = null,
-            to = null,
-        )
+        val rows =
+            aggregateRepository.aggregate(
+                projectKey = "TPRJ",
+                dimension = WorklogAggregateDimension.ISSUE,
+                granularity = null,
+                from = null,
+                to = null,
+            )
 
         assertThat(rows).hasSize(1)
         assertThat(rows[0].timeSpentSeconds).isEqualTo(5000L)
@@ -492,13 +500,14 @@ class WorklogAggregateRepositoryTest : IssueTestcontainersBase() {
         insertWorklog(issueId = deletedIssue.id.value, timeSpentSeconds = 7777)
         softDeleteIssue(deletedIssue.id.value)
 
-        val rows = aggregateRepository.aggregate(
-            projectKey = "TPRJ",
-            dimension = WorklogAggregateDimension.ISSUE,
-            granularity = null,
-            from = null,
-            to = null,
-        )
+        val rows =
+            aggregateRepository.aggregate(
+                projectKey = "TPRJ",
+                dimension = WorklogAggregateDimension.ISSUE,
+                granularity = null,
+                from = null,
+                to = null,
+            )
 
         assertThat(rows).hasSize(1)
         assertThat(rows[0].groupKey).isEqualTo(activeIssue.key.value)
@@ -515,13 +524,14 @@ class WorklogAggregateRepositoryTest : IssueTestcontainersBase() {
      */
     @Test
     fun `G - 워크로그 없을 때 빈 리스트 반환`() {
-        val rows = aggregateRepository.aggregate(
-            projectKey = "TPRJ",
-            dimension = WorklogAggregateDimension.ISSUE,
-            granularity = null,
-            from = null,
-            to = null,
-        )
+        val rows =
+            aggregateRepository.aggregate(
+                projectKey = "TPRJ",
+                dimension = WorklogAggregateDimension.ISSUE,
+                granularity = null,
+                from = null,
+                to = null,
+            )
 
         assertThat(rows).isEmpty()
     }
@@ -580,19 +590,21 @@ class WorklogAggregateRepositoryTest : IssueTestcontainersBase() {
         )
 
         // 10회 측정
-        val durations = (1..10).map {
-            val start = System.nanoTime()
-            val rows = aggregateRepository.aggregate(
-                projectKey = "TPRJ",
-                dimension = WorklogAggregateDimension.ISSUE,
-                granularity = null,
-                from = null,
-                to = null,
-            )
-            val elapsed = (System.nanoTime() - start) / 1_000_000L
-            assertThat(rows).hasSize(issueCount)
-            elapsed
-        }
+        val durations =
+            (1..10).map {
+                val start = System.nanoTime()
+                val rows =
+                    aggregateRepository.aggregate(
+                        projectKey = "TPRJ",
+                        dimension = WorklogAggregateDimension.ISSUE,
+                        granularity = null,
+                        from = null,
+                        to = null,
+                    )
+                val elapsed = (System.nanoTime() - start) / 1_000_000L
+                assertThat(rows).hasSize(issueCount)
+                elapsed
+            }
 
         val sorted = durations.sorted()
         val p95 = sorted[(sorted.size * 0.95).toInt().coerceAtMost(sorted.size - 1)]

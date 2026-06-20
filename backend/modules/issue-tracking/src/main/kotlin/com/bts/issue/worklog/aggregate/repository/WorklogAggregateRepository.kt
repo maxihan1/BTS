@@ -71,49 +71,49 @@ class WorklogAggregateRepository(
         val sumField = DSL.sum(WORKLOGS.TIME_SPENT_SECONDS)
         val countField = DSL.count(WORKLOGS.ID)
 
-        // to 는 당일 포함 — 구현에서 to+1일 00:00 UTC exclusive 로 변환
-        val toExcl: OffsetDateTime? = to?.let {
-            it.atOffset(ZoneOffset.UTC).truncatedTo(ChronoUnit.DAYS).plusDays(1)
-        }
-        val fromOdt: OffsetDateTime? = from?.let {
-            it.atOffset(ZoneOffset.UTC)
-        }
+        // to 당일 포함 — to+1일 00:00 UTC exclusive 로 변환
+        val toExcl: OffsetDateTime? =
+            to?.atOffset(ZoneOffset.UTC)?.truncatedTo(ChronoUnit.DAYS)?.plusDays(1)
+        val fromOdt: OffsetDateTime? =
+            from?.atOffset(ZoneOffset.UTC)
 
-        val query = dsl
-            .select(groupKeyExpr, sumField, countField)
-            .from(WORKLOGS)
-            .join(ISSUES).on(
-                WORKLOGS.ISSUE_ID.eq(ISSUES.ID)
-                    .and(ISSUES.DELETED_AT.isNull),
-            )
-            .join(PROJECTS).on(
-                ISSUES.PROJECT_ID.eq(PROJECTS.ID)
-                    .and(PROJECTS.DELETED_AT.isNull),
-            )
-            .where(PROJECTS.KEY.eq(projectKey))
-            .and(WORKLOGS.DELETED_AT.isNull)
-            .apply {
-                if (fromOdt != null) {
-                    and(WORKLOGS.STARTED_AT.greaterOrEqual(fromOdt))
+        val query =
+            dsl
+                .select(groupKeyExpr, sumField, countField)
+                .from(WORKLOGS)
+                .join(ISSUES).on(
+                    WORKLOGS.ISSUE_ID.eq(ISSUES.ID)
+                        .and(ISSUES.DELETED_AT.isNull),
+                )
+                .join(PROJECTS).on(
+                    ISSUES.PROJECT_ID.eq(PROJECTS.ID)
+                        .and(PROJECTS.DELETED_AT.isNull),
+                )
+                .where(PROJECTS.KEY.eq(projectKey))
+                .and(WORKLOGS.DELETED_AT.isNull)
+                .apply {
+                    if (fromOdt != null) {
+                        and(WORKLOGS.STARTED_AT.greaterOrEqual(fromOdt))
+                    }
+                    if (toExcl != null) {
+                        and(WORKLOGS.STARTED_AT.lessThan(toExcl))
+                    }
                 }
-                if (toExcl != null) {
-                    and(WORKLOGS.STARTED_AT.lessThan(toExcl))
-                }
+                .groupBy(groupKeyExpr)
+
+        return query
+            .fetch { record ->
+                val key = record.get(groupKeyExpr) ?: return@fetch null
+                // C1: SUM nullable 처리 — BigDecimal 반환 가능, !! 금지
+                val totalSeconds = record.get(sumField)?.toLong() ?: 0L
+                val count = record.get(countField) ?: 0
+                WorklogAggregateRow(
+                    groupKey = key,
+                    timeSpentSeconds = totalSeconds,
+                    worklogCount = count,
+                )
             }
-            .groupBy(groupKeyExpr)
-
-        return query.fetch { record ->
-            val key = record.get(groupKeyExpr)
-                ?: return@fetch null
-            // C1: SUM nullable 처리 — BigDecimal 반환 가능
-            val totalSeconds = record.get(sumField)?.toLong() ?: 0L
-            val count = record.get(countField) ?: 0
-            WorklogAggregateRow(
-                groupKey = key,
-                timeSpentSeconds = totalSeconds,
-                worklogCount = count,
-            )
-        }.filterNotNull()
+            .filterNotNull()
     }
 
     // ── private helpers ────────────────────────────────────────────────────────
@@ -133,8 +133,8 @@ class WorklogAggregateRepository(
     private fun buildGroupKeyExpression(
         dimension: WorklogAggregateDimension,
         granularity: AggregateGranularity?,
-    ): Field<String?> {
-        return when (dimension) {
+    ): Field<String?> =
+        when (dimension) {
             WorklogAggregateDimension.ISSUE ->
                 ISSUES.KEY.cast(String::class.java)
 
@@ -146,16 +146,18 @@ class WorklogAggregateRepository(
                 )
 
             WorklogAggregateDimension.PERIOD -> {
-                val gran = requireNotNull(granularity) {
-                    "PERIOD 차원에서는 granularity 가 필수입니다."
-                }
+                val gran =
+                    requireNotNull(granularity) {
+                        "PERIOD 차원에서는 granularity 가 필수입니다."
+                    }
                 // date_trunc 첫 인자는 DSL.inline 으로 삽입 (B2 — bind 파라미터 금지)
-                val truncated = DSL.field(
-                    "date_trunc({0}, {1})",
-                    OffsetDateTime::class.java,
-                    DSL.inline(gran.sqlLiteral),
-                    WORKLOGS.STARTED_AT,
-                )
+                val truncated =
+                    DSL.field(
+                        "date_trunc({0}, {1})",
+                        OffsetDateTime::class.java,
+                        DSL.inline(gran.sqlLiteral),
+                        WORKLOGS.STARTED_AT,
+                    )
                 DSL.field(
                     "to_char({0}, 'YYYY-MM-DD')",
                     String::class.java,
@@ -163,5 +165,4 @@ class WorklogAggregateRepository(
                 )
             }
         }
-    }
 }
