@@ -38,9 +38,7 @@ import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.configuration.FluentConfiguration
-import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.AfterEach
@@ -53,6 +51,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.transaction.support.TransactionTemplate
+import java.sql.Connection
 import java.sql.DriverManager
 import java.time.Clock
 import java.util.UUID
@@ -74,7 +73,7 @@ import java.util.UUID
  *
  * ## 마이그레이션 전략
  *
- * [IssueControllerTransitionIntegrationTest.TestConfig] 와 동형 구조.
+ * [com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest] 와 동형 구조.
  * issue-tracking V001~V004 + project-workflow V200~V202 순차 적용.
  *
  * ## actor 추출 계약
@@ -85,16 +84,18 @@ import java.util.UUID
  * `@AfterEach` 에서 clear 하여 격리한다.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@Suppress("LongMethod")
 class IssueTransitionAdapterTest : IssueTestcontainersBase() {
 
-    // ── 전체 스택 빈 (IssueControllerTransitionIntegrationTest.TestConfig 동형) ──────
-
-    private lateinit var workflowDsl: DSLContext
     private lateinit var adapter: IssueTransitionAdapter
-
     private val actorId: UUID = UUID.fromString("11111111-1111-4111-8111-111111111111")
 
-    /** issue-tracking + project-workflow 마이그레이션을 함께 적용한다 */
+    companion object {
+        private const val NORMAL_PROJECT_KEY = "BDTRANS"
+        private const val NOSCHEME_PROJECT_KEY = "BDNOSCH"
+    }
+
+    /** issue-tracking + project-workflow 마이그레이션 공동 적용 */
     override fun configureFlyway(builder: FluentConfiguration): FluentConfiguration =
         super.configureFlyway(builder).locations(
             "classpath:db/migration/issue-tracking",
@@ -104,13 +105,12 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
     @BeforeAll
     fun setUpAll() {
         val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-        workflowDsl = DSL.using(dataSource, SQLDialect.POSTGRES)
-
-        val objectMapper = ObjectMapper().registerKotlinModule().registerModule(JavaTimeModule())
+        val workflowDsl = DSL.using(dataSource, SQLDialect.POSTGRES)
         val txManager = DataSourceTransactionManager(dataSource)
         val txTemplate = TransactionTemplate(txManager)
+        val objectMapper = ObjectMapper().registerKotlinModule().registerModule(JavaTimeModule())
 
-        // ── project-workflow 빈 ──────────────────────────────────────────────
+        // ── project-workflow 빈 (IssueControllerTransitionIntegrationTest.TestConfig 동형) ──
         val workflowRepo = WorkflowRepository(workflowDsl)
         val workflowCache = WorkflowCache(workflowRepo, workflowDsl)
         val workflowDefRepo =
@@ -178,7 +178,6 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
                 historyRecorder = mockk(relaxed = true),
             )
 
-        // adapter 는 IssueApplicationService + TransactionTemplate 을 주입받아 동기 호출한다.
         adapter = IssueTransitionAdapter(issueApplicationService, txTemplate)
 
         seedWorkflowsAndSchemes()
@@ -201,138 +200,220 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
             )
     }
 
-    /** issue_types.id 는 BIGSERIAL(Long) — IssueTypeId(Long) value class */
-    private val taskTypeId: Long by lazy {
-        var typeId: Long? = null
-        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.prepareStatement("SELECT id FROM issue_types WHERE key = 'task' LIMIT 1").use { stmt ->
-                stmt.executeQuery().use { rs ->
-                    if (rs.next()) typeId = rs.getLong(1)
-                }
-            }
-        }
-        requireNotNull(typeId) { "issue_types seed: task 타입이 없습니다." }
-    }
-
     /**
-     * 시드 프로젝트에 이슈를 SQL 직접 삽입하고 이슈 키 문자열을 반환한다.
+     * 테스트용 이슈를 DB 에 직접 삽입하고 이슈 키 문자열을 반환한다.
      *
-     * [IssueTestcontainersBase.testProjectId] 의 프로젝트(key=TPRJ)를 사용하며,
-     * [currentStateKey] 는 `"open"` 으로 초기화한다.
+     * Service layer 를 우회하므로 [currentStateKey] 를 그대로 삽입한다.
+     * [IssueControllerTransitionIntegrationTest.insertIssue] 와 동형 패턴.
      */
     private fun insertIssue(
-        projectKey: String = "TPRJ",
+        projectKey: String = NORMAL_PROJECT_KEY,
         summary: String = "전이 테스트 이슈",
         currentStateKey: String = "open",
     ): String {
-        var issueKey = ""
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.prepareStatement(
-                """
-                UPDATE projects SET key_sequence = key_sequence + 1 WHERE key = ?
-                RETURNING key_sequence
-                """.trimIndent(),
-            ).use { stmt ->
-                stmt.setString(1, projectKey)
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    issueKey = "$projectKey-${rs.getInt(1)}"
+            conn.autoCommit = false
+
+            val seq =
+                conn.prepareStatement(
+                    "UPDATE projects SET key_sequence = key_sequence + 1 WHERE key = ? RETURNING key_sequence",
+                ).use { stmt ->
+                    stmt.setString(1, projectKey)
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getLong(1)
+                    }
                 }
-            }
+
+            val issueKey = "$projectKey-$seq"
+
+            val projectId =
+                conn.prepareStatement("SELECT id FROM projects WHERE key = ?").use { stmt ->
+                    stmt.setString(1, projectKey)
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getObject(1) as UUID
+                    }
+                }
+
+            val taskTypeId =
+                conn.prepareStatement(
+                    "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1",
+                ).use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        check(rs.next()) { "task 타입이 없습니다. V003 마이그레이션 확인 필요." }
+                        rs.getLong(1)
+                    }
+                }
 
             conn.prepareStatement(
-                """
-                INSERT INTO issues (id, key, project_id, type_id, summary, current_state_key, reporter_id, version)
-                SELECT gen_random_uuid(), ?, p.id, ?, ?, ?, ?, 1
-                FROM projects p WHERE p.key = ?
-                """.trimIndent(),
+                "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key, version, type_id) " +
+                    "VALUES (?, ?, ?, ?, ?, 1, ?)",
             ).use { stmt ->
                 stmt.setString(1, issueKey)
-                stmt.setLong(2, taskTypeId)
+                stmt.setObject(2, projectId)
                 stmt.setString(3, summary)
-                stmt.setString(4, currentStateKey)
-                stmt.setObject(5, actorId)
-                stmt.setString(6, projectKey)
+                stmt.setObject(4, actorId)
+                stmt.setString(5, currentStateKey)
+                stmt.setLong(6, taskTypeId)
                 stmt.executeUpdate()
             }
+
+            conn.commit()
+            return issueKey
         }
-        return issueKey
     }
 
-    /** issue-tracking + project-workflow 워크플로우 시드 (IssueControllerTransitionIntegrationTest 동형). */
-    @Suppress("LongMethod")
+    /**
+     * 워크플로우 · 스킴 · 프로젝트 픽스처 시드.
+     *
+     * [com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.seedWorkflowsAndSchemes]
+     * 와 동형 패턴 — 컬럼/테이블명은 실제 마이그레이션 스키마(V200~V202) 기준.
+     *
+     * - BDTRANS 프로젝트 — software-scheme(software-default 워크플로우) 배정.
+     * - BDNOSCH 프로젝트 — 스킴 미배정 (S4 시나리오).
+     * - software-default 워크플로우 (open/in_progress/done 상태 + "Start Work" 전이).
+     * - no-default-scheme — default mapping 없음.
+     */
     private fun seedWorkflowsAndSchemes() {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            // TPRJ 프로젝트는 IssueTestcontainersBase.bootstrap() 에서 이미 삽입됨.
-            // NOSCHEME 프로젝트 — 워크플로우 스킴 미배정 (S4 시나리오)
-            conn.prepareStatement(
-                "INSERT INTO projects (key, name) VALUES ('NOSCHEME', 'No Scheme Project') ON CONFLICT (key) DO NOTHING",
-            ).use { it.executeUpdate() }
+            conn.autoCommit = false
 
-            // software-default 워크플로우 삽입 (이미 존재하면 skip)
-            conn.prepareStatement(
-                "SELECT COUNT(*) FROM workflows WHERE workflow_key = 'software-default'",
-            ).use { stmt ->
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    if (rs.getInt(1) > 0) return
+            insertProject(conn, NORMAL_PROJECT_KEY, "Board Transition Test Project")
+            insertProject(conn, NOSCHEME_PROJECT_KEY, "No Scheme Project")
+
+            // software-default 워크플로우 (already seeded by V200 YamlSeedService 시뮬레이션)
+            val wfId =
+                conn.prepareStatement(
+                    "INSERT INTO workflows (key, name) VALUES ('software-default', '소프트웨어 개발 기본 워크플로우') " +
+                        "ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                ).use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getObject(1) as UUID
+                    }
                 }
+
+            val openId = insertState(conn, wfId, "open", "Open", "TODO", 0)
+            val inProgressId = insertState(conn, wfId, "in_progress", "In Progress", "IN_PROGRESS", 1)
+            insertState(conn, wfId, "done", "Done", "DONE", 2)
+
+            // open → in_progress 만 정의 (open → done 은 의도적 미정의 — S2 시나리오)
+            insertTransition(conn, wfId, openId, inProgressId, "Start Work")
+
+            // software-scheme 은 V201 seed 에서 이미 삽입됨 — default mapping 만 추가
+            conn.createStatement().use { stmt ->
+                stmt.execute(
+                    """
+                    INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id)
+                    SELECT s.id, NULL, '$wfId'
+                    FROM workflow_schemes s
+                    WHERE s.key = 'software-scheme'
+                      AND NOT EXISTS (
+                        SELECT 1 FROM workflow_scheme_issue_type_mappings m
+                        WHERE m.scheme_id = s.id AND m.issue_type_id IS NULL
+                      )
+                    """.trimIndent(),
+                )
             }
 
-            // workflow row
-            val workflowId = UUID.randomUUID()
-            conn.prepareStatement(
-                """
-                INSERT INTO workflows (id, workflow_key, name, states_json, transitions_json, version)
-                VALUES (?, 'software-default', 'Software Default',
-                '[{"key":"open","name":"Open","isDone":false,"category":"TODO","displayOrder":0},
-                  {"key":"in_progress","name":"In Progress","isDone":false,"category":"IN_PROGRESS","displayOrder":1},
-                  {"key":"done","name":"Done","isDone":true,"category":"DONE","displayOrder":2}]',
-                '[{"name":"Start Work","fromStateKey":"open","toStateKey":"in_progress","validators":[],"postActions":[]},
-                  {"name":"Finish","fromStateKey":"in_progress","toStateKey":"done","validators":[],"postActions":[]}]',
-                1)
-                """.trimIndent(),
-            ).use { stmt ->
-                stmt.setObject(1, workflowId)
-                stmt.executeUpdate()
+            // BDTRANS ← software-scheme 배정 (project_id = UUID, V202 정정)
+            conn.createStatement().use { stmt ->
+                stmt.execute(
+                    """
+                    INSERT INTO project_workflow_scheme_assignments (project_id, workflow_scheme_id, assigned_by)
+                    SELECT p.id, s.id, '00000000-0000-0000-0000-000000000000'::uuid
+                    FROM projects p, workflow_schemes s
+                    WHERE p.key = '$NORMAL_PROJECT_KEY'
+                      AND s.key = 'software-scheme'
+                    ON CONFLICT (project_id) DO NOTHING
+                    """.trimIndent(),
+                )
+            }
+            // no-default-scheme 생성 (default mapping 없음 — IssueControllerTransitionIntegrationTest 동형)
+            conn.createStatement().use { stmt ->
+                stmt.execute(
+                    """
+                    INSERT INTO workflow_schemes (key, name, is_default)
+                    VALUES ('no-default-scheme-bd', 'No Default Scheme BD', false)
+                    ON CONFLICT (key) DO NOTHING
+                    """.trimIndent(),
+                )
             }
 
-            // workflow scheme
-            val schemeId = UUID.randomUUID()
-            conn.prepareStatement(
-                """
-                INSERT INTO workflow_schemes (id, name, description) VALUES (?, 'Software Scheme', '')
-                ON CONFLICT DO NOTHING
-                """.trimIndent(),
-            ).use { stmt ->
-                stmt.setObject(1, schemeId)
-                stmt.executeUpdate()
+            // BDNOSCH ← no-default-scheme-bd 배정 (default mapping 없으므로 전이 시 WorkflowSchemeNoDefaultException)
+            conn.createStatement().use { stmt ->
+                stmt.execute(
+                    """
+                    INSERT INTO project_workflow_scheme_assignments (project_id, workflow_scheme_id, assigned_by)
+                    SELECT p.id, s.id, '00000000-0000-0000-0000-000000000000'::uuid
+                    FROM projects p, workflow_schemes s
+                    WHERE p.key = '$NOSCHEME_PROJECT_KEY'
+                      AND s.key = 'no-default-scheme-bd'
+                    ON CONFLICT (project_id) DO NOTHING
+                    """.trimIndent(),
+                )
             }
 
-            // scheme default mapping
-            conn.prepareStatement(
-                """
-                INSERT INTO workflow_scheme_issue_type_mappings (id, scheme_id, issue_type_key, workflow_key, is_default)
-                VALUES (gen_random_uuid(), ?, NULL, 'software-default', TRUE)
-                ON CONFLICT DO NOTHING
-                """.trimIndent(),
-            ).use { stmt ->
-                stmt.setObject(1, schemeId)
-                stmt.executeUpdate()
-            }
+            conn.commit()
+        }
+    }
 
-            // TPRJ ← scheme 배정
-            conn.prepareStatement(
-                """
-                INSERT INTO project_workflow_scheme_assignments (id, project_key, scheme_id)
-                VALUES (gen_random_uuid(), 'TPRJ', ?)
-                ON CONFLICT (project_key) DO NOTHING
-                """.trimIndent(),
-            ).use { stmt ->
-                stmt.setObject(1, schemeId)
-                stmt.executeUpdate()
+    private fun insertProject(
+        conn: Connection,
+        key: String,
+        name: String,
+    ) {
+        conn.prepareStatement(
+            "INSERT INTO projects (key, name) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
+        ).use { stmt ->
+            stmt.setString(1, key)
+            stmt.setString(2, name)
+            stmt.executeUpdate()
+        }
+    }
+
+    @Suppress("LongParameterList")
+    private fun insertState(
+        conn: Connection,
+        wfId: UUID,
+        key: String,
+        name: String,
+        category: String,
+        displayOrder: Int,
+    ): UUID =
+        conn.prepareStatement(
+            "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) " +
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT (workflow_id, key) " +
+                "DO UPDATE SET display_order = EXCLUDED.display_order RETURNING id",
+        ).use { stmt ->
+            stmt.setObject(1, wfId)
+            stmt.setString(2, key)
+            stmt.setString(3, name)
+            stmt.setString(4, category)
+            stmt.setInt(5, displayOrder)
+            stmt.executeQuery().use { rs ->
+                rs.next()
+                rs.getObject(1) as UUID
             }
-            // NOSCHEME 는 배정하지 않음 (S4 시나리오)
+        }
+
+    private fun insertTransition(
+        conn: Connection,
+        wfId: UUID,
+        fromId: UUID,
+        toId: UUID,
+        transitionName: String,
+    ) {
+        conn.prepareStatement(
+            "INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name) " +
+                "VALUES (?, ?, ?, ?) ON CONFLICT (workflow_id, from_state_id, to_state_id) DO NOTHING",
+        ).use { stmt ->
+            stmt.setObject(1, wfId)
+            stmt.setObject(2, fromId)
+            stmt.setObject(3, toId)
+            stmt.setString(4, transitionName)
+            stmt.executeUpdate()
         }
     }
 
@@ -341,7 +422,7 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
     /**
      * S1. 보드 카드 이동이 기존 전이 경로에 위임되어 상태 갱신 + version 증가를 반환한다.
      *
-     * Given  TPRJ-N 이슈 (currentStateKey="open", version=1)
+     * Given  BDTRANS-N 이슈 (currentStateKey="open", version=1)
      * When   adapter.transition(cmd(toStateKey="in_progress", expectedVersion=1))
      * Then   result.currentStateKey == "in_progress", result.version == 2
      */
@@ -370,9 +451,9 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
     /**
      * S2. 정의되지 않은 전이 시 [IssueTransitionNotAllowedException] 이 그대로 전파된다.
      *
-     * Given  TPRJ-N 이슈 (currentStateKey="open")
-     * When   adapter.transition(cmd(toStateKey="done", expectedVersion=1))
-     *        — software-default.yaml 에 open→done 미정의
+     * Given  BDTRANS-N 이슈 (currentStateKey="open")
+     * When   adapter.transition(cmd(toStateKey="done"))
+     *        — software-default 에 open→done 미정의
      * Then   IssueTransitionNotAllowedException
      */
     @Test
@@ -397,7 +478,7 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
     /**
      * S3. expectedVersion 이 실제 DB version 과 다르면 [IssueVersionConflictException] 이 전파된다.
      *
-     * Given  TPRJ-N 이슈 (version=1)
+     * Given  BDTRANS-N 이슈 (version=1)
      * When   adapter.transition(cmd(toStateKey="in_progress", expectedVersion=99))
      * Then   IssueVersionConflictException
      */
@@ -423,14 +504,14 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
     /**
      * S4. 워크플로우 스킴이 배정되지 않은 프로젝트는 [IssueWorkflowNotConfiguredException] 이 전파된다.
      *
-     * Given  NOSCHEME-N 이슈 (no scheme assigned)
+     * Given  BDNOSCH-N 이슈 (no scheme assigned)
      * When   adapter.transition(cmd)
      * Then   IssueWorkflowNotConfiguredException
      */
     @Test
     fun `transition propagates IssueWorkflowNotConfiguredException when no scheme`() {
         setActor()
-        val issueKey = insertIssue(projectKey = "NOSCHEME", currentStateKey = "open")
+        val issueKey = insertIssue(projectKey = NOSCHEME_PROJECT_KEY, currentStateKey = "open")
 
         val cmd =
             BoardTransitionCommand(
@@ -453,8 +534,8 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
      * actor 위조 차단 설계 (sec CONCERN-3) 의 핵심 게이트.
      */
     @Test
-    fun `transition throws 401 ResponseStatusException when SecurityContext is not authenticated`() {
-        // SecurityContext 를 명시적으로 clear — setActor() 호출 없음
+    fun `transition throws 401 when SecurityContext is not authenticated`() {
+        // SecurityContext clear — setActor() 호출 없음
         SecurityContextHolder.clearContext()
         val issueKey = insertIssue(currentStateKey = "open")
 
@@ -468,7 +549,8 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
 
         assertThatThrownBy { adapter.transition(cmd) }
             .isInstanceOf(org.springframework.web.server.ResponseStatusException::class.java)
-            .extracting { (it as org.springframework.web.server.ResponseStatusException).statusCode.value() }
-            .isEqualTo(401)
+            .matches { ex ->
+                (ex as org.springframework.web.server.ResponseStatusException).statusCode.value() == 401
+            }
     }
 }
