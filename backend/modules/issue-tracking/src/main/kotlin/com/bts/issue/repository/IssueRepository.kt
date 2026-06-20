@@ -4,6 +4,7 @@ package com.bts.issue.repository
 
 import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.application.DatePatch
+import com.bts.issue.application.EstimatePatch
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
@@ -18,6 +19,7 @@ import com.bts.issue.jooq.tables.references.ISSUE_FIX_VERSIONS
 import com.bts.issue.jooq.tables.references.ISSUE_TYPES
 import com.bts.issue.jooq.tables.references.PROJECTS
 import com.bts.issue.jooq.tables.references.VERSIONS
+import com.bts.issue.jooq.tables.references.WORKLOGS
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssueSecurityAccess
 import com.fasterxml.jackson.core.type.TypeReference
@@ -29,6 +31,7 @@ import org.jooq.Record
 import org.jooq.Table
 import org.jooq.TableField
 import org.jooq.UpdateSetMoreStep
+import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageImpl
@@ -107,6 +110,8 @@ private const val SQL_COLLECT_ANCESTORS =
  *   - [DatePatch.Unchanged] (기본값) — 변경하지 않는다.
  *   - [DatePatch.Clear] — DB NULL 로 클리어한다.
  *   - [DatePatch.Set] — 지정 날짜로 SET 한다.
+ * originalEstimate/remainingEstimate 는 [EstimatePatch] 3-state 로 변경 의도를 표현한다 (FR-TT-01).
+ *   수동 추정 변경은 정식 이슈 수정 — version 증가 경로(updateFields)를 통한다.
  */
 data class IssueFieldPatch(
     val summary: String? = null,
@@ -120,6 +125,23 @@ data class IssueFieldPatch(
     val startDate: DatePatch = DatePatch.Unchanged,
     val dueDate: DatePatch = DatePatch.Unchanged,
     val targetDate: DatePatch = DatePatch.Unchanged,
+    val originalEstimate: EstimatePatch = EstimatePatch.Unchanged,
+    val remainingEstimate: EstimatePatch = EstimatePatch.Unchanged,
+)
+
+/**
+ * worklog 롤업 결과 VO (FR-TT-01, Task 3).
+ *
+ * [IssueRepository.recomputeTimeSpentWithDecrement] / [IssueRepository.recomputeTimeSpentSetRemaining] /
+ * [IssueRepository.recomputeTimeSpent] 가 RETURNING 절로 반환하는 집계 결과.
+ * no-bump(version 불변) 경로라 Issue 전체 도메인 객체가 아닌 최소 필드만 반환한다.
+ *
+ * @property timeSpent 재집계된 누적 작업 시간(초). 항상 0 이상.
+ * @property remaining 갱신된 잔여 추정 시간(초). null 이면 미추정 상태 유지.
+ */
+data class RollupResult(
+    val timeSpent: Int,
+    val remaining: Int?,
 )
 
 /**
@@ -282,6 +304,9 @@ class IssueRepository(
             .applyDatePatch(ISSUES.START_DATE, patch.startDate)
             .applyDatePatch(ISSUES.DUE_DATE, patch.dueDate)
             .applyDatePatch(ISSUES.TARGET_DATE, patch.targetDate)
+            // 추정 시간 3-state SET (FR-TT-01). 수동 추정 변경은 정식 이슈 수정 — version 증가 경로.
+            .applyEstimatePatch(ISSUES.ORIGINAL_ESTIMATE_SECONDS, patch.originalEstimate)
+            .applyEstimatePatch(ISSUES.REMAINING_ESTIMATE_SECONDS, patch.remainingEstimate)
             .where(ISSUES.KEY.eq(key.value))
             .and(ISSUES.VERSION.eq(expectedVersion))
             .and(ISSUES.DELETED_AT.isNull)
@@ -1244,6 +1269,113 @@ class IssueRepository(
     }
 
     /**
+     * worklog 합산 재집계 + remaining 자동 차감 (no-bump 원자 UPDATE, FR-TT-01).
+     *
+     * worklog 추가(POST) 시 호출되는 경로. time_spent = 활성 worklogs SUM, remaining = remaining - decrement.
+     * remaining 이 NULL 이면 decrement 를 적용하지 않고 NULL 을 유지한다 — PG GREATEST(0,NULL)=0 함정 회피.
+     * version 은 변경하지 않는다(no-bump) — 동시 이슈 편집 OCC 충돌 회피 (learnings: no-bump 원칙).
+     *
+     * RETURNING time_spent_seconds, remaining_estimate_seconds 로 단일 쿼리에서 결과를 반환한다.
+     *
+     * @param issueId 대상 이슈 UUID.
+     * @param decrementSeconds remaining 에서 차감할 초(양수). time_spent 재집계와 별개로 remaining 만 차감.
+     * @return [RollupResult] — 갱신된 timeSpent 와 remaining.
+     * @throws IllegalStateException RETURNING 이 null 인 경우 (이슈 미존재).
+     */
+    @Transactional
+    fun recomputeTimeSpentWithDecrement(issueId: UUID, decrementSeconds: Int): RollupResult {
+        log.debug("recomputeTimeSpentWithDecrement issueId={} decrementSeconds={}", issueId, decrementSeconds)
+        // time_spent: 활성 worklogs SUM 서브쿼리 (deleted_at IS NULL, DATA.md §1.2 #7)
+        val timeSpentSubquery = DSL.select(
+            DSL.coalesce(DSL.sum(WORKLOGS.TIME_SPENT_SECONDS), DSL.value(0)),
+        )
+            .from(WORKLOGS)
+            .where(WORKLOGS.ISSUE_ID.eq(issueId))
+            .and(WORKLOGS.DELETED_AT.isNull)
+        // remaining: NULL 이면 NULL 유지, non-null 이면 max(0, remaining - decrement) — CASE로 NULL 분기
+        val remainingExpr = DSL.`when`(ISSUES.REMAINING_ESTIMATE_SECONDS.isNull, DSL.`val`(null as Int?))
+            .otherwise(DSL.greatest(DSL.value(0), ISSUES.REMAINING_ESTIMATE_SECONDS.minus(decrementSeconds)))
+        val record = dsl.update(ISSUES)
+            .set(ISSUES.TIME_SPENT_SECONDS, timeSpentSubquery.asField<Int>())
+            .set(ISSUES.REMAINING_ESTIMATE_SECONDS, remainingExpr)
+            .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+            .where(ISSUES.ID.eq(issueId))
+            .returningResult(ISSUES.TIME_SPENT_SECONDS, ISSUES.REMAINING_ESTIMATE_SECONDS)
+            .fetchOne()
+            ?: error("recomputeTimeSpentWithDecrement: issueId=$issueId 에 해당하는 이슈가 없음")
+        return RollupResult(
+            timeSpent = record.get(ISSUES.TIME_SPENT_SECONDS) ?: 0,
+            remaining = record.get(ISSUES.REMAINING_ESTIMATE_SECONDS),
+        )
+    }
+
+    /**
+     * worklog 합산 재집계 + remaining 직접 지정 (no-bump 원자 UPDATE, FR-TT-01).
+     *
+     * worklog 추가 시 "manual remaining override" 경로. time_spent = SUM, remaining = newRemaining.
+     * version 은 변경하지 않는다(no-bump).
+     *
+     * @param issueId 대상 이슈 UUID.
+     * @param newRemaining 직접 지정할 잔여 추정 시간(초). 0 이상이어야 한다(호출자 책임).
+     * @return [RollupResult] — 갱신된 timeSpent 와 remaining.
+     * @throws IllegalStateException RETURNING 이 null 인 경우 (이슈 미존재).
+     */
+    @Transactional
+    fun recomputeTimeSpentSetRemaining(issueId: UUID, newRemaining: Int): RollupResult {
+        log.debug("recomputeTimeSpentSetRemaining issueId={} newRemaining={}", issueId, newRemaining)
+        val timeSpentSubquery = DSL.select(
+            DSL.coalesce(DSL.sum(WORKLOGS.TIME_SPENT_SECONDS), DSL.value(0)),
+        )
+            .from(WORKLOGS)
+            .where(WORKLOGS.ISSUE_ID.eq(issueId))
+            .and(WORKLOGS.DELETED_AT.isNull)
+        val record = dsl.update(ISSUES)
+            .set(ISSUES.TIME_SPENT_SECONDS, timeSpentSubquery.asField<Int>())
+            .set(ISSUES.REMAINING_ESTIMATE_SECONDS, newRemaining)
+            .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+            .where(ISSUES.ID.eq(issueId))
+            .returningResult(ISSUES.TIME_SPENT_SECONDS, ISSUES.REMAINING_ESTIMATE_SECONDS)
+            .fetchOne()
+            ?: error("recomputeTimeSpentSetRemaining: issueId=$issueId 에 해당하는 이슈가 없음")
+        return RollupResult(
+            timeSpent = record.get(ISSUES.TIME_SPENT_SECONDS) ?: 0,
+            remaining = record.get(ISSUES.REMAINING_ESTIMATE_SECONDS),
+        )
+    }
+
+    /**
+     * worklog 합산만 재집계, remaining 미변경 (no-bump 원자 UPDATE, FR-TT-01).
+     *
+     * worklog 편집(PATCH) 또는 삭제(DELETE) 시 호출되는 경로. time_spent = SUM, remaining 불변.
+     * version 은 변경하지 않는다(no-bump).
+     *
+     * @param issueId 대상 이슈 UUID.
+     * @return [RollupResult] — 갱신된 timeSpent 와 현재 remaining (미변경 값).
+     * @throws IllegalStateException RETURNING 이 null 인 경우 (이슈 미존재).
+     */
+    @Transactional
+    fun recomputeTimeSpent(issueId: UUID): RollupResult {
+        log.debug("recomputeTimeSpent issueId={}", issueId)
+        val timeSpentSubquery = DSL.select(
+            DSL.coalesce(DSL.sum(WORKLOGS.TIME_SPENT_SECONDS), DSL.value(0)),
+        )
+            .from(WORKLOGS)
+            .where(WORKLOGS.ISSUE_ID.eq(issueId))
+            .and(WORKLOGS.DELETED_AT.isNull)
+        val record = dsl.update(ISSUES)
+            .set(ISSUES.TIME_SPENT_SECONDS, timeSpentSubquery.asField<Int>())
+            .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+            .where(ISSUES.ID.eq(issueId))
+            .returningResult(ISSUES.TIME_SPENT_SECONDS, ISSUES.REMAINING_ESTIMATE_SECONDS)
+            .fetchOne()
+            ?: error("recomputeTimeSpent: issueId=$issueId 에 해당하는 이슈가 없음")
+        return RollupResult(
+            timeSpent = record.get(ISSUES.TIME_SPENT_SECONDS) ?: 0,
+            remaining = record.get(ISSUES.REMAINING_ESTIMATE_SECONDS),
+        )
+    }
+
+    /**
      * 이슈의 직접 자식 수를 반환한다 (이슈 이동 전 자식 존재 여부 확인용).
      *
      * `parent_id = issueId AND deleted_at IS NULL` 조건으로 카운트한다.
@@ -1462,6 +1594,10 @@ private fun Issue.toInsertRecord(): IssuesRecord =
         startDate = startDate,
         dueDate = dueDate,
         targetDate = targetDate,
+        // 추정 시간 3컬럼 (FR-TT-01, V027)
+        originalEstimateSeconds = originalEstimateSeconds,
+        timeSpentSeconds = timeSpentSeconds,
+        remainingEstimateSeconds = remainingEstimateSeconds,
     )
 
 /**
@@ -1502,6 +1638,10 @@ private fun IssuesRecord.toIssue(): Issue {
         startDate = startDate,
         dueDate = dueDate,
         targetDate = targetDate,
+        // 추정 시간 3컬럼 — V027 (FR-TT-01). time_spent 는 NOT NULL DEFAULT 0 이지만 jOOQ 는 Int? 로 생성.
+        originalEstimateSeconds = originalEstimateSeconds,
+        timeSpentSeconds = timeSpentSeconds ?: 0,
+        remainingEstimateSeconds = remainingEstimateSeconds,
     )
 }
 
@@ -1564,6 +1704,27 @@ private fun UpdateSetMoreStep<IssuesRecord>.applyDatePatch(
         is DatePatch.Set -> set(field, patch.value)
         DatePatch.Clear -> set(field, null as LocalDate?)
         DatePatch.Unchanged -> Unit
+    }
+    return this
+}
+
+/**
+ * jOOQ UPDATE 체인에 [EstimatePatch] 3-state 를 적용하는 헬퍼 (FR-TT-01).
+ *
+ * [EstimatePatch.Set] → `SET field = value`, [EstimatePatch.Clear] → `SET field = NULL`,
+ * [EstimatePatch.Unchanged] → SET 절 추가 없음.
+ *
+ * [applyDatePatch] 와 완전 동형 — 타입만 Int? 로 다르다.
+ * 반환값: 동일 [UpdateSetMoreStep] 인스턴스 (jOOQ 체인 연속 가능).
+ */
+private fun UpdateSetMoreStep<IssuesRecord>.applyEstimatePatch(
+    field: TableField<IssuesRecord, Int?>,
+    patch: EstimatePatch,
+): UpdateSetMoreStep<IssuesRecord> {
+    when (patch) {
+        is EstimatePatch.Set -> set(field, patch.value)
+        EstimatePatch.Clear -> set(field, null as Int?)
+        EstimatePatch.Unchanged -> Unit
     }
     return this
 }

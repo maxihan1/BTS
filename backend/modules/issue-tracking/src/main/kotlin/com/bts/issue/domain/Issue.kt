@@ -84,6 +84,9 @@ private const val IMPACT_MAX = 3
  * @property startDate 이슈 시작일(캘린더 날짜). null 이면 미설정. 교차 검증 없음(FR-PL-01).
  * @property dueDate 이슈 마감일(캘린더 날짜). null 이면 미설정. 교차 검증 없음(FR-PL-01).
  * @property targetDate 이슈 목표일(캘린더 날짜). null 이면 미설정. 교차 검증 없음(FR-PL-01).
+ * @property originalEstimateSeconds 최초 추정 작업 시간(초). null 이면 미추정(FR-TT-01).
+ * @property timeSpentSeconds 누적 기록 작업 시간(초). worklogs SUM 캐시 — NOT NULL DEFAULT 0(FR-TT-01).
+ * @property remainingEstimateSeconds 잔여 추정 작업 시간(초). null 이면 미추정(FR-TT-01).
  */
 data class Issue(
     val id: IssueId,
@@ -113,6 +116,10 @@ data class Issue(
     val startDate: LocalDate? = null,
     val dueDate: LocalDate? = null,
     val targetDate: LocalDate? = null,
+    // 추정 시간 3필드 (FR-TT-01, V027). 기존 생성 지점 영향 최소화를 위해 default 값으로 추가.
+    val originalEstimateSeconds: Int? = null,
+    val timeSpentSeconds: Int = 0,
+    val remainingEstimateSeconds: Int? = null,
 ) {
     companion object {
         /**
