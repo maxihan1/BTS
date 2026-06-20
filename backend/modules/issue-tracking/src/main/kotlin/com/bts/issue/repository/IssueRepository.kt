@@ -615,6 +615,52 @@ class IssueRepository(
     }
 
     /**
+     * 프로젝트의 가시 활성 이슈 전체를 보안 등급 필터를 적용해 비페이지로 조회한다 (FR-BD-01 보드 카드용).
+     *
+     * 보드는 컬럼별 카드 배치를 위해 프로젝트 이슈 "전부"를 한 번에 받아야 한다 (페이지 없음).
+     * [listWithType] 의 페이지/count/type-JOIN 오버헤드 없이, **동일한 [buildSecurityCondition]
+     * WHERE 술어를 재사용**해 viewer 가 볼 수 없는 보안 등급 행을 SQL 수준에서 제외한다.
+     * 새 보안 판정 경로를 만들지 않음으로써 멤버 타입 누락에 의한 제목 누출을 차단한다 (FR-NT-03 교훈).
+     *
+     * 단일 쿼리(ISSUES × PROJECTS) — N+1 없음. type 요약은 보드 카드에 불필요하므로 ISSUE_TYPES JOIN 생략.
+     * 카드 수 폭주를 막기 위해 [BOARD_CARD_FETCH_LIMIT] 로 상한을 둔다.
+     * 정렬(컬럼 내 priority 등)은 도메인 배치 로직(agile-planning) 책임이므로 여기서는 created_at DESC 안정 정렬만 한다.
+     *
+     * @param projectKey 프로젝트 접두사. 예: `"BTS"`.
+     * @param actor 조회 행위자(viewer) UUID. 보안 등급 필터의 reporter/assignee 동적 조건에 사용.
+     *   보안 민감 메서드이므로 기본값 없이 항상 명시 전달한다.
+     * @param access actor 가 접근 가능한 보안 등급 집합. unrestricted=true 이면 WHERE 술어 미적용(빠른경로).
+     * @return 가시 활성 이슈 [Issue] 목록. 최대 [BOARD_CARD_FETCH_LIMIT] 건.
+     */
+    @Transactional(readOnly = true)
+    fun listVisibleForBoard(
+        projectKey: String,
+        actor: UUID,
+        access: IssueSecurityAccess,
+    ): List<Issue> {
+        val activeInProject =
+            PROJECTS.KEY.eq(projectKey)
+                .and(ISSUES.DELETED_AT.isNull)
+
+        // listWithType 과 동일한 보안 술어 재사용 — unrestricted=true 이면 null(필터 미적용).
+        val securityCondition = buildSecurityCondition(actor, access)
+        val where =
+            if (securityCondition != null) {
+                activeInProject.and(securityCondition)
+            } else {
+                activeInProject
+            }
+
+        return dsl.select(ISSUES.fields().toList())
+            .from(ISSUES)
+            .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+            .where(where)
+            .orderBy(ISSUES.CREATED_AT.desc())
+            .limit(BOARD_CARD_FETCH_LIMIT)
+            .fetch { it.into(ISSUES).toIssue() }
+    }
+
+    /**
      * [IssueSecurityAccess] 로부터 SQL WHERE 술어를 생성한다.
      *
      * [access] 가 unrestricted=true 이면 `null` 을 반환(필터 미적용 빠른경로).
@@ -670,6 +716,13 @@ class IssueRepository(
     }
 
     companion object {
+        /**
+         * 보드 카드 비페이지 조회([listVisibleForBoard]) 상한.
+         * 보드는 프로젝트 이슈 전부를 한 번에 받지만, 카드 수 폭주로 인한 메모리/렌더 부담을 막기 위해
+         * 상한을 둔다. spec NFR(보드 카드 200건) 대비 여유를 둔 값이다.
+         */
+        private const val BOARD_CARD_FETCH_LIMIT = 1000
+
         /**
          * 기본 unrestricted [IssueSecurityAccess] — [listWithType] 파라미터 기본값.
          * non-prod 환경(AlwaysAllowIssueSecurityDirectory)과 동일한 빠른경로를 보장한다.
