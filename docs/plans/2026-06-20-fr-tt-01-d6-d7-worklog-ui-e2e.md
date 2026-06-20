@@ -51,7 +51,7 @@ FR-TT-01 — Worklog (추정/실제/잔여 시간)의 **D6(프론트 UI) + D7(E2
 > 범위 D6(프론트 UI) + D7(E2E). 경로 prefix: `apps/web/src/`. 백엔드 변경 0.
 > 모든 Zod/DTO는 #163 백엔드 계약 실측 미러(invent 금지). 추정 3필드는 `@JsonInclude(NON_NULL)` 미적용(키 항상 존재) — 그래도 mock fanout 회피 위해 `.nullable().optional()`.
 
-### Task 1. duration 유틸 — parseHm / formatSeconds 순수 함수
+### Task 1. [x] duration 유틸 — parseHm / formatSeconds 순수 함수
 
 **메타**.
 - agent: `frontend-engineer`
@@ -66,7 +66,7 @@ FR-TT-01 — Worklog (추정/실제/잔여 시간)의 **D6(프론트 UI) + D7(E2
 
 **검증**: `pnpm --filter web test duration`.
 
-### Task 2. api/issues.ts — 추정 Zod 3필드 + UpdateIssueInput 추정 필드
+### Task 2. [x] api/issues.ts — 추정 Zod 3필드 + UpdateIssueInput 추정 필드
 
 **메타**.
 - agent: `frontend-engineer`
@@ -84,7 +84,7 @@ FR-TT-01 — Worklog (추정/실제/잔여 시간)의 **D6(프론트 UI) + D7(E2
 
 **검증**: `pnpm --filter web test issues` + `pnpm --filter web typecheck`.
 
-### Task 3. api/worklogs.ts (신규) — Zod 스키마 + CRUD 함수
+### Task 3. [x] api/worklogs.ts (신규) — Zod 스키마 + CRUD 함수
 
 **메타**.
 - agent: `frontend-engineer`
@@ -101,7 +101,7 @@ FR-TT-01 — Worklog (추정/실제/잔여 시간)의 **D6(프론트 UI) + D7(E2
 
 **검증**: `pnpm --filter web test worklogs` + `typecheck`.
 
-### Task 4. i18n/ko.ts — Worklog/추정 라벨·토스트
+### Task 4. [x] i18n/ko.ts — Worklog/추정 라벨·토스트
 
 **메타**.
 - agent: `frontend-engineer`
@@ -116,7 +116,7 @@ FR-TT-01 — Worklog (추정/실제/잔여 시간)의 **D6(프론트 UI) + D7(E2
 
 **검증**: `pnpm --filter web test ko` + `typecheck`.
 
-### Task 5. IssueEstimatePanel — 추정 카드(표시 + PATCH 편집)
+### Task 5. [x] IssueEstimatePanel — 추정 카드(표시 + PATCH 편집)
 
 **메타**.
 - agent: `frontend-engineer`
@@ -132,7 +132,7 @@ FR-TT-01 — Worklog (추정/실제/잔여 시간)의 **D6(프론트 UI) + D7(E2
 
 **검증**: `pnpm --filter web test IssueEstimatePanel` + `typecheck`.
 
-### Task 6. WorklogSection — 목록 + 추가/수정/삭제 + 자동계산 미리보기
+### Task 6. [x] WorklogSection — 목록 + 추가/수정/삭제 + 자동계산 미리보기
 
 **메타**.
 - agent: `frontend-engineer`
@@ -150,7 +150,7 @@ FR-TT-01 — Worklog (추정/실제/잔여 시간)의 **D6(프론트 UI) + D7(E2
 
 **검증**: `pnpm --filter web test WorklogSection` + `typecheck`.
 
-### Task 7. routes/issues.$key.tsx — 추정 카드 + WorklogSection 배치
+### Task 7. [x] routes/issues.$key.tsx — 추정 카드 + WorklogSection 배치
 
 **메타**.
 - agent: `frontend-engineer`
@@ -165,7 +165,7 @@ FR-TT-01 — Worklog (추정/실제/잔여 시간)의 **D6(프론트 UI) + D7(E2
 
 **검증**: `pnpm --filter web test issues.$key` + `typecheck` + `lint`.
 
-### Task 8. E2E (D7) — Worklog happy path + 권한/타인 차단
+### Task 8. [x] E2E (D7) — Worklog happy path + 권한/타인 차단
 
 **메타**.
 - agent: `qa-engineer`
@@ -211,6 +211,14 @@ DESIGN.md + 선례 3컴포넌트(IssueScheduleFields/AttachmentSection/WatchersS
 - 🟡 **C4 (반영 → Task 6)**: 자동차감 미리보기 remaining 출처는 **summary.remainingEstimateSeconds 단일 출처**(IssueResponse 경유 시 cross-invalidate 타이밍에 두 값 어긋남). 백엔드 `timeSpent`=이번 추가분(누적 아님).
 - 🟡 **C5 (반영 → Task 8)**: MSW stateful은 자동차감뿐 아니라 **PATCH/DELETE는 timeSpent만 재합산·remaining 불변**(백엔드 시맨틱)을 재현해야 가짜그린 회피.
 - 🟢 부가 검증: CSRF는 attachments/watchers 패턴(JWT Bearer→CSRF skip, X-XSRF 헤더 불요)이 맞음. custom-fields.ts 수동 XSRF는 따라가지 말 것.
+
+### 구현 검증 (D6/D7, 2026-06-20)
+
+- 8 task 전부 TDD(test→feat 순서 git log 확인) + controller 직접 검증 PASS.
+- worklog E2E 5 passed(S1 추정설정·S2 자동차감·S3 수정 remaining불변·S4 삭제 remaining미복원·S6 본인 버튼노출). S5(권한없음)·타인(isOwner=false)은 단위(WorklogSection.test b2/e2)로 커버, E2E SKIP 사유 spec 명시.
+- 전체 unit 3240 passed / typecheck / lint 클린.
+- **auth-fixtures userId v4 형식 변경**(00000000-0000-4000-8000-00...x): worklog authorId가 첫 `z.string().uuid()` 소비처라 기존 all-zeros fixture가 Zod v4 통과 못 함([[zod-v4-uuid-fixture-strictness]] 권고). 파급 5파일(project-member-fixtures/handlers·issue-move/watcher-handlers·테스트) 정합. **직접 영향권 회귀 세트 16 passed**(issue-watchers/project-member-management/issue-schedule/issue-crud-happy/issue-move).
+- **workflow-scheme-* E2E 실패는 PRE_EXISTING**: main(c9ac548d) baseline에서 동일 fill-timeout 재현 → 우리 변경 무관. 원인=workflow-scheme-fixtures.loginAsAlice FR-AU-07 1단계 미해결([[e2e-loginasalice-fixture-fr-au-07-regression]]). 본 PR 범위 밖(FR-AU-07 후속).
 
 ### 반영 요약
 
