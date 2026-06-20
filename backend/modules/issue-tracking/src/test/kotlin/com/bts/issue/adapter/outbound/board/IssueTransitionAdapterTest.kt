@@ -2,7 +2,6 @@
 
 package com.bts.issue.adapter.outbound.board
 
-import com.bts.issue.adapter.inbound.rest.CurrentActor
 import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.IssueTransitionNotAllowedException
@@ -86,7 +85,6 @@ import java.util.UUID
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @Suppress("LongMethod")
 class IssueTransitionAdapterTest : IssueTestcontainersBase() {
-
     private lateinit var adapter: IssueTransitionAdapter
     private val actorId: UUID = UUID.fromString("11111111-1111-4111-8111-111111111111")
 

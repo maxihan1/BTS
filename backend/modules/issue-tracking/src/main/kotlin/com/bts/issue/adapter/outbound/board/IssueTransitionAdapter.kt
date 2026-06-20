@@ -47,7 +47,6 @@ class IssueTransitionAdapter(
     private val issueApplicationService: IssueApplicationService,
     private val transactionTemplate: TransactionTemplate,
 ) : IssueTransitionPort {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
