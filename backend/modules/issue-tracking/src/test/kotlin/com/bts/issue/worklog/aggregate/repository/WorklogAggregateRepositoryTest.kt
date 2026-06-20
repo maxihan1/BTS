@@ -18,6 +18,7 @@ import org.junit.jupiter.api.MethodOrderer
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestMethodOrder
+import org.slf4j.LoggerFactory
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import java.sql.DriverManager
 import java.time.Instant
@@ -41,6 +42,8 @@ import java.util.UUID
  */
 @TestMethodOrder(MethodOrderer.MethodName::class)
 class WorklogAggregateRepositoryTest : IssueTestcontainersBase() {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     /** V003 seed 의 task 타입 id — value class 는 lateinit 불가, nullable var 사용 */
     private var taskTypeId: IssueTypeId? = null
 
@@ -611,7 +614,7 @@ class WorklogAggregateRepositoryTest : IssueTestcontainersBase() {
 
         val sorted = durations.sorted()
         val p95 = sorted[(sorted.size * 0.95).toInt().coerceAtMost(sorted.size - 1)]
-        println("[NFR-H] WorklogAggregateRepository.aggregate 5000건 p95=${p95}ms durations=$sorted")
+        log.info("[NFR-H] WorklogAggregateRepository.aggregate 5000건 p95={}ms durations={}", p95, sorted)
 
         assertThat(p95)
             .withFailMessage("p95=%dms 이 500ms 를 초과합니다 — 집계 전용 인덱스 필요", p95)
