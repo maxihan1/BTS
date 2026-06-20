@@ -162,7 +162,7 @@ cross-BC 포트. WorkflowStateCatalog 확장(category/displayOrder) · BoardIssu
 - files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BoardResponses.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardControllerIntegrationTest.kt`]
 - depends-on: [8]
 
-**RED (리뷰 정정)**: HTTP 통합테스트 — POST/GET/move 4 엔드포인트. **권한 2단 게이트**: 조회·생성 = `IssuePermission.BROWSE`(VIEW 아님, sec BLOCKER-2) on `IssueScope.Project`, 카드 노출은 행단위 보안필터(T4) 별도 적용, 이동 = TRANSITION(전이 포트 강제). 보드 생성 권한은 **게이트1 Maxi 결정 코드** 적용. **actor 추출 → 권한 → 리소스 조회(404) → 보드-이슈 정합(E8) 순서**(존재 probe 차단, sec CONCERN-4). 권한/정합 거부 message 일반화(누출 차단). 에러코드(400/403/404/409/422) + 응답 봉투(DataResponse/{error}). 도메인예외 HTTP 매핑(catch-all이 401/타입미스매치 삼키지 않음 — catch-all-exceptionhandler 교훈).
+**RED (리뷰 정정)**: HTTP 통합테스트 — POST/GET/move 4 엔드포인트. **권한 2단 게이트**: 조회 = `IssuePermission.BROWSE`(VIEW 아님, sec BLOCKER-2) on `IssueScope.Project`, **생성 = `IssuePermission.CREATE`(Maxi 게이트1 확정)**, 카드 노출은 행단위 보안필터(T4) 별도 적용, 이동 = TRANSITION(전이 포트 강제). **actor 추출 → 권한 → 리소스 조회(404) → 보드-이슈 정합(E8) 순서**(존재 probe 차단, sec CONCERN-4). 권한/정합 거부 message 일반화(누출 차단). 에러코드(400/403/404/409/422) + 응답 봉투(DataResponse/{error}). 도메인예외 HTTP 매핑(catch-all이 401/타입미스매치 삼키지 않음 — catch-all-exceptionhandler 교훈).
 **GREEN (리뷰 정정)**: `@RestController BoardController`. 권한은 **기존 `IssuePermissionResolver`(shared-kernel 포트) 주입 재사용**(신규 BoardPermissionPort 만들지 않음, eng BLOCKER-2 + sec CONCERN-2). non-null 주입(fail-closed, 빈 부재=부팅실패). 명시 ExceptionHandler. actor=`CurrentActor.current()`.
 **REFACTOR**: DTO/핸들러 정리.
 **검증**: `cd backend && ./gradlew :modules:agile-planning:test --tests *BoardControllerIntegrationTest && ./gradlew :modules:agile-planning:ktlintCheck detekt`
@@ -199,5 +199,5 @@ eng(backend-engineer) + security(security-engineer) 독립 plan 리뷰 병행(au
 - **NIT-1 (반영)**: 응답 카드 priority 제외(정렬 내부용) → Plan 메타. **NIT-2**: V500 머지 직전 재확인.
 
 ### 종합
-- BLOCKER 4건 전부 plan/spec 정정으로 해소. CONCERN 6건 반영(1건은 Maxi 게이트1 결정).
-- **Maxi 결정 필요 1건**: 보드 생성 권한 강도(security CONCERN-1).
+- BLOCKER 4건 전부 plan/spec 정정으로 해소. CONCERN 6건 반영.
+- **Maxi 게이트1 결정 완료**: 보드 생성 권한 = `IssuePermission.CREATE`(이슈 생성 동급). 게이트1 승인 → 구현 진입.
