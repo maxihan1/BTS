@@ -271,6 +271,101 @@ function WorklogAddForm({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 서브컴포넌트 — WorklogEditForm (수정 인라인 폼)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface WorklogEditFormProps {
+  /** 워크로그 ID (input id 네임스페이스용) */
+  worklogId: string
+  /** 초기 시간/분 */
+  initialHm: HmState
+  /** 저장 클릭 시 호출 (새 hm 전달) */
+  onSave: (hm: HmState) => void
+  /** 취소 클릭 시 호출 */
+  onCancel: () => void
+  /** 저장 중 여부 */
+  isPending: boolean
+}
+
+/**
+ * 워크로그 인라인 수정 폼.
+ *
+ * - 시간(h) + 분(m) 입력
+ * - 0h 0m 이면 저장 버튼 disabled
+ * - 저장/취소 버튼
+ *
+ * @param worklogId 워크로그 UUID (input id 네임스페이스)
+ * @param initialHm 초기 시간/분
+ * @param onSave 저장 콜백
+ * @param onCancel 취소 콜백
+ * @param isPending 저장 중 여부
+ */
+function WorklogEditForm({
+  worklogId,
+  initialHm,
+  onSave,
+  onCancel,
+  isPending,
+}: WorklogEditFormProps): JSX.Element {
+  const [hm, setHm] = useState<HmState>(initialHm)
+  const isSaveDisabled = isPending || parseHm(hm) === 0
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-3 items-end">
+        <div className="flex flex-col gap-1">
+          <label htmlFor={`wl-edit-hours-${worklogId}`} className="text-xs text-muted-foreground">
+            {worklogStrings.worklogTimeHoursLabel}
+          </label>
+          <input
+            id={`wl-edit-hours-${worklogId}`}
+            type="number"
+            min={0}
+            value={hm.hours}
+            onChange={(e) => { setHm((prev) => ({ ...prev, hours: Math.max(0, Number(e.target.value)) })) }}
+            className="w-16 border border-input rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            aria-label={worklogStrings.worklogTimeHoursLabel}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor={`wl-edit-minutes-${worklogId}`} className="text-xs text-muted-foreground">
+            {worklogStrings.worklogTimeMinutesLabel}
+          </label>
+          <input
+            id={`wl-edit-minutes-${worklogId}`}
+            type="number"
+            min={0}
+            max={59}
+            value={hm.minutes}
+            onChange={(e) => { setHm((prev) => ({ ...prev, minutes: Math.max(0, Number(e.target.value)) })) }}
+            className="w-16 border border-input rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            aria-label={worklogStrings.worklogTimeMinutesLabel}
+          />
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => { onSave(hm) }}
+          disabled={isSaveDisabled}
+          className="px-2 py-1 min-h-[32px] bg-primary text-primary-foreground text-xs rounded hover:bg-primary/90 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {worklogStrings.worklogSaveButton}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={isPending}
+          className="px-2 py-1 min-h-[32px] border border-border text-xs rounded hover:bg-muted focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          취소
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 서브컴포넌트 — WorklogRow
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -291,9 +386,16 @@ interface WorklogRowProps {
  * 워크로그 행 컴포넌트.
  *
  * - 소요시간(formatSeconds) / 작성자(displayName) / 시작 시각 / 코멘트 표시
- * - canUpdate && authorId===currentUserId 일 때만 수정/삭제 버튼 노출 (E5, S7)
- * - 수정은 인라인 폼 (저장/취소)
+ * - `canUpdate && authorId===currentUserId` 일 때만 수정/삭제 버튼 노출 (E5, S7)
+ * - 수정은 WorklogEditForm 인라인 (저장/취소)
  * - 삭제는 인라인 확인 (확인/취소)
+ * - 수정/삭제 성공 시 worklog 쿼리 + issue 쿼리 둘 다 invalidate (FR9)
+ *
+ * @param worklog 워크로그 단건
+ * @param issueKey 이슈 키
+ * @param displayName 작성자 표시 이름
+ * @param currentUserId 현재 로그인 사용자 ID
+ * @param canUpdate 수정 권한 여부
  */
 function WorklogRow({
   worklog,
@@ -303,32 +405,28 @@ function WorklogRow({
   canUpdate,
 }: WorklogRowProps): JSX.Element {
   const queryClient = useQueryClient()
-
   const [isEditing, setIsEditing] = useState(false)
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
-  const [editHm, setEditHm] = useState<HmState>({
-    hours: Math.floor(worklog.timeSpentSeconds / 3600),
-    minutes: Math.floor((worklog.timeSpentSeconds % 3600) / 60),
-  })
 
   // 본인 worklog인지 여부 (canUpdate도 체크)
   const isOwner = canUpdate && currentUserId !== undefined && worklog.authorId === currentUserId
 
+  const initialHm: HmState = {
+    hours: Math.floor(worklog.timeSpentSeconds / 3600),
+    minutes: Math.floor((worklog.timeSpentSeconds % 3600) / 60),
+  }
+
   /** 수정 mutation */
   const { mutate: updateMutate, isPending: isUpdating } = useMutation({
-    mutationFn: () =>
-      updateWorklog(issueKey, worklog.id, {
-        timeSpentSeconds: parseHm(editHm),
-      }),
+    mutationFn: (hm: HmState) =>
+      updateWorklog(issueKey, worklog.id, { timeSpentSeconds: parseHm(hm) }),
     onSuccess: () => {
       toast.success(worklogStrings.worklogEditSuccess)
       void queryClient.invalidateQueries({ queryKey: worklogQueryKey(issueKey) })
       void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
       setIsEditing(false)
     },
-    onError: () => {
-      toast.error(worklogStrings.worklogEditError)
-    },
+    onError: () => { toast.error(worklogStrings.worklogEditError) },
   })
 
   /** 삭제 mutation */
@@ -349,79 +447,25 @@ function WorklogRow({
   return (
     <li className="py-2 border-b border-border last:border-b-0">
       {isEditing ? (
-        /* 인라인 수정 폼 */
-        <div className="space-y-2">
-          <div className="flex gap-3 items-end">
-            <div className="flex flex-col gap-1">
-              <label htmlFor={`wl-edit-hours-${worklog.id}`} className="text-xs text-muted-foreground">
-                {worklogStrings.worklogTimeHoursLabel}
-              </label>
-              <input
-                id={`wl-edit-hours-${worklog.id}`}
-                type="number"
-                min={0}
-                value={editHm.hours}
-                onChange={(e) => {
-                  setEditHm((prev) => ({ ...prev, hours: Math.max(0, Number(e.target.value)) }))
-                }}
-                className="w-16 border border-input rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                aria-label={worklogStrings.worklogTimeHoursLabel}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label htmlFor={`wl-edit-minutes-${worklog.id}`} className="text-xs text-muted-foreground">
-                {worklogStrings.worklogTimeMinutesLabel}
-              </label>
-              <input
-                id={`wl-edit-minutes-${worklog.id}`}
-                type="number"
-                min={0}
-                max={59}
-                value={editHm.minutes}
-                onChange={(e) => {
-                  setEditHm((prev) => ({ ...prev, minutes: Math.max(0, Number(e.target.value)) }))
-                }}
-                className="w-16 border border-input rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                aria-label={worklogStrings.worklogTimeMinutesLabel}
-              />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => { updateMutate() }}
-              disabled={isUpdating || parseHm(editHm) === 0}
-              className="px-2 py-1 min-h-[32px] bg-primary text-primary-foreground text-xs rounded hover:bg-primary/90 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {worklogStrings.worklogSaveButton}
-            </button>
-            <button
-              type="button"
-              onClick={() => { setIsEditing(false) }}
-              disabled={isUpdating}
-              className="px-2 py-1 min-h-[32px] border border-border text-xs rounded hover:bg-muted focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              취소
-            </button>
-          </div>
-        </div>
+        <WorklogEditForm
+          worklogId={worklog.id}
+          initialHm={initialHm}
+          onSave={(hm) => { updateMutate(hm) }}
+          onCancel={() => { setIsEditing(false) }}
+          isPending={isUpdating}
+        />
       ) : (
-        /* 일반 표시 행 */
         <div className="flex items-start justify-between gap-2">
           <div className="space-y-0.5 min-w-0">
-            {/* 소요 시간 */}
             <p className="text-sm font-medium text-foreground">
               {formatSeconds(worklog.timeSpentSeconds)}
             </p>
-            {/* 작성자 */}
             <p className="text-xs text-muted-foreground">
               {worklogStrings.worklogAuthorLabel}: {displayName ?? worklog.authorId}
             </p>
-            {/* 시작 시각 */}
             <p className="text-xs text-muted-foreground">
               {new Date(worklog.startedAt).toLocaleString()}
             </p>
-            {/* 코멘트 */}
             {worklog.comment !== null && (
               <p className="text-xs text-foreground">{worklog.comment}</p>
             )}
