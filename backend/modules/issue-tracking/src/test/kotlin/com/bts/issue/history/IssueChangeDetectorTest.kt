@@ -507,6 +507,86 @@ class IssueChangeDetectorTest : DescribeSpec({
         }
     }
 
+    // ── 추정 필드 변경 (FR-TT-01) ─────────────────────────────────────────────────
+
+    describe("추정 필드 변경 (FR-TT-01)") {
+
+        it("originalEstimate null→3600 변경 감지") {
+            val before = baseIssue()
+            val after = before.copy(originalEstimateSeconds = 3600)
+
+            val items = detector.detect(before, after)
+
+            items shouldHaveSize 1
+            items[0].field shouldBe "originalEstimate"
+            items[0].fromValue shouldBe null
+            items[0].toValue shouldBe "3600"
+            items[0].fromLabel shouldBe null
+            items[0].toLabel shouldBe null
+        }
+
+        it("originalEstimate 3600→7200 변경 감지") {
+            val before = baseIssue().copy(originalEstimateSeconds = 3600)
+            val after = before.copy(originalEstimateSeconds = 7200)
+
+            val items = detector.detect(before, after)
+
+            items shouldHaveSize 1
+            items[0].field shouldBe "originalEstimate"
+            items[0].fromValue shouldBe "3600"
+            items[0].toValue shouldBe "7200"
+        }
+
+        it("originalEstimate 동일 값 → 변경 없음") {
+            val before = baseIssue().copy(originalEstimateSeconds = 3600)
+            val after = before.copy(originalEstimateSeconds = 3600)
+
+            detector.detect(before, after).shouldBeEmpty()
+        }
+
+        it("remainingEstimate null→1800 변경 감지") {
+            val before = baseIssue()
+            val after = before.copy(remainingEstimateSeconds = 1800)
+
+            val items = detector.detect(before, after)
+
+            items shouldHaveSize 1
+            items[0].field shouldBe "remainingEstimate"
+            items[0].fromValue shouldBe null
+            items[0].toValue shouldBe "1800"
+            items[0].fromLabel shouldBe null
+            items[0].toLabel shouldBe null
+        }
+
+        it("remainingEstimate 1800→null 클리어 감지") {
+            val before = baseIssue().copy(remainingEstimateSeconds = 1800)
+            val after = before.copy(remainingEstimateSeconds = null)
+
+            val items = detector.detect(before, after)
+
+            items shouldHaveSize 1
+            items[0].field shouldBe "remainingEstimate"
+            items[0].fromValue shouldBe "1800"
+            items[0].toValue shouldBe null
+        }
+
+        it("remainingEstimate 동일 값 → 변경 없음") {
+            val before = baseIssue().copy(remainingEstimateSeconds = 1800)
+            val after = before.copy(remainingEstimateSeconds = 1800)
+
+            detector.detect(before, after).shouldBeEmpty()
+        }
+
+        it("timeSpentSeconds만 변경 → change item 0건 (파생 합 noise 미감지)") {
+            val before = baseIssue().copy(timeSpentSeconds = 0)
+            val after = before.copy(timeSpentSeconds = 3600)
+
+            val items = detector.detect(before, after)
+
+            items.shouldBeEmpty()
+        }
+    }
+
     // ── 이슈 키 변경 (FR-MV-02 — 프로젝트 이동 감지) ──────────────────────────────
 
     describe("이슈 키 변경 감지 (FR-MV-02)") {
