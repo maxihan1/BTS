@@ -37,12 +37,13 @@ Worklog는 `issue-tracking` BC에 구현한다(신규 agile-planning 모듈 부�
 | started_at | TIMESTAMPTZ NOT NULL | 작업 시작 시각 |
 | comment | TEXT NULL | 작업 설명 |
 | created_at / updated_at | TIMESTAMPTZ NOT NULL DEFAULT NOW() | 감사 |
+| deleted_at | TIMESTAMPTZ NULL | 소프트 삭제 마커 |
 
 **id 타입 deviation**. SDD §5.9는 BIGINT를 명시하나 실제 issues 테이블은 UUID 채택(구 SDD 설계 ↔ 실제 구현 분기). 일관성을 위해 UUID 사용.
 
 **SDD §5.9 대비 deviation**. `visibility` 컬럼(PUBLIC/TEAM_ONLY/PRIVATE)은 FR-TT-01 범위에서 제외한다(D4 참조).
 
-**삭제 정책**. worklog는 외부 참조(이슈 키 같은)가 없는 자식 엔티티 → watcher/attachment 선례처럼 WHERE 절 명시 하드 삭제. 삭제 후 time_spent 재집계.
+**삭제 정책 — 소프트 삭제**. worklog는 작업 시간 기록의 감사 가치가 있어 소프트 삭제(`deleted_at`)를 채택한다(DATA.md §1.2 #7 "소프트 삭제 우선" 준수, 하드 삭제 ADR-예외 회피). 모든 SUM/목록 조회는 `deleted_at IS NULL` 필터. 삭제 후 time_spent 재집계(삭제분 제외).
 
 ### D3. issues 테이블 시간 컬럼 신설
 

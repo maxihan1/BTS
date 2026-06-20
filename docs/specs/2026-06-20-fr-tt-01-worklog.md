@@ -53,7 +53,7 @@
 | FR2 | worklog 생성 시 issue.time_spent = SUM(worklogs.time_spent_seconds) 재집계. |
 | FR3 | worklog 생성 시 remaining 자동 차감: override 없으면 `remaining = max(0, remaining − timeSpent)`(remaining이 NULL이면 NULL 유지), override 있으면 그 값으로 설정. |
 | FR4 | `PATCH /api/v1/issues/{key}/worklogs/{worklogId}` — 본인 worklog 수정(timeSpentSeconds/startedAt/comment). time_spent 재집계. remaining 자동 조정 없음. |
-| FR5 | `DELETE /api/v1/issues/{key}/worklogs/{worklogId}` — 본인 worklog 하드 삭제(WHERE 명시). time_spent 재집계. remaining 자동 복원 없음. |
+| FR5 | `DELETE /api/v1/issues/{key}/worklogs/{worklogId}` — 본인 worklog 소프트 삭제(deleted_at = NOW(), WHERE 명시). time_spent 재집계(삭제분 제외). remaining 자동 복원 없음. |
 | FR6 | `GET /api/v1/issues/{key}/worklogs` — 해당 이슈 worklog 목록(started_at desc) + 이슈 시간 요약(original/time_spent/remaining). |
 | FR7 | `PATCH /api/v1/issues/{key}` 확장 — originalEstimateSeconds, remainingEstimateSeconds (JsonNullable Int 3-state: 미변경/null해제/값설정). FR-PL-01 DatePatch 패턴 모방. |
 | FR8 | IssueResponse에 originalEstimateSeconds(Int?), timeSpentSeconds(Int, 기본0), remainingEstimateSeconds(Int?) 노출. timeSpent는 읽기 전용(PATCH 불가). |
@@ -98,9 +98,10 @@ CREATE TABLE worklogs (
     started_at         TIMESTAMPTZ  NOT NULL,
     comment            TEXT         NULL,
     created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    updated_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    deleted_at         TIMESTAMPTZ  NULL          -- 소프트 삭제 (DATA.md §1.2 #7)
 );
-CREATE INDEX idx_worklogs_issue_id ON worklogs(issue_id);
+CREATE INDEX idx_worklogs_issue_id ON worklogs(issue_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_worklogs_author_started ON worklogs(author_id, started_at);
 
 -- issues 시간 컬럼 추가
@@ -133,7 +134,7 @@ ALTER TABLE issues
 - DatePatch 패턴 모방: 추정 Int 3-state는 신규 sealed interface(예: EstimatePatch) 또는 JsonNullable<Int> 직접 처리. FR-PL-01 `toDatePatch` 헬퍼 구조 재사용.
 - pgmq 이벤트 발행 없음(FR-TT-01에 알림 요구 없음 — YAGNI).
 - 새 권한 코드 추가 없음 — 기존 IssuePermission.VIEW/UPDATE 재사용(권한 시드/마이그레이션 테스트 카운트 무영향, [[fr-pm-permission-seed-migration-test-coupling]] 회피).
-- worklog는 하드 삭제(WHERE 명시) — 외부 참조 없는 자식 엔티티, watcher/attachment 선례.
+- worklog는 소프트 삭제(deleted_at, WHERE 명시) — DATA.md §1.2 #7 "소프트 삭제 우선" 준수, 시간기록 감사 보존. SUM/목록은 deleted_at IS NULL 필터.
 - **IssueResponse 필드 추가 팬아웃(G1)**. originalEstimate/timeSpent/remaining 3필드를 IssueResponse에 추가하면 모든 IssueResponse 생성 지점(단건 detail·목록·clone·move preview 등, [[fr-vr-03]] 선례 93건 규모)과 해당 단위/통합 테스트를 전수 갱신해야 한다. plan에서 `IssueResponse(` / `IssueResponse.from` grep 전수 + 컴파일 검증 task 필수.
 - **Instant 직렬화(G5)**. startedAt은 Instant — 기존 WebMvcConfigurer ISO 설정 재사용([[fr-vr-04-release-notes-done]]). 신규 컨버터 추가 금지.
 - **범위 외(G3)**. 부모/에픽으로의 시간 롤업은 FR-TT-01 범위 아님(FR-TT-02 집계에서 처리).

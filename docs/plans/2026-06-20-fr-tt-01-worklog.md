@@ -69,7 +69,7 @@ FR-TT-01 — Worklog (추정/실제/잔여 시간). 이슈별 작업 시간 기�
 - files: [`backend/modules/issue-tracking/src/main/resources/db/migration/issue-tracking/V027__worklogs_and_estimates.sql`, `backend/modules/issue-tracking/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/worklog/WorklogSchemaMigrationTest.kt`]
 - depends-on: []
 
-**RED**: `WorklogSchemaMigrationTest` (WatcherSchemaMigrationTest 패턴) — 마이그레이션 후 `worklogs` 테이블 + 컬럼(id/issue_id/author_id/time_spent_seconds/started_at/comment/created_at/updated_at), CHECK(time_spent_seconds>0), FK issue_id ON DELETE CASCADE, 인덱스 2종 존재 + `issues`에 original_estimate_seconds/time_spent_seconds(NOT NULL DEFAULT 0)/remaining_estimate_seconds 존재 단언. 실패: 테이블/컬럼 없음.
+**RED**: `WorklogSchemaMigrationTest` (WatcherSchemaMigrationTest 패턴) — 마이그레이션 후 `worklogs` 테이블 + 컬럼(id/issue_id/author_id/time_spent_seconds/started_at/comment/created_at/updated_at/**deleted_at**), CHECK(time_spent_seconds>0), FK issue_id ON DELETE CASCADE, 인덱스 2종 존재 + `issues`에 original_estimate_seconds/time_spent_seconds(NOT NULL DEFAULT 0)/remaining_estimate_seconds 존재 단언. 실패: 테이블/컬럼 없음.
 
 **GREEN**: V027 작성(스펙 §데이터 모델 SQL 그대로) + **init_codegen.sql 미러**(worklogs CREATE + issues 3컬럼 ADD). V번호는 머지 직전 재확인.
 
@@ -84,9 +84,9 @@ FR-TT-01 — Worklog (추정/실제/잔여 시간). 이슈별 작업 시간 기�
 - files: [`.../worklog/domain/Worklog.kt`, `.../worklog/repository/WorklogRepository.kt`, `.../test/.../worklog/repository/WorklogRepositoryIntegrationTest.kt`]
 - depends-on: [1]
 
-**RED**: `WorklogRepositoryIntegrationTest` (Testcontainers) — insert 후 findByIssueId(started_at desc 정렬), update(time_spent/started_at/comment), 하드 delete(WHERE 명시, 행수 반환), `sumTimeSpentByIssue(issueId)` 합산. 실패: WorklogRepository 없음.
+**RED**: `WorklogRepositoryIntegrationTest` (Testcontainers) — insert 후 findByIssueId(deleted_at IS NULL 필터, started_at desc 정렬), update(time_spent/started_at/comment), **소프트 delete**(deleted_at=NOW(), WHERE 명시, 행수 반환), `sumTimeSpentByIssue(issueId)`(deleted_at IS NULL 합산, 소프트삭제분 제외). 실패: WorklogRepository 없음.
 
-**GREEN**: Worklog data class(id/issueId/authorId/timeSpentSeconds/startedAt/comment/createdAt/updatedAt) + jOOQ 리포지토리(IssueWatcherRepository 패턴 — `@Transactional`, insertInto/selectFrom/update/deleteFrom). sum은 `dsl.select(sum(WORKLOGS.TIME_SPENT_SECONDS))`.
+**GREEN**: Worklog data class(id/issueId/authorId/timeSpentSeconds/startedAt/comment/createdAt/updatedAt) + jOOQ 리포지토리(IssueWatcherRepository 패턴 — `@Transactional`, insertInto/selectFrom/update). 소프트삭제=`update(WORKLOGS).set(DELETED_AT, now).where(...)`. findByIssueId/sum 모두 `DELETED_AT.isNull` 조건. sum은 `dsl.select(coalesce(sum(WORKLOGS.TIME_SPENT_SECONDS),0))`.
 
 **REFACTOR**: 매퍼 추출, KDoc.
 
