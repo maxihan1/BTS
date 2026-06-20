@@ -503,24 +503,37 @@ test.describe('S6 활성 역할 정책 생성 영속 (FR-NT-03)', () => {
       await expect(tbody.locator('tr').nth(6)).toBeVisible()
       expect(await tbody.locator('tr').count()).toBe(7)
 
-      // ── SPA 재진입 후 영속 확인 ───────────────────────────────────────────
+      // ── SPA 내부 링크 이동 후 재진입 — 영속 확인 ───────────────────────
+      // page.goto()는 hard navigation으로 MSW Service Worker를 재초기화해 store가 리셋된다.
+      // 대신 SPA 내부 링크(관리 메뉴)를 클릭해 다른 관리 페이지로 이동 후
+      // 알림 정책 링크를 다시 클릭해 돌아온다 — Service Worker가 유지되어 store 영속을 확인 가능.
+      // (worktree-stale-base-rebase-and-e2e-msw-traps: SPA 내부이동 패턴)
 
-      // When. 페이지 리로드 (MSW stateful store → 재조회)
-      await page.reload()
+      // When. 관리 메뉴 내 다른 링크(감사 로그)를 클릭해 SPA 내부 이동
+      const adminNav = page.getByRole('navigation', { name: '관리 메뉴' })
+      const auditLogLink = adminNav.getByRole('link', { name: '감사 로그', exact: true })
+      await expect(auditLogLink).toBeVisible()
+      await auditLogLink.click()
+      await page.waitForURL('**/admin/audit-logs')
+
+      // When. 알림 정책 링크를 클릭해 재진입
+      const notifPolicyLink = adminNav.getByRole('link', { name: notificationPolicyLabels.page.heading, exact: true })
+      await expect(notifPolicyLink).toBeVisible()
+      await notifPolicyLink.click()
       await page.waitForURL(`**${PAGE_URL}`)
 
-      // Then. 7건 그대로 유지
+      // Then. 7건 그대로 유지 (MSW stateful store — SPA 이동 시 Service Worker 상태 보존)
       await expect(
         page.getByRole('heading', { name: notificationPolicyLabels.page.heading, exact: true }),
       ).toBeVisible()
-      const tbodyAfterReload = page.locator('tbody')
-      await expect(tbodyAfterReload.locator('tr').nth(6)).toBeVisible()
-      expect(await tbodyAfterReload.locator('tr').count()).toBe(7)
+      const tbodyAfterNav = page.locator('tbody')
+      await expect(tbodyAfterNav.locator('tr').nth(6)).toBeVisible()
+      expect(await tbodyAfterNav.locator('tr').count()).toBe(7)
 
       // 추가한 이벤트 라벨 tbody 내 존재 확인 — 컨테이너 한정(strict mode 회피)
-      await expect(tbodyAfterReload.getByText(eventTypeLabels['issue.overdue']!, { exact: true })).toBeVisible()
-      await expect(tbodyAfterReload.getByText(eventTypeLabels['sprint.ended']!, { exact: true })).toBeVisible()
-      await expect(tbodyAfterReload.getByText(eventTypeLabels['automation.failed']!, { exact: true })).toBeVisible()
+      await expect(tbodyAfterNav.getByText(eventTypeLabels['issue.overdue']!, { exact: true })).toBeVisible()
+      await expect(tbodyAfterNav.getByText(eventTypeLabels['sprint.ended']!, { exact: true })).toBeVisible()
+      await expect(tbodyAfterNav.getByText(eventTypeLabels['automation.failed']!, { exact: true })).toBeVisible()
     },
   )
 })
