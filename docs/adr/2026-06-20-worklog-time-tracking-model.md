@@ -30,15 +30,19 @@ Worklog는 `issue-tracking` BC에 구현한다(신규 agile-planning 모듈 부�
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
-| id | BIGSERIAL (PK) | Worklog ID |
-| issue_id | BIGINT (FK → issues) | 대상 이슈 |
-| author_id | (issue 테이블의 사용자 FK 관례 따름) | 작업자 |
-| time_spent_seconds | INT NOT NULL (> 0) | 소요 시간 (초) |
+| id | UUID (PK) | Worklog ID |
+| issue_id | UUID (FK → issues, ON DELETE CASCADE) | 대상 이슈 |
+| author_id | UUID | 작업자 (BC 격리 — users FK 미적용) |
+| time_spent_seconds | INT NOT NULL (CHECK > 0) | 소요 시간 (초) |
 | started_at | TIMESTAMPTZ NOT NULL | 작업 시작 시각 |
 | comment | TEXT NULL | 작업 설명 |
-| created_at / updated_at | TIMESTAMPTZ | 감사 |
+| created_at / updated_at | TIMESTAMPTZ NOT NULL DEFAULT NOW() | 감사 |
+
+**id 타입 deviation**. SDD §5.9는 BIGINT를 명시하나 실제 issues 테이블은 UUID 채택(구 SDD 설계 ↔ 실제 구현 분기). 일관성을 위해 UUID 사용.
 
 **SDD §5.9 대비 deviation**. `visibility` 컬럼(PUBLIC/TEAM_ONLY/PRIVATE)은 FR-TT-01 범위에서 제외한다(D4 참조).
+
+**삭제 정책**. worklog는 외부 참조(이슈 키 같은)가 없는 자식 엔티티 → watcher/attachment 선례처럼 WHERE 절 명시 하드 삭제. 삭제 후 time_spent 재집계.
 
 ### D3. issues 테이블 시간 컬럼 신설
 

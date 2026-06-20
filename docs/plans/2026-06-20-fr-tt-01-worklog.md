@@ -40,9 +40,22 @@ FR-TT-01 — Worklog (추정/실제/잔여 시간). 이슈별 작업 시간 기�
 
 - 백엔드 D1~D5 우선 1 PR (#163), 프론트 D6/D7 후속 PR — FR-WT-01/FR-MV-01 선례
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-20-fr-tt-01-worklog.md](../specs/2026-06-20-fr-tt-01-worklog.md)
+
+핵심 시나리오 요약.
+- `POST /issues/{key}/worklogs`로 작업시간 기록 → issue.time_spent = SUM 재집계, remaining 자동 차감(또는 newRemaining override)
+- `PATCH /issues/{key}`로 originalEstimate/remainingEstimate 수동 설정(JsonNullable 3-state, FR-PL-01 패턴), time_spent는 파생·읽기전용
+- GET/PATCH/DELETE worklog — VIEW/UPDATE+본인 권한, 단일 트랜잭션, no-bump(OCC 회피), 하드삭제
+- V027 신규 worklogs 테이블 + issues 3컬럼, init_codegen 미러
+
+## Brainstorming Check
+
+✅ 통과 (자체 적대적 갭 분석). 주요.
+- **G1 반영**: IssueResponse 3필드 추가 팬아웃 → plan에 전 생성지점/테스트 task 필수
+- **G2 게이트1 위임**: 추정 changelog 통합 기본값(FR9, 일관성) vs 미통합 대안
+- G3~G6 반영: 롤업 범위외·페이지네이션 없음·Instant 재사용·comment 상한 plan확정
 
 ## Plan (← /bts-plan 채움)
 
