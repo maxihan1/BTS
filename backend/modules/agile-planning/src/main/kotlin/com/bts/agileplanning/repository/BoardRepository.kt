@@ -6,13 +6,12 @@ import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.jooq.tables.records.BoardColumnsRecord
 import com.bts.agileplanning.jooq.tables.records.BoardsRecord
-import com.bts.agileplanning.jooq.tables.references.BOARD_COLUMNS
 import com.bts.agileplanning.jooq.tables.references.BOARDS
+import com.bts.agileplanning.jooq.tables.references.BOARD_COLUMNS
 import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
-import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
@@ -56,15 +55,16 @@ class BoardRepository(
             .execute()
 
         if (board.columns.isNotEmpty()) {
-            val insertStep = dsl.insertInto(
-                BOARD_COLUMNS,
-                BOARD_COLUMNS.ID,
-                BOARD_COLUMNS.BOARD_ID,
-                BOARD_COLUMNS.STATE_KEY,
-                BOARD_COLUMNS.NAME,
-                BOARD_COLUMNS.CATEGORY,
-                BOARD_COLUMNS.DISPLAY_ORDER,
-            )
+            val insertStep =
+                dsl.insertInto(
+                    BOARD_COLUMNS,
+                    BOARD_COLUMNS.ID,
+                    BOARD_COLUMNS.BOARD_ID,
+                    BOARD_COLUMNS.STATE_KEY,
+                    BOARD_COLUMNS.NAME,
+                    BOARD_COLUMNS.CATEGORY,
+                    BOARD_COLUMNS.DISPLAY_ORDER,
+                )
             board.columns.forEach { col ->
                 insertStep.values(col.id, board.id, col.stateKey, col.name, col.category, col.displayOrder)
             }

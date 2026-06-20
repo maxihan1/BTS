@@ -5,8 +5,8 @@ package com.bts.agileplanning.application
 import com.bts.agileplanning.AgilePlanningTestBootApplication
 import com.bts.agileplanning.AgilePlanningTestcontainersConfig
 import com.bts.agileplanning.repository.BoardRepository
-import com.bts.shared.board.BoardIssueView
 import com.bts.shared.board.BoardIssueLookupPort
+import com.bts.shared.board.BoardIssueView
 import com.bts.shared.board.BoardTransitionCommand
 import com.bts.shared.board.BoardTransitionResult
 import com.bts.shared.board.IssueTransitionPort

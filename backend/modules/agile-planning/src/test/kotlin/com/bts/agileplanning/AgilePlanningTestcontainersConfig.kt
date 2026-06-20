@@ -3,18 +3,18 @@
 
 package com.bts.agileplanning
 
-import com.bts.shared.board.BoardIssueView
 import com.bts.shared.board.BoardIssueLookupPort
+import com.bts.shared.board.BoardIssueView
 import com.bts.shared.board.BoardTransitionCommand
 import com.bts.shared.board.BoardTransitionResult
 import com.bts.shared.board.IssueTransitionPort
+import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.WorkflowStateCatalog
 import com.bts.shared.workflow.WorkflowStateView
-import com.bts.shared.workflow.ProjectKey
-import com.bts.shared.issue.IssueTypeKey
 import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
@@ -122,8 +122,9 @@ class AgilePlanningTestcontainersConfig {
      * Spring 트랜잭션 매니저 빈.
      */
     @Bean
-    fun transactionManager(dataSource: DataSource): PlatformTransactionManager =
-        DataSourceTransactionManager(dataSource)
+    fun transactionManager(dataSource: DataSource): PlatformTransactionManager {
+        return DataSourceTransactionManager(dataSource)
+    }
 
     /**
      * [WorkflowStateCatalog] 테스트 stub 빈.

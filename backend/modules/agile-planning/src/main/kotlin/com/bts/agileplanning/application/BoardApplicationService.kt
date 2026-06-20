@@ -4,7 +4,6 @@ package com.bts.agileplanning.application
 
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardCardPlacement
-import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.PlacedColumn
 import com.bts.agileplanning.repository.BoardRepository
 import com.bts.shared.board.BoardIssueLookupPort
@@ -131,8 +130,9 @@ class BoardApplicationService(
      * @return 보드 목록 (컬럼 미포함, 목록용).
      */
     @Transactional(readOnly = true)
-    fun listBoards(projectKey: String): List<Board> =
-        boardRepository.findAllByProjectKey(projectKey)
+    fun listBoards(projectKey: String): List<Board> {
+        return boardRepository.findAllByProjectKey(projectKey)
+    }
 
     /**
      * 카드(이슈)를 다른 컬럼으로 이동한다.
@@ -153,6 +153,7 @@ class BoardApplicationService(
      * @throws ResponseStatusException 400 — E8 보드-이슈 프로젝트 정합 위반.
      */
     @Transactional
+    @Suppress("LongParameterList") // 카드 이동 커맨드 필드를 VO 없이 직접 받음 — 호출부 명료성 우선
     fun moveCard(
         boardId: UUID,
         issueKey: String,
