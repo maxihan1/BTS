@@ -55,8 +55,7 @@ class IssueEstimateRepositoryIntegrationTest : IssueTestcontainersBase() {
     }
 
     @Suppress("MaxLineLength")
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다 — resolveTaskTypeId 실행 확인" }
+    private fun requireTaskTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다 — resolveTaskTypeId 실행 확인" }
 
     /**
      * 기본 테스트 이슈를 DB 에 삽입하고 반환한다.
@@ -231,10 +230,11 @@ class IssueEstimateRepositoryIntegrationTest : IssueTestcontainersBase() {
         // 소프트 삭제 worklog — SUM 에서 제외돼야 한다 (deleted_at IS NULL 필터)
         insertWorklog(inserted.id.value, 999, deletedAt = OffsetDateTime.now(ZoneOffset.UTC))
 
-        val result = repository.recomputeTimeSpentWithDecrement(
-            issueId = inserted.id.value,
-            decrementSeconds = 300,
-        )
+        val result =
+            repository.recomputeTimeSpentWithDecrement(
+                issueId = inserted.id.value,
+                decrementSeconds = 300,
+            )
 
         assertThat(result.timeSpent).isEqualTo(1200)
         assertThat(result.remaining).isEqualTo(4700)
@@ -259,10 +259,11 @@ class IssueEstimateRepositoryIntegrationTest : IssueTestcontainersBase() {
         val inserted = insertTestIssue(remaining = null)
         insertWorklog(inserted.id.value, 600)
 
-        val result = repository.recomputeTimeSpentWithDecrement(
-            issueId = inserted.id.value,
-            decrementSeconds = 100,
-        )
+        val result =
+            repository.recomputeTimeSpentWithDecrement(
+                issueId = inserted.id.value,
+                decrementSeconds = 100,
+            )
 
         assertThat(result.timeSpent).isEqualTo(600)
         assertThat(result.remaining).isNull()
@@ -285,10 +286,11 @@ class IssueEstimateRepositoryIntegrationTest : IssueTestcontainersBase() {
         insertWorklog(inserted.id.value, 200)
         insertWorklog(inserted.id.value, 300)
 
-        val result = repository.recomputeTimeSpentSetRemaining(
-            issueId = inserted.id.value,
-            newRemaining = 9999,
-        )
+        val result =
+            repository.recomputeTimeSpentSetRemaining(
+                issueId = inserted.id.value,
+                newRemaining = 9999,
+            )
 
         assertThat(result.timeSpent).isEqualTo(500)
         assertThat(result.remaining).isEqualTo(9999)

@@ -135,12 +135,13 @@ class WorklogRepository(
     @Transactional
     fun softDelete(id: UUID): Boolean {
         log.debug("softDelete id={}", id)
-        val rows = dsl.update(WORKLOGS)
-            .set(WORKLOGS.DELETED_AT, now())
-            .set(WORKLOGS.UPDATED_AT, now())
-            .where(WORKLOGS.ID.eq(id))
-            .and(WORKLOGS.DELETED_AT.isNull)
-            .execute()
+        val rows =
+            dsl.update(WORKLOGS)
+                .set(WORKLOGS.DELETED_AT, now())
+                .set(WORKLOGS.UPDATED_AT, now())
+                .where(WORKLOGS.ID.eq(id))
+                .and(WORKLOGS.DELETED_AT.isNull)
+                .execute()
         return rows > 0
     }
 
@@ -192,14 +193,24 @@ class WorklogRepository(
             id = record.get(WORKLOGS.ID) ?: error("worklogs.id must not be null after DB read"),
             issueId = record.get(WORKLOGS.ISSUE_ID) ?: error("worklogs.issue_id must not be null after DB read"),
             authorId = record.get(WORKLOGS.AUTHOR_ID) ?: error("worklogs.author_id must not be null after DB read"),
-            timeSpentSeconds = record.get(WORKLOGS.TIME_SPENT_SECONDS)
-                ?: error("worklogs.time_spent_seconds must not be null after DB read"),
-            startedAt = (record.get(WORKLOGS.STARTED_AT)
-                ?: error("worklogs.started_at must not be null after DB read")).toInstant(),
+            timeSpentSeconds =
+                record.get(WORKLOGS.TIME_SPENT_SECONDS)
+                    ?: error("worklogs.time_spent_seconds must not be null after DB read"),
+            startedAt =
+                (
+                    record.get(WORKLOGS.STARTED_AT)
+                        ?: error("worklogs.started_at must not be null after DB read")
+                ).toInstant(),
             comment = record.get(WORKLOGS.COMMENT),
-            createdAt = (record.get(WORKLOGS.CREATED_AT)
-                ?: error("worklogs.created_at must not be null after DB read")).toInstant(),
-            updatedAt = (record.get(WORKLOGS.UPDATED_AT)
-                ?: error("worklogs.updated_at must not be null after DB read")).toInstant(),
+            createdAt =
+                (
+                    record.get(WORKLOGS.CREATED_AT)
+                        ?: error("worklogs.created_at must not be null after DB read")
+                ).toInstant(),
+            updatedAt =
+                (
+                    record.get(WORKLOGS.UPDATED_AT)
+                        ?: error("worklogs.updated_at must not be null after DB read")
+                ).toInstant(),
         )
 }

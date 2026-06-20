@@ -1283,26 +1283,32 @@ class IssueRepository(
      * @throws IllegalStateException RETURNING 이 null 인 경우 (이슈 미존재).
      */
     @Transactional
-    fun recomputeTimeSpentWithDecrement(issueId: UUID, decrementSeconds: Int): RollupResult {
+    fun recomputeTimeSpentWithDecrement(
+        issueId: UUID,
+        decrementSeconds: Int,
+    ): RollupResult {
         log.debug("recomputeTimeSpentWithDecrement issueId={} decrementSeconds={}", issueId, decrementSeconds)
         // time_spent: 활성 worklogs SUM 서브쿼리 (deleted_at IS NULL, DATA.md §1.2 #7)
-        val timeSpentSubquery = DSL.select(
-            DSL.coalesce(DSL.sum(WORKLOGS.TIME_SPENT_SECONDS), DSL.value(0)),
-        )
-            .from(WORKLOGS)
-            .where(WORKLOGS.ISSUE_ID.eq(issueId))
-            .and(WORKLOGS.DELETED_AT.isNull)
+        val timeSpentSubquery =
+            DSL.select(
+                DSL.coalesce(DSL.sum(WORKLOGS.TIME_SPENT_SECONDS), DSL.value(0)),
+            )
+                .from(WORKLOGS)
+                .where(WORKLOGS.ISSUE_ID.eq(issueId))
+                .and(WORKLOGS.DELETED_AT.isNull)
         // remaining: NULL 이면 NULL 유지, non-null 이면 max(0, remaining - decrement) — CASE로 NULL 분기
-        val remainingExpr = DSL.`when`(ISSUES.REMAINING_ESTIMATE_SECONDS.isNull, DSL.`val`(null as Int?))
-            .otherwise(DSL.greatest(DSL.value(0), ISSUES.REMAINING_ESTIMATE_SECONDS.minus(decrementSeconds)))
-        val record = dsl.update(ISSUES)
-            .set(ISSUES.TIME_SPENT_SECONDS, timeSpentSubquery.asField<Int>())
-            .set(ISSUES.REMAINING_ESTIMATE_SECONDS, remainingExpr)
-            .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
-            .where(ISSUES.ID.eq(issueId))
-            .returningResult(ISSUES.TIME_SPENT_SECONDS, ISSUES.REMAINING_ESTIMATE_SECONDS)
-            .fetchOne()
-            ?: error("recomputeTimeSpentWithDecrement: issueId=$issueId 에 해당하는 이슈가 없음")
+        val remainingExpr =
+            DSL.`when`(ISSUES.REMAINING_ESTIMATE_SECONDS.isNull, DSL.`val`(null as Int?))
+                .otherwise(DSL.greatest(DSL.value(0), ISSUES.REMAINING_ESTIMATE_SECONDS.minus(decrementSeconds)))
+        val record =
+            dsl.update(ISSUES)
+                .set(ISSUES.TIME_SPENT_SECONDS, timeSpentSubquery.asField<Int>())
+                .set(ISSUES.REMAINING_ESTIMATE_SECONDS, remainingExpr)
+                .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+                .where(ISSUES.ID.eq(issueId))
+                .returningResult(ISSUES.TIME_SPENT_SECONDS, ISSUES.REMAINING_ESTIMATE_SECONDS)
+                .fetchOne()
+                ?: error("recomputeTimeSpentWithDecrement: issueId=$issueId 에 해당하는 이슈가 없음")
         return RollupResult(
             timeSpent = record.get(ISSUES.TIME_SPENT_SECONDS) ?: 0,
             remaining = record.get(ISSUES.REMAINING_ESTIMATE_SECONDS),
@@ -1321,22 +1327,27 @@ class IssueRepository(
      * @throws IllegalStateException RETURNING 이 null 인 경우 (이슈 미존재).
      */
     @Transactional
-    fun recomputeTimeSpentSetRemaining(issueId: UUID, newRemaining: Int): RollupResult {
+    fun recomputeTimeSpentSetRemaining(
+        issueId: UUID,
+        newRemaining: Int,
+    ): RollupResult {
         log.debug("recomputeTimeSpentSetRemaining issueId={} newRemaining={}", issueId, newRemaining)
-        val timeSpentSubquery = DSL.select(
-            DSL.coalesce(DSL.sum(WORKLOGS.TIME_SPENT_SECONDS), DSL.value(0)),
-        )
-            .from(WORKLOGS)
-            .where(WORKLOGS.ISSUE_ID.eq(issueId))
-            .and(WORKLOGS.DELETED_AT.isNull)
-        val record = dsl.update(ISSUES)
-            .set(ISSUES.TIME_SPENT_SECONDS, timeSpentSubquery.asField<Int>())
-            .set(ISSUES.REMAINING_ESTIMATE_SECONDS, newRemaining)
-            .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
-            .where(ISSUES.ID.eq(issueId))
-            .returningResult(ISSUES.TIME_SPENT_SECONDS, ISSUES.REMAINING_ESTIMATE_SECONDS)
-            .fetchOne()
-            ?: error("recomputeTimeSpentSetRemaining: issueId=$issueId 에 해당하는 이슈가 없음")
+        val timeSpentSubquery =
+            DSL.select(
+                DSL.coalesce(DSL.sum(WORKLOGS.TIME_SPENT_SECONDS), DSL.value(0)),
+            )
+                .from(WORKLOGS)
+                .where(WORKLOGS.ISSUE_ID.eq(issueId))
+                .and(WORKLOGS.DELETED_AT.isNull)
+        val record =
+            dsl.update(ISSUES)
+                .set(ISSUES.TIME_SPENT_SECONDS, timeSpentSubquery.asField<Int>())
+                .set(ISSUES.REMAINING_ESTIMATE_SECONDS, newRemaining)
+                .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+                .where(ISSUES.ID.eq(issueId))
+                .returningResult(ISSUES.TIME_SPENT_SECONDS, ISSUES.REMAINING_ESTIMATE_SECONDS)
+                .fetchOne()
+                ?: error("recomputeTimeSpentSetRemaining: issueId=$issueId 에 해당하는 이슈가 없음")
         return RollupResult(
             timeSpent = record.get(ISSUES.TIME_SPENT_SECONDS) ?: 0,
             remaining = record.get(ISSUES.REMAINING_ESTIMATE_SECONDS),
@@ -1356,19 +1367,21 @@ class IssueRepository(
     @Transactional
     fun recomputeTimeSpent(issueId: UUID): RollupResult {
         log.debug("recomputeTimeSpent issueId={}", issueId)
-        val timeSpentSubquery = DSL.select(
-            DSL.coalesce(DSL.sum(WORKLOGS.TIME_SPENT_SECONDS), DSL.value(0)),
-        )
-            .from(WORKLOGS)
-            .where(WORKLOGS.ISSUE_ID.eq(issueId))
-            .and(WORKLOGS.DELETED_AT.isNull)
-        val record = dsl.update(ISSUES)
-            .set(ISSUES.TIME_SPENT_SECONDS, timeSpentSubquery.asField<Int>())
-            .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
-            .where(ISSUES.ID.eq(issueId))
-            .returningResult(ISSUES.TIME_SPENT_SECONDS, ISSUES.REMAINING_ESTIMATE_SECONDS)
-            .fetchOne()
-            ?: error("recomputeTimeSpent: issueId=$issueId 에 해당하는 이슈가 없음")
+        val timeSpentSubquery =
+            DSL.select(
+                DSL.coalesce(DSL.sum(WORKLOGS.TIME_SPENT_SECONDS), DSL.value(0)),
+            )
+                .from(WORKLOGS)
+                .where(WORKLOGS.ISSUE_ID.eq(issueId))
+                .and(WORKLOGS.DELETED_AT.isNull)
+        val record =
+            dsl.update(ISSUES)
+                .set(ISSUES.TIME_SPENT_SECONDS, timeSpentSubquery.asField<Int>())
+                .set(ISSUES.UPDATED_AT, OffsetDateTime.now(ZoneOffset.UTC))
+                .where(ISSUES.ID.eq(issueId))
+                .returningResult(ISSUES.TIME_SPENT_SECONDS, ISSUES.REMAINING_ESTIMATE_SECONDS)
+                .fetchOne()
+                ?: error("recomputeTimeSpent: issueId=$issueId 에 해당하는 이슈가 없음")
         return RollupResult(
             timeSpent = record.get(ISSUES.TIME_SPENT_SECONDS) ?: 0,
             remaining = record.get(ISSUES.REMAINING_ESTIMATE_SECONDS),

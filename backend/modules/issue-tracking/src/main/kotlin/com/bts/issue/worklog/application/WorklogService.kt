@@ -108,28 +108,31 @@ class WorklogService(
         val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
         val before = issue
 
-        val worklog = Worklog(
-            id = UUID.randomUUID(),
-            issueId = issue.id.value,
-            authorId = actor.value,
-            timeSpentSeconds = timeSpentSeconds,
-            startedAt = startedAt,
-            comment = comment,
-            createdAt = Instant.now(clock),
-            updatedAt = Instant.now(clock),
-        )
+        val worklog =
+            Worklog(
+                id = UUID.randomUUID(),
+                issueId = issue.id.value,
+                authorId = actor.value,
+                timeSpentSeconds = timeSpentSeconds,
+                startedAt = startedAt,
+                comment = comment,
+                createdAt = Instant.now(clock),
+                updatedAt = Instant.now(clock),
+            )
         worklogRepository.insert(worklog)
 
-        val result = if (newRemainingEstimateSeconds != null) {
-            issueRepository.recomputeTimeSpentSetRemaining(issue.id.value, newRemainingEstimateSeconds)
-        } else {
-            issueRepository.recomputeTimeSpentWithDecrement(issue.id.value, timeSpentSeconds)
-        }
+        val result =
+            if (newRemainingEstimateSeconds != null) {
+                issueRepository.recomputeTimeSpentSetRemaining(issue.id.value, newRemainingEstimateSeconds)
+            } else {
+                issueRepository.recomputeTimeSpentWithDecrement(issue.id.value, timeSpentSeconds)
+            }
 
-        val after = before.copy(
-            timeSpentSeconds = result.timeSpent,
-            remainingEstimateSeconds = result.remaining,
-        )
+        val after =
+            before.copy(
+                timeSpentSeconds = result.timeSpent,
+                remainingEstimateSeconds = result.remaining,
+            )
 
         historyRecorder.record(before = before, after = after, actor = actor, projectId = issue.projectId)
 
@@ -203,8 +206,9 @@ class WorklogService(
 
         issueRepository.recomputeTimeSpent(issue.id.value)
 
-        val updated = worklogRepository.findById(worklogId)
-            ?: error("update 직후 worklog 미존재: $worklogId")
+        val updated =
+            worklogRepository.findById(worklogId)
+                ?: error("update 직후 worklog 미존재: $worklogId")
 
         log.info(
             "worklog_updated issueKey={} worklogId={} actor={}",

@@ -35,7 +35,6 @@ import java.util.UUID
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class WorklogRepositoryIntegrationTest : IssueTestcontainersBase() {
-
     /** V003 seed 의 task 타입 id. value class 는 lateinit 불가 → nullable var. */
     private var taskTypeId: IssueTypeId? = null
 
@@ -82,8 +81,7 @@ class WorklogRepositoryIntegrationTest : IssueTestcontainersBase() {
             }
         }
 
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
+    private fun requireTaskTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
 
     /** 이슈 1건을 삽입하고 반환한다. seqNum 은 이슈 키 시퀀스 번호. */
     private fun insertIssue(seqNum: Long): Issue =
@@ -184,12 +182,13 @@ class WorklogRepositoryIntegrationTest : IssueTestcontainersBase() {
         worklogRepository.insert(worklog)
 
         val newStartedAt = Instant.parse("2024-06-01T10:00:00Z")
-        val rows = worklogRepository.update(
-            id = worklog.id,
-            timeSpentSeconds = 7200,
-            startedAt = newStartedAt,
-            comment = "수정된 코멘트",
-        )
+        val rows =
+            worklogRepository.update(
+                id = worklog.id,
+                timeSpentSeconds = 7200,
+                startedAt = newStartedAt,
+                comment = "수정된 코멘트",
+            )
 
         assertThat(rows).isEqualTo(1)
 

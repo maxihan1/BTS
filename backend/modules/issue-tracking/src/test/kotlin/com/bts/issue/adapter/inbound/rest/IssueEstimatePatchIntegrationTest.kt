@@ -76,6 +76,7 @@ class IssueEstimatePatchIntegrationTest {
                 .forEach { it.objectMapper.registerModule(JsonNullableModule()) }
         }
     }
+
     @Autowired
     lateinit var webApplicationContext: WebApplicationContext
 

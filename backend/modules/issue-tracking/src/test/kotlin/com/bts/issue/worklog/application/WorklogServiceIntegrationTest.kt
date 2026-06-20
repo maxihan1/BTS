@@ -3,12 +3,11 @@
 package com.bts.issue.worklog.application
 
 import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.TestConfig
-import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
+import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
-import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueKey
-import com.bts.issue.component.repository.ComponentRepository
+import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.history.IssueChangeDetector
 import com.bts.issue.history.IssueChangeHistoryRepository
 import com.bts.issue.history.IssueChangeLabelResolver
@@ -60,7 +59,7 @@ import java.util.UUID
  * - (3) create remaining NULL: remaining 미설정 → 기록 후 remaining=null, time_spent 증가.
  * - (4) update: time_spent 재집계, remaining 미조정.
  * - (5) delete: 소프트삭제 후 time_spent 재집계(제외), remaining 미복원.
- * - (6) 권한거부: UPDATE 없는 actor → 403. VIEW 있는 actor list 200, create는 403.
+ * - (6) 권한거부: UPDATE 없는 actor → 403. VIEW 있는 actor list 200, create 는 403.
  * - (7) 404 순서: 미존재 이슈 create → 404. 타 이슈 worklogId → 404.
  * - (8) author 한정: 타인 worklog update/delete → 403.
  * - (9) changelog: create 후 remaining 변경 → 이력에 remainingEstimate 항목 존재.
@@ -77,7 +76,6 @@ import java.util.UUID
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class WorklogServiceIntegrationTest {
-
     /**
      * WorklogService 통합 테스트 전용 추가 설정.
      *
@@ -90,7 +88,6 @@ class WorklogServiceIntegrationTest {
      */
     @Configuration
     open class WorklogServiceTestConfig {
-
         @Bean
         open fun worklogRepository(
             dsl: DSLContext,
@@ -102,17 +99,17 @@ class WorklogServiceIntegrationTest {
             NamedParameterJdbcTemplate(dataSource)
 
         @Bean
-        open fun issueChangeHistoryRepository(
-            jdbc: NamedParameterJdbcTemplate,
-        ): IssueChangeHistoryRepository = JdbcIssueChangeHistoryRepository(jdbc)
+        open fun issueChangeHistoryRepository(jdbc: NamedParameterJdbcTemplate): IssueChangeHistoryRepository =
+            JdbcIssueChangeHistoryRepository(jdbc)
 
         @Bean
         open fun issueChangeDetector(): IssueChangeDetector = IssueChangeDetector()
 
         /**
-         * IssueChangeLabelResolver — 실 인스턴스. remainingEstimate 는 스칼라 passthrough 이므로
-         * type/component/version/user/security lookup 의존성들은 relaxed mock 으로 주입한다.
-         * 스칼라 items(remainingEstimate 포함) 는 `else -> item` passthrough 라 라벨 lookup 없음.
+         * IssueChangeLabelResolver — 실 인스턴스.
+         *
+         * remainingEstimate 는 스칼라 passthrough 라 라벨 lookup 없음.
+         * component/version/user/security 의존성들은 relaxed mock 으로 주입한다.
          */
         @Bean
         open fun issueChangeLabelResolver(
@@ -122,10 +119,11 @@ class WorklogServiceIntegrationTest {
             IssueChangeLabelResolver(
                 issueTypeRepository = issueTypeRepository,
                 resolutionRepository = resolutionRepository,
-                componentRepository = mockk(relaxed = true),
-                versionRepository = mockk(relaxed = true),
+                componentRepository = mockk<ComponentRepository>(relaxed = true),
+                versionRepository = mockk<VersionRepository>(relaxed = true),
                 userLookupPort = mockk<UserLookupPort>(relaxed = true),
-                issueSecurityDirectory = com.bts.issue.adapter.outbound.AlwaysAllowIssueSecurityDirectory(),
+                issueSecurityDirectory =
+                    com.bts.issue.adapter.outbound.AlwaysAllowIssueSecurityDirectory(),
             )
 
         @Bean
@@ -189,15 +187,15 @@ class WorklogServiceIntegrationTest {
         val DENY_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000099")
         val VIEW_ONLY_ACTOR_UUID: UUID = UUID.fromString("33333333-3333-4333-8333-333333333333")
 
-        val ACTOR = ActorId(ACTOR_UUID)
-        val OTHER_ACTOR = ActorId(OTHER_ACTOR_UUID)
-        val DENY_ACTOR = ActorId(DENY_ACTOR_UUID)
-        val VIEW_ONLY_ACTOR = ActorId(VIEW_ONLY_ACTOR_UUID)
+        val ACTOR: ActorId = ActorId(ACTOR_UUID)
+        val OTHER_ACTOR: ActorId = ActorId(OTHER_ACTOR_UUID)
+        val DENY_ACTOR: ActorId = ActorId(DENY_ACTOR_UUID)
+        val VIEW_ONLY_ACTOR: ActorId = ActorId(VIEW_ONLY_ACTOR_UUID)
 
-        private val H8 = 8 * 3600  // 8시간(초)
-        private val H2 = 2 * 3600  // 2시간(초)
-        private val H4 = 4 * 3600  // 4시간(초)
-        private val H6 = 6 * 3600  // 6시간(초)
+        private const val H8 = 8 * 3600
+        private const val H2 = 2 * 3600
+        private const val H4 = 4 * 3600
+        private const val H6 = 6 * 3600
 
         private var migrated = false
         private var seeded = false
@@ -245,14 +243,15 @@ class WorklogServiceIntegrationTest {
     fun `(1) create 자동차감 — 2h 기록 후 remaining=6h time_spent=2h`() {
         val issueKey = insertIssue(remainingSeconds = H8)
 
-        val worklog = worklogService.create(
-            actor = ACTOR,
-            issueKey = IssueKey(issueKey),
-            timeSpentSeconds = H2,
-            startedAt = Instant.now(),
-            comment = "2h 작업",
-            newRemainingEstimateSeconds = null,
-        )
+        val worklog =
+            worklogService.create(
+                actor = ACTOR,
+                issueKey = IssueKey(issueKey),
+                timeSpentSeconds = H2,
+                startedAt = Instant.now(),
+                comment = "2h 작업",
+                newRemainingEstimateSeconds = null,
+            )
 
         assertThat(worklog.timeSpentSeconds).isEqualTo(H2)
         assertThat(worklog.authorId).isEqualTo(ACTOR_UUID)
@@ -322,35 +321,37 @@ class WorklogServiceIntegrationTest {
      * (4) update — time_spent 재집계, remaining 미조정.
      *
      * Given  remaining=8h 이슈, 2h worklog 1건
-     * When   worklog를 3h 로 수정
-     * Then   time_spent=3h, remaining=6h (update는 remaining 미조정).
+     * When   worklog 를 3h 로 수정
+     * Then   time_spent=3h, remaining=6h (update 는 remaining 미조정).
      */
     @Test
     fun `(4) update — 시간 수정 후 time_spent 재집계, remaining 미조정`() {
         val issueKey = insertIssue(remainingSeconds = H8)
 
-        val worklog = worklogService.create(
-            actor = ACTOR,
-            issueKey = IssueKey(issueKey),
-            timeSpentSeconds = H2,
-            startedAt = Instant.now(),
-            comment = null,
-            newRemainingEstimateSeconds = null,
-        )
-        // create 후 remaining=8h-2h=6h
+        val worklog =
+            worklogService.create(
+                actor = ACTOR,
+                issueKey = IssueKey(issueKey),
+                timeSpentSeconds = H2,
+                startedAt = Instant.now(),
+                comment = null,
+                newRemainingEstimateSeconds = null,
+            )
 
+        // create 후 remaining=8h-2h=6h
+        val threeHours = H2 + 3600
         worklogService.update(
             actor = ACTOR,
             issueKey = IssueKey(issueKey),
             worklogId = worklog.id,
-            timeSpentSeconds = H2 + 3600, // 3h
+            timeSpentSeconds = threeHours,
             startedAt = null,
             comment = null,
         )
 
         val list = worklogService.listForIssue(ACTOR, IssueKey(issueKey))
-        assertThat(list.timeSpentSeconds).isEqualTo(H2 + 3600) // 3h
-        // update는 remaining 미조정 — 여전히 6h
+        assertThat(list.timeSpentSeconds).isEqualTo(threeHours)
+        // update 는 remaining 미조정 — 여전히 6h
         assertThat(list.remainingEstimateSeconds).isEqualTo(H6)
     }
 
@@ -367,14 +368,15 @@ class WorklogServiceIntegrationTest {
     fun `(5) delete — 소프트삭제 후 time_spent=0 remaining 미복원`() {
         val issueKey = insertIssue(remainingSeconds = H8)
 
-        val worklog = worklogService.create(
-            actor = ACTOR,
-            issueKey = IssueKey(issueKey),
-            timeSpentSeconds = H2,
-            startedAt = Instant.now(),
-            comment = null,
-            newRemainingEstimateSeconds = null,
-        )
+        val worklog =
+            worklogService.create(
+                actor = ACTOR,
+                issueKey = IssueKey(issueKey),
+                timeSpentSeconds = H2,
+                startedAt = Instant.now(),
+                comment = null,
+                newRemainingEstimateSeconds = null,
+            )
 
         worklogService.delete(
             actor = ACTOR,
@@ -465,14 +467,15 @@ class WorklogServiceIntegrationTest {
         val issueKeyA = insertIssue(remainingSeconds = null)
         val issueKeyB = insertIssue(remainingSeconds = null)
 
-        val worklogOfA = worklogService.create(
-            actor = ACTOR,
-            issueKey = IssueKey(issueKeyA),
-            timeSpentSeconds = H2,
-            startedAt = Instant.now(),
-            comment = null,
-            newRemainingEstimateSeconds = null,
-        )
+        val worklogOfA =
+            worklogService.create(
+                actor = ACTOR,
+                issueKey = IssueKey(issueKeyA),
+                timeSpentSeconds = H2,
+                startedAt = Instant.now(),
+                comment = null,
+                newRemainingEstimateSeconds = null,
+            )
 
         // 이슈 B 경로에서 이슈 A 의 worklog 를 update → 404
         assertThatThrownBy {
@@ -496,14 +499,15 @@ class WorklogServiceIntegrationTest {
     fun `(8a) 타인 worklog update — 403`() {
         val issueKey = insertIssue(remainingSeconds = null)
 
-        val worklog = worklogService.create(
-            actor = ACTOR,
-            issueKey = IssueKey(issueKey),
-            timeSpentSeconds = H2,
-            startedAt = Instant.now(),
-            comment = null,
-            newRemainingEstimateSeconds = null,
-        )
+        val worklog =
+            worklogService.create(
+                actor = ACTOR,
+                issueKey = IssueKey(issueKey),
+                timeSpentSeconds = H2,
+                startedAt = Instant.now(),
+                comment = null,
+                newRemainingEstimateSeconds = null,
+            )
 
         assertThatThrownBy {
             worklogService.update(
@@ -524,14 +528,15 @@ class WorklogServiceIntegrationTest {
     fun `(8b) 타인 worklog delete — 403`() {
         val issueKey = insertIssue(remainingSeconds = null)
 
-        val worklog = worklogService.create(
-            actor = ACTOR,
-            issueKey = IssueKey(issueKey),
-            timeSpentSeconds = H2,
-            startedAt = Instant.now(),
-            comment = null,
-            newRemainingEstimateSeconds = null,
-        )
+        val worklog =
+            worklogService.create(
+                actor = ACTOR,
+                issueKey = IssueKey(issueKey),
+                timeSpentSeconds = H2,
+                startedAt = Instant.now(),
+                comment = null,
+                newRemainingEstimateSeconds = null,
+            )
 
         assertThatThrownBy {
             worklogService.delete(
@@ -647,40 +652,45 @@ class WorklogServiceIntegrationTest {
      *
      * @param remainingSeconds remaining_estimate_seconds. null 이면 미추정.
      */
-    private fun insertIssue(remainingSeconds: Int?): String {
-        return conn().use { c ->
+    @Suppress("NestedBlockDepth")
+    private fun insertIssue(remainingSeconds: Int?): String =
+        conn().use { c ->
             c.autoCommit = false
 
-            val seq = c.prepareStatement(
-                "UPDATE projects SET key_sequence = key_sequence + 1 WHERE key = ? RETURNING key_sequence",
-            ).use { stmt ->
-                stmt.setString(1, PROJECT_KEY)
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getLong(1)
+            val seq =
+                c.prepareStatement(
+                    "UPDATE projects SET key_sequence = key_sequence + 1 WHERE key = ? RETURNING key_sequence",
+                ).use { stmt ->
+                    stmt.setString(1, PROJECT_KEY)
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getLong(1)
+                    }
                 }
-            }
 
             val issueKey = "$PROJECT_KEY-$seq"
-            val projectId = c.prepareStatement("SELECT id FROM projects WHERE key = ?").use { stmt ->
-                stmt.setString(1, PROJECT_KEY)
-                stmt.executeQuery().use { rs ->
-                    rs.next()
-                    rs.getObject(1) as UUID
+            val projectId =
+                c.prepareStatement("SELECT id FROM projects WHERE key = ?").use { stmt ->
+                    stmt.setString(1, PROJECT_KEY)
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getObject(1) as UUID
+                    }
                 }
-            }
-            val taskTypeId = c.prepareStatement(
-                "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1",
-            ).use { stmt ->
-                stmt.executeQuery().use { rs ->
-                    check(rs.next()) { "task 타입 없음 — V003 마이그레이션 확인 필요." }
-                    rs.getLong(1)
+            val taskTypeId =
+                c.prepareStatement(
+                    "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1",
+                ).use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        check(rs.next()) { "task 타입 없음 — V003 마이그레이션 확인 필요." }
+                        rs.getLong(1)
+                    }
                 }
-            }
 
             if (remainingSeconds != null) {
                 c.prepareStatement(
-                    "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key, version, type_id, " +
+                    "INSERT INTO issues " +
+                        "(key, project_id, summary, reporter_id, current_state_key, version, type_id, " +
                         "remaining_estimate_seconds) VALUES (?, ?, ?, ?, 'open', 1, ?, ?)",
                 ).use { stmt ->
                     stmt.setString(1, issueKey)
@@ -693,7 +703,8 @@ class WorklogServiceIntegrationTest {
                 }
             } else {
                 c.prepareStatement(
-                    "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key, version, type_id) " +
+                    "INSERT INTO issues " +
+                        "(key, project_id, summary, reporter_id, current_state_key, version, type_id) " +
                         "VALUES (?, ?, ?, ?, 'open', 1, ?)",
                 ).use { stmt ->
                     stmt.setString(1, issueKey)
@@ -708,7 +719,6 @@ class WorklogServiceIntegrationTest {
             c.commit()
             issueKey
         }
-    }
 
     /** 이슈 키로 issues.id 를 조회한다 (이력 검증용). */
     private fun fetchIssueId(issueKey: String): UUID =
