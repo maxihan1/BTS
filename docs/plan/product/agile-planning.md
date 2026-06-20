@@ -47,11 +47,11 @@
 
 **우선순위**. 필수 | **선행**. §0, §1.2 | **Plan slug**. `agile/board-kanban`
 
-- [ ] D1. 도메인 — Board / Column / Swimlane (책임. backend-engineer)
-- [ ] D2. 명세 — 컬럼=상태 매핑 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `boards`, `board_columns(state_id)` (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /api/v1/boards/{id}` + 카드 이동 API (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D1. 도메인 — Board / Column (Swimlane은 FR-BD-03) (책임. backend-engineer)
+- [x] D2. 명세 — 컬럼=상태 매핑 (책임. backend-engineer)
+- [x] D3. 데이터 모델 — `boards`, `board_columns(state_key)` (책임. db-engineer)
+- [x] D4. 백엔드 — `GET /api/v1/boards/{id}` + 보드 CRUD + 카드 이동(전이 위임) API (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer)
 - [ ] D6. 프론트 UI — @dnd-kit 컬럼/카드 (책임. designer → frontend-engineer)
 - [ ] D7. E2E + NFR (책임. qa-engineer)
 
