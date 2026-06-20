@@ -105,6 +105,13 @@ FR-TT-01 — Worklog (추정/실제/잔여 시간). 이슈별 작업 시간 기�
 - Issue.kt: `originalEstimateSeconds: Int? = null`, `timeSpentSeconds: Int = 0`, `remainingEstimateSeconds: Int? = null` (data class **끝에 default 값** — 기존 생성 지점 영향 최소화, [[plan-files-constructor-injection-existing-tests]]).
 - IssueApplicationRequests.kt: `EstimatePatch` sealed interface(Unchanged/Clear/Set(Int)) — DatePatch 모방. AppUpdateIssueRequest에 originalEstimate/remainingEstimate EstimatePatch 필드 추가.
 - IssueRepository.kt: 읽기 매핑 3컬럼 추가, `applyEstimatePatch` 헬퍼(updateFields, version 증가 경로에 합류), `applyWorklogRollup` no-bump 메서드(version 미증가·expectedVersion 미요구, [[no-bump-sidecar-version-double-bump]]).
+- **CONCERN-1/2 반영 — applyWorklogRollup은 원자 SQL**:
+  - time_spent: `UPDATE issues SET time_spent_seconds = (SELECT COALESCE(SUM(time_spent_seconds),0) FROM worklogs WHERE issue_id=:id)` — 서브쿼리로 row lock 아래 원자 재집계(앱 SUM 금지, CONCERN-2).
+  - remaining 자동차감: 같은 UPDATE에서 `remaining_estimate_seconds = CASE WHEN remaining_estimate_seconds IS NULL THEN NULL ELSE GREATEST(0, remaining_estimate_seconds - :timeSpent) END` — read-modify-write 금지(동시 POST lost-update 차단, CONCERN-1).
+  - remaining override: `remaining_estimate_seconds = :newRemaining` 직접 set 변형.
+  - `updated_at = NOW()` 갱신, version 미증가.
+  - **`RETURNING time_spent_seconds, remaining_estimate_seconds`** — 차감 후 새 값 회수(T5 history 기록용).
+  - edit/delete 경로: time_spent만 재집계(remaining 미조정, FR4/FR5).
 
 **REFACTOR**: 헬퍼 KDoc.
 
@@ -132,9 +139,9 @@ FR-TT-01 — Worklog (추정/실제/잔여 시간). 이슈별 작업 시간 기�
 - files: [`.../worklog/application/WorklogService.kt`, `.../test/.../worklog/application/WorklogServiceIntegrationTest.kt`]
 - depends-on: [2, 3, 4]
 
-**RED**: `WorklogServiceIntegrationTest` (Testcontainers) — create(자동차감 remaining=max(0,r−t)), create(newRemaining override), create(remaining NULL 유지), edit(time_spent SUM 재집계·remaining 미조정), delete(재집계·remaining 미복원), 권한거부 403(UPDATE 없음), 404순서(미인증401→권한403→존재404), 타인 worklog edit/delete 403, original/remaining changelog 기록. 실패: WorklogService 없음.
+**RED**: `WorklogServiceIntegrationTest` (Testcontainers) — create(자동차감 remaining=max(0,r−t)), create(newRemaining override), create(remaining NULL 유지), edit(time_spent SUM 재집계·remaining 미조정), delete(재집계·remaining 미복원), 권한거부 403(UPDATE 없음), 404순서(미인증401→권한403→존재404), 타인 worklog edit/delete 403, original/remaining changelog 기록, **동시 create 2건 lost-update 없음(CONCERN-1 회귀가드 — 순차 적용 시 remaining 정확)**. 실패: WorklogService 없음.
 
-**GREEN**: `@Service @Transactional` WorklogService — actor 추출 우선([[auth-extraction-before-resource-lookup]]) → 권한(IssuePermission.UPDATE, IssueScope.Issue) → 이슈 resolve(deleted_at 필터) → WorklogRepository CRUD → time_spent SUM 재집계 + remaining 조정 → `applyWorklogRollup`(no-bump) → IssueHistoryRecorder.record(before/after, remaining 변경분). edit/delete는 author 한정.
+**GREEN**: `@Service @Transactional` WorklogService — actor 추출 우선([[auth-extraction-before-resource-lookup]]) → 권한(IssuePermission.UPDATE, IssueScope.Issue) → 이슈 resolve(deleted_at 필터, before 스냅샷) → WorklogRepository CRUD → `applyWorklogRollup`(원자 SQL, no-bump, RETURNING으로 새 time_spent/remaining 회수) → after = before.copy(timeSpent=회수값, remaining=회수값) → IssueHistoryRecorder.record(before, after) (detector가 remaining 변경만 감지, timeSpent 미감지). edit/delete는 author 한정 + remaining 미조정.
 
 **REFACTOR**: 권한 헬퍼 추출(IssueWatcherService 패턴).
 
@@ -179,4 +186,22 @@ FR-TT-01 — Worklog (추정/실제/잔여 시간). 이슈별 작업 시간 기�
 - 추가 검증: ktlintCheck, detekt(aggregate, baseline 동결만 [[backend-detekt-lint-debt-unmasked]]), 모듈 전체 test
 - G2 분기: changelog 미통합 시 T4 제거 + T5 history 부분 삭제 (게이트1 확정 반영)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (집중 독립 엔지니어링 리뷰, 2026-06-20)
+
+type=backend → autoplan 대신 eng 집중 리뷰([[bts-review-plan-autoplan-overkill]]).
+
+- 🔴 **CONCERN-1 (반영)**: 잔여 자동 차감 read-modify-write → 동시 POST lost-update(TOCTOU). 원자 SQL `GREATEST(0, remaining - :t)` + RETURNING으로 수정(T3/T5). 회귀가드 테스트 추가(T5).
+- 🟡 **CONCERN-2 (반영)**: time_spent 재집계를 단일 UPDATE 서브쿼리(row lock 원자)로. 앱 SUM-후-set 금지(T3).
+- 🟢 time_spent SUM-재집계(증분 아님) → 동시성 정합. row lock 직렬화 확인.
+- 🟢 IssueResponse 팬아웃 — from(issue) 도메인 객체 수신이라 호출처 무영향, IssueResponse.kt 자체 + 직접생성 테스트만(T6 grep).
+- 🟢 권한 VIEW/UPDATE 재사용 — 신규 권한코드 0 → 시드/마이그레이션 테스트 카운트 무영향([[fr-pm-permission-seed-migration-test-coupling]] 회피).
+- 🟢 V027 — 병렬 브랜치(fr-nt-03) issue-tracking 마이그레이션 무변경, V026 최신 확인. 머지 직전 재확인.
+- 🟢 TDD red→green 순서 + 메타블록 wave 정확(T3↔T6, T4↔T6 파일 무충돌).
+- ⚠️ 주의(비차단): worklog 작성 권한=UPDATE 재사용은 의도적 단순화(Jira의 "Work On Issues" 별도권한 미도입). 후속 FR로 세분 가능.
+- **BLOCKER: 없음**.
+
+### G2 — Maxi 결정 대기 (게이트1)
+
+추정 changelog 통합: **기본값=통합**(T4 + T5 history). 대안=미통합(T4 제거).
