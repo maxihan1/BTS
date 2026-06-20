@@ -57,6 +57,126 @@ FR-TT-01 — Worklog (추정/실제/잔여 시간). 이슈별 작업 시간 기�
 - **G2 게이트1 위임**: 추정 changelog 통합 기본값(FR9, 일관성) vs 미통합 대안
 - G3~G6 반영: 롤업 범위외·페이지네이션 없음·Instant 재사용·comment 상한 plan확정
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 범위 D1~D5 (백엔드). 모든 경로 prefix: `backend/modules/issue-tracking/src/{main,test}/kotlin/com/bts/issue/`
+> G2(추정 changelog 통합)는 게이트1 기본값=통합. Maxi가 "미통합" 선택 시 Task 4 제거 + Task 5 history 부분 삭제.
+
+### Task 1. V027 마이그레이션 — worklogs 테이블 + issues 추정 3컬럼
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/issue-tracking/src/main/resources/db/migration/issue-tracking/V027__worklogs_and_estimates.sql`, `backend/modules/issue-tracking/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/worklog/WorklogSchemaMigrationTest.kt`]
+- depends-on: []
+
+**RED**: `WorklogSchemaMigrationTest` (WatcherSchemaMigrationTest 패턴) — 마이그레이션 후 `worklogs` 테이블 + 컬럼(id/issue_id/author_id/time_spent_seconds/started_at/comment/created_at/updated_at), CHECK(time_spent_seconds>0), FK issue_id ON DELETE CASCADE, 인덱스 2종 존재 + `issues`에 original_estimate_seconds/time_spent_seconds(NOT NULL DEFAULT 0)/remaining_estimate_seconds 존재 단언. 실패: 테이블/컬럼 없음.
+
+**GREEN**: V027 작성(스펙 §데이터 모델 SQL 그대로) + **init_codegen.sql 미러**(worklogs CREATE + issues 3컬럼 ADD). V번호는 머지 직전 재확인.
+
+**REFACTOR**: 인덱스/CHECK 주석.
+
+**검증**: `./gradlew :backend:modules:issue-tracking:test --tests "*WorklogSchemaMigrationTest"` (jOOQ 코드젠 후 WORKLOGS/ISSUES 신컬럼 생성 확인).
+
+### Task 2. Worklog 도메인 + WorklogRepository (jOOQ CRUD + SUM 재집계)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`.../worklog/domain/Worklog.kt`, `.../worklog/repository/WorklogRepository.kt`, `.../test/.../worklog/repository/WorklogRepositoryIntegrationTest.kt`]
+- depends-on: [1]
+
+**RED**: `WorklogRepositoryIntegrationTest` (Testcontainers) — insert 후 findByIssueId(started_at desc 정렬), update(time_spent/started_at/comment), 하드 delete(WHERE 명시, 행수 반환), `sumTimeSpentByIssue(issueId)` 합산. 실패: WorklogRepository 없음.
+
+**GREEN**: Worklog data class(id/issueId/authorId/timeSpentSeconds/startedAt/comment/createdAt/updatedAt) + jOOQ 리포지토리(IssueWatcherRepository 패턴 — `@Transactional`, insertInto/selectFrom/update/deleteFrom). sum은 `dsl.select(sum(WORKLOGS.TIME_SPENT_SECONDS))`.
+
+**REFACTOR**: 매퍼 추출, KDoc.
+
+**검증**: `--tests "*WorklogRepositoryIntegrationTest"`.
+
+### Task 3. Issue 추정 필드 — 도메인 + IssueRepository(추정 PATCH + no-bump 롤업 + 읽기)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`.../domain/Issue.kt`, `.../repository/IssueRepository.kt`, `.../application/IssueApplicationRequests.kt`, `.../test/.../repository/IssueEstimateRepositoryIntegrationTest.kt`]
+- depends-on: [1]
+
+**RED**: `IssueEstimateRepositoryIntegrationTest` — (a) 읽기: findByKey가 original/time_spent/remaining 반환, (b) 추정 PATCH(EstimatePatch 3-state Unchanged/Clear/Set)로 original/remaining 갱신 + **version 증가**(updateFields 경로), (c) `applyWorklogRollup(issueId, timeSpent, remaining)` 호출 시 두 컬럼 갱신 + **version 불변**(no-bump). 실패: 필드/메서드 없음.
+
+**GREEN**:
+- Issue.kt: `originalEstimateSeconds: Int? = null`, `timeSpentSeconds: Int = 0`, `remainingEstimateSeconds: Int? = null` (data class **끝에 default 값** — 기존 생성 지점 영향 최소화, [[plan-files-constructor-injection-existing-tests]]).
+- IssueApplicationRequests.kt: `EstimatePatch` sealed interface(Unchanged/Clear/Set(Int)) — DatePatch 모방. AppUpdateIssueRequest에 originalEstimate/remainingEstimate EstimatePatch 필드 추가.
+- IssueRepository.kt: 읽기 매핑 3컬럼 추가, `applyEstimatePatch` 헬퍼(updateFields, version 증가 경로에 합류), `applyWorklogRollup` no-bump 메서드(version 미증가·expectedVersion 미요구, [[no-bump-sidecar-version-double-bump]]).
+
+**REFACTOR**: 헬퍼 KDoc.
+
+**검증**: `--tests "*IssueEstimateRepositoryIntegrationTest"` + 모듈 컴파일(기존 Issue 생성 지점 grep `Issue(` 영향 확인).
+
+### Task 4. IssueChangeDetector — 추정 필드 changelog 추출 (G2 기본값=통합)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`.../history/IssueChangeDetector.kt`, `.../test/.../history/IssueChangeDetectorTest.kt`]
+- depends-on: [3]
+
+**RED**: detector 테스트 — originalEstimate/remainingEstimate 변경 시 change item 생성, **timeSpent 변경은 미생성**(noise 회피). 실패: 추출기 없음.
+
+**GREEN**: SCALAR_FIELD_EXTRACTORS에 `"originalEstimate" to { it.originalEstimateSeconds?.toString() }`, `"remainingEstimate" to { it.remainingEstimateSeconds?.toString() }` 추가. timeSpent는 미추가.
+
+**REFACTOR**: -
+
+**검증**: `--tests "*IssueChangeDetectorTest"`.
+
+### Task 5. WorklogService — 오케스트레이션(권한·집계·자동차감·이력)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`.../worklog/application/WorklogService.kt`, `.../test/.../worklog/application/WorklogServiceIntegrationTest.kt`]
+- depends-on: [2, 3, 4]
+
+**RED**: `WorklogServiceIntegrationTest` (Testcontainers) — create(자동차감 remaining=max(0,r−t)), create(newRemaining override), create(remaining NULL 유지), edit(time_spent SUM 재집계·remaining 미조정), delete(재집계·remaining 미복원), 권한거부 403(UPDATE 없음), 404순서(미인증401→권한403→존재404), 타인 worklog edit/delete 403, original/remaining changelog 기록. 실패: WorklogService 없음.
+
+**GREEN**: `@Service @Transactional` WorklogService — actor 추출 우선([[auth-extraction-before-resource-lookup]]) → 권한(IssuePermission.UPDATE, IssueScope.Issue) → 이슈 resolve(deleted_at 필터) → WorklogRepository CRUD → time_spent SUM 재집계 + remaining 조정 → `applyWorklogRollup`(no-bump) → IssueHistoryRecorder.record(before/after, remaining 변경분). edit/delete는 author 한정.
+
+**REFACTOR**: 권한 헬퍼 추출(IssueWatcherService 패턴).
+
+**검증**: `--tests "*WorklogServiceIntegrationTest"`.
+
+### Task 6. 추정 PATCH 배선 + IssueResponse 필드 (G1)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`.../adapter/inbound/rest/UpdateIssueRequest.kt`, `.../adapter/inbound/rest/IssueController.kt`, `.../adapter/inbound/rest/IssueResponse.kt`, `.../test/.../adapter/inbound/rest/IssueEstimatePatchIntegrationTest.kt`]
+- depends-on: [3]
+
+**RED**: `IssueEstimatePatchIntegrationTest` (MockMvc) — PATCH `{originalEstimateSeconds, remainingEstimateSeconds}` 3-state(미변경/null/값), GET 이슈가 original/timeSpent/remaining 노출, timeSpent는 PATCH 무시(읽기전용), 음수 400. 실패: 필드 없음.
+
+**GREEN**: UpdateIssueRequest에 `originalEstimateSeconds/remainingEstimateSeconds: JsonNullable<Int>` 추가, IssueController `toEstimatePatch` 헬퍼(toDatePatch 모방) + AppUpdateIssueRequest 배선, IssueResponse data class에 3필드 추가 + `from()` 본문에서 issue 필드 읽기(**호출처 무변경** — from은 Issue 객체 수신). **G1**: IssueResponse 직접 생성 테스트/픽스처 grep `IssueResponse(` 전수 보정.
+
+**REFACTOR**: -
+
+**검증**: `--tests "*IssueEstimatePatchIntegrationTest"` + 모듈 컴파일.
+
+### Task 7. WorklogController + DTO — REST 엔드포인트
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`.../worklog/web/WorklogController.kt`, `.../worklog/web/dto/WorklogResponse.kt`, `.../worklog/web/dto/AddWorklogRequest.kt`, `.../worklog/web/dto/UpdateWorklogRequest.kt`, `.../test/.../worklog/web/WorklogControllerIntegrationTest.kt`]
+- depends-on: [5]
+
+**RED**: `WorklogControllerIntegrationTest` (MockMvc) — POST 201(WorklogResponse), GET 200(worklogs[] + summary{original/timeSpent/remaining}), PATCH 200, DELETE 204, timeSpent≤0 400, 권한 403, 미존재 404, 다른 이슈 worklogId 404. 실패: 컨트롤러 없음.
+
+**GREEN**: `@RestController` `/api/v1/issues/{key}/worklogs` (IssueWatcherController 패턴) — CurrentActor.current() 우선, WorklogService 위임, WorklogResponse 매핑. startedAt은 Instant(기존 WebMvcConfigurer ISO 재사용, 신규 컨버터 금지 [[fr-vr-04-release-notes-done]]).
+
+**REFACTOR**: 매퍼 정리, KDoc.
+
+**검증**: `--tests "*WorklogControllerIntegrationTest"` + `./gradlew :backend:modules:issue-tracking:test` 전체 + ktlintCheck + detekt.
+
+## Plan 메타
+
+- task 수: 7
+- 예상 wave: 5 (W1: T1 / W2: T2,T3 / W3: T4,T6 / W4: T5 / W5: T7) — 단, 단일 Gradle 모듈 test 컴파일 직렬화 요인([[bts-plan-wave-gradle-module-compile]])
+- TDD 강제: yes (각 task RED→GREEN→REFACTOR)
+- 병렬 dispatch: depends-on + files 교집합으로 wave 계산. T3↔T6, T4↔T6 파일 무충돌 확인
+- 추가 검증: ktlintCheck, detekt(aggregate, baseline 동결만 [[backend-detekt-lint-debt-unmasked]]), 모듈 전체 test
+- G2 분기: changelog 미통합 시 T4 제거 + T5 history 부분 삭제 (게이트1 확정 반영)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
