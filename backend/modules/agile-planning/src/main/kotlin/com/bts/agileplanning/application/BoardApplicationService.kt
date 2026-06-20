@@ -144,6 +144,8 @@ class BoardApplicationService(
      *
      * @param boardId 이동 대상 보드 UUID.
      * @param issueKey 이동할 이슈 키. 예: `"BTS-1"`.
+     * @param actorUserId 전이 행위자 UUID. 컨트롤러가 SecurityContext 에서 추출해 전달한다
+     *   (body/param 으로 받지 않음 — 위조 차단, sec codereview-fix P1).
      * @param toColumnId 이동 대상 컬럼 UUID.
      * @param expectedVersion 낙관적 락(OCC) 기대 버전.
      * @param resolutionId DONE 카테고리 전이 시 필요한 해결 방안 ID. 불필요하면 null.
@@ -157,6 +159,7 @@ class BoardApplicationService(
     fun moveCard(
         boardId: UUID,
         issueKey: String,
+        actorUserId: UUID,
         toColumnId: UUID,
         expectedVersion: Long,
         resolutionId: UUID?,
@@ -187,6 +190,7 @@ class BoardApplicationService(
 
         return issueTransitionPort.transition(
             BoardTransitionCommand(
+                actorUserId = actorUserId,
                 issueKey = issueKey,
                 toStateKey = targetColumn.stateKey,
                 expectedVersion = expectedVersion,

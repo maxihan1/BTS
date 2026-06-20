@@ -2,9 +2,9 @@
 
 package com.bts.issue.adapter.outbound.board
 
-import com.bts.issue.adapter.inbound.rest.CurrentActor
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.TransitionIssueRequest
+import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.bts.shared.board.BoardTransitionCommand
 import com.bts.shared.board.BoardTransitionResult
@@ -18,13 +18,13 @@ import org.springframework.transaction.support.TransactionTemplate
  *
  * agile-planning BC 의 카드 이동 요청을 issue-tracking BC 의 기존 전이 경로에 위임한다.
  *
- * ### actor 추출 — SecurityContext
+ * ### actor — cmd.actorUserId 신뢰 (SecurityContext 직접 추출 안 함)
  *
- * [BoardTransitionCommand] 에 actorUserId 를 포함하지 않는다.
- * 호출 스택이 동기 HTTP 요청이므로 SecurityContext 가 살아 있으며,
- * `CurrentActor.current()` 로 추출한다.
- * cmd 로 actor 를 전달하면 호출자가 임의 actor 를 주입할 수 있어 권한 우회가 가능하므로
- * 이 어댑터에서 직접 추출한다 (sec CONCERN-3, Plan review 반영).
+ * adapter 는 SecurityContext 를 직접 읽지 않고 [BoardTransitionCommand.actorUserId] 를 신뢰한다.
+ * actor 는 호출 컨트롤러([com.bts.agileplanning.web.BoardController])가 SecurityContext 에서
+ * 추출해 cmd 로 전달한다. adapter 가 SecurityContext 에 의존하지 않으므로 스레드 무관(async 안전)이다.
+ * 위조 차단은 cmd 를 채우는 유일한 곳이 컨트롤러의 SecurityContext 추출이라는 점으로 보장된다
+ * (컨트롤러는 body/param 으로 actor 를 받지 않는다, sec codereview-fix P1).
  *
  * ### 도메인 직접 UPDATE 금지
  *
@@ -52,12 +52,12 @@ class IssueTransitionAdapter(
     /**
      * 보드 카드 이동 요청을 [IssueApplicationService.transitionIssue] 에 위임한다.
      *
-     * actor 는 `CurrentActor.current()` 로 SecurityContext 에서 추출한다.
-     * 인증이 없으면 401 [org.springframework.web.server.ResponseStatusException] 이 즉시 발생한다.
+     * actor 는 [BoardTransitionCommand.actorUserId] 를 신뢰한다(호출 컨트롤러가 SecurityContext 에서
+     * 추출해 채운 값). adapter 는 SecurityContext 를 직접 읽지 않으므로 스레드 무관(async 안전)하다.
+     * 401 인증 강제는 호출 컨트롤러가 actor 추출 단계에서 담당한다.
      *
-     * @param cmd 전이 커맨드. issueKey·toStateKey·expectedVersion·resolutionId 포함.
+     * @param cmd 전이 커맨드. actorUserId·issueKey·toStateKey·expectedVersion·resolutionId 포함.
      * @return 전이 완료 후 상태 키·버전을 담은 [BoardTransitionResult].
-     * @throws org.springframework.web.server.ResponseStatusException SecurityContext 인증 없을 때 (401).
      * @throws com.bts.issue.domain.IssueTransitionNotAllowedException 전이 규칙 위반 또는 미정의 전이.
      * @throws com.bts.issue.domain.IssueVersionConflictException OCC 버전 충돌.
      * @throws com.bts.issue.domain.IssueWorkflowNotConfiguredException 워크플로우 스킴 미배정.
@@ -65,8 +65,9 @@ class IssueTransitionAdapter(
      */
     @Suppress("TooGenericExceptionCaught")
     override fun transition(cmd: BoardTransitionCommand): BoardTransitionResult {
-        // actor 추출 — SecurityContext 에서 직접 추출. cmd 로 받지 않는다 (actor 위조 차단).
-        val actor = CurrentActor.current()
+        // actor 는 cmd.actorUserId 를 신뢰한다 — 컨트롤러가 SecurityContext 에서 추출해 채운 값.
+        // adapter 가 SecurityContext 를 직접 읽지 않으므로 async 안전하다 (sec codereview-fix P1).
+        val actor = ActorId(cmd.actorUserId)
 
         log.info(
             "board_card_move issueKey={} toStateKey={} actor={}",

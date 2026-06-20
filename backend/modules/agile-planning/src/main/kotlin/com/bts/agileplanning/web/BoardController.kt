@@ -158,7 +158,9 @@ class BoardController(
     ): ResponseEntity<DataResponse<MoveCardResponse>> {
         log.info("BoardController.moveCard id={} issueKey={}", id, issueKey)
 
-        loadBoardWithBrowse(id)
+        // actor 는 SecurityContext 에서만 추출한다(body/param 으로 받지 않음 — 위조 차단, sec P1).
+        // loadBoardWithBrowse 가 actor 추출 → 보드 메타 조회 → BROWSE 권한 판정 순서를 보장한다.
+        val (actor, _) = loadBoardWithBrowse(id)
 
         // @field:NotNull 검증 통과 후이므로 non-null. !! 금지 규칙에 따라 명시 체크.
         val toColumnId =
@@ -170,6 +172,7 @@ class BoardController(
             service.moveCard(
                 boardId = id,
                 issueKey = issueKey,
+                actorUserId = actor,
                 toColumnId = toColumnId,
                 expectedVersion = expectedVersion,
                 resolutionId = request.resolutionId,
