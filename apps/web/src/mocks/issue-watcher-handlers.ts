@@ -77,10 +77,10 @@ function resolveUserIdFromRequest(request: Request): string | null {
 // displayName 생성 헬퍼 — userId 기반 결정적 생성
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 알려진 userId → displayName 매핑 (픽스처 시드) */
+/** 알려진 userId → displayName 매핑 (픽스처 시드, RFC4122 v4 형식) */
 const KNOWN_DISPLAY_NAMES: Readonly<Record<string, string>> = {
-  '00000000-0000-0000-0000-000000000001': 'User alice',
-  '00000000-0000-0000-0000-000000000002': 'User bob',
+  '00000000-0000-4000-8000-000000000001': 'User alice',
+  '00000000-0000-4000-8000-000000000002': 'User bob',
 }
 
 /**

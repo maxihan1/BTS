@@ -361,7 +361,7 @@ const newKeyIssueHandler = http.get('/api/v1/issues/:key', ({ params }) => {
       projectKey: 'INFRA',
       summary: '이동된 이슈',
       currentStateKey: 'open',
-      reporterId: '00000000-0000-0000-0000-000000000001',
+      reporterId: '00000000-0000-4000-8000-000000000001',
       assigneeId: null,
       componentIds: [],
       affectsVersionIds: [],
