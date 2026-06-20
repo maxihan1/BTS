@@ -1,7 +1,7 @@
 // issueDetailStrings 신규 키 존재 여부를 타입 레벨에서 검증하는 테스트
 
 import { describe, it, expect, expectTypeOf } from 'vitest'
-import { issueDetailStrings, mfaStrings, mfaErrorMessage, issueLinkStrings, linkGraphStrings, notificationSubscriptionStrings } from './ko'
+import { issueDetailStrings, mfaStrings, mfaErrorMessage, issueLinkStrings, linkGraphStrings, notificationSubscriptionStrings, worklogStrings } from './ko'
 import { attachmentLabels } from './attachment-labels'
 
 // IssueDetailStrings 타입을 추론해서 키 존재를 검증한다.
@@ -500,6 +500,158 @@ describe('notificationSubscriptionStrings — 사용자 알림 구독 설정 문
     for (const [key, value] of Object.entries(notificationSubscriptionStrings)) {
       if (typeof value === 'string') {
         expect(value, `notificationSubscriptionStrings["${key}"] = "${value}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
+      }
+    }
+  })
+})
+
+// ── worklogStrings — 워크로그/추정 시간 UI 문자열 (FR-TT-01 D6) ───────────────
+
+type WorklogStrings = typeof worklogStrings
+
+describe('worklogStrings — 추정 카드 키 존재 검증 (FR-TT-01 D6)', () => {
+  // ── 추정(Estimate) 카드 ──────────────────────────────────────────────
+  it('estimateSectionTitle 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('estimateSectionTitle')
+  })
+
+  it('originalEstimateLabel 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('originalEstimateLabel')
+  })
+
+  it('timeSpentLabel 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('timeSpentLabel')
+  })
+
+  it('remainingEstimateLabel 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('remainingEstimateLabel')
+  })
+
+  it('estimateNotSet 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('estimateNotSet')
+  })
+
+  it('estimateSaveButton 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('estimateSaveButton')
+  })
+
+  it('estimateSaveAriaLabel 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('estimateSaveAriaLabel')
+  })
+
+  it('estimateSaveError 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('estimateSaveError')
+  })
+
+  it('hoursLabel 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('hoursLabel')
+  })
+
+  it('minutesLabel 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('minutesLabel')
+  })
+
+  // ── 워크로그 섹션 ────────────────────────────────────────────────────
+  it('worklogSectionTitle 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogSectionTitle')
+  })
+
+  it('worklogEmptyState 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogEmptyState')
+  })
+
+  it('worklogTimeHoursLabel 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogTimeHoursLabel')
+  })
+
+  it('worklogTimeMinutesLabel 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogTimeMinutesLabel')
+  })
+
+  it('worklogStartedAtLabel 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogStartedAtLabel')
+  })
+
+  it('worklogCommentLabel 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogCommentLabel')
+  })
+
+  it('worklogAdjustRemainingLabel 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogAdjustRemainingLabel')
+  })
+
+  it('worklogAutoAdjustPreview 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogAutoAdjustPreview')
+  })
+
+  it('worklogAddButton 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogAddButton')
+  })
+
+  it('worklogAddAriaLabel 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogAddAriaLabel')
+  })
+
+  it('worklogEditButton 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogEditButton')
+  })
+
+  it('worklogEditAriaLabel 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogEditAriaLabel')
+  })
+
+  it('worklogDeleteButton 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogDeleteButton')
+  })
+
+  it('worklogDeleteAriaLabel 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogDeleteAriaLabel')
+  })
+
+  it('worklogSaveButton 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogSaveButton')
+  })
+
+  it('worklogAuthorLabel 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogAuthorLabel')
+  })
+
+  it('worklogLoading 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogLoading')
+  })
+
+  it('worklogLoadError 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogLoadError')
+  })
+
+  it('worklogAddSuccess 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogAddSuccess')
+  })
+
+  it('worklogAddError 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogAddError')
+  })
+
+  it('worklogEditSuccess 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogEditSuccess')
+  })
+
+  it('worklogEditError 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogEditError')
+  })
+
+  it('worklogDeleteSuccess 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogDeleteSuccess')
+  })
+
+  it('worklogDeleteError 키가 존재한다', () => {
+    expectTypeOf<WorklogStrings>().toHaveProperty('worklogDeleteError')
+  })
+
+  it('모든 문자열 값은 콜론으로 끝나지 않는다 (글로벌 §5)', () => {
+    for (const [key, value] of Object.entries(worklogStrings)) {
+      if (typeof value === 'string') {
+        expect(value, `worklogStrings["${key}"] = "${value}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
       }
     }
   })
