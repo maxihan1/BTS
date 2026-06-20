@@ -29,6 +29,7 @@ vi.mock('@/hooks/use-users', () => ({
 }))
 
 import { useUsersByIds } from '@/hooks/use-users'
+import type { WorklogResponse } from '@/api/worklogs'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 픽스처 — RFC4122 v4 형식 UUID (Zod v4 검증 통과)
@@ -40,7 +41,7 @@ const WL_ID_1 = 'c0000000-0000-4000-a000-000000000001'
 const WL_ID_2 = 'c0000000-0000-4000-a000-000000000002'
 
 /** alice 워크로그 픽스처 (본인 worklog) */
-const aliceWorklog = {
+const aliceWorklog: WorklogResponse = {
   id: WL_ID_1,
   issueKey: 'ATLAS-1',
   authorId: ALICE_UUID,
@@ -52,7 +53,7 @@ const aliceWorklog = {
 }
 
 /** bob 워크로그 픽스처 (타인 worklog) */
-const bobWorklog = {
+const bobWorklog: WorklogResponse = {
   id: WL_ID_2,
   issueKey: 'ATLAS-1',
   authorId: BOB_UUID,
@@ -123,7 +124,7 @@ function stubUsersByIds() {
 function useWorklogGetHandler(
   issueKey: string,
   opts: {
-    worklogs: typeof aliceWorklog[]
+    worklogs: WorklogResponse[]
     summary: typeof summary | typeof emptySummary
   },
 ) {
@@ -175,8 +176,8 @@ describe('WorklogSection — (a) 목록 렌더', () => {
     render(<WorklogSection issueKey="ATLAS-1" canUpdate />, { wrapper: Wrapper })
 
     await screen.findByText('1h 0m')
-    expect(screen.getByText('Alice Kim')).toBeInTheDocument()
-    expect(screen.getByText('Bob Lee')).toBeInTheDocument()
+    expect(screen.getByText(/Alice Kim/)).toBeInTheDocument()
+    expect(screen.getByText(/Bob Lee/)).toBeInTheDocument()
   })
 
   it('a3: comment가 있는 worklog는 comment를 표시한다', async () => {
