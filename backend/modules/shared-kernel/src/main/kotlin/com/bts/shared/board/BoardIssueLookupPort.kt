@@ -26,7 +26,7 @@ import java.util.UUID
  * ### fail-safe default 구현
  *
  * issue-tracking adapter 가 등록되지 않은 환경(테스트 stub, 단계적 배포)에서도
- * 빈 목록을 반환해 보드를 안전하게 표시한다.
+ * 빈 페이지를 반환해 보드를 안전하게 표시한다.
  * 데이터 조회 실패는 보안 판단이 아니므로 fail-safe 방향이 적절하다
  * (권한 resolver 의 fail-closed 와 다른 방향 — IssuePermissionResolver 참조).
  *
@@ -37,24 +37,42 @@ import java.util.UUID
  * 필터 미적용 시 보안 등급 이슈 데이터 누출로 이어지므로 구현체 책임이 중요하다.
  *
  * @see BoardIssueView
+ * @see BoardIssuePage
  */
 interface BoardIssueLookupPort {
     /**
-     * 프로젝트의 가시 이슈 목록을 반환한다.
+     * 프로젝트의 가시 이슈 목록을 [BoardIssuePage] 로 반환한다.
      *
      * viewer 가 볼 수 없는 보안 등급 이슈는 결과에서 제외된다.
      * soft-deleted 이슈는 포함하지 않는다.
      * 이 메서드는 읽기 전용이며 부수 효과가 없다.
      *
+     * [BoardIssuePage.truncated] 가 true 이면 [IssueRepository.BOARD_CARD_FETCH_LIMIT] 를 초과한
+     * 이슈가 존재하며 일부가 누락됐음을 의미한다. 소비측([BoardApplicationService])은 이 플래그를
+     * 응답에 포함해 클라이언트가 인지할 수 있도록 해야 한다.
+     *
      * @param projectKey 조회할 프로젝트 키. 예: `"ATLAS"`.
      * @param viewerUserId 보드를 조회하는 사용자 UUID. visibility 필터 기준.
-     * @return 가시 이슈 목록. adapter 부재 또는 조회 불가 시 빈 리스트.
+     * @return [BoardIssuePage]. adapter 부재 또는 조회 불가 시 빈 페이지(truncated=false).
      */
     fun listVisibleIssuesByProject(
         projectKey: String,
         viewerUserId: UUID,
-    ): List<BoardIssueView> = emptyList()
+    ): BoardIssuePage = BoardIssuePage(issues = emptyList(), truncated = false)
 }
+
+/**
+ * 보드 카드 목록 조회 결과 페이지 VO.
+ *
+ * [BoardIssueLookupPort.listVisibleIssuesByProject] 가 반환하는 읽기 전용 값 객체.
+ *
+ * @property issues 조회된 가시 이슈 목록. 최대 [com.bts.issue.repository.IssueRepository.BOARD_CARD_FETCH_LIMIT] 건.
+ * @property truncated 조회 건수가 LIMIT 를 초과해 이슈 일부가 누락됐으면 true. 정상 조회면 false.
+ */
+data class BoardIssuePage(
+    val issues: List<BoardIssueView>,
+    val truncated: Boolean,
+)
 
 /**
  * 보드 카드 단위 이슈 뷰 VO.

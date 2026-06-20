@@ -615,29 +615,52 @@ class IssueRepository(
      * 카드 수 폭주를 막기 위해 [BOARD_CARD_FETCH_LIMIT] 로 상한을 둔다.
      * 정렬(컬럼 내 priority 등)은 도메인 배치 로직(agile-planning) 책임이므로 여기서는 created_at DESC 안정 정렬만 한다.
      *
+     * ## truncated 감지 (LIMIT+1 기법)
+     *
+     * `LIMIT + 1` 건을 조회해 결과가 `LIMIT + 1` 건이면 [BOARD_CARD_FETCH_LIMIT] 초과가 확인된 것이다.
+     * 이 경우 마지막 1건을 버리고 truncated=true 를 반환해 소비측이 사용자에게 신호를 전달할 수 있게 한다.
+     * 정확한 총 건수 COUNT 쿼리를 추가로 실행하지 않아 오버헤드가 없다.
+     *
      * @param projectKey 프로젝트 접두사. 예: `"BTS"`.
      * @param actor 조회 행위자(viewer) UUID. 보안 등급 필터의 reporter/assignee 동적 조건에 사용.
      *   보안 민감 메서드이므로 기본값 없이 항상 명시 전달한다.
      * @param access actor 가 접근 가능한 보안 등급 집합. unrestricted=true 이면 WHERE 술어 미적용(빠른경로).
-     * @return 가시 활성 이슈 [Issue] 목록. 최대 [BOARD_CARD_FETCH_LIMIT] 건.
+     * @return [BoardFetchResult]. issues 는 최대 [BOARD_CARD_FETCH_LIMIT] 건. truncated 는 초과 여부.
      */
     @Transactional(readOnly = true)
     fun listVisibleForBoard(
         projectKey: String,
         actor: UUID,
         access: IssueSecurityAccess,
-    ): List<Issue> {
+    ): BoardFetchResult {
         // 활성 프로젝트 술어 + 보안 등급 필터 — listWithType 과 동일 source.
         val where = buildActiveSecureWhere(projectKey, actor, access)
 
-        return dsl.select(ISSUES.fields().toList())
-            .from(ISSUES)
-            .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
-            .where(where)
-            .orderBy(ISSUES.CREATED_AT.desc())
-            .limit(BOARD_CARD_FETCH_LIMIT)
-            .fetch { it.into(ISSUES).toIssue() }
+        // LIMIT+1 조회: 결과가 LIMIT+1 건이면 truncated=true.
+        val fetched =
+            dsl.select(ISSUES.fields().toList())
+                .from(ISSUES)
+                .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+                .where(where)
+                .orderBy(ISSUES.CREATED_AT.desc())
+                .limit(BOARD_CARD_FETCH_LIMIT + 1)
+                .fetch { it.into(ISSUES).toIssue() }
+
+        val truncated = fetched.size > BOARD_CARD_FETCH_LIMIT
+        val issues = if (truncated) fetched.take(BOARD_CARD_FETCH_LIMIT) else fetched
+        return BoardFetchResult(issues = issues, truncated = truncated)
     }
+
+    /**
+     * [listVisibleForBoard] 반환 VO.
+     *
+     * @property issues 조회된 이슈 목록. 최대 [BOARD_CARD_FETCH_LIMIT] 건.
+     * @property truncated LIMIT 초과 여부. true 이면 일부 이슈가 누락됐음을 의미.
+     */
+    data class BoardFetchResult(
+        val issues: List<Issue>,
+        val truncated: Boolean,
+    )
 
     /**
      * "활성 프로젝트 이슈" 술어와 [buildSecurityCondition] 보안 필터를 결합한 WHERE 조건을 만든다.

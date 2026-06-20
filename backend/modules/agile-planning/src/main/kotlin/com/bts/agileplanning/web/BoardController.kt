@@ -112,8 +112,8 @@ class BoardController(
 
         val (actor, board) = loadBoardWithBrowse(id)
 
-        val placedColumns = service.getBoard(id, actor)
-        return ResponseEntity.ok(DataResponse(BoardDetailResponse.of(board, placedColumns)))
+        val result = service.getBoard(id, actor)
+        return ResponseEntity.ok(DataResponse(BoardDetailResponse.of(board, result)))
     }
 
     /**

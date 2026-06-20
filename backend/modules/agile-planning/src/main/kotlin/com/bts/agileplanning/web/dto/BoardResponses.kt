@@ -2,6 +2,7 @@
 
 package com.bts.agileplanning.web.dto
 
+import com.bts.agileplanning.application.BoardPlacementResult
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.PlacedColumn
@@ -193,35 +194,43 @@ data class BoardColumnWithCardsResponse(
 }
 
 /**
- * 보드 단건 조회 응답 DTO(컬럼 + 카드).
+ * 보드 단건 조회 응답 DTO(컬럼 + 카드 + 신호 필드).
  *
  * @property boardId 보드 UUID.
  * @property projectKey 소속 프로젝트 키.
  * @property name 보드 표시 이름.
  * @property columns 카드가 배치된 컬럼 목록.
+ * @property truncated BOARD_CARD_FETCH_LIMIT 초과로 이슈 일부가 누락됐으면 true.
+ *   클라이언트가 "보드에 표시되지 않은 이슈가 있습니다" UI 경고를 표시하는 데 사용한다.
+ * @property unplacedCount 어느 컬럼에도 매핑되지 않아 보드에서 제외된 이슈 수(E2 미매핑 상태 이슈).
+ *   0 이면 미매핑 이슈 없음. 양수이면 워크플로우 상태와 보드 컬럼 간 미싱 매핑이 있음을 의미한다.
  */
 data class BoardDetailResponse(
     val boardId: UUID,
     val projectKey: String,
     val name: String,
     val columns: List<BoardColumnWithCardsResponse>,
+    val truncated: Boolean,
+    val unplacedCount: Int,
 ) {
     companion object {
         /**
-         * 보드 메타([Board])와 카드 배치 결과([PlacedColumn] 목록)를 합쳐 응답을 만든다.
+         * 보드 메타([Board])와 카드 배치 결과([BoardPlacementResult])를 합쳐 응답을 만든다.
          *
          * @param board 보드 메타(boardId/projectKey/name 출처).
-         * @param placedColumns 카드가 배치된 컬럼 목록.
+         * @param result 카드 배치 + 신호 필드(truncated/unplacedCount) 결과.
          */
         fun of(
             board: Board,
-            placedColumns: List<PlacedColumn>,
+            result: BoardPlacementResult,
         ): BoardDetailResponse =
             BoardDetailResponse(
                 boardId = board.id,
                 projectKey = board.projectKey,
                 name = board.name,
-                columns = placedColumns.map(BoardColumnWithCardsResponse::from),
+                columns = result.columns.map(BoardColumnWithCardsResponse::from),
+                truncated = result.truncated,
+                unplacedCount = result.unplacedCount,
             )
     }
 }

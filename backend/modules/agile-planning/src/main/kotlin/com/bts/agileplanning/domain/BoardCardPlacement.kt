@@ -61,24 +61,31 @@ object BoardCardPlacement {
      * 1. [BoardIssueView.priority] ASC (1 = 최상위 우선순위).
      * 2. [BoardIssueView.key] ASC (동순위 이슈의 안정 보조 기준).
      *
+     * 미매핑 이슈 수([PlacedBoardResult.unplacedCount])는 응답에 포함되어 클라이언트가 E2 상황을 인지할 수 있다.
+     *
      * @param columns 보드 컬럼 목록. 순서는 그대로 유지된다.
      * @param issues 배치할 이슈 목록. BoardIssueLookupPort.listVisibleIssuesByProject 반환 값.
-     * @return 컬럼별 카드 배치 결과 목록. 입력 [columns] 와 동일 순서.
+     * @return [PlacedBoardResult]. columns 는 입력 [columns] 와 동일 순서. unplacedCount 는 미매핑 이슈 수.
      */
     fun placeCards(
         columns: List<BoardColumn>,
         issues: List<BoardIssueView>,
-    ): List<PlacedColumn> {
+    ): PlacedBoardResult {
+        val knownStateKeys = columns.map { it.stateKey }.toSet()
         val issuesByStateKey: Map<String, List<BoardIssueView>> =
             issues.groupBy { it.currentStateKey }
 
-        return columns.map { column ->
-            val cards =
-                issuesByStateKey[column.stateKey]
-                    ?.sortedWith(CARD_COMPARATOR)
-                    ?: emptyList()
-            PlacedColumn(column = column, cards = cards)
-        }
+        val placedColumns =
+            columns.map { column ->
+                val cards =
+                    issuesByStateKey[column.stateKey]
+                        ?.sortedWith(CARD_COMPARATOR)
+                        ?: emptyList()
+                PlacedColumn(column = column, cards = cards)
+            }
+
+        val unplacedCount = issues.count { it.currentStateKey !in knownStateKeys }
+        return PlacedBoardResult(columns = placedColumns, unplacedCount = unplacedCount)
     }
 }
 
@@ -93,4 +100,18 @@ object BoardCardPlacement {
 data class PlacedColumn(
     val column: BoardColumn,
     val cards: List<BoardIssueView>,
+)
+
+/**
+ * [BoardCardPlacement.placeCards] 전체 결과 VO.
+ *
+ * 컬럼 배치 결과와 미매핑 이슈 수를 함께 담는다.
+ * 소비측([BoardApplicationService])이 truncated 플래그와 함께 [BoardPlacementResult] 로 조립한다.
+ *
+ * @property columns 카드가 배치된 컬럼 목록. 입력 컬럼 순서 유지.
+ * @property unplacedCount 어느 컬럼에도 매핑되지 않아 제외된 이슈 수 (E2 미매핑 상태).
+ */
+data class PlacedBoardResult(
+    val columns: List<PlacedColumn>,
+    val unplacedCount: Int,
 )

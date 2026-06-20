@@ -28,6 +28,9 @@ package com.bts.shared.workflow
  * @property name 사용자에게 표시되는 상태 이름. 예: `"열림"`, `"진행 중"`, `"완료"`.
  * @property isDone 이 상태가 DONE 카테고리에 속하면 true. 이슈 이동 마법사에서 targetStateIsDone 을 채우는 데 사용된다.
  *   기본값 false — 생성 시 명시하지 않으면 비완료 상태로 간주한다.
+ *   **정합 주의**: isDone 과 category 는 독립 필드이므로 생성 시 불일치가 가능하다.
+ *   prod 구현체([WorkflowStateCatalog] 구현)는 `isDone = (category == "DONE")` 으로 항상 정합을 보장해야 한다.
+ *   테스트 픽스처에서도 두 필드를 함께 지정해 불일치를 예방한다.
  * @property category 상태가 속하는 칸반 카테고리 이름. 워크플로우 YAML `category` 필드와 1:1.
  *   예: `"TODO"`, `"IN_PROGRESS"`, `"DONE"`. 기본값 `"TODO"` — 카테고리 미지정 상태는 미착수로 취급한다.
  *   agile-planning BC 가 칸반 보드 컬럼 시드 시 이 값을 컬럼 카테고리로 사용한다.

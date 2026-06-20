@@ -5,6 +5,7 @@ package com.bts.issue.adapter.outbound.board
 import com.bts.issue.domain.Issue
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.board.BoardIssueLookupPort
+import com.bts.shared.board.BoardIssuePage
 import com.bts.shared.board.BoardIssueView
 import com.bts.shared.permission.IssueSecurityDirectory
 import org.springframework.stereotype.Component
@@ -42,25 +43,28 @@ class BoardIssueLookupAdapter(
     private val securityDirectory: IssueSecurityDirectory,
 ) : BoardIssueLookupPort {
     /**
-     * 프로젝트의 가시 이슈 목록을 [BoardIssueView] 로 반환한다.
+     * 프로젝트의 가시 이슈 목록을 [BoardIssuePage] 로 반환한다.
      *
      * viewer 가 볼 수 없는 보안 등급 이슈와 soft-deleted 이슈는 SQL 수준에서 제외된다.
      * 정렬(컬럼 내 priority 등)은 소비측(agile-planning) 도메인 배치 로직이 담당한다.
+     * [BoardIssuePage.truncated] 가 true 이면 BOARD_CARD_FETCH_LIMIT 초과로 일부 이슈가 누락됐음을 의미한다.
      *
      * @param projectKey 조회할 프로젝트 키. 예: `"ATLAS"`.
      * @param viewerUserId 보드를 조회하는 사용자 UUID. visibility 필터 기준.
-     * @return 가시 이슈를 매핑한 [BoardIssueView] 목록.
+     * @return 가시 이슈를 매핑한 [BoardIssuePage].
      */
     @Transactional(readOnly = true)
     override fun listVisibleIssuesByProject(
         projectKey: String,
         viewerUserId: UUID,
-    ): List<BoardIssueView> {
+    ): BoardIssuePage {
         // 목록당 1회 cross-BC 호출 — N+1 없음. unrestricted=true 이면 WHERE 술어 미적용(빠른경로).
         val access = securityDirectory.accessibleLevels(viewerUserId, projectKey)
-        return issueRepository
-            .listVisibleForBoard(projectKey, viewerUserId, access)
-            .map { it.toBoardIssueView() }
+        val fetchResult = issueRepository.listVisibleForBoard(projectKey, viewerUserId, access)
+        return BoardIssuePage(
+            issues = fetchResult.issues.map { it.toBoardIssueView() },
+            truncated = fetchResult.truncated,
+        )
     }
 }
 

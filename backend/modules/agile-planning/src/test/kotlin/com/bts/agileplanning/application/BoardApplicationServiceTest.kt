@@ -6,6 +6,7 @@ import com.bts.agileplanning.AgilePlanningTestBootApplication
 import com.bts.agileplanning.AgilePlanningTestcontainersConfig
 import com.bts.agileplanning.repository.BoardRepository
 import com.bts.shared.board.BoardIssueLookupPort
+import com.bts.shared.board.BoardIssuePage
 import com.bts.shared.board.BoardIssueView
 import com.bts.shared.board.BoardTransitionCommand
 import com.bts.shared.board.BoardTransitionResult
@@ -16,7 +17,6 @@ import com.bts.shared.workflow.WorkflowStateView
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
-import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -149,7 +149,7 @@ class BoardApplicationServiceTest {
 
         val lookup = mockk<BoardIssueLookupPort>()
         every { lookup.listVisibleIssuesByProject("PROJ", viewerId) } returns
-            com.bts.shared.board.BoardIssuePage(issues = issues, truncated = false)
+            BoardIssuePage(issues = issues, truncated = false)
 
         val result = serviceWith(lookup = lookup).getBoard(boardId = board.id, viewerUserId = viewerId)
 
@@ -171,7 +171,7 @@ class BoardApplicationServiceTest {
         val viewerId = UUID.randomUUID()
         val lookup = mockk<BoardIssueLookupPort>()
         every { lookup.listVisibleIssuesByProject("TRNC", viewerId) } returns
-            com.bts.shared.board.BoardIssuePage(issues = emptyList(), truncated = true)
+            BoardIssuePage(issues = emptyList(), truncated = true)
 
         val result = serviceWith(lookup = lookup).getBoard(boardId = board.id, viewerUserId = viewerId)
 
@@ -193,7 +193,7 @@ class BoardApplicationServiceTest {
             )
         val lookup = mockk<BoardIssueLookupPort>()
         every { lookup.listVisibleIssuesByProject("UNPL", viewerId) } returns
-            com.bts.shared.board.BoardIssuePage(issues = issues, truncated = false)
+            BoardIssuePage(issues = issues, truncated = false)
 
         val result = serviceWith(lookup = lookup).getBoard(boardId = board.id, viewerUserId = viewerId)
 

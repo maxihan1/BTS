@@ -20,6 +20,22 @@ import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
+ * [BoardApplicationService.getBoard] 반환 VO.
+ *
+ * 카드 배치 결과([columns])와 함께 카드 수 신호([truncated], [unplacedCount])를 담아
+ * 컨트롤러가 [com.bts.agileplanning.web.dto.BoardDetailResponse] 로 조립할 수 있도록 한다.
+ *
+ * @property columns 카드가 배치된 컬럼 목록.
+ * @property truncated BOARD_CARD_FETCH_LIMIT 초과로 이슈 일부가 누락됐으면 true.
+ * @property unplacedCount 어느 컬럼에도 매핑되지 않아 보드에서 제외된 이슈 수 (E2 상황).
+ */
+data class BoardPlacementResult(
+    val columns: List<PlacedColumn>,
+    val truncated: Boolean,
+    val unplacedCount: Int,
+)
+
+/**
  * 보드 CRUD 및 카드 이동 위임 애플리케이션 서비스.
  *
  * cross-BC 통신은 shared-kernel 포트([WorkflowStateCatalog], [BoardIssueLookupPort], [IssueTransitionPort])만
@@ -36,8 +52,8 @@ import java.util.UUID
  *
  * ## 카드 이동
  * toColumnId → 컬럼의 state_key 도출 → [IssueTransitionPort.transition] 위임.
- * E3: 같은 컬럼(현재 상태 = 대상 state_key) → no-op(전이 없이 현재 반환).
- * E8: issueKey 가 보드 project_key 소속이 아니면 거부.
+ * E8: issueKey 가 보드 project_key 소속이 아니거나 형식이 올바르지 않으면 거부.
+ * E3(같은 컬럼) no-op 판단은 전이 포트에 위임한다 — 클라이언트(프론트 D6)가 드래그 원위치 감지로 요청 미발생 처리.
  *
  * @param workflowStateCatalog default 워크플로우 상태 조회 포트 (project-workflow 구현)
  * @param boardIssueLookupPort 프로젝트 이슈 목록 조회 포트 (issue-tracking 구현)
@@ -100,27 +116,34 @@ class BoardApplicationService(
      *
      * [boardIssueLookupPort.listVisibleIssuesByProject] 로 viewer 기준 가시 이슈를 조회한 뒤
      * [BoardCardPlacement.placeCards] 로 컬럼에 배치한다.
+     * [BoardPlacementResult.truncated] 가 true 이면 BOARD_CARD_FETCH_LIMIT 초과로 일부 이슈가 누락됐다.
+     * [BoardPlacementResult.unplacedCount] 가 0 초과이면 컬럼에 매핑되지 않는 이슈가 있었다(E2 상황).
      *
      * @param boardId 조회할 보드 UUID.
      * @param viewerUserId 보드를 조회하는 사용자 UUID. visibility 필터 기준.
-     * @return 컬럼 + 배치된 카드 목록.
+     * @return [BoardPlacementResult] — 배치 결과 + truncated + unplacedCount.
      * @throws ResponseStatusException 404 — 보드 미존재 또는 soft-deleted.
      */
     @Transactional(readOnly = true)
     fun getBoard(
         boardId: UUID,
         viewerUserId: UUID,
-    ): List<PlacedColumn> {
+    ): BoardPlacementResult {
         val board =
             boardRepository.findById(boardId)
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "보드를 찾을 수 없습니다: boardId=$boardId")
 
-        val issues =
+        val page =
             boardIssueLookupPort.listVisibleIssuesByProject(
                 projectKey = board.projectKey,
                 viewerUserId = viewerUserId,
             )
-        return BoardCardPlacement.placeCards(board.columns, issues)
+        val placed = BoardCardPlacement.placeCards(board.columns, page.issues)
+        return BoardPlacementResult(
+            columns = placed.columns,
+            truncated = page.truncated,
+            unplacedCount = placed.unplacedCount,
+        )
     }
 
     /**
@@ -139,17 +162,21 @@ class BoardApplicationService(
      *
      * toColumnId → 대상 컬럼 state_key 도출 → [IssueTransitionPort.transition] 위임.
      *
-     * E3: 현재 상태 = 대상 state_key(같은 컬럼)이면 전이 없이 현재 상태를 반환한다.
-     * E8: issueKey 의 프로젝트 접두사가 보드의 projectKey 와 다르면 거부한다.
+     * E8: issueKey 의 프로젝트 접두사가 보드의 projectKey 와 다르거나 형식이 올바르지 않으면 거부한다.
+     *
+     * ### E3 (같은 컬럼 no-op) 정책
+     * E3 no-op 판단 책임은 이 서비스에 없다. 같은 컬럼으로의 이동은 전이 포트([IssueTransitionPort])에
+     * 위임하며, 워크플로우 정책(self-transition 허용 여부)을 존중한다.
+     * 클라이언트(프론트엔드 D6)가 드래그 원위치를 감지해 요청 자체를 발생시키지 않는 것이 정석이다.
+     * 이전에 있던 client-supplied currentStateKey 기반 no-op 분기는 client 신뢰 위험이 있어 제거됐다.
      *
      * @param boardId 이동 대상 보드 UUID.
-     * @param issueKey 이동할 이슈 키. 예: `"BTS-1"`.
+     * @param issueKey 이동할 이슈 키. 예: `"BTS-1"`. 형식 = `"PROJECT_KEY-NUMBER"`.
      * @param actorUserId 전이 행위자 UUID. 컨트롤러가 SecurityContext 에서 추출해 전달한다
      *   (body/param 으로 받지 않음 — 위조 차단, sec codereview-fix P1).
      * @param toColumnId 이동 대상 컬럼 UUID.
      * @param expectedVersion 낙관적 락(OCC) 기대 버전.
      * @param resolutionId DONE 카테고리 전이 시 필요한 해결 방안 ID. 불필요하면 null.
-     * @param currentStateKey 현재 이슈 상태 키. E3 no-op 판정용. null 이면 no-op 판정 생략.
      * @return 전이 결과 VO.
      * @throws ResponseStatusException 404 — 보드/컬럼 미존재.
      * @throws ResponseStatusException 400 — E8 보드-이슈 프로젝트 정합 위반.
@@ -163,7 +190,6 @@ class BoardApplicationService(
         toColumnId: UUID,
         expectedVersion: Long,
         resolutionId: UUID?,
-        currentStateKey: String? = null,
     ): BoardTransitionResult {
         log.debug("카드 이동 — boardId={}, issueKey={}, toColumnId={}", boardId, issueKey, toColumnId)
 
@@ -171,22 +197,12 @@ class BoardApplicationService(
             boardRepository.findById(boardId)
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "보드를 찾을 수 없습니다: boardId=$boardId")
 
-        // E8: issueKey 프로젝트 접두사 정합 검증 (issueKey = "BTS-1" → "BTS")
+        // E8: issueKey 형식 + 프로젝트 정합 검증
         validateIssueProject(issueKey, board.projectKey)
 
         val targetColumn =
             board.columns.find { it.id == toColumnId }
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "컬럼을 찾을 수 없습니다: columnId=$toColumnId")
-
-        // E3: 같은 컬럼(현재 상태 = 대상 state_key) → no-op
-        if (currentStateKey != null && currentStateKey == targetColumn.stateKey) {
-            log.debug("E3 no-op — issueKey={}, stateKey={}", issueKey, currentStateKey)
-            return BoardTransitionResult(
-                issueKey = issueKey,
-                currentStateKey = currentStateKey,
-                version = expectedVersion,
-            )
-        }
 
         return issueTransitionPort.transition(
             BoardTransitionCommand(
@@ -200,22 +216,34 @@ class BoardApplicationService(
     }
 
     /**
-     * issueKey 의 프로젝트 접두사가 보드의 projectKey 와 일치하는지 검증한다.
+     * issueKey 가 보드의 projectKey 소속이며 올바른 형식인지 검증한다.
      *
-     * E8: 다른 프로젝트 이슈 이동 시도 방지.
-     * issueKey 형식 = "PROJECTKEY-N" (예: "BTS-1", "ATLAS-42").
+     * E8: 다른 프로젝트 이슈 이동 시도 방지 + 형식 fast-fail.
+     * issueKey 형식 = `"PROJECT_KEY-NUMBER"` (예: `"BTS-1"`, `"ATLAS-42"`).
      *
-     * @throws ResponseStatusException 400 — 프로젝트 불일치.
+     * 검증 조건.
+     * 1. `issueKey.startsWith("$boardProjectKey-")` — `"BTSX-1"` 같은 prefix 충돌 차단.
+     * 2. 하이픈 뒤가 숫자만으로 구성 — `"BTS-abc"` 같은 형식 오류 차단.
+     *
+     * 실제 격리 가드는 downstream [IssueTransitionPort](transitionIssue)가 권한(TRANSITION) 강제로
+     * 보장한다. 이 메서드는 fast-fail 정합 체크 역할이다.
+     *
+     * @throws ResponseStatusException 400 — E8 보드-이슈 프로젝트 불일치 또는 형식 오류.
      */
     private fun validateIssueProject(
         issueKey: String,
         boardProjectKey: String,
     ) {
-        val issueProjectKey = issueKey.substringBefore("-")
-        if (issueProjectKey != boardProjectKey) {
+        val prefix = "$boardProjectKey-"
+        val numberPart = issueKey.removePrefix(prefix)
+        val valid =
+            issueKey.startsWith(prefix) &&
+                numberPart.isNotEmpty() &&
+                numberPart.all { it.isDigit() }
+        if (!valid) {
             throw ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
-                "AGILE_BOARD_ISSUE_PROJECT_MISMATCH: 이슈($issueKey)는 보드 프로젝트($boardProjectKey)에 속하지 않습니다.",
+                "AGILE_BOARD_ISSUE_PROJECT_MISMATCH: 이슈($issueKey)는 보드 프로젝트($boardProjectKey)에 속하지 않거나 형식이 올바르지 않습니다.",
             )
         }
     }

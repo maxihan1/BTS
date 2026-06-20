@@ -4,7 +4,7 @@
 package com.bts.agileplanning
 
 import com.bts.shared.board.BoardIssueLookupPort
-import com.bts.shared.board.BoardIssueView
+import com.bts.shared.board.BoardIssuePage
 import com.bts.shared.board.BoardTransitionCommand
 import com.bts.shared.board.BoardTransitionResult
 import com.bts.shared.board.IssueTransitionPort
@@ -160,7 +160,7 @@ class AgilePlanningTestcontainersConfig {
             override fun listVisibleIssuesByProject(
                 projectKey: String,
                 viewerUserId: UUID,
-            ): List<BoardIssueView> = emptyList()
+            ): BoardIssuePage = BoardIssuePage(issues = emptyList(), truncated = false)
         }
 
     /**

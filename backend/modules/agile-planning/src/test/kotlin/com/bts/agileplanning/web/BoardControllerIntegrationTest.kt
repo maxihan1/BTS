@@ -3,6 +3,7 @@
 package com.bts.agileplanning.web
 
 import com.bts.agileplanning.application.BoardApplicationService
+import com.bts.agileplanning.application.BoardPlacementResult
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.PlacedColumn
@@ -280,7 +281,7 @@ class BoardControllerIntegrationTest {
         val board = sampleBoard()
         every { boardRepository.findById(board.id) } returns board
         every { boardApplicationService.getBoard(board.id, actorId) } returns
-            com.bts.agileplanning.application.BoardPlacementResult(
+            BoardPlacementResult(
                 columns =
                     listOf(
                         PlacedColumn(
@@ -327,7 +328,7 @@ class BoardControllerIntegrationTest {
         val board = sampleBoard()
         every { boardRepository.findById(board.id) } returns board
         every { boardApplicationService.getBoard(board.id, actorId) } returns
-            com.bts.agileplanning.application.BoardPlacementResult(
+            BoardPlacementResult(
                 columns =
                     listOf(
                         PlacedColumn(column = board.columns[0], cards = emptyList()),
