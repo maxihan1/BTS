@@ -6,8 +6,8 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
-import com.bts.issue.repository.IssueRepository
 import com.bts.issue.repository.IssueTestcontainersBase
+import com.bts.issue.worklog.domain.Worklog
 import com.bts.shared.issue.IssueTypeId
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
