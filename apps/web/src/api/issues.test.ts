@@ -1179,6 +1179,143 @@ describe('updateIssue — FR-IS-10 customFields', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// T1-24. issueResponseSchema — FR-TT-01 추정 3필드 파싱 회귀가드
+//
+// 백엔드 IssueResponse에 originalEstimateSeconds/timeSpentSeconds/remainingEstimateSeconds 추가.
+// @JsonInclude(NON_NULL) 미적용 → 3필드는 항상 직렬화되고 null도 키와 함께 내려온다.
+// .optional()은 기존 인라인 mock(estimate 필드 0개) fanout 회피용일 뿐
+// 키 부재 허용 의도가 아님 (zod-schema-strengthen-inline-mock-fanout 교훈).
+// ─────────────────────────────────────────────────────────────────────────────
+describe('issueResponseSchema — FR-TT-01 추정 3필드', () => {
+  it('T1-24a: originalEstimateSeconds/timeSpentSeconds/remainingEstimateSeconds 값이 있으면 파싱 성공', () => {
+    const result = issueResponseSchema.parse({
+      ...issueFixture,
+      originalEstimateSeconds: 3600,
+      timeSpentSeconds: 1800,
+      remainingEstimateSeconds: 1800,
+    })
+    expect(result.originalEstimateSeconds).toBe(3600)
+    expect(result.timeSpentSeconds).toBe(1800)
+    expect(result.remainingEstimateSeconds).toBe(1800)
+  })
+
+  it('T1-24b: originalEstimateSeconds/remainingEstimateSeconds가 null이어도 파싱 성공 (미설정)', () => {
+    const result = issueResponseSchema.parse({
+      ...issueFixture,
+      originalEstimateSeconds: null,
+      timeSpentSeconds: 0,
+      remainingEstimateSeconds: null,
+    })
+    expect(result.originalEstimateSeconds).toBeNull()
+    expect(result.timeSpentSeconds).toBe(0)
+    expect(result.remainingEstimateSeconds).toBeNull()
+  })
+
+  it('T1-24c: 추정 3필드가 모두 누락된 경우 파싱 성공 + undefined — 기존 인라인 mock 파급 방지', () => {
+    // .optional()로 두어 기존 인라인 mock(필드 미포함)이 TS 컴파일 에러 없이 통과한다
+    const result = issueResponseSchema.parse(issueFixture)
+    expect(result.originalEstimateSeconds).toBeUndefined()
+    expect(result.timeSpentSeconds).toBeUndefined()
+    expect(result.remainingEstimateSeconds).toBeUndefined()
+  })
+
+  it('T1-24d: timeSpentSeconds는 nullable이 아닌 number — 숫자 아닌 값은 ZodError를 throw한다', () => {
+    expect(() =>
+      issueResponseSchema.parse({
+        ...issueFixture,
+        originalEstimateSeconds: 3600,
+        timeSpentSeconds: 'invalid',
+        remainingEstimateSeconds: null,
+      }),
+    ).toThrow()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-25. updateIssue — FR-TT-01 추정 2필드 PATCH 3-state 계약 검증
+//
+// - undefined(미전달) = 키 생략 (JSON.stringify가 undefined 키를 제거)
+// - null = 클리어 (키 존재 + 값 null → 백엔드가 추정 초기화로 처리)
+// - number = 설정
+// ─────────────────────────────────────────────────────────────────────────────
+describe('updateIssue — FR-TT-01 추정 3-state PATCH', () => {
+  it('T1-25a: originalEstimateSeconds/remainingEstimateSeconds 값 전달 시 PATCH body에 포함된다', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.patch('/api/v1/issues/:key', async ({ request, params }) => {
+        capturedBody = await request.json() as Record<string, unknown>
+        return HttpResponse.json({
+          data: {
+            ...issueFixture,
+            key: params['key'] as string,
+            originalEstimateSeconds: capturedBody['originalEstimateSeconds'] as number ?? null,
+            timeSpentSeconds: 0,
+            remainingEstimateSeconds: capturedBody['remainingEstimateSeconds'] as number | null ?? null,
+          },
+        })
+      }),
+    )
+
+    const result = await updateIssue('ATLAS-1', {
+      originalEstimateSeconds: 3600,
+      remainingEstimateSeconds: 1800,
+      expectedVersion: 1,
+    })
+
+    expect(capturedBody['originalEstimateSeconds']).toBe(3600)
+    expect(capturedBody['remainingEstimateSeconds']).toBe(1800)
+    expect(result.originalEstimateSeconds).toBe(3600)
+    expect(result.remainingEstimateSeconds).toBe(1800)
+  })
+
+  it('T1-25b: null 전달 시 해당 키가 null로 명시 포함된다 (클리어, 키 생략 아님)', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.patch('/api/v1/issues/:key', async ({ request, params }) => {
+        capturedBody = await request.json() as Record<string, unknown>
+        return HttpResponse.json({
+          data: {
+            ...issueFixture,
+            key: params['key'] as string,
+            originalEstimateSeconds: null,
+            timeSpentSeconds: 0,
+            remainingEstimateSeconds: null,
+          },
+        })
+      }),
+    )
+
+    await updateIssue('ATLAS-1', {
+      originalEstimateSeconds: null,
+      remainingEstimateSeconds: null,
+      expectedVersion: 1,
+    })
+
+    expect(Object.prototype.hasOwnProperty.call(capturedBody, 'originalEstimateSeconds')).toBe(true)
+    expect(capturedBody['originalEstimateSeconds']).toBeNull()
+    expect(Object.prototype.hasOwnProperty.call(capturedBody, 'remainingEstimateSeconds')).toBe(true)
+    expect(capturedBody['remainingEstimateSeconds']).toBeNull()
+  })
+
+  it('T1-25c: 미전달 시 PATCH body에서 키가 생략된다 (무변경)', async () => {
+    let capturedBody: Record<string, unknown> = {}
+    server.use(
+      http.patch('/api/v1/issues/:key', async ({ request, params }) => {
+        capturedBody = await request.json() as Record<string, unknown>
+        return HttpResponse.json({
+          data: { ...issueFixture, key: params['key'] as string },
+        })
+      }),
+    )
+
+    await updateIssue('ATLAS-1', { summary: '제목만 수정', expectedVersion: 1 })
+
+    expect(Object.prototype.hasOwnProperty.call(capturedBody, 'originalEstimateSeconds')).toBe(false)
+    expect(Object.prototype.hasOwnProperty.call(capturedBody, 'remainingEstimateSeconds')).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // T1-21. FR-WT-01 FR-7 — 담당자/컴포넌트 변경 시 watcher 목록 자동 갱신 (RED)
 //
 // 백엔드가 담당자/컴포넌트 변경 시 해당 인물을 자동 watcher로 등록하므로(FR-WT-01),
