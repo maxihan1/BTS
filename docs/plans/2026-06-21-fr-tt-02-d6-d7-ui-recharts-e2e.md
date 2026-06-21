@@ -129,7 +129,7 @@ classify: 원판정 type=qa(E2E 키워드 오판) → type=ui / agent=frontend-e
 - 상위 N(기본 20) 초과 시 차트는 N개만, label에 "상위 N개" 안내 노출 props/콜백.
 - 빈 buckets → 차트 영역에 빈 상태(또는 null 반환, 부모가 빈상태 처리).
 
-**GREEN**: `WorklogAggregateChart({ buckets, dimension })`. recharts `<ResponsiveContainer><BarChart data={chartData}>` — XAxis(label), YAxis(시간 tick formatter=초→h), Tooltip(formatSeconds), Bar(timeSpentSeconds). chartData = buckets 상위 N개 매핑. by=period면 시간순 유지(백엔드 ASC), 그 외 백엔드 DESC 유지. aria-label 부여.
+**GREEN**: `WorklogAggregateChart({ buckets, dimension })`. recharts `<ResponsiveContainer><BarChart data={chartData}>`. **★C1 차트 방향**: by=issue/user는 **가로 막대**(`layout="vertical"`, YAxis type=category=label, XAxis=시간) — 긴 issueKey/displayName 가독성. by=period는 **세로 막대**(XAxis=시간축 label, YAxis=시간). 시간 축 tick formatter=초→시간(h), Tooltip=formatSeconds. chartData = buckets 상위 N개 매핑. by=period면 시간순 유지(백엔드 ASC), 그 외 백엔드 DESC 유지. aria-label 부여.
 
 **REFACTOR**: chartData 변환 순수 함수 분리(테스트 용이) + 상위 N 상수.
 
@@ -160,9 +160,9 @@ classify: 원판정 type=qa(E2E 키워드 오판) → type=ui / agent=frontend-e
 **RED** (MSW로 useWorklogAggregate 응답 모킹 — 컴포넌트 통합):
 - 차원 셀렉터(issue/user/period) 전환 → 재조회(by 변경). 기본 by=issue.
 - by=period 선택 시 granularity 셀렉터 노출, 그 외 숨김. **차원 전환해도 granularity/from/to 상태 보존**(spec E5).
-- from/to 네이티브 `input[type=date]`. **from>to면 적용 차단 + 안내**(클라이언트 방어, spec S6).
+- from/to 네이티브 `input[type=date]`(입력 변경 시 즉시 반영, 별도 적용 버튼 없음 — N1). **from>to면 적용 차단 + 안내**(클라이언트 방어, spec S6).
 - 정상 → 요약(total) + 차트 + 표 렌더. buckets=[] → 빈 상태(spec S4). 로딩 → 로딩 표시.
-- **403 → 권한 안내**(spec S5) — ApiError(403) 분기.
+- **403 → 권한 안내**(spec S5) — ApiError(403) 분기 → **기존 `ProjectNotFoundScreen` 재사용**(members 라우트 named export, probe 방지 문구 적합 — C2). 신규 안내 컴포넌트 만들지 않음.
 
 **GREEN**: 필터 state(useState: by, granularity, from, to) → `useWorklogAggregate(projectKey, params)`. isPending/isError(403 분기)/빈배열/정상 4-상태. 차트+표 조립. label은 select 외부 설명(기존 패턴). i18n 라벨 사용.
 
@@ -213,4 +213,21 @@ classify: 원판정 type=qa(E2E 키워드 오판) → type=ui / agent=frontend-e
 - 추가 검증: pnpm verify(lint+typecheck+test+build) + playwright. **recharts 신규 의존성** — 절대규칙 #17 버전 고정 + Maxi 승인 완료.
 - 핵심 함정(리뷰 반영): (1) recharts jsdom 렌더 한계→데이터변환 로직 단위+E2E 위임. (2) Zod optional≠nullable(NON_NULL). (3) project 필드 invent 금지(실 DTO). (4) router.ts 병행 worktree 충돌. (5) i18n 콜론 종결 0. (6) formatSeconds 재사용. (7) MSW 영속 store(E2E 가짜그린 회피). (8) node_modules race→Task 0 선행 설치.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 적대적 독립 plan 리뷰 (design + eng-frontend 통합, 2026-06-21)
+
+gstack plan-design-review 대화형 대신 집중 독립 리뷰(메모리 bts-review-plan-autoplan-overkill 정신). 종합 판정 **통과(BLOCKER 0)**, CONCERN 3건 반영.
+
+**BLOCKER: 없음.**
+
+**CONCERN 3건 (반영)**.
+- **C1 (design) — 차트 방향**: by=issue/user는 label(issueKey/displayName)이 길어 세로 막대 X축 가독성 저하. → Task 4 GREEN에 "by=issue/user는 **가로 막대**(`layout='vertical'`, YAxis=label), by=period는 세로 막대(시간축)" 보강. (잔여 taste — 게이트1 확인)
+- **C2 (eng) — 403 안내 화면**: 기존 `ProjectNotFoundScreen`(named export, members 라우트) 문구가 "존재하지 않거나 접근 권한이 없습니다"로 **probe 방지형**이라 403에도 적합 → **재사용 확정**(신규 컴포넌트 불요). 단 우리는 HTTP 403 status 분기(versions는 errorCode 404). → Task 6에 "403 → ProjectNotFoundScreen 재사용" 명시.
+- **C3 (design/UX) — 진입점 부재**: 프로젝트 컨텍스트 네비게이션 컴포넌트가 코드베이스에 **없음**(settings 페이지도 모으는 사이드바 없이 직접 경로 진입). 보고 페이지 진입점(FR10)은 기존 패턴 부재. → **게이트1 Maxi 확인 taste decision**. MVP 기본안 = 직접 URL 진입(+E2E 직접 진입), 네비 링크는 마땅한 호스트 컴포넌트 생기면 후속. Task 7은 라우트 등록까지만, 진입점 링크는 Maxi 결정에 따라.
+
+**NIT (반영)**.
+- N1 — from/to 적용 트리거: 차원/granularity 셀렉터는 즉시 반영, from/to는 입력 변경 시 반영(별도 적용 버튼 없음). Task 6에 명시.
+- N2 — 차트 접근성: aria-label + 표가 1차 데이터 출처(스크린리더). 이미 spec NFR 반영. OK.
+
+**확인된 강점**. Zod optional≠nullable(NON_NULL)·project drift 차단·recharts jsdom 한계 명시·router.ts 병행 충돌·MSW 영속 store·node_modules race 선행설치·formatSeconds 재사용·i18n 콜론 검증 — 모두 plan에 선반영됨.
