@@ -382,12 +382,14 @@ const deleteComponentHandler = http.delete(
 //
 // dev(pnpm dev) · E2E 진입 시 ComponentMultiSelect가 컴포넌트 목록을 불러올 때
 // 빈 결과가 반환되어 체크박스가 표시되지 않는 결함 방지.
-// 단위 테스트는 beforeEach의 resetComponentStore()로 격리한다.
-// import.meta.env 조건을 쓰지 않는다 — Vitest Node.js 런타임에서 import.meta.env가 undefined이면
-// 'Cannot read properties of undefined (reading MODE)' 크래시가 발생한다(board-fixtures.ts 주석 참조).
+// Vitest(MODE='test')에서는 건너뜀 — 각 테스트가 beforeEach/resetComponentStore()로 직접 제어.
+//
+// import.meta.env?.MODE 로 접근 — Playwright 내부 Node.js 평가 단계에서
+// import.meta.env가 undefined일 수 있으므로 optional chaining 필수.
+// board-fixtures.ts는 E2E 스펙에서 직접 import 금지라 해당 문제를 겪지 않는다.
 // ─────────────────────────────────────────────────────────────────────────────
 
-;(function seedFilterProjectComponents() {
+if (import.meta.env?.MODE !== 'test') {
   const filterProjectId = '00000000-0000-4000-8000-000000000099'
   const filterSeedComponents: StoredComponent[] = [
     {
@@ -410,7 +412,7 @@ const deleteComponentHandler = http.delete(
   for (const comp of filterSeedComponents) {
     componentStore.set(comp.id, comp)
   }
-})()
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Export
