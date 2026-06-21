@@ -59,6 +59,43 @@ interface BoardIssueLookupPort {
         projectKey: String,
         viewerUserId: UUID,
     ): BoardIssuePage = BoardIssuePage(issues = emptyList(), truncated = false)
+
+    /**
+     * 프로젝트의 가시 이슈 목록을 [BoardCardFilter] 를 적용해 [BoardIssuePage] 로 반환한다.
+     *
+     * ### filter 의미
+     *
+     * [BoardCardFilter] 는 담당자·미할당·라벨·컴포넌트 조건을 담는 불변 VO 다.
+     * 동일 필드 내 값은 OR, 필드 간은 AND 로 해석한다(자세한 규칙은 [BoardCardFilter] 참조).
+     *
+     * ### fail-safe default 위임
+     *
+     * 이 default 구현은 [filter] 를 무시하고 [listVisibleIssuesByProject(projectKey, viewerUserId)]
+     * 2-인자 메서드로 위임한다. 구현체가 이 3-인자 메서드를 override 하지 않아도
+     * 안전하게 전체 목록을 반환해 보드가 정상 표시된다.
+     *
+     * ### 필터 술어 적용 책임
+     *
+     * 실제 필터 술어는 구현체(issue-tracking SQL adapter)가 SQL 수준에서 적용해야 한다.
+     * visibility 필터를 SQL 에서 적용하는 방식과 동일하다.
+     * 구현체가 3-인자를 override 하지 않으면 filter 가 드롭되므로, filter-aware 구현을
+     * 원하는 경우 반드시 이 메서드를 override 해야 한다(CONCERN-1).
+     *
+     * ### 빈 필터 동작
+     *
+     * [filter] 가 [BoardCardFilter.EMPTY] 이거나 [BoardCardFilter.isEmpty] 가 true 이면
+     * 무필터 호출과 결과가 동일해야 한다. 구현체는 이를 최적화 힌트로 활용할 수 있다.
+     *
+     * @param projectKey 조회할 프로젝트 키. 예: `"ATLAS"`.
+     * @param viewerUserId 보드를 조회하는 사용자 UUID. visibility 필터 기준.
+     * @param filter 보드 카드 필터 조건. [BoardCardFilter.EMPTY] 이면 무필터와 동일.
+     * @return [BoardIssuePage]. adapter 부재 또는 조회 불가 시 빈 페이지(truncated=false).
+     */
+    fun listVisibleIssuesByProject(
+        projectKey: String,
+        viewerUserId: UUID,
+        filter: BoardCardFilter,
+    ): BoardIssuePage = listVisibleIssuesByProject(projectKey, viewerUserId)
 }
 
 /**

@@ -6,6 +6,7 @@ import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardCardPlacement
 import com.bts.agileplanning.domain.PlacedColumn
 import com.bts.agileplanning.repository.BoardRepository
+import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.board.BoardIssueLookupPort
 import com.bts.shared.board.BoardTransitionCommand
 import com.bts.shared.board.BoardTransitionResult
@@ -114,13 +115,14 @@ class BoardApplicationService(
     /**
      * 보드 단건을 조회하고 카드를 컬럼에 배치한다.
      *
-     * [boardIssueLookupPort.listVisibleIssuesByProject] 로 viewer 기준 가시 이슈를 조회한 뒤
-     * [BoardCardPlacement.placeCards] 로 컬럼에 배치한다.
+     * [boardIssueLookupPort.listVisibleIssuesByProject] 의 3-인자 메서드로 viewer 기준 가시 이슈를 조회하며
+     * [filter] 를 그대로 전달한다. [BoardCardPlacement.placeCards] 로 컬럼에 배치한다.
      * [BoardPlacementResult.truncated] 가 true 이면 BOARD_CARD_FETCH_LIMIT 초과로 일부 이슈가 누락됐다.
      * [BoardPlacementResult.unplacedCount] 가 0 초과이면 컬럼에 매핑되지 않는 이슈가 있었다(E2 상황).
      *
      * @param boardId 조회할 보드 UUID.
      * @param viewerUserId 보드를 조회하는 사용자 UUID. visibility 필터 기준.
+     * @param filter 보드 카드 필터 조건. 기본값 [BoardCardFilter.EMPTY] 이면 무필터와 동일.
      * @return [BoardPlacementResult] — 배치 결과 + truncated + unplacedCount.
      * @throws ResponseStatusException 404 — 보드 미존재 또는 soft-deleted.
      */
@@ -128,6 +130,7 @@ class BoardApplicationService(
     fun getBoard(
         boardId: UUID,
         viewerUserId: UUID,
+        filter: BoardCardFilter = BoardCardFilter.EMPTY,
     ): BoardPlacementResult {
         val board =
             boardRepository.findById(boardId)
@@ -137,6 +140,7 @@ class BoardApplicationService(
             boardIssueLookupPort.listVisibleIssuesByProject(
                 projectKey = board.projectKey,
                 viewerUserId = viewerUserId,
+                filter = filter,
             )
         val placed = BoardCardPlacement.placeCards(board.columns, page.issues)
         return BoardPlacementResult(

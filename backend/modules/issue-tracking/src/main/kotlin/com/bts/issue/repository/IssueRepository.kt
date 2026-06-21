@@ -20,6 +20,7 @@ import com.bts.issue.jooq.tables.references.ISSUE_TYPES
 import com.bts.issue.jooq.tables.references.PROJECTS
 import com.bts.issue.jooq.tables.references.VERSIONS
 import com.bts.issue.jooq.tables.references.WORKLOGS
+import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssueSecurityAccess
 import com.fasterxml.jackson.core.type.TypeReference
@@ -650,6 +651,7 @@ class IssueRepository(
      * @param actor 조회 행위자(viewer) UUID. 보안 등급 필터의 reporter/assignee 동적 조건에 사용.
      *   보안 민감 메서드이므로 기본값 없이 항상 명시 전달한다.
      * @param access actor 가 접근 가능한 보안 등급 집합. unrestricted=true 이면 WHERE 술어 미적용(빠른경로).
+     * @param filter 보드 카드 필터 조건. [BoardCardFilter.isEmpty] 이면 필터 Condition 을 추가하지 않는다.
      * @return [BoardFetchResult]. issues 는 최대 [BOARD_CARD_FETCH_LIMIT] 건. truncated 는 초과 여부.
      */
     @Transactional(readOnly = true)
@@ -657,9 +659,16 @@ class IssueRepository(
         projectKey: String,
         actor: UUID,
         access: IssueSecurityAccess,
+        filter: BoardCardFilter = BoardCardFilter.EMPTY,
     ): BoardFetchResult {
         // 활성 프로젝트 술어 + 보안 등급 필터 — listWithType 과 동일 source.
-        val where = buildActiveSecureWhere(projectKey, actor, access)
+        var where = buildActiveSecureWhere(projectKey, actor, access)
+
+        // 비어 있지 않은 필터만 AND 로 결합 — 빈 필터(isEmpty)면 무필터(FR-BD-01 동일 경로, EC2 회귀 보존).
+        val filterCondition = buildFilterCondition(filter)
+        if (filterCondition != null) {
+            where = where.and(filterCondition)
+        }
 
         // LIMIT+1 조회: 결과가 LIMIT+1 건이면 truncated=true.
         val fetched =
@@ -713,6 +722,74 @@ class IssueRepository(
         } else {
             activeInProject
         }
+    }
+
+    /**
+     * [BoardCardFilter] 를 SQL WHERE 술어 [Condition] 으로 변환한다.
+     *
+     * 필드 내 값들은 OR, 필드 간은 AND 로 결합한다([BoardCardFilter] 규칙 동일).
+     *
+     * @param filter 보드 카드 필터 조건.
+     * @return 필터가 비어 있으면 `null`, 아니면 모든 술어를 AND 로 묶은 [Condition].
+     */
+    private fun buildFilterCondition(filter: BoardCardFilter): Condition? {
+        if (filter.isEmpty()) return null
+        return listOfNotNull(
+            buildAssigneeCondition(filter),
+            buildLabelCondition(filter),
+            buildComponentCondition(filter),
+        ).reduceOrNull { acc, cond -> acc.and(cond) }
+    }
+
+    /**
+     * 담당자 필터 술어를 생성한다.
+     *
+     * `assigneeIds` IN 술어와 `includeUnassigned` IS NULL 술어를 OR 로 결합한다.
+     * 두 조건 모두 비어 있으면 `null` 을 반환한다.
+     */
+    private fun buildAssigneeCondition(filter: BoardCardFilter): Condition? {
+        if (filter.assigneeIds.isEmpty() && !filter.includeUnassigned) return null
+        var cond: Condition? = null
+        if (filter.assigneeIds.isNotEmpty()) {
+            cond = ISSUES.ASSIGNEE_ID.`in`(filter.assigneeIds)
+        }
+        if (filter.includeUnassigned) {
+            cond = cond?.or(ISSUES.ASSIGNEE_ID.isNull) ?: ISSUES.ASSIGNEE_ID.isNull
+        }
+        return cond
+    }
+
+    /**
+     * 라벨 필터 술어를 생성한다.
+     *
+     * PG 배열 overlap 연산자 `&&` 단일 술어 — GIN 인덱스(ix_issues_labels_gin) 활용.
+     * `&&` 는 jOOQ 미지원 PG 전용 연산자이므로 DSL.condition + 바인드 파라미터로 표현.
+     * 값은 ISSUES.LABELS 와 동일한 DataType(text[]) 으로 바인딩 — text[] && varchar[] 타입 미스매치 방지.
+     */
+    private fun buildLabelCondition(filter: BoardCardFilter): Condition? {
+        if (filter.labels.isEmpty()) return null
+        val labelArr: Array<String?> = filter.labels.map { it as String? }.toTypedArray()
+        val labelVal = DSL.`val`(labelArr, ISSUES.LABELS.dataType)
+        return DSL.condition("{0} && {1}", ISSUES.LABELS, labelVal)
+    }
+
+    /**
+     * 컴포넌트 필터 술어를 생성한다.
+     *
+     * EXISTS 서브쿼리 — JOIN 절대 금지.
+     * JOIN 을 사용하면 issue × component 카테시안이 LIMIT+1 truncated 감지와 카드 중복을 오염시킨다
+     * (cartesian-product-jooq-leftjoin-count 교훈).
+     */
+    private fun buildComponentCondition(filter: BoardCardFilter): Condition? {
+        if (filter.componentIds.isEmpty()) return null
+        return DSL.exists(
+            DSL.selectOne()
+                .from(ISSUE_COMPONENTS)
+                .where(
+                    ISSUE_COMPONENTS.ISSUE_ID.eq(ISSUES.ID)
+                        .and(ISSUE_COMPONENTS.COMPONENT_ID.`in`(filter.componentIds)),
+                ),
+        )
     }
 
     /**
@@ -776,7 +853,7 @@ class IssueRepository(
          * 보드는 프로젝트 이슈 전부를 한 번에 받지만, 카드 수 폭주로 인한 메모리/렌더 부담을 막기 위해
          * 상한을 둔다. spec NFR(보드 카드 200건) 대비 여유를 둔 값이다.
          */
-        private const val BOARD_CARD_FETCH_LIMIT = 1000
+        internal const val BOARD_CARD_FETCH_LIMIT = 1000
 
         /**
          * 기본 unrestricted [IssueSecurityAccess] — [listWithType] 파라미터 기본값.

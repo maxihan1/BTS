@@ -5,6 +5,7 @@ package com.bts.agileplanning.application
 import com.bts.agileplanning.AgilePlanningTestBootApplication
 import com.bts.agileplanning.AgilePlanningTestcontainersConfig
 import com.bts.agileplanning.repository.BoardRepository
+import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.board.BoardIssueLookupPort
 import com.bts.shared.board.BoardIssuePage
 import com.bts.shared.board.BoardIssueView
@@ -147,9 +148,15 @@ class BoardApplicationServiceTest {
                 ),
             )
 
-        val lookup = mockk<BoardIssueLookupPort>()
-        every { lookup.listVisibleIssuesByProject("PROJ", viewerId) } returns
-            BoardIssuePage(issues = issues, truncated = false)
+        // CONCERN-1: 3-인자 메서드를 override 해 filter 를 캡처해야 2-인자 default 위임으로 filter 드롭이 안 생긴다.
+        val lookup =
+            object : BoardIssueLookupPort {
+                override fun listVisibleIssuesByProject(
+                    projectKey: String,
+                    viewerUserId: UUID,
+                    filter: BoardCardFilter,
+                ): BoardIssuePage = BoardIssuePage(issues = issues, truncated = false)
+            }
 
         val result = serviceWith(lookup = lookup).getBoard(boardId = board.id, viewerUserId = viewerId)
 
@@ -169,9 +176,14 @@ class BoardApplicationServiceTest {
         val board = serviceWith(catalog = catalog).createBoard("TRNC", "truncated 테스트 보드")
 
         val viewerId = UUID.randomUUID()
-        val lookup = mockk<BoardIssueLookupPort>()
-        every { lookup.listVisibleIssuesByProject("TRNC", viewerId) } returns
-            BoardIssuePage(issues = emptyList(), truncated = true)
+        val lookup =
+            object : BoardIssueLookupPort {
+                override fun listVisibleIssuesByProject(
+                    projectKey: String,
+                    viewerUserId: UUID,
+                    filter: BoardCardFilter,
+                ): BoardIssuePage = BoardIssuePage(issues = emptyList(), truncated = true)
+            }
 
         val result = serviceWith(lookup = lookup).getBoard(boardId = board.id, viewerUserId = viewerId)
 
@@ -191,13 +203,81 @@ class BoardApplicationServiceTest {
                 BoardIssueView("UNPL-1", "미매핑 이슈", "ghost-state", null, 1, 1L),
                 BoardIssueView("UNPL-2", "정상 이슈", "open", null, 2, 1L),
             )
-        val lookup = mockk<BoardIssueLookupPort>()
-        every { lookup.listVisibleIssuesByProject("UNPL", viewerId) } returns
-            BoardIssuePage(issues = issues, truncated = false)
+        val lookup =
+            object : BoardIssueLookupPort {
+                override fun listVisibleIssuesByProject(
+                    projectKey: String,
+                    viewerUserId: UUID,
+                    filter: BoardCardFilter,
+                ): BoardIssuePage = BoardIssuePage(issues = issues, truncated = false)
+            }
 
         val result = serviceWith(lookup = lookup).getBoard(boardId = board.id, viewerUserId = viewerId)
 
         assertThat(result.unplacedCount).isEqualTo(1)
+    }
+
+    // ── (c-filter) CONCERN-1: filter 캡처 — 3-인자 override 필수 ──────────────
+
+    @Test
+    fun `getBoard filter 인자가 실제로 BoardIssueLookupPort 3-인자 메서드로 전달된다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("FILT"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("FILT", "filter 캡처 테스트 보드")
+
+        val viewerId = UUID.randomUUID()
+        val uuid1 = UUID.randomUUID()
+        val expectedFilter =
+            BoardCardFilter(
+                assigneeIds = listOf(uuid1),
+                includeUnassigned = true,
+                labels = listOf("bug"),
+                componentIds = emptyList(),
+            )
+        var capturedFilter: BoardCardFilter? = null
+
+        val lookup =
+            object : BoardIssueLookupPort {
+                override fun listVisibleIssuesByProject(
+                    projectKey: String,
+                    viewerUserId: UUID,
+                    filter: BoardCardFilter,
+                ): BoardIssuePage {
+                    capturedFilter = filter
+                    return BoardIssuePage(issues = emptyList(), truncated = false)
+                }
+            }
+
+        serviceWith(lookup = lookup).getBoard(boardId = board.id, viewerUserId = viewerId, filter = expectedFilter)
+
+        assertThat(capturedFilter).isEqualTo(expectedFilter)
+    }
+
+    @Test
+    fun `getBoard 필터 없이 호출하면 BoardCardFilter_EMPTY 가 전달된다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("NOFLT"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("NOFLT", "무필터 보드")
+
+        val viewerId = UUID.randomUUID()
+        var capturedFilter: BoardCardFilter? = null
+
+        val lookup =
+            object : BoardIssueLookupPort {
+                override fun listVisibleIssuesByProject(
+                    projectKey: String,
+                    viewerUserId: UUID,
+                    filter: BoardCardFilter,
+                ): BoardIssuePage {
+                    capturedFilter = filter
+                    return BoardIssuePage(issues = emptyList(), truncated = false)
+                }
+            }
+
+        // 2-인자 기존 API 호출 → default filter = EMPTY
+        serviceWith(lookup = lookup).getBoard(boardId = board.id, viewerUserId = viewerId)
+
+        assertThat(capturedFilter).isEqualTo(BoardCardFilter.EMPTY)
     }
 
     // ── (d) 카드 이동 = IssueTransitionPort 위임 ─────────────────────────────────
