@@ -116,11 +116,7 @@ describe('BoardCard — S2 담당자 아바타', () => {
 describe('BoardCard — S3 드래그 affordance', () => {
   it('S3a: aria-roledescription="draggable card" 속성이 있다', () => {
     renderCard()
-    expect(
-      screen.getByRole('article', { name: /ATLAS-42/ }) ??
-        document.querySelector('[aria-roledescription="draggable card"]'),
-    ).toBeTruthy()
-    // aria-roledescription 가진 요소가 DOM에 있어야 함
+    // @dnd-kit이 role="button" + aria-roledescription="draggable card"를 자동 부여
     expect(
       document.querySelector('[aria-roledescription="draggable card"]'),
     ).toBeInTheDocument()
