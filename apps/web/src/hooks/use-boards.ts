@@ -1,7 +1,7 @@
 // 칸반 보드 조회·생성 TanStack Query 훅 (FR-BD-01)
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchBoards, fetchBoard, createBoard } from '@/api/boards'
-import type { BoardSummary, BoardDetail, BoardCreated } from '@/api/boards'
+import type { BoardCreated } from '@/api/boards'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // queryKey 팩토리 — 매직 문자열 방지
@@ -27,7 +27,7 @@ export const boardKeys = {
  *
  * @param projectKey 프로젝트 식별 키. 빈 문자열이면 쿼리가 비활성화된다.
  */
-export function useBoards(projectKey: string): ReturnType<typeof useQuery<BoardSummary[]>> {
+export function useBoards(projectKey: string) {
   return useQuery({
     queryKey: boardKeys.list(projectKey),
     queryFn: () => fetchBoards(projectKey),
@@ -48,7 +48,7 @@ export function useBoards(projectKey: string): ReturnType<typeof useQuery<BoardS
  *
  * @param boardId 보드 UUID. undefined이면 쿼리가 비활성화된다.
  */
-export function useBoard(boardId: string | undefined): ReturnType<typeof useQuery<BoardDetail>> {
+export function useBoard(boardId: string | undefined) {
   return useQuery({
     queryKey: boardKeys.detail(boardId),
     queryFn: () => {
@@ -81,7 +81,7 @@ export interface CreateBoardInput {
  *
  * @param projectKey 보드를 추가할 프로젝트 키
  */
-export function useCreateBoard(projectKey: string): ReturnType<typeof useMutation<BoardCreated, unknown, CreateBoardInput>> {
+export function useCreateBoard(projectKey: string) {
   const queryClient = useQueryClient()
 
   return useMutation<BoardCreated, unknown, CreateBoardInput>({
