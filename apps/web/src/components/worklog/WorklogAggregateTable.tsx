@@ -18,6 +18,10 @@ interface WorklogBucketRowProps {
  *
  * - label이 빈 문자열이면 unknownDisplayName placeholder를 표시한다.
  * - timeSpentSeconds는 formatSeconds로 변환해 표시한다.
+ *
+ * @example
+ * // label 빈 문자열 → "(알 수 없음)" 표시
+ * // timeSpentSeconds=50400 → "14h 0m"
  */
 function WorklogBucketRow({ bucket }: WorklogBucketRowProps): JSX.Element {
   const displayLabel =
