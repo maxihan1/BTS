@@ -729,59 +729,67 @@ class IssueRepository(
      *
      * 필드 내 값들은 OR, 필드 간은 AND 로 결합한다([BoardCardFilter] 규칙 동일).
      *
-     * - assignee: `assigneeIds` 비어있지 않으면 IN 술어, `includeUnassigned` 이면 IS NULL 술어를 OR 결합.
-     * - label: `labels` 비어있지 않으면 PG 배열 overlap 연산자 `&&` 단일 술어 (GIN 인덱스 활용).
-     * - component: `componentIds` 비어있지 않으면 EXISTS 서브쿼리 — JOIN 절대 금지
-     *   (cartesian-product-jooq-leftjoin-count 교훈: LIMIT+1 truncated/카드 중복 오염).
-     *
      * @param filter 보드 카드 필터 조건.
      * @return 필터가 비어 있으면 `null`, 아니면 모든 술어를 AND 로 묶은 [Condition].
      */
     private fun buildFilterCondition(filter: BoardCardFilter): Condition? {
         if (filter.isEmpty()) return null
+        return listOfNotNull(
+            buildAssigneeCondition(filter),
+            buildLabelCondition(filter),
+            buildComponentCondition(filter),
+        ).reduceOrNull { acc, cond -> acc.and(cond) }
+    }
 
-        var combined: Condition? = null
-
-        // ── 담당자 필터 (OR 묶음) ──────────────────────────────────────────────
-        if (filter.assigneeIds.isNotEmpty() || filter.includeUnassigned) {
-            var assigneeCond: Condition? = null
-            if (filter.assigneeIds.isNotEmpty()) {
-                assigneeCond = ISSUES.ASSIGNEE_ID.`in`(filter.assigneeIds)
-            }
-            if (filter.includeUnassigned) {
-                val isNullCond: Condition = ISSUES.ASSIGNEE_ID.isNull
-                assigneeCond = assigneeCond?.or(isNullCond) ?: isNullCond
-            }
-            combined = assigneeCond
+    /**
+     * 담당자 필터 술어를 생성한다.
+     *
+     * `assigneeIds` IN 술어와 `includeUnassigned` IS NULL 술어를 OR 로 결합한다.
+     * 두 조건 모두 비어 있으면 `null` 을 반환한다.
+     */
+    private fun buildAssigneeCondition(filter: BoardCardFilter): Condition? {
+        if (filter.assigneeIds.isEmpty() && !filter.includeUnassigned) return null
+        var cond: Condition? = null
+        if (filter.assigneeIds.isNotEmpty()) {
+            cond = ISSUES.ASSIGNEE_ID.`in`(filter.assigneeIds)
         }
-
-        // ── 라벨 필터 (PG 배열 overlap `&&`) ──────────────────────────────────
-        // `&&` 는 jOOQ 가 지원하지 않는 PG 전용 배열 연산자이므로 DSL.condition 으로 표현.
-        // 값은 ISSUES.LABELS 와 동일한 DataType(text[]) 으로 바인딩 — text[] && varchar[] 타입 미스매치 방지.
-        // DATA.md §5: `?` placeholder 바인딩이 PG 연산자 미지원 정식 예외에 해당한다.
-        if (filter.labels.isNotEmpty()) {
-            val labelArr: Array<String?> = filter.labels.map { it as String? }.toTypedArray()
-            val labelVal = DSL.`val`(labelArr, ISSUES.LABELS.dataType)
-            val labelCond: Condition = DSL.condition("{0} && {1}", ISSUES.LABELS, labelVal)
-            combined = combined?.and(labelCond) ?: labelCond
+        if (filter.includeUnassigned) {
+            cond = cond?.or(ISSUES.ASSIGNEE_ID.isNull) ?: ISSUES.ASSIGNEE_ID.isNull
         }
+        return cond
+    }
 
-        // ── 컴포넌트 필터 (EXISTS 서브쿼리) ───────────────────────────────────
-        // JOIN 금지: issue × component 카테시안이 LIMIT+1 truncated 감지와 카드 중복을 오염시킨다.
-        if (filter.componentIds.isNotEmpty()) {
-            val existsCond: Condition =
-                DSL.exists(
-                    DSL.selectOne()
-                        .from(ISSUE_COMPONENTS)
-                        .where(
-                            ISSUE_COMPONENTS.ISSUE_ID.eq(ISSUES.ID)
-                                .and(ISSUE_COMPONENTS.COMPONENT_ID.`in`(filter.componentIds)),
-                        ),
-                )
-            combined = combined?.and(existsCond) ?: existsCond
-        }
+    /**
+     * 라벨 필터 술어를 생성한다.
+     *
+     * PG 배열 overlap 연산자 `&&` 단일 술어 — GIN 인덱스(ix_issues_labels_gin) 활용.
+     * `&&` 는 jOOQ 미지원 PG 전용 연산자이므로 DSL.condition + 바인드 파라미터로 표현.
+     * 값은 ISSUES.LABELS 와 동일한 DataType(text[]) 으로 바인딩 — text[] && varchar[] 타입 미스매치 방지.
+     */
+    private fun buildLabelCondition(filter: BoardCardFilter): Condition? {
+        if (filter.labels.isEmpty()) return null
+        val labelArr: Array<String?> = filter.labels.map { it as String? }.toTypedArray()
+        val labelVal = DSL.`val`(labelArr, ISSUES.LABELS.dataType)
+        return DSL.condition("{0} && {1}", ISSUES.LABELS, labelVal)
+    }
 
-        return combined
+    /**
+     * 컴포넌트 필터 술어를 생성한다.
+     *
+     * EXISTS 서브쿼리 — JOIN 절대 금지.
+     * JOIN 을 사용하면 issue × component 카테시안이 LIMIT+1 truncated 감지와 카드 중복을 오염시킨다
+     * (cartesian-product-jooq-leftjoin-count 교훈).
+     */
+    private fun buildComponentCondition(filter: BoardCardFilter): Condition? {
+        if (filter.componentIds.isEmpty()) return null
+        return DSL.exists(
+            DSL.selectOne()
+                .from(ISSUE_COMPONENTS)
+                .where(
+                    ISSUE_COMPONENTS.ISSUE_ID.eq(ISSUES.ID)
+                        .and(ISSUE_COMPONENTS.COMPONENT_ID.`in`(filter.componentIds)),
+                ),
+        )
     }
 
     /**
