@@ -214,3 +214,10 @@ export const DEFAULT_BOARD: BoardDetail = {
   truncated: false,
   unplacedCount: 0,
 }
+
+// 모듈 로드 시 기본 보드를 자동 시드한다 — notification-policy-handlers buildSeedStore() 패턴 동일.
+// dev(pnpm dev) · E2E 진입 시 boardStore가 비어 있어 생성 폼이 노출되는 결함 방지.
+// Vitest 단위 테스트 환경(MODE='test')에서는 건너뜀 — 각 테스트가 beforeEach/reset으로 직접 제어.
+if (import.meta.env.MODE !== 'test') {
+  seedBoard(DEFAULT_BOARD)
+}
