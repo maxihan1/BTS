@@ -265,4 +265,37 @@ transform. DESIGN.md 토큰(Tailwind) 사용.
 - 잠재 함정(impl 인계): worktree node_modules 설치(T1)·CSRF per-BC 확인(move/create POST)·
   MSW stateful store E2E 시드·radix Dialog 직접 import·담당자 best-effort fallback.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-design-review (2026-06-21, 집중 디자인+엔지니어링 렌즈)
+
+> 칸반은 표준 레이아웃(시각 신규성 낮음)이라 mockup 생성 대신 인터랙션 상태 완성도에 집중.
+> DESIGN.md(shadcn/Radix + Tailwind) 토큰 기준. **BLOCKER: 없음.** 디자인 완성도 갭은 impl 가이드로 인계.
+
+**디자인 완성도 갭 (impl 반영 — "나중에 폴리시" 금지, 작성 시점 완제품).**
+- **D-1 빈/로딩/에러 상태 구체화 (FR-9 보강)**. "빈 보드"는 단순 안내가 아니라 **온기 + 주 액션**:
+  보드 0개 → 일러스트/문구 + CreateBoardForm 강조(주 CTA). 빈 컬럼 → 흐린 "카드 없음" + 드롭 영역 유지.
+  로딩 → 컬럼/카드 스켈레톤(레이아웃 시프트 0). → Task 5/7 RED에 빈/로딩 케이스 단언 추가.
+- **D-2 드래그 affordance + 드롭 피드백 (Task 5/6 보강)**. (1) 카드 cursor grab→grabbing. (2) 드래그 중
+  대상 컬럼 **하이라이트(ring/bg)** — 어디 떨어질지 보여야 함(Krug "생각하게 하지 마라"). (3) `DragOverlay`로
+  드래그 카드 미리보기. (4) 키보드 드래그 시 라이브 안내(aria-live). → Task 6 GREEN에 명시.
+- **D-3 다중 컬럼 반응형 (신규, 미명시 갭)**. 컬럼 5+개일 때 **가로 스크롤 컨테이너**(min-w 컬럼, wrap 금지) +
+  **sticky 컬럼 헤더**. 모바일 터치 스크롤 vs 드래그 충돌 주의(@dnd-kit TouchSensor delay). → Task 6에 추가.
+- **D-4 카드 정보 위계 (Task 5 보강)**. summary=주(truncate 2줄), issueKey=보조(muted 소형), 담당자=아바타
+  우하단. 제네릭 카드 그리드 슬롭 회피 — DESIGN.md 카드 토큰 사용. 카드 클릭=상세 이동, 드래그=이동(제스처 구분).
+- **D-5 충돌 회복 UX (Task 4/6 보강)**. 409 시 카드 스냅백 + 토스트(왜 되돌아갔는지 — "다른 사용자가 먼저
+  변경했습니다") + refetch. 스냅백이 갑작스럽지 않게 transition. resolution 모달은 BulkTransitionDialog 일관.
+
+**엔지니어링 렌즈 (확인된 안전성).**
+- ✅ 낙관적 이동: `['board',boardId]` 캐시에서 source→target 컬럼 카드 이동(immutable 순수 helper, Task 4).
+  단일 카드 패치(전체 교체 아님) → 플리커 회피. expectedVersion=직전 성공 응답 version 반영.
+- ✅ 드래그 id 충돌 없음: 카드 draggable=issueKey(고유), 컬럼 droppable=columnId(UUID).
+- ✅ DONE resolution 사전 감지(category) — 백엔드 errorCode 일반화(409/422) 우회. BulkTransitionDialog 정석.
+- ✅ CSRF per-BC 확인(Task 7/8 move/create POST) · worktree node_modules(Task 1) · MSW stateful E2E(Task 8) ·
+  기존 E2E 회귀(Task 9) 모두 plan에 명시.
+- ⚠️ **CONCERN-1 (impl)**. @dnd-kit + React 19 StrictMode 이중 마운트 — 센서/DndContext가 effect 의존이면
+  cleanup 안전 확인(메모리 fr-nt-02 StrictMode useRef 가드 동형). 저위험.
+- ⚠️ **CONCERN-2 (verify)**. 낙관적 이동 중 `useBoard` refetch가 캐시 덮어쓰면 카드 튐 → Task 4 `cancelQueries`
+  (EC8) 필수. RED에 "드래그 중 refetch 억제" 단언.
+
+**판정**: 진행 가(BLOCKER 0). 디자인 갭 D-1~D-5는 impl 가이드 인계, CONCERN-1/2는 verify.
