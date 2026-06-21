@@ -373,7 +373,7 @@ describe('fetchBoard — filter query string 조립 (FR-BD-02)', () => {
     }
     await fetchBoard(BOARD_ID, filter)
     expect(capturedUrl).not.toBeNull()
-    const url = new URL(capturedUrl as string)
+    const url = new URL(capturedUrl ?? '')
     const assigneeValues = url.searchParams.getAll('assignee')
     expect(assigneeValues).toContain(ASSIGNEE_ID_1)
     expect(assigneeValues).toContain('unassigned')
@@ -395,7 +395,7 @@ describe('fetchBoard — filter query string 조립 (FR-BD-02)', () => {
     }
     await fetchBoard(BOARD_ID, filter)
     expect(capturedUrl).not.toBeNull()
-    const url = new URL(capturedUrl as string)
+    const url = new URL(capturedUrl ?? '')
     expect(url.searchParams.getAll('label')).toEqual(['bug', 'urgent'])
     expect(url.searchParams.has('assignee')).toBe(false)
   })
@@ -416,7 +416,7 @@ describe('fetchBoard — filter query string 조립 (FR-BD-02)', () => {
     }
     await fetchBoard(BOARD_ID, filter)
     expect(capturedUrl).not.toBeNull()
-    const url = new URL(capturedUrl as string)
+    const url = new URL(capturedUrl ?? '')
     expect(url.searchParams.getAll('component')).toContain(COMPONENT_ID_1)
   })
 
@@ -436,7 +436,7 @@ describe('fetchBoard — filter query string 조립 (FR-BD-02)', () => {
     }
     await fetchBoard(BOARD_ID, emptyFilter)
     expect(capturedUrl).not.toBeNull()
-    const url = new URL(capturedUrl as string)
+    const url = new URL(capturedUrl ?? '')
     expect(url.search).toBe('')
   })
 
@@ -450,7 +450,7 @@ describe('fetchBoard — filter query string 조립 (FR-BD-02)', () => {
     )
     await fetchBoard(BOARD_ID)
     expect(capturedUrl).not.toBeNull()
-    const url = new URL(capturedUrl as string)
+    const url = new URL(capturedUrl ?? '')
     expect(url.search).toBe('')
   })
 })
