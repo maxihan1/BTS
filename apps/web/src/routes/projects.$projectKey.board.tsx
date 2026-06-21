@@ -16,7 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-// ─────────────────────────────────────────────────────────��───────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 스켈레톤 헬퍼 — shadcn Skeleton 미설치이므로 인라인 구현
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -45,10 +46,10 @@ function extractErrorCode(body: unknown): string | undefined {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 사용자 Map 헬퍼 — userId → displayName|username
+// 사용자 배열 스키마 — userSummarySchema 재사용
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** userId → displayName|username 맵을 구성하는 Zod 배열 스키마 (검증은 useQuery 레벨에서) */
+/** userId → displayName|username 맵을 구성하는 최소 Zod 배열 스키마 */
 const usersArraySchema = z.array(
   z.object({
     id: z.string(),
