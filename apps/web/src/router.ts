@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 27개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + settings 5 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 28개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + 프로젝트 보드 1 + settings 5 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -32,6 +32,7 @@ import { AccountLinksSettingsRouteAdapter } from './routes/settings.account-link
 import { MfaSettingsRouteAdapter } from './routes/settings.mfa'
 import { NotificationSettingsRouteAdapter } from './routes/settings.notifications'
 import { ProjectWorklogReportRouteAdapter } from './routes/projects.$projectKey.reports.worklog'
+import { BoardRouteAdapter } from './routes/projects.$projectKey.board'
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -121,6 +122,18 @@ const adminWorkflowSchemesDetailRoute = createRoute({
   component: WorkflowSchemeDetailRouteAdapter,
   staticData: { requireAuth: true },
   beforeLoad: requireAuthAndPasswordChanged,
+})
+
+/** 프로젝트 칸반 보드 라우트 — /projects/$projectKey/board, requireAuth. validateSearch로 board 쿼리 파라미터 타입 선언 */
+const projectBoardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/projects/$projectKey/board',
+  component: BoardRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+  validateSearch: (search: Record<string, unknown>): { board?: string } => ({
+    board: typeof search['board'] === 'string' ? search['board'] : undefined,
+  }),
 })
 
 /** 프로젝트 워크플로우 스킴 할당 라우트 — /projects/$projectKey/settings/workflow-scheme, requireAuth */
@@ -290,6 +303,7 @@ const settingsAccountLinksRoute = createRoute({
  * 27개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
+ *   · /projects/:projectKey/board
  *   · /projects/:projectKey/settings/workflow-scheme · /projects/:projectKey/settings/members
  *   · /projects/:projectKey/settings/components · /projects/:projectKey/settings/versions
  *   · /projects/:projectKey/settings/custom-fields · /projects/:projectKey/settings/issue-templates
@@ -318,6 +332,8 @@ export const routeTree = rootRoute.addChildren([
   adminNotificationPoliciesRoute,
   // identity-access BC — 사용자 생성 (/admin/users/new)
   adminUsersNewRoute,
+  // agile-planning BC — 프로젝트 칸반 보드 (FR-BD-01)
+  projectBoardRoute,
   // project-workflow BC — 프로젝트별 스킴 할당
   projectWorkflowSchemeSettingsRoute,
   // project-membership BC — 프로젝트 멤버 관리

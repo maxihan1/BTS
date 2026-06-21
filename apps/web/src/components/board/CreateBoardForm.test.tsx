@@ -105,9 +105,10 @@ describe('CreateBoardForm', () => {
   })
 
   /**
-   * T-BD7-4. mutate 성공 콜백에서 navigate가 ?board=<id>로 호출된다.
+   * T-BD7-4. mutate 성공 콜백에서 navigate가 호출된다.
+   * navigate는 search 업데이터 함수를 포함한 객체로 호출된다.
    */
-  it('T-BD7-4: mutate 성공 시 ?board=<newId>로 navigate한다', async () => {
+  it('T-BD7-4: mutate 성공 시 navigate가 search 업데이터를 포함해 호출된다', async () => {
     const user = userEvent.setup()
     const newBoardId = 'a1b2c3d4-e5f6-4890-abcd-ef1234567891'
 
@@ -122,9 +123,17 @@ describe('CreateBoardForm', () => {
     await user.type(screen.getByRole('textbox'), '새 보드')
     await user.click(screen.getByRole('button', { name: /보드 만들기/i }))
 
-    expect(mockNavigate).toHaveBeenCalledWith(
-      expect.objectContaining({ search: expect.objectContaining({ board: newBoardId }) }),
-    )
+    // navigate가 호출됐는지 확인
+    expect(mockNavigate).toHaveBeenCalled()
+
+    // navigate에 전달된 search 업데이터 함수가 board 파라미터를 설정하는지 확인
+    const callArg = mockNavigate.mock.calls[0]?.[0] as { search?: (prev: Record<string, unknown>) => Record<string, unknown> }
+    if (callArg?.search !== undefined && typeof callArg.search === 'function') {
+      const result = callArg.search({})
+      expect(result).toMatchObject({ board: newBoardId })
+    } else {
+      expect(callArg).toMatchObject({ search: expect.objectContaining({ board: newBoardId }) })
+    }
   })
 
   /**
