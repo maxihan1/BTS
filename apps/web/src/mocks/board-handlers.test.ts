@@ -1,4 +1,4 @@
-// 칸반 보드 MSW 핸들러 stateful 동작 검증 테스트 (FR-BD-01 D6)
+// 칸반 보드 MSW 핸들러 stateful 동작 검증 테스트 (FR-BD-01 D6, FR-BD-02 D6)
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { boardHandlers } from './board-handlers'
@@ -7,6 +7,7 @@ import {
   seedBoard,
   LS_KEY_BOARD_CONFLICT,
   DEFAULT_BOARD,
+  FILTER_BOARD,
 } from './board-fixtures'
 
 const server = setupServer(...boardHandlers)
@@ -268,6 +269,133 @@ describe('POST /api/v1/boards/:id/cards/:issueKey/move', () => {
     expect(res.status).toBe(409)
     const body = (await res.json()) as ProblemDetail
     expect(body.errorCode).toBe('AGILE_CONFLICT')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/boards/:id — query param 필터 (FR-BD-02)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * FILTER_BOARD 픽스처 카드 구성 (내부 store에만 labels/componentIds 있음).
+ *
+ * FILTER-1: assigneeId=a1, labels=[bug],       componentIds=[c1]
+ * FILTER-2: assigneeId=a2, labels=[feature],   componentIds=[c1, c2]
+ * FILTER-3: assigneeId=a1, labels=[bug, docs], componentIds=[c2]
+ * FILTER-4: assigneeId=null(미배정), labels=[], componentIds=[]
+ */
+
+async function getBoardWithFilter(boardId: string, params: string): Promise<Response> {
+  return fetch(`/api/v1/boards/${boardId}?${params}`)
+}
+
+/** 응답에서 전체 컬럼에 걸친 카드 issueKey 목록을 추출한다 */
+function collectIssueKeys(board: BoardDetail): string[] {
+  return board.columns.flatMap((col) => col.cards.map((c) => c.issueKey))
+}
+
+/** 응답 카드에 labels/componentIds 필드가 없음을 검증한다 (DTO 오염 방지) */
+function hasNoFilterMeta(board: BoardDetail): boolean {
+  return board.columns.every((col) =>
+    col.cards.every(
+      (card) =>
+        !Object.prototype.hasOwnProperty.call(card, 'labels') &&
+        !Object.prototype.hasOwnProperty.call(card, 'componentIds'),
+    ),
+  )
+}
+
+describe('GET /api/v1/boards/:id — query param 필터 (FR-BD-02)', () => {
+  it('query 없음 → 전체 카드 반환 (필터 없음)', async () => {
+    seedBoard(FILTER_BOARD)
+    const res = await getBoardWithFilter(FILTER_BOARD.boardId, '')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<BoardDetail>
+    const keys = collectIssueKeys(body.data)
+    expect(keys).toContain('FILTER-1')
+    expect(keys).toContain('FILTER-2')
+    expect(keys).toContain('FILTER-3')
+    expect(keys).toContain('FILTER-4')
+  })
+
+  it('?assignee=a1 → a1 담당 카드만 (FILTER-1, FILTER-3)', async () => {
+    seedBoard(FILTER_BOARD)
+    const res = await getBoardWithFilter(FILTER_BOARD.boardId, 'assignee=a1')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<BoardDetail>
+    const keys = collectIssueKeys(body.data)
+    expect(keys).toContain('FILTER-1')
+    expect(keys).toContain('FILTER-3')
+    expect(keys).not.toContain('FILTER-2')
+    expect(keys).not.toContain('FILTER-4')
+  })
+
+  it('?assignee=a1&assignee=a2 → a1 OR a2 (FILTER-1, FILTER-2, FILTER-3)', async () => {
+    seedBoard(FILTER_BOARD)
+    const res = await getBoardWithFilter(FILTER_BOARD.boardId, 'assignee=a1&assignee=a2')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<BoardDetail>
+    const keys = collectIssueKeys(body.data)
+    expect(keys).toContain('FILTER-1')
+    expect(keys).toContain('FILTER-2')
+    expect(keys).toContain('FILTER-3')
+    expect(keys).not.toContain('FILTER-4')
+  })
+
+  it('?assignee=unassigned → assigneeId null 카드만 (FILTER-4)', async () => {
+    seedBoard(FILTER_BOARD)
+    const res = await getBoardWithFilter(FILTER_BOARD.boardId, 'assignee=unassigned')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<BoardDetail>
+    const keys = collectIssueKeys(body.data)
+    expect(keys).toContain('FILTER-4')
+    expect(keys).not.toContain('FILTER-1')
+    expect(keys).not.toContain('FILTER-2')
+    expect(keys).not.toContain('FILTER-3')
+  })
+
+  it('?label=bug → bug 라벨 카드만 (FILTER-1, FILTER-3)', async () => {
+    seedBoard(FILTER_BOARD)
+    const res = await getBoardWithFilter(FILTER_BOARD.boardId, 'label=bug')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<BoardDetail>
+    const keys = collectIssueKeys(body.data)
+    expect(keys).toContain('FILTER-1')
+    expect(keys).toContain('FILTER-3')
+    expect(keys).not.toContain('FILTER-2')
+    expect(keys).not.toContain('FILTER-4')
+  })
+
+  it('?component=c1 → c1 컴포넌트 카드만 (FILTER-1, FILTER-2)', async () => {
+    seedBoard(FILTER_BOARD)
+    const res = await getBoardWithFilter(FILTER_BOARD.boardId, 'component=c1')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<BoardDetail>
+    const keys = collectIssueKeys(body.data)
+    expect(keys).toContain('FILTER-1')
+    expect(keys).toContain('FILTER-2')
+    expect(keys).not.toContain('FILTER-3')
+    expect(keys).not.toContain('FILTER-4')
+  })
+
+  it('?assignee=a1&label=bug → a1 담당 이면서 bug 라벨 (FILTER-1, FILTER-3)', async () => {
+    seedBoard(FILTER_BOARD)
+    const res = await getBoardWithFilter(FILTER_BOARD.boardId, 'assignee=a1&label=bug')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<BoardDetail>
+    const keys = collectIssueKeys(body.data)
+    expect(keys).toContain('FILTER-1')
+    expect(keys).toContain('FILTER-3')
+    expect(keys).not.toContain('FILTER-2')
+    expect(keys).not.toContain('FILTER-4')
+  })
+
+  it('응답 카드에 labels/componentIds 없음 (DTO 오염 방지)', async () => {
+    seedBoard(FILTER_BOARD)
+    const res = await getBoardWithFilter(FILTER_BOARD.boardId, '')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<BoardDetail>
+    expect(hasNoFilterMeta(body.data)).toBe(true)
   })
 })
 
