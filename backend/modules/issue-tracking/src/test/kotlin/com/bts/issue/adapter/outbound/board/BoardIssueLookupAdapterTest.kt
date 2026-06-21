@@ -7,6 +7,8 @@ import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.repository.IssueTestcontainersBase
+import com.bts.shared.board.BoardCardFilter
+import com.bts.shared.board.BoardIssuePage
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssueSecurityAccess
 import com.bts.shared.permission.IssueSecurityDirectory
@@ -340,5 +342,304 @@ class BoardIssueLookupAdapterTest : IssueTestcontainersBase() {
         // 1건 삽입 → truncated=false (LIMIT 미초과)
         assertThat(result.truncated).isFalse()
         assertThat(result.issues).isNotEmpty()
+    }
+
+    // ── 필터 헬퍼 ─────────────────────────────────────────────────────────────
+
+    /**
+     * components 테이블에 테스트용 컴포넌트 1건을 직접 삽입하고 UUID 를 반환한다.
+     *
+     * @param name 컴포넌트 이름. 테스트 간 충돌 방지를 위해 호출 측에서 고유값을 전달한다.
+     * @return 삽입된 컴포넌트 UUID.
+     */
+    private fun insertComponent(name: String): UUID {
+        val id = UUID.randomUUID()
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "INSERT INTO components (id, project_id, name) VALUES (?, ?, ?)",
+            ).use { stmt ->
+                stmt.setObject(1, id)
+                stmt.setObject(2, testProjectId)
+                stmt.setString(3, name)
+                stmt.executeUpdate()
+            }
+        }
+        return id
+    }
+
+    /**
+     * issue_components 조인 테이블에 이슈↔컴포넌트 연결을 직접 삽입한다.
+     *
+     * ON DELETE CASCADE 가 적용되어 있어 cleanIssues() 의 DELETE FROM issues 시 자동 정리된다.
+     *
+     * @param issueId 연결할 이슈 UUID.
+     * @param componentId 연결할 컴포넌트 UUID.
+     */
+    private fun linkComponent(
+        issueId: UUID,
+        componentId: UUID,
+    ) {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "INSERT INTO issue_components (issue_id, component_id) VALUES (?, ?)",
+            ).use { stmt ->
+                stmt.setObject(1, issueId)
+                stmt.setObject(2, componentId)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    /**
+     * issues.labels 를 직접 UPDATE 해 라벨 배열을 설정한다.
+     *
+     * Issue.create 경로에서는 labels 를 지정할 수 없어 insert 후 raw SQL 로 덮어쓴다.
+     *
+     * @param issueId 이슈 UUID.
+     * @param labels 설정할 라벨 이름 배열.
+     */
+    private fun setLabels(
+        issueId: UUID,
+        labels: List<String>,
+    ) {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "UPDATE issues SET labels = ? WHERE id = ?",
+            ).use { stmt ->
+                val arr = conn.createArrayOf("text", labels.toTypedArray())
+                stmt.setArray(1, arr)
+                stmt.setObject(2, issueId)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    /** 3-인자 filter 오버로드를 호출하는 adapter. */
+    private fun adapterWithFilter(
+        access: IssueSecurityAccess,
+        filter: BoardCardFilter,
+    ): BoardIssuePage = adapterWith(access).listVisibleIssuesByProject("TPRJ", UUID.randomUUID(), filter)
+
+    // ── F1. assignee 단일 필터 ────────────────────────────────────────────────
+
+    @Test
+    @Order(10)
+    fun `F1 - assigneeIds 단일 필터는 해당 담당자의 이슈만 반환한다`() {
+        val assignee = UUID.randomUUID()
+        val other = UUID.randomUUID()
+        insertIssue(seq = 1, assigneeId = assignee, securityLevelId = null)
+        insertIssue(seq = 2, assigneeId = other, securityLevelId = null)
+        insertIssue(seq = 3, securityLevelId = null) // 미배정
+
+        val filter = BoardCardFilter(assigneeIds = listOf(assignee))
+        val result = adapterWithFilter(unrestricted(), filter)
+
+        assertThat(result.issues.map { it.key }).containsExactly("TPRJ-1")
+    }
+
+    // ── F2. assignee 다중(OR) 필터 ───────────────────────────────────────────
+
+    @Test
+    @Order(11)
+    fun `F2 - assigneeIds 다중 필터는 해당 담당자들 중 하나인 이슈를 OR 로 반환한다`() {
+        val a = UUID.randomUUID()
+        val b = UUID.randomUUID()
+        val c = UUID.randomUUID()
+        insertIssue(seq = 1, assigneeId = a, securityLevelId = null)
+        insertIssue(seq = 2, assigneeId = b, securityLevelId = null)
+        insertIssue(seq = 3, assigneeId = c, securityLevelId = null)
+
+        val filter = BoardCardFilter(assigneeIds = listOf(a, b))
+        val result = adapterWithFilter(unrestricted(), filter)
+
+        assertThat(result.issues.map { it.key }).containsExactlyInAnyOrder("TPRJ-1", "TPRJ-2")
+    }
+
+    // ── F3. includeUnassigned 단독 ───────────────────────────────────────────
+
+    @Test
+    @Order(12)
+    fun `F3 - includeUnassigned=true 이면 담당자 없는 이슈만 반환한다`() {
+        val assignee = UUID.randomUUID()
+        insertIssue(seq = 1, assigneeId = assignee, securityLevelId = null)
+        insertIssue(seq = 2, securityLevelId = null) // 미배정
+        insertIssue(seq = 3, securityLevelId = null) // 미배정
+
+        val filter = BoardCardFilter(includeUnassigned = true)
+        val result = adapterWithFilter(unrestricted(), filter)
+
+        assertThat(result.issues.map { it.key }).containsExactlyInAnyOrder("TPRJ-2", "TPRJ-3")
+    }
+
+    // ── F4. assigneeIds + includeUnassigned 혼합(OR) ─────────────────────────
+
+    @Test
+    @Order(13)
+    fun `F4 - assigneeIds 와 includeUnassigned 가 함께이면 지정 담당자 또는 미배정 이슈를 OR 로 반환한다`() {
+        val a = UUID.randomUUID()
+        val b = UUID.randomUUID()
+        insertIssue(seq = 1, assigneeId = a, securityLevelId = null)
+        insertIssue(seq = 2, assigneeId = b, securityLevelId = null)
+        insertIssue(seq = 3, securityLevelId = null) // 미배정
+
+        val filter = BoardCardFilter(assigneeIds = listOf(a), includeUnassigned = true)
+        val result = adapterWithFilter(unrestricted(), filter)
+
+        assertThat(result.issues.map { it.key }).containsExactlyInAnyOrder("TPRJ-1", "TPRJ-3")
+    }
+
+    // ── F5. label 단일 필터 ──────────────────────────────────────────────────
+
+    @Test
+    @Order(14)
+    fun `F5 - labels 단일 필터는 해당 라벨을 가진 이슈만 반환한다`() {
+        val i1 = insertIssue(seq = 1, securityLevelId = null)
+        val i2 = insertIssue(seq = 2, securityLevelId = null)
+        insertIssue(seq = 3, securityLevelId = null)
+        setLabels(i1.id.value, listOf("bug", "urgent"))
+        setLabels(i2.id.value, listOf("feature"))
+
+        val filter = BoardCardFilter(labels = listOf("bug"))
+        val result = adapterWithFilter(unrestricted(), filter)
+
+        assertThat(result.issues.map { it.key }).containsExactly("TPRJ-1")
+    }
+
+    // ── F6. label 다중(OR, overlap) ──────────────────────────────────────────
+
+    @Test
+    @Order(15)
+    fun `F6 - labels 다중 필터는 지정된 라벨 중 하나라도 포함한 이슈를 OR 로 반환한다`() {
+        val i1 = insertIssue(seq = 1, securityLevelId = null)
+        val i2 = insertIssue(seq = 2, securityLevelId = null)
+        val i3 = insertIssue(seq = 3, securityLevelId = null)
+        setLabels(i1.id.value, listOf("bug"))
+        setLabels(i2.id.value, listOf("feature"))
+        setLabels(i3.id.value, listOf("docs"))
+
+        val filter = BoardCardFilter(labels = listOf("bug", "feature"))
+        val result = adapterWithFilter(unrestricted(), filter)
+
+        assertThat(result.issues.map { it.key }).containsExactlyInAnyOrder("TPRJ-1", "TPRJ-2")
+    }
+
+    // ── F7. label 대소문자 정확 일치 ─────────────────────────────────────────
+
+    @Test
+    @Order(16)
+    fun `F7 - labels 필터는 대소문자 정확 일치로 검사한다`() {
+        val i1 = insertIssue(seq = 1, securityLevelId = null)
+        val i2 = insertIssue(seq = 2, securityLevelId = null)
+        setLabels(i1.id.value, listOf("Bug"))
+        setLabels(i2.id.value, listOf("bug"))
+
+        val filter = BoardCardFilter(labels = listOf("bug"))
+        val result = adapterWithFilter(unrestricted(), filter)
+
+        assertThat(result.issues.map { it.key }).containsExactly("TPRJ-2")
+    }
+
+    // ── F8. component 단일 필터 (EXISTS 서브쿼리) ─────────────────────────────
+
+    @Test
+    @Order(17)
+    fun `F8 - componentIds 단일 필터는 해당 컴포넌트에 속한 이슈만 반환한다`() {
+        val comp1 = insertComponent("backend")
+        val comp2 = insertComponent("frontend")
+        val i1 = insertIssue(seq = 1, securityLevelId = null)
+        val i2 = insertIssue(seq = 2, securityLevelId = null)
+        insertIssue(seq = 3, securityLevelId = null)
+        linkComponent(i1.id.value, comp1)
+        linkComponent(i2.id.value, comp2)
+
+        val filter = BoardCardFilter(componentIds = listOf(comp1))
+        val result = adapterWithFilter(unrestricted(), filter)
+
+        assertThat(result.issues.map { it.key }).containsExactly("TPRJ-1")
+    }
+
+    // ── F9. component 다중(OR) 필터 ──────────────────────────────────────────
+
+    @Test
+    @Order(18)
+    fun `F9 - componentIds 다중 필터는 지정된 컴포넌트 중 하나라도 포함한 이슈를 OR 로 반환한다`() {
+        val comp1 = insertComponent("api")
+        val comp2 = insertComponent("db")
+        val comp3 = insertComponent("ui")
+        val i1 = insertIssue(seq = 1, securityLevelId = null)
+        val i2 = insertIssue(seq = 2, securityLevelId = null)
+        val i3 = insertIssue(seq = 3, securityLevelId = null)
+        linkComponent(i1.id.value, comp1)
+        linkComponent(i2.id.value, comp2)
+        linkComponent(i3.id.value, comp3)
+
+        val filter = BoardCardFilter(componentIds = listOf(comp1, comp2))
+        val result = adapterWithFilter(unrestricted(), filter)
+
+        assertThat(result.issues.map { it.key }).containsExactlyInAnyOrder("TPRJ-1", "TPRJ-2")
+    }
+
+    // ── F10. 필드간 AND (assignee + label) ───────────────────────────────────
+
+    @Test
+    @Order(19)
+    fun `F10 - assignee 와 label 필터를 동시에 지정하면 둘 다 만족하는 이슈만 반환한다`() {
+        val assignee = UUID.randomUUID()
+        val i1 = insertIssue(seq = 1, assigneeId = assignee, securityLevelId = null)
+        val i2 = insertIssue(seq = 2, assigneeId = assignee, securityLevelId = null)
+        val i3 = insertIssue(seq = 3, securityLevelId = null)
+        setLabels(i1.id.value, listOf("bug"))
+        setLabels(i3.id.value, listOf("bug"))
+
+        // i1 만 assignee AND bug 동시 만족
+        val filter = BoardCardFilter(assigneeIds = listOf(assignee), labels = listOf("bug"))
+        val result = adapterWithFilter(unrestricted(), filter)
+
+        assertThat(result.issues.map { it.key }).containsExactly("TPRJ-1")
+        // i2 는 assignee O, bug X → 제외
+        // i3 는 assignee X, bug O → 제외
+    }
+
+    // ── F11. EC2 회귀: EMPTY 필터 = 무필터 ──────────────────────────────────
+
+    @Test
+    @Order(20)
+    fun `F11 - BoardCardFilter EMPTY 이면 무필터와 동일한 결과를 반환한다`() {
+        val assignee = UUID.randomUUID()
+        insertIssue(seq = 1, assigneeId = assignee, securityLevelId = null)
+        insertIssue(seq = 2, securityLevelId = null)
+
+        val resultNoFilter = adapterWith(unrestricted()).listVisibleIssuesByProject("TPRJ", UUID.randomUUID())
+        val resultEmptyFilter = adapterWithFilter(unrestricted(), BoardCardFilter.EMPTY)
+
+        assertThat(resultEmptyFilter.issues.map { it.key })
+            .containsExactlyInAnyOrderElementsOf(resultNoFilter.issues.map { it.key })
+        assertThat(resultEmptyFilter.truncated).isEqualTo(resultNoFilter.truncated)
+    }
+
+    // ── F12. EC8 visibility 우선: 보안등급 이슈는 필터로 지정해도 제외 ────────
+
+    @Test
+    @Order(21)
+    fun `F12 - viewer 가 볼 수 없는 보안 등급 이슈는 assignee 필터로 지정해도 제외된다`() {
+        val viewer = UUID.randomUUID()
+        val secretLevel = UUID.randomUUID()
+        // viewer 가 assignee 이지만 보안 등급을 볼 수 없는 이슈
+        insertIssue(seq = 1, assigneeId = viewer, securityLevelId = secretLevel)
+        // 접근 가능한 일반 이슈
+        insertIssue(seq = 2, assigneeId = viewer, securityLevelId = null)
+
+        // restricted access — secretLevel 포함 안 함
+        val filter = BoardCardFilter(assigneeIds = listOf(viewer))
+        val result =
+            adapterWith(restricted()).also {
+                // adapterWith 는 viewer 고정 UUID 를 사용하므로 직접 호출
+            }.let {
+                BoardIssueLookupAdapter(repository, StubSecurityDirectory(restricted()))
+                    .listVisibleIssuesByProject("TPRJ", viewer, filter)
+            }
+
+        // seq=1 은 비가시 등급이므로 제외, seq=2 만 반환
+        assertThat(result.issues.map { it.key }).containsExactly("TPRJ-2")
     }
 }
