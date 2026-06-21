@@ -1,9 +1,9 @@
-// 칸반 보드 라우트 페이지 단위 테스트 — BoardPage 렌더 시나리오 (FR-BD-01 Task 7)
+// 칸반 보드 라우트 페이지 단위 테스트 — BoardPage 렌더 시나리오 (FR-BD-01 Task 7 + FR-BD-02 Task 6)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type { BoardSummary, BoardDetail } from '@/api/boards'
+import type { BoardSummary, BoardDetail, BoardCardFilterParams } from '@/api/boards'
 import type { UserSummary } from '@/api/users'
 import { ApiError } from '@/api/client'
 
@@ -24,13 +24,44 @@ vi.mock('sonner', () => ({
 }))
 
 // KanbanBoard는 DndContext 등 복잡한 의존성이 있으므로 단순 mock
-// assigneeNames prop을 data-attribute로 직렬화해 단언에 활용
-const mockKanbanBoardProps: Array<{ boardId: string; assigneeNames: unknown }> = []
+// assigneeNames, filter prop을 캡처해 단언에 활용
+const mockKanbanBoardProps: Array<{ boardId: string; assigneeNames: unknown; filter: unknown }> = []
 
 vi.mock('@/components/board/KanbanBoard', () => ({
-  KanbanBoard: ({ boardId, assigneeNames }: { boardId: string; assigneeNames: Map<string, unknown> }) => {
-    mockKanbanBoardProps.push({ boardId, assigneeNames })
+  KanbanBoard: ({
+    boardId,
+    assigneeNames,
+    filter,
+  }: {
+    boardId: string
+    assigneeNames: Map<string, unknown>
+    filter?: BoardCardFilterParams
+  }) => {
+    mockKanbanBoardProps.push({ boardId, assigneeNames, filter })
     return <div data-testid={`kanban-board-${boardId}`}>KanbanBoard</div>
+  },
+}))
+
+// BoardFilterBar mock — onChange 콜백을 노출해 필터 변경 시뮬레이션에 활용
+let capturedFilterBarOnChange: ((next: BoardCardFilterParams) => void) | null = null
+
+vi.mock('@/components/board/BoardFilterBar', () => ({
+  BoardFilterBar: ({
+    value,
+    onChange,
+  }: {
+    projectKey: string
+    value: BoardCardFilterParams
+    onChange: (next: BoardCardFilterParams) => void
+  }) => {
+    capturedFilterBarOnChange = onChange
+    return (
+      <div data-testid="board-filter-bar" data-active-count={
+        value.assigneeIds.length + value.labels.length + value.componentIds.length
+      }>
+        FilterBar
+      </div>
+    )
   },
 }))
 
@@ -44,12 +75,17 @@ vi.mock('@/components/board/CreateBoardForm', () => ({
 }))
 
 // use-boards 훅 mock — 각 테스트에서 덮어씀
+// useBoard는 (boardId, filter?) 시그니처로 호출되므로 두 인자 모두 캡처
 const mockUseBoards = vi.fn()
 const mockUseBoard = vi.fn()
+const mockUseBoardCalls: Array<[string | undefined, BoardCardFilterParams | undefined]> = []
 
 vi.mock('@/hooks/use-boards', () => ({
   useBoards: (projectKey: string) => mockUseBoards(projectKey),
-  useBoard: (boardId: string | undefined) => mockUseBoard(boardId),
+  useBoard: (boardId: string | undefined, filter?: BoardCardFilterParams) => {
+    mockUseBoardCalls.push([boardId, filter])
+    return mockUseBoard(boardId, filter)
+  },
   useCreateBoard: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
@@ -132,7 +168,11 @@ const BOARD_DETAIL_WITH_ASSIGNEES: BoardDetail = {
 // 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function renderBoardPage(projectKey = 'ATLAS', selectedBoardId?: string) {
+async function renderBoardPage(
+  projectKey = 'ATLAS',
+  selectedBoardId?: string,
+  filter?: BoardCardFilterParams,
+) {
   const { BoardPage } = await import('@/routes/projects.$projectKey.board')
   const client = new QueryClient({
     defaultOptions: {
@@ -142,7 +182,7 @@ async function renderBoardPage(projectKey = 'ATLAS', selectedBoardId?: string) {
   })
   return render(
     <QueryClientProvider client={client}>
-      <BoardPage projectKey={projectKey} selectedBoardId={selectedBoardId} />
+      <BoardPage projectKey={projectKey} selectedBoardId={selectedBoardId} filter={filter} />
     </QueryClientProvider>,
   )
 }
@@ -155,6 +195,8 @@ describe('BoardPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockKanbanBoardProps.length = 0
+    mockUseBoardCalls.length = 0
+    capturedFilterBarOnChange = null
     mockFetchUsers.mockResolvedValue(USERS)
     mockUseBoard.mockReturnValue({ data: undefined, isLoading: false })
   })
@@ -162,6 +204,7 @@ describe('BoardPage', () => {
   afterEach(() => {
     vi.clearAllMocks()
     mockKanbanBoardProps.length = 0
+    mockUseBoardCalls.length = 0
   })
 
   /**
@@ -381,6 +424,184 @@ describe('BoardPage', () => {
       // jsdom에서 Radix Select 인터랙션이 불완전한 경우 드롭다운 렌더만 확인
       expect(screen.getByRole('combobox')).toBeInTheDocument()
     }
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Task 6 — 필터 통합 (FR-BD-02)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * T-BD6-F-1. filter prop이 있으면 useBoard가 해당 filter를 인자로 호출된다.
+   * (URL search → searchToFilter → filter → useBoard(boardId, filter) 경로 검증)
+   */
+  it('T-BD6-F-1: filter prop이 있으면 useBoard가 filter를 인자로 호출된다', async () => {
+    const filter: BoardCardFilterParams = {
+      assigneeIds: [ALICE_ID],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    await renderBoardPage('ATLAS', undefined, filter)
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`kanban-board-${BOARD_A.boardId}`)).toBeInTheDocument()
+    })
+
+    // useBoard가 filter를 두 번째 인자로 받아야 한다
+    const calls = mockUseBoardCalls.filter(([id]) => id === BOARD_A.boardId)
+    expect(calls.length).toBeGreaterThan(0)
+    expect(calls[calls.length - 1]?.[1]).toEqual(filter)
+  })
+
+  /**
+   * T-BD6-F-2. BoardFilterBar onChange 호출 시 navigate가 filterToSearch 결과와 board를 합쳐 호출된다.
+   * (필터 변경 → URL 갱신 경로 검증)
+   */
+  it('T-BD6-F-2: BoardFilterBar onChange 시 navigate가 filter params를 URL에 반영한다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    await renderBoardPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('board-filter-bar')).toBeInTheDocument()
+    })
+
+    // BoardFilterBar mock의 onChange를 직접 호출해 필터 변경 시뮬레이션
+    const newFilter: BoardCardFilterParams = {
+      assigneeIds: [ALICE_ID],
+      includeUnassigned: false,
+      labels: ['버그'],
+      componentIds: [],
+    }
+    capturedFilterBarOnChange?.(newFilter)
+
+    // navigate가 호출돼야 하며, URL search에 assignee, label 파라미터가 포함돼야 한다
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalled()
+    })
+    const callArg = mockNavigate.mock.calls[0]?.[0] as {
+      search?: Record<string, unknown>
+    }
+    expect(callArg?.search).toMatchObject({
+      assignee: expect.arrayContaining([ALICE_ID]) as unknown,
+      label: expect.arrayContaining(['버그']) as unknown,
+    })
+    // board 키가 유지돼야 한다 (undefined면 키가 없거나 undefined로 전달)
+  })
+
+  /**
+   * T-BD6-F-3. KanbanBoard에 filter prop이 전달된다.
+   * (filter → KanbanBoard → useMoveCard(boardId, filter) 경로 중 prop 전달 검증)
+   */
+  it('T-BD6-F-3: KanbanBoard에 filter prop이 전달된다', async () => {
+    const filter: BoardCardFilterParams = {
+      assigneeIds: [],
+      includeUnassigned: true,
+      labels: ['버그'],
+      componentIds: [],
+    }
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    await renderBoardPage('ATLAS', undefined, filter)
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`kanban-board-${BOARD_A.boardId}`)).toBeInTheDocument()
+    })
+
+    const lastCall = mockKanbanBoardProps[mockKanbanBoardProps.length - 1]
+    expect(lastCall?.filter).toEqual(filter)
+  })
+
+  /**
+   * T-BD6-F-4. 필터 결과가 0건(모든 컬럼 카드 0)이면 빈 상태 안내와 "필터 초기화" 버튼이 렌더된다 (D2).
+   * EC7: 보드 상세가 있을 때만 필터 바가 표시된다.
+   */
+  it('T-BD6-F-4: 필터 후 카드 0건이면 빈 상태 안내 + 초기화 CTA가 렌더된다', async () => {
+    const filter: BoardCardFilterParams = {
+      assigneeIds: [ALICE_ID],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }
+    const emptyBoard: BoardDetail = {
+      ...BOARD_DETAIL,
+      columns: [
+        { columnId: 'col-1', stateKey: 'todo', name: '할 일', category: 'TODO', displayOrder: 1, cards: [] },
+        { columnId: 'col-2', stateKey: 'done', name: '완료', category: 'DONE', displayOrder: 2, cards: [] },
+      ],
+    }
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: emptyBoard, isLoading: false })
+
+    await renderBoardPage('ATLAS', undefined, filter)
+
+    // 빈 상태 안내 문구
+    await waitFor(() => {
+      expect(screen.getByText(/조건에 맞는 카드가 없습니다/i)).toBeInTheDocument()
+    })
+    // 필터 초기화 CTA
+    expect(screen.getByRole('button', { name: /초기화/i })).toBeInTheDocument()
+  })
+
+  /**
+   * T-BD6-F-5. EC7: 보드 상세가 있을 때만 BoardFilterBar가 렌더된다.
+   * (보드 상세 로딩 중에는 필터 바 없음)
+   */
+  it('T-BD6-F-5: 보드 상세가 있을 때만 BoardFilterBar가 렌더된다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    // 보드 상세 로딩 중
+    mockUseBoard.mockReturnValue({ data: undefined, isLoading: true })
+
+    await renderBoardPage()
+
+    // 보드 상세 없으면 필터 바 없어야 한다
+    expect(screen.queryByTestId('board-filter-bar')).not.toBeInTheDocument()
+  })
+
+  /**
+   * T-BD6-F-6. 빈 필터 초기화 버튼 클릭 시 navigate가 빈 필터(board 키만)로 호출된다.
+   */
+  it('T-BD6-F-6: 빈 상태 초기화 버튼 클릭 시 navigate가 빈 필터로 호출된다', async () => {
+    const user = userEvent.setup()
+    const filter: BoardCardFilterParams = {
+      assigneeIds: [ALICE_ID],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }
+    const emptyBoard: BoardDetail = {
+      ...BOARD_DETAIL,
+      columns: [
+        { columnId: 'col-1', stateKey: 'todo', name: '할 일', category: 'TODO', displayOrder: 1, cards: [] },
+      ],
+    }
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: emptyBoard, isLoading: false })
+
+    await renderBoardPage('ATLAS', BOARD_A.boardId, filter)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /초기화/i })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /초기화/i }))
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalled()
+    })
+
+    // navigate 호출 인자에서 filter 파라미터가 없어야 한다 (board만 유지)
+    const callArg = mockNavigate.mock.calls[0]?.[0] as {
+      search?: Record<string, unknown>
+    }
+    expect(callArg?.search).not.toHaveProperty('assignee')
+    expect(callArg?.search).not.toHaveProperty('label')
+    expect(callArg?.search).not.toHaveProperty('component')
   })
 })
 
