@@ -1,4 +1,4 @@
-// 칸반 보드 조회·생성 TanStack Query 훅 단위 테스트 (FR-BD-01)
+// 칸반 보드 조회·생성 TanStack Query 훅 단위 테스트 (FR-BD-01/02)
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -13,8 +13,8 @@ import {
   fetchBoard,
   createBoard,
 } from '@/api/boards'
-import type { BoardSummary, BoardDetail, BoardCreated } from '@/api/boards'
-import { useBoards, useBoard, useCreateBoard } from './use-boards'
+import type { BoardSummary, BoardDetail, BoardCreated, BoardCardFilterParams } from '@/api/boards'
+import { useBoards, useBoard, useCreateBoard, boardKeys } from './use-boards'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 픽스처
@@ -136,6 +136,191 @@ describe('useBoard', () => {
 
     expect(result.current.fetchStatus).toBe('idle')
     expect(fetchBoard).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// boardKeys.detail — filter-aware (FR-BD-02)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('boardKeys.detail (filter-aware)', () => {
+  const FILTER: BoardCardFilterParams = {
+    assigneeIds: ['a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5'],
+    includeUnassigned: false,
+    labels: ['bug'],
+    componentIds: [],
+  }
+
+  it('T-BD-KEY-1: filter 없으면 2요소 tuple을 반환한다', () => {
+    const key = boardKeys.detail('b1')
+    expect(key).toEqual(['board', 'b1'])
+    expect(key).toHaveLength(2)
+  })
+
+  it('T-BD-KEY-2: filter 있으면 3요소 tuple을 반환하고 3번째 요소가 존재한다', () => {
+    const key = boardKeys.detail('b1', FILTER)
+    expect(key).toHaveLength(3)
+    expect(key[0]).toBe('board')
+    expect(key[1]).toBe('b1')
+    // 3번째 요소는 undefined가 아닌 정규화 표현이어야 한다
+    expect(key[2]).toBeDefined()
+  })
+
+  it('T-BD-KEY-3: assigneeIds 배열 순서가 달라도 동일한 3번째 요소를 생성한다 (안정 정규화)', () => {
+    const filterAB: BoardCardFilterParams = {
+      assigneeIds: ['aaa', 'bbb'],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }
+    const filterBA: BoardCardFilterParams = {
+      assigneeIds: ['bbb', 'aaa'],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }
+    const keyAB = boardKeys.detail('b1', filterAB)
+    const keyBA = boardKeys.detail('b1', filterBA)
+    expect(keyAB[2]).toEqual(keyBA[2])
+  })
+
+  it('T-BD-KEY-4: labels 배열 순서가 달라도 동일한 3번째 요소를 생성한다', () => {
+    const filterXY: BoardCardFilterParams = {
+      assigneeIds: [],
+      includeUnassigned: false,
+      labels: ['bug', 'feature'],
+      componentIds: [],
+    }
+    const filterYX: BoardCardFilterParams = {
+      assigneeIds: [],
+      includeUnassigned: false,
+      labels: ['feature', 'bug'],
+      componentIds: [],
+    }
+    expect(boardKeys.detail('b1', filterXY)[2]).toEqual(boardKeys.detail('b1', filterYX)[2])
+  })
+
+  it('T-BD-KEY-5: componentIds 배열 순서가 달라도 동일한 3번째 요소를 생성한다', () => {
+    const filterPQ: BoardCardFilterParams = {
+      assigneeIds: [],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: ['c1', 'c2'],
+    }
+    const filterQP: BoardCardFilterParams = {
+      assigneeIds: [],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: ['c2', 'c1'],
+    }
+    expect(boardKeys.detail('b1', filterPQ)[2]).toEqual(boardKeys.detail('b1', filterQP)[2])
+  })
+
+  it('T-BD-KEY-6: 다른 filter 값이면 3번째 요소도 달라진다 (캐시 분리)', () => {
+    const filterA: BoardCardFilterParams = {
+      assigneeIds: ['user-a'],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }
+    const filterB: BoardCardFilterParams = {
+      assigneeIds: ['user-b'],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }
+    expect(boardKeys.detail('b1', filterA)[2]).not.toEqual(boardKeys.detail('b1', filterB)[2])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useBoard — filter-aware (FR-BD-02)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('useBoard (filter-aware)', () => {
+  let queryClient: QueryClient
+
+  const FILTER: BoardCardFilterParams = {
+    assigneeIds: ['a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5'],
+    includeUnassigned: true,
+    labels: ['bug'],
+    componentIds: ['c1c2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5'],
+  }
+
+  const MOCK_BOARD_DETAIL_FILTERED: BoardDetail = {
+    boardId: 'b1a2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5',
+    projectKey: 'ATLAS',
+    name: '기본 보드',
+    columns: [],
+    truncated: false,
+    unplacedCount: 0,
+  }
+
+  beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    vi.mocked(fetchBoard).mockResolvedValue(MOCK_BOARD_DETAIL_FILTERED)
+  })
+
+  afterEach(() => {
+    queryClient.clear()
+    vi.clearAllMocks()
+  })
+
+  it('T-BD-BOARD-FILTER-1: filter를 전달하면 fetchBoard(boardId, filter)를 호출한다', async () => {
+    const boardId = 'b1a2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5'
+
+    const { result } = renderHook(() => useBoard(boardId, FILTER), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(fetchBoard).toHaveBeenCalledWith(boardId, FILTER)
+    expect(result.current.data).toEqual(MOCK_BOARD_DETAIL_FILTERED)
+  })
+
+  it('T-BD-BOARD-FILTER-2: filter 없이 호출하면 기존 동작(fetchBoard(boardId) 1인수)과 호환된다', async () => {
+    const boardId = 'b1a2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5'
+
+    const { result } = renderHook(() => useBoard(boardId), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    // filter 미전달 시 fetchBoard를 boardId 하나로 호출한다 (undefined 제외)
+    expect(fetchBoard).toHaveBeenCalledWith(boardId, undefined)
+  })
+
+  it('T-BD-BOARD-FILTER-3: filter가 바뀌면 queryKey가 달라져 재조회가 트리거된다', async () => {
+    const boardId = 'b1a2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5'
+    const filterA: BoardCardFilterParams = {
+      assigneeIds: ['user-a'],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }
+    const filterB: BoardCardFilterParams = {
+      assigneeIds: ['user-b'],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }
+
+    // filterA로 첫 조회
+    const { result, rerender } = renderHook(
+      ({ filter }: { filter: BoardCardFilterParams }) => useBoard(boardId, filter),
+      { wrapper: createWrapper(queryClient), initialProps: { filter: filterA } },
+    )
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(fetchBoard).toHaveBeenCalledTimes(1)
+
+    // filterB로 변경 → 다른 queryKey로 재조회
+    rerender({ filter: filterB })
+    await waitFor(() => expect(fetchBoard).toHaveBeenCalledTimes(2))
+    expect(fetchBoard).toHaveBeenNthCalledWith(2, boardId, filterB)
   })
 })
 
