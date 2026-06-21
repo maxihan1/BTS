@@ -8,6 +8,7 @@ import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.PlacedColumn
 import com.bts.agileplanning.repository.BoardRepository
+import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.board.BoardIssueView
 import com.bts.shared.board.BoardTransitionResult
 import com.bts.shared.permission.IssuePermission
@@ -280,7 +281,7 @@ class BoardControllerIntegrationTest {
     fun `GET boards id 정상이면 200 + 컬럼과 카드 반환`() {
         val board = sampleBoard()
         every { boardRepository.findById(board.id) } returns board
-        every { boardApplicationService.getBoard(board.id, actorId) } returns
+        every { boardApplicationService.getBoard(board.id, actorId, BoardCardFilter.EMPTY) } returns
             BoardPlacementResult(
                 columns =
                     listOf(
@@ -327,7 +328,7 @@ class BoardControllerIntegrationTest {
     fun `GET boards id truncated=true 이면 응답에 truncated=true 가 포함된다`() {
         val board = sampleBoard()
         every { boardRepository.findById(board.id) } returns board
-        every { boardApplicationService.getBoard(board.id, actorId) } returns
+        every { boardApplicationService.getBoard(board.id, actorId, BoardCardFilter.EMPTY) } returns
             BoardPlacementResult(
                 columns =
                     listOf(
@@ -358,7 +359,7 @@ class BoardControllerIntegrationTest {
             .andExpect(jsonPath("$.errorCode").value("AGILE_ACCESS_DENIED"))
 
         // 권한 거부 시 카드 배치(서비스 getBoard)가 호출되지 않아야 한다
-        verify(exactly = 0) { boardApplicationService.getBoard(any(), any()) }
+        verify(exactly = 0) { boardApplicationService.getBoard(any(), any(), any()) }
     }
 
     // ── GET-3. GET 보드 미존재 → 404 ──────────────────────────────────────────
@@ -575,5 +576,88 @@ class BoardControllerIntegrationTest {
         assertThat(permission).isNotEqualTo(IssuePermission.BROWSE)
         assertThat(scope).isEqualTo(IssueScope.Project("BTS"))
         assertThat(scope).isNotInstanceOf(IssueScope.Issue::class.java)
+    }
+
+    // ── FILTER-1. 필터 파라미터 없음 → EMPTY 필터로 서비스 호출 (EC2 회귀) ──────
+
+    @Test
+    fun `FILTER-1 필터 파라미터가 없으면 EMPTY 필터로 서비스를 호출한다 (EC2 회귀)`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.getBoard(board.id, actorId, BoardCardFilter.EMPTY) } returns
+            BoardPlacementResult(
+                columns = board.columns.map { PlacedColumn(it, emptyList()) },
+                truncated = false,
+                unplacedCount = 0,
+            )
+
+        mockMvc.perform(get("/api/v1/boards/${board.id}").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk)
+
+        verify { boardApplicationService.getBoard(board.id, actorId, BoardCardFilter.EMPTY) }
+    }
+
+    // ── FILTER-2. 파라미터 있음 → 파싱된 filter 로 서비스 호출, 캡처 단언 ─────
+
+    @Test
+    fun `FILTER-2 assignee·label·component 파라미터가 있으면 파싱된 filter 로 서비스를 호출한다`() {
+        val board = sampleBoard()
+        val assigneeUuid = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+        val componentUuid = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccccc")
+        val expectedFilter = BoardCardFilter(
+            assigneeIds = listOf(assigneeUuid),
+            includeUnassigned = true,
+            labels = listOf("bug"),
+            componentIds = listOf(componentUuid),
+        )
+
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.getBoard(board.id, actorId, expectedFilter) } returns
+            BoardPlacementResult(
+                columns = board.columns.map { PlacedColumn(it, emptyList()) },
+                truncated = false,
+                unplacedCount = 0,
+            )
+
+        mockMvc.perform(
+            get("/api/v1/boards/${board.id}")
+                .param("assignee", assigneeUuid.toString())
+                .param("assignee", "unassigned")
+                .param("label", "bug")
+                .param("component", componentUuid.toString())
+                .accept(MediaType.APPLICATION_JSON),
+        ).andExpect(status().isOk)
+
+        verify { boardApplicationService.getBoard(board.id, actorId, expectedFilter) }
+    }
+
+    // ── FILTER-3. 형식오류 assignee → 400 ────────────────────────────────────
+
+    @Test
+    fun `FILTER-3 assignee 파라미터가 UUID 형식이 아니면 400`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+
+        mockMvc.perform(
+            get("/api/v1/boards/${board.id}")
+                .param("assignee", "not-a-uuid")
+                .accept(MediaType.APPLICATION_JSON),
+        ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
+    }
+
+    // ── FILTER-4. 형식오류 component → 400 ───────────────────────────────────
+
+    @Test
+    fun `FILTER-4 component 파라미터가 UUID 형식이 아니면 400`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+
+        mockMvc.perform(
+            get("/api/v1/boards/${board.id}")
+                .param("component", "foo")
+                .accept(MediaType.APPLICATION_JSON),
+        ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
     }
 }
