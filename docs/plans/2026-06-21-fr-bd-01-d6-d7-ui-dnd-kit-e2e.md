@@ -48,9 +48,23 @@ API)·#168(필터 API)로 완료. 이번 작업은 그 API를 호출해 보여�
 
 - 관련 ADR: [docs/decisions/2026-06-20-fr-bd-01-agile-planning-bootstrap.md](../decisions/2026-06-20-fr-bd-01-agile-planning-bootstrap.md) (기존, 무변경)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-21-fr-bd-01-d6-d7-ui-dnd-kit-e2e.md](../specs/2026-06-21-fr-bd-01-d6-d7-ui-dnd-kit-e2e.md)
+
+핵심 (Maxi 확정 2026-06-21).
+- @dnd-kit/core@6.3.1 + @dnd-kit/utilities@3.2.2 도입(버전 고정, 컬럼 간 이동 전용·LexoRank 범위 외).
+- 범위 = 보드 목록 + 생성 + 칸반 뷰 전체. 라우트 `/projects/$projectKey/board?board=<id>`.
+- 카드 드래그=컬럼 간 이동=move 위임(낙관적+롤백). DONE 컬럼 드롭 → resolution 모달 사전 요구
+  (category 사전 감지, 422 사후 의존 제거 — 백엔드 errorCode 일반화 한계 우회).
+- boards.ts Zod 1:1 미러. 담당자 best-effort(fetchUsers Map + 이니셜 fallback, 1,000명 한계 명시).
+- 에러: 409 AGILE_CONFLICT(전이불가+버전충돌 동일)·422 AGILE_UNPROCESSABLE → 토스트+원위치(+409 refetch).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration, 직접 adversarial 갭 스캔). G1 담당자 이름 규모 한계 → best-effort+백엔드 후속 명시.
+G2 보드 선택 → URL `?board=`. G3 빈 resolutions → 안내+비활성. 422 사전감지 우회·단일카드 패치 플리커 회피
+·CSRF impl 확인 확정.
 
 ## Plan (← /bts-plan 채움)
 
