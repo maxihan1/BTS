@@ -1,4 +1,4 @@
-// 칸반 보드 API 클라이언트 단위 테스트 — Zod 스키마 계약 + fetch 함수 검증 (FR-BD-01)
+// 칸반 보드 API 클라이언트 단위 테스트 — Zod 스키마 계약 + fetch 함수 검증 (FR-BD-01/02)
 import { describe, it, expect } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
@@ -11,6 +11,7 @@ import {
   fetchBoard,
   createBoard,
   moveCard,
+  type BoardCardFilterParams,
 } from './boards'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -345,5 +346,111 @@ describe('moveCard — POST /api/v1/boards/{boardId}/cards/{issueKey}/move', () 
       resolutionId: undefined,
     })
     expect(Object.prototype.hasOwnProperty.call(capturedBody, 'resolutionId')).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-BD-10. fetchBoard 필터 — query string 조립 (FR-BD-02)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ASSIGNEE_ID_1 = 'a1a1a1a1-b2b2-4c3c-8d4d-e5e5e5e5e5e5'
+const COMPONENT_ID_1 = 'c1c1c1c1-d2d2-4e3e-8f4f-a5a5a5a5a5a5'
+
+describe('fetchBoard — filter query string 조립 (FR-BD-02)', () => {
+  it('T-BD-10a: assigneeIds + includeUnassigned:true → assignee=<uuid>&assignee=unassigned', async () => {
+    let capturedUrl: string | null = null
+    server.use(
+      http.get('/api/v1/boards/:boardId', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json({ data: boardDetailFixture })
+      }),
+    )
+    const filter: BoardCardFilterParams = {
+      assigneeIds: [ASSIGNEE_ID_1],
+      includeUnassigned: true,
+      labels: [],
+      componentIds: [],
+    }
+    await fetchBoard(BOARD_ID, filter)
+    expect(capturedUrl).not.toBeNull()
+    const url = new URL(capturedUrl as string)
+    const assigneeValues = url.searchParams.getAll('assignee')
+    expect(assigneeValues).toContain(ASSIGNEE_ID_1)
+    expect(assigneeValues).toContain('unassigned')
+  })
+
+  it('T-BD-10b: labels 배열 → label=bug&label=urgent (assigneeIds 비어 있음)', async () => {
+    let capturedUrl: string | null = null
+    server.use(
+      http.get('/api/v1/boards/:boardId', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json({ data: boardDetailFixture })
+      }),
+    )
+    const filter: BoardCardFilterParams = {
+      assigneeIds: [],
+      includeUnassigned: false,
+      labels: ['bug', 'urgent'],
+      componentIds: [],
+    }
+    await fetchBoard(BOARD_ID, filter)
+    expect(capturedUrl).not.toBeNull()
+    const url = new URL(capturedUrl as string)
+    expect(url.searchParams.getAll('label')).toEqual(['bug', 'urgent'])
+    expect(url.searchParams.has('assignee')).toBe(false)
+  })
+
+  it('T-BD-10c: componentIds → component=<uuid>', async () => {
+    let capturedUrl: string | null = null
+    server.use(
+      http.get('/api/v1/boards/:boardId', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json({ data: boardDetailFixture })
+      }),
+    )
+    const filter: BoardCardFilterParams = {
+      assigneeIds: [],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [COMPONENT_ID_1],
+    }
+    await fetchBoard(BOARD_ID, filter)
+    expect(capturedUrl).not.toBeNull()
+    const url = new URL(capturedUrl as string)
+    expect(url.searchParams.getAll('component')).toContain(COMPONENT_ID_1)
+  })
+
+  it('T-BD-10d: 빈 필터 전달 시 query param 없는 기본 URL 호출', async () => {
+    let capturedUrl: string | null = null
+    server.use(
+      http.get('/api/v1/boards/:boardId', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json({ data: boardDetailFixture })
+      }),
+    )
+    const emptyFilter: BoardCardFilterParams = {
+      assigneeIds: [],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }
+    await fetchBoard(BOARD_ID, emptyFilter)
+    expect(capturedUrl).not.toBeNull()
+    const url = new URL(capturedUrl as string)
+    expect(url.search).toBe('')
+  })
+
+  it('T-BD-10e: filter 인자 미전달 시 query param 없는 기본 URL 호출', async () => {
+    let capturedUrl: string | null = null
+    server.use(
+      http.get('/api/v1/boards/:boardId', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json({ data: boardDetailFixture })
+      }),
+    )
+    await fetchBoard(BOARD_ID)
+    expect(capturedUrl).not.toBeNull()
+    const url = new URL(capturedUrl as string)
+    expect(url.search).toBe('')
   })
 })
