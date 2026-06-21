@@ -8,6 +8,7 @@ import type { BoardCardFilterParams } from '@/api/boards'
 import type { UserSummary } from '@/api/users'
 import type { Component } from '@/api/components'
 import { boardFilterLabels } from '@/i18n/board-filter-labels'
+import * as useUsersModule from '@/hooks/use-users'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 훅 mock — 데이터 페칭 없이 순수 UI 단위 테스트
@@ -37,6 +38,7 @@ const mockComponents: Component[] = [
 
 vi.mock('@/hooks/use-users', () => ({
   useUsers: vi.fn(() => ({ data: mockUsers, isLoading: false })),
+  useUsersByIds: vi.fn(() => ({ data: mockUsers, isLoading: false })),
 }))
 
 vi.mock('@/hooks/use-labels', () => ({
@@ -289,6 +291,60 @@ describe('BoardFilterBar — S4 필터 칩 제거', () => {
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ labels: ['feature'] }),
     )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S8. 담당자 칩 라벨 안정 표시 (P2-1 버그 수정 — useUsersByIds 사용)
+// useUsers(검색)가 선택 담당자를 포함하지 않아도 칩이 UUID 대신 이름을 표시해야 한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BoardFilterBar — S8 담당자 칩 라벨 안정 표시 (useUsersByIds)', () => {
+  it('S8a: useUsers가 빈 배열이어도 useUsersByIds 결과로 칩에 displayName이 표시된다', () => {
+    // useUsers(검색)는 빈 결과 — 검색어가 비워진 상황 시뮬레이션
+    vi.mocked(useUsersModule.useUsers).mockReturnValueOnce({
+      data: [],
+      isLoading: false,
+    } as ReturnType<typeof useUsersModule.useUsers>)
+
+    // useUsersByIds는 선택된 담당자 정보를 반환
+    vi.mocked(useUsersModule.useUsersByIds).mockReturnValueOnce({
+      data: [{ id: 'user-uuid-0001', username: 'alice', displayName: '김앨리스', email: null }],
+      isLoading: false,
+    } as ReturnType<typeof useUsersModule.useUsersByIds>)
+
+    const value: BoardCardFilterParams = {
+      ...emptyFilter,
+      assigneeIds: ['user-uuid-0001'],
+    }
+    renderBar(value)
+
+    // 칩에 UUID가 아닌 displayName이 표시되어야 한다
+    expect(screen.getByText('김앨리스')).toBeInTheDocument()
+    expect(screen.queryByText('user-uuid-0001')).not.toBeInTheDocument()
+  })
+
+  it('S8b: useUsersByIds가 로딩 중일 때 칩이 크래시하지 않고 렌더된다', () => {
+    // useUsers 빈 배열, useUsersByIds는 로딩 중
+    vi.mocked(useUsersModule.useUsers).mockReturnValueOnce({
+      data: [],
+      isLoading: false,
+    } as ReturnType<typeof useUsersModule.useUsers>)
+
+    vi.mocked(useUsersModule.useUsersByIds).mockReturnValueOnce({
+      data: undefined,
+      isLoading: true,
+    } as ReturnType<typeof useUsersModule.useUsersByIds>)
+
+    const value: BoardCardFilterParams = {
+      ...emptyFilter,
+      assigneeIds: ['user-uuid-0001'],
+    }
+    renderBar(value)
+
+    // 로딩 중에는 칩이 크래시하지 않고 렌더되어야 한다
+    const chips = screen.getByRole('list', { name: '적용된 필터' })
+    expect(chips).toBeInTheDocument()
   })
 })
 
