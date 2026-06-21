@@ -173,7 +173,7 @@ export function WorklogAggregateReport({ projectKey }: WorklogAggregateReportPro
   if (isPending) {
     return (
       <div className="p-8 flex justify-center" role="status">
-        <span className="text-sm text-muted-foreground">불러오는 중...</span>
+        <span className="text-sm text-muted-foreground">{worklogAggregateLabels.loading.message}</span>
       </div>
     )
   }

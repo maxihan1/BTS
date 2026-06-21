@@ -76,6 +76,12 @@ export const worklogAggregateLabels = {
     unknownDisplayName: '(알 수 없음)',
   },
 
+  /** 로딩 상태 */
+  loading: {
+    /** 집계 데이터를 불러오는 중 표시하는 문구 */
+    message: '불러오는 중…',
+  },
+
   /** 빈 상태 */
   empty: {
     /** 집계 결과가 없을 때 표시하는 안내 문구 */
