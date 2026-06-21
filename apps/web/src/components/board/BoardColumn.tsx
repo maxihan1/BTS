@@ -1,4 +1,5 @@
 // 칸반 보드 컬럼 컴포넌트 — 드롭 영역 + 카드 목록 + 빈 컬럼 placeholder
+import { memo } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { cn } from '@/lib/utils'
 import type { BoardColumn as BoardColumnType } from '@/api/boards'
@@ -22,37 +23,39 @@ export interface BoardColumnProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 컴포넌트
+// 내부 구현 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * 칸반 보드의 개별 컬럼.
- *
- * - sticky 헤더에 이름·카테고리 배지·카드 수를 표시한다.
- * - `useDroppable`로 드롭 영역을 제공한다. 빈 컬럼에도 드롭 가능.
- * - 카드가 없으면 흐린 "카드 없음" placeholder를 표시한다.
- * - `isOver=true`이면 ring 하이라이트를 적용한다.
- */
-export const BoardColumn = ({ column, assigneeNames, isOver = false }: BoardColumnProps) => {
+function BoardColumnInner({ column, assigneeNames, isOver = false }: BoardColumnProps) {
   const { setNodeRef } = useDroppable({
     id: column.columnId,
     data: { category: column.category },
   })
 
   return (
-    <div className="flex min-w-72 w-72 flex-col gap-2">
-      {/* 헤더 */}
+    <div
+      className="flex min-w-72 w-72 flex-col gap-2"
+      role="group"
+      aria-label={`${column.name} 컬럼, ${column.cards.length}개 카드`}
+    >
+      {/* sticky 헤더 — 이름 + 카테고리 배지 + 카드 수 */}
       <div className="sticky top-0 z-10 flex items-center gap-2 rounded-t-lg bg-muted px-3 py-2">
         <span className="flex-1 text-sm font-semibold text-foreground">{column.name}</span>
-        <span className="rounded-sm bg-background px-1.5 py-0.5 text-xs text-muted-foreground">
+        <span
+          className="rounded-sm bg-background px-1.5 py-0.5 text-xs text-muted-foreground"
+          aria-label={`카테고리: ${column.category}`}
+        >
           {column.category}
         </span>
-        <span className="rounded-full bg-primary px-1.5 py-0.5 text-xs font-medium text-primary-foreground">
+        <span
+          className="rounded-full bg-primary px-1.5 py-0.5 text-xs font-medium text-primary-foreground"
+          aria-label={`카드 ${column.cards.length}개`}
+        >
           {column.cards.length}
         </span>
       </div>
 
-      {/* 드롭 영역 + 카드 목록 */}
+      {/* 드롭 영역 + 카드 목록 — 빈 컬럼에도 드롭 가능하도록 ref 유지 */}
       <div
         ref={setNodeRef}
         data-col-id={column.columnId}
@@ -62,7 +65,10 @@ export const BoardColumn = ({ column, assigneeNames, isOver = false }: BoardColu
         )}
       >
         {column.cards.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center rounded-md py-8 text-xs text-muted-foreground">
+          <div
+            className="flex flex-1 items-center justify-center rounded-md py-8 text-xs text-muted-foreground"
+            aria-label="카드 없음"
+          >
             카드 없음
           </div>
         ) : (
@@ -79,3 +85,18 @@ export const BoardColumn = ({ column, assigneeNames, isOver = false }: BoardColu
     </div>
   )
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// memo 래핑 — Map 참조가 안정적일 때 재렌더 스킵
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 칸반 보드의 개별 컬럼.
+ *
+ * - sticky 헤더에 이름·카테고리 배지·카드 수를 표시한다.
+ * - `useDroppable`로 드롭 영역을 제공한다. 빈 컬럼에도 드롭 가능.
+ * - 카드가 없으면 흐린 "카드 없음" placeholder를 표시한다.
+ * - `isOver=true`이면 ring-2 하이라이트를 적용한다.
+ * - `memo`로 래핑되어 column·assigneeNames·isOver가 변하지 않으면 재렌더하지 않는다.
+ */
+export const BoardColumn = memo(BoardColumnInner)

@@ -1,4 +1,5 @@
 // 칸반 보드 카드 컴포넌트 — 이슈 요약 표시 + @dnd-kit 드래그 핸들
+import { memo } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
@@ -23,18 +24,10 @@ export interface BoardCardProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 컴포넌트
+// 내부 구현 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * 칸반 보드의 개별 이슈 카드.
- *
- * - summary를 주 정보로, issueKey를 보조 정보로 표시한다.
- * - assigneeName이 있으면 이니셜 아바타를, 없으면 "미배정"을 표시한다.
- * - @dnd-kit `useDraggable`로 드래그 핸들을 제공한다.
- * - 카드 클릭 시 이슈 상세(`/issues/:key`)로 이동한다.
- */
-export const BoardCard = ({ card, columnId, assigneeName }: BoardCardProps) => {
+function BoardCardInner({ card, columnId, assigneeName }: BoardCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: card.issueKey,
     data: { fromColumnId: columnId },
@@ -60,7 +53,7 @@ export const BoardCard = ({ card, columnId, assigneeName }: BoardCardProps) => {
         isDragging && 'opacity-50',
       )}
     >
-      {/* 주 정보: summary (2줄 truncate) */}
+      {/* 주 정보: summary (2줄 truncate). 드래그 중 클릭 방지 */}
       <Link
         to="/issues/$key"
         params={{ key: card.issueKey }}
@@ -82,6 +75,7 @@ export const BoardCard = ({ card, columnId, assigneeName }: BoardCardProps) => {
           // 담당자 이니셜 아바타
           <span
             title={assigneeName ?? ''}
+            aria-label={`담당자: ${assigneeName ?? ''}`}
             className={cn(
               'flex h-6 w-6 items-center justify-center rounded-full',
               'bg-primary text-xs font-medium text-primary-foreground',
@@ -91,9 +85,26 @@ export const BoardCard = ({ card, columnId, assigneeName }: BoardCardProps) => {
           </span>
         ) : (
           // 미배정
-          <span className="text-xs text-muted-foreground">미배정</span>
+          <span className="text-xs text-muted-foreground" aria-label="담당자 미배정">
+            미배정
+          </span>
         )}
       </div>
     </div>
   )
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// memo 래핑 — 보드 전체 재렌더 시 props 변화 없는 카드 렌더 스킵
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 칸반 보드의 개별 이슈 카드.
+ *
+ * - summary를 주 정보로(2줄 truncate), issueKey를 보조 정보로 표시한다.
+ * - assigneeName이 있으면 이니셜 아바타를, 없으면 "미배정"을 표시한다.
+ * - `useDraggable`로 드래그 핸들을 제공한다.
+ * - 카드 클릭 시 이슈 상세(`/issues/:key`)로 이동하며, 드래그 중엔 네비게이션이 막힌다.
+ * - `memo`로 래핑되어 props가 변하지 않으면 재렌더하지 않는다.
+ */
+export const BoardCard = memo(BoardCardInner)
