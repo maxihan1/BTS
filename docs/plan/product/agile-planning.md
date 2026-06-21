@@ -174,8 +174,8 @@
 - [x] D3. 데이터 모델 — 머티뷰 미채택·실시간 SQL 집계 (ADR D3, 신규 스키마 0) (책임. backend-engineer)
 - [x] D4. 백엔드 — `GET /api/v1/worklogs/aggregate?project=&by=&granularity=&from=&to=` (책임. backend-engineer)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 표 + recharts 차트 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 표 + recharts 차트 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ## §6 일정 (FR-PL, 2개)
 

@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 26개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + settings 5 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 27개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + settings 5 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -31,6 +31,7 @@ import { PasswordSettingsRouteAdapter } from './routes/settings.password'
 import { AccountLinksSettingsRouteAdapter } from './routes/settings.account-links'
 import { MfaSettingsRouteAdapter } from './routes/settings.mfa'
 import { NotificationSettingsRouteAdapter } from './routes/settings.notifications'
+import { ProjectWorklogReportRouteAdapter } from './routes/projects.$projectKey.reports.worklog'
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -260,6 +261,15 @@ const settingsNotificationsRoute = createRoute({
   beforeLoad: requireAuthAndPasswordChanged,
 })
 
+/** 워크로그 집계 보고 라우트 — /projects/$projectKey/reports/worklog, requireAuth (FR-TT-02) */
+const projectWorklogReportRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/projects/$projectKey/reports/worklog',
+  component: ProjectWorklogReportRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
 /** 계정 연결 설정 라우트 — /settings/account-links, requireAuth + mustChangePassword 차단 */
 const settingsAccountLinksRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -277,16 +287,17 @@ const settingsAccountLinksRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 26개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 27개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
  *   · /projects/:projectKey/settings/workflow-scheme · /projects/:projectKey/settings/members
  *   · /projects/:projectKey/settings/components · /projects/:projectKey/settings/versions
  *   · /projects/:projectKey/settings/custom-fields · /projects/:projectKey/settings/issue-templates
  *   · /projects/:projectKey/settings/field-permissions · /projects/:projectKey/settings/project-lead
+ *   · /projects/:projectKey/reports/worklog
  *   · /settings/sessions · /settings/password · /settings/account-links · /settings/mfa
  *   · /settings/notifications
- * requireAuth 라우트: /dashboard · /issues · /issues/* · /admin/* · /projects/*\/settings/* · /settings/*
+ * requireAuth 라우트: /dashboard · /issues · /issues/* · /admin/* · /projects/* · /settings/*
  */
 export const routeTree = rootRoute.addChildren([
   // 공통 — 인증/진입점
@@ -323,6 +334,8 @@ export const routeTree = rootRoute.addChildren([
   projectFieldPermissionsSettingsRoute,
   // issue-tracking BC — 프로젝트 리드 설정 (project 서브도메인, 권한만 MANAGE_COMPONENTS 재사용)
   projectLeadSettingsRoute,
+  // issue-tracking BC — 워크로그 집계 보고 (FR-TT-02)
+  projectWorklogReportRoute,
   // identity-access BC — 내 활성 세션 관리
   settingsSessionsRoute,
   // identity-access BC — 비밀번호 변경

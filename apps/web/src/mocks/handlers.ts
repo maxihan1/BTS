@@ -36,6 +36,7 @@ import { versionHandlers } from './version-handlers'
 import { webauthnHandlers } from './webauthn-handlers'
 import { workflowHandlers } from './workflow-handlers'
 import { worklogHandlers } from './worklog-handlers'
+import { worklogAggregateHandlers } from './worklog-aggregate-handlers'
 import { samlHandlers } from './saml-handlers'
 import { oidcHandlers } from './oidc-handlers'
 import { routeHandlers } from './route-handlers'
@@ -89,5 +90,6 @@ export const handlers = [
   ...versionHandlers,
   ...webauthnHandlers,
   ...worklogHandlers,
+  ...worklogAggregateHandlers,
   ...workflowHandlers,
 ]
