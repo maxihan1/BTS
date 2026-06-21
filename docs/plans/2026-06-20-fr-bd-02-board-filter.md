@@ -227,3 +227,21 @@ FR-BD-02 보드 필터. 칸반 보드 조회 API(`GET /api/v1/boards/{id}`)에 �
   FR 카운트 불변(기존 FR)이라 verify-master-plan 영향 없음.
 
 **판정**: 진행 가(BLOCKER 0). CONCERN-1/2는 impl 가이드로 인계.
+
+### PR 단위 리뷰 (게이트 2, 2026-06-21)
+
+code-reviewer + /review(gstack 적대 패스) 병행. 두 리뷰가 최우선 갭에 **수렴**.
+
+- ✅ 검증된 안전성: 카테시안 회피(EXISTS), 필터→LIMIT 순서, visibility precedence(AND), SQL 주입(bind value),
+  BC 격리(ArchUnit), 400 핸들러(@ExceptionHandler(ResponseStatusException)), 권한 게이트 순서, EC2 무필터 회귀.
+- ✅ **C1 (수정 완료, 커밋 34a98369)**: spec EC7 "필터+truncated 순서" 회귀 테스트 부재 + S9의 거짓 주석.
+  비매칭 LIMIT+1건 + 매칭 3건 시드로 `size==3 && truncated==false` 실 DB 가드 추가(필터를 LIMIT 이후 적용하면 실패).
+  `BOARD_CARD_FETCH_LIMIT` private→internal.
+- ✅ **C2 (수정 완료)**: F12 `.also{}.let{}` dead-code 정리.
+
+**후속 항목 (저위험, FR-BD-02 후속 또는 FR-BD-03 동반 — Maxi 머지 진행 결정 2026-06-21)**
+- **C3**: `buildComponentCondition` EXISTS가 컴포넌트의 `deleted_at IS NULL` / 프로젝트 소속을 검증하지 않음.
+  매칭 이슈는 어차피 viewer 가시 보드 이슈라 기밀 누출은 아님(링크 정보 이미 노출). 소프트삭제 컴포넌트 ID로 필터 시
+  결과가 나오는 정합성 이슈. 프론트 피커는 활성 컴포넌트만 제공. → 컴포넌트 삭제 정책 확정 시 EXISTS에 deleted_at 필터 추가.
+- **C4**: `BoardFilterQueryParser`에 필드별 값 개수 cap 부재(약한 DoS — GET 쿼리스트링 헤더 크기·maxParameterCount로
+  자연 제한, PG가 큰 IN 견딤). → D6 프론트 PR 또는 후속에서 필드별 cap(예: 50) 방어 추가.
