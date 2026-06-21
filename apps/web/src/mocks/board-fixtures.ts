@@ -104,6 +104,15 @@ export function resetBoardStore(): void {
 }
 
 /**
+ * 카드 객체에 필터 메타(labels, componentIds)가 이미 있는지 확인한다.
+ *
+ * @param card BoardCard 또는 StoredCard
+ */
+function isStoredCard(card: BoardCard): card is StoredCard {
+  return Array.isArray((card as Partial<StoredCard>).labels)
+}
+
+/**
  * BoardDetail 또는 StoredBoardDetail을 store에 시드한다.
  * 카드에 labels/componentIds가 없는 경우 빈 배열로 보완해 StoredBoardDetail로 변환한다.
  * 동일 boardId가 이미 있으면 덮어쓴다.
@@ -115,13 +124,11 @@ export function seedBoard(board: BoardDetail | StoredBoardDetail): void {
     ...board,
     columns: board.columns.map((col) => ({
       ...col,
-      cards: col.cards.map((card) => {
-        const storedCard = card as Partial<StoredCard>
-        return {
-          ...card,
-          labels: storedCard.labels ?? [],
-          componentIds: storedCard.componentIds ?? [],
+      cards: col.cards.map((card): StoredCard => {
+        if (isStoredCard(card)) {
+          return card
         }
+        return { ...card, labels: [], componentIds: [] }
       }),
     })),
   }
