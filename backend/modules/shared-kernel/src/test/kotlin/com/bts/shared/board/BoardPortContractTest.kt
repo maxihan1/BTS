@@ -242,4 +242,69 @@ class BoardPortContractTest {
         assertThat(result.currentStateKey).isEqualTo("done")
         assertThat(result.version).isEqualTo(10L)
     }
+
+    // ── BoardIssueLookupPort 3-인자 default 위임 계약 ────────────────────────
+
+    @Test
+    fun `2-인자만 override 한 fake 에 3-인자로 호출하면 default 위임으로 무필터 결과가 반환된다`() {
+        // CONCERN-1: 2-인자만 override 한 구현체가 3-인자 호출 시
+        // default 메서드가 2-인자로 위임해 안전하게 동작하는지 확인한다.
+        val fakeIssue =
+            BoardIssueView(
+                key = "PROJ-10",
+                summary = "기존 이슈",
+                currentStateKey = "open",
+                assigneeId = null,
+                priority = 1,
+                version = 1L,
+            )
+        val twoArgOnlyPort =
+            object : BoardIssueLookupPort {
+                override fun listVisibleIssuesByProject(
+                    projectKey: String,
+                    viewerUserId: UUID,
+                ): BoardIssuePage = BoardIssuePage(issues = listOf(fakeIssue), truncated = false)
+            }
+
+        val filter =
+            BoardCardFilter(
+                assigneeIds = listOf(UUID.randomUUID()),
+                labels = listOf("bug"),
+            )
+        val result = twoArgOnlyPort.listVisibleIssuesByProject("PROJ", UUID.randomUUID(), filter)
+
+        // default 는 2-인자로 위임하므로 2-인자 구현의 결과(fakeIssue 포함)가 반환된다.
+        assertThat(result.issues).containsExactly(fakeIssue)
+        assertThat(result.truncated).isFalse()
+    }
+
+    @Test
+    fun `3-인자를 override 한 filter-aware fake 는 전달한 filter 를 그대로 수신한다`() {
+        // CONCERN-1 역방향 검증: 3-인자를 명시 override 해야만 filter 가 드롭되지 않고
+        // 구현체에 전달됨을 단언한다. filter-aware 구현체(issue-tracking adapter 등)가
+        // SQL 수준에서 필터를 적용할 수 있는 선행 계약이다.
+        var capturedFilter: BoardCardFilter? = null
+        val filterAwarePort =
+            object : BoardIssueLookupPort {
+                override fun listVisibleIssuesByProject(
+                    projectKey: String,
+                    viewerUserId: UUID,
+                    filter: BoardCardFilter,
+                ): BoardIssuePage {
+                    capturedFilter = filter
+                    return BoardIssuePage(issues = emptyList(), truncated = false)
+                }
+            }
+
+        val sentFilter =
+            BoardCardFilter(
+                assigneeIds = listOf(UUID.randomUUID()),
+                includeUnassigned = true,
+                labels = listOf("enhancement"),
+                componentIds = listOf(UUID.randomUUID()),
+            )
+        filterAwarePort.listVisibleIssuesByProject("PROJ", UUID.randomUUID(), sentFilter)
+
+        assertThat(capturedFilter).isEqualTo(sentFilter)
+    }
 }
