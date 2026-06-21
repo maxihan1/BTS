@@ -123,7 +123,7 @@ describe('useBoard', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    expect(fetchBoard).toHaveBeenCalledWith(boardId)
+    expect(fetchBoard).toHaveBeenCalledWith(boardId, undefined)
     expect(result.current.data).toEqual(MOCK_BOARD_DETAIL)
   })
 
