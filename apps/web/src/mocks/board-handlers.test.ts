@@ -253,21 +253,18 @@ describe('POST /api/v1/boards/:id/cards/:issueKey/move', () => {
   })
 
   it('409 토글 플래그 설정 시 move → 409 errorCode AGILE_CONFLICT', async () => {
-    seedBoard(DEFAULT_BOARD)
+    // 409 충돌 분기는 보드 조회 전에 발생하므로 보드 시드 불필요
+    // 단, boardId/issueKey/toColumnId는 임의 값으로도 409 반환됨을 검증
     localStorage.setItem(LS_KEY_BOARD_CONFLICT, 'true')
 
-    const todoColumn = DEFAULT_BOARD.columns[0]
-    const inProgressColumn = DEFAULT_BOARD.columns[1]
-    const firstCard = todoColumn?.cards[0]
-
-    if (todoColumn === undefined || inProgressColumn === undefined || firstCard === undefined) {
-      throw new Error('fixture 데이터 불완전')
-    }
-
-    const res = await moveCard(DEFAULT_BOARD.boardId, firstCard.issueKey, {
-      toColumnId: inProgressColumn.columnId,
-      expectedVersion: firstCard.version,
-    })
+    const res = await moveCard(
+      DEFAULT_BOARD.boardId,
+      'ATLAS-1',
+      {
+        toColumnId: '20000000-0000-4000-8000-000000000002',
+        expectedVersion: 0,
+      },
+    )
     expect(res.status).toBe(409)
     const body = (await res.json()) as ProblemDetail
     expect(body.errorCode).toBe('AGILE_CONFLICT')
