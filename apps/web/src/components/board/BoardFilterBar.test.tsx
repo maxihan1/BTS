@@ -7,6 +7,7 @@ import type { ReactNode } from 'react'
 import type { BoardCardFilterParams } from '@/api/boards'
 import type { UserSummary } from '@/api/users'
 import type { Component } from '@/api/components'
+import { boardFilterLabels } from '@/i18n/board-filter-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 훅 mock — 데이터 페칭 없이 순수 UI 단위 테스트
@@ -68,19 +69,23 @@ vi.mock('cmdk', () => {
     placeholder?: string
     className?: string
     [key: string]: unknown
-  }) => (
-    <input
-      value={value}
-      onChange={(e) => onValueChange?.(e.target.value)}
-      onFocus={onFocus}
-      onBlur={onBlur}
-      onKeyDown={onKeyDown}
-      disabled={disabled}
-      placeholder={placeholder}
-      className={className}
-      data-testid={(rest as Record<string, unknown>)['data-testid'] as string | undefined}
-    />
-  )
+  }) => {
+    const restRecord = rest as Record<string, unknown>
+    return (
+      <input
+        value={value}
+        onChange={(e) => onValueChange?.(e.target.value)}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        onKeyDown={onKeyDown}
+        disabled={disabled}
+        placeholder={placeholder}
+        className={className}
+        aria-label={restRecord['aria-label'] as string | undefined}
+        data-testid={restRecord['data-testid'] as string | undefined}
+      />
+    )
+  }
 
   const Root = ({ children }: { children: ReactNode }) => <div>{children}</div>
   Root.Input = Input
@@ -180,7 +185,9 @@ describe('BoardFilterBar — S1 담당자 typeahead', () => {
 describe('BoardFilterBar — S2 라벨 자동완성', () => {
   it('S2a: 라벨 input이 접근 가능한 label을 갖는다', () => {
     renderBar()
-    expect(screen.getByRole('textbox', { name: /라벨/ })).toBeInTheDocument()
+    // LabelAutocompleteInput 래퍼의 data-testid로 input을 찾고, 섹션 label 텍스트가 DOM에 있어야 함
+    expect(screen.getByTestId('label-autocomplete-input')).toBeInTheDocument()
+    expect(screen.getByText(boardFilterLabels.filter.labelLabel)).toBeInTheDocument()
   })
 
   it('S2b: 라벨 input에 값 입력 후 드롭다운에서 라벨 선택 → onChange(labels 포함)가 호출된다', async () => {
@@ -188,7 +195,7 @@ describe('BoardFilterBar — S2 라벨 자동완성', () => {
     const onChange = vi.fn()
     renderBar(emptyFilter, onChange)
 
-    const input = screen.getByRole('textbox', { name: /라벨/ })
+    const input = screen.getByTestId('label-autocomplete-input')
     await user.click(input)
     await user.type(input, 'b')
 
@@ -357,10 +364,11 @@ describe('BoardFilterBar — S7 접근성', () => {
   it('S7a: 각 필터 컨트롤이 접근 가능한 label을 갖는다', () => {
     renderBar()
 
-    // 담당자 textbox
+    // 담당자 textbox — aria-label 직접 연결
     expect(screen.getByRole('textbox', { name: /담당자/ })).toBeInTheDocument()
-    // 라벨 textbox
-    expect(screen.getByRole('textbox', { name: /라벨/ })).toBeInTheDocument()
+    // 라벨 textbox — LabelAutocompleteInput의 data-testid + 섹션 label 텍스트로 확인
+    expect(screen.getByTestId('label-autocomplete-input')).toBeInTheDocument()
+    expect(screen.getByText(boardFilterLabels.filter.labelLabel)).toBeInTheDocument()
     // 미배정 체크박스
     expect(screen.getByRole('checkbox', { name: /미배정/ })).toBeInTheDocument()
   })
