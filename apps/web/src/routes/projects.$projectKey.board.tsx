@@ -1,4 +1,4 @@
-// 칸반 보드 라우트 — BoardRouteAdapter + BoardPage (FR-BD-01 Task 7)
+// 칸반 보드 라우트 — BoardRouteAdapter + BoardPage (FR-BD-01 Task 7 + FR-BD-02 Task 6)
 import type { JSX } from 'react'
 import { useMemo } from 'react'
 import { useParams, useSearch, useNavigate } from '@tanstack/react-router'
@@ -6,11 +6,14 @@ import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
 import { ApiError } from '@/api/client'
 import { fetchUsers } from '@/api/users'
-import type { BoardSummary } from '@/api/boards'
+import type { BoardSummary, BoardCardFilterParams } from '@/api/boards'
 import { useBoards, useBoard } from '@/hooks/use-boards'
 import { KanbanBoard } from '@/components/board/KanbanBoard'
 import type { CardAssigneeDisplay } from '@/components/board/BoardCard'
 import { CreateBoardForm } from '@/components/board/CreateBoardForm'
+import { BoardFilterBar } from '@/components/board/BoardFilterBar'
+import { boardFilterLabels } from '@/i18n/board-filter-labels'
+import { searchToFilter, filterToSearch, isEmptyFilter } from '@/lib/board-filter'
 import {
   Select,
   SelectContent,
@@ -18,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 스켈레톤 헬퍼 — shadcn Skeleton 미설치이므로 인라인 구현
@@ -61,20 +65,50 @@ const usersArraySchema = z.array(
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 빈 필터 상수 — 참조 안정성 보장 (useMemo 바깥 선언)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 아무 조건도 없는 기본 필터 상수. 매 렌더마다 새 객체 생성 방지 */
+const EMPTY_FILTER: BoardCardFilterParams = {
+  assigneeIds: [],
+  includeUnassigned: false,
+  labels: [],
+  componentIds: [],
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // BoardRouteAdapter
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * router.ts에 등록되는 라우트 어댑터.
- * useParams로 $projectKey, useSearch로 board(선택된 boardId)를 추출해 BoardPage에 전달한다.
+ * useParams로 $projectKey, useSearch로 board(선택된 boardId)와
+ * assignee/label/component 필터 파라미터를 추출해 BoardPage에 전달한다.
  */
 export function BoardRouteAdapter(): JSX.Element {
   const { projectKey } = useParams({ strict: false })
-  const search = useSearch({ strict: false }) as { board?: string }
+  const search = useSearch({ strict: false }) as {
+    board?: string
+    assignee?: string | string[]
+    label?: string | string[]
+    component?: string | string[]
+  }
+
+  // searchToFilter는 매 렌더마다 새 객체를 반환하므로 실제 search 값이 바뀔 때만 재계산한다.
+  // search.assignee / label / component를 직접 의존성으로 나열해 react-hooks/exhaustive-deps를 만족시킨다.
+  const searchAssignee = search.assignee
+  const searchLabel = search.label
+  const searchComponent = search.component
+  const filter = useMemo(
+    () => searchToFilter({ assignee: searchAssignee, label: searchLabel, component: searchComponent }),
+    [searchAssignee, searchLabel, searchComponent],
+  )
+
   return (
     <BoardPage
       projectKey={projectKey ?? ''}
       selectedBoardId={search.board}
+      filter={filter}
     />
   )
 }
@@ -89,6 +123,8 @@ export interface BoardPageProps {
   projectKey: string
   /** URL search params에서 추출한 선택된 보드 UUID. undefined이면 첫 보드 자동 선택 */
   selectedBoardId: string | undefined
+  /** URL search params에서 변환된 카드 필터. 없으면 EMPTY_FILTER */
+  filter?: BoardCardFilterParams
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -105,15 +141,25 @@ export interface BoardPageProps {
  *   - 보드 1개 → KanbanBoard.
  *   - 보드 2+개 → 선택 드롭다운 + KanbanBoard.
  * - selectedBoardId ?? 첫 보드를 현재 보드로 결정.
- * - useBoard(currentBoardId)로 보드 상세 조회.
+ * - useBoard(currentBoardId, filter)로 보드 상세 조회 (필터 적용).
  * - fetchUsers()로 전체 사용자 목록 조회 → issueKey→displayName Map 구성 (N+1 방지, best-effort).
  * - truncated/unplacedCount 경고 배너.
+ * - BoardFilterBar: 보드 상세 있을 때만 (EC7). onChange → navigate로 URL search 갱신.
+ * - 필터 결과 0건(모든 컬럼 카드 0) → 빈 상태 안내 + 초기화 CTA (D2).
  *
  * @param projectKey 프로젝트 식별 키
  * @param selectedBoardId URL search에서 추출한 선택 보드 UUID
+ * @param filter URL search에서 변환된 카드 필터
  */
-export function BoardPage({ projectKey, selectedBoardId }: BoardPageProps): JSX.Element {
+export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProps): JSX.Element {
   const navigate = useNavigate()
+
+  // ★ stableFilter — filter prop을 메모이즈해 매 렌더 새 객체로 queryKey가 흔들리는 것을 방지한다.
+  // BoardRouteAdapter에서 이미 useMemo로 안정화된 filter를 전달하므로, 여기서는 null 폴백만 담당.
+  const stableFilter = useMemo<BoardCardFilterParams>(
+    () => filter ?? EMPTY_FILTER,
+    [filter],
+  )
 
   const {
     data: boards,
@@ -138,7 +184,7 @@ export function BoardPage({ projectKey, selectedBoardId }: BoardPageProps): JSX.
     return boards[0]?.boardId
   })()
 
-  const { data: boardDetail, isLoading: boardDetailLoading } = useBoard(currentBoardId)
+  const { data: boardDetail, isLoading: boardDetailLoading } = useBoard(currentBoardId, stableFilter)
 
   // 전체 사용자 목록 조회 — userId → displayName|username Map 구성용
   const { data: usersRaw } = useQuery({
@@ -181,6 +227,39 @@ export function BoardPage({ projectKey, selectedBoardId }: BoardPageProps): JSX.
     }
     return map
   }, [boardDetail, userMap])
+
+  // 필터 결과 0건 여부 — 컬럼이 있고 모든 컬럼의 카드가 0이며, 필터가 비어 있지 않은 경우 (D2)
+  // columns가 빈 배열이면 every는 vacuous true → false로 처리 (필터 결과가 아닌 빈 보드)
+  const isFilteredEmpty: boolean = useMemo(() => {
+    if (boardDetail === undefined) return false
+    if (isEmptyFilter(stableFilter)) return false
+    if (boardDetail.columns.length === 0) return false
+    return boardDetail.columns.every((col) => col.cards.length === 0)
+  }, [boardDetail, stableFilter])
+
+  // BoardFilterBar onChange 핸들러 — filterToSearch 결과와 board를 합쳐 navigate
+  function handleFilterChange(next: BoardCardFilterParams): void {
+    const filterSearch = filterToSearch(next)
+    void navigate({
+      to: '/projects/$projectKey/board',
+      params: { projectKey },
+      search: {
+        ...(currentBoardId !== undefined ? { board: currentBoardId } : {}),
+        ...filterSearch,
+      },
+    })
+  }
+
+  // 빈 상태 초기화 핸들러 — 빈 필터로 navigate (board만 유지)
+  function handleFilterReset(): void {
+    void navigate({
+      to: '/projects/$projectKey/board',
+      params: { projectKey },
+      search: {
+        ...(currentBoardId !== undefined ? { board: currentBoardId } : {}),
+      },
+    })
+  }
 
   // ── 로딩 ──────────────────────────────────────────────────────────────────
 
@@ -248,6 +327,15 @@ export function BoardPage({ projectKey, selectedBoardId }: BoardPageProps): JSX.
         </div>
       )}
 
+      {/* BoardFilterBar — 보드 상세가 있을 때만 (EC7) */}
+      {boardDetail !== undefined && (
+        <BoardFilterBar
+          projectKey={projectKey}
+          value={stableFilter}
+          onChange={handleFilterChange}
+        />
+      )}
+
       {/* 경고 배너 — truncated */}
       {boardDetail?.truncated === true && (
         <div
@@ -277,12 +365,23 @@ export function BoardPage({ projectKey, selectedBoardId }: BoardPageProps): JSX.
         </div>
       )}
 
-      {/* KanbanBoard */}
-      {boardDetail !== undefined && currentBoardId !== undefined && (
+      {/* 필터 결과 0건 빈 상태 (D2) — KanbanBoard 대신 안내 + 초기화 CTA */}
+      {boardDetail !== undefined && isFilteredEmpty && (
+        <div className="flex flex-col items-center justify-center min-h-48 gap-3 text-center">
+          <p className="text-sm text-muted-foreground">조건에 맞는 카드가 없습니다</p>
+          <Button type="button" variant="outline" size="sm" onClick={handleFilterReset}>
+            {boardFilterLabels.filter.reset}
+          </Button>
+        </div>
+      )}
+
+      {/* KanbanBoard — 필터 결과 있을 때만 */}
+      {boardDetail !== undefined && currentBoardId !== undefined && !isFilteredEmpty && (
         <KanbanBoard
           boardId={currentBoardId}
           board={boardDetail}
           assigneeNames={assigneeNames}
+          filter={stableFilter}
         />
       )}
     </div>
