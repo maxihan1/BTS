@@ -66,6 +66,203 @@ API)·#168(필터 API)로 완료. 이번 작업은 그 API를 호출해 보여�
 G2 보드 선택 → URL `?board=`. G3 빈 resolutions → 안내+비활성. 422 사전감지 우회·단일카드 패치 플리커 회피
 ·CSRF impl 확인 확정.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 전략. 아래→위 빌드(계약→훅→컴포넌트→페이지→MSW→E2E). 각 task TDD red→green→refactor.
+> 검증은 worktree에서 `pnpm`(node_modules는 Task 1이 설치). 컴포넌트/훅 테스트는 api/훅을 vi.mock으로
+> 격리(MSW는 dev+E2E용). Zod는 백엔드 DTO 1:1(spec API §) — drift 차단.
+
+### Task 1. @dnd-kit 의존성 추가 + worktree 셋업
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/package.json`, `apps/web/pnpm-lock.yaml`]
+- depends-on: []
+
+**작업**(setup — TDD 아님, 검증 기준 명시).
+- `apps/web/package.json` dependencies에 `@dnd-kit/core@6.3.1`, `@dnd-kit/utilities@3.2.2` 추가(캐럿 금지,
+  정확 버전 고정 — 메모리 신규 의존성 버전 고정).
+- worktree에서 `pnpm install` (worktree node_modules 미존재 → 전체 설치). **주의**: 부분설치 깨지면
+  메모리 worktree-node-modules-partial-install(main서 dist cp 복구) 적용.
+- **검증**: `pnpm --filter web typecheck` 베이스라인 그린 + `import { DndContext } from '@dnd-kit/core'`
+  타입 해석. (한 줄 임시 import로 확인 후 제거.)
+
+### Task 2. boards.ts API 클라이언트 + Zod 스키마 (1:1 미러)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/boards.ts`, `apps/web/src/api/boards.test.ts`]
+- depends-on: []
+
+**RED** (`boards.test.ts`).
+- `boardDetailSchema` 파싱: spec API §의 GET /boards/{id} 응답 픽스처(columns→cards 중첩, category enum,
+  assigneeId uuid|null, truncated, unplacedCount) 통과. category 비허용값/누락 필드 reject.
+- `boardSummarySchema`/`boardCreatedSchema`/`moveCardResultSchema` 각 1:1 파싱.
+- fetch 함수(`fetchBoards`/`fetchBoard`/`createBoard`/`moveCard`)는 `vi.spyOn(global,'fetch')` mock으로
+  경로·메서드·body·`{data:}` 언래핑 단언.
+- 예상 실패: `boards.ts` 미존재.
+
+**GREEN** (`boards.ts`).
+- 첫 줄 Korean 헤더 주석. Zod 스키마(UUID Zod v4 형식, `category: z.enum(['TODO','IN_PROGRESS','DONE'])`).
+- `apiGet`/`apiPost`(client.ts) 사용. `moveCard`는 POST body `{toColumnId, expectedVersion, resolutionId?}`.
+  타입은 `z.infer`로 export(인라인 mock drift 차단).
+
+**REFACTOR**. 스키마/타입 정리, `dataResponseSchema` 로컬 헬퍼(resolutions.ts 선례).
+
+**검증**: `pnpm --filter web test boards` + `pnpm --filter web typecheck`.
+
+### Task 3. 보드 조회/생성 훅 (useBoards / useBoard / useCreateBoard)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/hooks/use-boards.ts`, `apps/web/src/hooks/use-boards.test.tsx`]
+- depends-on: [2]
+
+**RED**.
+- QueryClient wrapper + `vi.mock('@/api/boards')`. `useBoards(projectKey)`/`useBoard(boardId)`가 데이터 반환.
+- `useCreateBoard(projectKey)` mutation 성공 시 boards 목록 invalidate(refetch). boardId 미지정 시 useBoard
+  비활성(enabled=false) 단언.
+
+**GREEN**. `useQuery`/`useMutation`. queryKey 상수(`['boards',projectKey]`, `['board',boardId]`).
+
+**REFACTOR**. queryKey 팩토리 함수 추출.
+
+**검증**: `pnpm --filter web test use-boards`.
+
+### Task 4. 카드 이동 훅 useMoveCard (낙관적 이동 + 롤백 + 409 refetch)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/hooks/use-move-card.ts`, `apps/web/src/hooks/use-move-card.test.tsx`]
+- depends-on: [2]
+
+**RED**.
+- `onMutate`: `['board',boardId]` 캐시 스냅샷 보관 + 카드를 현재 컬럼→대상 컬럼으로 **단일 카드 이동**
+  (전체 setQueryData 교체 아님 — 플리커 회피).
+- `onSuccess`: 응답 `version`/`currentStateKey`로 이동한 카드 패치.
+- `onError`: 스냅샷 복원 + `['board',boardId]` invalidate(409 충돌 시 서버 진실 회복).
+- `resolutionId` 인자가 moveCard로 전달됨.
+- 테스트: 낙관적 이동 즉시 반영 / 성공 version 갱신 / 409 throw 시 원위치+invalidate 호출.
+
+**GREEN**. `useMutation` + onMutate/onError/onSuccess/onSettled. cancelQueries로 드래그 중 refetch 억제(EC8).
+
+**REFACTOR**. 캐시 이동 헬퍼(컬럼 간 카드 이동) 순수 함수 추출 + 단위 테스트.
+
+**검증**: `pnpm --filter web test use-move-card`.
+
+### Task 5. BoardCard + BoardColumn 컴포넌트 (draggable/droppable + 담당자)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/board/BoardCard.tsx`, `apps/web/src/components/board/BoardCard.test.tsx`,
+  `apps/web/src/components/board/BoardColumn.tsx`, `apps/web/src/components/board/BoardColumn.test.tsx`]
+- depends-on: [1, 2]
+
+**RED**.
+- `BoardCard`: issueKey + summary 렌더, 담당자 displayName/미배정/이니셜 fallback(props로 name 주입 —
+  해석은 페이지가 Map 제공), `/issues/$key` Link. `useDraggable`(id=issueKey, data={fromColumnId}).
+- `BoardColumn`: 헤더(name·category·카드수), `useDroppable`(id=columnId, data={category}), 카드 목록 렌더,
+  빈 컬럼도 드롭 영역(EC4).
+
+**GREEN**. 각 컴포넌트 + 첫 줄 Korean 헤더. @dnd-kit `useDraggable`/`useDroppable` + `@dnd-kit/utilities` CSS
+transform. DESIGN.md 토큰(Tailwind) 사용.
+
+**REFACTOR**. 카드/컬럼 `memo`(NFR-1 리렌더 억제), aria 라벨.
+
+**검증**: `pnpm --filter web test BoardCard BoardColumn`.
+
+### Task 6. KanbanBoard + DndContext + 드래그 이동 wiring + ResolutionPickerModal
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/board/KanbanBoard.tsx`, `apps/web/src/components/board/KanbanBoard.test.tsx`,
+  `apps/web/src/components/board/ResolutionPickerModal.tsx`, `apps/web/src/components/board/ResolutionPickerModal.test.tsx`]
+- depends-on: [4, 5]
+
+**RED**.
+- `KanbanBoard`: `DndContext`(PointerSensor+KeyboardSensor) + `DragOverlay`. `onDragEnd` 로직:
+  - over=null 또는 대상 컬럼==출발 컬럼 → **no-op**(move 미호출, EC1).
+  - 대상 컬럼 `category==='DONE'` → `ResolutionPickerModal` 오픈(이동 보류). 확인 시 `useMoveCard`에
+    resolutionId 포함 호출. 취소 시 미호출(EC2).
+  - 그 외 → `useMoveCard({toColumnId, expectedVersion=카드.version})` 즉시 호출.
+  - 컬럼은 displayOrder asc 배치.
+- `ResolutionPickerModal`: `useResolutions()`(기존 훅) 목록, 미선택 시 확인 비활성(BulkTransitionDialog 선례),
+  빈 목록 → "설정된 해결 방안이 없습니다"(G3). radix Dialog 래퍼(직접 import — 메모리 shadcn Dialog 부재).
+- 테스트: cross-column→move 호출 / same-column→no-op / DONE→모달→resolutionId 포함 호출 / 취소→미호출.
+
+**GREEN**. DndContext wiring + 모달. onDragEnd에서 over.data.category 판정.
+
+**REFACTOR**. onDragEnd 분기 헬퍼 추출(테스트 가능). collisionDetection 설정.
+
+**검증**: `pnpm --filter web test KanbanBoard ResolutionPickerModal`.
+
+### Task 7. BoardPage + RouteAdapter + 라우트 등록 + 생성 폼 + 보드 선택 + 경고/상태
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/router.ts`,
+  `apps/web/src/components/board/CreateBoardForm.tsx`, `apps/web/src/components/board/CreateBoardForm.test.tsx`,
+  `apps/web/src/routes/__tests__/projects.board.test.tsx`]
+- depends-on: [3, 6]
+
+**RED**.
+- `BoardRouteAdapter`(useParams projectKey + useSearch board) → `BoardPage({projectKey, boardId})`.
+- 보드 1+: KanbanBoard 렌더. 보드 0: CreateBoardForm. 다중: 선택 드롭다운 → `?board=<id>` navigate.
+- 403(AGILE_ACCESS_DENIED) → 접근 불가 안내(members S6 선례). truncated/unplacedCount>0 경고 배너.
+- `CreateBoardForm`: 이름 입력→useCreateBoard. 422(워크플로우 미할당) → 안내 메시지.
+- router.ts에 `/projects/$projectKey/board` 라우트 등록(validateSearch `{board?:string}`,
+  RouteAdapter/Page 분리, requireAuthAndPasswordChanged 가드). 라우트 수 주석 26→27 갱신.
+
+**GREEN**. 페이지 + 폼 + 라우트 등록.
+
+**REFACTOR**. 상태 분기 정리, 빈/로딩/에러 컴포넌트.
+
+**검증**: `pnpm --filter web test projects.board CreateBoardForm` + `pnpm --filter web typecheck`.
+
+### Task 8. MSW 보드 핸들러 + 픽스처 (dev + E2E, stateful)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/mocks/board-handlers.ts`, `apps/web/src/mocks/board-fixtures.ts`,
+  `apps/web/src/mocks/handlers.ts`]
+- depends-on: [2]
+
+**RED/GREEN** (MSW는 통합/E2E 검증이라 핸들러+stateful 동작 단언).
+- GET 목록/단건, POST 생성, POST move 핸들러. **stateful 공유 store**: move가 카드를 컬럼 간 이동시켜
+  이후 refetch에 반영(메모리 msw-mutation-stateful-refetch / msw-derived-behavior-shared-store-e2e).
+- 브라우저에서 시드 가능한 store(E2E addInitScript). 충돌 시나리오 토글(409) 지원.
+- `handlers.ts`에 `boardHandlers` spread 등록. 픽스처 타입은 `z.infer`(api/boards.ts)로 drift 차단.
+
+**검증**: `pnpm --filter web test board-handlers` (있으면) + dev 수동 렌더 확인.
+
+### Task 9. (D7) Playwright E2E + NFR + 기존 E2E 회귀
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/board-kanban.spec.ts`, (필요 시) `apps/web/e2e/fixtures/*`]
+- depends-on: [7, 8]
+
+**작업**.
+- 시나리오: 보드 생성 → 조회(컬럼/카드) → 카드 이동(일반 전이, 컬럼 변경 확인) → DONE 이동(resolution
+  모달 선택) → 409 충돌(원위치+토스트). MSW stateful store 시드(SPA 내부 이동, reload 금지 — store 리셋
+  가짜그린 회피).
+- NFR-1: 200건 보드 렌더 시간 측정(trace) — 임계 1.5s 참고 기록.
+- **기존 E2E 회귀**: 새 화면이 전역 셀렉터 안 깨는지 `pnpm --filter web test:e2e` 영향 범위 확인
+  (ui-pr-defer-e2e-regression-latent). 셀렉터는 컨테이너 한정/getByRole exact.
+
+**검증**: `pnpm --filter web exec playwright test board-kanban` + 기존 스펙 회귀.
+
+## Plan 메타
+
+- task 수: 9 (Task 1~8 frontend-engineer, Task 9 qa-engineer E2E)
+- wave 예상: 약 5 — W1={T1, T2}, W2={T3, T4, T5, T8}(T5만 deps[1,2], 나머지 deps[2], 파일 겹침 0),
+  W3={T6}(deps[4,5]), W4={T7}(deps[3,6], router.ts 단독), W5={T9}(deps[7,8]).
+- 모듈 컴파일 직렬화 요인: 없음(프론트 단일 패키지, 파일 단위 격리). router.ts는 T7 단독 수정.
+- TDD 강제: yes (T1 setup 제외, T2~T7 red→green→refactor, T8 stateful 동작 단언, T9 E2E).
+- 추가 검증: `pnpm --filter web typecheck`(tsc, vitest와 별도 — 메모리 vitest≠tsc), eslint(no-console),
+  vitest, playwright(T9). 신규 의존성 @dnd-kit 2종(버전 고정).
+- 신규 백엔드/마이그레이션/스키마: 0.
+- 잠재 함정(impl 인계): worktree node_modules 설치(T1)·CSRF per-BC 확인(move/create POST)·
+  MSW stateful store E2E 시드·radix Dialog 직접 import·담당자 best-effort fallback.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
