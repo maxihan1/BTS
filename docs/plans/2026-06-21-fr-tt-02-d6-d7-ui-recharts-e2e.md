@@ -52,6 +52,165 @@ classify: 원판정 type=qa(E2E 키워드 오판) → type=ui / agent=frontend-e
 ✅ self-review 1-pass 통과 (정의된 FR + Maxi 결정 2종으로 핵심 갈림길 사전 확정).
 보강 항목. Zod optional/nullable 구분 · project drift 차단 · displayName 빈 문자열 placeholder · 차원전환 필터 보존 · router.ts 병행 worktree 충돌 명시 · recharts 버전 고정 · 403 probe 방지.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+레이어별 분해. API → 훅/i18n → 차트/표 → 리포트 조립 → 라우트/MSW → E2E.
+파일 경로는 repo 루트 기준. 모든 신규 파일 L1 한국어 헤더 주석 필수(글로벌 CLAUDE.md §6).
+
+### Task 0 (controller 선행 — wave dispatch 전 단독 실행)
+
+**recharts 설치 + lockfile 커밋.** TDD 사이클 없음(의존성 추가).
+- `cd apps/web && pnpm add recharts@3.8.1` (정확 버전, 절대규칙 #17 — `^`/`~` 금지. package.json에 `"recharts": "3.8.1"` 확인).
+- **node_modules race 회피**: wave 병렬 dispatch가 시작되기 전에 controller가 단독 실행 + 커밋. 이후 모든 task가 설치된 recharts 사용(메모리 worktree-node-modules-partial-install).
+- 검증: `pnpm --filter ... typecheck` 통과 + `grep '"recharts": "3.8.1"' apps/web/package.json`.
+
+### Task 1. API 클라이언트 + Zod 스키마
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/worklog-aggregate.ts`, `apps/web/src/api/worklog-aggregate.test.ts`]
+- depends-on: []
+
+**RED** (`worklog-aggregate.test.ts`): MSW/모킹 없이 fetch mock 또는 기존 apiFetch mock 패턴(worklogs.test.ts 참고).
+- `fetchWorklogAggregate('BTS', { by:'issue' })` → 200 응답 파싱: buckets/totalTimeSpentSeconds/by
+- granularity/from/to **부재** 응답도 파싱 성공(@JsonInclude NON_NULL → Zod `.optional()`, not `.nullable()`)
+- `project` 필드는 스키마에 **없음**(실 DTO 기준, invent 금지) — 응답에 와도 무시(passthrough 아님, strip)
+- by=period + granularity='month' 응답(granularity 존재) 파싱
+- 403/400 → `ApiError(status)` throw
+- 실패 메시지(예상): `worklog-aggregate` 모듈/함수 없음
+
+**GREEN** (`worklog-aggregate.ts`):
+- Zod: `worklogAggregateBucketSchema { key, label, timeSpentSeconds:number, worklogCount:number }`, `worklogAggregateResponseSchema { by, granularity:optional, from:optional, to:optional, buckets:array, totalTimeSpentSeconds:number }`
+- 타입 export(`WorklogAggregateResponse`, `WorklogAggregateBucket`, `AggregateDimension='issue'|'user'|'period'`, `AggregateGranularity='day'|'week'|'month'`)
+- `fetchWorklogAggregate(projectKey, params)`: querystring 조립(undefined 파라미터 제외), `apiFetch` GET, `dataResponseSchema(...).parse`. worklogs.ts의 dataResponseSchema 헬퍼 패턴 재사용(로컬 정의).
+
+**REFACTOR**: querystring 빌더 헬퍼 + KDoc.
+
+**검증**: `cd apps/web && pnpm test worklog-aggregate` + `pnpm typecheck`
+
+### Task 2. TanStack Query 훅
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/hooks/use-worklog-aggregate.ts`, `apps/web/src/hooks/use-worklog-aggregate.test.tsx`]
+- depends-on: [1]
+
+**RED**: queryKey가 모든 파라미터(projectKey, by, granularity, from, to) 포함 → 파라미터 변경 시 재조회. enabled(projectKey 존재 시). 기존 use-versions/use-components 훅 테스트 패턴 참고.
+
+**GREEN**: `useWorklogAggregate(projectKey, params)` = `useQuery({ queryKey:['worklog-aggregate', projectKey, params], queryFn: () => fetchWorklogAggregate(...) })`.
+
+**REFACTOR**: queryKey 헬퍼 + KDoc.
+
+**검증**: `pnpm test use-worklog-aggregate`
+
+### Task 3. i18n 라벨
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/i18n/worklog-aggregate-labels.ts`, `apps/web/src/i18n/worklog-aggregate-labels.test.ts`]
+- depends-on: []
+
+**RED** (`*-labels.test.ts`): 라벨 객체 키 존재 + **콜론(`:`) 종결 0**(version-labels.test.ts 패턴 복사). 페이지 제목/설명, 차원 옵션명(이슈별/사용자별/기간별), granularity 옵션(일/주/월), from/to/적용, 빈 상태, 권한 안내, 차트/표 헤더, "(알 수 없음)" placeholder, "상위 N개 표시" 안내.
+
+**GREEN**: `worklogAggregateLabels` 객체. ko.test.ts 전역 콜론 검증도 통과.
+
+**REFACTOR**: 그룹화(page/filter/chart/table/empty/error) + KDoc.
+
+**검증**: `pnpm test worklog-aggregate-labels && pnpm test i18n/ko`
+
+### Task 4. 차트 컴포넌트 (recharts BarChart)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/worklog/WorklogAggregateChart.tsx`, `apps/web/src/components/worklog/WorklogAggregateChart.test.tsx`]
+- depends-on: [1]
+
+**RED**: **★recharts jsdom 한계** — `ResponsiveContainer`는 jsdom에서 width/height 0이라 차트 미렌더(메모리 mermaid getBBox 선례). 단위 테스트는 (a) **데이터→차트 데이터 변환 로직**(상위 N 절단·label/value 매핑·빈 배열 처리)을 검증, (b) recharts 자체 렌더는 mock(`vi.mock('recharts', ...)` 또는 ResponsiveContainer를 고정 크기 div로 대체) 또는 컴포넌트가 빈 배열·정상 배열에서 throw 없이 마운트되는지만. 실 시각 렌더는 D7 E2E 위임(KDoc 명시 — silent skip 아님).
+- 상위 N(기본 20) 초과 시 차트는 N개만, label에 "상위 N개" 안내 노출 props/콜백.
+- 빈 buckets → 차트 영역에 빈 상태(또는 null 반환, 부모가 빈상태 처리).
+
+**GREEN**: `WorklogAggregateChart({ buckets, dimension })`. recharts `<ResponsiveContainer><BarChart data={chartData}>` — XAxis(label), YAxis(시간 tick formatter=초→h), Tooltip(formatSeconds), Bar(timeSpentSeconds). chartData = buckets 상위 N개 매핑. by=period면 시간순 유지(백엔드 ASC), 그 외 백엔드 DESC 유지. aria-label 부여.
+
+**REFACTOR**: chartData 변환 순수 함수 분리(테스트 용이) + 상위 N 상수.
+
+**검증**: `pnpm test WorklogAggregateChart && pnpm typecheck`
+
+### Task 5. 표 컴포넌트
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/worklog/WorklogAggregateTable.tsx`, `apps/web/src/components/worklog/WorklogAggregateTable.test.tsx`]
+- depends-on: [1]
+
+**RED**: buckets를 행으로(label / 소요시간=`formatSeconds` / worklogCount). label 빈 문자열(by=user displayName 누락)→"(알 수 없음)" placeholder(key=UUID 비노출, spec E3). 합계 행(또는 footer)에 totalTimeSpentSeconds=formatSeconds. 빈 배열→빈 상태 행.
+
+**GREEN**: `WorklogAggregateTable({ buckets, total, dimension })`. `@/lib/duration` formatSeconds 재사용(신규 포맷 금지). 시맨틱 `<table>` + i18n 헤더.
+
+**REFACTOR**: 행 컴포넌트 분리 + KDoc.
+
+**검증**: `pnpm test WorklogAggregateTable`
+
+### Task 6. 리포트 메인 컴포넌트 (필터 + 조립 + 상태)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/worklog/WorklogAggregateReport.tsx`, `apps/web/src/components/worklog/WorklogAggregateReport.test.tsx`]
+- depends-on: [2, 3, 4, 5]
+
+**RED** (MSW로 useWorklogAggregate 응답 모킹 — 컴포넌트 통합):
+- 차원 셀렉터(issue/user/period) 전환 → 재조회(by 변경). 기본 by=issue.
+- by=period 선택 시 granularity 셀렉터 노출, 그 외 숨김. **차원 전환해도 granularity/from/to 상태 보존**(spec E5).
+- from/to 네이티브 `input[type=date]`. **from>to면 적용 차단 + 안내**(클라이언트 방어, spec S6).
+- 정상 → 요약(total) + 차트 + 표 렌더. buckets=[] → 빈 상태(spec S4). 로딩 → 로딩 표시.
+- **403 → 권한 안내**(spec S5) — ApiError(403) 분기.
+
+**GREEN**: 필터 state(useState: by, granularity, from, to) → `useWorklogAggregate(projectKey, params)`. isPending/isError(403 분기)/빈배열/정상 4-상태. 차트+표 조립. label은 select 외부 설명(기존 패턴). i18n 라벨 사용.
+
+**REFACTOR**: 필터 바 하위 컴포넌트 분리 + KDoc.
+
+**검증**: `pnpm test WorklogAggregateReport`
+
+### Task 7. 라우트 페이지 + router 등록 + MSW 핸들러
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/projects.$projectKey.reports.worklog.tsx`, `apps/web/src/routes/projects.$projectKey.reports.worklog.test.tsx`, `apps/web/src/router.ts`, `apps/web/src/mocks/worklog-aggregate-handlers.ts`, `apps/web/src/mocks/handlers.ts`]
+- depends-on: [6]
+
+**RED** (`*.reports.worklog.test.tsx`): RouteAdapter가 useParams로 projectKey 추출 → Page에 전달(라우터 비의존 단위 — 기존 versions 페이지 패턴). Page가 WorklogAggregateReport 렌더. MSW 핸들러가 `GET /api/v1/worklogs/aggregate` 응답(by별 fixture).
+
+**GREEN**:
+- 페이지: `ProjectWorklogReportRouteAdapter`(useParams) + `ProjectWorklogReportPage({projectKey})`(props). 헤더(p-8 space-y-6) + WorklogAggregateReport.
+- `router.ts`: `projects/$projectKey/reports/worklog` 라우트 등록. **★병행 worktree(fr-bd-01) 충돌 주의** — router.ts 동시 수정. 자기 라우트 블록만 추가, 머지 시점 rebase로 양쪽 보존(메모리 parallel-fr-overlapping-frontend-infra-collision). adapter import만 추가.
+- MSW: `worklog-aggregate-handlers.ts`(by=issue/user/period + 403 시나리오, 영속 store 패턴). `handlers.ts`에 import + spread 한 줄.
+
+**REFACTOR**: 핸들러 fixture 분리 + KDoc.
+
+**검증**: `pnpm test reports.worklog && pnpm typecheck && pnpm build`
+
+### Task 8. E2E (D7)
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/worklog-aggregate.spec.ts`]
+- depends-on: [7]
+
+**RED→GREEN** (Playwright happy path — 구현 코드 수정 금지, E2E만):
+- 로그인 fixture → `/projects/<key>/reports/worklog` 진입 → 표에 버킷 데이터 표시(셀렉터 within 한정, strict-mode).
+- 차원 전환(이슈별→사용자별→기간별) → 표/차트 갱신. **MSW 시나리오는 SPA 내부 이동·영속 store**(reload 금지=store 리셋 가짜그린, 메모리 e2e-msw-scenario-toggle). recharts SVG는 `.recharts-*` 클래스 존재만 확인(실 구조 page.evaluate로 사전 확인, 메모리 mermaid 셀렉터 선례) — 정확 막대 수 단언은 표로.
+- 빈 상태 시나리오 → 빈 상태 메시지. 403 시나리오 → 권한 안내.
+- 기존 E2E 회귀 동반 실행(메모리 ui-pr-defer-e2e-regression-latent). orphan vite 포트 정리(메모리 e2e-orphan-vite).
+
+**검증**: `pnpm test:e2e worklog-aggregate` + 인접 회귀 spec
+
+## Plan 메타
+
+- task 수: 8 (+ Task 0 controller 선행 recharts 설치)
+- 예상 wave: 5 — W1[T1,T3] · W2[T2,T4,T5] · W3[T6] · W4[T7] · W5[T8]. 프론트 레이어 의존(api→훅/차트/표→조립→라우트→E2E)으로 직렬성 존재.
+- 예상 시간: 약 20~30분(레이어 직렬 + E2E 통합)
+- TDD 강제: yes (test 커밋이 feat 커밋보다 먼저)
+- 범위: D6(프론트 UI) + D7(E2E)만. 백엔드 D1~D5 완료(#167). period dense 채움·URL 쿼리 동기화는 범위 외(spec E1/E7).
+- 추가 검증: pnpm verify(lint+typecheck+test+build) + playwright. **recharts 신규 의존성** — 절대규칙 #17 버전 고정 + Maxi 승인 완료.
+- 핵심 함정(리뷰 반영): (1) recharts jsdom 렌더 한계→데이터변환 로직 단위+E2E 위임. (2) Zod optional≠nullable(NON_NULL). (3) project 필드 invent 금지(실 DTO). (4) router.ts 병행 worktree 충돌. (5) i18n 콜론 종결 0. (6) formatSeconds 재사용. (7) MSW 영속 store(E2E 가짜그린 회피). (8) node_modules race→Task 0 선행 설치.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
