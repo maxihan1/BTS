@@ -170,8 +170,9 @@ describe('useCreateBoard', () => {
       await result.current.mutateAsync({ name: '새 보드' })
     })
 
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
     expect(createBoard).toHaveBeenCalledWith(projectKey, '새 보드')
-    expect(result.current.isSuccess).toBe(true)
     expect(result.current.data).toEqual(MOCK_BOARD_CREATED)
 
     // invalidateQueries가 boards 목록 queryKey로 호출되어야 한다
