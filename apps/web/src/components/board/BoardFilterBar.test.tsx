@@ -302,16 +302,17 @@ describe('BoardFilterBar — S4 필터 칩 제거', () => {
 describe('BoardFilterBar — S8 담당자 칩 라벨 안정 표시 (useUsersByIds)', () => {
   it('S8a: useUsers가 빈 배열이어도 useUsersByIds 결과로 칩에 displayName이 표시된다', () => {
     // useUsers(검색)는 빈 결과 — 검색어가 비워진 상황 시뮬레이션
-    vi.mocked(useUsersModule.useUsers).mockReturnValueOnce({
-      data: [],
-      isLoading: false,
-    } as ReturnType<typeof useUsersModule.useUsers>)
+    vi.mocked(useUsersModule.useUsers).mockReturnValueOnce(
+      { data: [], isLoading: false } as unknown as ReturnType<typeof useUsersModule.useUsers>,
+    )
 
     // useUsersByIds는 선택된 담당자 정보를 반환
-    vi.mocked(useUsersModule.useUsersByIds).mockReturnValueOnce({
-      data: [{ id: 'user-uuid-0001', username: 'alice', displayName: '김앨리스', email: null }],
-      isLoading: false,
-    } as ReturnType<typeof useUsersModule.useUsersByIds>)
+    vi.mocked(useUsersModule.useUsersByIds).mockReturnValueOnce(
+      {
+        data: [{ id: 'user-uuid-0001', username: 'alice', displayName: '김앨리스', email: null }],
+        isLoading: false,
+      } as unknown as ReturnType<typeof useUsersModule.useUsersByIds>,
+    )
 
     const value: BoardCardFilterParams = {
       ...emptyFilter,
@@ -326,15 +327,13 @@ describe('BoardFilterBar — S8 담당자 칩 라벨 안정 표시 (useUsersById
 
   it('S8b: useUsersByIds가 로딩 중일 때 칩이 크래시하지 않고 렌더된다', () => {
     // useUsers 빈 배열, useUsersByIds는 로딩 중
-    vi.mocked(useUsersModule.useUsers).mockReturnValueOnce({
-      data: [],
-      isLoading: false,
-    } as ReturnType<typeof useUsersModule.useUsers>)
+    vi.mocked(useUsersModule.useUsers).mockReturnValueOnce(
+      { data: [], isLoading: false } as unknown as ReturnType<typeof useUsersModule.useUsers>,
+    )
 
-    vi.mocked(useUsersModule.useUsersByIds).mockReturnValueOnce({
-      data: undefined,
-      isLoading: true,
-    } as ReturnType<typeof useUsersModule.useUsersByIds>)
+    vi.mocked(useUsersModule.useUsersByIds).mockReturnValueOnce(
+      { data: undefined, isLoading: true } as unknown as ReturnType<typeof useUsersModule.useUsersByIds>,
+    )
 
     const value: BoardCardFilterParams = {
       ...emptyFilter,

@@ -1,10 +1,10 @@
 // 보드 카드 필터 바 — 담당자/라벨/컴포넌트 다중 선택, 활성 필터 칩, 초기화 (FR-BD-02 Task-5)
 import type { JSX } from 'react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { LabelAutocompleteInput } from '@/components/labels/LabelAutocompleteInput'
 import { ComponentMultiSelect } from '@/components/issue/ComponentMultiSelect'
-import { useUsers } from '@/hooks/use-users'
+import { useUsers, useUsersByIds } from '@/hooks/use-users'
 import { useComponents } from '@/hooks/use-components'
 import { useDebounce } from '@/hooks/use-debounce'
 import type { BoardCardFilterParams } from '@/api/boards'
@@ -28,6 +28,16 @@ export function BoardFilterBar({ projectKey, value, onChange }: BoardFilterBarPr
 
   const { data: users = [], isLoading: usersLoading } = useUsers(useDebounce(assigneeQuery, 250))
   const { data: components = [] } = useComponents(projectKey)
+
+  // 선택된 담당자 이름을 안정적으로 표시하기 위해 id 다건 조회 — 검색어가 비워져도 이름 유지
+  const { data: selectedUsers = [] } = useUsersByIds(value.assigneeIds)
+  const assigneeNameMap = useMemo<Map<string, string>>(() => {
+    const map = new Map<string, string>()
+    for (const u of selectedUsers) {
+      map.set(u.id, u.displayName ?? u.username)
+    }
+    return map
+  }, [selectedUsers])
 
   const activeCount =
     value.assigneeIds.length + value.labels.length + value.componentIds.length +
@@ -93,7 +103,7 @@ export function BoardFilterBar({ projectKey, value, onChange }: BoardFilterBarPr
       <div className="flex w-full flex-wrap items-center gap-2">
         <ActiveFilterChips
           assigneeIds={value.assigneeIds}
-          users={users}
+          assigneeNameMap={assigneeNameMap}
           labels={value.labels}
           onAssigneeRemove={(id) =>
             onChange({ ...value, assigneeIds: value.assigneeIds.filter((a) => a !== id) })
@@ -167,20 +177,21 @@ function AssigneeSection({
 
 interface ActiveFilterChipsProps {
   readonly assigneeIds: string[]
-  readonly users: UserSummary[]
+  /** 담당자 id → displayName|username 맵 — useUsersByIds 기반으로 안정 표시 */
+  readonly assigneeNameMap: Map<string, string>
   readonly labels: string[]
   readonly onAssigneeRemove: (id: string) => void
   readonly onLabelRemove: (label: string) => void
 }
 
 /** 활성 필터 칩 목록 — 칩이 없으면 null 반환. */
-function ActiveFilterChips({ assigneeIds, users, labels, onAssigneeRemove, onLabelRemove }: ActiveFilterChipsProps): JSX.Element | null {
+function ActiveFilterChips({ assigneeIds, assigneeNameMap, labels, onAssigneeRemove, onLabelRemove }: ActiveFilterChipsProps): JSX.Element | null {
   if (assigneeIds.length === 0 && labels.length === 0) return null
   return (
     <div className="flex flex-wrap gap-1.5" role="list" aria-label="적용된 필터">
       {assigneeIds.map((id) => {
-        const u = users.find((usr) => usr.id === id)
-        return <Chip key={`assignee-${id}`} label={u?.displayName ?? u?.username ?? id} onRemove={() => onAssigneeRemove(id)} />
+        const label = assigneeNameMap.get(id) ?? id
+        return <Chip key={`assignee-${id}`} label={label} onRemove={() => onAssigneeRemove(id)} />
       })}
       {labels.map((label) => <Chip key={`label-${label}`} label={label} onRemove={() => onLabelRemove(label)} />)}
     </div>
