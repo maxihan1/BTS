@@ -92,8 +92,8 @@ describe('BoardColumn — S1 헤더 렌더', () => {
 
   it('S1b: 카드 수(column.cards.length)를 헤더에 표시한다', () => {
     renderColumn()
-    // 카드 2개 → "2" 표시
-    expect(screen.getByText('2')).toBeInTheDocument()
+    // 카드 3개 → "3" 표시
+    expect(screen.getByText('3')).toBeInTheDocument()
   })
 
   it('S1c: category 배지를 헤더에 표시한다', () => {

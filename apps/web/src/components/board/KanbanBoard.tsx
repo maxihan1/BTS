@@ -16,6 +16,7 @@ import { useMoveCard } from '@/hooks/use-move-card'
 import type { MoveCardVars } from '@/hooks/use-move-card'
 import { BoardColumn } from './BoardColumn'
 import { BoardCard } from './BoardCard'
+import type { CardAssigneeDisplay } from './BoardCard'
 import { ResolutionPickerModal } from './ResolutionPickerModal'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -129,15 +130,17 @@ export interface KanbanBoardProps {
   /** 보드 상세 데이터 (컬럼 + 카드 포함) */
   board: BoardDetail
   /**
-   * 이슈 키 → 담당자 표시 이름 맵.
+   * 이슈 키 → 담당자 표시 상태 맵 (3-상태 discriminated union).
    * 페이지가 userId → displayName 해석 후 주입한다.
    */
-  assigneeNames: Map<string, string | null>
+  assigneeNames: Map<string, CardAssigneeDisplay>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // KanbanBoard 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
+
+const UNASSIGNED: CardAssigneeDisplay = { state: 'unassigned' }
 
 /**
  * 칸반 보드 루트 컴포넌트.
@@ -251,7 +254,7 @@ export function KanbanBoard({ boardId, board, assigneeNames }: KanbanBoardProps)
             <BoardCard
               card={activeCard}
               columnId={activeFromColumnId}
-              assigneeName={assigneeNames.get(activeCard.issueKey) ?? null}
+              assignee={assigneeNames.get(activeCard.issueKey) ?? UNASSIGNED}
             />
           ) : null}
         </DragOverlay>

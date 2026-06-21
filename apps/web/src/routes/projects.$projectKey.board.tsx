@@ -1,5 +1,6 @@
 // 칸반 보드 라우트 — BoardRouteAdapter + BoardPage (FR-BD-01 Task 7)
 import type { JSX } from 'react'
+import { useMemo } from 'react'
 import { useParams, useSearch, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
@@ -8,6 +9,7 @@ import { fetchUsers } from '@/api/users'
 import type { BoardSummary } from '@/api/boards'
 import { useBoards, useBoard } from '@/hooks/use-boards'
 import { KanbanBoard } from '@/components/board/KanbanBoard'
+import type { CardAssigneeDisplay } from '@/components/board/BoardCard'
 import { CreateBoardForm } from '@/components/board/CreateBoardForm'
 import {
   Select,
@@ -146,8 +148,8 @@ export function BoardPage({ projectKey, selectedBoardId }: BoardPageProps): JSX.
     enabled: currentBoardId !== undefined,
   })
 
-  // userId → displayName|username Map
-  const userMap: Map<string, string> = (() => {
+  // userId → displayName|username Map — useMemo로 usersRaw 변경 시에만 재생성
+  const userMap: Map<string, string> = useMemo(() => {
     const parsed = usersRaw !== undefined ? usersArraySchema.safeParse(usersRaw) : null
     if (parsed === null || !parsed.success) return new Map()
     const map = new Map<string, string>()
@@ -155,21 +157,30 @@ export function BoardPage({ projectKey, selectedBoardId }: BoardPageProps): JSX.
       map.set(u.id, u.displayName ?? u.username)
     }
     return map
-  })()
+  }, [usersRaw])
 
-  // issueKey → displayName|null Map (카드 순회, best-effort FR-7)
-  const assigneeNames: Map<string, string | null> = (() => {
+  // issueKey → CardAssigneeDisplay Map (카드 순회, best-effort FR-7)
+  // 3-상태: assigneeId=null → unassigned / userMap 해석됨 → named / 미해석 → unknown
+  const assigneeNames: Map<string, CardAssigneeDisplay> = useMemo(() => {
     if (boardDetail === undefined) return new Map()
-    const map = new Map<string, string | null>()
+    const map = new Map<string, CardAssigneeDisplay>()
     for (const col of boardDetail.columns) {
       for (const card of col.cards) {
-        const name =
-          card.assigneeId !== null ? (userMap.get(card.assigneeId) ?? null) : null
-        map.set(card.issueKey, name)
+        if (card.assigneeId === null) {
+          map.set(card.issueKey, { state: 'unassigned' })
+        } else {
+          const resolved = userMap.get(card.assigneeId)
+          if (resolved !== undefined) {
+            map.set(card.issueKey, { state: 'named', name: resolved })
+          } else {
+            // assigneeId는 있으나 fetchUsers 상한 초과 등으로 이름 미해석 → unknown
+            map.set(card.issueKey, { state: 'unknown' })
+          }
+        }
       }
     }
     return map
-  })()
+  }, [boardDetail, userMap])
 
   // ── 로딩 ──────────────────────────────────────────────────────────────────
 

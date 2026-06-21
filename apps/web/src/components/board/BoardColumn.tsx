@@ -4,6 +4,7 @@ import { useDroppable } from '@dnd-kit/core'
 import { cn } from '@/lib/utils'
 import type { BoardColumn as BoardColumnType } from '@/api/boards'
 import { BoardCard } from './BoardCard'
+import type { CardAssigneeDisplay } from './BoardCard'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -14,10 +15,11 @@ export interface BoardColumnProps {
   /** 컬럼 데이터 (카드 목록 포함) */
   column: BoardColumnType
   /**
-   * 이슈 키 → 담당자 표시 이름 맵.
-   * 페이지가 해석해 주입한다. 값이 없거나 null이면 "미배정".
+   * 이슈 키 → 담당자 표시 상태 맵.
+   * 페이지가 3-상태(unassigned/named/unknown)로 해석해 주입한다.
+   * 맵에 없는 키는 unassigned로 fallback한다.
    */
-  assigneeNames: Map<string, string | null>
+  assigneeNames: Map<string, CardAssigneeDisplay>
   /** 드래그 카드가 이 컬럼 위에 있는지 여부. 하이라이트에 사용 */
   isOver?: boolean
 }
@@ -25,6 +27,8 @@ export interface BoardColumnProps {
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 구현 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
+
+const UNASSIGNED: CardAssigneeDisplay = { state: 'unassigned' }
 
 function BoardColumnInner({ column, assigneeNames, isOver = false }: BoardColumnProps) {
   const { setNodeRef } = useDroppable({
@@ -77,7 +81,7 @@ function BoardColumnInner({ column, assigneeNames, isOver = false }: BoardColumn
               key={card.issueKey}
               card={card}
               columnId={column.columnId}
-              assigneeName={assigneeNames.get(card.issueKey) ?? null}
+              assignee={assigneeNames.get(card.issueKey) ?? UNASSIGNED}
             />
           ))
         )}
