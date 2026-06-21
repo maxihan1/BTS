@@ -1,4 +1,4 @@
-// WorklogAggregateChart 데이터 변환 순수 함수 + 컴포넌트 smoke 테스트
+// WorklogAggregateChart 데이터 변환 순수 함수 + 컴포넌트 smoke 테스트 + C2 절단 안내 렌더 검증
 /**
  * 실 렌더(시각 검증)는 e2e/worklog-aggregate.spec.ts 에 위임한다.
  * recharts ResponsiveContainer 가 jsdom 에서 width/height=0 이라 차트 내부가 렌더되지 않으므로
@@ -141,5 +141,30 @@ describe('WorklogAggregateChart (smoke)', () => {
     render(<WorklogAggregateChart buckets={buckets} dimension="issue" />)
     const el = screen.getByRole('img', { hidden: true })
     expect(el).toBeDefined()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C2 — 상위 N 절단 안내 렌더 검증 (codereview fix)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('WorklogAggregateChart — C2 절단 안내(topNHint) 렌더', () => {
+  it('buckets 21개(CHART_TOP_N+1)이면 절단 안내 문구가 노출된다', () => {
+    const buckets = makeBuckets(21)
+    render(<WorklogAggregateChart buckets={buckets} dimension="issue" />)
+    // topNHint의 {count}를 CHART_TOP_N(20)으로 치환한 결과가 렌더되어야 한다
+    expect(screen.getByText('상위 20개 항목만 표시됩니다.')).toBeInTheDocument()
+  })
+
+  it('buckets 20개(CHART_TOP_N)이면 절단 안내 문구가 노출되지 않는다', () => {
+    const buckets = makeBuckets(20)
+    render(<WorklogAggregateChart buckets={buckets} dimension="issue" />)
+    expect(screen.queryByText('상위 20개 항목만 표시됩니다.')).not.toBeInTheDocument()
+  })
+
+  it('buckets 1개이면 절단 안내 문구가 노출되지 않는다', () => {
+    const buckets = makeBuckets(1)
+    render(<WorklogAggregateChart buckets={buckets} dimension="issue" />)
+    expect(screen.queryByText('상위 20개 항목만 표시됩니다.')).not.toBeInTheDocument()
   })
 })

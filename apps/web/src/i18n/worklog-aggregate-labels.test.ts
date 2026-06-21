@@ -18,6 +18,11 @@ describe('worklogAggregateLabels — filter 그룹', () => {
     expect(worklogAggregateLabels.filter.dimensionLabel).toBeTruthy()
   })
 
+  // C3 — 날짜범위 에러 인라인 문자열 i18n 분리 (codereview fix)
+  it('filter.dateRangeError 키가 존재한다', () => {
+    expect(worklogAggregateLabels.filter.dateRangeError).toBeTruthy()
+  })
+
   it('filter.dimensionIssue 키가 존재한다', () => {
     expect(worklogAggregateLabels.filter.dimensionIssue).toBeTruthy()
   })

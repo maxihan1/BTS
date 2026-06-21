@@ -364,6 +364,27 @@ describe('WorklogAggregateReport — 로딩 상태', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 테스트 — C1 헤더 이중 렌더 금지 (codereview fix)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('WorklogAggregateReport — C1 헤더 이중 렌더 금지', () => {
+  beforeEach(() => {
+    mockUseWorklogAggregate.mockReturnValue({
+      data: mockData,
+      isPending: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useWorklogAggregate>)
+  })
+
+  it('리포트 컴포넌트는 h1(level-1 heading)을 렌더하지 않는다 — 헤더는 라우트 페이지 담당', () => {
+    renderReport()
+    // 라우트 페이지가 헤더를 담당하므로 WorklogAggregateReport 자체는 h1을 포함하면 안 된다
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 테스트 — 에러 상태 (403 vs 일반)
 // ─────────────────────────────────────────────────────────────────────────────
 
