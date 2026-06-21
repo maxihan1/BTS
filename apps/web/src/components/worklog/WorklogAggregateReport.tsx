@@ -14,36 +14,24 @@ import { ProjectNotFoundScreen } from '@/routes/projects.$projectKey.settings.me
 // 필터 바 서브컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** WorklogFilterBarProps — 필터 상태와 setter를 그대로 수령한다 */
+/** WorklogFilterBar — 필터 상태와 setter */
 interface WorklogFilterBarProps {
-  /** 현재 집계 차원 */
   readonly by: AggregateDimension
-  /** 집계 차원 변경 핸들러 */
   readonly onByChange: (value: AggregateDimension) => void
-  /** 현재 집계 단위 */
   readonly granularity: AggregateGranularity
-  /** 집계 단위 변경 핸들러 */
   readonly onGranularityChange: (value: AggregateGranularity) => void
-  /** 시작일 (yyyy-MM-dd, 빈 문자열 = 미설정) */
+  /** yyyy-MM-dd, 빈 문자열 = 미설정 */
   readonly from: string
-  /** 시작일 변경 핸들러 */
   readonly onFromChange: (value: string) => void
-  /** 종료일 (yyyy-MM-dd, 빈 문자열 = 미설정) */
+  /** yyyy-MM-dd, 빈 문자열 = 미설정 */
   readonly to: string
-  /** 종료일 변경 핸들러 */
   readonly onToChange: (value: string) => void
   /** from>to 오류 여부 */
   readonly isDateRangeInvalid: boolean
 }
 
 /**
- * 워크로그 집계 필터 바.
- *
- * - 집계 차원(by) 셀렉터: 이슈별/사용자별/기간별.
- * - 집계 단위(granularity) 셀렉터: by=period일 때만 렌더.
- * - 시작일/종료일 네이티브 input[type=date].
- * - from>to 오류 시 role="alert" 안내 메시지 노출.
- *
+ * 워크로그 집계 필터 바 — 차원/단위/기간 입력, from>to 오류 안내 포함.
  * @param props 필터 상태와 핸들러
  */
 export function WorklogFilterBar({
@@ -61,7 +49,6 @@ export function WorklogFilterBar({
 
   return (
     <div className="flex flex-wrap items-end gap-4">
-      {/* 집계 차원 셀렉터 */}
       <div className="flex flex-col gap-1">
         <label htmlFor="worklog-by" className="text-xs font-medium text-muted-foreground">
           {filter.dimensionLabel}
@@ -78,8 +65,6 @@ export function WorklogFilterBar({
           <option value="period">{filter.dimensionPeriod}</option>
         </select>
       </div>
-
-      {/* 집계 단위 셀렉터 — by=period일 때만 노출 */}
       {by === 'period' && (
         <div className="flex flex-col gap-1">
           <label htmlFor="worklog-granularity" className="text-xs font-medium text-muted-foreground">
@@ -98,8 +83,6 @@ export function WorklogFilterBar({
           </select>
         </div>
       )}
-
-      {/* 시작일 */}
       <div className="flex flex-col gap-1">
         <label htmlFor="worklog-from" className="text-xs font-medium text-muted-foreground">
           {filter.fromLabel}
@@ -113,8 +96,6 @@ export function WorklogFilterBar({
           className="rounded border px-2 py-1 text-sm"
         />
       </div>
-
-      {/* 종료일 */}
       <div className="flex flex-col gap-1">
         <label htmlFor="worklog-to" className="text-xs font-medium text-muted-foreground">
           {filter.toLabel}
@@ -128,8 +109,6 @@ export function WorklogFilterBar({
           className="rounded border px-2 py-1 text-sm"
         />
       </div>
-
-      {/* from>to 오류 안내 */}
       {isDateRangeInvalid && (
         <p role="alert" className="text-sm text-destructive">
           시작일이 종료일보다 늦습니다. 기간을 확인해 주세요.
@@ -152,15 +131,8 @@ interface WorklogAggregateReportProps {
 /**
  * 워크로그 집계 보고 메인 컴포넌트.
  *
- * 필터 상태(by/granularity/from/to)를 관리하고 useWorklogAggregate 훅을 호출한다.
- * 상태 분기 순서.
- * 1. isError + ApiError(403) → ProjectNotFoundScreen (권한 안내)
- * 2. isError (기타) → 일반 에러 메시지
- * 3. isPending → 로딩 인디케이터
- * 4. data.buckets 빈 배열 → 빈 상태 메시지
- * 5. 정상 → 요약 + 차트 + 테이블
- *
- * from > to 일 때 클라이언트 방어: params에서 from/to를 제외하고 role="alert" 안내 표시.
+ * 상태 분기 순서: 403 → 일반에러 → 로딩 → 빈버킷 → 정상(요약+차트+테이블).
+ * from > to 클라이언트 방어: params에서 from/to 제외 + role="alert" 안내 표시.
  *
  * @param projectKey 프로젝트 키
  */
