@@ -853,7 +853,7 @@ class IssueRepository(
          * 보드는 프로젝트 이슈 전부를 한 번에 받지만, 카드 수 폭주로 인한 메모리/렌더 부담을 막기 위해
          * 상한을 둔다. spec NFR(보드 카드 200건) 대비 여유를 둔 값이다.
          */
-        private const val BOARD_CARD_FETCH_LIMIT = 1000
+        internal const val BOARD_CARD_FETCH_LIMIT = 1000
 
         /**
          * 기본 unrestricted [IssueSecurityAccess] — [listWithType] 파라미터 기본값.

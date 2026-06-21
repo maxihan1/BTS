@@ -6,6 +6,7 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.repository.IssueRepository
 import com.bts.issue.repository.IssueTestcontainersBase
 import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.board.BoardIssuePage
@@ -316,32 +317,85 @@ class BoardIssueLookupAdapterTest : IssueTestcontainersBase() {
         assertThat(result.truncated).isFalse()
     }
 
-    // ── S9. LIMIT 초과 시 truncated=true ──────────────────────────────────────
+    // ── S9. EC7 — 필터+truncated 순서 회귀 가드 ────────────────────────────────
+    //
+    // 불변식: 필터는 WHERE 절에서 LIMIT 보다 먼저 적용된다.
+    //   "필터 후 LIMIT" = 올바른 동작  →  매칭 이슈만 카운트
+    //   "LIMIT 후 필터" = 잘못된 동작  →  LIMIT+1 행 fetch 후 메모리 필터, truncated 거짓 양성
+    //
+    // 시드 구성:
+    //   - 필터에 매칭 "안" 되는 이슈 LIMIT+1 건 (assigneeIds=[targetAssignee] 필터에 해당 없는 이슈)
+    //   - 필터에 매칭 "되는" 이슈 3건 (targetAssignee 담당)
+    //
+    // 단언:
+    //   (a) 반환 건수 = 3  (매칭 이슈만)
+    //   (b) truncated = false  (필터 후 집합이 LIMIT 이하)
+    //
+    // 회귀 가드 근거:
+    //   만약 LIMIT+1 행을 먼저 fetch 하고 메모리에서 필터를 적용한다면,
+    //   LIMIT+1 건의 비매칭 이슈가 fetch 되어 (a) 빈 목록 또는 (b) truncated=true 가 되어 이 단언이 실패한다.
+
+    /**
+     * EC7 회귀 가드용 대량 삽입 helper.
+     *
+     * 단일 커넥션 + JDBC addBatch/executeBatch 로 왕복(round-trip) 최소화.
+     * assigneeId 로 [otherAssignee] 를 주입해 필터에 "매칭 안 되는" 이슈 [count] 건을 삽입한다.
+     * key 는 `TPRJ-1` ~ `TPRJ-[count]` 형식 (호출 전 `cleanIssues()` 가 key_sequence=0 을 보장).
+     */
+    @Suppress("NestedBlockDepth")
+    private fun insertNonMatchingIssuesBatch(
+        count: Int,
+        otherAssignee: UUID,
+    ) {
+        val typeId = requireTaskTypeId().value
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.autoCommit = false
+            conn.prepareStatement(
+                "INSERT INTO issues " +
+                    "(id, key, project_id, type_id, summary, reporter_id, assignee_id, current_state_key, priority) " +
+                    "VALUES (gen_random_uuid(), ?, ?, ?, ?, gen_random_uuid(), ?, 'open', 3)",
+            ).use { stmt ->
+                for (seq in 1..count) {
+                    stmt.setString(1, "TPRJ-$seq")
+                    stmt.setObject(2, testProjectId)
+                    stmt.setLong(3, typeId)
+                    stmt.setString(4, "non-match $seq")
+                    stmt.setObject(5, otherAssignee)
+                    stmt.addBatch()
+                    if (seq % 100 == 0) stmt.executeBatch()
+                }
+                stmt.executeBatch()
+            }
+            conn.commit()
+        }
+    }
 
     @Test
     @Order(9)
-    fun `S9 - 조회 결과가 BOARD_CARD_FETCH_LIMIT 를 초과하면 truncated=true 를 반환한다`() {
-        // BOARD_CARD_FETCH_LIMIT 는 private const 이므로 내부 상수 1000 을 직접 참조하지 않고,
-        // adapter 에 LIMIT+1 건을 삽입해 truncated 플래그가 올라오는지만 검증한다.
-        // 실제 LIMIT 값은 구현 내부 문서에서 1000 으로 정의된다 (IssueRepository.BOARD_CARD_FETCH_LIMIT).
-        // 이 테스트는 LIMIT=2 로 설정하고 3건 삽입해 빠르게 검증한다.
-        // → 단위 테스트 범위이므로 실 limit 변경 없이 stub adapter 주입 방식으로 검증한다.
+    fun `S9 - EC7 필터 후 LIMIT 적용 불변식 - 매칭 이슈가 LIMIT 이하면 truncated=false 이고 비매칭 이슈가 LIMIT+1건이어도 누락 없다`() {
+        val targetAssignee = UUID.randomUUID()
+        val otherAssignee = UUID.randomUUID()
 
-        // S9 은 IssueRepository 내부를 직접 제어하기 어려우므로 adapter 반환값을 통해 검증한다:
-        // adapter.listVisibleIssuesByProject 가 BoardIssuePage(truncated=true) 를 반환하는 경로를
-        // 확인한다 → IssueRepository.listVisibleForBoard 의 LIMIT+1 쿼리 결과 확인.
-        // 실 LIMIT(1000)까지 시드하면 테스트가 너무 느리므로 단위 수준에서 truncated 플래그만 검증.
+        // 필터에 매칭 "안" 되는 이슈 LIMIT+1 건 삽입
+        val nonMatchCount = IssueRepository.BOARD_CARD_FETCH_LIMIT + 1
+        insertNonMatchingIssuesBatch(nonMatchCount, otherAssignee)
 
-        // NOTE: 실제 LIMIT 초과 시나리오는 IssueRepository 단위 테스트에서 별도 검증한다.
-        // 여기서는 adapter 가 page.truncated 를 정확히 전달하는지 계약만 확인한다.
-        val viewer = UUID.randomUUID()
-        insertIssue(seq = 1, securityLevelId = null)
+        // 필터에 매칭 "되는" 이슈 3건 삽입 (seq는 nonMatchCount+1 부터)
+        val matchStart = nonMatchCount + 1
+        for (seq in matchStart..(matchStart + 2)) {
+            insertIssue(seq = seq.toLong(), assigneeId = targetAssignee, securityLevelId = null)
+        }
 
-        val result = adapterWith(unrestricted()).listVisibleIssuesByProject("TPRJ", viewer)
+        // 필터 적용: targetAssignee 담당 이슈만
+        val filter = BoardCardFilter(assigneeIds = listOf(targetAssignee))
+        val result = adapterWithFilter(unrestricted(), filter)
 
-        // 1건 삽입 → truncated=false (LIMIT 미초과)
+        // (a) 매칭 이슈 3건만 반환 — 비매칭 LIMIT+1 건은 WHERE 절에서 제거되어야 함
+        assertThat(result.issues).hasSize(3)
+        assertThat(result.issues.map { it.assigneeId }).allMatch { it == targetAssignee }
+        // (b) 필터 후 집합이 LIMIT 이하 → truncated=false
+        // 만약 "LIMIT 후 필터"였다면 비매칭 LIMIT+1 건이 먼저 잘려 truncated=true 가 되거나 매칭이 누락된다.
         assertThat(result.truncated).isFalse()
-        assertThat(result.issues).isNotEmpty()
     }
 
     // ── 필터 헬퍼 ─────────────────────────────────────────────────────────────
@@ -631,13 +685,8 @@ class BoardIssueLookupAdapterTest : IssueTestcontainersBase() {
 
         // restricted access — secretLevel 포함 안 함
         val filter = BoardCardFilter(assigneeIds = listOf(viewer))
-        val result =
-            adapterWith(restricted()).also {
-                // adapterWith 는 viewer 고정 UUID 를 사용하므로 직접 호출
-            }.let {
-                BoardIssueLookupAdapter(repository, StubSecurityDirectory(restricted()))
-                    .listVisibleIssuesByProject("TPRJ", viewer, filter)
-            }
+        val adapter = BoardIssueLookupAdapter(repository, StubSecurityDirectory(restricted()))
+        val result = adapter.listVisibleIssuesByProject("TPRJ", viewer, filter)
 
         // seq=1 은 비가시 등급이므로 제외, seq=2 만 반환
         assertThat(result.issues.map { it.key }).containsExactly("TPRJ-2")
