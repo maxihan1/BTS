@@ -4,6 +4,7 @@ package com.bts.issue.adapter.outbound.board
 
 import com.bts.issue.domain.Issue
 import com.bts.issue.repository.IssueRepository
+import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.board.BoardIssueLookupPort
 import com.bts.shared.board.BoardIssuePage
 import com.bts.shared.board.BoardIssueView
@@ -57,10 +58,29 @@ class BoardIssueLookupAdapter(
     override fun listVisibleIssuesByProject(
         projectKey: String,
         viewerUserId: UUID,
+    ): BoardIssuePage = listVisibleIssuesByProject(projectKey, viewerUserId, BoardCardFilter.EMPTY)
+
+    /**
+     * 프로젝트의 가시 이슈 목록을 [BoardCardFilter] 를 적용해 [BoardIssuePage] 로 반환한다.
+     *
+     * [listVisibleIssuesByProject] 와 동일한 보안 필터 경로를 재사용하며,
+     * [BoardCardFilter] 의 담당자·라벨·컴포넌트 조건을 SQL WHERE 술어로 푸시다운해 단일 쿼리로 처리한다.
+     * [filter] 가 비어 있으면 필터 Condition 을 추가하지 않아 2-인자 호출과 동일하다(EC2 회귀 보존).
+     *
+     * @param projectKey 조회할 프로젝트 키. 예: `"ATLAS"`.
+     * @param viewerUserId 보드를 조회하는 사용자 UUID. visibility 필터 기준.
+     * @param filter 보드 카드 필터 조건. [BoardCardFilter.EMPTY] 이면 무필터와 동일.
+     * @return 필터와 가시성 술어를 모두 적용한 [BoardIssuePage].
+     */
+    @Transactional(readOnly = true)
+    override fun listVisibleIssuesByProject(
+        projectKey: String,
+        viewerUserId: UUID,
+        filter: BoardCardFilter,
     ): BoardIssuePage {
         // 목록당 1회 cross-BC 호출 — N+1 없음. unrestricted=true 이면 WHERE 술어 미적용(빠른경로).
         val access = securityDirectory.accessibleLevels(viewerUserId, projectKey)
-        val fetchResult = issueRepository.listVisibleForBoard(projectKey, viewerUserId, access)
+        val fetchResult = issueRepository.listVisibleForBoard(projectKey, viewerUserId, access, filter)
         return BoardIssuePage(
             issues = fetchResult.issues.map { it.toBoardIssueView() },
             truncated = fetchResult.truncated,

@@ -20,6 +20,7 @@ import com.bts.issue.jooq.tables.references.ISSUE_TYPES
 import com.bts.issue.jooq.tables.references.PROJECTS
 import com.bts.issue.jooq.tables.references.VERSIONS
 import com.bts.issue.jooq.tables.references.WORKLOGS
+import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssueSecurityAccess
 import com.fasterxml.jackson.core.type.TypeReference
@@ -650,6 +651,7 @@ class IssueRepository(
      * @param actor 조회 행위자(viewer) UUID. 보안 등급 필터의 reporter/assignee 동적 조건에 사용.
      *   보안 민감 메서드이므로 기본값 없이 항상 명시 전달한다.
      * @param access actor 가 접근 가능한 보안 등급 집합. unrestricted=true 이면 WHERE 술어 미적용(빠른경로).
+     * @param filter 보드 카드 필터 조건. [BoardCardFilter.isEmpty] 이면 필터 Condition 을 추가하지 않는다.
      * @return [BoardFetchResult]. issues 는 최대 [BOARD_CARD_FETCH_LIMIT] 건. truncated 는 초과 여부.
      */
     @Transactional(readOnly = true)
@@ -657,9 +659,16 @@ class IssueRepository(
         projectKey: String,
         actor: UUID,
         access: IssueSecurityAccess,
+        filter: BoardCardFilter = BoardCardFilter.EMPTY,
     ): BoardFetchResult {
         // 활성 프로젝트 술어 + 보안 등급 필터 — listWithType 과 동일 source.
-        val where = buildActiveSecureWhere(projectKey, actor, access)
+        var where = buildActiveSecureWhere(projectKey, actor, access)
+
+        // 비어 있지 않은 필터만 AND 로 결합 — 빈 필터(isEmpty)면 무필터(FR-BD-01 동일 경로, EC2 회귀 보존).
+        val filterCondition = buildFilterCondition(filter)
+        if (filterCondition != null) {
+            where = where.and(filterCondition)
+        }
 
         // LIMIT+1 조회: 결과가 LIMIT+1 건이면 truncated=true.
         val fetched =
@@ -713,6 +722,66 @@ class IssueRepository(
         } else {
             activeInProject
         }
+    }
+
+    /**
+     * [BoardCardFilter] 를 SQL WHERE 술어 [Condition] 으로 변환한다.
+     *
+     * 필드 내 값들은 OR, 필드 간은 AND 로 결합한다([BoardCardFilter] 규칙 동일).
+     *
+     * - assignee: `assigneeIds` 비어있지 않으면 IN 술어, `includeUnassigned` 이면 IS NULL 술어를 OR 결합.
+     * - label: `labels` 비어있지 않으면 PG 배열 overlap 연산자 `&&` 단일 술어 (GIN 인덱스 활용).
+     * - component: `componentIds` 비어있지 않으면 EXISTS 서브쿼리 — JOIN 절대 금지
+     *   (cartesian-product-jooq-leftjoin-count 교훈: LIMIT+1 truncated/카드 중복 오염).
+     *
+     * @param filter 보드 카드 필터 조건.
+     * @return 필터가 비어 있으면 `null`, 아니면 모든 술어를 AND 로 묶은 [Condition].
+     */
+    private fun buildFilterCondition(filter: BoardCardFilter): Condition? {
+        if (filter.isEmpty()) return null
+
+        var combined: Condition? = null
+
+        // ── 담당자 필터 (OR 묶음) ──────────────────────────────────────────────
+        if (filter.assigneeIds.isNotEmpty() || filter.includeUnassigned) {
+            var assigneeCond: Condition? = null
+            if (filter.assigneeIds.isNotEmpty()) {
+                assigneeCond = ISSUES.ASSIGNEE_ID.`in`(filter.assigneeIds)
+            }
+            if (filter.includeUnassigned) {
+                val isNullCond: Condition = ISSUES.ASSIGNEE_ID.isNull
+                assigneeCond = assigneeCond?.or(isNullCond) ?: isNullCond
+            }
+            combined = assigneeCond
+        }
+
+        // ── 라벨 필터 (PG 배열 overlap `&&`) ──────────────────────────────────
+        // `&&` 는 jOOQ 가 지원하지 않는 PG 전용 배열 연산자이므로 DSL.condition 으로 표현.
+        // 값은 ISSUES.LABELS 와 동일한 DataType(text[]) 으로 바인딩 — text[] && varchar[] 타입 미스매치 방지.
+        // DATA.md §5: `?` placeholder 바인딩이 PG 연산자 미지원 정식 예외에 해당한다.
+        if (filter.labels.isNotEmpty()) {
+            val labelArr: Array<String?> = filter.labels.map { it as String? }.toTypedArray()
+            val labelVal = DSL.`val`(labelArr, ISSUES.LABELS.dataType)
+            val labelCond: Condition = DSL.condition("{0} && {1}", ISSUES.LABELS, labelVal)
+            combined = combined?.and(labelCond) ?: labelCond
+        }
+
+        // ── 컴포넌트 필터 (EXISTS 서브쿼리) ───────────────────────────────────
+        // JOIN 금지: issue × component 카테시안이 LIMIT+1 truncated 감지와 카드 중복을 오염시킨다.
+        if (filter.componentIds.isNotEmpty()) {
+            val existsCond: Condition =
+                DSL.exists(
+                    DSL.selectOne()
+                        .from(ISSUE_COMPONENTS)
+                        .where(
+                            ISSUE_COMPONENTS.ISSUE_ID.eq(ISSUES.ID)
+                                .and(ISSUE_COMPONENTS.COMPONENT_ID.`in`(filter.componentIds)),
+                        ),
+                )
+            combined = combined?.and(existsCond) ?: existsCond
+        }
+
+        return combined
     }
 
     /**
