@@ -72,6 +72,13 @@ function createWrapper(queryClient: QueryClient) {
 // useMoveCard — mutation 훅 통합 테스트
 // ─────────────────────────────────────────────────────────────────────────────
 
+const FILTER: import('@/api/boards').BoardCardFilterParams = {
+  assigneeIds: ['u1-uuid-0000-0000-000000000001'],
+  includeUnassigned: false,
+  labels: ['bug'],
+  componentIds: [],
+}
+
 describe('useMoveCard', () => {
   let queryClient: QueryClient
 
@@ -229,6 +236,121 @@ describe('useMoveCard', () => {
       'ATLAS-1',
       expect.objectContaining({ resolutionId: 'res-uuid-0000-0000-000000000001' }),
     )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useMoveCard(boardId, filter) — filter-aware queryKey 회귀 가드 (Task-3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('useMoveCard — filter-aware queryKey', () => {
+  let queryClient: QueryClient
+
+  beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+  })
+
+  afterEach(() => {
+    queryClient.clear()
+    vi.clearAllMocks()
+  })
+
+  it('T-FA-1: onMutate가 filter-aware 캐시를 낙관적으로 갱신한다', async () => {
+    // 필터된 queryKey에 보드를 시드
+    queryClient.setQueryData(boardKeys.detail(BOARD_ID, FILTER), INITIAL_BOARD)
+    // 필터 없는 키는 시드하지 않음 — 이 키를 건드려선 안 된다
+
+    let resolveMove!: (v: MoveCardResult) => void
+    vi.mocked(moveCard).mockReturnValue(
+      new Promise<MoveCardResult>((res) => { resolveMove = res }),
+    )
+
+    const { result } = renderHook(() => useMoveCard(BOARD_ID, FILTER), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    act(() => {
+      result.current.mutate({
+        issueKey: 'ATLAS-1',
+        fromColumnId: COL_A_ID,
+        toColumnId: COL_B_ID,
+        expectedVersion: 1,
+      })
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    // filter-aware 캐시가 낙관적으로 갱신되어야 한다
+    const filteredCache = queryClient.getQueryData<BoardDetail>(boardKeys.detail(BOARD_ID, FILTER))
+    const colB = filteredCache?.columns.find((c) => c.columnId === COL_B_ID)
+    expect(colB?.cards.some((c) => c.issueKey === 'ATLAS-1')).toBe(true)
+
+    // filter 없는 캐시는 undefined 그대로여야 한다 (건드리지 않음)
+    const unfilteredCache = queryClient.getQueryData<BoardDetail>(boardKeys.detail(BOARD_ID))
+    expect(unfilteredCache).toBeUndefined()
+
+    resolveMove(MOVE_RESULT)
+  })
+
+  it('T-FA-2: onError가 filter-aware 캐시를 롤백하고 invalidate한다', async () => {
+    queryClient.setQueryData(boardKeys.detail(BOARD_ID, FILTER), INITIAL_BOARD)
+
+    const error = Object.assign(new Error('OCC 충돌'), { status: 409 })
+    vi.mocked(moveCard).mockRejectedValue(error)
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(() => useMoveCard(BOARD_ID, FILTER), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      result.current.mutate({
+        issueKey: 'ATLAS-1',
+        fromColumnId: COL_A_ID,
+        toColumnId: COL_B_ID,
+        expectedVersion: 1,
+      })
+    })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+
+    // 롤백 — filter-aware 캐시가 원래 상태로 복원
+    const cached = queryClient.getQueryData<BoardDetail>(boardKeys.detail(BOARD_ID, FILTER))
+    const colA = cached?.columns.find((c) => c.columnId === COL_A_ID)
+    expect(colA?.cards.some((c) => c.issueKey === 'ATLAS-1')).toBe(true)
+
+    // invalidate 대상도 filter-aware queryKey여야 한다
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: boardKeys.detail(BOARD_ID, FILTER) }),
+    )
+  })
+
+  it('T-FA-3: onSuccess가 filter-aware 캐시의 version을 갱신한다', async () => {
+    queryClient.setQueryData(boardKeys.detail(BOARD_ID, FILTER), INITIAL_BOARD)
+    vi.mocked(moveCard).mockResolvedValue(MOVE_RESULT)
+
+    const { result } = renderHook(() => useMoveCard(BOARD_ID, FILTER), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        issueKey: 'ATLAS-1',
+        fromColumnId: COL_A_ID,
+        toColumnId: COL_B_ID,
+        expectedVersion: 1,
+      })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    const cached = queryClient.getQueryData<BoardDetail>(boardKeys.detail(BOARD_ID, FILTER))
+    const card = cached?.columns.flatMap((c) => c.cards).find((c) => c.issueKey === 'ATLAS-1')
+    expect(card?.version).toBe(5)
   })
 })
 
