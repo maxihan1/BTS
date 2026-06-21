@@ -1,7 +1,7 @@
 // 칸반 보드 카드 이동 mutation 훅 — 낙관적 업데이트·롤백·409 회복 (FR-BD-01)
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { moveCard } from '@/api/boards'
-import type { BoardDetail, MoveCardResult } from '@/api/boards'
+import type { BoardDetail, BoardCardFilterParams, MoveCardResult } from '@/api/boards'
 import { boardKeys } from './use-boards'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -101,11 +101,15 @@ export interface MoveCardVars {
  * - onError: 스냅샷으로 롤백 + invalidateQueries(서버 진실 회복)
  * - onSuccess: 서버 응답의 version으로 카드 version 패치
  *
+ * filter-aware queryKey를 useBoard와 공유 — 필터된 보드에서도 드래그 낙관적
+ * 이동이 화면에 정합된다. filter 없이 호출하는 기존 코드와 호환된다.
+ *
  * @param boardId 보드 UUID
+ * @param filter 선택적 카드 필터 파라미터 — useBoard에 전달한 것과 동일한 값이어야 한다
  */
-export function useMoveCard(boardId: string) {
+export function useMoveCard(boardId: string, filter?: BoardCardFilterParams) {
   const queryClient = useQueryClient()
-  const queryKey = boardKeys.detail(boardId)
+  const queryKey = boardKeys.detail(boardId, filter)
 
   return useMutation<MoveCardResult, unknown, MoveCardVars, { snapshot: BoardDetail | undefined }>({
     mutationFn: (vars) =>
