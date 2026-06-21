@@ -224,7 +224,7 @@ gstack plan-design-review 대화형 대신 집중 독립 리뷰(메모리 bts-re
 **CONCERN 3건 (반영)**.
 - **C1 (design) — 차트 방향**: by=issue/user는 label(issueKey/displayName)이 길어 세로 막대 X축 가독성 저하. → Task 4 GREEN에 "by=issue/user는 **가로 막대**(`layout='vertical'`, YAxis=label), by=period는 세로 막대(시간축)" 보강. (잔여 taste — 게이트1 확인)
 - **C2 (eng) — 403 안내 화면**: 기존 `ProjectNotFoundScreen`(named export, members 라우트) 문구가 "존재하지 않거나 접근 권한이 없습니다"로 **probe 방지형**이라 403에도 적합 → **재사용 확정**(신규 컴포넌트 불요). 단 우리는 HTTP 403 status 분기(versions는 errorCode 404). → Task 6에 "403 → ProjectNotFoundScreen 재사용" 명시.
-- **C3 (design/UX) — 진입점 부재**: 프로젝트 컨텍스트 네비게이션 컴포넌트가 코드베이스에 **없음**(settings 페이지도 모으는 사이드바 없이 직접 경로 진입). 보고 페이지 진입점(FR10)은 기존 패턴 부재. → **게이트1 Maxi 확인 taste decision**. MVP 기본안 = 직접 URL 진입(+E2E 직접 진입), 네비 링크는 마땅한 호스트 컴포넌트 생기면 후속. Task 7은 라우트 등록까지만, 진입점 링크는 Maxi 결정에 따라.
+- **C3 (design/UX) — 진입점 부재**: 프로젝트 컨텍스트 네비게이션 컴포넌트가 코드베이스에 **없음**(settings 페이지도 모으는 사이드바 없이 직접 경로 진입). 보고 페이지 진입점(FR10)은 기존 패턴 부재. → **Maxi 확정(게이트1): 직접 URL 진입**(기존 settings 페이지와 일관). 네비 링크 미추가(프로젝트 네비 시스템 생기면 일괄 후속). **Task 7은 라우트 등록까지만, FR10 네비 링크 task 제외**. E2E는 직접 URL 진입.
 
 **NIT (반영)**.
 - N1 — from/to 적용 트리거: 차원/granularity 셀렉터는 즉시 반영, from/to는 입력 변경 시 반영(별도 적용 버튼 없음). Task 6에 명시.
