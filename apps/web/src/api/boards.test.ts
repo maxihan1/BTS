@@ -19,9 +19,9 @@ import {
 
 const BOARD_ID = 'a1b2c3d4-e5f6-4890-abcd-ef1234567890'
 const PROJECT_KEY = 'ATLAS'
-const COLUMN_ID_TODO = 'b2c3d4e5-f6a7-4901-bcde-f01234567891'
-const COLUMN_ID_DONE = 'c3d4e5f6-a7b8-4012-cdef-012345678902'
-const ASSIGNEE_UUID = 'd4e5f6a7-b8c9-4123-defa-123456789013'
+const COLUMN_ID_TODO = 'b2c3d4e5-f6a7-4901-8bcd-ef1234567891'
+const COLUMN_ID_DONE = 'c3d4e5f6-a7b8-4012-9cde-f01234567892'
+const ASSIGNEE_UUID = 'd4e5f6a7-b8c9-4123-8def-a12345678903'
 const ISSUE_KEY = 'ATLAS-1'
 
 const cardWithAssignee = {
@@ -115,7 +115,7 @@ describe('boardDetailSchema — 유효 픽스처 파싱', () => {
       columns: [
         columnTodo,
         {
-          columnId: 'e5f6a7b8-c9d0-4234-efab-234567890124',
+          columnId: 'e5f6a7b8-c9d0-4234-8fab-234567890124',
           stateKey: 'in_progress',
           name: '진행 중',
           category: 'IN_PROGRESS' as const,
