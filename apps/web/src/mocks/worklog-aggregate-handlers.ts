@@ -9,6 +9,9 @@ import type { WorklogAggregateResponse } from '@/api/worklog-aggregate'
 /** 이 프로젝트 키가 요청되면 403을 반환한다 (E2E 권한 시나리오 테스트용) */
 const FORBIDDEN_PROJECT_KEY = 'FORBIDDEN'
 
+/** 이 프로젝트 키가 요청되면 빈 버킷 응답을 반환한다 (E2E 빈 상태 시나리오 테스트용) */
+const EMPTY_PROJECT_KEY = 'EMPTY'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 이슈별 집계 fixture
 // ─────────────────────────────────────────────────────────────────────────────
@@ -82,6 +85,7 @@ const PERIOD_AGGREGATE_FIXTURE: WorklogAggregateResponse = {
  *
  * 쿼리파라미터 분기.
  * - project=FORBIDDEN → 403
+ * - project=EMPTY → 빈 버킷 응답 (E2E 빈 상태 시나리오)
  * - by=issue → 이슈별 버킷 fixture
  * - by=user → 사용자별 버킷 fixture (빈 displayName 1개 포함)
  * - by=period → 기간별 버킷 fixture (granularity=week 고정)
@@ -107,6 +111,15 @@ const getWorklogAggregateHandler = http.get('/api/v1/worklogs/aggregate', ({ req
       },
       { status: 403 },
     )
+  }
+
+  // 빈 버킷 프로젝트 → 빈 배열 응답 (E2E 빈 상태 시나리오)
+  if (project === EMPTY_PROJECT_KEY) {
+    const emptyBy: WorklogAggregateResponse['by'] =
+      by === 'user' ? 'user' : by === 'period' ? 'period' : 'issue'
+    return HttpResponse.json({
+      data: { by: emptyBy, buckets: [], totalTimeSpentSeconds: 0 },
+    })
   }
 
   // 차원별 fixture 분기
