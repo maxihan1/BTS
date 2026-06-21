@@ -68,8 +68,8 @@
 - [x] D3. 데이터 모델 — 신규 0 (활용. URL query + 기존 assignee_id/labels TEXT[]/issue_components) (PR #168)
 - [x] D4. 백엔드 — `GET /api/v1/boards/{id}?assignee=&label=&component=` (assignee IN/IS NULL, label && overlap, component EXISTS) (PR #168)
 - [x] D5. 백엔드 테스트 — repository 필터/EC7 truncated 가드 + 파서/컨트롤러/서비스/contract (PR #168)
-- [ ] D6. 프론트 UI — 필터 칩 + 다중 선택 (책임. designer → frontend-engineer) — 후속(보드 UI=FR-BD-01 D6 선행)
-- [ ] D7. E2E (책임. qa-engineer) — 후속
+- [x] D6. 프론트 UI — 필터 칩 + 담당자/라벨/컴포넌트 다중 선택 (URL search params, 책임. frontend-engineer) (PR #171)
+- [x] D7. E2E (책임. qa-engineer) (PR #171)
 
 ### §2.3 FR-BD-03 — WIP 제한 + 스윔레인
 
