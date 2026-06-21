@@ -37,7 +37,7 @@ export const WORKLOG_AGGREGATE_KEYS = {
    */
   all: (projectKey: string, params: WorklogAggregateParams) =>
     ['worklog-aggregate', projectKey, params] as const,
-}
+} satisfies Record<string, (projectKey: string, params: WorklogAggregateParams) => readonly unknown[]>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // useWorklogAggregate — 집계 조회
