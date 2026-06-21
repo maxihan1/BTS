@@ -52,8 +52,8 @@
 - [x] D3. 데이터 모델 — `boards`, `board_columns(state_key)` (책임. db-engineer)
 - [x] D4. 백엔드 — `GET /api/v1/boards/{id}` + 보드 CRUD + 카드 이동(전이 위임) API (책임. backend-engineer)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — @dnd-kit 컬럼/카드 (책임. designer → frontend-engineer)
-- [ ] D7. E2E + NFR (책임. qa-engineer)
+- [x] D6. 프론트 UI — @dnd-kit 컬럼/카드 (책임. frontend-engineer) (PR #169)
+- [x] D7. E2E + NFR (책임. qa-engineer) (PR #169)
 
 | 항목 | 임계 | 실측 (p95) |
 |---|---|---|
