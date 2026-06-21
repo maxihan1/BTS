@@ -283,7 +283,9 @@ describe('WorklogAggregateReport — 정상 상태', () => {
   it('총 소요 시간 요약이 표시된다', () => {
     renderReport()
     const formatted = formatSeconds(mockData.totalTimeSpentSeconds)
-    expect(screen.getByText(formatted)).toBeInTheDocument()
+    // 요약 영역과 테이블 합계 행 양쪽에 동일 텍스트가 있을 수 있으므로 getAllByText 사용
+    const cells = screen.getAllByText(formatted)
+    expect(cells.length).toBeGreaterThanOrEqual(1)
     expect(
       screen.getByText(worklogAggregateLabels.summary.totalTimeLabel),
     ).toBeInTheDocument()
