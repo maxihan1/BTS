@@ -32,11 +32,12 @@ class BoardFilterQueryParserTest {
     fun `PARSE-1 assignee UUID 값은 assigneeIds 에 포함된다`() {
         val uuid = UUID.randomUUID()
 
-        val filter = BoardFilterQueryParser.parse(
-            assignee = listOf(uuid.toString()),
-            label = emptyList(),
-            component = emptyList(),
-        )
+        val filter =
+            BoardFilterQueryParser.parse(
+                assignee = listOf(uuid.toString()),
+                label = emptyList(),
+                component = emptyList(),
+            )
 
         assertThat(filter.assigneeIds).containsExactly(uuid)
         assertThat(filter.includeUnassigned).isFalse()
@@ -48,11 +49,12 @@ class BoardFilterQueryParserTest {
 
     @Test
     fun `PARSE-2 assignee 에 "unassigned" 가 있으면 includeUnassigned=true`() {
-        val filter = BoardFilterQueryParser.parse(
-            assignee = listOf("unassigned"),
-            label = emptyList(),
-            component = emptyList(),
-        )
+        val filter =
+            BoardFilterQueryParser.parse(
+                assignee = listOf("unassigned"),
+                label = emptyList(),
+                component = emptyList(),
+            )
 
         assertThat(filter.includeUnassigned).isTrue()
         assertThat(filter.assigneeIds).isEmpty()
@@ -65,11 +67,12 @@ class BoardFilterQueryParserTest {
         val uuid1 = UUID.randomUUID()
         val uuid2 = UUID.randomUUID()
 
-        val filter = BoardFilterQueryParser.parse(
-            assignee = listOf(uuid1.toString(), "unassigned", uuid2.toString()),
-            label = emptyList(),
-            component = emptyList(),
-        )
+        val filter =
+            BoardFilterQueryParser.parse(
+                assignee = listOf(uuid1.toString(), "unassigned", uuid2.toString()),
+                label = emptyList(),
+                component = emptyList(),
+            )
 
         assertThat(filter.assigneeIds).containsExactlyInAnyOrder(uuid1, uuid2)
         assertThat(filter.includeUnassigned).isTrue()
@@ -81,11 +84,12 @@ class BoardFilterQueryParserTest {
     fun `PARSE-4 component UUID 값은 componentIds 에 포함된다`() {
         val uuid = UUID.randomUUID()
 
-        val filter = BoardFilterQueryParser.parse(
-            assignee = emptyList(),
-            label = emptyList(),
-            component = listOf(uuid.toString()),
-        )
+        val filter =
+            BoardFilterQueryParser.parse(
+                assignee = emptyList(),
+                label = emptyList(),
+                component = listOf(uuid.toString()),
+            )
 
         assertThat(filter.componentIds).containsExactly(uuid)
     }
@@ -94,11 +98,12 @@ class BoardFilterQueryParserTest {
 
     @Test
     fun `PARSE-5 label 문자열은 그대로 labels 에 포함된다`() {
-        val filter = BoardFilterQueryParser.parse(
-            assignee = emptyList(),
-            label = listOf("bug", "enhancement"),
-            component = emptyList(),
-        )
+        val filter =
+            BoardFilterQueryParser.parse(
+                assignee = emptyList(),
+                label = listOf("bug", "enhancement"),
+                component = emptyList(),
+            )
 
         assertThat(filter.labels).containsExactly("bug", "enhancement")
     }
@@ -107,11 +112,12 @@ class BoardFilterQueryParserTest {
 
     @Test
     fun `PARSE-6 모든 파라미터가 비어 있으면 BoardCardFilter_EMPTY 를 반환한다 (EC2)`() {
-        val filter = BoardFilterQueryParser.parse(
-            assignee = emptyList(),
-            label = emptyList(),
-            component = emptyList(),
-        )
+        val filter =
+            BoardFilterQueryParser.parse(
+                assignee = emptyList(),
+                label = emptyList(),
+                component = emptyList(),
+            )
 
         assertThat(filter).isEqualTo(BoardCardFilter.EMPTY)
         assertThat(filter.isEmpty()).isTrue()
@@ -123,11 +129,12 @@ class BoardFilterQueryParserTest {
     fun `PARSE-7 blank 값은 무시되고 유효한 값만 포함된다`() {
         val uuid = UUID.randomUUID()
 
-        val filter = BoardFilterQueryParser.parse(
-            assignee = listOf("  ", uuid.toString(), ""),
-            label = listOf("  ", "bug"),
-            component = emptyList(),
-        )
+        val filter =
+            BoardFilterQueryParser.parse(
+                assignee = listOf("  ", uuid.toString(), ""),
+                label = listOf("  ", "bug"),
+                component = emptyList(),
+            )
 
         assertThat(filter.assigneeIds).containsExactly(uuid)
         assertThat(filter.labels).containsExactly("bug")

@@ -99,20 +99,36 @@ class BoardController(
      *
      * 권한: [IssuePermission.BROWSE] on 보드의 프로젝트. 카드 보안수준은 행 단위 보안필터가 별도 적용.
      *
+     * 필터 파라미터.
+     * - `assignee`: UUID 또는 "unassigned" 센티널. 담당자 필터. 복수 허용.
+     * - `label`: 문자열. 라벨 필터. 복수 허용.
+     * - `component`: UUID. 컴포넌트 필터. 복수 허용.
+     *
+     * 필터 파싱은 [BoardFilterQueryParser.parse] 에 위임한다.
+     * UUID 형식 오류 시 400 — [BoardExceptionHandler.handleResponseStatus] 가 처리한다.
+     *
      * @param id path variable 보드 UUID.
+     * @param assignee 담당자 필터 파라미터 목록. UUID 또는 "unassigned" 센티널.
+     * @param label 라벨 필터 파라미터 목록. 문자열 그대로 사용.
+     * @param component 컴포넌트 필터 파라미터 목록. UUID.
      * @return 200 OK + [BoardDetailResponse].
      * @throws BoardNotFoundException 보드 미존재 또는 soft-deleted → 404.
      * @throws BoardAccessDeniedException BROWSE 권한 미충족 → 403.
+     * @throws ResponseStatusException 400 — 필터 파라미터 UUID 형식 오류.
      */
     @GetMapping("/{id}")
     fun getBoard(
         @PathVariable id: UUID,
+        @RequestParam(required = false) assignee: List<String> = emptyList(),
+        @RequestParam(required = false) label: List<String> = emptyList(),
+        @RequestParam(required = false) component: List<String> = emptyList(),
     ): ResponseEntity<DataResponse<BoardDetailResponse>> {
-        log.info("BoardController.getBoard id={}", id)
+        log.info("BoardController.getBoard id={} assignee={} label={} component={}", id, assignee, label, component)
 
         val (actor, board) = loadBoardWithBrowse(id)
 
-        val result = service.getBoard(id, actor)
+        val filter = BoardFilterQueryParser.parse(assignee, label, component)
+        val result = service.getBoard(id, actor, filter)
         return ResponseEntity.ok(DataResponse(BoardDetailResponse.of(board, result)))
     }
 

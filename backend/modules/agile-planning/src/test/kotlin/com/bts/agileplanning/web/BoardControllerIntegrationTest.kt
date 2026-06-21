@@ -604,12 +604,13 @@ class BoardControllerIntegrationTest {
         val board = sampleBoard()
         val assigneeUuid = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
         val componentUuid = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccccc")
-        val expectedFilter = BoardCardFilter(
-            assigneeIds = listOf(assigneeUuid),
-            includeUnassigned = true,
-            labels = listOf("bug"),
-            componentIds = listOf(componentUuid),
-        )
+        val expectedFilter =
+            BoardCardFilter(
+                assigneeIds = listOf(assigneeUuid),
+                includeUnassigned = true,
+                labels = listOf("bug"),
+                componentIds = listOf(componentUuid),
+            )
 
         every { boardRepository.findById(board.id) } returns board
         every { boardApplicationService.getBoard(board.id, actorId, expectedFilter) } returns
