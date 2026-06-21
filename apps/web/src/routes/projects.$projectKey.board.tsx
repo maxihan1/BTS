@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
 import { ApiError } from '@/api/client'
 import { fetchUsers } from '@/api/users'
-import type { BoardSummary, BoardCardFilterParams } from '@/api/boards'
+import type { BoardSummary, BoardDetail, BoardCardFilterParams } from '@/api/boards'
 import { useBoards, useBoard } from '@/hooks/use-boards'
 import { KanbanBoard } from '@/components/board/KanbanBoard'
 import type { CardAssigneeDisplay } from '@/components/board/BoardCard'
@@ -128,6 +128,97 @@ export interface BoardPageProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 순수 헬퍼 — 컴포넌트 외부 추출 (테스트 가능, 재렌더 없이 재계산)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * usersRaw를 userId → displayName|username Map으로 변환한다.
+ * 파싱 실패 또는 undefined이면 빈 Map을 반환한다.
+ */
+function buildUserMap(usersRaw: unknown): Map<string, string> {
+  const parsed = usersRaw !== undefined ? usersArraySchema.safeParse(usersRaw) : null
+  if (parsed === null || !parsed.success) return new Map()
+  const map = new Map<string, string>()
+  for (const u of parsed.data) {
+    map.set(u.id, u.displayName ?? u.username)
+  }
+  return map
+}
+
+/**
+ * boardDetail의 카드 목록을 순회해 issueKey → CardAssigneeDisplay Map을 구성한다.
+ * 3-상태: assigneeId=null → unassigned / userMap 해석됨 → named / 미해석 → unknown
+ */
+function buildAssigneeNames(
+  boardDetail: BoardDetail | undefined,
+  userMap: Map<string, string>,
+): Map<string, CardAssigneeDisplay> {
+  if (boardDetail === undefined) return new Map()
+  const map = new Map<string, CardAssigneeDisplay>()
+  for (const col of boardDetail.columns) {
+    for (const card of col.cards) {
+      if (card.assigneeId === null) {
+        map.set(card.issueKey, { state: 'unassigned' })
+      } else {
+        const resolved = userMap.get(card.assigneeId)
+        map.set(card.issueKey, resolved !== undefined ? { state: 'named', name: resolved } : { state: 'unknown' })
+      }
+    }
+  }
+  return map
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 내부 서브컴포넌트 — 재사용이 아닌 가독성 분리
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 보드 선택 드롭다운 props */
+interface BoardSelectorProps {
+  boards: BoardSummary[]
+  currentBoardId: string | undefined
+  projectKey: string
+  onSelect: (id: string) => void
+}
+
+/** 보드 2+개일 때 렌더하는 선택 드롭다운 서브컴포넌트 */
+function BoardSelectorDropdown({ boards, currentBoardId, onSelect }: BoardSelectorProps): JSX.Element {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-sm font-medium">보드</span>
+      <Select value={currentBoardId ?? ''} onValueChange={onSelect}>
+        <SelectTrigger className="w-64">
+          <SelectValue placeholder="보드 선택" />
+        </SelectTrigger>
+        <SelectContent>
+          {boards.map((b: BoardSummary) => (
+            <SelectItem key={b.boardId} value={b.boardId}>
+              {b.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+/** 필터 결과 0건 빈 상태 서브컴포넌트 (D2) props */
+interface FilteredEmptyStateProps {
+  onReset: () => void
+}
+
+/** 필터 결과 0건 빈 상태 — 안내 + 초기화 CTA (D2) */
+function FilteredEmptyState({ onReset }: FilteredEmptyStateProps): JSX.Element {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-48 gap-3 text-center">
+      <p className="text-sm text-muted-foreground">조건에 맞는 카드가 없습니다</p>
+      <Button type="button" variant="outline" size="sm" onClick={onReset}>
+        {boardFilterLabels.filter.reset}
+      </Button>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // BoardPage 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -135,17 +226,10 @@ export interface BoardPageProps {
  * 칸반 보드 페이지.
  *
  * - useBoards(projectKey)로 보드 목록 조회.
- *   - 로딩 → 스켈레톤.
- *   - 403 (status===403 또는 errorCode AGILE_ACCESS_DENIED) → 접근 불가 안내.
- *   - 보드 0개 → CreateBoardForm (빈 상태 주 CTA).
- *   - 보드 1개 → KanbanBoard.
- *   - 보드 2+개 → 선택 드롭다운 + KanbanBoard.
- * - selectedBoardId ?? 첫 보드를 현재 보드로 결정.
  * - useBoard(currentBoardId, filter)로 보드 상세 조회 (필터 적용).
- * - fetchUsers()로 전체 사용자 목록 조회 → issueKey→displayName Map 구성 (N+1 방지, best-effort).
- * - truncated/unplacedCount 경고 배너.
  * - BoardFilterBar: 보드 상세 있을 때만 (EC7). onChange → navigate로 URL search 갱신.
- * - 필터 결과 0건(모든 컬럼 카드 0) → 빈 상태 안내 + 초기화 CTA (D2).
+ * - 필터 결과 0건(모든 컬럼 카드 0) → FilteredEmptyState 빈 상태 + 초기화 CTA (D2).
+ * - truncated/unplacedCount 경고 배너.
  *
  * @param projectKey 프로젝트 식별 키
  * @param selectedBoardId URL search에서 추출한 선택 보드 UUID
@@ -194,39 +278,14 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
     enabled: currentBoardId !== undefined,
   })
 
-  // userId → displayName|username Map — useMemo로 usersRaw 변경 시에만 재생성
-  const userMap: Map<string, string> = useMemo(() => {
-    const parsed = usersRaw !== undefined ? usersArraySchema.safeParse(usersRaw) : null
-    if (parsed === null || !parsed.success) return new Map()
-    const map = new Map<string, string>()
-    for (const u of parsed.data) {
-      map.set(u.id, u.displayName ?? u.username)
-    }
-    return map
-  }, [usersRaw])
+  // userId → displayName|username Map (best-effort, N+1 방지)
+  const userMap: Map<string, string> = useMemo(() => buildUserMap(usersRaw), [usersRaw])
 
-  // issueKey → CardAssigneeDisplay Map (카드 순회, best-effort FR-7)
-  // 3-상태: assigneeId=null → unassigned / userMap 해석됨 → named / 미해석 → unknown
-  const assigneeNames: Map<string, CardAssigneeDisplay> = useMemo(() => {
-    if (boardDetail === undefined) return new Map()
-    const map = new Map<string, CardAssigneeDisplay>()
-    for (const col of boardDetail.columns) {
-      for (const card of col.cards) {
-        if (card.assigneeId === null) {
-          map.set(card.issueKey, { state: 'unassigned' })
-        } else {
-          const resolved = userMap.get(card.assigneeId)
-          if (resolved !== undefined) {
-            map.set(card.issueKey, { state: 'named', name: resolved })
-          } else {
-            // assigneeId는 있으나 fetchUsers 상한 초과 등으로 이름 미해석 → unknown
-            map.set(card.issueKey, { state: 'unknown' })
-          }
-        }
-      }
-    }
-    return map
-  }, [boardDetail, userMap])
+  // issueKey → CardAssigneeDisplay Map (3-상태: unassigned / named / unknown)
+  const assigneeNames: Map<string, CardAssigneeDisplay> = useMemo(
+    () => buildAssigneeNames(boardDetail, userMap),
+    [boardDetail, userMap],
+  )
 
   // 필터 결과 0건 여부 — 컬럼이 있고 모든 컬럼의 카드가 0이며, 필터가 비어 있지 않은 경우 (D2)
   // columns가 빈 배열이면 every는 vacuous true → false로 처리 (필터 결과가 아닌 빈 보드)
@@ -301,30 +360,18 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
     <div className="p-6 space-y-4">
       {/* 보드 2+개 선택 드롭다운 */}
       {boards !== undefined && boards.length >= 2 && (
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-medium">보드</span>
-          <Select
-            value={currentBoardId ?? ''}
-            onValueChange={(id: string) => {
-              void navigate({
-                to: '/projects/$projectKey/board',
-                params: { projectKey },
-                search: { board: id },
-              })
-            }}
-          >
-            <SelectTrigger className="w-64">
-              <SelectValue placeholder="보드 선택" />
-            </SelectTrigger>
-            <SelectContent>
-              {boards.map((b: BoardSummary) => (
-                <SelectItem key={b.boardId} value={b.boardId}>
-                  {b.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <BoardSelectorDropdown
+          boards={boards}
+          currentBoardId={currentBoardId}
+          projectKey={projectKey}
+          onSelect={(id) => {
+            void navigate({
+              to: '/projects/$projectKey/board',
+              params: { projectKey },
+              search: { board: id },
+            })
+          }}
+        />
       )}
 
       {/* BoardFilterBar — 보드 상세가 있을 때만 (EC7) */}
@@ -365,14 +412,9 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
         </div>
       )}
 
-      {/* 필터 결과 0건 빈 상태 (D2) — KanbanBoard 대신 안내 + 초기화 CTA */}
+      {/* 필터 결과 0건 빈 상태 (D2) */}
       {boardDetail !== undefined && isFilteredEmpty && (
-        <div className="flex flex-col items-center justify-center min-h-48 gap-3 text-center">
-          <p className="text-sm text-muted-foreground">조건에 맞는 카드가 없습니다</p>
-          <Button type="button" variant="outline" size="sm" onClick={handleFilterReset}>
-            {boardFilterLabels.filter.reset}
-          </Button>
-        </div>
+        <FilteredEmptyState onReset={handleFilterReset} />
       )}
 
       {/* KanbanBoard — 필터 결과 있을 때만 */}
