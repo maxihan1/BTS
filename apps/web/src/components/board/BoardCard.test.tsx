@@ -1,4 +1,4 @@
-// BoardCard 컴포넌트 단위 테스트 — 카드 정보 표시·담당자 이니셜·미배정·링크
+// BoardCard 컴포넌트 단위 테스트 — 카드 정보 표시·담당자 3-상태(unassigned/named/unknown)·링크
 import { describe, it, expect } from 'vitest'
 import type { ReactNode } from 'react'
 import { render, screen } from '@testing-library/react'
@@ -31,8 +31,8 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }))
 
-// BoardCard는 아직 존재하지 않음 — RED 단계
 import { BoardCard } from './BoardCard'
+import type { CardAssigneeDisplay } from './BoardCard'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 픽스처
@@ -49,11 +49,11 @@ const COLUMN_ID = 'col-uuid-0001'
 
 function renderCard(
   card: BoardCardType = baseCard,
-  assigneeName: string | null = '김철수',
+  assignee: CardAssigneeDisplay = { state: 'named', name: '김철수' },
 ) {
   return render(
     <DndContext>
-      <BoardCard card={card} columnId={COLUMN_ID} assigneeName={assigneeName} />
+      <BoardCard card={card} columnId={COLUMN_ID} assignee={assignee} />
     </DndContext>,
   )
 }
@@ -81,31 +81,56 @@ describe('BoardCard — S1 기본 렌더', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S2. 담당자 아바타
+// S2. 담당자 표시 3-상태
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('BoardCard — S2 담당자 아바타', () => {
-  it('S2a: assigneeName이 있으면 이름 첫 글자 이니셜을 아바타로 표시한다', () => {
-    renderCard(baseCard, '김철수')
-    // 이니셜 '김' 이 아바타로 존재해야 함
+describe('BoardCard — S2 담당자 표시 3-상태', () => {
+  it('S2a: assignee={state:"named"} 이면 이름 첫 글자 이니셜을 아바타로 표시한다', () => {
+    renderCard(baseCard, { state: 'named', name: '김철수' })
     expect(screen.getByText('김')).toBeInTheDocument()
   })
 
-  it('S2b: assigneeName이 있으면 title 속성에 전체 이름을 표시한다', () => {
-    renderCard(baseCard, '김철수')
+  it('S2b: assignee={state:"named"} 이면 title 속성에 전체 이름을 표시한다', () => {
+    renderCard(baseCard, { state: 'named', name: '김철수' })
     const avatar = screen.getByTitle('김철수')
     expect(avatar).toBeInTheDocument()
   })
 
-  it('S2c: assigneeName이 null이면 "미배정" 텍스트를 표시한다', () => {
-    renderCard(baseCard, null)
+  it('S2c: assignee={state:"named"} 이면 aria-label에 "담당자: 김철수"를 표시한다', () => {
+    renderCard(baseCard, { state: 'named', name: '김철수' })
+    expect(screen.getByLabelText('담당자: 김철수')).toBeInTheDocument()
+  })
+
+  it('S2d: assignee={state:"unassigned"} 이면 "미배정" 텍스트를 표시한다', () => {
+    const unassigned: BoardCardType = { ...baseCard, assigneeId: null }
+    renderCard(unassigned, { state: 'unassigned' })
     expect(screen.getByText('미배정')).toBeInTheDocument()
   })
 
-  it('S2d: assigneeId가 null인 카드에서 assigneeName도 null이면 "미배정"을 표시한다', () => {
+  it('S2e: assignee={state:"unassigned"} 이면 아바타가 없다', () => {
     const unassigned: BoardCardType = { ...baseCard, assigneeId: null }
-    renderCard(unassigned, null)
-    expect(screen.getByText('미배정')).toBeInTheDocument()
+    renderCard(unassigned, { state: 'unassigned' })
+    expect(screen.queryByTitle('담당자 (이름 미확인)')).not.toBeInTheDocument()
+    // named 아바타도 없어야 함 — 어떤 title도 없음
+    expect(document.querySelector('[title]')).not.toBeInTheDocument()
+  })
+
+  it('S2f: assignee={state:"unknown"} 이면 "?" 아바타를 표시한다 — 미배정 아님', () => {
+    renderCard(baseCard, { state: 'unknown' })
+    // "?" 텍스트가 표시되어야 함
+    expect(screen.getByText('?')).toBeInTheDocument()
+    // "미배정" 텍스트는 없어야 함 — 배정됐으나 이름 미확인
+    expect(screen.queryByText('미배정')).not.toBeInTheDocument()
+  })
+
+  it('S2g: assignee={state:"unknown"} 이면 title="담당자 (이름 미확인)"을 표시한다', () => {
+    renderCard(baseCard, { state: 'unknown' })
+    expect(screen.getByTitle('담당자 (이름 미확인)')).toBeInTheDocument()
+  })
+
+  it('S2h: assignee={state:"unknown"} 이면 aria-label="담당자 이름 미확인"을 표시한다', () => {
+    renderCard(baseCard, { state: 'unknown' })
+    expect(screen.getByLabelText('담당자 이름 미확인')).toBeInTheDocument()
   })
 })
 

@@ -24,10 +24,14 @@ vi.mock('sonner', () => ({
 }))
 
 // KanbanBoard는 DndContext 등 복잡한 의존성이 있으므로 단순 mock
+// assigneeNames prop을 data-attribute로 직렬화해 단언에 활용
+const mockKanbanBoardProps: Array<{ boardId: string; assigneeNames: unknown }> = []
+
 vi.mock('@/components/board/KanbanBoard', () => ({
-  KanbanBoard: ({ boardId }: { boardId: string }) => (
-    <div data-testid={`kanban-board-${boardId}`}>KanbanBoard</div>
-  ),
+  KanbanBoard: ({ boardId, assigneeNames }: { boardId: string; assigneeNames: Map<string, unknown> }) => {
+    mockKanbanBoardProps.push({ boardId, assigneeNames })
+    return <div data-testid={`kanban-board-${boardId}`}>KanbanBoard</div>
+  },
 }))
 
 // CreateBoardForm mock
@@ -86,14 +90,43 @@ const BOARD_DETAIL_TRUNCATED: BoardDetail = {
   unplacedCount: 3,
 }
 
+const ALICE_ID = 'c3d4e5f6-a7b8-4890-abcd-ef1234567893'
+const UNKNOWN_USER_ID = 'd4e5f6a7-b8c9-4890-abcd-ef1234567894'
+
 const USERS: UserSummary[] = [
   {
-    id: 'c3d4e5f6-a7b8-4890-abcd-ef1234567893',
+    id: ALICE_ID,
     username: 'alice',
     displayName: '앨리스',
     email: 'alice@example.com',
   },
 ]
+
+/** 담당자 3가지 케이스를 포함하는 BoardDetail fixture */
+const BOARD_DETAIL_WITH_ASSIGNEES: BoardDetail = {
+  boardId: BOARD_A.boardId,
+  projectKey: 'ATLAS',
+  name: '스프린트 보드 A',
+  columns: [
+    {
+      columnId: 'col-1',
+      stateKey: 'todo',
+      name: '할 일',
+      category: 'TODO',
+      displayOrder: 1,
+      cards: [
+        // case 1: assigneeId=null → unassigned
+        { issueKey: 'ATLAS-1', summary: '미배정 이슈', assigneeId: null, version: 1 },
+        // case 2: assigneeId=ALICE_ID, userMap에 있음 → named
+        { issueKey: 'ATLAS-2', summary: '앨리스 이슈', assigneeId: ALICE_ID, version: 2 },
+        // case 3: assigneeId=UNKNOWN_USER_ID, userMap에 없음 → unknown
+        { issueKey: 'ATLAS-3', summary: '미해석 이슈', assigneeId: UNKNOWN_USER_ID, version: 3 },
+      ],
+    },
+  ],
+  truncated: false,
+  unplacedCount: 0,
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -121,12 +154,14 @@ async function renderBoardPage(projectKey = 'ATLAS', selectedBoardId?: string) {
 describe('BoardPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockKanbanBoardProps.length = 0
     mockFetchUsers.mockResolvedValue(USERS)
     mockUseBoard.mockReturnValue({ data: undefined, isLoading: false })
   })
 
   afterEach(() => {
     vi.clearAllMocks()
+    mockKanbanBoardProps.length = 0
   })
 
   /**
@@ -251,6 +286,58 @@ describe('BoardPage', () => {
     await waitFor(() => {
       expect(screen.getByText(/3개 이슈가 컬럼에 매핑되지 않아/i)).toBeInTheDocument()
     })
+  })
+
+  /**
+   * T-BD7-R-9. assigneeId=null 카드 → KanbanBoard에 {state:"unassigned"} 전달.
+   * T-BD7-R-10. assigneeId 있고 userMap 해석됨 → {state:"named", name:"앨리스"} 전달.
+   * T-BD7-R-11. assigneeId 있으나 userMap 미해석 → {state:"unknown"} 전달 (미배정과 구분).
+   */
+  it('T-BD7-R-9: assigneeId=null 카드는 {state:"unassigned"}로 KanbanBoard에 전달된다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL_WITH_ASSIGNEES, isLoading: false })
+
+    await renderBoardPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`kanban-board-${BOARD_A.boardId}`)).toBeInTheDocument()
+    })
+
+    const lastCall = mockKanbanBoardProps[mockKanbanBoardProps.length - 1]
+    const names = lastCall?.assigneeNames as Map<string, { state: string }>
+    expect(names?.get('ATLAS-1')).toEqual({ state: 'unassigned' })
+  })
+
+  it('T-BD7-R-10: assigneeId가 userMap에 있으면 {state:"named"} 로 전달된다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL_WITH_ASSIGNEES, isLoading: false })
+
+    await renderBoardPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`kanban-board-${BOARD_A.boardId}`)).toBeInTheDocument()
+    })
+
+    const lastCall = mockKanbanBoardProps[mockKanbanBoardProps.length - 1]
+    const names = lastCall?.assigneeNames as Map<string, { state: string; name?: string }>
+    expect(names?.get('ATLAS-2')).toEqual({ state: 'named', name: '앨리스' })
+  })
+
+  it('T-BD7-R-11: assigneeId가 있으나 userMap 미해석이면 {state:"unknown"} — "미배정" 아님', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL_WITH_ASSIGNEES, isLoading: false })
+
+    await renderBoardPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`kanban-board-${BOARD_A.boardId}`)).toBeInTheDocument()
+    })
+
+    const lastCall = mockKanbanBoardProps[mockKanbanBoardProps.length - 1]
+    const names = lastCall?.assigneeNames as Map<string, { state: string }>
+    const unknownEntry = names?.get('ATLAS-3')
+    // unknown이어야 함 — unassigned면 spec FR-7 위반
+    expect(unknownEntry).toEqual({ state: 'unknown' })
   })
 
   /**

@@ -31,8 +31,8 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }))
 
-// BoardColumn은 아직 존재하지 않음 — RED 단계
 import { BoardColumn } from './BoardColumn'
+import type { CardAssigneeDisplay } from './BoardCard'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 픽스처
@@ -49,6 +49,7 @@ const columnWithCards: BoardColumnType = {
   cards: [
     { issueKey: 'ATLAS-1', summary: '첫 번째 이슈', assigneeId: 'u1', version: 1 },
     { issueKey: 'ATLAS-2', summary: '두 번째 이슈', assigneeId: null, version: 2 },
+    { issueKey: 'ATLAS-3', summary: '세 번째 이슈', assigneeId: 'u3-unknown', version: 3 },
   ],
 }
 
@@ -61,14 +62,15 @@ const emptyColumn: BoardColumnType = {
   cards: [],
 }
 
-const assigneeNames: Map<string, string | null> = new Map([
-  ['ATLAS-1', '박지현'],
-  ['ATLAS-2', null],
+const assigneeNames: Map<string, CardAssigneeDisplay> = new Map([
+  ['ATLAS-1', { state: 'named', name: '박지현' }],
+  ['ATLAS-2', { state: 'unassigned' }],
+  ['ATLAS-3', { state: 'unknown' }],
 ])
 
 function renderColumn(
   column: BoardColumnType = columnWithCards,
-  names: Map<string, string | null> = assigneeNames,
+  names: Map<string, CardAssigneeDisplay> = assigneeNames,
   isOver = false,
 ) {
   return render(
@@ -109,22 +111,39 @@ describe('BoardColumn — S2 카드 목록 렌더', () => {
     renderColumn()
     expect(screen.getByText('ATLAS-1')).toBeInTheDocument()
     expect(screen.getByText('ATLAS-2')).toBeInTheDocument()
+    expect(screen.getByText('ATLAS-3')).toBeInTheDocument()
   })
 
   it('S2b: 각 카드의 summary를 렌더한다', () => {
     renderColumn()
     expect(screen.getByText('첫 번째 이슈')).toBeInTheDocument()
     expect(screen.getByText('두 번째 이슈')).toBeInTheDocument()
+    expect(screen.getByText('세 번째 이슈')).toBeInTheDocument()
   })
 
-  it('S2c: assigneeNames Map에서 이름을 가져와 카드에 전달한다 — 이름 있으면 이니셜 표시', () => {
+  it('S2c: {state:"named"} 카드는 이니셜 아바타를 표시한다', () => {
     renderColumn()
     // '박지현'의 첫 글자 '박'
     expect(screen.getByText('박')).toBeInTheDocument()
   })
 
-  it('S2d: assigneeName이 null인 카드는 "미배정" 표시', () => {
+  it('S2d: {state:"unassigned"} 카드는 "미배정" 텍스트를 표시한다', () => {
     renderColumn()
+    expect(screen.getByText('미배정')).toBeInTheDocument()
+  })
+
+  it('S2e: {state:"unknown"} 카드는 "?" 아바타를 표시한다 — "미배정" 아님', () => {
+    renderColumn()
+    expect(screen.getByText('?')).toBeInTheDocument()
+  })
+
+  it('S2f: assigneeNames에 없는 카드는 fallback unassigned로 표시한다', () => {
+    const col: BoardColumnType = {
+      ...columnWithCards,
+      cards: [{ issueKey: 'ATLAS-99', summary: '알 수 없음', assigneeId: null, version: 1 }],
+    }
+    renderColumn(col, new Map())
+    // Map에 없으므로 unassigned fallback
     expect(screen.getByText('미배정')).toBeInTheDocument()
   })
 })

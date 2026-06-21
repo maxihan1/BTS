@@ -6,6 +6,7 @@ import { DndContext } from '@dnd-kit/core'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
 import type { BoardDetail } from '@/api/boards'
+import type { CardAssigneeDisplay } from './BoardCard'
 
 // useMoveCard mock — mutate spy 노출
 vi.mock('@/hooks/use-move-card', () => ({
@@ -98,14 +99,14 @@ function createWrapper() {
   }
 }
 
-function renderBoard(board: BoardDetail = boardFixture) {
-  const assigneeNames = new Map<string, string | null>()
+function renderBoard(board: BoardDetail = boardFixture, assigneeNames?: Map<string, CardAssigneeDisplay>) {
+  const names = assigneeNames ?? new Map<string, CardAssigneeDisplay>()
   const wrapper = createWrapper()
   return render(
     createElement(DndContext, {}, createElement(KanbanBoard, {
       boardId: boardFixture.boardId,
       board,
-      assigneeNames,
+      assigneeNames: names,
     })),
     { wrapper },
   )
