@@ -111,7 +111,7 @@ export function WorklogFilterBar({
       </div>
       {isDateRangeInvalid && (
         <p role="alert" className="text-sm text-destructive">
-          시작일이 종료일보다 늦습니다. 기간을 확인해 주세요.
+          {filter.dateRangeError}
         </p>
       )}
     </div>
@@ -180,12 +180,6 @@ export function WorklogAggregateReport({ projectKey }: WorklogAggregateReportPro
 
   return (
     <div className="space-y-6">
-      {/* 페이지 헤더 */}
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">{worklogAggregateLabels.page.title}</h1>
-        <p className="text-sm text-muted-foreground">{worklogAggregateLabels.page.description}</p>
-      </header>
-
       {/* 필터 바 */}
       <WorklogFilterBar
         by={by}

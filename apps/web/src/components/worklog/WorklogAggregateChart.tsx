@@ -120,15 +120,22 @@ export function WorklogAggregateChart({
 
   const data = toChartData(buckets, dimension)
   const isHorizontalBar = dimension === 'issue' || dimension === 'user'
+  const isTruncated = buckets.length > CHART_TOP_N
 
   return (
-    // w-full: recharts ResponsiveContainer 가 부모 너비를 참조하므로 필수.
-    // h-[400px]: 높이는 Tailwind 임의값으로 지정 (CHART_HEIGHT 와 동기화).
-    <div
-      role="img"
-      aria-label={worklogAggregateLabels.chart.ariaLabel}
-      className="w-full h-[400px]"
-    >
+    <div className="space-y-2">
+      {isTruncated && (
+        <p className="text-xs text-muted-foreground">
+          {worklogAggregateLabels.chart.topNHint.replace('{count}', String(CHART_TOP_N))}
+        </p>
+      )}
+      {/* w-full: recharts ResponsiveContainer 가 부모 너비를 참조하므로 필수.
+          h-[400px]: 높이는 Tailwind 임의값으로 지정 (CHART_HEIGHT 와 동기화). */}
+      <div
+        role="img"
+        aria-label={worklogAggregateLabels.chart.ariaLabel}
+        className="w-full h-[400px]"
+      >
       {isHorizontalBar ? (
         // 가로 막대 — 이슈별·사용자별
         // layout="vertical": BarChart 에서 막대가 가로 방향으로 뻗는다.
@@ -155,6 +162,7 @@ export function WorklogAggregateChart({
           </BarChart>
         </ResponsiveContainer>
       )}
+      </div>
     </div>
   )
 }

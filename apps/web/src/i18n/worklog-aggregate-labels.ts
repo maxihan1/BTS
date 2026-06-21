@@ -40,6 +40,8 @@ export const worklogAggregateLabels = {
     fromLabel: '시작일',
     /** 종료일 입력 label */
     toLabel: '종료일',
+    /** from>to 날짜 범위 오류 안내 문구 */
+    dateRangeError: '시작일이 종료일보다 늦습니다. 기간을 확인해 주세요.',
   },
 
   /** 요약 수치 영역 */
