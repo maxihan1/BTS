@@ -374,6 +374,45 @@ const deleteComponentHandler = http.delete(
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
+// FILTER 프로젝트 컴포넌트 자동 시드 (FR-BD-02 D7 E2E)
+//
+// board-fixtures.ts FILTER_BOARD 카드의 componentIds와 동기화한다.
+//   FILTER-1, FILTER-2: componentIds=['40000000-0000-4000-8000-000000000001'] (컴포넌트A)
+//   FILTER-2, FILTER-3: componentIds=['40000000-0000-4000-8000-000000000002'] (컴포넌트B)
+//
+// dev(pnpm dev) · E2E 진입 시 ComponentMultiSelect가 컴포넌트 목록을 불러올 때
+// 빈 결과가 반환되어 체크박스가 표시되지 않는 결함 방지.
+// 단위 테스트는 beforeEach의 resetComponentStore()로 격리한다.
+// import.meta.env 조건을 쓰지 않는다 — Vitest Node.js 런타임에서 import.meta.env가 undefined이면
+// 'Cannot read properties of undefined (reading MODE)' 크래시가 발생한다(board-fixtures.ts 주석 참조).
+// ─────────────────────────────────────────────────────────────────────────────
+
+;(function seedFilterProjectComponents() {
+  const filterProjectId = '00000000-0000-4000-8000-000000000099'
+  const filterSeedComponents: StoredComponent[] = [
+    {
+      id: '40000000-0000-4000-8000-000000000001',
+      projectId: filterProjectId,
+      name: '컴포넌트A',
+      description: null,
+      leadUserId: null,
+      projectIdOrKey: 'FILTER',
+    },
+    {
+      id: '40000000-0000-4000-8000-000000000002',
+      projectId: filterProjectId,
+      name: '컴포넌트B',
+      description: null,
+      leadUserId: null,
+      projectIdOrKey: 'FILTER',
+    },
+  ]
+  for (const comp of filterSeedComponents) {
+    componentStore.set(comp.id, comp)
+  }
+})()
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Export
 // ─────────────────────────────────────────────────────────────────────────────
 

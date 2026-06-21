@@ -279,11 +279,17 @@ describe('POST /api/v1/boards/:id/cards/:issueKey/move', () => {
 /**
  * FILTER_BOARD 픽스처 카드 구성 (내부 store에만 labels/componentIds 있음).
  *
- * FILTER-1: assigneeId=a1, labels=[bug],       componentIds=[c1]
- * FILTER-2: assigneeId=a2, labels=[feature],   componentIds=[c1, c2]
- * FILTER-3: assigneeId=a1, labels=[bug, docs], componentIds=[c2]
+ * FILTER-1: assigneeId=ALICE_USER_ID, labels=[bug],             componentIds=[COMPONENT_C1_ID]
+ * FILTER-2: assigneeId=BOB_USER_ID,   labels=[feature],         componentIds=[COMPONENT_C1_ID, COMPONENT_C2_ID]
+ * FILTER-3: assigneeId=ALICE_USER_ID, labels=[bug, documentation], componentIds=[COMPONENT_C2_ID]
  * FILTER-4: assigneeId=null(미배정), labels=[], componentIds=[]
+ *
+ * 아래 UUID 상수는 board-fixtures.ts ALICE_USER_ID / BOB_USER_ID / COMPONENT_C1_ID / COMPONENT_C2_ID 와 동기화.
  */
+
+const ALICE_USER_ID = 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f'
+const BOB_USER_ID = 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a'
+const COMPONENT_C1_ID = '40000000-0000-4000-8000-000000000001'
 
 async function getBoardWithFilter(boardId: string, params: string): Promise<Response> {
   return fetch(`/api/v1/boards/${boardId}?${params}`)
@@ -318,9 +324,9 @@ describe('GET /api/v1/boards/:id — query param 필터 (FR-BD-02)', () => {
     expect(keys).toContain('FILTER-4')
   })
 
-  it('?assignee=a1 → a1 담당 카드만 (FILTER-1, FILTER-3)', async () => {
+  it('?assignee=ALICE → alice 담당 카드만 (FILTER-1, FILTER-3)', async () => {
     seedBoard(FILTER_BOARD)
-    const res = await getBoardWithFilter(FILTER_BOARD.boardId, 'assignee=a1')
+    const res = await getBoardWithFilter(FILTER_BOARD.boardId, `assignee=${ALICE_USER_ID}`)
     expect(res.status).toBe(200)
     const body = (await res.json()) as DataResponse<BoardDetail>
     const keys = collectIssueKeys(body.data)
@@ -330,9 +336,9 @@ describe('GET /api/v1/boards/:id — query param 필터 (FR-BD-02)', () => {
     expect(keys).not.toContain('FILTER-4')
   })
 
-  it('?assignee=a1&assignee=a2 → a1 OR a2 (FILTER-1, FILTER-2, FILTER-3)', async () => {
+  it('?assignee=ALICE&assignee=BOB → alice OR bob (FILTER-1, FILTER-2, FILTER-3)', async () => {
     seedBoard(FILTER_BOARD)
-    const res = await getBoardWithFilter(FILTER_BOARD.boardId, 'assignee=a1&assignee=a2')
+    const res = await getBoardWithFilter(FILTER_BOARD.boardId, `assignee=${ALICE_USER_ID}&assignee=${BOB_USER_ID}`)
     expect(res.status).toBe(200)
     const body = (await res.json()) as DataResponse<BoardDetail>
     const keys = collectIssueKeys(body.data)
@@ -366,9 +372,9 @@ describe('GET /api/v1/boards/:id — query param 필터 (FR-BD-02)', () => {
     expect(keys).not.toContain('FILTER-4')
   })
 
-  it('?component=c1 → c1 컴포넌트 카드만 (FILTER-1, FILTER-2)', async () => {
+  it('?component=C1_ID → c1 컴포넌트 카드만 (FILTER-1, FILTER-2)', async () => {
     seedBoard(FILTER_BOARD)
-    const res = await getBoardWithFilter(FILTER_BOARD.boardId, 'component=c1')
+    const res = await getBoardWithFilter(FILTER_BOARD.boardId, `component=${COMPONENT_C1_ID}`)
     expect(res.status).toBe(200)
     const body = (await res.json()) as DataResponse<BoardDetail>
     const keys = collectIssueKeys(body.data)
@@ -378,9 +384,9 @@ describe('GET /api/v1/boards/:id — query param 필터 (FR-BD-02)', () => {
     expect(keys).not.toContain('FILTER-4')
   })
 
-  it('?assignee=a1&label=bug → a1 담당 이면서 bug 라벨 (FILTER-1, FILTER-3)', async () => {
+  it('?assignee=ALICE&label=bug → alice 담당 이면서 bug 라벨 (FILTER-1, FILTER-3)', async () => {
     seedBoard(FILTER_BOARD)
-    const res = await getBoardWithFilter(FILTER_BOARD.boardId, 'assignee=a1&label=bug')
+    const res = await getBoardWithFilter(FILTER_BOARD.boardId, `assignee=${ALICE_USER_ID}&label=bug`)
     expect(res.status).toBe(200)
     const body = (await res.json()) as DataResponse<BoardDetail>
     const keys = collectIssueKeys(body.data)
