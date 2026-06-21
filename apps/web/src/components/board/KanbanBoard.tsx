@@ -11,7 +11,7 @@ import {
 } from '@dnd-kit/core'
 import type { DragEndEvent, DragStartEvent, DragOverEvent } from '@dnd-kit/core'
 import { toast } from 'sonner'
-import type { BoardDetail } from '@/api/boards'
+import type { BoardDetail, BoardCardFilterParams } from '@/api/boards'
 import { useMoveCard } from '@/hooks/use-move-card'
 import type { MoveCardVars } from '@/hooks/use-move-card'
 import { BoardColumn } from './BoardColumn'
@@ -134,6 +134,12 @@ export interface KanbanBoardProps {
    * 페이지가 userId → displayName 해석 후 주입한다.
    */
   assigneeNames: Map<string, CardAssigneeDisplay>
+  /**
+   * 현재 적용된 카드 필터 (FR-BD-02).
+   * useMoveCard로 전달해 filter-aware queryKey와 낙관적 업데이트가 정합되도록 한다.
+   * 옵셔널 — 없으면 undefined로 전달 (기존 호출 호환).
+   */
+  filter?: BoardCardFilterParams
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -153,13 +159,14 @@ const UNASSIGNED: CardAssigneeDisplay = { state: 'unassigned' }
  * - 409 충돌 등 에러 시 toast.error를 표시한다.
  * - 센서: PointerSensor(distance:5) + KeyboardSensor — 클릭과 드래그 구분(D-2).
  */
-export function KanbanBoard({ boardId, board, assigneeNames }: KanbanBoardProps): JSX.Element {
+export function KanbanBoard({ boardId, board, assigneeNames, filter }: KanbanBoardProps): JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [activeFromColumnId, setActiveFromColumnId] = useState<string | null>(null)
   const [overColumnId, setOverColumnId] = useState<string | null>(null)
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null)
 
-  const moveCard = useMoveCard(boardId)
+  // filter-aware useMoveCard — filter와 동일한 queryKey를 공유해 낙관적 업데이트 정합
+  const moveCard = useMoveCard(boardId, filter)
 
   // PointerSensor: distance 5px 이상 이동해야 드래그 시작 → 카드 Link 클릭 보존 (D-2)
   const sensors = useSensors(

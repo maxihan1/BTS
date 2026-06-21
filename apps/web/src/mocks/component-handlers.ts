@@ -374,6 +374,47 @@ const deleteComponentHandler = http.delete(
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
+// FILTER 프로젝트 컴포넌트 자동 시드 (FR-BD-02 D7 E2E)
+//
+// board-fixtures.ts FILTER_BOARD 카드의 componentIds와 동기화한다.
+//   FILTER-1, FILTER-2: componentIds=['40000000-0000-4000-8000-000000000001'] (컴포넌트A)
+//   FILTER-2, FILTER-3: componentIds=['40000000-0000-4000-8000-000000000002'] (컴포넌트B)
+//
+// dev(pnpm dev) · E2E 진입 시 ComponentMultiSelect가 컴포넌트 목록을 불러올 때
+// 빈 결과가 반환되어 체크박스가 표시되지 않는 결함 방지.
+// Vitest(MODE='test')에서는 건너뜀 — 각 테스트가 beforeEach/resetComponentStore()로 직접 제어.
+//
+// import.meta.env?.MODE 로 접근 — Playwright 내부 Node.js 평가 단계에서
+// import.meta.env가 undefined일 수 있으므로 optional chaining 필수.
+// board-fixtures.ts는 E2E 스펙에서 직접 import 금지라 해당 문제를 겪지 않는다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+if (import.meta.env?.MODE !== 'test') {
+  const filterProjectId = '00000000-0000-4000-8000-000000000099'
+  const filterSeedComponents: StoredComponent[] = [
+    {
+      id: '40000000-0000-4000-8000-000000000001',
+      projectId: filterProjectId,
+      name: '컴포넌트A',
+      description: null,
+      leadUserId: null,
+      projectIdOrKey: 'FILTER',
+    },
+    {
+      id: '40000000-0000-4000-8000-000000000002',
+      projectId: filterProjectId,
+      name: '컴포넌트B',
+      description: null,
+      leadUserId: null,
+      projectIdOrKey: 'FILTER',
+    },
+  ]
+  for (const comp of filterSeedComponents) {
+    componentStore.set(comp.id, comp)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Export
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 // KanbanBoard 단위 테스트 — resolveDropAction 순수 헬퍼 + 컬럼 displayOrder 렌더
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DndContext } from '@dnd-kit/core'
@@ -8,9 +8,13 @@ import type { ReactNode } from 'react'
 import type { BoardDetail } from '@/api/boards'
 import type { CardAssigneeDisplay } from './BoardCard'
 
-// useMoveCard mock — mutate spy 노출
+// useMoveCard mock — mutate spy 노출 + boardId/filter 인자 캡처 (Task6 통합 검증)
+const capturedMoveCardArgs: Array<[string, unknown]> = []
 vi.mock('@/hooks/use-move-card', () => ({
-  useMoveCard: () => ({ mutate: vi.fn(), isPending: false }),
+  useMoveCard: (boardId: string, filter?: unknown) => {
+    capturedMoveCardArgs.push([boardId, filter])
+    return { mutate: vi.fn(), isPending: false }
+  },
 }))
 
 // useResolutions mock
@@ -35,8 +39,9 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }))
 
-// KanbanBoard + resolveDropAction — RED: 아직 존재하지 않음
+// KanbanBoard + resolveDropAction
 import { KanbanBoard, resolveDropAction } from './KanbanBoard'
+import type { BoardCardFilterParams } from '@/api/boards'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 픽스처
@@ -99,7 +104,11 @@ function createWrapper() {
   }
 }
 
-function renderBoard(board: BoardDetail = boardFixture, assigneeNames?: Map<string, CardAssigneeDisplay>) {
+function renderBoard(
+  board: BoardDetail = boardFixture,
+  assigneeNames?: Map<string, CardAssigneeDisplay>,
+  filter?: BoardCardFilterParams,
+) {
   const names = assigneeNames ?? new Map<string, CardAssigneeDisplay>()
   const wrapper = createWrapper()
   return render(
@@ -107,6 +116,7 @@ function renderBoard(board: BoardDetail = boardFixture, assigneeNames?: Map<stri
       boardId: boardFixture.boardId,
       board,
       assigneeNames: names,
+      ...(filter !== undefined ? { filter } : {}),
     })),
     { wrapper },
   )
@@ -176,6 +186,10 @@ describe('resolveDropAction — S1 순수 헬퍼', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('KanbanBoard — S2 컬럼 렌더', () => {
+  beforeEach(() => {
+    capturedMoveCardArgs.length = 0
+  })
+
   it('S2a: 컬럼들을 displayOrder 오름차순으로 렌더한다', () => {
     renderBoard()
     // 컬럼 헤더 이름이 displayOrder 순서(1→2→3)로 DOM에 나타나야 함
@@ -194,5 +208,47 @@ describe('KanbanBoard — S2 컬럼 렌더', () => {
     expect(screen.getByText('할 일')).toBeInTheDocument()
     expect(screen.getByText('진행 중')).toBeInTheDocument()
     expect(screen.getByText('완료')).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S3. KanbanBoard filter prop → useMoveCard 전달 검증 (FR-BD-02 Task 6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('KanbanBoard — S3 filter prop 전달', () => {
+  beforeEach(() => {
+    capturedMoveCardArgs.length = 0
+  })
+
+  /**
+   * S3a: filter prop을 전달하면 useMoveCard가 (boardId, filter)로 호출된다.
+   */
+  it('S3a: filter prop이 있으면 useMoveCard(boardId, filter)로 호출된다', () => {
+    const filter: BoardCardFilterParams = {
+      assigneeIds: ['c3d4e5f6-a7b8-4890-abcd-ef1234567893'],
+      includeUnassigned: false,
+      labels: ['버그'],
+      componentIds: [],
+    }
+    renderBoard(boardFixture, undefined, filter)
+
+    // useMoveCard가 boardId와 filter 모두 받아야 한다
+    expect(capturedMoveCardArgs.length).toBeGreaterThan(0)
+    const lastCall = capturedMoveCardArgs[capturedMoveCardArgs.length - 1]
+    expect(lastCall?.[0]).toBe(boardFixture.boardId)
+    expect(lastCall?.[1]).toEqual(filter)
+  })
+
+  /**
+   * S3b: filter prop 없이 호출하면 useMoveCard가 (boardId, undefined)로 호출된다
+   * (기존 호출 호환).
+   */
+  it('S3b: filter prop 없으면 useMoveCard(boardId, undefined)로 호출된다 (기존 호환)', () => {
+    renderBoard()
+
+    expect(capturedMoveCardArgs.length).toBeGreaterThan(0)
+    const lastCall = capturedMoveCardArgs[capturedMoveCardArgs.length - 1]
+    expect(lastCall?.[0]).toBe(boardFixture.boardId)
+    expect(lastCall?.[1]).toBeUndefined()
   })
 })

@@ -1,4 +1,4 @@
-// 칸반 보드 REST API 클라이언트 — Zod 스키마 + fetch 함수 (FR-BD-01)
+// 칸반 보드 REST API 클라이언트 — Zod 스키마 + fetch 함수 (FR-BD-01/02)
 import { z } from 'zod'
 import { apiGet, apiPost } from './client'
 
@@ -168,6 +168,26 @@ export interface MoveCardBody {
   resolutionId?: string
 }
 
+/**
+ * 보드 카드 필터 파라미터.
+ * GET /api/v1/boards/{boardId} 의 선택적 쿼리 필터를 표현한다.
+ *
+ * 백엔드 계약 (FR-BD-02, #168).
+ * - assignee: 담당자 UUID. 복수 반복 파라미터. 'unassigned' 센티널로 미배정 포함.
+ * - label: 라벨 이름. 복수 반복 파라미터.
+ * - component: 컴포넌트 UUID. 복수 반복 파라미터.
+ */
+export interface BoardCardFilterParams {
+  /** 담당자 UUID 목록. 각 항목마다 assignee= 파라미터를 하나씩 추가한다. */
+  assigneeIds: string[]
+  /** true면 assignee=unassigned 파라미터를 추가해 미배정 카드를 포함한다. */
+  includeUnassigned: boolean
+  /** 라벨 이름 목록. 각 항목마다 label= 파라미터를 하나씩 추가한다. */
+  labels: string[]
+  /** 컴포넌트 UUID 목록. 각 항목마다 component= 파라미터를 하나씩 추가한다. */
+  componentIds: string[]
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // API 함수
 // ─────────────────────────────────────────────────────────────────────────────
@@ -191,18 +211,54 @@ export async function fetchBoards(projectKey: string): Promise<BoardSummary[]> {
 }
 
 /**
+ * 보드 카드 필터 파라미터를 URLSearchParams 기반 query string으로 변환한다.
+ *
+ * 백엔드 계약 (FR-BD-02).
+ * - assigneeIds 각 UUID → `assignee=<uuid>` 반복 파라미터
+ * - includeUnassigned=true → `assignee=unassigned` 추가 (센티널 소문자 고정)
+ * - labels 각 이름 → `label=<name>` 반복 파라미터
+ * - componentIds 각 UUID → `component=<uuid>` 반복 파라미터
+ *
+ * 모든 배열이 비어 있고 includeUnassigned=false이면 빈 문자열('')을 반환한다.
+ * 파라미터가 하나라도 있으면 '?...' 형태로 반환한다.
+ *
+ * @param filter 필터 파라미터
+ * @returns '' 또는 '?key=value&...' 형태의 query string
+ */
+export function buildBoardFilterQuery(filter: BoardCardFilterParams): string {
+  const params = new URLSearchParams()
+  for (const id of filter.assigneeIds) {
+    params.append('assignee', id)
+  }
+  if (filter.includeUnassigned) {
+    params.append('assignee', 'unassigned')
+  }
+  for (const label of filter.labels) {
+    params.append('label', label)
+  }
+  for (const id of filter.componentIds) {
+    params.append('component', id)
+  }
+  const qs = params.toString()
+  return qs === '' ? '' : `?${qs}`
+}
+
+/**
  * 보드 상세 정보를 조회한다.
  *
- * GET /api/v1/boards/{boardId} → `{ data: BoardDetail }` 언랩.
+ * GET /api/v1/boards/{boardId}[?assignee=...&label=...&component=...] → `{ data: BoardDetail }` 언랩.
+ * filter가 없거나 모든 필드가 비어 있으면 query string 없이 호출한다.
  *
  * @param boardId 보드 UUID
- * @returns BoardDetail — 컬럼·카드 포함
+ * @param filter 선택적 카드 필터 파라미터 (FR-BD-02)
+ * @returns BoardDetail — 컬럼·카드 포함 (필터 적용 시 해당 카드만 포함)
  * @throws ApiError 비-2xx 응답 시
  * @throws ZodError 응답 스키마 불일치 시
  */
-export async function fetchBoard(boardId: string): Promise<BoardDetail> {
+export async function fetchBoard(boardId: string, filter?: BoardCardFilterParams): Promise<BoardDetail> {
+  const qs = filter !== undefined ? buildBoardFilterQuery(filter) : ''
   const wrapped = await apiGet(
-    `/api/v1/boards/${boardId}`,
+    `/api/v1/boards/${boardId}${qs}`,
     dataResponseSchema(boardDetailSchema),
   )
   return wrapped.data

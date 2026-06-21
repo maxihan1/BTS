@@ -1,4 +1,4 @@
-// 칸반 보드 BC MSW 핸들러 — stateful CRUD + 카드 이동 + 409 충돌 토글 (FR-BD-01 D6)
+// 칸반 보드 BC MSW 핸들러 — stateful CRUD + 카드 이동 + 409 충돌 토글 (FR-BD-01 D6, FR-BD-02 D6)
 //
 // 교훈 반영.
 //   - msw-mutation-stateful-refetch: move 후 GET 상세에 즉시 반영되도록 boardStore 변이
@@ -6,12 +6,88 @@
 //   - e2e-msw-scenario-toggle-localstorage-flag: 409 토글은 localStorage 플래그로 분기
 //
 import { http, HttpResponse } from 'msw'
+import type { BoardDetail, BoardCard } from '@/api/boards'
+import type { StoredBoardDetail, StoredCard } from './board-fixtures'
 import {
   boardStore,
   projectBoardIndex,
   createBoardInStore,
   LS_KEY_BOARD_CONFLICT,
 } from './board-fixtures'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 필터 술어 헬퍼 (FR-BD-02)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 카드가 query param 필터 조건을 모두 만족하는지 판단한다.
+ *
+ * 필드 내(assignee 복수, label 복수, component 복수)는 OR,
+ * 필드 간(assignee vs label vs component)은 AND.
+ *
+ * assignee=unassigned → assigneeId가 null인 카드만 통과.
+ *
+ * @param card 평가할 store 내부 카드
+ * @param params URLSearchParams — request URL에서 파싱한 파라미터
+ */
+function matchesFilter(card: StoredCard, params: URLSearchParams): boolean {
+  const assignees = params.getAll('assignee')
+  if (assignees.length > 0) {
+    const passesAssignee = assignees.some((a) => {
+      if (a === 'unassigned') {
+        return card.assigneeId === null
+      }
+      return card.assigneeId === a
+    })
+    if (!passesAssignee) {
+      return false
+    }
+  }
+
+  const labels = params.getAll('label')
+  if (labels.length > 0) {
+    const passesLabel = labels.some((l) => card.labels.includes(l))
+    if (!passesLabel) {
+      return false
+    }
+  }
+
+  const components = params.getAll('component')
+  if (components.length > 0) {
+    const passesComponent = components.some((c) => card.componentIds.includes(c))
+    if (!passesComponent) {
+      return false
+    }
+  }
+
+  return true
+}
+
+/**
+ * StoredBoardDetail을 BoardDetail 응답 형식으로 변환한다.
+ *
+ * labels/componentIds는 store 내부 필터용 메타이며 응답 DTO(BoardCard)에 포함하지 않는다.
+ * params가 주어지면 matchesFilter를 적용해 카드를 걸러낸다.
+ *
+ * @param stored store 내부 보드 데이터
+ * @param params 필터 파라미터 (없으면 전체 카드 반환)
+ */
+function toResponseDetail(stored: StoredBoardDetail, params: URLSearchParams): BoardDetail {
+  return {
+    ...stored,
+    columns: stored.columns.map((col) => ({
+      ...col,
+      cards: col.cards
+        .filter((card) => matchesFilter(card, params))
+        .map(({ issueKey, summary, assigneeId, version }): BoardCard => ({
+          issueKey,
+          summary,
+          assigneeId,
+          version,
+        })),
+    })),
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/boards?projectKey=
@@ -44,11 +120,17 @@ const getBoardsHandler = http.get('/api/v1/boards', ({ request }) => {
 /**
  * GET /api/v1/boards/{boardId} — 보드 상세 조회.
  *
- * store에서 boardId로 BoardDetail을 찾아 반환한다.
- * 성공 → 200 { data: BoardDetail }
+ * query param 필터 (FR-BD-02):
+ *   ?assignee=<id>       → 해당 담당자 카드만 (복수 OR)
+ *   ?assignee=unassigned → 미배정(null) 카드만
+ *   ?label=<name>        → 해당 라벨 카드만 (복수 OR)
+ *   ?component=<id>      → 해당 컴포넌트 카드만 (복수 OR)
+ *   필드 간 AND 적용.
+ *
+ * 성공 → 200 { data: BoardDetail } — 응답 카드는 BoardCard DTO (labels/componentIds 제외)
  * 미존재 → 404 ProblemDetail { errorCode: 'AGILE_BOARD_NOT_FOUND' }
  */
-const getBoardHandler = http.get('/api/v1/boards/:id', ({ params }) => {
+const getBoardHandler = http.get('/api/v1/boards/:id', ({ params, request }) => {
   const boardId = params['id'] as string
   const board = boardStore.get(boardId)
 
@@ -62,7 +144,8 @@ const getBoardHandler = http.get('/api/v1/boards/:id', ({ params }) => {
     )
   }
 
-  return HttpResponse.json({ data: board })
+  const searchParams = new URL(request.url).searchParams
+  return HttpResponse.json({ data: toResponseDetail(board, searchParams) })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

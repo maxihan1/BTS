@@ -124,15 +124,39 @@ const adminWorkflowSchemesDetailRoute = createRoute({
   beforeLoad: requireAuthAndPasswordChanged,
 })
 
-/** 프로젝트 칸반 보드 라우트 — /projects/$projectKey/board, requireAuth. validateSearch로 board 쿼리 파라미터 타입 선언 */
+/**
+ * 프로젝트 칸반 보드 라우트 — /projects/$projectKey/board, requireAuth.
+ * validateSearch로 board, assignee, label, component 쿼리 파라미터 타입 선언 (FR-BD-02).
+ * 단일 문자열·배열 양쪽 허용 — 런타임 정규화는 searchToFilter가 담당.
+ */
 const projectBoardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects/$projectKey/board',
   component: BoardRouteAdapter,
   staticData: { requireAuth: true },
   beforeLoad: requireAuthAndPasswordChanged,
-  validateSearch: (search: Record<string, unknown>): { board?: string } => ({
+  validateSearch: (search: Record<string, unknown>): {
+    board?: string
+    assignee?: string | string[]
+    label?: string | string[]
+    component?: string | string[]
+  } => ({
     board: typeof search['board'] === 'string' ? search['board'] : undefined,
+    assignee: Array.isArray(search['assignee'])
+      ? (search['assignee'] as string[])
+      : typeof search['assignee'] === 'string'
+        ? search['assignee']
+        : undefined,
+    label: Array.isArray(search['label'])
+      ? (search['label'] as string[])
+      : typeof search['label'] === 'string'
+        ? search['label']
+        : undefined,
+    component: Array.isArray(search['component'])
+      ? (search['component'] as string[])
+      : typeof search['component'] === 'string'
+        ? search['component']
+        : undefined,
   }),
 })
 

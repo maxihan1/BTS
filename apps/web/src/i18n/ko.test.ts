@@ -656,3 +656,32 @@ describe('worklogStrings — 추정 카드 키 존재 검증 (FR-TT-01 D6)', () 
     }
   })
 })
+
+// ── boardFilterLabels — 보드 필터 바 UI 문자열 (FR-BD-02 Task-5) ──────────────
+import { boardFilterLabels } from './board-filter-labels'
+
+describe('boardFilterLabels — 보드 필터 바 문자열 콜론 종결 가드 (FR-BD-02)', () => {
+  it('filter 그룹 문자열 값은 콜론으로 끝나지 않는다 (글로벌 §5)', () => {
+    for (const [key, value] of Object.entries(boardFilterLabels.filter)) {
+      if (typeof value === 'string') {
+        expect(value, `boardFilterLabels.filter["${key}"] = "${value}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
+      }
+    }
+  })
+
+  it('search 그룹 문자열 값은 콜론으로 끝나지 않는다 (글로벌 §5)', () => {
+    for (const [key, value] of Object.entries(boardFilterLabels.search)) {
+      if (typeof value === 'string') {
+        expect(value, `boardFilterLabels.search["${key}"] = "${value}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
+      }
+    }
+  })
+
+  it('count.applied(2)는 "2개 적용 중" 형식의 문자열을 반환한다', () => {
+    expect(boardFilterLabels.count.applied(2)).toBe('2개 적용 중')
+  })
+
+  it('chip.removeAriaLabel("bug")는 "bug 제거" 형식의 문자열을 반환한다', () => {
+    expect(boardFilterLabels.chip.removeAriaLabel('bug')).toBe('bug 제거')
+  })
+})
