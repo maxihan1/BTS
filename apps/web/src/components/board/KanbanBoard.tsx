@@ -22,10 +22,10 @@ import { ResolutionPickerModal } from './ResolutionPickerModal'
 // resolveDropAction — 순수 헬퍼 (테스트 가능하도록 export)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** onDragEnd active 인자 최소 타입 */
+/** onDragEnd active 인자 최소 타입 — fromColumnId는 BoardCard useDraggable data */
 export interface DragActiveMin {
   id: string
-  data: { current: { fromColumnId: string } | undefined } | { current: undefined }
+  data: { current?: { fromColumnId?: string } }
 }
 
 /** onDragEnd over 인자 최소 타입 */
@@ -74,8 +74,7 @@ export function resolveDropAction(
 ): DropAction {
   if (over === null) return { type: 'noop' }
 
-  const fromColumnId =
-    active.data.current !== undefined ? active.data.current.fromColumnId : undefined
+  const fromColumnId = active.data.current?.fromColumnId
   if (fromColumnId === undefined) return { type: 'noop' }
 
   const toColumnId = String(over.id)
@@ -194,23 +193,15 @@ export function KanbanBoard({ boardId, board, assigneeNames }: KanbanBoardProps)
 
     if (action.type === 'noop') return
 
+    const { issueKey, fromColumnId, toColumnId, expectedVersion } = action
+
     if (action.type === 'needs-resolution') {
-      setPendingMove({
-        issueKey: action.issueKey,
-        fromColumnId: action.fromColumnId,
-        toColumnId: action.toColumnId,
-        expectedVersion: action.expectedVersion,
-      })
+      setPendingMove({ issueKey, fromColumnId, toColumnId, expectedVersion })
       return
     }
 
     // type === 'move'
-    executeMutate({
-      issueKey: action.issueKey,
-      fromColumnId: action.fromColumnId,
-      toColumnId: action.toColumnId,
-      expectedVersion: action.expectedVersion,
-    })
+    executeMutate({ issueKey, fromColumnId, toColumnId, expectedVersion })
   }
 
   function executeMutate(vars: MoveCardVars): void {
