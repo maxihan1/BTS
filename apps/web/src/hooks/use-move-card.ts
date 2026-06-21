@@ -1,7 +1,7 @@
 // 칸반 보드 카드 이동 mutation 훅 — 낙관적 업데이트·롤백·409 회복 (FR-BD-01)
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { moveCard } from '@/api/boards'
-import type { BoardDetail } from '@/api/boards'
+import type { BoardDetail, MoveCardResult } from '@/api/boards'
 import { boardKeys } from './use-boards'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -107,12 +107,7 @@ export function useMoveCard(boardId: string) {
   const queryClient = useQueryClient()
   const queryKey = boardKeys.detail(boardId)
 
-  return useMutation<
-    Awaited<ReturnType<typeof moveCard>>,
-    unknown,
-    MoveCardVars,
-    { snapshot: BoardDetail | undefined }
-  >({
+  return useMutation<MoveCardResult, unknown, MoveCardVars, { snapshot: BoardDetail | undefined }>({
     mutationFn: (vars) =>
       moveCard(boardId, vars.issueKey, {
         toColumnId: vars.toColumnId,
