@@ -21,6 +21,9 @@ import { worklogAggregateLabels } from '@/i18n/worklog-aggregate-labels'
 /** 차트에 표시할 최대 버킷 수. 초과분은 상위 N개로 절단한다. */
 export const CHART_TOP_N = 20
 
+/** recharts ResponsiveContainer / wrapper div 의 고정 높이 (px). */
+const CHART_HEIGHT = 400
+
 /** label 이 빈 문자열일 때 대체 표시 문자열 (by=user displayName 누락 대비). */
 const UNKNOWN_LABEL = worklogAggregateLabels.table.unknownDisplayName
 
@@ -119,16 +122,18 @@ export function WorklogAggregateChart({
   const isHorizontalBar = dimension === 'issue' || dimension === 'user'
 
   return (
+    // w-full: recharts ResponsiveContainer 가 부모 너비를 참조하므로 필수.
+    // h-[400px]: 높이는 Tailwind 임의값으로 지정 (CHART_HEIGHT 와 동기화).
     <div
       role="img"
       aria-label={worklogAggregateLabels.chart.ariaLabel}
-      style={{ width: '100%', height: 400 }}
+      className="w-full h-[400px]"
     >
       {isHorizontalBar ? (
         // 가로 막대 — 이슈별·사용자별
         // layout="vertical": BarChart 에서 막대가 가로 방향으로 뻗는다.
         // YAxis=category(레이블), XAxis=number(시간)
-        <ResponsiveContainer width="100%" height={400}>
+        <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
           <BarChart layout="vertical" data={data} margin={{ top: 4, right: 24, bottom: 4, left: 80 }}>
             <CartesianGrid strokeDasharray="3 3" horizontal={false} />
             <YAxis type="category" dataKey="label" width={76} tick={{ fontSize: 12 }} />
@@ -140,7 +145,7 @@ export function WorklogAggregateChart({
       ) : (
         // 세로 막대 — 기간별
         // XAxis=label(기간), YAxis=number(시간)
-        <ResponsiveContainer width="100%" height={400}>
+        <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
           <BarChart data={data} margin={{ top: 4, right: 16, bottom: 32, left: 16 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="label" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" />
