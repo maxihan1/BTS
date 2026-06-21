@@ -247,9 +247,10 @@ export async function moveCard(
   body: MoveCardBody,
 ): Promise<MoveCardResult> {
   const { toColumnId, expectedVersion, resolutionId } = body
-  const requestBody: Record<string, unknown> = { toColumnId, expectedVersion }
-  if (resolutionId !== undefined) {
-    requestBody['resolutionId'] = resolutionId
+  const requestBody = {
+    toColumnId,
+    expectedVersion,
+    ...(resolutionId !== undefined ? { resolutionId } : {}),
   }
   const wrapped = await apiPost(
     `/api/v1/boards/${boardId}/cards/${encodeURIComponent(issueKey)}/move`,
