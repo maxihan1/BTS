@@ -4,6 +4,9 @@ package com.bts.agileplanning.application
 
 import com.bts.agileplanning.AgilePlanningTestBootApplication
 import com.bts.agileplanning.AgilePlanningTestcontainersConfig
+import com.bts.agileplanning.domain.Board
+import com.bts.agileplanning.domain.BoardColumn
+import com.bts.agileplanning.domain.SwimlaneField
 import com.bts.agileplanning.repository.BoardRepository
 import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.board.BoardIssueLookupPort
@@ -18,6 +21,7 @@ import com.bts.shared.workflow.WorkflowStateView
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -25,6 +29,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.web.server.ResponseStatusException
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -77,12 +82,13 @@ class BoardApplicationServiceTest {
         catalog: WorkflowStateCatalog = mockk(relaxed = true),
         lookup: BoardIssueLookupPort = mockk(relaxed = true),
         transition: IssueTransitionPort = mockk(relaxed = true),
+        repo: BoardRepository = boardRepository,
     ): BoardApplicationService =
         BoardApplicationService(
             workflowStateCatalog = catalog,
             boardIssueLookupPort = lookup,
             issueTransitionPort = transition,
-            boardRepository = boardRepository,
+            boardRepository = repo,
         )
 
     // ── (a) 보드 생성 시 컬럼 시드 + 영속 ────────────────────────────────────────
@@ -415,5 +421,98 @@ class BoardApplicationServiceTest {
 
         assertThat(boards).hasSizeGreaterThanOrEqualTo(2)
         assertThat(boards.map { it.name }).contains("목록 보드 1", "목록 보드 2")
+    }
+
+    // ── updateSwimlaneField / updateColumnWipLimit 단위 테스트 (mockk repo) ─────
+
+    @Test
+    fun `updateSwimlaneField ASSIGNEE 유효값이면 repo 가 SwimlaneField_ASSIGNEE 로 호출되고 갱신된 보드를 반환한다`() {
+        val boardId = UUID.randomUUID()
+        val expectedBoard =
+            Board(
+                id = boardId,
+                projectKey = "TST",
+                name = "테스트 보드",
+                columns = emptyList(),
+                createdAt = Instant.now(),
+                updatedAt = Instant.now(),
+                swimlaneField = SwimlaneField.ASSIGNEE,
+            )
+        val repo = mockk<BoardRepository>()
+        every { repo.updateSwimlaneField(boardId, SwimlaneField.ASSIGNEE) } returns expectedBoard
+
+        val result = serviceWith(repo = repo).updateSwimlaneField(boardId, "ASSIGNEE")
+
+        assertThat(result).isEqualTo(expectedBoard)
+        verify(exactly = 1) { repo.updateSwimlaneField(boardId, SwimlaneField.ASSIGNEE) }
+    }
+
+    @Test
+    fun `updateSwimlaneField EPIC 은 enum 미존재이므로 400 을 던지고 repo 를 호출하지 않는다`() {
+        val repo = mockk<BoardRepository>()
+
+        assertThatThrownBy { serviceWith(repo = repo).updateSwimlaneField(UUID.randomUUID(), "EPIC") }
+            .isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(400)
+
+        verify(exactly = 0) { repo.updateSwimlaneField(any(), any()) }
+    }
+
+    @Test
+    fun `updateSwimlaneField 알 수 없는 값 foo 는 400 을 던지고 repo 를 호출하지 않는다`() {
+        val repo = mockk<BoardRepository>()
+
+        assertThatThrownBy { serviceWith(repo = repo).updateSwimlaneField(UUID.randomUUID(), "foo") }
+            .isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(400)
+
+        verify(exactly = 0) { repo.updateSwimlaneField(any(), any()) }
+    }
+
+    @Test
+    fun `updateSwimlaneField repo 가 null 반환하면 404 를 던진다`() {
+        val repo = mockk<BoardRepository>()
+        every { repo.updateSwimlaneField(any(), any()) } returns null
+
+        assertThatThrownBy { serviceWith(repo = repo).updateSwimlaneField(UUID.randomUUID(), "NONE") }
+            .isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(404)
+    }
+
+    @Test
+    fun `updateColumnWipLimit 유효 호출이면 repo 결과를 그대로 반환한다`() {
+        val boardId = UUID.randomUUID()
+        val columnId = UUID.randomUUID()
+        val expectedColumn =
+            BoardColumn(
+                id = columnId,
+                stateKey = "open",
+                name = "열림",
+                category = "TODO",
+                displayOrder = 0,
+                wipLimit = 5,
+            )
+        val repo = mockk<BoardRepository>()
+        every { repo.updateColumnWipLimit(boardId, columnId, 5) } returns expectedColumn
+
+        val result = serviceWith(repo = repo).updateColumnWipLimit(boardId, columnId, 5)
+
+        assertThat(result).isEqualTo(expectedColumn)
+    }
+
+    @Test
+    fun `updateColumnWipLimit repo 가 null 반환하면 404 를 던진다`() {
+        val repo = mockk<BoardRepository>()
+        every { repo.updateColumnWipLimit(any(), any(), any()) } returns null
+
+        assertThatThrownBy {
+            serviceWith(repo = repo).updateColumnWipLimit(UUID.randomUUID(), UUID.randomUUID(), 3)
+        }
+            .isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(404)
     }
 }
