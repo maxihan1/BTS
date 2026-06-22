@@ -216,8 +216,10 @@
 - [x] D3. 데이터 모델 — `issues.epic_id`(V028, UUID NULL 자기참조 FK + 인덱스 + init_codegen 미러). `issue_links` 대신 별도 컬럼 채택 (책임. db-engineer)
 - [x] D4. 백엔드 — `POST/DELETE/GET /api/v1/issues/{key}/epic-children` + IssueResponse.epic + 권한(UPDATE child/BROWSE epic 프로젝트)·visibility 필터 (책임. backend-engineer)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer) — 단위(IssueEpicServiceTest)+통합(Repository EP-1~8, Controller S1~S11)
-- [ ] D6. 프론트 UI — Epic 페이지 + 자식 이슈 목록 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — Epic 상세(이슈 상세 재사용) 자식 목록 섹션 + 자식 소속 에픽 섹션(parent 동형) + changelog "에픽" 라벨 + **보드 EPIC 스윔레인** (책임. frontend-engineer) (PR #175)
+- [x] D7. E2E (책임. qa-engineer) (PR #175)
+
+> **deviation (PR #175)**. 보드 EPIC 스윔레인은 FR-BD-03(#172/#173)이 "FR-EP 미구현"으로 이연한 enum을 FR-EP-01 완료로 활성화한 것. `SwimlaneField.EPIC` enum + V502(boards.swimlane_field CHECK 제약 EPIC 포함) + `BoardCardResponse.epicKey` view-layer self-join(동일프로젝트 필터). FR-BD-03 범위 확장이나 FR 총수 123 불변(신규 FR 아님). changelog epic 값은 IssueChangeLabelResolver가 epic key로 박제(detector 기록=UUID 불변, #174 회귀0).
 
 ### §7.2 FR-EP-02 — Epic 진행률 자동 집계
 
