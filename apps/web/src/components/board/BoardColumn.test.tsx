@@ -1,9 +1,9 @@
-// BoardColumn 컴포넌트 단위 테스트 — 헤더·카드 목록·빈 컬럼 placeholder·드롭 영역
+// BoardColumn 컴포넌트 단위 테스트 — 헤더·카드 목록·빈 컬럼 placeholder·드롭 영역·스윔레인 그룹
 import { describe, it, expect } from 'vitest'
 import type { ReactNode } from 'react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { DndContext } from '@dnd-kit/core'
-import type { BoardColumn as BoardColumnType } from '@/api/boards'
+import type { BoardColumn as BoardColumnType, SwimlaneField } from '@/api/boards'
 
 // TanStack Router Link mock
 vi.mock('@tanstack/react-router', () => ({
@@ -76,10 +76,11 @@ function renderColumn(
   column: BoardColumnType = columnWithCards,
   names: Map<string, CardAssigneeDisplay> = assigneeNames,
   isOver = false,
+  swimlaneField: SwimlaneField = 'NONE',
 ) {
   return render(
     <DndContext>
-      <BoardColumn column={column} assigneeNames={names} isOver={isOver} />
+      <BoardColumn column={column} assigneeNames={names} isOver={isOver} swimlaneField={swimlaneField} />
     </DndContext>,
   )
 }
@@ -252,5 +253,106 @@ describe('BoardColumn — S5 WIP 제한 표시', () => {
     // 단순 숫자만 (슬래시 표기 없음)
     expect(screen.getByText('3')).toBeInTheDocument()
     expect(screen.queryByText(/\d+\/\d+/)).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S6. 스윔레인 그룹 렌더 — ASSIGNEE
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BoardColumn — S6 스윔레인 ASSIGNEE 그룹', () => {
+  const columnMultiAssignee: BoardColumnType = {
+    columnId: COL_UUID,
+    stateKey: 'in-progress',
+    name: '진행 중',
+    category: 'IN_PROGRESS',
+    displayOrder: 2,
+    wipLimit: null,
+    wipExceeded: false,
+    cards: [
+      { issueKey: 'ATLAS-1', summary: '첫 번째 이슈', assigneeId: 'u1', version: 1, priority: 1 },
+      { issueKey: 'ATLAS-2', summary: '두 번째 이슈', assigneeId: null, version: 2, priority: 1 },
+    ],
+  }
+
+  it('S6a: swimlaneField=ASSIGNEE이면 담당자 서브헤더가 렌더된다', () => {
+    renderColumn(columnMultiAssignee, assigneeNames, false, 'ASSIGNEE')
+    // 담당자 이름 "박지현"이 서브헤더로 표시되어야 함
+    expect(screen.getByText('박지현')).toBeInTheDocument()
+  })
+
+  it('S6b: swimlaneField=ASSIGNEE이면 미배정 서브헤더가 렌더된다', () => {
+    renderColumn(columnMultiAssignee, assigneeNames, false, 'ASSIGNEE')
+    expect(screen.getByText('미배정')).toBeInTheDocument()
+  })
+
+  it('S6c: swimlaneField=NONE이면 서브헤더 없이 단일 목록으로 렌더된다', () => {
+    renderColumn(columnWithCards, assigneeNames, false, 'NONE')
+    // NONE이면 담당자 서브헤더 역할의 그룹 요소가 없어야 한다
+    // (group role은 컬럼 자체에만 있어야 함)
+    const groups = screen.getAllByRole('group')
+    // 컬럼 하나 + 스윔레인 그룹 없음 = 1개만
+    expect(groups).toHaveLength(1)
+  })
+
+  it('S6d: droppable id(data-col-id)가 컬럼 UUID를 유지한다 — 회귀 없음', () => {
+    renderColumn(columnMultiAssignee, assigneeNames, false, 'ASSIGNEE')
+    // 드롭 영역의 data-col-id 속성이 columnId(COL_UUID)와 동일해야 함
+    const dropZone = document.querySelector(`[data-col-id="${COL_UUID}"]`)
+    expect(dropZone).toBeInTheDocument()
+  })
+
+  it('S6e: 스윔레인 그룹은 role=group + aria-label로 그룹 이름을 전달한다', () => {
+    renderColumn(columnMultiAssignee, assigneeNames, false, 'ASSIGNEE')
+    // 서브헤더 그룹에 aria-label이 있어야 함
+    const groups = screen.getAllByRole('group')
+    // 컬럼 그룹(1) + 스윔레인 그룹(최소 1개) = 2개 이상
+    expect(groups.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('S6f: 각 카드가 올바른 그룹 아래에 렌더된다', () => {
+    renderColumn(columnMultiAssignee, assigneeNames, false, 'ASSIGNEE')
+    // 박지현 그룹에 ATLAS-1이 있어야 함
+    const parkGroup = screen.getByRole('group', { name: /박지현/ })
+    expect(within(parkGroup).getByText('ATLAS-1')).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S7. 스윔레인 그룹 렌더 — PRIORITY
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BoardColumn — S7 스윔레인 PRIORITY 그룹', () => {
+  const columnPriority: BoardColumnType = {
+    columnId: 'col-priority-test',
+    stateKey: 'in-progress',
+    name: '진행 중',
+    category: 'IN_PROGRESS',
+    displayOrder: 2,
+    wipLimit: null,
+    wipExceeded: false,
+    cards: [
+      { issueKey: 'ATLAS-10', summary: 'P1 이슈', assigneeId: null, version: 1, priority: 1 },
+      { issueKey: 'ATLAS-11', summary: 'P2 이슈', assigneeId: null, version: 2, priority: 2 },
+    ],
+  }
+
+  it('S7a: swimlaneField=PRIORITY이면 "우선순위 N" 서브헤더가 렌더된다', () => {
+    renderColumn(columnPriority, new Map(), false, 'PRIORITY')
+    expect(screen.getByText('우선순위 1')).toBeInTheDocument()
+    expect(screen.getByText('우선순위 2')).toBeInTheDocument()
+  })
+
+  it('S7b: droppable id(data-col-id)가 컬럼 UUID를 유지한다 — 회귀 없음', () => {
+    renderColumn(columnPriority, new Map(), false, 'PRIORITY')
+    const dropZone = document.querySelector('[data-col-id="col-priority-test"]')
+    expect(dropZone).toBeInTheDocument()
+  })
+
+  it('S7c: 우선순위 그룹은 role=group으로 접근성을 제공한다', () => {
+    renderColumn(columnPriority, new Map(), false, 'PRIORITY')
+    // 컬럼(1) + 우선순위 그룹(2) = 3개
+    const groups = screen.getAllByRole('group')
+    expect(groups.length).toBeGreaterThanOrEqual(3)
   })
 })
