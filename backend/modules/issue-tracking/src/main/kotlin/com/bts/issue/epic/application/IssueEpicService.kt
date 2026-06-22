@@ -80,9 +80,9 @@ class IssueEpicService(
      * @throws EpicChildInvalidTypeException child 의 hierarchyLevel 이 0 이 아닐 때 (422).
      * @throws EpicTargetNotEpicException epic 의 hierarchyLevel 이 1 이 아닐 때 (422).
      * @throws EpicChildCrossProjectException child 와 epic 이 다른 프로젝트 소속 시 (422).
-     * @throws EpicChildAlreadyLinkedException child 가 이미 에픽에 연결되어 있을 때 (409).
+     * @throws EpicChildAlreadyLinkedException child 가 이미 에픽에 연결되어 있을 때,
+     *   또는 동시 connect 경합에서 linkEpic 이 0행을 반환할 때 (409).
      */
-    @Suppress("ThrowsCount") // 불변식 8종이 각기 다른 HTTP 상태코드를 가지므로 단계별 명시 throw 불가피
     fun connect(
         epicKey: IssueKey,
         childKey: IssueKey,
@@ -91,62 +91,20 @@ class IssueEpicService(
         // 1. UPDATE(child) 권한 선행 — 이슈 존재 probe 방지
         checkUpdatePermission(actor, childKey)
 
-        // 2. child 조회 — 미존재/소프트삭제 시 404
-        val child =
-            issueRepository.findByKey(childKey)
-                ?: run {
-                    log.debug("connect: child not found key={}", childKey.value)
-                    throw EpicChildNotFoundException()
-                }
+        // 2~8. 불변식 검증 — 별도 헬퍼로 위임 (LongMethod 억제)
+        val (child, epic) = validateConnectInvariants(epicKey, childKey)
 
-        // 3. epic 조회 — 미존재/소프트삭제 시 404 (보안 N1 — 존재 숨김, 403 금지)
-        val epic =
-            issueRepository.findByKey(epicKey)
-                ?: run {
-                    log.debug("connect: epic not found or soft-deleted key={}", epicKey.value)
-                    throw EpicChildNotFoundException()
-                }
-
-        // 4. self 참조 검사
-        if (child.id == epic.id) {
-            log.debug("connect: self-reference childKey={} epicKey={}", childKey.value, epicKey.value)
-            throw EpicChildSelfReferenceException()
-        }
-
-        // 5. child 유형 검사 (hierarchyLevel == 0 이어야 함)
-        val childType = issueTypeRepository.findById(child.typeId)
-        val childLevel = childType?.hierarchyLevel ?: 0
-        if (childLevel != CHILD_HIERARCHY_LEVEL) {
-            log.debug("connect: invalid child type childKey={} hierarchyLevel={}", childKey.value, childLevel)
-            throw EpicChildInvalidTypeException()
-        }
-
-        // 6. epic 유형 검사 (hierarchyLevel == 1 이어야 함)
-        val epicType = issueTypeRepository.findById(epic.typeId)
-        val epicLevel = epicType?.hierarchyLevel ?: 0
-        if (epicLevel != EPIC_HIERARCHY_LEVEL) {
-            log.debug("connect: target is not an epic epicKey={} hierarchyLevel={}", epicKey.value, epicLevel)
-            throw EpicTargetNotEpicException()
-        }
-
-        // 7. cross-project 검사
-        if (child.projectId != epic.projectId) {
+        // 연결 실행 — linkEpic 은 epic_id IS NULL 조건부 UPDATE 로 TOCTOU lost-update 를 원자 차단한다.
+        // in-memory 검사(불변식 8) 통과 후에도 동시 connect 경합에 진 경우 0행 반환 → 409.
+        val affected = issueRepository.linkEpic(child.id.value, epic.id.value)
+        if (affected == 0) {
             log.debug(
-                "connect: cross-project childProjectId={} epicProjectId={}",
-                child.projectId,
-                epic.projectId,
+                "connect: linkEpic returned 0 rows (concurrent connect race) childKey={} epicKey={}",
+                childKey.value,
+                epicKey.value,
             )
-            throw EpicChildCrossProjectException()
-        }
-
-        // 8. 이미 연결됨 검사
-        if (child.epicId != null) {
-            log.debug("connect: already linked childKey={} existingEpicId={}", childKey.value, child.epicId)
             throw EpicChildAlreadyLinkedException()
         }
-
-        // 연결 실행
-        issueRepository.updateEpic(child.id.value, epic.id.value)
 
         // G1: changelog 기록
         val after = child.copy(epicId = epic.id.value)
@@ -280,6 +238,82 @@ class IssueEpicService(
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * connect 불변식 2~8 을 검증하고 (child, epic) Pair 를 반환한다.
+     *
+     * connect 메서드에서 불변식 블록을 분리해 LongMethod 를 해소한다.
+     * 각 불변식이 서로 다른 HTTP 상태코드를 가지므로 단계별 명시 throw 를 유지한다.
+     *
+     * @return Pair(child, epic) — 검증 통과 후 연결에 필요한 두 이슈 도메인 객체.
+     * @throws EpicChildNotFoundException child 또는 epic 미존재·소프트삭제 시 (404).
+     * @throws EpicChildSelfReferenceException child 와 epic 이 동일 이슈 시 (422).
+     * @throws EpicChildInvalidTypeException child 의 hierarchyLevel 이 0 이 아닐 때 (422).
+     * @throws EpicTargetNotEpicException epic 의 hierarchyLevel 이 1 이 아닐 때 (422).
+     * @throws EpicChildCrossProjectException child 와 epic 이 다른 프로젝트 소속 시 (422).
+     * @throws EpicChildAlreadyLinkedException child 가 이미 에픽에 연결되어 있을 때 (409).
+     */
+    @Suppress("ThrowsCount") // 불변식 7종(2~8)이 각기 다른 HTTP 상태코드를 가지므로 단계별 명시 throw 불가피
+    private fun validateConnectInvariants(
+        epicKey: IssueKey,
+        childKey: IssueKey,
+    ): Pair<Issue, Issue> {
+        // 2. child 조회 — 미존재/소프트삭제 시 404
+        val child =
+            issueRepository.findByKey(childKey)
+                ?: run {
+                    log.debug("connect: child not found key={}", childKey.value)
+                    throw EpicChildNotFoundException()
+                }
+
+        // 3. epic 조회 — 미존재/소프트삭제 시 404 (보안 N1 — 존재 숨김, 403 금지)
+        val epic =
+            issueRepository.findByKey(epicKey)
+                ?: run {
+                    log.debug("connect: epic not found or soft-deleted key={}", epicKey.value)
+                    throw EpicChildNotFoundException()
+                }
+
+        // 4. self 참조 검사
+        if (child.id == epic.id) {
+            log.debug("connect: self-reference childKey={} epicKey={}", childKey.value, epicKey.value)
+            throw EpicChildSelfReferenceException()
+        }
+
+        // 5. child 유형 검사 (hierarchyLevel == 0 이어야 함)
+        val childType = issueTypeRepository.findById(child.typeId)
+        val childLevel = childType?.hierarchyLevel ?: 0
+        if (childLevel != CHILD_HIERARCHY_LEVEL) {
+            log.debug("connect: invalid child type childKey={} hierarchyLevel={}", childKey.value, childLevel)
+            throw EpicChildInvalidTypeException()
+        }
+
+        // 6. epic 유형 검사 (hierarchyLevel == 1 이어야 함)
+        val epicType = issueTypeRepository.findById(epic.typeId)
+        val epicLevel = epicType?.hierarchyLevel ?: 0
+        if (epicLevel != EPIC_HIERARCHY_LEVEL) {
+            log.debug("connect: target is not an epic epicKey={} hierarchyLevel={}", epicKey.value, epicLevel)
+            throw EpicTargetNotEpicException()
+        }
+
+        // 7. cross-project 검사
+        if (child.projectId != epic.projectId) {
+            log.debug(
+                "connect: cross-project childProjectId={} epicProjectId={}",
+                child.projectId,
+                epic.projectId,
+            )
+            throw EpicChildCrossProjectException()
+        }
+
+        // 8. 이미 연결됨 검사 (in-memory fast-path — DB 레벨 원자 가드는 linkEpic 이 담당)
+        if (child.epicId != null) {
+            log.debug("connect: already linked childKey={} existingEpicId={}", childKey.value, child.epicId)
+            throw EpicChildAlreadyLinkedException()
+        }
+
+        return Pair(child, epic)
+    }
 
     /**
      * child 이슈에 대한 UPDATE 권한을 검증한다.

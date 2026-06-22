@@ -1,4 +1,4 @@
-// IssueRepository Epic 메서드 통합 테스트 — updateEpic / linkEpic / findByKeyWithType epic / findEpicChildren (FR-EP-01 Task 4 + hotfix P1-A/P1-B)
+// IssueRepository Epic 통합 테스트 — updateEpic/linkEpic/findByKeyWithType/findEpicChildren + hotfix P1-A/P1-B
 
 package com.bts.issue.repository
 

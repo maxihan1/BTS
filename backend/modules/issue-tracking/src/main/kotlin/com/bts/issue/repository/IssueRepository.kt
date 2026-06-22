@@ -542,7 +542,10 @@ class IssueRepository(
             )
             .leftJoin(epicAlias).on(
                 ISSUES.EPIC_ID.eq(epicAlias.ID)
-                    .and(epicAlias.DELETED_AT.isNull),
+                    .and(epicAlias.DELETED_AT.isNull)
+                    // P1-A cross-project 누출 차단: epic 이 이동/stale 데이터로 다른 프로젝트에 잔류할 때
+                    // epic 없음(null)과 동일하게 처리해 누출을 방지한다.
+                    .and(epicAlias.PROJECT_ID.eq(ISSUES.PROJECT_ID)),
             )
             .where(activeByKey(key))
             .fetchOne()
@@ -1388,6 +1391,37 @@ class IssueRepository(
     }
 
     /**
+     * 에픽 연결을 원자적으로 설정한다 — `epic_id IS NULL` 조건부 UPDATE (P1-B TOCTOU 핫픽스).
+     *
+     * `UPDATE issues SET epic_id = ? WHERE id = ? AND epic_id IS NULL`
+     *
+     * 동시 connect 요청 2건이 모두 in-memory 검사(child.epicId == null)를 통과하더라도
+     * DB 레벨 WHERE epic_id IS NULL 조건이 원자 가드 역할을 한다.
+     * 먼저 UPDATE 를 커밋한 쪽만 1행을 반환하고, 경합에 진 쪽은 0행을 반환한다.
+     *
+     * 호출자([com.bts.issue.epic.application.IssueEpicService.connect])는
+     * 0행 반환 시 [com.bts.issue.epic.domain.EpicChildAlreadyLinkedException](409)를 던진다.
+     *
+     * disconnect 경로는 무조건 UPDATE 이므로 이 메서드를 사용하지 않는다.
+     *
+     * @param childId 에픽을 연결할 자식 이슈 UUID.
+     * @param epicId 연결할 에픽 이슈 UUID.
+     * @return 업데이트된 행 수. 성공=1, epic_id 이미 설정됨=0.
+     */
+    @Transactional
+    fun linkEpic(
+        childId: UUID,
+        epicId: UUID,
+    ): Int {
+        log.debug("linkEpic childId={} epicId={}", childId, epicId)
+        return dsl.update(ISSUES)
+            .set(ISSUES.EPIC_ID, epicId)
+            .where(ISSUES.ID.eq(childId))
+            .and(ISSUES.EPIC_ID.isNull)
+            .execute()
+    }
+
+    /**
      * 에픽에 속한 활성 자식 이슈를 보안 등급 필터와 함께 조회한다 (FR-EP-01 Task 4).
      *
      * [buildActiveSecureWhere] 보안 술어를 재사용하여 보안 등급이 허가되지 않은 자식을
@@ -1498,6 +1532,10 @@ class IssueRepository(
             .set(ISSUES.RESOLUTION_ID, resolvedResolutionId)
             .set(ISSUES.CUSTOM_FIELDS, filteredCustomFields.toJsonb())
             .set(ISSUES.PARENT_ID, newParentId)
+            // P1-A cross-project 누출 차단: 이슈가 타 프로젝트로 이동하면 소속 에픽(원본 프로젝트 잔류)
+            // 연결을 끊는다. 에픽 이슈(level=1)는 epic_id 가 없고, level=0 이슈만 epic_id 를 가지므로
+            // 무조건 null 초기화해도 안전하다. parentId 초기화와 동형.
+            .set(ISSUES.EPIC_ID, null as UUID?)
             .set(ISSUES.UPDATED_AT, java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC))
             .set(ISSUES.VERSION, expectedVersion + 1)
             .where(ISSUES.KEY.eq(oldKey.value))
@@ -1872,6 +1910,9 @@ private fun Issue.toInsertRecord(): IssuesRecord =
         securityLevelId = securityLevelId,
         customFields = customFields.toJsonb(),
         parentId = parentId,
+        // epic_id 는 insert 시 의도적으로 미영속한다.
+        // 에픽 연결은 전용 connect 엔드포인트(IssueEpicService.connect → linkEpic)로만 이루어지며,
+        // clone 시에도 에픽 복사를 금지한다 (Issue.create default null, clone 동형).
         startDate = startDate,
         dueDate = dueDate,
         targetDate = targetDate,
