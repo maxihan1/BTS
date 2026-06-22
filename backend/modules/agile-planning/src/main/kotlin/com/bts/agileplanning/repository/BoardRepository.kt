@@ -180,17 +180,7 @@ class BoardRepository(
         return dsl.selectFrom(BOARD_COLUMNS)
             .where(BOARD_COLUMNS.ID.eq(columnId))
             .fetchOne()
-            ?.let { col ->
-                val colId = col.id ?: error("board_columns.id 가 null — columnId=$columnId")
-                BoardColumn(
-                    id = colId,
-                    stateKey = col.stateKey,
-                    name = col.name,
-                    category = col.category,
-                    displayOrder = col.displayOrder ?: 0,
-                    wipLimit = col.wipLimit,
-                )
-            }
+            ?.let { toColumnDomain(it) }
     }
 
     /**
@@ -207,20 +197,6 @@ class BoardRepository(
         val updatedAt =
             boardRecord.updatedAt?.toInstant()
                 ?: error("boards.updated_at 이 null — id=$id")
-
-        val columns =
-            columnRecords.map { col ->
-                val colId = col.id ?: error("board_columns.id 가 null — boardId=$id")
-                BoardColumn(
-                    id = colId,
-                    stateKey = col.stateKey,
-                    name = col.name,
-                    category = col.category,
-                    displayOrder = col.displayOrder ?: 0,
-                    wipLimit = col.wipLimit,
-                )
-            }
-
         val swimlaneField =
             boardRecord.swimlaneField?.let { SwimlaneField.valueOf(it) }
                 ?: error("boards.swimlane_field 가 null — id=$id")
@@ -229,11 +205,28 @@ class BoardRepository(
             id = id,
             projectKey = boardRecord.projectKey,
             name = boardRecord.name,
-            columns = columns,
+            columns = columnRecords.map { toColumnDomain(it) },
             createdAt = createdAt,
             updatedAt = updatedAt,
             deletedAt = boardRecord.deletedAt?.toInstant(),
             swimlaneField = swimlaneField,
+        )
+    }
+
+    /**
+     * [BoardColumnsRecord] 를 도메인 [BoardColumn] 으로 변환한다.
+     *
+     * [toDomain] 내 컬럼 변환과 [updateColumnWipLimit] 재조회 변환이 이 헬퍼를 공유한다.
+     */
+    private fun toColumnDomain(col: BoardColumnsRecord): BoardColumn {
+        val colId = col.id ?: error("board_columns.id 가 null — boardId=${col.boardId}")
+        return BoardColumn(
+            id = colId,
+            stateKey = col.stateKey,
+            name = col.name,
+            category = col.category,
+            displayOrder = col.displayOrder ?: 0,
+            wipLimit = col.wipLimit,
         )
     }
 }
