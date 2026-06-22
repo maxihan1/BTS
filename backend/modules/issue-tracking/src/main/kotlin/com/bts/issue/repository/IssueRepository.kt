@@ -511,9 +511,11 @@ class IssueRepository(
      *   이슈가 없으면 null.
      */
     @Transactional(readOnly = true)
+    // 명시 alias + LEFT JOIN × 2 + null 분기 불가피 → CyclomaticComplexity 억제
+    // parent + epic 두 self-JOIN 결과 추출 분기가 불가피하게 메서드를 길게 만든다 → LongMethod 억제
     @Suppress(
-        "CyclomaticComplexity", // 명시 alias + LEFT JOIN × 2 + null 분기 불가피
-        "LongMethod", // parent + epic 두 self-JOIN 결과 추출 분기가 불가피하게 메서드를 길게 만든다
+        "CyclomaticComplexity",
+        "LongMethod",
     )
     fun findByKeyWithType(key: IssueKey): IssueResponse? {
         // issues self LEFT JOIN — 부모 이슈 key/summary 조회. PARENT_ALIAS 로 컬럼 충돌 차단.

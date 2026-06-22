@@ -3,6 +3,7 @@
 package com.bts.issue.epic.application
 
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
@@ -12,7 +13,6 @@ import com.bts.issue.epic.domain.EpicChildInvalidTypeException
 import com.bts.issue.epic.domain.EpicChildNotFoundException
 import com.bts.issue.epic.domain.EpicChildSelfReferenceException
 import com.bts.issue.epic.domain.EpicTargetNotEpicException
-import com.bts.issue.domain.Issue
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.domain.IssueType
@@ -42,17 +42,18 @@ class IssueEpicServiceTest : DescribeSpec({
     val issueTypeRepository = mockk<IssueTypeRepository>()
     val historyRecorder = mockk<IssueHistoryRecorder>(relaxed = true)
 
-    val sut = IssueEpicService(
-        permissionResolver = permissionResolver,
-        securityDirectory = securityDirectory,
-        issueRepository = issueRepository,
-        issueTypeRepository = issueTypeRepository,
-        historyRecorder = historyRecorder,
-    )
+    val sut =
+        IssueEpicService(
+            permissionResolver = permissionResolver,
+            securityDirectory = securityDirectory,
+            issueRepository = issueRepository,
+            issueTypeRepository = issueTypeRepository,
+            historyRecorder = historyRecorder,
+        )
 
     // ── 공통 픽스처 ───────────────────────────────────────────────────────────
 
-    val projectId = UUID.fromString("00000000-0000-4000-8000-000000000010")
+    val defaultProjectId = UUID.fromString("00000000-0000-4000-8000-000000000010")
     val otherProjectId = UUID.fromString("00000000-0000-4000-8000-000000000011")
     val actorUuid = UUID.fromString("00000000-0000-4000-8000-000000000099")
     val actorId = ActorId(actorUuid)
@@ -60,60 +61,57 @@ class IssueEpicServiceTest : DescribeSpec({
     val epicUuid = UUID.fromString("00000000-0000-4000-8000-000000000001")
     val childUuid = UUID.fromString("00000000-0000-4000-8000-000000000002")
 
-    val epicKey = IssueKey("BTS-1")
-    val childKey = IssueKey("BTS-2")
-
-    // epicTypeId = hierarchyLevel 1 (에픽 타입)
     val epicTypeId = IssueTypeId(1L)
-    // storyTypeId = hierarchyLevel 0 (스토리/태스크/버그 타입)
     val storyTypeId = IssueTypeId(2L)
-    // subtaskTypeId = hierarchyLevel -1 (서브태스크 타입)
     val subtaskTypeId = IssueTypeId(3L)
 
-    val epicType = IssueType(
-        id = epicTypeId,
-        key = IssueTypeKey("epic"),
-        name = "Epic",
-        description = null,
-        iconName = "epic",
-        isStandard = true,
-        hierarchyLevel = 1,
-        createdAt = Instant.parse("2026-01-01T00:00:00Z"),
-        updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
-        deletedAt = null,
-    )
+    val epicType =
+        IssueType(
+            id = epicTypeId,
+            key = IssueTypeKey("epic"),
+            name = "Epic",
+            description = null,
+            iconName = "epic",
+            isStandard = true,
+            hierarchyLevel = 1,
+            createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+            updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
+            deletedAt = null,
+        )
 
-    val storyType = IssueType(
-        id = storyTypeId,
-        key = IssueTypeKey("story"),
-        name = "Story",
-        description = null,
-        iconName = "story",
-        isStandard = true,
-        hierarchyLevel = 0,
-        createdAt = Instant.parse("2026-01-01T00:00:00Z"),
-        updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
-        deletedAt = null,
-    )
+    val storyType =
+        IssueType(
+            id = storyTypeId,
+            key = IssueTypeKey("story"),
+            name = "Story",
+            description = null,
+            iconName = "story",
+            isStandard = true,
+            hierarchyLevel = 0,
+            createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+            updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
+            deletedAt = null,
+        )
 
-    val subtaskType = IssueType(
-        id = subtaskTypeId,
-        key = IssueTypeKey("subtask"),
-        name = "Subtask",
-        description = null,
-        iconName = "subtask",
-        isStandard = true,
-        hierarchyLevel = -1,
-        createdAt = Instant.parse("2026-01-01T00:00:00Z"),
-        updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
-        deletedAt = null,
-    )
+    val subtaskType =
+        IssueType(
+            id = subtaskTypeId,
+            key = IssueTypeKey("subtask"),
+            name = "Subtask",
+            description = null,
+            iconName = "subtask",
+            isStandard = true,
+            hierarchyLevel = -1,
+            createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+            updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
+            deletedAt = null,
+        )
 
     fun makeIssue(
         id: UUID,
         key: IssueKey,
         typeId: IssueTypeId = storyTypeId,
-        projectId: UUID = this.projectId,
+        projectId: UUID = defaultProjectId,
         epicId: UUID? = null,
     ) = Issue(
         id = IssueId(id),
@@ -130,15 +128,51 @@ class IssueEpicServiceTest : DescribeSpec({
         epicId = epicId,
     )
 
-    val unrestrictedAccess = IssueSecurityAccess(
-        unrestricted = true,
-        staticLevelIds = emptySet(),
-        reporterLevelIds = emptySet(),
-        assigneeLevelIds = emptySet(),
-    )
+    val epicKey = IssueKey("BTS-1")
+    val childKey = IssueKey("BTS-2")
+
+    val unrestrictedAccess =
+        IssueSecurityAccess(
+            unrestricted = true,
+            staticLevelIds = emptySet(),
+            reporterLevelIds = emptySet(),
+            assigneeLevelIds = emptySet(),
+        )
+
+    // 권한 stub 헬퍼 — 람다 내부 허용/거부 설정
+    fun allowUpdate(key: IssueKey) {
+        every {
+            permissionResolver.hasPermission(actorUuid, IssuePermission.UPDATE, IssueScope.Issue(key.value))
+        } returns true
+    }
+
+    fun denyUpdate(key: IssueKey) {
+        every {
+            permissionResolver.hasPermission(actorUuid, IssuePermission.UPDATE, IssueScope.Issue(key.value))
+        } returns false
+    }
+
+    fun allowBrowse(projectKey: String) {
+        every {
+            permissionResolver.hasPermission(actorUuid, IssuePermission.BROWSE, IssueScope.Project(projectKey))
+        } returns true
+    }
+
+    fun denyBrowse(projectKey: String) {
+        every {
+            permissionResolver.hasPermission(actorUuid, IssuePermission.BROWSE, IssueScope.Project(projectKey))
+        } returns false
+    }
 
     beforeEach {
-        clearMocks(permissionResolver, securityDirectory, issueRepository, issueTypeRepository, answers = false)
+        clearMocks(
+            permissionResolver,
+            securityDirectory,
+            issueRepository,
+            issueTypeRepository,
+            historyRecorder,
+            answers = false,
+        )
     }
 
     // ── connect ───────────────────────────────────────────────────────────────
@@ -146,15 +180,7 @@ class IssueEpicServiceTest : DescribeSpec({
     describe("connect") {
 
         context("UPDATE(child) 권한이 없으면") {
-            beforeEach {
-                every {
-                    permissionResolver.hasPermission(
-                        actorUuid,
-                        IssuePermission.UPDATE,
-                        IssueScope.Issue(childKey.value),
-                    )
-                } returns false
-            }
+            beforeEach { denyUpdate(childKey) }
 
             it("IssueAccessDeniedException(403) 을 던진다") {
                 shouldThrow<IssueAccessDeniedException> {
@@ -164,15 +190,15 @@ class IssueEpicServiceTest : DescribeSpec({
 
             it("권한 검사 이후 repo.findByKey 가 호출되지 않는다 (존재 probe 방지)") {
                 runCatching { sut.connect(epicKey, childKey, actorId) }
-                verify(exactly = 0) { issueRepository.findByKey(any()) }
+                // value class IssueKey 에 any() 를 쓰면 MockK 서명 생성 오류 — 구체 키로 각각 verify
+                verify(exactly = 0) { issueRepository.findByKey(childKey) }
+                verify(exactly = 0) { issueRepository.findByKey(epicKey) }
             }
         }
 
         context("child 이슈가 존재하지 않으면") {
             beforeEach {
-                every {
-                    permissionResolver.hasPermission(actorUuid, IssuePermission.UPDATE, IssueScope.Issue(childKey.value))
-                } returns true
+                allowUpdate(childKey)
                 every { issueRepository.findByKey(childKey) } returns null
             }
 
@@ -185,9 +211,7 @@ class IssueEpicServiceTest : DescribeSpec({
 
         context("epic 이슈가 존재하지 않으면 (보안 N1 — 미존재·미가시 동일)") {
             beforeEach {
-                every {
-                    permissionResolver.hasPermission(actorUuid, IssuePermission.UPDATE, IssueScope.Issue(childKey.value))
-                } returns true
+                allowUpdate(childKey)
                 every { issueRepository.findByKey(childKey) } returns makeIssue(childUuid, childKey)
                 every { issueRepository.findByKey(epicKey) } returns null
             }
@@ -201,10 +225,7 @@ class IssueEpicServiceTest : DescribeSpec({
 
         context("childKey == epicKey (self 참조)") {
             beforeEach {
-                every {
-                    permissionResolver.hasPermission(actorUuid, IssuePermission.UPDATE, IssueScope.Issue(epicKey.value))
-                } returns true
-                every { issueRepository.findByKey(epicKey) } returns makeIssue(epicUuid, epicKey, typeId = epicTypeId)
+                allowUpdate(epicKey)
                 every { issueRepository.findByKey(epicKey) } returns makeIssue(epicUuid, epicKey, typeId = epicTypeId)
             }
 
@@ -217,11 +238,11 @@ class IssueEpicServiceTest : DescribeSpec({
 
         context("child 의 hierarchyLevel 이 0 이 아니면 (subtask = -1)") {
             beforeEach {
-                every {
-                    permissionResolver.hasPermission(actorUuid, IssuePermission.UPDATE, IssueScope.Issue(childKey.value))
-                } returns true
-                every { issueRepository.findByKey(childKey) } returns makeIssue(childUuid, childKey, typeId = subtaskTypeId)
-                every { issueRepository.findByKey(epicKey) } returns makeIssue(epicUuid, epicKey, typeId = epicTypeId)
+                allowUpdate(childKey)
+                every { issueRepository.findByKey(childKey) } returns
+                    makeIssue(childUuid, childKey, typeId = subtaskTypeId)
+                every { issueRepository.findByKey(epicKey) } returns
+                    makeIssue(epicUuid, epicKey, typeId = epicTypeId)
                 every { issueTypeRepository.findById(subtaskTypeId) } returns subtaskType
                 every { issueTypeRepository.findById(epicTypeId) } returns epicType
             }
@@ -235,13 +256,12 @@ class IssueEpicServiceTest : DescribeSpec({
 
         context("epic 의 hierarchyLevel 이 1 이 아니면 (story = 0)") {
             beforeEach {
-                every {
-                    permissionResolver.hasPermission(actorUuid, IssuePermission.UPDATE, IssueScope.Issue(childKey.value))
-                } returns true
-                // child는 story (hierarchyLevel=0, 유효한 child)
-                every { issueRepository.findByKey(childKey) } returns makeIssue(childUuid, childKey, typeId = storyTypeId)
-                // epic으로 지정하려는 대상이 story (hierarchyLevel=0, 에픽이 아님)
-                every { issueRepository.findByKey(epicKey) } returns makeIssue(epicUuid, epicKey, typeId = storyTypeId)
+                allowUpdate(childKey)
+                every { issueRepository.findByKey(childKey) } returns
+                    makeIssue(childUuid, childKey, typeId = storyTypeId)
+                // 에픽 대상이 story (hierarchyLevel=0, 에픽이 아님)
+                every { issueRepository.findByKey(epicKey) } returns
+                    makeIssue(epicUuid, epicKey, typeId = storyTypeId)
                 every { issueTypeRepository.findById(storyTypeId) } returns storyType
             }
 
@@ -254,11 +274,11 @@ class IssueEpicServiceTest : DescribeSpec({
 
         context("child 와 epic 이 다른 프로젝트에 속하면") {
             beforeEach {
-                every {
-                    permissionResolver.hasPermission(actorUuid, IssuePermission.UPDATE, IssueScope.Issue(childKey.value))
-                } returns true
-                every { issueRepository.findByKey(childKey) } returns makeIssue(childUuid, childKey, typeId = storyTypeId, projectId = projectId)
-                every { issueRepository.findByKey(epicKey) } returns makeIssue(epicUuid, epicKey, typeId = epicTypeId, projectId = otherProjectId)
+                allowUpdate(childKey)
+                every { issueRepository.findByKey(childKey) } returns
+                    makeIssue(childUuid, childKey, typeId = storyTypeId, projectId = defaultProjectId)
+                every { issueRepository.findByKey(epicKey) } returns
+                    makeIssue(epicUuid, epicKey, typeId = epicTypeId, projectId = otherProjectId)
                 every { issueTypeRepository.findById(storyTypeId) } returns storyType
                 every { issueTypeRepository.findById(epicTypeId) } returns epicType
             }
@@ -270,12 +290,11 @@ class IssueEpicServiceTest : DescribeSpec({
             }
         }
 
-        context("child 가 이미 이 epic 에 연결되어 있으면") {
+        context("child 가 이미 에픽에 연결되어 있으면") {
             beforeEach {
-                every {
-                    permissionResolver.hasPermission(actorUuid, IssuePermission.UPDATE, IssueScope.Issue(childKey.value))
-                } returns true
-                every { issueRepository.findByKey(childKey) } returns makeIssue(childUuid, childKey, typeId = storyTypeId, epicId = epicUuid)
+                allowUpdate(childKey)
+                every { issueRepository.findByKey(childKey) } returns
+                    makeIssue(childUuid, childKey, typeId = storyTypeId, epicId = epicUuid)
                 every { issueRepository.findByKey(epicKey) } returns makeIssue(epicUuid, epicKey, typeId = epicTypeId)
                 every { issueTypeRepository.findById(storyTypeId) } returns storyType
                 every { issueTypeRepository.findById(epicTypeId) } returns epicType
@@ -292,9 +311,7 @@ class IssueEpicServiceTest : DescribeSpec({
             val childBefore = makeIssue(childUuid, childKey, typeId = storyTypeId, epicId = null)
 
             beforeEach {
-                every {
-                    permissionResolver.hasPermission(actorUuid, IssuePermission.UPDATE, IssueScope.Issue(childKey.value))
-                } returns true
+                allowUpdate(childKey)
                 every { issueRepository.findByKey(childKey) } returns childBefore
                 every { issueRepository.findByKey(epicKey) } returns makeIssue(epicUuid, epicKey, typeId = epicTypeId)
                 every { issueTypeRepository.findById(storyTypeId) } returns storyType
@@ -307,23 +324,26 @@ class IssueEpicServiceTest : DescribeSpec({
                 verify(exactly = 1) { issueRepository.updateEpic(childUuid, epicUuid) }
             }
 
-            it("[G1] historyRecorder.record 가 before=childBefore, after=epicId 채운 child 로 호출된다") {
+            it("[G1] historyRecorder.record 가 before/after child 로 1회 호출된다") {
                 sut.connect(epicKey, childKey, actorId)
                 verify(exactly = 1) {
                     historyRecorder.record(
                         before = childBefore,
                         after = childBefore.copy(epicId = epicUuid),
                         actor = actorId,
-                        projectId = projectId,
+                        projectId = defaultProjectId,
                     )
                 }
             }
 
             it("권한 검사가 repo.findByKey 보다 먼저 호출된다 (순서 보장)") {
                 sut.connect(epicKey, childKey, actorId)
-                // 권한 검사가 정확히 1회, repo 조회가 정확히 호출됨을 verify
                 verify(exactly = 1) {
-                    permissionResolver.hasPermission(actorUuid, IssuePermission.UPDATE, IssueScope.Issue(childKey.value))
+                    permissionResolver.hasPermission(
+                        actorUuid,
+                        IssuePermission.UPDATE,
+                        IssueScope.Issue(childKey.value),
+                    )
                 }
             }
         }
@@ -334,11 +354,7 @@ class IssueEpicServiceTest : DescribeSpec({
     describe("disconnect") {
 
         context("UPDATE(child) 권한이 없으면") {
-            beforeEach {
-                every {
-                    permissionResolver.hasPermission(actorUuid, IssuePermission.UPDATE, IssueScope.Issue(childKey.value))
-                } returns false
-            }
+            beforeEach { denyUpdate(childKey) }
 
             it("IssueAccessDeniedException(403) 을 던진다") {
                 shouldThrow<IssueAccessDeniedException> {
@@ -348,15 +364,14 @@ class IssueEpicServiceTest : DescribeSpec({
 
             it("권한 검사 이후 repo.findByKey 가 호출되지 않는다") {
                 runCatching { sut.disconnect(epicKey, childKey, actorId) }
-                verify(exactly = 0) { issueRepository.findByKey(any()) }
+                verify(exactly = 0) { issueRepository.findByKey(childKey) }
+                verify(exactly = 0) { issueRepository.findByKey(epicKey) }
             }
         }
 
         context("child 이슈가 존재하지 않으면") {
             beforeEach {
-                every {
-                    permissionResolver.hasPermission(actorUuid, IssuePermission.UPDATE, IssueScope.Issue(childKey.value))
-                } returns true
+                allowUpdate(childKey)
                 every { issueRepository.findByKey(childKey) } returns null
             }
 
@@ -371,11 +386,9 @@ class IssueEpicServiceTest : DescribeSpec({
             val otherEpicId = UUID.fromString("00000000-0000-4000-8000-000000000099")
 
             beforeEach {
-                every {
-                    permissionResolver.hasPermission(actorUuid, IssuePermission.UPDATE, IssueScope.Issue(childKey.value))
-                } returns true
-                // child는 다른 epic에 연결됨
-                every { issueRepository.findByKey(childKey) } returns makeIssue(childUuid, childKey, epicId = otherEpicId)
+                allowUpdate(childKey)
+                every { issueRepository.findByKey(childKey) } returns
+                    makeIssue(childUuid, childKey, epicId = otherEpicId)
                 every { issueRepository.findByKey(epicKey) } returns makeIssue(epicUuid, epicKey, typeId = epicTypeId)
             }
 
@@ -388,9 +401,7 @@ class IssueEpicServiceTest : DescribeSpec({
 
         context("child 가 어떤 epic 에도 연결되지 않은 경우") {
             beforeEach {
-                every {
-                    permissionResolver.hasPermission(actorUuid, IssuePermission.UPDATE, IssueScope.Issue(childKey.value))
-                } returns true
+                allowUpdate(childKey)
                 every { issueRepository.findByKey(childKey) } returns makeIssue(childUuid, childKey, epicId = null)
                 every { issueRepository.findByKey(epicKey) } returns makeIssue(epicUuid, epicKey, typeId = epicTypeId)
             }
@@ -406,9 +417,7 @@ class IssueEpicServiceTest : DescribeSpec({
             val childBefore = makeIssue(childUuid, childKey, typeId = storyTypeId, epicId = epicUuid)
 
             beforeEach {
-                every {
-                    permissionResolver.hasPermission(actorUuid, IssuePermission.UPDATE, IssueScope.Issue(childKey.value))
-                } returns true
+                allowUpdate(childKey)
                 every { issueRepository.findByKey(childKey) } returns childBefore
                 every { issueRepository.findByKey(epicKey) } returns makeIssue(epicUuid, epicKey, typeId = epicTypeId)
                 every { issueRepository.updateEpic(childUuid, null) } returns Unit
@@ -419,14 +428,14 @@ class IssueEpicServiceTest : DescribeSpec({
                 verify(exactly = 1) { issueRepository.updateEpic(childUuid, null) }
             }
 
-            it("[G1] historyRecorder.record 가 before=childBefore, after=epicId=null 인 child 로 호출된다") {
+            it("[G1] historyRecorder.record 가 epicId=null 인 after 로 1회 호출된다") {
                 sut.disconnect(epicKey, childKey, actorId)
                 verify(exactly = 1) {
                     historyRecorder.record(
                         before = childBefore,
                         after = childBefore.copy(epicId = null),
                         actor = actorId,
-                        projectId = projectId,
+                        projectId = defaultProjectId,
                     )
                 }
             }
@@ -438,15 +447,7 @@ class IssueEpicServiceTest : DescribeSpec({
     describe("listChildren") {
 
         context("BROWSE(epic 프로젝트, Project scope) 권한이 없으면") {
-            beforeEach {
-                every {
-                    permissionResolver.hasPermission(
-                        actorUuid,
-                        IssuePermission.BROWSE,
-                        IssueScope.Project(epicKey.projectPrefix),
-                    )
-                } returns false
-            }
+            beforeEach { denyBrowse(epicKey.projectPrefix) }
 
             it("IssueAccessDeniedException(403) 을 던진다") {
                 shouldThrow<IssueAccessDeniedException> {
@@ -456,15 +457,13 @@ class IssueEpicServiceTest : DescribeSpec({
 
             it("권한 검사 이후 repo.findByKey 가 호출되지 않는다") {
                 runCatching { sut.listChildren(epicKey, actorId) }
-                verify(exactly = 0) { issueRepository.findByKey(any()) }
+                verify(exactly = 0) { issueRepository.findByKey(epicKey) }
             }
         }
 
         context("epic 이슈가 존재하지 않으면") {
             beforeEach {
-                every {
-                    permissionResolver.hasPermission(actorUuid, IssuePermission.BROWSE, IssueScope.Project(epicKey.projectPrefix))
-                } returns true
+                allowBrowse(epicKey.projectPrefix)
                 every { issueRepository.findByKey(epicKey) } returns null
             }
 
@@ -481,13 +480,9 @@ class IssueEpicServiceTest : DescribeSpec({
             val projectKey = epicKey.projectPrefix
 
             beforeEach {
-                every {
-                    permissionResolver.hasPermission(actorUuid, IssuePermission.BROWSE, IssueScope.Project(projectKey))
-                } returns true
+                allowBrowse(projectKey)
                 every { issueRepository.findByKey(epicKey) } returns epicIssue
-                every {
-                    securityDirectory.accessibleLevels(actorUuid, projectKey)
-                } returns unrestrictedAccess
+                every { securityDirectory.accessibleLevels(actorUuid, projectKey) } returns unrestrictedAccess
                 every {
                     issueRepository.findEpicChildren(epicUuid, actorUuid, unrestrictedAccess, projectKey)
                 } returns listOf(child1)
@@ -517,13 +512,9 @@ class IssueEpicServiceTest : DescribeSpec({
             val projectKey = epicKey.projectPrefix
 
             beforeEach {
-                every {
-                    permissionResolver.hasPermission(actorUuid, IssuePermission.BROWSE, IssueScope.Project(projectKey))
-                } returns true
+                allowBrowse(projectKey)
                 every { issueRepository.findByKey(epicKey) } returns epicIssue
-                every {
-                    securityDirectory.accessibleLevels(actorUuid, projectKey)
-                } returns unrestrictedAccess
+                every { securityDirectory.accessibleLevels(actorUuid, projectKey) } returns unrestrictedAccess
                 every {
                     issueRepository.findEpicChildren(epicUuid, actorUuid, unrestrictedAccess, projectKey)
                 } returns emptyList()
