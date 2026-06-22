@@ -758,7 +758,8 @@ class BoardIssueLookupAdapterTest : IssueTestcontainersBase() {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             val typeId = requireTaskTypeId().value
             conn.prepareStatement(
-                "INSERT INTO issues (id, key, project_id, type_id, summary, reporter_id, current_state_key, priority) " +
+                "INSERT INTO issues " +
+                    "(id, key, project_id, type_id, summary, reporter_id, current_state_key, priority) " +
                     "VALUES (?, 'OTHER-1', ?, ?, 'cross-project epic', gen_random_uuid(), 'open', 3)",
             ).use { stmt ->
                 stmt.setObject(1, epicId)

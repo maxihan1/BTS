@@ -91,7 +91,9 @@ class BoardIssueLookupAdapter(
 /**
  * [IssueRepository.BoardIssueEntry] 를 보드 카드 뷰 [BoardIssueView] 로 매핑한다.
  *
- * [Issue] 도메인에는 epicKey 필드가 없으므로 entry 쌍에서 epicKey 를 직접 전달한다 (CONCERN C1).
+ * [Issue] 도메인 객체에는 epicKey 필드가 없으므로 [IssueRepository.BoardIssueEntry] 쌍에서
+ * epicKey 를 직접 전달한다 (CONCERN C1 반영 — Issue 도메인 우회).
+ * 동일 프로젝트 에픽만 포함되며 cross-project 에픽은 null 이다 (P1-A 회귀방지).
  * 보드 카드 배치/정렬에 필요한 최소 필드만 추출한다 (type/description 등은 제외).
  */
 private fun IssueRepository.BoardIssueEntry.toBoardIssueView(): BoardIssueView =

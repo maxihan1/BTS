@@ -670,9 +670,18 @@ class IssueRepository(
      * WHERE 술어를 재사용**해 viewer 가 볼 수 없는 보안 등급 행을 SQL 수준에서 제외한다.
      * 새 보안 판정 경로를 만들지 않음으로써 멤버 타입 누락에 의한 제목 누출을 차단한다 (FR-NT-03 교훈).
      *
-     * 단일 쿼리(ISSUES × PROJECTS) — N+1 없음. type 요약은 보드 카드에 불필요하므로 ISSUE_TYPES JOIN 생략.
+     * 단일 쿼리(ISSUES × PROJECTS + EPIC self LEFT JOIN) — N+1 없음.
+     * type 요약은 보드 카드에 불필요하므로 ISSUE_TYPES JOIN 생략.
      * 카드 수 폭주를 막기 위해 [BOARD_CARD_FETCH_LIMIT] 로 상한을 둔다.
      * 정렬(컬럼 내 priority 등)은 도메인 배치 로직(agile-planning) 책임이므로 여기서는 created_at DESC 안정 정렬만 한다.
+     *
+     * ## EPIC self LEFT JOIN (FR-EP-01 D6/D7)
+     *
+     * EPIC 스윔레인 그룹화를 위해 `issues AS epic` self LEFT JOIN 으로 epicKey 를 단일 쿼리에서 추출한다.
+     * LEFT JOIN 이므로 에픽 없는 이슈도 결과에 포함된다 — epicKey 는 null 로 반환.
+     * [Issue] 도메인 객체에는 epicKey 필드가 없으므로 fetch 람다에서 직접 추출해 [BoardIssueEntry] 에 전달한다.
+     * **동일 프로젝트 조건** (`epicAlias.PROJECT_ID = issues.project_id`) 필수 —
+     * 에픽이 이동·삭제 등으로 다른 프로젝트에 잔류할 때 cross-project 데이터가 누출되지 않도록 한다 (P1-A 회귀방지).
      *
      * ## truncated 감지 (LIMIT+1 기법)
      *
@@ -685,7 +694,7 @@ class IssueRepository(
      *   보안 민감 메서드이므로 기본값 없이 항상 명시 전달한다.
      * @param access actor 가 접근 가능한 보안 등급 집합. unrestricted=true 이면 WHERE 술어 미적용(빠른경로).
      * @param filter 보드 카드 필터 조건. [BoardCardFilter.isEmpty] 이면 필터 Condition 을 추가하지 않는다.
-     * @return [BoardFetchResult]. issues 는 최대 [BOARD_CARD_FETCH_LIMIT] 건. truncated 는 초과 여부.
+     * @return [BoardFetchResult]. entries 는 최대 [BOARD_CARD_FETCH_LIMIT] 건(이슈 + epicKey 쌍). truncated 는 초과 여부.
      */
     @Transactional(readOnly = true)
     fun listVisibleForBoard(
