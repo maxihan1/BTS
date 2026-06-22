@@ -7,7 +7,6 @@ import com.bts.notification.dashboard.domain.DashboardVisibility
 import com.bts.notification.dashboard.repository.DashboardPage
 import com.bts.notification.dashboard.repository.DashboardRepository
 import io.mockk.every
-import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
@@ -219,12 +218,13 @@ class DashboardServiceTest {
     /** UPDATE-4. update — [C6] applyPatch 를 통해 도메인 정규화를 거친 뒤 repository.update 호출. */
     @Test
     fun `update — PRIVATE 으로 변경 시 sharedUserIds 가 빈 집합으로 정규화된다`() {
-        val dashboard = buildDashboard(
-            ownerId = ownerId,
-            visibility = DashboardVisibility.TEAM,
-            sharedUserIds = setOf(sharedId),
-            version = 0L,
-        )
+        val dashboard =
+            buildDashboard(
+                ownerId = ownerId,
+                visibility = DashboardVisibility.TEAM,
+                sharedUserIds = setOf(sharedId),
+                version = 0L,
+            )
         every { repository.findById(dashboard.id) } returns dashboard
         val updated = mutableListOf<Dashboard>()
         every { repository.update(capture(updated)) } returns 1

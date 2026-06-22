@@ -97,7 +97,10 @@ class DashboardService(
      * @throws DashboardNotFoundException 없거나 접근 불가
      */
     @Transactional(readOnly = true)
-    fun get(actorId: UUID, id: UUID): Dashboard {
+    fun get(
+        actorId: UUID,
+        id: UUID,
+    ): Dashboard {
         val dashboard = repository.findById(id) ?: throw DashboardNotFoundException(id)
         val shares = repository.findSharesByDashboardId(id).toSet()
         checkReadAccess(actorId, dashboard, shares) { throw DashboardNotFoundException(id) }
@@ -145,7 +148,9 @@ class DashboardService(
      * @throws DashboardConflictException version 불일치
      */
     @Transactional
-    @Suppress("LongParameterList")
+    // LongParameterList — 3-state PATCH 의 7개 필드는 각각 독립 의미로 커맨드 객체 도입 시 오히려 과설계.
+    // ThrowsCount — 404(미존재)/403(비소유자)/409(OCC 충돌) 세 분기는 본질적으로 독립된 실패 경로.
+    @Suppress("LongParameterList", "ThrowsCount")
     fun update(
         actorId: UUID,
         id: UUID,
@@ -208,7 +213,10 @@ class DashboardService(
      * @throws DashboardForbiddenException 비소유자 삭제 시도
      */
     @Transactional
-    fun delete(actorId: UUID, id: UUID) {
+    fun delete(
+        actorId: UUID,
+        id: UUID,
+    ) {
         val dashboard = repository.findById(id) ?: throw DashboardNotFoundException(id)
         requireOwner(actorId, dashboard)
         repository.softDelete(id)
@@ -256,7 +264,10 @@ class DashboardService(
      * @param dashboard 대상 대시보드
      * @throws DashboardForbiddenException 비소유자
      */
-    private fun requireOwner(actorId: UUID, dashboard: Dashboard) {
+    private fun requireOwner(
+        actorId: UUID,
+        dashboard: Dashboard,
+    ) {
         if (actorId != dashboard.ownerId) {
             throw DashboardForbiddenException()
         }

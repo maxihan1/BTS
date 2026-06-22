@@ -3,7 +3,6 @@
 package com.bts.notification.dashboard.web.dto
 
 import com.bts.notification.dashboard.domain.Dashboard
-import com.bts.notification.dashboard.domain.DashboardVisibility
 import com.fasterxml.jackson.annotation.JsonInclude
 import jakarta.validation.constraints.NotBlank
 import java.time.Instant

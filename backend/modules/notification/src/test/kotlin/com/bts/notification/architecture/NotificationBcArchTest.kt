@@ -1,4 +1,5 @@
-// 알림 BC 아키텍처 격리 규칙 검증 — ArchUnit 6룰 (cross-BC 직접 import 금지 + dashboard BC 격리 + jOOQ 화이트리스트 + @Transactional/@Service 동반)
+// 알림 BC 아키텍처 격리 규칙 검증 — ArchUnit 6룰
+// (cross-BC 직접 import 금지 + dashboard BC 격리 + jOOQ 화이트리스트 + @Transactional/@Service 동반)
 
 package com.bts.notification.architecture
 
@@ -10,7 +11,6 @@ import com.tngtech.archunit.lang.ArchRule
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
 import org.assertj.core.api.Assertions.assertThat
-import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 
 /**
