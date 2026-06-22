@@ -20,26 +20,27 @@ import java.util.UUID
  * - (c) Board.swimlaneField 기본값 — 미지정 시 SwimlaneField.NONE
  */
 class BoardWipSwimlaneDomainTest {
-
     // 픽스처 헬퍼
-    private fun baseColumn(wipLimit: Int? = null) = BoardColumn(
-        id = UUID.randomUUID(),
-        stateKey = "open",
-        name = "열림",
-        category = "TODO",
-        displayOrder = 1,
-        wipLimit = wipLimit,
-    )
+    private fun baseColumn(wipLimit: Int? = null) =
+        BoardColumn(
+            id = UUID.randomUUID(),
+            stateKey = "open",
+            name = "열림",
+            category = "TODO",
+            displayOrder = 1,
+            wipLimit = wipLimit,
+        )
 
-    private fun baseBoard(swimlaneField: SwimlaneField = SwimlaneField.NONE) = Board(
-        id = UUID.randomUUID(),
-        projectKey = "PROJ",
-        name = "테스트 보드",
-        columns = emptyList(),
-        createdAt = Instant.now(),
-        updatedAt = Instant.now(),
-        swimlaneField = swimlaneField,
-    )
+    private fun baseBoard(swimlaneField: SwimlaneField = SwimlaneField.NONE) =
+        Board(
+            id = UUID.randomUUID(),
+            projectKey = "PROJ",
+            name = "테스트 보드",
+            columns = emptyList(),
+            createdAt = Instant.now(),
+            updatedAt = Instant.now(),
+            swimlaneField = swimlaneField,
+        )
 
     // (a) BoardColumn.wipLimit 불변식
     @Nested
@@ -113,14 +114,15 @@ class BoardWipSwimlaneDomainTest {
     inner class BoardSwimlaneFieldDefault {
         @Test
         fun `swimlaneField 미지정 시 기본값 SwimlaneField_NONE이다`() {
-            val board = Board(
-                id = UUID.randomUUID(),
-                projectKey = "PROJ",
-                name = "기본값 보드",
-                columns = emptyList(),
-                createdAt = Instant.now(),
-                updatedAt = Instant.now(),
-            )
+            val board =
+                Board(
+                    id = UUID.randomUUID(),
+                    projectKey = "PROJ",
+                    name = "기본값 보드",
+                    columns = emptyList(),
+                    createdAt = Instant.now(),
+                    updatedAt = Instant.now(),
+                )
             assertThat(board.swimlaneField).isEqualTo(SwimlaneField.NONE)
         }
 

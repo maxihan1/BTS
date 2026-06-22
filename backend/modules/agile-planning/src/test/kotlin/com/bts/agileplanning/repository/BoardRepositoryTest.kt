@@ -35,7 +35,6 @@ import java.util.UUID
 @Import(AgilePlanningTestcontainersConfig::class)
 @ActiveProfiles("test")
 class BoardRepositoryTest {
-
     @Autowired
     private lateinit var boardRepository: BoardRepository
 
@@ -51,16 +50,17 @@ class BoardRepositoryTest {
             id = UUID.randomUUID(),
             projectKey = "TEST",
             name = "테스트 보드 ${UUID.randomUUID()}",
-            columns = listOf(
-                BoardColumn(
-                    id = colId,
-                    stateKey = "open",
-                    name = "열림",
-                    category = "TODO",
-                    displayOrder = 0,
-                    wipLimit = wipLimit,
+            columns =
+                listOf(
+                    BoardColumn(
+                        id = colId,
+                        stateKey = "open",
+                        name = "열림",
+                        category = "TODO",
+                        displayOrder = 0,
+                        wipLimit = wipLimit,
+                    ),
                 ),
-            ),
             createdAt = java.time.Instant.now(),
             updatedAt = java.time.Instant.now(),
             swimlaneField = swimlaneField,

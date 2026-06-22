@@ -76,7 +76,15 @@ class BoardRepository(
                     BOARD_COLUMNS.WIP_LIMIT,
                 )
             board.columns.forEach { col ->
-                insertStep.values(col.id, board.id, col.stateKey, col.name, col.category, col.displayOrder, col.wipLimit)
+                insertStep.values(
+                    col.id,
+                    board.id,
+                    col.stateKey,
+                    col.name,
+                    col.category,
+                    col.displayOrder,
+                    col.wipLimit,
+                )
             }
             insertStep.execute()
         }
@@ -138,7 +146,10 @@ class BoardRepository(
      * @return 갱신된 보드, 존재하지 않으면 null
      */
     @Transactional
-    fun updateSwimlaneField(boardId: UUID, swimlaneField: SwimlaneField): Board? {
+    fun updateSwimlaneField(
+        boardId: UUID,
+        swimlaneField: SwimlaneField,
+    ): Board? {
         log.debug("스윔레인 필드 갱신 — boardId={}, swimlaneField={}", boardId, swimlaneField)
 
         val now = OffsetDateTime.now(ZoneOffset.UTC)
@@ -166,7 +177,11 @@ class BoardRepository(
      * @return 갱신된 컬럼, 타 보드 소속이거나 미존재이면 null
      */
     @Transactional
-    fun updateColumnWipLimit(boardId: UUID, columnId: UUID, wipLimit: Int?): BoardColumn? {
+    fun updateColumnWipLimit(
+        boardId: UUID,
+        columnId: UUID,
+        wipLimit: Int?,
+    ): BoardColumn? {
         log.debug("WIP 제한 갱신 — boardId={}, columnId={}, wipLimit={}", boardId, columnId, wipLimit)
 
         val affected =

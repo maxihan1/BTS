@@ -26,48 +26,52 @@ import java.util.UUID
  * - (d) 기존 필드 보존 — 신규 필드 추가 후 기존 필드 비파괴 확인
  */
 class BoardResponsesTest {
-
     // --- 픽스처 헬퍼 ---
 
-    private fun column(wipLimit: Int? = null) = BoardColumn(
-        id = UUID.randomUUID(),
-        stateKey = "open",
-        name = "열림",
-        category = "TODO",
-        displayOrder = 1,
-        wipLimit = wipLimit,
-    )
+    private fun column(wipLimit: Int? = null) =
+        BoardColumn(
+            id = UUID.randomUUID(),
+            stateKey = "open",
+            name = "열림",
+            category = "TODO",
+            displayOrder = 1,
+            wipLimit = wipLimit,
+        )
 
-    private fun card(key: String = "PROJ-1") = BoardIssueView(
-        key = key,
-        summary = "테스트 이슈",
-        currentStateKey = "open",
-        assigneeId = null,
-        priority = 1,
-        version = 0L,
-    )
+    private fun card(key: String = "PROJ-1") =
+        BoardIssueView(
+            key = key,
+            summary = "테스트 이슈",
+            currentStateKey = "open",
+            assigneeId = null,
+            priority = 1,
+            version = 0L,
+        )
 
-    private fun cards(count: Int): List<BoardIssueView> =
-        (1..count).map { card("PROJ-$it") }
+    private fun cards(count: Int): List<BoardIssueView> = (1..count).map { card("PROJ-$it") }
 
-    private fun placed(wipLimit: Int? = null, cardCount: Int = 0): PlacedColumn =
-        PlacedColumn(column = column(wipLimit), cards = cards(cardCount))
+    private fun placed(
+        wipLimit: Int? = null,
+        cardCount: Int = 0,
+    ): PlacedColumn = PlacedColumn(column = column(wipLimit), cards = cards(cardCount))
 
-    private fun board(swimlaneField: SwimlaneField = SwimlaneField.NONE) = Board(
-        id = UUID.randomUUID(),
-        projectKey = "PROJ",
-        name = "테스트 보드",
-        columns = emptyList(),
-        createdAt = Instant.now(),
-        updatedAt = Instant.now(),
-        swimlaneField = swimlaneField,
-    )
+    private fun board(swimlaneField: SwimlaneField = SwimlaneField.NONE) =
+        Board(
+            id = UUID.randomUUID(),
+            projectKey = "PROJ",
+            name = "테스트 보드",
+            columns = emptyList(),
+            createdAt = Instant.now(),
+            updatedAt = Instant.now(),
+            swimlaneField = swimlaneField,
+        )
 
-    private fun placementResult(columns: List<PlacedColumn> = emptyList()) = BoardPlacementResult(
-        columns = columns,
-        truncated = false,
-        unplacedCount = 0,
-    )
+    private fun placementResult(columns: List<PlacedColumn> = emptyList()) =
+        BoardPlacementResult(
+            columns = columns,
+            truncated = false,
+            unplacedCount = 0,
+        )
 
     // --- (a) wipLimit echo ---
 
