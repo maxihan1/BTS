@@ -18,7 +18,7 @@ export function useUpdateSwimlane(boardId: string) {
   const queryClient = useQueryClient()
 
   return useMutation<BoardMeta, unknown, SwimlaneField>({
-    mutationFn: (swimlaneField: SwimlaneField) => updateBoardSwimlane(boardId, swimlaneField),
+    mutationFn: (swimlaneField) => updateBoardSwimlane(boardId, swimlaneField),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: boardKeys.detail(boardId) })
     },
