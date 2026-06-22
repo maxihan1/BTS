@@ -4,6 +4,7 @@ package com.bts.issue.history
 
 import com.bts.issue.component.domain.Component
 import com.bts.issue.component.repository.ComponentRepository
+import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.domain.Resolution
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.domain.IssueType
@@ -37,6 +38,7 @@ class IssueChangeLabelResolverTest : DescribeSpec({
     val versionRepo = mockk<VersionRepository>()
     val userLookupPort = mockk<UserLookupPort>()
     val issueSecurityDirectory = mockk<IssueSecurityDirectory>()
+    val issueRepository = mockk<IssueRepository>()
 
     val sut =
         IssueChangeLabelResolver(
@@ -46,6 +48,7 @@ class IssueChangeLabelResolverTest : DescribeSpec({
             versionRepo,
             userLookupPort,
             issueSecurityDirectory,
+            issueRepository,
         )
 
     val projectId = UUID.randomUUID()
@@ -392,6 +395,107 @@ class IssueChangeLabelResolverTest : DescribeSpec({
                         fromValue = lvl1.toString(),
                         toValue = null,
                     ),
+                )
+            val result = sut.resolveLabels(items, projectId)
+
+            result[0].fromLabel shouldBe null
+        }
+    }
+
+    // ── epic 필드 — epic UUID → epic key 박제 (FR-EP-01 D6 G2) ─────────────────
+
+    describe("field=epic") {
+        it("epicId UUID 로 epic key 를 batch 조회해 fromLabel/toLabel 에 박제한다") {
+            val epicId1 = UUID.randomUUID()
+            val epicId2 = UUID.randomUUID()
+            every {
+                issueRepository.findKeysByIds(setOf(epicId1, epicId2))
+            } returns mapOf(epicId1 to "ATLAS-5", epicId2 to "ATLAS-10")
+
+            val items =
+                listOf(
+                    IssueChangeItem(
+                        field = "epic",
+                        fromValue = epicId1.toString(),
+                        toValue = epicId2.toString(),
+                    ),
+                )
+            val result = sut.resolveLabels(items, projectId)
+
+            result[0].fromLabel shouldBe "ATLAS-5"
+            result[0].toLabel shouldBe "ATLAS-10"
+        }
+
+        it("연결(fromValue=null, toValue=epicId) 시 toLabel 에 epic key 를 박제하고 fromLabel 은 null") {
+            val epicId = UUID.randomUUID()
+            every {
+                issueRepository.findKeysByIds(setOf(epicId))
+            } returns mapOf(epicId to "ATLAS-5")
+
+            val items =
+                listOf(
+                    IssueChangeItem(field = "epic", fromValue = null, toValue = epicId.toString()),
+                )
+            val result = sut.resolveLabels(items, projectId)
+
+            result[0].fromLabel shouldBe null
+            result[0].toLabel shouldBe "ATLAS-5"
+        }
+
+        it("해제(fromValue=epicId, toValue=null) 시 fromLabel 에 epic key 를 박제하고 toLabel 은 null") {
+            val epicId = UUID.randomUUID()
+            every {
+                issueRepository.findKeysByIds(setOf(epicId))
+            } returns mapOf(epicId to "ATLAS-5")
+
+            val items =
+                listOf(
+                    IssueChangeItem(field = "epic", fromValue = epicId.toString(), toValue = null),
+                )
+            val result = sut.resolveLabels(items, projectId)
+
+            result[0].fromLabel shouldBe "ATLAS-5"
+            result[0].toLabel shouldBe null
+        }
+
+        it("batch 조회 결과에 epicId 없으면 label=null(graceful — soft-deleted epic 도 key 보존이나 findKeysByIds 미반환)") {
+            val epicId = UUID.randomUUID()
+            every {
+                issueRepository.findKeysByIds(setOf(epicId))
+            } returns emptyMap()
+
+            val items =
+                listOf(
+                    IssueChangeItem(field = "epic", fromValue = epicId.toString(), toValue = null),
+                )
+            val result = sut.resolveLabels(items, projectId)
+
+            result[0].fromLabel shouldBe null
+        }
+
+        it("값이 UUID 형식이 아닌 경우 findKeysByIds 를 호출하지 않고 label=null(graceful)") {
+            every {
+                issueRepository.findKeysByIds(emptySet())
+            } returns emptyMap()
+
+            val items =
+                listOf(
+                    IssueChangeItem(field = "epic", fromValue = "not-a-uuid", toValue = null),
+                )
+            val result = sut.resolveLabels(items, projectId)
+
+            result[0].fromLabel shouldBe null
+        }
+
+        it("findKeysByIds 가 예외를 던지면 label=null graceful degrade") {
+            val epicId = UUID.randomUUID()
+            every {
+                issueRepository.findKeysByIds(setOf(epicId))
+            } throws RuntimeException("DB unavailable")
+
+            val items =
+                listOf(
+                    IssueChangeItem(field = "epic", fromValue = epicId.toString(), toValue = null),
                 )
             val result = sut.resolveLabels(items, projectId)
 
