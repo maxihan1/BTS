@@ -148,9 +148,9 @@ SDD 참조. 13.1.1 (WIP 제한 = 컬럼당 최대 이슈 수), 13.1.3 (스윔레
 - 실패: 엔드포인트 없음.
 
 **GREEN**:
-- 요청 DTO: `UpdateColumnWipLimitRequest(wipLimit: Int?)`(`@field:Positive` nullable 허용), `UpdateBoardSwimlaneRequest(swimlaneField: String)`(@NotBlank) + 응답 DTO(컬럼/보드 메타).
-- `BoardApplicationService.updateColumnWipLimit(boardId, columnId, wipLimit)` / `updateSwimlaneField(boardId, swimlaneFieldRaw)` — swimlaneField enum 파싱 실패 → 400, repo null → 404.
-- `BoardController` — `PATCH /{boardId}/columns/{columnId}`, `PATCH /{boardId}`. actor 추출 선행 → 보드 메타 조회(404) → requirePermission(CREATE) → 위임. (loadBoardWithBrowse 패턴을 CREATE용으로 재사용/확장)
+- 요청 DTO: `UpdateColumnWipLimitRequest(wipLimit: Int?)`(`@field:Positive` — null 허용, 양수만 검증), `UpdateBoardSwimlaneRequest(swimlaneField: String)`(@NotBlank) + 응답 DTO(컬럼/보드 메타).
+- `BoardApplicationService.updateColumnWipLimit(...)` / `updateSwimlaneField(...)` — 둘 다 `@Transactional`(쓰기, DEVELOPMENT.md §1.4). swimlaneField enum 파싱 실패 → `ResponseStatusException(BAD_REQUEST)`, repo null(보드/컬럼 미존재) → `ResponseStatusException(NOT_FOUND)` 또는 `BoardNotFoundException`. (기존 BoardExceptionHandler가 ResponseStatusException 상태 전파 + catch-all 변질 차단 — 신규 핸들러 불필요)
+- `BoardController` — `PATCH /{id}/columns/{columnId}`, `PATCH /{id}` (기존 getBoard의 `{id}` path variable과 통일 — devex D1). actor 추출 선행 → 보드 메타 조회(404) → requirePermission(CREATE) → 위임. (loadBoardWithBrowse 패턴을 CREATE 권한용 헬퍼로 재사용/확장)
 
 **REFACTOR**: 권한 헬퍼 공통화, KDoc, ktlint/detekt 정리.
 
@@ -165,4 +165,25 @@ SDD 참조. 13.1.1 (WIP 제한 = 컬럼당 최대 이슈 수), 13.1.3 (스윔레
 - 권한: shared-kernel IssuePermissionResolver 재사용(CREATE on Project), 신규 enum 0
 - 주의: V번호 머지 직전 재확인(DATA.md §4.1), init_codegen 미러(T1), 도메인 기본값으로 생성자 비파괴(T2)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-22) — 직접 eng 집중 리뷰
+
+- ✅ TDD 구조 명확(각 task RED→GREEN→REFACTOR), 의존성 그래프 순환 없음(T1·T2 [] / T3 [1,2] / T4 [2] / T5 [2,3,4]).
+- ✅ 파일 겹침 직렬화 정합 — T4·T5의 BoardResponses.kt 겹침을 T5 depends-on에 4 포함으로 해소.
+- ✅ 마이그레이션 V501 + init_codegen 미러(T1) + V번호 머지 직전 재확인 명시 (메모리 jooq-init-codegen-mirror, migration-vnumber).
+- ✅ 도메인 기본값(wipLimit=null, swimlaneField=NONE)으로 기존 생성자 비파괴 (메모리 plan-files-constructor-injection).
+- ✅ 권한 CREATE on Project 재사용, 신규 권한 enum 0.
+- ⚠️ **CONCERN-1 (보강 완료)**: Task 5 서비스 메서드 `@Transactional` 명시 누락 → GREEN에 추가(쓰기, DEVELOPMENT.md §1.4).
+- ⚠️ **CONCERN-2 (impl 주의)**: jOOQ codegen task 이름 + agile-planning detekt baseline 존재 여부는 impl에서 실측 (메모리 backend-detekt-lint-debt-unmasked, detekt-baseline-module-pattern). codegen은 clean 빌드 함정 주의(backend-clean-build-broken).
+- ✅ **CONCERN-3 (해소)**: 예외 처리 — BoardExceptionHandler가 ResponseStatusException 상태 전파(400/404) + catch-all 변질 차단을 이미 갖춤. PATCH 핸들러는 ResponseStatusException만 던지면 됨(신규 핸들러 불필요).
+- **BLOCKER: 없음**
+
+### plan-devex-review (2026-06-22) — API 일관성/DX
+
+- ✅ 엔드포인트 RESTful 일관(PATCH + DataResponse 봉투), 에러 형식 ProblemDetail + AGILE_ 접두사 일관.
+- ✅ GET 응답 확장은 가산만(truncated/unplacedCount/카드 정렬 보존), 추가 cross-BC 조회 0.
+- ⚠️ **D1 (보강 완료)**: path variable을 기존 getBoard `{id}`와 통일(보드 PATCH `/{id}`, 컬럼 `/{id}/columns/{columnId}`).
+- ℹ️ D2 (수용): cardCount 별도 필드 미추가 — cards 배열 length로 충분(미니멀).
+- ℹ️ D3 (수용): 컬럼 404와 보드 404가 동일 일반 메시지 — 보안 정책상 의도(내부 정보 미노출).
+- **BLOCKER: 없음**
