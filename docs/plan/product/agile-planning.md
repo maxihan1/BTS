@@ -80,8 +80,10 @@
 - [x] D3. 데이터 모델 — `board_columns.wip_limit`(CHECK >0), `boards.swimlane_field`(NONE/ASSIGNEE/PRIORITY) V501 (PR #172)
 - [x] D4. 백엔드 — wipLimit/wipExceeded 신호 + PATCH 2종(권한 CREATE) + swimlaneField echo (PR #172)
 - [x] D5. 백엔드 테스트 — 도메인/Repository/DTO/Controller통합/Service단위 (PR #172)
-- [ ] D6. 프론트 UI — 컬럼 헤더 경고 + 스윔레인 그룹 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 컬럼 헤더 경고 + 스윔레인 그룹(컬럼 내부 레인, 세로) + 스윔레인 셀렉터(서버 저장, CREATE 게이팅) (책임. frontend-engineer) (PR #173)
+- [x] D7. E2E — WIP 경고/스윔레인 전환/권한 게이팅 (책임. qa-engineer) (PR #173)
+
+> **Deviation(PR #173)**. ① PRIORITY 스윔레인 그룹화 근거로 `BoardCardResponse.priority`를 재노출(D5 NIT-1 결정 되돌림, same-BC view-layer patch, Maxi 확정). ② 스윔레인 레이아웃은 컬럼 내부 레인 그룹(세로) 채택 — droppable column id 보존으로 드래그 이동(FR-BD-01) 회귀 0. ③ WIP 제한 '편집' UI는 후속 이연(이번엔 표시/경고 + 스윔레인 셀렉터까지).
 
 ## §3 백로그 (FR-BL, 2개)
 
