@@ -281,9 +281,10 @@ describe('BoardColumn — S6 스윔레인 ASSIGNEE 그룹', () => {
     expect(screen.getByText('박지현')).toBeInTheDocument()
   })
 
-  it('S6b: swimlaneField=ASSIGNEE이면 미배정 서브헤더가 렌더된다', () => {
+  it('S6b: swimlaneField=ASSIGNEE이면 미배정 그룹이 role=group으로 렌더된다', () => {
     renderColumn(columnMultiAssignee, assigneeNames, false, 'ASSIGNEE')
-    expect(screen.getByText('미배정')).toBeInTheDocument()
+    // 서브헤더 그룹의 aria-label로 존재 확인 (카드 내 "미배정" 텍스트와 충돌 없이)
+    expect(screen.getByRole('group', { name: '미배정' })).toBeInTheDocument()
   })
 
   it('S6c: swimlaneField=NONE이면 서브헤더 없이 단일 목록으로 렌더된다', () => {

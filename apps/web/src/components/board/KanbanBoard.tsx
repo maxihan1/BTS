@@ -251,6 +251,7 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter }: KanbanBoa
               column={column}
               assigneeNames={assigneeNames}
               isOver={overColumnId === column.columnId}
+              swimlaneField={board.swimlaneField}
             />
           ))}
         </div>
