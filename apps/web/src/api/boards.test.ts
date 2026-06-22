@@ -32,6 +32,7 @@ const cardWithAssignee = {
   summary: '테스트 이슈 1',
   assigneeId: ASSIGNEE_UUID,
   version: 1,
+  priority: 1,
 }
 
 const cardNoAssignee = {
@@ -39,6 +40,7 @@ const cardNoAssignee = {
   summary: '테스트 이슈 2',
   assigneeId: null,
   version: 2,
+  priority: 3,
 }
 
 const columnTodo = {
@@ -47,6 +49,8 @@ const columnTodo = {
   name: '할 일',
   category: 'TODO' as const,
   displayOrder: 1,
+  wipLimit: null,
+  wipExceeded: false,
   cards: [cardNoAssignee],
 }
 
@@ -56,6 +60,8 @@ const columnDone = {
   name: '완료',
   category: 'DONE' as const,
   displayOrder: 3,
+  wipLimit: null,
+  wipExceeded: false,
   cards: [cardWithAssignee],
 }
 
@@ -66,6 +72,7 @@ const boardDetailFixture = {
   columns: [columnTodo, columnDone],
   truncated: false,
   unplacedCount: 0,
+  swimlaneField: 'NONE' as const,
 }
 
 const boardSummaryFixture = {
@@ -123,6 +130,8 @@ describe('boardDetailSchema — 유효 픽스처 파싱', () => {
           name: '진행 중',
           category: 'IN_PROGRESS' as const,
           displayOrder: 2,
+          wipLimit: null,
+          wipExceeded: false,
           cards: [],
         },
         columnDone,
@@ -365,8 +374,14 @@ describe('boardCardSchema — priority 필드 파싱 (FR-BD-03 D4)', () => {
   })
 
   it('T-BD-11b: priority가 없으면 파싱을 거부한다', () => {
-    // cardWithAssignee에는 priority 없음 → 실패해야 함
-    const result = boardCardSchema.safeParse(cardWithAssignee)
+    // priority 필드를 명시적으로 제외한 카드 객체
+    const cardWithoutPriority: Record<string, unknown> = {
+      issueKey: ISSUE_KEY,
+      summary: '테스트 이슈',
+      assigneeId: ASSIGNEE_UUID,
+      version: 1,
+    }
+    const result = boardCardSchema.safeParse(cardWithoutPriority)
     expect(result.success).toBe(false)
   })
 
@@ -403,13 +418,31 @@ describe('boardColumnSchema — wipLimit/wipExceeded 파싱 (FR-BD-03 D4)', () =
   })
 
   it('T-BD-12c: wipLimit 누락 시 파싱을 거부한다', () => {
-    const col = { ...columnTodo, cards: [cardNoPriorityNull], wipExceeded: false }
+    // wipLimit 필드를 포함하지 않은 컬럼 객체를 직접 구성
+    const col: Record<string, unknown> = {
+      columnId: COLUMN_ID_TODO,
+      stateKey: 'todo',
+      name: '할 일',
+      category: 'TODO',
+      displayOrder: 1,
+      wipExceeded: false,
+      cards: [cardNoPriorityNull],
+    }
     const result = boardColumnSchema.safeParse(col)
     expect(result.success).toBe(false)
   })
 
   it('T-BD-12d: wipExceeded 누락 시 파싱을 거부한다', () => {
-    const col = { ...columnTodo, cards: [cardNoPriorityNull], wipLimit: null }
+    // wipExceeded 필드를 포함하지 않은 컬럼 객체를 직접 구성
+    const col: Record<string, unknown> = {
+      columnId: COLUMN_ID_TODO,
+      stateKey: 'todo',
+      name: '할 일',
+      category: 'TODO',
+      displayOrder: 1,
+      wipLimit: null,
+      cards: [cardNoPriorityNull],
+    }
     const result = boardColumnSchema.safeParse(col)
     expect(result.success).toBe(false)
   })
@@ -460,7 +493,15 @@ describe('boardDetailSchema — swimlaneField 파싱 (FR-BD-03 D4)', () => {
   })
 
   it('T-BD-13d: swimlaneField 누락 시 파싱을 거부한다', () => {
-    const board = { ...boardDetailFixture, columns: [columnWithWip] }
+    // swimlaneField 필드를 포함하지 않은 보드 객체를 직접 구성
+    const board: Record<string, unknown> = {
+      boardId: BOARD_ID,
+      projectKey: PROJECT_KEY,
+      name: 'ATLAS 보드',
+      columns: [columnWithWip],
+      truncated: false,
+      unplacedCount: 0,
+    }
     const result = boardDetailSchema.safeParse(board)
     expect(result.success).toBe(false)
   })

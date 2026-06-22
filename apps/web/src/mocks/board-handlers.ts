@@ -79,11 +79,12 @@ function toResponseDetail(stored: StoredBoardDetail, params: URLSearchParams): B
       ...col,
       cards: col.cards
         .filter((card) => matchesFilter(card, params))
-        .map(({ issueKey, summary, assigneeId, version }): BoardCard => ({
+        .map(({ issueKey, summary, assigneeId, version, priority }): BoardCard => ({
           issueKey,
           summary,
           assigneeId,
           version,
+          priority,
         })),
     })),
   }

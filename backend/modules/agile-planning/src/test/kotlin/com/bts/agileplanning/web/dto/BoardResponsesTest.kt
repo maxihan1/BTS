@@ -15,7 +15,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * BoardColumnWithCardsResponse.from + BoardDetailResponse.of DTO 변환 단위테스트.
+ * BoardColumnWithCardsResponse.from + BoardDetailResponse.of + BoardCardResponse.from DTO 변환 단위테스트.
  *
  * 외부 의존(DB, Spring, mock) 없이 순수 변환 로직만 검증한다.
  *
@@ -23,7 +23,8 @@ import java.util.UUID
  * - (a) wipLimit echo — placed.column.wipLimit 값 그대로 반영
  * - (b) wipExceeded 경계값 — 초과/미만/같음/null/카드0건 케이스
  * - (c) swimlaneField — board.swimlaneField.name 을 문자열로 노출
- * - (d) 기존 필드 보존 — 신규 필드 추가 후 기존 필드 비파괴 확인
+ * - (d) priority 노출 — BoardCardResponse.priority == BoardIssueView.priority (FR-BD-03 D6 스윔레인 근거)
+ * - (e) 기존 필드 보존 — 신규 필드 추가 후 기존 필드 비파괴 확인
  */
 class BoardResponsesTest {
     // --- 픽스처 헬퍼 ---

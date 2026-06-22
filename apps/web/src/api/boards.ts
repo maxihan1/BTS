@@ -40,6 +40,8 @@ export const boardCardSchema = z.object({
   assigneeId: z.string().uuid().nullable(),
   /** 낙관적 잠금(Optimistic Lock) 버전 번호 */
   version: z.number().int(),
+  /** 우선순위 정수. 값이 작을수록 우선순위 높음. 백엔드 FR-BD-03 D4 신호. */
+  priority: z.number().int(),
 })
 
 /**
@@ -50,7 +52,7 @@ const columnCategorySchema = z.enum(['TODO', 'IN_PROGRESS', 'DONE'])
 
 /**
  * 보드 컬럼 스키마.
- * 백엔드 `BoardColumnResponse` DTO 대응.
+ * 백엔드 `BoardColumnWithCardsResponse` DTO 대응.
  */
 export const boardColumnSchema = z.object({
   /** 컬럼 UUID */
@@ -65,7 +67,18 @@ export const boardColumnSchema = z.object({
   displayOrder: z.number().int(),
   /** 컬럼에 포함된 카드(이슈) 목록 */
   cards: z.array(boardCardSchema),
+  /** WIP 제한 수. null이면 무제한. 백엔드 FR-BD-03 D4 신호. */
+  wipLimit: z.number().int().nullable(),
+  /** 카드 수가 wipLimit을 초과(strictly greater)했는지 여부. 백엔드 FR-BD-03 D4 신호. */
+  wipExceeded: z.boolean(),
 })
+
+/**
+ * 스윔레인 필드 enum 스키마.
+ * 백엔드 `SwimlaneField` enum 대응.
+ * NONE=스윔레인 없음, ASSIGNEE=담당자별, PRIORITY=우선순위별.
+ */
+const swimlaneFieldSchema = z.enum(['NONE', 'ASSIGNEE', 'PRIORITY'])
 
 /**
  * 보드 상세 스키마.
@@ -84,6 +97,8 @@ export const boardDetailSchema = z.object({
   truncated: z.boolean(),
   /** 어떤 컬럼에도 배치되지 않은 이슈 수 */
   unplacedCount: z.number().int(),
+  /** 스윔레인 기준 필드. NONE=없음, ASSIGNEE=담당자별, PRIORITY=우선순위별. 백엔드 FR-BD-03 D4 신호. */
+  swimlaneField: swimlaneFieldSchema,
 })
 
 /**
