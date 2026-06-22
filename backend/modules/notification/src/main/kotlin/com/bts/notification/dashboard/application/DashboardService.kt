@@ -159,7 +159,14 @@ class DashboardService(
         val dashboard = repository.findById(id) ?: throw DashboardNotFoundException(id)
         requireOwner(actorId, dashboard)
 
+        // OCC 사전 검증 — 클라이언트 version 과 DB version 이 다르면 즉시 409
+        // repository.update() 의 WHERE version=? 와 이중 방어
+        if (dashboard.version != version) {
+            throw DashboardConflictException(id)
+        }
+
         // [C6] 도메인 applyPatch() -> 정규화 -> repository.update() 단일 경로
+        // applyPatch 는 내부에서 version+1 을 반환한다
         val patched =
             dashboard.applyPatch(
                 name = name,
@@ -170,24 +177,22 @@ class DashboardService(
                 now = clock.instant(),
             )
 
-        // OCC — DB 의 version 은 서비스가 받은 version 과 일치해야 함
-        // applyPatch 가 version+1 을 반환하므로 prevVersion = version
-        val patchedWithRequestedVersion = patched.copy(version = version + 1)
-        val affected = repository.update(patchedWithRequestedVersion)
+        // repository.update 는 WHERE version = patched.version - 1 조건으로 갱신
+        val affected = repository.update(patched)
         if (affected == 0) {
             throw DashboardConflictException(id)
         }
 
-        repository.replaceShares(id, patchedWithRequestedVersion.sharedUserIds)
+        repository.replaceShares(id, patched.sharedUserIds)
 
         log.info(
             "대시보드 수정 — id={}, actorId={}, version={}->{}",
             id,
             actorId,
             version,
-            patchedWithRequestedVersion.version,
+            patched.version,
         )
-        return patchedWithRequestedVersion
+        return patched
     }
 
     /**
