@@ -26,6 +26,12 @@ export interface WipCountBadgeProps {
   wipLimit: number | null
   /** WIP 초과 여부 (백엔드가 판정) */
   wipExceeded: boolean
+  /**
+   * 보드 필터 활성 여부.
+   * true이면 카드 수가 필터된 수이므로 WIP 초과 경고를 약화 + "(필터됨)" 표시.
+   * 이동/판정 로직에는 영향 없음 — 표시만 변경.
+   */
+  isFilterActive?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -37,9 +43,10 @@ export interface WipCountBadgeProps {
  *
  * - wipLimit=null → 단순 카드 수만 표시 (기존 동작 보존).
  * - wipLimit 있음·미초과 → "{count}/{limit}" 중립 배지.
- * - wipLimit 있음·초과 → "{count}/{limit}" amber 경고 배지 + aria-label.
+ * - wipLimit 있음·초과·isFilterActive=false → "{count}/{limit}" amber 경고 배지 + aria-label.
+ * - wipLimit 있음·초과·isFilterActive=true → 경고색 제거 + "(필터됨)" 라벨 (필터로 전체 수 알 수 없음 고지).
  */
-export function WipCountBadge({ count, wipLimit, wipExceeded }: WipCountBadgeProps) {
+export function WipCountBadge({ count, wipLimit, wipExceeded, isFilterActive = false }: WipCountBadgeProps) {
   if (wipLimit === null) {
     return (
       <span
@@ -53,7 +60,7 @@ export function WipCountBadge({ count, wipLimit, wipExceeded }: WipCountBadgePro
 
   const label = boardLabels.wip.countLabel(count, wipLimit)
 
-  if (wipExceeded) {
+  if (wipExceeded && !isFilterActive) {
     return (
       <span
         className={cn(BADGE_EXCEEDED)}
@@ -61,6 +68,18 @@ export function WipCountBadge({ count, wipLimit, wipExceeded }: WipCountBadgePro
         title={boardLabels.wip.exceededTooltip}
       >
         {label}
+      </span>
+    )
+  }
+
+  if (wipExceeded && isFilterActive) {
+    return (
+      <span
+        className={BADGE_NEUTRAL}
+        aria-label={boardLabels.wip.filteredAriaLabel}
+      >
+        {label}{' '}
+        <span className="text-muted-foreground">{boardLabels.wip.filteredSuffix}</span>
       </span>
     )
   }

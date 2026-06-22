@@ -465,6 +465,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
           board={boardDetail}
           assigneeNames={assigneeNames}
           filter={stableFilter}
+          isFilterActive={!isEmptyFilter(stableFilter)}
         />
       )}
     </div>

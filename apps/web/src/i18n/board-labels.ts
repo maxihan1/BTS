@@ -23,6 +23,12 @@ export const boardLabels = {
 
     /** WIP 초과 경고 툴팁/보조 텍스트 */
     exceededTooltip: 'WIP 제한을 초과했습니다',
+
+    /** 필터 활성 시 WIP 배지 "(필터됨)" 접미 라벨 */
+    filteredSuffix: '(필터됨)',
+
+    /** 필터 활성 시 WIP 배지 aria-label — 전체 WIP 상태 미반영 고지 */
+    filteredAriaLabel: '필터 적용 중, 전체 WIP 상태 아님',
   },
 
   /** 컬럼 헤더 일반 라벨 */

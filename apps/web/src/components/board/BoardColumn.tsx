@@ -31,6 +31,12 @@ export interface BoardColumnProps {
    * NONE=단일 목록, ASSIGNEE=담당자별 그룹, PRIORITY=우선순위별 그룹.
    */
   swimlaneField: SwimlaneField
+  /**
+   * 보드 필터 활성 여부 (FR-BD-03 hotfix-p2).
+   * true이면 WIP 초과 경고 약화 + "(필터됨)" 표시.
+   * WipCountBadge로 전달되며 이동/판정 로직에는 영향 없음.
+   */
+  isFilterActive?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -83,7 +89,7 @@ function SwimlaneSection({
 
 const UNASSIGNED: CardAssigneeDisplay = { state: 'unassigned' }
 
-function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField }: BoardColumnProps) {
+function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField, isFilterActive = false }: BoardColumnProps) {
   const { setNodeRef } = useDroppable({
     id: column.columnId,
     data: { category: column.category },
@@ -115,6 +121,7 @@ function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField
           count={cardCount}
           wipLimit={column.wipLimit}
           wipExceeded={column.wipExceeded}
+          isFilterActive={isFilterActive}
         />
       </div>
 
@@ -169,7 +176,8 @@ function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField
  *
  * - sticky 헤더에 이름·카테고리 배지·카드 수(WIP 제한 포함)를 표시한다.
  * - wipLimit이 있으면 "{count}/{limit}" 형식으로 표기한다.
- * - wipExceeded=true이면 amber 경고 톤 + aria-label "WIP 초과"를 적용한다.
+ * - wipExceeded=true·isFilterActive=false이면 amber 경고 톤 + aria-label "WIP 초과"를 적용한다.
+ * - wipExceeded=true·isFilterActive=true이면 경고를 약화하고 "(필터됨)" 라벨을 표시한다.
  * - `useDroppable`로 드롭 영역을 제공한다. 빈 컬럼에도 드롭 가능.
  * - 카드가 없으면 흐린 "카드 없음" placeholder를 표시한다.
  * - `isOver=true`이면 ring-2 하이라이트를 적용한다.
