@@ -136,26 +136,29 @@ data class BoardSummaryResponse(
 /**
  * 보드 카드(이슈) 응답 DTO.
  *
- * NIT(sec NIT-1): `priority` 는 컬럼 내 정렬 내부용이므로 응답에서 제외한다(spec 응답 필드 정합).
+ * priority 는 PRIORITY 스윔레인(FR-BD-03 D6) 그룹화 근거로 재노출 — Maxi 확정.
  *
  * @property issueKey 이슈 키. 예: `"BTS-1"`.
  * @property summary 이슈 제목.
  * @property assigneeId 담당자 UUID. 미배정이면 null.
+ * @property priority 우선순위 값. 숫자 작을수록 높은 우선순위(BoardIssueLookupPort 정합).
  * @property version 낙관적 락(OCC) 버전. 카드 이동 시 expectedVersion 으로 사용.
  */
 data class BoardCardResponse(
     val issueKey: String,
     val summary: String,
     val assigneeId: UUID?,
+    val priority: Int,
     val version: Long,
 ) {
     companion object {
-        /** cross-BC [BoardIssueView] 를 [BoardCardResponse] 로 변환한다(priority 제외). */
+        /** cross-BC [BoardIssueView] 를 [BoardCardResponse] 로 변환한다. */
         fun from(card: BoardIssueView): BoardCardResponse =
             BoardCardResponse(
                 issueKey = card.key,
                 summary = card.summary,
                 assigneeId = card.assigneeId,
+                priority = card.priority,
                 version = card.version,
             )
     }

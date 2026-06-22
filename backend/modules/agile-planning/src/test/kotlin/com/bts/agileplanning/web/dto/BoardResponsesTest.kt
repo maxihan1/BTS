@@ -173,28 +173,30 @@ class BoardResponsesTest {
 
         @Test
         fun `priority 0 인 카드는 응답 priority 도 0 이다`() {
-            val view = BoardIssueView(
-                key = "PROJ-2",
-                summary = "우선순위 최상",
-                currentStateKey = "open",
-                assigneeId = null,
-                priority = 0,
-                version = 0L,
-            )
+            val view =
+                BoardIssueView(
+                    key = "PROJ-2",
+                    summary = "우선순위 최상",
+                    currentStateKey = "open",
+                    assigneeId = null,
+                    priority = 0,
+                    version = 0L,
+                )
             val response = BoardCardResponse.from(view)
             assertThat(response.priority).isEqualTo(0)
         }
 
         @Test
         fun `priority 99 인 카드는 응답 priority 도 99 이다`() {
-            val view = BoardIssueView(
-                key = "PROJ-3",
-                summary = "우선순위 최하",
-                currentStateKey = "open",
-                assigneeId = null,
-                priority = 99,
-                version = 0L,
-            )
+            val view =
+                BoardIssueView(
+                    key = "PROJ-3",
+                    summary = "우선순위 최하",
+                    currentStateKey = "open",
+                    assigneeId = null,
+                    priority = 99,
+                    version = 0L,
+                )
             val response = BoardCardResponse.from(view)
             assertThat(response.priority).isEqualTo(99)
         }
