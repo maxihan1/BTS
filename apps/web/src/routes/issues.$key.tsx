@@ -719,10 +719,12 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
       {/* 작업 기록 섹션 — 2단 grid 바깥 전체폭 (FR-TT-01 D6) */}
       <WorklogSection issueKey={issue.key} canUpdate={canEdit} />
 
-      {/* 이슈 링크 패널 — 2단 grid 바깥 전체폭, 변경 이력 상단 (FR-LK-01 D6) */}
+      {/* 이슈 링크 패널 — 2단 grid 바깥 전체폭, 변경 이력 상단 (FR-LK-01 D6 / FR-EP-01 D6) */}
       <IssueLinksPanel
         issueKey={issue.key}
         parent={issue.parent ?? null}
+        epic={issue.epic ?? null}
+        showEpicSection={issue.typeKey !== 'epic' && issue.typeKey !== 'subtask'}
         disabled={!canEdit}
       />
 
