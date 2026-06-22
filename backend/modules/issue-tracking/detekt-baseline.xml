@@ -12,7 +12,7 @@
     <ID>MaxLineLength:IssueCustomFieldsTest.kt$IssueCustomFieldsTest$permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))</ID>
     <ID>MaxLineLength:IssueCustomFieldsTest.kt$IssueCustomFieldsTest$permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))</ID>
     <ID>MaxLineLength:IssueFieldVisibilityTest.kt$IssueFieldVisibilityTest$every { permissionResolver.hasPermission(actorId, IssuePermission.VIEW, IssueScope.Issue(issueKey.value)) } returns true</ID>
-    <ID>MaxLineLength:IssueTest.kt$// Issue Aggregate Root 단위 테스트 — factory, invariants, version, deletedAt, typeId 필수, 5필드 불변식, assigneeId, componentIds, affectsVersionIds, fixVersionIds</ID>
+    <ID>MaxLineLength:IssueTest.kt$// Issue Aggregate Root 단위 테스트 — factory, invariants, version, deletedAt, typeId 필수, 5필드 불변식, assigneeId, componentIds, affectsVersionIds, fixVersionIds, epicId</ID>
     <ID>NestedBlockDepth:CustomFieldsMigrationTest.kt$CustomFieldsMigrationTest$private fun indexUsesGin(indexName: String): Boolean</ID>
     <ID>NestedBlockDepth:V007MigrationIntegrationTest.kt$V007MigrationIntegrationTest$private fun columnInfo( tableName: String, columnName: String, ): Pair&lt;String?, String?&gt;</ID>
     <ID>ThrowsCount:CustomFieldValueValidator.kt$CustomFieldValueValidator$private fun validateMultiSelect( key: String, value: Any, options: List&lt;CustomFieldOption&gt;, )</ID>

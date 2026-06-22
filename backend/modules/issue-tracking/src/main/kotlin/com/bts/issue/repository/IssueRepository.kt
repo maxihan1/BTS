@@ -484,8 +484,8 @@ class IssueRepository(
     }
 
     /**
-     * 활성 이슈를 key 로 조회하고, issue_types 와 1:1 JOIN, 부모 이슈와 self LEFT JOIN 하여
-     * type 요약과 부모 요약을 포함한 [IssueResponse] 를 반환한다.
+     * 활성 이슈를 key 로 조회하고, issue_types 와 1:1 JOIN, 부모/에픽 이슈와 self LEFT JOIN 하여
+     * type 요약·부모 요약·에픽 요약을 포함한 [IssueResponse] 를 반환한다.
      *
      * issues.type_id = issue_types.id 단건 JOIN — cartesian product 위험 없음 (learnings PR#31).
      *
@@ -495,18 +495,31 @@ class IssueRepository(
      * - parent_id 가 null 이면 LEFT JOIN 결과가 모두 null → [IssueResponse.parent] = null.
      * - parent 컬럼은 [PARENT_KEY_ALIAS] / [PARENT_SUMMARY_ALIAS] 로 명시 alias 해 record 에서 읽는다.
      *
-     * **parent 는 단건 조회([findByKeyWithType]) 경로에서만 채워진다.**
-     * 목록 경로([listWithType])는 N+1/비용 회피를 위해 조인 없이 parent=null 반환한다. FR-LK-01 Task 1.
+     * 에픽 이슈 self LEFT JOIN (FR-EP-01 Task 4).
+     * - [EPIC_ALIAS] (`issues AS epic`) 로 issues 테이블 자기참조. parent alias 와 동형 구조.
+     * - JOIN ON `issues.epic_id = epic.id AND epic.deleted_at IS NULL`.
+     * - epic_id 가 null 이거나 에픽이 소프트삭제됐으면 LEFT JOIN 결과가 모두 null → [IssueResponse.epic] = null.
+     * - 보안 등급 필터 적용 안 함 — parent self-join 동형, 의도적 결정 (FR-EP-01 명세).
+     * - epic 컬럼은 [EPIC_KEY_ALIAS] / [EPIC_SUMMARY_ALIAS] 로 명시 alias 해 record 에서 읽는다.
+     *
+     * **parent/epic 는 단건 조회([findByKeyWithType]) 경로에서만 채워진다.**
+     * 목록 경로([listWithType])는 N+1/비용 회피를 위해 조인 없이 parent=null, epic=null 반환한다.
+     * FR-LK-01 Task 1, FR-EP-01 Task 4.
      *
      * @param key 조회할 이슈 키.
-     * @return type 요약(typeId/typeKey/typeName) + 부모 요약(key/summary) 이 포함된 [IssueResponse].
+     * @return type 요약(typeId/typeKey/typeName) + 부모 요약(key/summary) + 에픽 요약(key/summary) 이 포함된 [IssueResponse].
      *   이슈가 없으면 null.
      */
     @Transactional(readOnly = true)
-    @Suppress("CyclomaticComplexity") // 명시 alias + LEFT JOIN + null 분기 불가피
+    @Suppress(
+        "CyclomaticComplexity", // 명시 alias + LEFT JOIN × 2 + null 분기 불가피
+        "LongMethod", // parent + epic 두 self-JOIN 결과 추출 분기가 불가피하게 메서드를 길게 만든다
+    )
     fun findByKeyWithType(key: IssueKey): IssueResponse? {
         // issues self LEFT JOIN — 부모 이슈 key/summary 조회. PARENT_ALIAS 로 컬럼 충돌 차단.
         val parentAlias = ISSUES.`as`(PARENT_ALIAS)
+        // issues self LEFT JOIN — 에픽 이슈 key/summary 조회. EPIC_ALIAS 로 컬럼 충돌 차단. FR-EP-01 Task 4.
+        val epicAlias = ISSUES.`as`(EPIC_ALIAS)
         return dsl.select(
             ISSUES.fields().toList() +
                 listOf(
@@ -515,6 +528,8 @@ class IssueRepository(
                     ISSUE_TYPES.NAME.`as`(TYPE_NAME_ALIAS),
                     parentAlias.KEY.`as`(PARENT_KEY_ALIAS),
                     parentAlias.SUMMARY.`as`(PARENT_SUMMARY_ALIAS),
+                    epicAlias.KEY.`as`(EPIC_KEY_ALIAS),
+                    epicAlias.SUMMARY.`as`(EPIC_SUMMARY_ALIAS),
                 ),
         )
             .from(ISSUES)
@@ -522,6 +537,10 @@ class IssueRepository(
             .leftJoin(parentAlias).on(
                 ISSUES.PARENT_ID.eq(parentAlias.ID)
                     .and(parentAlias.DELETED_AT.isNull),
+            )
+            .leftJoin(epicAlias).on(
+                ISSUES.EPIC_ID.eq(epicAlias.ID)
+                    .and(epicAlias.DELETED_AT.isNull),
             )
             .where(activeByKey(key))
             .fetchOne()
@@ -532,6 +551,14 @@ class IssueRepository(
                 val parentSummaryDto =
                     if (parentKey != null && parentSummary != null) {
                         IssueResponse.ParentSummary(key = parentKey, summary = parentSummary)
+                    } else {
+                        null
+                    }
+                val epicKey = record.get(EPIC_KEY_ALIAS, String::class.java)
+                val epicSummary = record.get(EPIC_SUMMARY_ALIAS, String::class.java)
+                val epicSummaryDto =
+                    if (epicKey != null && epicSummary != null) {
+                        IssueResponse.EpicSummary(key = epicKey, summary = epicSummary)
                     } else {
                         null
                     }
@@ -551,6 +578,7 @@ class IssueRepository(
                                     ?: error("issue_types.name must not be null in join result"),
                         ),
                     parent = parentSummaryDto,
+                    epic = epicSummaryDto,
                 )
             }
     }
@@ -889,6 +917,19 @@ class IssueRepository(
 
         /** 부모 이슈 summary 결과 컬럼 alias. */
         private const val PARENT_SUMMARY_ALIAS = "parent_summary"
+
+        // ── findByKeyWithType epic self LEFT JOIN alias 상수 ────────────────────
+        // ISSUES.as(EPIC_ALIAS) 로 생성된 alias 테이블을 통해 에픽 이슈 self 참조.
+        // parent alias 와 동형 구조 — 컬럼명 충돌 차단을 위해 "epic_" prefix 를 사용.
+
+        /** issues self JOIN 에서 에픽 이슈를 참조하는 테이블 alias (FR-EP-01 Task 4). */
+        private const val EPIC_ALIAS = "epic"
+
+        /** 에픽 이슈 key 결과 컬럼 alias. */
+        private const val EPIC_KEY_ALIAS = "epic_key"
+
+        /** 에픽 이슈 summary 결과 컬럼 alias. */
+        private const val EPIC_SUMMARY_ALIAS = "epic_summary"
     }
 
     /**
@@ -1321,6 +1362,62 @@ class IssueRepository(
             .set(ISSUES.PARENT_ID, parentId)
             .where(ISSUES.ID.eq(issueId))
             .execute()
+    }
+
+    /**
+     * 이슈의 소속 에픽을 설정하거나 해제한다 (FR-EP-01 Task 4).
+     *
+     * `UPDATE issues SET epic_id = ? WHERE id = ?` — version·updated_at 변경 없음.
+     * [updateParent] 와 동형 구조.
+     *
+     * @param childId 소속 에픽을 변경할 이슈 UUID.
+     * @param epicId 지정할 에픽 이슈 UUID. null 이면 에픽 연결 해제.
+     */
+    @Transactional
+    fun updateEpic(
+        childId: UUID,
+        epicId: UUID?,
+    ) {
+        log.debug("updateEpic childId={} epicId={}", childId, epicId)
+        dsl.update(ISSUES)
+            .set(ISSUES.EPIC_ID, epicId)
+            .where(ISSUES.ID.eq(childId))
+            .execute()
+    }
+
+    /**
+     * 에픽에 속한 활성 자식 이슈를 보안 등급 필터와 함께 조회한다 (FR-EP-01 Task 4).
+     *
+     * [buildActiveSecureWhere] 보안 술어를 재사용하여 보안 등급이 허가되지 않은 자식을
+     * SQL WHERE 단계에서 푸시다운 제거한다. 단건위임/N+1 없이 단일 쿼리로 처리한다.
+     *
+     * 보안 핵심 (security 리뷰 C1):
+     * - accessibleLevels(보안등급)만 SQL로 거른다.
+     * - VIEW_ISSUE 매트릭스 검사는 Service(Task5)의 BROWSE 진입 게이트 책임이다.
+     *
+     * @param epicId 에픽 이슈 UUID.
+     * @param actor 조회 행위자 UUID. 보안 등급 필터의 reporter/assignee 동적 조건에 사용.
+     * @param access actor 가 접근 가능한 보안 등급 집합.
+     * @param projectKey 에픽이 속한 프로젝트 접두사. 예: `"BTS"`. PROJECTS JOIN 필수.
+     * @return 에픽에 속한 활성 이슈 목록. created_at 오름차순 정렬(안정 정렬).
+     */
+    @Transactional(readOnly = true)
+    fun findEpicChildren(
+        epicId: UUID,
+        actor: UUID,
+        access: IssueSecurityAccess,
+        projectKey: String,
+    ): List<Issue> {
+        log.debug("findEpicChildren epicId={} projectKey={}", epicId, projectKey)
+        val where =
+            buildActiveSecureWhere(projectKey, actor, access)
+                .and(ISSUES.EPIC_ID.eq(epicId))
+        return dsl.select(ISSUES.fields().toList())
+            .from(ISSUES)
+            .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+            .where(where)
+            .orderBy(ISSUES.CREATED_AT.asc())
+            .fetch { it.into(ISSUES).toIssue() }
     }
 
     /**
@@ -1814,6 +1911,8 @@ private fun IssuesRecord.toIssue(): Issue {
         resolutionId = resolutionId,
         securityLevelId = securityLevelId,
         customFields = customFields.toCustomFieldsMap(),
+        // epic_id 컬럼 매핑 — null = 에픽 미연결 (FR-EP-01, V028)
+        epicId = epicId,
         // parent_id 컬럼 매핑 — null = 최상위 이슈 (FR-LK-01, V021)
         parentId = parentId,
         // 일정 필드 3컬럼 — null = 미지정 (FR-PL-01, V025)

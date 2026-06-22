@@ -1,4 +1,4 @@
-// IssueRepository Epic 메서드 통합 테스트 — updateEpic / findByKeyWithType epic / findByKey epicId / findEpicChildren (FR-EP-01 Task 4)
+// IssueRepository Epic 메서드 통합 테스트 — updateEpic / findByKeyWithType epic / findEpicChildren (FR-EP-01 Task 4)
 
 package com.bts.issue.repository
 
@@ -34,7 +34,6 @@ import java.util.UUID
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class IssueRepositoryEpicIntegrationTest : IssueTestcontainersBase() {
-
     /** V003 seed task 타입 id — value class 는 lateinit 불가 → nullable var. */
     private var taskTypeId: IssueTypeId? = null
 
@@ -52,8 +51,7 @@ class IssueRepositoryEpicIntegrationTest : IssueTestcontainersBase() {
         }
     }
 
-    private fun requireTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 미초기화 — resolveTaskTypeId 확인" }
+    private fun requireTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 미초기화 — resolveTaskTypeId 확인" }
 
     /**
      * 테스트용 이슈를 생성·삽입하고 DB 반환값을 돌려준다.
@@ -294,11 +292,12 @@ class IssueRepositoryEpicIntegrationTest : IssueTestcontainersBase() {
 
         repository.updateEpic(childId = c1.id.value, epicId = epic.id.value)
 
+        // restrictedAccess() — 허가 등급 없음(staticLevelIds 비어있음)
         val children =
             repository.findEpicChildren(
                 epicId = epic.id.value,
                 actor = UUID.randomUUID(),
-                access = restrictedAccess(), // 허가 등급 없음
+                access = restrictedAccess(),
                 projectKey = "TPRJ",
             )
 
