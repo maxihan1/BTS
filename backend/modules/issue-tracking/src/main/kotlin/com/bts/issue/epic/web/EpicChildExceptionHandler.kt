@@ -88,9 +88,12 @@ class EpicChildExceptionHandler {
      * - [MethodArgumentTypeMismatchException] — 경로 변수 타입 불일치.
      * - [HttpMessageNotReadableException] — 요청 본문 역직렬화 실패.
      * - [MethodArgumentNotValidException] — Bean Validation(@field:NotBlank 등) 실패.
+     * - [IllegalArgumentException] — 경로/본문의 이슈 키 형식 위반
+     *   ([com.bts.issue.domain.IssueKey] init 블록의 require() 가 throw).
      *
-     * 세 예외 모두 클라이언트 입력 오류이므로 동일한 400 응답을 반환한다.
+     * 네 예외 모두 클라이언트 입력 오류이므로 동일한 400 응답을 반환한다.
      * 예외 종류는 로그에만 기록하며 응답 detail 에는 일반 메시지를 사용한다.
+     * 원본 예외 message 에 사용자 입력이 포함될 수 있으므로 응답에 노출하지 않는다.
      *
      * @param ex 클라이언트 입력 오류 예외.
      */
@@ -98,6 +101,7 @@ class EpicChildExceptionHandler {
         MethodArgumentTypeMismatchException::class,
         HttpMessageNotReadableException::class,
         MethodArgumentNotValidException::class,
+        IllegalArgumentException::class,
     )
     fun handleClientInputError(ex: Exception): ProblemDetail {
         log.info("EPIC_400 client_input_error type='{}' message='{}'", ex.javaClass.simpleName, ex.message)
