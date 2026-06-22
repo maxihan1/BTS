@@ -1,4 +1,4 @@
-// BoardController MockMvc HTTP 통합 테스트 — 보드 REST API 권한 게이트 + 에러 매핑 (FR-BD-01 Task 9)
+// BoardController MockMvc HTTP 통합 테스트 — 보드 REST API 권한 게이트 + 에러 매핑 (FR-BD-01 Task 9, FR-BD-03 Task 5)
 
 package com.bts.agileplanning.web
 
@@ -36,6 +36,7 @@ import org.springframework.test.context.junit.jupiter.SpringExtension
 import org.springframework.test.context.web.WebAppConfiguration
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -71,6 +72,16 @@ import java.util.UUID
  * - MOVE-4. POST move 보드-이슈 정합 위반(서비스 400) → 400
  * - MOVE-5. POST move body 손상 → 400 (catch-all 이 500 으로 삼키지 않음)
  * - ORDER-1. 권한 거부 시 서비스(리소스 조회)가 호출되지 않는다(존재 probe 차단)
+ * - WIP-S1. PATCH /boards/{id}/columns/{columnId} {wipLimit:5} → 200 + wipLimit=5. GET 영속 확인.
+ * - WIP-S2. wipLimit=3 컬럼 + 카드 5건 → GET 응답 wipExceeded=true.
+ * - WIP-S3. {wipLimit:null} → 200 + wipLimit 해제.
+ * - WIP-S4. PATCH /boards/{id} {swimlaneField:"ASSIGNEE"} → 200 + GET swimlaneField="ASSIGNEE" echo.
+ * - WIP-E1. {wipLimit:0} → 400, {wipLimit:-1} → 400.
+ * - WIP-E3. {swimlaneField:"EPIC"} 또는 {swimlaneField:"foo"} → 400.
+ * - WIP-E4. 타 보드 소속 columnId로 wipLimit PATCH → 404.
+ * - WIP-E5. 미존재 boardId로 두 PATCH → 404.
+ * - WIP-E6. CREATE 권한 미충족 → 403 (실제 403 단언, vacuous 금지).
+ * - WIP-E7. 미인증 → 401.
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [BoardControllerIntegrationTest.TestMvcConfig::class])
@@ -660,5 +671,358 @@ class BoardControllerIntegrationTest {
                 .accept(MediaType.APPLICATION_JSON),
         ).andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
+    }
+
+    // ── WIP-S1. PATCH columns wipLimit=5 → 200, GET 영속 확인 ─────────────────
+
+    @Test
+    fun `WIP-S1 PATCH wipLimit=5 이면 200 + 응답 wipLimit=5, 이후 GET에서도 반영된다`() {
+        val board = sampleBoard()
+        val col = board.columns[1]
+        val updatedCol = col.copy(wipLimit = 5)
+        val updatedBoard = board.copy(columns = listOf(board.columns[0], updatedCol, board.columns[2]))
+
+        every { boardRepository.findById(board.id) } returns board
+        every {
+            boardApplicationService.updateColumnWipLimit(board.id, col.id, 5)
+        } returns updatedCol
+
+        val body = mapOf("wipLimit" to 5)
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}/columns/${col.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.columnId").value(col.id.toString()))
+            .andExpect(jsonPath("$.data.wipLimit").value(5))
+
+        // CREATE 권한으로 판정됐는지 확인
+        assertThat(permissionGate.calls)
+            .containsExactly(Triple(actorId, IssuePermission.CREATE, IssueScope.Project("BTS")))
+
+        // GET에서도 반영 확인 — GET은 별도 stub 경로
+        every { boardApplicationService.getBoard(board.id, actorId, BoardCardFilter.EMPTY) } returns
+            BoardPlacementResult(
+                columns = updatedBoard.columns.map { PlacedColumn(it, emptyList()) },
+                truncated = false,
+                unplacedCount = 0,
+            )
+        every { boardRepository.findById(board.id) } returns updatedBoard
+
+        mockMvc.perform(get("/api/v1/boards/${board.id}").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.columns[1].wipLimit").value(5))
+    }
+
+    // ── WIP-S2. wipLimit=3, 카드 5건 → wipExceeded=true ──────────────────────
+
+    @Test
+    fun `WIP-S2 wipLimit=3인 컬럼에 카드 5건이면 GET 응답 wipExceeded=true`() {
+        val board =
+            Board(
+                id = UUID.randomUUID(),
+                projectKey = "BTS",
+                name = "BTS 보드",
+                columns =
+                    listOf(
+                        BoardColumn(UUID.randomUUID(), "open", "열림", "TODO", 0),
+                        BoardColumn(UUID.randomUUID(), "in-progress", "진행 중", "IN_PROGRESS", 1, wipLimit = 3),
+                        BoardColumn(UUID.randomUUID(), "closed", "완료", "DONE", 2),
+                    ),
+                createdAt = Instant.parse("2026-06-22T00:00:00Z"),
+                updatedAt = Instant.parse("2026-06-22T00:00:00Z"),
+            )
+        val cards =
+            (1..5).map { i ->
+                BoardIssueView(
+                    key = "BTS-$i",
+                    summary = "이슈 $i",
+                    currentStateKey = "in-progress",
+                    assigneeId = null,
+                    priority = i,
+                    version = 1L,
+                )
+            }
+
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.getBoard(board.id, actorId, BoardCardFilter.EMPTY) } returns
+            BoardPlacementResult(
+                columns =
+                    listOf(
+                        PlacedColumn(board.columns[0], emptyList()),
+                        PlacedColumn(board.columns[1], cards),
+                        PlacedColumn(board.columns[2], emptyList()),
+                    ),
+                truncated = false,
+                unplacedCount = 0,
+            )
+
+        mockMvc.perform(get("/api/v1/boards/${board.id}").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.columns[1].wipLimit").value(3))
+            .andExpect(jsonPath("$.data.columns[1].wipExceeded").value(true))
+    }
+
+    // ── WIP-S3. {wipLimit:null} → 200 + 해제 ─────────────────────────────────
+
+    @Test
+    fun `WIP-S3 wipLimit=null 이면 200 + wipLimit 해제`() {
+        val board = sampleBoard()
+        val col = board.columns[0].copy(wipLimit = 3)
+        val boardWithWip = board.copy(columns = listOf(col, board.columns[1], board.columns[2]))
+        val releasedCol = col.copy(wipLimit = null)
+
+        every { boardRepository.findById(boardWithWip.id) } returns boardWithWip
+        every {
+            boardApplicationService.updateColumnWipLimit(boardWithWip.id, col.id, null)
+        } returns releasedCol
+
+        val body = mapOf("wipLimit" to null)
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${boardWithWip.id}/columns/${col.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.wipLimit").doesNotExist())
+    }
+
+    // ── WIP-S4. PATCH swimlaneField=ASSIGNEE → 200 + echo ────────────────────
+
+    @Test
+    fun `WIP-S4 PATCH swimlaneField=ASSIGNEE 이면 200 + GET 응답에서 swimlaneField=ASSIGNEE 가 반환된다`() {
+        val board = sampleBoard()
+        val updatedBoard =
+            board.copy(swimlaneField = com.bts.agileplanning.domain.SwimlaneField.ASSIGNEE)
+
+        every { boardRepository.findById(board.id) } returns board
+        every {
+            boardApplicationService.updateSwimlaneField(board.id, "ASSIGNEE")
+        } returns updatedBoard
+
+        val body = mapOf("swimlaneField" to "ASSIGNEE")
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.boardId").value(board.id.toString()))
+            .andExpect(jsonPath("$.data.swimlaneField").value("ASSIGNEE"))
+
+        // CREATE 권한으로 판정됐는지 확인
+        assertThat(permissionGate.calls)
+            .containsExactly(Triple(actorId, IssuePermission.CREATE, IssueScope.Project("BTS")))
+    }
+
+    // ── WIP-E1. {wipLimit:0} → 400, {wipLimit:-1} → 400 ─────────────────────
+
+    @Test
+    fun `WIP-E1 wipLimit=0 이면 400`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+
+        val body = mapOf("wipLimit" to 0)
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}/columns/${board.columns[0].id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
+    }
+
+    @Test
+    fun `WIP-E1 wipLimit=-1 이면 400`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+
+        val body = mapOf("wipLimit" to -1)
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}/columns/${board.columns[0].id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
+    }
+
+    // ── WIP-E3. 유효하지 않은 swimlaneField → 400 ────────────────────────────
+
+    @Test
+    fun `WIP-E3 swimlaneField=EPIC 이면 400`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+
+        val body = mapOf("swimlaneField" to "EPIC")
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+
+        verify(exactly = 0) { boardApplicationService.updateSwimlaneField(any(), any()) }
+    }
+
+    @Test
+    fun `WIP-E3 swimlaneField=foo 이면 400`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+
+        val body = mapOf("swimlaneField" to "foo")
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+
+        verify(exactly = 0) { boardApplicationService.updateSwimlaneField(any(), any()) }
+    }
+
+    // ── WIP-E4. 타 보드 소속 columnId → 404 ──────────────────────────────────
+
+    @Test
+    fun `WIP-E4 타 보드 소속 columnId로 wipLimit PATCH 이면 404`() {
+        val board = sampleBoard()
+        val otherColumnId = UUID.randomUUID()
+
+        every { boardRepository.findById(board.id) } returns board
+        every {
+            boardApplicationService.updateColumnWipLimit(board.id, otherColumnId, 3)
+        } throws ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "column not found")
+
+        val body = mapOf("wipLimit" to 3)
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}/columns/$otherColumnId")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_BOARD_NOT_FOUND"))
+    }
+
+    // ── WIP-E5. 미존재 boardId → 404 ─────────────────────────────────────────
+
+    @Test
+    fun `WIP-E5 미존재 boardId로 wipLimit PATCH 이면 404`() {
+        val boardId = UUID.randomUUID()
+        val columnId = UUID.randomUUID()
+        every { boardRepository.findById(boardId) } returns null
+
+        val body = mapOf("wipLimit" to 3)
+
+        mockMvc.perform(
+            patch("/api/v1/boards/$boardId/columns/$columnId")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_BOARD_NOT_FOUND"))
+    }
+
+    @Test
+    fun `WIP-E5 미존재 boardId로 swimlaneField PATCH 이면 404`() {
+        val boardId = UUID.randomUUID()
+        every { boardRepository.findById(boardId) } returns null
+
+        val body = mapOf("swimlaneField" to "ASSIGNEE")
+
+        mockMvc.perform(
+            patch("/api/v1/boards/$boardId")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_BOARD_NOT_FOUND"))
+    }
+
+    // ── WIP-E6. CREATE 권한 미충족 → 403 (실제 status 단언, vacuous 금지) ────────
+
+    @Test
+    fun `WIP-E6 CREATE 권한 없으면 wipLimit PATCH 시 403 반환되고 서비스 미호출`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        // 권한 stub 을 false 로 명시 설정
+        permissionGate.allowAll = false
+
+        val body = mapOf("wipLimit" to 5)
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}/columns/${board.columns[0].id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            // 실제 403 응답을 단언 (vacuous 금지)
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_ACCESS_DENIED"))
+
+        // 권한 거부 시 서비스가 호출되지 않아야 한다
+        verify(exactly = 0) { boardApplicationService.updateColumnWipLimit(any(), any(), any()) }
+    }
+
+    @Test
+    fun `WIP-E6 CREATE 권한 없으면 swimlaneField PATCH 시 403 반환되고 서비스 미호출`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        // 권한 stub 을 false 로 명시 설정
+        permissionGate.allowAll = false
+
+        val body = mapOf("swimlaneField" to "ASSIGNEE")
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            // 실제 403 응답을 단언 (vacuous 금지)
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_ACCESS_DENIED"))
+
+        verify(exactly = 0) { boardApplicationService.updateSwimlaneField(any(), any()) }
+    }
+
+    // ── WIP-E7. 미인증 → 401 ─────────────────────────────────────────────────
+
+    @Test
+    fun `WIP-E7 미인증이면 wipLimit PATCH 시 401`() {
+        SecurityContextHolder.clearContext()
+        val board = sampleBoard()
+
+        val body = mapOf("wipLimit" to 5)
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}/columns/${board.columns[0].id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_UNAUTHENTICATED"))
+    }
+
+    @Test
+    fun `WIP-E7 미인증이면 swimlaneField PATCH 시 401`() {
+        SecurityContextHolder.clearContext()
+        val board = sampleBoard()
+
+        val body = mapOf("swimlaneField" to "ASSIGNEE")
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_UNAUTHENTICATED"))
     }
 }
