@@ -1,4 +1,4 @@
-// 칸반 보드 라우트 페이지 단위 테스트 — BoardPage 렌더 시나리오 (FR-BD-01 Task 7 + FR-BD-02 Task 6)
+// 칸반 보드 라우트 페이지 단위 테스트 — BoardPage 렌더 시나리오 (FR-BD-01 Task 7 + FR-BD-02 Task 6 + FR-BD-03 Task 6)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -93,6 +93,38 @@ vi.mock('@/hooks/use-boards', () => ({
 const mockFetchUsers = vi.fn()
 vi.mock('@/api/users', () => ({
   fetchUsers: () => mockFetchUsers(),
+}))
+
+// use-update-swimlane mock
+const mockUpdateSwimlaneMutate = vi.fn()
+const mockUseUpdateSwimlane = vi.fn()
+vi.mock('@/hooks/use-update-swimlane', () => ({
+  useUpdateSwimlane: (boardId: string) => mockUseUpdateSwimlane(boardId),
+}))
+
+// use-project-permissions mock
+const mockUseProjectPermissions = vi.fn()
+vi.mock('@/hooks/use-project-permissions', () => ({
+  useProjectPermissions: (projectKey: string) => mockUseProjectPermissions(projectKey),
+}))
+
+// SwimlaneSelector mock — 테스트에서 onChange를 직접 호출할 수 있도록 캡처
+let capturedSwimlaneSelectorOnChange: ((field: string) => void) | null = null
+vi.mock('@/components/board/SwimlaneSelector', () => ({
+  SwimlaneSelector: ({
+    value,
+    onChange,
+  }: {
+    value: string
+    onChange: (field: string) => void
+  }) => {
+    capturedSwimlaneSelectorOnChange = onChange
+    return (
+      <div data-testid="swimlane-selector" data-value={value}>
+        SwimlaneSelector
+      </div>
+    )
+  },
 }))
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -201,14 +233,21 @@ describe('BoardPage', () => {
     mockKanbanBoardProps.length = 0
     mockUseBoardCalls.length = 0
     capturedFilterBarOnChange = null
+    capturedSwimlaneSelectorOnChange = null
     mockFetchUsers.mockResolvedValue(USERS)
     mockUseBoard.mockReturnValue({ data: undefined, isLoading: false })
+    mockUseUpdateSwimlane.mockReturnValue({ mutate: mockUpdateSwimlaneMutate, isPending: false })
+    mockUseProjectPermissions.mockReturnValue({
+      data: { projectKey: 'ATLAS', permissions: { CREATE: true, MANAGE_COMPONENTS: false, MANAGE_VERSIONS: false, MANAGE_CUSTOM_FIELDS: false, MANAGE_FIELD_PERMISSIONS: false, MANAGE_TEMPLATES: false } },
+      isLoading: false,
+    })
   })
 
   afterEach(() => {
     vi.clearAllMocks()
     mockKanbanBoardProps.length = 0
     mockUseBoardCalls.length = 0
+    capturedSwimlaneSelectorOnChange = null
   })
 
   /**
@@ -607,6 +646,140 @@ describe('BoardPage', () => {
     expect(callArg?.search).not.toHaveProperty('label')
     expect(callArg?.search).not.toHaveProperty('component')
   })
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Task 6 — 스윔레인 셀렉터 + CREATE 권한 게이팅 (FR-BD-03)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * S6 — CREATE 권한 있으면 SwimlaneSelector가 렌더된다.
+   */
+  it('S6-A: CREATE 권한이 있으면 SwimlaneSelector가 보드 상세 있을 때 렌더된다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+    mockUseProjectPermissions.mockReturnValue({
+      data: {
+        projectKey: 'ATLAS',
+        permissions: {
+          CREATE: true,
+          MANAGE_COMPONENTS: false,
+          MANAGE_VERSIONS: false,
+          MANAGE_CUSTOM_FIELDS: false,
+          MANAGE_FIELD_PERMISSIONS: false,
+          MANAGE_TEMPLATES: false,
+        },
+      },
+      isLoading: false,
+    })
+
+    await renderBoardPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('swimlane-selector')).toBeInTheDocument()
+    })
+  })
+
+  /**
+   * S6 — CREATE 권한 없으면 SwimlaneSelector가 렌더되지 않는다.
+   */
+  it('S6-B: CREATE 권한이 없으면 SwimlaneSelector가 렌더되지 않는다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+    mockUseProjectPermissions.mockReturnValue({
+      data: {
+        projectKey: 'ATLAS',
+        permissions: {
+          CREATE: false,
+          MANAGE_COMPONENTS: false,
+          MANAGE_VERSIONS: false,
+          MANAGE_CUSTOM_FIELDS: false,
+          MANAGE_FIELD_PERMISSIONS: false,
+          MANAGE_TEMPLATES: false,
+        },
+      },
+      isLoading: false,
+    })
+
+    await renderBoardPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`kanban-board-${BOARD_A.boardId}`)).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('swimlane-selector')).not.toBeInTheDocument()
+  })
+
+  /**
+   * S6 — 보드 상세 없으면 SwimlaneSelector가 렌더되지 않는다 (권한 있어도).
+   */
+  it('S6-C: 보드 상세가 없으면 SwimlaneSelector가 렌더되지 않는다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: undefined, isLoading: true })
+    mockUseProjectPermissions.mockReturnValue({
+      data: {
+        projectKey: 'ATLAS',
+        permissions: {
+          CREATE: true,
+          MANAGE_COMPONENTS: false,
+          MANAGE_VERSIONS: false,
+          MANAGE_CUSTOM_FIELDS: false,
+          MANAGE_FIELD_PERMISSIONS: false,
+          MANAGE_TEMPLATES: false,
+        },
+      },
+      isLoading: false,
+    })
+
+    await renderBoardPage()
+
+    expect(screen.queryByTestId('swimlane-selector')).not.toBeInTheDocument()
+  })
+
+  /**
+   * S7 — SwimlaneSelector 변경 시 useUpdateSwimlane.mutate가 호출된다.
+   */
+  it('S7-A: SwimlaneSelector onChange 호출 시 useUpdateSwimlane.mutate가 호출된다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    await renderBoardPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('swimlane-selector')).toBeInTheDocument()
+    })
+
+    // SwimlaneSelector mock의 onChange를 직접 호출
+    capturedSwimlaneSelectorOnChange?.('ASSIGNEE')
+
+    expect(mockUpdateSwimlaneMutate).toHaveBeenCalledWith(
+      'ASSIGNEE',
+      expect.objectContaining({ onError: expect.any(Function) as unknown }),
+    )
+  })
+
+  /**
+   * S7 — mutate onError 시 toast.error가 호출된다.
+   */
+  it('S7-B: mutate onError 시 toast.error가 호출된다', async () => {
+    const { toast } = await import('sonner')
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    await renderBoardPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('swimlane-selector')).toBeInTheDocument()
+    })
+
+    // onChange를 호출해 mutate 캡처
+    capturedSwimlaneSelectorOnChange?.('PRIORITY')
+
+    // mutate 호출 인자에서 onError 콜백을 꺼내 직접 실행
+    const mutateCall = mockUpdateSwimlaneMutate.mock.calls[0]
+    const options = mutateCall?.[1] as { onError?: () => void } | undefined
+    options?.onError?.()
+
+    expect(toast.error).toHaveBeenCalled()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -619,6 +792,8 @@ describe('BoardRouteAdapter', () => {
     mockFetchUsers.mockResolvedValue([])
     mockUseBoards.mockReturnValue({ data: [], isLoading: false, error: null, isError: false })
     mockUseBoard.mockReturnValue({ data: undefined, isLoading: false })
+    mockUseUpdateSwimlane.mockReturnValue({ mutate: mockUpdateSwimlaneMutate, isPending: false })
+    mockUseProjectPermissions.mockReturnValue({ data: undefined, isLoading: false })
   })
 
   /**
