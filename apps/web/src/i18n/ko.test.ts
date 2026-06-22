@@ -1,7 +1,7 @@
 // issueDetailStrings 신규 키 존재 여부를 타입 레벨에서 검증하는 테스트
 
 import { describe, it, expect, expectTypeOf } from 'vitest'
-import { issueDetailStrings, mfaStrings, mfaErrorMessage, issueLinkStrings, linkGraphStrings, notificationSubscriptionStrings, worklogStrings } from './ko'
+import { issueDetailStrings, mfaStrings, mfaErrorMessage, issueLinkStrings, linkGraphStrings, notificationSubscriptionStrings, worklogStrings, epicChildrenStrings } from './ko'
 import { attachmentLabels } from './attachment-labels'
 
 // IssueDetailStrings 타입을 추론해서 키 존재를 검증한다.
@@ -683,5 +683,33 @@ describe('boardFilterLabels — 보드 필터 바 문자열 콜론 종결 가드
 
   it('chip.removeAriaLabel("bug")는 "bug 제거" 형식의 문자열을 반환한다', () => {
     expect(boardFilterLabels.chip.removeAriaLabel('bug')).toBe('bug 제거')
+  })
+})
+
+// ── epicChildrenStrings ──────────────────────────────────────────────────────
+
+describe('epicChildrenStrings — 에픽 자식 이슈 섹션 문자열 (FR-EP-01 D6)', () => {
+  it('sectionTitle 키가 존재한다', () => {
+    expectTypeOf(epicChildrenStrings).toHaveProperty('sectionTitle')
+  })
+
+  it('emptyState 키가 존재한다', () => {
+    expectTypeOf(epicChildrenStrings).toHaveProperty('emptyState')
+  })
+
+  it('addChildButton 키가 존재한다', () => {
+    expectTypeOf(epicChildrenStrings).toHaveProperty('addChildButton')
+  })
+
+  it('disconnectButton 키가 존재한다', () => {
+    expectTypeOf(epicChildrenStrings).toHaveProperty('disconnectButton')
+  })
+
+  it('모든 문자열 값은 콜론으로 끝나지 않는다 (글로벌 §5)', () => {
+    for (const value of Object.values(epicChildrenStrings)) {
+      if (typeof value === 'string') {
+        expect(value, `"${value}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
+      }
+    }
   })
 })
