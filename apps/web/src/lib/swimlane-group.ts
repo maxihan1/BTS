@@ -58,27 +58,11 @@ function groupByNone(cards: BoardCard[]): SwimlaneGroup[] {
 // ASSIGNEE 그룹화
 // ─────────────────────────────────────────────────────────────────────────────
 
-function groupByAssignee(
-  cards: BoardCard[],
-  assigneeNames: Map<string, CardAssigneeDisplay>,
-): SwimlaneGroup[] {
-  // Map<keySuffix, SwimlaneGroup>
-  const groupMap = new Map<string, SwimlaneGroup>()
-
-  for (const card of cards) {
-    const display = assigneeNames.get(card.issueKey) ?? ({ state: 'unassigned' } satisfies CardAssigneeDisplay)
-    const { label, keySuffix } = resolveAssigneeLabel(display)
-    const key = `assignee-${keySuffix}`
-
-    const existing = groupMap.get(key)
-    if (existing !== undefined) {
-      existing.cards.push(card)
-    } else {
-      groupMap.set(key, { key, label, cards: [card] })
-    }
-  }
-
-  // named 그룹 → 라벨 가나다 정렬, unassigned/unknown은 마지막
+/**
+ * groupMap에서 named/unknown/unassigned를 분리해 정렬된 배열을 반환한다.
+ * named는 가나다 정렬, unknown → unassigned 순으로 마지막에 위치.
+ */
+function sortAssigneeGroups(groupMap: Map<string, SwimlaneGroup>): SwimlaneGroup[] {
   const named: SwimlaneGroup[] = []
   let unassigned: SwimlaneGroup | undefined
   let unknown: SwimlaneGroup | undefined
@@ -99,6 +83,28 @@ function groupByAssignee(
   if (unknown !== undefined) result.push(unknown)
   if (unassigned !== undefined) result.push(unassigned)
   return result
+}
+
+function groupByAssignee(
+  cards: BoardCard[],
+  assigneeNames: Map<string, CardAssigneeDisplay>,
+): SwimlaneGroup[] {
+  const groupMap = new Map<string, SwimlaneGroup>()
+
+  for (const card of cards) {
+    const display = assigneeNames.get(card.issueKey) ?? ({ state: 'unassigned' } satisfies CardAssigneeDisplay)
+    const { label, keySuffix } = resolveAssigneeLabel(display)
+    const key = `assignee-${keySuffix}`
+
+    const existing = groupMap.get(key)
+    if (existing !== undefined) {
+      existing.cards.push(card)
+    } else {
+      groupMap.set(key, { key, label, cards: [card] })
+    }
+  }
+
+  return sortAssigneeGroups(groupMap)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
