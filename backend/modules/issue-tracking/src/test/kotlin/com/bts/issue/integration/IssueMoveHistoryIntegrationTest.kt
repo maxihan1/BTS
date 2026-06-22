@@ -154,6 +154,7 @@ class IssueMoveHistoryIntegrationTest {
             resolutionRepository: ResolutionRepository,
             componentRepository: ComponentRepository,
             versionRepository: VersionRepository,
+            issueRepository: IssueRepository,
         ): IssueChangeLabelResolver =
             IssueChangeLabelResolver(
                 issueTypeRepository = issueTypeRepository,
@@ -162,6 +163,7 @@ class IssueMoveHistoryIntegrationTest {
                 versionRepository = versionRepository,
                 userLookupPort = mockk(relaxed = true),
                 issueSecurityDirectory = mockk(relaxed = true),
+                issueRepository = issueRepository,
             )
 
         @Bean

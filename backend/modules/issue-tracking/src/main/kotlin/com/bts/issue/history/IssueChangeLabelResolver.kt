@@ -3,6 +3,7 @@
 package com.bts.issue.history
 
 import com.bts.issue.component.repository.ComponentRepository
+import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.issue.version.repository.VersionRepository
@@ -44,7 +45,7 @@ import java.util.UUID
  * 지원 필드(type/resolution/components/affectsVersions/fixVersions/assignee/securityLevel) 각 1개 + 공통 헬퍼.
  * 필드당 resolver + lookup 분리는 단일 책임 원칙과 graceful degrade 정책을 위해 유지한다.
  */
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LongParameterList")
 @Service
 class IssueChangeLabelResolver(
     private val issueTypeRepository: IssueTypeRepository,
@@ -53,6 +54,7 @@ class IssueChangeLabelResolver(
     private val versionRepository: VersionRepository,
     private val userLookupPort: UserLookupPort,
     private val issueSecurityDirectory: IssueSecurityDirectory,
+    private val issueRepository: IssueRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -77,9 +79,11 @@ class IssueChangeLabelResolver(
     ): List<IssueChangeItem> {
         val assigneeIds = collectUuids(items, FIELD_ASSIGNEE)
         val levelIds = collectUuids(items, FIELD_SECURITY_LEVEL)
+        val epicIds = collectUuids(items, FIELD_EPIC)
 
         val userDisplayNames = fetchDisplayNames(assigneeIds)
         val levelNames = fetchLevelNames(levelIds)
+        val epicKeys = fetchEpicKeys(epicIds)
 
         return items.map { item ->
             when (item.field) {
@@ -90,6 +94,7 @@ class IssueChangeLabelResolver(
                 FIELD_FIX_VERSIONS -> resolveCollectionField(item, ::lookupVersionNames, projectId)
                 FIELD_ASSIGNEE -> resolveAssignee(item, userDisplayNames)
                 FIELD_SECURITY_LEVEL -> resolveSecurityLevel(item, levelNames)
+                FIELD_EPIC -> resolveEpic(item, epicKeys)
                 else -> item
             }
         }
@@ -125,6 +130,15 @@ class IssueChangeLabelResolver(
         item.copy(
             fromLabel = parseUuidOrNull(item.fromValue)?.let { levelNames[it] },
             toLabel = parseUuidOrNull(item.toValue)?.let { levelNames[it] },
+        )
+
+    private fun resolveEpic(
+        item: IssueChangeItem,
+        epicKeys: Map<UUID, String>,
+    ): IssueChangeItem =
+        item.copy(
+            fromLabel = parseUuidOrNull(item.fromValue)?.let { epicKeys[it] },
+            toLabel = parseUuidOrNull(item.toValue)?.let { epicKeys[it] },
         )
 
     /**
@@ -176,6 +190,18 @@ class IssueChangeLabelResolver(
             issueSecurityDirectory.findLevelNames(ids)
         } catch (e: Exception) {
             log.warn("IssueSecurityDirectory.findLevelNames failed for ids={}", ids, e)
+            emptyMap()
+        }
+    }
+
+    // 라벨 lookup 실패는 예외 종류에 관계없이 label=null graceful degrade 정책 — 이력 기록을 막으면 안 됨.
+    @Suppress("TooGenericExceptionCaught")
+    private fun fetchEpicKeys(ids: Set<UUID>): Map<UUID, String> {
+        if (ids.isEmpty()) return emptyMap()
+        return try {
+            issueRepository.findKeysByIds(ids)
+        } catch (e: Exception) {
+            log.warn("IssueRepository.findKeysByIds failed for ids={}", ids, e)
             emptyMap()
         }
     }
@@ -278,5 +304,6 @@ class IssueChangeLabelResolver(
         const val FIELD_FIX_VERSIONS = "fixVersions"
         const val FIELD_ASSIGNEE = "assignee"
         const val FIELD_SECURITY_LEVEL = "securityLevel"
+        const val FIELD_EPIC = "epic"
     }
 }

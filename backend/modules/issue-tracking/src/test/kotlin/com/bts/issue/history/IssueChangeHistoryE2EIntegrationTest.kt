@@ -100,6 +100,7 @@ class IssueChangeHistoryE2EIntegrationTest {
             versionRepository: VersionRepository,
             userLookupPort: UserLookupPort,
             issueSecurityDirectory: IssueSecurityDirectory,
+            issueRepository: IssueRepository,
         ): IssueChangeLabelResolver =
             IssueChangeLabelResolver(
                 issueTypeRepository = issueTypeRepository,
@@ -108,6 +109,7 @@ class IssueChangeHistoryE2EIntegrationTest {
                 versionRepository = versionRepository,
                 userLookupPort = userLookupPort,
                 issueSecurityDirectory = issueSecurityDirectory,
+                issueRepository = issueRepository,
             )
 
         @Bean

@@ -1458,6 +1458,31 @@ class IssueRepository(
     }
 
     /**
+     * 이슈 UUID 집합을 이슈 key 로 일괄 조회한다 (FR-EP-01 D6 G2 — changelog epic 라벨 박제용).
+     *
+     * `WHERE id IN (...)` 단일 쿼리로 N+1 없이 처리한다.
+     * soft-deleted 이슈도 포함한다 — 이슈 키는 영구 보존되므로 (DATA.md §이슈 키 영구 보존)
+     * deleted_at IS NOT NULL 이어도 key 가 살아 있으며, changelog 라벨 박제 목적상 반환해야 한다.
+     *
+     * @param ids 조회할 이슈 UUID 집합. 빈 집합이면 빈 맵을 반환한다.
+     * @return UUID → 이슈 key 문자열 맵. 조회 결과 없는 id 는 맵에 포함되지 않는다.
+     */
+    @Transactional(readOnly = true)
+    fun findKeysByIds(ids: Set<UUID>): Map<UUID, String> {
+        if (ids.isEmpty()) return emptyMap()
+        log.debug("findKeysByIds ids.size={}", ids.size)
+        return dsl.select(ISSUES.ID, ISSUES.KEY)
+            .from(ISSUES)
+            .where(ISSUES.ID.`in`(ids))
+            .fetch { record ->
+                val id = requireNotNull(record.get(ISSUES.ID)) { "ISSUES.ID must not be null" }
+                val key = requireNotNull(record.get(ISSUES.KEY)) { "ISSUES.KEY must not be null" }
+                id to key
+            }
+            .toMap()
+    }
+
+    /**
      * 에픽에 속한 활성 자식 이슈를 보안 등급 필터와 함께 조회한다 (FR-EP-01 Task 4).
      *
      * [buildActiveSecureWhere] 보안 술어를 재사용하여 보안 등급이 허가되지 않은 자식을
