@@ -7,6 +7,7 @@ import com.bts.notification.dashboard.application.DashboardForbiddenException
 import com.bts.notification.dashboard.application.DashboardNotFoundException
 import com.bts.notification.dashboard.application.DashboardService
 import com.bts.notification.dashboard.domain.Dashboard
+import com.bts.notification.dashboard.domain.DashboardDomainException
 import com.bts.notification.dashboard.domain.DashboardVisibility
 import com.bts.notification.dashboard.repository.DashboardPage
 import com.bts.notification.web.NotificationExceptionHandler
@@ -140,9 +141,20 @@ class DashboardControllerTest {
             .andExpect(jsonPath("$.data.visibility").value("PRIVATE"))
     }
 
-    /** POST-2. 빈 name -> 400. */
+    /** POST-2. 빈 name -> 서비스가 DashboardDomainException 던짐 -> 400. */
     @Test
     fun `POST dashboards 빈 이름은 400 반환`() {
+        every {
+            service.create(
+                actorId = actorId,
+                name = "",
+                description = null,
+                visibility = DashboardVisibility.PRIVATE,
+                layout = "[]",
+                sharedUserIds = emptySet(),
+            )
+        } throws DashboardDomainException("대시보드 이름은 빈 문자열 또는 공백일 수 없습니다.")
+
         mockMvc.perform(
             post("/api/v1/dashboards")
                 .contentType(MediaType.APPLICATION_JSON)
