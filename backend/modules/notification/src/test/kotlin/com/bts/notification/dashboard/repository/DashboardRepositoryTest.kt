@@ -7,9 +7,9 @@ import com.bts.notification.dashboard.domain.DashboardVisibility
 import com.bts.notification.support.NotificationTestcontainersBase
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.MethodOrderer
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestMethodOrder
-import org.junit.jupiter.api.MethodOrderer
 import java.time.Instant
 import java.util.UUID
 
@@ -20,7 +20,6 @@ import java.util.UUID
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class DashboardRepositoryTest : NotificationTestcontainersBase() {
-
     private lateinit var repository: DashboardRepository
 
     private val ownerId: UUID = UUID.fromString("10000000-0000-0000-0000-000000000001")
@@ -42,15 +41,16 @@ class DashboardRepositoryTest : NotificationTestcontainersBase() {
         visibility: DashboardVisibility = DashboardVisibility.PRIVATE,
         sharedUserIds: Set<UUID> = emptySet(),
     ): Dashboard {
-        val dashboard = Dashboard.create(
-            ownerId = ownerId,
-            name = name,
-            description = null,
-            visibility = visibility,
-            layout = "[]",
-            sharedUserIds = sharedUserIds,
-            now = now,
-        )
+        val dashboard =
+            Dashboard.create(
+                ownerId = ownerId,
+                name = name,
+                description = null,
+                visibility = visibility,
+                layout = "[]",
+                sharedUserIds = sharedUserIds,
+                now = now,
+            )
         return repository.insert(dashboard)
     }
 
@@ -81,14 +81,15 @@ class DashboardRepositoryTest : NotificationTestcontainersBase() {
     @Test
     fun `update 성공 시 version 이 1 증가한다`() {
         val inserted = buildAndInsert()
-        val patched = inserted.applyPatch(
-            name = "바뀐 이름",
-            description = null,
-            visibility = null,
-            layout = null,
-            sharedUserIds = null,
-            now = now.plusSeconds(10),
-        )
+        val patched =
+            inserted.applyPatch(
+                name = "바뀐 이름",
+                description = null,
+                visibility = null,
+                layout = null,
+                sharedUserIds = null,
+                now = now.plusSeconds(10),
+            )
         val rowCount = repository.update(patched)
         assertThat(rowCount).isEqualTo(1)
 
@@ -100,7 +101,7 @@ class DashboardRepositoryTest : NotificationTestcontainersBase() {
     @Test
     fun `update 시 version 불일치이면 rowCount 0 을 반환한다 (OCC 충돌 신호)`() {
         val inserted = buildAndInsert()
-        // version=1 로 조작된 도메인 객체 — 실제 DB 의 version=0 과 불일치
+        // version=99 로 조작된 도메인 객체 — 실제 DB 의 version=0 과 불일치
         val stale = inserted.copy(name = "충돌", version = 99L)
         val rowCount = repository.update(stale)
         assertThat(rowCount).isEqualTo(0)
@@ -111,14 +112,15 @@ class DashboardRepositoryTest : NotificationTestcontainersBase() {
         val inserted = buildAndInsert()
         repository.softDelete(inserted.id)
 
-        val patched = inserted.applyPatch(
-            name = null,
-            description = null,
-            visibility = null,
-            layout = null,
-            sharedUserIds = null,
-            now = now.plusSeconds(5),
-        )
+        val patched =
+            inserted.applyPatch(
+                name = null,
+                description = null,
+                visibility = null,
+                layout = null,
+                sharedUserIds = null,
+                now = now.plusSeconds(5),
+            )
         val rowCount = repository.update(patched)
         assertThat(rowCount).isEqualTo(0)
     }

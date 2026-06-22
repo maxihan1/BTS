@@ -4,17 +4,18 @@ package com.bts.notification.dashboard.repository
 
 import com.bts.notification.dashboard.domain.Dashboard
 import com.bts.notification.dashboard.domain.DashboardVisibility
-import com.bts.notification.jooq.tables.references.DASHBOARD_SHARES
 import com.bts.notification.jooq.tables.references.DASHBOARDS
+import com.bts.notification.jooq.tables.references.DASHBOARD_SHARES
 import org.jooq.DSLContext
 import org.jooq.JSONB
 import org.jooq.Record
-import org.jooq.SelectSeekStep1
+import org.jooq.Select
 import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
+import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
 
@@ -136,7 +137,10 @@ class DashboardRepository(
      * @param userIds 교체할 공유 사용자 ID 집합 (빈 집합이면 전체 제거)
      */
     @Transactional
-    fun replaceShares(dashboardId: UUID, userIds: Set<UUID>) {
+    fun replaceShares(
+        dashboardId: UUID,
+        userIds: Set<UUID>,
+    ) {
         log.debug("dashboard_shares 교체 — dashboardId={}, size={}", dashboardId, userIds.size)
 
         dsl.deleteFrom(DASHBOARD_SHARES)
@@ -146,7 +150,11 @@ class DashboardRepository(
         if (userIds.isEmpty()) return
 
         val insertStep =
-            dsl.insertInto(DASHBOARD_SHARES, DASHBOARD_SHARES.DASHBOARD_ID, DASHBOARD_SHARES.USER_ID)
+            dsl.insertInto(
+                DASHBOARD_SHARES,
+                DASHBOARD_SHARES.DASHBOARD_ID,
+                DASHBOARD_SHARES.USER_ID,
+            )
 
         userIds.forEach { userId ->
             insertStep.values(dashboardId, userId)
@@ -188,16 +196,24 @@ class DashboardRepository(
      * @return 페이지네이션 결과 (items + total)
      */
     @Transactional(readOnly = true)
-    fun findPage(actorId: UUID, limit: Int, offset: Int): DashboardPage {
-        val unionQuery = buildUnionQuery(actorId)
+    fun findPage(
+        actorId: UUID,
+        limit: Int,
+        offset: Int,
+    ): DashboardPage {
+        val unionSubquery = buildUnionQuery(actorId)
 
+        // total count — items 쿼리와 분리된 COUNT 서브쿼리 (C2: cartesian product 방지)
         val total =
-            dsl.fetchCount(dsl.select(DSL.asterisk()).from(unionQuery.asTable("sub")))
+            dsl.fetchCount(
+                dsl.select(DSL.asterisk()).from(unionSubquery.asTable("sub")),
+            )
 
+        // items — 별도 쿼리로 limit/offset + updatedAt desc 정렬
         val items =
             dsl.select(DSL.asterisk())
-                .from(unionQuery.asTable("paged"))
-                .orderBy(DSL.field("updated_at").desc())
+                .from(unionSubquery.asTable("paged"))
+                .orderBy(DSL.field(DSL.name("updated_at")).desc())
                 .limit(limit)
                 .offset(offset)
                 .fetch()
@@ -214,19 +230,21 @@ class DashboardRepository(
      * @param actorId 조회 주체 사용자 ID
      * @return UNION 서브쿼리
      */
-    private fun buildUnionQuery(actorId: UUID): SelectSeekStep1<*, *> {
-        val cols = arrayOf(
-            DASHBOARDS.ID,
-            DASHBOARDS.OWNER_ID,
-            DASHBOARDS.NAME,
-            DASHBOARDS.DESCRIPTION,
-            DASHBOARDS.VISIBILITY,
-            DASHBOARDS.LAYOUT,
-            DASHBOARDS.CREATED_AT,
-            DASHBOARDS.UPDATED_AT,
-            DASHBOARDS.DELETED_AT,
-            DASHBOARDS.VERSION,
-        )
+    @Suppress("UNCHECKED_CAST")
+    private fun buildUnionQuery(actorId: UUID): Select<Record> {
+        val cols =
+            arrayOf(
+                DASHBOARDS.ID,
+                DASHBOARDS.OWNER_ID,
+                DASHBOARDS.NAME,
+                DASHBOARDS.DESCRIPTION,
+                DASHBOARDS.VISIBILITY,
+                DASHBOARDS.LAYOUT,
+                DASHBOARDS.CREATED_AT,
+                DASHBOARDS.UPDATED_AT,
+                DASHBOARDS.DELETED_AT,
+                DASHBOARDS.VERSION,
+            )
 
         // 1) owned — 본인 소유 대시보드
         val ownedQuery =
@@ -256,11 +274,7 @@ class DashboardRepository(
                 .and(DASHBOARDS.DELETED_AT.isNull)
 
         // UNION(중복 제거) — owned 이면서 ORG 인 경우 1건으로 합산
-        @Suppress("UNCHECKED_CAST")
-        return ownedQuery
-            .union(sharedQuery)
-            .union(orgQuery)
-            .orderBy(DSL.field("updated_at").desc()) as SelectSeekStep1<*, *>
+        return ownedQuery.union(sharedQuery).union(orgQuery) as Select<Record>
     }
 
     /**
@@ -311,19 +325,24 @@ class DashboardRepository(
      */
     private fun toDomainFromRecord(record: Record): Dashboard {
         val id = record.get("id", UUID::class.java) ?: error("id 가 null — UNION 결과")
-        val ownerId = record.get("owner_id", UUID::class.java) ?: error("owner_id 가 null — id=$id")
+        val ownerId =
+            record.get("owner_id", UUID::class.java) ?: error("owner_id 가 null — id=$id")
         val name = record.get("name", String::class.java) ?: error("name 이 null — id=$id")
-        val visibilityStr = record.get("visibility", String::class.java) ?: error("visibility 가 null — id=$id")
+        val visibilityStr =
+            record.get("visibility", String::class.java) ?: error("visibility 가 null — id=$id")
         val visibility = DashboardVisibility.valueOf(visibilityStr)
         val layoutJsonb = record.get("layout", JSONB::class.java)
         val layout = layoutJsonb?.data() ?: "[]"
-        val createdAt = record.get("created_at", java.time.OffsetDateTime::class.java)
-            ?.toInstant() ?: error("created_at 이 null — id=$id")
-        val updatedAt = record.get("updated_at", java.time.OffsetDateTime::class.java)
-            ?.toInstant() ?: error("updated_at 이 null — id=$id")
-        val deletedAtOdt = record.get("deleted_at", java.time.OffsetDateTime::class.java)
-        val deletedAt: Instant? = deletedAtOdt?.toInstant()
-        val version = record.get("version", Long::class.java) ?: error("version 이 null — id=$id")
+        val createdAt =
+            record.get("created_at", OffsetDateTime::class.java)
+                ?.toInstant() ?: error("created_at 이 null — id=$id")
+        val updatedAt =
+            record.get("updated_at", OffsetDateTime::class.java)
+                ?.toInstant() ?: error("updated_at 이 null — id=$id")
+        val deletedAt: Instant? =
+            record.get("deleted_at", OffsetDateTime::class.java)?.toInstant()
+        val version =
+            record.get("version", Long::class.java) ?: error("version 이 null — id=$id")
 
         return Dashboard(
             id = id,
