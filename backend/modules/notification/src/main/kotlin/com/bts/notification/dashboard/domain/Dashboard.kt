@@ -70,6 +70,7 @@ data class Dashboard(
          * @return 불변식이 검증된 새 Dashboard 인스턴스
          * @throws DashboardDomainException 불변식 위반 시
          */
+        @Suppress("LongParameterList")
         fun create(
             ownerId: UUID,
             name: String,
@@ -147,6 +148,7 @@ data class Dashboard(
      * @return version+1·updatedAt 갱신된 새 Dashboard 인스턴스
      * @throws DashboardDomainException 불변식 위반 시
      */
+    @Suppress("LongParameterList")
     fun applyPatch(
         name: String?,
         description: String?,

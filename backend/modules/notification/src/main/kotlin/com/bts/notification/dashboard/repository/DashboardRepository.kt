@@ -230,7 +230,7 @@ class DashboardRepository(
      * @param actorId 조회 주체 사용자 ID
      * @return UNION 서브쿼리
      */
-    @Suppress("UNCHECKED_CAST")
+    @Suppress("UNCHECKED_CAST", "SpreadOperator")
     private fun buildUnionQuery(actorId: UUID): Select<Record> {
         val cols =
             arrayOf(
