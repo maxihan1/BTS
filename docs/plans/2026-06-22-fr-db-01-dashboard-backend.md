@@ -77,6 +77,124 @@ notification-dashboard로 교정.
 
 ✅ 통과 (self-review 1회). 목록 ORG 포함 gap → Maxi 결정으로 해소. office-hours/brainstorming 스킬 대신 직접 스펙+self-review (명세 명확·도메인 정리 완료, BTS 직접-진행 패턴).
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 공통 경로 접두사. main = `backend/modules/notification/src/main/kotlin/com/bts/notification/dashboard`,
+> test = `backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard`.
+> 검증 = notification 모듈 test (정확한 gradle task path는 impl에서 settings.gradle 확인).
+
+### Task 1. 도메인 — Dashboard Aggregate + DashboardVisibility + DashboardShare
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`.../domain/Dashboard.kt`, `.../domain/DashboardVisibility.kt`, `.../domain/DashboardShare.kt`, `.../../test/.../domain/DashboardTest.kt`]
+- depends-on: []
+
+**RED**: `DashboardTest.kt`
+- 빈/공백 name → 도메인 예외
+- visibility != TEAM 이면 shares 빈 집합으로 정규화
+- sharedUserIds 에 owner 포함 시 정규화로 제거 + 중복 dedup(Set)
+- name > 200자 / sharedUserIds > cap → 예외
+- withChanges(부분 수정) 시 version 증가, updatedAt 갱신
+
+**GREEN**: domain 클래스 3종 + enum. 불변식을 팩토리(create)/변경(applyPatch) 메서드에 캡슐화.
+
+**REFACTOR**: 상한 상수(MAX_NAME_LEN/MAX_SHARES) 추출 + KDoc(평문, ktlint KDoc 함정 회피).
+
+**검증**: notification test --tests `*DashboardTest`
+
+### Task 2. 데이터 모델 — V405 마이그레이션 + init_codegen 미러
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/notification/src/main/resources/db/migration/notification/V405__dashboards.sql`, `<init_codegen.sql 경로>`]
+- depends-on: []
+
+**RED**: 마이그레이션 적용 검증 테스트(기존 notification migration 테스트 패턴 재사용) — dashboards/dashboard_shares 테이블·인덱스·CASCADE 존재 단언. 없으면 Task 3 repository Testcontainers 테스트가 RED 역할 대행.
+
+**GREEN**: 스펙 §데이터 모델의 DDL 그대로. dashboards(+owner/visibility 인덱스) + dashboard_shares(FK CASCADE + user_id 인덱스). init_codegen.sql에 동일 DDL 미러(jOOQ codegen 입력 — 누락 시 빌드 깨짐, 메모리 교훈).
+
+**REFACTOR**: 컬럼 COMMENT 추가(기존 V402 스타일).
+
+**검증**: jOOQ codegen(빌드) + Task 3 repository 테스트 그린.
+
+### Task 3. Repository — DashboardRepository (jOOQ) CRUD + shares + 목록 UNION 페이지네이션
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`.../repository/DashboardRepository.kt`, `.../../test/.../repository/DashboardRepositoryTest.kt`]
+- depends-on: [1, 2]
+
+**RED**: Testcontainers
+- insert/findById/update(version bump)/delete
+- shares insert/replace, delete 시 CASCADE 정리
+- 목록 3종: owned / shared-to-me / ORG → UNION DISTINCT(owned이면서 ORG는 1건) + updatedAt desc + limit/offset
+- 빈 목록·페이지 경계
+
+**GREEN**: DSLContext 기반 jOOQ 구현(기존 NotificationPolicyRepository 패턴). 목록은 UNION 또는 OR 조건 단일 쿼리. count 별도(cartesian product 회피, 메모리 교훈).
+
+**REFACTOR**: 매핑 함수 추출.
+
+**검증**: notification test --tests `*DashboardRepositoryTest`
+
+### Task 4. Service — DashboardService (권한 404/403 · 정규화 · OCC)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`.../application/DashboardService.kt`, `.../../test/.../application/DashboardServiceTest.kt`]
+- depends-on: [1, 3]
+
+**RED**:
+- create(actor) → owner=actor
+- get: PRIVATE 남의 것 → 404, TEAM 공유대상 → 200, ORG → 200
+- update/delete: 조회 불가 → 404, 조회되나 비owner → 403, owner → 성공
+- OCC version 불일치 → 409
+- visibility 정규화(서비스에서 도메인 위임)
+- 목록: actor 기준 owned ∪ shared ∪ ORG
+
+**GREEN**: 서비스 + 권한 판정(actor 추출 → 리소스 조회 → owner/visibility 비교). SYSTEM_ADMIN 예외 없음. 단일 트랜잭션.
+
+**REFACTOR**: 권한 판정 헬퍼 추출. 예외 타입은 BC 내 신규 정의(plain 도메인 예외 → ExceptionHandler 매핑).
+
+**검증**: notification test --tests `*DashboardServiceTest`
+
+### Task 5. Web — DashboardController + DTO + ExceptionHandler 연동
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`.../web/DashboardController.kt`, `.../web/dto/DashboardDtos.kt`, `.../web/DashboardExceptionHandler.kt`(또는 기존 핸들러 확장), `.../../test/.../web/DashboardControllerTest.kt`]
+- depends-on: [4]
+
+**RED**: MockMvc/통합
+- POST 201, GET 목록 200(+페이지네이션 쿼리), GET 단건 200/404, PATCH 200/400/403/404/409, DELETE 204/403/404
+- 미인증 401
+- 요청/응답 DTO 직렬화(NON_NULL ↔ 프론트 계약), version 필수
+
+**GREEN**: 컨트롤러(currentActorId 사용) + 요청/응답 DTO + 도메인 예외→HTTP 매핑. 페이지네이션 응답은 기존 목록 API 관례 grep 후 동일 형식.
+
+**REFACTOR**: DTO 변환 from() 정리.
+
+**검증**: notification test --tests `*DashboardControllerTest`
+
+### Task 6. ArchUnit — BC 격리 룰 (identity-access import 0)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`.../../test/.../architecture/NotificationBcArchTest.kt`]
+- depends-on: [1, 4, 5]
+
+**RED**: dashboard 패키지가 identity-access를 직접 import 하지 않음을 단언하는 룰 추가. **vacuous 통과 방지** — 일부러 위반 import 한 줄 넣어 룰이 실제로 fail 하는지 확인 후 제거(메모리 교훈).
+
+**GREEN**: 기존 격리가 지켜지면 통과. 위반 시 cross-BC 포트로 교정.
+
+**검증**: notification test --tests `*NotificationBcArchTest`
+
+## Plan 메타
+
+- task 수: 6
+- TDD 강제: yes (test 커밋이 feat 커밋보다 먼저)
+- wave 예상: 대부분 직렬(같은 notification 모듈 + 의존 체인). Wave1=[T1,T2](files 비겹침이나 동일 모듈 컴파일 직렬 요인), Wave2=[T3], Wave3=[T4], Wave4=[T5], Wave5=[T6]
+- 병렬 dispatch: bts-impl이 depends-on + files로 wave 계산 (단일 모듈이라 직렬 dispatch 예상)
+- 추가 검증: ktlint + detekt(--rerun-tasks, false-green 회피) + jOOQ codegen 빌드
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
