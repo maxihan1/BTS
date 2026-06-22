@@ -57,6 +57,7 @@ const boardFixture: BoardDetail = {
   name: 'ATLAS 보드',
   truncated: false,
   unplacedCount: 0,
+  swimlaneField: 'NONE',
   columns: [
     {
       columnId: COL_TODO,
@@ -64,8 +65,10 @@ const boardFixture: BoardDetail = {
       name: '할 일',
       category: 'TODO',
       displayOrder: 1,
+      wipLimit: null,
+      wipExceeded: false,
       cards: [
-        { issueKey: 'ATLAS-1', summary: '첫 번째 이슈', assigneeId: null, version: 1 },
+        { issueKey: 'ATLAS-1', summary: '첫 번째 이슈', assigneeId: null, version: 1, priority: 1 },
       ],
     },
     {
@@ -74,8 +77,10 @@ const boardFixture: BoardDetail = {
       name: '완료',
       category: 'DONE',
       displayOrder: 3,
+      wipLimit: null,
+      wipExceeded: false,
       cards: [
-        { issueKey: 'ATLAS-3', summary: '완료된 이슈', assigneeId: null, version: 5 },
+        { issueKey: 'ATLAS-3', summary: '완료된 이슈', assigneeId: null, version: 5, priority: 1 },
       ],
     },
     {
@@ -84,8 +89,10 @@ const boardFixture: BoardDetail = {
       name: '진행 중',
       category: 'IN_PROGRESS',
       displayOrder: 2,
+      wipLimit: null,
+      wipExceeded: false,
       cards: [
-        { issueKey: 'ATLAS-2', summary: '두 번째 이슈', assigneeId: null, version: 3 },
+        { issueKey: 'ATLAS-2', summary: '두 번째 이슈', assigneeId: null, version: 3, priority: 1 },
       ],
     },
   ],

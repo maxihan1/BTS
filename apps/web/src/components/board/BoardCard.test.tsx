@@ -43,6 +43,7 @@ const baseCard: BoardCardType = {
   summary: '칸반 보드 드래그앤드롭 구현',
   assigneeId: 'user-uuid-0001',
   version: 3,
+  priority: 1,
 }
 
 const COLUMN_ID = 'col-uuid-0001'

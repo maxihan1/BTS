@@ -46,10 +46,12 @@ const columnWithCards: BoardColumnType = {
   name: '진행 중',
   category: 'IN_PROGRESS',
   displayOrder: 2,
+  wipLimit: null,
+  wipExceeded: false,
   cards: [
-    { issueKey: 'ATLAS-1', summary: '첫 번째 이슈', assigneeId: 'u1', version: 1 },
-    { issueKey: 'ATLAS-2', summary: '두 번째 이슈', assigneeId: null, version: 2 },
-    { issueKey: 'ATLAS-3', summary: '세 번째 이슈', assigneeId: 'u3-unknown', version: 3 },
+    { issueKey: 'ATLAS-1', summary: '첫 번째 이슈', assigneeId: 'u1', version: 1, priority: 1 },
+    { issueKey: 'ATLAS-2', summary: '두 번째 이슈', assigneeId: null, version: 2, priority: 1 },
+    { issueKey: 'ATLAS-3', summary: '세 번째 이슈', assigneeId: 'u3-unknown', version: 3, priority: 1 },
   ],
 }
 
@@ -59,6 +61,8 @@ const emptyColumn: BoardColumnType = {
   name: '할 일',
   category: 'TODO',
   displayOrder: 1,
+  wipLimit: null,
+  wipExceeded: false,
   cards: [],
 }
 
@@ -140,7 +144,7 @@ describe('BoardColumn — S2 카드 목록 렌더', () => {
   it('S2f: assigneeNames에 없는 카드는 fallback unassigned로 표시한다', () => {
     const col: BoardColumnType = {
       ...columnWithCards,
-      cards: [{ issueKey: 'ATLAS-99', summary: '알 수 없음', assigneeId: null, version: 1 }],
+      cards: [{ issueKey: 'ATLAS-99', summary: '알 수 없음', assigneeId: null, version: 1, priority: 1 }],
     }
     renderColumn(col, new Map())
     // Map에 없으므로 unassigned fallback

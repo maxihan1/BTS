@@ -118,6 +118,7 @@ const BOARD_DETAIL: BoardDetail = {
   columns: [],
   truncated: false,
   unplacedCount: 0,
+  swimlaneField: 'NONE',
 }
 
 const BOARD_DETAIL_TRUNCATED: BoardDetail = {
@@ -143,6 +144,7 @@ const BOARD_DETAIL_WITH_ASSIGNEES: BoardDetail = {
   boardId: BOARD_A.boardId,
   projectKey: 'ATLAS',
   name: '스프린트 보드 A',
+  swimlaneField: 'NONE',
   columns: [
     {
       columnId: 'col-1',
@@ -150,13 +152,15 @@ const BOARD_DETAIL_WITH_ASSIGNEES: BoardDetail = {
       name: '할 일',
       category: 'TODO',
       displayOrder: 1,
+      wipLimit: null,
+      wipExceeded: false,
       cards: [
         // case 1: assigneeId=null → unassigned
-        { issueKey: 'ATLAS-1', summary: '미배정 이슈', assigneeId: null, version: 1 },
+        { issueKey: 'ATLAS-1', summary: '미배정 이슈', assigneeId: null, version: 1, priority: 1 },
         // case 2: assigneeId=ALICE_ID, userMap에 있음 → named
-        { issueKey: 'ATLAS-2', summary: '앨리스 이슈', assigneeId: ALICE_ID, version: 2 },
+        { issueKey: 'ATLAS-2', summary: '앨리스 이슈', assigneeId: ALICE_ID, version: 2, priority: 1 },
         // case 3: assigneeId=UNKNOWN_USER_ID, userMap에 없음 → unknown
-        { issueKey: 'ATLAS-3', summary: '미해석 이슈', assigneeId: UNKNOWN_USER_ID, version: 3 },
+        { issueKey: 'ATLAS-3', summary: '미해석 이슈', assigneeId: UNKNOWN_USER_ID, version: 3, priority: 1 },
       ],
     },
   ],
@@ -531,8 +535,8 @@ describe('BoardPage', () => {
     const emptyBoard: BoardDetail = {
       ...BOARD_DETAIL,
       columns: [
-        { columnId: 'col-1', stateKey: 'todo', name: '할 일', category: 'TODO', displayOrder: 1, cards: [] },
-        { columnId: 'col-2', stateKey: 'done', name: '완료', category: 'DONE', displayOrder: 2, cards: [] },
+        { columnId: 'col-1', stateKey: 'todo', name: '할 일', category: 'TODO', displayOrder: 1, wipLimit: null, wipExceeded: false, cards: [] },
+        { columnId: 'col-2', stateKey: 'done', name: '완료', category: 'DONE', displayOrder: 2, wipLimit: null, wipExceeded: false, cards: [] },
       ],
     }
     mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
@@ -577,7 +581,7 @@ describe('BoardPage', () => {
     const emptyBoard: BoardDetail = {
       ...BOARD_DETAIL,
       columns: [
-        { columnId: 'col-1', stateKey: 'todo', name: '할 일', category: 'TODO', displayOrder: 1, cards: [] },
+        { columnId: 'col-1', stateKey: 'todo', name: '할 일', category: 'TODO', displayOrder: 1, wipLimit: null, wipExceeded: false, cards: [] },
       ],
     }
     mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
