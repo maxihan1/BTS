@@ -568,8 +568,30 @@ class BoardSchemaMigrationTest {
 
     @Test
     fun `V501 boards swimlane_field 허용 외 값은 CHECK 위반`() {
-        // 허용 목록 밖 값(EPIC: FR-EP 로 이연)은 CHECK 위반이어야 한다(ADR 결정 3).
-        assertThatThrownBy { insertBoardWithSwimlaneField("SWIM-BAD", "EPIC") }
+        // 허용 목록 밖 임의 값은 CHECK 위반이어야 한다.
+        assertThatThrownBy { insertBoardWithSwimlaneField("SWIM-BAD", "INVALID_VALUE") }
             .hasMessageContaining("boards_swimlane_field_allowed")
+    }
+
+    // ── V502 boards.swimlane_field EPIC 활성화 검증 (FR-EP-01 완료로 이연 해제) ──
+
+    @Test
+    fun `V502 boards swimlane_field CHECK 제약이 EPIC 을 포함한다`() {
+        // V502 마이그레이션으로 CHECK 가 NONE/ASSIGNEE/PRIORITY/EPIC 4종을 허용해야 한다.
+        val defs = checkConstraintDefs("boards").map { it.lowercase() }
+        assertThat(defs).anySatisfy { def ->
+            assertThat(def)
+                .contains("swimlane_field")
+                .contains("none")
+                .contains("assignee")
+                .contains("priority")
+                .contains("epic")
+        }
+    }
+
+    @Test
+    fun `V502 boards swimlane_field EPIC INSERT 가 허용된다`() {
+        // V502 이후 EPIC 은 유효한 스윔레인 값이므로 CHECK 를 통과해야 한다.
+        insertBoardWithSwimlaneField("SWIM-EPIC", "EPIC")
     }
 }
