@@ -78,7 +78,7 @@ export const boardColumnSchema = z.object({
  * 백엔드 `SwimlaneField` enum 대응.
  * NONE=스윔레인 없음, ASSIGNEE=담당자별, PRIORITY=우선순위별.
  */
-const swimlaneFieldSchema = z.enum(['NONE', 'ASSIGNEE', 'PRIORITY'])
+export const swimlaneFieldSchema = z.enum(['NONE', 'ASSIGNEE', 'PRIORITY'])
 
 /**
  * 보드 상세 스키마.
@@ -160,6 +160,9 @@ export type BoardCard = z.infer<typeof boardCardSchema>
 
 /** 보드 컬럼 타입 */
 export type BoardColumn = z.infer<typeof boardColumnSchema>
+
+/** 스윔레인 기준 필드 타입. NONE | ASSIGNEE | PRIORITY */
+export type SwimlaneField = z.infer<typeof swimlaneFieldSchema>
 
 /** 보드 상세 타입 */
 export type BoardDetail = z.infer<typeof boardDetailSchema>
