@@ -59,23 +59,27 @@ class DashboardTest : DescribeSpec({
 
     describe("Dashboard.create — layout 크기 불변식") {
         it("layout 이 64KB 이하이면 허용된다") {
-            val layout = "[" + "\"x\"".repeat(8000) + "]"
+            // 65000바이트짜리 유효한 JSON 문자열 — 큰따옴표 2바이트 + 내용 64998바이트
+            val layout = "\"" + "x".repeat(64998) + "\""
             buildDashboard(layout = layout).layout shouldBe layout
         }
 
         it("layout 이 64KB 초과이면 예외를 던진다") {
-            val largeLayout = "a".repeat(65537)
+            // 65538바이트짜리 유효한 JSON 문자열 — 큰따옴표 2바이트 + 내용 65536바이트
+            val largeLayout = "\"" + "a".repeat(65536) + "\""
             shouldThrow<DashboardDomainException> { buildDashboard(layout = largeLayout) }
         }
 
         // N1 boundary-exact
         it("layout 이 정확히 65536바이트이면 허용된다") {
-            val exactLayout = "a".repeat(65536)
+            // 큰따옴표 2바이트 + 내용 65534바이트 = 65536바이트의 유효한 JSON 문자열
+            val exactLayout = "\"" + "a".repeat(65534) + "\""
             buildDashboard(layout = exactLayout).layout shouldBe exactLayout
         }
 
         it("layout 이 정확히 65537바이트이면 예외를 던진다") {
-            val overLayout = "a".repeat(65537)
+            // 큰따옴표 2바이트 + 내용 65535바이트 = 65537바이트의 유효한 JSON 문자열
+            val overLayout = "\"" + "a".repeat(65535) + "\""
             shouldThrow<DashboardDomainException> { buildDashboard(layout = overLayout) }
         }
     }

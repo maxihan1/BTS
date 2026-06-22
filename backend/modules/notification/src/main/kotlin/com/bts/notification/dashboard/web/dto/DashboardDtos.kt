@@ -4,24 +4,24 @@ package com.bts.notification.dashboard.web.dto
 
 import com.bts.notification.dashboard.domain.Dashboard
 import com.fasterxml.jackson.annotation.JsonInclude
-import jakarta.validation.constraints.NotBlank
 import java.time.Instant
 import java.util.UUID
 
 /**
  * 대시보드 생성 요청 DTO.
  *
- * @param name 대시보드 이름 (빈 문자열 불가 — 도메인에서도 검증)
+ * name·visibility 의 빈 문자열 금지, layout 의 JSON 유효성은
+ * 도메인 Dashboard.create() 에서 DashboardDomainException 으로 검증한다.
+ *
+ * @param name 대시보드 이름 (빈 문자열 불가 — 도메인에서 검증)
  * @param description 설명 (선택)
- * @param visibility 공개 범위 (PRIVATE/TEAM/ORG)
- * @param layout 위젯 배치 JSONB 문자열 (선택, 기본 빈 배열)
+ * @param visibility 공개 범위 (PRIVATE/TEAM/ORG — 도메인에서 검증)
+ * @param layout 위젯 배치 JSONB 문자열 (선택, 기본 빈 배열 — 도메인에서 JSON 유효성 검증)
  * @param sharedUserIds TEAM 공유 대상 사용자 ID 목록 (선택)
  */
 data class CreateDashboardRequest(
-    @field:NotBlank(message = "대시보드 이름은 필수입니다.")
     val name: String,
     val description: String? = null,
-    @field:NotBlank(message = "visibility 는 필수입니다.")
     val visibility: String,
     val layout: String? = null,
     val sharedUserIds: List<UUID>? = null,

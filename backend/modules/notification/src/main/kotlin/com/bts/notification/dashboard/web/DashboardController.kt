@@ -11,7 +11,6 @@ import com.bts.notification.dashboard.web.dto.DashboardResponse
 import com.bts.notification.dashboard.web.dto.PatchDashboardRequest
 import com.bts.notification.web.DataResponse
 import com.bts.notification.web.currentActorId
-import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -60,7 +59,7 @@ class DashboardController(
      */
     @PostMapping
     fun create(
-        @Valid @RequestBody request: CreateDashboardRequest,
+        @RequestBody request: CreateDashboardRequest,
     ): ResponseEntity<DataResponse<DashboardResponse>> {
         val actorId = currentActorId()
 

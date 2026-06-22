@@ -209,11 +209,15 @@ class DashboardRepository(
                 dsl.select(DSL.asterisk()).from(unionSubquery.asTable("sub")),
             )
 
-        // items — 별도 쿼리로 limit/offset + updatedAt desc 정렬
+        // items — 별도 쿼리로 limit/offset + updatedAt desc, id asc 정렬
+        // id tiebreaker 로 updated_at 동률 시 페이지 경계 누락/중복 방지 (C2)
         val items =
             dsl.select(DSL.asterisk())
                 .from(unionSubquery.asTable("paged"))
-                .orderBy(DSL.field(DSL.name("updated_at")).desc())
+                .orderBy(
+                    DSL.field(DSL.name("updated_at")).desc(),
+                    DSL.field(DSL.name("id")).asc(),
+                )
                 .limit(limit)
                 .offset(offset)
                 .fetch()

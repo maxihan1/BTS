@@ -9,8 +9,11 @@ import com.bts.notification.dashboard.domain.DashboardDomainException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
+import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.server.ResponseStatusException
 import java.net.URI
 import java.time.Instant
@@ -28,6 +31,9 @@ import java.time.Instant
  *
  * 매핑 규칙.
  * - DashboardDomainException -> 400 + NOTIF_DASHBOARD_INVALID
+ * - MethodArgumentNotValidException -> 400 + NOTIF_DASHBOARD_INVALID
+ * - HttpMessageNotReadableException -> 400 + NOTIF_DASHBOARD_INVALID
+ * - MethodArgumentTypeMismatchException -> 400 + NOTIF_DASHBOARD_INVALID
  * - DashboardNotFoundException -> 404 + NOTIF_DASHBOARD_NOT_FOUND
  * - DashboardForbiddenException -> 403 + NOTIF_DASHBOARD_FORBIDDEN
  * - DashboardConflictException -> 409 + NOTIF_DASHBOARD_CONFLICT
@@ -88,6 +94,51 @@ class DashboardExceptionHandler {
             title = "Dashboard Conflict",
             errorCode = "NOTIF_DASHBOARD_CONFLICT",
             detail = "대시보드가 다른 사용자에 의해 수정되었습니다. 최신 버전으로 다시 시도하세요.",
+        )
+    }
+
+    /** Bean Validation(@Valid) 실패 — 400. */
+    @ExceptionHandler(MethodArgumentNotValidException::class)
+    fun handleValidationFailed(
+        @Suppress("UnusedParameter") ex: MethodArgumentNotValidException,
+    ): ProblemDetail {
+        log.info("NOTIF_DASHBOARD_400 validation_failed")
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "dashboard-invalid",
+            title = "Dashboard Validation Failed",
+            errorCode = "NOTIF_DASHBOARD_INVALID",
+            detail = "요청 값이 대시보드 규칙에 맞지 않습니다.",
+        )
+    }
+
+    /** malformed JSON body — 400. */
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun handleMessageNotReadable(
+        @Suppress("UnusedParameter") ex: HttpMessageNotReadableException,
+    ): ProblemDetail {
+        log.info("NOTIF_DASHBOARD_400 message_not_readable")
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "dashboard-invalid",
+            title = "Dashboard Validation Failed",
+            errorCode = "NOTIF_DASHBOARD_INVALID",
+            detail = "요청 바디를 파싱할 수 없습니다.",
+        )
+    }
+
+    /** path 파라미터 타입 불일치(UUID 파싱 실패 등) — 400. */
+    @ExceptionHandler(MethodArgumentTypeMismatchException::class)
+    fun handleTypeMismatch(
+        @Suppress("UnusedParameter") ex: MethodArgumentTypeMismatchException,
+    ): ProblemDetail {
+        log.info("NOTIF_DASHBOARD_400 type_mismatch")
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "dashboard-invalid",
+            title = "Dashboard Validation Failed",
+            errorCode = "NOTIF_DASHBOARD_INVALID",
+            detail = "요청 파라미터 형식이 올바르지 않습니다.",
         )
     }
 

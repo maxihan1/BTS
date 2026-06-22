@@ -124,8 +124,9 @@ class DashboardService(
         limit: Int,
         offset: Int,
     ): DashboardPage {
-        val clampedLimit = limit.coerceAtMost(MAX_LIMIT)
-        return repository.findPage(actorId, clampedLimit, offset)
+        val clampedLimit = limit.coerceIn(1, MAX_LIMIT)
+        val clampedOffset = offset.coerceAtLeast(0)
+        return repository.findPage(actorId, clampedLimit, clampedOffset)
     }
 
     /**

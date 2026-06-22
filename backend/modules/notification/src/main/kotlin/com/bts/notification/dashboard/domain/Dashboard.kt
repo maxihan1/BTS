@@ -2,6 +2,8 @@
 
 package com.bts.notification.dashboard.domain
 
+import com.fasterxml.jackson.core.JsonParseException
+import com.fasterxml.jackson.databind.ObjectMapper
 import java.time.Instant
 import java.util.UUID
 
@@ -48,6 +50,12 @@ data class Dashboard(
 
         /** layout JSONB 최대 바이트 크기 (64KB) */
         const val MAX_LAYOUT_BYTES: Int = 65536
+
+        /**
+         * layout JSON 파싱에 사용하는 ObjectMapper.
+         * Thread-safe — companion object 에 싱글턴으로 보관한다.
+         */
+        private val JSON_MAPPER = ObjectMapper()
 
         /**
          * Dashboard 인스턴스를 생성하는 팩토리 메서드.
@@ -110,6 +118,19 @@ data class Dashboard(
         private fun validateLayout(layout: String) {
             if (layout.toByteArray().size > MAX_LAYOUT_BYTES) {
                 throw DashboardDomainException("layout 은 ${MAX_LAYOUT_BYTES}바이트(64KB) 이하여야 합니다.")
+            }
+            val isValidJson =
+                if (layout.isBlank()) {
+                    false
+                } else {
+                    try {
+                        JSON_MAPPER.readTree(layout) != null
+                    } catch (e: JsonParseException) {
+                        false
+                    }
+                }
+            if (!isValidJson) {
+                throw DashboardDomainException("layout 은 유효한 JSON 이어야 합니다.")
             }
         }
 
