@@ -501,7 +501,8 @@ export const WIP_BOARD: StoredBoardDetail = {
  * 스윔레인 전환 검증용 보드 픽스처 (FR-BD-03 D7 E2E S3/S4).
  *
  * TODO 컬럼에 alice 담당 1건 + bob 담당 1건 + 우선순위 1/2 혼합.
- * ASSIGNEE 스윔레인: 담당자별 서브그룹("김앨리스", "김밥") 검증.
+ * ASSIGNEE 스윔레인: 담당자별 서브그룹("앨리스" displayName / "bob" username) 검증.
+ * alice는 displayName="앨리스"로, bob은 displayName=null이므로 username "bob"으로 그룹화된다.
  * PRIORITY 스윔레인: "우선순위 1", "우선순위 2" 서브그룹 검증.
  *
  * UUID는 RFC4122 v4 형식 — Zod v4 z.string().uuid() 통과 보장.
