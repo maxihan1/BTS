@@ -703,29 +703,56 @@ class IssueRepository(
             where = where.and(filterCondition)
         }
 
+        // EPIC self LEFT JOIN — EPIC 스윔레인용 epicKey 추출 (FR-EP-01 D6/D7).
+        // Issue 도메인 객체에는 epicKey 필드가 없으므로 record 에서 직접 추출해야 한다 (CONCERN C1).
+        // 동일 프로젝트 조건 필수 — cross-project epic 이동/stale 데이터 누출 차단 (P1-A 회귀방지).
+        val epicAlias = ISSUES.`as`(EPIC_ALIAS)
+
         // LIMIT+1 조회: 결과가 LIMIT+1 건이면 truncated=true.
         val fetched =
-            dsl.select(ISSUES.fields().toList())
+            dsl.select(ISSUES.fields().toList() + listOf(epicAlias.KEY.`as`(EPIC_KEY_ALIAS)))
                 .from(ISSUES)
                 .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+                .leftJoin(epicAlias).on(
+                    ISSUES.EPIC_ID.eq(epicAlias.ID)
+                        .and(epicAlias.DELETED_AT.isNull)
+                        .and(epicAlias.PROJECT_ID.eq(ISSUES.PROJECT_ID)),
+                )
                 .where(where)
                 .orderBy(ISSUES.CREATED_AT.desc())
                 .limit(BOARD_CARD_FETCH_LIMIT + 1)
-                .fetch { it.into(ISSUES).toIssue() }
+                .fetch { record ->
+                    val issue = record.into(ISSUES).toIssue()
+                    val epicKey = record.get(EPIC_KEY_ALIAS, String::class.java)
+                    BoardIssueEntry(issue = issue, epicKey = epicKey)
+                }
 
         val truncated = fetched.size > BOARD_CARD_FETCH_LIMIT
-        val issues = if (truncated) fetched.take(BOARD_CARD_FETCH_LIMIT) else fetched
-        return BoardFetchResult(issues = issues, truncated = truncated)
+        val entries = if (truncated) fetched.take(BOARD_CARD_FETCH_LIMIT) else fetched
+        return BoardFetchResult(entries = entries, truncated = truncated)
     }
+
+    /**
+     * [listVisibleForBoard] 단건 결과 쌍 — 이슈 + epic key.
+     *
+     * [Issue] 도메인에는 epicKey 필드가 없으므로, record 추출 결과를 쌍으로 전달한다 (CONCERN C1).
+     *
+     * @property issue 조회된 이슈 도메인 객체.
+     * @property epicKey 에픽 이슈 키. 에픽 없는 이슈는 null. 동일 프로젝트 필터 적용됨.
+     */
+    data class BoardIssueEntry(
+        val issue: Issue,
+        val epicKey: String?,
+    )
 
     /**
      * [listVisibleForBoard] 반환 VO.
      *
-     * @property issues 조회된 이슈 목록. 최대 [BOARD_CARD_FETCH_LIMIT] 건.
+     * @property entries 조회된 이슈+epicKey 목록. 최대 [BOARD_CARD_FETCH_LIMIT] 건.
      * @property truncated LIMIT 초과 여부. true 이면 일부 이슈가 누락됐음을 의미.
      */
     data class BoardFetchResult(
-        val issues: List<Issue>,
+        val entries: List<BoardIssueEntry>,
         val truncated: Boolean,
     )
 
