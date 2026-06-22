@@ -62,9 +62,20 @@ notification-dashboard로 교정.
 ### 절차 메모
 - 무거운 대화형 grill-with-docs 대신 직접 도메인 정리 + Maxi 핵심 결정 2건 확인 (BTS 직접-진행 패턴). 신규 도메인이나 핵심 갈림길은 Maxi 결정 완료, 나머지는 SDD §14.1 / product §3.1에 명확.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-22-fr-db-01-dashboard-backend.md](../specs/2026-06-22-fr-db-01-dashboard-backend.md)
+
+핵심 시나리오 요약.
+- Dashboard CRUD — POST/GET 목록/GET 단건/PATCH/DELETE. owner 기반 + OCC version.
+- visibility 3종: PRIVATE(owner) / TEAM(owner+dashboard_shares 명시 사용자) / ORG(인증 사용자 전체).
+- 목록 = owned ∪ shared-to-me ∪ ORG (UNION DISTINCT) + limit/offset 페이지네이션 (Maxi 결정).
+- 접근 불가=404(존재 숨김), 조회되나 비owner 수정=403, OCC 충돌=409.
+- TEAM 아니면 shares 정규화로 비움, owner는 shares에서 제거.
+
+## Brainstorming Check
+
+✅ 통과 (self-review 1회). 목록 ORG 포함 gap → Maxi 결정으로 해소. office-hours/brainstorming 스킬 대신 직접 스펙+self-review (명세 명확·도메인 정리 완료, BTS 직접-진행 패턴).
 
 ## Plan (← /bts-plan 채움)
 
