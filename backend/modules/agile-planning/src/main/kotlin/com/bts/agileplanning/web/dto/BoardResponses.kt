@@ -170,6 +170,10 @@ data class BoardCardResponse(
  * @property category 칸반 카테고리.
  * @property displayOrder 컬럼 표시 순서.
  * @property cards 이 컬럼에 배치된 카드 목록(priority ASC 정렬).
+ * @property wipLimit WIP(Work In Progress) 제한 수. null 이면 무제한.
+ *   [com.bts.agileplanning.domain.BoardColumn.wipLimit] 값을 그대로 반영한다.
+ * @property wipExceeded 현재 카드 수가 [wipLimit] 를 초과하면 true. [wipLimit] 가 null 이거나
+ *   카드 수가 [wipLimit] 이하이면 false. 같을 때도 초과로 판단하지 않는다(strictly greater than).
  */
 data class BoardColumnWithCardsResponse(
     val columnId: UUID,
@@ -178,6 +182,8 @@ data class BoardColumnWithCardsResponse(
     val category: String,
     val displayOrder: Int,
     val cards: List<BoardCardResponse>,
+    val wipLimit: Int?,
+    val wipExceeded: Boolean,
 ) {
     companion object {
         /** [PlacedColumn] 을 [BoardColumnWithCardsResponse] 로 변환한다. */
@@ -189,6 +195,8 @@ data class BoardColumnWithCardsResponse(
                 category = placed.column.category,
                 displayOrder = placed.column.displayOrder,
                 cards = placed.cards.map(BoardCardResponse::from),
+                wipLimit = placed.column.wipLimit,
+                wipExceeded = placed.column.wipLimit?.let { placed.cards.size > it } ?: false,
             )
     }
 }
@@ -204,6 +212,8 @@ data class BoardColumnWithCardsResponse(
  *   클라이언트가 "보드에 표시되지 않은 이슈가 있습니다" UI 경고를 표시하는 데 사용한다.
  * @property unplacedCount 어느 컬럼에도 매핑되지 않아 보드에서 제외된 이슈 수(E2 미매핑 상태 이슈).
  *   0 이면 미매핑 이슈 없음. 양수이면 워크플로우 상태와 보드 컬럼 간 미싱 매핑이 있음을 의미한다.
+ * @property swimlaneField 스윔레인 기준 필드 이름. [SwimlaneField.name] 문자열. 예: `"NONE"`, `"ASSIGNEE"`, `"PRIORITY"`.
+ *   클라이언트가 스윔레인 UI 활성 여부 및 그룹화 기준을 판단하는 데 사용한다.
  */
 data class BoardDetailResponse(
     val boardId: UUID,
@@ -212,12 +222,13 @@ data class BoardDetailResponse(
     val columns: List<BoardColumnWithCardsResponse>,
     val truncated: Boolean,
     val unplacedCount: Int,
+    val swimlaneField: String,
 ) {
     companion object {
         /**
          * 보드 메타([Board])와 카드 배치 결과([BoardPlacementResult])를 합쳐 응답을 만든다.
          *
-         * @param board 보드 메타(boardId/projectKey/name 출처).
+         * @param board 보드 메타(boardId/projectKey/name/swimlaneField 출처).
          * @param result 카드 배치 + 신호 필드(truncated/unplacedCount) 결과.
          */
         fun of(
@@ -231,6 +242,7 @@ data class BoardDetailResponse(
                 columns = result.columns.map(BoardColumnWithCardsResponse::from),
                 truncated = result.truncated,
                 unplacedCount = result.unplacedCount,
+                swimlaneField = board.swimlaneField.name,
             )
     }
 }
