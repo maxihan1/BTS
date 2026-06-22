@@ -65,6 +65,9 @@ class IssueChangeDetector {
                 "targetDate" to { it.targetDate?.toString() },
                 "originalEstimate" to { it.originalEstimateSeconds?.toString() },
                 "remainingEstimate" to { it.remainingEstimateSeconds?.toString() },
+                // epic 연결 변경 이력 (FR-EP-01 Task 5 G1).
+                // connect/disconnect 는 전용 서비스 경로 — PATCH 에서는 epicId 미편집이므로 before==after → no-op.
+                "epic" to { it.epicId?.toString() },
             )
     }
 

@@ -56,4 +56,28 @@ class IssueResponseTest {
 
         assertEquals("BETA", response.projectKey)
     }
+
+    @Test
+    fun `from — epic 파라미터를 전달하면 EpicSummary 가 응답에 채워진다`() {
+        val epic = IssueResponse.EpicSummary(key = "PROJ-1", summary = "에픽요약")
+        val response =
+            IssueResponse.from(
+                sampleIssue,
+                "ATLAS",
+                IssueResponse.IssueTypeInfo(id = 3L, key = "task", name = "Task"),
+                epic = epic,
+            )
+
+        assertEquals(epic, response.epic)
+        assertEquals("PROJ-1", response.epic?.key)
+        assertEquals("에픽요약", response.epic?.summary)
+    }
+
+    @Test
+    fun `from — epic 파라미터 미지정 시 기본값 null — 목록 경로 시나리오`() {
+        val response =
+            IssueResponse.from(sampleIssue, "ATLAS", IssueResponse.IssueTypeInfo(id = 3L, key = "task", name = "Task"))
+
+        assertEquals(null, response.epic)
+    }
 }
