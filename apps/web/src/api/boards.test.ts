@@ -1,4 +1,4 @@
-// 칸반 보드 API 클라이언트 단위 테스트 — Zod 스키마 계약 + fetch 함수 검증 (FR-BD-01/02)
+// 칸반 보드 API 클라이언트 단위 테스트 — Zod 스키마 계약 + fetch 함수 검증 (FR-BD-01/02/03)
 import { describe, it, expect } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
@@ -9,10 +9,12 @@ import {
   boardDetailSchema,
   boardCreatedSchema,
   moveCardResultSchema,
+  boardMetaSchema,
   fetchBoards,
   fetchBoard,
   createBoard,
   moveCard,
+  updateBoardSwimlane,
   type BoardCardFilterParams,
 } from './boards'
 
@@ -616,5 +618,100 @@ describe('fetchBoard — filter query string 조립 (FR-BD-02)', () => {
     expect(capturedUrl).not.toBeNull()
     const url = new URL(capturedUrl ?? '')
     expect(url.search).toBe('')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// boardMetaSchema — 스키마 파싱 (FR-BD-03 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('boardMetaSchema — 유효 픽스처 파싱', () => {
+  it('T-BD-11a: boardId/projectKey/name/swimlaneField 모두 파싱된다', () => {
+    const fixture = {
+      boardId: BOARD_ID,
+      projectKey: PROJECT_KEY,
+      name: 'ATLAS 보드',
+      swimlaneField: 'ASSIGNEE' as const,
+    }
+    const result = boardMetaSchema.safeParse(fixture)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.boardId).toBe(BOARD_ID)
+    expect(result.data.swimlaneField).toBe('ASSIGNEE')
+  })
+
+  it('T-BD-11b: swimlaneField 값이 NONE/ASSIGNEE/PRIORITY 세 가지만 허용된다', () => {
+    const valid = ['NONE', 'ASSIGNEE', 'PRIORITY'] as const
+    for (const field of valid) {
+      const result = boardMetaSchema.safeParse({
+        boardId: BOARD_ID,
+        projectKey: PROJECT_KEY,
+        name: 'ATLAS 보드',
+        swimlaneField: field,
+      })
+      expect(result.success, `${field} should be valid`).toBe(true)
+    }
+    const invalid = boardMetaSchema.safeParse({
+      boardId: BOARD_ID,
+      projectKey: PROJECT_KEY,
+      name: 'ATLAS 보드',
+      swimlaneField: 'COMPONENT',
+    })
+    expect(invalid.success).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// updateBoardSwimlane — PATCH /api/v1/boards/{id} (FR-BD-03 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('updateBoardSwimlane', () => {
+  const boardMetaFixture = {
+    boardId: BOARD_ID,
+    projectKey: PROJECT_KEY,
+    name: 'ATLAS 보드',
+    swimlaneField: 'ASSIGNEE' as const,
+  }
+
+  it('T-BD-12a: PATCH /api/v1/boards/{id}를 body {swimlaneField} 로 호출하고 BoardMeta를 반환한다', async () => {
+    let capturedMethod: string | null = null
+    let capturedBody: unknown = null
+
+    server.use(
+      http.patch('/api/v1/boards/:boardId', async ({ request }) => {
+        capturedMethod = request.method
+        capturedBody = await request.json()
+        return HttpResponse.json({ data: boardMetaFixture })
+      }),
+    )
+
+    const result = await updateBoardSwimlane(BOARD_ID, 'ASSIGNEE')
+    expect(capturedMethod).toBe('PATCH')
+    expect(capturedBody).toEqual({ swimlaneField: 'ASSIGNEE' })
+    expect(result.boardId).toBe(BOARD_ID)
+    expect(result.swimlaneField).toBe('ASSIGNEE')
+  })
+
+  it('T-BD-12b: swimlaneField=NONE으로 호출해 NONE을 반환한다', async () => {
+    server.use(
+      http.patch('/api/v1/boards/:boardId', async () => {
+        return HttpResponse.json({
+          data: { ...boardMetaFixture, swimlaneField: 'NONE' as const },
+        })
+      }),
+    )
+
+    const result = await updateBoardSwimlane(BOARD_ID, 'NONE')
+    expect(result.swimlaneField).toBe('NONE')
+  })
+
+  it('T-BD-12c: 비-2xx 응답 시 ApiError가 throw된다', async () => {
+    server.use(
+      http.patch('/api/v1/boards/:boardId', () => {
+        return HttpResponse.json({ code: 'FORBIDDEN', message: 'Access denied' }, { status: 403 })
+      }),
+    )
+
+    await expect(updateBoardSwimlane(BOARD_ID, 'ASSIGNEE')).rejects.toMatchObject({ status: 403 })
   })
 })
