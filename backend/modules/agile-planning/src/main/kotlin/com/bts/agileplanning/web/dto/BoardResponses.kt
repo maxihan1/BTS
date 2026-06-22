@@ -8,7 +8,6 @@ import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.PlacedColumn
 import com.bts.shared.board.BoardIssueView
 import com.bts.shared.board.BoardTransitionResult
-import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.PositiveOrZero
@@ -258,7 +257,6 @@ data class BoardDetailResponse(
  * @property wipLimit 새로운 WIP 제한. null 이면 해제. 양수만 허용.
  */
 data class UpdateColumnWipLimitRequest(
-    @field:Min(value = 1, message = "wipLimit 는 1 이상이어야 합니다.")
     val wipLimit: Int?,
 )
 

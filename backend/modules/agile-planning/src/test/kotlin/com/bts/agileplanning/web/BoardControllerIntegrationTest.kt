@@ -86,6 +86,7 @@ import java.util.UUID
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [BoardControllerIntegrationTest.TestMvcConfig::class])
 @WebAppConfiguration
+@Suppress("LargeClass") // 보드 REST API 전 시나리오를 단일 슬라이스 테스트로 커버한다
 class BoardControllerIntegrationTest {
     /**
      * 테스트 전용 Spring MVC 최소 컨텍스트.

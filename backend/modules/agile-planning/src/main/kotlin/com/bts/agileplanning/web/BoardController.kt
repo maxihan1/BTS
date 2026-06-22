@@ -46,8 +46,9 @@ import java.util.UUID
  * - GET  `/api/v1/boards?projectKey=` — 프로젝트별 보드 목록. 권한 [IssuePermission.BROWSE].
  * - POST `/api/v1/boards/{id}/cards/{issueKey}/move` — 카드 이동. 보드 접근 [IssuePermission.BROWSE] +
  *   이동 자체는 [com.bts.shared.board.IssueTransitionPort] 가 TRANSITION 을 강제한다.
- * - PATCH `/api/v1/boards/{id}` — 보드 스윔레인 기준 변경. 권한 [IssuePermission.CREATE] on [IssueScope.Project].
- * - PATCH `/api/v1/boards/{id}/columns/{columnId}` — 컬럼 WIP 제한 설정/해제. 권한 [IssuePermission.CREATE] on [IssueScope.Project].
+ * - PATCH `/api/v1/boards/{id}` — 보드 스윔레인 기준 변경. 권한 [IssuePermission.CREATE].
+ * - PATCH `/api/v1/boards/{id}/columns/{columnId}` — 컬럼 WIP 제한 설정/해제.
+ *   권한 [IssuePermission.CREATE] on [IssueScope.Project].
  *
  * ### 권한 2단 게이트 (FR-BD-01-6)
  * - 조회/이동의 보드 접근 = BROWSE(목록 자격). 카드 노출 보안수준은 행 단위 보안필터(T4)가 별도 적용.
@@ -224,9 +225,10 @@ class BoardController(
     ): ResponseEntity<DataResponse<BoardMetaResponse>> {
         log.info("BoardController.updateSwimlaneField id={} swimlaneField={}", id, request.swimlaneField)
 
-        val (_, board) = loadBoardWithCreate(id)
-        val raw = request.swimlaneField
-            ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "swimlaneField 는 null 일 수 없습니다.")
+        loadBoardWithCreate(id)
+        val raw =
+            request.swimlaneField
+                ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "swimlaneField 는 null 일 수 없습니다.")
         val updated = service.updateSwimlaneField(id, raw)
         return ResponseEntity.ok(DataResponse(BoardMetaResponse.from(updated)))
     }
@@ -254,7 +256,7 @@ class BoardController(
     ): ResponseEntity<DataResponse<ColumnMetaResponse>> {
         log.info("BoardController.updateColumnWipLimit id={} columnId={} wipLimit={}", id, columnId, request.wipLimit)
 
-        val (_, _) = loadBoardWithCreate(id)
+        loadBoardWithCreate(id)
         val wipLimit = request.wipLimit
         if (wipLimit != null && wipLimit < 1) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "wipLimit 는 1 이상이어야 합니다.")

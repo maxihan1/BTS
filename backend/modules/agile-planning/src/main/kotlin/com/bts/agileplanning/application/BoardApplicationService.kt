@@ -234,7 +234,11 @@ class BoardApplicationService(
      * @throws ResponseStatusException 404 — 보드/컬럼 미존재 또는 타 보드 소속.
      */
     @Transactional
-    fun updateColumnWipLimit(boardId: UUID, columnId: UUID, wipLimit: Int?): BoardColumn {
+    fun updateColumnWipLimit(
+        boardId: UUID,
+        columnId: UUID,
+        wipLimit: Int?,
+    ): BoardColumn {
         log.debug("WIP 제한 갱신 — boardId={}, columnId={}, wipLimit={}", boardId, columnId, wipLimit)
         return boardRepository.updateColumnWipLimit(boardId, columnId, wipLimit)
             ?: throw ResponseStatusException(
@@ -256,7 +260,10 @@ class BoardApplicationService(
      * @throws ResponseStatusException 404 — 보드 미존재 또는 soft-deleted.
      */
     @Transactional
-    fun updateSwimlaneField(boardId: UUID, swimlaneFieldRaw: String): Board {
+    fun updateSwimlaneField(
+        boardId: UUID,
+        swimlaneFieldRaw: String,
+    ): Board {
         log.debug("스윔레인 필드 갱신 — boardId={}, swimlaneField={}", boardId, swimlaneFieldRaw)
         val swimlaneField =
             SwimlaneField.entries.firstOrNull { it.name == swimlaneFieldRaw }
