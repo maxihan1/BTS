@@ -194,5 +194,6 @@ eng(backend-engineer) + security(security-engineer) 독립 병행 리뷰. 둘 �
 - **N2/N3**: 예외 detail 비노출·listChildren scope=Project(C1 통합).
 - 종합: 기존 IssueLinkController/ParentService의 권한 검증 전무 갭을 메우는 방향이라 보안 개선. C1·C3는 impl 게이트2 통합테스트에서 actor별 시드 누출0 단언으로 강제.
 
-### 게이트1 미결 항목
-- **G1 (changelog 기록 여부)** — Maxi 결정 필요. 권장=기록(T5 포함, Jira parity·적대리뷰 사전차단). 미기록 시 T5에서 recorder 호출+SCALAR_FIELD_EXTRACTORS 항목+IssueChangeDetector.kt 제거.
+### 게이트1 결정 (2026-06-22, Maxi 확정)
+- **G1 = 기록**. epic 연결/해제를 자식 changelog에 기록(T5의 IssueChangeDetector "epic" extractor + IssueHistoryRecorder.record 포함, IssueChangeDetector.kt를 T5 files에 포함). 프론트 changelog-label("에픽")은 D6/D7 후속 PR.
+- **게이트1 = 승인**. /bts-impl 진행.
