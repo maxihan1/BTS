@@ -18,6 +18,15 @@ CREATE TABLE dashboards (
     version     BIGINT      NOT NULL DEFAULT 0
 );
 
+COMMENT ON TABLE  dashboards             IS '사용자 정의 대시보드 — 위젯 배치(layout)와 공개 범위(visibility)를 가지는 Aggregate';
+COMMENT ON COLUMN dashboards.owner_id    IS '소유자 사용자 ID (identity-access users.id). FK 없음 — BC 격리';
+COMMENT ON COLUMN dashboards.name        IS '대시보드 표시 이름';
+COMMENT ON COLUMN dashboards.description IS '대시보드 설명 (선택)';
+COMMENT ON COLUMN dashboards.visibility  IS '공개 범위 — PRIVATE / TEAM / ORG';
+COMMENT ON COLUMN dashboards.layout      IS '위젯 배치 JSONB 배열 (기본 빈 배열)';
+COMMENT ON COLUMN dashboards.deleted_at  IS '소프트 삭제 시각 (NULL=활성). DATA.md §3';
+COMMENT ON COLUMN dashboards.version     IS '낙관적 동시성 제어(OCC) 버전 — 동시 편집 충돌 감지';
+
 -- 소유자별 대시보드 목록 조회 경로 최적화 — 삭제되지 않은 행만 인덱싱(부분 인덱스).
 CREATE INDEX idx_dashboards_owner ON dashboards(owner_id) WHERE deleted_at IS NULL;
 -- 공개 범위별 조회(TEAM/ORG 공유 대시보드 탐색) 경로 최적화 — 삭제되지 않은 행만 인덱싱.
@@ -32,6 +41,10 @@ CREATE TABLE dashboard_shares (
     user_id      UUID NOT NULL,
     PRIMARY KEY (dashboard_id, user_id)
 );
+
+COMMENT ON TABLE  dashboard_shares              IS '대시보드 개별 공유 — (대시보드×사용자) 지정 공유. 부모 삭제 시 CASCADE';
+COMMENT ON COLUMN dashboard_shares.dashboard_id IS '공유 대상 대시보드 ID (dashboards.id, ON DELETE CASCADE)';
+COMMENT ON COLUMN dashboard_shares.user_id      IS '공유받는 사용자 ID (identity-access users.id). FK 없음 — BC 격리';
 
 -- 사용자에게 공유된 대시보드 역방향 조회 경로 최적화 (PK 선두 컬럼이 dashboard_id 라 user_id 단독 조회용 별도 인덱스 필요).
 CREATE INDEX idx_dashboard_shares_user ON dashboard_shares(user_id);
