@@ -30,11 +30,17 @@ visibility=TEAM은 `dashboard_shares(dashboard_id, user_id)` 조인 테이블로
 
 ### D3. Aggregate 경계 — Dashboard Root + DashboardShare 자식
 - **Dashboard** (Aggregate Root): id(UUID), ownerId(UUID), name, description?, visibility,
-  layout(JSONB), createdAt, updatedAt, version(OCC 낙관적 잠금)
-- **DashboardShare** (자식): (dashboard_id, user_id) 복합 PK, FK ON DELETE CASCADE.
-  TEAM visibility에서만 의미. Dashboard aggregate를 통해서만 변경.
+  layout(JSONB), createdAt, updatedAt, deletedAt(소프트 삭제), version(OCC 낙관적 잠금)
+- **DashboardShare** (자식): (dashboard_id, user_id) 복합 PK, FK ON DELETE CASCADE(하드 삭제
+  대비 안전망). 자체 deleted_at 없음 — 부모 Dashboard의 deleted_at을 따라감(읽을 때 부모
+  deleted_at IS NULL 필터). TEAM visibility에서만 의미. Dashboard aggregate를 통해서만 변경.
 - **DashboardVisibility** (enum): PRIVATE(owner만) / TEAM(owner+shared) / ORG(모든 인증
   사용자). PUBLIC(URL 토큰)은 FR-DB-03 범위라 이번엔 제외.
+
+### D5. 삭제 정책 — 소프트 삭제 (Maxi 확정 2026-06-22)
+DATA.md §1.2/§3 기본 원칙대로 소프트 삭제. DELETE는 `deleted_at` 설정(UPDATE)이며 모든 조회/
+목록 쿼리는 `deleted_at IS NULL` 필터. 하드 삭제 ADR 불요. 복구 가능. dashboard_shares는
+부모 필터로 가려짐(소프트 삭제 시 물리 잔존은 무해).
 
 ### D4. layout 저장 — JSONB, FR-DB-01은 빈 그리드
 layout은 react-grid-layout 배치 정보({i,x,y,w,h} 배열)를 담는 JSONB 컬럼이다. 가젯이 없는

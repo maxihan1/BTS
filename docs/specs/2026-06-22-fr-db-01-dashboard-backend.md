@@ -20,7 +20,7 @@
 - S6. 수정. Given A의 대시보드, When A가 `PATCH`로 name/layout/visibility/sharedUserIds + 일치 version 전송, Then 200 + version 증가.
 - S7. 수정 권한. Given B의 ORG 대시보드(A가 조회는 됨), When A가 `PATCH`, Then 403(소유자 아님).
 - S8. OCC 충돌. Given version=2 대시보드, When version=1로 PATCH, Then 409.
-- S9. 삭제. Given A의 대시보드, When A가 `DELETE`, Then 204 + dashboard_shares CASCADE 정리.
+- S9. 삭제. Given A의 대시보드, When A가 `DELETE`, Then 204 + deleted_at 설정(소프트 삭제). 이후 조회 404.
 - S10. visibility 정규화. Given visibility=PRIVATE로 변경 + sharedUserIds 포함, When 저장, Then shares는 빈 집합으로 정규화.
 
 ## 기능 요구사항 (FR)
@@ -69,18 +69,21 @@ CREATE TABLE dashboards (
     layout      JSONB       NOT NULL DEFAULT '[]'::jsonb,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at  TIMESTAMPTZ,                          -- 소프트 삭제 (DATA.md §3, Maxi 확정)
     version     BIGINT      NOT NULL DEFAULT 0
 );
-CREATE INDEX idx_dashboards_owner  ON dashboards(owner_id);
-CREATE INDEX idx_dashboards_visibility ON dashboards(visibility);
+CREATE INDEX idx_dashboards_owner  ON dashboards(owner_id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_dashboards_visibility ON dashboards(visibility) WHERE deleted_at IS NULL;
 
 CREATE TABLE dashboard_shares (
-    dashboard_id UUID NOT NULL REFERENCES dashboards(id) ON DELETE CASCADE,
+    dashboard_id UUID NOT NULL REFERENCES dashboards(id) ON DELETE CASCADE,  -- 안전망
     user_id      UUID NOT NULL,
     PRIMARY KEY (dashboard_id, user_id)
 );
 CREATE INDEX idx_dashboard_shares_user ON dashboard_shares(user_id);  -- shared-to-me 목록
 ```
+
+**삭제 정책 = 소프트 삭제** (DATA.md §1.2/§3, Maxi 확정). DELETE는 `UPDATE dashboards SET deleted_at = now()`. 모든 조회/목록 쿼리는 `deleted_at IS NULL` 필터. dashboard_shares는 자체 deleted_at 없이 부모 deleted_at으로 가려짐(읽을 때 부모 JOIN 필터).
 
 ## 엣지 케이스
 
@@ -94,7 +97,8 @@ CREATE INDEX idx_dashboard_shares_user ON dashboard_shares(user_id);  -- shared-
 - EC8. OCC version 불일치 → 409.
 - EC9. 존재하지 않는 user_id를 shares에 → 느슨 허용(논리 참조, BC 격리상 검증 안 함). 그 사용자가 로그인 시 목록에 노출.
 - EC10. layout 비-JSON / 상한 초과 → 400.
-- EC11. 삭제된 대시보드 재조회 → 404.
+- EC11. 삭제된(deleted_at NOT NULL) 대시보드 재조회/수정/삭제 → 404 (deleted_at IS NULL 필터로 안 잡힘, 멱등).
+- EC12. 모든 쿼리(단건/목록/update/delete)에 deleted_at IS NULL 필터 필수 — 누락 시 삭제 자원 누출.
 
 ## 제약 조건
 

@@ -41,9 +41,10 @@ notification-dashboard로 교정.
 - 다음 마이그레이션: V405 (notification 모듈, 머지 직전 재확인)
 
 ### Aggregate 모델
-- **Dashboard** (Root): id, ownerId, name, description?, visibility, layout(JSONB), createdAt, updatedAt, version(OCC)
-- **DashboardShare** (자식): (dashboard_id, user_id) 복합 PK, FK ON DELETE CASCADE — TEAM 전용
+- **Dashboard** (Root): id, ownerId, name, description?, visibility, layout(JSONB), createdAt, updatedAt, deletedAt(소프트 삭제), version(OCC)
+- **DashboardShare** (자식): (dashboard_id, user_id) 복합 PK, FK ON DELETE CASCADE 안전망 — TEAM 전용. 자체 deleted_at 없음(부모 따라감)
 - **DashboardVisibility** (enum): PRIVATE(owner만) / TEAM(owner+shared) / ORG(인증 사용자 전체). PUBLIC=FR-DB-03 제외
+- **삭제 = 소프트 삭제** (deleted_at, DATA.md §3 Maxi 확정). 모든 쿼리 deleted_at IS NULL 필터.
 
 ### Maxi 핵심 결정 (2026-06-22)
 - TEAM 공유 = 대시보드별 명시 사용자 목록 (`dashboard_shares`), user_groups 재사용 아님
@@ -111,7 +112,7 @@ notification-dashboard로 교정.
 - files: [`backend/modules/notification/src/main/resources/db/migration/notification/V405__dashboards.sql`, `<init_codegen.sql 경로>`]
 - depends-on: []
 
-**RED**: **[C3] `V405DashboardsSchemaTest` 필수 작성** (기존 UserNotificationSubsSchemaTest 패턴) — dashboards/dashboard_shares 테이블·컬럼·인덱스·FK CASCADE 존재 단언. 선택 아님(false-green 방지).
+**RED**: **[C3] `V405DashboardsSchemaTest` 필수 작성** (기존 UserNotificationSubsSchemaTest 패턴) — dashboards/dashboard_shares 테이블·컬럼(deleted_at 포함)·부분 인덱스(WHERE deleted_at IS NULL)·FK CASCADE 존재 단언. 선택 아님(false-green 방지).
 
 **GREEN**: 스펙 §데이터 모델의 DDL 그대로. dashboards(+owner/visibility 인덱스) + dashboard_shares(FK CASCADE + user_id 인덱스). init_codegen.sql에 동일 DDL 미러(jOOQ codegen 입력 — 누락 시 빌드 깨짐, 메모리 교훈).
 
@@ -132,7 +133,7 @@ notification-dashboard로 교정.
 - 목록 3종: owned / shared-to-me / ORG → UNION DISTINCT(owned이면서 ORG는 1건) + updatedAt desc + limit/offset
 - 빈 목록·페이지 경계
 
-**GREEN**: DSLContext 기반 jOOQ 구현(기존 NotificationPolicyRepository 패턴). 목록 item = UNION(owned/shared/org) DISTINCT + updatedAt desc + limit/offset. **[C2] total count는 별도 COUNT 서브쿼리**(`SELECT COUNT(*) FROM (UNION) sub`) — item 쿼리와 분리해 cartesian product 회피.
+**GREEN**: DSLContext 기반 jOOQ 구현(기존 NotificationPolicyRepository 패턴). 목록 item = UNION(owned/shared/org) DISTINCT + updatedAt desc + limit/offset. **[C2] total count는 별도 COUNT 서브쿼리**(`SELECT COUNT(*) FROM (UNION) sub`) — item 쿼리와 분리해 cartesian product 회피. **[소프트 삭제] 모든 쿼리(단건/목록/update/delete)에 `deleted_at IS NULL` 필터. delete = `UPDATE dashboards SET deleted_at = now()`(하드 DELETE 금지). shares 읽기는 부모 deleted_at IS NULL JOIN 필터.**
 
 **REFACTOR**: 매핑 함수 추출.
 
@@ -149,7 +150,7 @@ notification-dashboard로 교정.
 - create(actor) → owner=actor
 - get: PRIVATE 남의 것 → 404, TEAM 공유대상 → 200, ORG → 200
 - update/delete: 조회 불가 → 404, 조회되나 비owner → 403, owner → 성공
-- **[C1] delete 404/403 분기** — findById → owner 비교(403) → delete. 단일 rowcount로 404/403 판정 금지. version 조건은 delete에 불요.
+- **[C1] delete 404/403 분기** — findById(deleted_at IS NULL) → owner 비교(403) → 소프트 delete(deleted_at 설정). 단일 rowcount로 404/403 판정 금지. 이미 삭제된 건 404(멱등). version 조건은 delete에 불요.
 - OCC version 불일치(update) → 409
 - visibility 정규화(서비스에서 도메인 위임)
 - 목록: actor 기준 owned ∪ shared ∪ ORG
@@ -216,3 +217,6 @@ notification-dashboard로 교정.
 - C6 (Task 4/5). PATCH는 도메인 `applyPatch()` → 정규화 → repository.update() 단일 경로 강제(도메인 우회 금지, 메모리 교훈).
 
 BLOCKER: 없음.
+
+### 추가 발견 (controller DATA.md 대조, impl 직전, 2026-06-22)
+- **소프트 삭제 누락** — plan/스펙이 하드 삭제(CASCADE) 가정 → DATA.md §1.2/§3 위반 소지. Maxi 확정 = 소프트 삭제(deleted_at). 스펙/plan/ADR DDL·쿼리·시나리오 전수 동기화 완료.
