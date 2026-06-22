@@ -78,6 +78,9 @@ private const val IMPACT_MAX = 3
  * @property customFields 프로젝트별 커스텀 필드 값 맵. 키는 필드 정의의 key, 값은 타입별 JSON 값.
  *   기본값은 빈 맵. 생성/수정 시 [com.bts.issue.customfield.domain.CustomFieldValueValidator] 가 검증한다.
  *   클론(FR-IS-06) 시 미복사(E10) — 클론본은 항상 빈 맵으로 시작한다.
+ * @property epicId 소속 Epic 의 내부 UUID (issues.id 자기참조). null 이면 Epic 미연결.
+ *   epic_id는 소속 Epic(issues.id 자기참조). parent_id(Subtask 계층)와 별개 — FR-EP-01.
+ *   application 레이어가 Epic 타입 검증 및 설정 책임을 진다.
  * @property parentId 부모 이슈의 내부 UUID. null 이면 최상위 이슈.
  *   구조적 계층 컬럼(issues.parent_id) — 링크(issue_links)와 별개 (FR-LK-01, V021).
  *   변경은 [IssueRepository.updateParent] 를 통해 수행하며, cycle-free 보장은 서비스 계층(Task 6) 책임.
@@ -112,6 +115,8 @@ data class Issue(
     val fixVersionIds: List<UUID> = emptyList(),
     val securityLevelId: UUID? = null,
     val customFields: Map<String, Any?> = emptyMap(),
+    /** epic_id는 소속 Epic(issues.id 자기참조). parent_id(Subtask 계층)와 별개 — FR-EP-01. */
+    val epicId: UUID? = null,
     val parentId: UUID? = null,
     val startDate: LocalDate? = null,
     val dueDate: LocalDate? = null,
