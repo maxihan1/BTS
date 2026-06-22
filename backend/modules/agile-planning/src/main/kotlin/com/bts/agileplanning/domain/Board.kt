@@ -19,6 +19,7 @@ import java.util.UUID
  * - [id] 는 생성 후 변경 불가.
  * - [projectKey] 는 비어 있으면 안 된다.
  * - [name] 은 비어 있거나 공백만 있으면 안 된다.
+ * - [swimlaneField] 기본값은 [SwimlaneField.NONE]. 미지정 시 스윔레인을 사용하지 않는다.
  *
  * @property id 보드 UUID (PK).
  * @property projectKey 소속 프로젝트 키. BC 격리 목적으로 FK 없이 문자열로 보관. 예: `"ATLAS"`.

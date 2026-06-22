@@ -19,6 +19,7 @@ import java.util.UUID
  * - [name] 은 비어 있거나 공백만 있으면 안 된다.
  * - [category] 는 비어 있거나 공백만 있으면 안 된다.
  * - [displayOrder] 는 컬럼 표시 순서(오름차순). 값 자체는 제약 없음.
+ * - [wipLimit] 는 null 이거나 양수(1 이상)여야 한다. 0·음수는 IllegalArgumentException.
  *
  * @property id 컬럼 UUID (PK).
  * @property stateKey 매핑된 워크플로우 상태 키. 예: `"open"`, `"in-progress"`, `"closed"`.
