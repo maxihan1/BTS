@@ -316,12 +316,12 @@ class IssueEpicServiceTest : DescribeSpec({
                 every { issueRepository.findByKey(epicKey) } returns makeIssue(epicUuid, epicKey, typeId = epicTypeId)
                 every { issueTypeRepository.findById(storyTypeId) } returns storyType
                 every { issueTypeRepository.findById(epicTypeId) } returns epicType
-                every { issueRepository.updateEpic(childUuid, epicUuid) } returns Unit
+                every { issueRepository.linkEpic(childUuid, epicUuid) } returns 1
             }
 
-            it("issueRepository.updateEpic(childId, epicId) 가 1회 호출된다") {
+            it("issueRepository.linkEpic(childId, epicId) 가 1회 호출된다") {
                 sut.connect(epicKey, childKey, actorId)
-                verify(exactly = 1) { issueRepository.updateEpic(childUuid, epicUuid) }
+                verify(exactly = 1) { issueRepository.linkEpic(childUuid, epicUuid) }
             }
 
             it("[G1] historyRecorder.record 가 before/after child 로 1회 호출된다") {
@@ -345,6 +345,32 @@ class IssueEpicServiceTest : DescribeSpec({
                         IssueScope.Issue(childKey.value),
                     )
                 }
+            }
+        }
+
+        context("P1-B TOCTOU — linkEpic 이 0행 반환하면 (원자 실패, 동시 connect 경합 패배)") {
+            // in-memory 검사(epic_id==null) 를 통과했더라도 DB 레벨 조건부 UPDATE 가 0행이면 409.
+            val childBefore = makeIssue(childUuid, childKey, typeId = storyTypeId, epicId = null)
+
+            beforeEach {
+                allowUpdate(childKey)
+                every { issueRepository.findByKey(childKey) } returns childBefore
+                every { issueRepository.findByKey(epicKey) } returns makeIssue(epicUuid, epicKey, typeId = epicTypeId)
+                every { issueTypeRepository.findById(storyTypeId) } returns storyType
+                every { issueTypeRepository.findById(epicTypeId) } returns epicType
+                // 조건부 UPDATE 원자 실패 시뮬레이션 — epic_id IS NULL 불일치로 0행 반환
+                every { issueRepository.linkEpic(childUuid, epicUuid) } returns 0
+            }
+
+            it("EpicChildAlreadyLinkedException(409) 을 던진다") {
+                shouldThrow<EpicChildAlreadyLinkedException> {
+                    sut.connect(epicKey, childKey, actorId)
+                }
+            }
+
+            it("historyRecorder.record 가 호출되지 않는다 (changelog 오기록 방지)") {
+                runCatching { sut.connect(epicKey, childKey, actorId) }
+                verify(exactly = 0) { historyRecorder.record(any(), any(), any(), any()) }
             }
         }
     }
