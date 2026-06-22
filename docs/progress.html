@@ -182,9 +182,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
           <div><span class="dot dot-done"></span> 완료 <b>69</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>1</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>2</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>53</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>52</b></div>
         </div>
       </div>
     </div>
@@ -810,9 +810,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bar"><div class="bar-fill" style="width:50%"></div></div>
       <div class="status-grid">
         <div>✅ 완료 7</div>
-        <div>🔄 진행중 0</div>
+        <div>🔄 진행중 1</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 7</div>
+        <div>⬜ 대기 6</div>
       </div>
     </div>
     <h2>세부 기능 (14개)</h2>
@@ -900,13 +900,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc">타임라인 줌 (주/월/분기)</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인</li><li><span class="step-icon">⬜</span> D2 — 명세 — 줌 레벨별 셀 크기</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — (활용)</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — (해당 없음, 프론트 전용)</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트 — (해당 없음)</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 줌 컨트롤 + 키보드 단축키</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-진행중">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">🔄</span>
         <span class="fr-id">FR-EP-01</span>
         <span class="fr-desc"><span class="term" data-def="이슈 타입의 하나 (최상위 `hierarchy_level=1`). 큰 작업을 묶는 상위 이슈로, 여러 Story 로 분해된다. agile-planning 의 &quot;에픽&quot;과 같은 개념의 두 측면 — issue-tracking 에선 이슈 타입, agile-planning 에선 묶음 단위">Epic</span> <span class="term" data-def="이슈의 분류 (Epic/Story/Task/Subtask/Bug + 커스텀). 모든 이슈는 정확히 하나의 타입 보유. `hierarchylevel` 로 계층 위계 표현. 표준 5종(`isstandard=true`)은 불변">이슈 타입</span> + 자식 이슈 연결</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — <span class="term" data-def="이슈 타입의 하나 (최상위 `hierarchy_level=1`). 큰 작업을 묶는 상위 이슈로, 여러 Story 로 분해된다. agile-planning 의 &quot;에픽&quot;과 같은 개념의 두 측면 — issue-tracking 에선 이슈 타입, agile-planning 에선 묶음 단위">Epic</span> Aggregate</li><li><span class="step-icon">⬜</span> D2 — 명세 — <span class="term" data-def="이슈 타입의 하나 (최상위 `hierarchy_level=1`). 큰 작업을 묶는 상위 이슈로, 여러 Story 로 분해된다. agile-planning 의 &quot;에픽&quot;과 같은 개념의 두 측면 — issue-tracking 에선 이슈 타입, agile-planning 에선 묶음 단위">Epic</span> ↔ <span class="term" data-def="&quot;작업 쪼개기 단위&quot; 큰 프로젝트(에픽) → 사용자 기능(스토리) → 개발자 작업(태스크).">Story</span>/<span class="term" data-def="&quot;작업 쪼개기 단위&quot; 큰 프로젝트(에픽) → 사용자 기능(스토리) → 개발자 작업(태스크).">Task</span> 계층</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s.<span class="term" data-def="이슈 타입의 하나 (최상위 `hierarchy_level=1`). 큰 작업을 묶는 상위 이슈로, 여러 Story 로 분해된다. agile-planning 의 &quot;에픽&quot;과 같은 개념의 두 측면 — issue-tracking 에선 이슈 타입, agile-planning 에선 묶음 단위">epic</span>_id` 또는 `issue_links` 활용</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `POST /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s/{key}/<span class="term" data-def="이슈 타입의 하나 (최상위 `hierarchy_level=1`). 큰 작업을 묶는 상위 이슈로, 여러 Story 로 분해된다. agile-planning 의 &quot;에픽&quot;과 같은 개념의 두 측면 — issue-tracking 에선 이슈 타입, agile-planning 에선 묶음 단위">epic</span>-children`</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="이슈 타입의 하나 (최상위 `hierarchy_level=1`). 큰 작업을 묶는 상위 이슈로, 여러 Story 로 분해된다. agile-planning 의 &quot;에픽&quot;과 같은 개념의 두 측면 — issue-tracking 에선 이슈 타입, agile-planning 에선 묶음 단위">Epic</span> 페이지 + 자식 이슈 목록</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="이슈 타입의 하나 (최상위 `hierarchy_level=1`). 큰 작업을 묶는 상위 이슈로, 여러 Story 로 분해된다. agile-planning 의 &quot;에픽&quot;과 같은 개념의 두 측면 — issue-tracking 에선 이슈 타입, agile-planning 에선 묶음 단위">Epic</span> Aggregate (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) — <span class="term" data-def="&quot;기술 결정 일기장&quot; &quot;왜 A 대신 B 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.">ADR</span> 2026-06-22 별도 epic_id 컬럼, <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>.epi<span class="term" data-def="&quot;자동화된 공장 컨베이어 벨트&quot; 코드를 수정하면 자동으로 테스트를 거쳐 이상이 없으면 실제 서비스되는 서버에 알아서 배포까지 해주는 자동화 시스템입니다.">cI</span>d</li><li><span class="step-icon">✅</span> D2 — 명세 — <span class="term" data-def="이슈 타입의 하나 (최상위 `hierarchy_level=1`). 큰 작업을 묶는 상위 이슈로, 여러 Story 로 분해된다. agile-planning 의 &quot;에픽&quot;과 같은 개념의 두 측면 — issue-tracking 에선 이슈 타입, agile-planning 에선 묶음 단위">Epic</span> ↔ <span class="term" data-def="&quot;작업 쪼개기 단위&quot; 큰 프로젝트(에픽) → 사용자 기능(스토리) → 개발자 작업(태스크).">Story</span>/<span class="term" data-def="&quot;작업 쪼개기 단위&quot; 큰 프로젝트(에픽) → 사용자 기능(스토리) → 개발자 작업(태스크).">Task</span> 계층</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s.<span class="term" data-def="이슈 타입의 하나 (최상위 `hierarchy_level=1`). 큰 작업을 묶는 상위 이슈로, 여러 Story 로 분해된다. agile-planning 의 &quot;에픽&quot;과 같은 개념의 두 측면 — issue-tracking 에선 이슈 타입, agile-planning 에선 묶음 단위">epic</span>_id`(V028, U<span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span>D NULL 자기참조 FK + <span class="term" data-def="&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">인덱스</span> + init_codegen 미러). `issue_links` 대신 별도 컬럼 채택</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `POST/DELETE/GET /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s/{key}/<span class="term" data-def="이슈 타입의 하나 (최상위 `hierarchy_level=1`). 큰 작업을 묶는 상위 이슈로, 여러 Story 로 분해된다. agile-planning 의 &quot;에픽&quot;과 같은 개념의 두 측면 — issue-tracking 에선 이슈 타입, agile-planning 에선 묶음 단위">epic</span>-children` + IssueResponse.epic + 권한(UPDATE child/BROWSE epic <span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">프로젝트</span>)·visibility 필터</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="이슈 타입의 하나 (최상위 `hierarchy_level=1`). 큰 작업을 묶는 상위 이슈로, 여러 Story 로 분해된다. agile-planning 의 &quot;에픽&quot;과 같은 개념의 두 측면 — issue-tracking 에선 이슈 타입, agile-planning 에선 묶음 단위">Epic</span> 페이지 + 자식 이슈 목록</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
