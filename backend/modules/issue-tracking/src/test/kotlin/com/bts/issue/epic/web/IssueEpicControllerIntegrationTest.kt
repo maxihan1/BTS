@@ -563,6 +563,52 @@ class IssueEpicControllerIntegrationTest {
             .andExpect(status().isUnauthorized)
     }
 
+    // ── S12. GET /epic-children 400 — malformed path key ─────────────────────
+
+    /**
+     * S12. 형식 위반 경로 키 → 400 Bad Request (C1 회귀 방지).
+     *
+     * IssueKey("bad_key") 생성 시 init 블록의 require() 가 IllegalArgumentException 을 throw한다.
+     * EpicChildExceptionHandler 가 이를 ISSUE_EPIC_VALIDATION_FAILED 400 으로 변환해야 한다.
+     * 핸들러 미등록 시 Spring 이 500 을 반환한다 (C1 버그).
+     *
+     * Given  형식 위반 경로 키 "bad_key"
+     * When   GET /api/v1/issues/bad_key/epic-children
+     * Then   400, errorCode=ISSUE_EPIC_VALIDATION_FAILED
+     */
+    @Test
+    fun `S12 GET epic-children 400 - 형식 위반 path key IllegalArgumentException C1`() {
+        mockMvc.perform(get("/api/v1/issues/bad_key/epic-children"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_EPIC_VALIDATION_FAILED"))
+    }
+
+    // ── S13. POST /epic-children 400 — malformed body childKey ───────────────
+
+    /**
+     * S13. 형식 위반 body childKey → 400 Bad Request (C1 회귀 방지).
+     *
+     * @NotBlank 는 통과("abc" 는 blank 아님)하지만
+     * IssueKey("abc") 생성 시 init 블록의 require() 가 IllegalArgumentException 을 throw한다.
+     * EpicChildExceptionHandler 가 이를 ISSUE_EPIC_VALIDATION_FAILED 400 으로 변환해야 한다.
+     *
+     * Given  body childKey="abc" (소문자 — IssueKey 형식 위반)
+     * When   POST /api/v1/issues/EPTEST-1/epic-children body={childKey: "abc"}
+     * Then   400, errorCode=ISSUE_EPIC_VALIDATION_FAILED
+     */
+    @Test
+    fun `S13 POST epic-children 400 - 형식 위반 body childKey IllegalArgumentException C1`() {
+        val epicKey = createIssue("에픽", epicTypeId)
+
+        mockMvc.perform(
+            post("/api/v1/issues/$epicKey/epic-children")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("childKey" to "abc"))),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_EPIC_VALIDATION_FAILED"))
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     /**
