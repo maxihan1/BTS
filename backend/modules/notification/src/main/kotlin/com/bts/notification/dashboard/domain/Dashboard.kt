@@ -131,9 +131,12 @@ data class Dashboard(
     /**
      * 부분 수정을 적용한 새 Dashboard 인스턴스를 반환한다.
      *
-     * null 로 전달된 필드는 기존 값을 유지한다(3-state 패치).
+     * null 로 전달된 필드는 기존 값을 유지한다(3-state PATCH 패턴).
      * 호출 시 version 이 +1 증가하고 updatedAt 이 now 로 갱신된다.
-     * 불변식(이름·layout·sharedUserIds 상한)은 변경된 값에 대해 동일하게 검증된다.
+     * 불변식(이름·layout·sharedUserIds 상한·visibility 정규화)은 변경된 값에 대해 동일하게 검증된다.
+     *
+     * description 은 스펙상 null=미변경으로 취급한다.
+     * description 을 명시적으로 null 로 초기화하는 시나리오는 현재 스펙에 없으므로 별도 처리 없음.
      *
      * @param name 변경할 이름 (null = 기존 유지)
      * @param description 변경할 설명 (null = 기존 유지)
