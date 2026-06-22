@@ -5,9 +5,11 @@ import { boardHandlers } from './board-handlers'
 import {
   resetBoardStore,
   seedBoard,
+  seedBoardWithMeta,
   LS_KEY_BOARD_CONFLICT,
   DEFAULT_BOARD,
   FILTER_BOARD,
+  SWIMLANE_BOARD,
 } from './board-fixtures'
 
 const server = setupServer(...boardHandlers)
@@ -53,6 +55,7 @@ interface BoardDetail {
   columns: BoardColumn[]
   truncated: boolean
   unplacedCount: number
+  swimlaneField: 'NONE' | 'ASSIGNEE' | 'PRIORITY'
 }
 
 interface BoardCreated {
@@ -402,6 +405,86 @@ describe('GET /api/v1/boards/:id — query param 필터 (FR-BD-02)', () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as DataResponse<BoardDetail>
     expect(hasNoFilterMeta(body.data)).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/v1/boards/:id — 스윔레인 기준 변경 (FR-BD-03)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface BoardMeta {
+  boardId: string
+  projectKey: string
+  name: string
+  swimlaneField: 'NONE' | 'ASSIGNEE' | 'PRIORITY'
+}
+
+async function patchBoardSwimlane(
+  boardId: string,
+  swimlaneField: string,
+): Promise<Response> {
+  return fetch(`/api/v1/boards/${boardId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ swimlaneField }),
+  })
+}
+
+describe('PATCH /api/v1/boards/:id — 스윔레인 기준 변경 (FR-BD-03)', () => {
+  it('ASSIGNEE로 변경 → 200 { data: BoardMeta } swimlaneField=ASSIGNEE', async () => {
+    seedBoardWithMeta(SWIMLANE_BOARD)
+
+    const res = await patchBoardSwimlane(SWIMLANE_BOARD.boardId, 'ASSIGNEE')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<BoardMeta>
+    expect(body.data.boardId).toBe(SWIMLANE_BOARD.boardId)
+    expect(body.data.swimlaneField).toBe('ASSIGNEE')
+  })
+
+  it('PRIORITY로 변경 → 200 swimlaneField=PRIORITY', async () => {
+    seedBoardWithMeta(SWIMLANE_BOARD)
+
+    const res = await patchBoardSwimlane(SWIMLANE_BOARD.boardId, 'PRIORITY')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<BoardMeta>
+    expect(body.data.swimlaneField).toBe('PRIORITY')
+  })
+
+  it('NONE으로 복구 → 200 swimlaneField=NONE', async () => {
+    seedBoardWithMeta(SWIMLANE_BOARD)
+
+    await patchBoardSwimlane(SWIMLANE_BOARD.boardId, 'ASSIGNEE')
+    const res = await patchBoardSwimlane(SWIMLANE_BOARD.boardId, 'NONE')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<BoardMeta>
+    expect(body.data.swimlaneField).toBe('NONE')
+  })
+
+  it('PATCH 후 GET 상세에서 swimlaneField가 갱신됨 (stateful 반영)', async () => {
+    seedBoardWithMeta(SWIMLANE_BOARD)
+
+    await patchBoardSwimlane(SWIMLANE_BOARD.boardId, 'PRIORITY')
+
+    const detailRes = await getBoard(SWIMLANE_BOARD.boardId)
+    expect(detailRes.status).toBe(200)
+    const body = (await detailRes.json()) as DataResponse<BoardDetail>
+    expect(body.data.swimlaneField).toBe('PRIORITY')
+  })
+
+  it('없는 보드 → 404 errorCode AGILE_BOARD_NOT_FOUND', async () => {
+    const res = await patchBoardSwimlane('00000000-0000-4000-8000-000000000099', 'ASSIGNEE')
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as ProblemDetail
+    expect(body.errorCode).toBe('AGILE_BOARD_NOT_FOUND')
+  })
+
+  it('잘못된 swimlaneField 값 → 400 errorCode INVALID_SWIMLANE_FIELD', async () => {
+    seedBoardWithMeta(SWIMLANE_BOARD)
+
+    const res = await patchBoardSwimlane(SWIMLANE_BOARD.boardId, 'INVALID_VALUE')
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as ProblemDetail
+    expect(body.errorCode).toBe('INVALID_SWIMLANE_FIELD')
   })
 })
 

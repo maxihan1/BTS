@@ -409,10 +409,169 @@ export const FILTER_BOARD: StoredBoardDetail = {
   unplacedCount: 0,
 }
 
+/**
+ * WIP 초과 경고 검증용 보드 픽스처 (FR-BD-03 D7 E2E S1).
+ *
+ * IN PROGRESS 컬럼에 wipLimit=2, wipExceeded=true, 카드 3개.
+ * 헤더에 "3/2" 텍스트 + WIP 초과 경고(amber 배지)가 표시됨을 E2E로 검증한다.
+ *
+ * alice(userId=00000000-0000-4000-8000-000000000001)가 ATLAS 프로젝트 진입 전제.
+ * UUID는 RFC4122 v4 형식 — Zod v4 z.string().uuid() 통과 보장.
+ */
+export const WIP_BOARD: StoredBoardDetail = {
+  boardId: '10000000-0000-4000-8000-000000000003',
+  projectKey: 'WIPTEST',
+  name: 'WIP 테스트 보드',
+  swimlaneField: 'NONE',
+  columns: [
+    {
+      columnId: '50000000-0000-4000-8000-000000000001',
+      stateKey: 'open',
+      name: 'TODO',
+      category: 'TODO',
+      displayOrder: 1,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [
+        {
+          issueKey: 'WIP-1',
+          summary: 'WIP 테스트 이슈 1',
+          assigneeId: '00000000-0000-4000-8000-000000000001',
+          version: 0,
+          priority: 1,
+          labels: [],
+          componentIds: [],
+        },
+      ],
+    },
+    {
+      columnId: '50000000-0000-4000-8000-000000000002',
+      stateKey: 'in_progress',
+      name: 'IN PROGRESS',
+      category: 'IN_PROGRESS',
+      displayOrder: 2,
+      wipLimit: 2,
+      wipExceeded: true,
+      cards: [
+        {
+          issueKey: 'WIP-2',
+          summary: 'WIP 테스트 이슈 2',
+          assigneeId: '00000000-0000-4000-8000-000000000001',
+          version: 0,
+          priority: 2,
+          labels: [],
+          componentIds: [],
+        },
+        {
+          issueKey: 'WIP-3',
+          summary: 'WIP 테스트 이슈 3',
+          assigneeId: ALICE_USER_ID,
+          version: 0,
+          priority: 3,
+          labels: [],
+          componentIds: [],
+        },
+        {
+          issueKey: 'WIP-4',
+          summary: 'WIP 테스트 이슈 4',
+          assigneeId: BOB_USER_ID,
+          version: 0,
+          priority: 1,
+          labels: [],
+          componentIds: [],
+        },
+      ],
+    },
+    {
+      columnId: '50000000-0000-4000-8000-000000000003',
+      stateKey: 'done',
+      name: 'DONE',
+      category: 'DONE',
+      displayOrder: 3,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [],
+    },
+  ],
+  truncated: false,
+  unplacedCount: 0,
+}
+
+/**
+ * 스윔레인 전환 검증용 보드 픽스처 (FR-BD-03 D7 E2E S3/S4).
+ *
+ * TODO 컬럼에 alice 담당 1건 + bob 담당 1건 + 우선순위 1/2 혼합.
+ * ASSIGNEE 스윔레인: 담당자별 서브그룹("김앨리스", "김밥") 검증.
+ * PRIORITY 스윔레인: "우선순위 1", "우선순위 2" 서브그룹 검증.
+ *
+ * UUID는 RFC4122 v4 형식 — Zod v4 z.string().uuid() 통과 보장.
+ */
+export const SWIMLANE_BOARD: StoredBoardDetail = {
+  boardId: '10000000-0000-4000-8000-000000000004',
+  projectKey: 'SWIMTEST',
+  name: '스윔레인 테스트 보드',
+  swimlaneField: 'NONE',
+  columns: [
+    {
+      columnId: '60000000-0000-4000-8000-000000000001',
+      stateKey: 'open',
+      name: 'TODO',
+      category: 'TODO',
+      displayOrder: 1,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [
+        {
+          issueKey: 'SWIM-1',
+          summary: '스윔레인 테스트 이슈 1 — alice 담당 우선순위1',
+          assigneeId: ALICE_USER_ID,
+          version: 0,
+          priority: 1,
+          labels: [],
+          componentIds: [],
+        },
+        {
+          issueKey: 'SWIM-2',
+          summary: '스윔레인 테스트 이슈 2 — bob 담당 우선순위2',
+          assigneeId: BOB_USER_ID,
+          version: 0,
+          priority: 2,
+          labels: [],
+          componentIds: [],
+        },
+      ],
+    },
+    {
+      columnId: '60000000-0000-4000-8000-000000000002',
+      stateKey: 'in_progress',
+      name: 'IN PROGRESS',
+      category: 'IN_PROGRESS',
+      displayOrder: 2,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [],
+    },
+    {
+      columnId: '60000000-0000-4000-8000-000000000003',
+      stateKey: 'done',
+      name: 'DONE',
+      category: 'DONE',
+      displayOrder: 3,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [],
+    },
+  ],
+  truncated: false,
+  unplacedCount: 0,
+}
+
 // 모듈 로드 시 기본 보드와 필터 보드를 자동 시드한다 — notification-policy-handlers buildSeedStore() 패턴 동일.
 // dev(pnpm dev) · E2E 진입 시 boardStore가 비어 있어 생성 폼이 노출되는 결함 방지.
 // Vitest 단위 테스트 환경(MODE='test')에서는 건너뜀 — 각 테스트가 beforeEach/reset으로 직접 제어.
 if (import.meta.env.MODE !== 'test') {
   seedBoard(DEFAULT_BOARD)
   seedBoardWithMeta(FILTER_BOARD)
+  seedBoardWithMeta(WIP_BOARD)
+  seedBoardWithMeta(SWIMLANE_BOARD)
 }
