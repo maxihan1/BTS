@@ -320,6 +320,67 @@ describe('BoardColumn — S6 스윔레인 ASSIGNEE 그룹', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// S8. isFilterActive prop — WIP 경고 약화 방어 (hotfix-p2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BoardColumn — S8 isFilterActive WIP 경고 약화', () => {
+  const wipExceededCol: BoardColumnType = {
+    columnId: 'col-wip-filter',
+    stateKey: 'in-progress',
+    name: 'WIP 초과 필터',
+    category: 'IN_PROGRESS',
+    displayOrder: 1,
+    wipLimit: 2,
+    wipExceeded: true,
+    cards: [
+      { issueKey: 'ATLAS-30', summary: '이슈 30', assigneeId: null, version: 1, priority: 1 },
+      { issueKey: 'ATLAS-31', summary: '이슈 31', assigneeId: null, version: 2, priority: 1 },
+    ],
+  }
+
+  it('S8a: isFilterActive=true이면 WIP 초과여도 "WIP 초과" aria-label이 없다', () => {
+    render(
+      <DndContext>
+        <BoardColumn
+          column={wipExceededCol}
+          assigneeNames={new Map()}
+          isFilterActive={true}
+          swimlaneField="NONE"
+        />
+      </DndContext>,
+    )
+    expect(screen.queryByLabelText('WIP 초과')).not.toBeInTheDocument()
+  })
+
+  it('S8b: isFilterActive=true이면 WIP 초과여도 "(필터됨)" 텍스트가 표시된다', () => {
+    render(
+      <DndContext>
+        <BoardColumn
+          column={wipExceededCol}
+          assigneeNames={new Map()}
+          isFilterActive={true}
+          swimlaneField="NONE"
+        />
+      </DndContext>,
+    )
+    expect(screen.getByText('(필터됨)')).toBeInTheDocument()
+  })
+
+  it('S8c: isFilterActive=false(기본)이면 WIP 초과 경고가 그대로 표시된다 (회귀)', () => {
+    render(
+      <DndContext>
+        <BoardColumn
+          column={wipExceededCol}
+          assigneeNames={new Map()}
+          swimlaneField="NONE"
+        />
+      </DndContext>,
+    )
+    expect(screen.getByLabelText('WIP 초과')).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // S7. 스윔레인 그룹 렌더 — PRIORITY
 // ─────────────────────────────────────────────────────────────────────────────
 

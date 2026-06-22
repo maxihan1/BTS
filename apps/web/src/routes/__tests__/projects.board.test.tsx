@@ -24,20 +24,22 @@ vi.mock('sonner', () => ({
 }))
 
 // KanbanBoard는 DndContext 등 복잡한 의존성이 있으므로 단순 mock
-// assigneeNames, filter prop을 캡처해 단언에 활용
-const mockKanbanBoardProps: Array<{ boardId: string; assigneeNames: unknown; filter: unknown }> = []
+// assigneeNames, filter, isFilterActive prop을 캡처해 단언에 활용
+const mockKanbanBoardProps: Array<{ boardId: string; assigneeNames: unknown; filter: unknown; isFilterActive: unknown }> = []
 
 vi.mock('@/components/board/KanbanBoard', () => ({
   KanbanBoard: ({
     boardId,
     assigneeNames,
     filter,
+    isFilterActive,
   }: {
     boardId: string
     assigneeNames: Map<string, unknown>
     filter?: BoardCardFilterParams
+    isFilterActive?: boolean
   }) => {
-    mockKanbanBoardProps.push({ boardId, assigneeNames, filter })
+    mockKanbanBoardProps.push({ boardId, assigneeNames, filter, isFilterActive })
     return <div data-testid={`kanban-board-${boardId}`}>KanbanBoard</div>
   },
 }))
@@ -754,6 +756,51 @@ describe('BoardPage', () => {
       'ASSIGNEE',
       expect.objectContaining({ onError: expect.any(Function) as unknown }),
     )
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // hotfix-p2 — 필터 활성 시 isFilterActive prop 전달 (FR-BD-03)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * P2-A. 필터가 비어 있지 않으면 KanbanBoard에 isFilterActive=true가 전달된다.
+   */
+  it('P2-A: 필터가 비어 있지 않으면 KanbanBoard에 isFilterActive=true가 전달된다', async () => {
+    const filter: BoardCardFilterParams = {
+      assigneeIds: [ALICE_ID],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    await renderBoardPage('ATLAS', undefined, filter)
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`kanban-board-${BOARD_A.boardId}`)).toBeInTheDocument()
+    })
+
+    const lastCall = mockKanbanBoardProps[mockKanbanBoardProps.length - 1]
+    expect(lastCall?.isFilterActive).toBe(true)
+  })
+
+  /**
+   * P2-B. 필터가 비어 있으면 KanbanBoard에 isFilterActive=false가 전달된다.
+   */
+  it('P2-B: 필터가 비어 있으면 KanbanBoard에 isFilterActive=false가 전달된다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    // filter 없이 렌더 → EMPTY_FILTER
+    await renderBoardPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`kanban-board-${BOARD_A.boardId}`)).toBeInTheDocument()
+    })
+
+    const lastCall = mockKanbanBoardProps[mockKanbanBoardProps.length - 1]
+    expect(lastCall?.isFilterActive).toBe(false)
   })
 
   /**
