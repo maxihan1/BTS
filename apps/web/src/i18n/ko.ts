@@ -291,6 +291,7 @@ export const issueDetailStrings = {
     startDate: '시작일',
     dueDate: '마감일',
     targetDate: '목표일',
+    epic: '에픽',
   } as Record<string, string>,
   /** 변경 이력 — 생명주기 "created" 표시 문자열 */
   changelogLifecycleCreated: '이슈를 생성했습니다',
