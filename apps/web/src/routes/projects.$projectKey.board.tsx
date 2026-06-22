@@ -1,18 +1,23 @@
-// 칸반 보드 라우트 — BoardRouteAdapter + BoardPage (FR-BD-01 Task 7 + FR-BD-02 Task 6)
+// 칸반 보드 라우트 — BoardRouteAdapter + BoardPage (FR-BD-01 Task 7 + FR-BD-02 Task 6 + FR-BD-03 Task 6)
 import type { JSX } from 'react'
 import { useMemo } from 'react'
 import { useParams, useSearch, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
+import { toast } from 'sonner'
 import { ApiError } from '@/api/client'
 import { fetchUsers } from '@/api/users'
-import type { BoardSummary, BoardDetail, BoardCardFilterParams } from '@/api/boards'
+import type { BoardSummary, BoardDetail, BoardCardFilterParams, SwimlaneField } from '@/api/boards'
 import { useBoards, useBoard } from '@/hooks/use-boards'
+import { useUpdateSwimlane } from '@/hooks/use-update-swimlane'
+import { useProjectPermissions } from '@/hooks/use-project-permissions'
 import { KanbanBoard } from '@/components/board/KanbanBoard'
 import type { CardAssigneeDisplay } from '@/components/board/BoardCard'
 import { CreateBoardForm } from '@/components/board/CreateBoardForm'
 import { BoardFilterBar } from '@/components/board/BoardFilterBar'
+import { SwimlaneSelector } from '@/components/board/SwimlaneSelector'
 import { boardFilterLabels } from '@/i18n/board-filter-labels'
+import { boardLabels } from '@/i18n/board-labels'
 import { searchToFilter, filterToSearch, isEmptyFilter } from '@/lib/board-filter'
 import {
   Select,
@@ -252,6 +257,9 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
     isError: boardsIsError,
   } = useBoards(projectKey)
 
+  // 현재 사용자 프로젝트 권한 조회 — CREATE 권한으로 SwimlaneSelector 게이팅
+  const { data: projectPermissions } = useProjectPermissions(projectKey)
+
   // 403 접근 거부 판정 — status 또는 errorCode 기준
   const isAccessDenied =
     boardsIsError &&
@@ -269,6 +277,26 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   })()
 
   const { data: boardDetail, isLoading: boardDetailLoading } = useBoard(currentBoardId, stableFilter)
+
+  // 스윔레인 업데이트 mutation — currentBoardId가 확정된 시점에만 유효
+  const { mutate: updateSwimlane } = useUpdateSwimlane(currentBoardId ?? '')
+
+  // CREATE 권한 여부 — undefined이면 false-safe (로딩 중에는 셀렉터 미노출)
+  const canCreate: boolean = projectPermissions?.permissions.CREATE === true
+
+  /**
+   * SwimlaneSelector onChange 핸들러.
+   * PATCH 요청 후 invalidate-only (setQueryData 캐시 덮기 금지 — mutation 부분응답 플리커 방지).
+   * onError 시 toast.error + 자동 서버값 수렴 (invalidate).
+   */
+  function handleSwimlaneChange(field: SwimlaneField): void {
+    if (currentBoardId === undefined) return
+    updateSwimlane(field, {
+      onError: () => {
+        toast.error(boardLabels.swimlane.updateError)
+      },
+    })
+  }
 
   // 전체 사용자 목록 조회 — userId → displayName|username Map 구성용
   const { data: usersRaw } = useQuery({
@@ -358,21 +386,34 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
 
   return (
     <div className="p-6 space-y-4">
-      {/* 보드 2+개 선택 드롭다운 */}
-      {boards !== undefined && boards.length >= 2 && (
-        <BoardSelectorDropdown
-          boards={boards}
-          currentBoardId={currentBoardId}
-          projectKey={projectKey}
-          onSelect={(id) => {
-            void navigate({
-              to: '/projects/$projectKey/board',
-              params: { projectKey },
-              search: { board: id },
-            })
-          }}
-        />
-      )}
+      {/* 헤더 행 — 보드 선택 드롭다운 + 스윔레인 셀렉터 */}
+      {(boards !== undefined && boards.length >= 2) || (boardDetail !== undefined && canCreate) ? (
+        <div className="flex items-center gap-4 flex-wrap">
+          {/* 보드 2+개 선택 드롭다운 */}
+          {boards !== undefined && boards.length >= 2 && (
+            <BoardSelectorDropdown
+              boards={boards}
+              currentBoardId={currentBoardId}
+              projectKey={projectKey}
+              onSelect={(id) => {
+                void navigate({
+                  to: '/projects/$projectKey/board',
+                  params: { projectKey },
+                  search: { board: id },
+                })
+              }}
+            />
+          )}
+
+          {/* 스윔레인 셀렉터 — 보드 상세 있고 CREATE 권한 있을 때만 */}
+          {boardDetail !== undefined && canCreate && (
+            <SwimlaneSelector
+              value={boardDetail.swimlaneField}
+              onChange={handleSwimlaneChange}
+            />
+          )}
+        </div>
+      ) : null}
 
       {/* BoardFilterBar — 보드 상세가 있을 때만 (EC7) */}
       {boardDetail !== undefined && (

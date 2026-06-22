@@ -46,6 +46,24 @@ export const boardLabels = {
     /** 카테고리 배지 aria-label 접두사 */
     categoryAriaLabel: (category: string): string => `카테고리: ${category}`,
   },
+  /** 스윔레인 셀렉터 관련 라벨 */
+  swimlane: {
+    /** 셀렉터 접근성 레이블 */
+    selectorLabel: '스윔레인',
+
+    /** 셀렉터 옵션 라벨 — SwimlaneField enum 값에 대응 */
+    options: {
+      /** NONE — 스윔레인 없음 */
+      NONE: '없음',
+      /** ASSIGNEE — 담당자별 그룹 */
+      ASSIGNEE: '담당자',
+      /** PRIORITY — 우선순위별 그룹 */
+      PRIORITY: '우선순위',
+    },
+
+    /** 변경 실패 시 토스트 오류 메시지 */
+    updateError: '스윔레인 기준 변경에 실패했습니다',
+  },
 } as const
 
 /** boardLabels const 추론 타입 */
