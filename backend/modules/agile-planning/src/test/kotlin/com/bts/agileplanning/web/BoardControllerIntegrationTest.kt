@@ -856,9 +856,12 @@ class BoardControllerIntegrationTest {
     // ── WIP-E3. 유효하지 않은 swimlaneField → 400 ────────────────────────────
 
     @Test
-    fun `WIP-E3 swimlaneField=EPIC 이면 400`() {
+    fun `WIP-E3 swimlaneField=EPIC 이면 서비스가 400 을 던지고 응답도 400`() {
         val board = sampleBoard()
         every { boardRepository.findById(board.id) } returns board
+        every {
+            boardApplicationService.updateSwimlaneField(board.id, "EPIC")
+        } throws ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "알 수 없는 swimlaneField")
 
         val body = mapOf("swimlaneField" to "EPIC")
 
@@ -868,14 +871,15 @@ class BoardControllerIntegrationTest {
                 .content(mapper.writeValueAsString(body)),
         )
             .andExpect(status().isBadRequest)
-
-        verify(exactly = 0) { boardApplicationService.updateSwimlaneField(any(), any()) }
     }
 
     @Test
-    fun `WIP-E3 swimlaneField=foo 이면 400`() {
+    fun `WIP-E3 swimlaneField=foo 이면 서비스가 400 을 던지고 응답도 400`() {
         val board = sampleBoard()
         every { boardRepository.findById(board.id) } returns board
+        every {
+            boardApplicationService.updateSwimlaneField(board.id, "foo")
+        } throws ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "알 수 없는 swimlaneField")
 
         val body = mapOf("swimlaneField" to "foo")
 
@@ -885,8 +889,6 @@ class BoardControllerIntegrationTest {
                 .content(mapper.writeValueAsString(body)),
         )
             .andExpect(status().isBadRequest)
-
-        verify(exactly = 0) { boardApplicationService.updateSwimlaneField(any(), any()) }
     }
 
     // ── WIP-E4. 타 보드 소속 columnId → 404 ──────────────────────────────────

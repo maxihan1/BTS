@@ -1,4 +1,4 @@
-// 보드 REST API 요청/응답 DTO + DataResponse 봉투 — agile-planning BC (FR-BD-01)
+// 보드 REST API 요청/응답 DTO + DataResponse 봉투 — agile-planning BC (FR-BD-01, FR-BD-03)
 
 package com.bts.agileplanning.web.dto
 
@@ -8,6 +8,7 @@ import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.PlacedColumn
 import com.bts.shared.board.BoardIssueView
 import com.bts.shared.board.BoardTransitionResult
+import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.PositiveOrZero
@@ -242,6 +243,92 @@ data class BoardDetailResponse(
                 columns = result.columns.map(BoardColumnWithCardsResponse::from),
                 truncated = result.truncated,
                 unplacedCount = result.unplacedCount,
+                swimlaneField = board.swimlaneField.name,
+            )
+    }
+}
+
+/**
+ * 컬럼 WIP 제한 변경 요청 바디.
+ *
+ * [wipLimit] 가 null 이면 WIP 제한을 해제한다.
+ * null 이 아닌 경우 반드시 양수(1 이상)여야 한다 — [Positive] 검증.
+ * 0 또는 음수는 400 으로 거부된다.
+ *
+ * @property wipLimit 새로운 WIP 제한. null 이면 해제. 양수만 허용.
+ */
+data class UpdateColumnWipLimitRequest(
+    @field:Min(value = 1, message = "wipLimit 는 1 이상이어야 합니다.")
+    val wipLimit: Int?,
+)
+
+/**
+ * 보드 스윔레인 기준 변경 요청 바디.
+ *
+ * [swimlaneField] 는 [com.bts.agileplanning.domain.SwimlaneField] enum 이름 문자열이어야 한다.
+ * 빈 문자열은 400 으로 거부된다 — [NotBlank] 검증.
+ * 알 수 없는 값(예: "EPIC", "foo")은 서비스 계층에서 enum 파싱 실패 시 400 으로 거부된다.
+ *
+ * @property swimlaneField 스윔레인 기준 필드 이름. 예: `"NONE"`, `"ASSIGNEE"`, `"PRIORITY"`.
+ */
+data class UpdateBoardSwimlaneRequest(
+    @field:NotBlank
+    val swimlaneField: String?,
+)
+
+/**
+ * 컬럼 WIP 제한 변경 응답 DTO.
+ *
+ * @property columnId 컬럼 UUID.
+ * @property stateKey 매핑된 워크플로우 상태 키.
+ * @property name 컬럼 표시 이름.
+ * @property category 칸반 카테고리.
+ * @property displayOrder 컬럼 표시 순서.
+ * @property wipLimit 갱신된 WIP 제한. null 이면 무제한.
+ */
+data class ColumnMetaResponse(
+    val columnId: UUID,
+    val stateKey: String,
+    val name: String,
+    val category: String,
+    val displayOrder: Int,
+    val wipLimit: Int?,
+) {
+    companion object {
+        /** 도메인 [BoardColumn] 을 [ColumnMetaResponse] 로 변환한다. */
+        fun from(column: BoardColumn): ColumnMetaResponse =
+            ColumnMetaResponse(
+                columnId = column.id,
+                stateKey = column.stateKey,
+                name = column.name,
+                category = column.category,
+                displayOrder = column.displayOrder,
+                wipLimit = column.wipLimit,
+            )
+    }
+}
+
+/**
+ * 보드 스윔레인 변경 응답 DTO.
+ *
+ * @property boardId 보드 UUID.
+ * @property projectKey 소속 프로젝트 키.
+ * @property name 보드 표시 이름.
+ * @property swimlaneField 갱신된 스윔레인 기준 필드 이름.
+ */
+data class BoardMetaResponse(
+    val boardId: UUID,
+    val projectKey: String,
+    val name: String,
+    val swimlaneField: String,
+) {
+    companion object {
+        /** 도메인 [Board] 를 [BoardMetaResponse] 로 변환한다. */
+        fun from(board: Board): BoardMetaResponse =
+            BoardMetaResponse(
+                boardId = board.id,
+                projectKey = board.projectKey,
+                name = board.name,
                 swimlaneField = board.swimlaneField.name,
             )
     }

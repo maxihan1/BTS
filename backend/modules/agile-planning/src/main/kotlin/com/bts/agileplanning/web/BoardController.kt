@@ -6,12 +6,16 @@ import com.bts.agileplanning.application.BoardApplicationService
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.repository.BoardRepository
 import com.bts.agileplanning.web.dto.BoardDetailResponse
+import com.bts.agileplanning.web.dto.BoardMetaResponse
 import com.bts.agileplanning.web.dto.BoardResponse
 import com.bts.agileplanning.web.dto.BoardSummaryResponse
+import com.bts.agileplanning.web.dto.ColumnMetaResponse
 import com.bts.agileplanning.web.dto.CreateBoardRequest
 import com.bts.agileplanning.web.dto.DataResponse
 import com.bts.agileplanning.web.dto.MoveCardRequest
 import com.bts.agileplanning.web.dto.MoveCardResponse
+import com.bts.agileplanning.web.dto.UpdateBoardSwimlaneRequest
+import com.bts.agileplanning.web.dto.UpdateColumnWipLimitRequest
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -22,6 +26,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.security.authentication.AnonymousAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -41,6 +46,8 @@ import java.util.UUID
  * - GET  `/api/v1/boards?projectKey=` — 프로젝트별 보드 목록. 권한 [IssuePermission.BROWSE].
  * - POST `/api/v1/boards/{id}/cards/{issueKey}/move` — 카드 이동. 보드 접근 [IssuePermission.BROWSE] +
  *   이동 자체는 [com.bts.shared.board.IssueTransitionPort] 가 TRANSITION 을 강제한다.
+ * - PATCH `/api/v1/boards/{id}` — 보드 스윔레인 기준 변경. 권한 [IssuePermission.CREATE] on [IssueScope.Project].
+ * - PATCH `/api/v1/boards/{id}/columns/{columnId}` — 컬럼 WIP 제한 설정/해제. 권한 [IssuePermission.CREATE] on [IssueScope.Project].
  *
  * ### 권한 2단 게이트 (FR-BD-01-6)
  * - 조회/이동의 보드 접근 = BROWSE(목록 자격). 카드 노출 보안수준은 행 단위 보안필터(T4)가 별도 적용.
@@ -196,6 +203,66 @@ class BoardController(
         return ResponseEntity.ok(DataResponse(MoveCardResponse.of(result, toColumnId)))
     }
 
+    /**
+     * 보드의 스윔레인 기준 필드를 변경한다.
+     *
+     * 권한: [IssuePermission.CREATE] on 보드의 프로젝트.
+     *
+     * 처리 순서: actor 추출(401) → 보드 메타 조회(404) → CREATE 권한(403) → 서비스 위임.
+     *
+     * @param id path variable 보드 UUID.
+     * @param request 스윔레인 변경 요청 바디(swimlaneField 이름 문자열).
+     * @return 200 OK + [BoardMetaResponse].
+     * @throws BoardNotFoundException 보드 미존재 → 404.
+     * @throws BoardAccessDeniedException CREATE 권한 미충족 → 403.
+     * @throws ResponseStatusException 400 — 알 수 없는 swimlaneField 값.
+     */
+    @PatchMapping("/{id}")
+    fun updateSwimlaneField(
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: UpdateBoardSwimlaneRequest,
+    ): ResponseEntity<DataResponse<BoardMetaResponse>> {
+        log.info("BoardController.updateSwimlaneField id={} swimlaneField={}", id, request.swimlaneField)
+
+        val (_, board) = loadBoardWithCreate(id)
+        val raw = request.swimlaneField
+            ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "swimlaneField 는 null 일 수 없습니다.")
+        val updated = service.updateSwimlaneField(id, raw)
+        return ResponseEntity.ok(DataResponse(BoardMetaResponse.from(updated)))
+    }
+
+    /**
+     * 보드 컬럼의 WIP 제한을 설정하거나 해제한다.
+     *
+     * 권한: [IssuePermission.CREATE] on 보드의 프로젝트.
+     *
+     * 처리 순서: actor 추출(401) → 보드 메타 조회(404) → CREATE 권한(403) → 서비스 위임.
+     *
+     * @param id path variable 보드 UUID.
+     * @param columnId path variable 컬럼 UUID.
+     * @param request WIP 제한 요청 바디(wipLimit 양수 또는 null).
+     * @return 200 OK + [ColumnMetaResponse].
+     * @throws BoardNotFoundException 보드 미존재 → 404.
+     * @throws BoardAccessDeniedException CREATE 권한 미충족 → 403.
+     * @throws ResponseStatusException 404 — 타 보드 소속 또는 미존재 컬럼.
+     */
+    @PatchMapping("/{id}/columns/{columnId}")
+    fun updateColumnWipLimit(
+        @PathVariable id: UUID,
+        @PathVariable columnId: UUID,
+        @Valid @RequestBody request: UpdateColumnWipLimitRequest,
+    ): ResponseEntity<DataResponse<ColumnMetaResponse>> {
+        log.info("BoardController.updateColumnWipLimit id={} columnId={} wipLimit={}", id, columnId, request.wipLimit)
+
+        val (_, _) = loadBoardWithCreate(id)
+        val wipLimit = request.wipLimit
+        if (wipLimit != null && wipLimit < 1) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "wipLimit 는 1 이상이어야 합니다.")
+        }
+        val updatedColumn = service.updateColumnWipLimit(id, columnId, wipLimit)
+        return ResponseEntity.ok(DataResponse(ColumnMetaResponse.from(updatedColumn)))
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     /**
@@ -215,6 +282,24 @@ class BoardController(
         val actor = currentActorId()
         val board = boardRepository.findById(boardId) ?: throw BoardNotFoundException()
         requirePermission(actor, IssuePermission.BROWSE, IssueScope.Project(board.projectKey))
+        return actor to board
+    }
+
+    /**
+     * actor 추출 → 보드 메타 조회(404) → CREATE 권한 판정을 한 순서로 수행한다.
+     *
+     * 스윔레인 변경·WIP 제한 변경이 공유하는 보드 쓰기 접근 게이트다.
+     *
+     * @param boardId 접근할 보드 UUID.
+     * @return 인증 주체 UUID 와 보드 메타의 쌍.
+     * @throws ResponseStatusException 401 — 미인증.
+     * @throws BoardNotFoundException 404 — 보드 미존재 또는 soft-deleted.
+     * @throws BoardAccessDeniedException 403 — CREATE 권한 미충족.
+     */
+    private fun loadBoardWithCreate(boardId: UUID): Pair<UUID, Board> {
+        val actor = currentActorId()
+        val board = boardRepository.findById(boardId) ?: throw BoardNotFoundException()
+        requirePermission(actor, IssuePermission.CREATE, IssueScope.Project(board.projectKey))
         return actor to board
     }
 
