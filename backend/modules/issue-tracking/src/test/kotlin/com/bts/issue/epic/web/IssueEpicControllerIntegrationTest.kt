@@ -7,6 +7,11 @@ import com.bts.issue.epic.application.IssueEpicService
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssuePermissionResolver
+import com.bts.shared.permission.IssueScope
+import com.bts.shared.permission.IssueSecurityAccess
+import com.bts.shared.permission.IssueSecurityDirectory
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -46,11 +51,6 @@ import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
-import com.bts.shared.permission.IssuePermissionResolver
-import com.bts.shared.permission.IssueSecurityDirectory
-import com.bts.shared.permission.IssueSecurityAccess
-import com.bts.shared.permission.IssuePermission
-import com.bts.shared.permission.IssueScope
 import java.sql.DriverManager
 import java.util.UUID
 
@@ -92,7 +92,6 @@ import java.util.UUID
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueEpicControllerIntegrationTest {
-
     /**
      * 테스트 환경 항상-허용 [IssuePermissionResolver] stub.
      * prod 구현(identity-access)이 없는 통합 테스트 컨텍스트용 fail-safe 대역.
@@ -157,8 +156,9 @@ class IssueEpicControllerIntegrationTest {
             DataSourceTransactionManager(dataSource)
 
         @Bean
-        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext =
-            DSL.using(dataSource, SQLDialect.POSTGRES)
+        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext {
+            return DSL.using(dataSource, SQLDialect.POSTGRES)
+        }
 
         @Bean
         open fun objectMapper(): ObjectMapper =
@@ -203,7 +203,11 @@ class IssueEpicControllerIntegrationTest {
             )
 
         @Bean
-        open fun issueEpicController(service: IssueEpicService): IssueEpicController = IssueEpicController(service)
+        open fun issueEpicController(
+            service: IssueEpicService,
+            issueRepository: IssueRepository,
+            issueTypeRepository: IssueTypeRepository,
+        ): IssueEpicController = IssueEpicController(service, issueRepository, issueTypeRepository)
 
         @Bean
         open fun epicChildExceptionHandler(): EpicChildExceptionHandler = EpicChildExceptionHandler()
@@ -633,10 +637,15 @@ class IssueEpicControllerIntegrationTest {
             .migrate()
     }
 
-    @Suppress("NestedBlockDepth") // JDBC try-with-resources(conn→stmt→rs) 시드 보일러플레이트 — 1회성 setup
     private fun seedProjectsAndTypes() {
+        seedProjects()
+        seedIssueTypes()
+    }
+
+    /** 기본 프로젝트와 cross-project 검증용 타 프로젝트를 삽입한다. */
+    @Suppress("NestedBlockDepth") // JDBC try-with-resources(conn→stmt→rs) 시드 보일러플레이트 — 1회성 setup
+    private fun seedProjects() {
         conn().use { c ->
-            // 기본 프로젝트 삽입
             c.prepareStatement(
                 "INSERT INTO projects (key, name) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
             ).use { stmt ->
@@ -651,7 +660,6 @@ class IssueEpicControllerIntegrationTest {
                     testProjectId = rs.getObject(1) as UUID
                 }
             }
-            // 타 프로젝트 삽입 (cross-project 검증용)
             c.prepareStatement(
                 "INSERT INTO projects (key, name) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
             ).use { stmt ->
@@ -666,58 +674,60 @@ class IssueEpicControllerIntegrationTest {
                     otherProjectId = rs.getObject(1) as UUID
                 }
             }
+        }
+    }
 
-            // epic 타입 (hierarchyLevel=1) 조회 또는 삽입
-            c.prepareStatement("SELECT id FROM issue_types WHERE key = 'epic' LIMIT 1").use { stmt ->
-                stmt.executeQuery().use { rs ->
-                    if (rs.next()) epicTypeId = rs.getLong(1)
-                }
-            }
-            if (epicTypeId == -1L) {
-                c.prepareStatement(
-                    "INSERT INTO issue_types (key, name, hierarchy_level) VALUES ('epic', 'Epic', 1) RETURNING id",
-                ).use { stmt ->
-                    stmt.executeQuery().use { rs ->
-                        rs.next()
-                        epicTypeId = rs.getLong(1)
-                    }
-                }
-            }
+    /**
+     * epic/task/subtask 이슈 타입을 시드한다.
+     *
+     * V003/V005 마이그레이션이 이미 표준 타입을 삽입하므로 ON CONFLICT 없이 조회 우선 + 부재 시 삽입한다.
+     */
+    @Suppress("NestedBlockDepth") // JDBC try-with-resources(conn→stmt→rs) 시드 보일러플레이트 — 1회성 setup
+    private fun seedIssueTypes() {
+        conn().use { c ->
+            epicTypeId = findOrInsertType(c, "epic", "Epic", 1)
+            taskTypeId = findOrInsertType(c, "task", "Task", 0)
+            subtaskTypeId = findOrInsertType(c, "subtask", "Subtask", -1)
+        }
+    }
 
-            // task 타입 (hierarchyLevel=0) 조회 또는 삽입
-            c.prepareStatement("SELECT id FROM issue_types WHERE key = 'task' LIMIT 1").use { stmt ->
+    /**
+     * 이슈 타입을 조회하거나 없으면 삽입하고 id 를 반환한다.
+     *
+     * @param c JDBC 커넥션.
+     * @param key 이슈 타입 키.
+     * @param name 이슈 타입 표시 이름.
+     * @param hierarchyLevel 계층 레벨.
+     * @return issue_types.id.
+     */
+    @Suppress("NestedBlockDepth") // JDBC try-with-resources — 1회성 setup
+    private fun findOrInsertType(
+        c: java.sql.Connection,
+        key: String,
+        name: String,
+        hierarchyLevel: Int,
+    ): Long {
+        var id = -1L
+        c.prepareStatement("SELECT id FROM issue_types WHERE key = ? LIMIT 1").use { stmt ->
+            stmt.setString(1, key)
+            stmt.executeQuery().use { rs ->
+                if (rs.next()) id = rs.getLong(1)
+            }
+        }
+        if (id == -1L) {
+            c.prepareStatement(
+                "INSERT INTO issue_types (key, name, hierarchy_level) VALUES (?, ?, ?) RETURNING id",
+            ).use { stmt ->
+                stmt.setString(1, key)
+                stmt.setString(2, name)
+                stmt.setInt(3, hierarchyLevel)
                 stmt.executeQuery().use { rs ->
-                    if (rs.next()) taskTypeId = rs.getLong(1)
-                }
-            }
-            if (taskTypeId == -1L) {
-                c.prepareStatement(
-                    "INSERT INTO issue_types (key, name, hierarchy_level) VALUES ('task', 'Task', 0) RETURNING id",
-                ).use { stmt ->
-                    stmt.executeQuery().use { rs ->
-                        rs.next()
-                        taskTypeId = rs.getLong(1)
-                    }
-                }
-            }
-
-            // subtask 타입 (hierarchyLevel=-1) 조회 또는 삽입 — child 유형 오류 검증용
-            c.prepareStatement("SELECT id FROM issue_types WHERE key = 'subtask' LIMIT 1").use { stmt ->
-                stmt.executeQuery().use { rs ->
-                    if (rs.next()) subtaskTypeId = rs.getLong(1)
-                }
-            }
-            if (subtaskTypeId == -1L) {
-                c.prepareStatement(
-                    "INSERT INTO issue_types (key, name, hierarchy_level) VALUES ('subtask', 'Subtask', -1) RETURNING id",
-                ).use { stmt ->
-                    stmt.executeQuery().use { rs ->
-                        rs.next()
-                        subtaskTypeId = rs.getLong(1)
-                    }
+                    rs.next()
+                    id = rs.getLong(1)
                 }
             }
         }
+        return id
     }
 
     private fun conn() =
