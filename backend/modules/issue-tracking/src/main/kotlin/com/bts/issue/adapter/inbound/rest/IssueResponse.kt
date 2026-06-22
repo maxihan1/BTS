@@ -60,6 +60,10 @@ import java.util.UUID
  *   목록 조회([listWithType]) 경로에서는 N+1/비용 회피를 위해 항상 null 로 반환된다.
  *   null 이면 JSON 키 자체를 생략한다([JsonInclude.Include.NON_NULL] 적용) — 프론트 Zod `.nullish()` 정합.
  *   FR-LK-01 Task 1.
+ * @property epic 에픽 이슈 요약(key, summary). **단건 조회([findByKeyWithType]) 경로에서만 채워진다.**
+ *   목록 조회([listWithType]) 경로에서는 비용 회피를 위해 항상 null 로 반환된다.
+ *   null 이면 JSON 키 자체를 생략한다([JsonInclude.Include.NON_NULL] 적용) — [parent] 노출과 동형.
+ *   FR-EP-01 Task 3.
  * @property startDate 이슈 시작일(캘린더 날짜). null 이면 미설정. FR-PL-01.
  *   JSON 직렬화 형식은 `"yyyy-MM-dd"` 문자열 — 전역 Jackson 날짜 설정이 없으므로
  *   [JsonFormat] 어노테이션으로 직접 지정한다(prod ObjectMapper 기본값 비의존).
@@ -107,6 +111,9 @@ data class IssueResponse(
     /** 단건 조회 경로에서만 채워짐. 목록 경로는 null. null 이면 JSON 키 생략. */
     @field:JsonInclude(JsonInclude.Include.NON_NULL)
     val parent: ParentSummary? = null,
+    /** 에픽 이슈 요약. 단건 조회 경로에서만 채워짐. 목록 경로는 null. null 이면 JSON 키 생략. FR-EP-01 Task 3. */
+    @field:JsonInclude(JsonInclude.Include.NON_NULL)
+    val epic: EpicSummary? = null,
     /** 이슈 시작일. null 이면 미설정. "yyyy-MM-dd" 문자열 직렬화(prod ObjectMapper 기본값 비의존). */
     @field:JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
     val startDate: LocalDate? = null,
@@ -279,6 +286,18 @@ data class IssueResponse(
      */
     data class ParentSummary(val key: String, val summary: String)
 
+    /**
+     * 에픽 이슈 요약 정보. 단건 조회 경로에서만 채워진다 (FR-EP-01 Task 3).
+     *
+     * issues.epic_id → epic 이슈 LEFT JOIN 결과를 담는다.
+     * null 이면 이슈가 에픽에 속하지 않음을 의미한다.
+     * [ParentSummary] 와 동형 구조.
+     *
+     * @property key 에픽 이슈 전역 식별자 문자열. 예: `"ATLAS-10"`.
+     * @property summary 에픽 이슈 제목.
+     */
+    data class EpicSummary(val key: String, val summary: String)
+
     companion object {
         /** DB DEFAULT 3 (Medium) 과 동기화. */
         private const val DEFAULT_PRIORITY = 3
@@ -299,12 +318,17 @@ data class IssueResponse(
          * FR-LK-01 Task 1 — [parent] 는 단건 조회([IssueRepository.findByKeyWithType]) 경로에서만
          * 채워진다. 목록 경로([IssueRepository.listWithType])는 null 로 호출한다(N+1/비용 회피).
          *
+         * FR-EP-01 Task 3 — [epic] 는 단건 조회([IssueRepository.findByKeyWithType]) 경로에서만
+         * 채워진다. 목록 경로([IssueRepository.listWithType])는 null 로 호출한다(비용 회피).
+         * [parent] 노출과 동형.
+         *
          * @param issue 변환할 이슈 Aggregate.
          * @param projectKey 이슈가 속한 프로젝트 키 문자열.
          * @param typeInfo 이슈 타입 요약 (id, key, name).
          * @param renderHtml true 이면 descriptionHtml 을 렌더. 단건 경로에서만 true 로 호출한다. 기본값 false.
          * @param resolution 현재 할당된 Resolution 요약. null 이면 미설정. 기본값 null.
          * @param parent 부모 이슈 요약(key, summary). 단건 경로에서 self LEFT JOIN 결과로 채운다. 기본값 null.
+         * @param epic 에픽 이슈 요약(key, summary). 단건 경로에서 epic LEFT JOIN 결과로 채운다. 기본값 null.
          */
         @Suppress("LongParameterList") // issue Aggregate + type 요약 + 경로별 선택 파라미터 조합이 불가피
         fun from(
@@ -314,6 +338,7 @@ data class IssueResponse(
             renderHtml: Boolean = false,
             resolution: ResolutionSummary? = null,
             parent: ParentSummary? = null,
+            epic: EpicSummary? = null,
         ): IssueResponse =
             IssueResponse(
                 key = issue.key.value,
@@ -342,6 +367,7 @@ data class IssueResponse(
                 securityLevelId = issue.securityLevelId,
                 customFields = issue.customFields,
                 parent = parent,
+                epic = epic,
                 startDate = issue.startDate,
                 dueDate = issue.dueDate,
                 targetDate = issue.targetDate,
