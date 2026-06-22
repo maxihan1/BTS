@@ -137,12 +137,15 @@ data class BoardSummaryResponse(
  * 보드 카드(이슈) 응답 DTO.
  *
  * priority 는 PRIORITY 스윔레인(FR-BD-03 D6) 그룹화 근거로 재노출 — Maxi 확정.
+ * epicKey 는 EPIC 스윔레인(FR-EP-01 D6/D7) 그룹화 근거로 재노출 — Maxi 확정.
  *
  * @property issueKey 이슈 키. 예: `"BTS-1"`.
  * @property summary 이슈 제목.
  * @property assigneeId 담당자 UUID. 미배정이면 null.
  * @property priority 우선순위 값. 숫자 작을수록 높은 우선순위(BoardIssueLookupPort 정합).
  * @property version 낙관적 락(OCC) 버전. 카드 이동 시 expectedVersion 으로 사용.
+ * @property epicKey 이슈가 속한 에픽의 이슈 키. 에픽 없는 이슈는 null.
+ *   동일 프로젝트 에픽만 포함 — cross-project 에픽은 null (P1-A 누출 방지).
  */
 data class BoardCardResponse(
     val issueKey: String,
@@ -150,6 +153,7 @@ data class BoardCardResponse(
     val assigneeId: UUID?,
     val priority: Int,
     val version: Long,
+    val epicKey: String? = null,
 ) {
     companion object {
         /** cross-BC [BoardIssueView] 를 [BoardCardResponse] 로 변환한다. */
@@ -160,6 +164,7 @@ data class BoardCardResponse(
                 assigneeId = card.assigneeId,
                 priority = card.priority,
                 version = card.version,
+                epicKey = card.epicKey,
             )
     }
 }

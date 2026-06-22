@@ -291,6 +291,7 @@ export const issueDetailStrings = {
     startDate: '시작일',
     dueDate: '마감일',
     targetDate: '목표일',
+    epic: '에픽',
   } as Record<string, string>,
   /** 변경 이력 — 생명주기 "created" 표시 문자열 */
   changelogLifecycleCreated: '이슈를 생성했습니다',
@@ -630,6 +631,22 @@ export const issueLinkStrings = {
   setParentSuccess: '부모 이슈가 지정되었습니다.',
   /** 부모 해제 성공 토스트 */
   clearParentSuccess: '부모 이슈가 해제되었습니다.',
+
+  // ── 소속 에픽 섹션 (EpicSection) — FR-EP-01 D6 ──────────────────────
+  /** 소속 에픽 섹션 제목 */
+  epicSectionTitle: '소속 에픽',
+  /** 에픽 키 input placeholder */
+  epicKeyPlaceholder: '에픽 이슈 키 (예: ATLAS-1)',
+  /** 에픽 키 input aria-label */
+  epicKeyLabel: '에픽 이슈 키',
+  /** 에픽 지정 버튼 텍스트 */
+  setEpicButton: '에픽 지정',
+  /** 에픽 해제 버튼 텍스트 */
+  clearEpicButton: '해제',
+  /** 에픽 지정 성공 토스트 */
+  setEpicSuccess: '소속 에픽이 지정되었습니다.',
+  /** 에픽 해제 성공 토스트 */
+  clearEpicSuccess: '소속 에픽이 해제되었습니다.',
 } as const
 
 /** 링크 그래프 패널(IssueLinkGraph) 관련 문자열 — FR-LK-02 D6 */
@@ -846,6 +863,53 @@ export const worklogStrings = {
   worklogDeleteSuccess: '작업 기록이 삭제되었습니다.',
   /** 워크로그 삭제 실패 토스트 메시지 */
   worklogDeleteError: '작업 기록 삭제 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+} as const
+
+/** 에픽 자식 이슈 목록 섹션 문자열 — FR-EP-01 D6 */
+export const epicChildrenStrings = {
+  // ── 섹션 제목 ─────────────────────────────────────────────────────────
+  /** 섹션 제목 */
+  sectionTitle: '자식 이슈',
+
+  // ── 빈 상태 ─────────────────────────────────────────────────────────
+  /** 자식 이슈가 없을 때 빈 상태 메시지 */
+  emptyState: '연결된 자식 이슈가 없습니다.',
+
+  // ── 로딩 ─────────────────────────────────────────────────────────────
+  /** 목록 로딩 중 표시 */
+  loadingState: '자식 이슈를 불러오는 중입니다.',
+
+  // ── 추가 폼 ──────────────────────────────────────────────────────────
+  /** 자식 이슈 키 입력 필드 aria-label */
+  childKeyLabel: '자식 이슈 키',
+  /** 자식 이슈 키 입력 필드 placeholder */
+  childKeyPlaceholder: '이슈 키 (예: ATLAS-2)',
+  /** 자식 추가 버튼 텍스트 */
+  addChildButton: '추가',
+  /** 자식 추가 성공 토스트 */
+  addChildSuccess: '자식 이슈가 연결되었습니다.',
+
+  // ── 행 액션 ─────────────────────────────────────────────────────────
+  /** 자식 이슈 해제 버튼 aria-label */
+  disconnectButton: '연결 해제',
+  /** 자식 이슈 해제 성공 토스트 */
+  disconnectSuccess: '자식 이슈 연결이 해제되었습니다.',
+
+  // ── 에러 메시지 (인라인, 토스트 아님) ────────────────────────────────
+  /** ISSUE_EPIC_CHILD_ALREADY_LINKED — 이미 연결된 이슈 */
+  errorAlreadyLinked: '이미 이 에픽에 연결된 이슈입니다.',
+  /** ISSUE_EPIC_CHILD_INVALID_TYPE — 에픽 타입은 자식이 될 수 없음 */
+  errorInvalidType: '에픽 타입 이슈는 자식이 될 수 없습니다.',
+  /** ISSUE_EPIC_CHILD_CROSS_PROJECT — 다른 프로젝트 이슈는 연결 불가 */
+  errorCrossProject: '같은 프로젝트의 이슈만 자식으로 연결할 수 있습니다.',
+  /** ISSUE_EPIC_CHILD_SELF_REFERENCE — 자기 자신을 자식으로 연결할 수 없음 */
+  errorSelfReference: '자기 자신을 자식으로 연결할 수 없습니다.',
+  /** ISSUE_EPIC_OR_CHILD_NOT_FOUND — 이슈를 찾을 수 없음 */
+  errorNotFound: '이슈를 찾을 수 없습니다.',
+  /** ISSUE_EPIC_VALIDATION_FAILED / 400 */
+  errorValidation: '입력 값이 올바르지 않습니다. 확인 후 다시 시도해 주세요.',
+  /** 기타 알 수 없는 에러 fallback */
+  errorDefault: '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.',
 } as const
 
 /** 사용자 알림 구독 설정 페이지 문자열 — /settings/notifications (FR-NT-04) */

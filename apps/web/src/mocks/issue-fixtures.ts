@@ -199,6 +199,111 @@ export const issueAtlasNoWorkflowFixture: IssueResponse = {
   noneditableFields: [],
 }
 
+/**
+ * 에픽 이슈 fixture — ATLAS-EPIC-1 (typeId=4, typeKey='epic')
+ * E2E epic-children.spec.ts: EpicChildrenSection 자식 연결/해제 검증용.
+ * issueFixtureMap에 등록되어 GET /api/v1/issues/ATLAS-EPIC-1 로 조회 가능해야 한다.
+ */
+export const issueAtlasEpic1Fixture: IssueResponse = {
+  key: 'ATLAS-EPIC-1',
+  id: 'e0000001-0000-4000-8000-000000000001',
+  projectKey: 'ATLAS',
+  summary: '에픽 E2E 테스트 — 자식 이슈 연결/해제 검증용',
+  currentStateKey: 'open',
+  reporterId: 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e',
+  assigneeId: null,
+  componentIds: [],
+  affectsVersionIds: [],
+  fixVersionIds: [],
+  version: 0,
+  createdAt: '2026-01-10T09:00:00Z',
+  updatedAt: null,
+  typeId: 4,
+  typeKey: 'epic',
+  typeName: '에픽',
+  description: null,
+  descriptionHtml: null,
+  priority: 3,
+  priorityName: 'Medium',
+  labels: [],
+  environment: null,
+  impact: null,
+  impactName: null,
+  customFields: {},
+  restrictedFields: [],
+  noneditableFields: [],
+}
+
+/**
+ * 에픽 자식 이슈 fixture — ATLAS-CHILD-1 (typeKey='task')
+ * E2E epic-children.spec.ts: EpicChildrenSection 자식 연결 대상 이슈.
+ * issueFixtureMap에 등록되어야 connectEpicChildHandler가 resolveIssue로 찾을 수 있다.
+ */
+export const issueAtlasChild1Fixture: IssueResponse = {
+  key: 'ATLAS-CHILD-1',
+  id: 'c0000001-0000-4000-8000-000000000001',
+  projectKey: 'ATLAS',
+  summary: '자식 이슈 E2E 테스트 — 에픽 연결 대상',
+  currentStateKey: 'open',
+  reporterId: 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e',
+  assigneeId: null,
+  componentIds: [],
+  affectsVersionIds: [],
+  fixVersionIds: [],
+  version: 0,
+  createdAt: '2026-01-10T10:00:00Z',
+  updatedAt: null,
+  typeId: 3,
+  typeKey: 'task',
+  typeName: '작업',
+  description: null,
+  descriptionHtml: null,
+  priority: 3,
+  priorityName: 'Medium',
+  labels: [],
+  environment: null,
+  impact: null,
+  impactName: null,
+  customFields: {},
+  restrictedFields: [],
+  noneditableFields: [],
+}
+
+/**
+ * 소속 에픽 지정 검증용 일반 이슈 fixture — ATLAS-FOR-EPIC (typeKey='task')
+ * E2E epic-children.spec.ts: EpicSection (IssueLinksPanel) 소속 에픽 지정/해제 검증.
+ * 에픽 타입이 아닌 일반 이슈이므로 showEpicSection=true가 렌더됨.
+ */
+export const issueAtlasForEpicFixture: IssueResponse = {
+  key: 'ATLAS-FOR-EPIC',
+  id: 'f0000001-0000-4000-8000-000000000001',
+  projectKey: 'ATLAS',
+  summary: '소속 에픽 지정 E2E 테스트용 일반 이슈',
+  currentStateKey: 'open',
+  reporterId: 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e',
+  assigneeId: null,
+  componentIds: [],
+  affectsVersionIds: [],
+  fixVersionIds: [],
+  version: 0,
+  createdAt: '2026-01-10T11:00:00Z',
+  updatedAt: null,
+  typeId: 3,
+  typeKey: 'task',
+  typeName: '작업',
+  description: null,
+  descriptionHtml: null,
+  priority: 3,
+  priorityName: 'Medium',
+  labels: [],
+  environment: null,
+  impact: null,
+  impactName: null,
+  customFields: {},
+  restrictedFields: [],
+  noneditableFields: [],
+}
+
 /** 빈 이슈 목록 fixture */
 export const emptyIssuePageFixture: IssuePage = {
   content: [],

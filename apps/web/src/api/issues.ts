@@ -139,6 +139,17 @@ export const issueResponseSchema = z.object({
     key: z.string(),
     summary: z.string(),
   }).nullish(),
+  /**
+   * FR-EP-01 — 현재 이슈가 속한 에픽 요약 정보.
+   * 백엔드 IssueResponse.epic: EpicRef? — @JsonInclude(NON_NULL) 적용으로
+   * null이면 JSON 키 자체가 생략된다. 따라서 `.nullish()`(= nullable + optional)를 사용한다.
+   * 단건 GET 경로에서만 채워지며 목록 API에서는 키가 생략된다.
+   * parent 필드와 동형 패턴 (issue-links.ts:138 선례).
+   */
+  epic: z.object({
+    key: z.string(),
+    summary: z.string(),
+  }).nullish(),
   // ── FR-PL-01 일정 필드 (Schedule Dates) ─────────────────────────────────
   /**
    * FR-PL-01 — 이슈 시작일.

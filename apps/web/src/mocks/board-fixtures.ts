@@ -43,8 +43,8 @@ export interface StoredBoardDetail {
   boardId: string
   projectKey: string
   name: string
-  /** 스윔레인 기준 필드. 백엔드 FR-BD-03 D4 신호. NONE=없음, ASSIGNEE=담당자별, PRIORITY=우선순위별 */
-  swimlaneField: 'NONE' | 'ASSIGNEE' | 'PRIORITY'
+  /** 스윔레인 기준 필드. NONE=없음, ASSIGNEE=담당자별, PRIORITY=우선순위별, EPIC=에픽별 */
+  swimlaneField: 'NONE' | 'ASSIGNEE' | 'PRIORITY' | 'EPIC'
   columns: Array<{
     columnId: string
     stateKey: string
@@ -271,6 +271,7 @@ export const DEFAULT_BOARD: BoardDetail = {
           assigneeId: '00000000-0000-4000-8000-000000000001',
           version: 0,
           priority: 1,
+          epicKey: null,
         },
         {
           issueKey: 'ATLAS-4',
@@ -278,6 +279,7 @@ export const DEFAULT_BOARD: BoardDetail = {
           assigneeId: null,
           version: 0,
           priority: 4,
+          epicKey: null,
         },
       ],
     },
@@ -296,6 +298,7 @@ export const DEFAULT_BOARD: BoardDetail = {
           assigneeId: '00000000-0000-4000-8000-000000000001',
           version: 1,
           priority: 2,
+          epicKey: null,
         },
       ],
     },
@@ -314,6 +317,7 @@ export const DEFAULT_BOARD: BoardDetail = {
           assigneeId: null,
           version: 2,
           priority: 3,
+          epicKey: null,
         },
       ],
     },
@@ -372,6 +376,7 @@ export const FILTER_BOARD: StoredBoardDetail = {
           assigneeId: ALICE_USER_ID,
           version: 0,
           priority: 1,
+          epicKey: null,
           labels: ['bug'],
           componentIds: [COMPONENT_C1_ID],
         },
@@ -381,6 +386,7 @@ export const FILTER_BOARD: StoredBoardDetail = {
           assigneeId: BOB_USER_ID,
           version: 0,
           priority: 2,
+          epicKey: null,
           labels: ['feature'],
           componentIds: [COMPONENT_C1_ID, COMPONENT_C2_ID],
         },
@@ -390,6 +396,7 @@ export const FILTER_BOARD: StoredBoardDetail = {
           assigneeId: ALICE_USER_ID,
           version: 0,
           priority: 3,
+          epicKey: null,
           labels: ['bug', 'documentation'],
           componentIds: [COMPONENT_C2_ID],
         },
@@ -399,6 +406,7 @@ export const FILTER_BOARD: StoredBoardDetail = {
           assigneeId: null,
           version: 0,
           priority: 4,
+          epicKey: null,
           labels: [],
           componentIds: [],
         },
@@ -439,6 +447,7 @@ export const WIP_BOARD: StoredBoardDetail = {
           assigneeId: '00000000-0000-4000-8000-000000000001',
           version: 0,
           priority: 1,
+          epicKey: null,
           labels: [],
           componentIds: [],
         },
@@ -459,6 +468,7 @@ export const WIP_BOARD: StoredBoardDetail = {
           assigneeId: '00000000-0000-4000-8000-000000000001',
           version: 0,
           priority: 2,
+          epicKey: null,
           labels: [],
           componentIds: [],
         },
@@ -468,6 +478,7 @@ export const WIP_BOARD: StoredBoardDetail = {
           assigneeId: ALICE_USER_ID,
           version: 0,
           priority: 3,
+          epicKey: null,
           labels: [],
           componentIds: [],
         },
@@ -477,6 +488,7 @@ export const WIP_BOARD: StoredBoardDetail = {
           assigneeId: BOB_USER_ID,
           version: 0,
           priority: 1,
+          epicKey: null,
           labels: [],
           componentIds: [],
         },
@@ -528,6 +540,7 @@ export const SWIMLANE_BOARD: StoredBoardDetail = {
           assigneeId: ALICE_USER_ID,
           version: 0,
           priority: 1,
+          epicKey: null,
           labels: [],
           componentIds: [],
         },
@@ -537,6 +550,7 @@ export const SWIMLANE_BOARD: StoredBoardDetail = {
           assigneeId: BOB_USER_ID,
           version: 0,
           priority: 2,
+          epicKey: null,
           labels: [],
           componentIds: [],
         },
@@ -567,6 +581,86 @@ export const SWIMLANE_BOARD: StoredBoardDetail = {
   unplacedCount: 0,
 }
 
+/**
+ * EPIC 스윔레인 전환 검증용 보드 픽스처 (FR-EP-01 D6/D7 E2E).
+ *
+ * TODO 컬럼에 에픽A 소속 이슈 1건 + 에픽B 소속 이슈 1건 + 에픽 없음 이슈 1건.
+ * EPIC 스윔레인: "SWIMTEST-EP-1" / "SWIMTEST-EP-2" / "에픽 없음" 서브그룹 검증.
+ *
+ * UUID는 RFC4122 v4 형식 — Zod v4 z.string().uuid() 통과 보장.
+ */
+export const EPIC_SWIMLANE_BOARD: StoredBoardDetail = {
+  boardId: '10000000-0000-4000-8000-000000000005',
+  projectKey: 'EPICTEST',
+  name: 'EPIC 스윔레인 테스트 보드',
+  swimlaneField: 'NONE',
+  columns: [
+    {
+      columnId: '70000000-0000-4000-8000-000000000001',
+      stateKey: 'open',
+      name: 'TODO',
+      category: 'TODO',
+      displayOrder: 1,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [
+        {
+          issueKey: 'EPICTEST-1',
+          summary: 'EPIC 스윔레인 테스트 이슈 1 — 에픽A 소속',
+          assigneeId: ALICE_USER_ID,
+          version: 0,
+          priority: 1,
+          epicKey: 'EPICTEST-EP-1',
+          labels: [],
+          componentIds: [],
+        },
+        {
+          issueKey: 'EPICTEST-2',
+          summary: 'EPIC 스윔레인 테스트 이슈 2 — 에픽B 소속',
+          assigneeId: BOB_USER_ID,
+          version: 0,
+          priority: 2,
+          epicKey: 'EPICTEST-EP-2',
+          labels: [],
+          componentIds: [],
+        },
+        {
+          issueKey: 'EPICTEST-3',
+          summary: 'EPIC 스윔레인 테스트 이슈 3 — 에픽 없음',
+          assigneeId: null,
+          version: 0,
+          priority: 3,
+          epicKey: null,
+          labels: [],
+          componentIds: [],
+        },
+      ],
+    },
+    {
+      columnId: '70000000-0000-4000-8000-000000000002',
+      stateKey: 'in_progress',
+      name: 'IN PROGRESS',
+      category: 'IN_PROGRESS',
+      displayOrder: 2,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [],
+    },
+    {
+      columnId: '70000000-0000-4000-8000-000000000003',
+      stateKey: 'done',
+      name: 'DONE',
+      category: 'DONE',
+      displayOrder: 3,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [],
+    },
+  ],
+  truncated: false,
+  unplacedCount: 0,
+}
+
 // 모듈 로드 시 기본 보드와 필터 보드를 자동 시드한다 — notification-policy-handlers buildSeedStore() 패턴 동일.
 // dev(pnpm dev) · E2E 진입 시 boardStore가 비어 있어 생성 폼이 노출되는 결함 방지.
 // Vitest 단위 테스트 환경(MODE='test')에서는 건너뜀 — 각 테스트가 beforeEach/reset으로 직접 제어.
@@ -575,4 +669,5 @@ if (import.meta.env.MODE !== 'test') {
   seedBoardWithMeta(FILTER_BOARD)
   seedBoardWithMeta(WIP_BOARD)
   seedBoardWithMeta(SWIMLANE_BOARD)
+  seedBoardWithMeta(EPIC_SWIMLANE_BOARD)
 }

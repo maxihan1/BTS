@@ -39,8 +39,8 @@ const INITIAL_BOARD: BoardDetail = {
       wipLimit: null,
       wipExceeded: false,
       cards: [
-        { issueKey: 'ATLAS-1', summary: '카드 X', assigneeId: null, version: 1, priority: 1 },
-        { issueKey: 'ATLAS-2', summary: '카드 Y', assigneeId: null, version: 1, priority: 1 },
+        { issueKey: 'ATLAS-1', summary: '카드 X', assigneeId: null, version: 1, priority: 1, epicKey: null },
+        { issueKey: 'ATLAS-2', summary: '카드 Y', assigneeId: null, version: 1, priority: 1, epicKey: null },
       ],
     },
     {

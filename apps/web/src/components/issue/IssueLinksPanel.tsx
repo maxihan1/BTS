@@ -1,13 +1,19 @@
-// 이슈 링크 패널 컴포넌트 — blocks/relates/duplicates/clones + 부모-자식 링크 관리 (FR-LK-01 D6)
+// 이슈 링크 패널 컴포넌트 — blocks/relates/duplicates/clones + 부모-자식 링크 + 소속 에픽 (FR-LK-01 D6 / FR-EP-01 D6)
 import type { JSX, ChangeEvent } from 'react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { useIssueLinks, useCreateLink, useDeleteLink, useSetParent } from '@/api/issue-links'
 import { ISSUE_LINK_ERROR_CODES, extractLinkErrorCode } from '@/api/issue-links'
 import type { IssueLinkResponse } from '@/api/issue-links'
+import {
+  useSetIssueEpic,
+  useClearIssueEpic,
+  EPIC_ERROR_CODES,
+  extractEpicErrorCode,
+} from '@/api/epic-children'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { issueLinkStrings } from '@/i18n/ko'
+import { issueLinkStrings, epicChildrenStrings } from '@/i18n/ko'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -45,6 +51,22 @@ const PARENT_ERROR_MESSAGES: Readonly<Record<string, string>> = {
 } as const
 
 /**
+ * 에픽 연결/해제 에러코드 → 인라인 한국어 메시지.
+ * EpicChildrenSection의 EPIC_CHILD_ERROR_MESSAGES와 동일 구성 — 공유 util로 추출 시
+ * EpicChildrenSection.tsx(T4 산출물) 수정이 금지되므로 동형 복제로 drift를 막는다.
+ * 두 맵은 같은 EPIC_ERROR_CODES 상수와 epicChildrenStrings를 참조하므로 drift가 없다.
+ * (error-key drift 방지 — PR #106 교훈)
+ */
+const EPIC_CHILD_ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  [EPIC_ERROR_CODES.ISSUE_EPIC_CHILD_ALREADY_LINKED]: epicChildrenStrings.errorAlreadyLinked,
+  [EPIC_ERROR_CODES.ISSUE_EPIC_CHILD_INVALID_TYPE]: epicChildrenStrings.errorInvalidType,
+  [EPIC_ERROR_CODES.ISSUE_EPIC_CHILD_CROSS_PROJECT]: epicChildrenStrings.errorCrossProject,
+  [EPIC_ERROR_CODES.ISSUE_EPIC_CHILD_SELF_REFERENCE]: epicChildrenStrings.errorSelfReference,
+  [EPIC_ERROR_CODES.ISSUE_EPIC_OR_CHILD_NOT_FOUND]: epicChildrenStrings.errorNotFound,
+  [EPIC_ERROR_CODES.ISSUE_EPIC_VALIDATION_FAILED]: epicChildrenStrings.errorValidation,
+} as const
+
+/**
  * 에러 코드를 링크 인라인 메시지로 변환한다.
  * 알 수 없는 코드는 fallback 메시지를 반환한다.
  *
@@ -57,6 +79,17 @@ function resolveErrorMessage(
 ): string {
   if (errorCode === null) return issueLinkStrings.errorDefault
   return errorMessages[errorCode] ?? issueLinkStrings.errorDefault
+}
+
+/**
+ * 에픽 에러 코드를 인라인 메시지로 변환한다.
+ * 알 수 없는 코드이거나 null이면 fallback 메시지를 반환한다.
+ *
+ * @param errorCode 에픽 에러 코드 문자열 (null이면 fallback)
+ */
+function resolveEpicErrorMessage(errorCode: string | null): string {
+  if (errorCode === null) return epicChildrenStrings.errorDefault
+  return EPIC_CHILD_ERROR_MESSAGES[errorCode] ?? epicChildrenStrings.errorDefault
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -325,6 +358,128 @@ function ParentSection({ issueKey, parent, disabled }: ParentSectionProps): JSX.
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 서브컴포넌트 — EpicSection
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface EpicSectionProps {
+  /** 이슈 키 (자신의 키 — 자식 이슈 관점) */
+  issueKey: string
+  /** 현재 소속 에픽 (null이면 미지정) */
+  epic: { key: string; summary: string } | null | undefined
+  /** 비활성화 여부 */
+  disabled: boolean
+}
+
+/**
+ * 소속 에픽 섹션 서브컴포넌트 (ParentSection 동형 미러).
+ * - epic 있음: "KEY (요약)" + 해제 버튼 (useClearIssueEpic)
+ * - epic 없음: 에픽 키 input + 지정 버튼 (useSetIssueEpic)
+ * 에러는 인라인 표시 (토스트 아님).
+ *
+ * @param issueKey 자신(자식 이슈)의 키
+ * @param epic 현재 소속 에픽 정보
+ * @param disabled 비활성화 여부
+ */
+function EpicSection({ issueKey, epic, disabled }: EpicSectionProps): JSX.Element {
+  const [epicKey, setEpicKey] = useState('')
+  const [inlineError, setInlineError] = useState<string | null>(null)
+
+  const { mutate: setEpicMutation, isPending: isSetPending } = useSetIssueEpic(issueKey)
+  const { mutate: clearEpicMutation, isPending: isClearPending } = useClearIssueEpic(issueKey)
+
+  const isPending = isSetPending || isClearPending
+
+  function handleSetEpic(): void {
+    setInlineError(null)
+    setEpicMutation(epicKey.trim(), {
+      onSuccess: () => {
+        setEpicKey('')
+        setInlineError(null)
+        toast.success(issueLinkStrings.setEpicSuccess)
+      },
+      onError: (error: unknown) => {
+        const code = extractEpicErrorCode(error)
+        setInlineError(resolveEpicErrorMessage(code))
+      },
+    })
+  }
+
+  function handleClearEpic(): void {
+    if (epic === null || epic === undefined) return
+    setInlineError(null)
+    clearEpicMutation(epic.key, {
+      onSuccess: () => {
+        setInlineError(null)
+        toast.success(issueLinkStrings.clearEpicSuccess)
+      },
+      onError: (error: unknown) => {
+        const code = extractEpicErrorCode(error)
+        setInlineError(resolveEpicErrorMessage(code))
+      },
+    })
+  }
+
+  const hasEpic = epic !== null && epic !== undefined
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {hasEpic ? (
+        <div className="flex items-center gap-2">
+          <a
+            href={`#${epic.key}`}
+            className="text-sm font-medium text-primary hover:underline"
+            aria-label={epic.key}
+          >
+            {epic.key}
+          </a>
+          <span className="text-sm text-foreground truncate">{epic.summary}</span>
+          <button
+            type="button"
+            onClick={handleClearEpic}
+            disabled={disabled || isPending}
+            aria-label={issueLinkStrings.clearEpicButton}
+            className="text-xs text-muted-foreground hover:text-destructive focus:outline-none focus:ring-1 focus:ring-ring min-h-[44px] px-2 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {issueLinkStrings.clearEpicButton}
+          </button>
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <Input
+            type="text"
+            aria-label={issueLinkStrings.epicKeyLabel}
+            placeholder={issueLinkStrings.epicKeyPlaceholder}
+            value={epicKey}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => {
+              setEpicKey(e.target.value)
+              if (inlineError !== null) setInlineError(null)
+            }}
+            disabled={disabled}
+            className="flex-1"
+          />
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleSetEpic}
+            disabled={disabled || isPending || epicKey.trim() === ''}
+            aria-label={issueLinkStrings.setEpicButton}
+          >
+            {issueLinkStrings.setEpicButton}
+          </Button>
+        </div>
+      )}
+
+      {/* 소속 에픽 인라인 에러 */}
+      {inlineError !== null && (
+        <p role="alert" className="text-xs text-destructive">
+          {inlineError}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 메인 컴포넌트 — IssueLinksPanel
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -336,6 +491,19 @@ interface IssueLinksPanelProps {
    * null = 부모 없음, undefined = 이슈 데이터 로딩 전.
    */
   parent?: { key: string; summary: string } | null
+  /**
+   * 소속 에픽 정보 (이슈 상세 쿼리 유래 — issueResponseSchema.epic).
+   * null = 에픽 미지정, undefined = 이슈 데이터 로딩 전.
+   * showEpicSection=true일 때만 사용한다.
+   */
+  epic?: { key: string; summary: string } | null
+  /**
+   * 소속 에픽 섹션 노출 여부.
+   * - true: level-0 일반 이슈(bug/story/task 등) — 에픽 지정/해제 가능
+   * - false(기본): 에픽 타입(typeKey==='epic')과 서브태스크(typeKey==='subtask')는 비노출
+   *   에픽은 EpicChildrenSection이 담당, 서브태스크는 직접 에픽 부여 금지 (Jira 모델)
+   */
+  showEpicSection?: boolean
   /** 비활성화 여부 (권한 없음 시 true) */
   disabled?: boolean
 }
@@ -350,15 +518,20 @@ interface IssueLinksPanelProps {
  * - 링크 추가 폼 (유형 select + 대상 키 input + 추가 버튼)
  * - 링크 행 제거 버튼
  * - 부모 이슈 섹션 (설정/해제)
+ * - 소속 에픽 섹션 (showEpicSection=true일 때만 렌더)
  * - 에러는 인라인 표시 (토스트 아님) — 성공은 토스트
  *
  * @param issueKey 이슈 키
  * @param parent 현재 부모 이슈 ({key, summary} | null | undefined)
+ * @param epic 소속 에픽 정보 ({key, summary} | null | undefined)
+ * @param showEpicSection 소속 에픽 섹션 노출 여부 (기본 false — epic/subtask 비노출)
  * @param disabled 비활성화 여부
  */
 export function IssueLinksPanel({
   issueKey,
   parent,
+  epic,
+  showEpicSection = false,
   disabled = false,
 }: IssueLinksPanelProps): JSX.Element {
   const { data: linkList, isLoading } = useIssueLinks(issueKey)
@@ -429,6 +602,20 @@ export function IssueLinksPanel({
           disabled={disabled}
         />
       </div>
+
+      {/* ── 소속 에픽 섹션 — level-0 이슈(epic/subtask 제외)에만 노출 ── */}
+      {showEpicSection && (
+        <div className="px-3.5 py-3 border-b border-border" data-testid="epic-section">
+          <p className="text-xs text-muted-foreground mb-2">
+            {issueLinkStrings.epicSectionTitle}
+          </p>
+          <EpicSection
+            issueKey={issueKey}
+            epic={epic ?? null}
+            disabled={disabled}
+          />
+        </div>
+      )}
     </div>
   )
 }

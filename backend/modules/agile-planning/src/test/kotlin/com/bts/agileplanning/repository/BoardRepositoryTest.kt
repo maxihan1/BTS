@@ -122,6 +122,30 @@ class BoardRepositoryTest {
         assertThat(result as Any?).isNull()
     }
 
+    @Test
+    fun `insert 후 findById 가 swimlaneField EPIC 을 보존한다 (FR-EP-01 활성화)`() {
+        val board = buildBoard(swimlaneField = SwimlaneField.EPIC)
+        val saved = boardRepository.insert(board)
+
+        assertThat(saved.swimlaneField).isEqualTo(SwimlaneField.EPIC)
+        val found = boardRepository.findById(saved.id)
+        assertThat(found).isNotNull
+        assertThat(found!!.swimlaneField).isEqualTo(SwimlaneField.EPIC)
+    }
+
+    @Test
+    fun `updateSwimlaneField EPIC 으로 갱신하면 findById 가 EPIC 을 반환한다 (FR-EP-01 활성화)`() {
+        val board = buildBoard(swimlaneField = SwimlaneField.NONE)
+        boardRepository.insert(board)
+
+        val updated = boardRepository.updateSwimlaneField(board.id, SwimlaneField.EPIC)
+        assertThat(updated).isNotNull
+        assertThat(updated!!.swimlaneField).isEqualTo(SwimlaneField.EPIC)
+
+        val found = boardRepository.findById(board.id)
+        assertThat(found!!.swimlaneField).isEqualTo(SwimlaneField.EPIC)
+    }
+
     // ── (3) updateColumnWipLimit — 설정 및 해제 ───────────────────────────────
 
     @Test

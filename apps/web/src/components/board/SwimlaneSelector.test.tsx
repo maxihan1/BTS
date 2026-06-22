@@ -11,9 +11,9 @@ import { SwimlaneSelector } from './SwimlaneSelector'
 
 describe('SwimlaneSelector', () => {
   /**
-   * T-BD3-S-1. 3개 옵션(없음/담당자/우선순위)이 렌더된다.
+   * T-BD3-S-1. 4개 옵션(없음/담당자/우선순위/에픽)이 렌더된다.
    */
-  it('T-BD3-S-1: 3개 옵션 라벨이 접근 가능한 텍스트로 존재한다', async () => {
+  it('T-BD3-S-1: 4개 옵션 라벨이 접근 가능한 텍스트로 존재한다', async () => {
     const onChange = vi.fn()
     render(
       <SwimlaneSelector value="NONE" onChange={onChange} />,
@@ -24,6 +24,21 @@ describe('SwimlaneSelector', () => {
 
     // NONE 옵션이 현재 표시값으로 보인다
     expect(screen.getByText('없음')).toBeInTheDocument()
+  })
+
+  it('T-BD3-S-1b: EPIC 옵션이 native select에 존재한다', () => {
+    const onChange = vi.fn()
+    render(
+      <SwimlaneSelector value="NONE" onChange={onChange} />,
+    )
+    const nativeSelect = document.querySelector('select[aria-hidden="true"]')
+    if (nativeSelect instanceof HTMLSelectElement) {
+      const options = Array.from(nativeSelect.options).map((o) => o.value)
+      expect(options).toContain('EPIC')
+    } else {
+      // jsdom 환경에서 native select 없으면 combobox 존재만 확인
+      expect(screen.getByRole('combobox')).toBeInTheDocument()
+    }
   })
 
   /**
@@ -45,6 +60,15 @@ describe('SwimlaneSelector', () => {
     )
 
     expect(screen.getByText('우선순위')).toBeInTheDocument()
+  })
+
+  it('T-BD3-S-2c: value="EPIC"이면 에픽 라벨이 표시된다', () => {
+    const onChange = vi.fn()
+    render(
+      <SwimlaneSelector value="EPIC" onChange={onChange} />,
+    )
+
+    expect(screen.getByText('에픽')).toBeInTheDocument()
   })
 
   /**

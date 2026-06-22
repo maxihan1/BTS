@@ -1,4 +1,4 @@
-// IssueLinksPanel 컨테이너 컴포넌트 단위 테스트 — FR-LK-01 D6 Task-4
+// IssueLinksPanel 컨테이너 컴포넌트 단위 테스트 — FR-LK-01 D6 Task-4 + FR-EP-01 D6 Task-5
 import { describe, it, expect } from 'vitest'
 import type { ReactNode } from 'react'
 import { render, screen, waitFor, within } from '@testing-library/react'
@@ -608,6 +608,400 @@ describe('IssueLinksPanel — S11 다중 링크 렌더', () => {
     expect(screen.getByText('아웃바운드 이슈')).toBeInTheDocument()
     expect(screen.getByText('ATLAS-3')).toBeInTheDocument()
     expect(screen.getByText('인바운드 이슈')).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S13. 소속 에픽 섹션 (EpicSection) — FR-EP-01 D6 Task-5
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueLinksPanel — S13 소속 에픽 섹션', () => {
+  // S13a: epic prop이 있으면 KEY + 요약 + 해제 버튼이 표시된다 (level-0 이슈 자격)
+  it('S13a: epic prop이 있으면 에픽 KEY + 요약 + 해제 버튼이 표시된다', async () => {
+    server.use(
+      http.get('/api/v1/issues/ATLAS-2/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
+    )
+    const Wrapper = createWrapper()
+    render(
+      <IssueLinksPanel
+        issueKey="ATLAS-2"
+        parent={null}
+        epic={{ key: 'ATLAS-10', summary: '대형 에픽 제목' }}
+        showEpicSection
+      />,
+      { wrapper: Wrapper },
+    )
+
+    await screen.findByText('ATLAS-10')
+    expect(screen.getByText('대형 에픽 제목')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /해제/ })).toBeInTheDocument()
+  })
+
+  // S13b: epic prop이 null이면 에픽 키 input + 지정 버튼이 표시된다
+  it('S13b: epic prop이 null이면 에픽 키 input + 지정 버튼이 표시된다', async () => {
+    server.use(
+      http.get('/api/v1/issues/ATLAS-2/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
+    )
+    const Wrapper = createWrapper()
+    render(
+      <IssueLinksPanel
+        issueKey="ATLAS-2"
+        parent={null}
+        epic={null}
+        showEpicSection
+      />,
+      { wrapper: Wrapper },
+    )
+
+    expect(await screen.findByRole('textbox', { name: /에픽 이슈 키/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /에픽 지정/ })).toBeInTheDocument()
+  })
+
+  // S13c: showEpicSection이 false이면 소속 에픽 섹션이 렌더되지 않는다
+  it('S13c: showEpicSection=false이면 소속 에픽 섹션이 렌더되지 않는다', async () => {
+    server.use(
+      http.get('/api/v1/issues/ATLAS-10/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
+    )
+    const Wrapper = createWrapper()
+    render(
+      <IssueLinksPanel
+        issueKey="ATLAS-10"
+        parent={null}
+        epic={null}
+        showEpicSection={false}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    await screen.findByText(/링크가 없습니다/)
+    expect(screen.queryByRole('textbox', { name: /에픽 이슈 키/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /에픽 지정/ })).not.toBeInTheDocument()
+    expect(screen.queryByText(/소속 에픽/)).not.toBeInTheDocument()
+  })
+
+  // S13d: showEpicSection prop 미전달(기본값 false)이면 소속 에픽 섹션이 노출되지 않는다
+  it('S13d: showEpicSection prop 미전달(기본값 false)이면 소속 에픽 섹션이 노출되지 않는다', async () => {
+    server.use(
+      http.get('/api/v1/issues/ATLAS-1/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
+    )
+    const Wrapper = createWrapper()
+    render(<IssueLinksPanel issueKey="ATLAS-1" parent={null} />, { wrapper: Wrapper })
+
+    await screen.findByText(/링크가 없습니다/)
+    expect(screen.queryByText(/소속 에픽/)).not.toBeInTheDocument()
+  })
+
+  // S13e: disabled=true이면 에픽 지정 버튼과 input이 비활성화된다
+  it('S13e: disabled=true이면 에픽 지정 input과 버튼이 비활성화된다', async () => {
+    server.use(
+      http.get('/api/v1/issues/ATLAS-2/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
+    )
+    const Wrapper = createWrapper()
+    render(
+      <IssueLinksPanel
+        issueKey="ATLAS-2"
+        parent={null}
+        epic={null}
+        showEpicSection
+        disabled
+      />,
+      { wrapper: Wrapper },
+    )
+
+    await screen.findByText(/링크가 없습니다/)
+    const epicInput = screen.getByRole('textbox', { name: /에픽 이슈 키/ })
+    expect(epicInput).toBeDisabled()
+    // 에픽 지정 버튼 — 빈 input이면 disabled
+    expect(screen.getByRole('button', { name: /에픽 지정/ })).toBeDisabled()
+  })
+
+  // S13f: disabled=true + epic 있으면 해제 버튼이 비활성화된다
+  it('S13f: disabled=true + epic prop 있으면 해제 버튼이 비활성화된다', async () => {
+    server.use(
+      http.get('/api/v1/issues/ATLAS-2/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
+    )
+    const Wrapper = createWrapper()
+    render(
+      <IssueLinksPanel
+        issueKey="ATLAS-2"
+        parent={null}
+        epic={{ key: 'ATLAS-10', summary: '에픽 제목' }}
+        showEpicSection
+        disabled
+      />,
+      { wrapper: Wrapper },
+    )
+
+    await screen.findByText('ATLAS-10')
+    const clearButton = screen.getByRole('button', { name: /해제/ })
+    expect(clearButton).toBeDisabled()
+  })
+
+  // S13g: 에픽 지정 성공 — POST /api/v1/issues/{epicKey}/epic-children body { childKey } 확인
+  it('S13g: 에픽 키 입력 후 지정 버튼 클릭 시 childKey를 body에 담아 POST가 전송된다', async () => {
+    const user = userEvent.setup()
+    let capturedChildKey: string | undefined
+    server.use(
+      http.get('/api/v1/issues/ATLAS-2/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
+      // useSetIssueEpic: POST /api/v1/issues/{epicKey}/epic-children body { childKey }
+      http.post('/api/v1/issues/ATLAS-10/epic-children', async ({ request }) => {
+        const body = (await request.json()) as { childKey?: string }
+        capturedChildKey = body.childKey
+        return HttpResponse.json(
+          {
+            data: {
+              key: 'ATLAS-2',
+              summary: '자식 이슈',
+              typeKey: 'task',
+              currentStateKey: 'open',
+            },
+          },
+          { status: 201 },
+        )
+      }),
+      // onSettled invalidate issueQueryKey(childKey)
+      http.get('/api/v1/issues/ATLAS-2', () =>
+        HttpResponse.json({
+          data: {
+            key: 'ATLAS-2',
+            id: '00000000-0000-0000-0000-000000000002',
+            projectKey: 'ATLAS',
+            summary: '자식 이슈',
+            currentStateKey: 'open',
+            reporterId: '00000000-0000-0000-0000-000000000001',
+            assigneeId: null,
+            version: 1,
+            createdAt: null,
+            updatedAt: null,
+            typeId: 3,
+            typeKey: 'task',
+            typeName: '작업',
+            description: null,
+            descriptionHtml: null,
+            priority: 3,
+            priorityName: 'Medium',
+            labels: [],
+            environment: null,
+            impact: null,
+            impactName: null,
+          },
+        }),
+      ),
+      // onSettled invalidate epicChildrenKey
+      http.get('/api/v1/issues/ATLAS-10/epic-children', () =>
+        HttpResponse.json({ data: { children: [] } }),
+      ),
+    )
+
+    const Wrapper = createWrapper()
+    render(
+      <IssueLinksPanel
+        issueKey="ATLAS-2"
+        parent={null}
+        epic={null}
+        showEpicSection
+      />,
+      { wrapper: Wrapper },
+    )
+
+    await screen.findByRole('textbox', { name: /에픽 이슈 키/ })
+
+    const epicInput = screen.getByRole('textbox', { name: /에픽 이슈 키/ })
+    await user.type(epicInput, 'ATLAS-10')
+    await user.click(screen.getByRole('button', { name: /에픽 지정/ }))
+
+    // POST body의 childKey가 현재 이슈 키(ATLAS-2)임을 단언 — boolean 단언은 요청 내용을 검증 못함
+    await waitFor(() => {
+      expect(capturedChildKey).toBe('ATLAS-2')
+    })
+  })
+
+  // S13h: 에픽 해제 성공 — DELETE /api/v1/issues/{epicKey}/epic-children/{childKey} path 확인
+  it('S13h: 해제 버튼 클릭 시 올바른 epicKey/childKey 경로로 DELETE가 전송된다', async () => {
+    const user = userEvent.setup()
+    let capturedEpicKey: string | undefined
+    let capturedChildKey: string | undefined
+    server.use(
+      http.get('/api/v1/issues/ATLAS-2/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
+      // useClearIssueEpic: DELETE /api/v1/issues/{epicKey}/epic-children/{childKey}
+      http.delete('/api/v1/issues/:epicKey/epic-children/:childKey', ({ params }) => {
+        capturedEpicKey = params['epicKey'] as string
+        capturedChildKey = params['childKey'] as string
+        return new HttpResponse(null, { status: 204 })
+      }),
+      // onSettled invalidate issueQueryKey(childKey)
+      http.get('/api/v1/issues/ATLAS-2', () =>
+        HttpResponse.json({
+          data: {
+            key: 'ATLAS-2',
+            id: '00000000-0000-0000-0000-000000000002',
+            projectKey: 'ATLAS',
+            summary: '자식 이슈',
+            currentStateKey: 'open',
+            reporterId: '00000000-0000-0000-0000-000000000001',
+            assigneeId: null,
+            version: 1,
+            createdAt: null,
+            updatedAt: null,
+            typeId: 3,
+            typeKey: 'task',
+            typeName: '작업',
+            description: null,
+            descriptionHtml: null,
+            priority: 3,
+            priorityName: 'Medium',
+            labels: [],
+            environment: null,
+            impact: null,
+            impactName: null,
+          },
+        }),
+      ),
+      http.get('/api/v1/issues/ATLAS-10/epic-children', () =>
+        HttpResponse.json({ data: { children: [] } }),
+      ),
+    )
+
+    const Wrapper = createWrapper()
+    render(
+      <IssueLinksPanel
+        issueKey="ATLAS-2"
+        parent={null}
+        epic={{ key: 'ATLAS-10', summary: '대형 에픽' }}
+        showEpicSection
+      />,
+      { wrapper: Wrapper },
+    )
+
+    await screen.findByText('ATLAS-10')
+    await user.click(screen.getByRole('button', { name: /해제/ }))
+
+    // DELETE 경로 epicKey=ATLAS-10, childKey=ATLAS-2 단언 — boolean 단언은 잘못된 경로를 탐지 못함
+    await waitFor(() => {
+      expect(capturedEpicKey).toBe('ATLAS-10')
+      expect(capturedChildKey).toBe('ATLAS-2')
+    })
+  })
+
+  // S13i: 에픽 지정 오류 — ISSUE_EPIC_TARGET_NOT_EPIC(422) → 인라인 에러 표시
+  it('S13i: ISSUE_EPIC_TARGET_NOT_EPIC(422) → 인라인 에러 메시지가 표시된다', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.get('/api/v1/issues/ATLAS-2/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
+      http.post('/api/v1/issues/ATLAS-3/epic-children', () =>
+        HttpResponse.json(
+          { errorCode: 'ISSUE_EPIC_TARGET_NOT_EPIC', message: '' },
+          { status: 422 },
+        ),
+      ),
+    )
+
+    const Wrapper = createWrapper()
+    render(
+      <IssueLinksPanel
+        issueKey="ATLAS-2"
+        parent={null}
+        epic={null}
+        showEpicSection
+      />,
+      { wrapper: Wrapper },
+    )
+
+    await screen.findByRole('textbox', { name: /에픽 이슈 키/ })
+    const epicInput = screen.getByRole('textbox', { name: /에픽 이슈 키/ })
+    await user.type(epicInput, 'ATLAS-3')
+    await user.click(screen.getByRole('button', { name: /에픽 지정/ }))
+
+    // ISSUE_EPIC_TARGET_NOT_EPIC → epicChildrenStrings.errorDefault (매핑 없음이면 fallback)
+    // 단, ISSUE_EPIC_TARGET_NOT_EPIC은 EpicChildrenSection의 EPIC_CHILD_ERROR_MESSAGES에 없음
+    // → issueLinkStrings의 에픽 에러 fallback이 표시된다
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+  })
+
+  // S13j: 에픽 지정 오류 — ISSUE_EPIC_CHILD_ALREADY_LINKED(409) → 인라인 에러 표시
+  it('S13j: ISSUE_EPIC_CHILD_ALREADY_LINKED(409) → 인라인 에러 메시지가 표시된다', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.get('/api/v1/issues/ATLAS-2/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
+      http.post('/api/v1/issues/ATLAS-10/epic-children', () =>
+        HttpResponse.json(
+          { errorCode: 'ISSUE_EPIC_CHILD_ALREADY_LINKED', message: '' },
+          { status: 409 },
+        ),
+      ),
+    )
+
+    const Wrapper = createWrapper()
+    render(
+      <IssueLinksPanel
+        issueKey="ATLAS-2"
+        parent={null}
+        epic={null}
+        showEpicSection
+      />,
+      { wrapper: Wrapper },
+    )
+
+    await screen.findByRole('textbox', { name: /에픽 이슈 키/ })
+    const epicInput = screen.getByRole('textbox', { name: /에픽 이슈 키/ })
+    await user.type(epicInput, 'ATLAS-10')
+    await user.click(screen.getByRole('button', { name: /에픽 지정/ }))
+
+    expect(await screen.findByText(/이미.*에픽/)).toBeInTheDocument()
+  })
+
+  // S13k: 에픽 지정 오류 — ISSUE_EPIC_OR_CHILD_NOT_FOUND(404) → 인라인 에러 표시
+  it('S13k: ISSUE_EPIC_OR_CHILD_NOT_FOUND(404) → 이슈 없음 에러 메시지가 표시된다', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.get('/api/v1/issues/ATLAS-2/links', () =>
+        HttpResponse.json({ data: { outward: [], inward: [] } }),
+      ),
+      http.post('/api/v1/issues/UNKNOWN-99/epic-children', () =>
+        HttpResponse.json(
+          { errorCode: 'ISSUE_EPIC_OR_CHILD_NOT_FOUND', message: '' },
+          { status: 404 },
+        ),
+      ),
+    )
+
+    const Wrapper = createWrapper()
+    render(
+      <IssueLinksPanel
+        issueKey="ATLAS-2"
+        parent={null}
+        epic={null}
+        showEpicSection
+      />,
+      { wrapper: Wrapper },
+    )
+
+    await screen.findByRole('textbox', { name: /에픽 이슈 키/ })
+    const epicInput = screen.getByRole('textbox', { name: /에픽 이슈 키/ })
+    await user.type(epicInput, 'UNKNOWN-99')
+    await user.click(screen.getByRole('button', { name: /에픽 지정/ }))
+
+    expect(await screen.findByText(/이슈를 찾을 수 없습니다/)).toBeInTheDocument()
   })
 })
 

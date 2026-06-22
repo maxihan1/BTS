@@ -26,6 +26,9 @@ const LABEL_UNASSIGNED = '미배정'
 /** 이름 미확인 담당자 그룹 라벨 */
 const LABEL_UNKNOWN = '이름 미확인'
 
+/** 에픽 없음 그룹 라벨 */
+const LABEL_NO_EPIC = '에픽 없음'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
@@ -135,6 +138,46 @@ function groupByPriority(cards: BoardCard[]): SwimlaneGroup[] {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// EPIC 그룹화
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 에픽 키별로 카드를 그룹화한다.
+ * epicKey가 있는 그룹은 가나다(문자열) 오름차순 정렬.
+ * epicKey=null(에픽 없음) 그룹은 마지막.
+ */
+function groupByEpic(cards: BoardCard[]): SwimlaneGroup[] {
+  const groupMap = new Map<string, SwimlaneGroup>()
+  let noEpicGroup: SwimlaneGroup | undefined
+
+  for (const card of cards) {
+    const epicKey = card.epicKey
+    if (epicKey === null) {
+      if (noEpicGroup === undefined) {
+        noEpicGroup = { key: 'epic-no-epic', label: LABEL_NO_EPIC, cards: [] }
+      }
+      noEpicGroup.cards.push(card)
+    } else {
+      const key = `epic-${epicKey}`
+      const existing = groupMap.get(key)
+      if (existing !== undefined) {
+        existing.cards.push(card)
+      } else {
+        groupMap.set(key, { key, label: epicKey, cards: [card] })
+      }
+    }
+  }
+
+  const sorted = [...groupMap.values()].sort((a, b) =>
+    a.label.localeCompare(b.label, 'ko'),
+  )
+  if (noEpicGroup !== undefined) {
+    sorted.push(noEpicGroup)
+  }
+  return sorted
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 공개 API
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -149,6 +192,8 @@ function groupByPriority(cards: BoardCard[]): SwimlaneGroup[] {
  *             빈 그룹 생략.
  * - PRIORITY: 우선순위 숫자 오름차순 그룹. 라벨 "우선순위 N".
  *             빈 그룹 생략.
+ * - EPIC: 에픽 키별 그룹. 가나다 정렬, "에픽 없음"(epicKey=null)은 마지막.
+ *         빈 그룹 생략.
  *
  * @param cards 컬럼에 속한 카드 목록
  * @param swimlaneField 그룹화 기준 필드
@@ -162,6 +207,7 @@ export function groupCardsBySwimlane(
 ): SwimlaneGroup[] {
   if (swimlaneField === 'NONE') return groupByNone(cards)
   if (swimlaneField === 'ASSIGNEE') return groupByAssignee(cards, assigneeNames)
+  if (swimlaneField === 'EPIC') return groupByEpic(cards)
   // PRIORITY
   return groupByPriority(cards)
 }

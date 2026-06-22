@@ -39,15 +39,18 @@ class BoardResponsesTest {
             wipLimit = wipLimit,
         )
 
-    private fun card(key: String = "PROJ-1") =
-        BoardIssueView(
-            key = key,
-            summary = "테스트 이슈",
-            currentStateKey = "open",
-            assigneeId = null,
-            priority = 1,
-            version = 0L,
-        )
+    private fun card(
+        key: String = "PROJ-1",
+        epicKey: String? = null,
+    ) = BoardIssueView(
+        key = key,
+        summary = "테스트 이슈",
+        currentStateKey = "open",
+        assigneeId = null,
+        priority = 1,
+        version = 0L,
+        epicKey = epicKey,
+    )
 
     private fun cards(count: Int): List<BoardIssueView> = (1..count).map { card("PROJ-$it") }
 
@@ -200,6 +203,25 @@ class BoardResponsesTest {
                 )
             val response = BoardCardResponse.from(view)
             assertThat(response.priority).isEqualTo(99)
+        }
+    }
+
+    // --- (e-1) BoardCardResponse.epicKey 노출 (FR-EP-01 D6/D7 EPIC 스윔레인 근거) ---
+
+    @Nested
+    inner class BoardCardResponseEpicKey {
+        @Test
+        fun `BoardCardResponse 는 BoardIssueView 의 epicKey 를 그대로 노출한다`() {
+            val view = card("PROJ-1", epicKey = "PROJ-0")
+            val response = BoardCardResponse.from(view)
+            assertThat(response.epicKey).isEqualTo("PROJ-0")
+        }
+
+        @Test
+        fun `epicKey 가 null 인 카드는 응답 epicKey 도 null 이다`() {
+            val view = card("PROJ-1", epicKey = null)
+            val response = BoardCardResponse.from(view)
+            assertThat(response.epicKey).isNull()
         }
     }
 

@@ -448,15 +448,25 @@ class BoardApplicationServiceTest {
     }
 
     @Test
-    fun `updateSwimlaneField EPIC 은 enum 미존재이므로 400 을 던지고 repo 를 호출하지 않는다`() {
+    fun `updateSwimlaneField EPIC 은 유효값이므로 repo 가 SwimlaneField_EPIC 으로 호출된다 (FR-EP-01 활성화)`() {
+        val boardId = UUID.randomUUID()
+        val expectedBoard =
+            Board(
+                id = boardId,
+                projectKey = "TST",
+                name = "에픽 스윔레인 보드",
+                columns = emptyList(),
+                createdAt = Instant.now(),
+                updatedAt = Instant.now(),
+                swimlaneField = SwimlaneField.EPIC,
+            )
         val repo = mockk<BoardRepository>()
+        every { repo.updateSwimlaneField(boardId, SwimlaneField.EPIC) } returns expectedBoard
 
-        assertThatThrownBy { serviceWith(repo = repo).updateSwimlaneField(UUID.randomUUID(), "EPIC") }
-            .isInstanceOf(ResponseStatusException::class.java)
-            .extracting("statusCode.value")
-            .isEqualTo(400)
+        val result = serviceWith(repo = repo).updateSwimlaneField(boardId, "EPIC")
 
-        verify(exactly = 0) { repo.updateSwimlaneField(any(), any()) }
+        assertThat(result).isEqualTo(expectedBoard)
+        verify(exactly = 1) { repo.updateSwimlaneField(boardId, SwimlaneField.EPIC) }
     }
 
     @Test

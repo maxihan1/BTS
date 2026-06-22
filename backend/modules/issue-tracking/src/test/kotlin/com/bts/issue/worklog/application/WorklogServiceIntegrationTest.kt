@@ -115,6 +115,7 @@ class WorklogServiceIntegrationTest {
         open fun issueChangeLabelResolver(
             issueTypeRepository: IssueTypeRepository,
             resolutionRepository: ResolutionRepository,
+            issueRepository: IssueRepository,
         ): IssueChangeLabelResolver =
             IssueChangeLabelResolver(
                 issueTypeRepository = issueTypeRepository,
@@ -124,6 +125,7 @@ class WorklogServiceIntegrationTest {
                 userLookupPort = mockk<UserLookupPort>(relaxed = true),
                 issueSecurityDirectory =
                     com.bts.issue.adapter.outbound.AlwaysAllowIssueSecurityDirectory(),
+                issueRepository = issueRepository,
             )
 
         @Bean

@@ -98,14 +98,14 @@ class BoardWipSwimlaneDomainTest {
         }
 
         @Test
-        fun `EPIC 은 존재하지 않아 IllegalArgumentException이 발생한다`() {
-            assertThatThrownBy { SwimlaneField.valueOf("EPIC") }
-                .isInstanceOf(IllegalArgumentException::class.java)
+        fun `EPIC 값을 정상 조회한다 (FR-EP-01 활성화)`() {
+            val field = SwimlaneField.valueOf("EPIC")
+            assertThat(field).isEqualTo(SwimlaneField.EPIC)
         }
 
         @Test
-        fun `SwimlaneField 값이 정확히 3개다`() {
-            assertThat(SwimlaneField.entries.size).isEqualTo(3)
+        fun `SwimlaneField 값이 정확히 4개다 (NONE+ASSIGNEE+PRIORITY+EPIC)`() {
+            assertThat(SwimlaneField.entries.size).isEqualTo(4)
         }
     }
 

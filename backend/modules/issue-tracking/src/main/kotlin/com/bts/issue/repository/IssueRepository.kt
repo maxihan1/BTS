@@ -670,9 +670,18 @@ class IssueRepository(
      * WHERE 술어를 재사용**해 viewer 가 볼 수 없는 보안 등급 행을 SQL 수준에서 제외한다.
      * 새 보안 판정 경로를 만들지 않음으로써 멤버 타입 누락에 의한 제목 누출을 차단한다 (FR-NT-03 교훈).
      *
-     * 단일 쿼리(ISSUES × PROJECTS) — N+1 없음. type 요약은 보드 카드에 불필요하므로 ISSUE_TYPES JOIN 생략.
+     * 단일 쿼리(ISSUES × PROJECTS + EPIC self LEFT JOIN) — N+1 없음.
+     * type 요약은 보드 카드에 불필요하므로 ISSUE_TYPES JOIN 생략.
      * 카드 수 폭주를 막기 위해 [BOARD_CARD_FETCH_LIMIT] 로 상한을 둔다.
      * 정렬(컬럼 내 priority 등)은 도메인 배치 로직(agile-planning) 책임이므로 여기서는 created_at DESC 안정 정렬만 한다.
+     *
+     * ## EPIC self LEFT JOIN (FR-EP-01 D6/D7)
+     *
+     * EPIC 스윔레인 그룹화를 위해 `issues AS epic` self LEFT JOIN 으로 epicKey 를 단일 쿼리에서 추출한다.
+     * LEFT JOIN 이므로 에픽 없는 이슈도 결과에 포함된다 — epicKey 는 null 로 반환.
+     * [Issue] 도메인 객체에는 epicKey 필드가 없으므로 fetch 람다에서 직접 추출해 [BoardIssueEntry] 에 전달한다.
+     * **동일 프로젝트 조건** (`epicAlias.PROJECT_ID = issues.project_id`) 필수 —
+     * 에픽이 이동·삭제 등으로 다른 프로젝트에 잔류할 때 cross-project 데이터가 누출되지 않도록 한다 (P1-A 회귀방지).
      *
      * ## truncated 감지 (LIMIT+1 기법)
      *
@@ -685,7 +694,7 @@ class IssueRepository(
      *   보안 민감 메서드이므로 기본값 없이 항상 명시 전달한다.
      * @param access actor 가 접근 가능한 보안 등급 집합. unrestricted=true 이면 WHERE 술어 미적용(빠른경로).
      * @param filter 보드 카드 필터 조건. [BoardCardFilter.isEmpty] 이면 필터 Condition 을 추가하지 않는다.
-     * @return [BoardFetchResult]. issues 는 최대 [BOARD_CARD_FETCH_LIMIT] 건. truncated 는 초과 여부.
+     * @return [BoardFetchResult]. entries 는 최대 [BOARD_CARD_FETCH_LIMIT] 건(이슈 + epicKey 쌍). truncated 는 초과 여부.
      */
     @Transactional(readOnly = true)
     fun listVisibleForBoard(
@@ -703,29 +712,56 @@ class IssueRepository(
             where = where.and(filterCondition)
         }
 
+        // EPIC self LEFT JOIN — EPIC 스윔레인용 epicKey 추출 (FR-EP-01 D6/D7).
+        // Issue 도메인 객체에는 epicKey 필드가 없으므로 record 에서 직접 추출해야 한다 (CONCERN C1).
+        // 동일 프로젝트 조건 필수 — cross-project epic 이동/stale 데이터 누출 차단 (P1-A 회귀방지).
+        val epicAlias = ISSUES.`as`(EPIC_ALIAS)
+
         // LIMIT+1 조회: 결과가 LIMIT+1 건이면 truncated=true.
         val fetched =
-            dsl.select(ISSUES.fields().toList())
+            dsl.select(ISSUES.fields().toList() + listOf(epicAlias.KEY.`as`(EPIC_KEY_ALIAS)))
                 .from(ISSUES)
                 .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+                .leftJoin(epicAlias).on(
+                    ISSUES.EPIC_ID.eq(epicAlias.ID)
+                        .and(epicAlias.DELETED_AT.isNull)
+                        .and(epicAlias.PROJECT_ID.eq(ISSUES.PROJECT_ID)),
+                )
                 .where(where)
                 .orderBy(ISSUES.CREATED_AT.desc())
                 .limit(BOARD_CARD_FETCH_LIMIT + 1)
-                .fetch { it.into(ISSUES).toIssue() }
+                .fetch { record ->
+                    val issue = record.into(ISSUES).toIssue()
+                    val epicKey = record.get(EPIC_KEY_ALIAS, String::class.java)
+                    BoardIssueEntry(issue = issue, epicKey = epicKey)
+                }
 
         val truncated = fetched.size > BOARD_CARD_FETCH_LIMIT
-        val issues = if (truncated) fetched.take(BOARD_CARD_FETCH_LIMIT) else fetched
-        return BoardFetchResult(issues = issues, truncated = truncated)
+        val entries = if (truncated) fetched.take(BOARD_CARD_FETCH_LIMIT) else fetched
+        return BoardFetchResult(entries = entries, truncated = truncated)
     }
+
+    /**
+     * [listVisibleForBoard] 단건 결과 쌍 — 이슈 + epic key.
+     *
+     * [Issue] 도메인에는 epicKey 필드가 없으므로, record 추출 결과를 쌍으로 전달한다 (CONCERN C1).
+     *
+     * @property issue 조회된 이슈 도메인 객체.
+     * @property epicKey 에픽 이슈 키. 에픽 없는 이슈는 null. 동일 프로젝트 필터 적용됨.
+     */
+    data class BoardIssueEntry(
+        val issue: Issue,
+        val epicKey: String?,
+    )
 
     /**
      * [listVisibleForBoard] 반환 VO.
      *
-     * @property issues 조회된 이슈 목록. 최대 [BOARD_CARD_FETCH_LIMIT] 건.
+     * @property entries 조회된 이슈+epicKey 목록. 최대 [BOARD_CARD_FETCH_LIMIT] 건.
      * @property truncated LIMIT 초과 여부. true 이면 일부 이슈가 누락됐음을 의미.
      */
     data class BoardFetchResult(
-        val issues: List<Issue>,
+        val entries: List<BoardIssueEntry>,
         val truncated: Boolean,
     )
 
@@ -1419,6 +1455,31 @@ class IssueRepository(
             .where(ISSUES.ID.eq(childId))
             .and(ISSUES.EPIC_ID.isNull)
             .execute()
+    }
+
+    /**
+     * 이슈 UUID 집합을 이슈 key 로 일괄 조회한다 (FR-EP-01 D6 G2 — changelog epic 라벨 박제용).
+     *
+     * `WHERE id IN (...)` 단일 쿼리로 N+1 없이 처리한다.
+     * soft-deleted 이슈도 포함한다 — 이슈 키는 영구 보존되므로 (DATA.md §이슈 키 영구 보존)
+     * deleted_at IS NOT NULL 이어도 key 가 살아 있으며, changelog 라벨 박제 목적상 반환해야 한다.
+     *
+     * @param ids 조회할 이슈 UUID 집합. 빈 집합이면 빈 맵을 반환한다.
+     * @return UUID → 이슈 key 문자열 맵. 조회 결과 없는 id 는 맵에 포함되지 않는다.
+     */
+    @Transactional(readOnly = true)
+    fun findKeysByIds(ids: Set<UUID>): Map<UUID, String> {
+        if (ids.isEmpty()) return emptyMap()
+        log.debug("findKeysByIds ids.size={}", ids.size)
+        return dsl.select(ISSUES.ID, ISSUES.KEY)
+            .from(ISSUES)
+            .where(ISSUES.ID.`in`(ids))
+            .fetch { record ->
+                val id = requireNotNull(record.get(ISSUES.ID)) { "ISSUES.ID must not be null" }
+                val key = requireNotNull(record.get(ISSUES.KEY)) { "ISSUES.KEY must not be null" }
+                id to key
+            }
+            .toMap()
     }
 
     /**

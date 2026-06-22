@@ -691,4 +691,98 @@ class BoardIssueLookupAdapterTest : IssueTestcontainersBase() {
         // seq=1 은 비가시 등급이므로 제외, seq=2 만 반환
         assertThat(result.issues.map { it.key }).containsExactly("TPRJ-2")
     }
+
+    // ── S10. epicKey self-join 노출 (FR-EP-01 D6/D7) ──────────────────────────
+    //
+    // 에픽 이슈 1건 + 자식 이슈 1건을 삽입하고 epic_id 를 연결한다.
+    // listVisibleForBoard → toBoardIssueView 경로에서 epicKey 가 정확히 매핑되는지 검증.
+    //
+    // 검증 불변식:
+    //   - 에픽에 속한 자식 이슈는 epicKey = 에픽의 이슈 키
+    //   - 에픽 없는 이슈는 epicKey = null
+    //   - 에픽 자신은 epicKey = null (자기참조 없음)
+
+    @Test
+    @Order(22)
+    fun `S10 - epic_id 가 있는 이슈는 epicKey 가 에픽 이슈 키로 매핑된다`() {
+        val viewer = UUID.randomUUID()
+        // 에픽 이슈 삽입
+        val epic = insertIssue(seq = 1, securityLevelId = null)
+        // 자식 이슈 삽입 후 epic_id 직접 설정
+        val child = insertIssue(seq = 2, securityLevelId = null)
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement("UPDATE issues SET epic_id = ? WHERE id = ?").use { stmt ->
+                stmt.setObject(1, epic.id.value)
+                stmt.setObject(2, child.id.value)
+                stmt.executeUpdate()
+            }
+        }
+
+        val result = adapterWith(unrestricted()).listVisibleIssuesByProject("TPRJ", viewer)
+
+        val epicCard = result.issues.first { it.key == "TPRJ-1" }
+        val childCard = result.issues.first { it.key == "TPRJ-2" }
+
+        // 에픽 자신은 epicKey=null
+        assertThat(epicCard.epicKey).isNull()
+        // 자식 이슈는 에픽 키 노출
+        assertThat(childCard.epicKey).isEqualTo("TPRJ-1")
+    }
+
+    // ── S11. epicKey cross-project 미노출 (P1-A 회귀방지) ──────────────────────
+    //
+    // 에픽 이슈가 다른 프로젝트에 있는 경우(stale data 또는 이동 후 잔류),
+    // 동일프로젝트 필터로 인해 epicKey=null 로 처리되어 크로스프로젝트 데이터가 누출되지 않음을 검증.
+
+    @Test
+    @Order(23)
+    fun `S11 - 에픽이 다른 프로젝트에 있으면 epicKey 는 null 이다`() {
+        val viewer = UUID.randomUUID()
+        val otherProjectId: UUID
+
+        // 다른 프로젝트 생성
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "INSERT INTO projects (key, name) VALUES ('OTHER', 'Other Project') ON CONFLICT (key) DO NOTHING",
+            ).use { it.executeUpdate() }
+            conn.prepareStatement("SELECT id FROM projects WHERE key = 'OTHER'").use { stmt ->
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    otherProjectId = rs.getObject(1) as UUID
+                }
+            }
+        }
+
+        // 다른 프로젝트의 에픽 이슈 직접 삽입
+        val epicId = UUID.randomUUID()
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            val typeId = requireTaskTypeId().value
+            conn.prepareStatement(
+                "INSERT INTO issues " +
+                    "(id, key, project_id, type_id, summary, reporter_id, current_state_key, priority) " +
+                    "VALUES (?, 'OTHER-1', ?, ?, 'cross-project epic', gen_random_uuid(), 'open', 3)",
+            ).use { stmt ->
+                stmt.setObject(1, epicId)
+                stmt.setObject(2, otherProjectId)
+                stmt.setLong(3, typeId)
+                stmt.executeUpdate()
+            }
+        }
+
+        // TPRJ 자식 이슈에 OTHER 프로젝트 에픽을 epic_id 로 연결
+        val child = insertIssue(seq = 1, securityLevelId = null)
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement("UPDATE issues SET epic_id = ? WHERE id = ?").use { stmt ->
+                stmt.setObject(1, epicId)
+                stmt.setObject(2, child.id.value)
+                stmt.executeUpdate()
+            }
+        }
+
+        val result = adapterWith(unrestricted()).listVisibleIssuesByProject("TPRJ", viewer)
+
+        // 동일프로젝트 필터로 인해 cross-project epic 은 null 로 처리됨
+        val childCard = result.issues.first { it.key == "TPRJ-1" }
+        assertThat(childCard.epicKey).isNull()
+    }
 }

@@ -14,6 +14,9 @@ import {
   issueAtlas4Fixture,
   issueAtlas5Fixture,
   issueAtlasNoWorkflowFixture,
+  issueAtlasEpic1Fixture,
+  issueAtlasChild1Fixture,
+  issueAtlasForEpicFixture,
 } from './issue-fixtures'
 import { allIssueTypeFixtures } from './issue-type-fixtures'
 import { softwareDefaultFixture } from './workflow-fixtures'
@@ -67,6 +70,10 @@ const issueFixtureMap: Record<string, IssueResponse> = {
   'ATLAS-4': issueAtlas4Fixture,
   'ATLAS-5': issueAtlas5Fixture,
   'ATLAS-NOWF': issueAtlasNoWorkflowFixture,
+  // FR-EP-01 E2E용 에픽/자식 이슈 fixture
+  'ATLAS-EPIC-1': issueAtlasEpic1Fixture,
+  'ATLAS-CHILD-1': issueAtlasChild1Fixture,
+  'ATLAS-FOR-EPIC': issueAtlasForEpicFixture,
 }
 
 /** E2E 시나리오용 localStorage 키 — S4 재오픈 검증 시 done+resolution 이슈로 응답 분기 */
@@ -1168,6 +1175,167 @@ const setParentHandler = http.patch('/api/v1/issues/:key/parent', async ({ param
   return HttpResponse.json({ data: { key } })
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 에픽 자식 이슈 stateful store — FR-EP-01
+// key: 에픽 이슈 키, value: 자식 이슈 키 Set
+// ─────────────────────────────────────────────────────────────────────────────
+
+const epicChildrenStore = new Map<string, Set<string>>()
+
+/** 에픽 자식 이슈 store 초기화 — resetIssueState 내에서 호출하도록 한다. */
+function resetEpicChildrenStore(): void {
+  epicChildrenStore.clear()
+}
+
+/**
+ * 에픽 자식 이슈 목록 조회 핸들러 (FR-EP-01).
+ * GET /api/v1/issues/:epicKey/epic-children → 200 + `{ data: { children: [...] } }`
+ * epicChildrenStore에서 현재 연결 상태를 파생해 응답한다.
+ */
+const getEpicChildrenHandler = http.get(
+  '/api/v1/issues/:epicKey/epic-children',
+  ({ params }) => {
+    const epicKey = params['epicKey'] as string
+    const found = resolveIssue(epicKey)
+    if (found === undefined) {
+      return HttpResponse.json(
+        { errorCode: 'ISSUE_EPIC_OR_CHILD_NOT_FOUND', message: `에픽을 찾을 수 없습니다: ${epicKey}` },
+        { status: 404 },
+      )
+    }
+
+    const childKeys = epicChildrenStore.get(epicKey) ?? new Set<string>()
+    const children = Array.from(childKeys)
+      .map((childKey) => {
+        const child = resolveIssue(childKey)
+        if (child === undefined) return undefined
+        return {
+          key: child.key,
+          summary: child.summary,
+          typeKey: child.typeKey ?? null,
+          currentStateKey: child.currentStateKey,
+        }
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== undefined)
+
+    return HttpResponse.json({ data: { children } })
+  },
+)
+
+/**
+ * 에픽 자식 이슈 연결 핸들러 (FR-EP-01).
+ * POST /api/v1/issues/:epicKey/epic-children body { childKey: string } → 201
+ * epicChildrenStore에 연결 상태를 영속한다 (stateful).
+ */
+const connectEpicChildHandler = http.post(
+  '/api/v1/issues/:epicKey/epic-children',
+  async ({ params, request }) => {
+    const epicKey = params['epicKey'] as string
+    const epicFound = resolveIssue(epicKey)
+    if (epicFound === undefined) {
+      return HttpResponse.json(
+        { errorCode: 'ISSUE_EPIC_OR_CHILD_NOT_FOUND', message: `에픽을 찾을 수 없습니다: ${epicKey}` },
+        { status: 404 },
+      )
+    }
+
+    const body = await request.clone().json() as { childKey?: string }
+    const childKey = body.childKey ?? ''
+
+    const childFound = resolveIssue(childKey)
+    if (childFound === undefined) {
+      return HttpResponse.json(
+        { errorCode: 'ISSUE_EPIC_OR_CHILD_NOT_FOUND', message: `자식 이슈를 찾을 수 없습니다: ${childKey}` },
+        { status: 404 },
+      )
+    }
+
+    // 자기 자신 연결 방지
+    if (childKey === epicKey) {
+      return HttpResponse.json(
+        { errorCode: 'ISSUE_EPIC_CHILD_SELF_REFERENCE', message: '자기 자신을 자식으로 연결할 수 없습니다' },
+        { status: 422 },
+      )
+    }
+
+    const childKeys = epicChildrenStore.get(epicKey) ?? new Set<string>()
+    // 이미 연결된 자식인 경우 409
+    if (childKeys.has(childKey)) {
+      return HttpResponse.json(
+        { errorCode: 'ISSUE_EPIC_CHILD_ALREADY_LINKED', message: '이미 연결된 이슈입니다' },
+        { status: 409 },
+      )
+    }
+
+    childKeys.add(childKey)
+    epicChildrenStore.set(epicKey, childKeys)
+
+    // 자식 이슈의 epic 필드를 issueOverrides에 반영한다 (단건 GET refetch 시 반영).
+    const updatedChild: IssueResponse = {
+      ...childFound,
+      epic: { key: epicFound.key, summary: epicFound.summary },
+    }
+    issueOverrides.set(childKey, updatedChild)
+
+    const responseData = {
+      key: childFound.key,
+      summary: childFound.summary,
+      typeKey: childFound.typeKey ?? null,
+      currentStateKey: childFound.currentStateKey,
+    }
+    return HttpResponse.json({ data: responseData }, { status: 201 })
+  },
+)
+
+/**
+ * 에픽 자식 이슈 연결 해제 핸들러 (FR-EP-01).
+ * DELETE /api/v1/issues/:epicKey/epic-children/:childKey → 204
+ * epicChildrenStore에서 연결을 제거하고 자식 이슈의 epic 필드를 클리어한다.
+ */
+const disconnectEpicChildHandler = http.delete(
+  '/api/v1/issues/:epicKey/epic-children/:childKey',
+  ({ params }) => {
+    const epicKey = params['epicKey'] as string
+    const childKey = params['childKey'] as string
+
+    const epicFound = resolveIssue(epicKey)
+    if (epicFound === undefined) {
+      return HttpResponse.json(
+        { errorCode: 'ISSUE_EPIC_OR_CHILD_NOT_FOUND', message: `에픽을 찾을 수 없습니다: ${epicKey}` },
+        { status: 404 },
+      )
+    }
+
+    const childFound = resolveIssue(childKey)
+    if (childFound === undefined) {
+      return HttpResponse.json(
+        { errorCode: 'ISSUE_EPIC_OR_CHILD_NOT_FOUND', message: `자식 이슈를 찾을 수 없습니다: ${childKey}` },
+        { status: 404 },
+      )
+    }
+
+    const childKeys = epicChildrenStore.get(epicKey)
+    if (childKeys !== undefined) {
+      childKeys.delete(childKey)
+    }
+
+    // 자식 이슈의 epic 필드를 issueOverrides에서 클리어한다.
+    const updatedChild: IssueResponse = {
+      ...childFound,
+      epic: undefined,
+    }
+    issueOverrides.set(childKey, updatedChild)
+
+    return new HttpResponse(null, { status: 204 })
+  },
+)
+
+/** E2E / 단위 테스트 격리용 — epic store 포함 전체 state 초기화. */
+export function resetIssueStateWithEpic(): void {
+  resetIssueState()
+  resetEpicChildrenStore()
+}
+
 export const issueHandlers = [
   listIssuesHandler,
   getIssueHandler,
@@ -1184,4 +1352,7 @@ export const issueHandlers = [
   downloadIssuePdfHandler,
   cloneIssueHandler,
   setParentHandler,
+  getEpicChildrenHandler,
+  connectEpicChildHandler,
+  disconnectEpicChildHandler,
 ]

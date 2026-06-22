@@ -14,6 +14,7 @@ const makeCard = (issueKey: string, priority: number, assigneeId: string | null 
   assigneeId,
   version: 1,
   priority,
+  epicKey: null,
 })
 
 const assigneeNames: Map<string, CardAssigneeDisplay> = new Map([
@@ -156,6 +157,81 @@ describe('groupCardsBySwimlane — S3 PRIORITY', () => {
     // priority 2 그룹은 없어야 함
     expect(result.find((g) => g.label === '우선순위 2')).toBeUndefined()
     expect(result).toHaveLength(2)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S5. EPIC — 에픽별 그룹
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('groupCardsBySwimlane — S5 EPIC', () => {
+  it('S5a: EPIC이면 epicKey별로 그룹이 분리된다', () => {
+    const cards = [
+      { ...makeCard('ATLAS-1', 1), epicKey: 'ATLAS-E1' },
+      { ...makeCard('ATLAS-2', 2), epicKey: 'ATLAS-E2' },
+    ]
+    const result = groupCardsBySwimlane(cards, 'EPIC', new Map())
+    const keys = result.map((g) => g.key)
+    expect(keys).toContain('epic-ATLAS-E1')
+    expect(keys).toContain('epic-ATLAS-E2')
+  })
+
+  it('S5b: epicKey=null 카드는 "에픽 없음" 그룹에 들어간다', () => {
+    const cards = [
+      { ...makeCard('ATLAS-1', 1), epicKey: null },
+      { ...makeCard('ATLAS-2', 2), epicKey: 'ATLAS-E1' },
+    ]
+    const result = groupCardsBySwimlane(cards, 'EPIC', new Map())
+    const labels = result.map((g) => g.label)
+    expect(labels).toContain('에픽 없음')
+  })
+
+  it('S5c: 같은 epicKey 카드들은 같은 그룹에 묶인다', () => {
+    const cards = [
+      { ...makeCard('ATLAS-1', 1), epicKey: 'ATLAS-E1' },
+      { ...makeCard('ATLAS-2', 2), epicKey: 'ATLAS-E1' },
+      { ...makeCard('ATLAS-3', 3), epicKey: 'ATLAS-E2' },
+    ]
+    const result = groupCardsBySwimlane(cards, 'EPIC', new Map())
+    const e1Group = result.find((g) => g.key === 'epic-ATLAS-E1')
+    expect(e1Group?.cards).toHaveLength(2)
+  })
+
+  it('S5d: 에픽 키가 그룹 라벨로 표시된다', () => {
+    const cards = [{ ...makeCard('ATLAS-1', 1), epicKey: 'ATLAS-E1' }]
+    const result = groupCardsBySwimlane(cards, 'EPIC', new Map())
+    const group = result.find((g) => g.key === 'epic-ATLAS-E1')
+    expect(group?.label).toBe('ATLAS-E1')
+  })
+
+  it('S5e: "에픽 없음" 그룹은 마지막에 위치한다', () => {
+    const cards = [
+      { ...makeCard('ATLAS-1', 1), epicKey: null },
+      { ...makeCard('ATLAS-2', 2), epicKey: 'ATLAS-E1' },
+    ]
+    const result = groupCardsBySwimlane(cards, 'EPIC', new Map())
+    const lastGroup = result[result.length - 1]
+    expect(lastGroup?.label).toBe('에픽 없음')
+  })
+
+  it('S5f: epicKey 없는 카드(undefined)는 "에픽 없음" 그룹에 들어간다', () => {
+    const cards = [makeCard('ATLAS-1', 1)] // epicKey 없음
+    const result = groupCardsBySwimlane(cards, 'EPIC', new Map())
+    const noEpicGroup = result.find((g) => g.label === '에픽 없음')
+    expect(noEpicGroup?.cards).toHaveLength(1)
+  })
+
+  it('S5g: 에픽 그룹은 epicKey 가나다 정렬, "에픽 없음"은 마지막', () => {
+    const cards = [
+      { ...makeCard('ATLAS-1', 1), epicKey: 'BETA-E1' },
+      { ...makeCard('ATLAS-2', 2), epicKey: 'ALPHA-E1' },
+      { ...makeCard('ATLAS-3', 3), epicKey: null },
+    ]
+    const result = groupCardsBySwimlane(cards, 'EPIC', new Map())
+    const labels = result.map((g) => g.label)
+    expect(labels[0]).toBe('ALPHA-E1')
+    expect(labels[1]).toBe('BETA-E1')
+    expect(labels[labels.length - 1]).toBe('에픽 없음')
   })
 })
 

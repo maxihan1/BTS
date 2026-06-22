@@ -15,7 +15,7 @@ import { boardLabels } from '@/i18n/board-labels'
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 스윔레인 옵션 순서 — 표시 순서 보장용 */
-const SWIMLANE_OPTIONS: SwimlaneField[] = ['NONE', 'ASSIGNEE', 'PRIORITY']
+const SWIMLANE_OPTIONS: SwimlaneField[] = ['NONE', 'ASSIGNEE', 'PRIORITY', 'EPIC']
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -34,7 +34,7 @@ export interface SwimlaneSelectorProps {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 보드 스윔레인 기준(NONE/ASSIGNEE/PRIORITY)을 선택하는 shadcn Select 래퍼.
+ * 보드 스윔레인 기준(NONE/ASSIGNEE/PRIORITY/EPIC)을 선택하는 shadcn Select 래퍼.
  *
  * - value: 현재 서버 저장값(BoardDetail.swimlaneField)을 그대로 받는다.
  * - onChange: 선택 즉시 호출 → 부모에서 PATCH 요청.
