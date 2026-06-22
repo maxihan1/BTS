@@ -75,11 +75,11 @@
 
 **우선순위**. 높음 | **선행**. §2.1 | **Plan slug**. `agile/board-wip-swimlane`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — WIP 초과 시 시각 경고만 (이동 차단 옵션) (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `board_columns.wip_limit`, `boards.swimlane_field` (책임. db-engineer)
-- [ ] D4. 백엔드 — 카운트 + 경고 응답 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D1. 도메인 — SwimlaneField enum + BoardColumn.wipLimit + Board.swimlaneField (PR #172)
+- [x] D2. 명세 — WIP 초과 시 시각 경고만(이동 차단 없음, ADR 결정 1) (PR #172)
+- [x] D3. 데이터 모델 — `board_columns.wip_limit`(CHECK >0), `boards.swimlane_field`(NONE/ASSIGNEE/PRIORITY) V501 (PR #172)
+- [x] D4. 백엔드 — wipLimit/wipExceeded 신호 + PATCH 2종(권한 CREATE) + swimlaneField echo (PR #172)
+- [x] D5. 백엔드 테스트 — 도메인/Repository/DTO/Controller통합/Service단위 (PR #172)
 - [ ] D6. 프론트 UI — 컬럼 헤더 경고 + 스윔레인 그룹 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
