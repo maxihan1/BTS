@@ -37,9 +37,25 @@ classify: type=backend, agent=backend-engineer, primary_bc=issue-tracking
 - **glossary**: "에픽"·"이슈 타입" 기존 등재. 신규 용어 없음(epic_id는 구현 디테일). 갱신 불요.
 - **관련 ADR**: [2026-06-22-fr-ep-01-epic-child-link.md](../decisions/2026-06-22-fr-ep-01-epic-child-link.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-22-fr-ep-01-epic-link.md](../specs/2026-06-22-fr-ep-01-epic-link.md)
+
+핵심 요약.
+- 별도 `IssueEpicController` 신설(IssueLinkController 패턴). 엔드포인트 3종 + IssueResponse.epic 확장.
+  - `POST /issues/{epicKey}/epic-children {childKey}` → 201 (UPDATE child + VIEW epic)
+  - `DELETE /issues/{epicKey}/epic-children/{childKey}` → 204 (UPDATE child)
+  - `GET /issues/{epicKey}/epic-children` → 200 (VIEW epic + 자식 visibility 필터)
+  - `GET /issues/{childKey}` IssueResponse.epic = {epicKey, summary} (parent 동형, 단건만)
+- 불변식 5종: 자식 level=0 / 대상 Epic level=1 / 동일 프로젝트 / 자기참조 금지 / 단일 Epic(이미 소속 409).
+- 권한 검증 repo 조회 선행(probe 방지). visibility 필터 SQL 푸시다운(N+1 금지, 누출 0).
+- V028 + init_codegen 미러. 신규 권한·보안경로 0(IssuePermissionResolver/IssueSecurity 재사용).
+
+## Brainstorming Check
+
+집중 갭 점검(정의된 FR). 발견 2건.
+- **G1 (changelog) — 🛑 게이트 1 Maxi 결정**: epic 연결/해제를 자식 changelog(IssueHistoryRecorder)에 기록할지. parent_id 선례=미기록 vs FR-PL-01 교훈=기록. **권장=기록**(Jira parity·적대리뷰 사전차단). 결정에 따라 plan task ±1.
+- **G2 (이미 Epic 소속) — 해결**: 409(EPIC_CHILD_ALREADY_LINKED), explicit 해제 후 재연결. 스펙 반영.
 
 ## Plan (← /bts-plan 채움)
 
