@@ -1,6 +1,6 @@
-// 칸반 보드 REST API 클라이언트 — Zod 스키마 + fetch 함수 (FR-BD-01/02)
+// 칸반 보드 REST API 클라이언트 — Zod 스키마 + fetch 함수 (FR-BD-01/02/03)
 import { z } from 'zod'
-import { apiGet, apiPost } from './client'
+import { apiGet, apiPost, apiFetch, ApiError } from './client'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 헬퍼 — DataResponse 래퍼 파싱 (resolutions.ts 동일 패턴)
@@ -187,6 +187,25 @@ export interface MoveCardBody {
 }
 
 /**
+ * 보드 메타 스키마.
+ * 백엔드 `BoardMetaResponse` DTO 대응.
+ * PATCH /api/v1/boards/{id} 응답에 사용된다 (FR-BD-03 D6).
+ */
+export const boardMetaSchema = z.object({
+  /** 보드 UUID */
+  boardId: z.string().uuid(),
+  /** 프로젝트 키. 예: "ATLAS" */
+  projectKey: z.string().min(1),
+  /** 보드 표시 이름 */
+  name: z.string().min(1),
+  /** 스윔레인 기준 필드. NONE=없음, ASSIGNEE=담당자별, PRIORITY=우선순위별. */
+  swimlaneField: swimlaneFieldSchema,
+})
+
+/** 보드 메타 타입 (PATCH 응답) */
+export type BoardMeta = z.infer<typeof boardMetaSchema>
+
+/**
  * 보드 카드 필터 파라미터.
  * GET /api/v1/boards/{boardId} 의 선택적 쿼리 필터를 표현한다.
  *
@@ -331,5 +350,30 @@ export async function moveCard(
     requestBody,
     dataResponseSchema(moveCardResultSchema),
   )
+  return wrapped.data
+}
+
+/**
+ * 보드의 스윔레인 기준 필드를 변경한다.
+ *
+ * PATCH /api/v1/boards/{boardId} body `{ swimlaneField }` → `{ data: BoardMeta }` 언랩.
+ *
+ * @param boardId 보드 UUID
+ * @param swimlaneField 변경할 스윔레인 기준. NONE=없음, ASSIGNEE=담당자별, PRIORITY=우선순위별.
+ * @returns BoardMeta — 변경된 보드 메타 정보
+ * @throws ApiError 비-2xx 응답 시
+ * @throws ZodError 응답 스키마 불일치 시
+ */
+export async function updateBoardSwimlane(boardId: string, swimlaneField: SwimlaneField): Promise<BoardMeta> {
+  const res = await apiFetch(`/api/v1/boards/${boardId}`, {
+    method: 'PATCH',
+    body: { swimlaneField },
+  })
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  const data: unknown = await res.json()
+  const wrapped = dataResponseSchema(boardMetaSchema).parse(data)
   return wrapped.data
 }
