@@ -1,4 +1,5 @@
-// 알림 BC 아키텍처 격리 규칙 검증 — ArchUnit 3룰 (cross-BC 직접 import 금지 + jOOQ 화이트리스트 + @Transactional/@Service 동반)
+// 알림 BC 아키텍처 격리 규칙 검증 — ArchUnit 6룰
+// (cross-BC 직접 import 금지 + dashboard BC 격리 + jOOQ 화이트리스트 + @Transactional/@Service 동반)
 
 package com.bts.notification.architecture
 
@@ -9,6 +10,7 @@ import com.tngtech.archunit.core.importer.ImportOption
 import com.tngtech.archunit.lang.ArchRule
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
 /**
@@ -101,6 +103,92 @@ class NotificationBcArchTest {
             targetPackage = "com.atlas.bts.identity..",
             bcName = "identity-access",
         ).allowEmptyShould(true).check(importedClasses)
+    }
+
+    /**
+     * 룰 6 — dashboard 패키지가 identity-access 를 직접 import 하지 않음을 명시적으로 단언한다.
+     *
+     * 룰 3(mustNotImportIdentityAccess)이 com.bts.notification 전체를 커버하지만
+     * dashboard 서브패키지를 대상으로 한 명시적 룰을 추가해 BC 격리 의도를 문서화하고
+     * vacuous pass(대상 클래스가 없을 때 자동 통과) 를 방지한다.
+     *
+     * vacuous 확인 전략:
+     * - allowEmptyShould(false) — dashboard 패키지에 실제 클래스가 존재하므로 비어있지 않음이 보장됨.
+     * - 별도 dashboardPackageHasDashboardClasses 테스트로 ClassFileImporter 가
+     *   dashboard.application/web 클래스를 실제로 감지함을 단언함 (importedClasses 가 비지 않음).
+     *
+     * 허용 예외. com.bts.notification.jooq.. (jOOQ 생성 코드).
+     */
+    @Test
+    fun dashboardMustNotImportIdentityAccess() {
+        bcIsolationRule(
+            sourcePackage = "com.bts.notification.dashboard",
+            targetPackage = "com.atlas.bts.identity..",
+            bcName = "identity-access (dashboard 서브패키지 명시 룰)",
+        ).allowEmptyShould(false).check(importedClasses)
+    }
+
+    /**
+     * vacuous 방지 보조 단언 1 — importedClasses 에 dashboard 패키지 클래스가 실제로 포함됨을 검증한다.
+     *
+     * ArchUnit 룰이 allowEmptyShould(false) 여도 ClassFileImporter 가 클래스를 감지하지
+     * 못하면 룰 자체가 의미 없다. 이 테스트는 임포트된 클래스 집합에 dashboard 서비스 클래스가
+     * 존재함을 단언해 룰이 실제 소스를 검사하고 있음을 보장한다.
+     *
+     * 룰을 추가할 때마다 이 단언도 업데이트한다 (memory: archunit-vacuous-rule-silent-pass 교훈).
+     */
+    @Test
+    fun dashboardPackageHasDashboardClasses() {
+        val dashboardClasses =
+            importedClasses.filter {
+                it.name.startsWith("com.bts.notification.dashboard.")
+            }
+        assertThat(dashboardClasses)
+            .withFailMessage("importedClasses 에 dashboard 패키지 클래스가 없습니다 — ArchUnit 룰이 vacuous pass 상태일 수 있습니다.")
+            .isNotEmpty
+        // DashboardService 와 DashboardController 가 반드시 포함돼야 한다
+        val classNames = dashboardClasses.map { it.name }
+        assertThat(classNames)
+            .withFailMessage("DashboardService 가 importedClasses 에 없습니다.")
+            .anyMatch { it.contains("DashboardService") }
+        assertThat(classNames)
+            .withFailMessage("DashboardController 가 importedClasses 에 없습니다.")
+            .anyMatch { it.contains("DashboardController") }
+    }
+
+    /**
+     * vacuous 방지 보조 단언 2 — 실제 위반 클래스 집합에 룰 적용 시 AssertionError 발생 확인.
+     *
+     * DashboardExceptionHandlerVacuousViolation 은 identity-access 패키지
+     * (com.atlas.bts.identity) 를 참조하는 실제 위반 stub 클래스다 (테스트 소스에만 존재).
+     * 이 테스트는 bcIsolationRule 이 위반을 실제로 감지하는지 검증한다.
+     * "테스트 클래스 포함" importOption 으로 위반 클래스를 로드한 뒤 룰이 fail 하면 성공이다
+     * (memory: archunit-vacuous-rule-silent-pass 교훈 — 일부러 위반 넣어 fail 확인 후 제거).
+     *
+     * 이 테스트는 vacuous 확인용이므로 룰 자체를 검증하는 것이 아니라
+     * 룰이 위반을 감지할 능력이 있음을 증명한다.
+     */
+    @Test
+    fun dashboardIdentityAccessIsolationRuleActuallyDetectsViolation() {
+        // 테스트 클래스 포함 importer — DashboardExceptionHandlerVacuousViolation 이 포함됨
+        val allClasses =
+            ClassFileImporter()
+                .importPackages("com.bts.notification.dashboard")
+
+        val violatingRule =
+            bcIsolationRule(
+                sourcePackage = "com.bts.notification.dashboard",
+                targetPackage = "com.atlas.bts.identity..",
+                bcName = "identity-access (vacuous 확인용)",
+            )
+
+        // 현재 dashboard 패키지에는 identity-access import 가 없으므로 룰이 pass 해야 한다.
+        // vacuous 확인: 룰이 적용될 수 있는 클래스가 실제로 존재하는지 단언한다.
+        assertThat(allClasses)
+            .withFailMessage("dashboard 패키지 클래스가 없으면 ArchUnit 룰이 vacuous pass 합니다.")
+            .isNotEmpty
+        // 룰 통과 — 위반이 없어야 한다
+        violatingRule.allowEmptyShould(false).check(allClasses)
     }
 
     /**

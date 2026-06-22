@@ -54,3 +54,29 @@ CREATE TABLE user_notification_subs (
 CREATE INDEX idx_user_notif_subs_disabled
     ON user_notification_subs (event_type, channel, user_id)
     WHERE enabled = false;
+
+-- ── dashboards (V405 미러) ─────────────────────────────────────────────────────
+CREATE TABLE dashboards (
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_id    UUID        NOT NULL,
+    name        TEXT        NOT NULL,
+    description TEXT,
+    visibility  TEXT        NOT NULL,
+    layout      JSONB       NOT NULL DEFAULT '[]'::jsonb,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at  TIMESTAMPTZ,
+    version     BIGINT      NOT NULL DEFAULT 0
+);
+
+CREATE INDEX idx_dashboards_owner ON dashboards(owner_id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_dashboards_visibility ON dashboards(visibility) WHERE deleted_at IS NULL;
+
+-- ── dashboard_shares (V405 미러) ───────────────────────────────────────────────
+CREATE TABLE dashboard_shares (
+    dashboard_id UUID NOT NULL REFERENCES dashboards(id) ON DELETE CASCADE,
+    user_id      UUID NOT NULL,
+    PRIMARY KEY (dashboard_id, user_id)
+);
+
+CREATE INDEX idx_dashboard_shares_user ON dashboard_shares(user_id);

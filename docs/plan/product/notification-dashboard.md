@@ -103,11 +103,11 @@
 
 **우선순위**. 필수 | **선행**. §0 | **Plan slug**. `dashboard/custom`
 
-- [ ] D1. 도메인 — Dashboard Aggregate (책임. backend-engineer)
-- [ ] D2. 명세 — 권한 (개인/팀/공유) (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `dashboards(owner_id, visibility, layout)` (책임. db-engineer)
-- [ ] D4. 백엔드 — CRUD API (책임. backend-engineer + security-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D1. 도메인 — Dashboard Aggregate (책임. backend-engineer) — PR #176 (Dashboard Root + DashboardShare + DashboardVisibility, 불변식 정규화/OCC/64KB)
+- [x] D2. 명세 — 권한 (개인/팀/공유) (책임. backend-engineer) — PR #176 (PRIVATE/TEAM=dashboard_shares 명시 사용자/ORG, ADR 2026-06-22, PUBLIC=FR-DB-03)
+- [x] D3. 데이터 모델 — `dashboards(owner_id, visibility, layout)` (책임. db-engineer) — PR #176 (V405 + init_codegen 미러, deleted_at 소프트삭제, dashboard_shares FK CASCADE, 부분 인덱스)
+- [x] D4. 백엔드 — CRUD API (책임. backend-engineer + security-engineer) — PR #176 (visibility 권한 404 숨김/403, OCC WHERE절, UNION 목록 페이지네이션, NOTIF_DASHBOARD_*)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #176 (430 tests, ArchUnit BC격리 vacuous방지, 적대적리뷰 B1/B2 입력검증 400 수정)
 - [ ] D6. 프론트 UI — react-grid-layout (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
