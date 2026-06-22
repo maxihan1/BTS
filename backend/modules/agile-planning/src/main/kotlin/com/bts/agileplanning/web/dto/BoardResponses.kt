@@ -251,8 +251,8 @@ data class BoardDetailResponse(
  * 컬럼 WIP 제한 변경 요청 바디.
  *
  * [wipLimit] 가 null 이면 WIP 제한을 해제한다.
- * null 이 아닌 경우 반드시 양수(1 이상)여야 한다 — [Positive] 검증.
- * 0 또는 음수는 400 으로 거부된다.
+ * null 이 아닌 경우 반드시 양수(1 이상)여야 한다. 0 또는 음수는 컨트롤러에서 검증해 400 으로 거부한다
+ * (jakarta `@Positive` 가 nullable `Int?` 에서 0 을 통과시키는 한계가 있어 BoardController 가 수동 검증한다).
  *
  * @property wipLimit 새로운 WIP 제한. null 이면 해제. 양수만 허용.
  */
