@@ -1,10 +1,12 @@
-// 칸반 보드 컬럼 컴포넌트 — 드롭 영역 + 카드 목록 + 빈 컬럼 placeholder
+// 칸반 보드 컬럼 컴포넌트 — 드롭 영역 + 카드 목록 + 빈 컬럼 placeholder + WIP 경고
 import { memo } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { cn } from '@/lib/utils'
 import type { BoardColumn as BoardColumnType } from '@/api/boards'
+import { boardLabels } from '@/i18n/board-labels'
 import { BoardCard } from './BoardCard'
 import type { CardAssigneeDisplay } from './BoardCard'
+import { WipCountBadge } from './WipCountBadge'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -36,27 +38,28 @@ function BoardColumnInner({ column, assigneeNames, isOver = false }: BoardColumn
     data: { category: column.category },
   })
 
+  const cardCount = column.cards.length
+
   return (
     <div
       className="flex min-w-72 w-72 flex-col gap-2"
       role="group"
-      aria-label={`${column.name} 컬럼, ${column.cards.length}개 카드`}
+      aria-label={boardLabels.column.ariaLabel(column.name, cardCount)}
     >
-      {/* sticky 헤더 — 이름 + 카테고리 배지 + 카드 수 */}
+      {/* sticky 헤더 — 이름 + 카테고리 배지 + 카드 수(WIP 포함) */}
       <div className="sticky top-0 z-10 flex items-center gap-2 rounded-t-lg bg-muted px-3 py-2">
         <span className="flex-1 text-sm font-semibold text-foreground">{column.name}</span>
         <span
           className="rounded-sm bg-background px-1.5 py-0.5 text-xs text-muted-foreground"
-          aria-label={`카테고리: ${column.category}`}
+          aria-label={boardLabels.column.categoryAriaLabel(column.category)}
         >
           {column.category}
         </span>
-        <span
-          className="rounded-full bg-primary px-1.5 py-0.5 text-xs font-medium text-primary-foreground"
-          aria-label={`카드 ${column.cards.length}개`}
-        >
-          {column.cards.length}
-        </span>
+        <WipCountBadge
+          count={cardCount}
+          wipLimit={column.wipLimit}
+          wipExceeded={column.wipExceeded}
+        />
       </div>
 
       {/* 드롭 영역 + 카드 목록 — 빈 컬럼에도 드롭 가능하도록 ref 유지 */}
@@ -97,7 +100,9 @@ function BoardColumnInner({ column, assigneeNames, isOver = false }: BoardColumn
 /**
  * 칸반 보드의 개별 컬럼.
  *
- * - sticky 헤더에 이름·카테고리 배지·카드 수를 표시한다.
+ * - sticky 헤더에 이름·카테고리 배지·카드 수(WIP 제한 포함)를 표시한다.
+ * - wipLimit이 있으면 "{count}/{limit}" 형식으로 표기한다.
+ * - wipExceeded=true이면 amber 경고 톤 + aria-label "WIP 초과"를 적용한다.
  * - `useDroppable`로 드롭 영역을 제공한다. 빈 컬럼에도 드롭 가능.
  * - 카드가 없으면 흐린 "카드 없음" placeholder를 표시한다.
  * - `isOver=true`이면 ring-2 하이라이트를 적용한다.
