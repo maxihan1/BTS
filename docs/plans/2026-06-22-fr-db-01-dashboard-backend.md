@@ -32,7 +32,35 @@ notification-dashboard로 교정.
 - FR-DB-02 = 가젯 10종 (별도 FR)
 - FR-DB-03 = URL 공유/임베드 (별도 FR)
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- BC: notification-dashboard (백엔드 모듈 = `notification`)
+- 영향 엔티티: Dashboard (신규 Aggregate Root), DashboardShare (신규 자식), DashboardVisibility (신규 enum)
+- 패키지: `com.bts.notification.dashboard.{domain, application, repository, web}`
+- ID/user_id 타입: UUID (BC 관례, identity-access users.id 논리 참조 — FK 미설정)
+- 다음 마이그레이션: V405 (notification 모듈, 머지 직전 재확인)
+
+### Aggregate 모델
+- **Dashboard** (Root): id, ownerId, name, description?, visibility, layout(JSONB), createdAt, updatedAt, version(OCC)
+- **DashboardShare** (자식): (dashboard_id, user_id) 복합 PK, FK ON DELETE CASCADE — TEAM 전용
+- **DashboardVisibility** (enum): PRIVATE(owner만) / TEAM(owner+shared) / ORG(인증 사용자 전체). PUBLIC=FR-DB-03 제외
+
+### Maxi 핵심 결정 (2026-06-22)
+- TEAM 공유 = 대시보드별 명시 사용자 목록 (`dashboard_shares`), user_groups 재사용 아님
+- 모듈 위치 = notification 모듈 내 dashboard 패키지 (새 Gradle 모듈 아님)
+
+### 새 용어 (glossary 추가 후보, 머지 시 동기화)
+- 대시보드 (Dashboard), 공유 범위 (Visibility), 대시보드 공유 (Dashboard Share)
+- 가젯 (Gadget) — FR-DB-02 예고
+
+### 기존 결정 충돌
+- 없음 (BTS 첫 대시보드)
+
+### 관련 ADR
+- [docs/decisions/2026-06-22-fr-db-01-custom-dashboard.md](../decisions/2026-06-22-fr-db-01-custom-dashboard.md) (생성됨)
+
+### 절차 메모
+- 무거운 대화형 grill-with-docs 대신 직접 도메인 정리 + Maxi 핵심 결정 2건 확인 (BTS 직접-진행 패턴). 신규 도메인이나 핵심 갈림길은 Maxi 결정 완료, 나머지는 SDD §14.1 / product §3.1에 명확.
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
