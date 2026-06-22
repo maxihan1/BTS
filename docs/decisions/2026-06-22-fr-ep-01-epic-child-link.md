@@ -52,6 +52,7 @@ CREATE INDEX idx_issues_epic_id ON issues(epic_id);
 
 - **SDD §5.1 `epic_id` 타입이 `BIGINT FK`로 명시**되어 있으나 실제 `issues.id`는 `UUID`(V001) → `epic_id`는 **UUID FK**로 구현한다. parent_id·issue_links와 동일한 deviation(ADR 2026-06-13). SDD 본문 불변(데이터 모델 정본 유지), 본 ADR + product 인라인에 deviation 기록.
 - **hierarchy_level 값**. SDD §5 본문은 `0=Subtask, 1=Standard, 2=Epic`로 표기하나 실제 코드(V005)는 `epic=1, story/task/bug=0, subtask=-1`. 코드가 정본(learnings 2026-05-20 phantom 원칙). 본 ADR의 불변식은 코드 값(epic=1, 자식=0) 기준.
+- **단건 IssueResponse.epic 노출의 보안등급 무필터(의도적)**. 자식 단건 조회 시 노출하는 소속 Epic 요약(epicKey + summary)은 parent self-join(IssueRepository.kt:522)과 동형으로 `deleted_at`만 필터하고 보안등급(security level) 필터는 적용하지 않는다. 자식 단건 진입 자체가 자식 VIEW(404-hide)로 보호되므로 무권한 진입은 차단된다. parent 선례와의 일관성을 위해 의도적으로 수용(보안 plan-review C2). 자식 **목록**(GET epic-children)은 이와 별개로 board 동형 BROWSE 진입 + accessibleLevels 푸시다운으로 누출을 차단한다.
 
 ## 영향
 

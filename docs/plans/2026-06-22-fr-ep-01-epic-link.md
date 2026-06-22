@@ -95,10 +95,10 @@ classify: type=backend, agent=backend-engineer, primary_bc=issue-tracking
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueResponse.kt`, `backend/modules/issue-tracking/src/test/kotlin/.../IssueResponseTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueResponse.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueResponseTest.kt` (기존 파일 — 테스트 **추가**, 덮어쓰기 금지)]
 - depends-on: []
 
-**RED**: `IssueResponseTest` — `IssueResponse.from(..., epic = EpicSummary(key, summary))` 시 epic 채움, default null(목록 경로) 단언. 실패: epic 프로퍼티/EpicSummary 부재.
+**RED**: `IssueResponseTest`(기존 파일에 케이스 추가) — `IssueResponse.from(..., epic = EpicSummary(key, summary))` 시 epic 채움, default null(목록 경로) 단언. 실패: epic 프로퍼티/EpicSummary 부재.
 
 **GREEN**: `IssueResponse.epic: EpicSummary? = null` + `EpicSummary(key, summary)` 중첩 클래스 + `from(...)` epic 파라미터 default null(@JsonInclude(NON_NULL) — parent 동형, 기존 호출처 무변경).
 
@@ -110,17 +110,17 @@ classify: type=backend, agent=backend-engineer, primary_bc=issue-tracking
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt`, `backend/modules/issue-tracking/src/test/kotlin/.../IssueRepositoryEpicIntegrationTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/repository/IssueRepositoryEpicIntegrationTest.kt`]
 - depends-on: [1, 2, 3]
 
 **RED**: `IssueRepositoryEpicIntegrationTest` (Testcontainers) —
 - `updateEpic(childId, epicId)` / `updateEpic(childId, null)` 가 epic_id 설정/해제.
 - `findByKeyWithType` 가 epic self-LEFT-JOIN으로 IssueResponse.epic(key, summary) 채움(소프트삭제 Epic은 null) + 목록(`listWithType`)은 epic null.
 - `findByKey` 재구성 시 Issue.epicId 채움.
-- `findEpicChildren(epicId, accessibleLevels)` 가 보안 등급 필터 푸시다운(접근 불가 자식 제외) + 소프트삭제 자식 제외 — listVisibleForBoard 보안 술어 재사용.
+- `findEpicChildren(epicId, accessibleLevels, projectKey)` 가 보안 등급 필터 푸시다운(접근 불가 자식 제외) + 소프트삭제 자식 제외 — listVisibleForBoard 보안 술어 재사용. (**eng-C3**: `buildActiveSecureWhere`가 projectKey 필수 인자라 시그니처에 projectKey 포함, PROJECTS JOIN 동반.)
 실패: 메서드 부재.
 
-**GREEN**: 위 메서드 구현. self-join은 parent self-join 패턴(IssueResponse.kt:274 인근) 미러. 자식 조회는 `listVisibleForBoard`(IssueRepository:658) 보안 술어(buildActiveSecureWhere) 재사용 + `WHERE epic_id = :epicId`.
+**GREEN**: 위 메서드 구현. self-join은 parent self-join 패턴(IssueResponse.kt:522 인근) 미러(deleted_at만 필터, parent 동형). 자식 조회는 `listVisibleForBoard`(IssueRepository:658) 보안 술어(`buildActiveSecureWhere`, projectKey+accessibleLevels) 재사용 + `WHERE epic_id = :epicId`. 정렬=issue key/created_at 안정 정렬.
 
 **REFACTOR**: 공통 보안 술어 헬퍼 재사용 확인(중복 0). detekt 복잡도 점검.
 
@@ -129,21 +129,21 @@ classify: type=backend, agent=backend-engineer, primary_bc=issue-tracking
 ### Task 5. IssueEpicService — 불변식 5종 + 권한 + 자식목록 (+ G1 changelog)
 
 **메타**.
-- agent: `backend-engineer` (권한/visibility — security-engineer plan-review 검토)
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/epic/application/IssueEpicService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/epic/domain/EpicChildExceptions.kt`, `backend/modules/issue-tracking/src/test/kotlin/.../IssueEpicServiceTest.kt`]
+- agent: `backend-engineer` (권한/visibility — security-engineer plan-review 검토 완료, 아래 보안 보정 반영)
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/epic/application/IssueEpicService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/epic/domain/EpicChildExceptions.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/epic/application/IssueEpicServiceTest.kt`, *(G1=기록 시)* `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/history/IssueChangeDetector.kt`]
 - depends-on: [4]
 
 **RED**: `IssueEpicServiceTest` (mockk repo/resolver/securityDirectory/typeRepo) —
-- `connect(epicKey, childKey, actorId)`: 권한 UPDATE(child Issue scope) **선행**(repo 조회 전, probe 방지) → child 404 → epic 404 → epic VIEW → self 422 → 자식 hierarchyLevel≠0 422 → epic hierarchyLevel≠1 422 → cross-project 422 → child.epicId≠null 409 → updateEpic 호출.
+- `connect(epicKey, childKey, actorId)`: **권한 UPDATE(child, IssueScope.Issue) 선행**(repo 조회 전, probe 방지) → child 404 → epic 404(**미존재·미가시 동일 — 존재 숨김, security N1**) → self 422 → 자식 hierarchyLevel≠0 422 → epic hierarchyLevel≠1 422 → cross-project 422 → child.epicId≠null 409 → updateEpic 호출.
 - `disconnect(epicKey, childKey, actorId)`: UPDATE(child) → child 404 → child.epicId≠이 epic 404 → updateEpic(null).
-- `listChildren(epicKey, actorId)`: VIEW(epic) → accessibleLevels 조회 → findEpicChildren 위임.
-- 권한 없음 → IssueAccessDeniedException(403). 불변식 위반 → 각 전용 예외.
-- **[G1 권장=기록]** connect/disconnect 성공 시 IssueHistoryRecorder로 자식 changelog("epic" 필드 변경) 기록 단언. *(Maxi가 게이트1에서 G1 미기록 결정 시 이 단언 + recorder 호출 제거.)*
+- `listChildren(epicKey, actorId)`: **BROWSE(epic 프로젝트, IssueScope.Project) 진입**(security C1·N3 — board 동형, VIEW(epic) scope=Issue 아님) → epic 404 → accessibleLevels 조회 → findEpicChildren(epicId, accessibleLevels, projectKey) 위임. **accessibleLevels 단독≠VIEW 매트릭스**라 BROWSE 진입이 매트릭스 담당.
+- 권한 없음 → IssueAccessDeniedException(403, child UPDATE). 불변식 위반 → 각 전용 예외.
+- **[G1 권장=기록]** connect/disconnect 성공 시 IssueHistoryRecorder로 자식 changelog("epic" 필드) 기록 단언. *(게이트1 G1 미기록 결정 시 이 단언+recorder 호출+SCALAR_FIELD_EXTRACTORS 항목 제거, IssueChangeDetector.kt files 제외.)*
 실패: IssueEpicService/예외 부재.
 
-**GREEN**: 서비스 구현. `@Transactional` + `@Service`(@Transactional 무력화 회피, learnings 2026-05-20). 권한=`IssuePermissionResolver.hasPermission(actorId, UPDATE/VIEW, IssueScope.Issue)`. hierarchyLevel=`IssueTypeRepository.findById(issue.typeId).hierarchyLevel`. visibility=`IssueSecurityDirectory.accessibleLevels`. 예외=plain 도메인 예외(EpicChildInvalidType/TargetNotEpic/CrossProject/SelfReference/AlreadyLinked/NotFound).
+**GREEN**: 서비스 구현. `@Transactional` + `@Service`(무력화 회피, learnings 2026-05-20). 권한=`IssuePermissionResolver.hasPermission(actorId, UPDATE/BROWSE, scope)`. **fail-closed (security C3)**: `IssuePermissionResolver`/`IssueSecurityDirectory`는 **default 없는 non-null 생성자 주입**(AlwaysAllow default 금지 — prod 빈 미주입 시 부팅 실패, crossbc-resolver-nullable-fail-open). hierarchyLevel·project는 `findByKeyWithType`(IssueRepository:507) 단일 쿼리로 동반 조회 권장(eng-C4, child·epic 각 1쿼리). visibility=`IssueSecurityDirectory.accessibleLevels`. 예외=plain 도메인 예외(ISSUE_EPIC_* 매핑). **[G1=기록]** `IssueChangeDetector.SCALAR_FIELD_EXTRACTORS`에 `"epic" to { it.epicId?.toString() }` 추가 + 서비스가 `IssueHistoryRecorder.record(before, after)` 호출(전용 엔드포인트라 PATCH 경로와 무관, before==after 시 no-op이라 PATCH 경로 부작용 0). 프론트 changelog-label("에픽")은 D6/D7 후속 PR.
 
-**REFACTOR**: 검증 순서 KDoc. ThrowsCount @Suppress(IssueParentService 선례). 권한 선행 단언 보존.
+**REFACTOR**: 검증 순서 KDoc. ThrowsCount @Suppress(IssueParentService 선례, 사유 주석). 권한 선행 단언 보존. 예외 detail 내부정보 비노출(security N2).
 
 **검증**: `./gradlew :backend:issue-tracking:test --tests "*IssueEpicServiceTest"`.
 
@@ -151,14 +151,14 @@ classify: type=backend, agent=backend-engineer, primary_bc=issue-tracking
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/epic/web/IssueEpicController.kt`, `.../epic/web/dto/CreateEpicChildRequest.kt`, `.../epic/web/dto/EpicChildSummaryResponse.kt`, `.../epic/web/dto/EpicChildListResponse.kt`, `.../epic/web/EpicChildExceptionHandler.kt`, `.../epic/web/EpicChildErrorCodes.kt`, `backend/modules/issue-tracking/src/test/kotlin/.../IssueEpicControllerIntegrationTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/epic/web/IssueEpicController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/epic/web/dto/CreateEpicChildRequest.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/epic/web/dto/EpicChildSummaryResponse.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/epic/web/dto/EpicChildListResponse.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/epic/web/EpicChildExceptionHandler.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/epic/web/EpicChildErrorCodes.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/epic/web/IssueEpicControllerIntegrationTest.kt`]
 - depends-on: [5]
 
-**RED**: `IssueEpicControllerIntegrationTest`(@SpringBootTest, Testcontainers) — S1~S11 전 경로 + 오류 매핑(404/422/409/403/400) HTTP 상태·errorCode 단언. 적대리뷰 vacuous 회피 — actor별 시드로 실제 403/누출0 검증.
+**RED**: `IssueEpicControllerIntegrationTest`(@SpringBootTest, Testcontainers) — S1~S11 전 경로 + 오류 매핑(**401**/404/422/409/403/400) HTTP 상태·errorCode 단언. **적대리뷰 vacuous 회피 — actor별 시드로 실제 403/누출0 검증**. (security C1): **VIEW_ISSUE 매트릭스로 제한된 자식이 GET 목록에서 빠지는** actor별 시드 단언 필수.
 
-**GREEN**: `@RestController @RequestMapping("/api/v1/issues/{key}")` IssueEpicController(POST/DELETE/GET epic-children). DataResponse 봉투. EpicChildExceptionHandler `@RestControllerAdvice(assignableTypes=[IssueEpicController])` 스코프 한정(catch-all-swallow 회피, MethodArgumentTypeMismatch/HttpMessageNotReadable 구체 핸들러 먼저). actor=SecurityContext 추출→service 전달(위조 차단, FR-BD-01 선례).
+**GREEN**: `@RestController @RequestMapping("/api/v1/issues/{key}")` IssueEpicController(POST/DELETE/GET epic-children). DataResponse 봉투. **actor=CurrentActor.current() 컨트롤러 최상단 호출**(미인증 401·findByKey(404)보다 앞, auth-extraction-before-resource-lookup)→service 전달(위조 차단, FR-BD-01 선례). EpicChildExceptionHandler `@RestControllerAdvice(assignableTypes=[IssueEpicController])` 스코프 한정. **핸들러 순서(B1)**: `ResponseStatusException`(401 — WatcherExceptionHandler:112 `handleResponseStatus` 패턴) + `MethodArgumentTypeMismatch`/`HttpMessageNotReadable`(400) 구체 핸들러 **먼저**, `Exception` fallback 최후(catch-all-exceptionhandler-swallows-responsestatusexception 회피). errorCode prefix=`ISSUE_EPIC_`(eng-C5).
 
-**REFACTOR**: KDoc 엔드포인트 표 + errorCode 정본화.
+**REFACTOR**: KDoc 엔드포인트 표 + errorCode 정본화. 예외 detail 내부정보 비노출.
 
 **검증**: `./gradlew :backend:issue-tracking:test --tests "*IssueEpicControllerIntegrationTest"` + 모듈 전체 ktlintCheck/detekt(--rerun-tasks).
 
@@ -171,4 +171,28 @@ classify: type=backend, agent=backend-engineer, primary_bc=issue-tracking
 - 추가 검증: ktlint, detekt(--rerun-tasks), verify-master-plan(FR 123 불변), clean 빌드(jOOQ codegen)
 - 🛑 게이트1 결정: **G1(changelog 기록)** — 권장=기록(T5에 포함). 미기록 시 T5의 IssueHistoryRecorder 호출+단언 제거.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+eng(backend-engineer) + security(security-engineer) 독립 병행 리뷰. 둘 다 **PASS_WITH_CONCERNS**. ceo/design 생략(정의된 FR).
+
+### plan-eng-review (2026-06-22) — PASS_WITH_CONCERNS
+- **B1 (해결)**: T6에 `ResponseStatusException`(401) 구체 핸들러 누락→catch-all이 401을 500 변질. WatcherExceptionHandler:112 패턴을 T6 GREEN+RED(401)에 반영함.
+- **B2 (해결)**: G1 changelog 기록 방법 미명시(IssueChangeDetector.SCALAR_FIELD_EXTRACTORS에 epicId 없음). T5 GREEN에 "epic" extractor 추가 + record(before,after) 호출로 명시함(IssueChangeDetector.kt를 T5 files에 추가, G1=기록 시).
+- **C1 (해결)**: T3~T6 테스트 경로 축약→완전 경로로 보정.
+- **C2 (해결)**: IssueResponseTest 기존 파일→"테스트 추가, 덮어쓰기 금지" 명시.
+- **C3 (해결)**: T4 findEpicChildren에 projectKey 인자 + PROJECTS JOIN 명시.
+- **C4 (반영)**: hierarchyLevel/project를 findByKeyWithType 단일 쿼리 동반 조회 권장(쿼리 수↓).
+- **C5 (해결)**: errorCode prefix EPIC_→ISSUE_EPIC_(에이전트 §6 ISSUE_ 우산).
+- **C6/N1~N3**: depends-on 정확(조치 불요)·예외 위치 KDoc·@Suppress 사유 주석(REFACTOR 반영).
+
+### security plan-review (2026-06-22) — PASS_WITH_CONCERNS, BLOCKER 0
+- **C1 (해결, 핵심 누출)**: listChildren visibility가 accessibleLevels 단독이면 VIEW_ISSUE 매트릭스 누락→제목 누출(FR-NT-03 반례). **board 동형으로 보정**: BROWSE(epic 프로젝트, Project scope) 진입 + accessibleLevels 푸시다운(T5). T6 통합테스트에 VIEW-제한 자식 목록 제외 actor별 시드 단언 필수로 명시.
+- **C2 (해결)**: 단건 IssueResponse.epic은 parent self-join 동형(보안등급 무필터)—의도적 수용, ADR deviation + 스펙 엣지케이스 명시.
+- **C3 (해결, fail-closed)**: IssueEpicService는 resolver/securityDirectory default 없는 non-null 주입(prod 빈 미주입=부팅 실패). T5 GREEN 반영.
+- **C4 (해결, probe)**: actor=CurrentActor.current() 컨트롤러 최상단, findByKey(404)보다 앞. T6 GREEN 반영.
+- **N1 (해결)**: epic VIEW 실패→404(존재 숨김, 403 아님), 단건 VIEW 404-hide 정책 일관. 스펙/T5 반영. child UPDATE 실패는 403 유지.
+- **N2/N3**: 예외 detail 비노출·listChildren scope=Project(C1 통합).
+- 종합: 기존 IssueLinkController/ParentService의 권한 검증 전무 갭을 메우는 방향이라 보안 개선. C1·C3는 impl 게이트2 통합테스트에서 actor별 시드 누출0 단언으로 강제.
+
+### 게이트1 미결 항목
+- **G1 (changelog 기록 여부)** — Maxi 결정 필요. 권장=기록(T5 포함, Jira parity·적대리뷰 사전차단). 미기록 시 T5에서 recorder 호출+SCALAR_FIELD_EXTRACTORS 항목+IssueChangeDetector.kt 제거.

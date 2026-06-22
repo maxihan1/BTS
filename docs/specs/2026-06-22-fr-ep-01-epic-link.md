@@ -28,8 +28,8 @@ Epic(이슈 타입, hierarchy_level=1)에 자식 이슈(story/task/bug, level 0)
 |---|---|
 | FR-1 | 자식 이슈에 epic_id를 설정/해제하는 메커니즘 (별도 컬럼). |
 | FR-2 | 연결 시 불변식 강제: 자식 level=0, 대상 Epic level=1, 동일 프로젝트, 자기참조 금지, 단일 Epic(이미 소속 시 409). |
-| FR-3 | 연결/해제는 자식 이슈에 대한 `IssuePermission.UPDATE` 요구. 권한 검증을 repo 조회보다 **먼저**(존재 probe 방지). 경로 Epic은 `VIEW` 요구. |
-| FR-4 | Epic의 자식 목록 조회는 `VIEW`(Epic) 요구 + 자식을 actor가 VIEW 가능한 것만 노출(visibility 필터, N+1 금지). |
+| FR-3 | 연결/해제는 자식 이슈에 대한 `IssuePermission.UPDATE`(IssueScope.Issue) 요구. actor 추출 최상단(CurrentActor) → 권한 검증을 repo 조회보다 **먼저**(존재 probe 방지). 경로 Epic 미존재/미가시 시 **404**(존재 숨김, 403 아님 — 단건 VIEW 404-hide 정책 일관). |
+| FR-4 | Epic 자식 목록 조회는 **board 동형**: `IssuePermission.BROWSE`(IssueScope.Project, Epic 프로젝트) 진입 검사 + `accessibleLevels`(IssueSecurityDirectory) SQL 푸시다운. **accessibleLevels 단독은 보안등급만 거르고 VIEW_ISSUE 매트릭스는 BROWSE 진입 검사가 담당**(FR-NT-03 반례 — accessibleLevels 단독 누출). per-issue N+1 금지. |
 | FR-5 | 자식 단건 조회(IssueResponse)에 소속 Epic 요약(epicKey + summary) 노출 — parent 노출과 동형, 단건 경로만(목록은 null). |
 | FR-6 | epic 대상/자식 미존재·소프트삭제 시 404. |
 
@@ -46,25 +46,26 @@ Epic(이슈 타입, hierarchy_level=1)에 자식 이슈(story/task/bug, level 0)
 
 | 메서드 · 경로 | 설명 | 성공 | 권한 |
 |---|---|---|---|
-| `POST /issues/{epicKey}/epic-children` body `{ "childKey": "PROJ-12" }` | 자식 연결 | 201 + 자식 요약 | UPDATE(child) + VIEW(epic) |
-| `DELETE /issues/{epicKey}/epic-children/{childKey}` | 자식 해제 | 204 | UPDATE(child) |
-| `GET /issues/{epicKey}/epic-children` | 자식 목록 (visibility 필터) | 200 + 목록 | VIEW(epic) |
+| `POST /issues/{epicKey}/epic-children` body `{ "childKey": "PROJ-12" }` | 자식 연결 | 201 + 자식 요약 | UPDATE(child, Issue scope) · epic 미가시 404 |
+| `DELETE /issues/{epicKey}/epic-children/{childKey}` | 자식 해제 | 204 | UPDATE(child, Issue scope) |
+| `GET /issues/{epicKey}/epic-children` | 자식 목록 (visibility 필터) | 200 + 목록 | BROWSE(epic 프로젝트, Project scope) + accessibleLevels 푸시다운 |
 | (확장) `GET /issues/{childKey}` IssueResponse.epic | 자식의 소속 Epic 요약 | 200 | VIEW(child, 기존) |
 
-오류 매핑 (`EpicChildExceptionHandler` — epic 패키지 스코프 한정, catch-all 금지).
+오류 매핑 (`EpicChildExceptionHandler` — `@RestControllerAdvice(assignableTypes=[IssueEpicController])` 스코프 한정, catch-all 금지). errorCode prefix=`ISSUE_EPIC_`(에이전트 §6 ISSUE_ 우산, WatcherExceptionHandler `ISSUE_WATCHER_*` 선례). `ResponseStatusException`(미인증 401·CurrentActor) 구체 핸들러 + `MethodArgumentTypeMismatch`/`HttpMessageNotReadable`(400) 구체 핸들러를 `Exception` fallback보다 먼저(catch-all-swallows 회피, WatcherExceptionHandler 선례).
 
 | 상황 | 상태 | errorCode |
 |---|---|---|
-| epic/child 미존재·소프트삭제 | 404 | EPIC_OR_CHILD_NOT_FOUND |
-| 자식 level≠0 | 422 | EPIC_CHILD_INVALID_TYPE |
-| 대상 Epic 아님(level≠1) | 422 | EPIC_TARGET_NOT_EPIC |
-| 다른 프로젝트 | 422 | EPIC_CHILD_CROSS_PROJECT |
-| 자기참조(child==epic) | 422 | EPIC_CHILD_SELF_REFERENCE |
-| 이미 Epic 소속 | 409 | EPIC_CHILD_ALREADY_LINKED |
-| 권한 없음 | 403 | (IssueAccessDeniedException 기존) |
+| epic/child 미존재·소프트삭제·epic 미가시 | 404 | ISSUE_EPIC_OR_CHILD_NOT_FOUND |
+| 자식 level≠0 | 422 | ISSUE_EPIC_CHILD_INVALID_TYPE |
+| 대상 Epic 아님(level≠1) | 422 | ISSUE_EPIC_TARGET_NOT_EPIC |
+| 다른 프로젝트 | 422 | ISSUE_EPIC_CHILD_CROSS_PROJECT |
+| 자기참조(child==epic) | 422 | ISSUE_EPIC_CHILD_SELF_REFERENCE |
+| 이미 Epic 소속 | 409 | ISSUE_EPIC_CHILD_ALREADY_LINKED |
+| child UPDATE 권한 없음 | 403 | (IssueAccessDeniedException 기존, detail 내부정보 비노출) |
+| 미인증 | 401 | (ResponseStatusException) |
 | childKey 누락/형식오류 | 400 | (검증) |
 
-검증 순서(자식 권한 선행 → 존재 → 불변식). actor UPDATE(child) → child 404 → epic 404 → epic VIEW → self 422 → 자식 level 422 → epic level 422 → cross-project 422 → already-linked 409 → updateEpic.
+검증 순서. **actor 추출(CurrentActor, 미인증 401) 최상단** → UPDATE(child) 권한 → child 404 → epic 404(미존재·미가시 동일, 존재 숨김) → self 422 → 자식 level 422 → epic level 422 → cross-project 422 → already-linked 409 → updateEpic. (목록은 actor → BROWSE(epic 프로젝트) → epic 404 → accessibleLevels 푸시다운.)
 
 ## 데이터 모델 변경
 
@@ -84,6 +85,7 @@ CREATE INDEX idx_issues_epic_id ON issues(epic_id);
 - Epic 소프트삭제 시 자식 목록/단건 epic 노출: deleted_at 필터(소프트삭제 Epic은 미노출).
 - 자식 소프트삭제 → 목록에서 제외.
 - 커스텀 이슈 타입(level=0)도 자식 가능(표준 5종 한정 아님 — hierarchy_level 기준).
+- **단건 IssueResponse.epic 노출은 parent self-join과 동형**: deleted_at만 필터하고 보안등급(security level) 필터는 적용 안 함(parent 선례 IssueRepository.kt:522 일관). 자식 단건 진입 자체가 자식 VIEW(404-hide)로 보호되므로 무권한자 진입은 차단. 보안등급 제한 Epic의 summary 노출이 parent와 동일하게 의도적 수용임을 ADR에 deviation 기록(적대 리뷰 사전 차단).
 
 ## 제약 조건
 
