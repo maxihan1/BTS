@@ -33,6 +33,7 @@ const MOCK_BOARD_DETAIL: BoardDetail = {
   columns: [],
   truncated: false,
   unplacedCount: 0,
+  swimlaneField: 'NONE',
 }
 
 const MOCK_BOARD_CREATED: BoardCreated = {
@@ -254,6 +255,7 @@ describe('useBoard (filter-aware)', () => {
     columns: [],
     truncated: false,
     unplacedCount: 0,
+    swimlaneField: 'NONE',
   }
 
   beforeEach(() => {

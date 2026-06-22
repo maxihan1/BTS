@@ -140,6 +140,12 @@ export interface KanbanBoardProps {
    * 옵셔널 — 없으면 undefined로 전달 (기존 호출 호환).
    */
   filter?: BoardCardFilterParams
+  /**
+   * 보드 필터 활성 여부 (FR-BD-03 hotfix-p2).
+   * true이면 각 BoardColumn의 WIP 초과 경고를 약화 + "(필터됨)" 표시.
+   * 이동/판정 로직에는 영향 없음 — 표시만 변경.
+   */
+  isFilterActive?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -159,7 +165,7 @@ const UNASSIGNED: CardAssigneeDisplay = { state: 'unassigned' }
  * - 409 충돌 등 에러 시 toast.error를 표시한다.
  * - 센서: PointerSensor(distance:5) + KeyboardSensor — 클릭과 드래그 구분(D-2).
  */
-export function KanbanBoard({ boardId, board, assigneeNames, filter }: KanbanBoardProps): JSX.Element {
+export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterActive = false }: KanbanBoardProps): JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [activeFromColumnId, setActiveFromColumnId] = useState<string | null>(null)
   const [overColumnId, setOverColumnId] = useState<string | null>(null)
@@ -251,6 +257,8 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter }: KanbanBoa
               column={column}
               assigneeNames={assigneeNames}
               isOver={overColumnId === column.columnId}
+              swimlaneField={board.swimlaneField}
+              isFilterActive={isFilterActive}
             />
           ))}
         </div>

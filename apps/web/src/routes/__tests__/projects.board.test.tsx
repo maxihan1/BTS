@@ -1,4 +1,4 @@
-// 칸반 보드 라우트 페이지 단위 테스트 — BoardPage 렌더 시나리오 (FR-BD-01 Task 7 + FR-BD-02 Task 6)
+// 칸반 보드 라우트 페이지 단위 테스트 — BoardPage 렌더 시나리오 (FR-BD-01 Task 7 + FR-BD-02 Task 6 + FR-BD-03 Task 6)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -24,20 +24,22 @@ vi.mock('sonner', () => ({
 }))
 
 // KanbanBoard는 DndContext 등 복잡한 의존성이 있으므로 단순 mock
-// assigneeNames, filter prop을 캡처해 단언에 활용
-const mockKanbanBoardProps: Array<{ boardId: string; assigneeNames: unknown; filter: unknown }> = []
+// assigneeNames, filter, isFilterActive prop을 캡처해 단언에 활용
+const mockKanbanBoardProps: Array<{ boardId: string; assigneeNames: unknown; filter: unknown; isFilterActive: unknown }> = []
 
 vi.mock('@/components/board/KanbanBoard', () => ({
   KanbanBoard: ({
     boardId,
     assigneeNames,
     filter,
+    isFilterActive,
   }: {
     boardId: string
     assigneeNames: Map<string, unknown>
     filter?: BoardCardFilterParams
+    isFilterActive?: boolean
   }) => {
-    mockKanbanBoardProps.push({ boardId, assigneeNames, filter })
+    mockKanbanBoardProps.push({ boardId, assigneeNames, filter, isFilterActive })
     return <div data-testid={`kanban-board-${boardId}`}>KanbanBoard</div>
   },
 }))
@@ -95,6 +97,38 @@ vi.mock('@/api/users', () => ({
   fetchUsers: () => mockFetchUsers(),
 }))
 
+// use-update-swimlane mock
+const mockUpdateSwimlaneMutate = vi.fn()
+const mockUseUpdateSwimlane = vi.fn()
+vi.mock('@/hooks/use-update-swimlane', () => ({
+  useUpdateSwimlane: (boardId: string) => mockUseUpdateSwimlane(boardId),
+}))
+
+// use-project-permissions mock
+const mockUseProjectPermissions = vi.fn()
+vi.mock('@/hooks/use-project-permissions', () => ({
+  useProjectPermissions: (projectKey: string) => mockUseProjectPermissions(projectKey),
+}))
+
+// SwimlaneSelector mock — 테스트에서 onChange를 직접 호출할 수 있도록 캡처
+let capturedSwimlaneSelectorOnChange: ((field: string) => void) | null = null
+vi.mock('@/components/board/SwimlaneSelector', () => ({
+  SwimlaneSelector: ({
+    value,
+    onChange,
+  }: {
+    value: string
+    onChange: (field: string) => void
+  }) => {
+    capturedSwimlaneSelectorOnChange = onChange
+    return (
+      <div data-testid="swimlane-selector" data-value={value}>
+        SwimlaneSelector
+      </div>
+    )
+  },
+}))
+
 // ─────────────────────────────────────────────────────────────────────────────
 // fixture
 // ─────────────────────────────────────────────────────────────────────────────
@@ -118,6 +152,7 @@ const BOARD_DETAIL: BoardDetail = {
   columns: [],
   truncated: false,
   unplacedCount: 0,
+  swimlaneField: 'NONE',
 }
 
 const BOARD_DETAIL_TRUNCATED: BoardDetail = {
@@ -143,6 +178,7 @@ const BOARD_DETAIL_WITH_ASSIGNEES: BoardDetail = {
   boardId: BOARD_A.boardId,
   projectKey: 'ATLAS',
   name: '스프린트 보드 A',
+  swimlaneField: 'NONE',
   columns: [
     {
       columnId: 'col-1',
@@ -150,13 +186,15 @@ const BOARD_DETAIL_WITH_ASSIGNEES: BoardDetail = {
       name: '할 일',
       category: 'TODO',
       displayOrder: 1,
+      wipLimit: null,
+      wipExceeded: false,
       cards: [
         // case 1: assigneeId=null → unassigned
-        { issueKey: 'ATLAS-1', summary: '미배정 이슈', assigneeId: null, version: 1 },
+        { issueKey: 'ATLAS-1', summary: '미배정 이슈', assigneeId: null, version: 1, priority: 1 },
         // case 2: assigneeId=ALICE_ID, userMap에 있음 → named
-        { issueKey: 'ATLAS-2', summary: '앨리스 이슈', assigneeId: ALICE_ID, version: 2 },
+        { issueKey: 'ATLAS-2', summary: '앨리스 이슈', assigneeId: ALICE_ID, version: 2, priority: 1 },
         // case 3: assigneeId=UNKNOWN_USER_ID, userMap에 없음 → unknown
-        { issueKey: 'ATLAS-3', summary: '미해석 이슈', assigneeId: UNKNOWN_USER_ID, version: 3 },
+        { issueKey: 'ATLAS-3', summary: '미해석 이슈', assigneeId: UNKNOWN_USER_ID, version: 3, priority: 1 },
       ],
     },
   ],
@@ -197,14 +235,21 @@ describe('BoardPage', () => {
     mockKanbanBoardProps.length = 0
     mockUseBoardCalls.length = 0
     capturedFilterBarOnChange = null
+    capturedSwimlaneSelectorOnChange = null
     mockFetchUsers.mockResolvedValue(USERS)
     mockUseBoard.mockReturnValue({ data: undefined, isLoading: false })
+    mockUseUpdateSwimlane.mockReturnValue({ mutate: mockUpdateSwimlaneMutate, isPending: false })
+    mockUseProjectPermissions.mockReturnValue({
+      data: { projectKey: 'ATLAS', permissions: { CREATE: true, MANAGE_COMPONENTS: false, MANAGE_VERSIONS: false, MANAGE_CUSTOM_FIELDS: false, MANAGE_FIELD_PERMISSIONS: false, MANAGE_TEMPLATES: false } },
+      isLoading: false,
+    })
   })
 
   afterEach(() => {
     vi.clearAllMocks()
     mockKanbanBoardProps.length = 0
     mockUseBoardCalls.length = 0
+    capturedSwimlaneSelectorOnChange = null
   })
 
   /**
@@ -531,8 +576,8 @@ describe('BoardPage', () => {
     const emptyBoard: BoardDetail = {
       ...BOARD_DETAIL,
       columns: [
-        { columnId: 'col-1', stateKey: 'todo', name: '할 일', category: 'TODO', displayOrder: 1, cards: [] },
-        { columnId: 'col-2', stateKey: 'done', name: '완료', category: 'DONE', displayOrder: 2, cards: [] },
+        { columnId: 'col-1', stateKey: 'todo', name: '할 일', category: 'TODO', displayOrder: 1, wipLimit: null, wipExceeded: false, cards: [] },
+        { columnId: 'col-2', stateKey: 'done', name: '완료', category: 'DONE', displayOrder: 2, wipLimit: null, wipExceeded: false, cards: [] },
       ],
     }
     mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
@@ -577,7 +622,7 @@ describe('BoardPage', () => {
     const emptyBoard: BoardDetail = {
       ...BOARD_DETAIL,
       columns: [
-        { columnId: 'col-1', stateKey: 'todo', name: '할 일', category: 'TODO', displayOrder: 1, cards: [] },
+        { columnId: 'col-1', stateKey: 'todo', name: '할 일', category: 'TODO', displayOrder: 1, wipLimit: null, wipExceeded: false, cards: [] },
       ],
     }
     mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
@@ -603,6 +648,185 @@ describe('BoardPage', () => {
     expect(callArg?.search).not.toHaveProperty('label')
     expect(callArg?.search).not.toHaveProperty('component')
   })
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Task 6 — 스윔레인 셀렉터 + CREATE 권한 게이팅 (FR-BD-03)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * S6 — CREATE 권한 있으면 SwimlaneSelector가 렌더된다.
+   */
+  it('S6-A: CREATE 권한이 있으면 SwimlaneSelector가 보드 상세 있을 때 렌더된다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+    mockUseProjectPermissions.mockReturnValue({
+      data: {
+        projectKey: 'ATLAS',
+        permissions: {
+          CREATE: true,
+          MANAGE_COMPONENTS: false,
+          MANAGE_VERSIONS: false,
+          MANAGE_CUSTOM_FIELDS: false,
+          MANAGE_FIELD_PERMISSIONS: false,
+          MANAGE_TEMPLATES: false,
+        },
+      },
+      isLoading: false,
+    })
+
+    await renderBoardPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('swimlane-selector')).toBeInTheDocument()
+    })
+  })
+
+  /**
+   * S6 — CREATE 권한 없으면 SwimlaneSelector가 렌더되지 않는다.
+   */
+  it('S6-B: CREATE 권한이 없으면 SwimlaneSelector가 렌더되지 않는다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+    mockUseProjectPermissions.mockReturnValue({
+      data: {
+        projectKey: 'ATLAS',
+        permissions: {
+          CREATE: false,
+          MANAGE_COMPONENTS: false,
+          MANAGE_VERSIONS: false,
+          MANAGE_CUSTOM_FIELDS: false,
+          MANAGE_FIELD_PERMISSIONS: false,
+          MANAGE_TEMPLATES: false,
+        },
+      },
+      isLoading: false,
+    })
+
+    await renderBoardPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`kanban-board-${BOARD_A.boardId}`)).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('swimlane-selector')).not.toBeInTheDocument()
+  })
+
+  /**
+   * S6 — 보드 상세 없으면 SwimlaneSelector가 렌더되지 않는다 (권한 있어도).
+   */
+  it('S6-C: 보드 상세가 없으면 SwimlaneSelector가 렌더되지 않는다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: undefined, isLoading: true })
+    mockUseProjectPermissions.mockReturnValue({
+      data: {
+        projectKey: 'ATLAS',
+        permissions: {
+          CREATE: true,
+          MANAGE_COMPONENTS: false,
+          MANAGE_VERSIONS: false,
+          MANAGE_CUSTOM_FIELDS: false,
+          MANAGE_FIELD_PERMISSIONS: false,
+          MANAGE_TEMPLATES: false,
+        },
+      },
+      isLoading: false,
+    })
+
+    await renderBoardPage()
+
+    expect(screen.queryByTestId('swimlane-selector')).not.toBeInTheDocument()
+  })
+
+  /**
+   * S7 — SwimlaneSelector 변경 시 useUpdateSwimlane.mutate가 호출된다.
+   */
+  it('S7-A: SwimlaneSelector onChange 호출 시 useUpdateSwimlane.mutate가 호출된다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    await renderBoardPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('swimlane-selector')).toBeInTheDocument()
+    })
+
+    // SwimlaneSelector mock의 onChange를 직접 호출
+    capturedSwimlaneSelectorOnChange?.('ASSIGNEE')
+
+    expect(mockUpdateSwimlaneMutate).toHaveBeenCalledWith(
+      'ASSIGNEE',
+      expect.objectContaining({ onError: expect.any(Function) as unknown }),
+    )
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // hotfix-p2 — 필터 활성 시 isFilterActive prop 전달 (FR-BD-03)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * P2-A. 필터가 비어 있지 않으면 KanbanBoard에 isFilterActive=true가 전달된다.
+   */
+  it('P2-A: 필터가 비어 있지 않으면 KanbanBoard에 isFilterActive=true가 전달된다', async () => {
+    const filter: BoardCardFilterParams = {
+      assigneeIds: [ALICE_ID],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    await renderBoardPage('ATLAS', undefined, filter)
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`kanban-board-${BOARD_A.boardId}`)).toBeInTheDocument()
+    })
+
+    const lastCall = mockKanbanBoardProps[mockKanbanBoardProps.length - 1]
+    expect(lastCall?.isFilterActive).toBe(true)
+  })
+
+  /**
+   * P2-B. 필터가 비어 있으면 KanbanBoard에 isFilterActive=false가 전달된다.
+   */
+  it('P2-B: 필터가 비어 있으면 KanbanBoard에 isFilterActive=false가 전달된다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    // filter 없이 렌더 → EMPTY_FILTER
+    await renderBoardPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`kanban-board-${BOARD_A.boardId}`)).toBeInTheDocument()
+    })
+
+    const lastCall = mockKanbanBoardProps[mockKanbanBoardProps.length - 1]
+    expect(lastCall?.isFilterActive).toBe(false)
+  })
+
+  /**
+   * S7 — mutate onError 시 toast.error가 호출된다.
+   */
+  it('S7-B: mutate onError 시 toast.error가 호출된다', async () => {
+    const { toast } = await import('sonner')
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    await renderBoardPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('swimlane-selector')).toBeInTheDocument()
+    })
+
+    // onChange를 호출해 mutate 캡처
+    capturedSwimlaneSelectorOnChange?.('PRIORITY')
+
+    // mutate 호출 인자에서 onError 콜백을 꺼내 직접 실행
+    const mutateCall = mockUpdateSwimlaneMutate.mock.calls[0]
+    const options = mutateCall?.[1] as { onError?: () => void } | undefined
+    options?.onError?.()
+
+    expect(toast.error).toHaveBeenCalled()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -615,6 +839,8 @@ describe('BoardRouteAdapter', () => {
     mockFetchUsers.mockResolvedValue([])
     mockUseBoards.mockReturnValue({ data: [], isLoading: false, error: null, isError: false })
     mockUseBoard.mockReturnValue({ data: undefined, isLoading: false })
+    mockUseUpdateSwimlane.mockReturnValue({ mutate: mockUpdateSwimlaneMutate, isPending: false })
+    mockUseProjectPermissions.mockReturnValue({ data: undefined, isLoading: false })
   })
 
   /**

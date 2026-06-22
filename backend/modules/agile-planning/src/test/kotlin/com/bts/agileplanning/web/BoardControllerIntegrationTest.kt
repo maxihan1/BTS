@@ -325,8 +325,8 @@ class BoardControllerIntegrationTest {
             .andExpect(jsonPath("$.data.columns.length()").value(3))
             .andExpect(jsonPath("$.data.columns[0].cards.length()").value(1))
             .andExpect(jsonPath("$.data.columns[0].cards[0].issueKey").value("BTS-1"))
-            // NIT: priority 는 정렬 내부용 → 응답 카드 DTO 에서 제외
-            .andExpect(jsonPath("$.data.columns[0].cards[0].priority").doesNotExist())
+            // priority 는 PRIORITY 스윔레인(FR-BD-03 D6) 그룹화 근거로 재노출 — Maxi 확정 (시드 priority=1)
+            .andExpect(jsonPath("$.data.columns[0].cards[0].priority").value(1))
             // truncated/unplacedCount 신호 필드 단언 (P2)
             .andExpect(jsonPath("$.data.truncated").value(false))
             .andExpect(jsonPath("$.data.unplacedCount").value(0))

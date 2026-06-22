@@ -6,7 +6,7 @@
 //   - e2e-msw-scenario-toggle-localstorage-flag: 409 토글은 localStorage 플래그로 분기
 //
 import { http, HttpResponse } from 'msw'
-import type { BoardDetail, BoardCard } from '@/api/boards'
+import type { BoardDetail, BoardCard, SwimlaneField } from '@/api/boards'
 import type { StoredBoardDetail, StoredCard } from './board-fixtures'
 import {
   boardStore,
@@ -79,11 +79,12 @@ function toResponseDetail(stored: StoredBoardDetail, params: URLSearchParams): B
       ...col,
       cards: col.cards
         .filter((card) => matchesFilter(card, params))
-        .map(({ issueKey, summary, assigneeId, version }): BoardCard => ({
+        .map(({ issueKey, summary, assigneeId, version, priority }): BoardCard => ({
           issueKey,
           summary,
           assigneeId,
           version,
+          priority,
         })),
     })),
   }
@@ -326,6 +327,85 @@ const moveCardHandler = http.post(
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/v1/boards/:id — 스윔레인 기준 변경 (FR-BD-03 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 허용된 SwimlaneField 값 목록 — 타입가드용 */
+const VALID_SWIMLANE_FIELDS: ReadonlyArray<SwimlaneField> = ['NONE', 'ASSIGNEE', 'PRIORITY']
+
+/**
+ * PATCH /api/v1/boards/{boardId} — 보드 스윔레인 기준 변경.
+ *
+ * 요청 body: { swimlaneField: 'NONE' | 'ASSIGNEE' | 'PRIORITY' }
+ *
+ * stateful 동작 (msw-mutation-stateful-refetch 교훈).
+ *   - boardStore의 해당 보드 swimlaneField를 변이한다.
+ *   - 이후 GET 상세에서 변경된 swimlaneField가 반영됨을 보장한다.
+ *
+ * 성공 → 200 { data: BoardMeta } (boardId, projectKey, name, swimlaneField)
+ * 보드 미존재 → 404 ProblemDetail { errorCode: 'AGILE_BOARD_NOT_FOUND' }
+ * 잘못된 swimlaneField → 400 ProblemDetail { errorCode: 'INVALID_SWIMLANE_FIELD' }
+ */
+const updateSwimlaneHandler = http.patch(
+  '/api/v1/boards/:id',
+  async ({ params, request }) => {
+    const boardId = params['id'] as string
+
+    // 보드 존재 확인
+    const board = boardStore.get(boardId)
+    if (board === undefined) {
+      return HttpResponse.json(
+        {
+          errorCode: 'AGILE_BOARD_NOT_FOUND',
+          message: `보드를 찾을 수 없습니다: ${boardId}`,
+        },
+        { status: 404 },
+      )
+    }
+
+    // 요청 body 파싱
+    let swimlaneField: SwimlaneField | undefined
+
+    try {
+      const body = (await request.json()) as { swimlaneField?: unknown }
+      const raw = body.swimlaneField
+      if (typeof raw === 'string' && (VALID_SWIMLANE_FIELDS as string[]).includes(raw)) {
+        swimlaneField = raw as SwimlaneField
+      }
+    } catch {
+      return HttpResponse.json(
+        { errorCode: 'INVALID_REQUEST', message: '요청 body를 파싱할 수 없습니다' },
+        { status: 400 },
+      )
+    }
+
+    if (swimlaneField === undefined) {
+      return HttpResponse.json(
+        {
+          errorCode: 'INVALID_SWIMLANE_FIELD',
+          message: `swimlaneField는 NONE, ASSIGNEE, PRIORITY 중 하나여야 합니다`,
+        },
+        { status: 400 },
+      )
+    }
+
+    // store 변이 — 이후 GET 상세에서 새 swimlaneField가 반영됨 (msw-mutation-stateful-refetch)
+    board.swimlaneField = swimlaneField
+    boardStore.set(boardId, board)
+
+    // BoardMeta 응답 반환 (boards.ts updateBoardSwimlane 계약)
+    return HttpResponse.json({
+      data: {
+        boardId: board.boardId,
+        projectKey: board.projectKey,
+        name: board.name,
+        swimlaneField: board.swimlaneField,
+      },
+    })
+  },
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
 // export
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -334,10 +414,12 @@ const moveCardHandler = http.post(
  *
  * handlers.ts에서 boardHandlers를 spread해 등록한다.
  * GET /api/v1/boards?projectKey= 와 GET /api/v1/boards/:id 모두 포함.
+ * PATCH /api/v1/boards/:id (스윔레인 기준 변경) 포함.
  */
 export const boardHandlers = [
   getBoardsHandler,
   getBoardHandler,
   createBoardHandler,
   moveCardHandler,
+  updateSwimlaneHandler,
 ]

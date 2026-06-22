@@ -43,12 +43,18 @@ export interface StoredBoardDetail {
   boardId: string
   projectKey: string
   name: string
+  /** 스윔레인 기준 필드. 백엔드 FR-BD-03 D4 신호. NONE=없음, ASSIGNEE=담당자별, PRIORITY=우선순위별 */
+  swimlaneField: 'NONE' | 'ASSIGNEE' | 'PRIORITY'
   columns: Array<{
     columnId: string
     stateKey: string
     name: string
     category: 'TODO' | 'IN_PROGRESS' | 'DONE'
     displayOrder: number
+    /** WIP 제한 수. null이면 무제한. 백엔드 FR-BD-03 D4 신호. */
+    wipLimit: number | null
+    /** 카드 수가 wipLimit을 초과했는지 여부. 백엔드 FR-BD-03 D4 신호. */
+    wipExceeded: boolean
     cards: StoredCard[]
   }>
   truncated: boolean
@@ -216,7 +222,8 @@ export function createBoardInStore(
     boardId,
     projectKey,
     name,
-    columns: createdColumns.map((col) => ({ ...col, cards: [] })),
+    swimlaneField: 'NONE',
+    columns: createdColumns.map((col) => ({ ...col, wipLimit: null, wipExceeded: false, cards: [] })),
     truncated: false,
     unplacedCount: 0,
   }
@@ -247,6 +254,7 @@ export const DEFAULT_BOARD: BoardDetail = {
   boardId: '10000000-0000-4000-8000-000000000001',
   projectKey: 'ATLAS',
   name: 'ATLAS 보드',
+  swimlaneField: 'NONE',
   columns: [
     {
       columnId: '20000000-0000-4000-8000-000000000001',
@@ -254,18 +262,22 @@ export const DEFAULT_BOARD: BoardDetail = {
       name: 'TODO',
       category: 'TODO',
       displayOrder: 1,
+      wipLimit: null,
+      wipExceeded: false,
       cards: [
         {
           issueKey: 'ATLAS-1',
           summary: '첫 번째 이슈 — 로그인 페이지 구현',
           assigneeId: '00000000-0000-4000-8000-000000000001',
           version: 0,
+          priority: 1,
         },
         {
           issueKey: 'ATLAS-4',
           summary: '네 번째 이슈 — 보드 뷰 구현',
           assigneeId: null,
           version: 0,
+          priority: 4,
         },
       ],
     },
@@ -275,12 +287,15 @@ export const DEFAULT_BOARD: BoardDetail = {
       name: 'IN PROGRESS',
       category: 'IN_PROGRESS',
       displayOrder: 2,
+      wipLimit: null,
+      wipExceeded: false,
       cards: [
         {
           issueKey: 'ATLAS-2',
           summary: '두 번째 이슈 — 이슈 목록 페이지 UI 구현',
           assigneeId: '00000000-0000-4000-8000-000000000001',
           version: 1,
+          priority: 2,
         },
       ],
     },
@@ -290,12 +305,15 @@ export const DEFAULT_BOARD: BoardDetail = {
       name: 'DONE',
       category: 'DONE',
       displayOrder: 3,
+      wipLimit: null,
+      wipExceeded: false,
       cards: [
         {
           issueKey: 'ATLAS-3',
           summary: '세 번째 이슈 — 이슈 상세 페이지 구현',
           assigneeId: null,
           version: 2,
+          priority: 3,
         },
       ],
     },
@@ -337,6 +355,7 @@ export const FILTER_BOARD: StoredBoardDetail = {
   boardId: '10000000-0000-4000-8000-000000000002',
   projectKey: 'FILTER',
   name: 'FILTER 보드',
+  swimlaneField: 'NONE',
   columns: [
     {
       columnId: '30000000-0000-4000-8000-000000000001',
@@ -344,12 +363,15 @@ export const FILTER_BOARD: StoredBoardDetail = {
       name: 'TODO',
       category: 'TODO',
       displayOrder: 1,
+      wipLimit: null,
+      wipExceeded: false,
       cards: [
         {
           issueKey: 'FILTER-1',
           summary: '첫 번째 필터 이슈 — alice 담당, bug 라벨, c1 컴포넌트',
           assigneeId: ALICE_USER_ID,
           version: 0,
+          priority: 1,
           labels: ['bug'],
           componentIds: [COMPONENT_C1_ID],
         },
@@ -358,6 +380,7 @@ export const FILTER_BOARD: StoredBoardDetail = {
           summary: '두 번째 필터 이슈 — bob 담당, feature 라벨, c1+c2 컴포넌트',
           assigneeId: BOB_USER_ID,
           version: 0,
+          priority: 2,
           labels: ['feature'],
           componentIds: [COMPONENT_C1_ID, COMPONENT_C2_ID],
         },
@@ -366,6 +389,7 @@ export const FILTER_BOARD: StoredBoardDetail = {
           summary: '세 번째 필터 이슈 — alice 담당, bug+documentation 라벨, c2 컴포넌트',
           assigneeId: ALICE_USER_ID,
           version: 0,
+          priority: 3,
           labels: ['bug', 'documentation'],
           componentIds: [COMPONENT_C2_ID],
         },
@@ -374,10 +398,169 @@ export const FILTER_BOARD: StoredBoardDetail = {
           summary: '네 번째 필터 이슈 — 미배정, 라벨·컴포넌트 없음',
           assigneeId: null,
           version: 0,
+          priority: 4,
           labels: [],
           componentIds: [],
         },
       ],
+    },
+  ],
+  truncated: false,
+  unplacedCount: 0,
+}
+
+/**
+ * WIP 초과 경고 검증용 보드 픽스처 (FR-BD-03 D7 E2E S1).
+ *
+ * IN PROGRESS 컬럼에 wipLimit=2, wipExceeded=true, 카드 3개.
+ * 헤더에 "3/2" 텍스트 + WIP 초과 경고(amber 배지)가 표시됨을 E2E로 검증한다.
+ *
+ * alice(userId=00000000-0000-4000-8000-000000000001)가 ATLAS 프로젝트 진입 전제.
+ * UUID는 RFC4122 v4 형식 — Zod v4 z.string().uuid() 통과 보장.
+ */
+export const WIP_BOARD: StoredBoardDetail = {
+  boardId: '10000000-0000-4000-8000-000000000003',
+  projectKey: 'WIPTEST',
+  name: 'WIP 테스트 보드',
+  swimlaneField: 'NONE',
+  columns: [
+    {
+      columnId: '50000000-0000-4000-8000-000000000001',
+      stateKey: 'open',
+      name: 'TODO',
+      category: 'TODO',
+      displayOrder: 1,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [
+        {
+          issueKey: 'WIP-1',
+          summary: 'WIP 테스트 이슈 1',
+          assigneeId: '00000000-0000-4000-8000-000000000001',
+          version: 0,
+          priority: 1,
+          labels: [],
+          componentIds: [],
+        },
+      ],
+    },
+    {
+      columnId: '50000000-0000-4000-8000-000000000002',
+      stateKey: 'in_progress',
+      name: 'IN PROGRESS',
+      category: 'IN_PROGRESS',
+      displayOrder: 2,
+      wipLimit: 2,
+      wipExceeded: true,
+      cards: [
+        {
+          issueKey: 'WIP-2',
+          summary: 'WIP 테스트 이슈 2',
+          assigneeId: '00000000-0000-4000-8000-000000000001',
+          version: 0,
+          priority: 2,
+          labels: [],
+          componentIds: [],
+        },
+        {
+          issueKey: 'WIP-3',
+          summary: 'WIP 테스트 이슈 3',
+          assigneeId: ALICE_USER_ID,
+          version: 0,
+          priority: 3,
+          labels: [],
+          componentIds: [],
+        },
+        {
+          issueKey: 'WIP-4',
+          summary: 'WIP 테스트 이슈 4',
+          assigneeId: BOB_USER_ID,
+          version: 0,
+          priority: 1,
+          labels: [],
+          componentIds: [],
+        },
+      ],
+    },
+    {
+      columnId: '50000000-0000-4000-8000-000000000003',
+      stateKey: 'done',
+      name: 'DONE',
+      category: 'DONE',
+      displayOrder: 3,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [],
+    },
+  ],
+  truncated: false,
+  unplacedCount: 0,
+}
+
+/**
+ * 스윔레인 전환 검증용 보드 픽스처 (FR-BD-03 D7 E2E S3/S4).
+ *
+ * TODO 컬럼에 alice 담당 1건 + bob 담당 1건 + 우선순위 1/2 혼합.
+ * ASSIGNEE 스윔레인: 담당자별 서브그룹("앨리스" displayName / "bob" username) 검증.
+ * alice는 displayName="앨리스"로, bob은 displayName=null이므로 username "bob"으로 그룹화된다.
+ * PRIORITY 스윔레인: "우선순위 1", "우선순위 2" 서브그룹 검증.
+ *
+ * UUID는 RFC4122 v4 형식 — Zod v4 z.string().uuid() 통과 보장.
+ */
+export const SWIMLANE_BOARD: StoredBoardDetail = {
+  boardId: '10000000-0000-4000-8000-000000000004',
+  projectKey: 'SWIMTEST',
+  name: '스윔레인 테스트 보드',
+  swimlaneField: 'NONE',
+  columns: [
+    {
+      columnId: '60000000-0000-4000-8000-000000000001',
+      stateKey: 'open',
+      name: 'TODO',
+      category: 'TODO',
+      displayOrder: 1,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [
+        {
+          issueKey: 'SWIM-1',
+          summary: '스윔레인 테스트 이슈 1 — alice 담당 우선순위1',
+          assigneeId: ALICE_USER_ID,
+          version: 0,
+          priority: 1,
+          labels: [],
+          componentIds: [],
+        },
+        {
+          issueKey: 'SWIM-2',
+          summary: '스윔레인 테스트 이슈 2 — bob 담당 우선순위2',
+          assigneeId: BOB_USER_ID,
+          version: 0,
+          priority: 2,
+          labels: [],
+          componentIds: [],
+        },
+      ],
+    },
+    {
+      columnId: '60000000-0000-4000-8000-000000000002',
+      stateKey: 'in_progress',
+      name: 'IN PROGRESS',
+      category: 'IN_PROGRESS',
+      displayOrder: 2,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [],
+    },
+    {
+      columnId: '60000000-0000-4000-8000-000000000003',
+      stateKey: 'done',
+      name: 'DONE',
+      category: 'DONE',
+      displayOrder: 3,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [],
     },
   ],
   truncated: false,
@@ -390,4 +573,6 @@ export const FILTER_BOARD: StoredBoardDetail = {
 if (import.meta.env.MODE !== 'test') {
   seedBoard(DEFAULT_BOARD)
   seedBoardWithMeta(FILTER_BOARD)
+  seedBoardWithMeta(WIP_BOARD)
+  seedBoardWithMeta(SWIMLANE_BOARD)
 }

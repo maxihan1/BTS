@@ -1,6 +1,6 @@
-// 칸반 보드 REST API 클라이언트 — Zod 스키마 + fetch 함수 (FR-BD-01/02)
+// 칸반 보드 REST API 클라이언트 — Zod 스키마 + fetch 함수 (FR-BD-01/02/03)
 import { z } from 'zod'
-import { apiGet, apiPost } from './client'
+import { apiGet, apiPost, apiFetch, ApiError } from './client'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 헬퍼 — DataResponse 래퍼 파싱 (resolutions.ts 동일 패턴)
@@ -40,6 +40,8 @@ export const boardCardSchema = z.object({
   assigneeId: z.string().uuid().nullable(),
   /** 낙관적 잠금(Optimistic Lock) 버전 번호 */
   version: z.number().int(),
+  /** 우선순위 정수. 값이 작을수록 우선순위 높음. 백엔드 FR-BD-03 D4 신호. */
+  priority: z.number().int(),
 })
 
 /**
@@ -50,7 +52,7 @@ const columnCategorySchema = z.enum(['TODO', 'IN_PROGRESS', 'DONE'])
 
 /**
  * 보드 컬럼 스키마.
- * 백엔드 `BoardColumnResponse` DTO 대응.
+ * 백엔드 `BoardColumnWithCardsResponse` DTO 대응.
  */
 export const boardColumnSchema = z.object({
   /** 컬럼 UUID */
@@ -65,7 +67,18 @@ export const boardColumnSchema = z.object({
   displayOrder: z.number().int(),
   /** 컬럼에 포함된 카드(이슈) 목록 */
   cards: z.array(boardCardSchema),
+  /** WIP 제한 수. null이면 무제한. 백엔드 FR-BD-03 D4 신호. */
+  wipLimit: z.number().int().nullable(),
+  /** 카드 수가 wipLimit을 초과(strictly greater)했는지 여부. 백엔드 FR-BD-03 D4 신호. */
+  wipExceeded: z.boolean(),
 })
+
+/**
+ * 스윔레인 필드 enum 스키마.
+ * 백엔드 `SwimlaneField` enum 대응.
+ * NONE=스윔레인 없음, ASSIGNEE=담당자별, PRIORITY=우선순위별.
+ */
+export const swimlaneFieldSchema = z.enum(['NONE', 'ASSIGNEE', 'PRIORITY'])
 
 /**
  * 보드 상세 스키마.
@@ -84,6 +97,8 @@ export const boardDetailSchema = z.object({
   truncated: z.boolean(),
   /** 어떤 컬럼에도 배치되지 않은 이슈 수 */
   unplacedCount: z.number().int(),
+  /** 스윔레인 기준 필드. NONE=없음, ASSIGNEE=담당자별, PRIORITY=우선순위별. 백엔드 FR-BD-03 D4 신호. */
+  swimlaneField: swimlaneFieldSchema,
 })
 
 /**
@@ -146,6 +161,9 @@ export type BoardCard = z.infer<typeof boardCardSchema>
 /** 보드 컬럼 타입 */
 export type BoardColumn = z.infer<typeof boardColumnSchema>
 
+/** 스윔레인 기준 필드 타입. NONE | ASSIGNEE | PRIORITY */
+export type SwimlaneField = z.infer<typeof swimlaneFieldSchema>
+
 /** 보드 상세 타입 */
 export type BoardDetail = z.infer<typeof boardDetailSchema>
 
@@ -167,6 +185,25 @@ export interface MoveCardBody {
   /** 결의안 UUID. DONE 카테고리 이동 시 필요. 생략 가능 */
   resolutionId?: string
 }
+
+/**
+ * 보드 메타 스키마.
+ * 백엔드 `BoardMetaResponse` DTO 대응.
+ * PATCH /api/v1/boards/{id} 응답에 사용된다 (FR-BD-03 D6).
+ */
+export const boardMetaSchema = z.object({
+  /** 보드 UUID */
+  boardId: z.string().uuid(),
+  /** 프로젝트 키. 예: "ATLAS" */
+  projectKey: z.string().min(1),
+  /** 보드 표시 이름 */
+  name: z.string().min(1),
+  /** 스윔레인 기준 필드. NONE=없음, ASSIGNEE=담당자별, PRIORITY=우선순위별. */
+  swimlaneField: swimlaneFieldSchema,
+})
+
+/** 보드 메타 타입 (PATCH 응답) */
+export type BoardMeta = z.infer<typeof boardMetaSchema>
 
 /**
  * 보드 카드 필터 파라미터.
@@ -313,5 +350,30 @@ export async function moveCard(
     requestBody,
     dataResponseSchema(moveCardResultSchema),
   )
+  return wrapped.data
+}
+
+/**
+ * 보드의 스윔레인 기준 필드를 변경한다.
+ *
+ * PATCH /api/v1/boards/{boardId} body `{ swimlaneField }` → `{ data: BoardMeta }` 언랩.
+ *
+ * @param boardId 보드 UUID
+ * @param swimlaneField 변경할 스윔레인 기준. NONE=없음, ASSIGNEE=담당자별, PRIORITY=우선순위별.
+ * @returns BoardMeta — 변경된 보드 메타 정보
+ * @throws ApiError 비-2xx 응답 시
+ * @throws ZodError 응답 스키마 불일치 시
+ */
+export async function updateBoardSwimlane(boardId: string, swimlaneField: SwimlaneField): Promise<BoardMeta> {
+  const res = await apiFetch(`/api/v1/boards/${boardId}`, {
+    method: 'PATCH',
+    body: { swimlaneField },
+  })
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  const data: unknown = await res.json()
+  const wrapped = dataResponseSchema(boardMetaSchema).parse(data)
   return wrapped.data
 }

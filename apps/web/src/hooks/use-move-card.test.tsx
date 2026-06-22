@@ -28,6 +28,7 @@ const INITIAL_BOARD: BoardDetail = {
   name: '기본 보드',
   truncated: false,
   unplacedCount: 0,
+  swimlaneField: 'NONE',
   columns: [
     {
       columnId: COL_A_ID,
@@ -35,9 +36,11 @@ const INITIAL_BOARD: BoardDetail = {
       name: 'To Do',
       category: 'TODO',
       displayOrder: 1,
+      wipLimit: null,
+      wipExceeded: false,
       cards: [
-        { issueKey: 'ATLAS-1', summary: '카드 X', assigneeId: null, version: 1 },
-        { issueKey: 'ATLAS-2', summary: '카드 Y', assigneeId: null, version: 1 },
+        { issueKey: 'ATLAS-1', summary: '카드 X', assigneeId: null, version: 1, priority: 1 },
+        { issueKey: 'ATLAS-2', summary: '카드 Y', assigneeId: null, version: 1, priority: 1 },
       ],
     },
     {
@@ -46,6 +49,8 @@ const INITIAL_BOARD: BoardDetail = {
       name: '진행 중',
       category: 'IN_PROGRESS',
       displayOrder: 2,
+      wipLimit: null,
+      wipExceeded: false,
       cards: [],
     },
   ],

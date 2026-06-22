@@ -1,16 +1,20 @@
-// 칸반 보드 API 클라이언트 단위 테스트 — Zod 스키마 계약 + fetch 함수 검증 (FR-BD-01/02)
+// 칸반 보드 API 클라이언트 단위 테스트 — Zod 스키마 계약 + fetch 함수 검증 (FR-BD-01/02/03)
 import { describe, it, expect } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import {
   boardSummarySchema,
+  boardCardSchema,
+  boardColumnSchema,
   boardDetailSchema,
   boardCreatedSchema,
   moveCardResultSchema,
+  boardMetaSchema,
   fetchBoards,
   fetchBoard,
   createBoard,
   moveCard,
+  updateBoardSwimlane,
   type BoardCardFilterParams,
 } from './boards'
 
@@ -30,6 +34,7 @@ const cardWithAssignee = {
   summary: '테스트 이슈 1',
   assigneeId: ASSIGNEE_UUID,
   version: 1,
+  priority: 1,
 }
 
 const cardNoAssignee = {
@@ -37,6 +42,7 @@ const cardNoAssignee = {
   summary: '테스트 이슈 2',
   assigneeId: null,
   version: 2,
+  priority: 3,
 }
 
 const columnTodo = {
@@ -45,6 +51,8 @@ const columnTodo = {
   name: '할 일',
   category: 'TODO' as const,
   displayOrder: 1,
+  wipLimit: null,
+  wipExceeded: false,
   cards: [cardNoAssignee],
 }
 
@@ -54,6 +62,8 @@ const columnDone = {
   name: '완료',
   category: 'DONE' as const,
   displayOrder: 3,
+  wipLimit: null,
+  wipExceeded: false,
   cards: [cardWithAssignee],
 }
 
@@ -64,6 +74,7 @@ const boardDetailFixture = {
   columns: [columnTodo, columnDone],
   truncated: false,
   unplacedCount: 0,
+  swimlaneField: 'NONE' as const,
 }
 
 const boardSummaryFixture = {
@@ -121,6 +132,8 @@ describe('boardDetailSchema — 유효 픽스처 파싱', () => {
           name: '진행 중',
           category: 'IN_PROGRESS' as const,
           displayOrder: 2,
+          wipLimit: null,
+          wipExceeded: false,
           cards: [],
         },
         columnDone,
@@ -350,6 +363,159 @@ describe('moveCard — POST /api/v1/boards/{boardId}/cards/{issueKey}/move', () 
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// T-BD-11. boardCardSchema — priority 필드 파싱 (FR-BD-03 D4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('boardCardSchema — priority 필드 파싱 (FR-BD-03 D4)', () => {
+  it('T-BD-11a: priority 정수를 포함한 카드 픽스처를 파싱한다', () => {
+    const card = { ...cardWithAssignee, priority: 2 }
+    const result = boardCardSchema.safeParse(card)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.priority).toBe(2)
+  })
+
+  it('T-BD-11b: priority가 없으면 파싱을 거부한다', () => {
+    // priority 필드를 명시적으로 제외한 카드 객체
+    const cardWithoutPriority: Record<string, unknown> = {
+      issueKey: ISSUE_KEY,
+      summary: '테스트 이슈',
+      assigneeId: ASSIGNEE_UUID,
+      version: 1,
+    }
+    const result = boardCardSchema.safeParse(cardWithoutPriority)
+    expect(result.success).toBe(false)
+  })
+
+  it('T-BD-11c: priority가 소수(1.5)이면 파싱을 거부한다', () => {
+    const card = { ...cardWithAssignee, priority: 1.5 }
+    const result = boardCardSchema.safeParse(card)
+    expect(result.success).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-BD-12. boardColumnSchema — wipLimit / wipExceeded 필드 파싱 (FR-BD-03 D4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('boardColumnSchema — wipLimit/wipExceeded 파싱 (FR-BD-03 D4)', () => {
+  const cardWithPriority = { ...cardWithAssignee, priority: 1 }
+  const cardNoPriorityNull = { ...cardNoAssignee, priority: 3 }
+
+  it('T-BD-12a: wipLimit=숫자, wipExceeded=false 컬럼을 파싱한다', () => {
+    const col = { ...columnTodo, cards: [cardNoPriorityNull], wipLimit: 5, wipExceeded: false }
+    const result = boardColumnSchema.safeParse(col)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.wipLimit).toBe(5)
+    expect(result.data.wipExceeded).toBe(false)
+  })
+
+  it('T-BD-12b: wipLimit=null (무제한) 컬럼을 파싱한다', () => {
+    const col = { ...columnTodo, cards: [cardNoPriorityNull], wipLimit: null, wipExceeded: false }
+    const result = boardColumnSchema.safeParse(col)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.wipLimit).toBeNull()
+  })
+
+  it('T-BD-12c: wipLimit 누락 시 파싱을 거부한다', () => {
+    // wipLimit 필드를 포함하지 않은 컬럼 객체를 직접 구성
+    const col: Record<string, unknown> = {
+      columnId: COLUMN_ID_TODO,
+      stateKey: 'todo',
+      name: '할 일',
+      category: 'TODO',
+      displayOrder: 1,
+      wipExceeded: false,
+      cards: [cardNoPriorityNull],
+    }
+    const result = boardColumnSchema.safeParse(col)
+    expect(result.success).toBe(false)
+  })
+
+  it('T-BD-12d: wipExceeded 누락 시 파싱을 거부한다', () => {
+    // wipExceeded 필드를 포함하지 않은 컬럼 객체를 직접 구성
+    const col: Record<string, unknown> = {
+      columnId: COLUMN_ID_TODO,
+      stateKey: 'todo',
+      name: '할 일',
+      category: 'TODO',
+      displayOrder: 1,
+      wipLimit: null,
+      cards: [cardNoPriorityNull],
+    }
+    const result = boardColumnSchema.safeParse(col)
+    expect(result.success).toBe(false)
+  })
+
+  it('T-BD-12e: wipExceeded=true 컬럼을 파싱한다', () => {
+    const col = { ...columnTodo, cards: [cardWithPriority], wipLimit: 1, wipExceeded: true }
+    const result = boardColumnSchema.safeParse(col)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.wipExceeded).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-BD-13. boardDetailSchema — swimlaneField 필드 파싱 (FR-BD-03 D4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('boardDetailSchema — swimlaneField 파싱 (FR-BD-03 D4)', () => {
+  const columnWithWip = {
+    ...columnTodo,
+    cards: [{ ...cardNoAssignee, priority: 2 }],
+    wipLimit: null,
+    wipExceeded: false,
+  }
+
+  it('T-BD-13a: swimlaneField=NONE 보드를 파싱한다', () => {
+    const board = { ...boardDetailFixture, columns: [columnWithWip], swimlaneField: 'NONE' }
+    const result = boardDetailSchema.safeParse(board)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.swimlaneField).toBe('NONE')
+  })
+
+  it('T-BD-13b: swimlaneField=ASSIGNEE 보드를 파싱한다', () => {
+    const board = { ...boardDetailFixture, columns: [columnWithWip], swimlaneField: 'ASSIGNEE' }
+    const result = boardDetailSchema.safeParse(board)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.swimlaneField).toBe('ASSIGNEE')
+  })
+
+  it('T-BD-13c: swimlaneField=PRIORITY 보드를 파싱한다', () => {
+    const board = { ...boardDetailFixture, columns: [columnWithWip], swimlaneField: 'PRIORITY' }
+    const result = boardDetailSchema.safeParse(board)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.swimlaneField).toBe('PRIORITY')
+  })
+
+  it('T-BD-13d: swimlaneField 누락 시 파싱을 거부한다', () => {
+    // swimlaneField 필드를 포함하지 않은 보드 객체를 직접 구성
+    const board: Record<string, unknown> = {
+      boardId: BOARD_ID,
+      projectKey: PROJECT_KEY,
+      name: 'ATLAS 보드',
+      columns: [columnWithWip],
+      truncated: false,
+      unplacedCount: 0,
+    }
+    const result = boardDetailSchema.safeParse(board)
+    expect(result.success).toBe(false)
+  })
+
+  it('T-BD-13e: swimlaneField에 허용되지 않는 값(CUSTOM)이면 파싱을 거부한다', () => {
+    const board = { ...boardDetailFixture, columns: [columnWithWip], swimlaneField: 'CUSTOM' }
+    const result = boardDetailSchema.safeParse(board)
+    expect(result.success).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // T-BD-10. fetchBoard 필터 — query string 조립 (FR-BD-02)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -452,5 +618,100 @@ describe('fetchBoard — filter query string 조립 (FR-BD-02)', () => {
     expect(capturedUrl).not.toBeNull()
     const url = new URL(capturedUrl ?? '')
     expect(url.search).toBe('')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// boardMetaSchema — 스키마 파싱 (FR-BD-03 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('boardMetaSchema — 유효 픽스처 파싱', () => {
+  it('T-BD-11a: boardId/projectKey/name/swimlaneField 모두 파싱된다', () => {
+    const fixture = {
+      boardId: BOARD_ID,
+      projectKey: PROJECT_KEY,
+      name: 'ATLAS 보드',
+      swimlaneField: 'ASSIGNEE' as const,
+    }
+    const result = boardMetaSchema.safeParse(fixture)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.boardId).toBe(BOARD_ID)
+    expect(result.data.swimlaneField).toBe('ASSIGNEE')
+  })
+
+  it('T-BD-11b: swimlaneField 값이 NONE/ASSIGNEE/PRIORITY 세 가지만 허용된다', () => {
+    const valid = ['NONE', 'ASSIGNEE', 'PRIORITY'] as const
+    for (const field of valid) {
+      const result = boardMetaSchema.safeParse({
+        boardId: BOARD_ID,
+        projectKey: PROJECT_KEY,
+        name: 'ATLAS 보드',
+        swimlaneField: field,
+      })
+      expect(result.success, `${field} should be valid`).toBe(true)
+    }
+    const invalid = boardMetaSchema.safeParse({
+      boardId: BOARD_ID,
+      projectKey: PROJECT_KEY,
+      name: 'ATLAS 보드',
+      swimlaneField: 'COMPONENT',
+    })
+    expect(invalid.success).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// updateBoardSwimlane — PATCH /api/v1/boards/{id} (FR-BD-03 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('updateBoardSwimlane', () => {
+  const boardMetaFixture = {
+    boardId: BOARD_ID,
+    projectKey: PROJECT_KEY,
+    name: 'ATLAS 보드',
+    swimlaneField: 'ASSIGNEE' as const,
+  }
+
+  it('T-BD-12a: PATCH /api/v1/boards/{id}를 body {swimlaneField} 로 호출하고 BoardMeta를 반환한다', async () => {
+    let capturedMethod: string | null = null
+    let capturedBody: unknown = null
+
+    server.use(
+      http.patch('/api/v1/boards/:boardId', async ({ request }) => {
+        capturedMethod = request.method
+        capturedBody = await request.json()
+        return HttpResponse.json({ data: boardMetaFixture })
+      }),
+    )
+
+    const result = await updateBoardSwimlane(BOARD_ID, 'ASSIGNEE')
+    expect(capturedMethod).toBe('PATCH')
+    expect(capturedBody).toEqual({ swimlaneField: 'ASSIGNEE' })
+    expect(result.boardId).toBe(BOARD_ID)
+    expect(result.swimlaneField).toBe('ASSIGNEE')
+  })
+
+  it('T-BD-12b: swimlaneField=NONE으로 호출해 NONE을 반환한다', async () => {
+    server.use(
+      http.patch('/api/v1/boards/:boardId', async () => {
+        return HttpResponse.json({
+          data: { ...boardMetaFixture, swimlaneField: 'NONE' as const },
+        })
+      }),
+    )
+
+    const result = await updateBoardSwimlane(BOARD_ID, 'NONE')
+    expect(result.swimlaneField).toBe('NONE')
+  })
+
+  it('T-BD-12c: 비-2xx 응답 시 ApiError가 throw된다', async () => {
+    server.use(
+      http.patch('/api/v1/boards/:boardId', () => {
+        return HttpResponse.json({ code: 'FORBIDDEN', message: 'Access denied' }, { status: 403 })
+      }),
+    )
+
+    await expect(updateBoardSwimlane(BOARD_ID, 'ASSIGNEE')).rejects.toMatchObject({ status: 403 })
   })
 })
