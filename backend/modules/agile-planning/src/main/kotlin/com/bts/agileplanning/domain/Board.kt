@@ -27,6 +27,7 @@ import java.util.UUID
  * @property createdAt 보드 생성 시각.
  * @property updatedAt 보드 최종 수정 시각.
  * @property deletedAt soft-delete 시각. null 이면 활성 보드.
+ * @property swimlaneField 스윔레인 기준 필드. 기본값 [SwimlaneField.NONE] 은 스윔레인 비활성.
  */
 data class Board(
     val id: UUID,
@@ -36,6 +37,7 @@ data class Board(
     val createdAt: Instant,
     val updatedAt: Instant,
     val deletedAt: Instant? = null,
+    val swimlaneField: SwimlaneField = SwimlaneField.NONE,
 ) {
     init {
         require(projectKey.isNotBlank()) { "Board.projectKey must not be blank." }

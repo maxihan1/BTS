@@ -26,6 +26,8 @@ import java.util.UUID
  * @property category 칸반 카테고리. `"TODO"` · `"IN_PROGRESS"` · `"DONE"` 중 하나.
  *   보드 그룹 표시 및 완료 컬럼 판별에 사용된다.
  * @property displayOrder 컬럼 표시 순서 (오름차순). 낮을수록 왼쪽에 표시.
+ * @property wipLimit WIP(Work In Progress) 제한 수. null 이면 무제한. 양수만 허용.
+ *   0 또는 음수는 IllegalArgumentException을 발생시킨다.
  */
 data class BoardColumn(
     val id: UUID,
@@ -33,10 +35,12 @@ data class BoardColumn(
     val name: String,
     val category: String,
     val displayOrder: Int,
+    val wipLimit: Int? = null,
 ) {
     init {
         require(stateKey.isNotBlank()) { "BoardColumn.stateKey must not be blank." }
         require(name.isNotBlank()) { "BoardColumn.name must not be blank." }
         require(category.isNotBlank()) { "BoardColumn.category must not be blank." }
+        require(wipLimit == null || wipLimit > 0) { "BoardColumn.wipLimit must be null or positive." }
     }
 }
