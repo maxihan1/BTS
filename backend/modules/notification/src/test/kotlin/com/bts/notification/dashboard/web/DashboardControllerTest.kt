@@ -10,7 +10,6 @@ import com.bts.notification.dashboard.domain.Dashboard
 import com.bts.notification.dashboard.domain.DashboardDomainException
 import com.bts.notification.dashboard.domain.DashboardVisibility
 import com.bts.notification.dashboard.repository.DashboardPage
-import com.bts.notification.web.NotificationExceptionHandler
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
@@ -48,19 +47,26 @@ import java.util.UUID
  * DashboardService 는 MockK stub 으로 대체한다.
  * Spring Security 컨텍스트는 SecurityContextHolder 에 UUID 기반 Authentication 을 직접 주입한다.
  *
+ * advice scoping: DashboardExceptionHandler 만 등록 (NotificationExceptionHandler 는 다른 패키지 — 격리).
+ * 각 에러 케이스에 errorCode 단언을 포함해 가짜 그린을 차단한다.
+ *
  * 테스트 케이스.
  * - POST-1. POST /dashboards 정상 -> 201
- * - POST-2. POST 빈 이름 -> 400
+ * - POST-2. POST 빈 이름 -> 400 + errorCode=NOTIF_DASHBOARD_INVALID
+ * - POST-3. POST malformed JSON body -> 400 + errorCode=NOTIF_DASHBOARD_INVALID
+ * - POST-4. POST 비-JSON layout -> 400 + errorCode=NOTIF_DASHBOARD_INVALID
  * - GET_LIST-1. GET /dashboards?limit=10&offset=0 -> 200 + items/total
  * - GET_ONE-1. GET /dashboards/{id} 존재 -> 200
- * - GET_ONE-2. GET /dashboards/{id} 없음 -> 404
+ * - GET_ONE-2. GET /dashboards/{id} 없음 -> 404 + errorCode
+ * - GET_ONE-3. GET /dashboards/not-a-uuid -> 400 + errorCode=NOTIF_DASHBOARD_INVALID
  * - PATCH-1. PATCH /{id} 정상 -> 200
- * - PATCH-2. PATCH /{id} 비소유자 -> 403
- * - PATCH-3. PATCH /{id} OCC 충돌 -> 409
- * - PATCH-4. PATCH /{id} 없음 -> 404
+ * - PATCH-2. PATCH /{id} 비소유자 -> 403 + errorCode
+ * - PATCH-3. PATCH /{id} OCC 충돌 -> 409 + errorCode
+ * - PATCH-4. PATCH /{id} 없음 -> 404 + errorCode
+ * - PATCH-5. PATCH /{id} malformed JSON -> 400 + errorCode=NOTIF_DASHBOARD_INVALID
  * - DELETE-1. DELETE /{id} 정상 -> 204
- * - DELETE-2. DELETE /{id} 비소유자 -> 403
- * - DELETE-3. DELETE /{id} 없음 -> 404
+ * - DELETE-2. DELETE /{id} 비소유자 -> 403 + errorCode
+ * - DELETE-3. DELETE /{id} 없음 -> 404 + errorCode
  * - AUTH-1. 미인증 요청 -> 401
  */
 @ExtendWith(SpringExtension::class)
@@ -70,7 +76,8 @@ class DashboardControllerTest {
     /**
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *
-     * DashboardController, DashboardExceptionHandler, NotificationExceptionHandler 와 MockK stub 빈을 등록한다.
+     * DashboardController, DashboardExceptionHandler 와 MockK stub 빈을 등록한다.
+     * NotificationExceptionHandler 는 등록하지 않는다 — production 과 동일한 advice scoping.
      */
     @Configuration
     @EnableWebMvc
@@ -83,9 +90,6 @@ class DashboardControllerTest {
 
         @Bean
         open fun dashboardExceptionHandler() = DashboardExceptionHandler()
-
-        @Bean
-        open fun notificationExceptionHandler() = NotificationExceptionHandler()
     }
 
     @Autowired
@@ -141,9 +145,9 @@ class DashboardControllerTest {
             .andExpect(jsonPath("$.data.visibility").value("PRIVATE"))
     }
 
-    /** POST-2. 빈 name -> 서비스가 DashboardDomainException 던짐 -> 400. */
+    /** POST-2. 빈 name -> 도메인 DashboardDomainException -> 400 + errorCode=NOTIF_DASHBOARD_INVALID. */
     @Test
-    fun `POST dashboards 빈 이름은 400 반환`() {
+    fun `POST dashboards 빈 이름은 400 반환 — NOTIF_DASHBOARD_INVALID errorCode`() {
         every {
             service.create(
                 actorId = actorId,
@@ -161,6 +165,50 @@ class DashboardControllerTest {
                 .content(mapper.writeValueAsString(mapOf("name" to "", "visibility" to "PRIVATE"))),
         )
             .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("NOTIF_DASHBOARD_INVALID"))
+    }
+
+    /** POST-3. malformed JSON body -> 400 + errorCode=NOTIF_DASHBOARD_INVALID. */
+    @Test
+    fun `POST dashboards malformed JSON body 는 400 반환 — NOTIF_DASHBOARD_INVALID errorCode`() {
+        mockMvc.perform(
+            post("/api/v1/dashboards")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{not-valid-json"),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("NOTIF_DASHBOARD_INVALID"))
+    }
+
+    /** POST-4. 비-JSON layout -> 400 + errorCode=NOTIF_DASHBOARD_INVALID. */
+    @Test
+    fun `POST dashboards 비-JSON layout 은 400 반환 — NOTIF_DASHBOARD_INVALID errorCode`() {
+        every {
+            service.create(
+                actorId = actorId,
+                name = "테스트",
+                description = null,
+                visibility = DashboardVisibility.PRIVATE,
+                layout = "{not json",
+                sharedUserIds = emptySet(),
+            )
+        } throws DashboardDomainException("layout 은 유효한 JSON 이어야 합니다.")
+
+        mockMvc.perform(
+            post("/api/v1/dashboards")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf(
+                            "name" to "테스트",
+                            "visibility" to "PRIVATE",
+                            "layout" to "{not json",
+                        ),
+                    ),
+                ),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("NOTIF_DASHBOARD_INVALID"))
     }
 
     // ── GET /api/v1/dashboards ─────────────────────────────────────────────────
@@ -193,7 +241,7 @@ class DashboardControllerTest {
             .andExpect(jsonPath("$.data.id").value(dashboardId.toString()))
     }
 
-    /** GET_ONE-2. 단건 조회 없음 -> 404. */
+    /** GET_ONE-2. 단건 조회 없음 -> 404 + errorCode. */
     @Test
     fun `GET dashboards id 없으면 404 반환`() {
         every { service.get(actorId, dashboardId) } throws DashboardNotFoundException(dashboardId)
@@ -201,6 +249,14 @@ class DashboardControllerTest {
         mockMvc.perform(get("/api/v1/dashboards/$dashboardId"))
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.errorCode").value("NOTIF_DASHBOARD_NOT_FOUND"))
+    }
+
+    /** GET_ONE-3. UUID 가 아닌 path variable -> 400 + errorCode=NOTIF_DASHBOARD_INVALID. */
+    @Test
+    fun `GET dashboards path 가 UUID 가 아니면 400 반환 — NOTIF_DASHBOARD_INVALID errorCode`() {
+        mockMvc.perform(get("/api/v1/dashboards/not-a-uuid"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("NOTIF_DASHBOARD_INVALID"))
     }
 
     // ── PATCH /api/v1/dashboards/{id} ─────────────────────────────────────────
@@ -280,7 +336,7 @@ class DashboardControllerTest {
             .andExpect(jsonPath("$.errorCode").value("NOTIF_DASHBOARD_CONFLICT"))
     }
 
-    /** PATCH-4. 없는 대시보드 -> 404. */
+    /** PATCH-4. 없는 대시보드 -> 404 + errorCode. */
     @Test
     fun `PATCH dashboards 없는 대시보드 시 404 반환`() {
         every {
@@ -305,6 +361,18 @@ class DashboardControllerTest {
             .andExpect(jsonPath("$.errorCode").value("NOTIF_DASHBOARD_NOT_FOUND"))
     }
 
+    /** PATCH-5. malformed JSON body -> 400 + errorCode=NOTIF_DASHBOARD_INVALID. */
+    @Test
+    fun `PATCH dashboards malformed JSON body 는 400 반환 — NOTIF_DASHBOARD_INVALID errorCode`() {
+        mockMvc.perform(
+            patch("/api/v1/dashboards/$dashboardId")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{not-valid-json"),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("NOTIF_DASHBOARD_INVALID"))
+    }
+
     // ── DELETE /api/v1/dashboards/{id} ────────────────────────────────────────
 
     /** DELETE-1. 정상 삭제 -> 204. */
@@ -316,7 +384,7 @@ class DashboardControllerTest {
             .andExpect(status().isNoContent)
     }
 
-    /** DELETE-2. 비소유자 삭제 -> 403. */
+    /** DELETE-2. 비소유자 삭제 -> 403 + errorCode. */
     @Test
     fun `DELETE dashboards 비소유자 삭제 시 403 반환`() {
         every { service.delete(actorId, dashboardId) } throws DashboardForbiddenException()
@@ -326,7 +394,7 @@ class DashboardControllerTest {
             .andExpect(jsonPath("$.errorCode").value("NOTIF_DASHBOARD_FORBIDDEN"))
     }
 
-    /** DELETE-3. 없는 대시보드 -> 404. */
+    /** DELETE-3. 없는 대시보드 -> 404 + errorCode. */
     @Test
     fun `DELETE dashboards 없는 대시보드 시 404 반환`() {
         every { service.delete(actorId, dashboardId) } throws DashboardNotFoundException(dashboardId)

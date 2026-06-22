@@ -150,6 +150,26 @@ class DashboardServiceTest {
         verify(exactly = 1) { repository.findPage(ownerId, 100, 0) }
     }
 
+    /** LIST-3. C3 — limit 음수(-1) 시 1 로 클램프, 500 아님. */
+    @Test
+    fun `list — limit 이 음수이면 1 로 클램프한다`() {
+        every { repository.findPage(ownerId, 1, 0) } returns DashboardPage(emptyList(), 0)
+
+        service.list(actorId = ownerId, limit = -1, offset = 0)
+
+        verify(exactly = 1) { repository.findPage(ownerId, 1, 0) }
+    }
+
+    /** LIST-4. C3 — offset 음수(-1) 시 0 으로 클램프, 500 아님. */
+    @Test
+    fun `list — offset 이 음수이면 0 으로 클램프한다`() {
+        every { repository.findPage(ownerId, 50, 0) } returns DashboardPage(emptyList(), 0)
+
+        service.list(actorId = ownerId, limit = 50, offset = -1)
+
+        verify(exactly = 1) { repository.findPage(ownerId, 50, 0) }
+    }
+
     // ── 수정 (OCC, 권한) ──────────────────────────────────────────────────────
 
     /** UPDATE-1. update — 조회 불가(null) 시 404. */

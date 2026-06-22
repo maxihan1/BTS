@@ -67,6 +67,50 @@ class DashboardTest : DescribeSpec({
             val largeLayout = "a".repeat(65537)
             shouldThrow<DashboardDomainException> { buildDashboard(layout = largeLayout) }
         }
+
+        // N1 boundary-exact
+        it("layout 이 정확히 65536바이트이면 허용된다") {
+            val exactLayout = "a".repeat(65536)
+            buildDashboard(layout = exactLayout).layout shouldBe exactLayout
+        }
+
+        it("layout 이 정확히 65537바이트이면 예외를 던진다") {
+            val overLayout = "a".repeat(65537)
+            shouldThrow<DashboardDomainException> { buildDashboard(layout = overLayout) }
+        }
+    }
+
+    // ── layout JSON 유효성 불변식 (B1) ──────────────────────────────────────────
+
+    describe("Dashboard.create — layout JSON 유효성") {
+        it("유효한 JSON 배열이면 허용된다") {
+            buildDashboard(layout = "[]").layout shouldBe "[]"
+        }
+
+        it("유효한 JSON 객체이면 허용된다") {
+            buildDashboard(layout = """{"key":"value"}""").layout shouldBe """{"key":"value"}"""
+        }
+
+        it("비-JSON 문자열이면 예외를 던진다") {
+            shouldThrow<DashboardDomainException> { buildDashboard(layout = "{not json") }
+        }
+
+        it("빈 문자열 layout 이면 예외를 던진다") {
+            shouldThrow<DashboardDomainException> { buildDashboard(layout = "") }
+        }
+    }
+
+    // ── name boundary-exact (N1) ─────────────────────────────────────────────
+
+    describe("Dashboard.create — name 길이 경계값") {
+        it("name 이 정확히 200자이면 허용된다") {
+            val name = "a".repeat(200)
+            buildDashboard(name = name).name shouldBe name
+        }
+
+        it("name 이 정확히 201자이면 예외를 던진다") {
+            shouldThrow<DashboardDomainException> { buildDashboard(name = "a".repeat(201)) }
+        }
     }
 
     // ── visibility 정규화 — PRIVATE/ORG 시 shares 비워짐 ─────────────────────────

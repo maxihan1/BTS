@@ -262,6 +262,25 @@ class DashboardRepositoryTest : NotificationTestcontainersBase() {
         assertThat(page.total).isEqualTo(0)
     }
 
+    // ── C2: updated_at 동률 tiebreaker — 페이지 경계 누락/중복 없음 ──────────────
+
+    @Test
+    fun `findPage updated_at 동률 시 id tiebreaker 로 페이지 경계 행 누락 없다`() {
+        // 동일 updated_at 을 갖는 대시보드 5건 삽입
+        // (Dashboard.create 는 now 를 받아 created_at=updated_at 으로 설정함)
+        // 같은 now 를 주면 updated_at 이 동률이 됨
+        repeat(5) { buildAndInsert(ownerId = ownerId, name = "동률 대시보드 $it") }
+
+        val page1 = repository.findPage(actorId = ownerId, limit = 3, offset = 0)
+        val page2 = repository.findPage(actorId = ownerId, limit = 3, offset = 3)
+
+        val allIds = (page1.items + page2.items).map { it.id }
+        // 중복 없이 5건이 나뉘어야 함
+        assertThat(allIds.distinct()).hasSize(5)
+        assertThat(page1.items).hasSize(3)
+        assertThat(page2.items).hasSize(2)
+    }
+
     // ── 소프트 삭제된 항목은 목록에서 제외 ─────────────────────────────────────
 
     @Test
