@@ -65,6 +65,8 @@ export const boardLabels = {
       ASSIGNEE: '담당자',
       /** PRIORITY — 우선순위별 그룹 */
       PRIORITY: '우선순위',
+      /** EPIC — 에픽별 그룹 */
+      EPIC: '에픽',
     },
 
     /** 변경 실패 시 토스트 오류 메시지 */

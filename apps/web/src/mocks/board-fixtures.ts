@@ -43,8 +43,8 @@ export interface StoredBoardDetail {
   boardId: string
   projectKey: string
   name: string
-  /** 스윔레인 기준 필드. 백엔드 FR-BD-03 D4 신호. NONE=없음, ASSIGNEE=담당자별, PRIORITY=우선순위별 */
-  swimlaneField: 'NONE' | 'ASSIGNEE' | 'PRIORITY'
+  /** 스윔레인 기준 필드. NONE=없음, ASSIGNEE=담당자별, PRIORITY=우선순위별, EPIC=에픽별 */
+  swimlaneField: 'NONE' | 'ASSIGNEE' | 'PRIORITY' | 'EPIC'
   columns: Array<{
     columnId: string
     stateKey: string
@@ -271,6 +271,7 @@ export const DEFAULT_BOARD: BoardDetail = {
           assigneeId: '00000000-0000-4000-8000-000000000001',
           version: 0,
           priority: 1,
+          epicKey: null,
         },
         {
           issueKey: 'ATLAS-4',
@@ -278,6 +279,7 @@ export const DEFAULT_BOARD: BoardDetail = {
           assigneeId: null,
           version: 0,
           priority: 4,
+          epicKey: null,
         },
       ],
     },
@@ -296,6 +298,7 @@ export const DEFAULT_BOARD: BoardDetail = {
           assigneeId: '00000000-0000-4000-8000-000000000001',
           version: 1,
           priority: 2,
+          epicKey: null,
         },
       ],
     },
@@ -314,6 +317,7 @@ export const DEFAULT_BOARD: BoardDetail = {
           assigneeId: null,
           version: 2,
           priority: 3,
+          epicKey: null,
         },
       ],
     },
@@ -372,6 +376,7 @@ export const FILTER_BOARD: StoredBoardDetail = {
           assigneeId: ALICE_USER_ID,
           version: 0,
           priority: 1,
+          epicKey: null,
           labels: ['bug'],
           componentIds: [COMPONENT_C1_ID],
         },
@@ -381,6 +386,7 @@ export const FILTER_BOARD: StoredBoardDetail = {
           assigneeId: BOB_USER_ID,
           version: 0,
           priority: 2,
+          epicKey: null,
           labels: ['feature'],
           componentIds: [COMPONENT_C1_ID, COMPONENT_C2_ID],
         },
@@ -390,6 +396,7 @@ export const FILTER_BOARD: StoredBoardDetail = {
           assigneeId: ALICE_USER_ID,
           version: 0,
           priority: 3,
+          epicKey: null,
           labels: ['bug', 'documentation'],
           componentIds: [COMPONENT_C2_ID],
         },
@@ -399,6 +406,7 @@ export const FILTER_BOARD: StoredBoardDetail = {
           assigneeId: null,
           version: 0,
           priority: 4,
+          epicKey: null,
           labels: [],
           componentIds: [],
         },
@@ -439,6 +447,7 @@ export const WIP_BOARD: StoredBoardDetail = {
           assigneeId: '00000000-0000-4000-8000-000000000001',
           version: 0,
           priority: 1,
+          epicKey: null,
           labels: [],
           componentIds: [],
         },
@@ -459,6 +468,7 @@ export const WIP_BOARD: StoredBoardDetail = {
           assigneeId: '00000000-0000-4000-8000-000000000001',
           version: 0,
           priority: 2,
+          epicKey: null,
           labels: [],
           componentIds: [],
         },
@@ -468,6 +478,7 @@ export const WIP_BOARD: StoredBoardDetail = {
           assigneeId: ALICE_USER_ID,
           version: 0,
           priority: 3,
+          epicKey: null,
           labels: [],
           componentIds: [],
         },
@@ -477,6 +488,7 @@ export const WIP_BOARD: StoredBoardDetail = {
           assigneeId: BOB_USER_ID,
           version: 0,
           priority: 1,
+          epicKey: null,
           labels: [],
           componentIds: [],
         },
@@ -528,6 +540,7 @@ export const SWIMLANE_BOARD: StoredBoardDetail = {
           assigneeId: ALICE_USER_ID,
           version: 0,
           priority: 1,
+          epicKey: null,
           labels: [],
           componentIds: [],
         },
@@ -537,6 +550,7 @@ export const SWIMLANE_BOARD: StoredBoardDetail = {
           assigneeId: BOB_USER_ID,
           version: 0,
           priority: 2,
+          epicKey: null,
           labels: [],
           componentIds: [],
         },

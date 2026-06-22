@@ -79,12 +79,13 @@ function toResponseDetail(stored: StoredBoardDetail, params: URLSearchParams): B
       ...col,
       cards: col.cards
         .filter((card) => matchesFilter(card, params))
-        .map(({ issueKey, summary, assigneeId, version, priority }): BoardCard => ({
+        .map(({ issueKey, summary, assigneeId, version, priority, epicKey }): BoardCard => ({
           issueKey,
           summary,
           assigneeId,
           version,
           priority,
+          epicKey: epicKey ?? null,
         })),
     })),
   }
@@ -331,7 +332,7 @@ const moveCardHandler = http.post(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 허용된 SwimlaneField 값 목록 — 타입가드용 */
-const VALID_SWIMLANE_FIELDS: ReadonlyArray<SwimlaneField> = ['NONE', 'ASSIGNEE', 'PRIORITY']
+const VALID_SWIMLANE_FIELDS: ReadonlyArray<SwimlaneField> = ['NONE', 'ASSIGNEE', 'PRIORITY', 'EPIC']
 
 /**
  * PATCH /api/v1/boards/{boardId} — 보드 스윔레인 기준 변경.
@@ -383,7 +384,7 @@ const updateSwimlaneHandler = http.patch(
       return HttpResponse.json(
         {
           errorCode: 'INVALID_SWIMLANE_FIELD',
-          message: `swimlaneField는 NONE, ASSIGNEE, PRIORITY 중 하나여야 합니다`,
+          message: `swimlaneField는 NONE, ASSIGNEE, PRIORITY, EPIC 중 하나여야 합니다`,
         },
         { status: 400 },
       )

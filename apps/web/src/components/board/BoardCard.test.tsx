@@ -44,6 +44,7 @@ const baseCard: BoardCardType = {
   assigneeId: 'user-uuid-0001',
   version: 3,
   priority: 1,
+  epicKey: null,
 }
 
 const COLUMN_ID = 'col-uuid-0001'

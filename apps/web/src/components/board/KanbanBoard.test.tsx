@@ -68,7 +68,7 @@ const boardFixture: BoardDetail = {
       wipLimit: null,
       wipExceeded: false,
       cards: [
-        { issueKey: 'ATLAS-1', summary: '첫 번째 이슈', assigneeId: null, version: 1, priority: 1 },
+        { issueKey: 'ATLAS-1', summary: '첫 번째 이슈', assigneeId: null, version: 1, priority: 1, epicKey: null },
       ],
     },
     {
@@ -80,7 +80,7 @@ const boardFixture: BoardDetail = {
       wipLimit: null,
       wipExceeded: false,
       cards: [
-        { issueKey: 'ATLAS-3', summary: '완료된 이슈', assigneeId: null, version: 5, priority: 1 },
+        { issueKey: 'ATLAS-3', summary: '완료된 이슈', assigneeId: null, version: 5, priority: 1, epicKey: null },
       ],
     },
     {
@@ -92,7 +92,7 @@ const boardFixture: BoardDetail = {
       wipLimit: null,
       wipExceeded: false,
       cards: [
-        { issueKey: 'ATLAS-2', summary: '두 번째 이슈', assigneeId: null, version: 3, priority: 1 },
+        { issueKey: 'ATLAS-2', summary: '두 번째 이슈', assigneeId: null, version: 3, priority: 1, epicKey: null },
       ],
     },
   ],

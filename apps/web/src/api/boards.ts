@@ -42,6 +42,14 @@ export const boardCardSchema = z.object({
   version: z.number().int(),
   /** 우선순위 정수. 값이 작을수록 우선순위 높음. 백엔드 FR-BD-03 D4 신호. */
   priority: z.number().int(),
+  /**
+   * 이슈가 속한 에픽 이슈 키. 에픽 없는 이슈는 null.
+   * 백엔드 BoardCardResponse.epicKey — 항상 키 직렬화(null 포함).
+   * 동일 프로젝트 에픽만 포함 (cross-project 에픽은 null).
+   * .default(null) — 기존 인라인 mock 방어용. 백엔드는 항상 키를 전송.
+   * FR-EP-01 D6/D7 EPIC 스윔레인 근거 필드.
+   */
+  epicKey: z.string().nullable().default(null),
 })
 
 /**
@@ -76,9 +84,9 @@ export const boardColumnSchema = z.object({
 /**
  * 스윔레인 필드 enum 스키마.
  * 백엔드 `SwimlaneField` enum 대응.
- * NONE=스윔레인 없음, ASSIGNEE=담당자별, PRIORITY=우선순위별.
+ * NONE=스윔레인 없음, ASSIGNEE=담당자별, PRIORITY=우선순위별, EPIC=에픽별.
  */
-export const swimlaneFieldSchema = z.enum(['NONE', 'ASSIGNEE', 'PRIORITY'])
+export const swimlaneFieldSchema = z.enum(['NONE', 'ASSIGNEE', 'PRIORITY', 'EPIC'])
 
 /**
  * 보드 상세 스키마.
