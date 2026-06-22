@@ -197,3 +197,60 @@ describe('BoardColumn — S4 드롭 하이라이트', () => {
     expect(dropZone?.className).not.toMatch(/ring-2/)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S5. WIP 제한 표시
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BoardColumn — S5 WIP 제한 표시', () => {
+  it('S5a: wipLimit=5·카드 2개·wipExceeded=false → 헤더에 "2/5" 표기, 경고 없음', () => {
+    const col: BoardColumnType = {
+      columnId: 'col-wip-ok',
+      stateKey: 'in-progress',
+      name: 'WIP 미초과',
+      category: 'IN_PROGRESS',
+      displayOrder: 1,
+      wipLimit: 5,
+      wipExceeded: false,
+      cards: [
+        { issueKey: 'ATLAS-10', summary: '이슈 10', assigneeId: null, version: 1, priority: 1 },
+        { issueKey: 'ATLAS-11', summary: '이슈 11', assigneeId: null, version: 2, priority: 1 },
+      ],
+    }
+    renderColumn(col, new Map())
+    // 카드 수/한도 표기
+    expect(screen.getByText('2/5')).toBeInTheDocument()
+    // 경고 aria-label 없음
+    expect(screen.queryByLabelText('WIP 초과')).not.toBeInTheDocument()
+  })
+
+  it('S5b: wipLimit=2·카드 3개·wipExceeded=true → "3/2" 표기 + "WIP 초과" 경고 표시', () => {
+    const col: BoardColumnType = {
+      columnId: 'col-wip-exceed',
+      stateKey: 'in-progress',
+      name: 'WIP 초과',
+      category: 'IN_PROGRESS',
+      displayOrder: 1,
+      wipLimit: 2,
+      wipExceeded: true,
+      cards: [
+        { issueKey: 'ATLAS-20', summary: '이슈 20', assigneeId: null, version: 1, priority: 1 },
+        { issueKey: 'ATLAS-21', summary: '이슈 21', assigneeId: null, version: 2, priority: 1 },
+        { issueKey: 'ATLAS-22', summary: '이슈 22', assigneeId: null, version: 3, priority: 1 },
+      ],
+    }
+    renderColumn(col, new Map())
+    // 초과 표기
+    expect(screen.getByText('3/2')).toBeInTheDocument()
+    // 경고 요소 — aria-label으로 의미 전달
+    expect(screen.getByLabelText('WIP 초과')).toBeInTheDocument()
+  })
+
+  it('S5c: wipLimit=null → 기존처럼 카드 수만 표시, 슬래시 없음', () => {
+    // columnWithCards: wipLimit=null, 카드 3개
+    renderColumn()
+    // 단순 숫자만 (슬래시 표기 없음)
+    expect(screen.getByText('3')).toBeInTheDocument()
+    expect(screen.queryByText(/\d+\/\d+/)).not.toBeInTheDocument()
+  })
+})
