@@ -229,3 +229,15 @@ type=ui지만 기존 컴포넌트 재사용(ParentSection/WatchersSection/Swimla
 **BLOCKER: 없음**
 
 **design 경량 검토**: 기존 컴포넌트 재사용으로 비주얼 일관성 확보(신규 mockup 불요). 빈 상태 placeholder(EC2)·인라인 에러 role="alert"(parent 선례)·버튼 비활성 aria — T4/T5 GREEN에 접근성 명시 권장.
+
+### PR-level 코드 리뷰 (게이트2, 2026-06-22)
+code-reviewer(절대규칙) + 적대적 /review 병행.
+
+- **/review (적대적)**: BLOCKER 0. T1 P1-A 누출차단·T2 changelog 박제·T3 invalidate-only·Zod 1:1·드래그 column id 보존 전부 검증. INFO 1 = T5 에러맵 구조 중복(값 drift 0).
+- **code-reviewer (절대규칙)**: **BLOCKER 1 발견(B1)** + CONCERN 3. 적대 /review가 놓친 것을 code-reviewer가 잡음(두 리뷰 병행 상보).
+  - **B1 (해소)**: 보드 EPIC 스윔레인이 프로덕션에서 깨짐 — 프론트 'EPIC' PATCH를 백엔드 SwimlaneField enum(NONE/ASSIGNEE/PRIORITY만)이 400 거부, MSW가 EPIC 허용해 vacuous green. **Maxi Option A 확정** → SwimlaneField.EPIC enum + **V502 마이그레이션(boards.swimlane_field CHECK 제약 EPIC 포함, code-reviewer가 놓친 DB CHECK를 controller가 잡음)** + init_codegen 미러 + 백엔드 테스트(EPIC 200/round-trip 실DB). test 338d8d61 → feat 82ed95bd. 백엔드 BUILD SUCCESSFUL 재검증.
+  - **C2 (해소)**: epic-children MSW store afterEach 리셋 누락 → test/setup.ts resetIssueStateWithEpic() 교체(leak 차단).
+  - **C3 (해소)**: 약한 assertion 2건 → invalidate spy(epicChildrenKey+issueQueryKey) + body childKey 단언 강화.
+  - **C1 (수용)**: EPIC_CHILD_ERROR_MESSAGES 구조 복제(값 drift 0, 같은 상수+i18n 소스) — 후속 util 추출 여지, 이번 수용.
+- 두 리뷰 통합: B1/C2/C3 수정 후 백엔드 BUILD SUCCESSFUL + 프론트 3692 passed/typecheck 그린. **BLOCKER 0**.
+- 병렬 dispatch 커밋경계 race(C2/C3가 82ed95bd 흡수)는 squash 머지 무해, main 트리 오염 0 확인.
