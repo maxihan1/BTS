@@ -19,6 +19,7 @@ import java.util.UUID
  * - [id] 는 생성 후 변경 불가.
  * - [projectKey] 는 비어 있으면 안 된다.
  * - [name] 은 비어 있거나 공백만 있으면 안 된다.
+ * - [swimlaneField] 기본값은 [SwimlaneField.NONE]. 미지정 시 스윔레인을 사용하지 않는다.
  *
  * @property id 보드 UUID (PK).
  * @property projectKey 소속 프로젝트 키. BC 격리 목적으로 FK 없이 문자열로 보관. 예: `"ATLAS"`.
@@ -27,6 +28,7 @@ import java.util.UUID
  * @property createdAt 보드 생성 시각.
  * @property updatedAt 보드 최종 수정 시각.
  * @property deletedAt soft-delete 시각. null 이면 활성 보드.
+ * @property swimlaneField 스윔레인 기준 필드. 기본값 [SwimlaneField.NONE] 은 스윔레인 비활성.
  */
 data class Board(
     val id: UUID,
@@ -36,6 +38,7 @@ data class Board(
     val createdAt: Instant,
     val updatedAt: Instant,
     val deletedAt: Instant? = null,
+    val swimlaneField: SwimlaneField = SwimlaneField.NONE,
 ) {
     init {
         require(projectKey.isNotBlank()) { "Board.projectKey must not be blank." }

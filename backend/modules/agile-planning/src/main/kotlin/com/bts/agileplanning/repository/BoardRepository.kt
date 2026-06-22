@@ -1,9 +1,10 @@
-// boards / board_columns 테이블 jOOQ DSL 접근 — agile-planning BC (FR-BD-01)
+// boards / board_columns 테이블 jOOQ DSL 접근 — agile-planning BC (FR-BD-01, FR-BD-03)
 
 package com.bts.agileplanning.repository
 
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
+import com.bts.agileplanning.domain.SwimlaneField
 import com.bts.agileplanning.jooq.tables.records.BoardColumnsRecord
 import com.bts.agileplanning.jooq.tables.records.BoardsRecord
 import com.bts.agileplanning.jooq.tables.references.BOARDS
@@ -22,6 +23,13 @@ import java.util.UUID
  * jOOQ DSL 만 사용한다 — SQL 문자열 결합 금지 (DATA.md §5).
  * 모든 public 메서드에 [Transactional] 을 명시한다 (DATA.md §6).
  * soft-delete 필터: boards 조회 시 deleted_at IS NULL 조건 필수.
+ *
+ * ## FR-BD-03 확장 (Task 3)
+ * - insert: boards.swimlane_field / board_columns.wip_limit 컬럼 쓰기 추가.
+ * - toDomain: 두 컬럼을 도메인 객체로 복원.
+ * - [updateSwimlaneField]: boards.swimlane_field 단일 컬럼 갱신 + 재조회 반환.
+ * - [updateColumnWipLimit]: board_columns.wip_limit 단일 컬럼 갱신 + 재조회 반환.
+ *   affected 행이 0 이면 null 반환(404 신호) — 타 보드 소속 또는 미존재 columnId.
  *
  * @param dsl jOOQ DSLContext
  */
@@ -50,6 +58,7 @@ class BoardRepository(
             .set(BOARDS.ID, board.id)
             .set(BOARDS.PROJECT_KEY, board.projectKey)
             .set(BOARDS.NAME, board.name)
+            .set(BOARDS.SWIMLANE_FIELD, board.swimlaneField.name)
             .set(BOARDS.CREATED_AT, now)
             .set(BOARDS.UPDATED_AT, now)
             .execute()
@@ -64,9 +73,18 @@ class BoardRepository(
                     BOARD_COLUMNS.NAME,
                     BOARD_COLUMNS.CATEGORY,
                     BOARD_COLUMNS.DISPLAY_ORDER,
+                    BOARD_COLUMNS.WIP_LIMIT,
                 )
             board.columns.forEach { col ->
-                insertStep.values(col.id, board.id, col.stateKey, col.name, col.category, col.displayOrder)
+                insertStep.values(
+                    col.id,
+                    board.id,
+                    col.stateKey,
+                    col.name,
+                    col.category,
+                    col.displayOrder,
+                    col.wipLimit,
+                )
             }
             insertStep.execute()
         }
@@ -119,6 +137,68 @@ class BoardRepository(
     }
 
     /**
+     * 보드의 스윔레인 기준 필드를 갱신하고 갱신된 보드를 반환한다.
+     *
+     * affected 행이 0 이면(존재하지 않거나 soft-deleted) null 을 반환한다.
+     *
+     * @param boardId 갱신할 보드 UUID
+     * @param swimlaneField 새로운 스윔레인 기준 필드
+     * @return 갱신된 보드, 존재하지 않으면 null
+     */
+    @Transactional
+    fun updateSwimlaneField(
+        boardId: UUID,
+        swimlaneField: SwimlaneField,
+    ): Board? {
+        log.debug("스윔레인 필드 갱신 — boardId={}, swimlaneField={}", boardId, swimlaneField)
+
+        val now = OffsetDateTime.now(ZoneOffset.UTC)
+        val affected =
+            dsl.update(BOARDS)
+                .set(BOARDS.SWIMLANE_FIELD, swimlaneField.name)
+                .set(BOARDS.UPDATED_AT, now)
+                .where(BOARDS.ID.eq(boardId))
+                .and(BOARDS.DELETED_AT.isNull)
+                .execute()
+
+        if (affected == 0) return null
+        return findById(boardId)
+    }
+
+    /**
+     * 보드 컬럼의 WIP 제한을 갱신하고 갱신된 컬럼을 반환한다.
+     *
+     * boardId + columnId 쌍을 WHERE 조건으로 사용해 타 보드 소속 컬럼 갱신을 방지한다.
+     * affected 행이 0 이면(타 보드 소속이거나 미존재) null 을 반환한다.
+     *
+     * @param boardId 보드 UUID — 컬럼이 이 보드에 속해야 한다
+     * @param columnId 갱신할 컬럼 UUID
+     * @param wipLimit 새로운 WIP 제한. null 이면 제한 해제
+     * @return 갱신된 컬럼, 타 보드 소속이거나 미존재이면 null
+     */
+    @Transactional
+    fun updateColumnWipLimit(
+        boardId: UUID,
+        columnId: UUID,
+        wipLimit: Int?,
+    ): BoardColumn? {
+        log.debug("WIP 제한 갱신 — boardId={}, columnId={}, wipLimit={}", boardId, columnId, wipLimit)
+
+        val affected =
+            dsl.update(BOARD_COLUMNS)
+                .set(BOARD_COLUMNS.WIP_LIMIT, wipLimit)
+                .where(BOARD_COLUMNS.ID.eq(columnId))
+                .and(BOARD_COLUMNS.BOARD_ID.eq(boardId))
+                .execute()
+
+        if (affected == 0) return null
+        return dsl.selectFrom(BOARD_COLUMNS)
+            .where(BOARD_COLUMNS.ID.eq(columnId))
+            .fetchOne()
+            ?.let { toColumnDomain(it) }
+    }
+
+    /**
      * [BoardsRecord] + [BoardColumnsRecord] 목록을 도메인 [Board] 로 변환한다.
      */
     private fun toDomain(
@@ -132,27 +212,36 @@ class BoardRepository(
         val updatedAt =
             boardRecord.updatedAt?.toInstant()
                 ?: error("boards.updated_at 이 null — id=$id")
-
-        val columns =
-            columnRecords.map { col ->
-                val colId = col.id ?: error("board_columns.id 가 null — boardId=$id")
-                BoardColumn(
-                    id = colId,
-                    stateKey = col.stateKey,
-                    name = col.name,
-                    category = col.category,
-                    displayOrder = col.displayOrder ?: 0,
-                )
-            }
+        val swimlaneField =
+            boardRecord.swimlaneField?.let { SwimlaneField.valueOf(it) }
+                ?: error("boards.swimlane_field 가 null — id=$id")
 
         return Board(
             id = id,
             projectKey = boardRecord.projectKey,
             name = boardRecord.name,
-            columns = columns,
+            columns = columnRecords.map { toColumnDomain(it) },
             createdAt = createdAt,
             updatedAt = updatedAt,
             deletedAt = boardRecord.deletedAt?.toInstant(),
+            swimlaneField = swimlaneField,
+        )
+    }
+
+    /**
+     * [BoardColumnsRecord] 를 도메인 [BoardColumn] 으로 변환한다.
+     *
+     * [toDomain] 내 컬럼 변환과 [updateColumnWipLimit] 재조회 변환이 이 헬퍼를 공유한다.
+     */
+    private fun toColumnDomain(col: BoardColumnsRecord): BoardColumn {
+        val colId = col.id ?: error("board_columns.id 가 null — boardId=${col.boardId}")
+        return BoardColumn(
+            id = colId,
+            stateKey = col.stateKey,
+            name = col.name,
+            category = col.category,
+            displayOrder = col.displayOrder ?: 0,
+            wipLimit = col.wipLimit,
         )
     }
 }

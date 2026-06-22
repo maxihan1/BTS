@@ -4,7 +4,9 @@ package com.bts.agileplanning.application
 
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardCardPlacement
+import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.PlacedColumn
+import com.bts.agileplanning.domain.SwimlaneField
 import com.bts.agileplanning.repository.BoardRepository
 import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.board.BoardIssueLookupPort
@@ -217,6 +219,63 @@ class BoardApplicationService(
                 resolutionId = resolutionId,
             ),
         )
+    }
+
+    /**
+     * 보드 컬럼의 WIP 제한을 갱신하고 갱신된 컬럼을 반환한다.
+     *
+     * [boardRepository.updateColumnWipLimit] 가 null 을 반환하면 보드 또는 컬럼이 존재하지 않거나
+     * 타 보드 소속이므로 404 를 던진다.
+     *
+     * @param boardId 갱신 대상 보드 UUID.
+     * @param columnId 갱신 대상 컬럼 UUID.
+     * @param wipLimit 새로운 WIP 제한. null 이면 해제.
+     * @return 갱신된 컬럼 도메인 객체.
+     * @throws ResponseStatusException 404 — 보드/컬럼 미존재 또는 타 보드 소속.
+     */
+    @Transactional
+    fun updateColumnWipLimit(
+        boardId: UUID,
+        columnId: UUID,
+        wipLimit: Int?,
+    ): BoardColumn {
+        log.debug("WIP 제한 갱신 — boardId={}, columnId={}, wipLimit={}", boardId, columnId, wipLimit)
+        return boardRepository.updateColumnWipLimit(boardId, columnId, wipLimit)
+            ?: throw ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "AGILE_BOARD_NOT_FOUND: 컬럼을 찾을 수 없습니다: boardId=$boardId, columnId=$columnId",
+            )
+    }
+
+    /**
+     * 보드의 스윔레인 기준 필드를 갱신하고 갱신된 보드를 반환한다.
+     *
+     * [swimlaneFieldRaw] 를 [SwimlaneField] enum 으로 파싱한다. 알 수 없는 값이면 400 을 던진다.
+     * [boardRepository.updateSwimlaneField] 가 null 을 반환하면 보드가 존재하지 않으므로 404 를 던진다.
+     *
+     * @param boardId 갱신 대상 보드 UUID.
+     * @param swimlaneFieldRaw 스윔레인 기준 필드 이름 문자열. 예: `"NONE"`, `"ASSIGNEE"`, `"PRIORITY"`.
+     * @return 갱신된 보드 도메인 객체.
+     * @throws ResponseStatusException 400 — 알 수 없는 [swimlaneFieldRaw] 값.
+     * @throws ResponseStatusException 404 — 보드 미존재 또는 soft-deleted.
+     */
+    @Transactional
+    fun updateSwimlaneField(
+        boardId: UUID,
+        swimlaneFieldRaw: String,
+    ): Board {
+        log.debug("스윔레인 필드 갱신 — boardId={}, swimlaneField={}", boardId, swimlaneFieldRaw)
+        val swimlaneField =
+            SwimlaneField.entries.firstOrNull { it.name == swimlaneFieldRaw }
+                ?: throw ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "AGILE_VALIDATION_FAILED: 알 수 없는 swimlaneField 값입니다: $swimlaneFieldRaw",
+                )
+        return boardRepository.updateSwimlaneField(boardId, swimlaneField)
+            ?: throw ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "AGILE_BOARD_NOT_FOUND: 보드를 찾을 수 없습니다: boardId=$boardId",
+            )
     }
 
     /**

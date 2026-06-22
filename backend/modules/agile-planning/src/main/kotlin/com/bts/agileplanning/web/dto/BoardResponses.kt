@@ -1,4 +1,4 @@
-// 보드 REST API 요청/응답 DTO + DataResponse 봉투 — agile-planning BC (FR-BD-01)
+// 보드 REST API 요청/응답 DTO + DataResponse 봉투 — agile-planning BC (FR-BD-01, FR-BD-03)
 
 package com.bts.agileplanning.web.dto
 
@@ -170,6 +170,10 @@ data class BoardCardResponse(
  * @property category 칸반 카테고리.
  * @property displayOrder 컬럼 표시 순서.
  * @property cards 이 컬럼에 배치된 카드 목록(priority ASC 정렬).
+ * @property wipLimit WIP(Work In Progress) 제한 수. null 이면 무제한.
+ *   [com.bts.agileplanning.domain.BoardColumn.wipLimit] 값을 그대로 반영한다.
+ * @property wipExceeded 현재 카드 수가 [wipLimit] 를 초과하면 true. [wipLimit] 가 null 이거나
+ *   카드 수가 [wipLimit] 이하이면 false. 같을 때도 초과로 판단하지 않는다(strictly greater than).
  */
 data class BoardColumnWithCardsResponse(
     val columnId: UUID,
@@ -178,6 +182,8 @@ data class BoardColumnWithCardsResponse(
     val category: String,
     val displayOrder: Int,
     val cards: List<BoardCardResponse>,
+    val wipLimit: Int?,
+    val wipExceeded: Boolean,
 ) {
     companion object {
         /** [PlacedColumn] 을 [BoardColumnWithCardsResponse] 로 변환한다. */
@@ -189,6 +195,8 @@ data class BoardColumnWithCardsResponse(
                 category = placed.column.category,
                 displayOrder = placed.column.displayOrder,
                 cards = placed.cards.map(BoardCardResponse::from),
+                wipLimit = placed.column.wipLimit,
+                wipExceeded = placed.column.wipLimit?.let { placed.cards.size > it } ?: false,
             )
     }
 }
@@ -204,6 +212,8 @@ data class BoardColumnWithCardsResponse(
  *   클라이언트가 "보드에 표시되지 않은 이슈가 있습니다" UI 경고를 표시하는 데 사용한다.
  * @property unplacedCount 어느 컬럼에도 매핑되지 않아 보드에서 제외된 이슈 수(E2 미매핑 상태 이슈).
  *   0 이면 미매핑 이슈 없음. 양수이면 워크플로우 상태와 보드 컬럼 간 미싱 매핑이 있음을 의미한다.
+ * @property swimlaneField 스윔레인 기준 필드 이름. [SwimlaneField.name] 문자열. 예: `"NONE"`, `"ASSIGNEE"`, `"PRIORITY"`.
+ *   클라이언트가 스윔레인 UI 활성 여부 및 그룹화 기준을 판단하는 데 사용한다.
  */
 data class BoardDetailResponse(
     val boardId: UUID,
@@ -212,12 +222,13 @@ data class BoardDetailResponse(
     val columns: List<BoardColumnWithCardsResponse>,
     val truncated: Boolean,
     val unplacedCount: Int,
+    val swimlaneField: String,
 ) {
     companion object {
         /**
          * 보드 메타([Board])와 카드 배치 결과([BoardPlacementResult])를 합쳐 응답을 만든다.
          *
-         * @param board 보드 메타(boardId/projectKey/name 출처).
+         * @param board 보드 메타(boardId/projectKey/name/swimlaneField 출처).
          * @param result 카드 배치 + 신호 필드(truncated/unplacedCount) 결과.
          */
         fun of(
@@ -231,6 +242,92 @@ data class BoardDetailResponse(
                 columns = result.columns.map(BoardColumnWithCardsResponse::from),
                 truncated = result.truncated,
                 unplacedCount = result.unplacedCount,
+                swimlaneField = board.swimlaneField.name,
+            )
+    }
+}
+
+/**
+ * 컬럼 WIP 제한 변경 요청 바디.
+ *
+ * [wipLimit] 가 null 이면 WIP 제한을 해제한다.
+ * null 이 아닌 경우 반드시 양수(1 이상)여야 한다. 0 또는 음수는 컨트롤러에서 검증해 400 으로 거부한다
+ * (jakarta `@Positive` 가 nullable `Int?` 에서 0 을 통과시키는 한계가 있어 BoardController 가 수동 검증한다).
+ *
+ * @property wipLimit 새로운 WIP 제한. null 이면 해제. 양수만 허용.
+ */
+data class UpdateColumnWipLimitRequest(
+    val wipLimit: Int?,
+)
+
+/**
+ * 보드 스윔레인 기준 변경 요청 바디.
+ *
+ * [swimlaneField] 는 [com.bts.agileplanning.domain.SwimlaneField] enum 이름 문자열이어야 한다.
+ * 빈 문자열은 400 으로 거부된다 — [NotBlank] 검증.
+ * 알 수 없는 값(예: "EPIC", "foo")은 서비스 계층에서 enum 파싱 실패 시 400 으로 거부된다.
+ *
+ * @property swimlaneField 스윔레인 기준 필드 이름. 예: `"NONE"`, `"ASSIGNEE"`, `"PRIORITY"`.
+ */
+data class UpdateBoardSwimlaneRequest(
+    @field:NotBlank
+    val swimlaneField: String?,
+)
+
+/**
+ * 컬럼 WIP 제한 변경 응답 DTO.
+ *
+ * @property columnId 컬럼 UUID.
+ * @property stateKey 매핑된 워크플로우 상태 키.
+ * @property name 컬럼 표시 이름.
+ * @property category 칸반 카테고리.
+ * @property displayOrder 컬럼 표시 순서.
+ * @property wipLimit 갱신된 WIP 제한. null 이면 무제한.
+ */
+data class ColumnMetaResponse(
+    val columnId: UUID,
+    val stateKey: String,
+    val name: String,
+    val category: String,
+    val displayOrder: Int,
+    val wipLimit: Int?,
+) {
+    companion object {
+        /** 도메인 [BoardColumn] 을 [ColumnMetaResponse] 로 변환한다. */
+        fun from(column: BoardColumn): ColumnMetaResponse =
+            ColumnMetaResponse(
+                columnId = column.id,
+                stateKey = column.stateKey,
+                name = column.name,
+                category = column.category,
+                displayOrder = column.displayOrder,
+                wipLimit = column.wipLimit,
+            )
+    }
+}
+
+/**
+ * 보드 스윔레인 변경 응답 DTO.
+ *
+ * @property boardId 보드 UUID.
+ * @property projectKey 소속 프로젝트 키.
+ * @property name 보드 표시 이름.
+ * @property swimlaneField 갱신된 스윔레인 기준 필드 이름.
+ */
+data class BoardMetaResponse(
+    val boardId: UUID,
+    val projectKey: String,
+    val name: String,
+    val swimlaneField: String,
+) {
+    companion object {
+        /** 도메인 [Board] 를 [BoardMetaResponse] 로 변환한다. */
+        fun from(board: Board): BoardMetaResponse =
+            BoardMetaResponse(
+                boardId = board.id,
+                projectKey = board.projectKey,
+                name = board.name,
+                swimlaneField = board.swimlaneField.name,
             )
     }
 }

@@ -21,18 +21,22 @@ import java.util.UUID
  * Spring 컨텍스트 없이 실행한다. agile-planning BC 마이그레이션 체인(V500~)은 pgmq 확장을
  * 요구하지 않으므로 postgres:16-alpine 이미지로 충분하다 (UserNotificationSubsSchemaTest 동일 결정).
  *
- * 검증 범위 (FR-BD-01 §데이터 모델).
- * - boards 테이블 존재 + 6개 컬럼(id/project_key/name/created_at/updated_at/deleted_at)
+ * 검증 범위 (FR-BD-01 §데이터 모델 + FR-BD-03 V501 WIP/스윔레인).
+ * - boards 테이블 존재 + 7개 컬럼(id/project_key/name/created_at/updated_at/deleted_at/swimlane_field)
  * - boards.deleted_at NULL 허용(소프트 삭제) / project_key·name·created_at·updated_at NOT NULL
  * - 부분 인덱스 idx_boards_project_key — boards(project_key) WHERE deleted_at IS NULL
- * - board_columns 테이블 존재 + 6개 컬럼(id/board_id/state_key/name/category/display_order)
+ * - board_columns 테이블 존재 + 7개 컬럼(id/board_id/state_key/name/category/display_order/wip_limit)
  * - board_columns.board_id FK 가 boards(id) 참조 + ON DELETE CASCADE
  * - UNIQUE(board_id, state_key) 제약 — 같은 조합 중복 INSERT 시 위반
  * - project_key 는 FK 없음 (issue-tracking projects 테이블 BC 격리, notification 선례)
+ * - (V501) board_columns.wip_limit INTEGER NULL + CHECK(wip_limit IS NULL OR wip_limit > 0)
+ * - (V501) boards.swimlane_field VARCHAR NOT NULL DEFAULT 'NONE' + CHECK(IN ('NONE','ASSIGNEE','PRIORITY'))
  *
- * 정보 스키마(information_schema / pg_indexes) 조회로 단언한다. SQL 문자열 결합 없이 prepared statement 사용.
+ * 정보 스키마(information_schema / pg_indexes / pg_constraint) 조회로 단언한다.
+ * SQL 문자열 결합 없이 prepared statement 사용.
  *
- * 참조. FR-BD-01 plan Task 6 / spec §데이터 모델 / DATA.md §4 TIMESTAMPTZ·§4.1 V번호 범위·§7 FK 인덱스.
+ * 참조. FR-BD-01 plan Task 6 · FR-BD-03 plan Task 1 / spec §데이터 모델 /
+ * DATA.md §4 TIMESTAMPTZ·§4.1 V번호 범위·§7 FK 인덱스.
  */
 @Testcontainers
 class BoardSchemaMigrationTest {
@@ -56,18 +60,7 @@ class BoardSchemaMigrationTest {
                 .migrate()
         }
 
-        // boards 가 보유해야 하는 6개 컬럼.
-        private val BOARDS_COLUMNS =
-            listOf(
-                "id",
-                "project_key",
-                "name",
-                "created_at",
-                "updated_at",
-                "deleted_at",
-            )
-
-        // board_columns 가 보유해야 하는 6개 컬럼.
+        // board_columns 가 보유해야 하는 7개 컬럼 (V501 에서 wip_limit 추가).
         private val BOARD_COLUMNS_COLUMNS =
             listOf(
                 "id",
@@ -76,6 +69,19 @@ class BoardSchemaMigrationTest {
                 "name",
                 "category",
                 "display_order",
+                "wip_limit",
+            )
+
+        // boards 가 V501 이후 보유해야 하는 7개 컬럼 (swimlane_field 추가).
+        private val BOARDS_COLUMNS_V501 =
+            listOf(
+                "id",
+                "project_key",
+                "name",
+                "created_at",
+                "updated_at",
+                "deleted_at",
+                "swimlane_field",
             )
     }
 
@@ -234,6 +240,70 @@ class BoardSchemaMigrationTest {
             }
         }
 
+    // 주어진 테이블의 모든 CHECK 제약 정의(pg_get_constraintdef)를 합쳐 반환 — wip_limit / swimlane_field 술어 검증용.
+    // pg_constraint.contype = 'c' 가 CHECK 제약. NOT NULL 은 별도(contype='c' 아님)이므로 영향 없음.
+    @Suppress("NestedBlockDepth")
+    private fun checkConstraintDefs(tableName: String): List<String> =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                """
+                SELECT pg_get_constraintdef(c.oid)
+                FROM pg_constraint c
+                JOIN pg_class t ON c.conrelid = t.oid
+                JOIN pg_namespace n ON t.relnamespace = n.oid
+                WHERE n.nspname = 'public'
+                  AND t.relname = ?
+                  AND c.contype = 'c'
+                """.trimIndent(),
+            ).use { stmt ->
+                stmt.setString(1, tableName)
+                stmt.executeQuery().use { rs ->
+                    val defs = mutableListOf<String>()
+                    while (rs.next()) defs.add(rs.getString(1))
+                    defs
+                }
+            }
+        }
+
+    // board_columns 한 행 INSERT — wip_limit 명시 지정용(CHECK 위반 유도). 위반 시 예외 전파.
+    private fun insertBoardColumnWithWipLimit(
+        boardId: UUID,
+        stateKey: String,
+        wipLimit: Int,
+    ) {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "INSERT INTO board_columns (board_id, state_key, name, category, display_order, wip_limit)" +
+                    " VALUES (?, ?, ?, ?, ?, ?)",
+            ).use { stmt ->
+                stmt.setObject(1, boardId)
+                stmt.setString(2, stateKey)
+                stmt.setString(3, "할 일")
+                stmt.setString(4, "TODO")
+                stmt.setInt(5, 0)
+                stmt.setInt(6, wipLimit)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    // boards 한 행 INSERT — swimlane_field 명시 지정용(CHECK 위반 유도). 위반 시 예외 전파.
+    private fun insertBoardWithSwimlaneField(
+        projectKey: String,
+        swimlaneField: String,
+    ) {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "INSERT INTO boards (project_key, name, swimlane_field) VALUES (?, ?, ?)",
+            ).use { stmt ->
+                stmt.setString(1, projectKey)
+                stmt.setString(2, "보드")
+                stmt.setString(3, swimlaneField)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
     // boards 한 행 INSERT — board_columns FK / UNIQUE 검증의 부모 행 준비용. 생성된 board id 반환.
     @Suppress("NestedBlockDepth")
     private fun insertBoard(projectKey: String): UUID =
@@ -278,9 +348,9 @@ class BoardSchemaMigrationTest {
     }
 
     @Test
-    fun `V500 boards 6개 컬럼 존재`() {
+    fun `V501 boards 7개 컬럼 존재 (swimlane_field 추가)`() {
         assertThat(columnsOf("boards"))
-            .containsExactlyInAnyOrderElementsOf(BOARDS_COLUMNS)
+            .containsExactlyInAnyOrderElementsOf(BOARDS_COLUMNS_V501)
     }
 
     @Test
@@ -410,5 +480,96 @@ class BoardSchemaMigrationTest {
                 }
             }
         }
+    }
+
+    // ── V501 board_columns.wip_limit 검증 (FR-BD-03 WIP 제한) ──────────────────
+
+    @Test
+    fun `V501 board_columns wip_limit 은 integer NULL 허용`() {
+        assertThat(columnDataType("board_columns", "wip_limit")).isEqualTo("integer")
+        assertThat(columnIsNullable("board_columns", "wip_limit")).isEqualTo("YES")
+    }
+
+    @Test
+    fun `V501 board_columns wip_limit 양수 CHECK 제약 존재`() {
+        // CHECK (wip_limit IS NULL OR wip_limit > 0) — pg_get_constraintdef 표현으로 검증.
+        val defs = checkConstraintDefs("board_columns").map { it.lowercase() }
+        assertThat(defs).anySatisfy { def ->
+            assertThat(def).contains("wip_limit").contains("is null").contains("> 0")
+        }
+    }
+
+    @Test
+    fun `V501 board_columns wip_limit 양수는 허용`() {
+        val boardId = insertBoard("WIP-OK")
+        // 양수 wip_limit 는 CHECK 를 통과해야 한다(예외 없음).
+        insertBoardColumnWithWipLimit(boardId, "open", 5)
+    }
+
+    @Test
+    fun `V501 board_columns wip_limit 0 은 CHECK 위반`() {
+        val boardId = insertBoard("WIP-ZERO")
+        // wip_limit = 0 은 양수가 아니므로 CHECK 위반이어야 한다.
+        assertThatThrownBy { insertBoardColumnWithWipLimit(boardId, "open", 0) }
+            .hasMessageContaining("board_columns_wip_limit_positive")
+    }
+
+    @Test
+    fun `V501 board_columns wip_limit 음수는 CHECK 위반`() {
+        val boardId = insertBoard("WIP-NEG")
+        // wip_limit < 0 도 CHECK 위반이어야 한다.
+        assertThatThrownBy { insertBoardColumnWithWipLimit(boardId, "open", -3) }
+            .hasMessageContaining("board_columns_wip_limit_positive")
+    }
+
+    // ── V501 boards.swimlane_field 검증 (FR-BD-03 스윔레인) ────────────────────
+
+    @Test
+    fun `V501 boards swimlane_field 는 varchar NOT NULL`() {
+        assertThat(columnDataType("boards", "swimlane_field")).isEqualTo("character varying")
+        assertThat(columnIsNullable("boards", "swimlane_field")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V501 boards swimlane_field DEFAULT 는 NONE`() {
+        // DEFAULT 'NONE' 이면 swimlane_field 미지정 INSERT 시 'NONE' 으로 채워진다.
+        val boardId = insertBoard("SWIM-DEFAULT")
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement("SELECT swimlane_field FROM boards WHERE id = ?").use { stmt ->
+                stmt.setObject(1, boardId)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    assertThat(rs.getString(1)).isEqualTo("NONE")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `V501 boards swimlane_field 허용값 CHECK 제약 존재`() {
+        // CHECK (swimlane_field IN ('NONE','ASSIGNEE','PRIORITY')) — pg_get_constraintdef 표현으로 검증.
+        val defs = checkConstraintDefs("boards").map { it.lowercase() }
+        assertThat(defs).anySatisfy { def ->
+            assertThat(def)
+                .contains("swimlane_field")
+                .contains("none")
+                .contains("assignee")
+                .contains("priority")
+        }
+    }
+
+    @Test
+    fun `V501 boards swimlane_field 허용값들은 INSERT 가능`() {
+        // NONE / ASSIGNEE / PRIORITY 셋 다 CHECK 를 통과해야 한다(예외 없음).
+        insertBoardWithSwimlaneField("SWIM-NONE", "NONE")
+        insertBoardWithSwimlaneField("SWIM-ASSIGNEE", "ASSIGNEE")
+        insertBoardWithSwimlaneField("SWIM-PRIORITY", "PRIORITY")
+    }
+
+    @Test
+    fun `V501 boards swimlane_field 허용 외 값은 CHECK 위반`() {
+        // 허용 목록 밖 값(EPIC: FR-EP 로 이연)은 CHECK 위반이어야 한다(ADR 결정 3).
+        assertThatThrownBy { insertBoardWithSwimlaneField("SWIM-BAD", "EPIC") }
+            .hasMessageContaining("boards_swimlane_field_allowed")
     }
 }
