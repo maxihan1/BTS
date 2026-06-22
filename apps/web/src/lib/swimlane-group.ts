@@ -152,7 +152,7 @@ function groupByEpic(cards: BoardCard[]): SwimlaneGroup[] {
 
   for (const card of cards) {
     const epicKey = card.epicKey
-    if (epicKey === null || epicKey === undefined) {
+    if (epicKey === null) {
       if (noEpicGroup === undefined) {
         noEpicGroup = { key: 'epic-no-epic', label: LABEL_NO_EPIC, cards: [] }
       }
