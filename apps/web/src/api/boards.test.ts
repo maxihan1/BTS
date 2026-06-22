@@ -4,6 +4,8 @@ import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import {
   boardSummarySchema,
+  boardCardSchema,
+  boardColumnSchema,
   boardDetailSchema,
   boardCreatedSchema,
   moveCardResultSchema,
@@ -346,6 +348,127 @@ describe('moveCard — POST /api/v1/boards/{boardId}/cards/{issueKey}/move', () 
       resolutionId: undefined,
     })
     expect(Object.prototype.hasOwnProperty.call(capturedBody, 'resolutionId')).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-BD-11. boardCardSchema — priority 필드 파싱 (FR-BD-03 D4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('boardCardSchema — priority 필드 파싱 (FR-BD-03 D4)', () => {
+  it('T-BD-11a: priority 정수를 포함한 카드 픽스처를 파싱한다', () => {
+    const card = { ...cardWithAssignee, priority: 2 }
+    const result = boardCardSchema.safeParse(card)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.priority).toBe(2)
+  })
+
+  it('T-BD-11b: priority가 없으면 파싱을 거부한다', () => {
+    // cardWithAssignee에는 priority 없음 → 실패해야 함
+    const result = boardCardSchema.safeParse(cardWithAssignee)
+    expect(result.success).toBe(false)
+  })
+
+  it('T-BD-11c: priority가 소수(1.5)이면 파싱을 거부한다', () => {
+    const card = { ...cardWithAssignee, priority: 1.5 }
+    const result = boardCardSchema.safeParse(card)
+    expect(result.success).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-BD-12. boardColumnSchema — wipLimit / wipExceeded 필드 파싱 (FR-BD-03 D4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('boardColumnSchema — wipLimit/wipExceeded 파싱 (FR-BD-03 D4)', () => {
+  const cardWithPriority = { ...cardWithAssignee, priority: 1 }
+  const cardNoPriorityNull = { ...cardNoAssignee, priority: 3 }
+
+  it('T-BD-12a: wipLimit=숫자, wipExceeded=false 컬럼을 파싱한다', () => {
+    const col = { ...columnTodo, cards: [cardNoPriorityNull], wipLimit: 5, wipExceeded: false }
+    const result = boardColumnSchema.safeParse(col)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.wipLimit).toBe(5)
+    expect(result.data.wipExceeded).toBe(false)
+  })
+
+  it('T-BD-12b: wipLimit=null (무제한) 컬럼을 파싱한다', () => {
+    const col = { ...columnTodo, cards: [cardNoPriorityNull], wipLimit: null, wipExceeded: false }
+    const result = boardColumnSchema.safeParse(col)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.wipLimit).toBeNull()
+  })
+
+  it('T-BD-12c: wipLimit 누락 시 파싱을 거부한다', () => {
+    const col = { ...columnTodo, cards: [cardNoPriorityNull], wipExceeded: false }
+    const result = boardColumnSchema.safeParse(col)
+    expect(result.success).toBe(false)
+  })
+
+  it('T-BD-12d: wipExceeded 누락 시 파싱을 거부한다', () => {
+    const col = { ...columnTodo, cards: [cardNoPriorityNull], wipLimit: null }
+    const result = boardColumnSchema.safeParse(col)
+    expect(result.success).toBe(false)
+  })
+
+  it('T-BD-12e: wipExceeded=true 컬럼을 파싱한다', () => {
+    const col = { ...columnTodo, cards: [cardWithPriority], wipLimit: 1, wipExceeded: true }
+    const result = boardColumnSchema.safeParse(col)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.wipExceeded).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-BD-13. boardDetailSchema — swimlaneField 필드 파싱 (FR-BD-03 D4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('boardDetailSchema — swimlaneField 파싱 (FR-BD-03 D4)', () => {
+  const columnWithWip = {
+    ...columnTodo,
+    cards: [{ ...cardNoAssignee, priority: 2 }],
+    wipLimit: null,
+    wipExceeded: false,
+  }
+
+  it('T-BD-13a: swimlaneField=NONE 보드를 파싱한다', () => {
+    const board = { ...boardDetailFixture, columns: [columnWithWip], swimlaneField: 'NONE' }
+    const result = boardDetailSchema.safeParse(board)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.swimlaneField).toBe('NONE')
+  })
+
+  it('T-BD-13b: swimlaneField=ASSIGNEE 보드를 파싱한다', () => {
+    const board = { ...boardDetailFixture, columns: [columnWithWip], swimlaneField: 'ASSIGNEE' }
+    const result = boardDetailSchema.safeParse(board)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.swimlaneField).toBe('ASSIGNEE')
+  })
+
+  it('T-BD-13c: swimlaneField=PRIORITY 보드를 파싱한다', () => {
+    const board = { ...boardDetailFixture, columns: [columnWithWip], swimlaneField: 'PRIORITY' }
+    const result = boardDetailSchema.safeParse(board)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.swimlaneField).toBe('PRIORITY')
+  })
+
+  it('T-BD-13d: swimlaneField 누락 시 파싱을 거부한다', () => {
+    const board = { ...boardDetailFixture, columns: [columnWithWip] }
+    const result = boardDetailSchema.safeParse(board)
+    expect(result.success).toBe(false)
+  })
+
+  it('T-BD-13e: swimlaneField에 허용되지 않는 값(CUSTOM)이면 파싱을 거부한다', () => {
+    const board = { ...boardDetailFixture, columns: [columnWithWip], swimlaneField: 'CUSTOM' }
+    const result = boardDetailSchema.safeParse(board)
+    expect(result.success).toBe(false)
   })
 })
 
