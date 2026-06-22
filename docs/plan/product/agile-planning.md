@@ -211,11 +211,11 @@
 
 **우선순위**. 필수 | **선행**. issue-tracking §2.1.2 (FR-IS-02), §5.3.1 (FR-LK-01 parent-child) | **Plan slug**. `agile/epic-children`
 
-- [ ] D1. 도메인 — Epic Aggregate (책임. backend-engineer)
-- [ ] D2. 명세 — Epic ↔ Story/Task 계층 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `issues.epic_id` 또는 `issue_links` 활용 (책임. db-engineer)
-- [ ] D4. 백엔드 — `POST /api/v1/issues/{key}/epic-children` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D1. 도메인 — Epic Aggregate (책임. backend-engineer) — ADR 2026-06-22 별도 epic_id 컬럼, Issue.epicId
+- [x] D2. 명세 — Epic ↔ Story/Task 계층 (책임. backend-engineer) — 불변식 5종(자식 level0·대상 Epic level1·동일프로젝트·자기참조·단일Epic)
+- [x] D3. 데이터 모델 — `issues.epic_id`(V028, UUID NULL 자기참조 FK + 인덱스 + init_codegen 미러). `issue_links` 대신 별도 컬럼 채택 (책임. db-engineer)
+- [x] D4. 백엔드 — `POST/DELETE/GET /api/v1/issues/{key}/epic-children` + IssueResponse.epic + 권한(UPDATE child/BROWSE epic 프로젝트)·visibility 필터 (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — 단위(IssueEpicServiceTest)+통합(Repository EP-1~8, Controller S1~S11)
 - [ ] D6. 프론트 UI — Epic 페이지 + 자식 이슈 목록 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
