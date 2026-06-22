@@ -630,6 +630,22 @@ export const issueLinkStrings = {
   setParentSuccess: '부모 이슈가 지정되었습니다.',
   /** 부모 해제 성공 토스트 */
   clearParentSuccess: '부모 이슈가 해제되었습니다.',
+
+  // ── 소속 에픽 섹션 (EpicSection) — FR-EP-01 D6 ──────────────────────
+  /** 소속 에픽 섹션 제목 */
+  epicSectionTitle: '소속 에픽',
+  /** 에픽 키 input placeholder */
+  epicKeyPlaceholder: '에픽 이슈 키 (예: ATLAS-1)',
+  /** 에픽 키 input aria-label */
+  epicKeyLabel: '에픽 이슈 키',
+  /** 에픽 지정 버튼 텍스트 */
+  setEpicButton: '에픽 지정',
+  /** 에픽 해제 버튼 텍스트 */
+  clearEpicButton: '해제',
+  /** 에픽 지정 성공 토스트 */
+  setEpicSuccess: '소속 에픽이 지정되었습니다.',
+  /** 에픽 해제 성공 토스트 */
+  clearEpicSuccess: '소속 에픽이 해제되었습니다.',
 } as const
 
 /** 링크 그래프 패널(IssueLinkGraph) 관련 문자열 — FR-LK-02 D6 */
