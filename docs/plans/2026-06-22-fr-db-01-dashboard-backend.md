@@ -95,6 +95,7 @@ notification-dashboard로 교정.
 - visibility != TEAM 이면 shares 빈 집합으로 정규화
 - sharedUserIds 에 owner 포함 시 정규화로 제거 + 중복 dedup(Set)
 - name > 200자 / sharedUserIds > cap → 예외
+- **[C4] layout JSONB ≤ 64KB → 예외** (`layout.toString().toByteArray().size <= 65536`, Jakarta @Size 불가)
 - withChanges(부분 수정) 시 version 증가, updatedAt 갱신
 
 **GREEN**: domain 클래스 3종 + enum. 불변식을 팩토리(create)/변경(applyPatch) 메서드에 캡슐화.
@@ -110,7 +111,7 @@ notification-dashboard로 교정.
 - files: [`backend/modules/notification/src/main/resources/db/migration/notification/V405__dashboards.sql`, `<init_codegen.sql 경로>`]
 - depends-on: []
 
-**RED**: 마이그레이션 적용 검증 테스트(기존 notification migration 테스트 패턴 재사용) — dashboards/dashboard_shares 테이블·인덱스·CASCADE 존재 단언. 없으면 Task 3 repository Testcontainers 테스트가 RED 역할 대행.
+**RED**: **[C3] `V405DashboardsSchemaTest` 필수 작성** (기존 UserNotificationSubsSchemaTest 패턴) — dashboards/dashboard_shares 테이블·컬럼·인덱스·FK CASCADE 존재 단언. 선택 아님(false-green 방지).
 
 **GREEN**: 스펙 §데이터 모델의 DDL 그대로. dashboards(+owner/visibility 인덱스) + dashboard_shares(FK CASCADE + user_id 인덱스). init_codegen.sql에 동일 DDL 미러(jOOQ codegen 입력 — 누락 시 빌드 깨짐, 메모리 교훈).
 
@@ -131,7 +132,7 @@ notification-dashboard로 교정.
 - 목록 3종: owned / shared-to-me / ORG → UNION DISTINCT(owned이면서 ORG는 1건) + updatedAt desc + limit/offset
 - 빈 목록·페이지 경계
 
-**GREEN**: DSLContext 기반 jOOQ 구현(기존 NotificationPolicyRepository 패턴). 목록은 UNION 또는 OR 조건 단일 쿼리. count 별도(cartesian product 회피, 메모리 교훈).
+**GREEN**: DSLContext 기반 jOOQ 구현(기존 NotificationPolicyRepository 패턴). 목록 item = UNION(owned/shared/org) DISTINCT + updatedAt desc + limit/offset. **[C2] total count는 별도 COUNT 서브쿼리**(`SELECT COUNT(*) FROM (UNION) sub`) — item 쿼리와 분리해 cartesian product 회피.
 
 **REFACTOR**: 매핑 함수 추출.
 
@@ -148,11 +149,12 @@ notification-dashboard로 교정.
 - create(actor) → owner=actor
 - get: PRIVATE 남의 것 → 404, TEAM 공유대상 → 200, ORG → 200
 - update/delete: 조회 불가 → 404, 조회되나 비owner → 403, owner → 성공
-- OCC version 불일치 → 409
+- **[C1] delete 404/403 분기** — findById → owner 비교(403) → delete. 단일 rowcount로 404/403 판정 금지. version 조건은 delete에 불요.
+- OCC version 불일치(update) → 409
 - visibility 정규화(서비스에서 도메인 위임)
 - 목록: actor 기준 owned ∪ shared ∪ ORG
 
-**GREEN**: 서비스 + 권한 판정(actor 추출 → 리소스 조회 → owner/visibility 비교). SYSTEM_ADMIN 예외 없음. 단일 트랜잭션.
+**GREEN**: 서비스 + 권한 판정(actor 추출 → 리소스 조회 → owner/visibility 비교). SYSTEM_ADMIN 예외 없음. 단일 트랜잭션. **[C6] PATCH = 도메인 `applyPatch()` → 정규화 → repository.update() 단일 경로**(도메인 우회 금지).
 
 **REFACTOR**: 권한 판정 헬퍼 추출. 예외 타입은 BC 내 신규 정의(plain 도메인 예외 → ExceptionHandler 매핑).
 
@@ -170,7 +172,7 @@ notification-dashboard로 교정.
 - 미인증 401
 - 요청/응답 DTO 직렬화(NON_NULL ↔ 프론트 계약), version 필수
 
-**GREEN**: 컨트롤러(currentActorId 사용) + 요청/응답 DTO + 도메인 예외→HTTP 매핑. 페이지네이션 응답은 기존 목록 API 관례 grep 후 동일 형식.
+**GREEN**: 컨트롤러(currentActorId 사용) + 요청/응답 DTO + 도메인 예외→HTTP 매핑. 페이지네이션 응답은 기존 목록 API 관례 grep 후 동일 형식. **[C5] 에러코드 prefix = `NOTIF_DASHBOARD_*`**(notification BC 고정). 기존 NotificationExceptionHandler 확장 vs 별도 핸들러는 일관되게 1택.
 
 **REFACTOR**: DTO 변환 from() 정리.
 
@@ -197,4 +199,20 @@ notification-dashboard로 교정.
 - 병렬 dispatch: bts-impl이 depends-on + files로 wave 계산 (단일 모듈이라 직렬 dispatch 예상)
 - 추가 검증: ktlint + detekt(--rerun-tasks, false-green 회피) + jOOQ codegen 빌드
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (backend-engineer 독립 리뷰, 2026-06-22)
+
+종합 판정: **PASS_WITH_CONCERNS** (BLOCKER 없음).
+
+항목별: 권한판정 OK · OCC CONCERN · BC격리 OK · 마이그레이션 CONCERN · 목록UNION CONCERN · 트랜잭션 OK · TDD순서 OK · visibility정규화 CONCERN · scope OK.
+
+**impl 전 반영 필수 CONCERN (plan task에 반영 완료).**
+- C1 (Task 4). OCC DELETE의 404/403 분기를 단일 DELETE rowcount로 판정 금지 → findById → owner 비교(403) → delete 순서. version 조건은 DELETE에 불요.
+- C2 (Task 3). 목록 total count는 별도 COUNT 서브쿼리로 분리(`SELECT COUNT(*) FROM (UNION) sub`). item 쿼리와 분리해 cartesian product 회피.
+- C3 (Task 2). `V405DashboardsSchemaTest`를 **필수 RED**로 격상(테이블/컬럼/CASCADE/인덱스 단언). 기존 UserNotificationSubsSchemaTest 표준. false-green 방지.
+- C4 (Task 1). layout JSONB ≤ 64KB 검증을 도메인 RED에 추가(`layout.toString().toByteArray().size <= 65536`). Jakarta @Size로는 불가.
+- C5 (Task 5). 에러코드 prefix = `NOTIF_DASHBOARD_*` (notification BC 고정 prefix). 기존 NotificationExceptionHandler 확장 vs 별도 핸들러 결정은 impl에서 일관되게.
+- C6 (Task 4/5). PATCH는 도메인 `applyPatch()` → 정규화 → repository.update() 단일 경로 강제(도메인 우회 금지, 메모리 교훈).
+
+BLOCKER: 없음.
