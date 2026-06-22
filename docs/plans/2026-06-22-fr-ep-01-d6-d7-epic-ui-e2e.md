@@ -42,9 +42,31 @@ FR-EP-01(에픽 이슈 타입 + 자식 이슈 연결)의 D6/D7 프론트 구현.
   - 보드 EPIC 스윔레인: `BoardCardResponse.epic` view-layer patch 필요 가능성(PRIORITY 스윔레인 #173 옵션C, same-BC view-layer 선례 PR #13). spec 단계에서 확정.
 - **관련 ADR**: [2026-06-22-fr-ep-01-epic-child-link.md](../decisions/2026-06-22-fr-ep-01-epic-child-link.md) (#174 생성), [2026-06-13-issue-link-vs-parent-child-separation](../decisions/2026-06-13-issue-link-vs-parent-child-separation.md)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-22-fr-ep-01-d6-d7-epic-ui-e2e.md](../specs/2026-06-22-fr-ep-01-d6-d7-epic-ui-e2e.md)
+
+### Maxi 게이트 결정 (2026-06-22)
+- 에픽 UI = 기존 이슈 상세 재사용(별도 라우트 없음). 에픽 상세 = 자식 목록 섹션, 자식 상세 = 소속 에픽 표시+지정/해제(parent ParentSection 미러).
+- 보드 EPIC 스윔레인 = 이 PR 포함. 백엔드 BoardCardResponse.epicKey view-layer patch(PR #13 옵션C 동형) + 프론트 enum 'EPIC'.
+
+### 핵심 시나리오
+- 에픽 상세에서 자식 추가/해제(POST/DELETE epic-children, key=에픽).
+- 자식 상세에서 소속 에픽(IssueResponse.epic) 표시 + 지정/해제(parent 동형).
+- 4xx errorCode(409 이미연결/422 4종/404/403/400) 한국어 처리, 캐시 무변경.
+- changelog field="epic" → "에픽" 라벨.
+- 보드 스윔레인 "에픽" 선택 시 컬럼 내 에픽별 레인 그룹(드래그 회귀 0).
+
+### 백엔드 계약(소비, #174 확정)
+- `POST /epic-children {childKey}` 201 · `DELETE /epic-children/{childKey}` 204 · `GET /epic-children` 200
+- EpicChildSummaryResponse = {key, summary, typeKey?, currentStateKey} · IssueResponse.epic = {key, summary}|null(단건만)
+
+## Brainstorming Check
+
+✅ 통과 (직접 sanity check, 1회). gap 3건 plan으로 인계.
+- G1. 에픽 상세 자식 추가 버튼 권한 게이팅 기준 → plan에서 결정.
+- G2. changelog "epic" 값 표시 형식 → plan task로 백엔드 detector 확인.
+- G3. 보드 스윔레인 백엔드 view-layer patch = backend-engineer task(cross-BC) → plan에서 agent 지정.
 
 ## Plan (← /bts-plan 채움)
 
