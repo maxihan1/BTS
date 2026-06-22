@@ -14,6 +14,9 @@ import {
   issueAtlas4Fixture,
   issueAtlas5Fixture,
   issueAtlasNoWorkflowFixture,
+  issueAtlasEpic1Fixture,
+  issueAtlasChild1Fixture,
+  issueAtlasForEpicFixture,
 } from './issue-fixtures'
 import { allIssueTypeFixtures } from './issue-type-fixtures'
 import { softwareDefaultFixture } from './workflow-fixtures'
@@ -67,6 +70,10 @@ const issueFixtureMap: Record<string, IssueResponse> = {
   'ATLAS-4': issueAtlas4Fixture,
   'ATLAS-5': issueAtlas5Fixture,
   'ATLAS-NOWF': issueAtlasNoWorkflowFixture,
+  // FR-EP-01 E2E용 에픽/자식 이슈 fixture
+  'ATLAS-EPIC-1': issueAtlasEpic1Fixture,
+  'ATLAS-CHILD-1': issueAtlasChild1Fixture,
+  'ATLAS-FOR-EPIC': issueAtlasForEpicFixture,
 }
 
 /** E2E 시나리오용 localStorage 키 — S4 재오픈 검증 시 done+resolution 이슈로 응답 분기 */
