@@ -210,4 +210,22 @@ FR-EP-01(에픽 이슈 타입 + 자식 이슈 연결)의 D6/D7 프론트 구현.
 - 추가 검증: typecheck(tsc, vitest≠tsc), ktlint/detekt(--rerun-tasks, false-green 주의), playwright(qa)
 - 주의 함정: Zod required 추가 시 인라인 mock 전수 grep(T3 issues, T7 boards) · frontend-zod-backend-dto 1:1 실측 · MSW stateful E2E reload 금지 · 보드 view-layer cross-BC(PR#13 옵션C) · BoardControllerIntegrationTest epicKey 회귀(#173 priority 선례)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 집중 plan 리뷰 (2026-06-22, eng 비중)
+type=ui지만 기존 컴포넌트 재사용(ParentSection/WatchersSection/SwimlaneSelector) + 백엔드 cross-BC view-layer 비중 → plan-design-review 무거운 mockup 절차 대신 집중 리뷰(history #173/#171 선례, 메모리 "백엔드 plan 리뷰=eng 집중 독립 리뷰").
+
+**✅ 통과**
+- T1 self-join 동일프로젝트 필터(P1-A 누출 회귀방지) RED 명시 · BoardControllerIntegrationTest 회귀(#173 priority 선례) 검증 명시
+- T3/T7 Zod required 추가 인라인 mock 전수 grep 명시 · frontend-zod-backend-dto 1:1 실측
+- T7 드래그 회귀 0(droppable column id 보존, FR-BD-03 동형) · T8 E2E 회귀 확인
+- G1 권한: 에픽 canEdit(UX 힌트) + 백엔드 403(정확성 안전망) — 게이팅은 힌트, 백엔드가 자식 UPDATE 최종 검증
+
+**⚠️ CONCERN (impl/게이트1 처리)**
+- **C1 (T1)**: BoardIssueLookupAdapter epicKey 전달 경로 모호. listVisibleForBoard SQL이 epicKey alias fetch해도 Issue 도메인엔 epicKey 없어 toBoardIssueView에서 손실(Explore 지적). → **adapter가 SQL fetch 결과 epicKey를 BoardIssueView로 직접 전달**(Issue 도메인 우회, fetch 람다에서 record.get(EPIC_KEY_ALIAS) 추출 후 매핑). T1 GREEN에 명시 필요.
+- **C2 (T2)**: T2가 #174 changelog 동작 변경 시 IssueEpicControllerIntegrationTest changelog 단언과 충돌 가능. detector 기록 불변 + **조회 시 resolve(방식 b) 권장**(회귀 위험 낮음). T2 검증에 #174 통합테스트 회귀 추가.
+- **C3 (design, 경미)**: 보드 EPIC 스윔레인 그룹 라벨 = epic key만(요약 없음). 식별 가능하나 후속 개선 여지(epicSummary 노출). 이번 범위 수용.
+
+**BLOCKER: 없음**
+
+**design 경량 검토**: 기존 컴포넌트 재사용으로 비주얼 일관성 확보(신규 mockup 불요). 빈 상태 placeholder(EC2)·인라인 에러 role="alert"(parent 선례)·버튼 비활성 aria — T4/T5 GREEN에 접근성 명시 권장.
