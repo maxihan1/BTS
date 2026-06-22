@@ -160,7 +160,47 @@ class BoardResponsesTest {
         }
     }
 
-    // --- (d) 기존 필드 보존 ---
+    // --- (d) BoardCardResponse.priority 노출 ---
+
+    @Nested
+    inner class BoardCardResponsePriority {
+        @Test
+        fun `BoardCardResponse 는 BoardIssueView 의 priority 를 그대로 노출한다`() {
+            val view = card("PROJ-1")
+            val response = BoardCardResponse.from(view)
+            assertThat(response.priority).isEqualTo(view.priority)
+        }
+
+        @Test
+        fun `priority 0 인 카드는 응답 priority 도 0 이다`() {
+            val view = BoardIssueView(
+                key = "PROJ-2",
+                summary = "우선순위 최상",
+                currentStateKey = "open",
+                assigneeId = null,
+                priority = 0,
+                version = 0L,
+            )
+            val response = BoardCardResponse.from(view)
+            assertThat(response.priority).isEqualTo(0)
+        }
+
+        @Test
+        fun `priority 99 인 카드는 응답 priority 도 99 이다`() {
+            val view = BoardIssueView(
+                key = "PROJ-3",
+                summary = "우선순위 최하",
+                currentStateKey = "open",
+                assigneeId = null,
+                priority = 99,
+                version = 0L,
+            )
+            val response = BoardCardResponse.from(view)
+            assertThat(response.priority).isEqualTo(99)
+        }
+    }
+
+    // --- (e) 기존 필드 보존 ---
 
     @Nested
     inner class ExistingFieldsPreserved {
