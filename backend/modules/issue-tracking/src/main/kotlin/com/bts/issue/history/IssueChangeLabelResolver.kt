@@ -29,6 +29,9 @@ import java.util.UUID
  * - `affectsVersions`, `fixVersions` — 버전 이름 정렬 배열 문자열 (VersionRepository.findById)
  * - `assignee` — 사용자 표시명 (UserLookupPort.findDisplayNamesByIds batch 조회)
  * - `securityLevel` — 보안 등급명 (IssueSecurityDirectory.findLevelNames batch 조회)
+ * - `epic` — 에픽 이슈 key 문자열 (IssueRepository.findKeysByIds batch 조회, FR-EP-01 D6 G2).
+ *   soft-deleted 에픽도 key 가 영구 보존되므로(DATA.md §이슈 키 영구 보존) batch 조회에 포함된다.
+ *   조회 실패 시 null graceful degrade — 라벨 없이 UUID raw value 만 남는다.
  *
  * **라벨 채우지 않는 필드 (label=null 유지).**
  * - `status` — stateKey passthrough. cross-BC 상태명 조회 금지.
@@ -42,7 +45,7 @@ import java.util.UUID
  * @see IssueChangeItem
  * @see IssueChangeDetector
  *
- * 지원 필드(type/resolution/components/affectsVersions/fixVersions/assignee/securityLevel) 각 1개 + 공통 헬퍼.
+ * 지원 필드(type/resolution/components/affectsVersions/fixVersions/assignee/securityLevel/epic) 각 1개 + 공통 헬퍼.
  * 필드당 resolver + lookup 분리는 단일 책임 원칙과 graceful degrade 정책을 위해 유지한다.
  */
 @Suppress("TooManyFunctions", "LongParameterList")
