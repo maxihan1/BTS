@@ -1,5 +1,5 @@
 // 에픽 자식 이슈 API 함수 및 TanStack Query 훅 단위 테스트 — FR-EP-01 Task-3
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement, type ReactNode } from 'react'
@@ -16,6 +16,7 @@ import {
   epicChildrenKey,
 } from './epic-children'
 import { issueResponseSchema } from './issues'
+import { issueQueryKey } from './useUpdateIssueSummary'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처
@@ -277,6 +278,7 @@ describe('useConnectEpicChild 훅 — onSuccess 이후 invalidate', () => {
       ),
     )
     const { queryClient, Wrapper } = createWrapper()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
     // epic-children 쿼리를 미리 fetch해서 캐시에 넣는다.
     await queryClient.prefetchQuery({
@@ -293,10 +295,13 @@ describe('useConnectEpicChild 훅 — onSuccess 이후 invalidate', () => {
     })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    // invalidateQueries로 stale 처리가 되어야 한다 (캐시 상태 stale 확인)
-    const queryState = queryClient.getQueryState(epicChildrenKey('ATLAS-10'))
-    // onSettled invalidate 호출 후 상태가 바뀌었는지 확인
-    expect(queryState).toBeDefined()
+    // onSettled에서 epicChildrenKey와 issueQueryKey 둘 다 invalidate 호출되어야 한다.
+    // invalidateSpy.mock.calls가 비어있으면 onSettled 자체가 실행되지 않은 것 — false-green 차단.
+    await waitFor(() => {
+      const calledKeys = invalidateSpy.mock.calls.map((args) => args[0])
+      expect(calledKeys).toContainEqual({ queryKey: epicChildrenKey('ATLAS-10') })
+      expect(calledKeys).toContainEqual({ queryKey: issueQueryKey('ATLAS-10') })
+    })
   })
 })
 
@@ -315,6 +320,7 @@ describe('useDisconnectEpicChild 훅 — onSuccess 이후 invalidate', () => {
       ),
     )
     const { queryClient, Wrapper } = createWrapper()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
     await queryClient.prefetchQuery({
       queryKey: epicChildrenKey('ATLAS-10'),
@@ -330,7 +336,12 @@ describe('useDisconnectEpicChild 훅 — onSuccess 이후 invalidate', () => {
     })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    const queryState = queryClient.getQueryState(epicChildrenKey('ATLAS-10'))
-    expect(queryState).toBeDefined()
+    // onSettled에서 epicChildrenKey와 issueQueryKey 둘 다 invalidate 호출되어야 한다.
+    // invalidateSpy.mock.calls가 비어있으면 onSettled 자체가 실행되지 않은 것 — false-green 차단.
+    await waitFor(() => {
+      const calledKeys = invalidateSpy.mock.calls.map((args) => args[0])
+      expect(calledKeys).toContainEqual({ queryKey: epicChildrenKey('ATLAS-10') })
+      expect(calledKeys).toContainEqual({ queryKey: issueQueryKey('ATLAS-10') })
+    })
   })
 })

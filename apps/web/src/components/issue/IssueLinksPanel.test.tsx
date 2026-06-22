@@ -749,17 +749,18 @@ describe('IssueLinksPanel — S13 소속 에픽 섹션', () => {
     expect(clearButton).toBeDisabled()
   })
 
-  // S13g: 에픽 지정 성공 — POST /api/v1/issues/{epicKey}/epic-children 호출
-  it('S13g: 에픽 키 입력 후 지정 버튼 클릭 시 useSetIssueEpic mutation이 호출된다', async () => {
+  // S13g: 에픽 지정 성공 — POST /api/v1/issues/{epicKey}/epic-children body { childKey } 확인
+  it('S13g: 에픽 키 입력 후 지정 버튼 클릭 시 childKey를 body에 담아 POST가 전송된다', async () => {
     const user = userEvent.setup()
-    let postCalled = false
+    let capturedChildKey: string | undefined
     server.use(
       http.get('/api/v1/issues/ATLAS-2/links', () =>
         HttpResponse.json({ data: { outward: [], inward: [] } }),
       ),
       // useSetIssueEpic: POST /api/v1/issues/{epicKey}/epic-children body { childKey }
-      http.post('/api/v1/issues/ATLAS-10/epic-children', () => {
-        postCalled = true
+      http.post('/api/v1/issues/ATLAS-10/epic-children', async ({ request }) => {
+        const body = (await request.json()) as { childKey?: string }
+        capturedChildKey = body.childKey
         return HttpResponse.json(
           {
             data: {
@@ -823,22 +824,25 @@ describe('IssueLinksPanel — S13 소속 에픽 섹션', () => {
     await user.type(epicInput, 'ATLAS-10')
     await user.click(screen.getByRole('button', { name: /에픽 지정/ }))
 
+    // POST body의 childKey가 현재 이슈 키(ATLAS-2)임을 단언 — boolean 단언은 요청 내용을 검증 못함
     await waitFor(() => {
-      expect(postCalled).toBe(true)
+      expect(capturedChildKey).toBe('ATLAS-2')
     })
   })
 
-  // S13h: 에픽 해제 성공 — DELETE /api/v1/issues/{epicKey}/epic-children/{childKey} 호출
-  it('S13h: 해제 버튼 클릭 시 useClearIssueEpic mutation이 호출된다', async () => {
+  // S13h: 에픽 해제 성공 — DELETE /api/v1/issues/{epicKey}/epic-children/{childKey} path 확인
+  it('S13h: 해제 버튼 클릭 시 올바른 epicKey/childKey 경로로 DELETE가 전송된다', async () => {
     const user = userEvent.setup()
-    let deleteCalled = false
+    let capturedEpicKey: string | undefined
+    let capturedChildKey: string | undefined
     server.use(
       http.get('/api/v1/issues/ATLAS-2/links', () =>
         HttpResponse.json({ data: { outward: [], inward: [] } }),
       ),
       // useClearIssueEpic: DELETE /api/v1/issues/{epicKey}/epic-children/{childKey}
-      http.delete('/api/v1/issues/ATLAS-10/epic-children/ATLAS-2', () => {
-        deleteCalled = true
+      http.delete('/api/v1/issues/:epicKey/epic-children/:childKey', ({ params }) => {
+        capturedEpicKey = params['epicKey'] as string
+        capturedChildKey = params['childKey'] as string
         return new HttpResponse(null, { status: 204 })
       }),
       // onSettled invalidate issueQueryKey(childKey)
@@ -888,8 +892,10 @@ describe('IssueLinksPanel — S13 소속 에픽 섹션', () => {
     await screen.findByText('ATLAS-10')
     await user.click(screen.getByRole('button', { name: /해제/ }))
 
+    // DELETE 경로 epicKey=ATLAS-10, childKey=ATLAS-2 단언 — boolean 단언은 잘못된 경로를 탐지 못함
     await waitFor(() => {
-      expect(deleteCalled).toBe(true)
+      expect(capturedEpicKey).toBe('ATLAS-10')
+      expect(capturedChildKey).toBe('ATLAS-2')
     })
   })
 
