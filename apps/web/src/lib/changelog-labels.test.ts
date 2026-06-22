@@ -379,6 +379,60 @@ describe('resolveValueLabel — key 이동 raw 반환 (폴백 경로 회귀)', (
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// T-EP. FR-EP-01 — epic 필드 changelog 라벨
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('resolveFieldLabel — epic 필드 (FR-EP-01)', () => {
+  it('T-FL-EP-01: epic → "에픽"을 반환한다', () => {
+    expect(resolveFieldLabel('epic', emptyRefs)).toBe('에픽')
+  })
+})
+
+describe('resolveValueLabel — epic 필드 박제 label 우선 표시 (FR-EP-01)', () => {
+  it('T-VL-EP-01: epic toLabel이 epic key이면 그대로 반환한다', () => {
+    const item = makeItem({
+      field: 'epic',
+      toValue: 'some-epic-uuid',
+      toLabel: 'ATLAS-5',
+      fromValue: null,
+      fromLabel: null,
+    })
+    expect(resolveValueLabel(item, 'to', emptyRefs)).toBe('ATLAS-5')
+  })
+
+  it('T-VL-EP-02: epic fromLabel이 epic key이면 그대로 반환한다', () => {
+    const item = makeItem({
+      field: 'epic',
+      fromValue: 'old-epic-uuid',
+      fromLabel: 'ATLAS-3',
+      toValue: 'new-epic-uuid',
+      toLabel: 'ATLAS-7',
+    })
+    expect(resolveValueLabel(item, 'from', emptyRefs)).toBe('ATLAS-3')
+  })
+
+  it('T-VL-EP-03: epic label=null(과거 데이터)이면 raw UUID를 반환한다', () => {
+    const item = makeItem({
+      field: 'epic',
+      toValue: 'aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeeeee',
+      toLabel: null,
+    })
+    expect(resolveValueLabel(item, 'to', emptyRefs)).toBe('aaaaaaaa-bbbb-4ccc-dddd-eeeeeeeeeeee')
+  })
+
+  it('T-VL-EP-04: epic 연결 해제(toValue=null, label=null) 시 "(없음)"을 반환한다', () => {
+    const item = makeItem({
+      field: 'epic',
+      fromValue: 'old-epic-uuid',
+      fromLabel: 'ATLAS-3',
+      toValue: null,
+      toLabel: null,
+    })
+    expect(resolveValueLabel(item, 'to', emptyRefs)).toBe('(없음)')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // T-PL. FR-PL-01 — 일정 필드(startDate/dueDate/targetDate) changelog 라벨
 // ─────────────────────────────────────────────────────────────────────────────
 
