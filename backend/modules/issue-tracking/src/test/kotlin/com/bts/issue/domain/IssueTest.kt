@@ -1,4 +1,4 @@
-// Issue Aggregate Root 단위 테스트 — factory, invariants, version, deletedAt, typeId 필수, 5필드 불변식, assigneeId, componentIds, affectsVersionIds, fixVersionIds
+// Issue Aggregate Root 단위 테스트 — factory, invariants, version, deletedAt, typeId 필수, 5필드 불변식, assigneeId, componentIds, affectsVersionIds, fixVersionIds, epicId
 
 package com.bts.issue.domain
 
@@ -52,6 +52,8 @@ import java.util.UUID
  * - create_default_dueDate_null — dueDate 기본값은 null 이다.
  * - create_default_targetDate_null — targetDate 기본값은 null 이다.
  * - create_date_fields_all_null — create() 호출 시 3일정 필드가 모두 null 이다.
+ * - create_default_epicId_null — create() 호출 시 epicId 기본값은 null 이다.
+ * - reconstitute_preserves_epicId — 생성자로 epicId 를 지정하면 해당 값이 보존된다.
  */
 class IssueTest {
     private val validId = IssueId(UUID.randomUUID())
@@ -917,5 +919,46 @@ class IssueTest {
         assertThat(startDate).isNull()
         assertThat(dueDate).isNull()
         assertThat(targetDate).isNull()
+    }
+
+    // ─── FR-EP-01: epicId 불변식 ──────────────────────────────────────────────
+
+    @Test
+    fun `create_default_epicId_null — create() 호출 시 epicId 기본값은 null 이다`() {
+        val issue =
+            Issue.create(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                typeId = validTypeId,
+            )
+
+        assertThat(issue.epicId).isNull()
+    }
+
+    @Test
+    fun `reconstitute_preserves_epicId — 생성자로 epicId 를 지정하면 해당 값이 보존된다`() {
+        val epicId = UUID.randomUUID()
+        val now = java.time.Instant.now()
+        val issue =
+            Issue(
+                id = validId,
+                key = validKey,
+                projectId = validProjectId,
+                summary = validSummary,
+                reporterId = validReporterId,
+                currentStateKey = validStateKey,
+                version = 1L,
+                deletedAt = null,
+                createdAt = now,
+                updatedAt = now,
+                typeId = validTypeId,
+                epicId = epicId,
+            )
+
+        assertThat(issue.epicId).isEqualTo(epicId)
     }
 }
