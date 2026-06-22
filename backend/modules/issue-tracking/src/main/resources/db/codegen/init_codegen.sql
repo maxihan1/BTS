@@ -42,6 +42,8 @@ CREATE TABLE issues (
     version            BIGINT       NOT NULL DEFAULT 1,
     -- parent_id: V021 미러 (FR-LK-01). 구조적 parent-child 자기참조 FK. NULL=최상위.
     parent_id          UUID         NULL REFERENCES issues(id),
+    -- epic_id: V028 미러 (FR-EP-01). 소속 Epic 자기참조 FK. NULL=소속 없음. parent_id 와 별개.
+    epic_id            UUID         NULL REFERENCES issues(id),
     created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     deleted_at         TIMESTAMPTZ  NULL
@@ -53,11 +55,14 @@ COMMENT ON COLUMN issues.current_state_key   IS 'project-workflow BC workflow_st
 COMMENT ON COLUMN issues.version             IS '낙관적 잠금 카운터. 동시 수정 충돌 감지용.';
 COMMENT ON COLUMN issues.deleted_at          IS 'NULL=활성, NOT NULL=삭제됨. 소프트 삭제 (DATA.md §3). key 는 삭제 후에도 UNIQUE 제약 유지.';
 COMMENT ON COLUMN issues.parent_id           IS '부모 이슈 (issues.id 자기참조). NULL=최상위. 구조적 계층 — 링크(issue_links)와 별개 (FR-LK-01, V021 미러).';
+COMMENT ON COLUMN issues.epic_id             IS '소속 Epic (issues.id 자기참조). NULL=소속 없음. parent_id(Subtask 계층)와 별개 — Epic↔자식 (FR-EP-01, V028 미러).';
 
 CREATE INDEX idx_issues_project_id ON issues(project_id);
 CREATE INDEX idx_issues_project_id_deleted_at ON issues(project_id, deleted_at) WHERE deleted_at IS NULL;
 -- V021 미러 (FR-LK-01): parent_id FK 인덱스 — 부모→자식(서브태스크) 조회용.
 CREATE INDEX idx_issues_parent_id ON issues(parent_id);
+-- V028 미러 (FR-EP-01): epic_id FK 인덱스 — Epic→소속 이슈 조회용.
+CREATE INDEX idx_issues_epic_id ON issues(epic_id);
 
 -- 4. issue_key_redirects 테이블
 CREATE TABLE issue_key_redirects (
