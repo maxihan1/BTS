@@ -320,6 +320,48 @@ describe('BoardColumn — S6 스윔레인 ASSIGNEE 그룹', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// S9. 스윔레인 그룹 렌더 — EPIC
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BoardColumn — S9 스윔레인 EPIC 그룹', () => {
+  const columnEpic: BoardColumnType = {
+    columnId: COL_UUID,
+    stateKey: 'in-progress',
+    name: '진행 중',
+    category: 'IN_PROGRESS',
+    displayOrder: 2,
+    wipLimit: null,
+    wipExceeded: false,
+    cards: [
+      { issueKey: 'ATLAS-1', summary: 'E1 이슈', assigneeId: null, version: 1, priority: 1, epicKey: 'ATLAS-EP-1' },
+      { issueKey: 'ATLAS-2', summary: '에픽 없음 이슈', assigneeId: null, version: 2, priority: 1, epicKey: null },
+    ],
+  }
+
+  it('S9a: swimlaneField=EPIC이면 epicKey 서브헤더가 렌더된다', () => {
+    renderColumn(columnEpic, new Map(), false, 'EPIC')
+    expect(screen.getByText('ATLAS-EP-1')).toBeInTheDocument()
+  })
+
+  it('S9b: epicKey=null 카드는 "에픽 없음" 그룹으로 렌더된다', () => {
+    renderColumn(columnEpic, new Map(), false, 'EPIC')
+    expect(screen.getByRole('group', { name: '에픽 없음' })).toBeInTheDocument()
+  })
+
+  it('S9c: droppable id(data-col-id)가 컬럼 UUID를 유지한다 — 드래그 회귀 없음', () => {
+    renderColumn(columnEpic, new Map(), false, 'EPIC')
+    const dropZone = document.querySelector(`[data-col-id="${COL_UUID}"]`)
+    expect(dropZone).toBeInTheDocument()
+  })
+
+  it('S9d: 에픽 그룹은 role=group + epicKey를 aria-label로 전달한다', () => {
+    renderColumn(columnEpic, new Map(), false, 'EPIC')
+    const epicGroup = screen.getByRole('group', { name: 'ATLAS-EP-1' })
+    expect(epicGroup).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // S8. isFilterActive prop — WIP 경고 약화 방어 (hotfix-p2)
 // ─────────────────────────────────────────────────────────────────────────────
 
