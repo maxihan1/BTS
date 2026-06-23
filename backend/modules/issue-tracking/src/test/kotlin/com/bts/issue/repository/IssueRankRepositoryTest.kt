@@ -189,54 +189,6 @@ class IssueRankRepositoryTest : IssueTestcontainersBase() {
         assertThat(rows.map { it.first }).containsExactlyElementsOf(rows2.map { it.first })
     }
 
-    // ── R04. findMaxRank — 프로젝트 최대 rank, 소프트삭제 제외 ─────────────────
-
-    /**
-     * Given  rank "b","n","z" 로 이슈 3건 삽입
-     * When   findMaxRank 호출
-     * Then   "z" 반환 (사전순 최대).
-     */
-    @Test
-    @Order(6)
-    fun `R04 - findMaxRank - 프로젝트의 사전순 최대 rank 를 반환한다`() {
-        insertIssue(seq = 1L, rank = Rank.of("b"))
-        insertIssue(seq = 2L, rank = Rank.of("n"))
-        insertIssue(seq = 3L, rank = Rank.of("z"))
-
-        val maxRank = repository.findMaxRank(testProjectId)
-
-        assertThat(maxRank).isEqualTo("z")
-    }
-
-    /**
-     * Given  이슈가 하나도 없는 프로젝트
-     * When   findMaxRank 호출
-     * Then   null 반환.
-     */
-    @Test
-    @Order(7)
-    fun `R04b - findMaxRank - 이슈가 없으면 null 반환`() {
-        val maxRank = repository.findMaxRank(testProjectId)
-        assertThat(maxRank).isNull()
-    }
-
-    /**
-     * Given  rank "z" 인 이슈 1건이 소프트삭제됨, rank "n" 인 이슈 1건이 활성
-     * When   findMaxRank 호출
-     * Then   소프트삭제("z")를 제외하고 "n" 반환.
-     */
-    @Test
-    @Order(8)
-    fun `R04c - findMaxRank - 소프트삭제 이슈를 제외하고 최대 rank 를 반환한다`() {
-        insertIssue(seq = 1L, rank = Rank.of("n"))
-        val deleted = insertIssue(seq = 2L, rank = Rank.of("z"))
-        repository.softDelete(deleted.key)
-
-        val maxRank = repository.findMaxRank(testProjectId)
-
-        assertThat(maxRank).isEqualTo("n")
-    }
-
     // ── R05. insert nullable rank (옵션 B, lazy) ─────────────────────────────
 
     /**
@@ -251,22 +203,6 @@ class IssueRankRepositoryTest : IssueTestcontainersBase() {
         val inserted = insertIssue(seq = 1L)
 
         assertThat(inserted.rank).isNull()
-    }
-
-    /**
-     * Given  rank=null 이슈가 있는 프로젝트
-     * When   findMaxRank 호출
-     * Then   rank=null 이슈는 max 계산에서 무시되고 null 반환.
-     */
-    @Test
-    @Order(10)
-    fun `R05b - findMaxRank - rank null 이슈만 있으면 null 반환`() {
-        insertIssue(seq = 1L) // rank=null
-        insertIssue(seq = 2L) // rank=null
-
-        val maxRank = repository.findMaxRank(testProjectId)
-
-        assertThat(maxRank).isNull()
     }
 
     /**

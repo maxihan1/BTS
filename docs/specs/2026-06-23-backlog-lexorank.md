@@ -42,10 +42,10 @@
 - When: BTS-2를 맨 뒤로 → `{previousIssueKey: "BTS-9", nextIssueKey: null}`.
 - Then: between("z",null)로 "z"보다 큰 rank 부여.
 
-### S4. 새 이슈 생성
-- Given: 프로젝트 백로그 최대 rank가 "x".
+### S4. 새 이슈 생성 (옵션 B)
+- Given: 프로젝트 백로그에 rank 있는 이슈들 존재.
 - When: 새 이슈 BTS-10 생성.
-- Then: BTS-10.rank = between("x", null) → 백로그 맨 끝에 자동 배치.
+- Then: BTS-10.rank = NULL(lazy 미부여). 정렬 `rank NULLS LAST, created_at`로 백로그 맨 뒤에 배치(자동부여 없음). 드래그 시 비로소 rank 부여.
 
 ### S5. 중간값 고갈 → on-demand rebalance
 - Given: 반복 삽입으로 인접 두 rank 사이 길이가 VARCHAR(50)을 넘는 키만 생성 가능한 상태.
@@ -61,10 +61,10 @@
   - prev가 next의 prefix인 경우(예 between("b","bc"))도 trailing-a 회피 보장(예 "bb", "aa" 금지).
 - **FR3**. `Rank.initial(): Rank` — 빈 백로그 첫 키(중간값, 예 "n"). (between(null,null)과 동일 의미)
 - **FR4**. between이 VARCHAR(50) 내 키를 만들 수 없으면 `RankSpaceExhaustedException`(또는 sentinel) → 호출측이 rebalance 트리거.
-- **FR5**. `PATCH /api/v1/issues/{key}/rank` — 이웃 이슈 키 받아 대상 이슈 rank 갱신. UPDATE 권한 검증. OCC version 검증.
-- **FR6**. 이슈 생성 시 rank 자동 부여(프로젝트 백로그 맨 끝).
-- **FR7**. on-demand rebalance: 프로젝트 백로그 이슈 전체를 현재 정렬 순서대로 균등 간격 rank 재배포. advisory lock(projectId)으로 동시 rebalance 직렬화 + lock 후 재조회(TOCTOU 방지).
-- **FR8**. V029 마이그레이션: `issues.rank VARCHAR(50)` 추가 → created_at 순 백필 → NOT NULL. 인덱스 `(project_id, rank)`. init_codegen.sql 미러.
+- **FR5**. `PATCH /api/v1/issues/{key}/rank` — 이웃 이슈 키 받아 대상 이슈 rank 갱신. UPDATE 권한 검증. no-bump(OCC version 미증가, 결정 #10).
+- **FR6**. (옵션 B 전환으로 폐기) ~~이슈 생성 시 rank 자동 부여~~. 신규 이슈는 rank=NULL(lazy), 드래그 시 부여. createIssue/cloneIssue 자동부여 없음.
+- **FR7**. on-demand rebalance: 프로젝트 백로그 이슈 전체(NULL 포함, NULLS LAST 순)를 균등 간격 rank 재배포. advisory lock(projectId)으로 동시 rebalance 직렬화 + lock 후 재조회(TOCTOU 방지).
+- **FR8**. V030 마이그레이션: `issues.rank VARCHAR(50)` **nullable** 추가 + 인덱스 `(project_id, rank)`. init_codegen.sql 미러. (옵션 B: NOT NULL/백필 없음. V029→V030 리넘버: origin/main V029_filter_indexes 충돌 회피.)
 
 ## 비기능 요구사항 (NFR)
 
@@ -151,7 +151,7 @@ CREATE INDEX idx_issues_project_rank ON issues (project_id, rank);
 - [ ] `Rank` VO + between/initial 단위 테스트 (경계/인접/고갈 케이스 전수).
 - [ ] V029 마이그레이션 + 백필 + NOT NULL + 인덱스, init_codegen 미러, 마이그레이션 테스트 통과.
 - [ ] `PATCH /{key}/rank` 통합 테스트: S1~S5 + E1~E10 (권한 403, OCC 409, 타프로젝트 400 포함).
-- [ ] 이슈 생성 시 rank 자동 부여 테스트.
+- [ ] 이슈 생성 시 rank=NULL(lazy) 삽입 테스트 (옵션 B, NOT NULL 위반 없음).
 - [ ] on-demand rebalance 테스트 (고갈 트리거 + advisory lock 직렬화).
 - [ ] 1K 부하 테스트: 평균 리랭크 < 5ms, rebalance < 500ms (NFR2/NFR3).
 - [ ] `./gradlew :backend:modules:issue-tracking:test` + shared-kernel test green, ktlint/detekt 통과.

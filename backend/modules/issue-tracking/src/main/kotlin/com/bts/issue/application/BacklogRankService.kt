@@ -304,6 +304,9 @@ class BacklogRankService(
      * rebalance 후 이웃 rank 를 재조회(C3)하여 between 재계산·updateRank 한다.
      *
      * rebalance 가 키를 재배포하므로 이전 rank 값은 stale — 반드시 재조회한다.
+     * 전제: rebalance 는 findRanksForRebalance(전체) + batchUpdateRanks 로 모든 활성 이슈에
+     * non-null rank 를 부여하므로 활성 이웃의 재조회 결과는 non-null 이다. between 은 null 을
+     * 경계 없음으로 해석하므로, 이웃이 직후 삭제되는 극단 레이스에서만 경계로 폴백한다.
      */
     private fun rebalanceAndRetry(cmd: RerankCmd) {
         rebalance(cmd.projectId)

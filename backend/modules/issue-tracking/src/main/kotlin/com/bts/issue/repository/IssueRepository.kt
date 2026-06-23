@@ -2027,23 +2027,6 @@ class IssueRepository(
             }
 
     /**
-     * 프로젝트의 활성 이슈 중 사전순 최대 rank 를 반환한다 (백로그 맨 끝 부여용).
-     *
-     * 소프트삭제 이슈는 제외한다.
-     *
-     * @param projectId 조회 대상 프로젝트 UUID.
-     * @return 최대 rank 문자열. 이슈가 없으면 null.
-     */
-    @Transactional(readOnly = true)
-    fun findMaxRank(projectId: UUID): String? =
-        dsl.select(DSL.max(ISSUES.RANK))
-            .from(ISSUES)
-            .where(ISSUES.PROJECT_ID.eq(projectId))
-            .and(ISSUES.DELETED_AT.isNull)
-            .fetchOne()
-            ?.value1()
-
-    /**
      * ILIKE ESCAPE '\' 에서 안전하게 사용하기 위해 prefix 의 와일드카드 문자를 이스케이프한다.
      *
      * PostgreSQL ILIKE ESCAPE '\' 규칙.
