@@ -242,28 +242,35 @@ describe('useUpdateDashboard', () => {
   })
 
   it('T-DB-UPDATE-2: PATCH 후 refetch하면 수정된 이름이 반영된다 (stateful store 확인)', async () => {
-    const { wrapper } = createWrapper()
+    const { queryClient, wrapper } = createWrapper()
 
-    // 먼저 단건 조회로 캐시를 채운다
-    const { result: queryResult } = renderHook(() => useDashboard(DEFAULT_DASHBOARD.id), {
-      wrapper,
-    })
-    await waitFor(() => expect(queryResult.current.isSuccess).toBe(true))
+    // 두 훅을 하나의 renderHook 안에서 함께 렌더링해 동일 QueryClient를 공유한다.
+    // 별도 renderHook은 React 트리가 분리되어 캐시를 공유하지 못한다.
+    const { result } = renderHook(
+      () => ({
+        query: useDashboard(DEFAULT_DASHBOARD.id),
+        mutation: useUpdateDashboard(),
+      }),
+      { wrapper },
+    )
 
-    // mutation 훅
-    const { result: mutationResult } = renderHook(() => useUpdateDashboard(), { wrapper })
+    await waitFor(() => expect(result.current.query.isSuccess).toBe(true))
+    expect(result.current.query.data?.name).toBe(DEFAULT_DASHBOARD.name)
 
     await act(async () => {
-      await mutationResult.current.mutateAsync({
+      await result.current.mutation.mutateAsync({
         id: DEFAULT_DASHBOARD.id,
         body: { name: '변경된 대시보드 이름', version: DEFAULT_DASHBOARD.version },
       })
     })
 
-    await waitFor(() => expect(mutationResult.current.isSuccess).toBe(true))
+    await waitFor(() => expect(result.current.mutation.isSuccess).toBe(true))
 
-    // invalidate 후 refetch — MSW store가 변이되었으므로 새 이름이 반환되어야 한다
-    await waitFor(() => expect(queryResult.current.data?.name).toBe('변경된 대시보드 이름'))
+    // invalidate → TanStack Query가 자동 refetch → MSW store에서 변경된 이름 반환
+    await waitFor(() => expect(result.current.query.data?.name).toBe('변경된 대시보드 이름'))
+
+    // queryClient 참조는 invalidate-only 검증 보조용 — 직접 refetch 호출 금지
+    void queryClient
   })
 
   it('T-DB-UPDATE-3: setQueryData를 직접 호출하지 않는다 (invalidate-only)', async () => {
