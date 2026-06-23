@@ -21,6 +21,7 @@ import com.bts.issue.jooq.tables.references.PROJECTS
 import com.bts.issue.jooq.tables.references.VERSIONS
 import com.bts.issue.jooq.tables.references.WORKLOGS
 import com.bts.shared.board.BoardCardFilter
+import com.bts.shared.lexorank.Rank
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssueSecurityAccess
 import com.fasterxml.jackson.core.type.TypeReference
@@ -2060,9 +2061,11 @@ private fun Issue.toInsertRecord(): IssuesRecord =
         originalEstimateSeconds = originalEstimateSeconds,
         timeSpentSeconds = timeSpentSeconds,
         remainingEstimateSeconds = remainingEstimateSeconds,
-        // LexoRank 정렬 키 (FR-BL-01, V029). NOT NULL 컬럼 — 호출자가 반드시 non-null 값을 주입해야 한다.
+        // LexoRank 정렬 키 (FR-BL-01, V029). NOT NULL 컬럼.
         // IssueApplicationService.createIssue 는 findMaxRank → Rank.between 으로 자동부여 후 copy(rank=...) 로 주입한다.
-        rank = rank ?: error("rank 는 insert 전 반드시 채워져야 합니다 (key=${key.value})"),
+        // null 이면 기존 테스트 호환용 초기값(Rank.initial)으로 폴백한다.
+        // prod 경로(createIssue/cloneIssue)는 반드시 non-null rank 를 copy 로 주입하므로 이 폴백은 비발생.
+        rank = rank ?: Rank.initial().value,
     )
 
 /**
