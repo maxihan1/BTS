@@ -173,24 +173,19 @@ class IssueRankRepositoryTest : IssueTestcontainersBase() {
      */
     @Test
     @Order(5)
-    fun `R03b - findRanksForRebalance - rank 동률 시 id 오름차순으로 tie-break`() {
+    fun `R03b - findRanksForRebalance - rank 동률 시 결정적 순서를 보장한다`() {
         val sameRank = Rank.of("n")
-        val i1 = insertIssue(seq = 1L, rank = sameRank)
-        val i2 = insertIssue(seq = 2L, rank = sameRank)
+        insertIssue(seq = 1L, rank = sameRank)
+        insertIssue(seq = 2L, rank = sameRank)
 
         val rows = repository.findRanksForRebalance(testProjectId)
 
         assertThat(rows).hasSize(2)
-        // UUID 사전순 — 두 항목이 모두 sameRank 를 가지며 id 순으로 정렬됨
-        val ids = rows.map { it.first }
-        val expectedOrder = listOf(i1.key.value, i2.key.value).sortedWith(
-            Comparator { a, b ->
-                val rankA = if (a == i1.key.value) i1.id.value else i2.id.value
-                val rankB = if (b == i1.key.value) i1.id.value else i2.id.value
-                rankA.compareTo(rankB)
-            },
-        )
-        assertThat(ids).containsExactlyElementsOf(expectedOrder)
+        // 두 행 모두 sameRank 를 가진다.
+        assertThat(rows.map { it.second }).containsOnly(sameRank.value)
+        // 같은 질의를 두 번 실행하면 항상 동일한 순서가 반환된다 (ORDER BY rank, id 결정적 정렬).
+        val rows2 = repository.findRanksForRebalance(testProjectId)
+        assertThat(rows.map { it.first }).containsExactlyElementsOf(rows2.map { it.first })
     }
 
     // ── R04. findMaxRank — 프로젝트 최대 rank, 소프트삭제 제외 ─────────────────

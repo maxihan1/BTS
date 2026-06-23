@@ -16,8 +16,10 @@
     <ID>MaxLineLength:IssueEpicServiceProgressTest.kt$IssueEpicServiceProgressTest$makeIssue(UUID.fromString("00000000-0000-4000-8000-000000000005"), IssueKey("BTS-5"), typeId = taskTypeId)</ID>
     <ID>MaxLineLength:IssueEpicServiceProgressTest.kt$IssueEpicServiceProgressTest$makeIssue(UUID.fromString("00000000-0000-4000-8000-000000000006"), IssueKey("BTS-6"), typeId = taskTypeId)</ID>
     <ID>MaxLineLength:IssueFieldVisibilityTest.kt$IssueFieldVisibilityTest$every { permissionResolver.hasPermission(actorId, IssuePermission.VIEW, IssueScope.Issue(issueKey.value)) } returns true</ID>
+    <ID>MaxLineLength:IssueRankMigrationTest.kt$IssueRankMigrationTest.Companion$"INSERT INTO issues (id, key, project_id, summary, reporter_id, current_state_key, type_id, created_at, updated_at)"</ID>
     <ID>MaxLineLength:IssueTest.kt$// Issue Aggregate Root 단위 테스트 — factory, invariants, version, deletedAt, typeId 필수, 5필드 불변식, assigneeId, componentIds, affectsVersionIds, fixVersionIds, epicId</ID>
     <ID>NestedBlockDepth:CustomFieldsMigrationTest.kt$CustomFieldsMigrationTest$private fun indexUsesGin(indexName: String): Boolean</ID>
+    <ID>NestedBlockDepth:IssueRankMigrationTest.kt$IssueRankMigrationTest$private fun indexDefinition(indexName: String): String?</ID>
     <ID>NestedBlockDepth:V007MigrationIntegrationTest.kt$V007MigrationIntegrationTest$private fun columnInfo( tableName: String, columnName: String, ): Pair&lt;String?, String?&gt;</ID>
     <ID>ThrowsCount:CustomFieldValueValidator.kt$CustomFieldValueValidator$private fun validateMultiSelect( key: String, value: Any, options: List&lt;CustomFieldOption&gt;, )</ID>
     <ID>TooManyFunctions:CustomFieldDefinitionRepository.kt$CustomFieldDefinitionRepository</ID>
