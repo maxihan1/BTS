@@ -73,11 +73,14 @@ vi.mock('@/components/dashboard/DashboardForm', () => ({
 // use-dashboards 훅 mock
 const mockUseDashboard = vi.fn()
 const mockUseUpdateDashboard = vi.fn()
+const mockUseDeleteDashboard = vi.fn()
 const mockMutateAsync = vi.fn()
+const mockDeleteMutateAsync = vi.fn()
 
 vi.mock('@/hooks/use-dashboards', () => ({
   useDashboard: (id: string) => mockUseDashboard(id),
   useUpdateDashboard: () => mockUseUpdateDashboard(),
+  useDeleteDashboard: () => mockUseDeleteDashboard(),
   dashboardKeys: {
     detail: (id: string) => ['dashboard', id] as const,
     list: () => ['dashboards'] as const,
@@ -179,6 +182,10 @@ beforeEach(() => {
   // 기본 mutation mock — 성공
   mockMutateAsync.mockResolvedValue({ ...DASHBOARD_OWNED, version: 1 })
   mockUseUpdateDashboard.mockReturnValue({ mutateAsync: mockMutateAsync, isPending: false })
+
+  // 기본 delete mutation mock — 성공
+  mockDeleteMutateAsync.mockResolvedValue(undefined)
+  mockUseDeleteDashboard.mockReturnValue({ mutateAsync: mockDeleteMutateAsync, isPending: false })
 })
 
 afterEach(() => {
@@ -411,6 +418,82 @@ describe('손상 layout 폴백', () => {
     await renderDetailPage()
     await waitFor(() => expect(screen.getByTestId('dashboard-grid')).toBeInTheDocument())
     expect(capturedGridTiles?.length).toBe(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 대시보드 삭제 (S6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('대시보드 삭제', () => {
+  /**
+   * T-DB8-DEL1. 소유자에게 삭제 버튼이 노출된다.
+   */
+  it('T-DB8-DEL1: 소유자이면 삭제 버튼이 헤더에 렌더된다', async () => {
+    mockUseDashboard.mockReturnValue({ data: DASHBOARD_OWNED, isLoading: false, isError: false })
+    await renderDetailPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: /삭제/i })).toBeInTheDocument())
+  })
+
+  /**
+   * T-DB8-DEL2. 비소유자에게 삭제 버튼이 없다 (권한 게이팅 일관).
+   */
+  it('T-DB8-DEL2: 비소유자이면 삭제 버튼이 없다', async () => {
+    mockUseDashboard.mockReturnValue({ data: DASHBOARD_NOT_OWNED, isLoading: false, isError: false })
+    await renderDetailPage()
+    await waitFor(() => expect(screen.getByTestId('dashboard-grid')).toBeInTheDocument())
+    // 삭제 버튼이 DOM에 없어야 한다
+    expect(screen.queryByRole('button', { name: /^삭제$/ })).toBeNull()
+  })
+
+  /**
+   * T-DB8-DEL3. 삭제 버튼 클릭 → 인라인 확인 UI(확인/취소) 노출.
+   */
+  it('T-DB8-DEL3: 삭제 버튼 클릭 시 인라인 확인 UI가 나타난다', async () => {
+    const user = userEvent.setup()
+    mockUseDashboard.mockReturnValue({ data: DASHBOARD_OWNED, isLoading: false, isError: false })
+    await renderDetailPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: /^삭제$/ })).toBeInTheDocument())
+    // 삭제 버튼 클릭
+    await user.click(screen.getByRole('button', { name: /^삭제$/ }))
+    // 확인 + 취소 버튼이 나타난다
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /확인/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /취소/i })).toBeInTheDocument()
+    })
+  })
+
+  /**
+   * T-DB8-DEL4. 확인 클릭 → useDeleteDashboard.mutateAsync 호출 + /dashboards 네비게이션.
+   */
+  it('T-DB8-DEL4: 확인 클릭 시 deleteAsync 호출 후 /dashboards로 이동한다', async () => {
+    const user = userEvent.setup()
+    mockUseDashboard.mockReturnValue({ data: DASHBOARD_OWNED, isLoading: false, isError: false })
+    await renderDetailPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: /^삭제$/ })).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /^삭제$/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /확인/i })).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /확인/i }))
+    await waitFor(() => {
+      expect(mockDeleteMutateAsync).toHaveBeenCalledWith('a0000000-0000-4000-8000-000000000001')
+      expect(mockNavigate).toHaveBeenCalledWith({ to: '/dashboards' })
+    })
+  })
+
+  /**
+   * T-DB8-DEL5. 취소 클릭 → useDeleteDashboard.mutateAsync 호출 안 함.
+   */
+  it('T-DB8-DEL5: 취소 클릭 시 삭제가 실행되지 않는다', async () => {
+    const user = userEvent.setup()
+    mockUseDashboard.mockReturnValue({ data: DASHBOARD_OWNED, isLoading: false, isError: false })
+    await renderDetailPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: /^삭제$/ })).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /^삭제$/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /취소/i })).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /취소/i }))
+    // 확인 UI가 사라지고 mutateAsync가 호출되지 않아야 한다
+    await waitFor(() => expect(screen.queryByRole('button', { name: /확인/i })).toBeNull())
+    expect(mockDeleteMutateAsync).not.toHaveBeenCalled()
   })
 })
 
