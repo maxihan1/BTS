@@ -5,11 +5,13 @@ package com.bts.issue.adapter.inbound.rest
 import com.bts.issue.application.AppChangeAssigneeRequest
 import com.bts.issue.application.AppChangeComponentsRequest
 import com.bts.issue.application.AppChangeVersionsRequest
+import com.bts.issue.application.BacklogRankService
 import com.bts.issue.application.DatePatch
 import com.bts.issue.application.EstimatePatch
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.IssueChangelogService
 import com.bts.issue.application.SecurityLevelPatch
+import com.bts.issue.adapter.inbound.rest.dto.RerankIssueRequest
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.pdf.IssuePdfRenderer
 import com.bts.issue.pdf.IssuePdfTemplate
@@ -59,6 +61,7 @@ import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
  * - PATCH  /api/v1/issues/{key}/fix-versions — 수정 예정 버전 목록 교체 (FR-VR-03 T5)
  * - DELETE /api/v1/issues/{key} — 이슈 소프트 삭제 (T16)
  * - GET    /api/v1/issues/{key}/pdf — 이슈 PDF 내보내기 (FR-IS-08)
+ * - PATCH  /api/v1/issues/{key}/rank — 백로그 rank 변경 (FR-BL-01 Task 5)
  *
  * ### 트랜잭션 정책
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다.
@@ -74,7 +77,7 @@ import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
  * 미인증·익명·비-UUID·nil-UUID 주체는 401(UNAUTHORIZED)로 거부한다.
  * actor 추출은 리소스 조회(404)보다 앞서 수행하여 미인증자가 404 로 리소스 존재를 probe 하지 못하게 한다.
  *
- * TooManyFunctions: 이슈 CRUD + 전이 + 클론 REST 엔드포인트를 단일 컨트롤러가 담당하므로 함수 수 임계치(11)를 초과한다.
+ * TooManyFunctions: 이슈 CRUD + 전이 + 클론 + 랭크 REST 엔드포인트를 단일 컨트롤러가 담당하므로 함수 수 임계치(11)를 초과한다.
  * 책임 분리보다 이슈 리소스 응집이 더 적합한 구조이므로 Suppress 처리.
  *
  * @param service 이슈 유스케이스 서비스
@@ -82,6 +85,7 @@ import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
  * @param changelogService 이슈 변경 이력 조회 서비스. 기본값은 기존 슬라이스 테스트 호환을 위한 null.
  *   Spring production 컨텍스트에서는 항상 Bean 이 주입된다.
  *   [changelog] 엔드포인트는 이 서비스가 non-null 일 때만 정상 동작한다.
+ * @param backlogRankService 백로그 rank 변경 서비스 (FR-BL-01). 기존 슬라이스 테스트 호환을 위해 null 기본값.
  */
 @Suppress("TooManyFunctions")
 @RestController
@@ -93,6 +97,8 @@ class IssueController(
     private val pdfRenderer: IssuePdfRenderer = IssuePdfRenderer(IssuePdfTemplate()),
     // changelog 엔드포인트(FR-HS-02) 전용. 기존 슬라이스 테스트는 이 파라미터를 주입하지 않으므로 null 기본값.
     private val changelogService: IssueChangelogService? = null,
+    // rank 엔드포인트(FR-BL-01) 전용. 기존 슬라이스 테스트는 이 파라미터를 주입하지 않으므로 null 기본값.
+    private val backlogRankService: BacklogRankService? = null,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -557,6 +563,56 @@ class IssueController(
         return ResponseEntity.created(location).body(DataResponse(data = response))
     }
 
+    /**
+     * 이슈 백로그 rank 를 변경한다 (FR-BL-01).
+     *
+     * 이웃 이슈 키를 받아 대상 이슈를 두 이웃 사이에 배치한다.
+     * 서버가 이웃 rank 를 조회하고 LexoRank between 을 계산한다.
+     * rank 변경은 no-bump(version 불변, updated_at 미갱신) last-write-wins.
+     *
+     * 응답.
+     * 200 OK + { data: { key, rank, version } }
+     *
+     * @param key path variable 이슈 키 문자열. 예: "BTS-3"
+     * @param request 이웃 이슈 키. previousIssueKey/nextIssueKey 최소 하나는 non-null.
+     * @return 200 OK + [IssueRankResponse] body
+     * @throws com.bts.issue.domain.IssueAccessDeniedException UPDATE 권한 미보유 → 403
+     * @throws com.bts.issue.domain.IssueNotFoundException 대상 또는 이웃 이슈 미존재/소프트삭제 → 404
+     * @throws com.bts.issue.application.InvalidRankNeighborException 이웃 검증 실패 → 400
+     */
+    @PatchMapping("/{key}/rank")
+    fun rerank(
+        @PathVariable key: String,
+        @RequestBody request: RerankIssueRequest,
+    ): ResponseEntity<DataResponse<IssueRankResponse>> {
+        log.info("IssueController.rerank key={} prev={} next={}", key, request.previousIssueKey, request.nextIssueKey)
+
+        val actor = CurrentActor.current()
+        val issueKey = IssueKey(key)
+        val rankService =
+            requireNotNull(backlogRankService) {
+                "BacklogRankService 가 주입되지 않았습니다. Spring 컨텍스트 구성을 확인하세요."
+            }
+
+        rankService.rerank(
+            actor,
+            issueKey,
+            request.previousIssueKey?.let { IssueKey(it) },
+            request.nextIssueKey?.let { IssueKey(it) },
+        )
+
+        // no-bump 라 version 불변 — rank/version 은 BacklogRankService 로 조회한다.
+        // IssueApplicationService.findByKey 재사용 시 IssueKey value class 를
+        // MockK any() 매처가 처리하지 못하는 테스트 제약으로 BacklogRankService 직접 조회 채택.
+        val rank = rankService.findRankByKey(issueKey)
+        val version = rankService.findVersionByKey(issueKey)
+            ?: error("rerank 직후 이슈(${issueKey.value})의 version 조회 실패 — 동시 삭제가 발생했을 수 있습니다.")
+
+        return ResponseEntity.ok(
+            DataResponse(data = IssueRankResponse(key = issueKey.value, rank = rank, version = version)),
+        )
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     private fun buildLocation(issueKey: String): URI = URI.create("/api/v1/issues/$issueKey")
@@ -631,3 +687,18 @@ class IssueController(
  * @property data 응답 페이로드
  */
 data class DataResponse<T>(val data: T)
+
+/**
+ * 이슈 rank 변경 응답 DTO (FR-BL-01 spec #14).
+ *
+ * rank 변경은 no-bump 이므로 version 이 불변임을 반영한다.
+ *
+ * @property key 이슈 키 문자열. 예: "BTS-3"
+ * @property rank 변경된 rank 값. 옵션 B lazy 미부여 상태면 null 일 수 있다.
+ * @property version 이슈 낙관적 잠금 버전. no-bump 이므로 rerank 전후 동일.
+ */
+data class IssueRankResponse(
+    val key: String,
+    val rank: String?,
+    val version: Long,
+)

@@ -133,11 +133,35 @@ class BacklogRankService(
         }
 
         val newRanks = computeEvenRanks(issues.size)
-        issues.forEachIndexed { idx, (issueKey, _) ->
-            repo.updateRank(IssueKey(issueKey), newRanks[idx])
-        }
+        // 단건 updateRank 반복 대신 jOOQ batch UPDATE 사용 (NFR3: 1K rebalance < 500ms).
+        val entries = issues.mapIndexed { idx, (issueKey, _) -> IssueKey(issueKey) to newRanks[idx] }
+        repo.batchUpdateRanks(entries)
         log.info("rebalance_done projectId={} count={}", projectId, issues.size)
     }
+
+    /**
+     * 이슈 rank 값을 조회한다 (컨트롤러 응답 조립용).
+     *
+     * rerank 후 컨트롤러가 응답 DTO 조립을 위해 호출한다.
+     * 이슈가 미존재하거나 소프트삭제된 경우 null 을 반환한다.
+     *
+     * @param key 조회할 이슈 키.
+     * @return rank 문자열. 미부여(nullable, 옵션 B lazy) 또는 미존재 시 null.
+     */
+    @Transactional(readOnly = true)
+    fun findRankByKey(key: IssueKey): String? = repo.findRankByKey(key)
+
+    /**
+     * 이슈 version 을 조회한다 (컨트롤러 응답 조립용).
+     *
+     * rerank 는 no-bump 라 version 이 변하지 않는다. rerank 전에 조회한 version 을 응답에 사용한다.
+     * 이슈가 미존재하거나 소프트삭제된 경우 null 을 반환한다.
+     *
+     * @param key 조회할 이슈 키.
+     * @return version. 미존재 시 null.
+     */
+    @Transactional(readOnly = true)
+    fun findVersionByKey(key: IssueKey): Long? = repo.findByKey(key)?.version
 
     // ── private helpers ────────────────────────────────────────────────────────
 
