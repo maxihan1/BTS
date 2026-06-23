@@ -824,8 +824,11 @@ class IssueRepository(
      * `current_state_key` 컬럼에 대한 IN 술어 — V004 소문자 컨벤션 기준 정확 매칭.
      * 같은 필드 내 값들은 IN 으로 OR 결합된다.
      *
+     * 예: `statusKeys = ["open", "in_progress"]` → `current_state_key IN ('open', 'in_progress')`.
+     *
      * @param filter 보드 카드 필터.
-     * @return [filter.statusKeys] 가 비어 있으면 `null`, 아니면 `current_state_key IN (...)` [Condition].
+     * @return [BoardCardFilter.statusKeys] 가 비어 있으면 `null`, 아니면 `current_state_key IN (...)` [Condition].
+     * @see buildFilterCondition
      */
     private fun buildStatusCondition(filter: BoardCardFilter): Condition? {
         if (filter.statusKeys.isEmpty()) return null
