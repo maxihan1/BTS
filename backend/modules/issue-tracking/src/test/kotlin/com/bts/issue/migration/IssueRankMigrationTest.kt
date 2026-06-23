@@ -1,4 +1,4 @@
-// V029 마이그레이션 검증 — issues.rank(VARCHAR(50), nullable) 컬럼 + idx_issues_project_rank 인덱스 (FR-BL-01 옵션 B)
+// V030 마이그레이션 검증 — issues.rank(VARCHAR(50), nullable) 컬럼 + idx_issues_project_rank 인덱스 (FR-BL-01 옵션 B)
 
 package com.bts.issue.migration
 
@@ -13,7 +13,7 @@ import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 
 /**
- * Flyway V001~V029 마이그레이션 체인 적용 후 V029 변경사항을 검증한다 (FR-BL-01 옵션 B).
+ * Flyway V001~V030 마이그레이션 체인 적용 후 V030 변경사항을 검증한다 (FR-BL-01 옵션 B).
  * Spring 컨텍스트 없이 Testcontainers PostgreSQL 에서 직접 실행한다 (V028MigrationTest 패턴 미러).
  *
  * 검증 범위.
@@ -36,7 +36,7 @@ class IssueRankMigrationTest {
             DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
                 .asCompatibleSubstituteFor("postgres")
 
-        // (a)(b) 구조 검증용 컨테이너 — 전체 체인 V001~V029 적용.
+        // (a)(b) 구조 검증용 컨테이너 — 전체 체인 V001~V030 적용.
         @Container
         @JvmStatic
         val postgres: PostgreSQLContainer<*> =
@@ -48,7 +48,7 @@ class IssueRankMigrationTest {
         @BeforeAll
         @JvmStatic
         fun setup() {
-            // 전체 마이그레이션 체인(V001~V029) 적용 — target 미지정.
+            // 전체 마이그레이션 체인(V001~V030) 적용 — target 미지정.
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
@@ -140,17 +140,17 @@ class IssueRankMigrationTest {
     // ── (a) rank 컬럼 존재/타입/nullable 검증 ────────────────────────────────
 
     @Test
-    fun `V029 rank 컬럼 타입은 character varying`() {
+    fun `V030 rank 컬럼 타입은 character varying`() {
         assertThat(columnDataType("issues", "rank")).isEqualTo("character varying")
     }
 
     @Test
-    fun `V029 rank 컬럼 최대 길이는 50`() {
+    fun `V030 rank 컬럼 최대 길이는 50`() {
         assertThat(columnMaxLength("issues", "rank")).isEqualTo(50)
     }
 
     @Test
-    fun `V029 rank 컬럼은 nullable (옵션 B, lazy 부여)`() {
+    fun `V030 rank 컬럼은 nullable (옵션 B, lazy 부여)`() {
         // 옵션 B 전환: rank=NULL 허용 — 신규 이슈는 rank=NULL, 드래그(rerank) 시 부여.
         assertThat(columnIsNullable("issues", "rank")).isEqualTo("YES")
     }
@@ -158,12 +158,12 @@ class IssueRankMigrationTest {
     // ── (b) 인덱스 검증 ───────────────────────────────────────────────────────
 
     @Test
-    fun `V029 idx_issues_project_rank 인덱스 존재`() {
+    fun `V030 idx_issues_project_rank 인덱스 존재`() {
         assertThat(indexExists("idx_issues_project_rank")).isTrue()
     }
 
     @Test
-    fun `V029 idx_issues_project_rank 인덱스는 project_id, rank 복합`() {
+    fun `V030 idx_issues_project_rank 인덱스는 project_id, rank 복합`() {
         val def = indexDefinition("idx_issues_project_rank")
         assertThat(def).isNotNull()
         assertThat(def!!.lowercase()).contains("project_id")
