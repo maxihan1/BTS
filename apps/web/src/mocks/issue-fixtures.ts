@@ -1,7 +1,35 @@
 // issue-tracking BC 이슈 목록 MSW fixture 데이터
 import type { IssueResponse, IssuePage } from '@/api/issues'
 
-/** 이슈 단건 fixture — ATLAS-1 */
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-SR-01 D6 — 필터 분별 시드용 상수 (B3 vacuous 차단)
+//
+// issuePageFixture 4건의 분포:
+//   ATLAS-1  open      assigneeId=null         labels=[]           componentIds=[]
+//   ATLAS-2  in_progress assigneeId=BOB_ID     labels=['bug']      componentIds=[]
+//   ATLAS-3  done      assigneeId=ALICE_ID     labels=['frontend'] componentIds=[COMP_A_ID]
+//   ATLAS-5  in_review assigneeId=null         labels=[]           componentIds=[]
+//
+// ★ 주의: userAliceFixture.id == issueAtlas2Fixture.id (UUID 충돌).
+//   assigneeId에는 userAliceFixture.id를 그대로 사용하되,
+//   이슈 id 필드(issueAtlas2Fixture.id)와 혼동하지 않도록 주석으로 명시.
+//   BOB_ID = userBobFixture.id (충돌 없음).
+//   COMP_A_ID = 보드 컴포넌트A UUID (board-fixtures.ts와 동기화).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** userBobFixture.id 와 동기화 — assignee 분별 시드 */
+export const ISSUE_FILTER_BOB_ID = 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a'
+
+/**
+ * userAliceFixture.id 와 동기화 — assignee 분별 시드.
+ * ★ 이 값은 issueAtlas2Fixture.id 와 같은 UUID이므로 이슈 id 용도로 사용 금지.
+ */
+export const ISSUE_FILTER_ALICE_ID = 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f'
+
+/** 컴포넌트A UUID — board-fixtures.ts COMP_A 상수와 동기화 */
+export const ISSUE_FILTER_COMP_A_ID = '40000000-0000-4000-8000-000000000001'
+
+/** 이슈 단건 fixture — ATLAS-1 (status=open, 미배정, 라벨 없음, 컴포넌트 없음) */
 export const issueAtlas1Fixture: IssueResponse = {
   key: 'ATLAS-1',
   id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
@@ -9,6 +37,7 @@ export const issueAtlas1Fixture: IssueResponse = {
   summary: '첫 번째 이슈 — 로그인 페이지 구현',
   currentStateKey: 'open',
   reporterId: 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e',
+  // FR-SR-01 B3 분별 시드: 미배정(null)
   assigneeId: null,
   componentIds: [],
   affectsVersionIds: [],
@@ -23,6 +52,7 @@ export const issueAtlas1Fixture: IssueResponse = {
   descriptionHtml: null,
   priority: 3,
   priorityName: 'Medium',
+  // FR-SR-01 B3 분별 시드: 라벨 없음
   labels: [],
   environment: null,
   impact: null,
@@ -32,7 +62,11 @@ export const issueAtlas1Fixture: IssueResponse = {
   noneditableFields: [],
 }
 
-/** 이슈 단건 fixture — ATLAS-2 (typeId=2 → story, issue-type-fixtures id=2: key='story') */
+/**
+ * 이슈 단건 fixture — ATLAS-2 (status=in_progress, bob 담당, bug 라벨, 컴포넌트 없음).
+ * typeId=2 → story (issue-type-fixtures id=2: key='story').
+ * ★ id 필드 값이 userAliceFixture.id와 동일 UUID — 이슈 id이므로 혼용 금지.
+ */
 export const issueAtlas2Fixture: IssueResponse = {
   key: 'ATLAS-2',
   id: 'c3d4e5f6-a7b8-4c9d-ae1f-2a3b4c5d6e7f',
@@ -40,7 +74,8 @@ export const issueAtlas2Fixture: IssueResponse = {
   summary: '두 번째 이슈 — 이슈 목록 페이지 UI 구현. 긴 요약 텍스트: 모바일 반응형 + 페이지네이션 + 빈 상태 안내 + 접근성 WCAG AA 준수.',
   currentStateKey: 'in_progress',
   reporterId: 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a',
-  assigneeId: null,
+  // FR-SR-01 B3 분별 시드: bob 담당
+  assigneeId: ISSUE_FILTER_BOB_ID,
   componentIds: [],
   affectsVersionIds: [],
   fixVersionIds: [],
@@ -54,7 +89,8 @@ export const issueAtlas2Fixture: IssueResponse = {
   descriptionHtml: null,
   priority: 3,
   priorityName: 'Medium',
-  labels: [],
+  // FR-SR-01 B3 분별 시드: bug 라벨
+  labels: ['bug'],
   environment: null,
   impact: null,
   impactName: null,
@@ -63,7 +99,10 @@ export const issueAtlas2Fixture: IssueResponse = {
   noneditableFields: [],
 }
 
-/** 이슈 단건 fixture — ATLAS-3 (typeId=3 → task, issue-type-fixtures id=3: key='task') */
+/**
+ * 이슈 단건 fixture — ATLAS-3 (status=done, alice 담당, frontend 라벨, 컴포넌트A 소속).
+ * typeId=3 → task (issue-type-fixtures id=3: key='task').
+ */
 export const issueAtlas3Fixture: IssueResponse = {
   key: 'ATLAS-3',
   id: 'e5f6a7b8-c9d0-4e1f-ab2a-4c5d6e7f8a9b',
@@ -71,8 +110,10 @@ export const issueAtlas3Fixture: IssueResponse = {
   summary: '세 번째 이슈 — 이슈 상세 페이지 구현',
   currentStateKey: 'done',
   reporterId: 'f6a7b8c9-d0e1-4f2a-bc3b-5d6e7f8a9b0c',
-  assigneeId: null,
-  componentIds: [],
+  // FR-SR-01 B3 분별 시드: alice 담당 (ISSUE_FILTER_ALICE_ID = userAliceFixture.id)
+  assigneeId: ISSUE_FILTER_ALICE_ID,
+  // FR-SR-01 B3 분별 시드: 컴포넌트A 소속
+  componentIds: [ISSUE_FILTER_COMP_A_ID],
   affectsVersionIds: [],
   fixVersionIds: [],
   version: 2,
@@ -85,7 +126,8 @@ export const issueAtlas3Fixture: IssueResponse = {
   descriptionHtml: null,
   priority: 3,
   priorityName: 'Medium',
-  labels: [],
+  // FR-SR-01 B3 분별 시드: frontend 라벨
+  labels: ['frontend'],
   environment: null,
   impact: null,
   impactName: null,
@@ -94,7 +136,10 @@ export const issueAtlas3Fixture: IssueResponse = {
   noneditableFields: [],
 }
 
-/** 이슈 단건 fixture — ATLAS-5 (FR-IS-07 E2E용, in_review 상태 → Approve → done 전이 검증) */
+/**
+ * 이슈 단건 fixture — ATLAS-5 (status=in_review, 미배정, 라벨 없음, 컴포넌트 없음).
+ * FR-IS-07 E2E용 — in_review 상태 → Approve → done 전이 검증.
+ */
 export const issueAtlas5Fixture: IssueResponse = {
   key: 'ATLAS-5',
   id: 'a5b6c7d8-e9f0-4a1b-8c2d-3e4f5a6b7c8d',
@@ -102,6 +147,7 @@ export const issueAtlas5Fixture: IssueResponse = {
   summary: '다섯 번째 이슈 — 리뷰 중 (FR-IS-07 종료 결의안 E2E 검증용)',
   currentStateKey: 'in_review',
   reporterId: 'b6c7d8e9-f0a1-4b2c-9d3e-4f5a6b7c8d9e',
+  // FR-SR-01 B3 분별 시드: 미배정(null)
   assigneeId: null,
   componentIds: [],
   affectsVersionIds: [],
@@ -116,6 +162,7 @@ export const issueAtlas5Fixture: IssueResponse = {
   descriptionHtml: null,
   priority: 3,
   priorityName: 'Medium',
+  // FR-SR-01 B3 분별 시드: 라벨 없음
   labels: [],
   environment: null,
   impact: null,

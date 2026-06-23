@@ -142,9 +142,56 @@ export function resetIssueState(): void {
   permissionDeniedKeys.clear()
 }
 
-function buildFilteredPage(): IssuePage {
-  const fixtureContent = issuePageFixture.content.filter((i) => !deletedKeys.has(i.key))
-  const createdContent = Array.from(createdIssues.values()).filter((i) => !deletedKeys.has(i.key))
+/**
+ * FR-SR-01 B2 — 이슈가 query param 필터 조건을 모두 만족하는지 판단한다.
+ *
+ * 필드 내(status 복수, assignee 복수, label 복수, component 복수)는 OR,
+ * 필드 간(status vs assignee vs label vs component)은 AND.
+ *
+ * assignee=unassigned → assigneeId가 null인 이슈만 통과.
+ * 빈 param(getAll 빈 배열) → 해당 필드 조건 없음(전체 통과).
+ *
+ * @param issue 평가할 이슈 응답
+ * @param params URLSearchParams — request URL에서 파싱한 파라미터
+ */
+function matchesIssueFilter(issue: IssueResponse, params: URLSearchParams): boolean {
+  const statusKeys = params.getAll('status')
+  if (statusKeys.length > 0) {
+    if (!statusKeys.includes(issue.currentStateKey)) return false
+  }
+
+  const assignees = params.getAll('assignee')
+  if (assignees.length > 0) {
+    const passes = assignees.some((a) => {
+      if (a === 'unassigned') return issue.assigneeId === null
+      return issue.assigneeId === a
+    })
+    if (!passes) return false
+  }
+
+  const labels = params.getAll('label')
+  if (labels.length > 0) {
+    const passes = labels.some((l) => issue.labels.includes(l))
+    if (!passes) return false
+  }
+
+  const components = params.getAll('component')
+  if (components.length > 0) {
+    const passes = components.some((c) => issue.componentIds.includes(c))
+    if (!passes) return false
+  }
+
+  return true
+}
+
+function buildFilteredPage(params?: URLSearchParams): IssuePage {
+  const sp = params ?? new URLSearchParams()
+  const fixtureContent = issuePageFixture.content
+    .filter((i) => !deletedKeys.has(i.key))
+    .filter((i) => matchesIssueFilter(i, sp))
+  const createdContent = Array.from(createdIssues.values())
+    .filter((i) => !deletedKeys.has(i.key))
+    .filter((i) => matchesIssueFilter(i, sp))
   const content = [...fixtureContent, ...createdContent]
   return {
     ...issuePageFixture,
@@ -154,9 +201,14 @@ function buildFilteredPage(): IssuePage {
   }
 }
 
-/** GET /api/v1/issues — 이슈 목록 페이징 조회. 소프트 삭제된 이슈는 응답에서 제외 (gap-H). */
-const listIssuesHandler = http.get('/api/v1/issues', () => {
-  return HttpResponse.json(buildFilteredPage())
+/**
+ * GET /api/v1/issues — 이슈 목록 페이징 조회.
+ * FR-SR-01 B2: query param(status/assignee/label/component)을 읽어 필터링 후 반환.
+ * 소프트 삭제된 이슈는 응답에서 제외 (gap-H).
+ */
+const listIssuesHandler = http.get('/api/v1/issues', ({ request }) => {
+  const params = new URL(request.url).searchParams
+  return HttpResponse.json(buildFilteredPage(params))
 })
 
 /**
