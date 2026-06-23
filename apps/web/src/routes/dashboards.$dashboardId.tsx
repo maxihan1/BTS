@@ -334,6 +334,7 @@ export function DashboardDetailPage({
           onLayoutChange={handleLayoutChange}
           onDeleteTile={handleDeleteTile}
           onEditTitle={handleEditTitle}
+          onAddTile={editable ? handleAddTile : undefined}
         />
       </div>
 

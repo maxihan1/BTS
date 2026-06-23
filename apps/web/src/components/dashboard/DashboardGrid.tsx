@@ -70,6 +70,11 @@ export interface DashboardGridProps {
   onDeleteTile: (id: string) => void
   /** 타일 제목 인라인 편집 완료 콜백 */
   onEditTitle: (id: string, title: string) => void
+  /**
+   * 위젯 추가 요청 콜백 — 빈 그리드 상태에서 1차 버튼 클릭 시 호출.
+   * 미전달 시 버튼이 렌더되지 않는다(안전한 선택적 prop).
+   */
+  onAddTile?: () => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -94,6 +99,7 @@ export function DashboardGrid({
   onLayoutChange,
   onDeleteTile,
   onEditTitle,
+  onAddTile,
 }: DashboardGridProps): JSX.Element {
   /** react-grid-layout Layout[] 형태로 변환 */
   const layout: Layout[] = tiles.map(({ i, x, y, w, h }) => ({ i, x, y, w, h }))
@@ -111,16 +117,12 @@ export function DashboardGrid({
           <p className="text-sm text-muted-foreground mb-4">
             {dashboardLabels.detail.emptyGrid}
           </p>
-          {canEdit && (
+          {canEdit && onAddTile !== undefined && (
             <button
               type="button"
               className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors min-h-[44px]"
               aria-label={dashboardLabels.detail.addWidget}
-              onClick={() => {
-                // 빈 그리드에서 클릭 시 상위에서 onLayoutChange가 아닌 별도 신호가 필요하나
-                // 빈 상태 버튼은 DashboardDetailPage의 "위젯 추가" 버튼과 동일 역할
-                // — noop (상위 Page에서 addTile로 처리)
-              }}
+              onClick={onAddTile}
             >
               <Plus className="h-4 w-4" aria-hidden="true" />
               {dashboardLabels.detail.addWidget}

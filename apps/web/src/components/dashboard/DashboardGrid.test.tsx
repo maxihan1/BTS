@@ -73,9 +73,10 @@ async function renderGrid(props: {
   onLayoutChange?: (tiles: DashboardTile[]) => void
   onDeleteTile?: (id: string) => void
   onEditTitle?: (id: string, title: string) => void
+  onAddTile?: () => void
 }) {
   const { DashboardGrid } = await import('@/components/dashboard/DashboardGrid')
-  const { tiles = [], canEdit = false, onLayoutChange, onDeleteTile, onEditTitle } = props
+  const { tiles = [], canEdit = false, onLayoutChange, onDeleteTile, onEditTitle, onAddTile } = props
   return render(
     <DashboardGrid
       tiles={tiles}
@@ -83,6 +84,7 @@ async function renderGrid(props: {
       onLayoutChange={onLayoutChange ?? vi.fn()}
       onDeleteTile={onDeleteTile ?? vi.fn()}
       onEditTitle={onEditTitle ?? vi.fn()}
+      onAddTile={onAddTile ?? (canEdit ? vi.fn() : undefined)}
     />,
   )
 }
