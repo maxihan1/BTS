@@ -39,7 +39,6 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.http.MediaType
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
@@ -97,7 +96,6 @@ import java.util.UUID
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @Suppress("TooManyFunctions", "LargeClass")
 class IssueEpicProgressControllerIntegrationTest {
-
     /**
      * 기본 BROWSE 허용 resolver. denyBrowseForProject() 로 특정 프로젝트 BROWSE 거부를 제어한다.
      */
@@ -162,20 +160,17 @@ class IssueEpicProgressControllerIntegrationTest {
         }
 
         @Bean
-        open fun dataSource(): DriverManagerDataSource =
-            DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+        open fun dataSource(): DriverManagerDataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
 
         @Bean
         open fun transactionManager(dataSource: DriverManagerDataSource): PlatformTransactionManager =
             DataSourceTransactionManager(dataSource)
 
         @Bean
-        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext =
-            DSL.using(dataSource, SQLDialect.POSTGRES)
+        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext = DSL.using(dataSource, SQLDialect.POSTGRES)
 
         @Bean
-        open fun objectMapper(): ObjectMapper =
-            ObjectMapper().registerKotlinModule().registerModule(JavaTimeModule())
+        open fun objectMapper(): ObjectMapper = ObjectMapper().registerKotlinModule().registerModule(JavaTimeModule())
 
         @Bean
         open fun issueRepository(dsl: DSLContext): IssueRepository = IssueRepository(dsl)
@@ -198,16 +193,14 @@ class IssueEpicProgressControllerIntegrationTest {
         open fun workflowRepository(dsl: DSLContext): WorkflowRepository = WorkflowRepository(dsl)
 
         @Bean
-        open fun workflowSchemeRepository(dsl: DSLContext): WorkflowSchemeRepository =
-            WorkflowSchemeRepository(dsl)
+        open fun workflowSchemeRepository(dsl: DSLContext): WorkflowSchemeRepository = WorkflowSchemeRepository(dsl)
 
         @Bean
         open fun projectWorkflowSchemeAssignmentRepository(dsl: DSLContext): ProjectWorkflowSchemeAssignmentRepository =
             ProjectWorkflowSchemeAssignmentRepository(dsl)
 
         @Bean
-        open fun schemeIssueTypeMappingRepository(dsl: DSLContext): SchemeIssueTypeMappingRepository =
-            SchemeIssueTypeMappingRepository(dsl)
+        open fun schemeIssueTypeMappingRepository(dsl: DSLContext): SchemeIssueTypeMappingRepository = SchemeIssueTypeMappingRepository(dsl)
 
         @Bean
         open fun workflowSchemeEventPublisher(
@@ -220,8 +213,7 @@ class IssueEpicProgressControllerIntegrationTest {
             AlwaysAllowWorkflowSchemePermissionResolver()
 
         @Bean
-        open fun jdbcProjectLookupAdapter(dsl: DSLContext): JdbcProjectLookupAdapter =
-            JdbcProjectLookupAdapter(dsl)
+        open fun jdbcProjectLookupAdapter(dsl: DSLContext): JdbcProjectLookupAdapter = JdbcProjectLookupAdapter(dsl)
 
         @Bean
         open fun issueTypeLookupPort(): IssueTypeLookupPort = mockk(relaxed = true)
@@ -268,6 +260,7 @@ class IssueEpicProgressControllerIntegrationTest {
             WorkflowStateCatalogImpl(workflowResolver)
 
         @Bean
+        @Suppress("LongParameterList") // 실 WorkflowStateCatalogImpl 조립에 필요한 의존 6종 — 테스트 컨텍스트 설정 보일러플레이트
         open fun issueEpicService(
             permissionResolver: IssuePermissionResolver,
             securityDirectory: IssueSecurityDirectory,

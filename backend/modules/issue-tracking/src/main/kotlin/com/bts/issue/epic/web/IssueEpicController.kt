@@ -139,19 +139,11 @@ class IssueEpicController(
     }
 
     /**
-     * 이슈의 [com.bts.issue.type.domain.IssueType] 을 조회한다.
-     *
-     * 타입 미존재(DB 불일치) 시 null 을 반환한다 — 응답에서 typeKey 는 null 로 직렬화된다.
-     *
-     * @param issue 타입을 조회할 이슈.
-     * @return [IssueType] 또는 null.
-     */
-    /**
      * 에픽의 자식 이슈 진행률을 카테고리별로 집계해 반환한다.
      *
      * `/api/v1/epics/{key}/progress` 경로로 응답한다.
-     * 클래스 레벨 `@RequestMapping` 에 `/api/v1/epics/{key}` 를 추가해 이 메서드가
-     * 에픽 전용 base path 에서도 동작하도록 한다.
+     * 클래스 레벨 `@RequestMapping` 에 `/api/v1/epics/{key}` 가 포함되어 있어
+     * 이 메서드가 에픽 전용 base path 에서도 동작한다.
      *
      * actor 추출은 서비스 호출 전 선행 — 미인증자가 404 로 존재를 probe 하지 못하게 한다
      * (auth-extraction-before-resource-lookup 교훈).
