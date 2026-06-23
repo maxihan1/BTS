@@ -66,6 +66,57 @@ export interface DashboardFormProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 순수 헬퍼 함수
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * name 필드 검증 — EC8.
+ * 통과 시 undefined, 실패 시 오류 메시지 반환.
+ */
+function validateName(value: string): string | undefined {
+  if (value.trim() === '') return '이름을 입력해 주세요.'
+  if (value.length > NAME_MAX_LENGTH) return `이름은 ${NAME_MAX_LENGTH}자 이하여야 합니다.`
+  return undefined
+}
+
+/**
+ * 편집 모드 3-state diff 페이로드 계산.
+ * 변경된 필드만 포함한 Record를 반환한다.
+ */
+function buildEditPayload(
+  current: { name: string; description: string; visibility: Visibility; sharedUserIds: string[] },
+  initial: DashboardFormInitialValues,
+): DashboardFormPayload {
+  const payload: DashboardFormPayload = {}
+
+  if (current.name.trim() !== initial.name) {
+    payload['name'] = current.name.trim()
+  }
+
+  const trimmedDesc = current.description.trim()
+  const initialDesc = initial.description ?? ''
+  if (trimmedDesc !== initialDesc) {
+    payload['description'] = trimmedDesc !== '' ? trimmedDesc : undefined
+  }
+
+  const initialVisibility = (initial.visibility as Visibility | undefined) ?? 'PRIVATE'
+  if (current.visibility !== initialVisibility) {
+    payload['visibility'] = current.visibility
+  }
+
+  const currentShared = current.visibility === 'TEAM' ? current.sharedUserIds : []
+  const initialShared = initial.sharedUserIds
+  const sharedChanged =
+    currentShared.length !== initialShared.length ||
+    currentShared.some((id, i) => id !== initialShared[i])
+  if (sharedChanged) {
+    payload['sharedUserIds'] = currentShared
+  }
+
+  return payload
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 공유 사용자 선택 서브컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -194,13 +245,6 @@ export function DashboardForm({
   )
   const [nameError, setNameError] = useState<string | undefined>()
 
-  /** name 검증 — EC8 */
-  function validateName(value: string): string | undefined {
-    if (value.trim() === '') return '이름을 입력해 주세요.'
-    if (value.length > NAME_MAX_LENGTH) return `이름은 ${NAME_MAX_LENGTH}자 이하여야 합니다.`
-    return undefined
-  }
-
   function handleSubmit(e: React.FormEvent<HTMLFormElement>): void {
     e.preventDefault()
 
@@ -221,29 +265,9 @@ export function DashboardForm({
       return
     }
 
-    // 편집 모드: 3-state diff — 변경된 필드만 포함
-    const payload: DashboardFormPayload = {}
-    if (name.trim() !== (initialValues?.name ?? '')) {
-      payload['name'] = name.trim()
-    }
-    const trimmedDesc = description.trim()
-    const initialDesc = initialValues?.description ?? ''
-    if (trimmedDesc !== initialDesc) {
-      payload['description'] = trimmedDesc !== '' ? trimmedDesc : undefined
-    }
-    if (visibility !== ((initialValues?.visibility as Visibility | undefined) ?? 'PRIVATE')) {
-      payload['visibility'] = visibility
-    }
-    const currentShared = visibility === 'TEAM' ? sharedUserIds : []
-    const initialShared = initialValues?.sharedUserIds ?? []
-    const sharedChanged =
-      currentShared.length !== initialShared.length ||
-      currentShared.some((id, i) => id !== initialShared[i])
-    if (sharedChanged) {
-      payload['sharedUserIds'] = currentShared
-    }
-
-    onSubmit(payload)
+    // 편집 모드: 3-state diff — buildEditPayload로 위임
+    const initial = initialValues ?? { name: '', description: '', visibility: 'PRIVATE', sharedUserIds: [] }
+    onSubmit(buildEditPayload({ name, description, visibility, sharedUserIds }, initial))
   }
 
   const visibilityLabel: Record<Visibility, string> = {
