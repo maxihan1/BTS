@@ -76,8 +76,9 @@ import java.util.UUID
  * byCategory.done 이 정확히 계산되는지 검증한다.
  *
  * ## 보안 검증 방침
- * - S4 visibility: AlwaysDeny 보안 등급 스텁으로 제한된 accessibleLevels 를 주입해
- *   높은 보안 등급 이슈가 집계에서 제외됨을 SQL 푸시다운으로 검증한다.
+ * - S4 visibility: SwitchableSecurityDirectory(Thread-local 토글)를 restrict() 호출로
+ *   unrestricted=false+staticLevelIds=empty 로 전환해 restricted 자식이 SQL 푸시다운으로 제외됨을 실측.
+ *   total 이 1(일반 이슈만)로 감소함을 GET /api/v1/epics/{key}/progress 응답으로 단언.
  * - S5 403: SwitchablePermissionResolver 를 사용해 BROWSE 권한 거부를 Thread-local 로 제어한다.
  *
  * ## 검증 시나리오
@@ -119,10 +120,21 @@ class IssueEpicProgressControllerIntegrationTest {
     }
 
     /**
-     * 지정된 프로젝트에서 보안 등급 접근을 무제한(unrestricted=true)으로 반환하는 기본 스텁.
-     * S4 시나리오에서 restrictedSecurityDirectory() 빈을 교체해 사용한다.
+     * 보안 등급 접근을 토글 가능한 스텁.
+     *
+     * 기본(reset 상태): unrestricted=true — 모든 이슈 열람 가능.
+     * restrict(levelId) 호출 후: unrestricted=false, staticLevelIds 가 빈 집합 → [levelId] 를 가진 이슈 제외.
+     * reset() 으로 unrestricted=true 상태로 복원.
+     *
+     * Thread-local 이므로 병렬 테스트에서도 안전하다.
      */
-    private class AlwaysUnrestrictedSecurityDirectory : IssueSecurityDirectory {
+    internal class SwitchableSecurityDirectory : IssueSecurityDirectory {
+        private val restrictedLevelId = ThreadLocal<UUID?>()
+
+        fun restrict(levelId: UUID) = restrictedLevelId.set(levelId)
+
+        fun reset() = restrictedLevelId.remove()
+
         override fun levelBelongsToProjectScheme(
             levelId: UUID,
             projectKey: String,
@@ -131,13 +143,24 @@ class IssueEpicProgressControllerIntegrationTest {
         override fun accessibleLevels(
             actorId: UUID,
             projectKey: String,
-        ): IssueSecurityAccess =
-            IssueSecurityAccess(
-                unrestricted = true,
-                staticLevelIds = emptySet(),
-                reporterLevelIds = emptySet(),
-                assigneeLevelIds = emptySet(),
-            )
+        ): IssueSecurityAccess {
+            return if (restrictedLevelId.get() == null) {
+                IssueSecurityAccess(
+                    unrestricted = true,
+                    staticLevelIds = emptySet(),
+                    reporterLevelIds = emptySet(),
+                    assigneeLevelIds = emptySet(),
+                )
+            } else {
+                // unrestricted=false + staticLevelIds 빈 집합 → restricted 이슈 SQL 필터로 제외
+                IssueSecurityAccess(
+                    unrestricted = false,
+                    staticLevelIds = emptySet(),
+                    reporterLevelIds = emptySet(),
+                    assigneeLevelIds = emptySet(),
+                )
+            }
+        }
     }
 
     @Configuration
@@ -157,6 +180,7 @@ class IssueEpicProgressControllerIntegrationTest {
                     .apply { start() }
 
             val permissionResolver = SwitchablePermissionResolver()
+            internal val securityDirectory = SwitchableSecurityDirectory()
         }
 
         @Bean
@@ -185,7 +209,7 @@ class IssueEpicProgressControllerIntegrationTest {
         open fun permissionResolver(): IssuePermissionResolver = TestConfig.permissionResolver
 
         @Bean
-        open fun securityDirectory(): IssueSecurityDirectory = AlwaysUnrestrictedSecurityDirectory()
+        open fun securityDirectory(): IssueSecurityDirectory = TestConfig.securityDirectory
 
         // ── project-workflow 빈 조립 (IssueMoveIntegrationTest.IssueMoveConfig 선례) ─
 
@@ -512,17 +536,22 @@ class IssueEpicProgressControllerIntegrationTest {
             }
         }
 
-        // securityDirectory 를 제한 모드로 교체 — unrestricted=false, staticLevelIds 비포함
-        // 직접 SQL 수정(setSecurityDirectory)는 빈 교체가 어려우므로
-        // findEpicChildren 의 access 파라미터를 제어하는 것은 service 레벨이다.
-        // 이 통합 테스트에서는 TestConfig 에서 AlwaysUnrestrictedSecurityDirectory 를 주입하므로
-        // S4는 securityLevelId 미지정 이슈만 있는 상황에서 unrestricted=true 스텁으로 검증한다.
-        // 실제 보안 등급 SQL 푸시다운은 IssueRepositorySecurityTest(단위) + IssueEpicServiceTest(MockK) 에서 커버.
-        // 여기서는 security_level_id=null 이슈 1건만 집계되는 경우를 단언한다.
-        // (unrestricted=true 이면 두 이슈 모두 보이므로 total=2, 보안등급 제한 단언은 단위테스트 커버)
-        mockMvc.perform(get("/api/v1/epics/$epicKey/progress"))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.total").value(2))
+        // SwitchableSecurityDirectory 를 restricted 모드로 전환
+        // unrestricted=false + staticLevelIds=empty → restrictedSecurityLevelId 를 가진 이슈가
+        // findEpicChildren SQL WHERE 조건에서 제외된다 (SQL 푸시다운 실측).
+        TestConfig.securityDirectory.restrict(restrictedSecurityLevelId)
+        try {
+            mockMvc.perform(get("/api/v1/epics/$epicKey/progress"))
+                .andExpect(status().isOk)
+                // 제한 자식(EPROG-N)이 SQL 에서 제외 → total=1 (일반 이슈만 집계)
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.done").value(0))
+                .andExpect(jsonPath("$.data.byCategory.todo").value(1))
+                .andExpect(jsonPath("$.data.byCategory.inProgress").value(0))
+                .andExpect(jsonPath("$.data.byCategory.done").value(0))
+        } finally {
+            TestConfig.securityDirectory.reset()
+        }
     }
 
     // ── S5. BROWSE 권한 없음 → 403 ────────────────────────────────────────────

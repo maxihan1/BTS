@@ -28,12 +28,13 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 /**
- * 에픽-자식 연결/해제/조회 REST API 컨트롤러 (FR-EP-01 Task 6).
+ * 에픽-자식 연결/해제/조회/진행률 REST API 컨트롤러 (FR-EP-01 Task 6, FR-EP-02 Task 3).
  *
- * 엔드포인트 — 모두 `/api/v1/issues/{key}` 하위.
+ * 엔드포인트 — `/api/v1/issues/{key}` 및 `/api/v1/epics/{key}` 하위.
  * - POST   `/epic-children`            — 자식 연결 → 201 Created + [EpicChildSummaryResponse]
  * - DELETE `/epic-children/{childKey}` — 자식 연결 해제 → 204 No Content
  * - GET    `/epic-children`            — 자식 목록 조회 → 200 OK + [EpicChildListResponse]
+ * - GET    `/progress`                 — 자식 진행률 집계 → 200 OK + [EpicProgressResponse] (에픽 base path 전용)
  *
  * ### ActorId 결선
  * [CurrentActor.current] 로 SecurityContextHolder 의 인증 주체를 actor 로 추출한다.
