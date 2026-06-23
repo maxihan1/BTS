@@ -20,7 +20,6 @@
     <ID>NestedBlockDepth:CustomFieldsMigrationTest.kt$CustomFieldsMigrationTest$private fun indexUsesGin(indexName: String): Boolean</ID>
     <ID>NestedBlockDepth:V007MigrationIntegrationTest.kt$V007MigrationIntegrationTest$private fun columnInfo( tableName: String, columnName: String, ): Pair&lt;String?, String?&gt;</ID>
     <ID>ThrowsCount:CustomFieldValueValidator.kt$CustomFieldValueValidator$private fun validateMultiSelect( key: String, value: Any, options: List&lt;CustomFieldOption&gt;, )</ID>
-    <ID>TooGenericExceptionCaught:IssueEpicService.kt$IssueEpicService$e: RuntimeException</ID>
     <ID>TooManyFunctions:CustomFieldDefinitionRepository.kt$CustomFieldDefinitionRepository</ID>
     <ID>TooManyFunctions:CustomFieldValueValidator.kt$CustomFieldValueValidator</ID>
     <ID>TooManyFunctions:IssueTemplateApplicationService.kt$IssueTemplateApplicationService</ID>

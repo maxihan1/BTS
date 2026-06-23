@@ -444,10 +444,15 @@ class IssueEpicService(
      * 빈 맵이 반환되면 해당 타입의 자식 이슈 전체가 EpicProgress.of 에서 TODO 로 분류된다.
      * IssueMoveService.kt 의 NoDefault catch 패턴과 동일하다.
      *
+     * TooGenericExceptionCaught suppress 근거. project-workflow BC 내부 예외
+     * (WorkflowSchemeNoDefaultException) 를 직접 import 할 수 없어 RuntimeException 을 받아
+     * simpleName 으로 식별한다 (IssueMoveService 동형).
+     *
      * @param projectKey 프로젝트 키 문자열 (shared-kernel ProjectKey 로 변환됨).
      * @param typeKey 이슈 타입 키.
      * @return 상태 키 → 카테고리 문자열 맵. 스킴 미설정 시 빈 맵.
      */
+    @Suppress("TooGenericExceptionCaught")
     private fun resolveStateCategories(
         projectKey: String,
         typeKey: IssueTypeKey,
