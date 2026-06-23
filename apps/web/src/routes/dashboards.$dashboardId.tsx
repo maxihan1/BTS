@@ -1,11 +1,11 @@
 // 대시보드 상세 라우트 — 그리드 편집, 타일 CRUD, OCC 409, 권한 게이팅 (FR-DB-01 Task 8)
 import type { JSX } from 'react'
 import { useState, useEffect } from 'react'
-import { useParams } from '@tanstack/react-router'
+import { useParams, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { Plus, Settings } from 'lucide-react'
+import { Plus, Settings, Trash2 } from 'lucide-react'
 import { useAuthUser } from '@/auth/authStore'
-import { useDashboard, useUpdateDashboard } from '@/hooks/use-dashboards'
+import { useDashboard, useUpdateDashboard, useDeleteDashboard } from '@/hooks/use-dashboards'
 import { canEditDashboard } from '@/lib/dashboard-permission'
 import { parseLayout, serializeLayout, createTile } from '@/lib/dashboard-layout'
 import type { DashboardTile } from '@/lib/dashboard-layout'
@@ -158,12 +158,15 @@ export function DashboardDetailPage({
   dashboardId,
   currentUserId,
 }: DashboardDetailPageProps): JSX.Element {
+  const navigate = useNavigate()
   const { data: dashboard, isLoading, isError } = useDashboard(dashboardId)
   const { mutateAsync, isPending: isSaving } = useUpdateDashboard()
+  const { mutateAsync: deleteMutateAsync, isPending: isDeleting } = useDeleteDashboard()
 
   const [tiles, setTiles] = useState<DashboardTile[]>([])
   const [dirty, setDirty] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   /** dashboard.layout이 변경될 때마다 로컬 tiles를 초기화 (key prop 재마운트 불필요 — layout 변경 감지) */
   useEffect(() => {
@@ -268,6 +271,19 @@ export function DashboardDetailPage({
     }
   }
 
+  // ─── 삭제 핸들러 ────────────────────────────────────────────────────────
+
+  /** 삭제 확인 → API 호출 → 목록으로 이동 */
+  async function handleDeleteConfirm(): Promise<void> {
+    try {
+      await deleteMutateAsync(dashboardId)
+      toast.success('대시보드가 삭제되었습니다.')
+      await navigate({ to: '/dashboards' })
+    } catch {
+      toast.error('삭제 중 오류가 발생했습니다. 잠시 후 다시 시도하세요.')
+    }
+  }
+
   // ─── 렌더 ───────────────────────────────────────────────────────────────
 
   return (
@@ -290,38 +306,76 @@ export function DashboardDetailPage({
         {/* 소유자 전용 액션 버튼 그룹 */}
         {editable && (
           <div className="flex items-center gap-2 shrink-0">
-            {/* 위젯 추가 버튼 */}
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors min-h-[44px]"
-              aria-label={dashboardLabels.detail.addWidget}
-              onClick={handleAddTile}
-            >
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              {dashboardLabels.detail.addWidget}
-            </button>
+            {/* 삭제 인라인 확인 UI — VersionRow/ComponentRow 동형 패턴 */}
+            {showDeleteConfirm ? (
+              <>
+                <span className="text-sm text-muted-foreground">정말 삭제하시겠습니까?</span>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-md bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors min-h-[44px] disabled:opacity-50"
+                  aria-label="삭제 확인"
+                  disabled={isDeleting}
+                  onClick={handleDeleteConfirm}
+                >
+                  확인
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors min-h-[44px] disabled:opacity-50"
+                  aria-label="삭제 취소"
+                  disabled={isDeleting}
+                  onClick={() => setShowDeleteConfirm(false)}
+                >
+                  취소
+                </button>
+              </>
+            ) : (
+              <>
+                {/* 위젯 추가 버튼 */}
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors min-h-[44px]"
+                  aria-label={dashboardLabels.detail.addWidget}
+                  onClick={handleAddTile}
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  {dashboardLabels.detail.addWidget}
+                </button>
 
-            {/* 설정 버튼 */}
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors min-h-[44px]"
-              aria-label={dashboardLabels.detail.settings}
-              onClick={() => setSettingsOpen(true)}
-            >
-              <Settings className="h-4 w-4" aria-hidden="true" />
-              {dashboardLabels.detail.settings}
-            </button>
+                {/* 설정 버튼 */}
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors min-h-[44px]"
+                  aria-label={dashboardLabels.detail.settings}
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  <Settings className="h-4 w-4" aria-hidden="true" />
+                  {dashboardLabels.detail.settings}
+                </button>
 
-            {/* 저장 버튼 */}
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label={isSaving ? dashboardLabels.detail.saving : dashboardLabels.detail.save}
-              disabled={isSaving}
-              onClick={handleSave}
-            >
-              {isSaving ? dashboardLabels.detail.saving : dashboardLabels.detail.save}
-            </button>
+                {/* 삭제 버튼 */}
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-md border border-destructive/50 px-3 py-1.5 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
+                  aria-label={dashboardLabels.detail.delete}
+                  onClick={() => setShowDeleteConfirm(true)}
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  {dashboardLabels.detail.delete}
+                </button>
+
+                {/* 저장 버튼 */}
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label={isSaving ? dashboardLabels.detail.saving : dashboardLabels.detail.save}
+                  disabled={isSaving}
+                  onClick={handleSave}
+                >
+                  {isSaving ? dashboardLabels.detail.saving : dashboardLabels.detail.save}
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
