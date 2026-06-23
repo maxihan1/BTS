@@ -950,6 +950,7 @@ class IssueApplicationService(
      * @param actor 조회 행위자.
      * @param projectKey 프로젝트 키.
      * @param pageable 페이지 정보. pageSize > 100 이면 거부.
+     * @param filter 보드 카드 필터. 기본값 [BoardCardFilter.EMPTY](무필터). statusKeys/assigneeIds 등을 지정하면 SQL 수준에서 필터링된다.
      * @return [Page]<[IssueResponse]>.
      * @throws IssueAccessDeniedException BROWSE 권한 없을 때(403).
      * @throws IllegalArgumentException pageSize > 100 일 때.
