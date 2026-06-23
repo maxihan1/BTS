@@ -38,8 +38,8 @@
 - [x] D3. 데이터 모델 — PostgreSQL 인덱스 (status, assignee_id, project_id, label) (책임. db-engineer)
 - [x] D4. 백엔드 — `GET /api/v1/issues?filter=...` jOOQ 동적 쿼리 (책임. backend-engineer)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 필터 패널 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 필터 패널 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ### §2.2 FR-SR-02 — AQL 텍스트 쿼리 (JQL 호환)
 
