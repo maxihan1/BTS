@@ -18,13 +18,18 @@
 9. **정렬 스코프** = rank는 **프로젝트 전역 정렬 키**(모든 이슈가 보유). 백로그 뷰는 그 부분집합을 rank 순으로 표시. 이웃 이슈는 같은 프로젝트면 충분.
 10. **동시성** = rank 변경은 **no-bump**(`issues.version` 불변, OCC 없음) **last-write-wins**. 이웃 rank를 요청 처리 시점에 서버가 조회하므로 stale 아님 (메모리 no-bump-sidecar-version / worklog 선례). rebalance만 `pg_advisory_xact_lock(projectId)`로 직렬화.
 11. **정렬 tie-break** = `ORDER BY rank, id` — between 충돌(동시 같은 위치 삽입)로 같은 rank가 생겨도 결정적 순서 보장. `(project_id, rank)` UNIQUE는 **미강제**(드래그 충돌 시 사용자 재시도 부담 회피, 다음 이동 때 자연 해소).
+12. **에러 매핑** (eng 리뷰 B1) = 이웃 검증 실패(역전/둘다null/대상==이웃/타프로젝트)는 **커스텀 도메인 예외** `InvalidRankNeighborException` → 400. 이웃/대상 미존재·소프트삭제는 `IssueNotFoundException`(기존) → 404. `IssueExceptionHandler`에 `InvalidRankNeighborException` 명시 핸들러 추가(catch-all이 500으로 삼키는 것 방지 — `IllegalArgumentException` raw throw 금지).
+13. **updated_at** (eng 리뷰 C4) = rank 변경은 `updated_at` **갱신 안 함**(assignee no-bump 선례 `updateAssigneeNoBump`, 드래그 빈번 → "최종 수정일" noise 회피).
+14. **응답 version** (eng 리뷰 N1) = no-bump라 version 불변 → rerank 흐름에서 이미 조회한 `issue.version`을 그대로 응답.
 
 ## 사용자 시나리오 (Given-When-Then)
 
+> 아래 rank 키("b","n" 등)는 **개념 예시**이며 실제 키는 구현·rebalance 상태에 따라 다르다. 모든 예시 키는 FR1(끝문자≠'a') 준수.
+
 ### S1. 두 이슈 사이로 이동
-- Given: 백로그에 BTS-1(rank a), BTS-2(rank n), BTS-3(rank z)가 순서대로 있다.
+- Given: 백로그에 BTS-1(rank "b"), BTS-2(rank "n"), BTS-3(rank "z")가 순서대로 있다.
 - When: 사용자가 BTS-3을 BTS-1과 BTS-2 사이로 드래그하여 `PATCH /api/v1/issues/BTS-3/rank {previousIssueKey: "BTS-1", nextIssueKey: "BTS-2"}` 호출.
-- Then: 서버가 between("a","n")="g"를 계산해 BTS-3.rank="g"로 저장. 정렬 순서 = BTS-1, BTS-3, BTS-2.
+- Then: 서버가 between("b","n")="g"를 계산해 BTS-3.rank="g"로 저장. 정렬 순서 = BTS-1, BTS-3, BTS-2.
 
 ### S2. 맨 앞으로 이동
 - Given: 백로그 첫 이슈 BTS-1(rank "g").
@@ -48,8 +53,11 @@
 
 ## 기능 요구사항 (FR)
 
-- **FR1**. shared-kernel `Rank` VO: 유효성 검증(알파벳 소문자 a–z, 1–50자, 끝 문자 ≠ 'a' 직전 경계 규칙), 비교(Comparable, 사전순).
-- **FR2**. `Rank.between(prev: Rank?, next: Rank?): Rank` — 두 경계 사이 사전순 중간 키 생성. prev=null=시작 경계, next=null=끝 경계. 불변식: prev < result < next, 최소 길이.
+- **FR1**. shared-kernel `Rank` VO: 유효성 검증(알파벳 소문자 a–z, 1–50자, **끝 문자 ≠ 'a'**), 비교(Comparable, 사전순).
+  - trailing-a 금지 이유: trailing-a 키(예 "ba")는 직전 키("b") 바로 다음이라 그 사이에 삽입할 공간이 없다 → between의 하한 경계로만 의미, 저장 키로는 금지(Jira LexoRank 동일).
+- **FR2**. `Rank.between(prev: Rank?, next: Rank?): Rank` — 두 경계 사이 사전순 중간 키 생성. prev=null=시작 경계, next=null=끝 경계.
+  - 불변식: prev < result < next, 최소 길이, **result는 절대 trailing-a가 아님**(중간값이 trailing-a가 될 상황이면 한 자리 연장해 non-trailing-a 키 생성).
+  - prev가 next의 prefix인 경우(예 between("b","bc"))도 trailing-a 회피 보장(예 "bb", "aa" 금지).
 - **FR3**. `Rank.initial(): Rank` — 빈 백로그 첫 키(중간값, 예 "n"). (between(null,null)과 동일 의미)
 - **FR4**. between이 VARCHAR(50) 내 키를 만들 수 없으면 `RankSpaceExhaustedException`(또는 sentinel) → 호출측이 rebalance 트리거.
 - **FR5**. `PATCH /api/v1/issues/{key}/rank` — 이웃 이슈 키 받아 대상 이슈 rank 갱신. UPDATE 권한 검증. OCC version 검증.
@@ -110,7 +118,8 @@ CREATE INDEX idx_issues_project_rank ON issues (project_id, rank);
   - 두 문자 사이 중간 문자가 존재(차이≥2)하면 중간 문자 채택 후 종료.
   - 인접(차이==1)하면 prev 문자 채택 + 다음 자리에서 next는 상한으로 간주하고 계속(키 1자리 증가).
   - prev 소진 시 하한, next 소진 시 상한으로 채워 계산.
-- **불변식**: prev < result < next(경계 포함), result는 두 경계와 다름, 가능한 최소 길이.
+  - **trailing-a 회피**: 계산된 중간값이 'a'로 끝나면(예 between("b","bc")의 단순 결과 "ba"/"bb") 그 키는 직전 키 바로 다음이라 삽입 공간이 없으므로, 마지막 'a' 자리를 채우지 말고 한 자리 더 진행해 non-trailing-a 키를 만든다. between은 절대 trailing-a를 반환하지 않는다(FR2 불변식).
+- **불변식**: prev < result < next(경계 포함), result는 두 경계와 다름, 가능한 최소 길이, trailing-a 아님.
 - **rebalance**: 프로젝트 백로그를 현재 rank 순으로 읽어 N개를 균등 간격 고정폭 키로 재배포 (예: 3자리 base-26을 균등 분할). 이후 삽입 여유 최대화.
 
 ## 엣지 케이스

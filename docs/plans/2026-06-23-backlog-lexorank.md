@@ -64,16 +64,17 @@ SDD §13.2.1 / product agile-planning.md §3.1 / fr-index §3.1
 - depends-on: []
 
 **RED**: `RankTest` —
-- `initial()`이 중간값 키 반환, 1~50자 a–z 검증.
-- `between(null, null)` = initial 의미.
-- `between("a","z")` 결과가 "a" < r < "z" 사전순.
-- `between("a","b")` 인접 → 길이 증가("an" 류), prev < r < next 유지.
-- `between(null, X)` < X, `between(X, null)` > X.
+- `initial()`이 중간값 키 반환(끝문자≠'a'), 1~50자 a–z 검증.
+- `assertEquals(Rank.initial(), Rank.between(null, null))` — initial==between(null,null) 동치 (N3).
+- `between("b","z")` 결과가 "b" < r < "z" 사전순.
+- `between("b","c")` 인접 → 길이 증가, prev < r < next 유지, **끝문자≠'a'**.
+- **`between("b","bc")` 결과가 'a'로 끝나지 않음** (B2 — prefix 케이스 trailing-a 회피).
+- `between(null, X)` < X, `between(X, null)` > X, 모두 끝문자≠'a'.
 - Comparable 정렬 일관(문자열 사전순 == Rank 순서).
 - 50자 내 키 생성 불가 시 `RankSpaceExhaustedException`.
-- 잘못된 값("", 대문자, 51자, 끝문자 'a'(trailing-a 금지 규칙)) → `require` 실패.
+- 잘못된 값("", 대문자, 51자, **끝문자 'a'**) → `require` 실패.
 
-**GREEN**: `Rank` `@JvmInline value class`(`init { require(...) }`) + `companion object { between/initial/of }`. base-26 a–z, 경계 하한/상한 처리. `RankSpaceExhaustedException`.
+**GREEN**: `Rank` `@JvmInline value class`(`init { require(...) }`) + `companion object { between/initial/of }`. base-26 a–z, 경계 하한/상한 처리. **between은 trailing-a를 절대 반환 안 함**(중간값이 'a'로 끝나면 한 자리 연장, B2). 50자 초과 시 `RankSpaceExhaustedException`.
 
 **REFACTOR**: 알파벳/경계 상수 추출, KDoc(중괄호·백틱 금지 — 메모리 ktlint-kdoc-brace).
 
@@ -89,6 +90,8 @@ SDD §13.2.1 / product agile-planning.md §3.1 / fr-index §3.1
 **RED**: 마이그레이션 테스트 — V029 적용 후 `issues.rank` NOT NULL, 기존 행 백필됨, 프로젝트별 created_at 순 == rank 순, 인덱스 `idx_issues_project_rank` 존재.
 
 **GREEN**: `ADD COLUMN rank VARCHAR(50)` → 프로젝트별 `row_number() OVER (PARTITION BY project_id ORDER BY created_at, id)` 기반 균등 고정폭 base-26 키 백필 → `SET NOT NULL` → `CREATE INDEX (project_id, rank)`. init_codegen.sql의 issues 정의에 `rank VARCHAR(50)` 인라인 미러(메모리 jooq-init-codegen-mirror).
+- **백필 구현 방법** (eng 리뷰 C1): base-26 다자리 인코딩(N>26)은 순수 `chr()` UPDATE로 불가 → 마이그레이션 내 PL/pgSQL 인라인 함수(`CREATE FUNCTION ... DO $$ ... $$` 후 DROP) 또는 Kotlin Flyway Java migration 택1. 고정폭(예 3자리)이면 충분 여유(26^3=17,576 > 1K). 끝문자 'a' 회피하도록 인코딩(예 base-26을 'b'~'z' 25개 + 마지막 자리 non-a).
+- 대용량 마이그레이션 락: 백필 UPDATE가 issues 전체 락 → 운영 영향 주석. (현재 규모 1K라 무해)
 - ⚠️ V029 번호는 머지 직전 재확인(메모리 migration-vnumber, 동시 FR-SR-01).
 
 **REFACTOR**: 백필 SQL 주석(균등 분포 의도), 한 줄 헤더 주석.
@@ -103,14 +106,14 @@ SDD §13.2.1 / product agile-planning.md §3.1 / fr-index §3.1
 - depends-on: [2]
 
 **RED**: `IssueRankRepositoryTest`(Testcontainers) —
-- `updateRank(key, rank)` 가 rank만 변경하고 `version` 불변(no-bump 검증).
+- `updateRank(key, rank)` 가 rank만 변경하고 `version` 불변(no-bump 검증) + **`updated_at` 불변**(C4, assignee no-bump 선례).
 - `findRankByKey(key)` 반환.
 - `findRanksForRebalance(projectId)` 가 `ORDER BY rank, id` (tie-break)로 (key, rank) 목록 반환, 소프트삭제 제외.
 - `findMaxRank(projectId)` (생성 시 맨 끝 부여용).
 
-**GREEN**: jOOQ 구현(V029 codegen 의존). no-bump = `UPDATE issues SET rank=? WHERE key=?` (version 미증가).
+**GREEN**: jOOQ 구현(V029 codegen 의존). no-bump = `UPDATE issues SET rank=? WHERE key=?` (version·updated_at 미증가).
 
-**REFACTOR**: SQL 상수, KDoc(no-bump 사유 = 메모리 no-bump-sidecar-version).
+**REFACTOR**: SQL 상수, KDoc(no-bump 사유 = 메모리 no-bump-sidecar-version, updated_at 미갱신 사유 = 드래그 noise).
 
 **검증**: `cd backend && ./gradlew :modules:issue-tracking:integrationTest --tests "*IssueRankRepositoryTest"`
 
@@ -118,17 +121,17 @@ SDD §13.2.1 / product agile-planning.md §3.1 / fr-index §3.1
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/BacklogRankService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/.../application/BacklogRankServiceTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/BacklogRankService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/InvalidRankNeighborException.kt`, `backend/modules/issue-tracking/src/test/kotlin/.../application/BacklogRankServiceTest.kt`]
 - depends-on: [1, 3]
 
 **RED**: `BacklogRankServiceTest`(mockk repo + 분기 단위) —
 - `rerank(actor, key, prev?, next?)`: UPDATE 권한 검증(`IssuePermission.UPDATE`), 대상/이웃 조회, 이웃 rank로 `between`, no-bump update.
-- 이웃 검증: 둘 다 null/대상==이웃/타 프로젝트/순서 역전 → `IllegalArgumentException`(400 매핑); 이웃 미존재/소프트삭제 → 404.
-- 고갈(`RankSpaceExhaustedException`) → `rebalance(projectId)` 후 재계산. `pg_advisory_xact_lock(projectId)` 호출 + lock 후 재조회(TOCTOU, 메모리 advisory-lock-bigint).
+- 이웃 검증: 둘 다 null/대상==이웃/타 프로젝트/순서 역전 → **`InvalidRankNeighborException`**(B1 — `IllegalArgumentException` raw throw 금지, catch-all 500 방지); 이웃/대상 미존재·소프트삭제 → `IssueNotFoundException`(404).
+- 고갈(`RankSpaceExhaustedException`) → `rebalance(projectId)` → **rebalance 후 prev/next rank를 `findRankByKey`로 재조회**(C3, 키가 재배포됐으므로) → between 재계산. advisory lock = **`pg_advisory_xact_lock(hashtextextended(projectId::text, 0))`** (C2, identity-access ExternalAccountRepository 선례, UUID→bigint) + lock 후 재조회(TOCTOU, 메모리 advisory-lock-bigint).
 - `createIssue` 흐름에서 신규 이슈에 `between(findMaxRank, null)` 자동부여.
 - rank 변경은 `IssueChangeDetector`에 **등록하지 않음**(history noise 회피) — 단위 테스트로 history 미생성 확인.
 
-**GREEN**: `BacklogRankService` 신규(`@Service @Transactional`, ArchUnit 통과). `IssueApplicationService.createIssue`에서 rank 자동부여 호출.
+**GREEN**: `BacklogRankService` 신규(`@Service @Transactional`, ArchUnit 통과). `InvalidRankNeighborException` 신규(도메인 예외). `IssueApplicationService.createIssue`에서 rank 자동부여 호출.
 
 **REFACTOR**: 검증 헬퍼 추출, KDoc.
 
@@ -138,12 +141,12 @@ SDD §13.2.1 / product agile-planning.md §3.1 / fr-index §3.1
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/dto/RerankIssueRequest.kt`, `backend/modules/issue-tracking/src/test/kotlin/.../rest/IssueRankControllerTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/dto/RerankIssueRequest.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueExceptionHandler.kt`, `backend/modules/issue-tracking/src/test/kotlin/.../rest/IssueRankControllerTest.kt`]
 - depends-on: [4]
 
-**RED**: `IssueRankControllerTest`(MockMvc, service mock) — `PATCH /api/v1/issues/{key}/rank` 200(rank/version 응답), 400(이웃 검증/IllegalArgument), 403(권한), 404(이슈 없음). 도메인예외 → HTTP 상태 매핑이 같은 컨트롤러 advice 스코프 안인지 확인(메모리 domain-exception-http-handler-basepackage-scope / catch-all-swallows).
+**RED**: `IssueRankControllerTest`(MockMvc, service mock) — `PATCH /api/v1/issues/{key}/rank` 200(rank/version 응답), **400(`InvalidRankNeighborException`)**, 403(권한), 404(이슈 없음). 도메인예외 → HTTP 상태 매핑 검증: `InvalidRankNeighborException`이 **실제로 400**으로 나오는지(catch-all `Exception`→500이 삼키지 않는지) MockMvc로 단언(B1 + 메모리 domain-exception-http-handler-basepackage-scope / catch-all-swallows).
 
-**GREEN**: `@PatchMapping("/{key}/rank")` + `RerankIssueRequest(previousIssueKey?, nextIssueKey?)` + `BacklogRankService` 위임 + `DataResponse`.
+**GREEN**: `@PatchMapping("/{key}/rank")` + `RerankIssueRequest(previousIssueKey?, nextIssueKey?)` + `BacklogRankService` 위임 + `DataResponse`. **`IssueExceptionHandler`에 `@ExceptionHandler(InvalidRankNeighborException::class)` → 400 추가**(B1). 응답 version은 service가 반환한 issue.version(no-bump 불변, N1).
 
 **REFACTOR**: DTO @Valid, KDoc.
 
@@ -156,7 +159,7 @@ SDD §13.2.1 / product agile-planning.md §3.1 / fr-index §3.1
 - files: [`backend/modules/issue-tracking/src/test/kotlin/.../integration/IssueRankIntegrationTest.kt`]
 - depends-on: [5]
 
-**RED→GREEN**: 실 repo + 시드(메모리 issue-tracking-transition-test-mocks) end-to-end — S1(사이 이동) S2(맨앞) S3(맨뒤) S4(생성 자동부여) S5(고갈→rebalance 투명) + E2/E3/E4(400) E5/E9(404) E6(역전 400) E10(동시 rebalance 직렬) E11(tie-break) + 권한 403. 1개 이상 일부러 위반 넣어 vacuous 아님 확인(메모리 archunit-vacuous).
+**RED→GREEN**: 실 repo + 시드(메모리 issue-tracking-transition-test-mocks) end-to-end — S1(사이 이동) S2(맨앞) S3(맨뒤) S4(생성 자동부여) S5(고갈→rebalance 투명) + E2/E3/E4/E6/E7(400) E5/E9(404) E10(동시 rebalance 직렬) E11(tie-break) + 권한 403. (E7=둘다 null→400 HTTP 레벨 추가, N2.) 1개 이상 일부러 위반 넣어 vacuous 아님 확인(메모리 archunit-vacuous).
 
 **검증**: `cd backend && ./gradlew :modules:issue-tracking:integrationTest --tests "*IssueRankIntegrationTest"`
 
@@ -179,4 +182,24 @@ SDD §13.2.1 / product agile-planning.md §3.1 / fr-index §3.1
 - 병렬 dispatch: bts-impl이 depends-on + files로 wave 계산
 - 추가 검증: ktlint, detekt(baseline), ArchUnit(@Transactional @Service), generateJooq
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-23, 독립 backend-engineer dispatch — autoplan overkill 회피)
+
+**BLOCKER 3건 — 모두 plan/spec 수정으로 해소 완료.**
+- B1. `IllegalArgumentException` → catch-all이 500으로 삼킴(400 매핑 없음). → 커스텀 `InvalidRankNeighborException` + `IssueExceptionHandler` 명시 핸들러(T4·T5, spec #12).
+- B2. `between("a","ac")="aa"` trailing-a 생성 가능 → FR1 위반. → between이 trailing-a 미반환 보장(자리 연장), T1 RED에 `between("b","bc")` 끝문자≠a 테스트 추가(spec FR2 불변식).
+- B3. spec S1의 `rank a`가 FR1(끝문자≠a)과 모순. → S 시나리오 예시 rank를 FR1 준수값으로 교체 + "예시일 뿐" 명시.
+
+**CONCERN 4건 — 모두 반영.**
+- C1. 백필 SQL 방법(base-26 다자리) → PL/pgSQL 인라인 또는 Flyway Java 명시(T2).
+- C2. advisory lock 키 변환 → `hashtextextended(projectId::text, 0)` (UUID→bigint, identity-access 선례, T4).
+- C3. rebalance 후 이웃 rank 재조회 명시(T4).
+- C4. `updated_at` 갱신 안 함(assignee no-bump 선례, T3, spec #13).
+
+**NIT 3건 — 반영.** N1(version=조회한 issue.version, T5/spec #14), N2(E7 HTTP 통합 추가, T6), N3(initial==between(null,null) assertion, T1).
+
+**종합 판정**: 수정 후 진행 → **수정 완료, 진행 가능.**
+
+### plan-devex-review
+- API 계약(`PATCH /{key}/rank`, 이웃 키 기반)은 기존 `/api/v1/issues` 네임스페이스와 일관. 신규 엔드포인트라 하위호환 깨짐 없음. 별도 BLOCKER 없음(eng 리뷰가 계약·에러 매핑까지 커버).
