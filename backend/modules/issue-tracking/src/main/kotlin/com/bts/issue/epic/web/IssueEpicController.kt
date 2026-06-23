@@ -1,4 +1,4 @@
-// 에픽-자식 연결/해제/조회 REST 컨트롤러 (FR-EP-01 Task 6)
+// 에픽-자식 연결/해제/조회/진행률 REST 컨트롤러 (FR-EP-01 Task 6, FR-EP-02 Task 3)
 
 package com.bts.issue.epic.web
 
@@ -10,6 +10,7 @@ import com.bts.issue.epic.application.IssueEpicService
 import com.bts.issue.epic.web.dto.CreateEpicChildRequest
 import com.bts.issue.epic.web.dto.EpicChildListResponse
 import com.bts.issue.epic.web.dto.EpicChildSummaryResponse
+import com.bts.issue.epic.web.dto.EpicProgressResponse
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.domain.IssueType
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -52,7 +53,7 @@ import org.springframework.web.bind.annotation.RestController
  * @param issueTypeRepository 자식 이슈 타입 조회용. EpicChildSummaryResponse.typeKey 에 사용.
  */
 @RestController
-@RequestMapping("/api/v1/issues/{key}")
+@RequestMapping("/api/v1/issues/{key}", "/api/v1/epics/{key}")
 class IssueEpicController(
     private val service: IssueEpicService,
     private val issueRepository: IssueRepository,
@@ -145,5 +146,31 @@ class IssueEpicController(
      * @param issue 타입을 조회할 이슈.
      * @return [IssueType] 또는 null.
      */
+    /**
+     * 에픽의 자식 이슈 진행률을 카테고리별로 집계해 반환한다.
+     *
+     * `/api/v1/epics/{key}/progress` 경로로 응답한다.
+     * 클래스 레벨 `@RequestMapping` 에 `/api/v1/epics/{key}` 를 추가해 이 메서드가
+     * 에픽 전용 base path 에서도 동작하도록 한다.
+     *
+     * actor 추출은 서비스 호출 전 선행 — 미인증자가 404 로 존재를 probe 하지 못하게 한다
+     * (auth-extraction-before-resource-lookup 교훈).
+     *
+     * @param key 에픽 이슈 키 (path variable).
+     * @return 200 OK + [EpicProgressResponse](진행률 집계).
+     * @throws com.bts.issue.epic.domain.EpicChildNotFoundException epic 미존재·소프트삭제 시 → 404
+     * @throws com.bts.issue.domain.IssueAccessDeniedException BROWSE(Project) 권한 미보유 시 → 403
+     */
+    @GetMapping("/progress")
+    fun getProgress(
+        @PathVariable key: String,
+    ): ResponseEntity<DataResponse<EpicProgressResponse>> {
+        val actor = CurrentActor.current()
+        log.info("getProgress epicKey={} actor={}", key, actor.value)
+
+        val progress = service.progress(epicKey = IssueKey(key), actor = actor)
+        return ResponseEntity.ok(DataResponse(data = EpicProgressResponse.from(progress)))
+    }
+
     private fun resolveType(issue: Issue): IssueType? = issueTypeRepository.findById(issue.typeId)
 }
