@@ -337,9 +337,10 @@ class IssueEpicServiceProgressTest : DescribeSpec({
                 // story 는 정상 — DONE 카테고리 상태 보유
                 every {
                     workflowStateCatalog.listStates(ProjectKey.of(projectKey), IssueTypeKey("story"))
-                } returns listOf(
-                    WorkflowStateView(key = "done", name = "완료", isDone = true, category = "DONE"),
-                )
+                } returns
+                    listOf(
+                        WorkflowStateView(key = "done", name = "완료", isDone = true, category = "DONE"),
+                    )
                 // task 는 NoDefault throw → 그 타입 자식 전부 TODO 폴백
                 every {
                     workflowStateCatalog.listStates(ProjectKey.of(projectKey), IssueTypeKey("task"))
