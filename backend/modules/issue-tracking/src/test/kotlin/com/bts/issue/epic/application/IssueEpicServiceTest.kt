@@ -24,6 +24,7 @@ import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
 import com.bts.shared.permission.IssueSecurityAccess
 import com.bts.shared.permission.IssueSecurityDirectory
+import com.bts.shared.workflow.WorkflowStateCatalog
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
@@ -41,6 +42,7 @@ class IssueEpicServiceTest : DescribeSpec({
     val issueRepository = mockk<IssueRepository>()
     val issueTypeRepository = mockk<IssueTypeRepository>()
     val historyRecorder = mockk<IssueHistoryRecorder>(relaxed = true)
+    val workflowStateCatalog = mockk<WorkflowStateCatalog>(relaxed = true)
 
     val sut =
         IssueEpicService(
@@ -49,6 +51,7 @@ class IssueEpicServiceTest : DescribeSpec({
             issueRepository = issueRepository,
             issueTypeRepository = issueTypeRepository,
             historyRecorder = historyRecorder,
+            workflowStateCatalog = workflowStateCatalog,
         )
 
     // ── 공통 픽스처 ───────────────────────────────────────────────────────────

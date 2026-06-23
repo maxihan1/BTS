@@ -12,6 +12,7 @@ import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
 import com.bts.shared.permission.IssueSecurityAccess
 import com.bts.shared.permission.IssueSecurityDirectory
+import com.bts.shared.workflow.WorkflowStateCatalog
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -187,12 +188,16 @@ class IssueEpicControllerIntegrationTest {
         open fun securityDirectory(): IssueSecurityDirectory = AlwaysAllowSecurityDirectory()
 
         @Bean
+        open fun workflowStateCatalog(): WorkflowStateCatalog = mockk(relaxed = true)
+
+        @Bean
         open fun issueEpicService(
             permissionResolver: IssuePermissionResolver,
             securityDirectory: IssueSecurityDirectory,
             issueRepository: IssueRepository,
             issueTypeRepository: IssueTypeRepository,
             issueHistoryRecorder: IssueHistoryRecorder,
+            workflowStateCatalog: WorkflowStateCatalog,
         ): IssueEpicService =
             IssueEpicService(
                 permissionResolver,
@@ -200,6 +205,7 @@ class IssueEpicControllerIntegrationTest {
                 issueRepository,
                 issueTypeRepository,
                 issueHistoryRecorder,
+                workflowStateCatalog,
             )
 
         @Bean
