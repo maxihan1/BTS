@@ -21,7 +21,6 @@ import com.bts.issue.jooq.tables.references.PROJECTS
 import com.bts.issue.jooq.tables.references.VERSIONS
 import com.bts.issue.jooq.tables.references.WORKLOGS
 import com.bts.shared.board.BoardCardFilter
-import com.bts.shared.lexorank.Rank
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssueSecurityAccess
 import com.fasterxml.jackson.core.type.TypeReference
@@ -1970,23 +1969,26 @@ class IssueRepository(
     /**
      * rebalance 대상 이슈 목록을 (key, rank) 쌍으로 반환한다.
      *
-     * ORDER BY rank, id 로 tie-break 포함 결정적 순서를 보장한다.
+     * ORDER BY rank NULLS LAST, created_at, id 로 결정적 순서를 보장한다.
+     * rank 가 NULL 인 이슈(lazy 미부여)는 맨 뒤에 생성순으로 배치된다 (spec 결정 #11).
      * 소프트삭제 이슈는 제외한다.
      *
      * @param projectId 재배포 대상 프로젝트 UUID.
-     * @return (issueKey, rank) 쌍 목록. rank 오름차순, 동률 시 id 오름차순.
+     * @return (issueKey, rank) 쌍 목록. rank NULLS LAST, 동률 시 created_at, id 오름차순.
+     *   rank 가 NULL 인 행은 key to null 로 포함된다.
      */
     @Transactional(readOnly = true)
-    fun findRanksForRebalance(projectId: UUID): List<Pair<String, String>> =
+    fun findRanksForRebalance(projectId: UUID): List<Pair<String, String?>> =
         dsl.select(ISSUES.KEY, ISSUES.RANK)
             .from(ISSUES)
             .where(ISSUES.PROJECT_ID.eq(projectId))
             .and(ISSUES.DELETED_AT.isNull)
-            .orderBy(ISSUES.RANK.asc(), ISSUES.ID.asc())
+            .orderBy(ISSUES.RANK.asc().nullsLast(), ISSUES.CREATED_AT.asc(), ISSUES.ID.asc())
             .fetch { record ->
-                // key, rank 는 NOT NULL 컬럼 — DB 무결성으로 null 비발생 보장
+                // key 는 NOT NULL 컬럼 — DB 무결성으로 null 비발생 보장.
+                // rank 는 nullable (옵션 B) — null 허용.
                 val issueKey = record.get(ISSUES.KEY) ?: error("issues.key must not be null")
-                val issueRank = record.get(ISSUES.RANK) ?: error("issues.rank must not be null")
+                val issueRank = record.get(ISSUES.RANK)
                 issueKey to issueRank
             }
 
@@ -2061,11 +2063,10 @@ private fun Issue.toInsertRecord(): IssuesRecord =
         originalEstimateSeconds = originalEstimateSeconds,
         timeSpentSeconds = timeSpentSeconds,
         remainingEstimateSeconds = remainingEstimateSeconds,
-        // LexoRank 정렬 키 (FR-BL-01, V029). NOT NULL 컬럼.
-        // IssueApplicationService.createIssue 는 findMaxRank → Rank.between 으로 자동부여 후 copy(rank=...) 로 주입한다.
-        // null 이면 기존 테스트 호환용 초기값(Rank.initial)으로 폴백한다.
-        // prod 경로(createIssue/cloneIssue)는 반드시 non-null rank 를 copy 로 주입하므로 이 폴백은 비발생.
-        rank = rank ?: Rank.initial().value,
+        // LexoRank 정렬 키 (FR-BL-01, V029). nullable 컬럼 (옵션 B, lazy 부여).
+        // 신규 이슈는 rank=NULL 로 생성하고 드래그(rerank) 시 rank 를 부여한다 (spec 결정 #5).
+        // toIssue 에서 rank(nullable String?) 로 역매핑된다.
+        rank = rank,
     )
 
 /**
@@ -2112,7 +2113,7 @@ private fun IssuesRecord.toIssue(): Issue {
         originalEstimateSeconds = originalEstimateSeconds,
         timeSpentSeconds = timeSpentSeconds ?: 0,
         remainingEstimateSeconds = remainingEstimateSeconds,
-        // LexoRank 정렬 키 — V029 (FR-BL-01). NOT NULL 컬럼이므로 DB 에서 반드시 non-null.
+        // LexoRank 정렬 키 — V029 (FR-BL-01). nullable (옵션 B, lazy 부여). 미부여 이슈는 null.
         rank = rank,
     )
 }

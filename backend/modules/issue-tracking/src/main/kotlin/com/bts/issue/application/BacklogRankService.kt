@@ -105,7 +105,9 @@ class BacklogRankService(
         val target = repo.findByKey(key) ?: throw IssueNotFoundException(key)
         val (prevRank, nextRank) = resolveNeighborRanks(key, target.projectId, previousIssueKey, nextIssueKey)
 
-        applyRankUpdate(key, target.projectId, previousIssueKey, nextIssueKey, prevRank, nextRank)
+        applyRankUpdate(
+            RerankCmd(key, target.projectId, previousIssueKey, nextIssueKey, prevRank, nextRank),
+        )
     }
 
     /**
@@ -113,12 +115,16 @@ class BacklogRankService(
      *
      * pg_advisory_xact_lock 으로 동시 rebalance 를 직렬화하고,
      * lock 후 findRanksForRebalance 를 재조회하여 TOCTOU 를 차단한다.
+     * rank=NULL 인 이슈(옵션 B, lazy 미부여)도 NULLS LAST 정렬로 포함하여 전체에 rank 를 부여한다.
      *
      * @param projectId 재배포 대상 프로젝트 UUID.
      */
     fun rebalance(projectId: UUID) {
-        acquireRebalanceLock(projectId)
-        // TOCTOU 차단: lock 후 최신 상태 재조회
+        // pg_advisory_xact_lock 취득 — 동시 rebalance 직렬화 (트랜잭션 종료 시 자동 해제).
+        // void 반환이라 execute 로 호출 (DATA.md §5 정식 예외).
+        log.debug("acquiring rebalance lock for projectId={}", projectId)
+        dsl.execute(SQL_REBALANCE_LOCK, projectId.toString())
+        // TOCTOU 차단: lock 후 최신 상태 재조회. rank NULL 포함 전체 조회 (NULLS LAST).
         val issues = repo.findRanksForRebalance(projectId)
         if (issues.isEmpty()) return
 
@@ -153,7 +159,10 @@ class BacklogRankService(
     /**
      * 이웃 이슈를 조회하고 rank 쌍을 반환한다.
      *
-     * @return (prevRank, nextRank) — null 은 경계 없음.
+     * 이웃 rank 가 NULL 인 경우(E13, 옵션 B lazy 미부여 영역) null 을 그대로 반환한다.
+     * 호출측(applyRankUpdate)이 null 을 rebalance 트리거로 처리한다.
+     *
+     * @return (prevRank, nextRank) — null 은 경계 없음 또는 미부여(lazy).
      * @throws IssueNotFoundException 이웃 이슈 미존재/소프트삭제.
      * @throws InvalidRankNeighborException 이웃 검증 실패.
      */
@@ -168,6 +177,7 @@ class BacklogRankService(
         val prevRank = previousIssueKey?.let { resolveNeighborRank(it, projectId, "이전") }
         val nextRank = nextIssueKey?.let { resolveNeighborRank(it, projectId, "다음") }
 
+        // 둘 다 non-null 이고 순서 역전이면 400 (null 은 경계 없음 또는 lazy 미부여라 역전 비교 생략).
         if (prevRank != null && nextRank != null && prevRank >= nextRank) {
             throw InvalidRankNeighborException(
                 "이전 이슈 rank(${prevRank.value})가 다음 이슈 rank(${nextRank.value}) 이상입니다 (순서 역전).",
@@ -182,6 +192,7 @@ class BacklogRankService(
      *
      * @throws InvalidRankNeighborException 검증 실패.
      */
+    @Suppress("ThrowsCount")
     private fun validateNeighborKeys(
         key: IssueKey,
         previousIssueKey: IssueKey?,
@@ -210,6 +221,9 @@ class BacklogRankService(
     /**
      * 단일 이웃 이슈를 조회하고 Rank 를 반환한다.
      *
+     * rank 가 NULL 인 경우(E13, 옵션 B lazy 미부여) null 을 반환한다.
+     * 호출측에서 null 을 rebalance 트리거로 처리한다.
+     *
      * @throws IssueNotFoundException 이웃 이슈 미존재/소프트삭제.
      * @throws InvalidRankNeighborException 이웃이 타 프로젝트.
      */
@@ -217,62 +231,69 @@ class BacklogRankService(
         neighborKey: IssueKey,
         targetProjectId: UUID,
         label: String,
-    ): Rank {
+    ): Rank? {
         val neighbor = repo.findByKey(neighborKey) ?: throw IssueNotFoundException(neighborKey)
         if (neighbor.projectId != targetProjectId) {
             throw InvalidRankNeighborException(
                 "$label 이웃 이슈(${neighborKey.value})가 대상 이슈와 다른 프로젝트입니다.",
             )
         }
-        return Rank.of(neighbor.rank ?: error("이웃 이슈(${neighborKey.value}).rank is null — DB 무결성 위반"))
+        // E13: rank=NULL 이면 null 반환 — 호출측이 rebalance 트리거로 처리 (lazy 미부여 영역).
+        return neighbor.rank?.let { Rank.of(it) }
     }
+
+    /**
+     * 리랭크 명령 — between 계산에 필요한 대상/이웃 키와 rank 묶음.
+     */
+    private data class RerankCmd(
+        val key: IssueKey,
+        val projectId: UUID,
+        val previousIssueKey: IssueKey?,
+        val nextIssueKey: IssueKey?,
+        val prevRank: Rank?,
+        val nextRank: Rank?,
+    )
 
     /**
      * between 계산 후 updateRank 를 수행한다.
      *
-     * RankSpaceExhaustedException 시 rebalance → 재조회(C3) → 재계산 → updateRank.
+     * rebalance 트리거 조건 (둘 다 [rebalanceAndRetry] 위임).
+     * - 이웃 rank 가 NULL(E13, 옵션 B lazy 미부여 영역으로 드래그).
+     * - RankSpaceExhaustedException: rank 공간 고갈.
      */
-    private fun applyRankUpdate(
-        key: IssueKey,
-        projectId: UUID,
-        previousIssueKey: IssueKey?,
-        nextIssueKey: IssueKey?,
-        prevRank: Rank?,
-        nextRank: Rank?,
-    ) {
+    private fun applyRankUpdate(cmd: RerankCmd) {
+        // E13: 이웃 rank 가 null(lazy 미부여)이면 고갈과 동일하게 rebalance 트리거.
+        val nullNeighbor =
+            cmd.prevRank == null && cmd.previousIssueKey != null ||
+                cmd.nextRank == null && cmd.nextIssueKey != null
+        if (nullNeighbor) {
+            log.warn("neighbor_rank_null key={} projectId={} — rebalance (E13)", cmd.key.value, cmd.projectId)
+            rebalanceAndRetry(cmd)
+            return
+        }
+
         try {
-            val newRank = Rank.between(prevRank, nextRank)
-            repo.updateRank(key, newRank.value)
-            log.info("rerank_done key={} rank={}", key.value, newRank.value)
+            val newRank = Rank.between(cmd.prevRank, cmd.nextRank)
+            repo.updateRank(cmd.key, newRank.value)
+            log.info("rerank_done key={} rank={}", cmd.key.value, newRank.value)
         } catch (e: RankSpaceExhaustedException) {
-            log.warn(
-                "rank_space_exhausted key={} projectId={} — triggering rebalance",
-                key.value,
-                projectId,
-            )
-            rebalance(projectId)
-            // C3: rebalance 후 이웃 rank 재조회 — 키가 재배포됐으므로 이전 값은 stale
-            val reloadedPrev = previousIssueKey?.let { k ->
-                repo.findRankByKey(k)?.let { Rank.of(it) }
-            }
-            val reloadedNext = nextIssueKey?.let { k ->
-                repo.findRankByKey(k)?.let { Rank.of(it) }
-            }
-            val newRank = Rank.between(reloadedPrev, reloadedNext)
-            repo.updateRank(key, newRank.value)
-            log.info("rerank_after_rebalance_done key={} rank={}", key.value, newRank.value)
+            log.warn("rank_space_exhausted key={} projectId={} — rebalance", cmd.key.value, cmd.projectId, e)
+            rebalanceAndRetry(cmd)
         }
     }
 
     /**
-     * rebalance advisory lock 을 획득한다.
+     * rebalance 후 이웃 rank 를 재조회(C3)하여 between 재계산·updateRank 한다.
      *
-     * pg_advisory_xact_lock(hashtextextended(projectId::text, 0)) — void 반환이므로 execute 로 호출.
-     * 트랜잭션 종료 시 자동 해제.
+     * rebalance 가 키를 재배포하므로 이전 rank 값은 stale — 반드시 재조회한다.
      */
-    private fun acquireRebalanceLock(projectId: UUID) {
-        log.debug("acquiring rebalance lock for projectId={}", projectId)
-        dsl.execute(SQL_REBALANCE_LOCK, projectId.toString())
+    private fun rebalanceAndRetry(cmd: RerankCmd) {
+        rebalance(cmd.projectId)
+        val reloadedPrev = cmd.previousIssueKey?.let { k -> repo.findRankByKey(k)?.let { Rank.of(it) } }
+        val reloadedNext = cmd.nextIssueKey?.let { k -> repo.findRankByKey(k)?.let { Rank.of(it) } }
+        val newRank = Rank.between(reloadedPrev, reloadedNext)
+        repo.updateRank(cmd.key, newRank.value)
+        log.info("rerank_after_rebalance_done key={} rank={}", cmd.key.value, newRank.value)
     }
 
     /**

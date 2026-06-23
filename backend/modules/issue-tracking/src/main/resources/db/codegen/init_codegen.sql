@@ -44,8 +44,8 @@ CREATE TABLE issues (
     parent_id          UUID         NULL REFERENCES issues(id),
     -- epic_id: V028 미러 (FR-EP-01). 소속 Epic 자기참조 FK. NULL=소속 없음. parent_id 와 별개.
     epic_id            UUID         NULL REFERENCES issues(id),
-    -- rank: V029 미러 (FR-BL-01). LexoRank 백로그 정렬 키. 최종 NOT NULL (백필 동반). jOOQ non-null String 생성 대상.
-    rank               VARCHAR(50)  NOT NULL,
+    -- rank: V029 미러 (FR-BL-01). LexoRank 백로그 정렬 키. nullable (옵션 B, lazy 부여). jOOQ nullable String? 생성 대상.
+    rank               VARCHAR(50)  NULL,
     created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     deleted_at         TIMESTAMPTZ  NULL
@@ -58,7 +58,7 @@ COMMENT ON COLUMN issues.version             IS '낙관적 잠금 카운터. 동
 COMMENT ON COLUMN issues.deleted_at          IS 'NULL=활성, NOT NULL=삭제됨. 소프트 삭제 (DATA.md §3). key 는 삭제 후에도 UNIQUE 제약 유지.';
 COMMENT ON COLUMN issues.parent_id           IS '부모 이슈 (issues.id 자기참조). NULL=최상위. 구조적 계층 — 링크(issue_links)와 별개 (FR-LK-01, V021 미러).';
 COMMENT ON COLUMN issues.epic_id             IS '소속 Epic (issues.id 자기참조). NULL=소속 없음. parent_id(Subtask 계층)와 별개 — Epic↔자식 (FR-EP-01, V028 미러).';
-COMMENT ON COLUMN issues.rank                IS 'LexoRank 백로그 정렬 키 (소문자 a-z, 사전순=정렬순, 끝문자!=a). 프로젝트 전역 키 (FR-BL-01, V029 미러).';
+COMMENT ON COLUMN issues.rank                IS 'LexoRank 백로그 정렬 키 (소문자 a-z, 사전순=정렬순, 끝문자!=a). NULL=미부여(lazy). 프로젝트 전역 키 (FR-BL-01, V029 미러).';
 
 CREATE INDEX idx_issues_project_id ON issues(project_id);
 CREATE INDEX idx_issues_project_id_deleted_at ON issues(project_id, deleted_at) WHERE deleted_at IS NULL;

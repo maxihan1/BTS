@@ -13,7 +13,6 @@ import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
-import io.kotest.matchers.shouldBe
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -48,11 +47,12 @@ class BacklogRankServiceTest : DescribeSpec({
     val permissionResolver = mockk<IssuePermissionResolver>()
     val dsl = mockk<DSLContext>(relaxed = true)
 
-    val sut = BacklogRankService(
-        repo = repo,
-        permissionResolver = permissionResolver,
-        dsl = dsl,
-    )
+    val sut =
+        BacklogRankService(
+            repo = repo,
+            permissionResolver = permissionResolver,
+            dsl = dsl,
+        )
 
     val actor = ActorId(UUID.randomUUID())
     val projectId = UUID.randomUUID()
@@ -61,7 +61,7 @@ class BacklogRankServiceTest : DescribeSpec({
 
     fun makeIssue(
         key: IssueKey,
-        rank: String,
+        rank: String?,
         pid: UUID = projectId,
     ): com.bts.issue.domain.Issue =
         mockk<com.bts.issue.domain.Issue>().also {
@@ -159,11 +159,12 @@ class BacklogRankServiceTest : DescribeSpec({
             stubUpdatePermission(true)
             val otherProjectId = UUID.randomUUID()
             every { repo.findByKey(targetKey) } returns makeIssue(targetKey, "n")
-            every { repo.findByKey(IssueKey("OTHER-1")) } returns makeIssue(
-                IssueKey("OTHER-1"),
-                "b",
-                pid = otherProjectId,
-            )
+            every { repo.findByKey(IssueKey("OTHER-1")) } returns
+                makeIssue(
+                    IssueKey("OTHER-1"),
+                    "b",
+                    pid = otherProjectId,
+                )
 
             shouldThrow<InvalidRankNeighborException> {
                 sut.rerank(actor, targetKey, IssueKey("OTHER-1"), null)
@@ -228,6 +229,45 @@ class BacklogRankServiceTest : DescribeSpec({
         }
     }
 
+    // ── 이웃 NULL → rebalance (E13, 옵션 B) ──────────────────────────────────
+
+    describe("이웃 rank NULL → rebalance (E13, 옵션 B)") {
+        it("이웃 rank=NULL(lazy 미부여) → rebalance 트리거 → 재조회 → updateRank") {
+            stubUpdatePermission(true)
+            val prevKey = IssueKey("PROJ-1")
+
+            // 대상 이슈: rank 있음
+            every { repo.findByKey(targetKey) } returns makeIssue(targetKey, "b")
+            // prev 이웃: rank=NULL(lazy 미부여 — E13)
+            every { repo.findByKey(prevKey) } returns makeIssue(prevKey, null)
+
+            every {
+                dsl.execute(
+                    match<String> { it.contains("pg_advisory_xact_lock") },
+                    any<String>(),
+                )
+            } returns 0
+
+            // rebalance 후 전체 rank 부여됨
+            val rebalanceList =
+                listOf(
+                    "PROJ-1" to null,
+                    "PROJ-3" to "b",
+                )
+            every { repo.findRanksForRebalance(projectId) } returns rebalanceList
+
+            // C3: rebalance 후 재조회 — 새로 부여된 rank
+            every { repo.findRankByKey(prevKey) } returns "g"
+
+            sut.rerank(actor, targetKey, prevKey, null)
+
+            // rebalance 트리거 검증
+            verify { repo.findRanksForRebalance(projectId) }
+            // C3: prev rank 재조회 검증
+            verify { repo.findRankByKey(prevKey) }
+        }
+    }
+
     // ── 고갈 → rebalance ──────────────────────────────────────────────────────
 
     describe("고갈 → on-demand rebalance") {
@@ -238,8 +278,8 @@ class BacklogRankServiceTest : DescribeSpec({
 
             // 실제 고갈 케이스: 50자 모두 'z' 인접 키
             // "z*49 + y" 와 "z*50" 사이에는 50자 내 중간값을 만들 수 없다 → RankSpaceExhaustedException
-            val exhaustedPrev = "z".repeat(49) + "y"  // 50자, trailing-y
-            val exhaustedNext = "z".repeat(50)         // 50자, trailing-z (끝 'a' 아님이라 유효)
+            val exhaustedPrev = "z".repeat(49) + "y" // 50자, trailing-y
+            val exhaustedNext = "z".repeat(50) // 50자, trailing-z (끝 'a' 아님이라 유효)
             every { repo.findByKey(targetKey) } returns makeIssue(targetKey, "b")
             every { repo.findByKey(prevKey) } returns makeIssue(prevKey, exhaustedPrev)
             every { repo.findByKey(nextKey) } returns makeIssue(nextKey, exhaustedNext)
@@ -253,11 +293,12 @@ class BacklogRankServiceTest : DescribeSpec({
             } returns 0
 
             // rebalance 대상 이슈 목록: 3개
-            val rebalanceList = listOf(
-                "PROJ-1" to exhaustedPrev,
-                "PROJ-3" to "b",
-                "PROJ-2" to exhaustedNext,
-            )
+            val rebalanceList =
+                listOf(
+                    "PROJ-1" to exhaustedPrev,
+                    "PROJ-3" to "b",
+                    "PROJ-2" to exhaustedNext,
+                )
             every { repo.findRanksForRebalance(projectId) } returns rebalanceList
 
             // rebalance 후 재조회 (C3): rank 재배포로 값 변경됨

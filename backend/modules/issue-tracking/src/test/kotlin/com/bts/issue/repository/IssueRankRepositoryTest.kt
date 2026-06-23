@@ -1,4 +1,4 @@
-// IssueRepository rank 관련 메서드 통합 테스트 — FR-BL-01 Task 3
+// IssueRepository rank 관련 메서드 통합 테스트 — FR-BL-01 Task 3 (옵션 B: nullable + lazy)
 
 package com.bts.issue.repository
 
@@ -18,7 +18,7 @@ import java.sql.DriverManager
 import java.util.UUID
 
 /**
- * IssueRepository rank 관련 메서드 통합 테스트 (FR-BL-01 Task 3).
+ * IssueRepository rank 관련 메서드 통합 테스트 (FR-BL-01 Task 3, 옵션 B: nullable + lazy).
  *
  * IssueTestcontainersBase 상속으로 JVM singleton PostgreSQL container + Flyway migrate 를 공유한다.
  * cleanIssues (@BeforeEach) 로 각 테스트가 독립된 issues 상태에서 시작한다.
@@ -26,9 +26,9 @@ import java.util.UUID
  * 검증 시나리오.
  * - R01. updateRank — rank 만 변경하고 version·updated_at 이 불변(no-bump).
  * - R02. findRankByKey — 저장된 rank 를 정확히 반환한다.
- * - R03. findRanksForRebalance — ORDER BY rank, id, 소프트삭제 제외, (key, rank) 쌍 반환.
+ * - R03. findRanksForRebalance — ORDER BY rank NULLS LAST, created_at, id, 소프트삭제 제외, (key, rank?) 쌍 반환.
  * - R04. findMaxRank — 프로젝트의 최대 rank 반환, 소프트삭제 제외.
- * - R05. createIssue rank 자동부여 — 신규 이슈 삽입 시 rank 가 NOT NULL, 기존 최대 rank 보다 큼.
+ * - R05. insert nullable rank — 신규 이슈를 rank=null 로 삽입 가능 (옵션 B, lazy 부여).
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class IssueRankRepositoryTest : IssueTestcontainersBase() {
@@ -51,19 +51,20 @@ class IssueRankRepositoryTest : IssueTestcontainersBase() {
         }
     }
 
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다 — resolveTaskTypeId 실행 확인" }
+    private fun requireTaskTypeId(): IssueTypeId {
+        return requireNotNull(taskTypeId) { "taskTypeId 미초기화 — resolveTaskTypeId 확인" }
+    }
 
     /**
      * 기본 테스트 이슈를 DB 에 삽입하고 반환한다.
      * cleanIssues(@BeforeEach) 이후 호출을 전제로 key 는 항상 TPRJ-{seq}.
      *
      * @param seq key 시퀀스 번호 (TPRJ-1, TPRJ-2, ...).
-     * @param rank 삽입할 rank. null 이면 Rank.initial() 로 초기화 후 copy 로 주입.
+     * @param rank 삽입할 rank. null 이면 rank=null 로 삽입 (옵션 B, lazy 미부여).
      */
     private fun insertIssue(
         seq: Long = 1L,
-        rank: Rank = Rank.initial(),
+        rank: Rank? = null,
     ): Issue {
         val key = IssueKey.of("TPRJ", seq)
         val issue =
@@ -76,7 +77,7 @@ class IssueRankRepositoryTest : IssueTestcontainersBase() {
                     summary = "rank 테스트 이슈 $seq",
                     reporterId = ActorId(UUID.randomUUID()),
                     currentStateKey = "open",
-                ).copy(rank = rank.value)
+                ).copy(rank = rank?.value)
         return repository.insert(issue)
     }
 
@@ -236,44 +237,57 @@ class IssueRankRepositoryTest : IssueTestcontainersBase() {
         assertThat(maxRank).isEqualTo("n")
     }
 
-    // ── R05. createIssue rank 자동부여 — NOT NULL, 기존 최대보다 큼 ──────────────
-
-    /**
-     * Given  rank "n" 인 기존 이슈 1건이 삽입된 상태
-     * When   신규 이슈를 rank=Rank.initial() 보다 뒤(between(Rank.of("n"), null))로 삽입
-     * Then   신규 이슈의 rank 가 NOT NULL 이고, "n" 보다 크다.
-     *
-     * 이 테스트는 IssueApplicationService.createIssue 에서 rank 를 자동부여하는 로직 대신
-     * repository.insert 레벨에서 rank 필드가 NOT NULL 로 채워지는 것을 직접 검증한다.
-     * (IssueApplicationService 전체 의존 없이 repository 단위 검증)
-     */
-    @Test
-    @Order(9)
-    fun `R05 - insert - rank 필드가 NOT NULL 로 채워진다`() {
-        val existingRank = Rank.of("n")
-        insertIssue(seq = 1L, rank = existingRank)
-
-        val newRank = Rank.between(existingRank, null)
-        val newIssue = insertIssue(seq = 2L, rank = newRank)
-
-        assertThat(newIssue.rank).isNotNull()
-        assertThat(newIssue.rank).isNotEmpty()
-        assertThat(newIssue.rank).isGreaterThan(existingRank.value)
-    }
+    // ── R05. insert nullable rank (옵션 B, lazy) ─────────────────────────────
 
     /**
      * Given  이슈가 없는 빈 프로젝트
-     * When   첫 이슈를 Rank.initial() 로 삽입
-     * Then   rank 가 non-null, 소문자 a-z, 1~50자, 끝문자 != 'a'.
+     * When   신규 이슈를 rank=null 로 삽입 (옵션 B, lazy 미부여)
+     * Then   DB 에서 rank=null 로 저장된다 (NOT NULL 위반 없음).
+     */
+    @Test
+    @Order(9)
+    fun `R05 - insert - rank null 로 삽입 가능 (옵션 B, lazy 부여)`() {
+        // rank 미지정 = null (기본값)
+        val inserted = insertIssue(seq = 1L)
+
+        assertThat(inserted.rank).isNull()
+    }
+
+    /**
+     * Given  rank=null 이슈가 있는 프로젝트
+     * When   findMaxRank 호출
+     * Then   rank=null 이슈는 max 계산에서 무시되고 null 반환.
      */
     @Test
     @Order(10)
-    fun `R05b - insert - 첫 이슈의 rank 는 Rank initial 규칙을 만족한다`() {
-        val initialRank = Rank.initial()
-        val inserted = insertIssue(seq = 1L, rank = initialRank)
+    fun `R05b - findMaxRank - rank null 이슈만 있으면 null 반환`() {
+        insertIssue(seq = 1L) // rank=null
+        insertIssue(seq = 2L) // rank=null
 
-        assertThat(inserted.rank).isNotNull()
-        assertThat(inserted.rank).matches("^[a-z]{1,50}$")
-        assertThat(inserted.rank!!.last()).isNotEqualTo('a')
+        val maxRank = repository.findMaxRank(testProjectId)
+
+        assertThat(maxRank).isNull()
+    }
+
+    /**
+     * Given  rank 있는 이슈와 rank=null 이슈가 혼재
+     * When   findRanksForRebalance 호출
+     * Then   rank null 이슈가 NULLS LAST 로 맨 뒤에 위치한다.
+     */
+    @Test
+    @Order(11)
+    fun `R05c - findRanksForRebalance - rank null 이슈는 NULLS LAST 로 맨 뒤`() {
+        val rankN = Rank.of("n")
+        val i1 = insertIssue(seq = 1L, rank = rankN)
+        val i2 = insertIssue(seq = 2L) // rank=null
+
+        val rows = repository.findRanksForRebalance(testProjectId)
+
+        assertThat(rows).hasSize(2)
+        // rank 있는 이슈가 앞, rank null 이슈가 뒤
+        assertThat(rows[0].first).isEqualTo(i1.key.value)
+        assertThat(rows[0].second).isEqualTo(rankN.value)
+        assertThat(rows[1].first).isEqualTo(i2.key.value)
+        assertThat(rows[1].second).isNull()
     }
 }

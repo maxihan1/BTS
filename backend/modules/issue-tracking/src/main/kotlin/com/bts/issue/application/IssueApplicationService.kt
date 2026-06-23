@@ -48,7 +48,6 @@ import com.bts.issue.type.domain.IssueTypeNotFoundException
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.issue.IssueTypeId
-import com.bts.shared.lexorank.Rank
 import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.permission.FieldKind
 import com.bts.shared.permission.FieldPermissionResolver
@@ -230,14 +229,7 @@ class IssueApplicationService(
         val resolvedDescription =
             resolveDescription(request.description, projectId, resolvedTypeId, request.reporterId, request.projectKey)
 
-        // FR-BL-01: 신규 이슈 rank 자동부여 — 백로그 맨 끝(기존 최대 rank 이후).
-        // findMaxRank null(빈 백로그) 이면 Rank.initial() 사용. NOT NULL 컬럼 충족.
-        val autoRank =
-            Rank.between(
-                prev = repo.findMaxRank(projectId)?.let { Rank.of(it) },
-                next = null,
-            )
-
+        // FR-BL-01 옵션 B: 신규 이슈 rank=NULL(lazy). 드래그(rerank) 시 BacklogRankService 가 부여한다.
         val issue =
             Issue.create(
                 id = IssueId(UUID.randomUUID()),
@@ -252,7 +244,7 @@ class IssueApplicationService(
                 securityLevelId = request.securityLevelId,
                 customFields = customFieldValues,
                 description = resolvedDescription,
-            ).copy(rank = autoRank.value)
+            )
         val saved = repo.insert(issue)
         autoWatch(saved.id.value, listOfNotNull(saved.reporterId.value, resolvedAssignee?.value))
         repo.insertComponents(saved.id.value, normalizedComponentIds)
@@ -313,13 +305,7 @@ class IssueApplicationService(
         val newKey = IssueKey.of(projectKey, seq)
         val startState = resolveWorkflowKey(newKey)
 
-        // FR-BL-01: 클론본도 백로그 맨 끝에 배치한다.
-        val cloneRank =
-            Rank.between(
-                prev = repo.findMaxRank(source.projectId)?.let { Rank.of(it) },
-                next = null,
-            )
-
+        // FR-BL-01 옵션 B: 클론본도 rank=NULL(lazy). 드래그(rerank) 시 BacklogRankService 가 부여한다.
         val clone =
             Issue.create(
                 id = IssueId(UUID.randomUUID()),
@@ -335,7 +321,7 @@ class IssueApplicationService(
                 environment = source.environment,
                 impact = source.impact,
                 assigneeId = if (request.includeAssignee) source.assigneeId else null,
-            ).copy(rank = cloneRank.value)
+            )
         val saved = repo.insert(clone)
         eventPublisher.publish(
             IssueCreated(
