@@ -47,6 +47,7 @@ import com.bts.issue.template.domain.TemplateVariableSubstitutor
 import com.bts.issue.type.domain.IssueTypeNotFoundException
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.issue.version.repository.VersionRepository
+import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.permission.FieldKind
@@ -951,6 +952,7 @@ class IssueApplicationService(
      * @param actor 조회 행위자.
      * @param projectKey 프로젝트 키.
      * @param pageable 페이지 정보. pageSize > 100 이면 거부.
+     * @param filter 보드 카드 필터. 기본값 [BoardCardFilter.EMPTY](무필터). statusKeys/assigneeIds 등을 지정하면 SQL 수준에서 필터링된다.
      * @return [Page]<[IssueResponse]>.
      * @throws IssueAccessDeniedException BROWSE 권한 없을 때(403).
      * @throws IllegalArgumentException pageSize > 100 일 때.
@@ -960,6 +962,7 @@ class IssueApplicationService(
         actor: ActorId,
         projectKey: String,
         pageable: Pageable,
+        filter: BoardCardFilter = BoardCardFilter.EMPTY,
     ): Page<IssueResponse> {
         require(pageable.pageSize <= 100) {
             "pageSize must be 100 or fewer, but was ${pageable.pageSize}"
@@ -967,7 +970,7 @@ class IssueApplicationService(
         assertPermission(actor, IssuePermission.BROWSE, IssueScope.Project(projectKey))
         // 목록당 1회 cross-BC 호출 — N+1 없음. unrestricted=true 이면 WHERE 술어 미적용(빠른경로).
         val access = securityDirectory.accessibleLevels(actor.value, projectKey)
-        val page = repo.listWithType(projectKey, pageable, actor.value, access)
+        val page = repo.listWithType(projectKey, pageable, actor.value, access, filter)
         return maskFieldsForPage(actor, projectKey, page)
     }
 

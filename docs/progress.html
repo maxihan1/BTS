@@ -145,6 +145,22 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 .rule-card-desc { font-size: 13px; color: #4b5563; line-height: 1.65; }
 .rule-why { font-size: 12px; color: #6b7280; margin-top: 8px; }
 .rule-why b { color: #4b5563; }
+/* ── 선행 의존 로드맵 (overview 하단) ── */
+.rm-grid { display: flex; flex-direction: column; gap: 14px; }
+.rm-tier { background: #fff; border-radius: 10px; border-left: 4px solid #ccc; padding: 14px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.rm-tier-head { font-size: 14px; margin-bottom: 8px; }
+.rm-tier-head span { color: #6b7280; font-size: 12px; margin-left: 8px; }
+.rm-item { display: flex; align-items: baseline; gap: 10px; padding: 6px 0; font-size: 14px; border-top: 1px solid #f3f4f6; }
+.rm-item:first-of-type { border-top: none; }
+.rm-icon { font-size: 14px; flex: 0 0 auto; }
+.rm-id { font-family: monospace; font-weight: 600; color: #6366f1; flex: 0 0 96px; }
+.rm-note { color: #4b5563; flex: 1; }
+.rm-star { background: #fffbeb; border-radius: 6px; margin: 2px 0; padding-left: 6px; }
+.rm-star .rm-id { color: #b45309; }
+.rm-done { opacity: 0.5; }
+.rm-done .rm-id { text-decoration: line-through; }
+.rm-badge { font-size: 11px; background: #dcfce7; color: #15803d; padding: 2px 6px; border-radius: 4px; flex: 0 0 auto; }
+.rm-blockers { margin: 8px 0 0 18px; font-size: 13px; line-height: 1.7; }
 </style>
 </head>
 <body>
@@ -182,9 +198,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
           <div><span class="dot dot-done"></span> 완료 <b>72</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>1</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>2</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>50</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>49</b></div>
         </div>
       </div>
     </div>
@@ -235,6 +251,114 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bar"><div class="bar-fill" style="width:100%"></div></div>
       <div class="bc-card-pct">100%</div>
     </div></div>
+    <h2>🧭 다음 착수 순서 — 선행 의존</h2>
+    <p class="harness-note">진척표가 못 보여주는 "무엇을 먼저 해야 다음이 풀리는가". ⭐는 임팩트 최대 병목. 정본 — <code>docs/plan/README.md §2</code>.</p>
+    <div class="rm-grid"><div class="rm-tier" style="border-left-color:#3b82f6">
+    <div class="rm-tier-head"><b>지금 병행 중</b><span>각 체인의 루트 — 계속 진행</span></div>
+    <div class="rm-item">
+      <span class="rm-icon">🔄</span>
+      <span class="rm-id">FR-SR-01</span>
+      <span class="rm-note">검색 BC 진입점 — SR-02·03·04 / EX-01 / API-02의 시작</span>
+      
+    </div><div class="rm-item">
+      <span class="rm-icon">⬜</span>
+      <span class="rm-id">FR-BL-01</span>
+      <span class="rm-note">스프린트 체인 뿌리 — FR-BL-02 → 리포트 4종</span>
+      
+    </div>
+  </div><div class="rm-tier" style="border-left-color:#f59e0b">
+    <div class="rm-tier-head"><b>다음 선행 병목</b><span>임팩트 순</span></div>
+    <div class="rm-item rm-star">
+      <span class="rm-icon">⭐</span>
+      <span class="rm-id">FR-BL-02</span>
+      <span class="rm-note">cross-BC 병목 — 리포트 4종(RP-01~04)이 스프린트에 막힘. 하나가 5개를 푼다</span>
+      
+    </div><div class="rm-item">
+      <span class="rm-icon">⬜</span>
+      <span class="rm-id">FR-SR-02</span>
+      <span class="rm-note">SR-03(필터 저장)·SR-04(한글 검색)·API-02(AQL API)의 선행</span>
+      
+    </div><div class="rm-item">
+      <span class="rm-icon">⬜</span>
+      <span class="rm-id">FR-SL-01</span>
+      <span class="rm-note">slack BC 6개 전부의 진입점</span>
+      
+    </div><div class="rm-item">
+      <span class="rm-icon">⬜</span>
+      <span class="rm-id">FR-PR-01</span>
+      <span class="rm-note">personalization PR 시리즈의 뿌리 (프로필)</span>
+      
+    </div><div class="rm-item">
+      <span class="rm-icon">⬜</span>
+      <span class="rm-id">FR-PF-01</span>
+      <span class="rm-note">personalization PF 시리즈의 뿌리 (환경 설정)</span>
+      
+    </div><div class="rm-item">
+      <span class="rm-icon">⬜</span>
+      <span class="rm-id">FR-TL-01</span>
+      <span class="rm-note">TL-02·TL-03의 선행 — 단 Gantt ADR 선결 필요</span>
+      
+    </div><div class="rm-item">
+      <span class="rm-icon">⬜</span>
+      <span class="rm-id">FR-AT-01</span>
+      <span class="rm-note">automation 7개의 진입점 — BC 자체는 후행 권장</span>
+      
+    </div>
+  </div><div class="rm-tier" style="border-left-color:#22c55e">
+    <div class="rm-tier-head"><b>선행 없이 바로 착수 가능</b><span>외부 의존 충족 — 병렬 후보</span></div>
+    <div class="rm-item">
+      <span class="rm-icon">⬜</span>
+      <span class="rm-id">FR-DB-02</span>
+      <span class="rm-note">FR-DB-01 완료</span>
+      
+    </div><div class="rm-item">
+      <span class="rm-icon">⬜</span>
+      <span class="rm-id">FR-DB-03</span>
+      <span class="rm-note">FR-DB-01 완료</span>
+      
+    </div><div class="rm-item">
+      <span class="rm-icon">⬜</span>
+      <span class="rm-id">FR-API-01</span>
+      <span class="rm-note">이슈 API 완료</span>
+      
+    </div><div class="rm-item">
+      <span class="rm-icon">⬜</span>
+      <span class="rm-id">FR-IM-01</span>
+      <span class="rm-note">이슈/컴포넌트/버전 API 완료</span>
+      
+    </div><div class="rm-item">
+      <span class="rm-icon">⬜</span>
+      <span class="rm-id">FR-API-04</span>
+      <span class="rm-note">PAT 모델 완료</span>
+      
+    </div><div class="rm-item">
+      <span class="rm-icon">⬜</span>
+      <span class="rm-id">FR-UX-02</span>
+      <span class="rm-note">독립 — 즐겨찾기/Star</span>
+      
+    </div><div class="rm-item">
+      <span class="rm-icon">⬜</span>
+      <span class="rm-id">FR-UX-03</span>
+      <span class="rm-note">채널 완료 — Inbox</span>
+      
+    </div><div class="rm-item">
+      <span class="rm-icon">⬜</span>
+      <span class="rm-id">FR-UX-01</span>
+      <span class="rm-note">보드 완료 — 퀵 필터</span>
+      
+    </div><div class="rm-item">
+      <span class="rm-icon">⬜</span>
+      <span class="rm-id">FR-CA-01</span>
+      <span class="rm-note">FR-PL-01 완료 — 개인 캘린더</span>
+      
+    </div><div class="rm-item">
+      <span class="rm-icon">⬜</span>
+      <span class="rm-id">FR-UX-04</span>
+      <span class="rm-note">독립 — Slash 명령어</span>
+      
+    </div>
+  </div></div>
+    <div class="callout"><b>🚧 선결 결정 (작업 전 ADR 필요).</b><ul class="rm-blockers"><li>Gantt 라이브러리 미결 (fr-index.md §A.3 Open Q #2, 보류) → FR-TL-01 착수 전 필수. 미결 시 TL-01·02·03 전체 차단.</li></ul></div>
   </section>
 <section id="harness" class="page">
     <h1>🛠 이 프로젝트는 어떻게 만들어지나</h1>
@@ -1138,19 +1262,19 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bar"><div class="bar-fill" style="width:0%"></div></div>
       <div class="status-grid">
         <div>✅ 완료 0</div>
-        <div>🔄 진행중 0</div>
+        <div>🔄 진행중 1</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 12</div>
+        <div>⬜ 대기 11</div>
       </div>
     </div>
     <h2>세부 기능 (12개)</h2>
-    <div class="fr-list"><details class="fr-item fr-미진행">
+    <div class="fr-list"><details class="fr-item fr-진행중">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">🔄</span>
         <span class="fr-id">FR-SR-01</span>
         <span class="fr-desc"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 필터 (다중 필드 조합)</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — Filter VO</li><li><span class="step-icon">⬜</span> D2 — 명세 — 필드 조합 + AND/OR</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — PostgreSQL <span class="term" data-def="&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">인덱스</span> (status, <span class="term" data-def="&quot;신고자 / 담당자&quot; 버그를 찾아서 올린 사람(Reporter)과, 실제로 고칠 책임이 있는 사람(Assignee)입니다.">assignee</span>_id, <span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>oject</span>_id, label)</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `GET /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s?filter=...` <span class="term" data-def="&quot;DB 도면 버전 관리자 / 안전한 번역기&quot; DB 구조의 변경 이력을 꼼꼼히 기록하고(Flyway), 오타 없이 안전하게 DB 언어로 번역해 주는 도구(jOOQ)입니다.">jOOQ</span> 동적 쿼리</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 필터 패널</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — Filter VO</li><li><span class="step-icon">✅</span> D2 — 명세 — 필드 조합 + AND/OR</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — PostgreSQL <span class="term" data-def="&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">인덱스</span> (status, <span class="term" data-def="&quot;신고자 / 담당자&quot; 버그를 찾아서 올린 사람(Reporter)과, 실제로 고칠 책임이 있는 사람(Assignee)입니다.">assignee</span>_id, <span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>oject</span>_id, label)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `GET /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s?filter=...` <span class="term" data-def="&quot;DB 도면 버전 관리자 / 안전한 번역기&quot; DB 구조의 변경 이력을 꼼꼼히 기록하고(Flyway), 오타 없이 안전하게 DB 언어로 번역해 주는 도구(jOOQ)입니다.">jOOQ</span> 동적 쿼리</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 필터 패널</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>

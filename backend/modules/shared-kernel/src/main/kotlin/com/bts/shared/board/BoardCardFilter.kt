@@ -1,4 +1,4 @@
-// 보드 카드 필터 VO — 담당자·미할당·라벨·컴포넌트 필터 조건을 담는 불변 값 객체
+// 보드 카드 필터 VO — 담당자·미할당·라벨·컴포넌트·워크플로우 상태 필터 조건을 담는 불변 값 객체
 
 package com.bts.shared.board
 
@@ -14,6 +14,7 @@ import java.util.UUID
  *
  * 동일 필드 내 값들은 **OR** 로 해석한다.
  * 예: `assigneeIds = [A, B]` 이면 담당자가 A 또는 B 인 이슈를 포함한다.
+ * 예: `statusKeys = ["TODO", "IN_PROGRESS"]` 이면 상태가 TODO 또는 IN_PROGRESS 인 이슈를 포함한다.
  *
  * 서로 다른 필드 간은 **AND** 로 해석한다.
  * 예: `assigneeIds = [A]` 이고 `labels = ["bug"]` 이면
@@ -32,6 +33,8 @@ import java.util.UUID
  *   [assigneeIds] 와 함께 지정하면 '지정된 담당자들 또는 미배정'으로 OR 결합된다.
  * @property labels 라벨 이름 목록. 비어 있으면 라벨 필터 미적용.
  * @property componentIds 컴포넌트 UUID 목록. 비어 있으면 컴포넌트 필터 미적용.
+ * @property statusKeys 워크플로우 상태 키 목록. 비어 있으면 상태 필터 미적용.
+ *   같은 필드 내 값들은 OR 로 해석한다.
  */
 data class BoardCardFilter(
     /** 담당자 UUID 목록. 비어 있으면 담당자 필터 미적용. */
@@ -42,6 +45,8 @@ data class BoardCardFilter(
     val labels: List<String> = emptyList(),
     /** 컴포넌트 UUID 목록. 비어 있으면 컴포넌트 필터 미적용. */
     val componentIds: List<UUID> = emptyList(),
+    /** 워크플로우 상태 키 목록. 비어 있으면 상태 필터 미적용. */
+    val statusKeys: List<String> = emptyList(),
 ) {
     /**
      * 모든 필드가 기본값(빈 목록, false)이면 true 를 반환한다.
@@ -53,7 +58,11 @@ data class BoardCardFilter(
      * @return 필터 조건이 하나도 없으면 true.
      */
     fun isEmpty(): Boolean {
-        return assigneeIds.isEmpty() && !includeUnassigned && labels.isEmpty() && componentIds.isEmpty()
+        return assigneeIds.isEmpty() &&
+            !includeUnassigned &&
+            labels.isEmpty() &&
+            componentIds.isEmpty() &&
+            statusKeys.isEmpty()
     }
 
     companion object {

@@ -49,4 +49,28 @@ class BoardCardFilterTest {
         val filter = BoardCardFilter(componentIds = listOf(UUID.randomUUID()))
         assertThat(filter.isEmpty()).isFalse()
     }
+
+    @Test
+    fun `statusKeys 가 비어있지 않으면 isEmpty 는 false`() {
+        val filter = BoardCardFilter(statusKeys = listOf("in_progress"))
+        assertThat(filter.isEmpty()).isFalse()
+    }
+
+    @Test
+    fun `statusKeys 만 있어도(다른 필드 빈 상태) isEmpty 는 false`() {
+        val filter =
+            BoardCardFilter(
+                assigneeIds = emptyList(),
+                includeUnassigned = false,
+                labels = emptyList(),
+                componentIds = emptyList(),
+                statusKeys = listOf("done"),
+            )
+        assertThat(filter.isEmpty()).isFalse()
+    }
+
+    @Test
+    fun `EMPTY 는 statusKeys 도 빈 목록`() {
+        assertThat(BoardCardFilter.EMPTY.statusKeys).isEmpty()
+    }
 }
