@@ -309,24 +309,24 @@ export function DashboardDetailPage({
             {/* 삭제 인라인 확인 UI — VersionRow/ComponentRow 동형 패턴 */}
             {showDeleteConfirm ? (
               <>
-                <span className="text-sm text-muted-foreground">정말 삭제하시겠습니까?</span>
+                <span className="text-sm text-muted-foreground">{dashboardLabels.detail.deleteConfirm}</span>
                 <button
                   type="button"
                   className="inline-flex items-center gap-1 rounded-md bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors min-h-[44px] disabled:opacity-50"
-                  aria-label="삭제 확인"
+                  aria-label={dashboardLabels.detail.confirmDeleteAriaLabel}
                   disabled={isDeleting}
                   onClick={handleDeleteConfirm}
                 >
-                  확인
+                  {dashboardLabels.detail.confirmButton}
                 </button>
                 <button
                   type="button"
                   className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors min-h-[44px] disabled:opacity-50"
-                  aria-label="삭제 취소"
+                  aria-label={dashboardLabels.detail.cancelDeleteAriaLabel}
                   disabled={isDeleting}
                   onClick={() => setShowDeleteConfirm(false)}
                 >
-                  취소
+                  {dashboardLabels.detail.cancelButton}
                 </button>
               </>
             ) : (

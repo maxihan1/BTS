@@ -73,6 +73,21 @@ export const dashboardLabels = {
 
     /** 미저장 변경 사항 알림 */
     unsavedChanges: '저장되지 않은 변경 사항이 있습니다',
+
+    /** 삭제 인라인 확인 문구 */
+    deleteConfirm: '정말 삭제하시겠습니까?',
+
+    /** 삭제 확인 버튼 */
+    confirmButton: '확인',
+
+    /** 삭제 취소 버튼 */
+    cancelButton: '취소',
+
+    /** 삭제 확인 버튼 aria-label */
+    confirmDeleteAriaLabel: '삭제 확인',
+
+    /** 삭제 취소 버튼 aria-label */
+    cancelDeleteAriaLabel: '삭제 취소',
   },
 
   /** 대시보드 생성/수정 폼 라벨 */
