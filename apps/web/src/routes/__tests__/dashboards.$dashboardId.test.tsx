@@ -357,6 +357,52 @@ describe('dirty 표시 · 저장', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /저장|저장 중/i })).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /저장|저장 중/i })).toBeDisabled()
   })
+
+  /**
+   * T-DB8-D4. dirty=false이면 저장 버튼이 disabled된다 (codereview 1번).
+   * 초기 렌더 시 tiles는 서버에서 온 그대로이므로 dirty=false — 버튼이 비활성이어야 한다.
+   */
+  it('T-DB8-D4: dirty=false이면 저장 버튼이 disabled된다', async () => {
+    mockUseDashboard.mockReturnValue({ data: DASHBOARD_OWNED, isLoading: false, isError: false })
+    await renderDetailPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: /저장/i })).toBeInTheDocument())
+    // 타일 변경 없음 → dirty=false → disabled
+    expect(screen.getByRole('button', { name: /저장/i })).toBeDisabled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 설정 저장 (codereview 2번 — layout 포함 검증)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('설정 저장', () => {
+  /**
+   * T-DB8-S1. 설정 저장 시 PATCH body에 layout이 포함된다 (codereview 2번 — 데이터 손실 방지).
+   * 설정 저장 후 invalidate→refetch 흐름에서 useEffect가 tiles를 초기화하지 않도록,
+   * 설정 PATCH에도 현재 로컬 tiles의 serializeLayout을 포함해야 한다.
+   */
+  it('T-DB8-S1: 설정 저장 시 PATCH body에 layout 필드가 포함된다', async () => {
+    const user = userEvent.setup()
+    mockUseDashboard.mockReturnValue({ data: DASHBOARD_OWNED, isLoading: false, isError: false })
+    await renderDetailPage()
+    // 설정 다이얼로그 열기
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /설정/i })).toBeInTheDocument(),
+    )
+    await user.click(screen.getByRole('button', { name: /설정/i }))
+    // DashboardForm mock 폼 제출 클릭
+    await waitFor(() => expect(screen.getByTestId('mock-form-submit')).toBeInTheDocument())
+    await user.click(screen.getByTestId('mock-form-submit'))
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalled())
+    const callArg = mockMutateAsync.mock.calls[0]?.[0] as {
+      id: string
+      body: Record<string, unknown>
+    }
+    // 설정 PATCH body에 layout 필드가 있어야 한다
+    expect(callArg?.body?.layout).toBeDefined()
+    // layout은 직렬화된 JSON 문자열이어야 한다
+    expect(typeof callArg?.body?.layout).toBe('string')
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
