@@ -371,11 +371,37 @@ export interface UpdateIssueInput {
   expectedVersion: number
 }
 
+/**
+ * 이슈 목록 필터 파라미터.
+ * GET /api/v1/issues 의 선택적 필터 쿼리를 표현한다.
+ *
+ * 백엔드 계약 (FR-SR-01, #180).
+ * - 같은 필드의 다중 값은 OR 결합, 다른 필드 간은 AND 결합.
+ * - statusKeys → 반복 `status=` 파라미터.
+ * - assigneeIds + includeUnassigned → 반복 `assignee=` 파라미터 (unassigned 센티널 소문자 고정).
+ * - labels → 반복 `label=` 파라미터.
+ * - componentIds → 반복 `component=` 파라미터.
+ */
+export interface IssueFilterParams {
+  /** 워크플로우 상태 키 목록. 각 항목마다 status= 파라미터를 하나씩 추가한다. */
+  statusKeys: string[]
+  /** 담당자 UUID 목록. 각 항목마다 assignee= 파라미터를 하나씩 추가한다. */
+  assigneeIds: string[]
+  /** true면 assignee=unassigned 파라미터를 추가해 미배정 이슈를 포함한다. */
+  includeUnassigned: boolean
+  /** 라벨 이름 목록. 각 항목마다 label= 파라미터를 하나씩 추가한다. */
+  labels: string[]
+  /** 컴포넌트 UUID 목록. 각 항목마다 component= 파라미터를 하나씩 추가한다. */
+  componentIds: string[]
+}
+
 /** fetchIssues 쿼리 파라미터 */
 export interface FetchIssuesParams {
   projectKey: string
   page: number
   size: number
+  /** 선택적 필터. 미전달 시 기존 projectKey/page/size 쿼리만 전송 (하위호환). */
+  filter?: IssueFilterParams
 }
 
 /**
@@ -439,9 +465,48 @@ export async function fetchIssue(key: string): Promise<IssueResponse> {
 }
 
 /**
+ * 이슈 필터 파라미터를 URLSearchParams에 반영하는 헬퍼.
+ *
+ * 백엔드 계약 (FR-SR-01, #180).
+ * - statusKeys 각 키 → `status=<key>` 반복 파라미터
+ * - assigneeIds 각 UUID → `assignee=<uuid>` 반복 파라미터
+ * - includeUnassigned=true → `assignee=unassigned` 센티널 추가 (소문자 고정)
+ * - labels 각 이름 → `label=<name>` 반복 파라미터
+ * - componentIds 각 UUID → `component=<uuid>` 반복 파라미터
+ *
+ * 빈 배열 및 includeUnassigned=false는 해당 키를 생략한다.
+ *
+ * @param query 기존 URLSearchParams 인스턴스 (in-place 수정)
+ * @param filter 반영할 필터 파라미터. undefined이면 아무 처리도 하지 않는다.
+ */
+export function buildIssueFilterQuery(query: URLSearchParams, filter?: IssueFilterParams): void {
+  if (filter === undefined) {
+    return
+  }
+  for (const key of filter.statusKeys) {
+    query.append('status', key)
+  }
+  for (const id of filter.assigneeIds) {
+    query.append('assignee', id)
+  }
+  if (filter.includeUnassigned) {
+    query.append('assignee', 'unassigned')
+  }
+  for (const label of filter.labels) {
+    query.append('label', label)
+  }
+  for (const id of filter.componentIds) {
+    query.append('component', id)
+  }
+}
+
+/**
  * 프로젝트 이슈 목록을 페이징 조회한다.
  *
- * @param params projectKey · page · size 쿼리 파라미터
+ * filter가 전달되면 status/assignee/label/component 파라미터를 추가한다.
+ * filter 미전달 시 기존 projectKey/page/size 쿼리만 전송해 하위호환을 유지한다.
+ *
+ * @param params projectKey · page · size · filter(선택) 쿼리 파라미터
  * @returns Spring Page 구조 — content 배열 + 페이징 메타 (래퍼 없음)
  */
 export async function fetchIssues(params: FetchIssuesParams): Promise<IssuePage> {
@@ -450,6 +515,7 @@ export async function fetchIssues(params: FetchIssuesParams): Promise<IssuePage>
     page: String(params.page),
     size: String(params.size),
   })
+  buildIssueFilterQuery(query, params.filter)
   return apiGet(
     `/api/v1/issues?${query.toString()}`,
     pageSchema(issueResponseSchema),
