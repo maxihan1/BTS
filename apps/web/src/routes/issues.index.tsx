@@ -1,10 +1,10 @@
 // 이슈 목록 페이지 — IssueListPage(props 기반) + IssueCard + IssueListRouteAdapter(라우터 연결)
 import type { JSX } from 'react'
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchIssues } from '@/api/issues'
-import type { IssueResponse, IssuePage } from '@/api/issues'
+import type { IssueResponse, IssuePage, IssueFilterParams } from '@/api/issues'
 import { Button } from '@/components/ui/button'
 import { useIssueSelection } from '@/hooks/use-issue-selection'
 import { IssueBulkActionBar } from '@/components/issues/IssueBulkActionBar'
@@ -12,6 +12,9 @@ import { BulkEditDialog } from '@/components/issues/BulkEditDialog'
 import { BulkTransitionDialog } from '@/components/issues/BulkTransitionDialog'
 import { BulkOperationResultDialog } from '@/components/issues/BulkOperationResultDialog'
 import { useProjectPermissions } from '@/hooks/use-project-permissions'
+import { IssueFilterBar } from '@/components/issues/IssueFilterBar'
+import { normalizeIssueFilter, isEmptyIssueFilter, searchToIssueFilter, issueFilterToSearch } from '@/lib/issue-filter'
+import type { IssueFilterSearch } from '@/lib/issue-filter'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // router.ts 등록 방법 (code-based 패턴 — PR #11 컨벤션).
@@ -34,6 +37,15 @@ import { useProjectPermissions } from '@/hooks/use-project-permissions'
 
 const DEFAULT_PROJECT_KEY = 'ATLAS'
 const DEFAULT_PAGE_SIZE = 20
+
+/** 빈 필터 상수 — 매 렌더마다 새 객체 생성 방지 */
+const EMPTY_FILTER: IssueFilterParams = {
+  statusKeys: [],
+  assigneeIds: [],
+  includeUnassigned: false,
+  labels: [],
+  componentIds: [],
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // IssueCard — 이슈 목록 단일 항목 컴포넌트 (행 재구조화: 체크박스 + 링크 형제)
@@ -121,6 +133,39 @@ function IssueEmptyState(): JSX.Element {
     <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
       <p className="text-base">이슈가 없습니다.</p>
       <p className="mt-1 text-sm">새 이슈를 만들어 프로젝트를 시작해 보세요.</p>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FilteredEmptyState — 필터 적용 + 0건 시 회복 안내 컴포넌트 (EC1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface FilteredEmptyStateProps {
+  /** "필터 초기화" 버튼 클릭 콜백 */
+  onReset: () => void
+}
+
+/**
+ * 필터가 적용된 상태에서 이슈가 0건일 때 표시하는 안내 컴포넌트 (EC1).
+ *
+ * 기존 IssueEmptyState와 달리 "필터 초기화" CTA 버튼을 제공해
+ * 사용자가 필터를 초기화하고 전체 목록으로 돌아갈 수 있다.
+ */
+function FilteredEmptyState({ onReset }: FilteredEmptyStateProps): JSX.Element {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+      <p className="text-base">필터 조건에 맞는 이슈가 없습니다.</p>
+      <p className="mt-1 text-sm">다른 조건을 시도하거나 필터를 초기화하세요.</p>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="mt-4"
+        onClick={onReset}
+      >
+        필터 초기화
+      </Button>
     </div>
   )
 }
@@ -274,6 +319,16 @@ interface IssueListPageProps {
   onPageChange: (page: number) => void
   /** 이슈 항목 클릭 시 상세 페이지로 이동하는 콜백 */
   onNavigate: (key: string) => void
+  /**
+   * 현재 적용된 필터 파라미터 (FR-SR-01 D6).
+   * 미전달 시 빈 필터(전체 조회)로 동작한다.
+   */
+  filter?: IssueFilterParams
+  /**
+   * 필터 변경 콜백 (FR-SR-01 D6).
+   * IssueFilterBar onChange → 새 필터 전달 + page=0 리셋.
+   */
+  onFilterChange?: (filter: IssueFilterParams) => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -331,14 +386,28 @@ function NewIssueButton({ canCreate }: NewIssueButtonProps): JSX.Element {
  * - "새 이슈" 진입점: CREATE 권한 기반 게이트. fail-closed(로딩/에러/undefined → 비활성).
  * - useIssueSelection으로 페이지 교차 누적 선택 상태를 관리한다.
  * - IssueBulkActionBar, BulkEditDialog, BulkTransitionDialog, BulkOperationResultDialog를 결선한다.
+ * - IssueFilterBar 결선 (FR-SR-01 D6): filter prop → queryKey filter-aware + filter 실변경 시 clearAll.
  *
  * 라우터 의존 없이 props로 동작해 단위 테스트가 가능하다.
  */
-export function IssueListPage({ projectKey, page, onPageChange, onNavigate }: IssueListPageProps): JSX.Element {
+export function IssueListPage({
+  projectKey,
+  page,
+  onPageChange,
+  onNavigate,
+  filter = EMPTY_FILTER,
+  onFilterChange,
+}: IssueListPageProps): JSX.Element {
   const queryClient = useQueryClient()
+
+  // ── B1 queryKey filter-aware ─────────────────────────────────────────────────
+  // normalizeIssueFilter로 배열 순서를 정규화해 동일 필터 → 동일 queryKey 보장.
+  // (use-boards.ts normalizeFilter 미러 — PR #168 선례)
+  const normalizedFilter = useMemo(() => normalizeIssueFilter(filter), [filter])
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['issues', projectKey, page],
-    queryFn: () => fetchIssues({ projectKey, page, size: DEFAULT_PAGE_SIZE }),
+    queryKey: ['issues', projectKey, page, normalizedFilter],
+    queryFn: () => fetchIssues({ projectKey, page, size: DEFAULT_PAGE_SIZE, filter }),
     retry: false,
   })
 
@@ -351,6 +420,32 @@ export function IssueListPage({ projectKey, page, onPageChange, onNavigate }: Is
   // ── 선택 상태 ──────────────────────────────────────────────────────────────
   const { selectedKeys, count, isSelected, toggle, selectAllOnPage, clearPageSelection, clearAll } =
     useIssueSelection()
+
+  // ── C3 FR10 — filter 실변경 시 clearAll ────────────────────────────────────
+  // 이전 normalizedFilter를 ref로 추적해 실제 변경이 발생했을 때만 clearAll 호출.
+  // page 이동(filter 동일) 시에는 선택 누적을 유지한다.
+  const prevNormalizedFilterRef = useRef<string>(JSON.stringify(normalizedFilter))
+  useEffect(() => {
+    const current = JSON.stringify(normalizedFilter)
+    if (current !== prevNormalizedFilterRef.current) {
+      prevNormalizedFilterRef.current = current
+      clearAll()
+    }
+  }, [normalizedFilter, clearAll])
+
+  // ── IssueFilterBar onChange ─────────────────────────────────────────────────
+  /**
+   * IssueFilterBar 필터 변경 핸들러.
+   * 새 필터를 onFilterChange로 상위에 전달하고 page=0으로 리셋한다.
+   * 상위(IssueListRouteAdapter)가 URL search params를 갱신한다.
+   */
+  const handleFilterChange = useCallback(
+    (nextFilter: IssueFilterParams) => {
+      onFilterChange?.(nextFilter)
+      onPageChange(0)
+    },
+    [onFilterChange, onPageChange],
+  )
 
   // ── Dialog 열림 상태 ───────────────────────────────────────────────────────
   const [editOpen, setEditOpen] = useState(false)
@@ -414,6 +509,13 @@ export function IssueListPage({ projectKey, page, onPageChange, onNavigate }: Is
         <NewIssueButton canCreate={canCreate} />
       </header>
 
+      {/* G4 — 필터 바: 페이지 헤더 아래, 일괄 액션 바 위 (FR-SR-01 D6) */}
+      <IssueFilterBar
+        projectKey={projectKey}
+        value={filter}
+        onChange={handleFilterChange}
+      />
+
       {/* 일괄 액션 바 — count > 0 일 때만 렌더 */}
       <IssueBulkActionBar
         count={count}
@@ -422,16 +524,26 @@ export function IssueListPage({ projectKey, page, onPageChange, onNavigate }: Is
         onClear={clearAll}
       />
 
-      <IssueListContent
-        data={data}
-        page={page}
-        onPageChange={onPageChange}
-        onNavigate={onNavigate}
-        isSelected={isSelected}
-        onToggle={toggle}
-        onSelectAllPage={handleSelectAllPage}
-        isAllPageSelected={isAllPageSelected}
-      />
+      {/* EC1 — 0건 + 필터 있음: 필터 초기화 CTA. 0건 + 필터 없음: 기존 IssueEmptyState */}
+      {data.empty && !isEmptyIssueFilter(filter) ? (
+        <FilteredEmptyState
+          onReset={() => {
+            onFilterChange?.(EMPTY_FILTER)
+            onPageChange(0)
+          }}
+        />
+      ) : (
+        <IssueListContent
+          data={data}
+          page={page}
+          onPageChange={onPageChange}
+          onNavigate={onNavigate}
+          isSelected={isSelected}
+          onToggle={toggle}
+          onSelectAllPage={handleSelectAllPage}
+          isAllPageSelected={isAllPageSelected}
+        />
+      )}
 
       {/* 일괄 편집 Dialog */}
       <BulkEditDialog
@@ -469,13 +581,39 @@ export function IssueListPage({ projectKey, page, onPageChange, onNavigate }: Is
 
 /**
  * router.ts에 등록되는 라우트 어댑터 컴포넌트.
- * useSearch로 URL의 page 쿼리 파라미터를 추출하여 IssueListPage에 전달한다.
- * 라우터 등록은 Task8(router.ts) 담당.
+ *
+ * useSearch로 URL의 page + status/assignee/label/component 필터 파라미터를 추출해
+ * IssueListPage에 전달한다.
+ *
+ * - page → IssueListPage.page (0-indexed)
+ * - status/assignee/label/component → searchToIssueFilter → IssueListPage.filter
+ * - IssueFilterBar onChange → issueFilterToSearch → navigate(URL 갱신, page=0 리셋)
+ * - 빈 필터 시 해당 키 자체를 URL에서 제거 (issueFilterToSearch가 처리)
+ *
+ * 라우터 등록은 router.ts 담당.
  */
 export function IssueListRouteAdapter(): JSX.Element {
-  const search = useSearch({ strict: false }) as { page?: number }
+  const search = useSearch({ strict: false }) as {
+    page?: number
+  } & IssueFilterSearch
   const navigate = useNavigate()
   const page = typeof search.page === 'number' ? search.page : 0
+
+  // searchToIssueFilter는 매 렌더마다 새 객체를 반환하므로
+  // 실제 search 값이 바뀔 때만 재계산한다 (BoardRouteAdapter 패턴 미러).
+  const searchStatus = search.status
+  const searchAssignee = search.assignee
+  const searchLabel = search.label
+  const searchComponent = search.component
+  const filter = useMemo(
+    () => searchToIssueFilter({
+      status: searchStatus,
+      assignee: searchAssignee,
+      label: searchLabel,
+      component: searchComponent,
+    }),
+    [searchStatus, searchAssignee, searchLabel, searchComponent],
+  )
 
   function handlePageChange(nextPage: number): void {
     void navigate({ to: '/issues', search: (prev) => ({ ...prev, page: nextPage }) })
@@ -485,12 +623,27 @@ export function IssueListRouteAdapter(): JSX.Element {
     void navigate({ to: `/issues/${key}` })
   }
 
+  /**
+   * 필터 변경 핸들러 — issueFilterToSearch로 URL search params 갱신.
+   * page=0 리셋은 IssueListPage.handleFilterChange가 onPageChange(0)로 처리한다.
+   * 빈 필터 필드는 issueFilterToSearch가 키 자체를 생략해 URL을 깔끔하게 유지한다.
+   */
+  function handleFilterChange(nextFilter: IssueFilterParams): void {
+    const nextSearch = issueFilterToSearch(nextFilter)
+    void navigate({
+      to: '/issues',
+      search: () => ({ ...nextSearch, page: 0 }),
+    })
+  }
+
   return (
     <IssueListPage
       projectKey={DEFAULT_PROJECT_KEY}
       page={page}
       onPageChange={handlePageChange}
       onNavigate={handleNavigate}
+      filter={filter}
+      onFilterChange={handleFilterChange}
     />
   )
 }

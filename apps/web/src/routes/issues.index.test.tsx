@@ -784,8 +784,8 @@ describe('IssueListPage — 필터 결선 (Task 5)', () => {
       expect(screen.getByRole('button', { name: /필터 초기화/i })).toBeInTheDocument(),
     )
 
-    // 기존 빈 상태("이슈가 없습니다")는 표시하지 않아야 한다
-    expect(screen.queryByText(/이슈가 없습니다/)).not.toBeInTheDocument()
+    // 기존 빈 상태("새 이슈를 만들어 프로젝트를 시작해 보세요")는 표시하지 않아야 한다
+    expect(screen.queryByText(/새 이슈를 만들어 프로젝트를/)).not.toBeInTheDocument()
   })
 
   /**
@@ -801,7 +801,7 @@ describe('IssueListPage — 필터 결선 (Task 5)', () => {
     renderPage(0, undefined, undefined, EMPTY_FILTER)
 
     await waitFor(() =>
-      expect(screen.getByText(/이슈가 없습니다/)).toBeInTheDocument(),
+      expect(screen.getByText('이슈가 없습니다.')).toBeInTheDocument(),
     )
     // "필터 초기화" CTA는 없어야 한다
     expect(screen.queryByRole('button', { name: /필터 초기화/i })).not.toBeInTheDocument()
@@ -853,7 +853,7 @@ describe('IssueListPage — 필터 결선 (Task 5)', () => {
         HttpResponse.json({
           data: {
             bulkOperationId: 'ffffffff-ffff-4fff-bfff-ffffffffffff',
-            status: 'COMPLETED' as const,
+            status: 'PENDING' as const,
             totalCount: 1,
           },
         }, { status: 202 }),

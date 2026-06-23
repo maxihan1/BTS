@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 30개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + 프로젝트 보드 1 + settings 5 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 2)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 30개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + 프로젝트 보드 1 + settings 5 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 2 | FR-SR-01 D6: issuesIndexRoute validateSearch 필터 확장)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -69,15 +69,46 @@ const workflowsKeyRoute = createRoute({
   component: WorkflowDetailRouteAdapter,
 })
 
-/** 이슈 목록 라우트 — /issues, requireAuth. validateSearch로 page 쿼리 파라미터 타입 선언 */
+/**
+ * 이슈 목록 라우트 — /issues, requireAuth.
+ * validateSearch로 page + status/assignee/label/component 필터 쿼리 파라미터 타입 선언.
+ * 단일 문자열·배열 양쪽 허용 — 런타임 정규화는 searchToIssueFilter가 담당 (projectBoardRoute 패턴 미러).
+ * N4: page 기존 타입 보존, 타 search 콜백과 충돌 없음.
+ */
 const issuesIndexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/issues',
   component: IssueListRouteAdapter,
   staticData: { requireAuth: true },
   beforeLoad: requireAuthAndPasswordChanged,
-  validateSearch: (search: Record<string, unknown>): { page?: number } => ({
+  validateSearch: (search: Record<string, unknown>): {
+    page?: number
+    status?: string | string[]
+    assignee?: string | string[]
+    label?: string | string[]
+    component?: string | string[]
+  } => ({
     page: typeof search['page'] === 'number' ? search['page'] : undefined,
+    status: Array.isArray(search['status'])
+      ? (search['status'] as string[])
+      : typeof search['status'] === 'string'
+        ? search['status']
+        : undefined,
+    assignee: Array.isArray(search['assignee'])
+      ? (search['assignee'] as string[])
+      : typeof search['assignee'] === 'string'
+        ? search['assignee']
+        : undefined,
+    label: Array.isArray(search['label'])
+      ? (search['label'] as string[])
+      : typeof search['label'] === 'string'
+        ? search['label']
+        : undefined,
+    component: Array.isArray(search['component'])
+      ? (search['component'] as string[])
+      : typeof search['component'] === 'string'
+        ? search['component']
+        : undefined,
   }),
 })
 
