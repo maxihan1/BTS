@@ -17,10 +17,12 @@ COMMENT ON COLUMN issues.rank IS 'LexoRank 백로그 정렬 키 (소문자 a-z, 
 --   자리값 가중치 (26*25, 25, 1) 가 단조 → 디코드 문자열도 사전순 단조증가 (created_at 순 == rank 순 보존).
 DO $$
 DECLARE
-    -- 마지막 자리 가용 문자 수 (b..z = 25개, 'a' 제외).
+    -- 알파벳 크기 (a..z = 26). base-26 자리값 기수.
+    alphabet_size CONSTANT INT := 26;
+    -- 마지막 자리 가용 문자 수 (b..z = 25개, 'a' 제외 → 끝문자 'a' 회피).
     last_digit_count CONSTANT INT := 25;
-    -- 전체 가용 슬롯 수 = 26 * 26 * 25.
-    slot_space CONSTANT INT := 26 * 26 * last_digit_count;
+    -- 전체 가용 슬롯 수 = 26(1자리) * 26(2자리) * 25(3자리 b..z).
+    slot_space CONSTANT INT := alphabet_size * alphabet_size * last_digit_count;
     proj          RECORD;
     issue_row     RECORD;
     issue_count   INT;
@@ -52,8 +54,8 @@ BEGIN
             -- slot 디코드 → 3자리 base-26 키 (마지막 자리만 b..z).
             c3 := slot % last_digit_count;                 -- 0..24 → 'b'..'z'
             rem := slot / last_digit_count;
-            c2 := rem % 26;                                -- 0..25 → 'a'..'z'
-            c1 := (rem / 26) % 26;                          -- 0..25 → 'a'..'z'
+            c2 := rem % alphabet_size;                     -- 0..25 → 'a'..'z'
+            c1 := (rem / alphabet_size) % alphabet_size;   -- 0..25 → 'a'..'z'
 
             rank_key := chr(ascii('a') + c1)
                      || chr(ascii('a') + c2)
