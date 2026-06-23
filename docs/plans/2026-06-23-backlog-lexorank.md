@@ -51,6 +51,132 @@ SDD §13.2.1 / product agile-planning.md §3.1 / fr-index §3.1
 
 ✅ 통과 (adversarial self-review 1회, gap 5건 발견·반영: 정렬 스코프·rank 중복 tie-break·OCC→no-bump·락 범위·소프트삭제 404).
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> Gradle 모듈: `:modules:shared-kernel`, `:modules:issue-tracking`. 검증 명령은 `backend/`에서 실행.
+> 모듈 단위 컴파일 직렬화(메모리 bts-plan-wave-gradle-module-compile): T3~T7은 같은 issue-tracking 모듈 → 파일 안 겹쳐도 컴파일은 모듈 일괄.
+
+### Task 1. shared-kernel Rank VO — between / initial / 고갈 예외
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/lexorank/Rank.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/lexorank/RankTest.kt`]
+- depends-on: []
+
+**RED**: `RankTest` —
+- `initial()`이 중간값 키 반환, 1~50자 a–z 검증.
+- `between(null, null)` = initial 의미.
+- `between("a","z")` 결과가 "a" < r < "z" 사전순.
+- `between("a","b")` 인접 → 길이 증가("an" 류), prev < r < next 유지.
+- `between(null, X)` < X, `between(X, null)` > X.
+- Comparable 정렬 일관(문자열 사전순 == Rank 순서).
+- 50자 내 키 생성 불가 시 `RankSpaceExhaustedException`.
+- 잘못된 값("", 대문자, 51자, 끝문자 'a'(trailing-a 금지 규칙)) → `require` 실패.
+
+**GREEN**: `Rank` `@JvmInline value class`(`init { require(...) }`) + `companion object { between/initial/of }`. base-26 a–z, 경계 하한/상한 처리. `RankSpaceExhaustedException`.
+
+**REFACTOR**: 알파벳/경계 상수 추출, KDoc(중괄호·백틱 금지 — 메모리 ktlint-kdoc-brace).
+
+**검증**: `cd backend && ./gradlew :modules:shared-kernel:test --tests "*RankTest"`
+
+### Task 2. V029 마이그레이션 — rank 컬럼 + 백필 + NOT NULL + 인덱스 + init_codegen 미러
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/issue-tracking/src/main/resources/db/migration/issue-tracking/V029__issue_rank.sql`, `backend/modules/issue-tracking/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/issue-tracking/src/test/kotlin/.../migration/IssueRankMigrationTest.kt`]
+- depends-on: []
+
+**RED**: 마이그레이션 테스트 — V029 적용 후 `issues.rank` NOT NULL, 기존 행 백필됨, 프로젝트별 created_at 순 == rank 순, 인덱스 `idx_issues_project_rank` 존재.
+
+**GREEN**: `ADD COLUMN rank VARCHAR(50)` → 프로젝트별 `row_number() OVER (PARTITION BY project_id ORDER BY created_at, id)` 기반 균등 고정폭 base-26 키 백필 → `SET NOT NULL` → `CREATE INDEX (project_id, rank)`. init_codegen.sql의 issues 정의에 `rank VARCHAR(50)` 인라인 미러(메모리 jooq-init-codegen-mirror).
+- ⚠️ V029 번호는 머지 직전 재확인(메모리 migration-vnumber, 동시 FR-SR-01).
+
+**REFACTOR**: 백필 SQL 주석(균등 분포 의도), 한 줄 헤더 주석.
+
+**검증**: `cd backend && ./gradlew :modules:issue-tracking:flywayMigrate :modules:issue-tracking:generateJooq` + 마이그레이션 테스트.
+
+### Task 3. IssueRepository — rank no-bump UPDATE + 이웃/정렬 조회
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt`, `backend/modules/issue-tracking/src/test/kotlin/.../repository/IssueRankRepositoryTest.kt`]
+- depends-on: [2]
+
+**RED**: `IssueRankRepositoryTest`(Testcontainers) —
+- `updateRank(key, rank)` 가 rank만 변경하고 `version` 불변(no-bump 검증).
+- `findRankByKey(key)` 반환.
+- `findRanksForRebalance(projectId)` 가 `ORDER BY rank, id` (tie-break)로 (key, rank) 목록 반환, 소프트삭제 제외.
+- `findMaxRank(projectId)` (생성 시 맨 끝 부여용).
+
+**GREEN**: jOOQ 구현(V029 codegen 의존). no-bump = `UPDATE issues SET rank=? WHERE key=?` (version 미증가).
+
+**REFACTOR**: SQL 상수, KDoc(no-bump 사유 = 메모리 no-bump-sidecar-version).
+
+**검증**: `cd backend && ./gradlew :modules:issue-tracking:integrationTest --tests "*IssueRankRepositoryTest"`
+
+### Task 4. BacklogRankService — 리랭크 + 생성 시 자동부여 + on-demand rebalance(advisory lock)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/BacklogRankService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/.../application/BacklogRankServiceTest.kt`]
+- depends-on: [1, 3]
+
+**RED**: `BacklogRankServiceTest`(mockk repo + 분기 단위) —
+- `rerank(actor, key, prev?, next?)`: UPDATE 권한 검증(`IssuePermission.UPDATE`), 대상/이웃 조회, 이웃 rank로 `between`, no-bump update.
+- 이웃 검증: 둘 다 null/대상==이웃/타 프로젝트/순서 역전 → `IllegalArgumentException`(400 매핑); 이웃 미존재/소프트삭제 → 404.
+- 고갈(`RankSpaceExhaustedException`) → `rebalance(projectId)` 후 재계산. `pg_advisory_xact_lock(projectId)` 호출 + lock 후 재조회(TOCTOU, 메모리 advisory-lock-bigint).
+- `createIssue` 흐름에서 신규 이슈에 `between(findMaxRank, null)` 자동부여.
+- rank 변경은 `IssueChangeDetector`에 **등록하지 않음**(history noise 회피) — 단위 테스트로 history 미생성 확인.
+
+**GREEN**: `BacklogRankService` 신규(`@Service @Transactional`, ArchUnit 통과). `IssueApplicationService.createIssue`에서 rank 자동부여 호출.
+
+**REFACTOR**: 검증 헬퍼 추출, KDoc.
+
+**검증**: `cd backend && ./gradlew :modules:issue-tracking:test --tests "*BacklogRankServiceTest"`
+
+### Task 5. PATCH /{key}/rank 컨트롤러 + DTO + 에러 매핑
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/dto/RerankIssueRequest.kt`, `backend/modules/issue-tracking/src/test/kotlin/.../rest/IssueRankControllerTest.kt`]
+- depends-on: [4]
+
+**RED**: `IssueRankControllerTest`(MockMvc, service mock) — `PATCH /api/v1/issues/{key}/rank` 200(rank/version 응답), 400(이웃 검증/IllegalArgument), 403(권한), 404(이슈 없음). 도메인예외 → HTTP 상태 매핑이 같은 컨트롤러 advice 스코프 안인지 확인(메모리 domain-exception-http-handler-basepackage-scope / catch-all-swallows).
+
+**GREEN**: `@PatchMapping("/{key}/rank")` + `RerankIssueRequest(previousIssueKey?, nextIssueKey?)` + `BacklogRankService` 위임 + `DataResponse`.
+
+**REFACTOR**: DTO @Valid, KDoc.
+
+**검증**: `cd backend && ./gradlew :modules:issue-tracking:test --tests "*IssueRankControllerTest"`
+
+### Task 6. HTTP 통합 테스트 — S1~S5 / E1~E12
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/test/kotlin/.../integration/IssueRankIntegrationTest.kt`]
+- depends-on: [5]
+
+**RED→GREEN**: 실 repo + 시드(메모리 issue-tracking-transition-test-mocks) end-to-end — S1(사이 이동) S2(맨앞) S3(맨뒤) S4(생성 자동부여) S5(고갈→rebalance 투명) + E2/E3/E4(400) E5/E9(404) E6(역전 400) E10(동시 rebalance 직렬) E11(tie-break) + 권한 403. 1개 이상 일부러 위반 넣어 vacuous 아님 확인(메모리 archunit-vacuous).
+
+**검증**: `cd backend && ./gradlew :modules:issue-tracking:integrationTest --tests "*IssueRankIntegrationTest"`
+
+### Task 7. 1K 부하 테스트 (NFR2 / NFR3)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/test/kotlin/.../performance/BacklogRankLoadTest.kt`]
+- depends-on: [4]
+
+**RED→GREEN**: 1,000개 이슈 백로그 — 반복 삽입 시 키 길이 증가 제한 검증, 평균 리랭크 < 5ms, 1K rebalance < 500ms 측정·assert. 동시실행 flaky 주의(메모리 concurrent-testcontainers-suite-flaky) → 단독 실행 가이드 주석.
+
+**검증**: `cd backend && ./gradlew :modules:issue-tracking:integrationTest --tests "*BacklogRankLoadTest"`
+
+## Plan 메타
+
+- task 수: 7
+- 예상 wave: 5 (W1: T1‖T2 / W2: T3 / W3: T4 / W4: T5‖T7 / W5: T6). issue-tracking 모듈 컴파일 직렬 요인 존재.
+- TDD 강제: yes (RED→GREEN→REFACTOR, test 커밋 선행)
+- 병렬 dispatch: bts-impl이 depends-on + files로 wave 계산
+- 추가 검증: ktlint, detekt(baseline), ArchUnit(@Transactional @Service), generateJooq
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
