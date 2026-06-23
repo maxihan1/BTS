@@ -1,4 +1,4 @@
-// 이슈 목록 페이지 단위 테스트 — 3-상태 + 빈 상태 + 페이지네이션 + CREATE 권한 게이트 + 일괄 선택/액션
+// 이슈 목록 페이지 단위 테스트 — 3-상태 + 빈 상태 + 페이지네이션 + CREATE 권한 게이트 + 일괄 선택/액션 + 필터 결선 (Task 5)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -11,9 +11,16 @@ import {
   emptyIssuePageFixture,
   issuePageFirstFixture,
   issuePageLastFixture,
+  ISSUE_FILTER_BOB_ID,
+  ISSUE_FILTER_COMP_A_ID,
 } from '@/mocks/issue-fixtures'
 import { nonMemberProjectPermissions } from '@/mocks/project-permission-handlers'
+import { workflowHandlers } from '@/mocks/workflow-handlers'
+import { userHandlers } from '@/mocks/user-handlers'
+import { componentHandlers } from '@/mocks/component-handlers'
+import { labelHandlers } from '@/mocks/label-handlers'
 import { IssueListPage } from './issues.index'
+import type { IssueFilterParams } from '@/api/issues'
 
 /** bulk-update POST 202 응답 fixture */
 const bulkAcceptedFixture = {
@@ -64,23 +71,53 @@ const createFalsePermissionHandler = http.get(
 
 // IssueListPage는 props 기반 — 라우터 없이 단위 테스트 가능
 
-function renderPage(page = 0, onPageChange?: (page: number) => void, onNavigate?: (key: string) => void) {
+/** 빈 필터 상수 — 테스트에서 반복 정의 방지 */
+const EMPTY_FILTER: IssueFilterParams = {
+  statusKeys: [],
+  assigneeIds: [],
+  includeUnassigned: false,
+  labels: [],
+  componentIds: [],
+}
+
+/**
+ * IssueListPage 렌더 헬퍼.
+ *
+ * C1 기존 테스트 회귀 보호 — IssueFilterBar가 호출하는 네 핸들러
+ * (workflow / user / component / label)를 beforeEach와 무관하게 항상 등록한다.
+ * 기존 테스트가 새 네트워크 요청으로 깨지지 않도록 server.use()로 추가한다.
+ */
+function renderPage(
+  page = 0,
+  onPageChange?: (page: number) => void,
+  onNavigate?: (key: string) => void,
+  filter: IssueFilterParams = EMPTY_FILTER,
+  onFilterChange?: (f: IssueFilterParams) => void,
+) {
+  // IssueFilterBar 종속 핸들러 — 기존 테스트 회귀 방지
+  server.use(...workflowHandlers, ...userHandlers, ...componentHandlers, ...labelHandlers)
+
   const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
       mutations: { retry: false },
     },
   })
-  return render(
-    <QueryClientProvider client={client}>
-      <IssueListPage
-        projectKey="ATLAS"
-        page={page}
-        onPageChange={onPageChange ?? (() => undefined)}
-        onNavigate={onNavigate ?? (() => undefined)}
-      />
-    </QueryClientProvider>,
-  )
+  return {
+    client,
+    ...render(
+      <QueryClientProvider client={client}>
+        <IssueListPage
+          projectKey="ATLAS"
+          page={page}
+          onPageChange={onPageChange ?? (() => undefined)}
+          onNavigate={onNavigate ?? (() => undefined)}
+          filter={filter}
+          onFilterChange={onFilterChange ?? (() => undefined)}
+        />
+      </QueryClientProvider>,
+    ),
+  }
 }
 
 describe('IssueListPage', () => {
@@ -514,6 +551,7 @@ describe('IssueListPage — 일괄 선택 및 액션 바 (Task 9)', () => {
 
   /**
    * T16. Dialog onSubmitted → BulkOperationResultDialog 열림 + 이슈 목록 invalidate(refetch) + 선택 해제.
+   * EC8: invalidateQueries({ queryKey: ['issues', projectKey] }) prefix가 filter-aware 4-요소 queryKey를 포함해 무효화함.
    */
   it('T16: BulkEditDialog onSubmitted 시 결과 Dialog 열림, 선택 해제, 목록 refetch가 발생한다', async () => {
     // bulk-update POST + bulk-operation GET 핸들러 추가
@@ -560,6 +598,402 @@ describe('IssueListPage — 일괄 선택 및 액션 바 (Task 9)', () => {
     // 선택 해제 — 액션 바 사라짐
     await waitFor(() =>
       expect(screen.queryByTestId('bulk-action-bar')).not.toBeInTheDocument(),
+    )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 5 — 필터 결선 테스트 (FR-SR-01 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueListPage — 필터 결선 (Task 5)', () => {
+  beforeEach(() => {
+    server.use(createTruePermissionHandler)
+  })
+
+  /**
+   * TF1. filter prop → fetchIssues(filter) 전달 + queryKey filter-aware.
+   *
+   * status 필터를 전달하면 URL 파라미터에 status=in_progress가 포함되고
+   * 해당 상태 이슈만 반환되어야 한다 (B1 queryKey filter-aware).
+   */
+  it('TF1: filter prop을 전달하면 fetchIssues에 filter가 적용된다 (queryKey filter-aware)', async () => {
+    // MSW: status=in_progress 필터 적용 — ATLAS-2만 반환
+    let capturedUrl = ''
+    server.use(
+      http.get('/api/v1/issues', ({ request }) => {
+        capturedUrl = request.url
+        const params = new URL(request.url).searchParams
+        const statusKeys = params.getAll('status')
+        const content = issuePageFixture.content.filter(
+          (i) => statusKeys.length === 0 || statusKeys.includes(i.currentStateKey),
+        )
+        return HttpResponse.json({
+          ...issuePageFixture,
+          content,
+          totalElements: content.length,
+          empty: content.length === 0,
+        })
+      }),
+    )
+
+    const filter: IssueFilterParams = {
+      statusKeys: ['in_progress'],
+      assigneeIds: [],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }
+
+    renderPage(0, undefined, undefined, filter)
+
+    await waitFor(() =>
+      expect(capturedUrl).toContain('status=in_progress'),
+    )
+
+    // ATLAS-2(in_progress)만 표시되어야 한다
+    await waitFor(() => expect(screen.getByText('ATLAS-2')).toBeInTheDocument())
+    expect(screen.queryByText('ATLAS-1')).not.toBeInTheDocument()
+  })
+
+  /**
+   * TF2. IssueFilterBar onChange → onFilterChange 콜백 호출 + page=0 리셋.
+   *
+   * IssueFilterBar의 onChange가 호출되면 onFilterChange 콜백이 새 필터와 함께 호출되어야 한다.
+   * 필터 초기화 버튼 클릭 시 빈 필터가 전달된다.
+   */
+  it('TF2: IssueFilterBar onChange 시 onFilterChange 콜백이 호출된다', async () => {
+    server.use(...issueHandlers)
+
+    const onFilterChange = vi.fn()
+    const onPageChange = vi.fn()
+
+    const filter: IssueFilterParams = {
+      statusKeys: ['open'],
+      assigneeIds: [],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }
+
+    renderPage(0, onPageChange, undefined, filter, onFilterChange)
+
+    // 이슈 목록이 렌더될 때까지 대기
+    await waitFor(() => screen.getByText('이슈 목록'))
+
+    // IssueFilterBar의 "초기화" 버튼 클릭 → 빈 필터 + page=0
+    const resetBtn = await screen.findByRole('button', { name: /초기화/i })
+    const user = userEvent.setup()
+    await user.click(resetBtn)
+
+    expect(onFilterChange).toHaveBeenCalledWith(expect.objectContaining({
+      statusKeys: [],
+      assigneeIds: [],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }))
+    expect(onPageChange).toHaveBeenCalledWith(0)
+  })
+
+  /**
+   * TF3. filter 실변경 시 clearAll 호출 (FR10 회귀 단언).
+   *
+   * - filter가 실제로 바뀌면 useIssueSelection.clearAll이 호출된다.
+   * - page만 변경(filter 동일)이면 clearAll이 호출되지 않는다.
+   */
+  it('TF3: filter 실변경 시 선택이 초기화되고, page만 변경 시 선택이 유지된다', async () => {
+    server.use(...issueHandlers)
+
+    const user = userEvent.setup()
+
+    // filter=open으로 첫 렌더
+    const { rerender, client } = renderPage(0, undefined, undefined, {
+      statusKeys: ['open'],
+      assigneeIds: [],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    })
+
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    // ATLAS-1 체크박스 선택
+    const cb = screen.getByTestId('select-ATLAS-1')
+    await user.click(cb)
+    await waitFor(() => expect(screen.getByTestId('bulk-action-bar')).toBeInTheDocument())
+
+    // 같은 filter + page=1 으로 rerender → 선택 유지
+    rerender(
+      <QueryClientProvider client={client}>
+        <IssueListPage
+          projectKey="ATLAS"
+          page={1}
+          onPageChange={() => undefined}
+          onNavigate={() => undefined}
+          filter={{ statusKeys: ['open'], assigneeIds: [], includeUnassigned: false, labels: [], componentIds: [] }}
+          onFilterChange={() => undefined}
+        />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('bulk-action-bar')).toBeInTheDocument())
+
+    // filter 변경으로 rerender → 선택 초기화
+    rerender(
+      <QueryClientProvider client={client}>
+        <IssueListPage
+          projectKey="ATLAS"
+          page={1}
+          onPageChange={() => undefined}
+          onNavigate={() => undefined}
+          filter={{ statusKeys: ['in_progress'], assigneeIds: [], includeUnassigned: false, labels: [], componentIds: [] }}
+          onFilterChange={() => undefined}
+        />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('bulk-action-bar')).not.toBeInTheDocument(),
+    )
+  })
+
+  /**
+   * TF4a. 0건 + 필터 있음 → 필터 초기화 CTA 버튼 렌더 (EC1).
+   */
+  it('TF4a: 결과가 0건이고 필터가 적용된 경우 "필터 초기화" CTA가 렌더된다 (EC1)', async () => {
+    server.use(
+      http.get('/api/v1/issues', () =>
+        HttpResponse.json(emptyIssuePageFixture),
+      ),
+    )
+
+    const filter: IssueFilterParams = {
+      statusKeys: ['nonexistent'],
+      assigneeIds: [],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }
+
+    const onFilterChange = vi.fn()
+    const onPageChange = vi.fn()
+    renderPage(0, onPageChange, undefined, filter, onFilterChange)
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /필터 초기화/i })).toBeInTheDocument(),
+    )
+
+    // 기존 빈 상태("이슈가 없습니다")는 표시하지 않아야 한다
+    expect(screen.queryByText(/이슈가 없습니다/)).not.toBeInTheDocument()
+  })
+
+  /**
+   * TF4b. 0건 + 필터 없음 → 기존 IssueEmptyState 유지.
+   */
+  it('TF4b: 결과가 0건이고 필터가 없으면 기존 빈 상태 안내를 렌더한다', async () => {
+    server.use(
+      http.get('/api/v1/issues', () =>
+        HttpResponse.json(emptyIssuePageFixture),
+      ),
+    )
+
+    renderPage(0, undefined, undefined, EMPTY_FILTER)
+
+    await waitFor(() =>
+      expect(screen.getByText(/이슈가 없습니다/)).toBeInTheDocument(),
+    )
+    // "필터 초기화" CTA는 없어야 한다
+    expect(screen.queryByRole('button', { name: /필터 초기화/i })).not.toBeInTheDocument()
+  })
+
+  /**
+   * TF5. EC1 "필터 초기화" CTA 클릭 → onFilterChange(빈 필터) + onPageChange(0) 호출.
+   */
+  it('TF5: 필터 초기화 CTA 클릭 시 onFilterChange(빈 필터)와 onPageChange(0)가 호출된다', async () => {
+    server.use(
+      http.get('/api/v1/issues', () =>
+        HttpResponse.json(emptyIssuePageFixture),
+      ),
+    )
+
+    const onFilterChange = vi.fn()
+    const onPageChange = vi.fn()
+
+    const filter: IssueFilterParams = {
+      statusKeys: ['nonexistent'],
+      assigneeIds: [],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }
+
+    renderPage(0, onPageChange, undefined, filter, onFilterChange)
+
+    const user = userEvent.setup()
+    const ctaBtn = await screen.findByRole('button', { name: /필터 초기화/i })
+    await user.click(ctaBtn)
+
+    expect(onFilterChange).toHaveBeenCalledWith(EMPTY_FILTER)
+    expect(onPageChange).toHaveBeenCalledWith(0)
+  })
+
+  /**
+   * TF6. EC8 — bulk invalidate prefix가 filter-aware queryKey를 포함해 무효화함.
+   *
+   * queryKey=['issues','ATLAS',0,normalizedFilter] 형태로 캐시에 저장된 데이터가
+   * invalidateQueries({ queryKey: ['issues','ATLAS'] }) prefix 매칭으로 무효화되어야 한다.
+   */
+  it('TF6: bulk invalidate prefix가 filter-aware queryKey를 포함해 무효화한다 (EC8)', async () => {
+    let fetchCallCount = 0
+
+    server.use(
+      ...issueHandlers,
+      http.post('/api/v1/issues/bulk-update', () =>
+        HttpResponse.json({
+          data: {
+            bulkOperationId: 'ffffffff-ffff-4fff-bfff-ffffffffffff',
+            status: 'COMPLETED' as const,
+            totalCount: 1,
+          },
+        }, { status: 202 }),
+      ),
+      http.get('/api/v1/bulk-operations/:id', () =>
+        HttpResponse.json({
+          data: {
+            id: 'ffffffff-ffff-4fff-bfff-ffffffffffff',
+            operationType: 'BULK_EDIT' as const,
+            status: 'COMPLETED' as const,
+            payload: { priority: 2, impact: null },
+            totalCount: 1,
+            processedCount: 1,
+            succeededCount: 1,
+            failedCount: 0,
+            items: [{ issueKey: 'ATLAS-1', status: 'SUCCEEDED' as const, failureReasonCode: null }],
+          },
+        }),
+      ),
+    )
+
+    // filter가 적용된 상태로 렌더 — queryKey는 4-요소
+    const filter: IssueFilterParams = {
+      statusKeys: ['open'],
+      assigneeIds: [],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }
+
+    server.use(
+      http.get('/api/v1/issues', ({ request }) => {
+        fetchCallCount++
+        const params = new URL(request.url).searchParams
+        const statusKeys = params.getAll('status')
+        const content = issuePageFixture.content.filter(
+          (i) => statusKeys.length === 0 || statusKeys.includes(i.currentStateKey),
+        )
+        return HttpResponse.json({
+          ...issuePageFixture,
+          content,
+          totalElements: content.length,
+          empty: content.length === 0,
+        })
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderPage(0, undefined, undefined, filter)
+
+    await waitFor(() => expect(screen.getByText('이슈 목록')).toBeInTheDocument())
+    const initialFetchCount = fetchCallCount
+
+    // 1건 선택 후 일괄 편집 제출
+    await waitFor(() => expect(screen.queryByTestId('select-ATLAS-1')).not.toBeNull())
+    await user.click(screen.getByTestId('select-ATLAS-1'))
+    await waitFor(() => expect(screen.getByTestId('bulk-action-bar')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: '일괄 편집' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: '일괄 편집' })).toBeInTheDocument())
+
+    const dialog = screen.getByRole('dialog')
+    const prioritySelect = within(dialog).getByLabelText('priority')
+    await user.selectOptions(prioritySelect, '2')
+    await user.click(within(dialog).getByRole('button', { name: '적용' }))
+
+    // invalidateQueries 발생 후 fetchIssues가 다시 호출되어야 한다 (EC8 무효화 확인)
+    await waitFor(() => expect(fetchCallCount).toBeGreaterThan(initialFetchCount))
+  })
+
+  /**
+   * TF7. IssueFilterBar가 페이지 헤더 아래, IssueBulkActionBar 위에 렌더된다 (C1 위치).
+   */
+  it('TF7: IssueFilterBar가 페이지에 렌더된다 (C1 위치 확인)', async () => {
+    server.use(...issueHandlers)
+
+    renderPage(0, undefined, undefined, EMPTY_FILTER)
+
+    await waitFor(() => expect(screen.getByText('이슈 목록')).toBeInTheDocument())
+
+    // IssueFilterBar의 초기화 버튼이 페이지에 렌더되어야 한다
+    // (IssueFilterBar 내부 렌더 = 컴포넌트 마운트 증거)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /초기화/i })).toBeInTheDocument(),
+    )
+  })
+
+  /**
+   * TF8. assignee 필터 → fetchIssues에 assignee 파라미터 전달.
+   */
+  it('TF8: assignee 필터가 적용된 경우 fetchIssues에 assignee 파라미터가 전달된다', async () => {
+    let capturedUrl = ''
+    server.use(
+      http.get('/api/v1/issues', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json(issuePageFixture)
+      }),
+    )
+
+    const filter: IssueFilterParams = {
+      statusKeys: [],
+      assigneeIds: [ISSUE_FILTER_BOB_ID],
+      includeUnassigned: true,
+      labels: [],
+      componentIds: [],
+    }
+
+    renderPage(0, undefined, undefined, filter)
+
+    await waitFor(() =>
+      expect(capturedUrl).toContain(`assignee=${ISSUE_FILTER_BOB_ID}`),
+    )
+    await waitFor(() =>
+      expect(capturedUrl).toContain('assignee=unassigned'),
+    )
+  })
+
+  /**
+   * TF9. component 필터 → fetchIssues에 component 파라미터 전달.
+   */
+  it('TF9: component 필터가 적용된 경우 fetchIssues에 component 파라미터가 전달된다', async () => {
+    let capturedUrl = ''
+    server.use(
+      http.get('/api/v1/issues', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json(issuePageFixture)
+      }),
+    )
+
+    const filter: IssueFilterParams = {
+      statusKeys: [],
+      assigneeIds: [],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [ISSUE_FILTER_COMP_A_ID],
+    }
+
+    renderPage(0, undefined, undefined, filter)
+
+    await waitFor(() =>
+      expect(capturedUrl).toContain(`component=${ISSUE_FILTER_COMP_A_ID}`),
     )
   })
 })
