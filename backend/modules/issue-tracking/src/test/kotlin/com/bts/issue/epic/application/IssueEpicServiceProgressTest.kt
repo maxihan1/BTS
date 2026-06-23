@@ -27,6 +27,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.clearMocks
+import io.mockk.confirmVerified
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -221,7 +222,9 @@ class IssueEpicServiceProgressTest : DescribeSpec({
 
             it("listStates 가 호출되지 않는다 (자식 없으면 typeKey 집합이 비어 있음)") {
                 sut.progress(epicKey, actorId)
-                verify(exactly = 0) { workflowStateCatalog.listStates(any(), any()) }
+                // value class ProjectKey 에 any() 매처를 쓰면 MockK 리플렉션 오류가 발생한다.
+                // 대신 confirmVerified 로 호출 없음을 확인한다.
+                confirmVerified(workflowStateCatalog)
             }
         }
 
@@ -301,8 +304,14 @@ class IssueEpicServiceProgressTest : DescribeSpec({
 
             it("listStates 가 정확히 2회(타입 수) 호출된다") {
                 sut.progress(epicKey, actorId)
-                // 타입 수(2) = distinct typeKey 수 만큼만 호출
-                verify(exactly = 2) { workflowStateCatalog.listStates(any(), any()) }
+                // value class ProjectKey 에 any() 매처를 쓰면 MockK 리플렉션 오류.
+                // 구체 typeKey 별로 1회씩 verify 해 총 2회를 확인한다 (N+1 부재 검증).
+                verify(exactly = 1) {
+                    workflowStateCatalog.listStates(ProjectKey.of(projectKey), IssueTypeKey("story"))
+                }
+                verify(exactly = 1) {
+                    workflowStateCatalog.listStates(ProjectKey.of(projectKey), IssueTypeKey("task"))
+                }
             }
         }
 
@@ -313,28 +322,9 @@ class IssueEpicServiceProgressTest : DescribeSpec({
             val storyChild = makeIssue(child1Uuid, IssueKey("BTS-2"), typeId = storyTypeId, currentStateKey = "done")
             val taskChild = makeIssue(child2Uuid, IssueKey("BTS-3"), typeId = taskTypeId, currentStateKey = "open")
 
-            val noDefaultException = RuntimeException("WorkflowSchemeNoDefaultException 시뮬레이션").apply {
-                // simpleName 이 "WorkflowSchemeNoDefaultException" 과 매칭되도록 익명 서브클래스 대신
-                // 직접 메시지만 설정. javaClass.simpleName = "RuntimeException" 이므로
-                // 서비스에서 simpleName 매칭이 RuntimeException 에 걸려 rethrow 하면 안 됨.
-                // 실제 NoDefault 예외는 project-workflow 내부 클래스이므로 simple-name 으로만 식별 가능.
-                // → 테스트에서 이름을 흉내낸 익명 클래스를 사용
-            }
-
-            // WorkflowSchemeNoDefaultException 처럼 이름 가진 예외 생성 헬퍼
-            @Suppress("ObjectLiteralToLambda")
-            val noDefaultEx: RuntimeException =
-                object : RuntimeException("no workflow scheme assigned") {
-                    override fun toString() = "WorkflowSchemeNoDefaultException: no workflow scheme assigned"
-                }.also {
-                    // javaClass.simpleName 은 anonymous class 이므로 빈 문자열 → rethrow
-                    // → 그래서 실제 이름 매칭용으로는 진짜 명명된 클래스 필요
-                    // → 테스트 전용 inner class 로 정의
-                }
-
-            // 실제 서비스 코드에서 e.javaClass.simpleName == "WorkflowSchemeNoDefaultException" 로 매칭하므로
-            // 테스트 전용 예외 클래스를 이 파일 내 최상위 선언으로 사용
-            val schemeNoDefaultEx = WorkflowSchemeNoDefaultSimulatedException()
+            // 서비스는 e.javaClass.simpleName == "WorkflowSchemeNoDefaultException" 로 폴백을 결정한다.
+            // 파일 하단 private class WorkflowSchemeNoDefaultException 을 사용한다.
+            val schemeNoDefaultEx = WorkflowSchemeNoDefaultException()
 
             beforeEach {
                 allowBrowse()
@@ -373,10 +363,11 @@ class IssueEpicServiceProgressTest : DescribeSpec({
 })
 
 /**
- * WorkflowSchemeNoDefaultException 을 시뮬레이션하는 테스트 전용 예외.
+ * WorkflowSchemeNoDefaultException 테스트 전용 스텁 예외.
  *
- * 서비스 코드는 `e.javaClass.simpleName == "WorkflowSchemeNoDefaultException"` 로 식별한다.
- * project-workflow BC 내부 예외는 import 불가하므로, 동일 simpleName 을 가진 테스트 전용 클래스로 대체한다.
+ * 서비스 코드는 `e.javaClass.simpleName == "WorkflowSchemeNoDefaultException"` 으로 폴백을 결정한다.
+ * project-workflow BC 내부 예외는 import 불가하므로 동일 simpleName 을 가진 테스트 전용 클래스를 사용한다.
+ * `private` 선언으로 이 파일 밖에서는 보이지 않는다.
  */
-private class WorkflowSchemeNoDefaultSimulatedException :
-    RuntimeException("WorkflowSchemeNoDefaultException simulated for testing")
+private class WorkflowSchemeNoDefaultException :
+    RuntimeException("test stub — workflow scheme not assigned")
