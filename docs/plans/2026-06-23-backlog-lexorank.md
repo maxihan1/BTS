@@ -37,9 +37,19 @@ SDD §13.2.1 / product agile-planning.md §3.1 / fr-index §3.1
 - **product/SDD drift**: product §1.1 `backend/shared/lexorank.kt` 경로는 실제와 불일치 → shared-kernel로 정정 (전수 동기화 대상). product D3 `issues.rank`(TEXT) vs SDD §13.2.1 `VARCHAR(50)` → spec에서 컬럼 타입 확정.
 - **관련 ADR**: [docs/decisions/2026-06-23-fr-bl-01-lexorank-backlog-ordering.md](../decisions/2026-06-23-fr-bl-01-lexorank-backlog-ordering.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-23-backlog-lexorank.md](../specs/2026-06-23-backlog-lexorank.md)
+
+핵심 결정 (Maxi 확정).
+- 리랭크 계약: `PATCH /api/v1/issues/{key}/rank {previousIssueKey?, nextIssueKey?}` — 서버가 이웃 rank 조회 후 between 계산.
+- rebalance: on-demand만 (중간값 고갈 시 즉시, advisory lock 직렬화).
+- 초기 rank: 생성 시 자동부여(맨 끝) + V029 백필, NOT NULL, VARCHAR(50).
+- rank=프로젝트 전역 키 / no-bump last-write-wins / tie-break ORDER BY rank,id / 권한 UPDATE 재사용 / history 미기록.
+
+## Brainstorming Check
+
+✅ 통과 (adversarial self-review 1회, gap 5건 발견·반영: 정렬 스코프·rank 중복 tie-break·OCC→no-bump·락 범위·소프트삭제 404).
 
 ## Plan (← /bts-plan 채움)
 
