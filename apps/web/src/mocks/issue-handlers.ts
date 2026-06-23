@@ -184,10 +184,21 @@ function matchesIssueFilter(issue: IssueResponse, params: URLSearchParams): bool
   return true
 }
 
+/**
+ * 필터 파라미터를 적용한 이슈 목록 페이지를 생성한다.
+ *
+ * 조회 우선순위: issueOverrides → issuePageFixture (단건 GET과 동일 순서).
+ * PATCH 후 목록 재조회 시 최신 상태(assignee/labels 등)를 필터에 올바르게 반영한다.
+ * createdIssues(POST 생성 이슈)도 포함한다.
+ *
+ * @param params 필터 URLSearchParams (없으면 전체 반환)
+ */
 function buildFilteredPage(params?: URLSearchParams): IssuePage {
   const sp = params ?? new URLSearchParams()
+  // 오버라이드 우선 적용 — PATCH 후 변경된 assignee/labels/componentIds가 필터에 반영됨
   const fixtureContent = issuePageFixture.content
     .filter((i) => !deletedKeys.has(i.key))
+    .map((i) => issueOverrides.get(i.key) ?? i)
     .filter((i) => matchesIssueFilter(i, sp))
   const createdContent = Array.from(createdIssues.values())
     .filter((i) => !deletedKeys.has(i.key))
