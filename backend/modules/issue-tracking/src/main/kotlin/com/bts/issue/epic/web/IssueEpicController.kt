@@ -1,4 +1,4 @@
-// 에픽-자식 연결/해제/조회 REST 컨트롤러 (FR-EP-01 Task 6)
+// 에픽-자식 연결/해제/조회/진행률 REST 컨트롤러 (FR-EP-01 Task 6, FR-EP-02 Task 3)
 
 package com.bts.issue.epic.web
 
@@ -10,6 +10,7 @@ import com.bts.issue.epic.application.IssueEpicService
 import com.bts.issue.epic.web.dto.CreateEpicChildRequest
 import com.bts.issue.epic.web.dto.EpicChildListResponse
 import com.bts.issue.epic.web.dto.EpicChildSummaryResponse
+import com.bts.issue.epic.web.dto.EpicProgressResponse
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.domain.IssueType
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -27,12 +28,13 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 /**
- * 에픽-자식 연결/해제/조회 REST API 컨트롤러 (FR-EP-01 Task 6).
+ * 에픽-자식 연결/해제/조회/진행률 REST API 컨트롤러 (FR-EP-01 Task 6, FR-EP-02 Task 3).
  *
- * 엔드포인트 — 모두 `/api/v1/issues/{key}` 하위.
+ * 엔드포인트 — `/api/v1/issues/{key}` 및 `/api/v1/epics/{key}` 하위.
  * - POST   `/epic-children`            — 자식 연결 → 201 Created + [EpicChildSummaryResponse]
  * - DELETE `/epic-children/{childKey}` — 자식 연결 해제 → 204 No Content
  * - GET    `/epic-children`            — 자식 목록 조회 → 200 OK + [EpicChildListResponse]
+ * - GET    `/progress`                 — 자식 진행률 집계 → 200 OK + [EpicProgressResponse] (에픽 base path 전용)
  *
  * ### ActorId 결선
  * [CurrentActor.current] 로 SecurityContextHolder 의 인증 주체를 actor 로 추출한다.
@@ -52,7 +54,7 @@ import org.springframework.web.bind.annotation.RestController
  * @param issueTypeRepository 자식 이슈 타입 조회용. EpicChildSummaryResponse.typeKey 에 사용.
  */
 @RestController
-@RequestMapping("/api/v1/issues/{key}")
+@RequestMapping("/api/v1/issues/{key}", "/api/v1/epics/{key}")
 class IssueEpicController(
     private val service: IssueEpicService,
     private val issueRepository: IssueRepository,
@@ -138,12 +140,30 @@ class IssueEpicController(
     }
 
     /**
-     * 이슈의 [com.bts.issue.type.domain.IssueType] 을 조회한다.
+     * 에픽의 자식 이슈 진행률을 카테고리별로 집계해 반환한다.
      *
-     * 타입 미존재(DB 불일치) 시 null 을 반환한다 — 응답에서 typeKey 는 null 로 직렬화된다.
+     * `/api/v1/epics/{key}/progress` 경로로 응답한다.
+     * 클래스 레벨 `@RequestMapping` 에 `/api/v1/epics/{key}` 가 포함되어 있어
+     * 이 메서드가 에픽 전용 base path 에서도 동작한다.
      *
-     * @param issue 타입을 조회할 이슈.
-     * @return [IssueType] 또는 null.
+     * actor 추출은 서비스 호출 전 선행 — 미인증자가 404 로 존재를 probe 하지 못하게 한다
+     * (auth-extraction-before-resource-lookup 교훈).
+     *
+     * @param key 에픽 이슈 키 (path variable).
+     * @return 200 OK + [EpicProgressResponse](진행률 집계).
+     * @throws com.bts.issue.epic.domain.EpicChildNotFoundException epic 미존재·소프트삭제 시 → 404
+     * @throws com.bts.issue.domain.IssueAccessDeniedException BROWSE(Project) 권한 미보유 시 → 403
      */
+    @GetMapping("/progress")
+    fun getProgress(
+        @PathVariable key: String,
+    ): ResponseEntity<DataResponse<EpicProgressResponse>> {
+        val actor = CurrentActor.current()
+        log.info("getProgress epicKey={} actor={}", key, actor.value)
+
+        val progress = service.progress(epicKey = IssueKey(key), actor = actor)
+        return ResponseEntity.ok(DataResponse(data = EpicProgressResponse.from(progress)))
+    }
+
     private fun resolveType(issue: Issue): IssueType? = issueTypeRepository.findById(issue.typeId)
 }

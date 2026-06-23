@@ -1288,6 +1288,60 @@ const connectEpicChildHandler = http.post(
 )
 
 /**
+ * 에픽 진행률 조회 핸들러 (FR-EP-02).
+ * GET /api/v1/epics/:key/progress → 200 + `{ data: EpicProgressResponse }`
+ * epicChildrenStore + issueOverrides/issueFixtureMap에서 자식 이슈 상태를 읽어
+ * softwareDefaultFixture 카테고리 기준으로 진행률을 파생 집계한다.
+ * 자식 연결/해제(connectEpicChildHandler/disconnectEpicChildHandler) 후 즉시 반영.
+ */
+const getEpicProgressHandler = http.get('/api/v1/epics/:key/progress', ({ params }) => {
+  const epicKey = params['key'] as string
+  const found = resolveIssue(epicKey)
+  if (found === undefined) {
+    return HttpResponse.json(
+      { errorCode: 'ISSUE_EPIC_OR_CHILD_NOT_FOUND', message: `에픽을 찾을 수 없습니다: ${epicKey}` },
+      { status: 404 },
+    )
+  }
+
+  const childKeys = epicChildrenStore.get(epicKey) ?? new Set<string>()
+  const stateMap = new Map(softwareDefaultFixture.states.map((s) => [s.key, s.category]))
+
+  let todoCount = 0
+  let inProgressCount = 0
+  let doneCount = 0
+
+  for (const childKey of childKeys) {
+    const child = resolveIssue(childKey)
+    if (child === undefined) continue
+    const category = stateMap.get(child.currentStateKey)
+    if (category === 'TODO') {
+      todoCount += 1
+    } else if (category === 'IN_PROGRESS') {
+      inProgressCount += 1
+    } else if (category === 'DONE') {
+      doneCount += 1
+    }
+  }
+
+  const total = todoCount + inProgressCount + doneCount
+  const donePercentage = total === 0 ? 0 : Math.round((doneCount / total) * 100)
+
+  return HttpResponse.json({
+    data: {
+      total,
+      done: doneCount,
+      donePercentage,
+      byCategory: {
+        todo: todoCount,
+        inProgress: inProgressCount,
+        done: doneCount,
+      },
+    },
+  })
+})
+
+/**
  * 에픽 자식 이슈 연결 해제 핸들러 (FR-EP-01).
  * DELETE /api/v1/issues/:epicKey/epic-children/:childKey → 204
  * epicChildrenStore에서 연결을 제거하고 자식 이슈의 epic 필드를 클리어한다.
@@ -1355,4 +1409,5 @@ export const issueHandlers = [
   getEpicChildrenHandler,
   connectEpicChildHandler,
   disconnectEpicChildHandler,
+  getEpicProgressHandler,
 ]

@@ -245,6 +245,63 @@ export function useClearIssueEpic(childKey: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 에픽 진행률 스키마 — FR-EP-02
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 에픽 진행률 카테고리별 집계 스키마.
+ * 백엔드 EpicProgressResponse.byCategory와 1:1 대응.
+ */
+const epicProgressByCategorySchema = z.object({
+  /** todo 카테고리 이슈 수 */
+  todo: z.number(),
+  /** inProgress 카테고리 이슈 수 */
+  inProgress: z.number(),
+  /** done 카테고리 이슈 수 */
+  done: z.number(),
+})
+
+/**
+ * 에픽 진행률 응답 스키마.
+ * 백엔드 EpicProgressResponse DTO와 1:1 대응.
+ * GET /api/v1/epics/{key}/progress → `{ data: EpicProgressResponse }` 언랩.
+ */
+export const EpicProgressSchema = z.object({
+  /** 전체 자식 이슈 수 */
+  total: z.number(),
+  /** 완료(done) 자식 이슈 수 */
+  done: z.number(),
+  /** 완료 비율 (0~100 정수) */
+  donePercentage: z.number(),
+  /** 카테고리별 집계 */
+  byCategory: epicProgressByCategorySchema,
+})
+
+/** 에픽 진행률 타입 (`z.infer` 도출) */
+export type EpicProgress = z.infer<typeof EpicProgressSchema>
+
+/**
+ * 에픽 진행률을 조회한다.
+ * GET /api/v1/epics/{key}/progress → `{ data: EpicProgressResponse }` 언랩.
+ *
+ * @param epicKey 에픽 이슈 키 (예: "ATLAS-10")
+ * @returns 에픽 진행률 (total, done, donePercentage, byCategory)
+ * @throws ApiError(404) ISSUE_EPIC_OR_CHILD_NOT_FOUND — 에픽이 없을 때
+ * @throws ApiError(403) 접근 권한 없을 때
+ * @throws ZodError 응답 형식이 계약과 다를 때
+ */
+export async function fetchEpicProgress(epicKey: string): Promise<EpicProgress> {
+  const res = await apiFetch(`/api/v1/epics/${epicKey}/progress`, { method: 'GET' })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  const raw: unknown = await res.json()
+  const wrapped = dataResponseSchema(EpicProgressSchema).parse(raw)
+  return wrapped.data
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 에러 코드 상수 — backend EpicErrorCode 열거 미러
 // ─────────────────────────────────────────────────────────────────────────────
 

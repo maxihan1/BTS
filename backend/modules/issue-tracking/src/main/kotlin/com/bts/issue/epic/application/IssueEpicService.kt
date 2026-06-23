@@ -1,4 +1,4 @@
-// 에픽-자식 연결/해제/조회 서비스 — 불변식 5종 + 권한 + changelog 기록 (FR-EP-01 Task 5)
+// 에픽-자식 연결/해제/조회/진행률 서비스 — 불변식 5종 + 권한 + changelog 기록 (FR-EP-01 Task 5, FR-EP-02 Task 2)
 
 package com.bts.issue.epic.application
 
@@ -11,14 +11,18 @@ import com.bts.issue.epic.domain.EpicChildCrossProjectException
 import com.bts.issue.epic.domain.EpicChildInvalidTypeException
 import com.bts.issue.epic.domain.EpicChildNotFoundException
 import com.bts.issue.epic.domain.EpicChildSelfReferenceException
+import com.bts.issue.epic.domain.EpicProgress
 import com.bts.issue.epic.domain.EpicTargetNotEpicException
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
 import com.bts.shared.permission.IssueSecurityDirectory
+import com.bts.shared.workflow.ProjectKey
+import com.bts.shared.workflow.WorkflowStateCatalog
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -30,14 +34,14 @@ private const val EPIC_HIERARCHY_LEVEL = 1
 private const val CHILD_HIERARCHY_LEVEL = 0
 
 /**
- * 에픽-자식 연결/해제/조회 서비스 (FR-EP-01 Task 5).
+ * 에픽-자식 연결/해제/조회/진행률 서비스 (FR-EP-01 Task 5, FR-EP-02 Task 2).
  *
  * ## 보안 원칙
  * - **fail-closed**: 모든 생성자 인자는 default 없는 non-null 주입.
  *   prod 빈 미주입 시 부팅 실패로 AlwaysAllow default 우회를 구조적으로 차단한다.
  * - **존재 probe 방지**: UPDATE(child) 권한 검증이 이슈 조회보다 선행한다.
  * - **N1 보안**: epic 미존재/소프트삭제는 404 (존재 숨김 — 403 금지).
- * - **BROWSE 진입 게이트**: listChildren 은 Project scope BROWSE 검사로 VIEW_ISSUE 매트릭스를 위임한다.
+ * - **BROWSE 진입 게이트**: listChildren/progress 는 Project scope BROWSE 검사로 VIEW_ISSUE 매트릭스를 위임한다.
  *
  * ## 불변식 (connect)
  * 1. UPDATE(child, Issue scope) 권한
@@ -54,6 +58,7 @@ private const val CHILD_HIERARCHY_LEVEL = 0
  * @param issueRepository 이슈 저장소.
  * @param issueTypeRepository 이슈 타입 저장소 (hierarchyLevel 조회).
  * @param historyRecorder 이슈 변경 이력 기록 facade.
+ * @param workflowStateCatalog 워크플로우 상태 목록 조회 SPI (fail-closed — default 없음).
  */
 @Service
 @Transactional
@@ -63,6 +68,7 @@ class IssueEpicService(
     private val issueRepository: IssueRepository,
     private val issueTypeRepository: IssueTypeRepository,
     private val historyRecorder: IssueHistoryRecorder,
+    private val workflowStateCatalog: WorkflowStateCatalog,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -237,6 +243,105 @@ class IssueEpicService(
         return children
     }
 
+    /**
+     * [epicKey] 에픽의 자식 이슈 진행률을 집계해 반환한다.
+     *
+     * ## 흐름 (listChildren 과 동형)
+     * BROWSE(Project) 게이트 → epic 조회(404) → accessibleLevels → findEpicChildren
+     * → typeId 배치 해석 → 타입별 listStates 캐싱(N+1 차단) → EpicProgress.of(categories).
+     *
+     * ## 가시성 모수
+     * accessibleLevels + findEpicChildren SQL 푸시다운으로 actor 에게 보이는 자식만 집계한다.
+     *
+     * ## N+1 캐싱
+     * issueTypeRepository.findAll() 1쿼리로 typeId→IssueTypeKey 맵을 구성한 뒤,
+     * distinct IssueTypeKey 집합에 대해 listStates 를 각 1회만 호출한다.
+     *
+     * ## NoDefault throw 폴백
+     * WorkflowSchemeNoDefaultException 발생 시 해당 타입 자식은 전부 TODO 로 분류한다.
+     * 운영 500 을 차단하고 부분 집계 응답을 반환한다 (IssueMoveService 선례 패턴).
+     *
+     * @param epicKey 진행률을 조회할 에픽 이슈 키.
+     * @param actor 조회를 수행하는 행위자.
+     * @return 에픽 자식 이슈들의 워크플로우 카테고리별 진행률.
+     * @throws IssueAccessDeniedException BROWSE(Project) 권한 미보유 시 (403).
+     * @throws EpicChildNotFoundException epic 미존재·소프트삭제 시 (404).
+     */
+    @Transactional(readOnly = true)
+    fun progress(
+        epicKey: IssueKey,
+        actor: ActorId,
+    ): EpicProgress {
+        val projectKey = epicKey.projectPrefix
+
+        // BROWSE(Project) 진입 게이트 — listChildren 과 동형
+        val browseAllowed =
+            permissionResolver.hasPermission(
+                actor.value,
+                IssuePermission.BROWSE,
+                IssueScope.Project(projectKey),
+            )
+        if (!browseAllowed) {
+            throw IssueAccessDeniedException(actor, IssuePermission.BROWSE, IssueScope.Project(projectKey))
+        }
+
+        // epic 조회 — 미존재/소프트삭제 시 404
+        val epic =
+            issueRepository.findByKey(epicKey)
+                ?: run {
+                    log.debug("progress: epic not found key={}", epicKey.value)
+                    throw EpicChildNotFoundException()
+                }
+
+        // 보안 등급 필터 조회
+        val access = securityDirectory.accessibleLevels(actor.value, projectKey)
+
+        val children =
+            issueRepository.findEpicChildren(
+                epicId = epic.id.value,
+                actor = actor.value,
+                access = access,
+                projectKey = projectKey,
+            )
+
+        if (children.isEmpty()) {
+            log.debug("progress: no children epicKey={} actor={}", epicKey.value, actor.value)
+            return EpicProgress.of(emptyList())
+        }
+
+        // typeId → IssueTypeKey 맵 (findAll 1쿼리 — N+1 차단)
+        val typeIdToKey: Map<Long, IssueTypeKey> =
+            issueTypeRepository.findAll()
+                .mapNotNull { t -> t.id?.let { it.value to t.key } }
+                .toMap()
+
+        // distinct IssueTypeKey 집합별 listStates 캐시 (각 타입 1회 — N+1 차단)
+        val stateCache: Map<IssueTypeKey, Map<String, String>> =
+            children
+                .mapNotNull { typeIdToKey[it.typeId.value] }
+                .toSet()
+                .associateWith { typeKey -> resolveStateCategories(projectKey, typeKey) }
+
+        // 각 자식의 카테고리 해석
+        val categories: List<String?> =
+            children.map { child ->
+                val typeKey = typeIdToKey[child.typeId.value]
+                val categoryMap = typeKey?.let { stateCache[it] } ?: emptyMap()
+                categoryMap[child.currentStateKey]
+            }
+
+        val result = EpicProgress.of(categories)
+        log.debug(
+            "progress epicKey={} actor={} total={} done={} donePercentage={}",
+            epicKey.value,
+            actor.value,
+            result.total,
+            result.done,
+            result.donePercentage,
+        )
+        return result
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     /**
@@ -331,4 +436,41 @@ class IssueEpicService(
             throw IssueAccessDeniedException(actor, IssuePermission.UPDATE, scope)
         }
     }
+
+    /**
+     * [projectKey] 프로젝트의 [typeKey] 이슈 타입에 대한 상태 키 → 카테고리 문자열 맵을 반환한다.
+     *
+     * WorkflowSchemeNoDefaultException 발생 시 빈 맵으로 폴백해 운영 500 을 차단한다.
+     * 빈 맵이 반환되면 해당 타입의 자식 이슈 전체가 EpicProgress.of 에서 TODO 로 분류된다.
+     * IssueMoveService.kt 의 NoDefault catch 패턴과 동일하다.
+     *
+     * TooGenericExceptionCaught suppress 근거. project-workflow BC 내부 예외
+     * (WorkflowSchemeNoDefaultException) 를 직접 import 할 수 없어 RuntimeException 을 받아
+     * simpleName 으로 식별한다 (IssueMoveService 동형).
+     *
+     * @param projectKey 프로젝트 키 문자열 (shared-kernel ProjectKey 로 변환됨).
+     * @param typeKey 이슈 타입 키.
+     * @return 상태 키 → 카테고리 문자열 맵. 스킴 미설정 시 빈 맵.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun resolveStateCategories(
+        projectKey: String,
+        typeKey: IssueTypeKey,
+    ): Map<String, String> =
+        try {
+            workflowStateCatalog
+                .listStates(ProjectKey.of(projectKey), typeKey)
+                .associate { it.key to it.category }
+        } catch (e: RuntimeException) {
+            if (e.javaClass.simpleName == "WorkflowSchemeNoDefaultException") {
+                log.warn(
+                    "progress: no workflow scheme for typeKey={} projectKey={} — defaulting to empty state map",
+                    typeKey.value,
+                    projectKey,
+                )
+                emptyMap()
+            } else {
+                throw e
+            }
+        }
 }
