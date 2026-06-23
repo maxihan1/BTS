@@ -242,7 +242,7 @@ describe('useUpdateDashboard', () => {
   })
 
   it('T-DB-UPDATE-2: PATCH 후 refetch하면 수정된 이름이 반영된다 (stateful store 확인)', async () => {
-    const { queryClient, wrapper } = createWrapper()
+    const { wrapper } = createWrapper()
 
     // 두 훅을 하나의 renderHook 안에서 함께 렌더링해 동일 QueryClient를 공유한다.
     // 별도 renderHook은 React 트리가 분리되어 캐시를 공유하지 못한다.
@@ -268,9 +268,6 @@ describe('useUpdateDashboard', () => {
 
     // invalidate → TanStack Query가 자동 refetch → MSW store에서 변경된 이름 반환
     await waitFor(() => expect(result.current.query.data?.name).toBe('변경된 대시보드 이름'))
-
-    // queryClient 참조는 invalidate-only 검증 보조용 — 직접 refetch 호출 금지
-    void queryClient
   })
 
   it('T-DB-UPDATE-3: setQueryData를 직접 호출하지 않는다 (invalidate-only)', async () => {
