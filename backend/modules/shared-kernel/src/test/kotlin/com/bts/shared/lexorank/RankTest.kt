@@ -25,7 +25,6 @@ import org.junit.jupiter.params.provider.ValueSource
  * - Comparable 정렬 일관성 (사전순 == Rank 순서)
  */
 class RankTest {
-
     // ── 생성 검증 ───────────────────────────────────────────────────────────────
 
     @ParameterizedTest(name = "정상 — {0} 은 유효한 Rank 이다")
@@ -228,13 +227,14 @@ class RankTest {
 
     @Test
     fun `Comparable — Rank 정렬은 문자열 사전순과 일치한다`() {
-        val ranks = listOf(
-            Rank.of("z"),
-            Rank.of("b"),
-            Rank.of("n"),
-            Rank.of("g"),
-            Rank.of("bb"),
-        ).sorted()
+        val ranks =
+            listOf(
+                Rank.of("z"),
+                Rank.of("b"),
+                Rank.of("n"),
+                Rank.of("g"),
+                Rank.of("bb"),
+            ).sorted()
 
         val expected = listOf("b", "bb", "g", "n", "z")
         assertThat(ranks.map { it.value }).isEqualTo(expected)

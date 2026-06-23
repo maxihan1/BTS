@@ -18,7 +18,6 @@ package com.bts.shared.lexorank
  */
 @JvmInline
 value class Rank(val value: String) : Comparable<Rank> {
-
     init {
         require(value.isNotEmpty()) { "Rank 값은 빈 문자열이 아니어야 한다" }
         require(value.length <= MAX_LENGTH) { "Rank 값은 ${MAX_LENGTH}자를 초과할 수 없다: '$value'" }
@@ -31,23 +30,25 @@ value class Rank(val value: String) : Comparable<Rank> {
     override fun compareTo(other: Rank): Int = value.compareTo(other.value)
 
     companion object {
-
         /** 최대 허용 길이 (VARCHAR(50) 준수) */
         const val MAX_LENGTH = 50
 
-        /** 알파벳 하한 문자 ('a', 인덱스 0) */
+        /** 알파벳 하한 문자 ('a', 인덱스 0). trailing-a 금지 기준이기도 하다. */
         private const val LOWER_BOUND_CHAR = 'a'
 
-        /** 알파벳 상한 문자 ('z', 인덱스 25) */
-        private const val UPPER_BOUND_CHAR = 'z'
-
-        /** 알파벳 크기 (26) */
+        /** 알파벳 크기 (base-26) */
         private const val ALPHABET_SIZE = 26
 
-        /** 내부 연산에서 prev 소진 시 사용하는 하한 인덱스 (-1) */
+        /**
+         * prev 자리가 소진될 때 사용하는 하한 센티넬 인덱스.
+         * 실제 'a'(0) 보다 하나 작은 -1 로 설정해 'a' 이전 경계를 표현한다.
+         */
         private const val LOWER_SENTINEL = -1
 
-        /** 내부 연산에서 next 소진 시 사용하는 상한 인덱스 (26) */
+        /**
+         * next 자리가 소진될 때 사용하는 상한 센티넬 인덱스.
+         * 실제 'z'(25) 보다 하나 큰 26 으로 설정해 'z' 이후 경계를 표현한다.
+         */
         private const val UPPER_SENTINEL = ALPHABET_SIZE
 
         /** 소문자 알파벳만 허용하는 정규식 */
@@ -84,7 +85,10 @@ value class Rank(val value: String) : Comparable<Rank> {
          * @param next 상위 경계 Rank (null 이면 상한)
          * @throws RankSpaceExhaustedException MAX_LENGTH 내 중간값 생성 불가 시
          */
-        fun between(prev: Rank?, next: Rank?): Rank {
+        fun between(
+            prev: Rank?,
+            next: Rank?,
+        ): Rank {
             val result = StringBuilder()
 
             for (i in 0 until MAX_LENGTH) {
@@ -94,22 +98,26 @@ value class Rank(val value: String) : Comparable<Rank> {
                 val mid = (p + n) / 2
 
                 if (mid > p) {
+                    // 두 경계 사이에 중간 문자를 찾은 경우.
                     result.append(mid.toRankChar())
-                    // trailing-a 인 경우에는 종료하지 않고 다음 자리를 계속 계산한다.
-                    // 이렇게 하면 최종 결과의 끝 문자가 'a' 가 되지 않는다.
                     if (mid != 0) {
+                        // 중간 문자가 'a'(0) 가 아니면 trailing-a 가 아니므로 종료한다.
                         return Rank(result.toString())
                     }
-                    // mid == 0('a'): 이 자리를 채택하고 다음 자리에서 prev=-1, next=26 으로 계속
+                    // 중간 문자가 'a'(0) 이면 trailing-a 회피를 위해 이 자리를 채택하되
+                    // 종료하지 않고 다음 자리에서 추가 문자를 붙인다.
+                    // 다음 자리에서 prev 소진 시 LOWER_SENTINEL, next 소진 시 UPPER_SENTINEL 로
+                    // 자동 처리된다.
                 } else {
-                    // mid == p: n - p == 1 인접 케이스. prev 문자를 채택하고 다음 자리 연장.
+                    // mid == p: n - p == 1 인접 케이스.
+                    // prev 자리 문자를 채택하고 한 자리를 늘려 계속 계산한다.
                     result.append(p.toRankChar())
                 }
             }
 
             throw RankSpaceExhaustedException(
                 "Rank 키 공간 고갈: prev=${prev?.value}, next=${next?.value} 사이에서 " +
-                    "${MAX_LENGTH}자 내 중간값 생성 불가. rebalance 를 트리거하라."
+                    "${MAX_LENGTH}자 내 중간값 생성 불가. rebalance 를 트리거하라.",
             )
         }
 
