@@ -32,9 +32,18 @@ FR-SR-01 이슈 필터 (다중 필드 조합) — search-export-import BC의 첫
 - **기존 결정 충돌**: 없음. 관련 ADR `2026-06-02-issue-permission-query-api`(권한 쿼리) / `2026-06-03-version-component-permission-query-and-gating`와 정합(visibility 필터 재사용).
 - **관련 ADR**: [docs/decisions/2026-06-23-fr-sr-01-issue-filter-bc.md](../decisions/2026-06-23-fr-sr-01-issue-filter-bc.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-23-fr-sr-01-issue-filter.md](../specs/2026-06-23-fr-sr-01-issue-filter.md)
+
+핵심 시나리오 3줄 요약.
+- 기존 `GET /api/v1/issues`에 status/assignee/label/component 필터 파라미터 추가 (필드 내 OR, 필드 간 AND)
+- count·content 양쪽에 필터 적용 + visibility(보안 수준) 필터 우선(권한 없는 이슈는 필터로도 노출 0)
+- 백엔드 D1~D5만 (BoardCardFilter에 statusKeys 확장 / IssueFilterQueryParser 신규 / 보드 회귀 0). D6 프론트·D7 E2E는 후속 PR
+
+## Brainstorming Check
+
+✅ 통과 (1회, 직접 인라인 적대 검토). 발견·반영 — count 필터 누락(FR-7/EC6) · catch-all 400→500 변질(EC3) · 보드 회귀(§8) · label 정확매칭(FR-5) · visibility 우회(FR-8/S7).
 
 ## Plan (← /bts-plan 채움)
 
