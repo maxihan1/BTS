@@ -192,10 +192,9 @@ export function DashboardsListPage(): JSX.Element {
     return (
       <div className="p-8 flex flex-col items-center justify-center min-h-64 gap-6 text-center">
         <div className="space-y-2">
-          <h2 className="text-lg font-semibold">아직 대시보드가 없습니다</h2>
-          <p className="text-sm text-muted-foreground">
-            새 대시보드를 만들어 이슈 현황을 한눈에 확인하세요
-          </p>
+          {/* 빈 상태 제목 — labels의 title보다 맥락 강조를 위해 "아직" 프리픽스 추가 */}
+          <h2 className="text-lg font-semibold">아직 {dashboardLabels.list.empty.title}</h2>
+          <p className="text-sm text-muted-foreground">{dashboardLabels.list.empty.description}</p>
         </div>
 
         {showForm ? (
