@@ -6,7 +6,6 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
 class EpicProgressTest {
-
     @Test
     fun `aggregates categories into byCategory counts`() {
         // 자식 이슈 4개: DONE 2, IN_PROGRESS 1, TODO 1

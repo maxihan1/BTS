@@ -2,6 +2,8 @@
 
 package com.bts.issue.epic.domain
 
+import kotlin.math.roundToInt
+
 /**
  * 에픽의 직속 자식 이슈들로부터 계산된 진행률 값 객체 (Value Object).
  *
@@ -12,11 +14,11 @@ package com.bts.issue.epic.domain
  * { "total": 4, "done": 2, "donePercentage": 50, "byCategory": { "todo": 1, "inProgress": 1, "done": 2 } }
  * ```
  *
- * [total] 전체 직속 자식 이슈 수.
- * [done] DONE 카테고리 이슈 수 (= byCategory.done 과 동일).
- * [donePercentage] 완료 비율 (0~100 정수, 반올림). 자식이 없으면 0.
- * [todo] TODO 카테고리 이슈 수.
- * [inProgress] IN_PROGRESS 카테고리 이슈 수.
+ * @property total 전체 직속 자식 이슈 수.
+ * @property done DONE 카테고리 이슈 수 (= byCategory.done 과 동일).
+ * @property donePercentage 완료 비율 (0~100 정수, 반올림). 자식이 없으면 0.
+ * @property todo TODO 카테고리 이슈 수.
+ * @property inProgress IN_PROGRESS 카테고리 이슈 수.
  */
 data class EpicProgress(
     val total: Int,
@@ -25,10 +27,8 @@ data class EpicProgress(
     val todo: Int,
     val inProgress: Int,
 ) {
-
     companion object {
-
-        private const val PERCENT_SCALE = 100.0
+        private const val PERCENT_FULL = 100.0
 
         /**
          * 자식 이슈 카테고리 문자열 목록으로부터 [EpicProgress] 를 생성한다.
@@ -45,24 +45,23 @@ data class EpicProgress(
          *   도달 불가하지만, 외부 입력 방어를 위해 동일하게 TODO 로 취급한다.
          */
         fun of(categories: List<String?>): EpicProgress {
-            var todo = 0
-            var inProgress = 0
-            var done = 0
+            val counts =
+                categories
+                    .map { normalizeCategory(it) }
+                    .groupingBy { it }
+                    .eachCount()
 
-            for (raw in categories) {
-                when (normalizeCategory(raw)) {
-                    NormalizedCategory.TODO -> todo++
-                    NormalizedCategory.IN_PROGRESS -> inProgress++
-                    NormalizedCategory.DONE -> done++
-                }
-            }
-
+            val todo = counts.getOrDefault(NormalizedCategory.TODO, 0)
+            val inProgress = counts.getOrDefault(NormalizedCategory.IN_PROGRESS, 0)
+            val done = counts.getOrDefault(NormalizedCategory.DONE, 0)
             val total = todo + inProgress + done
-            val donePercentage = if (total > 0) {
-                Math.round(done * PERCENT_SCALE / total).toInt()
-            } else {
-                0
-            }
+
+            val donePercentage =
+                if (total > 0) {
+                    (done * PERCENT_FULL / total).roundToInt()
+                } else {
+                    0
+                }
 
             return EpicProgress(
                 total = total,
@@ -79,13 +78,18 @@ data class EpicProgress(
          * EC2: 비표준 문자열 → [NormalizedCategory.TODO] 폴백.
          * EC3: null → [NormalizedCategory.TODO] 폴백 (도달 불가 방어).
          */
-        private fun normalizeCategory(raw: String?): NormalizedCategory = when (raw) {
-            "IN_PROGRESS" -> NormalizedCategory.IN_PROGRESS
-            "DONE" -> NormalizedCategory.DONE
-            else -> NormalizedCategory.TODO
-        }
+        private fun normalizeCategory(raw: String?): NormalizedCategory =
+            when (raw) {
+                "IN_PROGRESS" -> NormalizedCategory.IN_PROGRESS
+                "DONE" -> NormalizedCategory.DONE
+                else -> NormalizedCategory.TODO
+            }
     }
 
-    /** 카테고리 정규화 내부 표현 — 외부 enum(StateCategory) import 없이 BC 격리 유지. */
+    /**
+     * 카테고리 정규화 내부 표현.
+     *
+     * 외부 enum(StateCategory, project-workflow BC) 을 import 하지 않고 BC 격리를 유지한다.
+     */
     private enum class NormalizedCategory { TODO, IN_PROGRESS, DONE }
 }
