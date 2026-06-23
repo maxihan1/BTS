@@ -304,37 +304,6 @@ export const issueAtlasForEpicFixture: IssueResponse = {
   noneditableFields: [],
 }
 
-/**
- * 에픽 진행률 fixture — ATLAS-EPIC-1 기준 (10개 자식 중 4개 완료).
- * GET /api/v1/epics/ATLAS-EPIC-1/progress 기본 응답으로 사용한다.
- * MSW 핸들러는 epicChildrenStore에서 파생하므로, 이 픽스처는 단위 테스트 인라인 mock용.
- */
-export const epicProgressFixture = {
-  total: 10,
-  done: 4,
-  donePercentage: 40,
-  byCategory: {
-    todo: 3,
-    inProgress: 3,
-    done: 4,
-  },
-} as const
-
-/**
- * 빈 에픽 진행률 fixture — 자식 이슈 없는 에픽.
- * total=0, donePercentage=0.
- */
-export const epicProgressEmptyFixture = {
-  total: 0,
-  done: 0,
-  donePercentage: 0,
-  byCategory: {
-    todo: 0,
-    inProgress: 0,
-    done: 0,
-  },
-} as const
-
 /** 빈 이슈 목록 fixture */
 export const emptyIssuePageFixture: IssuePage = {
   content: [],
