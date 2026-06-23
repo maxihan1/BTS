@@ -142,9 +142,12 @@ class IssueRankMigrationTest {
             key: String,
             createdMinutesOffset: Int,
         ) {
+            // type_id: V005 가 issues.type_id 를 NOT NULL FK 로 추가 → V003 이 시드한 'task' 타입 id 로 채운다.
             c.prepareStatement(
-                "INSERT INTO issues (id, key, project_id, summary, reporter_id, current_state_key, created_at, updated_at)" +
-                    " VALUES (?, ?, ?, ?, ?, ?, NOW() + (? || ' minutes')::interval, NOW())",
+                "INSERT INTO issues (id, key, project_id, summary, reporter_id, current_state_key, type_id, created_at, updated_at)" +
+                    " VALUES (?, ?, ?, ?, ?, ?," +
+                    " (SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1)," +
+                    " NOW() + (? || ' minutes')::interval, NOW())",
             ).use { stmt ->
                 stmt.setObject(1, UUID.randomUUID())
                 stmt.setString(2, key)
