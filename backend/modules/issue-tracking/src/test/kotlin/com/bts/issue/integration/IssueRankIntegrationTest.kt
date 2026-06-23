@@ -793,8 +793,9 @@ class IssueRankIntegrationTest {
      *
      * E4(타 프로젝트 이웃) 검증용.
      */
-    private fun insertIssueInOtherProject(summary: String): String =
-        insertIssueInternal(summary, null, projectKey = OTHER_PROJECT_KEY)
+    private fun insertIssueInOtherProject(summary: String): String {
+        return insertIssueInternal(summary, null, projectKey = OTHER_PROJECT_KEY)
+    }
 
     @Suppress("LongMethod")
     private fun insertIssueInternal(
