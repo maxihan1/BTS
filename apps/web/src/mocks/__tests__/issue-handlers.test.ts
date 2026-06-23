@@ -1,4 +1,5 @@
 // PATCH /api/v1/issues/:key — typeId 처리 + expectedVersion 필드 정합 + description/priority/labels/environment/impact merge-patch 단위 테스트
+// Task 6 (FR-SR-01 D6): GET /api/v1/issues query param 필터링 단위 테스트
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { issueHandlers, resetIssueState } from '../issue-handlers'
@@ -313,5 +314,144 @@ describe('GET /api/v1/issues/:key — descriptionHtml 단건 GET 모킹', () => 
     expect(res.status).toBe(200)
     const body = await res.json() as { data: { descriptionHtml: string | null } }
     expect(body.data.descriptionHtml).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 6 (FR-SR-01 D6) — GET /api/v1/issues query param 필터링 (B2 + B3)
+//
+// 이슈 4건(ATLAS-1/2/3/5) 분포:
+//   status:       open, in_progress, done, in_review (모두 다름)
+//   assigneeId:   null, bob-id, alice-id, null (2건 미배정)
+//     ★ alice.id = issueAtlas2.id 충돌 회피 → assignee에 별도 UUID 사용
+//   labels:       [], ['bug'], ['frontend'], [] (2건 비어있음)
+//   componentIds: [], [], [COMP_A_ID], [] (1건만 있음)
+//
+// 분별 시드가 올바르면 각 필터가 "전체(4)보다 적은" 건수를 반환한다.
+// 현재 listIssuesHandler는 query param을 읽지 않으므로 — 이 테스트들은 RED 상태.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** ATLAS 컴포넌트A UUID — issue-fixtures.ts 분별 시드와 동기화 */
+const COMP_A_ID = '40000000-0000-4000-8000-000000000001'
+
+/** bob UUID — user-fixtures.ts userBobFixture.id */
+const BOB_ID = 'd4e5f6a7-b8c9-4d0e-af1f-3b4c5d6e7f8a'
+
+async function listIssues(params: Record<string, string | string[]>): Promise<Response> {
+  const sp = new URLSearchParams()
+  for (const [key, val] of Object.entries(params)) {
+    if (Array.isArray(val)) {
+      for (const v of val) sp.append(key, v)
+    } else {
+      sp.set(key, val)
+    }
+  }
+  return fetch(`/api/v1/issues?${sp.toString()}`)
+}
+
+interface IssuePage {
+  content: Array<{ key: string; currentStateKey: string; assigneeId: string | null; labels: string[]; componentIds: string[] }>
+  totalElements: number
+}
+
+async function listIssuesJson(params: Record<string, string | string[]>): Promise<IssuePage> {
+  const res = await listIssues(params)
+  return res.json() as Promise<IssuePage>
+}
+
+describe('GET /api/v1/issues — status 필터링 (Task 6 B2)', () => {
+  it('status=open → open 상태 이슈만 반환(전체보다 적음)', async () => {
+    const page = await listIssuesJson({ status: 'open' })
+    // ATLAS-1만 open — 4건보다 적어야 함 (vacuous 금지)
+    expect(page.content.length).toBeGreaterThan(0)
+    expect(page.content.length).toBeLessThan(4)
+    expect(page.content.every((i) => i.currentStateKey === 'open')).toBe(true)
+  })
+
+  it('status=open&status=done → OR 결합 (두 상태 모두 반환, 나머지 제외)', async () => {
+    const page = await listIssuesJson({ status: ['open', 'done'] })
+    // ATLAS-1(open) + ATLAS-3(done) = 2건 — 4건보다 적음
+    expect(page.content.length).toBeGreaterThan(0)
+    expect(page.content.length).toBeLessThan(4)
+    expect(page.content.every((i) => ['open', 'done'].includes(i.currentStateKey))).toBe(true)
+  })
+
+  it('빈 status param → 전체 반환(소프트삭제 제외)', async () => {
+    const page = await listIssuesJson({})
+    expect(page.content.length).toBe(4)
+  })
+})
+
+describe('GET /api/v1/issues — assignee 필터링 (Task 6 B2)', () => {
+  it('assignee=<bob-id> → bob 담당 이슈만 반환(전체보다 적음)', async () => {
+    const page = await listIssuesJson({ assignee: BOB_ID })
+    expect(page.content.length).toBeGreaterThan(0)
+    expect(page.content.length).toBeLessThan(4)
+    expect(page.content.every((i) => i.assigneeId === BOB_ID)).toBe(true)
+  })
+
+  it('assignee=unassigned → 미배정(null) 이슈만 반환(전체보다 적음)', async () => {
+    const page = await listIssuesJson({ assignee: 'unassigned' })
+    expect(page.content.length).toBeGreaterThan(0)
+    expect(page.content.length).toBeLessThan(4)
+    expect(page.content.every((i) => i.assigneeId === null)).toBe(true)
+  })
+
+  it('assignee=<bob-id>&assignee=unassigned → OR 결합 (bob + 미배정)', async () => {
+    const page = await listIssuesJson({ assignee: [BOB_ID, 'unassigned'] })
+    // 미배정 2건 + bob 1건 = 3건 (alice 1건 제외)
+    expect(page.content.length).toBeGreaterThan(1)
+    expect(page.content.length).toBeLessThan(4)
+    expect(
+      page.content.every((i) => i.assigneeId === null || i.assigneeId === BOB_ID),
+    ).toBe(true)
+  })
+})
+
+describe('GET /api/v1/issues — label 필터링 (Task 6 B2)', () => {
+  it('label=bug → bug 라벨 이슈만 반환(전체보다 적음)', async () => {
+    const page = await listIssuesJson({ label: 'bug' })
+    expect(page.content.length).toBeGreaterThan(0)
+    expect(page.content.length).toBeLessThan(4)
+    expect(page.content.every((i) => i.labels.includes('bug'))).toBe(true)
+  })
+
+  it('label=bug&label=frontend → OR 결합 (bug 또는 frontend 라벨)', async () => {
+    const page = await listIssuesJson({ label: ['bug', 'frontend'] })
+    expect(page.content.length).toBeGreaterThan(1)
+    expect(page.content.length).toBeLessThan(4)
+    expect(
+      page.content.every((i) => i.labels.includes('bug') || i.labels.includes('frontend')),
+    ).toBe(true)
+  })
+})
+
+describe('GET /api/v1/issues — component 필터링 (Task 6 B2)', () => {
+  it('component=<COMP_A_ID> → 해당 컴포넌트 이슈만 반환(전체보다 적음)', async () => {
+    const page = await listIssuesJson({ component: COMP_A_ID })
+    expect(page.content.length).toBeGreaterThan(0)
+    expect(page.content.length).toBeLessThan(4)
+    expect(page.content.every((i) => i.componentIds.includes(COMP_A_ID))).toBe(true)
+  })
+})
+
+describe('GET /api/v1/issues — 복합 AND 필터링 (Task 6 B2)', () => {
+  it('status=open AND assignee=<bob-id> → 두 조건 모두 만족하는 이슈만', async () => {
+    const page = await listIssuesJson({ status: 'open', assignee: BOB_ID })
+    // status=open(ATLAS-1) + assignee=bob(ATLAS-2) 의 교집합 확인
+    // ATLAS-2는 in_progress이므로 교집합 0건 또는 open인 bob 이슈만 반환
+    // 전체(4)보다 적어야 함
+    expect(page.content.length).toBeLessThan(4)
+    expect(
+      page.content.every((i) => i.currentStateKey === 'open' && i.assigneeId === BOB_ID),
+    ).toBe(true)
+  })
+
+  it('status=done AND label=frontend → 두 조건 교집합', async () => {
+    const page = await listIssuesJson({ status: 'done', label: 'frontend' })
+    expect(page.content.length).toBeLessThan(4)
+    expect(
+      page.content.every((i) => i.currentStateKey === 'done' && i.labels.includes('frontend')),
+    ).toBe(true)
   })
 })

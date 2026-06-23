@@ -20,6 +20,7 @@ import {
   fetchBulkAvailableTransitions,
   downloadIssuePdf,
   IssueRedirectError,
+  buildIssueFilterQuery,
 } from './issues'
 import { ApiError } from './client'
 import { useChangeAssignee } from './useChangeAssignee'
@@ -1398,5 +1399,173 @@ describe('FR-WT-01 FR-7 — 컴포넌트 변경 시 watcher 목록 자동 갱신
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: issueWatchersKey('ATLAS-1') })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-27. buildIssueFilterQuery — 헬퍼 직접 단위 테스트 (FR-SR-01 D6/D7)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('buildIssueFilterQuery', () => {
+  it('T1-27a: filter=undefined 이면 params를 변경하지 않는다', () => {
+    const params = new URLSearchParams({ projectKey: 'ATLAS' })
+    buildIssueFilterQuery(params, undefined)
+    expect(params.toString()).toBe('projectKey=ATLAS')
+  })
+
+  it('T1-27b: 빈 배열·includeUnassigned=false → 키 미추가', () => {
+    const params = new URLSearchParams()
+    buildIssueFilterQuery(params, { statusKeys: [], assigneeIds: [], includeUnassigned: false, labels: [], componentIds: [] })
+    expect(params.toString()).toBe('')
+  })
+
+  it('T1-27c: statusKeys → status 반복 파라미터', () => {
+    const params = new URLSearchParams()
+    buildIssueFilterQuery(params, { statusKeys: ['open', 'done'], assigneeIds: [], includeUnassigned: false, labels: [], componentIds: [] })
+    expect(params.getAll('status')).toEqual(['open', 'done'])
+  })
+
+  it('T1-27d: assigneeIds + includeUnassigned → assignee 반복 + unassigned 센티널', () => {
+    const params = new URLSearchParams()
+    buildIssueFilterQuery(params, { statusKeys: [], assigneeIds: ['uuid-1'], includeUnassigned: true, labels: [], componentIds: [] })
+    expect(params.getAll('assignee')).toEqual(['uuid-1', 'unassigned'])
+  })
+
+  it('T1-27e: labels → label 반복, componentIds → component 반복', () => {
+    const params = new URLSearchParams()
+    buildIssueFilterQuery(params, { statusKeys: [], assigneeIds: [], includeUnassigned: false, labels: ['bug', 'ux'], componentIds: ['c-1'] })
+    expect(params.getAll('label')).toEqual(['bug', 'ux'])
+    expect(params.getAll('component')).toEqual(['c-1'])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-26. buildIssueFilterQuery + fetchIssues filter 확장 (FR-SR-01 D6/D7)
+//
+// fetch mock의 호출 URL을 캡처해 query string 단언.
+// 기존 T1-3 응답 테스트와 격리 — 별도 describe + server.use 오버라이드.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('buildIssueFilterQuery + fetchIssues — FR-SR-01 필터 query string 조립', () => {
+  it('T1-26a: statusKeys 2개 → status 파라미터 2회 반복', async () => {
+    let capturedUrl = ''
+    server.use(
+      http.get('/api/v1/issues', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json(pageFixture)
+      }),
+    )
+
+    await fetchIssues({
+      projectKey: 'ATLAS',
+      page: 0,
+      size: 20,
+      filter: { statusKeys: ['open', 'in_progress'], assigneeIds: [], includeUnassigned: false, labels: [], componentIds: [] },
+    })
+
+    const params = new URL(capturedUrl).searchParams
+    expect(params.getAll('status')).toEqual(['open', 'in_progress'])
+    expect(params.has('assignee')).toBe(false)
+  })
+
+  it('T1-26b: assigneeIds + includeUnassigned=true → assignee 파라미터 + unassigned 센티널', async () => {
+    let capturedUrl = ''
+    server.use(
+      http.get('/api/v1/issues', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json(pageFixture)
+      }),
+    )
+
+    await fetchIssues({
+      projectKey: 'ATLAS',
+      page: 0,
+      size: 20,
+      filter: { statusKeys: [], assigneeIds: ['a1b2c3d4-e5f6-4890-abcd-ef1234567891'], includeUnassigned: true, labels: [], componentIds: [] },
+    })
+
+    const params = new URL(capturedUrl).searchParams
+    expect(params.getAll('assignee')).toContain('a1b2c3d4-e5f6-4890-abcd-ef1234567891')
+    expect(params.getAll('assignee')).toContain('unassigned')
+  })
+
+  it('T1-26c: labels → label 파라미터', async () => {
+    let capturedUrl = ''
+    server.use(
+      http.get('/api/v1/issues', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json(pageFixture)
+      }),
+    )
+
+    await fetchIssues({
+      projectKey: 'ATLAS',
+      page: 0,
+      size: 20,
+      filter: { statusKeys: [], assigneeIds: [], includeUnassigned: false, labels: ['bug'], componentIds: [] },
+    })
+
+    const params = new URL(capturedUrl).searchParams
+    expect(params.getAll('label')).toEqual(['bug'])
+  })
+
+  it('T1-26d: componentIds → component 파라미터', async () => {
+    let capturedUrl = ''
+    server.use(
+      http.get('/api/v1/issues', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json(pageFixture)
+      }),
+    )
+
+    await fetchIssues({
+      projectKey: 'ATLAS',
+      page: 0,
+      size: 20,
+      filter: { statusKeys: [], assigneeIds: [], includeUnassigned: false, labels: [], componentIds: ['c1c2c3c4-d5d6-4890-abcd-ef1234567890'] },
+    })
+
+    const params = new URL(capturedUrl).searchParams
+    expect(params.getAll('component')).toEqual(['c1c2c3c4-d5d6-4890-abcd-ef1234567890'])
+  })
+
+  it('T1-26e: filter 미전달 → 필터 param 없음 (projectKey/page/size만, 하위호환)', async () => {
+    let capturedUrl = ''
+    server.use(
+      http.get('/api/v1/issues', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json(pageFixture)
+      }),
+    )
+
+    await fetchIssues({ projectKey: 'ATLAS', page: 0, size: 20 })
+
+    const params = new URL(capturedUrl).searchParams
+    expect(params.has('status')).toBe(false)
+    expect(params.has('assignee')).toBe(false)
+    expect(params.has('label')).toBe(false)
+    expect(params.has('component')).toBe(false)
+    expect(params.get('projectKey')).toBe('ATLAS')
+  })
+
+  it('T1-26f: 빈 배열 필터 → 필터 param 없음 (빈 배열은 키 생략)', async () => {
+    let capturedUrl = ''
+    server.use(
+      http.get('/api/v1/issues', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json(pageFixture)
+      }),
+    )
+
+    await fetchIssues({
+      projectKey: 'ATLAS',
+      page: 0,
+      size: 20,
+      filter: { statusKeys: [], assigneeIds: [], includeUnassigned: false, labels: [], componentIds: [] },
+    })
+
+    const params = new URL(capturedUrl).searchParams
+    expect(params.has('status')).toBe(false)
+    expect(params.has('assignee')).toBe(false)
+    expect(params.has('label')).toBe(false)
+    expect(params.has('component')).toBe(false)
   })
 })
