@@ -1927,6 +1927,85 @@ class IssueRepository(
             .and(ISSUES.DELETED_AT.isNull)
             .execute()
 
+    // ── rank 관련 메서드 (FR-BL-01 Task 3) ─────────────────────────────────────
+
+    /**
+     * 이슈의 rank 를 version·updated_at 증가 없이 갱신한다 (no-bump, FR-BL-01).
+     *
+     * rank 변경은 드래그 빈번 운영 액션이므로 "최종 수정일" noise 를 막기 위해
+     * updated_at 도 갱신하지 않는다 (worklog rollup no-bump 선례 동형 — learnings: no-bump-sidecar-version).
+     *
+     * UPDATE issues SET rank=? WHERE key=? AND deleted_at IS NULL
+     *
+     * @param key 대상 이슈 키.
+     * @param rank 새 LexoRank 키 문자열 (소문자 a-z, 1~50자, 끝문자 != 'a').
+     */
+    @Transactional
+    fun updateRank(
+        key: IssueKey,
+        rank: String,
+    ) {
+        log.debug("updateRank key={} rank={}", key.value, rank)
+        dsl.update(ISSUES)
+            .set(ISSUES.RANK, rank)
+            .where(ISSUES.KEY.eq(key.value))
+            .and(ISSUES.DELETED_AT.isNull)
+            .execute()
+    }
+
+    /**
+     * 이슈의 rank 를 단건 조회한다.
+     *
+     * @param key 대상 이슈 키.
+     * @return rank 문자열. 이슈가 없거나 소프트삭제된 경우 null.
+     */
+    @Transactional(readOnly = true)
+    fun findRankByKey(key: IssueKey): String? =
+        dsl.select(ISSUES.RANK)
+            .from(ISSUES)
+            .where(activeByKey(key))
+            .fetchOne(ISSUES.RANK)
+
+    /**
+     * rebalance 대상 이슈 목록을 (key, rank) 쌍으로 반환한다.
+     *
+     * ORDER BY rank, id 로 tie-break 포함 결정적 순서를 보장한다.
+     * 소프트삭제 이슈는 제외한다.
+     *
+     * @param projectId 재배포 대상 프로젝트 UUID.
+     * @return (issueKey, rank) 쌍 목록. rank 오름차순, 동률 시 id 오름차순.
+     */
+    @Transactional(readOnly = true)
+    fun findRanksForRebalance(projectId: UUID): List<Pair<String, String>> =
+        dsl.select(ISSUES.KEY, ISSUES.RANK)
+            .from(ISSUES)
+            .where(ISSUES.PROJECT_ID.eq(projectId))
+            .and(ISSUES.DELETED_AT.isNull)
+            .orderBy(ISSUES.RANK.asc(), ISSUES.ID.asc())
+            .fetch { record ->
+                // key, rank 는 NOT NULL 컬럼 — DB 무결성으로 null 비발생 보장
+                val issueKey = record.get(ISSUES.KEY) ?: error("issues.key must not be null")
+                val issueRank = record.get(ISSUES.RANK) ?: error("issues.rank must not be null")
+                issueKey to issueRank
+            }
+
+    /**
+     * 프로젝트의 활성 이슈 중 사전순 최대 rank 를 반환한다 (백로그 맨 끝 부여용).
+     *
+     * 소프트삭제 이슈는 제외한다.
+     *
+     * @param projectId 조회 대상 프로젝트 UUID.
+     * @return 최대 rank 문자열. 이슈가 없으면 null.
+     */
+    @Transactional(readOnly = true)
+    fun findMaxRank(projectId: UUID): String? =
+        dsl.select(DSL.max(ISSUES.RANK))
+            .from(ISSUES)
+            .where(ISSUES.PROJECT_ID.eq(projectId))
+            .and(ISSUES.DELETED_AT.isNull)
+            .fetchOne()
+            ?.value1()
+
     /**
      * ILIKE ESCAPE '\' 에서 안전하게 사용하기 위해 prefix 의 와일드카드 문자를 이스케이프한다.
      *
@@ -1981,6 +2060,9 @@ private fun Issue.toInsertRecord(): IssuesRecord =
         originalEstimateSeconds = originalEstimateSeconds,
         timeSpentSeconds = timeSpentSeconds,
         remainingEstimateSeconds = remainingEstimateSeconds,
+        // LexoRank 정렬 키 (FR-BL-01, V029). NOT NULL 컬럼 — 호출자가 반드시 non-null 값을 주입해야 한다.
+        // IssueApplicationService.createIssue 는 findMaxRank → Rank.between 으로 자동부여 후 copy(rank=...) 로 주입한다.
+        rank = rank ?: error("rank 는 insert 전 반드시 채워져야 합니다 (key=${key.value})"),
     )
 
 /**
@@ -2027,6 +2109,8 @@ private fun IssuesRecord.toIssue(): Issue {
         originalEstimateSeconds = originalEstimateSeconds,
         timeSpentSeconds = timeSpentSeconds ?: 0,
         remainingEstimateSeconds = remainingEstimateSeconds,
+        // LexoRank 정렬 키 — V029 (FR-BL-01). NOT NULL 컬럼이므로 DB 에서 반드시 non-null.
+        rank = rank,
     )
 }
 

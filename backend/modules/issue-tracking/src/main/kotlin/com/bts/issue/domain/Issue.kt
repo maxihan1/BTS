@@ -125,6 +125,9 @@ data class Issue(
     val originalEstimateSeconds: Int? = null,
     val timeSpentSeconds: Int = 0,
     val remainingEstimateSeconds: Int? = null,
+    // LexoRank 백로그 정렬 키 (FR-BL-01, V029). null 이면 IssueRepository 가 자동부여.
+    // IssueApplicationService.createIssue 는 반드시 non-null rank 를 채워 insert 를 호출한다.
+    val rank: String? = null,
 ) {
     companion object {
         /**
