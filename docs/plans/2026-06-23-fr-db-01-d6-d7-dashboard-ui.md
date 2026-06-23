@@ -75,6 +75,164 @@ FR 14개(FR-1~14), 엣지 10개(EC1~10). FR 총수 123 불변(D6/D7 체크박스
 
 ✅ 통과 — 명세 명확 완료 FR이라 office-hours/brainstorming 대신 직접 기술 스펙 + self-review(스펙 §9). Maxi 결정 3건으로 핵심 모호성(의존성·위젯스코프·라우트) 선해소. 누락 gap 없음. 과설계 항목(더미위젯·자동저장·모드토글) self-review에서 배제.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+10 TDD task (frontend 9 + qa 1). 모든 경로는 repo 루트 기준. 선례 = 칸반보드(@dnd-kit)·워크로그(recharts).
+
+### Task 1. react-grid-layout 도입 + layout 직렬화 순수 함수
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/package.json`, `apps/web/src/lib/dashboard-layout.ts`, `apps/web/src/lib/dashboard-layout.test.ts`]
+- depends-on: []
+
+**RED**: `dashboard-layout.test.ts` —
+- `parseLayout(jsonString): DashboardTile[]` — 정상 배열 파싱, 빈 문자열→`[]`, 손상 JSON→`[]` 폴백(throw 금지), 비-배열→`[]`
+- `serializeLayout(tiles): string` — round-trip 보존
+- `createTile(existing): DashboardTile` — 고유 `i` 생성(crypto.randomUUID), 기본 위치/크기(빈 칸 탐색 or y=Infinity)
+
+**GREEN**: `lib/dashboard-layout.ts` 구현 + `react-grid-layout` + `@types/react-grid-layout` 설치(package.json). `DashboardTile{i,x,y,w,h,title}` 타입 export.
+
+**REFACTOR**: 그리드 상수(COLS=12, 기본 w/h) 추출 + 파일 L1 한국어 주석.
+
+**검증**: `pnpm test dashboard-layout` + `pnpm typecheck`(react-grid-layout React 19 타입 호환 = import 에러 없음. ★NFR-1 첫 검증 — peer dep 경고/타입 충돌 시 controller 보고).
+
+### Task 2. api/dashboards.ts — Zod 스키마 + CRUD
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/dashboards.ts`, `apps/web/src/api/dashboards.test.ts`]
+- depends-on: []
+
+**RED**: `dashboards.test.ts` —
+- Zod: `dashboardSchema`(description `.nullish()` ← @JsonInclude NON_NULL), `dashboardPageSchema`
+- `listDashboards(limit,offset)` GET, `getDashboard(id)` GET — apiGet(CSRF 불요)
+- `createDashboard(body)` POST, `patchDashboard(id,body)` PATCH(version 포함), `deleteDashboard(id)` DELETE — apiFetch + `X-XSRF-TOKEN`(readXsrfToken)
+- 에러코드 대문자 `NOTIF_DASHBOARD_*` 매핑(ApiError 전파)
+
+**GREEN**: 선례 `api/boards.ts`·`api/notification-policies.ts` 패턴. dataWrapper 헬퍼 파일내 정의.
+
+**검증**: `pnpm test src/api/dashboards`.
+
+### Task 3. MSW dashboard 핸들러 + fixtures (stateful, OCC 시뮬)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/mocks/dashboard-handlers.ts`, `apps/web/src/mocks/dashboard-fixtures.ts`, `apps/web/src/mocks/dashboard-handlers.test.ts`, `apps/web/src/mocks/handlers.ts`]
+- depends-on: []
+
+**RED**: `dashboard-handlers.test.ts` — list/get/create/patch/delete stateful store. PATCH version 불일치→409 `NOTIF_DASHBOARD_CONFLICT`. 비소유자 patch/delete→403. 미존재→404.
+
+**GREEN**: 선례 `board-handlers.ts`·`board-fixtures.ts`. **모듈 로드 시 자동 시드**(★msw-derived-behavior-shared-store-e2e: 브라우저 시드가능 공유 store). `handlers.ts`에 dashboardHandlers 등록.
+
+**검증**: `pnpm test dashboard-handlers`.
+
+### Task 4. use-dashboards.ts — TanStack Query 훅
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/hooks/use-dashboards.ts`, `apps/web/src/hooks/use-dashboards.test.tsx`]
+- depends-on: [2]
+
+**RED**: `use-dashboards.test.tsx` — `useDashboards`(목록 queryKey), `useDashboard(id)`(단건), `useCreateDashboard`/`useUpdateDashboard`/`useDeleteDashboard` mutation + onSuccess 캐시 무효화(목록+단건).
+
+**GREEN**: 선례 `use-boards.ts`. MSW(Task 3) 의존 테스트는 핸들러 등록 가정(같은 wave 아님 — Task 3 먼저면 OK, 아니면 인라인 http mock).
+
+**검증**: `pnpm test use-dashboards`.
+
+### Task 5. i18n dashboard-labels + 권한 판정 유틸
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/i18n/dashboard-labels.ts`, `apps/web/src/i18n/dashboard-labels.test.ts`, `apps/web/src/lib/dashboard-permission.ts`, `apps/web/src/lib/dashboard-permission.test.ts`]
+- depends-on: []
+
+**RED**:
+- `dashboard-labels.test.ts` — 라벨 키 존재 + **콜론 종결 금지**(board-labels.test.ts 패턴)
+- `dashboard-permission.test.ts` — `canEditDashboard(dashboard, currentUserId): boolean` = `ownerId === currentUserId`(비소유자 false)
+
+**GREEN**: `i18n/dashboard-labels.ts`(BC별 분리) + `lib/dashboard-permission.ts`.
+
+**검증**: `pnpm test dashboard-labels dashboard-permission`.
+
+### Task 6. DashboardForm — 생성/편집 공용 폼 (메타 + visibility + 공유)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/dashboard/DashboardForm.tsx`, `apps/web/src/components/dashboard/DashboardForm.test.tsx`]
+- depends-on: [5]
+
+**RED**: `DashboardForm.test.tsx` — name 검증(빈/201자 차단+인라인 에러 EC8), description, visibility select(PRIVATE/TEAM/ORG), **TEAM 선택 시에만 공유 사용자 입력 활성**(EC7 허용), 제출 페이로드 형태(생성 vs patch 3-state).
+
+**GREEN**: 기존 폼 패턴. 공유 사용자 선택은 기존 `use-users.ts`/`use-user-directory.ts` 재사용(없으면 최소 입력, 과설계 금지). labels(Task 5) import.
+
+**검증**: `pnpm test DashboardForm`.
+
+### Task 7. routes/dashboards.tsx — 목록 + 생성 페이지
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/dashboards.tsx`, `apps/web/src/routes/__tests__/dashboards.test.tsx`]
+- depends-on: [4, 6]
+
+**RED**: `dashboards.test.tsx` — 목록 카드(이름·설명·visibility 배지·소유여부), 빈 상태+생성 CTA(EC1), "대시보드 만들기"→DashboardForm 제출→`/dashboards/$id` 네비.
+
+**GREEN**: `DashboardsRouteAdapter`(useDashboards) + `DashboardsListPage`(props, 라우터 비의존). 선례 `routes/projects.$projectKey.board.tsx` RouteAdapter+Page 분리.
+
+**검증**: `pnpm test routes/__tests__/dashboards`.
+
+### Task 8. routes/dashboards.$dashboardId.tsx — 상세 그리드 (핵심)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/dashboards.$dashboardId.tsx`, `apps/web/src/components/dashboard/DashboardGrid.tsx`, `apps/web/src/components/dashboard/DashboardTile.tsx`, `apps/web/src/routes/__tests__/dashboards.$dashboardId.test.tsx`, `apps/web/src/components/dashboard/DashboardGrid.test.tsx`]
+- depends-on: [1, 4, 6]
+
+**RED**:
+- `DashboardGrid.test.tsx` — react-grid-layout smoke(★jsdom width0 → recharts식 `vi.mock('react-grid-layout')` stub 또는 width 주입 + 순수 로직 단위). onLayoutChange→tile 변환.
+- `dashboards.$dashboardId.test.tsx` — 타일 추가/삭제 로컬 state, 제목 인라인 편집(S4), 저장(PATCH layout+version, dirty 표시 S3), **권한 게이팅**(비소유자 읽기전용=편집UI 숨김 EC3/FR-9), OCC 409→토스트+로컬보존(EC4/S8), 손상 layout→빈 폴백(EC6), 404(EC5).
+
+**GREEN**: `DashboardDetailRouteAdapter`+`DashboardDetailPage`(props). `DashboardGrid`(react-grid-layout WidthProvider)+`DashboardTile`(placeholder: 제목+본문 "FR-DB-02 콘텐츠" 안내). 권한=`canEditDashboard`(Task 5). 설정 편집=DashboardForm(Task 6). 실 드래그/리사이즈는 E2E 위임(NFR-2).
+
+**검증**: `pnpm test dashboards.\$dashboardId DashboardGrid`.
+
+### Task 9. router.ts 등록 + Header 네비
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/router.ts`, `apps/web/src/components/Header.tsx`, `apps/web/src/components/Header.test.tsx`]
+- depends-on: [7, 8]
+
+**RED**: `Header.test.tsx` — "대시보드" 링크(`/dashboards`) 노출. (router는 router.test.tsx 있으면 라우트 등록 확인)
+
+**GREEN**: `createRoute` 2개(`/dashboards`, `/dashboards/$dashboardId`, requireAuth+requireAuthAndPasswordChanged 가드) + `addChildren` 추가. Header 메인 네비 링크(ADMIN_LINKS 옆). 기존 `/dashboard`(환영) 보존.
+
+**검증**: `pnpm test Header router` + `pnpm typecheck`.
+
+### Task 10. E2E — dashboard.spec.ts
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/dashboard.spec.ts`]
+- depends-on: [9]
+
+**RED→GREEN**: 선례 `e2e/board-kanban.spec.ts`(PointerSensor). 시나리오 —
+- S1 목록 표시, S2 생성→상세 이동, S3 타일 추가+드래그+리사이즈+저장(mouse.move/down/move>5px/move/up), S6 삭제, S7 비소유자 읽기전용(fixture userId 정합 ★e2e-fixture-whoami-userid-alignment), S8 OCC 409 토스트.
+- MSW 공유 store 시드(reload 금지=SPA 내 이동 ★worktree-stale-base-rebase-and-e2e-msw-traps). 회귀: `/dashboard` 환영 경로 + 네비.
+
+**검증**: `pnpm test:e2e dashboard` + 기존 E2E 회귀 0.
+
+## Plan 메타
+
+- task 수: 10 (frontend 9 + qa 1)
+- depends 그래프 → 예상 wave 5개.
+  - Wave 1 (`[]`): Task 1·2·3·5 (4 병렬, 파일 무충돌)
+  - Wave 2: Task 4(dep 2)·6(dep 5)
+  - Wave 3: Task 7(dep 4,6)·8(dep 1,4,6) (routes 파일 분리=무충돌)
+  - Wave 4: Task 9(dep 7,8) — router.ts+Header 통합(공유파일이라 직렬)
+  - Wave 5: Task 10(dep 9) — E2E (qa-engineer)
+- TDD 강제: yes (test 커밋이 feat 커밋보다 먼저)
+- 추가 검증: pnpm typecheck(tsconfig.app) + lint + vitest + playwright
+- ★주의: (1) react-grid-layout React 19 호환 Task 1 첫 검증, (2) jsdom width0 → 그리드 smoke+E2E, (3) worktree node_modules 새 의존성 설치(부분설치 깨짐 주의 worktree-node-modules-partial-install), (4) MSW stateful 공유 store, (5) E2E fixture userId 정합.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
