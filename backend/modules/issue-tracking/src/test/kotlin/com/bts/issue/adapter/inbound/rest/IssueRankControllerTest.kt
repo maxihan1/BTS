@@ -5,6 +5,7 @@ package com.bts.issue.adapter.inbound.rest
 import com.bts.issue.application.BacklogRankService
 import com.bts.issue.application.InvalidRankNeighborException
 import com.bts.issue.application.IssueApplicationService
+import com.bts.issue.application.RerankResult
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
@@ -43,7 +44,7 @@ import java.util.UUID
  * constructor validation 에 걸리므로 Fake 구현으로 우회한다
  * (메모리 fr-is-06-handoff-mockk-detekt-traps).
  *
- * [IssueApplicationService] 는 relaxed MockK stub 으로 대체한다.
+ * [IssueApplicationService] 는 relaxed MockK stub 으로 대체한다(컨트롤러 생성자 주입 필요).
  * [IssueExceptionHandler] 를 컨텍스트에 등록하여 예외 → HTTP 상태 변환을 검증한다.
  * 특히 [InvalidRankNeighborException] 이 catch-all 500 이 아닌 400 으로 응답하는지
  * MockMvc 레벨에서 단언한다 (B1 + 메모리 catch-all-exceptionhandler-swallows-responsestatusexception).
@@ -70,8 +71,7 @@ class IssueRankControllerTest {
         dsl = mockk(relaxed = true),
     ) {
         var rerankAction: () -> Unit = {}
-        var findRankResult: String? = null
-        var findVersionResult: Long? = 1L
+        var rerankResultStub: RerankResult = RerankResult(rank = null, version = 1L)
 
         override fun rerank(
             actor: ActorId,
@@ -80,9 +80,7 @@ class IssueRankControllerTest {
             nextIssueKey: IssueKey?,
         ) = rerankAction()
 
-        override fun findRankByKey(key: IssueKey): String? = findRankResult
-
-        override fun findVersionByKey(key: IssueKey): Long? = findVersionResult
+        override fun findRerankResult(key: IssueKey): RerankResult = rerankResultStub
     }
 
     /**
@@ -132,8 +130,7 @@ class IssueRankControllerTest {
             )
         // 각 테스트 전 Fake 상태 초기화
         fakeBacklogRankService.rerankAction = {}
-        fakeBacklogRankService.findRankResult = null
-        fakeBacklogRankService.findVersionResult = 1L
+        fakeBacklogRankService.rerankResultStub = RerankResult(rank = null, version = 1L)
     }
 
     @AfterEach
@@ -150,14 +147,14 @@ class IssueRankControllerTest {
         val expectedRank = "g"
         val expectedVersion = 3L
 
-        // Fake stub: rerank 정상, findRankByKey/findVersionByKey 반환값 설정.
+        // Fake stub: rerank 정상, findRerankResult 반환값 설정.
         fakeBacklogRankService.rerankAction = {}
-        fakeBacklogRankService.findRankResult = expectedRank
-        fakeBacklogRankService.findVersionResult = expectedVersion
+        fakeBacklogRankService.rerankResultStub = RerankResult(rank = expectedRank, version = expectedVersion)
 
-        val body = mapper.writeValueAsString(
-            mapOf("previousIssueKey" to previousKey, "nextIssueKey" to nextKey),
-        )
+        val body =
+            mapper.writeValueAsString(
+                mapOf("previousIssueKey" to previousKey, "nextIssueKey" to nextKey),
+            )
 
         mockMvc.perform(
             patch("/api/v1/issues/$issueKey/rank")
@@ -180,9 +177,10 @@ class IssueRankControllerTest {
             throw InvalidRankNeighborException("previousIssueKey 와 nextIssueKey 가 둘 다 null 입니다.")
         }
 
-        val body = mapper.writeValueAsString(
-            mapOf("previousIssueKey" to null, "nextIssueKey" to null),
-        )
+        val body =
+            mapper.writeValueAsString(
+                mapOf("previousIssueKey" to null, "nextIssueKey" to null),
+            )
 
         mockMvc.perform(
             patch("/api/v1/issues/$issueKey/rank")
@@ -206,9 +204,10 @@ class IssueRankControllerTest {
             )
         }
 
-        val body = mapper.writeValueAsString(
-            mapOf("previousIssueKey" to "BTS-1", "nextIssueKey" to null),
-        )
+        val body =
+            mapper.writeValueAsString(
+                mapOf("previousIssueKey" to "BTS-1", "nextIssueKey" to null),
+            )
 
         mockMvc.perform(
             patch("/api/v1/issues/$issueKey/rank")
@@ -227,9 +226,10 @@ class IssueRankControllerTest {
             throw IssueNotFoundException(IssueKey(issueKey))
         }
 
-        val body = mapper.writeValueAsString(
-            mapOf("previousIssueKey" to null, "nextIssueKey" to "BTS-2"),
-        )
+        val body =
+            mapper.writeValueAsString(
+                mapOf("previousIssueKey" to null, "nextIssueKey" to "BTS-2"),
+            )
 
         mockMvc.perform(
             patch("/api/v1/issues/$issueKey/rank")
@@ -239,5 +239,4 @@ class IssueRankControllerTest {
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.errorCode").value("ISSUE_NOT_FOUND"))
     }
-
 }

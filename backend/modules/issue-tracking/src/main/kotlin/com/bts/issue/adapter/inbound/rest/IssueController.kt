@@ -2,6 +2,7 @@
 
 package com.bts.issue.adapter.inbound.rest
 
+import com.bts.issue.adapter.inbound.rest.dto.RerankIssueRequest
 import com.bts.issue.application.AppChangeAssigneeRequest
 import com.bts.issue.application.AppChangeComponentsRequest
 import com.bts.issue.application.AppChangeVersionsRequest
@@ -11,7 +12,6 @@ import com.bts.issue.application.EstimatePatch
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.IssueChangelogService
 import com.bts.issue.application.SecurityLevelPatch
-import com.bts.issue.adapter.inbound.rest.dto.RerankIssueRequest
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.pdf.IssuePdfRenderer
 import com.bts.issue.pdf.IssuePdfTemplate
@@ -601,15 +601,14 @@ class IssueController(
             request.nextIssueKey?.let { IssueKey(it) },
         )
 
-        // no-bump 라 version 불변 — rank/version 은 BacklogRankService 로 조회한다.
-        // IssueApplicationService.findByKey 재사용 시 IssueKey value class 를
-        // MockK any() 매처가 처리하지 못하는 테스트 제약으로 BacklogRankService 직접 조회 채택.
-        val rank = rankService.findRankByKey(issueKey)
-        val version = rankService.findVersionByKey(issueKey)
-            ?: error("rerank 직후 이슈(${issueKey.value})의 version 조회 실패 — 동시 삭제가 발생했을 수 있습니다.")
+        // no-bump 라 version 불변 — rank/version 은 BacklogRankService.findRerankResult 로 한 번에 조회한다.
+        val result = rankService.findRerankResult(issueKey)
+        val version =
+            result.version
+                ?: error("rerank 직후 이슈(${issueKey.value})의 version 조회 실패 — 동시 삭제가 발생했을 수 있습니다.")
 
         return ResponseEntity.ok(
-            DataResponse(data = IssueRankResponse(key = issueKey.value, rank = rank, version = version)),
+            DataResponse(data = IssueRankResponse(key = issueKey.value, rank = result.rank, version = version)),
         )
     }
 

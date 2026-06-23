@@ -65,6 +65,7 @@ private const val SQL_REBALANCE_LOCK =
  * 3. 균등 간격 3자리 rank 재배포 — trailing-a 회피를 Rank 불변식으로 보장.
  * 4. 재배포 후 prev/next rank 재조회 → between 재계산 → updateRank (C3).
  */
+@Suppress("TooManyFunctions") // rerank/rebalance/findRankByKey/findVersionByKey + 내부 헬퍼 조합 — 단일 도메인 책임으로 분리 불필요.
 @Service
 @Transactional
 class BacklogRankService(
@@ -140,28 +141,21 @@ class BacklogRankService(
     }
 
     /**
-     * 이슈 rank 값을 조회한다 (컨트롤러 응답 조립용).
+     * rerank 응답 조립용 rank 와 version 을 한 번의 쿼리로 반환한다.
      *
-     * rerank 후 컨트롤러가 응답 DTO 조립을 위해 호출한다.
-     * 이슈가 미존재하거나 소프트삭제된 경우 null 을 반환한다.
-     *
-     * @param key 조회할 이슈 키.
-     * @return rank 문자열. 미부여(nullable, 옵션 B lazy) 또는 미존재 시 null.
-     */
-    @Transactional(readOnly = true)
-    fun findRankByKey(key: IssueKey): String? = repo.findRankByKey(key)
-
-    /**
-     * 이슈 version 을 조회한다 (컨트롤러 응답 조립용).
-     *
-     * rerank 는 no-bump 라 version 이 변하지 않는다. rerank 전에 조회한 version 을 응답에 사용한다.
-     * 이슈가 미존재하거나 소프트삭제된 경우 null 을 반환한다.
+     * rank 는 [IssueRepository.findRankByKey] 로, version 은 [IssueRepository.findByKey] 로 조회한다.
+     * 이슈가 미존재하거나 소프트삭제된 경우 두 필드 모두 null 을 반환한다.
+     * rerank 는 no-bump 라 version 이 변하지 않으므로 rerank 완료 직후 값이 응답 DTO 와 동일하다.
      *
      * @param key 조회할 이슈 키.
-     * @return version. 미존재 시 null.
+     * @return [RerankResult] — rank 와 version. 이슈 미존재 시 null 필드.
      */
     @Transactional(readOnly = true)
-    fun findVersionByKey(key: IssueKey): Long? = repo.findByKey(key)?.version
+    fun findRerankResult(key: IssueKey): RerankResult {
+        val rank = repo.findRankByKey(key)
+        val version = repo.findByKey(key)?.version
+        return RerankResult(rank = rank, version = version)
+    }
 
     // ── private helpers ────────────────────────────────────────────────────────
 
@@ -359,3 +353,15 @@ class BacklogRankService(
         return if (encoded.last() == 'a') encoded.dropLast(1) + 'b' else encoded
     }
 }
+
+/**
+ * rerank 응답 조립에 필요한 rank 와 version 을 담는 결과 DTO.
+ *
+ * @property rank 이슈의 현재 rank 문자열. null 이면 미부여(옵션 B lazy).
+ * @property version 이슈의 OCC version. rerank 는 no-bump 라 rerank 전후 동일.
+ *                  null 이면 이슈 미존재(동시 삭제 등 예외 상황).
+ */
+data class RerankResult(
+    val rank: String?,
+    val version: Long?,
+)
