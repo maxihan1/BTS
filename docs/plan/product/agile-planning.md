@@ -91,13 +91,15 @@
 
 **우선순위**. 필수 | **선행**. §1.1 | **Plan slug**. `agile/backlog-lexorank`
 
-- [ ] D1. 도메인 — Rank VO (책임. backend-engineer)
-- [ ] D2. 명세 — LexoRank 알고리즘 + rebalance 트리거 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `issues.rank` (TEXT) + index (책임. db-engineer)
-- [ ] D4. 백엔드 — `PATCH /api/v1/issues/{key}/rank` + 자동 rebalance (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — 1K 시나리오 (책임. backend-engineer)
+- [x] D1. 도메인 — Rank VO (책임. backend-engineer) (PR #179)
+- [x] D2. 명세 — LexoRank 알고리즘 + rebalance 트리거 (책임. backend-engineer) (PR #179)
+- [x] D3. 데이터 모델 — `issues.rank` VARCHAR(50) nullable(옵션 B) + index, V030 (책임. db-engineer) (PR #179)
+- [x] D4. 백엔드 — `PATCH /api/v1/issues/{key}/rank` + on-demand rebalance (책임. backend-engineer) (PR #179)
+- [x] D5. 백엔드 테스트 — 1K 시나리오 (책임. backend-engineer) (PR #179)
 - [ ] D6. 프론트 UI — (§3.2와 통합) (책임. frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [ ] D7. E2E — 프론트(D6) 동반, FR-BL-02와 통합 (책임. qa-engineer)
+
+> **Deviation(PR #179)**. ① **옵션 B(nullable + lazy)** 채택 — 신규 이슈 rank=NULL, 드래그 시 부여, 정렬 `NULLS LAST, created_at`. 당초 NOT NULL+생성 시 자동부여가 기존 테스트 254개 파급(raw INSERT NOT NULL + service mock findMaxRank)을 일으켜 Maxi 확정으로 전환. ② rank=issue 스칼라 속성 → **issue-tracking BC** 소유(FR-PL-01 일정 필드 선례), LexoRank VO는 shared-kernel. ③ 동시성 no-bump last-write-wins, rebalance만 advisory lock. ④ V029→**V030** 리넘버(origin/main FR-SR-01 V029_filter_indexes 충돌 회피). ⑤ D6/D7(프론트·E2E)은 FR-BL-02와 통합 이연.
 
 ### §3.2 FR-BL-02 — 백로그 → 스프린트 드래그 이동
 
