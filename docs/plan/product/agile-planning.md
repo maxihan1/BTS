@@ -225,13 +225,15 @@
 
 **우선순위**. 필수 | **선행**. §7.1 | **Plan slug**. `agile/epic-progress`
 
-- [ ] D1. 도메인 — EpicProgress (책임. backend-engineer)
-- [ ] D2. 명세 — 자식 상태 비율 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /api/v1/epics/{key}/progress` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 진행률 막대 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — EpicProgress VO (순수 집계 로직, 외부의존 0) (책임. backend-engineer) (PR #177)
+- [x] D2. 명세 — 자식 상태 비율 = 카테고리(TODO/IN_PROGRESS/DONE) 분해 + donePercentage. 자식 타입별 워크플로우 기준 판정 (책임. backend-engineer) (PR #177)
+- [x] D3. 데이터 모델 — (활용) `issues.epic_id`(V028, FR-EP-01) + `current_state_key`. 신규 테이블/마이그레이션 없음 (책임. backend-engineer) (PR #177)
+- [x] D4. 백엔드 — `GET /api/v1/epics/{key}/progress` (IssueEpicService.progress + WorkflowStateCatalog 집계, BROWSE 게이트 + accessibleLevels visibility) (책임. backend-engineer) (PR #177)
+- [x] D5. 백엔드 테스트 (단위 EpicProgress/Service + 통합 S1~S7 실 스킴 시드) (책임. backend-engineer) (PR #177)
+- [x] D6. 프론트 UI — 진행률 막대 (EpicProgressBar 3색 구간, EpicChildrenSection 통합) (책임. frontend-engineer) (PR #177)
+- [x] D7. E2E (epic-progress.spec.ts 2 시나리오) (책임. qa-engineer) (PR #177)
+
+> **deviation (PR #177)**. (1) **실제 구현 BC = issue-tracking** — product §7.2는 agile-planning 분류이나 FR-EP는 ADR 2026-06-22(FR-EP-01)대로 `com.bts.issue.epic` 패키지(issue-tracking). FR-EP-02도 동일. FR 총수 123 불변. (2) **데이터 모델 = 활용 확정**(db-engineer 미관여) — `epic_id` 직속 자식 집계, 신규 스키마 0. (3) **카테고리 판정 cross-BC** — `current_state_key` → shared-kernel `WorkflowStateCatalog.listStates(projectKey, issueTypeKey)` → `WorkflowStateView.category`. 타입별 1회 캐싱(N+1 차단), `WorkflowSchemeNoDefaultException` simpleName catch 폴백(미할당 타입 자식 TODO, 운영 500 차단). (4) **visibility 모수** = 보이는 자식만(accessibleLevels SQL 푸시다운, 누출 0), S4 통합테스트가 엔드포인트 레이어에서 `total=1` 실측.
 
 ## §NFR agile-planning BC 완료 게이트
 
