@@ -2,6 +2,7 @@
 
 package com.bts.issue.adapter.inbound.rest
 
+import com.bts.issue.application.InvalidRankNeighborException
 import com.bts.issue.customfield.domain.CustomFieldValidationException
 import com.bts.issue.domain.AssigneeNotFoundException
 import com.bts.issue.domain.IncompleteSubtaskMappingException
@@ -48,6 +49,7 @@ import java.time.Instant
  * - [MethodArgumentNotValidException] → 400 + [IssueErrorCodes.VALIDATION_FAILED]
  * - [HttpMessageNotReadableException] → 400 + [IssueErrorCodes.VALIDATION_FAILED]
  * - [MethodArgumentTypeMismatchException] → 400 + [IssueErrorCodes.VALIDATION_FAILED]
+ * - [InvalidRankNeighborException] → 400 + [IssueErrorCodes.INVALID_RANK_NEIGHBOR]
  * - [AuthenticationException] → 401 + [IssueErrorCodes.UNAUTHENTICATED]
  * - [IssueAccessDeniedException] → 403 + [IssueErrorCodes.ACCESS_DENIED]
  * - [IssueMovedException] → 308 Permanent Redirect + Location 헤더 (FR-MV-01, DATA.md §2)
@@ -84,6 +86,8 @@ import java.time.Instant
  * 및 [HttpMessageNotReadableException]/[MethodArgumentTypeMismatchException] 핸들러가 추가됐다 (모두 400/422).
  * FR-MV-01 서브태스크 동반 T3 에서 [SubtaskHasOwnSubtasksException]/[IncompleteSubtaskMappingException]
  * 핸들러가 추가됐다 (422 + SUBTASK_HAS_OWN_SUBTASKS / INCOMPLETE_SUBTASK_MAPPING).
+ * FR-BL-01 Task 5 에서 [InvalidRankNeighborException] 핸들러가 추가됐다
+ * (400 + INVALID_RANK_NEIGHBOR — catch-all 500 삼킴 차단).
  */
 @Suppress("TooManyFunctions")
 @RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])
@@ -156,6 +160,28 @@ class IssueExceptionHandler {
             title = "Validation Failed",
             errorCode = IssueErrorCodes.VALIDATION_FAILED,
             detail = "요청 경로 또는 파라미터 형식이 올바르지 않습니다.",
+        )
+    }
+
+    // ── 400 INVALID_RANK_NEIGHBOR ─────────────────────────────────────────────
+
+    /**
+     * [InvalidRankNeighborException] — 리랭크 이웃 이슈 검증 실패 — 400 (FR-BL-01 Task 5, B1).
+     *
+     * catch-all [handleInternalError] 가 500 으로 삼키지 못하도록 명시 핸들러로 등록한다.
+     * (메모리 catch-all-exceptionhandler-swallows-responsestatusexception)
+     *
+     * @param ex 이웃 검증 실패 사유를 포함하는 예외.
+     */
+    @ExceptionHandler(InvalidRankNeighborException::class)
+    fun handleInvalidRankNeighbor(ex: InvalidRankNeighborException): ProblemDetail {
+        log.info("ISSUE_400 invalid_rank_neighbor message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "invalid-rank-neighbor",
+            title = "Invalid Rank Neighbor",
+            errorCode = IssueErrorCodes.INVALID_RANK_NEIGHBOR,
+            detail = "이웃 이슈 검증에 실패했습니다. 이웃 순서, 중복, 프로젝트를 확인해 주세요.",
         )
     }
 
@@ -741,6 +767,7 @@ class IssueExceptionHandler {
  */
 object IssueErrorCodes {
     const val VALIDATION_FAILED = "VALIDATION_FAILED"
+    const val INVALID_RANK_NEIGHBOR = "INVALID_RANK_NEIGHBOR"
     const val UNAUTHENTICATED = "UNAUTHENTICATED"
     const val ACCESS_DENIED = "ACCESS_DENIED"
     const val ISSUE_NOT_FOUND = "ISSUE_NOT_FOUND"

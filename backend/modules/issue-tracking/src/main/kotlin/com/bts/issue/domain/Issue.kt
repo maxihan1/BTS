@@ -125,6 +125,9 @@ data class Issue(
     val originalEstimateSeconds: Int? = null,
     val timeSpentSeconds: Int = 0,
     val remainingEstimateSeconds: Int? = null,
+    // LexoRank 백로그 정렬 키 (FR-BL-01, V030). null=미부여(lazy, 옵션 B).
+    // 신규 이슈는 NULL 로 생성(정렬 NULLS LAST = 백로그 맨 뒤). 드래그(rerank) 시 BacklogRankService 가 부여한다.
+    val rank: String? = null,
 ) {
     companion object {
         /**

@@ -1952,6 +1952,105 @@ class IssueRepository(
             .and(ISSUES.DELETED_AT.isNull)
             .execute()
 
+    // ── rank 관련 메서드 (FR-BL-01 Task 3) ─────────────────────────────────────
+
+    /**
+     * 이슈의 rank 를 version·updated_at 증가 없이 갱신한다 (no-bump, FR-BL-01).
+     *
+     * rank 변경은 드래그 빈번 운영 액션이므로 "최종 수정일" noise 를 막기 위해
+     * updated_at 도 갱신하지 않는다 (worklog rollup no-bump 선례 동형 — learnings: no-bump-sidecar-version).
+     *
+     * UPDATE issues SET rank=? WHERE key=? AND deleted_at IS NULL
+     *
+     * @param key 대상 이슈 키.
+     * @param rank 새 LexoRank 키 문자열 (소문자 a-z, 1~50자, 끝문자 != 'a').
+     */
+    @Transactional
+    fun updateRank(
+        key: IssueKey,
+        rank: String,
+    ) {
+        log.debug("updateRank key={} rank={}", key.value, rank)
+        dsl.update(ISSUES)
+            .set(ISSUES.RANK, rank)
+            .where(ISSUES.KEY.eq(key.value))
+            .and(ISSUES.DELETED_AT.isNull)
+            .execute()
+    }
+
+    /**
+     * 여러 이슈의 rank 를 단일 UPDATE ... FROM (VALUES ...) SQL 로 일괄 갱신한다 (rebalance 성능, FR-BL-01 NFR3).
+     *
+     * 단건 [updateRank] 를 1K 번 반복하면 DB 왕복 1K 회가 발생해 성능 목표(500ms)를 달성하기 어렵다.
+     * PostgreSQL UPDATE ... FROM (VALUES ...) 로 단일 왕복에 처리한다.
+     * no-bump 원칙 동일: version·updated_at 미증가.
+     *
+     * UPDATE issues SET rank = v.rank
+     * FROM (VALUES (key1, rank1), ...) AS v(key, rank)
+     * WHERE issues.key = v.key AND issues.deleted_at IS NULL
+     *
+     * @param entries (이슈 키, 새 rank 문자열) 목록.
+     */
+    @Transactional
+    fun batchUpdateRanks(entries: List<Pair<IssueKey, String>>) {
+        if (entries.isEmpty()) return
+        log.debug("batchUpdateRanks count={}", entries.size)
+
+        // VALUES 테이블: (key TEXT, rank TEXT) 로 row 목록을 인라인 테이블로 표현.
+        // DSL.values() 는 vararg Row2 를 받으므로 spread operator 불가피.
+        val rows = entries.map { (key, rank) -> DSL.row(DSL.`val`(key.value), DSL.`val`(rank)) }
+
+        // DSL.values() 는 vararg Row2 를 받으므로 spread operator 불가피.
+        @Suppress("SpreadOperator")
+        val valuesTable = DSL.values(*rows.toTypedArray()).asTable("v", "key", "rank")
+
+        dsl.update(ISSUES)
+            .set(ISSUES.RANK, DSL.field(DSL.name("v", "rank"), String::class.java))
+            .from(valuesTable)
+            .where(ISSUES.KEY.eq(DSL.field(DSL.name("v", "key"), String::class.java)))
+            .and(ISSUES.DELETED_AT.isNull)
+            .execute()
+    }
+
+    /**
+     * 이슈의 rank 를 단건 조회한다.
+     *
+     * @param key 대상 이슈 키.
+     * @return rank 문자열. 이슈가 없거나 소프트삭제된 경우 null.
+     */
+    @Transactional(readOnly = true)
+    fun findRankByKey(key: IssueKey): String? =
+        dsl.select(ISSUES.RANK)
+            .from(ISSUES)
+            .where(activeByKey(key))
+            .fetchOne(ISSUES.RANK)
+
+    /**
+     * rebalance 대상 이슈 목록을 (key, rank) 쌍으로 반환한다.
+     *
+     * ORDER BY rank NULLS LAST, created_at, id 로 결정적 순서를 보장한다.
+     * rank 가 NULL 인 이슈(lazy 미부여)는 맨 뒤에 생성순으로 배치된다 (spec 결정 #11).
+     * 소프트삭제 이슈는 제외한다.
+     *
+     * @param projectId 재배포 대상 프로젝트 UUID.
+     * @return (issueKey, rank) 쌍 목록. rank NULLS LAST, 동률 시 created_at, id 오름차순.
+     *   rank 가 NULL 인 행은 key to null 로 포함된다.
+     */
+    @Transactional(readOnly = true)
+    fun findRanksForRebalance(projectId: UUID): List<Pair<String, String?>> =
+        dsl.select(ISSUES.KEY, ISSUES.RANK)
+            .from(ISSUES)
+            .where(ISSUES.PROJECT_ID.eq(projectId))
+            .and(ISSUES.DELETED_AT.isNull)
+            .orderBy(ISSUES.RANK.asc().nullsLast(), ISSUES.CREATED_AT.asc(), ISSUES.ID.asc())
+            .fetch { record ->
+                // key 는 NOT NULL 컬럼 — DB 무결성으로 null 비발생 보장.
+                // rank 는 nullable (옵션 B) — null 허용.
+                val issueKey = record.get(ISSUES.KEY) ?: error("issues.key must not be null")
+                val issueRank = record.get(ISSUES.RANK)
+                issueKey to issueRank
+            }
+
     /**
      * ILIKE ESCAPE '\' 에서 안전하게 사용하기 위해 prefix 의 와일드카드 문자를 이스케이프한다.
      *
@@ -2006,6 +2105,10 @@ private fun Issue.toInsertRecord(): IssuesRecord =
         originalEstimateSeconds = originalEstimateSeconds,
         timeSpentSeconds = timeSpentSeconds,
         remainingEstimateSeconds = remainingEstimateSeconds,
+        // LexoRank 정렬 키 (FR-BL-01, V029). nullable 컬럼 (옵션 B, lazy 부여).
+        // 신규 이슈는 rank=NULL 로 생성하고 드래그(rerank) 시 rank 를 부여한다 (spec 결정 #5).
+        // toIssue 에서 rank(nullable String?) 로 역매핑된다.
+        rank = rank,
     )
 
 /**
@@ -2052,6 +2155,8 @@ private fun IssuesRecord.toIssue(): Issue {
         originalEstimateSeconds = originalEstimateSeconds,
         timeSpentSeconds = timeSpentSeconds ?: 0,
         remainingEstimateSeconds = remainingEstimateSeconds,
+        // LexoRank 정렬 키 — V029 (FR-BL-01). nullable (옵션 B, lazy 부여). 미부여 이슈는 null.
+        rank = rank,
     )
 }
 

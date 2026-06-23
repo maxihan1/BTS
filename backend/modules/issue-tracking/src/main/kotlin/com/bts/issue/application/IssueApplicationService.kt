@@ -230,6 +230,7 @@ class IssueApplicationService(
         val resolvedDescription =
             resolveDescription(request.description, projectId, resolvedTypeId, request.reporterId, request.projectKey)
 
+        // FR-BL-01 옵션 B: 신규 이슈 rank=NULL(lazy). 드래그(rerank) 시 BacklogRankService 가 부여한다.
         val issue =
             Issue.create(
                 id = IssueId(UUID.randomUUID()),
@@ -305,6 +306,7 @@ class IssueApplicationService(
         val newKey = IssueKey.of(projectKey, seq)
         val startState = resolveWorkflowKey(newKey)
 
+        // FR-BL-01 옵션 B: 클론본도 rank=NULL(lazy). 드래그(rerank) 시 BacklogRankService 가 부여한다.
         val clone =
             Issue.create(
                 id = IssueId(UUID.randomUUID()),
