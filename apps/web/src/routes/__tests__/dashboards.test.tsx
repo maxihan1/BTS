@@ -297,12 +297,12 @@ describe('DashboardsListPage', () => {
 
     // Link mock이 렌더한 <a> 태그들의 href를 검증
     const links = screen.getAllByTestId('dashboard-card-link')
-    const hrefs = links.map((el) => el.getAttribute('href'))
+    const hrefs = links.map((el) => el.getAttribute('href') ?? '')
 
     // alice 카드의 Link href가 alice 대시보드 id를 포함해야 함
-    expect(hrefs).toContain(expect.stringContaining(DASHBOARD_ALICE.id) as unknown)
+    expect(hrefs.some((h) => h.includes(DASHBOARD_ALICE.id))).toBe(true)
     // bob 카드의 Link href가 bob 대시보드 id를 포함해야 함
-    expect(hrefs).toContain(expect.stringContaining(DASHBOARD_BOB.id) as unknown)
+    expect(hrefs.some((h) => h.includes(DASHBOARD_BOB.id))).toBe(true)
   })
 
   /**

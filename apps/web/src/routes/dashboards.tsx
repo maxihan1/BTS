@@ -1,7 +1,7 @@
 // 대시보드 목록 + 생성 라우트 — DashboardsRouteAdapter + DashboardsListPage (FR-DB-01 Task 7)
 import type { JSX } from 'react'
 import { useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, Link } from '@tanstack/react-router'
 import type { Dashboard } from '@/api/dashboards'
 import { useDashboards, useCreateDashboard } from '@/hooks/use-dashboards'
 import type { DashboardFormPayload } from '@/components/dashboard/DashboardForm'
@@ -85,7 +85,12 @@ function DashboardCard({ dashboard, currentUserId }: DashboardCardProps): JSX.El
   const isOwner = currentUserId !== undefined && dashboard.ownerId === currentUserId
 
   return (
-    <article className="relative rounded-lg border bg-card p-4 shadow-sm hover:shadow-md transition-shadow">
+    <Link
+      to="/dashboards/$dashboardId"
+      params={{ dashboardId: dashboard.id }}
+      className="relative block rounded-lg border bg-card p-4 shadow-sm hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      data-testid="dashboard-card-link"
+    >
       {/* visibility 배지 — 우상단 */}
       <div className="absolute top-3 right-3 flex items-center gap-1.5">
         {isOwner && (
@@ -103,7 +108,7 @@ function DashboardCard({ dashboard, currentUserId }: DashboardCardProps): JSX.El
       {dashboard.description != null && dashboard.description !== '' && (
         <p className="mt-1 text-sm text-muted-foreground truncate">{dashboard.description}</p>
       )}
-    </article>
+    </Link>
   )
 }
 
