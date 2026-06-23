@@ -603,6 +603,7 @@ class IssueRepository(
      * @param actor 조회 행위자 UUID. 보안 등급 필터가 적용될 때 reporter/assignee 동적 조건에 사용.
      *   [access] 가 unrestricted=true 이면 무의미하다. 보안 민감 메서드이므로 기본값 없이 항상 명시 전달한다.
      * @param access actor 가 접근 가능한 보안 등급 집합. 기본값은 무제한(unrestricted=true).
+     * @param filter 보드 카드 필터 조건. 기본값은 무필터([BoardCardFilter.EMPTY]).
      * @return [Page]<[IssueResponse]> — type 요약 포함.
      */
     @Transactional(readOnly = true)
@@ -611,16 +612,22 @@ class IssueRepository(
         pageable: Pageable,
         actor: UUID,
         access: IssueSecurityAccess = UNRESTRICTED_ACCESS,
+        filter: BoardCardFilter = BoardCardFilter.EMPTY,
     ): Page<IssueResponse> {
         // 활성 프로젝트 술어 + 보안 등급 필터 — listVisibleForBoard 와 동일 source.
         val baseWhere = buildActiveSecureWhere(projectKey, actor, access)
+
+        // C1 — buildFilterCondition 단일 호출. count/content 양쪽에 동일 Condition 재사용.
+        // 쿼리별 재조립 금지 — count/content drift 방지.
+        val filterCondition = buildFilterCondition(filter)
+        val effectiveWhere = if (filterCondition != null) baseWhere.and(filterCondition) else baseWhere
 
         // count 쿼리: ISSUE_TYPES join 제외 — 불필요한 join 으로 count 왜곡 방지
         val total =
             dsl.selectCount()
                 .from(ISSUES)
                 .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
-                .where(baseWhere)
+                .where(effectiveWhere)
                 .fetchOne(0, Long::class.java) ?: 0L
 
         // content 쿼리: ISSUE_TYPES join 으로 type 요약 포함
@@ -636,7 +643,7 @@ class IssueRepository(
                 .from(ISSUES)
                 .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
                 .join(ISSUE_TYPES).on(ISSUES.TYPE_ID.eq(ISSUE_TYPES.ID))
-                .where(baseWhere)
+                .where(effectiveWhere)
                 .orderBy(ISSUES.CREATED_AT.desc())
                 .limit(pageable.pageSize)
                 .offset(pageable.offset)
@@ -804,10 +811,25 @@ class IssueRepository(
     private fun buildFilterCondition(filter: BoardCardFilter): Condition? {
         if (filter.isEmpty()) return null
         return listOfNotNull(
+            buildStatusCondition(filter),
             buildAssigneeCondition(filter),
             buildLabelCondition(filter),
             buildComponentCondition(filter),
         ).reduceOrNull { acc, cond -> acc.and(cond) }
+    }
+
+    /**
+     * 상태 키 필터 술어를 생성한다.
+     *
+     * `current_state_key` 컬럼에 대한 IN 술어 — V004 소문자 컨벤션 기준 정확 매칭.
+     * 같은 필드 내 값들은 IN 으로 OR 결합된다.
+     *
+     * @param filter 보드 카드 필터.
+     * @return [filter.statusKeys] 가 비어 있으면 `null`, 아니면 `current_state_key IN (...)` [Condition].
+     */
+    private fun buildStatusCondition(filter: BoardCardFilter): Condition? {
+        if (filter.statusKeys.isEmpty()) return null
+        return ISSUES.CURRENT_STATE_KEY.`in`(filter.statusKeys)
     }
 
     /**
