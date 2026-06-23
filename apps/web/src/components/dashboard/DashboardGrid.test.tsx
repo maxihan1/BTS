@@ -154,7 +154,7 @@ describe('DashboardGrid', () => {
    * GridLayout의 onLayoutChange → DashboardTile 변환 순수 로직 단위 검증.
    */
   it('G-7: onLayoutChange 콜백이 DashboardTile[] 형태를 전달받는다', async () => {
-    const onLayoutChange = vi.fn<[DashboardTile[]], void>()
+    const onLayoutChange = vi.fn<(tiles: DashboardTile[]) => void>()
     await renderGrid({ tiles: [TILE_A], canEdit: true, onLayoutChange })
 
     // GridLayout stub의 onLayoutChange를 직접 호출 (드래그 시뮬레이션)
@@ -163,10 +163,11 @@ describe('DashboardGrid', () => {
 
     expect(onLayoutChange).toHaveBeenCalledOnce()
     const result = onLayoutChange.mock.calls[0]?.[0]
-    // 변환된 타일에 title이 보존돼야 한다
-    expect(result?.[0]?.title).toBe('위젯 A')
-    expect(result?.[0]?.x).toBe(2)
-    expect(result?.[0]?.y).toBe(1)
+    // 변환된 타일에 title이 보존돼야 한다 — mock.calls[0][0] 타입 안전 접근
+    const firstTile = Array.isArray(result) ? result[0] : undefined
+    expect((firstTile as DashboardTile | undefined)?.title).toBe('위젯 A')
+    expect((firstTile as DashboardTile | undefined)?.x).toBe(2)
+    expect((firstTile as DashboardTile | undefined)?.y).toBe(1)
   })
 
   /**
