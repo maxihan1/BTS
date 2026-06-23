@@ -58,7 +58,11 @@ data class BoardCardFilter(
      * @return 필터 조건이 하나도 없으면 true.
      */
     fun isEmpty(): Boolean {
-        return assigneeIds.isEmpty() && !includeUnassigned && labels.isEmpty() && componentIds.isEmpty() && statusKeys.isEmpty()
+        return assigneeIds.isEmpty() &&
+            !includeUnassigned &&
+            labels.isEmpty() &&
+            componentIds.isEmpty() &&
+            statusKeys.isEmpty()
     }
 
     companion object {
