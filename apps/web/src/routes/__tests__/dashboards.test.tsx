@@ -313,7 +313,7 @@ describe('DashboardsListPage', () => {
   })
 
   /**
-   * T-DB7-R-8. useCreateDashboard 성공 시 navigate('/dashboards/$id')가 호출된다.
+   * T-DB7-R-8. useCreateDashboard 성공 시 navigate('/dashboards/$dashboardId')가 호출된다.
    */
   it('T-DB7-R-8: 생성 성공 시 navigate가 새 대시보드 상세 경로로 호출된다', async () => {
     const user = userEvent.setup()
@@ -347,8 +347,8 @@ describe('DashboardsListPage', () => {
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith(
         expect.objectContaining({
-          to: '/dashboards/$id',
-          params: expect.objectContaining({ id: DASHBOARD_ALICE.id }) as unknown,
+          to: '/dashboards/$dashboardId',
+          params: expect.objectContaining({ dashboardId: DASHBOARD_ALICE.id }) as unknown,
         }),
       )
     })
