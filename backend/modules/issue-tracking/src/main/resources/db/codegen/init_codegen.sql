@@ -686,3 +686,12 @@ ALTER TABLE issues
     ADD COLUMN original_estimate_seconds  INT NULL,
     ADD COLUMN time_spent_seconds         INT NOT NULL DEFAULT 0,
     ADD COLUMN remaining_estimate_seconds INT NULL;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V029: status/assignee 필터 가속 복합 부분 인덱스 (FR-SR-01 이슈 필터)
+-- 원본: db/migration/issue-tracking/V029__issue_filter_indexes.sql
+-- 인덱스만 추가 — jOOQ codegen 상수 생성 대상 외이나 BTS 일관성 유지로 미러 (assignee_id 컬럼 존재 후 위치).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+CREATE INDEX idx_issues_project_state_active ON issues (project_id, current_state_key) WHERE deleted_at IS NULL;
+CREATE INDEX idx_issues_project_assignee_active ON issues (project_id, assignee_id) WHERE deleted_at IS NULL;
