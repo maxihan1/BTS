@@ -14,11 +14,26 @@ import {
 } from './dashboard-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 내부 헬퍼 타입
+// 응답 DTO 인터페이스 — 백엔드 DashboardResponse 계약과 1:1 대응
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** ISO 8601 시각 문자열 타입 별칭 — 백엔드 Instant 직렬화 형식과 일치 */
-export type Instant = string
+/**
+ * 대시보드 단건·목록 응답 DTO 형식.
+ * 백엔드 DashboardResponse + @JsonInclude(NON_NULL) 정책 재현.
+ * description이 null인 경우 키 자체가 존재하지 않는다.
+ */
+interface DashboardResponseDto {
+  id: string
+  ownerId: string
+  name: string
+  description?: string
+  visibility: string
+  layout: string
+  sharedUserIds: string[]
+  createdAt: string
+  updatedAt: string
+  version: number
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 공통 응답 헬퍼
@@ -33,8 +48,8 @@ export type Instant = string
  * @param stored store 내부 대시보드 데이터
  * @returns 응답 DTO 객체
  */
-function toResponseDto(stored: StoredDashboard): Record<string, unknown> {
-  const dto: Record<string, unknown> = {
+function toResponseDto(stored: StoredDashboard): DashboardResponseDto {
+  const base: DashboardResponseDto = {
     id: stored.id,
     ownerId: stored.ownerId,
     name: stored.name,
@@ -48,10 +63,10 @@ function toResponseDto(stored: StoredDashboard): Record<string, unknown> {
 
   // @JsonInclude(NON_NULL) 재현 — null description은 직렬화 생략
   if (stored.description !== null) {
-    dto['description'] = stored.description
+    return { ...base, description: stored.description }
   }
 
-  return dto
+  return base
 }
 
 /**
