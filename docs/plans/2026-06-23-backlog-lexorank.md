@@ -177,6 +177,27 @@ SDD §13.2.1 / product agile-planning.md §3.1 / fr-index §3.1
 
 **검증**: `cd backend && ./gradlew :modules:issue-tracking:integrationTest --tests "*BacklogRankLoadTest"`
 
+### Task 8. 옵션 B 전환 (nullable + lazy) + 254 파급 복구
+
+> ★ Wave1~3 후 발견: rank NOT NULL + createIssue 자동부여가 기존 테스트 254개 파급(raw INSERT NOT NULL 위반 + service mock findMaxRank 미stub). Maxi 확정 = 옵션 B(nullable + lazy)로 전환. 단일 backend-engineer가 일관 처리.
+
+**메타**.
+- agent: `backend-engineer`
+- files: [V029__issue_rank.sql, init_codegen.sql, IssueRankMigrationTest.kt, Issue.kt, IssueRepository.kt, IssueApplicationService.kt, BacklogRankService.kt, BacklogRankServiceTest.kt, IssueRankRepositoryTest.kt + 파급 받은 기존 테스트들(전체 통과까지)]
+- depends-on: [1,2,3,4,5,6,7] (모든 선행 task 후 전환)
+
+**전환 내용**.
+1. **V029**: `SET NOT NULL`·백필 DO 블록 **제거** → `ALTER TABLE issues ADD COLUMN rank VARCHAR(50)` (nullable) + 인덱스만. init_codegen 미러도 nullable로.
+2. **마이그레이션 테스트**: NOT NULL/백필 검증 제거 → nullable 컬럼·인덱스 존재만 확인.
+3. **createIssue/cloneIssue**: 자동부여 제거(`findMaxRank`/`Rank.between`/`.copy(rank=)` 삭제) → rank=NULL로 생성. `toInsertRecord`는 `issue.rank`(null 허용) 그대로.
+4. **정렬**: `findRanksForRebalance` 및 백로그 정렬을 `ORDER BY rank NULLS LAST, created_at, id`.
+5. **rerank**: 이웃 rank가 NULL이면 고갈과 동일하게 `rebalance(projectId)` 트리거 → 재조회 → between (E13).
+6. **rebalance**: `findRanksForRebalance`(NULLS LAST, created_at 순)로 NULL 포함 전체를 균등 재배포.
+7. **테스트 조정**: BacklogRankServiceTest에 "이웃 NULL → rebalance" 케이스 추가, 자동부여 테스트 제거. IssueRankRepositoryTest의 자동부여/NOT NULL 테스트 제거·조정.
+8. **254 파급 복구**: 그룹 A(raw INSERT)는 nullable로 자동 해소, 그룹 B(service mock)는 자동부여 제거로 자동 해소. 잔여는 개별 수정.
+
+**검증**: `cd backend && ./gradlew :modules:issue-tracking:test --continue` **전체 통과**(254 → 0 fail) + `:modules:shared-kernel:test` + ktlintCheck + detekt.
+
 ## Plan 메타
 
 - task 수: 7

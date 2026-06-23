@@ -11,13 +11,14 @@
 2. **알고리즘** = shared-kernel `com.bts.shared.lexorank.Rank` 순수 VO (`@JvmInline value class`).
 3. **리랭크 계약** = 이웃 이슈 키. 서버가 이웃 rank 조회 후 between 계산 (클라가 rank 미계산 → 도메인 불변식 서버 통제).
 4. **rebalance** = on-demand만 (중간값 고갈 시 즉시 재배포). 주기 스케줄러 없음.
-5. **초기 rank** = 이슈 생성 시 자동 부여(백로그 맨 끝) + V029 마이그레이션으로 기존 이슈 created_at 순 백필. `rank` NOT NULL.
-6. **컬럼 타입** = `VARCHAR(50)` (SDD §13.2.1 준수, product TEXT 표기 정정).
+5. **초기 rank** = ⚠️ **옵션 B 전환(2026-06-23, Maxi 확정)**. rank **nullable**. 신규 이슈는 rank=NULL(lazy). createIssue/cloneIssue 자동부여 **없음**. 정렬 `ORDER BY rank NULLS LAST, created_at, id`로 NULL은 백로그 맨 뒤(생성순). 드래그(rerank) 시 rank 부여. **이웃 rank가 NULL이면 rebalance 트리거**로 전체 rank 부여 후 between. V029 백필·NOT NULL **제거**(nullable이라 불필요).
+   - 전환 사유: 당초 NOT NULL+자동부여가 기존 테스트 254개 파급(raw INSERT의 NOT NULL 위반 + service mock의 findMaxRank 미stub). nullable+lazy는 raw INSERT(NULL 허용)·service mock(findMaxRank 호출 제거) 둘 다 자연 해소.
+6. **컬럼 타입** = `VARCHAR(50)` **nullable** (SDD §13.2.1 준수, product TEXT 표기 정정).
 7. **권한** = `IssuePermission.UPDATE` + `IssueScope.Issue(key)` 재사용 (일정 필드 선례 동일).
 8. **history** = rank 변경은 `SCALAR_FIELD_EXTRACTORS`에 등록하지 **않음** (백로그 정렬은 빈번 운영 액션 → 이력 noise 회피).
 9. **정렬 스코프** = rank는 **프로젝트 전역 정렬 키**(모든 이슈가 보유). 백로그 뷰는 그 부분집합을 rank 순으로 표시. 이웃 이슈는 같은 프로젝트면 충분.
 10. **동시성** = rank 변경은 **no-bump**(`issues.version` 불변, OCC 없음) **last-write-wins**. 이웃 rank를 요청 처리 시점에 서버가 조회하므로 stale 아님 (메모리 no-bump-sidecar-version / worklog 선례). rebalance만 `pg_advisory_xact_lock(projectId)`로 직렬화.
-11. **정렬 tie-break** = `ORDER BY rank, id` — between 충돌(동시 같은 위치 삽입)로 같은 rank가 생겨도 결정적 순서 보장. `(project_id, rank)` UNIQUE는 **미강제**(드래그 충돌 시 사용자 재시도 부담 회피, 다음 이동 때 자연 해소).
+11. **정렬 tie-break** = `ORDER BY rank NULLS LAST, created_at, id` — NULL(미부여 신규)은 맨 뒤 생성순, rank 충돌(동시 같은 위치 삽입) 시에도 결정적 순서 보장. `(project_id, rank)` UNIQUE는 **미강제**(드래그 충돌 시 사용자 재시도 부담 회피, 다음 이동 때 자연 해소).
 12. **에러 매핑** (eng 리뷰 B1) = 이웃 검증 실패(역전/둘다null/대상==이웃/타프로젝트)는 **커스텀 도메인 예외** `InvalidRankNeighborException` → 400. 이웃/대상 미존재·소프트삭제는 `IssueNotFoundException`(기존) → 404. `IssueExceptionHandler`에 `InvalidRankNeighborException` 명시 핸들러 추가(catch-all이 500으로 삼키는 것 방지 — `IllegalArgumentException` raw throw 금지).
 13. **updated_at** (eng 리뷰 C4) = rank 변경은 `updated_at` **갱신 안 함**(assignee no-bump 선례 `updateAssigneeNoBump`, 드래그 빈번 → "최종 수정일" noise 회피).
 14. **응답 version** (eng 리뷰 N1) = no-bump라 version 불변 → rerank 흐름에서 이미 조회한 `issue.version`을 그대로 응답.
@@ -136,6 +137,7 @@ CREATE INDEX idx_issues_project_rank ON issues (project_id, rank);
 - E10. 동시 rebalance 2건 → advisory lock으로 직렬화, 두 번째는 첫 결과 본 뒤 진행.
 - E11. between 충돌로 두 이슈가 같은 rank → tie-break `ORDER BY rank, id`로 결정적 순서, 다음 이동 때 자연 해소 (UNIQUE 미강제).
 - E12. 비인접 이웃(클라가 BTS-1·BTS-5 전송, 사이에 BTS-3 존재) → 두 rank 사이 중간값 계산, 결과는 그 범위 내 어딘가 + tie-break. 인접 강제 안 함(드래그 UX 관대).
+- E13. (옵션 B) 이웃 rank가 NULL(미부여 신규 영역으로 드래그) → 고갈과 동일하게 `rebalance(projectId)` 트리거(NULL 포함 전체에 rank 부여) → 재조회 후 between. 사용자에겐 투명(200).
 
 ## 제약 조건
 
