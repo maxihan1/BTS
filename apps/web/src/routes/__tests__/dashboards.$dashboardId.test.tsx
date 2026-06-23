@@ -331,12 +331,20 @@ describe('dirty 표시 · 저장', () => {
 
   /**
    * T-DB8-D2. 저장 클릭 시 useUpdateDashboard.mutateAsync가 layout+version으로 호출된다.
+   * dirty=true가 선행돼야 저장 버튼이 활성화되므로 위젯 추가로 먼저 dirty를 유발한다.
    */
   it('T-DB8-D2: 저장 클릭 시 mutateAsync가 layout과 version을 포함해 호출된다', async () => {
     const user = userEvent.setup()
     mockUseDashboard.mockReturnValue({ data: DASHBOARD_OWNED, isLoading: false, isError: false })
     await renderDetailPage()
-    await waitFor(() => expect(screen.getByRole('button', { name: /저장/i })).toBeInTheDocument())
+    // dirty 유발 — 위젯 추가
+    await waitFor(() => expect(screen.getByRole('button', { name: /위젯 추가/i })).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /위젯 추가/i }))
+    // 저장 버튼 활성화 확인 후 클릭
+    await waitFor(() => {
+      const saveBtn = screen.getByRole('button', { name: /저장/i })
+      expect(saveBtn).not.toBeDisabled()
+    })
     await user.click(screen.getByRole('button', { name: /저장/i }))
     await waitFor(() => expect(mockMutateAsync).toHaveBeenCalled())
     const callArg = mockMutateAsync.mock.calls[0]?.[0] as {
@@ -412,6 +420,7 @@ describe('설정 저장', () => {
 describe('OCC 409 처리', () => {
   /**
    * T-DB8-C1. 409 충돌 시 toast.error가 호출된다.
+   * dirty=true가 선행돼야 저장 버튼이 활성화되므로 위젯 추가로 먼저 dirty를 유발한다.
    */
   it('T-DB8-C1: 409 충돌 시 toast.error가 호출된다', async () => {
     const { toast } = await import('sonner')
@@ -419,7 +428,13 @@ describe('OCC 409 처리', () => {
     mockUseDashboard.mockReturnValue({ data: DASHBOARD_OWNED, isLoading: false, isError: false })
     mockMutateAsync.mockRejectedValue({ status: 409 })
     await renderDetailPage()
-    await waitFor(() => expect(screen.getByRole('button', { name: /저장/i })).toBeInTheDocument())
+    // dirty 유발 → 저장 버튼 활성화
+    await waitFor(() => expect(screen.getByRole('button', { name: /위젯 추가/i })).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /위젯 추가/i }))
+    await waitFor(() => {
+      const saveBtn = screen.getByRole('button', { name: /저장/i })
+      expect(saveBtn).not.toBeDisabled()
+    })
     await user.click(screen.getByRole('button', { name: /저장/i }))
     await waitFor(() => expect(toast.error).toHaveBeenCalled())
   })

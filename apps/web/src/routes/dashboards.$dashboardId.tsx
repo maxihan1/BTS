@@ -249,13 +249,17 @@ export function DashboardDetailPage({
 
   // ─── 설정 저장 핸들러 ───────────────────────────────────────────────────
 
-  /** 설정 폼 제출 (이름/공개범위 등 변경) */
+  /** 설정 폼 제출 (이름/공개범위 등 변경).
+   * ★ layout을 포함해야 invalidate→refetch 시 로컬 tiles 데이터 손실이 발생하지 않는다.
+   * (codereview 2번 — Option A: 설정 PATCH에 현재 로컬 layout 함께 전송)
+   */
   async function handleSettingsSubmit(payload: Record<string, unknown>): Promise<void> {
     try {
       await mutateAsync({
         id: dashboardId,
         body: {
           ...payload,
+          layout: serializeLayout(tiles),
           version: serverVersion,
         } as Parameters<typeof mutateAsync>[0]['body'],
       })
@@ -369,7 +373,7 @@ export function DashboardDetailPage({
                   type="button"
                   className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
                   aria-label={isSaving ? dashboardLabels.detail.saving : dashboardLabels.detail.save}
-                  disabled={isSaving}
+                  disabled={isSaving || !dirty}
                   onClick={handleSave}
                 >
                   {isSaving ? dashboardLabels.detail.saving : dashboardLabels.detail.save}

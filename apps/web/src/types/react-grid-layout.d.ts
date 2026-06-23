@@ -50,6 +50,8 @@ declare module 'react-grid-layout' {
     isResizable?: boolean
     /** 드래그 핸들 CSS 선택자 */
     draggableHandle?: string
+    /** 드래그 취소 CSS 선택자 — 버튼·입력 등 클릭 전용 영역에서 드래그 차단 */
+    draggableCancel?: string
     /** 레이아웃 변경 콜백 */
     onLayoutChange?: (layout: Layout[]) => void
     /** 자식 엘리먼트 */

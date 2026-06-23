@@ -145,6 +145,7 @@ export function DashboardGrid({
         isResizable={canEdit}
         onLayoutChange={handleLayoutChange}
         draggableHandle=".drag-handle"
+        draggableCancel="button,input"
       >
         {tiles.map((tile) => (
           <div key={tile.i} className="drag-handle">
