@@ -382,3 +382,41 @@ describe('비소유 대시보드 — 읽기 전용', () => {
     expect(res.status).toBe(403)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S8 — X-Actor-Id 헤더 없이 호출하는 통합 회귀 테스트
+//
+// 실제 프론트 api(src/api/dashboards.ts)는 X-Actor-Id 헤더를 보내지 않는다.
+// JWT 쿠키 인증이므로 MSW 핸들러는 헤더가 없을 때 "현재 로그인 사용자 = alice"를 가정해야 한다.
+// 헤더 미존재 시 폴백이 ''이면:
+//   - list에서 alice 소유 PRIVATE 대시보드가 사라짐 (ownerId === '' 거짓)
+//   - PATCH/DELETE에서 alice도 항상 403 (ownerId !== '' 참)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('S8 — X-Actor-Id 헤더 없는 통합 호출 회귀', () => {
+  it('S8-1: 헤더 없는 GET 목록 호출 시 alice 소유 PRIVATE 대시보드가 포함된다', async () => {
+    // 헤더를 전혀 보내지 않음 — 실제 api 클라이언트가 보내는 패턴
+    const res = await fetch('/api/v1/dashboards')
+
+    expect(res.status).toBe(200)
+
+    const body = (await res.json()) as {
+      data: { items: Array<{ id: string; ownerId: string }> }
+    }
+    const ids = body.data.items.map((d) => d.id)
+    expect(ids).toContain(DEFAULT_DASHBOARD.id)
+  })
+
+  it('S8-2: 헤더 없는 PATCH 호출 시 alice 소유 대시보드가 200을 반환한다 (403 아님)', async () => {
+    const res = await fetch(`/api/v1/dashboards/${DEFAULT_DASHBOARD.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '헤더 없이 수정', version: DEFAULT_DASHBOARD.version }),
+    })
+
+    expect(res.status).toBe(200)
+
+    const body = (await res.json()) as { data: { name: string } }
+    expect(body.data.name).toBe('헤더 없이 수정')
+  })
+})
