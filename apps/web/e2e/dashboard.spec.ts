@@ -81,6 +81,41 @@ test.describe('FR-DB-01 대시보드 (목록/생성/상세/권한/OCC/접근성/
   })
 
   // ───────────────────────────────────────────────────────────────────────────
+  // S1b. 카드 클릭 → 상세 이동 (BLOCKER 회귀 가드)
+  //
+  // Given  alice 로그인 + /dashboards 목록 진입
+  //        DashboardCard가 <Link data-testid="dashboard-card-link"> 로 렌더됨
+  // When   alice 소유 대시보드 카드 클릭
+  // Then   /dashboards/$id 상세 페이지로 SPA 이동
+  //        상세 헤더에 대시보드 이름 표시
+  //
+  // 회귀 근거: PR 코드리뷰 BLOCKER — 카드 클릭 네비게이션 없음.
+  //   수정 후 카드 전체가 <Link to="/dashboards/$dashboardId">로 래핑됨.
+  //   생성 직후(S2)뿐 아니라 기존 대시보드도 목록 → 상세로 열 수 있어야 한다.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('S1b 카드 클릭 → 상세 이동 — 목록에서 기존 대시보드 진입 (BLOCKER 회귀 가드)', async ({ page }) => {
+    // Given. alice 로그인 + 목록 진입
+    await loginAsAlice(page)
+    await page.goto('/dashboards')
+
+    // Given. alice 소유 카드 확인
+    await expect(page.getByText('내 첫 대시보드')).toBeVisible()
+
+    // When. alice 소유 대시보드 카드 클릭 (data-testid="dashboard-card-link" Link)
+    //       목록에 카드가 여러 개 있을 수 있으므로 "내 첫 대시보드" 텍스트를 포함하는 카드 한정
+    await page
+      .getByTestId('dashboard-card-link')
+      .filter({ hasText: '내 첫 대시보드' })
+      .click()
+
+    // Then. /dashboards/$id 상세 페이지로 SPA 이동
+    await expect(page).toHaveURL(/\/dashboards\/[0-9a-f-]+$/)
+
+    // Then. 상세 헤더에 대시보드 이름 표시
+    await expect(page.getByRole('heading', { name: '내 첫 대시보드' })).toBeVisible()
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
   // S2. 대시보드 생성
   //
   // Given  alice 로그인 + /dashboards 진입 (DEFAULT_DASHBOARD 이미 시드됨 — 목록 있음)
