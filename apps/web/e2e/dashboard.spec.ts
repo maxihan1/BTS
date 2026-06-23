@@ -4,8 +4,8 @@
 //   S1. 목록 조회       — /dashboards 진입 → alice 소유 대시보드 카드 확인
 //   S2. 대시보드 생성   — "대시보드 만들기" → 폼 입력 → 생성 → 상세 이동 확인
 //   S3. 위젯 추가+저장  — 상세에서 "위젯 추가" → 타일 생성 → "저장" → 성공 토스트
-//   S3b. 드래그/리사이즈 — RGL drag-handle 마우스 시퀀스 시도 (RGL 특성상 SKIP 가능)
-//   S6. 대시보드 삭제   — SKIP: 구현 코드에 삭제 버튼 없음 (controller가 처리)
+//   S3b. 드래그/리사이즈 — RGL drag-handle 마우스 시퀀스 (jsdom/headless containerWidth=0 제약으로 SKIP, onLayoutChange는 DashboardGrid.test.tsx 단위 커버)
+//   S6. 대시보드 삭제   — 삭제 버튼 → 확인 → 목록 이동 → 삭제 항목 사라짐
 //   S7. 비소유자 읽기전용 — bob 소유 ORG 대시보드 → 위젯 추가/저장 버튼 부재
 //   S8. OCC 409 충돌    — addInitScript 플래그 → 저장 시 409 토스트 + 로컬 변경 보존
 //   접근성. 키보드로 위젯 추가 → 제목 편집(Enter) → 저장

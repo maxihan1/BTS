@@ -258,7 +258,7 @@ describe('patchDashboard', () => {
     const mockRes = {
       ok: false,
       status: 409,
-      json: vi.fn().mockResolvedValue({ errorCode: 'NOTIF_DASHBOARD_VERSION_CONFLICT' }),
+      json: vi.fn().mockResolvedValue({ errorCode: 'NOTIF_DASHBOARD_CONFLICT' }),
     } as unknown as Response
     mockApiFetch.mockResolvedValueOnce(mockRes)
 

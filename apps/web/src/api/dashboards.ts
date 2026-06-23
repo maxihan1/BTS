@@ -200,7 +200,7 @@ export async function createDashboard(body: CreateDashboardRequest): Promise<Das
  * @param body 수정 요청 바디 (version 필수)
  * @returns Dashboard 수정된 대시보드
  * @throws ApiError(404) 미존재 — errorCode: 'NOTIF_DASHBOARD_NOT_FOUND'
- * @throws ApiError(409) 버전 충돌 — errorCode: 'NOTIF_DASHBOARD_VERSION_CONFLICT'
+ * @throws ApiError(409) 버전 충돌 — errorCode: 'NOTIF_DASHBOARD_CONFLICT'
  * @throws ApiError(401) 미인증
  * @throws ApiError(403) 권한 없음
  */
