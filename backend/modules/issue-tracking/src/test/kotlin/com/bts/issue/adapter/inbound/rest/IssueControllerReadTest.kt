@@ -6,9 +6,11 @@ import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
+import com.bts.shared.board.BoardCardFilter
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -43,11 +45,13 @@ import java.util.UUID
  * [IssueApplicationService] 는 MockK stub 으로 대체한다.
  * [IssueExceptionHandler] 를 컨텍스트에 등록하여 IssueNotFoundException → 404 변환을 검증한다.
  *
- * 테스트 케이스 4건.
+ * 테스트 케이스.
  * - R-1. GET /issues/{key} 정상 → 200 + IssueResponse body
  * - R-2. GET /issues/{key} 미존재 → 404 + ProblemDetail (IssueExceptionHandler 경유)
  * - R-3. GET /issues?projectKey=ATLAS&page=0&size=20 → 200 + Page 구조
  * - R-4. GET /issues projectKey 생략 → 200 + 빈 Page (projectKey=null 허용)
+ * - R-5. GET /issues?status=open&assignee=&label=bug → listIssues 에 filter 전달
+ * - R-6. GET /issues?assignee=not-a-uuid → 400 + errorCode=VALIDATION_FAILED (B2 교정 검증)
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [IssueControllerReadTest.TestMvcConfig::class])
@@ -170,7 +174,7 @@ class IssueControllerReadTest {
         val pageResult = PageImpl(listOf(sampleResponse), pageable, 1L)
 
         every {
-            issueApplicationService.listIssues(any(), "ATLAS", any())
+            issueApplicationService.listIssues(any(), "ATLAS", any(), any())
         } returns pageResult
 
         mockMvc.perform(
@@ -223,7 +227,7 @@ class IssueControllerReadTest {
         val emptyPage = PageImpl(emptyList<IssueResponse>(), pageable, 0L)
 
         every {
-            issueApplicationService.listIssues(any(), any(), any())
+            issueApplicationService.listIssues(any(), any(), any(), any())
         } returns emptyPage
 
         mockMvc.perform(
@@ -235,5 +239,54 @@ class IssueControllerReadTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.content").isArray)
             .andExpect(jsonPath("$.totalElements").value(0))
+    }
+
+    // ── R-5: 필터 파라미터 → service.listIssues(filter) 전달 ───────────────────
+
+    @Test
+    fun `GET 이슈 목록 조회 — status와 label 필터 파라미터가 listIssues 에 filter 로 전달된다`() {
+        val pageable = PageRequest.of(0, 20)
+        val pageResult = PageImpl(listOf(sampleResponse), pageable, 1L)
+
+        every {
+            issueApplicationService.listIssues(any(), "ATLAS", any(), any())
+        } returns pageResult
+
+        mockMvc.perform(
+            get("/api/v1/issues")
+                .param("projectKey", "ATLAS")
+                .param("status", "open")
+                .param("label", "bug")
+                .param("page", "0")
+                .param("size", "20")
+                .accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isOk)
+
+        verify {
+            issueApplicationService.listIssues(
+                any(),
+                "ATLAS",
+                any(),
+                match { filter ->
+                    filter.statusKeys.contains("open") && filter.labels.contains("bug")
+                },
+            )
+        }
+    }
+
+    // ── R-6: 잘못된 UUID → 400 + errorCode=VALIDATION_FAILED (B2 교정 검증) ───
+
+    @Test
+    fun `GET 이슈 목록 조회 — assignee 에 잘못된 UUID 이면 400 이고 errorCode 는 VALIDATION_FAILED 이다`() {
+        mockMvc.perform(
+            get("/api/v1/issues")
+                .param("projectKey", "ATLAS")
+                .param("assignee", "not-a-uuid")
+                .accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.status").value(400))
+            .andExpect(jsonPath("$.errorCode").value("VALIDATION_FAILED"))
     }
 }
