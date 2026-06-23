@@ -1,4 +1,5 @@
 // 대시보드 목록+생성 라우트 단위 테스트 — DashboardsListPage + DashboardsRouteAdapter (FR-DB-01 Task 7)
+import type { ReactNode } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -13,6 +14,31 @@ const { mockNavigate } = vi.hoisted(() => ({ mockNavigate: vi.fn() }))
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mockNavigate,
+  // Link mock — 라우터 컨텍스트 없이 단위 테스트 가능하도록 <a>로 렌더
+  Link: ({
+    to,
+    params,
+    children,
+    className,
+  }: {
+    to: string
+    params?: Record<string, string>
+    children: ReactNode
+    className?: string
+  }) => {
+    // $dashboardId 파라미터 치환
+    const href = params !== undefined
+      ? Object.entries(params).reduce(
+          (acc, [k, v]) => acc.replace(`$${k}`, v),
+          to,
+        )
+      : to
+    return (
+      <a href={href} className={className} data-testid="dashboard-card-link">
+        {children}
+      </a>
+    )
+  },
 }))
 
 // DashboardForm mock — onSubmit을 data-testid 버튼으로 노출
@@ -250,6 +276,33 @@ describe('DashboardsListPage', () => {
     // 소유 여부 — alice 카드에만 "내 대시보드" 배지
     const ownerBadges = screen.getAllByText('내 대시보드')
     expect(ownerBadges).toHaveLength(1)
+  })
+
+  /**
+   * T-DB7-R-5b. 카드 클릭 → /dashboards/$dashboardId로 네비게이션.
+   * Link href가 올바른 dashboardId를 포함하는지 검증한다.
+   */
+  it('T-DB7-R-5b: 카드에 /dashboards/$dashboardId 경로로의 Link가 렌더된다', async () => {
+    mockUseDashboards.mockReturnValue({
+      data: PAGE_WITH_TWO,
+      isLoading: false,
+      isError: false,
+    })
+
+    await renderDashboardsListPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('내 첫 대시보드')).toBeInTheDocument()
+    })
+
+    // Link mock이 렌더한 <a> 태그들의 href를 검증
+    const links = screen.getAllByTestId('dashboard-card-link')
+    const hrefs = links.map((el) => el.getAttribute('href'))
+
+    // alice 카드의 Link href가 alice 대시보드 id를 포함해야 함
+    expect(hrefs).toContain(expect.stringContaining(DASHBOARD_ALICE.id) as unknown)
+    // bob 카드의 Link href가 bob 대시보드 id를 포함해야 함
+    expect(hrefs).toContain(expect.stringContaining(DASHBOARD_BOB.id) as unknown)
   })
 
   /**
