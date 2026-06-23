@@ -151,19 +151,33 @@ class IssueController(
     /**
      * 프로젝트 이슈 목록을 페이지로 조회한다.
      *
+     * 필터 파라미터가 지정되면 [IssueFilterQueryParser] 를 통해 [com.bts.shared.board.BoardCardFilter] 로 파싱해 위임한다.
+     *
      * @param projectKey 프로젝트 키. 생략 가능하며 생략 시 빈 문자열로 위임한다.
      * @param pageable 페이지 정보. 기본값 size=20, page=0.
+     * @param status 워크플로우 상태 키 목록 (OR 조건). 생략 시 필터 미적용.
+     * @param assignee 담당자 UUID 목록. "unassigned" 센티널 허용. 생략 시 필터 미적용.
+     * @param label 라벨 이름 목록 (OR 조건). 생략 시 필터 미적용.
+     * @param component 컴포넌트 UUID 목록 (OR 조건). 생략 시 필터 미적용.
      * @return 200 OK + [Page]<[IssueResponse]>
+     * @throws org.springframework.web.server.ResponseStatusException 400 —
+     *   assignee 또는 component 에 유효하지 않은 UUID 값이 있을 때.
      */
     @GetMapping
+    @Suppress("LongParameterList") // REST 쿼리 파라미터(projectKey/pageable/status/assignee/label/component) — 분리 불가
     fun list(
         @RequestParam projectKey: String?,
         @PageableDefault(size = 20) pageable: Pageable,
+        @RequestParam(required = false) status: List<String> = emptyList(),
+        @RequestParam(required = false) assignee: List<String> = emptyList(),
+        @RequestParam(required = false) label: List<String> = emptyList(),
+        @RequestParam(required = false) component: List<String> = emptyList(),
     ): ResponseEntity<Page<IssueResponse>> {
         log.info("IssueController.list projectKey={} pageable={}", projectKey, pageable)
 
         val actor = CurrentActor.current()
-        val page = service.listIssues(actor, projectKey ?: "", pageable)
+        val filter = IssueFilterQueryParser.parse(status, assignee, label, component)
+        val page = service.listIssues(actor, projectKey ?: "", pageable, filter)
         return ResponseEntity.ok(page)
     }
 

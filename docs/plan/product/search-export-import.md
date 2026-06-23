@@ -31,11 +31,13 @@
 
 **우선순위**. 필수 | **선행**. §0 | **Plan slug**. `search/filter`
 
-- [ ] D1. 도메인 — Filter VO (책임. backend-engineer)
-- [ ] D2. 명세 — 필드 조합 + AND/OR (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — PostgreSQL 인덱스 (status, assignee_id, project_id, label) (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /api/v1/issues?filter=...` jOOQ 동적 쿼리 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+> **백엔드(D1~D5) 완료 (2026-06-23, PR #180)**. 새 BC 신설 없이 **issue-tracking 모듈 확장**으로 구현(ADR `docs/decisions/2026-06-23-fr-sr-01-issue-filter-bc.md` — 논리 소속은 search-export-import 유지, 물리 구현은 issue-tracking). 기존 `GET /api/v1/issues`에 status/assignee/label/component 필터 추가(필드 내 OR + 필드 간 AND). `BoardCardFilter`(shared-kernel) statusKeys 확장 + `buildStatusCondition` + `IssueFilterQueryParser` 신규. visibility 보안 술어 위 AND 결합(우회 불가) + count/content 단일 Condition 재사용. V029 부분 인덱스 `(project_id, current_state_key)`/`(project_id, assignee_id)`. errorCode 결함(400→INTERNAL_ERROR) 동반 교정. **D6 프론트·D7 E2E는 후속 PR**.
+
+- [x] D1. 도메인 — Filter VO (책임. backend-engineer)
+- [x] D2. 명세 — 필드 조합 + AND/OR (책임. backend-engineer)
+- [x] D3. 데이터 모델 — PostgreSQL 인덱스 (status, assignee_id, project_id, label) (책임. db-engineer)
+- [x] D4. 백엔드 — `GET /api/v1/issues?filter=...` jOOQ 동적 쿼리 (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer)
 - [ ] D6. 프론트 UI — 필터 패널 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
