@@ -42,6 +42,8 @@ data class BoardCardFilter(
     val labels: List<String> = emptyList(),
     /** 컴포넌트 UUID 목록. 비어 있으면 컴포넌트 필터 미적용. */
     val componentIds: List<UUID> = emptyList(),
+    /** 워크플로우 상태 키 목록. 비어 있으면 상태 필터 미적용. */
+    val statusKeys: List<String> = emptyList(),
 ) {
     /**
      * 모든 필드가 기본값(빈 목록, false)이면 true 를 반환한다.
@@ -53,7 +55,7 @@ data class BoardCardFilter(
      * @return 필터 조건이 하나도 없으면 true.
      */
     fun isEmpty(): Boolean {
-        return assigneeIds.isEmpty() && !includeUnassigned && labels.isEmpty() && componentIds.isEmpty()
+        return assigneeIds.isEmpty() && !includeUnassigned && labels.isEmpty() && componentIds.isEmpty() && statusKeys.isEmpty()
     }
 
     companion object {
