@@ -7,6 +7,7 @@
 //
 import { http, HttpResponse } from 'msw'
 import {
+  ALICE_OWNER_ID,
   dashboardStore,
   createDashboardInStore,
   LS_KEY_DASHBOARD_CONFLICT,
@@ -90,14 +91,17 @@ function errorResponse(
 /**
  * 요청 헤더 X-Actor-Id에서 현재 actor ID를 추출한다.
  *
- * 실제 백엔드는 SecurityContext에서 추출하지만, MSW 환경에서는
- * 테스트가 X-Actor-Id 헤더로 actor를 명시한다.
+ * 실제 프론트 api 클라이언트(src/api/dashboards.ts)는 X-Actor-Id 헤더를 보내지 않는다.
+ * JWT 쿠키 인증 방식이므로 헤더가 없거나 빈 값이면 "현재 로그인 사용자 = alice"로 폴백한다.
+ *
+ * - X-Actor-Id 명시 → 해당 값 사용 (비소유자 403 등 권한 시나리오 테스트에 사용)
+ * - X-Actor-Id 미존재·빈 값 → ALICE_OWNER_ID 폴백 (실제 통합/E2E 호출 패턴)
  *
  * @param request fetch Request 객체
- * @returns actor ID 문자열, 없으면 빈 문자열
+ * @returns actor ID 문자열 (빈 값이면 ALICE_OWNER_ID 폴백)
  */
 function extractActorId(request: Request): string {
-  return request.headers.get('X-Actor-Id') ?? ''
+  return request.headers.get('X-Actor-Id') || ALICE_OWNER_ID
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
