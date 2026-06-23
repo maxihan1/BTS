@@ -36,9 +36,21 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 - **관련 ADR**: [docs/decisions/2026-06-24-fr-bl-02-sprint-issue-association.md](../decisions/2026-06-24-fr-bl-02-sprint-issue-association.md) (생성됨)
 - **기존 결정 충돌**: 없음. FR-BD board 패턴과 일관. FR-BL-01 rank(issue-tracking)와는 별개 영역(rank=정렬, sprint=그루핑).
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-24-fr-bl-02-sprint-backend.md](../specs/2026-06-24-fr-bl-02-sprint-backend.md)
+
+핵심 결정 (Maxi 확정).
+- 범위: 스프린트 CRUD + 이슈 할당/해제 + 상태전이(PLANNED→ACTIVE→COMPLETED). 스프린트 내 순서(rank)는 이연. 동시 ACTIVE 다중 허용.
+- 관계: `sprint_issues(sprint_id, issue_id)` 조인, `UNIQUE(issue_id)`로 1:N 강제(다른 스프린트 할당 시 원자적 이동). issues 무변경.
+- 9개 엔드포인트(`/api/v1/sprints` CRUD 5 + start/complete 2 + 이슈 할당/해제 2) + 백로그 조회 1. 권한 `IssuePermission`(CRUD/관리=CREATE, 조회=BROWSE) + `IssuePermissionResolver` 재사용(board 선례).
+- 백로그(미할당) 조회는 `GET /api/v1/sprints/backlog` — BoardIssueLookupPort 가시 이슈 − sprint_issues.
+- version: 할당/해제=no-bump, 상태전이/메타수정=bump. 소프트삭제 시 연관 제거→백로그 복귀.
+- 데이터: V503 `sprints` + `sprint_issues`(agile-planning), init_codegen 미러.
+
+## Brainstorming Check
+
+✅ 통과 (adversarial self-review 1회, gap 3건 발견·반영: 백로그 조회 API 누락·소프트삭제 연관 처리·version 동시성 정책). Maxi 추가 결정 불필요.
 
 ## Plan (← /bts-plan 채움)
 
