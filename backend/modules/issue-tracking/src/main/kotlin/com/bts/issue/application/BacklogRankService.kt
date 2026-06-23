@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
+import kotlin.math.pow
 
 /**
  * 프로젝트 전역 rank 분할 시 1 자리 유예를 둔 균등 구간 최소값.
@@ -231,7 +232,6 @@ class BacklogRankService(
      *
      * RankSpaceExhaustedException 시 rebalance → 재조회(C3) → 재계산 → updateRank.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun applyRankUpdate(
         key: IssueKey,
         projectId: UUID,
@@ -282,22 +282,17 @@ class BacklogRankService(
      * N+1 구간으로 나눠 각 이슈에 인덱스 i*(space/(N+1)) 를 할당한다.
      * Rank.of 의 불변식(trailing-a 금지) 이 보장되도록 각 자리를 인코딩한다.
      *
-     * 인코딩 방식: 정수 인덱스를 base-26 으로 자리별 분해 후 'a'+'b' 오프셋을 더한다.
-     * 즉 자리값 0 → 'b', 1 → 'c', ..., 25 → '{' (범위 초과) 이면 안 됨.
-     * 따라서 자리값 범위 1..25 로 제한해 trailing-a 를 구조적으로 회피한다.
+     * 인코딩 방식: 정수 인덱스를 base-26 으로 자리별 분해 후 'a' 오프셋을 더한다.
+     * trailing-a 는 encodeRank 내 후처리로 'b' 로 교체한다.
      *
      * @param n 이슈 수.
      * @return n 개의 균등 간격 rank 문자열 목록.
      */
     private fun computeEvenRanks(n: Int): List<String> {
-        // 3자리 base-26 전체 공간. 인덱스 0 은 "aaa"(trailing-a 가능)이므로 1부터 사용.
-        val totalSpace = Math.pow(ALPHA_SIZE.toDouble(), REBALANCE_DIGITS.toDouble()).toInt()
+        // kotlin.math.pow 사용 (java.lang.Math.pow 대신).
+        val totalSpace = ALPHA_SIZE.toDouble().pow(REBALANCE_DIGITS.toDouble()).toInt()
         val step = maxOf(1, totalSpace / (n + 1))
-
-        return (1..n).map { i ->
-            val idx = i * step
-            encodeRank(idx)
-        }
+        return (1..n).map { i -> encodeRank(i * step) }
     }
 
     /**
