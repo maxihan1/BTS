@@ -102,36 +102,39 @@ SDD §13.2.1 / product agile-planning.md §3.1 / fr-index §3.1
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt`, `backend/modules/issue-tracking/src/test/kotlin/.../repository/IssueRankRepositoryTest.kt`]
-- depends-on: [2]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/.../repository/IssueRankRepositoryTest.kt`]
+- depends-on: [1, 2]
+
+> ★ 조정(Wave1 발견): init_codegen에 rank NOT NULL을 미러하자 jOOQ `IssuesRecord` all-args 생성자에 rank가 추가되어 기존 `IssueRepository.toInsertRecord()`가 컴파일 깨짐 + NOT NULL insert 필요. 따라서 **createIssue rank 자동부여를 T4→T3로 당겨** 컴파일·런타임을 함께 복구한다. T4는 리랭크/rebalance만.
 
 **RED**: `IssueRankRepositoryTest`(Testcontainers) —
 - `updateRank(key, rank)` 가 rank만 변경하고 `version` 불변(no-bump 검증) + **`updated_at` 불변**(C4, assignee no-bump 선례).
 - `findRankByKey(key)` 반환.
 - `findRanksForRebalance(projectId)` 가 `ORDER BY rank, id` (tie-break)로 (key, rank) 목록 반환, 소프트삭제 제외.
 - `findMaxRank(projectId)` (생성 시 맨 끝 부여용).
+- 신규 이슈 생성 시 `issues.rank`가 `between(findMaxRank(projectId), null)`로 채워짐(백로그 맨 끝, NOT NULL 충족).
 
-**GREEN**: jOOQ 구현(V029 codegen 의존). no-bump = `UPDATE issues SET rank=? WHERE key=?` (version·updated_at 미증가).
+**GREEN**: jOOQ 구현(V029 codegen 의존). no-bump = `UPDATE issues SET rank=? WHERE key=?` (version·updated_at 미증가). `toInsertRecord()`에 rank 채움. `IssueApplicationService.createIssue`가 `Rank.between(findMaxRank, null)`로 자동부여(Rank VO 의존, T1).
 
 **REFACTOR**: SQL 상수, KDoc(no-bump 사유 = 메모리 no-bump-sidecar-version, updated_at 미갱신 사유 = 드래그 noise).
 
-**검증**: `cd backend && ./gradlew :modules:issue-tracking:integrationTest --tests "*IssueRankRepositoryTest"`
+**검증**: `cd backend && ./gradlew :modules:issue-tracking:compileKotlin :modules:issue-tracking:integrationTest --tests "*IssueRankRepositoryTest"` (컴파일 복구 + repo 테스트, + Task2 마이그레이션 테스트도 이 시점 정식 실행).
 
-### Task 4. BacklogRankService — 리랭크 + 생성 시 자동부여 + on-demand rebalance(advisory lock)
+### Task 4. BacklogRankService — 리랭크 + on-demand rebalance(advisory lock)
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/BacklogRankService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/InvalidRankNeighborException.kt`, `backend/modules/issue-tracking/src/test/kotlin/.../application/BacklogRankServiceTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/BacklogRankService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/InvalidRankNeighborException.kt`, `backend/modules/issue-tracking/src/test/kotlin/.../application/BacklogRankServiceTest.kt`]
 - depends-on: [1, 3]
 
 **RED**: `BacklogRankServiceTest`(mockk repo + 분기 단위) —
 - `rerank(actor, key, prev?, next?)`: UPDATE 권한 검증(`IssuePermission.UPDATE`), 대상/이웃 조회, 이웃 rank로 `between`, no-bump update.
 - 이웃 검증: 둘 다 null/대상==이웃/타 프로젝트/순서 역전 → **`InvalidRankNeighborException`**(B1 — `IllegalArgumentException` raw throw 금지, catch-all 500 방지); 이웃/대상 미존재·소프트삭제 → `IssueNotFoundException`(404).
 - 고갈(`RankSpaceExhaustedException`) → `rebalance(projectId)` → **rebalance 후 prev/next rank를 `findRankByKey`로 재조회**(C3, 키가 재배포됐으므로) → between 재계산. advisory lock = **`pg_advisory_xact_lock(hashtextextended(projectId::text, 0))`** (C2, identity-access ExternalAccountRepository 선례, UUID→bigint) + lock 후 재조회(TOCTOU, 메모리 advisory-lock-bigint).
-- `createIssue` 흐름에서 신규 이슈에 `between(findMaxRank, null)` 자동부여.
+- (createIssue 자동부여는 T3로 이관됨 — 컴파일 의존.)
 - rank 변경은 `IssueChangeDetector`에 **등록하지 않음**(history noise 회피) — 단위 테스트로 history 미생성 확인.
 
-**GREEN**: `BacklogRankService` 신규(`@Service @Transactional`, ArchUnit 통과). `InvalidRankNeighborException` 신규(도메인 예외). `IssueApplicationService.createIssue`에서 rank 자동부여 호출.
+**GREEN**: `BacklogRankService` 신규(`@Service @Transactional`, ArchUnit 통과). `InvalidRankNeighborException` 신규(도메인 예외). (createIssue 수정은 T3.)
 
 **REFACTOR**: 검증 헬퍼 추출, KDoc.
 
