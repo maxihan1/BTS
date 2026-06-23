@@ -20,6 +20,7 @@ import {
   fetchBulkAvailableTransitions,
   downloadIssuePdf,
   IssueRedirectError,
+  buildIssueFilterQuery,
 } from './issues'
 import { ApiError } from './client'
 import { useChangeAssignee } from './useChangeAssignee'
@@ -1398,6 +1399,42 @@ describe('FR-WT-01 FR-7 — 컴포넌트 변경 시 watcher 목록 자동 갱신
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: issueWatchersKey('ATLAS-1') })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T1-27. buildIssueFilterQuery — 헬퍼 직접 단위 테스트 (FR-SR-01 D6/D7)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('buildIssueFilterQuery', () => {
+  it('T1-27a: filter=undefined 이면 params를 변경하지 않는다', () => {
+    const params = new URLSearchParams({ projectKey: 'ATLAS' })
+    buildIssueFilterQuery(params, undefined)
+    expect(params.toString()).toBe('projectKey=ATLAS')
+  })
+
+  it('T1-27b: 빈 배열·includeUnassigned=false → 키 미추가', () => {
+    const params = new URLSearchParams()
+    buildIssueFilterQuery(params, { statusKeys: [], assigneeIds: [], includeUnassigned: false, labels: [], componentIds: [] })
+    expect(params.toString()).toBe('')
+  })
+
+  it('T1-27c: statusKeys → status 반복 파라미터', () => {
+    const params = new URLSearchParams()
+    buildIssueFilterQuery(params, { statusKeys: ['open', 'done'], assigneeIds: [], includeUnassigned: false, labels: [], componentIds: [] })
+    expect(params.getAll('status')).toEqual(['open', 'done'])
+  })
+
+  it('T1-27d: assigneeIds + includeUnassigned → assignee 반복 + unassigned 센티널', () => {
+    const params = new URLSearchParams()
+    buildIssueFilterQuery(params, { statusKeys: [], assigneeIds: ['uuid-1'], includeUnassigned: true, labels: [], componentIds: [] })
+    expect(params.getAll('assignee')).toEqual(['uuid-1', 'unassigned'])
+  })
+
+  it('T1-27e: labels → label 반복, componentIds → component 반복', () => {
+    const params = new URLSearchParams()
+    buildIssueFilterQuery(params, { statusKeys: [], assigneeIds: [], includeUnassigned: false, labels: ['bug', 'ux'], componentIds: ['c-1'] })
+    expect(params.getAll('label')).toEqual(['bug', 'ux'])
+    expect(params.getAll('component')).toEqual(['c-1'])
   })
 })
 
