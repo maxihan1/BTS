@@ -662,6 +662,8 @@ class IssueExceptionHandler {
         log.info("ISSUE_{} response_status reason='{}'", status.value(), ex.reason)
         val (errorCode, detail) =
             when (status) {
+                HttpStatus.BAD_REQUEST ->
+                    IssueErrorCodes.VALIDATION_FAILED to "요청 파라미터가 올바르지 않습니다."
                 HttpStatus.UNAUTHORIZED ->
                     IssueErrorCodes.UNAUTHENTICATED to "인증이 필요합니다. 세션이 만료되었을 수 있습니다."
                 HttpStatus.FORBIDDEN ->
