@@ -31,12 +31,13 @@ class IssueFilterQueryParserTest {
 
     @Test
     fun `status 값 전달하면 statusKeys 에 설정된다`() {
-        val result = IssueFilterQueryParser.parse(
-            status = listOf("open", "in_progress"),
-            assignee = emptyList(),
-            label = emptyList(),
-            component = emptyList(),
-        )
+        val result =
+            IssueFilterQueryParser.parse(
+                status = listOf("open", "in_progress"),
+                assignee = emptyList(),
+                label = emptyList(),
+                component = emptyList(),
+            )
 
         assertThat(result.statusKeys).containsExactlyInAnyOrder("open", "in_progress")
         assertThat(result.assigneeIds).isEmpty()
@@ -49,12 +50,13 @@ class IssueFilterQueryParserTest {
 
     @Test
     fun `assignee UUID 값 전달하면 assigneeIds 에 설정된다`() {
-        val result = IssueFilterQueryParser.parse(
-            status = emptyList(),
-            assignee = listOf(assigneeUuid.toString()),
-            label = emptyList(),
-            component = emptyList(),
-        )
+        val result =
+            IssueFilterQueryParser.parse(
+                status = emptyList(),
+                assignee = listOf(assigneeUuid.toString()),
+                label = emptyList(),
+                component = emptyList(),
+            )
 
         assertThat(result.assigneeIds).containsExactly(assigneeUuid)
         assertThat(result.includeUnassigned).isFalse()
@@ -64,12 +66,13 @@ class IssueFilterQueryParserTest {
 
     @Test
     fun `assignee=unassigned 센티널이면 includeUnassigned=true 이다`() {
-        val result = IssueFilterQueryParser.parse(
-            status = emptyList(),
-            assignee = listOf("unassigned"),
-            label = emptyList(),
-            component = emptyList(),
-        )
+        val result =
+            IssueFilterQueryParser.parse(
+                status = emptyList(),
+                assignee = listOf("unassigned"),
+                label = emptyList(),
+                component = emptyList(),
+            )
 
         assertThat(result.includeUnassigned).isTrue()
         assertThat(result.assigneeIds).isEmpty()
@@ -77,12 +80,13 @@ class IssueFilterQueryParserTest {
 
     @Test
     fun `assignee 에 UUID와 unassigned 혼합이면 둘 다 반영된다`() {
-        val result = IssueFilterQueryParser.parse(
-            status = emptyList(),
-            assignee = listOf(assigneeUuid.toString(), "unassigned"),
-            label = emptyList(),
-            component = emptyList(),
-        )
+        val result =
+            IssueFilterQueryParser.parse(
+                status = emptyList(),
+                assignee = listOf(assigneeUuid.toString(), "unassigned"),
+                label = emptyList(),
+                component = emptyList(),
+            )
 
         assertThat(result.assigneeIds).containsExactly(assigneeUuid)
         assertThat(result.includeUnassigned).isTrue()
@@ -92,12 +96,13 @@ class IssueFilterQueryParserTest {
 
     @Test
     fun `label 문자열은 그대로 labels 에 설정된다`() {
-        val result = IssueFilterQueryParser.parse(
-            status = emptyList(),
-            assignee = emptyList(),
-            label = listOf("bug", "urgent"),
-            component = emptyList(),
-        )
+        val result =
+            IssueFilterQueryParser.parse(
+                status = emptyList(),
+                assignee = emptyList(),
+                label = listOf("bug", "urgent"),
+                component = emptyList(),
+            )
 
         assertThat(result.labels).containsExactlyInAnyOrder("bug", "urgent")
     }
@@ -106,12 +111,13 @@ class IssueFilterQueryParserTest {
 
     @Test
     fun `component UUID 전달하면 componentIds 에 설정된다`() {
-        val result = IssueFilterQueryParser.parse(
-            status = emptyList(),
-            assignee = emptyList(),
-            label = emptyList(),
-            component = listOf(componentUuid.toString()),
-        )
+        val result =
+            IssueFilterQueryParser.parse(
+                status = emptyList(),
+                assignee = emptyList(),
+                label = emptyList(),
+                component = listOf(componentUuid.toString()),
+            )
 
         assertThat(result.componentIds).containsExactly(componentUuid)
     }
@@ -120,12 +126,13 @@ class IssueFilterQueryParserTest {
 
     @Test
     fun `공백 값은 무시된다`() {
-        val result = IssueFilterQueryParser.parse(
-            status = listOf("  ", "open"),
-            assignee = listOf("  "),
-            label = listOf("  ", "bug"),
-            component = listOf("  "),
-        )
+        val result =
+            IssueFilterQueryParser.parse(
+                status = listOf("  ", "open"),
+                assignee = listOf("  "),
+                label = listOf("  ", "bug"),
+                component = listOf("  "),
+            )
 
         assertThat(result.statusKeys).containsExactly("open")
         assertThat(result.assigneeIds).isEmpty()
@@ -138,24 +145,26 @@ class IssueFilterQueryParserTest {
 
     @Test
     fun `모든 파라미터가 비면 BoardCardFilter-EMPTY 를 반환한다`() {
-        val result = IssueFilterQueryParser.parse(
-            status = emptyList(),
-            assignee = emptyList(),
-            label = emptyList(),
-            component = emptyList(),
-        )
+        val result =
+            IssueFilterQueryParser.parse(
+                status = emptyList(),
+                assignee = emptyList(),
+                label = emptyList(),
+                component = emptyList(),
+            )
 
         assertThat(result).isEqualTo(BoardCardFilter.EMPTY)
     }
 
     @Test
     fun `공백 값만 있으면 BoardCardFilter-EMPTY 를 반환한다`() {
-        val result = IssueFilterQueryParser.parse(
-            status = listOf("  "),
-            assignee = listOf("  "),
-            label = listOf("  "),
-            component = listOf("  "),
-        )
+        val result =
+            IssueFilterQueryParser.parse(
+                status = listOf("  "),
+                assignee = listOf("  "),
+                label = listOf("  "),
+                component = listOf("  "),
+            )
 
         assertThat(result).isEqualTo(BoardCardFilter.EMPTY)
     }

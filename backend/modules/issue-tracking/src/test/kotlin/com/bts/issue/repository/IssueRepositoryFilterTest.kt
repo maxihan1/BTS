@@ -54,8 +54,7 @@ class IssueRepositoryFilterTest : IssueTestcontainersBase() {
         }
     }
 
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
+    private fun requireTaskTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
 
     /** unrestricted=true 접근권한 — 보안등급 필터 미적용 빠른경로. */
     private val unrestrictedAccess =

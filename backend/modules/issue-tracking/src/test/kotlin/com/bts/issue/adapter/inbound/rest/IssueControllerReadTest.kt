@@ -6,7 +6,6 @@ import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
-import com.bts.shared.board.BoardCardFilter
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
