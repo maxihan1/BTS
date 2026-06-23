@@ -493,7 +493,7 @@ export function IssueListPage({
     )
   }
 
-  if (error !== null && error !== undefined || data === undefined) {
+  if ((error !== null && error !== undefined) || data === undefined) {
     return (
       <div role="alert" className="p-8 text-destructive">
         이슈 목록을 불러올 수 없습니다.
