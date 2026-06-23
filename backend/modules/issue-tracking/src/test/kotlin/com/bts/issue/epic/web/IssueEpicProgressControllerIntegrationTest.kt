@@ -12,6 +12,7 @@ import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
 import com.bts.shared.permission.IssueSecurityAccess
 import com.bts.shared.permission.IssueSecurityDirectory
+import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.adapter.inbound.WorkflowResolverImpl
 import com.bts.workflow.scheme.adapter.inbound.WorkflowStateCatalogImpl
 import com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermissionResolver
@@ -194,6 +195,9 @@ class IssueEpicProgressControllerIntegrationTest {
         // ── project-workflow 빈 조립 (IssueMoveIntegrationTest.IssueMoveConfig 선례) ─
 
         @Bean
+        open fun workflowRepository(dsl: DSLContext): WorkflowRepository = WorkflowRepository(dsl)
+
+        @Bean
         open fun workflowSchemeRepository(dsl: DSLContext): WorkflowSchemeRepository =
             WorkflowSchemeRepository(dsl)
 
@@ -230,7 +234,7 @@ class IssueEpicProgressControllerIntegrationTest {
             mappingRepo: SchemeIssueTypeMappingRepository,
             eventPublisher: WorkflowSchemeEventPublisher,
             permissionResolver: AlwaysAllowWorkflowSchemePermissionResolver,
-            workflowSchemeRepository: WorkflowSchemeRepository,
+            workflowRepo: WorkflowRepository,
             issueTypeLookupPort: IssueTypeLookupPort,
         ): WorkflowSchemeApplicationService =
             WorkflowSchemeApplicationService(
@@ -239,7 +243,7 @@ class IssueEpicProgressControllerIntegrationTest {
                 mappingRepo = mappingRepo,
                 eventPublisher = eventPublisher,
                 permissionResolver = permissionResolver,
-                workflowRepo = workflowSchemeRepository,
+                workflowRepo = workflowRepo,
                 issueTypeLookupPort = issueTypeLookupPort,
             )
 
@@ -248,7 +252,7 @@ class IssueEpicProgressControllerIntegrationTest {
             projectLookup: JdbcProjectLookupAdapter,
             assignmentRepo: ProjectWorkflowSchemeAssignmentRepository,
             mappingRepo: SchemeIssueTypeMappingRepository,
-            workflowRepo: WorkflowSchemeRepository,
+            workflowRepo: WorkflowRepository,
             schemeAS: WorkflowSchemeApplicationService,
         ): WorkflowResolverImpl =
             WorkflowResolverImpl(
@@ -792,8 +796,8 @@ class IssueEpicProgressControllerIntegrationTest {
         insertTransition(conn, bugWfId, OPEN_KEY, IN_PROGRESS_KEY, "Start Fix")
         insertTransition(conn, bugWfId, IN_PROGRESS_KEY, BUG_DONE_KEY, "Resolve")
 
-        // progress-scheme
-        val schemeId =
+        // progress-scheme (workflow_schemes.id = BIGSERIAL → Long)
+        val schemeId: Long =
             conn.prepareStatement(
                 """
                 INSERT INTO workflow_schemes (key, name, is_default)
@@ -803,7 +807,7 @@ class IssueEpicProgressControllerIntegrationTest {
             ).use { stmt ->
                 stmt.executeQuery().use { rs ->
                     rs.next()
-                    rs.getObject(1) as UUID
+                    rs.getLong(1)
                 }
             }
 
@@ -812,10 +816,10 @@ class IssueEpicProgressControllerIntegrationTest {
             stmt.execute(
                 """
                 INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id)
-                SELECT '$schemeId', NULL, '$storyWfId'
+                SELECT $schemeId, NULL, '$storyWfId'
                 WHERE NOT EXISTS (
                   SELECT 1 FROM workflow_scheme_issue_type_mappings
-                  WHERE scheme_id = '$schemeId' AND issue_type_id IS NULL
+                  WHERE scheme_id = $schemeId AND issue_type_id IS NULL
                 )
                 """.trimIndent(),
             )
@@ -826,7 +830,7 @@ class IssueEpicProgressControllerIntegrationTest {
             stmt.execute(
                 """
                 INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id)
-                SELECT '$schemeId', t.id, '$storyWfId'
+                SELECT $schemeId, t.id, '$storyWfId'
                 FROM issue_types t WHERE t.key = 'story'
                 ON CONFLICT (scheme_id, issue_type_id) DO UPDATE SET workflow_id = '$storyWfId'
                 """.trimIndent(),
@@ -838,21 +842,21 @@ class IssueEpicProgressControllerIntegrationTest {
             stmt.execute(
                 """
                 INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id)
-                SELECT '$schemeId', t.id, '$bugWfId'
+                SELECT $schemeId, t.id, '$bugWfId'
                 FROM issue_types t WHERE t.key = 'bug'
                 ON CONFLICT (scheme_id, issue_type_id) DO UPDATE SET workflow_id = '$bugWfId'
                 """.trimIndent(),
             )
         }
 
-        // EPROG 프로젝트 → progress-scheme 배정
+        // EPROG 프로젝트 → progress-scheme 배정 (project_id = UUID after V202)
         conn.createStatement().use { stmt ->
             stmt.execute(
                 """
                 INSERT INTO project_workflow_scheme_assignments (project_id, workflow_scheme_id, assigned_at, assigned_by)
-                SELECT p.id, '$schemeId', NOW(), '00000000-0000-0000-0000-000000000000'::uuid
+                SELECT p.id, $schemeId, NOW(), '00000000-0000-0000-0000-000000000000'::uuid
                 FROM projects p WHERE p.key = '$PROJECT_KEY'
-                ON CONFLICT (project_id) DO UPDATE SET workflow_scheme_id = '$schemeId'
+                ON CONFLICT (project_id) DO UPDATE SET workflow_scheme_id = $schemeId
                 """.trimIndent(),
             )
         }
