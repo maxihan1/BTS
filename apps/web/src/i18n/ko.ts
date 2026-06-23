@@ -912,6 +912,29 @@ export const epicChildrenStrings = {
   errorDefault: '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.',
 } as const
 
+/** 에픽 진행률 막대 컴포넌트 문자열 — FR-EP-02 Task-5 */
+export const epicProgressStrings = {
+  // ── 섹션 레이블 ───────────────────────────────────────────────────────
+  /** 진행률 섹션 제목 */
+  sectionTitle: '진행률',
+  /** 자식 이슈가 없을 때 빈 상태 메시지 */
+  noChildrenState: '자식 이슈 없음',
+  /** 완료 비율 텍스트 접미사 (aria-label용) */
+  progressAriaLabel: (pct: number) => `진행률 ${pct}%`,
+
+  // ── 카운트 텍스트 ──────────────────────────────────────────────────────
+  /** done/total 카운트 표시 (예: "4 / 10 완료") */
+  countLabel: (done: number, total: number) => `${done} / ${total} 완료`,
+
+  // ── 범례 레이블 ───────────────────────────────────────────────────────
+  /** 완료 구간 레이블 */
+  doneLabel: '완료',
+  /** 진행 중 구간 레이블 */
+  inProgressLabel: '진행 중',
+  /** 미시작 구간 레이블 */
+  todoLabel: '미시작',
+} as const
+
 /** 사용자 알림 구독 설정 페이지 문자열 — /settings/notifications (FR-NT-04) */
 export const notificationSubscriptionStrings = {
   /** 페이지 제목 */
