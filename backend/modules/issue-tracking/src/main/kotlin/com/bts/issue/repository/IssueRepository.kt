@@ -1972,7 +1972,11 @@ class IssueRepository(
         log.debug("batchUpdateRanks count={}", entries.size)
 
         // VALUES 테이블: (key TEXT, rank TEXT) 로 row 목록을 인라인 테이블로 표현.
+        // DSL.values() 는 vararg Row2 를 받으므로 spread operator 불가피.
         val rows = entries.map { (key, rank) -> DSL.row(DSL.`val`(key.value), DSL.`val`(rank)) }
+
+        // DSL.values() 는 vararg Row2 를 받으므로 spread operator 불가피.
+        @Suppress("SpreadOperator")
         val valuesTable = DSL.values(*rows.toTypedArray()).asTable("v", "key", "rank")
 
         dsl.update(ISSUES)
