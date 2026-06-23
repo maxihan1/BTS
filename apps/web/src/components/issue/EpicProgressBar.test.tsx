@@ -110,10 +110,12 @@ describe('EpicProgressBar — S2 빈 에픽 (total=0)', () => {
     expect(screen.getByText('0%')).toBeInTheDocument()
   })
 
-  it('S2c: 빈 에픽에서 "0 / 0 완료"가 표시된다', () => {
+  it('S2c: 빈 에픽에서 "자식 이슈 없음"이 카운트 자리에 표시된다 (countLabel 대신)', () => {
     render(<EpicProgressBar progress={emptyProgressFixture} />)
 
-    expect(screen.getByText('0 / 0 완료')).toBeInTheDocument()
+    // total=0이면 "0 / 0 완료" 대신 "자식 이슈 없음" 표시
+    expect(screen.getByText('자식 이슈 없음')).toBeInTheDocument()
+    expect(screen.queryByText('0 / 0 완료')).not.toBeInTheDocument()
   })
 })
 

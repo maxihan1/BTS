@@ -2,6 +2,7 @@
 import type { JSX, ChangeEvent } from 'react'
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   useEpicChildren,
   useConnectEpicChild,
@@ -13,6 +14,7 @@ import type { EpicChildSummary } from '@/api/epic-children'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { epicChildrenStrings } from '@/i18n/ko'
+import { EpicProgressBar, epicProgressKey } from './EpicProgressBar'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 에러 코드 → 인라인 메시지 매핑 (error-key drift 방지 — PR #106 교훈)
@@ -141,6 +143,7 @@ export const EpicChildrenSection = ({ epicKey, disabled }: EpicChildrenSectionPr
   const [childKeyInput, setChildKeyInput] = useState('')
   const [inlineError, setInlineError] = useState<string | null>(null)
 
+  const queryClient = useQueryClient()
   const { data, isLoading } = useEpicChildren(epicKey)
   const connectMutation = useConnectEpicChild(epicKey)
   const disconnectMutation = useDisconnectEpicChild(epicKey)
@@ -162,6 +165,8 @@ export const EpicChildrenSection = ({ epicKey, disabled }: EpicChildrenSectionPr
         setChildKeyInput('')
         setInlineError(null)
         toast.success(epicChildrenStrings.addChildSuccess)
+        // ★ cross-mutation invalidate: 자식 연결 후 progress 막대 갱신 (FR-EP-02)
+        void queryClient.invalidateQueries({ queryKey: epicProgressKey(epicKey) })
       },
       onError: (error: unknown) => {
         const code = extractEpicErrorCode(error)
@@ -181,6 +186,8 @@ export const EpicChildrenSection = ({ epicKey, disabled }: EpicChildrenSectionPr
     disconnectMutation.mutate(childKey, {
       onSuccess: () => {
         toast.success(epicChildrenStrings.disconnectSuccess)
+        // ★ cross-mutation invalidate: 자식 해제 후 progress 막대 갱신 (FR-EP-02)
+        void queryClient.invalidateQueries({ queryKey: epicProgressKey(epicKey) })
       },
       onError: (error: unknown) => {
         const code = extractEpicErrorCode(error)
@@ -199,6 +206,11 @@ export const EpicChildrenSection = ({ epicKey, disabled }: EpicChildrenSectionPr
       <p className="text-xs text-muted-foreground mb-2">
         {epicChildrenStrings.sectionTitle}
       </p>
+
+      {/* 진행률 막대 — 자식 목록 상단 배치 (FR-EP-02 Task-5) */}
+      <div className="mb-3">
+        <EpicProgressBar epicKey={epicKey} />
+      </div>
 
       {/* 목록 영역 */}
       {isLoading ? (
