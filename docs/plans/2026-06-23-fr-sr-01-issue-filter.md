@@ -66,7 +66,7 @@ FR-SR-01 이슈 필터 (다중 필드 조합) — search-export-import BC의 첫
 - 실패: `statusKeys` 프로퍼티 없음 → 컴파일/테스트 실패
 
 **GREEN**:
-- `BoardCardFilter`에 `val statusKeys: List<String> = emptyList()` 추가 (기본값으로 하위호환).
+- `BoardCardFilter`에 `val statusKeys: List<String> = emptyList()` 추가 — **data class 마지막 필드로 추가**(positional 호출 방어; 현재 positional 호출 0건이나 중간 삽입 시 보드 호출 깨짐, C2).
 - `isEmpty()`에 `&& statusKeys.isEmpty()` 추가.
 
 **REFACTOR**:
@@ -95,7 +95,7 @@ FR-SR-01 이슈 필터 (다중 필드 조합) — search-export-import BC의 첫
 
 **GREEN**:
 - `listWithType`에 `filter: BoardCardFilter = BoardCardFilter.EMPTY` 파라미터 추가.
-- `buildFilterCondition(filter)` 결과를 count 쿼리와 content 쿼리 **양쪽** where 에 `baseWhere.and(filterCondition)` 결합(null 이면 baseWhere 그대로).
+- `buildFilterCondition(filter)` 를 **한 번만 호출**해 그 결과 객체를 count 쿼리와 content 쿼리 **양쪽** where 에 `baseWhere.and(filterCondition)` 로 재사용(null 이면 baseWhere 그대로). 쿼리별 재조립 금지 — count/content drift 차단(C1, EC6).
 - `buildFilterCondition`에 `buildStatusCondition(filter)` 추가 — `ISSUES.CURRENT_STATE_KEY.`in`(filter.statusKeys)` (statusKeys 비면 null).
 
 **REFACTOR**:
@@ -113,7 +113,7 @@ FR-SR-01 이슈 필터 (다중 필드 조합) — search-export-import BC의 첫
 **RED**:
 - 파일: `IssueApplicationServiceListTest.kt`
 - 테스트: `listIssues 가 filter 를 repo.listWithType 에 그대로 전달` — `verify { repo.listWithType(projectKey, pageable, any(), any(), filter) }` (5-arg).
-- 실패: `listIssues` 4번째 파라미터 없음 → 컴파일 실패. 기존 `repo.listWithType(p, pg, a, any())` mockk stub 들도 5-arg 시그니처로 컴파일 깨짐.
+- 실패: `listIssues` 4번째 파라미터 없음 → 컴파일 실패. **주의(B1)** — 기존 `repo.listWithType(p, pg, a, any())` mockk `every` stub(`IssueApplicationServiceListTest:104,151` · `IssueFieldVisibilityTest:323,469`)은 default 인자로 **컴파일은 통과**하나, `any()` 매처와 자동충전 literal default 혼합으로 **런타임 매처 mismatch(가짜 그린/실패)** 발생. 4개 stub 라인 모두 `(p, pg, a, any(), any())` 5-arg 로 갱신 필수.
 
 **GREEN**:
 - `listIssues`에 `filter: BoardCardFilter = BoardCardFilter.EMPTY` 파라미터 추가 → `repo.listWithType(projectKey, pageable, actor.value, access, filter)` 전달.
@@ -128,7 +128,7 @@ FR-SR-01 이슈 필터 (다중 필드 조합) — search-export-import BC의 첫
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueFilterQueryParser.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueFilterQueryParserTest.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueController.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueControllerReadTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueFilterQueryParser.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueFilterQueryParserTest.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueController.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/inbound/rest/IssueControllerReadTest.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/inbound/rest/IssueExceptionHandler.kt`]
 - depends-on: [3]
 
 **RED**:
@@ -139,13 +139,13 @@ FR-SR-01 이슈 필터 (다중 필드 조합) — search-export-import BC의 첫
   - `잘못된 UUID(assignee/component) → ResponseStatusException 400` (EC3)
 - 파일: `IssueControllerReadTest.kt`
   - `필터 파라미터 → service.listIssues(filter) 전달` (mock verify, list mock 을 4-arg 로 갱신)
-  - `잘못된 UUID 요청 → 400` (catch-all 핸들러가 500으로 변질 안 함 확인 — 변질되면 명시 핸들러 추가)
-- 실패: `IssueFilterQueryParser` 없음 / `IssueController.list` 필터 파라미터 없음
+  - `잘못된 UUID 요청 → 400 AND errorCode == VALIDATION_FAILED` — **status 400뿐 아니라 errorCode 까지 단언**(B2 가짜그린 차단)
+- 실패: `IssueFilterQueryParser` 없음 / `IssueController.list` 필터 파라미터 없음 / 400 errorCode 가 INTERNAL_ERROR
 
 **GREEN**:
 - `IssueFilterQueryParser` 구현 — `BoardFilterQueryParser` 동형(같은 trim/센티널/UUID 400 규칙) + status 파싱. **agile-planning import 금지**(자체 구현).
 - `IssueController.list`에 `@RequestParam(required=false) status/assignee/label/component: List<String> = emptyList()` 추가 → 파서 → `service.listIssues(actor, projectKey ?: "", pageable, filter)`.
-- (필요 시) issue-tracking `@RestControllerAdvice`에 `ResponseStatusException` 명시 핸들러 추가.
+- **B2 errorCode 교정** — `IssueExceptionHandler.handleResponseStatus`(이미 존재, IssueExceptionHandler.kt:659~)의 when 절은 현재 `else -> INTERNAL_ERROR`라 400이 `INTERNAL_ERROR`로 오매핑됨. `HttpStatus.BAD_REQUEST -> IssueErrorCodes.VALIDATION_FAILED to "요청 파라미터가 올바르지 않습니다."` 분기 추가. (핸들러 신규 추가 아님 — 기존 핸들러 보강.)
 
 **REFACTOR**:
 - 파서 KDoc + 센티널 상수. 파일 L1 한국어 헤더 주석.
@@ -161,7 +161,7 @@ FR-SR-01 이슈 필터 (다중 필드 조합) — search-export-import BC의 첫
 
 **RED/GREEN** (마이그레이션은 TDD 변형 — 적용 검증):
 - 필요성 판단 — 이슈 목록은 항상 `project_id` 단위(`idx_issues_project_id_deleted_at` 존재). status/assignee 필터 빈도·프로젝트당 이슈 규모 기준으로 `(project_id, current_state_key)` / `(project_id, assignee_id)` 부분/복합 인덱스 추가 가치 판단.
-- 추가 시: 신규 `V0NN__issue_filter_indexes.sql`(최신 V번호 확인 — **FR-BL-01 worktree 마이그레이션과 V번호 충돌 주의**, 메모리 migration-vnumber-concurrent-branch-collision) + `init_codegen.sql` 미러(메모리 jooq-init-codegen-mirror, 인덱스는 코드젠 무관이나 일관성 유지).
+- 추가 시: 신규 `V029__issue_filter_indexes.sql`(현재 최신 = V028__issue_epic_link.sql 실측, 신규 = **V029** — 단 **FR-BL-01 worktree 마이그레이션과 V번호 충돌 머지 직전 재확인**, 메모리 migration-vnumber-concurrent-branch-collision) + `init_codegen.sql` 미러(메모리 jooq-init-codegen-mirror, 인덱스는 코드젠 무관이나 일관성 유지).
 - 불필요 판단 시: **이 Task 생략 + plan §리뷰에 "인덱스 미추가 사유" 명시**(product D3 deviation 기록).
 
 **검증**: `./gradlew :modules:issue-tracking:flywayMigrate` 또는 통합 테스트 부팅 시 마이그레이션 적용 확인.
@@ -175,4 +175,26 @@ FR-SR-01 이슈 필터 (다중 필드 조합) — search-export-import BC의 첫
 - 추가 검증: ktlint, detekt, `:modules:issue-tracking:test` 전체, `:modules:shared-kernel:test`
 - 회귀 가드: 보드(FR-BD-02) 테스트 그대로 통과(BoardCardFilter statusKeys 기본값으로 보드 동작 불변)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review + plan-devex-review (2026-06-23, 독립 에이전트 적대 리뷰 + 직접 실측)
+
+종합 판정: **조건부 yes** → 발견 2 BLOCKER + 4 CONCERN 모두 plan/spec에 반영 완료. 구현 진행 가능.
+
+**BLOCKER (반영 완료)**.
+- **B1** mockk stub 깨짐 메커니즘 정정 — "컴파일 실패"가 아니라 default+`any()` 혼합 **런타임 매처 mismatch(가짜 그린 위험)**. Task 3 RED에 4개 stub 라인(ListTest:104,151 · VisibilityTest:323,469) 5-arg 갱신 명시.
+- **B2** EC3 핸들러 결함 — `IssueExceptionHandler.handleResponseStatus`(이미 존재, :659~)의 `else -> INTERNAL_ERROR`가 400을 오매핑. 실측 확인(`IssueErrorCodes.VALIDATION_FAILED` 존재 :741). Task 4에 `BAD_REQUEST -> VALIDATION_FAILED` 분기 추가 + IssueExceptionHandler.kt를 files에 추가 + 테스트 errorCode 단언.
+
+**CONCERN (반영 완료)**.
+- **C1** count/content에 동일 `filterCondition` 객체 재사용(쿼리별 재조립 금지) — Task 2 GREEN 명시.
+- **C2** statusKeys data class 마지막 필드 추가(positional 방어) — Task 1 GREEN 명시.
+- **C3** V번호 V028 실측 → 신규 V029 — Task 5 반영(머지 직전 FR-BL-01 충돌 재확인).
+- **C4** DevEx — status 키 discoverability + assignee UUID-only 트레이드오프 — spec §8 기록.
+
+**칭찬(설계 견고성 실측 확인)**.
+- 레이어 의존 직렬화 정확(VO→Repo→Service→Controller, Gradle 모듈 경계 일치).
+- 보안 AND 결합 구조적 안전 — `buildActiveSecureWhere` 위에 filter를 다시 AND, 필터로 visibility 우회 불가(S7/EC7).
+- BC 격리 명확(BoardFilterQueryParser cross-BC import 금지, IssueFilterQueryParser 자체 신설).
+- 하위호환 보장(신규 파라미터 모두 optional + EMPTY default), 파라미터 명명 보드와 일관.
+
+BLOCKER: 없음(2건 모두 반영). 머지 차단 사유 0.

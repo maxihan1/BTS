@@ -75,7 +75,7 @@ GET /api/v1/issues
 
 - **EC1** 필터 없음 → 전체 목록(기존). `BoardCardFilter.EMPTY` → `buildFilterCondition`이 null → where 무변경.
 - **EC2** blank/공백 파라미터(`status=`) → 무시(trim 후 isBlank).
-- **EC3** 잘못된 UUID(assignee/component) → 400 `ResponseStatusException`. issue-tracking의 catch-all `@ExceptionHandler`가 `ResponseStatusException`을 500으로 삼키지 않는지 **확인 필수**(메모리 catch-all-exceptionhandler-swallows-responsestatusexception). 미보장 시 명시 핸들러 추가.
+- **EC3** 잘못된 UUID(assignee/component) → 400 `ResponseStatusException`. `IssueExceptionHandler.handleResponseStatus`(IssueExceptionHandler.kt:659~)가 **이미 등록**되어 500 변질은 없음(status 400 전파됨). 단 현재 when 절이 `else -> INTERNAL_ERROR`라 **400 응답의 errorCode가 `INTERNAL_ERROR`로 오매핑**됨(클라이언트가 서버 오류로 오해) → `BAD_REQUEST -> VALIDATION_FAILED` 분기 추가로 교정(Task 4). 테스트는 status 400 + errorCode `VALIDATION_FAILED` 둘 다 단언.
 - **EC4** 존재하지 않는 status/label → 결과 0(검증·400 안 함, 매칭 0).
 - **EC5** `status` + 같은 status 중복값 → IN 중복 제거 자연 처리.
 - **EC6** count 쿼리에 필터 누락 시 totalElements 오류 → FR-7로 양쪽 적용 보장(회귀 테스트 필수).
@@ -85,6 +85,7 @@ GET /api/v1/issues
 
 ## 8. 제약 조건
 
+- **DevEx 트레이드오프 기록(C4)**. `status`는 워크플로우 상태 키(소문자, 예 `open`/`in_progress`) 정확 매칭이며, 유효 키는 워크플로우 상태 API에서 조회한다(오타 시 EC4로 조용히 빈 결과 — 클라이언트가 키를 추측하지 말 것). `assignee`/`component`는 username/이름이 아닌 **UUID**(보드 필터 BoardController와 일관). username→UUID 변환은 호출측(프론트) 책임.
 - BC 격리 — agile-planning 코드(BoardFilterQueryParser/BoardController) import 금지. BoardCardFilter(shared-kernel)만 공유.
 - 보드(FR-BD-02) 동작 회귀 0 — BoardCardFilter에 statusKeys 추가해도 보드 파서가 status 미파싱 → 항상 emptyList → 보드 결과 불변(회귀 테스트로 보장).
 - 기존 IssueResponse/Page 응답 형식 무변경.
