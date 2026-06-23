@@ -8,6 +8,7 @@ import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -21,6 +22,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
 import java.time.Clock
@@ -101,7 +103,7 @@ class IssueApplicationServiceListTest : DescribeSpec({
                         IssueScope.Project(projectKey),
                     )
                 } returns true
-                every { repo.listWithType(projectKey, pageable, any(), any<IssueSecurityAccess>()) } returns page
+                every { repo.listWithType(projectKey, pageable, any(), any<IssueSecurityAccess>(), any()) } returns page
             }
 
             it("Page<IssueResponse> 를 반환하며 content 크기가 일치한다") {
@@ -148,7 +150,7 @@ class IssueApplicationServiceListTest : DescribeSpec({
                     )
                 } returns true
                 every {
-                    repo.listWithType(projectKey, pageable, any(), any<IssueSecurityAccess>())
+                    repo.listWithType(projectKey, pageable, any(), any<IssueSecurityAccess>(), any())
                 } returns PageImpl(emptyList(), pageable, 0L)
             }
 
@@ -175,6 +177,29 @@ class IssueApplicationServiceListTest : DescribeSpec({
                 shouldThrow<IssueAccessDeniedException> {
                     sut.listIssues(actor, projectKey, pageable)
                 }
+            }
+        }
+
+        context("filter 전달 — statusKeys 있는 BoardCardFilter") {
+            val pageable = PageRequest.of(0, 20)
+            val filter = BoardCardFilter(statusKeys = listOf("TODO", "IN_PROGRESS"))
+            val responses = listOf(makeResponse(1))
+            val page = PageImpl(responses, pageable, 1L)
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(
+                        actor.value,
+                        IssuePermission.BROWSE,
+                        IssueScope.Project(projectKey),
+                    )
+                } returns true
+                every { repo.listWithType(projectKey, pageable, any(), any<IssueSecurityAccess>(), filter) } returns page
+            }
+
+            it("listIssues 가 filter 를 repo.listWithType 에 그대로 전달한다") {
+                sut.listIssues(actor, projectKey, pageable, filter)
+                verify(exactly = 1) { repo.listWithType(projectKey, pageable, any(), any(), filter) }
             }
         }
     }

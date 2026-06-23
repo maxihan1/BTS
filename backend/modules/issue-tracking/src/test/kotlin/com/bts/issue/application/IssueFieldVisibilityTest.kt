@@ -320,7 +320,7 @@ class IssueFieldVisibilityTest : DescribeSpec({
             every {
                 permissionResolver.hasPermission(actorId, IssuePermission.BROWSE, IssueScope.Project(projectKey))
             } returns true
-            every { repo.listWithType(projectKey, pageable, actorId, any<IssueSecurityAccess>()) } returns page
+            every { repo.listWithType(projectKey, pageable, actorId, any<IssueSecurityAccess>(), any()) } returns page
         }
 
         context("열람 불가 CUSTOM 키 secret 이 목록 이슈에 존재할 때") {
@@ -466,7 +466,7 @@ class IssueFieldVisibilityTest : DescribeSpec({
             every {
                 permissionResolver.hasPermission(actorId, IssuePermission.BROWSE, IssueScope.Project(projectKey))
             } returns true
-            every { repo.listWithType(projectKey, pageable, actorId, any<IssueSecurityAccess>()) } returns page
+            every { repo.listWithType(projectKey, pageable, actorId, any<IssueSecurityAccess>(), any()) } returns page
         }
 
         context("목록에서 visible 이지만 editable 이 아닌 필드가 있을 때") {
