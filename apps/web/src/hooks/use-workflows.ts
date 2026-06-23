@@ -62,7 +62,10 @@ export function extractStatusOptions(workflows: WorkflowView[]): StatusOption[] 
     .sort((a, b) => {
       const orderDiff = a.displayOrder - b.displayOrder
       if (orderDiff !== 0) return orderDiff
-      return a.key < b.key ? -1 : a.key > b.key ? 1 : 0
+      // displayOrder 동일 시 key asc — 결정적 정렬 보장(B4)
+      if (a.key < b.key) return -1
+      if (a.key > b.key) return 1
+      return 0
     })
     .map(({ key, name }) => ({ key, name }))
 }
