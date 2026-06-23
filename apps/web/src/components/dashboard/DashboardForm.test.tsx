@@ -116,7 +116,7 @@ describe('DashboardForm', () => {
     const { onSubmit } = await renderForm()
 
     const maxName = 'a'.repeat(200)
-    await user.type(screen.getByLabelText(/이름/i), maxName, { delay: null })
+    await user.type(screen.getByLabelText(/이름/i), maxName)
     await user.click(screen.getByRole('button', { name: /저장/i }))
 
     await waitFor(() => {
