@@ -108,8 +108,8 @@
 - [x] D3. 데이터 모델 — `dashboards(owner_id, visibility, layout)` (책임. db-engineer) — PR #176 (V405 + init_codegen 미러, deleted_at 소프트삭제, dashboard_shares FK CASCADE, 부분 인덱스)
 - [x] D4. 백엔드 — CRUD API (책임. backend-engineer + security-engineer) — PR #176 (visibility 권한 404 숨김/403, OCC WHERE절, UNION 목록 페이지네이션, NOTIF_DASHBOARD_*)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #176 (430 tests, ArchUnit BC격리 vacuous방지, 적대적리뷰 B1/B2 입력검증 400 수정)
-- [ ] D6. 프론트 UI — react-grid-layout (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — react-grid-layout (책임. designer → frontend-engineer) — PR #178 (react-grid-layout@1.5 WidthProvider 12컬럼+모바일 overflow-x-auto, placeholder 타일, `/dashboards` 목록+상세 CRUD, 권한 게이팅 canEditDashboard, OCC invalidate-only, 설정저장 layout 원자저장)
+- [x] D7. E2E (책임. qa-engineer) — PR #178 (S1~S8 + S1b 카드네비 회귀가드 + 접근성 키보드 + 회귀, S3b 드래그/리사이즈는 RGL headless containerWidth=0 제약 SKIP→DashboardGrid 단위 커버)
 
 ### §3.2 FR-DB-02 — 가젯 시스템 (10종+ 표준)
 
