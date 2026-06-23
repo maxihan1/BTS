@@ -182,7 +182,7 @@ class IssueApplicationServiceListTest : DescribeSpec({
 
         context("filter 전달 — statusKeys 있는 BoardCardFilter") {
             val pageable = PageRequest.of(0, 20)
-            val filter = BoardCardFilter(statusKeys = listOf("TODO", "IN_PROGRESS"))
+            val filter = BoardCardFilter(statusKeys = listOf("open", "in_progress"))
             val responses = listOf(makeResponse(1))
             val page = PageImpl(responses, pageable, 1L)
 
