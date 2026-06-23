@@ -141,11 +141,7 @@ export function DashboardsListPage(): JSX.Element {
       payload as unknown as Parameters<typeof createDashboard>[0],
       {
         onSuccess: (created: Dashboard) => {
-          // /dashboards/$id는 Task 9에서 router.ts에 등록됨 — unknown 경유 캐스팅
-          void navigate({
-            to: '/dashboards/$id' as unknown as string,
-            params: { id: created.id } as unknown as Record<string, string>,
-          })
+          void navigate({ to: '/dashboards/$dashboardId', params: { dashboardId: created.id } })
         },
       },
     )

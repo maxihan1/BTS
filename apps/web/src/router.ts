@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 28개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + 프로젝트 보드 1 + settings 5 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 30개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + 프로젝트 보드 1 + settings 5 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 2)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -33,6 +33,8 @@ import { MfaSettingsRouteAdapter } from './routes/settings.mfa'
 import { NotificationSettingsRouteAdapter } from './routes/settings.notifications'
 import { ProjectWorklogReportRouteAdapter } from './routes/projects.$projectKey.reports.worklog'
 import { BoardRouteAdapter } from './routes/projects.$projectKey.board'
+import { DashboardsRouteAdapter } from './routes/dashboards'
+import { DashboardDetailRouteAdapter } from './routes/dashboards.$dashboardId'
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -307,6 +309,24 @@ const projectWorklogReportRoute = createRoute({
   beforeLoad: requireAuthAndPasswordChanged,
 })
 
+/** 대시보드 목록 라우트 — /dashboards, requireAuth (FR-DB-01) */
+const dashboardsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/dashboards',
+  component: DashboardsRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
+/** 대시보드 상세 라우트 — /dashboards/$dashboardId, requireAuth (FR-DB-01) */
+const dashboardDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/dashboards/$dashboardId',
+  component: DashboardDetailRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
 /** 계정 연결 설정 라우트 — /settings/account-links, requireAuth + mustChangePassword 차단 */
 const settingsAccountLinksRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -324,9 +344,10 @@ const settingsAccountLinksRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 27개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 29개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
+ *   · /dashboards · /dashboards/:dashboardId
  *   · /projects/:projectKey/board
  *   · /projects/:projectKey/settings/workflow-scheme · /projects/:projectKey/settings/members
  *   · /projects/:projectKey/settings/components · /projects/:projectKey/settings/versions
@@ -335,7 +356,7 @@ const settingsAccountLinksRoute = createRoute({
  *   · /projects/:projectKey/reports/worklog
  *   · /settings/sessions · /settings/password · /settings/account-links · /settings/mfa
  *   · /settings/notifications
- * requireAuth 라우트: /dashboard · /issues · /issues/* · /admin/* · /projects/* · /settings/*
+ * requireAuth 라우트: /dashboard · /dashboards · /dashboards/* · /issues · /issues/* · /admin/* · /projects/* · /settings/*
  */
 export const routeTree = rootRoute.addChildren([
   // 공통 — 인증/진입점
@@ -356,6 +377,9 @@ export const routeTree = rootRoute.addChildren([
   adminNotificationPoliciesRoute,
   // identity-access BC — 사용자 생성 (/admin/users/new)
   adminUsersNewRoute,
+  // notification BC — 대시보드 목록/상세 (FR-DB-01, /dashboards/$dashboardId는 /dashboards보다 뒤에 등록해 충돌 없음)
+  dashboardsRoute,
+  dashboardDetailRoute,
   // agile-planning BC — 프로젝트 칸반 보드 (FR-BD-01)
   projectBoardRoute,
   // project-workflow BC — 프로젝트별 스킴 할당
