@@ -76,6 +76,7 @@ class IssueRepositoryFilterTest : IssueTestcontainersBase() {
      * @param reporterId 보고자 UUID.
      * @param securityLevelId 보안 등급 UUID. null 이면 공개.
      */
+    @Suppress("LongParameterList") // 통합 테스트 픽스처 빌더 — 시드 다양화 필드, 분리 불필요
     private fun buildIssue(
         seq: Long,
         currentStateKey: String = "open",
@@ -112,7 +113,8 @@ class IssueRepositoryFilterTest : IssueTestcontainersBase() {
         repository.insert(buildIssue(seq = 2, currentStateKey = "open", reporterId = actor))
         repository.insert(buildIssue(seq = 3, currentStateKey = "done", reporterId = actor))
 
-        val page = repository.listWithType("TPRJ", PageRequest.of(0, 10), actor, unrestrictedAccess, BoardCardFilter.EMPTY)
+        val page =
+            repository.listWithType("TPRJ", PageRequest.of(0, 10), actor, unrestrictedAccess, BoardCardFilter.EMPTY)
 
         assertThat(page.totalElements).isEqualTo(3L)
         assertThat(page.content).hasSize(3)
@@ -246,8 +248,12 @@ class IssueRepositoryFilterTest : IssueTestcontainersBase() {
         val actor = UUID.randomUUID()
         val excludedLevel = UUID.randomUUID()
 
-        repository.insert(buildIssue(seq = 1, currentStateKey = "open", securityLevelId = excludedLevel, reporterId = actor))
-        repository.insert(buildIssue(seq = 2, currentStateKey = "open", securityLevelId = excludedLevel, reporterId = actor))
+        repository.insert(
+            buildIssue(seq = 1, currentStateKey = "open", securityLevelId = excludedLevel, reporterId = actor),
+        )
+        repository.insert(
+            buildIssue(seq = 2, currentStateKey = "open", securityLevelId = excludedLevel, reporterId = actor),
+        )
         repository.insert(buildIssue(seq = 3, currentStateKey = "done", securityLevelId = null, reporterId = actor))
 
         val restrictedAccess =

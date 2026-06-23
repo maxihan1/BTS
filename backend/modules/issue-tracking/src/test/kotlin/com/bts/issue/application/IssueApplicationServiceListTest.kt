@@ -194,7 +194,9 @@ class IssueApplicationServiceListTest : DescribeSpec({
                         IssueScope.Project(projectKey),
                     )
                 } returns true
-                every { repo.listWithType(projectKey, pageable, any(), any<IssueSecurityAccess>(), filter) } returns page
+                every {
+                    repo.listWithType(projectKey, pageable, any(), any<IssueSecurityAccess>(), filter)
+                } returns page
             }
 
             it("listIssues 가 filter 를 repo.listWithType 에 그대로 전달한다") {

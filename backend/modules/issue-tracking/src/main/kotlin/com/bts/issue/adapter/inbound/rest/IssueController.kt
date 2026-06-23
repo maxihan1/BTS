@@ -160,9 +160,11 @@ class IssueController(
      * @param label 라벨 이름 목록 (OR 조건). 생략 시 필터 미적용.
      * @param component 컴포넌트 UUID 목록 (OR 조건). 생략 시 필터 미적용.
      * @return 200 OK + [Page]<[IssueResponse]>
-     * @throws org.springframework.web.server.ResponseStatusException 400 — assignee 또는 component 에 유효하지 않은 UUID 값이 있을 때.
+     * @throws org.springframework.web.server.ResponseStatusException 400 —
+     *   assignee 또는 component 에 유효하지 않은 UUID 값이 있을 때.
      */
     @GetMapping
+    @Suppress("LongParameterList") // REST 쿼리 파라미터(projectKey/pageable/status/assignee/label/component) — 분리 불가
     fun list(
         @RequestParam projectKey: String?,
         @PageableDefault(size = 20) pageable: Pageable,
