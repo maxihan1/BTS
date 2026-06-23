@@ -43,8 +43,13 @@ class BacklogRankLoadTest : IssueTestcontainersBase() {
     /** rebalance NFR3 임계값 (밀리초). */
     private val REBALANCE_TOTAL_MS_LIMIT = 500L
 
-    /** between 반복 삽입 시 허용 최대 키 길이 — 50자 한도 내 충분한 공간 증명용. */
-    private val BETWEEN_MAX_KEY_LENGTH_LIMIT = 40
+    /**
+     * between 반복 삽입 시 허용 최대 키 길이 — Rank.MAX_LENGTH(50자) 미만 보장.
+     *
+     * 인접 경계(b, c 사이) 200번 반복 삽입 최악 케이스에서도
+     * 50자 한도를 넘지 않아야 고갈 전 충분한 공간이 있음이 증명된다.
+     */
+    private val BETWEEN_MAX_KEY_LENGTH_LIMIT = Rank.MAX_LENGTH
 
     /** 반복 삽입 테스트 횟수 — 같은 위치에 N회 삽입 시 키 길이 증가 검증용. */
     private val REPEATED_INSERT_COUNT = 200
@@ -111,11 +116,11 @@ class BacklogRankLoadTest : IssueTestcontainersBase() {
      * L02. 같은 위치에 반복 삽입 시 키 길이 증가 제한 (NFR2).
      *
      * 동일 prev~next 사이에 N 회 삽입할 때 각 결과의 키 길이를 기록한다.
-     * 키 길이가 MAX_KEY_LENGTH_LIMIT(40자) 를 넘으면 실패 — 고갈 전 충분한 삽입 공간을 증명.
+     * 키 길이가 Rank.MAX_LENGTH(50자) 미만이어야 한다 — 고갈 전 충분한 삽입 공간을 증명.
      * 실제 고갈은 RankSpaceExhaustedException 으로 표면화되며 이 테스트 범위를 벗어난다.
      */
     @Test
-    fun `L02 - 반복 삽입 시 키 길이 증가가 40자 이하로 제한되어야 한다 NFR2`() {
+    fun `L02 - 반복 삽입 시 키 길이 증가가 Rank MAX_LENGTH 이하로 제한되어야 한다 NFR2`() {
         // "b" 와 "c" 사이에서 반복 삽입 — 인접 케이스로 키 길이가 늘어나는 최악 경로.
         val fixedPrev = Rank.of("b")
         val fixedNext = Rank.of("c")
@@ -149,7 +154,8 @@ class BacklogRankLoadTest : IssueTestcontainersBase() {
 
         assertThat(maxLength)
             .describedAs(
-                "${REPEATED_INSERT_COUNT}회 반복 삽입 최대 키 길이가 ${BETWEEN_MAX_KEY_LENGTH_LIMIT}자 이하여야 한다 (NFR2). 실측 최대: $maxLength",
+                "${REPEATED_INSERT_COUNT}회 반복 삽입 최대 키 길이가 Rank.MAX_LENGTH(${BETWEEN_MAX_KEY_LENGTH_LIMIT}자) 이하여야 한다 (NFR2). " +
+                    "실측 최대: $maxLength — 고갈 전 충분한 삽입 공간이 있음을 증명",
             )
             .isLessThanOrEqualTo(BETWEEN_MAX_KEY_LENGTH_LIMIT)
     }

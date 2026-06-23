@@ -1954,6 +1954,36 @@ class IssueRepository(
     }
 
     /**
+     * 여러 이슈의 rank 를 단일 UPDATE ... FROM (VALUES ...) SQL 로 일괄 갱신한다 (rebalance 성능, FR-BL-01 NFR3).
+     *
+     * 단건 [updateRank] 를 1K 번 반복하면 DB 왕복 1K 회가 발생해 성능 목표(500ms)를 달성하기 어렵다.
+     * PostgreSQL UPDATE ... FROM (VALUES ...) 로 단일 왕복에 처리한다.
+     * no-bump 원칙 동일: version·updated_at 미증가.
+     *
+     * UPDATE issues SET rank = v.rank
+     * FROM (VALUES (key1, rank1), ...) AS v(key, rank)
+     * WHERE issues.key = v.key AND issues.deleted_at IS NULL
+     *
+     * @param entries (이슈 키, 새 rank 문자열) 목록.
+     */
+    @Transactional
+    fun batchUpdateRanks(entries: List<Pair<IssueKey, String>>) {
+        if (entries.isEmpty()) return
+        log.debug("batchUpdateRanks count={}", entries.size)
+
+        // VALUES 테이블: (key TEXT, rank TEXT) 로 row 목록을 인라인 테이블로 표현.
+        val rows = entries.map { (key, rank) -> DSL.row(DSL.`val`(key.value), DSL.`val`(rank)) }
+        val valuesTable = DSL.values(*rows.toTypedArray()).asTable("v", "key", "rank")
+
+        dsl.update(ISSUES)
+            .set(ISSUES.RANK, DSL.field(DSL.name("v", "rank"), String::class.java))
+            .from(valuesTable)
+            .where(ISSUES.KEY.eq(DSL.field(DSL.name("v", "key"), String::class.java)))
+            .and(ISSUES.DELETED_AT.isNull)
+            .execute()
+    }
+
+    /**
      * 이슈의 rank 를 단건 조회한다.
      *
      * @param key 대상 이슈 키.
