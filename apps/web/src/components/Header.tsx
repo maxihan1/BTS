@@ -42,9 +42,18 @@ export const Header = () => {
 
   return (
     <header className="flex h-14 items-center border-b bg-background px-4">
+      {/* 메인 nav — 인증 사용자 전용 공통 링크 */}
+      <nav className="flex items-center gap-4 text-sm font-medium" aria-label="메인 메뉴">
+        <Link
+          to="/dashboards"
+          className="text-muted-foreground hover:text-foreground [&.active]:text-foreground [&.active]:font-semibold"
+        >
+          대시보드
+        </Link>
+      </nav>
       {/* 관리 nav — SYSTEM_ADMIN 전용 (isSystemAdmin === true일 때만 렌더) */}
       {isAdmin && (
-        <nav className="flex items-center gap-4 text-sm font-medium" aria-label="관리 메뉴">
+        <nav className="flex items-center gap-4 text-sm font-medium ml-4" aria-label="관리 메뉴">
           {ADMIN_LINKS.map(({ to, label }) => (
             <Link
               key={to}

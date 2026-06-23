@@ -146,6 +146,15 @@ describe('Header', () => {
     expect(screen.getByRole('button', { name: /alice/ })).toBeInTheDocument()
   })
 
+  it('메인 네비게이션에 대시보드 링크(to="/dashboards")가 노출된다', () => {
+    // beforeEach에서 isSystemAdmin: false로 설정됨 — 모든 사용자에게 노출
+    renderHeader()
+
+    const link = screen.getByRole('link', { name: '대시보드' })
+    expect(link).toBeInTheDocument()
+    expect(link).toHaveAttribute('href', '/dashboards')
+  })
+
   it('서버 로그아웃 실패(500) 시에도 세션이 정리되고 /login으로 이동한다', async () => {
     const user = userEvent.setup()
 

@@ -32,6 +32,7 @@
     "radix-ui": "^1.4.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-grid-layout": "^1.5.3",
     "react-hook-form": "^7.76.0",
     "recharts": "3.8.1",
     "shadcn": "^4.7.0",
