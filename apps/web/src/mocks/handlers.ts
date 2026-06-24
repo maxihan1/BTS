@@ -1,5 +1,6 @@
 // MSW 핸들러 통합 인덱스 — BC별 handlers를 spread해서 내보낸다
 import { backlogHandlers } from './backlog-handlers'
+import { favoriteHandlers } from './favorite-handlers'
 import { boardHandlers } from './board-handlers'
 import { dashboardHandlers } from './dashboard-handlers'
 import { accountLinkHandlers } from './account-link-handlers'
@@ -53,6 +54,7 @@ import { securityLevelHandlers } from './security-level-handlers'
  */
 export const handlers = [
   ...backlogHandlers,
+  ...favoriteHandlers,
   ...boardHandlers,
   ...dashboardHandlers,
   ...accountLinkHandlers,

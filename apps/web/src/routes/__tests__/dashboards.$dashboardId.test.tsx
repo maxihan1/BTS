@@ -7,7 +7,7 @@ import type { Dashboard } from '@/api/dashboards'
 import { useAuthStore } from '@/auth/authStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// mock — TanStack Router, use-dashboards, DashboardGrid, DashboardForm, sonner
+// mock — TanStack Router, use-dashboards, DashboardGrid, DashboardForm, sonner, FavoriteButton
 // ─────────────────────────────────────────────────────────────────────────────
 
 const { mockNavigate } = vi.hoisted(() => ({ mockNavigate: vi.fn() }))
@@ -47,6 +47,28 @@ vi.mock('@/components/dashboard/DashboardGrid', () => ({
           </div>
         ))}
       </div>
+    )
+  },
+}))
+
+// FavoriteButton mock — targetType·targetId props를 캡처해 단언에 활용
+let capturedFavTargetType: string | null = null
+let capturedFavTargetId: string | null = null
+
+vi.mock('@/components/favorite/FavoriteButton', () => ({
+  FavoriteButton: (props: { targetType: string; targetId: string }) => {
+    capturedFavTargetType = props.targetType
+    capturedFavTargetId = props.targetId
+    return (
+      <button
+        type="button"
+        data-testid="favorite-button"
+        aria-label="즐겨찾기"
+        data-target-type={props.targetType}
+        data-target-id={props.targetId}
+      >
+        ★
+      </button>
     )
   },
 }))
@@ -162,6 +184,8 @@ beforeEach(() => {
   capturedGridCanEdit = null
   capturedGridOnLayoutChange = null
   capturedGridOnDeleteTile = null
+  capturedFavTargetType = null
+  capturedFavTargetId = null
 
   vi.clearAllMocks()
 
@@ -572,5 +596,44 @@ describe('DashboardDetailRouteAdapter', () => {
     await waitFor(() =>
       expect(mockUseDashboard).toHaveBeenCalledWith('a0000000-0000-4000-8000-000000000001'),
     )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FavoriteButton 렌더 (FR-UX-02 Task 7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('FavoriteButton 렌더', () => {
+  /**
+   * T-UX02-FAV1. 대시보드 로드 후 헤더 영역에 FavoriteButton이 렌더된다.
+   * targetType="DASHBOARD", targetId=dashboardId UUID가 전달돼야 한다.
+   */
+  it('T-UX02-FAV1: 대시보드 로드 후 헤더에 FavoriteButton(DASHBOARD, dashboardId)이 렌더된다', async () => {
+    mockUseDashboard.mockReturnValue({ data: DASHBOARD_OWNED, isLoading: false, isError: false })
+    await renderDetailPage()
+    await waitFor(() => expect(screen.getByTestId('favorite-button')).toBeInTheDocument())
+    expect(capturedFavTargetType).toBe('DASHBOARD')
+    expect(capturedFavTargetId).toBe(DASHBOARD_OWNED.id)
+  })
+
+  /**
+   * T-UX02-FAV2. 로딩 중에는 FavoriteButton이 렌더되지 않는다 (데이터 미수신).
+   */
+  it('T-UX02-FAV2: 로딩 중에는 FavoriteButton이 렌더되지 않는다', async () => {
+    mockUseDashboard.mockReturnValue({ data: undefined, isLoading: true, isError: false })
+    await renderDetailPage()
+    expect(screen.queryByTestId('favorite-button')).toBeNull()
+  })
+
+  /**
+   * T-UX02-FAV3. 비소유자도 헤더에 FavoriteButton이 렌더된다 (즐겨찾기는 권한 무관).
+   * dashboardId는 라우트 파라미터이므로 renderDetailPage에 DASHBOARD_NOT_OWNED.id를 넘긴다.
+   */
+  it('T-UX02-FAV3: 비소유자도 FavoriteButton이 렌더된다', async () => {
+    mockUseDashboard.mockReturnValue({ data: DASHBOARD_NOT_OWNED, isLoading: false, isError: false })
+    await renderDetailPage(DASHBOARD_NOT_OWNED.id)
+    await waitFor(() => expect(screen.getByTestId('favorite-button')).toBeInTheDocument())
+    expect(capturedFavTargetType).toBe('DASHBOARD')
+    expect(capturedFavTargetId).toBe(DASHBOARD_NOT_OWNED.id)
   })
 })

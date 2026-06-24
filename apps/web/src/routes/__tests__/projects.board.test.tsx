@@ -8,7 +8,7 @@ import type { UserSummary } from '@/api/users'
 import { ApiError } from '@/api/client'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// mock — TanStack Router, use-boards, @/api/users, KanbanBoard
+// mock — TanStack Router, use-boards, @/api/users, KanbanBoard, FavoriteButton
 // ─────────────────────────────────────────────────────────────────────────────
 
 const { mockNavigate } = vi.hoisted(() => ({ mockNavigate: vi.fn() }))
@@ -108,6 +108,28 @@ vi.mock('@/hooks/use-update-swimlane', () => ({
 const mockUseProjectPermissions = vi.fn()
 vi.mock('@/hooks/use-project-permissions', () => ({
   useProjectPermissions: (projectKey: string) => mockUseProjectPermissions(projectKey),
+}))
+
+// FavoriteButton mock — targetType·targetId props를 캡처해 단언에 활용
+let capturedFavTargetType: string | null = null
+let capturedFavTargetId: string | null = null
+
+vi.mock('@/components/favorite/FavoriteButton', () => ({
+  FavoriteButton: (props: { targetType: string; targetId: string }) => {
+    capturedFavTargetType = props.targetType
+    capturedFavTargetId = props.targetId
+    return (
+      <button
+        type="button"
+        data-testid="favorite-button"
+        aria-label="즐겨찾기"
+        data-target-type={props.targetType}
+        data-target-id={props.targetId}
+      >
+        ★
+      </button>
+    )
+  },
 }))
 
 // SwimlaneSelector mock — 테스트에서 onChange를 직접 호출할 수 있도록 캡처
@@ -236,6 +258,8 @@ describe('BoardPage', () => {
     mockUseBoardCalls.length = 0
     capturedFilterBarOnChange = null
     capturedSwimlaneSelectorOnChange = null
+    capturedFavTargetType = null
+    capturedFavTargetId = null
     mockFetchUsers.mockResolvedValue(USERS)
     mockUseBoard.mockReturnValue({ data: undefined, isLoading: false })
     mockUseUpdateSwimlane.mockReturnValue({ mutate: mockUpdateSwimlaneMutate, isPending: false })
@@ -250,6 +274,8 @@ describe('BoardPage', () => {
     mockKanbanBoardProps.length = 0
     mockUseBoardCalls.length = 0
     capturedSwimlaneSelectorOnChange = null
+    capturedFavTargetType = null
+    capturedFavTargetId = null
   })
 
   /**
@@ -861,5 +887,77 @@ describe('BoardRouteAdapter', () => {
     await waitFor(() => {
       expect(mockUseBoards).toHaveBeenCalledWith('ATLAS')
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FavoriteButton 렌더 (FR-UX-02 Task 8)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('FavoriteButton 렌더', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockKanbanBoardProps.length = 0
+    mockUseBoardCalls.length = 0
+    capturedFilterBarOnChange = null
+    capturedSwimlaneSelectorOnChange = null
+    capturedFavTargetType = null
+    capturedFavTargetId = null
+    mockFetchUsers.mockResolvedValue(USERS)
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+    mockUseUpdateSwimlane.mockReturnValue({ mutate: mockUpdateSwimlaneMutate, isPending: false })
+    mockUseProjectPermissions.mockReturnValue({
+      data: { projectKey: 'ATLAS', permissions: { CREATE: true, MANAGE_COMPONENTS: false, MANAGE_VERSIONS: false, MANAGE_CUSTOM_FIELDS: false, MANAGE_FIELD_PERMISSIONS: false, MANAGE_TEMPLATES: false } },
+      isLoading: false,
+    })
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+    mockKanbanBoardProps.length = 0
+    mockUseBoardCalls.length = 0
+    capturedFavTargetType = null
+    capturedFavTargetId = null
+  })
+
+  /**
+   * T-UX02-BD8-FAV1. 보드 페이지 정상 렌더 시 헤더 영역에 FavoriteButton이 렌더된다.
+   * targetType="PROJECT", targetId=projectKey가 전달돼야 한다.
+   */
+  it('T-UX02-BD8-FAV1: 보드 로드 후 헤더에 FavoriteButton(PROJECT, projectKey)이 렌더된다', async () => {
+    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+
+    await renderBoardPage('ATLAS')
+
+    await waitFor(() => expect(screen.getByTestId('favorite-button')).toBeInTheDocument())
+    expect(capturedFavTargetType).toBe('PROJECT')
+    expect(capturedFavTargetId).toBe('ATLAS')
+  })
+
+  /**
+   * T-UX02-BD8-FAV2. 보드 목록 로딩 중에도 FavoriteButton이 렌더된다.
+   * (projectKey는 라우트 파라미터에서 즉시 알 수 있으므로 보드 로딩과 무관)
+   */
+  it('T-UX02-BD8-FAV2: 보드 목록 로딩 중에도 FavoriteButton이 렌더된다', async () => {
+    mockUseBoards.mockReturnValue({ data: undefined, isLoading: true, error: null, isError: false })
+
+    await renderBoardPage('ATLAS')
+
+    await waitFor(() => expect(screen.getByTestId('favorite-button')).toBeInTheDocument())
+    expect(capturedFavTargetType).toBe('PROJECT')
+    expect(capturedFavTargetId).toBe('ATLAS')
+  })
+
+  /**
+   * T-UX02-BD8-FAV3. 보드 0개(CreateBoardForm 표시) 상황에서도 FavoriteButton이 렌더된다.
+   */
+  it('T-UX02-BD8-FAV3: 보드 0개 시에도 FavoriteButton이 렌더된다', async () => {
+    mockUseBoards.mockReturnValue({ data: [], isLoading: false, error: null, isError: false })
+
+    await renderBoardPage('ATLAS')
+
+    await waitFor(() => expect(screen.getByTestId('favorite-button')).toBeInTheDocument())
+    expect(capturedFavTargetType).toBe('PROJECT')
+    expect(capturedFavTargetId).toBe('ATLAS')
   })
 })

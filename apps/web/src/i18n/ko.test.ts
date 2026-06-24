@@ -686,6 +686,59 @@ describe('boardFilterLabels — 보드 필터 바 문자열 콜론 종결 가드
   })
 })
 
+// ── favoriteLabels — 즐겨찾기 UI 문자열 (FR-UX-02 D6/D7) ─────────────────────
+import { favoriteLabels } from './favorite-labels'
+
+describe('favoriteLabels — 즐겨찾기 UI 문자열 콜론 종결 가드 (FR-UX-02)', () => {
+  it('addAriaLabel 키가 존재한다', () => {
+    expectTypeOf(favoriteLabels).toHaveProperty('addAriaLabel')
+  })
+
+  it('removeAriaLabel 키가 존재한다', () => {
+    expectTypeOf(favoriteLabels).toHaveProperty('removeAriaLabel')
+  })
+
+  it('dropdownTriggerAriaLabel 키가 존재한다', () => {
+    expectTypeOf(favoriteLabels).toHaveProperty('dropdownTriggerAriaLabel')
+  })
+
+  it('dropdownTitle 키가 존재한다', () => {
+    expectTypeOf(favoriteLabels).toHaveProperty('dropdownTitle')
+  })
+
+  it('emptyMessage 키가 존재한다', () => {
+    expectTypeOf(favoriteLabels).toHaveProperty('emptyMessage')
+  })
+
+  it('groupIssue 키가 존재한다', () => {
+    expectTypeOf(favoriteLabels).toHaveProperty('groupIssue')
+  })
+
+  it('groupDashboard 키가 존재한다', () => {
+    expectTypeOf(favoriteLabels).toHaveProperty('groupDashboard')
+  })
+
+  it('groupProject 키가 존재한다', () => {
+    expectTypeOf(favoriteLabels).toHaveProperty('groupProject')
+  })
+
+  it('addError 키가 존재한다', () => {
+    expectTypeOf(favoriteLabels).toHaveProperty('addError')
+  })
+
+  it('removeError 키가 존재한다', () => {
+    expectTypeOf(favoriteLabels).toHaveProperty('removeError')
+  })
+
+  it('모든 문자열 값은 콜론으로 끝나지 않는다 (글로벌 §5)', () => {
+    for (const [key, value] of Object.entries(favoriteLabels)) {
+      if (typeof value === 'string') {
+        expect(value, `favoriteLabels["${key}"] = "${value}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
+      }
+    }
+  })
+})
+
 // ── epicChildrenStrings ──────────────────────────────────────────────────────
 
 describe('epicChildrenStrings — 에픽 자식 이슈 섹션 문자열 (FR-EP-01 D6)', () => {
