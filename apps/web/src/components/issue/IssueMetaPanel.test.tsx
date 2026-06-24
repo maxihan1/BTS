@@ -1,4 +1,4 @@
-// IssueMetaPanel 유형 행 + 셀렉터 + 상태전이 + 우선순위/영향도/환경/라벨 + 담당자 단위 테스트 — FR-IS-04 D6 Task-5, FR-IS-03 D6 Task-3, FR-IS-09 Task-6
+// IssueMetaPanel 유형 행 + 셀렉터 + 상태전이 + 우선순위/영향도/환경/라벨 + 담당자 + 즐겨찾기 단위 테스트 — FR-IS-04 D6 Task-5, FR-IS-03 D6 Task-3, FR-IS-09 Task-6, FR-UX-02 D6 Task-6
 import type { ReactElement } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
@@ -55,10 +55,16 @@ vi.mock('@/hooks/use-debounce', () => ({
 
 // IssueSecurityLevelSelect 내부 useQuery가 호출하는 security-levels API 핸들러 등록
 // 기존 테스트는 보안등급 동작을 검증하지 않으므로 빈 배열로 응답해 UI에 영향 없이 동작하게 한다.
+// FavoriteButton 내부 useFavorites()가 GET /api/v1/favorites를 호출한다.
+// 단위 테스트 환경에서는 Authorization 헤더가 없어 favoriteHandlers가 401을 반환하므로,
+// onUnhandledRequest:'error' 설정과 무관하게 인증 없이 빈 목록을 반환하는 핸들러를 직접 등록한다.
 beforeEach(() => {
   server.use(
     http.get('/api/v1/projects/:projectKey/issue-security-scheme/levels', () =>
       HttpResponse.json({ levels: [] }),
+    ),
+    http.get('/api/v1/favorites', () =>
+      HttpResponse.json({ data: { items: [] } }),
     ),
   )
 })
@@ -1498,5 +1504,25 @@ describe('IssueMetaPanel — 라벨 자동완성 통합 (FR-IS-09 Task-6)', () =
     await user.click(saveBtn)
     expect(onLabelsSave).toHaveBeenCalledOnce()
     expect(onLabelsSave).toHaveBeenCalledWith(['autocomplete-label'])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-02 Task-6 — 즐겨찾기 버튼 (IMP-80)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueMetaPanel — 즐겨찾기 버튼 (FR-UX-02 Task-6)', () => {
+  /**
+   * IMP-80: IssueMetaPanel이 FavoriteButton을 targetType="ISSUE", targetId=issue.key로 렌더한다.
+   * data-testid="favorite-button"으로 존재를 확인하고
+   * aria-pressed=false (즐겨찾기 미등록 초기 상태)임을 단언한다.
+   */
+  it('IMP-80: FavoriteButton이 targetType=ISSUE, targetId=issue.key로 렌더된다', async () => {
+    renderPanel()
+    // FavoriteButton은 data-testid="favorite-button"을 갖는다 (FavoriteButton.tsx L98)
+    const btn = await screen.findByTestId('favorite-button')
+    expect(btn).toBeInTheDocument()
+    // 즐겨찾기 미등록 초기 상태 — GET /api/v1/favorites → items:[] 이므로 aria-pressed=false
+    expect(btn).toHaveAttribute('aria-pressed', 'false')
   })
 })
