@@ -198,8 +198,8 @@
 - [x] D3. 데이터 모델 — `favorites(user_id, target_type, target_id)` (책임. db-engineer) (완료. PR #184 — V406 + init_codegen 미러, 하드삭제·FK없음·UNIQUE 복합)
 - [x] D4. 백엔드 — `POST/DELETE /api/v1/favorites` (책임. backend-engineer) (완료. PR #184 — POST 멱등 201/200·DELETE 대상기준 204·GET 본인 목록, currentActorId 401, FavoriteExceptionHandler basePackages 한정)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer) (완료. PR #184 — 도메인 단위·service mockk·repository Testcontainers(누출/멱등)·controller 슬라이스·스키마 마이그레이션)
-- [ ] D6. 프론트 UI — Star 버튼 + 즐겨찾기 사이드바 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — Star 버튼 + 즐겨찾기 사이드바 (책임. designer → frontend-engineer) (완료. PR #185 — Star 토글 3종 배치(이슈/대시보드/프로젝트) + Header ⭐ 드롭다운(타입별 그룹, 좌측 사이드바 인프라 부재로 Header 드롭다운 채택), api/favorites.ts(워처 패턴 계승·invalidate-only), targetId 라벨 그대로(제목 해석 안 함), MSW stateful 핸들러)
+- [x] D7. E2E (책임. qa-engineer) (완료. PR #185 — favorites.spec.ts 4시나리오: Star 토글 라운드트립·드롭다운 건수단언·SPA Link 이동·빈 상태)
 
 ### §5.2 FR-UX-03 — 개인 알림 보관함 (Inbox)
 
