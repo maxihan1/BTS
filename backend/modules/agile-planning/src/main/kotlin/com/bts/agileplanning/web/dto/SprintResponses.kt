@@ -1,0 +1,53 @@
+// 스프린트 REST API 응답 DTO — agile-planning BC (FR-BL-02 Task 5)
+@file:Suppress("ktlint:standard:filename")
+
+package com.bts.agileplanning.web.dto
+
+import com.bts.agileplanning.domain.Sprint
+import java.time.LocalDate
+import java.util.UUID
+
+/**
+ * 스프린트 응답 DTO.
+ *
+ * 스프린트 단건 조회, 생성, 수정, 전이 결과에 공통으로 사용한다.
+ *
+ * @property sprintId 스프린트 UUID.
+ * @property projectKey 소속 프로젝트 키.
+ * @property name 스프린트 이름.
+ * @property goal 스프린트 목표 설명. null 이면 목표 미설정.
+ * @property status 현재 상태. `"PLANNED"` · `"ACTIVE"` · `"COMPLETED"`.
+ * @property startDate 스프린트 시작일. null 이면 미지정.
+ * @property endDate 스프린트 종료일. null 이면 미지정.
+ * @property version 낙관적 잠금 버전.
+ */
+data class SprintResponse(
+    val sprintId: UUID,
+    val projectKey: String,
+    val name: String,
+    val goal: String?,
+    val status: String,
+    val startDate: LocalDate?,
+    val endDate: LocalDate?,
+    val version: Long,
+) {
+    companion object {
+        /**
+         * 도메인 [Sprint] 를 [SprintResponse] 로 변환한다.
+         *
+         * @param sprint 변환할 스프린트 도메인 객체.
+         * @return 응답 DTO 인스턴스.
+         */
+        fun from(sprint: Sprint): SprintResponse =
+            SprintResponse(
+                sprintId = sprint.id,
+                projectKey = sprint.projectKey,
+                name = sprint.name,
+                goal = sprint.goal,
+                status = sprint.status.name,
+                startDate = sprint.startDate,
+                endDate = sprint.endDate,
+                version = sprint.version,
+            )
+    }
+}

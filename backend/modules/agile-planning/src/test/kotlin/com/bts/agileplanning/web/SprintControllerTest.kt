@@ -94,8 +94,7 @@ class SprintControllerTest {
         open fun sprintApplicationService(): SprintApplicationService = mockk(relaxed = true)
 
         @Bean
-        open fun sprintController(service: SprintApplicationService): SprintController =
-            SprintController(service)
+        open fun sprintController(service: SprintApplicationService): SprintController = SprintController(service)
 
         @Bean
         open fun sprintExceptionHandler(): SprintExceptionHandler = SprintExceptionHandler()
@@ -191,11 +190,13 @@ class SprintControllerTest {
             .andExpect(jsonPath("$.errorCode").value("AGILE_ACCESS_DENIED"))
     }
 
-    // ── CREATE-3. POST name="" → 400 ─────────────────────────────────────────
+    // ── CREATE-3. POST name 누락 → 400 ──────────────────────────────────────
 
     @Test
-    fun `POST sprints name이 빈 문자열이면 400 AGILE_VALIDATION_FAILED를 반환한다`() {
-        val body = mapOf("projectKey" to "BTS", "name" to "")
+    fun `POST sprints name이 누락되면 400 AGILE_VALIDATION_FAILED를 반환한다`() {
+        // name 은 non-nullable String 이므로 JSON 에서 누락되면 Jackson 이 HttpMessageNotReadableException 을 던진다.
+        // HttpMessageNotReadableException → SprintExceptionHandler.handleHttpMessageNotReadable → 400.
+        val body = mapOf("projectKey" to "BTS")
 
         mockMvc.perform(
             post("/api/v1/sprints")
@@ -307,11 +308,12 @@ class SprintControllerTest {
             .andExpect(jsonPath("$.data.sprintId").value(sprintId.toString()))
     }
 
-    // ── PATCH-2. PATCH name="" → 400 ─────────────────────────────────────────
+    // ── PATCH-2. PATCH name 누락 → 400 ──────────────────────────────────────
 
     @Test
-    fun `PATCH sprints name이 빈 문자열이면 400 AGILE_VALIDATION_FAILED를 반환한다`() {
-        val body = mapOf("name" to "", "version" to 0)
+    fun `PATCH sprints name이 누락되면 400 AGILE_VALIDATION_FAILED를 반환한다`() {
+        // name 은 non-nullable String 이므로 JSON 에서 누락되면 Jackson 이 HttpMessageNotReadableException 을 던진다.
+        val body = mapOf("version" to 0)
 
         mockMvc.perform(
             patch("/api/v1/sprints/$sprintId")
