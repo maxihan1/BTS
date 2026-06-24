@@ -227,3 +227,30 @@ describe('SprintColumn — S4 카드 목록 렌더', () => {
     expect(screen.getByText('이')).toBeInTheDocument()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S5. concern-1 RED — orderedKeys droppable data 결선
+// SprintColumn의 useDroppable data에 orderedKeys가 포함되어야 한다.
+// 현재는 { context: 'sprint', sprintId } 만 등록하므로 이 테스트는 실패한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const issue2Sprint: BacklogIssue = {
+  key: 'ATLAS-6',
+  summary: '두 번째 스프린트 이슈',
+  currentStateKey: 'todo',
+  assigneeId: null,
+  priority: 3,
+  rank: 'bbb',
+  version: 1,
+  epicKey: null,
+}
+
+describe('SprintColumn — S5 concern-1 orderedKeys droppable data 결선', () => {
+  it('S5a red: 이슈 목록의 key 배열이 droppable data에 orderedKeys로 포함된다', () => {
+    renderSprintColumn(plannedSprint, [issue1, issue2Sprint])
+    const dropZone = document.querySelector(`[data-droppable="sprint-${plannedSprint.sprintId}"]`)
+    expect(dropZone).toBeInTheDocument()
+    // orderedKeys가 DOM data 속성으로 노출되어야 한다 (구현 후 통과)
+    expect(dropZone?.getAttribute('data-ordered-keys')).toBe('ATLAS-5,ATLAS-6')
+  })
+})

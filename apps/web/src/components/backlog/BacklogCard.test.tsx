@@ -141,3 +141,23 @@ describe('BacklogCard — S3 드래그 affordance', () => {
     expect(card).toBeInTheDocument()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S4. concern-1 RED — 카드 droppable 등록
+// BacklogCard는 드래그 대상이자 드롭 수신 대상이어야 한다.
+// 현재 useDraggable만 있고 useDroppable이 없으므로 data-card-droppable 속성이 없다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BacklogCard — S4 concern-1 카드 droppable 등록', () => {
+  it('S4a red: backlog 카드에 data-card-droppable 속성이 있다', () => {
+    renderCard(baseIssue, 'backlog')
+    // useDroppable로 등록된 카드 droppable id = 'card:backlog:ATLAS-10'
+    // DOM에 data-card-droppable="card:backlog:ATLAS-10" 속성으로 노출
+    expect(document.querySelector('[data-card-droppable="card:backlog:ATLAS-10"]')).toBeInTheDocument()
+  })
+
+  it('S4b red: sprint 카드에 data-card-droppable 속성이 있다', () => {
+    renderCard(baseIssue, 'sprint', 'sprint-uuid-001')
+    expect(document.querySelector('[data-card-droppable="card:sprint:ATLAS-10"]')).toBeInTheDocument()
+  })
+})

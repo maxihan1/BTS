@@ -155,3 +155,22 @@ describe('BacklogColumn — S4 빈 목록 placeholder', () => {
     expect(screen.getByText('이슈 없음')).toBeInTheDocument()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S5. concern-1 RED — orderedKeys droppable data 결선
+// BacklogColumn의 useDroppable data에 orderedKeys가 포함되어야 한다.
+// 현재는 { context: 'backlog' }만 등록하므로 이 테스트는 실패한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BacklogColumn — S5 concern-1 orderedKeys droppable data 결선', () => {
+  it('S5a red: 이슈 목록의 key 배열이 droppable data에 orderedKeys로 포함된다', () => {
+    // @dnd-kit/core의 useDroppable이 등록한 data를 직접 읽을 방법이 없으므로
+    // data-ordered-keys 속성으로 DOM에 노출시키는 방식으로 검증한다.
+    // 현재 구현에는 data-ordered-keys 속성이 없으므로 이 테스트는 실패한다.
+    renderColumn([issue1, issue2])
+    const dropZone = document.querySelector('[data-droppable="backlog"]')
+    expect(dropZone).toBeInTheDocument()
+    // orderedKeys가 DOM data 속성으로 노출되어야 한다 (구현 후 통과)
+    expect(dropZone?.getAttribute('data-ordered-keys')).toBe('ATLAS-1,ATLAS-2')
+  })
+})
