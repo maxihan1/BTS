@@ -27,7 +27,7 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 - **BC**: agile-planning **단독**. issue-tracking 무변경(board 선례 — cross-BC는 shared-kernel 포트로만 통신).
 - **신규 엔티티**:
   - `Sprint` (agile-planning) — 프로젝트 단위 작업 기간. 상태(라이프사이클)·기간·목표 보유.
-  - `SprintIssue` 연관 — `sprint_issues(sprint_id, issue_id)` 조인. `issue_id`는 UUID **느슨 참조**(cross-BC FK 없음).
+  - `SprintIssue` 연관 — `sprint_issues(sprint_id, issue_key)` 조인. `issue_key`는 이슈 키 **느슨 참조**(cross-BC FK 없음). board 표면이 issueKey 중심 + adapter가 issue-tracking 소유 → key 저장으로 포트 무확장·단일 BC 유지(ADR §식별자).
 - **신규 테이블**: `sprints`, `sprint_issues` (agile-planning 마이그레이션 V503+). issues 테이블 변경 없음.
 - **cross-BC 이슈 조회**: 기존 `BoardIssueLookupPort` 재사용/확장(board가 이슈를 읽는 패턴 동일). issue-tracking 직접 import 금지.
 - **용어**: 스프린트(Sprint)·백로그(Backlog)는 glossary에 이미 정의됨 → 신규 용어 0. (sprint 상태 enum 명칭은 spec에서 확정.)
@@ -42,16 +42,141 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 
 핵심 결정 (Maxi 확정).
 - 범위: 스프린트 CRUD + 이슈 할당/해제 + 상태전이(PLANNED→ACTIVE→COMPLETED). 스프린트 내 순서(rank)는 이연. 동시 ACTIVE 다중 허용.
-- 관계: `sprint_issues(sprint_id, issue_id)` 조인, `UNIQUE(issue_id)`로 1:N 강제(다른 스프린트 할당 시 원자적 이동). issues 무변경.
-- 9개 엔드포인트(`/api/v1/sprints` CRUD 5 + start/complete 2 + 이슈 할당/해제 2) + 백로그 조회 1. 권한 `IssuePermission`(CRUD/관리=CREATE, 조회=BROWSE) + `IssuePermissionResolver` 재사용(board 선례).
-- 백로그(미할당) 조회는 `GET /api/v1/sprints/backlog` — BoardIssueLookupPort 가시 이슈 − sprint_issues.
-- version: 할당/해제=no-bump, 상태전이/메타수정=bump. 소프트삭제 시 연관 제거→백로그 복귀.
+- 관계: `sprint_issues(sprint_id, issue_key)` 조인, `UNIQUE(issue_key)`로 1:N 강제(다른 스프린트 할당 시 원자적 이동). issues 무변경.
+- 9개 엔드포인트(`/api/v1/sprints` CRUD 5 + start/complete 2 + 이슈 할당/해제 2). 권한 `IssuePermission`(CRUD/관리=CREATE, 조회=BROWSE) + `IssuePermissionResolver` 재사용(board 선례).
+- 할당 가시성 검증은 기존 `BoardIssueLookupPort.listVisibleIssuesByProject`(key 중심) 재사용 — 포트 무확장.
+- **백로그 조회 API는 D6 이연**(rank 정렬=포트 확장 회피). version: 할당/해제=no-bump, 상태전이/메타수정=bump. 소프트삭제 시 연관 제거→백로그 복귀.
 - 데이터: V503 `sprints` + `sprint_issues`(agile-planning), init_codegen 미러.
 
 ## Brainstorming Check
 
 ✅ 통과 (adversarial self-review 1회, gap 3건 발견·반영: 백로그 조회 API 누락·소프트삭제 연관 처리·version 동시성 정책). Maxi 추가 결정 불필요.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> Gradle 모듈: `:modules:agile-planning` 단독. 검증은 `backend/`에서 실행.
+> 모듈 컴파일 직렬(메모리 bts-plan-wave-gradle-module-compile): T2~T7은 같은 agile-planning 모듈 → 파일 안 겹쳐도 컴파일은 모듈 일괄.
+> 신규 테이블(sprints/sprint_issues)이라 기존 jOOQ 레코드 무변경 → FR-BL-01 같은 기존테스트 대량파급 위험 없음(issues 무변경).
+
+### Task 1. V503 마이그레이션 — sprints + sprint_issues + init_codegen 미러
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/agile-planning/src/main/resources/db/migration/agile-planning/V503__sprints.sql`, `backend/modules/agile-planning/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/migration/SprintSchemaMigrationTest.kt`]
+- depends-on: []
+
+**RED**: `SprintSchemaMigrationTest`(Testcontainers) — V503 적용 후 `sprints`(status CHECK PLANNED/ACTIVE/COMPLETED, deleted_at nullable, version 기본0) + `sprint_issues`(issue_key NOT NULL, `UNIQUE(issue_key)`, PK(sprint_id, issue_key), FK sprint_id→sprints ON DELETE CASCADE) + 인덱스 `idx_sprints_project`(부분, deleted_at IS NULL)·`idx_sprint_issues_sprint` 존재 검증. UNIQUE(issue_key) 중복 INSERT 거부 검증.
+
+**GREEN**: `V503__sprints.sql` 두 테이블 + 제약 + 인덱스. init_codegen.sql(agile)에 두 테이블 정의 인라인 미러(메모리 jooq-init-codegen-mirror).
+
+**REFACTOR**: 한 줄 헤더 주석, CHECK/UNIQUE 의도 주석.
+
+**검증**: `cd backend && ./gradlew :modules:agile-planning:flywayMigrate :modules:agile-planning:generateJooq` + 마이그레이션 테스트. ⚠️ V503 번호 머지 직전 재확인(메모리 migration-vnumber, 현재 최신 V502).
+
+### Task 2. Sprint 도메인 — 엔티티 + 상태전이 규칙(start/complete)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/domain/Sprint.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/domain/SprintStatus.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/domain/SprintTest.kt`]
+- depends-on: []
+
+**RED**: `SprintTest`(순수 단위) —
+- `start()`: PLANNED→ACTIVE. ACTIVE/COMPLETED에서 start → `InvalidSprintTransitionException`(E1).
+- `complete()`: ACTIVE→COMPLETED. PLANNED/COMPLETED에서 complete → `InvalidSprintTransitionException`(E1).
+- 기간 검증: startDate > endDate → `require` 실패(E11). 둘 중 하나만/둘 다 null 허용.
+- name 공백 → `require` 실패(E10, 도메인 레벨).
+
+**GREEN**: `Sprint` data class(id, projectKey, name, goal?, status, startDate?, endDate?, version) + `start()/complete()`가 새 상태의 Sprint 반환(불변). `SprintStatus` enum(PLANNED/ACTIVE/COMPLETED) + 허용 전이 맵. 다중 ACTIVE 허용이라 전이에 외부 스프린트 조회 불필요(순수).
+
+**REFACTOR**: 전이 규칙 상수화, KDoc(중괄호·백틱 금지, 메모리 ktlint-kdoc-brace).
+
+**검증**: `cd backend && ./gradlew :modules:agile-planning:test --tests "*SprintTest"`
+
+### Task 3. SprintRepository (jOOQ) — CRUD + 할당/해제 + no-bump
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/repository/SprintRepository.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/repository/SprintRepositoryTest.kt`]
+- depends-on: [1, 2]
+
+**RED**: `SprintRepositoryTest`(Testcontainers) —
+- `insert/findById(소프트삭제 제외)/findByProject(status별, deleted_at 제외)/updateMeta(version bump)/updateStatus(version bump)/softDelete`.
+- `assignIssue(sprintId, issueKey)`: 원자적 이동 — 같은 issue_key가 다른 sprint에 있으면 기존 삭제 후 새 sprint에 INSERT(UNIQUE(issue_key) 충족). sprints row 불변(version·updated_at no-bump, FR10).
+- `unassignIssue(sprintId, issueKey)`: 연관 DELETE. 없으면 0행(E9 service에서 404 판정).
+- `findIssueKeys(sprintId)`: 할당된 issue_key 목록(단건 조회용).
+- `softDelete`가 sprint_issues 연관도 제거(FR11, CASCADE 또는 명시 DELETE).
+- 멱등 재할당(같은 sprint+issue_key)은 no-op(FR7).
+
+**GREEN**: jOOQ 구현(V503 codegen 의존). 이동은 단일 트랜잭션 delete-then-insert 또는 `INSERT ... ON CONFLICT(issue_key) DO UPDATE SET sprint_id=`. no-bump = sprints UPDATE 미발생.
+
+**REFACTOR**: SQL 상수, KDoc(no-bump 사유 메모리 no-bump-sidecar-version, 이동 원자성).
+
+**검증**: `cd backend && ./gradlew :modules:agile-planning:compileKotlin :modules:agile-planning:integrationTest --tests "*SprintRepositoryTest"` (+ Task1 마이그레이션 테스트 이 시점 정식 실행).
+
+### Task 4. SprintApplicationService — CRUD + 상태전이 + 할당/해제 + 권한
+
+**메타**.
+- agent: `backend-engineer` (권한 부분 security-engineer 검토)
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/SprintApplicationService.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/SprintExceptions.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/SprintApplicationServiceTest.kt`]
+- depends-on: [3]
+
+**RED**: `SprintApplicationServiceTest`(mockk repo/port + 분기 단위) —
+- `create/update/softDelete/list/get`: 권한 `IssuePermission.CREATE`(쓰기)·`BROWSE`(조회) on `IssueScope.Project`(메모리 crossbc-permission-resolver-not-role-lookup). 권한 없음 → 403(E6). 대상 미존재/소프트삭제 → `SprintNotFoundException`(E2, 404).
+- `start/complete`: 도메인 `Sprint.start()/complete()` 위임 → 잘못된 전이 `InvalidSprintTransitionException`(E1). 다중 ACTIVE 허용(기존 ACTIVE 조회·차단 없음).
+- `assignIssue(actor, sprintId, issueKey)`: 권한 검증 → 스프린트 조회(404 E2) → **COMPLETED면 거부**(E5, 409) → `BoardIssueLookupPort.listVisibleIssuesByProject(projectKey, actor)` 결과에 issueKey 포함 확인(타프로젝트/미가시 → E3 400 / E4 404) → `repo.assignIssue`(이동 E8/멱등 E7). 인증 추출을 리소스 조회보다 먼저(메모리 auth-extraction-before-resource-lookup).
+- `unassignIssue`: 권한 → COMPLETED 거부(E5) → repo.unassign(없으면 404 E9).
+- 권한 resolver는 non-null fail-closed 주입(메모리 crossbc-resolver-nullable-fail-open).
+
+**GREEN**: `SprintApplicationService`(@Service @Transactional, ArchUnit 통과). `SprintExceptions.kt`에 `InvalidSprintTransitionException`·`SprintNotFoundException`(도메인 예외). 가시성 검증은 listVisibleIssuesByProject 결과 set 멤버십(truncated 한계 주석 — board 동일).
+
+**REFACTOR**: 권한 헬퍼 추출, KDoc.
+
+**검증**: `cd backend && ./gradlew :modules:agile-planning:test --tests "*SprintApplicationServiceTest"`
+
+### Task 5. SprintController + DTO + ExceptionHandler — 9 엔드포인트
+
+**메타**.
+- agent: `backend-engineer` (권한 매핑 security-engineer 검토)
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/SprintController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/SprintRequests.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/SprintResponses.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/SprintExceptionHandler.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/SprintControllerTest.kt`]
+- depends-on: [4]
+
+**RED**: `SprintControllerTest`(MockMvc, service mock) — 9 엔드포인트(`@RequestMapping("/api/v1/sprints")`): POST 생성 201, GET 단건/목록 200, PATCH 수정 200, DELETE 204, POST start/complete 200, POST issues 할당 200/201, DELETE issues 해제 204. 도메인예외 HTTP 매핑 단언(MockMvc): `InvalidSprintTransitionException`→**409**, `SprintNotFoundException`→**404**, 권한→403, @Valid(name 공백/기간역전)→400. catch-all `Exception`→500이 409/404를 삼키지 않는지 명시 검증(메모리 catch-all-exceptionhandler-swallows / domain-exception-http-handler-basepackage-scope).
+
+**GREEN**: `SprintController`(actor 추출 먼저) + `RerankIssueRequest`류 DTO(@Valid) + `DataResponse`. `SprintExceptionHandler` — **`@RestControllerAdvice(assignableTypes=[SprintController::class])`로 한정**(기존 `BoardExceptionHandler`가 같은 `basePackages=com.bts.agileplanning.web` 커버 → 입력 예외 400은 Board가 이미 처리, Sprint 도메인 예외만 신규 advice. 메모리 fr-db-01 형제 advice 미적용 주의). `InvalidSprintTransitionException`→409, `SprintNotFoundException`→404.
+
+**REFACTOR**: DTO KDoc, 권한 주석.
+
+**검증**: `cd backend && ./gradlew :modules:agile-planning:test --tests "*SprintControllerTest"`
+
+### Task 6. HTTP 통합테스트 — S1~S8 / E1~E12
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/integration/SprintIntegrationTest.kt`]
+- depends-on: [5]
+
+**RED→GREEN**: 실 repo + 시드 end-to-end(board 통합테스트 시드 패턴 참고) — S1 생성 / S2 할당 / S3 해제 / S4 start / S5 complete / S6 단건(할당목록) / S7 목록 / S8 수정·삭제 + E1(전이 409) E2(404) E3(타프로젝트 400) E4(미가시 404) E5(COMPLETED 할당 409) E6(권한 403) E7(멱등 200) E8(이동 원자성) E9(해제 없음 404) E11(기간역전 400) E12(UNIQUE 동시 409). 1개 이상 일부러 위반 넣어 vacuous 아님 확인(메모리 archunit-vacuous / 통합테스트 실 repo 메모리 issue-tracking-transition-test-mocks).
+
+**검증**: `cd backend && ./gradlew :modules:agile-planning:integrationTest --tests "*SprintIntegrationTest"`
+
+### Task 7. ArchUnit — agile→issue-tracking import 0 + @Transactional @Service
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/architecture/AgilePlanningBcArchTest.kt`]
+- depends-on: [4]
+
+**RED→GREEN**: 기존 `AgilePlanningBcArchTest` 확장 — 신규 Sprint 클래스 포함 agile-planning이 `com.bts.issue..`(issue-tracking 내부) 직접 import 0(cross-BC는 shared-kernel 포트만, NFR1). `SprintApplicationService` 등 `@Transactional` 보유 클래스가 `@Service` 부착(메모리 learnings @Service 누락 가드). 룰이 vacuous 아님 확인 — 일부러 위반 클래스 임시 추가해 fail 확인 후 제거(메모리 archunit-vacuous-rule-silent-pass).
+
+**검증**: `cd backend && ./gradlew :modules:agile-planning:test --tests "*AgilePlanningBcArchTest"`
+
+## Plan 메타
+
+- task 수: 7
+- 예상 wave: 5 (W1: T1‖T2 / W2: T3 / W3: T4 / W4: T5‖T7 / W5: T6). agile-planning 모듈 컴파일 직렬 요인 존재.
+- TDD 강제: yes (RED→GREEN→REFACTOR, test 커밋 선행)
+- 병렬 dispatch: bts-impl이 depends-on + files로 wave 계산
+- 추가 검증: ktlint, detekt(baseline), ArchUnit(@Transactional @Service + BC import), generateJooq
+- BC: agile-planning 단독. issue-tracking 무변경(포트 무확장, cross-BC는 BoardIssueLookupPort 재사용만).
 
 ## 리뷰 결과 (← /bts-review-plan 채움)

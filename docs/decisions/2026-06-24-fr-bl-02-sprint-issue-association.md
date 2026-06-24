@@ -21,13 +21,19 @@ FR-BL-02는 이슈를 스프린트에 할당/해제하는 기능이다. "이슈�
 ```
 agile-planning BC (단독)
   sprints(id, project_key, name, goal, status, start_date, end_date, ...)
-  sprint_issues(sprint_id, issue_id)
-        └ issue_id = UUID 느슨 참조 (cross-BC FK 없음)
+  sprint_issues(sprint_id, issue_key)
+        └ issue_key = 이슈 키 느슨 참조 (cross-BC FK 없음)
 ```
 
-- 이슈 목록/가시성 조회: 기존 `BoardIssueLookupPort` 재사용 또는 확장 (board 선례 동일 패턴).
+- 이슈 목록/가시성 조회: 기존 `BoardIssueLookupPort.listVisibleIssuesByProject` **그대로 재사용**(확장 불필요).
 - 할당/해제: `sprint_issues` INSERT / DELETE.
-- "한 이슈 = 한 스프린트(활성)" 1:N 불변식은 조인 테이블 제약(예: `UNIQUE(issue_id)` 또는 service 검증)으로 강제 — 구체 방식은 spec에서 확정.
+- "한 이슈 = 한 스프린트" 1:N 불변식은 `UNIQUE(issue_key)`로 강제 — 다른 스프린트 할당 시 기존 연관 제거 후 이동(원자적).
+
+### 식별자 = issue_key (UUID 아님)
+
+board의 cross-BC 표면이 전부 **이슈 키 중심**이다 — `BoardIssueView.key`(UUID 미노출), `BoardTransitionCommand.issueKey`. 그리고 포트 구현체 `BoardIssueLookupAdapter`는 **issue-tracking 모듈**에 있다. 따라서 UUID를 저장하려면 포트에 id 조회 메서드를 추가해야 하고, 그러면 issue-tracking adapter를 수정 → 단일 BC가 깨진다.
+
+→ `sprint_issues`에 `issue_key`(VARCHAR)를 저장한다. 백로그 계산(`listVisibleIssuesByProject` 결과 keys − sprint_issues keys)과 가시성 검증이 모두 key↔key로 일관되며, 포트를 확장하지 않아 **issue-tracking 완전 무변경**이 유지된다. 키 영속성(DATA.md): 키는 재사용 금지이고 `UNIQUE(issue_key)`가 이를 보강한다. 이슈의 프로젝트 이동(FR-MV)으로 키가 바뀌는 경우의 sprint_issues 동기화는 이번 범위 밖(board의 동일 약점, 후속).
 
 ## 대안 — issues.sprint_id 컬럼 (모델 A, 기각)
 

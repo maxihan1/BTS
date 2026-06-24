@@ -20,12 +20,12 @@
 - **FR1**. 스프린트는 프로젝트(project_key) 단위. name 필수, goal·startDate·endDate 선택.
 - **FR2**. 상태는 `PLANNED → ACTIVE → COMPLETED` 단방향 전이. start(PLANNED→ACTIVE), complete(ACTIVE→COMPLETED). 그 외 전이는 거부.
 - **FR3**. 동시 ACTIVE 스프린트 개수 제약 없음(다중 허용).
-- **FR4**. 이슈↔스프린트는 **1:N**(한 이슈는 최대 1개 스프린트). `sprint_issues.issue_id` UNIQUE로 강제. 다른 스프린트 할당 시 기존 연관을 제거하고 이동(원자적).
+- **FR4**. 이슈↔스프린트는 **1:N**(한 이슈는 최대 1개 스프린트). `sprint_issues.issue_key` UNIQUE로 강제. 다른 스프린트 할당 시 기존 연관을 제거하고 이동(원자적).
 - **FR5**. 할당 대상 이슈는 스프린트와 **같은 프로젝트**의 **가시 이슈**여야 한다(BoardIssueLookupPort로 검증). 타 프로젝트/미존재/소프트삭제 이슈는 거부.
 - **FR6**. COMPLETED 스프린트는 이슈 할당/해제 불가(종료된 스프린트 불변). 거부(409).
 - **FR7**. 할당 멱등성. 이미 같은 스프린트에 속한 이슈를 재할당하면 no-op 200(중복 INSERT 아님).
 - **FR8**. 모든 변경 작업은 낙관적 잠금(version)으로 동시성 보호. 단순 조회는 잠금 없음.
-- **FR9**. 백로그 = sprint_issues에 없는 프로젝트 가시 이슈(파생 개념, 별도 저장 안 함). 해제 시 자동으로 백로그 복귀. 백로그 조회는 `GET /api/v1/sprints/backlog?projectKey=`(BoardIssueLookupPort로 가시 이슈 조회 → sprint_issues에 있는 issue_id 제외 → rank NULLS LAST·created_at 순).
+- **FR9**. 백로그 = sprint_issues에 없는 프로젝트 가시 이슈(파생 개념, 별도 저장 안 함). 해제 시 자동으로 백로그 복귀. **백로그 조회 API 자체는 D6 이연**(rank 정렬이 본질 → 포트 확장 회피, 위 API 표 주석). 이번 범위에서 할당/해제로 sprint_issues 연관만 정확히 관리.
 - **FR10 (version 정책)**. 이슈 할당/해제는 `sprint_issues`만 변경하고 `sprints` row는 불변(version·updated_at no-bump, 메모리 no-bump-sidecar-version). 상태전이(start/complete)·메타 수정(PATCH)은 `sprints.version` bump + 낙관적 잠금.
 - **FR11 (소프트삭제 시 연관)**. 스프린트 소프트삭제(DELETE) 시 해당 `sprint_issues` 연관을 함께 제거 → 할당돼 있던 이슈는 백로그로 복귀(gap②). 완료 스프린트 이력 보존이 아니라 백로그 복귀가 사용자 기대에 부합.
 - **FR12 (종료 시 미완료 이슈)**. complete(종료) 시 할당 이슈는 그대로 유지(자동 백로그 이동/다음 스프린트 이월은 이번 범위 밖, 후속). COMPLETED 후 할당/해제만 금지(FR6).
@@ -49,7 +49,8 @@
 | POST | `/api/v1/sprints/{id}/complete` | CREATE | ACTIVE→COMPLETED |
 | POST | `/api/v1/sprints/{id}/issues` | CREATE | 이슈 할당. body: `{issueKey}` |
 | DELETE | `/api/v1/sprints/{id}/issues/{issueKey}` | CREATE | 이슈 해제 |
-| GET | `/api/v1/sprints/backlog?projectKey=` | BROWSE | 백로그(미할당 가시 이슈) 목록. rank NULLS LAST·created_at 순 (gap①) |
+
+> **백로그(미할당 이슈) 조회 API는 D6로 이연.** `BoardIssueView`가 rank를 미노출하므로 rank 정렬 백로그는 포트 확장(→issue-tracking 변경, 두 BC)을 부른다. 백로그 조회는 FR-BL-01 rank 정렬이 본질이므로 D6(@dnd-kit 백로그↔스프린트 드래그)에서 FR-BL-01과 통합 설계 — 그 시점에 포트 확장 여부를 결정한다. 이번 백엔드는 스프린트 CRUD/할당/상태전이에 집중(Maxi 확정 범위와 일치).
 
 - 응답 봉투. board 선례 `DataResponse`. actor는 컨트롤러에서 추출(인증 추출을 리소스 조회보다 먼저 — 메모리 auth-extraction-before-resource-lookup).
 - 권한 스코프. 모두 `IssueScope.Project(sprint.projectKey)` (생성은 요청 projectKey).
@@ -76,16 +77,17 @@ CREATE INDEX idx_sprints_project ON sprints(project_key) WHERE deleted_at IS NUL
 
 CREATE TABLE sprint_issues (
     sprint_id  UUID NOT NULL REFERENCES sprints(id) ON DELETE CASCADE,
-    issue_id   UUID NOT NULL,           -- issue-tracking 느슨참조(cross-BC FK 없음)
+    issue_key  VARCHAR(...) NOT NULL,   -- issue-tracking 느슨참조(키 중심, cross-BC FK 없음)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (sprint_id, issue_id),
-    UNIQUE (issue_id)                    -- FR4: 한 이슈는 최대 1 스프린트
+    PRIMARY KEY (sprint_id, issue_key),
+    UNIQUE (issue_key)                   -- FR4: 한 이슈는 최대 1 스프린트
 );
 CREATE INDEX idx_sprint_issues_sprint ON sprint_issues(sprint_id);
 ```
 
 - init_codegen.sql(agile-planning) 미러 필수(메모리 jooq-init-codegen-mirror).
-- `sprint_id` FK는 같은 모듈(agile-planning) 내라 정상. `issue_id`는 cross-BC라 FK 없음(board 선례).
+- `sprint_id` FK는 같은 모듈(agile-planning) 내라 정상. `issue_key`는 cross-BC라 FK 없음(board 선례 — board도 issueKey 중심).
+- **식별자=issue_key 사유**(ADR): board 표면 전체가 issueKey 중심(`BoardIssueView.key`/`BoardTransitionCommand.issueKey`)이고 `BoardIssueLookupAdapter`가 issue-tracking 소유 → UUID 저장 시 포트 확장(두 BC). key 저장으로 포트 무확장·단일 BC 유지 + 백로그 계산 key↔key 일관.
 - V번호는 머지 직전 재확인(메모리 migration-vnumber, 현재 agile 최신 V502 → V503).
 
 ## 6. 엣지 케이스
@@ -101,7 +103,7 @@ CREATE INDEX idx_sprint_issues_sprint ON sprint_issues(sprint_id);
 - **E9** 해제 시 그 스프린트에 없는 이슈 → 404(또는 멱등 204 — 구현 시 택1, 기본 404).
 - **E10** name 누락/공백 → 400(@Valid).
 - **E11** startDate > endDate → 400(기간 역전 검증).
-- **E12** 동시 할당(같은 이슈 두 스프린트로) → UNIQUE(issue_id) 위반 → 409 변환(jOOQ ExceptionTranslator, 메모리 jooq-exception-translator-409).
+- **E12** 동시 할당(같은 이슈 두 스프린트로) → UNIQUE(issue_key) 위반 → 409 변환(jOOQ ExceptionTranslator, 메모리 jooq-exception-translator-409).
 
 ## 7. 제약 조건
 
@@ -120,9 +122,10 @@ CREATE INDEX idx_sprint_issues_sprint ON sprint_issues(sprint_id);
 
 ## Brainstorming Check
 
-✅ 통과 (adversarial self-review 1회, gap 3건 발견·반영).
-- gap① 백로그(미할당 이슈) 조회 API 누락 → `GET /api/v1/sprints/backlog` 추가(FR9).
+✅ 통과 (adversarial self-review 1회, gap 3건 + 설계 제약 2건 발견·반영).
+- gap① 백로그 조회 → 검토 결과 rank 정렬이 본질이고 `BoardIssueView`가 rank 미노출 → 포트 확장(두 BC)을 부름. **D6(FR-BL-01 통합)로 이연** 재조정(Maxi 범위와 일치).
 - gap② 스프린트 소프트삭제 시 sprint_issues 연관 처리 미명시 → 연관 제거·백로그 복귀(FR11).
 - gap③ version 동시성 정책 미구분 → 할당/해제=no-bump, 상태전이/수정=version bump(FR10).
-- (보조) 종료 시 미완료 이슈 자동 이월은 이번 범위 밖 명시(FR12).
-모두 스펙 보강으로 해소 — Maxi 추가 결정 불필요.
+- 제약A 식별자 — board 표면이 issueKey 중심 + adapter가 issue-tracking 소유 → `sprint_issues`는 `issue_key` 저장(포트 무확장·단일 BC 유지). ADR 정정.
+- 제약B 종료 시 미완료 이슈 자동 이월은 이번 범위 밖 명시(FR12).
+모두 스펙/ADR 보강으로 해소 — Maxi 추가 결정 불필요(게이트1 검토).
