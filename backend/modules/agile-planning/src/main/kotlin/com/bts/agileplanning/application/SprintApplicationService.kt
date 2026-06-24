@@ -10,6 +10,7 @@ import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
 import org.slf4j.LoggerFactory
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -120,7 +121,8 @@ class SprintApplicationService(
      * @param endDate 새 종료일.
      * @param version 낙관적 잠금 버전.
      * @return 갱신된 스프린트.
-     * @throws SprintNotFoundException 404 — 스프린트 미존재 또는 soft-deleted. OCC 충돌 시도 포함.
+     * @throws SprintNotFoundException 404 — 스프린트 미존재 또는 soft-deleted.
+     * @throws SprintVersionConflictException 409 — OCC 버전 충돌(스프린트 존재하나 version 불일치).
      * @throws ResponseStatusException 403 — CREATE 권한 미충족.
      */
     @Transactional
@@ -142,7 +144,7 @@ class SprintApplicationService(
             startDate = startDate,
             endDate = endDate,
             version = version,
-        ) ?: throw SprintNotFoundException()
+        ) ?: resolveOccNull(sprintId, sprint)
     }
 
     // ── softDelete ────────────────────────────────────────────────────────────
@@ -220,7 +222,8 @@ class SprintApplicationService(
      * @param actorId 행위자 UUID.
      * @param sprintId 시작할 스프린트 UUID.
      * @return ACTIVE 상태의 갱신된 스프린트.
-     * @throws SprintNotFoundException 404 — 스프린트 미존재 또는 soft-deleted. OCC 충돌 포함.
+     * @throws SprintNotFoundException 404 — 스프린트 미존재 또는 soft-deleted.
+     * @throws SprintVersionConflictException 409 — OCC 버전 충돌.
      * @throws ResponseStatusException 403 — CREATE 권한 미충족.
      * @throws com.bts.agileplanning.domain.InvalidSprintTransitionException 409 — 허용되지 않는 전이.
      */
@@ -232,7 +235,7 @@ class SprintApplicationService(
         val sprint = loadSprintWithPermission(actorId, sprintId, IssuePermission.CREATE)
         val started = sprint.start()
         return sprintRepository.updateStatus(sprintId, started.status, sprint.version)
-            ?: throw SprintNotFoundException()
+            ?: resolveOccNull(sprintId, sprint)
     }
 
     // ── complete ──────────────────────────────────────────────────────────────
@@ -245,7 +248,8 @@ class SprintApplicationService(
      * @param actorId 행위자 UUID.
      * @param sprintId 완료할 스프린트 UUID.
      * @return COMPLETED 상태의 갱신된 스프린트.
-     * @throws SprintNotFoundException 404 — 스프린트 미존재 또는 soft-deleted. OCC 충돌 포함.
+     * @throws SprintNotFoundException 404 — 스프린트 미존재 또는 soft-deleted.
+     * @throws SprintVersionConflictException 409 — OCC 버전 충돌.
      * @throws ResponseStatusException 403 — CREATE 권한 미충족.
      * @throws com.bts.agileplanning.domain.InvalidSprintTransitionException 409 — 허용되지 않는 전이.
      */
@@ -257,7 +261,7 @@ class SprintApplicationService(
         val sprint = loadSprintWithPermission(actorId, sprintId, IssuePermission.CREATE)
         val completed = sprint.complete()
         return sprintRepository.updateStatus(sprintId, completed.status, sprint.version)
-            ?: throw SprintNotFoundException()
+            ?: resolveOccNull(sprintId, sprint)
     }
 
     // ── assignIssue ───────────────────────────────────────────────────────────
@@ -277,7 +281,8 @@ class SprintApplicationService(
      * @throws SprintNotFoundException 404 — 스프린트 미존재 또는 soft-deleted.
      * @throws ResponseStatusException 403 — UPDATE 권한 미충족.
      * @throws ResponseStatusException 404 — 이슈가 가시적이지 않음 (probe 차단).
-     * @throws ResponseStatusException 409 — 스프린트가 COMPLETED 상태 (E5).
+     * @throws SprintCompletedAssignException 409 — 스프린트가 COMPLETED 상태 (E5).
+     * @throws SprintIssueConflictException 409 — 동시 할당 UNIQUE(issue_key) 제약 위반.
      */
     @Transactional
     fun assignIssue(
@@ -292,9 +297,9 @@ class SprintApplicationService(
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "이슈를 찾을 수 없습니다.")
         }
 
-        val affected = sprintRepository.assignIssue(sprintId, issueKey)
+        val affected = tryAssignIssue(sprintId, issueKey)
         if (affected == ASSIGN_BLOCKED_BY_COMPLETED) {
-            throw ResponseStatusException(HttpStatus.CONFLICT, "완료된 스프린트에는 이슈를 할당할 수 없습니다.")
+            throw SprintCompletedAssignException()
         }
         log.debug("이슈 스프린트 할당 완료 — sprintId={}, issueKey={}", sprintId, issueKey)
     }
@@ -324,6 +329,67 @@ class SprintApplicationService(
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * [SprintRepository.assignIssue] 를 호출하고 UNIQUE(issue_key) 제약 위반을 [SprintIssueConflictException] 으로 변환한다.
+     *
+     * jOOQ 는 Spring PersistenceExceptionTranslator 가 개입하지 않을 경우
+     * [DataIntegrityViolationException] 대신 [org.jooq.exception.IntegrityConstraintViolationException]
+     * 을 직접 던진다. 두 케이스를 모두 처리한다.
+     * (메모리 jooq-exception-translator-409-dependency — UNIQUE 409 변환기 의존)
+     *
+     * SwallowedException — catch 목적이 409 도메인 예외 변환이므로 원 예외를 재던지지 않는 것이 의도된 설계.
+     * ThrowsCount — UNIQUE 위반 두 경로(Spring/jOOQ)를 명시 catch 해 두 번 throw 하는 것이 의도된 설계.
+     *
+     * @param sprintId 이슈를 할당할 스프린트 UUID.
+     * @param issueKey 할당할 이슈 키.
+     * @return INSERT 된 행수. 0 이면 COMPLETED 가드.
+     * @throws SprintIssueConflictException 409 — UNIQUE(issue_key) 제약 위반.
+     */
+    @Suppress("SwallowedException", "ThrowsCount")
+    private fun tryAssignIssue(
+        sprintId: UUID,
+        issueKey: String,
+    ): Int =
+        try {
+            sprintRepository.assignIssue(sprintId, issueKey)
+        } catch (ex: DataIntegrityViolationException) {
+            // Spring PersistenceExceptionTranslator 가 개입한 경우
+            log.warn("이슈 할당 UNIQUE 제약 위반(Spring) — sprintId={}", sprintId)
+            throw SprintIssueConflictException()
+        } catch (ex: org.jooq.exception.IntegrityConstraintViolationException) {
+            // translator 미개입 시 jOOQ 가 직접 던지는 제약 위반
+            log.warn("이슈 할당 UNIQUE 제약 위반(jOOQ) — sprintId={}", sprintId)
+            throw SprintIssueConflictException()
+        }
+
+    /**
+     * updateMeta / updateStatus 가 null 을 반환했을 때 존재 재확인 후 404 또는 409 를 결정한다.
+     *
+     * repo 의 WHERE version=:version 조건 때문에 affected=0 은 두 가지 원인이 가능하다.
+     * 1. 스프린트 자체가 삭제됨 또는 미존재 → 404.
+     * 2. 스프린트는 존재하나 client 버전이 오래됨(OCC 충돌) → 409.
+     *
+     * lock 후 재조회로 TOCTOU 없이 원인을 판별한다.
+     * (메모리 advisory-lock-bigint-toctou — lock 획득 후 재조회 패턴 적용)
+     *
+     * @param sprintId 재확인할 스프린트 UUID.
+     * @param loadedSprint updateMeta/updateStatus 전에 이미 조회한 스프린트.
+     *   version 불일치 판단의 기준은 loadedSprint.version 이 아니라 존재 여부다.
+     * @throws SprintNotFoundException 404 — 스프린트가 실제로 없거나 soft-deleted 됐을 때.
+     * @throws SprintVersionConflictException 409 — 스프린트는 존재하나 version 이 달라진 경우.
+     */
+    private fun resolveOccNull(
+        sprintId: UUID,
+        @Suppress("UNUSED_PARAMETER") loadedSprint: Sprint,
+    ): Nothing {
+        val current = sprintRepository.findById(sprintId)
+        if (current == null) {
+            throw SprintNotFoundException()
+        } else {
+            throw SprintVersionConflictException()
+        }
+    }
 
     /**
      * sprint 조회(404) -> 권한 판정(403) 순서를 한 곳에 응집한다.

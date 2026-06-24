@@ -187,6 +187,18 @@ class AgilePlanningBcArchTest {
                 minimumCount,
             )
             .isGreaterThanOrEqualTo(minimumCount)
+
+        // SprintApplicationService 가 실제로 스캔됐는지 명시 단언.
+        // Board* 클래스만 있어도 size>=1을 통과하던 vacuous green을 차단한다.
+        // (codereview NIT #4 — agileProductionClassCountIsAtLeastOne 강화)
+        val sprintServicePresent =
+            importedClasses.any { it.name == "com.bts.agileplanning.application.SprintApplicationService" }
+        assertThat(sprintServicePresent)
+            .`as`(
+                "SprintApplicationService가 importedClasses에 존재해야 함 " +
+                    "— Sprint 클래스가 실제로 스캔됨을 보증하는 명시 가드",
+            )
+            .isTrue()
     }
 
     companion object {

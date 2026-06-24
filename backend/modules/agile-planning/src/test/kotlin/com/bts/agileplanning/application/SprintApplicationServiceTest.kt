@@ -184,10 +184,36 @@ class SprintApplicationServiceTest {
     }
 
     @Test
-    fun `update repo가 null 반환하면 OCC 충돌로 404를 던진다`() {
+    fun `update repo가 null 반환하면 스프린트 존재 시 OCC 충돌 409를 던진다`() {
         val repo =
             mockk<SprintRepository>().also {
+                // findById 는 두 번 호출된다: loadSprintWithPermission + resolveOccNull 재조회
                 every { it.findById(sprintId) } returns plannedSprint
+                every { it.updateMeta(any(), any(), any(), any(), any(), any()) } returns null
+            }
+
+        assertThatThrownBy {
+            makeService(repo = repo).update(
+                actorId = actorId,
+                sprintId = sprintId,
+                name = "이름",
+                goal = null,
+                startDate = null,
+                endDate = null,
+                version = 99L,
+            )
+        }.isInstanceOf(SprintVersionConflictException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(409)
+    }
+
+    @Test
+    fun `update repo가 null 반환하고 스프린트도 없으면 404를 던진다`() {
+        val repo =
+            mockk<SprintRepository>().also {
+                // 첫 번째 findById(loadSprintWithPermission): 존재
+                // 두 번째 findById(resolveOccNull 재조회): 삭제됨
+                every { it.findById(sprintId) } returnsMany listOf(plannedSprint, null)
                 every { it.updateMeta(any(), any(), any(), any(), any(), any()) } returns null
             }
 

@@ -3,7 +3,9 @@
 package com.bts.agileplanning.web
 
 import com.bts.agileplanning.application.SprintApplicationService
+import com.bts.agileplanning.application.SprintIssueConflictException
 import com.bts.agileplanning.application.SprintNotFoundException
+import com.bts.agileplanning.application.SprintVersionConflictException
 import com.bts.agileplanning.domain.InvalidSprintTransitionException
 import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SprintStatus
@@ -455,6 +457,71 @@ class SprintControllerTest {
 
         mockMvc.perform(delete("/api/v1/sprints/$sprintId/issues/BTS-1"))
             .andExpect(status().isNoContent)
+    }
+
+    // ── ASSIGN-4. POST issues 동시 할당 UNIQUE 위반 → 409 ────────────────────
+
+    @Test
+    fun `POST sprints id issues 동시 할당 UNIQUE 위반 시 service가 SprintIssueConflictException을 던지면 409를 반환한다`() {
+        every {
+            sprintApplicationService.assignIssue(actorId, sprintId, "BTS-1")
+        } throws SprintIssueConflictException()
+
+        val body = mapOf("issueKey" to "BTS-1")
+
+        mockMvc.perform(
+            post("/api/v1/sprints/$sprintId/issues")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_CONFLICT"))
+    }
+
+    // ── OCC-1. PATCH OCC 버전 충돌 → 409 ────────────────────────────────────
+
+    @Test
+    fun `PATCH sprints id OCC 버전 충돌 시 service가 SprintVersionConflictException을 던지면 409를 반환한다`() {
+        every {
+            sprintApplicationService.update(actorId, sprintId, "Sprint 1 Updated", null, null, null, 0L)
+        } throws SprintVersionConflictException()
+
+        val body =
+            mapOf(
+                "name" to "Sprint 1 Updated",
+                "goal" to null,
+                "startDate" to null,
+                "endDate" to null,
+                "version" to 0,
+            )
+
+        mockMvc.perform(
+            patch("/api/v1/sprints/$sprintId")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_CONFLICT"))
+    }
+
+    // ── SWALLOW-5. DataIntegrityViolationException → 409 (핸들러 동작 고정) ─
+
+    @Test
+    fun `service가 DataIntegrityViolationException을 SprintIssueConflictException으로 변환해 catch-all이 500으로 삼키지 않는다`() {
+        // service 내부에서 DataIntegrityViolationException → SprintIssueConflictException 변환 후 throw.
+        // 이 테스트는 컨트롤러 핸들러가 SprintIssueConflictException(409)를 정확히 전파하는지 검증한다.
+        every {
+            sprintApplicationService.assignIssue(actorId, sprintId, "BTS-1")
+        } throws SprintIssueConflictException()
+
+        val body = mapOf("issueKey" to "BTS-1")
+
+        mockMvc.perform(
+            post("/api/v1/sprints/$sprintId/issues")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isConflict)
     }
 
     // ── ORDER-1. 미인증 시 서비스 호출 없음 ──────────────────────────────────
