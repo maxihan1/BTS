@@ -191,11 +191,13 @@
 
 **우선순위**. 필수 | **선행**. §0 | **Plan slug**. `dashboard/star`
 
-- [ ] D1. 도메인 — Favorite (책임. backend-engineer)
-- [ ] D2. 명세 — 대상 (이슈/필터/대시보드/프로젝트) (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `favorites(user_id, target_type, target_id)` (책임. db-engineer)
-- [ ] D4. 백엔드 — `POST/DELETE /api/v1/favorites` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+> **구현 범위 (#184, Maxi 확정 2026-06-24)**. 백엔드 D1~D5만 본 PR — 프론트 D6/D7(Star 버튼·즐겨찾기 사이드바·E2E)은 후속 PR. notification 모듈 `com.bts.notification.favorite` 패키지(FR-DB-01 dashboard 패키지 선례). 대상 타입 4종(ISSUE/FILTER/DASHBOARD/PROJECT, FILTER는 FR-SR-03 필터 저장 미구현이라 정의만·실사용 후속). 즐겨찾기 해제=하드 삭제(DATA.md §3 동기화), 등록 시 형식만 검증(대상 존재/권한 미검증=개인 북마크·BC 격리), target_id 문자열·FK 미적용, UNIQUE(user_id,target_type,target_id) 멱등. ADR `2026-06-24-fr-ux-02-favorites`.
+
+- [x] D1. 도메인 — Favorite (책임. backend-engineer) (완료. PR #184 — Favorite Aggregate + FavoriteTargetType enum 4종 + FavoriteDomainException, 명시 형식검증)
+- [x] D2. 명세 — 대상 (이슈/필터/대시보드/프로젝트) (책임. backend-engineer) (완료. PR #184 — 4종 타입, 형식만 검증, 멱등 API)
+- [x] D3. 데이터 모델 — `favorites(user_id, target_type, target_id)` (책임. db-engineer) (완료. PR #184 — V406 + init_codegen 미러, 하드삭제·FK없음·UNIQUE 복합)
+- [x] D4. 백엔드 — `POST/DELETE /api/v1/favorites` (책임. backend-engineer) (완료. PR #184 — POST 멱등 201/200·DELETE 대상기준 204·GET 본인 목록, currentActorId 401, FavoriteExceptionHandler basePackages 한정)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) (완료. PR #184 — 도메인 단위·service mockk·repository Testcontainers(누출/멱등)·controller 슬라이스·스키마 마이그레이션)
 - [ ] D6. 프론트 UI — Star 버튼 + 즐겨찾기 사이드바 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 

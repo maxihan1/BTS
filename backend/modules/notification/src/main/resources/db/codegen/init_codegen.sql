@@ -80,3 +80,13 @@ CREATE TABLE dashboard_shares (
 );
 
 CREATE INDEX idx_dashboard_shares_user ON dashboard_shares(user_id);
+
+-- ── favorites (V406 미러) ──────────────────────────────────────────────────────
+CREATE TABLE favorites (
+    id          UUID         PRIMARY KEY,
+    user_id     UUID         NOT NULL,
+    target_type VARCHAR(20)  NOT NULL,
+    target_id   VARCHAR(255) NOT NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT uq_favorites_user_target UNIQUE (user_id, target_type, target_id)
+);
