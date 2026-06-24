@@ -134,10 +134,13 @@ class SprintController(
     }
 
     /**
-     * 스프린트 메타 정보(이름·목표·기간)를 수정한다.
+     * 스프린트 메타 정보(이름·목표·기간)를 수정한다 — partial update (3-state).
+     *
+     * 미전송 필드는 기존 값을 유지하고, 명시 null 은 해당 값을 클리어한다.
+     * name 이 전송된 경우 공백이면 400 을 반환한다.
      *
      * @param id path variable 스프린트 UUID.
-     * @param request 수정 요청 바디.
+     * @param request 수정 요청 바디. 미전송 필드는 무변경.
      * @return 200 OK + 갱신된 [SprintResponse].
      * @throws ResponseStatusException 401 — 미인증.
      * @throws com.bts.agileplanning.application.SprintNotFoundException 404 — 스프린트 미존재.

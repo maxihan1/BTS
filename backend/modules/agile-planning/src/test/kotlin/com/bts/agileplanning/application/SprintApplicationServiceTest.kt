@@ -16,6 +16,7 @@ import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.openapitools.jackson.nullable.JsonNullable
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
 import java.time.LocalDate
@@ -28,6 +29,7 @@ import java.util.UUID
  * MockK 로 교체해 독립적으로 동작을 검증한다.
  * 권한 판정 순서(actor -> sprint 조회 -> 권한 -> 동작)와 fail-closed 를 집중 검증한다.
  */
+@Suppress("LargeClass") // 서비스 전 시나리오(권한·전이·할당·partial PATCH)를 단일 테스트 클래스로 커버한다
 class SprintApplicationServiceTest {
     private val actorId: UUID = UUID.randomUUID()
     private val sprintId: UUID = UUID.randomUUID()
@@ -130,10 +132,10 @@ class SprintApplicationServiceTest {
             makeService(repo = repo).update(
                 actorId = actorId,
                 sprintId = sprintId,
-                name = "새 이름",
-                goal = null,
-                startDate = null,
-                endDate = null,
+                name = JsonNullable.of("새 이름"),
+                goal = JsonNullable.undefined(),
+                startDate = JsonNullable.undefined(),
+                endDate = JsonNullable.undefined(),
                 version = 0L,
             )
 
@@ -151,10 +153,10 @@ class SprintApplicationServiceTest {
             makeService(repo = repo).update(
                 actorId = actorId,
                 sprintId = sprintId,
-                name = "이름",
-                goal = null,
-                startDate = null,
-                endDate = null,
+                name = JsonNullable.of("이름"),
+                goal = JsonNullable.undefined(),
+                startDate = JsonNullable.undefined(),
+                endDate = JsonNullable.undefined(),
                 version = 0L,
             )
         }.isInstanceOf(SprintNotFoundException::class.java)
@@ -172,10 +174,10 @@ class SprintApplicationServiceTest {
             makeService(resolver = resolver, repo = repo).update(
                 actorId = actorId,
                 sprintId = sprintId,
-                name = "이름",
-                goal = null,
-                startDate = null,
-                endDate = null,
+                name = JsonNullable.of("이름"),
+                goal = JsonNullable.undefined(),
+                startDate = JsonNullable.undefined(),
+                endDate = JsonNullable.undefined(),
                 version = 0L,
             )
         }.isInstanceOf(ResponseStatusException::class.java)
@@ -196,10 +198,10 @@ class SprintApplicationServiceTest {
             makeService(repo = repo).update(
                 actorId = actorId,
                 sprintId = sprintId,
-                name = "이름",
-                goal = null,
-                startDate = null,
-                endDate = null,
+                name = JsonNullable.of("이름"),
+                goal = JsonNullable.undefined(),
+                startDate = JsonNullable.undefined(),
+                endDate = JsonNullable.undefined(),
                 version = 99L,
             )
         }.isInstanceOf(SprintVersionConflictException::class.java)
@@ -221,13 +223,195 @@ class SprintApplicationServiceTest {
             makeService(repo = repo).update(
                 actorId = actorId,
                 sprintId = sprintId,
-                name = "이름",
-                goal = null,
-                startDate = null,
-                endDate = null,
+                name = JsonNullable.of("이름"),
+                goal = JsonNullable.undefined(),
+                startDate = JsonNullable.undefined(),
+                endDate = JsonNullable.undefined(),
                 version = 99L,
             )
         }.isInstanceOf(SprintNotFoundException::class.java)
+    }
+
+    // ── update partial 시맨틱 ─────────────────────────────────────────────────
+
+    @Test
+    fun `update name만 present면 goal과 dates는 기존 값을 유지한다 (핵심 partial 검증)`() {
+        val existingStartDate = LocalDate.of(2026, 7, 1)
+        val existingEndDate = LocalDate.of(2026, 7, 14)
+        val existingGoal = "기존 목표"
+        val existing =
+            plannedSprint.copy(
+                goal = existingGoal,
+                startDate = existingStartDate,
+                endDate = existingEndDate,
+            )
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returns existing
+                every {
+                    it.updateMeta(
+                        id = sprintId,
+                        name = "새 이름만",
+                        goal = existingGoal,
+                        startDate = existingStartDate,
+                        endDate = existingEndDate,
+                        version = 0L,
+                    )
+                } returns existing.copy(name = "새 이름만", version = 1L)
+            }
+
+        val result =
+            makeService(repo = repo).update(
+                actorId = actorId,
+                sprintId = sprintId,
+                name = JsonNullable.of("새 이름만"),
+                goal = JsonNullable.undefined(),
+                startDate = JsonNullable.undefined(),
+                endDate = JsonNullable.undefined(),
+                version = 0L,
+            )
+
+        assertThat(result.name).isEqualTo("새 이름만")
+        // repo.updateMeta 는 기존 goal/dates 로 호출되어야 한다 (미전송 = 무변경)
+        verify(exactly = 1) {
+            repo.updateMeta(
+                id = sprintId,
+                name = "새 이름만",
+                goal = existingGoal,
+                startDate = existingStartDate,
+                endDate = existingEndDate,
+                version = 0L,
+            )
+        }
+    }
+
+    @Test
+    fun `update goal이 present null이면 goal을 클리어한다`() {
+        val existing = plannedSprint.copy(goal = "기존 목표")
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returns existing
+                every {
+                    it.updateMeta(
+                        id = sprintId,
+                        name = existing.name,
+                        goal = null,
+                        startDate = existing.startDate,
+                        endDate = existing.endDate,
+                        version = 0L,
+                    )
+                } returns existing.copy(goal = null, version = 1L)
+            }
+
+        val result =
+            makeService(repo = repo).update(
+                actorId = actorId,
+                sprintId = sprintId,
+                name = JsonNullable.undefined(),
+                goal = JsonNullable.of(null),
+                startDate = JsonNullable.undefined(),
+                endDate = JsonNullable.undefined(),
+                version = 0L,
+            )
+
+        // repo.updateMeta 가 null goal 로 호출됐는지 검증
+        verify(exactly = 1) {
+            repo.updateMeta(
+                id = sprintId,
+                name = existing.name,
+                goal = null,
+                startDate = existing.startDate,
+                endDate = existing.endDate,
+                version = 0L,
+            )
+        }
+        assertThat(result.goal).isNull()
+    }
+
+    @Test
+    fun `update 모든 필드가 absent면 기존 값을 그대로 유지해 repo에 전달한다`() {
+        val existing =
+            plannedSprint.copy(
+                name = "기존 이름",
+                goal = "기존 목표",
+                startDate = LocalDate.of(2026, 7, 1),
+                endDate = LocalDate.of(2026, 7, 14),
+            )
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returns existing
+                every {
+                    it.updateMeta(
+                        id = sprintId,
+                        name = "기존 이름",
+                        goal = "기존 목표",
+                        startDate = LocalDate.of(2026, 7, 1),
+                        endDate = LocalDate.of(2026, 7, 14),
+                        version = 0L,
+                    )
+                } returns existing.copy(version = 1L)
+            }
+
+        makeService(repo = repo).update(
+            actorId = actorId,
+            sprintId = sprintId,
+            name = JsonNullable.undefined(),
+            goal = JsonNullable.undefined(),
+            startDate = JsonNullable.undefined(),
+            endDate = JsonNullable.undefined(),
+            version = 0L,
+        )
+
+        verify(exactly = 1) {
+            repo.updateMeta(
+                id = sprintId,
+                name = "기존 이름",
+                goal = "기존 목표",
+                startDate = LocalDate.of(2026, 7, 1),
+                endDate = LocalDate.of(2026, 7, 14),
+                version = 0L,
+            )
+        }
+    }
+
+    @Test
+    fun `update startDate가 present null이면 날짜를 해제한다`() {
+        val existing = plannedSprint.copy(startDate = LocalDate.of(2026, 7, 1), endDate = null)
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returns existing
+                every {
+                    it.updateMeta(
+                        id = sprintId,
+                        name = existing.name,
+                        goal = existing.goal,
+                        startDate = null,
+                        endDate = null,
+                        version = 0L,
+                    )
+                } returns existing.copy(startDate = null, version = 1L)
+            }
+
+        makeService(repo = repo).update(
+            actorId = actorId,
+            sprintId = sprintId,
+            name = JsonNullable.undefined(),
+            goal = JsonNullable.undefined(),
+            startDate = JsonNullable.of(null),
+            endDate = JsonNullable.undefined(),
+            version = 0L,
+        )
+
+        verify(exactly = 1) {
+            repo.updateMeta(
+                id = sprintId,
+                name = existing.name,
+                goal = existing.goal,
+                startDate = null,
+                endDate = null,
+                version = 0L,
+            )
+        }
     }
 
     // ── softDelete ────────────────────────────────────────────────────────────

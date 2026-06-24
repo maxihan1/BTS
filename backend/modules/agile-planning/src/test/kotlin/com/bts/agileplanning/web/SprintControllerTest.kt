@@ -19,11 +19,15 @@ import io.mockk.verify
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import org.openapitools.jackson.nullable.JsonNullable
+import org.openapitools.jackson.nullable.JsonNullableModule
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.http.converter.HttpMessageConverter
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
@@ -41,6 +45,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import java.time.LocalDate
 import java.util.UUID
 
@@ -91,7 +96,7 @@ class SprintControllerTest {
      */
     @Configuration
     @EnableWebMvc
-    open class TestMvcConfig {
+    open class TestMvcConfig : WebMvcConfigurer {
         @Bean
         open fun sprintApplicationService(): SprintApplicationService = mockk(relaxed = true)
 
@@ -100,6 +105,14 @@ class SprintControllerTest {
 
         @Bean
         open fun sprintExceptionHandler(): SprintExceptionHandler = SprintExceptionHandler()
+
+        override fun extendMessageConverters(converters: MutableList<HttpMessageConverter<*>>) {
+            // @EnableWebMvc 슬라이스는 Boot 자동 구성을 우회하므로
+            // 기존 Jackson 컨버터의 ObjectMapper 에 JsonNullableModule 을 추가 등록한다.
+            converters
+                .filterIsInstance<MappingJackson2HttpMessageConverter>()
+                .forEach { it.objectMapper.registerModule(JsonNullableModule()) }
+        }
     }
 
     @Autowired
@@ -289,7 +302,15 @@ class SprintControllerTest {
     fun `PATCH sprints id 정상이면 200과 갱신된 스프린트를 반환한다`() {
         val updated = sampleSprint(version = 1L)
         every {
-            sprintApplicationService.update(actorId, sprintId, "Sprint 1 Updated", null, null, null, 0L)
+            sprintApplicationService.update(
+                actorId,
+                sprintId,
+                JsonNullable.of("Sprint 1 Updated"),
+                JsonNullable.of<String?>(null),
+                JsonNullable.of<LocalDate?>(null),
+                JsonNullable.of<LocalDate?>(null),
+                0L,
+            )
         } returns updated
 
         val body =
@@ -310,20 +331,33 @@ class SprintControllerTest {
             .andExpect(jsonPath("$.data.sprintId").value(sprintId.toString()))
     }
 
-    // ── PATCH-2. PATCH name 누락 → 400 ──────────────────────────────────────
+    // ── PATCH-2. name만 전송하고 goal/날짜 미전송 시 200 (partial PATCH 보존) ─
 
     @Test
-    fun `PATCH sprints name이 누락되면 400 AGILE_VALIDATION_FAILED를 반환한다`() {
-        // name 은 non-nullable String 이므로 JSON 에서 누락되면 Jackson 이 HttpMessageNotReadableException 을 던진다.
-        val body = mapOf("version" to 0)
+    fun `PATCH sprints name만 전송하고 goal과 날짜 미전송 시 200을 반환한다`() {
+        // partial PATCH: name만 present, 나머지 undefined → 기존 값 유지
+        val updated = sampleSprint(version = 1L)
+        every {
+            sprintApplicationService.update(
+                actorId,
+                sprintId,
+                JsonNullable.of("X"),
+                JsonNullable.undefined(),
+                JsonNullable.undefined(),
+                JsonNullable.undefined(),
+                0L,
+            )
+        } returns updated
+
+        val body = mapOf("name" to "X", "version" to 0)
 
         mockMvc.perform(
             patch("/api/v1/sprints/$sprintId")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(mapper.writeValueAsString(body)),
         )
-            .andExpect(status().isBadRequest)
-            .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.sprintId").value(sprintId.toString()))
     }
 
     // ── DELETE-1. DELETE 정상 → 204 ──────────────────────────────────────────
@@ -483,7 +517,15 @@ class SprintControllerTest {
     @Test
     fun `PATCH sprints id OCC 버전 충돌 시 service가 SprintVersionConflictException을 던지면 409를 반환한다`() {
         every {
-            sprintApplicationService.update(actorId, sprintId, "Sprint 1 Updated", null, null, null, 0L)
+            sprintApplicationService.update(
+                actorId,
+                sprintId,
+                JsonNullable.of("Sprint 1 Updated"),
+                JsonNullable.of<String?>(null),
+                JsonNullable.of<LocalDate?>(null),
+                JsonNullable.of<LocalDate?>(null),
+                0L,
+            )
         } throws SprintVersionConflictException()
 
         val body =
