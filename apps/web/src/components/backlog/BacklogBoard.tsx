@@ -19,6 +19,7 @@ import {
   useCompleteSprint,
 } from '@/hooks/use-backlog'
 import { resolveBacklogDropAction } from '@/lib/backlog-drag'
+import type { NeighborResult } from '@/lib/backlog-drag'
 import type { BacklogDragData } from './BacklogCard'
 import { BacklogColumn } from './BacklogColumn'
 import { SprintColumn } from './SprintColumn'
@@ -41,25 +42,27 @@ export interface BacklogBoardProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 내부 헬퍼 — over.data에서 컨텍스트 추출
+// 내부 헬퍼 — over.data에서 드롭 존 정보 추출
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface DropZoneData {
   context: 'backlog' | 'sprint'
   sprintId: string | null
-  orderedKeys?: readonly string[]
-  dropIndex?: number
+  orderedKeys: readonly string[]
+  dropIndex: number
 }
 
+/** over 데이터를 DropZoneData로 파싱한다. 유효하지 않으면 null을 반환한다. */
 function extractDropZone(data: Record<string, unknown> | undefined): DropZoneData | null {
   if (data === undefined) return null
   const context = data['context']
   if (context !== 'backlog' && context !== 'sprint') return null
+  const orderedKeys = Array.isArray(data['orderedKeys']) ? (data['orderedKeys'] as string[]) : []
   return {
     context,
     sprintId: typeof data['sprintId'] === 'string' ? data['sprintId'] : null,
-    orderedKeys: Array.isArray(data['orderedKeys']) ? (data['orderedKeys'] as string[]) : undefined,
-    dropIndex: typeof data['dropIndex'] === 'number' ? data['dropIndex'] : undefined,
+    orderedKeys,
+    dropIndex: typeof data['dropIndex'] === 'number' ? data['dropIndex'] : orderedKeys.length,
   }
 }
 
@@ -73,7 +76,7 @@ function extractDropZone(data: Record<string, unknown> | undefined): DropZoneDat
  * - useBacklog로 데이터를 로드하고 BacklogColumn + SprintColumn들을 배치한다.
  * - DndContext + PointerSensor(distance:5)로 드래그를 관리한다.
  * - onDragEnd에서 resolveBacklogDropAction으로 시나리오를 판정해 mutation을 호출한다.
- * - C1 부분실패: assign/unassign 성공 후 rerank 실패 → 경고 토스트.
+ * - C1: assign/unassign 성공 후 rerank 실패 → 경고 토스트. 이동은 완료됐으므로 에러 토스트 금지.
  * - truncated=true이면 경고 배너를 표시한다.
  */
 export function BacklogBoard({ projectKey, canManage = true }: BacklogBoardProps): JSX.Element {
@@ -87,10 +90,18 @@ export function BacklogBoard({ projectKey, canManage = true }: BacklogBoardProps
   const startSprint = useStartSprint(projectKey)
   const completeSprint = useCompleteSprint(projectKey)
 
-  // PointerSensor: distance 5px 이상 이동해야 드래그 시작 (클릭·링크 보존)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   )
+
+  /** C1: 이동 성공 후 rerank를 실행한다. rerank 실패 시 경고 토스트. */
+  function rerankAfterMove(issueKey: string, rerank: NeighborResult | undefined): void {
+    if (rerank === undefined) return
+    rerankIssue.mutate(
+      { issueKey, body: rerank },
+      { onError: () => toast.warning(backlogLabels.rerankFailedWarning) },
+    )
+  }
 
   function handleDragOver(event: DragOverEvent): void {
     setOverDroppableId(event.over ? String(event.over.id) : null)
@@ -108,43 +119,25 @@ export function BacklogBoard({ projectKey, canManage = true }: BacklogBoardProps
     if (dropZone === null) return
 
     const { issueKey, context: fromContext, sprintId: fromSprintId } = activeData
-    const { context: toContext, sprintId: toSprintId, orderedKeys, dropIndex } = dropZone
-
-    // over 드래그 중 제공된 orderedKeys와 dropIndex가 없으면 대상 칸 맨 뒤로 처리
-    const targetKeys = orderedKeys ?? []
-    const targetDropIndex = dropIndex ?? targetKeys.length
 
     const action = resolveBacklogDropAction({
       issueKey,
       fromContext,
       fromSprintId,
-      toContext,
-      toSprintId,
-      targetKeys,
-      dropIndex: targetDropIndex,
+      toContext: dropZone.context,
+      toSprintId: dropZone.sprintId,
+      targetKeys: dropZone.orderedKeys,
+      dropIndex: dropZone.dropIndex,
     })
 
     if (action.kind === 'noop' || action.kind === 'noop-move') return
 
-    // C1: 이동 먼저 → 성공 후 rerank
     if (action.kind === 'assign') {
       assignToSprint.mutate(
         { sprintId: action.sprintId, issueKey },
         {
-          onSuccess: () => {
-            if (action.rerank === undefined) return
-            rerankIssue.mutate(
-              { issueKey, body: action.rerank },
-              {
-                onError: () => {
-                  toast.warning(backlogLabels.rerankFailedWarning)
-                },
-              },
-            )
-          },
-          onError: () => {
-            toast.error(backlogLabels.moveFailedError)
-          },
+          onSuccess: () => rerankAfterMove(issueKey, action.rerank),
+          onError: () => toast.error(backlogLabels.moveFailedError),
         },
       )
       return
@@ -154,20 +147,8 @@ export function BacklogBoard({ projectKey, canManage = true }: BacklogBoardProps
       unassignFromSprint.mutate(
         { sprintId: action.sprintId, issueKey },
         {
-          onSuccess: () => {
-            if (action.rerank === undefined) return
-            rerankIssue.mutate(
-              { issueKey, body: action.rerank },
-              {
-                onError: () => {
-                  toast.warning(backlogLabels.rerankFailedWarning)
-                },
-              },
-            )
-          },
-          onError: () => {
-            toast.error(backlogLabels.moveFailedError)
-          },
+          onSuccess: () => rerankAfterMove(issueKey, action.rerank),
+          onError: () => toast.error(backlogLabels.moveFailedError),
         },
       )
       return
@@ -176,22 +157,7 @@ export function BacklogBoard({ projectKey, canManage = true }: BacklogBoardProps
     // rerank-only (S1, S5)
     rerankIssue.mutate(
       { issueKey, body: action.rerank },
-      {
-        onError: () => {
-          toast.error(backlogLabels.moveFailedError)
-        },
-      },
-    )
-  }
-
-  function handleCreateSprint(name: string): void {
-    createSprint.mutate(
-      { projectKey, name },
-      {
-        onError: () => {
-          toast.error(backlogLabels.moveFailedError)
-        },
-      },
+      { onError: () => toast.error(backlogLabels.moveFailedError) },
     )
   }
 
@@ -210,7 +176,6 @@ export function BacklogBoard({ projectKey, canManage = true }: BacklogBoardProps
 
   return (
     <div className="flex flex-col gap-4">
-      {/* truncated 경고 배너 */}
       {truncated && (
         <div
           role="alert"
@@ -220,14 +185,17 @@ export function BacklogBoard({ projectKey, canManage = true }: BacklogBoardProps
         </div>
       )}
 
-      {/* 스프린트 생성 폼 */}
       <CreateSprintForm
         projectKey={projectKey}
-        onSubmit={handleCreateSprint}
+        onSubmit={(name) => {
+          createSprint.mutate(
+            { projectKey, name },
+            { onError: () => toast.error(backlogLabels.moveFailedError) },
+          )
+        }}
         disabled={!canManage || createSprint.isPending}
       />
 
-      {/* 보드 칸들 — 가로 스크롤 */}
       <DndContext
         sensors={sensors}
         onDragOver={handleDragOver}
@@ -235,14 +203,11 @@ export function BacklogBoard({ projectKey, canManage = true }: BacklogBoardProps
         accessibility={undefined}
       >
         <div className="flex gap-4 overflow-x-auto pb-4">
-          {/* 백로그 칸 */}
           <BacklogColumn
             issues={backlog}
             assigneeNames={assigneeNames}
             isOver={overDroppableId === 'backlog'}
           />
-
-          {/* 스프린트 칸들 */}
           {sprints.map(({ sprint, issues }) => (
             <SprintColumn
               key={sprint.sprintId}
@@ -250,28 +215,12 @@ export function BacklogBoard({ projectKey, canManage = true }: BacklogBoardProps
               issues={issues}
               assigneeNames={assigneeNames}
               isOver={overDroppableId === `sprint-${sprint.sprintId}`}
-              onStart={
-                canManage
-                  ? () => {
-                      startSprint.mutate(sprint.sprintId, {
-                        onError: () => {
-                          toast.error(backlogLabels.moveFailedError)
-                        },
-                      })
-                    }
-                  : undefined
-              }
-              onComplete={
-                canManage
-                  ? () => {
-                      completeSprint.mutate(sprint.sprintId, {
-                        onError: () => {
-                          toast.error(backlogLabels.moveFailedError)
-                        },
-                      })
-                    }
-                  : undefined
-              }
+              onStart={canManage ? () => startSprint.mutate(sprint.sprintId, {
+                onError: () => toast.error(backlogLabels.moveFailedError),
+              }) : undefined}
+              onComplete={canManage ? () => completeSprint.mutate(sprint.sprintId, {
+                onError: () => toast.error(backlogLabels.moveFailedError),
+              }) : undefined}
             />
           ))}
         </div>
