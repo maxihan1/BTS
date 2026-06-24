@@ -158,11 +158,19 @@ function makeQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } })
 }
 
-function renderBoard(projectKey = 'ATLAS', canManage = true) {
+function renderBoard(
+  projectKey = 'ATLAS',
+  opts: { canManageSprint?: boolean; canReorderIssue?: boolean } = {},
+) {
+  const { canManageSprint = true, canReorderIssue = true } = opts
   const qc = makeQueryClient()
   return render(
     <QueryClientProvider client={qc}>
-      <BacklogBoard projectKey={projectKey} canManage={canManage} />
+      <BacklogBoard
+        projectKey={projectKey}
+        canManageSprint={canManageSprint}
+        canReorderIssue={canReorderIssue}
+      />
     </QueryClientProvider>,
   )
 }
@@ -288,11 +296,11 @@ describe('BacklogBoard', () => {
       )
     })
 
-    it('canManage=false이면 시작/완료 버튼 클릭이 mutate를 호출하지 않는다', async () => {
+    it('canManageSprint=false이면 시작/완료 버튼 클릭이 mutate를 호출하지 않는다', async () => {
       const user = userEvent.setup()
-      renderBoard('ATLAS', false)
+      renderBoard('ATLAS', { canManageSprint: false, canReorderIssue: true })
 
-      // canManage=false이면 onStart/onComplete가 undefined로 전달되므로
+      // canManageSprint=false이면 onStart/onComplete가 undefined로 전달되므로
       // 버튼 클릭이 mutate를 호출하지 않는다.
       const startBtn = screen.queryByRole('button', { name: /스프린트 시작/i })
       const completeBtn = screen.queryByRole('button', { name: /스프린트 완료/i })
@@ -302,6 +310,103 @@ describe('BacklogBoard', () => {
 
       expect(mockStartSprintMutate).not.toHaveBeenCalled()
       expect(mockCompleteSprintMutate).not.toHaveBeenCalled()
+    })
+  })
+
+  // ── 권한 게이팅 분리 ─────────────────────────────────────────────────────────
+
+  describe('권한 게이팅 분리 — canManageSprint vs canReorderIssue', () => {
+    it('UPDATE만 있고 CREATE 없으면 스프린트 생성 버튼이 비활성화된다', () => {
+      renderBoard('ATLAS', { canManageSprint: false, canReorderIssue: true })
+
+      // 스프린트 생성 폼 버튼은 비활성이어야 한다
+      const createBtn = screen.getByRole('button', { name: /스프린트 생성/i })
+      expect(createBtn).toBeDisabled()
+    })
+
+    it('UPDATE만 있고 CREATE 없으면 시작/완료 버튼이 onHandler 없이(undefined) 렌더된다', async () => {
+      const user = userEvent.setup()
+      renderBoard('ATLAS', { canManageSprint: false, canReorderIssue: true })
+
+      const startBtn = screen.queryByRole('button', { name: /스프린트 시작/i })
+      const completeBtn = screen.queryByRole('button', { name: /스프린트 완료/i })
+
+      if (startBtn !== null) await user.click(startBtn)
+      if (completeBtn !== null) await user.click(completeBtn)
+
+      expect(mockStartSprintMutate).not.toHaveBeenCalled()
+      expect(mockCompleteSprintMutate).not.toHaveBeenCalled()
+    })
+
+    it('UPDATE만 있고 CREATE 없어도 드래그 시 rerankMutate를 호출한다', async () => {
+      renderBoard('ATLAS', { canManageSprint: false, canReorderIssue: true })
+
+      triggerDragEnd(
+        {
+          id: 'backlog:ATLAS-2',
+          data: { current: { issueKey: 'ATLAS-2', context: 'backlog', sprintId: null } },
+        },
+        {
+          id: 'backlog',
+          data: { current: { context: 'backlog', sprintId: null, orderedKeys: ['ATLAS-1', 'ATLAS-2'], dropIndex: 0 } },
+        },
+      )
+
+      await waitFor(() => {
+        expect(mockRerankMutate).toHaveBeenCalledWith(
+          expect.objectContaining({ issueKey: 'ATLAS-2' }),
+          expect.anything(),
+        )
+      })
+    })
+
+    it('CREATE만 있고 UPDATE 없으면 스프린트 생성 버튼이 활성화된다', () => {
+      renderBoard('ATLAS', { canManageSprint: true, canReorderIssue: false })
+
+      const createBtn = screen.getByRole('button', { name: /스프린트 생성/i })
+      expect(createBtn).not.toBeDisabled()
+    })
+
+    it('CREATE만 있고 UPDATE 없으면 드래그가 동작하지 않는다(rerankMutate 미호출)', async () => {
+      renderBoard('ATLAS', { canManageSprint: true, canReorderIssue: false })
+
+      triggerDragEnd(
+        {
+          id: 'backlog:ATLAS-2',
+          data: { current: { issueKey: 'ATLAS-2', context: 'backlog', sprintId: null } },
+        },
+        {
+          id: 'backlog',
+          data: { current: { context: 'backlog', sprintId: null, orderedKeys: ['ATLAS-1', 'ATLAS-2'], dropIndex: 0 } },
+        },
+      )
+
+      // 300ms 대기 후에도 호출되지 않아야 한다
+      await new Promise((r) => setTimeout(r, 100))
+      expect(mockRerankMutate).not.toHaveBeenCalled()
+      expect(mockAssignMutate).not.toHaveBeenCalled()
+      expect(mockUnassignMutate).not.toHaveBeenCalled()
+    })
+
+    it('둘 다 없으면 스프린트 생성 버튼이 비활성화되고 드래그도 동작하지 않는다', async () => {
+      renderBoard('ATLAS', { canManageSprint: false, canReorderIssue: false })
+
+      const createBtn = screen.getByRole('button', { name: /스프린트 생성/i })
+      expect(createBtn).toBeDisabled()
+
+      triggerDragEnd(
+        {
+          id: 'backlog:ATLAS-2',
+          data: { current: { issueKey: 'ATLAS-2', context: 'backlog', sprintId: null } },
+        },
+        {
+          id: 'backlog',
+          data: { current: { context: 'backlog', sprintId: null, orderedKeys: ['ATLAS-1', 'ATLAS-2'], dropIndex: 0 } },
+        },
+      )
+
+      await new Promise((r) => setTimeout(r, 100))
+      expect(mockRerankMutate).not.toHaveBeenCalled()
     })
   })
 

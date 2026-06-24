@@ -35,24 +35,34 @@ vi.mock('@tanstack/react-router', () => ({
 
 // BacklogBoard는 별도 통합 테스트에서 검증하므로 라우트 단위 테스트에서 격리
 vi.mock('@/components/backlog/BacklogBoard', () => ({
-  BacklogBoard: ({ projectKey, canManage }: { projectKey: string; canManage?: boolean }) => (
+  BacklogBoard: ({
+    projectKey,
+    canManageSprint,
+    canReorderIssue,
+  }: {
+    projectKey: string
+    canManageSprint?: boolean
+    canReorderIssue?: boolean
+  }) => (
     <div
       data-testid="backlog-board"
       data-project-key={projectKey}
-      data-can-manage={String(canManage ?? true)}
+      data-can-manage-sprint={String(canManageSprint ?? true)}
+      data-can-reorder-issue={String(canReorderIssue ?? true)}
     >
       backlog-board-mock
     </div>
   ),
 }))
 
-// useProjectPermissions mock — 기본값 CREATE=true (ADMIN 역할)
+// useProjectPermissions mock — 기본값 CREATE=true, UPDATE=true (ADMIN 역할)
 vi.mock('@/hooks/use-project-permissions', () => ({
   useProjectPermissions: () => ({
     data: {
       projectKey: 'ATLAS',
       permissions: {
         CREATE: true,
+        UPDATE: true,
         MANAGE_COMPONENTS: true,
         MANAGE_VERSIONS: true,
         MANAGE_CUSTOM_FIELDS: true,
@@ -123,13 +133,23 @@ describe('BacklogPage', () => {
   })
 
   /**
-   * T-BL-R2. CREATE 권한이 있으면 canManage=true로 BacklogBoard에 전달한다.
+   * T-BL-R2. CREATE 권한이 있으면 canManageSprint=true를 BacklogBoard에 전달한다.
    */
-  it('T-BL-R2: CREATE 권한이 있으면 canManage=true를 전달한다', () => {
+  it('T-BL-R2: CREATE 권한이 있으면 canManageSprint=true를 전달한다', () => {
     renderPage('ATLAS')
 
     const board = screen.getByTestId('backlog-board')
-    expect(board).toHaveAttribute('data-can-manage', 'true')
+    expect(board).toHaveAttribute('data-can-manage-sprint', 'true')
+  })
+
+  /**
+   * T-BL-R2b. UPDATE 권한이 있으면 canReorderIssue=true를 BacklogBoard에 전달한다.
+   */
+  it('T-BL-R2b: UPDATE 권한이 있으면 canReorderIssue=true를 전달한다', () => {
+    renderPage('ATLAS')
+
+    const board = screen.getByTestId('backlog-board')
+    expect(board).toHaveAttribute('data-can-reorder-issue', 'true')
   })
 
   /**
