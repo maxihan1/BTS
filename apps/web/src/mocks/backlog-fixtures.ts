@@ -239,21 +239,6 @@ export function findSprintInStore(sprintId: string): {
   return undefined
 }
 
-/**
- * store 전체에서 issueKey를 포함하는 프로젝트를 찾는다.
- *
- * @param issueKey 찾을 이슈 키
- */
-export function findProjectByIssueKey(
-  issueKey: string,
-): StoredBacklogProject | undefined {
-  for (const project of backlogStore.values()) {
-    const found = findIssueInProject(project, issueKey)
-    if (found !== undefined) return project
-  }
-  return undefined
-}
-
 // findIssueInProject / removeIssueFromProject를 외부에서도 쓸 수 있도록 re-export
 export { findIssueInProject, removeIssueFromProject }
 

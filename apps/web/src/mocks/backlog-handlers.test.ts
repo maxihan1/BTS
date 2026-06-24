@@ -34,18 +34,20 @@ afterEach(() => {
 // 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function getBacklog(projectKey: string) {
+interface BacklogResponse {
+  data: {
+    backlog: Array<{ key: string; rank: string | null }>
+    sprints: Array<{
+      sprint: { sprintId: string; name: string; status: string; version: number }
+      issues: Array<{ key: string; rank: string | null }>
+    }>
+    truncated: boolean
+  }
+}
+
+async function getBacklog(projectKey: string): Promise<BacklogResponse> {
   const res = await fetch(`/api/v1/projects/${projectKey}/backlog`)
-  return res.json() as Promise<{
-    data: {
-      backlog: Array<{ key: string; rank: string | null }>
-      sprints: Array<{
-        sprint: { sprintId: string; name: string; status: string; version: number }
-        issues: Array<{ key: string }>
-      }>
-      truncated: boolean
-    }
-  }>
+  return res.json() as Promise<BacklogResponse>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
