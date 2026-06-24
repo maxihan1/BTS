@@ -7,8 +7,6 @@ import com.bts.agileplanning.application.BacklogResult
 import com.bts.agileplanning.application.SprintWithIssues
 import com.bts.agileplanning.web.dto.BacklogIssueResponse
 import com.bts.agileplanning.web.dto.SprintMetaResponse
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -85,7 +83,6 @@ class BacklogControllerIntegrationTest {
 
     lateinit var mockMvc: MockMvc
 
-    private val mapper: ObjectMapper = ObjectMapper().registerKotlinModule()
     private val actorId: UUID = UUID.fromString("11111111-1111-1111-1111-111111111111")
     private val projectKey = "BTS"
 
