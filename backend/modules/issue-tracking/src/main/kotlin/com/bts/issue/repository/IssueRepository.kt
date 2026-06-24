@@ -2052,6 +2052,38 @@ class IssueRepository(
             }
 
     /**
+     * 지정 이슈가 프로젝트에 속하고 뷰어에게 가시적인 활성 이슈인지 단건으로 확인한다 (FR-BL-02 Task 8).
+     *
+     * listVisibleForBoard 와 동일한 buildActiveSecureWhere 보안 술어를 재사용해
+     * visibility SQL 로직 중복 없이 단건 EXISTS 쿼리를 수행한다. BOARD_CARD_FETCH_LIMIT 상한 없음.
+     *
+     * soft-deleted 이슈, 타 프로젝트 이슈, 뷰어가 볼 수 없는 보안 등급 이슈 모두 false 를 반환한다.
+     *
+     * @param projectKey 이슈가 속해야 하는 프로젝트 키. 예: "BTS".
+     * @param issueKey 확인할 이슈 키 문자열. 예: "BTS-42".
+     * @param actor 가시성을 판단할 사용자 UUID.
+     * @param access actor 의 접근 가능 보안 등급 집합.
+     * @return 가시 활성 이슈이면 true, 그 외 false.
+     */
+    @Transactional(readOnly = true)
+    fun existsVisibleIssue(
+        projectKey: String,
+        issueKey: String,
+        actor: UUID,
+        access: IssueSecurityAccess,
+    ): Boolean {
+        val where =
+            buildActiveSecureWhere(projectKey, actor, access)
+                .and(ISSUES.KEY.eq(issueKey))
+        return dsl.fetchExists(
+            dsl.selectOne()
+                .from(ISSUES)
+                .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+                .where(where),
+        )
+    }
+
+    /**
      * ILIKE ESCAPE '\' 에서 안전하게 사용하기 위해 prefix 의 와일드카드 문자를 이스케이프한다.
      *
      * PostgreSQL ILIKE ESCAPE '\' 규칙.
