@@ -9,6 +9,7 @@ import com.bts.shared.board.BoardIssueLookupPort
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import org.openapitools.jackson.nullable.JsonNullable
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
@@ -109,16 +110,23 @@ class SprintApplicationService(
     // ── update ────────────────────────────────────────────────────────────────
 
     /**
-     * 스프린트 메타 정보(이름·목표·기간)를 갱신한다.
+     * 스프린트 메타 정보(이름·목표·기간)를 부분 갱신한다 — partial update (3-state).
      *
-     * sprint 조회로 projectKey 를 확보한 뒤 CREATE 권한을 판정한다.
+     * 각 필드의 [JsonNullable] presence 로 변경 의도를 구분한다.
+     * - absent(undefined, 미전송): 기존 값 유지.
+     * - present null: 해당 값을 null 로 클리어.
+     * - present 값: 해당 값으로 설정.
+     *
+     * sprint 조회로 기존 값을 확보한 뒤 각 필드를 머지하고 도메인 불변 계약(name 비공백, 기간 비역전)을
+     * Sprint 생성자(init require)로 검증한다. 위반 시 [IllegalArgumentException] 이 발생하며
+     * [SprintExceptionHandler] 가 400 으로 변환한다.
      *
      * @param actorId 행위자 UUID.
      * @param sprintId 갱신할 스프린트 UUID.
-     * @param name 새 이름.
-     * @param goal 새 목표. null 허용.
-     * @param startDate 새 시작일.
-     * @param endDate 새 종료일.
+     * @param name 새 이름. absent 이면 기존 이름 유지, present 이면 non-blank 강제(도메인 init).
+     * @param goal 새 목표. absent=무변경, present null=클리어, present 값=설정.
+     * @param startDate 시작일. absent=무변경, present null=해제, present 값=설정.
+     * @param endDate 종료일. absent=무변경, present null=해제, present 값=설정.
      * @param version 낙관적 잠금 버전.
      * @return 갱신된 스프린트.
      * @throws SprintNotFoundException 404 — 스프린트 미존재 또는 soft-deleted.
@@ -129,22 +137,39 @@ class SprintApplicationService(
     fun update(
         actorId: UUID,
         sprintId: UUID,
-        name: String,
-        goal: String?,
-        startDate: LocalDate?,
-        endDate: LocalDate?,
+        name: JsonNullable<String>,
+        goal: JsonNullable<String?>,
+        startDate: JsonNullable<LocalDate?>,
+        endDate: JsonNullable<LocalDate?>,
         version: Long,
     ): Sprint {
-        val sprint = loadSprintWithPermission(actorId, sprintId, IssuePermission.CREATE)
+        val existing = loadSprintWithPermission(actorId, sprintId, IssuePermission.CREATE)
+
+        val mergedName = if (name.isPresent) name.get() else existing.name
+        val mergedGoal = if (goal.isPresent) goal.get() else existing.goal
+        val mergedStartDate = if (startDate.isPresent) startDate.get() else existing.startDate
+        val mergedEndDate = if (endDate.isPresent) endDate.get() else existing.endDate
+
+        // 도메인 불변 계약 검증 (name 비공백, startDate <= endDate). 위반 시 IllegalArgumentException.
+        Sprint(
+            id = existing.id,
+            projectKey = existing.projectKey,
+            name = mergedName,
+            goal = mergedGoal,
+            status = existing.status,
+            startDate = mergedStartDate,
+            endDate = mergedEndDate,
+            version = existing.version,
+        )
 
         return sprintRepository.updateMeta(
             id = sprintId,
-            name = name,
-            goal = goal,
-            startDate = startDate,
-            endDate = endDate,
+            name = mergedName,
+            goal = mergedGoal,
+            startDate = mergedStartDate,
+            endDate = mergedEndDate,
             version = version,
-        ) ?: resolveOccNull(sprintId, sprint)
+        ) ?: resolveOccNull(sprintId, existing)
     }
 
     // ── softDelete ────────────────────────────────────────────────────────────

@@ -62,6 +62,9 @@ dependencies {
     // Jackson (JSON 직렬화)
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
+    // jackson-databind-nullable — JsonNullable<T> 로 JSON 필드 부재(undefined) 와 명시 null 을 구분한다.
+    // PATCH partial update 에서 "미전송=무변경" 과 "명시 null=클리어" 시맨틱을 처리하기 위해 필요하다.
+    implementation("org.openapitools:jackson-databind-nullable:0.2.6")
 
     // Kotlin 기본
     implementation("org.jetbrains.kotlin:kotlin-reflect")
