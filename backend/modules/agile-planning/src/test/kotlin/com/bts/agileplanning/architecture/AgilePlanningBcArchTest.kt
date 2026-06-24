@@ -1,4 +1,4 @@
-// agile-planning BC 아키텍처 격리 규칙 검증 — ArchUnit 5룰 (cross-BC 직접 import 금지 + jOOQ 화이트리스트 + @Transactional/@Service 동반)
+// agile-planning BC 아키텍처 격리 규칙 검증 — ArchUnit 7룰 (cross-BC 직접 import 금지 + jOOQ 화이트리스트 + @Transactional/@Service 동반 + vacuous 방어 카운트)
 
 package com.bts.agileplanning.architecture
 
@@ -9,6 +9,7 @@ import com.tngtech.archunit.core.importer.ImportOption
 import com.tngtech.archunit.lang.ArchRule
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
 /**
@@ -149,6 +150,42 @@ class AgilePlanningBcArchTest {
     @Test
     fun transactionalClassesMustBeServiceOrComponent() {
         annotationRule.allowEmptyShould(true).check(importedClasses)
+    }
+
+    /**
+     * 룰 6 (vacuous 방어) — agile-planning BC에 실제로 스캔된 프로덕션 클래스가 1개 이상이어야 한다.
+     *
+     * 이 단언이 없으면 룰 1~5의 noClasses().that()...should() 형태의 룰들이
+     * 스캔 대상이 비어 있을 때 아무것도 검사하지 않고 조용히 통과하는 vacuous PASS 상태가 된다.
+     * (메모리 archunit-vacuous-rule-silent-pass)
+     *
+     * Sprint 클래스들(SprintApplicationService, SprintRepository 등)이 추가된 현재
+     * importedClasses에는 여러 클래스가 포함되어야 한다.
+     * 이 단언이 통과한다는 것 자체가 위의 룰들이 vacuous가 아님을 보증한다.
+     *
+     * RED 확인 방법. minimumCount를 실제 클래스 수보다 큰 값으로 설정하면 실패한다.
+     * GREEN 상태. minimumCount=1로 설정해 Sprint 클래스 추가 이후 영구 통과를 보증한다.
+     *
+     * codereview 체크포인트 — cross-BC 권한 resolver 우회 금지.
+     * ArchUnit으로 강제하기 어려운 패턴이므로 코드 리뷰 시 수동 확인 필요.
+     * agile-planning BC가 타 BC의 권한 모델(멤버십 role 등)을 직접 조회하면 안 된다.
+     * 반드시 IssuePermissionResolver 같은 shared-kernel 포트를 통해 권한을 위임해야 한다.
+     * (메모리 crossbc-permission-resolver-not-role-lookup)
+     */
+    @Test
+    fun agileProductionClassCountIsAtLeastOne() {
+        // RED 단계 — 999는 일부러 불가능한 값. 실제 클래스 수는 이보다 훨씬 적다.
+        // GREEN에서 1로 교체한다(vacuous 방어 목적에는 1이면 충분).
+        val minimumCount = 999
+        val actualCount = importedClasses.size()
+        assertThat(actualCount)
+            .describedAs(
+                "agile-planning BC 프로덕션 클래스 수(%d개)가 %d 이상이어야 함 " +
+                    "— 이 룰이 vacuous PASS가 아님을 보증하는 카운트 가드",
+                actualCount,
+                minimumCount,
+            )
+            .isGreaterThanOrEqualTo(minimumCount)
     }
 
     companion object {
