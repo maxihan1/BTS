@@ -6,7 +6,7 @@ import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { useAuthStore } from '@/auth/authStore'
 import { mockAccessToken } from '@/mocks/auth-fixtures'
-import { seedFavorites } from '@/mocks/favorite-handlers'
+import { seedFavorites, favoriteHandlers } from '@/mocks/favorite-handlers'
 import { favoriteLabels } from '@/i18n/favorite-labels'
 import { FavoritesMenu } from './FavoritesMenu'
 
@@ -107,6 +107,8 @@ describe('FavoritesMenu — S2 빈 상태', () => {
 
 describe('FavoritesMenu — S3 타입별 그룹 렌더', () => {
   beforeEach(() => {
+    // favoriteHandlers의 stateful GET 핸들러를 활성화 — seedFavorites 데이터 반환
+    server.use(...favoriteHandlers)
     // created_at DESC: DASHBOARD가 가장 최근, ISSUE가 가장 오래됨
     seedFavorites(ALICE_USER_ID, [
       {
@@ -190,6 +192,10 @@ describe('FavoritesMenu — S3 타입별 그룹 렌더', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('FavoritesMenu — S4 항목 Link 라우트', () => {
+  beforeEach(() => {
+    server.use(...favoriteHandlers)
+  })
+
   it('S4a: ISSUE 항목 링크가 /issues/{key} 경로를 갖는다', async () => {
     const user = userEvent.setup()
     seedFavorites(ALICE_USER_ID, [
@@ -235,6 +241,10 @@ describe('FavoritesMenu — S4 항목 Link 라우트', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('FavoritesMenu — S5 그룹 순서', () => {
+  beforeEach(() => {
+    server.use(...favoriteHandlers)
+  })
+
   it('S5a: 그룹이 이슈→대시보드→프로젝트 순서로 렌더된다', async () => {
     const user = userEvent.setup()
     seedFavorites(ALICE_USER_ID, [
