@@ -86,6 +86,28 @@ class BoardIssueLookupAdapter(
             truncated = fetchResult.truncated,
         )
     }
+
+    /**
+     * 지정 이슈가 뷰어에게 가시적인 프로젝트 내 활성 이슈인지 단건으로 확인한다 (FR-BL-02 Task 8).
+     *
+     * listVisibleIssuesByProject 와 동일한 보안 등급 필터 경로를 재사용한다.
+     * BOARD_CARD_FETCH_LIMIT 과 무관하게 단건 EXISTS 쿼리를 수행하므로,
+     * 대규모 프로젝트에서 truncated 로 인한 오거부가 발생하지 않는다.
+     *
+     * @param projectKey 이슈가 속해야 하는 프로젝트 키. 예: "ATLAS".
+     * @param issueKey 확인할 이슈 키. 예: "ATLAS-42".
+     * @param viewerUserId 가시성을 판단할 사용자 UUID.
+     * @return 가시 활성 이슈이면 true, 그 외 false.
+     */
+    @Transactional(readOnly = true)
+    override fun isVisibleIssue(
+        projectKey: String,
+        issueKey: String,
+        viewerUserId: UUID,
+    ): Boolean {
+        val access = securityDirectory.accessibleLevels(viewerUserId, projectKey)
+        return issueRepository.existsVisibleIssue(projectKey, issueKey, viewerUserId, access)
+    }
 }
 
 /**

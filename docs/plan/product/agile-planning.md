@@ -105,13 +105,15 @@
 
 **우선순위**. 필수 | **선행**. §3.1, §1.2 | **Plan slug**. `agile/backlog-drag`
 
-- [ ] D1. 도메인 — Sprint (책임. backend-engineer)
-- [ ] D2. 명세 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `sprints`, `issues.sprint_id` (책임. db-engineer)
-- [ ] D4. 백엔드 — 스프린트 CRUD + 이슈 할당 API (책임. backend-engineer + security-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D1. 도메인 — Sprint + SprintStatus(PLANNED/ACTIVE/COMPLETED) (책임. backend-engineer) (PR #182)
+- [x] D2. 명세 — CRUD + 상태전이 + 할당/해제 (책임. backend-engineer) (PR #182)
+- [x] D3. 데이터 모델 — `sprints` + `sprint_issues(sprint_id, issue_key)` 조인 (agile-planning, V503, issues 무변경) (책임. db-engineer) (PR #182)
+- [x] D4. 백엔드 — 스프린트 CRUD + start/complete + 이슈 할당/해제 API (책임. backend-engineer + security-engineer) (PR #182)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) (PR #182)
 - [ ] D6. 프론트 UI — @dnd-kit 백로그 ↔ 스프린트 (1K 가상 스크롤) (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
+
+> **Deviation(PR #182)**. ① 관계 모델 = **`sprint_issues(sprint_id, issue_key)` 조인**(agile-planning 단독, issues 무변경) — product 원안 `issues.sprint_id`(모델 A)는 BC 격리·회귀위험(FR-BL-01 rank 254 파급류)으로 기각(ADR 2026-06-24). ② 식별자 **issue_key**(board가 issueKey 중심, 백로그 계산 일관). ③ 권한 **할당/해제=UPDATE**·CRUD/전이=CREATE·조회=BROWSE. ④ 할당 가시성 **단건 포트 isVisibleIssue**(issue-tracking adapter read 1메서드, truncated 오거부/probe 차단). ⑤ 동시 ACTIVE **다중 허용**. ⑥ update PATCH **partial(JsonNullable 3-state)**. ⑦ 백로그 조회 API·D6/D7(프론트·E2E)은 **FR-BL-01 D6/D7과 통합 이연**(rank 정렬이 포트 확장 유발).
 
 ## §4 타임라인 (FR-TL, 3개)
 
