@@ -47,7 +47,7 @@ export type ProjectPermissions = z.infer<typeof projectPermissionsSchema>
  * GET /api/v1/users/me/project-permissions?projectKey={projectKey}
  *
  * @param projectKey 프로젝트 식별 키 (예: ATLAS)
- * @returns ProjectPermissions — projectKey + CREATE/MANAGE_COMPONENTS/MANAGE_VERSIONS/MANAGE_CUSTOM_FIELDS/MANAGE_FIELD_PERMISSIONS/MANAGE_TEMPLATES 권한 맵
+ * @returns ProjectPermissions — projectKey + CREATE/UPDATE/MANAGE_COMPONENTS/MANAGE_VERSIONS/MANAGE_CUSTOM_FIELDS/MANAGE_FIELD_PERMISSIONS/MANAGE_TEMPLATES 권한 맵
  * @throws ApiError(401) 미인증
  * @throws ApiError(400) 잘못된 요청 (projectKey 누락 등)
  * @throws ZodError 응답 스키마 불일치
