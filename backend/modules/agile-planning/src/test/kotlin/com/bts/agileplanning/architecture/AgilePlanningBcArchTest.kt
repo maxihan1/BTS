@@ -174,9 +174,9 @@ class AgilePlanningBcArchTest {
      */
     @Test
     fun agileProductionClassCountIsAtLeastOne() {
-        // RED 단계 — 999는 일부러 불가능한 값. 실제 클래스 수는 이보다 훨씬 적다.
-        // GREEN에서 1로 교체한다(vacuous 방어 목적에는 1이면 충분).
-        val minimumCount = 999
+        // Sprint 클래스들이 추가된 이후로는 항상 1 이상이어야 한다.
+        // 이 단언이 통과 = 룰 1~5가 vacuous PASS가 아님을 보증한다.
+        val minimumCount = 1
         val actualCount: Int = importedClasses.size
         assertThat(actualCount)
             .`as`(
