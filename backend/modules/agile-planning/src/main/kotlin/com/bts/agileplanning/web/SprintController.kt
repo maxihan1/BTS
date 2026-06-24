@@ -151,7 +151,6 @@ class SprintController(
         log.info("SprintController.update id={}", id)
 
         val actor = currentActorId()
-        val version = request.version ?: error("version 은 @NotNull 검증 통과 후 null 일 수 없습니다.")
         val sprint =
             service.update(
                 actorId = actor,
@@ -160,7 +159,7 @@ class SprintController(
                 goal = request.goal,
                 startDate = request.startDate,
                 endDate = request.endDate,
-                version = version,
+                version = request.version,
             )
         return ResponseEntity.ok(DataResponse(SprintResponse.from(sprint)))
     }

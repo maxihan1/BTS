@@ -3,7 +3,6 @@
 package com.bts.agileplanning.web.dto
 
 import jakarta.validation.constraints.NotBlank
-import jakarta.validation.constraints.NotNull
 import java.time.LocalDate
 
 /**
@@ -30,13 +29,17 @@ data class CreateSprintRequest(
 /**
  * 스프린트 수정 요청 바디.
  *
- * 모든 수정 가능 필드를 한 번에 전달한다. 필드 값 null 은 "null 로 설정"을 의미한다.
+ * 모든 수정 가능 필드를 한 번에 전달한다. goal/startDate/endDate 의 null 은 "해당 값을 null 로 설정"을 의미한다.
+ *
+ * version 은 non-nullable Long 으로 선언한다. JSON 에서 누락 또는 null 을 전달하면
+ * Jackson 이 역직렬화 실패([org.springframework.http.converter.HttpMessageNotReadableException])를 던져
+ * [SprintExceptionHandler] 가 400 으로 처리한다.
  *
  * @property name 새 스프린트 이름. 공백 불가.
  * @property goal 새 목표. null 이면 목표 없음으로 설정.
  * @property startDate 새 시작일. null 이면 미지정으로 설정.
  * @property endDate 새 종료일. null 이면 미지정으로 설정.
- * @property version 낙관적 잠금 버전. 필수.
+ * @property version 낙관적 잠금 버전. 필수 — 누락 시 400.
  */
 data class UpdateSprintRequest(
     @field:NotBlank
@@ -44,8 +47,7 @@ data class UpdateSprintRequest(
     val goal: String? = null,
     val startDate: LocalDate? = null,
     val endDate: LocalDate? = null,
-    @field:NotNull
-    val version: Long?,
+    val version: Long,
 )
 
 /**
