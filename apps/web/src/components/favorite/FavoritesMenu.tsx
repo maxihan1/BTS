@@ -1,5 +1,5 @@
 // 즐겨찾기 드롭다운 메뉴 컴포넌트 — 타입별 그룹 렌더 + SPA Link 이동 (FR-UX-02 D6/D7)
-import type { ComponentType } from 'react'
+import { Fragment, type ComponentType } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Star, FileText, LayoutDashboard, FolderKanban } from 'lucide-react'
 import { useFavorites } from '@/api/favorites'
@@ -123,7 +123,7 @@ export const FavoritesMenu = () => {
           const { Icon, groupLabel, toPath } = TYPE_META[type]
 
           const node = (
-            <span key={type}>
+            <Fragment key={type}>
               {acc.length > 0 && <DropdownMenuSeparator />}
               <DropdownMenuGroup>
                 <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
@@ -141,7 +141,7 @@ export const FavoritesMenu = () => {
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuGroup>
-            </span>
+            </Fragment>
           )
           return [...acc, node]
         }, [])}
