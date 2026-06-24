@@ -4,8 +4,6 @@ package com.bts.agileplanning.integration
 
 import com.bts.agileplanning.AgilePlanningTestBootApplication
 import com.bts.agileplanning.AgilePlanningTestcontainersConfig
-import com.bts.agileplanning.application.SprintNotFoundException
-import com.bts.agileplanning.domain.SprintStatus
 import com.bts.agileplanning.repository.SprintRepository
 import com.bts.shared.board.BoardIssueLookupPort
 import com.bts.shared.permission.IssuePermission
@@ -14,8 +12,6 @@ import com.bts.shared.permission.IssueScope
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.assertj.core.api.Assertions.assertThat
-import org.assertj.core.api.Assertions.fail
-import org.jooq.DSLContext
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -128,9 +124,6 @@ class SprintIntegrationTest {
 
     @Autowired
     lateinit var sprintRepository: SprintRepository
-
-    @Autowired
-    lateinit var dsl: DSLContext
 
     @Autowired
     lateinit var permissionStub: PermissionStub
@@ -605,11 +598,12 @@ class SprintIntegrationTest {
     @Test
     fun `E11 startDate가 endDate보다 이후이면 400을 반환한다`() {
         val projectKey = uniqueProjectKey()
-        val body = createSprintBody(
-            projectKey = projectKey,
-            startDate = LocalDate.of(2026, 7, 14),
-            endDate = LocalDate.of(2026, 7, 1),
-        )
+        val body =
+            createSprintBody(
+                projectKey = projectKey,
+                startDate = LocalDate.of(2026, 7, 14),
+                endDate = LocalDate.of(2026, 7, 1),
+            )
 
         mockMvc.perform(
             post("/api/v1/sprints")
