@@ -66,9 +66,8 @@ export const FavoriteButton = ({ targetType, targetId }: FavoriteButtonProps) =>
   const removeFavorite = useRemoveFavorite()
 
   const isMutating = addFavorite.isPending || removeFavorite.isPending
-  const isFavorited = favorites !== undefined
-    ? isFavoriteMatch(favorites, targetType, targetId)
-    : false
+  /** 즐겨찾기 여부 — 목록 미로드(undefined) 시 false로 보수적 초기화 */
+  const isFavorited = favorites !== undefined && isFavoriteMatch(favorites, targetType, targetId)
 
   const handleClick = () => {
     if (isMutating) return
