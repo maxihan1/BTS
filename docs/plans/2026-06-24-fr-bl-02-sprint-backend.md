@@ -179,4 +179,31 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 - 추가 검증: ktlint, detekt(baseline), ArchUnit(@Transactional @Service + BC import), generateJooq
 - BC: agile-planning 단독. issue-tracking 무변경(포트 무확장, cross-BC는 BoardIssueLookupPort 재사용만).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+독립 적대적 리뷰 2종 병렬 dispatch (autoplan overkill 회피, 메모리 bts-review-plan-autoplan-overkill).
+
+### plan-eng-review (2026-06-24, 독립 backend-engineer dispatch)
+
+**BLOCKER 3.**
+- B1. ExceptionHandler `assignableTypes` vs 기존 `BoardExceptionHandler` `basePackages` 우선순위 미확정 → Sprint 입력예외 400이 500/오분류 위험. → **SprintExceptionHandler에 입력예외(MethodArgumentNotValid/HttpMessageNotReadable/TypeMismatch/ResponseStatus) 핸들러도 포함**(board 패턴 복제). 자동 반영.
+- B2. 할당 구현 경로(delete-then-insert vs `ON CONFLICT DO UPDATE`) 미확정 → UPSERT면 E12 동시 409가 vacuous green. → **delete-then-insert 확정**(E12 실검증 유지). 자동 반영.
+- B3. COMPLETED 할당 거부(E5) service-check TOCTOU(no-bump라 OCC 없음). → **조건부 DML**(`WHERE (SELECT status FROM sprints WHERE id=?) <> 'COMPLETED'`, affected=0이면 E5/E2 구분) 확정. 자동 반영.
+
+**CONCERN 6.** C1 FR-MV 키변경 orphan spec 명시 / C2 truncated 가시성(→ security-B2와 동일, Maxi) / C3 ArchUnit vacuous 절차 git 잔류 / C4 unknown projectKey 생성 403 테스트 / C5 소프트삭제 CASCADE 불가→명시 DELETE 확정 / C6 no-bump version stale spec 명시. → C1·C3·C4·C5·C6 자동 반영.
+
+**NIT 3.** N1 spec §8 `issue_id`→`issue_key` 오타 / N2 S6 rank 정렬 포트 불가→D6 명시 / N3 통합테스트 vacuous 표현 교체. → 자동 반영.
+
+### plan-security-review (2026-06-24, 독립 security-engineer dispatch)
+
+**BLOCKER 2 (정책 — Maxi 게이트1 결정).**
+- B1. **할당/해제 권한 = CREATE는 board 카드이동(BROWSE+TRANSITION) 동형 선례 위반·과대권한**(BoardController.kt:47-48). 옵션 A(BROWSE) / **B(UPDATE, 권장 — 이슈 소속 메타 변경)** / C(CREATE 유지+근거명시). → **Maxi 결정**.
+- B2. truncated 상한 가시성 검증 결함 — 대규모 프로젝트 정당 이슈 **오거부**(E4 404) + 미가시 이슈 **probe oracle**(E3 400 vs E4 404). 단건 가시성 포트 추가(=포트 확장=issue-tracking 변경=두 BC) vs fail-closed vs 현 한계 수용. → **Maxi 결정**(BC 경계 영향).
+
+**CONCERN 4.** C1 권한 판정 순서 — **actor 추출→sprint 조회(projectKey 확보,404)→IssueScope.Project 권한판정(403)**으로 정정(plan Task4 "권한→조회" 순서 오류, board loadBoard* 동형). 자동 반영 / C2 예외 message에 issueKey/projectKey/sprintId echo 누출(board 선례 오염, 베끼지 말 것)→detail 일반화·403 인자없는 예외. 자동 반영 / C3 가시성 포트 fail-safe(빈 페이지)가 권한경로서 fail-closed인지 통합테스트(adapter 빈→할당거부). 자동 반영 / C4 resolver 우회(멤버십 role 직접조회) codereview 체크포인트. 자동 반영.
+
+**NIT 3.** N1 전이권한 CREATE 근거 명시(B1과 묶음) / N2 E9 404 vs 멱등204→멱등204 채택(probe 표면 작음) / N3 할당-INSERT 사이 soft-delete TOCTOU 인지주석(무해, 고아연관 가시성필터 배제). → 자동 반영.
+
+### 종합 판정
+
+기술 BLOCKER 3(eng) + CONCERN/NIT 대부분 = **plan/spec 수정으로 자동 해소**. **정책 BLOCKER 2(security-B1 권한, security-B2 가시성) = Maxi 게이트1 결정 필요** → 결정 후 일괄 반영하고 게이트1 최종 승인.
