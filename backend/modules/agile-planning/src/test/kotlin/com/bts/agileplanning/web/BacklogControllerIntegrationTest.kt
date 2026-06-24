@@ -71,8 +71,7 @@ class BacklogControllerIntegrationTest {
         open fun backlogApplicationService(): BacklogApplicationService = mockk(relaxed = true)
 
         @Bean
-        open fun backlogController(service: BacklogApplicationService): BacklogController =
-            BacklogController(service)
+        open fun backlogController(service: BacklogApplicationService): BacklogController = BacklogController(service)
 
         @Bean
         open fun backlogExceptionHandler(): BacklogExceptionHandler = BacklogExceptionHandler()
@@ -94,11 +93,12 @@ class BacklogControllerIntegrationTest {
     fun setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
         clearMocks(backlogApplicationService)
-        val auth = UsernamePasswordAuthenticationToken(
-            actorId.toString(),
-            null,
-            listOf(SimpleGrantedAuthority("ROLE_USER")),
-        )
+        val auth =
+            UsernamePasswordAuthenticationToken(
+                actorId.toString(),
+                null,
+                listOf(SimpleGrantedAuthority("ROLE_USER")),
+            )
         SecurityContextHolder.getContext().authentication = auth
     }
 
@@ -136,11 +136,12 @@ class BacklogControllerIntegrationTest {
 
     @Test
     fun `GET backlog 정상이면 200과 DataResponse 봉투에 backlog, sprints, truncated 를 반환한다`() {
-        val result = BacklogResult(
-            backlog = listOf(sampleIssue("BTS-1")),
-            sprints = emptyList(),
-            truncated = false,
-        )
+        val result =
+            BacklogResult(
+                backlog = listOf(sampleIssue("BTS-1")),
+                sprints = emptyList(),
+                truncated = false,
+            )
         every { backlogApplicationService.getBacklog(actorId, projectKey) } returns result
 
         mockMvc.perform(get("/api/v1/projects/$projectKey/backlog"))
@@ -155,16 +156,18 @@ class BacklogControllerIntegrationTest {
     @Test
     fun `미할당 이슈가 backlog 에, 스프린트 할당 이슈가 sprints 에 정확히 그룹핑된다`() {
         val sprintId = UUID.randomUUID()
-        val result = BacklogResult(
-            backlog = listOf(sampleIssue("BTS-1", rank = "a")),
-            sprints = listOf(
-                SprintWithIssues(
-                    sprint = sampleSprintMeta(sprintId = sprintId, status = "ACTIVE"),
-                    issues = listOf(sampleIssue("BTS-2", rank = "b")),
-                ),
-            ),
-            truncated = false,
-        )
+        val result =
+            BacklogResult(
+                backlog = listOf(sampleIssue("BTS-1", rank = "a")),
+                sprints =
+                    listOf(
+                        SprintWithIssues(
+                            sprint = sampleSprintMeta(sprintId = sprintId, status = "ACTIVE"),
+                            issues = listOf(sampleIssue("BTS-2", rank = "b")),
+                        ),
+                    ),
+                truncated = false,
+            )
         every { backlogApplicationService.getBacklog(actorId, projectKey) } returns result
 
         mockMvc.perform(get("/api/v1/projects/$projectKey/backlog"))
@@ -182,11 +185,12 @@ class BacklogControllerIntegrationTest {
 
     @Test
     fun `service 가 truncated true 를 반환하면 응답 truncated 가 true 다`() {
-        val result = BacklogResult(
-            backlog = listOf(sampleIssue("BTS-1")),
-            sprints = emptyList(),
-            truncated = true,
-        )
+        val result =
+            BacklogResult(
+                backlog = listOf(sampleIssue("BTS-1")),
+                sprints = emptyList(),
+                truncated = true,
+            )
         every { backlogApplicationService.getBacklog(actorId, projectKey) } returns result
 
         mockMvc.perform(get("/api/v1/projects/$projectKey/backlog"))
@@ -225,18 +229,20 @@ class BacklogControllerIntegrationTest {
     fun `service 가 가시 이슈만 반환하면 응답 backlog 와 sprints 에 비가시 이슈가 없다`() {
         // service 는 listVisibleIssuesByProject 결과만 사용하므로
         // 비가시 이슈는 service 에서 이미 필터됐음을 controller 레이어에서 단언한다.
-        val result = BacklogResult(
-            backlog = listOf(sampleIssue("BTS-VISIBLE")),
-            sprints = emptyList(),
-            truncated = false,
-        )
+        val result =
+            BacklogResult(
+                backlog = listOf(sampleIssue("BTS-VISIBLE")),
+                sprints = emptyList(),
+                truncated = false,
+            )
         every { backlogApplicationService.getBacklog(actorId, projectKey) } returns result
 
-        val response = mockMvc.perform(get("/api/v1/projects/$projectKey/backlog"))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.backlog.length()").value(1))
-            .andExpect(jsonPath("$.data.backlog[0].key").value("BTS-VISIBLE"))
-            .andReturn()
+        val response =
+            mockMvc.perform(get("/api/v1/projects/$projectKey/backlog"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.backlog.length()").value(1))
+                .andExpect(jsonPath("$.data.backlog[0].key").value("BTS-VISIBLE"))
+                .andReturn()
 
         // 응답 전체에서 "BTS-SECRET" 문자열 없음 확인 (누출 0 단언)
         val body = response.response.contentAsString

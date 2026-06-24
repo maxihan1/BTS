@@ -81,11 +81,12 @@ class BacklogApplicationService(
 
     companion object {
         /** 스프린트 상태 정렬 우선순위 — 낮을수록 앞에 온다. */
-        private val STATUS_ORDER = mapOf(
-            SprintStatus.ACTIVE to 0,
-            SprintStatus.PLANNED to 1,
-            SprintStatus.COMPLETED to 2,
-        )
+        private val STATUS_ORDER =
+            mapOf(
+                SprintStatus.ACTIVE to 0,
+                SprintStatus.PLANNED to 1,
+                SprintStatus.COMPLETED to 2,
+            )
     }
 
     /**
@@ -119,47 +120,55 @@ class BacklogApplicationService(
         val sprintIssueKeys: Map<UUID, List<String>> = sprintRepository.findIssueKeysByProject(projectKey)
 
         // 3. 스프린트에 할당된 이슈 키(가시 이슈 교집합만) → Set
-        val assignedKeys: Set<String> = sprintIssueKeys.values
-            .flatten()
-            .filter { it in visibleKeys }
-            .toHashSet()
+        val assignedKeys: Set<String> =
+            sprintIssueKeys.values
+                .flatten()
+                .filter { it in visibleKeys }
+                .toHashSet()
 
         // 4. 이슈 Map(key → view) 생성
         val issueByKey: Map<String, BoardIssueView> = visibleIssues.associateBy { it.key }
 
         // 5. 미할당 이슈 = 가시 이슈 − 할당된 이슈, rank 정렬
-        val backlog = visibleIssues
-            .filter { it.key !in assignedKeys }
-            .sortedWith(issueComparator())
-            .map { BacklogIssueResponse.from(it) }
+        val backlog =
+            visibleIssues
+                .filter { it.key !in assignedKeys }
+                .sortedWith(issueComparator())
+                .map { BacklogIssueResponse.from(it) }
 
         // 6. 스프린트별 그룹핑 + 정렬
-        val sprintWithIssuesList = sprints
-            .sortedWith(sprintComparator())
-            .map { sprint ->
-                val keys = sprintIssueKeys[sprint.id] ?: emptyList()
-                // 가시 이슈 중에서만 — 비가시 이슈 누출 차단
-                val issues = keys
-                    .mapNotNull { issueByKey[it] }
-                    .sortedWith(issueComparator())
-                    .map { BacklogIssueResponse.from(it) }
-                SprintWithIssues(
-                    sprint = SprintMetaResponse(
-                        sprintId = sprint.id,
-                        name = sprint.name,
-                        goal = sprint.goal,
-                        status = sprint.status.name,
-                        startDate = sprint.startDate,
-                        endDate = sprint.endDate,
-                        version = sprint.version,
-                    ),
-                    issues = issues,
-                )
-            }
+        val sprintWithIssuesList =
+            sprints
+                .sortedWith(sprintComparator())
+                .map { sprint ->
+                    val keys = sprintIssueKeys[sprint.id] ?: emptyList()
+                    // 가시 이슈 중에서만 — 비가시 이슈 누출 차단
+                    val issues =
+                        keys
+                            .mapNotNull { issueByKey[it] }
+                            .sortedWith(issueComparator())
+                            .map { BacklogIssueResponse.from(it) }
+                    SprintWithIssues(
+                        sprint =
+                            SprintMetaResponse(
+                                sprintId = sprint.id,
+                                name = sprint.name,
+                                goal = sprint.goal,
+                                status = sprint.status.name,
+                                startDate = sprint.startDate,
+                                endDate = sprint.endDate,
+                                version = sprint.version,
+                            ),
+                        issues = issues,
+                    )
+                }
 
         log.debug(
             "백로그 조회 완료 — projectKey={}, backlog={}, sprints={}, truncated={}",
-            projectKey, backlog.size, sprintWithIssuesList.size, page.truncated,
+            projectKey,
+            backlog.size,
+            sprintWithIssuesList.size,
+            page.truncated,
         )
 
         return BacklogResult(
@@ -183,7 +192,7 @@ class BacklogApplicationService(
             val rankB: String? = b.rank
             when {
                 rankA == null && rankB == null -> a.key.compareTo(b.key)
-                rankA == null -> 1  // null 은 뒤로
+                rankA == null -> 1 // null 은 뒤로
                 rankB == null -> -1
                 else -> {
                     val cmp = rankA.compareTo(rankB)
@@ -199,8 +208,9 @@ class BacklogApplicationService(
      */
     private fun sprintComparator(): Comparator<Sprint> =
         Comparator { a, b ->
-            val statusCmp = (STATUS_ORDER[a.status] ?: Int.MAX_VALUE)
-                .compareTo(STATUS_ORDER[b.status] ?: Int.MAX_VALUE)
+            val statusCmp =
+                (STATUS_ORDER[a.status] ?: Int.MAX_VALUE)
+                    .compareTo(STATUS_ORDER[b.status] ?: Int.MAX_VALUE)
             if (statusCmp != 0) return@Comparator statusCmp
             when {
                 a.startDate == null && b.startDate == null -> 0

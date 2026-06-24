@@ -62,16 +62,18 @@ class BacklogController(
         val actor = currentActorId()
         val result = service.getBacklog(actorId = actor, projectKey = projectKey)
 
-        val response = BacklogResponse(
-            backlog = result.backlog,
-            sprints = result.sprints.map { sw ->
-                SprintIssuesResponse(
-                    sprint = sw.sprint,
-                    issues = sw.issues,
-                )
-            },
-            truncated = result.truncated,
-        )
+        val response =
+            BacklogResponse(
+                backlog = result.backlog,
+                sprints =
+                    result.sprints.map { sw ->
+                        SprintIssuesResponse(
+                            sprint = sw.sprint,
+                            issues = sw.issues,
+                        )
+                    },
+                truncated = result.truncated,
+            )
 
         return ResponseEntity.ok(DataResponse(response))
     }

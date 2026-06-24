@@ -8,9 +8,7 @@ import com.bts.agileplanning.repository.SprintRepository
 import com.bts.shared.board.BoardIssueLookupPort
 import com.bts.shared.board.BoardIssuePage
 import com.bts.shared.board.BoardIssueView
-import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
-import com.bts.shared.permission.IssueScope
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
@@ -105,17 +103,19 @@ class BacklogApplicationServiceTest {
     fun `미할당 이슈는 backlog 에, 스프린트 할당 이슈는 해당 스프린트에 정확히 그룹핑된다`() {
         val sprintId = UUID.randomUUID()
         val s = sprint(id = sprintId, status = SprintStatus.ACTIVE)
-        val i1 = issue("PROJ-1", rank = "m")  // 미할당 → backlog
-        val i2 = issue("PROJ-2", rank = "n")  // 스프린트 할당
+        val i1 = issue("PROJ-1", rank = "m") // 미할당 → backlog
+        val i2 = issue("PROJ-2", rank = "n") // 스프린트 할당
 
-        val repo = mockk<SprintRepository>().also {
-            every { it.findByProject(projectKey, null) } returns listOf(s)
-            every { it.findIssueKeysByProject(projectKey) } returns mapOf(sprintId to listOf("PROJ-2"))
-        }
-        val lookup = mockk<BoardIssueLookupPort>().also {
-            every { it.listVisibleIssuesByProject(projectKey, actorId) } returns
-                BoardIssuePage(issues = listOf(i1, i2), truncated = false)
-        }
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findByProject(projectKey, null) } returns listOf(s)
+                every { it.findIssueKeysByProject(projectKey) } returns mapOf(sprintId to listOf("PROJ-2"))
+            }
+        val lookup =
+            mockk<BoardIssueLookupPort>().also {
+                every { it.listVisibleIssuesByProject(projectKey, actorId) } returns
+                    BoardIssuePage(issues = listOf(i1, i2), truncated = false)
+            }
 
         val result = makeService(repo = repo, lookup = lookup).getBacklog(actorId, projectKey)
 
@@ -128,20 +128,23 @@ class BacklogApplicationServiceTest {
 
     @Test
     fun `백로그 이슈는 rank ASC NULLS LAST 그다음 key ASC 로 정렬된다`() {
-        val repo = mockk<SprintRepository>().also {
-            every { it.findByProject(projectKey, null) } returns emptyList()
-            every { it.findIssueKeysByProject(projectKey) } returns emptyMap()
-        }
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findByProject(projectKey, null) } returns emptyList()
+                every { it.findIssueKeysByProject(projectKey) } returns emptyMap()
+            }
         // rank: "a" < "z" < null
-        val issues = listOf(
-            issue("PROJ-3", rank = null),
-            issue("PROJ-1", rank = "a"),
-            issue("PROJ-2", rank = "z"),
-        )
-        val lookup = mockk<BoardIssueLookupPort>().also {
-            every { it.listVisibleIssuesByProject(projectKey, actorId) } returns
-                BoardIssuePage(issues = issues, truncated = false)
-        }
+        val issues =
+            listOf(
+                issue("PROJ-3", rank = null),
+                issue("PROJ-1", rank = "a"),
+                issue("PROJ-2", rank = "z"),
+            )
+        val lookup =
+            mockk<BoardIssueLookupPort>().also {
+                every { it.listVisibleIssuesByProject(projectKey, actorId) } returns
+                    BoardIssuePage(issues = issues, truncated = false)
+            }
 
         val result = makeService(repo = repo, lookup = lookup).getBacklog(actorId, projectKey)
 
@@ -161,15 +164,17 @@ class BacklogApplicationServiceTest {
         val activeSprint = sprint(id = id3, status = SprintStatus.ACTIVE, startDate = LocalDate.of(2026, 2, 1))
         val plannedNoDate = sprint(id = id4, status = SprintStatus.PLANNED, startDate = null)
 
-        val repo = mockk<SprintRepository>().also {
-            every { it.findByProject(projectKey, null) } returns
-                listOf(completedSprint, plannedSprint, activeSprint, plannedNoDate)
-            every { it.findIssueKeysByProject(projectKey) } returns emptyMap()
-        }
-        val lookup = mockk<BoardIssueLookupPort>().also {
-            every { it.listVisibleIssuesByProject(projectKey, actorId) } returns
-                BoardIssuePage(issues = emptyList(), truncated = false)
-        }
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findByProject(projectKey, null) } returns
+                    listOf(completedSprint, plannedSprint, activeSprint, plannedNoDate)
+                every { it.findIssueKeysByProject(projectKey) } returns emptyMap()
+            }
+        val lookup =
+            mockk<BoardIssueLookupPort>().also {
+                every { it.listVisibleIssuesByProject(projectKey, actorId) } returns
+                    BoardIssuePage(issues = emptyList(), truncated = false)
+            }
 
         val result = makeService(repo = repo, lookup = lookup).getBacklog(actorId, projectKey)
 
@@ -181,14 +186,16 @@ class BacklogApplicationServiceTest {
 
     @Test
     fun `BoardIssuePage 의 truncated 플래그가 결과에 그대로 전파된다`() {
-        val repo = mockk<SprintRepository>().also {
-            every { it.findByProject(projectKey, null) } returns emptyList()
-            every { it.findIssueKeysByProject(projectKey) } returns emptyMap()
-        }
-        val lookup = mockk<BoardIssueLookupPort>().also {
-            every { it.listVisibleIssuesByProject(projectKey, actorId) } returns
-                BoardIssuePage(issues = listOf(issue("PROJ-1")), truncated = true)
-        }
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findByProject(projectKey, null) } returns emptyList()
+                every { it.findIssueKeysByProject(projectKey) } returns emptyMap()
+            }
+        val lookup =
+            mockk<BoardIssueLookupPort>().also {
+                every { it.listVisibleIssuesByProject(projectKey, actorId) } returns
+                    BoardIssuePage(issues = listOf(issue("PROJ-1")), truncated = true)
+            }
 
         val result = makeService(repo = repo, lookup = lookup).getBacklog(actorId, projectKey)
 
@@ -199,14 +206,16 @@ class BacklogApplicationServiceTest {
 
     @Test
     fun `이슈와 스프린트가 없으면 backlog 빈 목록 sprints 빈 목록 truncated false 를 반환한다`() {
-        val repo = mockk<SprintRepository>().also {
-            every { it.findByProject(projectKey, null) } returns emptyList()
-            every { it.findIssueKeysByProject(projectKey) } returns emptyMap()
-        }
-        val lookup = mockk<BoardIssueLookupPort>().also {
-            every { it.listVisibleIssuesByProject(projectKey, actorId) } returns
-                BoardIssuePage(issues = emptyList(), truncated = false)
-        }
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findByProject(projectKey, null) } returns emptyList()
+                every { it.findIssueKeysByProject(projectKey) } returns emptyMap()
+            }
+        val lookup =
+            mockk<BoardIssueLookupPort>().also {
+                every { it.listVisibleIssuesByProject(projectKey, actorId) } returns
+                    BoardIssuePage(issues = emptyList(), truncated = false)
+            }
 
         val result = makeService(repo = repo, lookup = lookup).getBacklog(actorId, projectKey)
 
@@ -224,16 +233,18 @@ class BacklogApplicationServiceTest {
         // 보안등급 이슈("PROJ-SECRET")는 lookup 결과에 포함되지 않음
         val visibleIssue = issue("PROJ-1")
 
-        val repo = mockk<SprintRepository>().also {
-            every { it.findByProject(projectKey, null) } returns listOf(s)
-            // sprint_issues 에는 비가시 이슈가 있다
-            every { it.findIssueKeysByProject(projectKey) } returns
-                mapOf(sprintId to listOf("PROJ-SECRET"))
-        }
-        val lookup = mockk<BoardIssueLookupPort>().also {
-            every { it.listVisibleIssuesByProject(projectKey, actorId) } returns
-                BoardIssuePage(issues = listOf(visibleIssue), truncated = false)
-        }
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findByProject(projectKey, null) } returns listOf(s)
+                // sprint_issues 에는 비가시 이슈가 있다
+                every { it.findIssueKeysByProject(projectKey) } returns
+                    mapOf(sprintId to listOf("PROJ-SECRET"))
+            }
+        val lookup =
+            mockk<BoardIssueLookupPort>().also {
+                every { it.listVisibleIssuesByProject(projectKey, actorId) } returns
+                    BoardIssuePage(issues = listOf(visibleIssue), truncated = false)
+            }
 
         val result = makeService(repo = repo, lookup = lookup).getBacklog(actorId, projectKey)
 

@@ -63,18 +63,19 @@ class BacklogExceptionHandler {
     fun handleResponseStatus(ex: ResponseStatusException): ProblemDetail {
         val status = HttpStatus.valueOf(ex.statusCode.value())
         log.info("AGILE_{} backlog_response_status reason='{}'", status.value(), ex.reason)
-        val (errorCode, detail) = when (status) {
-            HttpStatus.UNAUTHORIZED ->
-                AGILE_UNAUTHENTICATED to "인증이 필요합니다. 세션이 만료되었을 수 있습니다."
-            HttpStatus.FORBIDDEN ->
-                AGILE_ACCESS_DENIED to "이 작업을 수행할 권한이 없습니다."
-            HttpStatus.NOT_FOUND ->
-                AGILE_NOT_FOUND to "리소스를 찾을 수 없습니다."
-            HttpStatus.BAD_REQUEST ->
-                AGILE_VALIDATION_FAILED to "요청 값이 올바르지 않습니다."
-            else ->
-                AGILE_INTERNAL_ERROR to "요청을 처리할 수 없습니다."
-        }
+        val (errorCode, detail) =
+            when (status) {
+                HttpStatus.UNAUTHORIZED ->
+                    AGILE_UNAUTHENTICATED to "인증이 필요합니다. 세션이 만료되었을 수 있습니다."
+                HttpStatus.FORBIDDEN ->
+                    AGILE_ACCESS_DENIED to "이 작업을 수행할 권한이 없습니다."
+                HttpStatus.NOT_FOUND ->
+                    AGILE_NOT_FOUND to "리소스를 찾을 수 없습니다."
+                HttpStatus.BAD_REQUEST ->
+                    AGILE_VALIDATION_FAILED to "요청 값이 올바르지 않습니다."
+                else ->
+                    AGILE_INTERNAL_ERROR to "요청을 처리할 수 없습니다."
+            }
         return problem(
             status = status,
             type = "agile-backlog-response-status",
