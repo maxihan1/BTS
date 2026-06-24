@@ -34,7 +34,7 @@ class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니�
 /**
  * agile-planning BC 의 도메인/권한 예외를 RFC 7807 ProblemDetail 형식으로 변환하는 핸들러.
  *
- * [basePackages] 를 `com.bts.agileplanning.web` 로 한정하여 다른 BC 의 예외를 잡지 않는다
+ * [assignableTypes] 를 [BoardController] 로 한정하여 SprintController 등 다른 컨트롤러의 예외를 잡지 않는다
  * (memory: domain-exception-http-handler-basepackage-scope 교훈).
  *
  * catch-all [Exception] 핸들러를 두되, [ResponseStatusException] 은 별도 핸들러로 상태를 전파하여
@@ -58,7 +58,7 @@ class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니�
  * RestControllerAdvice 의 책임(예외→HTTP 변환)은 분리 불가한 단일 관심사라 클래스 단위로 억제한다.
  */
 @Suppress("TooManyFunctions")
-@RestControllerAdvice(basePackages = ["com.bts.agileplanning.web"])
+@RestControllerAdvice(assignableTypes = [BoardController::class])
 class BoardExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)
 

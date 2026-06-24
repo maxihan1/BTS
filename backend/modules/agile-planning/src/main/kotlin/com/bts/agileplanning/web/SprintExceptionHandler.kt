@@ -37,6 +37,7 @@ import java.time.Instant
  * - [HttpMessageNotReadableException] → 400 + AGILE_VALIDATION_FAILED
  * - [MethodArgumentTypeMismatchException] → 400 + AGILE_VALIDATION_FAILED
  * - [MissingServletRequestParameterException] → 400 + AGILE_VALIDATION_FAILED
+ * - [IllegalArgumentException] → 400 + AGILE_VALIDATION_FAILED (도메인 require 위반 — name 공백·기간 역전)
  * - [SprintNotFoundException] → 404 + AGILE_SPRINT_NOT_FOUND
  * - [InvalidSprintTransitionException] → 409 + AGILE_CONFLICT
  * - [ResponseStatusException] → 명시 상태 전파(401/403/404/409 등, 일반 메시지)
@@ -127,6 +128,29 @@ class SprintExceptionHandler {
             title = "Validation Failed",
             errorCode = AGILE_VALIDATION_FAILED,
             detail = "필수 요청 파라미터가 누락되었습니다.",
+        )
+    }
+
+    /**
+     * 도메인 require 위반(잘못된 입력값) — 400.
+     *
+     * [Sprint] init 블록의 require(name.isNotBlank()) · require(!startDate.isAfter(endDate)) 가
+     * 실패할 때 던지는 [IllegalArgumentException] 을 400 으로 매핑한다.
+     * Bean Validation(@NotBlank) 이 무동작인 경우에도 이 핸들러가 400 을 반환해 동작을 보장한다.
+     *
+     * 보안 — 도메인 내부 메시지를 응답에 노출하지 않고 일반 메시지만 반환한다. 원인은 로그에만 기록한다.
+     *
+     * @param ex 도메인 require 위반 예외.
+     */
+    @ExceptionHandler(IllegalArgumentException::class)
+    fun handleIllegalArgument(ex: IllegalArgumentException): ProblemDetail {
+        log.info("AGILE_400 sprint_illegal_argument cause='{}'", ex.message)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "agile-validation-failed",
+            title = "Validation Failed",
+            errorCode = AGILE_VALIDATION_FAILED,
+            detail = "요청 값 검증에 실패했습니다.",
         )
     }
 
