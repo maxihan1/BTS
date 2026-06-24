@@ -96,8 +96,8 @@
 - [x] D3. 데이터 모델 — `issues.rank` VARCHAR(50) nullable(옵션 B) + index, V030 (책임. db-engineer) (PR #179)
 - [x] D4. 백엔드 — `PATCH /api/v1/issues/{key}/rank` + on-demand rebalance (책임. backend-engineer) (PR #179)
 - [x] D5. 백엔드 테스트 — 1K 시나리오 (책임. backend-engineer) (PR #179)
-- [ ] D6. 프론트 UI — (§3.2와 통합) (책임. frontend-engineer)
-- [ ] D7. E2E — 프론트(D6) 동반, FR-BL-02와 통합 (책임. qa-engineer)
+- [x] D6. 프론트 UI — (§3.2와 통합, 백로그 보드 @dnd-kit 재정렬) (책임. frontend-engineer) (PR #183)
+- [x] D7. E2E — 프론트(D6) 동반, FR-BL-02와 통합 (책임. qa-engineer) (PR #183)
 
 > **Deviation(PR #179)**. ① **옵션 B(nullable + lazy)** 채택 — 신규 이슈 rank=NULL, 드래그 시 부여, 정렬 `NULLS LAST, created_at`. 당초 NOT NULL+생성 시 자동부여가 기존 테스트 254개 파급(raw INSERT NOT NULL + service mock findMaxRank)을 일으켜 Maxi 확정으로 전환. ② rank=issue 스칼라 속성 → **issue-tracking BC** 소유(FR-PL-01 일정 필드 선례), LexoRank VO는 shared-kernel. ③ 동시성 no-bump last-write-wins, rebalance만 advisory lock. ④ V029→**V030** 리넘버(origin/main FR-SR-01 V029_filter_indexes 충돌 회피). ⑤ D6/D7(프론트·E2E)은 FR-BL-02와 통합 이연.
 
@@ -110,8 +110,10 @@
 - [x] D3. 데이터 모델 — `sprints` + `sprint_issues(sprint_id, issue_key)` 조인 (agile-planning, V503, issues 무변경) (책임. db-engineer) (PR #182)
 - [x] D4. 백엔드 — 스프린트 CRUD + start/complete + 이슈 할당/해제 API (책임. backend-engineer + security-engineer) (PR #182)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer) (PR #182)
-- [ ] D6. 프론트 UI — @dnd-kit 백로그 ↔ 스프린트 (1K 가상 스크롤) (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — @dnd-kit/core 백로그 ↔ 스프린트 보드(드래그 5시나리오 + 라이프사이클 + 권한 게이팅) (책임. frontend-engineer) (PR #183)
+- [x] D7. E2E (책임. qa-engineer) (PR #183)
+
+> **Deviation(PR #183 — FR-BL-01/02 D6/D7 통합)**. ① 백로그 조회 API = **agile-planning 소유** `GET /api/v1/projects/{key}/backlog`(백로그+스프린트별, rank 정렬, truncated). `BoardIssueLookupPort.BoardIssueView.rank` 확장(issue-tracking adapter SELECT, default null fail-safe). ② 드래그 변경은 기존 API 재사용(rank PATCH #179, sprint 할당/해제 #182) — 신규 백엔드는 조회만, 마이그레이션 0. ③ @dnd-kit/core만(sortable 미추가)·가상스크롤 미도입(board truncated 패턴)·invalidate-only. ④ 권한 게이팅 정밀화 — 이슈 UPDATE 권한을 MyProjectPermission 요약에 노출(identity-access), 스프린트=CREATE/이슈 재정렬·할당=UPDATE 분리. ⑤ 드래그 재정렬 결선 — 카드 droppable+cardFirstCollision로 dropIndex 산출(코드리뷰가 가짜그린 적발→수정). ⑥ 스프린트↔스프린트(S4) E2E는 충돌 핸들러 미구현으로 의도적 SKIP. ADR `2026-06-24-fr-bl-d6-d7-backlog-query-port-rank.md`.
 
 > **Deviation(PR #182)**. ① 관계 모델 = **`sprint_issues(sprint_id, issue_key)` 조인**(agile-planning 단독, issues 무변경) — product 원안 `issues.sprint_id`(모델 A)는 BC 격리·회귀위험(FR-BL-01 rank 254 파급류)으로 기각(ADR 2026-06-24). ② 식별자 **issue_key**(board가 issueKey 중심, 백로그 계산 일관). ③ 권한 **할당/해제=UPDATE**·CRUD/전이=CREATE·조회=BROWSE. ④ 할당 가시성 **단건 포트 isVisibleIssue**(issue-tracking adapter read 1메서드, truncated 오거부/probe 차단). ⑤ 동시 ACTIVE **다중 허용**. ⑥ update PATCH **partial(JsonNullable 3-state)**. ⑦ 백로그 조회 API·D6/D7(프론트·E2E)은 **FR-BL-01 D6/D7과 통합 이연**(rank 정렬이 포트 확장 유발).
 
