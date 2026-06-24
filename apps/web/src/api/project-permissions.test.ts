@@ -6,13 +6,15 @@ import { projectPermissionsSchema, fetchProjectPermissions } from './project-per
 import { ApiError } from './client'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Fixture — ProjectPermissionsResponse (백엔드 Task 1 응답 계약)
-// permissions 키는 IssuePermission.CREATE.name = "CREATE" 와 1:1 대응
+// Fixture — ProjectPermissionsResponse (백엔드 Task 1 + Task 11a 응답 계약)
+// permissions 키는 IssuePermission enum name과 1:1 대응
+// Task 11a에서 UPDATE 권한 추가 — 이슈 재정렬/스프린트 할당·해제 게이팅용
 // ─────────────────────────────────────────────────────────────────────────────
 const projectPermissionsFixture = {
   projectKey: 'ATLAS',
   permissions: {
     CREATE: true,
+    UPDATE: true,
     MANAGE_COMPONENTS: true,
     MANAGE_VERSIONS: true,
     MANAGE_CUSTOM_FIELDS: true,
@@ -25,6 +27,7 @@ const projectPermissionsFixtureFalse = {
   projectKey: 'ATLAS',
   permissions: {
     CREATE: false,
+    UPDATE: false,
     MANAGE_COMPONENTS: false,
     MANAGE_VERSIONS: false,
     MANAGE_CUSTOM_FIELDS: false,

@@ -363,6 +363,38 @@ class SprintRepository(
             .mapNotNull { it.value1() }
     }
 
+    // ── findIssueKeysByProject ────────────────────────────────────────────────
+
+    /**
+     * 프로젝트의 활성 스프린트 전체에 걸쳐 sprint_id → issue_key 목록 매핑을 단일 쿼리로 반환한다.
+     *
+     * N+1 차단을 위해 스프린트마다 [findIssueKeys] 를 호출하는 대신 이 메서드를 사용한다
+     * (백로그 조회 C4 요건 — 스프린트 N+1 쿼리 차단).
+     *
+     * soft-deleted 스프린트(deleted_at IS NOT NULL)는 JOIN 에서 제외한다.
+     * 결과에 없는 sprintId 는 이슈가 없음을 의미한다(빈 목록과 동치).
+     * created_at 오름차순으로 이슈 키를 정렬해 반환한다.
+     *
+     * @param projectKey 조회할 프로젝트 키
+     * @return sprint UUID → 해당 스프린트의 이슈 키 목록(created_at 오름차순) 맵
+     */
+    @Transactional(readOnly = true)
+    fun findIssueKeysByProject(projectKey: String): Map<UUID, List<String>> {
+        return dsl.select(SPRINT_ISSUES.SPRINT_ID, SPRINT_ISSUES.ISSUE_KEY)
+            .from(SPRINT_ISSUES)
+            .join(SPRINTS).on(
+                SPRINT_ISSUES.SPRINT_ID.eq(SPRINTS.ID)
+                    .and(SPRINTS.PROJECT_KEY.eq(projectKey))
+                    .and(SPRINTS.DELETED_AT.isNull),
+            )
+            .orderBy(SPRINT_ISSUES.SPRINT_ID, SPRINT_ISSUES.CREATED_AT.asc())
+            .fetch()
+            .groupBy(
+                keySelector = { row -> row.value1() ?: error("sprint_issues.sprint_id null") },
+                valueTransform = { row -> row.value2() ?: "" },
+            )
+    }
+
     // ── 도메인 매핑 ───────────────────────────────────────────────────────────
 
     /**

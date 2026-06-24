@@ -152,6 +152,7 @@ data class BoardIssuePage(
  * @property epicKey 이슈가 속한 에픽의 이슈 키. EPIC 스윔레인 그룹화 근거 (FR-EP-01 D6/D7).
  *   에픽 없는 이슈 또는 에픽 자신은 null.
  *   동일 프로젝트 에픽만 포함 — cross-project 에픽은 null 처리(P1-A 누출 방지).
+ * @property rank LexoRank 정렬 키. null=미부여(정렬 시 NULLS LAST). 정렬은 소비측(agile-planning) 책임.
  */
 data class BoardIssueView(
     val key: String,
@@ -161,4 +162,5 @@ data class BoardIssueView(
     val priority: Int,
     val version: Long,
     val epicKey: String? = null,
+    val rank: String? = null,
 )

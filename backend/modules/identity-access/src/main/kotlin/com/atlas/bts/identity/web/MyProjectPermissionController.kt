@@ -50,7 +50,8 @@ import java.util.UUID
  *
  * ## UI 권한 목록
  * 응답 `permissions` 맵에 담기는 권한 키.
- * - [UI_PROJECT_PERMISSIONS] — 이슈 생성 버튼 노출용 `CREATE` (FR-PM-02).
+ * - [UI_PROJECT_PERMISSIONS] — 이슈 생성 버튼 노출용 `CREATE` (FR-PM-02)와
+ *   백로그 재정렬/스프린트 할당·해제 버튼 게이팅용 `UPDATE` (FR-BL D6/D7).
  * - `MANAGE_COMPONENTS`/`MANAGE_VERSIONS` — 버전/컴포넌트 관리 버튼 게이팅용 (FR-PM-03 D6/D7).
  * - `MANAGE_CUSTOM_FIELDS` — 커스텀 필드 관리 버튼 게이팅용 (FR-IS-10 D6).
  * - `MANAGE_FIELD_PERMISSIONS` — 필드 권한 규칙 관리 버튼 게이팅용 (FR-PM-07 PR-B). 전용 리졸버 없이
@@ -83,8 +84,15 @@ class MyProjectPermissionController(
     private val personalAccessTokenService: PersonalAccessTokenService,
 ) {
     companion object {
-        /** UI 이슈 생성 버튼 노출에 사용하는 프로젝트 권한 목록 (FR-PM-02 CREATE 게이트). */
-        val UI_PROJECT_PERMISSIONS: List<IssuePermission> = listOf(IssuePermission.CREATE)
+        /**
+         * UI 게이팅에 사용하는 이슈 프로젝트 권한 목록.
+         * - [IssuePermission.CREATE] — 이슈 생성 버튼 노출 (FR-PM-02 CREATE 게이트).
+         * - [IssuePermission.UPDATE] — 백로그 재정렬/스프린트 할당·해제 버튼 게이팅 (FR-BL D6/D7).
+         *
+         * 각 권한은 `name`(예. `"CREATE"`/`"UPDATE"`)을 응답 `permissions` 맵 키로 노출한다.
+         */
+        val UI_PROJECT_PERMISSIONS: List<IssuePermission> =
+            listOf(IssuePermission.CREATE, IssuePermission.UPDATE)
 
         /** UI 컴포넌트 관리 버튼 게이팅 권한 키 (FR-PM-03 D6/D7). */
         const val MANAGE_COMPONENTS_KEY = "MANAGE_COMPONENTS"
@@ -104,6 +112,12 @@ class MyProjectPermissionController(
 
     /**
      * `GET /api/v1/users/me/project-permissions` — 현재 인증 사용자의 프로젝트 권한 맵 반환.
+     *
+     * 응답 `permissions` 맵의 이슈 권한 키([UI_PROJECT_PERMISSIONS])는 각각 다음 UI 동작을 게이팅한다.
+     * - `CREATE` — 이슈 생성 버튼 노출 (FR-PM-02).
+     * - `UPDATE` — 백로그 화면의 이슈 재정렬·스프린트 할당/해제 컨트롤 노출 (FR-BL D6/D7).
+     *   서버측 재정렬/할당/해제 엔드포인트가 요구하는 이슈 UPDATE 권한과 동일 기준이므로,
+     *   프론트 게이팅과 백엔드 가드의 판정이 일치한다.
      *
      * @param request HTTP 요청 (PAT Bearer 토큰 추출용)
      * @param jwt Spring Security 필터 체인이 주입한 JWT Principal (PAT 요청 시 null)

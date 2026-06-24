@@ -87,9 +87,12 @@ class MyProjectPermissionControllerTest {
                 personalAccessTokenService = personalAccessTokenService,
             )
 
-        // CREATE(이슈)·MANAGE_COMPONENTS·MANAGE_VERSIONS 는 본 테스트 관심사가 아니므로 false 로 고정.
+        // CREATE/UPDATE(이슈)·MANAGE_COMPONENTS·MANAGE_VERSIONS 는 본 테스트 관심사가 아니므로 false 로 고정.
         every {
             permissionResolver.hasPermission(actorId, IssuePermission.CREATE, IssueScope.Project(projectKey))
+        } returns false
+        every {
+            permissionResolver.hasPermission(actorId, IssuePermission.UPDATE, IssueScope.Project(projectKey))
         } returns false
         every {
             componentPermissionResolver.hasPermission(actorId, ComponentPermission.CREATE, projectId)
@@ -150,6 +153,30 @@ class MyProjectPermissionControllerTest {
         val response = controller.getProjectPermissions(MockHttpServletRequest(), jwtFor(actorId), projectKey)
 
         assertThat(response.permissions["MANAGE_CUSTOM_FIELDS"]).isFalse()
+    }
+
+    @Test
+    fun `UPDATE 보유 actor — permissions UPDATE true`() {
+        every { projectDirectory.resolveKeyToId(projectKey) } returns projectId
+        every {
+            permissionResolver.hasPermission(actorId, IssuePermission.UPDATE, IssueScope.Project(projectKey))
+        } returns true
+
+        val response = controller.getProjectPermissions(MockHttpServletRequest(), jwtFor(actorId), projectKey)
+
+        assertThat(response.permissions["UPDATE"]).isTrue()
+    }
+
+    @Test
+    fun `UPDATE 미보유 actor — permissions UPDATE false`() {
+        every { projectDirectory.resolveKeyToId(projectKey) } returns projectId
+        every {
+            permissionResolver.hasPermission(actorId, IssuePermission.UPDATE, IssueScope.Project(projectKey))
+        } returns false
+
+        val response = controller.getProjectPermissions(MockHttpServletRequest(), jwtFor(actorId), projectKey)
+
+        assertThat(response.permissions["UPDATE"]).isFalse()
     }
 
     @Test
