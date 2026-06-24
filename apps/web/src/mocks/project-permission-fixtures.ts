@@ -26,9 +26,10 @@ export const makeProjectPermissionResponse = (
 // ADMIN: CREATE=true
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** ADMIN 프로젝트 권한 fixture — CREATE 허용 + 컴포넌트/버전/커스텀 필드/필드 권한/템플릿 관리 허용 (PROJECT_ADMIN) */
+/** ADMIN 프로젝트 권한 fixture — CREATE/UPDATE 허용 + 컴포넌트/버전/커스텀 필드/필드 권한/템플릿 관리 허용 (PROJECT_ADMIN) */
 export const adminProjectPermissions: ProjectPermissions = {
   CREATE: true,
+  UPDATE: true,
   MANAGE_COMPONENTS: true,
   MANAGE_VERSIONS: true,
   MANAGE_CUSTOM_FIELDS: true,
@@ -42,9 +43,10 @@ export const adminProjectPermissions: ProjectPermissions = {
 // MEMBER: CREATE=true (이슈 생성은 MEMBER도 가능)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** MEMBER 프로젝트 권한 fixture — CREATE 허용, 컴포넌트/버전/커스텀 필드/필드 권한/템플릿 관리 불허 (PROJECT_ADMIN만 허용) */
+/** MEMBER 프로젝트 권한 fixture — CREATE/UPDATE 허용, 컴포넌트/버전/커스텀 필드/필드 권한/템플릿 관리 불허 (PROJECT_ADMIN만 허용) */
 export const memberProjectPermissions: ProjectPermissions = {
   CREATE: true,
+  UPDATE: true,
   MANAGE_COMPONENTS: false,
   MANAGE_VERSIONS: false,
   MANAGE_CUSTOM_FIELDS: false,
@@ -73,6 +75,7 @@ export const memberProjectPermissions: ProjectPermissions = {
  */
 export const nonMemberProjectPermissions: ProjectPermissions = {
   CREATE: false,
+  UPDATE: false,
   MANAGE_COMPONENTS: false,
   MANAGE_VERSIONS: false,
   MANAGE_CUSTOM_FIELDS: false,

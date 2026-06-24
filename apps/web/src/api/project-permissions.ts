@@ -10,17 +10,19 @@ import { apiGet } from './client'
  * `GET /api/v1/users/me/project-permissions` 응답 Zod 스키마.
  *
  * (C4) 백엔드 응답 계약 근거.
- * MyProjectPermissionController (Task 2)는 IssuePermission 및 ComponentPermission/
+ * MyProjectPermissionController (Task 2 + Task 11a)는 IssuePermission 및 ComponentPermission/
  * VersionPermission/CustomFieldPermission enum 이름을 permissions 맵의 키로 사용한다.
- * Map<String, Boolean> 직렬화 → `{ "CREATE": ..., "MANAGE_COMPONENTS": ..., "MANAGE_VERSIONS": ..., "MANAGE_CUSTOM_FIELDS": ..., "MANAGE_FIELD_PERMISSIONS": ..., "MANAGE_TEMPLATES": ... }`.
+ * Map<String, Boolean> 직렬화 → `{ "CREATE": ..., "UPDATE": ..., "MANAGE_COMPONENTS": ..., "MANAGE_VERSIONS": ..., "MANAGE_CUSTOM_FIELDS": ..., "MANAGE_FIELD_PERMISSIONS": ..., "MANAGE_TEMPLATES": ... }`.
  * 이 스키마의 각 키는 백엔드 enum 이름과 1:1 대응한다.
  *
+ * UPDATE: T11a에서 추가된 이슈 재정렬/스프린트 할당·해제 권한. MEMBER 이상에게 부여.
  * MANAGE_COMPONENTS / MANAGE_VERSIONS / MANAGE_CUSTOM_FIELDS / MANAGE_FIELD_PERMISSIONS / MANAGE_TEMPLATES: PROJECT_ADMIN 전용. 일반 멤버/비멤버는 false.
  */
 export const projectPermissionsSchema = z.object({
   projectKey: z.string(),
   permissions: z.object({
     CREATE: z.boolean(),
+    UPDATE: z.boolean(),
     MANAGE_COMPONENTS: z.boolean(),
     MANAGE_VERSIONS: z.boolean(),
     MANAGE_CUSTOM_FIELDS: z.boolean(),

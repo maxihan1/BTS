@@ -316,10 +316,14 @@ describe('BacklogBoard', () => {
   // ── 권한 게이팅 분리 ─────────────────────────────────────────────────────────
 
   describe('권한 게이팅 분리 — canManageSprint vs canReorderIssue', () => {
-    it('UPDATE만 있고 CREATE 없으면 스프린트 생성 버튼이 비활성화된다', () => {
+    it('UPDATE만 있고 CREATE 없으면 이름 입력 후에도 스프린트 생성 버튼이 비활성화된다', async () => {
+      const user = userEvent.setup()
       renderBoard('ATLAS', { canManageSprint: false, canReorderIssue: true })
 
-      // 스프린트 생성 폼 버튼은 비활성이어야 한다
+      // 이름 입력 후에도 canManageSprint=false 이므로 버튼이 비활성이어야 한다
+      const nameInput = screen.getByPlaceholderText(/스프린트 이름/i)
+      await user.type(nameInput, '테스트 스프린트')
+
       const createBtn = screen.getByRole('button', { name: /스프린트 생성/i })
       expect(createBtn).toBeDisabled()
     })
@@ -360,9 +364,15 @@ describe('BacklogBoard', () => {
       })
     })
 
-    it('CREATE만 있고 UPDATE 없으면 스프린트 생성 버튼이 활성화된다', () => {
+    it('CREATE만 있고 UPDATE 없으면 이름 입력 후 스프린트 생성 버튼이 활성화된다', async () => {
+      const user = userEvent.setup()
       renderBoard('ATLAS', { canManageSprint: true, canReorderIssue: false })
 
+      // 이름 입력 전: name이 비어 있어서 disabled (canManageSprint 비활성이 아님)
+      const nameInput = screen.getByPlaceholderText(/스프린트 이름/i)
+      await user.type(nameInput, '테스트 스프린트')
+
+      // 이름 입력 후: canManageSprint=true이므로 버튼이 활성화되어야 한다
       const createBtn = screen.getByRole('button', { name: /스프린트 생성/i })
       expect(createBtn).not.toBeDisabled()
     })
@@ -388,8 +398,13 @@ describe('BacklogBoard', () => {
       expect(mockUnassignMutate).not.toHaveBeenCalled()
     })
 
-    it('둘 다 없으면 스프린트 생성 버튼이 비활성화되고 드래그도 동작하지 않는다', async () => {
+    it('둘 다 없으면 이름 입력 후에도 스프린트 생성 버튼이 비활성화되고 드래그도 동작하지 않는다', async () => {
+      const user = userEvent.setup()
       renderBoard('ATLAS', { canManageSprint: false, canReorderIssue: false })
+
+      // 이름 입력 후에도 canManageSprint=false이므로 버튼 비활성
+      const nameInput = screen.getByPlaceholderText(/스프린트 이름/i)
+      await user.type(nameInput, '테스트 스프린트')
 
       const createBtn = screen.getByRole('button', { name: /스프린트 생성/i })
       expect(createBtn).toBeDisabled()

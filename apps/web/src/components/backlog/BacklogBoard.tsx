@@ -35,10 +35,15 @@ export interface BacklogBoardProps {
   /** 프로젝트 키 — 백로그 데이터 조회 + 스프린트 생성에 사용 */
   projectKey: string
   /**
-   * 관리 권한 여부.
-   * false이면 드래그·시작·완료·생성 버튼이 비활성화된다.
+   * 스프린트 관리 권한(CREATE).
+   * false이면 스프린트 생성·시작·완료 버튼이 비활성화된다.
    */
-  canManage?: boolean
+  canManageSprint?: boolean
+  /**
+   * 이슈 재정렬·할당·해제 권한(UPDATE).
+   * false이면 드래그가 동작하지 않는다(DnD onDragEnd에서 조기 반환).
+   */
+  canReorderIssue?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -79,7 +84,11 @@ function extractDropZone(data: Record<string, unknown> | undefined): DropZoneDat
  * - C1: assign/unassign 성공 후 rerank 실패 → 경고 토스트. 이동은 완료됐으므로 에러 토스트 금지.
  * - truncated=true이면 경고 배너를 표시한다.
  */
-export function BacklogBoard({ projectKey, canManage = true }: BacklogBoardProps): JSX.Element {
+export function BacklogBoard({
+  projectKey,
+  canManageSprint = true,
+  canReorderIssue = true,
+}: BacklogBoardProps): JSX.Element {
   const [overDroppableId, setOverDroppableId] = useState<string | null>(null)
 
   const { data: backlogView, isLoading } = useBacklog(projectKey)
@@ -109,6 +118,9 @@ export function BacklogBoard({ projectKey, canManage = true }: BacklogBoardProps
 
   function handleDragEnd(event: DragEndEvent): void {
     setOverDroppableId(null)
+
+    // UPDATE 권한 없으면 드래그 결과를 무시한다
+    if (!canReorderIssue) return
 
     const activeData = event.active.data.current as BacklogDragData | undefined
     const overData = event.over?.data.current as Record<string, unknown> | undefined
@@ -193,7 +205,7 @@ export function BacklogBoard({ projectKey, canManage = true }: BacklogBoardProps
             { onError: () => toast.error(backlogLabels.moveFailedError) },
           )
         }}
-        disabled={!canManage || createSprint.isPending}
+        disabled={!canManageSprint || createSprint.isPending}
       />
 
       <DndContext
@@ -215,10 +227,10 @@ export function BacklogBoard({ projectKey, canManage = true }: BacklogBoardProps
               issues={issues}
               assigneeNames={assigneeNames}
               isOver={overDroppableId === `sprint-${sprint.sprintId}`}
-              onStart={canManage ? () => startSprint.mutate(sprint.sprintId, {
+              onStart={canManageSprint ? () => startSprint.mutate(sprint.sprintId, {
                 onError: () => toast.error(backlogLabels.moveFailedError),
               }) : undefined}
-              onComplete={canManage ? () => completeSprint.mutate(sprint.sprintId, {
+              onComplete={canManageSprint ? () => completeSprint.mutate(sprint.sprintId, {
                 onError: () => toast.error(backlogLabels.moveFailedError),
               }) : undefined}
             />
