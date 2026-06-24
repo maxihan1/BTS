@@ -7,7 +7,7 @@
 ## 1. 사용자 시나리오 (Given-When-Then)
 
 - **S1 스프린트 생성**. Given 프로젝트 관리 권한 보유, When `POST /api/v1/sprints {projectKey, name}`, Then status=PLANNED 스프린트 생성 + 201.
-- **S2 백로그→스프린트 할당**. Given PLANNED/ACTIVE 스프린트, When `POST /api/v1/sprints/{id}/issues {issueKey}`, Then sprint_issues에 (sprint_id, issue_id) 추가. 그 이슈가 이미 다른 스프린트에 있으면 자동 이동(기존 연관 제거).
+- **S2 백로그→스프린트 할당**. Given PLANNED/ACTIVE 스프린트, When `POST /api/v1/sprints/{id}/issues {issueKey}`, Then sprint_issues에 (sprint_id, issue_key) 추가. 그 이슈가 이미 다른 스프린트에 있으면 자동 이동(기존 연관 제거).
 - **S3 스프린트→백로그 해제**. Given 할당된 이슈, When `DELETE /api/v1/sprints/{id}/issues/{issueKey}`, Then 연관 제거 → 이슈는 백로그(미할당)로 복귀.
 - **S4 스프린트 시작**. Given PLANNED 스프린트, When `POST /api/v1/sprints/{id}/start`, Then status=ACTIVE(다중 ACTIVE 허용 — 기존 ACTIVE 무관).
 - **S5 스프린트 종료**. Given ACTIVE 스프린트, When `POST /api/v1/sprints/{id}/complete`, Then status=COMPLETED.
