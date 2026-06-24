@@ -755,8 +755,9 @@ class BoardIssueLookupAdapterTest : IssueTestcontainersBase() {
     @Order(28)
     fun `S12 - rank 가 부여된 이슈는 BoardIssueView 에 rank 가 채워지고 미부여 이슈는 null 이다`() {
         val viewer = UUID.randomUUID()
-        val withRank = insertIssue(seq = 1, securityLevelId = null)
-        val withoutRank = insertIssue(seq = 2, securityLevelId = null)
+        // seq=1·2 이슈를 삽입(키는 TPRJ-1·TPRJ-2). 반환값은 쓰지 않고 하드코딩 키로 참조한다.
+        insertIssue(seq = 1, securityLevelId = null)
+        insertIssue(seq = 2, securityLevelId = null)
 
         // seq=1 이슈에만 rank 부여, seq=2 는 NULL 그대로
         setRank("TPRJ-1", "i")
