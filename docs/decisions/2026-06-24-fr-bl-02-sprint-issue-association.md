@@ -46,14 +46,15 @@ product 명세대로 `issues.sprint_id UUID nullable`을 issue-tracking에 추�
 
 ## 결과
 
-- 이번 PR은 **단일 BC(agile-planning)** 로 유지된다. issue-tracking 무변경.
+- 이번 PR은 **agile-planning 주작업** + **issue-tracking `BoardIssueLookupAdapter`에 read 메서드 1개(`isVisibleIssue`)** 추가(게이트1 확정 — 할당 가시성 단건 검증, truncated 오거부/probe 회피). issues 테이블/도메인은 무변경(read view 확장만, board view-layer 확장의 연장).
 - 마이그레이션은 agile-planning 모듈(V503+)에 `sprints`, `sprint_issues` 생성.
-- cross-BC 통신은 shared-kernel 포트만 사용(board 패턴 일관).
+- cross-BC 통신은 shared-kernel 포트만 사용(board 패턴 일관). agile은 adapter 직접 import 0(ArchUnit).
 - **product drift 정정 대상**: `agile-planning.md §3.2 D3`의 "issues.sprint_id" → "sprint_issues 조인 테이블 (agile-planning)". fr-index/SDD 동기화는 머지 PR에서 전수 반영(CLAUDE.md §명세 변경 전수 동기화).
 
-## 미결 (→ spec)
+## 결정 이력 (spec/게이트1에서 확정)
 
-- Sprint 상태 모델(PLANNED/ACTIVE/COMPLETED) 및 라이프사이클(시작/종료) 범위.
-- 한 프로젝트의 동시 ACTIVE 스프린트 개수 제약.
-- 스프린트 내 이슈 순서(rank 재사용 vs 별도) — 백로그 rank와의 관계.
-- 권한 모델(스프린트 CRUD/할당에 필요한 IssuePermission 또는 신규 권한).
+- Sprint 상태 모델 = PLANNED/ACTIVE/COMPLETED, start/complete 단방향 전이. ✅
+- 동시 ACTIVE 제약 = **없음(다중 허용)**. ✅ (Maxi)
+- 스프린트 내 이슈 순서(rank) = **D6 이연**(포트가 rank 미노출). ✅
+- 권한 = CRUD/상태전이 `CREATE`, **할당/해제 `UPDATE`**, 조회 `BROWSE`. ✅ (Maxi 게이트1)
+- 가시성 검증 = 단건 포트 `isVisibleIssue` + adapter 구현, 미가시/타프로젝트/미존재 단일 404(probe 차단). ✅ (Maxi 게이트1)
