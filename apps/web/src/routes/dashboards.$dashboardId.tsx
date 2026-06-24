@@ -12,6 +12,7 @@ import type { DashboardTile } from '@/lib/dashboard-layout'
 import { dashboardLabels } from '@/i18n/dashboard-labels'
 import { DashboardGrid } from '@/components/dashboard/DashboardGrid'
 import { DashboardForm } from '@/components/dashboard/DashboardForm'
+import { FavoriteButton } from '@/components/favorite/FavoriteButton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -296,6 +297,7 @@ export function DashboardDetailPage({
       <div className="flex items-center justify-between px-6 py-4 border-b">
         <div className="flex items-center gap-3 min-w-0">
           <h1 className="text-xl font-semibold truncate">{dashboard.name}</h1>
+          <FavoriteButton targetType="DASHBOARD" targetId={dashboardId} />
           {dirty && editable && (
             <span
               className="text-xs text-amber-600 font-medium shrink-0"

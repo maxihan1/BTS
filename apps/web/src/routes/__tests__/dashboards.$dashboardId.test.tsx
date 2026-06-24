@@ -627,10 +627,11 @@ describe('FavoriteButton 렌더', () => {
 
   /**
    * T-UX02-FAV3. 비소유자도 헤더에 FavoriteButton이 렌더된다 (즐겨찾기는 권한 무관).
+   * dashboardId는 라우트 파라미터이므로 renderDetailPage에 DASHBOARD_NOT_OWNED.id를 넘긴다.
    */
   it('T-UX02-FAV3: 비소유자도 FavoriteButton이 렌더된다', async () => {
     mockUseDashboard.mockReturnValue({ data: DASHBOARD_NOT_OWNED, isLoading: false, isError: false })
-    await renderDetailPage()
+    await renderDetailPage(DASHBOARD_NOT_OWNED.id)
     await waitFor(() => expect(screen.getByTestId('favorite-button')).toBeInTheDocument())
     expect(capturedFavTargetType).toBe('DASHBOARD')
     expect(capturedFavTargetId).toBe(DASHBOARD_NOT_OWNED.id)
