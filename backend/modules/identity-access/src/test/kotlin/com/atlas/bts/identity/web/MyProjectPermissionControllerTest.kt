@@ -153,6 +153,30 @@ class MyProjectPermissionControllerTest {
     }
 
     @Test
+    fun `UPDATE 보유 actor — permissions UPDATE true`() {
+        every { projectDirectory.resolveKeyToId(projectKey) } returns projectId
+        every {
+            permissionResolver.hasPermission(actorId, IssuePermission.UPDATE, IssueScope.Project(projectKey))
+        } returns true
+
+        val response = controller.getProjectPermissions(MockHttpServletRequest(), jwtFor(actorId), projectKey)
+
+        assertThat(response.permissions["UPDATE"]).isTrue()
+    }
+
+    @Test
+    fun `UPDATE 미보유 actor — permissions UPDATE false`() {
+        every { projectDirectory.resolveKeyToId(projectKey) } returns projectId
+        every {
+            permissionResolver.hasPermission(actorId, IssuePermission.UPDATE, IssueScope.Project(projectKey))
+        } returns false
+
+        val response = controller.getProjectPermissions(MockHttpServletRequest(), jwtFor(actorId), projectKey)
+
+        assertThat(response.permissions["UPDATE"]).isFalse()
+    }
+
+    @Test
     fun `MANAGE_TEMPLATES 보유 actor — permissions MANAGE_TEMPLATES true`() {
         every { projectDirectory.resolveKeyToId(projectKey) } returns projectId
         every {
