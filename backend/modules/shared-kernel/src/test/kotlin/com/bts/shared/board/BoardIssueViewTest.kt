@@ -17,19 +17,19 @@ import java.util.UUID
  * - rank 를 명시 지정하면 그 값을 보유한다.
  */
 class BoardIssueViewTest {
-
     private val dummyId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
 
     @Test
     fun `rank 를 지정하지 않으면 기본값 null 이다`() {
-        val view = BoardIssueView(
-            key = "PROJ-1",
-            summary = "테스트 이슈",
-            currentStateKey = "TODO",
-            assigneeId = null,
-            priority = 0,
-            version = 1L,
-        )
+        val view =
+            BoardIssueView(
+                key = "PROJ-1",
+                summary = "테스트 이슈",
+                currentStateKey = "TODO",
+                assigneeId = null,
+                priority = 0,
+                version = 1L,
+            )
 
         assertThat(view.rank).isNull()
     }
@@ -38,29 +38,31 @@ class BoardIssueViewTest {
     fun `rank 를 명시 지정하면 해당 값을 보유한다`() {
         val expectedRank = "0|hzzzzz:"
 
-        val view = BoardIssueView(
-            key = "PROJ-2",
-            summary = "랭크 이슈",
-            currentStateKey = "IN_PROGRESS",
-            assigneeId = dummyId,
-            priority = 1,
-            version = 2L,
-            rank = expectedRank,
-        )
+        val view =
+            BoardIssueView(
+                key = "PROJ-2",
+                summary = "랭크 이슈",
+                currentStateKey = "IN_PROGRESS",
+                assigneeId = dummyId,
+                priority = 1,
+                version = 2L,
+                rank = expectedRank,
+            )
 
         assertThat(view.rank).isEqualTo(expectedRank)
     }
 
     @Test
     fun `epicKey 와 rank 모두 기본값 null 이다`() {
-        val view = BoardIssueView(
-            key = "PROJ-3",
-            summary = "에픽+랭크 기본값 이슈",
-            currentStateKey = "DONE",
-            assigneeId = null,
-            priority = 2,
-            version = 3L,
-        )
+        val view =
+            BoardIssueView(
+                key = "PROJ-3",
+                summary = "에픽+랭크 기본값 이슈",
+                currentStateKey = "DONE",
+                assigneeId = null,
+                priority = 2,
+                version = 3L,
+            )
 
         assertThat(view.epicKey).isNull()
         assertThat(view.rank).isNull()
