@@ -18,6 +18,70 @@ export function cardDroppableId(context: 'backlog' | 'sprint', issueKey: string)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 드롭 존 데이터 파싱 — BacklogBoard의 over.data에서 호출하는 순수 함수
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * BacklogBoard의 handleDragEnd에서 over 대상의 드롭 존 정보를 담는 타입.
+ */
+export interface DropZoneData {
+  context: 'backlog' | 'sprint'
+  sprintId: string | null
+  orderedKeys: readonly string[]
+  dropIndex: number
+}
+
+/**
+ * 칸 droppable data(context + orderedKeys)를 DropZoneData로 파싱한다.
+ * `type: 'card'` 인 카드 droppable은 처리하지 않는다 (null 반환).
+ * 유효하지 않으면 null을 반환한다.
+ *
+ * @param data over.data.current
+ */
+export function extractColumnDropZone(data: Record<string, unknown> | undefined): DropZoneData | null {
+  if (data === undefined) return null
+  const context = data['context']
+  if (context !== 'backlog' && context !== 'sprint') return null
+  if (data['type'] === 'card') return null
+  const orderedKeys = Array.isArray(data['orderedKeys']) ? (data['orderedKeys'] as string[]) : []
+  return {
+    context,
+    sprintId: typeof data['sprintId'] === 'string' ? data['sprintId'] : null,
+    orderedKeys,
+    dropIndex: typeof data['dropIndex'] === 'number' ? data['dropIndex'] : orderedKeys.length,
+  }
+}
+
+/**
+ * 카드 droppable data + 칸 이슈 키 목록을 받아 칸 droppable 형태의 DropZoneData를 반환한다.
+ *
+ * `type: 'card'` 가 없으면 null을 반환한다.
+ *
+ * 카드 위에 드롭 = 그 카드의 인덱스 위치에 삽입(앞으로 넣기).
+ *
+ * @param data over.data.current
+ * @param getOrderedKeys 대상 칸의 이슈 키 배열을 반환하는 조회 함수
+ */
+export function extractCardDropZone(
+  data: Record<string, unknown> | undefined,
+  getOrderedKeys: (context: 'backlog' | 'sprint', sprintId: string | null) => readonly string[],
+): DropZoneData | null {
+  if (data === undefined) return null
+  if (data['type'] !== 'card') return null
+  const context = data['context']
+  if (context !== 'backlog' && context !== 'sprint') return null
+  const overKey = data['key']
+  if (typeof overKey !== 'string') return null
+  const sprintId = typeof data['sprintId'] === 'string' ? data['sprintId'] : null
+
+  const orderedKeys = getOrderedKeys(context, sprintId)
+  const overIdx = orderedKeys.indexOf(overKey)
+  const dropIndex = overIdx === -1 ? orderedKeys.length : overIdx
+
+  return { context, sprintId, orderedKeys, dropIndex }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 타입 정의
 // ─────────────────────────────────────────────────────────────────────────────
 
