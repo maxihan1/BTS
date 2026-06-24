@@ -686,7 +686,7 @@ class SprintIntegrationTest {
     // ── E12(UNIQUE 409 경로) — 단일 UNIQUE 위반 확인 ─────────────────────────
 
     @Test
-    fun `E12-unique 동시 UNIQUE 위반 시나리오: 두 번째 INSERT는 409 계열 오류로 처리된다`() {
+    fun `E12-unique delete-then-insert 설계로 이동은 정상 처리되고 이전 스프린트에서 제거된다`() {
         // Repository 계층 단위/통합에서 이미 검증됨. 여기서는 HTTP 레이어에서
         // UNIQUE 위반이 500이 아닌 적절한 오류 코드로 변환되는지 단언.
         // 단일 스레드 E12: 같은 issue_key 를 두 스프린트에 직접 insert 시도.
