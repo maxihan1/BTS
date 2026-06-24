@@ -19,6 +19,7 @@ import { useCustomFields } from '@/hooks/use-custom-fields'
 import { CustomFieldInput } from '@/components/custom-fields/CustomFieldInput'
 import type { CustomField } from '@/api/custom-fields.types'
 import { WatchersSection } from '@/components/issue/WatchersSection'
+import { FavoriteButton } from '@/components/favorite/FavoriteButton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // IssueMetaPanel
@@ -305,6 +306,11 @@ export function IssueMetaPanel({
             />
           </div>
         )}
+
+        {/* 즐겨찾기 — FavoriteButton (FR-UX-02). 감시자 섹션 위 배치. */}
+        <div className="px-3.5 py-2 border-b border-border flex items-center" data-testid="favorite-section">
+          <FavoriteButton targetType="ISSUE" targetId={issue.key} />
+        </div>
 
         {/* 감시자 — WatchersSection (FR-WT-01). 담당자/사람 관련 섹션 근처에 배치. */}
         <div className="px-3.5 py-3 border-b border-border" data-testid="watchers-section-wrapper">
