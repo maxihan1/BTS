@@ -234,7 +234,7 @@ class FavoriteServiceTest {
 
             val result = service.listFavorites(actorId, "FILTER")
 
-            assertThat(result).isEmpty()
+            assertThat(result).hasSize(0)
             verify(exactly = 1) { repository.findByUser(actorId, FavoriteTargetType.FILTER) }
         }
 
