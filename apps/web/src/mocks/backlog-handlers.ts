@@ -45,13 +45,16 @@ const getBacklogHandler = http.get(
     }
 
     // rank 순 정렬 — rerankIssueHandler가 rank를 갱신하지만 배열 순서는 그대로 유지하므로
-    // GET 응답에서 매번 rank 기준으로 정렬해 반환한다.
-    const sortedBacklog = [...project.backlog].sort((a, b) =>
-      a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0,
-    )
+    // GET 응답에서 매번 rank 기준으로 정렬해 반환한다. null rank는 맨 뒤(NULLS LAST).
+    const byRankNullsLast = (a: { rank: string | null }, b: { rank: string | null }): number => {
+      if (a.rank === null) return b.rank === null ? 0 : 1
+      if (b.rank === null) return -1
+      return a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0
+    }
+    const sortedBacklog = [...project.backlog].sort(byRankNullsLast)
     const sortedSprints = project.sprints.map((sw) => ({
       sprint: sw.sprint,
-      issues: [...sw.issues].sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0)),
+      issues: [...sw.issues].sort(byRankNullsLast),
     }))
 
     return HttpResponse.json({
