@@ -96,6 +96,32 @@ interface BoardIssueLookupPort {
         viewerUserId: UUID,
         filter: BoardCardFilter,
     ): BoardIssuePage = listVisibleIssuesByProject(projectKey, viewerUserId)
+
+    /**
+     * 지정 이슈가 뷰어에게 가시적인 프로젝트 내 활성 이슈인지 단건으로 확인한다 (FR-BL-02).
+     *
+     * 스프린트에 이슈를 할당할 때 "그 이슈가 같은 프로젝트의 가시 이슈인가"를 단건 검증하기 위해 사용한다.
+     * listVisibleIssuesByProject 는 BOARD_CARD_FETCH_LIMIT 상한이 있어 대규모 프로젝트에서
+     * 정당 이슈를 오거부(truncated)할 수 있으므로, 이 메서드는 LIMIT 없이 단건 직접 조회한다.
+     *
+     * soft-deleted 이슈 및 뷰어가 볼 수 없는 보안 등급 이슈는 false 를 반환한다.
+     * 타 프로젝트 이슈는 false 를 반환한다.
+     * 이 메서드는 읽기 전용이며 부수 효과가 없다.
+     *
+     * default 는 fail-safe false 를 반환한다. adapter 가 미override 시 할당을 거부해 안전하다.
+     * 목록 조회 fail-safe(빈 목록)와 방향이 다른 것은 의도적이다. 할당은 보안 판정이므로
+     * 데이터 부재를 허용(truthy)하면 잘못된 이슈가 스프린트에 들어갈 수 있다.
+     *
+     * @param projectKey 이슈가 속해야 하는 프로젝트 키. 예: "ATLAS".
+     * @param issueKey 확인할 이슈 키. 예: "ATLAS-42".
+     * @param viewerUserId 가시성을 판단할 사용자 UUID.
+     * @return 가시 활성 이슈이면 true, 그 외 false.
+     */
+    fun isVisibleIssue(
+        projectKey: String,
+        issueKey: String,
+        viewerUserId: UUID,
+    ): Boolean = false
 }
 
 /**

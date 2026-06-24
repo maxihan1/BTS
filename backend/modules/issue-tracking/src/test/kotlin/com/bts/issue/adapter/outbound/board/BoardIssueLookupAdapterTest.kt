@@ -785,4 +785,57 @@ class BoardIssueLookupAdapterTest : IssueTestcontainersBase() {
         val childCard = result.issues.first { it.key == "TPRJ-1" }
         assertThat(childCard.epicKey).isNull()
     }
+
+    // ── V1~V4: isVisibleIssue 단건 가시성 확인 (FR-BL-02 Task 8) ──────────────
+    //
+    // BOARD_CARD_FETCH_LIMIT 과 무관하게 단건 직접 조회하는 경로를 검증한다.
+    // listVisibleIssuesByProject 와 동일한 visibility SQL 술어를 재사용해야 한다.
+
+    @Test
+    @Order(24)
+    fun `V1 - 가시 이슈는 true 를 반환한다`() {
+        val viewer = UUID.randomUUID()
+        insertIssue(seq = 1, securityLevelId = null)
+
+        val result = adapterWith(unrestricted()).isVisibleIssue("TPRJ", "TPRJ-1", viewer)
+
+        assertThat(result).isTrue()
+    }
+
+    @Test
+    @Order(25)
+    fun `V2 - 뷰어가 볼 수 없는 보안 등급 이슈는 false 를 반환한다`() {
+        val viewer = UUID.randomUUID()
+        val secretLevel = UUID.randomUUID()
+        insertIssue(seq = 1, securityLevelId = secretLevel)
+
+        // restricted access — secretLevel 포함 안 함
+        val result = adapterWith(restricted()).isVisibleIssue("TPRJ", "TPRJ-1", viewer)
+
+        assertThat(result).isFalse()
+    }
+
+    @Test
+    @Order(26)
+    fun `V3 - 타 프로젝트 이슈는 false 를 반환한다`() {
+        val viewer = UUID.randomUUID()
+        insertIssue(seq = 1, securityLevelId = null)
+
+        // TPRJ 에 이슈가 있으나 OTHER 프로젝트로 조회
+        val result = adapterWith(unrestricted()).isVisibleIssue("OTHER", "TPRJ-1", viewer)
+
+        assertThat(result).isFalse()
+    }
+
+    @Test
+    @Order(27)
+    fun `V4 - soft-deleted 이슈는 false 를 반환한다`() {
+        val viewer = UUID.randomUUID()
+        insertIssue(seq = 1, securityLevelId = null)
+        softDelete("TPRJ-1")
+
+        val result = adapterWith(unrestricted()).isVisibleIssue("TPRJ", "TPRJ-1", viewer)
+
+        assertThat(result).isFalse()
+    }
 }
