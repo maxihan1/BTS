@@ -44,6 +44,24 @@ export const backlogLabels = {
   /** 카드 aria-label 생성 함수 */
   cardAriaLabel: (key: string, summary: string): string =>
     `${key} — ${summary}`,
+
+  /** 스프린트 생성 폼 aria-label */
+  createSprintFormLabel: '스프린트 생성 폼',
+
+  /** 스프린트 이름 입력 placeholder */
+  sprintNamePlaceholder: '스프린트 이름',
+
+  /** 스프린트 생성 버튼 텍스트 */
+  createSprint: '스프린트 생성',
+
+  /** truncated 경고 배너 메시지 */
+  truncatedWarning: '이슈 수가 많아 일부만 표시됩니다. 필터를 적용해 범위를 줄이세요.',
+
+  /** 순서 반영 실패 경고 메시지 */
+  rerankFailedWarning: '이슈 이동은 완료됐지만 순서 반영이 실패했습니다. 잠시 후 새로 고침 시 위치가 기본값으로 보일 수 있습니다.',
+
+  /** 이동 실패 에러 메시지 */
+  moveFailedError: '이슈 이동에 실패했습니다. 다시 시도해 주세요.',
 } as const
 
 /** backlogLabels const 추론 타입 */

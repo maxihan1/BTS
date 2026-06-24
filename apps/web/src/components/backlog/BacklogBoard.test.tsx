@@ -43,7 +43,7 @@ vi.mock('sonner', () => ({
 
 // @dnd-kit/core — DndContext 이벤트를 테스트에서 직접 트리거하기 위해 부분 mock
 // PointerSensor 실제 입력 이벤트 없이 onDragEnd를 시뮬레이션한다.
-const mockOnDragEnd = vi.fn<[DragEndEvent], void>()
+let capturedOnDragEnd: ((event: DragEndEvent) => void) | undefined
 
 vi.mock('@dnd-kit/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@dnd-kit/core')>()
@@ -56,8 +56,8 @@ vi.mock('@dnd-kit/core', async (importOriginal) => {
       children: ReactNode
       onDragEnd?: (event: DragEndEvent) => void
     }) => {
-      // onDragEnd 콜백을 모듈 스코프 함수에 등록 — triggerDragEnd()에서 호출
-      mockOnDragEnd.mockImplementation((event) => onDragEnd?.(event))
+      // onDragEnd 콜백을 캡처 — triggerDragEnd()에서 호출
+      capturedOnDragEnd = onDragEnd
       return <div data-testid="dnd-context">{children}</div>
     },
   }
@@ -178,7 +178,7 @@ function triggerDragEnd(
   over: { id: string; data: { current: Record<string, unknown> } } | null,
 ) {
   act(() => {
-    mockOnDragEnd({
+    capturedOnDragEnd?.({
       active: { id: active.id, data: active.data, rect: { current: { initial: null, translated: null } } },
       over: over
         ? { id: over.id, data: over.data, rect: { width: 0, height: 0, top: 0, left: 0, bottom: 0, right: 0 }, disabled: false }
@@ -288,14 +288,20 @@ describe('BacklogBoard', () => {
       )
     })
 
-    it('canManage=false이면 시작/완료 버튼이 비활성화된다', () => {
+    it('canManage=false이면 시작/완료 버튼 클릭이 mutate를 호출하지 않는다', async () => {
+      const user = userEvent.setup()
       renderBoard('ATLAS', false)
 
+      // canManage=false이면 onStart/onComplete가 undefined로 전달되므로
+      // 버튼 클릭이 mutate를 호출하지 않는다.
       const startBtn = screen.queryByRole('button', { name: /스프린트 시작/i })
       const completeBtn = screen.queryByRole('button', { name: /스프린트 완료/i })
 
-      if (startBtn !== null) expect(startBtn).toBeDisabled()
-      if (completeBtn !== null) expect(completeBtn).toBeDisabled()
+      if (startBtn !== null) await user.click(startBtn)
+      if (completeBtn !== null) await user.click(completeBtn)
+
+      expect(mockStartSprintMutate).not.toHaveBeenCalled()
+      expect(mockCompleteSprintMutate).not.toHaveBeenCalled()
     })
   })
 
@@ -424,6 +430,8 @@ describe('BacklogBoard', () => {
     it('S5: 같은 스프린트 내 재정렬 시 rerankMutate만 호출한다', async () => {
       renderBoard()
 
+      // 스프린트1에 ATLAS-3, ATLAS-X 두 이슈가 있다고 가정하고
+      // ATLAS-3를 뒤로 이동(dropIndex=2, 맨 뒤) — 제자리(dropIndex=0)가 아닌 이동
       triggerDragEnd(
         {
           id: 'sprint:ATLAS-3',
@@ -437,8 +445,8 @@ describe('BacklogBoard', () => {
             current: {
               context: 'sprint',
               sprintId: 'sprint-uuid-0001',
-              orderedKeys: ['ATLAS-3'],
-              dropIndex: 0,
+              orderedKeys: ['ATLAS-3', 'ATLAS-X'],
+              dropIndex: 2, // 맨 뒤로 이동
             },
           },
         },
