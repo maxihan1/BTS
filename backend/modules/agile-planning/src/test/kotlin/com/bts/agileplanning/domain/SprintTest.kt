@@ -21,7 +21,6 @@ import java.util.UUID
  * - 이름 불변식: name 공백 시 IllegalArgumentException
  */
 class SprintTest {
-
     private val baseId = UUID.randomUUID()
     private val today = LocalDate.of(2026, 6, 24)
 
@@ -47,7 +46,6 @@ class SprintTest {
 
     @Nested
     inner class StartTransition {
-
         @Test
         fun `PLANNED 스프린트를 start() 하면 ACTIVE 상태의 새 Sprint를 반환한다`() {
             val sprint = plannedSprint()
@@ -85,7 +83,6 @@ class SprintTest {
 
     @Nested
     inner class CompleteTransition {
-
         @Test
         fun `ACTIVE 스프린트를 complete() 하면 COMPLETED 상태의 새 Sprint를 반환한다`() {
             val sprint = activeSprint()
@@ -121,7 +118,6 @@ class SprintTest {
 
     @Nested
     inner class DateInvariant {
-
         @Test
         fun `startDate가 endDate보다 나중이면 IllegalArgumentException이 발생한다`() {
             assertThatThrownBy {
@@ -165,7 +161,6 @@ class SprintTest {
 
     @Nested
     inner class NameInvariant {
-
         @Test
         fun `name이 공백 문자열이면 IllegalArgumentException이 발생한다`() {
             assertThatThrownBy { plannedSprint(name = " ") }
@@ -189,7 +184,6 @@ class SprintTest {
 
     @Nested
     inner class SprintStatusEntries {
-
         @Test
         fun `SprintStatus 항목이 정확히 3개다 (PLANNED, ACTIVE, COMPLETED)`() {
             assertThat(SprintStatus.entries.size).isEqualTo(3)
