@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 30개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + 프로젝트 보드 1 + settings 5 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 2 | FR-SR-01 D6: issuesIndexRoute validateSearch 필터 확장)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 31개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + 프로젝트 보드 1 + 프로젝트 백로그 1 + settings 5 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 2 | FR-SR-01 D6: issuesIndexRoute validateSearch 필터 확장)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -33,6 +33,7 @@ import { MfaSettingsRouteAdapter } from './routes/settings.mfa'
 import { NotificationSettingsRouteAdapter } from './routes/settings.notifications'
 import { ProjectWorklogReportRouteAdapter } from './routes/projects.$projectKey.reports.worklog'
 import { BoardRouteAdapter } from './routes/projects.$projectKey.board'
+import { BacklogRouteAdapter } from './routes/projects.$projectKey.backlog'
 import { DashboardsRouteAdapter } from './routes/dashboards'
 import { DashboardDetailRouteAdapter } from './routes/dashboards.$dashboardId'
 
@@ -153,6 +154,15 @@ const adminWorkflowSchemesDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/admin/workflow-schemes/$schemeKey',
   component: WorkflowSchemeDetailRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
+/** 프로젝트 백로그·스프린트 라우트 — /projects/$projectKey/backlog, requireAuth (FR-BL-01/02) */
+const projectBacklogRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/projects/$projectKey/backlog',
+  component: BacklogRouteAdapter,
   staticData: { requireAuth: true },
   beforeLoad: requireAuthAndPasswordChanged,
 })
@@ -375,11 +385,11 @@ const settingsAccountLinksRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 29개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 31개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
  *   · /dashboards · /dashboards/:dashboardId
- *   · /projects/:projectKey/board
+ *   · /projects/:projectKey/backlog · /projects/:projectKey/board
  *   · /projects/:projectKey/settings/workflow-scheme · /projects/:projectKey/settings/members
  *   · /projects/:projectKey/settings/components · /projects/:projectKey/settings/versions
  *   · /projects/:projectKey/settings/custom-fields · /projects/:projectKey/settings/issue-templates
@@ -411,6 +421,8 @@ export const routeTree = rootRoute.addChildren([
   // notification BC — 대시보드 목록/상세 (FR-DB-01, /dashboards/$dashboardId는 /dashboards보다 뒤에 등록해 충돌 없음)
   dashboardsRoute,
   dashboardDetailRoute,
+  // agile-planning BC — 프로젝트 백로그·스프린트 (FR-BL-01/02)
+  projectBacklogRoute,
   // agile-planning BC — 프로젝트 칸반 보드 (FR-BD-01)
   projectBoardRoute,
   // project-workflow BC — 프로젝트별 스킴 할당

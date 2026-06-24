@@ -11,9 +11,26 @@ import {
 // TanStack Router useParams mock — RouteAdapter 단위 테스트용
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ projectKey: 'ATLAS' }),
-  Link: ({ to, children, className }: { to: string; children: React.ReactNode; className?: string }) => (
-    <a href={to} className={className}>{children}</a>
-  ),
+  Link: ({
+    to,
+    params,
+    children,
+    className,
+  }: {
+    to: string
+    params?: Record<string, string>
+    children: React.ReactNode
+    className?: string
+  }) => {
+    // params 치환: $projectKey → 실제 값 (TanStack Router 동작 모사)
+    const resolvedTo = params !== undefined
+      ? Object.entries(params).reduce(
+          (acc, [key, val]) => acc.replace(`$${key}`, val),
+          to,
+        )
+      : to
+    return <a href={resolvedTo} className={className}>{children}</a>
+  },
 }))
 
 // BacklogBoard는 별도 통합 테스트에서 검증하므로 라우트 단위 테스트에서 격리

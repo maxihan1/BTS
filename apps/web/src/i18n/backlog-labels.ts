@@ -6,6 +6,13 @@
  * 주의: 모든 값은 콜론으로 끝나지 않는다 (글로벌 §5).
  */
 export const backlogLabels = {
+  /** 백로그 페이지 — 헤더 및 접근 거부 메시지 */
+  page: {
+    title: '백로그',
+    boardLink: '보드',
+    accessDenied: '접근 권한이 없습니다',
+    accessDeniedDetail: '해당 프로젝트의 백로그에 접근할 권한이 없습니다.',
+  },
   /** 백로그 칸 헤더 */
   backlogTitle: '백로그',
 
