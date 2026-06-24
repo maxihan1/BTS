@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
+import { FavoriteButton } from '@/components/favorite/FavoriteButton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 스켈레톤 헬퍼 — shadcn Skeleton 미설치이므로 인라인 구현
@@ -348,16 +349,26 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
     })
   }
 
+  // ── 공통 헤더 — projectKey 기반 즐겨찾기 버튼 (로딩/빈 보드 분기 무관하게 항상 노출)
+  const projectFavoriteHeader = (
+    <div className="flex items-center justify-between px-6 pt-4 pb-0">
+      <FavoriteButton targetType="PROJECT" targetId={projectKey} />
+    </div>
+  )
+
   // ── 로딩 ──────────────────────────────────────────────────────────────────
 
   if (boardsLoading) {
     return (
-      <div className="p-6 space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <div className="flex gap-4">
-          <Skeleton className="h-64 w-64" />
-          <Skeleton className="h-64 w-64" />
-          <Skeleton className="h-64 w-64" />
+      <div>
+        {projectFavoriteHeader}
+        <div className="p-6 space-y-4">
+          <Skeleton className="h-8 w-48" />
+          <div className="flex gap-4">
+            <Skeleton className="h-64 w-64" />
+            <Skeleton className="h-64 w-64" />
+            <Skeleton className="h-64 w-64" />
+          </div>
         </div>
       </div>
     )
@@ -367,11 +378,14 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
 
   if (isAccessDenied) {
     return (
-      <div className="p-8 flex flex-col items-center justify-center min-h-48 gap-4 text-center">
-        <p className="text-lg font-medium">접근 권한이 없습니다</p>
-        <p className="text-sm text-muted-foreground">
-          해당 프로젝트의 보드에 접근할 권한이 없습니다.
-        </p>
+      <div>
+        {projectFavoriteHeader}
+        <div className="p-8 flex flex-col items-center justify-center min-h-48 gap-4 text-center">
+          <p className="text-lg font-medium">접근 권한이 없습니다</p>
+          <p className="text-sm text-muted-foreground">
+            해당 프로젝트의 보드에 접근할 권한이 없습니다.
+          </p>
+        </div>
       </div>
     )
   }
@@ -379,13 +393,23 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   // ── 보드 0개 — CreateBoardForm ────────────────────────────────────────────
 
   if (boards !== undefined && boards.length === 0) {
-    return <CreateBoardForm projectKey={projectKey} />
+    return (
+      <div>
+        {projectFavoriteHeader}
+        <CreateBoardForm projectKey={projectKey} />
+      </div>
+    )
   }
 
   // ── 보드 1+개 ─────────────────────────────────────────────────────────────
 
   return (
     <div className="p-6 space-y-4">
+      {/* 프로젝트 즐겨찾기 버튼 */}
+      <div className="flex items-center">
+        <FavoriteButton targetType="PROJECT" targetId={projectKey} />
+      </div>
+
       {/* 헤더 행 — 보드 선택 드롭다운 + 스윔레인 셀렉터 */}
       {(boards !== undefined && boards.length >= 2) || (boardDetail !== undefined && canCreate) ? (
         <div className="flex items-center gap-4 flex-wrap">
