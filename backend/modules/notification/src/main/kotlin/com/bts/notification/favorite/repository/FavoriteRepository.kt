@@ -61,7 +61,8 @@ class FavoriteRepository(
             return SaveResult(favorite = toFavorite(inserted), created = true)
         }
 
-        // 충돌(이미 존재) — 기존 행 재조회 (TOCTOU 무결성 보장을 위해 lock 후 재조회)
+        // 충돌(이미 존재) — 같은 트랜잭션 내 onConflictDoNothing 이 충돌 행을 가시화하므로
+        // 별도 lock 없이 재조회로 created=false 를 산출한다 (이미 커밋된 행이라 READ COMMITTED 에서 확정 가시).
         val existing =
             dsl.selectFrom(FAVORITES)
                 .where(FAVORITES.USER_ID.eq(favorite.userId))
