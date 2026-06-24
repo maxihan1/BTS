@@ -113,6 +113,12 @@ class MyProjectPermissionController(
     /**
      * `GET /api/v1/users/me/project-permissions` — 현재 인증 사용자의 프로젝트 권한 맵 반환.
      *
+     * 응답 `permissions` 맵의 이슈 권한 키([UI_PROJECT_PERMISSIONS])는 각각 다음 UI 동작을 게이팅한다.
+     * - `CREATE` — 이슈 생성 버튼 노출 (FR-PM-02).
+     * - `UPDATE` — 백로그 화면의 이슈 재정렬·스프린트 할당/해제 컨트롤 노출 (FR-BL D6/D7).
+     *   서버측 재정렬/할당/해제 엔드포인트가 요구하는 이슈 UPDATE 권한과 동일 기준이므로,
+     *   프론트 게이팅과 백엔드 가드의 판정이 일치한다.
+     *
      * @param request HTTP 요청 (PAT Bearer 토큰 추출용)
      * @param jwt Spring Security 필터 체인이 주입한 JWT Principal (PAT 요청 시 null)
      * @param projectKey 권한 조회 대상 프로젝트 키. 예. "ATLAS".
