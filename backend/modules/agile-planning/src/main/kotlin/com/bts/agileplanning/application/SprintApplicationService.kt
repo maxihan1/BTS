@@ -133,7 +133,7 @@ class SprintApplicationService(
             goal = goal,
             startDate = startDate,
             endDate = endDate,
-            version = sprint.version,
+            version = version,
         ) ?: throw SprintNotFoundException()
     }
 
