@@ -93,8 +93,10 @@ class BacklogApplicationServiceTest {
         val service = makeService(resolver = denyResolver())
         assertThatThrownBy { service.getBacklog(actorId, projectKey) }
             .isInstanceOf(ResponseStatusException::class.java)
-            .extracting("status")
-            .isEqualTo(HttpStatus.FORBIDDEN.value())
+            .satisfies({ ex ->
+                val rse = ex as ResponseStatusException
+                assertThat(rse.statusCode.value()).isEqualTo(HttpStatus.FORBIDDEN.value())
+            })
     }
 
     // ── BL-2: 그룹핑 정확성 ──────────────────────────────────────────────────
