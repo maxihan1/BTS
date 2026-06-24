@@ -1,4 +1,5 @@
 // 즐겨찾기 드롭다운 메뉴 컴포넌트 — 타입별 그룹 렌더 + SPA Link 이동 (FR-UX-02 D6/D7)
+import type { ComponentType } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Star, FileText, LayoutDashboard, FolderKanban } from 'lucide-react'
 import { useFavorites } from '@/api/favorites'
@@ -14,7 +15,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
-import type { ComponentType } from 'react'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입별 메타 데이터 — 아이콘·라우트·그룹명 매핑 테이블
@@ -117,15 +117,14 @@ export const FavoritesMenu = () => {
           </p>
         )}
 
-        {GROUP_ORDER.map((type, idx) => {
+        {GROUP_ORDER.reduce<React.ReactNode[]>((acc, type) => {
           const group = grouped.get(type)
-          if (group === undefined || group.length === 0) return null
-          const { Icon, groupLabel } = TYPE_META[type]
-          const { toPath } = TYPE_META[type]
+          if (group === undefined || group.length === 0) return acc
+          const { Icon, groupLabel, toPath } = TYPE_META[type]
 
-          return (
+          const node = (
             <span key={type}>
-              {idx > 0 && <DropdownMenuSeparator />}
+              {acc.length > 0 && <DropdownMenuSeparator />}
               <DropdownMenuGroup>
                 <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
                   {groupLabel}
@@ -144,7 +143,8 @@ export const FavoritesMenu = () => {
               </DropdownMenuGroup>
             </span>
           )
-        })}
+          return [...acc, node]
+        }, [])}
       </DropdownMenuContent>
     </DropdownMenu>
   )
