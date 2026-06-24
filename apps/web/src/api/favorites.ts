@@ -50,8 +50,8 @@ export const favoriteResponseSchema = z.object({
   targetType: z.enum(['ISSUE', 'DASHBOARD', 'PROJECT', 'FILTER']),
   /** 즐겨찾기 대상 id (이슈 키, 대시보드 id 등) */
   targetId: z.string().min(1),
-  /** 즐겨찾기 생성 일시 (ISO 8601) */
-  createdAt: z.string(),
+  /** 즐겨찾기 생성 일시 (ISO 8601 — 백엔드 Instant 직렬화 형식) */
+  createdAt: z.string().datetime(),
 })
 
 /**

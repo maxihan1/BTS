@@ -98,9 +98,9 @@ function isValidTargetType(value: string): value is FavoriteTargetType {
   return (VALID_TARGET_TYPES as readonly string[]).includes(value)
 }
 
-/** 즐겨찾기 ID 생성 — 결정적이지 않은 UUID-like 문자열 */
+/** 즐겨찾기 ID 생성 — 백엔드 UUID 계약과 동일한 RFC4122 v4 형식 */
 function generateFavoriteId(): string {
-  return `fav-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+  return crypto.randomUUID()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -110,17 +110,15 @@ function generateFavoriteId(): string {
 /**
  * POST /api/v1/favorites — 즐겨찾기 추가.
  *
- * 새 항목. 201 { data: { id, targetType, targetId, createdAt, created: true } }
- * 이미 존재(멱등). 200 { data: { ...기존, created: false } }
+ * 새 항목. 201 { data: { id, targetType, targetId, createdAt } }
+ * 이미 존재(멱등). 200 { data: { id, targetType, targetId, createdAt } }
  * 입력 오류. 400 { errorCode: 'NOTIF_FAV_INVALID', message }
+ * 미인증. 401 (No Content — ResponseStatusException rethrow 형식)
  */
 const addFavoriteHandler = http.post('/api/v1/favorites', async ({ request }) => {
   const userId = resolveUserIdFromRequest(request)
   if (userId === null) {
-    return HttpResponse.json(
-      { errorCode: 'NOTIF_FAV_INVALID', message: '인증 필요' },
-      { status: 401 },
-    )
+    return new HttpResponse(null, { status: 401 })
   }
 
   let body: { targetType?: unknown; targetId?: unknown }
@@ -153,15 +151,15 @@ const addFavoriteHandler = http.post('/api/v1/favorites', async ({ request }) =>
   const userFavorites = favoriteStore.get(userId) ?? []
   const key = makeFavoriteKey(targetType, targetId)
 
-  // 멱등 체크 — 이미 존재하면 created=false 200
+  // 멱등 체크 — 이미 존재하면 200 (created 필드 없음, 백엔드 FavoriteResponse 4필드만)
   const existing = userFavorites.find(
     (f) => makeFavoriteKey(f.targetType, f.targetId) === key,
   )
   if (existing !== undefined) {
-    return HttpResponse.json({ data: { ...existing, created: false } }, { status: 200 })
+    return HttpResponse.json({ data: existing }, { status: 200 })
   }
 
-  // 신규 추가
+  // 신규 추가 — 201 (created 필드 없음, 백엔드 FavoriteResponse 4필드만)
   const newFavorite: Favorite = {
     id: generateFavoriteId(),
     targetType,
@@ -170,27 +168,33 @@ const addFavoriteHandler = http.post('/api/v1/favorites', async ({ request }) =>
   }
   favoriteStore.set(userId, [...userFavorites, newFavorite])
 
-  return HttpResponse.json({ data: { ...newFavorite, created: true } }, { status: 201 })
+  return HttpResponse.json({ data: newFavorite }, { status: 201 })
 })
 
 /**
  * GET /api/v1/favorites — 즐겨찾기 목록 조회.
  *
  * 성공. 200 { data: { items: Favorite[] } }
- * 쿼리 파라미터 `?targetType=` 으로 필터링 가능.
+ * 쿼리 파라미터 `?targetType=` 으로 필터링 가능 — 무효 값이면 400 NOTIF_FAV_INVALID.
  * 정렬. createdAt DESC (최근 추가가 먼저).
+ * 미인증. 401 (No Content — ResponseStatusException rethrow 형식)
  */
 const getFavoritesHandler = http.get('/api/v1/favorites', ({ request }) => {
   const userId = resolveUserIdFromRequest(request)
   if (userId === null) {
-    return HttpResponse.json(
-      { errorCode: 'NOTIF_FAV_INVALID', message: '인증 필요' },
-      { status: 401 },
-    )
+    return new HttpResponse(null, { status: 401 })
   }
 
   const url = new URL(request.url)
   const targetTypeFilter = url.searchParams.get('targetType')
+
+  // targetType 지정 시 유효성 검증 — 백엔드 GET도 무효 targetType이면 400 반환
+  if (targetTypeFilter !== null && !isValidTargetType(targetTypeFilter)) {
+    return HttpResponse.json(
+      { errorCode: 'NOTIF_FAV_INVALID', message: '유효하지 않은 targetType' },
+      { status: 400 },
+    )
+  }
 
   let items = [...(favoriteStore.get(userId) ?? [])]
 

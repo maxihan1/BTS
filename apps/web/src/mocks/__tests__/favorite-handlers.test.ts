@@ -42,7 +42,7 @@ function favUrl(suffix = ''): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('POST /api/v1/favorites', () => {
-  it('새 즐겨찾기를 추가하면 201과 created=true를 반환한다', async () => {
+  it('새 즐겨찾기를 추가하면 201을 반환한다 (신규=status 201로 식별)', async () => {
     const res = await fetch(favUrl(), {
       method: 'POST',
       headers: authHeaders(ALICE_TOKEN),
@@ -50,15 +50,16 @@ describe('POST /api/v1/favorites', () => {
     })
 
     expect(res.status).toBe(201)
-    const body = (await res.json()) as { data: { id: string; targetType: string; targetId: string; createdAt: string; created: boolean } }
+    const body = (await res.json()) as { data: { id: string; targetType: string; targetId: string; createdAt: string } }
     expect(body.data.targetType).toBe('ISSUE')
     expect(body.data.targetId).toBe('ATLAS-1')
-    expect(body.data.created).toBe(true)
+    // 백엔드 FavoriteResponse는 {id, targetType, targetId, createdAt} 4필드 — created 필드 없음
+    expect('created' in body.data).toBe(false)
     expect(body.data.id).toBeTruthy()
     expect(body.data.createdAt).toBeTruthy()
   })
 
-  it('같은 targetType+targetId를 중복 POST하면 200과 created=false(멱등)', async () => {
+  it('같은 targetType+targetId를 중복 POST하면 200(멱등) — created 필드 없음', async () => {
     // 첫 번째 POST
     await fetch(favUrl(), {
       method: 'POST',
@@ -66,7 +67,7 @@ describe('POST /api/v1/favorites', () => {
       body: JSON.stringify({ targetType: 'ISSUE', targetId: 'ATLAS-1' }),
     })
 
-    // 두 번째 POST (중복)
+    // 두 번째 POST (중복) — 200은 멱등을 의미 (created 필드로 구분하지 않음)
     const res = await fetch(favUrl(), {
       method: 'POST',
       headers: authHeaders(ALICE_TOKEN),
@@ -74,8 +75,10 @@ describe('POST /api/v1/favorites', () => {
     })
 
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { data: { created: boolean } }
-    expect(body.data.created).toBe(false)
+    const body = (await res.json()) as { data: { id: string; targetType: string } }
+    // 백엔드 FavoriteResponse는 {id, targetType, targetId, createdAt} 4필드 — created 필드 없음
+    expect('created' in body.data).toBe(false)
+    expect(body.data.id).toBeTruthy()
   })
 
   it('GET 목록에 추가된 항목이 반영된다', async () => {
@@ -214,6 +217,16 @@ describe('GET /api/v1/favorites', () => {
     // 교차 오염 없음
     expect(aliceBody.data.items.some((i) => i.targetId === 'BOB-ISSUE')).toBe(false)
     expect(bobBody.data.items.some((i) => i.targetId === 'ALICE-ISSUE')).toBe(false)
+  })
+
+  it('무효 targetType ?targetType=UNKNOWN 이면 400 NOTIF_FAV_INVALID를 반환한다', async () => {
+    const res = await fetch(favUrl('?targetType=UNKNOWN_TYPE'), {
+      headers: authHeaders(ALICE_TOKEN),
+    })
+
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { errorCode: string }
+    expect(body.errorCode).toBe('NOTIF_FAV_INVALID')
   })
 })
 
