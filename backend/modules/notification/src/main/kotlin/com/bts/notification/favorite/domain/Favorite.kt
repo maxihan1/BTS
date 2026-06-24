@@ -67,7 +67,7 @@ data class Favorite(
             }
             if (targetId.length > MAX_TARGET_ID_LENGTH) {
                 throw FavoriteDomainException(
-                    "즐겨찾기 대상 식별자는 ${MAX_TARGET_ID_LENGTH}자 이하여야 합니다. 현재: ${targetId.length}자"
+                    "즐겨찾기 대상 식별자는 ${MAX_TARGET_ID_LENGTH}자 이하여야 합니다. 현재: ${targetId.length}자",
                 )
             }
         }

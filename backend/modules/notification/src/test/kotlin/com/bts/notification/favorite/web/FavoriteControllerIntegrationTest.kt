@@ -65,7 +65,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [FavoriteControllerIntegrationTest.TestMvcConfig::class])
 @WebAppConfiguration
 class FavoriteControllerIntegrationTest {
-
     /**
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *
@@ -233,10 +232,11 @@ class FavoriteControllerIntegrationTest {
     /** GET-1. 본인 즐겨찾기 목록 조회 -> 200 + items 배열 포함. */
     @Test
     fun `GET favorites 본인 목록 조회 시 200 반환`() {
-        val favorites = listOf(
-            buildFavorite("ISSUE", "PROJ-002"),
-            buildFavorite("DASHBOARD", "dash-001"),
-        )
+        val favorites =
+            listOf(
+                buildFavorite("ISSUE", "PROJ-002"),
+                buildFavorite("DASHBOARD", "dash-001"),
+            )
         every { service.listFavorites(actorId, null) } returns favorites
 
         mockMvc.perform(get("/api/v1/favorites"))
@@ -289,7 +289,10 @@ class FavoriteControllerIntegrationTest {
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
 
-    private fun buildFavorite(targetType: String, targetId: String): Favorite =
+    private fun buildFavorite(
+        targetType: String,
+        targetId: String,
+    ): Favorite =
         Favorite(
             id = favoriteId,
             userId = actorId,

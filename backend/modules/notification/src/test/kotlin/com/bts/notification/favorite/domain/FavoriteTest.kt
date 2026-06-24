@@ -61,11 +61,12 @@ class FavoriteTest : DescribeSpec({
 
     describe("Favorite.create — targetId 불변식") {
         it("정상 입력이면 id·createdAt 이 자동 부여된 Favorite 를 반환한다") {
-            val fav = Favorite.create(
-                userId = userId,
-                targetType = FavoriteTargetType.ISSUE,
-                targetId = validTargetId,
-            )
+            val fav =
+                Favorite.create(
+                    userId = userId,
+                    targetType = FavoriteTargetType.ISSUE,
+                    targetId = validTargetId,
+                )
             fav.id shouldNotBe null
             fav.userId shouldBe userId
             fav.targetType shouldBe FavoriteTargetType.ISSUE
@@ -95,11 +96,12 @@ class FavoriteTest : DescribeSpec({
 
         it("255자 targetId 는 허용된다") {
             val targetId = "a".repeat(255)
-            val fav = Favorite.create(
-                userId = userId,
-                targetType = FavoriteTargetType.DASHBOARD,
-                targetId = targetId,
-            )
+            val fav =
+                Favorite.create(
+                    userId = userId,
+                    targetType = FavoriteTargetType.DASHBOARD,
+                    targetId = targetId,
+                )
             fav.targetId shouldBe targetId
         }
 
@@ -118,11 +120,12 @@ class FavoriteTest : DescribeSpec({
 
     describe("Favorite.create — FILTER 타입") {
         it("FILTER 타입으로 Favorite 를 생성할 수 있다") {
-            val fav = Favorite.create(
-                userId = userId,
-                targetType = FavoriteTargetType.FILTER,
-                targetId = "filter-uuid-001",
-            )
+            val fav =
+                Favorite.create(
+                    userId = userId,
+                    targetType = FavoriteTargetType.FILTER,
+                    targetId = "filter-uuid-001",
+                )
             fav.targetType shouldBe FavoriteTargetType.FILTER
         }
     }

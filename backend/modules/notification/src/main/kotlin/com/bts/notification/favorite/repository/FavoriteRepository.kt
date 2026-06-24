@@ -87,7 +87,11 @@ class FavoriteRepository(
      * @return 삭제된 행이 있으면 true, 없으면 false
      */
     @Transactional
-    fun deleteByTarget(userId: UUID, targetType: FavoriteTargetType, targetId: String): Boolean {
+    fun deleteByTarget(
+        userId: UUID,
+        targetType: FavoriteTargetType,
+        targetId: String,
+    ): Boolean {
         log.debug("즐겨찾기 삭제 — userId={}, targetType={}, targetId={}", userId, targetType, targetId)
 
         val deleted =
@@ -112,10 +116,14 @@ class FavoriteRepository(
      * @return 해당 사용자의 즐겨찾기 목록 (다른 사용자 행 미포함)
      */
     @Transactional(readOnly = true)
-    fun findByUser(userId: UUID, targetType: FavoriteTargetType?): List<Favorite> {
-        val condition = FAVORITES.USER_ID.eq(userId).let { base ->
-            if (targetType != null) base.and(FAVORITES.TARGET_TYPE.eq(targetType.name)) else base
-        }
+    fun findByUser(
+        userId: UUID,
+        targetType: FavoriteTargetType?,
+    ): List<Favorite> {
+        val condition =
+            FAVORITES.USER_ID.eq(userId).let { base ->
+                if (targetType != null) base.and(FAVORITES.TARGET_TYPE.eq(targetType.name)) else base
+            }
 
         return dsl.selectFrom(FAVORITES)
             .where(condition)

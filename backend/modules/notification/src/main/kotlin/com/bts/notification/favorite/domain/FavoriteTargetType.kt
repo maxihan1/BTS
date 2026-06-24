@@ -38,7 +38,7 @@ enum class FavoriteTargetType {
             return entries.find { it.name == wire }
                 ?: throw FavoriteDomainException(
                     "유효하지 않은 즐겨찾기 대상 타입입니다: '$wire'. " +
-                        "허용 값: ${entries.joinToString { it.name }}"
+                        "허용 값: ${entries.joinToString { it.name }}",
                 )
         }
     }

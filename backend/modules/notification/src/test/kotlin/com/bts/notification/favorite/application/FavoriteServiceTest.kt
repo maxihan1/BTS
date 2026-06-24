@@ -21,7 +21,6 @@ import java.util.UUID
 
 @DisplayName("FavoriteService 단위 테스트")
 class FavoriteServiceTest {
-
     private val repository: FavoriteRepository = mockk()
     private lateinit var service: FavoriteService
 
@@ -49,7 +48,6 @@ class FavoriteServiceTest {
     @Nested
     @DisplayName("addFavorite")
     inner class AddFavorite {
-
         @Test
         @DisplayName("유효한 입력이면 repository.save 를 호출하고 SaveResult 를 반환한다")
         fun `addFavorite - valid input - saves and returns result`() {
@@ -141,11 +139,12 @@ class FavoriteServiceTest {
         @DisplayName("DASHBOARD 타입도 정상 처리된다")
         fun `addFavorite - DASHBOARD type - succeeds`() {
             val actorId = UUID.randomUUID()
-            val favorite = stubFavorite(
-                userId = actorId,
-                targetType = FavoriteTargetType.DASHBOARD,
-                targetId = "dash-uuid",
-            )
+            val favorite =
+                stubFavorite(
+                    userId = actorId,
+                    targetType = FavoriteTargetType.DASHBOARD,
+                    targetId = "dash-uuid",
+                )
             val expected = SaveResult(favorite = favorite, created = true)
 
             every { repository.save(any()) } returns expected
@@ -161,7 +160,6 @@ class FavoriteServiceTest {
     @Nested
     @DisplayName("removeFavorite")
     inner class RemoveFavorite {
-
         @Test
         @DisplayName("존재하는 즐겨찾기를 삭제하면 repository.deleteByTarget 을 호출한다")
         fun `removeFavorite - existing - calls deleteByTarget`() {
@@ -204,15 +202,15 @@ class FavoriteServiceTest {
     @Nested
     @DisplayName("listFavorites")
     inner class ListFavorites {
-
         @Test
         @DisplayName("targetTypeRaw 가 null 이면 전체 목록을 반환한다")
         fun `listFavorites - null targetType - returns all`() {
             val actorId = UUID.randomUUID()
-            val favorites = listOf(
-                stubFavorite(userId = actorId, targetType = FavoriteTargetType.ISSUE),
-                stubFavorite(userId = actorId, targetType = FavoriteTargetType.PROJECT),
-            )
+            val favorites =
+                listOf(
+                    stubFavorite(userId = actorId, targetType = FavoriteTargetType.ISSUE),
+                    stubFavorite(userId = actorId, targetType = FavoriteTargetType.PROJECT),
+                )
 
             every { repository.findByUser(actorId, null) } returns favorites
 

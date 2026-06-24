@@ -45,13 +45,20 @@ class FavoriteService(
      *   targetTypeRaw 가 무효하거나 targetId 가 빈 문자열·초과 길이인 경우
      */
     @Transactional
-    fun addFavorite(actorId: UUID, targetTypeRaw: String, targetId: String): SaveResult {
+    fun addFavorite(
+        actorId: UUID,
+        targetTypeRaw: String,
+        targetId: String,
+    ): SaveResult {
         val type = FavoriteTargetType.from(targetTypeRaw)
         val favorite = Favorite.create(actorId, type, targetId)
         val result = repository.save(favorite)
         log.info(
             "즐겨찾기 추가 — userId={}, targetType={}, targetId={}, created={}",
-            actorId, type, targetId, result.created,
+            actorId,
+            type,
+            targetId,
+            result.created,
         )
         return result
     }
@@ -67,7 +74,11 @@ class FavoriteService(
      * @throws com.bts.notification.favorite.domain.FavoriteDomainException targetTypeRaw 가 무효한 경우
      */
     @Transactional
-    fun removeFavorite(actorId: UUID, targetTypeRaw: String, targetId: String) {
+    fun removeFavorite(
+        actorId: UUID,
+        targetTypeRaw: String,
+        targetId: String,
+    ) {
         val type = FavoriteTargetType.from(targetTypeRaw)
         repository.deleteByTarget(actorId, type, targetId)
         log.info("즐겨찾기 삭제 요청 — userId={}, targetType={}, targetId={}", actorId, type, targetId)
@@ -82,7 +93,10 @@ class FavoriteService(
      * @throws com.bts.notification.favorite.domain.FavoriteDomainException targetTypeRaw 가 지정됐지만 무효한 경우
      */
     @Transactional(readOnly = true)
-    fun listFavorites(actorId: UUID, targetTypeRaw: String?): List<Favorite> {
+    fun listFavorites(
+        actorId: UUID,
+        targetTypeRaw: String?,
+    ): List<Favorite> {
         val type = targetTypeRaw?.let { FavoriteTargetType.from(it) }
         return repository.findByUser(actorId, type)
     }
