@@ -41,7 +41,16 @@ import java.util.UUID
  * Service 계층(Task 4/5)이 0 을 받으면 E5/E2 오류 코드를 구분한다.
  *
  * @param dsl jOOQ DSLContext
+ *
+ * ### detekt 억제 사유
+ * TooManyFunctions — sprints / sprint_issues aggregate 전체 영속성이 단일 책임(Repository 계층).
+ * insert·findById·findByProject·updateMeta·updateStatus·softDelete·
+ * assignIssue·unassignIssue·findIssueKeys·toDomain + 내부 헬퍼(utcNow)로 구성되며
+ * 이 이상 분리하면 aggregate 경계를 파괴하는 과분할이 된다.
+ * LongParameterList — updateMeta 는 Sprint 도메인 필드를 그대로 받는다.
+ * Command DTO 로 감싸면 Repository 계층이 DTO 에 결합되는 계층 역전이 발생한다.
  */
+@Suppress("TooManyFunctions", "LongParameterList")
 @Repository
 class SprintRepository(
     private val dsl: DSLContext,

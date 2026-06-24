@@ -1,4 +1,5 @@
-// agile-planning BC 아키텍처 격리 규칙 검증 — ArchUnit 7룰 (cross-BC 직접 import 금지 + jOOQ 화이트리스트 + @Transactional/@Service 동반 + vacuous 방어 카운트)
+// agile-planning BC 아키텍처 격리 규칙 검증 — ArchUnit 7룰
+// (cross-BC 직접 import 금지 + jOOQ 화이트리스트 + @Transactional/@Service 동반 + vacuous 방어 카운트)
 
 package com.bts.agileplanning.architecture
 

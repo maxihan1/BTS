@@ -37,7 +37,15 @@ import java.util.UUID
  * @param permissionResolver cross-BC 권한 판정 포트 (fail-closed, non-null 주입)
  * @param sprintRepository sprints / sprint_issues jOOQ repository
  * @param boardIssueLookupPort 이슈 단건 가시성 확인 포트 (issue-tracking 구현). default=fail-closed false.
+ *
+ * ### detekt 억제 사유
+ * TooManyFunctions — Sprint aggregate 유스케이스(CRUD + 상태전이 + 이슈 할당/해제)를
+ * 단일 Application Service 에 응집한다. 분리 시 유스케이스 경계가 흩어져 권한 판정 순서를
+ * 각 서비스에서 중복 관리해야 하는 과분할이 된다.
+ * LongParameterList — create/update 메서드는 Sprint 도메인 필드를 그대로 받는다.
+ * Command DTO 로 감싸면 컨트롤러 레이어와 결합이 생기므로 억제를 선택한다.
  */
+@Suppress("TooManyFunctions", "LongParameterList")
 @Service
 @Transactional
 class SprintApplicationService(

@@ -347,7 +347,7 @@ class SprintIntegrationTest {
     @Test
     fun `S7 status 필터로 ACTIVE 스프린트만 조회한다`() {
         val projectKey = uniqueProjectKey()
-        val planned = createSprintAndGetId(projectKey, "PLANNED 스프린트")
+        createSprintAndGetId(projectKey, "PLANNED 스프린트")
         val active = createSprintAndGetId(projectKey, "ACTIVE 스프린트")
         mockMvc.perform(post("/api/v1/sprints/$active/start"))
 

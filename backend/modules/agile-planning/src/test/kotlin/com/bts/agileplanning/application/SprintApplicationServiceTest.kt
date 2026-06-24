@@ -605,8 +605,12 @@ class SprintApplicationServiceTest {
             }
         val resolver =
             mockk<IssuePermissionResolver>().also {
-                every { it.hasPermission(actorId, IssuePermission.BROWSE, IssueScope.Project(differentProjectKey)) } returns true
-                every { it.hasPermission(actorId, IssuePermission.BROWSE, IssueScope.Project(projectKey)) } returns false
+                every {
+                    it.hasPermission(actorId, IssuePermission.BROWSE, IssueScope.Project(differentProjectKey))
+                } returns true
+                every {
+                    it.hasPermission(actorId, IssuePermission.BROWSE, IssueScope.Project(projectKey))
+                } returns false
             }
 
         // sprint.projectKey = OTHER 기준으로 권한 판정해야 통과

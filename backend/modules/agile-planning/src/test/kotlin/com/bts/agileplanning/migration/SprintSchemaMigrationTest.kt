@@ -22,7 +22,8 @@ import java.util.UUID
  * 요구하지 않으므로 postgres:16-alpine 이미지로 충분하다 (BoardSchemaMigrationTest 동일 결정).
  *
  * 검증 범위 (FR-BL-02 spec §5 데이터 모델).
- * - sprints 테이블 존재 + 11개 컬럼(id/project_key/name/goal/status/start_date/end_date/version/created_at/updated_at/deleted_at)
+ * - sprints 테이블 존재 + 11개 컬럼
+ *   (id/project_key/name/goal/status/start_date/end_date/version/created_at/updated_at/deleted_at)
  * - sprints.id uuid PK / project_key·name·status·version·created_at·updated_at NOT NULL
  * - sprints.status VARCHAR NOT NULL DEFAULT 'PLANNED' + CHECK(IN ('PLANNED','ACTIVE','COMPLETED'))
  * - sprints.version BIGINT NOT NULL DEFAULT 0 (낙관적 락 OCC)

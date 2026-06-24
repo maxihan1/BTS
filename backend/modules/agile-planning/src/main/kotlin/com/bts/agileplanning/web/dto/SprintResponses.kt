@@ -1,5 +1,9 @@
 // 스프린트 REST API 응답 DTO — agile-planning BC (FR-BL-02 Task 5)
-@file:Suppress("ktlint:standard:filename")
+// MatchingDeclarationName: SprintResponses.kt 파일에 SprintResponse 클래스를 정의한다.
+// 파일명은 복수형(Responses)으로 "응답 DTO 모음" 의미를 표현하고,
+// 현재 클래스는 단수형(Response)이다. 향후 추가 응답 DTO(예: SprintListResponse) 수용을 위해
+// 파일명을 유지하고 detekt 규칙을 억제한다.
+@file:Suppress("ktlint:standard:filename", "MatchingDeclarationName")
 
 package com.bts.agileplanning.web.dto
 
