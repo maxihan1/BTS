@@ -66,7 +66,15 @@ class FavoriteServiceTest {
             assertThat(result.favorite.userId).isEqualTo(actorId)
             assertThat(result.favorite.targetType).isEqualTo(FavoriteTargetType.ISSUE)
             assertThat(result.favorite.targetId).isEqualTo(targetId)
-            verify(exactly = 1) { repository.save(match { it.userId == actorId && it.targetType == FavoriteTargetType.ISSUE && it.targetId == targetId }) }
+            verify(exactly = 1) {
+                repository.save(
+                    match {
+                        it.userId == actorId &&
+                            it.targetType == FavoriteTargetType.ISSUE &&
+                            it.targetId == targetId
+                    },
+                )
+            }
         }
 
         @Test
@@ -133,7 +141,11 @@ class FavoriteServiceTest {
         @DisplayName("DASHBOARD 타입도 정상 처리된다")
         fun `addFavorite - DASHBOARD type - succeeds`() {
             val actorId = UUID.randomUUID()
-            val favorite = stubFavorite(userId = actorId, targetType = FavoriteTargetType.DASHBOARD, targetId = "dash-uuid")
+            val favorite = stubFavorite(
+                userId = actorId,
+                targetType = FavoriteTargetType.DASHBOARD,
+                targetId = "dash-uuid",
+            )
             val expected = SaveResult(favorite = favorite, created = true)
 
             every { repository.save(any()) } returns expected

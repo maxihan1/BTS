@@ -55,7 +55,8 @@ class FavoriteRepositoryIntegrationTest : NotificationTestcontainersBase() {
 
         val first = repository.save(favorite)
         // 두 번째 save — 같은 복합 유니크 키 (userId, targetType, targetId)
-        val second = repository.save(buildFavorite(userId = userId1, targetType = FavoriteTargetType.ISSUE, targetId = "PROJ-1"))
+        val duplicate = buildFavorite(userId = userId1, targetType = FavoriteTargetType.ISSUE, targetId = "PROJ-1")
+        val second = repository.save(duplicate)
 
         assertThat(first.created).isTrue()
         assertThat(second.created).isFalse()
@@ -70,7 +71,8 @@ class FavoriteRepositoryIntegrationTest : NotificationTestcontainersBase() {
         val fav = buildFavorite(userId = userId1, targetType = FavoriteTargetType.DASHBOARD, targetId = "dash-001")
 
         val first = repository.save(fav)
-        val second = repository.save(buildFavorite(userId = userId1, targetType = FavoriteTargetType.DASHBOARD, targetId = "dash-001"))
+        val dup = buildFavorite(userId = userId1, targetType = FavoriteTargetType.DASHBOARD, targetId = "dash-001")
+        val second = repository.save(dup)
 
         assertThat(second.favorite.id).isEqualTo(first.favorite.id)
     }

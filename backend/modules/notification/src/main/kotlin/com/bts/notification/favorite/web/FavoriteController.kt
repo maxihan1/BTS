@@ -58,7 +58,12 @@ class FavoriteController(
     ): ResponseEntity<DataResponse<FavoriteResponse>> {
         val actorId = currentActorId()
 
-        log.info("FavoriteController.add actorId={}, targetType={}, targetId={}", actorId, request.targetType, request.targetId)
+        log.info(
+            "FavoriteController.add actorId={}, targetType={}, targetId={}",
+            actorId,
+            request.targetType,
+            request.targetId,
+        )
 
         val result = service.addFavorite(actorId, request.targetType, request.targetId)
         val status = if (result.created) HttpStatus.CREATED else HttpStatus.OK
@@ -97,7 +102,8 @@ class FavoriteController(
      *
      * @param targetType 필터할 대상 타입 문자열 (선택)
      * @return 200 OK + FavoriteListResponse(items)
-     * @throws com.bts.notification.favorite.domain.FavoriteDomainException targetType 지정 시 무효 -> 400 (ExceptionHandler 처리)
+     * @throws com.bts.notification.favorite.domain.FavoriteDomainException
+     *   targetType 지정 시 무효 -> 400 (ExceptionHandler 처리)
      */
     @GetMapping
     fun list(

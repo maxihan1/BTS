@@ -15,7 +15,8 @@ import java.util.UUID
  * 즐겨찾기 CRUD 를 담당하는 애플리케이션 서비스.
  *
  * 형식 검증 정책.
- * - targetTypeRaw 파싱은 [FavoriteTargetType.from] 에 위임 — 무효값이면 [com.bts.notification.favorite.domain.FavoriteDomainException] 발생.
+ * - targetTypeRaw 파싱은 [FavoriteTargetType.from] 에 위임 —
+ *   무효값이면 [com.bts.notification.favorite.domain.FavoriteDomainException] 발생.
  * - targetId 불변식 검증은 [Favorite.create] 에 위임 — 빈 문자열·255자 초과 시 예외 발생.
  * - notification 모듈은 Bean Validation provider 가 없으므로 @Valid 어노테이션을 사용하지 않는다.
  *
@@ -40,7 +41,8 @@ class FavoriteService(
      * @param targetTypeRaw wire 문자열 형식의 대상 타입 (ISSUE / FILTER / DASHBOARD / PROJECT)
      * @param targetId 즐겨찾기 대상 식별자 (1~255자)
      * @return [SaveResult] — 저장된 즐겨찾기 + 신규 생성 여부
-     * @throws com.bts.notification.favorite.domain.FavoriteDomainException targetTypeRaw 가 무효하거나 targetId 가 빈 문자열·초과 길이인 경우
+     * @throws com.bts.notification.favorite.domain.FavoriteDomainException
+     *   targetTypeRaw 가 무효하거나 targetId 가 빈 문자열·초과 길이인 경우
      */
     @Transactional
     fun addFavorite(actorId: UUID, targetTypeRaw: String, targetId: String): SaveResult {

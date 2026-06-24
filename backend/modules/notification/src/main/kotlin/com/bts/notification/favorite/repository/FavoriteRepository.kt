@@ -40,7 +40,12 @@ class FavoriteRepository(
      */
     @Transactional
     fun save(favorite: Favorite): SaveResult {
-        log.debug("즐겨찾기 저장 시도 — userId={}, targetType={}, targetId={}", favorite.userId, favorite.targetType, favorite.targetId)
+        log.debug(
+            "즐겨찾기 저장 시도 — userId={}, targetType={}, targetId={}",
+            favorite.userId,
+            favorite.targetType,
+            favorite.targetId,
+        )
 
         val inserted =
             dsl.insertInto(FAVORITES)
@@ -63,7 +68,10 @@ class FavoriteRepository(
                 .and(FAVORITES.TARGET_TYPE.eq(favorite.targetType.name))
                 .and(FAVORITES.TARGET_ID.eq(favorite.targetId))
                 .fetchOne()
-                ?: error("INSERT 충돌 후 기존 행 재조회 실패 — userId=${favorite.userId}, targetType=${favorite.targetType}, targetId=${favorite.targetId}")
+                ?: error(
+                    "INSERT 충돌 후 기존 행 재조회 실패 — " +
+                        "userId=${favorite.userId}, targetType=${favorite.targetType}, targetId=${favorite.targetId}",
+                )
 
         return SaveResult(favorite = toFavorite(existing), created = false)
     }

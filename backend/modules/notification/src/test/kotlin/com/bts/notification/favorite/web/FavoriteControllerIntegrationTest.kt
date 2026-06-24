@@ -95,7 +95,6 @@ class FavoriteControllerIntegrationTest {
     private val mapper: ObjectMapper = ObjectMapper().registerKotlinModule()
 
     private val actorId: UUID = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000001")
-    private val otherUserId: UUID = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000002")
     private val favoriteId: UUID = UUID.fromString("cccccccc-0000-0000-0000-000000000001")
     private val fixedNow: Instant = Instant.parse("2026-06-22T12:00:00Z")
 
@@ -265,7 +264,8 @@ class FavoriteControllerIntegrationTest {
     /** GET-3. 다른 user 즐겨찾기 누출 0 검증 — actorId 만 조회에 사용. */
     @Test
     fun `GET favorites 다른 사용자 즐겨찾기 누출 없음`() {
-        // actorId 기준으로만 조회 — otherUserId 의 데이터는 반환 안 됨
+        // actorId 로만 service.listFavorites 가 호출됨을 검증한다 (controller 슬라이스).
+        // 실제 DB 누출 방지는 FavoriteRepositoryIntegrationTest.findByUser(본인만) 가 검증한다.
         every { service.listFavorites(actorId, null) } returns emptyList()
 
         mockMvc.perform(get("/api/v1/favorites"))
