@@ -186,4 +186,30 @@ classify override: type=qa→ui (E2E 키워드 오판 선례 교정).
 - 추가 검증: 백엔드 ktlint/detekt, 프론트 typecheck/lint/vitest, E2E playwright
 - 리스크: ① 권한 요약 API에 이슈 UPDATE·스프린트 CREATE/UPDATE 권한코드 노출 부족 시 backend task 추가(T9에서 확인) ② rerank의 null rank 이웃 처리(E3) — T8 이웃 계산이 서버 검증과 정합한지 통합 확인 ③ 스프린트 다수 시 백로그 화면 길이(COMPLETED read-only 표시)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-24, eng 집중 독립 리뷰)
+
+**Step 0 Scope Challenge**. 통합 1 PR 적절 — FR-BL-02 ADR이 "백로그 조회 API·D6/D7 통합 이연"으로 의도. 백엔드 조회 API는 프론트 없이 검증 불가(D6/D7 마킹 단위). 10 task는 두 FR D6/D7+조회 API의 본질적 크기 → 쪼개기 대신 wave 병렬. 백엔드 신규 클래스 3(BacklogService/Controller/Responses)는 조회 1책임 분리로 정당. **BLOCKER 없음.**
+
+**Architecture**.
+- ✅ 포트 rank 확장 = board view-layer 확장의 연장(ADR 정당화). adapter SQL은 단일 컬럼 SELECT 추가, cartesian 무위험.
+- ✅ 드래그 시나리오를 T8 순수 함수(`backlog-drag.ts`)로 분리 → 이웃 계산 단위 테스트 용이.
+- ⚠️ **C1 이동+rank 2 API 부분 실패** — 할당(POST) 성공 후 rank(PATCH) 실패 시 이슈는 스프린트에 들어갔으나 위치 미반영. 호출 순서(이동 먼저→rank)와 실패 시 invalidate 재조회 수렴 + 토스트 명시. T8에서 처리(rank 실패는 "이동은 됐고 순서만 기본값" — 치명 아님, but 사용자 인지 필요).
+
+**Code Quality**.
+- ✅ board 선례 재사용(api/hook/dnd 패턴). DRY.
+- ⚠️ **C2 BacklogCard↔BoardCard 중복 가능** — 다른 컨텍스트(드롭 대상/표시 필드 상이)라 별도 유지가 적절하나, 공통 프리미티브(드래그 핸들/카드 셸) 추출 여부는 T7에서 판단. 과도 추상화 경계.
+
+**Tests**.
+- ⚠️ **C3 백엔드 통합 테스트 vacuous 방지** — 가시성 필터/rank 정렬/truncated를 **분별 시드**로 실제 검증(메모리 archunit-vacuous·mockk default any 가짜그린 다수). 빈 결과 PASS 금지. T3 RED에 "viewer가 못 보는 보안등급 이슈가 백로그에서 제외됨"을 양성+음성 케이스로.
+
+**Performance**.
+- 🔴 **C4 sprint_issues N+1 (격상)** — `findIssueKeys(sprintId)`는 스프린트 단건 조회뿐. 백로그 service가 스프린트마다 호출하면 N 쿼리. **T3에서 프로젝트 단위 일괄 조회 메서드(`findIssueKeysByProject` 또는 sprints JOIN sprint_issues)를 반드시 추가.** plan 본문 "필요 시 추가"를 "필수"로 격상.
+- ⚠️ **C5 BOARD_CARD_FETCH_LIMIT 공유** — 백로그는 미할당 누적으로 board보다 클 수 있어 truncated 빈발 가능. 같은 LIMIT 재사용은 일관성상 유지하되, truncated 배너(F9)를 백로그에서 반드시 노출. LIMIT 상향은 별도 판단(이번 범위 밖, 운영 관측 후).
+
+**종합**. BLOCKER 0. CONCERN 5(C1~C5) — 전부 impl 단계 task 본문 반영으로 해소 가능. C4(N+1)는 T3 필수 반영, C3(vacuous)·C5(truncated 배너)는 회귀 방지 핵심.
+
+### design 관점 (self-check)
+- 백로그 보드 레이아웃 = board 선례(KanbanBoard) 패턴 재사용 → 새 디자인 결정 최소. 세로 스택(스프린트 칸들 + 백로그 칸), 카드=BoardCard 시각 언어. DESIGN.md 토큰 준수.
+- 신규 비주얼 결정 거의 없음 → design-shotgun 불요(board 디자인 언어 일관). i18n 콜론 종결 회피(ko.test).
