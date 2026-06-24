@@ -35,9 +35,11 @@ export interface BacklogColumnProps {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function BacklogColumnInner({ issues, assigneeNames, isOver = false }: BacklogColumnProps) {
+  const orderedKeys = issues.map((i) => i.key)
+
   const { setNodeRef } = useDroppable({
     id: BACKLOG_DROPPABLE_ID,
-    data: { context: 'backlog' },
+    data: { context: 'backlog', orderedKeys },
   })
 
   const issueCount = issues.length
@@ -65,6 +67,7 @@ function BacklogColumnInner({ issues, assigneeNames, isOver = false }: BacklogCo
       <div
         ref={setNodeRef}
         data-droppable={BACKLOG_DROPPABLE_ID}
+        data-ordered-keys={orderedKeys.join(',')}
         className={cn(
           'flex flex-1 flex-col gap-2 rounded-b-lg border border-border p-2 transition-colors',
           isOver && 'bg-accent ring-2 ring-primary',

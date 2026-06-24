@@ -1,10 +1,11 @@
-// 백로그·스프린트 카드 컴포넌트 — 이슈 요약 표시 + @dnd-kit 드래그 핸들
+// 백로그·스프린트 카드 컴포넌트 — 이슈 요약 표시 + @dnd-kit 드래그/드롭 핸들
 import { memo } from 'react'
 import { Link } from '@tanstack/react-router'
-import { useDraggable } from '@dnd-kit/core'
+import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { cn } from '@/lib/utils'
 import { backlogLabels } from '@/i18n/backlog-labels'
+import { cardDroppableId } from '@/lib/backlog-drag'
 import type { BacklogIssue } from '@/api/backlog'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -33,6 +34,22 @@ export interface BacklogDragData {
   context: BacklogCardContext
   sprintId: string | null
 }
+
+/**
+ * 카드 droppable data — `useDroppable`에 넣어 onDragEnd에서 over 대상이 카드임을 식별한다.
+ *
+ * - `type`: 'card' — 칸 droppable과 구분하는 식별자
+ * - `key`: 이 카드의 이슈 키
+ * - `context`: 카드가 위치한 컨텍스트
+ * - `sprintId`: context='sprint'일 때 스프린트 UUID, 'backlog'이면 null
+ */
+export interface BacklogCardDropData {
+  type: 'card'
+  key: string
+  context: BacklogCardContext
+  sprintId: string | null
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -115,16 +132,38 @@ function AssigneeSlot({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function BacklogCardInner({ issue, context, sprintId, assigneeName }: BacklogCardProps) {
+  const resolvedSprintId = sprintId ?? null
+
   const dragData: BacklogDragData = {
     issueKey: issue.key,
     context,
-    sprintId: sprintId ?? null,
+    sprintId: resolvedSprintId,
   }
 
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const dropData: BacklogCardDropData = {
+    type: 'card',
+    key: issue.key,
+    context,
+    sprintId: resolvedSprintId,
+  }
+
+  const droppableId = cardDroppableId(context, issue.key)
+
+  const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: `${context}:${issue.key}`,
     data: dragData,
   })
+
+  const { setNodeRef: setDropRef } = useDroppable({
+    id: droppableId,
+    data: dropData,
+  })
+
+  // draggable과 droppable ref를 동일 요소에 합성한다
+  function setRef(node: HTMLDivElement | null): void {
+    setDragRef(node)
+    setDropRef(node)
+  }
 
   const style = transform
     ? { transform: CSS.Translate.toString(transform) }
@@ -132,11 +171,12 @@ function BacklogCardInner({ issue, context, sprintId, assigneeName }: BacklogCar
 
   return (
     <div
-      ref={setNodeRef}
+      ref={setRef}
       style={style}
       {...listeners}
       {...attributes}
       data-drag-context={context}
+      data-card-droppable={droppableId}
       aria-roledescription={backlogLabels.draggableCard}
       aria-label={backlogLabels.cardAriaLabel(issue.key, issue.summary)}
       className={cn(

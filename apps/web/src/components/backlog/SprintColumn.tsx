@@ -67,11 +67,12 @@ function SprintColumnInner({
 }: SprintColumnProps) {
   const isCompleted = sprint.status === 'COMPLETED'
   const droppableId = `sprint-${sprint.sprintId}`
+  const orderedKeys = issues.map((i) => i.key)
 
   const { setNodeRef } = useDroppable({
     id: droppableId,
     disabled: isCompleted,
-    data: { context: 'sprint', sprintId: sprint.sprintId },
+    data: { context: 'sprint', sprintId: sprint.sprintId, orderedKeys },
   })
 
   const issueCount = issues.length
@@ -139,6 +140,7 @@ function SprintColumnInner({
         ref={setNodeRef}
         data-droppable={isCompleted ? undefined : droppableId}
         data-droppable-disabled={isCompleted ? 'true' : undefined}
+        data-ordered-keys={isCompleted ? undefined : orderedKeys.join(',')}
         className={cn(
           'flex flex-1 flex-col gap-2 rounded-b-lg border border-border p-2 transition-colors',
           isOver && !isCompleted && 'bg-accent ring-2 ring-primary',

@@ -20,7 +20,7 @@ import {
 } from '@/hooks/use-backlog'
 import { resolveBacklogDropAction } from '@/lib/backlog-drag'
 import type { NeighborResult } from '@/lib/backlog-drag'
-import type { BacklogDragData } from './BacklogCard'
+import type { BacklogDragData, BacklogCardDropData } from './BacklogCard'
 import { BacklogColumn } from './BacklogColumn'
 import { SprintColumn } from './SprintColumn'
 import { CreateSprintForm } from './CreateSprintForm'
@@ -57,17 +57,41 @@ interface DropZoneData {
   dropIndex: number
 }
 
-/** over 데이터를 DropZoneData로 파싱한다. 유효하지 않으면 null을 반환한다. */
-function extractDropZone(data: Record<string, unknown> | undefined): DropZoneData | null {
+/**
+ * 칸 droppable data(context + orderedKeys)를 DropZoneData로 파싱한다.
+ * 유효하지 않으면 null을 반환한다.
+ */
+function extractColumnDropZone(data: Record<string, unknown> | undefined): DropZoneData | null {
   if (data === undefined) return null
   const context = data['context']
   if (context !== 'backlog' && context !== 'sprint') return null
+  // type:'card' 인 카드 droppable은 이 경로에서 처리하지 않는다
+  if (data['type'] === 'card') return null
   const orderedKeys = Array.isArray(data['orderedKeys']) ? (data['orderedKeys'] as string[]) : []
   return {
     context,
     sprintId: typeof data['sprintId'] === 'string' ? data['sprintId'] : null,
     orderedKeys,
     dropIndex: typeof data['dropIndex'] === 'number' ? data['dropIndex'] : orderedKeys.length,
+  }
+}
+
+/**
+ * 카드 droppable data를 BacklogCardDropData로 파싱한다.
+ * `type: 'card'` 가 없으면 null을 반환한다.
+ */
+function extractCardDropData(data: Record<string, unknown> | undefined): BacklogCardDropData | null {
+  if (data === undefined) return null
+  if (data['type'] !== 'card') return null
+  const context = data['context']
+  if (context !== 'backlog' && context !== 'sprint') return null
+  const key = data['key']
+  if (typeof key !== 'string') return null
+  return {
+    type: 'card',
+    key,
+    context,
+    sprintId: typeof data['sprintId'] === 'string' ? data['sprintId'] : null,
   }
 }
 
@@ -127,10 +151,42 @@ export function BacklogBoard({
 
     if (activeData === undefined || event.over === null) return
 
-    const dropZone = extractDropZone(overData)
-    if (dropZone === null) return
-
     const { issueKey, context: fromContext, sprintId: fromSprintId } = activeData
+
+    // over 대상이 카드 droppable인지 칸 droppable인지 판별한다
+    let dropZone: DropZoneData | null = extractColumnDropZone(overData)
+
+    if (dropZone === null) {
+      // 카드 droppable over 경로: 카드가 위치한 칸의 orderedKeys를 board 데이터에서 조회한다
+      const cardDrop = extractCardDropData(overData)
+      if (cardDrop !== null && backlogView !== undefined) {
+        const { key: overKey, context: toContext, sprintId: toSprintId } = cardDrop
+
+        // 대상 칸의 orderedKeys 조회
+        let orderedKeys: readonly string[]
+        if (toContext === 'backlog') {
+          orderedKeys = backlogView.backlog.map((i) => i.key)
+        } else {
+          const sprintEntry = backlogView.sprints.find(
+            (s) => s.sprint.sprintId === toSprintId,
+          )
+          orderedKeys = sprintEntry !== undefined ? sprintEntry.issues.map((i) => i.key) : []
+        }
+
+        // 카드의 위치를 dropIndex로 변환한다 (카드 위에 드롭 = 그 카드 앞에 삽입)
+        const overIdx = orderedKeys.indexOf(overKey)
+        const dropIndex = overIdx === -1 ? orderedKeys.length : overIdx
+
+        dropZone = {
+          context: toContext,
+          sprintId: toSprintId,
+          orderedKeys,
+          dropIndex,
+        }
+      }
+    }
+
+    if (dropZone === null) return
 
     const action = resolveBacklogDropAction({
       issueKey,
