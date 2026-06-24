@@ -1,4 +1,5 @@
 // MSW 핸들러 통합 인덱스 — BC별 handlers를 spread해서 내보낸다
+import { backlogHandlers } from './backlog-handlers'
 import { boardHandlers } from './board-handlers'
 import { dashboardHandlers } from './dashboard-handlers'
 import { accountLinkHandlers } from './account-link-handlers'
@@ -51,6 +52,7 @@ import { securityLevelHandlers } from './security-level-handlers'
  * mock endpoint를 하나의 배열로 통합한다. 알파벳순 BC 그룹 정렬.
  */
 export const handlers = [
+  ...backlogHandlers,
   ...boardHandlers,
   ...dashboardHandlers,
   ...accountLinkHandlers,

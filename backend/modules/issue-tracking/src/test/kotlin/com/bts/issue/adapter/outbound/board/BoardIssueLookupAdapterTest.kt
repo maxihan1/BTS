@@ -729,6 +729,47 @@ class BoardIssueLookupAdapterTest : IssueTestcontainersBase() {
         assertThat(childCard.epicKey).isEqualTo("TPRJ-1")
     }
 
+    // ── S12. rank SELECT — BoardIssueView.rank 매핑 (FR-BL-01-02 Task 2) ────────
+    //
+    // rank 가 부여된 이슈는 BoardIssueView.rank 에 해당 값이 채워지고,
+    // rank 미부여(NULL) 이슈는 rank == null 이어야 한다.
+    //
+    // rank 는 issues 단일 컬럼 SELECT — 새 JOIN 없음(cartesian product 회귀방지).
+    // 정렬은 소비측(agile-planning) 책임이므로 여기서는 rank 노출만 검증한다.
+
+    /** issues.rank 를 직접 UPDATE 한다. rank 컬럼은 no-bump(version/updated_at 증분 없음). */
+    private fun setRank(
+        issueKey: String,
+        rank: String,
+    ) {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement("UPDATE issues SET rank = ? WHERE key = ?").use { stmt ->
+                stmt.setString(1, rank)
+                stmt.setString(2, issueKey)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    @Test
+    @Order(28)
+    fun `S12 - rank 가 부여된 이슈는 BoardIssueView 에 rank 가 채워지고 미부여 이슈는 null 이다`() {
+        val viewer = UUID.randomUUID()
+        val withRank = insertIssue(seq = 1, securityLevelId = null)
+        val withoutRank = insertIssue(seq = 2, securityLevelId = null)
+
+        // seq=1 이슈에만 rank 부여, seq=2 는 NULL 그대로
+        setRank("TPRJ-1", "i")
+
+        val result = adapterWith(unrestricted()).listVisibleIssuesByProject("TPRJ", viewer)
+
+        val card1 = result.issues.first { it.key == "TPRJ-1" }
+        val card2 = result.issues.first { it.key == "TPRJ-2" }
+
+        assertThat(card1.rank).isEqualTo("i")
+        assertThat(card2.rank).isNull()
+    }
+
     // ── S11. epicKey cross-project 미노출 (P1-A 회귀방지) ──────────────────────
     //
     // 에픽 이슈가 다른 프로젝트에 있는 경우(stale data 또는 이동 후 잔류),
