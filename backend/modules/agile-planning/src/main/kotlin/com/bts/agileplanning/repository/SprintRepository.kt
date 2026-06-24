@@ -5,8 +5,8 @@ package com.bts.agileplanning.repository
 import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SprintStatus
 import com.bts.agileplanning.jooq.tables.records.SprintsRecord
-import com.bts.agileplanning.jooq.tables.references.SPRINT_ISSUES
 import com.bts.agileplanning.jooq.tables.references.SPRINTS
+import com.bts.agileplanning.jooq.tables.references.SPRINT_ISSUES
 import org.jooq.DSLContext
 import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
@@ -49,8 +49,12 @@ class SprintRepository(
     private val log = LoggerFactory.getLogger(javaClass)
 
     companion object {
+        /** COMPLETED 상태 문자열 상수 — 조건부 DML COMPLETED 가드에서 사용. */
         private const val STATUS_COMPLETED = "COMPLETED"
     }
+
+    /** UTC 현재 시각을 반환하는 내부 헬퍼. 반복 호출 지점을 일원화한다. */
+    private fun utcNow(): OffsetDateTime = OffsetDateTime.now(ZoneOffset.UTC)
 
     // ── insert ────────────────────────────────────────────────────────────────
 
@@ -64,7 +68,7 @@ class SprintRepository(
     fun insert(sprint: Sprint): Sprint {
         log.debug("스프린트 삽입 — id={}, projectKey={}", sprint.id, sprint.projectKey)
 
-        val now = OffsetDateTime.now(ZoneOffset.UTC)
+        val now = utcNow()
 
         dsl.insertInto(SPRINTS)
             .set(SPRINTS.ID, sprint.id)
@@ -160,7 +164,7 @@ class SprintRepository(
     ): Sprint? {
         log.debug("스프린트 메타 갱신 — id={}, name={}", id, name)
 
-        val now = OffsetDateTime.now(ZoneOffset.UTC)
+        val now = utcNow()
         val affected =
             dsl.update(SPRINTS)
                 .set(SPRINTS.NAME, name)
@@ -200,7 +204,7 @@ class SprintRepository(
     ): Sprint? {
         log.debug("스프린트 상태 갱신 — id={}, newStatus={}", id, newStatus)
 
-        val now = OffsetDateTime.now(ZoneOffset.UTC)
+        val now = utcNow()
         val affected =
             dsl.update(SPRINTS)
                 .set(SPRINTS.STATUS, newStatus.name)
@@ -235,9 +239,8 @@ class SprintRepository(
             .where(SPRINT_ISSUES.SPRINT_ID.eq(id))
             .execute()
 
-        val now = OffsetDateTime.now(ZoneOffset.UTC)
         dsl.update(SPRINTS)
-            .set(SPRINTS.DELETED_AT, now)
+            .set(SPRINTS.DELETED_AT, utcNow())
             .where(SPRINTS.ID.eq(id))
             .and(SPRINTS.DELETED_AT.isNull)
             .execute()
@@ -279,7 +282,6 @@ class SprintRepository(
             .execute()
 
         // 2단계: COMPLETED 가드 — 서브쿼리로 status 확인 후 조건부 INSERT
-        val now = OffsetDateTime.now(ZoneOffset.UTC)
         return dsl.insertInto(
             SPRINT_ISSUES,
             SPRINT_ISSUES.SPRINT_ID,
@@ -289,7 +291,7 @@ class SprintRepository(
             DSL.select(
                 DSL.inline(sprintId),
                 DSL.inline(issueKey),
-                DSL.inline(now),
+                DSL.inline(utcNow()),
             ).from(SPRINTS)
                 .where(SPRINTS.ID.eq(sprintId))
                 .and(SPRINTS.STATUS.ne(STATUS_COMPLETED))

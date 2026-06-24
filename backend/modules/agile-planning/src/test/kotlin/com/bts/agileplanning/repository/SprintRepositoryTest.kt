@@ -7,13 +7,11 @@ import com.bts.agileplanning.AgilePlanningTestcontainersConfig
 import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SprintStatus
 import org.assertj.core.api.Assertions.assertThat
-import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.context.ActiveProfiles
-import java.sql.DriverManager
 import java.time.LocalDate
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -144,14 +142,15 @@ class SprintRepositoryTest {
         val newStart = LocalDate.of(2026, 7, 1)
         val newEnd = LocalDate.of(2026, 7, 14)
 
-        val updated = sprintRepository.updateMeta(
-            id = sprint.id,
-            name = newName,
-            goal = newGoal,
-            startDate = newStart,
-            endDate = newEnd,
-            version = sprint.version,
-        )
+        val updated =
+            sprintRepository.updateMeta(
+                id = sprint.id,
+                name = newName,
+                goal = newGoal,
+                startDate = newStart,
+                endDate = newEnd,
+                version = sprint.version,
+            )
 
         assertThat(updated).isNotNull()
         assertThat(updated!!.name).isEqualTo(newName)
@@ -163,14 +162,15 @@ class SprintRepositoryTest {
 
     @Test
     fun `updateMeta 는 존재하지 않는 id 에 null 을 반환한다`() {
-        val result = sprintRepository.updateMeta(
-            id = UUID.randomUUID(),
-            name = "이름",
-            goal = null,
-            startDate = null,
-            endDate = null,
-            version = 0L,
-        )
+        val result =
+            sprintRepository.updateMeta(
+                id = UUID.randomUUID(),
+                name = "이름",
+                goal = null,
+                startDate = null,
+                endDate = null,
+                version = 0L,
+            )
         assertThat(result as Any?).isNull()
     }
 
