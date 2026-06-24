@@ -206,22 +206,44 @@ const getFavoritesHandler = http.get('/api/v1/favorites', ({ request }) => {
 })
 
 /**
- * DELETE /api/v1/favorites/:id — 즐겨찾기 삭제 (멱등).
+ * DELETE /api/v1/favorites?targetType=&targetId= — 즐겨찾기 삭제 (멱등).
+ *
+ * 백엔드 계약. FavoriteController.kt L28 — RequestParam targetType + targetId.
  *
  * 성공. 204 No Content
- * 없는 id. 204 No Content (멱등)
+ * 없는 대상. 204 No Content (멱등)
+ * 잘못된 targetType. 400 NOTIF_FAV_INVALID
  */
-const deleteFavoriteHandler = http.delete('/api/v1/favorites/:id', ({ params, request }) => {
+const deleteFavoriteHandler = http.delete('/api/v1/favorites', ({ request }) => {
   const userId = resolveUserIdFromRequest(request)
   if (userId === null) {
     return new HttpResponse(null, { status: 401 })
   }
 
-  const favId = params['id'] as string
+  const url = new URL(request.url)
+  const targetType = url.searchParams.get('targetType')
+  const targetId = url.searchParams.get('targetId')
+
+  // targetType 누락 또는 enum 외 값이면 400
+  if (targetType === null || !isValidTargetType(targetType)) {
+    return HttpResponse.json(
+      { errorCode: 'NOTIF_FAV_INVALID', message: '유효하지 않은 targetType' },
+      { status: 400 },
+    )
+  }
+  // targetId 누락이면 400
+  if (targetId === null || targetId.trim().length === 0) {
+    return HttpResponse.json(
+      { errorCode: 'NOTIF_FAV_INVALID', message: 'targetId는 비어 있을 수 없습니다' },
+      { status: 400 },
+    )
+  }
+
+  const key = makeFavoriteKey(targetType, targetId)
   const userFavorites = favoriteStore.get(userId) ?? []
   favoriteStore.set(
     userId,
-    userFavorites.filter((f) => f.id !== favId),
+    userFavorites.filter((f) => makeFavoriteKey(f.targetType, f.targetId) !== key),
   )
 
   return new HttpResponse(null, { status: 204 })

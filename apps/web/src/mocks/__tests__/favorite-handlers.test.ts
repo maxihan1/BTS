@@ -218,22 +218,20 @@ describe('GET /api/v1/favorites', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DELETE /api/v1/favorites/:id
+// DELETE /api/v1/favorites?targetType=&targetId=
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('DELETE /api/v1/favorites/:id', () => {
-  it('DELETE 후 GET에서 해당 항목이 사라진다', async () => {
+describe('DELETE /api/v1/favorites?targetType=&targetId=', () => {
+  it('쿼리 파라미터로 DELETE 후 GET에서 해당 항목이 사라진다', async () => {
     // POST로 추가
-    const postRes = await fetch(favUrl(), {
+    await fetch(favUrl(), {
       method: 'POST',
       headers: authHeaders(ALICE_TOKEN),
       body: JSON.stringify({ targetType: 'FILTER', targetId: 'filter-99' }),
     })
-    const postBody = (await postRes.json()) as { data: { id: string } }
-    const favId = postBody.data.id
 
-    // DELETE
-    const delRes = await fetch(favUrl(`/${favId}`), {
+    // DELETE — 쿼리 파라미터로 (백엔드 계약)
+    const delRes = await fetch(favUrl('?targetType=FILTER&targetId=filter-99'), {
       method: 'DELETE',
       headers: authHeaders(ALICE_TOKEN),
     })
@@ -243,16 +241,37 @@ describe('DELETE /api/v1/favorites/:id', () => {
     const getRes = await fetch(favUrl(), {
       headers: authHeaders(ALICE_TOKEN),
     })
-    const getBody = (await getRes.json()) as { data: { items: Array<{ id: string }> } }
-    expect(getBody.data.items.some((i) => i.id === favId)).toBe(false)
+    const getBody = (await getRes.json()) as { data: { items: Array<{ targetId: string }> } }
+    expect(getBody.data.items.some((i) => i.targetId === 'filter-99')).toBe(false)
   })
 
-  it('없는 id DELETE는 204를 반환한다 (멱등)', async () => {
-    const res = await fetch(favUrl('/nonexistent-id'), {
+  it('없는 대상 DELETE는 204를 반환한다 (멱등)', async () => {
+    const res = await fetch(favUrl('?targetType=ISSUE&targetId=ATLAS-999'), {
       method: 'DELETE',
       headers: authHeaders(ALICE_TOKEN),
     })
     expect(res.status).toBe(204)
+  })
+
+  it('다른 actor(Bob) 항목은 Alice DELETE로 제거되지 않는다 (actor 격리)', async () => {
+    // Bob 즐겨찾기 시드
+    seedFavorites('00000000-0000-4000-8000-000000000002', [
+      { id: 'bob-fav-1', targetType: 'ISSUE', targetId: 'BOB-ISSUE', createdAt: '2025-01-01T00:00:00Z' },
+    ])
+
+    // Alice가 동일 targetType/targetId로 DELETE 시도
+    const delRes = await fetch(favUrl('?targetType=ISSUE&targetId=BOB-ISSUE'), {
+      method: 'DELETE',
+      headers: authHeaders(ALICE_TOKEN),
+    })
+    expect(delRes.status).toBe(204)
+
+    // Bob의 항목은 여전히 존재해야 한다
+    const bobGetRes = await fetch(favUrl(), {
+      headers: authHeaders(BOB_TOKEN),
+    })
+    const bobBody = (await bobGetRes.json()) as { data: { items: Array<{ targetId: string }> } }
+    expect(bobBody.data.items.some((i) => i.targetId === 'BOB-ISSUE')).toBe(true)
   })
 })
 
@@ -276,8 +295,6 @@ describe('stateful 통합 시나리오', () => {
       body: JSON.stringify({ targetType: 'DASHBOARD', targetId: 'dash-42' }),
     })
     expect(post.status).toBe(201)
-    const postBody = (await post.json()) as { data: { id: string } }
-    const id = postBody.data.id
 
     // 3. GET — 항목이 있음
     const after = await fetch(favUrl(), {
@@ -286,8 +303,8 @@ describe('stateful 통합 시나리오', () => {
     const afterBody = (await after.json()) as { data: { items: Array<{ id: string }> } }
     expect(afterBody.data.items).toHaveLength(1)
 
-    // 4. DELETE
-    await fetch(favUrl(`/${id}`), {
+    // 4. DELETE — 쿼리 파라미터로 (백엔드 계약)
+    await fetch(favUrl('?targetType=DASHBOARD&targetId=dash-42'), {
       method: 'DELETE',
       headers: authHeaders(ALICE_TOKEN),
     })

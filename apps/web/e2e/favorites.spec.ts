@@ -162,17 +162,8 @@ test.describe('FR-UX-02 즐겨찾기 토글 + 드롭다운 (FavoriteButton + Fav
   // When    ★ 클릭 → DELETE 반영 → store에서 제거 → invalidate refetch
   // Then    버튼 aria-label = "즐겨찾기에 추가" + aria-pressed=false
   //         드롭다운 열면 ATLAS-1 항목이 사라짐 (건수 1→0, vacuous 차단)
-  //
-  // [KNOWN BUG — test.fixme]
-  // MSW 핸들러 불일치:
-  //   - MSW DELETE 핸들러: DELETE /api/v1/favorites/:id (경로 파라미터)
-  //   - API 클라이언트 (favorites.ts): DELETE /api/v1/favorites?targetType=&targetId= (쿼리 파라미터)
-  // MSW가 쿼리 파라미터 경로를 /:id 패턴으로 매칭하지 못해 SW 미처리 → Vite 프록시 전달 →
-  // 백엔드 없음 → ECONNREFUSED → mutation 실패 → 버튼 여전히 aria-pressed=true (해제 안 됨)
-  // 수정: MSW 핸들러를 DELETE /api/v1/favorites?targetType=&targetId= 경로로 변경 필요
-  //       (apps/web/src/mocks/favorite-handlers.ts — 구현 코드 영역, qa-engineer 수정 범위 외)
   // ─────────────────────────────────────────────────────────────────────────
-  test.fixme('E2E-3 즐겨찾기 해제 → 버튼 복귀 + 드롭다운 건수 1→0 [BUG: MSW DELETE 경로 불일치]', async ({ page }) => {
+  test('E2E-3 즐겨찾기 해제 → 버튼 복귀 + 드롭다운 건수 1→0', async ({ page }) => {
     // Given. 이슈 상세 SPA 내부 이동
     await navigateToIssueDetail(page)
 
