@@ -44,10 +44,20 @@ const getBacklogHandler = http.get(
       })
     }
 
+    // rank 순 정렬 — rerankIssueHandler가 rank를 갱신하지만 배열 순서는 그대로 유지하므로
+    // GET 응답에서 매번 rank 기준으로 정렬해 반환한다.
+    const sortedBacklog = [...project.backlog].sort((a, b) =>
+      a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0,
+    )
+    const sortedSprints = project.sprints.map((sw) => ({
+      sprint: sw.sprint,
+      issues: [...sw.issues].sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0)),
+    }))
+
     return HttpResponse.json({
       data: {
-        backlog: project.backlog,
-        sprints: project.sprints,
+        backlog: sortedBacklog,
+        sprints: sortedSprints,
         truncated: project.truncated,
       },
     })

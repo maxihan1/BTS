@@ -156,6 +156,10 @@ function BacklogCardInner({ issue, context, sprintId, assigneeName }: BacklogCar
 
   const { setNodeRef: setDropRef } = useDroppable({
     id: droppableId,
+    // 자기 자신이 드래그 중일 때 droppable을 비활성화한다.
+    // pointerWithin 충돌 감지 시 드래그 중인 카드의 droppable이 자신 위에
+    // 충돌 대상으로 잡히는 것을 방지한다.
+    disabled: isDragging,
     data: dropData,
   })
 

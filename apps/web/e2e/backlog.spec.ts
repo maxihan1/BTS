@@ -132,6 +132,7 @@ function getCardLocator(
 
 /**
  * 카드를 PointerSensor로 대상 칸의 중심으로 드래그한다.
+ * 크로스 칸 이동(S2/S3) 또는 칸 여백 드롭에 사용한다.
  *
  * @dnd-kit PointerSensor activationConstraint: { distance: 5 } —
  * pointerdown 후 5px 초과 이동 시 드래그가 시작된다.
@@ -177,6 +178,79 @@ async function dragCardToColumn(
   await page.mouse.up()
 }
 
+/**
+ * 카드를 PointerSensor로 대상 카드의 상단 중심으로 드래그한다.
+ * 같은 칸 재정렬(S1/S5)에 사용한다 — card droppable을 hit해야 정확한 dropIndex 산출이 가능하다.
+ *
+ * 대상 카드의 상단 4분의 1 지점을 목표로 삼아 카드 droppable을 명확히 hit한다.
+ *
+ * @param page Playwright Page
+ * @param fromKey 드래그할 카드 issueKey
+ * @param toKey 드롭 대상 카드 issueKey (이 카드 위에 드롭)
+ */
+async function dragCardToCard(
+  page: import('@playwright/test').Page,
+  fromKey: string,
+  toKey: string,
+): Promise<void> {
+  const fromCard = getCardLocator(page, fromKey)
+  const toCard = getCardLocator(page, toKey)
+  const fromBox = await fromCard.boundingBox()
+  const toBox = await toCard.boundingBox()
+
+  if (fromBox === null || toBox === null) {
+    throw new Error(
+      `dragCardToCard: bounding box를 가져올 수 없습니다. from=${fromKey}, to=${toKey}`,
+    )
+  }
+
+  const fromCX = fromBox.x + fromBox.width / 2
+  const fromCY = fromBox.y + fromBox.height / 2
+  // 대상 카드의 상단 1/4 지점 — 카드 droppable rect에 포함되면서
+  // 다른 요소와 겹치지 않는 위치
+  const toCX = toBox.x + toBox.width / 2
+  const toCY = toBox.y + toBox.height * 0.25
+
+  await page.mouse.move(fromCX, fromCY)
+  await page.mouse.down()
+  await page.mouse.move(fromCX + 6, fromCY)
+  await page.mouse.move(toCX, toCY, { steps: 20 })
+  await page.mouse.up()
+}
+
+/**
+ * 칸 안의 카드 issueKey 배열을 DOM 순서대로 반환한다.
+ *
+ * BacklogCard는 aria-roledescription="draggable card" 요소에 issueKey 텍스트를 포함한다.
+ * data-card-droppable 속성으로 카드 droppable을 식별하고, 속성값 파싱으로 issueKey를 추출한다.
+ *
+ * 순서: aria-roledescription="draggable card" 요소들 중 칸 안에 있는 것들의 텍스트에서
+ *       issueKey를 추출한다.
+ *
+ * @param column 칸 locator
+ */
+async function getCardKeysInColumn(
+  column: import('@playwright/test').Locator,
+): Promise<string[]> {
+  // data-card-droppable="card:{context}:{key}" 속성에서 key 파싱
+  const cards = column.locator('[data-card-droppable]')
+  const count = await cards.count()
+  const keys: string[] = []
+  for (let i = 0; i < count; i++) {
+    const card = cards.nth(i)
+    const attr = await card.getAttribute('data-card-droppable')
+    if (attr !== null) {
+      // 형식: "card:backlog:ATLAS-1" 또는 "card:sprint:ATLAS-3"
+      const parts = attr.split(':')
+      // parts[0]='card', parts[1]=context, parts[2]=issueKey (단, ATLAS-1 = parts.slice(2).join(':'))
+      if (parts.length >= 3) {
+        keys.push(parts.slice(2).join(':'))
+      }
+    }
+  }
+  return keys
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Suite
 // ─────────────────────────────────────────────────────────────────────────────
@@ -192,24 +266,36 @@ test.describe('FR-BL-01/02 백로그·스프린트 보드 (재정렬/이동/스�
   // Then   낙관적 업데이트: 카드가 여전히 백로그 칸에 존재 (이동 완료 신호)
   //        PATCH /api/v1/issues/{key}/rank 호출됨 (MSW store 변이)
   // ─────────────────────────────────────────────────────────────────────────
-  test('S1 백로그 재정렬 — ATLAS-1을 백로그 칸 내 다른 위치로 드래그', async ({ page }) => {
+  test('S1 백로그 재정렬 — ATLAS-1을 ATLAS-2 위로 드래그 → 순서 유지(no-op) 또는 순서 변경 확인', async ({ page }) => {
     // Given. alice 로그인 + 백로그 페이지 진입
     await loginAsAlice(page)
     await page.goto(BACKLOG_URL)
 
-    // Given. 백로그 칸에 ATLAS-1, ATLAS-2 확인
+    // Given. 백로그 칸에 ATLAS-1(첫 번째), ATLAS-2(두 번째) 순서로 표시됨
     const backlogColumn = getBacklogColumn(page)
     await expect(backlogColumn).toBeVisible()
     await expect(backlogColumn.getByText(BACKLOG_CARD_1)).toBeVisible()
     await expect(backlogColumn.getByText(BACKLOG_CARD_2)).toBeVisible()
 
-    // When. ATLAS-1을 백로그 칸 하단으로 드래그 (ATLAS-2 아래)
-    // 칸 전체가 드롭 영역이므로 칸 하단 영역으로 이동
-    await dragCardToColumn(page, BACKLOG_CARD_1, backlogColumn)
+    // Given. 초기 DOM 순서 확인: [ATLAS-1, ATLAS-2]
+    const initialOrder = await getCardKeysInColumn(backlogColumn)
+    expect(initialOrder).toEqual([BACKLOG_CARD_1, BACKLOG_CARD_2])
 
-    // Then. ATLAS-1이 여전히 백로그 칸에 존재 (이동 완료 — 칸 밖으로 나가지 않음)
+    // When. ATLAS-2를 ATLAS-1 카드 위로 드래그 (ATLAS-2를 맨 앞으로 이동)
+    // card droppable을 hit해야 dropIndex가 정확히 계산된다.
+    await dragCardToCard(page, BACKLOG_CARD_2, BACKLOG_CARD_1)
+
+    // Then. 두 카드 모두 백로그 칸에 존재
     await expect(backlogColumn.getByText(BACKLOG_CARD_1)).toBeVisible()
     await expect(backlogColumn.getByText(BACKLOG_CARD_2)).toBeVisible()
+
+    // Then. DOM 순서가 변경됨 — ATLAS-2가 ATLAS-1보다 앞에 위치
+    // MSW rerank → store rank 갱신 → invalidateQueries refetch → 새 순서 렌더
+    // (reload 금지 — SPA 내부 refetch로만 확인)
+    await expect(async () => {
+      const newOrder = await getCardKeysInColumn(backlogColumn)
+      expect(newOrder).toEqual([BACKLOG_CARD_2, BACKLOG_CARD_1])
+    }).toPass({ timeout: 5000 })
   })
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -296,24 +382,34 @@ test.describe('FR-BL-01/02 백로그·스프린트 보드 (재정렬/이동/스�
   // Then   ATLAS-4가 스프린트 1 칸에 여전히 존재 (칸 내 재정렬 완료)
   //        ATLAS-3도 여전히 스프린트 1 칸에 존재
   // ─────────────────────────────────────────────────────────────────────────
-  test('S5 스프린트 내 재정렬 — ATLAS-4를 스프린트 1 칸 안에서 다른 위치로 드래그', async ({ page }) => {
+  test('S5 스프린트 내 재정렬 — ATLAS-4를 ATLAS-3 위로 드래그 → 순서 변경 확인', async ({ page }) => {
     // Given. alice 로그인 + 백로그 페이지 진입
     await loginAsAlice(page)
     await page.goto(BACKLOG_URL)
 
-    // Given. 스프린트 1 칸에 ATLAS-3, ATLAS-4 확인
+    // Given. 스프린트 1 칸에 ATLAS-3(첫 번째), ATLAS-4(두 번째) 확인
     const sprintColumn = getSprintColumn(page)
     await expect(sprintColumn.getByText(SPRINT_CARD_1)).toBeVisible()
     await expect(sprintColumn.getByText(SPRINT_CARD_2)).toBeVisible()
 
-    // When. ATLAS-4를 스프린트 1 칸 내 상단으로 드래그
-    await dragCardToColumn(page, SPRINT_CARD_2, sprintColumn)
+    // Given. 초기 DOM 순서 확인: [ATLAS-3, ATLAS-4]
+    const initialOrder = await getCardKeysInColumn(sprintColumn)
+    expect(initialOrder).toEqual([SPRINT_CARD_1, SPRINT_CARD_2])
 
-    // Then. ATLAS-4가 스프린트 1 칸에 여전히 존재
+    // When. ATLAS-4를 ATLAS-3 카드 위로 드래그 (ATLAS-4를 맨 앞으로 이동)
+    // card droppable을 hit해 dropIndex를 정확히 산출한다.
+    await dragCardToCard(page, SPRINT_CARD_2, SPRINT_CARD_1)
+
+    // Then. 두 카드 모두 스프린트 1 칸에 존재
     await expect(sprintColumn.getByText(SPRINT_CARD_2)).toBeVisible()
-
-    // Then. ATLAS-3도 여전히 스프린트 1 칸에 존재
     await expect(sprintColumn.getByText(SPRINT_CARD_1)).toBeVisible()
+
+    // Then. DOM 순서가 변경됨 — ATLAS-4가 ATLAS-3보다 앞에 위치
+    // MSW rerank → store rank 갱신 → invalidateQueries refetch → 새 순서 렌더
+    await expect(async () => {
+      const newOrder = await getCardKeysInColumn(sprintColumn)
+      expect(newOrder).toEqual([SPRINT_CARD_2, SPRINT_CARD_1])
+    }).toPass({ timeout: 5000 })
   })
 
   // ─────────────────────────────────────────────────────────────────────────
