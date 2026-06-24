@@ -4,6 +4,7 @@ import '@testing-library/jest-dom'
 import { afterAll, afterEach, beforeAll } from 'vitest'
 import { server } from './server'
 import { resetIssueStateWithEpic } from '@/mocks/issue-handlers'
+import { resetFavoriteStore } from '@/mocks/favorite-handlers'
 
 // jsdom은 ResizeObserver를 구현하지 않는다.
 // Radix UI RadioGroup.Item 등이 내부적으로 ResizeObserver를 사용하므로 no-op mock으로 polyfill한다.
@@ -20,5 +21,7 @@ afterEach(() => {
   server.resetHandlers()
   // issue-handlers 모듈-스코프 state (deletedKeys / createdIssues / epicChildrenStore) 격리 — 테스트 간 leak 방지
   resetIssueStateWithEpic()
+  // favorite-handlers 모듈-스코프 store (userId → Favorite[] Map) 격리 — 테스트 간 leak 방지
+  resetFavoriteStore()
 })
 afterAll(() => server.close())
