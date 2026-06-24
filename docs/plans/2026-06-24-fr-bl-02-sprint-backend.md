@@ -58,7 +58,7 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 > 모듈 컴파일 직렬(메모리 bts-plan-wave-gradle-module-compile): T2~T7은 같은 agile-planning 모듈 → 파일 안 겹쳐도 컴파일은 모듈 일괄.
 > 신규 테이블(sprints/sprint_issues)이라 기존 jOOQ 레코드 무변경 → FR-BL-01 같은 기존테스트 대량파급 위험 없음(issues 무변경).
 
-### Task 1. V503 마이그레이션 — sprints + sprint_issues + init_codegen 미러
+### Task 1. [x] V503 마이그레이션 — sprints + sprint_issues + init_codegen 미러
 
 **메타**.
 - agent: `db-engineer`
@@ -73,7 +73,7 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 
 **검증**: `cd backend && ./gradlew :modules:agile-planning:flywayMigrate :modules:agile-planning:generateJooq` + 마이그레이션 테스트. ⚠️ V503 번호 머지 직전 재확인(메모리 migration-vnumber, 현재 최신 V502).
 
-### Task 2. Sprint 도메인 — 엔티티 + 상태전이 규칙(start/complete)
+### Task 2. [x] Sprint 도메인 — 엔티티 + 상태전이 규칙(start/complete)
 
 **메타**.
 - agent: `backend-engineer`
@@ -92,7 +92,7 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 
 **검증**: `cd backend && ./gradlew :modules:agile-planning:test --tests "*SprintTest"`
 
-### Task 3. SprintRepository (jOOQ) — CRUD + 할당/해제 + no-bump
+### Task 3. [x] SprintRepository (jOOQ) — CRUD + 할당/해제 + no-bump
 
 **메타**.
 - agent: `backend-engineer`
@@ -113,7 +113,7 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 
 **검증**: `cd backend && ./gradlew :modules:agile-planning:compileKotlin :modules:agile-planning:integrationTest --tests "*SprintRepositoryTest"` (+ Task1 마이그레이션 테스트 이 시점 정식 실행).
 
-### Task 4. SprintApplicationService — CRUD + 상태전이 + 할당/해제 + 권한
+### Task 4. [x] SprintApplicationService — CRUD + 상태전이 + 할당/해제 + 권한
 
 **메타**.
 - agent: `backend-engineer` (권한 부분 security-engineer 검토)
@@ -136,7 +136,7 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 
 **검증**: `cd backend && ./gradlew :modules:agile-planning:test --tests "*SprintApplicationServiceTest"`
 
-### Task 5. SprintController + DTO + ExceptionHandler — 9 엔드포인트
+### Task 5. [x] SprintController + DTO + ExceptionHandler — 9 엔드포인트
 
 **메타**.
 - agent: `backend-engineer` (권한 매핑 security-engineer 검토)
@@ -151,7 +151,7 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 
 **검증**: `cd backend && ./gradlew :modules:agile-planning:test --tests "*SprintControllerTest"`
 
-### Task 6. HTTP 통합테스트 — S1~S8 / E1~E12
+### Task 6. [x] HTTP 통합테스트 — S1~S8 / E1~E12
 
 **메타**.
 - agent: `backend-engineer`
@@ -162,7 +162,7 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 
 **검증**: `cd backend && ./gradlew :modules:agile-planning:integrationTest --tests "*SprintIntegrationTest"`
 
-### Task 7. ArchUnit — agile→issue-tracking import 0 + @Transactional @Service
+### Task 7. [x] ArchUnit — agile→issue-tracking import 0 + @Transactional @Service
 
 **메타**.
 - agent: `backend-engineer`
@@ -173,7 +173,7 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 
 **검증**: `cd backend && ./gradlew :modules:agile-planning:test --tests "*AgilePlanningBcArchTest"`
 
-### Task 8. BoardIssueLookupPort.isVisibleIssue — 단건 가시성 포트 + issue-tracking adapter (cross-BC)
+### Task 8. [x] BoardIssueLookupPort.isVisibleIssue — 단건 가시성 포트 + issue-tracking adapter (cross-BC)
 
 > ★ Maxi 게이트1 확정(security-B2). shared-kernel 포트 default 메서드 + issue-tracking adapter 구현. **agile-planning과 별개 모듈(shared-kernel + issue-tracking)이라 병렬 가능**. issues 테이블/도메인 무변경(read view 확장, board view-layer 확장의 연장). Task 4(Service)의 선행.
 
@@ -235,3 +235,14 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 - **security-B1**: 할당/해제 권한 = **UPDATE** 확정(Maxi). CRUD/상태전이 CREATE 유지. → spec §4 / Task 4·5 반영.
 - **security-B2**: **단건 가시성 포트 `isVisibleIssue` 추가**(Maxi) → 신규 **Task 8**(shared-kernel 포트 + issue-tracking adapter). E3/E4 단일 404 수렴(probe 차단). task 7→8.
 - 기술 BLOCKER/CONCERN/NIT 전건 반영: eng-B1(ExceptionHandler 입력예외 포함)·eng-B2(delete-then-insert 확정)·eng-B3(COMPLETED 조건부 DML)·security-C1(권한 순서)·eng-C5(소프트삭제 명시 DELETE)·security-C2(message 일반화)·eng-C1(E13 명시)·eng-C6(version stale 명시)·eng-C3(ArchUnit vacuous 영구단언)·security-C4(resolver 우회 codereview)·NIT(§8 오타·S6 rank D6·E9 멱등204·통합 vacuous 표현). → **모든 BLOCKER 해소, impl 진행 가능.**
+
+## 구현 노트 (bts-impl 완료, 2026-06-24)
+
+8 task TDD 완료(RED test→GREEN feat 순서 전건 준수, 5 wave). 검증: agile-planning test(전체, SprintIntegrationTest 포함)+ktlint+detekt / shared-kernel test+ktlint+detekt / issue-tracking compile+ktlint+detekt+adapter test / **board 회귀 0(BoardControllerIntegrationTest 38/38)** — 전부 BUILD SUCCESSFUL.
+
+**구현 중 발견·수정(deviation).**
+- **T8 plan files 누락**: adapter `isVisibleIssue` 구현이 `IssueRepository.existsVisibleIssue`(read-only fetchExists)를 호출 — adapter→repository 위임이 issue-tracking 표준이라 정당. plan files에 IssueRepository.kt 누락(작성 실수). issues 테이블/도메인 무변경(read view).
+- **★ T6 통합테스트가 eng-B1 예측 적중 — 실제 버그 2개 적발**: ① `BoardExceptionHandler(basePackages=com.bts.agileplanning.web)`가 SprintController 예외를 먼저 가로채(assignableTypes advice보다 우선) InvalidSprintTransition→500·SprintNotFound→오errorCode·도메인 require→500 변질. → **`BoardExceptionHandler`를 `assignableTypes=[BoardController]`로 한정**(board 회귀 0). ② hibernate-validator 부재로 `@NotBlank` 무동작(메모리 fr-nt-04 동일) → 도메인 `require()` IllegalArgumentException을 **SprintExceptionHandler에서 400 매핑**(BTS 도메인 require 패턴, Bean Validation provider 추가는 컨텍스트 붕괴 위험이라 지양). 통합테스트의 가치 입증.
+- **detekt**: SprintRepository/SprintApplicationService `TooManyFunctions`+`LongParameterList`는 Sprint aggregate 응집이라 `@Suppress`+사유주석(BoardExceptionHandler 선례 동형). MaxLineLength 4건 라인 분할.
+
+**머지 전 동기화 필요(전수 동기화 §)**: product agile-planning.md §3.1·§3.2 D단계 마킹·`issues.sprint_id`→`sprint_issues` drift 정정 / fr-index·SDD §13 / README §1 / Obsidian. plan files에 issue-tracking IssueRepository.kt 사후 반영.
