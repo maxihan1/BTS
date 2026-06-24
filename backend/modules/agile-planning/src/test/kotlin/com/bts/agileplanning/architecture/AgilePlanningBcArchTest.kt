@@ -177,9 +177,9 @@ class AgilePlanningBcArchTest {
         // RED 단계 — 999는 일부러 불가능한 값. 실제 클래스 수는 이보다 훨씬 적다.
         // GREEN에서 1로 교체한다(vacuous 방어 목적에는 1이면 충분).
         val minimumCount = 999
-        val actualCount = importedClasses.size()
+        val actualCount: Int = importedClasses.size
         assertThat(actualCount)
-            .describedAs(
+            .`as`(
                 "agile-planning BC 프로덕션 클래스 수(%d개)가 %d 이상이어야 함 " +
                     "— 이 룰이 vacuous PASS가 아님을 보증하는 카운트 가드",
                 actualCount,
