@@ -246,3 +246,5 @@ product agile-planning.md §3.2 / SDD §13 / fr-index §3.2
 - **detekt**: SprintRepository/SprintApplicationService `TooManyFunctions`+`LongParameterList`는 Sprint aggregate 응집이라 `@Suppress`+사유주석(BoardExceptionHandler 선례 동형). MaxLineLength 4건 라인 분할.
 
 **머지 전 동기화 필요(전수 동기화 §)**: product agile-planning.md §3.1·§3.2 D단계 마킹·`issues.sprint_id`→`sprint_issues` drift 정정 / fr-index·SDD §13 / README §1 / Obsidian. plan files에 issue-tracking IssueRepository.kt 사후 반영.
+
+- **게이트2 후속**: update PATCH를 partial(JsonNullable 3-state, 미전송=미변경/null=clear)로 수정(Maxi 결정). codereview BLOCKER(동시할당 409)·OCC 409·dead code·ArchUnit 강화 hot-fix 완료. jackson-databind-nullable:0.2.6(issue-tracking 동일 버전).
