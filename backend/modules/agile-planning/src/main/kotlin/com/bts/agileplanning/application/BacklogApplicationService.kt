@@ -2,6 +2,7 @@
 
 package com.bts.agileplanning.application
 
+import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SprintStatus
 import com.bts.agileplanning.repository.SprintRepository
 import com.bts.agileplanning.web.dto.BacklogIssueResponse
@@ -196,7 +197,7 @@ class BacklogApplicationService(
      *
      * status 우선순위가 같으면 startDate 로 보조 정렬한다. startDate 가 null 이면 뒤로.
      */
-    private fun sprintComparator(): Comparator<com.bts.agileplanning.domain.Sprint> =
+    private fun sprintComparator(): Comparator<Sprint> =
         Comparator { a, b ->
             val statusCmp = (STATUS_ORDER[a.status] ?: Int.MAX_VALUE)
                 .compareTo(STATUS_ORDER[b.status] ?: Int.MAX_VALUE)

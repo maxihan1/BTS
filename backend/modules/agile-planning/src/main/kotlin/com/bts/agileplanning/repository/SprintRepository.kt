@@ -393,7 +393,6 @@ class SprintRepository(
                 keySelector = { row -> row.value1() ?: error("sprint_issues.sprint_id null") },
                 valueTransform = { row -> row.value2() ?: "" },
             )
-            .filterValues { keys -> keys.isNotEmpty() }
     }
 
     // ── 도메인 매핑 ───────────────────────────────────────────────────────────
