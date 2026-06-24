@@ -87,9 +87,12 @@ class MyProjectPermissionControllerTest {
                 personalAccessTokenService = personalAccessTokenService,
             )
 
-        // CREATE(이슈)·MANAGE_COMPONENTS·MANAGE_VERSIONS 는 본 테스트 관심사가 아니므로 false 로 고정.
+        // CREATE/UPDATE(이슈)·MANAGE_COMPONENTS·MANAGE_VERSIONS 는 본 테스트 관심사가 아니므로 false 로 고정.
         every {
             permissionResolver.hasPermission(actorId, IssuePermission.CREATE, IssueScope.Project(projectKey))
+        } returns false
+        every {
+            permissionResolver.hasPermission(actorId, IssuePermission.UPDATE, IssueScope.Project(projectKey))
         } returns false
         every {
             componentPermissionResolver.hasPermission(actorId, ComponentPermission.CREATE, projectId)

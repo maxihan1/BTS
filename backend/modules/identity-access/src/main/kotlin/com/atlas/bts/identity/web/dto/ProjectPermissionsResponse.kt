@@ -6,7 +6,8 @@ package com.atlas.bts.identity.web.dto
  * `GET /api/v1/users/me/project-permissions` 응답 DTO (FR-PM-02 CREATE 게이트).
  *
  * @param projectKey 권한 조회 대상 프로젝트 키. 예. "ATLAS".
- * @param permissions 권한 이름 → 보유 여부 맵. 예. `{"CREATE": true}`.
+ * @param permissions 권한 이름 → 보유 여부 맵. 예. `{"CREATE": true, "UPDATE": false}`.
+ *   `UPDATE` 는 백로그 재정렬/스프린트 할당·해제 버튼 게이팅용 (FR-BL D6/D7).
  *
  * @see docs/decisions/2026-06-02-issue-permission-query-api.md
  */
