@@ -46,11 +46,15 @@ const searchAqlHandler = http.post('/api/v1/search/aql', async ({ request }) => 
       : null
 
   if (scenario === 'syntax-error') {
-    // 요청 body에서 query를 읽어 position 계산 (단순 고정 position 7 사용)
-    const body = await request.json().catch(() => ({}) as Record<string, unknown>)
-    const query = typeof body === 'object' && body !== null && 'query' in body
-      ? String((body as Record<string, unknown>)['query'])
-      : ''
+    // 요청 body에서 query를 읽어 에러 메시지에 포함 (position은 고정 7)
+    const rawBody: unknown = await request.json().catch(() => ({}))
+    const query =
+      rawBody !== null &&
+      typeof rawBody === 'object' &&
+      'query' in rawBody &&
+      typeof (rawBody as Record<string, unknown>)['query'] === 'string'
+        ? ((rawBody as Record<string, string>)['query'])
+        : ''
     return HttpResponse.json(
       {
         errorCode: 'SEARCH_SYNTAX_ERROR',
