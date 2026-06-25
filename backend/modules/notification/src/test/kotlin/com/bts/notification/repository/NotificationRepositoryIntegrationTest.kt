@@ -168,7 +168,7 @@ class NotificationRepositoryIntegrationTest : NotificationTestcontainersBase() {
                 it.get("column_name", String::class.java) to it.get("is_nullable", String::class.java)
             }
 
-        // 모든 컬럼 존재 확인
+        // 모든 컬럼 존재 확인 (V407 으로 archived_at / actor_user_id 추가 — FR-UX-03 Inbox)
         assertThat(columns.keys).containsExactlyInAnyOrder(
             "id",
             "recipient_user_id",
@@ -182,6 +182,8 @@ class NotificationRepositoryIntegrationTest : NotificationTestcontainersBase() {
             "dedup_key",
             "read_at",
             "created_at",
+            "archived_at",
+            "actor_user_id",
         )
 
         // NOT NULL 컬럼
