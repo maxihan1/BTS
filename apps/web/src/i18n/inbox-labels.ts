@@ -89,6 +89,20 @@ export const inboxLabels = {
     /** 다음 페이지 버튼 */
     next: '다음',
   },
+
+  /** 필터 컴포넌트 aria-label */
+  filter: {
+    /** 발신자 선택 해제 버튼 aria-label */
+    senderClear: '발신자 선택 해제',
+    /** 발신자 자동완성 listbox aria-label */
+    senderAutocomplete: '발신자 자동완성',
+  },
+
+  /** InboxListItem 마커 aria-label */
+  marker: {
+    /** 안읽음 마커 aria-label */
+    unread: '안읽음',
+  },
 } as const
 
 /** inboxLabels const 추론 타입 */

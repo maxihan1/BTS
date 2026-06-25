@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import * as React from 'react'
 import type { InboxFilters } from '@/api/inbox'
 import type { UserSummary } from '@/api/users'
+import type { InboxFiltersProps } from './InboxFilters'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // fetchUsers / fetchUsersByIds mock
@@ -56,8 +57,7 @@ function renderInboxFilters(
 }
 
 /** controlled wrapper — InboxFilters가 export된 후에 import된다 */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let InboxFilters: React.ComponentType<any>
+let InboxFilters: React.ComponentType<InboxFiltersProps>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // InboxFiltersWrapper — controlled 상태 관리

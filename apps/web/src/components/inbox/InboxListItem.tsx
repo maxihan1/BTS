@@ -70,7 +70,7 @@ export const InboxListItem = ({
           <span
             data-testid="inbox-item-unread-marker"
             className="mt-1.5 size-2 shrink-0 rounded-full bg-primary"
-            aria-label="안읽음"
+            aria-label={inboxLabels.marker.unread}
           />
         )}
         <h3
