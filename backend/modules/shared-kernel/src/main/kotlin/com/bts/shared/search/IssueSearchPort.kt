@@ -34,7 +34,6 @@ package com.bts.shared.search
  * @see BoardIssueLookupPort
  */
 interface IssueSearchPort {
-
     /**
      * AQL 커맨드 객체를 받아 가시 이슈 검색 결과를 반환한다.
      *
@@ -46,6 +45,5 @@ interface IssueSearchPort {
      * @param query AQL 커맨드 객체. projectKey, AST, sort, viewerUserId, page, size 포함.
      * @return 검색 결과 페이지. 어댑터 미등록 시 빈 페이지([IssueSearchPage.empty]).
      */
-    fun search(query: IssueSearchQuery): IssueSearchPage =
-        IssueSearchPage.empty(query.page, query.size)
+    fun search(query: IssueSearchQuery): IssueSearchPage = IssueSearchPage.empty(query.page, query.size)
 }

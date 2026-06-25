@@ -40,7 +40,6 @@ package com.bts.shared.search
  * @see AqlValue
  */
 sealed interface AqlNode {
-
     /**
      * 두 하위 AST 노드를 AND 결합하는 이진 노드.
      *
@@ -138,7 +137,6 @@ enum class AqlOperator {
  * 부동소수점·날짜·함수 값은 후속 PR 영역이므로 MVP 에서 제외한다.
  */
 sealed interface AqlValue {
-
     /**
      * 문자열 리터럴 값.
      *

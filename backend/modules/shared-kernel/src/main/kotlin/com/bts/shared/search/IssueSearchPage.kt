@@ -36,8 +36,10 @@ data class IssueSearchPage(
          * @param size 요청 페이지 크기. 응답에 그대로 반영된다.
          * @return items 가 빈 목록이고 total 이 0 인 [IssueSearchPage].
          */
-        fun empty(page: Int, size: Int): IssueSearchPage =
-            IssueSearchPage(items = emptyList(), total = 0L, page = page, size = size)
+        fun empty(
+            page: Int,
+            size: Int,
+        ): IssueSearchPage = IssueSearchPage(items = emptyList(), total = 0L, page = page, size = size)
     }
 }
 
