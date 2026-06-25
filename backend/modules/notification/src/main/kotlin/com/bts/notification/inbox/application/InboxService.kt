@@ -35,7 +35,7 @@ import java.util.UUID
 @Service
 class InboxService(
     private val repository: NotificationRepository,
-    private val clock: Clock,
+    private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
