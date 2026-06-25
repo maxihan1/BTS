@@ -58,6 +58,39 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 - **muted / muted-foreground** — 부가 정보, placeholder, 힌트에 쓴다. 본문 가독성이 요구되는 곳에는 쓰지 않는다.
 - **임의 색상 추가 금지** — 위 토큰 외 색이 필요할 경우 이 문서에 신규 토큰을 먼저 등록한 뒤 사용한다.
 
+### Syntax Highlight 토큰 (FR-SR-02 AQL 입력창 — PR #190~)
+
+AQL 쿼리 입력창의 syntax highlight용 색상 5종. `--chart-1~5`는 chroma=0 회색조라 색 구분 불가하므로 별도 토큰으로 신규 등록한다. **기능적 색 구분**이 목적이므로 BTS 팔레트 예외적으로 유채색 도입이 정당화된다. 채도(C)는 0.13~0.17 범위로 채해 차분한 BTS 톤을 유지한다.
+
+`index.css` 등록 위치. `:root` 블록 및 `.dark` 블록 — `@theme inline`에 `--color-syntax-*`로 연결.
+
+#### 라이트 모드 Syntax 토큰
+
+| CSS 변수 | OKLCH 값 | 색상 | 역할 | Tailwind 유틸 |
+|---|---|---|---|---|
+| `--syntax-keyword` | `oklch(0.38 0.15 250)` | 파란색 | AND / OR / NOT / IN / ORDER BY / ASC / DESC | `text-syntax-keyword` |
+| `--syntax-field` | `oklch(0.36 0.14 290)` | 보라색 | status / label / summary / priority | `text-syntax-field` |
+| `--syntax-operator` | `oklch(0.44 0.13 55)` | 황갈색 | = / != / ~ | `text-syntax-operator` |
+| `--syntax-string` | `oklch(0.40 0.14 145)` | 녹색 | `"따옴표 문자열"` | `text-syntax-string` |
+| `--syntax-number` | `oklch(0.44 0.17 25)` | 적갈색 | 정수 리터럴 | `text-syntax-number` |
+
+#### 다크 모드 Syntax 토큰
+
+| CSS 변수 | OKLCH 값 | 색상 |
+|---|---|---|
+| `--syntax-keyword` (`.dark`) | `oklch(0.72 0.15 250)` | 하늘색 |
+| `--syntax-field` (`.dark`) | `oklch(0.75 0.13 290)` | 연보라 |
+| `--syntax-operator` (`.dark`) | `oklch(0.76 0.13 65)` | 연황색 |
+| `--syntax-string` (`.dark`) | `oklch(0.73 0.14 145)` | 연녹색 |
+| `--syntax-number` (`.dark`) | `oklch(0.75 0.16 25)` | 연적색 |
+
+#### Syntax 토큰 사용 가이드
+
+- AQL `AqlHighlighter` 컴포넌트에서만 사용한다. 일반 본문 텍스트에 사용 금지.
+- 토큰 타입 → Tailwind 클래스 매핑. `KEYWORD` → `text-syntax-keyword`, `FIELD` → `text-syntax-field`, `OPERATOR` → `text-syntax-operator`, `STRING` → `text-syntax-string`, `NUMBER` → `text-syntax-number`.
+- `PAREN` / `COMMA` / `PLAIN` 토큰은 `text-foreground` (기본 텍스트 색) 그대로.
+- 위치 오류(SEARCH_SYNTAX_ERROR) underline은 `text-destructive` 토큰 재사용.
+
 ### 다크 모드 토큰 (참고용 — 본 PR 미활성)
 
 `.dark` 클래스 변수는 `index.css`에 정의되어 있으나 토글 UI가 없어 현재 적용되지 않는다. 후속 PR에서 활성화 예정이며 값은 변경하지 않는다.
@@ -73,8 +106,38 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 | 기본 (영문/숫자) | `Geist Variable` (`@fontsource-variable/geist`) | `index.css` `@import` + `--font-sans: 'Geist Variable', sans-serif` |
 | 한국어 fallback | `Apple SD Gothic Neo` (macOS/iOS), `Malgun Gothic` (Windows), `Pretendard` (웹 권장 — 별도 설치 시), `system-ui` | `sans-serif` 제네릭이 OS 시스템 폰트로 연결됨 |
 | 제목 (heading) | `--font-heading` → `--font-sans`와 동일 | 현재 분리 없음. 추후 별도 폰트 도입 시 이 변수 재정의 |
+| 고정폭 (mono) | `--font-mono` 토큰 (아래 상세) | `index.css` `@theme inline` + `font-mono` Tailwind 유틸 |
 
 > 한국어 fallback 선택 이유. Geist는 라틴 문자 전용이라 한국어 글리프가 없다. OS 기본 시스템 폰트(macOS: Apple SD Gothic Neo, Windows: Malgun Gothic)가 가장 빠르게 로드된다. Pretendard는 가독성이 뛰어나지만 별도 웹폰트 설치가 필요하므로 후속 PR에서 추가 여부를 결정한다.
+
+### `--font-mono` 토큰 (FR-SR-02 AQL overlay 정렬 — PR #190~)
+
+AQL syntax highlight에서 `textarea`와 overlay `<pre>`의 **폰트가 다르면 글자 폭이 어긋나 하이라이트가 밀린다.** 두 요소가 동일한 `--font-mono`를 참조해 정렬 문제를 원천 차단한다.
+
+```
+--font-mono: 'D2Coding', 'Sarasa Mono K', 'Noto Sans Mono CJK KR',
+             ui-monospace, 'Cascadia Code', 'Fira Code', 'Consolas',
+             'Courier New', monospace;
+```
+
+**폰트 스택 선택 근거.**
+
+| 순위 | 폰트 | 이유 |
+|---|---|---|
+| 1 | `D2Coding` | 한국 개발자 표준 한글 mono 폰트. ASCII + 완성형 한글 글리프 포함. 설치 시 최우선. |
+| 2 | `Sarasa Mono K` | CJK(한/중/일) 지원 고품질 mono. 미설치 시 fallback. |
+| 3 | `Noto Sans Mono CJK KR` | Google Fonts 계열 — CDN 가능. |
+| 4 | `ui-monospace` | macOS San Francisco Mono (Retina 최적화). |
+| 5 | `Cascadia Code` / `Fira Code` | Windows Terminal 기본 / 개발자 친화. |
+| 6 | `Consolas` / `Courier New` | 최후 fallback (모든 OS 포함). |
+| 7 | `monospace` | 브라우저 제네릭 최종 fallback. |
+
+> 한글 전용 mono 주의. Geist Mono는 라틴 전용이라 한글 글리프 없음. Geist Variable도 마찬가지. `--font-mono`를 별도 토큰으로 분리해 `--font-sans` 스택과 독립 관리한다.
+
+**사용 위치.**
+
+- AQL `AqlHighlighter` — `textarea`와 overlay `<pre>` 모두 `font-mono` 클래스 적용 필수.
+- 기타 코드 블록 컴포넌트(향후) — `--font-mono` 동일 토큰 재사용.
 
 ### 타입 스케일
 
@@ -205,6 +268,36 @@ Tailwind v4 기본값. `1` unit = `0.25rem` = `4px`.
 | `destructive` on `background` | ~4.5:1 | AA ✅ (최소) | 에러 메시지 |
 
 > 실제 대비비는 브라우저 DevTools 또는 [WebAIM Contrast Checker](https://webaim.org/resources/contrastchecker/)로 검증한다. OKLCH 값은 색공간 특성상 sRGB 환산 후 계산해야 정확하다.
+
+### Syntax Highlight 토큰 대비 검증 (FR-SR-02 — WCAG AA 4.5:1 기준)
+
+배경 기준. 라이트 = `--background` `oklch(1 0 0)` (Y_rel = 1.000), 다크 = `--background` `oklch(0.145 0 0)` (Y_rel ≈ 0.018).
+
+**계산 방법.** WCAG 상대 밝기 공식 `(L1 + 0.05) / (L2 + 0.05)`. OKLCH L → CIE Y_rel 변환 식. `Y = ((L×100 + 16) / 116)^3`. 채도(C)가 있는 색은 색조에 따라 Y가 ±10~15% 달라지므로 보수적 안전마진을 포함해 계산한다.
+
+#### 라이트 모드 (`oklch(1 0 0)` 배경, Y=1.000)
+
+| 토큰 | OKLCH | Y_rel(근사) | 대비비 | 판정 |
+|---|---|---|---|---|
+| `--syntax-keyword` | `oklch(0.38 0.15 250)` | 0.095 | `1.05 / 0.145 ≈ 7.2:1` | AA ✅ |
+| `--syntax-field` | `oklch(0.36 0.14 290)` | 0.082 | `1.05 / 0.132 ≈ 8.0:1` | AA ✅ |
+| `--syntax-operator` | `oklch(0.44 0.13 55)` | 0.138 | `1.05 / 0.188 ≈ 5.6:1` | AA ✅ |
+| `--syntax-string` | `oklch(0.40 0.14 145)` | 0.113 | `1.05 / 0.163 ≈ 6.4:1` | AA ✅ |
+| `--syntax-number` | `oklch(0.44 0.17 25)` | 0.135 | `1.05 / 0.185 ≈ 5.7:1` | AA ✅ |
+
+> `--syntax-operator` (황갈 55°)는 주황/노랑 계열이라 동일 L에서 Y가 높아지는 경향(노랑 계열 CIE Y 과대). L=0.44로 보수적으로 낮춰 AA 마진 확보. L=0.46 이상은 경계선에 근접하므로 이 값을 고정한다.
+
+#### 다크 모드 (`oklch(0.145 0 0)` 배경, Y≈0.018)
+
+| 토큰 | OKLCH | Y_rel(근사) | 대비비 | 판정 |
+|---|---|---|---|---|
+| `--syntax-keyword` | `oklch(0.72 0.15 250)` | 0.437 | `0.487 / 0.068 ≈ 7.1:1` | AA ✅ |
+| `--syntax-field` | `oklch(0.75 0.13 290)` | 0.483 | `0.533 / 0.068 ≈ 7.8:1` | AA ✅ |
+| `--syntax-operator` | `oklch(0.76 0.13 65)` | 0.499 | `0.549 / 0.068 ≈ 8.1:1` | AA ✅ |
+| `--syntax-string` | `oklch(0.73 0.14 145)` | 0.450 | `0.500 / 0.068 ≈ 7.4:1` | AA ✅ |
+| `--syntax-number` | `oklch(0.75 0.16 25)` | 0.483 | `0.533 / 0.068 ≈ 7.8:1` | AA ✅ |
+
+> 최소 대비비. 라이트 5.6:1 (`--syntax-operator`), 다크 7.1:1 (`--syntax-keyword`). 전 토큰 WCAG AA 4.5:1 충족 확인.
 
 ### 키보드 탐색
 

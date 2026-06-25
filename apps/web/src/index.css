@@ -16,6 +16,22 @@
 
   --font-sans: 'Geist Variable', sans-serif;
 
+  /* AQL syntax highlight 전용 mono 폰트 — overlay↔textarea 정렬 정본 */
+  --font-mono: 'D2Coding', 'Sarasa Mono K', 'Noto Sans Mono CJK KR',
+               ui-monospace, 'Cascadia Code', 'Fira Code', 'Consolas',
+               'Courier New', monospace;
+
+  /* AQL syntax highlight 색상 토큰 (FR-SR-02) */
+  --color-syntax-keyword: var(--syntax-keyword);
+
+  --color-syntax-field: var(--syntax-field);
+
+  --color-syntax-operator: var(--syntax-operator);
+
+  --color-syntax-string: var(--syntax-string);
+
+  --color-syntax-number: var(--syntax-number);
+
   --color-sidebar-ring: var(--sidebar-ring);
 
   --color-sidebar-border: var(--sidebar-border);
@@ -141,6 +157,17 @@
 
   --chart-5: oklch(0.269 0 0);
 
+  /* AQL syntax highlight 토큰 — WCAG AA 대비 4.5:1 이상 (vs oklch(1 0 0) 배경) */
+  --syntax-keyword: oklch(0.38 0.15 250);
+
+  --syntax-field: oklch(0.36 0.14 290);
+
+  --syntax-operator: oklch(0.44 0.13 55);
+
+  --syntax-string: oklch(0.40 0.14 145);
+
+  --syntax-number: oklch(0.44 0.17 25);
+
   --radius: 0.625rem;
 
   --sidebar: oklch(0.985 0 0);
@@ -207,6 +234,17 @@
   --chart-4: oklch(0.371 0 0);
 
   --chart-5: oklch(0.269 0 0);
+
+  /* AQL syntax highlight 토큰 — WCAG AA 대비 4.5:1 이상 (vs oklch(0.145 0 0) 배경) */
+  --syntax-keyword: oklch(0.72 0.15 250);
+
+  --syntax-field: oklch(0.75 0.13 290);
+
+  --syntax-operator: oklch(0.76 0.13 65);
+
+  --syntax-string: oklch(0.73 0.14 145);
+
+  --syntax-number: oklch(0.75 0.16 25);
 
   --sidebar: oklch(0.205 0 0);
 
