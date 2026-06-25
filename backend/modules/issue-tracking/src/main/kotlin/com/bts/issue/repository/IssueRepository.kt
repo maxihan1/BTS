@@ -2098,6 +2098,33 @@ class IssueRepository(
             .replace("\\", "\\\\")
             .replace("%", "\\%")
             .replace("_", "\\_")
+
+    /**
+     * AQL AST 를 jOOQ Condition 으로 재귀 변환하고 visibility 보안 술어를 최상위 AND 로 결합해
+     * 이슈를 검색한다 (FR-SR-02 Task 5).
+     *
+     * 최종 WHERE = `buildActiveSecureWhere(projectKey, actor, access) AND (AST Condition)`.
+     * 사용자 AST 는 보안 술어 **밖에서 감쌀 수 없다** — OR/NOT 은 사용자 AST 내부에만 작용.
+     *
+     * @param projectKey 검색 대상 프로젝트 키.
+     * @param ast AQL 파서가 생성한 AST 루트 노드.
+     * @param sort ORDER BY 절 정렬 기준 목록. 빈 목록이면 기본 정렬(created_at DESC).
+     * @param actor 검색 요청 행위자 UUID. 보안 술어 조건 평가에 사용.
+     * @param access actor 의 접근 가능 보안 등급 집합.
+     * @param page 요청 페이지 번호(0-base).
+     * @param size 요청 페이지 크기.
+     * @return [IssueSearchPage] — 검색 결과 이슈 목록 + 총 건수 + 페이지 정보.
+     */
+    @Transactional(readOnly = true)
+    fun searchByAql(
+        projectKey: String,
+        ast: com.bts.shared.search.AqlNode,
+        sort: List<com.bts.shared.search.AqlSort>,
+        actor: UUID,
+        access: IssueSecurityAccess,
+        page: Int,
+        size: Int,
+    ): com.bts.shared.search.IssueSearchPage = TODO("FR-SR-02 Task 5 GREEN 에서 구현")
 }
 
 // ── file-level 확장 함수 ────────────────────────────────────────────────────────
