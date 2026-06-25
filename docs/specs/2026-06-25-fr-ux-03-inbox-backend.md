@@ -77,7 +77,7 @@ FR-UX-03은 별도 `inbox_items` 테이블을 만들지 않고(ADR D1) `notifica
 - **FR4**. 읽음 토글(read true/false) — 단건. 멱등(true 재호출 시 시각 보존)
 - **FR5**. 보관 토글(archived true/false) — 단건. 멱등
 - **FR6**. 일괄 읽음 — ids 지정(선택) 또는 null/빈(현재 미읽음 전체). 변경 건수 반환
-- **FR7**. 검색 — 텍스트(title ILIKE, 부분일치) + 발신자(actor_user_id 일치) + 기간(created_at BETWEEN). 모두 optional, AND 결합, 탭과 공존
+- **FR7**. 검색 — 텍스트(title ILIKE, 부분일치) + 발신자(actor_user_id 일치) + 기간(created_at BETWEEN). 모두 optional, AND 결합, 탭과 공존. **q의 LIKE 와일드카드(`%`/`_`)는 이스케이프하지 않는다**(UserRepository 사용자검색 선례 동일, 1K·title 단일컬럼이라 영향 미미. injection은 jOOQ 바인드 파라미터로 차단됨 — 와일드카드는 검색 정확도 이슈일 뿐. 엄격 리터럴 검색 필요 시 후속 FR에서 `DSL.escape` 도입). C2 명시 결정 2026-06-25.
 - **FR8**. 그룹화 — issueKey 쿼리 파라미터로 특정 이슈 필터. 서버는 평면 목록 + issueKey 노출(묶음 렌더는 프론트)
 - **FR9**. 상태 변경은 부분 UPDATE(no-bump) — read_at/archived_at만 갱신, 다른 컬럼 불변
 - **FR10**. NotificationWorker가 발신자(event.actorId)를 actor_user_id에 저장(신규 알림부터). 기존 행 NULL graceful
