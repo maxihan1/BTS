@@ -2517,23 +2517,40 @@ private fun AqlValue.asString(): String =
         is AqlValue.Num -> value.toString()
     }
 
+/** Short 변환 허용 범위 상수 — PostgreSQL SMALLINT 와 동일. */
+private const val SHORT_RANGE_MIN: Int = Short.MIN_VALUE.toInt()
+private const val SHORT_RANGE_MAX: Int = Short.MAX_VALUE.toInt()
+
 /**
  * [AqlValue] 를 SMALLINT 에 맞는 [Short] 로 추출한다.
  *
  * priority 필드(SMALLINT 1..5)에 사용한다.
  * [AqlValue.Str] 는 정수로 파싱한다 — 파서가 숫자 토큰을 Str 로 전달하는 경우 대비.
  *
- * @throws IllegalArgumentException 값을 정수로 파싱할 수 없는 경우.
+ * ### 범위 가드 (defense-in-depth)
+ *
+ * 파서([com.bts.search.aql.AqlParser])가 Short 범위 밖 값을 1차 차단하므로
+ * 정상 경로에서는 이 함수에 위반 값이 도달하지 않는다.
+ * 직접 AST 조립·미래 파서 변경 등을 대비해 silent wrap 대신 [IllegalArgumentException]을 던진다.
+ *
+ * @throws IllegalArgumentException 값을 정수로 파싱할 수 없거나 Short 범위($SHORT_RANGE_MIN..$SHORT_RANGE_MAX) 밖인 경우.
  */
-private fun AqlValue.asShort(): Short =
-    when (this) {
-        is AqlValue.Num -> value.toShort()
-        is AqlValue.Str ->
-            value.toIntOrNull()?.toShort()
-                ?: throw IllegalArgumentException(
-                    "priority 값은 정수여야 합니다: $value",
-                )
+internal fun AqlValue.asShort(): Short {
+    val intVal: Int =
+        when (this) {
+            is AqlValue.Num -> value
+            is AqlValue.Str ->
+                value.toIntOrNull()
+                    ?: throw IllegalArgumentException(
+                        "priority 값은 정수여야 합니다: $value",
+                    )
+        }
+    require(intVal in SHORT_RANGE_MIN..SHORT_RANGE_MAX) {
+        "priority 값 $intVal 이 Short 허용 범위(${SHORT_RANGE_MIN}..${SHORT_RANGE_MAX})를 벗어났습니다." +
+            " 파서가 이미 차단하나 2차 방어로 거부합니다."
     }
+    return intVal.toShort()
+}
 
 // ── JSONB ↔ Map 변환 헬퍼 ────────────────────────────────────────────────────
 
