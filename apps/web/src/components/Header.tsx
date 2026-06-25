@@ -1,5 +1,6 @@
 // 전역 헤더 컴포넌트 — 관리 nav(isSystemAdmin 게이팅) + 사용자명 표시 + 로그아웃 드롭다운 메뉴
 import { useNavigate, Link } from '@tanstack/react-router'
+import { Search } from 'lucide-react'
 import { useAuthUser } from '@/auth/authStore'
 import { useLogoutMutation } from '@/auth/useLogoutMutation'
 import {
@@ -69,6 +70,14 @@ export const Header = () => {
       )}
       <div className="flex-1" />
       <FavoritesMenu />
+      <button
+        type="button"
+        className="rounded-md p-1.5 hover:bg-accent"
+        aria-label="검색"
+        onClick={() => { void navigate({ to: '/search' }) }}
+      >
+        <Search className="size-4" />
+      </button>
       <InboxBell />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

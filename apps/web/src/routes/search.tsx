@@ -424,17 +424,6 @@ export function SearchPage({
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * navigate({ to: '/search', ... }) 호출 타입.
- *
- * '/search'는 Task 6(router.ts) 등록 전까지 TanStack Router 타입 시스템에 미등록 상태다.
- * unknown cast로 우회하며, Task 6 머지 후 제거하고 직접 navigate 호출로 교체한다.
- */
-type SearchNavigate = (opts: {
-  to: string
-  search: (prev: Record<string, unknown>) => Record<string, unknown>
-}) => void
-
-/**
  * router.ts에 등록되는 라우트 어댑터 컴포넌트.
  *
  * useSearch로 URL의 `q` / `projectKey` / `page`를 추출해 SearchPage에 전달한다.
@@ -443,8 +432,6 @@ type SearchNavigate = (opts: {
  * - `page`       → SearchPage.page (0-indexed, 기본값 0)
  * - `projectKey` → SearchPage.projectKey (기본값 'ATLAS')
  * - 쿼리/페이지 변경 시 `navigate((prev) => ...)` 머지 패턴으로 URL 갱신
- *
- * 라우터 등록은 Task 6(router.ts) 담당.
  */
 export function SearchRouteAdapter(): JSX.Element {
   const search = useSearch({ strict: false }) as {
@@ -461,10 +448,8 @@ export function SearchRouteAdapter(): JSX.Element {
       ? search.projectKey
       : DEFAULT_PROJECT_KEY
 
-  const nav = navigate as unknown as SearchNavigate
-
   function handlePageChange(nextPage: number): void {
-    nav({ to: '/search', search: (prev) => ({ ...prev, page: nextPage }) })
+    void navigate({ to: '/search', search: (prev) => ({ ...prev, page: nextPage }) })
   }
 
   function handleNavigate(key: string): void {
@@ -473,12 +458,12 @@ export function SearchRouteAdapter(): JSX.Element {
 
   /** 입력 도중 타이핑 변경 — page=0 리셋 포함 */
   function handleQueryChange(nextQ: string): void {
-    nav({ to: '/search', search: (prev) => ({ ...prev, q: nextQ, page: 0 }) })
+    void navigate({ to: '/search', search: (prev) => ({ ...prev, q: nextQ, page: 0 }) })
   }
 
   /** 검색 실행(버튼/Cmd+Enter) — page=0 리셋 포함 */
   function handleSearch(submittedQ: string): void {
-    nav({ to: '/search', search: (prev) => ({ ...prev, q: submittedQ, page: 0 }) })
+    void navigate({ to: '/search', search: (prev) => ({ ...prev, q: submittedQ, page: 0 }) })
   }
 
   return (
