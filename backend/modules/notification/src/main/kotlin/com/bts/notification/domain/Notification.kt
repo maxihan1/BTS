@@ -58,8 +58,7 @@ data class Notification(
      * @param at 읽은 시각
      * @return readAt 이 설정된 새 Notification (이미 읽었으면 this)
      */
-    fun markRead(at: Instant): Notification =
-        if (readAt != null) this else copy(readAt = at)
+    fun markRead(at: Instant): Notification = if (readAt != null) this else copy(readAt = at)
 
     /**
      * 알림을 미읽음 처리한다.
@@ -79,8 +78,7 @@ data class Notification(
      * @param at 보관 시각
      * @return archivedAt 이 설정된 새 Notification (이미 보관됐으면 this)
      */
-    fun archive(at: Instant): Notification =
-        if (archivedAt != null) this else copy(archivedAt = at)
+    fun archive(at: Instant): Notification = if (archivedAt != null) this else copy(archivedAt = at)
 
     /**
      * 알림을 보관함에서 꺼낸다.
@@ -90,7 +88,6 @@ data class Notification(
      * @return archivedAt 이 null 로 초기화된 새 Notification
      */
     fun unarchive(): Notification = copy(archivedAt = null)
-
 
     companion object {
         private const val DEDUP_ALGORITHM = "SHA-256"

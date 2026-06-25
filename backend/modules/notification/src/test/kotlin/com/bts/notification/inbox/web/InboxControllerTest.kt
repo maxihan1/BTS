@@ -16,7 +16,6 @@ import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
-import io.mockk.verify
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -75,7 +74,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [InboxControllerTest.TestMvcConfig::class])
 @WebAppConfiguration
 class InboxControllerTest {
-
     /**
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *

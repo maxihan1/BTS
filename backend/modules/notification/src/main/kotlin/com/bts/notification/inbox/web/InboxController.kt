@@ -92,14 +92,15 @@ class InboxController(
         @PageableDefault(size = 20) pageable: Pageable,
     ): Page<InboxItemResponse> {
         val actorId = currentActorId()
-        val query = InboxQuery(
-            tab = tab ?: InboxTab.ALL,
-            q = q,
-            senderId = senderId,
-            issueKey = issueKey,
-            from = from,
-            to = to,
-        )
+        val query =
+            InboxQuery(
+                tab = tab ?: InboxTab.ALL,
+                q = q,
+                senderId = senderId,
+                issueKey = issueKey,
+                from = from,
+                to = to,
+            )
         val cappedPageable = capPageSize(pageable)
         log.debug("InboxController.listInbox actorId={} query={} pageable={}", actorId, query, cappedPageable)
         return service.listInbox(actorId, query, cappedPageable)
