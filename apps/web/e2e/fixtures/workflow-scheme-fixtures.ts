@@ -17,25 +17,7 @@ export const i18nLabels = {
   workflowScheme: workflowSchemeLabels,
 } as const
 
-/**
- * Alice (dev seed LOCAL provider) 로 로그인하고 /dashboard 진입까지 완료한다.
- *
- * MSW dev mock 환경 가정 (backend dev 서버 불필요).
- * issue-fixtures.ts 의 loginAsAlice 와 동등 패턴 — 프로젝트 내 일관성 유지.
- *
- * @param page Playwright Page 객체
- */
-export async function loginAsAlice(page: Page): Promise<void> {
-  await page.goto('/login')
-  await expect(
-    page.getByRole('heading', { name: loginPageStrings.heading }),
-  ).toBeVisible()
-  await page.getByLabel(loginStrings.usernameLabel).fill('alice')
-  await page.getByLabel(loginStrings.passwordLabel).fill('password')
-  // exact:true — "Okta SSO 로 로그인", "Google 로 로그인" 버튼과 구분 (playwright-getbyrole-exact-strict-mode)
-  await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
-  await page.waitForURL('**/dashboard')
-}
+export { loginAsAlice } from './auth-fixtures'
 
 /**
  * /admin/workflow-schemes 진입하고 사이드바 nav 가시 검증까지 완료한다.
