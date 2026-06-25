@@ -18,8 +18,8 @@ import java.util.UUID
  * Inbox 기능의 비즈니스 로직을 담당하는 애플리케이션 서비스.
  *
  * 트랜잭션 정책 (DATA.md §6).
- * - 읽기 메서드([listInbox], [unreadCount], [readAll]): @Transactional(readOnly = true / 기본값 REQUIRED)
- * - 쓰기 메서드([markRead], [markArchive]): @Transactional (기본값 REQUIRED)
+ * - 읽기 메서드([listInbox], [unreadCount]): @Transactional(readOnly = true)
+ * - 쓰기 메서드([markRead], [markArchive], [readAll]): @Transactional (기본값 REQUIRED)
  *
  * 소유권 검증 정책.
  * - 단건 상태 변경([markRead], [markArchive])은 repository 에서 본인(recipientUserId) + IN_APP 조건으로
