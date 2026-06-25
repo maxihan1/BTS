@@ -367,18 +367,20 @@ export function SearchPage({
 
       {/* 결과 영역 */}
       <div>
-        {/* 로딩 중 */}
+        {/* 로딩 인디케이터 — 입력창/버튼은 항상 활성 상태 유지 */}
         {isFetching && (
           <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
             <span>검색 중...</span>
           </div>
         )}
 
-        {/* 결과 렌더 (로딩 중에도 이전 결과 유지 — keepPreviousData) */}
-        {!isFetching && data !== undefined && (
-          <>
+        {/* 결과 렌더 — data가 있으면 isFetching 여부와 무관하게 표시.
+            keepPreviousData 덕분에 새 쿼리 로딩 중에도 이전 결과가 유지된다.
+            isFetching=true 시 opacity-60으로 전환 중임을 시각화한다. */}
+        {data !== undefined && (
+          <div className={isFetching ? 'opacity-60' : undefined}>
             {data.empty ? (
-              /* 0건 빈 상태 — role=alert 아님(에러 아님), 회색 안내 */
+              /* 0건 빈 상태 — role=alert 없음(에러 아님), 결과 영역 회색 안내 */
               <div className="py-12 text-center text-muted-foreground">
                 <p className="text-base">검색 결과가 없습니다.</p>
                 <p className="mt-1 text-sm">다른 쿼리를 시도해 보세요.</p>
@@ -410,24 +412,7 @@ export function SearchPage({
                 )}
               </>
             )}
-          </>
-        )}
-
-        {/* 로딩 중에도 이전 결과 표시 (keepPreviousData — isFetching=true이지만 data 있음) */}
-        {isFetching && data !== undefined && !data.empty && (
-          <ul className="space-y-2 opacity-60" aria-label="검색 결과 (이전)">
-            {data.content.map((hit) => (
-              <li key={hit.key}>
-                <SearchResultCard
-                  issueKey={hit.key}
-                  summary={hit.summary}
-                  currentStateKey={hit.currentStateKey}
-                  priorityName={hit.priorityName}
-                  onNavigate={onNavigate}
-                />
-              </li>
-            ))}
-          </ul>
+          </div>
         )}
       </div>
     </div>
@@ -439,13 +424,25 @@ export function SearchPage({
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * navigate({ to: '/search', ... }) 호출 타입.
+ *
+ * '/search'는 Task 6(router.ts) 등록 전까지 TanStack Router 타입 시스템에 미등록 상태다.
+ * unknown cast로 우회하며, Task 6 머지 후 제거하고 직접 navigate 호출로 교체한다.
+ */
+type SearchNavigate = (opts: {
+  to: string
+  search: (prev: Record<string, unknown>) => Record<string, unknown>
+}) => void
+
+/**
  * router.ts에 등록되는 라우트 어댑터 컴포넌트.
  *
- * useSearch로 URL의 q / projectKey / page를 추출해 SearchPage에 전달한다.
- * - q → SearchPage.q (AQL 쿼리)
- * - page → SearchPage.page (0-indexed)
- * - projectKey → SearchPage.projectKey (기본값: ATLAS)
- * - 쿼리/페이지 변경 시 navigate((prev) => ...) 머지 패턴으로 URL 갱신
+ * useSearch로 URL의 `q` / `projectKey` / `page`를 추출해 SearchPage에 전달한다.
+ *
+ * - `q`          → SearchPage.q (AQL 쿼리)
+ * - `page`       → SearchPage.page (0-indexed, 기본값 0)
+ * - `projectKey` → SearchPage.projectKey (기본값 'ATLAS')
+ * - 쿼리/페이지 변경 시 `navigate((prev) => ...)` 머지 패턴으로 URL 갱신
  *
  * 라우터 등록은 Task 6(router.ts) 담당.
  */
@@ -464,11 +461,7 @@ export function SearchRouteAdapter(): JSX.Element {
       ? search.projectKey
       : DEFAULT_PROJECT_KEY
 
-  // NOTE: '/search'는 Task 6(router.ts)에서 등록된다.
-  // 등록 전까지 타입 시스템이 라우트를 모르므로 unknown cast로 우회한다.
-  // Task 6 머지 후 cast 제거, 직접 navigate({ to: '/search', ... }) 사용 가능.
-  type UntypedNavigate = (opts: { to: string; search: (prev: Record<string, unknown>) => Record<string, unknown> }) => void
-  const nav = navigate as unknown as UntypedNavigate
+  const nav = navigate as unknown as SearchNavigate
 
   function handlePageChange(nextPage: number): void {
     nav({ to: '/search', search: (prev) => ({ ...prev, page: nextPage }) })
@@ -478,10 +471,12 @@ export function SearchRouteAdapter(): JSX.Element {
     void navigate({ to: `/issues/${key}` })
   }
 
+  /** 입력 도중 타이핑 변경 — page=0 리셋 포함 */
   function handleQueryChange(nextQ: string): void {
     nav({ to: '/search', search: (prev) => ({ ...prev, q: nextQ, page: 0 }) })
   }
 
+  /** 검색 실행(버튼/Cmd+Enter) — page=0 리셋 포함 */
   function handleSearch(submittedQ: string): void {
     nav({ to: '/search', search: (prev) => ({ ...prev, q: submittedQ, page: 0 }) })
   }
