@@ -140,6 +140,34 @@ function applySearchFilters(
   return result
 }
 
+/** Spring Page 응답 형식 — 백엔드 PageImpl 직렬화와 동일 */
+interface SpringPage {
+  content: InboxItem[]
+  totalElements: number
+  totalPages: number
+  /** 현재 페이지 번호 (0-based) */
+  number: number
+  size: number
+}
+
+/**
+ * URL 쿼리스트링에서 page/size 파라미터를 파싱하고 경계값을 보정한다.
+ *
+ * - page: 0-based, 음수 방지
+ * - size: 기본 DEFAULT_PAGE_SIZE, 최소 1, 최대 100 (백엔드 max 100 계약)
+ *
+ * @param url 파싱할 URL 객체
+ * @returns page, size 튜플
+ */
+function parsePaginationParams(url: URL): { page: number; size: number } {
+  const page = Math.max(0, parseInt(url.searchParams.get('page') ?? '0', 10) || 0)
+  const size = Math.min(
+    100,
+    Math.max(1, parseInt(url.searchParams.get('size') ?? String(DEFAULT_PAGE_SIZE), 10) || DEFAULT_PAGE_SIZE),
+  )
+  return { page, size }
+}
+
 /**
  * 항목 배열을 createdAt DESC 정렬하여 Spring Page 응답 형식으로 변환한다.
  *
@@ -148,17 +176,7 @@ function applySearchFilters(
  * @param size 페이지 크기
  * @returns Spring Page 형식 응답
  */
-function toSpringPage(
-  items: InboxItem[],
-  page: number,
-  size: number,
-): {
-  content: InboxItem[]
-  totalElements: number
-  totalPages: number
-  number: number
-  size: number
-} {
+function toSpringPage(items: InboxItem[], page: number, size: number): SpringPage {
   // createdAt DESC 정렬
   const sorted = [...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 
@@ -208,11 +226,7 @@ const getInboxHandler = http.get('/api/v1/users/me/inbox', ({ request }) => {
   const issueKey = url.searchParams.get('issueKey')
   const from = url.searchParams.get('from')
   const to = url.searchParams.get('to')
-  const page = Math.max(0, parseInt(url.searchParams.get('page') ?? '0', 10) || 0)
-  const size = Math.min(
-    100,
-    Math.max(1, parseInt(url.searchParams.get('size') ?? String(DEFAULT_PAGE_SIZE), 10) || DEFAULT_PAGE_SIZE),
-  )
+  const { page, size } = parsePaginationParams(url)
 
   const userItems = inboxStore.get(userId) ?? []
   const tabFiltered = applyTabFilter(userItems, tab)
