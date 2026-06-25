@@ -35,6 +35,7 @@ class NotificationRepositoryIntegrationTest : NotificationTestcontainersBase() {
         dsl.execute("DELETE FROM notifications")
     }
 
+    @Suppress("LongParameterList")
     private fun buildNotification(
         recipientUserId: UUID = UUID.randomUUID(),
         dedupKey: String = "dedup-${UUID.randomUUID()}",

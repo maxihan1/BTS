@@ -11,7 +11,6 @@ import com.bts.notification.jooq.tables.references.NOTIFICATIONS
 import org.jooq.Condition
 import org.jooq.DSLContext
 import org.jooq.JSONB
-import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageImpl
@@ -30,8 +29,12 @@ import java.util.UUID
  * ArchUnit 룰4: jOOQ 접근은 repository 레이어에만 허용.
  * ArchUnit 룰5: @Transactional 보유 클래스는 @Repository/@Service/@Component 필수.
  *
+ * TooManyFunctions: FR-UX-03 Inbox API 6개 추가로 임계값 초과.
+ * Inbox 메서드는 동일 Notification aggregate 를 공유하므로 같은 클래스에 위치함.
+ *
  * @param dsl jOOQ DSLContext — SQL 을 코드로 안전하게 작성하는 라이브러리의 핵심 진입점
  */
+@Suppress("TooManyFunctions")
 @Repository
 class NotificationRepository(
     private val dsl: DSLContext,
@@ -43,6 +46,7 @@ class NotificationRepository(
      *
      * ON CONFLICT (dedup_key) DO NOTHING 을 jOOQ DSL 로 표현하므로
      * 두 번 호출해도 DB 행은 1개만 존재한다 (중복 발송 방지).
+     * V407 필드(archived_at, actor_user_id) 포함 전체 왕복 보존.
      *
      * @param n 삽입할 알림 도메인 객체
      * @return 실제로 행이 삽입됐으면 true, dedup_key 충돌로 skip 됐으면 false
@@ -98,7 +102,7 @@ class NotificationRepository(
     /**
      * 수신자 UUID 로 알림 목록을 최신순으로 조회한다.
      *
-     * deleted 개념이 없으므로 전체 행을 반환한다. 페이지네이션은 상위 서비스 레이어에서 처리.
+     * deleted 개념이 없으므로 전체 행을 반환한다.
      *
      * @param recipientUserId 수신자 UUID
      * @return 해당 수신자의 알림 목록 (created_at DESC 정렬)
@@ -131,17 +135,17 @@ class NotificationRepository(
         query: InboxQuery,
         pageable: Pageable,
     ): Page<Notification> {
-        val baseCondition = buildBaseCondition(recipientUserId, query)
+        val condition = buildBaseCondition(recipientUserId, query)
 
         val total =
             dsl.selectCount()
                 .from(NOTIFICATIONS)
-                .where(baseCondition)
+                .where(condition)
                 .fetchOne(0, Long::class.java) ?: 0L
 
         val content =
             dsl.selectFrom(NOTIFICATIONS)
-                .where(baseCondition)
+                .where(condition)
                 .orderBy(NOTIFICATIONS.CREATED_AT.desc())
                 .limit(pageable.pageSize)
                 .offset(pageable.offset)
@@ -155,7 +159,7 @@ class NotificationRepository(
      * 수신자의 미읽음 IN_APP 알림 수를 반환한다.
      *
      * 조건: read_at IS NULL AND archived_at IS NULL AND channel = 'IN_APP' AND recipient_user_id = ?
-     * partial index ix_notifications_recipient_unread 를 활용한다.
+     * partial index ix_notifications_recipient_unread 를 활용한다(EC11: 보관된 미읽음 제외).
      *
      * @param recipientUserId 수신자 UUID
      * @return 미읽음 알림 수
@@ -164,12 +168,7 @@ class NotificationRepository(
     fun countUnread(recipientUserId: UUID): Long {
         return dsl.selectCount()
             .from(NOTIFICATIONS)
-            .where(
-                NOTIFICATIONS.RECIPIENT_USER_ID.eq(recipientUserId)
-                    .and(NOTIFICATIONS.READ_AT.isNull)
-                    .and(NOTIFICATIONS.ARCHIVED_AT.isNull)
-                    .and(NOTIFICATIONS.CHANNEL.eq(Channel.IN_APP.name)),
-            )
+            .where(unreadBaseCondition(recipientUserId))
             .fetchOne(0, Long::class.java) ?: 0L
     }
 
@@ -191,11 +190,7 @@ class NotificationRepository(
     ): Int {
         return dsl.update(NOTIFICATIONS)
             .set(NOTIFICATIONS.READ_AT, readAt?.atOffset(ZoneOffset.UTC))
-            .where(
-                NOTIFICATIONS.ID.eq(id)
-                    .and(NOTIFICATIONS.RECIPIENT_USER_ID.eq(recipientUserId))
-                    .and(NOTIFICATIONS.CHANNEL.eq(Channel.IN_APP.name)),
-            )
+            .where(ownershipCondition(id, recipientUserId))
             .execute()
     }
 
@@ -217,11 +212,7 @@ class NotificationRepository(
     ): Int {
         return dsl.update(NOTIFICATIONS)
             .set(NOTIFICATIONS.ARCHIVED_AT, archivedAt?.atOffset(ZoneOffset.UTC))
-            .where(
-                NOTIFICATIONS.ID.eq(id)
-                    .and(NOTIFICATIONS.RECIPIENT_USER_ID.eq(recipientUserId))
-                    .and(NOTIFICATIONS.CHANNEL.eq(Channel.IN_APP.name)),
-            )
+            .where(ownershipCondition(id, recipientUserId))
             .execute()
     }
 
@@ -230,7 +221,7 @@ class NotificationRepository(
      *
      * ids 가 null 또는 빈 리스트이면 현재 미읽음 전체를 대상으로 한다.
      * ids 를 지정하면 본인 소유 + 해당 id 교집합만 변경된다.
-     * 타인 id 나 부재 id 는 recipient 조건으로 자동 제외된다.
+     * 타인 id 나 부재 id 는 recipient 조건으로 자동 제외된다(EC8).
      *
      * @param recipientUserId 수신자 UUID
      * @param ids             변경 대상 id 목록 (null 또는 빈 목록이면 미읽음 전체)
@@ -243,16 +234,11 @@ class NotificationRepository(
         ids: List<UUID>?,
         readAt: Instant,
     ): Int {
-        val baseCondition =
-            NOTIFICATIONS.RECIPIENT_USER_ID.eq(recipientUserId)
-                .and(NOTIFICATIONS.READ_AT.isNull)
-                .and(NOTIFICATIONS.CHANNEL.eq(Channel.IN_APP.name))
-
         val condition =
             if (ids.isNullOrEmpty()) {
-                baseCondition
+                unreadBaseCondition(recipientUserId)
             } else {
-                baseCondition.and(NOTIFICATIONS.ID.`in`(ids))
+                unreadBaseCondition(recipientUserId).and(NOTIFICATIONS.ID.`in`(ids))
             }
 
         return dsl.update(NOTIFICATIONS)
@@ -261,23 +247,36 @@ class NotificationRepository(
             .execute()
     }
 
-    // ── private helpers ──────────────────────────────────────────────────────────
+    // ── private: 조건 빌더 ────────────────────────────────────────────────────────
 
     /**
-     * Inbox 조회의 기본 Condition 을 구성한다.
+     * Inbox 목록 조회의 전체 Condition 을 구성한다.
      *
-     * 항상 포함: IN_APP 채널 + 본인 수신자.
-     * 탭 조건 + 검색 조건을 AND 로 누적한다.
+     * 기반 조건(IN_APP + 본인)에 탭 조건과 검색 조건을 AND 로 누적한다.
+     *
+     * @param recipientUserId 수신자 UUID
+     * @param query 탭/검색 조건 VO
+     * @return 누적된 jOOQ Condition
      */
     private fun buildBaseCondition(
         recipientUserId: UUID,
         query: InboxQuery,
     ): Condition {
-        var condition: Condition =
-            NOTIFICATIONS.RECIPIENT_USER_ID.eq(recipientUserId)
-                .and(NOTIFICATIONS.CHANNEL.eq(Channel.IN_APP.name))
+        var condition = inAppOwnerCondition(recipientUserId).and(tabCondition(query.tab))
+        condition = applySearchConditions(condition, query)
+        return condition
+    }
 
-        condition = condition.and(tabCondition(query.tab))
+    /**
+     * 검색 조건(q/senderId/issueKey/from/to)을 기존 Condition 에 AND 로 누적한다.
+     *
+     * 각 필드가 null 또는 공백이면 조건을 추가하지 않는다.
+     */
+    private fun applySearchConditions(
+        base: Condition,
+        query: InboxQuery,
+    ): Condition {
+        var condition = base
 
         query.q?.takeIf { it.isNotBlank() }?.let { q ->
             condition = condition.and(NOTIFICATIONS.TITLE.likeIgnoreCase("%$q%"))
@@ -292,26 +291,60 @@ class NotificationRepository(
         }
 
         query.from?.let { from ->
-            condition = condition.and(
-                NOTIFICATIONS.CREATED_AT.greaterOrEqual(from.atOffset(ZoneOffset.UTC)),
-            )
+            val fromOffset = from.atOffset(ZoneOffset.UTC)
+            condition = condition.and(NOTIFICATIONS.CREATED_AT.greaterOrEqual(fromOffset))
         }
 
         query.to?.let { to ->
-            condition = condition.and(
-                NOTIFICATIONS.CREATED_AT.lessOrEqual(to.atOffset(ZoneOffset.UTC)),
-            )
+            val toOffset = to.atOffset(ZoneOffset.UTC)
+            condition = condition.and(NOTIFICATIONS.CREATED_AT.lessOrEqual(toOffset))
         }
 
         return condition
     }
 
     /**
-     * InboxTab 값을 DB 조건으로 변환한다.
+     * IN_APP 채널 + 본인 수신자 기본 Condition.
      *
-     * - ALL      → archived_at IS NULL
-     * - UNREAD   → read_at IS NULL AND archived_at IS NULL
-     * - ARCHIVED → archived_at IS NOT NULL
+     * @param recipientUserId 수신자 UUID
+     */
+    private fun inAppOwnerCondition(recipientUserId: UUID): Condition =
+        NOTIFICATIONS.RECIPIENT_USER_ID.eq(recipientUserId)
+            .and(NOTIFICATIONS.CHANNEL.eq(Channel.IN_APP.name))
+
+    /**
+     * 미읽음 카운트 / markAllRead 공통 기반 Condition.
+     *
+     * read_at IS NULL AND archived_at IS NULL AND IN_APP + 본인.
+     *
+     * @param recipientUserId 수신자 UUID
+     */
+    private fun unreadBaseCondition(recipientUserId: UUID): Condition =
+        inAppOwnerCondition(recipientUserId)
+            .and(NOTIFICATIONS.READ_AT.isNull)
+            .and(NOTIFICATIONS.ARCHIVED_AT.isNull)
+
+    /**
+     * 단건 UPDATE 용 소유권 Condition.
+     *
+     * id + 본인 recipientUserId + IN_APP 채널 — 타인 알림 차단.
+     *
+     * @param id              알림 ID
+     * @param recipientUserId 수신자 UUID
+     */
+    private fun ownershipCondition(
+        id: UUID,
+        recipientUserId: UUID,
+    ): Condition =
+        NOTIFICATIONS.ID.eq(id)
+            .and(inAppOwnerCondition(recipientUserId))
+
+    /**
+     * InboxTab 값을 DB Condition 으로 변환한다.
+     *
+     * - ALL      — archived_at IS NULL (보관 안 된 전체, 읽음 무관)
+     * - UNREAD   — read_at IS NULL AND archived_at IS NULL
+     * - ARCHIVED — archived_at IS NOT NULL
      */
     private fun tabCondition(tab: InboxTab): Condition =
         when (tab) {
@@ -326,6 +359,7 @@ class NotificationRepository(
      * jOOQ [NotificationsRecord] 를 도메인 [Notification] 로 변환한다.
      *
      * enum 역매핑 실패 시 DB 데이터 손상으로 판단해 IllegalStateException 으로 fail-fast.
+     * V407 필드(archived_at, actor_user_id)를 포함해 전체 왕복 보존.
      *
      * @param record jOOQ 에서 읽어온 DB 레코드
      * @return 변환된 도메인 객체
