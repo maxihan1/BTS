@@ -1,4 +1,4 @@
-// notification V407 마이그레이션 검증 — notifications.archived_at / actor_user_id 컬럼 + partial index ix_notifications_recipient_unread 존재 확인 (FR-UX-03 Inbox)
+// V407 마이그레이션 검증 — notifications.archived_at/actor_user_id 컬럼 + 미읽음 부분 인덱스 존재 (FR-UX-03)
 
 package com.bts.notification.migration
 
