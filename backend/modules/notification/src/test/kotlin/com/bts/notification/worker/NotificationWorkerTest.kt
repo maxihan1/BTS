@@ -33,6 +33,7 @@ import java.util.UUID
  *
  * ### 검증 항목
  * - POLL-1. 멘션 이벤트 JSON → 정책 평가 → 수신자 해석 → insertIfAbsent(true) → send 호출
+ *           + Notification.actorUserId == event.actorId (BLOCKER-2 단언)
  * - POLL-2. insertIfAbsent=false (중복) → send 미호출 (멱등 S4)
  * - POLL-3. 정책 0건 → insert/send 미호출
  * - POLL-4. 성공 처리 후 pgmq.delete 호출
@@ -40,6 +41,8 @@ import java.util.UUID
  * - POLL-6. read_ct > MAX_RECEIVE_COUNT(poison) → archive 호출
  * - POLL-7. 미지원 type(fromWire = null) → 메시지 삭제(소임 없음), insert/send 미호출
  * - POLL-8. 빈 큐 → 아무 처리 없음
+ * - POLL-9. occurredAt 누락(malformed) → 예외 → delete 미호출 (dedup 결정성 보호)
+ * - POLL-10. actorId 없는 이벤트 → Notification.actorUserId == null (CONCERN-3 경계)
  */
 class NotificationWorkerTest : DescribeSpec({
 
