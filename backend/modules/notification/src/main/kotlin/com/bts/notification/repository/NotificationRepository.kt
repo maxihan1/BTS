@@ -11,6 +11,7 @@ import com.bts.notification.jooq.tables.references.NOTIFICATIONS
 import org.jooq.Condition
 import org.jooq.DSLContext
 import org.jooq.JSONB
+import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageImpl
@@ -177,6 +178,11 @@ class NotificationRepository(
      *
      * 본인(recipientUserId) + IN_APP 조건으로 타인 알림을 차단한다.
      *
+     * 시각 보존 규칙 (spec S3/FR4/EC2):
+     * - readAt != null(읽음 처리): COALESCE(existing_read_at, readAt) — 이미 읽음이면 최초 시각 유지, 미읽음이면 새 시각 기록.
+     *   WHERE 조건은 id+recipient+channel 그대로라 행은 항상 1개 매칭 → 0행(404) 없음.
+     * - readAt == null(미읽음 처리): 무조건 null 로 초기화.
+     *
      * @param id              갱신할 알림 ID
      * @param recipientUserId 수신자 UUID (본인 검증)
      * @param readAt          읽은 시각 (null 이면 미읽음 처리)
@@ -189,7 +195,7 @@ class NotificationRepository(
         readAt: Instant?,
     ): Int {
         return dsl.update(NOTIFICATIONS)
-            .set(NOTIFICATIONS.READ_AT, readAt?.atOffset(ZoneOffset.UTC))
+            .set(NOTIFICATIONS.READ_AT, preserveTimestamp(NOTIFICATIONS.READ_AT, readAt))
             .where(ownershipCondition(id, recipientUserId))
             .execute()
     }
@@ -198,6 +204,10 @@ class NotificationRepository(
      * 알림 1건의 archived_at 을 갱신한다 (no-bump — archived_at 외 컬럼 불변).
      *
      * 본인(recipientUserId) + IN_APP 조건으로 타인 알림을 차단한다.
+     *
+     * 시각 보존 규칙 (spec S3/FR4/EC2):
+     * - archivedAt != null(보관 처리): COALESCE(existing_archived_at, archivedAt) — 이미 보관이면 최초 시각 유지.
+     * - archivedAt == null(미보관 처리): 무조건 null 로 초기화.
      *
      * @param id              갱신할 알림 ID
      * @param recipientUserId 수신자 UUID (본인 검증)
@@ -211,7 +221,7 @@ class NotificationRepository(
         archivedAt: Instant?,
     ): Int {
         return dsl.update(NOTIFICATIONS)
-            .set(NOTIFICATIONS.ARCHIVED_AT, archivedAt?.atOffset(ZoneOffset.UTC))
+            .set(NOTIFICATIONS.ARCHIVED_AT, preserveTimestamp(NOTIFICATIONS.ARCHIVED_AT, archivedAt))
             .where(ownershipCondition(id, recipientUserId))
             .execute()
     }
@@ -338,6 +348,25 @@ class NotificationRepository(
     ): Condition =
         NOTIFICATIONS.ID.eq(id)
             .and(inAppOwnerCondition(recipientUserId))
+
+    /**
+     * 시각 보존 헬퍼 — COALESCE(기존 컬럼값, 새 시각) 표현식을 반환한다.
+     *
+     * newInstant 가 null 이면 null 을 그대로 반환해 무조건 초기화 경로를 유지한다.
+     * newInstant 가 non-null 이면 jOOQ DSL.coalesce 로 기존 값이 있으면 그것을, 없으면 새 값을 쓴다.
+     *
+     * @param field      대상 TIMESTAMPTZ 컬럼 필드
+     * @param newInstant 새로 설정할 시각 (null = 초기화)
+     * @return jOOQ 필드 표현식 또는 null
+     */
+    private fun preserveTimestamp(
+        field: org.jooq.Field<java.time.OffsetDateTime?>,
+        newInstant: Instant?,
+    ): org.jooq.Field<java.time.OffsetDateTime?>? {
+        if (newInstant == null) return null
+        val newOffset = newInstant.atOffset(ZoneOffset.UTC)
+        return DSL.coalesce(field, DSL.`val`(newOffset))
+    }
 
     /**
      * InboxTab 값을 DB Condition 으로 변환한다.
