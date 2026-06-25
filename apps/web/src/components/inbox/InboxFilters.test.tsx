@@ -8,14 +8,15 @@ import type { InboxFilters } from '@/api/inbox'
 import type { UserSummary } from '@/api/users'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// fetchUsers mock
+// fetchUsers / fetchUsersByIds mock
 // ─────────────────────────────────────────────────────────────────────────────
 
 vi.mock('@/api/users', () => ({
   fetchUsers: vi.fn(),
+  fetchUsersByIds: vi.fn(),
 }))
 
-import { fetchUsers } from '@/api/users'
+import { fetchUsers, fetchUsersByIds } from '@/api/users'
 
 const ALICE: UserSummary = {
   id: '11111111-1111-4111-a111-111111111111',
@@ -84,6 +85,7 @@ function InboxFiltersWrapper({
 describe('InboxFilters', () => {
   beforeEach(async () => {
     vi.mocked(fetchUsers).mockResolvedValue([])
+    vi.mocked(fetchUsersByIds).mockResolvedValue([])
     // 동적 import — RED 단계에서는 존재하지 않아 실패
     const mod = await import('./InboxFilters')
     InboxFilters = mod.InboxFilters
@@ -200,13 +202,17 @@ describe('InboxFilters', () => {
     })
 
     it('선택된 발신자 해제 시 onFiltersChange가 senderId=undefined로 호출된다', async () => {
-      vi.mocked(fetchUsers).mockResolvedValue([ALICE])
+      // 초기 senderId 이름 조회용 mock
+      vi.mocked(fetchUsersByIds).mockResolvedValue([ALICE])
       const { handler } = renderInboxFilters({ senderId: ALICE.id })
       const user = userEvent.setup()
 
-      // 선택 해제 버튼 클릭
-      const clearButton = screen.getByRole('button', { name: /발신자 선택 해제/i })
-      await user.click(clearButton)
+      // 이름 로딩 완료 후 해제 버튼 표시까지 대기
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /발신자 선택 해제/i })).toBeInTheDocument()
+      })
+
+      await user.click(screen.getByRole('button', { name: /발신자 선택 해제/i }))
 
       await waitFor(() => {
         expect(handler).toHaveBeenCalledWith(
@@ -216,13 +222,12 @@ describe('InboxFilters', () => {
     })
 
     it('선택된 발신자 이름이 입력창에 표시된다', async () => {
-      vi.mocked(fetchUsers).mockResolvedValue([ALICE])
+      // 초기 senderId 이름 조회용 mock
+      vi.mocked(fetchUsersByIds).mockResolvedValue([ALICE])
       renderInboxFilters({ senderId: ALICE.id })
 
-      // senderId가 설정된 상태에서는 이름 또는 username이 표시되어야 함
-      // (최초 렌더 시 이름 로딩 전에는 UUID 이외 표시 — 구현에서 처리)
+      // senderId가 설정된 상태에서 이름 로딩 후 해제 버튼 노출
       await waitFor(() => {
-        // 선택 해제 버튼이 존재함 = 선택 상태
         expect(screen.getByRole('button', { name: /발신자 선택 해제/i })).toBeInTheDocument()
       })
     })
