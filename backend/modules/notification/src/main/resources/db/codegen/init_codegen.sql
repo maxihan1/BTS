@@ -41,6 +41,7 @@ CREATE TABLE notifications (
 CREATE INDEX ix_notifications_recipient
     ON notifications (recipient_user_id, created_at DESC);
 
+-- 미읽음 카운트 부분 인덱스 (V407 미러) — IN_APP 한정 countUnread 경로 커버.
 CREATE INDEX ix_notifications_recipient_unread
     ON notifications (recipient_user_id)
     WHERE read_at IS NULL AND archived_at IS NULL AND channel = 'IN_APP';
