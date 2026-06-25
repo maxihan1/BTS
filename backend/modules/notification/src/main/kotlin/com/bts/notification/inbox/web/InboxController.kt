@@ -81,6 +81,7 @@ class InboxController(
      * @return 200 OK + Page<InboxItemResponse>
      */
     @GetMapping
+    @Suppress("LongParameterList") // REST 쿼리 파라미터(tab/q/senderId/issueKey/from/to/pageable) — 분리 불가
     fun listInbox(
         @RequestParam(required = false) tab: InboxTab?,
         @RequestParam(required = false) q: String?,
