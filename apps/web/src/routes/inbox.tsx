@@ -186,13 +186,17 @@ export function InboxPage(): JSX.Element {
   }
 
   // ── 필터 변경 핸들러 ────────────────────────────────────────────────────────
+
+  /**
+   * InboxFilters 컴포넌트에서 검색 조건이 변경될 때 호출된다.
+   * tab과 page는 로컬 상태로 관리하므로 필터 컴포넌트의 tab/page 변경은 무시한다.
+   */
   function handleFiltersChange(next: InboxFiltersType) {
-    // tab과 page는 로컬 상태로 관리 — 검색 필터 컴포넌트가 변경해도 무시
-    const { tab: omitTab, page: omitPage, ...rest } = next
-    // omitTab/omitPage는 의도적으로 사용하지 않는다 (destructure to exclude)
-    void omitTab
-    void omitPage
-    setSearchFilters(rest)
+    // Object.fromEntries로 tab/page 키를 제외한 검색 필터만 추출
+    const searchOnly: Omit<InboxFiltersType, 'tab' | 'page'> = Object.fromEntries(
+      Object.entries(next).filter(([k]) => k !== 'tab' && k !== 'page'),
+    ) as Omit<InboxFiltersType, 'tab' | 'page'>
+    setSearchFilters(searchOnly)
     setPage(0)
   }
 
