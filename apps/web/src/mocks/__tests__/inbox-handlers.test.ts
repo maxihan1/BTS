@@ -186,6 +186,38 @@ describe('GET /api/v1/users/me/inbox — 검색 필터', () => {
     expect(body.content.every((i) => i.createdAt <= '2026-06-24T23:59:59Z')).toBe(true)
     expect(body.content.length).toBeGreaterThan(0)
   })
+
+  it('from ISO Instant(T00:00:00.000Z) 형식으로 날짜 기준 필터가 적용된다', async () => {
+    // 2026-06-25T00:00:00.000Z 이후 — UNREAD_ITEM(06-25T10:00:00Z)만 해당
+    const res = await fetch(inboxUrl('?from=2026-06-25T00:00:00.000Z'), {
+      headers: authHeaders(ALICE_TOKEN),
+    })
+    const body = (await res.json()) as { content: InboxItem[] }
+    expect(body.content.length).toBe(1)
+    expect(body.content[0]?.id).toBe(UNREAD_ITEM.id)
+  })
+
+  it('to ISO Instant(T23:59:59.999Z) 형식으로 날짜 기준 필터가 적용된다', async () => {
+    // 2026-06-24T23:59:59.999Z 이전 — READ_ITEM(06-24T08:00:00Z)만 tab=ALL 대상
+    const res = await fetch(inboxUrl('?to=2026-06-24T23:59:59.999Z'), {
+      headers: authHeaders(ALICE_TOKEN),
+    })
+    const body = (await res.json()) as { content: InboxItem[] }
+    expect(body.content.every((i) => new Date(i.createdAt) <= new Date('2026-06-24T23:59:59.999Z'))).toBe(true)
+    expect(body.content.length).toBeGreaterThan(0)
+  })
+
+  it('bare date(2026-06-25)를 from에 전달하면 ISO Instant와 결과가 다를 수 있다 — ISO Instant 형식이 정석이다', async () => {
+    // bare date는 lexical 비교라 '2026-06-25T10:00:00Z' >= '2026-06-25' 가 우연히 통과하지만,
+    // '2026-06-24T08:00:00Z' >= '2026-06-25' 는 false — 이 케이스는 from ISO로 받아야 정확
+    // 이 테스트는 ISO Instant 형식의 from이 올바른 Date 비교를 사용함을 문서화한다
+    const isoRes = await fetch(inboxUrl('?from=2026-06-25T00:00:00.000Z'), {
+      headers: authHeaders(ALICE_TOKEN),
+    })
+    const isoBody = (await isoRes.json()) as { content: InboxItem[] }
+    // ISO Instant 비교: Date 파싱 기반, 2026-06-25T10:00:00Z >= 2026-06-25T00:00:00.000Z → 1건
+    expect(isoBody.content.length).toBe(1)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

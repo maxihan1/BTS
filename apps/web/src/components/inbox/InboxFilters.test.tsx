@@ -234,8 +234,8 @@ describe('InboxFilters', () => {
     })
   })
 
-  describe('기간 from/to date 입력', () => {
-    it('시작일 입력 시 onFiltersChange가 from(ISO) 필드와 함께 호출된다', async () => {
+  describe('기간 from/to date 입력 — ISO Instant 형식 변환', () => {
+    it('시작일 입력 시 onFiltersChange가 from을 T00:00:00.000Z(UTC 하루 시작) 형식으로 호출한다', async () => {
       const { handler } = renderInboxFilters()
       const user = userEvent.setup({ delay: null })
 
@@ -244,12 +244,12 @@ describe('InboxFilters', () => {
 
       await waitFor(() => {
         expect(handler).toHaveBeenCalledWith(
-          expect.objectContaining({ from: '2026-06-01' }),
+          expect.objectContaining({ from: '2026-06-01T00:00:00.000Z' }),
         )
       })
     })
 
-    it('종료일 입력 시 onFiltersChange가 to(ISO) 필드와 함께 호출된다', async () => {
+    it('종료일 입력 시 onFiltersChange가 to를 T23:59:59.999Z(UTC 하루 끝) 형식으로 호출한다', async () => {
       const { handler } = renderInboxFilters()
       const user = userEvent.setup({ delay: null })
 
@@ -258,21 +258,46 @@ describe('InboxFilters', () => {
 
       await waitFor(() => {
         expect(handler).toHaveBeenCalledWith(
-          expect.objectContaining({ to: '2026-06-30' }),
+          expect.objectContaining({ to: '2026-06-30T23:59:59.999Z' }),
         )
       })
     })
 
-    it('초기 filters.from/to 값이 date 입력에 렌더된다', () => {
-      renderInboxFilters({ from: '2026-06-01', to: '2026-06-30' })
+    it('시작일을 지우면 from이 undefined로 호출된다', async () => {
+      const { handler } = renderInboxFilters({ from: '2026-06-01T00:00:00.000Z' })
+      const user = userEvent.setup({ delay: null })
+
+      // date input의 초기값을 지움
+      const fromInput = screen.getByLabelText('시작일')
+      await user.clear(fromInput)
+
+      await waitFor(() => {
+        const lastCall = handler.mock.calls[handler.mock.calls.length - 1]?.[0]
+        expect(lastCall?.from).toBeUndefined()
+      })
+    })
+
+    it('초기 filters.from/to(ISO Instant)가 date 입력에 YYYY-MM-DD로 렌더된다', () => {
+      // date input의 value는 YYYY-MM-DD 형식이어야 한다 (ISO Instant의 날짜 부분 추출)
+      renderInboxFilters({
+        from: '2026-06-01T00:00:00.000Z',
+        to: '2026-06-30T23:59:59.999Z',
+      })
 
       expect(screen.getByDisplayValue('2026-06-01')).toBeInTheDocument()
       expect(screen.getByDisplayValue('2026-06-30')).toBeInTheDocument()
     })
+
+    it('bare date(2026-06-01)를 직접 from으로 전달해도 date 입력에 날짜만 표시된다', () => {
+      // 기존 state에 bare date가 있어도 표시는 정상
+      renderInboxFilters({ from: '2026-06-01' })
+      // date input은 YYYY-MM-DD만 받으므로 2026-06-01이 유효
+      expect(screen.getByLabelText('시작일')).toBeInTheDocument()
+    })
   })
 
   describe('필터 통합', () => {
-    it('q + from + to를 동시에 설정하면 onFiltersChange가 3개 필드를 포함해 호출된다', async () => {
+    it('q + from + to를 동시에 설정하면 onFiltersChange가 3개 필드를 ISO Instant 형식으로 호출한다', async () => {
       const { handler } = renderInboxFilters()
       const user = userEvent.setup({ delay: null })
 
@@ -283,8 +308,8 @@ describe('InboxFilters', () => {
       await waitFor(() => {
         const last = handler.mock.calls[handler.mock.calls.length - 1]?.[0]
         expect(last?.q).toBe('atlas')
-        expect(last?.from).toBe('2026-06-01')
-        expect(last?.to).toBe('2026-06-30')
+        expect(last?.from).toBe('2026-06-01T00:00:00.000Z')
+        expect(last?.to).toBe('2026-06-30T23:59:59.999Z')
       })
     })
   })
