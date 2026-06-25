@@ -172,6 +172,16 @@ class NotificationWorkerTest : DescribeSpec({
             // flat 문자열로 파싱하면 actorId 가 null 이 되어 resolver 의 actor 자기제외가 무력화된다.
             assertThat(sourceSlot.captured.actorId).isEqualTo(actorId)
         }
+
+        it("멘션 이벤트 처리 시 Notification 의 actorUserId 가 이벤트의 actorId 로 저장된다 (BLOCKER-2)") {
+            val notificationSlot = slot<Notification>()
+            every { repository.insertIfAbsent(capture(notificationSlot)) } returns true
+
+            worker.pollAndProcess()
+
+            // buildNotification 이 event.actorId 를 actorUserId 에 전달하지 않으면 null 이 되어 실패한다.
+            assertThat(notificationSlot.captured.actorUserId).isEqualTo(actorId)
+        }
     }
 
     // ── POLL-4: 성공 후 delete ─────────────────────────────────────────────────
@@ -336,6 +346,34 @@ class NotificationWorkerTest : DescribeSpec({
         }
     }
 
+    // ── POLL-10: actorId 없는 이벤트 → Notification.actorUserId == null ─────────
+
+    describe("POLL-10 actorId 없는 이벤트 처리 시 actorUserId 가 null 이다") {
+        val msgId = 11L
+        val matches = listOf(PolicyMatch(RecipientRole.MENTIONED, Channel.IN_APP))
+        val recipient = ResolvedRecipient(userId = mentionedId, channel = Channel.IN_APP)
+
+        beforeEach {
+            stubMentionMessageWithoutActorId(dsl, mentionedId, msgId, fixedNow)
+            every { policyEvaluator.evaluate(any(), any()) } returns matches
+            every { recipientResolver.resolve(any<NotificationSourceEvent>(), any()) } returns listOf(recipient)
+            every { userSubscriptionRepository.fetchDisabled(any(), any(), any()) } returns emptySet()
+            every { channelSender.supports(Channel.IN_APP) } returns true
+            justRun { channelSender.send(any()) }
+            justRun { repository.markSent(any()) }
+            every { dsl.execute(any<String>(), NotificationWorker.QUEUE_NAME, msgId) } returns 1
+        }
+
+        it("actorId 없는 이벤트에서 생성된 Notification 의 actorUserId 는 null 이다") {
+            val notificationSlot = slot<Notification>()
+            every { repository.insertIfAbsent(capture(notificationSlot)) } returns true
+
+            worker.pollAndProcess()
+
+            assertThat(notificationSlot.captured.actorUserId).isNull()
+        }
+    }
+
     // ── EC9: 비설정 채널(SLACK) 수신자 — fetchDisabled 미호출, sendToRecipient 도달 ─
 
     describe("EC9 비설정 채널(SLACK) 수신자는 구독 필터를 통과한다") {
@@ -428,6 +466,32 @@ private fun stubMentionMessage(
           "issueKey": "ATLAS-1",
           "projectKey": "ATLAS",
           "actorId": { "value": "$actorId" },
+          "mentionedUserIds": ["$mentionedId"],
+          "occurredAt": "$occurredAt"
+        }
+        """.trimIndent()
+
+    stubReadResult(dsl, msgId, json, readCt)
+}
+
+/**
+ * actorId 필드가 없는 멘션 이벤트 메시지 1건을 반환하도록 dsl.fetch 를 스텁한다.
+ *
+ * POLL-10 — actorId 부재 이벤트 처리 시 Notification.actorUserId == null 검증용.
+ */
+private fun stubMentionMessageWithoutActorId(
+    dsl: DSLContext,
+    mentionedId: UUID,
+    msgId: Long,
+    occurredAt: Instant,
+    readCt: Int = 1,
+) {
+    val json =
+        """
+        {
+          "type": "issue.mentioned",
+          "issueKey": "ATLAS-1",
+          "projectKey": "ATLAS",
           "mentionedUserIds": ["$mentionedId"],
           "occurredAt": "$occurredAt"
         }
