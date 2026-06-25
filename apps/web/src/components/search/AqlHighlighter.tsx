@@ -1,5 +1,5 @@
 // AQL 쿼리 입력창 — textarea(투명 텍스트/caret) + 절대배치 overlay(syntax highlight) 합성 컴포넌트 (FR-SR-02 Task 4)
-import { useRef, useCallback, type ChangeEvent, type KeyboardEvent } from 'react'
+import { useRef, useCallback, type ReactNode, type ChangeEvent, type KeyboardEvent } from 'react'
 import { tokenizeAql, type AqlTokenType } from '@/lib/aql-tokenizer'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -58,9 +58,9 @@ export interface AqlHighlighterProps {
  * 마지막 줄바꿈 뒤 빈 줄이 있으면 공백 문자를 추가해 pre 높이를 보정한다.
  * (브라우저가 trailing newline을 pre에서 무시하는 현상 방지)
  */
-function buildOverlayContent(value: string): React.ReactNode[] {
+function buildOverlayContent(value: string): ReactNode[] {
   const tokens = tokenizeAql(value)
-  const nodes: React.ReactNode[] = []
+  const nodes: ReactNode[] = []
   let cursor = 0
 
   for (const token of tokens) {
@@ -175,7 +175,7 @@ export const AqlHighlighter = ({ value, onChange, onSubmit, placeholder }: AqlHi
 
   return (
     <div className="relative w-full">
-      {/* overlay — aria-hidden, 클릭 불가(pointer-events-none) */}
+      {/* overlay — aria-hidden, 포인터 이벤트 차단, 색상 span 담당 */}
       <pre
         aria-hidden="true"
         className={[
@@ -183,14 +183,14 @@ export const AqlHighlighter = ({ value, onChange, onSubmit, placeholder }: AqlHi
           'box-border overflow-hidden whitespace-pre-wrap break-words',
           'rounded-md border border-transparent p-3',
           SHARED_FONT_CLASSES,
-          'text-transparent',
+          'text-foreground',
         ].join(' ')}
         onMouseDown={handleOverlayMouseDown}
       >
         {overlayContent}
       </pre>
 
-      {/* textarea — 투명 텍스트(색상은 overlay가 담당), caret만 보임 */}
+      {/* textarea — 텍스트는 투명(overlay가 색상 담당), caret만 표시 */}
       <textarea
         value={value}
         onChange={handleChange}
@@ -203,7 +203,7 @@ export const AqlHighlighter = ({ value, onChange, onSubmit, placeholder }: AqlHi
           'relative z-10 w-full resize-none bg-transparent',
           'rounded-md border p-3',
           SHARED_FONT_CLASSES,
-          'text-foreground caret-foreground',
+          'text-transparent caret-foreground',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         ].join(' ')}
         rows={3}
