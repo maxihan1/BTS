@@ -23,6 +23,14 @@ import com.bts.issue.jooq.tables.references.WORKLOGS
 import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssueSecurityAccess
+import com.bts.shared.search.AqlField
+import com.bts.shared.search.AqlNode
+import com.bts.shared.search.AqlOperator
+import com.bts.shared.search.AqlSort
+import com.bts.shared.search.AqlValue
+import com.bts.shared.search.IssueSearchHit
+import com.bts.shared.search.IssueSearchPage
+import com.bts.shared.search.SortDirection
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.jooq.Condition
@@ -996,6 +1004,14 @@ class IssueRepository(
 
         /** 에픽 이슈 summary 결과 컬럼 alias. */
         private const val EPIC_SUMMARY_ALIAS = "epic_summary"
+
+        // ── searchByAql alias 상수 (FR-SR-02) ─────────────────────────────────
+
+        /** searchByAql 쿼리에서 issue_types.key 를 담을 컬럼 alias. */
+        private const val SEARCH_PROJECT_KEY_ALIAS = "search_project_key"
+
+        /** searchByAql 쿼리에서 priority Short 기본값 — issues.priority DEFAULT 3 과 동기화. */
+        private const val DEFAULT_SEARCH_PRIORITY_SHORT: Short = 3
     }
 
     /**
@@ -2098,6 +2114,290 @@ class IssueRepository(
             .replace("\\", "\\\\")
             .replace("%", "\\%")
             .replace("_", "\\_")
+
+    /**
+     * AQL AST 를 jOOQ Condition 으로 재귀 변환하고 visibility 보안 술어를 최상위 AND 로 결합해
+     * 이슈를 검색한다 (FR-SR-02 Task 5).
+     *
+     * ### 보안 불변식
+     *
+     * 최종 WHERE = `buildActiveSecureWhere(projectKey, actor, access) AND (AST Condition)`.
+     * 사용자 AST 는 보안 술어 **밖에서 감쌀 수 없다** — OR/NOT 은 사용자 AST 내부에만 작용하므로
+     * visibility 우회가 구조적으로 불가능하다.
+     *
+     * ### label 연산자 전략
+     *
+     * label 컬럼은 PostgreSQL TEXT[] 배열이다.
+     * - `=` / `IN` → overlap(`&&`) — GIN 인덱스 활용.
+     * - `~` (CONTAINS) → EXISTS(unnest ILIKE) — 배열 원소 부분 일치.
+     * - `!=` → NOT overlap.
+     * - `NOT_IN` → NOT overlap.
+     *
+     * ### priority 연산자 제약
+     *
+     * priority 는 SMALLINT(1..5). `~` 연산자는 어댑터([IssueSearchAdapter]) 에서 사전 거부한다.
+     *
+     * @param projectKey 검색 대상 프로젝트 키.
+     * @param ast AQL 파서가 생성한 AST 루트 노드.
+     * @param sort ORDER BY 절 정렬 기준 목록. 빈 목록이면 기본 정렬(created_at DESC).
+     * @param actor 검색 요청 행위자 UUID. 보안 술어 조건 평가에 사용.
+     * @param access actor 의 접근 가능 보안 등급 집합.
+     * @param page 요청 페이지 번호(0-base).
+     * @param size 요청 페이지 크기.
+     * @return [IssueSearchPage] — 검색 결과 이슈 목록 + 총 건수 + 페이지 정보.
+     */
+    @Transactional(readOnly = true)
+    @Suppress("LongParameterList") // AQL 검색 파라미터 집합 — IssueSearchQuery 커맨드 객체 파라미터화 불가(jOOQ 레이어)
+    fun searchByAql(
+        projectKey: String,
+        ast: AqlNode,
+        sort: List<AqlSort>,
+        actor: UUID,
+        access: IssueSecurityAccess,
+        page: Int,
+        size: Int,
+    ): IssueSearchPage {
+        // 보안 술어 최상위 AND — 사용자 AST 는 이 안에서만 작동하므로 우회 불가
+        val secureWhere = buildActiveSecureWhere(projectKey, actor, access)
+        val astCondition = buildAstCondition(ast)
+        val effectiveWhere = secureWhere.and(astCondition)
+
+        // count 쿼리 — ISSUE_TYPES join 제외(불필요, cartesian product 방지)
+        val total =
+            dsl.selectCount()
+                .from(ISSUES)
+                .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+                .where(effectiveWhere)
+                .fetchOne(0, Long::class.java) ?: 0L
+
+        if (total == 0L) {
+            return IssueSearchPage.empty(page, size)
+        }
+
+        // content 쿼리 — ISSUE_TYPES join 으로 typeKey 포함
+        val orderByFields = buildOrderBy(sort)
+        val items =
+            dsl.select(
+                ISSUES.fields().toList() +
+                    listOf(
+                        ISSUE_TYPES.KEY.`as`(TYPE_KEY_ALIAS),
+                        PROJECTS.KEY.`as`(SEARCH_PROJECT_KEY_ALIAS),
+                    ),
+            )
+                .from(ISSUES)
+                .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+                .join(ISSUE_TYPES).on(ISSUES.TYPE_ID.eq(ISSUE_TYPES.ID))
+                .where(effectiveWhere)
+                .orderBy(orderByFields)
+                .limit(size)
+                .offset(page.toLong() * size)
+                .fetch { record ->
+                    val issueRecord = record.into(ISSUES)
+                    val priority = (issueRecord.priority ?: DEFAULT_SEARCH_PRIORITY_SHORT).toInt()
+                    IssueSearchHit(
+                        key = issueRecord.key ?: error("issues.key must not be null"),
+                        summary = issueRecord.summary ?: error("issues.summary must not be null"),
+                        typeKey =
+                            record.get(TYPE_KEY_ALIAS, String::class.java)
+                                ?: error("issue_types.key must not be null in join"),
+                        currentStateKey =
+                            issueRecord.currentStateKey
+                                ?: error("issues.current_state_key must not be null"),
+                        assigneeId = issueRecord.assigneeId,
+                        priority = priority,
+                        priorityName = com.bts.issue.domain.IssuePriority.fromNumber(priority).displayName,
+                        projectKey =
+                            record.get(SEARCH_PROJECT_KEY_ALIAS, String::class.java)
+                                ?: error("projects.key must not be null in join"),
+                        updatedAt =
+                            (issueRecord.updatedAt ?: error("issues.updated_at must not be null"))
+                                .toInstant(),
+                    )
+                }
+
+        return IssueSearchPage(items = items, total = total, page = page, size = size)
+    }
+
+    /**
+     * AQL AST 루트 노드를 재귀 순회하여 jOOQ [Condition] 으로 변환한다.
+     *
+     * AND/OR 은 이진 노드로 좌·우를 재귀 변환 후 결합한다.
+     * NOT 은 단항 노드로 자식 Condition 을 [DSL.not] 으로 부정한다.
+     * [AqlNode.Comparison] 은 필드별 SQL 전략을 적용한다.
+     *
+     * @param node 변환할 AST 노드.
+     * @return jOOQ [Condition].
+     */
+    private fun buildAstCondition(node: AqlNode): Condition =
+        when (node) {
+            is AqlNode.And -> buildAstCondition(node.left).and(buildAstCondition(node.right))
+            is AqlNode.Or -> buildAstCondition(node.left).or(buildAstCondition(node.right))
+            is AqlNode.Not -> DSL.not(buildAstCondition(node.child))
+            is AqlNode.Comparison -> buildComparisonCondition(node.field, node.op, node.values)
+        }
+
+    /**
+     * 단일 비교 노드를 jOOQ [Condition] 으로 변환한다.
+     *
+     * 필드별 SQL 전략은 명세(FR-2, FR-3) 를 따른다.
+     * SQL 문자열 결합 절대 금지 — 모든 값은 jOOQ 바인드 파라미터로 전달한다.
+     *
+     * @param field AQL 필드 식별자.
+     * @param op AQL 비교 연산자.
+     * @param values 비교 값 목록.
+     * @return jOOQ [Condition].
+     */
+    @Suppress("CyclomaticComplexity") // 필드×연산자 매트릭스 — 분리 시 가독성 저하
+    private fun buildComparisonCondition(
+        field: AqlField,
+        op: AqlOperator,
+        values: List<AqlValue>,
+    ): Condition {
+        val fieldName = field.value.lowercase()
+        return when (fieldName) {
+            "status" -> buildStatusAqlCondition(op, values)
+            "summary" -> buildSummaryCondition(op, values)
+            "label" -> buildLabelAqlCondition(op, values)
+            "priority" -> buildPriorityCondition(op, values)
+            else -> throw IllegalArgumentException("지원하지 않는 필드입니다: $fieldName")
+        }
+    }
+
+    /**
+     * status 필드 조건을 생성한다.
+     *
+     * status 는 current_state_key(text) — 정확 매칭. `=`/`!=`/`IN`/`NOT_IN` 지원.
+     */
+    private fun buildStatusAqlCondition(
+        op: AqlOperator,
+        values: List<AqlValue>,
+    ): Condition {
+        val strValues = values.map { it.asString() }
+        return when (op) {
+            AqlOperator.EQ -> ISSUES.CURRENT_STATE_KEY.eq(strValues.first())
+            AqlOperator.NEQ -> ISSUES.CURRENT_STATE_KEY.ne(strValues.first())
+            AqlOperator.IN -> ISSUES.CURRENT_STATE_KEY.`in`(strValues)
+            AqlOperator.NOT_IN -> ISSUES.CURRENT_STATE_KEY.notIn(strValues)
+            AqlOperator.CONTAINS ->
+                throw IllegalArgumentException("status 필드에는 ~ 연산자를 사용할 수 없습니다.")
+        }
+    }
+
+    /**
+     * summary 필드 조건을 생성한다.
+     *
+     * summary 는 TEXT — `~` 는 ILIKE %v%, `=` 는 정확 매칭.
+     * SQL injection 방지: ILIKE 와일드카드는 jOOQ [DSL.lower] + 바인드 파라미터로 처리한다.
+     */
+    private fun buildSummaryCondition(
+        op: AqlOperator,
+        values: List<AqlValue>,
+    ): Condition {
+        val strValue = values.first().asString()
+        return when (op) {
+            AqlOperator.CONTAINS -> ISSUES.SUMMARY.likeIgnoreCase("%${escapeIlikePrefix(strValue)}%", '\\')
+            AqlOperator.EQ -> ISSUES.SUMMARY.eq(strValue)
+            AqlOperator.NEQ -> ISSUES.SUMMARY.ne(strValue)
+            AqlOperator.IN -> ISSUES.SUMMARY.`in`(values.map { it.asString() })
+            AqlOperator.NOT_IN -> ISSUES.SUMMARY.notIn(values.map { it.asString() })
+        }
+    }
+
+    /**
+     * label 필드 조건을 생성한다.
+     *
+     * label 은 PostgreSQL TEXT[] 배열이므로 일반 스칼라 비교가 불가능하다.
+     * - `=`/`IN`: overlap(`&&`) — "해당 라벨을 하나 이상 가짐".
+     * - `!=`/`NOT_IN`: NOT overlap.
+     * - `~`: EXISTS(unnest ILIKE) — 배열 원소 중 부분 일치.
+     * 모든 값은 jOOQ DSL.val + dataType 바인딩으로 SQL injection 방지.
+     */
+    private fun buildLabelAqlCondition(
+        op: AqlOperator,
+        values: List<AqlValue>,
+    ): Condition {
+        val strValues = values.map { it.asString() }
+        return when (op) {
+            AqlOperator.EQ,
+            AqlOperator.IN,
+            -> {
+                // overlap(&&): 배열 중 하나 이상 일치
+                val labelArr = strValues.map { it as String? }.toTypedArray()
+                val labelVal = DSL.`val`(labelArr, ISSUES.LABELS.dataType)
+                DSL.condition("{0} && {1}", ISSUES.LABELS, labelVal)
+            }
+            AqlOperator.NEQ,
+            AqlOperator.NOT_IN,
+            -> {
+                // NOT overlap
+                val labelArr = strValues.map { it as String? }.toTypedArray()
+                val labelVal = DSL.`val`(labelArr, ISSUES.LABELS.dataType)
+                DSL.not(DSL.condition("{0} && {1}", ISSUES.LABELS, labelVal))
+            }
+            AqlOperator.CONTAINS -> {
+                // EXISTS(unnest ILIKE) — 배열 원소 중 부분 일치.
+                // ISSUES.LABELS 는 TEXT[] 배열이므로 unnest 로 전개한 뒤 ILIKE 를 적용한다.
+                // jOOQ 인자 바인딩: {0} = 테이블 참조(issues.labels), {1} = 패턴 문자열 바인드.
+                // SQL injection 방지: 패턴 값은 {1} jOOQ 바인드 파라미터로만 전달하고,
+                //   와일드카드(% _)는 escapeIlikePrefix 로 리터럴화한 뒤 % 를 직접 추가한다.
+                val pattern = "%${escapeIlikePrefix(strValues.first())}%"
+                DSL.condition(
+                    "EXISTS (SELECT 1 FROM unnest({0}) AS _lbl WHERE _lbl ILIKE {1})",
+                    ISSUES.LABELS,
+                    DSL.`val`(pattern),
+                )
+            }
+        }
+    }
+
+    /**
+     * priority 필드 조건을 생성한다.
+     *
+     * priority 는 SMALLINT(1..5) — `=`/`!=`/`IN`/`NOT_IN` 지원. `~` 는 어댑터에서 거부됨.
+     * 값은 [AqlValue.Num] 정수 또는 [AqlValue.Str] 문자열(파서가 숫자 문자열로 전달하는 경우 대비).
+     */
+    private fun buildPriorityCondition(
+        op: AqlOperator,
+        values: List<AqlValue>,
+    ): Condition {
+        val shortValues = values.map { it.asShort() }
+        return when (op) {
+            AqlOperator.EQ -> ISSUES.PRIORITY.eq(shortValues.first())
+            AqlOperator.NEQ -> ISSUES.PRIORITY.ne(shortValues.first())
+            AqlOperator.IN -> ISSUES.PRIORITY.`in`(shortValues)
+            AqlOperator.NOT_IN -> ISSUES.PRIORITY.notIn(shortValues)
+            AqlOperator.CONTAINS ->
+                throw IllegalArgumentException("priority 필드에는 ~ 연산자를 사용할 수 없습니다.")
+        }
+    }
+
+    /**
+     * [AqlSort] 목록을 jOOQ ORDER BY 필드 목록으로 변환한다.
+     *
+     * 빈 목록이면 기본 정렬(created_at DESC) 을 반환한다.
+     * 지원 정렬 필드는 화이트리스트로 제한한다(SQL injection 방지).
+     *
+     * @param sort AQL 정렬 기준 목록.
+     * @return jOOQ SortField 목록.
+     */
+    private fun buildOrderBy(sort: List<AqlSort>): List<org.jooq.SortField<*>> {
+        if (sort.isEmpty()) return listOf(ISSUES.CREATED_AT.desc())
+        return sort.map { aqlSort ->
+            val jooqField =
+                when (aqlSort.field.value.lowercase()) {
+                    "status" -> ISSUES.CURRENT_STATE_KEY
+                    "summary" -> ISSUES.SUMMARY
+                    "priority" -> ISSUES.PRIORITY
+                    "created_at" -> ISSUES.CREATED_AT
+                    "updated_at" -> ISSUES.UPDATED_AT
+                    else ->
+                        throw IllegalArgumentException(
+                            "정렬 불가 필드: ${aqlSort.field.value}",
+                        )
+                }
+            if (aqlSort.direction == SortDirection.DESC) jooqField.desc() else jooqField.asc()
+        }
+    }
 }
 
 // ── file-level 확장 함수 ────────────────────────────────────────────────────────
@@ -2202,6 +2502,55 @@ private const val DEFAULT_PRIORITY_SHORT: Short = 3
  * null 요소 없이 String 만 포함하므로 typed null-array 사용.
  */
 private fun List<String>.toDbArray(): Array<String?> = map { it as String? }.toTypedArray()
+
+// ── AqlValue 헬퍼 (FR-SR-02) ─────────────────────────────────────────────────
+
+/**
+ * [AqlValue] 를 문자열로 추출한다.
+ *
+ * [AqlValue.Str] 은 직접 반환, [AqlValue.Num] 은 정수를 문자열로 변환한다.
+ * status / label / summary 필드에 사용한다.
+ */
+private fun AqlValue.asString(): String =
+    when (this) {
+        is AqlValue.Str -> value
+        is AqlValue.Num -> value.toString()
+    }
+
+/** Short 변환 허용 범위 상수 — PostgreSQL SMALLINT 와 동일. */
+private const val SHORT_RANGE_MIN: Int = Short.MIN_VALUE.toInt()
+private const val SHORT_RANGE_MAX: Int = Short.MAX_VALUE.toInt()
+
+/**
+ * [AqlValue] 를 SMALLINT 에 맞는 [Short] 로 추출한다.
+ *
+ * priority 필드(SMALLINT 1..5)에 사용한다.
+ * [AqlValue.Str] 는 정수로 파싱한다 — 파서가 숫자 토큰을 Str 로 전달하는 경우 대비.
+ *
+ * ### 범위 가드 (defense-in-depth)
+ *
+ * 파서([com.bts.search.aql.AqlParser])가 Short 범위 밖 값을 1차 차단하므로
+ * 정상 경로에서는 이 함수에 위반 값이 도달하지 않는다.
+ * 직접 AST 조립·미래 파서 변경 등을 대비해 silent wrap 대신 [IllegalArgumentException]을 던진다.
+ *
+ * @throws IllegalArgumentException 값을 정수로 파싱할 수 없거나 Short 범위($SHORT_RANGE_MIN..$SHORT_RANGE_MAX) 밖인 경우.
+ */
+internal fun AqlValue.asShort(): Short {
+    val intVal: Int =
+        when (this) {
+            is AqlValue.Num -> value
+            is AqlValue.Str ->
+                value.toIntOrNull()
+                    ?: throw IllegalArgumentException(
+                        "priority 값은 정수여야 합니다: $value",
+                    )
+        }
+    require(intVal in SHORT_RANGE_MIN..SHORT_RANGE_MAX) {
+        "priority 값 $intVal 이 Short 허용 범위(${SHORT_RANGE_MIN}..${SHORT_RANGE_MAX})를 벗어났습니다." +
+            " 파서가 이미 차단하나 2차 방어로 거부합니다."
+    }
+    return intVal.toShort()
+}
 
 // ── JSONB ↔ Map 변환 헬퍼 ────────────────────────────────────────────────────
 
