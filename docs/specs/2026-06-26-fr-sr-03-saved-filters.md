@@ -4,6 +4,10 @@
 > ADR: [docs/decisions/2026-06-26-fr-sr-03-saved-filters.md](../decisions/2026-06-26-fr-sr-03-saved-filters.md)
 > 범위: 백엔드 D1~D5 (프론트 D6/D7·즐겨찾기 UI 연동은 후속 PR)
 
+> **PR 분할 (Maxi 확정, 2026-06-26)**. 이 문서는 FR-SR-03 백엔드 전체 스펙이며, 2개 PR로 인도한다.
+> - **PR1 (이번, #191)** — BC 영속성 부트스트랩 + SavedFilter **CRUD(PRIVATE 전용)** + 실행 엔드포인트. 가시성=owner. 공유/멤버십 포트 없음. PR1 요청 DTO는 `shares[]` 미포함(owner-only).
+> - **PR2 (후속)** — `saved_filter_shares` + `GroupMembershipPort`/`ProjectAccessPort` + 가시성 4경로(AUTHENTICATED/PROJECT/GROUP) + 공유 검증(FR-9). 아래 FR-4/FR-5/FR-9 및 공유 관련 EC/SQL은 PR2 영역.
+
 ## 개요
 
 사용자가 AQL 검색을 이름 붙여 저장하고, 다른 사용자/그룹/프로젝트와 공유한다. 저장된 필터를 클릭하면 그 AQL을 **조회자(viewer) 권한**으로 재실행한다. 즐겨찾기(별표)는 기존 FR-UX-02 favorites(target_type=FILTER)를 재사용한다(본 PR 백엔드 범위 밖, 별도 컬럼 없음).
