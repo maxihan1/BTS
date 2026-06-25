@@ -2,12 +2,10 @@
 
 package com.bts.shared.search
 
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.Instant
 import java.util.UUID
-import kotlin.test.assertEquals
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /**
  * [IssueSearchPort] default 구현과 AQL AST 데이터클래스 구조를 검증하는 단위 테스트.
@@ -39,10 +37,10 @@ class IssueSearchPortDefaultTest {
 
         val result = port.search(query)
 
-        assertTrue(result.items.isEmpty(), "어댑터 미등록 시 이슈 목록이 비어야 한다")
-        assertEquals(0L, result.total, "어댑터 미등록 시 total 이 0 이어야 한다")
-        assertEquals(query.page, result.page, "요청 page 가 응답에 그대로 반영되어야 한다")
-        assertEquals(query.size, result.size, "요청 size 가 응답에 그대로 반영되어야 한다")
+        assertThat(result.items).isEmpty()
+        assertThat(result.total).isEqualTo(0L)
+        assertThat(result.page).isEqualTo(query.page)
+        assertThat(result.size).isEqualTo(query.size)
     }
 
     @Test
@@ -60,18 +58,18 @@ class IssueSearchPortDefaultTest {
 
         val result = port.search(query)
 
-        assertEquals(3, result.page)
-        assertEquals(25, result.size)
+        assertThat(result.page).isEqualTo(3)
+        assertThat(result.size).isEqualTo(25)
     }
 
     @Test
     fun `IssueSearchPage empty companion returns zero total and empty items`() {
         val page = IssueSearchPage.empty(page = 0, size = 50)
 
-        assertTrue(page.items.isEmpty())
-        assertEquals(0L, page.total)
-        assertEquals(0, page.page)
-        assertEquals(50, page.size)
+        assertThat(page.items).isEmpty()
+        assertThat(page.total).isEqualTo(0L)
+        assertThat(page.page).isEqualTo(0)
+        assertThat(page.size).isEqualTo(50)
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -86,10 +84,10 @@ class IssueSearchPortDefaultTest {
             values = listOf(AqlValue.Str("버그")),
         )
 
-        assertEquals("summary", node.field.value)
-        assertEquals(AqlOperator.CONTAINS, node.op)
-        assertEquals(1, node.values.size)
-        assertEquals("버그", (node.values[0] as AqlValue.Str).value)
+        assertThat(node.field.value).isEqualTo("summary")
+        assertThat(node.op).isEqualTo(AqlOperator.CONTAINS)
+        assertThat(node.values).hasSize(1)
+        assertThat((node.values[0] as AqlValue.Str).value).isEqualTo("버그")
     }
 
     @Test
@@ -100,8 +98,8 @@ class IssueSearchPortDefaultTest {
             values = listOf(AqlValue.Str("bug"), AqlValue.Str("urgent")),
         )
 
-        assertEquals(AqlOperator.IN, node.op)
-        assertEquals(2, node.values.size)
+        assertThat(node.op).isEqualTo(AqlOperator.IN)
+        assertThat(node.values).hasSize(2)
     }
 
     @Test
@@ -118,8 +116,8 @@ class IssueSearchPortDefaultTest {
         )
         val and = AqlNode.And(left = left, right = right)
 
-        assertEquals(left, and.left)
-        assertEquals(right, and.right)
+        assertThat(and.left).isEqualTo(left)
+        assertThat(and.right).isEqualTo(right)
     }
 
     @Test
@@ -128,8 +126,8 @@ class IssueSearchPortDefaultTest {
         val right = AqlNode.Comparison(AqlField("label"), AqlOperator.EQ, listOf(AqlValue.Str("urgent")))
         val or = AqlNode.Or(left = left, right = right)
 
-        assertEquals(left, or.left)
-        assertEquals(right, or.right)
+        assertThat(or.left).isEqualTo(left)
+        assertThat(or.right).isEqualTo(right)
     }
 
     @Test
@@ -137,7 +135,7 @@ class IssueSearchPortDefaultTest {
         val inner = AqlNode.Comparison(AqlField("status"), AqlOperator.EQ, listOf(AqlValue.Str("closed")))
         val not = AqlNode.Not(child = inner)
 
-        assertEquals(inner, not.child)
+        assertThat(not.child).isEqualTo(inner)
     }
 
     @Test
@@ -152,10 +150,9 @@ class IssueSearchPortDefaultTest {
             right = AqlNode.Not(child = c),
         )
 
-        // 타입 검증
-        assertTrue(tree is AqlNode.And)
-        assertTrue(tree.left is AqlNode.Or)
-        assertTrue(tree.right is AqlNode.Not)
+        assertThat(tree).isInstanceOf(AqlNode.And::class.java)
+        assertThat(tree.left).isInstanceOf(AqlNode.Or::class.java)
+        assertThat(tree.right).isInstanceOf(AqlNode.Not::class.java)
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -165,23 +162,19 @@ class IssueSearchPortDefaultTest {
     @Test
     fun `AqlValue Str holds string literal`() {
         val v = AqlValue.Str("open")
-        assertEquals("open", v.value)
+        assertThat(v.value).isEqualTo("open")
     }
 
     @Test
     fun `AqlValue Num holds integer literal`() {
         val v = AqlValue.Num(42)
-        assertEquals(42, v.value)
+        assertThat(v.value).isEqualTo(42)
     }
 
     @Test
     fun `AqlOperator covers all required operators`() {
         val ops = AqlOperator.entries.map { it.name }.toSet()
-        assertTrue(ops.contains("EQ"))
-        assertTrue(ops.contains("NEQ"))
-        assertTrue(ops.contains("CONTAINS"))
-        assertTrue(ops.contains("IN"))
-        assertTrue(ops.contains("NOT_IN"))
+        assertThat(ops).contains("EQ", "NEQ", "CONTAINS", "IN", "NOT_IN")
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -192,14 +185,14 @@ class IssueSearchPortDefaultTest {
     fun `AqlSort holds field and direction`() {
         val sort = AqlSort(field = AqlField("priority"), direction = SortDirection.DESC)
 
-        assertEquals("priority", sort.field.value)
-        assertEquals(SortDirection.DESC, sort.direction)
+        assertThat(sort.field.value).isEqualTo("priority")
+        assertThat(sort.direction).isEqualTo(SortDirection.DESC)
     }
 
     @Test
     fun `SortDirection has ASC and DESC`() {
-        assertEquals(SortDirection.ASC, SortDirection.valueOf("ASC"))
-        assertEquals(SortDirection.DESC, SortDirection.valueOf("DESC"))
+        assertThat(SortDirection.valueOf("ASC")).isEqualTo(SortDirection.ASC)
+        assertThat(SortDirection.valueOf("DESC")).isEqualTo(SortDirection.DESC)
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -221,18 +214,20 @@ class IssueSearchPortDefaultTest {
             size = 50,
         )
 
-        assertEquals("PROJ", query.projectKey)
-        assertEquals(ast, query.ast)
-        assertEquals(sort, query.sort)
-        assertEquals(viewerUserId, query.viewerUserId)
-        assertEquals(0, query.page)
-        assertEquals(50, query.size)
+        assertThat(query.projectKey).isEqualTo("PROJ")
+        assertThat(query.ast).isEqualTo(ast)
+        assertThat(query.sort).isEqualTo(sort)
+        assertThat(query.viewerUserId).isEqualTo(viewerUserId)
+        assertThat(query.page).isEqualTo(0)
+        assertThat(query.size).isEqualTo(50)
     }
 
     @Test
     fun `IssueSearchQuery supports empty sort list`() {
-        val query = buildQuery(ast = AqlNode.Comparison(AqlField("status"), AqlOperator.EQ, listOf(AqlValue.Str("open"))))
-        assertTrue(query.sort.isEmpty())
+        val query = buildQuery(
+            ast = AqlNode.Comparison(AqlField("status"), AqlOperator.EQ, listOf(AqlValue.Str("open"))),
+        )
+        assertThat(query.sort).isEmpty()
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -255,15 +250,15 @@ class IssueSearchPortDefaultTest {
             updatedAt = now,
         )
 
-        assertEquals("PROJ-1", hit.key)
-        assertEquals("로그인 버그", hit.summary)
-        assertEquals("bug", hit.typeKey)
-        assertEquals("open", hit.currentStateKey)
-        assertEquals(assigneeId, hit.assigneeId)
-        assertEquals(1, hit.priority)
-        assertEquals("Critical", hit.priorityName)
-        assertEquals("PROJ", hit.projectKey)
-        assertEquals(now, hit.updatedAt)
+        assertThat(hit.key).isEqualTo("PROJ-1")
+        assertThat(hit.summary).isEqualTo("로그인 버그")
+        assertThat(hit.typeKey).isEqualTo("bug")
+        assertThat(hit.currentStateKey).isEqualTo("open")
+        assertThat(hit.assigneeId).isEqualTo(assigneeId)
+        assertThat(hit.priority).isEqualTo(1)
+        assertThat(hit.priorityName).isEqualTo("Critical")
+        assertThat(hit.projectKey).isEqualTo("PROJ")
+        assertThat(hit.updatedAt).isEqualTo(now)
     }
 
     @Test
@@ -280,7 +275,7 @@ class IssueSearchPortDefaultTest {
             updatedAt = Instant.now(),
         )
 
-        assertNull(hit.assigneeId, "담당자 미배정 이슈는 assigneeId 가 null 이어야 한다")
+        assertThat(hit.assigneeId).isNull()
     }
 
     // ──────────────────────────────────────────────────────────────────
