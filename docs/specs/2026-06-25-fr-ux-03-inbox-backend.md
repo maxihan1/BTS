@@ -144,9 +144,15 @@ COMMENT ON COLUMN notifications.archived_at   IS '보관 시각 (NULL=미보관)
 COMMENT ON COLUMN notifications.actor_user_id IS '알림 발신자 userId (NULL=시스템/없음). FR-UX-03 발신자 검색';
 CREATE INDEX ix_notifications_recipient_unread
     ON notifications (recipient_user_id)
-    WHERE read_at IS NULL AND archived_at IS NULL;
+    WHERE read_at IS NULL AND archived_at IS NULL AND channel = 'IN_APP';
 ```
 + `init_codegen.sql` 미러. `Notification` Aggregate에 `archivedAt: Instant?` + `actorUserId: UUID?` 필드 추가.
+
+**기존 테스트 파급 (리뷰 발견)**.
+- `NotificationRepositoryIntegrationTest.kt`의 `containsExactlyInAnyOrder` 컬럼 단언(12개)에 `archived_at`,
+  `actor_user_id`를 추가해야 한다(V407 적용 시 즉시 RED). → Task 1에서 함께 갱신.
+- `InAppChannelSenderTest`/`EmailChannelSenderTest`/`EmailChannelSenderIntegrationTest`가 `Notification(...)`을
+  positional로 호출 → trailing nullable default라 무변경이나 인지 대상.
 
 ## 엣지 케이스
 
