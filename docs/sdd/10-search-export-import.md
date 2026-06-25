@@ -4,6 +4,8 @@
 
 JQL과 99% 호환되는 쿼리 언어. ANTLR 4로 구현.
 
+> **[Deviation — PR #189]** "ANTLR 4로 구현" 명세에서 deviation. 실제 구현은 **손수 작성 재귀하강 파서(zero-dep)**로 대체됨. 근거: MVP 문법(=·!=·~·IN·NOT IN·AND·OR·NOT·ORDER BY)이 재귀하강으로 충분하고, BTS 미니멀 인프라 철학과 일관되며, FR-SR-01 파서 선례가 있다. 새 빌드 의존성(ANTLR 생성코드 통합)을 회피한다. 정본 근거. [ADR docs/decisions/2026-06-25-fr-sr-02-aql-parser-and-bc.md](../decisions/2026-06-25-fr-sr-02-aql-parser-and-bc.md).
+
 ### 10.1.1 구문
 
 ```
@@ -35,6 +37,8 @@ ORDER BY priority DESC, created ASC
 - 상대 날짜: `-7d`, `+1w`, `-1M`
 
 ### 10.1.4 AST → SQL 변환
+
+> **[Deviation — PR #189]** SDD 원안은 "검색 모듈 내부에서 AST→jOOQ 변환"을 그림으로 명세했으나, BC 격리 원칙에 의해 분할됨. jOOQ 생성 코드(`Tables.ISSUES` 등)는 issue-tracking 모듈 전용이라 search-export-import 모듈이 직접 접근 불가(ArchUnit 차단). 실제 구조. **search 모듈 = 텍스트→AST(파서 책임)**, **issue-tracking 모듈 = AST→jOOQ 변환·실행(IssueSearchPort 구현 책임)**. 계약은 shared-kernel의 `IssueSearchPort`(선례: `BoardIssueLookupPort`). 정본 근거. [ADR docs/decisions/2026-06-25-fr-sr-02-aql-parser-and-bc.md](../decisions/2026-06-25-fr-sr-02-aql-parser-and-bc.md).
 
 ```kotlin
 // AQL: "project = PROJ AND status = Done"

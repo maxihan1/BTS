@@ -1,4 +1,4 @@
-<!-- search-export-import BC — AQL 검색 + Export + Import + REST API + Webhook + PAT 12 FR + AQL 파서 PoC -->
+<!-- search-export-import BC — AQL 검색 + Export + Import + REST API + Webhook + PAT 12 FR -->
 
 # search-export-import BC
 
@@ -45,11 +45,13 @@
 
 **우선순위**. 필수 | **선행**. §1, §2.1 | **Plan slug**. `search/aql`
 
-- [ ] D1. 도메인 — AqlQuery (책임. backend-engineer)
-- [ ] D2. 명세 — JQL 호환 키워드 목록 (책임. backend-engineer)
+> **백엔드 코어 MVP 완료 (2026-06-25, PR #189)**. search-export-import 모듈 신설(7번째 BC). 손수 작성 재귀하강 파서(ANTLR 미도입 — ADR `docs/decisions/2026-06-25-fr-sr-02-aql-parser-and-bc.md`). 핵심 키워드(`=`,`!=`,`~`,`IN`,`NOT IN`, `AND`/`OR`/`NOT`+괄호 중첩, `ORDER BY`) + 지원 필드(status/label/summary/priority) + AST→jOOQ 변환(IssueSearchPort, issue-tracking 어댑터) + visibility 보안 술어 AND 자동 결합(우회 불가) + BROWSE 권한 게이트 + `POST /api/v1/search/aql` + 단위 50+. **후속 PR**. 함수(`currentUser()`/`now()`/상대날짜), `is EMPTY`/`is NOT EMPTY`, pg_trgm 인덱스(D3), 프론트 입력창+syntax highlight(D6), E2E(D7).
+
+- [x] D1. 도메인 — AqlQuery (책임. backend-engineer)
+- [x] D2. 명세 — JQL 호환 키워드 목록 (책임. backend-engineer)
 - [ ] D3. 데이터 모델 — `pg_trgm` 인덱스 (책임. db-engineer)
-- [ ] D4. 백엔드 — `POST /api/v1/search/aql` AST 변환 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — JQL 50개 쿼리 대응 (책임. backend-engineer)
+- [x] D4. 백엔드 — `POST /api/v1/search/aql` AST 변환 (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 — JQL 50개 쿼리 대응 (책임. backend-engineer)
 - [ ] D6. 프론트 UI — AQL 입력창 + syntax highlight (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
