@@ -3,32 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { Bell } from 'lucide-react'
 import { useUnreadCount } from '@/api/inbox'
 import { inboxLabels } from '@/i18n/inbox-labels'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 상수
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** 뱃지에 표시하는 최대 숫자 — 초과하면 "MAX_BADGE_COUNT+" 로 표시 */
-const MAX_BADGE_COUNT = 99
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 순수 함수 — 뱃지 표시 텍스트 계산 (REFACTOR 단계 추출 예정)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 미읽음 카운트를 뱃지 표시 문자열로 변환한다.
- * - 0이면 null (뱃지 숨김)
- * - 1~99이면 숫자 문자열
- * - 100 이상이면 "99+"
- *
- * @param count 미읽음 카운트 (0 이상 정수)
- * @returns 뱃지 텍스트 또는 null (숨김)
- */
-function formatUnreadBadge(count: number): string | null {
-  if (count <= 0) return null
-  if (count > MAX_BADGE_COUNT) return `${MAX_BADGE_COUNT}+`
-  return String(count)
-}
+import { formatUnreadBadge } from './inboxBellUtils'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 컴포넌트
