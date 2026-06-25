@@ -36,6 +36,42 @@ function resolveDisplayName(user: UserSummary): string {
   return user.displayName ?? user.username
 }
 
+/**
+ * `<input type="date">` 값(YYYY-MM-DD)을 UTC 하루 시작 ISO Instant로 변환한다.
+ * 백엔드 InboxController의 from: Instant? 파라미터와 호환된다.
+ *
+ * @param dateValue date input의 value 문자열 (YYYY-MM-DD)
+ * @returns `2026-06-01T00:00:00.000Z` 형식의 ISO Instant 문자열
+ */
+function dateToFromInstant(dateValue: string): string {
+  return `${dateValue}T00:00:00.000Z`
+}
+
+/**
+ * `<input type="date">` 값(YYYY-MM-DD)을 UTC 하루 끝 ISO Instant로 변환한다.
+ * to는 inclusive end-of-day이다.
+ * 백엔드 InboxController의 to: Instant? 파라미터와 호환된다.
+ *
+ * @param dateValue date input의 value 문자열 (YYYY-MM-DD)
+ * @returns `2026-06-30T23:59:59.999Z` 형식의 ISO Instant 문자열
+ */
+function dateToToInstant(dateValue: string): string {
+  return `${dateValue}T23:59:59.999Z`
+}
+
+/**
+ * ISO Instant 문자열에서 날짜 부분(YYYY-MM-DD)을 추출한다.
+ * `<input type="date">` value에 역방향 바인딩할 때 사용한다.
+ *
+ * @param instant ISO 8601 형식 문자열 (YYYY-MM-DDTHH:mm:ss.sssZ 또는 YYYY-MM-DD)
+ * @returns `2026-06-01` 형식의 날짜 문자열
+ */
+function instantToDateValue(instant: string): string {
+  // T가 포함된 ISO Instant이면 날짜 부분만 슬라이스, 아니면 그대로 반환
+  const tIndex = instant.indexOf('T')
+  return tIndex >= 0 ? instant.slice(0, tIndex) : instant
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Props 인터페이스
 // ─────────────────────────────────────────────────────────────────────────────
@@ -192,12 +228,15 @@ export function InboxFilters({ filters, onFiltersChange }: InboxFiltersProps) {
 
   function handleFromChange(e: React.ChangeEvent<HTMLInputElement>) {
     const value = e.target.value
-    onFiltersChange({ ...filters, from: value === '' ? undefined : value })
+    // bare date(YYYY-MM-DD) → UTC 하루 시작 ISO Instant 변환
+    // 백엔드 from: Instant?가 Spring 기본 ISO_INSTANT를 요구하므로 변환 필수
+    onFiltersChange({ ...filters, from: value === '' ? undefined : dateToFromInstant(value) })
   }
 
   function handleToChange(e: React.ChangeEvent<HTMLInputElement>) {
     const value = e.target.value
-    onFiltersChange({ ...filters, to: value === '' ? undefined : value })
+    // bare date(YYYY-MM-DD) → UTC 하루 끝(inclusive) ISO Instant 변환
+    onFiltersChange({ ...filters, to: value === '' ? undefined : dateToToInstant(value) })
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -321,7 +360,7 @@ export function InboxFilters({ filters, onFiltersChange }: InboxFiltersProps) {
         <input
           id="inbox-filter-from"
           type="date"
-          value={filters.from ?? ''}
+          value={filters.from !== undefined ? instantToDateValue(filters.from) : ''}
           onChange={handleFromChange}
           className={cn(
             'h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm',
@@ -342,7 +381,7 @@ export function InboxFilters({ filters, onFiltersChange }: InboxFiltersProps) {
         <input
           id="inbox-filter-to"
           type="date"
-          value={filters.to ?? ''}
+          value={filters.to !== undefined ? instantToDateValue(filters.to) : ''}
           onChange={handleToChange}
           className={cn(
             'h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm',

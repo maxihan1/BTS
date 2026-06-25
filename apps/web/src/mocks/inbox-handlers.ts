@@ -130,11 +130,20 @@ function applySearchFilters(
   }
 
   if (params.from !== null) {
-    result = result.filter((i) => i.createdAt >= params.from!)
+    // Date 파싱 비교 — ISO Instant 형식(T00:00:00.000Z)이 정석
+    // lexical 비교와 달리 bare date('2026-06-01')를 전달하면 NaN이 되어 필터 통과하지 않음
+    const fromDate = new Date(params.from)
+    if (!isNaN(fromDate.getTime())) {
+      result = result.filter((i) => new Date(i.createdAt) >= fromDate)
+    }
   }
 
   if (params.to !== null) {
-    result = result.filter((i) => i.createdAt <= params.to!)
+    // Date 파싱 비교 — ISO Instant 형식(T23:59:59.999Z)이 정석
+    const toDate = new Date(params.to)
+    if (!isNaN(toDate.getTime())) {
+      result = result.filter((i) => new Date(i.createdAt) <= toDate)
+    }
   }
 
   return result
