@@ -23,15 +23,6 @@ export const INBOX_TABS = {
 /** Inbox 탭 유니온 타입 */
 export type InboxTab = (typeof INBOX_TABS)[keyof typeof INBOX_TABS]
 
-/** 에러 코드 상수 — 백엔드 InboxExceptionHandler 에러코드 열거 미러 */
-export const INBOX_ERROR_CODES = {
-  /** Inbox 항목 미존재 */
-  INBOX_ITEM_NOT_FOUND: 'INBOX_ITEM_NOT_FOUND',
-} as const
-
-/** Inbox errorCode 유니온 타입 */
-export type InboxErrorCode = (typeof INBOX_ERROR_CODES)[keyof typeof INBOX_ERROR_CODES]
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 필터 타입
 // ─────────────────────────────────────────────────────────────────────────────
@@ -363,24 +354,3 @@ export function useReadAll() {
   })
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 에러 코드 추출 헬퍼
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 에러에서 Inbox BC errorCode를 추출한다.
- * ApiError이면 body.errorCode를 string으로 반환한다.
- * ApiError가 아니거나 errorCode 필드가 없으면 null을 반환한다.
- * (선례: favorites.ts extractFavoriteErrorCode 동일 패턴 — PR #106 교훈)
- *
- * @param error 발생한 에러 (unknown)
- * @returns errorCode string 또는 null
- */
-export function extractInboxErrorCode(error: unknown): string | null {
-  if (error instanceof ApiError) {
-    const body = error.body as Record<string, unknown> | undefined
-    const code = body?.['errorCode']
-    return typeof code === 'string' ? code : null
-  }
-  return null
-}
