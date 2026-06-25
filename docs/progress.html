@@ -178,11 +178,11 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">63%</text>
   </svg>
       <div class="overview-numbers">
-        <div class="big-num">77 / 123</div>
+        <div class="big-num">78 / 123</div>
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
-          <div><span class="dot dot-done"></span> 완료 <b>77</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>2</b></div>
+          <div><span class="dot dot-done"></span> 완료 <b>78</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>1</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
           <div><span class="dot dot-wait"></span> 대기 <b>44</b></div>
         </div>
@@ -221,9 +221,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bc-card-pct">0%</div>
     </div><div class="bc-card" data-nav="bc-search-export-import">
       <div class="bc-card-head">🔍 검색/입출력</div>
-      <div class="bc-card-stats">1 / 12 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:8%"></div></div>
-      <div class="bc-card-pct">8%</div>
+      <div class="bc-card-stats">2 / 12 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:17%"></div></div>
+      <div class="bc-card-pct">17%</div>
     </div><div class="bc-card" data-nav="bc-slack-integration">
       <div class="bc-card-head">💬 Slack 연동</div>
       <div class="bc-card-stats">0 / 6 완료</div>
@@ -1133,12 +1133,12 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h1>🔍 검색/입출력</h1>
     <p class="bc-desc">AQL 검색, CSV/Excel 내보내기/가져오기 영역.</p>
     <div class="bc-detail-stats">
-      <div class="big-pct">8%</div>
-      <div>1 / 12 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:8%"></div></div>
+      <div class="big-pct">17%</div>
+      <div>2 / 12 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:17%"></div></div>
       <div class="status-grid">
-        <div>✅ 완료 1</div>
-        <div>🔄 진행중 1</div>
+        <div>✅ 완료 2</div>
+        <div>🔄 진행중 0</div>
         <div>⛔ 차단 0</div>
         <div>⬜ 대기 10</div>
       </div>
@@ -1151,13 +1151,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc"><span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 필터 (다중 필드 조합)</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — Filter VO</li><li><span class="step-icon">✅</span> D2 — 명세 — 필드 조합 + AND/OR</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — PostgreSQL <span class="term" data-def="&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">인덱스</span> (status, <span class="term" data-def="&quot;신고자 / 담당자&quot; 버그를 찾아서 올린 사람(Reporter)과, 실제로 고칠 책임이 있는 사람(Assignee)입니다.">assignee</span>_id, <span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>oject</span>_id, label)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `GET /api/v1/<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s?filter=...` <span class="term" data-def="&quot;DB 도면 버전 관리자 / 안전한 번역기&quot; DB 구조의 변경 이력을 꼼꼼히 기록하고(Flyway), 오타 없이 안전하게 DB 언어로 번역해 주는 도구(jOOQ)입니다.">jOOQ</span> 동적 쿼리</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 필터 패널</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-진행중">
+    </details><details class="fr-item fr-완료">
       <summary>
-        <span class="fr-status">🔄</span>
+        <span class="fr-status">✅</span>
         <span class="fr-id">FR-SR-02</span>
         <span class="fr-desc"><span class="term" data-def="Atlas Query Language. JQL 호환 검색 문법">AQL</span> 텍스트 쿼리 (JQL 호환)</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="Atlas Query Language. JQL 호환 검색 문법">Aql</span>Query</li><li><span class="step-icon">✅</span> D2 — 명세 — <span class="term" data-def="&quot;고급 검색어 언어&quot; &quot;담당자=나 AND 상태=진행중 AND 생성일=어제&quot;처럼 복잡한 조건으로 이슈를 족집게처럼 찾아낼 수 있는 전문 검색 문법입니다.">JQL</span> 호환 키워드 목록</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `pg_trgm` <span class="term" data-def="&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">인덱스</span></li><li><span class="step-icon">✅</span> D4 — 백엔드 — `POST /api/v1/search/<span class="term" data-def="Atlas Query Language. JQL 호환 검색 문법">aql</span>` <span class="term" data-def="&quot;문장 성분 분해 트리 / 자동 조건 판독기&quot; &quot;10만 원 이상이면 팀장 승인&quot; 같은 복잡한 조건을 컴퓨터가 이해하도록 주어/동사로 쪼개고(AST), 스스로 계산해 주는(SpEL) 기술입니다.">AST</span> 변환</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;고급 검색어 언어&quot; &quot;담당자=나 AND 상태=진행중 AND 생성일=어제&quot;처럼 복잡한 조건으로 이슈를 족집게처럼 찾아낼 수 있는 전문 검색 문법입니다.">JQL</span> 50개 쿼리 대응</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="Atlas Query Language. JQL 호환 검색 문법">AQL</span> 입력창 + syntax highlight</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="Atlas Query Language. JQL 호환 검색 문법">Aql</span>Query</li><li><span class="step-icon">✅</span> D2 — 명세 — <span class="term" data-def="&quot;고급 검색어 언어&quot; &quot;담당자=나 AND 상태=진행중 AND 생성일=어제&quot;처럼 복잡한 조건으로 이슈를 족집게처럼 찾아낼 수 있는 전문 검색 문법입니다.">JQL</span> 호환 키워드 목록</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `pg_trgm` <span class="term" data-def="&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">인덱스</span></li><li><span class="step-icon">✅</span> D4 — 백엔드 — `POST /api/v1/search/<span class="term" data-def="Atlas Query Language. JQL 호환 검색 문법">aql</span>` <span class="term" data-def="&quot;문장 성분 분해 트리 / 자동 조건 판독기&quot; &quot;10만 원 이상이면 팀장 승인&quot; 같은 복잡한 조건을 컴퓨터가 이해하도록 주어/동사로 쪼개고(AST), 스스로 계산해 주는(SpEL) 기술입니다.">AST</span> 변환</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;고급 검색어 언어&quot; &quot;담당자=나 AND 상태=진행중 AND 생성일=어제&quot;처럼 복잡한 조건으로 이슈를 족집게처럼 찾아낼 수 있는 전문 검색 문법입니다.">JQL</span> 50개 쿼리 대응</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="Atlas Query Language. JQL 호환 검색 문법">AQL</span> 입력창 + syntax highlight</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
