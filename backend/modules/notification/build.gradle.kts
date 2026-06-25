@@ -86,6 +86,9 @@ dependencies {
     // jOOQ 런타임 (jOOQ: SQL을 코드로 안전하게 작성하는 라이브러리)
     implementation("org.jooq:jooq")
 
+    // Spring Data Commons — Pageable / Page / PageImpl (Inbox 페이지네이션용, FR-UX-03)
+    implementation("org.springframework.data:spring-data-commons")
+
     // ── jOOQ 코드 생성 전용 classpath ─────────────────────────────────────────
     // PostgresDatabase: 실제 PostgreSQL 인스턴스를 통해 jOOQ 코드 생성 (nu.studer.jooq codegen 전용)
     jooqGenerator("org.jooq:jooq-codegen")

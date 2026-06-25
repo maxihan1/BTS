@@ -205,11 +205,13 @@
 
 **우선순위**. 필수 | **선행**. §2.2 | **Plan slug**. `dashboard/inbox`
 
-- [ ] D1. 도메인 — InboxItem (책임. backend-engineer)
-- [ ] D2. 명세 — 읽음/안읽음 + 보관 + 필터 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `inbox_items(user_id, notification_id, read_at, archived_at)` (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /api/v1/users/me/inbox` + 상태 변경 API (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+> **구현 범위 (#186, Maxi 확정 2026-06-25)**. 백엔드 D1~D5만 본 PR — 프론트 D6/D7(Inbox 페이지·카운트 뱃지·E2E)은 후속 PR. **데이터 모델 deviation**. 별도 `inbox_items` 조인 테이블 폐기 → 기존 `notifications`(FR-NT-02 V402, 수신자별 fanout + `read_at` 보유) 확장(V407: `archived_at` + `actor_user_id`). read/archive 2축 독립. 기능 범위는 SDD 9.2 고급 포함(코어 + 그룹화(issueKey) + 검색(텍스트/발신자/기간) + 일괄 읽음). ADR `2026-06-25-fr-ux-03-inbox-data-model`.
+
+- [x] D1. 도메인 — Notification 상태 전이(markRead/markUnread/archive/unarchive, 멱등) (책임. backend-engineer) (완료. PR #186 — 별도 InboxItem 미신설, 기존 Notification Aggregate에 archivedAt/actorUserId 필드 + copy 기반 전이)
+- [x] D2. 명세 — 읽음/안읽음 + 보관 + 필터 (책임. backend-engineer) (완료. PR #186 — read/archive 2축, 탭(all/unread/archived), 검색, 일괄 읽음)
+- [x] D3. 데이터 모델 — `notifications` 확장(`archived_at`, `actor_user_id`, 미읽음 부분 인덱스) (책임. db-engineer) (완료. PR #186 — V407 + init_codegen 미러. 별도 inbox_items 테이블 폐기, notifications가 이미 수신자별 fanout이라 1:1 중복 회피)
+- [x] D4. 백엔드 — `GET /api/v1/users/me/inbox` + 미읽음 카운트 + 읽음/보관 토글 + 일괄 읽음 API (책임. backend-engineer) (완료. PR #186 — 본인+IN_APP 한정, 401/404 격리, no-bump UPDATE(COALESCE 시각 보존), PATCH 204, InboxExceptionHandler 격리)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) (완료. PR #186 — 도메인 단위·repository Testcontainers(탭/검색/페이지네이션/멱등 보존/타인 격리/IN_APP)·service mockk·controller 슬라이스·worker actor 저장 회귀·V407 스키마 마이그레이션)
 - [ ] D6. 프론트 UI — Inbox 페이지 + 카운트 뱃지 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 

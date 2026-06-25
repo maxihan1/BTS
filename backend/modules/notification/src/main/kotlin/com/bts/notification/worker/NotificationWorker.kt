@@ -302,6 +302,12 @@ class NotificationWorker(
      * status 는 PENDING 으로 삽입한다. 채널 전송이 성공한 뒤에만 [deliver] 가 markSent 로 SENT 전이한다
      * (발송 전 SENT 박제 방지 — 푸시 실패 시 PENDING 으로 남아 Inbox(FR-UX-03)가 영속 fallback).
      *
+     * ## 발신자(actorUserId) 저장 정책 (CONCERN-3)
+     * 발신자는 [NotificationSourceEvent.actorId] 로 통일한다 — 이벤트 행위자(멘션한 사람, 할당한 사람 등).
+     * ISSUE_CREATED 의 경우 actorId 와 reporterId 가 다를 수 있으나, Inbox 발신자 검색의 주 use case
+     * (멘션/할당 이벤트)는 actorId 로 커버된다. reporterId fallback 은 도입하지 않는다.
+     * actorId 가 없는 이벤트(ISSUE_DUE_SOON, ISSUE_OVERDUE 등 시스템 발생 알림)는 null 로 저장된다.
+     *
      * @param event 원본 이벤트
      * @param recipient 수신자 정보
      * @return 생성된 알림 객체
@@ -332,6 +338,7 @@ class NotificationWorker(
             dedupKey = dedupKey,
             readAt = null,
             createdAt = event.occurredAt,
+            actorUserId = event.actorId,
         )
     }
 

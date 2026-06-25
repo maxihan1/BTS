@@ -19,7 +19,7 @@ CREATE INDEX idx_notification_policy_lookup
     ON notification_policies (event_type, project_key)
     WHERE enabled = TRUE;
 
--- ── notifications (V402 미러) ─────────────────────────────────────────────────
+-- ── notifications (V402 + V407 미러) ──────────────────────────────────────────
 CREATE TABLE notifications (
     id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     recipient_user_id UUID         NOT NULL,
@@ -33,11 +33,18 @@ CREATE TABLE notifications (
     dedup_key         TEXT         NOT NULL,
     read_at           TIMESTAMPTZ,
     created_at        TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    archived_at       TIMESTAMPTZ,
+    actor_user_id     UUID,
     CONSTRAINT uq_notifications_dedup_key UNIQUE (dedup_key)
 );
 
 CREATE INDEX ix_notifications_recipient
     ON notifications (recipient_user_id, created_at DESC);
+
+-- 미읽음 카운트 부분 인덱스 (V407 미러) — IN_APP 한정 countUnread 경로 커버.
+CREATE INDEX ix_notifications_recipient_unread
+    ON notifications (recipient_user_id)
+    WHERE read_at IS NULL AND archived_at IS NULL AND channel = 'IN_APP';
 
 -- ── user_notification_subs (V404 미러) ─────────────────────────────────────────
 CREATE TABLE user_notification_subs (

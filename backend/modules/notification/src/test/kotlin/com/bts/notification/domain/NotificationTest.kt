@@ -1,4 +1,4 @@
-// Notification 도메인 단위 테스트 — 불변 필드, NotificationStatus, dedupKey 결정성 검증
+// Notification 도메인 단위 테스트 — 불변 필드, NotificationStatus, dedupKey 결정성, 상태 전이(read/archive) 검증
 
 package com.bts.notification.domain
 
@@ -94,6 +94,107 @@ class NotificationTest : DescribeSpec({
         it("readAt 이 non-null 일 때 값이 보존된다") {
             val n = buildNotification(readAt = fixedNow)
             n.readAt shouldBe fixedNow
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // 상태 전이 — markRead / markUnread / archive / unarchive
+    // -----------------------------------------------------------------------
+    describe("상태 전이 — 기본 필드 기본값") {
+        it("기본 생성 시 archivedAt 은 null 이다") {
+            val n = buildNotification()
+            n.archivedAt shouldBe null
+        }
+
+        it("기본 생성 시 actorUserId 는 null 이다") {
+            val n = buildNotification()
+            n.actorUserId shouldBe null
+        }
+    }
+
+    describe("markRead — 읽음 처리") {
+        it("미읽음 알림에 markRead(t) 를 호출하면 readAt 이 t 로 설정된다") {
+            val n = buildNotification(readAt = null)
+            val result = n.markRead(fixedNow)
+            result.readAt shouldBe fixedNow
+        }
+
+        it("이미 읽은 알림에 markRead(t2) 를 호출해도 readAt 이 원래 시각(t)으로 유지된다(멱등)") {
+            val n = buildNotification(readAt = fixedNow)
+            val result = n.markRead(laterNow)
+            result.readAt shouldBe fixedNow
+        }
+
+        it("markRead 는 archivedAt 을 변경하지 않는다") {
+            val n = buildNotification(readAt = null)
+            val withArchive = n.archive(fixedNow)
+            val result = withArchive.markRead(laterNow)
+            result.archivedAt shouldBe fixedNow
+        }
+    }
+
+    describe("markUnread — 미읽음 처리") {
+        it("읽은 알림에 markUnread() 를 호출하면 readAt 이 null 이 된다") {
+            val n = buildNotification(readAt = fixedNow)
+            val result = n.markUnread()
+            result.readAt shouldBe null
+        }
+
+        it("markUnread 는 archivedAt 을 변경하지 않는다") {
+            val n = buildNotification(readAt = fixedNow)
+            val withArchive = n.archive(fixedNow)
+            val result = withArchive.markUnread()
+            result.archivedAt shouldBe fixedNow
+        }
+    }
+
+    describe("archive — 보관 처리") {
+        it("미보관 알림에 archive(t) 를 호출하면 archivedAt 이 t 로 설정된다") {
+            val n = buildNotification()
+            val result = n.archive(fixedNow)
+            result.archivedAt shouldBe fixedNow
+        }
+
+        it("이미 보관된 알림에 archive(t2) 를 호출해도 archivedAt 이 원래 시각(t)으로 유지된다(멱등)") {
+            val n = buildNotification().archive(fixedNow)
+            val result = n.archive(laterNow)
+            result.archivedAt shouldBe fixedNow
+        }
+
+        it("archive 는 readAt 을 변경하지 않는다") {
+            val n = buildNotification(readAt = fixedNow)
+            val result = n.archive(laterNow)
+            result.readAt shouldBe fixedNow
+        }
+    }
+
+    describe("unarchive — 보관 해제") {
+        it("보관된 알림에 unarchive() 를 호출하면 archivedAt 이 null 이 된다") {
+            val n = buildNotification().archive(fixedNow)
+            val result = n.unarchive()
+            result.archivedAt shouldBe null
+        }
+
+        it("unarchive 는 readAt 을 변경하지 않는다") {
+            val n = buildNotification(readAt = fixedNow).archive(laterNow)
+            val result = n.unarchive()
+            result.readAt shouldBe fixedNow
+        }
+    }
+
+    describe("read / archive 2축 독립") {
+        it("archive 후에도 readAt 이 불변이다") {
+            val n = buildNotification(readAt = fixedNow)
+            val result = n.archive(laterNow)
+            result.readAt shouldBe fixedNow
+            result.archivedAt shouldBe laterNow
+        }
+
+        it("markRead 후에도 archivedAt 이 불변이다") {
+            val n = buildNotification().archive(fixedNow)
+            val result = n.markRead(laterNow)
+            result.archivedAt shouldBe fixedNow
+            result.readAt shouldBe laterNow
         }
     }
 
