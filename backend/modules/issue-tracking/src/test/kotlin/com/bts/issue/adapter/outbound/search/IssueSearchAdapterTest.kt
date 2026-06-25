@@ -36,7 +36,6 @@ import java.util.UUID
  * - 빈 결과 정상 반환(누출 0 케이스 — 실 DB 검증은 통합 테스트에서).
  */
 class IssueSearchAdapterTest {
-
     private val issueRepository: IssueRepository = mockk()
     private val securityDirectory: IssueSecurityDirectory = mockk()
     private val permissionResolver: IssuePermissionResolver = mockk()

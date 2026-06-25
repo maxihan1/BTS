@@ -9,7 +9,6 @@ import com.bts.shared.permission.IssueScope
 import com.bts.shared.permission.IssueSecurityDirectory
 import com.bts.shared.search.AqlField
 import com.bts.shared.search.AqlNode
-import com.bts.shared.search.AqlSort
 import com.bts.shared.search.IssueSearchPage
 import com.bts.shared.search.IssueSearchPort
 import com.bts.shared.search.IssueSearchQuery
@@ -44,7 +43,6 @@ class IssueSearchAdapter(
     private val securityDirectory: IssueSecurityDirectory,
     private val permissionResolver: IssuePermissionResolver,
 ) : IssueSearchPort {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
@@ -139,26 +137,16 @@ class IssueSearchAdapter(
     ) {
         val fieldName = field.value.lowercase()
 
-        if (fieldName in FUTURE_FIELDS) {
-            throw IllegalArgumentException(
-                "후속 지원 예정 필드입니다: $fieldName. " +
-                    "현재 MVP 에서는 사용할 수 없습니다.",
-            )
+        require(fieldName !in FUTURE_FIELDS) {
+            "후속 지원 예정 필드입니다: $fieldName. 현재 MVP 에서는 사용할 수 없습니다."
         }
-
-        if (fieldName !in SUPPORTED_FIELDS) {
-            throw IllegalArgumentException(
-                "지원하지 않는 필드입니다: $fieldName. " +
-                    "지원 필드: ${SUPPORTED_FIELDS.sorted().joinToString(", ")}",
-            )
+        require(fieldName in SUPPORTED_FIELDS) {
+            "지원하지 않는 필드입니다: $fieldName. 지원 필드: ${SUPPORTED_FIELDS.sorted().joinToString(", ")}"
         }
 
         // priority 는 SMALLINT — ~ (CONTAINS) 연산자 불가
-        if (fieldName == "priority" && op == com.bts.shared.search.AqlOperator.CONTAINS) {
-            throw IllegalArgumentException(
-                "priority 필드에는 ~ 연산자를 사용할 수 없습니다. " +
-                    "priority 는 정수(SMALLINT) 필드입니다.",
-            )
+        require(!(fieldName == "priority" && op == com.bts.shared.search.AqlOperator.CONTAINS)) {
+            "priority 필드에는 ~ 연산자를 사용할 수 없습니다. priority 는 정수(SMALLINT) 필드입니다."
         }
     }
 }

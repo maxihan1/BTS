@@ -2,9 +2,9 @@
 
 package com.bts.issue.repository
 
-import com.bts.issue.adapter.outbound.search.IssueSearchAdapter
 import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.adapter.outbound.AlwaysAllowIssueSecurityDirectory
+import com.bts.issue.adapter.outbound.search.IssueSearchAdapter
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
@@ -19,7 +19,6 @@ import com.bts.shared.search.AqlNode
 import com.bts.shared.search.AqlOperator
 import com.bts.shared.search.AqlSort
 import com.bts.shared.search.AqlValue
-import com.bts.shared.search.IssueSearchPage
 import com.bts.shared.search.IssueSearchQuery
 import com.bts.shared.search.SortDirection
 import io.mockk.every
@@ -67,7 +66,6 @@ import java.util.UUID
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class IssueSearchRepositoryIntegrationTest : IssueTestcontainersBase() {
-
     private var taskTypeId: IssueTypeId? = null
 
     /** IssueSearchAdapter 인스턴스 — 실 repository + AlwaysAllow stub 조합. */
@@ -81,24 +79,6 @@ class IssueSearchRepositoryIntegrationTest : IssueTestcontainersBase() {
 
     /** BROWSE 차단 테스트에서 사용하는 mock permissionResolver. */
     private val denyBrowseResolver = mockk<com.bts.shared.permission.IssuePermissionResolver>()
-
-    /** 제한 있는 접근 — 빈 허용 집합 (아무 보안 등급 이슈도 볼 수 없다). */
-    private val restrictedAccessNoLevels =
-        IssueSecurityAccess(
-            unrestricted = false,
-            staticLevelIds = emptySet(),
-            reporterLevelIds = emptySet(),
-            assigneeLevelIds = emptySet(),
-        )
-
-    /** unrestricted 접근 — 보안 등급 필터 미적용. */
-    private val unrestrictedAccess =
-        IssueSecurityAccess(
-            unrestricted = true,
-            staticLevelIds = emptySet(),
-            reporterLevelIds = emptySet(),
-            assigneeLevelIds = emptySet(),
-        )
 
     @BeforeAll
     fun resolveTaskTypeIdAndSetupAdapter() {
@@ -132,8 +112,7 @@ class IssueSearchRepositoryIntegrationTest : IssueTestcontainersBase() {
         }
     }
 
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
+    private fun requireTaskTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
 
     @Suppress("LongParameterList") // 통합 테스트 픽스처 빌더 — 다양한 필드 시드, 분리 불필요
     private fun buildIssue(
@@ -367,7 +346,8 @@ class IssueSearchRepositoryIntegrationTest : IssueTestcontainersBase() {
         val restrictedAccess =
             IssueSecurityAccess(
                 unrestricted = false,
-                staticLevelIds = emptySet(), // securedLevelId 미포함 → 보안 등급 이슈 차단
+                // securedLevelId 미포함 → 보안 등급 이슈 차단
+                staticLevelIds = emptySet(),
                 reporterLevelIds = emptySet(),
                 assigneeLevelIds = emptySet(),
             )

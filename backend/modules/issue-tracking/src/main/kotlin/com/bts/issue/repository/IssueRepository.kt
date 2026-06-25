@@ -2119,22 +2119,6 @@ class IssueRepository(
      * AQL AST 를 jOOQ Condition 으로 재귀 변환하고 visibility 보안 술어를 최상위 AND 로 결합해
      * 이슈를 검색한다 (FR-SR-02 Task 5).
      *
-     * 최종 WHERE = `buildActiveSecureWhere(projectKey, actor, access) AND (AST Condition)`.
-     * 사용자 AST 는 보안 술어 **밖에서 감쌀 수 없다** — OR/NOT 은 사용자 AST 내부에만 작용.
-     *
-     * @param projectKey 검색 대상 프로젝트 키.
-     * @param ast AQL 파서가 생성한 AST 루트 노드.
-     * @param sort ORDER BY 절 정렬 기준 목록. 빈 목록이면 기본 정렬(created_at DESC).
-     * @param actor 검색 요청 행위자 UUID. 보안 술어 조건 평가에 사용.
-     * @param access actor 의 접근 가능 보안 등급 집합.
-     * @param page 요청 페이지 번호(0-base).
-     * @param size 요청 페이지 크기.
-     * @return [IssueSearchPage] — 검색 결과 이슈 목록 + 총 건수 + 페이지 정보.
-     */
-    /**
-     * AQL AST 를 jOOQ Condition 으로 재귀 변환하고 visibility 보안 술어를 최상위 AND 로 결합해
-     * 이슈를 검색한다 (FR-SR-02 Task 5).
-     *
      * ### 보안 불변식
      *
      * 최종 WHERE = `buildActiveSecureWhere(projectKey, actor, access) AND (AST Condition)`.
@@ -2311,7 +2295,7 @@ class IssueRepository(
     ): Condition {
         val strValue = values.first().asString()
         return when (op) {
-            AqlOperator.CONTAINS -> ISSUES.SUMMARY.likeIgnoreCase("%${escapeLike(strValue)}%", '\\')
+            AqlOperator.CONTAINS -> ISSUES.SUMMARY.likeIgnoreCase("%${escapeIlikePrefix(strValue)}%", '\\')
             AqlOperator.EQ -> ISSUES.SUMMARY.eq(strValue)
             AqlOperator.NEQ -> ISSUES.SUMMARY.ne(strValue)
             AqlOperator.IN -> ISSUES.SUMMARY.`in`(values.map { it.asString() })
@@ -2355,8 +2339,8 @@ class IssueRepository(
                 // ISSUES.LABELS 는 TEXT[] 배열이므로 unnest 로 전개한 뒤 ILIKE 를 적용한다.
                 // jOOQ 인자 바인딩: {0} = 테이블 참조(issues.labels), {1} = 패턴 문자열 바인드.
                 // SQL injection 방지: 패턴 값은 {1} jOOQ 바인드 파라미터로만 전달하고,
-                //   와일드카드(% _)는 escapeLike 로 리터럴화한 뒤 % 를 직접 추가한다.
-                val pattern = "%${escapeLike(strValues.first())}%"
+                //   와일드카드(% _)는 escapeIlikePrefix 로 리터럴화한 뒤 % 를 직접 추가한다.
+                val pattern = "%${escapeIlikePrefix(strValues.first())}%"
                 DSL.condition(
                     "EXISTS (SELECT 1 FROM unnest({0}) AS _lbl WHERE _lbl ILIKE {1})",
                     ISSUES.LABELS,
@@ -2414,18 +2398,6 @@ class IssueRepository(
             if (aqlSort.direction == SortDirection.DESC) jooqField.desc() else jooqField.asc()
         }
     }
-
-    /**
-     * ILIKE ESCAPE '\' 와일드카드 특수문자를 이스케이프한다.
-     *
-     * SQL injection 방지: 이 메서드는 ILIKE 패턴의 % / _ 만 이스케이프한다.
-     * 값 자체는 항상 jOOQ 바인드 파라미터로 전달한다.
-     * 기존 [escapeIlikePrefix] 와 동일한 로직 — searchByAql 에서 재사용한다.
-     *
-     * @param value 이스케이프할 원본 문자열.
-     * @return 와일드카드가 리터럴화된 문자열.
-     */
-    private fun escapeLike(value: String): String = escapeIlikePrefix(value)
 }
 
 // ── file-level 확장 함수 ────────────────────────────────────────────────────────
