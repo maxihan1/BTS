@@ -4,6 +4,7 @@ package com.bts.search.aql
 
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.assertj.core.api.InstanceOfAssertFactories
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
@@ -21,7 +22,6 @@ import org.junit.jupiter.params.provider.ValueSource
  * - 각 토큰의 컬럼(position) 정확성
  */
 class AqlLexerTest {
-
     private fun lex(input: String): List<AqlToken> = AqlLexer(input).tokenize()
 
     // ── 단일 토큰 종류 ───────────────────────────────────────────────────────────
@@ -239,13 +239,13 @@ class AqlLexerTest {
     fun `전형적인 AQL 쿼리를 올바르게 토큰화한다`() {
         val tokens = lex("status = open AND priority = 1")
         assertThat(tokens).hasSize(7)
-        assertThat(tokens[0].type).isEqualTo(AqlTokenType.IDENT)   // status
-        assertThat(tokens[1].type).isEqualTo(AqlTokenType.EQ)      // =
-        assertThat(tokens[2].lexeme).isEqualTo("open")              // open
-        assertThat(tokens[3].type).isEqualTo(AqlTokenType.KW_AND)  // AND
-        assertThat(tokens[4].lexeme).isEqualTo("priority")          // priority
-        assertThat(tokens[5].type).isEqualTo(AqlTokenType.EQ)      // =
-        assertThat(tokens[6].type).isEqualTo(AqlTokenType.NUMBER)  // 1
+        assertThat(tokens[0].type).isEqualTo(AqlTokenType.IDENT) // status
+        assertThat(tokens[1].type).isEqualTo(AqlTokenType.EQ) // =
+        assertThat(tokens[2].lexeme).isEqualTo("open") // open
+        assertThat(tokens[3].type).isEqualTo(AqlTokenType.KW_AND) // AND
+        assertThat(tokens[4].lexeme).isEqualTo("priority") // priority
+        assertThat(tokens[5].type).isEqualTo(AqlTokenType.EQ) // =
+        assertThat(tokens[6].type).isEqualTo(AqlTokenType.NUMBER) // 1
         assertThat(tokens[6].lexeme).isEqualTo("1")
     }
 
@@ -264,13 +264,16 @@ class AqlLexerTest {
 
     @Test
     fun `NOT IN 절 쿼리를 올바르게 토큰화한다`() {
+        // "status NOT IN (closed)" → 6개 토큰
+        // status / NOT / IN / ( / closed / )
         val tokens = lex("status NOT IN (closed)")
-        assertThat(tokens).hasSize(5)
+        assertThat(tokens).hasSize(6)
         assertThat(tokens[0].lexeme).isEqualTo("status")
         assertThat(tokens[1].type).isEqualTo(AqlTokenType.KW_NOT)
         assertThat(tokens[2].type).isEqualTo(AqlTokenType.KW_IN)
         assertThat(tokens[3].type).isEqualTo(AqlTokenType.LPAREN)
         assertThat(tokens[4].lexeme).isEqualTo("closed")
+        assertThat(tokens[5].type).isEqualTo(AqlTokenType.RPAREN)
     }
 
     @Test
@@ -371,10 +374,9 @@ class AqlLexerTest {
         // 컬럼 0에서 여는 따옴표가 닫히지 않음
         assertThatThrownBy { lex("\"닫히지 않은 문자열") }
             .isInstanceOf(AqlLexException::class.java)
-            .satisfies { ex ->
-                val lexEx = ex as AqlLexException
-                assertThat(lexEx.position).isEqualTo(0)
-            }
+            .asInstanceOf(InstanceOfAssertFactories.type(AqlLexException::class.java))
+            .extracting(AqlLexException::position)
+            .isEqualTo(0)
     }
 
     @Test
@@ -385,10 +387,9 @@ class AqlLexerTest {
         val input = "status = \"열린 따옴표"
         assertThatThrownBy { lex(input) }
             .isInstanceOf(AqlLexException::class.java)
-            .satisfies { ex ->
-                val lexEx = ex as AqlLexException
-                assertThat(lexEx.position).isEqualTo(9)
-            }
+            .asInstanceOf(InstanceOfAssertFactories.type(AqlLexException::class.java))
+            .extracting(AqlLexException::position)
+            .isEqualTo(9)
     }
 
     @Test
@@ -405,13 +406,12 @@ class AqlLexerTest {
 
     @Test
     fun `느낌표 뒤에 등호가 없으면 예외를 던진다`() {
+        // '!' 는 인덱스 7에 위치
         assertThatThrownBy { lex("status ! open") }
             .isInstanceOf(AqlLexException::class.java)
-            .satisfies { ex ->
-                val lexEx = ex as AqlLexException
-                // '!' 는 인덱스 7에 위치
-                assertThat(lexEx.position).isEqualTo(7)
-            }
+            .asInstanceOf(InstanceOfAssertFactories.type(AqlLexException::class.java))
+            .extracting(AqlLexException::position)
+            .isEqualTo(7)
     }
 
     @Test
