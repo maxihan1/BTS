@@ -419,6 +419,54 @@ class SearchControllerTest {
             .andExpect(jsonPath("$.position").exists())
     }
 
+    // ── B2c IN 목록 오버플로우 400 (회귀 — characterization) ────────────────────
+
+    /**
+     * B2c — IN 목록 내 Int 범위 초과 숫자 → 파서 거부 → 400 SEARCH_SYNTAX_ERROR.
+     *
+     * 단일값 케이스(B2a)와 동일하게 parseValue가 공유되므로 차단되지만 명시적으로 검증한다.
+     */
+    @Test
+    fun `B2c - IN 목록 내 Int 초과 숫자 400 SEARCH_SYNTAX_ERROR`() {
+        mockMvc.perform(
+            post("/api/v1/search/aql")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf(
+                            "projectKey" to "PROJ",
+                            "query" to "priority IN (99999999999)",
+                        ),
+                    ),
+                ),
+        ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("SEARCH_SYNTAX_ERROR"))
+            .andExpect(jsonPath("$.position").exists())
+    }
+
+    /**
+     * B2d — IN 목록 내 Short 범위 초과 숫자(40000) → 파서 거부 → 400 SEARCH_SYNTAX_ERROR.
+     *
+     * asShort() defense-in-depth와 함께 파서 1차 차단을 컨트롤러 경유로 검증한다.
+     */
+    @Test
+    fun `B2d - IN 목록 내 Short 초과 숫자 400 SEARCH_SYNTAX_ERROR`() {
+        mockMvc.perform(
+            post("/api/v1/search/aql")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf(
+                            "projectKey" to "PROJ",
+                            "query" to "priority IN (40000)",
+                        ),
+                    ),
+                ),
+        ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("SEARCH_SYNTAX_ERROR"))
+            .andExpect(jsonPath("$.position").exists())
+    }
+
     // ── status CONTAINS 오류 400 (회귀 테스트 - 현재 500 재현) ─────────────────
 
     /**

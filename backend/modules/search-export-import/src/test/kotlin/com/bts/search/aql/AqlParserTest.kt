@@ -770,6 +770,37 @@ class AqlParserTest {
         assertThat(comp.values).containsExactly(AqlValue.Num(32767))
     }
 
+    @Test
+    fun `priority IN 목록 내 Int 범위 초과 숫자는 AqlSyntaxException을 던진다`() {
+        // 목록의 첫 번째 값이 99999999999(Int 최대값 초과)인 경우 — characterization 테스트.
+        // parseValue가 parseIntValue를 공유하므로 IN 목록 내 값도 동일하게 차단된다.
+        assertThatThrownBy { parse("priority IN (99999999999)") }
+            .isInstanceOf(AqlSyntaxException::class.java)
+            .satisfies({ ex ->
+                val syntaxEx = ex as AqlSyntaxException
+                assertThat(syntaxEx.position).isGreaterThanOrEqualTo(0)
+            })
+    }
+
+    @Test
+    fun `priority IN 목록 내 Short 범위 초과 숫자는 AqlSyntaxException을 던진다`() {
+        // 목록 내 40000은 Int 범위 내이지만 Short 최대값(32767) 초과 — characterization 테스트.
+        // asShort() defense-in-depth와 함께 파서가 1차 차단함을 명시적으로 검증한다.
+        assertThatThrownBy { parse("priority IN (40000)") }
+            .isInstanceOf(AqlSyntaxException::class.java)
+            .satisfies({ ex ->
+                val syntaxEx = ex as AqlSyntaxException
+                assertThat(syntaxEx.position).isGreaterThanOrEqualTo(0)
+            })
+    }
+
+    @Test
+    fun `priority IN 목록 혼합 값 중 Short 범위 초과가 포함되면 AqlSyntaxException을 던진다`() {
+        // 첫 번째 값은 유효(1), 두 번째 값이 40000(Short 초과) — 목록 순회 중 차단 확인.
+        assertThatThrownBy { parse("priority IN (1, 40000)") }
+            .isInstanceOf(AqlSyntaxException::class.java)
+    }
+
     // ── status CONTAINS 제약 (회귀 테스트 - 현재 500 재현) ──────────────────────
 
     @Test
