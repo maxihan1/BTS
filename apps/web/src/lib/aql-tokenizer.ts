@@ -36,7 +36,7 @@ export interface AqlToken {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 정본
-// 백엔드 정본: shared-kernel AqlFields.MVP_FIELDS:41 / AqlToken.KEYWORDS:90 — 변경 시 동반 수정
+// 백엔드 정본: shared-kernel AqlFields.MVP_FIELDS / AqlToken.KEYWORDS — 변경 시 동반 수정
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
