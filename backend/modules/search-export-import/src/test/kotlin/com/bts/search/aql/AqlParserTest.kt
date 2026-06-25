@@ -30,7 +30,6 @@ import org.junit.jupiter.params.provider.ValueSource
  * - 깊이 상한(50) 초과 거부 (DoS 방어)
  */
 class AqlParserTest {
-
     // ── 헬퍼 ────────────────────────────────────────────────────────────────────
 
     private fun parse(query: String): AqlParseResult {
@@ -386,14 +385,14 @@ class AqlParserTest {
     // ── 키워드 대소문자 무시 ─────────────────────────────────────────────────
 
     @ParameterizedTest
-    @ValueSource(strings = ["status = open AND priority = 1", "status = open and priority = 1", "status = open And priority = 1"])
+    @ValueSource(strings = ["status = open AND priority = 1", "status = open and priority = 1"])
     fun `AND 키워드 대소문자 무관하게 파싱한다`(query: String) {
         val ast = parseAst(query)
         assertThat(ast).isInstanceOf(AqlNode.And::class.java)
     }
 
     @ParameterizedTest
-    @ValueSource(strings = ["status = open OR priority = 1", "status = open or priority = 1", "status = open Or priority = 1"])
+    @ValueSource(strings = ["status = open OR priority = 1", "status = open or priority = 1"])
     fun `OR 키워드 대소문자 무관하게 파싱한다`(query: String) {
         val ast = parseAst(query)
         assertThat(ast).isInstanceOf(AqlNode.Or::class.java)

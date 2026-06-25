@@ -22,7 +22,6 @@ import com.bts.shared.search.AqlOperator
  * 예: `priority ~ 1` 은 오류(SMALLINT 컬럼에 부분 문자열 불일치).
  */
 object AqlFields {
-
     /**
      * MVP 에서 지원하는 필드 이름 집합 (소문자 정규화).
      *
