@@ -15,6 +15,9 @@ import java.util.UUID
  * dedupKey 는 동일한 이벤트가 두 번 처리될 때 중복 발송을 막기 위한 멱등 키다.
  * companion object 의 computeDedupKey 로 결정적으로 계산한다.
  *
+ * read(readAt) 와 archive(archivedAt) 는 2축 독립으로 동작한다.
+ * 보관해도 읽음 상태가 바뀌지 않으며, 읽어도 보관 상태가 바뀌지 않는다.
+ *
  * @param id 알림 고유 식별자
  * @param recipientUserId 수신자 UUID
  * @param eventType 이 알림을 발생시킨 이벤트 유형
@@ -27,6 +30,8 @@ import java.util.UUID
  * @param dedupKey 중복 발송 방지용 멱등 키 — computeDedupKey 로 생성
  * @param readAt 수신자가 읽은 시각 (미읽음이면 null)
  * @param createdAt 알림 생성 시각
+ * @param archivedAt 수신자가 보관한 시각 (미보관이면 null)
+ * @param actorUserId 이 알림을 발생시킨 행위자 UUID (없으면 null)
  */
 data class Notification(
     val id: UUID,
@@ -41,7 +46,52 @@ data class Notification(
     val dedupKey: String,
     val readAt: Instant?,
     val createdAt: Instant,
+    val archivedAt: Instant? = null,
+    val actorUserId: UUID? = null,
 ) {
+    /**
+     * 알림을 읽음 처리한다.
+     *
+     * readAt 이 이미 설정된 경우(이미 읽음) 멱등하게 this 를 그대로 반환해 최초 읽은 시각을 보존한다.
+     * archivedAt 은 변경하지 않는다.
+     *
+     * @param at 읽은 시각
+     * @return readAt 이 설정된 새 Notification (이미 읽었으면 this)
+     */
+    fun markRead(at: Instant): Notification =
+        if (readAt != null) this else copy(readAt = at)
+
+    /**
+     * 알림을 미읽음 처리한다.
+     *
+     * archivedAt 은 변경하지 않는다.
+     *
+     * @return readAt 이 null 로 초기화된 새 Notification
+     */
+    fun markUnread(): Notification = copy(readAt = null)
+
+    /**
+     * 알림을 보관함에 넣는다.
+     *
+     * archivedAt 이 이미 설정된 경우(이미 보관됨) 멱등하게 this 를 그대로 반환해 최초 보관 시각을 보존한다.
+     * readAt 은 변경하지 않는다.
+     *
+     * @param at 보관 시각
+     * @return archivedAt 이 설정된 새 Notification (이미 보관됐으면 this)
+     */
+    fun archive(at: Instant): Notification =
+        if (archivedAt != null) this else copy(archivedAt = at)
+
+    /**
+     * 알림을 보관함에서 꺼낸다.
+     *
+     * readAt 은 변경하지 않는다.
+     *
+     * @return archivedAt 이 null 로 초기화된 새 Notification
+     */
+    fun unarchive(): Notification = copy(archivedAt = null)
+
+
     companion object {
         private const val DEDUP_ALGORITHM = "SHA-256"
         private const val DEDUP_SEPARATOR = "|"
