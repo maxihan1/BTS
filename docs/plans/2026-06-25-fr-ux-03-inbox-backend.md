@@ -34,9 +34,23 @@
 - **기존 결정 충돌**: 없음. FR-NT-02 V402 `read_at` 설계 의도 완성.
 - **관련 ADR**: [docs/decisions/2026-06-25-fr-ux-03-inbox-data-model.md](../decisions/2026-06-25-fr-ux-03-inbox-data-model.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-25-fr-ux-03-inbox-backend.md](../specs/2026-06-25-fr-ux-03-inbox-backend.md)
+
+핵심 요약.
+- `notifications` 확장(V407: `archived_at` + `actor_user_id`). 별도 inbox_items 없음. read/archive 2축.
+- API 5종: 목록 조회(탭/검색/페이지네이션) · 미읽음 카운트 · 읽음 토글 · 보관 토글 · 일괄 읽음.
+- 검색 = 텍스트(title ILIKE) + 발신자(actor_user_id) + 기간(created_at). 그룹화 = issueKey 평면 필터.
+- NotificationWorker가 event.actorId를 actor_user_id에 저장(FR-NT-02 코드, 같은 BC). 기존 행 NULL graceful.
+- 본인 + IN_APP 한정. 401/404 격리, no-bump UPDATE.
+
+## Brainstorming Check
+
+✅ 통과 (office-hours 대신 직접 기술 스펙 작성 — 메모리 교훈 `bts-spec-office-hours-mismatch`).
+sanity check 정신으로 2개 gap을 Maxi 결정으로 해소.
+- gap1: product D3의 별도 inbox_items 테이블이 fanout 구조와 1:1 중복 → notifications 확장으로 변경(ADR).
+- gap2: SDD 9.2 "발신자 검색"의 데이터 토대 부재(payload=null) → actor_user_id 컬럼 추가 + worker 저장 확정.
 
 ## Plan (← /bts-plan 채움)
 
