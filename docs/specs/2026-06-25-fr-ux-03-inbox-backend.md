@@ -44,7 +44,7 @@ FR-UX-03은 별도 `inbox_items` 테이블을 만들지 않고(ADR D1) `notifica
 ### S3. 읽음 처리
 - **Given** alice의 미읽음 알림 N(id=x)
 - **When** `PATCH .../inbox/x/read` body `{ "read": true }`
-- **Then** `read_at`=now 갱신, 미읽음 카운트 6으로 감소. 멱등(이미 읽음이면 재호출에도 200, 시각 보존)
+- **Then** `read_at`=now 갱신, 미읽음 카운트 6으로 감소. 멱등(이미 읽음이면 재호출에도 204, 시각 보존)
 
 ### S4. 보관 처리
 - **Given** alice의 알림(id=x)
@@ -118,13 +118,15 @@ GET /api/v1/users/me/inbox/unread-count
 ### 3) 읽음 토글 (단건)
 ```
 PATCH /api/v1/users/me/inbox/{id}/read   body { "read": true|false }
-→ 200 DataResponse<InboxItemResponse>   (타인/부재 404)
+→ 204 No Content   (타인/부재 404)
 ```
+> 구현 확정: service.markRead가 Unit 반환이라 변경 항목을 응답에 싣지 않고 **204 No Content**.
+> 토글 PATCH의 흔한 패턴이며, 프론트(D6/D7)는 mutation 후 목록/카운트 invalidate로 재조회한다.
 
 ### 4) 보관 토글 (단건)
 ```
 PATCH /api/v1/users/me/inbox/{id}/archive   body { "archived": true|false }
-→ 200 DataResponse<InboxItemResponse>   (타인/부재 404)
+→ 204 No Content   (타인/부재 404)
 ```
 
 ### 5) 일괄 읽음
@@ -157,7 +159,7 @@ CREATE INDEX ix_notifications_recipient_unread
 ## 엣지 케이스
 
 - **EC1**. 부재 id PATCH → 404. 타인 id PATCH → 404(존재 노출 안 함)
-- **EC2**. read:true 멱등 — 이미 읽음이면 read_at 시각 보존(덮어쓰지 않음), 200
+- **EC2**. read:true 멱등 — 이미 읽음이면 read_at 시각 보존(덮어쓰지 않음), 204
 - **EC3**. 보관된 항목도 읽음 토글 허용(archived 탭에서 읽음 처리 가능). read와 archive 독립
 - **EC4**. unarchive(archived:false) → archived_at NULL, all 탭 복귀
 - **EC5**. senderId 비-UUID → 400. from/to 비-ISO → 400
