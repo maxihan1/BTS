@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 32개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + 프로젝트 보드 1 + 프로젝트 백로그 1 + settings 5 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 2 + 알림 보관함 1 | FR-SR-01 D6: issuesIndexRoute validateSearch 필터 확장)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 33개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + 프로젝트 보드 1 + 프로젝트 백로그 1 + settings 5 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 2 + 알림 보관함 1 + 검색 1 | FR-SR-02: searchRoute /search 추가)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -37,6 +37,7 @@ import { BacklogRouteAdapter } from './routes/projects.$projectKey.backlog'
 import { DashboardsRouteAdapter } from './routes/dashboards'
 import { DashboardDetailRouteAdapter } from './routes/dashboards.$dashboardId'
 import { InboxRouteAdapter } from './routes/inbox'
+import { SearchRouteAdapter } from './routes/search'
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -351,6 +352,24 @@ const projectWorklogReportRoute = createRoute({
   beforeLoad: requireAuthAndPasswordChanged,
 })
 
+/** AQL 검색 라우트 — /search, requireAuth (FR-SR-02) */
+const searchRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/search',
+  component: SearchRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+  validateSearch: (search: Record<string, unknown>): {
+    q?: string
+    page?: number
+    projectKey?: string
+  } => ({
+    q: typeof search['q'] === 'string' ? search['q'] : undefined,
+    page: typeof search['page'] === 'number' ? search['page'] : undefined,
+    projectKey: typeof search['projectKey'] === 'string' ? search['projectKey'] : undefined,
+  }),
+})
+
 /** 알림 보관함 라우트 — /inbox, requireAuth (FR-UX-03) */
 const inboxRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -395,10 +414,10 @@ const settingsAccountLinksRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 32개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 33개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
- *   · /inbox · /dashboards · /dashboards/:dashboardId
+ *   · /inbox · /dashboards · /dashboards/:dashboardId · /search
  *   · /projects/:projectKey/backlog · /projects/:projectKey/board
  *   · /projects/:projectKey/settings/workflow-scheme · /projects/:projectKey/settings/members
  *   · /projects/:projectKey/settings/components · /projects/:projectKey/settings/versions
@@ -407,7 +426,7 @@ const settingsAccountLinksRoute = createRoute({
  *   · /projects/:projectKey/reports/worklog
  *   · /settings/sessions · /settings/password · /settings/account-links · /settings/mfa
  *   · /settings/notifications
- * requireAuth 라우트: /dashboard · /inbox · /dashboards · /dashboards/* · /issues · /issues/* · /admin/* · /projects/* · /settings/*
+ * requireAuth 라우트: /dashboard · /inbox · /dashboards · /dashboards/* · /search · /issues · /issues/* · /admin/* · /projects/* · /settings/*
  */
 export const routeTree = rootRoute.addChildren([
   // 공통 — 인증/진입점
@@ -428,6 +447,8 @@ export const routeTree = rootRoute.addChildren([
   adminNotificationPoliciesRoute,
   // identity-access BC — 사용자 생성 (/admin/users/new)
   adminUsersNewRoute,
+  // search-export-import BC — AQL 검색 (FR-SR-02)
+  searchRoute,
   // notification BC — 알림 보관함 (FR-UX-03)
   inboxRoute,
   // notification BC — 대시보드 목록/상세 (FR-DB-01, /dashboards/$dashboardId는 /dashboards보다 뒤에 등록해 충돌 없음)

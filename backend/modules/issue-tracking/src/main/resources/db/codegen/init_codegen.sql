@@ -12,6 +12,11 @@
 -- 1. pgcrypto extension (gen_random_uuid 용)
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
+-- pg_trgm extension (V031 미러, FR-SR-02 D3): gin_trgm_ops opclass 의 전제.
+-- 인덱스 DDL(하단 V031 미러)보다 반드시 먼저 선언 — 누락 시 codegen 빌드가
+-- "operator class \"gin_trgm_ops\" does not exist" 로 실패한다 (jooq-init-codegen-mirror).
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 -- 2. projects 테이블
 CREATE TABLE projects (
     id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -710,3 +715,12 @@ CREATE INDEX idx_issues_project_assignee_active ON issues (project_id, assignee_
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- (rank 컬럼 + idx_issues_project_rank 는 상단 issues 정의에 인라인 미러됨 — 별도 DDL 불필요)
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V031: lower(summary) 표현식 trigram GIN 인덱스 (FR-SR-02 D3, AQL summary `~` 가속)
+-- 원본: db/migration/issue-tracking/V031__issues_summary_trgm_index.sql
+-- 인덱스만 추가 — jOOQ codegen 상수 생성 대상 외이나 BTS 일관성 유지로 미러.
+-- pg_trgm 확장은 상단(pgcrypto 인접)에서 인덱스보다 먼저 선언됨 (gin_trgm_ops opclass 전제).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+CREATE INDEX idx_issues_summary_trgm ON issues USING gin (lower(summary) gin_trgm_ops);

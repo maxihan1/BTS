@@ -1,4 +1,4 @@
-// Header 컴포넌트 단위 테스트 — 사용자명 표시, 로그아웃 클릭, 리다이렉트, 관리 nav isSystemAdmin 게이팅, InboxBell 렌더
+// Header 컴포넌트 단위 테스트 — 사용자명 표시, 로그아웃 클릭, 리다이렉트, 관리 nav isSystemAdmin 게이팅, InboxBell 렌더, 검색 진입점
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -171,6 +171,13 @@ describe('Header', () => {
     const link = screen.getByRole('link', { name: '대시보드' })
     expect(link).toBeInTheDocument()
     expect(link).toHaveAttribute('href', '/dashboards')
+  })
+
+  it('검색 버튼 — aria-label="검색"인 버튼이 Header 안에 렌더된다 (FR-SR-02 Task-6)', () => {
+    renderHeader()
+
+    const searchBtn = screen.getByRole('button', { name: '검색' })
+    expect(searchBtn).toBeInTheDocument()
   })
 
   it('InboxBell — 알림 보관함 열기 링크(href=/inbox)가 Header 안에 렌더된다', async () => {
