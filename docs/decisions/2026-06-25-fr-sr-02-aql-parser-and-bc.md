@@ -50,9 +50,9 @@ SDD 10.1의 "ANTLR 4로 구현"에서 deviation한다 — 본 ADR이 그 deviati
 - 비교: `=`, `!=`, `IN`, `not in`, `~`(부분 일치)
 - 논리: `AND`, `OR`, `NOT` + 괄호 중첩(임의 불리언 트리)
 - 정렬: `ORDER BY <field> [ASC|DESC]`
-- 필드: status(current_state_key), assignee, label, component, summary, project (issue-tracking 기존 검색 가능 필드)
+- 필드(MVP, spec FR-2와 동일 집합): **status(current_state_key), label, summary, priority**. 값이 텍스트/키/숫자로 직관적인 필드만.
 
-**후속 PR로 명시 분리.** `currentUser()`/`now()`/`startOfDay()` 등 함수, 상대 날짜(`-7d`/`+1w`), `is EMPTY`/`is NOT EMPTY`, pg_trgm 유사도, 한글 형태소(FR-SR-04), 프론트 입력창+syntax highlight(D6/D7).
+**후속 PR로 명시 분리.** `assignee`/`reporter`/`component`(식별자 해석 필요)·AQL 본문 `project`(cross-project)·`currentUser()`/`now()`/`startOfDay()` 등 함수, 상대 날짜(`-7d`/`+1w`), `is EMPTY`/`is NOT EMPTY`, `>`/`>=`/`<`/`<=` 범위 비교, pg_trgm 유사도, 한글 형태소(FR-SR-04), 프론트 입력창+syntax highlight(D6/D7).
 
 ### D4. SR-01(필터)과의 관계 — 무변경, 책임 분리
 
