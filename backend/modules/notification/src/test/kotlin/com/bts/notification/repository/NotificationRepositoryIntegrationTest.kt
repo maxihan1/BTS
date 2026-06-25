@@ -701,6 +701,78 @@ class NotificationRepositoryIntegrationTest : NotificationTestcontainersBase() {
         assertThat(updated).isEqualTo(1)
     }
 
+    // ── Inbox 기능: 재읽음/재보관 시각 보존 (C1) ─────────────────────────────────
+
+    /**
+     * 이미 읽은 알림에 read=true(새 시각)를 다시 요청하면 최초 read_at이 보존돼야 한다.
+     *
+     * spec S3/FR4/EC2: 이미 읽음이면 첫 시각 보존(덮어쓰지 않음), 204.
+     * COALESCE 구현 전이라면 새 시각으로 덮어써서 이 테스트가 실패해야 한다(RED).
+     */
+    @Test
+    fun `updateReadAt - 이미 읽음인 항목에 새 시각으로 재호출하면 최초 read_at이 보존된다`() {
+        val alice = UUID.randomUUID()
+        val t1 = Instant.parse("2026-06-25T10:00:00Z")
+        val t2 = Instant.parse("2026-06-25T11:00:00Z")
+
+        // t1 시각에 미읽음 알림을 읽음 처리
+        val n = buildNotification(recipientUserId = alice)
+        repo.insertIfAbsent(n)
+        val firstAffected = repo.updateReadAt(n.id, alice, t1)
+        assertThat(firstAffected).isEqualTo(1)
+        assertThat(repo.findByRecipient(alice)[0].readAt).isEqualTo(t1)
+
+        // t2 시각으로 재호출 → read_at이 t1으로 보존돼야 한다(t2로 덮어쓰면 실패)
+        val secondAffected = repo.updateReadAt(n.id, alice, t2)
+        assertThat(secondAffected).isEqualTo(1) // 행 매칭은 1행 — 404 안 남
+        val preserved = repo.findByRecipient(alice)[0].readAt
+        assertThat(preserved).isEqualTo(t1) // 최초 시각 보존
+        assertThat(preserved).isNotEqualTo(t2)
+    }
+
+    /**
+     * 이미 보관된 알림에 archived=true(새 시각)를 다시 요청하면 최초 archived_at이 보존돼야 한다.
+     *
+     * spec EC2: 이미 보관이면 첫 시각 보존, 204.
+     */
+    @Test
+    fun `updateArchivedAt - 이미 보관된 항목에 새 시각으로 재호출하면 최초 archived_at이 보존된다`() {
+        val alice = UUID.randomUUID()
+        val t1 = Instant.parse("2026-06-25T10:00:00Z")
+        val t2 = Instant.parse("2026-06-25T12:00:00Z")
+
+        // t1 시각에 미보관 알림을 보관 처리
+        val n = buildNotification(recipientUserId = alice)
+        repo.insertIfAbsent(n)
+        val firstAffected = repo.updateArchivedAt(n.id, alice, t1)
+        assertThat(firstAffected).isEqualTo(1)
+        assertThat(repo.findByRecipient(alice)[0].archivedAt).isEqualTo(t1)
+
+        // t2 시각으로 재호출 → archived_at이 t1으로 보존돼야 한다
+        val secondAffected = repo.updateArchivedAt(n.id, alice, t2)
+        assertThat(secondAffected).isEqualTo(1)
+        val preserved = repo.findByRecipient(alice)[0].archivedAt
+        assertThat(preserved).isEqualTo(t1)
+        assertThat(preserved).isNotEqualTo(t2)
+    }
+
+    /**
+     * markUnread(readAt=null)는 이미 null이든 값이 있든 무조건 null로 초기화해야 한다.
+     * 기존 동작 회귀 방지.
+     */
+    @Test
+    fun `updateReadAt null - 이미 읽음인 항목에 null 재호출하면 read_at이 null로 초기화된다`() {
+        val alice = UUID.randomUUID()
+        val t1 = Instant.parse("2026-06-25T10:00:00Z")
+
+        val n = buildNotification(recipientUserId = alice, readAt = t1)
+        repo.insertIfAbsent(n)
+
+        val affected = repo.updateReadAt(n.id, alice, null)
+        assertThat(affected).isEqualTo(1)
+        assertThat(repo.findByRecipient(alice)[0].readAt).isNull()
+    }
+
     // ── 수신자 조회 인덱스 ───────────────────────────────────────────────────────
 
     @Test
