@@ -96,7 +96,8 @@ export const InboxListItem = ({
 
         {item.issueKey !== null && (
           <Link
-            to={`/issues/${item.issueKey}`}
+            to="/issues/$key"
+            params={{ key: item.issueKey }}
             className="font-medium text-primary hover:underline"
           >
             {item.issueKey}
