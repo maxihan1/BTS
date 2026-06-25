@@ -152,7 +152,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 <aside class="sidebar">
     <div class="sidebar-head">
       <div class="logo">🏢 BTS Dashboard</div>
-      <div class="updated">2026-06-24 갱신</div>
+      <div class="updated">2026-06-25 갱신</div>
     </div>
     <nav>
       <ul class="nav-top">
@@ -182,9 +182,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
           <div><span class="dot dot-done"></span> 완료 <b>76</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>1</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>2</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>46</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>45</b></div>
         </div>
       </div>
     </div>
@@ -924,9 +924,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bar"><div class="bar-fill" style="width:50%"></div></div>
       <div class="status-grid">
         <div>✅ 완료 7</div>
-        <div>🔄 진행중 0</div>
+        <div>🔄 진행중 1</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 7</div>
+        <div>⬜ 대기 6</div>
       </div>
     </div>
     <h2>세부 기능 (14개)</h2>
@@ -1021,13 +1021,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc"><span class="term" data-def="사용자가 자주 보는 대상을 개인 북마크로 등록·해제하는 단위. `favorites(userid, targettype, targetid)`, 대상 타입 4종(ISSUE/FILTER/DASHBOARD/PROJECT, FILTER는 FR-SR-03 후속). 해제=하드 삭제(개인 토글·복구 가치 낮음), 등록 시 형식만 검증(대상 존재/권한 미검증). targetid는 문자열·FK 미적용(BC 격리), UNIQUE(userid,targettype,target_id) 멱등. notification-dashboard BC(모듈 notification, `com.bts.notification.favorite`) (FR-UX-02)">즐겨찾기</span> / Star</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="사용자가 자주 보는 대상을 개인 북마크로 등록·해제하는 단위. `favorites(userid, targettype, targetid)`, 대상 타입 4종(ISSUE/FILTER/DASHBOARD/PROJECT, FILTER는 FR-SR-03 후속). 해제=하드 삭제(개인 토글·복구 가치 낮음), 등록 시 형식만 검증(대상 존재/권한 미검증). targetid는 문자열·FK 미적용(BC 격리), UNIQUE(userid,targettype,target_id) 멱등. notification-dashboard BC(모듈 notification, `com.bts.notification.favorite`) (FR-UX-02)">Favorite</span></li><li><span class="step-icon">✅</span> D2 — 명세 — 대상 (<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span>/필터/<span class="term" data-def="가젯을 그리드로 배치하는 사용자 정의 화면. owner 소유 + 공유 범위(visibility)별 접근. layout(JSONB)에 그리드 배치 저장. 컨테이너=FR-DB-01, 가젯 10종=FR-DB-02, URL 공유/임베드=FR-DB-03. notification-dashboard BC(모듈 notification)">대시보드</span>/<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">프로젝트</span>)</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `<span class="term" data-def="사용자가 자주 보는 대상을 개인 북마크로 등록·해제하는 단위. `favorites(userid, targettype, targetid)`, 대상 타입 4종(ISSUE/FILTER/DASHBOARD/PROJECT, FILTER는 FR-SR-03 후속). 해제=하드 삭제(개인 토글·복구 가치 낮음), 등록 시 형식만 검증(대상 존재/권한 미검증). targetid는 문자열·FK 미적용(BC 격리), UNIQUE(userid,targettype,target_id) 멱등. notification-dashboard BC(모듈 notification, `com.bts.notification.favorite`) (FR-UX-02)">favorite</span>s(user_id, target_type, target_id)`</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `POST/DELETE /api/v1/<span class="term" data-def="사용자가 자주 보는 대상을 개인 북마크로 등록·해제하는 단위. `favorites(userid, targettype, targetid)`, 대상 타입 4종(ISSUE/FILTER/DASHBOARD/PROJECT, FILTER는 FR-SR-03 후속). 해제=하드 삭제(개인 토글·복구 가치 낮음), 등록 시 형식만 검증(대상 존재/권한 미검증). targetid는 문자열·FK 미적용(BC 격리), UNIQUE(userid,targettype,target_id) 멱등. notification-dashboard BC(모듈 notification, `com.bts.notification.favorite`) (FR-UX-02)">favorite</span>s`</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — Star 버튼 + <span class="term" data-def="사용자가 자주 보는 대상을 개인 북마크로 등록·해제하는 단위. `favorites(userid, targettype, targetid)`, 대상 타입 4종(ISSUE/FILTER/DASHBOARD/PROJECT, FILTER는 FR-SR-03 후속). 해제=하드 삭제(개인 토글·복구 가치 낮음), 등록 시 형식만 검증(대상 존재/권한 미검증). targetid는 문자열·FK 미적용(BC 격리), UNIQUE(userid,targettype,target_id) 멱등. notification-dashboard BC(모듈 notification, `com.bts.notification.favorite`) (FR-UX-02)">즐겨찾기</span> 사이드바</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-진행중">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">🔄</span>
         <span class="fr-id">FR-UX-03</span>
         <span class="fr-desc">개인 알림 보관함 (Inbox)</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — InboxItem</li><li><span class="step-icon">⬜</span> D2 — 명세 — 읽음/안읽음 + 보관 + 필터</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `inbox_items(user_id, notification_id, read_at, archived_at)`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `GET /api/v1/users/me/inbox` + 상태 변경 API</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — Inbox 페이지 + 카운트 뱃지</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — Notification 상태 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span>(markRead/markUnread/archive/unarchive, 멱등)</li><li><span class="step-icon">✅</span> D2 — 명세 — 읽음/안읽음 + 보관 + 필터</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `notifications` 확장(`archived_at`, `actor_user_id`, 미읽음 부분 <span class="term" data-def="&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">인덱스</span>)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `GET /api/v1/users/me/inbox` + 미읽음 카운트 + 읽음/보관 토글 + 일괄 읽음 API</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — Inbox 페이지 + 카운트 뱃지</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details></div>
   </section><section id="bc-personalization" class="page">
     <h1>🎨 개인화</h1>
