@@ -1,8 +1,11 @@
 // useNotificationStream hook 단위 테스트 — 인증 연동 STOMP 스트림 + toast 동작 검증
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
+import React from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useAuthStore } from '@/auth/authStore'
 import type { InAppNotification } from '@/api/notifications-stream'
+import { UNREAD_COUNT_KEY } from '@/api/inbox'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // createNotificationStream mock — activate/deactivate spy 반환
@@ -47,16 +50,31 @@ const validPayload: InAppNotification = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 공통 wrapper — useNotificationStream은 useQueryClient를 호출하므로
+// QueryClientProvider가 필요하다. 테스트마다 새 인스턴스를 생성해 캐시 누출을 막는다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function makeWrapper(queryClient: QueryClient) {
+  return function Wrapper({ children }: { children: React.ReactNode }) {
+    return React.createElement(QueryClientProvider, { client: queryClient }, children)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 셋업 / 해제
 // ─────────────────────────────────────────────────────────────────────────────
+let queryClient: QueryClient
+
 beforeEach(() => {
   vi.clearAllMocks()
   capturedOnMessage = null
   useAuthStore.setState({ accessToken: null, user: null })
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 })
 
 afterEach(() => {
   useAuthStore.setState({ accessToken: null, user: null })
+  queryClient.clear()
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -67,7 +85,7 @@ describe('useNotificationStream — 인증 상태', () => {
     // renderHook 전에 store 시드 → useEffect 첫 실행 시 이미 인증 상태
     useAuthStore.setState({ accessToken: 'test-access-token', user: null })
 
-    renderHook(() => useNotificationStream())
+    renderHook(() => useNotificationStream(), { wrapper: makeWrapper(queryClient) })
 
     expect(createNotificationStream).toHaveBeenCalledOnce()
     expect(mockActivate).toHaveBeenCalledOnce()
@@ -80,7 +98,7 @@ describe('useNotificationStream — 인증 상태', () => {
 describe('useNotificationStream — 미인증 상태', () => {
   it('accessToken이 없으면 createNotificationStream을 호출하지 않는다', () => {
     // accessToken = null (beforeEach에서 설정)
-    renderHook(() => useNotificationStream())
+    renderHook(() => useNotificationStream(), { wrapper: makeWrapper(queryClient) })
 
     expect(createNotificationStream).not.toHaveBeenCalled()
     expect(mockActivate).not.toHaveBeenCalled()
@@ -94,7 +112,7 @@ describe('useNotificationStream — onMessage 토스트 표시', () => {
   it('onMessage 콜백이 toast(title, { description: body })를 호출한다', () => {
     useAuthStore.setState({ accessToken: 'test-token', user: null })
 
-    renderHook(() => useNotificationStream())
+    renderHook(() => useNotificationStream(), { wrapper: makeWrapper(queryClient) })
 
     expect(capturedOnMessage).not.toBeNull()
     act(() => {
@@ -109,7 +127,7 @@ describe('useNotificationStream — onMessage 토스트 표시', () => {
   it('body=null이면 toast(title, { description: undefined })를 호출한다 (S2)', () => {
     useAuthStore.setState({ accessToken: 'test-token', user: null })
 
-    renderHook(() => useNotificationStream())
+    renderHook(() => useNotificationStream(), { wrapper: makeWrapper(queryClient) })
 
     expect(capturedOnMessage).not.toBeNull()
     act(() => {
@@ -129,7 +147,7 @@ describe('useNotificationStream — 언마운트 cleanup', () => {
   it('언마운트 시 deactivate를 호출한다', () => {
     useAuthStore.setState({ accessToken: 'test-token', user: null })
 
-    const { unmount } = renderHook(() => useNotificationStream())
+    const { unmount } = renderHook(() => useNotificationStream(), { wrapper: makeWrapper(queryClient) })
 
     unmount()
 
@@ -148,13 +166,13 @@ describe('useNotificationStream — StrictMode 중복 방지 (C2)', () => {
 
     // StrictMode처럼 수동으로 mount→unmount→mount 시뮬레이션
     // 첫 번째 마운트
-    const { unmount: unmount1 } = renderHook(() => useNotificationStream())
+    const { unmount: unmount1 } = renderHook(() => useNotificationStream(), { wrapper: makeWrapper(queryClient) })
 
     // 첫 번째 언마운트 (cleanup → deactivate, streamRef 초기화)
     unmount1()
 
     // 두 번째 마운트 (새 hook 인스턴스, streamRef 초기화 상태)
-    renderHook(() => useNotificationStream())
+    renderHook(() => useNotificationStream(), { wrapper: makeWrapper(queryClient) })
 
     // 별도 renderHook = 별도 인스턴스 → 각각 1회 activate가 맞음.
     // 중요: 각 인스턴스 내에서 useRef 가드가 중복 activate를 차단함.
@@ -164,10 +182,10 @@ describe('useNotificationStream — StrictMode 중복 방지 (C2)', () => {
   it('각 unmount마다 deactivate가 호출된다 (좀비 연결 0)', () => {
     useAuthStore.setState({ accessToken: 'test-token', user: null })
 
-    const { unmount: unmount1 } = renderHook(() => useNotificationStream())
+    const { unmount: unmount1 } = renderHook(() => useNotificationStream(), { wrapper: makeWrapper(queryClient) })
     unmount1()
 
-    const { unmount: unmount2 } = renderHook(() => useNotificationStream())
+    const { unmount: unmount2 } = renderHook(() => useNotificationStream(), { wrapper: makeWrapper(queryClient) })
     unmount2()
 
     expect(mockDeactivate).toHaveBeenCalledTimes(2)
@@ -177,7 +195,7 @@ describe('useNotificationStream — StrictMode 중복 방지 (C2)', () => {
     // 인증 상태 변경으로 effect 재실행 시뮬레이션
     useAuthStore.setState({ accessToken: 'token-v1', user: null })
 
-    const { rerender } = renderHook(() => useNotificationStream())
+    const { rerender } = renderHook(() => useNotificationStream(), { wrapper: makeWrapper(queryClient) })
 
     // effect 실행 → activate 1회
     expect(mockActivate).toHaveBeenCalledTimes(1)
@@ -192,5 +210,44 @@ describe('useNotificationStream — StrictMode 중복 방지 (C2)', () => {
     expect(mockDeactivate).toHaveBeenCalledTimes(1)
     // 미인증이므로 activate 추가 호출 없음
     expect(mockActivate).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-UNS-6. onMessage 시 inbox 쿼리 invalidate (FR-UX-03 Task 9)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('useNotificationStream — onMessage inbox invalidate', () => {
+  it("onMessage 수신 시 ['inbox'] 접두사와 UNREAD_COUNT_KEY 를 invalidate한다", () => {
+    useAuthStore.setState({ accessToken: 'test-token', user: null })
+
+    const invalidateQueriesSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    renderHook(() => useNotificationStream(), { wrapper: makeWrapper(queryClient) })
+
+    expect(capturedOnMessage).not.toBeNull()
+    act(() => {
+      capturedOnMessage!(validPayload)
+    })
+
+    // ['inbox'] 접두사 무효화 (목록 캐시)
+    expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: ['inbox'] })
+    // UNREAD_COUNT_KEY 무효화 (미읽음 카운트)
+    expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: UNREAD_COUNT_KEY })
+  })
+
+  it('onMessage 수신 시 기존 토스트 동작도 함께 실행된다 (공존)', () => {
+    useAuthStore.setState({ accessToken: 'test-token', user: null })
+
+    renderHook(() => useNotificationStream(), { wrapper: makeWrapper(queryClient) })
+
+    expect(capturedOnMessage).not.toBeNull()
+    act(() => {
+      capturedOnMessage!(validPayload)
+    })
+
+    // 토스트도 여전히 호출됨
+    expect(toast).toHaveBeenCalledWith(validPayload.title, {
+      description: validPayload.body,
+    })
   })
 })

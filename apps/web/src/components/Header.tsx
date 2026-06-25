@@ -10,6 +10,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { FavoritesMenu } from '@/components/favorite/FavoritesMenu'
+import { InboxBell } from '@/components/inbox/InboxBell'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // admin 링크 목록 — isSystemAdmin=true 시 관리 메뉴에 표시할 링크
@@ -68,6 +69,7 @@ export const Header = () => {
       )}
       <div className="flex-1" />
       <FavoritesMenu />
+      <InboxBell />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
