@@ -75,16 +75,16 @@ export function InboxFilters({ filters, onFiltersChange }: InboxFiltersProps) {
   // 드롭다운 키보드 포커스 인덱스
   const [activeSenderIndex, setActiveSenderIndex] = React.useState(-1)
 
-  // REFACTOR 단계 debounce 적용 — 현재는 즉시 반영
+  // SENDER_DEBOUNCE_MS 지연 후 API 요청 — 매 키스트로크마다 요청이 발생하지 않도록 방지
   const debouncedSenderQuery = useDebounce(senderQuery, SENDER_DEBOUNCE_MS)
 
   // senderId가 이미 있지만 selectedSender가 없는 경우 이름을 조회한다
-  // (초기 filters.senderId가 있는 경우)
+  // (초기 filters.senderId가 있는 경우 — 부모에서 외부 상태로 전달될 때)
   const needsInitialSenderLookup =
     filters.senderId !== undefined && selectedSender === null && senderQuery === ''
 
   const { data: senderCandidates = [] } = useQuery({
-    queryKey: ['inbox', 'sender-search', debouncedSenderQuery, needsInitialSenderLookup, filters.senderId],
+    queryKey: ['inbox', 'sender-search', needsInitialSenderLookup ? filters.senderId : null, debouncedSenderQuery],
     queryFn: async (): Promise<UserSummary[]> => {
       if (needsInitialSenderLookup && filters.senderId !== undefined) {
         // senderId로 초기 사용자 정보 조회
