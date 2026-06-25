@@ -723,4 +723,88 @@ class AqlParserTest {
         assertThat(result.sort[1]).isEqualTo(AqlSort(AqlField("summary"), SortDirection.ASC))
         assertThat(result.sort[2]).isEqualTo(AqlSort(AqlField("status"), SortDirection.ASC))
     }
+
+    // ── B2 숫자 범위 검증 (회귀 테스트 - 현재 500 재현) ────────────────────────
+
+    @Test
+    fun `priority Int 범위 초과 숫자는 AqlSyntaxException을 던진다`() {
+        // 99999999999는 Int 최대값(2147483647) 초과 — toInt() NumberFormatException → 500 재현
+        assertThatThrownBy { parse("priority = 99999999999") }
+            .isInstanceOf(AqlSyntaxException::class.java)
+            .satisfies({ ex ->
+                val syntaxEx = ex as AqlSyntaxException
+                assertThat(syntaxEx.position).isGreaterThanOrEqualTo(0)
+            })
+    }
+
+    @Test
+    fun `priority Short 범위 초과 숫자는 AqlSyntaxException을 던진다`() {
+        // 40000은 Int 범위 내이지만 Short 최대값(32767) 초과
+        // repository asShort()에서 wrap되면 결과가 틀리므로 파서에서 거부해야 한다
+        assertThatThrownBy { parse("priority = 40000") }
+            .isInstanceOf(AqlSyntaxException::class.java)
+            .satisfies({ ex ->
+                val syntaxEx = ex as AqlSyntaxException
+                assertThat(syntaxEx.position).isGreaterThanOrEqualTo(0)
+            })
+    }
+
+    @Test
+    fun `priority Short 음수 범위 초과 숫자는 AqlSyntaxException을 던진다`() {
+        // -40000은 Short 최솟값(-32768) 미만
+        // 렉서는 음수 리터럴을 지원하지 않으므로 실제로는 발생하지 않지만 경계 문서화
+        assertThatThrownBy { parse("priority = 40000") }
+            .isInstanceOf(AqlSyntaxException::class.java)
+    }
+
+    @Test
+    fun `priority 유효 범위 숫자는 정상 파싱된다`() {
+        // Short 범위 내 숫자는 허용
+        val ast = parseAst("priority = 32767")
+        assertThat(ast).isInstanceOf(AqlNode.Comparison::class.java)
+        val comp = ast as AqlNode.Comparison
+        assertThat(comp.values).containsExactly(AqlValue.Num(32767))
+    }
+
+    // ── status CONTAINS 제약 (회귀 테스트 - 현재 500 재현) ──────────────────────
+
+    @Test
+    fun `status 필드에 물결 연산자는 허용되지 않는다`() {
+        // status ~ x 가 파서를 통과해 repository IllegalArgument → 500 재현
+        assertThatThrownBy { parse("status ~ open") }
+            .isInstanceOf(AqlSyntaxException::class.java)
+    }
+
+    // ── ORDER BY 미지원 필드 (회귀 테스트 - 현재 500 재현) ──────────────────────
+
+    @Test
+    fun `ORDER BY 미지원 필드는 AqlSyntaxException SEARCH_UNKNOWN_FIELD 를 던진다`() {
+        // ORDER BY foobar 가 검증 없이 통과해 repository IllegalArgument → 500 재현
+        assertThatThrownBy { parse("status = open ORDER BY foobar") }
+            .isInstanceOf(AqlSyntaxException::class.java)
+            .satisfies({ ex ->
+                val syntaxEx = ex as AqlSyntaxException
+                assertThat(syntaxEx.errorCode).isEqualTo(AqlErrorCode.SEARCH_UNKNOWN_FIELD)
+                assertThat(syntaxEx.position).isGreaterThanOrEqualTo(0)
+            })
+    }
+
+    @Test
+    fun `ORDER BY 후속예정 필드는 AqlSyntaxException SEARCH_FIELD_NOT_YET_SUPPORTED 를 던진다`() {
+        // assignee 는 후속 지원 예정 필드 — ORDER BY 에서도 동일하게 구분
+        assertThatThrownBy { parse("status = open ORDER BY assignee") }
+            .isInstanceOf(AqlSyntaxException::class.java)
+            .satisfies({ ex ->
+                val syntaxEx = ex as AqlSyntaxException
+                assertThat(syntaxEx.errorCode).isEqualTo(AqlErrorCode.SEARCH_FIELD_NOT_YET_SUPPORTED)
+            })
+    }
+
+    @Test
+    fun `ORDER BY MVP 지원 필드는 정상 파싱된다`() {
+        // status, label, summary, priority 는 정렬 허용
+        val result = parse("status = open ORDER BY status DESC")
+        assertThat(result.sort).hasSize(1)
+        assertThat(result.sort[0].field).isEqualTo(AqlField("status"))
+    }
 }

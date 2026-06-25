@@ -328,6 +328,143 @@ class SearchControllerTest {
             .andExpect(jsonPath("$.errorCode").value("SEARCH_ACCESS_DENIED"))
     }
 
+    // ── B1 렉서 오류 400 (회귀 테스트 - 현재 500 재현) ─────────────────────────
+
+    /**
+     * B1-a — 닫히지 않은 따옴표 → 렉서가 AqlLexException → 400.
+     * 현재 AqlLexException 이 SearchExceptionHandler 에 매핑 없어 catch-all 500 으로 변질.
+     */
+    @Test
+    fun `B1a - 닫히지 않은 따옴표 400 SEARCH_SYNTAX_ERROR`() {
+        mockMvc.perform(
+            post("/api/v1/search/aql")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf(
+                            "projectKey" to "PROJ",
+                            "query" to """summary ~ "abc""",
+                        ),
+                    ),
+                ),
+        ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("SEARCH_SYNTAX_ERROR"))
+            .andExpect(jsonPath("$.position").exists())
+    }
+
+    /**
+     * B1-b — @bad (인식 불가 문자) → 렉서 AqlLexException → 400.
+     */
+    @Test
+    fun `B1b - 인식 불가 문자 400 SEARCH_SYNTAX_ERROR`() {
+        mockMvc.perform(
+            post("/api/v1/search/aql")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf(
+                            "projectKey" to "PROJ",
+                            "query" to "status = @bad",
+                        ),
+                    ),
+                ),
+        ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("SEARCH_SYNTAX_ERROR"))
+            .andExpect(jsonPath("$.position").exists())
+    }
+
+    // ── B2 숫자 범위 오류 400 (회귀 테스트 - 현재 500 재현) ──────────────────────
+
+    /**
+     * B2-a — Int 범위 초과 숫자 → 파서 NumberFormatException → 400.
+     * 현재 toInt() 가 NumberFormatException → catch-all 500 으로 변질.
+     */
+    @Test
+    fun `B2a - Int 범위 초과 숫자 400 SEARCH_SYNTAX_ERROR`() {
+        mockMvc.perform(
+            post("/api/v1/search/aql")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf(
+                            "projectKey" to "PROJ",
+                            "query" to "priority = 99999999999",
+                        ),
+                    ),
+                ),
+        ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("SEARCH_SYNTAX_ERROR"))
+            .andExpect(jsonPath("$.position").exists())
+    }
+
+    /**
+     * B2-b — Short 범위 초과 숫자(40000) → 파서에서 거부 → 400.
+     * 현재 repository asShort() 에서 wrap → 결과 오염 / 거부 미작동.
+     */
+    @Test
+    fun `B2b - Short 범위 초과 숫자 400 SEARCH_SYNTAX_ERROR`() {
+        mockMvc.perform(
+            post("/api/v1/search/aql")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf(
+                            "projectKey" to "PROJ",
+                            "query" to "priority = 40000",
+                        ),
+                    ),
+                ),
+        ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("SEARCH_SYNTAX_ERROR"))
+            .andExpect(jsonPath("$.position").exists())
+    }
+
+    // ── status CONTAINS 오류 400 (회귀 테스트 - 현재 500 재현) ─────────────────
+
+    /**
+     * status ~ x — status 는 CONTAINS 불허 — 파서에서 400 이어야 한다.
+     * 현재 파싱을 통과해 repository IllegalArgument → 500.
+     */
+    @Test
+    fun `status CONTAINS 연산자 400 SEARCH_SYNTAX_ERROR`() {
+        mockMvc.perform(
+            post("/api/v1/search/aql")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf(
+                            "projectKey" to "PROJ",
+                            "query" to "status ~ open",
+                        ),
+                    ),
+                ),
+        ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("SEARCH_SYNTAX_ERROR"))
+    }
+
+    // ── ORDER BY 미지원 필드 400 (회귀 테스트 - 현재 500 재현) ──────────────────
+
+    /**
+     * ORDER BY foobar — 미지원 정렬 필드 → 파서에서 400 이어야 한다.
+     * 현재 검증 없이 통과해 repository IllegalArgument → 500.
+     */
+    @Test
+    fun `ORDER BY 미지원 필드 400 SEARCH_UNKNOWN_FIELD`() {
+        mockMvc.perform(
+            post("/api/v1/search/aql")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf(
+                            "projectKey" to "PROJ",
+                            "query" to "status = open ORDER BY foobar",
+                        ),
+                    ),
+                ),
+        ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("SEARCH_UNKNOWN_FIELD"))
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     private fun sampleHit(): IssueSearchHit =
