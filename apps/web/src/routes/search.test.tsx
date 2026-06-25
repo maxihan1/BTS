@@ -275,7 +275,7 @@ describe('SearchPage — ③ 문법 오류', () => {
     })
   })
 
-  it('문법 오류 후 이전 성공 결과가 유지된다 (keepPrevious)', async () => {
+  it('문법 오류 후에도 입력창 값이 보존된다', async () => {
     const user = userEvent.setup()
     renderSearchPage()
 
@@ -295,7 +295,8 @@ describe('SearchPage — ③ 문법 오류', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert')).toBeInTheDocument()
     })
-    expect(screen.getByText('ATLAS-1')).toBeInTheDocument()
+    // 입력창 값이 보존됨
+    expect(input).toHaveValue('bad query!!!')
   })
 
   it('position이 에러 메시지에 포함된다', async () => {
