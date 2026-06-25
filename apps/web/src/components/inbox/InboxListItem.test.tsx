@@ -12,17 +12,28 @@ import { InboxListItem } from './InboxListItem'
 vi.mock('@tanstack/react-router', () => ({
   Link: ({
     to,
+    params,
     children,
     className,
   }: {
     to: string
+    params?: Record<string, string>
     children: React.ReactNode
     className?: string
-  }) => (
-    <a href={to} className={className}>
-      {children}
-    </a>
-  ),
+  }) => {
+    // TanStack Router 동작 모사 — to의 `$key` 토큰을 params 값으로 치환해 실제 href 생성
+    let href = to
+    if (params !== undefined) {
+      for (const [token, value] of Object.entries(params)) {
+        href = href.replace(`$${token}`, value)
+      }
+    }
+    return (
+      <a href={href} className={className}>
+        {children}
+      </a>
+    )
+  },
 }))
 
 // ─────────────────────────────────────────────────────────────────────────────
