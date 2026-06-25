@@ -62,4 +62,18 @@ loginStrings 2단계 키 완비(emailLabel='이메일'/continueButton='계속'/p
 - TDD: 회귀 수정 — 기존 17 실패가 RED, fixture 수정이 GREEN
 - 검증: 전체 E2E ground-truth(17 해소 + 회귀 0)
 
-## 리뷰 결과 (← /bts-codereview 채움)
+## 리뷰 결과
+
+### 구현 + ground-truth 검증 (controller)
+- loginAsAlice 정의 통합: `auth-fixtures.ts` 1곳(2단계 정본, issue-fixtures와 byte-identical) + issue/session/workflow-scheme re-export + already-authed·workflow-post-action import.
+- **전체 E2E 347 passed / 0 failed / 2 skipped** (이전 330 passed/17 failed → **17 해소 + 회귀 0**). eslint clean. src 무수정.
+- plan 범위 외 1파일 추가: `workflow-post-action.spec.ts`의 4번째 인라인 loginAsAlice도 통합(근본 "한 벌" 완성, Maxi 동의 정신).
+
+### code-reviewer 에이전트 — ✅ PASS (BLOCKER 0, CONCERNS 0)
+- src/ 무수정 ✅, re-export 정합(다른 export·import orphan 0) ✅, 정의 단일화 ✅, 2단계 정본 byte-identical ✅, 절대 규칙(한국어 헤더·any 0·eslint 0) ✅.
+- 정보성: 하드코딩 'BTS 로그인'/'환영합니다, alice'는 추출 가능 i18n 키 부재 + 전역 14+ spec 관례 + 회귀 수정 범위 밖 → 현상 유지 타당.
+
+### /review (gstack) — 생략
+E2E fixture/spec만(src 무수정)이라 BTS checklist의 SQL/migration/jOOQ/직렬화 항목 전부 N/A. controller가 Pass 0(잔여물 0·PRE_EXISTING 무관) + 전체 E2E ground-truth 검증으로 대체.
+
+**최종: BLOCKER 0, CONCERN 0. 17건 해소 + 회귀 0.**
