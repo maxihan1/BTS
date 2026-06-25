@@ -1,8 +1,11 @@
 // useNotificationStream hook 단위 테스트 — 인증 연동 STOMP 스트림 + toast 동작 검증
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
+import React from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useAuthStore } from '@/auth/authStore'
 import type { InAppNotification } from '@/api/notifications-stream'
+import { UNREAD_COUNT_KEY } from '@/api/inbox'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // createNotificationStream mock — activate/deactivate spy 반환
@@ -192,5 +195,52 @@ describe('useNotificationStream — StrictMode 중복 방지 (C2)', () => {
     expect(mockDeactivate).toHaveBeenCalledTimes(1)
     // 미인증이므로 activate 추가 호출 없음
     expect(mockActivate).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-UNS-6. onMessage 시 inbox 쿼리 invalidate (FR-UX-03 Task 9)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('useNotificationStream — onMessage inbox invalidate', () => {
+  it("onMessage 수신 시 ['inbox'] 접두사와 UNREAD_COUNT_KEY 를 invalidate한다", () => {
+    useAuthStore.setState({ accessToken: 'test-token', user: null })
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidateQueriesSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: queryClient }, children)
+
+    renderHook(() => useNotificationStream(), { wrapper })
+
+    expect(capturedOnMessage).not.toBeNull()
+    act(() => {
+      capturedOnMessage!(validPayload)
+    })
+
+    // ['inbox'] 접두사 무효화 (목록 캐시)
+    expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: ['inbox'] })
+    // UNREAD_COUNT_KEY 무효화 (미읽음 카운트)
+    expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: UNREAD_COUNT_KEY })
+  })
+
+  it('onMessage 수신 시 기존 토스트 동작도 함께 실행된다 (공존)', () => {
+    useAuthStore.setState({ accessToken: 'test-token', user: null })
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: queryClient }, children)
+
+    renderHook(() => useNotificationStream(), { wrapper })
+
+    expect(capturedOnMessage).not.toBeNull()
+    act(() => {
+      capturedOnMessage!(validPayload)
+    })
+
+    // 토스트도 여전히 호출됨
+    expect(toast).toHaveBeenCalledWith(validPayload.title, {
+      description: validPayload.body,
+    })
   })
 })
