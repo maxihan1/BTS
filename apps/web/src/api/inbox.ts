@@ -157,7 +157,8 @@ export const UNREAD_COUNT_KEY = ['inbox', 'unread-count'] as const
 
 /**
  * InboxFilters를 URL 쿼리스트링으로 변환한다.
- * undefined 값은 생략한다.
+ * undefined 값은 생략한다 — 백엔드 기본값을 그대로 따른다.
+ * (예: tab 미전달 시 백엔드 기본값 ALL 적용)
  */
 function buildQueryString(filters: InboxFilters): string {
   const params = new URLSearchParams()
@@ -259,9 +260,12 @@ export async function markArchive(id: string, archived: boolean): Promise<void> 
  * @throws ApiError — 401 미인증
  */
 export async function readAll(ids?: string[]): Promise<{ updated: number }> {
+  // ids가 없거나 빈 배열이면 백엔드는 미읽음 전체를 처리한다.
+  // ids 필드 자체를 생략해 백엔드 기본 동작을 명시적으로 유도한다.
+  const requestBody = ids !== undefined && ids.length > 0 ? { ids } : {}
   const res = await apiFetch(`${INBOX_BASE}/read-all`, {
     method: 'POST',
-    body: ids !== undefined && ids.length > 0 ? { ids } : {},
+    body: requestBody,
   })
   if (!res.ok) {
     const errorBody: unknown = await res.json().catch(() => ({}))
