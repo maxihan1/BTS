@@ -1,4 +1,4 @@
-// Notification 도메인 단위 테스트 — 불변 필드, NotificationStatus, dedupKey 결정성 검증
+// Notification 도메인 단위 테스트 — 불변 필드, NotificationStatus, dedupKey 결정성, 상태 전이(read/archive) 검증
 
 package com.bts.notification.domain
 
