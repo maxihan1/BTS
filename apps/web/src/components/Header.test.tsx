@@ -1,4 +1,4 @@
-// Header 컴포넌트 단위 테스트 — 사용자명 표시, 로그아웃 클릭, 리다이렉트, 관리 nav isSystemAdmin 게이팅
+// Header 컴포넌트 단위 테스트 — 사용자명 표시, 로그아웃 클릭, 리다이렉트, 관리 nav isSystemAdmin 게이팅, InboxBell 렌더
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -11,8 +11,20 @@ import { Header } from './Header'
 const mockNavigate = vi.fn()
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mockNavigate,
-  Link: ({ to, children, className }: { to: string; children: React.ReactNode; className?: string }) => (
-    <a href={to} className={className}>{children}</a>
+  Link: ({
+    to,
+    children,
+    className,
+    'aria-label': ariaLabel,
+  }: {
+    to: string
+    children: React.ReactNode
+    className?: string
+    'aria-label'?: string
+  }) => (
+    <a href={to} className={className} aria-label={ariaLabel}>
+      {children}
+    </a>
   ),
 }))
 
@@ -36,6 +48,12 @@ beforeEach(() => {
     accessToken: 'test-token',
     user: { username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
   })
+  // InboxBell이 사용하는 unread-count API 기본 응답 등록
+  server.use(
+    http.get('/api/v1/users/me/inbox/unread-count', () =>
+      HttpResponse.json({ data: { count: 0 } }),
+    ),
+  )
 })
 
 afterEach(() => {
@@ -153,6 +171,15 @@ describe('Header', () => {
     const link = screen.getByRole('link', { name: '대시보드' })
     expect(link).toBeInTheDocument()
     expect(link).toHaveAttribute('href', '/dashboards')
+  })
+
+  it('InboxBell — 알림 보관함 열기 링크(href=/inbox)가 Header 안에 렌더된다', async () => {
+    renderHeader()
+
+    // InboxBell이 /inbox 링크로 렌더되어야 한다
+    const bellLink = await screen.findByRole('link', { name: '알림 보관함 열기' })
+    expect(bellLink).toBeInTheDocument()
+    expect(bellLink).toHaveAttribute('href', '/inbox')
   })
 
   it('서버 로그아웃 실패(500) 시에도 세션이 정리되고 /login으로 이동한다', async () => {
