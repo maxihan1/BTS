@@ -8,6 +8,7 @@ import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
 import com.bts.shared.permission.IssueSecurityDirectory
 import com.bts.shared.search.AqlField
+import com.bts.shared.search.AqlFields
 import com.bts.shared.search.AqlNode
 import com.bts.shared.search.IssueSearchPage
 import com.bts.shared.search.IssueSearchPort
@@ -16,11 +17,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 
-/** MVP 에서 지원하는 AQL 필드 목록. */
-private val SUPPORTED_FIELDS = setOf("status", "label", "summary", "priority")
-
-/** 후속 PR 에서 지원 예정인 필드 목록 — 사용 시 명시적 오류 메시지 제공. */
-private val FUTURE_FIELDS = setOf("assignee", "reporter", "component", "project")
+// 필드 집합은 shared-kernel AqlFields 를 단일 진실출처로 사용한다(drift 방지 — C1 codereview-fix).
 
 /**
  * [IssueSearchPort] 의 issue-tracking BC 구현 (FR-SR-02 Task 5).
@@ -127,6 +124,12 @@ class IssueSearchAdapter(
     /**
      * 단일 비교 노드의 필드와 연산자 조합을 검증한다.
      *
+     * 파서([com.bts.search.aql.AqlParser])가 1차 검증을 수행하지만,
+     * 어댑터는 파서 없이 AST 를 직접 받는 경로(테스트·이벤트 기반 호출)에서도
+     * 안전해야 하므로 2차 방어 검증을 유지한다.
+     *
+     * 필드 집합은 [AqlFields](shared-kernel) 단일 진실출처를 참조한다.
+     *
      * @param field AQL 필드 식별자.
      * @param op AQL 비교 연산자.
      * @throws IllegalArgumentException 미지원 필드 또는 연산자 조합인 경우.
@@ -137,16 +140,28 @@ class IssueSearchAdapter(
     ) {
         val fieldName = field.value.lowercase()
 
-        require(fieldName !in FUTURE_FIELDS) {
-            "후속 지원 예정 필드입니다: $fieldName. 현재 MVP 에서는 사용할 수 없습니다."
-        }
-        require(fieldName in SUPPORTED_FIELDS) {
-            "지원하지 않는 필드입니다: $fieldName. 지원 필드: ${SUPPORTED_FIELDS.sorted().joinToString(", ")}"
+        when (AqlFields.classify(fieldName)) {
+            AqlFields.FieldClassification.PLANNED ->
+                require(false) {
+                    "후속 지원 예정 필드입니다: $fieldName. 현재 MVP 에서는 사용할 수 없습니다."
+                }
+            AqlFields.FieldClassification.UNKNOWN ->
+                require(false) {
+                    "지원하지 않는 필드입니다: $fieldName. 지원 필드: ${AqlFields.MVP_FIELDS.sorted().joinToString(", ")}"
+                }
+            AqlFields.FieldClassification.SUPPORTED -> Unit
         }
 
-        // priority 는 SMALLINT — ~ (CONTAINS) 연산자 불가
-        require(!(fieldName == "priority" && op == com.bts.shared.search.AqlOperator.CONTAINS)) {
-            "priority 필드에는 ~ 연산자를 사용할 수 없습니다. priority 는 정수(SMALLINT) 필드입니다."
+        require(!AqlFields.isOperatorForbidden(fieldName, op)) {
+            val opSymbol =
+                when (op) {
+                    com.bts.shared.search.AqlOperator.CONTAINS -> "~"
+                    com.bts.shared.search.AqlOperator.EQ -> "="
+                    com.bts.shared.search.AqlOperator.NEQ -> "!="
+                    com.bts.shared.search.AqlOperator.IN -> "IN"
+                    com.bts.shared.search.AqlOperator.NOT_IN -> "NOT IN"
+                }
+            "$fieldName 필드에는 $opSymbol 연산자를 사용할 수 없습니다."
         }
     }
 }

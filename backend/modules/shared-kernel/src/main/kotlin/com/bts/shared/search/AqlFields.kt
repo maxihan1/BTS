@@ -1,25 +1,32 @@
-// AQL 지원 필드 화이트리스트 — MVP 필드 집합과 연산자 제약의 단일 진실출처
+// AQL 지원 필드 화이트리스트 + 연산자 제약의 단일 진실출처 — shared-kernel 공유 객체
 
-package com.bts.search.aql
-
-import com.bts.shared.search.AqlOperator
+package com.bts.shared.search
 
 /**
  * AQL 지원 필드 화이트리스트 — MVP 필드 집합과 연산자 제약의 단일 진실출처.
  *
- * 파서([AqlParser])가 필드명을 검증할 때 이 객체만 참조한다.
- * 스펙 FR-2와 ADR D3의 필드 목록을 코드로 고정한다.
+ * 파서([com.bts.search.aql.AqlParser])와 이슈 검색 어댑터([com.bts.issue.adapter.outbound.search.IssueSearchAdapter])
+ * 양쪽이 이 객체만 참조한다. drift를 구조적으로 차단한다.
+ *
+ * BC 격리 원칙상 issue-tracking은 search 모듈을 직접 import할 수 없으므로
+ * 공유 정보는 반드시 shared-kernel에 위치해야 한다(AST-as-contract 선례).
  *
  * ### 분류
  *
  * - [MVP_FIELDS] — MVP 에서 지원하는 필드. 쿼리에 사용 가능.
- * - [PLANNED_FIELDS] — 후속 PR 에서 지원 예정인 필드. 현재 사용 시 [AqlErrorCode.SEARCH_FIELD_NOT_YET_SUPPORTED].
- * - 그 외 필드 — 오타나 존재하지 않는 필드. [AqlErrorCode.SEARCH_UNKNOWN_FIELD].
+ * - [PLANNED_FIELDS] — 후속 PR 에서 지원 예정인 필드. 현재 사용 시 SEARCH_FIELD_NOT_YET_SUPPORTED.
+ * - 그 외 필드 — 오타나 존재하지 않는 필드. SEARCH_UNKNOWN_FIELD.
  *
  * ### 연산자 제약
  *
  * 특정 필드에 허용되지 않는 연산자가 있다([FIELD_OPERATOR_CONSTRAINTS] 참조).
- * 예: `priority ~ 1` 은 오류(SMALLINT 컬럼에 부분 문자열 불일치).
+ * - `priority` — `CONTAINS(~)` 불가. SMALLINT 컬럼이라 부분 문자열 비교가 의미 없다.
+ * - `status` — `CONTAINS(~)` 불가. text 키 컬럼이라 부분 일치가 의미 없고 repository 오류를 유발.
+ *
+ * ### 숫자 범위 제약
+ *
+ * - [SHORT_MIN] ~ [SHORT_MAX]: priority 는 SMALLINT 컬럼이므로 이 범위를 벗어난 숫자는 파서에서 거부한다.
+ *   repository `asShort()` 에서 조용한 overflow wrap 이 발생하는 것을 사전 차단한다.
  */
 object AqlFields {
     /**
@@ -38,9 +45,23 @@ object AqlFields {
      *
      * 사용자 식별자 해석(username→UUID, 이름→ID)이 필요하거나
      * `currentUser()` 함수와 함께 제공될 필드들이다.
-     * MVP 에서 이 필드를 쿼리에 사용하면 [AqlErrorCode.SEARCH_FIELD_NOT_YET_SUPPORTED] 를 반환한다.
+     * MVP 에서 이 필드를 쿼리에 사용하면 SEARCH_FIELD_NOT_YET_SUPPORTED 를 반환한다.
      */
     val PLANNED_FIELDS: Set<String> = setOf("assignee", "reporter", "component", "project")
+
+    /**
+     * SMALLINT 최솟값 — PostgreSQL `smallint` 컬럼 하한.
+     *
+     * priority 필드에 입력되는 숫자가 이 범위를 벗어나면 파서에서 즉시 거부한다.
+     */
+    const val SHORT_MIN: Int = -32768
+
+    /**
+     * SMALLINT 최댓값 — PostgreSQL `smallint` 컬럼 상한.
+     *
+     * priority 필드에 입력되는 숫자가 이 범위를 벗어나면 파서에서 즉시 거부한다.
+     */
+    const val SHORT_MAX: Int = 32767
 
     /**
      * 필드별 허용되지 않는 연산자 맵.
@@ -49,10 +70,12 @@ object AqlFields {
      *
      * 현재 제약.
      * - `priority` — `CONTAINS(~)` 불가. SMALLINT 컬럼이라 부분 문자열 비교가 의미 없다.
+     * - `status` — `CONTAINS(~)` 불가. text 키 컬럼으로 부분 일치 미지원, repository IllegalArgument 유발.
      */
     private val FIELD_OPERATOR_CONSTRAINTS: Map<String, Set<AqlOperator>> =
         mapOf(
             "priority" to setOf(AqlOperator.CONTAINS),
+            "status" to setOf(AqlOperator.CONTAINS),
         )
 
     /**
@@ -71,7 +94,7 @@ object AqlFields {
     }
 
     /**
-     * 주어진 필드와 연산자 조합이 유효한지 확인한다.
+     * 주어진 필드와 연산자 조합이 허용되지 않는지 확인한다.
      *
      * @param fieldName 필드명 (원본 대소문자 그대로).
      * @param op 검증할 연산자.

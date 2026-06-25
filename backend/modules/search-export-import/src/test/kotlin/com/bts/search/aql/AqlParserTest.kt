@@ -28,7 +28,11 @@ import org.junit.jupiter.params.provider.ValueSource
  * - 미지원 필드 2종 구분 (오타 → SEARCH_UNKNOWN_FIELD / 후속예정 → SEARCH_FIELD_NOT_YET_SUPPORTED)
  * - 오류 케이스 — 빈 쿼리, 괄호 불균형, IN 빈 목록, 중복 ORDER BY, 연속 연산자 → 위치 포함 예외
  * - 깊이 상한(50) 초과 거부 (DoS 방어)
+ * - 숫자 범위 검증(Short 범위 초과) — B2 codereview-fix
+ * - status CONTAINS 금지 — codereview-fix
+ * - ORDER BY 미지원 필드 거부 — codereview-fix
  */
+@Suppress("LargeClass") // 문법 규칙 1케이스당 1테스트 구조 — 분리 시 공유 헬퍼 비용 증가
 class AqlParserTest {
     // ── 헬퍼 ────────────────────────────────────────────────────────────────────
 

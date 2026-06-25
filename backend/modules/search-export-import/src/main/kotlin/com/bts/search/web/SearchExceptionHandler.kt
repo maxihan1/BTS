@@ -3,6 +3,7 @@
 package com.bts.search.web
 
 import com.bts.search.aql.AqlErrorCode
+import com.bts.search.aql.AqlLexException
 import com.bts.search.aql.AqlSyntaxException
 import com.bts.search.web.SearchErrorCodes.SEARCH_ACCESS_DENIED
 import com.bts.search.web.SearchErrorCodes.SEARCH_INTERNAL_ERROR
@@ -76,6 +77,36 @@ class SearchExceptionHandler {
                 title = "AQL Syntax Error",
                 errorCode = errorCode,
                 detail = ex.message ?: "AQL 쿼리에 구문 오류가 있습니다.",
+            )
+        pd.setProperty("position", ex.position)
+        return pd
+    }
+
+    /**
+     * [AqlLexException] — AQL 렉싱 오류(닫히지 않은 따옴표, 인식 불가 문자 등) — 400.
+     *
+     * [AqlLexException] 은 [AqlSyntaxException] 과 별개의 RuntimeException 계층이다.
+     * 별도 핸들러가 없으면 catch-all 500으로 변질된다(교훈 B1).
+     *
+     * [AqlSyntaxException] 핸들러와 동일한 응답 형식을 사용한다.
+     * errorCode 는 항상 SEARCH_SYNTAX_ERROR, position 은 렉서가 보고한 컬럼 인덱스.
+     *
+     * @param ex 렉서가 발생시킨 렉싱 오류 예외.
+     */
+    @ExceptionHandler(AqlLexException::class)
+    fun handleAqlLexException(ex: AqlLexException): ProblemDetail {
+        log.info(
+            "SEARCH_400 aql_lex_error position={} message='{}'",
+            ex.position,
+            ex.message,
+        )
+        val pd =
+            problem(
+                status = HttpStatus.BAD_REQUEST,
+                type = "search-aql-syntax-error",
+                title = "AQL Syntax Error",
+                errorCode = SearchErrorCodes.SEARCH_SYNTAX_ERROR,
+                detail = ex.message ?: "AQL 쿼리에 렉싱 오류가 있습니다.",
             )
         pd.setProperty("position", ex.position)
         return pd

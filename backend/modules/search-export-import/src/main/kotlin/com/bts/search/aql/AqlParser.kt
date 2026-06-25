@@ -3,6 +3,7 @@
 package com.bts.search.aql
 
 import com.bts.shared.search.AqlField
+import com.bts.shared.search.AqlFields
 import com.bts.shared.search.AqlNode
 import com.bts.shared.search.AqlOperator
 import com.bts.shared.search.AqlSort
@@ -276,7 +277,8 @@ class AqlParser(private val tokens: List<AqlToken>) {
             }
             AqlTokenType.NUMBER -> {
                 advance()
-                AqlValue.Num(token.lexeme.toInt())
+                val num = parseIntValue(token)
+                AqlValue.Num(num)
             }
             else -> throw AqlSyntaxException(
                 "값(문자열, 숫자, bare word)이 예상되었지만 '${token.lexeme}' 를 만났습니다.",
@@ -338,10 +340,13 @@ class AqlParser(private val tokens: List<AqlToken>) {
     /**
      * 단일 정렬 항목 `field [ASC|DESC]` 를 파싱한다.
      *
+     * 정렬 필드도 [AqlFields] 화이트리스트로 검증한다. MVP 미지원 필드로 정렬하면
+     * repository 에서 [IllegalArgumentException] 이 발생해 500이 되므로 파서에서 사전 거부한다.
      * 방향이 생략되면 기본값 [SortDirection.ASC] 를 사용한다.
      */
     private fun parseSortItem(): AqlSort {
         val fieldToken = expectIdent("정렬 필드명")
+        validateField(fieldToken.lexeme, fieldToken.position)
         val direction =
             when (peek()?.type) {
                 AqlTokenType.KW_ASC -> {
@@ -358,6 +363,34 @@ class AqlParser(private val tokens: List<AqlToken>) {
     }
 
     // ── 검증 헬퍼 ────────────────────────────────────────────────────────────
+
+    /**
+     * NUMBER 토큰 문자열을 Int 로 변환하고 SMALLINT 범위를 검증한다.
+     *
+     * PostgreSQL `smallint` 컬럼(priority 등)에 저장되는 숫자가 범위를 벗어나면
+     * repository 에서 overflow wrap 이 발생하므로, 파서에서 사전 거부한다.
+     *
+     * Int 자체 범위([Short.MIN_VALUE] 미만의 절댓값을 지닌 큰 수)도 거부한다.
+     *
+     * @param token 숫자 문자열을 담은 NUMBER 토큰.
+     * @return 유효한 Int 값 (SMALLINT 범위 보장).
+     * @throws AqlSyntaxException Int 파싱 실패 또는 SMALLINT 범위 초과 시.
+     */
+    private fun parseIntValue(token: AqlToken): Int {
+        val num =
+            token.lexeme.toIntOrNull()
+                ?: throw AqlSyntaxException(
+                    "숫자 값 '${token.lexeme}' 가 허용 범위를 초과했습니다. 최대 ${Int.MAX_VALUE} 까지 허용됩니다.",
+                    token.position,
+                )
+        if (num < AqlFields.SHORT_MIN || num > AqlFields.SHORT_MAX) {
+            throw AqlSyntaxException(
+                "숫자 값 $num 이 허용 범위(${AqlFields.SHORT_MIN}..${AqlFields.SHORT_MAX})를 벗어났습니다.",
+                token.position,
+            )
+        }
+        return num
+    }
 
     /**
      * 필드명을 [AqlFields] 화이트리스트로 검증한다.
