@@ -251,3 +251,26 @@ describe('AqlHighlighter — IME composition', () => {
     expect(strSpan).not.toBeNull()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// overlay 스크롤 동기화 (NFR-4 — 다중 행 쿼리 정렬)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AqlHighlighter — overlay 스크롤 동기화', () => {
+  it('textarea 스크롤 시 overlay의 scrollTop/scrollLeft가 동기화된다', () => {
+    const { container } = renderHighlighter(
+      'status = open\nAND priority IN (1, 2)\nAND label ~ "a"\nAND summary ~ "b"',
+    )
+    const textarea = container.querySelector('textarea')!
+    const overlay = container.querySelector('pre[aria-hidden="true"]')!
+
+    // jsdom은 레이아웃이 없어 실제 스크롤은 0이지만 scrollTop/Left는 설정 가능한
+    // 프로퍼티다 — 동기화 핸들러가 textarea 값을 overlay로 복사하는지 검증한다.
+    textarea.scrollTop = 42
+    textarea.scrollLeft = 13
+    fireEvent.scroll(textarea)
+
+    expect(overlay.scrollTop).toBe(42)
+    expect(overlay.scrollLeft).toBe(13)
+  })
+})
