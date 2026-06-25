@@ -1,5 +1,5 @@
 // AQL 쿼리 입력창 — textarea(투명 텍스트/caret) + 절대배치 overlay(syntax highlight) 합성 컴포넌트 (FR-SR-02 Task 4)
-import { useRef, useCallback, type ReactNode, type ChangeEvent, type KeyboardEvent } from 'react'
+import { useRef, useCallback, type ReactNode, type ChangeEvent, type KeyboardEvent, type UIEvent } from 'react'
 import { tokenizeAql, type AqlTokenType } from '@/lib/aql-tokenizer'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,6 +133,8 @@ const SHARED_FONT_CLASSES = 'font-mono text-sm leading-normal tracking-normal'
 export const AqlHighlighter = ({ value, onChange, onSubmit, placeholder }: AqlHighlighterProps) => {
   /** IME 조합 진행 중 여부 — overlay 갱신 보류 판단 */
   const isComposingRef = useRef(false)
+  /** overlay DOM 참조 — textarea 스크롤을 따라 동기화한다 */
+  const overlayRef = useRef<HTMLPreElement>(null)
 
   // ─── 이벤트 핸들러 ───────────────────────────────────────────────────────
 
@@ -166,6 +168,20 @@ export const AqlHighlighter = ({ value, onChange, onSubmit, placeholder }: AqlHi
     e.preventDefault()
   }, [])
 
+  /**
+   * textarea 스크롤을 overlay에 동기화한다 (NFR-4).
+   *
+   * textarea는 rows={3} 고정 높이라 내용이 3행을 넘으면 내부 스크롤이 발생한다.
+   * overlay(`overflow-hidden`)는 스스로 스크롤되지 않으므로, 입력 스크롤을 복사하지
+   * 않으면 다중 행 쿼리에서 하이라이트 색이 텍스트와 어긋난다.
+   */
+  const handleScroll = useCallback((e: UIEvent<HTMLTextAreaElement>) => {
+    const overlay = overlayRef.current
+    if (overlay === null) return
+    overlay.scrollTop = e.currentTarget.scrollTop
+    overlay.scrollLeft = e.currentTarget.scrollLeft
+  }, [])
+
   // ─── overlay 콘텐츠 — 조합 중에는 색상 없이 plain text 표시 ─────────────
   const overlayContent = isComposingRef.current
     ? value
@@ -177,6 +193,7 @@ export const AqlHighlighter = ({ value, onChange, onSubmit, placeholder }: AqlHi
     <div className="relative w-full">
       {/* overlay — aria-hidden, 포인터 이벤트 차단, 색상 span 담당 */}
       <pre
+        ref={overlayRef}
         aria-hidden="true"
         className={[
           'pointer-events-none absolute inset-0',
@@ -197,6 +214,7 @@ export const AqlHighlighter = ({ value, onChange, onSubmit, placeholder }: AqlHi
         onKeyDown={handleKeyDown}
         onCompositionStart={handleCompositionStart}
         onCompositionEnd={handleCompositionEnd}
+        onScroll={handleScroll}
         maxLength={MAX_LENGTH}
         placeholder={placeholder}
         className={[
