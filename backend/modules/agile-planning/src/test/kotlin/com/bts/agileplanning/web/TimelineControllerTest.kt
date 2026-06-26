@@ -63,7 +63,9 @@ class TimelineControllerTest {
         open fun timelineApplicationService(): TimelineApplicationService = mockk(relaxed = true)
 
         @Bean
-        open fun timelineController(service: TimelineApplicationService): TimelineController = TimelineController(service)
+        open fun timelineController(service: TimelineApplicationService): TimelineController {
+            return TimelineController(service)
+        }
 
         @Bean
         open fun timelineExceptionHandler(): TimelineExceptionHandler = TimelineExceptionHandler()
