@@ -176,6 +176,9 @@ class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
     /**
      * 대량 이슈 삽입 헬퍼 — B2 EXPLAIN 플래너가 GIN 인덱스를 선택하도록 충분한 행 제공.
      *
+     * 플래너가 seq scan 보다 GIN 을 선호하도록:
+     * - count 를 충분히 크게 (5000+)
+     * - 매 100번째 행에 검색어("로그인") 를 포함해 selectivity 추정을 현실화
      * ANALYZE 를 마지막에 실행해 통계를 최신화한다.
      * JDBC 2단계 중첩(connection/statement) + 배치 삽입.
      */
@@ -190,18 +193,24 @@ class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
             ).use { stmt ->
                 repeat(count) { idx ->
                     val n = idx + 1
+                    // 매 100번째 행에 "로그인" 포함 — 플래너에 실제 selectivity 제공
+                    val desc = if (n % 100 == 0) "벌크 시드 로그인 내용 $n" else "벌크 시드 내용 $n 다양한 일반 텍스트"
                     stmt.setObject(1, UUID.randomUUID())
                     stmt.setString(2, "TPRJ-${n + 1000}")
                     stmt.setObject(3, testProjectId)
                     stmt.setLong(4, tid)
                     stmt.setString(5, "벌크 시드 이슈 $n")
-                    stmt.setString(6, "벌크 시드 내용 $n — 다양한 일반 텍스트")
+                    stmt.setString(6, desc)
                     stmt.setObject(7, UUID.randomUUID())
                     stmt.addBatch()
                 }
                 stmt.executeBatch()
             }
-            conn.createStatement().use { it.execute("ANALYZE issues") }
+            // VACUUM ANALYZE: GIN pending list 를 flush 하고 통계를 최신화.
+            // 배치 INSERT 후 GIN fast update pending list 가 남아있으면 플래너가 GIN 비용을 과대 추정하므로
+            // VACUUM 으로 먼저 flush 한 뒤 ANALYZE 로 통계 갱신이 필요.
+            // VACUUM 은 autocommit 모드에서만 실행 가능 (JDBC 기본값 = autocommit=true).
+            conn.createStatement().use { it.execute("VACUUM ANALYZE issues") }
         }
     }
 
@@ -578,8 +587,9 @@ class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
     @Test
     @Order(51)
     fun `B2-EXPLAIN GIN 인덱스가 플랜에 나타난다 — idx_issues_description_trgm 과 idx_issues_search_vector`() {
-        // 1000행 시드 + ANALYZE → 플래너 통계 갱신 (seqscan보다 GIN 선호)
-        seedBulkIssues(1000)
+        // 5000행 시드 + ANALYZE → 플래너 통계 갱신 (seqscan보다 GIN 선호)
+        // 매 100번째 행에 검색어 포함 → 50행 매칭, selectivity ~1% → GIN 비용 유리
+        seedBulkIssues(5000)
 
         val plan = explainQuery("로그인")
 
