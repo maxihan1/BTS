@@ -237,7 +237,7 @@
 | # | 결정 항목 | 결정 시점 | 영향 BC | 상태 |
 |---|---|---|---|---|
 | 1 | pgmq 이미지 (자체 빌드 vs tembo-io vs coredb) | project-workflow §1 PoC | 전 BC (이벤트 통신) | 보류 — `docs/poc/context-notes.md` 2026-05-19 기록 |
-| 2 | Gantt 라이브러리 (자체 SVG vs Recharts vs syncfusion) | agile-planning §1 PoC | agile-planning §4 (타임라인) | 보류 — PoC ADR |
+| 2 | Gantt 라이브러리 (자체 SVG vs Recharts vs syncfusion) | agile-planning §1 PoC | agile-planning §4 (타임라인) | ✅ 해소(PR #194) — 자체 SVG/CSS 채택, ADR `docs/adr/2026-06-26-gantt-rendering-self-svg.md` |
 | 3 | 9개 BC 진입 순서 (BC 의존 그래프 참조) | 첫 작업 시점 | 전체 | Maxi 결정 영역 — README §0.7 권장 순서 참조 |
 | 4 | `scripts/verify-master-plan.sh` CI 통합 시점 | 첫 BC 작업 진입 직전 | CI | 작성 후 즉시 통합 권장 |
 | 5 | 이슈 키 prefix 결정 (예. `ATL-`, 프로젝트별 prefix) | issue-tracking §2.1.1 진입 시 | issue-tracking + DATA.md | DATA.md §이슈키 영속성 가이드 따름 |
