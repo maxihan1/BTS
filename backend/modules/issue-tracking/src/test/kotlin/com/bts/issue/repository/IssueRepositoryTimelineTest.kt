@@ -77,14 +77,11 @@ class IssueRepositoryTimelineTest : IssueTestcontainersBase() {
         }
     }
 
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 미초기화 — resolveTypeIds 실행 확인" }
+    private fun requireTaskTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 미초기화 — resolveTypeIds 실행 확인" }
 
-    private fun requireStoryTypeId(): IssueTypeId =
-        requireNotNull(storyTypeId) { "storyTypeId 미초기화 — resolveTypeIds 실행 확인" }
+    private fun requireStoryTypeId(): IssueTypeId = requireNotNull(storyTypeId) { "storyTypeId 미초기화 — resolveTypeIds 실행 확인" }
 
-    private fun requireEpicTypeId(): IssueTypeId =
-        requireNotNull(epicTypeId) { "epicTypeId 미초기화 — resolveTypeIds 실행 확인" }
+    private fun requireEpicTypeId(): IssueTypeId = requireNotNull(epicTypeId) { "epicTypeId 미초기화 — resolveTypeIds 실행 확인" }
 
     /**
      * 테스트용 이슈를 생성·삽입하고 DB 반환값을 돌려준다.
@@ -164,8 +161,7 @@ class IssueRepositoryTimelineTest : IssueTestcontainersBase() {
         val issueA = insertIssue(seq = 1L, startDate = today, dueDate = today.plusDays(10))
         val issueB = insertIssue(seq = 2L, startDate = today)
         val issueC = insertIssue(seq = 3L, dueDate = today.plusDays(5))
-        /* issueD — 날짜 둘 다 null → 제외 대상 */
-        insertIssue(seq = 4L)
+        insertIssue(seq = 4L) // issueD — 날짜 둘 다 null → 제외 대상
 
         val result =
             repository.listVisibleForTimeline(
