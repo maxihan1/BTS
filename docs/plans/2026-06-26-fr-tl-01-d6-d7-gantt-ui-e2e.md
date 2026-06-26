@@ -85,7 +85,7 @@ classify: type=qa 오판 → ui/frontend-engineer 교정 (E2E 키워드 오판 �
 
 **RED**. `timeline.test.ts` — (1) 정상 `DataResponse<TimelineResponse>` 봉투 파싱·언랩, (2) nullable 날짜(null/ISO date 문자열)·`issueType` 소문자 string·`assigneeId`/`epicKey` null 허용, (3) `truncated` boolean, (4) 403 → `ApiError`(errorCode 추출). 실패: `fetchTimeline`/스키마 없음.
 
-**GREEN**. `timelineItemSchema`(백엔드 `TimelineItemResponse.kt` **정확 미러** — key/summary/issueType/currentStateKey/assigneeId(nullable)/startDate(nullable ISO)/dueDate/targetDate/epicKey(nullable)) + `timelineResponseSchema { items, truncated }` + `dataResponseSchema` 봉투. `fetchTimeline(projectKey): Promise<TimelineResponse>` — `apiFetch`(issue-tracking 외 BC 관례 grep, memory: frontend-api-convention-per-bc) `GET /api/v1/timeline?project={key}`.
+**GREEN**. `timelineItemSchema`(백엔드 `TimelineItemResponse.kt` **정확 미러** — key/summary/issueType/currentStateKey/assigneeId(nullable)/startDate(nullable ISO)/dueDate/targetDate/epicKey(nullable)) + `timelineResponseSchema { items, truncated }`. `fetchTimeline(projectKey): Promise<TimelineResponse>` — **`apiGet(path, dataResponseSchema(timelineResponseSchema)).data`** (same-BC 선례 `apps/web/src/api/boards.ts:250-256` 패턴 — apiGet 이 GET+401 auto-refresh+ApiError 캡슐화, raw apiFetch 아님 C1). `GET /api/v1/timeline?project={key}`.
 
 **REFACTOR**. `TimelineItem`/`TimelineResponse` 타입 export(lib/hooks 공유), KDoc(계약 출처 #192 명시). 날짜는 `string`(ISO) 그대로 보관 — Date 변환은 lib 책임.
 
@@ -133,9 +133,9 @@ classify: type=qa 오판 → ui/frontend-engineer 교정 (E2E 키워드 오판 �
 
 **RED**. `timeline-handlers.test.ts`(board-handlers.test.ts 패턴) — `GET /api/v1/timeline?project=BTS` → 봉투+items(Epic+자식+미분류+targetDate)·truncated 시나리오·미인증/403 시나리오. fixture 가 백엔드 정렬 순서(startDate ASC...) 준수.
 
-**GREEN**. `timeline-fixtures.ts`(Epic 1+ 자식 2+ 미분류 1+ start만/due만 + targetDate + truncated 시드) + `timeline-handlers.ts`(GET handler, project 별 분기) + `handlers.ts` 등록. **신규 모듈 로드 시 자동 시드**(memory: fr-bd-01 신규 store 자동 시드, msw-derived-behavior-shared-store). 읽기 전용이라 mutation store 불필요.
+**GREEN**. `timeline-fixtures.ts`(Epic 1+ 자식 2+ 미분류 1+ start만/due만 + targetDate + truncated 시드) + `timeline-handlers.ts`(GET handler, project 별 분기) + `handlers.ts` 등록(`...timelineHandlers` spread, handlers.ts:57-107 배열). **읽기 전용 정적 반환 핸들러**(선례 = board-handlers 의 stateful boardStore 가 아니라 `search-handlers`/`worklog-aggregate-handlers` 정적 핸들러 C3). E2E auto-seed 는 **`MODE!=='test'` 게이팅**(backlog-fixtures 패턴 — vitest 의 api/hook mock 과 충돌 0).
 
-**REFACTOR**. 시나리오 헬퍼, 403/truncated 토글(memory: e2e-msw-scenario-toggle localStorage flag — E2E용).
+**REFACTOR**. 시나리오 헬퍼, 403/truncated 토글(memory: e2e-msw-scenario-toggle localStorage flag + addInitScript — E2E용).
 
 **검증**: `pnpm --filter web test timeline-handlers.test`
 
@@ -146,43 +146,54 @@ classify: type=qa 오판 → ui/frontend-engineer 교정 (E2E 키워드 오판 �
 - files: [`apps/web/src/components/timeline/GanttChart.tsx`, `apps/web/src/components/timeline/TimelineAxis.tsx`, `apps/web/src/components/timeline/TimelineRow.tsx`, `apps/web/src/components/timeline/GanttChart.test.tsx`, `apps/web/src/i18n/timeline-labels.ts`, `apps/web/src/i18n/timeline-labels.test.ts`]
 - depends-on: [2]
 
-**RED**. `GanttChart.test.tsx`(순수 함수 결과 기반 — jsdom width0 무관, memory: NFR2 fr-tt-02) — (1) Epic 그룹/막대 행 수, (2) 그룹 접기/펼치기 토글, (3) 마일스톤 ◆ 렌더, (4) 막대/레이블 클릭→`onSelectIssue(key)` 콜백, (5) 토글 button stopPropagation(막대 클릭과 분리 G2). `timeline-labels.test.ts` — **콜론 종결 0**(memory: fr-mf-05 ko.test).
+**RED**. `GanttChart.test.tsx`(순수 함수 결과 기반 — jsdom width0 무관, memory: NFR2 fr-tt-02) — (1) Epic 그룹/막대 행 수, (2) 그룹 접기/펼치기 토글, (3) 마일스톤 ◆ 렌더, (4) 막대/레이블 클릭→`onSelectIssue(key)` 콜백, (5) 토글 button stopPropagation(막대 클릭과 분리 G2), (6) 행 레이블에 **담당자 displayName**(props 로 받은 매핑 결과) 표시·미배정 폴백(EC11). `timeline-labels.test.ts` — **콜론 종결 0**(memory: fr-mf-05 ko.test).
 
-**GREEN**. `GanttChart`(좌측 sticky 레이블 열 + 우측 시간축 단일 스크롤 컨테이너 G1) + `TimelineAxis`(주/월 눈금) + `TimelineRow`(막대 div/SVG + ◆ 마일스톤 + 개방 표식). `assembleEpicGroups`/`computeBarGeometry` 결과 소비. **issueType 색**: 기존 토큰 grep 후 재사용/신규(spec 제약). aria-label(키+기간)·토글 aria-expanded(NFR3). `timeline-labels.ts`.
+**GREEN**. `GanttChart`(좌측 sticky 레이블 열 + 우측 시간축 단일 스크롤 컨테이너 G1) + `TimelineAxis`(주/월 눈금) + `TimelineRow`(막대 div/SVG + ◆ 마일스톤 + 개방 표식). `assembleEpicGroups`/`computeBarGeometry` 결과 소비. **담당자 이름은 `assigneeNames: Map<id,name>` props 로 받아 표시**(조회/매핑은 T6 route 책임 C2). **issueType 색**: 기존 색맵 없음 실측 → timeline 전용 색맵 신규 정의(epic/story/task/bug/폴백). aria-label(키+기간)·토글 aria-expanded(NFR3). `timeline-labels.ts`.
 
 **REFACTOR**. 색맵 상수, 하위 컴포넌트 분리, KDoc(자체 SVG 좌표 모델).
 
 **검증**: `pnpm --filter web test GanttChart.test timeline-labels.test`
 
-### Task 6. routes/projects.$projectKey.timeline.tsx — Adapter + Page (상태 연결)
+### Task 6. routes/projects.$projectKey.timeline.tsx — Adapter + Page + **router.ts 등록**
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/routes/projects.$projectKey.timeline.tsx`, `apps/web/src/routes/projects.$projectKey.timeline.test.tsx`]
-- depends-on: [3, 4, 5]
+- files: [`apps/web/src/routes/projects.$projectKey.timeline.tsx`, `apps/web/src/routes/projects.$projectKey.timeline.test.tsx`, **`apps/web/src/router.ts`**]
+- depends-on: [3, 5]
 
-**RED**. `timeline.test.tsx`(MSW 사용, board route 패턴) — 로딩 Skeleton, 정상 GanttChart 렌더, 빈 상태(S4), truncated 배너(S5), 403 접근거부(AGILE_ACCESS_DENIED S6), 막대 클릭→`/issues/{key}` navigate.
+**RED**. `timeline.test.tsx`(**hook mock 패턴 — `vi.mock('@/hooks/use-timeline')` + `vi.mock('@tanstack/react-router')` + `GanttChart` mock 후 `TimelinePage` 직접 render**. 프로젝트 어떤 route test 도 MSW 안 씀, board test `__tests__/projects.board.test.tsx:16,85` 패턴 B2) — 로딩 Skeleton, 정상 GanttChart 렌더, 빈 상태(S4), truncated 배너(S5), 403 접근거부(AGILE_ACCESS_DENIED S6), 막대 클릭→`/issues/{key}` navigate, 담당자 이름 매핑 전달(C2).
 
-**GREEN**. `TimelineRouteAdapter`(useParams projectKey) + `TimelinePage`(useTimeline + 상태 분기 + GanttChart + onSelectIssue navigate). board route 에러 처리 패턴(extractErrorCode/AGILE_ACCESS_DENIED) 재사용. file-based route export(`createFileRoute`).
+**GREEN**.
+- `TimelineRouteAdapter`(useParams projectKey) + `TimelinePage` — `useTimeline` + **`useQuery(['users'], fetchUsers)` + `buildUserMap`/`buildAssigneeNames` 3-state(board route `projects.$projectKey.board.tsx:303-317` 미러 C2)** → GanttChart 에 `assigneeNames` 전달 + onSelectIssue navigate.
+- **code-based 라우팅 등록 B1**: `BoardRouteAdapter`(projects.$projectKey.board.tsx) 패턴으로 Adapter export 후 **`router.ts` 에 import + `createRoute({ path:'/projects/$projectKey/timeline', component: TimelineRouteAdapter, ... beforeLoad: requireAuthAndPasswordChanged })` 등록 + `routeTree.addChildren` 추가**. `createFileRoute` 아님(grep 0건). router.ts 라우트 카운트 주석(router.ts:1) 33→34 동기화.
+- board route 에러 처리 패턴(extractErrorCode/AGILE_ACCESS_DENIED) 재사용.
 
 **REFACTOR**. Skeleton/빈/배너/에러 컴포넌트 분리, KDoc. key prop 재마운트 주의(memory: react-usestate-stale-key-prop — projectKey 변경 시).
 
 **검증**: `pnpm --filter web test projects.\$projectKey.timeline.test`
 
-### Task 7. 네비 링크 — board/backlog → 타임라인 상호 링크
+### Task 7. 네비 링크 — board/backlog → 타임라인 진입점
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/routes/projects.$projectKey.backlog.tsx`]
+- files: [`apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/routes/projects.$projectKey.backlog.tsx`, `apps/web/src/routes/__tests__/projects.board.test.tsx`, `apps/web/src/routes/projects.$projectKey.backlog.test.tsx`, `apps/web/src/i18n/board-labels.ts`, `apps/web/src/i18n/backlog-labels.ts`]
 - depends-on: []
 
-**RED**. 기존 board/backlog route test 에 "타임라인" 링크 존재 단언 추가(`to="/projects/$projectKey/timeline"`). 텍스트 중복 시 컨테이너 한정/exact(memory: playwright-getbyrole-exact, ui-pr-defer-e2e-regression).
+**현황 실측(B3)**. 네비는 **단방향** — backlog route 만 `<nav aria-label="프로젝트 뷰 전환">`+board 링크 보유(`projects.$projectKey.backlog.tsx:59-67`). **board route 엔 nav/Link 자체가 없음**. board test(`__tests__/projects.board.test.tsx:16`)의 react-router mock 엔 `Link` stub 부재(backlog test:12-34 엔 있음).
 
-**GREEN**. board/backlog 상단 네비에 타임라인 `<Link>` 추가(기존 board↔backlog 링크 패턴 확장). i18n 라벨 추가.
+**RED**.
+- backlog test — nav 에 "타임라인" 링크(`to="/projects/$projectKey/timeline"`) 단언 추가.
+- board test — **react-router mock 에 `Link` stub 추가**(backlog test 미러 — 없으면 board 에 Link 넣는 순간 "Element type is invalid" 로 기존 board test 전부 깨짐) + nav "백로그"/"타임라인" 링크 단언.
+- 텍스트 중복 시 nav 컨테이너 한정/exact(memory: playwright-getbyrole-exact, ui-pr-defer-e2e-regression).
 
-**REFACTOR**. 링크 라벨 i18n 통일.
+**GREEN**.
+- backlog nav 에 타임라인 `<Link>` 추가(기존 nav 확장).
+- **board route 에 `<nav aria-label="프로젝트 뷰 전환">` 신규 추가**(0→1, backlog nav 미러) — 백로그 + 타임라인 링크. 상호 네비 완성.
+- i18n `board-labels`/`backlog-labels` 에 `timelineLink`/`backlogLink` 라벨 추가(콜론 종결 0).
 
-**검증**: `pnpm --filter web test projects.\$projectKey.board projects.\$projectKey.backlog`
+**REFACTOR**. 링크 라벨 i18n 통일, nav 마크업 일관.
+
+**검증**: `pnpm --filter web test projects.board projects.\$projectKey.backlog`
 
 ### Task 8. E2E — e2e/timeline.spec.ts (happy path 실렌더)
 
@@ -200,11 +211,28 @@ classify: type=qa 오판 → ui/frontend-engineer 교정 (E2E 키워드 오판 �
 ## Plan 메타
 
 - task 수: 8 (전부 frontend-engineer)
-- 예상 wave: 5 (W1: T1·T7 / W2: T2·T3·T4 / W3: T5 / W4: T6 / W5: T8)
+- 예상 wave: 5 (W1: T1·T7 / W2: T2·T3·T4 / W3: T5 / W4: T6(depends 3,5) / W5: T8)
+- depends-on: T1[] T2[1] T3[1] T4[1] T5[2] T6[3,5] T7[] T8[4,6,7]. 순환 없음.
 - TDD 강제: yes
-- 파일 겹침: 없음 (T7만 기존 board/backlog route — 단독 wave)
+- 파일 겹침: 없음 (T6 router.ts 단독, T7만 기존 board/backlog route+test — 단독 wave)
 - 추가 검증: pnpm lint + typecheck(tsconfig.app, memory: ci-typecheck) + test + e2e. ko i18n 콜론 종결 0.
 - 코드 외(컨트롤러 직접): ADR `docs/adr/2026-06-26-gantt-rendering-self-svg.md`(impl 전) · fr-index §A.3 #2 해소 + product/agile-planning D6/D7 체크 + 카운트 동기화(merge, verify-master-plan exit0)
 - 함정 주의 — ① Zod 백엔드 DTO 정확 미러 ② UTC 날짜 계산 ③ 신규 MSW 모듈 자동 시드 ④ jsdom width0→순수함수 검증 ⑤ MSW E2E SPA 내부 이동(reload 금지) ⑥ 콜론 종결 0 ⑦ apiFetch BC 관례 grep
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 독립 적대 리뷰 (2026-06-26, general-purpose agent — 코드 실측 26 tool use)
+
+**BLOCKER (반영 완료)**.
+- **B1** — 라우팅은 **code-based(`router.ts` createRoute)**인데 plan 이 file-based `createFileRoute` 가정 + router.ts 등록 task 누락(`grep createFileRoute`=0, router.ts 가 33 라우트 등록). → T6 files 에 `router.ts` 추가, GREEN 을 `TimelineRouteAdapter`+createRoute 등록+카운트 33→34 동기화로 교체. ✅
+- **B2** — route test 는 MSW 아닌 **hook mock**(board test `__tests__/projects.board.test.tsx:16,85` = `vi.mock` use-boards/react-router/KanbanBoard). → T6 RED 를 hook mock 패턴으로 교정, MSW 는 T8 E2E 전용. ✅
+- **B3** — board route 엔 nav/Link **자체가 없음**(backlog 만 단방향 board 링크), board test mock 에 `Link` stub 부재. board 에 Link 추가 시 기존 board test 전부 회귀. → T7 files 에 test 2개 + i18n 추가, board test mock 에 Link stub, board nav 0→1 신규 추가 명시. ✅
+
+**CONCERN (반영 완료)**.
+- **C1** — `apiFetch` 아닌 same-BC 관례 **`apiGet`**(boards.ts:250-256, GET+401refresh+ApiError 캡슐화). → T1 GREEN 교정. ✅
+- **C2** — 담당자 **이름** 조회 경로 미배정(응답은 assigneeId UUID 만, board 는 `fetchUsers`+`buildUserMap`+`buildAssigneeNames` 3-state). → T6 GREEN 에 user 조회+매핑, T5 는 `assigneeNames` props 수신. ✅
+- **C3** — read-only 핸들러 선례를 board(stateful store) 아닌 `search`/`worklog-aggregate` 정적 핸들러로, E2E auto-seed `MODE!=='test'` 게이팅. → T4 교정. ✅
+
+**OK (실측 확인)**. API 계약 미러 정확(TimelineItemResponse.kt:26-36)·403 errorCode `AGILE_ACCESS_DENIED`(TimelineExceptionHandler.kt:80)·DataResponse 봉투(boards.ts:10)·handlers.ts spread 등록·hook test 패턴(use-boards.test.tsx:9)·i18n 단일 ko·E2E reload금지(backlog.spec.ts:13)·의존성 그래프 순환0·navigate `/issues/$key`(router.ts:128)·issueType 색맵 부재→신규 정의·메모리 교훈(UTC날짜/jsdom width0/콜론종결/key prop) 반영.
+
+**결론**: FIX-FIRST → BLOCKER 3 + CONCERN 3 전부 plan 반영 완료 → **GO**.
