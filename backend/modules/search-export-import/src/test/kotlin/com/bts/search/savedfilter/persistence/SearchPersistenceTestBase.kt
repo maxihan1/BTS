@@ -31,7 +31,6 @@ import org.testcontainers.utility.DockerImageName
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 open class SearchPersistenceTestBase {
-
     companion object {
         /**
          * JVM 단위 singleton PostgreSQL container.

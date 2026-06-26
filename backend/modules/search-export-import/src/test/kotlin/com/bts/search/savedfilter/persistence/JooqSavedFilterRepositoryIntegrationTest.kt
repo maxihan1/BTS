@@ -30,7 +30,6 @@ import java.util.UUID
  * (메모리 jooq-exception-translator-409-dependency)
  */
 class JooqSavedFilterRepositoryIntegrationTest : SearchPersistenceTestBase() {
-
     /** 테스트마다 새로 생성 — DSLContext 는 bootstrap() 이후 확정된다. */
     private val repo get() = JooqSavedFilterRepository(dsl)
 
