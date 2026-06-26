@@ -1,0 +1,9 @@
+# search-export-import BC 모듈 Spring 설정 — Flyway V600~V699 마이그레이션 경로 지정
+
+spring:
+  flyway:
+    locations: classpath:db/migration/search-export-import
+    # 이미 데이터가 있는 DB에 Flyway를 처음 적용할 때 baseline 처리 (모놀리스 조립 환경 대비)
+    baseline-on-migrate: true
+    # ${} 플레이스홀더를 Flyway 변수 치환으로 오인하지 않도록 비활성화
+    placeholder-replacement: false
