@@ -130,6 +130,8 @@ class SavedFilterServiceTest {
         val updated = myFilter.copy(name = "새 이름", version = 1L)
         every { repository.findById(myFilter.id!!) } returns myFilter
         every { repository.update(any()) } returns updated
+        // update 가 SavedFilterWithShares 를 반환하므로 GREEN 에서 findByFilterIds 호출됨 — 미리 mock.
+        every { shareRepository.findByFilterIds(setOf(myFilter.id!!)) } returns emptyMap()
 
         service.update(myFilter.id!!, actorId, "새 이름", validAql, myFilter.version)
 
@@ -142,10 +144,13 @@ class SavedFilterServiceTest {
         val updated = myFilter.copy(name = "새 이름", version = 1L)
         every { repository.findById(myFilter.id!!) } returns myFilter
         every { repository.update(any()) } returns updated
+        // update 가 SavedFilterWithShares 를 반환하므로 GREEN 에서 findByFilterIds 호출됨 — 미리 mock.
+        every { shareRepository.findByFilterIds(setOf(myFilter.id!!)) } returns emptyMap()
 
         val result = service.update(myFilter.id!!, actorId, "새 이름", validAql, myFilter.version)
 
-        assertEquals(updated, result)
+        // update 는 이제 SavedFilterWithShares 를 반환한다 — filter 필드로 비교한다.
+        assertEquals(updated, result.filter)
     }
 
     // ── delete ───────────────────────────────────────────────────────────────

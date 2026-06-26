@@ -248,6 +248,8 @@ class SavedFilterServiceVisibilityTest {
         every { repository.findById(id) } returns filter
         every { repository.update(any()) } returns updated
         justRun { shareRepository.replaceShares(id, any()) }
+        // update 가 SavedFilterWithShares 를 반환 — GREEN 에서 findByFilterIds 호출됨 — 미리 mock.
+        every { shareRepository.findByFilterIds(setOf(id)) } returns emptyMap()
 
         service.update(id, actorId, "새 이름", validAql, 0L, emptyList())
 
@@ -261,6 +263,8 @@ class SavedFilterServiceVisibilityTest {
         val updated = filter.copy(name = "새 이름", version = 1L)
         every { repository.findById(id) } returns filter
         every { repository.update(any()) } returns updated
+        // update 가 SavedFilterWithShares 를 반환 — GREEN 에서 findByFilterIds 호출됨 — 미리 mock.
+        every { shareRepository.findByFilterIds(setOf(id)) } returns emptyMap()
 
         service.update(id, actorId, "새 이름", validAql, 0L, null)
 
@@ -276,10 +280,35 @@ class SavedFilterServiceVisibilityTest {
         every { repository.findById(id) } returns filter
         every { repository.update(any()) } returns updated
         justRun { shareRepository.replaceShares(id, any()) }
+        // update 가 SavedFilterWithShares 를 반환 — GREEN 에서 findByFilterIds 호출됨 — 미리 mock.
+        every { shareRepository.findByFilterIds(setOf(id)) } returns emptyMap()
 
         service.update(id, actorId, "새 이름", validAql, 0L, shares)
 
         verify(exactly = 1) { shareRepository.replaceShares(id, shares) }
+    }
+
+    /**
+     * C1 RED 테스트 — update(shares=null) 반환 SavedFilterWithShares 의 shares 가 영속 공유와 일치해야 한다.
+     *
+     * 현재 구현은 `shares ?: emptyList()` 를 반환하므로 null 전달 시 빈 리스트가 돌아온다 → FAIL.
+     * GREEN 에서 withShares(updated) 로 교체하면 shareRepository 가 재조회되어 PASS 한다.
+     */
+    @Test
+    fun `update - shares null이면 반환 SavedFilterWithShares의 shares가 기존 공유와 일치`() {
+        val id = UUID.randomUUID()
+        val filter = aFilter(id = id, owner = actorId)
+        val updated = filter.copy(name = "새 이름", version = 1L)
+        val existingShares = listOf(SavedFilterShare.create(ShareType.PROJECT, "PROJ"))
+        every { repository.findById(id) } returns filter
+        every { repository.update(any()) } returns updated
+        every { shareRepository.findByFilterIds(setOf(id)) } returns mapOf(id to existingShares)
+
+        val result = service.update(id, actorId, "새 이름", validAql, 0L, null)
+
+        // 기존 공유가 유지(replaceShares 미호출)되었으므로 응답에도 반영되어야 한다.
+        assertEquals(existingShares, result.shares)
+        verify(exactly = 0) { shareRepository.replaceShares(any(), any()) }
     }
 
     // ── listOwnedWithShares / listSharedWith — 배치 조합(N+1 차단) ─────────────

@@ -116,7 +116,7 @@ class SavedFilterControllerTest {
     fun `PUT 수정 200`() {
         val id = UUID.randomUUID()
         every { service.update(id, actorId, "수정", "status = Done", 0) } returns
-            sampleFilter(id = id, name = "수정")
+            SavedFilterWithShares(sampleFilter(id = id, name = "수정"), emptyList())
         mockMvc
             .perform(
                 org.springframework.test.web.servlet.request.MockMvcRequestBuilders

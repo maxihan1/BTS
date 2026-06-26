@@ -373,6 +373,82 @@ class SavedFilterControllerSharesTest {
             .andExpect(status().isNotFound)
     }
 
+    // ── (g) C1 RED — shares 생략 PUT 응답 충실도 ──────────────────────────────
+
+    /**
+     * C1 RED — PUT 시 shares 생략(=유지 의도)하면 응답 shares 가 DB 영속 공유와 일치해야 한다.
+     *
+     * 서비스 mock 은 [SavedFilterWithShares](filter, existingShares) 를 반환하지만,
+     * 현재 컨트롤러가 `domainShares ?: emptyList()` 를 응답에 사용해 shares: [] 를 반환 → FAIL.
+     * GREEN 에서 `ws.shares` 를 사용하면 PASS.
+     */
+    @Test
+    fun `shares 생략 PUT → 응답 shares가 기존 공유 유지(빈 배열 아님)`() {
+        val id = UUID.randomUUID()
+        val filter = sampleFilter(id = id)
+        val existingShares = listOf(SavedFilterShare.create(ShareType.PROJECT, "ATL"))
+        every {
+            service.update(id, actorId, "새 이름", "status = Open", 0L, null)
+        } returns SavedFilterWithShares(filter, existingShares)
+
+        mockMvc
+            .perform(
+                put("/api/v1/filters/$id")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"name":"새 이름","aqlQuery":"status = Open","version":0}"""),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.shares[0].shareType").value("PROJECT"))
+            .andExpect(jsonPath("$.shares[0].targetId").value("ATL"))
+    }
+
+    /**
+     * C1 회귀 확인 — shares 제공 PUT 은 기존처럼 제공된 공유가 응답에 포함된다.
+     *
+     * 서비스 mock 이 `shares=[AUTHENTICATED]` 인 [SavedFilterWithShares] 를 반환하고
+     * 컨트롤러도 그 shares 를 응답에 담으면 PASS.
+     */
+    @Test
+    fun `shares 제공 PUT → 응답 shares가 서비스 반환값 그대로`() {
+        val id = UUID.randomUUID()
+        val filter = sampleFilter(id = id)
+        val newShares = listOf(SavedFilterShare.create(ShareType.AUTHENTICATED, null))
+        every {
+            service.update(id, actorId, "새 이름", "status = Open", 0L, newShares)
+        } returns SavedFilterWithShares(filter, newShares)
+
+        mockMvc
+            .perform(
+                put("/api/v1/filters/$id")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """{"name":"새 이름","aqlQuery":"status = Open","version":0,""" +
+                            """"shares":[{"shareType":"AUTHENTICATED"}]}""",
+                    ),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.shares[0].shareType").value("AUTHENTICATED"))
+    }
+
+    // ── (h) 메시지 일반화 RED ─────────────────────────────────────────────────
+
+    /**
+     * 메시지 RED — IllegalArgumentException(EC8~10) → handleIllegalArgument detail 일반화 확인.
+     *
+     * 현재 detail 은 "필터 이름 또는 쿼리 값이 올바르지 않습니다." (이름·쿼리만 언급) → FAIL.
+     * GREEN 에서 "요청 값이 올바르지 않습니다." 로 변경하면 PASS.
+     */
+    @Test
+    fun `IllegalArgumentException detail은 일반화된 메시지`() {
+        // shareType=null → toDomain() 에서 IllegalArgumentException → handleIllegalArgument → 400.
+        val body = """{"name":"x","aqlQuery":"status = Open","projectKey":"ATL","shares":[{"shareType":null}]}"""
+        mockMvc
+            .perform(
+                post("/api/v1/filters")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(body),
+            ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.detail").value("요청 값이 올바르지 않습니다."))
+    }
+
     private companion object {
         /** GET /shared 기본 page 크기. */
         const val DEFAULT_PAGE_SIZE = 20

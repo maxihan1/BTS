@@ -157,10 +157,12 @@ class SavedFilterService(
     }
 
     /**
-     * 필터를 수정한다. `shares` 가 주어지면 본문 갱신과 같은 트랜잭션에서 공유를 함께 교체한다.
+     * 필터를 수정하고 실제 영속된 공유 목록을 포함해 반환한다.
      *
      * projectKey 는 변경 불가 — 기존 필터의 값을 유지한다 (FR-10). version 은 OCC 키로 사용된다.
      * 가시-비소유는 403, 비가시는 404 로 분기한다 ([loadForMutation]).
+     * `shares` 처리(교체·유지·전체제거) 후 [shareRepository] 로 실제 영속된 공유를 재조회해 반환한다.
+     * 이로써 `shares` 생략 PUT 시에도 응답이 기존 공유를 정확히 반영한다 (C1 수정).
      *
      * @param id 수정할 필터 식별자.
      * @param actorId 요청자 사용자 UUID.
@@ -168,7 +170,7 @@ class SavedFilterService(
      * @param aqlQuery 새 AQL 쿼리 문자열.
      * @param version 클라이언트가 보유한 현재 버전 (OCC 검사용).
      * @param shares 공유 대상 목록. `null` 이면 유지, `[]` 이면 전체 제거, `[..]` 이면 교체.
-     * @return 갱신된 필터 도메인 객체.
+     * @return 갱신된 필터 + 실제 영속된 공유 목록 묶음.
      * @throws SavedFilterNotFoundException 필터가 존재하지 않거나 비가시(존재 은닉).
      * @throws SavedFilterForbiddenException 가시-비소유 필터를 수정하려는 경우(403).
      * @throws SavedFilterValidationException AQL 구문 오류.
@@ -182,7 +184,7 @@ class SavedFilterService(
         aqlQuery: String,
         version: Long,
         shares: List<SavedFilterShare>? = null,
-    ): SavedFilter {
+    ): SavedFilterWithShares {
         val existing = loadForMutation(id, actorId)
         validateAql(aqlQuery)
         // projectKey 는 기존 값 유지 — update 파라미터에 포함하지 않는다 (FR-10).
@@ -192,7 +194,8 @@ class SavedFilterService(
         if (shares != null) {
             shareRepository.replaceShares(id, SavedFilterShare.normalize(shares))
         }
-        return updated
+        // FIXME(C1): 실제 영속된 공유 재조회 미구현 — withShares(updated) 로 교체 필요.
+        return SavedFilterWithShares(updated, shares ?: emptyList())
     }
 
     /**

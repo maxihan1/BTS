@@ -133,8 +133,9 @@ class SavedFilterController(
         val version = request.version ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "version은 필수입니다.")
         val domainShares = parseShares(request.shares)
         log.info("SavedFilterController.update id={} actor={}", id, actorId)
-        val updated = service.update(id, actorId, name, aqlQuery, version, domainShares)
-        val response = SavedFilterResponse.from(updated, domainShares ?: emptyList(), actorId)
+        val ws = service.update(id, actorId, name, aqlQuery, version, domainShares)
+        // FIXME(C1): ws.shares 를 사용해야 함 — 현재 domainShares ?: emptyList() 는 shares=null 시 빈 배열.
+        val response = SavedFilterResponse.from(ws.filter, domainShares ?: emptyList(), actorId)
         return ResponseEntity.ok(response)
     }
 
