@@ -1,7 +1,12 @@
 // 타임라인 MSW 핸들러 동작 검증 테스트 (FR-TL-01 D6 Task-4)
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { timelineHandlers } from './timeline-handlers'
+import {
+  timelineHandlers,
+  timelineForbiddenHandler,
+  timelineTruncatedHandler,
+  timelineEmptyHandler,
+} from './timeline-handlers'
 import { BTS_TIMELINE_ITEMS, TRUNCATED_TIMELINE_ITEMS } from './timeline-fixtures'
 
 const server = setupServer(...timelineHandlers)
@@ -260,5 +265,47 @@ describe('GET /api/v1/timeline?project=UNKNOWN — 알 수 없는 프로젝트',
     const body = (await res.json()) as DataResponse<TimelineResponse>
     expect(body.data.items).toHaveLength(0)
     expect(body.data.truncated).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// unit test override 핸들러 검증 — server.use(handler)로 시나리오 강제
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('unit test override 핸들러', () => {
+  it('timelineForbiddenHandler → 항상 403 AGILE_ACCESS_DENIED', async () => {
+    server.use(timelineForbiddenHandler)
+    const res = await getTimeline('BTS')
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as ProblemDetail
+    expect(body.errorCode).toBe('AGILE_ACCESS_DENIED')
+  })
+
+  it('timelineTruncatedHandler → 항상 truncated=true', async () => {
+    server.use(timelineTruncatedHandler)
+    const res = await getTimeline('BTS')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<TimelineResponse>
+    expect(body.data.truncated).toBe(true)
+    expect(body.data.items.length).toBeGreaterThan(0)
+  })
+
+  it('timelineEmptyHandler → 항상 items=[], truncated=false', async () => {
+    server.use(timelineEmptyHandler)
+    const res = await getTimeline('BTS')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<TimelineResponse>
+    expect(body.data.items).toHaveLength(0)
+    expect(body.data.truncated).toBe(false)
+  })
+
+  it('afterEach resetHandlers 후 — 기본 BTS 응답으로 복구됨', async () => {
+    // 이 테스트는 afterEach server.resetHandlers() 가 정상 작동하는지 검증한다.
+    // 위 override 테스트 후 afterEach가 실행돼 기본 핸들러로 복구됨.
+    const res = await getTimeline('BTS')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<TimelineResponse>
+    expect(body.data.truncated).toBe(false)
+    expect(body.data.items.length).toBeGreaterThan(0)
   })
 })

@@ -142,6 +142,57 @@ const getTimelineHandler = http.get('/api/v1/timeline', ({ request }) => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Unit test override 핸들러 — server.use(handler) 로 특정 시나리오 강제
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 403 AGILE_ACCESS_DENIED 시나리오 핸들러 (unit test override용).
+ * 항상 403을 반환한다.
+ *
+ * @example
+ * server.use(timelineForbiddenHandler)
+ */
+export const timelineForbiddenHandler = http.get('/api/v1/timeline', () =>
+  HttpResponse.json(
+    {
+      type: 'https://bts.example.com/problems/access-denied',
+      title: 'Access Denied',
+      status: 403,
+      detail: '해당 프로젝트 타임라인에 접근할 권한이 없습니다.',
+      errorCode: 'AGILE_ACCESS_DENIED',
+      timestamp: new Date().toISOString(),
+    },
+    { status: 403 },
+  ),
+)
+
+/**
+ * truncated=true 시나리오 핸들러 (unit test override용).
+ * TRUNCATED_TIMELINE_ITEMS + truncated=true를 반환한다.
+ *
+ * @example
+ * server.use(timelineTruncatedHandler)
+ */
+export const timelineTruncatedHandler = http.get('/api/v1/timeline', () =>
+  HttpResponse.json({
+    data: { items: TRUNCATED_TIMELINE_ITEMS, truncated: true },
+  }),
+)
+
+/**
+ * 빈 목록 시나리오 핸들러 (unit test override용).
+ * items=[], truncated=false를 반환한다.
+ *
+ * @example
+ * server.use(timelineEmptyHandler)
+ */
+export const timelineEmptyHandler = http.get('/api/v1/timeline', () =>
+  HttpResponse.json({
+    data: { items: [], truncated: false },
+  }),
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Export
 // ─────────────────────────────────────────────────────────────────────────────
 
