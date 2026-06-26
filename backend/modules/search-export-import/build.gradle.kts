@@ -90,6 +90,15 @@ dependencies {
     // AssertJ — 풍부한 단언문(assertion) 라이브러리
     testImplementation("org.assertj:assertj-core:3.26.3")
 
+    // Testcontainers (테스트용 DB를 도커로 자동 실행하는 라이브러리) — V600 마이그레이션 검증
+    testImplementation("org.testcontainers:testcontainers:1.20.3")
+    testImplementation("org.testcontainers:postgresql:1.20.3")
+
+    // Flyway + PostgreSQL 드라이버 — 마이그레이션 테스트가 직접 적용/조회 (RED, GREEN에서 implementation 승격)
+    testImplementation("org.flywaydb:flyway-core")
+    testImplementation("org.flywaydb:flyway-database-postgresql")
+    testImplementation("org.postgresql:postgresql")
+
     // ArchUnit — 아키텍처 규칙(BC 격리 등) 자동 검증
     testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
 }
