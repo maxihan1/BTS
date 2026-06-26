@@ -87,5 +87,6 @@ private fun IssueRepository.TimelineIssueEntry.toTimelineItemView(): TimelineIte
         assigneeId = issue.assigneeId?.value,
         startDate = issue.startDate,
         dueDate = issue.dueDate,
+        targetDate = issue.targetDate,
         epicKey = epicKey,
     )

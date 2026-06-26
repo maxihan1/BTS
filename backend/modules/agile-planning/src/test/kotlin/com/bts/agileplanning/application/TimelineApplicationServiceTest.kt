@@ -48,20 +48,23 @@ class TimelineApplicationServiceTest {
      * @param key 이슈 키.
      * @param startDate 시작일. null 이면 미설정.
      * @param dueDate 마감일. null 이면 미설정.
+     * @param targetDate 목표일. null 이면 미설정.
      */
     private fun item(
         key: String,
         startDate: LocalDate? = null,
         dueDate: LocalDate? = null,
+        targetDate: LocalDate? = null,
     ): TimelineItemView =
         TimelineItemView(
             key = key,
             summary = "요약 $key",
-            issueType = "TASK",
+            issueType = "task",
             currentStateKey = "open",
             assigneeId = null,
             startDate = startDate,
             dueDate = dueDate,
+            targetDate = targetDate,
             epicKey = null,
         )
 

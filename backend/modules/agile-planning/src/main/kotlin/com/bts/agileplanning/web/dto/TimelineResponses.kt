@@ -20,6 +20,7 @@ import java.util.UUID
  * @property assigneeId 담당자 UUID. 미배정이면 null.
  * @property startDate 이슈 시작일. 미설정이면 null.
  * @property dueDate 이슈 마감일. 미설정이면 null.
+ * @property targetDate 이슈 목표일(로드맵 마일스톤). 미설정이면 null.
  * @property epicKey 소속 에픽 키. 에픽 없는 이슈는 null.
  */
 data class TimelineItemResponse(
@@ -30,6 +31,7 @@ data class TimelineItemResponse(
     val assigneeId: UUID?,
     val startDate: LocalDate?,
     val dueDate: LocalDate?,
+    val targetDate: LocalDate?,
     val epicKey: String?,
 ) {
     companion object {
@@ -48,6 +50,7 @@ data class TimelineItemResponse(
                 assigneeId = view.assigneeId,
                 startDate = view.startDate,
                 dueDate = view.dueDate,
+                targetDate = view.targetDate,
                 epicKey = view.epicKey,
             )
     }

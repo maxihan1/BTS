@@ -93,6 +93,8 @@ data class TimelineItemPage(
  * @property assigneeId 담당자 UUID. 미배정이면 null.
  * @property startDate 이슈 시작일. 미설정이면 null.
  * @property dueDate 이슈 마감일. 미설정이면 null.
+ * @property targetDate 이슈 목표일(로드맵 마일스톤 표시용). 미설정이면 null.
+ *   start~due 기간(간트 바)과 별개의 마일스톤 마커이며, 타임라인 포함 여부(start/due 중 1개+)에는 영향을 주지 않는다.
  * @property epicKey 이슈가 속한 에픽의 이슈 키. EPIC 행 그룹화 근거 (FR-EP-01).
  *   에픽 없는 이슈 또는 에픽 자신은 null.
  *   동일 프로젝트 에픽만 포함 — cross-project 에픽은 null 처리(누출 방지).
@@ -105,5 +107,6 @@ data class TimelineItemView(
     val assigneeId: UUID?,
     val startDate: LocalDate?,
     val dueDate: LocalDate?,
+    val targetDate: LocalDate?,
     val epicKey: String?,
 )

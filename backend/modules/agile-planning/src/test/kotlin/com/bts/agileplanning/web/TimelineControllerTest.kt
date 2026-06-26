@@ -5,6 +5,8 @@ package com.bts.agileplanning.web
 import com.bts.agileplanning.application.TimelineApplicationService
 import com.bts.agileplanning.application.TimelineResult
 import com.bts.shared.timeline.TimelineItemView
+import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -16,6 +18,8 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpStatus
+import org.springframework.http.converter.HttpMessageConverter
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
@@ -30,6 +34,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import java.time.LocalDate
 import java.util.UUID
 
@@ -58,7 +63,26 @@ class TimelineControllerTest {
      */
     @Configuration
     @EnableWebMvc
-    open class TestMvcConfig {
+    open class TestMvcConfig : WebMvcConfigurer {
+        /**
+         * production(Spring Boot) 직렬화와 동일하게 LocalDate 를 ISO 문자열로 내보낸다.
+         *
+         * @EnableWebMvc 슬라이스는 Spring Boot 의 Jackson 자동설정을 상속하지 않아 기본 ObjectMapper 가
+         * LocalDate 를 `[2026,7,20]` 배열(WRITE_DATES_AS_TIMESTAMPS)로 직렬화한다. 타임라인 응답의 날짜
+         * 계약(프론트 D6 가 ISO 문자열 파싱)을 충실히 검증하려면 기본 Jackson 컨버터의 ObjectMapper 에
+         * JavaTimeModule + 타임스탬프 비활성을 더해 production 형식과 일치시킨다.
+         *
+         * configureMessageConverters(전체 교체) 대신 extendMessageConverters 로 기존 컨버터를
+         * 보존(Kotlin 모듈 등)한 채 날짜 설정만 보강한다 — 교체 시 에러 봉투 직렬화가 깨진다.
+         */
+        override fun extendMessageConverters(converters: MutableList<HttpMessageConverter<*>>) {
+            converters.filterIsInstance<MappingJackson2HttpMessageConverter>().forEach {
+                it.objectMapper
+                    .registerModule(JavaTimeModule())
+                    .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            }
+        }
+
         @Bean
         open fun timelineApplicationService(): TimelineApplicationService = mockk(relaxed = true)
 
@@ -99,6 +123,7 @@ class TimelineControllerTest {
         key: String = "BTS-1",
         startDate: LocalDate? = LocalDate.of(2026, 7, 1),
         dueDate: LocalDate? = LocalDate.of(2026, 7, 14),
+        targetDate: LocalDate? = LocalDate.of(2026, 7, 20),
     ): TimelineItemView =
         TimelineItemView(
             key = key,
@@ -108,6 +133,7 @@ class TimelineControllerTest {
             assigneeId = null,
             startDate = startDate,
             dueDate = dueDate,
+            targetDate = targetDate,
             epicKey = null,
         )
 
@@ -127,6 +153,7 @@ class TimelineControllerTest {
             .andExpect(jsonPath("$.data.items").isArray)
             .andExpect(jsonPath("$.data.items.length()").value(1))
             .andExpect(jsonPath("$.data.items[0].key").value("BTS-1"))
+            .andExpect(jsonPath("$.data.items[0].targetDate").value("2026-07-20"))
             .andExpect(jsonPath("$.data.truncated").value(false))
     }
 

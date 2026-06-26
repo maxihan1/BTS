@@ -132,17 +132,21 @@ class TimelineLookupAdapterTest : IssueTestcontainersBase() {
             ),
         )
 
-    /** issues.start_date / due_date 를 직접 UPDATE 해 날짜를 설정한다. null 이면 NULL 로 기록. */
+    /** issues.start_date / due_date / target_date 를 직접 UPDATE 해 날짜를 설정한다. null 이면 NULL 로 기록. */
     private fun setDates(
         issueKey: String,
         startDate: LocalDate?,
         dueDate: LocalDate?,
+        targetDate: LocalDate? = null,
     ) {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.prepareStatement("UPDATE issues SET start_date = ?, due_date = ? WHERE key = ?").use { stmt ->
+            conn.prepareStatement(
+                "UPDATE issues SET start_date = ?, due_date = ?, target_date = ? WHERE key = ?",
+            ).use { stmt ->
                 stmt.setObject(1, startDate)
                 stmt.setObject(2, dueDate)
-                stmt.setString(3, issueKey)
+                stmt.setObject(3, targetDate)
+                stmt.setString(4, issueKey)
                 stmt.executeUpdate()
             }
         }
@@ -211,9 +215,10 @@ class TimelineLookupAdapterTest : IssueTestcontainersBase() {
         val epic = insertIssue(seq = 1, securityLevelId = null)
         setDates("TPRJ-1", start, null)
 
-        // 자식 이슈 삽입 — 양쪽 날짜 + 담당자 + 에픽 연결
+        // 자식 이슈 삽입 — 양쪽 날짜 + 목표일 + 담당자 + 에픽 연결
+        val target = LocalDate.of(2024, 4, 15)
         insertIssue(seq = 2, assigneeId = assignee, securityLevelId = null, currentStateKey = "in_progress")
-        setDates("TPRJ-2", start, due)
+        setDates("TPRJ-2", start, due, target)
         setEpicId("TPRJ-2", epic.id.value)
 
         val result = adapterWith(unrestricted()).listTimelineItemsByProject("TPRJ", viewer)
@@ -227,6 +232,7 @@ class TimelineLookupAdapterTest : IssueTestcontainersBase() {
         assertThat(child.assigneeId).isEqualTo(assignee)
         assertThat(child.startDate).isEqualTo(start)
         assertThat(child.dueDate).isEqualTo(due)
+        assertThat(child.targetDate).isEqualTo(target)
         assertThat(child.epicKey).isEqualTo("TPRJ-1")
 
         // 에픽 자신은 epicKey=null (자기참조 없음)

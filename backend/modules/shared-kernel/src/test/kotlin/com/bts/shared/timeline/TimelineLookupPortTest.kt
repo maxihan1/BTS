@@ -27,21 +27,23 @@ class TimelineLookupPortTest {
             TimelineItemView(
                 key = "PROJ-1",
                 summary = "로그인 버그 수정",
-                issueType = "BUG",
+                issueType = "bug",
                 currentStateKey = "in-progress",
                 assigneeId = assigneeId,
                 startDate = LocalDate.of(2026, 6, 1),
                 dueDate = LocalDate.of(2026, 6, 30),
+                targetDate = LocalDate.of(2026, 7, 15),
                 epicKey = "PROJ-100",
             )
 
         assertThat(view.key).isEqualTo("PROJ-1")
         assertThat(view.summary).isEqualTo("로그인 버그 수정")
-        assertThat(view.issueType).isEqualTo("BUG")
+        assertThat(view.issueType).isEqualTo("bug")
         assertThat(view.currentStateKey).isEqualTo("in-progress")
         assertThat(view.assigneeId).isEqualTo(assigneeId)
         assertThat(view.startDate).isEqualTo(LocalDate.of(2026, 6, 1))
         assertThat(view.dueDate).isEqualTo(LocalDate.of(2026, 6, 30))
+        assertThat(view.targetDate).isEqualTo(LocalDate.of(2026, 7, 15))
         assertThat(view.epicKey).isEqualTo("PROJ-100")
     }
 
@@ -51,11 +53,12 @@ class TimelineLookupPortTest {
             TimelineItemView(
                 key = "PROJ-2",
                 summary = "미배정 이슈",
-                issueType = "TASK",
+                issueType = "task",
                 currentStateKey = "open",
                 assigneeId = null,
                 startDate = null,
                 dueDate = null,
+                targetDate = null,
                 epicKey = null,
             )
 
@@ -71,11 +74,12 @@ class TimelineLookupPortTest {
             TimelineItemView(
                 key = "PROJ-3",
                 summary = "시작일만 있음",
-                issueType = "STORY",
+                issueType = "story",
                 currentStateKey = "open",
                 assigneeId = null,
                 startDate = LocalDate.of(2026, 7, 1),
                 dueDate = null,
+                targetDate = null,
                 epicKey = null,
             )
 
@@ -83,18 +87,22 @@ class TimelineLookupPortTest {
             TimelineItemView(
                 key = "PROJ-4",
                 summary = "마감일만 있음",
-                issueType = "STORY",
+                issueType = "story",
                 currentStateKey = "open",
                 assigneeId = null,
                 startDate = null,
                 dueDate = LocalDate.of(2026, 7, 31),
+                targetDate = LocalDate.of(2026, 8, 15),
                 epicKey = null,
             )
 
         assertThat(startOnly.startDate).isNotNull()
         assertThat(startOnly.dueDate).isNull()
+        assertThat(startOnly.targetDate).isNull()
         assertThat(dueOnly.startDate).isNull()
         assertThat(dueOnly.dueDate).isNotNull()
+        // targetDate 는 start/due 와 독립적인 마일스톤 필드 — start/due 없이도 보존된다.
+        assertThat(dueOnly.targetDate).isEqualTo(LocalDate.of(2026, 8, 15))
     }
 
     @Test
@@ -103,11 +111,12 @@ class TimelineLookupPortTest {
             TimelineItemView(
                 key = "PROJ-5",
                 summary = "에픽 없는 이슈",
-                issueType = "BUG",
+                issueType = "bug",
                 currentStateKey = "open",
                 assigneeId = null,
                 startDate = null,
                 dueDate = null,
+                targetDate = null,
                 epicKey = null,
             )
 
@@ -142,11 +151,12 @@ class TimelineLookupPortTest {
             TimelineItemView(
                 key = "PROJ-10",
                 summary = "기간이 있는 이슈",
-                issueType = "TASK",
+                issueType = "task",
                 currentStateKey = "in-progress",
                 assigneeId = null,
                 startDate = LocalDate.of(2026, 6, 1),
                 dueDate = LocalDate.of(2026, 6, 15),
+                targetDate = null,
                 epicKey = null,
             )
         val page = TimelineItemPage(items = listOf(item), truncated = true)
