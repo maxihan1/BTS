@@ -2,6 +2,8 @@
 
 package com.bts.search.savedfilter.web
 
+import com.bts.search.aql.AqlLexException
+import com.bts.search.aql.AqlSyntaxException
 import com.bts.search.savedfilter.application.SavedFilterConflictException
 import com.bts.search.savedfilter.application.SavedFilterDuplicateNameException
 import com.bts.search.savedfilter.application.SavedFilterForbiddenException
@@ -50,6 +52,25 @@ class SavedFilterExceptionHandler {
             "Validation Failed",
             SearchErrorCodes.SEARCH_VALIDATION_FAILED,
             ex.message ?: "요청 값 검증에 실패했습니다.",
+        )
+    }
+
+    /**
+     * [AqlSyntaxException] / [AqlLexException] — 저장된 필터 실행 시 AQL 파싱 오류 — 400.
+     *
+     * 실행 엔드포인트([SavedFilterSearchController])가 저장된 AQL을 인라인 파싱하므로,
+     * 문법 grammar drift 등으로 파싱 실패 시 catch-all 500으로 변질되지 않도록 400으로 매핑한다
+     * (형제 [com.bts.search.web.SearchExceptionHandler]와 동일 정책).
+     */
+    @ExceptionHandler(AqlSyntaxException::class, AqlLexException::class)
+    fun handleAqlParse(ex: RuntimeException): ProblemDetail {
+        log.info("FILTER_400 aql_parse message='{}'", ex.message)
+        return problem(
+            HttpStatus.BAD_REQUEST,
+            "saved-filter-aql-syntax-error",
+            "AQL Syntax Error",
+            SearchErrorCodes.SEARCH_SYNTAX_ERROR,
+            "저장된 필터의 AQL 구문을 해석할 수 없습니다.",
         )
     }
 

@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -60,6 +61,7 @@ class SavedFilterSearchController(
         @RequestParam(defaultValue = "20") size: Int,
     ): ResponseEntity<Page<AqlSearchHit>> {
         val actorId = SavedFilterActorExtractor.extract()
+        validatePaging(page, size)
         val filter = service.getByIdForOwner(id, actorId)
         log.info("SavedFilterSearchController.search id={} actor={} projectKey={}", id, actorId, filter.projectKey)
 
@@ -79,5 +81,35 @@ class SavedFilterSearchController(
         val hits = searchPage.items.map { AqlSearchHit.from(it) }
         val result: Page<AqlSearchHit> = PageImpl(hits, PageRequest.of(page, size), searchPage.total)
         return ResponseEntity.ok(result)
+    }
+
+    /**
+     * 페이지네이션 파라미터를 검증한다(DoS 방어 — spec NFR-3, SearchController와 동일 정책).
+     *
+     * @param page 0-base 페이지 번호(0 이상).
+     * @param size 페이지 크기(1..100).
+     * @throws ResponseStatusException 400 page<0 또는 size 범위 밖.
+     */
+    private fun validatePaging(
+        page: Int,
+        size: Int,
+    ) {
+        if (page < 0) {
+            throw ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "page는 0 이상이어야 합니다.")
+        }
+        if (size < MIN_PAGE_SIZE || size > MAX_PAGE_SIZE) {
+            throw ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST,
+                "size는 ${MIN_PAGE_SIZE}~${MAX_PAGE_SIZE} 사이여야 합니다.",
+            )
+        }
+    }
+
+    companion object {
+        /** 페이지 크기 최솟값. */
+        private const val MIN_PAGE_SIZE = 1
+
+        /** 페이지 크기 최댓값 — SearchController와 동일(클램프 아닌 거부). */
+        private const val MAX_PAGE_SIZE = 100
     }
 }

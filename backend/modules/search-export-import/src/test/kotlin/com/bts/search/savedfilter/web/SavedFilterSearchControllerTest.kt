@@ -99,4 +99,20 @@ class SavedFilterSearchControllerTest {
             .perform(MockMvcRequestBuilders.get("/api/v1/filters/${UUID.randomUUID()}/search"))
             .andExpect(status().isUnauthorized)
     }
+
+    @Test
+    fun `size 상한 초과 400 — DoS 방어`() {
+        mockMvc
+            .perform(MockMvcRequestBuilders.get("/api/v1/filters/${UUID.randomUUID()}/search?size=1000"))
+            .andExpect(status().isBadRequest)
+        verify(exactly = 0) { issueSearchPort.search(any()) }
+    }
+
+    @Test
+    fun `음수 page 400`() {
+        mockMvc
+            .perform(MockMvcRequestBuilders.get("/api/v1/filters/${UUID.randomUUID()}/search?page=-1"))
+            .andExpect(status().isBadRequest)
+        verify(exactly = 0) { issueSearchPort.search(any()) }
+    }
 }
