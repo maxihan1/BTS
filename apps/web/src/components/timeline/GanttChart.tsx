@@ -6,7 +6,6 @@ import {
   assembleEpicGroups,
   computeDateRange,
   DAY_WIDTH_PX,
-  LABEL_UNCLASSIFIED,
 } from '@/lib/timeline-layout'
 import { timelineLabels } from '@/i18n/timeline-labels'
 import { TimelineAxis } from './TimelineAxis'
@@ -133,7 +132,7 @@ function UnclassifiedLabelCells({ items, assigneeNames, onSelectIssue }: Unclass
         className="flex items-center px-2 border-b border-border bg-muted"
         style={{ height: ROW_HEIGHT_PX }}
       >
-        <span className="text-sm text-muted-foreground font-medium">{LABEL_UNCLASSIFIED}</span>
+        <span className="text-sm text-muted-foreground font-medium">{timelineLabels.group.unclassifiedHeader}</span>
       </div>
 
       {/* 미분류 아이템 레이블 행 */}
