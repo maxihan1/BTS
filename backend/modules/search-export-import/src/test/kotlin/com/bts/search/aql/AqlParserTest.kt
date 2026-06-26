@@ -507,6 +507,22 @@ class AqlParserTest {
         assertThat(ast).isInstanceOf(AqlNode.Comparison::class.java)
     }
 
+    // ── text 가상 FTS 필드 (신규, FR-SR-04) ──────────────────────────────────────
+
+    @Test
+    fun `text 필드에 CONTAINS 연산자는 Comparison 노드를 반환한다`() {
+        val ast = parseAst("""text ~ "검색어"""")
+        assertThat(ast).isEqualTo(
+            comparison("text", AqlOperator.CONTAINS, AqlValue.Str("검색어")),
+        )
+    }
+
+    @Test
+    fun `text 필드에 EQ 연산자는 허용되지 않는다`() {
+        assertThatThrownBy { parse("text = open") }
+            .isInstanceOf(AqlSyntaxException::class.java)
+    }
+
     // ── 오류 케이스 — 위치 포함 AqlSyntaxException ────────────────────────────
 
     @Test
