@@ -54,13 +54,20 @@ export interface TimelineRowProps {
 /**
  * 타임라인 단일 행 막대 영역 컴포넌트.
  *
- * - `computeBarGeometry`로 barX·barWidth·milestoneX·openStart·openEnd를 계산한다.
- * - 막대는 이슈 타입 색 div로 렌더한다.
- * - `openStart` — 좌측 둥근 모서리 없음(날짜 개방).
- * - `openEnd` — 우측 둥근 모서리 없음(날짜 개방).
- * - `milestoneX !== null` — ◆ 마일스톤 표식을 해당 x 위치에 렌더한다 (FR4).
+ * **자체 div 기반 좌표 모델 (SVG 미사용)**:
+ * - `barX` — 막대 왼쪽 끝의 px 오프셋. `(startDate - rangeStart)일 × dayWidth`.
+ * - `barWidth` — 막대 폭(px). `(dueDate - startDate + 1)일 × dayWidth`.
+ * - `milestoneX` — ◆ 표식 중앙 x(px). `(targetDate - rangeStart)일 × dayWidth`.
+ * - 모든 좌표는 UTC 기준으로 계산되어 타임존 편차가 없다 (NFR4).
+ * - jsdom은 SVG getBBox를 구현하지 않으므로 SVG 대신 `position: absolute` div로 렌더한다.
+ *   테스트에서 픽셀 위치를 직접 단언하지 않고 DOM 구조만 검증한다.
+ *
+ * **개방 표식**:
+ * - `openStart` — dueDate만 있는 경우: 좌측 둥근 모서리 없음.
+ * - `openEnd` — startDate만 있는 경우: 우측 둥근 모서리 없음.
+ *
  * - 막대 클릭 → `onSelectIssue(item.key)` 호출.
- * - **jsdom은 SVG getBBox를 구현하지 않으므로 SVG 대신 div 기반으로 렌더한다.**
+ * - `milestoneX !== null` → ◆ 마일스톤 표식을 해당 x 위치에 렌더한다 (FR4).
  */
 export function TimelineRow({ item, range, dayWidth, onSelectIssue }: TimelineRowProps): JSX.Element {
   const geo = computeBarGeometry(item, range, dayWidth)
