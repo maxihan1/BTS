@@ -56,13 +56,20 @@ export function BacklogPage({ projectKey }: BacklogPageProps): JSX.Element {
       {/* 헤더 행 — 제목 + 보드 링크 */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{backlogLabels.page.title}</h1>
-        <nav aria-label="프로젝트 뷰 전환">
+        <nav aria-label="프로젝트 뷰 전환" className="flex items-center gap-3">
           <Link
             to="/projects/$projectKey/board"
             params={{ projectKey }}
             className="text-sm text-muted-foreground hover:text-foreground"
           >
             {backlogLabels.page.boardLink}
+          </Link>
+          <Link
+            to="/projects/$projectKey/timeline"
+            params={{ projectKey }}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            {backlogLabels.page.timelineLink}
           </Link>
         </nav>
       </div>
