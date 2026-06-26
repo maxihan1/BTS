@@ -3,8 +3,8 @@
 package com.bts.search.savedfilter
 
 import com.bts.search.jooq.tables.references.SAVED_FILTERS
-import com.bts.search.savedfilter.persistence.JooqSavedFilterRepository
 import com.bts.search.savedfilter.application.SavedFilterService
+import com.bts.search.savedfilter.persistence.JooqSavedFilterRepository
 import com.bts.search.savedfilter.web.SavedFilterController
 import com.bts.search.savedfilter.web.SavedFilterExceptionHandler
 import com.bts.search.savedfilter.web.SavedFilterSearchController
@@ -14,7 +14,6 @@ import com.bts.shared.search.IssueSearchQuery
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
-import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
@@ -95,8 +94,7 @@ class SavedFilterIntegrationTest {
         @Bean
         open fun stubIssueSearchPort(): IssueSearchPort =
             object : IssueSearchPort {
-                override fun search(query: IssueSearchQuery): IssueSearchPage =
-                    IssueSearchPage.empty(query.page, query.size)
+                override fun search(query: IssueSearchQuery): IssueSearchPage = IssueSearchPage.empty(query.page, query.size)
             }
 
         @Bean

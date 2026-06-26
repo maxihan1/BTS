@@ -4,6 +4,8 @@
 package com.bts.search.architecture
 
 import com.tngtech.archunit.base.DescribedPredicate
+import com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAnyPackage
+import com.tngtech.archunit.core.domain.JavaClass.Predicates.resideOutsideOfPackages
 import com.tngtech.archunit.core.domain.JavaMethod
 import com.tngtech.archunit.core.importer.ClassFileImporter
 import com.tngtech.archunit.core.importer.ImportOption
@@ -24,17 +26,18 @@ import org.junit.jupiter.api.Test
  * - 룰 3 (BC 격리 — identity-access 직접 import 금지) — [mustNotImportIdentityAccess]
  * - 룰 4 (BC 격리 — agile-planning 직접 import 금지) — [mustNotImportAgilePlanning]
  * - 룰 5 (BC 격리 — notification 직접 import 금지) — [mustNotImportNotification]
- * - 룰 6 (jOOQ 직접 의존 금지 — search는 자체 jOOQ 코드를 생성하지 않음) — [mustNotDependOnJooqInternals]
+ * - 룰 6 (타 BC jOOQ 직접 의존 금지 — 자체 com.bts.search.jooq는 허용) — [mustNotDependOnJooqInternals]
  * - 룰 7 (@Transactional + @Service/@Component 동반) — [transactionalClassesMustBeServiceOrComponent]
  *
  * ### 통신 허용 채널
  * search-export-import BC는 shared-kernel 포트(`com.bts.shared.*`)를 통해서만
  * 다른 BC와 통신한다. 타 BC 내부 패키지를 직접 import하는 것은 BC 경계 위반이다.
  *
- * ### jOOQ 금지 이유
- * search-export-import는 자체 DB 테이블이 없으므로 jOOQ 코드를 생성하지 않는다.
- * AST → jOOQ Condition 변환은 issue-tracking 어댑터(IssueSearchAdapter)가 담당한다.
- * `..jooq..` 패키지에 대한 직접 의존은 BC 경계 위반이다(ADR 2026-06-25-fr-sr-02-aql-parser-and-bc).
+ * ### jOOQ 의존 규칙
+ * FR-SR-03부터 search는 자체 테이블(saved_filters)·자체 jOOQ(`com.bts.search.jooq`)를 보유하므로
+ * 자체 jooq 의존은 허용한다. 단 타 BC의 jooq(예: issue-tracking `com.bts.issue.jooq`) 직접 의존은
+ * BC 경계 위반이다 — AST → jOOQ Condition 변환은 issue-tracking 어댑터(IssueSearchAdapter)가 담당하고,
+ * search BC는 shared-kernel `IssueSearchPort`만 호출한다(ADR 2026-06-25-fr-sr-02-aql-parser-and-bc).
  *
  * ### 패키지 prefix 주의사항
  * identity-access BC는 다른 BC와 패키지 prefix가 다르다.
@@ -131,23 +134,31 @@ class SearchBcArchTest {
     }
 
     /**
-     * 룰 6 — search BC는 어떤 `..jooq..` 패키지도 직접 의존하지 않는다.
+     * 룰 6 — search BC는 **타 BC의** `..jooq..` 패키지를 직접 의존하지 않는다.
      *
-     * search-export-import는 자체 DB 테이블이 없으므로 jOOQ 생성 코드를 보유하지 않는다.
-     * AST → jOOQ Condition 변환은 issue-tracking 어댑터가 전담한다(ADR D2).
-     * `..jooq..` 패키지에 대한 직접 의존은 BC 경계 위반이다.
+     * FR-SR-03(저장된 필터)부터 search-export-import는 자체 DB 테이블(saved_filters)과
+     * 자체 jOOQ 생성 코드(`com.bts.search.jooq`)를 보유한다. 따라서 **자체 jooq 의존은 허용**한다.
+     * 그러나 타 BC의 jooq(issue-tracking `com.bts.issue.jooq` 등)에 직접 의존하는 것은
+     * 여전히 BC 경계 위반이다 — AQL의 AST → jOOQ Condition 변환은 issue-tracking 어댑터가 전담하고,
+     * search BC는 shared-kernel `IssueSearchPort`만 호출한다(ADR 2026-06-25 §D2).
      *
-     * [allowEmptyShould] true — 초기 부트스트랩 단계에서 빈 모듈 vacuous 오류 방지.
+     * 구현 — `..jooq..` 중 `com.bts.search.jooq..`(자체)를 제외한 패키지 의존을 금지한다.
+     *
+     * [allowEmptyShould] true — vacuous 오류 방지.
      */
     @Test
     fun mustNotDependOnJooqInternals() {
+        // `com.bts..jooq..` = 타 BC 생성 jooq(com.bts.issue.jooq 등). org.jooq 라이브러리와
+        // 자체 com.bts.search.jooq는 매칭/제외되어 허용된다.
         noClasses()
             .that().resideInAPackage("com.bts.search..")
-            .should().dependOnClassesThat()
-            .resideInAnyPackage("..jooq..")
-            .because(
-                "search-export-import BC는 jOOQ를 직접 사용하지 않는다. " +
-                    "AST → jOOQ 변환은 issue-tracking IssueSearchAdapter가 담당하며, " +
+            .should().dependOnClassesThat(
+                resideInAnyPackage("com.bts..jooq..")
+                    .and(resideOutsideOfPackages("com.bts.search.jooq..")),
+            ).because(
+                "search-export-import BC는 자체 jooq(com.bts.search.jooq)와 jOOQ 라이브러리(org.jooq)만 사용한다. " +
+                    "타 BC의 생성 jOOQ(예: com.bts.issue.jooq) 직접 의존은 금지 — " +
+                    "AST → jOOQ 변환은 issue-tracking IssueSearchAdapter가 담당하고 " +
                     "search BC는 shared-kernel IssueSearchPort만 호출한다 " +
                     "(ADR 2026-06-25-fr-sr-02-aql-parser-and-bc §D2).",
             ).allowEmptyShould(true).check(importedClasses)
