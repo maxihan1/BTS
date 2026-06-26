@@ -134,8 +134,7 @@ class SavedFilterController(
         val domainShares = parseShares(request.shares)
         log.info("SavedFilterController.update id={} actor={}", id, actorId)
         val ws = service.update(id, actorId, name, aqlQuery, version, domainShares)
-        // FIXME(C1): ws.shares 를 사용해야 함 — 현재 domainShares ?: emptyList() 는 shares=null 시 빈 배열.
-        val response = SavedFilterResponse.from(ws.filter, domainShares ?: emptyList(), actorId)
+        val response = SavedFilterResponse.from(ws.filter, ws.shares, actorId)
         return ResponseEntity.ok(response)
     }
 
@@ -178,15 +177,12 @@ class SavedFilterController(
      * `null`이면 공유를 건드리지 않는 신호로 `null`을 그대로 반환한다.
      * 빈 리스트이면 공유 전체 제거 신호다.
      * 변환 중 [IllegalArgumentException]이 발생하면 상위 핸들러가 400으로 매핑한다.
+     * 정규화(dedupe·상한 검사)는 서비스 계층에서 단일 수행하므로 여기서는 호출하지 않는다(C3).
      *
      * @param requests 변환할 요청 공유 목록. `null`이면 유지.
-     * @return 도메인 공유 목록. `null`이면 서비스에 유지 신호.
+     * @return per-item 변환된 도메인 공유 목록. `null`이면 서비스에 유지 신호.
      */
-    private fun parseShares(requests: List<ShareRequest>?): List<SavedFilterShare>? =
-        requests?.let { list ->
-            val domainList = list.map { it.toDomain() }
-            SavedFilterShare.normalize(domainList)
-        }
+    private fun parseShares(requests: List<ShareRequest>?): List<SavedFilterShare>? = requests?.map { it.toDomain() }
 
     /**
      * 페이지네이션 파라미터를 검증한다(DoS 방어 — [MAX_PAGE_SIZE] 초과 거부).

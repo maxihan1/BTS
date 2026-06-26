@@ -7,6 +7,7 @@ import com.bts.search.jooq.tables.references.SAVED_FILTERS
 import com.bts.search.jooq.tables.references.SAVED_FILTER_SHARES
 import com.bts.search.savedfilter.application.SavedFilterRepository
 import com.bts.search.savedfilter.domain.SavedFilter
+import com.bts.search.savedfilter.domain.ShareType
 import org.jooq.Condition
 import org.jooq.DSLContext
 import org.jooq.impl.DSL
@@ -232,16 +233,16 @@ class JooqSavedFilterRepository(
     ): Condition {
         val conditions =
             buildList {
-                add(SAVED_FILTER_SHARES.SHARE_TYPE.eq("AUTHENTICATED"))
+                add(SAVED_FILTER_SHARES.SHARE_TYPE.eq(ShareType.AUTHENTICATED.name))
                 if (projectKeys.isNotEmpty()) {
                     add(
-                        SAVED_FILTER_SHARES.SHARE_TYPE.eq("PROJECT")
+                        SAVED_FILTER_SHARES.SHARE_TYPE.eq(ShareType.PROJECT.name)
                             .and(SAVED_FILTER_SHARES.TARGET_ID.`in`(projectKeys)),
                     )
                 }
                 if (groupIds.isNotEmpty()) {
                     add(
-                        SAVED_FILTER_SHARES.SHARE_TYPE.eq("GROUP")
+                        SAVED_FILTER_SHARES.SHARE_TYPE.eq(ShareType.GROUP.name)
                             .and(SAVED_FILTER_SHARES.TARGET_ID.`in`(groupIds)),
                     )
                 }

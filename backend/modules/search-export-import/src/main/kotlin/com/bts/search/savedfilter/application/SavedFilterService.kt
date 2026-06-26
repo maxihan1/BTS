@@ -194,8 +194,7 @@ class SavedFilterService(
         if (shares != null) {
             shareRepository.replaceShares(id, SavedFilterShare.normalize(shares))
         }
-        // FIXME(C1): 실제 영속된 공유 재조회 미구현 — withShares(updated) 로 교체 필요.
-        return SavedFilterWithShares(updated, shares ?: emptyList())
+        return withShares(updated)
     }
 
     /**

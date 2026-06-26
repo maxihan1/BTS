@@ -75,10 +75,11 @@ class SavedFilterExceptionHandler {
     }
 
     /**
-     * [IllegalArgumentException] — 도메인 불변식 위반(이름/쿼리 길이·blank) — 400.
+     * [IllegalArgumentException] — 도메인 불변식 위반(이름/쿼리 길이·blank, shares EC8~10) — 400.
      *
-     * [com.bts.search.savedfilter.domain.SavedFilter.create] 팩토리가 던진다.
-     * 보안 — 내부 메시지를 그대로 노출하지 않고 일반 안내를 사용한다.
+     * [com.bts.search.savedfilter.domain.SavedFilter.create] 팩토리 또는
+     * [com.bts.search.savedfilter.domain.SavedFilterShare.create]/[SavedFilterShare.normalize] 가 던진다.
+     * 보안 — 내부 메시지를 그대로 노출하지 않고 일반 안내를 사용한다(이름·쿼리·공유 모두 포괄).
      */
     @ExceptionHandler(IllegalArgumentException::class)
     fun handleIllegalArgument(ex: IllegalArgumentException): ProblemDetail {
@@ -88,7 +89,7 @@ class SavedFilterExceptionHandler {
             "saved-filter-validation-failed",
             "Validation Failed",
             SearchErrorCodes.SEARCH_VALIDATION_FAILED,
-            "필터 이름 또는 쿼리 값이 올바르지 않습니다.",
+            "요청 값이 올바르지 않습니다.",
         )
     }
 

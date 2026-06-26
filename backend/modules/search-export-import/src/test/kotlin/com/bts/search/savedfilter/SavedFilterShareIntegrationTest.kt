@@ -122,7 +122,9 @@ class SavedFilterShareIntegrationTest {
             shareRepository: JooqSavedFilterShareRepository,
             groupMembershipPort: GroupMembershipPort,
             projectMembershipPort: ProjectMembershipPort,
-        ): SavedFilterService = SavedFilterService(repository, shareRepository, groupMembershipPort, projectMembershipPort)
+        ): SavedFilterService {
+            return SavedFilterService(repository, shareRepository, groupMembershipPort, projectMembershipPort)
+        }
 
         /**
          * IssueSearchPort 쿼리 캡처 stub — FR-8 viewerUserId 검증용.
