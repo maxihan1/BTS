@@ -31,7 +31,6 @@ import java.util.UUID
  */
 @TestConfiguration
 open class MembershipPortTestConfig {
-
     /** userId → 그룹 ID 집합 시드 맵. 테스트가 @BeforeEach 에서 clear() 후 재시드한다. */
     val groupMemberships: MutableMap<UUID, Set<String>> = mutableMapOf()
 

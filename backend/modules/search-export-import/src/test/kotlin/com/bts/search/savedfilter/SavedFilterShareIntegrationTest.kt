@@ -2,8 +2,8 @@
 
 package com.bts.search.savedfilter
 
-import com.bts.search.jooq.tables.references.SAVED_FILTER_SHARES
 import com.bts.search.jooq.tables.references.SAVED_FILTERS
+import com.bts.search.jooq.tables.references.SAVED_FILTER_SHARES
 import com.bts.search.savedfilter.application.SavedFilterService
 import com.bts.search.savedfilter.persistence.JooqSavedFilterRepository
 import com.bts.search.savedfilter.persistence.JooqSavedFilterShareRepository
@@ -82,7 +82,6 @@ import java.util.UUID
 @WebAppConfiguration
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SavedFilterShareIntegrationTest {
-
     /**
      * 풀스택 테스트 전용 Spring 컨텍스트.
      *
@@ -94,7 +93,6 @@ class SavedFilterShareIntegrationTest {
     @Configuration
     @EnableWebMvc
     open class IntegrationConfig {
-
         @Bean
         open fun dslContext(): DSLContext {
             Flyway
@@ -167,10 +165,10 @@ class SavedFilterShareIntegrationTest {
 
     // 테스트용 고정 actor UUID — 역할별 의미 부여로 시나리오 이해를 돕는다
     private val alice = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000001") // 소유자
-    private val bob = UUID.fromString("bbbbbbbb-0000-0000-0000-000000000002")   // PROJECT ATL 멤버
+    private val bob = UUID.fromString("bbbbbbbb-0000-0000-0000-000000000002") // PROJECT ATL 멤버
     private val carol = UUID.fromString("cccccccc-0000-0000-0000-000000000003") // GROUP g-devs 소속
-    private val dave = UUID.fromString("dddddddd-0000-0000-0000-000000000004")  // 임의 인증 사용자
-    private val eve = UUID.fromString("eeeeeeee-0000-0000-0000-000000000005")   // 멤버십 미시드(fail-closed)
+    private val dave = UUID.fromString("dddddddd-0000-0000-0000-000000000004") // 임의 인증 사용자
+    private val eve = UUID.fromString("eeeeeeee-0000-0000-0000-000000000005") // 멤버십 미시드(fail-closed)
 
     @BeforeEach
     fun setUp() {
