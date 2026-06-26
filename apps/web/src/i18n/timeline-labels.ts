@@ -50,6 +50,21 @@ export const timelineLabels = {
     /** 날짜 범위를 계산할 수 없는 경우 */
     noDateRange: '날짜 정보가 없습니다',
   },
+
+  /** 403 접근 거부 안내 (S6 — AGILE_ACCESS_DENIED) */
+  accessDenied: {
+    /** 접근 거부 제목 */
+    title: '접근 권한이 없습니다',
+
+    /** 접근 거부 설명 */
+    description: '해당 프로젝트의 타임라인에 접근할 권한이 없습니다.',
+  },
+
+  /** 이슈 일부 누락 배너 안내 (S5 — truncated) */
+  truncated: {
+    /** TIMELINE_FETCH_LIMIT 초과 시 표시하는 안내 메시지 */
+    message: '표시되지 않은 이슈가 있습니다. 이슈 목록에서 전체를 확인하세요.',
+  },
 } as const
 
 /** timelineLabels const 추론 타입 */

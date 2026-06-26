@@ -111,9 +111,9 @@ function TimelineLoadingSkeleton(): JSX.Element {
 function TimelineAccessDeniedView(): JSX.Element {
   return (
     <div className="p-8 flex flex-col items-center justify-center min-h-48 gap-4 text-center">
-      <p className="text-lg font-medium">접근 권한이 없습니다</p>
+      <p className="text-lg font-medium">{timelineLabels.accessDenied.title}</p>
       <p className="text-sm text-muted-foreground">
-        해당 프로젝트의 타임라인에 접근할 권한이 없습니다.
+        {timelineLabels.accessDenied.description}
       </p>
     </div>
   )
@@ -135,7 +135,7 @@ function TruncatedBanner(): JSX.Element {
       role="alert"
       className="rounded-md bg-amber-50 border border-amber-200 px-4 py-2 text-sm text-amber-800"
     >
-      표시되지 않은 이슈가 있습니다. 이슈 목록에서 전체를 확인하세요.
+      {timelineLabels.truncated.message}
     </div>
   )
 }
