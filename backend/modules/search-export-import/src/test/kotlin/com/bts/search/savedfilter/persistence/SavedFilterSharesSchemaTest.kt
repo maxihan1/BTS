@@ -1,4 +1,4 @@
-// V601 마이그레이션 검증 — saved_filter_shares 테이블 + share_type/target CHECK + UNIQUE NULLS NOT DISTINCT + FK CASCADE (FR-SR-03 PR2)
+// V601 saved_filter_shares 검증 — CHECK·UNIQUE NULLS NOT DISTINCT·FK CASCADE (FR-SR-03 PR2)
 
 package com.bts.search.savedfilter.persistence
 

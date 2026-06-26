@@ -1,7 +1,5 @@
 <?xml version="1.0" ?>
 <SmellBaseline>
   <ManuallySuppressedIssues></ManuallySuppressedIssues>
-  <CurrentIssues>
-    <ID>MaxLineLength:SavedFilterSharesSchemaTest.kt$// V601 마이그레이션 검증 — saved_filter_shares 테이블 + share_type/target CHECK + UNIQUE NULLS NOT DISTINCT + FK CASCADE (FR-SR-03 PR2)</ID>
-  </CurrentIssues>
+  <CurrentIssues></CurrentIssues>
 </SmellBaseline>
