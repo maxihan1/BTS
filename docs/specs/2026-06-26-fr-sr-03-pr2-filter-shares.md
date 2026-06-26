@@ -23,9 +23,10 @@
 
 - **FR-1**. 필터 공유 대상은 3종. `PROJECT`(특정 프로젝트 멤버) · `GROUP`(특정 사용자 그룹) · `AUTHENTICATED`(로그인 사용자 전체). PR1 ADR D2.
 - **FR-2**. 공유는 **필터 본문 임베드**. `POST`/`PUT /api/v1/filters`의 바디에 `shares` 배열로 표현(Maxi 결정 — 전용 엔드포인트 아님). 교체(replace-all) 의미.
-  - `shares == null`(필드 생략) → 기존 공유 **유지**(부분 수정 허용 — name만 바꿀 때 공유 보존).
+  - `shares == null`(필드 생략 **또는 명시적 null** — JsonNullable 미도입, PUT 전체교체 의미상 둘을 동일 취급) → 기존 공유 **유지**(부분 수정 허용 — name만 바꿀 때 공유 보존).
   - `shares == []` → 모든 공유 **제거**(PRIVATE 복귀).
   - `shares == [..]` → 해당 집합으로 **전체 교체**.
+  - replace는 필터 update와 **단일 트랜잭션**. OCC version 충돌 시 롤백되어 공유 미변경(NFR-7).
 - **FR-3**. 공유 대상 저장. `saved_filter_shares(filter_id, share_type, target_id)`. `target_id`: PROJECT=project_key, GROUP=group id 문자열, AUTHENTICATED=NULL.
 - **FR-4 (가시성 OR 4경로)**. 사용자 V가 필터 F를 볼 수 있다 ⇔
   1. `F.ownerId == V`, 또는
@@ -34,9 +35,9 @@
   4. F에 `GROUP` 공유가 있고 `target_id ∈ V의 그룹 id 집합`.
 - **FR-5 (읽기 경로 가시성화)**. `GET /{id}` · `GET /{id}/search`는 PR1의 owner-게이트(`getByIdForOwner`)에서 **가시성 게이트**로 전환. 비가시 → 404.
 - **FR-6 (쓰기 경로 소유자 전용 + 403)**. `PUT /{id}` · `DELETE /{id}`(공유 변경 포함)는 소유자만. 가시(공유받음)하나 비소유 → **403** `SavedFilterForbiddenException`(PR1에서 제거한 데드코드 부활). 비가시 → 404(은닉).
-- **FR-7 (공유받은 목록)**. 신규 `GET /api/v1/filters/shared` — V가 소유하지 않으면서 볼 수 있는 필터 목록(가시성 4경로 중 2~4). 기존 `GET /api/v1/filters`는 **소유만** 유지(하위호환).
+- **FR-7 (공유받은 목록)**. 신규 `GET /api/v1/filters/shared` — V가 소유하지 않으면서 볼 수 있는 필터 목록(가시성 4경로 중 2~4). 기존 `GET /api/v1/filters`는 **소유만** 유지(하위호환). **페이지네이션 필수**(`page`/`size`, `/search`와 동일 정책 — size 1..100, page≥0) + **결정적 정렬**(`created_at ASC, id ASC` — AUTHENTICATED 공유가 전 사용자에게 증폭되므로 무제한 반환 금지, C1/NFR-3).
 - **FR-8 (실행 안전)**. `GET /{id}/search`는 PR1처럼 `viewerUserId=actor`로 실행 — 공유받은 사용자도 자기 권한 범위 이슈만 본다(권한 상승 0).
-- **FR-9 (응답 확장)**. `SavedFilterResponse`에 `shares: [{shareType, targetId}]`, `isOwner`(기존) 포함. 별표(favorite)는 본 백엔드 PR 범위 외 — 프론트가 기존 FR-UX-02 favorites API(target_type=FILTER)로 별도 조회.
+- **FR-9 (응답 확장)**. `SavedFilterResponse`에 `shares: [{shareType, targetId}]`, `isOwner`(기존) 포함. 모든 읽기 응답(`GET /filters` 소유목록 · `GET /filters/shared` · `GET /{id}`)이 shares를 담는다 — 서비스 read 메서드가 `SavedFilterWithShares`(filter+shares) 반환, 목록은 `findByFilterIds` 배치 로드(N+1 차단, U4). 별표(favorite)는 본 백엔드 PR 범위 외 — 프론트가 기존 FR-UX-02 favorites API(target_type=FILTER)로 별도 조회.
 - **FR-10 (cross-BC 멤버십 포트)**. shared-kernel에 신규.
   - `GroupMembershipPort.groupIdsOf(userId: UUID): Set<String>` — identity-access(`UserGroupRepository`) 구현.
   - `ProjectMembershipPort.projectKeysOf(userId: UUID): Set<String>` — identity-access(`ProjectMembershipRepository` + projects 키 매핑) 구현.
@@ -58,7 +59,7 @@
 |---|---|---|---|
 | POST | `/api/v1/filters` | 인증 | 바디에 `shares?` 추가. 생성 + 공유 |
 | GET | `/api/v1/filters` | 인증 | **소유만**(불변). 응답에 `shares` 포함 |
-| GET | `/api/v1/filters/shared` | 인증 | **신규**. 공유받은(비소유) 목록 |
+| GET | `/api/v1/filters/shared` | 인증 | **신규**. 공유받은(비소유) 목록. `page`/`size`(1..100) + created_at,id 정렬 |
 | GET | `/api/v1/filters/{id}` | **가시성** | owner OR 공유. 비가시 404 |
 | PUT | `/api/v1/filters/{id}` | **소유자**(403/404) | 바디에 `shares?` 추가. OCC version |
 | DELETE | `/api/v1/filters/{id}` | **소유자**(403/404) | 하드 삭제 + shares cascade |
@@ -112,7 +113,11 @@ CREATE INDEX idx_saved_filter_shares_lookup ON saved_filter_shares (share_type, 
 - **EC12**. viewer가 프로젝트/그룹 0개 → AUTHENTICATED 공유 + 소유만 가시.
 - **EC13**. owner가 본인이 멤버 아닌 프로젝트로 공유 → **허용**(MVP, 대상 존재/멤버십 검증 안 함). 누출 위험 분석: 공유받는 측은 실행 시 자기 권한 이슈만 보고(FR-8), 노출되는 건 필터 메타(name+AQL)뿐 → 저위험. 향후 대상 검증은 후속.
 - **EC14**. `GET /shared`는 소유 필터 제외(소유는 `GET /filters`).
-- **EC15**. owner는 공유 유무와 무관하게 항상 자기 필터 가시(자기공유 noop).
+- **EC15**. owner는 공유 유무와 무관하게 항상 자기 필터 가시(자기공유 noop). **owner 단축경로** — 소유 확인 먼저, 비소유일 때만 멤버십 포트 호출(불필요 cross-BC 쿼리 회피, C6).
+- **EC16 (대상 소프트삭제/삭제)**. 공유 대상 프로젝트 소프트삭제 → 어댑터가 `deleted_at IS NULL`로 제외 → viewer 키 집합에서 빠져 **매칭 안 됨**(fail-closed, 안전). 그룹 삭제도 동일. **잔존 share 행은 무해 잔류**(CASCADE 대상 아님, 누출 없음 — 매칭자 0) → 소유자 replace로만 정리. spec 동작으로 명문화.
+- **EC17 (비로그인)**. AUTHENTICATED 공유라도 비로그인 요청은 actor 추출 단계에서 401 — 인증 사용자 전체이지 익명 아님.
+- **EC8 매핑 주의**. shares 검증 실패(EC8~EC10)는 반드시 **400**으로 매핑. `ShareType.from(unknown)`이 catch-all(`Exception`→500)에 걸리지 않도록 **`IllegalArgumentException`**(도메인 일관, handleIllegalArgument 400)으로 통일(C3). enum `valueOf`/`NoSuchElement` 직접 노출 금지.
+- **단일 가시성 술어(B3)**. 가시성 OR 4경로는 **repo SQL 술어 한 곳**(`findVisibleById` + `findSharedWith`가 동일 WHERE 조각 공유)으로 funnel. Kotlin/SQL 이중 평가 금지(`IssueVisibilityPort` "단일 source of truth" 도그마). 단건 가시 ⇔ 목록 포함 parity 테스트로 비대칭 차단.
 
 ## 제약 조건
 
@@ -135,8 +140,8 @@ CREATE INDEX idx_saved_filter_shares_lookup ON saved_filter_shares (share_type, 
 
 - **U1 (해소)**. `target_id`는 ADR D2대로 **project_key 유지**. `ProjectMembershipPort.projectKeysOf(userId)` 구현은 `project_memberships m JOIN projects p ON m.project_id=p.id WHERE m.user_id=:u AND p.deleted_at IS NULL`로 키를 직접 반환 — identity-access의 **`ProjectDirectory` read-only cross-BC 선례**(같은 DB, projects 읽기 전용, 분리배포 시 SPI 교체)를 그대로 따른다. projects 테이블은 issue-tracking 소유이나 read-only 접근은 확립된 허용 패턴(BC 격리 위반 아님). id-vs-key deviation 불필요.
 - **U2 (해소)**. GROUP `target_id` = **UserGroup.id(UUID) 문자열**. `GroupMembershipPort.groupIdsOf(userId): Set<String>`.
-- **U3**. 멤버십 포트 fail-closed Bean의 통합테스트 부팅 레시피 — identity-access 구현이 주입되는 통합테스트 vs search 모듈 단독 단위테스트의 stub 포트(`profile-scoped-bean-boot-failure`/`identity-access-prod-randomport-boot-recipe` 참조). plan에서 확정.
-- **U4**. SavedFilter aggregate에 shares 포함 vs 분리 조회(서비스 조합) — 표면적 최소 변경 우선. plan에서 확정.
+- **U3 (Task 9에서 해소)**. 멤버십 포트 fail-closed Bean의 통합테스트 부팅 레시피 — search 단독 컨텍스트는 identity-access 미로드라 **stub 포트 빈**(MembershipPortTestConfig, userId별 다른 집합 반환) 사용(`no-cross-bc-deployment-assembly` test-assembled 표준). 실 어댑터는 T4/T5 identity-access 모듈테스트로 검증.
+- **U4 (해소)**. **분리 조회 + 서비스 조합** 채택(SavedFilter 도메인 불변, 표면 최소 변경). read 메서드는 `SavedFilterWithShares(filter, shares: List<SavedFilterShare>)` 반환. 목록은 `findByFilterIds(Set<UUID>)` **배치 로드**로 N+1 차단. 응답 변환은 `SavedFilterResponse.from(filter, shares, actorId)`로 시그니처 확장.
 
 ## Brainstorming Check
 
