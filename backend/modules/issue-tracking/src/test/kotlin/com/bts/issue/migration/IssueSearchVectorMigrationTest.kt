@@ -111,6 +111,7 @@ class IssueSearchVectorMigrationTest {
 
     private fun conn() = DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
 
+    @Suppress("NestedBlockDepth") // JDBC use {} 중첩 — Connection/PreparedStatement/ResultSet 생명주기 관리 패턴
     private fun columnDataType(
         tableName: String,
         columnName: String,
@@ -126,6 +127,7 @@ class IssueSearchVectorMigrationTest {
             }
         }
 
+    @Suppress("NestedBlockDepth") // JDBC use {} 중첩 — Connection/PreparedStatement/ResultSet 생명주기 관리 패턴
     private fun indexDefinition(indexName: String): String? =
         conn().use { c ->
             c.prepareStatement(
