@@ -45,6 +45,25 @@ object AqlFields {
     val MVP_FIELDS: Set<String> = setOf("status", "label", "summary", "priority", "text")
 
     /**
+     * ORDER BY 에서 정렬 가능한 필드 이름 집합 (소문자 정규화).
+     *
+     * [com.bts.issue.repository.IssueRepository]의 `buildOrderBy` 화이트리스트와
+     * **정확히 일치해야 한다**. 두 곳 중 하나를 수정할 때는 반드시 이 집합도 함께 수정한다
+     * (단일 진실출처 원칙 — drift 방지).
+     *
+     * - `status` — current_state_key (TEXT)
+     * - `summary` — SUMMARY (TEXT)
+     * - `priority` — PRIORITY (SMALLINT)
+     * - `created_at` — CREATED_AT (TIMESTAMPTZ)
+     * - `updated_at` — UPDATED_AT (TIMESTAMPTZ)
+     *
+     * `text`, `label` 등 MVP_FIELDS 에 있어도 정렬 불가인 필드는 여기에 포함하지 않는다.
+     * [com.bts.search.aql.AqlParser]의 `parseSortItem` 이 이 집합으로 ORDER BY 필드를
+     * 검증해 미포함 시 [AqlSyntaxException][com.bts.search.aql.AqlSyntaxException] 을 던진다.
+     */
+    val SORTABLE_FIELDS: Set<String> = setOf("status", "summary", "priority", "created_at", "updated_at")
+
+    /**
      * 후속 PR 에서 지원 예정인 필드 이름 집합 (소문자 정규화).
      *
      * 사용자 식별자 해석(username→UUID, 이름→ID)이 필요하거나

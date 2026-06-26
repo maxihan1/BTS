@@ -36,12 +36,18 @@ import java.time.Instant
  * ### 매핑 규칙
  *
  * - [AqlSyntaxException] → 400 + [AqlErrorCode] 매핑 + position(RFC 7807 extension)
+ * - [AqlLexException] → 400 + SEARCH_SYNTAX_ERROR + position
+ * - [SearchValidationException] → 400 + [SearchErrorCodes.SEARCH_VALIDATION_FAILED]
  * - [MethodArgumentNotValidException] → 400 + [SearchErrorCodes.SEARCH_VALIDATION_FAILED]
  * - [HttpMessageNotReadableException] → 400 + [SearchErrorCodes.SEARCH_VALIDATION_FAILED]
  * - [MethodArgumentTypeMismatchException] → 400 + [SearchErrorCodes.SEARCH_VALIDATION_FAILED]
  * - [SecurityException] → 403 + [SearchErrorCodes.SEARCH_ACCESS_DENIED] (BROWSE 권한 없음)
  * - [ResponseStatusException] → 명시 상태 전파(401/404 등)
  * - [Exception] (fallback) → 500 + [SearchErrorCodes.SEARCH_INTERNAL_ERROR]
+ *
+ * IllegalArgumentException 은 이 핸들러에서 처리하지 않는다.
+ * 정렬 불가 필드 등 AQL 의미 오류는 [AqlParser] 가 [AqlSyntaxException] 으로 파서 단계에서 거부하며,
+ * repository 의 방어 IAE 는 비-HTTP 경로(직접 호출·테스트) 전용이다.
  *
  * TooManyFunctions: 예외 종류별 @ExceptionHandler가 필요하므로 함수 수가 임계치를 넘는다.
  * 단일 관심사(예외→HTTP 변환)라 클래스 단위로 억제한다.
@@ -110,31 +116,6 @@ class SearchExceptionHandler {
             )
         pd.setProperty("position", ex.position)
         return pd
-    }
-
-    // ── 400 잘못된 인수(정렬 불가 필드 등) ───────────────────────────────────
-
-    /**
-     * [IllegalArgumentException] — 정렬 불가 필드(`text` 등) 요청 시 — 400.
-     *
-     * `text` 필드는 FTS 전용 가상 필드로 ORDER BY 대상 컬럼이 없다.
-     * [IssueRepository.buildOrderBy]가 화이트리스트 밖 필드를 [IllegalArgumentException]으로 던진다.
-     * 핸들러가 없으면 catch-all 500으로 변질된다(교훈 C1 — FR-SR-04 task-3).
-     *
-     * 보안 — 예외 상세 메시지는 응답에 포함하지 않는다.
-     *
-     * @param ex 정렬 불가 필드 등 잘못된 인수 예외.
-     */
-    @ExceptionHandler(IllegalArgumentException::class)
-    fun handleIllegalArgument(ex: IllegalArgumentException): ProblemDetail {
-        log.info("SEARCH_400 illegal_argument message='{}'", ex.message)
-        return problem(
-            status = HttpStatus.BAD_REQUEST,
-            type = "search-invalid-query",
-            title = "Invalid Query",
-            errorCode = SEARCH_VALIDATION_FAILED,
-            detail = "요청이 올바르지 않습니다. 필드 또는 연산자를 확인해 주세요.",
-        )
     }
 
     // ── 400 검증 실패 ─────────────────────────────────────────────────────────

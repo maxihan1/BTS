@@ -513,6 +513,52 @@ class SearchControllerTest {
             .andExpect(jsonPath("$.errorCode").value("SEARCH_UNKNOWN_FIELD"))
     }
 
+    // ── C3 ORDER BY 정렬 불가 필드 400 (광범위 IAE 핸들러 제거 후 파서가 AqlSyntaxException 발행) ──
+
+    /**
+     * C3 — ORDER BY text 는 가상 FTS 필드로 정렬 불가.
+     * 파서가 SORTABLE_FIELDS 미포함 → AqlSyntaxException(SEARCH_UNKNOWN_FIELD) → 400.
+     * 이전: 파서 통과 → repository IAE → 광범위 IAE 핸들러 → 400 SEARCH_VALIDATION_FAILED.
+     * 이후: 파서에서 차단 → 400 SEARCH_UNKNOWN_FIELD (더 명확한 에러코드).
+     */
+    @Test
+    fun `C3 ORDER BY text 정렬 불가 필드 400 SEARCH_UNKNOWN_FIELD`() {
+        mockMvc.perform(
+            post("/api/v1/search/aql")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf(
+                            "projectKey" to "PROJ",
+                            "query" to """text ~ "검색어" ORDER BY text""",
+                        ),
+                    ),
+                ),
+        ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("SEARCH_UNKNOWN_FIELD"))
+    }
+
+    /**
+     * C3 — ORDER BY label 은 배열 컬럼으로 buildOrderBy 화이트리스트 미포함.
+     * 파서가 SORTABLE_FIELDS 미포함 → AqlSyntaxException(SEARCH_UNKNOWN_FIELD) → 400.
+     */
+    @Test
+    fun `C3 ORDER BY label 정렬 불가 필드 400 SEARCH_UNKNOWN_FIELD`() {
+        mockMvc.perform(
+            post("/api/v1/search/aql")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf(
+                            "projectKey" to "PROJ",
+                            "query" to "label ~ urgent ORDER BY label",
+                        ),
+                    ),
+                ),
+        ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("SEARCH_UNKNOWN_FIELD"))
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     private fun sampleHit(): IssueSearchHit =
