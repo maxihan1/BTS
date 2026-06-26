@@ -527,12 +527,14 @@ class SavedFilterShareIntegrationTest {
     }
 
     /** GET 요청을 200 으로 수행하고 응답 본문 문자열을 반환한다. */
-    private fun getOk(path: String): String =
-        mockMvc.perform(get(path)).andExpect(status().isOk).andReturn().response.contentAsString
+    private fun getOk(path: String): String {
+        return mockMvc.perform(get(path)).andExpect(status().isOk).andReturn().response.contentAsString
+    }
 
     /** 단건 응답 JSON 에서 shares 를 "shareType:targetId" 문자열 집합으로 추출한다. */
-    private fun sharePairs(responseJson: String): Set<String> =
-        sharePairsOf(mapper.readValue<Map<String, Any?>>(responseJson))
+    private fun sharePairs(responseJson: String): Set<String> {
+        return sharePairsOf(mapper.readValue<Map<String, Any?>>(responseJson))
+    }
 
     /** 응답 맵에서 shares 를 "shareType:targetId" 문자열 집합으로 추출한다(targetId 없으면 null). */
     @Suppress("UNCHECKED_CAST")

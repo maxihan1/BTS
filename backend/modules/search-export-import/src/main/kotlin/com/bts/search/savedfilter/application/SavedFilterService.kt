@@ -8,6 +8,7 @@ import com.bts.search.aql.AqlParser
 import com.bts.search.aql.AqlSyntaxException
 import com.bts.search.savedfilter.domain.SavedFilter
 import com.bts.search.savedfilter.domain.SavedFilterShare
+import com.bts.search.savedfilter.domain.ShareType
 import com.bts.shared.membership.GroupMembershipPort
 import com.bts.shared.membership.ProjectMembershipPort
 import org.jooq.exception.DataAccessException
@@ -107,6 +108,11 @@ class SavedFilterService(
      * owner 면 멤버십 포트 호출 없이 단축 반환한다(C6/EC15). 비소유자는 멤버십 기반으로
      * 가시성을 판정하며, 비가시면 [SavedFilterNotFoundException](404, 존재 은닉)을 던진다.
      *
+     * ## 공유 목록 범위(C2 — 정보 노출 차단)
+     * - owner 응답은 전체 공유를 노출한다(공유 관리 주체).
+     * - 비소유 가시 viewer 응답은 [matchingShares] 로 **자신이 매칭된 공유만** 노출한다.
+     *   다른 GROUP/PROJECT 대상은 응답에서 제외해 전체 공유 대상 목록이 새지 않게 한다.
+     *
      * @param id 조회할 필터 식별자.
      * @param actorId 요청자 사용자 UUID.
      * @return 필터 + 공유 목록 묶음.
@@ -118,9 +124,10 @@ class SavedFilterService(
         actorId: UUID,
     ): SavedFilterWithShares {
         val filter = repository.findById(id) ?: throw SavedFilterNotFoundException(id)
-        if (filter.ownerId == actorId) return withShares(filter) // owner 단축경로 — 포트 미호출
-        val visible = findVisibleForActor(id, actorId) ?: throw SavedFilterNotFoundException(id)
-        return withShares(visible)
+        if (filter.ownerId == actorId) return withShares(filter) // owner 단축경로 — 포트 미호출, 전체 공유
+        val (keys, groups) = membershipOf(actorId)
+        val visible = repository.findVisibleById(id, actorId, keys, groups) ?: throw SavedFilterNotFoundException(id)
+        return withMatchingShares(visible, keys, groups) // 비소유 가시 — 매칭 공유만(C2)
     }
 
     /**
@@ -140,10 +147,14 @@ class SavedFilterService(
      * 멤버십 포트로 프로젝트키/그룹 집합을 조회한 뒤 가시성 술어로 페이지를 조회하고,
      * 공유는 단일 배치로 조합한다(N+1 차단).
      *
+     * 결과는 전부 비소유 필터이므로 각 항목의 공유 목록은 [matchingShares] 로 viewer 가
+     * 매칭된 공유만 남긴다(C2 — 전체 공유 대상 목록 노출 차단). viewer 키/그룹은 가시성
+     * 판정에 쓴 집합을 그대로 재사용한다.
+     *
      * @param actorId 요청자 사용자 UUID.
      * @param page 0-based 페이지 번호.
      * @param size 페이지당 최대 항목 수.
-     * @return 공유받은 비소유 필터 + 공유 목록 묶음 (created_at ASC, id ASC 정렬).
+     * @return 공유받은 비소유 필터 + 매칭 공유 목록 묶음 (created_at ASC, id ASC 정렬).
      */
     @Transactional(readOnly = true)
     fun listSharedWith(
@@ -154,6 +165,7 @@ class SavedFilterService(
         val keys = projectMembershipPort.projectKeysOf(actorId)
         val groups = groupMembershipPort.groupIdsOf(actorId)
         return attachShares(repository.findSharedWith(actorId, keys, groups, page, size))
+            .map { it.copy(shares = matchingShares(it.shares, keys, groups)) }
     }
 
     /**
@@ -242,10 +254,12 @@ class SavedFilterService(
     }
 
     /**
-     * 멤버십 포트로 actor 의 프로젝트키/그룹 집합을 조회한 뒤 가시성 술어로 단건을 조회한다.
+     * 수정/삭제 게이트([loadForMutation])용 — actor 의 멤버십 집합으로 가시성 술어를 평가한다.
      *
-     * 단건 조회([getVisibleById])와 수정/삭제 게이트([loadForMutation])가 이 헬퍼를 공유해
-     * 가시성 판정 경로를 단일화한다(parity 보장).
+     * 단건 조회([getVisibleById])는 매칭 공유 필터링에 멤버십 집합을 직접 써야 하므로
+     * [membershipOf] + [SavedFilterRepository.findVisibleById] 를 인라인 호출하지만,
+     * 두 경로 모두 동일한 repo SQL 술어([SavedFilterRepository.findVisibleById])로 funnel 되어
+     * 가시성 판정 parity 가 보장된다(B3).
      *
      * @param id 대상 필터 식별자.
      * @param actorId 요청자 사용자 UUID.
@@ -255,10 +269,18 @@ class SavedFilterService(
         id: UUID,
         actorId: UUID,
     ): SavedFilter? {
-        val keys = projectMembershipPort.projectKeysOf(actorId)
-        val groups = groupMembershipPort.groupIdsOf(actorId)
+        val (keys, groups) = membershipOf(actorId)
         return repository.findVisibleById(id, actorId, keys, groups)
     }
+
+    /**
+     * actor 의 멤버십 집합(프로젝트키, 그룹ID)을 두 포트에서 한 번에 조회한다.
+     *
+     * @param actorId 요청자 사용자 UUID.
+     * @return (프로젝트 키 집합, 그룹 ID 집합) 쌍.
+     */
+    private fun membershipOf(actorId: UUID): Pair<Set<String>, Set<String>> =
+        projectMembershipPort.projectKeysOf(actorId) to groupMembershipPort.groupIdsOf(actorId)
 
     /**
      * 단일 필터에 공유 목록을 부착해 [SavedFilterWithShares] 로 묶는다([attachShares] 1건 위임).
@@ -267,6 +289,48 @@ class SavedFilterService(
      * @return 필터 + 공유 목록 묶음.
      */
     private fun withShares(filter: SavedFilter): SavedFilterWithShares = attachShares(listOf(filter)).first()
+
+    /**
+     * 비소유 가시 viewer 용 — 전체 공유 중 viewer 가 매칭된 공유만 부착한다(C2 정보 노출 차단).
+     *
+     * @param filter 영속된 필터(id 채워짐).
+     * @param projectKeys viewer 가 속한 프로젝트 키 집합.
+     * @param groupIds viewer 가 속한 그룹 ID 집합.
+     * @return 필터 + 매칭 공유 목록 묶음.
+     */
+    private fun withMatchingShares(
+        filter: SavedFilter,
+        projectKeys: Set<String>,
+        groupIds: Set<String>,
+    ): SavedFilterWithShares {
+        val full = withShares(filter)
+        return full.copy(shares = matchingShares(full.shares, projectKeys, groupIds))
+    }
+
+    /**
+     * 공유 목록을 viewer 의 매칭 술어로 좁힌다(가시성 OR 술어와 동일 의미, per-share 적용).
+     *
+     * [ShareType.AUTHENTICATED] 는 유지하고, [ShareType.PROJECT]/[ShareType.GROUP] 은 targetId 가
+     * viewer 의 키/그룹 집합에 속할 때만 유지한다. 가시 판정을 통과한 viewer 는 최소 1개 매칭
+     * 사유(AUTHENTICATED 또는 PROJECT/GROUP 중 하나)를 보유하므로 결과가 비지 않는다.
+     *
+     * @param shares 필터의 전체 공유 목록.
+     * @param projectKeys viewer 가 속한 프로젝트 키 집합.
+     * @param groupIds viewer 가 속한 그룹 ID 집합.
+     * @return viewer 가 매칭된 공유만 남긴 목록(원본 순서 보존).
+     */
+    private fun matchingShares(
+        shares: List<SavedFilterShare>,
+        projectKeys: Set<String>,
+        groupIds: Set<String>,
+    ): List<SavedFilterShare> =
+        shares.filter { share ->
+            when (share.shareType) {
+                ShareType.AUTHENTICATED -> true
+                ShareType.PROJECT -> share.targetId != null && projectKeys.contains(share.targetId)
+                ShareType.GROUP -> share.targetId != null && groupIds.contains(share.targetId)
+            }
+        }
 
     /**
      * 필터 목록에 공유 목록을 단일 배치 조회로 부착한다(N+1 차단).
