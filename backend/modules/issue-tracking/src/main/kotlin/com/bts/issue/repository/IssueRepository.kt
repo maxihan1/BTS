@@ -2265,6 +2265,11 @@ class IssueRepository(
         val astCondition = buildAstCondition(ast)
         val effectiveWhere = secureWhere.and(astCondition)
 
+        // 정렬 검증 먼저 — buildOrderBy 는 DB 호출 없는 순수 검증+필드 빌드.
+        // early-return 뒤로 두면 total==0 일 때 검증을 건너뛰어 동일 잘못된 sort 가
+        // 데이터 cardinality 에 따라 예외 여부가 달라지는 C1 계약 위반이 된다(B1 버그).
+        val orderByFields = buildOrderBy(sort)
+
         // count 쿼리 — ISSUE_TYPES join 제외(불필요, cartesian product 방지)
         val total =
             dsl.selectCount()
@@ -2278,7 +2283,6 @@ class IssueRepository(
         }
 
         // content 쿼리 — ISSUE_TYPES join 으로 typeKey 포함
-        val orderByFields = buildOrderBy(sort)
         val items =
             dsl.select(
                 ISSUES.fields().toList() +
@@ -2386,7 +2390,7 @@ class IssueRepository(
      *
      * ## SQL injection 방지
      *
-     * 사용자 입력은 모두 jOOQ 바인드 파라미터(`{0}` placeholder + [DSL.val]/[DSL.inline] 미사용)로
+     * 사용자 입력은 모두 jOOQ 바인드 파라미터([DSL.`val`] 바인드 사용, 위험한 [DSL.inline] 미사용)로
      * 전달한다. `%`/`_`/`\` 는 [escapeIlikePrefix]로 리터럴화한다.
      *
      * ## 빈/공백 검색어 (G5)

@@ -728,8 +728,10 @@ CREATE INDEX idx_issues_summary_trgm ON issues USING gin (lower(summary) gin_trg
 -- ═══════════════════════════════════════════════════════════════════════════
 -- V032: issues.search_vector(STORED generated tsvector) + GIN + description trigram GIN (FR-SR-04 한글 FTS)
 -- 원본: db/migration/issue-tracking/V032__issues_search_vector_fts.sql
--- jOOQ: Issues.SEARCH_VECTOR 컬럼 상수 생성 대상 — 이 미러가 빠지면 introspection 불일치 (jooq-init-codegen-mirror).
---       generated STORED 컬럼이므로 jOOQ codegen 이 readonly(computed)로 탐지 → INSERT/UPDATE 시 자동 제외(B3).
+-- jOOQ: 이 미러는 introspection 충실성(스키마 정합) 유지 목적이며, Issues.SEARCH_VECTOR 상수는 미생성이다.
+--       jOOQ 3.19 OSS 는 GENERATED ALWAYS 컬럼을 readonly 로 탐지하지 못하므로 build.gradle.kts 의
+--       codegen excludes("search_vector") 로 컬럼 자체를 제외한다(B3). SEARCH_VECTOR 상수가 없어도
+--       FTS 조건은 raw DSL.condition("issues.search_vector @@ ...") 로 수행한다.
 -- pg_trgm 확장은 상단(pgcrypto 인접)에서 인덱스보다 먼저 선언됨 (gin_trgm_ops opclass 전제).
 -- ═══════════════════════════════════════════════════════════════════════════
 
