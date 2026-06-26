@@ -177,7 +177,7 @@ classify: type=qa 오판 → ui/frontend-engineer 교정 (E2E 키워드 오판 �
 **메타**.
 - agent: `frontend-engineer`
 - files: [`apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/routes/projects.$projectKey.backlog.tsx`, `apps/web/src/routes/__tests__/projects.board.test.tsx`, `apps/web/src/routes/projects.$projectKey.backlog.test.tsx`, `apps/web/src/i18n/board-labels.ts`, `apps/web/src/i18n/backlog-labels.ts`]
-- depends-on: []
+- depends-on: [6]   # `Link to="/projects/$projectKey/timeline"` 는 router.ts(T6) 등록 후에만 타입 통과 (Register 모듈 증강 + strict). vitest 는 mock 으로 통과하나 typecheck 가 깨짐.
 
 **현황 실측(B3)**. 네비는 **단방향** — backlog route 만 `<nav aria-label="프로젝트 뷰 전환">`+board 링크 보유(`projects.$projectKey.backlog.tsx:59-67`). **board route 엔 nav/Link 자체가 없음**. board test(`__tests__/projects.board.test.tsx:16`)의 react-router mock 엔 `Link` stub 부재(backlog test:12-34 엔 있음).
 
@@ -211,8 +211,8 @@ classify: type=qa 오판 → ui/frontend-engineer 교정 (E2E 키워드 오판 �
 ## Plan 메타
 
 - task 수: 8 (전부 frontend-engineer)
-- 예상 wave: 5 (W1: T1·T7 / W2: T2·T3·T4 / W3: T5 / W4: T6(depends 3,5) / W5: T8)
-- depends-on: T1[] T2[1] T3[1] T4[1] T5[2] T6[3,5] T7[] T8[4,6,7]. 순환 없음.
+- 예상 wave: 6 (W1: T1 / W2: T2·T3·T4 / W3: T5 / W4: T6 / W5: T7 / W6: T8)
+- depends-on: T1[] T2[1] T3[1] T4[1] T5[2] T6[3,5] T7[6] T8[4,6,7]. 순환 없음. (T7→6 = Link 타입 의존, 리뷰 후 추가 발견)
 - TDD 강제: yes
 - 파일 겹침: 없음 (T6 router.ts 단독, T7만 기존 board/backlog route+test — 단독 wave)
 - 추가 검증: pnpm lint + typecheck(tsconfig.app, memory: ci-typecheck) + test + e2e. ko i18n 콜론 종결 0.
