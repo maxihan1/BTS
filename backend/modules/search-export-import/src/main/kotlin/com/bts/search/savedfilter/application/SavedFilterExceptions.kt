@@ -23,10 +23,12 @@ class SavedFilterValidationException(
  * HTTP 409 신호. `UNIQUE(owner_id, name)` 제약 위반 시 서비스가 발생시킨다.
  *
  * @param name 중복된 필터 이름.
+ * @param cause 원인 예외(Spring DuplicateKeyException 또는 jOOQ DataAccessException). 디버그 추적 보존.
  */
 class SavedFilterDuplicateNameException(
     name: String,
-) : RuntimeException("이미 사용 중인 필터 이름입니다: $name")
+    cause: Throwable? = null,
+) : RuntimeException("이미 사용 중인 필터 이름입니다: $name", cause)
 
 /**
  * 요청한 필터가 존재하지 않거나 요청자가 접근할 수 없음 (존재 은닉).

@@ -94,7 +94,9 @@ class SavedFilterIntegrationTest {
         @Bean
         open fun stubIssueSearchPort(): IssueSearchPort =
             object : IssueSearchPort {
-                override fun search(query: IssueSearchQuery): IssueSearchPage = IssueSearchPage.empty(query.page, query.size)
+                override fun search(query: IssueSearchQuery): IssueSearchPage {
+                    return IssueSearchPage.empty(query.page, query.size)
+                }
             }
 
         @Bean

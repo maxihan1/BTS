@@ -52,6 +52,7 @@ class SavedFilterService(
      * @throws SavedFilterValidationException AQL 구문 오류.
      * @throws SavedFilterDuplicateNameException 같은 owner 내 이름 중복.
      */
+    @Suppress("ThrowsCount") // 이름중복 dual-catch(2경로) + 비-중복 DataAccessException 재전파로 throw가 3개다.
     fun create(
         actorId: UUID,
         name: String,
@@ -64,9 +65,9 @@ class SavedFilterService(
         return try {
             repository.save(filter)
         } catch (e: DuplicateKeyException) {
-            throw SavedFilterDuplicateNameException(name)
+            throw SavedFilterDuplicateNameException(name, e)
         } catch (e: DataAccessException) {
-            if (e.sqlState() == "23505") throw SavedFilterDuplicateNameException(name)
+            if (e.sqlState() == "23505") throw SavedFilterDuplicateNameException(name, e)
             throw e
         }
     }
@@ -115,6 +116,7 @@ class SavedFilterService(
      * @throws SavedFilterValidationException AQL 구문 오류.
      * @throws SavedFilterConflictException OCC 충돌 (stale version).
      */
+    @Suppress("ThrowsCount") // 미존재(404)·비소유(403)·OCC충돌(409) 3개 신호를 각각 던진다.
     fun update(
         id: UUID,
         actorId: UUID,

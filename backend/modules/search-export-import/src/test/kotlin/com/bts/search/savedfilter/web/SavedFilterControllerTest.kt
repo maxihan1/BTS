@@ -9,8 +9,6 @@ import com.bts.search.savedfilter.application.SavedFilterNotFoundException
 import com.bts.search.savedfilter.application.SavedFilterService
 import com.bts.search.savedfilter.application.SavedFilterValidationException
 import com.bts.search.savedfilter.domain.SavedFilter
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -35,7 +33,6 @@ import java.util.UUID
  */
 class SavedFilterControllerTest {
     private val service = mockk<SavedFilterService>(relaxed = false)
-    private val objectMapper = ObjectMapper().registerKotlinModule()
     private lateinit var mockMvc: MockMvc
 
     private val actorId = UUID.fromString("11111111-1111-1111-1111-111111111111")

@@ -26,7 +26,8 @@ import java.util.UUID
  *
  * 검증 범위 (FR-SR-03 plan Task 1 / spec §데이터 모델 / DATA.md §4 TIMESTAMPTZ 강제).
  * - saved_filters 테이블 존재 + 8개 컬럼(id/owner_id/name/aql_query/project_key/created_at/updated_at/version)
- * - id/owner_id = uuid NOT NULL, name/project_key = varchar NOT NULL, aql_query = text NOT NULL, version = bigint NOT NULL
+ * - id/owner_id = uuid NOT NULL, name/project_key = varchar NOT NULL
+ * - aql_query = text NOT NULL, version = bigint NOT NULL
  * - created_at/updated_at = timestamptz NOT NULL (DATA.md §4.1#4 타임존 강제 — TIMESTAMP without tz 금지)
  * - UNIQUE(owner_id, name) 제약 존재 + 같은 (owner_id, name) 중복 INSERT 위반
  * - 인덱스 idx_saved_filters_owner / idx_saved_filters_project 존재
