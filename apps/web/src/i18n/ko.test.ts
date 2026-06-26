@@ -739,6 +739,55 @@ describe('favoriteLabels — 즐겨찾기 UI 문자열 콜론 종결 가드 (FR-
   })
 })
 
+// ── savedFilterLabels — 저장 필터 UI 문자열 (FR-SR-03 Task-1) ─────────────────
+import { savedFilterLabels } from './saved-filter-labels'
+
+describe('savedFilterLabels — 저장 필터 UI 문자열 콜론 종결 가드 (FR-SR-03)', () => {
+  it('모든 문자열 값은 콜론으로 끝나지 않는다 (글로벌 §5)', () => {
+    for (const [key, value] of Object.entries(savedFilterLabels)) {
+      if (typeof value === 'string') {
+        expect(value, `savedFilterLabels["${key}"] = "${value}" 는 콜론으로 끝나면 안 됩니다`).not.toMatch(/:$/)
+      }
+    }
+  })
+
+  it('sectionTitle 키가 존재한다', () => {
+    expectTypeOf(savedFilterLabels).toHaveProperty('sectionTitle')
+  })
+
+  it('myFiltersTab 키가 존재한다', () => {
+    expectTypeOf(savedFilterLabels).toHaveProperty('myFiltersTab')
+  })
+
+  it('sharedFiltersTab 키가 존재한다', () => {
+    expectTypeOf(savedFilterLabels).toHaveProperty('sharedFiltersTab')
+  })
+
+  it('emptyState 키가 존재한다', () => {
+    expectTypeOf(savedFilterLabels).toHaveProperty('emptyState')
+  })
+
+  it('createButton 키가 존재한다', () => {
+    expectTypeOf(savedFilterLabels).toHaveProperty('createButton')
+  })
+
+  it('saveButton 키가 존재한다', () => {
+    expectTypeOf(savedFilterLabels).toHaveProperty('saveButton')
+  })
+
+  it('deleteButton 키가 존재한다', () => {
+    expectTypeOf(savedFilterLabels).toHaveProperty('deleteButton')
+  })
+
+  it('nameConflictError 키가 존재한다', () => {
+    expectTypeOf(savedFilterLabels).toHaveProperty('nameConflictError')
+  })
+
+  it('conflictError 키가 존재한다', () => {
+    expectTypeOf(savedFilterLabels).toHaveProperty('conflictError')
+  })
+})
+
 // ── epicChildrenStrings ──────────────────────────────────────────────────────
 
 describe('epicChildrenStrings — 에픽 자식 이슈 섹션 문자열 (FR-EP-01 D6)', () => {
