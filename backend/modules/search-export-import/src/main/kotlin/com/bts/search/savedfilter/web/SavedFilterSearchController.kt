@@ -1,4 +1,4 @@
-// 저장된 필터 실행 REST 컨트롤러 — GET /api/v1/filters/{id}/search (viewer 권한 재실행, FR-SR-03)
+// 저장된 필터 실행 REST 컨트롤러 — GET /api/v1/filters/{id}/search (viewer 권한 재실행, FR-SR-03 PR2)
 
 package com.bts.search.savedfilter.web
 
@@ -28,7 +28,7 @@ import java.util.UUID
  *
  * ### 처리 흐름
  * 1. actor 추출([SavedFilterActorExtractor]) — 리소스 조회보다 먼저(probe 차단).
- * 2. 필터 로드([SavedFilterService.getByIdForOwner]) — 가시성 게이트. 비가시 시 404.
+ * 2. 필터 로드([SavedFilterService.getVisibleById]) — 공유 가시성 게이트. 비가시 시 404.
  * 3. AQL 파싱([AqlLexer]+[AqlParser]) — 저장된 쿼리를 AST로 변환.
  * 4. 검색 위임([IssueSearchPort.search]) — **viewerUserId=actor**로 실행하여 viewer의
  *    visibility 보안 술어가 자동 결합된다(권한 상승 불가, FR-SR-02 패턴 재사용).
@@ -62,7 +62,8 @@ class SavedFilterSearchController(
     ): ResponseEntity<Page<AqlSearchHit>> {
         val actorId = SavedFilterActorExtractor.extract()
         validatePaging(page, size)
-        val filter = service.getByIdForOwner(id, actorId)
+        val ws = service.getVisibleById(id, actorId)
+        val filter = ws.filter
         log.info("SavedFilterSearchController.search id={} actor={} projectKey={}", id, actorId, filter.projectKey)
 
         val tokens = AqlLexer(filter.aqlQuery).tokenize()
