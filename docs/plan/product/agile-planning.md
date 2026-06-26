@@ -135,7 +135,7 @@
 |---|---|---|
 | 타임라인 500건 렌더 | 2s | ___ |
 
-> **Deviation(PR #192 — FR-TL-01 백엔드 D1~D5)**. ① 범위 **백엔드 우선**(D1~D5) — 프론트 Gantt 렌더(D6/D7) + Gantt 라이브러리 ADR(fr-index §A.3 #2)은 후속 PR(Maxi 확정 2026-06-26). ② cross-BC 데이터는 **신규 `TimelineLookupPort`(shared-kernel) + `TimelineLookupAdapter`(issue-tracking)** — `BoardIssueView` 확장 대신 전용 포트(날짜·issueType 필드 + 500 상한). ③ Epic 부모/자식 **트리 조립은 프론트(D6) 책임**, 백엔드는 평면 목록 + `epicKey` 만 반환. ④ 데이터는 FR-PL-01 `issues.start_date/due_date`(V025) 활용, 마이그레이션 0. ⑤ 타임라인 아이템 = start/due 중 1개+ 있는 가시·미삭제 이슈, BROWSE 권한, `created_at DESC` 결정적 truncation(500).
+> **Deviation(PR #192 — FR-TL-01 백엔드 D1~D5)**. ① 범위 **백엔드 우선**(D1~D5) — 프론트 Gantt 렌더(D6/D7) + Gantt 라이브러리 ADR(fr-index §A.3 #2)은 후속 PR(Maxi 확정 2026-06-26). ② cross-BC 데이터는 **신규 `TimelineLookupPort`(shared-kernel) + `TimelineLookupAdapter`(issue-tracking)** — `BoardIssueView` 확장 대신 전용 포트(날짜·issueType 필드 + 500 상한). ③ Epic 부모/자식 **트리 조립은 프론트(D6) 책임**, 백엔드는 평면 목록 + `epicKey` 만 반환. ④ 데이터는 FR-PL-01 `issues.start_date/due_date/target_date`(V025) 활용, 마이그레이션 0 — start~due=간트 막대, target_date=로드맵 마일스톤 마커(포함 필터엔 미반영). ⑤ 타임라인 아이템 = start/due 중 1개+ 있는 가시·미삭제 이슈, BROWSE 권한, `created_at DESC, key ASC` 결정적 truncation(500).
 
 ### §4.2 FR-TL-02 — 이슈 간 의존성 라인 (blocks)
 

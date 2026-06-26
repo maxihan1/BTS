@@ -24,8 +24,8 @@ import java.util.UUID
  * [IssueTestcontainersBase] JVM singleton PostgreSQL + Flyway 마이그레이션을 재사용한다.
  *
  * ## 테스트 시나리오
- * - TL-1. 날짜 필터 — startDate/dueDate 중 하나 이상 있는 이슈만 반환, 둘 다 null 인 이슈 제외 (EC1/EC2/EC7).
- * - TL-2. 소프트삭제 이슈는 결과에서 제외된다 (EC2).
+ * - TL-1. 날짜 필터 — startDate/dueDate 중 하나 이상 있는 이슈만 반환, 둘 다 null 인 이슈 제외 (EC1/EC2).
+ * - TL-2. 소프트삭제 이슈는 결과에서 제외된다 (EC7).
  * - TL-3. typeKey 정확 반환 — epic/story/task 혼합 시나리오 (B1).
  * - TL-4. access 집합 밖 보안등급 이슈는 결과에서 제외된다 (S4).
  * - TL-5. cross-project epic_id 는 epicKey 가 null 로 반환된다 (EC3).
@@ -156,7 +156,7 @@ class IssueRepositoryTimelineTest : IssueTestcontainersBase() {
     /**
      * Given  이슈 4개: A(startDate+dueDate), B(startDate only), C(dueDate only), D(둘 다 null).
      * When   listVisibleForTimeline 호출.
-     * Then   A, B, C 만 반환(D 는 날짜 없으므로 제외). truncated=false. EC1/EC2/EC7.
+     * Then   A, B, C 만 반환(D 는 날짜 없으므로 제외). truncated=false. EC1/EC2.
      */
     @Test
     @Order(1)
