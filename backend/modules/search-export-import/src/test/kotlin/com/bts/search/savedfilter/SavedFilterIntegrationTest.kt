@@ -92,8 +92,7 @@ class SavedFilterIntegrationTest {
         open fun repository(dsl: DSLContext): JooqSavedFilterRepository = JooqSavedFilterRepository(dsl)
 
         @Bean
-        open fun shareRepository(dsl: DSLContext): JooqSavedFilterShareRepository =
-            JooqSavedFilterShareRepository(dsl)
+        open fun shareRepository(dsl: DSLContext): JooqSavedFilterShareRepository = JooqSavedFilterShareRepository(dsl)
 
         /** 멤버십 stub — emptySet 반환(fail-closed). 통합테스트는 owner/AUTHENTICATED 경로만 검증한다. */
         @Bean
@@ -115,8 +114,9 @@ class SavedFilterIntegrationTest {
             shareRepository: JooqSavedFilterShareRepository,
             groupMembershipPort: GroupMembershipPort,
             projectMembershipPort: ProjectMembershipPort,
-        ): SavedFilterService =
-            SavedFilterService(repository, shareRepository, groupMembershipPort, projectMembershipPort)
+        ): SavedFilterService {
+            return SavedFilterService(repository, shareRepository, groupMembershipPort, projectMembershipPort)
+        }
 
         @Bean
         open fun stubIssueSearchPort(): IssueSearchPort =

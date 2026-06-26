@@ -204,6 +204,7 @@ class SavedFilterService(
      * @throws SavedFilterValidationException AQL 구문 오류.
      * @throws SavedFilterConflictException OCC 충돌 (stale version).
      */
+    @Suppress("LongParameterList") // id/actor/name/aql/version/shares 6개 — 컨트롤러 직접 호출 시그니처라 분리 불가.
     fun update(
         id: UUID,
         actorId: UUID,
