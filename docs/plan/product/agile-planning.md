@@ -123,17 +123,19 @@
 
 **우선순위**. 필수 | **선행**. §1.3 (ADR), §6 (FR-PL 일정) | **Plan slug**. `agile/timeline-gantt`
 
-- [ ] D1. 도메인 — TimelineItem (책임. backend-engineer)
-- [ ] D2. 명세 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (issues.start_date, due_date 활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /api/v1/timeline?project=...` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D1. 도메인 — TimelineItem (책임. backend-engineer) (PR #192)
+- [x] D2. 명세 (책임. backend-engineer) (PR #192)
+- [x] D3. 데이터 모델 — (issues.start_date, due_date 활용, 신규 스키마 0) (책임. backend-engineer) (PR #192)
+- [x] D4. 백엔드 — `GET /api/v1/timeline?project=...` (책임. backend-engineer) (PR #192)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) (PR #192)
 - [ ] D6. 프론트 UI — ADR 선택 라이브러리/SVG (책임. designer → frontend-engineer)
 - [ ] D7. E2E + NFR (책임. qa-engineer)
 
 | 항목 | 임계 | 실측 (p95) |
 |---|---|---|
 | 타임라인 500건 렌더 | 2s | ___ |
+
+> **Deviation(PR #192 — FR-TL-01 백엔드 D1~D5)**. ① 범위 **백엔드 우선**(D1~D5) — 프론트 Gantt 렌더(D6/D7) + Gantt 라이브러리 ADR(fr-index §A.3 #2)은 후속 PR(Maxi 확정 2026-06-26). ② cross-BC 데이터는 **신규 `TimelineLookupPort`(shared-kernel) + `TimelineLookupAdapter`(issue-tracking)** — `BoardIssueView` 확장 대신 전용 포트(날짜·issueType 필드 + 500 상한). ③ Epic 부모/자식 **트리 조립은 프론트(D6) 책임**, 백엔드는 평면 목록 + `epicKey` 만 반환. ④ 데이터는 FR-PL-01 `issues.start_date/due_date`(V025) 활용, 마이그레이션 0. ⑤ 타임라인 아이템 = start/due 중 1개+ 있는 가시·미삭제 이슈, BROWSE 권한, `created_at DESC` 결정적 truncation(500).
 
 ### §4.2 FR-TL-02 — 이슈 간 의존성 라인 (blocks)
 
