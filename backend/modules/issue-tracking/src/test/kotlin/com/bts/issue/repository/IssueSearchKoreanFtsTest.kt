@@ -732,6 +732,31 @@ class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
         }
     }
 
+    @Test
+    @Order(73)
+    fun `B1-REG-01 total 0건 상황에서 text 정렬은 IllegalArgumentException 이 발생한다`() {
+        // B1 회귀 가드 — early-return 이 buildOrderBy 보다 먼저 있으면
+        // total == 0 일 때 정렬 검증이 건너뛰어져 200 empty 반환(버그).
+        // 이 테스트는 시드 없이(BeforeEach 가 issues 를 비움) total == 0 상태에서
+        // text 정렬을 요청해 IllegalArgumentException 이 발생함을 단언한다.
+        assertThrows<IllegalArgumentException> {
+            repository.searchByAql(
+                projectKey = "TPRJ",
+                ast =
+                    AqlNode.Comparison(
+                        AqlField("text"),
+                        AqlOperator.CONTAINS,
+                        listOf(AqlValue.Str("절대없는검색어xyzqwerty")),
+                    ),
+                sort = listOf(AqlSort(AqlField("text"), SortDirection.ASC)),
+                actor = UUID.randomUUID(),
+                access = unrestrictedAccess,
+                page = 0,
+                size = 20,
+            )
+        }
+    }
+
     // ── C4: 인젝션 + LIKE 와일드카드 이스케이프 + 장문 DoS 무크래시 ─────────────
 
     @Test
