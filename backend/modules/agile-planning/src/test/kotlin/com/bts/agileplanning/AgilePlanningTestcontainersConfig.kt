@@ -12,6 +12,8 @@ import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import com.bts.shared.timeline.TimelineItemPage
+import com.bts.shared.timeline.TimelineLookupPort
 import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.WorkflowStateCatalog
 import com.bts.shared.workflow.WorkflowStateView
@@ -161,6 +163,23 @@ class AgilePlanningTestcontainersConfig {
                 projectKey: String,
                 viewerUserId: UUID,
             ): BoardIssuePage = BoardIssuePage(issues = emptyList(), truncated = false)
+        }
+
+    /**
+     * [TimelineLookupPort] 테스트 stub 빈 (FR-TL-01).
+     *
+     * agile-planning 단독 테스트 컨텍스트에는 issue-tracking 의 TimelineLookupAdapter 가 없다.
+     * [com.bts.agileplanning.application.TimelineApplicationService] 의 non-null 주입 요건을 충족하기 위해
+     * 빈 페이지 stub 을 명시 등록한다. (memory: cross-BC SPI 부팅 함정 — 신규 포트 의존이
+     * 전체-컨텍스트 통합테스트 부팅을 깸. fr-nt-02/03 전례와 동일.)
+     */
+    @Bean
+    fun timelineLookupPort(): TimelineLookupPort =
+        object : TimelineLookupPort {
+            override fun listTimelineItemsByProject(
+                projectKey: String,
+                viewerUserId: UUID,
+            ): TimelineItemPage = TimelineItemPage(items = emptyList(), truncated = false)
         }
 
     /**

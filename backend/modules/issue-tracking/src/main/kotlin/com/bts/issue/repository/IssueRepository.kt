@@ -781,6 +781,103 @@ class IssueRepository(
     )
 
     /**
+     * 프로젝트의 날짜 설정 이슈를 보안 등급 필터를 적용해 비페이지로 조회한다 (FR-TL-01 타임라인 뷰).
+     *
+     * startDate/dueDate 중 하나 이상 설정된 이슈만 반환한다. 날짜가 없는 이슈는 타임라인에 표시할 기간
+     * 정보가 없으므로 WHERE 절에서 제외한다.
+     *
+     * [listVisibleForBoard] 와 동일한 [buildActiveSecureWhere] 보안 술어를 재사용해,
+     * viewer 가 볼 수 없는 보안 등급 행을 SQL 수준에서 제외한다.
+     *
+     * 보드와의 차이.
+     * - ISSUE_TYPES JOIN 필수 — 타임라인 카드에 issueType 문자열이 필요하다 (B1).
+     * - WHERE: `(start_date IS NOT NULL OR due_date IS NOT NULL)` 날짜 필터 추가.
+     * - LIMIT: [TIMELINE_FETCH_LIMIT](500) + 1 로 truncated 판정 (보드는 1000).
+     *
+     * EPIC self LEFT JOIN 패턴은 [listVisibleForBoard] 와 동일하게 동일 프로젝트 조건을 포함해
+     * cross-project epic 데이터 누출을 차단한다 (P1-A 회귀방지).
+     *
+     * @param projectKey 프로젝트 접두사. 예: `"BTS"`.
+     * @param viewerUserId 조회 행위자(viewer) UUID. 보안 등급 필터의 reporter/assignee 동적 조건에 사용.
+     * @param access actor 가 접근 가능한 보안 등급 집합. unrestricted=true 이면 WHERE 술어 미적용(빠른경로).
+     * @return [TimelineFetchResult]. entries 는 최대 [TIMELINE_FETCH_LIMIT] 건. truncated 는 초과 여부.
+     */
+    @Transactional(readOnly = true)
+    fun listVisibleForTimeline(
+        projectKey: String,
+        viewerUserId: UUID,
+        access: IssueSecurityAccess,
+    ): TimelineFetchResult {
+        // 기본 보안 술어 + 날짜 필터 — 날짜 없는 이슈는 타임라인 표시 불가
+        val where =
+            buildActiveSecureWhere(projectKey, viewerUserId, access)
+                .and(ISSUES.START_DATE.isNotNull.or(ISSUES.DUE_DATE.isNotNull))
+
+        // EPIC self LEFT JOIN — 동일 프로젝트 조건 필수 (cross-project 누출 차단, P1-A 회귀방지)
+        val epicAlias = ISSUES.`as`(EPIC_ALIAS)
+
+        // LIMIT+1 조회: 결과가 LIMIT+1 건이면 truncated=true
+        val fetched =
+            dsl.select(
+                ISSUES.fields().toList() +
+                    listOf(
+                        epicAlias.KEY.`as`(EPIC_KEY_ALIAS),
+                        ISSUE_TYPES.KEY.`as`(TYPE_KEY_ALIAS),
+                    ),
+            )
+                .from(ISSUES)
+                .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+                .join(ISSUE_TYPES).on(ISSUES.TYPE_ID.eq(ISSUE_TYPES.ID))
+                .leftJoin(epicAlias).on(
+                    ISSUES.EPIC_ID.eq(epicAlias.ID)
+                        .and(epicAlias.DELETED_AT.isNull)
+                        .and(epicAlias.PROJECT_ID.eq(ISSUES.PROJECT_ID)),
+                )
+                .where(where)
+                // created_at 동률 시 key(유니크)로 보조 정렬 — 500/501 경계 truncation 행 단위 결정성 (M1)
+                .orderBy(ISSUES.CREATED_AT.desc(), ISSUES.KEY.asc())
+                .limit(TIMELINE_FETCH_LIMIT + 1)
+                .fetch { record ->
+                    val issue = record.into(ISSUES).toIssue()
+                    val epicKey = record.get(EPIC_KEY_ALIAS, String::class.java)
+                    val typeKey =
+                        record.get(TYPE_KEY_ALIAS, String::class.java)
+                            ?: error("issue_types.key must not be null in timeline join result")
+                    TimelineIssueEntry(issue = issue, epicKey = epicKey, typeKey = typeKey)
+                }
+
+        val truncated = fetched.size > TIMELINE_FETCH_LIMIT
+        val entries = if (truncated) fetched.take(TIMELINE_FETCH_LIMIT) else fetched
+        return TimelineFetchResult(entries = entries, truncated = truncated)
+    }
+
+    /**
+     * [listVisibleForTimeline] 단건 결과 — 이슈 + epic key + type key.
+     *
+     * [Issue] 도메인에는 epicKey/typeKey 필드가 없으므로 record 추출 결과를 함께 전달한다.
+     *
+     * @property issue 조회된 이슈 도메인 객체.
+     * @property epicKey 에픽 이슈 키. 에픽 없는 이슈 또는 cross-project epic 은 null.
+     * @property typeKey 이슈 유형 키. 예: `"epic"`, `"story"`, `"task"`.
+     */
+    data class TimelineIssueEntry(
+        val issue: Issue,
+        val epicKey: String?,
+        val typeKey: String,
+    )
+
+    /**
+     * [listVisibleForTimeline] 반환 VO.
+     *
+     * @property entries 조회된 타임라인 항목 목록. 최대 [TIMELINE_FETCH_LIMIT] 건.
+     * @property truncated LIMIT 초과 여부. true 이면 일부 이슈가 누락됐음을 의미.
+     */
+    data class TimelineFetchResult(
+        val entries: List<TimelineIssueEntry>,
+        val truncated: Boolean,
+    )
+
+    /**
      * "활성 프로젝트 이슈" 술어와 [buildSecurityCondition] 보안 필터를 결합한 WHERE 조건을 만든다.
      *
      * [listWithType](페이지 조회)과 [listVisibleForBoard](보드 비페이지 조회)가 동일한 보안 필터를
@@ -956,6 +1053,12 @@ class IssueRepository(
          * 상한을 둔다. spec NFR(보드 카드 200건) 대비 여유를 둔 값이다.
          */
         internal const val BOARD_CARD_FETCH_LIMIT = 1000
+
+        /**
+         * 타임라인 비페이지 조회([listVisibleForTimeline]) 상한 (FR-TL-01 NFR 정렬).
+         * startDate/dueDate 가 있는 이슈를 한 번에 반환하되, 메모리·렌더 부담 방지를 위해 상한을 둔다.
+         */
+        internal const val TIMELINE_FETCH_LIMIT = 500
 
         /**
          * 기본 unrestricted [IssueSecurityAccess] — [listWithType] 파라미터 기본값.
