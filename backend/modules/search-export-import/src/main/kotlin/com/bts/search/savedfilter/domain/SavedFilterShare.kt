@@ -40,7 +40,10 @@ data class SavedFilterShare(
          * @return 불변식을 만족하는 [SavedFilterShare].
          * @throws IllegalArgumentException 불변식 위반 시.
          */
-        fun create(shareType: ShareType, targetId: String?): SavedFilterShare {
+        fun create(
+            shareType: ShareType,
+            targetId: String?,
+        ): SavedFilterShare {
             return when (shareType) {
                 ShareType.PROJECT, ShareType.GROUP -> {
                     val normalized = targetId?.trim()

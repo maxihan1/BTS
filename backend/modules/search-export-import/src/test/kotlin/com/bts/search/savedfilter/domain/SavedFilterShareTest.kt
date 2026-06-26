@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
 class SavedFilterShareTest {
-
     // ── ShareType.from 불변식 ─────────────────────────────────────────────────
 
     @Test
@@ -74,10 +73,11 @@ class SavedFilterShareTest {
 
     @Test
     fun `create - PROJECT에 유효한 targetId이면 SavedFilterShare를 반환한다`() {
-        val share = SavedFilterShare.create(
-            shareType = ShareType.PROJECT,
-            targetId = "ATLAS",
-        )
+        val share =
+            SavedFilterShare.create(
+                shareType = ShareType.PROJECT,
+                targetId = "ATLAS",
+            )
         assertEquals(ShareType.PROJECT, share.shareType)
         assertEquals("ATLAS", share.targetId)
     }
@@ -106,10 +106,11 @@ class SavedFilterShareTest {
 
     @Test
     fun `create - GROUP에 유효한 targetId이면 SavedFilterShare를 반환한다`() {
-        val share = SavedFilterShare.create(
-            shareType = ShareType.GROUP,
-            targetId = "group-uuid-1234",
-        )
+        val share =
+            SavedFilterShare.create(
+                shareType = ShareType.GROUP,
+                targetId = "group-uuid-1234",
+            )
         assertEquals(ShareType.GROUP, share.shareType)
         assertEquals("group-uuid-1234", share.targetId)
     }
@@ -118,10 +119,11 @@ class SavedFilterShareTest {
 
     @Test
     fun `create - AUTHENTICATED에 targetId null이면 성공한다`() {
-        val share = SavedFilterShare.create(
-            shareType = ShareType.AUTHENTICATED,
-            targetId = null,
-        )
+        val share =
+            SavedFilterShare.create(
+                shareType = ShareType.AUTHENTICATED,
+                targetId = null,
+            )
         assertEquals(ShareType.AUTHENTICATED, share.shareType)
         assertEquals(null, share.targetId)
     }
@@ -140,10 +142,11 @@ class SavedFilterShareTest {
 
     @Test
     fun `create - PROJECT의 targetId 앞뒤 공백은 trim된다`() {
-        val share = SavedFilterShare.create(
-            shareType = ShareType.PROJECT,
-            targetId = "  ATLAS  ",
-        )
+        val share =
+            SavedFilterShare.create(
+                shareType = ShareType.PROJECT,
+                targetId = "  ATLAS  ",
+            )
         assertEquals("ATLAS", share.targetId)
     }
 
@@ -151,31 +154,34 @@ class SavedFilterShareTest {
 
     @Test
     fun `normalize - 동일한 shareType과 targetId 쌍은 중복 제거된다`() {
-        val shares = listOf(
-            SavedFilterShare.create(ShareType.PROJECT, "ATLAS"),
-            SavedFilterShare.create(ShareType.PROJECT, "ATLAS"),
-            SavedFilterShare.create(ShareType.PROJECT, "ATLAS"),
-        )
+        val shares =
+            listOf(
+                SavedFilterShare.create(ShareType.PROJECT, "ATLAS"),
+                SavedFilterShare.create(ShareType.PROJECT, "ATLAS"),
+                SavedFilterShare.create(ShareType.PROJECT, "ATLAS"),
+            )
         val result = SavedFilterShare.normalize(shares)
         assertThat(result).hasSize(1)
     }
 
     @Test
     fun `normalize - shareType이 다르면 중복으로 보지 않는다`() {
-        val shares = listOf(
-            SavedFilterShare.create(ShareType.PROJECT, "ATLAS"),
-            SavedFilterShare.create(ShareType.GROUP, "ATLAS"),
-        )
+        val shares =
+            listOf(
+                SavedFilterShare.create(ShareType.PROJECT, "ATLAS"),
+                SavedFilterShare.create(ShareType.GROUP, "ATLAS"),
+            )
         val result = SavedFilterShare.normalize(shares)
         assertThat(result).hasSize(2)
     }
 
     @Test
     fun `normalize - targetId가 다르면 중복으로 보지 않는다`() {
-        val shares = listOf(
-            SavedFilterShare.create(ShareType.PROJECT, "ATLAS"),
-            SavedFilterShare.create(ShareType.PROJECT, "BETA"),
-        )
+        val shares =
+            listOf(
+                SavedFilterShare.create(ShareType.PROJECT, "ATLAS"),
+                SavedFilterShare.create(ShareType.PROJECT, "BETA"),
+            )
         val result = SavedFilterShare.normalize(shares)
         assertThat(result).hasSize(2)
     }
@@ -184,18 +190,20 @@ class SavedFilterShareTest {
 
     @Test
     fun `normalize - dedupe 후 MAX_SHARES_PER_FILTER 이하이면 통과한다`() {
-        val shares = (1..SavedFilterShare.MAX_SHARES_PER_FILTER).map { i ->
-            SavedFilterShare.create(ShareType.PROJECT, "PROJ-$i")
-        }
+        val shares =
+            (1..SavedFilterShare.MAX_SHARES_PER_FILTER).map { i ->
+                SavedFilterShare.create(ShareType.PROJECT, "PROJ-$i")
+            }
         val result = SavedFilterShare.normalize(shares)
         assertThat(result).hasSize(SavedFilterShare.MAX_SHARES_PER_FILTER)
     }
 
     @Test
     fun `normalize - dedupe 후 MAX_SHARES_PER_FILTER 초과 시 IllegalArgumentException을 던진다`() {
-        val shares = (1..(SavedFilterShare.MAX_SHARES_PER_FILTER + 1)).map { i ->
-            SavedFilterShare.create(ShareType.PROJECT, "PROJ-$i")
-        }
+        val shares =
+            (1..(SavedFilterShare.MAX_SHARES_PER_FILTER + 1)).map { i ->
+                SavedFilterShare.create(ShareType.PROJECT, "PROJ-$i")
+            }
         assertThrows<IllegalArgumentException> {
             SavedFilterShare.normalize(shares)
         }
@@ -204,9 +212,10 @@ class SavedFilterShareTest {
     @Test
     fun `normalize - 동일 공유 60개는 dedupe 후 1개가 되어 상한 검사를 통과한다`() {
         // MAX_SHARES_PER_FILTER = 50 이지만 dedupe 먼저 → 1개 → 통과
-        val shares = (1..60).map {
-            SavedFilterShare.create(ShareType.PROJECT, "ATLAS")
-        }
+        val shares =
+            (1..60).map {
+                SavedFilterShare.create(ShareType.PROJECT, "ATLAS")
+            }
         val result = SavedFilterShare.normalize(shares)
         assertThat(result).hasSize(1)
     }
