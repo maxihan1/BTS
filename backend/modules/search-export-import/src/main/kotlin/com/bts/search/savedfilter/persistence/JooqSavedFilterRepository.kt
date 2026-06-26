@@ -134,7 +134,10 @@ class JooqSavedFilterRepository(
     }
 
     /**
-     * actor 가 열람 가능한 단건 필터를 조회한다.
+     * actor 가 열람 가능한 단건 필터를 조회한다 (소유자 또는 공유 술어 B3 매칭).
+     *
+     * `WHERE id = :id AND (owner_id = :actorId OR <sharedWithPredicate>)` 조건으로 조회한다.
+     * 비소유자인 경우 공유 술어가 매칭될 때만 반환하므로 존재 은닉이 자동으로 적용된다.
      */
     @Transactional(readOnly = true)
     override fun findVisibleById(
@@ -142,12 +145,22 @@ class JooqSavedFilterRepository(
         actorId: UUID,
         projectKeys: Set<String>,
         groupIds: Set<String>,
-    ): SavedFilter? {
-        TODO("Task 6 GREEN 에서 구현 예정")
-    }
+    ): SavedFilter? =
+        dsl
+            .selectFrom(SAVED_FILTERS)
+            .where(SAVED_FILTERS.ID.eq(id))
+            .and(
+                SAVED_FILTERS.OWNER_ID.eq(actorId)
+                    .or(sharedWithPredicate(projectKeys, groupIds)),
+            )
+            .fetchOne()
+            ?.let { toDomain(it) }
 
     /**
      * actor 에게 공유된 비소유 필터 목록을 페이지네이션으로 반환한다.
+     *
+     * `WHERE owner_id != :actorId AND <sharedWithPredicate>` 조건으로 조회한다.
+     * `ORDER BY created_at ASC, id ASC` + `LIMIT :size OFFSET :page * :size`.
      */
     @Transactional(readOnly = true)
     override fun findSharedWith(
@@ -156,9 +169,16 @@ class JooqSavedFilterRepository(
         groupIds: Set<String>,
         page: Int,
         size: Int,
-    ): List<SavedFilter> {
-        TODO("Task 6 GREEN 에서 구현 예정")
-    }
+    ): List<SavedFilter> =
+        dsl
+            .selectFrom(SAVED_FILTERS)
+            .where(SAVED_FILTERS.OWNER_ID.ne(actorId))
+            .and(sharedWithPredicate(projectKeys, groupIds))
+            .orderBy(SAVED_FILTERS.CREATED_AT.asc(), SAVED_FILTERS.ID.asc())
+            .limit(size)
+            .offset(page.toLong() * size.toLong())
+            .fetch()
+            .map { toDomain(it) }
 
     // ── private mapper ─────────────────────────────────────────────────────────
 
@@ -179,4 +199,59 @@ class JooqSavedFilterRepository(
             updatedAt = record.updatedAt?.toInstant(),
             version = record.version ?: error("version 이 null — id=${record.id}"),
         )
+
+    /**
+     * 단일 가시성 술어 (B3 핵심) — 공유 매칭 EXISTS 조각.
+     *
+     * [findVisibleById] 와 [findSharedWith] 가 이 헬퍼를 공유해 술어 일관성을 보장한다.
+     * 같은 조각에서 두 메서드가 만들어지므로 parity 가 자동으로 성립한다.
+     *
+     * 생성하는 SQL 조각.
+     * ```sql
+     * EXISTS (
+     *   SELECT 1 FROM saved_filter_shares
+     *   WHERE filter_id = saved_filters.id
+     *   AND (
+     *     share_type = 'AUTHENTICATED'
+     *     OR (share_type = 'PROJECT' AND target_id IN (:projectKeys))  -- projectKeys 비어 있으면 제외
+     *     OR (share_type = 'GROUP'   AND target_id IN (:groupIds))     -- groupIds 비어 있으면 제외
+     *   )
+     * )
+     * ```
+     *
+     * [projectKeys] 또는 [groupIds] 가 빈 집합이면 해당 분기를 조건에서 제외한다.
+     * jOOQ `.in(emptyCollection)` 의 버전별 동작 차이를 피하기 위한 명시적 가드.
+     *
+     * @param projectKeys actor 가 속한 프로젝트 키 집합.
+     * @param groupIds actor 가 속한 그룹 ID 집합.
+     * @return 공유 매칭 EXISTS 조건.
+     */
+    private fun sharedWithPredicate(
+        projectKeys: Set<String>,
+        groupIds: Set<String>,
+    ): Condition {
+        val conditions =
+            buildList {
+                add(SAVED_FILTER_SHARES.SHARE_TYPE.eq("AUTHENTICATED"))
+                if (projectKeys.isNotEmpty()) {
+                    add(
+                        SAVED_FILTER_SHARES.SHARE_TYPE.eq("PROJECT")
+                            .and(SAVED_FILTER_SHARES.TARGET_ID.`in`(projectKeys)),
+                    )
+                }
+                if (groupIds.isNotEmpty()) {
+                    add(
+                        SAVED_FILTER_SHARES.SHARE_TYPE.eq("GROUP")
+                            .and(SAVED_FILTER_SHARES.TARGET_ID.`in`(groupIds)),
+                    )
+                }
+            }
+
+        return DSL.exists(
+            DSL.selectOne()
+                .from(SAVED_FILTER_SHARES)
+                .where(SAVED_FILTER_SHARES.FILTER_ID.eq(SAVED_FILTERS.ID))
+                .and(DSL.or(conditions)),
+        )
+    }
 }
