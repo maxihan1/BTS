@@ -56,6 +56,7 @@ FR-SR-01/02와 동일. FTS 조건이 무엇이든 actor가 접근 가능한 보�
 - `search_vector` 컬럼 갱신 방식(STORED generated column vs 트리거 vs 쿼리타임 `to_tsvector`)은 spec/plan에서 결정. generated column이면 INSERT/UPDATE 경로 무변경(자동 갱신).
 - SDD 10.2 + product §2.4 + fr-index FR-SR-04 표기를 본 ADR 기준으로 전수 동기화(`simple`+trigram, Mecab-ko deviation 주석). verify-master-plan 통과.
 - Docker/인프라 변경 0. NFR(검색 응답) 측정은 EXPLAIN으로 GIN 인덱스 사용 검증(FR-SR-02 D3 표현식 인덱스 교훈 — `to_tsvector` 컬럼/표현식과 쿼리 표현식 일치 필수, 불일치 시 죽은 인덱스).
+- **2자 이하 한글 검색어 비색인(인지된 한계 — code review C5).** trigram은 3-gram 기반이라 2자 이하 검색어(예. "로그")는 `idx_issues_description_trgm`/`idx_issues_summary_trgm`을 사용하지 못하고 seq scan recheck로 처리된다. FTS(`@@`)도 토큰 전체 일치만 하므로 부분 토큰은 미가속. **정확성은 유지(결과 누락 없음), 성능만 영향**. 형태소 분석기 미도입(D1)의 trade-off 범위. 단문 검색이 빈번해지면 후속 FR에서 재검토.
 
 ## 대안 (Rejected)
 
