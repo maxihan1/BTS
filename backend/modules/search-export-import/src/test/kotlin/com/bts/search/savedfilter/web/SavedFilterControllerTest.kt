@@ -7,6 +7,7 @@ import com.bts.search.savedfilter.application.SavedFilterDuplicateNameException
 import com.bts.search.savedfilter.application.SavedFilterNotFoundException
 import com.bts.search.savedfilter.application.SavedFilterService
 import com.bts.search.savedfilter.application.SavedFilterValidationException
+import com.bts.search.savedfilter.application.SavedFilterWithShares
 import com.bts.search.savedfilter.domain.SavedFilter
 import io.mockk.every
 import io.mockk.mockk
@@ -84,7 +85,11 @@ class SavedFilterControllerTest {
 
     @Test
     fun `GET 목록 200`() {
-        every { service.listByOwner(actorId) } returns listOf(sampleFilter(), sampleFilter(name = "다른 필터"))
+        val ws = listOf(
+            SavedFilterWithShares(sampleFilter(), emptyList()),
+            SavedFilterWithShares(sampleFilter(name = "다른 필터"), emptyList()),
+        )
+        every { service.listOwnedWithShares(actorId) } returns ws
         mockMvc
             .perform(
                 org.springframework.test.web.servlet.request.MockMvcRequestBuilders
@@ -96,7 +101,8 @@ class SavedFilterControllerTest {
     @Test
     fun `GET 단건 200`() {
         val f = sampleFilter()
-        every { service.getByIdForOwner(f.id!!, actorId) } returns f
+        val ws = SavedFilterWithShares(f, emptyList())
+        every { service.getVisibleById(f.id!!, actorId) } returns ws
         mockMvc
             .perform(
                 org.springframework.test.web.servlet.request.MockMvcRequestBuilders
@@ -182,7 +188,7 @@ class SavedFilterControllerTest {
     @Test
     fun `비가시 단건 404`() {
         val id = UUID.randomUUID()
-        every { service.getByIdForOwner(id, actorId) } throws SavedFilterNotFoundException(id)
+        every { service.getVisibleById(id, actorId) } throws SavedFilterNotFoundException(id)
         mockMvc
             .perform(
                 org.springframework.test.web.servlet.request.MockMvcRequestBuilders
