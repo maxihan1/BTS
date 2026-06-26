@@ -105,14 +105,13 @@ class SavedFilterControllerSharesTest {
      */
     @Test
     fun `POST 알 수 없는 shareType 400 (500 아님)`() {
+        val body =
+            """{"name":"x","aqlQuery":"status = Open","projectKey":"ATL","shares":[{"shareType":"BAD"}]}"""
         mockMvc
             .perform(
                 post("/api/v1/filters")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content(
-                        """{"name":"x","aqlQuery":"status = Open","projectKey":"ATL",
-                        |"shares":[{"shareType":"INVALID_TYPE","targetId":null}]}""".trimMargin(),
-                    ),
+                    .content(body),
             ).andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.status").value(400))
     }
@@ -123,14 +122,13 @@ class SavedFilterControllerSharesTest {
      */
     @Test
     fun `POST shareType null → 400`() {
+        val body =
+            """{"name":"x","aqlQuery":"status = Open","projectKey":"ATL","shares":[{"shareType":null}]}"""
         mockMvc
             .perform(
                 post("/api/v1/filters")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content(
-                        """{"name":"x","aqlQuery":"status = Open","projectKey":"ATL",
-                        |"shares":[{"shareType":null,"targetId":null}]}""".trimMargin(),
-                    ),
+                    .content(body),
             ).andExpect(status().isBadRequest)
     }
 
@@ -140,14 +138,13 @@ class SavedFilterControllerSharesTest {
     @Test
     fun `PUT 알 수 없는 shareType 400 (500 아님)`() {
         val id = UUID.randomUUID()
+        val body =
+            """{"name":"x","aqlQuery":"status = Open","version":0,"shares":[{"shareType":"BAD","targetId":"ATL"}]}"""
         mockMvc
             .perform(
                 put("/api/v1/filters/$id")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content(
-                        """{"name":"x","aqlQuery":"status = Open","version":0,
-                        |"shares":[{"shareType":"NO_SUCH_TYPE","targetId":"ATL"}]}""".trimMargin(),
-                    ),
+                    .content(body),
             ).andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.status").value(400))
     }

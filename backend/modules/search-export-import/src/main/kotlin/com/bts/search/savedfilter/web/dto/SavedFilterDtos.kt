@@ -31,9 +31,8 @@ data class ShareRequest(
      *         또는 도메인 불변식(PROJECT/GROUP에 targetId 필수, AUTHENTICATED에 targetId 불가)을 위반할 때.
      */
     fun toDomain(): SavedFilterShare {
-        val type = ShareType.from(
-            shareType ?: throw IllegalArgumentException("shareType은 필수입니다."),
-        )
+        val rawType = shareType ?: throw IllegalArgumentException("shareType은 필수입니다.")
+        val type = ShareType.from(rawType)
         return SavedFilterShare.create(type, targetId)
     }
 }
@@ -57,8 +56,9 @@ data class ShareDto(
          *
          * @param share 변환할 도메인 공유 객체.
          */
-        fun from(share: SavedFilterShare): ShareDto =
-            ShareDto(shareType = share.shareType.name, targetId = share.targetId)
+        fun from(share: SavedFilterShare): ShareDto {
+            return ShareDto(shareType = share.shareType.name, targetId = share.targetId)
+        }
     }
 }
 

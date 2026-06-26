@@ -85,10 +85,11 @@ class SavedFilterControllerTest {
 
     @Test
     fun `GET 목록 200`() {
-        val ws = listOf(
-            SavedFilterWithShares(sampleFilter(), emptyList()),
-            SavedFilterWithShares(sampleFilter(name = "다른 필터"), emptyList()),
-        )
+        val ws =
+            listOf(
+                SavedFilterWithShares(sampleFilter(), emptyList()),
+                SavedFilterWithShares(sampleFilter(name = "다른 필터"), emptyList()),
+            )
         every { service.listOwnedWithShares(actorId) } returns ws
         mockMvc
             .perform(

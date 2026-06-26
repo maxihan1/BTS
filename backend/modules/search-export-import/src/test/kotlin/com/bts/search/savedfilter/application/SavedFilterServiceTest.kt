@@ -86,50 +86,6 @@ class SavedFilterServiceTest {
         }
     }
 
-    // ── getByIdForOwner ──────────────────────────────────────────────────────
-
-    @Test
-    fun `getByIdForOwner - 존재하지 않으면 SavedFilterNotFoundException`() {
-        every { repository.findById(any()) } returns null
-
-        assertThrows<SavedFilterNotFoundException> {
-            service.getByIdForOwner(UUID.randomUUID(), actorId)
-        }
-    }
-
-    @Test
-    fun `getByIdForOwner - 타 owner 필터는 SavedFilterNotFoundException 존재 은닉`() {
-        val othersFilter = aFilter(ownerId = otherId)
-        every { repository.findById(othersFilter.id!!) } returns othersFilter
-
-        assertThrows<SavedFilterNotFoundException> {
-            service.getByIdForOwner(othersFilter.id!!, actorId)
-        }
-    }
-
-    @Test
-    fun `getByIdForOwner - 본인 필터는 정상 반환`() {
-        val myFilter = aFilter()
-        every { repository.findById(myFilter.id!!) } returns myFilter
-
-        val result = service.getByIdForOwner(myFilter.id!!, actorId)
-
-        assertEquals(myFilter, result)
-    }
-
-    // ── listByOwner ──────────────────────────────────────────────────────────
-
-    @Test
-    fun `listByOwner - repo findByOwner에 위임하고 결과 반환`() {
-        val filters = listOf(aFilter(), aFilter())
-        every { repository.findByOwner(actorId) } returns filters
-
-        val result = service.listByOwner(actorId)
-
-        assertEquals(filters, result)
-        verify { repository.findByOwner(actorId) }
-    }
-
     // ── update ───────────────────────────────────────────────────────────────
 
     @Test

@@ -102,27 +102,6 @@ class SavedFilterService(
     }
 
     /**
-     * 필터를 ID와 actor 로 조회한다. actor 가 owner 가 아니면 404 (존재 은닉).
-     *
-     * PR2 의 공유 가시성을 반영하지 않는 owner 전용 경로다. 컨트롤러가 [getVisibleById] 로
-     * 전환되기 전까지 유지된다(T8 전환 후 제거 예정).
-     *
-     * @param id 조회할 필터 식별자.
-     * @param actorId 요청자 사용자 UUID.
-     * @return 소유한 필터 도메인 객체.
-     * @throws SavedFilterNotFoundException 존재하지 않거나 타 owner 필터.
-     */
-    @Transactional(readOnly = true)
-    fun getByIdForOwner(
-        id: UUID,
-        actorId: UUID,
-    ): SavedFilter {
-        val filter = repository.findById(id) ?: throw SavedFilterNotFoundException(id)
-        if (filter.ownerId != actorId) throw SavedFilterNotFoundException(id)
-        return filter
-    }
-
-    /**
      * 공유 가시성을 반영해 필터 단건을 조회한다.
      *
      * owner 면 멤버십 포트 호출 없이 단축 반환한다(C6/EC15). 비소유자는 멤버십 기반으로
@@ -143,15 +122,6 @@ class SavedFilterService(
         val visible = findVisibleForActor(id, actorId) ?: throw SavedFilterNotFoundException(id)
         return withShares(visible)
     }
-
-    /**
-     * actor 소유 필터 목록을 반환한다.
-     *
-     * @param actorId 소유자 사용자 UUID.
-     * @return actor 소유 필터 목록 (created_at ASC 정렬).
-     */
-    @Transactional(readOnly = true)
-    fun listByOwner(actorId: UUID): List<SavedFilter> = repository.findByOwner(actorId)
 
     /**
      * actor 소유 필터 목록을 공유 목록과 함께 반환한다.
