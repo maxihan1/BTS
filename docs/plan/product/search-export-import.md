@@ -78,12 +78,14 @@
 
 **우선순위**. 필수 | **선행**. §2.2 | **Plan slug**. `search/korean-morpheme`
 
+> **[구현 방식 확정 — FR-SR-04, PR #195 예정]** 형태소 분석기 미도입 결정 — **`simple` tsvector + pg_trgm 하이브리드(zero-dep, Docker 무변경)**. D2 "Mecab-ko vs Lucene-Kr 도입"은 ADR `docs/decisions/2026-06-26-fr-sr-04-korean-fts.md`로 superseded(FR-SR-02 ADR이 ANTLR 4를 superseded한 것과 동형). 구현 방식. AQL 신규 `text` 가상 필드(`~` 전용, summary+description 전문 검색) + `issues.search_vector` STORED generated column(V032, `to_tsvector('simple', coalesce(summary,'')||' '||coalesce(description,''))`) + GIN 인덱스(`idx_issues_search_vector`) + description trigram 인덱스(`idx_issues_description_trgm`, V031 summary 동형). BC 격리. 논리 search-export-import / 물리 issue-tracking(FR-SR-01/02 패턴 계승, 새 BC 신설 0). visibility 보안 술어 자동 AND(우회 불가). **D1~D5 백엔드 — D6/D7(프론트 AQL syntax highlight `text` 키워드 + E2E)은 후속 PR.**
+
 - [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — Mecab-ko vs Lucene-Kr 비교 후 선택. PostgreSQL FTS 통합 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `tsvector` 컬럼 + GIN 인덱스 + 한글 dictionary (책임. db-engineer)
-- [ ] D4. 백엔드 — 인덱스 생성 트리거 + 검색 함수 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — 형태소 분리 케이스 30개 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — (§2.2와 통합 — 검색창 동일) (책임. frontend-engineer)
+- [ ] D2. 명세 — **`simple` tsvector + pg_trgm 결정**(Mecab-ko/Lucene-Kr 미도입 — [ADR docs/decisions/2026-06-26-fr-sr-04-korean-fts.md](../decisions/2026-06-26-fr-sr-04-korean-fts.md)). AQL `text` 가상 필드(`~` 전용). PostgreSQL FTS 통합 (책임. backend-engineer)
+- [ ] D3. 데이터 모델 — `issues.search_vector` STORED generated column(V032) + GIN 인덱스 + description trigram 인덱스 (책임. db-engineer)
+- [ ] D4. 백엔드 — AQL `text` 분기(FTS + trigram 하이브리드) + 빈 검색어 결과 0 + `ORDER BY text` 거부 400 (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 — 한글 FTS/trigram 케이스 30개(조사변형·부분문자열·혼용·다중토큰, 활용형 미매칭 명시 + 양성 대조군) (책임. backend-engineer)
+- [ ] D6. 프론트 UI — (§2.2와 통합 — 검색창 동일, `text` 키워드 syntax highlight 추가) (책임. frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
 ## §3 Export (FR-EX, 2개)
