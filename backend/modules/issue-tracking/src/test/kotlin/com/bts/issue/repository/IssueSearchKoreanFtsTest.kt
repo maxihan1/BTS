@@ -191,7 +191,7 @@ class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
                 repeat(count) { idx ->
                     val n = idx + 1
                     stmt.setObject(1, UUID.randomUUID())
-                    stmt.setString(2, "TPRJ-BULK$n")
+                    stmt.setString(2, "TPRJ-${n + 1000}")
                     stmt.setObject(3, testProjectId)
                     stmt.setLong(4, tid)
                     stmt.setString(5, "벌크 시드 이슈 $n")
@@ -212,14 +212,15 @@ class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
     @Test
     @Order(1)
     fun `KR-A-01 이슈 어간 검색은 이슈를 포함한 설명에서 trigram 으로 매칭된다`() {
-        // "이슈를" 의 FTS 토큰은 "이슈를" 이므로 "이슈" 와 FTS 불일치 — trigram "%이슈%" 로 매칭
-        insertIssue(seq = 1, description = "이슈를 처리해야 합니다")
-        insertIssue(seq = 2, description = "관련 없는 내용입니다")
+        // "이슈를" 의 FTS 토큰은 "이슈를" 이므로 "이슈" 와 FTS 불일치 — trigram "%이슈%" 로 매칭.
+        // 기본 제목 "테스트 이슈 N" 이 "이슈" 를 포함해 양쪽 모두 매칭되므로 명시적 neutral 제목 사용.
+        insertIssue(seq = 1, summary = "항목 번호 1", description = "이슈를 처리해야 합니다")
+        insertIssue(seq = 2, summary = "항목 번호 2", description = "관련 없는 내용입니다")
 
         val result = searchByText("이슈")
 
         assertThat(result.total).isEqualTo(1L)
-        assertThat(result.items.first().summary).isEqualTo("테스트 이슈 1")
+        assertThat(result.items.first().summary).isEqualTo("항목 번호 1")
     }
 
     @Test
@@ -731,15 +732,18 @@ class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
     @Test
     @Order(82)
     fun `C4-INJ-02 LIKE 와일드카드 포함 검색어는 이스케이프되어 의도치 않은 전체 매칭이 없다`() {
-        // 이슈 3건 시드 — 이스케이프 미적용 시 '%이슈%' 패턴으로 전부 매칭될 수 있음
-        insertIssue(seq = 1, description = "이슈 처리 방법")
-        insertIssue(seq = 2, description = "이슈 수정 완료")
-        insertIssue(seq = 3, description = "이슈 확인 필요")
+        // 설명에 '_' 가 없는 이슈 3건 시드.
+        // 이스케이프 미적용 시 '%_%' = 1글자 이상인 모든 행 매칭 (LIKE '_' 주입 성공 시 3건 반환).
+        // 이스케이프 적용 시 '%\_%' = 리터럴 '_' 없음 → 0건.
+        // FTS 경로: plainto_tsquery('simple', '_') 는 '_' lexeme 가 설명에 없어 0건.
+        insertIssue(seq = 1, description = "데이터 처리 방법")
+        insertIssue(seq = 2, description = "오류 수정 완료")
+        insertIssue(seq = 3, description = "설정 확인 필요")
 
-        // '%이슈%' 검색: escapeIlikePrefix 로 '%' → '\%' 변환 → 리터럴 '%이슈%' 부재 → 0건
-        val result = searchByText("%이슈%")
+        // '_' 검색: escapeIlikePrefix 로 '_' → '\_' 리터럴화 → 설명에 리터럴 '_' 없음 → 0건
+        val result = searchByText("_")
 
-        assertThat(result.items).describedAs("퍼센트 기호는 이스케이프되어 0건이어야 한다").isEmpty()
+        assertThat(result.items).describedAs("언더스코어는 이스케이프되어 0건이어야 한다").isEmpty()
         assertThat(result.total).isEqualTo(0L)
     }
 
