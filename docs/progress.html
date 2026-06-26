@@ -173,16 +173,16 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <svg viewBox="0 0 260 260" class="donut">
     <circle cx="130" cy="130" r="116" fill="none" stroke="#e5e7eb" stroke-width="28" />
     <circle cx="130" cy="130" r="116" fill="none" stroke="#22c55e" stroke-width="28"
-      stroke-dasharray="728.849495632832" stroke-dashoffset="269.67431338414787"
+      stroke-dasharray="728.849495632832" stroke-dashoffset="262.3858184278195"
       transform="rotate(-90 130 130)" stroke-linecap="round" />
-    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">63%</text>
+    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">64%</text>
   </svg>
       <div class="overview-numbers">
-        <div class="big-num">78 / 123</div>
+        <div class="big-num">79 / 123</div>
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
-          <div><span class="dot dot-done"></span> 완료 <b>78</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>3</b></div>
+          <div><span class="dot dot-done"></span> 완료 <b>79</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>2</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
           <div><span class="dot dot-wait"></span> 대기 <b>42</b></div>
         </div>
@@ -206,9 +206,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bc-card-pct">0%</div>
     </div><div class="bc-card" data-nav="bc-agile-planning">
       <div class="bc-card-head">📅 스프린트/보드</div>
-      <div class="bc-card-stats">11 / 14 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:79%"></div></div>
-      <div class="bc-card-pct">79%</div>
+      <div class="bc-card-stats">12 / 14 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:86%"></div></div>
+      <div class="bc-card-pct">86%</div>
     </div><div class="bc-card" data-nav="bc-notification-dashboard">
       <div class="bc-card-head">🔔 알림/대시보드</div>
       <div class="bc-card-stats">8 / 14 완료</div>
@@ -805,12 +805,12 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h1>📅 스프린트/보드</h1>
     <p class="bc-desc">칸반 보드, 백로그, 스프린트, 타임라인 등 일정 관리 영역.</p>
     <div class="bc-detail-stats">
-      <div class="big-pct">79%</div>
-      <div>11 / 14 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:79%"></div></div>
+      <div class="big-pct">86%</div>
+      <div>12 / 14 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:86%"></div></div>
       <div class="status-grid">
-        <div>✅ 완료 11</div>
-        <div>🔄 진행중 1</div>
+        <div>✅ 완료 12</div>
+        <div>🔄 진행중 0</div>
         <div>⛔ 차단 0</div>
         <div>⬜ 대기 2</div>
       </div>
@@ -879,13 +879,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc"><span class="term" data-def="미할당 이슈 목록">백로그</span> → <span class="term" data-def="애자일 작업 기간 (1~4주)">스프린트</span> 드래그 이동</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="애자일 작업 기간 (1~4주)">S<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>int</span> + SprintStatus(PLANNED/ACTIVE/COMPLETED)</li><li><span class="step-icon">✅</span> D2 — 명세 — CRUD + 상태<span class="term" data-def="Transition. 상태 → 상태로 가는 액션">전이</span> + 할당/해제</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `<span class="term" data-def="애자일 작업 기간 (1~4주)">s<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>int</span>s` + `sprint_<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s(sprint_id, issue_key)` 조인 (agile-planning, V503, issues 무변경)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — <span class="term" data-def="애자일 작업 기간 (1~4주)">스프린트</span> CRUD + start/complete + <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 할당/해제 API</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — @<span class="term" data-def="&quot;드래그 앤 드롭 순서 맞추기&quot; Jira처럼 게시물 목록을 마우스로 끌어서 순서를 바꿀 때, 다른 게시물들의 순서가 꼬이지 않게 중간 번호를 기가 막히게 계산해 주는 기술입니다.">dnd-kit</span>/core <span class="term" data-def="미할당 이슈 목록">백로그</span> ↔ <span class="term" data-def="애자일 작업 기간 (1~4주)">스프린트</span> 보드(드래그 5시나리오 + 라이프사이클 + 권한 게이팅)</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-진행중">
+    </details><details class="fr-item fr-완료">
       <summary>
-        <span class="fr-status">🔄</span>
+        <span class="fr-status">✅</span>
         <span class="fr-id">FR-TL-01</span>
         <span class="fr-desc">타임라인/로드맵 뷰 (Gantt)</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="타임라인/로드맵(Gantt) 위에 막대 하나로 표현되는 단위. 이슈 1개에 대응하며 `startdate`~`duedate` 기간을 가진다. 두 날짜 중 하나라도 있어야 타임라인에 포함(둘 다 없으면 시간 축 정박점 없어 제외). Epic은 부모 그룹, Story/Task는 `epicKey`로 자식 연결. cross-BC 조회는 shared-kernel `TimelineLookupPort`(issue-tracking 구현), 트리 조립은 프론트 책임. agile-planning BC (FR-TL-01)">TimelineItem</span></li><li><span class="step-icon">✅</span> D2 — 명세</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — (<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s.start_date, due_date 활용, 신규 <span class="term" data-def="&quot;데이터 엑셀 양식&quot; 이름은 문자, 나이는 숫자 등 데이터베이스에 정보를 어떤 모양으로 저장할지 정해둔 도면입니다.">스키마</span> 0)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `GET /api/v1/timeline?<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>oject</span>=...`</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="&quot;기술 결정 일기장&quot; &quot;왜 A 대신 B 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.">ADR</span> 선택 라이브러리/SVG</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> + <span class="term" data-def="&quot;품질 기준&quot; &quot;기능이 된다&quot;를 넘어 &quot;클릭하면 0.5초 안에 떠야 한다&quot;처럼 속도나 성능, 안정성에 대한 까다로운 기준입니다.">NFR</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — <span class="term" data-def="타임라인/로드맵(Gantt) 위에 막대 하나로 표현되는 단위. 이슈 1개에 대응하며 `startdate`~`duedate` 기간을 가진다. 두 날짜 중 하나라도 있어야 타임라인에 포함(둘 다 없으면 시간 축 정박점 없어 제외). Epic은 부모 그룹, Story/Task는 `epicKey`로 자식 연결. cross-BC 조회는 shared-kernel `TimelineLookupPort`(issue-tracking 구현), 트리 조립은 프론트 책임. agile-planning BC (FR-TL-01)">TimelineItem</span></li><li><span class="step-icon">✅</span> D2 — 명세</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — (<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s.start_date, due_date 활용, 신규 <span class="term" data-def="&quot;데이터 엑셀 양식&quot; 이름은 문자, 나이는 숫자 등 데이터베이스에 정보를 어떤 모양으로 저장할지 정해둔 도면입니다.">스키마</span> 0)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `GET /api/v1/timeline?<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>oject</span>=...`</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 자체 SVG/CSS Gantt (<span class="term" data-def="이슈 타입의 하나 (최상위 `hierarchy_level=1`). 큰 작업을 묶는 상위 이슈로, 여러 Story 로 분해된다. agile-planning 의 &quot;에픽&quot;과 같은 개념의 두 측면 — issue-tracking 에선 이슈 타입, agile-planning 에선 묶음 단위">Epic</span> 그룹 + targetDate 마일스톤)</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> + <span class="term" data-def="&quot;품질 기준&quot; &quot;기능이 된다&quot;를 넘어 &quot;클릭하면 0.5초 안에 떠야 한다&quot;처럼 속도나 성능, 안정성에 대한 까다로운 기준입니다.">NFR</span></li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
