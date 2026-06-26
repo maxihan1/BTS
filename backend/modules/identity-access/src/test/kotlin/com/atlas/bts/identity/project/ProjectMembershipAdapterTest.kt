@@ -44,7 +44,6 @@ import java.util.UUID
 @Import(ProjectMembershipAdapter::class)
 @Testcontainers
 class ProjectMembershipAdapterTest {
-
     companion object {
         @Container
         @JvmStatic
@@ -151,7 +150,11 @@ class ProjectMembershipAdapterTest {
 
     // ── 픽스처 헬퍼 ──────────────────────────────────────────────────────────
 
-    private fun insertUser(id: UUID, username: String, displayName: String) {
+    private fun insertUser(
+        id: UUID,
+        username: String,
+        displayName: String,
+    ) {
         jdbc.update(
             "INSERT INTO users (id, username, display_name) VALUES (:id, :username, :displayName)",
             mapOf("id" to id, "username" to username, "displayName" to displayName),
@@ -159,19 +162,26 @@ class ProjectMembershipAdapterTest {
     }
 
     /** projects 행을 삽입하고 생성한 UUID 를 반환한다. deleted=true 면 deleted_at=NOW(). */
-    private fun insertProject(key: String, deleted: Boolean = false): UUID {
+    private fun insertProject(
+        key: String,
+        deleted: Boolean = false,
+    ): UUID {
         val id = UUID.randomUUID()
         // 데이터(id/key)는 바인딩하고, deleted_at 만 고정 SQL 상수 두 갈래로 선택한다 (문자열 결합 없음).
-        val sql = if (deleted) {
-            "INSERT INTO projects (id, key, deleted_at) VALUES (:id, :key, NOW())"
-        } else {
-            "INSERT INTO projects (id, key, deleted_at) VALUES (:id, :key, NULL)"
-        }
+        val sql =
+            if (deleted) {
+                "INSERT INTO projects (id, key, deleted_at) VALUES (:id, :key, NOW())"
+            } else {
+                "INSERT INTO projects (id, key, deleted_at) VALUES (:id, :key, NULL)"
+            }
         jdbc.update(sql, mapOf("id" to id, "key" to key))
         return id
     }
 
-    private fun insertMembership(projectId: UUID, userId: UUID) {
+    private fun insertMembership(
+        projectId: UUID,
+        userId: UUID,
+    ) {
         jdbc.update(
             "INSERT INTO project_memberships (project_id, user_id, role) VALUES (:projectId, :userId, :role)",
             mapOf("projectId" to projectId, "userId" to userId, "role" to "MEMBER"),
