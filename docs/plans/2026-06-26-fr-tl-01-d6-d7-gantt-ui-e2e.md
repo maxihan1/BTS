@@ -128,7 +128,7 @@ classify: type=qa 오판 → ui/frontend-engineer 교정 (E2E 키워드 오판 �
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/mocks/timeline-fixtures.ts`, `apps/web/src/mocks/timeline-handlers.ts`, `apps/web/src/mocks/handlers.ts`]
+- files: [`apps/web/src/mocks/timeline-fixtures.ts`, `apps/web/src/mocks/timeline-handlers.ts`, `apps/web/src/mocks/timeline-handlers.test.ts`, `apps/web/src/mocks/handlers.ts`]
 - depends-on: [1]
 
 **RED**. `timeline-handlers.test.ts`(board-handlers.test.ts 패턴) — `GET /api/v1/timeline?project=BTS` → 봉투+items(Epic+자식+미분류+targetDate)·truncated 시나리오·미인증/403 시나리오. fixture 가 백엔드 정렬 순서(startDate ASC...) 준수.
