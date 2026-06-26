@@ -3,8 +3,8 @@
 package com.bts.search.savedfilter.persistence
 
 import com.bts.search.jooq.tables.records.SavedFiltersRecord
-import com.bts.search.jooq.tables.references.SAVED_FILTER_SHARES
 import com.bts.search.jooq.tables.references.SAVED_FILTERS
+import com.bts.search.jooq.tables.references.SAVED_FILTER_SHARES
 import com.bts.search.savedfilter.application.SavedFilterRepository
 import com.bts.search.savedfilter.domain.SavedFilter
 import org.jooq.Condition

@@ -32,7 +32,10 @@ interface SavedFilterShareRepository {
      * @param shares 새 공유 목록. 서비스 계층이 dedupe/상한 검사를 마친 목록이라 가정한다.
      * @throws org.jooq.exception.DataAccessException 중복 [shares] 항목으로 UNIQUE 위반 시.
      */
-    fun replaceShares(filterId: UUID, shares: List<SavedFilterShare>)
+    fun replaceShares(
+        filterId: UUID,
+        shares: List<SavedFilterShare>,
+    )
 
     /**
      * 여러 필터 ID의 공유 목록을 배치로 조회한다 (N+1 차단).

@@ -78,8 +78,9 @@ class JooqSavedFilterShareRepositoryTest : SearchPersistenceTestBase() {
     private fun groupShare(gid: String) = SavedFilterShare.create(ShareType.GROUP, gid)
 
     /** 단건 필터의 공유 목록을 조회하는 편의 헬퍼. */
-    private fun sharesOf(filterId: UUID): List<SavedFilterShare> =
-        shareRepo.findByFilterIds(setOf(filterId))[filterId] ?: emptyList()
+    private fun sharesOf(filterId: UUID): List<SavedFilterShare> {
+        return shareRepo.findByFilterIds(setOf(filterId))[filterId] ?: emptyList()
+    }
 
     // ── (a) replaceShares delete-then-insert ──────────────────────────────────
 

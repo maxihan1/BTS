@@ -52,7 +52,10 @@ class JooqSavedFilterShareRepository(
      * @throws org.jooq.exception.DataAccessException 중복 shares 항목으로 UNIQUE 위반 시.
      */
     @Transactional
-    override fun replaceShares(filterId: UUID, shares: List<SavedFilterShare>) {
+    override fun replaceShares(
+        filterId: UUID,
+        shares: List<SavedFilterShare>,
+    ) {
         log.debug("공유 교체 — filterId={}, count={}", filterId, shares.size)
 
         dsl.deleteFrom(SAVED_FILTER_SHARES)
