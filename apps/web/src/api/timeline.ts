@@ -30,11 +30,16 @@ export const timelineItemSchema = z.object({
   summary: z.string(),
   issueType: z.string(),
   currentStateKey: z.string(),
-  assigneeId: z.string().uuid().nullable(),
-  startDate: z.string().nullable(),
-  dueDate: z.string().nullable(),
-  targetDate: z.string().nullable(),
-  epicKey: z.string().nullable(),
+  /** 키 자체가 누락(백엔드 @JsonInclude(NON_NULL))될 경우 null로 보정 (C4, board 선례 동일) */
+  assigneeId: z.string().uuid().nullable().default(null),
+  /** 키 자체가 누락될 경우 null로 보정 (C4) */
+  startDate: z.string().nullable().default(null),
+  /** 키 자체가 누락될 경우 null로 보정 (C4) */
+  dueDate: z.string().nullable().default(null),
+  /** 키 자체가 누락될 경우 null로 보정 (C4) */
+  targetDate: z.string().nullable().default(null),
+  /** 키 자체가 누락될 경우 null로 보정 (C4) */
+  epicKey: z.string().nullable().default(null),
 })
 
 /**
