@@ -38,6 +38,9 @@
 - **FR-7 (공유받은 목록)**. 신규 `GET /api/v1/filters/shared` — V가 소유하지 않으면서 볼 수 있는 필터 목록(가시성 4경로 중 2~4). 기존 `GET /api/v1/filters`는 **소유만** 유지(하위호환). **페이지네이션 필수**(`page`/`size`, `/search`와 동일 정책 — size 1..100, page≥0) + **결정적 정렬**(`created_at ASC, id ASC` — AUTHENTICATED 공유가 전 사용자에게 증폭되므로 무제한 반환 금지, C1/NFR-3).
 - **FR-8 (실행 안전)**. `GET /{id}/search`는 PR1처럼 `viewerUserId=actor`로 실행 — 공유받은 사용자도 자기 권한 범위 이슈만 본다(권한 상승 0).
 - **FR-9 (응답 확장)**. `SavedFilterResponse`에 `shares: [{shareType, targetId}]`, `isOwner`(기존) 포함. 모든 읽기 응답(`GET /filters` 소유목록 · `GET /filters/shared` · `GET /{id}`)이 shares를 담는다 — 서비스 read 메서드가 `SavedFilterWithShares`(filter+shares) 반환, 목록은 `findByFilterIds` 배치 로드(N+1 차단, U4). 별표(favorite)는 본 백엔드 PR 범위 외 — 프론트가 기존 FR-UX-02 favorites API(target_type=FILTER)로 별도 조회.
+  - **공유 목록 범위(C2 — 정보 노출 차단)**. 응답 `shares`는 요청자에 따라 달라진다.
+    - **소유자**: 전체 공유 대상을 그대로 노출(공유 관리 주체).
+    - **비소유 가시 viewer**: **자신이 매칭된 공유만** 노출 — `AUTHENTICATED`(있으면) + viewer 소속 PROJECT(`targetId ∈ viewer 프로젝트 키`) + viewer 소속 GROUP(`targetId ∈ viewer 그룹 id`). 다른 GROUP/PROJECT 대상은 응답에서 제외해 필터의 전체 공유 대상 목록(예: 다른 부서 그룹 존재)이 새지 않게 한다. 적용 경로는 `GET /{id}` · `GET /filters/shared`(비소유 결과 전부). 가시성 OR 술어와 동일 의미를 per-share로 적용하므로 가시 판정을 통과한 viewer는 최소 1개 매칭 공유를 보유한다(빈 목록 불가).
 - **FR-10 (cross-BC 멤버십 포트)**. shared-kernel에 신규.
   - `GroupMembershipPort.groupIdsOf(userId: UUID): Set<String>` — identity-access(`UserGroupRepository`) 구현.
   - `ProjectMembershipPort.projectKeysOf(userId: UUID): Set<String>` — identity-access(`ProjectMembershipRepository` + projects 키 매핑) 구현.
@@ -111,7 +114,8 @@ CREATE INDEX idx_saved_filter_shares_lookup ON saved_filter_shares (share_type, 
 - **EC10**. 공유 행 > 상한 → **400**.
 - **EC11**. 멤버십 포트 Bean 부재 → **부팅 실패**(런타임 누출 아님, fail-closed).
 - **EC12**. viewer가 프로젝트/그룹 0개 → AUTHENTICATED 공유 + 소유만 가시.
-- **EC13**. owner가 본인이 멤버 아닌 프로젝트로 공유 → **허용**(MVP, 대상 존재/멤버십 검증 안 함). 누출 위험 분석: 공유받는 측은 실행 시 자기 권한 이슈만 보고(FR-8), 노출되는 건 필터 메타(name+AQL)뿐 → 저위험. 향후 대상 검증은 후속.
+- **EC13**. owner가 본인이 멤버 아닌 프로젝트로 공유 → **허용**(MVP, 대상 존재/멤버십 검증 안 함). 누출 위험 분석: 공유받는 측은 실행 시 자기 권한 이슈만 보고(FR-8), 비소유 viewer에게 노출되는 건 필터 메타(name+AQL)와 **자신이 매칭된 공유 대상뿐**(전체 공유 대상 목록은 비노출 — EC18/C2). 향후 대상 존재·멤버십 검증은 후속.
+- **EC18 (공유 대상 목록 비노출 — C2)**. 비소유 가시 viewer는 필터의 **전체 공유 대상 목록을 보지 못한다**. 응답 `shares`는 viewer가 매칭된 공유(AUTHENTICATED + 자신의 PROJECT/GROUP 대상)만 담고, 다른 GROUP UUID·다른 PROJECT 키는 제외한다(정보 노출 차단, 적대적 리뷰 C2 반영). 소유자만 전체 공유 대상을 본다. FR-9 "공유 목록 범위" 참조. (이전 "전체 공유 대상을 전 viewer에게 노출 — 저위험 수용" 문구는 본 EC로 정정됨.)
 - **EC14**. `GET /shared`는 소유 필터 제외(소유는 `GET /filters`).
 - **EC15**. owner는 공유 유무와 무관하게 항상 자기 필터 가시(자기공유 noop). **owner 단축경로** — 소유 확인 먼저, 비소유일 때만 멤버십 포트 호출(불필요 cross-BC 쿼리 회피, C6).
 - **EC16 (대상 소프트삭제/삭제)**. 공유 대상 프로젝트 소프트삭제 → 어댑터가 `deleted_at IS NULL`로 제외 → viewer 키 집합에서 빠져 **매칭 안 됨**(fail-closed, 안전). 그룹 삭제도 동일. **잔존 share 행은 무해 잔류**(CASCADE 대상 아님, 누출 없음 — 매칭자 0) → 소유자 replace로만 정리. spec 동작으로 명문화.
@@ -150,4 +154,4 @@ CREATE INDEX idx_saved_filter_shares_lookup ON saved_filter_shares (share_type, 
 - U1(project_key↔id)·U2(group UUID) → 코드(`ProjectDirectory`/`UserGroup`)로 phantom 차단·해소.
 - 가시성 404(은닉, EC5) vs 403(가시-비소유, EC4) 분기 명확화.
 - 멱등(NULLS NOT DISTINCT, EC7) + CASCADE(EC6) + fail-closed 포트(EC11/NFR-1) 커버.
-- EC13(미멤버 프로젝트 공유) 저위험 수용 명시 — 적대적 리뷰에서 재검토 대상으로 표시.
+- EC13(미멤버 프로젝트 공유) 저위험 수용 명시 — 적대적 리뷰에서 재검토 대상으로 표시. **결과**: 적대적 리뷰 C2에서 "비소유 viewer가 전체 공유 대상 목록을 봄"이 정보 노출로 지적됨 → 비소유 viewer 응답을 매칭 공유만으로 제한(FR-9/EC18), 소유자만 전체 노출로 정정.
