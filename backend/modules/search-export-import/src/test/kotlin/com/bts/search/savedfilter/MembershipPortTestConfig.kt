@@ -2,7 +2,10 @@
 
 package com.bts.search.savedfilter
 
+import com.bts.shared.membership.GroupMembershipPort
+import com.bts.shared.membership.ProjectMembershipPort
 import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.context.annotation.Bean
 import java.util.UUID
 
 /**
@@ -22,9 +25,9 @@ import java.util.UUID
  * membershipConfig.groupMemberships[carol] = setOf("g-devs")
  * ```
  *
- * RED 단계: @Bean 메서드 없음. GroupMembershipPort / ProjectMembershipPort 빈 부재로
- * SavedFilterService 생성자 주입 실패 → Spring 컨텍스트 부팅 실패.
- * GREEN 단계에서 @Bean 메서드를 추가해 해소한다.
+ * ## fail-closed 계약
+ * 미시드 userId 는 emptySet 을 반환한다.
+ * allow-all default 를 두지 않아 공유 가시성 누출을 방지한다.
  */
 @TestConfiguration
 open class MembershipPortTestConfig {
@@ -34,4 +37,24 @@ open class MembershipPortTestConfig {
 
     /** userId → 프로젝트 키 집합 시드 맵. 테스트가 @BeforeEach 에서 clear() 후 재시드한다. */
     val projectMemberships: MutableMap<UUID, Set<String>> = mutableMapOf()
+
+    /**
+     * userId-aware GroupMembershipPort stub 빈.
+     * [groupMemberships] 맵에서 userId 로 조회하며, 미등록 userId 는 emptySet(fail-closed).
+     */
+    @Bean
+    open fun groupMembershipPort(): GroupMembershipPort =
+        object : GroupMembershipPort {
+            override fun groupIdsOf(userId: UUID): Set<String> = groupMemberships[userId] ?: emptySet()
+        }
+
+    /**
+     * userId-aware ProjectMembershipPort stub 빈.
+     * [projectMemberships] 맵에서 userId 로 조회하며, 미등록 userId 는 emptySet(fail-closed).
+     */
+    @Bean
+    open fun projectMembershipPort(): ProjectMembershipPort =
+        object : ProjectMembershipPort {
+            override fun projectKeysOf(userId: UUID): Set<String> = projectMemberships[userId] ?: emptySet()
+        }
 }
