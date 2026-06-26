@@ -112,6 +112,31 @@ class SearchExceptionHandler {
         return pd
     }
 
+    // ── 400 잘못된 인수(정렬 불가 필드 등) ───────────────────────────────────
+
+    /**
+     * [IllegalArgumentException] — 정렬 불가 필드(`text` 등) 요청 시 — 400.
+     *
+     * `text` 필드는 FTS 전용 가상 필드로 ORDER BY 대상 컬럼이 없다.
+     * [IssueRepository.buildOrderBy]가 화이트리스트 밖 필드를 [IllegalArgumentException]으로 던진다.
+     * 핸들러가 없으면 catch-all 500으로 변질된다(교훈 C1 — FR-SR-04 task-3).
+     *
+     * 보안 — 예외 상세 메시지는 응답에 포함하지 않는다.
+     *
+     * @param ex 정렬 불가 필드 등 잘못된 인수 예외.
+     */
+    @ExceptionHandler(IllegalArgumentException::class)
+    fun handleIllegalArgument(ex: IllegalArgumentException): ProblemDetail {
+        log.info("SEARCH_400 illegal_argument message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "search-invalid-query",
+            title = "Invalid Query",
+            errorCode = SEARCH_VALIDATION_FAILED,
+            detail = "요청이 올바르지 않습니다. 필드 또는 연산자를 확인해 주세요.",
+        )
+    }
+
     // ── 400 검증 실패 ─────────────────────────────────────────────────────────
 
     /**

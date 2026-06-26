@@ -2362,8 +2362,56 @@ class IssueRepository(
             "summary" -> buildSummaryCondition(op, values)
             "label" -> buildLabelAqlCondition(op, values)
             "priority" -> buildPriorityCondition(op, values)
+            "text" -> buildTextSearchCondition(values.first().asString())
             else -> throw IllegalArgumentException("지원하지 않는 필드입니다: $fieldName")
         }
+    }
+
+    /**
+     * `text ~` AQL 필드 → FTS + trigram 하이브리드 조건을 생성한다.
+     *
+     * ## 전략 (ADR docs/decisions/2026-06-26-fr-sr-04-korean-fts.md)
+     *
+     * 두 경로를 OR 로 결합한다.
+     *
+     * 1. **FTS 경로** — `issues.search_vector @@ plainto_tsquery('simple', ?)`.
+     *    V032 STORED generated tsvector(summary + description 결합) + GIN 인덱스 활용.
+     *    `simple` 설정은 조사 분리 없이 토큰화한다(zero-dep, SDD 10.2).
+     *
+     * 2. **trigram 경로** — `ISSUES.SUMMARY.likeIgnoreCase("%term%") OR ISSUES.DESCRIPTION.likeIgnoreCase("%term%")`.
+     *    jOOQ `likeIgnoreCase`는 `lower(col) LIKE ?`를 생성하므로,
+     *    V031(`gin(lower(summary) gin_trgm_ops)`)·V032(`gin(lower(description) gin_trgm_ops)`) 표현식 인덱스와
+     *    정확히 일치한다 — coalesce 없이(B1 수정).
+     *    조사 변형("이슈를"↔"이슈")·부분 문자열 매칭을 보완한다.
+     *
+     * ## SQL injection 방지
+     *
+     * 사용자 입력은 모두 jOOQ 바인드 파라미터(`{0}` placeholder + [DSL.val]/[DSL.inline] 미사용)로
+     * 전달한다. `%`/`_`/`\` 는 [escapeIlikePrefix]로 리터럴화한다.
+     *
+     * ## 빈/공백 검색어 (G5)
+     *
+     * 빈 문자열 또는 공백만 있는 검색어는 [DSL.falseCondition]을 반환해 결과 0을 보장한다.
+     * `plainto_tsquery('simple', '')` 는 예외를 발생시키지 않지만 빈 tsquery 로 전 행 매칭되는
+     * 의도치 않은 동작을 방지하기 위해 명시적으로 거부한다.
+     *
+     * @param strValue 사용자가 입력한 검색어 원본.
+     * @return [DSL.falseCondition] (빈/공백) 또는 FTS OR trigram 복합 [Condition].
+     */
+    private fun buildTextSearchCondition(strValue: String): Condition {
+        if (strValue.isBlank()) {
+            return DSL.falseCondition()
+        }
+        val escaped = escapeIlikePrefix(strValue)
+        val likePattern = "%$escaped%"
+        val ftsCondition =
+            DSL.condition(
+                "issues.search_vector @@ plainto_tsquery('simple', {0})",
+                DSL.`val`(strValue),
+            )
+        val summaryTrigram = ISSUES.SUMMARY.likeIgnoreCase(likePattern, '\\')
+        val descriptionTrigram = ISSUES.DESCRIPTION.likeIgnoreCase(likePattern, '\\')
+        return ftsCondition.or(summaryTrigram).or(descriptionTrigram)
     }
 
     /**
