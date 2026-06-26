@@ -77,11 +77,17 @@ class IssueRepositoryTimelineTest : IssueTestcontainersBase() {
         }
     }
 
-    private fun requireTaskTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 미초기화 — resolveTypeIds 실행 확인" }
+    private fun requireTaskTypeId(): IssueTypeId {
+        return requireNotNull(taskTypeId) { "taskTypeId 미초기화 — resolveTypeIds 실행 확인" }
+    }
 
-    private fun requireStoryTypeId(): IssueTypeId = requireNotNull(storyTypeId) { "storyTypeId 미초기화 — resolveTypeIds 실행 확인" }
+    private fun requireStoryTypeId(): IssueTypeId {
+        return requireNotNull(storyTypeId) { "storyTypeId 미초기화 — resolveTypeIds 실행 확인" }
+    }
 
-    private fun requireEpicTypeId(): IssueTypeId = requireNotNull(epicTypeId) { "epicTypeId 미초기화 — resolveTypeIds 실행 확인" }
+    private fun requireEpicTypeId(): IssueTypeId {
+        return requireNotNull(epicTypeId) { "epicTypeId 미초기화 — resolveTypeIds 실행 확인" }
+    }
 
     /**
      * 테스트용 이슈를 생성·삽입하고 DB 반환값을 돌려준다.
@@ -91,7 +97,6 @@ class IssueRepositoryTimelineTest : IssueTestcontainersBase() {
      * @param startDate 시작일. null 이면 미설정.
      * @param dueDate 마감일. null 이면 미설정.
      * @param securityLevelId 보안 등급 UUID. null 이면 공개(등급 없음).
-     * @param reporterId 이슈 보고자 UUID.
      */
     private fun insertIssue(
         seq: Long,
@@ -99,7 +104,6 @@ class IssueRepositoryTimelineTest : IssueTestcontainersBase() {
         startDate: LocalDate? = null,
         dueDate: LocalDate? = null,
         securityLevelId: UUID? = null,
-        reporterId: UUID = UUID.randomUUID(),
     ): Issue {
         val issue =
             Issue.create(
@@ -108,7 +112,7 @@ class IssueRepositoryTimelineTest : IssueTestcontainersBase() {
                 projectId = testProjectId,
                 typeId = typeId,
                 summary = "타임라인 테스트 이슈 $seq",
-                reporterId = ActorId(reporterId),
+                reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
                 securityLevelId = securityLevelId,
             ).copy(startDate = startDate, dueDate = dueDate)
