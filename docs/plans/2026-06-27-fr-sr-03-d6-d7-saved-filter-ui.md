@@ -26,9 +26,30 @@ FR-SR-03 "필터 저장 및 공유"의 D6(프론트 UI) + D7(E2E). D1~D5(백엔�
 - 공유는 replace-all(전체 교체). 편집 시 PROJECT/AUTHENTICATED만 보내면 백엔드에 남은 GROUP share가 지워짐
   → 공유 모달은 응답에 온 미편집(GROUP 등) share를 보존해 재전송해야 함.
 
-## 도메인 정리 (← /bts-domain 채움 — fast-track 스킵 후보: 신규 도메인 용어 0)
+## 도메인 정리
 
-## 스펙 (← /bts-spec 채움)
+> 신규 도메인 용어/ADR **0건**. grill-with-docs 풀 세션 스킵(프론트 연속 작업, BC·ADR 기확립).
+
+- **BC**: search-export-import (PR1 #191 부트스트랩 + PR2 #193 공유 확장). 프론트는 이 BC의 view layer 소비만.
+- **유비쿼터스 언어** (기확립): "저장된 필터(SavedFilter)" = 이름붙은 AQL 쿼리 + 실행 projectKey. "공유(Share)" = 대상지정 PROJECT/GROUP/AUTHENTICATED. "가시성 4경로". 프론트 신규 용어 도입 없음.
+- **관련 ADR**: `docs/decisions/2026-06-26-fr-sr-03-saved-filters.md` (PR1/PR2 설계 정본). 프론트 PR 신규 ADR 불필요 — view layer 결정만.
+- **BC 격리**: 순수 프론트(apps/web). 백엔드 변경 0 (Maxi Q2 결정으로 GROUP picker 백엔드 미추가). cross-BC 없음.
+- **재사용 자산** (frontend): FR-UX-02 favorites(FILTER 타입, 백엔드 기지원) · AQL 검색 클라이언트(`api/search.ts`) · Radix Dialog · TanStack Router code-based adapter 패턴.
+
+## 스펙
+
+전체 스펙. [docs/specs/2026-06-27-fr-sr-03-d6-d7-saved-filter-ui.md](../specs/2026-06-27-fr-sr-03-d6-d7-saved-filter-ui.md)
+
+핵심 5줄.
+- `/search` 검색바에 "저장"(현재 AQL+projectKey) + "필터" 드롭다운(내 필터 GET `/filters` · 공유받은 GET `/shared`).
+- 불러오기 = `/search?filterId=<id>` 딥링크 → SearchPage가 GET `/{id}` 해석해 AQL·projectKey 세팅 후 실행(전용 실행 엔드포인트 미사용).
+- 공유 모달 = AUTHENTICATED + PROJECT(자기 projectKey) 토글, **replace-all이라 미편집 GROUP share 보존** 필수(EC4).
+- 별표 = `FAVORITE_TARGET_TYPES`에 FILTER 추가 + FavoriteButton 재사용 + Header ⭐ FILTER 그룹(이름은 GET `/{id}` 조회, 404 숨김).
+- 백엔드 변경 0. Zod는 SavedFilterDtos.kt 1:1(`{data:}` 래퍼 없음, null 명시 → `.nullable()`).
+
+## Brainstorming Check
+
+✅ 통과 (1 iteration, 적대적 자체 검토). Maxi 결정 gap 0. 세부는 plan 흡수(저장쿼리 의미·빈상태·길이검증·MSW store·E2E 회귀0).
 
 ## Plan (← /bts-plan 채움)
 
