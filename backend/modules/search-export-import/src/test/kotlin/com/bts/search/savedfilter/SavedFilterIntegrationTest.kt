@@ -5,9 +5,12 @@ package com.bts.search.savedfilter
 import com.bts.search.jooq.tables.references.SAVED_FILTERS
 import com.bts.search.savedfilter.application.SavedFilterService
 import com.bts.search.savedfilter.persistence.JooqSavedFilterRepository
+import com.bts.search.savedfilter.persistence.JooqSavedFilterShareRepository
 import com.bts.search.savedfilter.web.SavedFilterController
 import com.bts.search.savedfilter.web.SavedFilterExceptionHandler
 import com.bts.search.savedfilter.web.SavedFilterSearchController
+import com.bts.shared.membership.GroupMembershipPort
+import com.bts.shared.membership.ProjectMembershipPort
 import com.bts.shared.search.IssueSearchPage
 import com.bts.shared.search.IssueSearchPort
 import com.bts.shared.search.IssueSearchQuery
@@ -89,7 +92,31 @@ class SavedFilterIntegrationTest {
         open fun repository(dsl: DSLContext): JooqSavedFilterRepository = JooqSavedFilterRepository(dsl)
 
         @Bean
-        open fun service(repository: JooqSavedFilterRepository): SavedFilterService = SavedFilterService(repository)
+        open fun shareRepository(dsl: DSLContext): JooqSavedFilterShareRepository =
+            JooqSavedFilterShareRepository(dsl)
+
+        /** 멤버십 stub — emptySet 반환(fail-closed). 통합테스트는 owner/AUTHENTICATED 경로만 검증한다. */
+        @Bean
+        open fun groupMembershipPort(): GroupMembershipPort =
+            object : GroupMembershipPort {
+                override fun groupIdsOf(userId: UUID): Set<String> = emptySet()
+            }
+
+        /** 멤버십 stub — emptySet 반환(fail-closed). */
+        @Bean
+        open fun projectMembershipPort(): ProjectMembershipPort =
+            object : ProjectMembershipPort {
+                override fun projectKeysOf(userId: UUID): Set<String> = emptySet()
+            }
+
+        @Bean
+        open fun service(
+            repository: JooqSavedFilterRepository,
+            shareRepository: JooqSavedFilterShareRepository,
+            groupMembershipPort: GroupMembershipPort,
+            projectMembershipPort: ProjectMembershipPort,
+        ): SavedFilterService =
+            SavedFilterService(repository, shareRepository, groupMembershipPort, projectMembershipPort)
 
         @Bean
         open fun stubIssueSearchPort(): IssueSearchPort =

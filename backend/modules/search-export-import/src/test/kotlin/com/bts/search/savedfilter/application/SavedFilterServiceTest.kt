@@ -3,6 +3,8 @@
 package com.bts.search.savedfilter.application
 
 import com.bts.search.savedfilter.domain.SavedFilter
+import com.bts.shared.membership.GroupMembershipPort
+import com.bts.shared.membership.ProjectMembershipPort
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -17,7 +19,11 @@ import java.util.UUID
 
 class SavedFilterServiceTest {
     private val repository: SavedFilterRepository = mockk()
-    private val service = SavedFilterService(repository)
+    private val shareRepository: SavedFilterShareRepository = mockk()
+    private val groupMembershipPort: GroupMembershipPort = mockk()
+    private val projectMembershipPort: ProjectMembershipPort = mockk()
+    private val service =
+        SavedFilterService(repository, shareRepository, groupMembershipPort, projectMembershipPort)
 
     private val actorId: UUID = UUID.randomUUID()
     private val otherId: UUID = UUID.randomUUID()
@@ -127,9 +133,14 @@ class SavedFilterServiceTest {
     // ── update ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `update - 비owner면 SavedFilterNotFoundException (PR1 비가시 존재은닉)`() {
+    fun `update - 비owner 비가시면 SavedFilterNotFoundException (존재은닉)`() {
         val othersFilter = aFilter(ownerId = otherId)
         every { repository.findById(othersFilter.id!!) } returns othersFilter
+        every { projectMembershipPort.projectKeysOf(actorId) } returns emptySet()
+        every { groupMembershipPort.groupIdsOf(actorId) } returns emptySet()
+        every {
+            repository.findVisibleById(othersFilter.id!!, actorId, emptySet(), emptySet())
+        } returns null
 
         assertThrows<SavedFilterNotFoundException> {
             service.update(othersFilter.id!!, actorId, "새 이름", validAql, 0L)
@@ -193,9 +204,14 @@ class SavedFilterServiceTest {
     }
 
     @Test
-    fun `delete - 비owner면 SavedFilterNotFoundException (PR1 비가시 존재은닉)`() {
+    fun `delete - 비owner 비가시면 SavedFilterNotFoundException (존재은닉)`() {
         val othersFilter = aFilter(ownerId = otherId)
         every { repository.findById(othersFilter.id!!) } returns othersFilter
+        every { projectMembershipPort.projectKeysOf(actorId) } returns emptySet()
+        every { groupMembershipPort.groupIdsOf(actorId) } returns emptySet()
+        every {
+            repository.findVisibleById(othersFilter.id!!, actorId, emptySet(), emptySet())
+        } returns null
 
         assertThrows<SavedFilterNotFoundException> {
             service.delete(othersFilter.id!!, actorId)
