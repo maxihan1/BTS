@@ -42,7 +42,6 @@ import java.util.UUID
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class TimelineLookupAdapterTest : IssueTestcontainersBase() {
-
     private var taskTypeId: IssueTypeId? = null
 
     /**
