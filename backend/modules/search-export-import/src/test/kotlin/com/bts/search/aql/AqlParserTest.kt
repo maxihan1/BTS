@@ -853,9 +853,37 @@ class AqlParserTest {
 
     @Test
     fun `ORDER BY MVP 지원 필드는 정상 파싱된다`() {
-        // status, label, summary, priority 는 정렬 허용
+        // status, summary, priority 는 SORTABLE_FIELDS 포함 — 정렬 허용
         val result = parse("status = open ORDER BY status DESC")
         assertThat(result.sort).hasSize(1)
         assertThat(result.sort[0].field).isEqualTo(AqlField("status"))
+    }
+
+    // ── C3 ORDER BY 정렬 불가 필드 (파서에서 거부해야 함 — 광범위 IAE 핸들러 제거 전제) ─────────
+
+    @Test
+    fun `C3 text 가상 FTS 필드는 ORDER BY 에서 AqlSyntaxException 을 던진다`() {
+        // text 는 MVP 쿼리 필드(~ 연산자만 허용)이지만 실제 DB 컬럼이 없는 가상 FTS 필드.
+        // ORDER BY 대상 컬럼이 없으므로 SORTABLE_FIELDS 에 미포함 → 파서에서 거부해야 한다.
+        // 현재: validateField 가 MVP_FIELDS 기준 SUPPORTED 반환 → 파서 통과 후 repository IAE.
+        assertThatThrownBy { parse("""text ~ "x" ORDER BY text""") }
+            .isInstanceOf(AqlSyntaxException::class.java)
+    }
+
+    @Test
+    fun `C3 label 배열 필드는 ORDER BY 에서 AqlSyntaxException 을 던진다`() {
+        // label 은 MVP 쿼리 필드이지만 buildOrderBy 화이트리스트에 없음 — 정렬 불가.
+        // 현재: validateField 가 MVP_FIELDS 기준 SUPPORTED 반환 → 파서 통과 후 repository IAE.
+        assertThatThrownBy { parse("label ~ urgent ORDER BY label") }
+            .isInstanceOf(AqlSyntaxException::class.java)
+    }
+
+    @Test
+    fun `C3 회귀 summary 는 ORDER BY 에서 정상 파싱된다`() {
+        // summary 는 SORTABLE_FIELDS 포함 필드 — ORDER BY summary 는 항상 통과해야 한다.
+        val result = parse("status = open ORDER BY summary ASC")
+        assertThat(result.sort).containsExactly(
+            AqlSort(AqlField("summary"), SortDirection.ASC),
+        )
     }
 }
