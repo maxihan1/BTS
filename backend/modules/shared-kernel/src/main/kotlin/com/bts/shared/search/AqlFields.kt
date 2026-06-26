@@ -37,8 +37,11 @@ object AqlFields {
      * - `label` — 라벨 (TEXT[] 배열): `=` `!=` `IN` `NOT IN` `~`
      * - `summary` — 제목 (text): `~` `=`
      * - `priority` — 우선순위 (SMALLINT 1..5): `=` `!=` `IN` `NOT IN` (`~` 불가)
+     * - `text` — 가상 FTS 필드 (summary + description 전문 검색 대상): `~` 만 허용 (FR-SR-04)
+     *   실제 DB 컬럼이 아니며, issues.search_vector 를 경유한 tsvector + trigram 하이브리드 검색으로
+     *   변환된다. `=` `!=` `IN` `NOT IN` 는 FTS 의미가 없으므로 금지한다.
      */
-    val MVP_FIELDS: Set<String> = setOf("status", "label", "summary", "priority")
+    val MVP_FIELDS: Set<String> = setOf("status", "label", "summary", "priority", "text")
 
     /**
      * 후속 PR 에서 지원 예정인 필드 이름 집합 (소문자 정규화).
@@ -71,11 +74,15 @@ object AqlFields {
      * 현재 제약.
      * - `priority` — `CONTAINS(~)` 불가. SMALLINT 컬럼이라 부분 문자열 비교가 의미 없다.
      * - `status` — `CONTAINS(~)` 불가. text 키 컬럼으로 부분 일치 미지원, repository IllegalArgument 유발.
+     * - `text` — `EQ(=)` `NEQ(!=)` `IN` `NOT_IN` 불가.
+     *   가상 FTS 필드로 `CONTAINS(~)` 전문 검색만 의미가 있다. 등가/목록 비교는 FTS 맥락에서 정의되지
+     *   않으므로 파서에서 사전 거부해 repository IllegalArgument 를 방지한다.
      */
     private val FIELD_OPERATOR_CONSTRAINTS: Map<String, Set<AqlOperator>> =
         mapOf(
             "priority" to setOf(AqlOperator.CONTAINS),
             "status" to setOf(AqlOperator.CONTAINS),
+            "text" to setOf(AqlOperator.EQ, AqlOperator.NEQ, AqlOperator.IN, AqlOperator.NOT_IN),
         )
 
     /**
