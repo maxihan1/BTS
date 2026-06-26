@@ -52,3 +52,19 @@ class SavedFilterNotFoundException(
 class SavedFilterConflictException(
     id: UUID,
 ) : RuntimeException("저장된 필터가 다른 요청으로 수정되었습니다. 최신 버전을 재조회 후 재시도하세요: $id")
+
+/**
+ * 공유로 열람은 가능하지만 소유자가 아니어서 수정/삭제 권한이 없음.
+ *
+ * HTTP 403 신호. 비소유자가 자신에게 공유된(가시) 필터를 수정/삭제하려 할 때 서비스가 발생시킨다(EC4).
+ * 비가시(공유되지 않은) 필터는 존재 은닉을 위해 [SavedFilterNotFoundException](404)으로 분기한다(EC5).
+ *
+ * 이 예외의 message 에는 식별자가 포함되므로 HTTP detail 로 직접 노출하지 않는다 —
+ * 응답 매핑은 T8 핸들러([com.bts.search.savedfilter.web.SavedFilterExceptionHandler])가
+ * 일반 메시지로 치환한다.
+ *
+ * @param id 수정/삭제가 거부된 필터 식별자.
+ */
+class SavedFilterForbiddenException(
+    id: UUID,
+) : RuntimeException("저장된 필터를 수정/삭제할 권한이 없습니다: $id")
