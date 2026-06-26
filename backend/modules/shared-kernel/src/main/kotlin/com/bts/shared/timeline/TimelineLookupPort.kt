@@ -88,7 +88,7 @@ data class TimelineItemPage(
  *
  * @property key 이슈 키. 예: `"PROJ-1"`.
  * @property summary 이슈 제목. 간트 행 레이블에 표시.
- * @property issueType 이슈 타입 키. 예: `"BUG"`, `"STORY"`, `"TASK"`.
+ * @property issueType 이슈 타입 키(issue_types.key). 소문자. 예: `"epic"`, `"story"`, `"task"`, `"bug"`.
  * @property currentStateKey 이슈의 현재 워크플로우 상태 키. 진행 상태 표시 기준.
  * @property assigneeId 담당자 UUID. 미배정이면 null.
  * @property startDate 이슈 시작일. 미설정이면 null.

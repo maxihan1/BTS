@@ -103,7 +103,7 @@ class TimelineControllerTest {
         TimelineItemView(
             key = key,
             summary = "요약 $key",
-            issueType = "TASK",
+            issueType = "task",
             currentStateKey = "open",
             assigneeId = null,
             startDate = startDate,
