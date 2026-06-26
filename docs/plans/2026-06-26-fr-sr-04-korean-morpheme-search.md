@@ -73,7 +73,7 @@ FR-SR-04 한글 형태소 기반 전문 검색 (PostgreSQL FTS tsvector + GIN �
 - `FIELD_OPERATOR_CONSTRAINTS["text"]` = `setOf(EQ, NEQ, IN, NOT_IN)` (즉 `~`만 허용 — FTS 전용 가상 필드).
 - 파서는 AqlFields 참조하므로 자동 통과(별도 구현 없음, 테스트가 회귀 가드).
 
-**REFACTOR**: AqlFields KDoc에 `text`(가상 FTS 필드, summary+description 대상) 설명 추가.
+**REFACTOR**: AqlFields KDoc에 `text`(가상 FTS 필드, summary+description 대상) 설명 추가. (NIT: AqlFieldsTest는 신규 파일 — 기존 필드(status/label/summary/priority) 동작도 함께 커버해 thin test 회피.)
 
 **검증**: `./gradlew :backend:shared-kernel:test :backend:search-export-import:test --tests "*AqlFieldsTest" --tests "*AqlParserTest"`
 
@@ -87,17 +87,19 @@ FR-SR-04 한글 형태소 기반 전문 검색 (PostgreSQL FTS tsvector + GIN �
 - depends-on: []
 
 **RED**:
-- 마이그레이션 테스트(Testcontainers 실DB): `issues.search_vector` 컬럼 존재 + `idx_issues_search_vector` GIN 인덱스 존재 + 행 INSERT 시 `search_vector`가 `to_tsvector('simple', summary||' '||description)`로 자동 산출(generated) 단언 → 실패.
+- 마이그레이션 테스트(Testcontainers 실DB): `issues.search_vector` 컬럼 존재 + `idx_issues_search_vector` GIN + `idx_issues_description_trgm` GIN 존재 + 행 INSERT 시 `search_vector`가 **DDL과 동일한 표현식**(`to_tsvector('simple', coalesce(summary,'')||' '||coalesce(description,''))`)으로 자동 산출 단언 → 실패. (NIT: RED 단언식을 DDL과 일치 — coalesce 포함)
+- **[B3] write-path 회귀 테스트**: V032 적용 후 `IssueRepository.insert(issue)`(record 기반 `set(record)`, `IssueRepository.kt:238`) → 재조회 성공 단언 → (jOOQ가 generated 컬럼을 readonly로 안 빼면 `cannot insert non-DEFAULT into GENERATED column`으로 실패).
 
 **GREEN**:
-- V032 DDL: `ALTER TABLE issues ADD COLUMN search_vector tsvector GENERATED ALWAYS AS (to_tsvector('simple', coalesce(summary,'')||' '||coalesce(description,''))) STORED;` (2-인자형=IMMUTABLE, generated 가능)
+- V032 DDL: `ALTER TABLE issues ADD COLUMN search_vector tsvector GENERATED ALWAYS AS (to_tsvector('simple', coalesce(summary,'')||' '||coalesce(description,''))) STORED;` (2-인자형=IMMUTABLE + coalesce/`||` immutable → generated 가능)
 - `CREATE INDEX idx_issues_search_vector ON issues USING gin (search_vector);`
-- trigram 보강 인덱스: `summary`는 V031 기존, `description` 추가 — 쿼리 표현식과 일치할 표현식 인덱스(예. `gin(lower(coalesce(description,'')) gin_trgm_ops)`). **Task 3 쿼리 표현식과 정확히 일치시킬 것**(FR-SR-02 D3 죽은 인덱스 교훈).
-- `init_codegen.sql` 미러: search_vector 컬럼 + 인덱스(pg_trgm 확장은 이미 상단 선언). V006 `description` 컬럼 주석("tsvector 금지") 정정.
+- **[B1 수정] description trigram 인덱스**: `CREATE INDEX idx_issues_description_trgm ON issues USING gin (lower(description) gin_trgm_ops);` — **coalesce 없이 V031 summary와 동형**. jOOQ `DESCRIPTION.likeIgnoreCase`가 `lower("description") like ?`를 생성하므로 표현식이 정확히 일치해야 인덱스 생존(coalesce 넣으면 표현식 불일치→죽은 인덱스→OR 전체 seq scan). summary는 V031 기존.
+- **[B3 폴백] jOOQ generated 컬럼 write-path**: jOOQ codegen이 STORED generated를 readonly로 탐지하는지 검증. 미탐지 시 폴백 — codegen `database.excludes`에 search_vector 추가 **또는** 런타임 `Settings.withReadonlyInsert(IGNORE).withReadonlyUpdate(IGNORE)`. write-path 회귀 테스트(RED) green까지.
+- `init_codegen.sql` 미러: search_vector 컬럼 + 두 인덱스(pg_trgm 확장 이미 상단). V006 `description` 컬럼 주석("tsvector 금지") 정정.
 
-**REFACTOR**: V032 L1 주석 + generated column 테이블 rewrite(기존 행 재작성, ACCESS EXCLUSIVE lock) 영향 명시(G3).
+**REFACTOR**: V032 L1 주석 + generated column 테이블 rewrite(기존 행 재작성, ACCESS EXCLUSIVE lock — 1K 규모 이슈 수에서 마이그레이션 순간 락) 영향 명시(G3).
 
-**검증**: `./gradlew :backend:issue-tracking:test --tests "*IssueSearchVectorMigrationTest"`
+**검증**: `./gradlew :backend:issue-tracking:test --tests "*IssueSearchVectorMigrationTest" --tests "*IssueRepository*"` (write-path 회귀 포함 — 좁은 필터로 INSERT 경로 누락 금지)
 
 ---
 
@@ -113,8 +115,10 @@ FR-SR-04 한글 형태소 기반 전문 검색 (PostgreSQL FTS tsvector + GIN �
 
 **GREEN**:
 - `buildComparisonCondition`(IssueRepository.kt ~2334)에 `text` 필드 분기 추가. CONTAINS:
-  - `DSL.condition("issues.search_vector @@ plainto_tsquery('simple', {0})", bind)` **OR** trigram 부분일치(`lower(summary) LIKE` OR `lower(description) LIKE`, `%`/`_`/`\` 이스케이프 — 기존 `escapeIlikePrefix` 재사용).
+  - `DSL.condition("issues.search_vector @@ plainto_tsquery('simple', {0})", bind)` **OR** trigram 부분일치 — **쿼리 표현식을 인덱스와 일치**: `ISSUES.SUMMARY.likeIgnoreCase("%esc%")` OR `ISSUES.DESCRIPTION.likeIgnoreCase("%esc%")` (둘 다 `lower(col) like ?` 생성 → V031/idx_issues_description_trgm와 정확 일치). `%`/`_`/`\` 이스케이프 = 기존 `escapeIlikePrefix`(`:2215`, 컬럼 무관 generic) 재사용.
   - 빈/공백 검색어 → 매칭 0 Condition(`DSL.falseCondition()`)(G5).
+- **[C1] text 정렬 거부**: `text`는 정렬 대상 컬럼이 없음. `buildOrderBy` 화이트리스트(`:2486`)에 추가 금지 + 파서/검증 단계에서 `ORDER BY text`를 **400으로** 거부(현재 미거부 시 catch-all 500 — `SearchExceptionHandler`에 IllegalArgumentException 핸들러 부재 `:64-275`). 정렬가능 필드와 검색가능 필드 분리.
+- **[C3] content 쿼리 search_vector 제외**: content SELECT(`ISSUES.fields()`, `:2284`)가 tsvector 전송하지 않도록 명시 컬럼 선택 또는 search_vector 제외(페이로드 절감, 기능 무영향).
 - 기존 summary/label/priority/status 분기 무변경(회귀 0).
 
 **REFACTOR**: text FTS 변환을 `buildTextSearchCondition(strValue)` 헬퍼로 추출 + KDoc(FTS+trigram 하이브리드 근거 ADR 링크).
@@ -131,10 +135,12 @@ FR-SR-04 한글 형태소 기반 전문 검색 (PostgreSQL FTS tsvector + GIN �
 - depends-on: [3]
 
 **RED→GREEN** (검증 task, 실DB):
-- **케이스 30개**: (a) 조사 변형("이슈를"↔"이슈"), (b) 제목/본문 부분 문자열, (c) 영문·숫자·한글 혼용, (d) 다중 토큰 AND. **기대 미매칭** 케이스(어간 변화 활용형 "먹었다"↔"먹는다")는 `assertThat(...).isEmpty()`로 명시(가짜 통과 방지, spec 완료기준 #2).
-- **NFR-1 EXPLAIN**: `text ~` 쿼리의 EXPLAIN에 `idx_issues_search_vector`(또는 trigram 인덱스) 사용 단언(죽은 인덱스 회귀 가드).
+- **케이스 30개**: (a) 조사 변형("이슈를"↔"이슈"), (b) 제목/본문 부분 문자열, (c) 영문·숫자·한글 혼용, (d) 다중 토큰 AND. **기대 미매칭** 케이스(어간 변화 활용형 "먹었다"↔"먹는다")는 `assertThat(...).isEmpty()`로 명시(spec 완료기준 #2).
+- **[C2] vacuous green 차단**: 각 "기대 미매칭" 부정 케이스에는 **동일 시드 데이터로 매칭되는 양성 대조군**을 짝지어, isEmpty()가 죽은 인덱스/쿼리 에러/빈 DB 같은 엉뚱한 이유로 비는 것을 배제.
+- **[B2 강화] NFR-1 EXPLAIN**: (1) tsvector로는 불가하고 **조사 변형 trigram으로만 매칭되는** 검색어로 EXPLAIN → `idx_issues_description_trgm`이 plan에 **개별 인덱스명으로** 나타남을 단언. (2) `@@` 경로는 `idx_issues_search_vector` 단언. **`SET enable_seqscan=off` 금지**(가짜 통과), 충분한 행 seed로 플래너가 인덱스 선택하게.
 - **보안(S4)**: BROWSE 없는 actor → SecurityException(probe 차단) / 접근 불가 보안등급 이슈 결과 제외(visibility AND 우회 불가).
-- **EC5**: `text = "x"` → 400/IllegalArgument.
+- **[EC5/C1] 미지원 연산자·정렬**: `text = "x"` → 400/IllegalArgument. `text ~ "x" ORDER BY text` → 400(catch-all 500 아님).
+- **[C4] NFR-2/EC3/EC6**: 특수문자·SQL 메타문자(`'`, `%`, `_`, `;`, `--`) 포함 검색어 → 인젝션 0 + tsquery 500 누출 0(plainto_tsquery 안전 파싱). 2000자 초과 → DoS 가드.
 
 **검증**: `./gradlew :backend:issue-tracking:test --tests "*IssueSearchKoreanFtsTest"`
 
@@ -160,7 +166,28 @@ FR-SR-04 한글 형태소 기반 전문 검색 (PostgreSQL FTS tsvector + GIN �
 - 예상 wave: 3 (Wave1: T1·T2·T5 병렬 / Wave2: T3 / Wave3: T4)
 - TDD 강제: yes (T1~T4 RED→GREEN→REFACTOR, T5 문서)
 - 병렬 dispatch: depends-on + files 교집합 기준. T3·T4는 issue-tracking 모듈이나 파일 분리 + depends 직렬.
-- 추가 검증: ktlint, detekt(baseline 동결만), Testcontainers 통합(실DB), verify-master-plan
+- 추가 검증: ktlint, **detekt(baseline 동결만 — 신규 `DSL.condition` 코드가 새 findings 만들면 헤더 단축/구조 수정으로 해소, baseline에 묻지 말 것, C5)**, ArchUnit BC 경계(신규 cross-BC import 0 확인, C5), Testcontainers 통합(실DB), verify-master-plan
 - 회귀 가드: 기존 `summary ~`(V031 trigram) + FR-SR-02 단위/통합 무변경 확인
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 독립 eng plan 리뷰 (적대적, 2026-06-26) — 판정: BLOCKED → plan 반영 완료
+
+**BLOCKER 3건 (전부 plan 수정 반영).**
+- **B1** description trigram 표현식 불일치(`lower(coalesce(...))` ≠ 쿼리 `lower(description)`) → 죽은 인덱스 + OR 전체 seq scan. plan 본문 자체 모순. → **Task 2**: `gin(lower(description) gin_trgm_ops)` coalesce 제거(V031 동형), **Task 3**: 쿼리 `DESCRIPTION.likeIgnoreCase`로 표현식 일치.
+- **B2** EXPLAIN "또는" 단언이 죽은 description 인덱스를 못 잡음(`@@`는 항상 search_vector 사용). → **Task 4**: 조사변형 trigram-전용 케이스로 `idx_issues_description_trgm` 개별 인덱스명 단언 + seqscan off 금지.
+- **B3** generated column이 jOOQ record 기반 INSERT(`set(record)`, `IssueRepository.kt:238`)를 깨면 이슈 생성 전수 500. 검증 task 0개. → **Task 2**: create→재조회 write-path 회귀 테스트 + jOOQ readonly 미탐지 시 폴백(codegen excludes 또는 `Settings.withReadonlyInsert/Update(IGNORE)`) 명문화. 검증 필터 확대.
+
+**CONCERN 5건 (반영).**
+- **C1** `text ~ ORDER BY text` → catch-all 500(정렬 화이트리스트 부재 + IllegalArgumentException 핸들러 부재). → Task 3/4 정렬 거부 400.
+- **C2** 부정 케이스 vacuous green → Task 4 양성 대조군 짝.
+- **C3** content 쿼리 `ISSUES.fields()`가 tsvector 전송 → Task 3 명시 컬럼/제외.
+- **C4** 인젝션/2000자 테스트 부재 → Task 4 추가.
+- **C5** detekt baseline 오용 + ArchUnit 미명시 → Plan 메타 명시.
+
+**PASS 확인된 가정(리뷰가 코드로 검증).** to_tsvector 2-인자형 IMMUTABLE+coalesce/`||` → generated 가능 / BC 격리(text=AqlFields 단일출처) / escapeIlikePrefix 컬럼무관 재사용 / depends-on·wave 정합 / Task 1 RED 진정성(vacuous 아님).
+
+**재판정.** BLOCKER 3·CONCERN 5 전부 plan 반영 완료 → 구현 착수 가능(PASS-with-fixes). 구현 중 B3 폴백 실제 동작은 write-path 테스트로 확정.
+
+### ceo 관점 (요약)
+- 가치/범위는 Maxi 사전 확정(형태소 분석기 미도입 = zero-dep 철학 일관, PR=백엔드 D1~D5 분리 = FR-SR-02 선례). 추가 taste decision 없음.
