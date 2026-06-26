@@ -84,7 +84,7 @@ function buildAssigneeNames(items: TimelineItem[], userMap: Map<string, string>)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 스켈레톤 헬퍼
+// 내부 서브컴포넌트 — 가독성 분리 (재사용 목적 아님)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 로딩 중 플레이스홀더 — shadcn Skeleton 미설치이므로 인라인 구현 (board 패턴 동일) */
@@ -94,6 +94,49 @@ function Skeleton({ className }: { className?: string }): JSX.Element {
       className={`animate-pulse rounded-md bg-muted ${className ?? ''}`}
       aria-hidden="true"
     />
+  )
+}
+
+/** 타임라인 로딩 스켈레톤 — 제목 바 + Gantt 차트 영역 플레이스홀더 */
+function TimelineLoadingSkeleton(): JSX.Element {
+  return (
+    <div className="p-6 space-y-4">
+      <Skeleton className="h-8 w-64" />
+      <Skeleton className="h-64 w-full" />
+    </div>
+  )
+}
+
+/** 403 접근 거부 뷰 — AGILE_ACCESS_DENIED(S6) 상태 안내 */
+function TimelineAccessDeniedView(): JSX.Element {
+  return (
+    <div className="p-8 flex flex-col items-center justify-center min-h-48 gap-4 text-center">
+      <p className="text-lg font-medium">접근 권한이 없습니다</p>
+      <p className="text-sm text-muted-foreground">
+        해당 프로젝트의 타임라인에 접근할 권한이 없습니다.
+      </p>
+    </div>
+  )
+}
+
+/** 타임라인 빈 상태 뷰 — items 0건(S4) 안내 */
+function TimelineEmptyView(): JSX.Element {
+  return (
+    <div className="p-8 flex flex-col items-center justify-center min-h-48 text-center">
+      <p className="text-sm text-muted-foreground">{timelineLabels.empty.noItems}</p>
+    </div>
+  )
+}
+
+/** 이슈 일부 누락 경고 배너 — truncated=true(S5) 상태 */
+function TruncatedBanner(): JSX.Element {
+  return (
+    <div
+      role="alert"
+      className="rounded-md bg-amber-50 border border-amber-200 px-4 py-2 text-sm text-amber-800"
+    >
+      표시되지 않은 이슈가 있습니다. 이슈 목록에서 전체를 확인하세요.
+    </div>
   )
 }
 
@@ -171,51 +214,22 @@ export function TimelinePage({ projectKey }: TimelinePageProps): JSX.Element {
 
   // ── 로딩 ──────────────────────────────────────────────────────────────────
 
-  if (isLoading) {
-    return (
-      <div className="p-6 space-y-4">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    )
-  }
+  if (isLoading) return <TimelineLoadingSkeleton />
 
   // ── 403 접근 거부 (S6) ────────────────────────────────────────────────────
 
-  if (isAccessDenied) {
-    return (
-      <div className="p-8 flex flex-col items-center justify-center min-h-48 gap-4 text-center">
-        <p className="text-lg font-medium">접근 권한이 없습니다</p>
-        <p className="text-sm text-muted-foreground">
-          해당 프로젝트의 타임라인에 접근할 권한이 없습니다.
-        </p>
-      </div>
-    )
-  }
+  if (isAccessDenied) return <TimelineAccessDeniedView />
 
   // ── 빈 상태 (S4) ─────────────────────────────────────────────────────────
 
-  if (data !== undefined && data.items.length === 0) {
-    return (
-      <div className="p-8 flex flex-col items-center justify-center min-h-48 text-center">
-        <p className="text-sm text-muted-foreground">{timelineLabels.empty.noItems}</p>
-      </div>
-    )
-  }
+  if (data !== undefined && data.items.length === 0) return <TimelineEmptyView />
 
   // ── 정상 — GanttChart ────────────────────────────────────────────────────
 
   return (
     <div className="p-4 space-y-3">
       {/* 경고 배너 — truncated (S5) */}
-      {data?.truncated === true && (
-        <div
-          role="alert"
-          className="rounded-md bg-amber-50 border border-amber-200 px-4 py-2 text-sm text-amber-800"
-        >
-          표시되지 않은 이슈가 있습니다. 이슈 목록에서 전체를 확인하세요.
-        </div>
-      )}
+      {data?.truncated === true && <TruncatedBanner />}
 
       {/* GanttChart — data가 있는 경우에만 렌더 */}
       {data !== undefined && (
