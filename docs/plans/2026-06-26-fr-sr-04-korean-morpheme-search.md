@@ -33,9 +33,25 @@ FR-SR-04 한글 형태소 기반 전문 검색 (PostgreSQL FTS tsvector + GIN �
 - **관련 ADR**: [docs/decisions/2026-06-26-fr-sr-04-korean-fts.md](../decisions/2026-06-26-fr-sr-04-korean-fts.md) (생성됨)
 - **spec에서 확정할 사항**: (1) AQL 통합 방식(`~` 의미 확장 vs 신규 텍스트 경로), (2) search_vector 갱신 방식(generated column vs 트리거 vs 쿼리타임)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-26-fr-sr-04-korean-morpheme-search.md](../specs/2026-06-26-fr-sr-04-korean-morpheme-search.md)
+
+핵심 시나리오 3줄 요약.
+- `text ~ "검색어"` 신규 AQL 필드 → summary+description 전문검색(`search_vector @@ plainto_tsquery('simple')` OR trigram 부분일치).
+- `search_vector`는 issues의 STORED generated column(V032) — 앱 코드 무변경, DB 자동 색인.
+- visibility 보안 술어 자동 AND(FR-SR-02 패턴), 기존 `summary ~`(V031 trigram) 무변경(회귀 0).
+
+### ❓ Brainstorming 발견 (plan에서 처리)
+- **G1 (spec 반영 완료)**: "형태소 분리 30개"를 simple+trigram 현실에 맞게 재정의(조사변형/부분문자열, 활용형은 기대 미매칭 명시). plan 테스트 케이스 설계 시 반영.
+- **G2 (spec 반영 완료)**: 관련도(ts_rank) 정렬 범위 외(NFR-6).
+- **G3 (plan)**: `GENERATED STORED` 컬럼 추가 = 기존 행 테이블 rewrite + lock. 이슈 수 규모 영향 검토 + 마이그레이션 주석 명시.
+- **G4 (plan/게이트1)**: PR 범위 — 백엔드 D1~D5만 vs D6/D7(프론트 syntax highlight `text` 키워드 + E2E) 포함. FR-SR-02 선례=백엔드 먼저 분리 권장. plan에서 범위 제안.
+- **G5 (plan, 마이너)**: 빈 검색어(`text ~ ""`)=결과 0 정책 권장. 마크다운 기호 색인(simple이 구두점 제거).
+
+## Brainstorming Check
+
+✅ 통과 (비판적 self-review 1회, gap 5건 — G1/G2 spec 보강, G3/G4/G5 plan 이월)
 
 ## Plan (← /bts-plan 채움)
 
