@@ -8,6 +8,14 @@
  * 주의: 모든 값은 콜론으로 끝나지 않는다 (글로벌 §5).
  */
 export const boardLabels = {
+  /** 보드 페이지 — 헤더 및 뷰 전환 링크 */
+  page: {
+    /** 백로그 뷰 전환 링크 텍스트 */
+    backlogLink: '백로그',
+    /** 타임라인 뷰 전환 링크 텍스트 */
+    timelineLink: '타임라인',
+  },
+
   /** WIP(Work In Progress) 제한 관련 라벨 */
   wip: {
     /**

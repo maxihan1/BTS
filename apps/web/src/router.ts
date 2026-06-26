@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 33개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + 프로젝트 보드 1 + 프로젝트 백로그 1 + settings 5 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 2 + 알림 보관함 1 + 검색 1 | FR-SR-02: searchRoute /search 추가)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 34개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + settings 5 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 2 + 알림 보관함 1 + 검색 1 | FR-TL-01: timelineRoute /projects/$projectKey/timeline 추가)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -38,6 +38,7 @@ import { DashboardsRouteAdapter } from './routes/dashboards'
 import { DashboardDetailRouteAdapter } from './routes/dashboards.$dashboardId'
 import { InboxRouteAdapter } from './routes/inbox'
 import { SearchRouteAdapter } from './routes/search'
+import { TimelineRouteAdapter } from './routes/projects.$projectKey.timeline'
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -165,6 +166,15 @@ const projectBacklogRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects/$projectKey/backlog',
   component: BacklogRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
+/** 프로젝트 타임라인(Gantt) 라우트 — /projects/$projectKey/timeline, requireAuth (FR-TL-01) */
+const projectTimelineRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/projects/$projectKey/timeline',
+  component: TimelineRouteAdapter,
   staticData: { requireAuth: true },
   beforeLoad: requireAuthAndPasswordChanged,
 })
@@ -414,11 +424,11 @@ const settingsAccountLinksRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 33개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 34개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
  *   · /inbox · /dashboards · /dashboards/:dashboardId · /search
- *   · /projects/:projectKey/backlog · /projects/:projectKey/board
+ *   · /projects/:projectKey/backlog · /projects/:projectKey/board · /projects/:projectKey/timeline
  *   · /projects/:projectKey/settings/workflow-scheme · /projects/:projectKey/settings/members
  *   · /projects/:projectKey/settings/components · /projects/:projectKey/settings/versions
  *   · /projects/:projectKey/settings/custom-fields · /projects/:projectKey/settings/issue-templates
@@ -458,6 +468,8 @@ export const routeTree = rootRoute.addChildren([
   projectBacklogRoute,
   // agile-planning BC — 프로젝트 칸반 보드 (FR-BD-01)
   projectBoardRoute,
+  // agile-planning BC — 프로젝트 타임라인(Gantt) (FR-TL-01)
+  projectTimelineRoute,
   // project-workflow BC — 프로젝트별 스킴 할당
   projectWorkflowSchemeSettingsRoute,
   // project-membership BC — 프로젝트 멤버 관리

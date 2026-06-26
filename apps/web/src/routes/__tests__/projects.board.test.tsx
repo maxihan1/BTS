@@ -1,6 +1,6 @@
 // 칸반 보드 라우트 페이지 단위 테스트 — BoardPage 렌더 시나리오 (FR-BD-01 Task 7 + FR-BD-02 Task 6 + FR-BD-03 Task 6)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { BoardSummary, BoardDetail, BoardCardFilterParams } from '@/api/boards'
@@ -17,6 +17,27 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mockNavigate,
   useParams: () => ({ projectKey: 'ATLAS' }),
   useSearch: () => ({}),
+  Link: ({
+    to,
+    params,
+    children,
+    className,
+  }: {
+    to: string
+    params?: Record<string, string>
+    children: React.ReactNode
+    className?: string
+  }) => {
+    // params 치환: $projectKey → 실제 값 (TanStack Router 동작 모사)
+    const resolvedTo =
+      params !== undefined
+        ? Object.entries(params).reduce(
+            (acc, [key, val]) => acc.replace(`$${key}`, val),
+            to,
+          )
+        : to
+    return <a href={resolvedTo} className={className}>{children}</a>
+  },
 }))
 
 vi.mock('sonner', () => ({
@@ -827,6 +848,39 @@ describe('BoardPage', () => {
 
     const lastCall = mockKanbanBoardProps[mockKanbanBoardProps.length - 1]
     expect(lastCall?.isFilterActive).toBe(false)
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Task 7 — 뷰 전환 nav (FR-TL-01)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * T-BD7-NAV-1. 보드 페이지에 백로그·타임라인 뷰 전환 nav가 렌더된다.
+   * 보드 1개 + 상세 로드 상태에서 nav[aria-label="프로젝트 뷰 전환"]이 존재하고
+   * 백로그 링크와 타임라인 링크가 올바른 href를 가진다.
+   */
+  it('T-BD7-NAV-1: 보드 페이지에 백로그·타임라인 뷰 전환 nav가 렌더된다', async () => {
+    mockUseBoards.mockReturnValue({
+      data: [BOARD_A],
+      isLoading: false,
+      error: null,
+      isError: false,
+    })
+    mockUseBoard.mockReturnValue({ data: BOARD_DETAIL, isLoading: false })
+
+    await renderBoardPage()
+
+    const nav = await waitFor(() =>
+      screen.getByRole('navigation', { name: '프로젝트 뷰 전환' }),
+    )
+    expect(within(nav).getByRole('link', { name: '백로그' })).toHaveAttribute(
+      'href',
+      '/projects/ATLAS/backlog',
+    )
+    expect(within(nav).getByRole('link', { name: '타임라인' })).toHaveAttribute(
+      'href',
+      '/projects/ATLAS/timeline',
+    )
   })
 
   /**

@@ -1,7 +1,7 @@
 // 칸반 보드 라우트 — BoardRouteAdapter + BoardPage (FR-BD-01 Task 7 + FR-BD-02 Task 6 + FR-BD-03 Task 6)
 import type { JSX } from 'react'
 import { useMemo } from 'react'
-import { useParams, useSearch, useNavigate } from '@tanstack/react-router'
+import { useParams, useSearch, useNavigate, Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
 import { toast } from 'sonner'
@@ -409,6 +409,24 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
       <div className="flex items-center">
         <FavoriteButton targetType="PROJECT" targetId={projectKey} />
       </div>
+
+      {/* 뷰 전환 nav — 백로그·타임라인 */}
+      <nav aria-label="프로젝트 뷰 전환" className="flex items-center gap-3">
+        <Link
+          to="/projects/$projectKey/backlog"
+          params={{ projectKey }}
+          className="text-sm text-muted-foreground hover:text-foreground"
+        >
+          {boardLabels.page.backlogLink}
+        </Link>
+        <Link
+          to="/projects/$projectKey/timeline"
+          params={{ projectKey }}
+          className="text-sm text-muted-foreground hover:text-foreground"
+        >
+          {boardLabels.page.timelineLink}
+        </Link>
+      </nav>
 
       {/* 헤더 행 — 보드 선택 드롭다운 + 스윔레인 셀렉터 */}
       {(boards !== undefined && boards.length >= 2) || (boardDetail !== undefined && canCreate) ? (

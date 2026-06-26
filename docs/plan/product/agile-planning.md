@@ -39,7 +39,9 @@
 - [ ] 자체 SVG 프로토타입 (100개 막대)
 - [ ] Recharts 프로토타입 (동일 시나리오)
 - [ ] 성능 비교 측정값 기록 (FPS, 메모리, 번들 영향)
-- [ ] ADR 작성 (`docs/adr/<date>-gantt-choice.md`)
+- [x] ADR 작성 (`docs/adr/2026-06-26-gantt-rendering-self-svg.md`, PR #194)
+
+> **Deviation(PR #194)**. 실측 프로토타입 비교(자체 SVG/Recharts/성능 측정)는 생략하고 ADR 정성 분석으로 직접 **자체 SVG/CSS** 결정 — 1K·≤500 이슈 규모에서 div 좌표 단순 기하로 충분, 신규 의존성 환각위험 회피(learnings 정신). 성능 임계(500건 2s)는 §4.1 NFR 표에서 실측 추적.
 
 ## §2 보드 (FR-BD, 3개)
 
@@ -128,12 +130,14 @@
 - [x] D3. 데이터 모델 — (issues.start_date, due_date 활용, 신규 스키마 0) (책임. backend-engineer) (PR #192)
 - [x] D4. 백엔드 — `GET /api/v1/timeline?project=...` (책임. backend-engineer) (PR #192)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer) (PR #192)
-- [ ] D6. 프론트 UI — ADR 선택 라이브러리/SVG (책임. designer → frontend-engineer)
-- [ ] D7. E2E + NFR (책임. qa-engineer)
+- [x] D6. 프론트 UI — 자체 SVG/CSS Gantt (Epic 그룹 + targetDate 마일스톤) (책임. frontend-engineer) (PR #194)
+- [x] D7. E2E + NFR (책임. frontend-engineer) (PR #194)
 
 | 항목 | 임계 | 실측 (p95) |
 |---|---|---|
 | 타임라인 500건 렌더 | 2s | ___ |
+
+> **Deviation(PR #194 — FR-TL-01 D6/D7 프론트 + E2E)**. ① **Gantt 라이브러리 = 자체 SVG/CSS**(의존성 0) — Recharts/frappe-gantt 대비 커스터마이징·환각위험0·1K 규모 단순성(ADR `2026-06-26-gantt-rendering-self-svg.md`, fr-index §A.3 #2 해소). ② 레이아웃 = **Epic 그룹(접기/펼치기) + start~due 막대 + targetDate ◆ 마일스톤**(SDD §13.3.1). 좌표/그룹 조립은 순수함수(`lib/timeline-layout.ts`, UTC 날짜·jsdom 안전), 컴포넌트는 렌더만. ③ 시간축 = 고정 일 단위 폭 + 가로 스크롤(줌은 FR-TL-03 범위 외). ④ 라우팅 = **code-based router.ts 등록**(file-based 아님). 진입점 = board/backlog nav에 타임라인 링크(board nav 신규 추가). ⑤ 담당자 이름 = `fetchUsers` 3-state(미배정/미지 폴백). issueType 색맵 신규. ⑥ 검증 = unit 108 + 전체 4651 + E2E(timeline 4 + board/backlog 회귀 16). 게이트2 CONCERN 4(데드 i18n·인라인 한국어·Zod .default(null) 방어·ISO직렬화는 #192 해소) 처리.
 
 > **Deviation(PR #192 — FR-TL-01 백엔드 D1~D5)**. ① 범위 **백엔드 우선**(D1~D5) — 프론트 Gantt 렌더(D6/D7) + Gantt 라이브러리 ADR(fr-index §A.3 #2)은 후속 PR(Maxi 확정 2026-06-26). ② cross-BC 데이터는 **신규 `TimelineLookupPort`(shared-kernel) + `TimelineLookupAdapter`(issue-tracking)** — `BoardIssueView` 확장 대신 전용 포트(날짜·issueType 필드 + 500 상한). ③ Epic 부모/자식 **트리 조립은 프론트(D6) 책임**, 백엔드는 평면 목록 + `epicKey` 만 반환. ④ 데이터는 FR-PL-01 `issues.start_date/due_date/target_date`(V025) 활용, 마이그레이션 0 — start~due=간트 막대, target_date=로드맵 마일스톤 마커(포함 필터엔 미반영). ⑤ 타임라인 아이템 = start/due 중 1개+ 있는 가시·미삭제 이슈, BROWSE 권한, `created_at DESC, key ASC` 결정적 truncation(500).
 

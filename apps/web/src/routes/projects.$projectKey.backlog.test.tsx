@@ -1,6 +1,6 @@
 // 백로그 라우트 페이지 단위 테스트 — RouteAdapter useParams 추출 + BacklogPage canManage 전달
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useAuthStore } from '@/auth/authStore'
 import {
@@ -170,6 +170,18 @@ describe('BacklogPage', () => {
     const boardLink = screen.getByRole('link', { name: '보드' })
     expect(boardLink).toBeInTheDocument()
     expect(boardLink).toHaveAttribute('href', '/projects/ATLAS/board')
+  })
+
+  /**
+   * T-BL-R4b. 타임라인으로 이동하는 링크가 nav에 존재한다.
+   */
+  it('T-BL-R4b: 타임라인 링크가 nav에 존재한다', () => {
+    renderPage('ATLAS')
+
+    const nav = screen.getByRole('navigation', { name: '프로젝트 뷰 전환' })
+    const timelineLink = within(nav).getByRole('link', { name: '타임라인' })
+    expect(timelineLink).toBeInTheDocument()
+    expect(timelineLink).toHaveAttribute('href', '/projects/ATLAS/timeline')
   })
 })
 
