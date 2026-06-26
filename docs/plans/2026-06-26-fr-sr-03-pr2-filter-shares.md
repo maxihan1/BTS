@@ -161,8 +161,9 @@ interface ProjectMembershipPort { fun projectKeysOf(userId: UUID): Set<String> }
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/savedfilter/application/SavedFilterShareRepository.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/savedfilter/persistence/JooqSavedFilterShareRepository.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/savedfilter/persistence/JooqSavedFilterShareRepositoryTest.kt`]
+- files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/savedfilter/application/SavedFilterShareRepository.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/savedfilter/persistence/JooqSavedFilterShareRepository.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/savedfilter/application/SavedFilterRepository.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/savedfilter/persistence/JooqSavedFilterRepository.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/savedfilter/persistence/JooqSavedFilterShareRepositoryTest.kt`]
 - depends-on: [1, 3]
+- 분담: shares 테이블 CRUD(replaceShares/findByFilterIds)=`SavedFilterShareRepository`(신규). 가시성 쿼리(SavedFilter 반환: findVisibleById/findSharedWith)=`SavedFilterRepository` 확장(SavedFilter 행 매핑 재사용).
 
 **RED**. Testcontainers 리포 테스트 — (a) `replaceShares(filterId, list)` delete-then-insert 원자성(EC2), (b) `findByFilterIds(Set)` 배치 로드(N+1 차단, B2 — 목록 응답 shares 적재용), (c) 필터 하드삭제 시 CASCADE 동반삭제(EC6), (d) 요청 중복→DB UNIQUE NULLS NOT DISTINCT 멱등(EC7), (e) `findSharedWith(actorId, projectKeys, groupIds, page, size)` — 비소유 가시 필터만 + **결정적 정렬(created_at,id) + LIMIT/OFFSET**(EC14/C1, 빈 집합 입력 시 AUTHENTICATED만), (f) **`findVisibleById(id, actorId, keys, groups)`** — owner OR 공유매칭이면 반환, 아니면 null(B3 단일 술어). **parity**: 같은 시드에서 `findVisibleById≠null` ⇔ `findSharedWith`에 포함(비소유일 때). 실패.
 
