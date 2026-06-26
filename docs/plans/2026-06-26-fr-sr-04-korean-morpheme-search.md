@@ -53,6 +53,114 @@ FR-SR-04 한글 형태소 기반 전문 검색 (PostgreSQL FTS tsvector + GIN �
 
 ✅ 통과 (비판적 self-review 1회, gap 5건 — G1/G2 spec 보강, G3/G4/G5 plan 이월)
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> **PR 범위 (G4 결정)**. 이 PR = 백엔드 D1~D5. D6/D7(프론트 syntax highlight `text` 키워드 + E2E)은 후속 PR(FR-SR-02 선례 동일). 게이트1 Maxi 확인.
+
+### Task 1. AqlFields에 `text` 가상 필드 추가 (`~` 연산자만 허용)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/search/AqlFields.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/search/AqlFieldsTest.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/aql/AqlParserTest.kt`]
+- depends-on: []
+
+**RED**:
+- `AqlFieldsTest`: `classify("text")` == SUPPORTED 기대 / `isOperatorForbidden("text", EQ)` == true(=,!=,IN,NOT_IN 금지) / `isOperatorForbidden("text", CONTAINS)` == false 단언 → 실패(text 미등록).
+- `AqlParserTest`: `text ~ "검색어"` 파싱 → `Comparison(AqlField("text"), CONTAINS, [Str("검색어")])` / `text = open` → AqlSyntaxException(연산자 제약) 단언 → 실패.
+
+**GREEN**:
+- `AqlFields.MVP_FIELDS` += `"text"`.
+- `FIELD_OPERATOR_CONSTRAINTS["text"]` = `setOf(EQ, NEQ, IN, NOT_IN)` (즉 `~`만 허용 — FTS 전용 가상 필드).
+- 파서는 AqlFields 참조하므로 자동 통과(별도 구현 없음, 테스트가 회귀 가드).
+
+**REFACTOR**: AqlFields KDoc에 `text`(가상 FTS 필드, summary+description 대상) 설명 추가.
+
+**검증**: `./gradlew :backend:shared-kernel:test :backend:search-export-import:test --tests "*AqlFieldsTest" --tests "*AqlParserTest"`
+
+---
+
+### Task 2. V032 — `search_vector` generated column + GIN + trigram 인덱스 + init_codegen 미러
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/issue-tracking/src/main/resources/db/migration/issue-tracking/V032__issues_search_vector_fts.sql`, `backend/modules/issue-tracking/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/migration/IssueSearchVectorMigrationTest.kt`]
+- depends-on: []
+
+**RED**:
+- 마이그레이션 테스트(Testcontainers 실DB): `issues.search_vector` 컬럼 존재 + `idx_issues_search_vector` GIN 인덱스 존재 + 행 INSERT 시 `search_vector`가 `to_tsvector('simple', summary||' '||description)`로 자동 산출(generated) 단언 → 실패.
+
+**GREEN**:
+- V032 DDL: `ALTER TABLE issues ADD COLUMN search_vector tsvector GENERATED ALWAYS AS (to_tsvector('simple', coalesce(summary,'')||' '||coalesce(description,''))) STORED;` (2-인자형=IMMUTABLE, generated 가능)
+- `CREATE INDEX idx_issues_search_vector ON issues USING gin (search_vector);`
+- trigram 보강 인덱스: `summary`는 V031 기존, `description` 추가 — 쿼리 표현식과 일치할 표현식 인덱스(예. `gin(lower(coalesce(description,'')) gin_trgm_ops)`). **Task 3 쿼리 표현식과 정확히 일치시킬 것**(FR-SR-02 D3 죽은 인덱스 교훈).
+- `init_codegen.sql` 미러: search_vector 컬럼 + 인덱스(pg_trgm 확장은 이미 상단 선언). V006 `description` 컬럼 주석("tsvector 금지") 정정.
+
+**REFACTOR**: V032 L1 주석 + generated column 테이블 rewrite(기존 행 재작성, ACCESS EXCLUSIVE lock) 영향 명시(G3).
+
+**검증**: `./gradlew :backend:issue-tracking:test --tests "*IssueSearchVectorMigrationTest"`
+
+---
+
+### Task 3. `searchByAql`의 `text` → FTS + trigram 변환 (jOOQ)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/repository/IssueSearchAqlTextTest.kt`]
+- depends-on: [1, 2]
+
+**RED**:
+- 통합 테스트(실DB): 본문에만 "토큰 만료"가 있는 이슈를 `text ~ "토큰 만료"`로 검색 → 매칭 / `text ~ ""`(빈) → 결과 0 단언 → 실패(text 분기 부재, repository IllegalArgument 또는 미매칭).
+
+**GREEN**:
+- `buildComparisonCondition`(IssueRepository.kt ~2334)에 `text` 필드 분기 추가. CONTAINS:
+  - `DSL.condition("issues.search_vector @@ plainto_tsquery('simple', {0})", bind)` **OR** trigram 부분일치(`lower(summary) LIKE` OR `lower(description) LIKE`, `%`/`_`/`\` 이스케이프 — 기존 `escapeIlikePrefix` 재사용).
+  - 빈/공백 검색어 → 매칭 0 Condition(`DSL.falseCondition()`)(G5).
+- 기존 summary/label/priority/status 분기 무변경(회귀 0).
+
+**REFACTOR**: text FTS 변환을 `buildTextSearchCondition(strValue)` 헬퍼로 추출 + KDoc(FTS+trigram 하이브리드 근거 ADR 링크).
+
+**검증**: `./gradlew :backend:issue-tracking:test --tests "*IssueSearchAqlTextTest"`
+
+---
+
+### Task 4. 한글 검색 케이스 30개 + EXPLAIN 인덱스 + 보안 통합 테스트
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/repository/IssueSearchKoreanFtsTest.kt`]
+- depends-on: [3]
+
+**RED→GREEN** (검증 task, 실DB):
+- **케이스 30개**: (a) 조사 변형("이슈를"↔"이슈"), (b) 제목/본문 부분 문자열, (c) 영문·숫자·한글 혼용, (d) 다중 토큰 AND. **기대 미매칭** 케이스(어간 변화 활용형 "먹었다"↔"먹는다")는 `assertThat(...).isEmpty()`로 명시(가짜 통과 방지, spec 완료기준 #2).
+- **NFR-1 EXPLAIN**: `text ~` 쿼리의 EXPLAIN에 `idx_issues_search_vector`(또는 trigram 인덱스) 사용 단언(죽은 인덱스 회귀 가드).
+- **보안(S4)**: BROWSE 없는 actor → SecurityException(probe 차단) / 접근 불가 보안등급 이슈 결과 제외(visibility AND 우회 불가).
+- **EC5**: `text = "x"` → 400/IllegalArgument.
+
+**검증**: `./gradlew :backend:issue-tracking:test --tests "*IssueSearchKoreanFtsTest"`
+
+---
+
+### Task 5. 문서 전수 동기화 (SDD deviation + product 결정 명시)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`docs/sdd/10-search-export-import.md`, `docs/plan/product/search-export-import.md`]
+- depends-on: []
+
+**RED→GREEN** (문서):
+- SDD 10.2: simple tsvector + pg_trgm + `text` AQL 필드 명세 보강, "Mecab-ko/Lucene-Kr" → 본 작업 ADR로 superseded deviation 주석.
+- product §2.4: D2 결정 명시(simple+trigram, text 필드), D1~D5 [x] 마킹은 머지 게이트에서.
+- FR 카운트 불변(추가/삭제 0) → fr-index/README/CLAUDE 카운트 무변경.
+
+**검증**: `bash scripts/verify-master-plan.sh` 통과.
+
+## Plan 메타
+
+- task 수: 5
+- 예상 wave: 3 (Wave1: T1·T2·T5 병렬 / Wave2: T3 / Wave3: T4)
+- TDD 강제: yes (T1~T4 RED→GREEN→REFACTOR, T5 문서)
+- 병렬 dispatch: depends-on + files 교집합 기준. T3·T4는 issue-tracking 모듈이나 파일 분리 + depends 직렬.
+- 추가 검증: ktlint, detekt(baseline 동결만), Testcontainers 통합(실DB), verify-master-plan
+- 회귀 가드: 기존 `summary ~`(V031 trigram) + FR-SR-02 단위/통합 무변경 확인
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
