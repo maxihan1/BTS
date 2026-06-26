@@ -53,12 +53,13 @@ import java.util.UUID
  * - C4: SQL 인젝션 0 + LIKE 와일드카드 이스케이프 + 장문 DoS 무크래시
  */
 @Suppress(
-    "TooManyFunctions", // 30케이스 + EXPLAIN + 보안 + EC5 + C4 — 단일 기능 통합 테스트
-    "LargeClass",       // 검증 범주 집약 — 분리 시 컨텍스트 분산으로 오히려 유지보수성 저하
+    // 30케이스 + EXPLAIN + 보안 + EC5 + C4 — 단일 기능 통합 테스트
+    "TooManyFunctions",
+    // 검증 범주 집약 — 분리 시 컨텍스트 분산으로 오히려 유지보수성 저하
+    "LargeClass",
 )
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
-
     private var taskTypeId: IssueTypeId? = null
 
     /** unrestricted=true 접근권한 — 보안등급 필터 미적용 빠른경로. */
@@ -84,8 +85,7 @@ class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
         }
     }
 
-    private fun requireTaskTypeId(): IssueTypeId =
-        requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
+    private fun requireTaskTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 가 초기화되지 않았습니다." }
 
     /**
      * 테스트 이슈 삽입 헬퍼.
@@ -620,9 +620,12 @@ class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
             adapter.search(
                 IssueSearchQuery(
                     projectKey = "TPRJ",
-                    ast = AqlNode.Comparison(
-                        AqlField("text"), AqlOperator.CONTAINS, listOf(AqlValue.Str("이슈")),
-                    ),
+                    ast =
+                        AqlNode.Comparison(
+                            AqlField("text"),
+                            AqlOperator.CONTAINS,
+                            listOf(AqlValue.Str("이슈")),
+                        ),
                     sort = emptyList(),
                     viewerUserId = UUID.randomUUID(),
                     page = 0,
@@ -690,9 +693,12 @@ class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
             adapter.search(
                 IssueSearchQuery(
                     projectKey = "TPRJ",
-                    ast = AqlNode.Comparison(
-                        AqlField("text"), AqlOperator.EQ, listOf(AqlValue.Str("x")),
-                    ),
+                    ast =
+                        AqlNode.Comparison(
+                            AqlField("text"),
+                            AqlOperator.EQ,
+                            listOf(AqlValue.Str("x")),
+                        ),
                     sort = emptyList(),
                     viewerUserId = UUID.randomUUID(),
                     page = 0,
@@ -711,9 +717,12 @@ class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
         assertThrows<IllegalArgumentException> {
             repository.searchByAql(
                 projectKey = "TPRJ",
-                ast = AqlNode.Comparison(
-                    AqlField("text"), AqlOperator.CONTAINS, listOf(AqlValue.Str("이슈")),
-                ),
+                ast =
+                    AqlNode.Comparison(
+                        AqlField("text"),
+                        AqlOperator.CONTAINS,
+                        listOf(AqlValue.Str("이슈")),
+                    ),
                 sort = listOf(AqlSort(AqlField("text"), SortDirection.ASC)),
                 actor = UUID.randomUUID(),
                 access = unrestrictedAccess,
