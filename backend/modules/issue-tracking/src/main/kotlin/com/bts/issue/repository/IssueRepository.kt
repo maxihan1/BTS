@@ -834,7 +834,8 @@ class IssueRepository(
                         .and(epicAlias.PROJECT_ID.eq(ISSUES.PROJECT_ID)),
                 )
                 .where(where)
-                .orderBy(ISSUES.CREATED_AT.desc())
+                // created_at 동률 시 key(유니크)로 보조 정렬 — 500/501 경계 truncation 행 단위 결정성 (M1)
+                .orderBy(ISSUES.CREATED_AT.desc(), ISSUES.KEY.asc())
                 .limit(TIMELINE_FETCH_LIMIT + 1)
                 .fetch { record ->
                     val issue = record.into(ISSUES).toIssue()
