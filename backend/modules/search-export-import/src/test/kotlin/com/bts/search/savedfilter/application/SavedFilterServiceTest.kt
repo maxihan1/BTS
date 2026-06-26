@@ -3,6 +3,8 @@
 package com.bts.search.savedfilter.application
 
 import com.bts.search.savedfilter.domain.SavedFilter
+import com.bts.shared.membership.GroupMembershipPort
+import com.bts.shared.membership.ProjectMembershipPort
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -17,7 +19,11 @@ import java.util.UUID
 
 class SavedFilterServiceTest {
     private val repository: SavedFilterRepository = mockk()
-    private val service = SavedFilterService(repository)
+    private val shareRepository: SavedFilterShareRepository = mockk()
+    private val groupMembershipPort: GroupMembershipPort = mockk()
+    private val projectMembershipPort: ProjectMembershipPort = mockk()
+    private val service =
+        SavedFilterService(repository, shareRepository, groupMembershipPort, projectMembershipPort)
 
     private val actorId: UUID = UUID.randomUUID()
     private val otherId: UUID = UUID.randomUUID()
@@ -80,56 +86,17 @@ class SavedFilterServiceTest {
         }
     }
 
-    // ── getByIdForOwner ──────────────────────────────────────────────────────
-
-    @Test
-    fun `getByIdForOwner - 존재하지 않으면 SavedFilterNotFoundException`() {
-        every { repository.findById(any()) } returns null
-
-        assertThrows<SavedFilterNotFoundException> {
-            service.getByIdForOwner(UUID.randomUUID(), actorId)
-        }
-    }
-
-    @Test
-    fun `getByIdForOwner - 타 owner 필터는 SavedFilterNotFoundException 존재 은닉`() {
-        val othersFilter = aFilter(ownerId = otherId)
-        every { repository.findById(othersFilter.id!!) } returns othersFilter
-
-        assertThrows<SavedFilterNotFoundException> {
-            service.getByIdForOwner(othersFilter.id!!, actorId)
-        }
-    }
-
-    @Test
-    fun `getByIdForOwner - 본인 필터는 정상 반환`() {
-        val myFilter = aFilter()
-        every { repository.findById(myFilter.id!!) } returns myFilter
-
-        val result = service.getByIdForOwner(myFilter.id!!, actorId)
-
-        assertEquals(myFilter, result)
-    }
-
-    // ── listByOwner ──────────────────────────────────────────────────────────
-
-    @Test
-    fun `listByOwner - repo findByOwner에 위임하고 결과 반환`() {
-        val filters = listOf(aFilter(), aFilter())
-        every { repository.findByOwner(actorId) } returns filters
-
-        val result = service.listByOwner(actorId)
-
-        assertEquals(filters, result)
-        verify { repository.findByOwner(actorId) }
-    }
-
     // ── update ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `update - 비owner면 SavedFilterNotFoundException (PR1 비가시 존재은닉)`() {
+    fun `update - 비owner 비가시면 SavedFilterNotFoundException (존재은닉)`() {
         val othersFilter = aFilter(ownerId = otherId)
         every { repository.findById(othersFilter.id!!) } returns othersFilter
+        every { projectMembershipPort.projectKeysOf(actorId) } returns emptySet()
+        every { groupMembershipPort.groupIdsOf(actorId) } returns emptySet()
+        every {
+            repository.findVisibleById(othersFilter.id!!, actorId, emptySet(), emptySet())
+        } returns null
 
         assertThrows<SavedFilterNotFoundException> {
             service.update(othersFilter.id!!, actorId, "새 이름", validAql, 0L)
@@ -163,6 +130,8 @@ class SavedFilterServiceTest {
         val updated = myFilter.copy(name = "새 이름", version = 1L)
         every { repository.findById(myFilter.id!!) } returns myFilter
         every { repository.update(any()) } returns updated
+        // update 가 SavedFilterWithShares 를 반환하므로 GREEN 에서 findByFilterIds 호출됨 — 미리 mock.
+        every { shareRepository.findByFilterIds(setOf(myFilter.id!!)) } returns emptyMap()
 
         service.update(myFilter.id!!, actorId, "새 이름", validAql, myFilter.version)
 
@@ -175,10 +144,13 @@ class SavedFilterServiceTest {
         val updated = myFilter.copy(name = "새 이름", version = 1L)
         every { repository.findById(myFilter.id!!) } returns myFilter
         every { repository.update(any()) } returns updated
+        // update 가 SavedFilterWithShares 를 반환하므로 GREEN 에서 findByFilterIds 호출됨 — 미리 mock.
+        every { shareRepository.findByFilterIds(setOf(myFilter.id!!)) } returns emptyMap()
 
         val result = service.update(myFilter.id!!, actorId, "새 이름", validAql, myFilter.version)
 
-        assertEquals(updated, result)
+        // update 는 이제 SavedFilterWithShares 를 반환한다 — filter 필드로 비교한다.
+        assertEquals(updated, result.filter)
     }
 
     // ── delete ───────────────────────────────────────────────────────────────
@@ -193,9 +165,14 @@ class SavedFilterServiceTest {
     }
 
     @Test
-    fun `delete - 비owner면 SavedFilterNotFoundException (PR1 비가시 존재은닉)`() {
+    fun `delete - 비owner 비가시면 SavedFilterNotFoundException (존재은닉)`() {
         val othersFilter = aFilter(ownerId = otherId)
         every { repository.findById(othersFilter.id!!) } returns othersFilter
+        every { projectMembershipPort.projectKeysOf(actorId) } returns emptySet()
+        every { groupMembershipPort.groupIdsOf(actorId) } returns emptySet()
+        every {
+            repository.findVisibleById(othersFilter.id!!, actorId, emptySet(), emptySet())
+        } returns null
 
         assertThrows<SavedFilterNotFoundException> {
             service.delete(othersFilter.id!!, actorId)

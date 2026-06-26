@@ -64,13 +64,13 @@
 
 **우선순위**. 필수 | **선행**. §2.1, §2.2 | **Plan slug**. `search/saved-filters`
 
-> **백엔드 PR1 완료 (2026-06-26, PR #191)**. search-export-import **첫 영속성 부트스트랩**(flyway/jOOQ codegen/Testcontainers, V600~V699 신규 할당 — DATA.md) + SavedFilter **CRUD(PRIVATE 전용)** + 실행 엔드포인트(`GET /api/v1/filters/{id}/search`, viewer 권한 재실행 — IssueSearchPort 재사용, 권한상승 불가). 저장 시 AQL 구문검증(파서 재사용) + 이름 owner내 유니크(409 native dual-catch) + OCC(version) + 하드삭제(DATA.md §3 등록). 비소유=비가시 404 존재은닉(spec EC5). ADR `docs/decisions/2026-06-26-fr-sr-03-saved-filters.md`. 즐겨찾기는 기존 FR-UX-02 favorites(FILTER 타입) 재사용(별도 컬럼 없음). **후속 PR2(범위 외)** — 공유(`saved_filter_shares` PROJECT/GROUP/AUTHENTICATED 대상 지정) + 신규 cross-BC 멤버십 포트(GroupMembership/ProjectAccess) + 가시성 4경로 + 프론트 D6/D7. D2(공유 권한)/D3(shares 테이블)/D4(공유 CRUD)는 PR2에서 완결.
+> **백엔드 완료 — PR1(#191) + PR2(#193, 2026-06-26)**. PR1. search-export-import **첫 영속성 부트스트랩**(flyway/jOOQ codegen/Testcontainers, V600~V699 — DATA.md) + SavedFilter **CRUD(PRIVATE 전용)** + 실행(`GET /api/v1/filters/{id}/search`, viewer 권한 재실행, 권한상승 불가) + 이름 owner내 유니크(409 dual-catch) + OCC + 하드삭제. **PR2(공유)**. `saved_filter_shares`(V601, PROJECT=project_key/GROUP=group UUID/AUTHENTICATED) + 공유 **본문 임베드**(POST/PUT replace-all+OCC) + **가시성 OR 4경로**(읽기 get/list/search) + 쓰기는 소유자만(가시-비소유 **403** `SavedFilterForbiddenException`/비가시 **404** 은닉) + 신규 `GET /api/v1/filters/shared`(페이지네이션) + cross-BC 멤버십 포트 2종(shared-kernel `GroupMembershipPort`/`ProjectMembershipPort` + identity-access 구현, **fail-closed**, project_key는 `ProjectDirectory` read-only 선례 매핑). 즐겨찾기는 기존 FR-UX-02 favorites(FILTER) 재사용. ADR `docs/decisions/2026-06-26-fr-sr-03-saved-filters.md`. **D6/D7(프론트 공유 모달 + 별표 UI)는 후속 프론트 PR.**
 
-- [ ] D1. 도메인 — SavedFilter (책임. backend-engineer)
-- [ ] D2. 명세 — 권한 (개인/팀/공개) (책임. backend-engineer + security-engineer)
-- [ ] D3. 데이터 모델 — `saved_filters(owner_id, name, query, visibility)` (책임. db-engineer)
-- [ ] D4. 백엔드 — CRUD API (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D1. 도메인 — SavedFilter + SavedFilterShare/ShareType (책임. backend-engineer)
+- [x] D2. 명세 — 공유 권한 PROJECT/GROUP/AUTHENTICATED + 가시성 4경로 (책임. backend-engineer + security-engineer)
+- [x] D3. 데이터 모델 — `saved_filters`(V600) + `saved_filter_shares`(V601) (책임. db-engineer)
+- [x] D4. 백엔드 — CRUD + 공유 임베드 + `/shared` API (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 — 가시성 매트릭스·403/404·CASCADE·parity 통합 (책임. backend-engineer)
 - [ ] D6. 프론트 UI — 필터 저장/공유 모달 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 

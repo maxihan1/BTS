@@ -6,6 +6,7 @@ import com.bts.search.aql.AqlLexException
 import com.bts.search.aql.AqlSyntaxException
 import com.bts.search.savedfilter.application.SavedFilterConflictException
 import com.bts.search.savedfilter.application.SavedFilterDuplicateNameException
+import com.bts.search.savedfilter.application.SavedFilterForbiddenException
 import com.bts.search.savedfilter.application.SavedFilterNotFoundException
 import com.bts.search.savedfilter.application.SavedFilterValidationException
 import com.bts.search.web.SearchErrorCodes
@@ -74,10 +75,11 @@ class SavedFilterExceptionHandler {
     }
 
     /**
-     * [IllegalArgumentException] — 도메인 불변식 위반(이름/쿼리 길이·blank) — 400.
+     * [IllegalArgumentException] — 도메인 불변식 위반(이름/쿼리 길이·blank, shares EC8~10) — 400.
      *
-     * [com.bts.search.savedfilter.domain.SavedFilter.create] 팩토리가 던진다.
-     * 보안 — 내부 메시지를 그대로 노출하지 않고 일반 안내를 사용한다.
+     * [com.bts.search.savedfilter.domain.SavedFilter.create] 팩토리 또는
+     * [com.bts.search.savedfilter.domain.SavedFilterShare.create]/[SavedFilterShare.normalize] 가 던진다.
+     * 보안 — 내부 메시지를 그대로 노출하지 않고 일반 안내를 사용한다(이름·쿼리·공유 모두 포괄).
      */
     @ExceptionHandler(IllegalArgumentException::class)
     fun handleIllegalArgument(ex: IllegalArgumentException): ProblemDetail {
@@ -87,7 +89,7 @@ class SavedFilterExceptionHandler {
             "saved-filter-validation-failed",
             "Validation Failed",
             SearchErrorCodes.SEARCH_VALIDATION_FAILED,
-            "필터 이름 또는 쿼리 값이 올바르지 않습니다.",
+            "요청 값이 올바르지 않습니다.",
         )
     }
 
@@ -118,6 +120,26 @@ class SavedFilterExceptionHandler {
             "Conflict",
             FILTER_CONFLICT,
             ex.message ?: "필터가 다른 요청으로 수정되었습니다. 최신 버전을 재조회 후 재시도하세요.",
+        )
+    }
+
+    /**
+     * [SavedFilterForbiddenException] — 공유로 열람은 가능하나 소유자가 아니어서 수정/삭제 불가 — 403.
+     *
+     * detail은 일반 메시지로 치환해 식별자(id)를 HTTP 응답에 노출하지 않는다
+     * (교훈 fr-pm-04-guard-exception-message-http-leak).
+     */
+    @ExceptionHandler(SavedFilterForbiddenException::class)
+    fun handleForbidden(
+        @Suppress("UnusedParameter") ex: SavedFilterForbiddenException,
+    ): ProblemDetail {
+        log.info("FILTER_403 forbidden")
+        return problem(
+            HttpStatus.FORBIDDEN,
+            "saved-filter-forbidden",
+            "Forbidden",
+            FILTER_FORBIDDEN,
+            "이 작업을 수행할 권한이 없습니다.",
         )
     }
 
@@ -240,5 +262,8 @@ class SavedFilterExceptionHandler {
 
         /** 비가시/미존재 에러 코드. */
         const val FILTER_NOT_FOUND = "SEARCH_FILTER_NOT_FOUND"
+
+        /** 가시-비소유 수정/삭제 거부 에러 코드. */
+        const val FILTER_FORBIDDEN = "SEARCH_FILTER_FORBIDDEN"
     }
 }

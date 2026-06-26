@@ -4,6 +4,7 @@ package com.bts.search.savedfilter.web
 
 import com.bts.search.savedfilter.application.SavedFilterNotFoundException
 import com.bts.search.savedfilter.application.SavedFilterService
+import com.bts.search.savedfilter.application.SavedFilterWithShares
 import com.bts.search.savedfilter.domain.SavedFilter
 import com.bts.shared.search.IssueSearchPage
 import com.bts.shared.search.IssueSearchPort
@@ -70,7 +71,7 @@ class SavedFilterSearchControllerTest {
     @Test
     fun `저장 필터 실행 200 + viewer 권한 쿼리 구성`() {
         val id = UUID.randomUUID()
-        every { service.getByIdForOwner(id, actorId) } returns filter(id)
+        every { service.getVisibleById(id, actorId) } returns SavedFilterWithShares(filter(id), emptyList())
         val querySlot = slot<IssueSearchQuery>()
         every { issueSearchPort.search(capture(querySlot)) } returns IssueSearchPage.empty(0, 20)
 
@@ -86,7 +87,7 @@ class SavedFilterSearchControllerTest {
     @Test
     fun `비가시 필터 실행 404`() {
         val id = UUID.randomUUID()
-        every { service.getByIdForOwner(id, actorId) } throws SavedFilterNotFoundException(id)
+        every { service.getVisibleById(id, actorId) } throws SavedFilterNotFoundException(id)
         mockMvc
             .perform(MockMvcRequestBuilders.get("/api/v1/filters/$id/search"))
             .andExpect(status().isNotFound)

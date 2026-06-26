@@ -14,3 +14,19 @@ CREATE TABLE saved_filters (
 
 CREATE INDEX idx_saved_filters_owner ON saved_filters (owner_id);
 CREATE INDEX idx_saved_filters_project ON saved_filters (project_key);
+
+-- V601 saved_filter_shares 구조 미러 (codegen 입력, V601 과 정확히 일치 유지)
+
+CREATE TABLE saved_filter_shares (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    filter_id  UUID        NOT NULL REFERENCES saved_filters(id) ON DELETE CASCADE,
+    share_type VARCHAR(20) NOT NULL CHECK (share_type IN ('PROJECT','GROUP','AUTHENTICATED')),
+    target_id  VARCHAR(255),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_saved_filter_shares UNIQUE NULLS NOT DISTINCT (filter_id, share_type, target_id),
+    CONSTRAINT ck_saved_filter_shares_target
+        CHECK ((share_type = 'AUTHENTICATED') = (target_id IS NULL))
+);
+
+CREATE INDEX idx_saved_filter_shares_filter ON saved_filter_shares (filter_id);
+CREATE INDEX idx_saved_filter_shares_lookup ON saved_filter_shares (share_type, target_id);

@@ -74,6 +74,7 @@ owner_id·target_id는 FK 없이 UUID/문자열 보관(BC 격리 — favorites �
 ## 결과 (Consequences)
 
 - search-export-import가 첫 영속성을 갖는다 — build.gradle 확장 + 통합 테스트 부팅(Testcontainers) + jOOQ 생성 코드 모듈 추가. 향후 Export/Import FR도 이 인프라 위에 얹힌다.
+- (PR2) `saved_filter_shares`는 하드삭제(조인테이블 성격 — replace=delete-then-insert + 필터 삭제 시 FK CASCADE). DEVELOPMENT.md §1.2 규칙7 하드삭제 ADR 커버.
 - shared-kernel에 멤버십 포트(+identity-access 구현) 추가 → `SharedKernelBoundaryArchTest` 통과 필요(원시 타입만).
 - DATA.md 버전 범위 표에 search-export-import V600~ 추가(전수 동기화). fr-index FR-SR-03 BC 매핑 무변경(카운트 영향 0).
 - SDD 10.3 모델(`isFavorite`·`shareTargetIds: List<Long>`·`ShareScope` 단일 enum·`Long` id)은 본 ADR로 정정 — SDD 갱신 시 deviation 주석 반영.

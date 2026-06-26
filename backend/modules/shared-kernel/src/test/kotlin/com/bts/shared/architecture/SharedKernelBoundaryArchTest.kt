@@ -2,9 +2,12 @@
 
 package com.bts.shared.architecture
 
+import com.bts.shared.membership.GroupMembershipPort
+import com.bts.shared.membership.ProjectMembershipPort
 import com.tngtech.archunit.core.importer.ClassFileImporter
 import com.tngtech.archunit.core.importer.ImportOption
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
 /**
@@ -64,6 +67,87 @@ class SharedKernelBoundaryArchTest {
             .because(
                 "shared-kernel 은 중립 공유 커널이므로 identity-access BC 를 역참조하면 안 된다. " +
                     "ADR: docs/decisions/2026-05-27-shared-kernel-extraction.md",
+            )
+            .check(classes)
+    }
+
+    @Test
+    fun `shared-kernel must not depend on com_bts_search package`() {
+        noClasses()
+            .that().resideInAPackage("com.bts.shared..")
+            .should().dependOnClassesThat().resideInAPackage("com.bts.search..")
+            .because(
+                "shared-kernel 은 중립 공유 커널이므로 search-export-import BC 를 역참조하면 순환 의존이 재발한다. " +
+                    "ADR: docs/decisions/2026-05-27-shared-kernel-extraction.md",
+            )
+            .check(classes)
+    }
+
+    @Test
+    fun `shared-kernel must not depend on com_bts_agileplanning package`() {
+        noClasses()
+            .that().resideInAPackage("com.bts.shared..")
+            .should().dependOnClassesThat().resideInAPackage("com.bts.agileplanning..")
+            .because(
+                "shared-kernel 은 중립 공유 커널이므로 agile-planning BC 를 역참조하면 순환 의존이 재발한다. " +
+                    "ADR: docs/decisions/2026-05-27-shared-kernel-extraction.md",
+            )
+            .check(classes)
+    }
+
+    @Test
+    fun `shared-kernel must not depend on com_bts_notification package`() {
+        noClasses()
+            .that().resideInAPackage("com.bts.shared..")
+            .should().dependOnClassesThat().resideInAPackage("com.bts.notification..")
+            .because(
+                "shared-kernel 은 중립 공유 커널이므로 notification BC 를 역참조하면 순환 의존이 재발한다. " +
+                    "ADR: docs/decisions/2026-05-27-shared-kernel-extraction.md",
+            )
+            .check(classes)
+    }
+
+    /**
+     * [GroupMembershipPort] 와 [ProjectMembershipPort] 는 인터페이스이어야 한다.
+     *
+     * fail-closed 원칙 — default 구현이 없으므로 소비 BC 에서 Bean 을 등록하지 않으면
+     * 부팅 자체가 실패해 공유 누출이 원천 차단된다.
+     *
+     * 원시 타입 전용 — `com.bts.shared.membership..` 패키지가 BC 도메인 타입을 참조하면
+     * `membership package must not reference BC domain types` 룰이 빌드를 차단한다.
+     */
+    @Test
+    fun `GroupMembershipPort 와 ProjectMembershipPort 는 인터페이스이어야 한다`() {
+        assertThat(GroupMembershipPort::class.java.isInterface)
+            .`as`("GroupMembershipPort must be an interface — fail-closed, no default allowed")
+            .isTrue()
+        assertThat(ProjectMembershipPort::class.java.isInterface)
+            .`as`("ProjectMembershipPort must be an interface — fail-closed, no default allowed")
+            .isTrue()
+    }
+
+    /**
+     * `com.bts.shared.membership` 패키지는 BC 도메인 타입을 직접 참조하면 안 된다.
+     *
+     * 원시 타입(UUID/String/Set) 전용 계약을 ArchUnit 으로 빌드 시점에 강제한다.
+     * 위반 시 순환 의존 또는 가시성 공유 누출이 재발한다.
+     */
+    @Test
+    fun `membership package must not reference BC domain types - primitive types only`() {
+        noClasses()
+            .that().resideInAPackage("com.bts.shared.membership..")
+            .should().dependOnClassesThat()
+            .resideInAnyPackage(
+                "com.bts.issue..",
+                "com.bts.workflow..",
+                "com.atlas.bts.identity..",
+                "com.bts.search..",
+                "com.bts.agileplanning..",
+                "com.bts.notification..",
+            )
+            .because(
+                "com.bts.shared.membership 포트는 원시 타입(UUID/String/Set)만 사용해야 한다. " +
+                    "BC 도메인 타입을 참조하면 순환 의존 또는 공유 가시성 누출이 재발한다.",
             )
             .check(classes)
     }
