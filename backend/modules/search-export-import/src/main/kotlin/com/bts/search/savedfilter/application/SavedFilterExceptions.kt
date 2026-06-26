@@ -42,18 +42,6 @@ class SavedFilterNotFoundException(
 ) : RuntimeException("저장된 필터를 찾을 수 없습니다: $id")
 
 /**
- * 요청자가 해당 필터의 소유자가 아님 (수정/삭제 시).
- *
- * HTTP 403 신호. get 경로는 [SavedFilterNotFoundException]으로 존재 은닉하며,
- * update/delete 경로에서만 이 예외가 사용된다.
- *
- * @param id 접근 거부된 필터 식별자.
- */
-class SavedFilterForbiddenException(
-    id: UUID,
-) : RuntimeException("저장된 필터 수정 권한이 없습니다: $id")
-
-/**
  * 낙관적 동시성 제어(OCC) 충돌 — 다른 요청이 먼저 필터를 수정함.
  *
  * HTTP 409 신호. repo.update 가 0행(null 반환)일 때 서비스가 발생시킨다.

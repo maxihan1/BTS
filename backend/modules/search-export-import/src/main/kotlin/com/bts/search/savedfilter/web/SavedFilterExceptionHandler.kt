@@ -6,7 +6,6 @@ import com.bts.search.aql.AqlLexException
 import com.bts.search.aql.AqlSyntaxException
 import com.bts.search.savedfilter.application.SavedFilterConflictException
 import com.bts.search.savedfilter.application.SavedFilterDuplicateNameException
-import com.bts.search.savedfilter.application.SavedFilterForbiddenException
 import com.bts.search.savedfilter.application.SavedFilterNotFoundException
 import com.bts.search.savedfilter.application.SavedFilterValidationException
 import com.bts.search.web.SearchErrorCodes
@@ -136,23 +135,6 @@ class SavedFilterExceptionHandler {
             "Not Found",
             FILTER_NOT_FOUND,
             "저장된 필터를 찾을 수 없습니다.",
-        )
-    }
-
-    /**
-     * [SavedFilterForbiddenException] — 비소유자 수정/삭제 — 403.
-     */
-    @ExceptionHandler(SavedFilterForbiddenException::class)
-    fun handleForbidden(
-        @Suppress("UnusedParameter") ex: SavedFilterForbiddenException,
-    ): ProblemDetail {
-        log.info("FILTER_403 forbidden")
-        return problem(
-            HttpStatus.FORBIDDEN,
-            "saved-filter-forbidden",
-            "Forbidden",
-            SearchErrorCodes.SEARCH_ACCESS_DENIED,
-            "이 작업을 수행할 권한이 없습니다.",
         )
     }
 

@@ -127,11 +127,11 @@ class SavedFilterServiceTest {
     // ── update ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `update - 비owner면 SavedFilterForbiddenException`() {
+    fun `update - 비owner면 SavedFilterNotFoundException (PR1 비가시 존재은닉)`() {
         val othersFilter = aFilter(ownerId = otherId)
         every { repository.findById(othersFilter.id!!) } returns othersFilter
 
-        assertThrows<SavedFilterForbiddenException> {
+        assertThrows<SavedFilterNotFoundException> {
             service.update(othersFilter.id!!, actorId, "새 이름", validAql, 0L)
         }
     }
@@ -193,11 +193,11 @@ class SavedFilterServiceTest {
     }
 
     @Test
-    fun `delete - 비owner면 SavedFilterForbiddenException`() {
+    fun `delete - 비owner면 SavedFilterNotFoundException (PR1 비가시 존재은닉)`() {
         val othersFilter = aFilter(ownerId = otherId)
         every { repository.findById(othersFilter.id!!) } returns othersFilter
 
-        assertThrows<SavedFilterForbiddenException> {
+        assertThrows<SavedFilterNotFoundException> {
             service.delete(othersFilter.id!!, actorId)
         }
     }

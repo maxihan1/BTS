@@ -205,7 +205,7 @@ class SavedFilterIntegrationTest {
     }
 
     @Test
-    fun `비소유자 수정 403`() {
+    fun `비소유자 수정 404 (PR1 비가시 존재은닉)`() {
         val id = createFilter("앨리스필터", "status = open")
         authenticate(bob)
         mockMvc
@@ -213,7 +213,7 @@ class SavedFilterIntegrationTest {
                 put("/api/v1/filters/$id")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{"name":"탈취","aqlQuery":"status = open","version":0}"""),
-            ).andExpect(status().isForbidden)
+            ).andExpect(status().isNotFound)
     }
 
     @Test

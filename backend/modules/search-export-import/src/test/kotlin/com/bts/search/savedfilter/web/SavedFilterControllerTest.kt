@@ -4,7 +4,6 @@ package com.bts.search.savedfilter.web
 
 import com.bts.search.savedfilter.application.SavedFilterConflictException
 import com.bts.search.savedfilter.application.SavedFilterDuplicateNameException
-import com.bts.search.savedfilter.application.SavedFilterForbiddenException
 import com.bts.search.savedfilter.application.SavedFilterNotFoundException
 import com.bts.search.savedfilter.application.SavedFilterService
 import com.bts.search.savedfilter.application.SavedFilterValidationException
@@ -168,16 +167,16 @@ class SavedFilterControllerTest {
     }
 
     @Test
-    fun `비소유자 수정 403`() {
+    fun `비소유자 수정 404 (PR1 비가시 존재은닉)`() {
         val id = UUID.randomUUID()
-        every { service.update(any(), any(), any(), any(), any()) } throws SavedFilterForbiddenException(id)
+        every { service.update(any(), any(), any(), any(), any()) } throws SavedFilterNotFoundException(id)
         mockMvc
             .perform(
                 org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                     .put("/api/v1/filters/$id")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{"name":"x","aqlQuery":"status = Open","version":0}"""),
-            ).andExpect(status().isForbidden)
+            ).andExpect(status().isNotFound)
     }
 
     @Test

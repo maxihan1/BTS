@@ -19,8 +19,9 @@ import java.util.UUID
  *
  * ## 책임
  * - AQL 구문 검증 ([validateAql]) — create/update 시 렉서·파서 재사용. 오류 시 [SavedFilterValidationException].
- * - owner 게이트 — actorId != filter.ownerId 면 update/delete 시 [SavedFilterForbiddenException],
- *   get 시 [SavedFilterNotFoundException] (존재 은닉, 403 아님).
+ * - owner 게이트 — PR1(공유 없음)은 비소유 = 항상 비가시이므로 get/update/delete 모두
+ *   [SavedFilterNotFoundException](404, 존재 은닉)으로 통일한다(spec EC5). 공유로 visible-but-not-owner가
+ *   생기는 PR2에서 수정/삭제는 403으로 분기한다.
  * - 이름 중복 409 dual-catch — [DuplicateKeyException](Spring) + [DataAccessException](jOOQ SQLState 23505)
  *   양 경로 모두 [SavedFilterDuplicateNameException] 으로 변환한다.
  *   (운영: JooqAutoConfiguration 이 Spring 변환기 자동 등록 / 테스트 수동 DSLContext: native 23505 경로)
@@ -111,12 +112,10 @@ class SavedFilterService(
      * @param aqlQuery 새 AQL 쿼리 문자열.
      * @param version 클라이언트가 보유한 현재 버전 (OCC 검사용).
      * @return 갱신된 필터 도메인 객체.
-     * @throws SavedFilterNotFoundException 필터가 존재하지 않는 경우.
-     * @throws SavedFilterForbiddenException actor 가 owner 가 아닌 경우.
+     * @throws SavedFilterNotFoundException 필터가 존재하지 않거나 비소유(PR1=비가시, 존재 은닉).
      * @throws SavedFilterValidationException AQL 구문 오류.
      * @throws SavedFilterConflictException OCC 충돌 (stale version).
      */
-    @Suppress("ThrowsCount") // 미존재(404)·비소유(403)·OCC충돌(409) 3개 신호를 각각 던진다.
     fun update(
         id: UUID,
         actorId: UUID,
@@ -124,8 +123,10 @@ class SavedFilterService(
         aqlQuery: String,
         version: Long,
     ): SavedFilter {
-        val existing = repository.findById(id) ?: throw SavedFilterNotFoundException(id)
-        if (existing.ownerId != actorId) throw SavedFilterForbiddenException(id)
+        // PR1은 비소유 = 비가시 → 404로 존재 은닉(spec EC5). null/비소유 모두 NotFound.
+        val existing =
+            repository.findById(id)?.takeIf { it.ownerId == actorId }
+                ?: throw SavedFilterNotFoundException(id)
         validateAql(aqlQuery)
         // projectKey 는 기존 값 유지 — update 파라미터에 포함하지 않는다 (FR-10).
         val toUpdate = existing.copy(name = name, aqlQuery = aqlQuery, version = version)
@@ -138,15 +139,15 @@ class SavedFilterService(
      *
      * @param id 삭제할 필터 식별자.
      * @param actorId 요청자 사용자 UUID.
-     * @throws SavedFilterNotFoundException 필터가 존재하지 않는 경우.
-     * @throws SavedFilterForbiddenException actor 가 owner 가 아닌 경우.
+     * @throws SavedFilterNotFoundException 필터가 존재하지 않거나 비소유(PR1=비가시, 존재 은닉).
      */
     fun delete(
         id: UUID,
         actorId: UUID,
     ) {
-        val existing = repository.findById(id) ?: throw SavedFilterNotFoundException(id)
-        if (existing.ownerId != actorId) throw SavedFilterForbiddenException(id)
+        // PR1은 비소유 = 비가시 → 404로 존재 은닉(spec EC5). 가시성 확인 후 id로 삭제.
+        repository.findById(id)?.takeIf { it.ownerId == actorId }
+            ?: throw SavedFilterNotFoundException(id)
         log.info("SavedFilterService.delete id={} actor={}", id, actorId)
         repository.deleteById(id)
     }
