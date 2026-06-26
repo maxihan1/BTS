@@ -159,4 +159,30 @@ describe('fetchTimeline', () => {
       body: { errorCode: 'FORBIDDEN' },
     })
   })
+
+  it('nullable 필드 키 자체가 응답에서 누락(omit)되면 null로 파싱된다 (C4 — @JsonInclude(NON_NULL) 방어)', async () => {
+    // 백엔드가 @JsonInclude(NON_NULL)을 적용하면 null 필드 키 자체가 JSON에서 사라진다.
+    // .default(null) 없이는 Zod ZodError 발생 → parse 실패.
+    const itemWithOmittedNullableFields = {
+      key: 'ATLAS-1',
+      summary: '기본 태스크',
+      issueType: 'task',
+      currentStateKey: 'open',
+      // assigneeId, startDate, dueDate, targetDate, epicKey 모두 키 자체 누락
+    }
+    server.use(
+      http.get('/api/v1/timeline', () =>
+        HttpResponse.json({
+          data: { items: [itemWithOmittedNullableFields], truncated: false },
+        }),
+      ),
+    )
+    const result = await fetchTimeline('ATLAS')
+    const item = result.items[0]
+    expect(item?.assigneeId).toBeNull()
+    expect(item?.startDate).toBeNull()
+    expect(item?.dueDate).toBeNull()
+    expect(item?.targetDate).toBeNull()
+    expect(item?.epicKey).toBeNull()
+  })
 })
