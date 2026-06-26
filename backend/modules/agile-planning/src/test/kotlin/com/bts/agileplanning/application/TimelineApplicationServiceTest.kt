@@ -32,7 +32,6 @@ import java.util.UUID
  * - EC4: 이슈가 없으면 빈 목록을 반환한다 (vacuous 금지 — 빈 결과 단언).
  */
 class TimelineApplicationServiceTest {
-
     private val actorId: UUID = UUID.randomUUID()
     private val projectKey = "PROJ"
 
@@ -107,11 +106,13 @@ class TimelineApplicationServiceTest {
         val later = LocalDate.of(2026, 6, 1)
         stubPage(
             TimelineItemPage(
-                items = listOf(
-                    item("PROJ-3", startDate = later),
-                    item("PROJ-1", startDate = earlier),
-                    item("PROJ-2", startDate = null), // NULLS LAST
-                ),
+                items =
+                    listOf(
+                        item("PROJ-3", startDate = later),
+                        item("PROJ-1", startDate = earlier),
+                        // NULLS LAST — startDate null 은 뒤로
+                        item("PROJ-2", startDate = null),
+                    ),
                 truncated = false,
             ),
         )
@@ -130,11 +131,13 @@ class TimelineApplicationServiceTest {
         val lateDue = LocalDate.of(2026, 5, 1)
         stubPage(
             TimelineItemPage(
-                items = listOf(
-                    item("PROJ-B", startDate = sameStart, dueDate = lateDue),
-                    item("PROJ-C", startDate = sameStart, dueDate = null), // NULLS LAST
-                    item("PROJ-A", startDate = sameStart, dueDate = earlyDue),
-                ),
+                items =
+                    listOf(
+                        item("PROJ-B", startDate = sameStart, dueDate = lateDue),
+                        // NULLS LAST — dueDate null 은 뒤로
+                        item("PROJ-C", startDate = sameStart, dueDate = null),
+                        item("PROJ-A", startDate = sameStart, dueDate = earlyDue),
+                    ),
                 truncated = false,
             ),
         )
@@ -151,11 +154,12 @@ class TimelineApplicationServiceTest {
         val date = LocalDate.of(2026, 3, 1)
         stubPage(
             TimelineItemPage(
-                items = listOf(
-                    item("PROJ-Z", startDate = date, dueDate = date),
-                    item("PROJ-A", startDate = date, dueDate = date),
-                    item("PROJ-M", startDate = date, dueDate = date),
-                ),
+                items =
+                    listOf(
+                        item("PROJ-Z", startDate = date, dueDate = date),
+                        item("PROJ-A", startDate = date, dueDate = date),
+                        item("PROJ-M", startDate = date, dueDate = date),
+                    ),
                 truncated = false,
             ),
         )
@@ -173,10 +177,11 @@ class TimelineApplicationServiceTest {
         val lateDue = LocalDate.of(2026, 8, 1)
         stubPage(
             TimelineItemPage(
-                items = listOf(
-                    item("PROJ-B", startDate = null, dueDate = lateDue),
-                    item("PROJ-A", startDate = null, dueDate = earlyDue),
-                ),
+                items =
+                    listOf(
+                        item("PROJ-B", startDate = null, dueDate = lateDue),
+                        item("PROJ-A", startDate = null, dueDate = earlyDue),
+                    ),
                 truncated = false,
             ),
         )
