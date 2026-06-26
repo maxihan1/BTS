@@ -54,9 +54,21 @@ classify: type=qa 오판 → ui/frontend-engineer 교정 (E2E 키워드 오판 �
 | **recharts (기존)** | 0 (이미 설치) | floating BarChart 로 Gantt 흉내. 날짜 축은 됨. 계층 그룹 행·에픽 묶음·행 레이블 커스터마이징 제약. Gantt 전용 아님. |
 | **frappe-gantt 등 전용 OSS** | +1 신규 | Gantt 전용이나 React 통합 명령형(매끄럽지 않음)·새 의존성 환각 위험(memory: learnings, Maxi 확인 필수). 1K 규모 오버킬 가능. |
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-26-fr-tl-01-d6-d7-gantt-ui-e2e.md](../specs/2026-06-26-fr-tl-01-d6-d7-gantt-ui-e2e.md)
+
+핵심 결정(Maxi 확정 2026-06-26).
+- Gantt = **자체 SVG/CSS**(의존성 0). 레이아웃 = **Epic 그룹 + targetDate 마일스톤**. 시간축 = 고정 일 단위 폭 + 가로 스크롤(줌은 FR-TL-03 범위 외).
+
+핵심 시나리오 3줄.
+- `/projects/{key}/timeline` 진입 → 날짜 있는 가시 이슈를 Epic 그룹별 Gantt 막대로 렌더(start~due 막대 + targetDate ◆).
+- Epic 그룹 접기/펼치기, 막대/레이블 클릭 → 이슈 상세 이동. 빈/truncated/403 상태 안내.
+- 백엔드 `GET /api/v1/timeline` 만 호출(이미 정렬). 트리 조립·좌표 계산은 프론트 순수 함수.
+
+## Brainstorming Check
+
+✅ 통과 (1회 직접 sanity — 완료 FR 후속). gap 4건(레이아웃 sticky 구조·Epic 토글/막대 영역 분리·issueType 색 출처·FavoriteButton 제거) 발견 후 spec 본문 반영. 날짜 0/1/2개·start>due·targetDate 범위밖·빈/truncated/403·epicKey 미매칭·range폭0·타임존(UTC)·jsdom width0 커버 확인.
 
 ## Plan (← /bts-plan 채움)
 
