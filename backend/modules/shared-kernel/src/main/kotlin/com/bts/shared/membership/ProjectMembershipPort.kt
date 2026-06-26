@@ -7,7 +7,7 @@ import java.util.UUID
 /**
  * 사용자가 접근 가능한 프로젝트 키 집합을 조회하는 cross-BC 포트.
  *
- * [필터 공유 가시성(FR-SR-03)] 판정에서 프로젝트 단위 공유 접근권을 확인하기 위해
+ * 필터 공유 가시성(FR-SR-03) 판정에서 프로젝트 단위 공유 접근권을 확인하기 위해
  * identity-access BC 구현이 이 포트를 제공한다. 소비 측(search-export-import BC)은
  * 이 포트만을 통해 프로젝트 멤버십을 조회한다.
  *
@@ -28,6 +28,8 @@ import java.util.UUID
  * ### 빈 Set 의미
  * 빈 Set 반환 = "멤버십 0개"(fail-closed 방향). 사용자가 어느 프로젝트에도 속하지 않음을
  * 의미하며 allow-all 이 아니다.
+ *
+ * @see com.bts.shared.permission.IssueVisibilityPort 동일 fail-closed 원칙을 따르는 선례 포트
  */
 interface ProjectMembershipPort {
     /**
