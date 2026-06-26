@@ -8,8 +8,11 @@ import type { TimelineItem } from '@/api/timeline'
 /** 기본 일 단위 열 폭(px). 외부에서 dayWidth 인수로 재정의 가능 */
 export const DAY_WIDTH_PX = 20
 
-/** 최소 막대 폭(일 수). startDate만·dueDate만·start>due 클램프 시 사용 */
+/** 최소 막대 폭(일 수). startDate만·dueDate만·start>due 클램프 시 사용 (EC1/EC2) */
 export const MIN_BAR_DAYS = 1
+
+/** 하루를 ms 로 표현한 값 */
+const MS_PER_DAY = 86_400_000
 
 /** 미분류 그룹 레이블 */
 export const LABEL_UNCLASSIFIED = '미분류'
@@ -85,7 +88,7 @@ export function parseIsoDateUtc(iso: string): number {
  * @returns `bMs`에서 `aMs`를 뺀 일수 (소수점 버림)
  */
 export function daysBetweenUtc(aMs: number, bMs: number): number {
-  return Math.floor((bMs - aMs) / 86_400_000)
+  return Math.floor((bMs - aMs) / MS_PER_DAY)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -130,7 +133,7 @@ export function computeDateRange(items: TimelineItem[]): DateRange | null {
 
   // EC8: 단일 날짜(폭 0) 방지 — endMs 를 1일 뒤로
   if (minMs === maxMs) {
-    maxMs = minMs + 86_400_000
+    maxMs = minMs + MS_PER_DAY
   }
 
   return { startMs: minMs, endMs: maxMs }
@@ -269,7 +272,8 @@ export function assembleEpicGroups(items: TimelineItem[]): TimelineGroup[] {
       if (group !== undefined) {
         group.items.push(item)
       } else {
-        // Epic이 아직 처리 안 됨 — 그룹 예비 생성
+        // Epic이 자식보다 나중에 오는 비정상 순서 — 그룹 예비 생성.
+        // Epic 아이템이 도착하면 epicItem·items 을 업데이트한다(아래 unshift 분기).
         epicGroupMap.set(item.epicKey, { epicItem: null, items: [item] })
       }
     } else {
