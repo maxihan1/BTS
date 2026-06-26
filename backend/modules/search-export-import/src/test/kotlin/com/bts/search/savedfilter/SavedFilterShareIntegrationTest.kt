@@ -399,6 +399,54 @@ class SavedFilterShareIntegrationTest {
         assertThat(allIds).hasSize(3)
     }
 
+    // ── C2 매칭 공유만 노출(정보 노출 차단) ────────────────────────────────────
+
+    /** [PROJECT:ATL, GROUP:g-devs, AUTHENTICATED] 3종 공유 JSON 리터럴. */
+    private val multiSharesJson =
+        "[" +
+            """{"shareType":"PROJECT","targetId":"ATL"},""" +
+            """{"shareType":"GROUP","targetId":"g-devs"},""" +
+            """{"shareType":"AUTHENTICATED"}""" +
+            "]"
+
+    @Test
+    fun `C2 - 소유자(alice)는 다중 공유 전체 대상을 응답에서 받는다`() {
+        val id = createFilter("멀티 공유", multiSharesJson)
+        authenticate(alice)
+        val shares = sharePairs(getOk("/api/v1/filters/$id"))
+        assertThat(shares)
+            .containsExactlyInAnyOrder("PROJECT:ATL", "GROUP:g-devs", "AUTHENTICATED:null")
+    }
+
+    @Test
+    fun `C2 - 비소유 PROJECT 멤버(bob)는 매칭 공유만 받고 GROUP 대상은 응답에서 제외된다`() {
+        val id = createFilter("멀티 공유", multiSharesJson)
+        authenticate(bob) // ATL 멤버, g-devs 미소속
+        val shares = sharePairs(getOk("/api/v1/filters/$id"))
+        assertThat(shares).containsExactlyInAnyOrder("PROJECT:ATL", "AUTHENTICATED:null")
+        assertThat(shares).doesNotContain("GROUP:g-devs")
+    }
+
+    @Test
+    fun `C2 - 비소유 GROUP 소속(carol)은 매칭 공유만 받고 PROJECT 대상은 응답에서 제외된다`() {
+        val id = createFilter("멀티 공유", multiSharesJson)
+        authenticate(carol) // g-devs 소속, ATL 미멤버
+        val shares = sharePairs(getOk("/api/v1/filters/$id"))
+        assertThat(shares).containsExactlyInAnyOrder("GROUP:g-devs", "AUTHENTICATED:null")
+        assertThat(shares).doesNotContain("PROJECT:ATL")
+    }
+
+    @Test
+    fun `C2 - GET shared 비소유 viewer(bob) 항목은 매칭 공유 subset만 노출한다`() {
+        createFilter("멀티 공유", multiSharesJson)
+        authenticate(bob)
+        val json = getOk("/api/v1/filters/shared")
+        val list = mapper.readValue<List<Map<String, Any?>>>(json)
+        assertThat(list).hasSize(1)
+        assertThat(sharePairsOf(list[0]))
+            .containsExactlyInAnyOrder("PROJECT:ATL", "AUTHENTICATED:null")
+    }
+
     // ── parity(B3) ────────────────────────────────────────────────────────────
 
     @Test
@@ -476,6 +524,21 @@ class SavedFilterShareIntegrationTest {
                 .andReturn()
                 .response.contentAsString
         return mapper.readValue<Map<String, Any?>>(json)["id"].toString()
+    }
+
+    /** GET 요청을 200 으로 수행하고 응답 본문 문자열을 반환한다. */
+    private fun getOk(path: String): String =
+        mockMvc.perform(get(path)).andExpect(status().isOk).andReturn().response.contentAsString
+
+    /** 단건 응답 JSON 에서 shares 를 "shareType:targetId" 문자열 집합으로 추출한다. */
+    private fun sharePairs(responseJson: String): Set<String> =
+        sharePairsOf(mapper.readValue<Map<String, Any?>>(responseJson))
+
+    /** 응답 맵에서 shares 를 "shareType:targetId" 문자열 집합으로 추출한다(targetId 없으면 null). */
+    @Suppress("UNCHECKED_CAST")
+    private fun sharePairsOf(response: Map<String, Any?>): Set<String> {
+        val shares = response["shares"] as List<Map<String, Any?>>
+        return shares.map { "${it["shareType"]}:${it["targetId"]}" }.toSet()
     }
 
     private fun authenticate(userId: UUID) {

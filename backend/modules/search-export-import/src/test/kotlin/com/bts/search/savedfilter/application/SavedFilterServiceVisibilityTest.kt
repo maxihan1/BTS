@@ -132,6 +132,79 @@ class SavedFilterServiceVisibilityTest {
         verify(exactly = 1) { repository.findVisibleById(id, actorId, emptySet(), groups) }
     }
 
+    // ── C2 — 비소유 viewer 는 매칭 공유만 노출(정보 노출 차단) ───────────────────
+
+    @Test
+    fun `getVisibleById - C2 - owner는 다중 공유 전체 대상을 받는다`() {
+        val id = UUID.randomUUID()
+        val filter = aFilter(id = id, owner = actorId)
+        val proj = SavedFilterShare.create(ShareType.PROJECT, "ATL")
+        val group = SavedFilterShare.create(ShareType.GROUP, "execs")
+        val auth = SavedFilterShare.create(ShareType.AUTHENTICATED, null)
+        every { repository.findById(id) } returns filter
+        every { shareRepository.findByFilterIds(setOf(id)) } returns mapOf(id to listOf(proj, group, auth))
+
+        val result = service.getVisibleById(id, actorId)
+
+        assertEquals(listOf(proj, group, auth), result.shares)
+    }
+
+    @Test
+    fun `getVisibleById - C2 - 비소유 PROJECT 멤버는 매칭 공유만 받고 GROUP 공유는 제외`() {
+        val id = UUID.randomUUID()
+        val filter = aFilter(id = id, owner = ownerId)
+        val keys = setOf("ATL")
+        val proj = SavedFilterShare.create(ShareType.PROJECT, "ATL")
+        val group = SavedFilterShare.create(ShareType.GROUP, "execs")
+        val auth = SavedFilterShare.create(ShareType.AUTHENTICATED, null)
+        every { repository.findById(id) } returns filter
+        every { projectMembershipPort.projectKeysOf(actorId) } returns keys
+        every { groupMembershipPort.groupIdsOf(actorId) } returns emptySet()
+        every { repository.findVisibleById(id, actorId, keys, emptySet()) } returns filter
+        every { shareRepository.findByFilterIds(setOf(id)) } returns mapOf(id to listOf(proj, group, auth))
+
+        val result = service.getVisibleById(id, actorId)
+
+        assertEquals(listOf(proj, auth), result.shares)
+    }
+
+    @Test
+    fun `getVisibleById - C2 - 비소유 GROUP 소속은 매칭 공유만 받고 PROJECT 공유는 제외`() {
+        val id = UUID.randomUUID()
+        val filter = aFilter(id = id, owner = ownerId)
+        val groups = setOf("execs")
+        val proj = SavedFilterShare.create(ShareType.PROJECT, "ATL")
+        val group = SavedFilterShare.create(ShareType.GROUP, "execs")
+        val auth = SavedFilterShare.create(ShareType.AUTHENTICATED, null)
+        every { repository.findById(id) } returns filter
+        every { projectMembershipPort.projectKeysOf(actorId) } returns emptySet()
+        every { groupMembershipPort.groupIdsOf(actorId) } returns groups
+        every { repository.findVisibleById(id, actorId, emptySet(), groups) } returns filter
+        every { shareRepository.findByFilterIds(setOf(id)) } returns mapOf(id to listOf(proj, group, auth))
+
+        val result = service.getVisibleById(id, actorId)
+
+        assertEquals(listOf(group, auth), result.shares)
+    }
+
+    @Test
+    fun `listSharedWith - C2 - 비소유 결과는 viewer 매칭 공유만 포함`() {
+        val id1 = UUID.randomUUID()
+        val keys = setOf("ATL")
+        val f1 = aFilter(id = id1, owner = ownerId)
+        val proj = SavedFilterShare.create(ShareType.PROJECT, "ATL")
+        val group = SavedFilterShare.create(ShareType.GROUP, "execs")
+        val auth = SavedFilterShare.create(ShareType.AUTHENTICATED, null)
+        every { projectMembershipPort.projectKeysOf(actorId) } returns keys
+        every { groupMembershipPort.groupIdsOf(actorId) } returns emptySet()
+        every { repository.findSharedWith(actorId, keys, emptySet(), 0, 20) } returns listOf(f1)
+        every { shareRepository.findByFilterIds(setOf(id1)) } returns mapOf(id1 to listOf(proj, group, auth))
+
+        val result = service.listSharedWith(actorId, 0, 20)
+
+        assertEquals(listOf(proj, auth), result[0].shares)
+    }
+
     // ── getVisibleById — 비가시 404 ───────────────────────────────────────────
 
     @Test
