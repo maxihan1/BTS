@@ -22,6 +22,7 @@ package com.bts.shared.search
  * 특정 필드에 허용되지 않는 연산자가 있다([FIELD_OPERATOR_CONSTRAINTS] 참조).
  * - `priority` — `CONTAINS(~)` 불가. SMALLINT 컬럼이라 부분 문자열 비교가 의미 없다.
  * - `status` — `CONTAINS(~)` 불가. text 키 컬럼이라 부분 일치가 의미 없고 repository 오류를 유발.
+ * - `text` — `=` `!=` `IN` `NOT IN` 불가. 가상 FTS 필드로 `~` 전문 검색만 허용 (FR-SR-04 ADR D4).
  *
  * ### 숫자 범위 제약
  *
