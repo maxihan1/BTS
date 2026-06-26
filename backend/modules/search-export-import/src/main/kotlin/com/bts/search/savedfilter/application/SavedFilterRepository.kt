@@ -65,4 +65,44 @@ interface SavedFilterRepository {
      * @return 삭제된 행이 있으면 true, 없으면 false
      */
     fun deleteById(id: UUID): Boolean
+
+    /**
+     * actor 가 열람 가능한 단건 필터를 조회한다 (소유자 또는 공유 매칭).
+     *
+     * `WHERE id = :id AND (owner_id = :actorId OR sharedWithPredicate)` 조건으로 조회한다.
+     * 비소유자인 경우 공유 술어(B3)가 매칭될 때만 반환하므로 존재 은닉이 자동으로 적용된다.
+     *
+     * @param id 조회할 필터 UUID.
+     * @param actorId 요청 actor UUID.
+     * @param projectKeys actor 가 속한 프로젝트 키 집합. 비어 있으면 PROJECT 공유 매칭 없음.
+     * @param groupIds actor 가 속한 그룹 ID 집합. 비어 있으면 GROUP 공유 매칭 없음.
+     * @return 열람 가능한 필터 도메인 객체, 없거나 비가시면 null.
+     */
+    fun findVisibleById(
+        id: UUID,
+        actorId: UUID,
+        projectKeys: Set<String>,
+        groupIds: Set<String>,
+    ): SavedFilter?
+
+    /**
+     * actor 에게 공유된 비소유 필터 목록을 페이지네이션으로 반환한다.
+     *
+     * `WHERE owner_id != :actorId AND sharedWithPredicate` 조건으로 조회한다.
+     * `ORDER BY created_at ASC, id ASC` 후 `LIMIT :size OFFSET :page * :size` 를 적용한다.
+     *
+     * @param actorId 요청 actor UUID.
+     * @param projectKeys actor 가 속한 프로젝트 키 집합.
+     * @param groupIds actor 가 속한 그룹 ID 집합.
+     * @param page 0-based 페이지 번호.
+     * @param size 페이지당 최대 항목 수.
+     * @return 공유된 비소유 필터 목록 (created_at ASC, id ASC 정렬).
+     */
+    fun findSharedWith(
+        actorId: UUID,
+        projectKeys: Set<String>,
+        groupIds: Set<String>,
+        page: Int,
+        size: Int,
+    ): List<SavedFilter>
 }

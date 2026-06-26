@@ -3,10 +3,13 @@
 package com.bts.search.savedfilter.persistence
 
 import com.bts.search.jooq.tables.records.SavedFiltersRecord
+import com.bts.search.jooq.tables.references.SAVED_FILTER_SHARES
 import com.bts.search.jooq.tables.references.SAVED_FILTERS
 import com.bts.search.savedfilter.application.SavedFilterRepository
 import com.bts.search.savedfilter.domain.SavedFilter
+import org.jooq.Condition
 import org.jooq.DSLContext
+import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
@@ -128,6 +131,33 @@ class JooqSavedFilterRepository(
                 .execute()
 
         return deleted > 0
+    }
+
+    /**
+     * actor 가 열람 가능한 단건 필터를 조회한다.
+     */
+    @Transactional(readOnly = true)
+    override fun findVisibleById(
+        id: UUID,
+        actorId: UUID,
+        projectKeys: Set<String>,
+        groupIds: Set<String>,
+    ): SavedFilter? {
+        TODO("Task 6 GREEN 에서 구현 예정")
+    }
+
+    /**
+     * actor 에게 공유된 비소유 필터 목록을 페이지네이션으로 반환한다.
+     */
+    @Transactional(readOnly = true)
+    override fun findSharedWith(
+        actorId: UUID,
+        projectKeys: Set<String>,
+        groupIds: Set<String>,
+        page: Int,
+        size: Int,
+    ): List<SavedFilter> {
+        TODO("Task 6 GREEN 에서 구현 예정")
     }
 
     // ── private mapper ─────────────────────────────────────────────────────────
