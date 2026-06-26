@@ -236,3 +236,15 @@ classify: type=qa 오판 → ui/frontend-engineer 교정 (E2E 키워드 오판 �
 **OK (실측 확인)**. API 계약 미러 정확(TimelineItemResponse.kt:26-36)·403 errorCode `AGILE_ACCESS_DENIED`(TimelineExceptionHandler.kt:80)·DataResponse 봉투(boards.ts:10)·handlers.ts spread 등록·hook test 패턴(use-boards.test.tsx:9)·i18n 단일 ko·E2E reload금지(backlog.spec.ts:13)·의존성 그래프 순환0·navigate `/issues/$key`(router.ts:128)·issueType 색맵 부재→신규 정의·메모리 교훈(UTC날짜/jsdom width0/콜론종결/key prop) 반영.
 
 **결론**: FIX-FIRST → BLOCKER 3 + CONCERN 3 전부 plan 반영 완료 → **GO**.
+
+### PR 단위 코드 리뷰 (2026-06-26, 게이트 2)
+
+**superpowers:code-reviewer** — **PASS** (BLOCKER 0, 절대 규칙 19개 위반 0). 9개 중점 전수 통과(Zod 백엔드 DTO 미러·UTC 날짜 EC1/2/3/8·자체SVG div기반 jsdom안전·code-based router 인증가드·board nav 회귀0·apiGet/담당자 3-state·콜론종결0·MSW MODE게이팅·403 누출0). 단위 140 + 전체 4651 통과, typecheck/lint 클린. CONCERN 3(비차단).
+- **C1** '미분류' 라벨 이중정의 + 데드 i18n 엔트리(`timeline-labels.ts:14` unclassifiedHeader 테스트서만 참조).
+- **C2** 라우트 인라인 한국어(접근거부/배너) vs i18n 중앙화 불일치(backlog는 중앙화 선례).
+- **C3** LocalDate→ISO 직렬화 end-to-end 미검증 → **#192에서 해소 확인**(백엔드 게이트2 재리뷰 "컨트롤러 테스트 ISO 직렬화 충실화, [y,m,d] 배열 가짜그린 교정").
+
+**/review (BTS 체크리스트, 구조/안전성)** — **PASS**. 직렬화↔Zod 정합 실증(TimelineItemResponse @JsonInclude 미부착 → null 필드 JSON 포함 → Zod nullable 정합). init_codegen/Flyway/도메인예외핸들러/cartesian = N/A(프론트 전용). race/LLM신뢰경계/shell injection 없음(읽기전용 SVG). CONCERN 1(저심각도).
+- **C4** board 선례는 `epicKey: nullable().default(null)`로 키 부재 방어, timeline은 `.default(null)` 미적용. 현재 정합(NON_NULL 미부착)하나 백엔드 NON_NULL 도입 시 깨질 여지 — 방어적 일관성 권장.
+
+**종합**: 두 리뷰 PASS, BLOCKER 0. CONCERN 4건 전부 머지 비차단(C3는 #192 해소).
