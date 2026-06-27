@@ -27,7 +27,7 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 에러 코드 추출 헬퍼
+// 에러 코드 추출 + 메시지 매핑 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -45,6 +45,17 @@ function resolveErrorCode(error: ApiError): string | undefined {
   }
   const code = (error.body as Record<string, unknown>)['errorCode']
   return typeof code === 'string' ? code : undefined
+}
+
+/**
+ * errorCode → 사용자 표시 메시지 순수 매핑.
+ * undefined(미인증 ApiError / 알 수 없는 코드)이면 일반 저장 실패 메시지를 반환한다.
+ * onConflict 부수 효과는 호출자(onError)에서 분리 처리한다.
+ */
+function mapErrorToMessage(code: string | undefined): string {
+  if (code === SAVED_FILTER_ERROR_CODES.NAME_CONFLICT) return savedFilterLabels.nameConflictError
+  if (code === SAVED_FILTER_ERROR_CODES.CONFLICT) return savedFilterLabels.conflictError
+  return savedFilterLabels.saveError
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -107,19 +118,12 @@ function SaveFilterForm({
       onClose()
     },
     onError: (error) => {
-      if (!(error instanceof ApiError)) {
-        setSubmitError(savedFilterLabels.saveError)
-        return
-      }
-      const code = resolveErrorCode(error)
-      if (code === SAVED_FILTER_ERROR_CODES.NAME_CONFLICT) {
-        setSubmitError(savedFilterLabels.nameConflictError)
-      } else if (code === SAVED_FILTER_ERROR_CODES.CONFLICT) {
-        setSubmitError(savedFilterLabels.conflictError)
+      const code = error instanceof ApiError ? resolveErrorCode(error) : undefined
+      // CONFLICT는 onConflict 콜백을 별도 호출 (순수 매핑 함수와 부수 효과 분리)
+      if (code === SAVED_FILTER_ERROR_CODES.CONFLICT) {
         onConflict?.()
-      } else {
-        setSubmitError(savedFilterLabels.saveError)
       }
+      setSubmitError(mapErrorToMessage(code))
     },
   })
 
