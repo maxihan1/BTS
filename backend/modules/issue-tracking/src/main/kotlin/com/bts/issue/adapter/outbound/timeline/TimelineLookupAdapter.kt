@@ -2,6 +2,7 @@
 
 package com.bts.issue.adapter.outbound.timeline
 
+import com.bts.issue.link.repository.IssueLinkRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.permission.IssueSecurityDirectory
 import com.bts.shared.timeline.TimelineItemPage
@@ -42,6 +43,7 @@ import java.util.UUID
 class TimelineLookupAdapter(
     private val issueRepository: IssueRepository,
     private val securityDirectory: IssueSecurityDirectory,
+    private val linkRepository: IssueLinkRepository? = null,
 ) : TimelineLookupPort {
     /**
      * 프로젝트의 가시 이슈 목록을 [TimelineItemPage] 로 반환한다.
