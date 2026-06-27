@@ -284,15 +284,17 @@
 
 **우선순위**. 필수 | **선행**. §2.1.4, §4.3.1 | **Plan slug**. `issue/mentions`
 
-> **범위(2026-06-11, PR #114, Maxi 옵션 A 확정)**. 백엔드 발행분(D1~D5)만 본 PR로 완료 — **본문(description) 멘션 추출 → `IssueMentioned`(issue.mentioned) pgmq 발행**까지. **댓글 멘션은 댓글 기능 부재로 제외**(댓글 FR 도입 시 sourceField="comment"로 확장), **그룹 멘션(@team)은 FR-PM-09 user_groups 소비 별도 단위로 제외**. D6(렌더링)·D7(Inbox 도착 E2E)은 **알림 전달/Inbox(FR-NT·FR-UX-03) 인프라 부재로 deferred** — 그 FR과 함께 진행.
+> **범위(2026-06-11, PR #114, Maxi 옵션 A 확정)**. 백엔드 발행분(D1~D5)만 PR #114로 완료 — **본문(description) 멘션 추출 → `IssueMentioned`(issue.mentioned) pgmq 발행**까지. **댓글 멘션은 댓글 기능 부재로 제외**(댓글 FR 도입 시 sourceField="comment"로 확장), **그룹 멘션(@team)은 FR-PM-09 user_groups 소비 별도 단위로 제외**.
+>
+> **D6/D7 완료(2026-06-27, PR #197, Maxi 옵션 A 확정)**. deferred 사유였던 알림 전달(FR-NT)·Inbox(FR-UX-03) 인프라가 완성되어 진행. **D6 강조는 백엔드 마크업** — `MarkdownRenderer`가 flexmark 인라인 확장으로 `@username`→`<span class="mention">` 마크업(코드/링크 자동 제외) + 정화 allowlist `span[class=mention]` 추가, 프론트는 `.mention` CSS만(실존 검증 없는 형식 기반 강조). 멘션→알림→Inbox 파이프라인은 백엔드 기존 완성분 재사용. **FR-MN-01 전체 완료.**
 
 - [x] D1. 도메인 — Mention 이벤트 (책임. backend-engineer) (완료. PR #114 — `IssueMentioned`(issue.mentioned) sealed subtype + 직렬화 라운드트립)
 - [x] D2. 명세 — `@username` 파싱 규칙 (책임. backend-engineer) (완료. PR #114 — `MentionParser` object: lookbehind 이메일/`@@` 회피·영숫자 경계·코드스팬(인라인 한 줄 한정)/펜스블록 제거·dedup)
 - [x] D3. 데이터 모델 — (notification 이벤트 발행만) (책임. db-engineer) (완료. PR #114 — 마이그레이션 없음, 기존 `q_issue_events` pgmq 큐 재사용)
 - [x] D4. 백엔드 — 본문 저장 시 mention 추출 → pgmq 이벤트 (책임. backend-engineer) (완료. PR #114 — `updateIssue`에서 description 변경 시 diff기반 신규멘션만·자기제외·UUID정렬·cap 50, cross-BC `UserLookupPort.findIdsByUsernames`(대소문자 무시) 해석, 같은 트랜잭션 outbox. 댓글은 제외)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer) (완료. PR #114 — MentionParser 단위·UserLookupAdapter 통합(대소문자/과다매칭)·updateIssue 멘션 단위(S1~S5+cap)·pgmq enqueue Testcontainers 통합)
-- [ ] D6. 프론트 UI — 멘션 렌더링 (강조) (책임. designer → frontend-engineer) — **deferred** (Inbox/렌더링 FR과 함께)
-- [ ] D7. E2E — 멘션 → Inbox 도착 (책임. qa-engineer) — **deferred** (FR-UX-03 Inbox 부재)
+- [x] D6. 프론트 UI — 멘션 렌더링 (강조) (책임. backend-engineer → frontend-engineer) (완료. PR #197 — 옵션 A 백엔드 마크업. `MentionExtension`(flexmark 인라인 확장)이 `@username`→`<span class="mention">`, 코드스팬/코드블록/링크/이메일/`@@` 제외(AST 노드 분리+`\G` 앵커로 텍스트 유실 차단), 멘션 정규식은 `MentionParser.MENTION_PATTERN` 공유. `SANITIZE_POLICY`에 `span[class=mention]` 정확일치 허용. 프론트 `.mention` CSS(primary text+accent bg, 유채색 신설 0). 형식 기반 강조(실존 검증 없음))
+- [x] D7. E2E — 멘션 → Inbox 도착 (책임. qa-engineer) (완료. PR #197 — `issue-mention-render.spec.ts` S1~S6(강조/코드·이메일 제외/멘션→Inbox 도착/분별시드/후행마침표/선행구두점). MSW 멘션 파생(description PATCH→Inbox 공유 store, 백엔드 형식 미러). ground-truth는 백엔드 통합테스트)
 
 #### §4.1.2 FR-MN-02 — 멘션 자동완성
 
