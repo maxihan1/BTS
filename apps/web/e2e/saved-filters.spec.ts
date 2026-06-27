@@ -6,7 +6,7 @@
 //   SF-2. 공유 가시:          alice 소유 AUTHENTICATED 필터 사전 시드 → bob 세션 "공유받은 필터"에 표시
 //   SF-3. 별표 → Header 노출: SavedFilterMenu FilterRow FavoriteButton ☆ → Header ⭐ "필터" 그룹
 //   SF-4. 비소유 게이팅:      isOwner=false 행에 편집/공유/삭제 버튼 없음 (FavoriteButton만)
-//   SF-5. OCC 충돌:           SKIP — saved-filter-handlers.test.ts 단위 테스트가 커버, 아래 사유 기술
+//   SF-5. OCC 충돌:           편집 다이얼로그에서 stale version 저장 → 409 → conflictError 안내 메시지
 //   SF-6. 삭제:               소유 필터 삭제 → 목록 사라짐 + 빈 상태 표시
 //
 // ── 핵심 설계 결정 ──────────────────────────────────────────────────────────
@@ -244,7 +244,7 @@ async function fillAndSearch(
 // Suite
 // ─────────────────────────────────────────────────────────────────────────────
 
-test.describe('FR-SR-03 저장 필터 (SF-1 저장/목록/불러오기 · SF-2 공유 · SF-3 별표 · SF-4 게이팅 · SF-6 삭제)', () => {
+test.describe('FR-SR-03 저장 필터 (SF-1 저장/목록/불러오기 · SF-2 공유 · SF-3 별표 · SF-4 게이팅 · SF-5 OCC충돌 · SF-6 삭제)', () => {
   // ──────────────────────────────────────────────────────────────────────────
   // SF-1. 저장·목록·불러오기
   //
@@ -505,19 +505,86 @@ test.describe('FR-SR-03 저장 필터 (SF-1 저장/목록/불러오기 · SF-2 �
   })
 
   // ──────────────────────────────────────────────────────────────────────────
-  // SF-5. OCC 충돌 — SKIP
+  // SF-5. OCC 충돌 — 편집 다이얼로그에서 stale version 저장 → 409 → conflictError 안내 메시지
   //
-  // 사유.
-  //   version 불일치 409를 E2E에서 재현하려면 SaveFilterDialog 내부 폼 state의 version 값을
-  //   외부에서 조작해야 한다 ("다이얼로그 열기 → 같은 필터를 타 세션이 먼저 수정 → 동일 다이얼로그로 저장"
-  //   시나리오). MSW에서 이를 구현하면 test 간 조율이 필요해 flaky 위험이 크다.
-  //   saved-filter-handlers.test.ts 의 PUT version 불일치 단위 테스트가 409 반환을 커버하므로
-  //   E2E 레벨 검증은 중복 대비 리스크가 높다.
+  // Given  /login 에서 alice 소유 필터(version=0) 시드 → alice 로그인 → /search
+  //        SavedFilterMenu 드롭다운 열기 → 편집(수정) 버튼 클릭 → SaveFilterDialog 열림
+  //        (다이얼로그 폼 state에 version=0 보유)
+  // When   동시 수정 시뮬레이션:
+  //        window.__btsSeedSavedFilters로 같은 필터 id를 version=1로 재시드
+  //        (타 세션이 먼저 저장한 상황 재현 — reload/goto 없이 모듈 스코프 store만 갱신)
+  //        다이얼로그에서 이름 수정 후 저장 → PUT /api/v1/filters/:id (version=0 전송)
+  //        MSW 핸들러: body.version(0) !== existing.version(1) → 409 SEARCH_FILTER_CONFLICT
+  // Then   SaveFilterForm.onError → mapErrorToMessage(CONFLICT) → setSubmitError
+  //        <p role="alert"> 에 savedFilterLabels.conflictError 문구 표시
   //
-  //   CONCERN: SaveFilterDialog의 onError에서 conflictError 메시지(savedFilterLabels.conflictError)를
-  //   role=alert로 렌더하는지 E2E로 확인하려면 unit test만으로는 불충분할 수 있다.
-  //   향후 MSW 시나리오 플래그 패턴(localStorage + addInitScript)으로 추가 가능.
+  // 가짜 그린 차단 근거.
+  //   version bump가 실패하면 MSW가 200을 반환 → onSuccess → 다이얼로그 닫힘
+  //   → dialog.getByRole('alert') 단언이 DOM에서 요소를 찾지 못해 FAIL.
+  //   즉 이 테스트는 실제로 409가 발생해야만 통과한다.
   // ──────────────────────────────────────────────────────────────────────────
+  test('SF-5 OCC 충돌 — 편집 다이얼로그 stale version 저장 → 409 → conflictError 안내 메시지', async ({ page }) => {
+    // Given. /login 에서 alice 소유 필터 시드 (version=0)
+    const occFilterId = 'ffffffff-0000-4000-8000-000000000001'
+    await loginAsAliceWithSeed(page, async () => {
+      await seedFilter(page, ALICE_USER_ID, [
+        {
+          id: occFilterId,
+          ownerId: ALICE_USER_ID,
+          name: TEST_FILTER_NAME,
+          aqlQuery: TEST_AQL,
+          projectKey: TEST_PROJECT_KEY,
+          createdAt: null,
+          updatedAt: null,
+          version: 0,
+          shares: [],
+        },
+      ])
+    })
+
+    // Given. /search SPA 이동
+    await navigateToSearch(page)
+
+    // Given. SavedFilterMenu 드롭다운 열기 → 편집 버튼 클릭 → SaveFilterDialog 열림
+    // 이 테스트는 필터가 1개뿐이므로 menuContent 전체에서 "수정" 버튼 직접 탐색
+    const menuContent = await openSavedFilterMenu(page)
+    await expect(
+      menuContent.getByRole('link', { name: TEST_FILTER_NAME, exact: true }),
+    ).toBeVisible()
+    const editBtn = menuContent.getByRole('button', { name: savedFilterLabels.editButton, exact: true })
+    await expect(editBtn).toBeVisible()
+    await editBtn.click()
+
+    // Given. 다이얼로그 열림 확인 (편집 모드 — filter.version=0 보유)
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible()
+
+    // When. 동시 수정 시뮬레이션 — store의 같은 필터 version을 1로 올림
+    // (page.goto/reload 금지 — SPA 내부 모듈 스코프 savedFilterStore 유지)
+    // 다이얼로그는 version=0을 props에 보유한 채 열려 있음
+    await seedFilter(page, ALICE_USER_ID, [
+      {
+        id: occFilterId,
+        ownerId: ALICE_USER_ID,
+        name: TEST_FILTER_NAME,
+        aqlQuery: TEST_AQL,
+        projectKey: TEST_PROJECT_KEY,
+        createdAt: null,
+        updatedAt: null,
+        version: 1,
+        shares: [],
+      },
+    ])
+
+    // When. 이름 수정 후 저장 → stale version=0 전송
+    //       MSW PUT: body.version(0) !== existing.version(1) → 409 SEARCH_FILTER_CONFLICT
+    await dialog.getByLabel(savedFilterLabels.nameLabel, { exact: true }).fill('수정된 이름')
+    await dialog.getByRole('button', { name: savedFilterLabels.saveButton, exact: true }).click()
+
+    // Then. role=alert에 conflictError 안내 메시지 표시
+    //       SaveFilterForm.onError → mapErrorToMessage(CONFLICT) → savedFilterLabels.conflictError
+    await expect(dialog.getByRole('alert')).toHaveText(savedFilterLabels.conflictError)
+  })
 
   // ──────────────────────────────────────────────────────────────────────────
   // SF-6. 삭제 — 소유 필터 삭제 → 목록에서 사라짐 + 빈 상태
