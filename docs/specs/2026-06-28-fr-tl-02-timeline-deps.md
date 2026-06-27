@@ -97,7 +97,7 @@
 
 ## 비기능 요구사항 (NFR)
 
-- **NFR1 (성능)**. ≤500 타임라인 아이템 기준 deps 조회 p95 < 1s. cross-BC 호출 1회 + 권한 판정 1회, N+1 없음. 단일 SQL.
+- **NFR1 (성능)**. ≤500 타임라인 아이템 기준 deps 조회 p95 < 1s. 쿼리 3회(accessibleLevels 1 + 가시 타임라인 집합 1 + blocks 엣지 1), 루프 내 쿼리 0(N+1 없음). 단일 self-join SQL이 아니라 **가시 집합 재사용 방식**(D2 참조 — 새 보안 술어를 두 alias에 복제하지 않기 위한 의도적 선택).
 - **NFR2 (보안)**. 보안 등급 필터는 adapter가 SQL 수준에서 source·target 양쪽에 적용. agile-planning은 필터 여부를 알지 못한다. 비가시 이슈 키 0 노출.
 - **NFR3 (격리)**. ArchUnit BC 격리 룰 유지(agile-planning → issue-tracking 직접 import 0).
 - **NFR4 (프론트 성능)**. 오버레이 렌더가 간트 스크롤/리렌더를 눈에 띄게 저하시키지 않는다. 좌표 계산은 순수함수(jsdom 안전, FR-TL-01 `timeline-layout.ts` 패턴 재사용).
@@ -145,12 +145,14 @@ FR-PL-01의 `issues.start_date/due_date`(V025)로 타임라인 아이템 판정.
 - 신규 VO — `TimelineDepEdge(blockerKey, blockedKey)` · `TimelineDepsPage(edges, truncated)`.
 - issue-tracking `TimelineLookupAdapter`가 실 구현.
 
-### D2 — visibility 보안 경로 재사용 (양끝 적용)
-- adapter는 `IssueSecurityDirectory.accessibleLevels(viewer, project)` 1회 조회 후, 단일 SQL에서 source·target **양쪽** 이슈에
-  보안등급 IN access 술어를 푸시다운. 타임라인 adapter와 동일 2단 게이트 재사용(새 보안 판정 경로 신설 금지, FR-NT-03 BLOCKER 정신).
-- WHERE 골자(개념). `il.link_type='blocks' AND s.project=? AND t.project=? AND s.deleted_at IS NULL AND t.deleted_at IS NULL
-  AND (s.start_date IS NOT NULL OR s.due_date IS NOT NULL) AND (t.start_date IS NOT NULL OR t.due_date IS NOT NULL)
-  AND <s 보안등급 IN access> AND <t 보안등급 IN access>`. LIMIT 1001로 truncated 판정.
+### D2 — visibility 보안 경로 재사용 (가시 집합 멤버십 방식 — 단일 self-join 아님)
+- **구현 채택(코드리뷰 반영)**. adapter는 단일 self-join SQL을 쓰지 않고, 기존 `IssueRepository.listVisibleForTimeline`이 반환하는
+  **가시 타임라인 이슈 집합**(`accessibleLevels` 2단 게이트로 이미 비가시·삭제·날짜없음·cross-project 제외 + 최신 500 윈도우)을 그대로 재사용한다.
+  그 집합의 `id→key` 맵을 만들고, `IssueLinkRepository.findBlocksEdgesAmong(idSet)`가 **양끝이 모두 그 집합 멤버인** BLOCKS 엣지만 반환한다.
+  → 양끝 가시성·동일프로젝트·날짜보유가 집합 멤버십으로 자동 보장(새 보안 판정 경로 0).
+- **왜 self-join 대신 집합 재사용인가**. (1) 보안 술어를 source·target 두 alias에 복제하면 검증 안 된 새 보안 경로가 생긴다(FR-NT-03 BLOCKER 정신 위배 위험). 검증된 `listVisibleForTimeline`을 그대로 쓰는 편이 안전. (2) deps가 타임라인과 **동일 500 윈도우**에 결합되므로, 반환 엣지는 항상 `/timeline`에 렌더되는 막대 양끝이다 — self-join이라면 500 윈도우 밖(그릴 수 없는) 이슈로의 엣지까지 반환해 프론트가 버려야 한다(EC11). 집합 재사용이 "렌더 가능한 엣지만" 반환해 더 정확.
+- **윈도우 결합 trade-off**. 날짜 있는 가시 이슈가 500을 넘는 대형 프로젝트에서, 양끝이 모두 500 윈도우 밖인 blocks 엣지는 전체 엣지가 1000 미만이어도 누락된다. 단 그 이슈들은 `/timeline` 자체에도 안 보이므로 간트에 그릴 대상이 아니다. `truncated = (timeline 500 초과) OR (blocks 1000 초과)` 로 불완전성을 정직하게 알린다.
+- 쿼리. `findBlocksEdgesAmong` = `SELECT source_id, target_id FROM issue_links WHERE link_type='blocks' AND source_id IN :ids AND target_id IN :ids ORDER BY source_id, target_id LIMIT DEPS_FETCH_LIMIT(1000)+1`. 빈 집합이면 쿼리 미실행(빈 IN 회피). `rows.size > 1000` 이면 take(1000)+truncated.
 
 ### D3 — agile-planning이 엔드포인트 소유
 - `TimelineController`에 `GET /api/v1/timeline/deps`, `TimelineApplicationService.getDeps(actorId, projectKey)`가 BROWSE 게이트(403) 후 포트 호출.
@@ -184,7 +186,7 @@ FR-PL-01의 `issues.start_date/due_date`(V025)로 타임라인 아이템 판정.
 - [ ] 상호 blocks 두 엣지 반환 (S6)
 - [ ] 401/403/400 분기 (S7~S9)
 - [ ] truncated 동작 (S11/EC10)
-- [ ] adapter SQL을 production 렌더 SQL로 EXPLAIN 검증, 인덱스 사용 확인 (마이그레이션 0 또는 V033 인덱스)
+- [x] `findBlocksEdgesAmong` production 렌더 SQL EXPLAIN 검증 — `uq_issue_links(source,target,link_type)` Index Only Scan, 마이그레이션 0 (코드리뷰 확인)
 - [ ] ArchUnit BC 격리 통과 (agile-planning → issue-tracking import 0)
 - [ ] 프론트 — 의존 라인 SVG 오버레이 렌더 + 클릭 강조 (S10), 좌표 순수함수 단위 + E2E 실렌더
 - [ ] 단위(서비스·좌표 순수함수) + 통합(adapter SQL + 컨트롤러 HTTP) + E2E 그린

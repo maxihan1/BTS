@@ -66,6 +66,10 @@ class IssueLinkRepository(
         /**
          * [findBlocksEdgesAmong] 한 번 조회에 반환하는 최대 행 수.
          * 초과 시 상위 호출자가 truncated 플래그를 부여해야 한다.
+         *
+         * 타임라인 이슈 상한(500)보다 큰 1000인 이유 — 노드(이슈)보다 엣지(blocks 링크)가
+         * 조밀할 수 있어(한 이슈가 여러 이슈를 차단), 500 노드 윈도우 안에서도 엣지 수가
+         * 노드 수를 넘을 수 있다. 엣지 상한을 노드 상한과 별개로 둔다.
          */
         const val DEPS_FETCH_LIMIT = 1000
     }
@@ -293,7 +297,7 @@ class IssueLinkRepository(
      * 집합 안에서 양끝을 걸러내는 것만으로 결과의 보안 가시성이 자동 보장된다.
      *
      * ## 빈 집합 short-circuit
-     * [issueIds] 가 비어 있으면 `= ANY('{}')` 쿼리 없이 즉시 빈 리스트를 반환한다.
+     * [issueIds] 가 비어 있으면 빈 `IN ()` 쿼리 없이 즉시 빈 리스트를 반환한다.
      *
      * ## 행 수 제한
      * [DEPS_FETCH_LIMIT] + 1 행까지만 조회한다. 초과 여부는 호출자가 판단한다.

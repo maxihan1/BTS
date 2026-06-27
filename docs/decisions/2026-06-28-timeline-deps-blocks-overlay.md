@@ -57,7 +57,7 @@ FR-TL-01이 확립한 `TimelineLookupPort` 패턴을 그대로 확장하는 편�
 
 - 백엔드(agile-planning). `TimelineController`에 `getDeps` 추가, `TimelineApplicationService`에 `getDeps(actorId, projectKey)` 추가(BROWSE 게이트 재사용).
 - 백엔드(shared-kernel). `TimelineLookupPort`에 `listBlocksDepsByProject` default 메서드 + `TimelineDepEdge`/`TimelineDepsPage` VO 추가.
-- 백엔드(issue-tracking). `TimelineLookupAdapter`가 신규 메서드 구현 — `issue_links` BLOCKS + 프로젝트 + 양끝 가시성 + 양끝 타임라인 아이템 조건 SQL 단일 쿼리. 가시성은 기존 `IssueSecurityDirectory.accessibleLevels` 2단 게이트 재사용.
-- 데이터. 신규 테이블 0. `issue_links`(FR-LK-01) 활용. 프로젝트 단위 blocks 조회 인덱스 필요 여부는 spec/plan에서 EXPLAIN으로 확정(잠재적 V033 인덱스 추가 가능, 마이그레이션은 db-engineer).
+- 백엔드(issue-tracking). `TimelineLookupAdapter`가 신규 메서드 구현 — 단일 self-join SQL이 아니라 **가시 타임라인 집합 재사용** 방식. 기존 `IssueRepository.listVisibleForTimeline`(accessibleLevels 2단 게이트 + 최신 500 윈도우)이 반환한 가시 이슈 `id→key` 맵을 만들고, `IssueLinkRepository.findBlocksEdgesAmong(idSet)`가 양끝이 모두 그 집합 멤버인 BLOCKS 엣지만 반환한다. 양끝 가시성·동일프로젝트·날짜보유가 집합 멤버십으로 자동 보장(새 보안 판정 경로 0). **self-join 대신 집합 재사용 채택 사유** — (a) 보안 술어를 source/target 두 alias에 복제하면 검증 안 된 새 보안 경로가 생김(회피), (b) deps가 타임라인과 동일 500 윈도우에 결합돼 반환 엣지가 항상 렌더 가능한 막대 양끝(self-join은 그릴 수 없는 윈도우 밖 엣지까지 반환). trade-off — 500 초과 대형 프로젝트에서 양끝이 모두 윈도우 밖인 엣지는 누락되나 그 이슈는 간트에도 안 보임. `truncated`로 정직하게 알림.
+- 데이터. 신규 테이블 0. `issue_links`(FR-LK-01) 활용. EXPLAIN 확정 — `findBlocksEdgesAmong`의 `link_type='blocks' AND source_id IN ids AND target_id IN ids`는 기존 `uq_issue_links(source_id,target_id,link_type)` UNIQUE 인덱스로 Index Only Scan. **마이그레이션 0 확정**(V033 불필요).
 - 프론트(apps/web). 기존 자체 SVG 간트(`GanttChart.tsx`) 위에 의존 라인 SVG 오버레이 레이어 추가 + `/timeline/deps` 클라이언트. 클릭 강조. D6/D7.
 - 계약. 엣지 응답 = `{ deps: [{ blockerKey, blockedKey }], truncated }`(정확 형식은 spec §6에서 확정).
