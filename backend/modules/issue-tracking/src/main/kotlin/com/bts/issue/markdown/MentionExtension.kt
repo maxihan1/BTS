@@ -63,7 +63,7 @@ private class MentionInlineParserExtension : InlineParserExtension {
             return false
         }
 
-        val groups = inlineParser.matchWithGroups(MENTION_JAVA_PATTERN) ?: return false
+        val groups = inlineParser.matchWithGroups(ANCHORED_MENTION_JAVA_PATTERN) ?: return false
         // groups[0] = 전체 매칭(@alice), groups[1] = username 캡처 그룹(alice)
         // Java 배열 원소는 Kotlin 에서 nullable 로 추론되므로 명시적 null 체크
         val fullMatch = groups.getOrNull(0) ?: return false
@@ -74,9 +74,19 @@ private class MentionInlineParserExtension : InlineParserExtension {
     }
 
     companion object {
-        // 단일 출처: MentionParser.MENTION_PATTERN → Java Pattern 변환 (drift 차단)
-        private val MENTION_JAVA_PATTERN: java.util.regex.Pattern =
-            MentionParser.MENTION_PATTERN.toPattern()
+        /**
+         * matchWithGroups 전용 앵커 패턴 — MentionParser.MENTION_PATTERN 앞에 \\G 를 붙여 파생한다.
+         *
+         * Java Matcher.region() 리셋 후 search() 가 oldLast = regionStart 로 재설정하므로
+         * find() 가 region 시작 위치에서만 매칭되고 앞으로 스캔하지 않는다.
+         * 이를 통해 false-trigger @ 뒤에 유효 멘션이 있는 경우 사이 텍스트가 조용히
+         * 유실되는 skip-ahead 버그를 차단한다.
+         *
+         * MentionParser.MENTION_PATTERN 자체는 변경 금지 — extract() 의 findAll 와 충돌한다.
+         * 단일 출처 보존: 패턴 문자열을 MENTION_PATTERN.pattern 에서 파생해 drift 를 차단한다.
+         */
+        private val ANCHORED_MENTION_JAVA_PATTERN: java.util.regex.Pattern =
+            java.util.regex.Pattern.compile("\\G" + MentionParser.MENTION_PATTERN.pattern)
 
         /**
          * 멘션 경계 문자 판별 — MENTION_PATTERN lookbehind 의 forbidden character set 과 동일.
