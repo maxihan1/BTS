@@ -4,6 +4,7 @@ package com.bts.issue.markdown
 import com.bts.issue.mention.MentionParser
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 
@@ -86,6 +87,31 @@ class MarkdownRendererMentionTest : DescribeSpec({
                 val result = MarkdownRenderer.renderSafe("""<span class="mention evil">x</span>""")
                 result shouldNotContain """class="mention evil""""
                 result shouldNotContain """<span class="mention evil">"""
+            }
+        }
+
+        context("BLOCKER — false-trigger @ 뒤 텍스트 유실 방지") {
+            it("@ hello @alice — '@ hello ' 텍스트를 보존하고 @alice 강조 1개만 생성한다") {
+                val result = MarkdownRenderer.renderSafe("@ hello @alice")
+                // OWASP 가 @ -> &#64; 로 인코딩하므로 일반 텍스트의 @ 도 &#64; 로 변환됨
+                result shouldContain "&#64; hello"
+                result shouldContain """<span class="mention">&#64;alice</span>"""
+                Regex("""<span class="mention">""").findAll(result).count() shouldBe 1
+            }
+
+            it("@! @bob — '@! ' 텍스트를 보존하고 @bob 강조 1개만 생성한다") {
+                val result = MarkdownRenderer.renderSafe("@! @bob")
+                result shouldContain "&#64;!"
+                result shouldContain """<span class="mention">&#64;bob</span>"""
+                Regex("""<span class="mention">""").findAll(result).count() shouldBe 1
+            }
+
+            it("email me @ work, thanks @alice — 중간 텍스트를 보존하고 @alice 강조 1개만 생성한다") {
+                val result = MarkdownRenderer.renderSafe("email me @ work, thanks @alice")
+                result shouldContain "email me"
+                result shouldContain "work, thanks"
+                result shouldContain """<span class="mention">&#64;alice</span>"""
+                Regex("""<span class="mention">""").findAll(result).count() shouldBe 1
             }
         }
 
