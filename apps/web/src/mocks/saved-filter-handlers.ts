@@ -557,6 +557,27 @@ const deleteFilterHandler = http.delete('/api/v1/filters/:id', ({ request, param
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 브라우저 E2E 시드 노출 — window.__btsSeedSavedFilters
+//
+// MSW v2는 핸들러를 메인 스레드(브라우저 컨텍스트)에서 실행한다.
+// 따라서 window 객체가 존재하면 seedSavedFilters / seedMembership / resetSavedFilterStore를
+// 글로벌로 노출해 Playwright page.evaluate() 로 직접 호출할 수 있다.
+//
+// 사용 예 (Playwright).
+//   await page.evaluate(
+//     ([uid, items]) => window.__btsSeedSavedFilters(uid, items),
+//     [aliceId, seedItems]
+//   )
+// ─────────────────────────────────────────────────────────────────────────────
+
+if (typeof window !== 'undefined') {
+  const w = window as unknown as Record<string, unknown>
+  w['__btsSeedSavedFilters'] = seedSavedFilters
+  w['__btsSeedFilterMembership'] = seedMembership
+  w['__btsResetSavedFilterStore'] = resetSavedFilterStore
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Export
 // ─────────────────────────────────────────────────────────────────────────────
 
