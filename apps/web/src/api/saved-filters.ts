@@ -188,3 +188,29 @@ export async function deleteFilter(id: string): Promise<void> {
     throw new ApiError(res.status, errorBody)
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 쿼리 키 헬퍼 — TanStack Query queryKey 팩토리
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 저장 필터 TanStack Query 키 팩토리.
+ * backend 정본 SavedFilterDtos.kt, 변경 시 동반.
+ *
+ * - `all()` — mutation invalidate 용 접두사. `['saved-filters']` 전체 일괄 무효화.
+ * - `owned()` — 내 필터 목록.
+ * - `shared(page, size)` — 공유된 필터 목록 (페이지 포함).
+ * - `detail(id)` — 필터 단건.
+ */
+export const savedFiltersKey = {
+  /** 저장 필터 전체 접두사 — mutation invalidate 용 */
+  all: (): readonly ['saved-filters'] => ['saved-filters'],
+  /** 내 필터 목록 키 */
+  owned: (): readonly ['saved-filters', 'owned'] => ['saved-filters', 'owned'],
+  /** 공유된 필터 목록 키 (페이지 포함) */
+  shared: (page: number, size: number): readonly ['saved-filters', 'shared', number, number] =>
+    ['saved-filters', 'shared', page, size],
+  /** 필터 단건 키 */
+  detail: (id: string): readonly ['saved-filters', 'detail', string] =>
+    ['saved-filters', 'detail', id],
+}
