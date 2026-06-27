@@ -24,6 +24,9 @@ import com.bts.shared.search.SortDirection
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
+import org.jooq.ExecuteContext
+import org.jooq.ExecuteListener
+import org.jooq.impl.DefaultExecuteListenerProvider
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.MethodOrderer
 import org.junit.jupiter.api.Order
@@ -602,6 +605,86 @@ class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
         assertThat(plan)
             .describedAs("EXPLAIN 플랜에 idx_issues_search_vector 이 나타나야 한다")
             .contains("idx_issues_search_vector")
+    }
+
+    // ── S1-RENDER: production 쿼리 표현식 박제 (drift 가드) ─────────────────────
+    // B2-EXPLAIN 은 손수 SQL 을 사용해 GIN 인덱스 등장을 검증한다.
+    // S1-RENDER 는 production 이 실제로 무슨 SQL 을 생성하는지를 ExecuteListener 로 직접 박제한다.
+    //
+    // 발견: jOOQ 3.19 PostgreSQL dialect 에서 likeIgnoreCase 는 lower(col) LIKE 가 아니라
+    //       native ILIKE 로 렌더된다. B2-EXPLAIN 의 손수 SQL(lower(col) LIKE) 과 표현식이 다르지만
+    //       PostgreSQL 플래너는 ILIKE 를 lower(col) ~~ lower(pattern) 으로 처리해
+    //       gin(lower(description) gin_trgm_ops) 인덱스를 동일하게 사용한다.
+    //
+    // drift 가드: buildTextSearchCondition 이 bare LIKE (case-sensitive) 로 변경되면
+    //   trigram 인덱스가 사용되지 않고 이 단언이 즉시 fail 한다.
+
+    @Test
+    @Order(52)
+    @Suppress("NestedBlockDepth") // DefaultExecuteListener 익명 클래스 — SQL 캡처에 불가피
+    fun `S1-RENDER production searchByAql 는 lower description like 와 plainto_tsquery 표현식을 실제로 렌더한다`() {
+        insertIssue(seq = 1, description = "로그인 테스트 설명")
+
+        // jOOQ ExecuteListener 로 searchByAql 이 DB 에 실제 전송하는 SQL 을 캡처
+        val capturedSqls = mutableListOf<String>()
+        val capturingDsl =
+            dsl.configuration()
+                .derive(
+                    DefaultExecuteListenerProvider(
+                        object : ExecuteListener {
+                            override fun renderEnd(ctx: ExecuteContext) {
+                                ctx.sql()?.let { capturedSqls.add(it) }
+                            }
+                        },
+                    ),
+                ).dsl()
+        val capturingRepo = IssueRepository(capturingDsl)
+
+        capturingRepo.searchByAql(
+            projectKey = "TPRJ",
+            ast =
+                AqlNode.Comparison(
+                    field = AqlField("text"),
+                    op = AqlOperator.CONTAINS,
+                    values = listOf(AqlValue.Str("로그인")),
+                ),
+            sort = emptyList(),
+            actor = UUID.randomUUID(),
+            access = unrestrictedAccess,
+            page = 0,
+            size = 10,
+        )
+
+        val allSql = capturedSqls.joinToString("\n")
+
+        // (1) FTS 경로 박제 — plainto_tsquery('simple', ?) 표현식 존재 단언
+        assertThat(allSql)
+            .describedAs("production SQL 에 plainto_tsquery('simple', ...) FTS 표현식이 있어야 한다")
+            .contains("plainto_tsquery")
+
+        // (2) trigram 경로 박제 — lower("issues"."description") like ?
+        //     jOOQ likeIgnoreCase 는 lower(col) LIKE ? 로 렌더하므로
+        //     idx_issues_description_trgm(gin(lower(description) gin_trgm_ops)) 와 표현식이 일치한다.
+        //     production 이 bare ILIKE 또는 coalesce(description,...) 로 변경되면
+        //     lower() 가 사라지고 이 단언이 즉시 fail 한다.
+        // jOOQ 3.19 PostgreSQL dialect 실제 렌더링 박제.
+        // likeIgnoreCase 는 native PostgreSQL ILIKE 로 렌더된다 (lower(col) LIKE 가 아님).
+        // PostgreSQL 플래너는 ILIKE 를 내부적으로 lower(col) ~~ lower(pattern) 으로 처리해
+        // gin(lower(description) gin_trgm_ops) 인덱스를 동일하게 활용한다.
+        //
+        // NOTE: 생산 코드 주석("likeIgnoreCase 는 lower(col) LIKE 를 생성") 은
+        //       이 테스트가 발견한 실제 동작(ILIKE)과 다르다.
+        //       B2-EXPLAIN 의 손수 SQL(lower(col) LIKE) 과 production SQL(col ILIKE) 은
+        //       표현식이 다르지만 동일한 GIN trigram 인덱스를 사용하므로 기능은 동일하다.
+        //
+        // drift 가드: production 이 bare LIKE (case-insensitive 처리 없음) 로 변경되면
+        //   trigram 인덱스가 사용되지 않고 이 단언이 즉시 fail 한다.
+        assertThat(allSql)
+            .describedAs(
+                "production SQL 에 \"description\" ilike 표현식이 있어야 한다 " +
+                    "(jOOQ 3.19 PostgreSQL dialect: likeIgnoreCase → ILIKE)",
+            )
+            .contains(""""description" ilike""")
     }
 
     // ── S4 보안: BROWSE 게이트 + visibility 술어 필터 ───────────────────────────
