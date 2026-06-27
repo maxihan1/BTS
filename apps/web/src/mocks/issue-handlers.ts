@@ -17,6 +17,7 @@ import {
   issueAtlasEpic1Fixture,
   issueAtlasChild1Fixture,
   issueAtlasForEpicFixture,
+  issueAtlasMentionFixture,
 } from './issue-fixtures'
 import { allIssueTypeFixtures } from './issue-type-fixtures'
 import { softwareDefaultFixture } from './workflow-fixtures'
@@ -74,6 +75,8 @@ const issueFixtureMap: Record<string, IssueResponse> = {
   'ATLAS-EPIC-1': issueAtlasEpic1Fixture,
   'ATLAS-CHILD-1': issueAtlasChild1Fixture,
   'ATLAS-FOR-EPIC': issueAtlasForEpicFixture,
+  // FR-MN-01 D7 E2E용 멘션 강조 검증 fixture
+  'ATLAS-MENTION': issueAtlasMentionFixture,
 }
 
 /** E2E 시나리오용 localStorage 키 — S4 재오픈 검증 시 done+resolution 이슈로 응답 분기 */
