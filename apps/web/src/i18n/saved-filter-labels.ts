@@ -12,9 +12,6 @@ export const savedFilterLabels = {
   /** 내 필터 탭 */
   myFiltersTab: '내 필터',
 
-  /** 공유된 필터 탭 */
-  sharedFiltersTab: '공유된 필터',
-
   /** 저장된 필터가 없을 때 안내 문구 */
   emptyState: '저장된 필터가 없습니다',
 

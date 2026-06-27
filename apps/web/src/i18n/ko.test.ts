@@ -759,10 +759,6 @@ describe('savedFilterLabels — 저장 필터 UI 문자열 콜론 종결 가드 
     expectTypeOf(savedFilterLabels).toHaveProperty('myFiltersTab')
   })
 
-  it('sharedFiltersTab 키가 존재한다', () => {
-    expectTypeOf(savedFilterLabels).toHaveProperty('sharedFiltersTab')
-  })
-
   it('emptyState 키가 존재한다', () => {
     expectTypeOf(savedFilterLabels).toHaveProperty('emptyState')
   })
