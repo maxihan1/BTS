@@ -5,6 +5,8 @@ package com.bts.issue.adapter.outbound.timeline
 import com.bts.issue.link.repository.IssueLinkRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.permission.IssueSecurityDirectory
+import com.bts.shared.timeline.TimelineDepEdge
+import com.bts.shared.timeline.TimelineDepsPage
 import com.bts.shared.timeline.TimelineItemPage
 import com.bts.shared.timeline.TimelineItemView
 import com.bts.shared.timeline.TimelineLookupPort
@@ -70,7 +72,77 @@ class TimelineLookupAdapter(
             truncated = fetchResult.truncated,
         )
     }
+
+    /**
+     * 프로젝트의 `blocks` 관계 의존 엣지 목록을 [TimelineDepsPage] 로 반환한다.
+     *
+     * ### 가시성 보장 — 새 보안 판정 경로 신설 없음
+     *
+     * 가시성 판단은 [listTimelineItemsByProject] 와 **동일한 2단 게이트**를 재사용한다.
+     * [IssueSecurityDirectory.accessibleLevels] 로 viewer 의 접근 가능 보안 등급 집합을 1회 조회하고,
+     * [IssueRepository.listVisibleForTimeline] 이 그 집합을 SQL WHERE 술어로 푸시다운한다.
+     * 이미 가시·동일프로젝트·날짜보유·미삭제로 필터된 이슈 id 집합을 구성한 뒤,
+     * [IssueLinkRepository.findBlocksEdgesAmong] 이 그 집합 **내부**의 BLOCKS 엣지만 반환한다.
+     * 집합 밖 이슈(비가시 보안 등급, 날짜 없음, 다른 프로젝트, soft-deleted)를 끝점으로 하는
+     * 엣지는 집합 내 조회 방식으로 자동 제거되므로 별도 필터가 필요하지 않다.
+     *
+     * ### truncated 전파
+     *
+     * [IssueRepository.TimelineFetchResult.truncated] (타임라인 이슈 LIMIT 초과) 또는
+     * BLOCKS 엣지가 [IssueLinkRepository.DEPS_FETCH_LIMIT] 를 초과한 경우 모두 truncated=true 를
+     * 반환한다. 어느 한 쪽이라도 초과하면 간트 차트가 불완전할 수 있음을 소비자에게 알린다.
+     *
+     * @param projectKey 조회할 프로젝트 키. 예: `"ATLAS"`.
+     * @param viewerUserId 간트 차트를 조회하는 사용자 UUID. visibility 필터 기준.
+     * @return [TimelineDepsPage]. linkRepository 미주입 시 또는 가시 이슈가 없으면 빈 페이지.
+     */
+    @Transactional(readOnly = true)
+    override fun listBlocksDepsByProject(
+        projectKey: String,
+        viewerUserId: UUID,
+    ): TimelineDepsPage {
+        val repo = linkRepository ?: return TimelineDepsPage(edges = emptyList(), truncated = false)
+
+        val access = securityDirectory.accessibleLevels(viewerUserId, projectKey)
+        val timelinePage = issueRepository.listVisibleForTimeline(projectKey, viewerUserId, access)
+
+        // 가시·동일프로젝트·날짜보유·미삭제 이슈 id → key 맵 구성.
+        // id 집합이 보안 게이트를 통과했으므로, 집합 내 조회만으로 결과의 가시성이 보장된다.
+        val idToKey = buildIdToKeyMap(timelinePage.entries)
+
+        if (idToKey.isEmpty()) {
+            return TimelineDepsPage(edges = emptyList(), truncated = timelinePage.truncated)
+        }
+
+        val rows = repo.findBlocksEdgesAmong(idToKey.keys)
+        val blocksTruncated = rows.size > IssueLinkRepository.DEPS_FETCH_LIMIT
+        val kept = if (blocksTruncated) rows.take(IssueLinkRepository.DEPS_FETCH_LIMIT) else rows
+
+        val edges = kept.map { row ->
+            TimelineDepEdge(
+                blockerKey = idToKey.getValue(row.sourceId),
+                blockedKey = idToKey.getValue(row.targetId),
+            )
+        }
+
+        return TimelineDepsPage(
+            edges = edges,
+            truncated = timelinePage.truncated || blocksTruncated,
+        )
+    }
 }
+
+/**
+ * [IssueRepository.TimelineIssueEntry] 목록에서 이슈 id → 이슈 key 매핑을 구성한다.
+ *
+ * [listBlocksDepsByProject] 에서 BLOCKS 엣지 조회 후 UUID → String 키 변환에 사용한다.
+ * id 집합은 이미 가시성·프로젝트·날짜·삭제 필터를 통과했으므로 별도 보안 검사가 불필요하다.
+ *
+ * @param entries 가시 이슈 엔트리 목록.
+ * @return `issue.id.value(UUID)` → `issue.key.value(String)` 맵.
+ */
+private fun buildIdToKeyMap(entries: List<IssueRepository.TimelineIssueEntry>): Map<UUID, String> =
+    entries.associate { it.issue.id.value to it.issue.key.value }
 
 /**
  * [IssueRepository.TimelineIssueEntry] 를 타임라인 뷰 [TimelineItemView] 로 매핑한다.
