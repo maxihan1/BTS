@@ -59,6 +59,23 @@ async function navigateToInbox(page: import('@playwright/test').Page): Promise<v
 }
 
 /**
+ * 현재 alice 세션을 sessionStorage에서 지워 loginAsBob이 redirectIfAuth 가드를 통과하도록 한다.
+ *
+ * 근거.
+ *   authStore.ts는 accessToken을 sessionStorage('bts.auth')에 persist한다.
+ *   loginAsBob 내부의 page.goto('/login')은 SPA 전체를 재마운트하는데,
+ *   이때 Zustand persist가 sessionStorage를 다시 읽어 auth 상태를 복원한다.
+ *   sessionStorage가 비어있으면 accessToken = null → redirectIfAuth 가드 비통과 → 로그인 폼 노출.
+ *
+ * MSW 상태 보존.
+ *   page.goto()는 브라우저 컨텍스트 내 내비게이션이므로 ServiceWorker 스레드는 유지된다.
+ *   inboxStore(MSW 인메모리)는 page.goto() 후에도 보존된다.
+ */
+async function clearAuthSession(page: import('@playwright/test').Page): Promise<void> {
+  await page.evaluate(() => sessionStorage.removeItem('bts.auth'))
+}
+
+/**
  * 이슈 상세의 본문 편집 모드(Write 탭)로 진입해 텍스트를 입력하고 저장한다.
  * issue-body-meta.spec.ts E1 진입 패턴 미러 (strict mode 주석 포함).
  *
@@ -170,7 +187,10 @@ test.describe('FR-MN-01 본문 @멘션 강조 + Inbox 도착 (D7)', () => {
     await page.goto(`/issues/${PATCH_ISSUE_KEY}`)
     await editAndSaveDescription(page, '@bob 확인해주세요')
 
-    // When. bob으로 로그인 (같은 브라우저 컨텍스트 — MSW inboxStore 유지)
+    // When. alice 세션 클리어 후 bob으로 로그인 (같은 브라우저 컨텍스트 — MSW inboxStore 유지)
+    // clearAuthSession → sessionStorage.bts.auth 삭제 → loginAsBob의 page.goto('/login')이
+    // redirectIfAuth 가드를 우회하게 된다 (accessToken=null 상태로 SPA 재마운트)
+    await clearAuthSession(page)
     await loginAsBob(page)
 
     // When. bob의 /inbox SPA 이동 (page.reload() 금지 — store 리셋)
@@ -200,7 +220,8 @@ test.describe('FR-MN-01 본문 @멘션 강조 + Inbox 도착 (D7)', () => {
     await page.goto(`/issues/${PATCH_ISSUE_KEY}`)
     await editAndSaveDescription(page, '일반 본문 텍스트입니다. 멘션 없음.')
 
-    // When. bob으로 로그인
+    // When. alice 세션 클리어 후 bob으로 로그인
+    await clearAuthSession(page)
     await loginAsBob(page)
 
     // When. bob의 /inbox SPA 이동
