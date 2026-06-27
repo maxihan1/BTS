@@ -11,7 +11,7 @@
 - 백엔드 — `GET /api/v1/timeline/deps?project={key}` (agile-planning) + `TimelineLookupPort` 확장 + `TimelineLookupAdapter` BLOCKS 조회 + 단위/통합 테스트.
 - 프론트 — 기존 자체 SVG 간트(`GanttChart.tsx`) 위 의존 라인 SVG 오버레이 + `/timeline/deps` 클라이언트 + 클릭 강조 + E2E.
 
-> **PR 분할은 게이트 1에서 Maxi 결정.** 기본 권장 = 풀스택 1 PR(엔드포인트+소비자 동반, 댕글링 엔드포인트 회피, 렌더 방식은 ADR로 선결돼 블로커 없음). 대안 = FR-TL-01처럼 백엔드(D1~D5)/프론트(D6~D7) 2 PR.
+> **PR 분할은 게이트 1에서 Maxi 결정.** 기본 권장 = **백엔드(D1~D5)/프론트(D6~D7) 2 PR**(총 11 task로 bts-plan 분할 임계 초과 + FR-TL-01 선례 #192/#194 + 백엔드는 통합테스트로 독립 검증). 대안 = 풀스택 1 PR(엔드포인트+소비자 동반, 댕글링 회피, 렌더 방식 ADR 선결로 블로커 없음).
 
 **이번 PR 제외 (후속)**.
 - FR-TL-03 — 타임라인 줌(주/월/분기).

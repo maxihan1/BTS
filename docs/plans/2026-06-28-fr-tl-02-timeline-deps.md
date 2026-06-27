@@ -58,6 +58,157 @@ classify: type=api, agent=backend-engineer, primary_bc=issue-tracking
 ✅ 통과 (자체 sanity 점검, office-hours 부적합 learning `bts-spec-office-hours-mismatch` 적용).
 최대 리스크 = 비가시/cross-project 이슈 키 누출 → 양끝 가시성 SQL 푸시다운으로 차단(D2). 댕글링 라인 = 양끝 타임라인 조건으로 차단. 상호 blocks 두 엣지, self-block DB CHECK 불가, truncated 상한 일관.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> **이번 PR 권장 = 백엔드 D1~D5 (T1~T5).** 프론트 D6~D7 (T6~T11)은 후속 PR.
+> 게이트 1에서 Maxi가 "풀스택 1 PR" 선택 시 T6~T11도 이번 PR에 포함(프론트 task는 그때 상세화).
+> 구현 전략 핵심 — adapter가 기존 `listVisibleForTimeline` 가시 집합(id→key 맵)을 재사용하고
+> 그 id 집합 안에서만 `issue_links` BLOCKS 조회 → **새 보안 판정 경로 0**(양끝 가시성 자동 보장) + **마이그레이션 0**(기존 `idx_issue_links_source_id` 활용).
+
+### Task 1. shared-kernel — TimelineLookupPort에 deps 조회 default 메서드 + VO
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/timeline/TimelineLookupPort.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/timeline/TimelineLookupPortTest.kt`]
+- depends-on: []
+
+**RED**:
+- `TimelineLookupPortTest`에 default 동작 테스트 추가.
+  ```kotlin
+  @Test fun `listBlocksDepsByProject default returns empty page`() {
+      val port = object : TimelineLookupPort {}
+      val page = port.listBlocksDepsByProject("ATLAS", UUID.randomUUID())
+      assertThat(page.edges).isEmpty()
+      assertThat(page.truncated).isFalse()
+  }
+  ```
+- 실패: `listBlocksDepsByProject` / `TimelineDepsPage` / `TimelineDepEdge` 미존재.
+
+**GREEN**:
+- `TimelineDepEdge(blockerKey: String, blockedKey: String)` data class.
+- `TimelineDepsPage(edges: List<TimelineDepEdge>, truncated: Boolean)` data class.
+- `TimelineLookupPort.listBlocksDepsByProject(projectKey: String, viewerUserId: UUID): TimelineDepsPage = TimelineDepsPage(emptyList(), false)` default(fail-safe 빈 페이지, memory `interface-extension-default-method`).
+
+**REFACTOR**: KDoc — blockerKey=source(차단측)/blockedKey=target(피차단측), 양끝 가시성·타임라인 조건은 구현체 책임 명시.
+
+**검증**: `./gradlew :backend:shared-kernel:test --tests TimelineLookupPortTest`
+
+### Task 2. issue-tracking — IssueLinkRepository.findBlocksEdgesAmong (BLOCKS 엣지 id-집합 조회)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/link/repository/IssueLinkRepository.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/link/repository/BlocksEdgeRow.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/link/repository/IssueLinkRepositoryDepsTest.kt`]
+- depends-on: []
+
+**RED** (Testcontainers 통합):
+- 시드 — 이슈 A,B,C,D + 링크 (A blocks B), (A relates C), (A blocks D).
+- `findBlocksEdgesAmong(setOf(A.id, B.id, C.id))` →
+  - (A,B) blocks 엣지만 반환. (A relates C)는 타입 제외. (A blocks D)는 D가 집합 밖이라 제외.
+  ```kotlin
+  @Test fun `returns only blocks edges with both endpoints in id set`() { ... }
+  @Test fun `excludes non-blocks link types`() { ... }
+  @Test fun `excludes edge when one endpoint outside id set`() { ... }
+  ```
+- 실패: `findBlocksEdgesAmong` / `BlocksEdgeRow` 미존재.
+
+**GREEN**:
+- `BlocksEdgeRow(sourceId: UUID, targetId: UUID)`.
+- jOOQ — `SELECT source_id, target_id FROM issue_links WHERE link_type='blocks' AND source_id = ANY(?ids) AND target_id = ANY(?ids) ORDER BY source_id, target_id LIMIT DEPS_FETCH_LIMIT + 1`. 빈 집합이면 빈 리스트 즉시 반환(빈 ANY 회피).
+- `DEPS_FETCH_LIMIT = 1000` 상수.
+
+**REFACTOR**: KDoc + EXPLAIN — production 렌더 SQL을 `EXPLAIN`으로 확인해 `idx_issue_links_source_id` 사용 확정(memory `jooq-likeignorecase-expression-trgm-index`). seqscan이면 plan에 V033 부분 인덱스 추가 보고(기본 가정: 마이그레이션 0).
+
+**검증**: `./gradlew :backend:issue-tracking:test --tests IssueLinkRepositoryDepsTest`
+
+### Task 3. issue-tracking — TimelineLookupAdapter.listBlocksDepsByProject 구현
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/outbound/timeline/TimelineLookupAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/outbound/timeline/TimelineLookupAdapterDepsTest.kt`]
+- depends-on: [1, 2]
+
+**RED** (Testcontainers 통합 — 스펙 S1~S6/EC):
+- S1 happy — (ATLAS-1 blocks ATLAS-2), 둘 다 날짜·가시 → `[{blocker:"ATLAS-1",blocked:"ATLAS-2"}]`.
+- S2 — relates/duplicates 링크 제외.
+- S3 — blocked 이슈가 날짜 0개(타임라인 미포함) → 엣지 제외.
+- S4 — blocked 이슈가 viewer 비가시 보안등급 → 엣지 제외, 키 미노출.
+- S5 — cross-project blocks(ATLAS-1 blocks BETA-2) → 제외.
+- S6 — 상호 blocks(A↔B) → 두 엣지 반환.
+- truncated 전파(timeline truncated 또는 blocks limit 초과).
+
+**GREEN**:
+- `listBlocksDepsByProject`:
+  1. `securityDirectory.accessibleLevels(viewer, project)`.
+  2. `issueRepository.listVisibleForTimeline(project, viewer, access)` → 가시 타임라인 엔트리(≤500). id→key 맵 구성.
+  3. `linkRepository.findBlocksEdgesAmong(idMap.keys)` → BlocksEdgeRow 목록.
+  4. 각 row의 sourceId/targetId를 idMap으로 key 변환 → `TimelineDepEdge`. (양끝 모두 가시 집합 ⇒ 매핑 항상 성공)
+  5. `truncated = timelinePage.truncated || (edges.size > DEPS_FETCH_LIMIT)`. 상한 take.
+- `linkRepository: IssueLinkRepository` 주입 추가.
+
+**REFACTOR**: KDoc — 양끝 가시성이 "가시 집합 내 조회"로 자동 보장됨을 명시(새 보안 경로 0). 매핑 헬퍼 추출.
+
+**검증**: `./gradlew :backend:issue-tracking:test --tests TimelineLookupAdapterDepsTest`
+
+### Task 4. agile-planning — TimelineApplicationService.getDeps (BROWSE 게이트 + 정렬)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/TimelineApplicationService.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/TimelineApplicationServiceDepsTest.kt`]
+- depends-on: [1]
+
+**RED** (단위 — mock `IssuePermissionResolver` + `TimelineLookupPort`):
+- BROWSE 거부 → `ResponseStatusException(403)`.
+- BROWSE 허용 → 포트 결과를 `blockerKey ASC, blockedKey ASC` 정렬해 `TimelineDepsResult(edges, truncated)` 반환.
+  ```kotlin
+  @Test fun `getDeps denies without BROWSE`() { ... }   // 403
+  @Test fun `getDeps returns sorted edges`() { ... }     // 정렬 결정성
+  ```
+
+**GREEN**:
+- `TimelineDepsResult(edges: List<TimelineDepEdge>, truncated: Boolean)`.
+- `getDeps(actorId, projectKey)` — BROWSE `hasPermission` fail-closed(403) → `listBlocksDepsByProject` → `sortedWith(compareBy(blockerKey, blockedKey))` → 결과.
+
+**REFACTOR**: KDoc — 타임라인 조회와 동일 BROWSE 게이트 재사용 명시.
+
+**검증**: `./gradlew :backend:agile-planning:test --tests TimelineApplicationServiceDepsTest`
+
+### Task 5. agile-planning — TimelineController.getDeps + 응답 DTO
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/TimelineController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/TimelineResponses.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/TimelineControllerDepsTest.kt`]
+- depends-on: [4]
+
+**RED** (MockMvc HTTP):
+- `GET /api/v1/timeline/deps?project=ATLAS` → 200 + `{data:{deps:[{blockerKey,blockedKey}],truncated}}`.
+- `project` 누락 → 400. 미인증 → 401. BROWSE 없음 → 403.
+
+**GREEN**:
+- `TimelineDepEdgeResponse(blockerKey, blockedKey)` + `TimelineDepsResponse(deps, truncated)` DTO + `from` 매퍼.
+- `@GetMapping("/deps") fun getDeps(@RequestParam project)` — actor 추출(401, 기존 `currentActorId` 재사용) → `service.getDeps` → DataResponse 봉투.
+
+**REFACTOR**: KDoc — 클래스 KDoc 엔드포인트 목록에 `/deps` 추가. `TimelineExceptionHandler` 스코프(assignableTypes) 그대로 적용 확인.
+
+**검증**: `./gradlew :backend:agile-planning:test --tests TimelineControllerDepsTest` + 전체 `./gradlew :backend:agile-planning:test`
+
+### (후속 PR) 프론트 D6~D7 — 개요
+
+> 게이트 1에서 "풀스택 1 PR" 선택 시 이번 PR에 포함하며, 그때 RED/GREEN/REFACTOR 상세화.
+
+- **T6** `api/timeline.ts` — `timelineDepsResponseSchema`(`{deps:[{blockerKey,blockedKey}],truncated}`) + `fetchTimelineDeps(projectKey)`. (frontend-engineer, depends []).
+- **T7** `hooks/use-timeline.ts` — `useTimelineDeps(projectKey)` + `timelineKeys.deps(...)`. (frontend, depends T6).
+- **T8** `lib/timeline-layout.ts` — `computeDependencyLines(groups/geometry, deps)` 순수함수(blocker 막대→blocked 막대 화살표 경로, jsdom 안전). (frontend, depends []).
+- **T9** `mocks/timeline-handlers.ts` + `timeline-fixtures.ts` — `/timeline/deps` MSW 핸들러 + 픽스처(공유 store 시드, memory `msw-derived-behavior-shared-store-e2e`). (frontend, depends T6).
+- **T10** `components/timeline/DependencyOverlay.tsx`(신규) + `GanttChart.tsx` — SVG 오버레이 레이어 + 클릭 강조(S10). (frontend, depends T7,T8,T9).
+- **T11** `e2e/timeline.spec.ts` — 의존 라인 실렌더 + 클릭 강조 E2E + 기존 timeline E2E 무회귀. (qa-engineer, depends T10).
+
+## Plan 메타
+
+- task 수: **5 (이번 PR 백엔드 권장)** / 11 (풀스택 전체). 게이트 1 결정에 따라 활성 집합 확정.
+- 백엔드 wave (depends-on + files 기준): Wave1=[T1,T2], Wave2=[T3(1,2),T4(1)], Wave3=[T5(4)] — 3 wave.
+- TDD 강제: yes (test 커밋이 feat 커밋보다 먼저).
+- 마이그레이션: 0 (기본 가정, T2 EXPLAIN으로 확정).
+- 보안 리뷰 포커스(codereview): 양끝 가시성 누출(S4)·cross-project 누출(S5)·BROWSE 게이트(S7/S8). 새 보안 경로 없이 기존 가시 집합 재사용임을 검증.
+- 추가 검증: ktlint·detekt·ArchUnit BC 격리(agile-planning→issue-tracking import 0).
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
