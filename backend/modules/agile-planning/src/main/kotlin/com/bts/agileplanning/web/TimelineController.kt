@@ -4,6 +4,8 @@ package com.bts.agileplanning.web
 
 import com.bts.agileplanning.application.TimelineApplicationService
 import com.bts.agileplanning.web.dto.DataResponse
+import com.bts.agileplanning.web.dto.TimelineDepEdgeResponse
+import com.bts.agileplanning.web.dto.TimelineDepsResponse
 import com.bts.agileplanning.web.dto.TimelineItemResponse
 import com.bts.agileplanning.web.dto.TimelineResponse
 import org.slf4j.LoggerFactory
@@ -23,6 +25,7 @@ import java.util.UUID
  *
  * 엔드포인트.
  * - GET `/api/v1/timeline?project={projectKey}` — 프로젝트 타임라인 조회. 권한 BROWSE.
+ * - GET `/api/v1/timeline/deps?project={projectKey}` — 프로젝트 내 `blocks` 의존 엣지 조회. 권한 BROWSE.
  *
  * ### 처리 순서 (존재 probe 차단)
  * 1. actor 추출([currentActorId]) — 미인증이면 401(리소스 조회 이전에 차단).
@@ -66,6 +69,34 @@ class TimelineController(
         val response =
             TimelineResponse(
                 items = result.items.map { TimelineItemResponse.from(it) },
+                truncated = result.truncated,
+            )
+
+        return ResponseEntity.ok(DataResponse(response))
+    }
+
+    /**
+     * 프로젝트의 `blocks` 의존 엣지 목록을 결정적 순서로 반환한다 (FR-TL-02).
+     *
+     * actor 추출 후 service 에 위임한다. service 내부에서 BROWSE 권한을 판정한다.
+     *
+     * @param project 조회할 프로젝트 키. 예: `"BTS"`. 필수 쿼리 파라미터.
+     * @return 200 OK + [TimelineDepsResponse] 봉투.
+     * @throws ResponseStatusException 401 — 미인증.
+     * @throws ResponseStatusException 403 — BROWSE 권한 미충족.
+     */
+    @GetMapping("/deps")
+    fun getDeps(
+        @RequestParam project: String,
+    ): ResponseEntity<DataResponse<TimelineDepsResponse>> {
+        log.info("TimelineController.getDeps project={}", project)
+
+        val actor = currentActorId()
+        val result = service.getDeps(actorId = actor, projectKey = project)
+
+        val response =
+            TimelineDepsResponse(
+                deps = result.edges.map { TimelineDepEdgeResponse.from(it) },
                 truncated = result.truncated,
             )
 

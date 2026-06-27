@@ -1,10 +1,11 @@
-// 간트 차트 타임라인 조회 애플리케이션 서비스 — 권한 게이트·날짜 정렬 (FR-TL-01 Task 4)
+// 간트 차트 타임라인 조회 애플리케이션 서비스 — 권한 게이트·날짜 정렬·의존 엣지 정렬 (FR-TL-01/02 Task 4)
 
 package com.bts.agileplanning.application
 
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import com.bts.shared.timeline.TimelineDepEdge
 import com.bts.shared.timeline.TimelineItemView
 import com.bts.shared.timeline.TimelineLookupPort
 import org.slf4j.LoggerFactory
@@ -27,22 +28,40 @@ data class TimelineResult(
 )
 
 /**
+ * 타임라인 의존 엣지 조회 서비스 결과 VO.
+ *
+ * [TimelineApplicationService.getDeps] 가 반환하는 읽기 전용 값 객체.
+ * 간트 차트 오버레이에서 `blocks` 화살표를 렌더링하기 위해 사용한다(FR-TL-02).
+ *
+ * 정렬 기준 — blockerKey ASC → blockedKey ASC (결정적 순서, FR6).
+ *
+ * @property edges 정렬된 의존 엣지 목록.
+ * @property truncated 조회 건수가 LIMIT 를 초과해 엣지 일부가 누락됐으면 true.
+ */
+data class TimelineDepsResult(
+    val edges: List<TimelineDepEdge>,
+    val truncated: Boolean,
+)
+
+/**
  * 간트 차트 타임라인 조회 애플리케이션 서비스.
  *
- * 프로젝트의 가시 이슈를 [TimelineLookupPort] 를 통해 조회한 뒤
- * 날짜 기준으로 정렬해 반환한다.
+ * FR-TL-01: 프로젝트 가시 이슈를 날짜 정렬해 간트 바를 렌더링한다([getTimeline]).
+ * FR-TL-02: 프로젝트 내 `blocks` 의존 엣지를 결정적 순서로 반환한다([getDeps]).
  *
+ * 두 메서드 모두 동일한 BROWSE fail-closed 게이트를 재사용한다.
  * cross-BC 통신은 shared-kernel 포트([TimelineLookupPort], [IssuePermissionResolver])만 사용한다.
  * issue-tracking 내부를 직접 import 하지 않는다(BC 격리).
  *
- * ## 처리 순서
- * 1. BROWSE 권한 판정 — 거부 시 403(fail-closed).
- * 2. [TimelineLookupPort.listTimelineItemsByProject] 로 가시 이슈 목록 조회.
- * 3. 날짜 정렬 적용 — [timelineComparator] 참조.
- * 4. [TimelineResult] 반환.
+ * ## 공통 처리 순서 (getTimeline / getDeps)
+ * 1. BROWSE 권한 판정 — 거부 시 403(fail-closed). 새 권한 경로 신설 없이 동일 게이트 재사용.
+ * 2. [TimelineLookupPort] 위임 — visibility 필터는 구현체(issue-tracking adapter) 책임.
+ * 3. 정렬 적용 — 결정적 순서 보장(FR6).
+ * 4. 서비스 결과 VO 반환.
  *
  * ## 정렬 규칙
- * startDate ASC NULLS LAST → dueDate ASC NULLS LAST → key ASC.
+ * - getTimeline: startDate ASC NULLS LAST → dueDate ASC NULLS LAST → key ASC.
+ * - getDeps: blockerKey ASC → blockedKey ASC.
  *
  * ## BC 격리 사유
  * ```
@@ -52,7 +71,7 @@ data class TimelineResult(
  * issue-tracking 내부 클래스 직접 import 는 BC 경계 위반으로 차단된다.
  *
  * @param permissionResolver cross-BC 권한 판정 포트(fail-closed, non-null 주입).
- * @param timelineLookupPort 프로젝트 가시 이슈 조회 포트(issue-tracking 구현).
+ * @param timelineLookupPort 프로젝트 가시 이슈·의존 엣지 조회 포트(issue-tracking 구현).
  */
 @Service
 @Transactional(readOnly = true)
@@ -94,6 +113,44 @@ class TimelineApplicationService(
         )
 
         return TimelineResult(items = sorted, truncated = page.truncated)
+    }
+
+    /**
+     * 프로젝트의 `blocks` 의존 엣지를 결정적 순서로 정렬해 반환한다.
+     *
+     * [getTimeline] 과 동일한 BROWSE 게이트를 재사용한다(fail-closed 403).
+     * 새로운 권한 경로를 신설하지 않고 기존 게이트를 그대로 적용한다.
+     *
+     * 정렬 기준 — blockerKey ASC → blockedKey ASC (FR6 결정적 순서).
+     * 클라이언트가 동일한 요청에 항상 동일한 순서를 받도록 보장한다.
+     *
+     * @param actorId 조회 행위자 UUID.
+     * @param projectKey 조회할 프로젝트 키. 예: `"ATLAS"`.
+     * @return [TimelineDepsResult] — 정렬된 의존 엣지 목록 + truncated.
+     * @throws ResponseStatusException 403 — BROWSE 권한 미충족(fail-closed).
+     */
+    @Transactional(readOnly = true)
+    fun getDeps(
+        actorId: UUID,
+        projectKey: String,
+    ): TimelineDepsResult {
+        log.debug("타임라인 의존 엣지 조회 시작 — projectKey={}, actorId={}", projectKey, actorId)
+
+        if (!permissionResolver.hasPermission(actorId, IssuePermission.BROWSE, IssueScope.Project(projectKey))) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "접근 권한이 없습니다.")
+        }
+
+        val page = timelineLookupPort.listBlocksDepsByProject(projectKey, actorId)
+        val sorted = page.edges.sortedWith(compareBy({ it.blockerKey }, { it.blockedKey }))
+
+        log.debug(
+            "타임라인 의존 엣지 조회 완료 — projectKey={}, edges={}, truncated={}",
+            projectKey,
+            sorted.size,
+            page.truncated,
+        )
+
+        return TimelineDepsResult(edges = sorted, truncated = page.truncated)
     }
 
     // ── private helpers ───────────────────────────────────────────────────────

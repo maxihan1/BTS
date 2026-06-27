@@ -6,6 +6,7 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.link.repository.IssueLinkRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.repository.IssueTestcontainersBase
 import com.bts.shared.issue.IssueTypeId
@@ -101,7 +102,7 @@ class TimelineLookupAdapterTest : IssueTestcontainersBase() {
 
     /** stub directory + 실 repository 로 adapter 구성. */
     private fun adapterWith(access: IssueSecurityAccess): TimelineLookupAdapter =
-        TimelineLookupAdapter(repository, StubSecurityDirectory(access))
+        TimelineLookupAdapter(repository, StubSecurityDirectory(access), IssueLinkRepository(dsl))
 
     /**
      * 테스트용 이슈 생성 helper.

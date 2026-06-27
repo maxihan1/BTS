@@ -50,6 +50,7 @@ private const val SQL_EXISTS_BLOCKS_PATH =
  * - [existsBlocksPath] — blocks 그래프 재귀 CTE 로 도달 가능성 탐색.
  * - [findOutwardWithIssue] — source=issueId 인 링크를 issues 와 단일 JOIN 해 [LinkedIssueRow] 반환 (N+1 방지).
  * - [findInwardWithIssue] — target=issueId 인 링크를 issues 와 단일 JOIN 해 [LinkedIssueRow] 반환 (N+1 방지).
+ * - [findBlocksEdgesAmong] — 주어진 이슈 id 집합 안에서 양끝이 모두 집합에 속하는 blocks 엣지를 반환 (FR-TL-02 타임라인 의존 라인).
  *
  * ## 소프트 삭제 없음
  * `issue_links` 는 관계 테이블이라 링크 해제 = 행 물리 삭제 (DATA.md §3).
@@ -60,6 +61,18 @@ class IssueLinkRepository(
     private val dsl: DSLContext,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+
+    companion object {
+        /**
+         * [findBlocksEdgesAmong] 한 번 조회에 반환하는 최대 행 수.
+         * 초과 시 상위 호출자가 truncated 플래그를 부여해야 한다.
+         *
+         * 타임라인 이슈 상한(500)보다 큰 1000인 이유 — 노드(이슈)보다 엣지(blocks 링크)가
+         * 조밀할 수 있어(한 이슈가 여러 이슈를 차단), 500 노드 윈도우 안에서도 엣지 수가
+         * 노드 수를 넘을 수 있다. 엣지 상한을 노드 상한과 별개로 둔다.
+         */
+        const val DEPS_FETCH_LIMIT = 1000
+    }
 
     /**
      * 새 링크를 `issue_links` 테이블에 삽입하고 DB 생성 id 가 채워진 [IssueLink] 를 반환한다.
@@ -272,6 +285,40 @@ class IssueLinkRepository(
                     otherCurrentStateKey =
                         record.get(source.CURRENT_STATE_KEY)
                             ?: error("issues.current_state_key must not be null"),
+                )
+            }
+    }
+
+    /**
+     * 주어진 이슈 id 집합 안에서, 양끝이 모두 그 집합에 속하는 blocks 엣지를 반환한다.
+     *
+     * ## 가시성 보장
+     * 호출자가 이미 가시성·프로젝트·날짜 필터를 통과한 id 집합을 전달하므로,
+     * 집합 안에서 양끝을 걸러내는 것만으로 결과의 보안 가시성이 자동 보장된다.
+     *
+     * ## 빈 집합 short-circuit
+     * [issueIds] 가 비어 있으면 빈 `IN ()` 쿼리 없이 즉시 빈 리스트를 반환한다.
+     *
+     * ## 행 수 제한
+     * [DEPS_FETCH_LIMIT] + 1 행까지만 조회한다. 초과 여부는 호출자가 판단한다.
+     *
+     * @param issueIds 타임라인에 노출할 이슈 id 집합. 빈 집합이면 빈 리스트를 즉시 반환.
+     * @return source_id, target_id 쌍 리스트. ORDER BY source_id, target_id. 없으면 빈 리스트.
+     */
+    @Transactional(readOnly = true)
+    fun findBlocksEdgesAmong(issueIds: Collection<UUID>): List<BlocksEdgeRow> {
+        if (issueIds.isEmpty()) return emptyList()
+        return dsl.select(ISSUE_LINKS.SOURCE_ID, ISSUE_LINKS.TARGET_ID)
+            .from(ISSUE_LINKS)
+            .where(ISSUE_LINKS.LINK_TYPE.eq(LinkType.BLOCKS.code))
+            .and(ISSUE_LINKS.SOURCE_ID.`in`(issueIds))
+            .and(ISSUE_LINKS.TARGET_ID.`in`(issueIds))
+            .orderBy(ISSUE_LINKS.SOURCE_ID, ISSUE_LINKS.TARGET_ID)
+            .limit(DEPS_FETCH_LIMIT + 1)
+            .fetch { record ->
+                BlocksEdgeRow(
+                    sourceId = record.get(ISSUE_LINKS.SOURCE_ID) ?: error("source_id must not be null"),
+                    targetId = record.get(ISSUE_LINKS.TARGET_ID) ?: error("target_id must not be null"),
                 )
             }
     }

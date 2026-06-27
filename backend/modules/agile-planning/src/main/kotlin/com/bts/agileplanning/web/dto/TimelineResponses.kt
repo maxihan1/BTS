@@ -1,7 +1,8 @@
-// 타임라인 조회 REST API 응답 DTO — agile-planning BC (FR-TL-01 Task 5)
+// 타임라인 조회 REST API 응답 DTO — agile-planning BC (FR-TL-01 Task 5, FR-TL-02 Task 5)
 
 package com.bts.agileplanning.web.dto
 
+import com.bts.shared.timeline.TimelineDepEdge
 import com.bts.shared.timeline.TimelineItemView
 import java.time.LocalDate
 import java.util.UUID
@@ -67,5 +68,46 @@ data class TimelineItemResponse(
  */
 data class TimelineResponse(
     val items: List<TimelineItemResponse>,
+    val truncated: Boolean,
+)
+
+/**
+ * `blocks` 의존 엣지 단위 응답 DTO (FR-TL-02).
+ *
+ * [TimelineDepEdge] shared-kernel VO 를 컨트롤러 레이어에서 HTTP 응답 형태로 변환한다.
+ * 간트 차트 오버레이에서 `blocks` 화살표를 렌더링하기 위해 사용한다.
+ *
+ * @property blockerKey 차단자(선행) 이슈 키. 예: `"BTS-1"`.
+ * @property blockedKey 피차단자(후행) 이슈 키. 예: `"BTS-2"`.
+ */
+data class TimelineDepEdgeResponse(
+    val blockerKey: String,
+    val blockedKey: String,
+) {
+    companion object {
+        /**
+         * shared-kernel [TimelineDepEdge] VO 를 [TimelineDepEdgeResponse] 로 변환한다.
+         *
+         * @param edge 변환할 의존 엣지 VO.
+         * @return 응답 DTO 인스턴스.
+         */
+        fun from(edge: TimelineDepEdge): TimelineDepEdgeResponse =
+            TimelineDepEdgeResponse(
+                blockerKey = edge.blockerKey,
+                blockedKey = edge.blockedKey,
+            )
+    }
+}
+
+/**
+ * 타임라인 의존 엣지 조회 최상위 응답 DTO (FR-TL-02).
+ *
+ * [DataResponse] 봉투로 감싸 클라이언트에 전달된다.
+ *
+ * @property deps blockerKey ASC → blockedKey ASC 정렬된 의존 엣지 목록.
+ * @property truncated DEPS_FETCH_LIMIT 초과로 엣지 일부 누락 시 true.
+ */
+data class TimelineDepsResponse(
+    val deps: List<TimelineDepEdgeResponse>,
     val truncated: Boolean,
 )

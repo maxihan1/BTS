@@ -172,4 +172,15 @@ class TimelineLookupPortTest {
         assertThat(page.items).isEmpty()
         assertThat(page.truncated).isFalse()
     }
+
+    // ── TimelineDepEdge / TimelineDepsPage / deps default ────────────────────
+
+    @Test
+    fun `listBlocksDepsByProject default returns empty page`() {
+        val port = object : TimelineLookupPort {}
+        val page = port.listBlocksDepsByProject("ATLAS", UUID.randomUUID())
+
+        assertThat(page.edges).isEmpty()
+        assertThat(page.truncated).isFalse()
+    }
 }
