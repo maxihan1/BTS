@@ -672,3 +672,15 @@ describe('SearchRouteAdapter — ⑫ filterId 에러 처리', () => {
     expect(screen.getByRole('button', { name: '검색' })).toBeInTheDocument()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⑦ FR-SR-04 — 전문 검색(FTS) placeholder 예시 노출
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SearchPage — ⑦ FTS placeholder', () => {
+  it('입력창 placeholder에 text ~ 전문 검색 예시가 포함된다', () => {
+    renderSearchPage()
+    const input = screen.getByTestId('aql-input')
+    expect(input).toHaveAttribute('placeholder', expect.stringContaining('text ~'))
+  })
+})

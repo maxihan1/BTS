@@ -64,6 +64,15 @@ describe('AqlHighlighter — 토큰 색상 span', () => {
     expect(fieldSpan?.textContent).toBe('status')
   })
 
+  it('text 가상 필드는 text-syntax-field 클래스를 가진다', () => {
+    const { container } = renderHighlighter('text ~ "검색어"')
+    const overlay = container.querySelector('pre[aria-hidden="true"]')!
+    const hasTextField = Array.from(
+      overlay.querySelectorAll('.text-syntax-field'),
+    ).some((el) => el.textContent === 'text')
+    expect(hasTextField).toBe(true)
+  })
+
   it('OPERATOR 토큰은 text-syntax-operator 클래스를 가진다', () => {
     const { container } = renderHighlighter('status = open')
     const overlay = container.querySelector('pre[aria-hidden="true"]')
