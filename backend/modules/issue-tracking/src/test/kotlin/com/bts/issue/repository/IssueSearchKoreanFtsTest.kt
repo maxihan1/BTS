@@ -611,19 +611,19 @@ class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
     // B2-EXPLAIN 은 손수 SQL 을 사용해 GIN 인덱스 등장을 검증한다.
     // S1-RENDER 는 production 이 실제로 무슨 SQL 을 생성하는지를 ExecuteListener 로 직접 박제한다.
     //
-    // 발견: jOOQ 3.19 PostgreSQL dialect 에서 likeIgnoreCase 는 lower(col) LIKE 가 아니라
-    //       native ILIKE 로 렌더된다. B2-EXPLAIN 의 손수 SQL(lower(col) LIKE) 과 표현식이 다르지만
-    //       PostgreSQL 플래너는 ILIKE 를 lower(col) ~~ lower(pattern) 으로 처리해
-    //       gin(lower(description) gin_trgm_ops) 인덱스를 동일하게 사용한다.
+    // B1 수정 근거:
+    //   EXPLAIN 실측 결과 jOOQ likeIgnoreCase 는 native ILIKE(~~*) 를 렌더하며,
+    //   ILIKE 는 gin(lower(col) gin_trgm_ops) 표현식 인덱스를 사용하지 못해 Seq Scan 이 발생한다.
+    //   → DSL.lower(col).like(pattern.lowercase(), '\\') 로 교체해 lower(col) LIKE ? 를 렌더.
+    //   이 형태는 idx_issues_description_trgm / idx_issues_summary_trgm 과 표현식이 정확히 일치한다.
     //
-    // drift 가드: buildTextSearchCondition 이 bare LIKE (case-sensitive) 로 변경되면
-    //   trigram 인덱스가 사용되지 않고 이 단언이 즉시 fail 한다.
+    // drift 가드: production 이 ILIKE 또는 bare LIKE 로 퇴행하면 이 단언이 즉시 fail 한다.
 
     @Test
     @Order(52)
-    @Suppress("NestedBlockDepth") // DefaultExecuteListener 익명 클래스 — SQL 캡처에 불가피
+    @Suppress("NestedBlockDepth") // ExecuteListener 익명 클래스 — SQL 캡처에 불가피
     fun `S1-RENDER production searchByAql 는 lower description like 와 plainto_tsquery 표현식을 실제로 렌더한다`() {
-        insertIssue(seq = 1, description = "로그인 테스트 설명")
+        insertIssue(seq = 1, summary = "로그인 테스트 제목", description = "로그인 테스트 설명")
 
         // jOOQ ExecuteListener 로 searchByAql 이 DB 에 실제 전송하는 SQL 을 캡처
         val capturedSqls = mutableListOf<String>()
@@ -662,29 +662,26 @@ class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
             .describedAs("production SQL 에 plainto_tsquery('simple', ...) FTS 표현식이 있어야 한다")
             .contains("plainto_tsquery")
 
-        // (2) trigram 경로 박제 — lower("issues"."description") like ?
-        //     jOOQ likeIgnoreCase 는 lower(col) LIKE ? 로 렌더하므로
-        //     idx_issues_description_trgm(gin(lower(description) gin_trgm_ops)) 와 표현식이 일치한다.
-        //     production 이 bare ILIKE 또는 coalesce(description,...) 로 변경되면
-        //     lower() 가 사라지고 이 단언이 즉시 fail 한다.
-        // jOOQ 3.19 PostgreSQL dialect 실제 렌더링 박제.
-        // likeIgnoreCase 는 native PostgreSQL ILIKE 로 렌더된다 (lower(col) LIKE 가 아님).
-        // PostgreSQL 플래너는 ILIKE 를 내부적으로 lower(col) ~~ lower(pattern) 으로 처리해
-        // gin(lower(description) gin_trgm_ops) 인덱스를 동일하게 활용한다.
-        //
-        // NOTE: 생산 코드 주석("likeIgnoreCase 는 lower(col) LIKE 를 생성") 은
-        //       이 테스트가 발견한 실제 동작(ILIKE)과 다르다.
-        //       B2-EXPLAIN 의 손수 SQL(lower(col) LIKE) 과 production SQL(col ILIKE) 은
-        //       표현식이 다르지만 동일한 GIN trigram 인덱스를 사용하므로 기능은 동일하다.
-        //
-        // drift 가드: production 이 bare LIKE (case-insensitive 처리 없음) 로 변경되면
-        //   trigram 인덱스가 사용되지 않고 이 단언이 즉시 fail 한다.
+        // (2) summary trigram 경로 박제 — lower("public"."issues"."summary") like ?
+        //     DSL.lower(ISSUES.SUMMARY).like(...) 가 이 형태를 렌더해야
+        //     idx_issues_summary_trgm(gin(lower(summary) gin_trgm_ops)) 표현식 인덱스를 사용할 수 있다.
+        //     ILIKE 또는 coalesce() 로 퇴행하면 lower() 가 사라지고 이 단언이 즉시 fail 한다.
         assertThat(allSql)
             .describedAs(
-                "production SQL 에 \"description\" ilike 표현식이 있어야 한다 " +
-                    "(jOOQ 3.19 PostgreSQL dialect: likeIgnoreCase → ILIKE)",
+                "production SQL 에 lower(\"public\".\"issues\".\"summary\") like 표현식이 있어야 한다 " +
+                    "(DSL.lower(ISSUES.SUMMARY).like() — idx_issues_summary_trgm 표현식 인덱스 호환)",
             )
-            .contains(""""description" ilike""")
+            .contains("""lower("public"."issues"."summary") like""")
+
+        // (3) description trigram 경로 박제 — lower("public"."issues"."description") like ?
+        //     DSL.lower(ISSUES.DESCRIPTION).like(...) 가 이 형태를 렌더해야
+        //     idx_issues_description_trgm(gin(lower(description) gin_trgm_ops)) 표현식 인덱스를 사용할 수 있다.
+        assertThat(allSql)
+            .describedAs(
+                "production SQL 에 lower(\"public\".\"issues\".\"description\") like 표현식이 있어야 한다 " +
+                    "(DSL.lower(ISSUES.DESCRIPTION).like() — idx_issues_description_trgm 표현식 인덱스 호환)",
+            )
+            .contains("""lower("public"."issues"."description") like""")
     }
 
     // ── S4 보안: BROWSE 게이트 + visibility 술어 필터 ───────────────────────────
