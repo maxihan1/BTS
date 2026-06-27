@@ -1,4 +1,4 @@
-// cross-BC 타임라인 아이템 조회 포트 (agile-planning → issue-tracking 위임) — FR-TL-01
+// cross-BC 타임라인 아이템 조회 포트 (agile-planning → issue-tracking 위임) — FR-TL-01/02
 
 package com.bts.shared.timeline
 
@@ -57,7 +57,22 @@ interface TimelineLookupPort {
         projectKey: String,
         viewerUserId: UUID,
     ): TimelineItemPage = TimelineItemPage(items = emptyList(), truncated = false)
+
+    fun listBlocksDepsByProject(
+        projectKey: String,
+        viewerUserId: UUID,
+    ): TimelineDepsPage = TimelineDepsPage(edges = emptyList(), truncated = false)
 }
+
+data class TimelineDepEdge(
+    val blockerKey: String,
+    val blockedKey: String,
+)
+
+data class TimelineDepsPage(
+    val edges: List<TimelineDepEdge>,
+    val truncated: Boolean,
+)
 
 /**
  * 타임라인 아이템 목록 조회 결과 페이지 VO.
