@@ -12,8 +12,10 @@ describe('상수 회귀 스냅샷', () => {
     expect(AQL_KEYWORDS).toEqual(['and', 'or', 'not', 'in', 'order', 'by', 'asc', 'desc'])
   })
 
-  it('AQL_FIELDS — 4개 필드 고정', () => {
-    expect(AQL_FIELDS).toEqual(['status', 'label', 'summary', 'priority'])
+  it('AQL_FIELDS — 5개 필드 고정 (text 포함)', () => {
+    expect(AQL_FIELDS).toHaveLength(5)
+    expect(AQL_FIELDS).toContain('text')
+    expect(AQL_FIELDS).toEqual(['status', 'label', 'summary', 'priority', 'text'])
   })
 
   it('AQL_OPERATORS — 3개 연산자 고정', () => {
@@ -96,6 +98,16 @@ describe('FIELD 토큰', () => {
   it('STATUS(대문자)를 FIELD로 분류한다 (대소문자 무시)', () => {
     const tokens = tokenizeAql('STATUS')
     expect(tokens[0]).toMatchObject({ type: 'FIELD', value: 'STATUS' })
+  })
+
+  it('text를 FIELD로 분류한다', () => {
+    const tokens = tokenizeAql('text ~ "x"')
+    expect(tokens[0]).toMatchObject({ type: 'FIELD', value: 'text' })
+  })
+
+  it('TEXT(대문자)를 FIELD로 분류한다 (대소문자 무시)', () => {
+    const tokens = tokenizeAql('TEXT ~ "x"')
+    expect(tokens[0]).toMatchObject({ type: 'FIELD', value: 'TEXT' })
   })
 })
 
