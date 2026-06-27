@@ -80,6 +80,22 @@ export const savedFilterLabels = {
 
   /** 로딩 중 안내 */
   loading: '불러오는 중...',
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Task-5 SavedFilterMenu 드롭다운 전용 라벨
+  // ──────────────────────────────────────────────────────────────────────
+
+  /** 저장된 필터 드롭다운 트리거 버튼 aria-label */
+  menuTriggerAriaLabel: '저장된 필터 목록',
+
+  /** 공유받은 필터 섹션 헤더 */
+  sharedFiltersSection: '공유받은 필터',
+
+  /** 드롭다운 빈 상태 메시지 */
+  menuEmptyMessage: '저장된 필터 없음',
+
+  /** 필터 행 공유 설정 버튼 (드롭다운 행용 — shareLabel은 다이얼로그 제목) */
+  shareButton: '공유',
 } as const
 
 /** savedFilterLabels const 추론 타입 */
