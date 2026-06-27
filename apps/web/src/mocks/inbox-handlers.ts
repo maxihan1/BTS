@@ -47,6 +47,18 @@ export function seedInbox(userId: string, items: InboxItem[]): void {
   inboxStore.set(userId, [...items])
 }
 
+/**
+ * 특정 userId의 inbox에 단건 항목을 추가한다.
+ * 멘션 파생 등 다른 핸들러가 Inbox에 알림을 삽입할 때 사용한다 (msw-derived-behavior-shared-store-e2e 교훈).
+ *
+ * @param userId 수신자 userId
+ * @param item 추가할 inbox 항목
+ */
+export function appendToInbox(userId: string, item: InboxItem): void {
+  const existing = inboxStore.get(userId) ?? []
+  inboxStore.set(userId, [...existing, item])
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────

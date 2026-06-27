@@ -1,4 +1,6 @@
-// IssueDescription 컴포넌트 단위 테스트 — Write/Preview 탭, 저장/취소 흐름 검증
+// IssueDescription 컴포넌트 단위 테스트 — Write/Preview 탭, 저장/취소 흐름, .mention 강조 검증
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import type { ReactNode, JSX } from 'react'
@@ -393,5 +395,71 @@ describe('IssueDescription — 멘션 자동완성 배선', () => {
 
     // textarea 값 유지 확인
     expect(textarea).toHaveValue('@al')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// .mention 강조 스타일 검증 — FR-MN-01 D6 Task 2
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueDescription — .mention 강조 (FR-MN-01 D6)', () => {
+  /** 백엔드가 마크업한 멘션 span을 포함하는 샘플 HTML */
+  const mentionHtml = '<p><span class="mention">@alice</span> 확인</p>'
+  const props = {
+    descriptionHtml: mentionHtml,
+    description: '@alice 확인',
+    onSave: vi.fn(),
+    isSaving: false,
+  }
+
+  /**
+   * index.css 파일 내용을 직접 읽어 .mention 규칙 존재를 검증한다.
+   * jsdom은 CSS를 적용하지 않으므로 computed style 검증 대신 CSS 소스 검사를 사용한다.
+   *
+   * - import.meta.dirname: 이 테스트 파일의 절대 디렉토리(components/issue) 기준으로
+   *   경로를 계산해 process.cwd() 의존을 제거한다.
+   * - 블록 주석(/* ... *‌/) 제거 후 .mention { ... } 선언 블록이 실재하는지 확인해
+   *   주석 내 .mention 텍스트를 오매칭하지 않는다.
+   * - 블록 내 강조 속성(color/background/font-weight) 최소 1개 존재를 추가 단언해
+   *   빈 규칙셋이 통과하는 가짜 그린을 차단한다.
+   */
+  it('index.css에 .mention 강조 스타일 규칙이 정의되어 있다', () => {
+    // 테스트 파일(components/issue/) 기준 상대경로로 src/index.css 도달
+    const cssPath = resolve(import.meta.dirname, '../../index.css')
+    const css = readFileSync(cssPath, 'utf-8')
+
+    // 블록 주석 제거 — /* .mention */ 같은 주석이 단언에 매칭되는 것 방지
+    const stripped = css.replace(/\/\*[\s\S]*?\*\//g, '')
+
+    // .mention { ... } 선언 블록 실재 확인
+    const ruleMatch = stripped.match(/\.mention\s*\{([^}]+)\}/)
+    expect(ruleMatch).not.toBeNull()
+
+    // 강조 속성(color / background-color / font-weight) 최소 1개 포함 확인
+    const block = ruleMatch?.[1] ?? ''
+    expect(block).toMatch(/\b(?:color|background(?:-color)?|font-weight)\s*:/)
+  })
+
+  it('읽기 모드에서 .mention 클래스 요소가 prose 컨테이너 안에 존재한다', () => {
+    render(<IssueDescription {...props} />)
+    const container = screen.getByTestId('description-preview-content')
+    const mentionEl = container.querySelector('.mention')
+    expect(mentionEl).toBeInTheDocument()
+    expect(mentionEl?.textContent).toBe('@alice')
+  })
+
+  it('편집 모드 미리보기 탭에서도 .mention 요소가 prose 컨테이너 안에 존재한다', () => {
+    render(<IssueDescription {...props} />, { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
+    fireEvent.click(screen.getByRole('tab', { name: '미리보기' }))
+    // 편집 모드 미리보기 컨테이너(.prose)에서 .mention 요소 검색
+    const proseDivs = document.querySelectorAll('.prose')
+    let mentionEl: Element | null = null
+    for (const div of proseDivs) {
+      const el = div.querySelector('.mention')
+      if (el !== null) { mentionEl = el; break }
+    }
+    expect(mentionEl).toBeInTheDocument()
+    expect(mentionEl?.textContent).toBe('@alice')
   })
 })

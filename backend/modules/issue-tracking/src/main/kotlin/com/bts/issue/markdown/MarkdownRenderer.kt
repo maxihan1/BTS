@@ -27,32 +27,50 @@ object MarkdownRenderer {
         MutableDataSet().apply {
             // raw HTML 입력 비활성 — <svg onload> 등 사용자 HTML 태그를 1차 방어한다.
             //
-            // 전략: OWASP 2차 sanitizer allowlist가 최종 방어선이다.
-            // flexmark는 Markdown 문법으로 생성하는 <a>, <strong>, <code> 등 정상 태그는 그대로 출력하고
-            // 사용자가 raw HTML로 삽입한 <script>, <svg onload>, <img onerror> 등 공격 태그도 출력한다.
-            // OWASP allowlist가 공격 태그를 전부 제거하므로 flexmark에서 추가 처리가 없어도 안전하다.
+            // 전략: flexmark 1차 escape + OWASP 2차 allowlist 가 최종 방어선이다.
             //
-            // ESCAPE_HTML_BLOCKS: 블록 수준(단락 전체) raw HTML은 escape 처리 — 이중 안전망.
+            // ESCAPE_HTML_BLOCKS: 블록 수준(단락 전체) raw HTML → escape 처리.
             // HTML_BLOCK_PARSER: HTML 블록 파서 비활성 → raw HTML 블록을 단락 텍스트로 처리.
-            // ESCAPE_INLINE_HTML 미사용 이유: 인라인 raw HTML까지 escape하면
-            //   Markdown 링크([text](url)) 등 flexmark가 내부 생성하는 <a href> 태그까지 영향을 주어
-            //   정상 링크가 텍스트로만 출력되는 사이드 이펙트가 발생한다.
-            //   OWASP 단독으로 inline raw HTML 공격 태그(svg/img/div 등)를 충분히 차단한다.
+            // SUPPRESS_INLINE_HTML: 인라인 raw HTML(소스에 삽입된 <span> 등) → 태그 자체를 출력에서 제거.
+            //   대상: 사용자가 마크다운 소스에 직접 입력한 HTML 태그(HtmlInline AST 노드).
+            //   비대상: flexmark NodeRenderer 가 HtmlWriter 로 직접 생성한 태그(<a>, <span.mention> 등).
+            //   이 설정으로 raw span 주입(EC7) 을 차단하면서 MentionNodeRenderer 생성 span 은 보존한다.
+            //   ESCAPE_INLINE_HTML 대신 SUPPRESS 를 사용하는 이유:
+            //     ESCAPE_INLINE_HTML 은 삽입된 태그를 텍스트로 출력하므로 태그 내 문자열
+            //     (예: JaVaScRiPt:) 이 escape 된 형태로 결과에 남아 기존 XSS 차단 테스트를 깬다.
+            //     SUPPRESS 는 태그 자체를 완전히 제거하고 텍스트 내용만 남기므로 기존 테스트와 양립한다.
             set(HtmlRenderer.ESCAPE_HTML_BLOCKS as com.vladsch.flexmark.util.data.DataKey<Boolean>, true)
             set(Parser.HTML_BLOCK_PARSER as com.vladsch.flexmark.util.data.DataKey<Boolean>, false)
+            set(HtmlRenderer.SUPPRESS_INLINE_HTML as com.vladsch.flexmark.util.data.DataKey<Boolean>, true)
         }
 
-    private val PARSER: Parser = Parser.builder(FLEXMARK_OPTIONS).build()
-    private val RENDERER: HtmlRenderer = HtmlRenderer.builder(FLEXMARK_OPTIONS).build()
+    private val MENTION_EXT: MentionExtension = MentionExtension.create()
+
+    private val PARSER: Parser =
+        Parser.builder(FLEXMARK_OPTIONS)
+            .extensions(listOf(MENTION_EXT))
+            .build()
+
+    private val RENDERER: HtmlRenderer =
+        HtmlRenderer.builder(FLEXMARK_OPTIONS)
+            .extensions(listOf(MENTION_EXT))
+            .build()
 
     // ── OWASP HTML Sanitizer allowlist 정책 ────────────────────────────────────
 
     /**
      * 허용 태그·속성 allowlist.
      *
-     * - 허용 태그: h1~h6, strong, em, b, i, ul, ol, li, p, br, pre, code, blockquote, a
-     * - 허용 속성: a[href] (http/https/mailto 한정), code[class] (language-* 한정)
+     * - 허용 태그: h1~h6, strong, em, b, i, ul, ol, li, p, br, pre, code, blockquote, a, span
+     * - 허용 속성: a[href] (http/https/mailto 한정), code[class] (language-* 한정),
+     *             span[class] (정확히 "mention"만 — 복합 class 거부, EC8)
      * - 제거 대상: script, iframe, svg, style, on* 핸들러, data: URI, javascript: 스킴
+     *
+     * ## span 허용 보안 설계 (CONCERN-S1)
+     * span[class=mention] 은 MentionNodeRenderer 가 생성하는 마크업 전용이다.
+     * 사용자 raw span 주입은 SUPPRESS_INLINE_HTML 로 flexmark 단계에서 태그를 제거해
+     * OWASP 에 HTML 태그로 도달하지 않는다(EC7 차단).
+     * class 허용은 onElements("span") 으로 span 에만 한정 — code[class] 정책과 독립.
      *
      * @see allowUrlProtocols — OWASP 내장 URL 프로토콜 필터 (javascript:/data: 자동 거부)
      */
@@ -72,6 +90,13 @@ object MarkdownRenderer {
             // allowUrlProtocols: OWASP 내장 스킴 필터 — http/https/mailto 외 javascript:/data: 등 거부
             .allowUrlProtocols("http", "https", "mailto")
             .allowAttributes("href").onElements("a")
+            // span[class=mention]: MentionNodeRenderer 생성 마크업 전용.
+            // 정확히 "mention" 문자열만 허용 — "mention evil" 등 복합 class 거부(EC8).
+            // class 허용을 onElements("span") 으로 span 에만 한정(CONCERN-S1).
+            .allowElements("span")
+            .allowAttributes("class")
+            .matching { v: String -> v == "mention" }
+            .onElements("span")
             .toFactory()
 
     // ── 공개 API ───────────────────────────────────────────────────────────────

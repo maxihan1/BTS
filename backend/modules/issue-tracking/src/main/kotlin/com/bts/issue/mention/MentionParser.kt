@@ -51,8 +51,11 @@ object MentionParser {
      *   영숫자로 시작하고 영숫자로 끝나는 username. 가운데에는 `.`, `_`, `-` 허용.
      *   길이 1인 경우(단일 영숫자)도 매칭된다.
      *   마지막 문자가 문장부호(`@alice.`)이면 영숫자 경계에서 잘려 `alice` 만 캡처된다.
+     *
+     * internal 공개: MentionExtension 이 단일 출처로 이 패턴을 재사용한다(drift 차단).
+     * 같은 모듈(issue-tracking) 내에서만 접근 가능.
      */
-    private val MENTION_PATTERN = Regex("(?<![A-Za-z0-9._@\\-])@([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)")
+    internal val MENTION_PATTERN = Regex("(?<![A-Za-z0-9._@\\-])@([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)")
 
     /**
      * 주어진 텍스트에서 `@username` 멘션 집합을 추출한다.

@@ -351,6 +351,47 @@ export const issueAtlasForEpicFixture: IssueResponse = {
   noneditableFields: [],
 }
 
+/**
+ * 이슈 단건 fixture — ATLAS-MENTION (FR-MN-01 D7 E2E 전용, 멘션 강조 검증)
+ *
+ * description에 다음 3종을 포함:
+ *   - @alice  → S1: .mention 강조 대상
+ *   - `@code` → S2: 코드스팬 내부 @는 강조 제외
+ *   - user@example.com → S2: 이메일 @ 는 강조 제외
+ *
+ * issueFixtureMap에 등록되어 GET /api/v1/issues/ATLAS-MENTION 로 조회 가능.
+ */
+export const issueAtlasMentionFixture: IssueResponse = {
+  key: 'ATLAS-MENTION',
+  id: 'a2b3c4d5-e6f7-4a8b-9c0d-1e2f3a4b5c6d',
+  projectKey: 'ATLAS',
+  summary: '멘션 강조 표시 검증용 이슈 (FR-MN-01 D7)',
+  currentStateKey: 'open',
+  reporterId: 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e',
+  assigneeId: null,
+  componentIds: [],
+  affectsVersionIds: [],
+  fixVersionIds: [],
+  version: 0,
+  createdAt: '2026-06-27T09:00:00Z',
+  updatedAt: null,
+  typeId: 1,
+  typeKey: 'bug',
+  typeName: '버그',
+  // S1: @alice는 강조 대상. S2: `@code`(코드스팬), user@example.com(이메일)은 강조 제외.
+  description: '@alice 확인 부탁드립니다. `@code` 는 코드입니다. user@example.com 이메일도 제외됩니다.',
+  descriptionHtml: null,
+  priority: 3,
+  priorityName: 'Medium',
+  labels: [],
+  environment: null,
+  impact: null,
+  impactName: null,
+  customFields: {},
+  restrictedFields: [],
+  noneditableFields: [],
+}
+
 /** 빈 이슈 목록 fixture */
 export const emptyIssuePageFixture: IssuePage = {
   content: [],
