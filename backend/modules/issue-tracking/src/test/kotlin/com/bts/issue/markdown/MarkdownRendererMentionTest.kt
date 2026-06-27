@@ -18,7 +18,7 @@ import io.kotest.matchers.string.shouldNotContain
  * span.mention 내 username 도 &#64;alice 형식으로 출력된다. 어설션은 이를 반영한다.
  *
  * ## 보안 계층 검증 원칙
- * - EC7: raw span 주입은 flexmark ESCAPE_INLINE_HTML + OWASP 2중 방어로 차단됨을 검증.
+ * - EC7: raw span 주입은 flexmark SUPPRESS_INLINE_HTML + OWASP 2중 방어로 차단됨을 검증.
  * - EC8: OWASP matching { it == "mention" } 정확 일치로 복합 class 거부됨을 검증.
  */
 class MarkdownRendererMentionTest : DescribeSpec({
@@ -74,7 +74,7 @@ class MarkdownRendererMentionTest : DescribeSpec({
 
         context("EC7 — 정화: raw span 주입 차단") {
             it("사용자가 입력한 raw span class=mention 태그는 텍스트화된다") {
-                // flexmark ESCAPE_INLINE_HTML 로 인라인 raw HTML 을 escape 처리.
+                // flexmark SUPPRESS_INLINE_HTML 로 인라인 raw HTML 태그를 제거한다.
                 // 렌더러가 부여한 span.mention 만 OWASP allowlist 를 통과한다.
                 val result = MarkdownRenderer.renderSafe("""<span class="mention">evil</span>""")
                 result shouldNotContain """<span class="mention">evil</span>"""
