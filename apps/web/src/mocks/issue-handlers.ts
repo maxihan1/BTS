@@ -1,11 +1,15 @@
 // issue-tracking BC MSW mock handlers — GET 목록/단건 + POST 생성 + PATCH 수정 + PATCH /assignee + DELETE 삭제
 // 소프트 삭제 stateful: deletedKeys 와 createdIssues 로 모듈-스코프 상태 유지 (E2E 검증 gap-H + E2E-1 happy path).
 // FR-PM-07: restrictedFields/noneditableFields 시나리오 시드 — field-permission store 파생.
+// FR-MN-01 D7: description PATCH 시 @멘션 추출 → Inbox 파생 (msw-derived-behavior-shared-store-e2e 교훈)
 import { http, HttpResponse } from 'msw'
 import { setIssueEstimate, getIssueEstimate } from './worklog-handlers'
 import { getStoredComponentsByIds } from './component-handlers'
 import { getStoredProjectLead } from './project-lead-handlers'
 import { getFieldPermissionsForProject } from './field-permission-handlers'
+import { AUTH_USERS } from './auth-fixtures'
+import { appendToInbox } from './inbox-handlers'
+import type { InboxItem } from '@/api/inbox'
 import {
   issuePageFixture,
   issueAtlas1Fixture,
@@ -560,6 +564,36 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
   if (createdIssues.has(key)) {
     createdIssues.set(key, updated)
   }
+
+  // FR-MN-01 D7 — description 변경 시 @멘션 추출 → 언급된 사용자 Inbox 파생
+  // msw-derived-behavior-shared-store-e2e 교훈: 파생 알림은 공유 inboxStore 경유
+  if ('description' in body && typeof body.description === 'string') {
+    const mentionedUsernames = extractMentionedUsernames(body.description)
+    const actorUserId = resolveActorUserIdFromRequest(request)
+
+    for (const username of mentionedUsernames) {
+      const user = AUTH_USERS[username]
+      if (user === undefined) continue
+      // 자기 자신 멘션 제외 (alice가 @alice 입력 시 본인 알림 불필요)
+      if (user.userId === actorUserId) continue
+
+      const inboxItem: InboxItem = {
+        id: crypto.randomUUID(),
+        eventType: 'ISSUE_MENTIONED',
+        issueKey: key,
+        // 백엔드 NotificationWorker.kt buildTitleBody 형식 미러 (NotificationWorker.kt:357)
+        title: `${key} 에서 멘션되었습니다`,
+        body: null,
+        // actorUserId는 Zod uuid() 검증 필수 — resolveActorUserIdFromRequest 반환값 사용
+        actorUserId: actorUserId,
+        readAt: null,
+        archivedAt: null,
+        createdAt: new Date().toISOString(),
+      }
+      appendToInbox(user.userId, inboxItem)
+    }
+  }
+
   return HttpResponse.json({ data: updated })
 })
 
@@ -896,13 +930,90 @@ function applyDatePatch(
 }
 
 /**
- * description 값에서 간단한 descriptionHtml 생성 — 단건 GET 모킹용.
- * 실제 Markdown 렌더링 대신 텍스트를 <p> 로 래핑.
+ * description 텍스트에서 @멘션 사용자명을 추출한다.
+ *
+ * 제외 규칙.
+ *   - 코드스팬(`...`) 내부의 @ (예: `@code`)
+ *   - 이메일 형식의 @ — 앞에 단어문자(\w)가 있는 경우 (예: user@example.com)
+ *   - 겹침 @ — 앞에 @가 있는 경우 (예: @@bob)
+ *
+ * 사용자명 패턴. [a-zA-Z0-9_.-]+ (백엔드 username 규칙)
+ *
+ * @param text 원본 description 텍스트
+ * @returns 중복 제거된 @뒤 사용자명 배열 (@ 기호 제외)
+ */
+function extractMentionedUsernames(text: string): string[] {
+  // 코드스팬(`...`)을 제거해 내부 @ 를 보호
+  const withoutCode = text.replace(/`[^`]*`/g, '')
+  // 이메일/겹침 @ 제외: 앞에 단어문자나 @ 가 없는 @ 만 매칭
+  const matches = withoutCode.matchAll(/(?<![\w@])@([a-zA-Z0-9_.-]+)/g)
+  return [...new Set([...matches].map((m) => m[1] as string))]
+}
+
+/** mock access token 접두사 — auth-fixtures.mockAccessToken과 동일 형식 */
+const MENTION_MOCK_TOKEN_PREFIX = 'mock-access-token-'
+
+/**
+ * Authorization Bearer 헤더에서 PATCH 요청자(actor)의 userId를 도출한다.
+ * 멘션 파생 시 자기 자신 멘션 제외와 actorUserId 기록에 사용한다.
+ */
+function resolveActorUserIdFromRequest(request: Request): string | null {
+  const authHeader = request.headers.get('Authorization')
+  if (authHeader === null || !authHeader.startsWith('Bearer ')) return null
+  const token = authHeader.slice('Bearer '.length)
+  if (!token.startsWith(MENTION_MOCK_TOKEN_PREFIX)) return null
+  const username = token.slice(MENTION_MOCK_TOKEN_PREFIX.length)
+  return AUTH_USERS[username]?.userId ?? null
+}
+
+
+/**
+ * 코드스팬 이외의 텍스트에서 @멘션을 <span class="mention"> 으로 강조한다.
+ * renderDescriptionHtml의 코드스팬 밖 세그먼트에 단독 적용한다.
+ */
+function applyMentionHighlight(text: string): string {
+  return text.replace(
+    /(?<![\w@])@([a-zA-Z0-9_.-]+)/g,
+    '<span class="mention">@$1</span>',
+  )
+}
+
+/**
+ * description 값에서 descriptionHtml 생성 — 단건 GET 모킹용.
+ *
+ * 백엔드 MarkdownRenderer가 생성하는 HTML 형식을 MSW에서 재현한다.
+ * - @멘션 → <span class="mention">@username</span> (FR-MN-01 D6/D7)
+ * - 코드스팬(`...`) → <code>...</code>
+ * - 이메일(@앞 단어문자) / 겹침(@@ 등) → 강조 없이 그대로 출력
+ * - 전체 → <p>...</p> 래핑
+ *
+ * 처리 순서 (단일 패스 — 제어문자 플레이스홀더 사용 금지).
+ *   코드스팬(`...`)과 일반 텍스트를 교대로 처리.
+ *   일반 텍스트 세그먼트에만 @멘션 강조 적용.
+ *   코드스팬 세그먼트는 <code>...</code> 변환 후 그대로 출력.
  */
 function renderDescriptionHtml(description: string | null): string | null {
   if (description === null) return null
-  return `<p>${description}</p>`
+
+  let result = ''
+  let lastIndex = 0
+  const codeSpanRegex = /`([^`]*)`/g
+  let codeMatch: RegExpExecArray | null
+
+  // 코드스팬(`...`)과 일반 텍스트를 교대로 처리 — 단일 패스
+  while ((codeMatch = codeSpanRegex.exec(description)) !== null) {
+    // 코드스팬 이전 일반 텍스트 → @멘션 강조 적용
+    result += applyMentionHighlight(description.slice(lastIndex, codeMatch.index))
+    // 코드스팬 → <code>내용</code>
+    result += '<code>' + (codeMatch[1] ?? '') + '</code>'
+    lastIndex = codeSpanRegex.lastIndex
+  }
+  // 마지막 코드스팬 이후 나머지 텍스트 → @멘션 강조 적용
+  result += applyMentionHighlight(description.slice(lastIndex))
+
+  return '<p>' + result + '</p>'
 }
+
 
 /**
  * 현재 이슈 상태 기준 가용전이 반환 helper.
