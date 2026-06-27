@@ -46,6 +46,7 @@ import { samlHandlers } from './saml-handlers'
 import { oidcHandlers } from './oidc-handlers'
 import { routeHandlers } from './route-handlers'
 import { securityLevelHandlers } from './security-level-handlers'
+import { savedFilterHandlers } from './saved-filter-handlers'
 import { searchHandlers } from './search-handlers'
 import { timelineHandlers } from './timeline-handlers'
 
@@ -103,6 +104,7 @@ export const handlers = [
   ...webauthnHandlers,
   ...worklogHandlers,
   ...worklogAggregateHandlers,
+  ...savedFilterHandlers,
   ...searchHandlers,
   ...timelineHandlers,
   ...workflowHandlers,

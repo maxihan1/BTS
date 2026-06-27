@@ -64,15 +64,15 @@
 
 **우선순위**. 필수 | **선행**. §2.1, §2.2 | **Plan slug**. `search/saved-filters`
 
-> **백엔드 완료 — PR1(#191) + PR2(#193, 2026-06-26)**. PR1. search-export-import **첫 영속성 부트스트랩**(flyway/jOOQ codegen/Testcontainers, V600~V699 — DATA.md) + SavedFilter **CRUD(PRIVATE 전용)** + 실행(`GET /api/v1/filters/{id}/search`, viewer 권한 재실행, 권한상승 불가) + 이름 owner내 유니크(409 dual-catch) + OCC + 하드삭제. **PR2(공유)**. `saved_filter_shares`(V601, PROJECT=project_key/GROUP=group UUID/AUTHENTICATED) + 공유 **본문 임베드**(POST/PUT replace-all+OCC) + **가시성 OR 4경로**(읽기 get/list/search) + 쓰기는 소유자만(가시-비소유 **403** `SavedFilterForbiddenException`/비가시 **404** 은닉) + 신규 `GET /api/v1/filters/shared`(페이지네이션) + cross-BC 멤버십 포트 2종(shared-kernel `GroupMembershipPort`/`ProjectMembershipPort` + identity-access 구현, **fail-closed**, project_key는 `ProjectDirectory` read-only 선례 매핑). 즐겨찾기는 기존 FR-UX-02 favorites(FILTER) 재사용. ADR `docs/decisions/2026-06-26-fr-sr-03-saved-filters.md`. **D6/D7(프론트 공유 모달 + 별표 UI)는 후속 프론트 PR.**
+> **백엔드 완료 — PR1(#191) + PR2(#193, 2026-06-26)**. PR1. search-export-import **첫 영속성 부트스트랩**(flyway/jOOQ codegen/Testcontainers, V600~V699 — DATA.md) + SavedFilter **CRUD(PRIVATE 전용)** + 실행(`GET /api/v1/filters/{id}/search`, viewer 권한 재실행, 권한상승 불가) + 이름 owner내 유니크(409 dual-catch) + OCC + 하드삭제. **PR2(공유)**. `saved_filter_shares`(V601, PROJECT=project_key/GROUP=group UUID/AUTHENTICATED) + 공유 **본문 임베드**(POST/PUT replace-all+OCC) + **가시성 OR 4경로**(읽기 get/list/search) + 쓰기는 소유자만(가시-비소유 **403** `SavedFilterForbiddenException`/비가시 **404** 은닉) + 신규 `GET /api/v1/filters/shared`(페이지네이션) + cross-BC 멤버십 포트 2종(shared-kernel `GroupMembershipPort`/`ProjectMembershipPort` + identity-access 구현, **fail-closed**, project_key는 `ProjectDirectory` read-only 선례 매핑). 즐겨찾기는 기존 FR-UX-02 favorites(FILTER) 재사용. ADR `docs/decisions/2026-06-26-fr-sr-03-saved-filters.md`. **D6/D7 완료 — 프론트 PR(#196, 2026-06-27)**. `/search` AQL 페이지 통합(저장 버튼 + 내 필터/공유받은 필터 드롭다운) + `?filterId=` 딥링크 로드·실행 + 공유 모달(AUTHENTICATED+PROJECT, GROUP 보존, replace-all) + 별표(FILTER) 활성화 + Header ⭐ 노출. Maxi 결정 — /search 통합만·GROUP 공유 보류(그룹/프로젝트 목록 API 부재). **FR-SR-03 전체 완료.**
 
 - [x] D1. 도메인 — SavedFilter + SavedFilterShare/ShareType (책임. backend-engineer)
 - [x] D2. 명세 — 공유 권한 PROJECT/GROUP/AUTHENTICATED + 가시성 4경로 (책임. backend-engineer + security-engineer)
 - [x] D3. 데이터 모델 — `saved_filters`(V600) + `saved_filter_shares`(V601) (책임. db-engineer)
 - [x] D4. 백엔드 — CRUD + 공유 임베드 + `/shared` API (책임. backend-engineer)
 - [x] D5. 백엔드 테스트 — 가시성 매트릭스·403/404·CASCADE·parity 통합 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 필터 저장/공유 모달 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 필터 저장/공유 모달 + 별표(FILTER) (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ### §2.4 FR-SR-04 — 한글 형태소 기반 전문 검색
 

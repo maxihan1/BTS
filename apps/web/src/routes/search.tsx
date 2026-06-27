@@ -1,13 +1,17 @@
-// AQL 검색 페이지 — SearchPage(props 기반) + SearchRouteAdapter(URL 동기화) (FR-SR-02 D6 Task-5)
+// AQL 검색 페이지 — SearchPage(props 기반) + SearchRouteAdapter(URL 동기화 + filterId 딥링크) (FR-SR-02/03 D6 Task-5/6)
 import type { JSX } from 'react'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { searchAql, SEARCH_ERROR_CODES } from '@/api/search'
 import type { AqlSearchPage } from '@/api/search'
 import { ApiError } from '@/api/client'
+import { fetchFilter } from '@/api/saved-filters'
 import { AqlHighlighter } from '@/components/search/AqlHighlighter'
 import { Button } from '@/components/ui/button'
+import { SavedFilterMenu } from '@/components/search/SavedFilterMenu'
+import { SaveFilterDialog } from '@/components/search/SaveFilterDialog'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -15,6 +19,14 @@ import { Button } from '@/components/ui/button'
 
 const DEFAULT_PROJECT_KEY = 'ATLAS'
 const PAGE_SIZE = 20
+
+/**
+ * filterId 로드 실패 시 표시할 toast 메시지.
+ *
+ * 에러 코드를 구분하지 않는다 — 404·400·500 등 **모든 에러**에 동일하게 적용한다 (N3).
+ * 특정 코드(예: 404)만 처리하면 미구현 에러 코드에서 토스트 없이 무한 로딩이 발생한다.
+ */
+const FILTER_LOAD_ERROR_MSG = '필터를 불러오지 못했습니다. 일반 검색으로 진행합니다.'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 에러 코드 → UI 메시지 매핑 헬퍼
@@ -426,18 +438,25 @@ export function SearchPage({
 /**
  * router.ts에 등록되는 라우트 어댑터 컴포넌트.
  *
- * useSearch로 URL의 `q` / `projectKey` / `page`를 추출해 SearchPage에 전달한다.
+ * URL의 `q` / `projectKey` / `page` / `filterId`를 읽어 SearchPage에 전달한다.
+ * SearchPage는 라우터 비의존(props 기반)이므로 단위 테스트가 가능하다.
  *
- * - `q`          → SearchPage.q (AQL 쿼리)
- * - `page`       → SearchPage.page (0-indexed, 기본값 0)
- * - `projectKey` → SearchPage.projectKey (기본값 'ATLAS')
- * - 쿼리/페이지 변경 시 `navigate((prev) => ...)` 머지 패턴으로 URL 갱신
+ * **filterId 딥링크 흐름 (C1)**
+ * 1. `filterId`가 URL에 있으면 로딩 상태를 표시하며 `fetchFilter(id)` 호출
+ * 2. 성공 시: filterId를 URL에서 제거하고 q+projectKey로 교체(navigate replace)
+ *    → 다음 렌더에서 filterId=undefined, 새 q+projectKey로 SearchPage가 마운트되어
+ *      submittedQuery가 stale 없이 정확히 초기화되고 검색이 자동 실행된다.
+ * 3. 실패 시: 모든 에러(404, 400 등)에 대해 toast.error + 일반 검색 화면 표시 (N3)
+ *
+ * **저장 버튼 + SavedFilterMenu (C2)**
+ * adapter 레벨에서 마운트해 SearchPage의 props-only 설계를 보존한다.
  */
 export function SearchRouteAdapter(): JSX.Element {
   const search = useSearch({ strict: false }) as {
     q?: string
     page?: number
     projectKey?: string
+    filterId?: string
   }
   const navigate = useNavigate()
 
@@ -447,34 +466,127 @@ export function SearchRouteAdapter(): JSX.Element {
     typeof search.projectKey === 'string' && search.projectKey.length > 0
       ? search.projectKey
       : DEFAULT_PROJECT_KEY
+  const filterId = typeof search.filterId === 'string' ? search.filterId : undefined
 
-  function handlePageChange(nextPage: number): void {
-    void navigate({ to: '/search', search: (prev) => ({ ...prev, page: nextPage }) })
-  }
+  // filterId 로딩 중 여부 — true이면 SearchPage 대신 로딩 안내를 표시한다
+  const [filterIdLoading, setFilterIdLoading] = useState(filterId !== undefined)
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false)
 
-  function handleNavigate(key: string): void {
-    void navigate({ to: `/issues/${key}` })
-  }
+  /**
+   * filterId 딥링크 해소 effect.
+   *
+   * **cleanup 보장** — `cancelled` 플래그로 언마운트 또는 연속 진입(filterId가 연속 변경)
+   * 시 이전 비동기 콜백의 setState/navigate 호출을 차단한다. strict mode 이중 실행에서도
+   * 두 번째 effect가 시작될 때 첫 번째 cleanup이 실행되어 stale 업데이트가 발생하지 않는다.
+   *
+   * **에러 일반화(N3)** — 모든 에러(404·400·500 등)를 catch에서 동일하게 처리한다.
+   * 에러 코드별 분기를 추가하면 미처리 코드에서 무한 로딩이 발생하므로 금지.
+   */
+  useEffect(() => {
+    if (filterId === undefined) {
+      setFilterIdLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setFilterIdLoading(true)
+
+    void fetchFilter(filterId)
+      .then((filter) => {
+        if (cancelled) return
+        void navigate({
+          to: '/search',
+          search: () => ({ q: filter.aqlQuery, projectKey: filter.projectKey, page: 0 }),
+          replace: true,
+        })
+        // filterIdLoading은 다음 effect 실행(filterId=undefined)에서 false로 전환된다.
+        // 성공 후 navigate → 라우터 URL 갱신 → 재렌더 → filterId=undefined → effect 재실행
+        // → setFilterIdLoading(false) 순서로 자동 해소.
+      })
+      .catch(() => {
+        // N3: 에러 코드 무관, 모든 에러에 동일 처리
+        if (cancelled) return
+        toast.error(FILTER_LOAD_ERROR_MSG)
+        setFilterIdLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [filterId, navigate])
+
+  const handlePageChange = useCallback(
+    (nextPage: number) => {
+      void navigate({ to: '/search', search: (prev) => ({ ...prev, page: nextPage }) })
+    },
+    [navigate],
+  )
+
+  const handleNavigate = useCallback(
+    (key: string) => {
+      void navigate({ to: `/issues/${key}` })
+    },
+    [navigate],
+  )
 
   /** 입력 도중 타이핑 변경 — page=0 리셋 포함 */
-  function handleQueryChange(nextQ: string): void {
-    void navigate({ to: '/search', search: (prev) => ({ ...prev, q: nextQ, page: 0 }) })
-  }
+  const handleQueryChange = useCallback(
+    (nextQ: string) => {
+      void navigate({ to: '/search', search: (prev) => ({ ...prev, q: nextQ, page: 0 }) })
+    },
+    [navigate],
+  )
 
   /** 검색 실행(버튼/Cmd+Enter) — page=0 리셋 포함 */
-  function handleSearch(submittedQ: string): void {
-    void navigate({ to: '/search', search: (prev) => ({ ...prev, q: submittedQ, page: 0 }) })
-  }
+  const handleSearch = useCallback(
+    (submittedQ: string) => {
+      void navigate({ to: '/search', search: (prev) => ({ ...prev, q: submittedQ, page: 0 }) })
+    },
+    [navigate],
+  )
 
   return (
-    <SearchPage
-      projectKey={projectKey}
-      q={q}
-      page={page}
-      onPageChange={handlePageChange}
-      onNavigate={handleNavigate}
-      onQueryChange={handleQueryChange}
-      onSearch={handleSearch}
-    />
+    <>
+      {/* 툴바 — SavedFilterMenu + 저장 버튼 (C2: adapter 레벨 마운트, SearchPage 비의존 설계 보존) */}
+      <div className="flex items-center justify-end gap-2 px-4 pt-4 sm:px-6 lg:px-8">
+        <SavedFilterMenu />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={q.trim().length === 0}
+          onClick={() => { setSaveDialogOpen(true) }}
+          aria-label="현재 검색 저장"
+        >
+          저장
+        </Button>
+      </div>
+
+      {/* filterId 로딩 중 안내 — SearchPage는 unmount 상태, 다음 렌더에서 fresh mount된다 */}
+      {filterIdLoading ? (
+        <div className="p-4 sm:p-6 lg:p-8 text-sm text-muted-foreground">
+          필터를 불러오는 중...
+        </div>
+      ) : (
+        <SearchPage
+          projectKey={projectKey}
+          q={q}
+          page={page}
+          onPageChange={handlePageChange}
+          onNavigate={handleNavigate}
+          onQueryChange={handleQueryChange}
+          onSearch={handleSearch}
+        />
+      )}
+
+      {/* 저장 다이얼로그 — adapter 레벨 포탈, SearchPage 비의존 (C2) */}
+      <SaveFilterDialog
+        open={saveDialogOpen}
+        onOpenChange={setSaveDialogOpen}
+        mode="create"
+        aqlQuery={q}
+        projectKey={projectKey}
+      />
+    </>
   )
 }

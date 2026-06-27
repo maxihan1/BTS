@@ -362,7 +362,10 @@ const projectWorklogReportRoute = createRoute({
   beforeLoad: requireAuthAndPasswordChanged,
 })
 
-/** AQL 검색 라우트 — /search, requireAuth (FR-SR-02) */
+/**
+ * AQL 검색 라우트 — /search, requireAuth (FR-SR-02/03).
+ * `filterId` 파라미터: 저장 필터 딥링크용 UUID. adapter가 1회 해소 후 제거한다 (FR-SR-03 Task-6).
+ */
 const searchRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/search',
@@ -373,10 +376,12 @@ const searchRoute = createRoute({
     q?: string
     page?: number
     projectKey?: string
+    filterId?: string
   } => ({
     q: typeof search['q'] === 'string' ? search['q'] : undefined,
     page: typeof search['page'] === 'number' ? search['page'] : undefined,
     projectKey: typeof search['projectKey'] === 'string' ? search['projectKey'] : undefined,
+    filterId: typeof search['filterId'] === 'string' ? search['filterId'] : undefined,
   }),
 })
 

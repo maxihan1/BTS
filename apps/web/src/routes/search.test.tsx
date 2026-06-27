@@ -1,9 +1,10 @@
-// AQL 검색 페이지(SearchPage) 단위 테스트 — FR-SR-02 D6 Task-5
+// AQL 검색 페이지(SearchPage) 단위 테스트 + SearchRouteAdapter 통합 테스트 — FR-SR-02 D6 Task-5, FR-SR-03 Task-6
 import type { JSX } from 'react'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { RouterProvider, createRouter, createRoute, createRootRoute, createMemoryHistory } from '@tanstack/react-router'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { searchHandlers } from '@/mocks/search-handlers'
@@ -14,15 +15,31 @@ import {
   searchRefreshFailHandler,
 } from '@/mocks/search-handlers'
 import { DEFAULT_SEARCH_PAGE, SEARCH_HIT_BUG, SEARCH_HIT_UNASSIGNED } from '@/mocks/search-fixtures'
+import { savedFilterHandlers, seedSavedFilters, resetSavedFilterStore } from '@/mocks/saved-filter-handlers'
 import { useAuthStore } from '@/auth/authStore'
-import { SearchPage } from './search'
+import { SearchPage, SearchRouteAdapter } from './search'
 import type { AqlHighlighterProps } from '@/components/search/AqlHighlighter'
+import { toast } from 'sonner'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 모듈 mock — sonner / SavedFilterMenu / SaveFilterDialog / AqlHighlighter
+// ─────────────────────────────────────────────────────────────────────────────
+
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn() },
+}))
+
+vi.mock('@/components/search/SavedFilterMenu', () => ({
+  SavedFilterMenu: (): JSX.Element => <div data-testid="saved-filter-menu-mock" />,
+}))
+
+vi.mock('@/components/search/SaveFilterDialog', () => ({
+  SaveFilterDialog: ({ open }: { open: boolean }): JSX.Element | null =>
+    open ? <div data-testid="save-filter-dialog-mock" /> : null,
+}))
+
 // AqlHighlighter mock — 테스트 관심사는 SearchPage 로직, 하이라이터 렌더 아님
 // Props 타입을 실제 인터페이스로 사용해 contract drift 방지
-// ─────────────────────────────────────────────────────────────────────────────
-
 vi.mock('@/components/search/AqlHighlighter', () => ({
   AqlHighlighter: ({ value, onChange, onSubmit, placeholder }: AqlHighlighterProps): JSX.Element => (
     <div data-testid="aql-highlighter">
@@ -488,5 +505,170 @@ describe('SearchPage — ⑨ 로딩 상태', () => {
     await waitFor(() => {
       expect(screen.queryByText('검색 중...')).not.toBeInTheDocument()
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SearchRouteAdapter 통합 테스트 — Task-6 (FR-SR-03)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** alice fixture userId (RFC4122 v4 형식 — Zod v4 uuid 통과) */
+const ALICE_ID = '00000000-0000-4000-8000-000000000001'
+
+/** 테스트용 저장 필터 UUID (RFC4122 v4 형식 — Zod v4 uuid 통과) */
+const FILTER_UUID = '00000000-0000-4000-8000-000000000099'
+
+/**
+ * SearchRouteAdapter를 TanStack Router context 안에서 렌더한다.
+ *
+ * SearchPage와 달리 Adapter는 useSearch/useNavigate를 사용하므로
+ * RouterProvider를 통해 테스트 라우터를 제공해야 한다.
+ * strict:false 덕분에 validateSearch 없이도 URL 파라미터를 읽는다.
+ */
+function renderSearchAdapter(initialUrl = '/search') {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  })
+  const rootRoute = createRootRoute()
+  const adapterRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/search',
+    component: SearchRouteAdapter,
+  })
+  const memHistory = createMemoryHistory({ initialEntries: [initialUrl] })
+  const testRouter = createRouter({
+    routeTree: rootRoute.addChildren([adapterRoute]),
+    history: memHistory,
+    defaultPreload: false,
+  })
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={testRouter} />
+    </QueryClientProvider>,
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⑩ SearchRouteAdapter — 저장 버튼 + SavedFilterMenu 마운트 (C2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SearchRouteAdapter — ⑩ 저장 버튼 + SavedFilterMenu 마운트', () => {
+  beforeEach(() => {
+    server.use(...searchHandlers)
+    useAuthStore.getState().setAccessToken('mock-access-token-alice')
+  })
+  afterEach(() => {
+    useAuthStore.getState().clearSession()
+    vi.clearAllMocks()
+  })
+
+  it('SavedFilterMenu가 adapter에 마운트된다(C2)', async () => {
+    renderSearchAdapter('/search')
+    await waitFor(() => {
+      expect(screen.getByTestId('saved-filter-menu-mock')).toBeInTheDocument()
+    })
+  })
+
+  it('q가 비어 있으면 저장 버튼이 비활성화된다(EC1)', async () => {
+    renderSearchAdapter('/search')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '현재 검색 저장' })).toBeDisabled()
+    })
+  })
+
+  it('q가 있는 URL로 진입하면 저장 버튼이 활성화된다', async () => {
+    renderSearchAdapter('/search?q=status+%3D+open')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '현재 검색 저장' })).not.toBeDisabled()
+    })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⑪ SearchRouteAdapter — filterId 딥링크 자동 실행 (C1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SearchRouteAdapter — ⑪ filterId 딥링크 자동 실행', () => {
+  beforeEach(() => {
+    resetSavedFilterStore()
+    server.use(...savedFilterHandlers, ...searchHandlers)
+    useAuthStore.getState().setAccessToken('mock-access-token-alice')
+  })
+  afterEach(() => {
+    resetSavedFilterStore()
+    useAuthStore.getState().clearSession()
+    vi.clearAllMocks()
+  })
+
+  it('/search?filterId=<uuid> 진입 시 필터 해석 후 검색 결과 행이 렌더된다(C1)', async () => {
+    seedSavedFilters(ALICE_ID, [
+      {
+        id: FILTER_UUID,
+        ownerId: ALICE_ID,
+        name: '내 필터',
+        aqlQuery: 'status = open',
+        projectKey: 'ATLAS',
+        createdAt: null,
+        updatedAt: null,
+        version: 0,
+        shares: [],
+      },
+    ])
+
+    renderSearchAdapter(`/search?filterId=${FILTER_UUID}`)
+
+    // C1: "q 세팅"만 단언하면 vacuous green — 실제 결과 행이 렌더되어야 통과
+    await waitFor(
+      () => {
+        expect(screen.getByText('ATLAS-1')).toBeInTheDocument()
+      },
+      { timeout: 3000 },
+    )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⑫ SearchRouteAdapter — filterId 에러 처리 (EC6, N3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SearchRouteAdapter — ⑫ filterId 에러 처리', () => {
+  beforeEach(() => {
+    resetSavedFilterStore()
+    server.use(...savedFilterHandlers, ...searchHandlers)
+    useAuthStore.getState().setAccessToken('mock-access-token-alice')
+  })
+  afterEach(() => {
+    resetSavedFilterStore()
+    useAuthStore.getState().clearSession()
+    vi.clearAllMocks()
+  })
+
+  it('filterId 404(필터 없음) → toast.error 호출 + 일반 검색 화면 유지(EC6)', async () => {
+    // filter를 시드하지 않음 → MSW 404 반환
+    renderSearchAdapter(`/search?filterId=${FILTER_UUID}`)
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(expect.any(String))
+    })
+    // 일반 검색 화면(검색 버튼)이 표시된다
+    expect(screen.getByRole('button', { name: '검색' })).toBeInTheDocument()
+  })
+
+  it('filterId 400 등 비-404 에러 → toast.error 호출 + 일반 검색 화면 유지(N3 에러 일반화)', async () => {
+    // 400 에러를 강제로 반환해 에러 일반화 검증 (404 가정 금지)
+    server.use(
+      http.get('/api/v1/filters/:id', () =>
+        HttpResponse.json({ errorCode: 'SEARCH_VALIDATION_FAILED' }, { status: 400 }),
+      ),
+    )
+    renderSearchAdapter(`/search?filterId=${FILTER_UUID}`)
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(expect.any(String))
+    })
+    expect(screen.getByRole('button', { name: '검색' })).toBeInTheDocument()
   })
 })
