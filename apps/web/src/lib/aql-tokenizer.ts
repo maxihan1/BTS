@@ -4,7 +4,7 @@
  * AQL 토큰 타입.
  *
  * - KEYWORD: 예약 키워드 (and/or/not/in/order/by/asc/desc, 대소문자 무시)
- * - FIELD:   지원 필드명 (status/label/summary/priority, 대소문자 무시)
+ * - FIELD:   지원 필드명 (status/label/summary/priority/text, 대소문자 무시)
  * - OPERATOR: 비교 연산자 (= / != / ~)
  * - STRING:  큰따옴표 문자열 리터럴 (이스케이프 포함)
  * - NUMBER:  정수 리터럴
@@ -67,6 +67,7 @@ export const AQL_FIELDS: readonly string[] = [
   'label',
   'summary',
   'priority',
+  'text',
 ] as const
 
 /**
