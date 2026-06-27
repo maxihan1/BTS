@@ -40,6 +40,8 @@ import java.util.UUID
  *
  * @see TimelineItemView
  * @see TimelineItemPage
+ * @see TimelineDepEdge
+ * @see TimelineDepsPage
  */
 interface TimelineLookupPort {
     /**
@@ -58,17 +60,50 @@ interface TimelineLookupPort {
         viewerUserId: UUID,
     ): TimelineItemPage = TimelineItemPage(items = emptyList(), truncated = false)
 
+    /**
+     * 프로젝트 내 `blocks` 관계 의존 엣지 목록을 [TimelineDepsPage] 로 반환한다.
+     *
+     * 간트 차트 오버레이에서 이슈 간 `blocks` 화살표를 렌더링하기 위해 사용한다(FR-TL-02).
+     * viewer 가 볼 수 없는 보안 등급 이슈가 양 끝(blockerKey 또는 blockedKey)에 해당할 때
+     * 해당 엣지를 결과에서 제외하는 것은 구현체(issue-tracking adapter)의 책임이다.
+     * 이 포트를 소비하는 agile-planning 은 필터 여부를 알지 못한다.
+     * 필터 미적용 시 보안 등급 이슈 키 누출로 이어지므로 구현체 책임이 중요하다.
+     *
+     * soft-deleted 이슈를 포함하는 엣지는 제외해야 한다.
+     * 이 메서드는 읽기 전용이며 부수 효과가 없다.
+     *
+     * @param projectKey 조회할 프로젝트 키. 예: `"ATLAS"`.
+     * @param viewerUserId 간트 차트를 조회하는 사용자 UUID. visibility 필터 기준.
+     * @return [TimelineDepsPage]. adapter 부재 또는 조회 불가 시 빈 페이지(truncated=false).
+     */
     fun listBlocksDepsByProject(
         projectKey: String,
         viewerUserId: UUID,
     ): TimelineDepsPage = TimelineDepsPage(edges = emptyList(), truncated = false)
 }
 
+/**
+ * `blocks` 관계 단일 의존 엣지 VO.
+ *
+ * [TimelineLookupPort.listBlocksDepsByProject] 가 반환하는 읽기 전용 값 객체.
+ * 간트 차트에서 두 이슈 사이에 차단 화살표를 그리는 데 필요한 최소 정보를 담는다.
+ *
+ * @property blockerKey 차단하는 이슈 키(화살표 출발점). 예: `"PROJ-1"`.
+ * @property blockedKey 차단당하는 이슈 키(화살표 도착점). 예: `"PROJ-2"`.
+ */
 data class TimelineDepEdge(
     val blockerKey: String,
     val blockedKey: String,
 )
 
+/**
+ * `blocks` 관계 의존 엣지 목록 조회 결과 페이지 VO.
+ *
+ * [TimelineLookupPort.listBlocksDepsByProject] 가 반환하는 읽기 전용 값 객체.
+ *
+ * @property edges 조회된 의존 엣지 목록.
+ * @property truncated 조회 건수가 LIMIT 를 초과해 엣지 일부가 누락됐으면 true. 정상 조회면 false.
+ */
 data class TimelineDepsPage(
     val edges: List<TimelineDepEdge>,
     val truncated: Boolean,
