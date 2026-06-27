@@ -45,7 +45,7 @@ import java.util.UUID
 class TimelineLookupAdapter(
     private val issueRepository: IssueRepository,
     private val securityDirectory: IssueSecurityDirectory,
-    private val linkRepository: IssueLinkRepository? = null,
+    private val linkRepository: IssueLinkRepository,
 ) : TimelineLookupPort {
     /**
      * 프로젝트의 가시 이슈 목록을 [TimelineItemPage] 로 반환한다.
@@ -94,15 +94,13 @@ class TimelineLookupAdapter(
      *
      * @param projectKey 조회할 프로젝트 키. 예: `"ATLAS"`.
      * @param viewerUserId 간트 차트를 조회하는 사용자 UUID. visibility 필터 기준.
-     * @return [TimelineDepsPage]. linkRepository 미주입 시 또는 가시 이슈가 없으면 빈 페이지.
+     * @return [TimelineDepsPage]. 가시 이슈가 없으면 빈 페이지.
      */
     @Transactional(readOnly = true)
     override fun listBlocksDepsByProject(
         projectKey: String,
         viewerUserId: UUID,
     ): TimelineDepsPage {
-        val repo = linkRepository ?: return TimelineDepsPage(edges = emptyList(), truncated = false)
-
         val access = securityDirectory.accessibleLevels(viewerUserId, projectKey)
         val timelinePage = issueRepository.listVisibleForTimeline(projectKey, viewerUserId, access)
 
@@ -112,7 +110,7 @@ class TimelineLookupAdapter(
         // 여기서 별도 isEmpty() 가드가 불필요하다.
         val idToKey = buildIdToKeyMap(timelinePage.entries)
 
-        val rows = repo.findBlocksEdgesAmong(idToKey.keys)
+        val rows = linkRepository.findBlocksEdgesAmong(idToKey.keys)
         val blocksTruncated = rows.size > IssueLinkRepository.DEPS_FETCH_LIMIT
         val kept = if (blocksTruncated) rows.take(IssueLinkRepository.DEPS_FETCH_LIMIT) else rows
 
