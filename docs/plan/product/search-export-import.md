@@ -78,15 +78,15 @@
 
 **우선순위**. 필수 | **선행**. §2.2 | **Plan slug**. `search/korean-morpheme`
 
-> **[구현 방식 확정 — FR-SR-04, PR #195 예정]** 형태소 분석기 미도입 결정 — **`simple` tsvector + pg_trgm 하이브리드(zero-dep, Docker 무변경)**. D2 "Mecab-ko vs Lucene-Kr 도입"은 ADR `docs/decisions/2026-06-26-fr-sr-04-korean-fts.md`로 superseded(FR-SR-02 ADR이 ANTLR 4를 superseded한 것과 동형). 구현 방식. AQL 신규 `text` 가상 필드(`~` 전용, summary+description 전문 검색) + `issues.search_vector` STORED generated column(V032, `to_tsvector('simple', coalesce(summary,'')||' '||coalesce(description,''))`) + GIN 인덱스(`idx_issues_search_vector`) + description trigram 인덱스(`idx_issues_description_trgm`, V031 summary 동형). BC 격리. 논리 search-export-import / 물리 issue-tracking(FR-SR-01/02 패턴 계승, 새 BC 신설 0). visibility 보안 술어 자동 AND(우회 불가). **D1~D5 백엔드 — D6/D7(프론트 AQL syntax highlight `text` 키워드 + E2E)은 후속 PR.**
+> **[구현 방식 확정 — FR-SR-04, PR #195 예정]** 형태소 분석기 미도입 결정 — **`simple` tsvector + pg_trgm 하이브리드(zero-dep, Docker 무변경)**. D2 "Mecab-ko vs Lucene-Kr 도입"은 ADR `docs/decisions/2026-06-26-fr-sr-04-korean-fts.md`로 superseded(FR-SR-02 ADR이 ANTLR 4를 superseded한 것과 동형). 구현 방식. AQL 신규 `text` 가상 필드(`~` 전용, summary+description 전문 검색) + `issues.search_vector` STORED generated column(V032, `to_tsvector('simple', coalesce(summary,'')||' '||coalesce(description,''))`) + GIN 인덱스(`idx_issues_search_vector`) + description trigram 인덱스(`idx_issues_description_trgm`, V031 summary 동형). BC 격리. 논리 search-export-import / 물리 issue-tracking(FR-SR-01/02 패턴 계승, 새 BC 신설 0). visibility 보안 술어 자동 AND(우회 불가). **D1~D5 백엔드 완료(PR #195).** **D6/D7 완료 — 프론트 PR(#199, 2026-06-27).** 프론트 토크나이저 `AQL_FIELDS`에 `text` 추가(백엔드 `AqlFields.MVP_FIELDS` 5필드 정합) → `text ~ "검색어"`의 `text`가 기존 `text-syntax-field` 색으로 강조(신규 색·토큰 없음, FR-SR-02 검색창 그대로 재사용). placeholder에 `text ~ "로그인"` 전문검색 예시 추가("AQL 쿼리를 입력하세요" 접두사 보존 → E2E `placeholder*=` 부분매칭 무회귀). best-effort 강조(판정 정본=백엔드 파서), 연산자 제약(`text`는 `~` 전용)은 백엔드 400 판정. D7 E2E 1(`text ~` 강조+검색 실행). **FR-SR-04 전체 완료.**
 
 - [x] D1. 도메인 (책임. backend-engineer)
 - [x] D2. 명세 — **`simple` tsvector + pg_trgm 결정**(Mecab-ko/Lucene-Kr 미도입 — [ADR docs/decisions/2026-06-26-fr-sr-04-korean-fts.md](../decisions/2026-06-26-fr-sr-04-korean-fts.md)). AQL `text` 가상 필드(`~` 전용). PostgreSQL FTS 통합 (책임. backend-engineer)
 - [x] D3. 데이터 모델 — `issues.search_vector` STORED generated column(V032) + GIN 인덱스 + description trigram 인덱스 (책임. db-engineer)
 - [x] D4. 백엔드 — AQL `text` 분기(FTS + trigram 하이브리드) + 빈 검색어 결과 0 + `ORDER BY text` 거부 400 (책임. backend-engineer)
 - [x] D5. 백엔드 테스트 — 한글 FTS/trigram 케이스 30개(조사변형·부분문자열·혼용·다중토큰, 활용형 미매칭 명시 + 양성 대조군) (책임. backend-engineer)
-- [ ] D6. 프론트 UI — (§2.2와 통합 — 검색창 동일, `text` 키워드 syntax highlight 추가) (책임. frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — (§2.2와 통합 — 검색창 동일, `text` 키워드 syntax highlight 추가) (책임. frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ## §3 Export (FR-EX, 2개)
 
