@@ -12,7 +12,7 @@ import type { SavedFilterResponse, ShareDto, UpdateFilterRequest } from '@/api/s
 import { savedFilterLabels } from '@/i18n/saved-filter-labels'
 
 // ──────────────────────────────────────────────────────────────────────────────
-// 헬퍼 — shareType 판별 (순수 함수)
+// 순수 헬퍼 — shareType 판별
 // ──────────────────────────────────────────────────────────────────────────────
 
 function isAuthShare(share: ShareDto): boolean {
@@ -21,6 +21,47 @@ function isAuthShare(share: ShareDto): boolean {
 
 function isOwnProjectShare(share: ShareDto, projectKey: string): boolean {
   return share.shareType === 'PROJECT' && share.targetId === projectKey
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 공개 순수 함수 — EC4 회귀 가드 대상
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** mergeShares 입력 — 토글 ON/OFF 상태 */
+export interface MergeSharesToggles {
+  /** AUTHENTICATED(모든 로그인 사용자) 공유 여부 */
+  authEnabled: boolean
+  /** PROJECT(이 프로젝트 멤버) 공유 여부 */
+  projectEnabled: boolean
+  /** 프로젝트 키 — PROJECT shareType의 targetId */
+  projectKey: string
+}
+
+/**
+ * 토글 상태와 보존 항목을 병합해 최종 PUT 요청용 shares 배열을 반환한다.
+ *
+ * 설계 원칙 (EC4).
+ * - `preserved`에 담긴 GROUP·타 PROJECT 항목은 replace-all 위험 없이 그대로 유지된다.
+ * - `toggles`에서 활성화된 공유 유형만 추가한다.
+ * - 순수 함수 — 외부 상태 변이 없음.
+ *
+ * @param toggles - 편집 UI로 제어하는 AUTHENTICATED/PROJECT 토글 상태
+ * @param preserved - 편집 대상이 아닌 보존 share 목록 (GROUP, 타 PROJECT 등)
+ * @returns PUT 바디에 실릴 최종 shares 배열
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- EC4 단위 커버용 순수 함수 공개 (컴포넌트 파일 내 유틸, 파일 분리 시 병렬 task 충돌 우려)
+export const mergeShares = (
+  toggles: MergeSharesToggles,
+  preserved: ReadonlyArray<ShareDto>,
+): ShareDto[] => {
+  const result: ShareDto[] = [...preserved]
+  if (toggles.projectEnabled) {
+    result.push({ shareType: 'PROJECT', targetId: toggles.projectKey })
+  }
+  if (toggles.authEnabled) {
+    result.push({ shareType: 'AUTHENTICATED', targetId: null })
+  }
+  return result
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -78,16 +119,7 @@ export function ShareFilterDialog({ open, filter, onClose }: ShareFilterDialogPr
   })
 
   function handleSave(): void {
-    const shares: ShareDto[] = [
-      ...preserved,
-      ...(projectEnabled
-        ? [{ shareType: 'PROJECT' as const, targetId: filter.projectKey }]
-        : []),
-      ...(authEnabled
-        ? [{ shareType: 'AUTHENTICATED' as const, targetId: null }]
-        : []),
-    ]
-
+    const shares = mergeShares({ authEnabled, projectEnabled, projectKey: filter.projectKey }, preserved)
     mutation.mutate({
       id: filter.id,
       payload: {

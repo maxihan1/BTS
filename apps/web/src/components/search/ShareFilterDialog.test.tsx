@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { SavedFilterResponse, ShareDto } from '@/api/saved-filters'
 import { updateFilter } from '@/api/saved-filters'
-import { ShareFilterDialog } from './ShareFilterDialog'
+import { ShareFilterDialog, mergeShares } from './ShareFilterDialog'
 
 // @/api/saved-filters 모듈 전체 모킹 — updateFilter만 stub, savedFiltersKey는 인라인 유지
 vi.mock('@/api/saved-filters', () => ({
@@ -251,5 +251,61 @@ describe('ShareFilterDialog — 공유 전체 제거(d)', () => {
       const payload = vi.mocked(updateFilter).mock.calls[0]?.[1]
       expect(payload?.shares).toEqual([])
     })
+  })
+})
+
+// ──────────────────────────────────────────────────────────────────────────────
+// mergeShares — 순수 함수 단위 커버 (REFACTOR, EC4 회귀 가드)
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('mergeShares — 순수 함수 단위 커버', () => {
+  it('두 토글 모두 false이면 preserved만 반환된다', () => {
+    const preserved: ShareDto[] = [{ shareType: 'GROUP', targetId: 'eng' }]
+    const result = mergeShares({ authEnabled: false, projectEnabled: false, projectKey: 'BTS' }, preserved)
+    expect(result).toEqual(preserved)
+  })
+
+  it('authEnabled=true이면 AUTHENTICATED가 결과에 포함된다', () => {
+    const result = mergeShares({ authEnabled: true, projectEnabled: false, projectKey: 'BTS' }, [])
+    expect(result).toContainEqual({ shareType: 'AUTHENTICATED', targetId: null })
+  })
+
+  it('projectEnabled=true이면 PROJECT(projectKey)가 결과에 포함된다', () => {
+    const result = mergeShares({ authEnabled: false, projectEnabled: true, projectKey: 'BTS' }, [])
+    expect(result).toContainEqual({ shareType: 'PROJECT', targetId: 'BTS' })
+  })
+
+  it('두 토글 모두 true이면 AUTHENTICATED + PROJECT 둘 다 포함된다', () => {
+    const result = mergeShares({ authEnabled: true, projectEnabled: true, projectKey: 'BTS' }, [])
+    expect(result).toContainEqual({ shareType: 'AUTHENTICATED', targetId: null })
+    expect(result).toContainEqual({ shareType: 'PROJECT', targetId: 'BTS' })
+    expect(result).toHaveLength(2)
+  })
+
+  it('EC4 회귀 가드: preserved의 GROUP이 어떤 토글 조합에서도 유실되지 않는다', () => {
+    const groupShare: ShareDto = { shareType: 'GROUP', targetId: 'team-alpha' }
+    const result = mergeShares(
+      { authEnabled: true, projectEnabled: true, projectKey: 'BTS' },
+      [groupShare],
+    )
+    expect(result).toContainEqual(groupShare)
+    expect(result).toHaveLength(3)
+  })
+
+  it('EC4 회귀 가드: preserved의 타 PROJECT도 유실되지 않는다', () => {
+    const otherProject: ShareDto = { shareType: 'PROJECT', targetId: 'OTHER' }
+    const result = mergeShares(
+      { authEnabled: false, projectEnabled: true, projectKey: 'BTS' },
+      [otherProject],
+    )
+    expect(result).toContainEqual(otherProject)
+    expect(result).toContainEqual({ shareType: 'PROJECT', targetId: 'BTS' })
+  })
+
+  it('preserved를 변이하지 않는다 — 원본 배열 불변', () => {
+    const preserved: ShareDto[] = [{ shareType: 'GROUP', targetId: 'reviewers' }]
+    const originalLength = preserved.length
+    mergeShares({ authEnabled: true, projectEnabled: true, projectKey: 'BTS' }, preserved)
+    expect(preserved).toHaveLength(originalLength)
   })
 })
