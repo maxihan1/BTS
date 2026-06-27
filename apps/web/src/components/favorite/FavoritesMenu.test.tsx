@@ -400,6 +400,30 @@ describe('FavoritesMenu — S7 FILTER 404 처리', () => {
       expect(screen.queryByText('필터')).not.toBeInTheDocument()
     })
   })
+
+  it('S7c: FILTER 즐겨찾기 2개가 전부 404이면 비동기 해소 후 빈 상태 메시지가 표시된다', async () => {
+    const FILTER_B_UUID = '550e8400-e29b-41d4-a716-446655440405'
+    seedFavorites(ALICE_USER_ID, [
+      { id: 'fav-a', targetType: 'FILTER', targetId: FILTER_404_UUID, createdAt: '2024-03-01T00:00:00Z' },
+      { id: 'fav-b', targetType: 'FILTER', targetId: FILTER_B_UUID, createdAt: '2024-03-02T00:00:00Z' },
+    ])
+    server.use(
+      http.get('/api/v1/filters/:id', () =>
+        HttpResponse.json(
+          { errorCode: 'SEARCH_FILTER_NOT_FOUND', message: '없음' },
+          { status: 404 },
+        ),
+      ),
+    )
+
+    const user = userEvent.setup()
+    renderMenu()
+
+    await user.click(screen.getByRole('button', { name: favoriteLabels.dropdownTriggerAriaLabel }))
+
+    // 비동기 쿼리 settle 후 드롭다운에 빈 상태 메시지가 보여야 한다 (공백 아님)
+    expect(await screen.findByText(favoriteLabels.emptyMessage)).toBeInTheDocument()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

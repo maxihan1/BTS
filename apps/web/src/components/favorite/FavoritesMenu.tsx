@@ -1,5 +1,5 @@
 // 즐겨찾기 드롭다운 메뉴 컴포넌트 — 타입별 그룹 렌더 + SPA Link 이동 (FR-UX-02 D6/D7)
-import { Fragment, type ComponentType } from 'react'
+import { Fragment, useState, useCallback, useEffect, type ComponentType } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Star, FileText, LayoutDashboard, FolderKanban, SlidersHorizontal } from 'lucide-react'
 import { useQueries } from '@tanstack/react-query'
@@ -107,6 +107,8 @@ interface FilterFavoritesGroupProps {
   items: FavoriteResponse[]
   /** 앞에 동기 그룹이 존재하면 구분선을 렌더한다 */
   showSeparatorBefore: boolean
+  /** 비동기 해소 후 표시 가능한 항목 수를 부모에게 전달하는 콜백 */
+  onVisibleCountChange: (count: number) => void
 }
 
 /**
@@ -114,7 +116,11 @@ interface FilterFavoritesGroupProps {
  * useQueries로 모든 필터를 병렬 조회하고, 전체 settle 후 렌더한다.
  * 404 항목은 숨기고, 전체 404 시 그룹 헤더도 표시하지 않는다.
  */
-const FilterFavoritesGroup = ({ items, showSeparatorBefore }: FilterFavoritesGroupProps) => {
+const FilterFavoritesGroup = ({
+  items,
+  showSeparatorBefore,
+  onVisibleCountChange,
+}: FilterFavoritesGroupProps) => {
   const queries = useQueries({
     queries: items.map((fav) => ({
       queryKey: savedFiltersKey.detail(fav.targetId),
@@ -129,6 +135,12 @@ const FilterFavoritesGroup = ({ items, showSeparatorBefore }: FilterFavoritesGro
     .filter((pair): pair is { fav: FavoriteResponse; filter: SavedFilterResponse } =>
       pair.filter !== undefined,
     )
+
+  useEffect(() => {
+    if (allSettled) {
+      onVisibleCountChange(visiblePairs.length)
+    }
+  }, [allSettled, visiblePairs.length, onVisibleCountChange])
 
   if (!allSettled || visiblePairs.length === 0) return null
 
@@ -166,12 +178,20 @@ const FilterFavoritesGroup = ({ items, showSeparatorBefore }: FilterFavoritesGro
  */
 export const FavoritesMenu = () => {
   const { data: items = [] } = useFavorites()
+  // null: FILTER 쿼리 미해소 | number: settle 후 표시 가능 개수
+  const [filterVisibleCount, setFilterVisibleCount] = useState<number | null>(null)
+  const handleFilterVisibleCountChange = useCallback((count: number) => {
+    setFilterVisibleCount(count)
+  }, [])
 
   const grouped = groupByType(items)
   const filterFavs = items.filter((item) => item.targetType === FAVORITE_TARGET_TYPES.FILTER)
 
   const hasSyncItems = items.some((item) => item.targetType in TYPE_META)
-  const showEmpty = !hasSyncItems && filterFavs.length === 0
+  // FILTER 전부 404(filterVisibleCount===0)이어도 빈 상태 메시지를 표시한다.
+  // filterVisibleCount===null(미해소)이면 아직 로딩 중이므로 표시하지 않는다.
+  const showEmpty =
+    !hasSyncItems && (filterFavs.length === 0 || filterVisibleCount === 0)
 
   const hasSyncGroups = GROUP_ORDER.some((t) => (grouped.get(t)?.length ?? 0) > 0)
 
@@ -232,6 +252,7 @@ export const FavoritesMenu = () => {
           <FilterFavoritesGroup
             items={filterFavs}
             showSeparatorBefore={hasSyncGroups}
+            onVisibleCountChange={handleFilterVisibleCountChange}
           />
         )}
       </DropdownMenuContent>
