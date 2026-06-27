@@ -1,23 +1,170 @@
 // 저장된 필터 공유 설정 모달 — AUTHENTICATED/PROJECT 토글 + GROUP 보존(EC4)
 import type { JSX } from 'react'
-import type { SavedFilterResponse } from '@/api/saved-filters'
+import { useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { Dialog as DialogPrimitive } from 'radix-ui'
+import { Button } from '@/components/ui/button'
+import {
+  updateFilter,
+  savedFiltersKey,
+} from '@/api/saved-filters'
+import type { SavedFilterResponse, ShareDto, UpdateFilterRequest } from '@/api/saved-filters'
+import { savedFilterLabels } from '@/i18n/saved-filter-labels'
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 헬퍼 — shareType 판별 (순수 함수)
+// ──────────────────────────────────────────────────────────────────────────────
+
+function isAuthShare(share: ShareDto): boolean {
+  return share.shareType === 'AUTHENTICATED'
+}
+
+function isOwnProjectShare(share: ShareDto, projectKey: string): boolean {
+  return share.shareType === 'PROJECT' && share.targetId === projectKey
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Props
+// ──────────────────────────────────────────────────────────────────────────────
 
 /** ShareFilterDialog Props */
 export interface ShareFilterDialogProps {
   /** 모달 열림 여부 */
   open: boolean
-  /** 공유 설정을 변경할 저장 필터 */
+  /**
+   * 공유 설정을 변경할 저장 필터.
+   * 이 prop이 바뀔 경우 부모에서 key={filter.id}로 재마운트해야 상태가 초기화된다.
+   */
   filter: SavedFilterResponse
   /** 닫기 또는 취소 시 호출 */
   onClose: () => void
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// 컴포넌트
+// ──────────────────────────────────────────────────────────────────────────────
+
 /**
  * 저장된 필터의 공유 설정을 변경하는 모달.
- * AUTHENTICATED / PROJECT 토글만 편집하며, GROUP은 읽기·보존 전용이다.
- * [stub] RED 단계 — 구현 미완.
+ *
+ * - AUTHENTICATED(모든 로그인 사용자) / PROJECT(이 프로젝트 멤버) 토글만 편집한다.
+ * - GROUP 및 자기 projectKey가 아닌 PROJECT 항목은 읽기·보존 전용이다(EC4).
+ * - 저장 시 PUT 바디에 name/aqlQuery/version을 함께 전송한다(B2).
+ * - 부모에서 key={filter.id}를 줘야 filter prop 변경 시 상태가 올바르게 초기화된다.
  */
-export function ShareFilterDialog({ open }: ShareFilterDialogProps): JSX.Element {
-  // stub — open은 미래 분기를 위해 읽지만 현재 렌더는 비어 있다
-  return open ? <></> : <></>
+export function ShareFilterDialog({ open, filter, onClose }: ShareFilterDialogProps): JSX.Element {
+  // 편집 토글 — filter.shares에서 초기값 파생
+  const [authEnabled, setAuthEnabled] = useState<boolean>(() =>
+    filter.shares.some(isAuthShare),
+  )
+  const [projectEnabled, setProjectEnabled] = useState<boolean>(() =>
+    filter.shares.some((s) => isOwnProjectShare(s, filter.projectKey)),
+  )
+
+  // 편집 대상이 아닌 항목(GROUP, 타 PROJECT) — 제출 시 그대로 보존(EC4)
+  const preserved: ShareDto[] = filter.shares.filter(
+    (s) => !isAuthShare(s) && !isOwnProjectShare(s, filter.projectKey),
+  )
+
+  const queryClient = useQueryClient()
+
+  const mutation = useMutation({
+    mutationFn: (req: { id: string; payload: UpdateFilterRequest }) =>
+      updateFilter(req.id, req.payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: savedFiltersKey.all() })
+      onClose()
+    },
+  })
+
+  function handleSave(): void {
+    const shares: ShareDto[] = [
+      ...preserved,
+      ...(projectEnabled
+        ? [{ shareType: 'PROJECT' as const, targetId: filter.projectKey }]
+        : []),
+      ...(authEnabled
+        ? [{ shareType: 'AUTHENTICATED' as const, targetId: null }]
+        : []),
+    ]
+
+    mutation.mutate({
+      id: filter.id,
+      payload: {
+        name: filter.name,
+        aqlQuery: filter.aqlQuery,
+        version: filter.version,
+        shares,
+      },
+    })
+  }
+
+  function handleOpenChange(next: boolean): void {
+    if (!next) onClose()
+  }
+
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={handleOpenChange}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+
+        <DialogPrimitive.Content
+          className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
+          aria-describedby={undefined}
+        >
+          <DialogPrimitive.Title className="text-base font-semibold mb-4">
+            {savedFilterLabels.shareLabel}
+          </DialogPrimitive.Title>
+
+          <div className="space-y-3">
+            {/* PROJECT 토글 — 이 프로젝트 멤버 (인라인 라벨: i18n 미정의 — CONCERN 참조) */}
+            <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
+              <input
+                type="checkbox"
+                className="h-4 w-4 cursor-pointer"
+                checked={projectEnabled}
+                onChange={(e) => setProjectEnabled(e.target.checked)}
+              />
+              {`이 프로젝트(${filter.projectKey}) 멤버에게`}
+            </label>
+
+            {/* AUTHENTICATED 토글 — 모든 로그인 사용자 (인라인 라벨: i18n 미정의 — CONCERN 참조) */}
+            <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
+              <input
+                type="checkbox"
+                className="h-4 w-4 cursor-pointer"
+                checked={authEnabled}
+                onChange={(e) => setAuthEnabled(e.target.checked)}
+              />
+              모든 로그인 사용자에게
+            </label>
+          </div>
+
+          {mutation.isError && (
+            <p className="text-sm text-destructive mt-3" role="alert">
+              {savedFilterLabels.saveError}
+            </p>
+          )}
+
+          <div className="flex justify-end gap-2 mt-6">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onClose}
+              disabled={mutation.isPending}
+            >
+              {savedFilterLabels.cancelButton}
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleSave}
+              disabled={mutation.isPending}
+            >
+              {savedFilterLabels.saveButton}
+            </Button>
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  )
 }
