@@ -50,6 +50,7 @@ private const val SQL_EXISTS_BLOCKS_PATH =
  * - [existsBlocksPath] — blocks 그래프 재귀 CTE 로 도달 가능성 탐색.
  * - [findOutwardWithIssue] — source=issueId 인 링크를 issues 와 단일 JOIN 해 [LinkedIssueRow] 반환 (N+1 방지).
  * - [findInwardWithIssue] — target=issueId 인 링크를 issues 와 단일 JOIN 해 [LinkedIssueRow] 반환 (N+1 방지).
+ * - [findBlocksEdgesAmong] — 주어진 이슈 id 집합 안에서 양끝이 모두 집합에 속하는 blocks 엣지를 반환 (FR-TL-02 타임라인 의존 라인).
  *
  * ## 소프트 삭제 없음
  * `issue_links` 는 관계 테이블이라 링크 해제 = 행 물리 삭제 (DATA.md §3).
