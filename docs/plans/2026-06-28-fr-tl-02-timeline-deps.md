@@ -211,4 +211,25 @@ classify: type=api, agent=backend-engineer, primary_bc=issue-tracking
 - 보안 리뷰 포커스(codereview): 양끝 가시성 누출(S4)·cross-project 누출(S5)·BROWSE 게이트(S7/S8). 새 보안 경로 없이 기존 가시 집합 재사용임을 검증.
 - 추가 검증: ktlint·detekt·ArchUnit BC 격리(agile-planning→issue-tracking import 0).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-06-28) — 백엔드 집중 독립 리뷰
+
+- ✅ **누출 차단 전략 검증**. "가시 타임라인 집합(id→key) 내에서만 blocks 조회" → 양끝 모두 가시 집합 멤버 ⇒ 양끝 가시·동일프로젝트·날짜보유·미삭제 자동 보장. 보안 술어를 source/target 두 alias에 복제하는 SQL보다 단순·안전(새 보안 판정 경로 0, FR-NT-03 BLOCKER 정신). `listVisibleForTimeline` 재사용으로 검증된 경로 그대로.
+- ✅ **BC 격리**. T4/T5(agile-planning)는 shared-kernel 포트 + IssuePermissionResolver만 의존. T3 adapter(issue-tracking)가 실 구현. ArchUnit 검증 T5에 포함.
+- ✅ **테스트 매핑**. 스펙 S1~S11/EC1~EC11이 T1(default)·T2(repo)·T3(adapter S1~S6)·T4(service 403/정렬)·T5(HTTP 400/401/403) 테스트로 커버.
+- ⚠️ **CONCERN-1 (impl 필수 준수) — vacuous 테스트 차단**. T3의 S4(비가시 끝점 제외)·S5(cross-project 제외)는 반드시 **positive control** 포함. 같은 시드에 (a) 가시·동일프로젝트 blocks 엣지 1건(반드시 결과에 **존재** 단언) + (b) 비가시/cross-project blocks 엣지 1건(결과에 **부재** 단언)을 함께 둬 "필터가 실제로 동작"함을 증명. control 없이 "결과에 X 없음"만 단언하면 X-X=∅ 가짜그린(FR-MV-01 EC8/EC9 vacuous BLOCKER 재발). bts-impl로 인계.
+- ⚠️ **CONCERN-2 (마이너)**. `findBlocksEdgesAmong` 상한(LIMIT 1001)을 `source_id, target_id`(UUID) 순으로 자르는데 최종 노출 정렬은 `blockerKey, blockedKey`(key) 순. 입력 동일 시 출력 결정적이라 무해하나, 1000건 초과 truncation 시 "어떤 1000건"이 id순 컷이라 key순 기대와 다를 수 있음. ≤500 노드 규모에서 1000 초과는 거의 없어 실해 미미. 필요 시 key 정렬 후 컷으로 향후 교정 가능.
+- BLOCKER: **없음**.
+
+### plan-devex-review (2026-06-28)
+
+- ✅ **계약 일관성**. `/api/v1/timeline/deps?project=X` + `{data:{deps:[...],truncated}}` 봉투는 기존 `/api/v1/timeline`과 동형. v1 additive, 기존 엔드포인트 무변경(FR-TL-01 회귀 0).
+- ✅ **DTO nullable 0**. deps DTO(blockerKey/blockedKey: String, truncated: Boolean)는 nullable 필드 없음 → @JsonInclude(NON_NULL)↔Zod drift 함정 무관(프론트 T6 단순).
+- ℹ️ **관찰 (결정 완료)**. deps를 `/timeline` 응답에 임베드(1 round trip) 대신 별도 엔드포인트(2 round trip)로 분리. ADR 근거 — 오버레이는 선택적/토글 가능 + /timeline 무변경(회귀 0) + 분리 캐싱. 1K 규모 내부도구에서 2콜 부담 미미. 별도 엔드포인트 유지 적절.
+- BLOCKER: **없음**.
+
+### 종합
+
+- BLOCKER 0. CONCERN 2건(C1 vacuous 테스트 필수 준수 = bts-impl 인계, C2 마이너 truncation 순서).
+- 게이트 1 Maxi 결정 항목: **PR 분할** (권장 = 백엔드 D1~D5 이번 PR / 프론트 후속 — 대안 풀스택 1 PR).
