@@ -46,20 +46,22 @@ data class TimelineDepsResult(
 /**
  * 간트 차트 타임라인 조회 애플리케이션 서비스.
  *
- * 프로젝트의 가시 이슈를 [TimelineLookupPort] 를 통해 조회한 뒤
- * 날짜 기준으로 정렬해 반환한다.
+ * FR-TL-01: 프로젝트 가시 이슈를 날짜 정렬해 간트 바를 렌더링한다([getTimeline]).
+ * FR-TL-02: 프로젝트 내 `blocks` 의존 엣지를 결정적 순서로 반환한다([getDeps]).
  *
+ * 두 메서드 모두 동일한 BROWSE fail-closed 게이트를 재사용한다.
  * cross-BC 통신은 shared-kernel 포트([TimelineLookupPort], [IssuePermissionResolver])만 사용한다.
  * issue-tracking 내부를 직접 import 하지 않는다(BC 격리).
  *
- * ## 처리 순서
- * 1. BROWSE 권한 판정 — 거부 시 403(fail-closed).
- * 2. [TimelineLookupPort.listTimelineItemsByProject] 로 가시 이슈 목록 조회.
- * 3. 날짜 정렬 적용 — [timelineComparator] 참조.
- * 4. [TimelineResult] 반환.
+ * ## 공통 처리 순서 (getTimeline / getDeps)
+ * 1. BROWSE 권한 판정 — 거부 시 403(fail-closed). 새 권한 경로 신설 없이 동일 게이트 재사용.
+ * 2. [TimelineLookupPort] 위임 — visibility 필터는 구현체(issue-tracking adapter) 책임.
+ * 3. 정렬 적용 — 결정적 순서 보장(FR6).
+ * 4. 서비스 결과 VO 반환.
  *
  * ## 정렬 규칙
- * startDate ASC NULLS LAST → dueDate ASC NULLS LAST → key ASC.
+ * - getTimeline: startDate ASC NULLS LAST → dueDate ASC NULLS LAST → key ASC.
+ * - getDeps: blockerKey ASC → blockedKey ASC.
  *
  * ## BC 격리 사유
  * ```
@@ -69,7 +71,7 @@ data class TimelineDepsResult(
  * issue-tracking 내부 클래스 직접 import 는 BC 경계 위반으로 차단된다.
  *
  * @param permissionResolver cross-BC 권한 판정 포트(fail-closed, non-null 주입).
- * @param timelineLookupPort 프로젝트 가시 이슈 조회 포트(issue-tracking 구현).
+ * @param timelineLookupPort 프로젝트 가시 이슈·의존 엣지 조회 포트(issue-tracking 구현).
  */
 @Service
 @Transactional(readOnly = true)
