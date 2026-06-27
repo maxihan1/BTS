@@ -31,14 +31,17 @@ object MarkdownRenderer {
             //
             // ESCAPE_HTML_BLOCKS: 블록 수준(단락 전체) raw HTML → escape 처리.
             // HTML_BLOCK_PARSER: HTML 블록 파서 비활성 → raw HTML 블록을 단락 텍스트로 처리.
-            // SUPPRESS_INLINE_HTML: 인라인 raw HTML(소스에 삽입된 <span> 등) → 태그 자체를 출력에서 제거.
-            //   대상: 사용자가 마크다운 소스에 직접 입력한 HTML 태그(HtmlInline AST 노드).
-            //   비대상: flexmark NodeRenderer 가 HtmlWriter 로 직접 생성한 태그(<a>, <span.mention> 등).
-            //   이 설정으로 raw span 주입(EC7) 을 차단하면서 MentionNodeRenderer 생성 span 은 보존한다.
-            //   ESCAPE_INLINE_HTML 대신 SUPPRESS 를 사용하는 이유:
+            // SUPPRESS_INLINE_HTML: 인라인 raw HTML 주석(HtmlInlineComment) 억제용으로 유지.
+            //   인라인 raw HTML 태그(HtmlInline)는 RawInlineHtmlNodeRenderer 가 전담 처리하므로
+            //   이 옵션이 아니라 해당 렌더러가 권위 있는 정책이다(core 핸들러를 override).
+            //   ESCAPE_INLINE_HTML 대신 SUPPRESS 를 쓰는 이유:
             //     ESCAPE_INLINE_HTML 은 삽입된 태그를 텍스트로 출력하므로 태그 내 문자열
             //     (예: JaVaScRiPt:) 이 escape 된 형태로 결과에 남아 기존 XSS 차단 테스트를 깬다.
-            //     SUPPRESS 는 태그 자체를 완전히 제거하고 텍스트 내용만 남기므로 기존 테스트와 양립한다.
+            //   ── RawInlineHtmlNodeRenderer 정책 요약 ──
+            //   script/style(내용 자체가 코드인 raw-text 태그)는 raw 로 통과시켜 OWASP 가 태그+내용을
+            //     통째로 제거하게 위임한다(SUPPRESS 단독은 태그만 지우고 alert(1) 텍스트를 남기는 회귀).
+            //   그 외 raw HTML 태그(span/img/svg 등)는 억제 — raw span 주입(EC7)·속성 기반 공격 차단.
+            //   MentionNodeRenderer 가 HtmlWriter 로 생성한 span.mention 은 HtmlInline 이 아니라 무영향.
             set(HtmlRenderer.ESCAPE_HTML_BLOCKS as com.vladsch.flexmark.util.data.DataKey<Boolean>, true)
             set(Parser.HTML_BLOCK_PARSER as com.vladsch.flexmark.util.data.DataKey<Boolean>, false)
             set(HtmlRenderer.SUPPRESS_INLINE_HTML as com.vladsch.flexmark.util.data.DataKey<Boolean>, true)
@@ -54,6 +57,8 @@ object MarkdownRenderer {
     private val RENDERER: HtmlRenderer =
         HtmlRenderer.builder(FLEXMARK_OPTIONS)
             .extensions(listOf(MENTION_EXT))
+            // 인라인 raw HTML 전담 렌더러 — core HtmlInline 핸들러를 override 한다.
+            .nodeRendererFactory(RawInlineHtmlNodeRendererFactory)
             .build()
 
     // ── OWASP HTML Sanitizer allowlist 정책 ────────────────────────────────────

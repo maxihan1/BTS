@@ -151,6 +151,57 @@ class MarkdownRendererTest : DescribeSpec({
             }
         }
 
+        // ── raw-text 위험 태그 내용 제거 (FR-MN-01 SUPPRESS_INLINE_HTML 회귀 방지) ──
+        //
+        // SUPPRESS_INLINE_HTML 은 태그만 제거하고 태그 사이 텍스트를 남긴다. script/style 처럼
+        // 내용 자체가 코드인 raw-text 태그는 RawInlineHtmlNodeRenderer 가 raw 로 통과시켜 OWASP 가
+        // 태그+내용을 통째 제거하게 한다. 태그 바깥의 일반 본문 텍스트는 보존되어야 한다.
+
+        context("script/style 위험 태그는 태그+내용을 통째 제거") {
+
+            it("16. script 태그의 코드 내용(alert)까지 제거한다") {
+                val input = "<script>alert(1)</script>"
+                val result = MarkdownRenderer.renderSafe(input)
+                result shouldNotContain "<script"
+                // 태그 사이 코드 본문도 결과에 남지 않아야 한다(SUPPRESS 단독 회귀 차단).
+                result shouldNotContain "alert("
+            }
+
+            it("17. 대소문자 혼합 script 태그도 내용까지 제거한다") {
+                val input = "<ScRiPt>alert(2)</ScRiPt>"
+                val result = MarkdownRenderer.renderSafe(input)
+                result shouldNotContain "alert("
+                // 대소문자 무관하게 실행 가능한 script 태그 형태가 없어야 한다.
+                result shouldNotContain "<ScRiPt"
+                result shouldNotContain "<script"
+            }
+
+            it("18. style 태그 내용(CSS + javascript 스킴)까지 제거한다") {
+                val input = "<style>body{background:url(javascript:alert(3))}</style>"
+                val result = MarkdownRenderer.renderSafe(input)
+                result shouldNotContain "<style"
+                result shouldNotContain "alert("
+                result shouldNotContain "javascript:"
+            }
+
+            it("19. script 태그 바깥의 일반 본문 텍스트는 보존한다") {
+                val input = "before <script>alert(4)</script> after"
+                val result = MarkdownRenderer.renderSafe(input)
+                // 정화는 위험 태그 내용만 제거하고 평문은 살린다.
+                result shouldContain "before"
+                result shouldContain "after"
+                result shouldNotContain "alert("
+            }
+
+            it("20. src 속성 script 태그도 제거하고 본문은 보존한다") {
+                val input = """<script src="https://evil.example/x.js"></script>본문 유지"""
+                val result = MarkdownRenderer.renderSafe(input)
+                result shouldNotContain "<script"
+                result shouldNotContain "evil.example"
+                result shouldContain "본문 유지"
+            }
+        }
+
         // ── 정상 Markdown 보존 ─────────────────────────────────────────────────
 
         context("정상 Markdown 보존") {
