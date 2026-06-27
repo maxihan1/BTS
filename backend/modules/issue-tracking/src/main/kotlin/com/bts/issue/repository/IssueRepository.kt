@@ -2382,10 +2382,12 @@ class IssueRepository(
      *    V032 STORED generated tsvector(summary + description 결합) + GIN 인덱스 활용.
      *    `simple` 설정은 조사 분리 없이 토큰화한다(zero-dep, SDD 10.2).
      *
-     * 2. **trigram 경로** — `ISSUES.SUMMARY.likeIgnoreCase("%term%") OR ISSUES.DESCRIPTION.likeIgnoreCase("%term%")`.
-     *    jOOQ `likeIgnoreCase`는 `lower(col) LIKE ?`를 생성하므로,
+     * 2. **trigram 경로** — `DSL.lower(ISSUES.SUMMARY).like(lowerPattern, '\\') OR ...DESCRIPTION...`.
+     *    `DSL.lower(col).like(pattern.lowercase(), '\\')` 는 `lower("col") like ? escape '\'` 를 렌더한다.
      *    V031(`gin(lower(summary) gin_trgm_ops)`)·V032(`gin(lower(description) gin_trgm_ops)`) 표현식 인덱스와
-     *    정확히 일치한다 — coalesce 없이(B1 수정).
+     *    표현식이 정확히 일치해 Bitmap Index Scan 으로 실행된다.
+     *    **주의**: `likeIgnoreCase` 는 native ILIKE(`~~*`)를 렌더하며, `~~*` 는 bare 컬럼 연산자라
+     *    `lower(col)` 표현식 인덱스를 사용하지 못해 Seq Scan 이 발생한다 (B1 수정 근거, EXPLAIN 실측).
      *    조사 변형("이슈를"↔"이슈")·부분 문자열 매칭을 보완한다.
      *
      * ## SQL injection 방지
@@ -2445,8 +2447,10 @@ class IssueRepository(
     /**
      * summary 필드 조건을 생성한다.
      *
-     * summary 는 TEXT — `~` 는 ILIKE %v%, `=` 는 정확 매칭.
-     * SQL injection 방지: ILIKE 와일드카드는 jOOQ [DSL.lower] + 바인드 파라미터로 처리한다.
+     * summary 는 TEXT — `~` 는 lower(col) LIKE %v%, `=` 는 정확 매칭.
+     * SQL injection 방지: `~` 와일드카드는 [escapeIlikePrefix] 이스케이프 후 [DSL.lower] + 바인드 파라미터로 처리한다.
+     * `DSL.lower(col).like(pattern.lowercase())` 는 `lower("col") like ?` 를 렌더해
+     * idx_issues_summary_trgm(`gin(lower(summary) gin_trgm_ops)`) 표현식 인덱스를 사용한다 (B1 수정).
      */
     private fun buildSummaryCondition(
         op: AqlOperator,
