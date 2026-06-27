@@ -233,8 +233,18 @@ jooq {
                         // pgmq 호출은 raw SQL (dsl.execute("SELECT pgmq.send(...)")) — ADR 2026-05-22-pgmq-postgres-image.
                         inputSchema = "public"
                         includes = ".*"
-                        // flyway_schema_history: Flyway 내부 메타테이블 제외.
-                        excludes = "flyway_schema_history"
+                        // [B3 폴백] FR-SR-04 STORED generated tsvector 컬럼(search_vector)을 codegen 에서 제외한다.
+                        //   jOOQ 3.19 OSS 는 이 generated 컬럼을 readonly/computed 로 자동 탐지하지 못해
+                        //   (TableField<.., Any?>, 플래그 없음), record 기반 set(record) INSERT 가
+                        //   "cannot insert a non-DEFAULT value into column search_vector" 로 실패한다(이슈 생성 전수 500).
+                        //   Settings.withReadonlyInsert(IGNORE) 폴백은 readonly 플래그 부재로 무효 → 컬럼 자체를 제외.
+                        //   검색 실행은 raw DSL.condition("issues.search_vector @@ ...") 로 수행하므로 jOOQ 필드 불필요
+                        //   (Task 3 C3 — content SELECT 도 tsvector 미전송과 정합). 컬럼/GIN 색인은 DB 에 그대로 존재.
+                        //   includeExcludeColumns=true 가 있어야 excludes 가 컬럼에 적용된다(기본 false=테이블만 필터).
+                        //   search_vector 만 참조하는 idx_issues_search_vector 는 컬럼 제외 시 jOOQ 가 함께 드롭한다.
+                        //   flyway_schema_history: Flyway 내부 메타테이블 제외.
+                        setIncludeExcludeColumns(true)
+                        excludes = "flyway_schema_history|search_vector"
                     }
 
                     generate.apply {

@@ -63,6 +63,8 @@ AND issue.project_id IN (
 
 ## 10.2 한글 검색
 
+> **[Deviation — PR #195]** product §2.4 D2 "Mecab-ko vs Lucene-Kr 비교 후 선택" 명세에서 deviation. 실제 구현은 **`simple` tsvector + pg_trgm 하이브리드(외부 형태소 분석기 미도입, zero-dep)**로 결정됨. BTS 미니멀 인프라 철학(Docker 이미지 무변경, 사전·확장 추가 의존성 0)과 일관되며, 본 SDD 10.2 원안(simple + pg_trgm)과 정합. product §2.4 D2의 "Mecab-ko vs Lucene-Kr 도입"은 본 ADR로 superseded — FR-SR-02 ADR이 SDD 10.1 "ANTLR 4"를 superseded한 것과 동형. 정본 근거. [ADR docs/decisions/2026-06-26-fr-sr-04-korean-fts.md](../decisions/2026-06-26-fr-sr-04-korean-fts.md).
+
 PostgreSQL FTS의 한글 처리:
 
 - `to_tsvector('simple', ...)` 사용 (어휘 분석 없이 단순 토큰화)
@@ -73,6 +75,43 @@ PostgreSQL FTS의 한글 처리:
 WHERE search_vector @@ plainto_tsquery('simple', :query)
    OR summary % :query  -- pg_trgm 유사도
 ```
+
+### 10.2.1 AQL `text` 가상 필드 (FR-SR-04)
+
+`text`는 AQL의 가상 FTS 필드다. `~`(CONTAINS) 연산자만 허용하며(`=`/`!=`/`IN`/`NOT IN` 금지), summary + description 결합 전문 검색을 수행한다. 기존 `summary ~`(제목 부분일치)와 별개로 추가되어 회귀 없음.
+
+```
+text ~ "검색어"              -- summary+description 전문 검색
+text ~ ""                    -- 결과 0 (빈 검색어 정책)
+text = "x"                   -- 400 에러 (비허용 연산자)
+text ~ "x" ORDER BY text     -- 400 에러 (가상 필드 — 정렬 대상 컬럼 없음)
+```
+
+내부 변환 (issue-tracking IssueRepository 어댑터):
+
+```sql
+search_vector @@ plainto_tsquery('simple', :q)
+OR lower(summary)     LIKE '%:q_escaped%'   -- idx_issues_summary_trgm (V031)
+OR lower(description) LIKE '%:q_escaped%'   -- idx_issues_description_trgm (V032)
+```
+
+### 10.2.2 `search_vector` STORED generated column (V032)
+
+`issues.search_vector`는 PostgreSQL `GENERATED ALWAYS AS ... STORED` 컬럼으로 구현한다. INSERT/UPDATE 경로 코드 변경 없이 DB가 자동 갱신한다. `to_tsvector('simple', ...)` 2-인자형은 IMMUTABLE이므로 generated column 사용 가능.
+
+```sql
+-- V032__issues_search_vector_fts.sql
+ALTER TABLE issues
+  ADD COLUMN search_vector tsvector
+  GENERATED ALWAYS AS (
+    to_tsvector('simple', coalesce(summary, '') || ' ' || coalesce(description, ''))
+  ) STORED;
+
+CREATE INDEX idx_issues_search_vector     ON issues USING gin (search_vector);
+CREATE INDEX idx_issues_description_trgm  ON issues USING gin (lower(description) gin_trgm_ops);
+```
+
+기존 `idx_issues_summary_trgm`(V031 — `gin(lower(summary) gin_trgm_ops)`)은 무변경.
 
 ## 10.3 필터 저장 (FR-SR-03)
 

@@ -340,13 +340,14 @@ class AqlParser(private val tokens: List<AqlToken>) {
     /**
      * 단일 정렬 항목 `field [ASC|DESC]` 를 파싱한다.
      *
-     * 정렬 필드도 [AqlFields] 화이트리스트로 검증한다. MVP 미지원 필드로 정렬하면
-     * repository 에서 [IllegalArgumentException] 이 발생해 500이 되므로 파서에서 사전 거부한다.
+     * 정렬 필드를 [AqlFields.SORTABLE_FIELDS] 화이트리스트로 검증한다.
+     * `text`, `label` 등 쿼리에는 허용되나 DB 정렬 컬럼이 없는 필드를 파서 단계에서 거부해
+     * repository 의 방어 [IllegalArgumentException] 이 HTTP 계층으로 누출되지 않도록 한다.
      * 방향이 생략되면 기본값 [SortDirection.ASC] 를 사용한다.
      */
     private fun parseSortItem(): AqlSort {
         val fieldToken = expectIdent("정렬 필드명")
-        validateField(fieldToken.lexeme, fieldToken.position)
+        validateSortField(fieldToken.lexeme, fieldToken.position)
         val direction =
             when (peek()?.type) {
                 AqlTokenType.KW_ASC -> {
@@ -439,6 +440,38 @@ class AqlParser(private val tokens: List<AqlToken>) {
                 position,
             )
         }
+    }
+
+    /**
+     * ORDER BY 절의 정렬 필드를 [AqlFields.SORTABLE_FIELDS] 화이트리스트로 검증한다.
+     *
+     * 세 가지 경우를 구분해 에러 코드를 달리 한다.
+     * - SORTABLE_FIELDS 포함 → OK
+     * - PLANNED_FIELDS 포함(정렬 미지원이나 후속 지원 예정) → [AqlErrorCode.SEARCH_FIELD_NOT_YET_SUPPORTED]
+     * - 그 외(알 수 없거나 쿼리 전용 필드 — `text`, `label` 등) → [AqlErrorCode.SEARCH_UNKNOWN_FIELD]
+     *
+     * @param fieldName 검증할 정렬 필드명.
+     * @param position 오류 위치 (토큰 컬럼 인덱스).
+     * @throws AqlSyntaxException 정렬 불가 필드.
+     */
+    private fun validateSortField(
+        fieldName: String,
+        position: Int,
+    ) {
+        val lower = fieldName.lowercase()
+        if (lower in AqlFields.SORTABLE_FIELDS) return
+        if (lower in AqlFields.PLANNED_FIELDS) {
+            throw AqlSyntaxException(
+                "필드 '$fieldName' 는 현재 지원하지 않습니다. 후속 버전에서 지원 예정입니다.",
+                position,
+                AqlErrorCode.SEARCH_FIELD_NOT_YET_SUPPORTED,
+            )
+        }
+        throw AqlSyntaxException(
+            "정렬할 수 없는 필드입니다: '$fieldName'. 정렬 가능 필드: ${AqlFields.SORTABLE_FIELDS.sorted().joinToString()}.",
+            position,
+            AqlErrorCode.SEARCH_UNKNOWN_FIELD,
+        )
     }
 
     /**

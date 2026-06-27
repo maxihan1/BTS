@@ -36,12 +36,18 @@ import java.time.Instant
  * ### 매핑 규칙
  *
  * - [AqlSyntaxException] → 400 + [AqlErrorCode] 매핑 + position(RFC 7807 extension)
+ * - [AqlLexException] → 400 + SEARCH_SYNTAX_ERROR + position
+ * - [SearchValidationException] → 400 + [SearchErrorCodes.SEARCH_VALIDATION_FAILED]
  * - [MethodArgumentNotValidException] → 400 + [SearchErrorCodes.SEARCH_VALIDATION_FAILED]
  * - [HttpMessageNotReadableException] → 400 + [SearchErrorCodes.SEARCH_VALIDATION_FAILED]
  * - [MethodArgumentTypeMismatchException] → 400 + [SearchErrorCodes.SEARCH_VALIDATION_FAILED]
  * - [SecurityException] → 403 + [SearchErrorCodes.SEARCH_ACCESS_DENIED] (BROWSE 권한 없음)
  * - [ResponseStatusException] → 명시 상태 전파(401/404 등)
  * - [Exception] (fallback) → 500 + [SearchErrorCodes.SEARCH_INTERNAL_ERROR]
+ *
+ * IllegalArgumentException 은 이 핸들러에서 처리하지 않는다.
+ * 정렬 불가 필드 등 AQL 의미 오류는 [AqlParser] 가 [AqlSyntaxException] 으로 파서 단계에서 거부하며,
+ * repository 의 방어 IAE 는 비-HTTP 경로(직접 호출·테스트) 전용이다.
  *
  * TooManyFunctions: 예외 종류별 @ExceptionHandler가 필요하므로 함수 수가 임계치를 넘는다.
  * 단일 관심사(예외→HTTP 변환)라 클래스 단위로 억제한다.

@@ -724,3 +724,30 @@ CREATE INDEX idx_issues_project_assignee_active ON issues (project_id, assignee_
 -- ═══════════════════════════════════════════════════════════════════════════
 
 CREATE INDEX idx_issues_summary_trgm ON issues USING gin (lower(summary) gin_trgm_ops);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V032: issues.search_vector(STORED generated tsvector) + GIN + description trigram GIN (FR-SR-04 한글 FTS)
+-- 원본: db/migration/issue-tracking/V032__issues_search_vector_fts.sql
+-- jOOQ: 이 미러는 introspection 충실성(스키마 정합) 유지 목적이며, Issues.SEARCH_VECTOR 상수는 미생성이다.
+--       jOOQ 3.19 OSS 는 GENERATED ALWAYS 컬럼을 readonly 로 탐지하지 못하므로 build.gradle.kts 의
+--       codegen excludes("search_vector") 로 컬럼 자체를 제외한다(B3). SEARCH_VECTOR 상수가 없어도
+--       FTS 조건은 raw DSL.condition("issues.search_vector @@ ...") 로 수행한다.
+-- pg_trgm 확장은 상단(pgcrypto 인접)에서 인덱스보다 먼저 선언됨 (gin_trgm_ops opclass 전제).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- summary+description 결합 simple tsvector STORED generated column. 2-인자형 to_tsvector(IMMUTABLE)+coalesce/|| immutable.
+ALTER TABLE issues
+    ADD COLUMN search_vector tsvector
+        GENERATED ALWAYS AS (
+            to_tsvector('simple', coalesce(summary, '') || ' ' || coalesce(description, ''))
+        ) STORED;
+
+-- @@ plainto_tsquery('simple', q) 전문 검색 가속.
+CREATE INDEX idx_issues_search_vector ON issues USING gin (search_vector);
+
+-- [B1] lower(description) 표현식 trigram — 백엔드 likeIgnoreCase(lower("description") LIKE ?)와 정확 일치(coalesce 없음).
+CREATE INDEX idx_issues_description_trgm ON issues USING gin (lower(description) gin_trgm_ops);
+
+-- description 주석 정정 — V006 'tsvector 금지' 는 FTS 유보 표기. FR-SR-04 가 추가 시점이므로 갱신(COMMENT superseding).
+COMMENT ON COLUMN issues.description IS
+    '이슈 본문 (마크다운). FR-SR-04 부터 search_vector(STORED generated tsvector) FTS + lower(description) trigram 으로 색인됨 (논리 책임 search BC, 물리 issue-tracking).';
