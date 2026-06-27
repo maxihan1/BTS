@@ -2413,8 +2413,12 @@ class IssueRepository(
                 "issues.search_vector @@ plainto_tsquery('simple', {0})",
                 DSL.`val`(strValue),
             )
-        val summaryTrigram = ISSUES.SUMMARY.likeIgnoreCase(likePattern, '\\')
-        val descriptionTrigram = ISSUES.DESCRIPTION.likeIgnoreCase(likePattern, '\\')
+        // DSL.lower(col).like(pattern.lowercase(), '\\') 는 lower("col") like ? escape '\' 를 렌더한다.
+        // gin(lower(col) gin_trgm_ops) 표현식 인덱스(V031 summary / V032 description)와 표현식이 정확히 일치.
+        // likeIgnoreCase 는 native ILIKE(~~*) 를 렌더해 표현식 인덱스를 사용하지 못한다 (B1 수정).
+        val lowerPattern = likePattern.lowercase()
+        val summaryTrigram = DSL.lower(ISSUES.SUMMARY).like(lowerPattern, '\\')
+        val descriptionTrigram = DSL.lower(ISSUES.DESCRIPTION).like(lowerPattern, '\\')
         return ftsCondition.or(summaryTrigram).or(descriptionTrigram)
     }
 
@@ -2450,7 +2454,13 @@ class IssueRepository(
     ): Condition {
         val strValue = values.first().asString()
         return when (op) {
-            AqlOperator.CONTAINS -> ISSUES.SUMMARY.likeIgnoreCase("%${escapeIlikePrefix(strValue)}%", '\\')
+            // DSL.lower(col).like(pattern.lowercase()) 로 gin(lower(summary) gin_trgm_ops) 표현식 인덱스 사용.
+            // likeIgnoreCase 는 native ILIKE(~~*) 를 렌더해 표현식 인덱스를 사용하지 못한다 (B1 수정).
+            AqlOperator.CONTAINS ->
+                DSL.lower(ISSUES.SUMMARY).like(
+                    "%${escapeIlikePrefix(strValue)}%".lowercase(),
+                    '\\',
+                )
             AqlOperator.EQ -> ISSUES.SUMMARY.eq(strValue)
             AqlOperator.NEQ -> ISSUES.SUMMARY.ne(strValue)
             AqlOperator.IN -> ISSUES.SUMMARY.`in`(values.map { it.asString() })

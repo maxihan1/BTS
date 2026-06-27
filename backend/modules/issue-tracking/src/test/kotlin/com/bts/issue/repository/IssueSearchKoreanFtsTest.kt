@@ -583,25 +583,33 @@ class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
     }
 
     // ── B2-EXPLAIN: GIN 인덱스 회귀 가드 ──────────────────────────────────────
-    // SET enable_seqscan=off 금지 — 1000행 시드 + ANALYZE 로 플래너가 자연히 인덱스 선택.
-    // (1) idx_issues_description_trgm: 조사변형 trigram-전용 경로 가드 (B1 fix).
-    // (2) idx_issues_search_vector: FTS GIN 회귀 가드.
+    // SET enable_seqscan=off 금지 — 5000행 시드 + ANALYZE 로 플래너가 자연히 인덱스 선택.
+    // explainQuery 의 SQL 은 production SQL(DSL.lower(col).like()) 과 동일한 lower(col) LIKE ? 형태.
+    // B1 수정 후 production/explainQuery 양쪽이 lower(col) LIKE 로 통일됐으므로 drift 없음.
+    // (1) idx_issues_summary_trgm: summary trigram 경로 가드 (B1 fix).
+    // (2) idx_issues_description_trgm: description trigram 경로 가드 (B1 fix).
+    // (3) idx_issues_search_vector: FTS GIN 회귀 가드.
 
     @Test
     @Order(51)
-    fun `B2-EXPLAIN GIN 인덱스가 플랜에 나타난다 — idx_issues_description_trgm 과 idx_issues_search_vector`() {
+    fun `B2-EXPLAIN GIN 인덱스가 플랜에 나타난다 — summary+description trgm 과 search_vector`() {
         // 5000행 시드 + ANALYZE → 플래너 통계 갱신 (seqscan보다 GIN 선호)
         // 매 100번째 행에 검색어 포함 → 50행 매칭, selectivity ~1% → GIN 비용 유리
         seedBulkIssues(5000)
 
         val plan = explainQuery("로그인")
 
-        // (1) description trigram GIN 인덱스 (B1 수정 회귀 가드: coalesce 없이 lower(description))
+        // (1) summary trigram GIN 인덱스 (B1 수정 회귀 가드: lower(summary) LIKE)
+        assertThat(plan)
+            .describedAs("EXPLAIN 플랜에 idx_issues_summary_trgm 이 나타나야 한다")
+            .contains("idx_issues_summary_trgm")
+
+        // (2) description trigram GIN 인덱스 (B1 수정 회귀 가드: lower(description) LIKE)
         assertThat(plan)
             .describedAs("EXPLAIN 플랜에 idx_issues_description_trgm 이 나타나야 한다")
             .contains("idx_issues_description_trgm")
 
-        // (2) search_vector FTS GIN 인덱스
+        // (3) search_vector FTS GIN 인덱스
         assertThat(plan)
             .describedAs("EXPLAIN 플랜에 idx_issues_search_vector 이 나타나야 한다")
             .contains("idx_issues_search_vector")
