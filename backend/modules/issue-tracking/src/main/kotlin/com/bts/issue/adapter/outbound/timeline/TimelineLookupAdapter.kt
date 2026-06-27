@@ -108,22 +108,21 @@ class TimelineLookupAdapter(
 
         // 가시·동일프로젝트·날짜보유·미삭제 이슈 id → key 맵 구성.
         // id 집합이 보안 게이트를 통과했으므로, 집합 내 조회만으로 결과의 가시성이 보장된다.
+        // 빈 집합 short-circuit 은 IssueLinkRepository.findBlocksEdgesAmong 이 처리하므로
+        // 여기서 별도 isEmpty() 가드가 불필요하다.
         val idToKey = buildIdToKeyMap(timelinePage.entries)
-
-        if (idToKey.isEmpty()) {
-            return TimelineDepsPage(edges = emptyList(), truncated = timelinePage.truncated)
-        }
 
         val rows = repo.findBlocksEdgesAmong(idToKey.keys)
         val blocksTruncated = rows.size > IssueLinkRepository.DEPS_FETCH_LIMIT
         val kept = if (blocksTruncated) rows.take(IssueLinkRepository.DEPS_FETCH_LIMIT) else rows
 
-        val edges = kept.map { row ->
-            TimelineDepEdge(
-                blockerKey = idToKey.getValue(row.sourceId),
-                blockedKey = idToKey.getValue(row.targetId),
-            )
-        }
+        val edges =
+            kept.map { row ->
+                TimelineDepEdge(
+                    blockerKey = idToKey.getValue(row.sourceId),
+                    blockedKey = idToKey.getValue(row.targetId),
+                )
+            }
 
         return TimelineDepsPage(
             edges = edges,
