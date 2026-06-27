@@ -16,7 +16,7 @@ import { favoriteLabels } from '@/i18n/favorite-labels'
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface FavoriteButtonProps {
-  /** 즐겨찾기 대상 타입 (ISSUE / DASHBOARD / PROJECT) */
+  /** 즐겨찾기 대상 타입 (ISSUE / DASHBOARD / PROJECT / FILTER) */
   targetType: FavoriteTargetType
   /** 즐겨찾기 대상 id (이슈 키, 대시보드 id 등) */
   targetId: string

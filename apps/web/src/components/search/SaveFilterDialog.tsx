@@ -21,7 +21,7 @@ import { savedFilterLabels } from '@/i18n/saved-filter-labels'
 // ─────────────────────────────────────────────────────────────────────────────
 
 const formSchema = z.object({
-  name: z.string().min(1, '이름을 입력하세요').max(100, '이름은 100자 이하입니다'),
+  name: z.string().min(1, savedFilterLabels.nameRequired).max(100, savedFilterLabels.nameTooLong),
 })
 
 type FormValues = z.infer<typeof formSchema>
@@ -231,7 +231,6 @@ export interface SaveFilterDialogProps {
  * - SaveFilterForm을 `key`로 재마운트해 편집 대상 변경 시 stale state 방지
  * - 성공 시 onSaved 콜백 호출 + 다이얼로그 닫힘
  *
- * @see SaveFilterFormProps 인라인 라벨 CONCERN 참고
  */
 export const SaveFilterDialog = ({
   open,
@@ -243,9 +242,7 @@ export const SaveFilterDialog = ({
   onSaved,
   onConflict,
 }: SaveFilterDialogProps): JSX.Element => {
-  // 인라인 문자열 CONCERN: 다이얼로그 제목('필터 저장'/'필터 수정')은 savedFilterLabels에 미포함.
-  // saved-filter-labels.ts(허용 파일 아님)에 dialogTitleCreate/dialogTitleEdit 추가 필요.
-  const title = mode === 'create' ? '필터 저장' : '필터 수정'
+  const title = mode === 'create' ? savedFilterLabels.dialogTitleCreate : savedFilterLabels.dialogTitleEdit
   const formKey = filter?.id ?? 'new'
 
   return (

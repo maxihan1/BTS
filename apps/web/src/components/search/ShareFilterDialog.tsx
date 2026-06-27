@@ -149,7 +149,7 @@ export function ShareFilterDialog({ open, filter, onClose }: ShareFilterDialogPr
           </DialogPrimitive.Title>
 
           <div className="space-y-3">
-            {/* PROJECT 토글 — 이 프로젝트 멤버 (인라인 라벨: i18n 미정의 — CONCERN 참조) */}
+            {/* PROJECT 토글 — 이 프로젝트 멤버 */}
             <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
               <input
                 type="checkbox"
@@ -157,10 +157,10 @@ export function ShareFilterDialog({ open, filter, onClose }: ShareFilterDialogPr
                 checked={projectEnabled}
                 onChange={(e) => setProjectEnabled(e.target.checked)}
               />
-              {`이 프로젝트(${filter.projectKey}) 멤버에게`}
+              {savedFilterLabels.shareWithProjectMembers(filter.projectKey)}
             </label>
 
-            {/* AUTHENTICATED 토글 — 모든 로그인 사용자 (인라인 라벨: i18n 미정의 — CONCERN 참조) */}
+            {/* AUTHENTICATED 토글 — 모든 로그인 사용자 */}
             <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
               <input
                 type="checkbox"
@@ -168,7 +168,7 @@ export function ShareFilterDialog({ open, filter, onClose }: ShareFilterDialogPr
                 checked={authEnabled}
                 onChange={(e) => setAuthEnabled(e.target.checked)}
               />
-              모든 로그인 사용자에게
+              {savedFilterLabels.shareWithAuthenticated}
             </label>
           </div>
 

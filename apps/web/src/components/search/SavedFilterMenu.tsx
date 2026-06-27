@@ -26,6 +26,9 @@ import { SaveFilterDialog } from './SaveFilterDialog'
 import { ShareFilterDialog } from './ShareFilterDialog'
 import { savedFilterLabels } from '@/i18n/saved-filter-labels'
 
+/** 공유받은 필터 목록 페이지 크기 — spec FR-3/EC7: size=50 (21~50개 silent 누락 방지) */
+const SHARED_PAGE_SIZE = 50
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 순수 헬퍼 — SPA 경로 생성
 // ─────────────────────────────────────────────────────────────────────────────
@@ -177,8 +180,8 @@ export const SavedFilterMenu = (): JSX.Element => {
   })
 
   const { data: sharedFilters = [] } = useQuery({
-    queryKey: savedFiltersKey.shared(0, 20),
-    queryFn: () => fetchSharedFilters(0, 20),
+    queryKey: savedFiltersKey.shared(0, SHARED_PAGE_SIZE),
+    queryFn: () => fetchSharedFilters(0, SHARED_PAGE_SIZE),
     staleTime: 30_000,
   })
 

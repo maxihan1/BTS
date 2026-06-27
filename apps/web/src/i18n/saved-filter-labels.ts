@@ -96,6 +96,27 @@ export const savedFilterLabels = {
 
   /** 필터 행 공유 설정 버튼 (드롭다운 행용 — shareLabel은 다이얼로그 제목) */
   shareButton: '공유',
+
+  /** 저장 필터 다이얼로그 생성 모드 제목 */
+  dialogTitleCreate: '필터 저장',
+
+  /** 저장 필터 다이얼로그 편집 모드 제목 */
+  dialogTitleEdit: '필터 수정',
+
+  /** 이름 필수 입력 유효성 메시지 */
+  nameRequired: '이름을 입력하세요',
+
+  /** 이름 100자 이하 유효성 메시지 */
+  nameTooLong: '이름은 100자 이하입니다',
+
+  /** 공유 토글 — 모든 로그인 사용자 */
+  shareWithAuthenticated: '모든 로그인 사용자에게',
+
+  /**
+   * 공유 토글 — 이 프로젝트 멤버 (함수형 — projectKey를 인자로 받아 문자열 반환).
+   * ko.test 콜론 가드는 typeof value === 'string' 필터라 함수 타입은 검사 대상 아님.
+   */
+  shareWithProjectMembers: (projectKey: string): string => `이 프로젝트(${projectKey}) 멤버에게`,
 } as const
 
 /** savedFilterLabels const 추론 타입 */
