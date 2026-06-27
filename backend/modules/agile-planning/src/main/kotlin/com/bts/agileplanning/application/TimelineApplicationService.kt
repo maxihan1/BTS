@@ -1,10 +1,11 @@
-// 간트 차트 타임라인 조회 애플리케이션 서비스 — 권한 게이트·날짜 정렬 (FR-TL-01 Task 4)
+// 간트 차트 타임라인 조회 애플리케이션 서비스 — 권한 게이트·날짜 정렬·의존 엣지 정렬 (FR-TL-01/02 Task 4)
 
 package com.bts.agileplanning.application
 
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import com.bts.shared.timeline.TimelineDepEdge
 import com.bts.shared.timeline.TimelineItemView
 import com.bts.shared.timeline.TimelineLookupPort
 import org.slf4j.LoggerFactory
@@ -23,6 +24,22 @@ import java.util.UUID
  */
 data class TimelineResult(
     val items: List<TimelineItemView>,
+    val truncated: Boolean,
+)
+
+/**
+ * 타임라인 의존 엣지 조회 서비스 결과 VO.
+ *
+ * [TimelineApplicationService.getDeps] 가 반환하는 읽기 전용 값 객체.
+ * 간트 차트 오버레이에서 `blocks` 화살표를 렌더링하기 위해 사용한다(FR-TL-02).
+ *
+ * 정렬 기준 — blockerKey ASC → blockedKey ASC (결정적 순서, FR6).
+ *
+ * @property edges 정렬된 의존 엣지 목록.
+ * @property truncated 조회 건수가 LIMIT 를 초과해 엣지 일부가 누락됐으면 true.
+ */
+data class TimelineDepsResult(
+    val edges: List<TimelineDepEdge>,
     val truncated: Boolean,
 )
 
@@ -94,6 +111,44 @@ class TimelineApplicationService(
         )
 
         return TimelineResult(items = sorted, truncated = page.truncated)
+    }
+
+    /**
+     * 프로젝트의 `blocks` 의존 엣지를 결정적 순서로 정렬해 반환한다.
+     *
+     * [getTimeline] 과 동일한 BROWSE 게이트를 재사용한다(fail-closed 403).
+     * 새로운 권한 경로를 신설하지 않고 기존 게이트를 그대로 적용한다.
+     *
+     * 정렬 기준 — blockerKey ASC → blockedKey ASC (FR6 결정적 순서).
+     * 클라이언트가 동일한 요청에 항상 동일한 순서를 받도록 보장한다.
+     *
+     * @param actorId 조회 행위자 UUID.
+     * @param projectKey 조회할 프로젝트 키. 예: `"ATLAS"`.
+     * @return [TimelineDepsResult] — 정렬된 의존 엣지 목록 + truncated.
+     * @throws ResponseStatusException 403 — BROWSE 권한 미충족(fail-closed).
+     */
+    @Transactional(readOnly = true)
+    fun getDeps(
+        actorId: UUID,
+        projectKey: String,
+    ): TimelineDepsResult {
+        log.debug("타임라인 의존 엣지 조회 시작 — projectKey={}, actorId={}", projectKey, actorId)
+
+        if (!permissionResolver.hasPermission(actorId, IssuePermission.BROWSE, IssueScope.Project(projectKey))) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "접근 권한이 없습니다.")
+        }
+
+        val page = timelineLookupPort.listBlocksDepsByProject(projectKey, actorId)
+        val sorted = page.edges.sortedWith(compareBy({ it.blockerKey }, { it.blockedKey }))
+
+        log.debug(
+            "타임라인 의존 엣지 조회 완료 — projectKey={}, edges={}, truncated={}",
+            projectKey,
+            sorted.size,
+            page.truncated,
+        )
+
+        return TimelineDepsResult(edges = sorted, truncated = page.truncated)
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
