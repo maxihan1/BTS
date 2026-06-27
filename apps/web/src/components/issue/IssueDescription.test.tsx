@@ -1,4 +1,5 @@
-// IssueDescription 컴포넌트 단위 테스트 — Write/Preview 탭, 저장/취소 흐름 검증
+// IssueDescription 컴포넌트 단위 테스트 — Write/Preview 탭, 저장/취소 흐름, .mention 강조 검증
+import { readFileSync } from 'node:fs'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import type { ReactNode, JSX } from 'react'
@@ -393,5 +394,55 @@ describe('IssueDescription — 멘션 자동완성 배선', () => {
 
     // textarea 값 유지 확인
     expect(textarea).toHaveValue('@al')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// .mention 강조 스타일 검증 — FR-MN-01 D6 Task 2
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueDescription — .mention 강조 (FR-MN-01 D6)', () => {
+  /** 백엔드가 마크업한 멘션 span을 포함하는 샘플 HTML */
+  const mentionHtml = '<p><span class="mention">@alice</span> 확인</p>'
+  const props = {
+    descriptionHtml: mentionHtml,
+    description: '@alice 확인',
+    onSave: vi.fn(),
+    isSaving: false,
+  }
+
+  /**
+   * index.css 파일 내용을 직접 읽어 .mention 규칙 존재를 검증한다.
+   * jsdom은 CSS를 적용하지 않으므로 computed style 검증 대신 CSS 소스 검사를 사용한다.
+   * CSS 추가 전 RED, 추가 후 GREEN.
+   * process.cwd()는 vitest 실행 기준 디렉토리(apps/web)이다.
+   */
+  it('index.css에 .mention 강조 스타일 규칙이 정의되어 있다', () => {
+    const cssPath = `${process.cwd()}/src/index.css`
+    const css = readFileSync(cssPath, 'utf-8')
+    expect(css).toContain('.mention')
+  })
+
+  it('읽기 모드에서 .mention 클래스 요소가 prose 컨테이너 안에 존재한다', () => {
+    render(<IssueDescription {...props} />)
+    const container = screen.getByTestId('description-preview-content')
+    const mentionEl = container.querySelector('.mention')
+    expect(mentionEl).toBeInTheDocument()
+    expect(mentionEl?.textContent).toBe('@alice')
+  })
+
+  it('편집 모드 미리보기 탭에서도 .mention 요소가 prose 컨테이너 안에 존재한다', () => {
+    render(<IssueDescription {...props} />, { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
+    fireEvent.click(screen.getByRole('tab', { name: '미리보기' }))
+    // 편집 모드 미리보기 컨테이너(.prose)에서 .mention 요소 검색
+    const proseDivs = document.querySelectorAll('.prose')
+    let mentionEl: Element | null = null
+    for (const div of proseDivs) {
+      const el = div.querySelector('.mention')
+      if (el !== null) { mentionEl = el; break }
+    }
+    expect(mentionEl).toBeInTheDocument()
+    expect(mentionEl?.textContent).toBe('@alice')
   })
 })
