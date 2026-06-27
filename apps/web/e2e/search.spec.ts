@@ -252,6 +252,62 @@ test.describe('FR-SR-02 AQL 검색 페이지 (S1 정상 / S2 문법오류 / S4 0
   })
 
   // ─────────────────────────────────────────────────────────────────────────
+  // B4. text FTS — `text ~ "로그인"` 입력 시 text 가상 FTS 필드가
+  //              text-syntax-field로 강조되고 검색 실행 후 결과 목록 표시
+  //
+  // Given  alice 로그인 + /search 진입 (기본 시나리오 — 플래그 없음)
+  // When   textarea.fill('text ~ "로그인"') — FR-SR-04 text 가상 FTS 필드 쿼리
+  // Then   overlay에 span.text-syntax-field 존재 ('text' 필드 색상 클래스)
+  //        overlay에 span.text-syntax-string 존재 ('"로그인"' 문자열 색상 클래스)
+  //        overlay 텍스트에 '로그인' 포함
+  //        검색 실행 후 결과 목록 표시 — ATLAS-1 포함 (summary에 '로그인' 포함)
+  //        role=alert 없음 (정상 케이스)
+  //
+  // 검증 목적.
+  //   - 프론트 토크나이저에 'text' FIELD 등록 여부 (aql-tokenizer.ts AQL_FIELDS)
+  //   - UI가 text ~ 연산자를 포함한 쿼리를 에러 없이 처리하는지 실렌더로 검증
+  //   - MSW 기본 시나리오가 text 쿼리에 이슈를 반환하는지 확인
+  //
+  // MSW 처리 확인.
+  //   search-handlers.ts 기본 경로(시나리오 플래그 없음)가 DEFAULT_SEARCH_PAGE(3건)를
+  //   반환하므로 text 쿼리도 빈 배열을 반환하지 않는다. 가짜그린 없음.
+  // ─────────────────────────────────────────────────────────────────────────
+  test('B4 text FTS — text ~ "로그인" syntax highlight + 검색 실행 결과 표시', async ({ page }) => {
+    // Given. alice 로그인 + /search SPA 진입 (기본 시나리오, localStorage 플래그 없음)
+    await navigateToSearch(page)
+
+    // Given. 입력창 렌더 대기
+    const textarea = page.locator('textarea[placeholder*="AQL 쿼리를 입력하세요"]')
+    await expect(textarea).toBeVisible()
+
+    // When. text FTS 필드 쿼리 입력
+    await textarea.fill('text ~ "로그인"')
+
+    // Then. overlay에 'text' 토큰 → FIELD → span.text-syntax-field 실렌더
+    const overlay = page.locator('pre[aria-hidden="true"]')
+    await expect(overlay).toBeVisible()
+    await expect(overlay.locator('span.text-syntax-field').first()).toBeVisible()
+
+    // Then. '"로그인"' → STRING → span.text-syntax-string 실렌더
+    await expect(overlay.locator('span.text-syntax-string').first()).toBeVisible()
+
+    // Then. overlay 텍스트에 '로그인' 포함 확인 (한글 FTS 값 정상 표시)
+    await expect(overlay).toContainText('로그인')
+
+    // When. 검색 실행 (fillAndSearch: textarea.fill + 검색 버튼 클릭)
+    await fillAndSearch(page, 'text ~ "로그인"')
+
+    // Then. 결과 목록에 ATLAS-1 표시 (summary '로그인 버튼이 동작하지 않음' — FTS 매칭)
+    await expect(getResultCard(page, 'ATLAS-1')).toBeVisible()
+
+    // Then. 결과 목록 컨테이너 존재
+    await expect(page.getByRole('list', { name: '검색 결과' })).toBeVisible()
+
+    // Then. role=alert 없음 (정상 케이스 — 문법오류 없이 검색 완료)
+    await expect(page.getByRole('alert')).not.toBeVisible()
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────
   // B3. 한글 IME — `summary ~ "로그인"` 입력 시 overlay에 한글 정상 표시
   //
   // Given  alice 로그인 + /search 진입 (기본 시나리오 — 플래그 없음)
