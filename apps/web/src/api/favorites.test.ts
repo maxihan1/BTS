@@ -356,4 +356,8 @@ describe('FAVORITE_TARGET_TYPES — 상수', () => {
     expect(FAVORITE_TARGET_TYPES.DASHBOARD).toBe('DASHBOARD')
     expect(FAVORITE_TARGET_TYPES.PROJECT).toBe('PROJECT')
   })
+
+  it('T-UX-11b: FILTER를 포함한다', () => {
+    expect(FAVORITE_TARGET_TYPES.FILTER).toBe('FILTER')
+  })
 })
