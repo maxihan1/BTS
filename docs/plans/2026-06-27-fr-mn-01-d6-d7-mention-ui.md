@@ -138,4 +138,32 @@ FR-MN-01(본문/댓글 @멘션 + 즉시 알림)의 D1~D5(백엔드 발행)는 PR
 - 추가 검증: ktlint·detekt(backend) / typecheck·lint·vitest(frontend) / playwright(qa)
 - 동기화: product 문서 D6/D7 [x] 마킹 + `verify-master-plan.sh` 통과(머지 게이트).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+리뷰 방식. type=ui이나 디자인 표면이 `.mention` 인라인 강조 1종으로 극소이고 핵심 위험이 백엔드 보안(정화 allowlist)이라, 대화형 plan-design-review 대신 design+security+eng 집중 리뷰 직접 수행(메모리 `bts-review-plan-autoplan-overkill` 선례).
+
+### Design 리뷰 (2026-06-27)
+- ✅ DESIGN.md 원칙4 준수 — 유채색 토큰 신설 0, `primary` 텍스트 + `accent` 배경 조합.
+- ✅ 비대화형(EC11) — 커서 default, 밑줄 없음(링크 오인 방지).
+- ⚠️ CONCERN-D1 (보강). 인라인 흐름 보존 — prose 본문에서 span에 수직 padding을 주면 줄간격이 깨진다. **수직 padding 최소(0~1px), 좌우 약간(2~3px), border-radius 작게**로 인라인 흐름 유지. Task2 GREEN에 반영.
+- ⚠️ CONCERN-D2 (보강). 강조 가시성 — `accent`(거의 흰색)만으론 약하므로 텍스트는 `primary` 진하게 + `font-weight:500`로 대비 확보. 다크모드 토큰도 자동 반영(oklch 변수) 확인.
+- BLOCKER: 없음.
+
+### Security 리뷰 (2026-06-27)
+- ✅ `span[class]` `matching { it == "mention" }` 정확 일치 — 복합/임의 class 거부(EC8).
+- ✅ XSS 회귀 — raw span 입력 텍스트화(EC7), on*/style 미허용 불변.
+- ⚠️ CONCERN-S1 (보강). `allowAttributes("class")...onElements("span")`로 class 허용을 **span에 한정** — 기존 `code[class=language-*]` 정책과 독립 유지(다른 요소 class 누출 방지). Task1에 명시.
+- ⚠️ CONCERN-S2 (보강). `MentionNodeRenderer`는 username을 HTML escape. username은 `MENTION_PATTERN`상 `[A-Za-z0-9._-]` 한정이라 특수문자 불가하지만, 정화 2차 방어와 함께 방어적 escape. Task1 GREEN에 명시.
+- BLOCKER: 없음.
+
+### Eng 리뷰 (2026-06-27)
+- ✅ 멘션 정규식 단일 출처(`MentionParser` 공유) — drift 차단.
+- ✅ wave 구조(2 wave) 합리적, 파일 무겹침 병렬.
+- ⚠️ CONCERN-E1 (보강). flexmark `parse()`에서 `@` 매칭 실패 시 반드시 `false` 반환(`@`를 소비하지 않고 일반 텍스트로 흘림) — 이메일/단독 `@` 깨짐 방지. Task1 GREEN 명시됨, impl 강조.
+- ⚠️ CONCERN-E2 (보강). Task3 MSW의 멘션 마크업/멘션→Inbox 형식을 **백엔드 Task1 출력(span.mention)·기존 inbox 알림 형식과 일치** — MSW 계약 drift 가짜그린 회피(메모리 다수). Task3에 "백엔드 형식 미러" 명시.
+- BLOCKER: 없음.
+
+### 게이트1 재검토 항목 (Maxi 결정)
+- **결정3 — 실존 검증 안 함(형식 기반 강조)**. renderSafe 무상태 유지. @typo도 강조됨(알림은 발행측 실존검증). 옵션 A 선택 취지(정확/일관)와 맞물려 재검토 가능. 대안=renderSafe에 사용자 조회 결합(복잡).
+
+CONCERN 6건 모두 plan task에 반영(보강), BLOCKER 0. → 게이트1 진입.
