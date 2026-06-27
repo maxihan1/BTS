@@ -164,7 +164,8 @@ function DeleteConfirmSection({ isPending, onConfirm, onCancel }: DeleteConfirmS
  * - 소유 항목(isOwner=true): 편집·공유·삭제 액션 노출 (EC5)
  * - 공유받은 항목(isOwner=false): FavoriteButton만 노출
  * - 삭제는 인라인 확인 섹션을 통해 이중 확인
- * - mutation 성공 시 savedFiltersKey.all() 전체 invalidate
+ * - 모든 mutation 성공 시 savedFiltersKey.all() 접두사로 전체 invalidate
+ *   (단건 캐시 머지 대신 invalidate-only 방식 — mutation-setquerydata-partial-response-flicker 교훈)
  */
 export const SavedFilterMenu = (): JSX.Element => {
   const queryClient = useQueryClient()
@@ -185,11 +186,16 @@ export const SavedFilterMenu = (): JSX.Element => {
   const [shareFilter, setShareFilter] = useState<SavedFilterResponse | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
 
+  /** saved-filters 접두사 전체를 무효화한다 — 편집·삭제 성공 후 공통 호출 */
+  function invalidateAll(): void {
+    void queryClient.invalidateQueries({ queryKey: savedFiltersKey.all() })
+  }
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteFilter(id),
     onSuccess: () => {
       setDeleteConfirmId(null)
-      void queryClient.invalidateQueries({ queryKey: savedFiltersKey.all() })
+      invalidateAll()
     },
     onError: () => {
       toast.error(savedFilterLabels.deleteError)
@@ -263,7 +269,7 @@ export const SavedFilterMenu = (): JSX.Element => {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* 편집 다이얼로그 — 컴포넌트 외부에 포탈로 렌더 */}
+      {/* 편집 다이얼로그 — 드롭다운 외부 포탈로 렌더, invalidateAll은 저장 성공 후 공통 경로 사용 */}
       {editFilter !== null && (
         <SaveFilterDialog
           key={editFilter.id}
@@ -274,7 +280,7 @@ export const SavedFilterMenu = (): JSX.Element => {
           aqlQuery={editFilter.aqlQuery}
           projectKey={editFilter.projectKey}
           onSaved={() => {
-            void queryClient.invalidateQueries({ queryKey: savedFiltersKey.all() })
+            invalidateAll()
             setEditFilter(null)
           }}
         />
