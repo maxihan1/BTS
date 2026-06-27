@@ -274,3 +274,19 @@
     @apply font-sans;
   }
 }
+
+/* FR-MN-01: 멘션(@username) 강조 스타일
+ * - color: --primary(진한 텍스트) + font-weight:500 으로 대비 확보 (CONCERN-D2)
+ * - background-color: --accent(약한 배경) — oklch 변수라 다크모드 자동 반영
+ * - 수직 padding 최소(1px)로 prose 본문 인라인 줄간격 보존 (CONCERN-D1)
+ * - cursor:default + text-decoration:none 으로 링크 오인 방지 (EC11)
+ */
+.mention {
+  color: var(--primary);
+  background-color: var(--accent);
+  font-weight: 500;
+  padding: 1px 3px;
+  border-radius: 0.25rem;
+  cursor: default;
+  text-decoration: none;
+}
