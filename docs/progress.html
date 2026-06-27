@@ -182,9 +182,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
           <div><span class="dot dot-done"></span> 완료 <b>81</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>0</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>1</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>42</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>41</b></div>
         </div>
       </div>
     </div>
@@ -1138,9 +1138,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bar"><div class="bar-fill" style="width:25%"></div></div>
       <div class="status-grid">
         <div>✅ 완료 3</div>
-        <div>🔄 진행중 0</div>
+        <div>🔄 진행중 1</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 9</div>
+        <div>⬜ 대기 8</div>
       </div>
     </div>
     <h2>세부 기능 (12개)</h2>
@@ -1165,13 +1165,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc">필터 저장 및 공유</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — SavedFilter + SavedFilterShare/ShareType</li><li><span class="step-icon">✅</span> D2 — 명세 — 공유 권한 <span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span>OJECT</span>/GROUP/AUTHENTICATED + 가시성 4경로</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `saved_filters`(V600) + `saved_filter_shares`(V601)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — CRUD + 공유 임베드 + `/shared` API</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 가시성 매트릭스·403/404·<span class="term" data-def="&quot;미아 데이터와 꼬리자르기&quot; 부모 데이터가 지워질 때 자식 데이터도 싹 지울지(CASCADE), 아니면 엮인 자식이 있으면 아예 못 지우게 막을지(RESTRICT) 정하는 규칙입니다.">CASCADE</span>·parity 통합</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 필터 저장/공유 모달 + 별표(FILTER)</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-진행중">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">🔄</span>
         <span class="fr-id">FR-SR-04</span>
         <span class="fr-desc">한글 형태소 기반 전문 검색</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인</li><li><span class="step-icon">⬜</span> D2 — 명세 — Mecab-ko vs Lucene-Kr 비교 후 선택. PostgreSQL <span class="term" data-def="Full-Text Search. PostgreSQL tsvector 기반">FTS</span> 통합</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `tsvector` 컬럼 + <span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">GIN</span> <span class="term" data-def="&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">인덱스</span> + 한글 dictionary</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — <span class="term" data-def="&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">인덱스</span> 생성 <span class="term" data-def="Trigger. 자동화 룰의 발화 조건">트리거</span> + 검색 함수</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트 — 형태소 분리 케이스 30개</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — (§2.2와 통합 — 검색창 동일)</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인</li><li><span class="step-icon">✅</span> D2 — 명세 — **`simple` tsvector + pg_trgm 결정**(Mecab-ko/Lucene-Kr 미도입 — [<span class="term" data-def="&quot;기술 결정 일기장&quot; &quot;왜 A 대신 B 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.">ADR</span> docs/de<span class="term" data-def="&quot;자동화된 공장 컨베이어 벨트&quot; 코드를 수정하면 자동으로 테스트를 거쳐 이상이 없으면 실제 서비스되는 서버에 알아서 배포까지 해주는 자동화 시스템입니다.">ci</span>sions/2026-06-26-fr-sr-04-korean-<span class="term" data-def="Full-Text Search. PostgreSQL tsvector 기반">fts</span>.md](../decisions/2026-06-26-fr-sr-04-korean-fts.md)). <span class="term" data-def="Atlas Query Language. JQL 호환 검색 문법">AQL</span> `text` 가상 필드(`~` 전용). PostgreSQL FTS 통합</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>s.search_vector` STORED generated column(V032) + <span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">GIN</span> <span class="term" data-def="&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">인덱스</span> + description trigram 인덱스</li><li><span class="step-icon">✅</span> D4 — 백엔드 — <span class="term" data-def="Atlas Query Language. JQL 호환 검색 문법">AQL</span> `text` 분기(<span class="term" data-def="Full-Text Search. PostgreSQL tsvector 기반">FTS</span> + trigram 하이브리드) + 빈 검색어 결과 0 + `ORDER BY text` 거부 400</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 한글 <span class="term" data-def="Full-Text Search. PostgreSQL tsvector 기반">FTS</span>/trigram 케이스 30개(조사변형·부분문자열·혼용·다중토큰, 활용형 미매칭 명시 + 양성 대조군)</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — (§2.2와 통합 — 검색창 동일, `text` 키워드 syntax highlight 추가)</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
