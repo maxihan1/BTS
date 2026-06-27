@@ -21,7 +21,6 @@ const dataResponseSchema = <T>(innerSchema: z.ZodSchema<T>) =>
 /**
  * 즐겨찾기 대상 타입 상수.
  * 백엔드 FavoriteTargetType enum과 1:1 미러.
- * FILTER는 프론트엔드 미사용(백엔드 전용).
  */
 export const FAVORITE_TARGET_TYPES = {
   /** 이슈 즐겨찾기 */
@@ -30,6 +29,8 @@ export const FAVORITE_TARGET_TYPES = {
   DASHBOARD: 'DASHBOARD',
   /** 프로젝트 즐겨찾기 */
   PROJECT: 'PROJECT',
+  /** 저장 필터 즐겨찾기 — GET /api/v1/filters/{id} 비동기 이름 조회 */
+  FILTER: 'FILTER',
 } as const
 
 /** 즐겨찾기 대상 타입 유니온 */
