@@ -937,7 +937,8 @@ function applyDatePatch(
  *   - 이메일 형식의 @ — 앞에 단어문자(\w)가 있는 경우 (예: user@example.com)
  *   - 겹침 @ — 앞에 @가 있는 경우 (예: @@bob)
  *
- * 사용자명 패턴. [a-zA-Z0-9_.-]+ (백엔드 username 규칙)
+ * 사용자명 패턴. [A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])? — 영숫자 시작·끝
+ * (백엔드 MentionParser.MENTION_PATTERN 일치 — 후행 마침표 등 구두점 제외)
  *
  * @param text 원본 description 텍스트
  * @returns 중복 제거된 @뒤 사용자명 배열 (@ 기호 제외)
@@ -945,8 +946,8 @@ function applyDatePatch(
 function extractMentionedUsernames(text: string): string[] {
   // 코드스팬(`...`)을 제거해 내부 @ 를 보호
   const withoutCode = text.replace(/`[^`]*`/g, '')
-  // 이메일/겹침 @ 제외: 앞에 단어문자나 @ 가 없는 @ 만 매칭
-  const matches = withoutCode.matchAll(/(?<![\w@])@([a-zA-Z0-9_.-]+)/g)
+  // 이메일/겹침/선행구두점 @ 제외: 앞에 [A-Za-z0-9._@-] 가 없는 @ 만 매칭 (백엔드 MentionParser 동일)
+  const matches = withoutCode.matchAll(/(?<![A-Za-z0-9._@-])@([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)/g)
   return [...new Set([...matches].map((m) => m[1] as string))]
 }
 
@@ -966,14 +967,16 @@ function resolveActorUserIdFromRequest(request: Request): string | null {
   return AUTH_USERS[username]?.userId ?? null
 }
 
-
 /**
  * 코드스팬 이외의 텍스트에서 @멘션을 <span class="mention"> 으로 강조한다.
  * renderDescriptionHtml의 코드스팬 밖 세그먼트에 단독 적용한다.
+ *
+ * MSW 테스트더블이므로 백엔드 sanitization(XSS 이스케이프 등)을 의도적으로 미러하지 않음.
+ * 실 백엔드 MarkdownRenderer는 CommonMark 파서 기반으로 이스케이프를 처리한다.
  */
 function applyMentionHighlight(text: string): string {
   return text.replace(
-    /(?<![\w@])@([a-zA-Z0-9_.-]+)/g,
+    /(?<![A-Za-z0-9._@-])@([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)/g,
     '<span class="mention">@$1</span>',
   )
 }
@@ -1013,7 +1016,6 @@ function renderDescriptionHtml(description: string | null): string | null {
 
   return '<p>' + result + '</p>'
 }
-
 
 /**
  * 현재 이슈 상태 기준 가용전이 반환 helper.

@@ -239,6 +239,58 @@ test.describe('FR-MN-01 본문 @멘션 강조 + Inbox 도착 (D7)', () => {
     // 추가 검증: ISSUE_MENTIONED 이벤트 완전 부재
     const mentioned = bobItems.find((item) => item.eventType === 'ISSUE_MENTIONED')
     expect(mentioned).toBeUndefined()
+  })
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // S5: 후행 마침표 제외 — @bob. 에서 'bob' 만 추출
+  //
+  // Given  alice로 로그인, ATLAS-1 본문에 '@bob.' 저장
+  //        새 regex: [A-Za-z0-9] 종료 조건 → 마침표 앞 'bob' 만 캡처
+  //        (구 regex [a-zA-Z0-9_.-]+ 는 'bob.' 전체 캡처 → AUTH_USERS['bob.'] 없음 → 알림 누락)
+  // When   alice 세션 유지한 채 bob 토큰으로 GET /users/me/inbox 직접 호출
+  // Then   bob inbox에 ISSUE_MENTIONED 항목 존재 — 마침표를 제거하고 bob 이 올바르게 멘션됨
+  // ───────────────────────────────────────────────────────────────────────────
+  test('S5 후행 마침표 제외 — @bob. 에서 bob 추출, bob inbox에 알림 도착', async ({ page }) => {
+    // Given. alice로 로그인
+    await loginAsAlice(page)
+
+    // Given. ATLAS-1 이슈 본문에 '@bob.' (후행 마침표 포함) 저장
+    await page.goto(`/issues/${PATCH_ISSUE_KEY}`)
+    await editAndSaveDescription(page, '@bob.')
+
+    // When. alice 세션 유지 + bob 토큰으로 GET /users/me/inbox 직접 호출
+    const bobItems = await fetchBobInboxDirect(page)
+
+    // Then. bob의 inbox에 ISSUE_MENTIONED 항목 — 'bob' 이 올바르게 추출됨
+    const mentioned = bobItems.find(
+      (item) => item.eventType === 'ISSUE_MENTIONED' && item.issueKey === PATCH_ISSUE_KEY,
+    )
+    expect(mentioned).toBeDefined()
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // S6: 선행 구두점 차단 — foo.@bob / foo-@bob 은 멘션 아님
+  //
+  // Given  alice로 로그인, ATLAS-1 본문에 'foo.@bob foo-@bob' 저장
+  //        새 regex lookbehind: (?<![A-Za-z0-9._@-]) — . 과 - 가 앞에 있으면 비매칭
+  //        (구 regex (?<![\w@]) 는 . 과 - 를 lookbehind에서 누락 → 'bob' 잘못 추출 → 오알림)
+  // When   alice 세션 유지한 채 bob 토큰으로 GET /users/me/inbox 직접 호출
+  // Then   bob inbox 비어있음 — .@ / -@ 패턴은 백엔드 MentionParser와 동일하게 비매칭
+  // ───────────────────────────────────────────────────────────────────────────
+  test('S6 선행 구두점 차단 — foo.@bob / foo-@bob 은 멘션 아님, bob inbox 비어있음', async ({ page }) => {
+    // Given. alice로 로그인
+    await loginAsAlice(page)
+
+    // Given. ATLAS-1 본문에 선행 구두점이 있는 패턴 저장 (.@ 와 -@ 두 케이스 동시 검증)
+    await page.goto(`/issues/${PATCH_ISSUE_KEY}`)
+    await editAndSaveDescription(page, 'foo.@bob foo-@bob')
+
+    // When. alice 세션 유지 + bob 토큰으로 GET /users/me/inbox 직접 호출
+    const bobItems = await fetchBobInboxDirect(page)
+
+    // Then. bob의 inbox 비어있음 — .@ / -@ 는 멘션 아님
+    expect(bobItems).toHaveLength(0)
+    const mentioned = bobItems.find((item) => item.eventType === 'ISSUE_MENTIONED')
+    expect(mentioned).toBeUndefined()
   })
 })
