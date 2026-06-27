@@ -20,6 +20,14 @@ import { SaveFilterDialog } from '@/components/search/SaveFilterDialog'
 const DEFAULT_PROJECT_KEY = 'ATLAS'
 const PAGE_SIZE = 20
 
+/**
+ * filterId 로드 실패 시 표시할 toast 메시지.
+ *
+ * 에러 코드를 구분하지 않는다 — 404·400·500 등 **모든 에러**에 동일하게 적용한다 (N3).
+ * 특정 코드(예: 404)만 처리하면 미구현 에러 코드에서 토스트 없이 무한 로딩이 발생한다.
+ */
+const FILTER_LOAD_ERROR_MSG = '필터를 불러오지 못했습니다. 일반 검색으로 진행합니다.'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 에러 코드 → UI 메시지 매핑 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
@@ -464,7 +472,16 @@ export function SearchRouteAdapter(): JSX.Element {
   const [filterIdLoading, setFilterIdLoading] = useState(filterId !== undefined)
   const [saveDialogOpen, setSaveDialogOpen] = useState(false)
 
-  // filterId 딥링크 해소 effect — fetchFilter → navigate(q+projectKey, filterId 제거)
+  /**
+   * filterId 딥링크 해소 effect.
+   *
+   * **cleanup 보장** — `cancelled` 플래그로 언마운트 또는 연속 진입(filterId가 연속 변경)
+   * 시 이전 비동기 콜백의 setState/navigate 호출을 차단한다. strict mode 이중 실행에서도
+   * 두 번째 effect가 시작될 때 첫 번째 cleanup이 실행되어 stale 업데이트가 발생하지 않는다.
+   *
+   * **에러 일반화(N3)** — 모든 에러(404·400·500 등)를 catch에서 동일하게 처리한다.
+   * 에러 코드별 분기를 추가하면 미처리 코드에서 무한 로딩이 발생하므로 금지.
+   */
   useEffect(() => {
     if (filterId === undefined) {
       setFilterIdLoading(false)
@@ -482,11 +499,14 @@ export function SearchRouteAdapter(): JSX.Element {
           search: () => ({ q: filter.aqlQuery, projectKey: filter.projectKey, page: 0 }),
           replace: true,
         })
-        // filterIdLoading은 다음 effect 실행(filterId=undefined)에서 false로 전환된다
+        // filterIdLoading은 다음 effect 실행(filterId=undefined)에서 false로 전환된다.
+        // 성공 후 navigate → 라우터 URL 갱신 → 재렌더 → filterId=undefined → effect 재실행
+        // → setFilterIdLoading(false) 순서로 자동 해소.
       })
       .catch(() => {
+        // N3: 에러 코드 무관, 모든 에러에 동일 처리
         if (cancelled) return
-        toast.error('필터를 불러오지 못했습니다. 일반 검색으로 진행합니다.')
+        toast.error(FILTER_LOAD_ERROR_MSG)
         setFilterIdLoading(false)
       })
 
