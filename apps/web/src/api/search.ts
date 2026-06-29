@@ -1,6 +1,6 @@
-// search-export-import BC AQL 검색 API 클라이언트 — FR-SR-02 D6
+// search-export-import BC AQL 검색 + CSV/XLSX 내보내기 API 클라이언트 — FR-SR-02/FR-EX-01 D6
 import { z } from 'zod'
-import { apiPost } from './client'
+import { apiPost, apiFetch, ApiError } from './client'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 에러 코드 상수 — 백엔드 SearchErrorCode 열거값 정본
@@ -83,7 +83,69 @@ export interface SearchAqlParams {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// API 함수
+// 내보내기 파라미터 / 결과 인터페이스 (FR-EX-01)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** exportIssues 호출 파라미터 */
+export interface ExportIssuesParams {
+  /** 내보낼 이슈의 프로젝트 키 */
+  projectKey: string
+  /** AQL 쿼리 문자열 (최대 2000자) */
+  query: string
+  /** 파일 형식 — CSV(UTF-8 BOM) 또는 XLSX(Apache POI) */
+  format: 'CSV' | 'XLSX'
+  /** 내보낼 컬럼 토큰 목록 (미지정 시 전체 9컬럼) */
+  columns?: readonly string[]
+}
+
+/** exportIssues 반환값 */
+export interface ExportIssuesResult {
+  /** 내보내기 파일 Blob */
+  blob: Blob
+  /** Content-Disposition 헤더에서 파싱한 파일명 */
+  filename: string
+}
+
+/**
+ * POST /api/v1/search/export — AQL 검색 결과를 CSV 또는 XLSX로 내보낸다.
+ *
+ * `downloadAttachment` 패턴 복제: apiFetch → non-ok 시 ApiError throw → ok면 res.blob().
+ * CSRF / credentials / 401-refresh는 apiFetch가 자동 처리 (raw fetch 금지 — plan R:B4/C10).
+ * 파일명은 응답 Content-Disposition 헤더에서 파싱 (서버 생성 timestamp 포함 — plan R:devex-B2).
+ *
+ * @param params 내보내기 파라미터
+ * @returns { blob, filename }
+ * @throws ApiError 400(SEARCH_EXPORT_LIMIT_EXCEEDED / 문법오류 / 미지원컬럼),
+ *                   401(미인증), 403(권한없음)
+ */
+export async function exportIssues(params: ExportIssuesParams): Promise<ExportIssuesResult> {
+  const body: Record<string, unknown> = {
+    projectKey: params.projectKey,
+    query: params.query,
+    format: params.format,
+  }
+  if (params.columns !== undefined) {
+    // readonly string[] → string[] 변환 (백엔드 요청 직렬화용)
+    body['columns'] = Array.from(params.columns)
+  }
+
+  const res = await apiFetch('/api/v1/search/export', { method: 'POST', body })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+
+  // Content-Disposition: attachment; filename="ATLAS-issues-20260629T000000Z.csv"
+  const contentDisposition = res.headers.get('content-disposition') ?? ''
+  const filenameMatch = /filename="([^"]+)"/.exec(contentDisposition)
+  const filename = filenameMatch?.[1] ?? `export.${params.format.toLowerCase()}`
+
+  const blob = await res.blob()
+  return { blob, filename }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AQL 검색 함수
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**

@@ -1,0 +1,183 @@
+# FR-EX-01 필터 결과 CSV/XLSX Export — 스펙
+
+> FR: FR-EX-01 | BC: search-export-import | SDD §3.1 | 우선순위: 필수
+> 도메인 결정: ADR `docs/decisions/2026-06-29-fr-ex-01-csv-xlsx-export.md`
+> 선행: FR-SR-01(필터)·FR-SR-02(AQL) 완료. 후속: FR-EX-02(대용량 비동기)
+
+## 개요
+
+AQL 검색 결과를 CSV 또는 XLSX 파일로 **동기** 다운로드한다. 입력은 AQL 쿼리(FR-SR-02와 동일 파서),
+데이터 접근은 `IssueSearchPort` 재사용(검색의 BROWSE 권한 + visibility 보안 술어 그대로 상속).
+컬럼은 `IssueSearchHit` 9필드. 동기 상한 1만 행. issue-tracking·shared-kernel 무변경.
+
+## 사용자 시나리오 (Given-When-Then)
+
+### S1. CSV Export (정상)
+- **Given** /search 페이지에서 AQL 쿼리로 검색해 결과가 보이는 상태
+- **When** "Export" 버튼 → 다이얼로그에서 형식 CSV 선택 → 내보내기
+- **Then** 현재 AQL 쿼리의 전체 결과(검색 페이지네이션과 무관, 최대 1만 행)가 CSV로 다운로드된다. 한글이 Excel에서 깨지지 않는다(UTF-8 BOM).
+
+### S2. XLSX Export (정상)
+- **Given** S1과 동일
+- **When** 형식 XLSX 선택 → 내보내기
+- **Then** `.xlsx` 파일이 다운로드되고 Excel/Numbers/LibreOffice에서 정상 열린다. 헤더 행 + 데이터 행 구조.
+
+### S3. 컬럼 부분 선택
+- **Given** 다이얼로그에서 컬럼 체크박스(9개) 노출
+- **When** 일부만 체크(예: key, summary, currentStateKey) 후 내보내기
+- **Then** 선택한 컬럼만, 선택 순서(또는 고정 표준 순서)대로 출력된다. 미선택 시 전체 9컬럼.
+
+### S4. 빈 결과
+- **Given** 결과 0건인 AQL 쿼리
+- **When** 내보내기
+- **Then** 헤더 행만 있는 빈 파일이 정상 다운로드된다(에러 아님).
+
+### S5. 상한 초과
+- **Given** 결과가 1만 행을 초과하는 쿼리
+- **When** 내보내기
+- **Then** 명시적 에러(결과 수 + "대용량은 비동기 Export(FR-EX-02) 사용")로 거부되고 파일은 생성되지 않는다.
+
+### S6. 권한 없는 이슈 제외
+- **Given** viewer가 볼 수 없는 보안 등급 이슈가 쿼리 결과에 포함될 조건
+- **When** 내보내기
+- **Then** 검색과 동일하게 보안 술어가 적용되어 볼 수 없는 이슈는 파일에도 나오지 않는다. (export 전용 우회 없음)
+
+## 기능 요구사항 (FR)
+
+- **FR-1.** `POST /api/v1/exports`로 AQL 쿼리 기반 동기 export를 제공한다.
+- **FR-2.** 형식 CSV / XLSX 두 가지를 지원한다.
+- **FR-3.** CSV는 UTF-8 BOM(`EF BB BF`)을 선두에 붙여 Excel 한글 호환을 보장한다.
+- **FR-4.** CSV는 RFC 4180 이스케이프(쉼표/따옴표/개행 포함 셀은 `"`로 감싸고 내부 `"`는 `""`)를 적용한다.
+- **FR-5.** XLSX는 Apache POI로 생성한다(헤더 1행 + 데이터 N행, 단일 시트).
+- **FR-6.** 컬럼은 `IssueSearchHit` 9필드(key, summary, typeKey, currentStateKey, assigneeId, priority, priorityName, projectKey, updatedAt)에서 부분 선택 가능. 미지정 시 전체.
+- **FR-7.** 동기 export는 최대 1만 행. 초과 시 거부(FR-NFR/엣지 참조).
+- **FR-8.** 검색과 동일한 BROWSE 권한 + visibility 보안 술어를 `IssueSearchPort` 경유로 상속한다. export는 동일 포트를 동일 `viewerUserId`로 호출하므로 보안이 **구조적으로** 보장된다. **검증 분리(vacuous 회피 — 리뷰 B1)**: (a) 매핑층 — search 모듈 테스트는 "포트가 SecurityException → 403", "export가 검색과 동일 viewerUserId/AST로 포트 호출(slot capture)"만 검증. (b) 데이터 제외층(미가시 이슈 빠짐) — search 모듈에서 재증명하지 않고 FR-SR-02의 기존 실증 테스트(issue-tracking `IssueSearchAdapterTest` + 실DB visibility IT) 인용. (search 모듈은 issue-tracking gradle 의존이 없어 실 어댑터가 클래스패스에 없음 → mock 재증명은 가짜 그린.)
+- **FR-9.** AQL 문법 오류는 검색(`POST /api/v1/search/aql`)과 동일한 400 에러 계약으로 응답한다.
+- **FR-10.** 응답에 `Content-Disposition: attachment; filename="..."` + 적절한 `Content-Type`을 설정한다.
+
+## 비기능 요구사항 (NFR)
+
+- **NFR-1 (보안 — CSV Injection 방어).** 셀 값이 `=` `+` `-` `@` (및 탭/CR)로 시작하면 Excel/스프레드시트가 수식으로 해석한다(formula injection). 위험 시작 문자에 대해 앞에 작은따옴표(`'`) prefix를 붙여 무력화한다. CSV·XLSX 모두 적용.
+- **NFR-2 (성능).** 1만 행 export가 합리적 시간(목표 p95 < 5s) 내 완료. `IssueSearchPort` 페이지 순회 횟수 최소화.
+- **NFR-3 (메모리).** 1만 행 × 9컬럼은 일반 `XSSFWorkbook` 메모리 처리로 충분(스트리밍 SXSSF는 FR-EX-02 범위).
+- **NFR-4 (인코딩).** 모든 텍스트는 UTF-8. XLSX는 내부적으로 UTF-8(POI 기본).
+
+## API 인터페이스 (REST)
+
+### `POST /api/v1/search/export`
+
+> 엔드포인트 URL 확정(Maxi 2026-06-29): 검색 하위 네임스페이스(`POST /api/v1/search/aql`과 같은 계층). FR-EX-02 비동기는 `POST /api/v1/search/export-jobs`(202)로 진화.
+
+요청 바디(JSON).
+```json
+{
+  "projectKey": "PROJ",
+  "query": "status = open AND priority = 1 ORDER BY updated_at DESC",
+  "format": "CSV",
+  "columns": ["KEY", "SUMMARY", "STATUS"]
+}
+```
+- `projectKey` (필수, NotBlank, **영숫자+하이픈 패턴 검증** — 헤더 인젝션 방어) — 검색 대상 단일 프로젝트.
+- `query` (필수, NotBlank, max 2000) — AQL. FR-SR-02 파서와 동일.
+- `format` (**nullable String으로 수신 후 parse**) — `CSV` | `XLSX`. **미지정(null) 시 CSV 기본값**(관대한 API). 잘못된 값/오타 → 400 + 허용값 안내 메시지.
+- `columns` (선택) — **컬럼 토큰은 대문자 enum 이름**(`KEY`, `SUMMARY`, `TYPE`, `STATUS`, `ASSIGNEE_ID`, `PRIORITY`, `PRIORITY_NAME`, `PROJECT`, `UPDATED_AT`). 9필드 화이트리스트 부분집합. 빈 배열/미지정 시 전체 9컬럼. 미지원 필드명 포함 시 400. 출력 순서 = **표준 컬럼 순서 고정**(아래 표 순서, 요청 순서 무관 — 결정성).
+
+> **검증은 수동 병행.** SearchController 선례(`validateRequest()`)처럼 Hibernate Validator 부재 환경에서도 동작하도록 컨트롤러가 명시적 수동 검증을 한다(`@Valid`만 의존 금지 — false-green 회피). 검증 실패는 `SearchValidationException`(기존 400 + `SEARCH_VALIDATION_FAILED` 매핑) 경유.
+
+응답.
+- 200 — 파일 스트림(`ResponseEntity<ByteArray>`, `.contentType()` 동적 설정).
+  - CSV: `Content-Type: text/csv; charset=UTF-8`, body 선두 UTF-8 BOM.
+  - XLSX: `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.
+  - `Content-Disposition: attachment; filename="{sanitized-projectKey}-issues-{yyyyMMdd-HHmmss}.{csv|xlsx}"`. projectKey는 영숫자+하이픈만(인젝션 방어).
+- 400 — AQL 문법 오류 / 잘못된 format / 잘못된 columns / projectKey·query 누락 / **상한 초과**(`errorCode=SEARCH_EXPORT_LIMIT_EXCEEDED`). 모두 기존 ProblemDetail(RFC 7807) 봉투.
+- 403 — BROWSE 권한 없음(어댑터 SecurityException → 403 `SEARCH_ACCESS_DENIED`).
+
+**에러 봉투(기존 ProblemDetail 형식 준수 — devex/eng 리뷰 C2).** 신규 봉투 발명 금지. `problem()` 헬퍼 패턴 재사용.
+```json
+{
+  "type": "...", "title": "Export Limit Exceeded", "status": 400,
+  "detail": "결과가 {resultCount}건으로 최대 {limit}건을 초과합니다. 대용량 내보내기(비동기)는 추후 제공됩니다.",
+  "errorCode": "SEARCH_EXPORT_LIMIT_EXCEEDED", "timestamp": "...",
+  "resultCount": 12345, "limit": 10000
+}
+```
+- 사람 메시지는 `detail`(검색 봉투와 동형, `message` 아님). `resultCount`/`limit`은 `setProperty`. **사용자 메시지에 'FR-EX-02' 내부 코드 노출 금지**(자연어).
+
+**에러 핸들러 — 별도 `ExportExceptionHandler` 신설(BLOCKER 해소).** 기존 `SearchExceptionHandler`는 `@RestControllerAdvice(assignableTypes=[SearchController])`로 한정되어 ExportController에 적용 안 됨. ExportController 전용 핸들러를 신설해 limit(400)·AQL syntax(400)·SecurityException(403)·ResponseStatusException(401)·validation(400)을 모두 매핑(`SearchErrorCodes` 상수 + `problem()` 패턴 재사용). 코드 prefix는 `SEARCH_`(같은 BC, §6 규칙) 유지.
+
+**컬럼 헤더 라벨(확정 — 영문 표준 라벨, Maxi 2026-06-29).**
+
+| 필드 | 헤더 라벨 |
+|---|---|
+| key | Key |
+| summary | Summary |
+| typeKey | Type |
+| currentStateKey | Status |
+| assigneeId | Assignee ID |
+| priority | Priority |
+| priorityName | Priority Name |
+| projectKey | Project |
+| updatedAt | Updated At |
+
+> assigneeId는 UUID 그대로(이름 해석은 후속). 헤더 라벨이 "Assignee ID"로 그 사실을 명확히 한다.
+
+**정렬.** AQL `ORDER BY`가 있으면 export 행 순서에 그대로 반영된다(`IssueSearchQuery.sort` 경유). 없으면 포트 기본 순서.
+
+## 데이터 모델 변경
+
+- **없음.** 동기 export는 영속 상태가 불필요(D3 "활용"). 신규 테이블/마이그레이션 0. export_jobs는 FR-EX-02.
+
+## 엣지 케이스
+
+| # | 케이스 | 처리 |
+|---|---|---|
+| E1 | 결과 0건 | 헤더만 있는 빈 파일 200 |
+| E2 | 결과 = 정확히 1만 행 | 정상 export(상한 포함 허용) |
+| E3 | 결과 > 1만 행 | 거부(상한 초과 에러). 부분 export 안 함 |
+| E4 | AQL 문법 오류 | 400(검색과 동일 SearchSyntaxException 경로) |
+| E5 | BROWSE 권한 없음 | 403 |
+| E6 | format 미지정(null) | CSV 기본값으로 200(관대한 API). 오타는 E16 |
+| E7 | columns에 미지원 필드 | 400(화이트리스트 검증) |
+| E8 | assigneeId = null(미배정) | 빈 셀 |
+| E9 | summary에 쉼표/따옴표/개행 | CSV RFC 4180 이스케이프, XLSX는 셀 문자열 그대로 |
+| E10 | summary에 한글 | UTF-8 BOM(CSV)·POI UTF-8(XLSX)로 정상 |
+| E11 | summary가 `=SUM(...)` 등 수식 시작 | NFR-1 formula injection 방어(`'` prefix) |
+| E12 | priority 등 숫자 컬럼 | CSV·XLSX 모두 문자열 셀(일관성 + injection 안전). XLSX 숫자 정렬은 trade-off로 수용 |
+| E13 | updatedAt(Instant) | ISO-8601 UTC 문자열(검색 응답과 동일 직렬화) |
+| E14 | projectKey에 CRLF/따옴표 | 영숫자+하이픈 패턴 검증 → 400(헤더 인젝션 방어, IssueController PDF 선례 동형) |
+| E15 | 정확히 1만 행 | 통과(상한 포함). 1만 1행 → 거부(경계 쌍 테스트) |
+| E16 | 잘못된 format("PDF") | 400 + "format은 CSV 또는 XLSX여야 합니다"(허용값 노출) |
+
+## 제약 조건
+
+- **C1.** search-export-import 모듈 내부 구현. issue-tracking·shared-kernel 변경 0.
+- **C2.** `IssueSearchPort`/`IssueSearchHit` 무변경 재사용(컬럼 9필드 고정).
+- **C3.** 새 외부 의존성은 `org.apache.poi:poi-ooxml`만(Maxi 승인 완료). CSV는 zero-dep.
+- **C4.** export는 검색의 보안 불변식을 우회하지 않는다(전용 쿼리 경로 금지).
+- **C5.** 단일 프로젝트 스코프(MVP) — cross-project export는 범위 외.
+- **C6 (일관성 — best-effort).** 포트 무변경(도메인 결정)이라 1만 행을 페이지 순회로 수집하는 동안 single transaction snapshot이 보장되지 않는다. 순회 중 동시 이슈 추가/삭제 시 중복/누락 가능. 1만 행 이하 단시간 순회라 실무 영향 미미 → best-effort 스냅샷으로 허용. (강한 일관성은 FR-EX-02 비동기에서 재검토.)
+- **C7 (상한 감지 — count-first).** 첫 페이지 수집 시 `IssueSearchPage.total`로 결과 수를 먼저 확인해 1만 행 초과면 즉시 거부(불필요한 100페이지 순회 회피). 통과 시에만 전체 순회.
+- **C8 (시각 — Clock 주입).** 파일명 timestamp는 `Clock` 주입으로 생성(테스트 결정성, 메모리 학습 — 시각 의존 로직 Clock 주입). UTC 기준.
+
+## 측정 가능한 완료 기준
+
+- [ ] `POST /api/v1/exports` CSV/XLSX 둘 다 200 다운로드(통합 테스트).
+- [ ] CSV 선두 바이트 `EF BB BF` 검증(바이트 단언).
+- [ ] CSV RFC 4180 이스케이프 검증(쉼표/따옴표/개행 셀).
+- [ ] XLSX를 POI로 다시 읽어 헤더 + 셀 값 검증(round-trip).
+- [ ] formula injection 셀(`=`,`+`,`-`,`@`)에 `'` prefix 적용 검증(CSV·XLSX).
+- [ ] 컬럼 부분 선택 시 해당 컬럼만 출력 검증.
+- [ ] 빈 결과 → 헤더만 파일 검증.
+- [ ] 1만 행 초과 → 거부 검증.
+- [ ] BROWSE 권한 없음 → 403, 미가시 이슈 제외 검증(보안 술어 상속).
+- [ ] AQL 문법 오류 → 400.
+- [ ] D6: /search 페이지 Export 다이얼로그(형식·컬럼 선택) + 다운로드 동작.
+- [ ] D7: E2E — CSV export happy path + 형식 전환.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration — self-sanity-check). 발견 gap 3건 해소.
+- **G1 (상한 초과 HTTP 코드)** → 400 + `errorCode=EXPORT_LIMIT_EXCEEDED`(BTS 에러 봉투 관례)로 확정.
+- **G2 (컬럼 헤더 라벨)** → Maxi 결정: 영문 표준 라벨(Key, Summary, ...) 확정.
+- **G3 (페이지 순회 일관성)** → C6 best-effort 스냅샷 + C7 count-first 명시.
+- 추가 보강: C8 Clock 주입(파일명 timestamp 결정성), NFR-1 formula injection은 security 관점 codereview 점검 대상으로 표기.

@@ -1,4 +1,4 @@
-// AQL 검색 MSW 핸들러 — POST /api/v1/search/aql 시나리오 (FR-SR-02 D6 Task-3)
+// AQL 검색 + CSV/XLSX 내보내기 MSW 핸들러 — search-export-import BC (FR-SR-02/FR-EX-01 D6)
 import { http, HttpResponse } from 'msw'
 import { DEFAULT_SEARCH_PAGE, EMPTY_SEARCH_PAGE } from './search-fixtures'
 
@@ -153,5 +153,99 @@ export const searchRefreshFailHandler = http.post('/api/v1/auth/refresh', () =>
   HttpResponse.json({ error: 'invalid_grant' }, { status: 401 }),
 )
 
+// ─────────────────────────────────────────────────────────────────────────────
+// E2E 시나리오 토글 키 — export
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * E2E 테스트 전용 localStorage 플래그 키 — export 시나리오 전환.
+ *
+ * - 'limit-exceeded': SEARCH_EXPORT_LIMIT_EXCEEDED 400 반환
+ * - 그 외(또는 미설정): 정상 CSV 반환
+ */
+export const E2E_EXPORT_SCENARIO_KEY = '__bts_e2e_export_scenario'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/search/export
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 최소 CSV 바이트 — UTF-8 BOM 포함 헤더 + 샘플 1행 */
+const MINIMAL_CSV_BYTES = new TextEncoder().encode(
+  '﻿Key,Summary,Type,Status,Assignee ID,Priority,Priority Name,Project,Updated At\r\n' +
+    'ATLAS-1,Test issue,bug,open,,3,Medium,ATLAS,2026-06-29T00:00:00Z\r\n',
+)
+
+/**
+ * POST /api/v1/search/export — 이슈 내보내기 메인 핸들러.
+ *
+ * format 파라미터를 읽어 Content-Type을 동적으로 설정한다.
+ * E2E 시나리오 플래그에 따라 상한초과 에러를 시뮬레이션할 수 있다.
+ */
+const exportIssuesHandler = http.post('/api/v1/search/export', async ({ request }) => {
+  // Node.js(MSW Node) 환경에서는 localStorage 없음 — 브라우저(E2E) 환경에서만 시나리오 전환
+  const scenario: string | null =
+    typeof localStorage !== 'undefined'
+      ? localStorage.getItem(E2E_EXPORT_SCENARIO_KEY)
+      : null
+
+  if (scenario === 'limit-exceeded') {
+    return HttpResponse.json(
+      {
+        errorCode: 'SEARCH_EXPORT_LIMIT_EXCEEDED',
+        detail: '내보내기 한도(10,000건)를 초과했습니다. 쿼리를 좁혀 다시 시도하세요.',
+        resultCount: 15000,
+        limit: 10000,
+        status: 400,
+      },
+      { status: 400 },
+    )
+  }
+
+  const rawBody: unknown = await request.json().catch(() => ({}))
+  const format =
+    rawBody !== null &&
+    typeof rawBody === 'object' &&
+    'format' in rawBody &&
+    typeof (rawBody as Record<string, unknown>)['format'] === 'string'
+      ? ((rawBody as Record<string, string>)['format'])
+      : 'CSV'
+
+  if (format === 'XLSX') {
+    // 최소 XLSX 매직 바이트 (PK\x03\x04 = ZIP local file header)
+    return new HttpResponse(new Uint8Array([0x50, 0x4b, 0x03, 0x04]), {
+      headers: {
+        'Content-Type':
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': 'attachment; filename="ATLAS-issues-20260629T000000Z.xlsx"',
+      },
+    })
+  }
+
+  // 기본: CSV 응답
+  return new HttpResponse(MINIMAL_CSV_BYTES, {
+    headers: {
+      'Content-Type': 'text/csv; charset=UTF-8',
+      'Content-Disposition': 'attachment; filename="ATLAS-issues-20260629T000000Z.csv"',
+    },
+  })
+})
+
+/**
+ * POST /api/v1/search/export 상한초과 핸들러 (unit test override용).
+ * 항상 SEARCH_EXPORT_LIMIT_EXCEEDED 400을 반환한다.
+ */
+export const exportLimitExceededOverrideHandler = http.post('/api/v1/search/export', () =>
+  HttpResponse.json(
+    {
+      errorCode: 'SEARCH_EXPORT_LIMIT_EXCEEDED',
+      detail: '내보내기 한도(10,000건)를 초과했습니다.',
+      resultCount: 15000,
+      limit: 10000,
+      status: 400,
+    },
+    { status: 400 },
+  ),
+)
+
 /** search-export-import BC MSW 핸들러 배열 */
-export const searchHandlers = [searchAqlHandler]
+export const searchHandlers = [searchAqlHandler, exportIssuesHandler]
