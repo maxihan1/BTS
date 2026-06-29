@@ -150,8 +150,8 @@
 - [x] D3. 데이터 모델 — (issue_links 활용, 마이그레이션 0) (책임. backend-engineer) (PR #200)
 - [x] D4. 백엔드 — `GET /api/v1/timeline/deps` (책임. backend-engineer) (PR #200)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer) (PR #200)
-- [ ] D6. 프론트 UI — 의존 라인 SVG 오버레이 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 의존 라인 SVG 오버레이 (책임. designer → frontend-engineer) (PR #201)
+- [x] D7. E2E (책임. qa-engineer) (PR #201)
 
 > **Deviation(PR #200 — FR-TL-02 백엔드 D1~D5)**. ① 범위 **백엔드 우선**(D1~D5) — 프론트 의존 라인 SVG 오버레이(D6/D7)는 후속 PR(FR-TL-01 #192/#194 선례, 총 11 task로 분할 임계 초과). ② 엔드포인트 = **agile-planning** `GET /api/v1/timeline/deps?project=`(타임라인 소유자), shared-kernel `TimelineLookupPort.listBlocksDepsByProject` default 확장, issue-tracking `TimelineLookupAdapter` 구현(ADR `2026-06-28-timeline-deps-blocks-overlay.md`). FR-LK-02 그래프(`/issues/{key}/graph`, 단일중심·전체타입·mermaid)는 목적·BC·시각화 달라 재사용 안 함. ③ **누출 차단** = 단일 self-join 대신 기존 `listVisibleForTimeline` 가시 집합(최신 500 윈도우) 재사용 후 그 id 집합 내 BLOCKS만 조회 — 양끝 가시성 자동 보장(새 보안 판정 경로 0, FR-NT-03 BLOCKER 정신). deps가 타임라인과 동일 윈도우에 결합돼 렌더 가능한 엣지만 반환. ④ **마이그레이션 0** — `issue_links`(V021) 재사용, `uq_issue_links` Index Only Scan(EXPLAIN 확인). ⑤ D3 책임 db-engineer→backend-engineer(마이그 0이라 스키마 변경 없음). ⑥ 검증 = 3모듈 test+ktlint+detekt+ArchUnit BC격리 green(--rerun-tasks), S4/S5 positive control(vacuous 차단), linkRepository non-null(fail-open 제거). 적대 리뷰 INVESTIGATE-1(spec self-join↔구현 집합재사용 drift)은 코드 무변경+spec/ADR 동기화로 해소.
 
