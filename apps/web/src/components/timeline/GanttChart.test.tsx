@@ -450,6 +450,56 @@ describe('GanttChart — C-2 overlayWidth +1일 클리핑 보정', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// C5. 의존선 줌 정합 회귀 가드 (FR-TL-03 C5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GanttChart — C5 의존선 줌 정합 회귀 가드', () => {
+  /**
+   * 줌 레벨 변경 시 의존선 X좌표가 새 dayWidth에 비례하는지 수치로 단언한다.
+   *
+   * 구조적으로는 안전(GanttChart가 단일 dayWidth 공유)하지만,
+   * 향후 GanttChart에서 dayWidth 전달 경로 한쪽이 누락되면 이 테스트가 실패한다.
+   *
+   * 검증 방법:
+   * - ATLAS-1 blocks ATLAS-2 의존 라인의 path `d` 속성에서 endX를 파싱.
+   *   path format: "M startX,startY H midX V endY H endX"
+   * - endX = ATLAS-2 barX = daysBetweenUtc(rangeStart, ATLAS-2.startDate) × dayWidth
+   *   = 4일 × dayWidth (ATLAS-2.startDate='2026-07-05', range='2026-07-01')
+   * - month(dayWidth=20): endX = 4 × 20 = 80
+   * - quarter(dayWidth=6):  endX = 4 × 6  = 24
+   * - 24 < 80 → vacuous 방지: 실제 수치로 quarter < month 단언.
+   */
+  it('C5: quarter 줌의 의존선 endX가 month 줌보다 작다 (dayWidth 비례 정합)', () => {
+    const deps: DependencyEdge[] = [{ blockerKey: 'ATLAS-1', blockedKey: 'ATLAS-2' }]
+
+    /** path `d` 속성에서 마지막 H 명령의 X값을 추출한다. */
+    function parseEndX(d: string): number {
+      const match = /H (\d+(?:\.\d+)?)$/.exec(d)
+      return match?.[1] !== undefined ? parseFloat(match[1]) : -1
+    }
+
+    // month 줌 렌더 → endX 추출
+    const { unmount } = renderChart({ zoomLevel: 'month', deps })
+    const monthPath = document.querySelector('path[aria-label="ATLAS-1가 ATLAS-2을 차단"]')
+    expect(monthPath).toBeInTheDocument()
+    const monthEndX = parseEndX(monthPath?.getAttribute('d') ?? '')
+    unmount()
+
+    // quarter 줌 렌더 → endX 추출
+    renderChart({ zoomLevel: 'quarter', deps })
+    const quarterPath = document.querySelector('path[aria-label="ATLAS-1가 ATLAS-2을 차단"]')
+    expect(quarterPath).toBeInTheDocument()
+    const quarterEndX = parseEndX(quarterPath?.getAttribute('d') ?? '')
+
+    // 두 값 모두 유효해야 한다 (parse 실패 시 -1 → 여기서 잡힘)
+    expect(monthEndX).toBeGreaterThan(0)
+    expect(quarterEndX).toBeGreaterThan(0)
+    // quarter는 dayWidth가 작으므로 endX도 작아야 한다
+    expect(quarterEndX).toBeLessThan(monthEndX)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // S8. Task 6 — zoomLevel prop 배선 (FR-TL-03)
 // ─────────────────────────────────────────────────────────────────────────────
 
