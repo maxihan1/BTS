@@ -12,6 +12,7 @@ import { AqlHighlighter } from '@/components/search/AqlHighlighter'
 import { Button } from '@/components/ui/button'
 import { SavedFilterMenu } from '@/components/search/SavedFilterMenu'
 import { SaveFilterDialog } from '@/components/search/SaveFilterDialog'
+import { ExportDialog } from '@/components/search/ExportDialog'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -471,6 +472,7 @@ export function SearchRouteAdapter(): JSX.Element {
   // filterId 로딩 중 여부 — true이면 SearchPage 대신 로딩 안내를 표시한다
   const [filterIdLoading, setFilterIdLoading] = useState(filterId !== undefined)
   const [saveDialogOpen, setSaveDialogOpen] = useState(false)
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
 
   /**
    * filterId 딥링크 해소 effect.
@@ -547,7 +549,7 @@ export function SearchRouteAdapter(): JSX.Element {
 
   return (
     <>
-      {/* 툴바 — SavedFilterMenu + 저장 버튼 (C2: adapter 레벨 마운트, SearchPage 비의존 설계 보존) */}
+      {/* 툴바 — SavedFilterMenu + 저장 버튼 + 내보내기 버튼 (C2: adapter 레벨 마운트, SearchPage 비의존 설계 보존) */}
       <div className="flex items-center justify-end gap-2 px-4 pt-4 sm:px-6 lg:px-8">
         <SavedFilterMenu />
         <Button
@@ -559,6 +561,16 @@ export function SearchRouteAdapter(): JSX.Element {
           aria-label="현재 검색 저장"
         >
           저장
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={q.trim().length === 0}
+          onClick={() => { setExportDialogOpen(true) }}
+          aria-label="검색 결과 내보내기"
+        >
+          내보내기
         </Button>
       </div>
 
@@ -586,6 +598,14 @@ export function SearchRouteAdapter(): JSX.Element {
         mode="create"
         aqlQuery={q}
         projectKey={projectKey}
+      />
+
+      {/* 내보내기 다이얼로그 — adapter 레벨 포탈 (FR-EX-01 D6) */}
+      <ExportDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        projectKey={projectKey}
+        query={q}
       />
     </>
   )
