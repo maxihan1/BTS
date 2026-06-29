@@ -115,12 +115,12 @@ class ExportJobWorker(
                 return
             }
 
-            val job = exportRepo.findById(jobId)
-            if (job == null) {
-                log.error("export_worker_job_not_found_after_claim msgId={} exportJobId={}", msgId, jobId.value)
-                handlePoison(msgId, readCt, jobId)
-                return
-            }
+            // claimForRun 성공 후 findById null 은 이론상 불가 — error() 로 변환해 at-least-once 재전달
+            val job =
+                exportRepo.findById(jobId)
+                    ?: error(
+                        "export_worker: job not found after successful claim msgId=$msgId exportJobId=${jobId.value}",
+                    )
 
             processor.process(job)
             deleteMessage(msgId)
