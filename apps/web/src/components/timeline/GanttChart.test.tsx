@@ -1,7 +1,8 @@
-// GanttChart 컴포넌트 단위 테스트 — 그룹 렌더·접기/펼치기·마일스톤·콜백·담당자 표시 (FR-TL-01 D6)
+// GanttChart 컴포넌트 단위 테스트 — 그룹 렌더·접기/펼치기·마일스톤·콜백·담당자 표시·deps 오버레이 (FR-TL-01 D6, FR-TL-02 D6)
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import type { TimelineItem } from '@/api/timeline'
+import type { DependencyEdge } from '@/lib/timeline-layout'
 import { GanttChart } from './GanttChart'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,12 +57,14 @@ function renderChart(overrides?: {
   items?: TimelineItem[]
   assigneeNames?: Map<string, string>
   onSelectIssue?: (key: string) => void
+  deps?: DependencyEdge[]
 }) {
   return render(
     <GanttChart
       items={overrides?.items ?? defaultItems}
       assigneeNames={overrides?.assigneeNames ?? defaultAssigneeNames}
       onSelectIssue={overrides?.onSelectIssue ?? vi.fn()}
+      deps={overrides?.deps}
     />,
   )
 }
@@ -239,5 +242,80 @@ describe('GanttChart — S6 담당자 표시 (EC11)', () => {
     renderChart({ assigneeNames })
     const fallbacks = screen.getAllByText('알 수 없음')
     expect(fallbacks.length).toBeGreaterThan(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S7. deps 오버레이 통합 (FR-TL-02 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GanttChart — S7 deps 오버레이 (FR-TL-02 D6)', () => {
+  /**
+   * S7a. positive control: deps 주입 → DependencyOverlay 라인 path가 렌더된다.
+   * vacuous 차단: negative control(S7b)과 공존.
+   */
+  it('S7a: deps 주입 시 DependencyOverlay 라인 path가 DOM에 존재한다 (positive control)', () => {
+    // ATLAS-1 blocks ATLAS-2 — 두 행 모두 visible
+    renderChart({
+      deps: [{ blockerKey: 'ATLAS-1', blockedKey: 'ATLAS-2' }],
+    })
+    // DependencyOverlay가 렌더한 visible path(aria-label 있음)가 DOM에 있어야 한다
+    expect(
+      document.querySelector('path[aria-label="ATLAS-1가 ATLAS-2을 차단"]'),
+    ).toBeInTheDocument()
+  })
+
+  /**
+   * S7b. negative control: 에픽 그룹 접기 → 접힌 자식으로의 라인이 제외된다.
+   * flattenVisibleRows 단일 출처 검증 (S4/EC1).
+   */
+  it('S7b: 에픽 그룹 접기 시 접힌 자식으로의 라인이 제외된다 (negative — flattenVisibleRows 단일 출처)', () => {
+    // ATLAS-3 → ATLAS-2 (ATLAS-2는 ATLAS-1 에픽 그룹의 자식)
+    renderChart({
+      deps: [{ blockerKey: 'ATLAS-3', blockedKey: 'ATLAS-2' }],
+    })
+
+    // 접기 전: ATLAS-2 visible → 라인 존재
+    expect(
+      document.querySelector('path[aria-label="ATLAS-3가 ATLAS-2을 차단"]'),
+    ).toBeInTheDocument()
+
+    // 에픽 그룹(ATLAS-1) 접기 → ATLAS-2 비가시
+    const toggleBtn = screen.getByRole('button', { name: /접기/ })
+    fireEvent.click(toggleBtn)
+
+    // 접힌 후: 라인 제외 (flattenVisibleRows 단일 출처 검증)
+    expect(
+      document.querySelector('path[aria-label="ATLAS-3가 ATLAS-2을 차단"]'),
+    ).not.toBeInTheDocument()
+  })
+
+  /** S7c. deps 미주입 → 라인 0개 (무회귀) */
+  it('S7c: deps 미주입 → 라인 0개 (무회귀)', () => {
+    renderChart()
+    expect(document.querySelector('path[aria-label*="을 차단"]')).not.toBeInTheDocument()
+  })
+
+  /** S7d. deps 빈 배열 → 라인 0개 (무회귀) */
+  it('S7d: deps 빈 배열 → 라인 0개 (무회귀)', () => {
+    renderChart({ deps: [] })
+    expect(document.querySelector('path[aria-label*="을 차단"]')).not.toBeInTheDocument()
+  })
+
+  /**
+   * S7e. deps 주입 시 막대 클릭이 여전히 onSelectIssue를 호출한다.
+   * jsdom은 pointer-events CSS를 강제하지 않으므로 단위 테스트에서 통과.
+   * 실 브라우저 동작은 E2E(T6) qa-engineer가 검증.
+   */
+  it('S7e: deps 주입 시 막대 클릭이 여전히 onSelectIssue를 호출한다', () => {
+    const onSelectIssue = vi.fn()
+    renderChart({
+      onSelectIssue,
+      deps: [{ blockerKey: 'ATLAS-1', blockedKey: 'ATLAS-2' }],
+    })
+    // epicItem 막대 버튼 — TimelineRow가 우측 영역에 렌더 (aria-label: "KEY start ~ due")
+    const barBtn = screen.getByRole('button', { name: 'ATLAS-1 2026-07-01 ~ 2026-07-31' })
+    fireEvent.click(barBtn)
+    expect(onSelectIssue).toHaveBeenCalledWith('ATLAS-1')
   })
 })
