@@ -16,6 +16,15 @@ const MS_PER_DAY = 86_400_000
 /** 축 헤더 행 높이(px) — 월 눈금 행 + 주 눈금 행 */
 const AXIS_ROW_HEIGHT_PX = 24
 
+/**
+ * 축 헤더 전체 높이(px) — 월 눈금 행 + 주 눈금 행 합계.
+ *
+ * GanttChart가 이 값을 import해 (a) 레이블 열 스페이서 높이, (b) DependencyOverlay axisOffset,
+ * (c) overlayHeight 계산의 단일 출처로 사용한다 (C-1 fix).
+ * AXIS_ROW_HEIGHT_PX 변경 시 이 값과 연동되는 모든 좌표가 자동 갱신된다.
+ */
+export const TIMELINE_AXIS_HEIGHT_PX = AXIS_ROW_HEIGHT_PX * 2
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입
 // ─────────────────────────────────────────────────────────────────────────────

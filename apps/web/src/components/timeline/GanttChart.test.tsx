@@ -3,7 +3,15 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import type { TimelineItem } from '@/api/timeline'
 import type { DependencyEdge } from '@/lib/timeline-layout'
-import { DAY_WIDTH_PX, daysBetweenUtc, parseIsoDateUtc } from '@/lib/timeline-layout'
+import {
+  DAY_WIDTH_PX,
+  daysBetweenUtc,
+  parseIsoDateUtc,
+  assembleEpicGroups,
+  flattenVisibleRows,
+} from '@/lib/timeline-layout'
+import { ROW_HEIGHT_PX } from './TimelineRow'
+import { TIMELINE_AXIS_HEIGHT_PX } from './TimelineAxis'
 import { GanttChart } from './GanttChart'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -318,6 +326,89 @@ describe('GanttChart — S7 deps 오버레이 (FR-TL-02 D6)', () => {
     const barBtn = screen.getByRole('button', { name: 'ATLAS-1 2026-07-01 ~ 2026-07-31' })
     fireEvent.click(barBtn)
     expect(onSelectIssue).toHaveBeenCalledWith('ATLAS-1')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C-1. axisOffset 단일출처 회귀 보장 (TIMELINE_AXIS_HEIGHT_PX)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GanttChart — C-1 axisOffset 단일출처 (TIMELINE_AXIS_HEIGHT_PX)', () => {
+  /**
+   * DependencyOverlay에 전달하는 axisOffset이 TimelineAxis 실제 높이와 동일해야 한다.
+   *
+   * 검증 방법:
+   * - ATLAS-1(rowIndex=0) blocks ATLAS-2 의존 라인 path `d` 속성의 SVG y 좌표를 파싱.
+   * - SVG y = startY(막대 영역 로컬) + axisOffset.
+   * - ATLAS-1 rowIndex=0 → startY(bar-relative) = ROW_HEIGHT_PX/2.
+   * - 따라서 SVG startY = ROW_HEIGHT_PX/2 + TIMELINE_AXIS_HEIGHT_PX 이어야 한다.
+   *
+   * GanttChart가 TIMELINE_AXIS_HEIGHT_PX 대신 다른 상수를 axisOffset으로 전달하면
+   * 이 계산이 어긋나 테스트가 실패한다 — 양쪽 체인 사이 drift를 빌드 타임에 감지.
+   */
+  it('C-1: path d의 SVG y 좌표가 ROW_HEIGHT_PX/2 + TIMELINE_AXIS_HEIGHT_PX와 일치한다', () => {
+    renderChart({ deps: [{ blockerKey: 'ATLAS-1', blockedKey: 'ATLAS-2' }] })
+
+    const path = document.querySelector('path[aria-label="ATLAS-1가 ATLAS-2을 차단"]')
+    expect(path).toBeInTheDocument()
+    const d = path?.getAttribute('d') ?? ''
+
+    // ATLAS-1: rowIndex=0, blocker startY(bar-relative) = 0*ROW_HEIGHT_PX + ROW_HEIGHT_PX/2 = 16
+    // ATLAS-2: rowIndex=1, blocked endY(bar-relative) = 1*ROW_HEIGHT_PX + ROW_HEIGHT_PX/2 = 48
+    // SVG y = bar-relative y + axisOffset (axisOffset 반드시 === TIMELINE_AXIS_HEIGHT_PX)
+    const startYInSvg = ROW_HEIGHT_PX / 2 + TIMELINE_AXIS_HEIGHT_PX       // 16 + 48 = 64
+    const endYInSvg = ROW_HEIGHT_PX + ROW_HEIGHT_PX / 2 + TIMELINE_AXIS_HEIGHT_PX  // 48 + 48 = 96
+    // path d format: "M startX,{startYInSvg} H midX V {endYInSvg} H endX"
+    expect(d).toContain(`,${startYInSvg} `)
+    expect(d).toContain(`V ${endYInSvg} `)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C-3. DOM 막대 행↔flattenVisibleRows 정합 회귀 (완전 재작성 금지)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GanttChart — C-3 DOM 막대 행↔flattenVisibleRows 정합', () => {
+  /**
+   * 막대 버튼(role="button", aria-label "KEY start ~ due")에서 이슈 키를 순서대로 추출한다.
+   * 토글 버튼(접기/펼치기)는 "~"를 포함하지 않으므로 필터로 제외한다.
+   */
+  function getBarKeys(): string[] {
+    return screen
+      .getAllByRole('button')
+      .filter((btn) => /~/.test(btn.getAttribute('aria-label') ?? ''))
+      .map((btn) => (btn.getAttribute('aria-label') ?? '').split(' ')[0] ?? '')
+      .filter((k) => k.length > 0)
+  }
+
+  /**
+   * C-3a: 펼친 상태에서 DOM 막대 행 순서가 flattenVisibleRows와 일치한다.
+   *
+   * GanttChart 우측 렌더 루프와 flattenVisibleRows 가 평행 구현이므로
+   * 향후 한쪽만 수정하면 이 테스트가 실패해 drift를 감지한다.
+   */
+  it('C-3a: 펼친 상태 DOM 막대 행 이슈 키 순서가 flattenVisibleRows와 일치한다', () => {
+    renderChart()
+    const domKeys = getBarKeys()
+    const groups = assembleEpicGroups(defaultItems)
+    const expectedKeys = flattenVisibleRows(groups, new Set()).map((r) => r.key)
+    expect(domKeys).toEqual(expectedKeys)
+  })
+
+  /**
+   * C-3b: 에픽 그룹 접기 후에도 DOM 막대 행 순서가 flattenVisibleRows(collapsed)와 일치한다.
+   * collapsed 케이스 포함 — 접기/펼치기 상태 반영 여부 검증.
+   */
+  it('C-3b: 에픽 그룹 접기 후 DOM 막대 행 순서가 flattenVisibleRows(collapsed)와 일치한다', () => {
+    renderChart()
+    const collapseBtn = screen.getByRole('button', { name: /접기/ })
+    fireEvent.click(collapseBtn)  // ATLAS-1 그룹 접기
+
+    const domKeys = getBarKeys()
+    const groups = assembleEpicGroups(defaultItems)
+    // collapsedGroups = {'ATLAS-1'}
+    const expectedKeys = flattenVisibleRows(groups, new Set(['ATLAS-1'])).map((r) => r.key)
+    expect(domKeys).toEqual(expectedKeys)
   })
 })
 
