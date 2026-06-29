@@ -66,6 +66,8 @@ const AXIS_CONFIG_MAP: Readonly<Record<ZoomLevel, AxisConfig>> = {
 export function nextZoomIn(level: ZoomLevel): ZoomLevel {
   const idx = ZOOM_LEVELS.indexOf(level)
   const nextIdx = Math.max(idx - 1, 0)
+  // nextIdx 는 항상 [0, length-1] 범위이므로 undefined 는 발생하지 않는다.
+  // ?? DEFAULT_ZOOM 는 noUncheckedIndexedAccess 준수를 위한 컴파일 시 폴백이다.
   return ZOOM_LEVELS[nextIdx] ?? DEFAULT_ZOOM
 }
 
@@ -80,6 +82,8 @@ export function nextZoomIn(level: ZoomLevel): ZoomLevel {
 export function nextZoomOut(level: ZoomLevel): ZoomLevel {
   const idx = ZOOM_LEVELS.indexOf(level)
   const nextIdx = Math.min(idx + 1, ZOOM_LEVELS.length - 1)
+  // nextIdx 는 항상 [0, length-1] 범위이므로 undefined 는 발생하지 않는다.
+  // ?? DEFAULT_ZOOM 는 noUncheckedIndexedAccess 준수를 위한 컴파일 시 폴백이다.
   return ZOOM_LEVELS[nextIdx] ?? DEFAULT_ZOOM
 }
 
