@@ -55,8 +55,9 @@ class CsvExportWriter {
      *
      * 헤더 라벨은 정적 상수이므로 RFC 4180 이스케이프를 적용하지 않는다.
      */
-    private fun buildHeaderLine(columns: List<ExportColumn>): String =
-        columns.joinToString(FIELD_SEPARATOR) { it.headerLabel }
+    private fun buildHeaderLine(columns: List<ExportColumn>): String {
+        return columns.joinToString(FIELD_SEPARATOR) { it.headerLabel }
+    }
 
     /**
      * 단일 이슈 행의 CSV 문자열을 반환한다.
@@ -76,7 +77,7 @@ class CsvExportWriter {
     /**
      * RFC 4180 이스케이프를 적용한다.
      *
-     * 셀에 쉼표(`,`), 큰따옴표(`"`), LF(`\n`), CR(`\r`) 중 하나라도 포함되면
+     * 셀에 [RFC4180_SPECIAL_CHARS] 중 하나라도 포함되면
      * 셀 전체를 큰따옴표로 감싸고, 기존 큰따옴표는 `""` 로 이중화한다.
      * 해당 문자가 없으면 셀을 그대로 반환한다.
      *
@@ -84,7 +85,7 @@ class CsvExportWriter {
      * @return RFC 4180 규격 셀 문자열.
      */
     private fun rfc4180Escape(cell: String): String {
-        if (cell.none { it == ',' || it == '"' || it == '\n' || it == '\r' }) return cell
+        if (cell.none { it in RFC4180_SPECIAL_CHARS }) return cell
         return "\"${cell.replace("\"", "\"\"")}\""
     }
 
@@ -97,5 +98,15 @@ class CsvExportWriter {
 
         /** RFC 4180 필드 구분자 — 쉼표. */
         private const val FIELD_SEPARATOR = ","
+
+        /**
+         * RFC 4180 인용 처리가 필요한 특수 문자 집합.
+         *
+         * - `,` — 필드 구분자
+         * - `"` — 큰따옴표 (이중화 필요)
+         * - `\n` — LF 개행
+         * - `\r` — CR (CRLF 행 구분자 일부)
+         */
+        private val RFC4180_SPECIAL_CHARS = setOf(',', '"', '\n', '\r')
     }
 }
