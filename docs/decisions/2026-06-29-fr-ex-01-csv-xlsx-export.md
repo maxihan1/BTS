@@ -39,8 +39,10 @@ issue-tracking·shared-kernel은 **변경하지 않는다**(cross-BC 변경 0).
 
 ### D2. 입력 계약 — AQL 쿼리 기반 단일 경로
 
-`POST /api/v1/exports` 요청 바디 = `{ projectKey, query(AQL 문자열), format(CSV|XLSX), columns?(선택 컬럼) }`.
+`POST /api/v1/search/export` 요청 바디 = `{ projectKey, query(AQL 문자열), format(CSV|XLSX), columns?(선택 컬럼) }`.
 서버는 query를 `AqlParser`로 파싱 → AST → `IssueSearchPort.search()`로 결과 수집 → 직렬화.
+
+**엔드포인트 URL(Maxi 2026-06-29, devex 리뷰).** `/api/v1/search/export` — 검색 하위 네임스페이스(`POST /api/v1/search/aql`과 같은 계층, SearchController 일관·발견성). FR-EX-02 비동기는 `POST /api/v1/search/export-jobs`(202 + job 리소스)로 분리 진화 → 동기 200-파일과 비동기 202-job의 URL 의미 충돌 회피.
 
 **필터(GET /issues?filter=) 경로는 이번 범위에서 미지원.** 근거: (a) AQL이 검색의 정본 입력이고 `IssueSearchPort` 재사용으로
 BC 격리가 깔끔하다. (b) /search 페이지(AQL + 저장필터 UI, FR-SR-03)가 export 진입점으로 자연스럽다. (c) 필터 경로를 export하려면
@@ -75,9 +77,23 @@ export 컬럼 후보는 `IssueSearchHit`의 9필드로 고정한다. product D2 
 export는 `IssueSearchPort.search()`를 그대로 호출하므로 BROWSE 권한 게이트 + visibility 보안 술어(AND 자동 결합)가
 검색과 동일하게 적용된다. export 전용 우회 경로를 만들지 않는다 → 사용자가 볼 수 없는 이슈는 export에도 나오지 않는다.
 
+**검증 분리(리뷰 B1 — vacuous 회피).** search-export-import 모듈은 issue-tracking에 gradle 의존이 없어 실 `IssueSearchAdapter`(BROWSE 게이트 + visibility SQL)가 테스트 클래스패스에 없다. 따라서 search 모듈 테스트는 (a) 매핑층(포트 SecurityException → 403, export가 검색과 동일 viewerUserId/AST로 포트 호출하는지 slot capture)만 검증하고, (b) 데이터 제외(미가시 이슈 빠짐)는 FR-SR-02의 기존 실증 테스트(issue-tracking)를 인용한다. mock 포트로 데이터 제외를 재증명하면 가짜 그린이 된다.
+
+### D7. 에러 처리 — 전용 ExportExceptionHandler + ProblemDetail 봉투 재사용 (리뷰 B2/C1/C2)
+
+- 기존 `SearchExceptionHandler`는 `@RestControllerAdvice(assignableTypes=[SearchController])`로 한정 → ExportController에 적용 안 됨. **전용 `ExportExceptionHandler`(assignableTypes=[ExportController])를 신설**한다(SearchController 에러 계약 오염 방지). limit(400)·AQL syntax(400)·SecurityException(403)·ResponseStatusException(401)·validation(400)을 모두 매핑.
+- 에러 봉투는 기존 RFC 7807 ProblemDetail + `problem()` 헬퍼 패턴 재사용(신규 봉투 발명 금지). 사람 메시지는 `detail`, 커스텀 값(`resultCount`/`limit`)은 `setProperty`.
+- 에러 코드는 `SEARCH_` prefix 유지(`SEARCH_EXPORT_LIMIT_EXCEEDED` 등) — 같은 BC, SearchErrorCodes §6 규칙. 컬럼/포맷 검증 실패는 기존 `SearchValidationException`(400) 재사용(`IllegalArgumentException`은 catch-all로 500이 되므로 금지).
+
+### D8. 입력 검증 — 수동 검증 병행 + 헤더 인젝션 방어 (리뷰 devex-C3/B3)
+
+- `@Valid`만 의존하지 않고 SearchController `validateRequest()` 선례처럼 컨트롤러 수동 검증 병행(Hibernate Validator 부재 환경 false-green 회피).
+- `projectKey`는 영숫자+하이픈 패턴 검증(Content-Disposition 파일명 삽입 전 — 헤더 인젝션 방어, IssueController PDF export 선례 동형).
+- `format`은 nullable String 수신 후 parse(오타 시 허용값 노출 메시지).
+
 ## 결과 (Consequences)
 
-- search-export-import 모듈에 `ExportController` + `ExportService` + CSV/XLSX writer + `ExportRequest`/`ExportFormat` 추가.
+- search-export-import 모듈에 `ExportController`(`POST /api/v1/search/export`) + `ExportExceptionHandler`(전용) + `ExportService` + CSV/XLSX writer + `ExportCellSanitizer`(공용) + `ExportRequest`/`ExportFormat`/`ExportColumn` 추가.
 - build.gradle.kts에 `org.apache.poi:poi-ooxml` 추가(첫 POI 도입). 버전은 BOM/최신 안정 버전으로 spec/plan에서 고정.
 - issue-tracking·shared-kernel **무변경**. `IssueSearchPort`/`IssueSearchHit` 재사용.
 - fr-index/SDD의 FR-EX-01 BC 매핑(search-export-import)·카운트 무변경(카운트 영향 0).
