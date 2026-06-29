@@ -60,6 +60,165 @@ classify: type=ui, agent=frontend-engineer, primary_bc=agile-planning (classifie
 ✅ 통과 (자체 sanity, office-hours 부적합 learning `bts-spec-office-hours-mismatch` 적용).
 최대 리스크 = 세로 좌표가 GanttChart 행 배치와 어긋남(접기/미분류 헤더) → `flattenVisibleRows` 단일 출처화 + positive/negative control 단위 테스트(vacuous 차단).
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 의존 최소화로 wave 살림. lib 순수함수(T2)는 도메인 무관 자체 인터페이스(`DependencyEdge{blockerKey,blockedKey}`)로 받아 api(T1)와 독립.
+> deps 관련 i18n 라벨은 T4에 모아 T5는 읽기만(파일 겹침 회피).
+
+### Task 1. api deps 스키마/함수 + 훅
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/timeline.ts`, `apps/web/src/api/timeline.test.ts`, `apps/web/src/hooks/use-timeline.ts`, `apps/web/src/hooks/use-timeline.test.tsx`]
+- depends-on: []
+
+**RED**.
+- `api/timeline.test.ts`에 추가.
+  - `timelineDepsResponseSchema`가 `{deps:[{blockerKey,blockedKey}],truncated}` 파싱 성공 + 누락 필드 reject.
+  - `fetchTimelineDeps('BTS')`가 `GET /api/v1/timeline/deps?project=BTS` 호출 후 `{ data }` 언랩 반환(MSW 정상/truncated).
+- `hooks/use-timeline.test.tsx`에 추가.
+  - `timelineKeys.deps('BTS')` === `['timeline', 'BTS', 'deps']`.
+  - `useTimelineDeps('BTS')`가 deps 배열 반환, 빈 키면 `enabled:false`.
+- 실패: `timelineDepsResponseSchema`/`fetchTimelineDeps`/`useTimelineDeps`/`timelineKeys.deps` 미존재.
+
+**GREEN**.
+- `api/timeline.ts` — `timelineDepEdgeSchema = z.object({blockerKey:z.string(), blockedKey:z.string()})`, `timelineDepsResponseSchema = z.object({deps:z.array(...), truncated:z.boolean()})`, 타입 export, `fetchTimelineDeps(projectKey)` (기존 `apiGet`+`dataResponseSchema` 재사용).
+- `hooks/use-timeline.ts` — `timelineKeys.deps`, `useTimelineDeps(projectKey)` (staleTime 30s, enabled 길이>0).
+
+**REFACTOR**. KDoc — 백엔드 #200 계약 참조, blockerKey=source/blockedKey=target 명시.
+
+**검증**: `cd apps/web && pnpm test src/api/timeline.test.ts src/hooks/use-timeline.test.tsx`
+
+### Task 2. lib — flattenVisibleRows + computeDependencyLines 순수함수
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/lib/timeline-layout.ts`, `apps/web/src/lib/timeline-layout.test.ts`]
+- depends-on: []
+
+**RED** (vacuous 차단 = positive control + negative 공존, FR-MV-01 EC8/EC9 교훈).
+- `flattenVisibleRows(groups, collapsedGroups)` 테스트.
+  - 펼친 에픽 그룹: epic 행 + 자식 행 모두 `{key, rowIndex}` 포함, rowIndex 0..n 연속.
+  - 접은 그룹: 자식 행 제외(epic 행만), 이후 rowIndex 연속 유지.
+  - 미분류 그룹: 헤더 행이 rowIndex 1칸 점유(key 없음 → 결과 제외) + 아이템 행 포함.
+  - **GanttChart 행 배치와 동일 순서** 단언(에픽 그룹 입력순, 미분류 맨 끝).
+- `computeDependencyLines(visibleRows, range, dayWidth, deps)` 테스트.
+  - **positive**: (A blocks B) 두 행 모두 보임 → 엣지 1개 반환, `x1=barX_A+barWidth_A`, `x2=barX_B`, `y1/y2`= 각 행 중심.
+  - **negative(같은 입력 공존)**: (A blocks C) C가 visibleRows에 없음(접힘/미존재) → 그 엣지 제외(EC1/S4).
+  - self-block(A blocks A) → 제외(EC4).
+  - 상호 blocks(A↔B) → 두 엣지 반환(EC3).
+- 실패: `flattenVisibleRows`/`computeDependencyLines` 미존재.
+
+**GREEN**.
+- `DependencyEdge { blockerKey: string; blockedKey: string }` 인터페이스(자체 정의, api 무의존).
+- `VisibleRow { key: string; rowIndex: number }`, `DependencyLine { blockerKey; blockedKey; x1; y1; x2; y2 }`.
+- `flattenVisibleRows(groups: TimelineGroup[], collapsed: ReadonlySet<string>): VisibleRow[]` — GanttChart 순회 로직과 동일(에픽 행→자식, 미분류 헤더 1칸→아이템). 헤더 행은 rowIndex만 차지, 결과 미포함.
+- `computeDependencyLines(rows, range, dayWidth, deps)` — rows로 key→{rowIndex, barGeometry} 맵 구성. 각 deps 엣지에서 양끝 모두 맵에 있고 key≠ 일 때만 좌표 산출. y중심 = `rowIndex*ROW_HEIGHT + ROW_HEIGHT/2`(축 오프셋은 컴포넌트가 더함). x = barGeometry 기반.
+- 상수 재사용(`ROW_HEIGHT_PX`는 TimelineRow에서 import 또는 인자화 — 순수성 위해 인자/상수 결정은 구현 시).
+
+**REFACTOR**. KDoc — 좌표는 우측 막대영역 로컬(축 오프셋 제외), jsdom 안전(getBBox 미사용).
+
+**검증**: `cd apps/web && pnpm test src/lib/timeline-layout.test.ts`
+
+### Task 3. MSW — /timeline/deps 핸들러 + 픽스처
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/mocks/timeline-handlers.ts`, `apps/web/src/mocks/timeline-fixtures.ts`, `apps/web/src/mocks/timeline-handlers.test.ts`]
+- depends-on: [1]
+
+**RED**.
+- `timeline-handlers.test.ts`에 추가.
+  - `GET /api/v1/timeline/deps?project=BTS` → `{data:{deps:[...],truncated:false}}` (BTS 픽스처와 정합: BTS 타임라인 막대 키 쌍).
+  - `project=TRUNCATED` 또는 localStorage `deps-truncated` → `truncated:true`.
+  - `project=EMPTY`/알 수 없음 → `deps:[]`.
+- 실패: deps 핸들러 미등록(404/passthrough).
+
+**GREEN**.
+- `timeline-fixtures.ts` — `BTS_TIMELINE_DEPS: TimelineDepEdge[]` (예: (BTS-2 blocks BTS-3), (BTS-1 blocks BTS-4)). 기존 BTS_TIMELINE_ITEMS 키와 정합.
+- `timeline-handlers.ts` — `getTimelineDepsHandler = http.get('/api/v1/timeline/deps', ...)` 정적 반환 + localStorage 시나리오 토글(기존 패턴), `timelineHandlers` 배열에 추가. unit override 핸들러(`timelineDepsTruncatedHandler` 등) export.
+
+**REFACTOR**. KDoc — 기존 정적 반환/자동시드 패턴 일관(`msw-derived-behavior-shared-store-e2e`).
+
+**검증**: `cd apps/web && pnpm test src/mocks/timeline-handlers.test.ts`
+
+### Task 4. DependencyOverlay.tsx (신규 SVG 레이어 + 클릭 강조) + deps i18n
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/timeline/DependencyOverlay.tsx`, `apps/web/src/components/timeline/DependencyOverlay.test.tsx`, `apps/web/src/i18n/timeline-labels.ts`, `apps/web/src/i18n/timeline-labels.test.ts`]
+- depends-on: [2]
+
+**RED**.
+- `DependencyOverlay.test.tsx`.
+  - `lines`(computeDependencyLines 결과) N개 → SVG `<path>`/`<line>` N개 렌더.
+  - 라인 클릭 → 해당 엣지 강조(선택 class/속성) + 나머지 흐림. 재클릭/배경 클릭 → 해제(S2/S3).
+  - 각 라인 `aria-label`(예 "BTS-2가 BTS-3을 차단") 존재(NFR3).
+  - lines 0개 → 라인 0개(빈 SVG, S5).
+- `timeline-labels.test.ts` — deps 라벨 콜론 미종결 + 함수 라벨 동작.
+- 실패: `DependencyOverlay` 미존재.
+
+**GREEN**.
+- `DependencyOverlay({ lines, axisOffset, width, height })` — absolute SVG 레이어. `<defs><marker>` 화살촉 + 각 line `<path>`(또는 line+화살촉). y에 `axisOffset` 더함. 선택 state(`selectedKey = blocker+blocked`) — 클릭 토글, 배경 rect 클릭 시 해제. 선택 시 강조/비선택 흐림 class.
+- `timeline-labels.ts` — `deps.lineAriaLabel(blocker, blocked)`, `deps.truncatedMessage`(라인 누락 경고, 콜론 미종결).
+
+**REFACTOR**. KDoc — pointer-events 처리(빈영역 클릭 해제), 좌표는 부모가 주입.
+
+**검증**: `cd apps/web && pnpm test src/components/timeline/DependencyOverlay.test.tsx src/i18n/timeline-labels.test.ts`
+
+### Task 5. GanttChart + TimelinePage 통합 (오버레이 결선 + deps truncated 배너)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/timeline/GanttChart.tsx`, `apps/web/src/components/timeline/GanttChart.test.tsx`, `apps/web/src/routes/projects.$projectKey.timeline.tsx`, `apps/web/src/routes/projects.$projectKey.timeline.test.tsx`]
+- depends-on: [1, 2, 3, 4]
+
+**RED**.
+- `GanttChart.test.tsx`.
+  - `deps` prop 주입 시 우측 영역에 `DependencyOverlay` 렌더(라인 존재 단언, positive control).
+  - 그룹 접기 → 접힌 자식으로의 라인 제외(flattenVisibleRows 단일 출처 검증, negative 공존).
+  - deps 미주입/빈 배열 → 라인 0(무회귀).
+- `projects.$projectKey.timeline.test.tsx`.
+  - TimelinePage가 `useTimelineDeps`로 deps 가져와 GanttChart에 주입.
+  - deps `truncated:true` → deps 누락 경고 배너(기존 timeline truncated 배너와 구분).
+  - 403/빈 타임라인 → deps 오버레이/배너 미표시(S7), 간트 무회귀.
+- 실패: GanttChart에 deps prop/overlay 미연결.
+
+**GREEN**.
+- `GanttChart.tsx` — `assembleEpicGroups` 결과 + `collapsedGroups`로 `flattenVisibleRows` 호출 → `computeDependencyLines(rows, range, DAY_WIDTH_PX, deps)` → `DependencyOverlay` 우측 영역에 렌더(axisOffset=AXIS_HEIGHT_PX). `deps?: DependencyEdge[]` prop 추가(기본 빈 → 무회귀).
+- `timeline.tsx` — `useTimelineDeps(projectKey)` 호출, deps를 GanttChart에 주입, deps.truncated 시 누락 경고 배너(best-effort: deps 에러는 간트 안 깸, EC6).
+
+**REFACTOR**. KDoc — flattenVisibleRows가 행 배치 단일 출처임을 명시.
+
+**검증**: `cd apps/web && pnpm test src/components/timeline/GanttChart.test.tsx "src/routes/projects.\$projectKey.timeline.test.tsx" && pnpm typecheck`
+
+### Task 6. E2E — 의존 라인 실렌더 + 클릭 강조 + 무회귀
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/timeline.spec.ts`]
+- depends-on: [3, 5]
+
+**RED→GREEN**.
+- 기존 `e2e/timeline.spec.ts`에 추가.
+  - BTS 타임라인 진입 → 의존 라인(SVG path/line) 실렌더 확인(≥1).
+  - 라인 클릭 → 강조 상태 토글(class/속성), 배경 클릭 → 해제(S2/S3).
+  - deps truncated 시나리오(localStorage 플래그) → 누락 경고 노출(S6).
+  - 기존 timeline 시나리오(정상/403/empty/truncated) 무회귀.
+- 실렌더 검증(좌표 픽셀 단언 대신 라인 개수/강조 토글), `e2e-msw-scenario-toggle-localstorage-flag` 패턴.
+
+**검증**: `cd apps/web && pnpm test:e2e timeline.spec.ts`
+
+## Plan 메타
+
+- task 수: **6** (T1~T6). E2E(T6)만 qa-engineer, 나머지 frontend-engineer.
+- wave (depends-on + files): Wave1=[T1,T2], Wave2=[T3(1),T4(2)], Wave3=[T5(1,2,3,4)], Wave4=[T6(3,5)] — 4 wave.
+- TDD 강제: yes (test 커밋이 feat 커밋보다 먼저).
+- 마이그레이션: 0 (순수 프론트).
+- 백엔드 변경: 0 (#200 계약 소비만).
+- 리뷰 포커스(codereview): (1) flattenVisibleRows가 GanttChart 행배치와 동일 출처인지(좌표 drift), (2) vacuous 차단(접힘/미존재 negative + positive control 공존), (3) deps best-effort(간트 무중단), (4) 기존 timeline 무회귀, (5) i18n 콜론 미종결.
+- 추가 검증: lint, typecheck(tsconfig.app.json), vitest, playwright.
+
+## 리뷰 결과 (← /bts-review-plan 채움)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
