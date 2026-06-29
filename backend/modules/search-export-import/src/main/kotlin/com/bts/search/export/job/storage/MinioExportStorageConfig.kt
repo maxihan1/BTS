@@ -41,24 +41,37 @@ class MinioExportStorageConfig {
     /**
      * Export MinIO 접속 설정 바인딩 데이터 클래스.
      *
-     * 환경변수 우선순위 (`bts.minio.*` 공유 프로퍼티 — issue-tracking 과 동일 MinIO 인스턴스).
+     * 환경변수 우선순위 (`bts.minio.*` 공유 접속 프로퍼티 — issue-tracking 과 동일 MinIO 인스턴스).
      * - `BTS_MINIO_ENDPOINT` → endpoint
      * - `BTS_MINIO_ACCESS_KEY` → accessKey
      * - `BTS_MINIO_SECRET_KEY` → secretKey
-     * - `BTS_MINIO_EXPORT_BUCKET` → bucket (기본값: `bts-exports`)
+     * - `BTS_MINIO_EXPORT_BUCKET` → export.bucket (기본값: `bts-exports`) — issue-tracking `BTS_MINIO_BUCKET` 과 독립
+     *
+     * 버킷은 `bts.minio.export.bucket` 하위 키로 분리하여 issue-tracking 의 `bts.minio.bucket`
+     * (`BTS_MINIO_BUCKET`) 과 충돌하지 않는다 (ADR §D4 BC 분리 의도).
      *
      * @param endpoint MinIO 서버 주소 (예: `"http://localhost:9000"`).
      * @param accessKey MinIO 액세스 키.
      * @param secretKey MinIO 시크릿 키.
-     * @param bucket Export 결과를 저장할 버킷 이름. 기본값: `"bts-exports"`.
+     * @param export Export 버킷 독립 설정. [ExportBucket] 참조.
      */
     @ConfigurationProperties(prefix = "bts.minio")
     data class Properties(
         val endpoint: String = "",
         val accessKey: String = "",
         val secretKey: String = "",
-        val bucket: String = "bts-exports",
-    )
+        val export: ExportBucket = ExportBucket(),
+    ) {
+        /**
+         * Export 버킷 독립 설정.
+         *
+         * `bts.minio.export.bucket` 프로퍼티 / `BTS_MINIO_EXPORT_BUCKET` 환경변수로 제어된다.
+         * issue-tracking 의 `bts.minio.bucket`(`BTS_MINIO_BUCKET`) 과 독립적이다.
+         *
+         * @param bucket Export 결과를 저장할 버킷 이름. 기본값: `"bts-exports"`.
+         */
+        data class ExportBucket(val bucket: String = "bts-exports")
+    }
 
     /**
      * Export 전용 [MinioClient] Spring 빈.
@@ -75,7 +88,7 @@ class MinioExportStorageConfig {
         check(StringUtils.hasText(properties.endpoint)) {
             "bts.minio.endpoint 가 설정되지 않았습니다. BTS_MINIO_ENDPOINT 환경변수를 확인하세요."
         }
-        log.info("Export MinioClient 초기화 — endpoint={} bucket={}", properties.endpoint, properties.bucket)
+        log.info("Export MinioClient 초기화 — endpoint={} bucket={}", properties.endpoint, properties.export.bucket)
         return MinioClient.builder()
             .endpoint(properties.endpoint)
             .credentials(properties.accessKey, properties.secretKey)

@@ -113,7 +113,7 @@ class ExportJobEndToEndIntegrationTest : SearchPersistenceTestBase() {
             endpoint = minio.s3URL,
             accessKey = minio.userName,
             secretKey = minio.password,
-            bucket = TEST_BUCKET,
+            export = MinioExportStorageConfig.Properties.ExportBucket(bucket = TEST_BUCKET),
         )
     }
 

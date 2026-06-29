@@ -45,7 +45,7 @@ class MinioExportStorageAdapterTest {
                 endpoint = "http://localhost:9000",
                 accessKey = "minioadmin",
                 secretKey = "minioadmin",
-                bucket = bucket,
+                export = MinioExportStorageConfig.Properties.ExportBucket(bucket = bucket),
             )
         adapter = MinioExportStorageAdapter(minioClient, properties)
     }

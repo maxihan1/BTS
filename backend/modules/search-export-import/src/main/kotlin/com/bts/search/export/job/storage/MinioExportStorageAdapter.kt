@@ -9,6 +9,7 @@ import io.minio.MinioClient
 import io.minio.PutObjectArgs
 import io.minio.RemoveObjectArgs
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Component
 import java.io.InputStream
 
@@ -37,6 +38,7 @@ import java.io.InputStream
 // 모두 MinioExportStorageException 으로 변환하기 위해 generic catch 를 사용한다 (issue-tracking 동일 관례).
 @Suppress("TooGenericExceptionCaught")
 class MinioExportStorageAdapter(
+    @Qualifier("exportMinioClient")
     private val minioClient: MinioClient,
     private val properties: MinioExportStorageConfig.Properties,
 ) : ExportObjectStoragePort {
@@ -61,7 +63,7 @@ class MinioExportStorageAdapter(
         try {
             minioClient.putObject(
                 PutObjectArgs.builder()
-                    .bucket(properties.bucket)
+                    .bucket(properties.export.bucket)
                     .`object`(key)
                     .stream(inputStream, size, PART_SIZE)
                     .contentType(contentType)
@@ -87,7 +89,7 @@ class MinioExportStorageAdapter(
         try {
             return minioClient.getObject(
                 GetObjectArgs.builder()
-                    .bucket(properties.bucket)
+                    .bucket(properties.export.bucket)
                     .`object`(key)
                     .build(),
             )
@@ -110,7 +112,7 @@ class MinioExportStorageAdapter(
         try {
             minioClient.removeObject(
                 RemoveObjectArgs.builder()
-                    .bucket(properties.bucket)
+                    .bucket(properties.export.bucket)
                     .`object`(key)
                     .build(),
             )
@@ -128,7 +130,7 @@ class MinioExportStorageAdapter(
      * @throws MinioExportStorageException 버킷 생성 실패 시.
      */
     fun ensureBucket() {
-        val bucket = properties.bucket
+        val bucket = properties.export.bucket
         try {
             val exists = minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucket).build())
             if (!exists) {
