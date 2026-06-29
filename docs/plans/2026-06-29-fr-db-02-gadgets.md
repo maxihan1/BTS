@@ -36,9 +36,22 @@ product 체크리스트(notification-dashboard.md §3.2):
 - **관련 ADR**: [docs/decisions/2026-06-29-fr-db-02-gadget-system.md](../decisions/2026-06-29-fr-db-02-gadget-system.md) (생성됨), 선행 [2026-06-22-fr-db-01-custom-dashboard.md](../decisions/2026-06-22-fr-db-01-custom-dashboard.md)
 - **cross-BC 주의**: pie/bar용 필드별 집계 엔드포인트는 issue-tracking BC 소유 → FR-DB-02 PR1/PR2와 BC 다름. plan 단계에서 PR 순서/경계 확정.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-29-fr-db-02-gadgets.md](../specs/2026-06-29-fr-db-02-gadgets.md)
+
+핵심 (PR1 = 백엔드 가젯 저장·검증).
+- 가젯 = `dashboards.layout` JSON 항목 임베드(`{i,x,y,w,h,gadgetType,config}`). 신규 테이블 0.
+- GadgetType enum 12종(SDD 14.2) + per-type config **형식만** 검증(favorites 선례, cross-BC 존재 미확인).
+- `Dashboard.validateLayout` 가젯-aware 확장(쓰기 경로만). 신규 `GET /dashboards/gadget-catalog` 카탈로그 API(enabled 플래그=노출+쓰기수용 단일 출처).
+- 데이터 fetch·프론트 컴포넌트·E2E는 PR2. pie/bar 집계 엔드포인트는 issue-tracking BC(별도 PR).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration, gap 3건 발견 후 스펙 보강 — 전부 수정 가능, Maxi 결정 불요).
+- **Gap A (회귀)**. FR-DB-01 프론트는 layout 을 `{i,x,y,w,h,title}`(gadgetType 없음)로 저장 → gadgetType 필수화 시 PR1~PR2 사이 기존 프론트 저장 전부 400. → **gadgetType 선택**(legacy 타일 허용), 있을 때만 가젯 검증. `title`/미지 키 보존·무시.
+- **Gap B (broken 가젯)**. enabled=false(pie/bar/deferred) 저장 허용 여부 → **strict 거부**(EC10). enabled 플래그가 카탈로그 노출+쓰기 수용 단일 출처, false→true 단방향.
+- **Gap C (라우팅)**. `/dashboards/gadget-catalog` ↔ `/dashboards/{id}`(UUID) 충돌 → Spring literal 우선이라 동작하나 **라우팅 회귀 테스트 필수**(EC12).
 
 ## Plan (← /bts-plan 채움)
 
