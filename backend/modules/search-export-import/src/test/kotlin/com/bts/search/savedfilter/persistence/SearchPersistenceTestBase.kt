@@ -38,7 +38,10 @@ open class SearchPersistenceTestBase {
          */
         @JvmStatic
         val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(DockerImageName.parse("postgres:16-alpine"))
+            PostgreSQLContainer(
+                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
+                    .asCompatibleSubstituteFor("postgres"),
+            )
                 .withDatabaseName("bts_search_persist_test")
                 .withUsername("bts")
                 .withPassword("bts_test")

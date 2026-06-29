@@ -556,7 +556,10 @@ class SavedFilterShareIntegrationTest {
         /** JVM 단위 singleton PostgreSQL container. [SavedFilterIntegrationTest.pg] 와 DB 이름이 달라 격리된다. */
         @JvmStatic
         val pg: PostgreSQLContainer<*> =
-            PostgreSQLContainer(DockerImageName.parse("postgres:16-alpine"))
+            PostgreSQLContainer(
+                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
+                    .asCompatibleSubstituteFor("postgres"),
+            )
                 .withDatabaseName("bts_savedfilter_share_it")
                 .withUsername("bts")
                 .withPassword("bts_test")

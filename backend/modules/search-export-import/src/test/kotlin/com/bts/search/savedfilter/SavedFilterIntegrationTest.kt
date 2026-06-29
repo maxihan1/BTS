@@ -293,7 +293,10 @@ class SavedFilterIntegrationTest {
         /** JVM 단위 singleton PostgreSQL container — 통합테스트 격리(T3와 별도 DB). */
         @JvmStatic
         val pg: PostgreSQLContainer<*> =
-            PostgreSQLContainer(DockerImageName.parse("postgres:16-alpine"))
+            PostgreSQLContainer(
+                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
+                    .asCompatibleSubstituteFor("postgres"),
+            )
                 .withDatabaseName("bts_savedfilter_it")
                 .withUsername("bts")
                 .withPassword("bts_test")

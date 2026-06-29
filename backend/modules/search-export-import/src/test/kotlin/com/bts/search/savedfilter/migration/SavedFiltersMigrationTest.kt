@@ -22,7 +22,8 @@ import java.util.UUID
  * **JVM 단위 singleton** 으로 기동한다(companion object `.apply { start() }`).
  * `@Container` 라이프사이클 대신 JVM 종료 시 Ryuk 자동 정리에 위임해 동시 suite flaky 를 회피한다
  * (메모리 concurrent-testcontainers-suite-flaky). Spring 컨텍스트 없이 raw JDBC + information_schema
- * 조회로 단언하므로 postgres:16-alpine 이미지로 충분하다.
+ * 조회로 단언한다. 마이그레이션 체인에 FR-EX-02 V602(pgmq 확장 + pgmq.create) 가 포함되므로
+ * postgres:16-alpine 이 아닌 quay.io/tembo/pg16-pgmq:latest 를 사용한다 (ADR 2026-05-22-pgmq-postgres-image).
  *
  * 검증 범위 (FR-SR-03 plan Task 1 / spec §데이터 모델 / DATA.md §4 TIMESTAMPTZ 강제).
  * - saved_filters 테이블 존재 + 8개 컬럼(id/owner_id/name/aql_query/project_key/created_at/updated_at/version)
@@ -44,7 +45,10 @@ class SavedFiltersMigrationTest {
          */
         @JvmStatic
         val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(DockerImageName.parse("postgres:16-alpine"))
+            PostgreSQLContainer(
+                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
+                    .asCompatibleSubstituteFor("postgres"),
+            )
                 .withDatabaseName("bts_search_test")
                 .withUsername("bts")
                 .withPassword("bts_test")
