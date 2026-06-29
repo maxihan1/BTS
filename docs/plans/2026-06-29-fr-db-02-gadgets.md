@@ -53,6 +53,121 @@ product 체크리스트(notification-dashboard.md §3.2):
 - **Gap B (broken 가젯)**. enabled=false(pie/bar/deferred) 저장 허용 여부 → **strict 거부**(EC10). enabled 플래그가 카탈로그 노출+쓰기 수용 단일 출처, false→true 단방향.
 - **Gap C (라우팅)**. `/dashboards/gadget-catalog` ↔ `/dashboards/{id}`(UUID) 충돌 → Spring literal 우선이라 동작하나 **라우팅 회귀 테스트 필수**(EC12).
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 전 task notification 단일 Gradle 모듈(`:backend:modules:notification`) — 테스트 컴파일 직렬화(memory: bts-plan-wave-gradle-module-compile). 카탈로그는 GadgetType enum 순수함수로 노출 → DashboardController 생성자 불변(memory: plan-files-constructor-injection-existing-tests).
+
+### Task 1. GadgetType 카탈로그 enum + per-type config 형식 검증
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/notification/src/main/kotlin/com/bts/notification/dashboard/domain/GadgetType.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/domain/GadgetTypeTest.kt`]
+- depends-on: []
+
+**RED** (`GadgetTypeTest.kt`):
+- `enum 은 12종(SDD 14.2) 을 정의한다` — assigned_to_me/recently_created/filter_result/issue_count/text_widget/link_list/pie_chart/bar_chart/created_vs_resolved/sprint_burndown/activity_stream/comments_recent.
+- `각 타입은 category(ISSUE/STATIC/CHART/ACTIVITY) 와 enabled 플래그를 가진다` — MVP 6=true, AGG 3·DEFERRED 3=false.
+- `text_widget 은 markdown 필수·1~10000 자 검증` (누락/초과 → 위반).
+- `link_list 는 links 1~20 of {label 1~100, url http/https ≤2000} 검증` (javascript: 스킴 → 위반, EC6).
+- `filter_result/issue_count 는 filterId(UUID)|aql(≤2000) 적어도 하나 필수` (둘 다 없음 → 위반, 둘 다 있음 → 통과, EC13).
+- `pie_chart/bar_chart 는 field enum(status|assignee|priority|issueType) 필수` (enum 밖 → 위반, EC9).
+- `알 수 없는 config 키는 무시한다` (EC5).
+- 실패(예상): `GadgetType` 클래스 없음.
+
+**GREEN** (`GadgetType.kt`):
+- enum 12종 + `category`·`enabled` 프로퍼티 + per-type config 필드 디스크립터(key/type/required/maxLength/enumValues) 선언.
+- `validateConfig(config: JsonNode?): Unit`(위반 시 `DashboardDomainException`) — 디스크립터 기반 형식 검증(형식만, cross-BC 존재 미확인 — favorites 선례).
+- `catalog(): List<GadgetCatalogEntry>` 순수함수(디스크립터=검증과 단일 출처, drift 차단).
+
+**REFACTOR**: 상수(MAX_MARKDOWN/MAX_LINKS 등) 추출 + KDoc. URL 스킴 화이트리스트 공통 함수.
+
+**검증**: `./gradlew :backend:modules:notification:test --tests '*GadgetTypeTest'`
+
+### Task 2. Dashboard.validateLayout 가젯-aware 확장 (쓰기경로)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/notification/src/main/kotlin/com/bts/notification/dashboard/domain/Dashboard.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/domain/DashboardTest.kt`]
+- depends-on: [1]
+
+**RED** (`DashboardTest.kt` 확장 — 기존 테스트 green 유지):
+- `gadget 항목을 가진 layout 은 통과한다` — `{i,x,y,w,h,gadgetType:issue_count,config:{aql}}`.
+- `legacy 타일(gadgetType 없음, {i,x,y,w,h,title}) 은 통과한다` (Gap A·EC11).
+- `알 수 없는 gadgetType → DashboardDomainException` (S2·EC4 대소문자).
+- `enabled=false 타입(pie_chart) → DashboardDomainException` (Gap B·EC10).
+- `config 형식 위반 → DashboardDomainException` (S3).
+- `i 누락/중복 → 위반` (S4·EC3). `x·y 음수 / w·h<1 → 위반` (S4).
+- `layout 이 배열 아님(객체) → 위반`. `[] 빈 배열 → 통과` (EC2).
+- `항목 51개 → 위반` (EC8·MAX_GADGETS). `64KB 초과 → 위반(기존)`.
+- create() 와 applyPatch() 양 쓰기 경로 모두 검증.
+
+**GREEN** (`Dashboard.kt`):
+- `validateLayout` 확장 — JSON 배열 파싱, 항목별 i/x/y/w/h 검증, i 유일성, MAX_GADGETS(50), gadgetType 존재 시 GadgetType.valueOf + enabled=true + validateConfig 위임. gadgetType 없으면 위치만(legacy).
+- 위반 메시지에 위반 항목 i + 사유.
+
+**REFACTOR**: 항목 검증을 private helper(`validateLayoutItem`)로 추출. MAX_GADGETS 상수.
+
+**검증**: `./gradlew :backend:modules:notification:test --tests '*DashboardTest'`
+
+### Task 3. 가젯 카탈로그 API (GET /dashboards/gadget-catalog)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/notification/src/main/kotlin/com/bts/notification/dashboard/web/dto/GadgetCatalogDtos.kt`, `backend/modules/notification/src/main/kotlin/com/bts/notification/dashboard/web/DashboardController.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/web/DashboardControllerTest.kt`]
+- depends-on: [1]
+
+**RED** (`DashboardControllerTest.kt` 확장):
+- `GET /gadget-catalog 는 200 + 12종 카탈로그(type/category/label/enabled/configFields) 를 반환한다`.
+- `enabled 플래그가 정확하다` (MVP 6=true).
+- `미인증 → 401` (currentActorId).
+- 정렬: category→type 안정.
+
+**GREEN**:
+- `GadgetCatalogDtos.kt` — `GadgetCatalogResponse(gadgets: List<GadgetCatalogEntryDto>)`, entry=type/category/label/enabled/configFields. enum `catalog()` → DTO 매핑.
+- `DashboardController` 에 `@GetMapping("/gadget-catalog")` 추가 — **생성자 불변**(enum 순수함수 호출, 신규 주입 없음). DataResponse 래퍼. currentActorId 401.
+
+**REFACTOR**: 매핑 함수 분리 + KDoc.
+
+**검증**: `./gradlew :backend:modules:notification:test --tests '*DashboardControllerTest'`
+
+### Task 4. HTTP end-to-end + 라우팅 + repository 라운드트립 통합 테스트
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/web/DashboardGadgetIntegrationTest.kt`]
+- depends-on: [2, 3]
+
+**RED/GREEN** (Testcontainers 통합 — vacuous 회피, 실 repo+HTTP):
+- `POST/PATCH /dashboards 에 gadget layout → 200 저장 후 GET 라운드트립 시 config 보존` (repository JSONB 영속).
+- `알 수 없는 gadgetType / enabled=false / config 위반 → 400 NOTIF_DASHBOARD_INVALID` (HTTP 경로 errorCode 단언).
+- `GET /dashboards/gadget-catalog → 200`, **`gadget-catalog` 가 {id} UUID 파싱 400 으로 새지 않음**(Gap C·EC12 라우팅 회귀).
+- `legacy title-타일 저장 → 200` (Gap A 회귀가드).
+- 기존 FR-DB-01 통합 시나리오 green 유지(회귀 0).
+
+**검증**: `./gradlew :backend:modules:notification:test --tests '*DashboardGadgetIntegrationTest'`
+
+### Task 5. 문서 deviation 전수 동기화 + D 단계 마킹
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`docs/sdd/05-data-model.md`, `docs/sdd/14-dashboard-reports.md`, `docs/plan/product/notification-dashboard.md`, `docs/plan/fr-index.md`]
+- depends-on: [4]
+- 비-TDD(docs). RED/GREEN 없음 — 검증=verify-master-plan.
+
+**작업**:
+- SDD 05.11 `Gadget`/`dashboard_gadgets` → "layout JSON 임베드(별도 테이블 미채택)" 정정 + ADR 링크.
+- SDD 14.3 `data class Gadget`(별도 엔티티) → layout 항목 임베드 표기. 14.4 데이터 fetch=프론트 직접(유지) 명확화.
+- product `notification-dashboard.md §3.2` — D1(도메인 layout 임베드)·D2(명세)·D3(데이터모델=layout JSON, 별도테이블 아님)·D4(백엔드=저장·검증+카탈로그 API, 데이터 API 아님)·D5(테스트) → PR1(#205) 해당분 `[x]` + PR 참조. D6/D7 `[ ]` 유지(PR2).
+- fr-index 주석/카운트 점검(FR 총수 123 불변 — 기존 FR 구현이라 추가/삭제 없음).
+
+**검증**: `bash scripts/verify-master-plan.sh` (종료 0).
+
+## Plan 메타
+
+- task 수: 5
+- 예상 wave: 4 (W1=T1 · W2=T2,T3 · W3=T4 · W4=T5). 단일 모듈이라 테스트 컴파일 직렬화 영향 — bts-impl 실측.
+- TDD 강제: yes (T1~T4). T5 docs 예외(verify-master-plan).
+- 신규 마이그레이션: 없음(layout JSON 확장). cross-BC import: 0.
+- 추가 검증: `./gradlew :backend:modules:notification:test ktlintCheck detekt` clean + verify-master-plan.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
