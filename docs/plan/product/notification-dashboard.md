@@ -115,11 +115,15 @@
 
 **우선순위**. 필수 | **선행**. §3.1 | **Plan slug**. `dashboard/gadgets`
 
-- [ ] D1. 도메인 — Gadget 다형성 + 10종 명세 (책임. backend-engineer + Maxi)
-- [ ] D2. 명세 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `dashboard_gadgets(gadget_type, config)` (책임. db-engineer)
-- [ ] D4. 백엔드 — Gadget 데이터 API 10종 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+> **데이터 모델 deviation (ADR `2026-06-29-fr-db-02-gadget-system`, Maxi 확정)**. 별도 `dashboard_gadgets` 테이블 미채택. 가젯은 기존 `dashboards.layout` JSONB 배열 항목으로 임베드(`{i,x,y,w,h,gadgetType,config}`) — 위치 단일 진실원천, FR-DB-01 ADR D4 계승, 신규 테이블/마이그레이션 0. 가젯 **데이터**는 프론트가 기존 BC API(/search/aql 등) 직접 호출(SDD 14.4), notification BC는 **설정 저장·검증 + 카탈로그 API**만 담당(원안 "데이터 API 10종"은 BC 격리 위반이라 기각). pie/bar용 필드별 집계 엔드포인트는 issue-tracking BC(별도 PR). MVP 가시 가젯=AQL/정적 6종(즉시)+집계 3종(집계 PR 후)+선행 FR 의존 3종(후속), 카탈로그 enum 12종 정의.
+
+**PR 분할**. PR1(#205) = 백엔드 가젯 저장·검증(D1~D5). PR2 = 프론트 컴포넌트·카탈로그·E2E(D6/D7).
+
+- [x] D1. 도메인 — GadgetType enum 12종(SDD 14.2) + per-type config 형식검증 + layout 임베드 (책임. backend-engineer + Maxi) — PR #205 (단일 출처 디스크립터, favorites식 형식만 검증)
+- [x] D2. 명세 (책임. backend-engineer) — PR #205 (spec `2026-06-29-fr-db-02-gadgets`, gadgetType 선택/enabled strict/라우팅 EC12)
+- [x] D3. 데이터 모델 — `dashboards.layout` JSON 임베드(별도 테이블 아님) (책임. backend-engineer) — PR #205 (신규 마이그레이션 0, `Dashboard.validateLayout` 가젯-aware 확장)
+- [x] D4. 백엔드 — 가젯 저장·검증 + `GET /dashboards/gadget-catalog` 카탈로그 API (책임. backend-engineer) — PR #205 (데이터 API 아님 — 프론트 직접 fetch)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #205 (도메인 40 + 컨트롤러 + Testcontainers HTTP end-to-end round-trip/라우팅/errorCode)
 - [ ] D6. 프론트 UI — Gadget 컴포넌트 10종 + 카탈로그 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 

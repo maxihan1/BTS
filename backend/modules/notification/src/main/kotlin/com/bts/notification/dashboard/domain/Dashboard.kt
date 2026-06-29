@@ -3,6 +3,7 @@
 package com.bts.notification.dashboard.domain
 
 import com.fasterxml.jackson.core.JsonParseException
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import java.time.Instant
 import java.util.UUID
@@ -50,6 +51,9 @@ data class Dashboard(
 
         /** layout JSONB 최대 바이트 크기 (64KB) */
         const val MAX_LAYOUT_BYTES: Int = 65536
+
+        /** layout 배열 최대 항목 수 */
+        const val MAX_GADGETS: Int = 50
 
         /**
          * layout JSON 파싱에 사용하는 ObjectMapper.
@@ -115,23 +119,115 @@ data class Dashboard(
             }
         }
 
+        /**
+         * layout JSON 을 검증한다.
+         *
+         * 검증 순서.
+         * 1. 크기 가드(64KB) — 1순위.
+         * 2. 빈 문자열/공백 → 예외.
+         * 3. JSON 파싱.
+         * 4. JSON 배열이어야 함 (객체·스칼라 거부). 빈 배열 허용.
+         * 5. 항목 수 ≤ MAX_GADGETS.
+         * 6. 각 항목 위치·gadgetType·config 검증.
+         */
+        @Suppress("ThrowsCount")
         private fun validateLayout(layout: String) {
             if (layout.toByteArray().size > MAX_LAYOUT_BYTES) {
                 throw DashboardDomainException("layout 은 ${MAX_LAYOUT_BYTES}바이트(64KB) 이하여야 합니다.")
             }
-            val isValidJson =
-                if (layout.isBlank()) {
-                    false
-                } else {
-                    try {
-                        JSON_MAPPER.readTree(layout) != null
-                    } catch (e: JsonParseException) {
-                        false
-                    }
-                }
-            if (!isValidJson) {
+            if (layout.isBlank()) {
                 throw DashboardDomainException("layout 은 유효한 JSON 이어야 합니다.")
             }
+            val rootNode =
+                try {
+                    JSON_MAPPER.readTree(layout)
+                } catch (e: JsonParseException) {
+                    throw DashboardDomainException("layout 은 유효한 JSON 이어야 합니다.")
+                }
+            if (rootNode == null || !rootNode.isArray) {
+                throw DashboardDomainException("layout 은 JSON 배열이어야 합니다.")
+            }
+            if (rootNode.size() > MAX_GADGETS) {
+                throw DashboardDomainException(
+                    "layout 항목은 최대 ${MAX_GADGETS}개까지 허용됩니다. 현재: ${rootNode.size()}개",
+                )
+            }
+            val seenIds = mutableSetOf<String>()
+            rootNode.forEachIndexed { index, item -> validateLayoutItem(index, item, seenIds) }
+        }
+
+        /**
+         * layout 배열의 단일 항목을 검증한다.
+         *
+         * - i: 비어있지 않은 문자열, 배열 내 유일.
+         * - x·y: 정수 ≥ 0.
+         * - w·h: 정수 ≥ 1.
+         * - gadgetType(선택): 알려진 키·enabled=true 이어야 하며 해당 타입의 config 를 위임 검증.
+         *   없으면 legacy 타일로 간주하고 config 검증을 생략한다.
+         */
+        private fun validateLayoutItem(
+            index: Int,
+            item: JsonNode,
+            seenIds: MutableSet<String>,
+        ) {
+            val iNode = item.get("i")
+            val id =
+                if (iNode == null || !iNode.isTextual || iNode.asText().isBlank()) {
+                    throw DashboardDomainException("layout[$index] 항목에 유효한 'i' 값이 필요합니다.")
+                } else {
+                    iNode.asText()
+                }
+            if (!seenIds.add(id)) {
+                throw DashboardDomainException("layout 항목 'i' 값 '$id' 가 중복됩니다.")
+            }
+            validateLayoutItemPosition(id, item)
+            validateLayoutItemGadgetType(id, item)
+        }
+
+        /** x·y(≥0)·w·h(≥1) 위치 필드를 검증한다. */
+        @Suppress("ThrowsCount")
+        private fun validateLayoutItemPosition(
+            id: String,
+            item: JsonNode,
+        ) {
+            val x = item.get("x")
+            if (x == null || !x.isIntegralNumber || x.intValue() < 0) {
+                throw DashboardDomainException("layout[$id] 항목의 'x' 는 0 이상의 정수여야 합니다.")
+            }
+            val y = item.get("y")
+            if (y == null || !y.isIntegralNumber || y.intValue() < 0) {
+                throw DashboardDomainException("layout[$id] 항목의 'y' 는 0 이상의 정수여야 합니다.")
+            }
+            val w = item.get("w")
+            if (w == null || !w.isIntegralNumber || w.intValue() < 1) {
+                throw DashboardDomainException("layout[$id] 항목의 'w' 는 1 이상의 정수여야 합니다.")
+            }
+            val h = item.get("h")
+            if (h == null || !h.isIntegralNumber || h.intValue() < 1) {
+                throw DashboardDomainException("layout[$id] 항목의 'h' 는 1 이상의 정수여야 합니다.")
+            }
+        }
+
+        @Suppress("ThrowsCount")
+        private fun validateLayoutItemGadgetType(
+            id: String,
+            item: JsonNode,
+        ) {
+            val gadgetTypeNode = item.get("gadgetType") ?: return
+            if (gadgetTypeNode.isNull) return
+            if (!gadgetTypeNode.isTextual) {
+                throw DashboardDomainException("layout[$id] 항목의 gadgetType 은 문자열이어야 합니다.")
+            }
+            val typeKey = gadgetTypeNode.asText()
+            val gadgetType =
+                GadgetType.fromKey(typeKey)
+                    ?: throw DashboardDomainException("layout[$id] 항목의 gadgetType '$typeKey' 는 알 수 없는 타입입니다.")
+            if (!gadgetType.enabled) {
+                throw DashboardDomainException(
+                    "layout[$id] 항목의 gadgetType '$typeKey' 는 현재 비활성화된 타입입니다.",
+                )
+            }
+            gadgetType.validateConfig(item.get("config"))
         }
 
         private fun normalizeShares(

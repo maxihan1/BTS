@@ -5,9 +5,12 @@ package com.bts.notification.dashboard.web
 import com.bts.notification.dashboard.application.DashboardService
 import com.bts.notification.dashboard.domain.DashboardDomainException
 import com.bts.notification.dashboard.domain.DashboardVisibility
+import com.bts.notification.dashboard.domain.GadgetType
 import com.bts.notification.dashboard.web.dto.CreateDashboardRequest
 import com.bts.notification.dashboard.web.dto.DashboardPageResponse
 import com.bts.notification.dashboard.web.dto.DashboardResponse
+import com.bts.notification.dashboard.web.dto.GadgetCatalogEntryDto
+import com.bts.notification.dashboard.web.dto.GadgetCatalogResponse
 import com.bts.notification.dashboard.web.dto.PatchDashboardRequest
 import com.bts.notification.web.DataResponse
 import com.bts.notification.web.currentActorId
@@ -186,6 +189,31 @@ class DashboardController(
         val actorId = currentActorId()
         log.info("DashboardController.delete actorId={}, id={}", actorId, id)
         service.delete(actorId, id)
+    }
+
+    /**
+     * 지원 가젯 카탈로그 12종을 반환한다.
+     *
+     * [GadgetType] enum 의 단일 출처에서 파생하므로 카탈로그와 검증 로직 간 drift 가 없다.
+     * 정렬: category ordinal(ISSUE→STATIC→CHART→ACTIVITY) → type 알파벳 오름차순 안정 정렬.
+     *
+     * Spring PathPattern 은 literal segment 를 path-variable 보다 우선 매칭하므로
+     * "gadget-catalog" literal 이 `/{id}` UUID 파싱 경로보다 먼저 처리된다 (Gap C, EC12).
+     *
+     * @return 200 OK + GadgetCatalogResponse (12종)
+     */
+    @GetMapping("/gadget-catalog")
+    fun getGadgetCatalog(): ResponseEntity<DataResponse<GadgetCatalogResponse>> {
+        currentActorId() // 미인증 시 401
+
+        log.debug("DashboardController.getGadgetCatalog")
+
+        val gadgets =
+            GadgetType.catalog()
+                .sortedWith(compareBy({ it.category.ordinal }, { it.type }))
+                .map { GadgetCatalogEntryDto.from(it) }
+
+        return ResponseEntity.ok(DataResponse(data = GadgetCatalogResponse(gadgets)))
     }
 
     /**

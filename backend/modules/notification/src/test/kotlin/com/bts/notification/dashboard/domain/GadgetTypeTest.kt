@@ -1,0 +1,323 @@
+// GadgetType 열거형 — 12종 가젯 카탈로그·config 형식 검증·단일 출처 불변식 테스트
+
+package com.bts.notification.dashboard.domain
+
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
+
+class GadgetTypeTest : DescribeSpec({
+
+    val mapper = ObjectMapper()
+
+    fun json(value: String): JsonNode = mapper.readTree(value)
+
+    // ── enum 12종 + category·enabled ──────────────────────────────────────────
+
+    describe("GadgetType — enum 12종 정의") {
+        it("12종 모두 정의된다") {
+            GadgetType.entries.size shouldBe 12
+        }
+
+        it("category 가 정확히 매핑된다") {
+            GadgetType.ASSIGNED_TO_ME.category shouldBe GadgetCategory.ISSUE
+            GadgetType.RECENTLY_CREATED.category shouldBe GadgetCategory.ISSUE
+            GadgetType.FILTER_RESULT.category shouldBe GadgetCategory.ISSUE
+            GadgetType.ISSUE_COUNT.category shouldBe GadgetCategory.ISSUE
+            GadgetType.TEXT_WIDGET.category shouldBe GadgetCategory.STATIC
+            GadgetType.LINK_LIST.category shouldBe GadgetCategory.STATIC
+            GadgetType.PIE_CHART.category shouldBe GadgetCategory.CHART
+            GadgetType.BAR_CHART.category shouldBe GadgetCategory.CHART
+            GadgetType.CREATED_VS_RESOLVED.category shouldBe GadgetCategory.CHART
+            GadgetType.SPRINT_BURNDOWN.category shouldBe GadgetCategory.CHART
+            GadgetType.ACTIVITY_STREAM.category shouldBe GadgetCategory.ACTIVITY
+            GadgetType.COMMENTS_RECENT.category shouldBe GadgetCategory.ACTIVITY
+        }
+
+        it("MVP 6종 enabled=true, 나머지 6종 enabled=false") {
+            GadgetType.ASSIGNED_TO_ME.enabled shouldBe true
+            GadgetType.RECENTLY_CREATED.enabled shouldBe true
+            GadgetType.FILTER_RESULT.enabled shouldBe true
+            GadgetType.ISSUE_COUNT.enabled shouldBe true
+            GadgetType.TEXT_WIDGET.enabled shouldBe true
+            GadgetType.LINK_LIST.enabled shouldBe true
+
+            GadgetType.PIE_CHART.enabled shouldBe false
+            GadgetType.BAR_CHART.enabled shouldBe false
+            GadgetType.CREATED_VS_RESOLVED.enabled shouldBe false
+            GadgetType.SPRINT_BURNDOWN.enabled shouldBe false
+            GadgetType.ACTIVITY_STREAM.enabled shouldBe false
+            GadgetType.COMMENTS_RECENT.enabled shouldBe false
+        }
+    }
+
+    // ── text_widget ────────────────────────────────────────────────────────────
+
+    describe("GadgetType.TEXT_WIDGET.validateConfig") {
+        it("markdown 1자는 통과한다") {
+            GadgetType.TEXT_WIDGET.validateConfig(json("""{"markdown":"a"}"""))
+        }
+
+        it("markdown 정확히 10000자는 통과한다") {
+            val content = "a".repeat(10000)
+            GadgetType.TEXT_WIDGET.validateConfig(json("""{"markdown":"$content"}"""))
+        }
+
+        it("markdown 10001자는 위반한다") {
+            val content = "a".repeat(10001)
+            shouldThrow<DashboardDomainException> {
+                GadgetType.TEXT_WIDGET.validateConfig(json("""{"markdown":"$content"}"""))
+            }
+        }
+
+        it("markdown 누락 시 위반한다") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.TEXT_WIDGET.validateConfig(json("{}"))
+            }
+        }
+
+        it("validateConfig(null) — markdown 누락으로 위반한다 (C1 null=빈객체 동등)") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.TEXT_WIDGET.validateConfig(null)
+            }
+        }
+
+        it("validateConfig 빈 ObjectNode — markdown 누락으로 위반한다 (C1 null=빈객체 동등)") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.TEXT_WIDGET.validateConfig(mapper.createObjectNode())
+            }
+        }
+    }
+
+    // ── link_list ──────────────────────────────────────────────────────────────
+
+    describe("GadgetType.LINK_LIST.validateConfig") {
+        fun makeLinks(
+            count: Int,
+            label: String = "항목",
+            url: String = "https://example.com",
+        ): JsonNode {
+            val items =
+                (1..count.coerceAtLeast(0)).joinToString(",") {
+                    """{"label":"$label","url":"$url"}"""
+                }
+            return json("""{"links":[$items]}""")
+        }
+
+        fun emptyLinks(): JsonNode = json("""{"links":[]}""")
+
+        it("links 1개는 통과한다") {
+            GadgetType.LINK_LIST.validateConfig(makeLinks(1))
+        }
+
+        it("links 20개는 통과한다") {
+            GadgetType.LINK_LIST.validateConfig(makeLinks(20))
+        }
+
+        it("links 0개는 위반한다") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.LINK_LIST.validateConfig(emptyLinks())
+            }
+        }
+
+        it("links 21개는 위반한다") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.LINK_LIST.validateConfig(makeLinks(21))
+            }
+        }
+
+        it("label 101자는 위반한다") {
+            val longLabel = "a".repeat(101)
+            shouldThrow<DashboardDomainException> {
+                GadgetType.LINK_LIST.validateConfig(makeLinks(1, label = longLabel))
+            }
+        }
+
+        it("url javascript:alert(1)는 위반한다 (EC6)") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.LINK_LIST.validateConfig(makeLinks(1, url = "javascript:alert(1)"))
+            }
+        }
+
+        it("url http://example.com는 통과한다") {
+            GadgetType.LINK_LIST.validateConfig(makeLinks(1, url = "http://example.com"))
+        }
+
+        it("url https://example.com는 통과한다") {
+            GadgetType.LINK_LIST.validateConfig(makeLinks(1, url = "https://example.com"))
+        }
+
+        it("url 대문자 스킴 HTTPS://example.com 은 통과한다 (RFC 스킴 대소문자 무관)") {
+            GadgetType.LINK_LIST.validateConfig(makeLinks(1, url = "HTTPS://example.com"))
+        }
+
+        it("url 대문자 스킴 HTTP://example.com 은 통과한다 (RFC 스킴 대소문자 무관)") {
+            GadgetType.LINK_LIST.validateConfig(makeLinks(1, url = "HTTP://example.com"))
+        }
+    }
+
+    // ── filter_result ──────────────────────────────────────────────────────────
+
+    describe("GadgetType.FILTER_RESULT.validateConfig") {
+        val validUuid = "00000000-0000-0000-0000-000000000001"
+
+        it("filterId 만 있으면 통과한다") {
+            GadgetType.FILTER_RESULT.validateConfig(json("""{"filterId":"$validUuid"}"""))
+        }
+
+        it("aql 만 있으면 통과한다") {
+            GadgetType.FILTER_RESULT.validateConfig(json("""{"aql":"project = BTS"}"""))
+        }
+
+        it("filterId 와 aql 둘 다 있으면 통과한다") {
+            GadgetType.FILTER_RESULT.validateConfig(json("""{"filterId":"$validUuid","aql":"project = BTS"}"""))
+        }
+
+        it("filterId 와 aql 둘 다 없으면 위반한다 (EC13)") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.FILTER_RESULT.validateConfig(json("{}"))
+            }
+        }
+
+        it("filterId 비-UUID 문자열이면 위반한다") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.FILTER_RESULT.validateConfig(json("""{"filterId":"not-a-uuid"}"""))
+            }
+        }
+
+        it("aql 2001자는 위반한다") {
+            val longAql = "a".repeat(2001)
+            shouldThrow<DashboardDomainException> {
+                GadgetType.FILTER_RESULT.validateConfig(json("""{"aql":"$longAql"}"""))
+            }
+        }
+    }
+
+    // ── issue_count ────────────────────────────────────────────────────────────
+
+    describe("GadgetType.ISSUE_COUNT.validateConfig") {
+        val validUuid = "00000000-0000-0000-0000-000000000001"
+
+        it("filterId 만 있으면 통과한다") {
+            GadgetType.ISSUE_COUNT.validateConfig(json("""{"filterId":"$validUuid"}"""))
+        }
+
+        it("aql 만 있으면 통과한다") {
+            GadgetType.ISSUE_COUNT.validateConfig(json("""{"aql":"project = BTS"}"""))
+        }
+
+        it("filterId 와 aql 둘 다 없으면 위반한다 (EC13)") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.ISSUE_COUNT.validateConfig(json("{}"))
+            }
+        }
+    }
+
+    // ── pie_chart / bar_chart ──────────────────────────────────────────────────
+
+    describe("GadgetType.PIE_CHART.validateConfig") {
+        it("field=status 는 통과한다") {
+            GadgetType.PIE_CHART.validateConfig(json("""{"field":"status"}"""))
+        }
+
+        it("field=labels 는 위반한다 (EC9 enum 밖)") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.PIE_CHART.validateConfig(json("""{"field":"labels"}"""))
+            }
+        }
+
+        it("field 누락은 위반한다") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.PIE_CHART.validateConfig(json("{}"))
+            }
+        }
+    }
+
+    describe("GadgetType.BAR_CHART.validateConfig") {
+        it("field=status 는 통과한다") {
+            GadgetType.BAR_CHART.validateConfig(json("""{"field":"status"}"""))
+        }
+
+        it("field=labels 는 위반한다 (EC9 enum 밖)") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.BAR_CHART.validateConfig(json("""{"field":"labels"}"""))
+            }
+        }
+
+        it("field 누락은 위반한다") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.BAR_CHART.validateConfig(json("{}"))
+            }
+        }
+    }
+
+    // ── fromKey 대소문자 엄격 ─────────────────────────────────────────────────────
+
+    describe("GadgetType.fromKey") {
+        it("소문자 snake_case 키는 정확히 일치한다") {
+            GadgetType.fromKey("assigned_to_me") shouldBe GadgetType.ASSIGNED_TO_ME
+            GadgetType.fromKey("filter_result") shouldBe GadgetType.FILTER_RESULT
+        }
+
+        it("Issue_Count — 대소문자 혼합이면 null 을 반환한다 (EC4 엄격)") {
+            GadgetType.fromKey("Issue_Count").shouldBeNull()
+        }
+
+        it("존재하지 않는 키면 null 을 반환한다") {
+            GadgetType.fromKey("nonexistent").shouldBeNull()
+        }
+    }
+
+    // ── 알 수 없는 config 키 무시 (EC5) ─────────────────────────────────────────
+
+    describe("GadgetType.validateConfig — 알 수 없는 config 키") {
+        it("optional-only 타입 assigned_to_me 에 알 수 없는 키가 있으면 통과한다 (EC5)") {
+            GadgetType.ASSIGNED_TO_ME.validateConfig(json("""{"foo":1}"""))
+        }
+    }
+
+    // ── catalog() 단일 출처 불변식 ──────────────────────────────────────────────
+
+    describe("GadgetType.catalog") {
+        it("12 엔트리를 반환한다") {
+            GadgetType.catalog().size shouldBe 12
+        }
+
+        it("enabled=true 엔트리가 정확히 6개다") {
+            GadgetType.catalog().count { it.enabled } shouldBe 6
+        }
+
+        it("text_widget 엔트리에 markdown configField(required=true)가 포함된다 — 단일 출처 불변식") {
+            val textWidgetEntry = GadgetType.catalog().first { it.type == "text_widget" }
+            val markdownField = textWidgetEntry.configFields.find { it.key == "markdown" }
+            markdownField.shouldNotBeNull()
+            markdownField.required shouldBe true
+        }
+
+        it("각 엔트리의 configFields 가 해당 GadgetType 의 configFields 와 일치한다 — 단일 출처") {
+            GadgetType.entries.forEach { gadgetType ->
+                val entry = GadgetType.catalog().first { it.type == gadgetType.key }
+                entry.configFields shouldBe gadgetType.configFields
+            }
+        }
+
+        it("filter_result catalog 엔트리의 requireAtLeastOne 은 listOf(listOf(\"filterId\",\"aql\")) 이다") {
+            val entry = GadgetType.catalog().first { it.type == "filter_result" }
+            entry.requireAtLeastOne shouldBe listOf(listOf("filterId", "aql"))
+        }
+
+        it("issue_count catalog 엔트리의 requireAtLeastOne 은 listOf(listOf(\"filterId\",\"aql\")) 이다") {
+            val entry = GadgetType.catalog().first { it.type == "issue_count" }
+            entry.requireAtLeastOne shouldBe listOf(listOf("filterId", "aql"))
+        }
+
+        it("교차필드 규칙이 없는 타입(text_widget)의 requireAtLeastOne 은 emptyList() 이다") {
+            val entry = GadgetType.catalog().first { it.type == "text_widget" }
+            entry.requireAtLeastOne shouldBe emptyList()
+        }
+    }
+})

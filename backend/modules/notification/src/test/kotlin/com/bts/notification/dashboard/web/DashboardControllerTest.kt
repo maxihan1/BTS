@@ -15,6 +15,8 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
+import org.hamcrest.Matchers.hasItem
+import org.hamcrest.Matchers.hasSize
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -402,6 +404,109 @@ class DashboardControllerTest {
         mockMvc.perform(delete("/api/v1/dashboards/$dashboardId"))
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.errorCode").value("NOTIF_DASHBOARD_NOT_FOUND"))
+    }
+
+    // ── GET /api/v1/dashboards/gadget-catalog ────────────────────────────────
+
+    /**
+     * CATALOG-1. 카탈로그 조회 → 200 + 12종 수량 단언 (C2 — isArray 단독 금지).
+     *
+     * GadgetType 열거형 12개가 모두 반환되는지 확인한다.
+     */
+    @Test
+    fun `GET gadget-catalog 는 200 과 12종 카탈로그 반환`() {
+        mockMvc.perform(get("/api/v1/dashboards/gadget-catalog"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.gadgets").isArray)
+            .andExpect(jsonPath("$.data.gadgets.length()").value(12))
+    }
+
+    /**
+     * CATALOG-2. enabled=true 항목 수 == 6 카운트 단언.
+     *
+     * 점단언: issue_count(ISSUE 카테고리) 는 enabled=true,
+     * pie_chart(CHART 카테고리) 는 enabled=false.
+     *
+     * Jayway JSONPath 필터 결과에 [0] 인덱싱이 동작하지 않으므로
+     * hasItem Hamcrest matcher 를 사용한다(필터 결과는 List 타입).
+     */
+    @Test
+    fun `GET gadget-catalog enabled true 항목 6개 카운트 단언과 점단언`() {
+        mockMvc.perform(get("/api/v1/dashboards/gadget-catalog"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.gadgets[?(@.enabled == true)]", hasSize<Any>(6)))
+            .andExpect(jsonPath("$.data.gadgets[?(@.type == 'issue_count')].enabled", hasItem(true)))
+            .andExpect(jsonPath("$.data.gadgets[?(@.type == 'pie_chart')].enabled", hasItem(false)))
+    }
+
+    /**
+     * CATALOG-3. 각 엔트리에 type·category·label·configFields 필드 존재.
+     *
+     * text_widget 의 configFields 에 key=markdown, required=true 항목이 있는지 확인한다.
+     * GadgetType 단일 출처에서 파생되므로 drift 불가.
+     *
+     * 정렬: category ordinal(ISSUE=0,STATIC=1,CHART=2,ACTIVITY=3) → type 알파벳 오름차순.
+     * text_widget 은 STATIC 에서 link_list 다음이므로 전체 인덱스 5.
+     */
+    @Test
+    fun `GET gadget-catalog 각 엔트리 필수 필드 존재 및 text_widget configFields 단일 출처 확인`() {
+        mockMvc.perform(get("/api/v1/dashboards/gadget-catalog"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.gadgets[0].type").exists())
+            .andExpect(jsonPath("$.data.gadgets[0].category").exists())
+            .andExpect(jsonPath("$.data.gadgets[0].label").exists())
+            .andExpect(jsonPath("$.data.gadgets[0].configFields").exists())
+            // text_widget 은 정렬 후 인덱스 5 (STATIC 두 번째)
+            .andExpect(jsonPath("$.data.gadgets[5].type").value("text_widget"))
+            .andExpect(jsonPath("$.data.gadgets[5].configFields[0].key").value("markdown"))
+            .andExpect(jsonPath("$.data.gadgets[5].configFields[0].required").value(true))
+    }
+
+    /**
+     * CATALOG-AUTH. 미인증 → 401.
+     *
+     * currentActorId() 게이팅이 카탈로그 엔드포인트에도 적용되는지 확인한다.
+     */
+    @Test
+    fun `GET gadget-catalog 미인증 요청 시 401 반환`() {
+        SecurityContextHolder.clearContext()
+
+        mockMvc.perform(get("/api/v1/dashboards/gadget-catalog"))
+            .andExpect(status().isUnauthorized)
+
+        // 테스트 후 인증 복원
+        setAuth(actorId)
+    }
+
+    /**
+     * CATALOG-4. filter_result 엔트리에 requireAtLeastOne = [["filterId","aql"]] JSON 포함.
+     *
+     * 교차필드 규칙(RequireAtLeastOne)이 카탈로그 JSON 에 노출되는지 확인한다.
+     * 정렬: ISSUE 카테고리 type 알파벳 오름차순 → filter_result 는 전체 인덱스 1.
+     */
+    @Test
+    fun `GET gadget-catalog filter_result 엔트리에 requireAtLeastOne JSON 포함`() {
+        mockMvc.perform(get("/api/v1/dashboards/gadget-catalog"))
+            .andExpect(status().isOk)
+            // filter_result 는 정렬 후 인덱스 1 (ISSUE 카테고리, type 알파벳 두 번째)
+            .andExpect(jsonPath("$.data.gadgets[1].type").value("filter_result"))
+            .andExpect(jsonPath("$.data.gadgets[1].requireAtLeastOne[0][0]").value("filterId"))
+            .andExpect(jsonPath("$.data.gadgets[1].requireAtLeastOne[0][1]").value("aql"))
+    }
+
+    /**
+     * EC12 라우팅 회귀.
+     *
+     * Spring PathPattern 은 literal segment 를 path-variable 보다 우선 매칭한다.
+     * "gadget-catalog" literal 이 /{id} UUID 파싱(400)보다 우선하여 200 + 카탈로그 바디를 반환해야 한다.
+     */
+    @Test
+    fun `GET gadget-catalog 는 UUID path variable 라우팅에 가려지지 않고 200 반환`() {
+        mockMvc.perform(get("/api/v1/dashboards/gadget-catalog"))
+            .andExpect(status().isOk)
+            // {id} 핸들러로 라우팅됐다면 "gadget-catalog"는 UUID 파싱 실패 → 400 이 됨
+            // 카탈로그 바디 존재가 올바른 핸들러 매칭 증명
+            .andExpect(jsonPath("$.data.gadgets").isArray)
     }
 
     // ── 인증 ──────────────────────────────────────────────────────────────────
