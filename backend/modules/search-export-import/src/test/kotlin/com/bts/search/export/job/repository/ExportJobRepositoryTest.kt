@@ -1,4 +1,5 @@
-// ExportJobRepository 통합 테스트 — insert/CAS(claimForRun/markCompleted/markFailed)/updateProgress/findByIdForRequester/findExpired/deleteById (FR-EX-02)
+// ExportJobRepository 통합 테스트 (FR-EX-02)
+// 검증 범위: insert/CAS(claimForRun/markCompleted/markFailed)/updateProgress/findByIdForRequester/findExpired/deleteById
 
 package com.bts.search.export.job.repository
 
@@ -42,6 +43,7 @@ class ExportJobRepositoryTest : SearchPersistenceTestBase() {
         dsl.execute("DELETE FROM export_jobs")
     }
 
+    @Suppress("LongParameterList")
     private fun makeJob(
         id: ExportJobId = ExportJobId(UUID.randomUUID()),
         projectKey: String = "ATLAS",

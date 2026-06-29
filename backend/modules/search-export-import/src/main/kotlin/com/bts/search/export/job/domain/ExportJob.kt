@@ -63,8 +63,8 @@ data class ExportJob(
         processed: Long,
         total: Long,
     ): Int {
-        if (total == 0L) return 100
-        return (processed * 100L / total).toInt()
+        if (total == 0L) return PERCENT_SCALE.toInt()
+        return (processed * PERCENT_SCALE / total).toInt()
     }
 
     /**
@@ -83,5 +83,8 @@ data class ExportJob(
          * 워커도 이 상수를 `LIMIT` 으로 사용해 DB 과부하를 방지한다.
          */
         const val MAX_ROWS = 100_000L
+
+        /** 진행률 100% 기준 값 (Long). [progressPercent] 계산에 사용. */
+        private const val PERCENT_SCALE = 100L
     }
 }
