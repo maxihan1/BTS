@@ -57,7 +57,7 @@ product 체크리스트(notification-dashboard.md §3.2):
 
 > 전 task notification 단일 Gradle 모듈(`:backend:modules:notification`) — 테스트 컴파일 직렬화(memory: bts-plan-wave-gradle-module-compile). 카탈로그는 GadgetType enum 순수함수로 노출 → DashboardController 생성자 불변(memory: plan-files-constructor-injection-existing-tests).
 
-### Task 1. GadgetType 카탈로그 enum + per-type config 형식 검증
+### Task 1. GadgetType 카탈로그 enum + per-type config 형식 검증 ✅ PASS
 
 **메타**.
 - agent: `backend-engineer`
@@ -83,7 +83,7 @@ product 체크리스트(notification-dashboard.md §3.2):
 
 **검증**: `./gradlew :backend:modules:notification:test --tests '*GadgetTypeTest'`
 
-### Task 2. Dashboard.validateLayout 가젯-aware 확장 (쓰기경로)
+### Task 2. Dashboard.validateLayout 가젯-aware 확장 (쓰기경로) ✅ PASS
 
 **메타**.
 - agent: `backend-engineer`
@@ -115,7 +115,7 @@ product 체크리스트(notification-dashboard.md §3.2):
 
 **검증**: `./gradlew :backend:modules:notification:test --tests '*DashboardTest'`
 
-### Task 3. 가젯 카탈로그 API (GET /dashboards/gadget-catalog)
+### Task 3. 가젯 카탈로그 API (GET /dashboards/gadget-catalog) ✅ PASS
 
 **메타**.
 - agent: `backend-engineer`
@@ -136,7 +136,7 @@ product 체크리스트(notification-dashboard.md §3.2):
 
 **검증**: `./gradlew :backend:modules:notification:test --tests '*DashboardControllerTest'`
 
-### Task 4. HTTP end-to-end + 라우팅 + repository 라운드트립 통합 테스트
+### Task 4. HTTP end-to-end + 라우팅 + repository 라운드트립 통합 테스트 ✅ PASS
 
 **메타**.
 - agent: `backend-engineer`
@@ -152,7 +152,7 @@ product 체크리스트(notification-dashboard.md §3.2):
 
 **검증**: `./gradlew :backend:modules:notification:test --tests '*DashboardGadgetIntegrationTest'`
 
-### Task 5. 문서 deviation 전수 동기화 + D 단계 마킹
+### Task 5. 문서 deviation 전수 동기화 + D 단계 마킹 ✅ PASS (controller, 비-TDD docs)
 
 **메타**.
 - agent: `backend-engineer`

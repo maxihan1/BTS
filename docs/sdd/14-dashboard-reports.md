@@ -37,17 +37,20 @@
 
 ## 14.3 가젯 추가/편집
 
-```kotlin
-data class Gadget(
-    val id: Long,
-    val dashboardId: Long,
-    val gadgetType: String,       // "assigned_to_me"
-    val position: GridPosition,   // {x, y, w, h}
-    val config: Map<String, Any>, // 가젯별 설정
-)
+> **구현 deviation (FR-DB-02, ADR `2026-06-29-fr-db-02-gadget-system`)**. 가젯은 별도 엔티티/테이블이 아니라 `dashboards.layout` JSONB 배열 항목으로 임베드된다. 아래 `data class Gadget`은 초기 설계 표기이며, 실제로는 layout 항목(`{ i, x, y, w, h, gadgetType, config }`)에 인라인된다. `gadgetType`은 notification BC의 `GadgetType` enum(12종, 카탈로그 단일 출처)으로 검증한다.
+
+```jsonc
+// dashboards.layout JSONB 배열의 한 항목 (가젯)
+{
+  "i": "g1",            // 인스턴스 키 (배열 내 유일)
+  "x": 0, "y": 0,        // 그리드 위치
+  "w": 4, "h": 3,        // 그리드 크기
+  "gadgetType": "assigned_to_me",  // 미지정 시 legacy 타일
+  "config": { }          // 타입별 설정 (형식만 검증)
+}
 ```
 
-UI: 가젯 카탈로그 모달 → 드래그하여 추가.
+UI: 가젯 카탈로그 모달(`GET /api/v1/dashboards/gadget-catalog`로 타입·설정 스키마 조회) → 드래그하여 추가.
 
 ## 14.4 가젯 데이터 fetch
 

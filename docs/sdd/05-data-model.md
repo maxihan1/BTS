@@ -206,13 +206,17 @@ workflow:
 | layout | JSONB | 가젯 배치 (grid layout) |
 
 ### Gadget
-| 필드 | 타입 | 설명 |
+
+> **구현 deviation (FR-DB-02, ADR `2026-06-29-fr-db-02-gadget-system`)**. 별도 `dashboard_gadgets` 테이블/엔티티는 채택하지 않는다. 가젯은 `dashboards.layout` JSONB 배열의 각 항목으로 임베드된다 — `{ i, x, y, w, h, gadgetType, config }`. 위치(x,y,w,h)와 타입·설정이 한 항목에 모여 단일 진실원천을 이룬다(FR-DB-01 ADR D4 계승, 신규 테이블/마이그레이션 0). 아래 표는 가젯 한 항목의 논리 필드를 나타내며 물리 테이블이 아니다.
+
+| 논리 필드 (layout 항목) | 타입 | 설명 |
 |---|---|---|
-| id | BIGINT (PK) | 가젯 인스턴스 ID |
-| dashboard_id | BIGINT (FK) | 소속 대시보드 |
-| gadget_type | VARCHAR(50) | 타입 (assigned_to_me 등) |
-| position | JSONB | 위치 (x, y, w, h) |
-| config | JSONB | 타입별 설정 |
+| i | string | 가젯 인스턴스 키 (layout 항목 식별, 배열 내 유일) |
+| gadgetType | string | 타입 (assigned_to_me 등). 미지정 시 legacy 타일 |
+| x, y, w, h | int | 그리드 위치/크기 (react-grid-layout) |
+| config | object | 타입별 설정 (형식만 검증, cross-BC 존재 미확인) |
+
+가젯 타입 검증·카탈로그는 notification BC의 `GadgetType` enum(12종) 단일 출처. 가젯 데이터는 프론트가 기존 BC API를 직접 호출(§14.4), notification BC는 저장·검증 + 카탈로그 API(`GET /api/v1/dashboards/gadget-catalog`)만 제공한다.
 
 ### 표준 가젯 카탈로그
 - assigned_to_me, filter_result, issue_count
