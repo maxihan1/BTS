@@ -481,4 +481,54 @@ test.describe('FR-TL-02 타임라인 의존 라인 오버레이 (D6/D7 실렌더
     // Then. DepsTruncatedBanner 표시 (TimelinePage.tsx: depsData?.truncated === true)
     await expect(page.getByText(DEPS_TRUNCATED_MSG)).toBeVisible()
   })
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // S-DEPS-REALCLICK. 수평 엣지 hit-path 실클릭 강조 (C-4 concern-fix)
+  //
+  // Given  alice 로그인, BTS 타임라인 SPA 이동
+  //        BTS-1 blocks BTS-4 엣지 — 수평 폭이 있는 케이스
+  //        startX (BTS-1 dueDate=2026-09-30 우끝) ≠ endX (BTS-4 startDate=2026-07-15 좌끝)
+  //        elbow 경로: M startX,BTS1_y H midX V BTS4_y H endX
+  //        bounding box 중심 (midX, (BTS1_y+BTS4_y)/2) 이 수직 세그먼트 위에 위치
+  //        S-DEPS-2/3 는 BTS-2→BTS-3(수직선, startX≈endX)을 dispatchEvent로 커버 —
+  //        해당 케이스는 수직선으로 bounding box 폭이 0에 가까워 Playwright 실클릭 곤란.
+  //        BTS-1→BTS-4 는 수평 폭이 크므로 Playwright 실클릭으로 hit-path 경로 검증 가능.
+  // When   BTS-1→BTS-4 hit-path를 Playwright .click() 실행 (force 없음, dispatchEvent 없음)
+  //        SVG child pointer-events:all 이 부모 SVG/g pointer-events:none 불구 hit-test 통과.
+  //        midX = (startX+endX)/2 가 bounding box center_x — 수직 세그먼트 위라
+  //        elementFromPoint(midX, center_y) 가 BTS-1→BTS-4 hit-path를 반환.
+  //        BTS-2→BTS-3 midX ≈ 2026-08-01 위치 vs BTS-1→BTS-4 midX ≈ 2026-08-22 위치 — 겹침 없음.
+  // Then   BTS-1→BTS-4 visible path에 data-selected="true"
+  //        BTS-2→BTS-3 visible path에 data-dimmed="true"
+  //        (라인 선택 hit-path 실클릭성 검증 — pointer-events 메커니즘 실 브라우저 경로 확인)
+  // ─────────────────────────────────────────────────────────────────────────
+  test('S-DEPS-REALCLICK 수평 엣지 hit-path 실클릭 — BTS-1→BTS-4 .click() → data-selected', async ({ page }) => {
+    // Given. alice 로그인 + BTS 타임라인 SPA 이동
+    await loginAndNavigateToTimeline(page)
+
+    const gantt = page.getByTestId(GANTT_TESTID)
+    await expect(gantt).toBeVisible()
+
+    // Given. 두 엣지 DOM 존재 확인 (초기 미선택 상태)
+    // visible path 는 bounding box 가 0일 수 있어 toBeAttached() 로 DOM 확인 (S-DEPS-1 선례)
+    const edge1 = gantt.locator(`[aria-label="${DEPS_EDGE_1_ARIA}"]`)
+    const edge2 = gantt.locator(`[aria-label="${DEPS_EDGE_2_ARIA}"]`)
+    await expect(edge1).toBeAttached()
+    await expect(edge2).toBeAttached()
+    await expect(edge2).not.toHaveAttribute('data-selected', 'true')
+
+    // When. BTS-1→BTS-4 hit-path 실클릭 (force 없음)
+    // DependencyOverlay.tsx: visible path 와 같은 <g> 안에 <path stroke="transparent" pointerEvents="all">
+    // CSS :has() 셀렉터로 aria-label 기준 부모 <g> 를 특정 후 투명 hit-path 에 접근 (strict mode 안전)
+    const edge2HitPath = gantt.locator(
+      `g:has([aria-label="${DEPS_EDGE_2_ARIA}"]) path[stroke="transparent"]`,
+    )
+    await expect(edge2HitPath).toBeAttached()
+    await edge2HitPath.click()
+
+    // Then. BTS-1→BTS-4 엣지 선택 강조 (selectedKey = "BTS-1__BTS-4")
+    await expect(edge2).toHaveAttribute('data-selected', 'true')
+    // Then. BTS-2→BTS-3 엣지 흐림 처리 (selectedKey !== null && !isSelected)
+    await expect(edge1).toHaveAttribute('data-dimmed', 'true')
+  })
 })
