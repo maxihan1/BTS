@@ -42,6 +42,7 @@ data class ConfigFieldDescriptor(
  *
  * configFields 는 GadgetType.configFields 와 동일한 인스턴스 목록이므로
  * 검증 로직과 카탈로그 응답이 항상 단일 출처에서 파생된다.
+ * requireAtLeastOne 은 additionalRules 의 RequireAtLeastOne 규칙 그룹을 노출한다.
  */
 data class GadgetCatalogEntry(
     val type: String,
@@ -49,6 +50,8 @@ data class GadgetCatalogEntry(
     val label: String,
     val enabled: Boolean,
     val configFields: List<ConfigFieldDescriptor>,
+    /** 교차필드 "적어도 하나 필수" 규칙 그룹 목록. 각 원소는 그룹 내 필드 키 목록이다. */
+    val requireAtLeastOne: List<List<String>> = emptyList(),
 )
 
 /** 단순 per-field required 로 표현할 수 없는 추가 검증 규칙. */
@@ -58,7 +61,7 @@ sealed interface AdditionalRule {
 }
 
 /** keys 목록 중 적어도 하나가 config 에 존재해야 통과하는 규칙. */
-class RequireAtLeastOne(private val keys: List<String>) : AdditionalRule {
+class RequireAtLeastOne(val keys: List<String>) : AdditionalRule {
     override fun validate(config: JsonNode): String? {
         val present = keys.any { key -> config.has(key) && !config.get(key).isNull }
         return if (!present) "필드 [${keys.joinToString(", ")}] 중 적어도 하나는 필요합니다." else null
@@ -69,7 +72,7 @@ class RequireAtLeastOne(private val keys: List<String>) : AdditionalRule {
  * 표준 가젯 카탈로그 12종.
  *
  * 각 상수가 자신의 config 필드 디스크립터를 선언적으로 보유한다.
- * validateConfig 와 catalog() 는 같은 디스크립터에서 파생되어 drift 를 차단한다.
+ * validateConfig 와 catalog() 는 같은 디스크립터(configFields + additionalRules)에서 파생되어 drift 를 차단한다.
  *
  * @property key 직렬화 키 (소문자 snake_case)
  * @property category 가젯 대분류
@@ -374,10 +377,11 @@ enum class GadgetType(
         if (!node.isTextual) throw DashboardDomainException("필드 '${descriptor.key}'는 문자열(URL)이어야 합니다.")
         val text = node.asText()
         val maxLen = descriptor.maxLength
+        val lower = text.lowercase()
         val error =
             when {
                 maxLen != null && text.length > maxLen -> "필드 '${descriptor.key}'는 최대 ${maxLen}자 이하여야 합니다."
-                !text.startsWith("http://") && !text.startsWith("https://") ->
+                !lower.startsWith("http://") && !lower.startsWith("https://") ->
                     "URL 은 http 또는 https 스킴이어야 합니다. 현재 값: $text"
                 else -> null
             }
@@ -413,6 +417,10 @@ enum class GadgetType(
                         },
                     enabled = type.enabled,
                     configFields = type.configFields,
+                    requireAtLeastOne =
+                        type.additionalRules
+                            .filterIsInstance<RequireAtLeastOne>()
+                            .map { it.keys },
                 )
             }
     }

@@ -26,6 +26,7 @@ data class GadgetCatalogResponse(
  * @param label 표시용 레이블
  * @param enabled MVP 활성 여부 (false 는 미래 기능)
  * @param configFields config 필드 디스크립터 DTO 목록
+ * @param requireAtLeastOne 교차필드 "적어도 하나 필수" 규칙 그룹 목록 (규칙 없으면 빈 리스트)
  */
 data class GadgetCatalogEntryDto(
     val type: String,
@@ -33,6 +34,7 @@ data class GadgetCatalogEntryDto(
     val label: String,
     val enabled: Boolean,
     val configFields: List<ConfigFieldDto>,
+    val requireAtLeastOne: List<List<String>> = emptyList(),
 ) {
     companion object {
         /**
@@ -48,6 +50,7 @@ data class GadgetCatalogEntryDto(
                 label = entry.label,
                 enabled = entry.enabled,
                 configFields = entry.configFields.map { ConfigFieldDto.from(it) },
+                requireAtLeastOne = entry.requireAtLeastOne,
             )
     }
 }
