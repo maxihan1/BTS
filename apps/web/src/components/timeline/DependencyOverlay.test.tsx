@@ -187,3 +187,48 @@ describe('DependencyOverlay — S3 클릭 해제', () => {
     expect(container.querySelectorAll('path[data-dimmed="true"]').length).toBe(0)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S6. 배경 rect pointer-events 조건부 — Gantt 막대 클릭 통과 버그 수정
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('DependencyOverlay — S6 배경 rect pointer-events 조건부', () => {
+  const lines = [makeLine('BTS-2', 'BTS-3', 1, 2)]
+
+  // jsdom은 pointer-events CSS 속성을 클릭 차단에 강제하지 않으므로
+  // style 속성 값 자체를 직접 단언한다.
+  // 실 브라우저에서 Gantt 막대 클릭이 통과하는지는 E2E에 위임한다.
+
+  it('S6a: 선택 없을 때(초기) 배경 rect의 pointerEvents가 none이다', () => {
+    const { container } = render(<DependencyOverlay lines={lines} {...OVERLAY_PROPS} />)
+    const bgRect = container.querySelector('[data-testid="dep-overlay-bg"]')
+    if (bgRect === null) throw new Error('배경 rect 없음')
+    expect((bgRect as HTMLElement).style.pointerEvents).toBe('none')
+  })
+
+  it('S6b: hit-path 클릭으로 라인 선택 후 배경 rect의 pointerEvents가 all이 된다', () => {
+    const { container } = render(<DependencyOverlay lines={lines} {...OVERLAY_PROPS} />)
+    const hitPath = container.querySelector('path[stroke="transparent"]')
+    if (hitPath === null) throw new Error('hit-path 없음')
+
+    fireEvent.click(hitPath)
+
+    const bgRect = container.querySelector('[data-testid="dep-overlay-bg"]')
+    if (bgRect === null) throw new Error('배경 rect 없음')
+    expect((bgRect as HTMLElement).style.pointerEvents).toBe('all')
+  })
+
+  it('S6c: 배경 클릭으로 선택 해제 후 배경 rect의 pointerEvents가 다시 none이 된다', () => {
+    const { container } = render(<DependencyOverlay lines={lines} {...OVERLAY_PROPS} />)
+    const hitPath = container.querySelector('path[stroke="transparent"]')
+    if (hitPath === null) throw new Error('hit-path 없음')
+
+    fireEvent.click(hitPath)
+
+    const bgRect = container.querySelector('[data-testid="dep-overlay-bg"]')
+    if (bgRect === null) throw new Error('배경 rect 없음')
+    fireEvent.click(bgRect)
+
+    expect((bgRect as HTMLElement).style.pointerEvents).toBe('none')
+  })
+})
