@@ -1,4 +1,4 @@
-// Gantt 차트 루트 컴포넌트 — Epic 그룹 조립·접기/펼치기·레이블 열·스크롤 영역·deps 오버레이 (FR-TL-01 D6, FR-TL-02 D6)
+// Gantt 차트 루트 컴포넌트 — Epic 그룹 조립·접기/펼치기·레이블 열·스크롤 영역·deps 오버레이·줌 배선 (FR-TL-01 D6, FR-TL-02 D6, FR-TL-03)
 import type { JSX } from 'react'
 import { useState } from 'react'
 import type { TimelineItem } from '@/api/timeline'
@@ -215,6 +215,12 @@ export interface GanttChartProps {
  * - `computeDependencyLines(...)` → elbow 좌표 산출 (jsdom 안전, getBBox 미사용).
  * - `DependencyOverlay` — 우측 영역 절대 배치, `depLines.length > 0`일 때만 렌더
  *   (pointer-events 차단 최소화: 라인 없을 때 background rect 미생성).
+ *
+ * **줌 레벨 배선 (FR-TL-03)**:
+ * - `zoomLevel` → `ZOOM_PRESETS[zoomLevel].dayWidth` 단일 파생 → `dayWidth` 1개 변수.
+ * - `dayWidth`를 `computeDependencyLines`, `overlayWidth`, `TimelineAxis`, `TimelineRow` 에
+ *   전달해 모든 수평 좌표가 동일 출처에서 나온다.
+ * - `zoomLevel` 미지정 시 DEFAULT_ZOOM('month') 적용, `dayWidth=20` = 구 `DAY_WIDTH_PX`와 동일(무회귀).
  */
 export function GanttChart({ items, assigneeNames, onSelectIssue, deps = [], zoomLevel = DEFAULT_ZOOM }: GanttChartProps): JSX.Element {
   const groups = assembleEpicGroups(items)
