@@ -283,3 +283,13 @@ API 3종. `POST /search/export-jobs`(202+jobId) · `GET /search/export-jobs/{id}
 **통과 확인**. TDD RED 진짜 실패 · jOOQ ? 바인딩 · MANDATORY outbox(T4) · 비소유 404 은닉(T10) · depends-on 순환 없음 · detekt/ktlint --rerun-tasks.
 
 **BLOCKER: 모두 해소됨 (게이트 1 진입 가능).**
+
+## 구현 결과 (bts-impl, 2026-06-29)
+
+- **11 task 전부 완료** (22 TDD red→green 커밋 + refactor/style). 모듈 전체 **603 tests + ktlintCheck + detekt --rerun-tasks BUILD SUCCESSFUL** (controller 직접 검증, false-green 배제).
+- **controller verify 적발·해소**:
+  - W3: detekt baseline에 신규 코드 위반 동결 시도 → 코드/@Suppress 해소(baseline 빈 상태 유지).
+  - Step4: 각 task가 `:test`만 확인하고 `ktlintMainSourceSetCheck`(main) 누락 → main 소스셋 ktlint 부채 누적 적발 → 일괄 정리.
+  - Step4: ktlintFormat의 function-signature 한 줄 병합 ↔ detekt MaxLineLength 충돌 → block body 전환으로 양립.
+- **E2E(Playwright) 생략 사유**: 백엔드 전용 PR(UI 없음). 통합 검증은 `T11 ExportJobEndToEndIntegrationTest`(Tembo+MinIO 2컨테이너, 4 시나리오: 정상 10,500건·cleanup·상한초과·at-least-once 멱등)가 담당. 프론트 D6/D7(별도 PR)에서 Playwright E2E 추가.
+- 핵심 BLOCKER 반영 확인: pgmq Tembo 이미지(B1), process() @Transactional 밖(B2), VT=300<stale=600 정합, ResponseStatusException 별도 핸들러(catch-all 401/409→500 변질 차단), Content-Disposition CRLF 인젝션 방어.
