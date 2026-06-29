@@ -74,7 +74,9 @@ class ExportJobEnqueuePublisherTest : SearchPersistenceTestBase() {
             DataSourceTransactionManager(dataSource)
 
         @Bean
-        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext = DSL.using(dataSource, SQLDialect.POSTGRES)
+        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext {
+            return DSL.using(dataSource, SQLDialect.POSTGRES)
+        }
 
         /** [ExportJobEnqueuePublisher] 빈 — @Component 어노테이션 기반 컴포넌트 스캔 없이 명시 등록. */
         @Bean

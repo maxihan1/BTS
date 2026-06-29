@@ -159,9 +159,13 @@ class ExportJobProcessor(
         format: ExportFormat,
     ): String = "${job.projectKey}/${job.id}.${format.fileExtension}"
 
-    private fun calculateTotalPages(total: Long): Int = if (total == 0L) 1 else ((total + PAGE_SIZE - 1) / PAGE_SIZE).toInt()
+    private fun calculateTotalPages(total: Long): Int {
+        return if (total == 0L) 1 else ((total + PAGE_SIZE - 1) / PAGE_SIZE).toInt()
+    }
 
-    private fun parseFormat(formatStr: String): ExportFormat = ExportFormat.entries.firstOrNull { it.name == formatStr } ?: ExportFormat.CSV
+    private fun parseFormat(formatStr: String): ExportFormat {
+        return ExportFormat.entries.firstOrNull { it.name == formatStr } ?: ExportFormat.CSV
+    }
 
     private fun parseAql(query: String): AqlParseResult {
         val tokens = AqlLexer(query).tokenize()
