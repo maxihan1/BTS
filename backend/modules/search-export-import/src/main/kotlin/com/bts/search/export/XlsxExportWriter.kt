@@ -3,6 +3,7 @@
 package com.bts.search.export
 
 import com.bts.shared.search.IssueSearchHit
+import org.apache.poi.xssf.usermodel.XSSFSheet
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import org.slf4j.LoggerFactory
 import java.io.OutputStream
@@ -11,7 +12,7 @@ import java.io.OutputStream
  * 이슈 검색 결과를 XLSX 형식으로 [OutputStream]에 기록하는 writer.
  *
  * Apache POI [XSSFWorkbook](Open XML OOXML)을 사용한다.
- * 모든 셀은 [org.apache.poi.ss.usermodel.CellType.STRING] 타입으로 기록해
+ * 모든 셀은 STRING 타입으로 기록해
  * 숫자 자동 변환을 방지하고 formula injection 안전성을 보장한다.
  *
  * ### Formula Injection 방어
@@ -73,7 +74,7 @@ class XlsxExportWriter {
      * @param columns 헤더를 기록할 컬럼 목록.
      */
     private fun writeHeaderRow(
-        sheet: org.apache.poi.xssf.usermodel.XSSFSheet,
+        sheet: XSSFSheet,
         columns: List<ExportColumn>,
     ) {
         val row = sheet.createRow(HEADER_ROW_INDEX)
@@ -85,8 +86,8 @@ class XlsxExportWriter {
     /**
      * 지정한 행 번호에 이슈 데이터를 기록한다.
      *
-     * 각 셀 값은 [ExportCellSanitizer.sanitize] → [org.apache.poi.ss.usermodel.Cell.setCellValue] 순서로 기록한다.
-     * [setCellValue(String)]은 셀 타입을 [org.apache.poi.ss.usermodel.CellType.STRING]으로 고정한다.
+     * 각 셀 값은 [ExportCellSanitizer.sanitize] 후 setCellValue(String)으로 기록한다.
+     * setCellValue(String)은 셀 타입을 STRING으로 고정한다.
      *
      * @param sheet 대상 시트.
      * @param columns 기록할 컬럼 목록.
@@ -94,7 +95,7 @@ class XlsxExportWriter {
      * @param rowIndex 기록할 행 번호(0-base).
      */
     private fun writeDataRow(
-        sheet: org.apache.poi.xssf.usermodel.XSSFSheet,
+        sheet: XSSFSheet,
         columns: List<ExportColumn>,
         hit: IssueSearchHit,
         rowIndex: Int,
