@@ -130,6 +130,7 @@ data class Dashboard(
          * 5. 항목 수 ≤ MAX_GADGETS.
          * 6. 각 항목 위치·gadgetType·config 검증.
          */
+        @Suppress("ThrowsCount")
         private fun validateLayout(layout: String) {
             if (layout.toByteArray().size > MAX_LAYOUT_BYTES) {
                 throw DashboardDomainException("layout 은 ${MAX_LAYOUT_BYTES}바이트(64KB) 이하여야 합니다.")
@@ -164,7 +165,6 @@ data class Dashboard(
          * - gadgetType(선택): 알려진 키·enabled=true 이어야 하며 해당 타입의 config 를 위임 검증.
          *   없으면 legacy 타일로 간주하고 config 검증을 생략한다.
          */
-        @Suppress("ThrowsCount")
         private fun validateLayoutItem(
             index: Int,
             item: JsonNode,
@@ -180,6 +180,16 @@ data class Dashboard(
             if (!seenIds.add(id)) {
                 throw DashboardDomainException("layout 항목 'i' 값 '$id' 가 중복됩니다.")
             }
+            validateLayoutItemPosition(id, item)
+            validateLayoutItemGadgetType(id, item)
+        }
+
+        /** x·y(≥0)·w·h(≥1) 위치 필드를 검증한다. */
+        @Suppress("ThrowsCount")
+        private fun validateLayoutItemPosition(
+            id: String,
+            item: JsonNode,
+        ) {
             val x = item.get("x")
             if (x == null || !x.isIntegralNumber || x.intValue() < 0) {
                 throw DashboardDomainException("layout[$id] 항목의 'x' 는 0 이상의 정수여야 합니다.")
@@ -196,9 +206,9 @@ data class Dashboard(
             if (h == null || !h.isIntegralNumber || h.intValue() < 1) {
                 throw DashboardDomainException("layout[$id] 항목의 'h' 는 1 이상의 정수여야 합니다.")
             }
-            validateLayoutItemGadgetType(id, item)
         }
 
+        @Suppress("ThrowsCount")
         private fun validateLayoutItemGadgetType(
             id: String,
             item: JsonNode,

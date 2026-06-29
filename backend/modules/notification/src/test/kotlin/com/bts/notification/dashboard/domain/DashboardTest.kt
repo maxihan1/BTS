@@ -61,9 +61,11 @@ class DashboardTest : DescribeSpec({
         it("큰 유효 배열(64KB 이하)이면 허용된다") {
             // text_widget 가젯 타일 7개, 각 markdown ~9000자 — 합계 약 63KB (배열-only 강화 이후 정석)
             val markdown = "x".repeat(9000)
-            val tiles = (1..7).joinToString(",") { idx ->
-                """{"i":"t$idx","x":0,"y":0,"w":4,"h":3,"gadgetType":"text_widget","config":{"markdown":"$markdown"}}"""
-            }
+            val tiles =
+                (1..7).joinToString(",") { idx ->
+                    val cfg = """{"markdown":"$markdown"}"""
+                    """{"i":"t$idx","x":0,"y":0,"w":4,"h":3,"gadgetType":"text_widget","config":$cfg}"""
+                }
             val layout = "[$tiles]"
             buildDashboard(layout = layout).layout shouldBe layout
         }
