@@ -94,13 +94,15 @@
 
 **우선순위**. 필수 | **선행**. §2.1, §2.2 | **Plan slug**. `search/export-csv-xlsx`
 
-- [ ] D1. 도메인 — ExportRequest (책임. backend-engineer)
-- [ ] D2. 명세 — 필드 선택 + 한글 인코딩 (UTF-8 BOM) (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — `POST /api/v1/exports` (CSV + Apache POI XLSX) (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — Excel 검증 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — Export 다이얼로그 + 진행률 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+> **전체 완료 (2026-06-29, PR #203)**. AQL 쿼리 기반 동기 Export — `POST /api/v1/search/export`(검색 하위 네임스페이스, FR-EX-02 비동기는 `/search/export-jobs`로 진화). 입력=AQL(`IssueSearchPort` 재사용, **issue-tracking·shared-kernel 변경 0**), 컬럼=`IssueSearchHit` 9필드(영문 표준 라벨) 부분선택, 동기 상한 1만 행(count-first `IssueSearchPage.total` 확인 후 페이지 순회, best-effort 스냅샷). CSV=UTF-8 BOM + RFC 4180(zero-dep), XLSX=**Apache POI poi-ooxml:5.4.0 신규 의존성**(Maxi 승인, log4j-to-slf4j 브리지). 보안. formula injection 방어(`ExportCellSanitizer` `=+-@\t\r`→`'` prefix, CSV·XLSX 공통) + Content-Disposition 헤더 인젝션 방어(projectKey 영숫자+하이픈 패턴) + BROWSE 권한·visibility 보안 술어를 `IssueSearchPort` 경유 **구조적 상속**(전용 쿼리 경로 없음). 전용 `ExportExceptionHandler`(`assignableTypes=[ExportController]`, 401→500 변질 차단·`SEARCH_` prefix). ADR `docs/decisions/2026-06-29-fr-ex-01-csv-xlsx-export.md`. 데이터 모델 변경 0(D3 활용 — export_jobs는 FR-EX-02). 두 독립 plan 리뷰(eng/devex) BLOCKER 5건 코드 실증 + codereview C1(Clock 기본값) hot-fix.
+
+- [x] D1. 도메인 — ExportRequest (책임. backend-engineer)
+- [x] D2. 명세 — 필드 선택 + 한글 인코딩 (UTF-8 BOM) (책임. backend-engineer)
+- [x] D3. 데이터 모델 — (활용) (책임. db-engineer)
+- [x] D4. 백엔드 — `POST /api/v1/search/export` (CSV + Apache POI XLSX) (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 — Excel 검증 (책임. backend-engineer)
+- [x] D6. 프론트 UI — Export 다이얼로그 + 진행률 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ### §3.2 FR-EX-02 — 대용량(>1만건) 비동기 Export
 
