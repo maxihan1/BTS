@@ -10,6 +10,7 @@ import com.bts.search.export.job.domain.ExportJobId
 import com.bts.search.export.job.domain.ExportJobStatus
 import com.bts.search.export.job.repository.ExportJobRepository
 import com.bts.search.export.job.storage.ExportObjectStoragePort
+import com.bts.search.export.job.storage.MinioExportStorageException
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.clearMocks
@@ -171,18 +172,19 @@ class ExportJobControllerTest {
     // ── C4 GET /{id} 타인 → 404 (존재 은닉) ──────────────────────────────────
 
     @Test
-    fun `C4 - GET export-jobs id 타인 404 존재 은닉`() {
+    fun `C4 - GET export-jobs id 타인 404 존재 은닉 errorCode SEARCH_NOT_FOUND`() {
         val jobId = ExportJobId(UUID.randomUUID())
         every { mockExportJobRepository.findByIdForRequester(jobId, actorId) } returns null
 
         mockMvc.perform(get("/api/v1/search/export-jobs/${jobId.value}"))
             .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("SEARCH_NOT_FOUND"))
     }
 
     // ── C5 GET /{id}/download COMPLETED 본인 → 200 stream ───────────────────
 
     @Test
-    fun `C5 - GET download COMPLETED 본인 200 Content-Disposition attachment`() {
+    fun `C5 - GET download COMPLETED 본인 200 Content-Disposition attachment Content-Type text-csv`() {
         val jobId = ExportJobId(UUID.randomUUID())
         val job = makeCompletedJob(jobId, actorId, objectKey = "PROJ/${jobId.value}.csv")
         every { mockExportJobRepository.findByIdForRequester(jobId, actorId) } returns job
@@ -192,6 +194,7 @@ class ExportJobControllerTest {
         mockMvc.perform(get("/api/v1/search/export-jobs/${jobId.value}/download"))
             .andExpect(status().isOk)
             .andExpect(header().string("Content-Disposition", containsString("attachment")))
+            .andExpect(header().string("Content-Type", containsString("text/csv")))
     }
 
     // ── C6 GET /{id}/download PENDING → 409 SEARCH_EXPORT_NOT_READY ─────────
@@ -210,12 +213,13 @@ class ExportJobControllerTest {
     // ── C7 GET /{id}/download 타인 → 404 ────────────────────────────────────
 
     @Test
-    fun `C7 - GET download 타인 또는 없음 404`() {
+    fun `C7 - GET download 타인 또는 없음 404 errorCode SEARCH_NOT_FOUND`() {
         val jobId = ExportJobId(UUID.randomUUID())
         every { mockExportJobRepository.findByIdForRequester(jobId, actorId) } returns null
 
         mockMvc.perform(get("/api/v1/search/export-jobs/${jobId.value}/download"))
             .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("SEARCH_NOT_FOUND"))
     }
 
     // ── C8 미인증 → 401 SEARCH_UNAUTHENTICATED ────────────────────────────────
@@ -302,6 +306,22 @@ class ExportJobControllerTest {
         mockMvc.perform(get("/api/v1/search/export-jobs/${jobId.value}/download"))
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.errorCode").value("SEARCH_EXPORT_NOT_READY"))
+    }
+
+    // ── C13 storage openStream 예외 → 5xx (200+빈바디 방지 회귀 가드) ──────────
+
+    @Test
+    fun `C13 - storage openStream 예외 시 5xx 반환 200 빈바디 방지`() {
+        val jobId = ExportJobId(UUID.randomUUID())
+        val job = makeCompletedJob(jobId, actorId, objectKey = "PROJ/${jobId.value}.csv")
+        every { mockExportJobRepository.findByIdForRequester(jobId, actorId) } returns job
+        every { mockExportObjectStoragePort.openStream(any()) } throws
+            MinioExportStorageException("MinIO 연결 실패", RuntimeException("connection refused"))
+
+        // openStream 이 응답 커밋(200+헤더) 전에 예외를 던져야 한다
+        // — 람다 내부에서 던지면 0바이트 200 OK 가 내려가는 버그가 발생했음
+        mockMvc.perform(get("/api/v1/search/export-jobs/${jobId.value}/download"))
+            .andExpect(status().is5xxServerError)
     }
 
     // ── private helpers ───────────────────────────────────────────────────────

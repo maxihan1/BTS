@@ -14,6 +14,7 @@ import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.security.authentication.AnonymousAuthenticationToken
 import org.springframework.security.core.Authentication
@@ -152,6 +153,11 @@ class ExportJobController(
 
         val objectKey = job.resultObjectKey
         val filename = sanitizeFilename("${job.projectKey}-issues.${job.format.lowercase()}")
+        val contentType =
+            com.bts.search.export.ExportFormat.entries
+                .firstOrNull { it.name == job.format }
+                ?.contentType
+                ?: "application/octet-stream"
 
         log.info(
             "export_job_download jobId={} objectKey={} filename={} actor={}",
@@ -161,15 +167,17 @@ class ExportJobController(
             actorId,
         )
 
+        // openStream 을 람다 바깥(응답 커밋 전)에서 호출하여 MinIO 장애 시 적절한 HTTP 오류코드로 응답한다.
+        // 람다 내부에서 호출하면 응답 헤더(200+Content-Disposition) 커밋 후 예외가 발생해 0바이트 응답이 됨.
+        val inputStream = storage.openStream(objectKey)
         val body =
             StreamingResponseBody { outputStream ->
-                storage.openStream(objectKey).use { inputStream ->
-                    inputStream.copyTo(outputStream)
-                }
+                inputStream.use { it.copyTo(outputStream) }
             }
 
         return ResponseEntity.ok()
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"$filename\"")
+            .contentType(MediaType.parseMediaType(contentType))
             .body(body)
     }
 
