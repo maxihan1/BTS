@@ -80,6 +80,12 @@ dependencies {
     // jOOQ 런타임 (jOOQ: SQL을 코드로 안전하게 작성하는 라이브러리)
     implementation("org.jooq:jooq")
 
+    // Apache POI — XLSX(Open XML) 파일 생성 (Maxi 승인 2026-06-29, FR-EX-01)
+    // poi-ooxml 은 poi-core + xmlbeans + commons-compress + commons-io 를 transitive 포함한다.
+    // log4j-api 는 POI 가 선택적으로 참조하므로 log4j-to-slf4j 브리지로 Logback 으로 라우팅한다.
+    implementation("org.apache.poi:poi-ooxml:5.4.0")
+    runtimeOnly("org.apache.logging.log4j:log4j-to-slf4j:2.23.1")
+
     // ── jOOQ 코드 생성 전용 classpath ─────────────────────────────────────────
     // PostgresDatabase: 실제 PostgreSQL 인스턴스를 통해 jOOQ 코드 생성 (nu.studer.jooq codegen 전용)
     jooqGenerator("org.jooq:jooq-codegen")

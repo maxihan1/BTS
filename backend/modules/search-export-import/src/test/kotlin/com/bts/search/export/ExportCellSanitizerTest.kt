@@ -16,7 +16,6 @@ import org.junit.jupiter.params.provider.ValueSource
  * - 일반 텍스트 / 숫자 / 빈 문자열 → 변경 없음
  */
 class ExportCellSanitizerTest {
-
     // ── 위험 시작 문자 → prefix ────────────────────────────────────────────────
 
     @ParameterizedTest

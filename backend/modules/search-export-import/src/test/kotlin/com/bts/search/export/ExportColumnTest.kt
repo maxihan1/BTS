@@ -23,7 +23,6 @@ import java.util.UUID
  *   미지원 필드명 → [SearchValidationException]
  */
 class ExportColumnTest {
-
     private val fixedInstant = Instant.parse("2024-03-15T10:30:00Z")
     private val fixedUuid = UUID.fromString("00000000-0000-0000-0000-000000000001")
 
@@ -123,7 +122,12 @@ class ExportColumnTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = ["KEY", "SUMMARY", "TYPE", "STATUS", "ASSIGNEE_ID", "PRIORITY", "PRIORITY_NAME", "PROJECT", "UPDATED_AT"])
+    @ValueSource(
+        strings = [
+            "KEY", "SUMMARY", "TYPE", "STATUS", "ASSIGNEE_ID",
+            "PRIORITY", "PRIORITY_NAME", "PROJECT", "UPDATED_AT",
+        ],
+    )
     fun `parse가 단일 유효 컬럼명을 처리한다`(name: String) {
         val result = ExportColumn.parse(listOf(name))
         assertThat(result).hasSize(1)
