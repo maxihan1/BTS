@@ -63,7 +63,7 @@ export const TimelineZoomControl = ({ zoomLevel, onZoomChange }: TimelineZoomCon
             size="sm"
             aria-pressed={zoomLevel === level}
             aria-keyshortcuts={ZOOM_KEYSHORTCUTS[level]}
-            onClick={() => { onZoomChange(level) }}
+            onClick={() => onZoomChange(level)}
           >
             {timelineLabels.zoom[level]}
           </Button>
@@ -78,9 +78,9 @@ export const TimelineZoomControl = ({ zoomLevel, onZoomChange }: TimelineZoomCon
           size="icon-sm"
           aria-label={timelineLabels.zoom.zoomOutAriaLabel}
           disabled={isAtMinZoom}
-          onClick={() => { onZoomChange(zoomedOut) }}
+          onClick={() => onZoomChange(zoomedOut)}
         >
-          {'−' /* − U+2212 minus sign */}
+          {'−'}
         </Button>
         <Button
           type="button"
@@ -88,7 +88,7 @@ export const TimelineZoomControl = ({ zoomLevel, onZoomChange }: TimelineZoomCon
           size="icon-sm"
           aria-label={timelineLabels.zoom.zoomInAriaLabel}
           disabled={isAtMaxZoom}
-          onClick={() => { onZoomChange(zoomedIn) }}
+          onClick={() => onZoomChange(zoomedIn)}
         >
           {'+'}
         </Button>
