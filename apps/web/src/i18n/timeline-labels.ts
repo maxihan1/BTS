@@ -65,6 +65,24 @@ export const timelineLabels = {
     /** TIMELINE_FETCH_LIMIT 초과 시 표시하는 안내 메시지 */
     message: '표시되지 않은 이슈가 있습니다. 이슈 목록에서 전체를 확인하세요.',
   },
+
+  /** blocks 의존 라인 관련 라벨 (FR-TL-02 D6) */
+  deps: {
+    /**
+     * 의존 라인 aria-label 생성 함수.
+     *
+     * blockerKey가 blockedKey를 차단하는 관계를 설명한다 (NFR3 접근성).
+     */
+    lineAriaLabel: (blocker: string, blocked: string): string =>
+      `${blocker}가 ${blocked}을 차단`,
+
+    /**
+     * deps truncated 시 누락 경고 메시지.
+     *
+     * 기존 timeline 이슈 누락 배너(truncated.message)와 구분되는 문구.
+     */
+    truncatedMessage: '일부 의존 라인이 생략되었습니다',
+  },
 } as const
 
 /** timelineLabels const 추론 타입 */

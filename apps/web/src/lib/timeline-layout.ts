@@ -220,6 +220,53 @@ export function computeBarGeometry(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 의존성 라인 타입 (FR-TL-02 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 보이는 행 하나. `key`·`rowIndex`·`item`을 가진다.
+ *
+ * - `key`: 이슈 키
+ * - `rowIndex`: GanttChart 우측 영역 기준 절대 행 번호 (0-indexed)
+ * - `item`: 막대 좌표 계산용 TimelineItem
+ */
+export interface VisibleRow {
+  key: string
+  rowIndex: number
+  item: TimelineItem
+}
+
+/**
+ * 의존 관계 엣지. api 무의존 자체 인터페이스.
+ *
+ * - `blockerKey`: 차단 측 이슈 키 (source)
+ * - `blockedKey`: 피차단 측 이슈 키 (target)
+ */
+export interface DependencyEdge {
+  blockerKey: string
+  blockedKey: string
+}
+
+/**
+ * elbow 커넥터 좌표. 컴포넌트가 `M startX,startY H midX V endY H endX` 경로를 조립한다.
+ *
+ * 좌표계: 우측 막대 영역 로컬 (축 헤더 오프셋 제외 — 컴포넌트가 더한다).
+ * - `startX`: blocker 막대 우끝 x
+ * - `endX`: blocked 막대 좌끝 x
+ * - `startY/endY`: 각 행 수직 중심 (`rowIndex * rowHeight + rowHeight / 2`)
+ * - `midX`: elbow 꺾임 x (`(startX + endX) / 2`)
+ */
+export interface DependencyLine {
+  blockerKey: string
+  blockedKey: string
+  startX: number
+  startY: number
+  midX: number
+  endX: number
+  endY: number
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // assembleEpicGroups
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -283,6 +330,109 @@ export function assembleEpicGroups(items: TimelineItem[]): TimelineGroup[] {
 
   if (unclassified.length > 0) {
     result.push({ epicItem: null, items: unclassified })
+  }
+
+  return result
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// flattenVisibleRows (FR-TL-02 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GanttChart 행 배치와 동일 순서로 현재 보이는 행 목록을 반환한다.
+ *
+ * GanttChart 우측 영역 순회 로직을 단일 출처화해 세로 좌표 drift를 차단한다.
+ * - Epic 그룹: epic 행 → (collapsed 아니면) 자식 행들
+ * - 미분류 그룹: 헤더 행이 rowIndex 1칸 점유(결과 미포함) → 아이템 행들
+ *
+ * @param groups assembleEpicGroups 결과
+ * @param collapsed 접힌 epic 키 집합 (GanttChart의 collapsedGroups)
+ * @returns 보이는 행 목록. rowIndex는 절대 행 번호(0-indexed, 축 헤더 제외).
+ */
+export function flattenVisibleRows(
+  groups: TimelineGroup[],
+  collapsed: ReadonlySet<string>,
+): VisibleRow[] {
+  const result: VisibleRow[] = []
+  let rowIdx = 0
+
+  for (const group of groups) {
+    if (group.epicItem !== null) {
+      // Epic 그룹: epic 행
+      result.push({ key: group.epicItem.key, rowIndex: rowIdx++, item: group.epicItem })
+      if (!collapsed.has(group.epicItem.key)) {
+        // 펼침: 자식 행 (items[0]은 epicItem 자신 — slice(1))
+        for (const child of group.items.slice(1)) {
+          result.push({ key: child.key, rowIndex: rowIdx++, item: child })
+        }
+      }
+    } else {
+      // 미분류 그룹: 헤더 행 1칸 점유 (결과 미포함)
+      rowIdx++
+      for (const item of group.items) {
+        result.push({ key: item.key, rowIndex: rowIdx++, item })
+      }
+    }
+  }
+
+  return result
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// computeDependencyLines (FR-TL-02 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 보이는 행과 의존 엣지 목록에서 elbow 커넥터 좌표를 계산한다.
+ *
+ * - 양끝 모두 `rows`에 있을 때만 좌표 산출 (EC1/S4: 접힘·미존재 끝점 제외).
+ * - self-block(`blockerKey === blockedKey`) 제외 (EC4).
+ * - 상호 blocks(A↔B)는 두 엣지 모두 반환 (EC3).
+ * - 좌표는 우측 막대 영역 로컬 — 축 헤더 오프셋은 컴포넌트가 더한다.
+ * - jsdom 안전: getBBox 미사용. computeBarGeometry(순수 수식) 기반으로 좌표 산출.
+ * - `rowHeight`는 인자로 받는다. `ROW_HEIGHT_PX`는 TimelineRow.tsx(컴포넌트) 소유이므로
+ *   lib이 import하지 않는다 (CONCERN-1: lib→component 역의존 차단).
+ *
+ * @param rows flattenVisibleRows 반환값
+ * @param range 전체 날짜 범위
+ * @param dayWidth 일 단위 열 폭(px)
+ * @param rowHeight 행 높이(px) — 호출자(GanttChart)가 ROW_HEIGHT_PX를 전달
+ * @param deps 의존 엣지 배열
+ * @returns elbow 커넥터 좌표 배열
+ */
+export function computeDependencyLines(
+  rows: VisibleRow[],
+  range: DateRange,
+  dayWidth: number,
+  rowHeight: number,
+  deps: DependencyEdge[],
+): DependencyLine[] {
+  // key → {rowIndex, barGeometry} 맵 구성
+  const rowMap = new Map<string, { rowIndex: number; barGeometry: BarGeometry }>()
+  for (const row of rows) {
+    rowMap.set(row.key, {
+      rowIndex: row.rowIndex,
+      barGeometry: computeBarGeometry(row.item, range, dayWidth),
+    })
+  }
+
+  const result: DependencyLine[] = []
+
+  for (const dep of deps) {
+    if (dep.blockerKey === dep.blockedKey) continue  // EC4: self-block 제외
+
+    const blocker = rowMap.get(dep.blockerKey)
+    const blocked = rowMap.get(dep.blockedKey)
+    if (blocker === undefined || blocked === undefined) continue  // EC1/S4: 비가시 제외
+
+    const startX = blocker.barGeometry.barX + blocker.barGeometry.barWidth
+    const endX = blocked.barGeometry.barX
+    const startY = blocker.rowIndex * rowHeight + rowHeight / 2
+    const endY = blocked.rowIndex * rowHeight + rowHeight / 2
+    const midX = (startX + endX) / 2
+
+    result.push({ blockerKey: dep.blockerKey, blockedKey: dep.blockedKey, startX, startY, midX, endX, endY })
   }
 
   return result

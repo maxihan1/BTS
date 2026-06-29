@@ -8,13 +8,18 @@ import type { ReactNode } from 'react'
 // api/timeline 전체 mock — 실제 HTTP 요청 없이 단위 테스트
 vi.mock('@/api/timeline')
 
-import { fetchTimeline } from '@/api/timeline'
-import type { TimelineResponse } from '@/api/timeline'
-import { useTimeline, timelineKeys } from './use-timeline'
+import { fetchTimeline, fetchTimelineDeps } from '@/api/timeline'
+import type { TimelineResponse, TimelineDepsResponse } from '@/api/timeline'
+import { useTimeline, useTimelineDeps, timelineKeys } from './use-timeline'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 픽스처
 // ─────────────────────────────────────────────────────────────────────────────
+
+const MOCK_DEPS_RESPONSE: TimelineDepsResponse = {
+  deps: [{ blockerKey: 'BTS-2', blockedKey: 'BTS-3' }],
+  truncated: false,
+}
 
 const MOCK_TIMELINE_RESPONSE: TimelineResponse = {
   items: [
@@ -58,6 +63,18 @@ describe('timelineKeys', () => {
     const keyAtlas = timelineKeys.list('ATLAS')
     const keyBts = timelineKeys.list('BTS')
     expect(keyAtlas).not.toEqual(keyBts)
+  })
+
+  it('T-TL-KEY-3: deps는 ["timeline", projectKey, "deps"] 3요소 tuple을 반환한다', () => {
+    const key = timelineKeys.deps('BTS')
+    expect(key).toEqual(['timeline', 'BTS', 'deps'])
+    expect(key).toHaveLength(3)
+  })
+
+  it('T-TL-KEY-4: deps projectKey가 달라지면 다른 tuple을 반환한다', () => {
+    const keyBts = timelineKeys.deps('BTS')
+    const keyAtlas = timelineKeys.deps('ATLAS')
+    expect(keyBts).not.toEqual(keyAtlas)
   })
 })
 
@@ -126,5 +143,58 @@ describe('useTimeline', () => {
     await waitFor(() => expect(result.current.isError).toBe(true))
 
     expect(result.current.error).toBeInstanceOf(Error)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useTimelineDeps (FR-TL-02 D6/D7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('useTimelineDeps', () => {
+  let queryClient: QueryClient
+
+  beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    vi.mocked(fetchTimelineDeps).mockResolvedValue(MOCK_DEPS_RESPONSE)
+  })
+
+  afterEach(() => {
+    queryClient.clear()
+    vi.clearAllMocks()
+  })
+
+  it('T-TL-DEPS-1: projectKey가 있으면 fetchTimelineDeps를 호출하고 deps 배열을 반환한다', async () => {
+    const { result } = renderHook(() => useTimelineDeps('BTS'), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(fetchTimelineDeps).toHaveBeenCalledWith('BTS')
+    expect(result.current.data?.deps).toEqual([{ blockerKey: 'BTS-2', blockedKey: 'BTS-3' }])
+  })
+
+  it('T-TL-DEPS-2: queryKey가 ["timeline", projectKey, "deps"] 형태로 캐시에 저장된다', async () => {
+    const { result } = renderHook(() => useTimelineDeps('BTS'), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    const cachedData = queryClient.getQueryData(['timeline', 'BTS', 'deps'])
+    expect(cachedData).toEqual(MOCK_DEPS_RESPONSE)
+  })
+
+  it('T-TL-DEPS-3: projectKey가 빈 문자열이면 enabled=false로 fetchTimelineDeps를 호출하지 않는다', async () => {
+    const { result } = renderHook(() => useTimelineDeps(''), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(fetchTimelineDeps).not.toHaveBeenCalled()
   })
 })

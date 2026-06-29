@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { ApiError } from '@/api/client'
-import { fetchTimeline } from './timeline'
+import { fetchTimeline, timelineDepsResponseSchema, fetchTimelineDeps } from './timeline'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처
@@ -184,5 +184,115 @@ describe('fetchTimeline', () => {
     expect(item?.dueDate).toBeNull()
     expect(item?.targetDate).toBeNull()
     expect(item?.epicKey).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// timelineDepsResponseSchema 테스트 (FR-TL-02 D6/D7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('timelineDepsResponseSchema', () => {
+  it('유효한 deps 응답 { deps:[{blockerKey,blockedKey}], truncated:false } 을 파싱한다', () => {
+    const result = timelineDepsResponseSchema.parse({
+      deps: [{ blockerKey: 'BTS-2', blockedKey: 'BTS-3' }],
+      truncated: false,
+    })
+    expect(result.deps).toHaveLength(1)
+    expect(result.deps[0]).toEqual({ blockerKey: 'BTS-2', blockedKey: 'BTS-3' })
+    expect(result.truncated).toBe(false)
+  })
+
+  it('deps 빈 배열 + truncated:true 도 파싱한다', () => {
+    const result = timelineDepsResponseSchema.parse({ deps: [], truncated: true })
+    expect(result.deps).toHaveLength(0)
+    expect(result.truncated).toBe(true)
+  })
+
+  it('여러 엣지를 포함한 deps 배열을 파싱한다', () => {
+    const result = timelineDepsResponseSchema.parse({
+      deps: [
+        { blockerKey: 'BTS-1', blockedKey: 'BTS-2' },
+        { blockerKey: 'BTS-2', blockedKey: 'BTS-3' },
+      ],
+      truncated: false,
+    })
+    expect(result.deps).toHaveLength(2)
+  })
+
+  it('blockerKey 누락 시 ZodError를 throw한다', () => {
+    expect(() =>
+      timelineDepsResponseSchema.parse({
+        deps: [{ blockedKey: 'BTS-3' }],
+        truncated: false,
+      }),
+    ).toThrow()
+  })
+
+  it('blockedKey 누락 시 ZodError를 throw한다', () => {
+    expect(() =>
+      timelineDepsResponseSchema.parse({
+        deps: [{ blockerKey: 'BTS-2' }],
+        truncated: false,
+      }),
+    ).toThrow()
+  })
+
+  it('truncated 필드 누락 시 ZodError를 throw한다', () => {
+    expect(() =>
+      timelineDepsResponseSchema.parse({
+        deps: [{ blockerKey: 'BTS-2', blockedKey: 'BTS-3' }],
+      }),
+    ).toThrow()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// fetchTimelineDeps 테스트 (FR-TL-02 D6/D7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('fetchTimelineDeps', () => {
+  beforeEach(() => {
+    server.use(
+      http.get('/api/v1/timeline/deps', ({ request }) => {
+        const url = new URL(request.url)
+        const project = url.searchParams.get('project')
+        if (project === 'BTS') {
+          return HttpResponse.json({
+            data: {
+              deps: [{ blockerKey: 'BTS-2', blockedKey: 'BTS-3' }],
+              truncated: false,
+            },
+          })
+        }
+        if (project === 'TRUNCATED') {
+          return HttpResponse.json({
+            data: {
+              deps: [{ blockerKey: 'BTS-1', blockedKey: 'BTS-4' }],
+              truncated: true,
+            },
+          })
+        }
+        return HttpResponse.json({ data: { deps: [], truncated: false } })
+      }),
+    )
+  })
+
+  it('GET /api/v1/timeline/deps?project=BTS 호출 후 DataResponse 봉투를 언랩해 반환한다', async () => {
+    const result = await fetchTimelineDeps('BTS')
+    expect(result.deps).toHaveLength(1)
+    expect(result.deps[0]).toEqual({ blockerKey: 'BTS-2', blockedKey: 'BTS-3' })
+    expect(result.truncated).toBe(false)
+  })
+
+  it('truncated:true 응답도 정상 파싱한다', async () => {
+    const result = await fetchTimelineDeps('TRUNCATED')
+    expect(result.deps).toHaveLength(1)
+    expect(result.truncated).toBe(true)
+  })
+
+  it('알 수 없는 프로젝트 → deps:[] 반환한다', async () => {
+    const result = await fetchTimelineDeps('UNKNOWN')
+    expect(result.deps).toHaveLength(0)
+    expect(result.truncated).toBe(false)
   })
 })

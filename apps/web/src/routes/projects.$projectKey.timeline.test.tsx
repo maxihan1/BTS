@@ -1,10 +1,11 @@
-// 타임라인 라우트 페이지 단위 테스트 — TimelinePage 렌더 시나리오 (FR-TL-01 Task 6)
+// 타임라인 라우트 페이지 단위 테스트 — TimelinePage 렌더 시나리오 (FR-TL-01 Task 6, FR-TL-02 D6)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { TimelineItem } from '@/api/timeline'
 import type { UserSummary } from '@/api/users'
 import { ApiError } from '@/api/client'
+import type { DependencyEdge } from '@/lib/timeline-layout'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // mock — TanStack Router, use-timeline, @/api/users, GanttChart
@@ -17,11 +18,12 @@ vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ projectKey: 'ATLAS' }),
 }))
 
-// GanttChart — onSelectIssue·assigneeNames·items를 캡처해 단언에 활용
+// GanttChart — onSelectIssue·assigneeNames·items·deps를 캡처해 단언에 활용
 const mockGanttChartProps: Array<{
   items: TimelineItem[]
   assigneeNames: Map<string, string>
   onSelectIssue: (key: string) => void
+  deps?: DependencyEdge[]
 }> = []
 
 vi.mock('@/components/timeline/GanttChart', () => ({
@@ -29,20 +31,24 @@ vi.mock('@/components/timeline/GanttChart', () => ({
     items,
     assigneeNames,
     onSelectIssue,
+    deps,
   }: {
     items: TimelineItem[]
     assigneeNames: Map<string, string>
     onSelectIssue: (key: string) => void
+    deps?: DependencyEdge[]
   }) => {
-    mockGanttChartProps.push({ items, assigneeNames, onSelectIssue })
+    mockGanttChartProps.push({ items, assigneeNames, onSelectIssue, deps })
     return <div data-testid="gantt-chart">GanttChart</div>
   },
 }))
 
 // use-timeline 훅 mock — 각 테스트에서 덮어씀
 const mockUseTimeline = vi.fn()
+const mockUseTimelineDeps = vi.fn()
 vi.mock('@/hooks/use-timeline', () => ({
   useTimeline: (projectKey: string) => mockUseTimeline(projectKey),
+  useTimelineDeps: (projectKey: string) => mockUseTimelineDeps(projectKey),
 }))
 
 // @/api/users mock
@@ -131,6 +137,8 @@ describe('TimelinePage', () => {
     vi.clearAllMocks()
     mockGanttChartProps.length = 0
     mockFetchUsers.mockResolvedValue(USERS)
+    // deps 훅 기본값 — best-effort: 에러여도 간트를 차단하지 않음 (EC6)
+    mockUseTimelineDeps.mockReturnValue({ data: undefined, isLoading: false, error: null, isError: false })
   })
 
   afterEach(() => {
@@ -250,6 +258,112 @@ describe('TimelinePage', () => {
     })
   })
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // FR-TL-02 D6 — deps 오버레이 통합
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * T-TL5-T-1. TimelinePage가 useTimelineDeps로 deps를 조회하여 GanttChart에 주입한다.
+   */
+  it('T-TL5-T-1: TimelinePage가 useTimelineDeps deps를 GanttChart에 주입한다', async () => {
+    mockUseTimeline.mockReturnValue({
+      data: { items: [ITEM_1], truncated: false },
+      isLoading: false,
+      error: null,
+      isError: false,
+    })
+    mockUseTimelineDeps.mockReturnValue({
+      data: { deps: [{ blockerKey: 'ATLAS-1', blockedKey: 'ATLAS-2' }], truncated: false },
+      isLoading: false,
+      error: null,
+      isError: false,
+    })
+
+    await renderTimelinePage()
+
+    await waitFor(() => {
+      const lastCall = mockGanttChartProps[mockGanttChartProps.length - 1]
+      expect(lastCall?.deps).toEqual([{ blockerKey: 'ATLAS-1', blockedKey: 'ATLAS-2' }])
+    })
+  })
+
+  /**
+   * T-TL5-T-2. deps.truncated=true → deps 누락 경고 배너가 표시된다.
+   * 기존 timeline truncated 배너(S5)와 구분된 문구.
+   */
+  it('T-TL5-T-2: deps.truncated=true 시 deps 누락 경고 배너가 표시된다', async () => {
+    mockUseTimeline.mockReturnValue({
+      data: { items: [ITEM_1], truncated: false },
+      isLoading: false,
+      error: null,
+      isError: false,
+    })
+    mockUseTimelineDeps.mockReturnValue({
+      data: { deps: [], truncated: true },
+      isLoading: false,
+      error: null,
+      isError: false,
+    })
+
+    await renderTimelinePage()
+
+    await waitFor(() => {
+      expect(screen.getByText('일부 의존 라인이 생략되었습니다')).toBeInTheDocument()
+    })
+  })
+
+  /**
+   * T-TL5-T-3. deps 에러여도 GanttChart가 정상 렌더되고 deps=[] 폴백이 전달된다 (EC6).
+   */
+  it('T-TL5-T-3: deps 에러 시에도 GanttChart가 렌더되고 deps=[] 폴백이 전달된다 (EC6)', async () => {
+    mockUseTimeline.mockReturnValue({
+      data: { items: [ITEM_1], truncated: false },
+      isLoading: false,
+      error: null,
+      isError: false,
+    })
+    mockUseTimelineDeps.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('Network Error'),
+      isError: true,
+    })
+
+    await renderTimelinePage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('gantt-chart')).toBeInTheDocument()
+    })
+    const lastCall = mockGanttChartProps[mockGanttChartProps.length - 1]
+    expect(lastCall?.deps).toEqual([])
+  })
+
+  /**
+   * T-TL5-T-4. 403 접근거부 시 GanttChart 미표시 → deps 배너도 미표시된다 (S7).
+   */
+  it('T-TL5-T-4: 403 접근거부 시 GanttChart·deps 배너 모두 미표시된다 (S7)', async () => {
+    mockUseTimeline.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new ApiError(403, { errorCode: 'AGILE_ACCESS_DENIED' }),
+      isError: true,
+    })
+    mockUseTimelineDeps.mockReturnValue({
+      data: { deps: [], truncated: true },
+      isLoading: false,
+      error: null,
+      isError: false,
+    })
+
+    await renderTimelinePage()
+
+    await waitFor(() => {
+      expect(screen.getByText(/접근 권한이 없습니다/)).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('gantt-chart')).not.toBeInTheDocument()
+    expect(screen.queryByText('일부 의존 라인이 생략되었습니다')).not.toBeInTheDocument()
+  })
+
   /**
    * T-TL6-R-7. C2 — assigneeId가 userMap에 있으면 GanttChart assigneeNames에 name이 전달된다.
    * assigneeId=null 또는 미해석 userId는 맵에서 제외한다(GanttChart 자체 fallback 위임).
@@ -289,6 +403,7 @@ describe('TimelineRouteAdapter', () => {
     mockGanttChartProps.length = 0
     mockFetchUsers.mockResolvedValue([])
     mockUseTimeline.mockReturnValue({ data: undefined, isLoading: true, error: null, isError: false })
+    mockUseTimelineDeps.mockReturnValue({ data: undefined, isLoading: false, error: null, isError: false })
   })
 
   afterEach(() => {

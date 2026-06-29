@@ -1,15 +1,20 @@
-// Gantt 차트 루트 컴포넌트 — Epic 그룹 조립·접기/펼치기·레이블 열·스크롤 영역 (FR-TL-01 D6)
+// Gantt 차트 루트 컴포넌트 — Epic 그룹 조립·접기/펼치기·레이블 열·스크롤 영역·deps 오버레이 (FR-TL-01 D6, FR-TL-02 D6)
 import type { JSX } from 'react'
 import { useState } from 'react'
 import type { TimelineItem } from '@/api/timeline'
+import type { DependencyEdge } from '@/lib/timeline-layout'
 import {
   assembleEpicGroups,
   computeDateRange,
+  computeDependencyLines,
+  daysBetweenUtc,
+  flattenVisibleRows,
   DAY_WIDTH_PX,
 } from '@/lib/timeline-layout'
 import { timelineLabels } from '@/i18n/timeline-labels'
-import { TimelineAxis } from './TimelineAxis'
+import { TimelineAxis, TIMELINE_AXIS_HEIGHT_PX } from './TimelineAxis'
 import { TimelineRow, ROW_HEIGHT_PX } from './TimelineRow'
+import { DependencyOverlay } from './DependencyOverlay'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -18,8 +23,8 @@ import { TimelineRow, ROW_HEIGHT_PX } from './TimelineRow'
 /** 좌측 레이블 열 폭(px) — sticky left-0 고정 */
 const LABEL_COL_WIDTH_PX = 240
 
-/** 축 헤더 전체 높이(px) — 월 눈금 행 + 주 눈금 행 */
-const AXIS_HEIGHT_PX = ROW_HEIGHT_PX * 1.5
+// 축 헤더 높이는 TimelineAxis의 TIMELINE_AXIS_HEIGHT_PX를 단일 출처로 사용 (C-1 fix).
+// 이전에 존재하던 로컬 AXIS_HEIGHT_PX = ROW_HEIGHT_PX * 1.5(=48)는 제거됨.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -168,6 +173,13 @@ export interface GanttChartProps {
   assigneeNames: Map<string, string>
   /** 행 클릭 시 이슈 상세로 이동하는 콜백 */
   onSelectIssue: (key: string) => void
+  /**
+   * blocks 의존 엣지 목록 (FR-TL-02 D6).
+   *
+   * 기본 빈 배열 — 기존 사용처 무회귀.
+   * TimelinePage가 useTimelineDeps로 조회해 주입; best-effort이므로 undefined 가능성 없음(호출자가 `?? []` 처리).
+   */
+  deps?: DependencyEdge[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -180,7 +192,7 @@ export interface GanttChartProps {
  * **레이아웃 (G1)**:
  * - 외부 컨테이너: `overflow-x-auto` (가로 스크롤).
  * - 좌측 레이블 열: `position: sticky; left: 0` — 스크롤해도 고정.
- * - 우측 시간축/막대 영역: `flex-1` — 가로로 확장.
+ * - 우측 시간축/막대 영역: `relative flex-1` — DependencyOverlay 절대 배치 기준.
  *
  * **에픽 그룹 접기/펼치기 (NFR3)**:
  * - 토글 버튼 클릭 → `collapsedGroups` Set 갱신 → 자식 행 DOM 제거/복원.
@@ -189,8 +201,14 @@ export interface GanttChartProps {
  * **담당자 표시 (EC11)**:
  * - `assigneeNames` 맵에 이슈 키가 있으면 displayName 표시.
  * - 없으면 `assigneeId` null 여부로 "미배정" / "알 수 없음" 폴백.
+ *
+ * **deps 오버레이 (FR-TL-02 D6)**:
+ * - `flattenVisibleRows(groups, collapsedGroups)` → GanttChart 행 배치 단일 출처.
+ * - `computeDependencyLines(...)` → elbow 좌표 산출 (jsdom 안전, getBBox 미사용).
+ * - `DependencyOverlay` — 우측 영역 절대 배치, `depLines.length > 0`일 때만 렌더
+ *   (pointer-events 차단 최소화: 라인 없을 때 background rect 미생성).
  */
-export function GanttChart({ items, assigneeNames, onSelectIssue }: GanttChartProps): JSX.Element {
+export function GanttChart({ items, assigneeNames, onSelectIssue, deps = [] }: GanttChartProps): JSX.Element {
   const groups = assembleEpicGroups(items)
   const range = computeDateRange(items)
 
@@ -209,6 +227,18 @@ export function GanttChart({ items, assigneeNames, onSelectIssue }: GanttChartPr
     return <p className="text-muted-foreground text-sm p-4">{timelineLabels.empty.noItems}</p>
   }
 
+  // ── deps 오버레이 좌표 계산 (FR-TL-02 D6) ──────────────────────────────────
+  // flattenVisibleRows가 GanttChart 행 배치 순회와 동일 로직 → 세로 좌표 drift 차단
+  const visibleRows = flattenVisibleRows(groups, collapsedGroups)
+  const depLines = computeDependencyLines(visibleRows, range, DAY_WIDTH_PX, ROW_HEIGHT_PX, deps)
+
+  // 오버레이 치수 — computeBarGeometry의 barWidth는 당일 포함(+1일)이므로
+  // overlayWidth도 +1일 보정해 최우측 막대 우끝이 SVG 안에 들어오도록 한다 (C-2 fix)
+  const overlayWidth = (daysBetweenUtc(range.startMs, range.endMs) + 1) * DAY_WIDTH_PX
+  // lastRowIndex: flattenVisibleRows의 rowIndex는 미분류 헤더 행도 카운트에 포함
+  const lastRowIndex = visibleRows[visibleRows.length - 1]?.rowIndex ?? -1
+  const overlayHeight = TIMELINE_AXIS_HEIGHT_PX + (lastRowIndex + 1) * ROW_HEIGHT_PX
+
   return (
     <div className="overflow-x-auto relative" data-testid="gantt-chart">
       <div className="flex min-w-max">
@@ -218,7 +248,7 @@ export function GanttChart({ items, assigneeNames, onSelectIssue }: GanttChartPr
           className="sticky left-0 z-10 flex-shrink-0 bg-background border-r border-border"
           style={{ width: LABEL_COL_WIDTH_PX }}
         >
-          <div className="border-b border-border" style={{ height: AXIS_HEIGHT_PX }} />
+          <div className="border-b border-border" style={{ height: TIMELINE_AXIS_HEIGHT_PX }} />
 
           {groups.map((group) => {
             const groupKey = group.epicItem?.key ?? 'unclassified'
@@ -249,8 +279,8 @@ export function GanttChart({ items, assigneeNames, onSelectIssue }: GanttChartPr
           })}
         </div>
 
-        {/* ── 우측 시간축 + 막대 영역 ── */}
-        <div className="flex-1">
+        {/* ── 우측 시간축 + 막대 영역 — relative로 DependencyOverlay 좌표계 기준 설정 ── */}
+        <div className="relative flex-1">
           <TimelineAxis range={range} dayWidth={DAY_WIDTH_PX} />
 
           {groups.map((group) => {
@@ -278,6 +308,16 @@ export function GanttChart({ items, assigneeNames, onSelectIssue }: GanttChartPr
               </div>
             )
           })}
+
+          {/* DependencyOverlay — 라인 있을 때만 렌더 (pointer-events 차단 최소화) */}
+          {depLines.length > 0 && (
+            <DependencyOverlay
+              lines={depLines}
+              axisOffset={TIMELINE_AXIS_HEIGHT_PX}
+              width={overlayWidth}
+              height={overlayHeight}
+            />
+          )}
         </div>
 
       </div>

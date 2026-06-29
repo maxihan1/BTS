@@ -1,7 +1,17 @@
-// GanttChart 컴포넌트 단위 테스트 — 그룹 렌더·접기/펼치기·마일스톤·콜백·담당자 표시 (FR-TL-01 D6)
+// GanttChart 컴포넌트 단위 테스트 — 그룹 렌더·접기/펼치기·마일스톤·콜백·담당자 표시·deps 오버레이 (FR-TL-01 D6, FR-TL-02 D6)
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import type { TimelineItem } from '@/api/timeline'
+import type { DependencyEdge } from '@/lib/timeline-layout'
+import {
+  DAY_WIDTH_PX,
+  daysBetweenUtc,
+  parseIsoDateUtc,
+  assembleEpicGroups,
+  flattenVisibleRows,
+} from '@/lib/timeline-layout'
+import { ROW_HEIGHT_PX } from './TimelineRow'
+import { TIMELINE_AXIS_HEIGHT_PX } from './TimelineAxis'
 import { GanttChart } from './GanttChart'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,12 +66,14 @@ function renderChart(overrides?: {
   items?: TimelineItem[]
   assigneeNames?: Map<string, string>
   onSelectIssue?: (key: string) => void
+  deps?: DependencyEdge[]
 }) {
   return render(
     <GanttChart
       items={overrides?.items ?? defaultItems}
       assigneeNames={overrides?.assigneeNames ?? defaultAssigneeNames}
       onSelectIssue={overrides?.onSelectIssue ?? vi.fn()}
+      deps={overrides?.deps}
     />,
   )
 }
@@ -239,5 +251,197 @@ describe('GanttChart — S6 담당자 표시 (EC11)', () => {
     renderChart({ assigneeNames })
     const fallbacks = screen.getAllByText('알 수 없음')
     expect(fallbacks.length).toBeGreaterThan(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S7. deps 오버레이 통합 (FR-TL-02 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GanttChart — S7 deps 오버레이 (FR-TL-02 D6)', () => {
+  /**
+   * S7a. positive control: deps 주입 → DependencyOverlay 라인 path가 렌더된다.
+   * vacuous 차단: negative control(S7b)과 공존.
+   */
+  it('S7a: deps 주입 시 DependencyOverlay 라인 path가 DOM에 존재한다 (positive control)', () => {
+    // ATLAS-1 blocks ATLAS-2 — 두 행 모두 visible
+    renderChart({
+      deps: [{ blockerKey: 'ATLAS-1', blockedKey: 'ATLAS-2' }],
+    })
+    // DependencyOverlay가 렌더한 visible path(aria-label 있음)가 DOM에 있어야 한다
+    expect(
+      document.querySelector('path[aria-label="ATLAS-1가 ATLAS-2을 차단"]'),
+    ).toBeInTheDocument()
+  })
+
+  /**
+   * S7b. negative control: 에픽 그룹 접기 → 접힌 자식으로의 라인이 제외된다.
+   * flattenVisibleRows 단일 출처 검증 (S4/EC1).
+   */
+  it('S7b: 에픽 그룹 접기 시 접힌 자식으로의 라인이 제외된다 (negative — flattenVisibleRows 단일 출처)', () => {
+    // ATLAS-3 → ATLAS-2 (ATLAS-2는 ATLAS-1 에픽 그룹의 자식)
+    renderChart({
+      deps: [{ blockerKey: 'ATLAS-3', blockedKey: 'ATLAS-2' }],
+    })
+
+    // 접기 전: ATLAS-2 visible → 라인 존재
+    expect(
+      document.querySelector('path[aria-label="ATLAS-3가 ATLAS-2을 차단"]'),
+    ).toBeInTheDocument()
+
+    // 에픽 그룹(ATLAS-1) 접기 → ATLAS-2 비가시
+    const toggleBtn = screen.getByRole('button', { name: /접기/ })
+    fireEvent.click(toggleBtn)
+
+    // 접힌 후: 라인 제외 (flattenVisibleRows 단일 출처 검증)
+    expect(
+      document.querySelector('path[aria-label="ATLAS-3가 ATLAS-2을 차단"]'),
+    ).not.toBeInTheDocument()
+  })
+
+  /** S7c. deps 미주입 → 라인 0개 (무회귀) */
+  it('S7c: deps 미주입 → 라인 0개 (무회귀)', () => {
+    renderChart()
+    expect(document.querySelector('path[aria-label*="을 차단"]')).not.toBeInTheDocument()
+  })
+
+  /** S7d. deps 빈 배열 → 라인 0개 (무회귀) */
+  it('S7d: deps 빈 배열 → 라인 0개 (무회귀)', () => {
+    renderChart({ deps: [] })
+    expect(document.querySelector('path[aria-label*="을 차단"]')).not.toBeInTheDocument()
+  })
+
+  /**
+   * S7e. deps 주입 시 막대 클릭이 여전히 onSelectIssue를 호출한다.
+   * jsdom은 pointer-events CSS를 강제하지 않으므로 단위 테스트에서 통과.
+   * 실 브라우저 동작은 E2E(T6) qa-engineer가 검증.
+   */
+  it('S7e: deps 주입 시 막대 클릭이 여전히 onSelectIssue를 호출한다', () => {
+    const onSelectIssue = vi.fn()
+    renderChart({
+      onSelectIssue,
+      deps: [{ blockerKey: 'ATLAS-1', blockedKey: 'ATLAS-2' }],
+    })
+    // epicItem 막대 버튼 — TimelineRow가 우측 영역에 렌더 (aria-label: "KEY start ~ due")
+    const barBtn = screen.getByRole('button', { name: 'ATLAS-1 2026-07-01 ~ 2026-07-31' })
+    fireEvent.click(barBtn)
+    expect(onSelectIssue).toHaveBeenCalledWith('ATLAS-1')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C-1. axisOffset 단일출처 회귀 보장 (TIMELINE_AXIS_HEIGHT_PX)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GanttChart — C-1 axisOffset 단일출처 (TIMELINE_AXIS_HEIGHT_PX)', () => {
+  /**
+   * DependencyOverlay에 전달하는 axisOffset이 TimelineAxis 실제 높이와 동일해야 한다.
+   *
+   * 검증 방법:
+   * - ATLAS-1(rowIndex=0) blocks ATLAS-2 의존 라인 path `d` 속성의 SVG y 좌표를 파싱.
+   * - SVG y = startY(막대 영역 로컬) + axisOffset.
+   * - ATLAS-1 rowIndex=0 → startY(bar-relative) = ROW_HEIGHT_PX/2.
+   * - 따라서 SVG startY = ROW_HEIGHT_PX/2 + TIMELINE_AXIS_HEIGHT_PX 이어야 한다.
+   *
+   * GanttChart가 TIMELINE_AXIS_HEIGHT_PX 대신 다른 상수를 axisOffset으로 전달하면
+   * 이 계산이 어긋나 테스트가 실패한다 — 양쪽 체인 사이 drift를 빌드 타임에 감지.
+   */
+  it('C-1: path d의 SVG y 좌표가 ROW_HEIGHT_PX/2 + TIMELINE_AXIS_HEIGHT_PX와 일치한다', () => {
+    renderChart({ deps: [{ blockerKey: 'ATLAS-1', blockedKey: 'ATLAS-2' }] })
+
+    const path = document.querySelector('path[aria-label="ATLAS-1가 ATLAS-2을 차단"]')
+    expect(path).toBeInTheDocument()
+    const d = path?.getAttribute('d') ?? ''
+
+    // ATLAS-1: rowIndex=0, blocker startY(bar-relative) = 0*ROW_HEIGHT_PX + ROW_HEIGHT_PX/2 = 16
+    // ATLAS-2: rowIndex=1, blocked endY(bar-relative) = 1*ROW_HEIGHT_PX + ROW_HEIGHT_PX/2 = 48
+    // SVG y = bar-relative y + axisOffset (axisOffset 반드시 === TIMELINE_AXIS_HEIGHT_PX)
+    const startYInSvg = ROW_HEIGHT_PX / 2 + TIMELINE_AXIS_HEIGHT_PX       // 16 + 48 = 64
+    const endYInSvg = ROW_HEIGHT_PX + ROW_HEIGHT_PX / 2 + TIMELINE_AXIS_HEIGHT_PX  // 48 + 48 = 96
+    // path d format: "M startX,{startYInSvg} H midX V {endYInSvg} H endX"
+    expect(d).toContain(`,${startYInSvg} `)
+    expect(d).toContain(`V ${endYInSvg} `)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C-3. DOM 막대 행↔flattenVisibleRows 정합 회귀 (완전 재작성 금지)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GanttChart — C-3 DOM 막대 행↔flattenVisibleRows 정합', () => {
+  /**
+   * 막대 버튼(role="button", aria-label "KEY start ~ due")에서 이슈 키를 순서대로 추출한다.
+   * 토글 버튼(접기/펼치기)는 "~"를 포함하지 않으므로 필터로 제외한다.
+   */
+  function getBarKeys(): string[] {
+    return screen
+      .getAllByRole('button')
+      .filter((btn) => /~/.test(btn.getAttribute('aria-label') ?? ''))
+      .map((btn) => (btn.getAttribute('aria-label') ?? '').split(' ')[0] ?? '')
+      .filter((k) => k.length > 0)
+  }
+
+  /**
+   * C-3a: 펼친 상태에서 DOM 막대 행 순서가 flattenVisibleRows와 일치한다.
+   *
+   * GanttChart 우측 렌더 루프와 flattenVisibleRows 가 평행 구현이므로
+   * 향후 한쪽만 수정하면 이 테스트가 실패해 drift를 감지한다.
+   */
+  it('C-3a: 펼친 상태 DOM 막대 행 이슈 키 순서가 flattenVisibleRows와 일치한다', () => {
+    renderChart()
+    const domKeys = getBarKeys()
+    const groups = assembleEpicGroups(defaultItems)
+    const expectedKeys = flattenVisibleRows(groups, new Set()).map((r) => r.key)
+    expect(domKeys).toEqual(expectedKeys)
+  })
+
+  /**
+   * C-3b: 에픽 그룹 접기 후에도 DOM 막대 행 순서가 flattenVisibleRows(collapsed)와 일치한다.
+   * collapsed 케이스 포함 — 접기/펼치기 상태 반영 여부 검증.
+   */
+  it('C-3b: 에픽 그룹 접기 후 DOM 막대 행 순서가 flattenVisibleRows(collapsed)와 일치한다', () => {
+    renderChart()
+    const collapseBtn = screen.getByRole('button', { name: /접기/ })
+    fireEvent.click(collapseBtn)  // ATLAS-1 그룹 접기
+
+    const domKeys = getBarKeys()
+    const groups = assembleEpicGroups(defaultItems)
+    // collapsedGroups = {'ATLAS-1'}
+    const expectedKeys = flattenVisibleRows(groups, new Set(['ATLAS-1'])).map((r) => r.key)
+    expect(domKeys).toEqual(expectedKeys)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C-2. overlayWidth +1일 클리핑 보정 (CONCERN-2 fix)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GanttChart — C-2 overlayWidth +1일 클리핑 보정', () => {
+  /**
+   * C-2: overlayWidth가 최우측 막대 우끝을 커버해야 한다.
+   *
+   * computeBarGeometry의 barWidth = (due-start+1)일 × DAY_WIDTH_PX (당일 포함 +1).
+   * overlayWidth가 (days)×DAY_WIDTH_PX에 머물면 range 마지막 날로 끝나는 막대의
+   * 우끝(+1일분)이 SVG overflow:hidden에 의해 잘린다.
+   * overlayWidth = (days+1)×DAY_WIDTH_PX 로 보정해야 한다.
+   *
+   * RED: 현재 overlayWidth = 30×20 = 600 < ATLAS-1 barRight 31×20 = 620 → 실패.
+   * GREEN: +1 보정 후 overlayWidth = 620 ≥ 620 → 통과.
+   */
+  it('C-2: overlayWidth이 최우측 막대 우끝(+1일 보정)을 커버한다', () => {
+    renderChart({ deps: [{ blockerKey: 'ATLAS-1', blockedKey: 'ATLAS-2' }] })
+
+    const svg = document.querySelector('svg')
+    expect(svg).toBeInTheDocument()
+    const svgWidth = Number(svg?.getAttribute('width'))
+
+    // defaultItems 날짜 범위: 2026-07-01 ~ 2026-07-31 = 30일
+    // ATLAS-1: barX=0, barWidth=(30+1)×DAY_WIDTH_PX=620, barRight=620
+    // overlayWidth 은 (totalDays+1)×DAY_WIDTH_PX 이상이어야 한다
+    const rangeStartMs = parseIsoDateUtc('2026-07-01')
+    const rangeEndMs = parseIsoDateUtc('2026-07-31')
+    const totalDays = daysBetweenUtc(rangeStartMs, rangeEndMs)  // 30
+    const rightmostBarRight = (totalDays + 1) * DAY_WIDTH_PX    // 620
+    expect(svgWidth).toBeGreaterThanOrEqual(rightmostBarRight)
   })
 })

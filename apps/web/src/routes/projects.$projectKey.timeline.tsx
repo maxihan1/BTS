@@ -7,7 +7,8 @@ import { z } from 'zod'
 import { ApiError } from '@/api/client'
 import { fetchUsers } from '@/api/users'
 import type { TimelineItem } from '@/api/timeline'
-import { useTimeline } from '@/hooks/use-timeline'
+import type { DependencyEdge } from '@/lib/timeline-layout'
+import { useTimeline, useTimelineDeps } from '@/hooks/use-timeline'
 import { GanttChart } from '@/components/timeline/GanttChart'
 import { timelineLabels } from '@/i18n/timeline-labels'
 
@@ -140,6 +141,22 @@ function TruncatedBanner(): JSX.Element {
   )
 }
 
+/**
+ * deps 일부 누락 경고 배너 — deps.truncated=true(EC6/S6) 상태.
+ *
+ * 기존 이슈 누락 배너(TruncatedBanner)와 **문구로 구분** — `deps.truncatedMessage` 사용.
+ */
+function DepsTruncatedBanner(): JSX.Element {
+  return (
+    <div
+      role="alert"
+      className="rounded-md bg-amber-50 border border-amber-200 px-4 py-2 text-sm text-amber-800"
+    >
+      {timelineLabels.deps.truncatedMessage}
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TimelineRouteAdapter
 // ─────────────────────────────────────────────────────────────────────────────
@@ -183,6 +200,10 @@ export function TimelinePage({ projectKey }: TimelinePageProps): JSX.Element {
   const navigate = useNavigate()
 
   const { data, isLoading, error, isError } = useTimeline(projectKey)
+
+  // deps 조회 — best-effort: 에러/로딩이어도 간트를 차단하지 않는다 (EC6)
+  const { data: depsData } = useTimelineDeps(projectKey)
+  const deps: DependencyEdge[] = depsData?.deps ?? []
 
   // 전체 사용자 목록 조회 — userId → displayName|username Map 구성용 (C2, board 패턴 미러)
   const { data: usersRaw } = useQuery({
@@ -228,15 +249,19 @@ export function TimelinePage({ projectKey }: TimelinePageProps): JSX.Element {
 
   return (
     <div className="p-4 space-y-3">
-      {/* 경고 배너 — truncated (S5) */}
+      {/* 타임라인 이슈 일부 누락 배너 (S5) */}
       {data?.truncated === true && <TruncatedBanner />}
 
-      {/* GanttChart — data가 있는 경우에만 렌더 */}
+      {/* deps 일부 누락 배너 — 기존 배너와 문구로 구분 (EC6) */}
+      {depsData?.truncated === true && <DepsTruncatedBanner />}
+
+      {/* GanttChart — data가 있는 경우에만 렌더, deps 주입 (FR-TL-02 D6) */}
       {data !== undefined && (
         <GanttChart
           items={data.items}
           assigneeNames={assigneeNames}
           onSelectIssue={handleSelectIssue}
+          deps={deps}
         />
       )}
     </div>

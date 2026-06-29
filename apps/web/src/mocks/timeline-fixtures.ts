@@ -1,4 +1,4 @@
-// 타임라인 MSW 픽스처 — 기본 시드 데이터 (FR-TL-01 D6 Task-4)
+// 타임라인 MSW 픽스처 — 기본 시드 데이터 (FR-TL-01 D6 Task-4 + FR-TL-02 D6 Task-3)
 //
 // 교훈 반영.
 //   - frontend-zod-backend-dto-contract-gap: Zod 스키마 백엔드 DTO 정확 미러
@@ -8,7 +8,7 @@
 // 정렬 규칙: startDate ASC NULLS LAST → dueDate ASC NULLS LAST → key ASC
 // (백엔드 TimelineController.kt 정렬 순서 미러)
 
-import type { TimelineItem } from '@/api/timeline'
+import type { TimelineDepEdge, TimelineItem } from '@/api/timeline'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UUID 상수 — user-fixtures.ts 와 동기화
@@ -158,6 +158,32 @@ export const TRUNCATED_TIMELINE_ITEMS: TimelineItem[] = [
     targetDate: null,
     epicKey: 'LARGE-1',
   },
+]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BTS 프로젝트 의존 라인(blocks 관계) 엣지 픽스처 (FR-TL-02 Task-3)
+//
+// 정합 조건.
+//   - blockerKey/blockedKey 양쪽 모두 BTS_TIMELINE_ITEMS 키 내 (라인 렌더 보장)
+//   - 백엔드 계약 PR #200 — TimelineDepEdgeResponse.kt 1:1 미러
+//
+// 케이스.
+//   - BTS-2(story) blocks BTS-3(task): 같은 에픽 내 의존 관계
+//   - BTS-1(epic) blocks BTS-4(task): 에픽→자식 시작 선행 관계
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * BTS 프로젝트 기본 의존 라인(blocks) 픽스처.
+ *
+ * blockerKey=차단측(source), blockedKey=피차단측(target).
+ * 양끝 키가 모두 BTS_TIMELINE_ITEMS에 존재해야 SVG 라인이 렌더된다.
+ *
+ * @see 백엔드 계약 PR #200 — TimelineController.getDeps
+ * @see msw-derived-behavior-shared-store-e2e: 정적 반환 패턴
+ */
+export const BTS_TIMELINE_DEPS: TimelineDepEdge[] = [
+  { blockerKey: 'BTS-2', blockedKey: 'BTS-3' },
+  { blockerKey: 'BTS-1', blockedKey: 'BTS-4' },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
