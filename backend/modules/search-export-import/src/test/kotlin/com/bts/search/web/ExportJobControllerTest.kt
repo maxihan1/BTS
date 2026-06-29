@@ -68,7 +68,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [ExportJobControllerTest.TestMvcConfig::class])
 @WebAppConfiguration
 class ExportJobControllerTest {
-
     @Configuration
     @EnableWebMvc
     open class TestMvcConfig {

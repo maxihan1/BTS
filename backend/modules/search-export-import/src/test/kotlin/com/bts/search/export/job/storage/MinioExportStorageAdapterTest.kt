@@ -2,17 +2,17 @@
 
 package com.bts.search.export.job.storage
 
-import io.mockk.every
-import io.mockk.justRun
-import io.mockk.mockk
-import io.mockk.slot
-import io.mockk.verify
 import io.minio.GetObjectArgs
 import io.minio.GetObjectResponse
 import io.minio.MinioClient
 import io.minio.ObjectWriteResponse
 import io.minio.PutObjectArgs
 import io.minio.RemoveObjectArgs
+import io.mockk.every
+import io.mockk.justRun
+import io.mockk.mockk
+import io.mockk.slot
+import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -40,12 +40,13 @@ class MinioExportStorageAdapterTest {
     @BeforeEach
     fun setup() {
         minioClient = mockk()
-        properties = MinioExportStorageConfig.Properties(
-            endpoint = "http://localhost:9000",
-            accessKey = "minioadmin",
-            secretKey = "minioadmin",
-            bucket = bucket,
-        )
+        properties =
+            MinioExportStorageConfig.Properties(
+                endpoint = "http://localhost:9000",
+                accessKey = "minioadmin",
+                secretKey = "minioadmin",
+                bucket = bucket,
+            )
         adapter = MinioExportStorageAdapter(minioClient, properties)
     }
 

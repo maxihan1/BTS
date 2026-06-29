@@ -161,11 +161,12 @@ class ExportJobController(
             actorId,
         )
 
-        val body = StreamingResponseBody { outputStream ->
-            storage.openStream(objectKey).use { inputStream ->
-                inputStream.copyTo(outputStream)
+        val body =
+            StreamingResponseBody { outputStream ->
+                storage.openStream(objectKey).use { inputStream ->
+                    inputStream.copyTo(outputStream)
+                }
             }
-        }
 
         return ResponseEntity.ok()
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"$filename\"")

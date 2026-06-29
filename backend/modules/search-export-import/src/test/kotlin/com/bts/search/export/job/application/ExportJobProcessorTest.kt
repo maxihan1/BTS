@@ -123,7 +123,7 @@ class ExportJobProcessorTest {
         verify(exactly = 2) { serializer.appendBatch(any()) }
         verify(exactly = 1) { serializer.finish() }
         verify(exactly = 1) { storage.put(any(), any(), any(), any()) }
-        verify { repository.markCompleted(jobId, "ATLAS/${jobId}.csv", Instant.parse("2024-03-16T10:30:45Z")) }
+        verify { repository.markCompleted(jobId, "ATLAS/$jobId.csv", Instant.parse("2024-03-16T10:30:45Z")) }
         verify { repository.updateProgress(jobId, 100, 150L) }
     }
 
@@ -138,7 +138,7 @@ class ExportJobProcessorTest {
 
         processor.process(makeJob())
 
-        assertThat(keySlot.captured).isEqualTo("ATLAS/${jobId}.csv")
+        assertThat(keySlot.captured).isEqualTo("ATLAS/$jobId.csv")
     }
 
     @Test

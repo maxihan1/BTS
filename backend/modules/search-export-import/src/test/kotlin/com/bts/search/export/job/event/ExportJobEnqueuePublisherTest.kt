@@ -51,7 +51,6 @@ import java.util.UUID
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [ExportJobEnqueuePublisherTest.TestConfig::class])
 class ExportJobEnqueuePublisherTest : SearchPersistenceTestBase() {
-
     /**
      * 최소 Spring 빈 구성 — DataSource/TM/DSLContext/Publisher/TransactionTemplate.
      *
@@ -75,13 +74,11 @@ class ExportJobEnqueuePublisherTest : SearchPersistenceTestBase() {
             DataSourceTransactionManager(dataSource)
 
         @Bean
-        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext =
-            DSL.using(dataSource, SQLDialect.POSTGRES)
+        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext = DSL.using(dataSource, SQLDialect.POSTGRES)
 
         /** [ExportJobEnqueuePublisher] 빈 — @Component 어노테이션 기반 컴포넌트 스캔 없이 명시 등록. */
         @Bean
-        open fun exportJobEnqueuePublisher(dsl: DSLContext): ExportJobEnqueuePublisher =
-            ExportJobEnqueuePublisher(dsl)
+        open fun exportJobEnqueuePublisher(dsl: DSLContext): ExportJobEnqueuePublisher = ExportJobEnqueuePublisher(dsl)
 
         @Bean
         open fun transactionTemplate(transactionManager: PlatformTransactionManager): TransactionTemplate =

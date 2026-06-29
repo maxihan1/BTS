@@ -53,6 +53,8 @@ class ExportJobProcessor(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
+    // TooGenericExceptionCaught: catch-all 의도적 — 미분류 예외도 job 을 FAILED 로 전환해야 한다.
+
     /**
      * [job] 을 처리한다. 워커가 [ExportJobRepository.claimForRun] 으로 RUNNING 전환 후 호출한다.
      *
@@ -60,7 +62,6 @@ class ExportJobProcessor(
      *
      * @param job 처리할 Export 작업. RUNNING 상태임이 보장되어야 한다.
      */
-    // TooGenericExceptionCaught: catch-all 의도적 — 미분류 예외도 job 을 FAILED 로 전환해야 한다.
     @Suppress("TooGenericExceptionCaught")
     fun process(job: ExportJob) {
         log.info("export_job_process_start jobId={} projectKey={} format={}", job.id, job.projectKey, job.format)
@@ -158,11 +159,9 @@ class ExportJobProcessor(
         format: ExportFormat,
     ): String = "${job.projectKey}/${job.id}.${format.fileExtension}"
 
-    private fun calculateTotalPages(total: Long): Int =
-        if (total == 0L) 1 else ((total + PAGE_SIZE - 1) / PAGE_SIZE).toInt()
+    private fun calculateTotalPages(total: Long): Int = if (total == 0L) 1 else ((total + PAGE_SIZE - 1) / PAGE_SIZE).toInt()
 
-    private fun parseFormat(formatStr: String): ExportFormat =
-        ExportFormat.entries.firstOrNull { it.name == formatStr } ?: ExportFormat.CSV
+    private fun parseFormat(formatStr: String): ExportFormat = ExportFormat.entries.firstOrNull { it.name == formatStr } ?: ExportFormat.CSV
 
     private fun parseAql(query: String): AqlParseResult {
         val tokens = AqlLexer(query).tokenize()

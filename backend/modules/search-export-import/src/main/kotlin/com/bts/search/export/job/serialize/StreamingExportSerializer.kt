@@ -146,8 +146,7 @@ class StreamingExportSerializer(
      *
      * 헤더 라벨은 정적 상수이므로 sanitize/escape 를 적용하지 않는다.
      */
-    private fun buildCsvHeaderLine(): String =
-        columns.joinToString(FIELD_SEP) { it.headerLabel }
+    private fun buildCsvHeaderLine(): String = columns.joinToString(FIELD_SEP) { it.headerLabel }
 
     /**
      * 단일 데이터 행의 CSV 문자열을 빌드한다.

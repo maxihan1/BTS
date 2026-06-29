@@ -102,8 +102,13 @@ class ExportJobExceptionHandler {
     @ExceptionHandler(SearchValidationException::class)
     fun handleSearchValidationException(ex: SearchValidationException): ProblemDetail {
         log.info("EXPORTJOB_400 validation_failed message='{}'", ex.message)
-        return problem(HttpStatus.BAD_REQUEST, "search-validation-failed", "Validation Failed",
-            SEARCH_VALIDATION_FAILED, ex.message ?: "요청 값 검증에 실패했습니다.")
+        return problem(
+            HttpStatus.BAD_REQUEST,
+            "search-validation-failed",
+            "Validation Failed",
+            SEARCH_VALIDATION_FAILED,
+            ex.message ?: "요청 값 검증에 실패했습니다.",
+        )
     }
 
     /**
@@ -115,8 +120,13 @@ class ExportJobExceptionHandler {
     fun handleValidationFailed(ex: MethodArgumentNotValidException): ProblemDetail {
         val fields = ex.bindingResult.fieldErrors.joinToString("; ") { "${it.field}: ${it.defaultMessage}" }
         log.info("EXPORTJOB_400 bean_validation fields='{}'", fields)
-        return problem(HttpStatus.BAD_REQUEST, "search-validation-failed", "Validation Failed",
-            SEARCH_VALIDATION_FAILED, "요청 값 검증에 실패했습니다.")
+        return problem(
+            HttpStatus.BAD_REQUEST,
+            "search-validation-failed",
+            "Validation Failed",
+            SEARCH_VALIDATION_FAILED,
+            "요청 값 검증에 실패했습니다.",
+        )
     }
 
     /**
@@ -127,8 +137,13 @@ class ExportJobExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException::class)
     fun handleHttpMessageNotReadable(ex: HttpMessageNotReadableException): ProblemDetail {
         log.info("EXPORTJOB_400 message_not_readable cause='{}'", ex.cause?.message ?: ex.message)
-        return problem(HttpStatus.BAD_REQUEST, "search-validation-failed", "Validation Failed",
-            SEARCH_VALIDATION_FAILED, "요청 본문을 읽을 수 없습니다.")
+        return problem(
+            HttpStatus.BAD_REQUEST,
+            "search-validation-failed",
+            "Validation Failed",
+            SEARCH_VALIDATION_FAILED,
+            "요청 본문을 읽을 수 없습니다.",
+        )
     }
 
     /**
@@ -139,8 +154,13 @@ class ExportJobExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException::class)
     fun handleMethodArgumentTypeMismatch(ex: MethodArgumentTypeMismatchException): ProblemDetail {
         log.info("EXPORTJOB_400 type_mismatch param='{}'", ex.name)
-        return problem(HttpStatus.BAD_REQUEST, "search-validation-failed", "Validation Failed",
-            SEARCH_VALIDATION_FAILED, "요청 경로 또는 파라미터 형식이 올바르지 않습니다.")
+        return problem(
+            HttpStatus.BAD_REQUEST,
+            "search-validation-failed",
+            "Validation Failed",
+            SEARCH_VALIDATION_FAILED,
+            "요청 경로 또는 파라미터 형식이 올바르지 않습니다.",
+        )
     }
 
     // ── ResponseStatusException 상태 전파 ─────────────────────────────────────
@@ -179,8 +199,13 @@ class ExportJobExceptionHandler {
     @ExceptionHandler(Exception::class)
     fun handleInternalError(ex: Exception): ProblemDetail {
         log.error("EXPORTJOB_500 internal_error", ex)
-        return problem(HttpStatus.INTERNAL_SERVER_ERROR, "search-internal-error", "Internal Server Error",
-            SEARCH_INTERNAL_ERROR, "서버 내부 오류가 발생했습니다.")
+        return problem(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "search-internal-error",
+            "Internal Server Error",
+            SEARCH_INTERNAL_ERROR,
+            "서버 내부 오류가 발생했습니다.",
+        )
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
