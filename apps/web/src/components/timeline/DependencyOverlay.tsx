@@ -54,7 +54,8 @@ export interface DependencyOverlayProps {
  * **레이아웃**:
  * - `position: absolute`로 부모 막대 영역 위에 오버레이 (GanttChart가 위치 결정).
  * - SVG 전체 `pointer-events: none` — 기본 클릭이 하위 막대/레이블로 통과.
- * - 배경 rect (`pointer-events: all`, fill=transparent) — 빈 영역 클릭으로 선택 해제(S3).
+ * - 배경 rect — `selectedKey !== null` 일 때만 `pointer-events: all`. 비선택 시 `none`으로
+ *   아래 Gantt 막대 클릭을 통과시킨다. 선택 상태에서는 빈 영역 클릭으로 선택 해제(S3).
  * - hit-path (`pointer-events: all`, stroke=transparent, strokeWidth=12) — 클릭 타겟 확대.
  *
  * **elbow path**: `M startX,startY+axisOffset H midX V endY+axisOffset H endX`
@@ -106,7 +107,7 @@ export function DependencyOverlay({
         width={width}
         height={height}
         fill="transparent"
-        style={{ pointerEvents: 'all', cursor: 'default' }}
+        style={{ pointerEvents: selectedKey !== null ? 'all' : 'none', cursor: 'default' }}
         onClick={() => setSelectedKey(null)}
       />
 
