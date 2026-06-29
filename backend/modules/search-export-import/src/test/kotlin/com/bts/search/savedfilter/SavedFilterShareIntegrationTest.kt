@@ -553,7 +553,11 @@ class SavedFilterShareIntegrationTest {
     }
 
     companion object {
-        /** JVM 단위 singleton PostgreSQL container. [SavedFilterIntegrationTest.pg] 와 DB 이름이 달라 격리된다. */
+        /**
+         * JVM 단위 singleton PostgreSQL container. [SavedFilterIntegrationTest.pg] 와 DB 이름이 달라 격리된다.
+         * 이미지 = quay.io/tembo/pg16-pgmq:latest — FR-EX-02 V602(pgmq 확장 + pgmq.create) 가 마이그레이션 체인에
+         * 포함되어 postgres:16-alpine 으로는 적용 실패하므로 tembo 이미지 사용 (ADR 2026-05-22-pgmq-postgres-image).
+         */
         @JvmStatic
         val pg: PostgreSQLContainer<*> =
             PostgreSQLContainer(

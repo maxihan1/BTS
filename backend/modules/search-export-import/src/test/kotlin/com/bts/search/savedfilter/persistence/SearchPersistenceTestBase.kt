@@ -35,6 +35,11 @@ open class SearchPersistenceTestBase {
         /**
          * JVM 단위 singleton PostgreSQL container.
          * `.apply { start() }` 로 JVM 시작 시점에 한 번만 기동되며, Ryuk 이 JVM 종료 시 자동 정리.
+         *
+         * 이미지 = quay.io/tembo/pg16-pgmq:latest (pgmq 사전 설치). search-export-import 마이그레이션 체인에
+         * FR-EX-02 V602(`CREATE EXTENSION pgmq` + `pgmq.create`) 가 포함되어 postgres:16-alpine 으로는
+         * 마이그레이션이 실패(`extension "pgmq" is not available`)하므로 tembo 이미지가 필수다.
+         * `asCompatibleSubstituteFor("postgres")` 로 Testcontainers 호환성 검증 우회 (ADR 2026-05-22-pgmq-postgres-image).
          */
         @JvmStatic
         val postgres: PostgreSQLContainer<*> =
