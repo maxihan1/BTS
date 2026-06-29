@@ -25,6 +25,44 @@ const KEY_ZOOM_MAP: Readonly<Record<string, ZoomLevel>> = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 스토리지 헬퍼
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * localStorage에서 줌 레벨 문자열을 안전하게 읽는다.
+ *
+ * 시크릿 모드·쿠키 차단·sandbox iframe 등 스토리지 차단 환경에서
+ * `localStorage` 접근 자체가 SecurityError 등을 던질 수 있으므로,
+ * 예외를 잡아 null을 반환한다.
+ *
+ * @returns 저장된 문자열, 또는 접근 불가·미설정 시 null
+ */
+function readStoredZoom(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEY)
+  } catch {
+    // 스토리지 차단 환경 — 메모리 상태만 유지(영속 불가)
+    return null
+  }
+}
+
+/**
+ * localStorage에 줌 레벨 문자열을 안전하게 쓴다.
+ *
+ * QuotaExceededError·SecurityError 등 예외가 발생해도 무시하며,
+ * 메모리 상의 React 상태는 정상 유지된다.
+ *
+ * @param level 저장할 줌 레벨 문자열
+ */
+function writeStoredZoom(level: string): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, level)
+  } catch {
+    // 스토리지 차단 또는 할당량 초과 — 영속 생략, 메모리 상태는 유지됨
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -79,16 +117,17 @@ interface TimelineZoomResult {
  */
 export function useTimelineZoom(): TimelineZoomResult {
   const [zoomLevel, setZoomState] = useState<ZoomLevel>(() =>
-    parseZoomLevel(localStorage.getItem(STORAGE_KEY)),
+    parseZoomLevel(readStoredZoom()),
   )
 
   const setZoom = useCallback((level: ZoomLevel): void => {
     setZoomState(level)
-    localStorage.setItem(STORAGE_KEY, level)
+    writeStoredZoom(level)
   }, [])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return
       if (isEditableTarget(event.target)) return
 
       const level = KEY_ZOOM_MAP[event.key]
