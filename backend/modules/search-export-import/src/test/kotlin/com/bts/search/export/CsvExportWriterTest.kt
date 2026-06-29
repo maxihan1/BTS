@@ -55,12 +55,16 @@ class CsvExportWriterTest {
     /**
      * BOM(3바이트) 제거 후 UTF-8 디코딩, CRLF 분리.
      *
+     * 매 행 끝의 CRLF 로 인해 split("\r\n") 결과 마지막 원소는 항상 빈 문자열 — 이것만 제거한다.
+     * 실제 빈 데이터 행(예: assigneeId null)은 중간 빈 원소로 보존된다.
      * 셀에 LF 만 포함된 경우 (CR 없음) split("\r\n") 은 그 LF 에서 분리하지 않으므로
      * 일반적인 행 파싱에 사용 가능하다.
      */
     private fun parseLines(bytes: ByteArray): List<String> {
         val withoutBom = bytes.drop(3).toByteArray()
-        return String(withoutBom, Charsets.UTF_8).split("\r\n").filter { it.isNotEmpty() }
+        val all = String(withoutBom, Charsets.UTF_8).split("\r\n")
+        // 구현이 모든 행 뒤에 CRLF 를 쓰므로 마지막 원소는 항상 trailing empty — 1개만 제거
+        return if (all.lastOrNull() == "") all.dropLast(1) else all
     }
 
     // ── (1) UTF-8 BOM ─────────────────────────────────────────────────────────
