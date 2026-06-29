@@ -10,9 +10,9 @@ import io.mockk.verify
 import io.minio.GetObjectArgs
 import io.minio.GetObjectResponse
 import io.minio.MinioClient
+import io.minio.ObjectWriteResponse
 import io.minio.PutObjectArgs
 import io.minio.RemoveObjectArgs
-import io.minio.errors.MinioException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -53,8 +53,9 @@ class MinioExportStorageAdapterTest {
 
     @Test
     fun `put - putObject 호출 인자 검증`() {
+        // MinIO SDK 8.5.x putObject 는 ObjectWriteResponse 를 반환하므로 mockk() 로 반환값 설정
         val argsSlot = slot<PutObjectArgs>()
-        justRun { minioClient.putObject(capture(argsSlot)) }
+        every { minioClient.putObject(capture(argsSlot)) } returns mockk<ObjectWriteResponse>(relaxed = true)
 
         val content = "hello".toByteArray()
         adapter.put(
