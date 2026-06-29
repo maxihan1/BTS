@@ -15,6 +15,9 @@ const MONDAY_UTC = 1
 /** 하루를 ms로 표현한 값 */
 const MS_PER_DAY = 86_400_000
 
+/** 한 분기에 속하는 월 수 — 분기 판별 및 번호 계산에 사용 */
+const MONTHS_PER_QUARTER = 3
+
 /** 축 헤더 행 높이(px) — 월 눈금 행 + 주 눈금 행 */
 const AXIS_ROW_HEIGHT_PX = 24
 
@@ -115,6 +118,11 @@ function computeDayTicks(range: DateRange): TickItem[] {
  * 날짜 범위에서 분기 눈금 목록을 계산한다.
  * 각 분기의 첫 번째 달(1·4·7·10월) 1일을 기준으로 눈금을 찍는다.
  *
+ * **Partial 시작 레이블 (C2)**:
+ * 범위 시작일이 분기 경계에 해당하지 않으면(첫 정규 눈금의 offsetDay > 0, 또는 정규 눈금 0개),
+ * offsetDay 0 위치에 "범위 시작일이 속한 분기" 레이블을 prepend한다.
+ * 범위 시작이 정확히 분기 경계(offsetDay 0)이면 중복 삽입하지 않는다.
+ *
  * @param range 전체 날짜 범위
  * @returns 분기 눈금 목록 (label: 'YYYY Q{n}')
  */
@@ -126,11 +134,20 @@ function computeQuarterTicks(range: DateRange): TickItem[] {
     const ms = range.startMs + day * MS_PER_DAY
     const date = new Date(ms)
     const month = date.getUTCMonth() // 0-indexed
-    if (date.getUTCDate() === 1 && month % 3 === 0) {
+    if (date.getUTCDate() === 1 && month % MONTHS_PER_QUARTER === 0) {
       const year = date.getUTCFullYear()
-      const quarter = Math.floor(month / 3) + 1
+      const quarter = Math.floor(month / MONTHS_PER_QUARTER) + 1
       ticks.push({ offsetDay: day, label: `${year} Q${quarter}` })
     }
+  }
+
+  // Partial 시작 레이블: 첫 정규 눈금이 범위 시작(offsetDay 0)이 아닐 때 prepend
+  const firstTickOffsetDay = ticks[0]?.offsetDay ?? Infinity
+  if (firstTickOffsetDay > 0) {
+    const startDate = new Date(range.startMs)
+    const startYear = startDate.getUTCFullYear()
+    const startQuarter = Math.floor(startDate.getUTCMonth() / MONTHS_PER_QUARTER) + 1
+    ticks.unshift({ offsetDay: 0, label: `${startYear} Q${startQuarter}` })
   }
 
   return ticks
