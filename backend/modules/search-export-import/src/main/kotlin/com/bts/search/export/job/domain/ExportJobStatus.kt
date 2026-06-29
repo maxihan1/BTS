@@ -41,7 +41,7 @@ enum class ExportJobStatus {
      * @throws IllegalStateException 허용되지 않은 전이인 경우.
      */
     fun transitionTo(target: ExportJobStatus): ExportJobStatus {
-        val allowed = ALLOWED_TRANSITIONS[this] ?: emptySet()
+        val allowed = ALLOWED_TRANSITIONS[this].orEmpty()
         check(target in allowed) {
             "ExportJobStatus 전이 거부: $this → $target (허용: $allowed)"
         }

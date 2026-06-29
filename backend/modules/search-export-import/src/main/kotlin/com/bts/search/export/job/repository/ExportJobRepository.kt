@@ -297,7 +297,7 @@ class ExportJobRepository(
             projectKey = projectKey,
             query = query,
             format = format,
-            columns = columns?.toColumnsList() ?: emptyList(),
+            columns = columns?.toColumnsList().orEmpty(),
             requesterUserId = requesterUserId,
             status = enumValueOf(status ?: ExportJobStatus.PENDING.name),
             progress = progress ?: 0,

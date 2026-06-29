@@ -60,7 +60,7 @@ class SavedFilterController(
         val domainShares = parseShares(request.shares)
         log.info("SavedFilterController.create actor={} name={} projectKey={}", actorId, name, projectKey)
         val filter = service.create(actorId, name, aqlQuery, projectKey, domainShares)
-        val response = SavedFilterResponse.from(filter, domainShares ?: emptyList(), actorId)
+        val response = SavedFilterResponse.from(filter, domainShares.orEmpty(), actorId)
         return ResponseEntity.status(HttpStatus.CREATED).body(response)
     }
 
@@ -147,7 +147,7 @@ class SavedFilterController(
     @DeleteMapping("/{id}")
     fun delete(
         @PathVariable id: UUID,
-    ): ResponseEntity<Void> {
+    ): ResponseEntity<Unit> {
         val actorId = SavedFilterActorExtractor.extract()
         log.info("SavedFilterController.delete id={} actor={}", id, actorId)
         service.delete(id, actorId)

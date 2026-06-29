@@ -259,3 +259,20 @@ afterEvaluate {
         setSource(fileTree("src/main/kotlin"))
     }
 }
+
+// ── detektMain 가 generated 소스를 검사하지 않도록 source 재설정 ──────────────
+// 설계 결정 (detekt generated 제외 — ktlint setSource 와 동일 패턴):
+//   nu.studer.jooq 9.0 플러그인이 target.directory(src/generated/jooq)를
+//   sourceSets.main.kotlin.srcDir 에 자동 등록한다.
+//   detekt 1.23.x 는 sourceSets 의 kotlin sourceDirectories 를 수집해 task source 를 확정하므로
+//   src/generated/jooq 가 자동으로 검사 대상에 포함된다.
+//   exclude("**/generated/**") 는 각 srcDir root 기준 상대경로 매칭이므로
+//   src/generated/jooq root 기준 파일 경로에 "generated" 세그먼트가 없어 매칭 불가.
+//   → afterEvaluate 에서 detektMain task 의 source 를 직접 재설정:
+//     src/main/kotlin 만 포함하는 FileCollection 으로 교체 — generated 완전 제외.
+//     컴파일은 sourceSets.main.kotlin.srcDir 경유로 정상 포함 (setSource 는 detekt 입력만 변경).
+afterEvaluate {
+    tasks.named<io.gitlab.arturbosch.detekt.Detekt>("detektMain") {
+        setSource(files("src/main/kotlin"))
+    }
+}
