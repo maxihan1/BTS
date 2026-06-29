@@ -58,6 +58,36 @@ describe('timelineLabels.group', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// deps 그룹 검증 (FR-TL-02 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('timelineLabels.deps', () => {
+  it('lineAriaLabel("BTS-2", "BTS-3") — 두 키 모두 포함한다', () => {
+    const label = timelineLabels.deps.lineAriaLabel('BTS-2', 'BTS-3')
+    expect(label).toContain('BTS-2')
+    expect(label).toContain('BTS-3')
+  })
+
+  it('lineAriaLabel 반환값이 콜론으로 끝나지 않는다', () => {
+    const label = timelineLabels.deps.lineAriaLabel('BTS-2', 'BTS-3')
+    expect(label.trimEnd()).not.toMatch(/:$/)
+  })
+
+  it('lineAriaLabel 반환값이 비어있지 않다', () => {
+    const label = timelineLabels.deps.lineAriaLabel('A', 'B')
+    expect(label.length).toBeGreaterThan(0)
+  })
+
+  it('truncatedMessage가 비어있지 않다', () => {
+    expect(timelineLabels.deps.truncatedMessage.length).toBeGreaterThan(0)
+  })
+
+  it('truncatedMessage가 콜론으로 끝나지 않는다', () => {
+    expect(timelineLabels.deps.truncatedMessage.trimEnd()).not.toMatch(/:$/)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // row 그룹 함수 동작 검증
 // ─────────────────────────────────────────────────────────────────────────────
 
