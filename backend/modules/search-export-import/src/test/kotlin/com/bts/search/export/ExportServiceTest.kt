@@ -59,6 +59,9 @@ class ExportServiceTest {
     /** 괄호 불균형 — AqlSyntaxException을 유발하는 문법 오류 쿼리. */
     private val malformedQuery = "("
 
+    /** 전체 9컬럼. 각 테스트에서 반복 생성을 피하기 위해 한 번만 생성한다. */
+    private val allColumns = ExportColumn.entries.toList()
+
     @BeforeEach
     fun setUp() {
         service = ExportService(searchPort, fixedClock)
@@ -71,13 +74,7 @@ class ExportServiceTest {
         val querySlot = slot<IssueSearchQuery>()
         every { searchPort.search(capture(querySlot)) } returns emptyPage(0)
 
-        service.export(
-            projectKey = testProjectKey,
-            query = validQuery,
-            format = ExportFormat.CSV,
-            columns = ExportColumn.entries.toList(),
-            viewerUserId = testViewerUserId,
-        )
+        exportCsv()
 
         val captured = querySlot.captured
         assertThat(captured.viewerUserId).isEqualTo(testViewerUserId)
@@ -89,13 +86,7 @@ class ExportServiceTest {
         val querySlot = slot<IssueSearchQuery>()
         every { searchPort.search(capture(querySlot)) } returns emptyPage(0)
 
-        service.export(
-            projectKey = testProjectKey,
-            query = queryWithSort,
-            format = ExportFormat.CSV,
-            columns = ExportColumn.entries.toList(),
-            viewerUserId = testViewerUserId,
-        )
+        exportCsv(query = queryWithSort)
 
         assertThat(querySlot.captured.sort).isNotEmpty()
     }
@@ -109,7 +100,7 @@ class ExportServiceTest {
 
         val ex =
             assertThrows<ExportLimitExceededException> {
-                service.export(testProjectKey, validQuery, ExportFormat.CSV, ExportColumn.entries.toList(), testViewerUserId)
+                exportCsv()
             }
 
         assertThat(ex.resultCount).isEqualTo(overLimit)
@@ -120,9 +111,7 @@ class ExportServiceTest {
     fun `search is called exactly once when total exceeds MAX_ROWS (no further traversal)`() {
         every { searchPort.search(any()) } returns pageWithTotal(ExportService.MAX_ROWS + 1L)
 
-        assertThrows<ExportLimitExceededException> {
-            service.export(testProjectKey, validQuery, ExportFormat.CSV, ExportColumn.entries.toList(), testViewerUserId)
-        }
+        assertThrows<ExportLimitExceededException> { exportCsv() }
 
         verify(exactly = 1) { searchPort.search(any()) }
     }
@@ -133,16 +122,14 @@ class ExportServiceTest {
     fun `total=10000 is exactly at boundary and must not throw`() {
         every { searchPort.search(any()) } returns pageWithTotal(ExportService.MAX_ROWS)
 
-        assertDoesNotThrow {
-            service.export(testProjectKey, validQuery, ExportFormat.CSV, ExportColumn.entries.toList(), testViewerUserId)
-        }
+        assertDoesNotThrow { exportCsv() }
     }
 
     @Test
     fun `total=10000 at boundary traverses 100 pages`() {
         every { searchPort.search(any()) } returns pageWithTotal(ExportService.MAX_ROWS)
 
-        service.export(testProjectKey, validQuery, ExportFormat.CSV, ExportColumn.entries.toList(), testViewerUserId)
+        exportCsv()
 
         // ceil(10000 / 100) = 100 페이지
         verify(exactly = 100) { searchPort.search(any()) }
@@ -152,9 +139,7 @@ class ExportServiceTest {
     fun `total=10001 exceeds boundary and must throw`() {
         every { searchPort.search(any()) } returns pageWithTotal(ExportService.MAX_ROWS + 1L)
 
-        assertThrows<ExportLimitExceededException> {
-            service.export(testProjectKey, validQuery, ExportFormat.CSV, ExportColumn.entries.toList(), testViewerUserId)
-        }
+        assertThrows<ExportLimitExceededException> { exportCsv() }
     }
 
     // ── (4) total=250, PAGE_SIZE=100 → 3페이지 순회, search 3회 ─────────────────
@@ -162,14 +147,12 @@ class ExportServiceTest {
     @Test
     fun `total=250 with PAGE_SIZE=100 traverses exactly 3 pages`() {
         val hits = sampleHits(3)
-        every { searchPort.search(match { it.page == 0 }) } returns
-            IssueSearchPage(items = hits, total = 250L, page = 0, size = ExportService.PAGE_SIZE)
-        every { searchPort.search(match { it.page == 1 }) } returns
-            IssueSearchPage(items = hits, total = 250L, page = 1, size = ExportService.PAGE_SIZE)
-        every { searchPort.search(match { it.page == 2 }) } returns
-            IssueSearchPage(items = hits, total = 250L, page = 2, size = ExportService.PAGE_SIZE)
+        val pageOf = { n: Int -> IssueSearchPage(hits, 250L, n, ExportService.PAGE_SIZE) }
+        every { searchPort.search(match { it.page == 0 }) } returns pageOf(0)
+        every { searchPort.search(match { it.page == 1 }) } returns pageOf(1)
+        every { searchPort.search(match { it.page == 2 }) } returns pageOf(2)
 
-        service.export(testProjectKey, validQuery, ExportFormat.CSV, ExportColumn.entries.toList(), testViewerUserId)
+        exportCsv()
 
         verify(exactly = 3) { searchPort.search(any()) }
     }
@@ -180,8 +163,7 @@ class ExportServiceTest {
     fun `CSV format returns correct contentType`() {
         every { searchPort.search(any()) } returns emptyPage(0)
 
-        val result =
-            service.export(testProjectKey, validQuery, ExportFormat.CSV, ExportColumn.entries.toList(), testViewerUserId)
+        val result = exportCsv()
 
         assertThat(result.contentType).isEqualTo(ExportFormat.CSV.contentType)
     }
@@ -190,8 +172,7 @@ class ExportServiceTest {
     fun `CSV bytes start with UTF-8 BOM (EF BB BF)`() {
         every { searchPort.search(any()) } returns emptyPage(0)
 
-        val result =
-            service.export(testProjectKey, validQuery, ExportFormat.CSV, ExportColumn.entries.toList(), testViewerUserId)
+        val result = exportCsv()
 
         assertThat(result.bytes).hasSizeGreaterThanOrEqualTo(3)
         assertThat(result.bytes[0]).isEqualTo(0xEF.toByte())
@@ -203,8 +184,7 @@ class ExportServiceTest {
     fun `XLSX format returns correct contentType`() {
         every { searchPort.search(any()) } returns emptyPage(0)
 
-        val result =
-            service.export(testProjectKey, validQuery, ExportFormat.XLSX, ExportColumn.entries.toList(), testViewerUserId)
+        val result = exportXlsx()
 
         assertThat(result.contentType).isEqualTo(ExportFormat.XLSX.contentType)
     }
@@ -213,11 +193,10 @@ class ExportServiceTest {
     fun `XLSX bytes start with ZIP magic bytes (PK = 0x50 0x4B)`() {
         every { searchPort.search(any()) } returns emptyPage(0)
 
-        val result =
-            service.export(testProjectKey, validQuery, ExportFormat.XLSX, ExportColumn.entries.toList(), testViewerUserId)
+        val result = exportXlsx()
 
         assertThat(result.bytes).hasSizeGreaterThanOrEqualTo(2)
-        // XLSX is OOXML(ZIP) — first 2 bytes are PK signature
+        // XLSX는 OOXML(ZIP) — 첫 2바이트가 PK 시그니처
         assertThat(result.bytes[0]).isEqualTo(0x50.toByte())
         assertThat(result.bytes[1]).isEqualTo(0x4B.toByte())
     }
@@ -228,8 +207,7 @@ class ExportServiceTest {
     fun `CSV filename follows projectKey-issues-yyyyMMdd-HHmmss_csv pattern`() {
         every { searchPort.search(any()) } returns emptyPage(0)
 
-        val result =
-            service.export(testProjectKey, validQuery, ExportFormat.CSV, ExportColumn.entries.toList(), testViewerUserId)
+        val result = exportCsv()
 
         // fixedClock = 2024-03-15T10:30:45Z → "20240315-103045"
         assertThat(result.filename).isEqualTo("TEST-issues-20240315-103045.csv")
@@ -239,8 +217,7 @@ class ExportServiceTest {
     fun `XLSX filename follows projectKey-issues-yyyyMMdd-HHmmss_xlsx pattern`() {
         every { searchPort.search(any()) } returns emptyPage(0)
 
-        val result =
-            service.export(testProjectKey, validQuery, ExportFormat.XLSX, ExportColumn.entries.toList(), testViewerUserId)
+        val result = exportXlsx()
 
         assertThat(result.filename).isEqualTo("TEST-issues-20240315-103045.xlsx")
     }
@@ -249,14 +226,20 @@ class ExportServiceTest {
 
     @Test
     fun `malformed AQL propagates AqlSyntaxException without calling searchPort`() {
-        assertThrows<AqlSyntaxException> {
-            service.export(testProjectKey, malformedQuery, ExportFormat.CSV, ExportColumn.entries.toList(), testViewerUserId)
-        }
+        assertThrows<AqlSyntaxException> { exportCsv(query = malformedQuery) }
 
         verify(exactly = 0) { searchPort.search(any()) }
     }
 
     // ── private helpers ──────────────────────────────────────────────────────────
+
+    /** CSV 형식으로 기본 파라미터로 Export를 수행한다. 반복되는 장문 호출을 짧게 축약한다. */
+    private fun exportCsv(query: String = validQuery): ExportResult =
+        service.export(testProjectKey, query, ExportFormat.CSV, allColumns, testViewerUserId)
+
+    /** XLSX 형식으로 기본 파라미터로 Export를 수행한다. 반복되는 장문 호출을 짧게 축약한다. */
+    private fun exportXlsx(query: String = validQuery): ExportResult =
+        service.export(testProjectKey, query, ExportFormat.XLSX, allColumns, testViewerUserId)
 
     private fun emptyPage(page: Int): IssueSearchPage =
         IssueSearchPage(items = emptyList(), total = 0L, page = page, size = ExportService.PAGE_SIZE)
