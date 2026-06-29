@@ -144,4 +144,52 @@ describe('TimelineAxis', () => {
       expect(screen.queryByText(/^\d{2}$/)).toBeNull()
     })
   })
+
+  describe('quarter 줌 — partial 시작 레이블 (C2)', () => {
+    /**
+     * partial 필요 케이스: 범위가 분기 경계를 포함하지 않을 때.
+     *
+     * 범위 2026-08-15 ~ 2026-09-30 (UTC).
+     * Q3(7/1)·Q4(10/1) 모두 범위 밖 → computeQuarterTicks 정규 눈금 0개.
+     * 시작일 2026-08-15 (UTC month=7) → quarter = floor(7/3)+1 = 3.
+     * 기대: offsetDay 0 위치에 '2026 Q3' 레이블 1개.
+     *
+     * RED 실패 예상: 미구현 시 분기 레이블 0개 → getByText 실패.
+     */
+    it('범위가 분기 경계 미포함일 때 offsetDay 0에 시작 분기 레이블이 렌더된다', () => {
+      const range: DateRange = {
+        startMs: utc(2026, 8, 15),
+        endMs: utc(2026, 9, 30),
+      }
+      render(<TimelineAxis range={range} dayWidth={DAY_WIDTH} zoomLevel="quarter" />)
+
+      // 분기 레이블 '2026 Q3' 이 최소 1개 렌더되어야 한다
+      expect(screen.getByText('2026 Q3')).toBeInTheDocument()
+
+      // offsetDay 0 위치(left: 0px)에 렌더되어야 한다
+      const label = screen.getByText('2026 Q3')
+      expect(parseFloat(label.style.left)).toBe(0)
+    })
+
+    /**
+     * 중복 금지 케이스: 범위 시작이 정확히 분기 경계(7/1)일 때.
+     *
+     * 범위 2026-07-01 ~ 2026-09-30 (UTC).
+     * day 0 = 2026-07-01 (UTC month=6, 6%3=0) → 정규 눈금 {offsetDay:0, '2026 Q3'}.
+     * 정규 눈금 offsetDay === 0 → partial 삽입 금지.
+     * 기대: '2026 Q3' 레이블이 정확히 1개 (2개 아님).
+     *
+     * GREEN 전/후 모두 통과해야 하는 무회귀 가드.
+     */
+    it('범위 시작이 분기 경계와 일치하면 분기 레이블이 중복 삽입되지 않는다', () => {
+      const range: DateRange = {
+        startMs: utc(2026, 7, 1),
+        endMs: utc(2026, 9, 30),
+      }
+      render(<TimelineAxis range={range} dayWidth={DAY_WIDTH} zoomLevel="quarter" />)
+
+      // '2026 Q3' 이 정확히 1개만 렌더되어야 한다
+      expect(screen.getAllByText('2026 Q3')).toHaveLength(1)
+    })
+  })
 })
