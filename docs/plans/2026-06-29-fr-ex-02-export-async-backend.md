@@ -38,10 +38,208 @@
 - **관련 ADR**: [docs/decisions/2026-06-29-fr-ex-02-async-export-jobs.md](../decisions/2026-06-29-fr-ex-02-async-export-jobs.md) (생성됨)
 - **grill-with-docs 생략 근거**: BulkOperation 선례 1:1 매핑 + 새 용어 1개로 도메인 명확. 명확한 백엔드 작업에 대화형 스킬 과함 (메모리: bts-spec office-hours mismatch / bts-review-plan autoplan overkill). 게이트 1에서 일괄 검토.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-29-fr-ex-02-export-async-backend.md](../specs/2026-06-29-fr-ex-02-export-async-backend.md)
 
-## Plan (← /bts-plan 채움)
+핵심 결정 (Maxi 게이트, 2026-06-29).
+- 직렬화 = **스트리밍** (CSV OutputStream 직접 / XLSX SXSSFWorkbook) + **10만행 상한** (초과 시 FAILED)
+- 다운로드 = **자체 엔드포인트 프록시** (`GET .../export-jobs/{id}/download`, 본인 job만, MinIO 비노출)
+- TTL = **24시간** (만료 후 DB+MinIO 하드삭제)
+- 진행률 = 페이지(100행)마다 progress(%) 갱신, 빈 결과는 progress=100 즉시
+
+API 3종. `POST /search/export-jobs`(202+jobId) · `GET /search/export-jobs/{id}`(폴링) · `GET .../{id}/download`(스트리밍).
+데이터 모델. V602 export_jobs + pgmq `q_export_jobs` 큐 + init_codegen 미러.
+
+## Brainstorming Check
+
+✅ 통과 (직접 adversarial sanity check, gap 4건 — G1 division-by-zero / G3 ExportService 메모리경로 재사용불가 보강, G2 동시job제한 후속이연 / G4 신규에러코드 plan이연). Maxi 결정 필요 잔여 gap 없음.
+
+## Plan
+
+> 패키지 미러: BulkOperation `bulk/{domain,repository,application,event,worker}` → `com.bts.search.export.job.{domain,repository,application,event,worker,storage,serialize}`.
+> 베이스: `backend/modules/search-export-import/src/main/kotlin/com/bts/search/export/job/`, 테스트는 대응 `src/test/`.
+> 모듈 검증 경로: `:modules:search-export-import`.
+
+### Task 1. V602 마이그레이션 + pgmq 큐 + jOOQ codegen
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/search-export-import/src/main/resources/db/migration/search-export-import/V602__export_jobs.sql`, `backend/modules/search-export-import/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/export/job/ExportJobsSchemaMigrationTest.kt`]
+- depends-on: []
+
+**RED**: `ExportJobsSchemaMigrationTest`(Testcontainers) — 마이그레이션 적용 후 `export_jobs` 테이블 + 13컬럼 + status/format CHECK 제약 + 2 인덱스 존재 검증. 큐 `q_export_jobs`가 `pgmq.list_queues()`에 존재 검증. → 테이블 없음 fail.
+
+**GREEN**: `V602__export_jobs.sql` 작성(spec §데이터 모델 DDL 그대로). pgmq extension은 `CREATE EXTENSION IF NOT EXISTS pgmq`로 방어(통합 순서 의존 — issue-tracking V002 선설치 가정이나 codegen 단독 컨테이너 대비). `init_codegen.sql`에 같은 DDL 미러(jooq-init_codegen-mirror). `./gradlew :modules:search-export-import:generateJooq`로 jOOQ 코드 재생성.
+
+**REFACTOR**: SQL 주석(컬럼 의미) + 인덱스 명명 일관성.
+
+**검증**: `./gradlew :modules:search-export-import:test --tests "*ExportJobsSchemaMigrationTest"` + `:modules:search-export-import:generateJooq`
+
+### Task 2. ExportJob 도메인 + Status
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/.../export/job/domain/ExportJobId.kt`, `backend/.../export/job/domain/ExportJobStatus.kt`, `backend/.../export/job/domain/ExportJob.kt`, `backend/.../export/job/domain/ExportJobTest.kt`]
+- depends-on: []
+
+**RED**: `ExportJobTest` — (a) `ExportJobStatus` PENDING/RUNNING/COMPLETED/FAILED 종단 전이 규칙, (b) `ExportJob.progressPercent(processed, total)` 계산(total=0 → 100, 그 외 처리/총*100 내림), (c) `downloadReady` = COMPLETED && resultObjectKey != null. → 클래스 없음 fail.
+
+**GREEN**: `ExportJobId`(value class UUID), `ExportJobStatus`(enum, BulkOperationStatus 미러), `ExportJob`(data class + progress/downloadReady 순수 함수).
+
+**REFACTOR**: KDoc(상태 머신 전이 다이어그램) + 상한 상수 `MAX_ROWS=100_000L`를 도메인 companion에.
+
+**검증**: `./gradlew :modules:search-export-import:test --tests "*ExportJobTest"`
+
+### Task 3. ExportJobRepository (jOOQ)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/.../export/job/repository/ExportJobRepository.kt`, `backend/.../export/job/repository/ExportJobRepositoryTest.kt`]
+- depends-on: [1, 2]
+
+**RED**: `ExportJobRepositoryTest`(Testcontainers) — insert(PENDING) / `claimForRun`(CAS: PENDING 또는 stale RUNNING만 1행, 동시 2호출 시 1성공) / `findStatus` / `updateProgress(id, percent, rowCount)` / `markCompleted(id, objectKey, expiresAt)` CAS / `markFailed(id, errorCode)` CAS / `findByIdForRequester(id, userId)` 소유권(타인 null) / `findExpired(now)` / `deleteById`. → 메서드 없음 fail.
+
+**GREEN**: jOOQ DSL 구현. `claimForRun`은 단일 UPDATE affected-rows(advisory-lock-bigint-TOCTOU 교훈 — 조회후UPDATE 금지). markCompleted/Failed는 `WHERE status='RUNNING'` 조건부 CAS. Clock 주입(시각 의존).
+
+**REFACTOR**: SQL 상수 추출 + KDoc(CAS 단일성 근거).
+
+**검증**: `./gradlew :modules:search-export-import:test --tests "*ExportJobRepositoryTest"`
+
+### Task 4. ExportJobEnqueuePublisher (pgmq outbox)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/.../export/job/event/ExportJobEnqueuePublisher.kt`, `backend/.../export/job/event/ExportJobEnqueuePublisherTest.kt`]
+- depends-on: [1, 2]
+
+**RED**: `ExportJobEnqueuePublisherTest`(Testcontainers) — (a) 트랜잭션 안에서 `enqueue(id)` 호출 시 `q_export_jobs`에 `{"exportJobId":"<UUID>"}` 메시지 1건, (b) 트랜잭션 없이 호출 시 `IllegalTransactionStateException`(MANDATORY). → 클래스 없음 fail.
+
+**GREEN**: `BulkOperationEnqueuePublisher` 미러 — `@Transactional(propagation=MANDATORY)` + `pgmq.send(?, ?::jsonb)` 바인딩(문자열 결합 금지). QUEUE_NAME="q_export_jobs".
+
+**REFACTOR**: KDoc(outbox 패턴 + MANDATORY 근거 DATA.md §7.2).
+
+**검증**: `./gradlew :modules:search-export-import:test --tests "*ExportJobEnqueuePublisherTest"`
+
+### Task 5. MinIO 저장 어댑터 (search 모듈 자체)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/search-export-import/build.gradle.kts`, `backend/.../export/job/storage/ExportObjectStoragePort.kt`, `backend/.../export/job/storage/MinioExportStorageConfig.kt`, `backend/.../export/job/storage/MinioExportStorageAdapter.kt`, `backend/.../export/job/storage/MinioExportStorageException.kt`, `backend/.../export/job/storage/MinioExportStorageAdapterTest.kt`]
+- depends-on: []
+
+**RED**: `MinioExportStorageAdapterTest` — mock `MinioClient`로 (a) `put(key, inputStream, size, contentType)` → `putObject` 호출 인자 capture, (b) `openStream(key)` → `getObject`, (c) `remove(key)` → `removeObject`, (d) 실패 시 `MinioExportStorageException` 변환. → 클래스 없음 fail.
+
+**GREEN**: build.gradle.kts에 `io.minio:minio` 추가(issue-tracking 버전 일치). `ExportObjectStoragePort` 인터페이스 + `MinioExportStorageConfig`(MinioClient 빈, `bts.minio.*` 바인딩 재사용, bucket 기본 `bts-exports`, best-effort ensureBucket) + `MinioExportStorageAdapter`(MinioStorageAdapter 미러). key 패턴 `{projectKey}/{jobId}.{ext}`.
+
+**REFACTOR**: KDoc(BC 격리 — issue-tracking과 별도 클라이언트/버킷, ADR §D4) + endpoint fail-fast.
+
+**검증**: `./gradlew :modules:search-export-import:test --tests "*MinioExportStorageAdapterTest"`
+
+### Task 6. 스트리밍 직렬화 (CSV/XLSX SXSSF → 임시파일)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/.../export/job/serialize/StreamingExportSerializer.kt`, `backend/.../export/job/serialize/StreamingExportSerializerTest.kt`]
+- depends-on: []
+
+**RED**: `StreamingExportSerializerTest` — (a) CSV: `serialize(format=CSV, columns, hitsBatches)` → 임시파일에 UTF-8 BOM + 헤더 + 전체 행(RFC 4180), (b) XLSX: SXSSFWorkbook로 임시파일, POI로 재로딩해 행 수 검증, (c) `ExportCellSanitizer` 적용(`=`로 시작하는 셀 prefix), (d) 빈 배치(0행) → 헤더만, (e) 윈도우 메모리 상수(여러 배치 append 후에도 SXSSF dispose 호출). → 클래스 없음 fail.
+
+**GREEN**: `StreamingExportSerializer` — 페이지 배치 단위로 받아 `OutputStream`/`SXSSFWorkbook`에 append. FR-EX-01 `ExportColumn`/`ExportCellSanitizer` 재사용(CSV 이스케이프 로직은 CsvExportWriter에서 행 단위 함수 추출 또는 재구현). 결과는 `java.io.File`(createTempFile) 반환. SXSSF는 `dispose()`로 임시 백킹파일 정리.
+
+**REFACTOR**: 헤더/행 write 헬퍼 분리 + KDoc(메모리 상수 보장).
+
+**검증**: `./gradlew :modules:search-export-import:test --tests "*StreamingExportSerializerTest"`
+
+### Task 7. ExportJobService (접수 — AQL 검증 + 영속 + enqueue)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/.../export/job/application/ExportJobService.kt`, `backend/.../export/job/application/ExportJobService Test.kt`]
+- depends-on: [2, 3, 4]
+
+**RED**: `ExportJobServiceTest`(mockk repo/enqueue) — (a) `submit(request, requesterUserId)`가 AQL 파싱 성공 시 ExportJob PENDING 영속 + `enqueue` 호출 + jobId 반환, (b) AQL 문법 오류 시 `AqlSyntaxException` 전파(job 미생성 — repo.insert 미호출 verify), (c) format/projectKey 수동 검증(FR-EX-01 패턴), (d) 영속+enqueue가 `@Transactional` 단일 경계. → 클래스 없음 fail.
+
+**GREEN**: `ExportJobService` — AqlLexer/AqlParser로 선검증, `ExportColumn.parse`, ExportRequest 수동 검증, `@Transactional`로 insert + enqueue 묶음.
+
+**REFACTOR**: 검증 헬퍼 추출 + KDoc.
+
+**검증**: `./gradlew :modules:search-export-import:test --tests "*ExportJobServiceTest"`
+
+### Task 8. ExportJobProcessor (worker 처리 로직)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/.../export/job/application/ExportJobProcessor.kt`, `backend/.../export/job/application/ExportJobProcessorTest.kt`]
+- depends-on: [3, 5, 6]
+
+**RED**: `ExportJobProcessorTest`(mockk port/repo/storage/serializer) — (a) count-first total≤10만: 페이지 순회 → serializer → storage.put → `markCompleted`(objectKey + expiresAt=now+24h) + progress 갱신, (b) total>10만: serializer/storage 미호출 + `markFailed(LIMIT_EXCEEDED)`, (c) storage 실패: `markFailed(STORAGE_ERROR)` + 임시파일 정리, (d) viewerUserId = job.requesterUserId로 IssueSearchPort 호출(보안 상속), (e) 빈 결과 progress=100. → 클래스 없음 fail.
+
+**GREEN**: `ExportJobProcessor.process(jobId)` — repo에서 job 로드 → IssueSearchPort count-first → 상한 체크 → StreamingExportSerializer(페이지 콜백) → storage.put → markCompleted. Clock 주입(expiresAt). 예외 분류(limit/storage/generic) → markFailed + errorCode.
+
+**REFACTOR**: 진행률 갱신 throttle(매 페이지) + KDoc(보안 상속 경로).
+
+**검증**: `./gradlew :modules:search-export-import:test --tests "*ExportJobProcessorTest"`
+
+### Task 9. ExportJobWorker (pgmq consumer) + ExportJobCleanupWorker (TTL)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/.../export/job/worker/ExportJobWorker.kt`, `backend/.../export/job/worker/ExportJobCleanupWorker.kt`, `backend/.../export/job/worker/ExportJobWorkerTest.kt`, `backend/.../export/job/worker/ExportJobCleanupWorkerTest.kt`, `backend/modules/search-export-import/src/main/resources/application*.yml`(스케줄 프로퍼티)]
+- depends-on: [3, 8]
+
+**RED**:
+- `ExportJobWorkerTest`(mockk) — `pgmq.read` 결과에 대해 claimForRun true → processor.process → pgmq.delete. claimForRun false + 종단상태 → delete(무한재전달 차단). poison(파싱불가/job없음) read_ct>MAX → archive. 예외 시 delete 생략. `@Transactional` 없음.
+- `ExportJobCleanupWorkerTest`(Testcontainers 또는 mockk) — `findExpired(now)` 각 job에 대해 storage.remove(objectKey) + repo.deleteById. Clock.fixed로 time-bomb 방지.
+
+**GREEN**: `ExportJobWorker`(@Scheduled, BulkOperationWorker 1:1 미러 — QUEUE_NAME/VT/POLL_BATCH/MAX_RECEIVE_COUNT) + `ExportJobCleanupWorker`(@Scheduled 일배치, storage+repo 삭제, Clock 주입). VT 산정 = 10만행/100페이지 × p95 처리시간 근거 주석.
+
+**REFACTOR**: 공통 상수 companion + KDoc(at-least-once 멱등 + dead-letter).
+
+**검증**: `./gradlew :modules:search-export-import:test --tests "*ExportJobWorkerTest" --tests "*ExportJobCleanupWorkerTest"`
+
+### Task 10. ExportJobController + ExceptionHandler + SearchErrorCodes 확장
+
+**메타**.
+- agent: `backend-engineer` (권한 가드는 security-engineer 검토 대상 — codereview에서)
+- files: [`backend/.../search/web/ExportJobController.kt`, `backend/.../search/web/ExportJobExceptionHandler.kt`, `backend/.../search/web/SearchErrorCodes.kt`, `backend/.../search/web/dto/ExportJobResponse.kt`, `backend/.../search/web/ExportJobControllerTest.kt`]
+- depends-on: [5, 7]
+
+**RED**: `ExportJobControllerTest`(MockMvc 슬라이스) — (a) `POST /search/export-jobs` → 202 + jobId(service mock), (b) AQL 오류 → 400(SEARCH_SYNTAX_ERROR), (c) `GET .../{id}` 본인 → 200 폴링 DTO / 타인 → 404, (d) `GET .../{id}/download` COMPLETED 본인 → 200 + Content-Disposition + storage 스트림 / 미완료 → 409(SEARCH_EXPORT_NOT_READY) / 타인 → 404, (e) actor는 SecurityContext에서 추출(컨트롤러, 위조 차단 — FR-BD-01 교훈). → 클래스 없음 fail.
+
+**GREEN**: `ExportJobController`(actor 추출 → service/repo 위임, 소유권 findByIdForRequester로 404 은닉, download는 storage.openStream 프록시 + Content-Disposition 인젝션 방어 projectKey 패턴 검증) + `ExportJobExceptionHandler`(assignableTypes=[ExportJobController], 전용 — ExportController/SearchController 오염 차단) + `SearchErrorCodes`에 `SEARCH_EXPORT_NOT_READY`/`SEARCH_EXPORT_STORAGE_ERROR` 추가(LIMIT은 기존 재사용).
+
+**REFACTOR**: DTO 매핑 헬퍼 + KDoc(소유권 404 은닉 근거).
+
+**검증**: `./gradlew :modules:search-export-import:test --tests "*ExportJobControllerTest"`
+
+### Task 11. end-to-end 통합 테스트 (접수→worker→MinIO→다운로드→cleanup)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/.../export/job/ExportJobEndToEndIntegrationTest.kt`]
+- depends-on: [9, 10]
+
+**RED**: `ExportJobEndToEndIntegrationTest`(Testcontainers Postgres + MinIO, fake IssueSearchPort with 1만+ 시드 hits) — submit → worker poll 처리 → MinIO 객체 존재 → 폴링 COMPLETED → download 바이트 행 수 = 시드 수 → cleanup(Clock.fixed 만료) 후 DB+MinIO 삭제 확인. 상한 초과(>10만) → FAILED. → 컴포넌트 미완성 fail.
+
+**GREEN**: 위 컴포넌트 조립으로 통과. fake port는 메모리 페이지네이션(visibility 데이터 제외는 FR-SR-02 실증 인용 — search 모듈에 실 IssueSearchAdapter 없음, FR-EX-01 ADR §B1 vacuous 회피).
+
+**REFACTOR**: 시드 헬퍼 추출 + KDoc(실 어댑터 부재 → 매핑층 검증 한계 명시).
+
+**검증**: `./gradlew :modules:search-export-import:test --tests "*ExportJobEndToEndIntegrationTest"` + 모듈 전체 `:modules:search-export-import:test :modules:search-export-import:detekt :modules:search-export-import:ktlintCheck --rerun-tasks`(false-green 차단, 교훈 backend-detekt-lint-debt-unmasked)
+
+## Plan 메타
+
+- task 수: 11 (각 TDD 사이클)
+- wave 예상 (depends-on + files 교집합 기반):
+  - W1: T1(마이그레이션) · T2(도메인) · T5(MinIO) · T6(serializer) — 의존 0, 파일 무겹침
+  - W2: T3(repo: 1,2) · T4(enqueue: 1,2)
+  - W3: T7(service: 2,3,4) · T8(processor: 3,5,6)
+  - W4: T9(worker: 3,8) · T10(controller: 5,7)
+  - W5: T11(e2e: 9,10)
+- 예상 시간: 직렬 ~40분, 5-wave 병렬 ~12분
+- TDD 강제: yes (test 커밋이 feat 커밋보다 먼저)
+- 추가 검증: detekt/ktlint --rerun-tasks (false-green 차단), ArchUnit BC 격리(search 모듈 jOOQ는 com.bts.search..jooq 한정), init_codegen 미러
+- 신규 의존성: io.minio (FR-AC-01 기승인, 신규 모듈 추가). poi-ooxml SXSSF (FR-EX-01 기도입 아티팩트)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
