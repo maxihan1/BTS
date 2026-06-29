@@ -219,6 +219,29 @@ classify: type=ui, agent=frontend-engineer, primary_bc=agile-planning (classifie
 - 리뷰 포커스(codereview): (1) flattenVisibleRows가 GanttChart 행배치와 동일 출처인지(좌표 drift), (2) vacuous 차단(접힘/미존재 negative + positive control 공존), (3) deps best-effort(간트 무중단), (4) 기존 timeline 무회귀, (5) i18n 콜론 미종결.
 - 추가 검증: lint, typecheck(tsconfig.app.json), vitest, playwright.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+### 집중 plan 리뷰 (eng + design + devex, 2026-06-29)
+
+> type=ui이나 신규 디자인 결정이 거의 없는 기존 Gantt 확장(mockup 불요)이라, 대화형 plan-design-review 대신
+> 집중 독립 리뷰로 진행(learning `bts-review-plan-autoplan-overkill` 정신). 게이트 1에서 Maxi가 원하면 대화형 추가 가능.
+
+**eng 관점**.
+- ✅ 좌표 단일출처. `flattenVisibleRows`를 GanttChart 행배치와 동일 출처로 추출 → drift 차단. T5 RED에 접기 negative 포함.
+- ✅ vacuous 차단. T2가 positive control + negative(접힘/미존재)를 같은 입력에 공존(FR-MV-01 EC8/EC9 교훈).
+- ✅ wave 정확. lib 자체 인터페이스로 T1/T2 독립(Wave1 병렬). i18n을 T4에 모아 T5와 파일 겹침 회피.
+- ⚠️ **CONCERN-1 (impl 필수 준수) — lib→component 역의존 차단**. `ROW_HEIGHT_PX`는 `TimelineRow.tsx`(컴포넌트)에 정의됨. `timeline-layout.ts`(lib)이 이를 import하면 lib→component 역의존(아키텍처 위배). **`computeDependencyLines(rows, range, dayWidth, rowHeight, deps)`로 `rowHeight`를 인자로 받고** 호출자(GanttChart)가 `ROW_HEIGHT_PX`를 전달한다. T2 GREEN의 "인자/상수 결정"을 **인자화로 확정**. bts-impl 인계.
+- ⚠️ **CONCERN-2 (마이너) — SVG 좌표계 계약**. 우측 영역은 `overflow-x-auto` + `flex-1`. `DependencyOverlay`의 width/height는 전체 타임라인 폭(range·dayWidth)+행 높이 합으로 부모(GanttChart)가 계산해 주입하고, 막대 좌표계(barX 원점)와 정확히 일치해야 라인이 막대에 붙는다. T4/T5에서 width/height/axisOffset 주입 계약을 명확히.
+- ✅ best-effort. deps 실패가 간트를 깨지 않음(EC6, T5 GREEN 명시).
+
+**design 관점**.
+- ✅ 토큰 우선(DESIGN.md §4). 기본 라인 = `muted-foreground`, 강조 = `primary`(또는 `accent`), 비선택 흐림 = opacity. AQL(다중 타입)과 달리 단일 관계(blocks)라 신규 유채색 토큰 도입 불필요.
+- ✅ 강조 명확성. 클릭 강조는 stroke 굵기 + 색 대비 병행(색 단독 의존 회피).
+- ℹ️ deps truncated 경고는 기존 timeline amber 배너 스타일 재사용 + **문구로 구분**(S6). 의존 라인 SVG path는 lucide 아이콘이 아닌 기능적 경로라 DESIGN.md §일러스트 가이드 예외 정당.
+
+**devex 관점**.
+- ✅ 계약 일관성. `/timeline/deps` 별도 엔드포인트(ADR) `{data:{...}}` 봉투 동형. api/hook 관례(`apiGet`+`dataResponseSchema`+`timelineKeys`) 기존 timeline과 동일.
+- ✅ DTO nullable 0 → Zod drift 무관.
+- ✅ 무회귀. `deps` prop 기본 빈 배열 → GanttChart 기존 사용처 무영향. 기존 timeline E2E도 T6에 포함.
+
+**BLOCKER: 없음.** CONCERN 2건(C1 역의존=impl 필수 준수, C2 좌표계 계약=마이너) → bts-impl 인계.
