@@ -10,6 +10,7 @@ import org.apache.poi.xssf.streaming.SXSSFSheet
 import org.apache.poi.xssf.streaming.SXSSFWorkbook
 import org.slf4j.LoggerFactory
 import java.io.BufferedWriter
+import java.io.Closeable
 import java.io.File
 import java.io.OutputStream
 
@@ -46,7 +47,7 @@ import java.io.OutputStream
 class StreamingExportSerializer(
     private val format: ExportFormat,
     private val columns: List<ExportColumn>,
-) {
+) : Closeable {
     private val log = LoggerFactory.getLogger(javaClass)
 
     private val tempFile: File = File.createTempFile("bts-export-", ".${format.fileExtension}")
@@ -137,6 +138,31 @@ class StreamingExportSerializer(
             }
         }
         return tempFile
+    }
+
+    /**
+     * 스트림/워크북을 닫고 임시파일을 삭제한다.
+     *
+     * [finish] 를 호출하지 않은 탈출 경로(상한 초과 조기 반환, 검색 예외)에서
+     * 임시파일과 열린 스트림/[SXSSFWorkbook] 을 정리한다.
+     * [finish] 호출 후에도 [use] 블록이 이 메서드를 호출하므로 이중 호출에 안전하다.
+     * 표준 Java 스트림과 Apache POI [SXSSFWorkbook] 은 모두 이중 [close] 를 안전하게 처리한다.
+     */
+    override fun close() {
+        when (format) {
+            ExportFormat.CSV -> {
+                csvWriter?.close()
+                csvStream?.close()
+            }
+            ExportFormat.XLSX -> {
+                @Suppress("DEPRECATION")
+                xlsxWorkbook?.dispose()
+                xlsxWorkbook?.close()
+            }
+        }
+        if (tempFile.exists()) {
+            tempFile.delete()
+        }
     }
 
     // ── CSV 내부 헬퍼 ─────────────────────────────────────────────────────────────

@@ -53,24 +53,44 @@ class ExportJobProcessor(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    // TooGenericExceptionCaught: catch-all 의도적 — 미분류 예외도 job 을 FAILED 로 전환해야 한다.
-
     /**
      * [job] 을 처리한다. 워커가 [ExportJobRepository.claimForRun] 으로 RUNNING 전환 후 호출한다.
      *
      * @Transactional **의도적 생략** — KDoc 클래스 주석 참조.
+     * TooGenericExceptionCaught: catch-all 의도적 — [processWithSerializer] 참조.
      *
      * @param job 처리할 Export 작업. RUNNING 상태임이 보장되어야 한다.
      */
-    @Suppress("TooGenericExceptionCaught")
     fun process(job: ExportJob) {
         log.info("export_job_process_start jobId={} projectKey={} format={}", job.id, job.projectKey, job.format)
         val format = parseFormat(job.format)
         val columns = ExportColumn.parse(job.columns.ifEmpty { null })
         val parseResult = parseAql(job.query)
-        val serializer = serializerFactory.create(format, columns)
-        var tempFile: File? = null
 
+        // use{} 가 모든 탈출 경로(정상/조기return/예외)에서 serializer.close() 를 보장한다.
+        // 직렬화 로직은 processWithSerializer 로 분리해 NestedBlockDepth 를 낮춘다.
+        serializerFactory.create(format, columns).use { serializer ->
+            processWithSerializer(job, format, parseResult, serializer)
+        }
+    }
+
+    /**
+     * [serializer] 를 사용해 Export 작업을 실제로 처리한다.
+     *
+     * [process] 가 `use{}` 블록 안에서 이 메서드를 호출하므로, 이 메서드가 어떤 경로로
+     * 반환하더라도(정상/조기return/예외) [process] 의 `use{}` 가 [StreamingExportSerializer.close] 를
+     * 호출한다 — 임시파일·스트림·SXSSFWorkbook 누수 방지.
+     *
+     * @Transactional **의도적 생략** — KDoc 클래스 주석 참조.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun processWithSerializer(
+        job: ExportJob,
+        format: ExportFormat,
+        parseResult: AqlParseResult,
+        serializer: StreamingExportSerializer,
+    ) {
+        var tempFile: File? = null
         try {
             val firstPage = searchPort.search(buildQuery(job, parseResult, 0))
             val total = firstPage.total
@@ -101,6 +121,9 @@ class ExportJobProcessor(
      *
      * 진행률은 매 페이지 완료 시 throttle 없이 갱신한다(REFACTOR 메모: 고빈도 small job 에는
      * 페이지 단위 업데이트로 충분히 부드러운 진행률 표시가 가능하다).
+     *
+     * **at-least-once 재처리 주의** — stale RUNNING 작업이 재처리되면 progress 가 0 % 부터
+     * 다시 갱신되므로 일시적 역행이 발생할 수 있다. 최종 상태는 COMPLETED(100%) 로 수렴하므로 무해하다.
      */
     private fun traverseRemainingPages(
         job: ExportJob,
@@ -135,7 +158,13 @@ class ExportJobProcessor(
         val objectKey = buildObjectKey(job, format)
         tempFile.inputStream().use { storage.put(objectKey, it, tempFile.length(), format.contentType) }
         val expiresAt = clock.instant().plusSeconds(RESULT_TTL_SECONDS)
-        repository.markCompleted(job.id, objectKey, expiresAt)
+        val marked = repository.markCompleted(job.id, objectKey, expiresAt)
+        if (!marked) {
+            log.warn(
+                "export_mark_completed_skipped jobId={} reason=already_in_terminal_state",
+                job.id,
+            )
+        }
         repository.updateProgress(job.id, COMPLETED_PROGRESS_PERCENT, total)
         log.info("export_job_completed jobId={} objectKey={}", job.id, objectKey)
     }
@@ -163,9 +192,9 @@ class ExportJobProcessor(
         return if (total == 0L) 1 else ((total + PAGE_SIZE - 1) / PAGE_SIZE).toInt()
     }
 
-    private fun parseFormat(formatStr: String): ExportFormat {
-        return ExportFormat.entries.firstOrNull { it.name == formatStr } ?: ExportFormat.CSV
-    }
+    private fun parseFormat(formatStr: String): ExportFormat =
+        ExportFormat.entries.firstOrNull { it.name == formatStr }
+            ?: error("unsupported format: $formatStr") // DB CHECK 제약으로 도달불가 — 방어적 guard
 
     private fun parseAql(query: String): AqlParseResult {
         val tokens = AqlLexer(query).tokenize()

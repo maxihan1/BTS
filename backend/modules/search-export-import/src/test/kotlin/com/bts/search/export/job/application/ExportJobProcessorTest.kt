@@ -100,6 +100,7 @@ class ExportJobProcessorTest {
         processor = ExportJobProcessor(searchPort, repository, storage, serializerFactory, fixedClock)
         every { serializerFactory.create(any(), any()) } returns serializer
         justRun { serializer.appendBatch(any()) }
+        justRun { serializer.close() }
         every { repository.markCompleted(any(), any(), any()) } returns true
         every { repository.markFailed(any(), any()) } returns true
         justRun { repository.updateProgress(any(), any(), any()) }
@@ -252,5 +253,28 @@ class ExportJobProcessorTest {
 
         verify { repository.markCompleted(any(), any(), any()) }
         verify { repository.updateProgress(jobId, 100, 0L) }
+    }
+
+    // ── (f) serializer.close() 호출 보장 — 리소스 누수 방지 회귀 가드 ─────────────
+
+    @Test
+    fun `limit exceeded path closes serializer to prevent resource leak`() {
+        every { searchPort.search(any()) } returns
+            IssueSearchPage(emptyList(), ExportJob.MAX_ROWS + 1, 0, ExportJobProcessor.PAGE_SIZE)
+
+        processor.process(makeJob())
+
+        // 상한 초과 조기 return 경로에서도 use{} 가 serializer.close() 를 호출해야 한다
+        verify(exactly = 1) { serializer.close() }
+    }
+
+    @Test
+    fun `search exception path closes serializer to prevent resource leak`() {
+        every { searchPort.search(any()) } throws RuntimeException("search engine error")
+
+        processor.process(makeJob())
+
+        // 검색 예외 경로에서도 use{} 가 serializer.close() 를 호출해야 한다
+        verify(exactly = 1) { serializer.close() }
     }
 }
