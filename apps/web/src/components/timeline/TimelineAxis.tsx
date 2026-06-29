@@ -137,6 +137,32 @@ function computeQuarterTicks(range: DateRange): TickItem[] {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 눈금 컴퓨터 맵 — 날짜 단위 → 헬퍼 함수
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 날짜 단위별 눈금 계산 함수 맵.
+ *
+ * AxisConfig 의 top('month'|'quarter')·bottom('day'|'week'|'month') 를
+ * 단일 레코드로 통합해, getAxisConfig 반환값으로 바로 dispatch 할 수 있다.
+ *
+ * | unit    | 레이블 형식  | 눈금 기준        |
+ * |---------|------------|-----------------|
+ * | day     | DD         | 매일             |
+ * | week    | MM/DD      | 매주 월요일(UTC)  |
+ * | month   | YYYY.MM    | 매달 1일         |
+ * | quarter | YYYY Q{n}  | 분기 첫달(1·4·7·10월) 1일 |
+ */
+const TICK_COMPUTERS: Readonly<
+  Record<'day' | 'week' | 'month' | 'quarter', (range: DateRange) => TickItem[]>
+> = {
+  day: computeDayTicks,
+  week: computeWeekTicks,
+  month: computeMonthTicks,
+  quarter: computeQuarterTicks,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TimelineAxis 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -171,16 +197,8 @@ export function TimelineAxis({
   const totalWidth = totalDays * dayWidth
   const { top, bottom } = getAxisConfig(zoomLevel)
 
-  const topTicks = top === 'quarter' ? computeQuarterTicks(range) : computeMonthTicks(range)
-
-  let bottomTicks: TickItem[]
-  if (bottom === 'day') {
-    bottomTicks = computeDayTicks(range)
-  } else if (bottom === 'week') {
-    bottomTicks = computeWeekTicks(range)
-  } else {
-    bottomTicks = computeMonthTicks(range)
-  }
+  const topTicks = TICK_COMPUTERS[top](range)
+  const bottomTicks = TICK_COMPUTERS[bottom](range)
 
   return (
     <div className="relative select-none" style={{ width: totalWidth, height: TIMELINE_AXIS_HEIGHT_PX }}>
