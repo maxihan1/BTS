@@ -12,7 +12,7 @@ import {
   DAY_WIDTH_PX,
 } from '@/lib/timeline-layout'
 import { timelineLabels } from '@/i18n/timeline-labels'
-import { TimelineAxis } from './TimelineAxis'
+import { TimelineAxis, TIMELINE_AXIS_HEIGHT_PX } from './TimelineAxis'
 import { TimelineRow, ROW_HEIGHT_PX } from './TimelineRow'
 import { DependencyOverlay } from './DependencyOverlay'
 
@@ -23,8 +23,8 @@ import { DependencyOverlay } from './DependencyOverlay'
 /** 좌측 레이블 열 폭(px) — sticky left-0 고정 */
 const LABEL_COL_WIDTH_PX = 240
 
-/** 축 헤더 전체 높이(px) — 월 눈금 행 + 주 눈금 행 */
-const AXIS_HEIGHT_PX = ROW_HEIGHT_PX * 1.5
+// 축 헤더 높이는 TimelineAxis의 TIMELINE_AXIS_HEIGHT_PX를 단일 출처로 사용 (C-1 fix).
+// 이전에 존재하던 로컬 AXIS_HEIGHT_PX = ROW_HEIGHT_PX * 1.5(=48)는 제거됨.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -237,7 +237,7 @@ export function GanttChart({ items, assigneeNames, onSelectIssue, deps = [] }: G
   const overlayWidth = (daysBetweenUtc(range.startMs, range.endMs) + 1) * DAY_WIDTH_PX
   // lastRowIndex: flattenVisibleRows의 rowIndex는 미분류 헤더 행도 카운트에 포함
   const lastRowIndex = visibleRows[visibleRows.length - 1]?.rowIndex ?? -1
-  const overlayHeight = AXIS_HEIGHT_PX + (lastRowIndex + 1) * ROW_HEIGHT_PX
+  const overlayHeight = TIMELINE_AXIS_HEIGHT_PX + (lastRowIndex + 1) * ROW_HEIGHT_PX
 
   return (
     <div className="overflow-x-auto relative" data-testid="gantt-chart">
@@ -248,7 +248,7 @@ export function GanttChart({ items, assigneeNames, onSelectIssue, deps = [] }: G
           className="sticky left-0 z-10 flex-shrink-0 bg-background border-r border-border"
           style={{ width: LABEL_COL_WIDTH_PX }}
         >
-          <div className="border-b border-border" style={{ height: AXIS_HEIGHT_PX }} />
+          <div className="border-b border-border" style={{ height: TIMELINE_AXIS_HEIGHT_PX }} />
 
           {groups.map((group) => {
             const groupKey = group.epicItem?.key ?? 'unclassified'
@@ -313,7 +313,7 @@ export function GanttChart({ items, assigneeNames, onSelectIssue, deps = [] }: G
           {depLines.length > 0 && (
             <DependencyOverlay
               lines={depLines}
-              axisOffset={AXIS_HEIGHT_PX}
+              axisOffset={TIMELINE_AXIS_HEIGHT_PX}
               width={overlayWidth}
               height={overlayHeight}
             />

@@ -114,7 +114,7 @@ export function TimelineAxis({ range, dayWidth }: TimelineAxisProps): JSX.Elemen
   const weekTicks = computeWeekTicks(range)
 
   return (
-    <div className="relative select-none" style={{ width: totalWidth, height: AXIS_ROW_HEIGHT_PX * 2 }}>
+    <div className="relative select-none" style={{ width: totalWidth, height: TIMELINE_AXIS_HEIGHT_PX }}>
       {/* 월 눈금 행 */}
       {monthTicks.map((tick) => (
         <div
