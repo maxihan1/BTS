@@ -1,4 +1,4 @@
-// search BC API 에러 코드 상수 — SEARCH_ 접두사 (FR-SR-02 NFR-5)
+// search BC API 에러 코드 상수 — SEARCH_ 접두사 (FR-SR-02 NFR-5, FR-EX-01 Task 5)
 
 package com.bts.search.web
 
@@ -6,7 +6,7 @@ package com.bts.search.web
  * search-export-import BC 에러 코드 상수.
  *
  * 모든 코드는 `SEARCH_` 접두사를 사용한다(BTS 에러 코드 규칙 §6).
- * [SearchExceptionHandler]가 ProblemDetail 응답의 `errorCode` 필드에 설정한다.
+ * [SearchExceptionHandler]와 [ExportExceptionHandler]가 ProblemDetail 응답의 `errorCode` 필드에 설정한다.
  *
  * ### 코드 목록
  *
@@ -16,6 +16,7 @@ package com.bts.search.web
  * | [SEARCH_UNKNOWN_FIELD] | 400 | 오타 등 인식할 수 없는 필드 |
  * | [SEARCH_FIELD_NOT_YET_SUPPORTED] | 400 | 후속 PR 지원 예정 필드 |
  * | [SEARCH_VALIDATION_FAILED] | 400 | DTO Bean Validation 실패 |
+ * | [SEARCH_EXPORT_LIMIT_EXCEEDED] | 400 | 동기 Export 행 상한(1만) 초과 |
  * | [SEARCH_ACCESS_DENIED] | 403 | BROWSE 권한 없음 |
  * | [SEARCH_UNAUTHENTICATED] | 401 | 미인증 |
  * | [SEARCH_INTERNAL_ERROR] | 500 | 분류되지 않은 서버 오류 |
@@ -37,6 +38,14 @@ object SearchErrorCodes {
 
     /** DTO Bean Validation(@field:NotBlank/@field:Max 등) 실패. */
     const val SEARCH_VALIDATION_FAILED = "SEARCH_VALIDATION_FAILED"
+
+    /**
+     * 동기 Export 행 상한(1만) 초과.
+     *
+     * ProblemDetail extension property로 `resultCount`(실제 건수)와 `limit`(허용 상한)을 포함한다.
+     * 대용량 Export는 FR-EX-02 비동기 Export를 사용하도록 안내한다.
+     */
+    const val SEARCH_EXPORT_LIMIT_EXCEEDED = "SEARCH_EXPORT_LIMIT_EXCEEDED"
 
     /** BROWSE 권한 없음. 프로젝트 존재 여부를 노출하지 않기 위해 일반 메시지만 제공한다. */
     const val SEARCH_ACCESS_DENIED = "SEARCH_ACCESS_DENIED"

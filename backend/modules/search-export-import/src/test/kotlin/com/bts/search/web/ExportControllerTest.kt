@@ -61,7 +61,6 @@ import java.util.UUID
 @ContextConfiguration(classes = [ExportControllerTest.TestMvcConfig::class])
 @WebAppConfiguration
 class ExportControllerTest {
-
     /**
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *
@@ -118,7 +117,7 @@ class ExportControllerTest {
             mockMvc.perform(
                 post("/api/v1/search/export")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content(mapper.writeValueAsString(mapOf("projectKey" to "PROJ", "query" to "status = open", "format" to "CSV"))),
+                    .content(exportBody()),
             )
                 .andExpect(status().isOk)
                 .andExpect(header().string("Content-Type", containsString("text/csv")))
@@ -149,7 +148,7 @@ class ExportControllerTest {
         mockMvc.perform(
             post("/api/v1/search/export")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(mapOf("projectKey" to "PROJ", "query" to "status = open", "format" to "XLSX"))),
+                .content(exportBody(format = "XLSX")),
         )
             .andExpect(status().isOk)
             .andExpect(header().string("Content-Type", containsString("spreadsheetml.sheet")))
@@ -172,7 +171,7 @@ class ExportControllerTest {
         mockMvc.perform(
             post("/api/v1/search/export")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(mapOf("projectKey" to "PROJ", "query" to "status = open", "format" to "CSV"))),
+                .content(exportBody()),
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value("SEARCH_EXPORT_LIMIT_EXCEEDED"))
@@ -197,7 +196,7 @@ class ExportControllerTest {
         mockMvc.perform(
             post("/api/v1/search/export")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(mapOf("projectKey" to "PROJ", "query" to "status = open", "format" to "CSV"))),
+                .content(exportBody()),
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value("SEARCH_SYNTAX_ERROR"))
@@ -216,7 +215,7 @@ class ExportControllerTest {
         mockMvc.perform(
             post("/api/v1/search/export")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(mapOf("projectKey" to "PROJ", "query" to "status = open", "format" to "PDF"))),
+                .content(exportBody(format = "PDF")),
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.detail", containsString("CSV")))
@@ -236,11 +235,7 @@ class ExportControllerTest {
         mockMvc.perform(
             post("/api/v1/search/export")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    mapper.writeValueAsString(
-                        mapOf("projectKey" to "PROJ", "query" to "status = open", "format" to "CSV", "columns" to listOf("INVALID_COL")),
-                    ),
-                ),
+                .content(exportBody(columns = listOf("INVALID_COL"))),
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value("SEARCH_VALIDATION_FAILED"))
@@ -286,7 +281,7 @@ class ExportControllerTest {
         mockMvc.perform(
             post("/api/v1/search/export")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(mapOf("projectKey" to "PROJ", "query" to "status = open", "format" to "CSV"))),
+                .content(exportBody()),
         )
             .andExpect(status().isForbidden)
             .andExpect(jsonPath("$.errorCode").value("SEARCH_ACCESS_DENIED"))
@@ -306,16 +301,38 @@ class ExportControllerTest {
         mockMvc.perform(
             post("/api/v1/search/export")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    mapper.writeValueAsString(
-                        mapOf("projectKey" to "PROJ\r\nX-Injected: evil", "query" to "status = open", "format" to "CSV"),
-                    ),
-                ),
+                .content(exportBody(projectKey = "PROJ\r\nX-Injected: evil")),
         )
             .andExpect(status().isBadRequest)
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * Export 요청 JSON 바디를 생성하는 헬퍼.
+     *
+     * 파라미터가 없으면 기본값(PROJ/status=open/CSV)을 사용하며,
+     * 특정 필드만 변경해 테스트를 간결하게 유지한다.
+     *
+     * @param projectKey 요청 projectKey. 기본값 "PROJ".
+     * @param query 요청 query. 기본값 "status = open".
+     * @param format 요청 format 문자열. 기본값 "CSV".
+     * @param columns 요청 columns 목록. null이면 필드 미포함.
+     */
+    private fun exportBody(
+        projectKey: String = "PROJ",
+        query: String = "status = open",
+        format: String = "CSV",
+        columns: List<String>? = null,
+    ): String =
+        mapper.writeValueAsString(
+            buildMap {
+                put("projectKey", projectKey)
+                put("query", query)
+                put("format", format)
+                if (columns != null) put("columns", columns)
+            },
+        )
 
     /**
      * [SecurityContextHolder]에 UUID 기반 인증 주체를 주입한다.
