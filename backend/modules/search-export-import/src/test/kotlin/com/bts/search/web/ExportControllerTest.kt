@@ -45,7 +45,7 @@ import java.util.UUID
  * [ExportService]를 MockK로 교체해 컨트롤러·DTO·예외핸들러 계층만 검증한다.
  * Spring Security 컨텍스트는 [SecurityContextHolder]에 직접 UUID 기반 Authentication을 주입한다.
  *
- * ### 검증 케이스 (9개)
+ * ### 검증 케이스 (10개)
  *
  * - C1 CSV 200 — text/csv;charset=UTF-8 + Content-Disposition + BOM
  * - C2 XLSX 200 — xlsx contentType + Content-Disposition
@@ -56,6 +56,7 @@ import java.util.UUID
  * - C7 projectKey/query 누락 400 — 수동 검증
  * - C8 SecurityException → 403 SEARCH_ACCESS_DENIED
  * - C9 projectKey CRLF → 400 (헤더 인젝션 방어)
+ * - C10 미인증 → 401 SEARCH_UNAUTHENTICATED (401→500 변질 차단)
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [ExportControllerTest.TestMvcConfig::class])
@@ -304,6 +305,28 @@ class ExportControllerTest {
                 .content(exportBody(projectKey = "PROJ\r\nX-Injected: evil")),
         )
             .andExpect(status().isBadRequest)
+    }
+
+    // ── C10 미인증 → 401 SEARCH_UNAUTHENTICATED ──────────────────────────────
+
+    /**
+     * C10 — 인증 컨텍스트 없음 → 401 SEARCH_UNAUTHENTICATED.
+     *
+     * [ExportController.currentActorId]가 미인증·익명 주체에 [org.springframework.web.server.ResponseStatusException](401)을
+     * 던지고, [ExportExceptionHandler.handleResponseStatus]가 catch-all(500)에 가로채이지 않고
+     * 401 SEARCH_UNAUTHENTICATED로 전파하는지 검증한다(401→500 변질 차단 회귀 가드).
+     */
+    @Test
+    fun `C10 - 미인증 401 SEARCH_UNAUTHENTICATED`() {
+        SecurityContextHolder.clearContext()
+
+        mockMvc.perform(
+            post("/api/v1/search/export")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(exportBody()),
+        )
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value("SEARCH_UNAUTHENTICATED"))
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
