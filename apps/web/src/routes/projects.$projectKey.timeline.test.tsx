@@ -1,11 +1,12 @@
-// 타임라인 라우트 페이지 단위 테스트 — TimelinePage 렌더 시나리오 (FR-TL-01 Task 6, FR-TL-02 D6)
+// 타임라인 라우트 페이지 단위 테스트 — TimelinePage 렌더 시나리오 (FR-TL-01 Task 6, FR-TL-02 D6, FR-TL-03 Task 7)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { TimelineItem } from '@/api/timeline'
 import type { UserSummary } from '@/api/users'
 import { ApiError } from '@/api/client'
 import type { DependencyEdge } from '@/lib/timeline-layout'
+import type { ZoomLevel } from '@/lib/timeline-zoom'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // mock — TanStack Router, use-timeline, @/api/users, GanttChart
@@ -18,12 +19,13 @@ vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ projectKey: 'ATLAS' }),
 }))
 
-// GanttChart — onSelectIssue·assigneeNames·items·deps를 캡처해 단언에 활용
+// GanttChart — onSelectIssue·assigneeNames·items·deps·zoomLevel을 캡처해 단언에 활용
 const mockGanttChartProps: Array<{
   items: TimelineItem[]
   assigneeNames: Map<string, string>
   onSelectIssue: (key: string) => void
   deps?: DependencyEdge[]
+  zoomLevel?: ZoomLevel
 }> = []
 
 vi.mock('@/components/timeline/GanttChart', () => ({
@@ -32,13 +34,15 @@ vi.mock('@/components/timeline/GanttChart', () => ({
     assigneeNames,
     onSelectIssue,
     deps,
+    zoomLevel,
   }: {
     items: TimelineItem[]
     assigneeNames: Map<string, string>
     onSelectIssue: (key: string) => void
     deps?: DependencyEdge[]
+    zoomLevel?: ZoomLevel
   }) => {
-    mockGanttChartProps.push({ items, assigneeNames, onSelectIssue, deps })
+    mockGanttChartProps.push({ items, assigneeNames, onSelectIssue, deps, zoomLevel })
     return <div data-testid="gantt-chart">GanttChart</div>
   },
 }))
@@ -136,6 +140,8 @@ describe('TimelinePage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGanttChartProps.length = 0
+    // 줌 레벨 localStorage 영속 격리 — 이전 테스트 상태 누수 방지 (FR-TL-03 Task 7)
+    localStorage.clear()
     mockFetchUsers.mockResolvedValue(USERS)
     // deps 훅 기본값 — best-effort: 에러여도 간트를 차단하지 않음 (EC6)
     mockUseTimelineDeps.mockReturnValue({ data: undefined, isLoading: false, error: null, isError: false })
@@ -390,6 +396,99 @@ describe('TimelinePage', () => {
     expect(names?.get('ATLAS-2')).toBeUndefined()
     // ATLAS-3: UNKNOWN_USER_ID → 맵에 없음(GanttChart "알 수 없음" fallback)
     expect(names?.get('ATLAS-3')).toBeUndefined()
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // FR-TL-03 Task 7 — 줌 통합
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * T-TL7-Z-1. 정상 상태에서 TimelineZoomControl이 렌더된다.
+   * 세그먼트 버튼 '주'/'월'/'분기'가 DOM에 존재해야 한다.
+   */
+  it('T-TL7-Z-1: 정상 상태에서 줌 컨트롤(주/월/분기 버튼)이 렌더된다', async () => {
+    mockUseTimeline.mockReturnValue({
+      data: { items: [ITEM_1], truncated: false },
+      isLoading: false,
+      error: null,
+      isError: false,
+    })
+
+    await renderTimelinePage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '주' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '월' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '분기' })).toBeInTheDocument()
+    })
+  })
+
+  /**
+   * T-TL7-Z-2. 정상 상태에서 GanttChart가 기본 zoomLevel(month)을 받는다.
+   * localStorage 미설정 시 DEFAULT_ZOOM='month'가 전달되어야 한다.
+   */
+  it('T-TL7-Z-2: 정상 상태에서 GanttChart에 기본 zoomLevel(month)이 전달된다', async () => {
+    mockUseTimeline.mockReturnValue({
+      data: { items: [ITEM_1], truncated: false },
+      isLoading: false,
+      error: null,
+      isError: false,
+    })
+
+    await renderTimelinePage()
+
+    await waitFor(() => {
+      const lastCall = mockGanttChartProps[mockGanttChartProps.length - 1]
+      expect(lastCall?.zoomLevel).toBe('month')
+    })
+  })
+
+  /**
+   * T-TL7-Z-3. '분기' 버튼 클릭 시 GanttChart가 zoomLevel='quarter'를 받는다.
+   * TimelineZoomControl → TimelinePage state → GanttChart prop 통합 동작.
+   */
+  it('T-TL7-Z-3: 분기 버튼 클릭 시 GanttChart에 zoomLevel=quarter가 전달된다', async () => {
+    mockUseTimeline.mockReturnValue({
+      data: { items: [ITEM_1], truncated: false },
+      isLoading: false,
+      error: null,
+      isError: false,
+    })
+
+    await renderTimelinePage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('gantt-chart')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '분기' }))
+
+    await waitFor(() => {
+      const lastCall = mockGanttChartProps[mockGanttChartProps.length - 1]
+      expect(lastCall?.zoomLevel).toBe('quarter')
+    })
+  })
+
+  /**
+   * T-TL7-Z-4. 빈 상태(EC1) — items 0건이면 줌 컨트롤이 렌더되지 않는다.
+   * TimelineEmptyView early return으로 TimelineZoomControl이 DOM에 없어야 한다.
+   */
+  it('T-TL7-Z-4: 빈 상태(EC1)에서 줌 컨트롤이 렌더되지 않는다', async () => {
+    mockUseTimeline.mockReturnValue({
+      data: { items: [], truncated: false },
+      isLoading: false,
+      error: null,
+      isError: false,
+    })
+
+    await renderTimelinePage()
+
+    await waitFor(() => {
+      expect(screen.getByText(/표시할 이슈가 없습니다/i)).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('button', { name: '주' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '월' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '분기' })).not.toBeInTheDocument()
   })
 })
 
