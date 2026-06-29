@@ -61,6 +61,14 @@ object SearchErrorCodes {
      */
     const val SEARCH_EXPORT_STORAGE_ERROR = "SEARCH_EXPORT_STORAGE_ERROR"
 
+    /**
+     * 비동기 Export 작업 다운로드 준비 미완료 (COMPLETED 아님).
+     *
+     * `GET /api/v1/search/export-jobs/{id}/download` 요청 시 작업이 아직 PENDING/RUNNING/FAILED 인 경우.
+     * 클라이언트는 GET /{id} 로 폴링하여 COMPLETED 상태를 확인 후 재시도한다.
+     */
+    const val SEARCH_EXPORT_NOT_READY = "SEARCH_EXPORT_NOT_READY"
+
     /** 분류되지 않은 서버 내부 오류. 상세는 서버 로그에만 기록한다. */
     const val SEARCH_INTERNAL_ERROR = "SEARCH_INTERNAL_ERROR"
 }
