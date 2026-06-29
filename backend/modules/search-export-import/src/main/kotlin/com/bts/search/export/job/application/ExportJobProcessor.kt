@@ -60,6 +60,8 @@ class ExportJobProcessor(
      *
      * @param job 처리할 Export 작업. RUNNING 상태임이 보장되어야 한다.
      */
+    // TooGenericExceptionCaught: catch-all 의도적 — 미분류 예외도 job 을 FAILED 로 전환해야 한다.
+    @Suppress("TooGenericExceptionCaught")
     fun process(job: ExportJob) {
         log.info("export_job_process_start jobId={} projectKey={} format={}", job.id, job.projectKey, job.format)
         val format = parseFormat(job.format)
@@ -133,7 +135,7 @@ class ExportJobProcessor(
         tempFile.inputStream().use { storage.put(objectKey, it, tempFile.length(), format.contentType) }
         val expiresAt = clock.instant().plusSeconds(RESULT_TTL_SECONDS)
         repository.markCompleted(job.id, objectKey, expiresAt)
-        repository.updateProgress(job.id, 100, total)
+        repository.updateProgress(job.id, COMPLETED_PROGRESS_PERCENT, total)
         log.info("export_job_completed jobId={} objectKey={}", job.id, objectKey)
     }
 
@@ -168,11 +170,15 @@ class ExportJobProcessor(
     }
 
     companion object {
-        /** 결과 파일 TTL(초) — 24시간. */
+        /** 결과 파일 TTL(초) — 24시간(24 * 60 * 60 = 86400). */
+        @Suppress("MagicNumber")
         const val RESULT_TTL_SECONDS: Long = 24 * 60 * 60L
 
         /** [IssueSearchPort] 페이지 순회 단위. [com.bts.search.export.ExportService.PAGE_SIZE] 와 동일. */
         const val PAGE_SIZE = 100
+
+        /** 작업 완료 시 설정하는 진행률 (100%). */
+        const val COMPLETED_PROGRESS_PERCENT = 100
     }
 }
 

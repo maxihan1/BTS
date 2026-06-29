@@ -55,6 +55,7 @@ class ExportJobProcessorTest {
     private val requesterUserId = UUID.fromString("00000000-0000-0000-0000-000000000001")
 
     /** 기본 테스트용 ExportJob. */
+    @Suppress("LongParameterList")
     private fun makeJob(
         id: ExportJobId = jobId,
         projectKey: String = "ATLAS",
@@ -128,7 +129,8 @@ class ExportJobProcessorTest {
 
     @Test
     fun `object key follows projectKey slash jobId dot ext pattern`() {
-        every { searchPort.search(any()) } returns IssueSearchPage(listOf(makeHit()), 1L, 0, ExportJobProcessor.PAGE_SIZE)
+        every { searchPort.search(any()) } returns
+            IssueSearchPage(listOf(makeHit()), 1L, 0, ExportJobProcessor.PAGE_SIZE)
         val tempFile = File.createTempFile("bts-test", ".csv")
         every { serializer.finish() } returns tempFile
         val keySlot = slot<String>()
@@ -141,7 +143,8 @@ class ExportJobProcessorTest {
 
     @Test
     fun `expiresAt is set to now plus 24 hours`() {
-        every { searchPort.search(any()) } returns IssueSearchPage(listOf(makeHit()), 1L, 0, ExportJobProcessor.PAGE_SIZE)
+        every { searchPort.search(any()) } returns
+            IssueSearchPage(listOf(makeHit()), 1L, 0, ExportJobProcessor.PAGE_SIZE)
         val tempFile = File.createTempFile("bts-test", ".csv")
         every { serializer.finish() } returns tempFile
         justRun { storage.put(any(), any(), any(), any()) }
@@ -180,7 +183,8 @@ class ExportJobProcessorTest {
 
     @Test
     fun `storage error marks job failed with storage error code`() {
-        every { searchPort.search(any()) } returns IssueSearchPage(listOf(makeHit()), 1L, 0, ExportJobProcessor.PAGE_SIZE)
+        every { searchPort.search(any()) } returns
+            IssueSearchPage(listOf(makeHit()), 1L, 0, ExportJobProcessor.PAGE_SIZE)
         val tempFile = File.createTempFile("bts-test", ".csv")
         every { serializer.finish() } returns tempFile
         every { storage.put(any(), any(), any(), any()) } throws
@@ -193,7 +197,8 @@ class ExportJobProcessorTest {
 
     @Test
     fun `temp file is deleted after storage error`() {
-        every { searchPort.search(any()) } returns IssueSearchPage(listOf(makeHit()), 1L, 0, ExportJobProcessor.PAGE_SIZE)
+        every { searchPort.search(any()) } returns
+            IssueSearchPage(listOf(makeHit()), 1L, 0, ExportJobProcessor.PAGE_SIZE)
         val tempFile = File.createTempFile("bts-test-del", ".csv")
         every { serializer.finish() } returns tempFile
         every { storage.put(any(), any(), any(), any()) } throws

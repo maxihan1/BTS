@@ -1,5 +1,9 @@
 <?xml version="1.0" ?>
 <SmellBaseline>
   <ManuallySuppressedIssues></ManuallySuppressedIssues>
-  <CurrentIssues></CurrentIssues>
+  <CurrentIssues>
+    <ID>LongParameterList:ExportJobRepositoryTest.kt$ExportJobRepositoryTest$( id: ExportJobId = ExportJobId(UUID.randomUUID()), projectKey: String = "ATLAS", query: String = "status = OPEN", format: String = "CSV", columns: List&lt;String&gt; = emptyList(), requesterUserId: UUID = UUID.randomUUID(), )</ID>
+    <ID>MagicNumber:ExportJob.kt$ExportJob$100L</ID>
+    <ID>MaxLineLength:ExportJobRepositoryTest.kt$// ExportJobRepository 통합 테스트 — insert/CAS(claimForRun/markCompleted/markFailed)/updateProgress/findByIdForRequester/findExpired/deleteById (FR-EX-02)</ID>
+  </CurrentIssues>
 </SmellBaseline>
