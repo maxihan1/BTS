@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import type { TimelineItem } from '@/api/timeline'
 import type { DependencyEdge } from '@/lib/timeline-layout'
+import { DAY_WIDTH_PX, daysBetweenUtc, parseIsoDateUtc } from '@/lib/timeline-layout'
 import { GanttChart } from './GanttChart'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -317,5 +318,39 @@ describe('GanttChart — S7 deps 오버레이 (FR-TL-02 D6)', () => {
     const barBtn = screen.getByRole('button', { name: 'ATLAS-1 2026-07-01 ~ 2026-07-31' })
     fireEvent.click(barBtn)
     expect(onSelectIssue).toHaveBeenCalledWith('ATLAS-1')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C-2. overlayWidth +1일 클리핑 보정 (CONCERN-2 fix)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GanttChart — C-2 overlayWidth +1일 클리핑 보정', () => {
+  /**
+   * C-2: overlayWidth가 최우측 막대 우끝을 커버해야 한다.
+   *
+   * computeBarGeometry의 barWidth = (due-start+1)일 × DAY_WIDTH_PX (당일 포함 +1).
+   * overlayWidth가 (days)×DAY_WIDTH_PX에 머물면 range 마지막 날로 끝나는 막대의
+   * 우끝(+1일분)이 SVG overflow:hidden에 의해 잘린다.
+   * overlayWidth = (days+1)×DAY_WIDTH_PX 로 보정해야 한다.
+   *
+   * RED: 현재 overlayWidth = 30×20 = 600 < ATLAS-1 barRight 31×20 = 620 → 실패.
+   * GREEN: +1 보정 후 overlayWidth = 620 ≥ 620 → 통과.
+   */
+  it('C-2: overlayWidth이 최우측 막대 우끝(+1일 보정)을 커버한다', () => {
+    renderChart({ deps: [{ blockerKey: 'ATLAS-1', blockedKey: 'ATLAS-2' }] })
+
+    const svg = document.querySelector('svg')
+    expect(svg).toBeInTheDocument()
+    const svgWidth = Number(svg?.getAttribute('width'))
+
+    // defaultItems 날짜 범위: 2026-07-01 ~ 2026-07-31 = 30일
+    // ATLAS-1: barX=0, barWidth=(30+1)×DAY_WIDTH_PX=620, barRight=620
+    // overlayWidth 은 (totalDays+1)×DAY_WIDTH_PX 이상이어야 한다
+    const rangeStartMs = parseIsoDateUtc('2026-07-01')
+    const rangeEndMs = parseIsoDateUtc('2026-07-31')
+    const totalDays = daysBetweenUtc(rangeStartMs, rangeEndMs)  // 30
+    const rightmostBarRight = (totalDays + 1) * DAY_WIDTH_PX    // 620
+    expect(svgWidth).toBeGreaterThanOrEqual(rightmostBarRight)
   })
 })
