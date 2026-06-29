@@ -146,6 +146,9 @@ classify 정정: classify-task가 backend로 오판 → 문서 명세 근거로 
 
 **REFACTOR**. 세그먼트 버튼 `.map(ZOOM_LEVELS)`로 정리, L1 헤더 주석.
 
+**디자인 보강(D2/D3)**. 세그먼트 그룹과 −/+ 버튼 사이 시각적 간격(`gap`/구분). 세그먼트 버튼에
+`title`(또는 `aria-keyshortcuts="1"/"2"/"3"`)로 단축키 discoverability 제공.
+
 **검증**: `cd apps/web && pnpm test src/components/timeline/TimelineZoomControl.test.tsx`
 
 ---
@@ -216,6 +219,8 @@ classify 정정: classify-task가 backend로 오판 → 문서 명세 근거로 
 - `useTimelineZoom()` 사용, `{zoomLevel,setZoom}`을 `TimelineZoomControl`에, `zoomLevel`을 `GanttChart`에 전달.
 - 컨트롤은 정상(GanttChart 렌더) 분기에서만, 헤더 영역(`p-4 space-y-3` 상단)에 배치.
 
+**디자인 보강(D1)**. 헤더 순서 = 줌 컨트롤(최상단, 항상 보이는 도구) → 경고 배너(truncated/deps) → GanttChart.
+
 **REFACTOR**. 헤더 영역 서브컴포넌트 분리(가독성), KDoc 갱신.
 
 **검증**: `cd apps/web && pnpm test src/routes/projects.\$projectKey.timeline.test.tsx`
@@ -251,4 +256,20 @@ classify 정정: classify-task가 backend로 오판 → 문서 명세 근거로 
 - 추가 검증: `pnpm typecheck`, `pnpm lint`(eslint), `pnpm test`(vitest 전체), `pnpm test:e2e`.
 - 백엔드 변경 0 — Gradle/ktlint/detekt 무관(프론트 전용).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-design-review (2026-06-29) — 디자인 관점 직접 적용
+
+> gstack 무거운 인터랙티브 리뷰(mockup/comparison board/7-pass/telemetry)는 소규모 컨트롤 추가 +
+> 디자인 결정 사전 확정(세그먼트+−/+·localStorage·1/2/3·헤더 위치·WCAG AA)에 과해 미실행.
+> 디자인 리뷰어 관점(접근성·상태·계층·일관성)만 직접 적용.
+
+- ✅ **상태 커버리지**. 세그먼트 활성(aria-pressed)·끝단 disabled·focus-visible(button.tsx ring)·빈 상태 컨트롤 숨김(EC1) 명시. 줌 전환 즉시(로딩 상태 없음).
+- ✅ **접근성**. role=group + aria-label, aria-pressed, disabled 끝단, 키보드 1/2/3 + 입력 포커스 가드(EC6). WCAG AA(DESIGN.md §3) 충족.
+- ✅ **일관성**. 세그먼트는 ui/button.tsx button-group 슬롯 = DESIGN.md 컨벤션. 신규 의존성 0.
+- ⚠️ **D1 (계층, 보강)**. 헤더 내 줌 컨트롤/배너 순서 미정 → 줌 컨트롤 최상단, 경고 배너 그 아래로 명시(T7 반영).
+- ⚠️ **D2 (간격, 보강)**. 세그먼트↔−/+ 시각적 간격 → T4 반영.
+- ⚠️ **D3 (discoverability, 보강)**. 단축키 1/2/3 힌트(title/aria-keyshortcuts) → T4 반영.
+- **BLOCKER: 없음**. 3 gap 모두 plan task에 보강 완료(minor, taste).
+
+반응형 주의(비차단). 타임라인은 데스크톱 가로 스크롤 도구(FR-TL-01 기준). 모바일 줌 컨트롤 레이아웃은 기존 타임라인과 동일하게 범위 외.
