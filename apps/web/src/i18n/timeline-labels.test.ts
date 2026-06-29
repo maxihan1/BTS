@@ -117,3 +117,40 @@ describe('timelineLabels.row', () => {
     expect(label).toContain('미정')
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// zoom 그룹 검증 (FR-TL-03 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('timelineLabels.zoom', () => {
+  it('week는 "주"이다', () => {
+    expect(timelineLabels.zoom.week).toBe('주')
+  })
+
+  it('month는 "월"이다', () => {
+    expect(timelineLabels.zoom.month).toBe('월')
+  })
+
+  it('quarter는 "분기"이다', () => {
+    expect(timelineLabels.zoom.quarter).toBe('분기')
+  })
+
+  it('groupAriaLabel이 비어있지 않다', () => {
+    expect(timelineLabels.zoom.groupAriaLabel.length).toBeGreaterThan(0)
+  })
+
+  it('zoomInAriaLabel은 "확대"이다', () => {
+    expect(timelineLabels.zoom.zoomInAriaLabel).toBe('확대')
+  })
+
+  it('zoomOutAriaLabel은 "축소"이다', () => {
+    expect(timelineLabels.zoom.zoomOutAriaLabel).toBe('축소')
+  })
+
+  it('zoom 섹션 모든 값이 콜론으로 끝나지 않는다', () => {
+    // collectStringLeaves가 zoom 추가 시 자동 커버하지만 명시 단언으로 이중 보장
+    Object.values(timelineLabels.zoom).forEach((v) => {
+      expect(v.trimEnd()).not.toMatch(/:$/)
+    })
+  })
+})

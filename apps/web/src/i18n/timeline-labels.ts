@@ -66,6 +66,27 @@ export const timelineLabels = {
     message: '표시되지 않은 이슈가 있습니다. 이슈 목록에서 전체를 확인하세요.',
   },
 
+  /** 타임라인 줌 레벨 관련 라벨 (FR-TL-03 D6) */
+  zoom: {
+    /** 주 단위 줌 레벨 표시 텍스트 */
+    week: '주',
+
+    /** 월 단위 줌 레벨 표시 텍스트 */
+    month: '월',
+
+    /** 분기 단위 줌 레벨 표시 텍스트 */
+    quarter: '분기',
+
+    /** 줌 컨트롤 그룹의 aria-label (스크린리더용) */
+    groupAriaLabel: '타임라인 줌 레벨',
+
+    /** 확대(zoom-in) 버튼 aria-label */
+    zoomInAriaLabel: '확대',
+
+    /** 축소(zoom-out) 버튼 aria-label */
+    zoomOutAriaLabel: '축소',
+  },
+
   /** blocks 의존 라인 관련 라벨 (FR-TL-02 D6) */
   deps: {
     /**

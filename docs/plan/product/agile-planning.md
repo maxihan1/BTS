@@ -159,13 +159,15 @@
 
 **우선순위**. 높음 | **선행**. §4.1 | **Plan slug**. `agile/timeline-zoom`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — 줌 레벨별 셀 크기 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — (해당 없음, 프론트 전용) (책임. -)
-- [ ] D5. 백엔드 테스트 — (해당 없음) (책임. -)
-- [ ] D6. 프론트 UI — 줌 컨트롤 + 키보드 단축키 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — 줌은 순수 뷰, 도메인 영향 0 (PR #202)
+- [x] D2. 명세 — 줌 레벨별 셀 크기(dayWidth 프리셋) + 축 눈금 단위 (PR #202)
+- [x] D3. 데이터 모델 — 활용(변경 0) (PR #202)
+- [x] D4. 백엔드 — 해당 없음, 프론트 전용 (PR #202)
+- [x] D5. 백엔드 테스트 — 해당 없음 (PR #202)
+- [x] D6. 프론트 UI — 줌 컨트롤(세그먼트+−/+) + 1/2/3 단축키 (책임. frontend-engineer) (PR #202)
+- [x] D7. E2E (책임. qa-engineer) (PR #202)
+
+> **Deviation(PR #202 — FR-TL-03 타임라인 줌)**. ① **순수 프론트 뷰**(D4/D5 백엔드 해당 없음, 마이그레이션·API 0). 줌 = `GanttChart`의 `DAY_WIDTH_PX=20` 하드코딩을 `zoomLevel('week'|'month'|'quarter') → dayWidth/축단위` 매핑으로 교체. FR-TL-01이 좌표 함수(`computeBarGeometry`/`computeDependencyLines`)·`TimelineAxis`에 `dayWidth`를 이미 인자화해 둠 → **ADR `2026-06-26-gantt-rendering-self-svg.md`의 연장(새 ADR 0)**. ② **프리셋**: week(28px, 월/일 축) · month(20px=현행 무회귀, 월/주 축) · quarter(6px, 분기/월 축). 기본=월. 의존성 라인(FR-TL-02)은 같은 dayWidth 단일 출처라 줌 시 자동 정합. ③ **컨트롤(Maxi 확정 AskUserQuestion)**: 세그먼트(주\|월\|분기) + −/+ 버튼 / 상태=localStorage `timeline-zoom`(전역, `parseZoomLevel` 화이트리스트 폴백, 스토리지 차단 환경 try/catch 안전) / 단축키 1·2·3(수식키 가드). ④ **순수 함수 분리** `lib/timeline-zoom.ts`(매핑·zoom in/out·parse·축단위)는 단위 테스트, 시각은 E2E(ADR D2 정신, jsdom getBBox 함정 회피). ⑤ **적대 리뷰 수정 4건**: C1 localStorage 크래시 가드(Medium), C3 수식키(Ctrl+1) 가드, C2 분기 줌 partial 시작 레이블(분기경계 미포함 범위), C5 의존선 줌 정합 회귀 가드. ⑥ **검증**: 단위 4950(전체) + 줌 신규 ~90, E2E 15(줌 5 + 타임라인 무회귀 10). gap-1(줌 전환 시 가로 스크롤 중심 보정)은 MVP 범위 외. **→ FR-TL 시리즈(01/02/03) 완료.**
 
 ## §5 Worklog (FR-TT, 2개)
 

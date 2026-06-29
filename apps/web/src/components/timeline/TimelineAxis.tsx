@@ -1,7 +1,9 @@
-// 타임라인 날짜 축 헤더 컴포넌트 — 주(월요일)/월 눈금 렌더 (FR-TL-01 D6)
+// 타임라인 날짜 축 헤더 컴포넌트 — 줌 레벨별 눈금 렌더 (FR-TL-01 D6 / FR-TL-03)
 import type { JSX } from 'react'
 import type { DateRange } from '@/lib/timeline-layout'
 import { daysBetweenUtc } from '@/lib/timeline-layout'
+import type { ZoomLevel } from '@/lib/timeline-zoom'
+import { DEFAULT_ZOOM, getAxisConfig } from '@/lib/timeline-zoom'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -12,6 +14,9 @@ const MONDAY_UTC = 1
 
 /** 하루를 ms로 표현한 값 */
 const MS_PER_DAY = 86_400_000
+
+/** 한 분기에 속하는 월 수 — 분기 판별 및 번호 계산에 사용 */
+const MONTHS_PER_QUARTER = 3
 
 /** 축 헤더 행 높이(px) — 월 눈금 행 + 주 눈금 행 */
 const AXIS_ROW_HEIGHT_PX = 24
@@ -88,6 +93,92 @@ function computeWeekTicks(range: DateRange): TickItem[] {
   return ticks
 }
 
+/**
+ * 날짜 범위에서 일 눈금 목록을 계산한다.
+ * 범위 내 매일 눈금을 찍는다.
+ *
+ * @param range 전체 날짜 범위
+ * @returns 일 눈금 목록
+ */
+function computeDayTicks(range: DateRange): TickItem[] {
+  const totalDays = daysBetweenUtc(range.startMs, range.endMs)
+  const ticks: TickItem[] = []
+
+  for (let day = 0; day < totalDays; day++) {
+    const ms = range.startMs + day * MS_PER_DAY
+    const date = new Date(ms)
+    const dd = String(date.getUTCDate()).padStart(2, '0')
+    ticks.push({ offsetDay: day, label: dd })
+  }
+
+  return ticks
+}
+
+/**
+ * 날짜 범위에서 분기 눈금 목록을 계산한다.
+ * 각 분기의 첫 번째 달(1·4·7·10월) 1일을 기준으로 눈금을 찍는다.
+ *
+ * **Partial 시작 레이블 (C2)**:
+ * 범위 시작일이 분기 경계에 해당하지 않으면(첫 정규 눈금의 offsetDay > 0, 또는 정규 눈금 0개),
+ * offsetDay 0 위치에 "범위 시작일이 속한 분기" 레이블을 prepend한다.
+ * 범위 시작이 정확히 분기 경계(offsetDay 0)이면 중복 삽입하지 않는다.
+ *
+ * @param range 전체 날짜 범위
+ * @returns 분기 눈금 목록 (label: 'YYYY Q{n}')
+ */
+function computeQuarterTicks(range: DateRange): TickItem[] {
+  const totalDays = daysBetweenUtc(range.startMs, range.endMs)
+  const ticks: TickItem[] = []
+
+  for (let day = 0; day < totalDays; day++) {
+    const ms = range.startMs + day * MS_PER_DAY
+    const date = new Date(ms)
+    const month = date.getUTCMonth() // 0-indexed
+    if (date.getUTCDate() === 1 && month % MONTHS_PER_QUARTER === 0) {
+      const year = date.getUTCFullYear()
+      const quarter = Math.floor(month / MONTHS_PER_QUARTER) + 1
+      ticks.push({ offsetDay: day, label: `${year} Q${quarter}` })
+    }
+  }
+
+  // Partial 시작 레이블: 첫 정규 눈금이 범위 시작(offsetDay 0)이 아닐 때 prepend
+  const firstTickOffsetDay = ticks[0]?.offsetDay ?? Infinity
+  if (firstTickOffsetDay > 0) {
+    const startDate = new Date(range.startMs)
+    const startYear = startDate.getUTCFullYear()
+    const startQuarter = Math.floor(startDate.getUTCMonth() / MONTHS_PER_QUARTER) + 1
+    ticks.unshift({ offsetDay: 0, label: `${startYear} Q${startQuarter}` })
+  }
+
+  return ticks
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 눈금 컴퓨터 맵 — 날짜 단위 → 헬퍼 함수
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 날짜 단위별 눈금 계산 함수 맵.
+ *
+ * AxisConfig 의 top('month'|'quarter')·bottom('day'|'week'|'month') 를
+ * 단일 레코드로 통합해, getAxisConfig 반환값으로 바로 dispatch 할 수 있다.
+ *
+ * | unit    | 레이블 형식  | 눈금 기준        |
+ * |---------|------------|-----------------|
+ * | day     | DD         | 매일             |
+ * | week    | MM/DD      | 매주 월요일(UTC)  |
+ * | month   | YYYY.MM    | 매달 1일         |
+ * | quarter | YYYY Q{n}  | 분기 첫달(1·4·7·10월) 1일 |
+ */
+const TICK_COMPUTERS: Readonly<
+  Record<'day' | 'week' | 'month' | 'quarter', (range: DateRange) => TickItem[]>
+> = {
+  day: computeDayTicks,
+  week: computeWeekTicks,
+  month: computeMonthTicks,
+  quarter: computeQuarterTicks,
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TimelineAxis 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
@@ -98,27 +189,40 @@ export interface TimelineAxisProps {
   range: DateRange
   /** 일 단위 열 폭(px) */
   dayWidth: number
+  /**
+   * 줌 레벨.
+   * 미지정 시 DEFAULT_ZOOM('month')가 적용된다.
+   * optional로 선언해 기존 호출부(GanttChart 등)의 타입 에러를 방지한다 (Task 6 이전 무회귀).
+   */
+  zoomLevel?: ZoomLevel
 }
 
 /**
  * 타임라인 날짜 축 헤더.
  *
- * - 상단 행: 월 레이블 (YYYY.MM 형식, 매달 1일 위치)
- * - 하단 행: 주 레이블 (MM/DD 형식, 매주 월요일 위치)
+ * - 상단 행: 줌 레벨에 따라 월(YYYY.MM) 또는 분기(YYYY Q{n}) 레이블
+ * - 하단 행: 줌 레벨에 따라 일(DD) / 주(MM/DD) / 월(YYYY.MM) 레이블
  * - 모든 눈금은 UTC 기준으로 계산한다 (NFR4).
+ * - `zoomLevel` 미지정 시 'month'가 적용되어 기존 동작을 유지한다.
  */
-export function TimelineAxis({ range, dayWidth }: TimelineAxisProps): JSX.Element {
+export function TimelineAxis({
+  range,
+  dayWidth,
+  zoomLevel = DEFAULT_ZOOM,
+}: TimelineAxisProps): JSX.Element {
   const totalDays = daysBetweenUtc(range.startMs, range.endMs)
   const totalWidth = totalDays * dayWidth
-  const monthTicks = computeMonthTicks(range)
-  const weekTicks = computeWeekTicks(range)
+  const { top, bottom } = getAxisConfig(zoomLevel)
+
+  const topTicks = TICK_COMPUTERS[top](range)
+  const bottomTicks = TICK_COMPUTERS[bottom](range)
 
   return (
     <div className="relative select-none" style={{ width: totalWidth, height: TIMELINE_AXIS_HEIGHT_PX }}>
-      {/* 월 눈금 행 */}
-      {monthTicks.map((tick) => (
+      {/* 상단 눈금 행 */}
+      {topTicks.map((tick) => (
         <div
-          key={`month-${tick.offsetDay}`}
+          key={`top-${tick.offsetDay}`}
           className="absolute top-0 text-xs text-muted-foreground font-medium border-l border-border pl-1 overflow-hidden whitespace-nowrap"
           style={{ left: tick.offsetDay * dayWidth, height: AXIS_ROW_HEIGHT_PX, lineHeight: `${AXIS_ROW_HEIGHT_PX}px` }}
         >
@@ -126,10 +230,10 @@ export function TimelineAxis({ range, dayWidth }: TimelineAxisProps): JSX.Elemen
         </div>
       ))}
 
-      {/* 주 눈금 행 */}
-      {weekTicks.map((tick) => (
+      {/* 하단 눈금 행 */}
+      {bottomTicks.map((tick) => (
         <div
-          key={`week-${tick.offsetDay}`}
+          key={`bottom-${tick.offsetDay}`}
           className="absolute text-xs text-muted-foreground border-l border-border pl-1 overflow-hidden whitespace-nowrap"
           style={{
             left: tick.offsetDay * dayWidth,

@@ -1,4 +1,4 @@
-// 타임라인 라우트 — TimelineRouteAdapter + TimelinePage (FR-TL-01 Task 6)
+// 타임라인 라우트 — TimelineRouteAdapter + TimelinePage (FR-TL-01 Task 6, FR-TL-03 Task 7)
 import type { JSX } from 'react'
 import { useMemo } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
@@ -9,7 +9,9 @@ import { fetchUsers } from '@/api/users'
 import type { TimelineItem } from '@/api/timeline'
 import type { DependencyEdge } from '@/lib/timeline-layout'
 import { useTimeline, useTimelineDeps } from '@/hooks/use-timeline'
+import { useTimelineZoom } from '@/hooks/use-timeline-zoom'
 import { GanttChart } from '@/components/timeline/GanttChart'
+import { TimelineZoomControl } from '@/components/timeline/TimelineZoomControl'
 import { timelineLabels } from '@/i18n/timeline-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -191,13 +193,18 @@ export interface TimelinePageProps {
  *
  * - useTimeline(projectKey)로 타임라인 아이템 목록 조회.
  * - useQuery(['users'], fetchUsers)로 사용자 목록 조회 → issueKey→displayName 매핑 (C2).
- * - 상태 분기: 로딩(Skeleton), 403(접근거부 S6), 빈 상태(S4 안내), 정상(GanttChart + truncated 배너 S5).
+ * - useTimelineZoom()으로 줌 레벨 localStorage 영속 + 단축키(1/2/3) 처리 (FR-TL-03).
+ * - 상태 분기: 로딩(Skeleton), 403(접근거부 S6), 빈 상태(S4 안내 + 줌 컨트롤 미렌더 EC1),
+ *   정상(TimelineZoomControl 최상단 + truncated 배너 S5 + GanttChart).
  * - onSelectIssue → navigate /issues/$key.
  *
  * @param projectKey 프로젝트 식별 키
  */
 export function TimelinePage({ projectKey }: TimelinePageProps): JSX.Element {
   const navigate = useNavigate()
+
+  // ★ 훅은 early return보다 먼저 — React Hooks 규칙
+  const { zoomLevel, setZoom } = useTimelineZoom()
 
   const { data, isLoading, error, isError } = useTimeline(projectKey)
 
@@ -249,19 +256,23 @@ export function TimelinePage({ projectKey }: TimelinePageProps): JSX.Element {
 
   return (
     <div className="p-4 space-y-3">
+      {/* 줌 컨트롤 — 최상단 배치 (FR-TL-03 D1) */}
+      <TimelineZoomControl zoomLevel={zoomLevel} onZoomChange={setZoom} />
+
       {/* 타임라인 이슈 일부 누락 배너 (S5) */}
       {data?.truncated === true && <TruncatedBanner />}
 
       {/* deps 일부 누락 배너 — 기존 배너와 문구로 구분 (EC6) */}
       {depsData?.truncated === true && <DepsTruncatedBanner />}
 
-      {/* GanttChart — data가 있는 경우에만 렌더, deps 주입 (FR-TL-02 D6) */}
+      {/* GanttChart — data가 있는 경우에만 렌더, deps·zoomLevel 주입 (FR-TL-02 D6, FR-TL-03) */}
       {data !== undefined && (
         <GanttChart
           items={data.items}
           assigneeNames={assigneeNames}
           onSelectIssue={handleSelectIssue}
           deps={deps}
+          zoomLevel={zoomLevel}
         />
       )}
     </div>
