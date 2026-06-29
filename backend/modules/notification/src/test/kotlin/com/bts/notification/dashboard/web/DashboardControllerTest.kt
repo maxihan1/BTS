@@ -15,6 +15,7 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
+import org.hamcrest.Matchers.hasItem
 import org.hamcrest.Matchers.hasSize
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -425,14 +426,18 @@ class DashboardControllerTest {
      *
      * 점단언: issue_count(ISSUE 카테고리) 는 enabled=true,
      * pie_chart(CHART 카테고리) 는 enabled=false.
+     *
+     * Jayway JSONPath 에서 필터 결과에 [0] 인덱싱이 동작하지 않으므로
+     * hasItem Hamcrest matcher 를 사용한다. 필터 결과는 List&lt;Boolean&gt; 이므로
+     * hasItem(true/false) 로 검증한다.
      */
     @Test
     fun `GET gadget-catalog enabled true 항목 6개 카운트 단언과 점단언`() {
         mockMvc.perform(get("/api/v1/dashboards/gadget-catalog"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.gadgets[?(@.enabled == true)]", hasSize<Any>(6)))
-            .andExpect(jsonPath("$.data.gadgets[?(@.type == 'issue_count')][0].enabled").value(true))
-            .andExpect(jsonPath("$.data.gadgets[?(@.type == 'pie_chart')][0].enabled").value(false))
+            .andExpect(jsonPath("$.data.gadgets[?(@.type == 'issue_count')].enabled", hasItem(true)))
+            .andExpect(jsonPath("$.data.gadgets[?(@.type == 'pie_chart')].enabled", hasItem(false)))
     }
 
     /**
@@ -440,6 +445,10 @@ class DashboardControllerTest {
      *
      * text_widget 엔트리의 configFields 에 key=markdown, required=true 항목이 있음을 확인한다.
      * GadgetType 단일 출처에서 파생되므로 drift 불가.
+     *
+     * 정렬 순서 검증 겸 인덱스 기반 접근 사용.
+     * 정렬: category ordinal(ISSUE=0,STATIC=1,CHART=2,ACTIVITY=3) → type 알파벳 오름차순.
+     * text_widget 은 STATIC 카테고리에서 link_list 다음 → 전체 인덱스 5.
      */
     @Test
     fun `GET gadget-catalog 각 엔트리 필수 필드 존재 및 text_widget configFields 단일 출처 확인`() {
@@ -449,11 +458,10 @@ class DashboardControllerTest {
             .andExpect(jsonPath("$.data.gadgets[0].category").exists())
             .andExpect(jsonPath("$.data.gadgets[0].label").exists())
             .andExpect(jsonPath("$.data.gadgets[0].configFields").exists())
-            .andExpect(
-                jsonPath(
-                    "$.data.gadgets[?(@.type == 'text_widget')][0].configFields[?(@.key == 'markdown')][0].required",
-                ).value(true),
-            )
+            // text_widget 은 정렬 후 인덱스 5 (STATIC 두 번째)
+            .andExpect(jsonPath("$.data.gadgets[5].type").value("text_widget"))
+            .andExpect(jsonPath("$.data.gadgets[5].configFields[0].key").value("markdown"))
+            .andExpect(jsonPath("$.data.gadgets[5].configFields[0].required").value(true))
     }
 
     /**
