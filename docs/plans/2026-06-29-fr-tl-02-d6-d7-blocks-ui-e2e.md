@@ -103,7 +103,7 @@ classify: type=ui, agent=frontend-engineer, primary_bc=agile-planning (classifie
   - 미분류 그룹: 헤더 행이 rowIndex 1칸 점유(key 없음 → 결과 제외) + 아이템 행 포함.
   - **GanttChart 행 배치와 동일 순서** 단언(에픽 그룹 입력순, 미분류 맨 끝).
 - `computeDependencyLines(visibleRows, range, dayWidth, deps)` 테스트.
-  - **positive**: (A blocks B) 두 행 모두 보임 → 엣지 1개 반환, `x1=barX_A+barWidth_A`, `x2=barX_B`, `y1/y2`= 각 행 중심.
+  - **positive**: (A blocks B) 두 행 모두 보임 → 엣지 1개 반환. **elbow 좌표**: `startX=barX_A+barWidth_A`(blocker 우끝), `endX=barX_B`(blocked 좌끝), `startY/endY`= 각 행 중심, `midX`= 두 막대 사이 중간 x(`(startX+endX)/2`, 겹침/역방향 시 최소 우회폭 보정).
   - **negative(같은 입력 공존)**: (A blocks C) C가 visibleRows에 없음(접힘/미존재) → 그 엣지 제외(EC1/S4).
   - self-block(A blocks A) → 제외(EC4).
   - 상호 blocks(A↔B) → 두 엣지 반환(EC3).
@@ -111,10 +111,10 @@ classify: type=ui, agent=frontend-engineer, primary_bc=agile-planning (classifie
 
 **GREEN**.
 - `DependencyEdge { blockerKey: string; blockedKey: string }` 인터페이스(자체 정의, api 무의존).
-- `VisibleRow { key: string; rowIndex: number }`, `DependencyLine { blockerKey; blockedKey; x1; y1; x2; y2 }`.
+- `VisibleRow { key: string; rowIndex: number }`, **elbow** `DependencyLine { blockerKey; blockedKey; startX; startY; midX; endX; endY }`.
 - `flattenVisibleRows(groups: TimelineGroup[], collapsed: ReadonlySet<string>): VisibleRow[]` — GanttChart 순회 로직과 동일(에픽 행→자식, 미분류 헤더 1칸→아이템). 헤더 행은 rowIndex만 차지, 결과 미포함.
-- `computeDependencyLines(rows, range, dayWidth, deps)` — rows로 key→{rowIndex, barGeometry} 맵 구성. 각 deps 엣지에서 양끝 모두 맵에 있고 key≠ 일 때만 좌표 산출. y중심 = `rowIndex*ROW_HEIGHT + ROW_HEIGHT/2`(축 오프셋은 컴포넌트가 더함). x = barGeometry 기반.
-- 상수 재사용(`ROW_HEIGHT_PX`는 TimelineRow에서 import 또는 인자화 — 순수성 위해 인자/상수 결정은 구현 시).
+- `computeDependencyLines(rows, range, dayWidth, rowHeight, deps)` — rows로 key→{rowIndex, barGeometry} 맵 구성. 각 deps 엣지에서 양끝 모두 맵에 있고 key≠ 일 때만 좌표 산출. y중심 = `rowIndex*rowHeight + rowHeight/2`(축 오프셋은 컴포넌트가 더함). `startX/endX`= barGeometry 기반(blocker 우끝/blocked 좌끝), `midX=(startX+endX)/2`(elbow 꺾임 x, 컴포넌트가 `M startX,startY H midX V endY H endX` path 조립).
+- **`rowHeight`는 인자로 받는다**(CONCERN-1: lib→component 역의존 차단 — `ROW_HEIGHT_PX`는 `TimelineRow.tsx` 소유, lib이 import 금지. 호출자가 전달).
 
 **REFACTOR**. KDoc — 좌표는 우측 막대영역 로컬(축 오프셋 제외), jsdom 안전(getBBox 미사용).
 
@@ -151,15 +151,18 @@ classify: type=ui, agent=frontend-engineer, primary_bc=agile-planning (classifie
 
 **RED**.
 - `DependencyOverlay.test.tsx`.
-  - `lines`(computeDependencyLines 결과) N개 → SVG `<path>`/`<line>` N개 렌더.
-  - 라인 클릭 → 해당 엣지 강조(선택 class/속성) + 나머지 흐림. 재클릭/배경 클릭 → 해제(S2/S3).
+  - `lines`(computeDependencyLines 결과) N개 → SVG elbow `<path>` N개 렌더(`d`에 `H`/`V` 포함 = 직각 경로).
+  - 각 라인에 **투명 넓은 hit-path**(클릭 타겟 확대, design 결정) 동반 — 얇은 라인 직접 클릭 fiddly 해소.
+  - hit-path 클릭 → 해당 엣지 강조(선택 class/속성) + 나머지 흐림. 재클릭/배경 클릭 → 해제(S2/S3).
+  - **호버 시** cursor pointer + 살짝 강조(클릭 가능 암시, design 결정).
   - 각 라인 `aria-label`(예 "BTS-2가 BTS-3을 차단") 존재(NFR3).
   - lines 0개 → 라인 0개(빈 SVG, S5).
 - `timeline-labels.test.ts` — deps 라벨 콜론 미종결 + 함수 라벨 동작.
 - 실패: `DependencyOverlay` 미존재.
 
 **GREEN**.
-- `DependencyOverlay({ lines, axisOffset, width, height })` — absolute SVG 레이어. `<defs><marker>` 화살촉 + 각 line `<path>`(또는 line+화살촉). y에 `axisOffset` 더함. 선택 state(`selectedKey = blocker+blocked`) — 클릭 토글, 배경 rect 클릭 시 해제. 선택 시 강조/비선택 흐림 class.
+- `DependencyOverlay({ lines, axisOffset, width, height })` — absolute SVG 레이어. `<defs><marker>` 화살촉 + 각 line **elbow `<path d="M startX,startY H midX V endY H endX">`**(y에 `axisOffset` 더함) + 그 위 **투명 넓은 hit-path**(`stroke-width≈12`, `stroke:transparent`, 동일 d, `cursor:pointer`) 클릭 타겟. 선택 state(`selectedKey = blocker+blocked`) — hit-path 클릭 토글, 배경 rect 클릭 시 해제. 선택 시 stroke 굵기+`primary` 강조/비선택 opacity 흐림. 호버 시 cursor+살짝 강조.
+- 기본 라인색 `muted-foreground`, 강조 `primary`(DESIGN.md §4 토큰 우선).
 - `timeline-labels.ts` — `deps.lineAriaLabel(blocker, blocked)`, `deps.truncatedMessage`(라인 누락 경고, 콜론 미종결).
 
 **REFACTOR**. KDoc — pointer-events 처리(빈영역 클릭 해제), 좌표는 부모가 주입.
@@ -245,3 +248,14 @@ classify: type=ui, agent=frontend-engineer, primary_bc=agile-planning (classifie
 - ✅ 무회귀. `deps` prop 기본 빈 배열 → GanttChart 기존 사용처 무영향. 기존 timeline E2E도 T6에 포함.
 
 **BLOCKER: 없음.** CONCERN 2건(C1 역의존=impl 필수 준수, C2 좌표계 계약=마이너) → bts-impl 인계.
+
+### plan-design-review (대화형, 2026-06-29)
+
+- **design rating 7/10 → 결정 반영 후 9/10**. 잘된 것: 토큰 기반 색·강조 색+굵기 병행·aria-label·상태(empty/403) 커버.
+- **mockup**. design 생성기가 OpenAI API 키 부재로 불가 → 실제 구현 좌표(ROW_HEIGHT 32/BAR 18/DAY 20) 반영 SVG 스케치로 elbow vs 직선 비교(`timeline-deps-paths.png`, 범용 생성기보다 실제에 근접).
+- **결정 (Maxi)** — 라인 경로 = **직각 elbow connector**(교차 적고 깔끔, Gantt 표준). 직선은 라인 多 시 사선 혼잡으로 기각.
+- **추가 design 개선 (plan 반영)**.
+  1. 클릭 hit area = 투명 넓은 hit-path(얇은 라인 클릭 fiddly 해소).
+  2. 호버 상태 = cursor pointer + 살짝 강조(클릭 가능 암시).
+  3. 토큰 = 기본 `muted-foreground` / 강조 `primary`(DESIGN.md §4 우선, 신규 유채색 토큰 불필요).
+- BLOCKER: 없음.

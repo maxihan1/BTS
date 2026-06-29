@@ -24,7 +24,7 @@ FR-TL-01이 만든 자체 div 기반 Gantt(`GanttChart.tsx` — `position:absolu
 ### S1. 정상 의존 라인 렌더
 - **Given** 프로젝트 타임라인에 (BTS-2 blocks BTS-3) 의존이 있고 두 이슈 모두 막대로 보임
 - **When** 타임라인 페이지를 연다
-- **Then** BTS-2 막대 오른쪽 끝에서 BTS-3 막대 왼쪽 끝으로 향하는 화살표 라인이 SVG로 렌더된다.
+- **Then** BTS-2 막대 오른쪽 끝에서 BTS-3 막대 왼쪽 끝으로 향하는 **직각 elbow** 화살표 라인이 SVG로 렌더된다.
 
 ### S2. 의존 라인 클릭 강조 (백엔드 spec S10)
 - **When** 사용자가 의존 라인을 클릭
@@ -60,9 +60,9 @@ FR-TL-01이 만든 자체 div 기반 Gantt(`GanttChart.tsx` — `position:absolu
 - **FR2**. `hooks/use-timeline.ts`에 `useTimelineDeps(projectKey)` + `timelineKeys.deps(projectKey)` queryKey 추가. `enabled`로 빈 키 비활성화.
 - **FR3**. `lib/timeline-layout.ts`에 좌표 순수함수 2개.
   - `flattenVisibleRows(groups, collapsedGroups)` → `{ key, rowIndex }[]` (접힌 자식 제외, 헤더 행 인덱스 점유). GanttChart의 행 배치와 동일 순서.
-  - `computeDependencyLines(visibleRows, range, dayWidth, deps)` → 그릴 수 있는 엣지의 좌표 배열 `{ blockerKey, blockedKey, x1,y1,x2,y2 }`. 양끝이 모두 visibleRows에 있을 때만 포함(EC11/S4 방어). 좌표는 UTC 기준 barGeometry + 행 인덱스로 계산(jsdom 안전).
-- **FR4**. `components/timeline/DependencyOverlay.tsx`(신규) — 우측 막대 영역에 absolute SVG 레이어. `computeDependencyLines` 결과를 `<path>`/`<line>` + 화살표 `<marker>`로 렌더. GanttChart가 visibleRows/range/deps를 주입.
-- **FR5**. 클릭 강조 — 선택된 엣지 식별자(blockerKey+blockedKey) state. 라인 클릭 시 선택, 재클릭/빈영역 클릭 시 해제. 선택 시 해당 라인 강조 + 나머지 흐림.
+  - `computeDependencyLines(visibleRows, range, dayWidth, rowHeight, deps)` → 그릴 수 있는 엣지의 **elbow 좌표** 배열 `{ blockerKey, blockedKey, startX, startY, midX, endX, endY }`. 양끝이 모두 visibleRows에 있을 때만 포함(EC11/S4 방어). 좌표는 UTC 기준 barGeometry + 행 인덱스로 계산(jsdom 안전). `rowHeight`는 인자(lib→component 역의존 차단).
+- **FR4**. `components/timeline/DependencyOverlay.tsx`(신규) — 우측 막대 영역에 absolute SVG 레이어. 각 엣지를 **직각 elbow `<path d="M startX,startY H midX V endY H endX">`**(Gantt 표준, design 결정) + 화살표 `<marker>`로 렌더하고, 그 위에 **투명 넓은 hit-path**(클릭 타겟 확대)를 겹친다. GanttChart가 lines/axisOffset/width/height를 주입.
+- **FR5**. 클릭 강조 — 선택된 엣지 식별자(blockerKey+blockedKey) state. hit-path 클릭 시 선택, 재클릭/빈영역 클릭 시 해제. 선택 시 해당 라인 강조(stroke 굵기+`primary`) + 나머지 흐림. 호버 시 cursor+살짝 강조.
 - **FR6**. `mocks/timeline-handlers.ts` + `timeline-fixtures.ts`에 `/api/v1/timeline/deps` 핸들러 + deps 픽스처. 기존 정적 반환 + localStorage 시나리오 토글 패턴 확장(deps용 truncated/empty 시나리오).
 - **FR7**. `e2e/timeline.spec.ts`에 의존 라인 실렌더 + 클릭 강조 E2E 추가. 기존 timeline E2E 무회귀.
 
