@@ -479,6 +479,22 @@ class DashboardControllerTest {
     }
 
     /**
+     * CATALOG-4. filter_result 엔트리에 requireAtLeastOne = [["filterId","aql"]] JSON 포함.
+     *
+     * 교차필드 규칙(RequireAtLeastOne)이 카탈로그 JSON 에 노출되는지 확인한다.
+     * 정렬: ISSUE 카테고리 type 알파벳 오름차순 → filter_result 는 전체 인덱스 1.
+     */
+    @Test
+    fun `GET gadget-catalog filter_result 엔트리에 requireAtLeastOne JSON 포함`() {
+        mockMvc.perform(get("/api/v1/dashboards/gadget-catalog"))
+            .andExpect(status().isOk)
+            // filter_result 는 정렬 후 인덱스 1 (ISSUE 카테고리, type 알파벳 두 번째)
+            .andExpect(jsonPath("$.data.gadgets[1].type").value("filter_result"))
+            .andExpect(jsonPath("$.data.gadgets[1].requireAtLeastOne[0][0]").value("filterId"))
+            .andExpect(jsonPath("$.data.gadgets[1].requireAtLeastOne[0][1]").value("aql"))
+    }
+
+    /**
      * EC12 라우팅 회귀.
      *
      * Spring PathPattern 은 literal segment 를 path-variable 보다 우선 매칭한다.

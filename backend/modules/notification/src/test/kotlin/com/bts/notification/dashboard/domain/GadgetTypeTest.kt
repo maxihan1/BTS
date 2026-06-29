@@ -150,6 +150,14 @@ class GadgetTypeTest : DescribeSpec({
         it("url https://example.com는 통과한다") {
             GadgetType.LINK_LIST.validateConfig(makeLinks(1, url = "https://example.com"))
         }
+
+        it("url 대문자 스킴 HTTPS://example.com 은 통과한다 (RFC 스킴 대소문자 무관)") {
+            GadgetType.LINK_LIST.validateConfig(makeLinks(1, url = "HTTPS://example.com"))
+        }
+
+        it("url 대문자 스킴 HTTP://example.com 은 통과한다 (RFC 스킴 대소문자 무관)") {
+            GadgetType.LINK_LIST.validateConfig(makeLinks(1, url = "HTTP://example.com"))
+        }
     }
 
     // ── filter_result ──────────────────────────────────────────────────────────
@@ -295,6 +303,21 @@ class GadgetTypeTest : DescribeSpec({
                 val entry = GadgetType.catalog().first { it.type == gadgetType.key }
                 entry.configFields shouldBe gadgetType.configFields
             }
+        }
+
+        it("filter_result catalog 엔트리의 requireAtLeastOne 은 listOf(listOf(\"filterId\",\"aql\")) 이다") {
+            val entry = GadgetType.catalog().first { it.type == "filter_result" }
+            entry.requireAtLeastOne shouldBe listOf(listOf("filterId", "aql"))
+        }
+
+        it("issue_count catalog 엔트리의 requireAtLeastOne 은 listOf(listOf(\"filterId\",\"aql\")) 이다") {
+            val entry = GadgetType.catalog().first { it.type == "issue_count" }
+            entry.requireAtLeastOne shouldBe listOf(listOf("filterId", "aql"))
+        }
+
+        it("교차필드 규칙이 없는 타입(text_widget)의 requireAtLeastOne 은 emptyList() 이다") {
+            val entry = GadgetType.catalog().first { it.type == "text_widget" }
+            entry.requireAtLeastOne shouldBe emptyList()
         }
     }
 })
