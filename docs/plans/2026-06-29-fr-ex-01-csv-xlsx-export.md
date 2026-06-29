@@ -40,7 +40,18 @@ product D단계.
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
+전체 스펙. [docs/specs/2026-06-29-fr-ex-01-csv-xlsx-export.md](../specs/2026-06-29-fr-ex-01-csv-xlsx-export.md)
+
+핵심 시나리오 요약.
+- `POST /api/v1/exports` body `{projectKey, query(AQL), format(CSV|XLSX), columns?}` → 파일 다운로드(Content-Disposition attachment).
+- 데이터는 `IssueSearchPort` 재사용 → BROWSE 권한 + visibility 보안 술어 자동 상속(우회 없음). 컬럼 = IssueSearchHit 9필드(영문 표준 라벨).
+- CSV = UTF-8 BOM + RFC 4180 이스케이프(zero-dep), XLSX = Apache POI(신규 의존성). 둘 다 formula injection 방어(`'` prefix).
+- 동기 상한 1만 행: count-first(IssueSearchPage.total) 확인 → 초과면 400 `EXPORT_LIMIT_EXCEEDED`, 통과면 페이지 순회 전체 수집(best-effort 스냅샷).
+- issue-tracking·shared-kernel 무변경. 신규 테이블 0(D3 활용). D6 /search Export 다이얼로그 + D7 E2E.
+
 ## Brainstorming Check (← /bts-spec Phase B 채움)
+
+✅ 통과 (1회 — self-sanity-check). gap 3건 해소: G1 상한초과=400+errorCode / G2 헤더라벨=영문 표준(Maxi) / G3 순회일관성=best-effort+count-first. 보강: Clock 주입, formula injection security codereview 점검.
 
 ## Plan (← /bts-plan 채움)
 

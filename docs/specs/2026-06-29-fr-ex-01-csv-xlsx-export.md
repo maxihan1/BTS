@@ -85,11 +85,26 @@ AQL 검색 결과를 CSV 또는 XLSX 파일로 **동기** 다운로드한다. �
   - CSV: `Content-Type: text/csv; charset=UTF-8`, body 선두 UTF-8 BOM.
   - XLSX: `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.
   - `Content-Disposition: attachment; filename="{projectKey}-issues-{yyyyMMdd-HHmmss}.{csv|xlsx}"`.
-- 400 — AQL 문법 오류 / 잘못된 format / 잘못된 columns / projectKey·query 누락(검색과 동일 에러 봉투).
+- 400 — AQL 문법 오류 / 잘못된 format / 잘못된 columns / projectKey·query 누락(검색과 동일 에러 봉투). **상한 초과도 400 + `errorCode=EXPORT_LIMIT_EXCEEDED`**(BTS errorCode 에러 봉투 관례). 본문 `{ errorCode, message, resultCount, limit }`.
 - 403 — BROWSE 권한 없음(어댑터가 SecurityException → 403).
-- 422(또는 400, plan에서 확정) — 결과 1만 행 초과. 본문에 `{ errorCode, message, resultCount, limit }`.
 
-> 헤더 라벨 정책(컬럼 표시명): **Maxi 결정 필요** — 영문 필드명(`key`,`summary`,...) vs 사람친화 라벨(한글/영문). 기본 제안: 영문 표준 라벨(Key, Summary, Type, Status, Assignee, Priority, Priority Name, Project, Updated At). → Brainstorming gap.
+**컬럼 헤더 라벨(확정 — 영문 표준 라벨, Maxi 2026-06-29).**
+
+| 필드 | 헤더 라벨 |
+|---|---|
+| key | Key |
+| summary | Summary |
+| typeKey | Type |
+| currentStateKey | Status |
+| assigneeId | Assignee ID |
+| priority | Priority |
+| priorityName | Priority Name |
+| projectKey | Project |
+| updatedAt | Updated At |
+
+> assigneeId는 UUID 그대로(이름 해석은 후속). 헤더 라벨이 "Assignee ID"로 그 사실을 명확히 한다.
+
+**정렬.** AQL `ORDER BY`가 있으면 export 행 순서에 그대로 반영된다(`IssueSearchQuery.sort` 경유). 없으면 포트 기본 순서.
 
 ## 데이터 모델 변경
 
@@ -120,6 +135,9 @@ AQL 검색 결과를 CSV 또는 XLSX 파일로 **동기** 다운로드한다. �
 - **C3.** 새 외부 의존성은 `org.apache.poi:poi-ooxml`만(Maxi 승인 완료). CSV는 zero-dep.
 - **C4.** export는 검색의 보안 불변식을 우회하지 않는다(전용 쿼리 경로 금지).
 - **C5.** 단일 프로젝트 스코프(MVP) — cross-project export는 범위 외.
+- **C6 (일관성 — best-effort).** 포트 무변경(도메인 결정)이라 1만 행을 페이지 순회로 수집하는 동안 single transaction snapshot이 보장되지 않는다. 순회 중 동시 이슈 추가/삭제 시 중복/누락 가능. 1만 행 이하 단시간 순회라 실무 영향 미미 → best-effort 스냅샷으로 허용. (강한 일관성은 FR-EX-02 비동기에서 재검토.)
+- **C7 (상한 감지 — count-first).** 첫 페이지 수집 시 `IssueSearchPage.total`로 결과 수를 먼저 확인해 1만 행 초과면 즉시 거부(불필요한 100페이지 순회 회피). 통과 시에만 전체 순회.
+- **C8 (시각 — Clock 주입).** 파일명 timestamp는 `Clock` 주입으로 생성(테스트 결정성, 메모리 학습 — 시각 의존 로직 Clock 주입). UTC 기준.
 
 ## 측정 가능한 완료 기준
 
@@ -137,3 +155,9 @@ AQL 검색 결과를 CSV 또는 XLSX 파일로 **동기** 다운로드한다. �
 - [ ] D7: E2E — CSV export happy path + 형식 전환.
 
 ## Brainstorming Check
+
+✅ 통과 (1회 iteration — self-sanity-check). 발견 gap 3건 해소.
+- **G1 (상한 초과 HTTP 코드)** → 400 + `errorCode=EXPORT_LIMIT_EXCEEDED`(BTS 에러 봉투 관례)로 확정.
+- **G2 (컬럼 헤더 라벨)** → Maxi 결정: 영문 표준 라벨(Key, Summary, ...) 확정.
+- **G3 (페이지 순회 일관성)** → C6 best-effort 스냅샷 + C7 count-first 명시.
+- 추가 보강: C8 Clock 주입(파일명 timestamp 결정성), NFR-1 formula injection은 security 관점 codereview 점검 대상으로 표기.
