@@ -1,4 +1,4 @@
-// GanttChart 컴포넌트 단위 테스트 — 그룹 렌더·접기/펼치기·마일스톤·콜백·담당자 표시·deps 오버레이 (FR-TL-01 D6, FR-TL-02 D6)
+// GanttChart 컴포넌트 단위 테스트 — 그룹 렌더·접기/펼치기·마일스톤·콜백·담당자 표시·deps 오버레이·zoomLevel 배선 (FR-TL-01 D6, FR-TL-02 D6, FR-TL-03)
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import type { TimelineItem } from '@/api/timeline'
@@ -10,6 +10,7 @@ import {
   assembleEpicGroups,
   flattenVisibleRows,
 } from '@/lib/timeline-layout'
+import type { ZoomLevel } from '@/lib/timeline-zoom'
 import { ROW_HEIGHT_PX } from './TimelineRow'
 import { TIMELINE_AXIS_HEIGHT_PX } from './TimelineAxis'
 import { GanttChart } from './GanttChart'
@@ -67,6 +68,7 @@ function renderChart(overrides?: {
   assigneeNames?: Map<string, string>
   onSelectIssue?: (key: string) => void
   deps?: DependencyEdge[]
+  zoomLevel?: ZoomLevel
 }) {
   return render(
     <GanttChart
@@ -74,6 +76,7 @@ function renderChart(overrides?: {
       assigneeNames={overrides?.assigneeNames ?? defaultAssigneeNames}
       onSelectIssue={overrides?.onSelectIssue ?? vi.fn()}
       deps={overrides?.deps}
+      zoomLevel={overrides?.zoomLevel}
     />,
   )
 }
@@ -443,5 +446,71 @@ describe('GanttChart — C-2 overlayWidth +1일 클리핑 보정', () => {
     const totalDays = daysBetweenUtc(rangeStartMs, rangeEndMs)  // 30
     const rightmostBarRight = (totalDays + 1) * DAY_WIDTH_PX    // 620
     expect(svgWidth).toBeGreaterThanOrEqual(rightmostBarRight)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S8. Task 6 — zoomLevel prop 배선 (FR-TL-03)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GanttChart — S8 zoomLevel prop 배선 (FR-TL-03)', () => {
+  /**
+   * S8a. quarter 줌 시 TimelineAxis 상단에 분기 눈금 Q 텍스트가 렌더된다.
+   *
+   * RED 실패 예상: GanttChart가 zoomLevel을 무시 → TimelineAxis 기본 month 줌 사용
+   * → top='month' 눈금만("2026.07") → Q 텍스트 없음.
+   *
+   * 검증 근거: defaultItems 날짜 범위 2026-07-01 ~ 2026-07-31.
+   * July = UTC month index 6, 6 % 3 === 0 → computeQuarterTicks가 "2026 Q3" 추가.
+   */
+  it('S8a: zoomLevel="quarter" 시 TimelineAxis 상단에 분기 Q 눈금이 렌더된다', () => {
+    renderChart({ zoomLevel: 'quarter' })
+    expect(screen.getByText(/Q\d/)).toBeInTheDocument()
+  })
+
+  /**
+   * S8b. week 줌 시 TimelineAxis 하단에 일(DD) 눈금이 렌더된다.
+   *
+   * RED 실패 예상: GanttChart가 zoomLevel을 무시 → TimelineAxis 기본 month 줌 사용
+   * → bottom='week' 눈금(MM/DD 형식)만 존재 → 단독 "01" 텍스트 없음.
+   *
+   * 검증 근거: week 줌 → bottom='day' → computeDayTicks → "01"(2026-07-01 첫날).
+   */
+  it('S8b: zoomLevel="week" 시 TimelineAxis 하단에 일(DD) 눈금이 렌더된다', () => {
+    renderChart({ zoomLevel: 'week' })
+    // week: bottom='day' → "01" 눈금(2026-07-01)
+    expect(screen.queryAllByText('01')).not.toHaveLength(0)
+  })
+
+  /**
+   * S8c. zoomLevel 변경 시 overlayWidth(SVG width)이 dayWidth에 비례한다.
+   *
+   * RED 실패 예상: DAY_WIDTH_PX=20 하드코딩 → quarter/month 모두 width 동일(620).
+   *
+   * 검증 근거: quarter.dayWidth=6, month.dayWidth=20 → (30+1)*6=186 < (30+1)*20=620.
+   */
+  it('S8c: zoomLevel="quarter" 시 overlayWidth이 month 줌보다 좁다', () => {
+    const deps: DependencyEdge[] = [{ blockerKey: 'ATLAS-1', blockedKey: 'ATLAS-2' }]
+
+    const { unmount } = renderChart({ zoomLevel: 'quarter', deps })
+    const quarterWidth = Number(document.querySelector('svg')?.getAttribute('width') ?? '0')
+    unmount()
+
+    renderChart({ zoomLevel: 'month', deps })
+    const monthWidth = Number(document.querySelector('svg')?.getAttribute('width') ?? '0')
+
+    expect(quarterWidth).toBeGreaterThan(0)
+    expect(quarterWidth).toBeLessThan(monthWidth)
+  })
+
+  /**
+   * S8d. zoomLevel 미지정(기본 month) 시 주(MM/DD) 눈금이 렌더된다.
+   *
+   * 기존 동작 무회귀 검증 — GREEN 전후 모두 통과해야 한다.
+   * 2026-07-06이 월요일이므로 computeWeekTicks가 "07/06" 생성.
+   */
+  it('S8d: zoomLevel 미지정(기본 month) 시 주 눈금 07/06이 렌더된다 (무회귀)', () => {
+    renderChart()
+    expect(screen.getByText('07/06')).toBeInTheDocument()
   })
 })
