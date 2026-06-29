@@ -279,12 +279,15 @@ enum class GadgetType(
     ) {
         if (!node.isTextual) throw DashboardDomainException("필드 '${descriptor.key}'는 문자열이어야 합니다.")
         val text = node.asText()
-        descriptor.minLength?.let {
-            if (text.length < it) throw DashboardDomainException("필드 '${descriptor.key}'는 최소 ${it}자 이상이어야 합니다.")
-        }
-        descriptor.maxLength?.let {
-            if (text.length > it) throw DashboardDomainException("필드 '${descriptor.key}'는 최대 ${it}자 이하여야 합니다.")
-        }
+        val minLen = descriptor.minLength
+        val maxLen = descriptor.maxLength
+        val violation =
+            when {
+                minLen != null && text.length < minLen -> "필드 '${descriptor.key}'는 최소 ${minLen}자 이상이어야 합니다."
+                maxLen != null && text.length > maxLen -> "필드 '${descriptor.key}'는 최대 ${maxLen}자 이하여야 합니다."
+                else -> null
+            }
+        if (violation != null) throw DashboardDomainException(violation)
     }
 
     private fun validateIntField(
@@ -293,12 +296,15 @@ enum class GadgetType(
     ) {
         if (!node.isIntegralNumber) throw DashboardDomainException("필드 '${descriptor.key}'는 정수여야 합니다.")
         val value = node.intValue()
-        descriptor.min?.let {
-            if (value < it) throw DashboardDomainException("필드 '${descriptor.key}'는 $it 이상이어야 합니다.")
-        }
-        descriptor.max?.let {
-            if (value > it) throw DashboardDomainException("필드 '${descriptor.key}'는 $it 이하여야 합니다.")
-        }
+        val min = descriptor.min
+        val max = descriptor.max
+        val violation =
+            when {
+                min != null && value < min -> "필드 '${descriptor.key}'는 $min 이상이어야 합니다."
+                max != null && value > max -> "필드 '${descriptor.key}'는 $max 이하여야 합니다."
+                else -> null
+            }
+        if (violation != null) throw DashboardDomainException(violation)
     }
 
     private fun validateUuidField(
@@ -306,11 +312,9 @@ enum class GadgetType(
         node: JsonNode,
     ) {
         if (!node.isTextual) throw DashboardDomainException("필드 '${descriptor.key}'는 문자열(UUID)이어야 합니다.")
-        try {
-            UUID.fromString(node.asText())
-        } catch (e: IllegalArgumentException) {
-            throw DashboardDomainException("필드 '${descriptor.key}'는 유효한 UUID 형식이어야 합니다: ${node.asText()}")
-        }
+        val text = node.asText()
+        val isValid = runCatching { UUID.fromString(text) }.isSuccess
+        if (!isValid) throw DashboardDomainException("필드 '${descriptor.key}'는 유효한 UUID 형식이어야 합니다: $text")
     }
 
     private fun validateEnumField(
@@ -333,24 +337,32 @@ enum class GadgetType(
         node: JsonNode,
     ) {
         if (!node.isArray) throw DashboardDomainException("필드 '${descriptor.key}'는 배열이어야 합니다.")
-        descriptor.minItems?.let {
-            if (node.size() < it) throw DashboardDomainException("필드 '${descriptor.key}'는 최소 ${it}개 이상의 항목이 필요합니다.")
-        }
-        descriptor.maxItems?.let {
-            if (node.size() > it) throw DashboardDomainException("필드 '${descriptor.key}'는 최대 ${it}개 이하의 항목을 가져야 합니다.")
-        }
+        val minIt = descriptor.minItems
+        val maxIt = descriptor.maxItems
+        val sizeError =
+            when {
+                minIt != null && node.size() < minIt -> "필드 '${descriptor.key}'는 최소 ${minIt}개 이상의 항목이 필요합니다."
+                maxIt != null && node.size() > maxIt -> "필드 '${descriptor.key}'는 최대 ${maxIt}개 이하의 항목을 가져야 합니다."
+                else -> null
+            }
+        if (sizeError != null) throw DashboardDomainException(sizeError)
         descriptor.itemSchema?.let { schema ->
-            node.forEach { item ->
-                for (fieldDesc in schema) {
-                    val fieldNode = item.get(fieldDesc.key)
-                    if (fieldNode == null || fieldNode.isNull) {
-                        if (fieldDesc.required) {
-                            throw DashboardDomainException("배열 항목의 필수 필드 '${fieldDesc.key}'가 누락되었습니다.")
-                        }
-                    } else {
-                        validateField(fieldDesc, fieldNode)
-                    }
+            node.forEach { item -> validateItemSchemaEntry(schema, item) }
+        }
+    }
+
+    private fun validateItemSchemaEntry(
+        schema: List<ConfigFieldDescriptor>,
+        item: JsonNode,
+    ) {
+        for (fieldDesc in schema) {
+            val fieldNode = item.get(fieldDesc.key)
+            if (fieldNode == null || fieldNode.isNull) {
+                if (fieldDesc.required) {
+                    throw DashboardDomainException("배열 항목의 필수 필드 '${fieldDesc.key}'가 누락되었습니다.")
                 }
+            } else {
+                validateField(fieldDesc, fieldNode)
             }
         }
     }
@@ -361,12 +373,15 @@ enum class GadgetType(
     ) {
         if (!node.isTextual) throw DashboardDomainException("필드 '${descriptor.key}'는 문자열(URL)이어야 합니다.")
         val text = node.asText()
-        descriptor.maxLength?.let {
-            if (text.length > it) throw DashboardDomainException("필드 '${descriptor.key}'는 최대 ${it}자 이하여야 합니다.")
-        }
-        if (!text.startsWith("http://") && !text.startsWith("https://")) {
-            throw DashboardDomainException("URL 은 http 또는 https 스킴이어야 합니다. 현재 값: $text")
-        }
+        val maxLen = descriptor.maxLength
+        val error =
+            when {
+                maxLen != null && text.length > maxLen -> "필드 '${descriptor.key}'는 최대 ${maxLen}자 이하여야 합니다."
+                !text.startsWith("http://") && !text.startsWith("https://") ->
+                    "URL 은 http 또는 https 스킴이어야 합니다. 현재 값: $text"
+                else -> null
+            }
+        if (error != null) throw DashboardDomainException(error)
     }
 
     companion object {
