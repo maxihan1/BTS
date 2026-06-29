@@ -56,6 +56,68 @@ classify 원분류 qa(E2E 키워드 오판) → ui로 정정. FR-EX-01(동기 Ex
 
 ✅ 통과 (직접 adversarial sanity check — 완료된 FR 프론트 단계라 office-hours/design-shotgun 부적합, 메모리 bts-spec-office-hours-mismatch). gap 8건 전부 spec 내 해소(Maxi 결정 추가 불요).
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 베이스: `apps/web/src/`. 전부 프론트 + E2E. 백엔드 변경 0.
+> 모듈 검증: `pnpm --filter web lint typecheck test` + `pnpm --filter web test:e2e`(qa).
+
+### Task 1. `@/api/search` 비동기 export-jobs 클라이언트 3종 + Zod 스키마
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/search.ts`, `apps/web/src/api/search.test.ts`]
+- depends-on: []
+
+**RED**: `search.test.ts`에 추가 — (a) `submitExportJob({projectKey,query,format,columns})` → `POST /api/v1/search/export-jobs` → `{jobId, status:"PENDING"}` 반환(MSW 202), (b) `fetchExportJobStatus(jobId)` → `GET .../{id}` → `exportJobStatusSchema` 파싱 결과 반환(progress/status/downloadReady, errorCode·rowCount nullable 검증), (c) `downloadExportJobResult(jobId)` → `GET .../{id}/download` → `{blob, filename}`(Content-Disposition 파싱, exportIssues 패턴 미러), (d) 404/409 시 ApiError throw. → 함수/스키마 없음 fail.
+
+**GREEN**: `exportJobStatusSchema`(z.object: jobId, status, progress(int 0~100), rowCount nullable, format, errorCode nullable, downloadReady boolean) + 3 함수. 전부 `apiFetch` 경유(raw fetch 금지). submit은 apiPost 또는 apiFetch+수동 파싱(202라 Spring DataResponse 아님 — exportIssues처럼 직접).
+
+**REFACTOR**: `SEARCH_ERROR_CODES`에 `EXPORT_LIMIT_EXCEEDED`/`EXPORT_NOT_READY`/`EXPORT_STORAGE_ERROR` 추가(백엔드 SearchErrorCodes 정본 1:1) + JSDoc(폴링 계약 — 종단 상태 COMPLETED/FAILED).
+
+**검증**: `pnpm --filter web test -- src/api/search.test.ts`
+
+### Task 2. ExportDialog 4단계 상태 머신 확장 (자동분기 + 폴링 + 다운로드)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/search/ExportDialog.tsx`, `apps/web/src/components/search/ExportDialog.test.tsx`]
+- depends-on: [1]
+
+**RED**: `ExportDialog.test.tsx`에 추가(기존 vi.mock('@/api/search') 패턴 — `submitExportJob`/`fetchExportJobStatus`/`downloadExportJobResult` mock 추가) — (a) **S1 회귀**: 동기 성공 → triggerBlobDownload + onClose(기존 테스트 무변경 통과), (b) **S2 자동분기**: `exportIssues` reject `ApiError(400,{errorCode:"SEARCH_EXPORT_LIMIT_EXCEEDED",resultCount:50000})` → 확인 단계("50,000건"·"백그라운드") 표시 → "백그라운드 내보내기" 클릭 → submitExportJob 호출 → 폴링 진행률 표시 → fetchExportJobStatus가 COMPLETED+downloadReady 반환 → "다운로드" 버튼 → 클릭 시 downloadExportJobResult+triggerBlobDownload, (c) **S3 FAILED**: 폴링 FAILED(errorCode LIMIT_EXCEEDED) → "10만건 초과" 사유 표시, (d) **FR-7 cleanup**: 다이얼로그 닫으면 추가 폴링 호출 없음(타이머 advance 후 fetch 횟수 불변), (e) 기타 동기 에러(LIMIT_EXCEEDED 아님) → 폼 유지 인라인 표시. → phase 전환 미구현 fail.
+
+**GREEN**: `ExportForm`에 `phase: 'form'|'confirmAsync'|'tracking'|'done'` 상태 + `jobId`/`asyncResult`/`resultCount` 상태. 동기 mutation onError에서 `isLimitExceeded(error)` 판별 → confirmAsync 전환. confirmAsync "백그라운드" → submitExportJob → jobId 설정 → tracking. 폴링 = `useQuery({queryKey:['export-job',jobId], queryFn:()=>fetchExportJobStatus(jobId), enabled:jobId!=null, refetchInterval: data => isTerminal(data?.status) ? false : 1500})`. status 종단 시 done 전환. done에서 downloadReady면 "다운로드" 버튼.
+
+**REFACTOR**: `EXPORT_FAILURE_MESSAGES` errorCode→한국어 매핑(정적 상수) + 진행률 바 `role="progressbar"` `aria-valuenow`/`aria-valuemin=0`/`aria-valuemax=100` + 상태전환 `role="status"`/`role="alert"`(a11y NFR-2) + KDoc(상태 머신 다이어그램·폴링 cleanup 근거).
+
+**검증**: `pnpm --filter web test -- src/components/search/ExportDialog.test.tsx`
+
+### Task 3. E2E 대용량 자동분기 happy path + MSW stateful export-jobs 핸들러
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/src/mocks/search-handlers.ts`, `apps/web/src/mocks/search-fixtures.ts`, `apps/web/e2e/export.spec.ts`]
+- depends-on: [1, 2]
+
+**RED/시나리오**: `export.spec.ts`에 추가 — E2E-1: `/search` 대용량 쿼리 → "내보내기" → (MSW 동기 400 LIMIT_EXCEEDED) → 비동기 제안 표시 → "백그라운드 내보내기" → 진행률 표시 → 폴링이 COMPLETED 도달 → "완료"+"다운로드" 표시 → "다운로드" 클릭 시 download 요청 발생. MSW: `POST /search/export-jobs`(202+jobId), `GET /search/export-jobs/:id`(**stateful — 호출 횟수에 따라 PENDING→RUNNING→COMPLETED 진행**, 메모리 msw-mutation-stateful-refetch / msw-derived-behavior-shared-store-e2e — 브라우저 시드가능 공유 store), `GET /search/export-jobs/:id/download`(blob). 다운로드 실제 저장은 opaque일 수 있어 요청 발생 검증으로 한정(메모리 fr-mv-01 opaque 한계).
+
+**GREEN**: MSW stateful 핸들러(공유 store 폴링 카운터) + export.spec.ts 시나리오.
+
+**REFACTOR**: 시드 헬퍼 + 시나리오 토글(localStorage 플래그, 메모리 e2e-msw-scenario-toggle) — 기존 동기 export.spec 무회귀 보장.
+
+**검증**: `pnpm --filter web test:e2e -- export.spec.ts` + 모듈 전체 `pnpm --filter web lint typecheck test`
+
+## Plan 메타
+
+- task 수: 3 (각 TDD 사이클)
+- wave 예상 (depends-on + files 교집합 기반):
+  - W1: T1(api 클라이언트)
+  - W2: T2(ExportDialog: 1)
+  - W3: T3(E2E+MSW: 1,2)
+  - 직렬 사슬 — 프론트 단일 SPA 의존 + 다른 파일이라 파일충돌은 없으나 코드 의존으로 순차
+- 예상 시간: 직렬 ~15분
+- TDD 강제: yes (test 커밋이 feat 커밋보다 먼저 — 단 ExportDialog는 기존 테스트 확장)
+- 추가 검증: lint + typecheck + vitest + build(T1·T2) / playwright E2E(T3, qa-engineer)
+- 백엔드 변경 0 — 순수 프론트 + E2E. BC 격리(search 프론트 관례 `@/api/search` 확장)
+- 신규 의존성: 0 (TanStack Query·Radix·Zod 기존)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
