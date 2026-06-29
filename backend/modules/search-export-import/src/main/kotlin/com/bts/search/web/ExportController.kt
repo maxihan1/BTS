@@ -73,20 +73,16 @@ class ExportController(
     fun export(
         @Valid @RequestBody request: ExportRequest,
     ): ResponseEntity<ByteArray> {
-        // actor 추출은 리소스 조회/파싱보다 먼저 수행한다(probe 차단 — 교훈 auth-extraction-before-resource-lookup).
         val actorId = currentActorId()
         log.info(
-            "ExportController.export projectKey={} format={} columnsCount={} actor={}",
+            "export projectKey={} format={} cols={} actor={}",
             request.projectKey,
             request.format,
             request.columns?.size,
             actorId,
         )
 
-        // Bean Validation(@field:*) 위에 명시적 검증을 추가한다.
-        // Hibernate Validator 없는 환경에서도 동작하도록 한다.
         validateRequest(request)
-
         val format = parseFormat(request.format)
         val columns = ExportColumn.parse(request.columns)
 
@@ -98,7 +94,6 @@ class ExportController(
                 columns = columns,
                 viewerUserId = actorId,
             )
-
         return ResponseEntity.ok()
             .header(HttpHeaders.CONTENT_DISPOSITION, buildContentDisposition(result.filename))
             .contentType(MediaType.parseMediaType(result.contentType))
