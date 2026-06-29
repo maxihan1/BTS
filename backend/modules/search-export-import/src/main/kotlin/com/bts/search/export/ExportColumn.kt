@@ -47,7 +47,7 @@ enum class ExportColumn(val headerLabel: String) {
             SUMMARY -> hit.summary
             TYPE -> hit.typeKey
             STATUS -> hit.currentStateKey
-            ASSIGNEE_ID -> hit.assigneeId?.toString() ?: ""
+            ASSIGNEE_ID -> hit.assigneeId?.toString().orEmpty()
             PRIORITY -> hit.priority.toString()
             PRIORITY_NAME -> hit.priorityName
             PROJECT -> hit.projectKey

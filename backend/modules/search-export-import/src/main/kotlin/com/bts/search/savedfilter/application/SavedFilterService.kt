@@ -342,7 +342,7 @@ class SavedFilterService(
         val ids = filters.mapNotNull { it.id }.toSet()
         val sharesByFilter = shareRepository.findByFilterIds(ids)
         return filters.map { filter ->
-            val filterShares = filter.id?.let { sharesByFilter[it] } ?: emptyList()
+            val filterShares = filter.id?.let { sharesByFilter[it] }.orEmpty()
             SavedFilterWithShares(filter, filterShares)
         }
     }

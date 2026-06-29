@@ -290,10 +290,17 @@ class SavedFilterIntegrationTest {
     }
 
     companion object {
-        /** JVM 단위 singleton PostgreSQL container — 통합테스트 격리(T3와 별도 DB). */
+        /**
+         * JVM 단위 singleton PostgreSQL container — 통합테스트 격리(T3와 별도 DB).
+         * 이미지 = quay.io/tembo/pg16-pgmq:latest — FR-EX-02 V602(pgmq 확장 + pgmq.create) 가 마이그레이션 체인에
+         * 포함되어 postgres:16-alpine 으로는 적용 실패하므로 tembo 이미지 사용 (ADR 2026-05-22-pgmq-postgres-image).
+         */
         @JvmStatic
         val pg: PostgreSQLContainer<*> =
-            PostgreSQLContainer(DockerImageName.parse("postgres:16-alpine"))
+            PostgreSQLContainer(
+                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
+                    .asCompatibleSubstituteFor("postgres"),
+            )
                 .withDatabaseName("bts_savedfilter_it")
                 .withUsername("bts")
                 .withPassword("bts_test")

@@ -30,3 +30,30 @@ CREATE TABLE saved_filter_shares (
 
 CREATE INDEX idx_saved_filter_shares_filter ON saved_filter_shares (filter_id);
 CREATE INDEX idx_saved_filter_shares_lookup ON saved_filter_shares (share_type, target_id);
+
+-- V602 export_jobs 구조 미러 (codegen 입력, V602 CREATE TABLE 과 정확히 일치 유지 — FR-EX-02)
+-- 주의: pgmq.create / CREATE EXTENSION 은 미포함 — jOOQ codegen 은 public 스키마만 introspect 하므로
+-- pgmq 큐 메타는 불필요하고, codegen 컨테이너는 alpine(jdbc:tc:postgresql:16-alpine) 유지(jooq-init_codegen-mirror).
+
+CREATE TABLE export_jobs (
+    id                 UUID PRIMARY KEY,
+    project_key        TEXT NOT NULL,
+    query              TEXT NOT NULL,
+    format             TEXT NOT NULL,
+    columns            TEXT,
+    requester_user_id  UUID NOT NULL,
+    status             TEXT NOT NULL DEFAULT 'PENDING',
+    progress           INT  NOT NULL DEFAULT 0,
+    row_count          BIGINT,
+    result_object_key  TEXT,
+    error_code         TEXT,
+    expires_at         TIMESTAMPTZ,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    started_at         TIMESTAMPTZ,
+    completed_at       TIMESTAMPTZ,
+    CONSTRAINT chk_export_jobs_status CHECK (status IN ('PENDING','RUNNING','COMPLETED','FAILED')),
+    CONSTRAINT chk_export_jobs_format CHECK (format IN ('CSV','XLSX'))
+);
+
+CREATE INDEX idx_export_jobs_requester ON export_jobs (requester_user_id, created_at DESC);
+CREATE INDEX idx_export_jobs_expires ON export_jobs (expires_at) WHERE expires_at IS NOT NULL;
