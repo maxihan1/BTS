@@ -123,48 +123,33 @@ describe('timelineLabels.row', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('timelineLabels.zoom', () => {
-  /**
-   * GREEN 전에는 zoom 속성이 없으므로 unknown 경유 캐스팅으로 런타임 실패를 유도한다.
-   * GREEN에서 timelineLabels.zoom 추가 후 직접 접근으로 교체 예정 (REFACTOR).
-   */
-  type ZoomSection = {
-    week: string
-    month: string
-    quarter: string
-    groupAriaLabel: string
-    zoomInAriaLabel: string
-    zoomOutAriaLabel: string
-  }
-  const zoom = (timelineLabels as unknown as { zoom: ZoomSection }).zoom
-
   it('week는 "주"이다', () => {
-    expect(zoom.week).toBe('주')
+    expect(timelineLabels.zoom.week).toBe('주')
   })
 
   it('month는 "월"이다', () => {
-    expect(zoom.month).toBe('월')
+    expect(timelineLabels.zoom.month).toBe('월')
   })
 
   it('quarter는 "분기"이다', () => {
-    expect(zoom.quarter).toBe('분기')
+    expect(timelineLabels.zoom.quarter).toBe('분기')
   })
 
   it('groupAriaLabel이 비어있지 않다', () => {
-    expect(zoom.groupAriaLabel.length).toBeGreaterThan(0)
+    expect(timelineLabels.zoom.groupAriaLabel.length).toBeGreaterThan(0)
   })
 
   it('zoomInAriaLabel은 "확대"이다', () => {
-    expect(zoom.zoomInAriaLabel).toBe('확대')
+    expect(timelineLabels.zoom.zoomInAriaLabel).toBe('확대')
   })
 
   it('zoomOutAriaLabel은 "축소"이다', () => {
-    expect(zoom.zoomOutAriaLabel).toBe('축소')
+    expect(timelineLabels.zoom.zoomOutAriaLabel).toBe('축소')
   })
 
   it('zoom 섹션 모든 값이 콜론으로 끝나지 않는다', () => {
     // collectStringLeaves가 zoom 추가 시 자동 커버하지만 명시 단언으로 이중 보장
-    expect(zoom).toBeDefined()
-    Object.values(zoom).forEach((v) => {
+    Object.values(timelineLabels.zoom).forEach((v) => {
       expect(v.trimEnd()).not.toMatch(/:$/)
     })
   })
