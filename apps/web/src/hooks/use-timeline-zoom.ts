@@ -25,6 +25,30 @@ const KEY_ZOOM_MAP: Readonly<Record<string, ZoomLevel>> = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 헬퍼
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 이벤트 타깃이 텍스트 편집 가능한 요소인지 판별한다.
+ *
+ * - `HTMLInputElement` / `HTMLTextAreaElement`: 기본 입력 요소
+ * - `isContentEditable`: 실제 브라우저에서 부모 상속까지 포함
+ * - `getAttribute('contenteditable') === 'true'`: jsdom 환경 대응 폴백
+ *
+ * @param target keydown 이벤트의 event.target
+ * @returns 편집 가능 요소이면 true
+ */
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+    return true
+  }
+  if (target instanceof HTMLElement) {
+    return target.isContentEditable || target.getAttribute('contenteditable') === 'true'
+  }
+  return false
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 타입
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -65,17 +89,7 @@ export function useTimelineZoom(): TimelineZoomResult {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
-      const target = event.target
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        // isContentEditable: 실제 브라우저(부모 상속 포함).
-        // getAttribute 폴백: jsdom에서 isContentEditable 계산 미지원 환경 대응.
-        (target instanceof HTMLElement &&
-          (target.isContentEditable || target.getAttribute('contenteditable') === 'true'))
-      ) {
-        return
-      }
+      if (isEditableTarget(event.target)) return
 
       const level = KEY_ZOOM_MAP[event.key]
       if (level !== undefined) {
