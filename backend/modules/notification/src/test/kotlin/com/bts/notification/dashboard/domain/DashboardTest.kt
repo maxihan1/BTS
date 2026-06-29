@@ -58,9 +58,13 @@ class DashboardTest : DescribeSpec({
     // ── layout 크기 불변식 (C4) ─────────────────────────────────────────────────
 
     describe("Dashboard.create — layout 크기 불변식") {
-        it("layout 이 64KB 이하이면 허용된다") {
-            // 65000바이트짜리 유효한 JSON 문자열 — 큰따옴표 2바이트 + 내용 64998바이트
-            val layout = "\"" + "x".repeat(64998) + "\""
+        it("큰 유효 배열(64KB 이하)이면 허용된다") {
+            // text_widget 가젯 타일 7개, 각 markdown ~9000자 — 합계 약 63KB (배열-only 강화 이후 정석)
+            val markdown = "x".repeat(9000)
+            val tiles = (1..7).joinToString(",") { idx ->
+                """{"i":"t$idx","x":0,"y":0,"w":4,"h":3,"gadgetType":"text_widget","config":{"markdown":"$markdown"}}"""
+            }
+            val layout = "[$tiles]"
             buildDashboard(layout = layout).layout shouldBe layout
         }
 
@@ -68,13 +72,6 @@ class DashboardTest : DescribeSpec({
             // 65538바이트짜리 유효한 JSON 문자열 — 큰따옴표 2바이트 + 내용 65536바이트
             val largeLayout = "\"" + "a".repeat(65536) + "\""
             shouldThrow<DashboardDomainException> { buildDashboard(layout = largeLayout) }
-        }
-
-        // N1 boundary-exact
-        it("layout 이 정확히 65536바이트이면 허용된다") {
-            // 큰따옴표 2바이트 + 내용 65534바이트 = 65536바이트의 유효한 JSON 문자열
-            val exactLayout = "\"" + "a".repeat(65534) + "\""
-            buildDashboard(layout = exactLayout).layout shouldBe exactLayout
         }
 
         it("layout 이 정확히 65537바이트이면 예외를 던진다") {
@@ -91,8 +88,8 @@ class DashboardTest : DescribeSpec({
             buildDashboard(layout = "[]").layout shouldBe "[]"
         }
 
-        it("유효한 JSON 객체이면 허용된다") {
-            buildDashboard(layout = """{"key":"value"}""").layout shouldBe """{"key":"value"}"""
+        it("유효한 JSON 객체이면 예외를 던진다") {
+            shouldThrow<DashboardDomainException> { buildDashboard(layout = """{"key":"value"}""") }
         }
 
         it("비-JSON 문자열이면 예외를 던진다") {
@@ -253,6 +250,94 @@ class DashboardTest : DescribeSpec({
                     now = laterNow,
                 )
             patched.sharedUserIds shouldBe emptySet()
+        }
+    }
+
+    // ── 가젯-aware layout 검증 ────────────────────────────────────────────────────
+
+    describe("Dashboard — layout 가젯-aware 검증") {
+        it("유효한 gadget 항목이면 허용된다") {
+            val layout =
+                """[{"i":"g1","x":0,"y":0,"w":4,"h":3,"gadgetType":"issue_count","config":{"aql":"status = Open"}}]"""
+            buildDashboard(layout = layout).layout shouldBe layout
+        }
+
+        it("legacy 타일(gadgetType 없음)이면 허용된다") {
+            val layout = """[{"i":"t1","x":0,"y":0,"w":4,"h":3,"title":"내 위젯"}]"""
+            buildDashboard(layout = layout).layout shouldBe layout
+        }
+
+        it("빈 배열이면 허용된다") {
+            buildDashboard(layout = "[]").layout shouldBe "[]"
+        }
+
+        it("알 수 없는 gadgetType 이면 예외를 던진다") {
+            val layout = """[{"i":"g1","x":0,"y":0,"w":4,"h":3,"gadgetType":"unknown_type"}]"""
+            shouldThrow<DashboardDomainException> { buildDashboard(layout = layout) }
+        }
+
+        it("gadgetType 대소문자가 다르면 예외를 던진다 — Issue_Count") {
+            val layout = """[{"i":"g1","x":0,"y":0,"w":4,"h":3,"gadgetType":"Issue_Count"}]"""
+            shouldThrow<DashboardDomainException> { buildDashboard(layout = layout) }
+        }
+
+        it("enabled=false 인 gadgetType(pie_chart)이면 예외를 던진다") {
+            val layout =
+                """[{"i":"g1","x":0,"y":0,"w":4,"h":3,"gadgetType":"pie_chart","config":{"field":"status"}}]"""
+            shouldThrow<DashboardDomainException> { buildDashboard(layout = layout) }
+        }
+
+        it("config 형식 위반(text_widget markdown 누락)이면 예외를 던진다") {
+            val layout = """[{"i":"g1","x":0,"y":0,"w":4,"h":3,"gadgetType":"text_widget"}]"""
+            shouldThrow<DashboardDomainException> { buildDashboard(layout = layout) }
+        }
+
+        it("항목에 i 가 없으면 예외를 던진다") {
+            val layout = """[{"x":0,"y":0,"w":4,"h":3}]"""
+            shouldThrow<DashboardDomainException> { buildDashboard(layout = layout) }
+        }
+
+        it("i 가 빈 문자열이면 예외를 던진다") {
+            val layout = """[{"i":"","x":0,"y":0,"w":4,"h":3}]"""
+            shouldThrow<DashboardDomainException> { buildDashboard(layout = layout) }
+        }
+
+        it("i 가 배열 내 중복이면 예외를 던진다") {
+            val layout = """[{"i":"dup","x":0,"y":0,"w":4,"h":3},{"i":"dup","x":4,"y":0,"w":4,"h":3}]"""
+            shouldThrow<DashboardDomainException> { buildDashboard(layout = layout) }
+        }
+
+        it("x 가 음수이면 예외를 던진다") {
+            val layout = """[{"i":"g1","x":-1,"y":0,"w":4,"h":3}]"""
+            shouldThrow<DashboardDomainException> { buildDashboard(layout = layout) }
+        }
+
+        it("w 가 0 이면 예외를 던진다") {
+            val layout = """[{"i":"g1","x":0,"y":0,"w":0,"h":3}]"""
+            shouldThrow<DashboardDomainException> { buildDashboard(layout = layout) }
+        }
+
+        it("항목이 51개이면 예외를 던진다") {
+            val items = (1..51).joinToString(",") { """{"i":"g$it","x":0,"y":0,"w":4,"h":3}""" }
+            val layout = "[$items]"
+            shouldThrow<DashboardDomainException> { buildDashboard(layout = layout) }
+        }
+
+        it("applyPatch 도 가젯-aware 검증을 수행한다") {
+            // create() 경로는 buildDashboard(layout = ...) 호출 테스트들이 커버.
+            // 여기서는 applyPatch 경로를 별도 확인한다.
+            val original = buildDashboard()
+            val badLayout = """[{"i":"g1","x":0,"y":0,"w":4,"h":3,"gadgetType":"unknown_type"}]"""
+            shouldThrow<DashboardDomainException> {
+                original.applyPatch(
+                    name = null,
+                    description = null,
+                    visibility = null,
+                    layout = badLayout,
+                    sharedUserIds = null,
+                    now = laterNow,
+                )
+            }
         }
     }
 })
