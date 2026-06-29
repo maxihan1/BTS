@@ -99,12 +99,12 @@ FR-TL-01이 만든 자체 div 기반 Gantt(`GanttChart.tsx` — `position:absolu
 
 ## 측정 가능한 완료 기준
 
-- [ ] FR1~FR7 구현 + TDD(test 커밋 우선).
-- [ ] `computeDependencyLines`/`flattenVisibleRows` 순수함수 단위 테스트(정상/접힘/미존재/상호/self).
-- [ ] DependencyOverlay 컴포넌트 테스트(라인 수, 클릭 강조 토글).
-- [ ] api/hook 테스트(MSW 정상/truncated).
-- [ ] E2E: 의존 라인 실렌더 + 클릭 강조 + 기존 timeline 시나리오 무회귀.
-- [ ] `pnpm verify`(lint+typecheck+test+build) 통과.
+- [x] FR1~FR7 구현 + TDD(test 커밋 우선). (T1~T6 + P1 hot-fix)
+- [x] `computeDependencyLines`/`flattenVisibleRows` 순수함수 단위 테스트(정상/접힘/미존재/상호/self).
+- [x] DependencyOverlay 컴포넌트 테스트(라인 수, 클릭 강조 토글, pointer-events 조건부).
+- [x] api/hook 테스트(MSW 정상/truncated).
+- [x] E2E: 의존 라인 실렌더 + 클릭 강조 + 막대 클릭 통과(P1) + 기존 timeline 무회귀 (9/9).
+- [x] lint+typecheck+test(4863)+build 통과.
 
 ## Brainstorming Check
 
