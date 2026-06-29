@@ -193,7 +193,9 @@ export interface TimelinePageProps {
  *
  * - useTimeline(projectKey)로 타임라인 아이템 목록 조회.
  * - useQuery(['users'], fetchUsers)로 사용자 목록 조회 → issueKey→displayName 매핑 (C2).
- * - 상태 분기: 로딩(Skeleton), 403(접근거부 S6), 빈 상태(S4 안내), 정상(GanttChart + truncated 배너 S5).
+ * - useTimelineZoom()으로 줌 레벨 localStorage 영속 + 단축키(1/2/3) 처리 (FR-TL-03).
+ * - 상태 분기: 로딩(Skeleton), 403(접근거부 S6), 빈 상태(S4 안내 + 줌 컨트롤 미렌더 EC1),
+ *   정상(TimelineZoomControl 최상단 + truncated 배너 S5 + GanttChart).
  * - onSelectIssue → navigate /issues/$key.
  *
  * @param projectKey 프로젝트 식별 키
