@@ -1,4 +1,4 @@
-// 타임라인 MSW 핸들러 동작 검증 테스트 (FR-TL-01 D6 Task-4)
+// 타임라인 MSW 핸들러 동작 검증 테스트 (FR-TL-01 D6 Task-4 + FR-TL-02 D6 Task-3)
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import {
@@ -6,8 +6,10 @@ import {
   timelineForbiddenHandler,
   timelineTruncatedHandler,
   timelineEmptyHandler,
+  timelineDepsTruncatedHandler,
+  timelineDepsEmptyHandler,
 } from './timeline-handlers'
-import { BTS_TIMELINE_ITEMS, TRUNCATED_TIMELINE_ITEMS } from './timeline-fixtures'
+import { BTS_TIMELINE_ITEMS, TRUNCATED_TIMELINE_ITEMS, BTS_TIMELINE_DEPS } from './timeline-fixtures'
 
 const server = setupServer(...timelineHandlers)
 
@@ -36,6 +38,16 @@ interface TimelineResponse {
   truncated: boolean
 }
 
+interface DepEdge {
+  blockerKey: string
+  blockedKey: string
+}
+
+interface DepsResponse {
+  deps: DepEdge[]
+  truncated: boolean
+}
+
 interface DataResponse<T> {
   data: T
 }
@@ -51,6 +63,10 @@ interface ProblemDetail {
 
 async function getTimeline(projectKey: string): Promise<Response> {
   return fetch(`/api/v1/timeline?project=${encodeURIComponent(projectKey)}`)
+}
+
+async function getTimelineDeps(projectKey: string): Promise<Response> {
+  return fetch(`/api/v1/timeline/deps?project=${encodeURIComponent(projectKey)}`)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -307,5 +323,122 @@ describe('unit test override 핸들러', () => {
     const body = (await res.json()) as DataResponse<TimelineResponse>
     expect(body.data.truncated).toBe(false)
     expect(body.data.items.length).toBeGreaterThan(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/timeline/deps?project=BTS — deps 기본 시나리오 (FR-TL-02 Task-3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GET /api/v1/timeline/deps?project=BTS', () => {
+  it('200 DataResponse 봉투 — { data: { deps, truncated } }', async () => {
+    const res = await getTimelineDeps('BTS')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<DepsResponse>
+    expect(body).toHaveProperty('data')
+    expect(body.data).toHaveProperty('deps')
+    expect(body.data).toHaveProperty('truncated')
+    expect(typeof body.data.truncated).toBe('boolean')
+  })
+
+  it('deps 배열이 BTS 픽스처와 정합 — BTS 타임라인 막대 키 쌍 포함', async () => {
+    const res = await getTimelineDeps('BTS')
+    const body = (await res.json()) as DataResponse<DepsResponse>
+    expect(body.data.deps).toEqual(BTS_TIMELINE_DEPS)
+  })
+
+  it('truncated=false (기본)', async () => {
+    const res = await getTimelineDeps('BTS')
+    const body = (await res.json()) as DataResponse<DepsResponse>
+    expect(body.data.truncated).toBe(false)
+  })
+
+  it('엣지 blockerKey/blockedKey 모두 BTS_TIMELINE_ITEMS 키 내 — 라인 렌더 정합 보장', async () => {
+    const validKeys = new Set(BTS_TIMELINE_ITEMS.map((i) => i.key))
+    const res = await getTimelineDeps('BTS')
+    const body = (await res.json()) as DataResponse<DepsResponse>
+    for (const dep of body.data.deps) {
+      expect(validKeys.has(dep.blockerKey)).toBe(true)
+      expect(validKeys.has(dep.blockedKey)).toBe(true)
+    }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/timeline/deps?project=TRUNCATED — deps truncated 시나리오
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GET /api/v1/timeline/deps?project=TRUNCATED', () => {
+  it('200 — truncated=true 반환', async () => {
+    const res = await getTimelineDeps('TRUNCATED')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<DepsResponse>
+    expect(body.data.truncated).toBe(true)
+  })
+
+  it('deps 배열 존재 (부분 목록)', async () => {
+    const res = await getTimelineDeps('TRUNCATED')
+    const body = (await res.json()) as DataResponse<DepsResponse>
+    expect(body.data.deps.length).toBeGreaterThan(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/timeline/deps?project=EMPTY — deps 빈 응답 시나리오
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GET /api/v1/timeline/deps?project=EMPTY', () => {
+  it('200 — deps 빈 배열, truncated=false', async () => {
+    const res = await getTimelineDeps('EMPTY')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<DepsResponse>
+    expect(body.data.deps).toHaveLength(0)
+    expect(body.data.truncated).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/timeline/deps?project=UNKNOWN — 알 수 없는 프로젝트 폴백
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GET /api/v1/timeline/deps?project=UNKNOWN — 알 수 없는 프로젝트', () => {
+  it('200 — deps 빈 배열 폴백', async () => {
+    const res = await getTimelineDeps('UNKNOWN_PROJECT_KEY')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<DepsResponse>
+    expect(body.data.deps).toHaveLength(0)
+    expect(body.data.truncated).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// deps unit test override 핸들러 — server.use(handler) 시나리오 강제
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('deps unit test override 핸들러', () => {
+  it('timelineDepsTruncatedHandler → 항상 truncated=true', async () => {
+    server.use(timelineDepsTruncatedHandler)
+    const res = await getTimelineDeps('BTS')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<DepsResponse>
+    expect(body.data.truncated).toBe(true)
+    expect(body.data.deps.length).toBeGreaterThan(0)
+  })
+
+  it('timelineDepsEmptyHandler → 항상 deps=[], truncated=false', async () => {
+    server.use(timelineDepsEmptyHandler)
+    const res = await getTimelineDeps('BTS')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<DepsResponse>
+    expect(body.data.deps).toHaveLength(0)
+    expect(body.data.truncated).toBe(false)
+  })
+
+  it('afterEach resetHandlers 후 — 기본 BTS deps 응답으로 복구됨', async () => {
+    const res = await getTimelineDeps('BTS')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<DepsResponse>
+    expect(body.data.truncated).toBe(false)
+    expect(body.data.deps.length).toBeGreaterThan(0)
   })
 })
