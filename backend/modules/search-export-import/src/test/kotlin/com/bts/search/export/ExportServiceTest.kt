@@ -50,8 +50,11 @@ class ExportServiceTest {
     /** 파서가 성공적으로 처리하는 단순 AQL 쿼리. */
     private val validQuery = "status = open"
 
-    /** ORDER BY 절을 포함한 AQL 쿼리. sort 반영 검증에 사용. */
-    private val queryWithSort = "status = open ORDER BY updatedAt DESC"
+    /**
+     * ORDER BY 절을 포함한 AQL 쿼리. sort 반영 검증에 사용.
+     * AQL SORTABLE_FIELDS는 snake_case(`updated_at`)를 사용한다.
+     */
+    private val queryWithSort = "status = open ORDER BY updated_at DESC"
 
     /** 괄호 불균형 — AqlSyntaxException을 유발하는 문법 오류 쿼리. */
     private val malformedQuery = "("
