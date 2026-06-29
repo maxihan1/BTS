@@ -92,12 +92,12 @@ export function nextZoomOut(level: ZoomLevel): ZoomLevel {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * URL 쿼리파라미터 등 외부 문자열을 ZoomLevel 로 안전하게 변환한다.
+ * localStorage 등 외부 문자열을 ZoomLevel 로 안전하게 변환한다.
  *
  * ZOOM_LEVELS 화이트리스트에 없거나 null 이면 DEFAULT_ZOOM('month') 를 반환한다.
- * 이를 통해 잘못된 파라미터가 들어와도 타임라인이 기본 상태로 동작한다.
+ * 이를 통해 신뢰할 수 없는 외부 값이 들어와도 타임라인이 기본 상태로 동작한다.
  *
- * @param raw URL 쿼리 파라미터 값 또는 null
+ * @param raw localStorage 등 외부에서 읽은 문자열(신뢰 불가), 또는 null
  * @returns 유효한 ZoomLevel
  */
 export function parseZoomLevel(raw: string | null): ZoomLevel {
