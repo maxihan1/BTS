@@ -1,11 +1,14 @@
-// 타임라인 레이아웃 순수 함수 단위 테스트 (FR-TL-01 D6)
+// 타임라인 레이아웃 순수 함수 단위 테스트 (FR-TL-01 D6 / FR-TL-02 D6)
 import { describe, it, expect } from 'vitest'
 import type { TimelineItem } from '@/api/timeline'
 import {
   computeDateRange,
   computeBarGeometry,
   assembleEpicGroups,
+  flattenVisibleRows,
+  computeDependencyLines,
 } from './timeline-layout'
+import type { TimelineGroup, DependencyEdge } from './timeline-layout'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처 헬퍼
@@ -260,5 +263,157 @@ describe('assembleEpicGroups', () => {
     expect(groups).toHaveLength(1)
     expect(groups[0]?.epicItem?.key).toBe('ATLAS-1')
     expect(groups[0]?.items).toHaveLength(1)  // Epic 자신만
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// flattenVisibleRows
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('flattenVisibleRows', () => {
+  it('펼친 에픽 그룹: epic 행 + 자식 행 모두 포함, rowIndex 0부터 연속', () => {
+    const epicItem = makeItem({ key: 'EP-1', issueType: 'epic' })
+    const child1 = makeItem({ key: 'BTS-2' })
+    const child2 = makeItem({ key: 'BTS-3' })
+    const groups: TimelineGroup[] = [
+      { epicItem, items: [epicItem, child1, child2] },
+    ]
+    const rows = flattenVisibleRows(groups, new Set())
+    expect(rows).toHaveLength(3)
+    expect(rows[0]).toMatchObject({ key: 'EP-1', rowIndex: 0 })
+    expect(rows[1]).toMatchObject({ key: 'BTS-2', rowIndex: 1 })
+    expect(rows[2]).toMatchObject({ key: 'BTS-3', rowIndex: 2 })
+  })
+
+  it('접은 에픽 그룹: epic 행만 포함, 자식 제외', () => {
+    const epicItem = makeItem({ key: 'EP-1', issueType: 'epic' })
+    const child = makeItem({ key: 'BTS-2' })
+    const groups: TimelineGroup[] = [
+      { epicItem, items: [epicItem, child] },
+    ]
+    const rows = flattenVisibleRows(groups, new Set(['EP-1']))
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ key: 'EP-1', rowIndex: 0 })
+  })
+
+  it('접은 그룹 이후 rowIndex 연속 유지', () => {
+    const epic1 = makeItem({ key: 'EP-1', issueType: 'epic' })
+    const child1 = makeItem({ key: 'BTS-2' })
+    const epic2 = makeItem({ key: 'EP-2', issueType: 'epic' })
+    const child2 = makeItem({ key: 'BTS-4' })
+    const groups: TimelineGroup[] = [
+      { epicItem: epic1, items: [epic1, child1] },
+      { epicItem: epic2, items: [epic2, child2] },
+    ]
+    // EP-1 접힘: EP-1(rowIndex 0), child1 제외
+    // EP-2 펼침: EP-2(rowIndex 1), BTS-4(rowIndex 2)
+    const rows = flattenVisibleRows(groups, new Set(['EP-1']))
+    expect(rows).toHaveLength(3)
+    expect(rows[0]).toMatchObject({ key: 'EP-1', rowIndex: 0 })
+    expect(rows[1]).toMatchObject({ key: 'EP-2', rowIndex: 1 })
+    expect(rows[2]).toMatchObject({ key: 'BTS-4', rowIndex: 2 })
+  })
+
+  it('미분류 그룹: 헤더가 rowIndex 1칸 점유(결과 미포함), 아이템은 포함', () => {
+    const item1 = makeItem({ key: 'BTS-5' })
+    const item2 = makeItem({ key: 'BTS-6' })
+    const groups: TimelineGroup[] = [
+      { epicItem: null, items: [item1, item2] },
+    ]
+    const rows = flattenVisibleRows(groups, new Set())
+    // 헤더: rowIndex 0 점유, 결과 미포함
+    // BTS-5: rowIndex 1, BTS-6: rowIndex 2
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toMatchObject({ key: 'BTS-5', rowIndex: 1 })
+    expect(rows[1]).toMatchObject({ key: 'BTS-6', rowIndex: 2 })
+  })
+
+  it('GanttChart와 동일 순서: 에픽 그룹 입력순, 미분류 맨 끝', () => {
+    const epic1 = makeItem({ key: 'EP-1', issueType: 'epic' })
+    const child1 = makeItem({ key: 'BTS-2' })
+    const unclassifiedItem = makeItem({ key: 'BTS-9' })
+    const groups: TimelineGroup[] = [
+      { epicItem: epic1, items: [epic1, child1] },
+      { epicItem: null, items: [unclassifiedItem] },
+    ]
+    // EP-1(row 0), BTS-2(row 1), [미분류 헤더: row 2 미포함], BTS-9(row 3)
+    const rows = flattenVisibleRows(groups, new Set())
+    expect(rows.map((r) => r.key)).toEqual(['EP-1', 'BTS-2', 'BTS-9'])
+    expect(rows[2]).toMatchObject({ key: 'BTS-9', rowIndex: 3 })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// computeDependencyLines
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('computeDependencyLines', () => {
+  // rangeStart = 2026-07-01
+  const range = {
+    startMs: Date.UTC(2026, 6, 1),
+    endMs: Date.UTC(2026, 6, 31),
+  }
+  const DAY_WIDTH = 20
+  const ROW_HEIGHT = 32
+
+  // itemA: startDate=2026-07-01, dueDate=2026-07-05
+  //   barX = 0 * 20 = 0, barWidth = (4+1) * 20 = 100, rightEdge = 100
+  const itemA = makeItem({ key: 'BTS-1', startDate: '2026-07-01', dueDate: '2026-07-05' })
+  // itemB: startDate=2026-07-10, dueDate=2026-07-15
+  //   barX = 9 * 20 = 180, barWidth = (5+1) * 20 = 120, leftEdge = 180
+  const itemB = makeItem({ key: 'BTS-2', startDate: '2026-07-10', dueDate: '2026-07-15' })
+
+  const rowA = { key: 'BTS-1', rowIndex: 0, item: itemA }
+  const rowB = { key: 'BTS-2', rowIndex: 1, item: itemB }
+
+  it('positive control: A blocks B, 두 행 모두 보임 → 엣지 1개 + 정확한 elbow 좌표 / negative: 미존재 끝점 엣지 제외(EC1/S4)', () => {
+    // A→B: 렌더됨 (positive)
+    // A→BTS-3: BTS-3 미존재 → 제외 (negative)
+    const deps: DependencyEdge[] = [
+      { blockerKey: 'BTS-1', blockedKey: 'BTS-2' },
+      { blockerKey: 'BTS-1', blockedKey: 'BTS-3' },
+    ]
+    const lines = computeDependencyLines([rowA, rowB], range, DAY_WIDTH, ROW_HEIGHT, deps)
+
+    // positive: BTS-1 → BTS-2 존재
+    const line = lines.find((l) => l.blockerKey === 'BTS-1' && l.blockedKey === 'BTS-2')
+    expect(line).toBeDefined()
+    expect(line?.startX).toBe(100)   // barX(0) + barWidth(100)
+    expect(line?.endX).toBe(180)     // barX of BTS-2
+    expect(line?.startY).toBe(16)    // 0 * 32 + 32/2
+    expect(line?.endY).toBe(48)      // 1 * 32 + 32/2
+    expect(line?.midX).toBe(140)     // (100 + 180) / 2
+
+    // negative: BTS-1 → BTS-3 (rows에 없음) 미존재
+    const missingLine = lines.find((l) => l.blockerKey === 'BTS-1' && l.blockedKey === 'BTS-3')
+    expect(missingLine).toBeUndefined()
+  })
+
+  it('self-block(A blocks A) → 제외(EC4)', () => {
+    const deps: DependencyEdge[] = [
+      { blockerKey: 'BTS-1', blockedKey: 'BTS-1' },
+    ]
+    const lines = computeDependencyLines([rowA, rowB], range, DAY_WIDTH, ROW_HEIGHT, deps)
+    expect(lines).toHaveLength(0)
+  })
+
+  it('상호 blocks(A↔B) → 두 엣지 모두 반환(EC3)', () => {
+    const deps: DependencyEdge[] = [
+      { blockerKey: 'BTS-1', blockedKey: 'BTS-2' },
+      { blockerKey: 'BTS-2', blockedKey: 'BTS-1' },
+    ]
+    const lines = computeDependencyLines([rowA, rowB], range, DAY_WIDTH, ROW_HEIGHT, deps)
+    expect(lines).toHaveLength(2)
+    expect(lines.find((l) => l.blockerKey === 'BTS-1' && l.blockedKey === 'BTS-2')).toBeDefined()
+    expect(lines.find((l) => l.blockerKey === 'BTS-2' && l.blockedKey === 'BTS-1')).toBeDefined()
+  })
+
+  it('접힌 행(visibleRows에 없는 피차단) → 해당 엣지 제외(S4)', () => {
+    // rowB(BTS-2) absent — collapsing 시뮬레이션
+    const deps: DependencyEdge[] = [
+      { blockerKey: 'BTS-1', blockedKey: 'BTS-2' },
+    ]
+    const lines = computeDependencyLines([rowA], range, DAY_WIDTH, ROW_HEIGHT, deps)
+    expect(lines).toHaveLength(0)
   })
 })
