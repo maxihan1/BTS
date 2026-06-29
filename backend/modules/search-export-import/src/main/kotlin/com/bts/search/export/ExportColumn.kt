@@ -58,6 +58,13 @@ enum class ExportColumn(val headerLabel: String) {
 
     companion object {
         /**
+         * 컬럼 이름 → [ExportColumn] 역인덱스 맵. 클래스 로드 시 1회 생성된다.
+         *
+         * `parse` 호출마다 맵을 재생성하지 않고 여기서 O(1) 조회한다.
+         */
+        private val BY_NAME: Map<String, ExportColumn> = entries.associateBy { it.name }
+
+        /**
          * 컬럼 이름 목록을 파싱해 [ExportColumn] 목록으로 변환한다.
          *
          * null 또는 빈 목록을 전달하면 전체 9컬럼을 enum 선언 순서(표준 순서)로 반환한다.
@@ -71,10 +78,9 @@ enum class ExportColumn(val headerLabel: String) {
          */
         fun parse(names: List<String>?): List<ExportColumn> {
             if (names.isNullOrEmpty()) return entries.toList()
-            val nameMap = entries.associateBy { it.name }
             val resolved =
                 names.map { name ->
-                    nameMap[name] ?: throw SearchValidationException("지원하지 않는 컬럼: '$name'")
+                    BY_NAME[name] ?: throw SearchValidationException("지원하지 않는 컬럼: '$name'")
                 }
             return resolved.sortedBy { it.ordinal }
         }
