@@ -1,5 +1,5 @@
 // 타임라인 줌 레벨 localStorage 영속 훅 단위 테스트 (FR-TL-03)
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act, fireEvent } from '@testing-library/react'
 import { ZOOM_PRESETS } from '@/lib/timeline-zoom'
 import { useTimelineZoom } from './use-timeline-zoom'
@@ -118,6 +118,61 @@ describe('useTimelineZoom', () => {
     unmount()
     act(() => {
       fireEvent.keyDown(window, { key: '3' })
+    })
+    expect(result.current.zoomLevel).toBe('month')
+  })
+
+  // ─── C1: localStorage 안전화 ─────────────────────────────────────────────
+
+  it('T-TZ-13: localStorage.getItem throw → 기본값 month(크래시 없음)', () => {
+    const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('SecurityError: blocked')
+    })
+    try {
+      const { result } = renderHook(() => useTimelineZoom())
+      expect(result.current.zoomLevel).toBe('month')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('T-TZ-14: localStorage.setItem throw → setZoom이 throw 없이 상태만 변경', () => {
+    const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError')
+    })
+    try {
+      const { result } = renderHook(() => useTimelineZoom())
+      act(() => {
+        result.current.setZoom('quarter')
+      })
+      expect(result.current.zoomLevel).toBe('quarter')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  // ─── C3: 수식 키 가드 ────────────────────────────────────────────────────
+
+  it('T-TZ-15: ctrlKey+1 → 줌 변경 안 됨(month 유지)', () => {
+    const { result } = renderHook(() => useTimelineZoom())
+    act(() => {
+      fireEvent.keyDown(window, { key: '1', ctrlKey: true })
+    })
+    expect(result.current.zoomLevel).toBe('month')
+  })
+
+  it('T-TZ-16: metaKey+3 → 줌 변경 안 됨(month 유지)', () => {
+    const { result } = renderHook(() => useTimelineZoom())
+    act(() => {
+      fireEvent.keyDown(window, { key: '3', metaKey: true })
+    })
+    expect(result.current.zoomLevel).toBe('month')
+  })
+
+  it('T-TZ-17: altKey+1 → 줌 변경 안 됨(month 유지)', () => {
+    const { result } = renderHook(() => useTimelineZoom())
+    act(() => {
+      fireEvent.keyDown(window, { key: '1', altKey: true })
     })
     expect(result.current.zoomLevel).toBe('month')
   })
