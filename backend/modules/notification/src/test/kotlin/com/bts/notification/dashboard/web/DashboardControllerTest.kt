@@ -427,9 +427,8 @@ class DashboardControllerTest {
      * 점단언: issue_count(ISSUE 카테고리) 는 enabled=true,
      * pie_chart(CHART 카테고리) 는 enabled=false.
      *
-     * Jayway JSONPath 에서 필터 결과에 [0] 인덱싱이 동작하지 않으므로
-     * hasItem Hamcrest matcher 를 사용한다. 필터 결과는 List&lt;Boolean&gt; 이므로
-     * hasItem(true/false) 로 검증한다.
+     * Jayway JSONPath 필터 결과에 [0] 인덱싱이 동작하지 않으므로
+     * hasItem Hamcrest matcher 를 사용한다(필터 결과는 List 타입).
      */
     @Test
     fun `GET gadget-catalog enabled true 항목 6개 카운트 단언과 점단언`() {
@@ -443,12 +442,11 @@ class DashboardControllerTest {
     /**
      * CATALOG-3. 각 엔트리에 type·category·label·configFields 필드 존재.
      *
-     * text_widget 엔트리의 configFields 에 key=markdown, required=true 항목이 있음을 확인한다.
+     * text_widget 의 configFields 에 key=markdown, required=true 항목이 있는지 확인한다.
      * GadgetType 단일 출처에서 파생되므로 drift 불가.
      *
-     * 정렬 순서 검증 겸 인덱스 기반 접근 사용.
      * 정렬: category ordinal(ISSUE=0,STATIC=1,CHART=2,ACTIVITY=3) → type 알파벳 오름차순.
-     * text_widget 은 STATIC 카테고리에서 link_list 다음 → 전체 인덱스 5.
+     * text_widget 은 STATIC 에서 link_list 다음이므로 전체 인덱스 5.
      */
     @Test
     fun `GET gadget-catalog 각 엔트리 필수 필드 존재 및 text_widget configFields 단일 출처 확인`() {
