@@ -53,6 +53,14 @@ object SearchErrorCodes {
     /** 미인증. 세션 만료 등 인증 정보가 없는 경우. */
     const val SEARCH_UNAUTHENTICATED = "SEARCH_UNAUTHENTICATED"
 
+    /**
+     * 비동기 Export 결과 파일 오브젝트 스토리지(MinIO) 업로드 실패.
+     *
+     * [ExportJobProcessor] 가 MinIO 업로드 중 예외를 감지했을 때 export_jobs.error_code 에 기록된다.
+     * 클라이언트는 재시도 또는 재요청을 안내받는다.
+     */
+    const val SEARCH_EXPORT_STORAGE_ERROR = "SEARCH_EXPORT_STORAGE_ERROR"
+
     /** 분류되지 않은 서버 내부 오류. 상세는 서버 로그에만 기록한다. */
     const val SEARCH_INTERNAL_ERROR = "SEARCH_INTERNAL_ERROR"
 }
