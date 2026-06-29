@@ -77,10 +77,12 @@ data class ExportJob(
 
     companion object {
         /**
-         * 단일 Export 작업이 처리할 수 있는 최대 행 수.
+         * 비동기 Export 작업이 처리할 수 있는 최대 행 수.
          *
-         * 이 값을 초과하는 쿼리 결과는 요청 시점에 거부된다([ExportLimitExceededException]).
-         * 워커도 이 상수를 `LIMIT` 으로 사용해 DB 과부하를 방지한다.
+         * 워커([com.bts.search.export.job.application.ExportJobProcessor]) 가 count-first 로
+         * 총 건수를 확인하여 이 값 초과 시 `markFailed(SEARCH_EXPORT_LIMIT_EXCEEDED)` 를 호출하고
+         * 작업을 FAILED 로 전환한다. 동기 Export([com.bts.search.export.ExportService]) 는
+         * 별도 상수(1만)를 사용한다.
          */
         const val MAX_ROWS = 100_000L
 

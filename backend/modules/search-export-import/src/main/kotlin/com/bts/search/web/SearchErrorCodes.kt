@@ -16,9 +16,10 @@ package com.bts.search.web
  * | [SEARCH_UNKNOWN_FIELD] | 400 | 오타 등 인식할 수 없는 필드 |
  * | [SEARCH_FIELD_NOT_YET_SUPPORTED] | 400 | 후속 PR 지원 예정 필드 |
  * | [SEARCH_VALIDATION_FAILED] | 400 | DTO Bean Validation 실패 |
- * | [SEARCH_EXPORT_LIMIT_EXCEEDED] | 400 | 동기 Export 행 상한(1만) 초과 |
+ * | [SEARCH_EXPORT_LIMIT_EXCEEDED] | 400/job | 동기 1만 초과 / 비동기 워커 10만 초과 |
  * | [SEARCH_ACCESS_DENIED] | 403 | BROWSE 권한 없음 |
  * | [SEARCH_UNAUTHENTICATED] | 401 | 미인증 |
+ * | [SEARCH_NOT_FOUND] | 404 | 리소스 없음 또는 소유권 없음 |
  * | [SEARCH_INTERNAL_ERROR] | 500 | 분류되지 않은 서버 오류 |
  */
 object SearchErrorCodes {
@@ -40,10 +41,13 @@ object SearchErrorCodes {
     const val SEARCH_VALIDATION_FAILED = "SEARCH_VALIDATION_FAILED"
 
     /**
-     * 동기 Export 행 상한(1만) 초과.
+     * Export 행 상한 초과.
      *
-     * ProblemDetail extension property로 `resultCount`(실제 건수)와 `limit`(허용 상한)을 포함한다.
-     * 대용량 Export는 FR-EX-02 비동기 Export를 사용하도록 안내한다.
+     * - 동기 Export([com.bts.search.export.ExportService]): 1만 행 초과 시 즉시 예외.
+     *   ProblemDetail extension property 로 `resultCount`(실제 건수)와 `limit`(허용 상한)을 포함한다.
+     * - 비동기 Export 워커([com.bts.search.export.job.application.ExportJobProcessor]):
+     *   10만 행 초과 시 `markFailed(SEARCH_EXPORT_LIMIT_EXCEEDED)` 로 작업을 FAILED 로 전환한다.
+     *   대용량 Export 는 FR-EX-02 비동기 Export 를 사용하도록 안내한다.
      */
     const val SEARCH_EXPORT_LIMIT_EXCEEDED = "SEARCH_EXPORT_LIMIT_EXCEEDED"
 
@@ -68,6 +72,14 @@ object SearchErrorCodes {
      * 클라이언트는 GET /{id} 로 폴링하여 COMPLETED 상태를 확인 후 재시도한다.
      */
     const val SEARCH_EXPORT_NOT_READY = "SEARCH_EXPORT_NOT_READY"
+
+    /**
+     * 요청한 리소스를 찾을 수 없음.
+     *
+     * Export 작업이 존재하지 않거나 요청자가 소유하지 않은 경우.
+     * 소유권 오류도 동일 코드로 반환하여 존재 자체를 노출하지 않는다(존재 은닉).
+     */
+    const val SEARCH_NOT_FOUND = "SEARCH_NOT_FOUND"
 
     /** 분류되지 않은 서버 내부 오류. 상세는 서버 로그에만 기록한다. */
     const val SEARCH_INTERNAL_ERROR = "SEARCH_INTERNAL_ERROR"

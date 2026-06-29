@@ -8,6 +8,7 @@ import com.bts.search.aql.AqlSyntaxException
 import com.bts.search.web.SearchErrorCodes.SEARCH_ACCESS_DENIED
 import com.bts.search.web.SearchErrorCodes.SEARCH_EXPORT_NOT_READY
 import com.bts.search.web.SearchErrorCodes.SEARCH_INTERNAL_ERROR
+import com.bts.search.web.SearchErrorCodes.SEARCH_NOT_FOUND
 import com.bts.search.web.SearchErrorCodes.SEARCH_UNAUTHENTICATED
 import com.bts.search.web.SearchErrorCodes.SEARCH_VALIDATION_FAILED
 import org.slf4j.LoggerFactory
@@ -40,7 +41,7 @@ import java.time.Instant
  * - [HttpMessageNotReadableException] → 400 + [SEARCH_VALIDATION_FAILED]
  * - [MethodArgumentTypeMismatchException] → 400 + [SEARCH_VALIDATION_FAILED]
  * - [ResponseStatusException](401) → [SEARCH_UNAUTHENTICATED]
- * - [ResponseStatusException](404) → 404
+ * - [ResponseStatusException](404) → [SEARCH_NOT_FOUND]
  * - [ResponseStatusException](409) → [SEARCH_EXPORT_NOT_READY]
  * - [Exception] (fallback) → 500 + [SEARCH_INTERNAL_ERROR]
  */
@@ -181,7 +182,7 @@ class ExportJobExceptionHandler {
             when (status) {
                 HttpStatus.UNAUTHORIZED -> SEARCH_UNAUTHENTICATED to "인증이 필요합니다."
                 HttpStatus.FORBIDDEN -> SEARCH_ACCESS_DENIED to "이 작업을 수행할 권한이 없습니다."
-                HttpStatus.NOT_FOUND -> SEARCH_INTERNAL_ERROR to "요청한 리소스를 찾을 수 없습니다."
+                HttpStatus.NOT_FOUND -> SEARCH_NOT_FOUND to "요청한 리소스를 찾을 수 없습니다."
                 HttpStatus.CONFLICT -> SEARCH_EXPORT_NOT_READY to "Export 작업이 아직 완료되지 않았습니다. 잠시 후 다시 시도해 주세요."
                 HttpStatus.BAD_REQUEST -> SEARCH_VALIDATION_FAILED to "요청 값이 올바르지 않습니다."
                 else -> SEARCH_INTERNAL_ERROR to "요청을 처리할 수 없습니다."
