@@ -128,7 +128,10 @@ class StreamingExportSerializer(
                 tempFile.outputStream().use { out ->
                     xlsxWorkbook.write(out)
                 }
-                // SXSSF 백킹 임시파일 정리 — 메모리/디스크 누수 방지
+                // SXSSF 백킹 임시파일 정리 — 메모리/디스크 누수 방지.
+                // dispose() 는 POI 5.x 에서 Deprecated(close() 가 내부 호출)이지만
+                // 명시적 정리를 요구하는 스펙(task-6-e) 준수를 위해 유지한다.
+                @Suppress("DEPRECATION")
                 xlsxWorkbook.dispose()
                 xlsxWorkbook.close()
             }
