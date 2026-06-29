@@ -98,6 +98,10 @@ dependencies {
     jooqGenerator("org.flywaydb:flyway-core:10.17.3")
     jooqGenerator("org.flywaydb:flyway-database-postgresql:10.17.3")
 
+    // MinIO Java SDK — Export 결과 오브젝트 스토리지 (issue-tracking FR-AC-01 기승인, 동일 버전)
+    // BC 격리: issue-tracking MinioClient 와 별도 빈/버킷(bts-exports) 사용 (ADR §D4)
+    implementation("io.minio:minio:8.5.17")
+
     // ── 테스트 ─────────────────────────────────────────────────────────────────
     // Spring Boot 테스트 슬라이스 (JUnit Vintage 제외 — Kotest runner 사용)
     testImplementation("org.springframework.boot:spring-boot-starter-test") {
@@ -127,6 +131,8 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers:1.20.3")
     testImplementation("org.testcontainers:postgresql:1.20.3")
     testImplementation("org.testcontainers:junit-jupiter:1.20.3")
+    // Testcontainers MinIO — MinioExportStorageAdapter 통합 테스트 (FR-AC-01 기승인, 동일 버전)
+    testImplementation("org.testcontainers:minio:1.20.3")
 
     // ArchUnit — 아키텍처 규칙(BC 격리 등) 자동 검증
     testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
