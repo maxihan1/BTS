@@ -74,13 +74,13 @@ AQL 검색 결과를 CSV 또는 XLSX 파일로 **동기** 다운로드한다. �
   "projectKey": "PROJ",
   "query": "status = open AND priority = 1 ORDER BY updated_at DESC",
   "format": "CSV",
-  "columns": ["key", "summary", "currentStateKey"]
+  "columns": ["KEY", "SUMMARY", "STATUS"]
 }
 ```
 - `projectKey` (필수, NotBlank, **영숫자+하이픈 패턴 검증** — 헤더 인젝션 방어) — 검색 대상 단일 프로젝트.
 - `query` (필수, NotBlank, max 2000) — AQL. FR-SR-02 파서와 동일.
-- `format` (필수, **nullable String으로 수신 후 parse**) — `CSV` | `XLSX`. 그 외/오타 → 400 + 허용값 안내 메시지.
-- `columns` (선택) — 9필드 화이트리스트 부분집합. 빈 배열/미지정 시 전체 9컬럼. 미지원 필드명 포함 시 400. 출력 순서 = **표준 컬럼 순서 고정**(아래 표 순서, 요청 순서 무관 — 결정성).
+- `format` (**nullable String으로 수신 후 parse**) — `CSV` | `XLSX`. **미지정(null) 시 CSV 기본값**(관대한 API). 잘못된 값/오타 → 400 + 허용값 안내 메시지.
+- `columns` (선택) — **컬럼 토큰은 대문자 enum 이름**(`KEY`, `SUMMARY`, `TYPE`, `STATUS`, `ASSIGNEE_ID`, `PRIORITY`, `PRIORITY_NAME`, `PROJECT`, `UPDATED_AT`). 9필드 화이트리스트 부분집합. 빈 배열/미지정 시 전체 9컬럼. 미지원 필드명 포함 시 400. 출력 순서 = **표준 컬럼 순서 고정**(아래 표 순서, 요청 순서 무관 — 결정성).
 
 > **검증은 수동 병행.** SearchController 선례(`validateRequest()`)처럼 Hibernate Validator 부재 환경에서도 동작하도록 컨트롤러가 명시적 수동 검증을 한다(`@Valid`만 의존 금지 — false-green 회피). 검증 실패는 `SearchValidationException`(기존 400 + `SEARCH_VALIDATION_FAILED` 매핑) 경유.
 
@@ -136,7 +136,7 @@ AQL 검색 결과를 CSV 또는 XLSX 파일로 **동기** 다운로드한다. �
 | E3 | 결과 > 1만 행 | 거부(상한 초과 에러). 부분 export 안 함 |
 | E4 | AQL 문법 오류 | 400(검색과 동일 SearchSyntaxException 경로) |
 | E5 | BROWSE 권한 없음 | 403 |
-| E6 | format 누락/오타 | 400 |
+| E6 | format 미지정(null) | CSV 기본값으로 200(관대한 API). 오타는 E16 |
 | E7 | columns에 미지원 필드 | 400(화이트리스트 검증) |
 | E8 | assigneeId = null(미배정) | 빈 셀 |
 | E9 | summary에 쉼표/따옴표/개행 | CSV RFC 4180 이스케이프, XLSX는 셀 문자열 그대로 |

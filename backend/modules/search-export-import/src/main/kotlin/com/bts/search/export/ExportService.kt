@@ -37,12 +37,14 @@ import java.util.UUID
  * (ADR §C6). `@Transactional` 누락은 codereview rule 9의 false-positive이며 의도적 생략이다.
  *
  * @param searchPort AQL 검색 포트. issue-tracking 어댑터가 런타임에 주입된다.
- * @param clock 파일명 timestamp 결정을 위한 Clock. 테스트에서 고정 인스턴스를 주입한다.
+ * @param clock 파일명 timestamp 결정을 위한 Clock. search 모듈에 Clock 빈이 없으므로
+ *   [Clock.systemUTC] 기본값을 둔다(컴포넌트 스캔 시 NoSuchBeanDefinitionException 방지 —
+ *   교훈 fr-ux-03-inbox-backend-done: notification Clock 빈 부재). 테스트는 고정 인스턴스를 주입한다.
  */
 @Service
 class ExportService(
     private val searchPort: IssueSearchPort,
-    private val clock: Clock,
+    private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
     private val csvWriter = CsvExportWriter()
