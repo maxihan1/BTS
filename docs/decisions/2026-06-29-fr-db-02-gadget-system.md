@@ -50,5 +50,6 @@ FR-DB-01 선례(#176/#178). PR1 = 가젯 저장·검증 백엔드(D1~D5, notific
 - **문서 전수 동기화 필요**(CLAUDE.md §명세/범위 변경). SDD 05.11/14.2/14.3 + product `notification-dashboard.md §3.2` + fr-index를 layout-임베드 모델 + 프론트 fetch 모델로 정정. `bash scripts/verify-master-plan.sh` 통과 필수.
 - 가젯 데이터의 정확성/권한은 호출하는 기존 BC API(visibility·BROWSE 등)가 이미 보장 → notification BC는 권한 재구현 불요.
 - 집계 엔드포인트는 issue-tracking BC 소유 → cross-BC. 본 FR-DB-02 PR1/PR2와 BC가 다르므로 별도 PR.
+- **enabled 단방향 가정(Gap B 후속)**. enabled=false 타입의 저장 거부(D3)는 enabled 가 false→true 단방향으로만 진화한다는 **관례**에 의존하며 코드로 강제되지 않는다. 만약 향후 집계/선행 FR 에서 어떤 타입을 enabled=false 로 롤백하면, 그 타입을 이미 가진 대시보드의 다음 PATCH 가 400 으로 막힌다. 따라서 **enabled 플래그는 활성화(true) 방향으로만 변경**하고, 부득이한 비활성화가 필요하면 (1) 기존 저장 가젯을 grace 처리(저장 허용·노출만 차단)하는 별도 플래그를 도입하거나 (2) 데이터 마이그레이션을 동반하는 것을 후속 ADR 로 결정한다.
 - 기존 결정 충돌: FR-DB-01 ADR과는 일치(layout JSON 정신 계승). SDD/product와는 본 ADR이 deviation을 명시 채택.
 - glossary: "가젯(Gadget)" 용어를 독립 항목으로 추가 후보(현재 대시보드 항목 내 설명만 존재). Maxi 승인 후 머지 단계 동기화.

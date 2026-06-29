@@ -15,7 +15,7 @@
 
 - **S1 (가젯 배치 저장)**. Given 소유자가 대시보드를 가진 상태에서, When `PATCH /api/v1/dashboards/{id}` 의 layout 에 `{i,x,y,w,h,gadgetType,config}` 항목을 담아 보내면, Then 검증 통과 시 200 으로 저장되고 version+1.
 - **S2 (알 수 없는 gadgetType 거부)**. Given layout 항목의 gadgetType 이 카탈로그에 없으면, When 저장 시도, Then 400 NOTIF_DASHBOARD_INVALID("알 수 없는 gadgetType").
-- **S3 (config 형식 위반 거부)**. Given gadgetType 은 유효하나 config 가 타입 스키마를 위반하면(필수 키 누락/타입 불일치/길이 초과), When 저장, Then 400 NOTIF_DASHBOARD_INVALID(어떤 필드가 왜 위반인지 메시지).
+- **S3 (config 형식 위반 거부)**. Given gadgetType 은 유효하나 config 가 타입 스키마를 위반하면(필수 키 누락/타입 불일치/길이 초과), When 저장, Then 400 NOTIF_DASHBOARD_INVALID. **HTTP 응답 detail 은 기존 핸들러의 일반 메시지를 유지하고(위반 항목 i·필드·사유는 로그에만 기록)** — 예외 message 를 HTTP 로 흘리지 않는다(C3 — memory: fr-pm-04-guard-exception-message-http-leak, 기존 DashboardExceptionHandler 컨벤션). 프론트는 클라이언트측 검증으로 구체 안내.
 - **S4 (그리드 위치 위반 거부)**. Given 항목에 i 누락/중복, 또는 x·y 음수, 또는 w·h < 1, When 저장, Then 400.
 - **S5 (정적 가젯)**. Given gadgetType=text_widget(config.markdown) 또는 link_list(config.links), When 저장, Then 데이터 fetch 없이 config 자체가 콘텐츠로 보존.
 - **S6 (카탈로그 조회)**. Given 인증 사용자가, When `GET /api/v1/dashboards/gadget-catalog`, Then 가젯 타입별 메타(key·category·label·enablement·config 필드 디스크립터) 목록을 200 으로 받는다(프론트 카탈로그 모달·검증 동기화 단일 진실원천).

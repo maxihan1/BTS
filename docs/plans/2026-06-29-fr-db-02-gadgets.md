@@ -67,7 +67,7 @@ product 체크리스트(notification-dashboard.md §3.2):
 **RED** (`GadgetTypeTest.kt`):
 - `enum 은 12종(SDD 14.2) 을 정의한다` — assigned_to_me/recently_created/filter_result/issue_count/text_widget/link_list/pie_chart/bar_chart/created_vs_resolved/sprint_burndown/activity_stream/comments_recent.
 - `각 타입은 category(ISSUE/STATIC/CHART/ACTIVITY) 와 enabled 플래그를 가진다` — MVP 6=true, AGG 3·DEFERRED 3=false.
-- `text_widget 은 markdown 필수·1~10000 자 검증` (누락/초과 → 위반).
+- `text_widget 은 markdown 필수·1~10000 자 검증` (누락/초과 → 위반). **`validateConfig(null)` 및 `validateConfig({})` 둘 다 required 필드(markdown) 누락으로 위반** (C1 — null/빈객체 동등 처리 명시).
 - `link_list 는 links 1~20 of {label 1~100, url http/https ≤2000} 검증` (javascript: 스킴 → 위반, EC6).
 - `filter_result/issue_count 는 filterId(UUID)|aql(≤2000) 적어도 하나 필수` (둘 다 없음 → 위반, 둘 다 있음 → 통과, EC13).
 - `pie_chart/bar_chart 는 field enum(status|assignee|priority|issueType) 필수` (enum 밖 → 위반, EC9).
@@ -90,7 +90,13 @@ product 체크리스트(notification-dashboard.md §3.2):
 - files: [`backend/modules/notification/src/main/kotlin/com/bts/notification/dashboard/domain/Dashboard.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/domain/DashboardTest.kt`]
 - depends-on: [1]
 
-**RED** (`DashboardTest.kt` 확장 — 기존 테스트 green 유지):
+**RED-0 (B1 — 기존 테스트 역전/교체, 착수 전 필수)**. 배열-전용 강화로 기존 `DashboardTest.kt` 3개가 깨지므로 같은 RED 단계에서 함께 수정한다(실측: L94-96·L61-65·L74-78).
+- L94-96 `"유효한 JSON 객체이면 허용된다"` → **`"유효한 JSON 객체이면 예외를 던진다"`** 로 역전(`{"key":"value"}` 객체는 배열 아님 → 400).
+- L61-65·L74-78 64KB 경계 **positive** 테스트가 JSON 문자열(`"xxx"`)을 씀 → **유효한 배열 기반**으로 교체. MAX_GADGETS(50)·항목구조 검증과 충돌하지 않도록 text_widget 가젯 소수(예: 7개 × markdown ~9KB)로 ~64KB 유효 배열 구성. boundary-exact positive 는 "적당히 큰 유효 배열 허용"으로 완화 가능(정확 65536 byte 집착 불요).
+- L67-71·L80-84 **negative**(초과 → throw)는 size guard 가 배열 파싱보다 먼저 실행되면 그대로 통과(이유만 size). size guard 를 1순위로 유지.
+- 착수 전 `grep -rn "layout" backend/modules/notification/src/test/.../DashboardControllerTest.kt DashboardRepositoryTest.kt` 로 비-배열 layout 사용 여부 확인 후 있으면 동반 수정.
+
+**RED** (`DashboardTest.kt` 확장):
 - `gadget 항목을 가진 layout 은 통과한다` — `{i,x,y,w,h,gadgetType:issue_count,config:{aql}}`.
 - `legacy 타일(gadgetType 없음, {i,x,y,w,h,title}) 은 통과한다` (Gap A·EC11).
 - `알 수 없는 gadgetType → DashboardDomainException` (S2·EC4 대소문자).
@@ -117,8 +123,8 @@ product 체크리스트(notification-dashboard.md §3.2):
 - depends-on: [1]
 
 **RED** (`DashboardControllerTest.kt` 확장):
-- `GET /gadget-catalog 는 200 + 12종 카탈로그(type/category/label/enabled/configFields) 를 반환한다`.
-- `enabled 플래그가 정확하다` (MVP 6=true).
+- `GET /gadget-catalog 는 200 + 12종 카탈로그(type/category/label/enabled/configFields) 를 반환한다` — **`$.data.gadgets.length() == 12` 수량 단언**(C2, vacuous isArray 단독 금지).
+- `enabled 플래그가 정확하다` — **enabled=true 인 항목 수 == 6**(MVP) 카운트 단언 + 특정 타입(issue_count=true, pie_chart=false) 점단언.
 - `미인증 → 401` (currentActorId).
 - 정렬: category→type 안정.
 
@@ -139,7 +145,7 @@ product 체크리스트(notification-dashboard.md §3.2):
 
 **RED/GREEN** (Testcontainers 통합 — vacuous 회피, 실 repo+HTTP):
 - `POST/PATCH /dashboards 에 gadget layout → 200 저장 후 GET 라운드트립 시 config 보존` (repository JSONB 영속).
-- `알 수 없는 gadgetType / enabled=false / config 위반 → 400 NOTIF_DASHBOARD_INVALID` (HTTP 경로 errorCode 단언).
+- `알 수 없는 gadgetType / enabled=false / config 위반 → 400` — **`jsonPath("$.errorCode").value("NOTIF_DASHBOARD_INVALID")` 명시 단언**(C2, status=400 단독 금지 — memory fr-sr-01 else→INTERNAL_ERROR 오매핑 패턴).
 - `GET /dashboards/gadget-catalog → 200`, **`gadget-catalog` 가 {id} UUID 파싱 400 으로 새지 않음**(Gap C·EC12 라우팅 회귀).
 - `legacy title-타일 저장 → 200` (Gap A 회귀가드).
 - 기존 FR-DB-01 통합 시나리오 green 유지(회귀 0).
@@ -170,4 +176,16 @@ product 체크리스트(notification-dashboard.md §3.2):
 - 신규 마이그레이션: 없음(layout JSON 확장). cross-BC import: 0.
 - 추가 검증: `./gradlew :backend:modules:notification:test ktlintCheck detekt` clean + verify-master-plan.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### backend-engineer 독립 eng 리뷰 (2026-06-29) — autoplan 대신(memory: bts-review-plan-autoplan-overkill)
+
+실코드 확인 기반. 종합: **BLOCKED(1) → 전부 해소**.
+
+- **B1 (BLOCKER, 해소)**. 기존 `DashboardTest.kt` 에 비-배열 JSON 허용 테스트 3개(L94-96 객체, L61-65·L74-78 64KB 문자열). Task 2 배열-전용 강화 시 깨짐. → **Task 2 에 RED-0(기존 테스트 역전/교체) 추가**. 배열-전용은 가젯 시대 올바른 방향(프론트는 `DashboardTile[]` 배열 직렬화).
+- **C1 (해소)**. `validateConfig(null)`/`{}` 가 required 필드 타입에서 위반인지 명시 → Task 1 RED 추가.
+- **C2 (해소)**. 카탈로그 `length()==12`+enabled 카운트(==6), Task 4 `errorCode` jsonPath 명시 → Task 3/4 갱신.
+- **C3 (해소)**. config 위반 HTTP detail 노출 결정 → **일반 메시지 유지, 상세는 로그만**(memory: fr-pm-04 guard-message-leak) → spec S3 명시.
+- **C4 (해소)**. enabled 단방향은 코드 강제 아닌 관례 → ADR Consequences 에 역행 시 처리 방침(활성화 방향만, 비활성화는 후속 ADR) 기록.
+- **C5 (PR2 인계)**. `apps/web/src/lib/dashboard-layout.ts` `isDashboardTile` 가 `title:string` 필수 → gadget 타일 직렬화 시 title 없는 항목 조용히 누락. **PR2 plan 에서 `DashboardTile` 확장 + `isDashboardTile` 갱신 동반 필수**.
+- OK 판정: Task 분해/의존성, Gap C 라우팅(literal 우선 확인+EC12), BC 격리/보안.
