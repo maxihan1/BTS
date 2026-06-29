@@ -232,8 +232,9 @@ export function GanttChart({ items, assigneeNames, onSelectIssue, deps = [] }: G
   const visibleRows = flattenVisibleRows(groups, collapsedGroups)
   const depLines = computeDependencyLines(visibleRows, range, DAY_WIDTH_PX, ROW_HEIGHT_PX, deps)
 
-  // 오버레이 치수 — 우측 막대 영역과 정확히 일치 (CONCERN-2: barX 원점 일치)
-  const overlayWidth = daysBetweenUtc(range.startMs, range.endMs) * DAY_WIDTH_PX
+  // 오버레이 치수 — computeBarGeometry의 barWidth는 당일 포함(+1일)이므로
+  // overlayWidth도 +1일 보정해 최우측 막대 우끝이 SVG 안에 들어오도록 한다 (C-2 fix)
+  const overlayWidth = (daysBetweenUtc(range.startMs, range.endMs) + 1) * DAY_WIDTH_PX
   // lastRowIndex: flattenVisibleRows의 rowIndex는 미분류 헤더 행도 카운트에 포함
   const lastRowIndex = visibleRows[visibleRows.length - 1]?.rowIndex ?? -1
   const overlayHeight = AXIS_HEIGHT_PX + (lastRowIndex + 1) * ROW_HEIGHT_PX

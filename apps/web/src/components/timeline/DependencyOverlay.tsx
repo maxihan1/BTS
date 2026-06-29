@@ -8,8 +8,11 @@ import { timelineLabels } from '@/i18n/timeline-labels'
 // 상수
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** SVG <marker> ID — 화살촉 끝점 */
+/** SVG <marker> ID — 화살촉 끝점 (기본: fill-muted-foreground) */
 const MARKER_ID = 'dep-arrow-end'
+
+/** SVG <marker> ID — 선택 라인 화살촉 끝점 (fill-primary, C-a fix) */
+const MARKER_ID_SELECTED = 'dep-arrow-end-selected'
 
 /** 기본 라인 stroke 폭(px) */
 const STROKE_WIDTH_DEFAULT = 1.5
@@ -85,7 +88,7 @@ export function DependencyOverlay({
       style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}
     >
       <defs>
-        {/* 화살촉 마커 — blocker → blocked 방향 */}
+        {/* 화살촉 마커 — 기본 (비선택/dimmed): fill-muted-foreground */}
         <marker
           id={MARKER_ID}
           markerWidth="8"
@@ -96,6 +99,18 @@ export function DependencyOverlay({
           markerUnits="strokeWidth"
         >
           <path d="M 0,-3 L 6,0 L 0,3 Z" className="fill-muted-foreground" />
+        </marker>
+        {/* 화살촉 마커 — 선택 라인용: fill-primary (C-a: 선택 stroke-primary와 색 일치) */}
+        <marker
+          id={MARKER_ID_SELECTED}
+          markerWidth="8"
+          markerHeight="8"
+          refX="6"
+          refY="0"
+          orient="auto"
+          markerUnits="strokeWidth"
+        >
+          <path d="M 0,-3 L 6,0 L 0,3 Z" className="fill-primary" />
         </marker>
       </defs>
 
@@ -122,13 +137,14 @@ export function DependencyOverlay({
         return (
           <g key={key} style={{ pointerEvents: 'none' }}>
             {/* Visible elbow path — 색/굵기/opacity로 강조 표현 */}
+            {/* markerEnd: 선택 시 fill-primary 화살촉, 비선택/dimmed는 fill-muted-foreground (C-a fix) */}
             <path
               d={d}
               fill="none"
               className={isSelected ? 'stroke-primary' : 'stroke-muted-foreground'}
               strokeWidth={isSelected ? STROKE_WIDTH_SELECTED : STROKE_WIDTH_DEFAULT}
               opacity={isDimmed ? OPACITY_DIMMED : 1}
-              markerEnd={`url(#${MARKER_ID})`}
+              markerEnd={`url(#${isSelected ? MARKER_ID_SELECTED : MARKER_ID})`}
               aria-label={timelineLabels.deps.lineAriaLabel(line.blockerKey, line.blockedKey)}
               data-selected={isSelected ? 'true' : undefined}
               data-dimmed={isDimmed ? 'true' : undefined}
