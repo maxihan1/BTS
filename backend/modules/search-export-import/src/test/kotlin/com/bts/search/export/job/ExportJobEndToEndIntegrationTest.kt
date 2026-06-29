@@ -66,7 +66,6 @@ import java.util.UUID
  */
 @Suppress("LongMethod")
 class ExportJobEndToEndIntegrationTest : SearchPersistenceTestBase() {
-
     companion object {
         private val log = LoggerFactory.getLogger(ExportJobEndToEndIntegrationTest::class.java)
 
@@ -183,14 +182,16 @@ class ExportJobEndToEndIntegrationTest : SearchPersistenceTestBase() {
         fakeSearchPort.setHits(createFakeHits(SEED_COUNT_A))
         val requesterUserId = UUID.randomUUID()
 
-        val jobId = service.submit(
-            ExportRequest(projectKey = TEST_PROJECT_KEY, query = "status = open"),
-            requesterUserId,
-        )
+        val jobId =
+            service.submit(
+                ExportRequest(projectKey = TEST_PROJECT_KEY, query = "status = open"),
+                requesterUserId,
+            )
         worker.pollAndProcess()
 
-        val job = repo.findByIdForRequester(jobId, requesterUserId)
-            ?: error("시나리오A: job not found after pollAndProcess jobId=${jobId.value}")
+        val job =
+            repo.findByIdForRequester(jobId, requesterUserId)
+                ?: error("시나리오A: job not found after pollAndProcess jobId=${jobId.value}")
         assertThat(job.status).isEqualTo(ExportJobStatus.COMPLETED)
         assertThat(job.downloadReady).isTrue()
         assertThat(job.rowCount).isEqualTo(SEED_COUNT_A.toLong())
@@ -199,8 +200,7 @@ class ExportJobEndToEndIntegrationTest : SearchPersistenceTestBase() {
         assertThat(fakeSearchPort.capturedViewerUserId).isEqualTo(requesterUserId)
 
         // MinIO 객체 존재 확인 + CSV 행 수 파싱
-        val objectKey = job.resultObjectKey
-            ?: error("시나리오A: COMPLETED job must have resultObjectKey")
+        val objectKey = job.resultObjectKey ?: error("시나리오A: COMPLETED job must have resultObjectKey")
         val csvBytes = storage.openStream(objectKey).use { it.readBytes() }
         assertThat(countCsvDataRows(csvBytes)).isEqualTo(SEED_COUNT_A)
     }
@@ -212,17 +212,18 @@ class ExportJobEndToEndIntegrationTest : SearchPersistenceTestBase() {
         fakeSearchPort.setHits(createFakeHits(SEED_COUNT_B))
         val requesterUserId = UUID.randomUUID()
 
-        val jobId = service.submit(
-            ExportRequest(projectKey = TEST_PROJECT_KEY, query = "status = open"),
-            requesterUserId,
-        )
+        val jobId =
+            service.submit(
+                ExportRequest(projectKey = TEST_PROJECT_KEY, query = "status = open"),
+                requesterUserId,
+            )
         worker.pollAndProcess()
 
-        val completedJob = repo.findByIdForRequester(jobId, requesterUserId)
-            ?: error("시나리오B: job not found after pollAndProcess jobId=${jobId.value}")
+        val completedJob =
+            repo.findByIdForRequester(jobId, requesterUserId)
+                ?: error("시나리오B: job not found after pollAndProcess jobId=${jobId.value}")
         assertThat(completedJob.status).isEqualTo(ExportJobStatus.COMPLETED)
-        val objectKey = completedJob.resultObjectKey
-            ?: error("시나리오B: COMPLETED job must have resultObjectKey")
+        val objectKey = completedJob.resultObjectKey ?: error("시나리오B: COMPLETED job must have resultObjectKey")
 
         // expires_at 를 과거로 직접 UPDATE — TTL 만료 시뮬레이션
         dsl.update(EXPORT_JOBS)
@@ -247,14 +248,16 @@ class ExportJobEndToEndIntegrationTest : SearchPersistenceTestBase() {
         fakeSearchPort.setOverrideTotal(OVERRIDE_TOTAL_C)
         val requesterUserId = UUID.randomUUID()
 
-        val jobId = service.submit(
-            ExportRequest(projectKey = TEST_PROJECT_KEY, query = "status = open"),
-            requesterUserId,
-        )
+        val jobId =
+            service.submit(
+                ExportRequest(projectKey = TEST_PROJECT_KEY, query = "status = open"),
+                requesterUserId,
+            )
         worker.pollAndProcess()
 
-        val job = repo.findByIdForRequester(jobId, requesterUserId)
-            ?: error("시나리오C: job not found after pollAndProcess jobId=${jobId.value}")
+        val job =
+            repo.findByIdForRequester(jobId, requesterUserId)
+                ?: error("시나리오C: job not found after pollAndProcess jobId=${jobId.value}")
         assertThat(job.status).isEqualTo(ExportJobStatus.FAILED)
         assertThat(job.errorCode).isEqualTo(SearchErrorCodes.SEARCH_EXPORT_LIMIT_EXCEEDED)
         assertThat(job.resultObjectKey).isNull()
@@ -268,10 +271,11 @@ class ExportJobEndToEndIntegrationTest : SearchPersistenceTestBase() {
         val requesterUserId = UUID.randomUUID()
 
         // submit → PENDING + pgmq 메시지 enqueue
-        val jobId = service.submit(
-            ExportRequest(projectKey = TEST_PROJECT_KEY, query = "status = open"),
-            requesterUserId,
-        )
+        val jobId =
+            service.submit(
+                ExportRequest(projectKey = TEST_PROJECT_KEY, query = "status = open"),
+                requesterUserId,
+            )
 
         // stale RUNNING 시뮬레이션 — 임계(600s) 를 초과한 과거 시각으로 직접 UPDATE
         // 크래시로 방치된 RUNNING 작업 재현 (교훈: advisory-lock-bigint-TOCTOU)
@@ -285,15 +289,15 @@ class ExportJobEndToEndIntegrationTest : SearchPersistenceTestBase() {
         worker.pollAndProcess()
 
         // 최종 COMPLETED 확인 — stale RUNNING 이 정상 재처리됨
-        val job = repo.findByIdForRequester(jobId, requesterUserId)
-            ?: error("시나리오D: job not found after stale RUNNING reprocess jobId=${jobId.value}")
+        val job =
+            repo.findByIdForRequester(jobId, requesterUserId)
+                ?: error("시나리오D: job not found after stale RUNNING reprocess jobId=${jobId.value}")
         assertThat(job.status).isEqualTo(ExportJobStatus.COMPLETED)
         assertThat(job.downloadReady).isTrue()
         assertThat(job.rowCount).isEqualTo(SEED_COUNT_D.toLong())
 
         // 결과 파일이 MinIO 에 존재 (덮어쓰기 완료)
-        val objectKey = job.resultObjectKey
-            ?: error("시나리오D: COMPLETED job must have resultObjectKey")
+        val objectKey = job.resultObjectKey ?: error("시나리오D: COMPLETED job must have resultObjectKey")
         assertThatCode { storage.openStream(objectKey).close() }
             .doesNotThrowAnyException()
     }
@@ -338,7 +342,6 @@ class ExportJobEndToEndIntegrationTest : SearchPersistenceTestBase() {
         val nonEmptyLines = csvText.split("\r\n").filter { it.isNotEmpty() }
         return (nonEmptyLines.size - 1).coerceAtLeast(0)
     }
-
 }
 
 /**
