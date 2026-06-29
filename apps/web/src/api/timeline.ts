@@ -56,6 +56,36 @@ export const timelineResponseSchema = z.object({
   truncated: z.boolean(),
 })
 
+/**
+ * 의존 라인 단건 엣지 스키마.
+ *
+ * 백엔드 `TimelineDepEdgeResponse` DTO 대응 (PR #200).
+ * - `blockerKey`: 차단측(source) 이슈 키. non-null string.
+ * - `blockedKey`: 피차단측(target) 이슈 키. non-null string.
+ *
+ * DTO nullable 0 → `.default(null)` 보정 불필요 (blockerKey/blockedKey는 항상 존재).
+ *
+ * @see 백엔드 계약 PR #200 — TimelineController.getDeps
+ */
+export const timelineDepEdgeSchema = z.object({
+  blockerKey: z.string(),
+  blockedKey: z.string(),
+})
+
+/**
+ * 의존 라인 목록 응답 스키마.
+ *
+ * 백엔드 `TimelineDepsResponse` DTO 대응 (PR #200).
+ * - `deps`: BLOCKS 관계 엣지 목록 (양끝 가시성 필터는 백엔드 완료).
+ * - `truncated`: DEPS_FETCH_LIMIT 초과로 엣지 일부 누락 시 true.
+ *
+ * @see 백엔드 계약 PR #200 — TimelineController.getDeps
+ */
+export const timelineDepsResponseSchema = z.object({
+  deps: z.array(timelineDepEdgeSchema),
+  truncated: z.boolean(),
+})
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입 export — lib/hooks 공유용
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,6 +95,12 @@ export type TimelineItem = z.infer<typeof timelineItemSchema>
 
 /** 타임라인 조회 응답 타입 — `timelineResponseSchema`에서 도출 */
 export type TimelineResponse = z.infer<typeof timelineResponseSchema>
+
+/** 의존 라인 단건 엣지 타입 — `timelineDepEdgeSchema`에서 도출 */
+export type TimelineDepEdge = z.infer<typeof timelineDepEdgeSchema>
+
+/** 의존 라인 목록 응답 타입 — `timelineDepsResponseSchema`에서 도출 */
+export type TimelineDepsResponse = z.infer<typeof timelineDepsResponseSchema>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // API 함수
@@ -86,6 +122,31 @@ export async function fetchTimeline(projectKey: string): Promise<TimelineRespons
   const wrapped = await apiGet(
     `/api/v1/timeline?project=${encodeURIComponent(projectKey)}`,
     dataResponseSchema(timelineResponseSchema),
+  )
+  return wrapped.data
+}
+
+/**
+ * 프로젝트 타임라인 의존 라인(blocks 관계) 엣지 목록을 조회한다.
+ *
+ * GET /api/v1/timeline/deps?project={projectKey} → `{ data: TimelineDepsResponse }` 언랩.
+ *
+ * 백엔드(#200)가 양끝 이슈 가시성·동일 프로젝트·타임라인아이템·미삭제를 이미 필터하므로
+ * 프론트는 누출 판정 없이 반환값을 그대로 렌더한다.
+ * - `blockerKey`: 차단측(source) 이슈 키.
+ * - `blockedKey`: 피차단측(target) 이슈 키.
+ *
+ * @param projectKey 프로젝트 키. 예: `"BTS"`
+ * @returns TimelineDepsResponse — deps 엣지 배열 + truncated 플래그
+ * @throws ApiError 비-2xx 응답 시 (403 포함)
+ * @throws ZodError 응답 스키마 불일치 시
+ *
+ * @see 백엔드 계약 PR #200 — TimelineController.getDeps
+ */
+export async function fetchTimelineDeps(projectKey: string): Promise<TimelineDepsResponse> {
+  const wrapped = await apiGet(
+    `/api/v1/timeline/deps?project=${encodeURIComponent(projectKey)}`,
+    dataResponseSchema(timelineDepsResponseSchema),
   )
   return wrapped.data
 }
