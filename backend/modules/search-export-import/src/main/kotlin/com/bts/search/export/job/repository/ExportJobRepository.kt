@@ -213,6 +213,23 @@ class ExportJobRepository(
     }
 
     /**
+     * 소유권 검증 없는 단건 조회 — 워커 전용.
+     *
+     * `WHERE id=?` 조건으로 소유권 무관하게 작업을 로드한다.
+     * [claimForRun] 성공 후 워커가 전체 [ExportJob] 도메인 객체를 로드할 때 사용한다.
+     * 외부 HTTP 엔드포인트에서는 반드시 [findByIdForRequester] 를 사용해 소유권을 검증해야 한다.
+     *
+     * @param id 조회할 작업 식별자.
+     * @return [ExportJob]. 없으면 null.
+     */
+    @Transactional(readOnly = true)
+    fun findById(id: ExportJobId): ExportJob? =
+        dsl.selectFrom(EXPORT_JOBS)
+            .where(EXPORT_JOBS.ID.eq(id.value))
+            .fetchOne()
+            ?.toExportJob()
+
+    /**
      * 요청자 소유권 검증을 포함한 단건 조회.
      *
      * `WHERE id=? AND requester_user_id=?` 조건으로 타인 소유 작업은 null 반환.
@@ -300,10 +317,13 @@ class ExportJobRepository(
          * 이 시간이 경과했음에도 status=RUNNING 인 작업은 크래시로 방치된 것으로 간주하여
          * [claimForRun] 이 재선점을 허용한다.
          *
-         * **산정 근거** — vt(visibility timeout) = 60초, threshold = vt × 5 = 300초.
-         * 정상 처리 시간을 충분히 초과한 값으로 설정해 정상 처리 중 재청을 방지한다.
+         * **VT ↔ stale 정합 근거** (BLOCKER — stale > VT 필수).
+         * - 처리 예산: 10만행 × ~50ms + XLSX 직렬화 + MinIO 업로드 ≈ 최대 2~3분.
+         * - VT([com.bts.search.export.job.worker.ExportJobWorker.VISIBILITY_TIMEOUT_SECONDS]) = **300초**.
+         * - stale = **600초** (VT 2배 + 처리 예산 안전마진).
+         * - stale > VT 필수 — 안 그러면 VT 만료 재전달 시점에 정상 처리 중 worker 가 stale 로 오판돼 중복 처리.
          */
-        const val STALE_RUNNING_THRESHOLD_SECONDS: Long = 300L
+        const val STALE_RUNNING_THRESHOLD_SECONDS: Long = 600L
     }
 }
 
