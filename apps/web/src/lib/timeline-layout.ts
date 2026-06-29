@@ -390,6 +390,7 @@ export function flattenVisibleRows(
  * - self-block(`blockerKey === blockedKey`) 제외 (EC4).
  * - 상호 blocks(A↔B)는 두 엣지 모두 반환 (EC3).
  * - 좌표는 우측 막대 영역 로컬 — 축 헤더 오프셋은 컴포넌트가 더한다.
+ * - jsdom 안전: getBBox 미사용. computeBarGeometry(순수 수식) 기반으로 좌표 산출.
  * - `rowHeight`는 인자로 받는다. `ROW_HEIGHT_PX`는 TimelineRow.tsx(컴포넌트) 소유이므로
  *   lib이 import하지 않는다 (CONCERN-1: lib→component 역의존 차단).
  *
