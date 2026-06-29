@@ -9,8 +9,9 @@ import {
   computeDependencyLines,
   daysBetweenUtc,
   flattenVisibleRows,
-  DAY_WIDTH_PX,
 } from '@/lib/timeline-layout'
+import type { ZoomLevel } from '@/lib/timeline-zoom'
+import { DEFAULT_ZOOM, ZOOM_PRESETS } from '@/lib/timeline-zoom'
 import { timelineLabels } from '@/i18n/timeline-labels'
 import { TimelineAxis, TIMELINE_AXIS_HEIGHT_PX } from './TimelineAxis'
 import { TimelineRow, ROW_HEIGHT_PX } from './TimelineRow'
@@ -180,6 +181,13 @@ export interface GanttChartProps {
    * TimelinePage가 useTimelineDeps로 조회해 주입; best-effort이므로 undefined 가능성 없음(호출자가 `?? []` 처리).
    */
   deps?: DependencyEdge[]
+  /**
+   * 타임라인 줌 레벨 (FR-TL-03).
+   *
+   * ZOOM_PRESETS[zoomLevel].dayWidth를 내부 dayWidth 단일 출처로 사용한다.
+   * 미지정 시 DEFAULT_ZOOM('month') 적용 — 기존 DAY_WIDTH_PX=20과 동일하므로 무회귀.
+   */
+  zoomLevel?: ZoomLevel
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -208,9 +216,12 @@ export interface GanttChartProps {
  * - `DependencyOverlay` — 우측 영역 절대 배치, `depLines.length > 0`일 때만 렌더
  *   (pointer-events 차단 최소화: 라인 없을 때 background rect 미생성).
  */
-export function GanttChart({ items, assigneeNames, onSelectIssue, deps = [] }: GanttChartProps): JSX.Element {
+export function GanttChart({ items, assigneeNames, onSelectIssue, deps = [], zoomLevel = DEFAULT_ZOOM }: GanttChartProps): JSX.Element {
   const groups = assembleEpicGroups(items)
   const range = computeDateRange(items)
+
+  /** 줌 레벨에서 파생된 일 단위 열 폭(px) — 단일 출처 */
+  const dayWidth = ZOOM_PRESETS[zoomLevel].dayWidth
 
   /** 접힌 에픽 그룹 키 집합 (기본값: 모두 펼쳐진 상태) */
   const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(new Set())
@@ -230,11 +241,11 @@ export function GanttChart({ items, assigneeNames, onSelectIssue, deps = [] }: G
   // ── deps 오버레이 좌표 계산 (FR-TL-02 D6) ──────────────────────────────────
   // flattenVisibleRows가 GanttChart 행 배치 순회와 동일 로직 → 세로 좌표 drift 차단
   const visibleRows = flattenVisibleRows(groups, collapsedGroups)
-  const depLines = computeDependencyLines(visibleRows, range, DAY_WIDTH_PX, ROW_HEIGHT_PX, deps)
+  const depLines = computeDependencyLines(visibleRows, range, dayWidth, ROW_HEIGHT_PX, deps)
 
   // 오버레이 치수 — computeBarGeometry의 barWidth는 당일 포함(+1일)이므로
   // overlayWidth도 +1일 보정해 최우측 막대 우끝이 SVG 안에 들어오도록 한다 (C-2 fix)
-  const overlayWidth = (daysBetweenUtc(range.startMs, range.endMs) + 1) * DAY_WIDTH_PX
+  const overlayWidth = (daysBetweenUtc(range.startMs, range.endMs) + 1) * dayWidth
   // lastRowIndex: flattenVisibleRows의 rowIndex는 미분류 헤더 행도 카운트에 포함
   const lastRowIndex = visibleRows[visibleRows.length - 1]?.rowIndex ?? -1
   const overlayHeight = TIMELINE_AXIS_HEIGHT_PX + (lastRowIndex + 1) * ROW_HEIGHT_PX
@@ -281,7 +292,7 @@ export function GanttChart({ items, assigneeNames, onSelectIssue, deps = [] }: G
 
         {/* ── 우측 시간축 + 막대 영역 — relative로 DependencyOverlay 좌표계 기준 설정 ── */}
         <div className="relative flex-1">
-          <TimelineAxis range={range} dayWidth={DAY_WIDTH_PX} />
+          <TimelineAxis range={range} dayWidth={dayWidth} zoomLevel={zoomLevel} />
 
           {groups.map((group) => {
             const groupKey = group.epicItem?.key ?? 'unclassified'
@@ -291,9 +302,9 @@ export function GanttChart({ items, assigneeNames, onSelectIssue, deps = [] }: G
               const childItems = group.items.slice(1)
               return (
                 <div key={groupKey}>
-                  <TimelineRow item={group.epicItem} range={range} dayWidth={DAY_WIDTH_PX} onSelectIssue={onSelectIssue} />
+                  <TimelineRow item={group.epicItem} range={range} dayWidth={dayWidth} onSelectIssue={onSelectIssue} />
                   {!isCollapsed && childItems.map((child) => (
-                    <TimelineRow key={child.key} item={child} range={range} dayWidth={DAY_WIDTH_PX} onSelectIssue={onSelectIssue} />
+                    <TimelineRow key={child.key} item={child} range={range} dayWidth={dayWidth} onSelectIssue={onSelectIssue} />
                   ))}
                 </div>
               )
@@ -303,7 +314,7 @@ export function GanttChart({ items, assigneeNames, onSelectIssue, deps = [] }: G
               <div key="unclassified">
                 <div className="border-b border-border bg-muted/20" style={{ height: ROW_HEIGHT_PX }} />
                 {group.items.map((item) => (
-                  <TimelineRow key={item.key} item={item} range={range} dayWidth={DAY_WIDTH_PX} onSelectIssue={onSelectIssue} />
+                  <TimelineRow key={item.key} item={item} range={range} dayWidth={dayWidth} onSelectIssue={onSelectIssue} />
                 ))}
               </div>
             )
