@@ -27,6 +27,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
 import org.testcontainers.containers.MinIOContainer
@@ -153,6 +154,12 @@ class ExportJobEndToEndIntegrationTest : SearchPersistenceTestBase() {
     private val service: ExportJobService by lazy { ExportJobService(repo, publisher) }
     private val worker: ExportJobWorker by lazy { ExportJobWorker(dsl, repo, processor) }
     private val cleanupWorker: ExportJobCleanupWorker by lazy { ExportJobCleanupWorker(repo, storage) }
+
+    /** MinIO 버킷이 없으면 생성한다. SearchPersistenceTestBase.bootstrap() 이후 실행된다. */
+    @BeforeAll
+    fun setupMinIO() {
+        storage.ensureBucket()
+    }
 
     @AfterEach
     fun cleanupAfterEach() {
