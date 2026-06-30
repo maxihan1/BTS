@@ -38,6 +38,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.server.ResponseStatusException
 import java.net.URI
 import java.time.LocalDate
 import java.util.UUID
@@ -208,8 +209,8 @@ class IssueController(
             if (explicitPage != null || explicitSize != null) throw PaginationModeConflictException()
             val effectiveLimit = limit ?: DEFAULT_CURSOR_LIMIT
             if (effectiveLimit > MAX_CURSOR_LIMIT) {
-                throw org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                throw ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
                     "limit 은 $MAX_CURSOR_LIMIT 이하여야 합니다.",
                 )
             }
