@@ -110,13 +110,15 @@
 
 > **백엔드 D1~D5 완료 (2026-06-29, PR #204)**. 비동기 Export — `POST /api/v1/search/export-jobs`(202+jobId) → pgmq `q_export_jobs` worker → 스트리밍 직렬화(CSV=OutputStream / XLSX=SXSSF, 임시파일) → MinIO `bts-exports` 저장 → `GET .../{id}` 폴링 + `GET .../{id}/download` 자체 프록시 스트리밍. **스트리밍 10만행 상한**(초과 FAILED), **24h TTL 후 DB+MinIO 하드삭제**(ExportJobCleanupWorker). BulkOperation(FR-IS-05) pgmq consumer 패턴 1:1 복제(claimForRun CAS·dead-letter archive·outbox MANDATORY enqueue·VT=300<stale=600 정합)·FR-EX-01 writer/sanitizer/`IssueSearchPort`(BROWSE+visibility 구조적 상속) 재사용. search 모듈 **자체 MinIO 클라이언트**(`exportMinioClient` 빈 분리, io.minio 기승인, BC 격리). job 소유권 404 은닉·actor SecurityContext 추출·Content-Disposition CRLF 방어. **process() @Transactional 밖**(분단위 I/O 커넥션 점유 차단). V602 export_jobs(15컬럼)+pgmq 큐·Tembo pg16-pgmq 이미지(ADR 2026-05-22). ADR `docs/decisions/2026-06-29-fr-ex-02-async-export-jobs.md`. 두 독립 리뷰(code-reviewer BLOCKER `@EnableScheduling` 누락 + adversarial P1 리소스누수/download 0바이트200) 적발·수정. 프론트 D6/D7은 별도 PR.
 
+> **전체 완료 (2026-06-30, PR #206)**. 프론트 D6/D7 — **자동 분기**(동기 시도→1만 초과 `SEARCH_EXPORT_LIMIT_EXCEEDED` 감지→비동기 제안) + ExportDialog **4단계 상태머신**(form→confirmAsync→tracking→done). 잡 생성 `POST /search/export-jobs`(202+jobId)→1500ms 폴링 `GET /{id}`(progress/status, **백엔드 완료이벤트 없음→프론트 폴링 자체 감지**)→COMPLETED 시 `GET /{id}/download` blob. 폴링=`use-export-job-polling` hook(BulkOperation `use-bulk-operation` 1:1 미러, react-query v5 `(query)=>query.state.data?.status` 시그니처·종단/error 정지·unmount cleanup). Zod `.nullish()`(백엔드 `@JsonInclude(NON_NULL)` 정합)·`isLimitExceeded`/`resultCount` 타입가드(as any 0). MSW stateful jobId-키 Map E2E. **plan 리뷰 BLOCKER4**(v5 refetchInterval/Zod nullish/기존테스트·E2E 교체) + **게이트2 CONCERNS3**(다운로드실패 데드패스·폴링에러 tracking정지 spec EC5·cleanup vacuous green) 적발·해소. 백엔드 변경 0. ADR 불요(view-layer 소비, plan/spec에 UX 결정 기록).
+
 - [x] D1. 도메인 — ExportJob (책임. backend-engineer)
 - [x] D2. 명세 — 큐 + 진행률 + 결과 URL TTL (책임. backend-engineer)
 - [x] D3. 데이터 모델 — `export_jobs(status, progress, result_minio_key, expires_at)` (책임. db-engineer)
 - [x] D4. 백엔드 — pgmq job + 백그라운드 worker (책임. backend-engineer)
 - [x] D5. 백엔드 테스트 — 1만건 시나리오 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 진행률 + 알림 + 다운로드 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 진행률 + 알림 + 다운로드 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ## §4 Import (FR-IM, 2개)
 
