@@ -5,6 +5,7 @@ package com.bts.issue.adapter.inbound.rest
 import com.bts.issue.adapter.inbound.rest.cursor.CursorCodec
 import com.bts.issue.adapter.inbound.rest.dto.RerankIssueRequest
 import com.bts.issue.application.AppChangeAssigneeRequest
+import com.bts.issue.application.ChangelogCursorCodec
 import com.bts.issue.application.CursorPage
 import com.bts.issue.application.AppChangeComponentsRequest
 import com.bts.issue.application.AppChangeVersionsRequest
@@ -352,44 +353,78 @@ class IssueController(
     }
 
     /**
-     * 이슈 변경 이력을 페이지 단위로 조회한다 (FR-HS-02).
+     * 이슈 변경 이력을 조회한다 (FR-HS-02 + FR-API-01 Task 5).
+     *
+     * ### cursor 모드 / offset 모드 분기
+     * - **cursor 모드**: `?cursor=<token|빈문자열>` 지정 시. keyset seek, [CursorPageResponse] envelope 반환.
+     * - **offset 모드**: cursor 파라미터 미지정 시. 기존 `?page&size`, [Page]<[IssueChangelogResponse]> 반환(무회귀).
+     * - **모드 충돌**: cursor + page 동시 지정 → [PaginationModeConflictException] → 400.
+     * - **limit 초과**: cursor 모드에서 limit > [MAX_CURSOR_LIMIT] → 400.
      *
      * ### 권한 정책
-     * [CurrentActor.current] 로 actor 를 추출한 뒤 [IssueChangelogService.findChangelog] 가
-     * 내부적으로 [com.bts.issue.application.IssueApplicationService.findByKey] 를 호출해
-     * VIEW 권한 + 이슈 존재 여부를 검증한다.
-     * 미존재·소프트삭제·VIEW 미인가 모두 404 로 응답한다 (단건 조회와 동일한 동작).
-     *
-     * ### 페이지네이션
-     * [Pageable] 파라미터로 `?page=0&size=20` 형태를 받는다.
-     * 기본값은 [@PageableDefault] 로 size=20, page=0 이 적용된다.
+     * [IssueChangelogService.findChangelog] / [IssueChangelogService.findChangelogByCursor] 가
+     * 내부에서 VIEW 권한 + 이슈 존재를 검증한다. 미존재·소프트삭제·VIEW 미인가 = 404.
      *
      * ### 라벨 박제
-     * 응답의 items[].fromLabel/toLabel 에는 PR #120 [com.bts.issue.history.IssueChangeLabelResolver]
-     * 가 변경 기록 시점에 박제한 라벨이 그대로 반환된다.
+     * items[].fromLabel/toLabel 에는 PR #120 [com.bts.issue.history.IssueChangeLabelResolver] 가
+     * 변경 기록 시점에 박제한 라벨이 그대로 반환된다.
      *
-     * @param key path variable 이슈 키 문자열. 예: `"ATLAS-1"`
-     * @param pageable 페이지 정보. 기본값 size=20, page=0.
-     * @return 200 OK + [Page]<[IssueChangelogResponse]>
+     * @param key path variable 이슈 키. 예: `"ATLAS-1"`
+     * @param pageable 페이지 정보. offset 모드에서 사용. 기본값 size=20, page=0.
+     * @param cursor cursor 토큰. 빈 문자열=첫 페이지. null=offset 모드.
+     * @param limit cursor 모드에서의 최대 건수. 기본값 [DEFAULT_CURSOR_LIMIT], 최대 [MAX_CURSOR_LIMIT].
+     * @param explicitPage 모드 충돌 감지용 — ?page 파라미터 명시 여부.
+     * @return 200 OK + cursor 모드: [CursorPageResponse], offset 모드: [Page]<[IssueChangelogResponse]>
+     * @throws PaginationModeConflictException cursor + page 동시 지정 시.
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈 미존재·소프트 삭제·VIEW 미인가 → 404
      */
     @GetMapping("/{key}/changelog")
+    @Suppress("LongParameterList") // cursor 모드(cursor/limit)와 offset 모드(pageable/page)의 REST 파라미터 집합 — 분리 불가
     fun changelog(
         @PathVariable key: String,
         @PageableDefault(size = 20) pageable: Pageable,
-    ): ResponseEntity<Page<IssueChangelogResponse>> {
-        log.info("IssueController.changelog key={} pageable={}", key, pageable)
-
+        @RequestParam(required = false) cursor: String? = null,
+        @RequestParam(required = false) limit: Int? = null,
+        @RequestParam(name = "page", required = false) explicitPage: Int? = null,
+    ): ResponseEntity<Any> {
         val actor = CurrentActor.current()
         val issueKey = IssueKey(key)
-        val service =
+        val svc =
             requireNotNull(changelogService) {
                 "IssueChangelogService 가 주입되지 않았습니다. Spring 컨텍스트 구성을 확인하세요."
             }
-        val page =
-            service.findChangelog(actor, issueKey, pageable)
-                .map { IssueChangelogResponse.from(it) }
-        return ResponseEntity.ok(page)
+
+        return if (cursor != null) {
+            if (explicitPage != null) throw PaginationModeConflictException()
+            val effectiveLimit = limit ?: DEFAULT_CURSOR_LIMIT
+            if (effectiveLimit > MAX_CURSOR_LIMIT) {
+                throw ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "limit 은 $MAX_CURSOR_LIMIT 이하여야 합니다.",
+                )
+            }
+            log.info("IssueController.changelog cursor모드 key={} limit={}", key, effectiveLimit)
+            val cursorPosition =
+                try {
+                    ChangelogCursorCodec.decode(cursor)
+                } catch (e: IllegalArgumentException) {
+                    throw ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "changelog cursor 형식 오류: ${e.message}",
+                    )
+                }
+            val result = svc.findChangelogByCursor(actor, issueKey, cursorPosition, effectiveLimit)
+            ResponseEntity.ok<Any>(
+                CursorPageResponse(
+                    data = result.items.map { IssueChangelogResponse.from(it) },
+                    meta = PageMeta(PageCursor(next = result.next, limit = effectiveLimit)),
+                ),
+            )
+        } else {
+            log.info("IssueController.changelog offset모드 key={} pageable={}", key, pageable)
+            val page = svc.findChangelog(actor, issueKey, pageable).map { IssueChangelogResponse.from(it) }
+            ResponseEntity.ok<Any>(page)
+        }
     }
 
     /**

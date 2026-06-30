@@ -2,6 +2,7 @@
 
 package com.bts.issue.history
 
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -78,4 +79,28 @@ interface IssueChangeHistoryRepository {
      * @return 최근 assignee 변경의 from_value 문자열. 없으면 null.
      */
     fun findLatestAssigneeChangeFromValue(issueId: UUID): String?
+
+    /**
+     * changelog cursor keyset seek 조회 (FR-API-01 Task 5).
+     *
+     * `(created_at DESC, id DESC)` 정렬의 [cursorCreatedAt], [cursorGroupId] 위치 이후 그룹을 반환한다.
+     * [cursorCreatedAt] 이 null 이면 첫 페이지(seek 없이 전체 최신순) 조회.
+     * hasNext 판정을 위해 내부적으로 `limit + 1` 건을 조회해 반환한다.
+     *
+     * **cartesian product 방지.**
+     * 기존 [findByIssuePaged] 와 동일한 2-step 패턴(group 조회 + items 별쿼리)으로
+     * LEFT JOIN 의 행 곱(cartesian product) 을 방지한다 (learnings: jOOQ-cartesian-product).
+     *
+     * @param issueId 조회할 이슈의 UUID.
+     * @param cursorCreatedAt cursor 기준 created_at. null 이면 첫 페이지.
+     * @param cursorGroupId cursor 기준 group id (BIGINT). [cursorCreatedAt] 동률 tie-break 용.
+     * @param limit 반환할 최대 그룹 수. 내부적으로 +1 하여 hasNext 판정 가능.
+     * @return `(groupId: Long, group: IssueChangeGroup)` Pair 목록. limit+1 건 이하.
+     */
+    fun findByIssueCursor(
+        issueId: UUID,
+        cursorCreatedAt: Instant?,
+        cursorGroupId: Long?,
+        limit: Int,
+    ): List<Pair<Long, IssueChangeGroup>>
 }

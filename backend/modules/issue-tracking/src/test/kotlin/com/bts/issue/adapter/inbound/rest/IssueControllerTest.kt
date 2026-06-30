@@ -674,7 +674,6 @@ class IssueControllerChangelogCursorModeTest {
     private val createdAt3 = Instant.parse("2026-06-01T08:00:00Z")
     private val groupId1 = 1001L
     private val groupId2 = 1002L
-    private val groupId3 = 1003L
 
     private fun makeChangelogView(createdAt: Instant): ChangelogGroupView =
         ChangelogGroupView(actorId = actorUuid, actorName = "Test User", createdAt = createdAt, items = emptyList())
@@ -721,7 +720,6 @@ class IssueControllerChangelogCursorModeTest {
     @Test
     fun `CHANGELOG-CURSOR-2 changelog offset 모드 무회귀 — 기존 Page 구조 그대로 반환`() {
         val view = makeChangelogView(createdAt1)
-        val page = PageImpl(listOf(view).map { IssueChangelogResponse.from(it) }, PageRequest.of(0, 20), 1L)
         every { changelogService.findChangelog(any(), any(), any()) } returns
             PageImpl(listOf(view), PageRequest.of(0, 20), 1L)
 
