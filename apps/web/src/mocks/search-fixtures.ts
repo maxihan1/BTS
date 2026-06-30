@@ -1,5 +1,5 @@
-// AQL 검색 MSW 픽스처 — FR-SR-02 D6 Task-3
-import type { AqlSearchHit, AqlSearchPage } from '@/api/search'
+// AQL 검색 + 비동기 Export 잡 MSW 픽스처 — FR-SR-02 D6 Task-3 / FR-EX-02 D7 Task-3
+import type { AqlSearchHit, AqlSearchPage, ExportJobStatus } from '@/api/search'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AqlSearchHit 샘플 데이터
@@ -82,3 +82,49 @@ export const DEFAULT_SEARCH_PAGE: AqlSearchPage = makeSearchPage([
 
 /** 빈 검색 결과 페이지 */
 export const EMPTY_SEARCH_PAGE: AqlSearchPage = makeSearchPage([])
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Export 잡 응답 픽스처 팩토리 — MSW stateful 핸들러 + 단위 테스트용
+//
+// ★ @JsonInclude(NON_NULL) 재현 (BLOCKER-2 / CONCERN-E):
+//   PENDING·RUNNING 응답에는 rowCount·errorCode 키가 실제 백엔드 JSON에 존재하지 않는다.
+//   JavaScript 객체에 해당 키를 포함하지 않으면 JSON.stringify가 키 자체를 생략한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * PENDING 상태 Export 잡 응답 픽스처.
+ * rowCount·errorCode 키 생략 — @JsonInclude(NON_NULL) 재현.
+ *
+ * @param jobId Export 잡 UUID
+ */
+export function makeExportJobPendingResponse(
+  jobId: string,
+): Omit<ExportJobStatus, 'rowCount' | 'errorCode'> {
+  return { jobId, status: 'PENDING', progress: 0, format: 'CSV', downloadReady: false }
+}
+
+/**
+ * RUNNING 상태 Export 잡 응답 픽스처.
+ * rowCount·errorCode 키 생략 — @JsonInclude(NON_NULL) 재현.
+ *
+ * @param jobId Export 잡 UUID
+ */
+export function makeExportJobRunningResponse(
+  jobId: string,
+): Omit<ExportJobStatus, 'rowCount' | 'errorCode'> {
+  return { jobId, status: 'RUNNING', progress: 50, format: 'CSV', downloadReady: false }
+}
+
+/**
+ * COMPLETED 상태 Export 잡 응답 픽스처 (다운로드 준비 완료).
+ * rowCount 포함, errorCode 키 생략 — @JsonInclude(NON_NULL) 재현.
+ *
+ * @param jobId Export 잡 UUID
+ * @param rowCount 완료된 행 수 (기본 42)
+ */
+export function makeExportJobCompletedResponse(
+  jobId: string,
+  rowCount = 42,
+): Omit<ExportJobStatus, 'errorCode'> {
+  return { jobId, status: 'COMPLETED', progress: 100, format: 'CSV', downloadReady: true, rowCount }
+}
