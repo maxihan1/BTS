@@ -678,6 +678,104 @@ class IssueRepository(
     }
 
     /**
+     * 이슈 목록 cursor keyset seek 조회 결과 VO (FR-API-01 Task 2).
+     *
+     * `limit+1` fetch 로 다음 페이지 존재 여부를 판정한다.
+     * items 크기는 최대 limit 건이며, hasNext=true 이면 다음 커서 위치가 있다.
+     *
+     * @property items 조회된 이슈 응답 목록. 최대 limit 건.
+     * @property hasNext 다음 페이지 존재 여부. limit+1 번째 행이 조회되면 true.
+     */
+    data class IssueCursorPage(
+        val items: List<IssueResponse>,
+        val hasNext: Boolean,
+    )
+
+    /**
+     * 이슈 목록을 keyset cursor seek 방식으로 조회한다 (FR-API-01 Task 2).
+     *
+     * [listWithType] 과 동일한 [buildActiveSecureWhere] 보안 술어 + [buildFilterCondition] 필터를
+     * 재사용하여 별도 보안 경로를 신설하지 않는다.
+     *
+     * cursor 위치: `(seekCreatedAt, seekId)` 쌍으로 지정한다.
+     * `WHERE (created_at < :seekCreatedAt) OR (created_at = :seekCreatedAt AND id < :seekId)` 로
+     * keyset seek 를 표현한다 (row-value 비교와 동일 의미).
+     *
+     * 정렬: `ORDER BY created_at DESC, id DESC` — id 는 created_at 동률 tie-break.
+     * limit+1 건을 fetch 해 결과가 limit+1 이면 hasNext=true 로 판정한다.
+     *
+     * 레이어 결정: repository 는 inbound adapter(CursorPosition) 를 import 하지 않는다.
+     * 호출자(서비스 계층)가 CursorPosition.createdAt/id 를 분해해 원시값으로 전달한다.
+     *
+     * @param projectKey 프로젝트 접두사. 예: `"BTS"`.
+     * @param seekCreatedAt cursor 위치의 created_at. null 이면 첫 페이지(seek 없음).
+     * @param seekId cursor 위치의 id. null 이면 첫 페이지. seekCreatedAt 과 항상 쌍.
+     * @param limit 반환할 최대 건수. limit+1 건 fetch 로 hasNext 판정.
+     * @param actor 조회 행위자 UUID. 보안 등급 필터에 사용.
+     * @param access 접근 가능 보안 등급 집합. 기본값 unrestricted(빠른경로).
+     * @param filter 이슈 필터 조건. 기본값 무필터.
+     * @return [IssueCursorPage] — items(최대 limit 건) + hasNext.
+     */
+    @Transactional(readOnly = true)
+    fun listWithTypeByCursor(
+        projectKey: String,
+        seekCreatedAt: OffsetDateTime?,
+        seekId: UUID?,
+        limit: Int,
+        actor: UUID,
+        access: IssueSecurityAccess = UNRESTRICTED_ACCESS,
+        filter: BoardCardFilter = BoardCardFilter.EMPTY,
+    ): IssueCursorPage {
+        // C1: 보안 술어 + 삭제 필터 — listWithType 과 동일 단일 source
+        val baseWhere = buildActiveSecureWhere(projectKey, actor, access)
+        val filterCondition = buildFilterCondition(filter)
+        var effectiveWhere = if (filterCondition != null) baseWhere.and(filterCondition) else baseWhere
+
+        // C2: keyset seek — cursor 위치 이후(오래된) 행만 반환
+        if (seekCreatedAt != null && seekId != null) {
+            effectiveWhere = effectiveWhere.and(buildSeekCondition(seekCreatedAt, seekId))
+        }
+
+        val fetched =
+            dsl.select(
+                ISSUES.fields().toList() +
+                    listOf(
+                        ISSUE_TYPES.ID.`as`(TYPE_ID_ALIAS),
+                        ISSUE_TYPES.KEY.`as`(TYPE_KEY_ALIAS),
+                        ISSUE_TYPES.NAME.`as`(TYPE_NAME_ALIAS),
+                    ),
+            )
+                .from(ISSUES)
+                .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+                .join(ISSUE_TYPES).on(ISSUES.TYPE_ID.eq(ISSUE_TYPES.ID))
+                .where(effectiveWhere)
+                .orderBy(ISSUES.CREATED_AT.desc(), ISSUES.ID.desc())
+                .limit(limit + 1)
+                .fetch { record ->
+                    IssueResponse.from(
+                        issue = record.into(ISSUES).toIssue(),
+                        projectKey = projectKey,
+                        typeInfo =
+                            IssueResponse.IssueTypeInfo(
+                                id =
+                                    record.get(TYPE_ID_ALIAS, Long::class.java)
+                                        ?: error("issue_types.id must not be null in cursor join result"),
+                                key =
+                                    record.get(TYPE_KEY_ALIAS, String::class.java)
+                                        ?: error("issue_types.key must not be null in cursor join result"),
+                                name =
+                                    record.get(TYPE_NAME_ALIAS, String::class.java)
+                                        ?: error("issue_types.name must not be null in cursor join result"),
+                            ),
+                    )
+                }
+
+        val hasNext = fetched.size > limit
+        val items = if (hasNext) fetched.take(limit) else fetched
+        return IssueCursorPage(items = items, hasNext = hasNext)
+    }
+
+    /**
      * 프로젝트의 가시 활성 이슈 전체를 보안 등급 필터를 적용해 비페이지로 조회한다 (FR-BD-01 보드 카드용).
      *
      * 보드는 컬럼별 카드 배치를 위해 프로젝트 이슈 "전부"를 한 번에 받아야 한다 (페이지 없음).
@@ -904,6 +1002,30 @@ class IssueRepository(
             activeInProject
         }
     }
+
+    /**
+     * keyset cursor seek 조건을 반환한다 (FR-API-01 Task 2).
+     *
+     * `ORDER BY created_at DESC, id DESC` 정렬의 cursor 위치 다음 행 필터.
+     * row-value 비교 `(created_at, id) < (seekCreatedAt, seekId)` 를 명시 OR 전개로 표현한다.
+     *
+     * ```
+     * (created_at < :seekCreatedAt)
+     * OR (created_at = :seekCreatedAt AND id < :seekId)
+     * ```
+     *
+     * id 는 tie-break 역할 — 동일 created_at 이슈 중 id DESC 순서로 seek 경계를 정한다.
+     *
+     * @param seekCreatedAt cursor 위치의 created_at.
+     * @param seekId cursor 위치의 id.
+     * @return seek 조건 [Condition].
+     */
+    private fun buildSeekCondition(
+        seekCreatedAt: OffsetDateTime,
+        seekId: UUID,
+    ): Condition =
+        ISSUES.CREATED_AT.lt(seekCreatedAt)
+            .or(ISSUES.CREATED_AT.eq(seekCreatedAt).and(ISSUES.ID.lt(seekId)))
 
     /**
      * [BoardCardFilter] 를 SQL WHERE 술어 [Condition] 으로 변환한다.
