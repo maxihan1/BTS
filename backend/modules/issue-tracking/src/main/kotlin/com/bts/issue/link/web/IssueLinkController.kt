@@ -3,6 +3,7 @@
 package com.bts.issue.link.web
 
 import com.bts.issue.adapter.inbound.rest.DataResponse
+import com.bts.issue.config.BEARER_AUTH_SCHEME
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.link.application.IssueParentService
 import com.bts.issue.link.application.LinkApplicationService
@@ -12,6 +13,12 @@ import com.bts.issue.link.web.dto.IssueParentResponse
 import com.bts.issue.link.web.dto.LinkListResponse
 import com.bts.issue.link.web.dto.SetParentRequest
 import com.bts.issue.repository.IssueRepository
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -51,6 +58,7 @@ import org.springframework.web.bind.annotation.RestController
  * @param issueParentService parent-child 설정/해제 Application Service.
  * @param issueRepository 응답 DTO 의 상대/부모 이슈 요약 조회용(서비스가 존재는 이미 검증).
  */
+@Tag(name = "Issue Links", description = "이슈 링크 CRUD 및 parent-child 설정 API (FR-LK-01)")
 @RestController
 @RequestMapping("/api/v1/issues/{key}")
 class IssueLinkController(
@@ -72,6 +80,15 @@ class IssueLinkController(
      * @throws com.bts.issue.link.domain.LinkCycleException blocks 순환 → 409
      * @throws com.bts.issue.link.domain.InvalidLinkTypeCodeException 잘못된 linkType → 400
      */
+    @Operation(operationId = "createLink", summary = "이슈 링크 생성")
+    @ApiResponses(
+        ApiResponse(responseCode = "201", description = "생성 성공"),
+        ApiResponse(responseCode = "400", description = "잘못된 linkType", content = [Content()]),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "중복 링크 또는 순환 감지", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PostMapping("/links")
     fun createLink(
         @PathVariable key: String,
@@ -102,6 +119,13 @@ class IssueLinkController(
      * @return 200 OK + [LinkListResponse].
      * @throws com.bts.issue.link.domain.LinkedIssueNotFoundException 이슈 미존재 → 404
      */
+    @Operation(operationId = "listLinks", summary = "이슈 링크 목록 조회")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "링크 목록 (outward + inward)"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping("/links")
     fun listLinks(
         @PathVariable key: String,
@@ -118,6 +142,13 @@ class IssueLinkController(
      * @throws com.bts.issue.link.domain.LinkedIssueNotFoundException 이슈 미존재 → 404
      * @throws com.bts.issue.link.domain.LinkNotFoundException 링크 미존재 → 404
      */
+    @Operation(operationId = "deleteLink", summary = "이슈 링크 해제")
+    @ApiResponses(
+        ApiResponse(responseCode = "204", description = "해제 성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 또는 링크 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @DeleteMapping("/links/{linkId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun deleteLink(
@@ -138,6 +169,14 @@ class IssueLinkController(
      * @throws com.bts.issue.link.domain.ParentSelfReferenceException 자기 부모 → 422
      * @throws com.bts.issue.link.domain.ParentCycleException 조상 순환 → 409
      */
+    @Operation(operationId = "setParent", summary = "부모 이슈 설정/해제")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "부모 순환 감지", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PatchMapping("/parent")
     fun setParent(
         @PathVariable key: String,

@@ -3,11 +3,18 @@
 package com.bts.issue.worklog.web
 
 import com.bts.issue.adapter.inbound.rest.CurrentActor
+import com.bts.issue.config.BEARER_AUTH_SCHEME
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.worklog.application.WorklogService
 import com.bts.issue.worklog.web.dto.AddWorklogRequest
 import com.bts.issue.worklog.web.dto.UpdateWorklogRequest
 import com.bts.issue.worklog.web.dto.WorklogResponse
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -47,6 +54,7 @@ import java.util.UUID
  *
  * @param service 워크로그 유스케이스 서비스.
  */
+@Tag(name = "Worklogs", description = "이슈 워크로그 CRUD API (FR-TT-01)")
 @RestController
 @RequestMapping("/api/v1/issues/{key}/worklogs")
 class WorklogController(
@@ -64,6 +72,15 @@ class WorklogController(
      * @throws com.bts.issue.domain.IssueAccessDeniedException UPDATE 권한 미보유 시 → 403.
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈 미존재·소프트 삭제 시 → 404.
      */
+    @Operation(operationId = "addWorklog", summary = "워크로그 추가")
+    @ApiResponses(
+        ApiResponse(responseCode = "201", description = "생성 성공"),
+        ApiResponse(responseCode = "400", description = "요청 형식 오류", content = [Content()]),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "UPDATE 권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PostMapping
     @Suppress("ThrowsCount") // 요청 유효성(timeSpent≤0, newRemaining<0 등) 단계별로 명확한 400 메시지 위해 분리 throw 유지
     fun addWorklog(
@@ -111,6 +128,14 @@ class WorklogController(
      * @throws com.bts.issue.domain.IssueAccessDeniedException VIEW 권한 미보유 시 → 403.
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈 미존재·소프트 삭제 시 → 404.
      */
+    @Operation(operationId = "listWorklogs", summary = "워크로그 목록 및 추정 요약 조회")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "워크로그 목록 + 추정 요약"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "VIEW 권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping
     fun listWorklogs(
         @PathVariable key: String,
@@ -144,6 +169,15 @@ class WorklogController(
      * @throws com.bts.issue.domain.IssueAccessDeniedException UPDATE 권한 미보유 또는 타인 수정 시 → 403.
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈·워크로그 미존재·이슈 불일치 시 → 404.
      */
+    @Operation(operationId = "updateWorklog", summary = "워크로그 수정")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "수정 성공"),
+        ApiResponse(responseCode = "400", description = "요청 형식 오류", content = [Content()]),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "권한 없음 또는 타인 워크로그", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "워크로그 또는 이슈 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PatchMapping("/{worklogId}")
     fun updateWorklog(
         @PathVariable key: String,
@@ -180,6 +214,14 @@ class WorklogController(
      * @throws com.bts.issue.domain.IssueAccessDeniedException UPDATE 권한 미보유 또는 타인 삭제 시 → 403.
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈·워크로그 미존재·이슈 불일치 시 → 404.
      */
+    @Operation(operationId = "deleteWorklog", summary = "워크로그 삭제")
+    @ApiResponses(
+        ApiResponse(responseCode = "204", description = "삭제 성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "권한 없음 또는 타인 워크로그", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "워크로그 또는 이슈 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @DeleteMapping("/{worklogId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun deleteWorklog(

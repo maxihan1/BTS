@@ -15,10 +15,19 @@ import com.bts.issue.application.EstimatePatch
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.IssueChangelogService
 import com.bts.issue.application.SecurityLevelPatch
+import com.bts.issue.config.BEARER_AUTH_SCHEME
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.pdf.IssuePdfRenderer
 import com.bts.issue.pdf.IssuePdfTemplate
 import com.bts.shared.issue.IssueTypeId
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.openapitools.jackson.nullable.JsonNullable
 import org.slf4j.LoggerFactory
@@ -98,6 +107,7 @@ private const val MAX_CURSOR_LIMIT = 100
  * @param backlogRankService 백로그 rank 변경 서비스 (FR-BL-01). 기존 슬라이스 테스트 호환을 위해 null 기본값.
  */
 @Suppress("TooManyFunctions")
+@Tag(name = "Issues", description = "이슈 CRUD, 상태 전이, 클론, 변경 이력, 백로그 랭크 API (FR-IS·FR-HS·FR-BL)")
 @RestController
 @RequestMapping("/api/v1/issues")
 class IssueController(
@@ -120,6 +130,18 @@ class IssueController(
      *   componentIds 미포함 시 빈 목록으로 처리한다.
      * @return 201 Created + [IssueResponse] body + `Location: /api/v1/issues/{key}` 헤더
      */
+    @Operation(
+        operationId = "createIssue",
+        summary = "이슈 생성",
+        description = "새 이슈를 생성한다. 응답 Location 헤더에 생성된 이슈 URI 가 포함된다.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "201", description = "이슈 생성 성공"),
+        ApiResponse(responseCode = "400", description = "요청 형식 오류 (projectKey 누락 등)", content = [Content()]),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "이슈 생성 권한 없음", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PostMapping
     fun create(
         @Valid @RequestBody request: CreateIssueRequest,
@@ -152,6 +174,18 @@ class IssueController(
      * @return 200 OK + [IssueResponse] body
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우 → 404
      */
+    @Operation(
+        operationId = "getIssue",
+        summary = "이슈 단건 조회",
+        description = "이슈 키로 단건을 조회한다. 소프트 삭제된 이슈는 404 로 응답한다.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "이슈 조회 성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "이슈 조회 권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 미존재 또는 소프트 삭제", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping("/{key}")
     fun get(
         @PathVariable key: String,
@@ -190,6 +224,41 @@ class IssueController(
      * @throws PaginationModeConflictException cursor + page/size 동시 지정 시.
      * @throws org.springframework.web.server.ResponseStatusException 400 — limit 초과 또는 UUID 형식 오류.
      */
+    @Operation(
+        operationId = "listIssues",
+        summary = "이슈 목록 조회",
+        description = """이슈 목록을 페이지 단위로 조회한다.
+
+### 페이지네이션 모드 (CONCERN-4)
+
+두 모드가 동시에 지원되며, cursor 파라미터 존재 여부로 모드가 결정된다.
+
+**cursor 모드 (권장)**
+- 파라미터: `cursor=<token|빈문자열>`, `limit=N` (기본 20, 최대 100)
+- 응답: `{data:[...], meta:{page:{next, limit}}}` envelope
+- `next` 토큰을 다음 요청 `?cursor=<next>` 에 그대로 전달하면 끊김 없이 순회한다.
+- **forward-only** — 이전 페이지(prev)로의 역방향 이동 미지원.
+- `cursor=` (빈 문자열) = 첫 페이지.
+- `next=null` = 마지막 페이지.
+
+**offset 모드 (호환용 — 후속 deprecate 예정)**
+- cursor 파라미터 미지정 시. `page`, `size` 파라미터 사용.
+- 응답: Spring Page (content/pageable/totalElements 구조) — 기존 프론트 클라이언트 무회귀.
+- offset 방식은 깊은 페이지에서 성능 저하가 있으며 동시 삽입 시 누락/중복 가능성이 있다.
+
+**모드 충돌**: `cursor` + `page`/`size` 동시 지정 시 400 `ISSUE_PAGINATION_MODE_CONFLICT`.""",
+    )
+    @ApiResponses(
+        ApiResponse(
+            responseCode = "200",
+            description = "cursor 모드: CursorPageResponse envelope / offset 모드: Spring Page",
+            content = [Content(schema = Schema(implementation = CursorPageResponse::class))],
+        ),
+        ApiResponse(responseCode = "400", description = "cursor 형식 오류 또는 모드 충돌", content = [Content()]),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "프로젝트 BROWSE 권한 없음", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping
     @Suppress("LongParameterList") // cursor 모드(cursor/limit)와 offset 모드(pageable/page/size)의 REST 쿼리 파라미터 집합 — 분리 불가
     fun list(
@@ -258,6 +327,20 @@ class IssueController(
      * @throws com.bts.issue.type.domain.IssueTypeNotFoundException typeId 가 존재하지 않거나 비활성 → 404
      * @throws com.bts.issue.domain.IssueVersionConflictException 낙관락 충돌 → 409
      */
+    @Operation(
+        operationId = "updateIssue",
+        summary = "이슈 수정",
+        description = "RFC 7396 JSON Merge Patch 시맨틱으로 이슈 필드를 수정한다. null 필드는 변경하지 않는다.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "이슈 수정 성공"),
+        ApiResponse(responseCode = "400", description = "요청 형식 오류", content = [Content()]),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "이슈 수정 권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "낙관적 잠금 충돌 (버전 불일치)", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PatchMapping("/{key}")
     fun update(
         @PathVariable key: String,
@@ -308,6 +391,20 @@ class IssueController(
      * @throws com.bts.issue.domain.IssueTransitionNotAllowedException 전이 거부 → 409
      * @throws com.bts.issue.domain.IssueVersionConflictException 낙관락 충돌 → 409
      */
+    @Operation(
+        operationId = "transitionIssue",
+        summary = "이슈 상태 전이",
+        description = "워크플로우 정의에 따라 이슈 상태를 전이한다. 허용되지 않는 전이는 409 로 거부한다.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "전이 성공"),
+        ApiResponse(responseCode = "400", description = "요청 형식 오류", content = [Content()]),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "전이 권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "전이 불허 또는 낙관적 잠금 충돌", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PostMapping("/{key}/transition")
     fun transition(
         @PathVariable key: String,
@@ -340,6 +437,18 @@ class IssueController(
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우 → 404
      * @throws com.bts.issue.domain.IssueWorkflowNotConfiguredException 프로젝트에 워크플로우 미설정 → 422
      */
+    @Operation(
+        operationId = "availableTransitions",
+        summary = "가용 전이 목록 조회",
+        description = "현재 이슈 상태에서 이동 가능한 전이 목록을 반환한다.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "가용 전이 목록"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "조회 권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping("/{key}/transitions")
     fun availableTransitions(
         @PathVariable key: String,
@@ -378,6 +487,26 @@ class IssueController(
      * @throws PaginationModeConflictException cursor + page 동시 지정 시.
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈 미존재·소프트 삭제·VIEW 미인가 → 404
      */
+    @Operation(
+        operationId = "listChangelog",
+        summary = "이슈 변경 이력 조회",
+        description = """이슈 변경 이력을 조회한다. list 와 동일한 cursor / offset 이중 모드를 지원한다.
+
+cursor 모드: `cursor=<token|빈문자열>`, `limit=N` → CursorPageResponse envelope.
+offset 모드: cursor 파라미터 미지정 → Spring Page (무회귀).
+**forward-only** — 역방향 이동 미지원.""",
+    )
+    @ApiResponses(
+        ApiResponse(
+            responseCode = "200",
+            description = "cursor 모드: CursorPageResponse envelope / offset 모드: Spring Page",
+            content = [Content(schema = Schema(implementation = CursorPageResponse::class))],
+        ),
+        ApiResponse(responseCode = "400", description = "cursor 형식 오류 또는 모드 충돌", content = [Content()]),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 미존재 또는 VIEW 권한 없음", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping("/{key}/changelog")
     // ThrowsCount: cursor 모드(PaginationModeConflict + limit초과 400 + 형식오류 400 = 3개) 필연적으로 임계치 초과
     // SwallowedException: IllegalArgumentException → ResponseStatusException 재포장이므로 원본 정보 보존
@@ -446,6 +575,15 @@ class IssueController(
      * @throws com.bts.issue.domain.AssigneeNotFoundException assigneeId 가 non-null 이지만 사용자가 존재하지 않을 때 → 422
      * @throws com.bts.issue.domain.IssueVersionConflictException 낙관락 충돌 → 409
      */
+    @Operation(operationId = "changeAssignee", summary = "담당자 변경/해제", description = "이슈 담당자를 변경하거나 해제한다.")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "낙관적 잠금 충돌", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PatchMapping("/{key}/assignee")
     fun changeAssignee(
         @PathVariable key: String,
@@ -485,6 +623,14 @@ class IssueController(
      * @throws com.bts.issue.domain.IssueComponentNotFoundException 비활성 또는 타 프로젝트 컴포넌트 포함 시 → 422
      * @throws com.bts.issue.domain.IssueVersionConflictException 낙관락 충돌 → 409
      */
+    @Operation(operationId = "changeComponents", summary = "컴포넌트 목록 교체")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 또는 컴포넌트 미존재", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "낙관적 잠금 충돌", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PatchMapping("/{key}/components")
     fun changeComponents(
         @PathVariable key: String,
@@ -523,6 +669,14 @@ class IssueController(
      * @throws com.bts.issue.domain.IssueLinkedVersionNotFoundException 타 프로젝트/삭제 버전 포함 시 → 422
      * @throws com.bts.issue.domain.IssueVersionConflictException 낙관락 충돌 → 409
      */
+    @Operation(operationId = "changeAffectsVersions", summary = "영향 버전 목록 교체")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 또는 버전 미존재", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "낙관적 잠금 충돌", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PatchMapping("/{key}/affects-versions")
     fun changeAffectsVersions(
         @PathVariable key: String,
@@ -561,6 +715,14 @@ class IssueController(
      * @throws com.bts.issue.domain.IssueLinkedVersionNotFoundException 타 프로젝트/삭제 버전 포함 시 → 422
      * @throws com.bts.issue.domain.IssueVersionConflictException 낙관락 충돌 → 409
      */
+    @Operation(operationId = "changeFixVersions", summary = "수정 예정 버전 목록 교체")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 또는 버전 미존재", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "낙관적 잠금 충돌", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PatchMapping("/{key}/fix-versions")
     fun changeFixVersions(
         @PathVariable key: String,
@@ -599,6 +761,13 @@ class IssueController(
      * @return 200 OK + PDF 바이너리, Content-Type: application/pdf, Content-Disposition: attachment
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈가 없거나 소프트 삭제된 경우 → 404
      */
+    @Operation(operationId = "exportIssuePdf", summary = "이슈 PDF 내보내기", description = "이슈를 PDF 바이너리로 내보낸다.")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "PDF 바이너리", content = [Content(mediaType = "application/pdf")]),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping("/{key}/pdf", produces = [MediaType.APPLICATION_PDF_VALUE])
     fun exportPdf(
         @PathVariable key: String,
@@ -623,6 +792,14 @@ class IssueController(
      * @param key path variable 이슈 키 문자열. 예: `"ATLAS-1"`
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈가 없거나 이미 삭제된 경우 → 404
      */
+    @Operation(operationId = "deleteIssue", summary = "이슈 소프트 삭제", description = "이슈를 소프트 삭제한다. 삭제 후 해당 키로 조회하면 404 가 반환된다.")
+    @ApiResponses(
+        ApiResponse(responseCode = "204", description = "삭제 성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "삭제 권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @DeleteMapping("/{key}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun delete(
@@ -646,6 +823,14 @@ class IssueController(
      * @throws com.bts.issue.domain.IssueNotFoundException 원본이 없거나 삭제된 경우 → 404
      * @throws com.bts.issue.domain.IssueAccessDeniedException 권한이 없는 경우 → 403
      */
+    @Operation(operationId = "cloneIssue", summary = "이슈 클론", description = "원본 이슈를 복제하여 새 이슈를 생성한다.")
+    @ApiResponses(
+        ApiResponse(responseCode = "201", description = "클론 성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "원본 이슈 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PostMapping("/{key}/clone")
     fun clone(
         @PathVariable key: String,
@@ -685,6 +870,15 @@ class IssueController(
      * @throws com.bts.issue.domain.IssueNotFoundException 대상 또는 이웃 이슈 미존재/소프트삭제 → 404
      * @throws com.bts.issue.application.InvalidRankNeighborException 이웃 검증 실패 → 400
      */
+    @Operation(operationId = "rerankIssue", summary = "백로그 rank 변경", description = "이슈 백로그 rank 를 이웃 이슈 기준으로 변경한다.")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "rank 변경 성공"),
+        ApiResponse(responseCode = "400", description = "이웃 이슈 검증 실패", content = [Content()]),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PatchMapping("/{key}/rank")
     fun rerank(
         @PathVariable key: String,

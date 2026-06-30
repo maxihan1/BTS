@@ -3,11 +3,18 @@
 package com.bts.issue.template.web
 
 import com.bts.issue.adapter.inbound.rest.DataResponse
+import com.bts.issue.config.BEARER_AUTH_SCHEME
 import com.bts.issue.project.ProjectLookup
 import com.bts.issue.template.application.IssueTemplateApplicationService
 import com.bts.issue.template.web.dto.CreateIssueTemplateRequest
 import com.bts.issue.template.web.dto.IssueTemplateResponse
 import com.bts.issue.template.web.dto.UpdateIssueTemplateRequest
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -56,6 +63,7 @@ private val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-0
  * @param service 이슈 템플릿 CRUD Application Service.
  * @param projectLookup projectIdOrKey → 프로젝트 UUID 해석기.
  */
+@Tag(name = "Issue Templates", description = "이슈 템플릿 CRUD 및 변수 치환 API (FR-TM-01/02)")
 @RestController
 @RequestMapping("/api/v1/projects/{projectIdOrKey}/issue-templates")
 class IssueTemplateController(
@@ -73,6 +81,13 @@ class IssueTemplateController(
      * @return 200 OK + `{ "data": [ ... ] }`.
      * @throws ResponseStatusException 404 — 프로젝트 미존재.
      */
+    @Operation(operationId = "listIssueTemplates", summary = "이슈 템플릿 목록 조회")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "템플릿 목록"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "프로젝트 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping
     fun list(
         @PathVariable projectIdOrKey: String,
@@ -91,6 +106,13 @@ class IssueTemplateController(
      * @return 200 OK + [IssueTemplateResponse] body.
      * @throws com.bts.issue.template.domain.IssueTemplateNotFoundException 템플릿 미존재 → 404
      */
+    @Operation(operationId = "getIssueTemplateById", summary = "이슈 템플릿 단건 조회")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "템플릿"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "템플릿 또는 프로젝트 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping("/{templateId}")
     fun getById(
         @PathVariable projectIdOrKey: String,
@@ -112,6 +134,13 @@ class IssueTemplateController(
      * @param issueTypeId 조회할 이슈 타입 BIGINT.
      * @return 200 + content 또는 204 No Content.
      */
+    @Operation(operationId = "resolveIssueTemplate", summary = "이슈 생성 프리필 템플릿 조회")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "활성 템플릿 content"),
+        ApiResponse(responseCode = "204", description = "활성 템플릿 없음"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping("/resolve")
     fun resolve(
         @PathVariable projectIdOrKey: String,
@@ -138,6 +167,15 @@ class IssueTemplateController(
      * @throws com.bts.issue.template.domain.IssueTemplateAccessDeniedException 권한 없음 → 403
      * @throws com.bts.issue.type.domain.IssueTypeNotFoundException issueType 미존재 → 404
      */
+    @Operation(operationId = "createIssueTemplate", summary = "이슈 템플릿 생성")
+    @ApiResponses(
+        ApiResponse(responseCode = "201", description = "생성 성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "프로젝트 또는 이슈 타입 미존재", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "동일 (project, issueType) 템플릿 중복", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PostMapping
     fun create(
         @PathVariable projectIdOrKey: String,
@@ -176,6 +214,14 @@ class IssueTemplateController(
      * @throws com.bts.issue.template.domain.IssueTemplateAccessDeniedException 권한 없음 → 403
      * @throws com.bts.issue.template.domain.InvalidIssueTemplateException name/content 불변식 위반 → 422
      */
+    @Operation(operationId = "updateIssueTemplate", summary = "이슈 템플릿 수정")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "수정 성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "템플릿 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PatchMapping("/{templateId}")
     fun update(
         @PathVariable projectIdOrKey: String,
@@ -205,6 +251,14 @@ class IssueTemplateController(
      * @throws com.bts.issue.template.domain.IssueTemplateNotFoundException 템플릿 미존재 → 404
      * @throws com.bts.issue.template.domain.IssueTemplateAccessDeniedException 권한 없음 → 403
      */
+    @Operation(operationId = "deleteIssueTemplate", summary = "이슈 템플릿 소프트 삭제")
+    @ApiResponses(
+        ApiResponse(responseCode = "204", description = "삭제 성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "템플릿 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @DeleteMapping("/{templateId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun delete(
