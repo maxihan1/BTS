@@ -49,9 +49,21 @@ classify 결과: type=api, agent=backend-engineer
 - [docs/decisions/2026-06-30-fr-api-02-aql-search-offset-envelope.md](../decisions/2026-06-30-fr-api-02-aql-search-offset-envelope.md) (생성됨)
 - 선행: [docs/decisions/2026-06-30-fr-api-01-cursor-pagination-envelope.md](../decisions/2026-06-30-fr-api-01-cursor-pagination-envelope.md)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-30-fr-api-02-aql-rest-api.md](../specs/2026-06-30-fr-api-02-aql-rest-api.md)
+
+핵심 요약.
+- `POST /api/v1/search/aql` 응답을 raw Spring `Page` → envelope `{data, meta:{page:{number,size,totalElements,totalPages}}}`로 전환 (FR-API-01과 동일 외피, offset 메타)
+- search 모듈에 springdoc OpenAPI 신규 도입(@Tag/@Operation/@ApiResponses/@SecurityRequirement, bearerAuth)
+- **프론트 동반 수정**(FR-5): `api/search.ts`(aqlSearchPageSchema) + `routes/search.tsx`(소비처) envelope 파싱 — 무회귀, 소비처 1곳
+- 보안(IssueSearchPort)·파서·SEARCH_* ProblemDetail·요청 DTO는 변경 없이 재사용
+
+## Brainstorming Check
+
+✅ 통과 (직접 스펙 self sanity-check, 1회).
+- 포착한 gap: 응답 외피 변경 → 프론트 파싱 회귀 → FR-5 동반 수정으로 해소. 제네릭 envelope OpenAPI 스키마 누락(EC5), 0건/초과 page 일관성(EC1/EC2) 명시.
+- ❓ 게이트1 Maxi 확인 항목: 프론트 동반 수정이 product D6 "프론트 UI 해당 없음" 표기와 형식상 어긋남(실질은 기존 파싱 어댑테이션). D6 표기 유지 + PR 본문 사유 명시 방침.
 
 ## Plan (← /bts-plan 채움)
 
