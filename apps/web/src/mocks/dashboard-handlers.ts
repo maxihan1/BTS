@@ -386,12 +386,17 @@ const getGadgetCatalogHandler = http.get('/api/v1/dashboards/gadget-catalog', ()
  * handlers.ts에서 dashboardHandlers를 spread해 등록한다.
  * GET 목록·단건, POST 생성, PATCH 수정, DELETE 삭제 모두 포함.
  * 가젯 카탈로그 핸들러(FR-DB-02) 포함.
+ *
+ * ★ 핸들러 순서 주의 (MSW는 선두 매칭 방식).
+ *   getGadgetCatalogHandler(GET /api/v1/dashboards/gadget-catalog)를
+ *   getDashboardHandler(GET /api/v1/dashboards/:id) 보다 먼저 등록해야
+ *   "gadget-catalog" 문자열이 :id 파라미터로 잘못 매칭되지 않는다.
  */
 export const dashboardHandlers = [
   listDashboardsHandler,
+  getGadgetCatalogHandler,
   getDashboardHandler,
   createDashboardHandler,
   patchDashboardHandler,
   deleteDashboardHandler,
-  getGadgetCatalogHandler,
 ]
