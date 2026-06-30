@@ -102,6 +102,10 @@ dependencies {
     // BC 격리: issue-tracking MinioClient 와 별도 빈/버킷(bts-exports) 사용 (ADR §D4)
     implementation("io.minio:minio:8.5.17")
 
+    // springdoc — OpenAPI 3.1 명세 자동 생성 + Swagger UI.
+    // issue-tracking 과 동일 버전(2.6.0)을 사용한다(§1.17 신규 의존성 정책 — 동일 버전 자동 허용).
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
+
     // ── 테스트 ─────────────────────────────────────────────────────────────────
     // Spring Boot 테스트 슬라이스 (JUnit Vintage 제외 — Kotest runner 사용)
     testImplementation("org.springframework.boot:spring-boot-starter-test") {

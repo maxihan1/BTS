@@ -27,25 +27,13 @@ const HIT_FIXTURE = {
 }
 
 const PAGE_FIXTURE = {
-  content: [HIT_FIXTURE],
-  totalElements: 1,
-  totalPages: 1,
-  size: 20,
-  number: 0,
-  first: true,
-  last: true,
-  empty: false,
+  data: [HIT_FIXTURE],
+  meta: { page: { number: 0, size: 20, totalElements: 1, totalPages: 1 } },
 }
 
 const EMPTY_PAGE_FIXTURE = {
-  content: [],
-  totalElements: 0,
-  totalPages: 0,
-  size: 20,
-  number: 0,
-  first: true,
-  last: true,
-  empty: true,
+  data: [],
+  meta: { page: { number: 0, size: 20, totalElements: 0, totalPages: 0 } },
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,22 +57,23 @@ afterEach(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('searchAql — 200 성공', () => {
-  it('Page<AqlSearchHit> 응답을 Zod로 파싱해 반환한다', async () => {
+  it('envelope<AqlSearchHit> 응답을 Zod로 파싱해 반환한다', async () => {
     const result = await searchAql({ projectKey: 'ATLAS', query: 'status = open' })
 
-    expect(result.content).toHaveLength(1)
-    expect(result.totalElements).toBe(1)
-    expect(result.totalPages).toBe(1)
-    expect(result.size).toBe(20)
-    expect(result.number).toBe(0)
-    expect(result.first).toBe(true)
-    expect(result.last).toBe(true)
-    expect(result.empty).toBe(false)
+    expect(result.data).toHaveLength(1)
+    expect(result.meta.page.totalElements).toBe(1)
+    expect(result.meta.page.totalPages).toBe(1)
+    expect(result.meta.page.size).toBe(20)
+    expect(result.meta.page.number).toBe(0)
+    // first/last/empty는 derive — meta.page 필드에서 계산 (schema에 포함 안 됨)
+    expect(result.meta.page.number === 0).toBe(true)
+    expect(result.meta.page.number >= result.meta.page.totalPages - 1).toBe(true)
+    expect(result.meta.page.totalElements === 0).toBe(false)
   })
 
   it('AqlSearchHit 필드 9종(key/summary/typeKey/currentStateKey/assigneeId/priority/priorityName/projectKey/updatedAt)을 정확히 파싱한다', async () => {
     const result = await searchAql({ projectKey: 'ATLAS', query: 'status = open' })
-    const hit = result.content[0]
+    const hit = result.data[0]
 
     expect(hit?.key).toBe('ATLAS-1')
     expect(hit?.summary).toBe('로그인 버튼이 동작하지 않음')
@@ -103,16 +92,16 @@ describe('searchAql — 200 성공', () => {
       http.post('/api/v1/search/aql', () =>
         HttpResponse.json({
           ...PAGE_FIXTURE,
-          content: [{ ...HIT_FIXTURE, assigneeId: null }],
+          data: [{ ...HIT_FIXTURE, assigneeId: null }],
         }),
       ),
     )
 
     const result = await searchAql({ projectKey: 'ATLAS', query: 'status = open' })
-    expect(result.content[0]?.assigneeId).toBeNull()
+    expect(result.data[0]?.assigneeId).toBeNull()
   })
 
-  it('0건 결과(empty=true)를 정상 파싱한다', async () => {
+  it('0건 결과(totalElements=0)를 정상 파싱한다', async () => {
     server.use(
       http.post('/api/v1/search/aql', () =>
         HttpResponse.json(EMPTY_PAGE_FIXTURE),
@@ -120,9 +109,10 @@ describe('searchAql — 200 성공', () => {
     )
 
     const result = await searchAql({ projectKey: 'ATLAS', query: 'status = closed' })
-    expect(result.content).toHaveLength(0)
-    expect(result.empty).toBe(true)
-    expect(result.totalElements).toBe(0)
+    expect(result.data).toHaveLength(0)
+    // empty는 derive: totalElements === 0
+    expect(result.meta.page.totalElements === 0).toBe(true)
+    expect(result.meta.page.totalElements).toBe(0)
   })
 
   it('page/size 파라미터가 요청 body에 포함된다', async () => {

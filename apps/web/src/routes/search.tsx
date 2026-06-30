@@ -390,43 +390,52 @@ export function SearchPage({
         {/* 결과 렌더 — data가 있으면 isFetching 여부와 무관하게 표시.
             keepPreviousData 덕분에 새 쿼리 로딩 중에도 이전 결과가 유지된다.
             isFetching=true 시 opacity-60으로 전환 중임을 시각화한다. */}
-        {data !== undefined && (
-          <div className={isFetching ? 'opacity-60' : undefined}>
-            {data.empty ? (
-              /* 0건 빈 상태 — role=alert 없음(에러 아님), 결과 영역 회색 안내 */
-              <div className="py-12 text-center text-muted-foreground">
-                <p className="text-base">검색 결과가 없습니다.</p>
-                <p className="mt-1 text-sm">다른 쿼리를 시도해 보세요.</p>
-              </div>
-            ) : (
-              <>
-                <ul className="space-y-2" aria-label="검색 결과">
-                  {data.content.map((hit) => (
-                    <li key={hit.key}>
-                      <SearchResultCard
-                        issueKey={hit.key}
-                        summary={hit.summary}
-                        currentStateKey={hit.currentStateKey}
-                        priorityName={hit.priorityName}
-                        onNavigate={onNavigate}
-                      />
-                    </li>
-                  ))}
-                </ul>
+        {data !== undefined && (() => {
+          // envelope meta.page 로컬 변수 — data.meta.page 중첩 반복 제거
+          const pg = data.meta.page
+          const hits = data.data
+          const isEmpty = pg.totalElements === 0
+          const isFirst = pg.number === 0
+          const isLast = pg.number >= pg.totalPages - 1
 
-                {data.totalPages > 1 && (
-                  <SearchPagination
-                    page={page}
-                    totalPages={data.totalPages}
-                    isFirst={data.first}
-                    isLast={data.last}
-                    onPageChange={onPageChange}
-                  />
-                )}
-              </>
-            )}
-          </div>
-        )}
+          return (
+            <div className={isFetching ? 'opacity-60' : undefined}>
+              {isEmpty ? (
+                /* 0건 빈 상태 — role=alert 없음(에러 아님), 결과 영역 회색 안내 */
+                <div className="py-12 text-center text-muted-foreground">
+                  <p className="text-base">검색 결과가 없습니다.</p>
+                  <p className="mt-1 text-sm">다른 쿼리를 시도해 보세요.</p>
+                </div>
+              ) : (
+                <>
+                  <ul className="space-y-2" aria-label="검색 결과">
+                    {hits.map((hit) => (
+                      <li key={hit.key}>
+                        <SearchResultCard
+                          issueKey={hit.key}
+                          summary={hit.summary}
+                          currentStateKey={hit.currentStateKey}
+                          priorityName={hit.priorityName}
+                          onNavigate={onNavigate}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+
+                  {pg.totalPages > 1 && (
+                    <SearchPagination
+                      page={page}
+                      totalPages={pg.totalPages}
+                      isFirst={isFirst}
+                      isLast={isLast}
+                      onPageChange={onPageChange}
+                    />
+                  )}
+                </>
+              )}
+            </div>
+          )
+        })()}
       </div>
     </div>
   )

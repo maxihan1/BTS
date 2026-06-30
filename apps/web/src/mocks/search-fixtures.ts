@@ -47,40 +47,53 @@ export const SEARCH_HIT_DONE: AqlSearchHit = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page 응답 픽스처 헬퍼
+// envelope 형태: { data: AqlSearchHit[], meta: { page: { number, size, totalElements, totalPages } } }
+// 백엔드 DataResponse<Page<AqlSearchHit>> 직렬화 형태와 1:1 대응
+//
+// ★ first/last/empty 는 schema에 없으므로 derive만 제공:
+//   first  = meta.page.number === 0
+//   last   = meta.page.number >= meta.page.totalPages - 1
+//   empty  = meta.page.totalElements === 0
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** makeSearchPage 오버라이드 파라미터 — envelope meta.page 필드 개별 지정 */
+interface SearchPageOverrides {
+  totalElements?: number
+  size?: number
+  number?: number
+  totalPages?: number
+}
+
 /**
- * AqlSearchPage 픽스처 생성 헬퍼.
- * Spring Page 직렬화 형태와 1:1 대응.
+ * AqlSearchPage envelope 픽스처 생성 헬퍼.
+ * 백엔드 DataResponse<Page<AqlSearchHit>> 직렬화 형태와 1:1 대응.
+ *
+ * @param hits 결과 AqlSearchHit 배열 (data 필드에 그대로 사용)
+ * @param overrides meta.page 필드 개별 오버라이드 (미지정 시 hits 기반 자동 계산)
  */
 export function makeSearchPage(
   hits: AqlSearchHit[],
-  overrides: Partial<Omit<AqlSearchPage, 'content'>> = {},
+  overrides: SearchPageOverrides = {},
 ): AqlSearchPage {
   const totalElements = overrides.totalElements ?? hits.length
   const size = overrides.size ?? 20
   const number = overrides.number ?? 0
-  const totalPages = overrides.totalPages ?? (totalElements === 0 ? 0 : Math.ceil(totalElements / size))
+  const totalPages =
+    overrides.totalPages ?? (totalElements === 0 ? 0 : Math.ceil(totalElements / size))
   return {
-    content: hits,
-    totalElements,
-    totalPages,
-    size,
-    number,
-    first: overrides.first ?? number === 0,
-    last: overrides.last ?? number >= totalPages - 1,
-    empty: overrides.empty ?? hits.length === 0,
+    data: hits,
+    meta: { page: { number, size, totalElements, totalPages } },
   }
 }
 
-/** 기본 검색 결과 페이지 — 3건 */
+/** 기본 검색 결과 페이지 — 3건 샘플 데이터 (SEARCH_HIT_BUG·UNASSIGNED·DONE) */
 export const DEFAULT_SEARCH_PAGE: AqlSearchPage = makeSearchPage([
   SEARCH_HIT_BUG,
   SEARCH_HIT_UNASSIGNED,
   SEARCH_HIT_DONE,
 ])
 
-/** 빈 검색 결과 페이지 */
+/** 빈 검색 결과 페이지 — totalElements=0 / totalPages=0 */
 export const EMPTY_SEARCH_PAGE: AqlSearchPage = makeSearchPage([])
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -158,12 +158,11 @@ describe('SearchPage — ① 정상 검색', () => {
       http.post('/api/v1/search/aql', () =>
         HttpResponse.json({
           ...DEFAULT_SEARCH_PAGE,
-          content: [
-            { ...SEARCH_HIT_BUG, priority: 2, priorityName: '높음' },
-            { ...SEARCH_HIT_UNASSIGNED, priority: 3, priorityName: '보통' },
+          data: [
+            { ...SEARCH_HIT_BUG, priority: 2, priorityName: 'High' },
+            { ...SEARCH_HIT_UNASSIGNED, priority: 3, priorityName: 'Medium' },
           ],
-          totalElements: 2,
-          totalPages: 1,
+          meta: { page: { ...DEFAULT_SEARCH_PAGE.meta.page, totalElements: 2, totalPages: 1 } },
         }),
       ),
     )
@@ -175,8 +174,8 @@ describe('SearchPage — ① 정상 검색', () => {
     await user.click(screen.getByRole('button', { name: '검색' }))
 
     await waitFor(() => {
-      expect(screen.getByText('높음')).toBeInTheDocument()
-      expect(screen.getByText('보통')).toBeInTheDocument()
+      expect(screen.getByText('High')).toBeInTheDocument()
+      expect(screen.getByText('Medium')).toBeInTheDocument()
     })
   })
 
@@ -202,10 +201,7 @@ describe('SearchPage — ① 정상 검색', () => {
       http.post('/api/v1/search/aql', () =>
         HttpResponse.json({
           ...DEFAULT_SEARCH_PAGE,
-          totalElements: 40,
-          totalPages: 2,
-          first: true,
-          last: false,
+          meta: { page: { ...DEFAULT_SEARCH_PAGE.meta.page, totalElements: 40, totalPages: 2 } },
         }),
       ),
     )
