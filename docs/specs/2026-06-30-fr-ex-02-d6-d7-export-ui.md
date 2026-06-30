@@ -76,7 +76,7 @@ ApiError(status=400, body=ProblemDetail{
 
 ## 비기능 요구사항 (NFR)
 
-- **NFR-1 (회귀 0)**. FR-EX-01 동기 경로(S1) 동작 불변. 기존 `ExportDialog.test.tsx` 전부 통과.
+- **NFR-1 (회귀 0)**. FR-EX-01 동기 **성공 경로(S1)** 동작 불변. 기존 ExportDialog.test.tsx의 동기 성공/컬럼/형식 테스트 무변경 통과. 단, 기존 LIMIT_EXCEEDED→alert 단위 테스트(test:225-243)와 E2E S4(export.spec:239-264)는 자동분기 동작으로 **의도적 교체**(양립 불가 — 리뷰 BLOCKER-3/4).
 - **NFR-2 (접근성)**. 진행률 바 `role="progressbar"` + `aria-valuenow`. 상태 전환 시 `role="status"`/`role="alert"`로 스크린리더 고지.
 - **NFR-3 (폴링 효율)**. 종단 상태 도달 즉시 폴링 중단. 다이얼로그 unmount 시 폴링 정리. 1500ms 간격(과부하 방지).
 - **NFR-4 (BC 격리)**. search BC 프론트 관례 따름(기존 `@/api/search` 확장). 백엔드 변경 0.
