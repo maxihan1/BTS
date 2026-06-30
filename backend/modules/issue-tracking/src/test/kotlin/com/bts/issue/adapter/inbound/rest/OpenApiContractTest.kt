@@ -274,7 +274,7 @@ class OpenApiContractTest {
      * ## 핵심 검증
      * - 중복 없음: 순회 중 같은 키가 두 번 등장하면 즉시 fail.
      * - 누락 없음: 최종 수집 집합 == 시드 집합.
-     * - 마지막 페이지: next=null 인 페이지에서 순회 종료.
+     * - 마지막 페이지: [traverseCursor] 내부에서 next=null 을 만나 루프 종료.
      *
      * ## CursorCodec 타임존 round-trip 실증
      * CursorCodec.encode(Instant/OffsetDateTime UTC) → 토큰 →
@@ -285,42 +285,8 @@ class OpenApiContractTest {
     fun `T4 cursor end-to-end 순회 이슈 7건 limit=3 전체 순회 중복0 누락0 마지막페이지 next=null`() {
         val seededKeys = (1..7).map { i -> insertIssue("T4 순회 이슈 $i") }.toSet()
 
-        val collectedKeys = mutableSetOf<String>()
-        var cursor: String? = ""
-        var observedLastPage = false
+        val collectedKeys = traverseCursor(limit = 3)
 
-        while (cursor != null) {
-            val result =
-                mockMvc
-                    .perform(
-                        get("/api/v1/issues")
-                            .param("cursor", cursor)
-                            .param("projectKey", PROJECT_KEY)
-                            .param("limit", "3")
-                            .with(user(ACTOR_UUID.toString()).roles("USER")),
-                    ).andExpect(status().isOk)
-                    .andReturn()
-
-            val tree = objectMapper.readTree(result.response.contentAsString)
-            tree.path("data").forEach { item ->
-                val key = item.path("key").asText()
-                assertThat(collectedKeys.add(key))
-                    .withFailMessage("cursor 순회 중 중복 이슈 키 발견: '$key'. 현재 수집: $collectedKeys")
-                    .isTrue()
-            }
-
-            val nextNode = tree.path("meta").path("page").path("next")
-            if (nextNode.isNull || nextNode.isMissingNode) {
-                observedLastPage = true
-                cursor = null
-            } else {
-                cursor = nextNode.asText()
-            }
-        }
-
-        assertThat(observedLastPage)
-            .withFailMessage("마지막 페이지에서 meta.page.next=null 을 관측하지 못했습니다.")
-            .isTrue()
         assertThat(collectedKeys)
             .withFailMessage("수집된 이슈 수(${collectedKeys.size})가 시드 수(7)와 다릅니다.")
             .hasSize(7)
@@ -352,32 +318,7 @@ class OpenApiContractTest {
 
         val seededKeys = setOf(tieKey1, tieKey2, extra1, extra2)
 
-        val collectedKeys = mutableSetOf<String>()
-        var cursor: String? = ""
-
-        while (cursor != null) {
-            val result =
-                mockMvc
-                    .perform(
-                        get("/api/v1/issues")
-                            .param("cursor", cursor)
-                            .param("projectKey", PROJECT_KEY)
-                            .param("limit", "1")
-                            .with(user(ACTOR_UUID.toString()).roles("USER")),
-                    ).andExpect(status().isOk)
-                    .andReturn()
-
-            val tree = objectMapper.readTree(result.response.contentAsString)
-            tree.path("data").forEach { item ->
-                val key = item.path("key").asText()
-                assertThat(collectedKeys.add(key))
-                    .withFailMessage("tie-break 순회 중 중복 이슈 키 발견: '$key'. 수집: $collectedKeys")
-                    .isTrue()
-            }
-
-            val nextNode = tree.path("meta").path("page").path("next")
-            cursor = if (nextNode.isNull || nextNode.isMissingNode) null else nextNode.asText()
-        }
+        val collectedKeys = traverseCursor(limit = 1)
 
         assertThat(collectedKeys)
             .withFailMessage(
@@ -398,27 +339,7 @@ class OpenApiContractTest {
         val count = 5
         (1..count).forEach { i -> insertIssue("T6 교차검증 이슈 $i") }
 
-        // cursor 모드 전체 순회
-        val cursorKeys = mutableSetOf<String>()
-        var cursor: String? = ""
-        while (cursor != null) {
-            val result =
-                mockMvc
-                    .perform(
-                        get("/api/v1/issues")
-                            .param("cursor", cursor)
-                            .param("projectKey", PROJECT_KEY)
-                            .param("limit", "2")
-                            .with(user(ACTOR_UUID.toString()).roles("USER")),
-                    ).andExpect(status().isOk)
-                    .andReturn()
-
-            val tree = objectMapper.readTree(result.response.contentAsString)
-            tree.path("data").forEach { item -> cursorKeys.add(item.path("key").asText()) }
-
-            val nextNode = tree.path("meta").path("page").path("next")
-            cursor = if (nextNode.isNull || nextNode.isMissingNode) null else nextNode.asText()
-        }
+        val cursorKeys = traverseCursor(limit = 2)
 
         // offset 모드 단일 페이지
         val offsetResult =
@@ -442,6 +363,43 @@ class OpenApiContractTest {
                     "cursor=${cursorKeys.size}건: $cursorKeys, " +
                     "offset=${offsetKeys.size}건: $offsetKeys",
             ).containsExactlyInAnyOrderElementsOf(offsetKeys)
+    }
+
+    // ── cursor 순회 헬퍼 ───────────────────────────────────────────────────
+
+    /**
+     * cursor 모드로 전체 페이지를 끝까지 순회하고 수집된 이슈 키 집합을 반환한다.
+     *
+     * 순회 중 중복 이슈 키가 발견되면 즉시 [IllegalArgumentException] 을 던진다.
+     * `meta.page.next=null` 인 마지막 페이지에서 순회를 종료한다.
+     *
+     * @param limit cursor 모드 limit 파라미터 (페이지당 최대 건수).
+     * @return 순회에서 수집된 이슈 키 집합. 중복 포함 시 예외로 이미 실패한다.
+     */
+    private fun traverseCursor(limit: Int): Set<String> {
+        val keys = mutableSetOf<String>()
+        var cursor: String? = ""
+        while (cursor != null) {
+            val result =
+                mockMvc
+                    .perform(
+                        get("/api/v1/issues")
+                            .param("cursor", cursor)
+                            .param("projectKey", PROJECT_KEY)
+                            .param("limit", limit.toString())
+                            .with(user(ACTOR_UUID.toString()).roles("USER")),
+                    ).andExpect(status().isOk)
+                    .andReturn()
+
+            val tree = objectMapper.readTree(result.response.contentAsString)
+            tree.path("data").forEach { item ->
+                val key = item.path("key").asText()
+                require(keys.add(key)) { "cursor 순회 중 중복 이슈 키 발견: '$key'. 현재 수집: $keys" }
+            }
+            val nextNode = tree.path("meta").path("page").path("next")
+            cursor = if (nextNode.isNull || nextNode.isMissingNode) null else nextNode.asText()
+        }
+        return keys
     }
 
     // ── DB 헬퍼 ────────────────────────────────────────────────────────────
