@@ -47,9 +47,20 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 - **기존 결정 충돌**: SDD 11.1 "offset 대신 cursor" 원칙 ↔ 현 offset 구현 + 프론트 소비. **병행 도입으로 해소**(전면 전환 기각).
 - **관련 ADR**: [docs/decisions/2026-06-30-fr-api-01-cursor-pagination-envelope.md](../decisions/2026-06-30-fr-api-01-cursor-pagination-envelope.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-30-fr-api-01-issue-crud.md](../specs/2026-06-30-fr-api-01-issue-crud.md)
+
+핵심 시나리오 3줄 요약.
+- 외부 클라이언트는 `?cursor=&limit=N` → `{data, meta.page.next}` envelope으로 끊김 없이 순회(keyset seek), 기존 프론트는 `?page&size` offset Page 그대로(무회귀)
+- 위변조/형식오류 cursor·모드 충돌(cursor+page)은 400 RFC 7807 ProblemDetail
+- springdoc 통합 → `/swagger-ui`+`/v3/api-docs`(OpenAPI 3.1), 이슈 CRUD + 전 목록 API annotation, contract test로 스펙↔응답 동기화
+
+**범위 해석(게이트1 재확인)**: cursor+envelope 실적용=이슈목록/changelog, "전 목록 API"=OpenAPI 문서화 대상(unpaged 목록 응답형태 불변, 무회귀 우선).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). adversarial sanity check로 gap 3건 발견·보강(cursor 위변조 방어 근거·OpenAPI Bearer 스킴·springdoc 범위 issue-tracking 한정). Maxi 결정 필요 gap 없음.
 
 ## Plan (← /bts-plan 채움)
 
