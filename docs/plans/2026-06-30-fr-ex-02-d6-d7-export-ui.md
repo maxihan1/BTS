@@ -162,3 +162,15 @@ classify 원분류 qa(E2E 키워드 오판) → ui로 정정. FR-EX-01(동기 Ex
 **선례 추가 발견 (controller)**: `use-bulk-operation.ts`(폴링 hook) + `BulkEditDialog.tsx`/`BulkOperationResultDialog.tsx`(다이얼로그 내 잡 폴링 UX) = ExportDialog 4단계 상태 머신의 직접 템플릿. Task 2가 답습(바퀴 재발명 금지).
 
 **BLOCKER: 모두 해소됨 (게이트 1 진입 가능).**
+
+### PR 단위 코드리뷰 (게이트 2, 2026-06-30)
+
+- **/review (gstack checklist)**: No issues. 직렬화↔Zod 정합(.nullish)·빈catch(정상폴백)·raw errorCode 미노출(매핑+폴백)·잔여물 clean.
+- **code-reviewer agent**: CONCERNS 3건 / BLOCKER 0. PASS — 폴링 안전성(v5 시그니처·error 정지·stale 격리)·Zod↔백엔드 계약(NON_NULL fidelity)·타입안전(as any 0)·상태머신 회귀 0·MSW jobId 격리.
+
+**CONCERNS (게이트 2 수정 결정 → ✅ 전부 해소, test 7d519542 → fix ce7d2dfd, 19/19 통과)**.
+- **C1. 다운로드 실패 데드패스** — ✅ done 단계에 `submitError !== null` role=alert 렌더 추가(ExportDialog.tsx:343).
+- **C2. 폴링 에러 tracking 영구정지 (spec EC5)** — ✅ 폴링 훅 `{isError: pollIsError}` 구조분해(line 172) + tracking pollIsError 분기(line 259) 에러 메시지+닫기/다시시도(setJobId(null) stale 차단). spec EC5 구현.
+- **C3. FR-7 cleanup vacuous green** — ✅ `vi.useFakeTimers()` + `advanceTimersByTimeAsync(2000)`(폴링 1500ms 초과)로 진짜 cleanup 검증(test:534). userEvent+fake timer hang은 fireEvent+act 루프로 우회.
+
+**게이트 2 재진입: CONCERNS 0, BLOCKER 0 — 머지 가능.**
