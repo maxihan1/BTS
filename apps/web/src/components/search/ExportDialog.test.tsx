@@ -5,7 +5,7 @@
 // content-disposition 헤더 파싱(HTTP 레이어)은 jsdom 환경에서 헤더 접근 제한이 있어
 // 컴포넌트 레벨이 아닌 exportIssues 함수 레벨(E2E/통합)에서 검증한다.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
@@ -467,68 +467,76 @@ describe('ExportDialog', () => {
     it('C3: FR-7 — fake timer 2000ms 진행 후 cleanup으로 폴링 차단됨을 진짜 검증', async () => {
       // C3 이전 테스트는 200ms(<1500ms) 대기라 cleanup 없어도 통과하는 vacuous green.
       // vi.useFakeTimers()로 1500ms refetchInterval을 fake timer로 제어해 진짜 검증한다.
-      // userEvent.setup({ advanceTimers })로 fake timer 환경에서 user interaction을 처리한다.
+      //
+      // userEvent + fake timer 병용 시 내부 async 타이밍으로 hang 발생 (vitest-usertype 교훈).
+      // 시나리오 단순화: fireEvent(동기) + act(async () => {}) 루프(마이크로태스크 플러시) 사용.
+      // TQ mutation/query는 Promise(마이크로태스크) 기반이라 act 루프 5회로 충분히 소화.
       vi.useFakeTimers()
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) })
-
-      vi.mocked(exportIssues).mockRejectedValue(
-        new ApiError(400, {
-          errorCode: 'SEARCH_EXPORT_LIMIT_EXCEEDED',
-          resultCount: 5000,
-          limit: 10000,
-          status: 400,
-          detail: '초과',
-        }),
-      )
-      vi.mocked(submitExportJob).mockResolvedValue({ jobId: JOB_ID, status: 'PENDING' })
-      vi.mocked(fetchExportJobStatus).mockResolvedValue({
-        jobId: JOB_ID,
-        status: 'RUNNING' as const,
-        progress: 50,
-        format: 'CSV',
-        downloadReady: false,
-      })
-
-      const qc = new QueryClient({
-        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-      })
-
-      const TestApp = ({ open }: { readonly open: boolean }) =>
-        createElement(
-          QueryClientProvider,
-          { client: qc },
-          createElement(ExportDialog, {
-            open,
-            onOpenChange: () => {},
-            projectKey: 'ATLAS',
-            query: 'status = open',
+      try {
+        vi.mocked(exportIssues).mockRejectedValue(
+          new ApiError(400, {
+            errorCode: 'SEARCH_EXPORT_LIMIT_EXCEEDED',
+            resultCount: 5000,
+            limit: 10000,
+            status: 400,
+            detail: '초과',
           }),
         )
+        vi.mocked(submitExportJob).mockResolvedValue({ jobId: JOB_ID, status: 'PENDING' })
+        // RUNNING 유지 — 종단 아니라 refetchInterval 계속 동작 가능
+        vi.mocked(fetchExportJobStatus).mockResolvedValue({
+          jobId: JOB_ID,
+          status: 'RUNNING' as const,
+          progress: 50,
+          format: 'CSV',
+          downloadReady: false,
+        })
 
-      const { rerender } = render(createElement(TestApp, { open: true }))
+        const qc = new QueryClient({
+          defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+        })
 
-      // confirmAsync 진입 — mutation은 Promise(마이크로태스크)이므로 fake timer 불필요
-      await user.click(screen.getByRole('button', { name: '내보내기' }))
-      // 소량 타이머 진행으로 TQ 내부 배치/스케줄 마이크로태스크 소화
-      await vi.advanceTimersByTimeAsync(50)
-      expect(screen.getByRole('button', { name: '백그라운드 내보내기' })).toBeInTheDocument()
+        const TestApp = ({ open }: { readonly open: boolean }) =>
+          createElement(
+            QueryClientProvider,
+            { client: qc },
+            createElement(ExportDialog, {
+              open,
+              onOpenChange: () => {},
+              projectKey: 'ATLAS',
+              query: 'status = open',
+            }),
+          )
 
-      // tracking 진입 → 초기 폴링 1회 발생
-      await user.click(screen.getByRole('button', { name: '백그라운드 내보내기' }))
-      // 초기 쿼리 fetch 발생 대기 (TQ microtask) + refetchInterval fake timer 등록
-      await vi.advanceTimersByTimeAsync(50)
-      expect(vi.mocked(fetchExportJobStatus)).toHaveBeenCalledTimes(1)
+        const { rerender } = render(createElement(TestApp, { open: true }))
 
-      const callsBefore = vi.mocked(fetchExportJobStatus).mock.calls.length
+        // Step1: 내보내기 → syncMutation reject(LIMIT_EXCEEDED) → confirmAsync 전환
+        // fireEvent는 동기 DOM 이벤트 발생. act 루프로 TQ mutation Promise chain 소화.
+        fireEvent.click(screen.getByRole('button', { name: '내보내기' }))
+        for (let i = 0; i < 5; i++) await act(async () => {})
+        expect(screen.getByRole('button', { name: '백그라운드 내보내기' })).toBeInTheDocument()
 
-      // 다이얼로그 닫기 → Content 언마운트 → TQ observer 제거 → refetchInterval 취소
-      rerender(createElement(TestApp, { open: false }))
+        // Step2: 백그라운드 내보내기 → asyncMutation resolve → tracking 전환 + 초기 폴링
+        // act 루프: asyncMutation 완료 → React 리렌더 → useExportJobPolling enabled → 초기 쿼리 fetch
+        fireEvent.click(screen.getByRole('button', { name: '백그라운드 내보내기' }))
+        for (let i = 0; i < 5; i++) await act(async () => {})
+        // 초기 폴링 1회 발생 + refetchInterval fake setTimeout(1500ms) 등록 확인
+        expect(vi.mocked(fetchExportJobStatus)).toHaveBeenCalledTimes(1)
 
-      // fake timer 2000ms 진행 — cleanup됐으면 1500ms refetchInterval이 취소되어 추가 호출 없음
-      // cleanup 실패 시 fake timer 1500ms 지점에서 fetchExportJobStatus가 재호출되어 FAIL
-      await vi.advanceTimersByTimeAsync(2000)
+        const callsBefore = vi.mocked(fetchExportJobStatus).mock.calls.length
 
-      expect(vi.mocked(fetchExportJobStatus).mock.calls.length).toBe(callsBefore)
+        // Step3: 다이얼로그 닫기 → Content 언마운트 → TQ observer 제거 → fake 1500ms 타이머 취소
+        rerender(createElement(TestApp, { open: false }))
+
+        // Step4: fake timer 2000ms 진행
+        // cleanup 됐으면: 1500ms 타이머 없어 추가 호출 없음 (진짜 PASS)
+        // cleanup 실패 시: fake 1500ms 타이머 살아있어 fetchExportJobStatus 재호출 → FAIL
+        await vi.advanceTimersByTimeAsync(2000)
+
+        expect(vi.mocked(fetchExportJobStatus).mock.calls.length).toBe(callsBefore)
+      } finally {
+        vi.useRealTimers()
+      }
     }, 10000)
   })
 })

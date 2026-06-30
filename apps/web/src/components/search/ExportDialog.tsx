@@ -169,7 +169,7 @@ function ExportForm({ projectKey, query, onClose }: ExportFormProps): JSX.Elemen
   })
 
   // 폴링 — jobId가 null이면 비활성 (enabled 내부 게이트)
-  const { data: pollData } = useExportJobPolling(jobId, true)
+  const { data: pollData, isError: pollIsError } = useExportJobPolling(jobId, true)
 
   // 폴링 종단 상태 → done 전환
   useEffect(() => {
@@ -255,6 +255,37 @@ function ExportForm({ projectKey, query, onClose }: ExportFormProps): JSX.Elemen
     const progress = pollData?.progress ?? 0
     const statusLabel = STATUS_LABELS[pollData?.status ?? 'PENDING'] ?? '처리 중...'
 
+    // C2: 폴링 HTTP 에러(403/404/재시도 소진 등) — spec EC5 "폴링 지속 실패 시 에러 상태 표시(다시 시도)"
+    if (pollIsError) {
+      return (
+        <div>
+          <p
+            role="alert"
+            className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            내보내기 상태를 조회하지 못했습니다. 잠시 후 다시 시도하세요.
+          </p>
+          <div className="mt-2 flex justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>
+              닫기
+            </Button>
+            {/* done(FAILED) 다시 시도와 동일한 경로 재사용 */}
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                setJobId(null)
+                setSubmitError(null)
+                setPhase('form')
+              }}
+            >
+              다시 시도
+            </Button>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div>
         {/* 상태 라벨 (role=status — 폴링 중 스크린리더 갱신) */}
@@ -304,6 +335,17 @@ function ExportForm({ projectKey, query, onClose }: ExportFormProps): JSX.Elemen
             className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
           >
             내보내기에 실패했습니다. 사유: {getFailureMessage(pollData?.errorCode)}
+          </p>
+        )}
+
+        {/* C1: 다운로드 실패 에러 표시 — dialog-submiterror-ownership-dead-path 교훈 적용
+            done 단계는 submitError를 렌더하지 않아 다운로드 실패 시 사용자가 메시지를 못 봤음 */}
+        {submitError !== null && (
+          <p
+            role="alert"
+            className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {submitError}
           </p>
         )}
 
