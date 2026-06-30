@@ -62,8 +62,8 @@ export const dashboardLabels = {
     /** 설정 버튼/메뉴 */
     settings: '설정',
 
-    /** 위젯 추가 버튼 (DashboardGrid 빈 상태 버튼용 — legacy) */
-    addWidget: '위젯 추가',
+    /** 가젯 추가 버튼 (DashboardGrid 빈 상태 1차 CTA — 헤더 버튼과 동일 라벨, C4 가젯 일원화) */
+    addWidget: '가젯 추가',
 
     /** 그리드가 비어있을 때 안내 문구 */
     emptyGrid: '가젯 추가 버튼을 눌러 대시보드를 채워보세요',

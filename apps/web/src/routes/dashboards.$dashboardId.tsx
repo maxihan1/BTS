@@ -411,6 +411,7 @@ export function DashboardDetailPage({
           onLayoutChange={handleLayoutChange}
           onDeleteTile={handleDeleteTile}
           onEditTitle={handleEditTitle}
+          onAddTile={editable ? () => setCatalogOpen(true) : undefined}
         />
       </div>
 
