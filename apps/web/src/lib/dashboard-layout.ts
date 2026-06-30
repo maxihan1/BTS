@@ -31,7 +31,7 @@ const DEFAULT_TITLE = '새 위젯'
 
 /**
  * 대시보드 타일 — react-grid-layout 의 Layout 항목과 호환 (i, x, y, w, h 동일 키).
- * title 필드는 BTS 전용 확장.
+ * title 필드는 BTS 전용 확장. gadgetType/config는 FR-DB-02 가젯 시스템 확장.
  */
 export interface DashboardTile {
   /** 타일 고유 식별자 (react-grid-layout Layout.i 와 동일) */
@@ -44,8 +44,22 @@ export interface DashboardTile {
   w: number
   /** 타일 높이 (행 수) */
   h: number
-  /** 타일 표시 제목 */
+  /**
+   * 타일 표시 제목.
+   * - legacy 타일: 사용자가 지정한 이름.
+   * - 가젯 타일: 카탈로그 label이 헤더를 대체하므로 부재 가능.
+   */
   title: string
+  /**
+   * 가젯 종류 식별자 — 카탈로그 GadgetType enum 값(소문자 snake_case).
+   * 없으면 legacy 일반 타일로 취급한다.
+   */
+  gadgetType?: string
+  /**
+   * 가젯 설정 객체. 가젯 타일에만 존재하며 가젯별 configFields 스키마를 따른다.
+   * 저장 전 클라측 검증은 validateGadgetConfig(Task 1)가 담당한다.
+   */
+  config?: Record<string, unknown>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -54,19 +68,39 @@ export interface DashboardTile {
 
 /**
  * 파싱된 unknown 값이 DashboardTile 구조를 만족하는지 검사한다.
- * react-grid-layout 호환에 필요한 i, x, y, w, h 와 title 필드를 확인한다.
+ *
+ * 필수: i(string), x/y/w/h(number).
+ * 선택: title(string), gadgetType(string), config(비-null 비-배열 객체).
+ * 허용 조건: legacy 타일은 title 있어야 하고, 가젯 타일은 gadgetType 있으면 title 없어도 허용.
  */
 function isDashboardTile(value: unknown): value is DashboardTile {
   if (typeof value !== 'object' || value === null) return false
   const v = value as Record<string, unknown>
-  return (
-    typeof v['i'] === 'string' &&
-    typeof v['x'] === 'number' &&
-    typeof v['y'] === 'number' &&
-    typeof v['w'] === 'number' &&
-    typeof v['h'] === 'number' &&
-    typeof v['title'] === 'string'
-  )
+
+  // 필수 위치 필드 (react-grid-layout 호환)
+  if (
+    typeof v['i'] !== 'string' ||
+    typeof v['x'] !== 'number' ||
+    typeof v['y'] !== 'number' ||
+    typeof v['w'] !== 'number' ||
+    typeof v['h'] !== 'number'
+  ) {
+    return false
+  }
+
+  // gadgetType: 있으면 string이어야 함
+  if (v['gadgetType'] !== undefined && typeof v['gadgetType'] !== 'string') return false
+
+  // config: 있으면 비-null 비-배열 객체여야 함 (Record<string, unknown> 호환)
+  if (
+    v['config'] !== undefined &&
+    (typeof v['config'] !== 'object' || v['config'] === null || Array.isArray(v['config']))
+  ) {
+    return false
+  }
+
+  // 유효한 타일 조건: legacy 타일은 title(string), 가젯 타일은 gadgetType(string)으로 판별
+  return typeof v['title'] === 'string' || typeof v['gadgetType'] === 'string'
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
