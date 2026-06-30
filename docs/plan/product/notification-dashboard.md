@@ -124,8 +124,8 @@
 - [x] D3. 데이터 모델 — `dashboards.layout` JSON 임베드(별도 테이블 아님) (책임. backend-engineer) — PR #205 (신규 마이그레이션 0, `Dashboard.validateLayout` 가젯-aware 확장)
 - [x] D4. 백엔드 — 가젯 저장·검증 + `GET /dashboards/gadget-catalog` 카탈로그 API (책임. backend-engineer) — PR #205 (데이터 API 아님 — 프론트 직접 fetch)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #205 (도메인 40 + 컨트롤러 + Testcontainers HTTP end-to-end round-trip/라우팅/errorCode)
-- [ ] D6. 프론트 UI — Gadget 컴포넌트 10종 + 카탈로그 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — Gadget 컴포넌트 MVP 6종 + 카탈로그 (책임. designer → frontend-engineer) — PR #209 (이슈 4종 assigned_to_me/recently_created/filter_result/issue_count + 정적 2종 text_widget/link_list, 카탈로그 모달 12종 enum·enabled=false 6종 "준비 중" 게이팅, 프로젝트 지정형 데이터 fetch[fetchIssues assignee+created_at DESC / searchAql / fetchFilter, projectKey 필수], "가젯 추가" 단일 버튼 일원화[legacy 빈 위젯 추가 폐기]+빈 그리드 1차 CTA 모달 연결, XSS 3계층[text plain·link http/https 화이트리스트+noopener]. 차트 4종 pie/bar/created_vs_resolved/sprint_burndown + activity 2종은 enabled=false 카탈로그 등록만 — 렌더는 집계 엔드포인트[issue-tracking BC 별도 PR]·선행 FR 의존으로 후속)
+- [x] D7. E2E (책임. qa-engineer) — PR #209 (S1 추가+저장 / S2 recently_created 이슈 렌더 / S4 link_list noopener / S6 enabled=false 게이팅 / S7 비소유 읽기전용. 드래그/리사이즈는 RGL headless containerWidth=0 제약 SKIP→단위 커버)
 
 ### §3.3 FR-DB-03 — 대시보드 공유 (URL, 임베드)
 

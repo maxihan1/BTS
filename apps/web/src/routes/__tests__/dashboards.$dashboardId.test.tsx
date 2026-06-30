@@ -27,6 +27,30 @@ let capturedGridCanEdit: boolean | null = null
 let capturedGridOnLayoutChange: ((tiles: unknown[]) => void) | null = null
 let capturedGridOnDeleteTile: ((id: string) => void) | null = null
 
+// GadgetCatalogModal mock — open 시 "Text Widget 추가" 버튼 하나만 렌더, onAdd 직접 트리거
+vi.mock('@/components/dashboard/GadgetCatalogModal', () => ({
+  GadgetCatalogModal: (props: {
+    open: boolean
+    onAdd: (partial: { gadgetType: string; config: Record<string, unknown> }) => void
+    onClose: () => void
+  }) => {
+    if (!props.open) return null
+    return (
+      <div role="dialog" data-testid="gadget-catalog-modal">
+        <button
+          type="button"
+          onClick={() => props.onAdd({ gadgetType: 'text_widget', config: { markdown: '테스트' } })}
+        >
+          Text Widget 추가
+        </button>
+        <button type="button" onClick={props.onClose}>
+          취소
+        </button>
+      </div>
+    )
+  },
+}))
+
 vi.mock('@/components/dashboard/DashboardGrid', () => ({
   DashboardGrid: (props: {
     tiles: unknown[]
@@ -275,13 +299,13 @@ describe('권한 게이팅', () => {
   })
 
   /**
-   * T-DB8-P3. 비소유자이면 "위젯 추가" 버튼이 없다 (EC3).
+   * T-DB8-P3. 비소유자이면 "가젯 추가" 버튼이 없다 (EC3 — C4: 가젯으로 일원화).
    */
-  it('T-DB8-P3: 비소유자이면 위젯 추가 버튼이 없다', async () => {
+  it('T-DB8-P3: 비소유자이면 가젯 추가 버튼이 없다 (C4)', async () => {
     mockUseDashboard.mockReturnValue({ data: DASHBOARD_NOT_OWNED, isLoading: false, isError: false })
     await renderDetailPage()
     await waitFor(() => expect(screen.getByTestId('dashboard-grid')).toBeInTheDocument())
-    expect(screen.queryByRole('button', { name: /위젯 추가/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /가젯 추가/i })).toBeNull()
   })
 
   /**
@@ -310,16 +334,32 @@ describe('권한 게이팅', () => {
 
 describe('타일 추가·삭제', () => {
   /**
-   * T-DB8-A1. "위젯 추가" 클릭 시 tiles에 새 타일이 추가된다.
+   * T-DB8-A1. "가젯 추가" 클릭 → GadgetCatalogModal → onAdd → tiles에 gadgetType=text_widget 타일 추가 (C4).
    */
-  it('T-DB8-A1: 위젯 추가 클릭 시 tiles에 새 타일이 추가된다', async () => {
+  it('T-DB8-A1: 가젯 추가 → 모달 onAdd 후 tiles에 가젯 타일이 추가된다 (C4)', async () => {
     const user = userEvent.setup()
     mockUseDashboard.mockReturnValue({ data: DASHBOARD_OWNED, isLoading: false, isError: false })
     await renderDetailPage()
-    await waitFor(() => expect(screen.getByRole('button', { name: /위젯 추가/i })).toBeInTheDocument())
-    await user.click(screen.getByRole('button', { name: /위젯 추가/i }))
-    // 초기 1개 + 새로운 1개 = 2개
-    expect(capturedGridTiles?.length).toBe(2)
+
+    // "가젯 추가" 버튼 클릭 → GadgetCatalogModal open=true
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '가젯 추가' })).toBeInTheDocument(),
+    )
+    await user.click(screen.getByRole('button', { name: '가젯 추가' }))
+
+    // 모달 mock에서 "Text Widget 추가" 버튼 클릭 → onAdd({ gadgetType: 'text_widget', config: ... }) 트리거
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Text Widget 추가' })).toBeInTheDocument(),
+    )
+    await user.click(screen.getByRole('button', { name: 'Text Widget 추가' }))
+
+    // 초기 1개 + 새로운 가젯 타일 1개 = 2개
+    await waitFor(() => expect(capturedGridTiles?.length).toBe(2))
+
+    // 추가된 타일이 gadgetType='text_widget'을 포함하는지 확인
+    const tiles = capturedGridTiles as Array<{ gadgetType?: string }>
+    const added = tiles.find((t) => t.gadgetType === 'text_widget')
+    expect(added).toBeDefined()
   })
 
   /**
@@ -355,15 +395,15 @@ describe('dirty 표시 · 저장', () => {
 
   /**
    * T-DB8-D2. 저장 클릭 시 useUpdateDashboard.mutateAsync가 layout+version으로 호출된다.
-   * dirty=true가 선행돼야 저장 버튼이 활성화되므로 위젯 추가로 먼저 dirty를 유발한다.
+   * dirty=true가 선행돼야 저장 버튼이 활성화된다. 타일 삭제(onDeleteTile)로 dirty 유발 (C4).
    */
   it('T-DB8-D2: 저장 클릭 시 mutateAsync가 layout과 version을 포함해 호출된다', async () => {
     const user = userEvent.setup()
     mockUseDashboard.mockReturnValue({ data: DASHBOARD_OWNED, isLoading: false, isError: false })
     await renderDetailPage()
-    // dirty 유발 — 위젯 추가
-    await waitFor(() => expect(screen.getByRole('button', { name: /위젯 추가/i })).toBeInTheDocument())
-    await user.click(screen.getByRole('button', { name: /위젯 추가/i }))
+    // dirty 유발 — 기존 타일 삭제 (capturedGridOnDeleteTile 콜백 직접 호출, C4 방식)
+    await waitFor(() => expect(screen.getByTestId('dashboard-grid')).toBeInTheDocument())
+    capturedGridOnDeleteTile?.('tile-1')
     // 저장 버튼 활성화 확인 후 클릭
     await waitFor(() => {
       const saveBtn = screen.getByRole('button', { name: /저장/i })
@@ -444,7 +484,7 @@ describe('설정 저장', () => {
 describe('OCC 409 처리', () => {
   /**
    * T-DB8-C1. 409 충돌 시 toast.error가 호출된다.
-   * dirty=true가 선행돼야 저장 버튼이 활성화되므로 위젯 추가로 먼저 dirty를 유발한다.
+   * dirty=true가 선행돼야 저장 버튼이 활성화된다. 타일 삭제(onDeleteTile)로 dirty 유발 (C4).
    */
   it('T-DB8-C1: 409 충돌 시 toast.error가 호출된다', async () => {
     const { toast } = await import('sonner')
@@ -452,9 +492,9 @@ describe('OCC 409 처리', () => {
     mockUseDashboard.mockReturnValue({ data: DASHBOARD_OWNED, isLoading: false, isError: false })
     mockMutateAsync.mockRejectedValue({ status: 409 })
     await renderDetailPage()
-    // dirty 유발 → 저장 버튼 활성화
-    await waitFor(() => expect(screen.getByRole('button', { name: /위젯 추가/i })).toBeInTheDocument())
-    await user.click(screen.getByRole('button', { name: /위젯 추가/i }))
+    // dirty 유발 — 기존 타일 삭제 (C4: 위젯 추가 버튼 제거로 삭제로 대체)
+    await waitFor(() => expect(screen.getByTestId('dashboard-grid')).toBeInTheDocument())
+    capturedGridOnDeleteTile?.('tile-1')
     await waitFor(() => {
       const saveBtn = screen.getByRole('button', { name: /저장/i })
       expect(saveBtn).not.toBeDisabled()
@@ -466,21 +506,22 @@ describe('OCC 409 처리', () => {
   /**
    * T-DB8-C2. 409 충돌 시 로컬 tiles를 덮어쓰지 않는다 (invalidate 금지).
    * onError에서 queryClient.invalidateQueries를 호출하면 tiles가 서버 값으로 덮이므로 금지.
-   * 로컬 tiles 수가 유지됨을 확인한다.
+   * 타일 삭제(onDeleteTile)로 dirty 유발 → 저장 시도 → tiles 수 유지 확인 (C4).
    */
   it('T-DB8-C2: 409 충돌 시 로컬 tiles를 보존한다 (invalidate/refetch 금지)', async () => {
     const user = userEvent.setup()
     mockUseDashboard.mockReturnValue({ data: DASHBOARD_OWNED, isLoading: false, isError: false })
     mockMutateAsync.mockRejectedValue({ status: 409 })
     await renderDetailPage()
-    await waitFor(() => expect(screen.getByRole('button', { name: /위젯 추가/i })).toBeInTheDocument())
-    // 타일 추가 → dirty 상태 유발
-    await user.click(screen.getByRole('button', { name: /위젯 추가/i }))
+    // dirty 유발 — 기존 타일 삭제 (C4: 위젯 추가 버튼 제거로 삭제로 대체)
+    await waitFor(() => expect(screen.getByTestId('dashboard-grid')).toBeInTheDocument())
+    capturedGridOnDeleteTile?.('tile-1')
+    await waitFor(() => expect(capturedGridTiles?.length).toBe(0))
     const tilesBeforeSave = capturedGridTiles?.length ?? 0
     // 저장 시도 → 409
     await user.click(screen.getByRole('button', { name: /저장/i }))
     await waitFor(() => {
-      // tiles 수가 409 전과 동일하게 유지돼야 한다
+      // tiles 수가 409 전과 동일하게 유지돼야 한다 (invalidate 금지 = refetch 금지)
       expect(capturedGridTiles?.length).toBe(tilesBeforeSave)
     })
   })

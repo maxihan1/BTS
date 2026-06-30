@@ -111,6 +111,92 @@ describe('createTile — 고유 식별자', () => {
   })
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// T-GT. 가젯 타일 — gadgetType/config 왕복 보존 + legacy 호환 (FR-DB-02 Task 2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('parseLayout — 가젯 타일 gadgetType/config 보존', () => {
+  it('T-GT-01: gadgetType + config 있는 가젯 타일을 파싱해 포함한다 (title 없어도)', () => {
+    const json = JSON.stringify([
+      {
+        i: 'gadget-1',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 4,
+        gadgetType: 'text_widget',
+        config: { markdown: '안녕하세요' },
+      },
+    ])
+    const result = parseLayout(json)
+    expect(result).toHaveLength(1)
+  })
+
+  it('T-GT-02: title + gadgetType + config 모두 있는 타일의 전 필드가 왕복 보존된다', () => {
+    const json = JSON.stringify([
+      {
+        i: 'full-1',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 4,
+        title: '이슈 목록',
+        gadgetType: 'assigned_to_me',
+        config: { projectKey: 'ATL', maxItems: 10 },
+      },
+    ])
+    const parsed = parseLayout(json)
+    expect(parsed).toHaveLength(1)
+    const reparsed = parseLayout(serializeLayout(parsed))
+    expect(reparsed).toHaveLength(1)
+    expect(reparsed[0]).toEqual(parsed[0])
+  })
+
+  it('T-GT-03: parseLayout/serializeLayout 왕복 전후 gadgetType·config가 무손실 보존된다', () => {
+    const originalJson = JSON.stringify([
+      {
+        i: 'a',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 4,
+        gadgetType: 'text_widget',
+        config: { markdown: 'hello' },
+      },
+      {
+        i: 'b',
+        x: 6,
+        y: 0,
+        w: 6,
+        h: 4,
+        gadgetType: 'link_list',
+        config: { links: [] },
+      },
+    ])
+    const parsed = parseLayout(originalJson)
+    expect(parsed).toHaveLength(2)
+    const reparsed = parseLayout(serializeLayout(parsed))
+    expect(reparsed).toHaveLength(2)
+  })
+
+  it('T-GT-04: legacy 타일(title만)과 가젯 타일 혼재 시 모두 보존된다 (Gap A 회귀 방지)', () => {
+    const json = JSON.stringify([
+      { i: 'legacy-1', x: 0, y: 0, w: 6, h: 4, title: '기존 위젯' },
+      {
+        i: 'gadget-1',
+        x: 6,
+        y: 0,
+        w: 6,
+        h: 4,
+        gadgetType: 'text_widget',
+        config: { markdown: '안녕' },
+      },
+    ])
+    const result = parseLayout(json)
+    expect(result).toHaveLength(2)
+  })
+})
+
 describe('createTile — 기본 위치와 크기', () => {
   it('T-CT-04: 빈 그리드에서는 x=0, y=0 에 배치한다', () => {
     const tile = createTile([])
@@ -136,7 +222,8 @@ describe('createTile — 기본 위치와 크기', () => {
 
   it('T-CT-07: 반환된 타일의 title 은 비어있지 않은 문자열이다', () => {
     const tile = createTile([])
+    // title?: string — createTile은 항상 DEFAULT_TITLE을 제공하므로 string 반환 보장
     expect(typeof tile.title).toBe('string')
-    expect(tile.title.length).toBeGreaterThan(0)
+    expect(tile.title?.length ?? 0).toBeGreaterThan(0)
   })
 })

@@ -160,6 +160,22 @@ class GadgetTypeTest : DescribeSpec({
         }
     }
 
+    // ── assigned_to_me ────────────────────────────────────────────────────────
+
+    describe("GadgetType.ASSIGNED_TO_ME.validateConfig") {
+        it("projectKey 100자는 통과한다") {
+            val key = "a".repeat(100)
+            GadgetType.ASSIGNED_TO_ME.validateConfig(json("""{"projectKey":"$key"}"""))
+        }
+
+        it("projectKey 101자는 위반한다") {
+            val longKey = "a".repeat(101)
+            shouldThrow<DashboardDomainException> {
+                GadgetType.ASSIGNED_TO_ME.validateConfig(json("""{"projectKey":"$longKey"}"""))
+            }
+        }
+    }
+
     // ── filter_result ──────────────────────────────────────────────────────────
 
     describe("GadgetType.FILTER_RESULT.validateConfig") {
@@ -318,6 +334,15 @@ class GadgetTypeTest : DescribeSpec({
         it("교차필드 규칙이 없는 타입(text_widget)의 requireAtLeastOne 은 emptyList() 이다") {
             val entry = GadgetType.catalog().first { it.type == "text_widget" }
             entry.requireAtLeastOne shouldBe emptyList()
+        }
+
+        it("assigned_to_me catalog 엔트리에 projectKey(STRING, required=false, maxLength 100) configField가 포함된다") {
+            val entry = GadgetType.catalog().first { it.type == "assigned_to_me" }
+            val projectKeyField = entry.configFields.find { it.key == "projectKey" }
+            projectKeyField.shouldNotBeNull()
+            projectKeyField.type shouldBe FieldType.STRING
+            projectKeyField.required shouldBe false
+            projectKeyField.maxLength shouldBe 100
         }
     }
 })

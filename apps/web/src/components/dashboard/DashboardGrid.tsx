@@ -50,6 +50,9 @@ function mergeLayoutToTiles(
       w: item.w,
       h: item.h,
       title: existing?.title ?? '새 위젯',
+      // 가젯 필드 보존 — drag/resize 후에도 gadgetType/config 유실 방지 (FR-DB-02 Task 7)
+      ...(existing?.gadgetType !== undefined && { gadgetType: existing.gadgetType }),
+      ...(existing?.config !== undefined && { config: existing.config }),
     }
   })
 }
@@ -71,7 +74,7 @@ export interface DashboardGridProps {
   /** 타일 제목 인라인 편집 완료 콜백 */
   onEditTitle: (id: string, title: string) => void
   /**
-   * 위젯 추가 요청 콜백 — 빈 그리드 상태에서 1차 버튼 클릭 시 호출.
+   * 가젯 추가 요청 콜백 — 빈 그리드 상태에서 1차 버튼 클릭 시 호출 (C4 가젯 일원화).
    * 미전달 시 버튼이 렌더되지 않는다(안전한 선택적 prop).
    */
   onAddTile?: () => void
@@ -87,7 +90,7 @@ export interface DashboardGridProps {
  * - 단일 12컬럼, ROW_HEIGHT=60px (dashboard-layout.ts 상수 재사용).
  * - canEdit=true: isDraggable/isResizable=true, 타일 cursor-grab.
  * - canEdit=false: isDraggable/isResizable=false, 핸들/편집버튼 숨김.
- * - 빈 그리드: 점선 테두리 영역 + "위젯 추가" 1차 버튼(canEdit=true 일 때만).
+ * - 빈 그리드: 점선 테두리 영역 + "가젯 추가" 1차 버튼(canEdit=true 일 때만, C4 가젯 일원화).
  * - 좁은 화면: overflow-x-auto 가로스크롤.
  *
  * ★ jsdom mock 주의: react-grid-layout WidthProvider는 테스트에서 stub되어야 한다.

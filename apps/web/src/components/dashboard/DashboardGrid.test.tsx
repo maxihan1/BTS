@@ -137,18 +137,18 @@ describe('DashboardGrid', () => {
   /**
    * G-5. 타일이 없으면(빈 그리드) 빈 상태 안내 문구가 렌더된다.
    */
-  it('G-5: 타일이 없으면 빈 상태 안내 영역이 렌더된다', async () => {
+  it('G-5: 타일이 없으면 빈 상태 안내 영역이 렌더된다 (C4 가젯 추가 1차 버튼)', async () => {
     await renderGrid({ tiles: [], canEdit: true })
-    // 빈 상태 = 점선 테두리 영역 + "위젯 추가" 1차 버튼
-    expect(screen.getByRole('button', { name: /위젯 추가/i })).toBeInTheDocument()
+    // 빈 상태 = 점선 테두리 영역 + "가젯 추가" 1차 버튼 (C4: 가젯 일원화)
+    expect(screen.getByRole('button', { name: /가젯 추가/i })).toBeInTheDocument()
   })
 
   /**
-   * G-6. canEdit=false이면 빈 그리드에서 "위젯 추가" 버튼이 없다 (읽기 전용 EC3).
+   * G-6. canEdit=false이면 빈 그리드에서 "가젯 추가" 버튼이 없다 (읽기 전용 EC3, C4).
    */
-  it('G-6: canEdit=false이면 빈 그리드에서 위젯 추가 버튼이 없다', async () => {
+  it('G-6: canEdit=false이면 빈 그리드에서 가젯 추가 버튼이 없다 (C4)', async () => {
     await renderGrid({ tiles: [], canEdit: false })
-    expect(screen.queryByRole('button', { name: /위젯 추가/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /가젯 추가/i })).toBeNull()
   })
 
   /**

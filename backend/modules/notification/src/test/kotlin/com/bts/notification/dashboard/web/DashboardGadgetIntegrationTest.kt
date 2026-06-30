@@ -239,6 +239,20 @@ class DashboardGadgetIntegrationTest {
             .andExpect(jsonPath("$.data.gadgets[?(@.enabled==true)]", hasSize<Any>(6)))
     }
 
+    // ── G3b. assigned_to_me 카탈로그에 projectKey 노출 ──────────────────────────
+
+    @Test
+    fun `G3b assigned_to_me 카탈로그 엔트리에 projectKey configField가 노출된다`() {
+        mockMvc.perform(
+            get("/api/v1/dashboards/gadget-catalog")
+                .accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isOk)
+            // assigned_to_me 는 enum 선언 순서상 index 0
+            .andExpect(jsonPath("$.data.gadgets[0].type").value("assigned_to_me"))
+            .andExpect(jsonPath("$.data.gadgets[0].configFields[?(@.key=='projectKey')]", hasSize<Any>(1)))
+    }
+
     // ── G4. EC12 라우팅 — literal segment 우선, UUID 파싱 400 비유출 ──────────────
 
     @Test

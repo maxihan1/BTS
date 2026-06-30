@@ -62,11 +62,11 @@ export const dashboardLabels = {
     /** 설정 버튼/메뉴 */
     settings: '설정',
 
-    /** 위젯 추가 버튼 */
-    addWidget: '위젯 추가',
+    /** 가젯 추가 버튼 (DashboardGrid 빈 상태 1차 CTA — 헤더 버튼과 동일 라벨, C4 가젯 일원화) */
+    addWidget: '가젯 추가',
 
     /** 그리드가 비어있을 때 안내 문구 */
-    emptyGrid: '위젯 추가 버튼을 눌러 대시보드를 채워보세요',
+    emptyGrid: '가젯 추가 버튼을 눌러 대시보드를 채워보세요',
 
     /** 저장 중 상태 텍스트 */
     saving: '저장 중입니다',
@@ -117,3 +117,27 @@ export const dashboardLabels = {
 
 /** dashboardLabels const 추론 타입 */
 export type DashboardLabels = typeof dashboardLabels
+
+/**
+ * gadgetType → 한국어 라벨 매핑 (12종).
+ *
+ * 백엔드 GadgetType enum의 snake_case 직렬화 키를 한국어 표시명으로 매핑한다.
+ * DashboardTile 헤더에서 raw gadgetType 대신 이 라벨을 표시한다.
+ * 미지 타입은 호출측에서 gadgetType 자체를 fallback으로 사용한다.
+ *
+ * ⚠️ 백엔드 GadgetType.kt 신규 타입 추가 시 이 매핑도 동기화할 것.
+ */
+export const gadgetLabels: Readonly<Record<string, string>> = {
+  assigned_to_me: '내게 할당된 이슈',
+  recently_created: '최근 생성',
+  filter_result: '필터 결과',
+  issue_count: '이슈 건수',
+  text_widget: '텍스트',
+  link_list: '링크 목록',
+  pie_chart: '파이 차트',
+  bar_chart: '막대 차트',
+  created_vs_resolved: '생성/해결 추이',
+  sprint_burndown: '스프린트 번다운',
+  activity_stream: '활동 스트림',
+  comments_recent: '최근 댓글',
+} as const

@@ -3,12 +3,12 @@
 // 시나리오 개요.
 //   S1. 목록 조회       — /dashboards 진입 → alice 소유 대시보드 카드 확인
 //   S2. 대시보드 생성   — "대시보드 만들기" → 폼 입력 → 생성 → 상세 이동 확인
-//   S3. 위젯 추가+저장  — 상세에서 "위젯 추가" → 타일 생성 → "저장" → 성공 토스트
+//   S3. 가젯 추가+저장  — 상세에서 "가젯 추가" → 모달 → 타일 생성 → "저장" → 성공 토스트 (C4)
 //   S3b. 드래그/리사이즈 — RGL drag-handle 마우스 시퀀스 (jsdom/headless containerWidth=0 제약으로 SKIP, onLayoutChange는 DashboardGrid.test.tsx 단위 커버)
 //   S6. 대시보드 삭제   — 삭제 버튼 → 확인 → 목록 이동 → 삭제 항목 사라짐
-//   S7. 비소유자 읽기전용 — bob 소유 ORG 대시보드 → 위젯 추가/저장 버튼 부재
-//   S8. OCC 409 충돌    — addInitScript 플래그 → 저장 시 409 토스트 + 로컬 변경 보존
-//   접근성. 키보드로 위젯 추가 → 제목 편집(Enter) → 저장
+//   S7. 비소유자 읽기전용 — bob 소유 ORG 대시보드 → 가젯 추가/저장 버튼 부재 (C4)
+//   S8. OCC 409 충돌    — addInitScript 플래그 → 가젯 추가 후 저장 시 409 토스트 + 로컬 변경 보존 (C4)
+//   접근성. 키보드로 가젯 추가 → 저장 (C4 가젯 일원화)
 //   회귀.  /dashboard 환영 경로 정상 + 네비게이션 "대시보드" 링크 동작
 //
 // 설계 결정.
@@ -154,29 +154,44 @@ test.describe('FR-DB-01 대시보드 (목록/생성/상세/권한/OCC/접근성/
   })
 
   // ───────────────────────────────────────────────────────────────────────────
-  // S3. 위젯 추가 + 저장
+  // S3. 가젯 추가 + 저장 (C4: "위젯 추가" 버튼 제거 후 가젯 기반으로 갱신)
   //
   // Given  alice 로그인 + DEFAULT_DASHBOARD 상세 진입
   //        타일 0개 (DEFAULT_DASHBOARD.layout='[]')
-  // When   헤더 "위젯 추가" 버튼 클릭 → 타일 생성 (로컬 state 반영)
+  // When   헤더 "가젯 추가" 버튼 클릭 → GadgetCatalogModal 열림
+  //        "Text Widget" 선택 → "## S3 테스트" 입력 → "추가"
   //        "저장" 버튼 클릭 → PATCH 성공 (version+1)
-  // Then   타일 "새 위젯" 표시
+  // Then   타일 헤더에 "텍스트" 표시 (C6 한국어 라벨)
   //        성공 토스트 "대시보드가 저장되었습니다." 표시
+  //
+  // 주의: dashboard-gadgets.spec.ts S1이 golden path를 커버한다.
+  //       S3는 FR-DB-01 저장 흐름만 검증한다 (E2E 중복 최소화).
   // ───────────────────────────────────────────────────────────────────────────
-  test('S3 위젯 추가 + 저장 — 타일 생성 → PATCH 성공 토스트', async ({ page }) => {
+  test('S3 가젯 추가 + 저장 — text_widget → PATCH 성공 토스트 (C4 가젯 일원화)', async ({ page }) => {
     // Given. alice 로그인 + 상세 진입
     await loginAsAlice(page)
     await page.goto(DEFAULT_DASHBOARD_URL)
 
-    // Given. 빈 그리드 상태 확인
-    await expect(page.getByText('위젯 추가 버튼을 눌러 대시보드를 채워보세요')).toBeVisible()
+    // Given. 빈 그리드 상태 확인 (C4: emptyGrid 문구 업데이트 반영)
+    await expect(page.getByText('가젯 추가 버튼을 눌러 대시보드를 채워보세요')).toBeVisible()
 
-    // When. 헤더 "위젯 추가" 버튼 클릭 (상단 헤더 버튼 — 컨테이너 한정으로 strict mode 방지)
-    const header = page.locator('.flex.items-center.justify-between.px-6.py-4.border-b').first()
-    await header.getByRole('button', { name: '위젯 추가', exact: true }).click()
+    // When. 헤더 "가젯 추가" 버튼 클릭
+    const header = page.locator('.flex.items.justify-between.px-6.py-4.border-b, .flex.items-center.justify-between.px-6.py-4.border-b').first()
+    await header.getByRole('button', { name: '가젯 추가', exact: true }).click()
 
-    // Then. 타일 "새 위젯" 표시 (로컬 state 낙관적 추가)
-    await expect(page.getByText('새 위젯')).toBeVisible()
+    // When. GadgetCatalogModal Step 1 — "Text Widget" 선택
+    await expect(page.getByRole('button', { name: 'Text Widget', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Text Widget', exact: true }).click()
+
+    // When. Step 2 설정 폼 — markdown 입력
+    await page.getByLabel('Markdown').fill('## S3 테스트')
+
+    // When. "추가" → 모달 닫힘
+    await page.getByRole('button', { name: '추가', exact: true }).click()
+    await expect(page.getByRole('dialog')).not.toBeVisible()
+
+    // Then. 타일 헤더에 한국어 라벨 "텍스트" 표시 (C6)
+    await expect(page.getByText('텍스트')).toBeVisible()
 
     // Then. 미저장 변경 사항 인디케이터 표시
     await expect(page.getByText('저장되지 않은 변경 사항이 있습니다')).toBeVisible()
@@ -262,12 +277,12 @@ test.describe('FR-DB-01 대시보드 (목록/생성/상세/권한/OCC/접근성/
   // Given  alice 로그인 + OTHER_DASHBOARD(bob 소유, ORG) 상세 진입
   //        canEditDashboard(dashboard, aliceId) = false (ownerId ≠ aliceId)
   // When   상세 페이지 렌더
-  // Then   "위젯 추가" 버튼 부재
+  // Then   "가젯 추가" 버튼 부재 (C4: 가젯으로 일원화 후도 비소유자에겐 미노출)
   //        "저장" 버튼 부재
   //        "설정" 버튼 부재
   //        대시보드 이름 "Bob의 팀 대시보드" 표시 (읽기 가능)
   // ───────────────────────────────────────────────────────────────────────────
-  test('S7 비소유자 읽기 전용 — 위젯 추가/저장/설정 버튼 부재', async ({ page }) => {
+  test('S7 비소유자 읽기 전용 — 가젯 추가/저장/설정 버튼 부재 (C4)', async ({ page }) => {
     // Given. alice 로그인 + bob 소유 ORG 대시보드 상세 진입
     await loginAsAlice(page)
     await page.goto(OTHER_DASHBOARD_URL)
@@ -275,8 +290,8 @@ test.describe('FR-DB-01 대시보드 (목록/생성/상세/권한/OCC/접근성/
     // Given. 페이지 완전 로드 확인 (대시보드 이름 표시)
     await expect(page.getByRole('heading', { name: 'Bob의 팀 대시보드' })).toBeVisible()
 
-    // Then. 편집 전용 버튼 없음 — "위젯 추가"
-    await expect(page.getByRole('button', { name: '위젯 추가', exact: true })).not.toBeVisible()
+    // Then. 편집 전용 버튼 없음 — "가젯 추가" (C4: 가젯으로 일원화)
+    await expect(page.getByRole('button', { name: '가젯 추가', exact: true })).not.toBeVisible()
 
     // Then. 편집 전용 버튼 없음 — "저장"
     await expect(page.getByRole('button', { name: '저장', exact: true })).not.toBeVisible()
@@ -290,12 +305,12 @@ test.describe('FR-DB-01 대시보드 (목록/생성/상세/권한/OCC/접근성/
   //
   // Given  addInitScript로 LS_KEY_DASHBOARD_CONFLICT='true' 심기 (goto 전 등록)
   //        alice 로그인 + DEFAULT_DASHBOARD 상세 진입
-  //        "위젯 추가" → 타일 생성 (로컬 tiles dirty)
+  //        "가젯 추가" → Text Widget → 추가 (로컬 tiles dirty, C4 가젯 일원화)
   // When   "저장" 버튼 클릭 → PATCH → MSW가 409 반환
   // Then   충돌 토스트 표시 (OCC 메시지)
-  //        로컬 타일("새 위젯")이 여전히 그리드에 표시됨 (tiles 보존)
+  //        로컬 타일("텍스트")이 여전히 그리드에 표시됨 (tiles 보존)
   // ───────────────────────────────────────────────────────────────────────────
-  test('S8 OCC 409 충돌 — 저장 시 충돌 토스트 + 로컬 변경 보존', async ({ page }) => {
+  test('S8 OCC 409 충돌 — 저장 시 충돌 토스트 + 로컬 변경 보존 (C4)', async ({ page }) => {
     // Given. addInitScript로 충돌 플래그 심기 (goto 이전 등록 — 첫 PATCH 시점부터 적용)
     await page.addInitScript((lsKey: string) => {
       window.localStorage.setItem(lsKey, 'true')
@@ -305,11 +320,18 @@ test.describe('FR-DB-01 대시보드 (목록/생성/상세/권한/OCC/접근성/
     await loginAsAlice(page)
     await page.goto(DEFAULT_DASHBOARD_URL)
 
-    // Given. 빈 그리드 → "위젯 추가" 클릭 → 타일 생성
-    await expect(page.getByText('위젯 추가 버튼을 눌러 대시보드를 채워보세요')).toBeVisible()
+    // Given. 빈 그리드 확인 (C4: emptyGrid 문구 업데이트)
+    await expect(page.getByText('가젯 추가 버튼을 눌러 대시보드를 채워보세요')).toBeVisible()
+
+    // Given. 가젯 추가 → Text Widget 선택 → 추가 (로컬 tiles dirty, C4 가젯 일원화)
     const header = page.locator('.flex.items-center.justify-between.px-6.py-4.border-b').first()
-    await header.getByRole('button', { name: '위젯 추가', exact: true }).click()
-    await expect(page.getByText('새 위젯')).toBeVisible()
+    await header.getByRole('button', { name: '가젯 추가', exact: true }).click()
+    await page.getByRole('button', { name: 'Text Widget', exact: true }).click()
+    await page.getByLabel('Markdown').fill('S8 테스트 콘텐츠')
+    await page.getByRole('button', { name: '추가', exact: true }).click()
+
+    // Then. 가젯 타일 한국어 라벨 "텍스트" 표시 (C6)
+    await expect(page.getByText('텍스트')).toBeVisible()
 
     // When. 저장 버튼 클릭 → PATCH 409 예상
     await page.getByRole('button', { name: '저장', exact: true }).click()
@@ -319,53 +341,55 @@ test.describe('FR-DB-01 대시보드 (목록/생성/상세/권한/OCC/접근성/
       page.getByText('다른 사용자가 대시보드를 변경했습니다. 충돌을 해결한 후 다시 시도하세요.'),
     ).toBeVisible()
 
-    // Then. 로컬 타일 보존 — "새 위젯" 여전히 그리드에 있음 (invalidate 금지)
-    await expect(page.getByText('새 위젯')).toBeVisible()
+    // Then. 로컬 타일 보존 — "텍스트" 가젯 여전히 그리드에 있음 (invalidate 금지)
+    await expect(page.getByText('텍스트')).toBeVisible()
   })
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 접근성: 키보드만으로 위젯 추가 → 제목 편집 → 저장
+  // 접근성: 키보드만으로 가젯 추가 → 저장 (C4: 가젯 일원화 후 갱신)
   //
   // Given  alice 로그인 + DEFAULT_DASHBOARD 상세 진입 (빈 그리드)
-  // When   Tab으로 "위젯 추가" 버튼 포커스 → Enter (키보드 클릭)
-  //        추가된 타일 제목 버튼 클릭 → 편집 input 활성
-  //        새 제목 입력 → Enter 커밋
-  //        Tab으로 "저장" 버튼 포커스 → Enter (키보드 클릭)
+  // When   "가젯 추가" 버튼 포커스 → Enter (키보드 클릭) → 모달 열림
+  //        "Text Widget" 버튼 클릭 → 설정 폼
+  //        Markdown 입력 → Enter·Tab으로 "추가" 포커스 → Enter (추가)
+  //        "저장" 버튼 포커스 → Enter (키보드 클릭)
   // Then   저장 성공 토스트 "대시보드가 저장되었습니다." 표시
+  //
+  // 주의: 가젯 타일은 inline 제목 편집 불가 (C4 설계 결정 — 가젯 헤더는 고정 한국어 라벨).
   // ───────────────────────────────────────────────────────────────────────────
-  test('접근성 — 키보드로 위젯 추가 → 제목 편집 → 저장', async ({ page }) => {
+  test('접근성 — 키보드로 가젯 추가 → 저장 (C4 가젯 일원화)', async ({ page }) => {
     // Given. alice 로그인 + 상세 진입
     await loginAsAlice(page)
     await page.goto(DEFAULT_DASHBOARD_URL)
 
-    // Given. 빈 그리드 확인
-    await expect(page.getByText('위젯 추가 버튼을 눌러 대시보드를 채워보세요')).toBeVisible()
+    // Given. 빈 그리드 확인 (C4: emptyGrid 문구 업데이트)
+    await expect(page.getByText('가젯 추가 버튼을 눌러 대시보드를 채워보세요')).toBeVisible()
 
-    // When. "위젯 추가" 버튼 클릭(마우스로 포커스 후 키보드 Enter)
-    //   aria-label="위젯 추가"가 헤더와 빈 그리드 안에 각 1개씩 있을 수 있으므로 헤더 한정
-    const addWidgetBtn = page
+    // When. "가젯 추가" 버튼 포커스 → Enter (키보드로 모달 열기)
+    const addGadgetBtn = page
       .locator('.flex.items-center.justify-between.px-6.py-4.border-b')
       .first()
-      .getByRole('button', { name: '위젯 추가', exact: true })
-    await addWidgetBtn.focus()
+      .getByRole('button', { name: '가젯 추가', exact: true })
+    await addGadgetBtn.focus()
     await page.keyboard.press('Enter')
 
-    // Then. 타일 "새 위젯" 표시
-    await expect(page.getByText('새 위젯')).toBeVisible()
+    // Then. GadgetCatalogModal 열림
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Text Widget', exact: true })).toBeVisible()
 
-    // When. 제목 버튼 클릭 → 편집 input 활성
-    await page.getByRole('button', { name: /새 위젯 — 클릭하여 제목 편집/ }).click()
+    // When. Text Widget 선택 → Step 2 설정 폼
+    await page.getByRole('button', { name: 'Text Widget', exact: true }).click()
 
-    // When. 편집 input에 새 제목 입력 + Enter 커밋
-    const titleInput = page.getByLabel('위젯 제목 편집')
-    await expect(titleInput).toBeVisible()
-    await titleInput.fill('접근성 위젯')
+    // When. Markdown 입력 → "추가" 버튼 클릭
+    await page.getByLabel('Markdown').fill('접근성 테스트 콘텐츠')
+    await page.getByRole('button', { name: '추가', exact: true }).focus()
     await page.keyboard.press('Enter')
 
-    // Then. 편집된 제목이 타일에 반영됨
-    await expect(page.getByText('접근성 위젯')).toBeVisible()
+    // Then. 모달 닫힘 + 타일 한국어 라벨 "텍스트" 표시 (C6)
+    await expect(page.getByRole('dialog')).not.toBeVisible()
+    await expect(page.getByText('텍스트')).toBeVisible()
 
-    // When. "저장" 버튼 Enter
+    // When. "저장" 버튼 포커스 → Enter (키보드 저장)
     const saveBtn = page.getByRole('button', { name: '저장', exact: true })
     await saveBtn.focus()
     await page.keyboard.press('Enter')
