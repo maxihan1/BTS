@@ -392,7 +392,7 @@ export function SearchPage({
             isFetching=true 시 opacity-60으로 전환 중임을 시각화한다. */}
         {data !== undefined && (
           <div className={isFetching ? 'opacity-60' : undefined}>
-            {data.empty ? (
+            {data.meta.page.totalElements === 0 ? (
               /* 0건 빈 상태 — role=alert 없음(에러 아님), 결과 영역 회색 안내 */
               <div className="py-12 text-center text-muted-foreground">
                 <p className="text-base">검색 결과가 없습니다.</p>
@@ -401,7 +401,7 @@ export function SearchPage({
             ) : (
               <>
                 <ul className="space-y-2" aria-label="검색 결과">
-                  {data.content.map((hit) => (
+                  {data.data.map((hit) => (
                     <li key={hit.key}>
                       <SearchResultCard
                         issueKey={hit.key}
@@ -414,12 +414,12 @@ export function SearchPage({
                   ))}
                 </ul>
 
-                {data.totalPages > 1 && (
+                {data.meta.page.totalPages > 1 && (
                   <SearchPagination
                     page={page}
-                    totalPages={data.totalPages}
-                    isFirst={data.first}
-                    isLast={data.last}
+                    totalPages={data.meta.page.totalPages}
+                    isFirst={data.meta.page.number === 0}
+                    isLast={data.meta.page.number >= data.meta.page.totalPages - 1}
                     onPageChange={onPageChange}
                   />
                 )}

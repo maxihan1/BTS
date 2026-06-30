@@ -1,4 +1,5 @@
 // AQL 검색 + CSV/XLSX 내보내기 + 비동기 Export 잡 MSW 핸들러 — search-export-import BC (FR-SR-02/FR-EX-01/FR-EX-02 D6)
+// ★ FR-API-02: POST /api/v1/search/aql 응답은 envelope { data, meta.page } 형태 (Spring Page 직렬화 아님)
 import { http, HttpResponse } from 'msw'
 import {
   DEFAULT_SEARCH_PAGE,
@@ -32,14 +33,14 @@ export const E2E_SEARCH_SCENARIO_KEY = '__bts_e2e_search_scenario'
  * POST /api/v1/search/aql — AQL 쿼리 검색 메인 핸들러.
  *
  * E2E 시나리오 플래그(localStorage)에 따라 분기한다.
- * 기본 동작: 3건 결과 반환.
+ * 기본 동작: 3건 결과 반환 (envelope { data, meta.page } 형태).
  *
  * 시나리오.
  * - 'syntax-error' → 400 SEARCH_SYNTAX_ERROR (문법오류 + position 포함)
- * - 'empty' → 200 0건 결과
+ * - 'empty' → 200 0건 결과 (envelope totalElements=0)
  * - 'unsupported-field' → 400 SEARCH_FIELD_NOT_YET_SUPPORTED
  * - 'forbidden' → 403 SEARCH_ACCESS_DENIED
- * - 기본 → 200 3건 결과
+ * - 기본 → 200 3건 결과 (envelope totalElements=50/totalPages=3)
  *
  * 주의: 401 시나리오는 핸들러 수준에서 refresh 엔드포인트도 함께 실패해야
  * apiFetch의 401 retry 후 ApiError(401)가 최종 throw된다 (C4 — auth-handlers 참고).

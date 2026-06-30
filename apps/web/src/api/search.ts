@@ -54,19 +54,31 @@ export const aqlSearchHitSchema = z.object({
 export type AqlSearchHit = z.infer<typeof aqlSearchHitSchema>
 
 /**
- * Spring Page<AqlSearchHit> 응답 Zod 스키마.
- * issues.ts pageSchema 패턴 미러 — 래퍼 없음 (DataResponse 감싸지 않음, C2).
- * backend Spring Page 직렬화 형태와 1:1 대응.
+ * 페이지 메타 정보 Zod 스키마 — envelope meta.page 필드.
+ * backend PageMeta DTO 직렬화 형태와 1:1 대응.
+ *
+ * first/last/empty 는 schema에 포함하지 않는다 — 소비처에서 derive한다.
+ * - first  : page.number === 0
+ * - last   : page.number >= page.totalPages - 1
+ * - empty  : page.totalElements === 0
  */
-export const aqlSearchPageSchema = z.object({
-  content: z.array(aqlSearchHitSchema),
+const pageInfoSchema = z.object({
+  number: z.number().int().nonnegative(),
+  size: z.number().int().positive(),
   totalElements: z.number().int().nonnegative(),
   totalPages: z.number().int().nonnegative(),
-  size: z.number().int().positive(),
-  number: z.number().int().nonnegative(),
-  first: z.boolean(),
-  last: z.boolean(),
-  empty: z.boolean(),
+})
+
+/**
+ * AQL 검색 결과 envelope 응답 Zod 스키마.
+ * backend DataResponse<Page<AqlSearchHit>> 직렬화 형태와 1:1 대응.
+ *
+ * - data  : AqlSearchHit 배열
+ * - meta.page : 페이지 메타 (number / size / totalElements / totalPages)
+ */
+export const aqlSearchPageSchema = z.object({
+  data: z.array(aqlSearchHitSchema),
+  meta: z.object({ page: pageInfoSchema }),
 })
 
 /** AQL 검색 결과 페이지 타입 */
@@ -302,7 +314,7 @@ export async function downloadExportJobResult(jobId: string): Promise<ExportIssu
  * 기존 boards/bulk POST와 동일하게 apiPost 재사용.
  *
  * @param params 검색 파라미터 (projectKey, query, page?, size?)
- * @returns Page<AqlSearchHit> — Spring Page 래퍼 형태 그대로
+ * @returns envelope{ data: AqlSearchHit[], meta.page } — 백엔드 DataResponse 래퍼 형태
  * @throws ApiError 400(문법오류/미지원필드), 401(미인증), 403(권한없음), 500
  */
 export async function searchAql(params: SearchAqlParams): Promise<AqlSearchPage> {
