@@ -701,7 +701,7 @@ class IssueControllerChangelogCursorModeTest {
         val view = makeChangelogView(createdAt1)
         val nextToken = ChangelogCursorCodec.encode(createdAt1.atOffset(ZoneOffset.UTC), groupId1)
         every {
-            changelogService.findChangelogByCursor(any(), any(), any(), any())
+            changelogService.findChangelogByCursor(any(), IssueKey("ATLAS-1"), any(), any())
         } returns CursorPage(items = listOf(view), next = nextToken)
 
         mockMvc.perform(
@@ -720,7 +720,7 @@ class IssueControllerChangelogCursorModeTest {
     @Test
     fun `CHANGELOG-CURSOR-2 changelog offset 모드 무회귀 — 기존 Page 구조 그대로 반환`() {
         val view = makeChangelogView(createdAt1)
-        every { changelogService.findChangelog(any(), any(), any()) } returns
+        every { changelogService.findChangelog(any(), IssueKey("ATLAS-1"), any()) } returns
             PageImpl(listOf(view), PageRequest.of(0, 20), 1L)
 
         mockMvc.perform(
@@ -756,7 +756,7 @@ class IssueControllerChangelogCursorModeTest {
         val nextToken = ChangelogCursorCodec.encode(createdAt2.atOffset(ZoneOffset.UTC), groupId2)
 
         every {
-            changelogService.findChangelogByCursor(any(), any(), any(), any())
+            changelogService.findChangelogByCursor(any(), IssueKey("ATLAS-1"), any(), any())
         } returnsMany
             listOf(
                 CursorPage(items = listOf(view1, view2), next = nextToken),
