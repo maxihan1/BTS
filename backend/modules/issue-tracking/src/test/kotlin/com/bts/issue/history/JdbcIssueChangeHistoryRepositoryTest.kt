@@ -186,10 +186,11 @@ class JdbcIssueChangeHistoryRepositoryTest {
         var groupId2 = 0L
 
         // 동일 created_at 을 강제하기 위해 SQL 직접 사용
+        val insertSql =
+            "INSERT INTO issue_change_group " +
+                "(issue_id, issue_key, actor_id, created_at) VALUES (?, ?, null, ?) RETURNING id"
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.prepareStatement(
-                "INSERT INTO issue_change_group (issue_id, issue_key, actor_id, created_at) VALUES (?, ?, null, ?) RETURNING id",
-            ).use { stmt ->
+            conn.prepareStatement(insertSql).use { stmt ->
                 stmt.setObject(1, issueId)
                 stmt.setString(2, "BTS-TIE-A")
                 stmt.setTimestamp(3, sameTimestamp)
@@ -198,9 +199,7 @@ class JdbcIssueChangeHistoryRepositoryTest {
                     groupId1 = rs.getLong(1)
                 }
             }
-            conn.prepareStatement(
-                "INSERT INTO issue_change_group (issue_id, issue_key, actor_id, created_at) VALUES (?, ?, null, ?) RETURNING id",
-            ).use { stmt ->
+            conn.prepareStatement(insertSql).use { stmt ->
                 stmt.setObject(1, issueId)
                 stmt.setString(2, "BTS-TIE-B")
                 stmt.setTimestamp(3, sameTimestamp)

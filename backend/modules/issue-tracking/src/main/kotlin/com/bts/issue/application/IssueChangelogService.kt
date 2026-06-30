@@ -98,8 +98,8 @@ object ChangelogCursorCodec {
     fun decode(token: String): ChangelogCursorPosition? {
         if (token.isBlank()) return null
         val colonIdx = token.indexOf(':')
-        if (colonIdx == -1 || token.substring(0, colonIdx) != VERSION) {
-            throw IllegalArgumentException("changelog cursor 형식 오류 (버전 불일치): $token")
+        require(colonIdx != -1 && token.substring(0, colonIdx) == VERSION) {
+            "changelog cursor 형식 오류 (버전 불일치): $token"
         }
         val encoded = token.substring(colonIdx + 1)
         val payload =
@@ -109,7 +109,7 @@ object ChangelogCursorCodec {
                 throw IllegalArgumentException("changelog cursor base64 디코드 실패: ${e.message}", e)
             }
         val sep = payload.indexOf(SEPARATOR)
-        if (sep == -1) throw IllegalArgumentException("changelog cursor payload 구분자 없음: $payload")
+        require(sep != -1) { "changelog cursor payload 구분자 없음: $payload" }
         val createdAtStr = payload.substring(0, sep)
         val groupIdStr = payload.substring(sep + 1)
         val createdAt =

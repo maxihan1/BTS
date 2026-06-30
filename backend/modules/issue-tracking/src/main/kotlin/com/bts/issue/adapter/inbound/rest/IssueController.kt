@@ -379,7 +379,9 @@ class IssueController(
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈 미존재·소프트 삭제·VIEW 미인가 → 404
      */
     @GetMapping("/{key}/changelog")
-    @Suppress("LongParameterList") // cursor 모드(cursor/limit)와 offset 모드(pageable/page)의 REST 파라미터 집합 — 분리 불가
+    // ThrowsCount: cursor 모드(PaginationModeConflict + limit초과 400 + 형식오류 400 = 3개) 필연적으로 임계치 초과
+    // SwallowedException: IllegalArgumentException → ResponseStatusException 재포장이므로 원본 정보 보존
+    @Suppress("LongParameterList", "ThrowsCount", "SwallowedException")
     fun changelog(
         @PathVariable key: String,
         @PageableDefault(size = 20) pageable: Pageable,

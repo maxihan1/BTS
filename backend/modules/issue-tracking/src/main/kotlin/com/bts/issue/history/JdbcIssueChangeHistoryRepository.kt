@@ -37,6 +37,9 @@ import java.util.UUID
  * `com.atlas.bts.identity.audit.JdbcAuthAuditLogService` 패턴 재사용
  * (NamedParameterJdbcTemplate + append-only + RowMapper + `getObject("col", UUID::class.java)`).
  */
+// TooManyFunctions: append-only record + 다양한 조회 패턴(findByIssue, Paged, Cursor, count, findLatestAssignee)
+//   을 단일 Repository 가 담당하므로 임계치(11)를 초과한다. 기존 6개 + cursor 추가로 위반 발생 — 의도적 Suppress.
+@Suppress("TooManyFunctions")
 @Repository
 class JdbcIssueChangeHistoryRepository(
     private val jdbc: NamedParameterJdbcTemplate,
