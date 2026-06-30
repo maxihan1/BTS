@@ -14,7 +14,7 @@ export const SEARCH_HIT_BUG: AqlSearchHit = {
   currentStateKey: 'open',
   assigneeId: '00000000-0000-4000-a000-000000000001',
   priority: 2,
-  priorityName: '높음',
+  priorityName: 'High',
   projectKey: 'ATLAS',
   updatedAt: '2026-06-25T10:00:00Z',
 }
@@ -27,7 +27,7 @@ export const SEARCH_HIT_UNASSIGNED: AqlSearchHit = {
   currentStateKey: 'in_progress',
   assigneeId: null,
   priority: 3,
-  priorityName: '보통',
+  priorityName: 'Medium',
   projectKey: 'ATLAS',
   updatedAt: '2026-06-24T08:30:00Z',
 }
@@ -39,8 +39,8 @@ export const SEARCH_HIT_DONE: AqlSearchHit = {
   typeKey: 'story',
   currentStateKey: 'done',
   assigneeId: '00000000-0000-4000-a000-000000000002',
-  priority: 4,
-  priorityName: '낮음',
+  priority: 2,
+  priorityName: 'High',
   projectKey: 'ATLAS',
   updatedAt: '2026-06-23T15:45:00Z',
 }

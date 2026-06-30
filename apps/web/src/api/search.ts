@@ -71,7 +71,7 @@ const pageInfoSchema = z.object({
 
 /**
  * AQL 검색 결과 envelope 응답 Zod 스키마.
- * backend DataResponse<Page<AqlSearchHit>> 직렬화 형태와 1:1 대응.
+ * 백엔드 AqlSearchPageResponse `{ data, meta.page }` 직렬화 형태와 1:1 대응.
  *
  * - data  : AqlSearchHit 배열
  * - meta.page : 페이지 메타 (number / size / totalElements / totalPages)
@@ -314,7 +314,7 @@ export async function downloadExportJobResult(jobId: string): Promise<ExportIssu
  * 기존 boards/bulk POST와 동일하게 apiPost 재사용.
  *
  * @param params 검색 파라미터 (projectKey, query, page?, size?)
- * @returns envelope{ data: AqlSearchHit[], meta.page } — 백엔드 DataResponse 래퍼 형태
+ * @returns AqlSearchPageResponse envelope{ data: AqlSearchHit[], meta.page } — 백엔드 AqlSearchPageResponse envelope 형태
  * @throws ApiError 400(문법오류/미지원필드), 401(미인증), 403(권한없음), 500
  */
 export async function searchAql(params: SearchAqlParams): Promise<AqlSearchPage> {
