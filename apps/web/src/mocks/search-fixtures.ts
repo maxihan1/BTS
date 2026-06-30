@@ -4,8 +4,6 @@ import type { AqlSearchHit, AqlSearchPage, ExportJobStatus } from '@/api/search'
 // ─────────────────────────────────────────────────────────────────────────────
 // AqlSearchHit 샘플 데이터
 // 백엔드 AqlSearchHit DTO 필드와 1:1 대응 (labels 없음)
-// priorityName 값은 한국어 — search.test.tsx 인라인 override가 envelope 변환 후
-//   DEFAULT_SEARCH_PAGE.data 항목을 그대로 렌더하므로 기대값과 일치해야 함
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 기본 AQL 검색 결과 샘플 — ATLAS 프로젝트 버그 이슈 */
@@ -88,16 +86,12 @@ export function makeSearchPage(
   }
 }
 
-/**
- * 기본 검색 결과 페이지 — 3건 샘플 데이터, 총 50건 3페이지 구조.
- *
- * totalElements=50 / totalPages=3 으로 설정해 페이지네이션 컴포넌트가 렌더되는
- * 시나리오를 기본으로 포함한다 (search.test.tsx pagination 단언 대응).
- */
-export const DEFAULT_SEARCH_PAGE: AqlSearchPage = makeSearchPage(
-  [SEARCH_HIT_BUG, SEARCH_HIT_UNASSIGNED, SEARCH_HIT_DONE],
-  { totalElements: 50, totalPages: 3 },
-)
+/** 기본 검색 결과 페이지 — 3건 샘플 데이터 (SEARCH_HIT_BUG·UNASSIGNED·DONE) */
+export const DEFAULT_SEARCH_PAGE: AqlSearchPage = makeSearchPage([
+  SEARCH_HIT_BUG,
+  SEARCH_HIT_UNASSIGNED,
+  SEARCH_HIT_DONE,
+])
 
 /** 빈 검색 결과 페이지 — totalElements=0 / totalPages=0 */
 export const EMPTY_SEARCH_PAGE: AqlSearchPage = makeSearchPage([])
