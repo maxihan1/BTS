@@ -1,4 +1,4 @@
-// search-export-import BC AQL 검색 + CSV/XLSX 내보내기 API 클라이언트 — FR-SR-02/FR-EX-01 D6
+// search-export-import BC AQL 검색 + CSV/XLSX 내보내기 API 클라이언트 — FR-SR-02/FR-EX-01/FR-EX-02 D6
 import { z } from 'zod'
 import { apiPost, apiGet, apiFetch, ApiError } from './client'
 
@@ -87,6 +87,13 @@ export interface SearchAqlParams {
   /** 페이지 크기 (1..100, 기본값 50) */
   size?: number
 }
+
+/**
+ * 비동기 Export 잡 폴링 간격(ms).
+ * TanStack Query refetchInterval에 이 값을 사용해야 한다 (NFR-3 — 1500ms 과부하 방지).
+ * 종단 상태(COMPLETED/FAILED) 도달 시 refetchInterval 콜백에서 false를 반환해 폴링을 중단한다.
+ */
+export const EXPORT_POLL_INTERVAL_MS = 1500
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 비동기 Export Job Zod 스키마 — 백엔드 ExportJobResponse DTO 1:1 대응 (FR-EX-02)
