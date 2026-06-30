@@ -23,7 +23,17 @@ FR-API-03 — 구독형 아웃바운드 Webhook(외부 시스템 통지). search
 단 FR-NT-05는 워크플로우 전이 전용(post-action). FR-API-03는 구독형 범용(이벤트필터+HMAC+이력+circuit breaker).
 → (1) 인프라 재사용 범위, (2) BC 경계(search-export-import FR vs notification webhook 인프라)를 bts-domain서 확정.
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**: search-export-import (FR 소속 BC 존중 — Maxi 옵션 A 확정)
+- **신규 엔티티/도메인**: `OutboundWebhook`(구독: url + secret_encrypted + event_filter), `WebhookDelivery`(발송 이력: status + response_code), circuit breaker 상태.
+- **재사용(shared-kernel 추출)**: notification BC의 `WebhookUrlValidator`(SSRF) + HTTP 클라이언트 설정 → `com.bts.shared.http`로 추출, FR-NT-05와 공유. notification 코드 1회 리팩터링(문서화된 BC 경계 교차).
+- **FR-NT-05 관계**: 전이 webhook(post-action)은 그대로 유지, 흡수 안 함. 범용 구독 webhook과 공존.
+- **신규 용어 후보(glossary 승인 대기)**: "아웃바운드 Webhook(구독형)", "Webhook Delivery(발송 이력)", "Circuit Breaker(연속 실패 차단)", "HMAC 서명". → Maxi 승인 후 glossary 추가.
+- **선행**: FR-API-01/02(REST API 표준 — 페이지네이션/에러봉투) 따름. identity-access §2.10(감사).
+- **기존 결정 충돌**: 없음. FR-NT-05 ADR이 예견한 "재사용 결정" 실현.
+- **관련 ADR**: [docs/decisions/2026-07-01-fr-api-03-outbound-webhook-bc-and-reuse.md](../decisions/2026-07-01-fr-api-03-outbound-webhook-bc-and-reuse.md) (생성됨), [2026-06-14-fr-nt-05-webhook-dispatch-ssrf.md](../decisions/2026-06-14-fr-nt-05-webhook-dispatch-ssrf.md)
+- **마이그레이션 V번호**: search-export-import 최신 V602 → 신규 V603 후보(머지 직전 재확인).
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
