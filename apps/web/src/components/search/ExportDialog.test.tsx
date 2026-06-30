@@ -112,6 +112,7 @@ beforeEach(() => {
 afterEach(() => {
   useAuthStore.setState({ accessToken: null, user: null })
   vi.clearAllMocks()
+  vi.useRealTimers()
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -393,10 +394,8 @@ describe('ExportDialog', () => {
       expect(onOpenChange).not.toHaveBeenCalledWith(false)
     })
 
-    it('FR-7 다이얼로그 닫으면 추가 폴링 호출 없음', async () => {
-      // fake timer + waitFor 조합은 내부 setTimeout 가로채기로 waitFor이 영원히 대기한다.
-      // 실제 타이머를 사용하고 refetchInterval(1500ms) 이내(200ms)에 추가 호출이 없음을 검증.
-      // Content unmount 시 TanStack Query v5가 observer 제거 → refetchInterval 타이머를 즉시 정리한다.
+    it('C1: done 단계 다운로드 실패 시 에러 메시지가 표시된다 (role=alert)', async () => {
+      // done(COMPLETED) → 다운로드 버튼 클릭 → downloadExportJobResult 실패 → role=alert 표시
       vi.mocked(exportIssues).mockRejectedValue(
         new ApiError(400, {
           errorCode: 'SEARCH_EXPORT_LIMIT_EXCEEDED',
@@ -407,7 +406,81 @@ describe('ExportDialog', () => {
         }),
       )
       vi.mocked(submitExportJob).mockResolvedValue({ jobId: JOB_ID, status: 'PENDING' })
-      // RUNNING 유지 — 종단 아니라 refetchInterval이 계속 동작할 수 있음
+      vi.mocked(fetchExportJobStatus).mockResolvedValue(JOB_COMPLETED)
+      vi.mocked(downloadExportJobResult).mockRejectedValue(
+        new ApiError(409, { detail: '파일이 아직 준비되지 않았습니다.' }),
+      )
+
+      const { user } = renderDialog()
+
+      // done phase 진입
+      await user.click(screen.getByRole('button', { name: '내보내기' }))
+      await waitFor(() => screen.getByRole('button', { name: '백그라운드 내보내기' }))
+      await user.click(screen.getByRole('button', { name: '백그라운드 내보내기' }))
+      await waitFor(() => screen.getByRole('button', { name: '다운로드' }))
+
+      // 다운로드 실패 트리거
+      await user.click(screen.getByRole('button', { name: '다운로드' }))
+
+      // done 단계에서 role=alert가 표시되어야 함 (C1 구현 전엔 없어서 FAIL)
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent('파일이 아직 준비되지 않았습니다.')
+      })
+    })
+
+    it('C2: 폴링 HTTP 에러 시 tracking 단계에 에러 메시지와 다시 시도 버튼이 표시된다 (spec EC5)', async () => {
+      // fetchExportJobStatus가 HTTP 에러로 실패 → pollIsError=true → tracking 에러 분기
+      vi.mocked(exportIssues).mockRejectedValue(
+        new ApiError(400, {
+          errorCode: 'SEARCH_EXPORT_LIMIT_EXCEEDED',
+          resultCount: 5000,
+          limit: 10000,
+          status: 400,
+          detail: '초과',
+        }),
+      )
+      vi.mocked(submitExportJob).mockResolvedValue({ jobId: JOB_ID, status: 'PENDING' })
+      vi.mocked(fetchExportJobStatus).mockRejectedValue(
+        new ApiError(403, { detail: '접근 권한이 없습니다.' }),
+      )
+
+      const { user } = renderDialog()
+
+      // tracking phase 진입
+      await user.click(screen.getByRole('button', { name: '내보내기' }))
+      await waitFor(() => screen.getByRole('button', { name: '백그라운드 내보내기' }))
+      await user.click(screen.getByRole('button', { name: '백그라운드 내보내기' }))
+
+      // tracking에서 폴링 에러 → role=alert + "다시 시도" (C2 구현 전엔 없어서 FAIL)
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toBeInTheDocument()
+      })
+      expect(screen.getByRole('button', { name: '다시 시도' })).toBeInTheDocument()
+
+      // 다시 시도 → form 복귀
+      await user.click(screen.getByRole('button', { name: '다시 시도' }))
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: '내보내기' })).toBeInTheDocument()
+      })
+    })
+
+    it('C3: FR-7 — fake timer 2000ms 진행 후 cleanup으로 폴링 차단됨을 진짜 검증', async () => {
+      // C3 이전 테스트는 200ms(<1500ms) 대기라 cleanup 없어도 통과하는 vacuous green.
+      // vi.useFakeTimers()로 1500ms refetchInterval을 fake timer로 제어해 진짜 검증한다.
+      // userEvent.setup({ advanceTimers })로 fake timer 환경에서 user interaction을 처리한다.
+      vi.useFakeTimers()
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) })
+
+      vi.mocked(exportIssues).mockRejectedValue(
+        new ApiError(400, {
+          errorCode: 'SEARCH_EXPORT_LIMIT_EXCEEDED',
+          resultCount: 5000,
+          limit: 10000,
+          status: 400,
+          detail: '초과',
+        }),
+      )
+      vi.mocked(submitExportJob).mockResolvedValue({ jobId: JOB_ID, status: 'PENDING' })
       vi.mocked(fetchExportJobStatus).mockResolvedValue({
         jobId: JOB_ID,
         status: 'RUNNING' as const,
@@ -432,25 +505,29 @@ describe('ExportDialog', () => {
           }),
         )
 
-      const user = userEvent.setup()
       const { rerender } = render(createElement(TestApp, { open: true }))
 
-      // confirmAsync 진입
+      // confirmAsync 진입 — mutation은 Promise(마이크로태스크)이므로 fake timer 불필요
       await user.click(screen.getByRole('button', { name: '내보내기' }))
-      await waitFor(() => screen.getByRole('button', { name: '백그라운드 내보내기' }))
+      // 소량 타이머 진행으로 TQ 내부 배치/스케줄 마이크로태스크 소화
+      await vi.advanceTimersByTimeAsync(50)
+      expect(screen.getByRole('button', { name: '백그라운드 내보내기' })).toBeInTheDocument()
 
-      // tracking 진입 → 초기 폴링 1회 발생 대기
+      // tracking 진입 → 초기 폴링 1회 발생
       await user.click(screen.getByRole('button', { name: '백그라운드 내보내기' }))
-      await waitFor(() => expect(vi.mocked(fetchExportJobStatus)).toHaveBeenCalledTimes(1))
+      // 초기 쿼리 fetch 발생 대기 (TQ microtask) + refetchInterval fake timer 등록
+      await vi.advanceTimersByTimeAsync(50)
+      expect(vi.mocked(fetchExportJobStatus)).toHaveBeenCalledTimes(1)
 
       const callsBefore = vi.mocked(fetchExportJobStatus).mock.calls.length
 
-      // 다이얼로그 닫기 (Content 언마운트 → useQuery cleanup)
+      // 다이얼로그 닫기 → Content 언마운트 → TQ observer 제거 → refetchInterval 취소
       rerender(createElement(TestApp, { open: false }))
 
-      // refetchInterval은 1500ms이므로, 200ms 이내에 추가 호출 없음 확인
-      // (cleanup 안 됐어도 1500ms 전이므로 보수적으로는 타임아웃 없음 보장)
-      await new Promise((r) => setTimeout(r, 200))
+      // fake timer 2000ms 진행 — cleanup됐으면 1500ms refetchInterval이 취소되어 추가 호출 없음
+      // cleanup 실패 시 fake timer 1500ms 지점에서 fetchExportJobStatus가 재호출되어 FAIL
+      await vi.advanceTimersByTimeAsync(2000)
+
       expect(vi.mocked(fetchExportJobStatus).mock.calls.length).toBe(callsBefore)
     }, 10000)
   })
