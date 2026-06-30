@@ -7,8 +7,7 @@ import com.bts.search.aql.AqlParser
 import com.bts.search.web.dto.AqlSearchHit
 import com.bts.search.web.dto.AqlSearchPageResponse
 import com.bts.search.web.dto.AqlSearchRequest
-import com.bts.search.web.dto.PageInfo
-import com.bts.search.web.dto.PageMeta
+import com.bts.search.web.dto.toAqlEnvelope
 import com.bts.shared.search.IssueSearchPort
 import com.bts.shared.search.IssueSearchQuery
 import jakarta.validation.Valid
@@ -63,7 +62,8 @@ class SearchController(
      * AQL 텍스트 쿼리로 이슈를 검색한다.
      *
      * @param request 검색 요청 바디. [AqlSearchRequest] Jakarta Validation 적용.
-     * @return 200 OK + envelope `{ data: List<AqlSearchHit>, meta: { page: { number, size, totalElements, totalPages } } }`.
+     * @return 200 OK + envelope. 형식: `{ "data": [...], "meta": { "page": { "number", "size",
+     *   "totalElements", "totalPages" } } }`.
      * @throws ResponseStatusException(401) 미인증 — actor 추출 실패 시.
      * @throws com.bts.search.aql.AqlSyntaxException(400) AQL 문법/필드 오류 — [SearchExceptionHandler]가 400으로 변환.
      * @throws SecurityException(403) BROWSE 권한 없음 — [SearchExceptionHandler]가 403으로 변환.
@@ -100,27 +100,7 @@ class SearchController(
             )
 
         val searchPage = issueSearchPort.search(query)
-        val hits = searchPage.items.map { AqlSearchHit.from(it) }
-        val totalPages =
-            if (request.size > 0) {
-                ((searchPage.total + request.size - 1) / request.size).toInt()
-            } else {
-                0
-            }
-        val envelope =
-            AqlSearchPageResponse(
-                data = hits,
-                meta =
-                    PageMeta(
-                        page =
-                            PageInfo(
-                                number = request.page,
-                                size = request.size,
-                                totalElements = searchPage.total,
-                                totalPages = totalPages,
-                            ),
-                    ),
-            )
+        val envelope = searchPage.toAqlEnvelope(requestedSize = request.size) { AqlSearchHit.from(it) }
 
         return ResponseEntity.ok(envelope)
     }
