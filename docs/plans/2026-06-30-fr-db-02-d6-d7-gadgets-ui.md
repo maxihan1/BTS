@@ -114,6 +114,111 @@ FR-API-01과 무관(FR-API-01=cursor+OpenAPI, 데이터소스 무변경). 실측
 - Gap 2: 이슈 목록 응답 정규화 `GadgetIssueRow{key,summary}`.
 - 게이트1 재확인: 프로젝트 지정형 + same-BC 백엔드 보강 + filter_result filterId 한정.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 모든 frontend task TDD red→green→refactor. 검증=`pnpm --filter web test <file>` + `pnpm typecheck`. 병렬 dispatch 시 자기 파일만 stage(memory `parallel-dispatch-precommit-hook-race`).
+
+### Task 1. 가젯 카탈로그 api + Zod 스키마 + MSW 핸들러
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/gadget-catalog.ts`, `apps/web/src/api/gadget-catalog.test.ts`, `apps/web/src/mocks/gadget-catalog-fixtures.ts`, `apps/web/src/mocks/dashboard-handlers.ts`]
+- depends-on: []
+
+**RED**: gadget-catalog.test.ts — `fetchGadgetCatalog()`가 `{data:{gadgets:[...]}}`를 파싱, enabled=true 6종 필터 헬퍼, ConfigFieldDto optional 필드(@JsonInclude NON_NULL) 누락 허용.
+**GREEN**: `fetchGadgetCatalog` api(apiGet) + Zod 스키마 — 백엔드 `GadgetCatalogDtos.kt` 1:1(type/category/label/enabled/configFields[{key,type,required,minLength?,maxLength?,min?,max?,enumValues?,itemSchema?,minItems?,maxItems?}]/requireAtLeastOne). MSW 핸들러(백엔드 응답 1:1, enabled 정확).
+**REFACTOR**: FieldType union 상수화. 계약 drift 가드 — 백엔드 `GadgetCatalogDtos.kt`·`GadgetType.kt` grep 주석 대조(memory `frontend-zod-backend-dto-contract-gap`).
+**검증**: `pnpm --filter web test gadget-catalog && pnpm typecheck`
+
+### Task 2. layout 타입 확장 — gadgetType/config 왕복 보존
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/lib/dashboard-layout.ts`, `apps/web/src/lib/dashboard-layout.test.ts`, `apps/web/src/api/dashboards.ts`]
+- depends-on: []
+
+**RED**: dashboard-layout.test.ts — `parseLayout`/`serializeLayout`가 `gadgetType`/`config` 왕복 무손실 보존 + gadgetType 없는 legacy 타일(`{i,x,y,w,h,title}`) 그대로 보존(Gap A 회귀).
+**GREEN**: `DashboardTile` 인터페이스에 `gadgetType?: string`, `config?: Record<string,unknown>` 추가. parse/serialize가 두 필드 보존(미지 키 보존).
+**REFACTOR**: 타입 주석. 기존 title 타일 호환 단언.
+**검증**: `pnpm --filter web test dashboard-layout && pnpm typecheck`
+
+### Task 3. (백엔드) assigned_to_me 카탈로그 projectKey 보강 (same-BC)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/notification/src/main/kotlin/com/bts/notification/dashboard/domain/GadgetType.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/domain/GadgetTypeTest.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/web/DashboardGadgetIntegrationTest.kt`]
+- depends-on: []
+
+**RED**: GadgetTypeTest — `ASSIGNED_TO_ME`의 configFields에 `projectKey`(STRING, optional, maxLength 100) 포함 단언. 카탈로그 통합 테스트(G3)에 projectKey 노출 확인.
+**GREEN**: `ASSIGNED_TO_ME` ConfigFieldDescriptor에 projectKey(recently_created 동일 패턴) 추가. catalog() 단일 출처 불변식 유지.
+**REFACTOR**: KDoc. enabled/카테고리 불변.
+**검증**: `./gradlew :backend:modules:notification:test --tests "*GadgetType*" --tests "*DashboardGadget*" ktlintCheck detekt` (sub-agent lint 보고 불신 — controller 직접 검증, memory `subagent-ktlint-false-green-controller-verify`)
+
+### Task 4. 가젯 데이터 fetch 훅 + GadgetIssueRow 정규화
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/dashboard/gadgets/useGadgetData.ts`, `apps/web/src/components/dashboard/gadgets/useGadgetData.test.ts`, `apps/web/src/components/dashboard/gadgets/gadget-types.ts`]
+- depends-on: []
+
+**RED**: useGadgetData.test.ts — `GadgetIssueRow{key,summary}` 정규화(IssueResponse→Row, AqlSearchHit→Row, Gap 2). 가젯별 fetch 분기(assigned_to_me=fetchIssues+assignee, recently_created=fetchIssues, filter_result/issue_count=fetchFilter→searchAql). maxItems 클램프(1~50). MSW stateful(memory `msw-mutation-stateful-refetch`).
+**GREEN**: TanStack Query 훅 — 가젯별 queryKey(gadgetType+config 해시), 정규화 매핑, currentUserId=`useAuthUser()?.userId`. 에러/로딩/빈 상태 노출.
+**REFACTOR**: 정규화 매핑 순수 함수 추출. query 키/staleTime 상수.
+**검증**: `pnpm --filter web test useGadgetData && pnpm typecheck`
+
+### Task 5. 가젯 컴포넌트 6종 + 클라측 config 검증 스키마
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/dashboard/gadgets/IssueListGadget.tsx`, `apps/web/src/components/dashboard/gadgets/IssueCountGadget.tsx`, `apps/web/src/components/dashboard/gadgets/TextWidgetGadget.tsx`, `apps/web/src/components/dashboard/gadgets/LinkListGadget.tsx`, `apps/web/src/components/dashboard/gadgets/GadgetRenderer.tsx`, `apps/web/src/components/dashboard/gadgets/gadget-config-schema.ts`, `apps/web/src/components/dashboard/gadgets/gadgets.test.tsx`]
+- depends-on: [2, 4]
+
+**RED**: gadgets.test.tsx — IssueListGadget(assigned_to_me/recently_created/filter_result 공용 목록 + 로딩/에러/빈), IssueCountGadget(totalElements 숫자), TextWidgetGadget(markdown 안전 렌더), LinkListGadget(http/https only, rel=noopener). gadget-config-schema 검증(EC3/EC5/EC7/EC8). GadgetRenderer가 gadgetType→컴포넌트 분기 + legacy/미지원 안전 표시(EC6).
+**GREEN**: 6종 컴포넌트(IssueList 공용 1 + IssueCount + Text + Link) + GadgetRenderer + 클라측 Zod config 스키마(백엔드 GadgetType 미러). 이슈 키 클릭→SPA 이동.
+**REFACTOR**: 공통 타일 본문 레이아웃(DESIGN.md 토큰). XSS sanitize 확인.
+**검증**: `pnpm --filter web test gadgets && pnpm typecheck`
+
+### Task 6. 카탈로그 모달 + 가젯별 설정 폼
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/dashboard/GadgetCatalogModal.tsx`, `apps/web/src/components/dashboard/GadgetConfigForm.tsx`, `apps/web/src/components/dashboard/GadgetCatalogModal.test.tsx`]
+- depends-on: [1, 2]
+
+**RED**: 모달 테스트 — radix Dialog 열기, 12종 category 그룹 표시, enabled=false "준비 중" 비활성(S6), 가젯 선택→설정 폼, 클라측 검증(projectKey 필수·filterId 필수·markdown/url/links), 추가 콜백. key prop 재마운트(설정 초기화, memory `react-usestate-stale-key-prop`).
+**GREEN**: GadgetCatalogModal(PostActionFormDialog 패턴) + GadgetConfigForm(configFields 기반 타입별 입력 + requireAtLeastOne). projectKey 입력(프로젝트 지정형 가젯 필수).
+**REFACTOR**: 폼 필드 렌더 타입별 분기 추출.
+**검증**: `pnpm --filter web test GadgetCatalogModal && pnpm typecheck`
+
+### Task 7. DashboardTile/Grid 가젯 렌더 통합 + 상세 페이지 연결
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/dashboard/DashboardTile.tsx`, `apps/web/src/components/dashboard/DashboardGrid.tsx`, `apps/web/src/routes/dashboards.$dashboardId.tsx`, `apps/web/src/components/dashboard/DashboardTile.test.tsx`]
+- depends-on: [5, 6]
+
+**RED**: DashboardTile.test — gadgetType 있으면 GadgetRenderer 렌더(placeholder 대체), 없으면 legacy placeholder. 상세 페이지 "가젯 추가"→모달, 추가 시 handleAddTile 확장(gadgetType/config 포함 타일). 저장 시 serializeLayout가 가젯 보존(OCC 409 로컬 보존 회귀, memory `mutation-setquerydata-partial-response-flicker`).
+**GREEN**: DashboardTile 본문에 GadgetRenderer 통합(canEdit 게이팅 유지). handleAddTile이 모달 결과로 가젯 타일 생성. 기본 타일 크기 가젯별.
+**REFACTOR**: 타일 헤더(가젯 label) 표시. 편집/읽기 모드 분기 정리.
+**검증**: `pnpm --filter web test DashboardTile && pnpm typecheck && pnpm --filter web test dashboard`(기존 무회귀)
+
+### Task 8. E2E — 가젯 추가/렌더/게이팅/읽기전용 + 무회귀
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/dashboard-gadgets.spec.ts`, `apps/web/src/mocks/dashboard-handlers.ts`]
+- depends-on: [7]
+
+**E2E 시나리오**: S1(카탈로그→설정→추가→저장), S2(이슈 가젯 렌더, MSW 영속 SPA 이동 — reload 금지 memory `msw-derived-behavior-shared-store-e2e`), S4(정적 text/link 가젯), S6(enabled=false 비활성 게이팅), S7(비편집자 읽기전용). 기존 dashboard.spec.ts 무회귀 동반 실행(memory `ui-pr-defer-e2e-regression-latent`). 텍스트 중복 시 컨테이너 한정(memory `playwright-getbyrole-exact-strict-mode`). RGL 드래그 제약은 기존대로 SKIP.
+**검증**: `pnpm --filter web test:e2e dashboard-gadgets && pnpm --filter web test:e2e dashboard`
+
+## Plan 메타
+
+- task 수: 8 (frontend 6 + backend 보강 1 + qa E2E 1)
+- 예상 wave: 4 — Wave1[T1,T2,T3,T4 병렬] → Wave2[T5(dep2,4), T6(dep1,2)] → Wave3[T7(dep5,6)] → Wave4[T8(dep7)]
+- 파일 겹침 직렬화: dashboard-handlers.ts(T1 카탈로그 핸들러 vs T8 E2E) → T8이 T7 뒤라 자연 직렬. DashboardTile 인터페이스(api/dashboards.ts, T2) ≠ DashboardTile.tsx 컴포넌트(T7) — 다른 파일.
+- TDD 강제: yes (frontend·backend 전 task). E2E는 시나리오 기반.
+- 추가 검증: typecheck, lint, vitest, playwright(qa), 백엔드 ktlint/detekt(T3).
+- BC 격리 예외: T3는 same-BC(notification) 백엔드 보강 — frontend PR 내 view/도메인 layer patch(memory 옵션C 패턴). 게이트1 재확인.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
