@@ -2,6 +2,7 @@
 
 package com.bts.issue.adapter.inbound.rest
 
+import com.bts.issue.adapter.inbound.rest.cursor.CursorDecodeException
 import com.bts.issue.application.InvalidRankNeighborException
 import com.bts.issue.customfield.domain.CustomFieldValidationException
 import com.bts.issue.domain.AssigneeNotFoundException
@@ -88,6 +89,8 @@ import java.time.Instant
  * 핸들러가 추가됐다 (422 + SUBTASK_HAS_OWN_SUBTASKS / INCOMPLETE_SUBTASK_MAPPING).
  * FR-BL-01 Task 5 에서 [InvalidRankNeighborException] 핸들러가 추가됐다
  * (400 + INVALID_RANK_NEIGHBOR — catch-all 500 삼킴 차단).
+ * FR-API-01 Task 4 에서 [CursorDecodeException] / [PaginationModeConflictException] 핸들러가 추가됐다
+ * (400 + ISSUE_INVALID_CURSOR / ISSUE_PAGINATION_MODE_CONFLICT — detail 내부 토큰 비노출).
  */
 @Suppress("TooManyFunctions")
 @RestControllerAdvice(basePackages = ["com.bts.issue.adapter.inbound.rest"])
@@ -182,6 +185,46 @@ class IssueExceptionHandler {
             title = "Invalid Rank Neighbor",
             errorCode = IssueErrorCodes.INVALID_RANK_NEIGHBOR,
             detail = "이웃 이슈 검증에 실패했습니다. 이웃 순서, 중복, 프로젝트를 확인해 주세요.",
+        )
+    }
+
+    // ── 400 INVALID_CURSOR ────────────────────────────────────────────────────
+
+    /**
+     * [CursorDecodeException] — cursor 토큰 위변조·형식 오류·지원 불가 버전 — 400 (FR-API-01 Task 4).
+     *
+     * 보안 — 내부 cursor 토큰 문자열·스택을 응답에 포함하지 않는다. 원본 사유는 로그에만 기록한다.
+     *
+     * @param ex 디코딩 실패 사유를 포함하는 예외.
+     */
+    @ExceptionHandler(CursorDecodeException::class)
+    fun handleCursorDecodeException(ex: CursorDecodeException): ProblemDetail {
+        log.info("ISSUE_400 invalid_cursor cause='{}'", ex.message)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "invalid-cursor",
+            title = "Invalid Cursor",
+            errorCode = IssueErrorCodes.INVALID_CURSOR,
+            detail = "cursor 토큰이 유효하지 않습니다. 처음부터 다시 조회해 주세요.",
+        )
+    }
+
+    // ── 400 PAGINATION_MODE_CONFLICT ──────────────────────────────────────────
+
+    /**
+     * [PaginationModeConflictException] — cursor 모드와 offset 모드 동시 지정 — 400 (FR-API-01 Task 4).
+     *
+     * @param ex 페이지네이션 모드 충돌 예외.
+     */
+    @ExceptionHandler(PaginationModeConflictException::class)
+    fun handlePaginationModeConflict(ex: PaginationModeConflictException): ProblemDetail {
+        log.info("ISSUE_400 pagination_mode_conflict message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "pagination-mode-conflict",
+            title = "Pagination Mode Conflict",
+            errorCode = IssueErrorCodes.PAGINATION_MODE_CONFLICT,
+            detail = "cursor 모드와 offset 모드를 동시에 지정할 수 없습니다. cursor 또는 page/size 중 하나만 사용하세요.",
         )
     }
 
@@ -790,5 +833,7 @@ object IssueErrorCodes {
     const val INVALID_TARGET_STATE = "INVALID_TARGET_STATE"
     const val INVALID_TARGET_MAPPING = "INVALID_TARGET_MAPPING"
     const val REQUIRED_FIELD_MISSING = "REQUIRED_FIELD_MISSING"
+    const val INVALID_CURSOR = "ISSUE_INVALID_CURSOR"
+    const val PAGINATION_MODE_CONFLICT = "ISSUE_PAGINATION_MODE_CONFLICT"
     const val INTERNAL_ERROR = "INTERNAL_ERROR"
 }
