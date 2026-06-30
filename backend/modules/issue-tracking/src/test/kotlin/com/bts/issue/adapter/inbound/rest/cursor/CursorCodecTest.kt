@@ -30,11 +30,10 @@ class CursorCodecTest {
     @Test
     fun `encode 후 decode 하면 동일한 OffsetDateTime과 UUID를 반환한다`() {
         val token = CursorCodec.encode(sampleCreatedAt, sampleId)
-        val position = CursorCodec.decode(token)
+        val pos = requireNotNull(CursorCodec.decode(token)) { "decode 결과가 null이면 안 됨" }
 
-        assertThat(position).isNotNull
-        assertThat(position!!.createdAt).isEqualTo(sampleCreatedAt)
-        assertThat(position.id).isEqualTo(sampleId)
+        assertThat(pos.createdAt).isEqualTo(sampleCreatedAt)
+        assertThat(pos.id).isEqualTo(sampleId)
     }
 
     // ── C-2. v1: prefix ────────────────────────────────────────────────────────
@@ -111,11 +110,10 @@ class CursorCodecTest {
         val nanoDateTime = OffsetDateTime.of(2024, 3, 20, 15, 45, 30, 123_456_789, ZoneOffset.UTC)
 
         val token = CursorCodec.encode(nanoDateTime, sampleId)
-        val position = CursorCodec.decode(token)
+        val pos = requireNotNull(CursorCodec.decode(token)) { "decode 결과가 null이면 안 됨" }
 
-        assertThat(position).isNotNull
-        assertThat(position!!.createdAt).isEqualTo(nanoDateTime)
-        assertThat(position.createdAt.nano).isEqualTo(123_456_789)
+        assertThat(pos.createdAt).isEqualTo(nanoDateTime)
+        assertThat(pos.createdAt.nano).isEqualTo(123_456_789)
     }
 
     @Test
@@ -123,11 +121,10 @@ class CursorCodecTest {
         val noNano = OffsetDateTime.of(2024, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC)
 
         val token = CursorCodec.encode(noNano, sampleId)
-        val position = CursorCodec.decode(token)
+        val pos = requireNotNull(CursorCodec.decode(token)) { "decode 결과가 null이면 안 됨" }
 
-        assertThat(position).isNotNull
-        assertThat(position!!.createdAt).isEqualTo(noNano)
-        assertThat(position.createdAt.nano).isEqualTo(0)
+        assertThat(pos.createdAt).isEqualTo(noNano)
+        assertThat(pos.createdAt.nano).isEqualTo(0)
     }
 
     @Test
@@ -136,9 +133,8 @@ class CursorCodecTest {
         val kstDateTime = OffsetDateTime.of(2024, 6, 15, 12, 0, 0, 0, kst)
 
         val token = CursorCodec.encode(kstDateTime, sampleId)
-        val position = CursorCodec.decode(token)
+        val pos = requireNotNull(CursorCodec.decode(token)) { "decode 결과가 null이면 안 됨" }
 
-        assertThat(position).isNotNull
-        assertThat(position!!.createdAt).isEqualTo(kstDateTime)
+        assertThat(pos.createdAt).isEqualTo(kstDateTime)
     }
 }
