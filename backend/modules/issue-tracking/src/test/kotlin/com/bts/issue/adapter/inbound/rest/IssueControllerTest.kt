@@ -801,4 +801,17 @@ class IssueControllerChangelogCursorModeTest {
                 .param("limit", "101"),
         ).andExpect(status().isBadRequest)
     }
+
+    // ── CHANGELOG-CURSOR-6: 위변조 cursor → 400 ISSUE_INVALID_CURSOR (이슈 목록과 계약 통일) ──
+
+    @Test
+    fun `CHANGELOG-CURSOR-6 위변조 cursor 는 400 ISSUE_INVALID_CURSOR 로 통일된다`() {
+        // 이슈 목록(GET /issues)의 위변조 cursor 와 동일한 errorCode 를 반환해야 한다 (표준화 FR-4/FR-6).
+        mockMvc.perform(
+            get("/api/v1/issues/ATLAS-1/changelog")
+                .param("cursor", "tampered-not-a-valid-token"),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_INVALID_CURSOR"))
+    }
 }
