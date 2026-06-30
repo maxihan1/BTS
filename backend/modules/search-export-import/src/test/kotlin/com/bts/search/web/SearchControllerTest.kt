@@ -103,10 +103,12 @@ class SearchControllerTest {
     // ── C1 정상 200 ───────────────────────────────────────────────────────────
 
     /**
-     * C1 — 유효한 AQL 쿼리, 인증된 사용자 → 200 OK, raw Page(content/totalElements).
+     * C1 — 유효한 AQL 쿼리, 인증된 사용자 → 200 OK, envelope(data/meta.page).
+     *
+     * 응답 형식: `{ "data": [...], "meta": { "page": { "number", "size", "totalElements", "totalPages" } } }`
      */
     @Test
-    fun `C1 - 유효한 AQL 쿼리 200 OK raw Page 반환`() {
+    fun `C1 - 유효한 AQL 쿼리 200 OK envelope 반환`() {
         val hit = sampleHit()
         every { mockPort.search(any()) } returns
             IssueSearchPage(items = listOf(hit), total = 1L, page = 0, size = 50)
@@ -125,15 +127,18 @@ class SearchControllerTest {
                     ),
                 ),
         ).andExpect(status().isOk)
-            .andExpect(jsonPath("$.content").isArray)
-            .andExpect(jsonPath("$.content[0].key").value(hit.key))
-            .andExpect(jsonPath("$.content[0].summary").value(hit.summary))
-            .andExpect(jsonPath("$.content[0].typeKey").value(hit.typeKey))
-            .andExpect(jsonPath("$.content[0].currentStateKey").value(hit.currentStateKey))
-            .andExpect(jsonPath("$.content[0].priority").value(hit.priority))
-            .andExpect(jsonPath("$.content[0].priorityName").value(hit.priorityName))
-            .andExpect(jsonPath("$.content[0].projectKey").value(hit.projectKey))
-            .andExpect(jsonPath("$.totalElements").value(1))
+            .andExpect(jsonPath("$.data").isArray)
+            .andExpect(jsonPath("$.data[0].key").value(hit.key))
+            .andExpect(jsonPath("$.data[0].summary").value(hit.summary))
+            .andExpect(jsonPath("$.data[0].typeKey").value(hit.typeKey))
+            .andExpect(jsonPath("$.data[0].currentStateKey").value(hit.currentStateKey))
+            .andExpect(jsonPath("$.data[0].priority").value(hit.priority))
+            .andExpect(jsonPath("$.data[0].priorityName").value(hit.priorityName))
+            .andExpect(jsonPath("$.data[0].projectKey").value(hit.projectKey))
+            .andExpect(jsonPath("$.meta.page.number").value(0))
+            .andExpect(jsonPath("$.meta.page.size").value(50))
+            .andExpect(jsonPath("$.meta.page.totalElements").value(1))
+            .andExpect(jsonPath("$.meta.page.totalPages").value(1))
     }
 
     // ── C2 문법 오류 400 ──────────────────────────────────────────────────────
