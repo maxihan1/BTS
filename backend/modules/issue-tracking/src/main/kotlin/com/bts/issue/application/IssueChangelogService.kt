@@ -2,6 +2,7 @@
 
 package com.bts.issue.application
 
+import com.bts.issue.adapter.inbound.rest.cursor.CursorDecodeException
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
@@ -95,37 +96,39 @@ object ChangelogCursorCodec {
      *
      * @param token cursor 토큰 문자열.
      * @return 디코딩된 [ChangelogCursorPosition]. 빈 문자열이면 null.
-     * @throws IllegalArgumentException 형식 오류 또는 파싱 실패 시.
+     * @throws CursorDecodeException 형식 오류 또는 파싱 실패 시 (이슈 목록 [CursorCodec] 과 동일 예외 — 400 ISSUE_INVALID_CURSOR 통일).
      */
     @Suppress("ThrowsCount")
     fun decode(token: String): ChangelogCursorPosition? {
         if (token.isBlank()) return null
         val colonIdx = token.indexOf(':')
-        require(colonIdx != -1 && token.substring(0, colonIdx) == VERSION) {
-            "changelog cursor 형식 오류 (버전 불일치): $token"
+        if (colonIdx == -1 || token.substring(0, colonIdx) != VERSION) {
+            throw CursorDecodeException("changelog cursor 형식 오류 (버전 불일치): $token")
         }
         val encoded = token.substring(colonIdx + 1)
         val payload =
             try {
                 Base64.getUrlDecoder().decode(encoded).toString(Charsets.UTF_8)
             } catch (e: IllegalArgumentException) {
-                throw IllegalArgumentException("changelog cursor base64 디코드 실패: ${e.message}", e)
+                throw CursorDecodeException("changelog cursor base64 디코드 실패: ${e.message}", e)
             }
         val sep = payload.indexOf(SEPARATOR)
-        require(sep != -1) { "changelog cursor payload 구분자 없음: $payload" }
+        if (sep == -1) {
+            throw CursorDecodeException("changelog cursor payload 구분자 없음: $payload")
+        }
         val createdAtStr = payload.substring(0, sep)
         val groupIdStr = payload.substring(sep + 1)
         val createdAt =
             try {
                 Instant.parse(createdAtStr).atOffset(ZoneOffset.UTC)
             } catch (e: java.time.format.DateTimeParseException) {
-                throw IllegalArgumentException("changelog cursor createdAt 파싱 실패: $createdAtStr", e)
+                throw CursorDecodeException("changelog cursor createdAt 파싱 실패: $createdAtStr", e)
             }
         val groupId =
             try {
                 groupIdStr.toLong()
             } catch (e: NumberFormatException) {
-                throw IllegalArgumentException("changelog cursor groupId 파싱 실패: $groupIdStr", e)
+                throw CursorDecodeException("changelog cursor groupId 파싱 실패: $groupIdStr", e)
             }
         return ChangelogCursorPosition(createdAt, groupId)
     }

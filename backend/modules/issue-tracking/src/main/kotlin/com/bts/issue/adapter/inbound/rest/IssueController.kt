@@ -533,15 +533,9 @@ offset 모드: cursor 파라미터 미지정 → Spring Page (무회귀).
                 )
             }
             log.info("IssueController.changelog cursor모드 key={} limit={}", key, effectiveLimit)
-            val cursorPosition =
-                try {
-                    ChangelogCursorCodec.decode(cursor)
-                } catch (e: IllegalArgumentException) {
-                    throw ResponseStatusException(
-                        HttpStatus.BAD_REQUEST,
-                        "changelog cursor 형식 오류: ${e.message}",
-                    )
-                }
+            // ChangelogCursorCodec.decode 는 CursorDecodeException 을 던진다 → handleCursorDecodeException 으로
+            // 흘러 이슈 목록(CursorCodec)과 동일하게 400 ISSUE_INVALID_CURSOR 로 통일된다 (표준화 FR-4/FR-6).
+            val cursorPosition = ChangelogCursorCodec.decode(cursor)
             val result = svc.findChangelogByCursor(actor, issueKey, cursorPosition, effectiveLimit)
             ResponseEntity.ok<Any>(
                 CursorPageResponse(
