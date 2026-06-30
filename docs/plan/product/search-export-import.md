@@ -152,13 +152,13 @@
 
 **우선순위**. 필수 | **선행**. issue-tracking §2.1.1 | **Plan slug**. `search/api-issue-crud`
 
-- [ ] D1. 도메인 — API 응답 표준 (페이지네이션, 에러 포맷) (책임. backend-engineer)
-- [ ] D2. 명세 — OpenAPI 3.1 스펙 작성 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — issue-tracking API에 cursor pagination + bulk ops 표준 적용 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — OpenAPI 스펙 검증 + contract test (책임. backend-engineer)
-- [ ] D6. 프론트 UI — (해당 없음 — API 문서는 §A) (책임. -)
-- [ ] D7. E2E — Postman/Insomnia 시나리오 (책임. qa-engineer)
+- [x] D1. 도메인 — API 응답 표준 (페이지네이션, 에러 포맷) (책임. backend-engineer)
+- [x] D2. 명세 — OpenAPI 3.1 스펙 작성 (책임. backend-engineer)
+- [x] D3. 데이터 모델 — (활용) (책임. db-engineer)
+- [x] D4. 백엔드 — issue-tracking API에 cursor pagination + bulk ops 표준 적용 (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 — OpenAPI 스펙 검증 + contract test (책임. backend-engineer)
+- [x] D6. 프론트 UI — (해당 없음 — API 문서는 Swagger UI) (책임. -)
+- [x] D7. E2E — OpenApiContractTest 가 실 DB로 cursor 순회·계약 검증 (Postman/Insomnia 수동 시나리오 대체) (책임. qa-engineer)
 
 ### §5.2 FR-API-02 — AQL 검색 REST API
 
