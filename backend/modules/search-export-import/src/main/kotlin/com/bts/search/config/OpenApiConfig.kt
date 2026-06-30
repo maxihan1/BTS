@@ -11,13 +11,12 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.security.config.annotation.web.builders.WebSecurity
 import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer
 
-/**
- * bearerAuth 보안 스킴 이름 상수.
- *
- * [SecurityScheme] 에서 선언하고 SearchController 의 SecurityRequirement 어노테이션에서 참조한다.
- * 문자열 오타를 컴파일 타임에 방지한다.
- */
+/** bearerAuth 보안 스킴 이름. SearchController 의 SecurityRequirement 에서 참조한다. */
 const val BEARER_AUTH_SCHEME = "bearerAuth"
+
+private const val API_TITLE = "Atlas Search API"
+private const val API_VERSION = "1.0"
+private const val API_DESCRIPTION = "Atlas Search AQL 이슈 검색 REST API. JWT Bearer 인증을 사용한다."
 
 /**
  * search-export-import 모듈 OpenAPI 3.1 전역 설정.
@@ -33,9 +32,9 @@ const val BEARER_AUTH_SCHEME = "bearerAuth"
 @OpenAPIDefinition(
     info =
         Info(
-            title = "Atlas Search API",
-            version = "1.0",
-            description = "Atlas Search AQL 이슈 검색 REST API. JWT Bearer 인증을 사용한다.",
+            title = API_TITLE,
+            version = API_VERSION,
+            description = API_DESCRIPTION,
         ),
 )
 @SecurityScheme(
