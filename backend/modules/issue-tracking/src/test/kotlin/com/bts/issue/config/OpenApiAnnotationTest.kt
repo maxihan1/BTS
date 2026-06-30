@@ -122,9 +122,11 @@ class OpenApiAnnotationTest {
         val checks =
             listOf(
                 "POST /api/v1/issues (create)" to paths.path("/api/v1/issues").path("post").path("summary").asText(),
-                "GET /api/v1/issues/{key} (get)" to paths.path("/api/v1/issues/{key}").path("get").path("summary").asText(),
+                "GET /api/v1/issues/{key} (get)" to
+                    paths.path("/api/v1/issues/{key}").path("get").path("summary").asText(),
                 "GET /api/v1/issues (list)" to paths.path("/api/v1/issues").path("get").path("summary").asText(),
-                "PATCH /api/v1/issues/{key} (update)" to paths.path("/api/v1/issues/{key}").path("patch").path("summary").asText(),
+                "PATCH /api/v1/issues/{key} (update)" to
+                    paths.path("/api/v1/issues/{key}").path("patch").path("summary").asText(),
                 "POST /api/v1/issues/{key}/transition" to
                     paths.path("/api/v1/issues/{key}/transition").path("post").path("summary").asText(),
                 "GET /api/v1/issues/{key}/changelog" to
@@ -180,7 +182,7 @@ class OpenApiAnnotationTest {
         assertThat(schemas.has("PageCursor"))
             .withFailMessage(
                 "components.schemas.PageCursor 가 없습니다. " +
-                    "list/changelog 에 @ApiResponse(content=@Content(schema=@Schema(implementation=CursorPageResponse::class))) 추가 필요.",
+                    "list/changelog 에 @ApiResponse(schema=CursorPageResponse::class) 추가 필요.",
             )
             .isTrue()
 
@@ -258,8 +260,8 @@ class OpenApiAnnotationTest {
                     paths.path("/api/v1/issues/{key}/worklogs").path("get").path("summary").asText(),
                 "GET /api/v1/issues/{key}/links" to
                     paths.path("/api/v1/issues/{key}/links").path("get").path("summary").asText(),
-                "GET /api/v1/projects/{projectIdOrKey}/issue-templates" to
-                    paths.path("/api/v1/projects/{projectIdOrKey}/issue-templates").path("get").path("summary").asText(),
+                "GET /api/v1/projects/{projectIdOrKey}/issue-templates" to paths
+                    .path("/api/v1/projects/{projectIdOrKey}/issue-templates").path("get").path("summary").asText(),
                 "GET /api/v1/projects/{projectIdOrKey}/custom-fields" to
                     paths.path("/api/v1/projects/{projectIdOrKey}/custom-fields").path("get").path("summary").asText(),
                 "GET /api/v1/issues/{key}/attachments" to

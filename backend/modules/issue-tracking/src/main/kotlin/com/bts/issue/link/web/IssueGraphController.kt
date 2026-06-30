@@ -52,7 +52,11 @@ class IssueGraphController(
      * @param depth 최대 홉 거리 문자열. null 또는 blank 이면 기본값(2) 적용. 1~3 범위 외 → 400.
      * @return 200 OK + [GraphResponse] (nodes/edges/truncated 포함).
      */
-    @Operation(operationId = "getIssueGraph", summary = "이슈 링크 BFS 그래프 조회", description = "중심 이슈를 기점으로 BFS 탐색(기본 depth=2, 최대 depth=5)하여 노드·엣지 그래프를 반환한다.")
+    @Operation(
+        operationId = "getIssueGraph",
+        summary = "이슈 링크 BFS 그래프 조회",
+        description = "중심 이슈를 기점으로 BFS 탐색(기본 depth=2, 최대 depth=5)하여 노드·엣지 그래프를 반환한다.",
+    )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "그래프 (nodes + edges)"),
         ApiResponse(responseCode = "400", description = "depth 파라미터 범위 오류", content = [Content()]),

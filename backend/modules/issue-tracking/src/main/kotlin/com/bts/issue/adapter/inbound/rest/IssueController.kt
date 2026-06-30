@@ -792,7 +792,11 @@ offset 모드: cursor 파라미터 미지정 → Spring Page (무회귀).
      * @param key path variable 이슈 키 문자열. 예: `"ATLAS-1"`
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈가 없거나 이미 삭제된 경우 → 404
      */
-    @Operation(operationId = "deleteIssue", summary = "이슈 소프트 삭제", description = "이슈를 소프트 삭제한다. 삭제 후 해당 키로 조회하면 404 가 반환된다.")
+    @Operation(
+        operationId = "deleteIssue",
+        summary = "이슈 소프트 삭제",
+        description = "이슈를 소프트 삭제한다. 삭제 후 해당 키로 조회하면 404 가 반환된다.",
+    )
     @ApiResponses(
         ApiResponse(responseCode = "204", description = "삭제 성공"),
         ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),

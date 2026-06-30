@@ -75,7 +75,11 @@ class IssueAttachmentController(
      * @throws com.bts.issue.domain.IssueAccessDeniedException UPDATE 권한 미보유 시 → 403.
      * @throws org.springframework.web.multipart.MaxUploadSizeExceededException 크기 초과 시 → 413.
      */
-    @Operation(operationId = "uploadAttachment", summary = "첨부 파일 업로드", description = "multipart/form-data 형식으로 파일을 업로드한다. 최대 100MB.")
+    @Operation(
+        operationId = "uploadAttachment",
+        summary = "첨부 파일 업로드",
+        description = "multipart/form-data 형식으로 파일을 업로드한다. 최대 100MB.",
+    )
     @ApiResponses(
         ApiResponse(responseCode = "201", description = "업로드 성공"),
         ApiResponse(responseCode = "400", description = "파일 미포함", content = [Content()]),
@@ -156,9 +160,17 @@ class IssueAttachmentController(
      * @throws com.bts.issue.domain.IssueNotFoundException 첨부 또는 이슈 미존재 시 → 404.
      * @throws com.bts.issue.domain.IssueAccessDeniedException VIEW 권한 미보유 시 → 403.
      */
-    @Operation(operationId = "downloadAttachment", summary = "첨부 파일 다운로드", description = "RFC 5987 UTF-8 인코딩 Content-Disposition 으로 한글 파일명을 안전하게 전달한다.")
+    @Operation(
+        operationId = "downloadAttachment",
+        summary = "첨부 파일 다운로드",
+        description = "RFC 5987 UTF-8 인코딩 Content-Disposition 으로 한글 파일명을 안전하게 전달한다.",
+    )
     @ApiResponses(
-        ApiResponse(responseCode = "200", description = "파일 바이트 스트림", content = [Content(mediaType = "application/octet-stream")]),
+        ApiResponse(
+            responseCode = "200",
+            description = "파일 바이트 스트림",
+            content = [Content(mediaType = "application/octet-stream")],
+        ),
         ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
         ApiResponse(responseCode = "403", description = "VIEW 권한 없음", content = [Content()]),
         ApiResponse(responseCode = "404", description = "첨부 파일 또는 이슈 미존재", content = [Content()]),

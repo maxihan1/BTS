@@ -77,7 +77,11 @@ class WorklogAggregateController(
      * @throws ResponseStatusException 401 — 미인증 / nil-UUID / 비-UUID 주체.
      * @throws com.bts.issue.domain.IssueAccessDeniedException → 403.
      */
-    @Operation(operationId = "aggregateWorklogs", summary = "프로젝트 워크로그 집계 조회", description = "project(필수), by(issue/user/period), granularity(day/week/month, period 시 필수), from/to 기간 파라미터로 집계한다.")
+    @Operation(
+        operationId = "aggregateWorklogs",
+        summary = "프로젝트 워크로그 집계 조회",
+        description = "project/by(issue|user|period)/granularity(day|week|month, period 시 필수)/from/to 파라미터로 집계한다.",
+    )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "집계 결과"),
         ApiResponse(responseCode = "400", description = "파라미터 검증 오류", content = [Content()]),
