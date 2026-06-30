@@ -21,6 +21,12 @@ private const val API_DESCRIPTION =
         "인증이 필요한 모든 엔드포인트는 Authorization: Bearer <token> 헤더를 요구한다."
 
 /**
+ * bearerAuth 보안 스킴 이름 — @SecurityScheme(name=...) 과 @SecurityRequirement(name=...) 에서 공유.
+ * Task 7 에서 개별 엔드포인트에 @SecurityRequirement(name = BEARER_AUTH_SCHEME) 로 참조한다.
+ */
+const val BEARER_AUTH_SCHEME = "bearerAuth"
+
+/**
  * issue-tracking 모듈 OpenAPI 3.1 전역 설정.
  *
  * ## 역할
@@ -48,7 +54,7 @@ private const val API_DESCRIPTION =
         ),
 )
 @SecurityScheme(
-    name = "bearerAuth",
+    name = BEARER_AUTH_SCHEME,
     type = SecuritySchemeType.HTTP,
     scheme = "bearer",
     bearerFormat = "JWT",
