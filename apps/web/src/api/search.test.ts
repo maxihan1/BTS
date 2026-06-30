@@ -1,9 +1,14 @@
-// AQL 검색 API 클라이언트 단위 테스트 — FR-SR-02 D6 Task-3
+// AQL 검색 API 클라이언트 단위 테스트 — FR-SR-02 D6 Task-3 / FR-EX-02 D6 Task-1
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { ApiError } from '@/api/client'
-import { searchAql } from './search'
+import {
+  searchAql,
+  submitExportJob,
+  fetchExportJobStatus,
+  downloadExportJobResult,
+} from './search'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처 — 백엔드 AqlSearchHit DTO 1:1 대응 (labels 필드 없음 — invent 금지)
@@ -273,5 +278,277 @@ describe('searchAql — 403 권한 없음', () => {
     await expect(
       searchAql({ projectKey: 'ATLAS', query: 'status = open' }),
     ).rejects.toMatchObject({ status: 403 })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 비동기 Export Jobs API 테스트 — FR-EX-02 D6 Task-1
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 픽스처 — 백엔드 ExportJobResponse DTO @JsonInclude(NON_NULL) 직렬화 형태
+const EXPORT_JOB_ID = '00000000-0000-4000-a000-000000000099'
+
+// PENDING: rowCount/errorCode 키 자체가 없음 (@JsonInclude NON_NULL)
+const PENDING_JOB_FIXTURE = {
+  jobId: EXPORT_JOB_ID,
+  status: 'PENDING',
+  progress: 0,
+  format: 'CSV',
+  downloadReady: false,
+}
+
+const RUNNING_JOB_FIXTURE = {
+  jobId: EXPORT_JOB_ID,
+  status: 'RUNNING',
+  progress: 42,
+  format: 'CSV',
+  downloadReady: false,
+}
+
+// COMPLETED: rowCount 존재, errorCode 키 없음
+const COMPLETED_JOB_FIXTURE = {
+  jobId: EXPORT_JOB_ID,
+  status: 'COMPLETED',
+  progress: 100,
+  rowCount: 15000,
+  format: 'CSV',
+  downloadReady: true,
+}
+
+// FAILED: errorCode 존재, rowCount 키 없음
+const FAILED_JOB_FIXTURE = {
+  jobId: EXPORT_JOB_ID,
+  status: 'FAILED',
+  progress: 23,
+  errorCode: 'SEARCH_EXPORT_LIMIT_EXCEEDED',
+  format: 'CSV',
+  downloadReady: false,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// submitExportJob — POST /api/v1/search/export-jobs (202 Accepted)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('submitExportJob — 202 잡 접수', () => {
+  it('jobId와 PENDING 상태를 반환한다', async () => {
+    server.use(
+      http.post('/api/v1/search/export-jobs', () =>
+        HttpResponse.json(
+          { jobId: EXPORT_JOB_ID, status: 'PENDING' },
+          { status: 202 },
+        ),
+      ),
+    )
+
+    const result = await submitExportJob({
+      projectKey: 'ATLAS',
+      query: 'status = open',
+      format: 'CSV',
+    })
+
+    expect(result.jobId).toBe(EXPORT_JOB_ID)
+    expect(result.status).toBe('PENDING')
+  })
+
+  it('요청 body에 projectKey/query/format이 포함된다', async () => {
+    let capturedBody: unknown = null
+    server.use(
+      http.post('/api/v1/search/export-jobs', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json({ jobId: EXPORT_JOB_ID, status: 'PENDING' }, { status: 202 })
+      }),
+    )
+
+    await submitExportJob({
+      projectKey: 'ATLAS',
+      query: 'priority = 1',
+      format: 'XLSX',
+      columns: ['KEY', 'SUMMARY'],
+    })
+
+    expect(capturedBody).toMatchObject({
+      projectKey: 'ATLAS',
+      query: 'priority = 1',
+      format: 'XLSX',
+      columns: ['KEY', 'SUMMARY'],
+    })
+  })
+
+  it('400 응답 시 ApiError(400)를 throw한다', async () => {
+    server.use(
+      http.post('/api/v1/search/export-jobs', () =>
+        HttpResponse.json(
+          { errorCode: 'SEARCH_SYNTAX_ERROR', detail: 'Invalid AQL', status: 400 },
+          { status: 400 },
+        ),
+      ),
+    )
+
+    await expect(
+      submitExportJob({ projectKey: 'ATLAS', query: 'invalid!!', format: 'CSV' }),
+    ).rejects.toBeInstanceOf(ApiError)
+
+    await expect(
+      submitExportJob({ projectKey: 'ATLAS', query: 'invalid!!', format: 'CSV' }),
+    ).rejects.toMatchObject({ status: 400 })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// fetchExportJobStatus — GET /api/v1/search/export-jobs/{id}
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('fetchExportJobStatus — 잡 상태 조회', () => {
+  it('PENDING 상태 — rowCount/errorCode 키가 없어도 ZodError 없이 파싱한다 (nullish 검증)', async () => {
+    server.use(
+      http.get(`/api/v1/search/export-jobs/${EXPORT_JOB_ID}`, () =>
+        HttpResponse.json(PENDING_JOB_FIXTURE),
+      ),
+    )
+
+    const result = await fetchExportJobStatus(EXPORT_JOB_ID)
+
+    expect(result.jobId).toBe(EXPORT_JOB_ID)
+    expect(result.status).toBe('PENDING')
+    expect(result.progress).toBe(0)
+    expect(result.downloadReady).toBe(false)
+    // nullish: 키 자체가 없으면 undefined — null이 아님
+    expect(result.rowCount).toBeUndefined()
+    expect(result.errorCode).toBeUndefined()
+  })
+
+  it('RUNNING 상태 — progress/status 필드를 정확히 파싱한다', async () => {
+    server.use(
+      http.get(`/api/v1/search/export-jobs/${EXPORT_JOB_ID}`, () =>
+        HttpResponse.json(RUNNING_JOB_FIXTURE),
+      ),
+    )
+
+    const result = await fetchExportJobStatus(EXPORT_JOB_ID)
+
+    expect(result.status).toBe('RUNNING')
+    expect(result.progress).toBe(42)
+    expect(result.downloadReady).toBe(false)
+    expect(result.rowCount).toBeUndefined()
+  })
+
+  it('COMPLETED 상태 — rowCount가 파싱되고 downloadReady가 true다', async () => {
+    server.use(
+      http.get(`/api/v1/search/export-jobs/${EXPORT_JOB_ID}`, () =>
+        HttpResponse.json(COMPLETED_JOB_FIXTURE),
+      ),
+    )
+
+    const result = await fetchExportJobStatus(EXPORT_JOB_ID)
+
+    expect(result.status).toBe('COMPLETED')
+    expect(result.progress).toBe(100)
+    expect(result.rowCount).toBe(15000)
+    expect(result.downloadReady).toBe(true)
+    expect(result.errorCode).toBeUndefined()
+  })
+
+  it('FAILED 상태 — errorCode가 파싱된다', async () => {
+    server.use(
+      http.get(`/api/v1/search/export-jobs/${EXPORT_JOB_ID}`, () =>
+        HttpResponse.json(FAILED_JOB_FIXTURE),
+      ),
+    )
+
+    const result = await fetchExportJobStatus(EXPORT_JOB_ID)
+
+    expect(result.status).toBe('FAILED')
+    expect(result.errorCode).toBe('SEARCH_EXPORT_LIMIT_EXCEEDED')
+    expect(result.downloadReady).toBe(false)
+    expect(result.rowCount).toBeUndefined()
+  })
+
+  it('404 응답 시 ApiError(404)를 throw한다', async () => {
+    server.use(
+      http.get(`/api/v1/search/export-jobs/${EXPORT_JOB_ID}`, () =>
+        HttpResponse.json(
+          { errorCode: 'EXPORT_JOB_NOT_FOUND', status: 404 },
+          { status: 404 },
+        ),
+      ),
+    )
+
+    await expect(fetchExportJobStatus(EXPORT_JOB_ID)).rejects.toBeInstanceOf(ApiError)
+    await expect(fetchExportJobStatus(EXPORT_JOB_ID)).rejects.toMatchObject({ status: 404 })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// downloadExportJobResult — GET /api/v1/search/export-jobs/{id}/download
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('downloadExportJobResult — 파일 다운로드', () => {
+  it('200 응답 시 blob과 filename을 반환한다', async () => {
+    const csvContent = 'key,summary\nATLAS-1,테스트 이슈'
+    server.use(
+      http.get(`/api/v1/search/export-jobs/${EXPORT_JOB_ID}/download`, () =>
+        new HttpResponse(csvContent, {
+          status: 200,
+          headers: {
+            'content-type': 'text/csv; charset=utf-8',
+            'content-disposition': 'attachment; filename="ATLAS-export-20260630T000000Z.csv"',
+          },
+        }),
+      ),
+    )
+
+    const result = await downloadExportJobResult(EXPORT_JOB_ID)
+
+    // Node.js 테스트 환경에서 instanceof Blob은 클래스 컨텍스트 불일치로 실패할 수 있음
+    // blob 객체 속성으로 검증 (jsdom↔실브라우저 selectionStart 메모리 참조)
+    expect(result.blob).toBeTruthy()
+    expect(result.blob.size).toBeGreaterThan(0)
+    expect(result.filename).toBe('ATLAS-export-20260630T000000Z.csv')
+  })
+
+  it('Content-Disposition 헤더가 없으면 기본 파일명을 사용한다', async () => {
+    server.use(
+      http.get(`/api/v1/search/export-jobs/${EXPORT_JOB_ID}/download`, () =>
+        new HttpResponse('data', {
+          status: 200,
+          headers: { 'content-type': 'application/octet-stream' },
+        }),
+      ),
+    )
+
+    const result = await downloadExportJobResult(EXPORT_JOB_ID)
+
+    expect(result.blob).toBeTruthy()
+    expect(result.blob.size).toBeGreaterThan(0)
+    expect(typeof result.filename).toBe('string')
+    expect(result.filename.length).toBeGreaterThan(0)
+  })
+
+  it('409(SEARCH_EXPORT_NOT_READY) 응답 시 ApiError(409)를 throw한다', async () => {
+    server.use(
+      http.get(`/api/v1/search/export-jobs/${EXPORT_JOB_ID}/download`, () =>
+        HttpResponse.json(
+          { errorCode: 'SEARCH_EXPORT_NOT_READY', status: 409 },
+          { status: 409 },
+        ),
+      ),
+    )
+
+    await expect(downloadExportJobResult(EXPORT_JOB_ID)).rejects.toBeInstanceOf(ApiError)
+    await expect(downloadExportJobResult(EXPORT_JOB_ID)).rejects.toMatchObject({ status: 409 })
+  })
+
+  it('404 응답 시 ApiError(404)를 throw한다', async () => {
+    server.use(
+      http.get(`/api/v1/search/export-jobs/${EXPORT_JOB_ID}/download`, () =>
+        HttpResponse.json(
+          { errorCode: 'EXPORT_JOB_NOT_FOUND', status: 404 },
+          { status: 404 },
+        ),
+      ),
+    )
+
+    await expect(downloadExportJobResult(EXPORT_JOB_ID)).rejects.toBeInstanceOf(ApiError)
+    await expect(downloadExportJobResult(EXPORT_JOB_ID)).rejects.toMatchObject({ status: 404 })
   })
 })

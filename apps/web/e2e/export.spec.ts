@@ -1,4 +1,5 @@
-// FR-EX-01 D7 E2E — CSV/XLSX 내보내기 시나리오 (S1 CSV / S2 XLSX / S3 컬럼부분선택 / S4 상한초과)
+// FR-EX-01/FR-EX-02 D7 E2E — CSV/XLSX 내보내기 + 비동기 Export 시나리오
+//   (S1 CSV / S2 XLSX / S3 컬럼부분선택 / S4 상한초과→confirmAsync / E2E-1 비동기 happy path)
 //
 // 시나리오 개요.
 //   S1. CSV 내보내기 (골든 패스)
@@ -8,7 +9,12 @@
 //       — 다이얼로그에서 XLSX 라디오 선택 → 내보내기 → 파일명 *.xlsx 검증
 //   S3. 컬럼 부분선택 후 내보내기
 //       — 일부 체크박스 해제 후 내보내기 → 다운로드 발생 검증 (MSW는 선택된 컬럼 무관 파일 반환)
-//   S4. 상한초과 400 → 다이얼로그 내 role=alert 에러 메시지 표시
+//   S4. 상한초과 400 → confirmAsync 비동기 제안 UI 표시 (BLOCKER-4: 기존 alert 검증 교체)
+//       — 동기 export 400 LIMIT_EXCEEDED → "백그라운드 내보내기" 버튼 표시 검증
+//   E2E-1. 대용량 자동분기 비동기 Export happy path (FR-EX-02 D7)
+//       — limit-exceeded → confirmAsync → "백그라운드 내보내기" → POST export-jobs
+//         → MSW stateful 폴링 PENDING→RUNNING→COMPLETED → "완료" + "다운로드" 표시
+//         → "다운로드" 클릭 → download 요청 발생 + 파일명 *.csv 검증
 //
 // 설계 결정.
 //   - 진입 방식: loginAsAlice 후 page.goto('/search?q=status+%3D+open&projectKey=ATLAS').
@@ -26,10 +32,14 @@
 //     (msw-mutation-stateful-refetch / e2e-msw-scenario-toggle-localstorage-flag 교훈)
 //
 // MSW 핸들러 확인.
-//   - exportIssuesHandler (search-handlers.ts)가 searchHandlers 배열에 포함되어 handlers.ts에 등록됨
+//   - exportIssuesHandler (search-handlers.ts): 동기 export — searchHandlers 배열에 등록됨
 //   - 기본(no flag): CSV 응답 + Content-Disposition: attachment; filename="ATLAS-issues-...csv"
 //   - format=XLSX 요청: XLSX 응답 + Content-Disposition: attachment; filename="ATLAS-issues-...xlsx"
-//   - 'limit-exceeded': SEARCH_EXPORT_LIMIT_EXCEEDED 400 + detail 메시지
+//   - 'limit-exceeded': SEARCH_EXPORT_LIMIT_EXCEEDED 400 → ExportDialog가 confirmAsync로 전환
+//   - exportJobsSubmitHandler: POST /api/v1/search/export-jobs → 202 + {jobId, status:"PENDING"}
+//   - exportJobsStatusHandler: GET /api/v1/search/export-jobs/:id → stateful 폴링
+//     (callCount 0=PENDING / 1=RUNNING / 2+=COMPLETED, NON_NULL 재현 — rowCount/errorCode 생략)
+//   - exportJobsDownloadHandler: GET /api/v1/search/export-jobs/:id/download → octet-stream blob
 //
 // 교훈 반영.
 //   - e2e-msw-serviceworker-block: serviceWorkers:'block' 절대 금지
@@ -38,7 +48,7 @@
 //   - e2e-loginasalice-fixture-fr-au-07-regression: loginAsAlice는 issue-fixtures 공유 헬퍼
 //   - ui-pr-defer-e2e-regression-latent: 기존 E2E 수정 없음 — 이 파일만 신규 추가
 
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -224,21 +234,27 @@ test.describe('FR-EX-01 CSV/XLSX 내보내기 (S1 CSV / S2 XLSX / S3 컬럼부�
   })
 
   // ─────────────────────────────────────────────────────────────────────────
-  // S4. 상한초과 400 → 다이얼로그 내 role=alert 에러 메시지 표시
+  // S4. 상한초과 400 → confirmAsync 비동기 제안 UI 표시 (BLOCKER-4: 기존 alert 검증 교체)
   //
   // Given  addInitScript으로 '__bts_e2e_export_scenario'='limit-exceeded' 심기 (goto 전)
   //        alice 로그인 + /search?q=status+%3D+open&projectKey=ATLAS 진입
   // When   "내보내기" 툴바 버튼 클릭 → 다이얼로그 오픈 → "내보내기" 클릭
-  // Then   다이얼로그 내 role=alert 표시 (SEARCH_EXPORT_LIMIT_EXCEEDED detail 메시지)
-  //        다이얼로그가 닫히지 않음 (에러 발생 시 onClose 미호출)
-  //        다운로드 이벤트 미발생 (400 응답이므로 blob 다운로드 없음)
+  // Then   다이얼로그가 confirmAsync 단계로 전환됨
+  //        role=status "대용량" 메시지 표시
+  //        "백그라운드 내보내기" 버튼 표시
+  //        "취소" 버튼 표시 (form 복귀용)
   //
-  // MSW 'limit-exceeded' 시나리오: 400 + detail "내보내기 한도(10,000건)를 초과했습니다..."
-  // ExportDialog.resolveExportError: ApiError body.detail → 에러 메시지 반환
+  // 교체 근거 (BLOCKER-4):
+  //   FR-EX-02 자동분기 구현으로 LIMIT_EXCEEDED가 role=alert가 아닌 confirmAsync 전환을 유발.
+  //   기존 alert 단언은 새 동작과 양립 불가 → confirmAsync UI 검증으로 교체.
+  // MSW 'limit-exceeded': 400 + SEARCH_EXPORT_LIMIT_EXCEEDED + resultCount=15000
+  // ExportDialog.isLimitExceeded: errorCode 판별 → confirmAsync phase 전환 (FR-1)
   // ─────────────────────────────────────────────────────────────────────────
-  test('S4 상한초과 — 다이얼로그 내 role=alert 에러 표시, 다운로드 없음', async ({ page }) => {
-    // Given. addInitScript으로 MSW export 시나리오 플래그 설정 — goto 전 등록 필수
-    // (e2e-msw-scenario-toggle-localstorage-flag 교훈)
+  test('S4 상한초과 → 비동기 제안(confirmAsync) UI 노출 — "백그라운드 내보내기" 버튼', async ({
+    page,
+  }) => {
+    // Given. addInitScript으로 MSW limit-exceeded 시나리오 플래그 설정 — goto 전 등록 필수
+    // (e2e-msw-scenario-toggle-localstorage-flag 교훈: addInitScript → goto 순서 필수)
     await page.addInitScript((key: string) => {
       window.localStorage.setItem(key, 'limit-exceeded')
     }, E2E_EXPORT_SCENARIO_KEY)
@@ -249,17 +265,129 @@ test.describe('FR-EX-01 CSV/XLSX 내보내기 (S1 CSV / S2 XLSX / S3 컬럼부�
     // When. 내보내기 다이얼로그 오픈
     const dialog = await openExportDialog(page)
 
-    // When. 다이얼로그 "내보내기" 버튼 클릭 (다운로드 없이 에러 응답 예상)
+    // When. 다이얼로그 "내보내기" 버튼 클릭 (동기 export → 400 LIMIT_EXCEEDED → confirmAsync 전환)
     await dialog.getByRole('button', { name: '내보내기', exact: true }).click()
 
-    // Then. 다이얼로그 내 role=alert 표시 (submitError 표시)
-    // ExportDialog resolveExportError: ApiError body.detail 추출 → 에러 p[role=alert]
-    const alert = dialog.getByRole('alert')
-    await expect(alert).toBeVisible()
-    // MSW 반환 detail: "내보내기 한도(10,000건)를 초과했습니다. 쿼리를 좁혀 다시 시도하세요."
-    await expect(alert).toContainText('초과')
+    // Then. confirmAsync 단계: role=status "대용량" 메시지 표시
+    // ExportDialog confirmAsync 렌더: "검색 결과 15,000건은 대용량입니다. 백그라운드로 내보내시겠습니까?"
+    // MSW resultCount=15000 → extractResultCount → "15,000건" 표시
+    await expect(dialog.getByRole('status')).toContainText('대용량')
 
-    // Then. 다이얼로그가 여전히 열려 있음 (에러 시 onClose 미호출 — ExportDialog.onSuccess만 닫음)
+    // Then. "백그라운드 내보내기" 버튼 표시 (confirmAsync → tracking 트리거)
+    await expect(
+      dialog.getByRole('button', { name: '백그라운드 내보내기', exact: true }),
+    ).toBeVisible()
+
+    // Then. "취소" 버튼 표시 (confirmAsync → form 복귀)
+    await expect(dialog.getByRole('button', { name: '취소', exact: true })).toBeVisible()
+
+    // Then. 다이얼로그가 여전히 열려 있음 (confirmAsync는 다이얼로그 유지 — onClose 미호출)
     await expect(dialog).toBeVisible()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 시드 헬퍼 (FR-EX-02 E2E 전용)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * addInitScript으로 MSW limit-exceeded 시나리오 플래그를 심는다.
+ *
+ * goto 전에 반드시 호출해야 한다 (e2e-msw-scenario-toggle-localstorage-flag 교훈).
+ * 이 플래그가 설정되면 POST /api/v1/search/export 핸들러가 400 LIMIT_EXCEEDED를 반환하고,
+ * ExportDialog의 isLimitExceeded 판별이 confirmAsync 전환을 트리거한다.
+ *
+ * @param page Playwright Page 객체
+ */
+async function setLimitExceededScenario(page: Page): Promise<void> {
+  await page.addInitScript((key: string) => {
+    window.localStorage.setItem(key, 'limit-exceeded')
+  }, E2E_EXPORT_SCENARIO_KEY)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-EX-02 비동기 Export — 대용량 자동분기 + 진행률 폴링 E2E
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('FR-EX-02 비동기 Export — 대용량 자동분기 + 진행률 폴링', () => {
+  // ─────────────────────────────────────────────────────────────────────────
+  // E2E-1. 대용량 자동분기 비동기 Export happy path
+  //
+  // Given  addInitScript으로 limit-exceeded 플래그 심기 (goto 전)
+  //        alice 로그인 + /search?q=status+%3D+open&projectKey=ATLAS 진입
+  // When   "내보내기" 툴바 버튼 클릭 → 다이얼로그 오픈
+  //        "내보내기" 클릭 → 동기 export 400 LIMIT_EXCEEDED → confirmAsync 전환
+  //        "백그라운드 내보내기" 클릭 → POST /api/v1/search/export-jobs (MSW 202 + jobId)
+  //        tracking 단계: progressbar 표시
+  // Then   MSW 폴링 stateful 진행 (PENDING→RUNNING→COMPLETED, callCount 기반)
+  //        COMPLETED 감지 → done 단계 전환 → "✓ 완료 (42행)" 표시
+  //        "다운로드" 버튼 표시
+  //        "다운로드" 클릭 → GET /{id}/download → download 이벤트 발생
+  //        download.suggestedFilename() *.csv 패턴 확인
+  //
+  // MSW 핸들러 시퀀스.
+  //   POST /api/v1/search/export      → 400 LIMIT_EXCEEDED (limit-exceeded 플래그)
+  //   POST /api/v1/search/export-jobs → 202 {jobId, status:"PENDING"}
+  //   GET  /api/v1/search/export-jobs/:id (1st) → PENDING,  progress=0
+  //   GET  /api/v1/search/export-jobs/:id (2nd) → RUNNING,  progress=50
+  //   GET  /api/v1/search/export-jobs/:id (3rd) → COMPLETED, progress=100, downloadReady=true
+  //   GET  /api/v1/search/export-jobs/:id/download → octet-stream blob
+  //
+  // 타이밍.
+  //   폴링 간격 1500ms × 3회 ≈ 3000ms + 전파 지연.
+  //   role=status "완료" 감지 timeout=12000ms (여유 마진 포함).
+  //
+  // 다운로드 검증 한정 (메모리 fr-mv-01 opaque 한계).
+  //   triggerBlobDownload는 <a href=blobUrl download=filename>.click() 호출.
+  //   Playwright page.waitForEvent('download')가 이를 캡처.
+  //   실제 파일 저장 내용은 opaque — 요청 발생 + 파일명 패턴만 검증.
+  //
+  // 교훈 반영.
+  //   - e2e-msw-scenario-toggle-localstorage-flag: addInitScript → goto 순서 필수
+  //   - msw-derived-behavior-shared-store-e2e: jobId-키 Map 공유 스토어 + callCount 격리
+  //   - playwright-getbyrole-exact-strict-mode: 단계별 버튼 중복 없음 — exact=true로 충분
+  //   - e2e-msw-serviceworker-block: serviceWorkers:'block' 절대 금지
+  // ─────────────────────────────────────────────────────────────────────────
+  test('E2E-1 대용량 자동분기 → 비동기 잡 → COMPLETED → 다운로드', async ({ page }) => {
+    // Given. limit-exceeded 시나리오 플래그 심기 — goto 전 등록 필수
+    await setLimitExceededScenario(page)
+
+    // Given. alice 로그인 + q가 있는 /search 진입
+    await loginAndNavigateToSearchWithQuery(page)
+
+    // When. 내보내기 다이얼로그 오픈
+    const dialog = await openExportDialog(page)
+
+    // When. 다이얼로그 "내보내기" 클릭 → 400 LIMIT_EXCEEDED → confirmAsync 전환
+    await dialog.getByRole('button', { name: '내보내기', exact: true }).click()
+
+    // Then. confirmAsync 단계 확인 — "백그라운드 내보내기" 버튼 표시
+    const asyncButton = dialog.getByRole('button', { name: '백그라운드 내보내기', exact: true })
+    await expect(asyncButton).toBeVisible()
+    // ExportDialog: "검색 결과 15,000건은 대용량입니다. 백그라운드로 내보내시겠습니까?"
+    await expect(dialog.getByRole('status')).toContainText('대용량')
+
+    // When. "백그라운드 내보내기" 클릭 → POST /api/v1/search/export-jobs → tracking 단계
+    await asyncButton.click()
+
+    // Then. tracking 단계: progressbar 표시 (ExportDialog tracking 렌더 — role="progressbar")
+    await expect(dialog.getByRole('progressbar')).toBeVisible()
+
+    // Then. MSW stateful 폴링 진행 (PENDING→RUNNING→COMPLETED)
+    //   1500ms × 3회 후 done 단계 전환 → role=status "✓ 완료 (42행)" 표시
+    //   timeout=12000ms: 폴링 3회(~4500ms) + 렌더 지연 여유
+    await expect(dialog.getByRole('status')).toContainText('완료', { timeout: 12000 })
+
+    // Then. "다운로드" 버튼 표시 (done 단계 — downloadReady=true)
+    const downloadButton = dialog.getByRole('button', { name: '다운로드', exact: true })
+    await expect(downloadButton).toBeVisible()
+
+    // When. "다운로드" 클릭 → GET /{id}/download → download 이벤트 발생
+    // Promise.all로 waitForEvent를 click보다 먼저 등록해 경쟁 조건 방지
+    const [download] = await Promise.all([page.waitForEvent('download'), downloadButton.click()])
+
+    // Then. 다운로드 파일명 *.csv 패턴
+    // MSW Content-Disposition: attachment; filename="ATLAS-issues-job-{id[:8]}.csv"
+    expect(download.suggestedFilename()).toMatch(/\.csv$/)
   })
 })

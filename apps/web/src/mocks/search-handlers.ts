@@ -1,6 +1,12 @@
-// AQL 검색 + CSV/XLSX 내보내기 MSW 핸들러 — search-export-import BC (FR-SR-02/FR-EX-01 D6)
+// AQL 검색 + CSV/XLSX 내보내기 + 비동기 Export 잡 MSW 핸들러 — search-export-import BC (FR-SR-02/FR-EX-01/FR-EX-02 D6)
 import { http, HttpResponse } from 'msw'
-import { DEFAULT_SEARCH_PAGE, EMPTY_SEARCH_PAGE } from './search-fixtures'
+import {
+  DEFAULT_SEARCH_PAGE,
+  EMPTY_SEARCH_PAGE,
+  makeExportJobPendingResponse,
+  makeExportJobRunningResponse,
+  makeExportJobCompletedResponse,
+} from './search-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // E2E 시나리오 토글용 localStorage 키
@@ -247,5 +253,111 @@ export const exportLimitExceededOverrideHandler = http.post('/api/v1/search/expo
   ),
 )
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 비동기 Export 잡 stateful 스토어 (FR-EX-02 D7 Task-3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 비동기 Export 잡 stateful 스토어.
+ * jobId(UUID)를 키, GET 호출 카운터를 값으로 보관한다.
+ *
+ * 격리 전략: POST마다 새 jobId를 발급하므로 테스트 간 카운터 leak이 없다 (CONCERN-E).
+ * - callCount 0 → PENDING (progress 0)
+ * - callCount 1 → RUNNING (progress 50)
+ * - callCount 2+ → COMPLETED (progress 100, downloadReady true, rowCount 42)
+ *
+ * ★ msw-derived-behavior-shared-store-e2e 교훈:
+ * 파생 응답(GET 상태)이 핸들러별 지역 상태에 분산되면 시나리오 간 drift가 발생한다.
+ * 단일 Map 공유 스토어 + jobId 키 격리로 해소한다.
+ */
+const exportJobsStore = new Map<string, { callCount: number }>()
+
+/**
+ * POST /api/v1/search/export-jobs — 비동기 Export 잡 생성 핸들러.
+ *
+ * 새 jobId(UUID)를 발급하고 스토어에 초기 엔트리를 추가한다.
+ * 202 + {jobId, status: "PENDING"} 반환.
+ *
+ * 이 핸들러는 동기 export(/api/v1/search/export)와 별개 엔드포인트다.
+ * limit-exceeded 시나리오에서 confirmAsync 단계가 이 핸들러를 호출한다.
+ */
+const exportJobsSubmitHandler = http.post('/api/v1/search/export-jobs', () => {
+  // crypto.randomUUID()는 브라우저(E2E) + Node.js(MSW Node) 모두 사용 가능
+  const jobId = crypto.randomUUID()
+  exportJobsStore.set(jobId, { callCount: 0 })
+  return HttpResponse.json({ jobId, status: 'PENDING' }, { status: 202 })
+})
+
+/**
+ * GET /api/v1/search/export-jobs/:id — 잡 진행률 조회 핸들러 (stateful).
+ *
+ * 폴링 카운터에 따라 상태를 진행시킨다.
+ * - callCount=0 (첫 GET): PENDING, progress=0
+ * - callCount=1: RUNNING, progress=50
+ * - callCount>=2: COMPLETED, progress=100, downloadReady=true, rowCount=42
+ *
+ * ★ @JsonInclude(NON_NULL) 재현 (BLOCKER-2):
+ * PENDING·RUNNING 응답에는 rowCount·errorCode 키를 포함하지 않는다.
+ * makeExportJobPendingResponse/makeExportJobRunningResponse 픽스처가 이를 보장한다.
+ *
+ * 404 대응: 스토어에 jobId가 없으면 404를 반환한다 (타인 잡 또는 없는 잡).
+ */
+const exportJobsStatusHandler = http.get(
+  '/api/v1/search/export-jobs/:id',
+  ({ params }: { params: Record<string, string | string[]> }) => {
+    const id = params['id'] as string
+    const entry = exportJobsStore.get(id)
+    if (!entry) {
+      return HttpResponse.json(
+        { errorCode: 'NOT_FOUND', detail: 'Export job not found', status: 404 },
+        { status: 404 },
+      )
+    }
+
+    const count = entry.callCount
+    exportJobsStore.set(id, { callCount: count + 1 })
+
+    if (count === 0) {
+      return HttpResponse.json(makeExportJobPendingResponse(id))
+    }
+    if (count === 1) {
+      return HttpResponse.json(makeExportJobRunningResponse(id))
+    }
+    // count >= 2: COMPLETED
+    return HttpResponse.json(makeExportJobCompletedResponse(id))
+  },
+)
+
+/** 최소 CSV 바이트 — 비동기 Export 잡 다운로드 응답용 */
+const MINIMAL_EXPORT_JOB_CSV_BYTES = new TextEncoder().encode(
+  '﻿Key,Summary\r\nATLAS-1,Test issue\r\n',
+)
+
+/**
+ * GET /api/v1/search/export-jobs/:id/download — 완료된 잡 파일 다운로드 핸들러.
+ *
+ * octet-stream + Content-Disposition(attachment; filename=...) 반환.
+ * 다운로드 실제 파일 저장은 Playwright opaque — 요청 발생 + 파일명 패턴만 검증한다
+ * (메모리 fr-mv-01 opaque 한계 참고).
+ */
+const exportJobsDownloadHandler = http.get(
+  '/api/v1/search/export-jobs/:id/download',
+  ({ params }: { params: Record<string, string | string[]> }) => {
+    const id = params['id'] as string
+    return new HttpResponse(MINIMAL_EXPORT_JOB_CSV_BYTES, {
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="ATLAS-issues-job-${id.slice(0, 8)}.csv"`,
+      },
+    })
+  },
+)
+
 /** search-export-import BC MSW 핸들러 배열 */
-export const searchHandlers = [searchAqlHandler, exportIssuesHandler]
+export const searchHandlers = [
+  searchAqlHandler,
+  exportIssuesHandler,
+  exportJobsSubmitHandler,
+  exportJobsStatusHandler,
+  exportJobsDownloadHandler,
+]
