@@ -55,7 +55,7 @@ Maxi 확정 3선택: ① cursor **병행**(offset 유지·프론트 무회귀) �
 | FR-3 | cursor seek 쿼리는 `WHERE (created_at, id) < (:cursorCreatedAt, :cursorId)` keyset 조건. 기존 `BROWSE` 권한 게이트 + visibility 보안 술어 + 필터(status/assignee/label/component)를 **그대로 상속**(별도 보안 경로 신설 0). `limit+1` fetch로 다음 페이지 존재 여부 판정. |
 | FR-4 | `GET /api/v1/issues/{key}/changelog`에 동일한 cursor 모드를 병행 추가(정렬 키는 changelog의 안정 정렬 = `(occurred_at DESC, id DESC)` 등 실측 확정). offset 모드 유지. |
 | FR-5 | **응답 envelope**(cursor 경로 한정): `{ "data": [...], "meta": { "page": { "next": "<cursor|null>", "limit": N } } }`. 단건 응답은 기존 `DataResponse`(`{data}`) 유지. |
-| FR-6 | **에러 포맷**: 이슈 CRUD 경로 ProblemDetail이 SDD 11.3 필드(`type`/`title`/`status`/`detail`/`instance`/`errorCode`)를 일관 충족하도록 검증·보강. `type`은 이슈 API 한정으로 절대 URI(`https://atlas.docs/errors/<code>`) 정렬. 신규 에러코드 `ISSUE_INVALID_CURSOR`(400), `ISSUE_PAGINATION_MODE_CONFLICT`(400). **errorCode는 기존 issue-tracking 핸들러 컨벤션 SCREAMING_SNAKE_CASE를 따른다**(devex 리뷰 CONCERN-3 — 실제 코드는 `ISSUE_NOT_FOUND` 형식, SDD 예시의 소문자 dot은 미반영 drift). |
+| FR-6 | **에러 포맷**: 이슈 CRUD 경로 ProblemDetail이 SDD 11.3 필드(`type`/`title`/`status`/`detail`/`instance`/`errorCode`)를 일관 충족하도록 검증·보강. `type`은 이슈 API 한정으로 절대 URI(`https://bts.example.com/problems/<type-token>`) 정렬 — 기존 25개+ 핸들러 `problem()` 헬퍼 컨벤션과 일치(예: `invalid-cursor`). `<type-token>`은 errorCode가 아닌 kebab-case 토큰. 신규 에러코드 `ISSUE_INVALID_CURSOR`(400), `ISSUE_PAGINATION_MODE_CONFLICT`(400). **errorCode는 기존 issue-tracking 핸들러 컨벤션 SCREAMING_SNAKE_CASE를 따른다**(devex 리뷰 CONCERN-3 — 실제 코드는 `ISSUE_NOT_FOUND` 형식, SDD 예시의 소문자 dot은 미반영 drift). |
 | FR-7 | **OpenAPI 3.1**: `springdoc-openapi-starter-webmvc-ui` 2.6.x를 issue-tracking 모듈에 통합. `/swagger-ui`(별칭 `/api/v1/docs`) + `/v3/api-docs`(별칭 `/api/v1/openapi.json`) 게시. 이슈 CRUD/목록/전이 엔드포인트에 `@Operation`/`@ApiResponse`/스키마 annotation 부여. OpenAPI 버전 3.1 명시. **보안 스킴**: JWT Bearer(`securitySchemes.bearerAuth: http/bearer/JWT`)를 전역 정의하고 인증 필요 엔드포인트에 적용(이슈 API 전체 인증 필요). |
 | FR-8 | **전 목록 API 문서화**: issue-tracking 목록 API(watchers/components/versions/worklogs/links/templates/custom-fields/attachments 등)에 OpenAPI annotation을 부여한다. **응답 형태는 변경하지 않는다**(무회귀). |
 | FR-9 | **contract test**: 생성된 OpenAPI 스펙과 실제 응답이 일치하는지 검증(이슈 CRUD/목록 + cursor envelope 스키마). cursor 토큰 round-trip + keyset 정렬 안정성(동률 키 tie-break) 단위 테스트 포함. |
@@ -98,7 +98,7 @@ GET /v3/api-docs           (별칭 /api/v1/openapi.json) → OpenAPI 3.1 JSON
 ### 3.5 오류 (RFC 7807)
 ```
 400 invalid cursor
-{ "type":"https://atlas.docs/errors/ISSUE_INVALID_CURSOR", "title":"Invalid Cursor",
+{ "type":"https://bts.example.com/problems/invalid-cursor", "title":"Invalid Cursor",
   "status":400, "detail":"cursor 토큰을 해석할 수 없습니다.", "instance":"/api/v1/issues",
   "errorCode":"ISSUE_INVALID_CURSOR" }
 ```
