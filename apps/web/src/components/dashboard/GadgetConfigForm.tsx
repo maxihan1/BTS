@@ -14,6 +14,15 @@ import { validateGadgetConfig, type GadgetCatalogEntry, type ConfigField } from 
  */
 const MVP_HIDDEN_KEYS = new Set<string>(['aql'])
 
+/** 공용 입력 위젯 CSS 클래스 — 모든 필드 타입이 공유한다 */
+const INPUT_CLASS = cn(
+  'w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none',
+  'placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
+)
+
+/** 필드 레이블 CSS 클래스 */
+const LABEL_CLASS = 'mb-1 block text-sm font-medium text-foreground'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입 정의
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,11 +78,6 @@ function FieldRow({
   setArrVals,
 }: FieldRowProps): JSX.Element {
   const label = toLabel(field.key)
-  const labelClass = 'mb-1 block text-sm font-medium text-foreground'
-  const inputClass = cn(
-    'w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none',
-    'placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
-  )
 
   // ARRAY 필드 (link_list links 등)
   if (field.type === 'ARRAY') {
@@ -105,7 +109,7 @@ function FieldRow({
 
     return (
       <div>
-        <span className={labelClass}>{label}</span>
+        <span className={LABEL_CLASS}>{label}</span>
         {rows.map((row, idx) => (
           <div key={idx} className="mt-2 flex items-center gap-2">
             {itemFields.map((sf) => (
@@ -115,7 +119,7 @@ function FieldRow({
                 value={row[sf.key] ?? ''}
                 onChange={(e) => updateRow(idx, sf.key, e.target.value)}
                 placeholder={sf.key}
-                className={cn(inputClass, 'flex-1')}
+                className={cn(INPUT_CLASS, 'flex-1')}
               />
             ))}
             {rows.length > 1 && (
@@ -152,7 +156,7 @@ function FieldRow({
   if (field.type === 'STRING' && field.key === 'markdown') {
     return (
       <div>
-        <label htmlFor={fieldId} className={labelClass}>
+        <label htmlFor={fieldId} className={LABEL_CLASS}>
           {label}
         </label>
         <textarea
@@ -161,7 +165,7 @@ function FieldRow({
           onChange={onChange}
           rows={5}
           placeholder="마크다운 텍스트를 입력하세요..."
-          className={cn(inputClass, 'resize-y')}
+          className={cn(INPUT_CLASS, 'resize-y')}
         />
       </div>
     )
@@ -171,10 +175,10 @@ function FieldRow({
   if (field.type === 'ENUM') {
     return (
       <div>
-        <label htmlFor={fieldId} className={labelClass}>
+        <label htmlFor={fieldId} className={LABEL_CLASS}>
           {label}
         </label>
-        <select id={fieldId} value={strValue} onChange={onChange} className={inputClass}>
+        <select id={fieldId} value={strValue} onChange={onChange} className={INPUT_CLASS}>
           <option value="">-- 선택 --</option>
           {(field.enumValues ?? []).map((v) => (
             <option key={v} value={v}>
@@ -190,7 +194,7 @@ function FieldRow({
   const inputType = field.type === 'INT' ? 'number' : field.type === 'URL' ? 'url' : 'text'
   return (
     <div>
-      <label htmlFor={fieldId} className={labelClass}>
+      <label htmlFor={fieldId} className={LABEL_CLASS}>
         {label}
       </label>
       <input
@@ -199,7 +203,7 @@ function FieldRow({
         value={strValue}
         onChange={onChange}
         placeholder={field.key}
-        className={inputClass}
+        className={INPUT_CLASS}
       />
     </div>
   )

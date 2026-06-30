@@ -22,18 +22,21 @@ function makeClient(): QueryClient {
 
 interface ModalProps {
   open?: boolean
-  onAdd?: (partial: { gadgetType: string; config: Record<string, unknown> }) => void
-  onClose?: () => void
 }
 
+/**
+ * GadgetCatalogModal을 렌더하고 새로 생성한 vi.fn() 모크를 반환한다.
+ *
+ * 테스트마다 독립적인 모크 인스턴스를 보장한다.
+ */
 async function renderModal(props: ModalProps = {}): Promise<{
   onAdd: ReturnType<typeof vi.fn>
   onClose: ReturnType<typeof vi.fn>
 }> {
   const { GadgetCatalogModal } = await import('@/components/dashboard/GadgetCatalogModal')
   const client = makeClient()
-  const onAdd = props.onAdd ?? vi.fn()
-  const onClose = props.onClose ?? vi.fn()
+  const onAdd = vi.fn()
+  const onClose = vi.fn()
   render(
     <QueryClientProvider client={client}>
       <GadgetCatalogModal
@@ -184,11 +187,12 @@ describe('GadgetCatalogModal', () => {
     await user.type(markdownInput, '# 테스트 위젯')
     await user.click(screen.getByRole('button', { name: '추가' }))
     expect(onAdd).toHaveBeenCalledOnce()
-    const arg = (onAdd as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
+    // noUncheckedIndexedAccess 안전 접근 — .at(0) 사용
+    const firstArg = onAdd.mock.calls.at(0)?.at(0) as
       | { gadgetType: string; config: Record<string, unknown> }
       | undefined
-    expect(arg?.gadgetType).toBe('text_widget')
-    expect(arg?.config['markdown']).toBe('# 테스트 위젯')
+    expect(firstArg?.gadgetType).toBe('text_widget')
+    expect(firstArg?.config['markdown']).toBe('# 테스트 위젯')
   })
 
   /**
