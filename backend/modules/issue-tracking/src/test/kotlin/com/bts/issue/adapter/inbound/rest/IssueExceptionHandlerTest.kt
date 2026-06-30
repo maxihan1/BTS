@@ -2,6 +2,7 @@
 
 package com.bts.issue.adapter.inbound.rest
 
+import com.bts.issue.adapter.inbound.rest.cursor.CursorDecodeException
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.AssigneeNotFoundException
 import com.bts.issue.domain.IncompleteSubtaskMappingException
@@ -15,6 +16,9 @@ import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.SubtaskHasOwnSubtasksException
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssueScope
+import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.not
+import org.hamcrest.Matchers.startsWith
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -43,7 +47,7 @@ import java.util.UUID
  * 더미 컨트롤러에서 각 exception 을 throw → IssueExceptionHandler 가 ProblemDetail 로 변환.
  * spec §6.1 의 9 errorCode 를 전수 검증한다.
  *
- * 테스트 케이스 (10건).
+ * 테스트 케이스 (12건).
  * - H-1. `MethodArgumentNotValidException` → 400 + `VALIDATION_FAILED`
  * - H-2. `AuthenticationException` → 401 + `UNAUTHENTICATED`
  * - H-3. `IssueAccessDeniedException` → 403 + `ACCESS_DENIED`
@@ -54,6 +58,8 @@ import java.util.UUID
  * - H-8. `IssueTransitionNotAllowedException` → 409 + `TRANSITION_NOT_ALLOWED`
  * - H-9. generic `RuntimeException` → 500 + `INTERNAL_ERROR`
  * - H-10. `AssigneeNotFoundException` → 422 + `ASSIGNEE_NOT_FOUND`
+ * - H-11. `CursorDecodeException` → 400 + `ISSUE_INVALID_CURSOR`, RFC 7807 필드 + detail 비노출 (FR-API-01 Task 4)
+ * - H-12. `PaginationModeConflictException` → 400 + `ISSUE_PAGINATION_MODE_CONFLICT` (FR-API-01 Task 4)
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [IssueExceptionHandlerTest.TestConfig::class])
@@ -130,6 +136,13 @@ class IssueExceptionHandlerTest {
                 expected = setOf("SRC-2", "SRC-3"),
                 provided = setOf("SRC-2"),
             )
+
+        @GetMapping("/cursor-decode-error")
+        fun throwCursorDecodeError(): Nothing =
+            throw CursorDecodeException("내부 cursor 디버그: v2:abc===debugtoken")
+
+        @GetMapping("/pagination-mode-conflict")
+        fun throwPaginationModeConflict(): Nothing = throw PaginationModeConflictException()
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -234,5 +247,30 @@ class IssueExceptionHandlerTest {
             .andExpect(status().isUnprocessableEntity)
             .andExpect(jsonPath("$.status").value(422))
             .andExpect(jsonPath("$.errorCode").value("INCOMPLETE_SUBTASK_MAPPING"))
+    }
+
+    // ── H-11: CursorDecodeException → 400 + ISSUE_INVALID_CURSOR (FR-API-01 Task 4) ─
+
+    @Test
+    fun `H-11 CursorDecodeException 발생 시 400 + ISSUE_INVALID_CURSOR RFC7807 필드 충족 detail에 내부 토큰 비노출`() {
+        mockMvc.perform(get("/exceptions/cursor-decode-error").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.status").value(400))
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_INVALID_CURSOR"))
+            .andExpect(jsonPath("$.title").isNotEmpty)
+            .andExpect(jsonPath("$.type", startsWith("https://")))
+            .andExpect(jsonPath("$.detail").exists())
+            .andExpect(jsonPath("$.detail", not(containsString("v2:abc===debugtoken"))))
+    }
+
+    // ── H-12: PaginationModeConflictException → 400 + ISSUE_PAGINATION_MODE_CONFLICT ─
+
+    @Test
+    fun `H-12 PaginationModeConflictException 발생 시 400 + ISSUE_PAGINATION_MODE_CONFLICT`() {
+        mockMvc.perform(get("/exceptions/pagination-mode-conflict").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.status").value(400))
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_PAGINATION_MODE_CONFLICT"))
+            .andExpect(jsonPath("$.title").isNotEmpty)
     }
 }
