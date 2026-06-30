@@ -4,15 +4,24 @@ package com.bts.search.web
 
 import com.bts.search.aql.AqlLexer
 import com.bts.search.aql.AqlParser
+import com.bts.search.config.BEARER_AUTH_SCHEME
 import com.bts.search.web.dto.AqlSearchHit
 import com.bts.search.web.dto.AqlSearchPageResponse
 import com.bts.search.web.dto.AqlSearchRequest
 import com.bts.search.web.dto.toAqlEnvelope
 import com.bts.shared.search.IssueSearchPort
 import com.bts.shared.search.IssueSearchQuery
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
+import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
 import org.springframework.security.authentication.AnonymousAuthenticationToken
 import org.springframework.security.core.Authentication
@@ -38,7 +47,7 @@ import java.util.UUID
  *    구문 오류 시 [com.bts.search.aql.AqlSyntaxException]을 던지고 [SearchExceptionHandler]가 400으로 변환한다.
  * 4. 검색 위임 — [IssueSearchPort.search]에 [IssueSearchQuery]를 전달한다.
  *    visibility 보안 술어 AND 결합 및 BROWSE 권한 게이트는 구현체(issue-tracking 어댑터)가 담당한다.
- * 5. 응답 변환 — `IssueSearchPage` → `Page<AqlSearchHit>` raw Page(봉투 없음, GET /issues와 동형).
+ * 5. 응답 변환 — `IssueSearchPage` → [AqlSearchPageResponse]<[AqlSearchHit]> 봉투로 반환.
  *
  * ### 트랜잭션
  *
@@ -52,6 +61,7 @@ import java.util.UUID
  *
  * @param issueSearchPort AQL 검색 실행 포트(issue-tracking 어댑터가 런타임 주입).
  */
+@Tag(name = "Search", description = "AQL 텍스트 쿼리 기반 이슈 검색")
 @RestController
 class SearchController(
     private val issueSearchPort: IssueSearchPort,
@@ -68,6 +78,41 @@ class SearchController(
      * @throws com.bts.search.aql.AqlSyntaxException(400) AQL 문법/필드 오류 — [SearchExceptionHandler]가 400으로 변환.
      * @throws SecurityException(403) BROWSE 권한 없음 — [SearchExceptionHandler]가 403으로 변환.
      */
+    @Operation(
+        operationId = "searchAql",
+        summary = "AQL 쿼리로 이슈 검색",
+        description =
+            "AQL(Atlas Query Language) 텍스트 쿼리로 이슈를 검색한다. " +
+                "project 멤버에게 보이는 이슈만 반환된다(visibility 보안 술어 자동 적용).",
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200",
+                description = "검색 성공. 결과가 없으면 data 가 빈 배열인 200 을 반환한다.",
+                // 제네릭 erasure 방어(EC5): ResponseEntity<AqlSearchPageResponse<AqlSearchHit>> 의
+                // 실제 타입 파라미터가 바이트코드 레벨에서 소거되므로 springdoc 이 스키마를 추론 불가.
+                // implementation 을 명시해 components/schemas 에 AqlSearchPageResponse 를 강제 등록한다.
+                content = [Content(schema = Schema(implementation = AqlSearchPageResponse::class))],
+            ),
+            ApiResponse(
+                responseCode = "400",
+                description = "잘못된 요청 — AQL 문법 오류 또는 필드 검증 실패.",
+                content = [Content(schema = Schema(implementation = ProblemDetail::class))],
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "미인증 — 유효한 Bearer 토큰 없음.",
+                content = [Content(schema = Schema(implementation = ProblemDetail::class))],
+            ),
+            ApiResponse(
+                responseCode = "403",
+                description = "접근 거부 — BROWSE 권한 없음.",
+                content = [Content(schema = Schema(implementation = ProblemDetail::class))],
+            ),
+        ],
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PostMapping("/api/v1/search/aql")
     fun search(
         @Valid @RequestBody request: AqlSearchRequest,
