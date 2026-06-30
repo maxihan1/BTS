@@ -203,8 +203,8 @@ function ExportForm({ projectKey, query, onClose }: ExportFormProps): JSX.Elemen
 
     return (
       <div>
-        {/* 상태 전환 고지 (role=status — 스크린리더 polite 고지) */}
-        <p role="status" className="mb-4 text-sm text-foreground">
+        {/* 상태 전환 고지 (role=status aria-live=polite — 스크린리더 폴라이트 고지) */}
+        <p role="status" aria-live="polite" className="mb-4 text-sm text-foreground">
           검색 결과{' '}
           <strong>
             {countText}건
@@ -293,8 +293,8 @@ function ExportForm({ projectKey, query, onClose }: ExportFormProps): JSX.Elemen
     return (
       <div>
         {isSuccess ? (
-          /* 완료 — role=status */
-          <p role="status" className="mb-4 text-sm text-foreground">
+          /* 완료 — role=status aria-live=polite — 스크린리더 갱신 */
+          <p role="status" aria-live="polite" className="mb-4 text-sm text-foreground">
             ✓ 완료{rowCountText !== '' ? ` (${rowCountText})` : ''}
           </p>
         ) : (
