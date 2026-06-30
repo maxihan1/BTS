@@ -1041,11 +1041,12 @@ class IssueApplicationService(
                 filter = filter,
             )
         // maskFieldsForPage 재사용 — PageImpl 래핑으로 Page<IssueResponse> 전달 후 content 추출
-        val tempPage = PageImpl(
-            result.items,
-            Pageable.unpaged(),
-            result.items.size.toLong(),
-        )
+        val tempPage =
+            PageImpl(
+                result.items,
+                Pageable.unpaged(),
+                result.items.size.toLong(),
+            )
         val maskedItems = maskFieldsForPage(actor, projectKey, tempPage).content
         val next =
             if (result.hasNext && maskedItems.isNotEmpty()) {

@@ -64,7 +64,6 @@ import javax.sql.DataSource
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @Suppress("TooManyFunctions")
 class OpenApiContractTest {
-
     @MockBean
     lateinit var workflowTransitionPort: WorkflowTransitionPort
 
@@ -420,7 +419,10 @@ class OpenApiContractTest {
         conn().use { c ->
             c.createStatement().use { stmt ->
                 // 이 테스트는 raw INSERT 만 사용하므로 changelog/rank 관련 행이 없어 issues 직접 삭제 가능
-                stmt.execute("DELETE FROM issues WHERE project_id = (SELECT id FROM projects WHERE key = '$PROJECT_KEY')")
+                val deleteIssuesSql =
+                    "DELETE FROM issues WHERE project_id = " +
+                        "(SELECT id FROM projects WHERE key = '$PROJECT_KEY')"
+                stmt.execute(deleteIssuesSql)
                 stmt.execute("UPDATE projects SET key_sequence = 0 WHERE key = '$PROJECT_KEY'")
             }
         }
@@ -463,7 +465,10 @@ class OpenApiContractTest {
      *
      * @return (key1, key2) — 삽입 순서대로의 이슈 키 쌍.
      */
-    private fun insertTwoIssuesSameTimestamp(summary1: String, summary2: String): Pair<String, String> =
+    private fun insertTwoIssuesSameTimestamp(
+        summary1: String,
+        summary2: String,
+    ): Pair<String, String> =
         conn().use { c ->
             c.autoCommit = false
             val projectId = fetchProjectId(c)

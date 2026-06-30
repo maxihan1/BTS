@@ -78,7 +78,10 @@ object ChangelogCursorCodec {
      * @param groupId cursor 기준 group id (BIGINT).
      * @return `v1:<base64url>` 형식 cursor 토큰.
      */
-    fun encode(createdAt: OffsetDateTime, groupId: Long): String {
+    fun encode(
+        createdAt: OffsetDateTime,
+        groupId: Long,
+    ): String {
         val payload = "${createdAt.toInstant()}$SEPARATOR$groupId"
         val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(payload.toByteArray())
         return "$VERSION:$encoded"

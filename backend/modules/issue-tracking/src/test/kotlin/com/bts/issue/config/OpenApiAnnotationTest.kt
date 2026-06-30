@@ -50,7 +50,6 @@ import org.testcontainers.utility.DockerImageName
 )
 @ActiveProfiles("test")
 class OpenApiAnnotationTest {
-
     @MockBean
     lateinit var workflowTransitionPort: WorkflowTransitionPort
 
@@ -260,8 +259,12 @@ class OpenApiAnnotationTest {
                     paths.path("/api/v1/issues/{key}/worklogs").path("get").path("summary").asText(),
                 "GET /api/v1/issues/{key}/links" to
                     paths.path("/api/v1/issues/{key}/links").path("get").path("summary").asText(),
-                "GET /api/v1/projects/{projectIdOrKey}/issue-templates" to paths
-                    .path("/api/v1/projects/{projectIdOrKey}/issue-templates").path("get").path("summary").asText(),
+                "GET /api/v1/projects/{projectIdOrKey}/issue-templates" to
+                    paths
+                        .path("/api/v1/projects/{projectIdOrKey}/issue-templates")
+                        .path("get")
+                        .path("summary")
+                        .asText(),
                 "GET /api/v1/projects/{projectIdOrKey}/custom-fields" to
                     paths.path("/api/v1/projects/{projectIdOrKey}/custom-fields").path("get").path("summary").asText(),
                 "GET /api/v1/issues/{key}/attachments" to

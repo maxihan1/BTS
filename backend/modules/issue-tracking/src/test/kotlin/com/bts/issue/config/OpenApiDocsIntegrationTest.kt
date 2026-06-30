@@ -56,7 +56,6 @@ import org.testcontainers.utility.DockerImageName
 )
 @ActiveProfiles("test")
 class OpenApiDocsIntegrationTest {
-
     @MockBean
     lateinit var workflowTransitionPort: WorkflowTransitionPort
 
@@ -112,11 +111,11 @@ class OpenApiDocsIntegrationTest {
      */
     @Test
     fun `D1 GET v3 api-docs 는 200 을 반환하고 openapi 3 1 x 버전임을 나타낸다`() {
-        val result = mockMvc.perform(
-            get("/v3/api-docs").accept(MediaType.APPLICATION_JSON),
-        )
-            .andExpect(status().isOk)
-            .andReturn()
+        val result =
+            mockMvc
+                .perform(get("/v3/api-docs").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk)
+                .andReturn()
 
         val body = result.response.contentAsString
         val tree = objectMapper.readTree(body)
@@ -137,19 +136,20 @@ class OpenApiDocsIntegrationTest {
      */
     @Test
     fun `D2 securitySchemes 에 bearerAuth 가 http bearer JWT 로 정의된다`() {
-        val result = mockMvc.perform(
-            get("/v3/api-docs").accept(MediaType.APPLICATION_JSON),
-        )
-            .andExpect(status().isOk)
-            .andReturn()
+        val result =
+            mockMvc
+                .perform(get("/v3/api-docs").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk)
+                .andReturn()
 
         val body = result.response.contentAsString
         val tree = objectMapper.readTree(body)
 
-        val bearerAuth = tree
-            .path("components")
-            .path("securitySchemes")
-            .path("bearerAuth")
+        val bearerAuth =
+            tree
+                .path("components")
+                .path("securitySchemes")
+                .path("bearerAuth")
 
         assertThat(bearerAuth.isMissingNode)
             .withFailMessage("securitySchemes.bearerAuth 가 OpenAPI 스펙에 없습니다. 본문 앞 300자: ${body.take(300)}")

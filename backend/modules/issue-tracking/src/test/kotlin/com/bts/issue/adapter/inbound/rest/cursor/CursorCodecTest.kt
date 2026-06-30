@@ -26,8 +26,9 @@ class CursorCodecTest {
     private val sampleCreatedAt = OffsetDateTime.of(2024, 1, 15, 10, 30, 0, 0, ZoneOffset.UTC)
 
     /** 테스트용 Base64URL 인코딩 헬퍼. */
-    private fun b64(payload: String): String =
-        Base64.getUrlEncoder().withoutPadding().encodeToString(payload.toByteArray())
+    private fun b64(payload: String): String {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(payload.toByteArray())
+    }
 
     // ── C-1. round-trip ────────────────────────────────────────────────────────
 

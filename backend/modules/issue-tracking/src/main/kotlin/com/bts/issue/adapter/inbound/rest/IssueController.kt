@@ -5,11 +5,10 @@ package com.bts.issue.adapter.inbound.rest
 import com.bts.issue.adapter.inbound.rest.cursor.CursorCodec
 import com.bts.issue.adapter.inbound.rest.dto.RerankIssueRequest
 import com.bts.issue.application.AppChangeAssigneeRequest
-import com.bts.issue.application.ChangelogCursorCodec
-import com.bts.issue.application.CursorPage
 import com.bts.issue.application.AppChangeComponentsRequest
 import com.bts.issue.application.AppChangeVersionsRequest
 import com.bts.issue.application.BacklogRankService
+import com.bts.issue.application.ChangelogCursorCodec
 import com.bts.issue.application.DatePatch
 import com.bts.issue.application.EstimatePatch
 import com.bts.issue.application.IssueApplicationService
@@ -21,7 +20,6 @@ import com.bts.issue.pdf.IssuePdfRenderer
 import com.bts.issue.pdf.IssuePdfTemplate
 import com.bts.shared.issue.IssueTypeId
 import io.swagger.v3.oas.annotations.Operation
-import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse

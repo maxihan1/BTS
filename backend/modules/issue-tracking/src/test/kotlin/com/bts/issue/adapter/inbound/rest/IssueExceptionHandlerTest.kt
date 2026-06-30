@@ -138,8 +138,7 @@ class IssueExceptionHandlerTest {
             )
 
         @GetMapping("/cursor-decode-error")
-        fun throwCursorDecodeError(): Nothing =
-            throw CursorDecodeException("내부 cursor 디버그: v2:abc===debugtoken")
+        fun throwCursorDecodeError(): Nothing = throw CursorDecodeException("내부 cursor 디버그: v2:abc===debugtoken")
 
         @GetMapping("/pagination-mode-conflict")
         fun throwPaginationModeConflict(): Nothing = throw PaginationModeConflictException()

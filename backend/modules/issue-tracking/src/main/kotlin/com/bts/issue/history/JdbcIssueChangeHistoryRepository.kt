@@ -14,6 +14,9 @@ import java.sql.Timestamp
 import java.time.Instant
 import java.util.UUID
 
+// TooManyFunctions: append-only record + 다양한 조회 패턴(findByIssue, Paged, Cursor, count, findLatestAssignee)
+//   을 단일 Repository 가 담당하므로 임계치(11)를 초과한다. 기존 6개 + cursor 추가로 위반 발생 — 의도적 Suppress.
+
 /**
  * [IssueChangeHistoryRepository] DB 영속 구현체 (FR-HS-01 Task 4).
  *
@@ -37,8 +40,6 @@ import java.util.UUID
  * `com.atlas.bts.identity.audit.JdbcAuthAuditLogService` 패턴 재사용
  * (NamedParameterJdbcTemplate + append-only + RowMapper + `getObject("col", UUID::class.java)`).
  */
-// TooManyFunctions: append-only record + 다양한 조회 패턴(findByIssue, Paged, Cursor, count, findLatestAssignee)
-//   을 단일 Repository 가 담당하므로 임계치(11)를 초과한다. 기존 6개 + cursor 추가로 위반 발생 — 의도적 Suppress.
 @Suppress("TooManyFunctions")
 @Repository
 class JdbcIssueChangeHistoryRepository(
@@ -196,9 +197,10 @@ class JdbcIssueChangeHistoryRepository(
                     mapOf(
                         "issueId" to issueId,
                         "cursorCreatedAt" to Timestamp.from(cursorCreatedAt),
-                        "cursorGroupId" to requireNotNull(cursorGroupId) {
-                            "cursorGroupId 는 cursorCreatedAt 이 null 이 아닐 때 반드시 지정해야 한다"
-                        },
+                        "cursorGroupId" to
+                            requireNotNull(cursorGroupId) {
+                                "cursorGroupId 는 cursorCreatedAt 이 null 이 아닐 때 반드시 지정해야 한다"
+                            },
                         "limit" to fetchLimit,
                     ),
                     groupRowMapper,
