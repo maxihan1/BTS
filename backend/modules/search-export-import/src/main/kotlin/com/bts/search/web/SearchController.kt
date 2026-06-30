@@ -5,14 +5,14 @@ package com.bts.search.web
 import com.bts.search.aql.AqlLexer
 import com.bts.search.aql.AqlParser
 import com.bts.search.web.dto.AqlSearchHit
+import com.bts.search.web.dto.AqlSearchPageResponse
 import com.bts.search.web.dto.AqlSearchRequest
+import com.bts.search.web.dto.PageInfo
+import com.bts.search.web.dto.PageMeta
 import com.bts.shared.search.IssueSearchPort
 import com.bts.shared.search.IssueSearchQuery
 import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
-import org.springframework.data.domain.Page
-import org.springframework.data.domain.PageImpl
-import org.springframework.data.domain.PageRequest
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.authentication.AnonymousAuthenticationToken
@@ -63,7 +63,7 @@ class SearchController(
      * AQL 텍스트 쿼리로 이슈를 검색한다.
      *
      * @param request 검색 요청 바디. [AqlSearchRequest] Jakarta Validation 적용.
-     * @return 200 OK + `Page<AqlSearchHit>` raw Page(content/totalElements/pageable).
+     * @return 200 OK + envelope `{ data: List<AqlSearchHit>, meta: { page: { number, size, totalElements, totalPages } } }`.
      * @throws ResponseStatusException(401) 미인증 — actor 추출 실패 시.
      * @throws com.bts.search.aql.AqlSyntaxException(400) AQL 문법/필드 오류 — [SearchExceptionHandler]가 400으로 변환.
      * @throws SecurityException(403) BROWSE 권한 없음 — [SearchExceptionHandler]가 403으로 변환.
@@ -71,7 +71,7 @@ class SearchController(
     @PostMapping("/api/v1/search/aql")
     fun search(
         @Valid @RequestBody request: AqlSearchRequest,
-    ): ResponseEntity<Page<AqlSearchHit>> {
+    ): ResponseEntity<AqlSearchPageResponse<AqlSearchHit>> {
         // actor 추출은 리소스 조회/파싱보다 먼저 수행한다(probe 차단 — 교훈 auth-extraction-before-resource-lookup).
         val actorId = currentActorId()
         log.info(
@@ -101,10 +101,28 @@ class SearchController(
 
         val searchPage = issueSearchPort.search(query)
         val hits = searchPage.items.map { AqlSearchHit.from(it) }
-        val pageable = PageRequest.of(request.page, request.size)
-        val resultPage: Page<AqlSearchHit> = PageImpl(hits, pageable, searchPage.total)
+        val totalPages =
+            if (request.size > 0) {
+                ((searchPage.total + request.size - 1) / request.size).toInt()
+            } else {
+                0
+            }
+        val envelope =
+            AqlSearchPageResponse(
+                data = hits,
+                meta =
+                    PageMeta(
+                        page =
+                            PageInfo(
+                                number = request.page,
+                                size = request.size,
+                                totalElements = searchPage.total,
+                                totalPages = totalPages,
+                            ),
+                    ),
+            )
 
-        return ResponseEntity.ok(resultPage)
+        return ResponseEntity.ok(envelope)
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
