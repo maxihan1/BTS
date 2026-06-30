@@ -321,4 +321,35 @@ class OpenApiAnnotationTest {
             )
             .isTrue()
     }
+
+    /**
+     * A7. 기존 bulk 엔드포인트(FR-IS-05)에 summary·bearerAuth 가 설정되어야 한다 (FR-API-01 bulk 표준 적용).
+     *
+     * spec FR-10: 신규 도메인/엔드포인트 추가 0, 기존 bulk 엔드포인트에 OpenAPI annotation 적용.
+     * @Operation(summary=...) / @SecurityRequirement(name="bearerAuth") 없으면 RED. annotation 추가 후 GREEN.
+     */
+    @Test
+    fun `A7 bulk 엔드포인트에 summary 와 bearerAuth 가 설정된다`() {
+        val paths = fetchApiDocs().path("paths")
+
+        val bulkOps =
+            listOf(
+                "POST /api/v1/issues/bulk-update" to paths.path("/api/v1/issues/bulk-update").path("post"),
+                "GET /api/v1/bulk-operations/{id}" to paths.path("/api/v1/bulk-operations/{id}").path("get"),
+                "POST /api/v1/issues/bulk-transitions/available" to
+                    paths.path("/api/v1/issues/bulk-transitions/available").path("post"),
+            )
+
+        bulkOps.forEach { (endpoint, opNode) ->
+            assertThat(opNode.path("summary").asText())
+                .withFailMessage("$endpoint 에 summary 가 없습니다. @Operation(summary=...) 을 추가하세요.")
+                .isNotBlank()
+
+            val securityNode = opNode.path("security")
+            val hasBearerAuth = !securityNode.isMissingNode && securityNode.any { it.has("bearerAuth") }
+            assertThat(hasBearerAuth)
+                .withFailMessage("$endpoint 에 bearerAuth security requirement 가 없습니다.")
+                .isTrue()
+        }
+    }
 }
