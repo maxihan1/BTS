@@ -97,9 +97,22 @@ FR-API-01과 무관(FR-API-01=cursor+OpenAPI, 데이터소스 무변경). 실측
 - **계약 drift**(memory `frontend-zod-backend-dto-contract-gap`). 카탈로그/layout Zod 스키마 백엔드 DTO 1:1, MSW 동일.
 - **Dialog 컴포넌트**. 카탈로그 모달용 Dialog/Modal 존재 확인 필요(MoveIssueDialog가 radix Dialog 사용 — 재사용 가능 추정).
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-06-30-fr-db-02-d6-d7-gadgets-ui.md](../specs/2026-06-30-fr-db-02-d6-d7-gadgets-ui.md)
+
+핵심 요약.
+- 가젯 MVP 6종(데이터 4 + 정적 2) + 카탈로그 모달(enabled=true 게이팅) + 가젯별 설정 폼(클라측 config 검증=백엔드 미러).
+- 데이터: assigned_to_me/recently_created=`fetchIssues`(projectKey 지정형), filter_result/issue_count=`fetchFilter`→`searchAql`(MVP filterId 경로만), text/link=정적.
+- DashboardTile/Grid·parseLayout/serializeLayout에 gadgetType/config 확장(legacy 타일 호환). 카탈로그 api+Zod+MSW 신규.
+- same-BC 백엔드 보강 1건: `assigned_to_me` 카탈로그에 projectKey 노출.
+
+## Brainstorming Check
+
+✅ 통과 (직접 adversarial sanity check, gap 2건 보강).
+- Gap 1: filter_result/issue_count → MVP filterId 경로만(aql 직접 후속).
+- Gap 2: 이슈 목록 응답 정규화 `GadgetIssueRow{key,summary}`.
+- 게이트1 재확인: 프로젝트 지정형 + same-BC 백엔드 보강 + filter_result filterId 한정.
 
 ## Plan (← /bts-plan 채움)
 
