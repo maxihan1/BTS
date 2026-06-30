@@ -64,7 +64,8 @@ import java.util.UUID
  * - S3 정렬 — `status = open ORDER BY priority DESC` → sort: [AqlSort](priority, DESC) 정합
  * - S5 문법 오류 — `status = = open` → 400, IssueSearchPort 미호출
  * - 미지원 필드 — `foobar = 1` → 400 `SEARCH_UNKNOWN_FIELD`, IssueSearchPort 미호출
- * - 페이지네이션 응답 형식 — raw Page(content/totalElements/page/size)
+ * - 페이지네이션 응답 형식 — envelope `{data, meta:{page:{number,size,totalElements,totalPages}}}`
+ * - 신규: 페이지 메타 정합·0건 빈배열·ORDER BY+page 조합 envelope 매핑 검증
  *
  * ## 설계 결정
  *
@@ -132,8 +133,8 @@ class SearchAqlSliceTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody("status = open")),
         ).andExpect(status().isOk)
-            .andExpect(jsonPath("$.content").isArray)
-            .andExpect(jsonPath("$.totalElements").value(1))
+            .andExpect(jsonPath("$.data").isArray)
+            .andExpect(jsonPath("$.meta.page.totalElements").value(1))
 
         val capturedQuery = querySlot.captured
         assertThat(capturedQuery.projectKey).isEqualTo("PROJ")
@@ -272,17 +273,16 @@ class SearchAqlSliceTest {
         verify(exactly = 0) { fakePort.search(any()) }
     }
 
-    // ── 페이지네이션 응답 형식 — page/size/totalElements ─────────────────────
+    // ── 페이지네이션 응답 형식 — envelope meta.page 포함 ──────────────────────
 
     /**
      * Given 인증된 사용자, page=1, size=10,
      * When `status = open` 전송,
-     * Then 응답 raw Page에 content / totalElements / pageable.pageNumber / pageable.pageSize 포함.
-     *
-     * [IssueSearchQuery.page]/[IssueSearchQuery.size]가 포트에 그대로 전달되는지도 확인한다.
+     * Then envelope `{data, meta:{page:{number,size,totalElements,totalPages}}}`가 반환되고
+     * [IssueSearchQuery.page]/[IssueSearchQuery.size]가 포트에 그대로 전달된다.
      */
     @Test
-    fun `페이지네이션 응답 raw Page 형식 content totalElements pageable 포함`() {
+    fun `페이지네이션 요청 page size 파라미터가 포트에 전달되고 envelope meta page에 반영된다`() {
         val querySlot = slot<IssueSearchQuery>()
         every { fakePort.search(capture(querySlot)) } returns
             IssueSearchPage(items = listOf(sampleHit()), total = 42L, page = 1, size = 10)
@@ -301,14 +301,109 @@ class SearchAqlSliceTest {
                     ),
                 ),
         ).andExpect(status().isOk)
-            .andExpect(jsonPath("$.content").isArray)
-            .andExpect(jsonPath("$.totalElements").value(42))
-            .andExpect(jsonPath("$.pageable.pageNumber").value(1))
-            .andExpect(jsonPath("$.pageable.pageSize").value(10))
+            .andExpect(jsonPath("$.data").isArray)
+            .andExpect(jsonPath("$.meta.page.totalElements").value(42))
+            .andExpect(jsonPath("$.meta.page.number").value(1))
+            .andExpect(jsonPath("$.meta.page.size").value(10))
 
         val captured = querySlot.captured
         assertThat(captured.page).isEqualTo(1)
         assertThat(captured.size).isEqualTo(10)
+    }
+
+    // ── 페이지 메타 — meta.page 구조 전체 정합 ───────────────────────────────
+
+    /**
+     * Given port가 total=120, page=1, size=50인 [IssueSearchPage]를 반환할 때,
+     * When page=1, size=50으로 검색하면,
+     * Then `meta.page.{number,size,totalElements,totalPages}`가 올바르게 매핑된다.
+     *
+     * `totalPages = ceil(120 / 50) = 3` 계산을 포함해 검증한다.
+     */
+    @Test
+    fun `페이지 메타 envelope meta page number size totalElements totalPages 정합`() {
+        val querySlot = slot<IssueSearchQuery>()
+        // total=120, requestedSize=50 → totalPages = ceil(120/50) = ceil(2.4) = 3
+        every { fakePort.search(capture(querySlot)) } returns
+            IssueSearchPage(items = listOf(sampleHit()), total = 120L, page = 1, size = 50)
+
+        mockMvc.perform(
+            post("/api/v1/search/aql")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf("projectKey" to "PROJ", "query" to "status = open", "page" to 1, "size" to 50),
+                    ),
+                ),
+        ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.meta.page.number").value(1))
+            .andExpect(jsonPath("$.meta.page.size").value(50))
+            .andExpect(jsonPath("$.meta.page.totalElements").value(120))
+            .andExpect(jsonPath("$.meta.page.totalPages").value(3))
+
+        assertThat(querySlot.captured.page).isEqualTo(1)
+        assertThat(querySlot.captured.size).isEqualTo(50)
+    }
+
+    // ── 0건 — data 빈배열, totalElements/totalPages 0 ───────────────────────
+
+    /**
+     * Given port가 items=[], total=0인 [IssueSearchPage]를 반환할 때,
+     * When 검색하면,
+     * Then `$.data`는 null이 아닌 빈 배열이고 `totalElements`=0·`totalPages`=0이다.
+     */
+    @Test
+    fun `결과 0건 data는 null이 아닌 빈배열 totalElements 0 totalPages 0`() {
+        every { fakePort.search(any()) } returns
+            IssueSearchPage(items = emptyList(), total = 0L, page = 0, size = 50)
+
+        mockMvc.perform(
+            post("/api/v1/search/aql")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestBody("status = open")),
+        ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.data").isArray)
+            .andExpect(jsonPath("$.data").isEmpty)
+            .andExpect(jsonPath("$.meta.page.totalElements").value(0))
+            .andExpect(jsonPath("$.meta.page.totalPages").value(0))
+    }
+
+    // ── ORDER BY + 페이지 — sort 파싱과 envelope meta.page.number 무충돌 ────
+
+    /**
+     * Given `status = open ORDER BY priority DESC` 쿼리와 page=1 요청,
+     * When 검색하면,
+     * Then 파서가 sort를 올바르게 파싱하고 envelope `meta.page.number`=1이 반환된다.
+     *
+     * 동적 정렬(ORDER BY)과 페이지네이션 오프셋이 함께 전달될 때 무충돌을 검증한다.
+     */
+    @Test
+    fun `ORDER BY 정렬 query와 page 1 요청 시 파서 sort 정합과 envelope meta page number 1 반환`() {
+        val querySlot = slot<IssueSearchQuery>()
+        every { fakePort.search(capture(querySlot)) } returns
+            IssueSearchPage(items = listOf(sampleHit()), total = 25L, page = 1, size = 10)
+
+        mockMvc.perform(
+            post("/api/v1/search/aql")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf(
+                            "projectKey" to "PROJ",
+                            "query" to "status = open ORDER BY priority DESC",
+                            "page" to 1,
+                            "size" to 10,
+                        ),
+                    ),
+                ),
+        ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.meta.page.number").value(1))
+
+        val captured = querySlot.captured
+        assertThat(captured.sort).hasSize(1)
+        assertThat(captured.sort[0].field).isEqualTo(AqlField("priority"))
+        assertThat(captured.sort[0].direction).isEqualTo(SortDirection.DESC)
+        assertThat(captured.page).isEqualTo(1)
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
