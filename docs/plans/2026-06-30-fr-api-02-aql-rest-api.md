@@ -202,4 +202,31 @@ classify 결과: type=api, agent=backend-engineer
   프론트(T4)만 T1과 병렬. 계약 형태는 상단 envelope JSON 단일 출처.
 - 추가 검증: ktlintCheck, detekt(모듈 baseline), pnpm verify, E2E(search 화면 무회귀)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (집중 독립 리뷰, 2026-06-30)
+- ✅ TDD 형식: 4 task 모두 RED/GREEN/REFACTOR + 메타(agent/files/depends-on) 완비.
+- ✅ 트랜잭션: 검색 read-only, 경계 이슈 없음.
+- ✅ 파일 겹침 직렬화: T1·T2가 `SearchController.kt` 겹침 → T2 depends-on [1] 명시 (모듈당1 정책 반영).
+- ✅ 보안: `IssueSearchPort` 재사용(BROWSE/visibility 상속), 변경 0.
+- ✅ 절대 규칙: 신규 파일 한글 헤더, 제네릭 erasure 방어(EC5 `@Schema(implementation)`).
+- ⚠️ 주의(impl 인계): T3 통합/contract 테스트는 "구현(T1/T2) 후 통과" 성격이 강함. BTS TDD 게이트(test 커밋이
+  feat보다 먼저)를 만족하려면 **기존 raw Page 단언에서 출발해 envelope 단언으로 바꿔 RED를 실제로 보이게** 할 것.
+- BLOCKER: 없음.
+
+### plan-devex-review (집중 독립 리뷰, 2026-06-30)
+- ⚠️ **CONCERN-1 (API 일관성 — 게이트1 Maxi 확인 필요)**: FR-API-01에서 `GET /api/v1/issues`의
+  **offset 모드는 raw Spring Page를 유지**했고 cursor 모드만 envelope였다. 본 FR은 AQL의 offset 응답을
+  **envelope로 전환**한다. 결과적으로 두 엔드포인트의 offset 응답 형태가 일시적으로 갈린다
+  (issues offset=raw Page, search offset=envelope). 표준 방향(envelope)에는 부합하나, issue 목록 offset이
+  아직 raw라 전면 정합은 후속(FR-API-01 ADR "offset→cursor 이전은 후속"과 동일 맥락). → 수용 가능한 일시적
+  불일치로 판단하되 게이트1에서 명시 확인.
+- ⚠️ CONCERN-2 (OpenAPI 모듈 통합): search `OpenApiConfig`는 issue-tracking과 별개 모듈. 현 구조는 전체 앱
+  배포 조립 부재(test-assembled가 표준). search 모듈 자체 컨텍스트의 `/v3/api-docs` 검증으로 충분하며,
+  다중 모듈 OpenApiConfig 병합은 본 FR 범위 밖.
+- ✅ Breaking change 범위: AQL 검색 소비자는 프론트 단일(FR-SR-02 도입). 외부 PAT 소비자 없음(FR-API-04 미구현).
+  FR-5 프론트 동반으로 회귀 0. 사내 단일 소비자라 v1/v2 분리 불필요.
+- BLOCKER: 없음.
+
+### 종합
+- BLOCKER 0. CONCERN 2건(둘 다 수용 가능, 후속/범위밖). 게이트1에서 CONCERN-1(offset 형태 불일치) Maxi 확인.
