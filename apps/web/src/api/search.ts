@@ -1,6 +1,6 @@
 // search-export-import BC AQL 검색 + CSV/XLSX 내보내기 API 클라이언트 — FR-SR-02/FR-EX-01 D6
 import { z } from 'zod'
-import { apiPost, apiFetch, ApiError } from './client'
+import { apiPost, apiGet, apiFetch, ApiError } from './client'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 에러 코드 상수 — 백엔드 SearchErrorCode 열거값 정본
@@ -16,6 +16,12 @@ export const SEARCH_ERROR_CODES = {
   UNAUTHENTICATED: 'SEARCH_UNAUTHENTICATED',
   ACCESS_DENIED: 'SEARCH_ACCESS_DENIED',
   INTERNAL_ERROR: 'SEARCH_INTERNAL_ERROR',
+  /** 동기 Export 상한(1만건) 초과 — 자동 비동기 분기 트리거 (FR-EX-02) */
+  EXPORT_LIMIT_EXCEEDED: 'SEARCH_EXPORT_LIMIT_EXCEEDED',
+  /** 비동기 잡이 아직 완료되지 않아 다운로드 불가 (FR-EX-02) */
+  EXPORT_NOT_READY: 'SEARCH_EXPORT_NOT_READY',
+  /** 비동기 잡 결과 오브젝트 스토리지 저장 실패 (FR-EX-02) */
+  EXPORT_STORAGE_ERROR: 'SEARCH_EXPORT_STORAGE_ERROR',
 } as const
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -83,6 +89,64 @@ export interface SearchAqlParams {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 비동기 Export Job Zod 스키마 — 백엔드 ExportJobResponse DTO 1:1 대응 (FR-EX-02)
+// backend 정본: search-export-import ExportJobResponse.kt (@JsonInclude NON_NULL)
+// rowCount/errorCode: .nullish() — NON_NULL 설정으로 null 시 키 자체가 없으므로
+//   .nullable()만 사용하면 undefined 입력에서 ZodError 발생 (B2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 비동기 Export 잡 상태 응답 Zod 스키마.
+ * backend ExportJobResponse DTO @JsonInclude(NON_NULL) 직렬화 형태와 1:1 대응.
+ *
+ * - status 종단 상태: COMPLETED / FAILED (폴링 중단 신호)
+ * - rowCount: COMPLETED 후에만 존재. PENDING/RUNNING 응답에서는 키 자체가 없음.
+ * - errorCode: FAILED 후에만 존재. COMPLETED/PENDING/RUNNING 응답에서는 키 자체가 없음.
+ */
+export const exportJobStatusSchema = z.object({
+  jobId: z.string().uuid(),
+  status: z.enum(['PENDING', 'RUNNING', 'COMPLETED', 'FAILED']),
+  progress: z.number().int().min(0).max(100),
+  /** 완료 후 실제 내보낸 행 수. PENDING/RUNNING 응답에서 키가 없으므로 nullish. */
+  rowCount: z.number().int().nonnegative().nullish(),
+  format: z.string().min(1),
+  /** FAILED 시 실패 사유 코드. 비실패 응답에서 키가 없으므로 nullish. */
+  errorCode: z.string().nullish(),
+  downloadReady: z.boolean(),
+})
+
+/** 비동기 Export 잡 상태 타입 */
+export type ExportJobStatus = z.infer<typeof exportJobStatusSchema>
+
+/**
+ * POST /api/v1/search/export-jobs 202 접수 응답 Zod 스키마.
+ * backend ExportJobAccepted DTO 직렬화 형태와 1:1 대응.
+ */
+const exportJobAcceptedSchema = z.object({
+  jobId: z.string().uuid(),
+  status: z.literal('PENDING'),
+})
+
+/** 비동기 Export 잡 접수 응답 타입 */
+export type ExportJobAccepted = z.infer<typeof exportJobAcceptedSchema>
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 비동기 Export Job 파라미터 인터페이스 (FR-EX-02)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** submitExportJob 호출 파라미터 — 동기 exportIssues와 동일한 DTO 구조 */
+export interface SubmitExportJobParams {
+  /** 내보낼 이슈의 프로젝트 키 */
+  projectKey: string
+  /** AQL 쿼리 문자열 (최대 2000자) */
+  query: string
+  /** 파일 형식 — CSV(UTF-8 BOM) 또는 XLSX(Apache POI) */
+  format: 'CSV' | 'XLSX'
+  /** 내보낼 컬럼 토큰 목록 (미지정 시 전체 9컬럼) */
+  columns?: readonly string[]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 내보내기 파라미터 / 결과 인터페이스 (FR-EX-01)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -139,6 +203,82 @@ export async function exportIssues(params: ExportIssuesParams): Promise<ExportIs
   const contentDisposition = res.headers.get('content-disposition') ?? ''
   const filenameMatch = /filename="([^"]+)"/.exec(contentDisposition)
   const filename = filenameMatch?.[1] ?? `export.${params.format.toLowerCase()}`
+
+  const blob = await res.blob()
+  return { blob, filename }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 비동기 Export Job API 함수 (FR-EX-02)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/v1/search/export-jobs — 비동기 Export 잡을 접수한다.
+ *
+ * 검색 결과가 동기 상한(1만건)을 초과할 때 호출한다 (SEARCH_EXPORT_LIMIT_EXCEEDED).
+ * 동기 exportIssues와 동일한 DTO 구조로 요청한다.
+ *
+ * 폴링 계약.
+ * - 반환된 jobId로 fetchExportJobStatus를 1500ms 간격으로 폴링한다.
+ * - status가 COMPLETED 또는 FAILED가 되면 폴링을 중단한다 (종단 상태).
+ * - COMPLETED + downloadReady=true이면 downloadExportJobResult로 파일을 받는다.
+ *
+ * @param params 내보내기 파라미터 (동기 exportIssues와 동일 구조)
+ * @returns ExportJobAccepted — jobId/status("PENDING")
+ * @throws ApiError 400(AQL 오류/검증 실패), 401(미인증), 403(권한없음)
+ */
+export async function submitExportJob(params: SubmitExportJobParams): Promise<ExportJobAccepted> {
+  const body: Record<string, unknown> = {
+    projectKey: params.projectKey,
+    query: params.query,
+    format: params.format,
+  }
+  if (params.columns !== undefined) {
+    // readonly string[] → string[] 변환 (백엔드 요청 직렬화용)
+    body['columns'] = Array.from(params.columns)
+  }
+  return apiPost('/api/v1/search/export-jobs', body, exportJobAcceptedSchema)
+}
+
+/**
+ * GET /api/v1/search/export-jobs/{id} — 비동기 Export 잡의 현재 상태를 조회한다.
+ *
+ * 폴링 루프에서 주기적으로 호출한다 (TanStack Query refetchInterval 1500ms).
+ * status가 COMPLETED 또는 FAILED이면 종단 상태로 폴링을 중단해야 한다.
+ *
+ * 응답 NON_NULL 주의.
+ * - rowCount: COMPLETED 전에는 키가 없음 → nullish (undefined로 반환됨)
+ * - errorCode: FAILED 전에는 키가 없음 → nullish (undefined로 반환됨)
+ *
+ * @param jobId Export 잡 UUID
+ * @returns ExportJobStatus — exportJobStatusSchema 파싱 결과
+ * @throws ApiError 404(잡 없음 또는 타인 소유)
+ */
+export async function fetchExportJobStatus(jobId: string): Promise<ExportJobStatus> {
+  return apiGet(`/api/v1/search/export-jobs/${jobId}`, exportJobStatusSchema)
+}
+
+/**
+ * GET /api/v1/search/export-jobs/{id}/download — 완료된 Export 잡의 파일을 내려받는다.
+ *
+ * fetchExportJobStatus 결과 downloadReady=true일 때만 호출해야 한다.
+ * Content-Disposition 파싱 패턴은 exportIssues(search.ts:138-144)와 동일.
+ *
+ * @param jobId Export 잡 UUID
+ * @returns { blob, filename } — blob: 파일 Blob, filename: Content-Disposition 파싱 파일명
+ * @throws ApiError 409(SEARCH_EXPORT_NOT_READY — 아직 미완료), 404(잡 없음/타인 소유)
+ */
+export async function downloadExportJobResult(jobId: string): Promise<ExportIssuesResult> {
+  const res = await apiFetch(`/api/v1/search/export-jobs/${jobId}/download`)
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+
+  // Content-Disposition: attachment; filename="ATLAS-export-20260630T000000Z.csv"
+  const contentDisposition = res.headers.get('content-disposition') ?? ''
+  const filenameMatch = /filename="([^"]+)"/.exec(contentDisposition)
+  const filename = filenameMatch?.[1] ?? 'export.csv'
 
   const blob = await res.blob()
   return { blob, filename }
