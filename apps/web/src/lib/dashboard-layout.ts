@@ -48,8 +48,11 @@ export interface DashboardTile {
    * 타일 표시 제목.
    * - legacy 타일: 사용자가 지정한 이름.
    * - 가젯 타일: 카탈로그 label이 헤더를 대체하므로 부재 가능.
+   *
+   * optional로 변경한 이유: 가젯 타일은 title 없이 gadgetType만 가질 수 있고,
+   * isDashboardTile 검사도 title OR gadgetType 존재를 요구한다.
    */
-  title: string
+  title?: string
   /**
    * 가젯 종류 식별자 — 카탈로그 GadgetType enum 값(소문자 snake_case).
    * 없으면 legacy 일반 타일로 취급한다.

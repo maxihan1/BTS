@@ -5,7 +5,6 @@ import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import {
   fetchGadgetCatalog,
-  enabledGadgets,
   validateGadgetConfig,
   gadgetCatalogEntrySchema,
   configFieldSchema,
@@ -198,43 +197,6 @@ describe('fetchGadgetCatalog()', () => {
     expect(linksField?.itemSchema).toHaveLength(2)
     expect(linksField?.itemSchema?.[0]?.key).toBe('label')
     expect(linksField?.itemSchema?.[1]?.key).toBe('url')
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
-// enabledGadgets — 필터 헬퍼
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('enabledGadgets()', () => {
-  it('enabled=true 항목만 반환한다', () => {
-    const entries: GadgetCatalogEntry[] = [
-      makeEntry([]),
-      { ...makeEntry([]), enabled: false },
-      makeEntry([]),
-    ]
-    const result = enabledGadgets(entries)
-    expect(result).toHaveLength(2)
-    expect(result.every((e) => e.enabled)).toBe(true)
-  })
-
-  it('빈 입력에 빈 배열을 반환한다', () => {
-    expect(enabledGadgets([])).toEqual([])
-  })
-
-  it('픽스처 12종 중 6종만 반환한다', () => {
-    const result = enabledGadgets(GADGET_CATALOG_FIXTURE)
-    expect(result).toHaveLength(6)
-    const expectedEnabled = [
-      'assigned_to_me',
-      'recently_created',
-      'filter_result',
-      'issue_count',
-      'text_widget',
-      'link_list',
-    ]
-    expectedEnabled.forEach((type) => {
-      expect(result.some((g) => g.type === type)).toBe(true)
-    })
   })
 })
 

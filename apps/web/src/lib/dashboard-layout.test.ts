@@ -222,7 +222,8 @@ describe('createTile — 기본 위치와 크기', () => {
 
   it('T-CT-07: 반환된 타일의 title 은 비어있지 않은 문자열이다', () => {
     const tile = createTile([])
+    // title?: string — createTile은 항상 DEFAULT_TITLE을 제공하므로 string 반환 보장
     expect(typeof tile.title).toBe('string')
-    expect(tile.title.length).toBeGreaterThan(0)
+    expect(tile.title?.length ?? 0).toBeGreaterThan(0)
   })
 })

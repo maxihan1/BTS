@@ -13,7 +13,9 @@ import type { GadgetCatalogEntry } from '@/api/gadget-catalog'
 /**
  * 가젯 카탈로그 전체 픽스처 (12종).
  *
- * 순서는 백엔드 GadgetType enum 선언 순서(ASSIGNED_TO_ME → COMMENTS_RECENT)와 동일하다.
+ * 순서는 백엔드 DashboardController.kt의 compareBy({it.category.ordinal},{it.type}) 정렬과 동일:
+ *   category ordinal: ISSUE(0) → STATIC(1) → CHART(2) → ACTIVITY(3)
+ *   카테고리 내 type: 알파벳 오름차순
  * enabled=true 6종 (ISSUE 4 + STATIC 2) / enabled=false 6종 (CHART 4 + ACTIVITY 2).
  *
  * ⚠️ 계약 drift 경고.
@@ -21,7 +23,7 @@ import type { GadgetCatalogEntry } from '@/api/gadget-catalog'
  *   MSW가 가짜 데이터를 반환해도 실 API와 불일치하면 prod에서 Zod parse 실패로 깨진다.
  */
 export const GADGET_CATALOG_FIXTURE: GadgetCatalogEntry[] = [
-  // ── ISSUE 카테고리 (enabled=true) ──────────────────────────────────────────
+  // ── ISSUE 카테고리 (enabled=true) — type 알파벳 순 ──────────────────────────
   {
     type: 'assigned_to_me',
     category: 'ISSUE',
@@ -29,17 +31,6 @@ export const GADGET_CATALOG_FIXTURE: GadgetCatalogEntry[] = [
     enabled: true,
     configFields: [
       // projectKey: Task 3 백엔드 보강 결과물 (recently_created 동일 패턴)
-      { key: 'projectKey', type: 'STRING', required: false, maxLength: 100 },
-      { key: 'maxItems', type: 'INT', required: false, min: 1, max: 50 },
-    ],
-    requireAtLeastOne: [],
-  },
-  {
-    type: 'recently_created',
-    category: 'ISSUE',
-    label: 'Recently Created',
-    enabled: true,
-    configFields: [
       { key: 'projectKey', type: 'STRING', required: false, maxLength: 100 },
       { key: 'maxItems', type: 'INT', required: false, min: 1, max: 50 },
     ],
@@ -68,18 +59,19 @@ export const GADGET_CATALOG_FIXTURE: GadgetCatalogEntry[] = [
     ],
     requireAtLeastOne: [['filterId', 'aql']],
   },
-
-  // ── STATIC 카테고리 (enabled=true) ─────────────────────────────────────────
   {
-    type: 'text_widget',
-    category: 'STATIC',
-    label: 'Text Widget',
+    type: 'recently_created',
+    category: 'ISSUE',
+    label: 'Recently Created',
     enabled: true,
     configFields: [
-      { key: 'markdown', type: 'STRING', required: true, minLength: 1, maxLength: 10000 },
+      { key: 'projectKey', type: 'STRING', required: false, maxLength: 100 },
+      { key: 'maxItems', type: 'INT', required: false, min: 1, max: 50 },
     ],
     requireAtLeastOne: [],
   },
+
+  // ── STATIC 카테고리 (enabled=true) — type 알파벳 순 ────────────────────────
   {
     type: 'link_list',
     category: 'STATIC',
@@ -100,25 +92,18 @@ export const GADGET_CATALOG_FIXTURE: GadgetCatalogEntry[] = [
     ],
     requireAtLeastOne: [],
   },
-
-  // ── CHART 카테고리 (enabled=false) ─────────────────────────────────────────
   {
-    type: 'pie_chart',
-    category: 'CHART',
-    label: 'Pie Chart',
-    enabled: false,
+    type: 'text_widget',
+    category: 'STATIC',
+    label: 'Text Widget',
+    enabled: true,
     configFields: [
-      {
-        key: 'field',
-        type: 'ENUM',
-        required: true,
-        enumValues: ['status', 'assignee', 'priority', 'issueType'],
-      },
-      { key: 'filterId', type: 'UUID', required: false },
-      { key: 'aql', type: 'STRING', required: false, maxLength: 2000 },
+      { key: 'markdown', type: 'STRING', required: true, minLength: 1, maxLength: 10000 },
     ],
     requireAtLeastOne: [],
   },
+
+  // ── CHART 카테고리 (enabled=false) — type 알파벳 순 ────────────────────────
   {
     type: 'bar_chart',
     category: 'CHART',
@@ -148,6 +133,23 @@ export const GADGET_CATALOG_FIXTURE: GadgetCatalogEntry[] = [
     requireAtLeastOne: [],
   },
   {
+    type: 'pie_chart',
+    category: 'CHART',
+    label: 'Pie Chart',
+    enabled: false,
+    configFields: [
+      {
+        key: 'field',
+        type: 'ENUM',
+        required: true,
+        enumValues: ['status', 'assignee', 'priority', 'issueType'],
+      },
+      { key: 'filterId', type: 'UUID', required: false },
+      { key: 'aql', type: 'STRING', required: false, maxLength: 2000 },
+    ],
+    requireAtLeastOne: [],
+  },
+  {
     type: 'sprint_burndown',
     category: 'CHART',
     label: 'Sprint Burndown',
@@ -156,7 +158,7 @@ export const GADGET_CATALOG_FIXTURE: GadgetCatalogEntry[] = [
     requireAtLeastOne: [],
   },
 
-  // ── ACTIVITY 카테고리 (enabled=false) ──────────────────────────────────────
+  // ── ACTIVITY 카테고리 (enabled=false) — type 알파벳 순 ──────────────────────
   {
     type: 'activity_stream',
     category: 'ACTIVITY',

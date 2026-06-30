@@ -65,7 +65,8 @@ export interface ConfigField {
 export const configFieldSchema: z.ZodType<ConfigField> = z.lazy(() =>
   z.object({
     key: z.string(),
-    type: z.string(),
+    // C5: z.enum(FIELD_TYPES)로 강화 — 백엔드 FieldType 6종과 정합·drift 가드
+    type: z.enum(FIELD_TYPES),
     required: z.boolean(),
     minLength: z.number().int().optional(),
     maxLength: z.number().int().optional(),
@@ -131,23 +132,6 @@ const gadgetCatalogResponseSchema = z.object({
 export async function fetchGadgetCatalog(): Promise<GadgetCatalogEntry[]> {
   const res = await apiGet('/api/v1/dashboards/gadget-catalog', gadgetCatalogResponseSchema)
   return res.data.gadgets
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 헬퍼 함수
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * enabled=true 가젯만 필터링해 반환한다.
- *
- * 카탈로그 모달에서 추가 가능한 가젯 목록 결정에 사용한다.
- * enabled 플래그는 백엔드 단일 진실원천 — 하드코딩 금지 (FR-7).
- *
- * @param entries 전체 카탈로그 엔트리 배열
- * @returns enabled=true 항목만 필터링된 배열
- */
-export function enabledGadgets(entries: GadgetCatalogEntry[]): GadgetCatalogEntry[] {
-  return entries.filter((e) => e.enabled)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

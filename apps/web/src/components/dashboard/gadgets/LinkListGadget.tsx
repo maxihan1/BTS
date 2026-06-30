@@ -30,11 +30,16 @@ export interface LinkListGadgetProps {
  * URL이 허용된 스킴(http / https)인지 확인한다.
  * javascript: / file: / data: 등 다른 스킴은 허용하지 않아 XSS를 방지한다.
  *
+ * 비교는 대소문자 무관(toLowerCase)으로 수행한다.
+ * 클라측 validateGadgetConfig(validateUrl) · 백엔드 validateUrlField가 모두
+ * toLowerCase 후 비교하므로 3계층 일관성을 유지한다.
+ *
  * @param url 확인할 URL 문자열
- * @returns http: 또는 https:로 시작하면 true
+ * @returns http: 또는 https:로 시작하면(대소문자 무관) true
  */
 function isSafeUrl(url: string): boolean {
-  return url.startsWith('http://') || url.startsWith('https://')
+  const lower = url.toLowerCase()
+  return lower.startsWith('http://') || lower.startsWith('https://')
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

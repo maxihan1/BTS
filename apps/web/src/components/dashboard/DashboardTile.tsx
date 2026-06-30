@@ -2,7 +2,7 @@
 import type { JSX, KeyboardEvent } from 'react'
 import { useState, useRef, useEffect } from 'react'
 import { LayoutDashboard, Trash2 } from 'lucide-react'
-import { dashboardLabels } from '@/i18n/dashboard-labels'
+import { dashboardLabels, gadgetLabels } from '@/i18n/dashboard-labels'
 import type { DashboardTile as DashboardTileData } from '@/lib/dashboard-layout'
 import { GadgetRenderer } from '@/components/dashboard/gadgets/GadgetRenderer'
 
@@ -37,8 +37,18 @@ export interface DashboardTileProps {
  */
 export function DashboardTile({ tile, canEdit, onDelete, onEditTitle }: DashboardTileProps): JSX.Element {
   const [editing, setEditing] = useState(false)
-  const [editValue, setEditValue] = useState(tile.title)
+  // C3: title?: string — undefined 방어를 위해 초기값에 ?? '' 적용
+  const [editValue, setEditValue] = useState(tile.title ?? '')
   const inputRef = useRef<HTMLInputElement>(null)
+
+  /**
+   * C6: 가젯 타일 헤더 표시 라벨.
+   * gadgetLabels 매핑 적용 후 미지 타입은 raw gadgetType을 fallback으로 사용.
+   */
+  const gadgetHeaderLabel =
+    tile.gadgetType !== undefined
+      ? (gadgetLabels[tile.gadgetType] ?? tile.gadgetType)
+      : undefined
 
   /** 편집 모드 진입 시 input에 포커스 */
   useEffect(() => {
@@ -57,7 +67,8 @@ export function DashboardTile({ tile, canEdit, onDelete, onEditTitle }: Dashboar
   /** 편집 완료 — 빈 값이면 원래 제목으로 복원 */
   function commitEdit(): void {
     const trimmed = editValue.trim()
-    const next = trimmed !== '' ? trimmed : tile.title
+    // C3: tile.title?: string — undefined 방어
+    const next = trimmed !== '' ? trimmed : (tile.title ?? '')
     setEditing(false)
     setEditValue(next)
     onEditTitle(tile.i, next)
@@ -70,9 +81,13 @@ export function DashboardTile({ tile, canEdit, onDelete, onEditTitle }: Dashboar
       commitEdit()
     } else if (e.key === 'Escape') {
       setEditing(false)
-      setEditValue(tile.title)
+      // C3: tile.title?: string — undefined 방어
+      setEditValue(tile.title ?? '')
     }
   }
+
+  /** 삭제 버튼 aria-label — 가젯은 한국어 라벨, legacy는 title 사용 */
+  const deleteAriaLabel = `${gadgetHeaderLabel ?? tile.title ?? ''} 삭제`
 
   return (
     <div
@@ -91,12 +106,13 @@ export function DashboardTile({ tile, canEdit, onDelete, onEditTitle }: Dashboar
 
           {/*
            * 헤더 레이블 분기.
-           * - 가젯 타일(gadgetType 있음): gadgetType 텍스트 표시(편집 불가).
+           * - 가젯 타일(gadgetType 있음): gadgetLabels 한국어 라벨 표시(편집 불가).
+           *   미지 타입은 raw gadgetType fallback (C6).
            * - legacy 타일: 기존 인라인 편집 동작 그대로.
            */}
-          {tile.gadgetType !== undefined ? (
+          {gadgetHeaderLabel !== undefined ? (
             <span className="min-w-0 flex-1 text-sm font-medium truncate text-muted-foreground">
-              {tile.gadgetType}
+              {gadgetHeaderLabel}
             </span>
           ) : editing ? (
             <input
@@ -117,7 +133,8 @@ export function DashboardTile({ tile, canEdit, onDelete, onEditTitle }: Dashboar
               ].join(' ')}
               onClick={handleTitleClick}
               disabled={!canEdit}
-              aria-label={canEdit ? `${tile.title} — 클릭하여 제목 편집` : tile.title}
+              // C3: tile.title?: string — undefined 방어
+              aria-label={canEdit ? `${tile.title ?? ''} — 클릭하여 제목 편집` : (tile.title ?? '')}
             >
               {tile.title}
             </button>
@@ -129,7 +146,7 @@ export function DashboardTile({ tile, canEdit, onDelete, onEditTitle }: Dashboar
           <button
             type="button"
             className="ml-2 rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-            aria-label={`${tile.gadgetType ?? tile.title} 삭제`}
+            aria-label={deleteAriaLabel}
             onClick={() => onDelete(tile.i)}
           >
             <Trash2 className="h-4 w-4" aria-hidden="true" />

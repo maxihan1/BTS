@@ -7,7 +7,7 @@ import { Plus, Settings, Trash2 } from 'lucide-react'
 import { useAuthUser } from '@/auth/authStore'
 import { useDashboard, useUpdateDashboard, useDeleteDashboard } from '@/hooks/use-dashboards'
 import { canEditDashboard } from '@/lib/dashboard-permission'
-import { parseLayout, serializeLayout, createTile } from '@/lib/dashboard-layout'
+import { parseLayout, serializeLayout } from '@/lib/dashboard-layout'
 import type { DashboardTile } from '@/lib/dashboard-layout'
 import { dashboardLabels } from '@/i18n/dashboard-labels'
 import { DashboardGrid } from '@/components/dashboard/DashboardGrid'
@@ -193,15 +193,6 @@ export function DashboardDetailPage({
 
   // ─── 타일 조작 핸들러 ───────────────────────────────────────────────────
 
-  /** 위젯 추가 — createTile로 새 legacy 타일을 생성해 로컬 state에 추가 */
-  function handleAddTile(): void {
-    setTiles((prev) => {
-      const next = [...prev, createTile(prev)]
-      setDirty(true)
-      return next
-    })
-  }
-
   /**
    * 가젯 추가 — GadgetCatalogModal의 onAdd 콜백에서 호출.
    * gadgetType/config를 포함한 가젯 타일을 생성한다.
@@ -363,18 +354,7 @@ export function DashboardDetailPage({
               </>
             ) : (
               <>
-                {/* 위젯 추가 버튼 — legacy 빈 타일 */}
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors min-h-[44px]"
-                  aria-label={dashboardLabels.detail.addWidget}
-                  onClick={handleAddTile}
-                >
-                  <Plus className="h-4 w-4" aria-hidden="true" />
-                  {dashboardLabels.detail.addWidget}
-                </button>
-
-                {/* 가젯 추가 버튼 — 카탈로그 모달 열기 */}
+                {/* 가젯 추가 버튼 — 카탈로그 모달 열기 (C4: 위젯 추가 일원화) */}
                 <button
                   type="button"
                   className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors min-h-[44px]"
@@ -431,7 +411,6 @@ export function DashboardDetailPage({
           onLayoutChange={handleLayoutChange}
           onDeleteTile={handleDeleteTile}
           onEditTitle={handleEditTitle}
-          onAddTile={editable ? handleAddTile : undefined}
         />
       </div>
 

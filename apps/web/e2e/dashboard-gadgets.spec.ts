@@ -1,9 +1,9 @@
 // FR-DB-02 D7 E2E — 가젯 추가·렌더·카탈로그 게이팅·읽기전용 시나리오 + 무회귀 가드
 //
 // 시나리오 개요.
-//   S1. 가젯 추가 (text_widget) — 카탈로그 모달 → 설정 폼 → 추가 → 저장 → 성공 토스트
-//   S2. 이슈 가젯 렌더 (recently_created) — 추가 후 MSW 이슈 목록 렌더 (SPA 내부 이동, reload 금지)
-//   S4. 정적 가젯 (link_list) — 추가 후 링크 렌더 확인
+//   S1. 가젯 추가 (text_widget) — 카탈로그 모달 → 설정 폼 → 추가 → 저장 → 성공 토스트 (C6: 헤더 "텍스트")
+//   S2. 이슈 가젯 렌더 (recently_created) — 추가 후 MSW 이슈 목록 렌더 (C6: 헤더 "최근 생성")
+//   S4. 정적 가젯 (link_list) — 추가 후 링크 렌더 확인 (C6: 헤더 "링크 목록")
 //   S6. enabled=false 게이팅 — 카탈로그에서 Pie Chart 비활성·"준비 중" 확인·클릭 불가
 //   S7. 비소유 읽기전용 — bob 소유 ORG 대시보드 → "가젯 추가" 버튼 부재
 //
@@ -12,8 +12,8 @@
 //   - sleep / page.waitForTimeout 금지 → await expect(...).toBeVisible() 사용.
 //   - reload 금지 (msw-derived-behavior-shared-store-e2e) — MSW store 리셋=가짜그린.
 //     SPA 내부 goto/click으로 이동.
-//   - 헤더 "위젯 추가"·"가젯 추가" 텍스트 중복 — 헤더 컨테이너 한정 + exact:true
-//     (playwright-getbyrole-exact-strict-mode).
+//   - C4: "위젯 추가" 버튼 제거 — "가젯 추가" 단일 버튼으로 일원화.
+//     헤더 컨테이너 한정 + exact:true (playwright-getbyrole-exact-strict-mode).
 //   - RGL 드래그/리사이즈 headless 제약으로 SKIP (기존 dashboard.spec.ts S3b 동일 이유).
 //   - assigned_to_me는 whoami userId(00000000-...-001)↔ISSUE_FILTER_ALICE_ID 불일치로
 //     recently_created(projectKey=ATLAS, assignee 필터 없음)로 대체
@@ -50,7 +50,7 @@ const OTHER_DASHBOARD_URL = `/dashboards/${OTHER_DASHBOARD_ID}`
 
 test.describe('FR-DB-02 가젯 시스템 (카탈로그/추가/렌더/게이팅/읽기전용)', () => {
   // ───────────────────────────────────────────────────────────────────────────
-  // S1. 가젯 추가 (text_widget) — golden path
+  // S1. 가젯 추가 (text_widget) — golden path (C6: 타일 헤더 "텍스트" 한국어 라벨)
   //
   // Given  alice 로그인 + DEFAULT_DASHBOARD 상세 진입 (빈 그리드)
   // When   헤더 "가젯 추가" 버튼 클릭 → GadgetCatalogModal 열림 (Step 1 카탈로그)
@@ -58,20 +58,19 @@ test.describe('FR-DB-02 가젯 시스템 (카탈로그/추가/렌더/게이팅/�
   //        "Markdown" 필드에 "## E2E 테스트 메모" 입력
   //        "추가" 버튼 클릭 → 모달 닫힘 + 가젯 타일 그리드 추가
   //        "저장" 버튼 클릭 → PATCH 성공
-  // Then   그리드 타일 헤더에 "text_widget" 표시
+  // Then   그리드 타일 헤더에 "텍스트" 표시 (C6: gadgetLabels 한국어 라벨)
   //        타일 본문에 "## E2E 테스트 메모" plain text 렌더
   //        성공 토스트 "대시보드가 저장되었습니다." 표시
   // ───────────────────────────────────────────────────────────────────────────
-  test('S1 text_widget 가젯 추가 + 저장 — golden path', async ({ page }) => {
+  test('S1 text_widget 가젯 추가 + 저장 — golden path (C6 한국어 라벨)', async ({ page }) => {
     // Given. alice 로그인 + 빈 그리드 상태 상세 진입
     await loginAsAlice(page)
     await page.goto(DEFAULT_DASHBOARD_URL)
     await expect(page.getByRole('heading', { name: '내 첫 대시보드' })).toBeVisible()
-    await expect(page.getByText('위젯 추가 버튼을 눌러 대시보드를 채워보세요')).toBeVisible()
+    // C4: emptyGrid 문구 업데이트
+    await expect(page.getByText('가젯 추가 버튼을 눌러 대시보드를 채워보세요')).toBeVisible()
 
-    // When. 헤더 "가젯 추가" 버튼 클릭
-    //   헤더에 "위젯 추가"·"가젯 추가" 두 버튼이 공존하므로 컨테이너 한정 + exact:true
-    //   (playwright-getbyrole-exact-strict-mode)
+    // When. 헤더 "가젯 추가" 버튼 클릭 (C4: 단일 가젯 추가 버튼으로 일원화)
     const header = page.locator('.flex.items-center.justify-between.px-6.py-4.border-b').first()
     await header.getByRole('button', { name: '가젯 추가', exact: true }).click()
 
@@ -91,14 +90,13 @@ test.describe('FR-DB-02 가젯 시스템 (카탈로그/추가/렌더/게이팅/�
     await page.getByLabel('Markdown').fill('## E2E 테스트 메모')
 
     // When. "추가" 버튼 클릭 → 설정 검증 통과 → 모달 닫힘
-    //   exact:true로 "위젯 추가"/"가젯 추가"와 구분
     await page.getByRole('button', { name: '추가', exact: true }).click()
 
     // Then. 모달 닫힘 — dialog가 DOM에서 제거됨 (조건부 마운트 패턴)
     await expect(page.getByRole('dialog')).not.toBeVisible()
 
-    // Then. 그리드 타일 헤더에 가젯 타입 "text_widget" 표시 (DashboardTile.tsx L98)
-    await expect(page.getByText('text_widget')).toBeVisible()
+    // Then. 그리드 타일 헤더에 한국어 가젯 라벨 "텍스트" 표시 (C6: gadgetLabels 매핑)
+    await expect(page.getByText('텍스트')).toBeVisible()
 
     // Then. 타일 본문에 markdown plain text 표시 (TextWidgetGadget.tsx — dangerouslySetInnerHTML 없음)
     await expect(page.getByText('## E2E 테스트 메모')).toBeVisible()
@@ -121,6 +119,8 @@ test.describe('FR-DB-02 가젯 시스템 (카탈로그/추가/렌더/게이팅/�
   //        모달 닫힘 + recently_created 타일 그리드 추가
   //        useGadgetData('recently_created', {projectKey:'ATLAS'}) →
   //        GET /api/v1/issues?projectKey=ATLAS&page=0&size=10 (MSW listIssuesHandler)
+  // Then   이슈 목록 렌더 — "ATLAS-1" 이슈 키 링크 표시 (issuePageFixture 4건)
+  //        타일 헤더에 "최근 생성" 표시 (C6: gadgetLabels 한국어 라벨)
   // Then   이슈 목록 렌더 — "ATLAS-1" 이슈 키 링크 표시 (issuePageFixture 4건)
   //
   // 주의.
@@ -155,8 +155,8 @@ test.describe('FR-DB-02 가젯 시스템 (카탈로그/추가/렌더/게이팅/�
     // Then. 모달 닫힘
     await expect(page.getByRole('dialog')).not.toBeVisible()
 
-    // Then. 타일 헤더에 "recently_created" 표시
-    await expect(page.getByText('recently_created')).toBeVisible()
+    // Then. 타일 헤더에 한국어 라벨 "최근 생성" 표시 (C6: gadgetLabels 매핑)
+    await expect(page.getByText('최근 생성')).toBeVisible()
 
     // Then. 이슈 목록 렌더 대기 — useGadgetData가 MSW listIssuesHandler 호출 후 응답
     //   issuePageFixture 4건(ATLAS-1/2/3/5) 중 ATLAS-1 이슈 키 링크 확인
@@ -206,8 +206,8 @@ test.describe('FR-DB-02 가젯 시스템 (카탈로그/추가/렌더/게이팅/�
     // Then. 모달 닫힘
     await expect(page.getByRole('dialog')).not.toBeVisible()
 
-    // Then. 타일 헤더에 "link_list" 표시
-    await expect(page.getByText('link_list')).toBeVisible()
+    // Then. 타일 헤더에 한국어 라벨 "링크 목록" 표시 (C6: gadgetLabels 매핑)
+    await expect(page.getByText('링크 목록')).toBeVisible()
 
     // Then. 타일 본문에 "BTS Portal" 링크 표시
     //   LinkListGadget.tsx: isSafeUrl("https://bts.local")=true → <a href="https://bts.local">BTS Portal</a>
@@ -260,19 +260,18 @@ test.describe('FR-DB-02 가젯 시스템 (카탈로그/추가/렌더/게이팅/�
   })
 
   // ───────────────────────────────────────────────────────────────────────────
-  // S7. 비소유자 읽기전용 — "가젯 추가" 버튼 부재
+  // S7. 비소유자 읽기전용 — "가젯 추가" 버튼 부재 (C4: 위젯 추가 일원화)
   //
   // Given  alice 로그인 + OTHER_DASHBOARD(bob 소유 ORG) 상세 진입
   //        canEditDashboard(otherDashboard, aliceId) = false (ownerId ≠ aliceId)
   // When   상세 페이지 렌더
   // Then   "가젯 추가" 버튼 부재 (편집 전용 UI 전체 숨김)
-  //        "위젯 추가" 버튼 부재
   //        대시보드 이름 "Bob의 팀 대시보드" 표시 (읽기는 가능)
   //
   // 회귀 가드.
-  //   dashboard.spec.ts S7(위젯 추가/저장/설정 버튼 부재)의 가젯 추가 버전 확장.
+  //   dashboard.spec.ts S7(가젯 추가/저장/설정 버튼 부재)의 가젯 전용 버전.
   // ───────────────────────────────────────────────────────────────────────────
-  test('S7 비소유자 읽기전용 — "가젯 추가" 버튼 부재', async ({ page }) => {
+  test('S7 비소유자 읽기전용 — "가젯 추가" 버튼 부재 (C4)', async ({ page }) => {
     // Given. alice 로그인 + bob 소유 ORG 대시보드 상세 진입
     await loginAsAlice(page)
     await page.goto(OTHER_DASHBOARD_URL)
@@ -280,11 +279,8 @@ test.describe('FR-DB-02 가젯 시스템 (카탈로그/추가/렌더/게이팅/�
     // Given. 페이지 완전 로드 확인 (대시보드 이름 표시)
     await expect(page.getByRole('heading', { name: 'Bob의 팀 대시보드' })).toBeVisible()
 
-    // Then. 편집 전용 버튼 없음 — "가젯 추가" (신규 가젯 버튼)
+    // Then. 편집 전용 버튼 없음 — "가젯 추가" (C4: 단일 가젯 추가 버튼으로 일원화)
     await expect(page.getByRole('button', { name: '가젯 추가', exact: true })).not.toBeVisible()
-
-    // Then. 편집 전용 버튼 없음 — "위젯 추가" (legacy 버튼)
-    await expect(page.getByRole('button', { name: '위젯 추가', exact: true })).not.toBeVisible()
 
     // Then. 카탈로그 모달 미열림 확인 (dialog 없음)
     await expect(page.getByRole('dialog')).not.toBeVisible()
