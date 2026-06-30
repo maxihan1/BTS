@@ -1,9 +1,10 @@
-// 대시보드 그리드 단일 타일 컴포넌트 — 인라인 편집·삭제·접근성 (FR-DB-01 Task 8)
+// 대시보드 그리드 단일 타일 컴포넌트 — 인라인 편집·삭제·접근성·가젯 통합 (FR-DB-01 Task 8 / FR-DB-02 Task 7)
 import type { JSX, KeyboardEvent } from 'react'
 import { useState, useRef, useEffect } from 'react'
 import { LayoutDashboard, Trash2 } from 'lucide-react'
 import { dashboardLabels } from '@/i18n/dashboard-labels'
 import type { DashboardTile as DashboardTileData } from '@/lib/dashboard-layout'
+import { GadgetRenderer } from '@/components/dashboard/gadgets/GadgetRenderer'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -88,7 +89,16 @@ export function DashboardTile({ tile, canEdit, onDelete, onEditTitle }: Dashboar
             aria-hidden="true"
           />
 
-          {editing ? (
+          {/*
+           * 헤더 레이블 분기.
+           * - 가젯 타일(gadgetType 있음): gadgetType 텍스트 표시(편집 불가).
+           * - legacy 타일: 기존 인라인 편집 동작 그대로.
+           */}
+          {tile.gadgetType !== undefined ? (
+            <span className="min-w-0 flex-1 text-sm font-medium truncate text-muted-foreground">
+              {tile.gadgetType}
+            </span>
+          ) : editing ? (
             <input
               ref={inputRef}
               className="min-w-0 flex-1 text-sm font-medium bg-transparent border-b border-primary outline-none"
@@ -119,7 +129,7 @@ export function DashboardTile({ tile, canEdit, onDelete, onEditTitle }: Dashboar
           <button
             type="button"
             className="ml-2 rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-            aria-label={`${tile.title} 삭제`}
+            aria-label={`${tile.gadgetType ?? tile.title} 삭제`}
             onClick={() => onDelete(tile.i)}
           >
             <Trash2 className="h-4 w-4" aria-hidden="true" />
@@ -127,10 +137,20 @@ export function DashboardTile({ tile, canEdit, onDelete, onEditTitle }: Dashboar
         )}
       </div>
 
-      {/* 타일 본문 — 플레이스홀더 */}
-      <div className="flex flex-1 items-center justify-center p-4 text-sm text-muted-foreground text-center">
-        {dashboardLabels.placeholder.description}
-      </div>
+      {/*
+       * 타일 본문 분기.
+       * - 가젯 타일(gadgetType 있음): GadgetRenderer가 가젯 컴포넌트를 렌더.
+       * - legacy 타일: 기존 placeholder 텍스트.
+       */}
+      {tile.gadgetType !== undefined ? (
+        <div className="flex flex-1 overflow-auto">
+          <GadgetRenderer tile={tile} />
+        </div>
+      ) : (
+        <div className="flex flex-1 items-center justify-center p-4 text-sm text-muted-foreground text-center">
+          {dashboardLabels.placeholder.description}
+        </div>
+      )}
     </div>
   )
 }

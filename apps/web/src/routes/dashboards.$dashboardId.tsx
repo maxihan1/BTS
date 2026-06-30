@@ -1,4 +1,4 @@
-// 대시보드 상세 라우트 — 그리드 편집, 타일 CRUD, OCC 409, 권한 게이팅 (FR-DB-01 Task 8)
+// 대시보드 상세 라우트 — 그리드 편집, 타일 CRUD, OCC 409, 권한 게이팅, 가젯 추가 (FR-DB-01 Task 8 / FR-DB-02 Task 7)
 import type { JSX } from 'react'
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
@@ -13,6 +13,7 @@ import { dashboardLabels } from '@/i18n/dashboard-labels'
 import { DashboardGrid } from '@/components/dashboard/DashboardGrid'
 import { DashboardForm } from '@/components/dashboard/DashboardForm'
 import { FavoriteButton } from '@/components/favorite/FavoriteButton'
+import { GadgetCatalogModal } from '@/components/dashboard/GadgetCatalogModal'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -168,6 +169,7 @@ export function DashboardDetailPage({
   const [dirty, setDirty] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [catalogOpen, setCatalogOpen] = useState(false)
 
   /** dashboard.layout이 변경될 때마다 로컬 tiles를 초기화 (key prop 재마운트 불필요 — layout 변경 감지) */
   useEffect(() => {
@@ -191,13 +193,37 @@ export function DashboardDetailPage({
 
   // ─── 타일 조작 핸들러 ───────────────────────────────────────────────────
 
-  /** 위젯 추가 — createTile로 새 타일을 생성해 로컬 state에 추가 */
+  /** 위젯 추가 — createTile로 새 legacy 타일을 생성해 로컬 state에 추가 */
   function handleAddTile(): void {
     setTiles((prev) => {
       const next = [...prev, createTile(prev)]
       setDirty(true)
       return next
     })
+  }
+
+  /**
+   * 가젯 추가 — GadgetCatalogModal의 onAdd 콜백에서 호출.
+   * gadgetType/config를 포함한 가젯 타일을 생성한다.
+   * 가젯 기본 크기: w=4, h=3 (legacy 위젯 6×4보다 작은 표준 가젯 크기).
+   */
+  function handleAddGadgetTile(partial: { gadgetType: string; config: Record<string, unknown> }): void {
+    setTiles((prev) => {
+      const maxBottom = prev.reduce((acc, tile) => Math.max(acc, tile.y + tile.h), 0)
+      const newTile: DashboardTile = {
+        i: crypto.randomUUID(),
+        x: 0,
+        y: maxBottom,
+        w: 4,
+        h: 3,
+        title: '',
+        gadgetType: partial.gadgetType,
+        config: partial.config,
+      }
+      setDirty(true)
+      return [...prev, newTile]
+    })
+    setCatalogOpen(false)
   }
 
   /** 타일 삭제 */
@@ -337,7 +363,7 @@ export function DashboardDetailPage({
               </>
             ) : (
               <>
-                {/* 위젯 추가 버튼 */}
+                {/* 위젯 추가 버튼 — legacy 빈 타일 */}
                 <button
                   type="button"
                   className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors min-h-[44px]"
@@ -346,6 +372,17 @@ export function DashboardDetailPage({
                 >
                   <Plus className="h-4 w-4" aria-hidden="true" />
                   {dashboardLabels.detail.addWidget}
+                </button>
+
+                {/* 가젯 추가 버튼 — 카탈로그 모달 열기 */}
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors min-h-[44px]"
+                  aria-label="가젯 추가"
+                  onClick={() => setCatalogOpen(true)}
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  가젯 추가
                 </button>
 
                 {/* 설정 버튼 */}
@@ -412,6 +449,19 @@ export function DashboardDetailPage({
           }}
           onSubmit={handleSettingsSubmit}
           isPending={isSaving}
+        />
+      )}
+
+      {/*
+       * 가젯 카탈로그 모달 — 소유자 + catalogOpen일 때만 마운트.
+       * 조건부 마운트로 내부 useQuery가 불필요하게 실행되지 않는다.
+       * ★ GadgetCatalogModal 내부의 fetchGadgetCatalog는 catalogOpen=true 시에만 호출된다.
+       */}
+      {editable && catalogOpen && (
+        <GadgetCatalogModal
+          open={catalogOpen}
+          onAdd={handleAddGadgetTile}
+          onClose={() => setCatalogOpen(false)}
         />
       )}
     </div>

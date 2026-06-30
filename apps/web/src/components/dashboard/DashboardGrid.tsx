@@ -50,6 +50,9 @@ function mergeLayoutToTiles(
       w: item.w,
       h: item.h,
       title: existing?.title ?? '새 위젯',
+      // 가젯 필드 보존 — drag/resize 후에도 gadgetType/config 유실 방지 (FR-DB-02 Task 7)
+      ...(existing?.gadgetType !== undefined && { gadgetType: existing.gadgetType }),
+      ...(existing?.config !== undefined && { config: existing.config }),
     }
   })
 }
