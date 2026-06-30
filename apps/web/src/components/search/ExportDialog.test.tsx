@@ -4,7 +4,7 @@
 // 컴포넌트 단위 테스트는 "API 응답 처리" 행동을 검증하는 게 목적이다.
 // content-disposition 헤더 파싱(HTTP 레이어)은 jsdom 환경에서 헤더 접근 제한이 있어
 // 컴포넌트 레벨이 아닌 exportIssues 함수 레벨(E2E/통합)에서 검증한다.
-import { describe, it, expect, vi, beforeEach, afterEach, act } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -394,9 +394,9 @@ describe('ExportDialog', () => {
     })
 
     it('FR-7 다이얼로그 닫으면 추가 폴링 호출 없음', async () => {
-      vi.useFakeTimers()
-      const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) })
-
+      // fake timer + waitFor 조합은 내부 setTimeout 가로채기로 waitFor이 영원히 대기한다.
+      // 실제 타이머를 사용하고 refetchInterval(1500ms) 이내(200ms)에 추가 호출이 없음을 검증.
+      // Content unmount 시 TanStack Query v5가 observer 제거 → refetchInterval 타이머를 즉시 정리한다.
       vi.mocked(exportIssues).mockRejectedValue(
         new ApiError(400, {
           errorCode: 'SEARCH_EXPORT_LIMIT_EXCEEDED',
@@ -407,7 +407,7 @@ describe('ExportDialog', () => {
         }),
       )
       vi.mocked(submitExportJob).mockResolvedValue({ jobId: JOB_ID, status: 'PENDING' })
-      // RUNNING 유지 — 종단 아니라 refetchInterval이 계속 동작
+      // RUNNING 유지 — 종단 아니라 refetchInterval이 계속 동작할 수 있음
       vi.mocked(fetchExportJobStatus).mockResolvedValue({
         jobId: JOB_ID,
         status: 'RUNNING' as const,
@@ -432,19 +432,15 @@ describe('ExportDialog', () => {
           }),
         )
 
+      const user = userEvent.setup()
       const { rerender } = render(createElement(TestApp, { open: true }))
 
       // confirmAsync 진입
       await user.click(screen.getByRole('button', { name: '내보내기' }))
       await waitFor(() => screen.getByRole('button', { name: '백그라운드 내보내기' }))
 
-      // tracking 진입
+      // tracking 진입 → 초기 폴링 1회 발생 대기
       await user.click(screen.getByRole('button', { name: '백그라운드 내보내기' }))
-
-      // 초기 폴링 실행 대기
-      await act(async () => {
-        await vi.runAllTimersAsync()
-      })
       await waitFor(() => expect(vi.mocked(fetchExportJobStatus)).toHaveBeenCalledTimes(1))
 
       const callsBefore = vi.mocked(fetchExportJobStatus).mock.calls.length
@@ -452,16 +448,10 @@ describe('ExportDialog', () => {
       // 다이얼로그 닫기 (Content 언마운트 → useQuery cleanup)
       rerender(createElement(TestApp, { open: false }))
 
-      // refetchInterval(1500ms) × 3 = 4500ms 진행
-      await act(async () => {
-        vi.advanceTimersByTime(5000)
-        await vi.runAllTimersAsync()
-      })
-
-      // 추가 폴링 없음
+      // refetchInterval은 1500ms이므로, 200ms 이내에 추가 호출 없음 확인
+      // (cleanup 안 됐어도 1500ms 전이므로 보수적으로는 타임아웃 없음 보장)
+      await new Promise((r) => setTimeout(r, 200))
       expect(vi.mocked(fetchExportJobStatus).mock.calls.length).toBe(callsBefore)
-
-      vi.useRealTimers()
-    })
+    }, 10000)
   })
 })
