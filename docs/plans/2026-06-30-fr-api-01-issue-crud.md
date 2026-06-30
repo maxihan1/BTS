@@ -26,7 +26,26 @@ D 단계 (명세):
 
 classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **구현 BC**: issue-tracking (논리적 FR은 search-export-import §5.1, 데이터·API 본체가 issue-tracking)
+- **영향 엔티티**: 없음 — 도메인 신설 0. 이 작업은 **transport(API 계약) 표준화**. cursor 토큰/envelope/OpenAPI는 도메인 개념이 아니라 기술 계약 → glossary 미추가, ADR로 기록.
+- **현재 상태 실측**:
+  - 버저닝 `/api/v1` 이미 전면 적용 (신규 아님)
+  - `Pageable`/`Page<` 사용 컨트롤러는 **`IssueController` 하나뿐** (이슈 목록 + changelog). 나머지 목록 API는 unpaged List 반환
+  - 단건 응답 `DataResponse<T>`(`{data}`) — SDD 11.3 정합, meta 없음
+  - 에러 포맷 이미 RFC 7807 `ProblemDetail` + `errorCode` (BC별 핸들러 분산, type 상대 토큰)
+  - springdoc 미통합, bulk ops는 FR-IS-05로 이미 존재
+
+- **핵심 결정 (Maxi 확정, 2026-06-30)**:
+  1. **cursor pagination 병행 도입** — offset 미제거, 프론트 무회귀. cursor 모드만 envelope 반환, offset은 기존 `Page` 유지
+  2. **OpenAPI 전역 springdoc 통합** + Swagger UI 게시 (명세 §A)
+  3. **적용 범위 = issue-tracking 전 목록 API** — 단 cursor는 실효 대상(이슈 목록/changelog) 우선, unpaged 목록 envelope은 spec서 회귀 영향 조사 후 확정
+  4. 에러 포맷은 RFC 7807 유지·보강(전환 아님), type 절대 URI화는 이슈 API 한정
+  5. bulk ops는 FR-IS-05 정비/문서화만, 신규 도메인 0
+
+- **기존 결정 충돌**: SDD 11.1 "offset 대신 cursor" 원칙 ↔ 현 offset 구현 + 프론트 소비. **병행 도입으로 해소**(전면 전환 기각).
+- **관련 ADR**: [docs/decisions/2026-06-30-fr-api-01-cursor-pagination-envelope.md](../decisions/2026-06-30-fr-api-01-cursor-pagination-envelope.md) (생성됨)
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
