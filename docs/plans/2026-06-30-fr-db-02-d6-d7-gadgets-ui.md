@@ -125,8 +125,8 @@ FR-API-01과 무관(FR-API-01=cursor+OpenAPI, 데이터소스 무변경). 실측
 - files: [`apps/web/src/api/gadget-catalog.ts`, `apps/web/src/api/gadget-catalog.test.ts`, `apps/web/src/mocks/gadget-catalog-fixtures.ts`, `apps/web/src/mocks/dashboard-handlers.ts`]
 - depends-on: []
 
-**RED**: gadget-catalog.test.ts — `fetchGadgetCatalog()`가 `{data:{gadgets:[...]}}`를 파싱, enabled=true 6종 필터 헬퍼, ConfigFieldDto optional 필드(@JsonInclude NON_NULL) 누락 허용.
-**GREEN**: `fetchGadgetCatalog` api(apiGet) + Zod 스키마 — 백엔드 `GadgetCatalogDtos.kt` 1:1(type/category/label/enabled/configFields[{key,type,required,minLength?,maxLength?,min?,max?,enumValues?,itemSchema?,minItems?,maxItems?}]/requireAtLeastOne). MSW 핸들러(백엔드 응답 1:1, enabled 정확).
+**RED**: gadget-catalog.test.ts — `fetchGadgetCatalog()`가 `{data:{gadgets:[...]}}`를 파싱, enabled=true 6종 필터 헬퍼, ConfigFieldDto optional 필드(@JsonInclude NON_NULL) 누락 허용. **itemSchema 중첩(link_list ARRAY)** 재귀 파싱(노트 A). `validateGadgetConfig(entry, config)` 동적 검증 — configFields(required/min·max/길이/enum/url http(s)) + requireAtLeastOne 순회로 위반 키·사유 반환(EC3/EC5/EC7/EC8).
+**GREEN**: `fetchGadgetCatalog` api(apiGet) + Zod 스키마 — 백엔드 `GadgetCatalogDtos.kt` 1:1(type/category/label/enabled/configFields[{key,type,required,minLength?,maxLength?,min?,max?,enumValues?,itemSchema?,minItems?,maxItems?}]/requireAtLeastOne). itemSchema는 z.lazy 재귀. **`validateGadgetConfig` 클라측 검증 헬퍼(카탈로그 configFields 단일 출처 — 정적 Zod 중복 회피)**. MSW 핸들러(백엔드 응답 1:1, enabled 정확).
 **REFACTOR**: FieldType union 상수화. 계약 drift 가드 — 백엔드 `GadgetCatalogDtos.kt`·`GadgetType.kt` grep 주석 대조(memory `frontend-zod-backend-dto-contract-gap`).
 **검증**: `pnpm --filter web test gadget-catalog && pnpm typecheck`
 
@@ -162,7 +162,7 @@ FR-API-01과 무관(FR-API-01=cursor+OpenAPI, 데이터소스 무변경). 실측
 - depends-on: []
 
 **RED**: useGadgetData.test.ts — `GadgetIssueRow{key,summary}` 정규화(IssueResponse→Row, AqlSearchHit→Row, Gap 2). 가젯별 fetch 분기(assigned_to_me=fetchIssues+assignee, recently_created=fetchIssues, filter_result/issue_count=fetchFilter→searchAql). maxItems 클램프(1~50). MSW stateful(memory `msw-mutation-stateful-refetch`).
-**GREEN**: TanStack Query 훅 — 가젯별 queryKey(gadgetType+config 해시), 정규화 매핑, currentUserId=`useAuthUser()?.userId`. 에러/로딩/빈 상태 노출.
+**GREEN**: TanStack Query 훅 — 가젯별 queryKey(gadgetType+config 해시), 정규화 매핑. `useAuthUser()?.userId`는 **항상 호출하되 assigned_to_me일 때만 사용**(조건부 훅 호출 금지·React 규칙, 노트 B). 에러/로딩/빈 상태 노출.
 **REFACTOR**: 정규화 매핑 순수 함수 추출. query 키/staleTime 상수.
 **검증**: `pnpm --filter web test useGadgetData && pnpm typecheck`
 
@@ -170,11 +170,11 @@ FR-API-01과 무관(FR-API-01=cursor+OpenAPI, 데이터소스 무변경). 실측
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/dashboard/gadgets/IssueListGadget.tsx`, `apps/web/src/components/dashboard/gadgets/IssueCountGadget.tsx`, `apps/web/src/components/dashboard/gadgets/TextWidgetGadget.tsx`, `apps/web/src/components/dashboard/gadgets/LinkListGadget.tsx`, `apps/web/src/components/dashboard/gadgets/GadgetRenderer.tsx`, `apps/web/src/components/dashboard/gadgets/gadget-config-schema.ts`, `apps/web/src/components/dashboard/gadgets/gadgets.test.tsx`]
+- files: [`apps/web/src/components/dashboard/gadgets/IssueListGadget.tsx`, `apps/web/src/components/dashboard/gadgets/IssueCountGadget.tsx`, `apps/web/src/components/dashboard/gadgets/TextWidgetGadget.tsx`, `apps/web/src/components/dashboard/gadgets/LinkListGadget.tsx`, `apps/web/src/components/dashboard/gadgets/GadgetRenderer.tsx`, `apps/web/src/components/dashboard/gadgets/gadgets.test.tsx`]
 - depends-on: [2, 4]
 
-**RED**: gadgets.test.tsx — IssueListGadget(assigned_to_me/recently_created/filter_result 공용 목록 + 로딩/에러/빈), IssueCountGadget(totalElements 숫자), TextWidgetGadget(markdown 안전 렌더), LinkListGadget(http/https only, rel=noopener). gadget-config-schema 검증(EC3/EC5/EC7/EC8). GadgetRenderer가 gadgetType→컴포넌트 분기 + legacy/미지원 안전 표시(EC6).
-**GREEN**: 6종 컴포넌트(IssueList 공용 1 + IssueCount + Text + Link) + GadgetRenderer + 클라측 Zod config 스키마(백엔드 GadgetType 미러). 이슈 키 클릭→SPA 이동.
+**RED**: gadgets.test.tsx — IssueListGadget(assigned_to_me/recently_created/filter_result 공용 목록 + 로딩/에러/빈), IssueCountGadget(totalElements 숫자), TextWidgetGadget(markdown 안전 렌더 — 노트 E: 기존 렌더러 확인, 없으면 plain text+줄바꿈+XSS 차단), LinkListGadget(http/https only, rel=noopener). GadgetRenderer가 gadgetType→컴포넌트 분기 + legacy/미지원 안전 표시(EC6). (컴포넌트는 저장된 config **렌더 전용** — 입력 검증은 T6 설정 폼이 T1 `validateGadgetConfig` 사용.)
+**GREEN**: 6종 컴포넌트(IssueList 공용 1 + IssueCount + Text + Link) + GadgetRenderer. 이슈 키 클릭→SPA 이동.
 **REFACTOR**: 공통 타일 본문 레이아웃(DESIGN.md 토큰). XSS sanitize 확인.
 **검증**: `pnpm --filter web test gadgets && pnpm typecheck`
 
@@ -185,8 +185,8 @@ FR-API-01과 무관(FR-API-01=cursor+OpenAPI, 데이터소스 무변경). 실측
 - files: [`apps/web/src/components/dashboard/GadgetCatalogModal.tsx`, `apps/web/src/components/dashboard/GadgetConfigForm.tsx`, `apps/web/src/components/dashboard/GadgetCatalogModal.test.tsx`]
 - depends-on: [1, 2]
 
-**RED**: 모달 테스트 — radix Dialog 열기, 12종 category 그룹 표시, enabled=false "준비 중" 비활성(S6), 가젯 선택→설정 폼, 클라측 검증(projectKey 필수·filterId 필수·markdown/url/links), 추가 콜백. key prop 재마운트(설정 초기화, memory `react-usestate-stale-key-prop`).
-**GREEN**: GadgetCatalogModal(PostActionFormDialog 패턴) + GadgetConfigForm(configFields 기반 타입별 입력 + requireAtLeastOne). projectKey 입력(프로젝트 지정형 가젯 필수).
+**RED**: 모달 테스트 — radix Dialog 열기, 12종 category 그룹 표시, enabled=false "준비 중" 비활성(S6), 가젯 선택→설정 폼, 클라측 검증(T1 `validateGadgetConfig` 사용 — projectKey 필수·filterId 필수·markdown/url/links), 추가 콜백. key prop 재마운트(설정 초기화, memory `react-usestate-stale-key-prop`).
+**GREEN**: GadgetCatalogModal(PostActionFormDialog 패턴) + GadgetConfigForm(configFields 기반 타입별 입력 + requireAtLeastOne, 검증=T1 `validateGadgetConfig`). projectKey 입력(프로젝트 지정형 가젯 필수).
 **REFACTOR**: 폼 필드 렌더 타입별 분기 추출.
 **검증**: `pnpm --filter web test GadgetCatalogModal && pnpm typecheck`
 
@@ -221,4 +221,25 @@ FR-API-01과 무관(FR-API-01=cursor+OpenAPI, 데이터소스 무변경). 실측
 - 추가 검증: typecheck, lint, vitest, playwright(qa), 백엔드 ktlint/detekt(T3).
 - BC 격리 예외: T3는 same-BC(notification) 백엔드 보강 — frontend PR 내 view/도메인 layer patch(memory 옵션C 패턴). 게이트1 재확인.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 직접 다관점 리뷰 (eng 집중, 2026-06-30)
+
+type=ui지만 핵심 리스크가 계약 정합·데이터 fetch·wave라 design-review 대화형 대신 직접 eng+design 리뷰(memory `bts-review-plan-autoplan-overkill`).
+
+**Eng 관점**.
+- ✅ 계약 drift 가드(T1 Zod↔백엔드 grep 대조), 데이터소스 정합(projectKey 필수·T3 보강), TDD red→green 전 task, MSW stateful/React key/OCC invalidate 가드 명시.
+- 🔧 **결함 C 수정**: 클라측 config 검증을 T5(렌더 전용)에서 분리 → T1 `validateGadgetConfig`(카탈로그 configFields 동적·단일 출처)로 이동, T6 폼이 사용. 정적 Zod 중복 회피 + 의존성 정리(T5 렌더만, T6 dep[1,2] 유지).
+- ⚠️ 노트 A: link_list itemSchema 중첩(ARRAY) z.lazy 재귀 — T1 반영.
+- ⚠️ 노트 B: `useAuthUser`는 항상 호출·assigned_to_me일 때만 사용(조건부 훅 금지) — T4 반영.
+- ⚠️ 노트 E(리스크): text_widget 마크다운 렌더러 유무 미확정 → T5 착수 전 확인, 없으면 plain text+XSS 차단 — T5 반영.
+
+**Design 관점**.
+- ✅ 가젯 타일=DashboardTile/card+DESIGN.md 토큰, 카탈로그 모달=PostActionFormDialog 패턴 계승 → 신규 비주얼 결정 적음(design-shotgun 불요 타당).
+
+**BLOCKER: 없음.** (결함 C는 plan 내 반영 완료.)
+
+### 게이트1 재확인 항목 (Maxi)
+1. **프로젝트 지정형 6종** — 이슈 가젯이 프로젝트 무관(전역)이 아니라 프로젝트 지정. "내게 할당된 이슈(전역)"는 후속 FR.
+2. **same-BC 백엔드 보강(T3)** — 프론트 PR에 notification BC 가젯 카탈로그 patch(assigned_to_me projectKey). BC 격리 옵션C 예외.
+3. **filter_result/issue_count MVP filterId 한정** — aql 직접 입력은 후속(저장필터 중복·projectKey 출처).
