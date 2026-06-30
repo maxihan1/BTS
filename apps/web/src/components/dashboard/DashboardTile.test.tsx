@@ -150,12 +150,23 @@ describe('DashboardTile — 가젯 타일 통합', () => {
   })
 
   /**
-   * T7-G3: gadgetType이 있으면 헤더에 gadgetType 레이블이 표시된다.
-   * RED: DashboardTile이 gadgetType을 헤더에 표시하지 않아 실패.
+   * T7-G3: gadgetType이 있으면 헤더에 한국어 가젯 라벨이 표시된다 (C6).
+   * RED: gadgetLabels 매핑 미적용 상태에서 raw 'text_widget'이 나와 실패.
    */
-  it('T7-G3: gadgetType이 있으면 헤더에 gadgetType 레이블이 표시된다', async () => {
+  it('T7-G3: gadgetType이 있으면 헤더에 한국어 가젯 라벨이 표시된다 (C6)', async () => {
     await renderTile({ tile: GADGET_TILE })
-    expect(screen.getByText('text_widget')).toBeInTheDocument()
+    // text_widget → gadgetLabels['text_widget'] = '텍스트'
+    expect(screen.getByText('텍스트')).toBeInTheDocument()
+  })
+
+  /**
+   * T7-G7: 미지 gadgetType은 raw gadgetType을 fallback으로 표시한다 (C6).
+   * RED: gadgetLabels 매핑 미적용 상태에서도 raw 타입이 나오므로 GREEN일 수 있지만,
+   * 매핑 적용 후 fallback 경로를 명시적으로 검증한다.
+   */
+  it('T7-G7: 미지 gadgetType은 raw gadgetType을 fallback으로 표시한다 (C6)', async () => {
+    await renderTile({ tile: { ...GADGET_TILE, gadgetType: 'unknown_type_xyz' } })
+    expect(screen.getByText('unknown_type_xyz')).toBeInTheDocument()
   })
 
   /**

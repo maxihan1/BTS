@@ -240,6 +240,19 @@ describe('LinkListGadget', () => {
     expect(screen.getByText('유효')).toBeInTheDocument()
     expect(screen.queryByText('무효')).toBeNull()
   })
+
+  // C1 RED: isSafeUrl이 대소문자 무관해야 함 — 현재 case-sensitive라 실패
+  it('C1: HTTP:// 대문자 스킴 링크를 렌더링한다 (isSafeUrl 대소문자 무관)', () => {
+    render(<LinkListGadget links={[{ label: '대문자HTTP', url: 'HTTP://example.com' }]} />)
+    const link = screen.getByText('대문자HTTP')
+    expect(link.closest('a')).toHaveAttribute('href', 'HTTP://example.com')
+  })
+
+  it('C1: HTTPS:// 대문자 스킴 링크를 렌더링한다 (isSafeUrl 대소문자 무관)', () => {
+    render(<LinkListGadget links={[{ label: '대문자HTTPS', url: 'HTTPS://example.com' }]} />)
+    const link = screen.getByText('대문자HTTPS')
+    expect(link.closest('a')).toHaveAttribute('href', 'HTTPS://example.com')
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
