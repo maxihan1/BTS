@@ -639,15 +639,9 @@ class IssueRepository(
                 .fetchOne(0, Long::class.java) ?: 0L
 
         // content 쿼리: ISSUE_TYPES join 으로 type 요약 포함
+        // buildTypeSelectColumns() 재사용 — listWithTypeByCursor 와 동일 컬럼 상수 공유
         val content =
-            dsl.select(
-                ISSUES.fields().toList() +
-                    listOf(
-                        ISSUE_TYPES.ID.`as`("type_id"),
-                        ISSUE_TYPES.KEY.`as`("type_key"),
-                        ISSUE_TYPES.NAME.`as`("type_name"),
-                    ),
-            )
+            dsl.select(ISSUES.fields().toList() + buildTypeSelectColumns())
                 .from(ISSUES)
                 .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
                 .join(ISSUE_TYPES).on(ISSUES.TYPE_ID.eq(ISSUE_TYPES.ID))
@@ -655,24 +649,7 @@ class IssueRepository(
                 .orderBy(ISSUES.CREATED_AT.desc())
                 .limit(pageable.pageSize)
                 .offset(pageable.offset)
-                .fetch { record ->
-                    IssueResponse.from(
-                        issue = record.into(ISSUES).toIssue(),
-                        projectKey = projectKey,
-                        typeInfo =
-                            IssueResponse.IssueTypeInfo(
-                                id =
-                                    record.get("type_id", Long::class.java)
-                                        ?: error("issue_types.id must not be null in join result"),
-                                key =
-                                    record.get("type_key", String::class.java)
-                                        ?: error("issue_types.key must not be null in join result"),
-                                name =
-                                    record.get("type_name", String::class.java)
-                                        ?: error("issue_types.name must not be null in join result"),
-                            ),
-                    )
-                }
+                .fetch { record -> record.toIssueResponseWithType(projectKey) }
 
         return PageImpl(content, pageable, total)
     }
@@ -736,39 +713,16 @@ class IssueRepository(
             effectiveWhere = effectiveWhere.and(buildSeekCondition(seekCreatedAt, seekId))
         }
 
+        // buildTypeSelectColumns() / toIssueResponseWithType() — listWithType 와 공통 빌더 공유
         val fetched =
-            dsl.select(
-                ISSUES.fields().toList() +
-                    listOf(
-                        ISSUE_TYPES.ID.`as`(TYPE_ID_ALIAS),
-                        ISSUE_TYPES.KEY.`as`(TYPE_KEY_ALIAS),
-                        ISSUE_TYPES.NAME.`as`(TYPE_NAME_ALIAS),
-                    ),
-            )
+            dsl.select(ISSUES.fields().toList() + buildTypeSelectColumns())
                 .from(ISSUES)
                 .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
                 .join(ISSUE_TYPES).on(ISSUES.TYPE_ID.eq(ISSUE_TYPES.ID))
                 .where(effectiveWhere)
                 .orderBy(ISSUES.CREATED_AT.desc(), ISSUES.ID.desc())
                 .limit(limit + 1)
-                .fetch { record ->
-                    IssueResponse.from(
-                        issue = record.into(ISSUES).toIssue(),
-                        projectKey = projectKey,
-                        typeInfo =
-                            IssueResponse.IssueTypeInfo(
-                                id =
-                                    record.get(TYPE_ID_ALIAS, Long::class.java)
-                                        ?: error("issue_types.id must not be null in cursor join result"),
-                                key =
-                                    record.get(TYPE_KEY_ALIAS, String::class.java)
-                                        ?: error("issue_types.key must not be null in cursor join result"),
-                                name =
-                                    record.get(TYPE_NAME_ALIAS, String::class.java)
-                                        ?: error("issue_types.name must not be null in cursor join result"),
-                            ),
-                    )
-                }
+                .fetch { record -> record.toIssueResponseWithType(projectKey) }
 
         val hasNext = fetched.size > limit
         val items = if (hasNext) fetched.take(limit) else fetched
@@ -1026,6 +980,48 @@ class IssueRepository(
     ): Condition =
         ISSUES.CREATED_AT.lt(seekCreatedAt)
             .or(ISSUES.CREATED_AT.eq(seekCreatedAt).and(ISSUES.ID.lt(seekId)))
+
+    /**
+     * [listWithType] / [listWithTypeByCursor] 공통 — issue_types 타입 정보 SELECT 컬럼 목록.
+     *
+     * 두 메서드가 동일한 alias 상수([TYPE_ID_ALIAS]/[TYPE_KEY_ALIAS]/[TYPE_NAME_ALIAS])를
+     * 단일 source 로 공유한다. alias 변경 시 양쪽 SELECT + record 읽기가 자동 동기화된다.
+     *
+     * @return [ISSUE_TYPES.ID]/[ISSUE_TYPES.KEY]/[ISSUE_TYPES.NAME] alias 컬럼 목록.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun buildTypeSelectColumns(): List<org.jooq.Field<*>> =
+        listOf(
+            ISSUE_TYPES.ID.`as`(TYPE_ID_ALIAS),
+            ISSUE_TYPES.KEY.`as`(TYPE_KEY_ALIAS),
+            ISSUE_TYPES.NAME.`as`(TYPE_NAME_ALIAS),
+        ) as List<org.jooq.Field<*>>
+
+    /**
+     * [listWithType] / [listWithTypeByCursor] 공통 — jOOQ Record 를 [IssueResponse] 로 변환한다.
+     *
+     * record 에 `issues.*` + [buildTypeSelectColumns] alias 컬럼이 포함되어 있어야 한다.
+     *
+     * @param projectKey 소속 프로젝트 키.
+     * @return type 요약(typeId/typeKey/typeName) 이 채워진 [IssueResponse].
+     */
+    private fun org.jooq.Record.toIssueResponseWithType(projectKey: String): IssueResponse =
+        IssueResponse.from(
+            issue = into(ISSUES).toIssue(),
+            projectKey = projectKey,
+            typeInfo =
+                IssueResponse.IssueTypeInfo(
+                    id =
+                        get(TYPE_ID_ALIAS, Long::class.java)
+                            ?: error("issue_types.id must not be null in type join result"),
+                    key =
+                        get(TYPE_KEY_ALIAS, String::class.java)
+                            ?: error("issue_types.key must not be null in type join result"),
+                    name =
+                        get(TYPE_NAME_ALIAS, String::class.java)
+                            ?: error("issue_types.name must not be null in type join result"),
+                ),
+        )
 
     /**
      * [BoardCardFilter] 를 SQL WHERE 술어 [Condition] 으로 변환한다.
