@@ -94,6 +94,7 @@ enum class GadgetType(
         enabled = true,
         configFields =
             listOf(
+                ConfigFieldDescriptor("projectKey", FieldType.STRING, required = false, maxLength = 100),
                 ConfigFieldDescriptor("maxItems", FieldType.INT, required = false, min = 1, max = 50),
             ),
     ),
