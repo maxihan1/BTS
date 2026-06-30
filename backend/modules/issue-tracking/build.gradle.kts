@@ -173,6 +173,11 @@ dependencies {
     // Testcontainers MinIO 모듈 — MinioStorageAdapterTest 통합 테스트용
     testImplementation("org.testcontainers:minio:1.20.3")
 
+    // ── OpenAPI 3.1 문서 게시 (FR-API-01 Task 6) ──────────────────────────────
+    // springdoc-openapi-starter-webmvc-ui: /v3/api-docs(OpenAPI 3.1 JSON) + /swagger-ui(Swagger UI HTML) 자동 게시.
+    // 버전 2.6.0 — Spring Boot 3.3.5 + OpenAPI 3.1 지원 확인 버전 (Maxi 게이트1 승인).
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
+
     // ── Markdown 렌더링 + XSS sanitization ────────────────────────────────────
     // flexmark — Markdown → HTML 변환 (SDD 03-tech-stack 명시)
     implementation("com.vladsch.flexmark:flexmark:0.64.8")
