@@ -7,6 +7,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import java.util.Base64
 import java.util.UUID
 
 /**
@@ -21,9 +22,11 @@ import java.util.UUID
  * - C-6. 나노초 정밀도 보존: .123456789 round-trip 후 동일값
  */
 class CursorCodecTest {
-
     private val sampleId = UUID.fromString("11111111-1111-4111-8111-111111111111")
     private val sampleCreatedAt = OffsetDateTime.of(2024, 1, 15, 10, 30, 0, 0, ZoneOffset.UTC)
+
+    /** 테스트용 Base64URL 인코딩 헬퍼. */
+    private fun b64(payload: String): String = Base64.getUrlEncoder().withoutPadding().encodeToString(payload.toByteArray())
 
     // ── C-1. round-trip ────────────────────────────────────────────────────────
 
@@ -65,24 +68,24 @@ class CursorCodecTest {
     @Test
     fun `v1_ prefix 뒤 내용이 구분자 없는 형식이면 CursorDecodeException 을 던진다`() {
         // Base64URL 이지만 | 구분자가 없는 경우
-        val noDelimiter = "v1:" + java.util.Base64.getUrlEncoder().withoutPadding()
-            .encodeToString("nodatetime".toByteArray())
+        val noDelimiter = "v1:${b64("nodatetime")}"
+
         assertThatThrownBy { CursorCodec.decode(noDelimiter) }
             .isInstanceOf(CursorDecodeException::class.java)
     }
 
     @Test
     fun `v1_ prefix 뒤 날짜 파싱 실패 시 CursorDecodeException 을 던진다`() {
-        val badDate = "v1:" + java.util.Base64.getUrlEncoder().withoutPadding()
-            .encodeToString("NOT_A_DATE|11111111-1111-4111-8111-111111111111".toByteArray())
+        val badDate = "v1:${b64("NOT_A_DATE|11111111-1111-4111-8111-111111111111")}"
+
         assertThatThrownBy { CursorCodec.decode(badDate) }
             .isInstanceOf(CursorDecodeException::class.java)
     }
 
     @Test
     fun `v1_ prefix 뒤 UUID 파싱 실패 시 CursorDecodeException 을 던진다`() {
-        val badUuid = "v1:" + java.util.Base64.getUrlEncoder().withoutPadding()
-            .encodeToString("2024-01-15T10:30:00Z|NOT_A_UUID".toByteArray())
+        val badUuid = "v1:${b64("2024-01-15T10:30:00Z|NOT_A_UUID")}"
+
         assertThatThrownBy { CursorCodec.decode(badUuid) }
             .isInstanceOf(CursorDecodeException::class.java)
     }
@@ -91,8 +94,8 @@ class CursorCodecTest {
 
     @Test
     fun `v2_ prefix 이면 CursorDecodeException 을 던진다`() {
-        val v2Token = "v2:" + java.util.Base64.getUrlEncoder().withoutPadding()
-            .encodeToString("2024-01-15T10:30:00Z|11111111-1111-4111-8111-111111111111".toByteArray())
+        val v2Token = "v2:${b64("2024-01-15T10:30:00Z|11111111-1111-4111-8111-111111111111")}"
+
         assertThatThrownBy { CursorCodec.decode(v2Token) }
             .isInstanceOf(CursorDecodeException::class.java)
     }

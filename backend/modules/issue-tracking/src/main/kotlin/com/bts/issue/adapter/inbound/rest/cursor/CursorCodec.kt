@@ -45,7 +45,6 @@ class CursorDecodeException(message: String) : RuntimeException(message)
  * - padding 미포함 Base64URL — URL 쿼리 파라미터 전달 시 `=` 인코딩 문제를 회피한다.
  */
 object CursorCodec {
-
     /**
      * [CursorPosition] 을 opaque cursor 토큰으로 인코딩한다.
      *
@@ -61,9 +60,10 @@ object CursorCodec {
         id: UUID,
     ): String {
         val payload = "$createdAt$PAYLOAD_DELIMITER$id"
-        val encoded = Base64.getUrlEncoder()
-            .withoutPadding()
-            .encodeToString(payload.toByteArray(Charsets.UTF_8))
+        val encoded =
+            Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(payload.toByteArray(Charsets.UTF_8))
         return "$VERSION_PREFIX$encoded"
     }
 
@@ -83,13 +83,14 @@ object CursorCodec {
 
         val encoded = token.removePrefix(VERSION_PREFIX)
 
-        val payload = try {
-            Base64.getUrlDecoder()
-                .decode(encoded)
-                .toString(Charsets.UTF_8)
-        } catch (ex: IllegalArgumentException) {
-            throw CursorDecodeException("cursor 토큰 Base64URL 디코딩 실패: ${ex.message}")
-        }
+        val payload =
+            try {
+                Base64.getUrlDecoder()
+                    .decode(encoded)
+                    .toString(Charsets.UTF_8)
+            } catch (ex: IllegalArgumentException) {
+                throw CursorDecodeException("cursor 토큰 Base64URL 디코딩 실패: ${ex.message}")
+            }
 
         val delimiterIndex = payload.indexOf(PAYLOAD_DELIMITER)
         if (delimiterIndex < 0) {
@@ -99,17 +100,19 @@ object CursorCodec {
         val rawDate = payload.substring(0, delimiterIndex)
         val rawId = payload.substring(delimiterIndex + 1)
 
-        val createdAt = try {
-            OffsetDateTime.parse(rawDate)
-        } catch (ex: DateTimeParseException) {
-            throw CursorDecodeException("cursor 토큰 날짜 파싱 실패: ${ex.message}")
-        }
+        val createdAt =
+            try {
+                OffsetDateTime.parse(rawDate)
+            } catch (ex: DateTimeParseException) {
+                throw CursorDecodeException("cursor 토큰 날짜 파싱 실패: ${ex.message}")
+            }
 
-        val id = try {
-            UUID.fromString(rawId)
-        } catch (ex: IllegalArgumentException) {
-            throw CursorDecodeException("cursor 토큰 UUID 파싱 실패: ${ex.message}")
-        }
+        val id =
+            try {
+                UUID.fromString(rawId)
+            } catch (ex: IllegalArgumentException) {
+                throw CursorDecodeException("cursor 토큰 UUID 파싱 실패: ${ex.message}")
+            }
 
         return CursorPosition(createdAt, id)
     }
