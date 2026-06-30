@@ -79,6 +79,7 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 - 토큰은 `v1:` prefix + Base64URL
 - 위변조/형식오류 토큰 → `CursorDecodeException` (빈 문자열은 "첫 페이지" 처리 — null 반환, 예외 아님)
 - 다른 버전 prefix(`v2:`) → `CursorDecodeException`
+- **나노초 정밀도 보존**(eng 리뷰 CONCERN-2): `OffsetDateTime` 나노초(예: `.123456789`)가 있는 케이스 round-trip 후 동일 — 정밀도 손실 시 keyset seek 경계가 어긋나 중복/누락 발생
 
 **GREEN**: `CursorCodec` object — `encode`: `"$createdAt|$id"` → Base64URL + `v1:` prefix. `decode`: prefix 검증 → Base64URL 디코드 → split → 파싱. 실패 시 `CursorDecodeException`.
 
@@ -147,11 +148,13 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 - depends-on: [3]
 
 **RED**: `IssueExceptionHandlerTest`
-- `CursorDecodeException` → 400, `errorCode="issue.invalid_cursor"`, `type="https://atlas.docs/errors/issue.invalid_cursor"`, RFC 7807 필드(title/status/detail/instance) 충족
-- `PaginationModeConflictException` → 400, `errorCode="issue.pagination_mode_conflict"`
+- `CursorDecodeException` → 400, `errorCode="ISSUE_INVALID_CURSOR"`, RFC 7807 필드(title/status/detail/instance) 충족
+- `PaginationModeConflictException` → 400, `errorCode="ISSUE_PAGINATION_MODE_CONFLICT"`
 - detail에 내부 토큰/스택 비노출
 
-**GREEN**: `IssueExceptionHandler`에 두 `@ExceptionHandler` 추가 → `ProblemDetail` 반환. type 절대 URI는 이슈 API 한정([[domain-exception-http-handler-basepackage-scope]] — 핸들러 스코프 확인).
+**GREEN**: `IssueExceptionHandler`에 두 `@ExceptionHandler` 추가 → `ProblemDetail` 반환.
+
+**⚠️ devex 리뷰 CONCERN-3 (errorCode 컨벤션 정렬)**: 기존 issue-tracking 핸들러는 전부 **SCREAMING_SNAKE_CASE**(`ISSUE_NOT_FOUND`/`ISSUE_ACCESS_DENIED`/`BULK_FORBIDDEN`). SDD 11.3 예시(`issue.not_found` 소문자 dot)와 실제 코드가 drift. **실제 구현은 기존 코드 컨벤션(대문자) 따름** → `ISSUE_INVALID_CURSOR`/`ISSUE_PAGINATION_MODE_CONFLICT`. implementer는 `grep "errorCode" *ExceptionHandler*.kt`로 컨벤션 재확인 후 일치. `type` 절대 URI는 이슈 API 한정([[domain-exception-http-handler-basepackage-scope]] — 핸들러 스코프 확인).
 
 **REFACTOR**: 에러코드/타입 URI 상수화. 기존 핸들러 패턴과 정렬.
 
@@ -193,6 +196,8 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 - `GET /swagger-ui/index.html`(또는 `/swagger-ui.html`) → 200
 - 경로 별칭 `/api/v1/docs`·`/api/v1/openapi.json` 매핑(설정 가능 시)
 
+**⚠️ eng 리뷰 CONCERN-1 (springdoc 경로 접근성·가짜그린 방지)**: issue-tracking 모듈에 `SecurityFilterChain`이 **없어** 단독 부팅 시 접근 가능할 것으로 추정되나, 추정에 의존 금지 — 통합 테스트가 **실제 200을 실증**한다. 만약 부팅 컨텍스트에 Spring Security가 활성화돼 있으면 `/v3/api-docs`·`/swagger-ui/**`를 `permitAll`로 명시(인증 없이 문서 접근). 401/302면 RED가 잡아냄.
+
 **GREEN**:
 - `build.gradle.kts`: `implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")` (정확 버전 고정, Maxi 확인 대상 의존성)
 - `application.yml`: `springdoc.api-docs.version=openapi_3_1`, 경로 설정
@@ -219,6 +224,8 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 **GREEN**: `@Operation`/`@ApiResponse`/`@Parameter`/`@Schema` 부여. unpaged 목록은 annotation만(응답 불변).
 
 **REFACTOR**: 공통 에러 응답(`@ApiResponse` 400/401/403/404/409) 공유 정의.
+
+**⚠️ devex 리뷰 CONCERN-4 (두 모드 공존 문서화)**: 같은 `GET /issues`가 cursor·offset 두 모드라 외부 개발자 혼란. OpenAPI `@Operation` description에 명시 — (a) **cursor 권장**, offset은 호환용(후속 deprecate 예정), (b) cursor 모드는 `limit`/offset 모드는 `size` 파라미터 차이, (c) cursor는 **forward-only**(prev 미지원).
 
 **검증**: `./gradlew :backend:issue-tracking:test --tests "*OpenApiAnnotationTest"`
 
@@ -252,4 +259,25 @@ classify 결과: type=api, agent=backend-engineer, primary_bc=issue-tracking
 - 무회귀 게이트: offset/Page 기존 테스트 + apps/web 미변경
 - 추가 검증: ktlint/detekt, 백엔드 clean 빌드
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+타입=api → eng-review + devex-review (집중 독립 리뷰, 메모리 교훈: 백엔드 plan은 대화형 스킬보다 집중 리뷰).
+
+### plan-eng-review (2026-06-30)
+- ✅ TDD 구조(RED→GREEN→REFACTOR) + 메타 블록(agent/files/depends-on) 전 task 충족
+- ✅ 무회귀 게이트 명시(offset Page 유지, apps/web 미변경, BC 격리)
+- ✅ keyset seek `(created_at,id)` row-value 비교 — jOOQ/PostgreSQL 지원, NOT NULL이라 NULL 함정 없음. changelog는 이미 동일 정렬 + 커버 인덱스 보유
+- ⚠️ CONCERN-1 (보강 완료): Task 6 springdoc 경로 접근성 — 추정 금지, 통합테스트가 실제 200 실증 + (security 활성 시) permitAll 명시
+- ⚠️ CONCERN-2 (보강 완료): Task 1 cursor 토큰 OffsetDateTime 나노초 정밀도 보존 — seek 경계 정확성
+- BLOCKER: 없음
+
+### plan-devex-review (2026-06-30)
+- ✅ 외부 공개 API 표준 확립(cursor envelope + OpenAPI + bearerAuth) 방향 타당
+- ✅ contract test로 스펙↔응답 drift 차단
+- ⚠️ CONCERN-3 (보강 완료): errorCode 컨벤션 drift — 기존 코드 SCREAMING_SNAKE(`ISSUE_NOT_FOUND`) vs SDD 소문자 dot. 실제 구현은 **대문자**(`ISSUE_INVALID_CURSOR`/`ISSUE_PAGINATION_MODE_CONFLICT`)로 정렬. spec/plan 전수 정정 완료
+- ⚠️ CONCERN-4 (보강 완료): 두 페이지네이션 모드 공존 — OpenAPI description에 cursor 권장/offset 후속 deprecate/limit vs size/forward-only 명시
+- BLOCKER: 없음
+
+### 종합
+- BLOCKER 0건. CONCERN 4건 전부 plan/spec에 반영 완료.
+- 게이트1 재확인 사항: 범위 해석(§0 — "전 목록 API"=OpenAPI 문서화 대상, cursor+envelope 실적용=이슈목록/changelog, 무회귀 우선).
