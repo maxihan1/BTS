@@ -1,0 +1,113 @@
+// 가젯 타입별 컴포넌트 분기 렌더러 (FR-DB-02 D6/D7 Task-5)
+import type { JSX } from 'react'
+import type { DashboardTile } from '@/lib/dashboard-layout'
+import type { GadgetConfig } from './gadget-types'
+import type { LinkItem } from './LinkListGadget'
+import { IssueListGadget } from './IssueListGadget'
+import { IssueCountGadget } from './IssueCountGadget'
+import { TextWidgetGadget } from './TextWidgetGadget'
+import { LinkListGadget } from './LinkListGadget'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 타입
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** GadgetRenderer props */
+export interface GadgetRendererProps {
+  /** 렌더할 대시보드 타일 */
+  tile: DashboardTile
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 컴포넌트
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 가젯 타입에 따라 적절한 가젯 컴포넌트를 렌더링한다.
+ *
+ * 분기 규칙.
+ * - gadgetType 없음 → null (legacy 타일 — 호출측이 처리)
+ * - 지원 타입(6종) → 해당 가젯 컴포넌트
+ * - 미지원/unknown 타입 → "지원되지 않는 가젯" 안전 표시 (EC6 — 페이지 무손상)
+ */
+export function GadgetRenderer({ tile }: GadgetRendererProps): JSX.Element | null {
+  const { gadgetType, config } = tile
+
+  // legacy 타일 — gadgetType 없으면 null 반환, 호출측(DashboardTile.tsx)이 처리
+  if (gadgetType === undefined) {
+    return null
+  }
+
+  switch (gadgetType) {
+    case 'assigned_to_me':
+    case 'recently_created':
+    case 'filter_result':
+      return <IssueListGadget gadgetType={gadgetType} config={toGadgetConfig(config)} />
+
+    case 'issue_count':
+      return <IssueCountGadget config={toGadgetConfig(config)} />
+
+    case 'text_widget':
+      return <TextWidgetGadget markdown={extractMarkdown(config)} />
+
+    case 'link_list':
+      return <LinkListGadget links={extractLinks(config)} />
+
+    default:
+      // EC6 — 미지원 가젯 타입: 페이지를 망가뜨리지 않고 안내 메시지만 표시
+      return (
+        <div className="flex flex-1 items-center justify-center p-4">
+          <p className="text-sm text-muted-foreground">지원되지 않는 가젯입니다</p>
+        </div>
+      )
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 내부 변환 헬퍼
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 타일 config(Record<string,unknown>)를 GadgetConfig로 안전하게 변환한다.
+ * 각 필드를 타입 가드로 검사해 타입 안전성을 보장한다 (as 캐스팅 없음).
+ *
+ * @param config 타일 config 객체
+ * @returns 타입 안전한 GadgetConfig
+ */
+function toGadgetConfig(config: Record<string, unknown> | undefined): GadgetConfig {
+  if (config === undefined) return {}
+  return {
+    projectKey: typeof config['projectKey'] === 'string' ? config['projectKey'] : undefined,
+    filterId: typeof config['filterId'] === 'string' ? config['filterId'] : undefined,
+    maxItems: typeof config['maxItems'] === 'number' ? config['maxItems'] : undefined,
+  }
+}
+
+/**
+ * config에서 markdown 문자열을 추출한다.
+ *
+ * @param config 타일 config 객체
+ * @returns markdown 문자열 (없거나 string이 아니면 빈 문자열)
+ */
+function extractMarkdown(config: Record<string, unknown> | undefined): string {
+  if (config === undefined) return ''
+  return typeof config['markdown'] === 'string' ? config['markdown'] : ''
+}
+
+/**
+ * config에서 LinkItem 배열을 추출한다.
+ * http/https 스킴 필터링은 LinkListGadget이 담당한다.
+ *
+ * @param config 타일 config 객체
+ * @returns LinkItem 배열 (없거나 형식 불일치면 빈 배열)
+ */
+function extractLinks(config: Record<string, unknown> | undefined): LinkItem[] {
+  if (config === undefined) return []
+  const rawLinks = config['links']
+  if (!Array.isArray(rawLinks)) return []
+  return rawLinks.filter((item): item is LinkItem => {
+    if (typeof item !== 'object' || item === null) return false
+    const obj = item as Record<string, unknown>
+    return typeof obj['label'] === 'string' && typeof obj['url'] === 'string'
+  })
+}
