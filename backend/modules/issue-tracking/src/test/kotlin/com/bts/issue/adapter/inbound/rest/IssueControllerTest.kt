@@ -2,6 +2,8 @@
 
 package com.bts.issue.adapter.inbound.rest
 
+import com.bts.issue.adapter.inbound.rest.cursor.CursorCodec
+import com.bts.issue.application.CursorPage
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
@@ -9,6 +11,7 @@ import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.shared.issue.IssueTypeId
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
@@ -23,6 +26,9 @@ import org.openapitools.jackson.nullable.JsonNullableModule
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.data.domain.PageImpl
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.web.config.EnableSpringDataWebSupport
 import org.springframework.http.MediaType
 import org.springframework.http.converter.HttpMessageConverter
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
@@ -33,6 +39,7 @@ import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import org.springframework.test.context.web.WebAppConfiguration
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
@@ -43,6 +50,7 @@ import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 import java.util.UUID
 import com.bts.issue.application.CreateIssueRequest as AppCreateIssueRequest
 
@@ -369,5 +377,232 @@ class IssueControllerDatePatchTest {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.startDate").value("2026-06-20"))
+    }
+}
+
+/**
+ * FR-API-01 Task 3 — IssueController cursor 모드 / offset 무회귀 / 충돌 / round-trip / limit>100 MockMvc 슬라이스 테스트.
+ *
+ * 테스트 케이스.
+ * - CURSOR-1: cursor 모드 — envelope(data[], meta.page.next, meta.page.limit) 응답 구조 검증
+ * - CURSOR-2: offset 모드 무회귀 — 기존 Page 구조(content/totalElements) 그대로 반환
+ * - CURSOR-3: cursor + page 동시 지정 → [PaginationModeConflictException] throw
+ * - CURSOR-4: next round-trip — 1페이지 next 를 2페이지 cursor 에 주입 → 마지막 next=null. 중복/누락 0 검증
+ * - CURSOR-5: limit > 100 → 400
+ */
+@ExtendWith(SpringExtension::class)
+@ContextConfiguration(classes = [IssueControllerCursorModeTest.CursorTestConfig::class])
+@WebAppConfiguration
+class IssueControllerCursorModeTest {
+    /**
+     * cursor 모드 테스트 전용 Spring MVC 최소 컨텍스트.
+     *
+     * [IssueExceptionHandler] 등록 — [ResponseStatusException](400) → 400 변환 포함.
+     * [JavaTimeModule] 등록 — [Instant] 직렬화를 ISO 문자열로(타임스탬프 배열 비활성).
+     */
+    @Configuration
+    @EnableWebMvc
+    @EnableSpringDataWebSupport
+    open class CursorTestConfig : WebMvcConfigurer {
+        @Bean
+        open fun cursorSvc(): IssueApplicationService = mockk(relaxed = true)
+
+        @Bean
+        open fun cursorCtrl(svc: IssueApplicationService): IssueController = IssueController(svc)
+
+        @Bean
+        open fun cursorExHandler(): IssueExceptionHandler = IssueExceptionHandler()
+
+        override fun extendMessageConverters(converters: MutableList<HttpMessageConverter<*>>) {
+            converters
+                .filterIsInstance<MappingJackson2HttpMessageConverter>()
+                .forEach { converter ->
+                    converter.objectMapper.registerModule(JavaTimeModule())
+                    converter.objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                }
+        }
+    }
+
+    @Autowired
+    lateinit var webApplicationContext: WebApplicationContext
+
+    @Autowired
+    lateinit var issueApplicationService: IssueApplicationService
+
+    private lateinit var mockMvc: MockMvc
+
+    private val actorUuid = UUID.fromString("11111111-1111-4111-8111-111111111111")
+    private val issue1Id = UUID.fromString("00000000-0000-4000-8000-000000000101")
+    private val issue2Id = UUID.fromString("00000000-0000-4000-8000-000000000102")
+    private val issue3Id = UUID.fromString("00000000-0000-4000-8000-000000000103")
+    private val createdAt1 = Instant.parse("2026-06-01T10:00:00Z")
+    private val createdAt2 = Instant.parse("2026-06-01T09:00:00Z")
+    private val createdAt3 = Instant.parse("2026-06-01T08:00:00Z")
+
+    private fun makeIssueResponse(
+        key: String,
+        id: UUID,
+        createdAt: Instant,
+    ): IssueResponse =
+        IssueResponse(
+            key = key,
+            id = id,
+            projectKey = "ATLAS",
+            summary = "테스트 이슈 $key",
+            currentStateKey = "open",
+            reporterId = actorUuid,
+            version = 1L,
+            createdAt = createdAt,
+            updatedAt = createdAt,
+            typeId = 3L,
+            typeKey = "task",
+            typeName = "Task",
+        )
+
+    @BeforeEach
+    fun setUp() {
+        mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
+        SecurityContextHolder.getContext().authentication =
+            UsernamePasswordAuthenticationToken(
+                actorUuid.toString(),
+                null,
+                listOf(SimpleGrantedAuthority("ROLE_USER")),
+            )
+    }
+
+    @AfterEach
+    fun tearDown() {
+        SecurityContextHolder.clearContext()
+    }
+
+    // ── CURSOR-1: cursor 모드 — envelope 응답 구조 검증 ──────────────────────────
+
+    @Test
+    fun `CURSOR-1 cursor 모드 — envelope 응답 구조 검증`() {
+        val issue = makeIssueResponse("ATLAS-1", issue1Id, createdAt1)
+        val nextToken = CursorCodec.encode(createdAt1.atOffset(ZoneOffset.UTC), issue1Id)
+        every {
+            issueApplicationService.listIssuesByCursor(any(), any(), any(), any(), any())
+        } returns CursorPage(items = listOf(issue), next = nextToken)
+
+        mockMvc.perform(
+            get("/api/v1/issues")
+                .param("projectKey", "ATLAS")
+                .param("cursor", "")
+                .param("limit", "50"),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data").isArray)
+            .andExpect(jsonPath("$.data[0].key").value("ATLAS-1"))
+            .andExpect(jsonPath("$.meta.page.next").value(nextToken))
+            .andExpect(jsonPath("$.meta.page.limit").value(50))
+    }
+
+    // ── CURSOR-2: offset 모드 무회귀 ─────────────────────────────────────────────
+
+    @Test
+    fun `CURSOR-2 offset 모드 무회귀 — 기존 Page 구조 그대로 반환`() {
+        val issue = makeIssueResponse("ATLAS-1", issue1Id, createdAt1)
+        val page = PageImpl(listOf(issue), PageRequest.of(0, 20), 1L)
+        every { issueApplicationService.listIssues(any(), any(), any(), any()) } returns page
+
+        mockMvc.perform(
+            get("/api/v1/issues")
+                .param("projectKey", "ATLAS")
+                .param("page", "0")
+                .param("size", "20"),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.content").isArray)
+            .andExpect(jsonPath("$.content[0].key").value("ATLAS-1"))
+            .andExpect(jsonPath("$.totalElements").value(1))
+    }
+
+    // ── CURSOR-3: cursor+page 동시 → PaginationModeConflictException ─────────────
+
+    @Test
+    fun `CURSOR-3 cursor와 page 동시 지정 시 PaginationModeConflictException throw`() {
+        mockMvc.perform(
+            get("/api/v1/issues")
+                .param("projectKey", "ATLAS")
+                .param("cursor", "")
+                .param("page", "0"),
+        ).andExpect { result ->
+            assertThat(result.resolvedException).isInstanceOf(PaginationModeConflictException::class.java)
+        }
+    }
+
+    // ── CURSOR-4: next round-trip ─────────────────────────────────────────────────
+
+    @Test
+    fun `CURSOR-4 next round-trip — 1페이지 next 를 2페이지 cursor 주입 후 중복 없이 마지막 next null`() {
+        val issue1 = makeIssueResponse("ATLAS-1", issue1Id, createdAt1)
+        val issue2 = makeIssueResponse("ATLAS-2", issue2Id, createdAt2)
+        val issue3 = makeIssueResponse("ATLAS-3", issue3Id, createdAt3)
+
+        // 페이지 1의 마지막 item(issue2) 기준으로 next 토큰 생성 (실제 서비스 로직과 동일 방식)
+        val nextToken = CursorCodec.encode(createdAt2.atOffset(ZoneOffset.UTC), issue2Id)
+
+        every {
+            issueApplicationService.listIssuesByCursor(any(), any(), any(), any(), any())
+        } returnsMany
+            listOf(
+                CursorPage(items = listOf(issue1, issue2), next = nextToken),
+                CursorPage(items = listOf(issue3), next = null),
+            )
+
+        // 1페이지 조회 (cursor 빈 문자열 = 첫 페이지)
+        val page1Result =
+            mockMvc.perform(
+                get("/api/v1/issues")
+                    .param("projectKey", "ATLAS")
+                    .param("cursor", "")
+                    .param("limit", "2"),
+            )
+                .andExpect(status().isOk)
+                .andReturn()
+
+        val tree1 = ObjectMapper().readTree(page1Result.response.contentAsString)
+        val dataNode1 = tree1["data"]
+        assertThat(dataNode1.size()).isEqualTo(2)
+        assertThat(dataNode1[0]["key"].asText()).isEqualTo("ATLAS-1")
+        assertThat(dataNode1[1]["key"].asText()).isEqualTo("ATLAS-2")
+        val page1Next = tree1["meta"]["page"]["next"].asText()
+        assertThat(page1Next).isEqualTo(nextToken)
+
+        // 2페이지 조회 — next round-trip: 1페이지 next 토큰을 cursor 파라미터로 주입
+        val page2Result =
+            mockMvc.perform(
+                get("/api/v1/issues")
+                    .param("projectKey", "ATLAS")
+                    .param("cursor", page1Next)
+                    .param("limit", "2"),
+            )
+                .andExpect(status().isOk)
+                .andReturn()
+
+        val tree2 = ObjectMapper().readTree(page2Result.response.contentAsString)
+        val dataNode2 = tree2["data"]
+        assertThat(dataNode2.size()).isEqualTo(1)
+        assertThat(dataNode2[0]["key"].asText()).isEqualTo("ATLAS-3")
+        // 마지막 페이지: next=null
+        assertThat(tree2["meta"]["page"]["next"].isNull).isTrue()
+
+        // 중복/누락 검증: 두 페이지의 key 집합이 서로소(교집합 = 공집합)
+        val page1Keys = (0 until dataNode1.size()).map { dataNode1[it]["key"].asText() }.toSet()
+        val page2Keys = (0 until dataNode2.size()).map { dataNode2[it]["key"].asText() }.toSet()
+        assertThat(page1Keys.intersect(page2Keys)).isEmpty()
+    }
+
+    // ── CURSOR-5: limit > 100 → 400 ───────────────────────────────────────────────
+
+    @Test
+    fun `CURSOR-5 limit 100 초과 시 400 반환`() {
+        mockMvc.perform(
+            get("/api/v1/issues")
+                .param("projectKey", "ATLAS")
+                .param("cursor", "")
+                .param("limit", "101"),
+        ).andExpect(status().isBadRequest)
     }
 }

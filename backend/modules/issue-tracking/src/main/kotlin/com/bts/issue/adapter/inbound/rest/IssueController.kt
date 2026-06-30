@@ -2,8 +2,10 @@
 
 package com.bts.issue.adapter.inbound.rest
 
+import com.bts.issue.adapter.inbound.rest.cursor.CursorCodec
 import com.bts.issue.adapter.inbound.rest.dto.RerankIssueRequest
 import com.bts.issue.application.AppChangeAssigneeRequest
+import com.bts.issue.application.CursorPage
 import com.bts.issue.application.AppChangeComponentsRequest
 import com.bts.issue.application.AppChangeVersionsRequest
 import com.bts.issue.application.BacklogRankService
@@ -43,6 +45,12 @@ import com.bts.issue.application.CloneIssueRequest as AppCloneIssueRequest
 import com.bts.issue.application.CreateIssueRequest as AppCreateIssueRequest
 import com.bts.issue.application.TransitionIssueRequest as AppTransitionIssueRequest
 import com.bts.issue.application.UpdateIssueRequest as AppUpdateIssueRequest
+
+/** cursor 모드 기본 limit. */
+private const val DEFAULT_CURSOR_LIMIT = 20
+
+/** cursor 모드 + offset 모드 공통 최대 페이지 크기. */
+private const val MAX_CURSOR_LIMIT = 100
 
 /**
  * 이슈 REST API 컨트롤러.
@@ -155,22 +163,33 @@ class IssueController(
     }
 
     /**
-     * 프로젝트 이슈 목록을 페이지로 조회한다.
+     * 프로젝트 이슈 목록을 조회한다.
      *
-     * 필터 파라미터가 지정되면 [IssueFilterQueryParser] 를 통해 [com.bts.shared.board.BoardCardFilter] 로 파싱해 위임한다.
+     * ### cursor 모드 / offset 모드 분기 (FR-API-01 Task 3)
+     * - **cursor 모드**: `?cursor=<token|빈문자열>` 지정 시. keyset seek, [CursorPageResponse] envelope 반환.
+     * - **offset 모드**: cursor 파라미터 미지정 시. 기존 `?page&size`, [Page]<[IssueResponse]> 반환 (무회귀).
+     * - **모드 충돌**: cursor + page/size 동시 지정 → [PaginationModeConflictException] (Task 4 에서 400 매핑).
+     * - **limit 초과**: cursor 모드에서 limit > [MAX_CURSOR_LIMIT] → 400.
+     *
+     * ### offset 모드 무회귀 보장
+     * cursor 파라미터가 null 이면 기존 offset 경로를 그대로 실행한다. 기존 API 클라이언트는 영향 없음.
      *
      * @param projectKey 프로젝트 키. 생략 가능하며 생략 시 빈 문자열로 위임한다.
-     * @param pageable 페이지 정보. 기본값 size=20, page=0.
+     * @param pageable 페이지 정보. offset 모드에서 사용. 기본값 size=20, page=0.
      * @param status 워크플로우 상태 키 목록 (OR 조건). 생략 시 필터 미적용.
      * @param assignee 담당자 UUID 목록. "unassigned" 센티널 허용. 생략 시 필터 미적용.
      * @param label 라벨 이름 목록 (OR 조건). 생략 시 필터 미적용.
      * @param component 컴포넌트 UUID 목록 (OR 조건). 생략 시 필터 미적용.
-     * @return 200 OK + [Page]<[IssueResponse]>
-     * @throws org.springframework.web.server.ResponseStatusException 400 —
-     *   assignee 또는 component 에 유효하지 않은 UUID 값이 있을 때.
+     * @param cursor cursor 토큰. 빈 문자열=첫 페이지. null=offset 모드.
+     * @param limit cursor 모드에서의 최대 건수. 기본값 [DEFAULT_CURSOR_LIMIT], 최대 [MAX_CURSOR_LIMIT].
+     * @param explicitPage 모드 충돌 감지용 — ?page 파라미터가 명시됐는지 검출.
+     * @param explicitSize 모드 충돌 감지용 — ?size 파라미터가 명시됐는지 검출.
+     * @return 200 OK + cursor 모드: [CursorPageResponse], offset 모드: [Page]<[IssueResponse]>
+     * @throws PaginationModeConflictException cursor + page/size 동시 지정 시.
+     * @throws org.springframework.web.server.ResponseStatusException 400 — limit 초과 또는 UUID 형식 오류.
      */
     @GetMapping
-    @Suppress("LongParameterList") // REST 쿼리 파라미터(projectKey/pageable/status/assignee/label/component) — 분리 불가
+    @Suppress("LongParameterList") // cursor 모드(cursor/limit)와 offset 모드(pageable/page/size)의 REST 쿼리 파라미터 집합 — 분리 불가
     fun list(
         @RequestParam projectKey: String?,
         @PageableDefault(size = 20) pageable: Pageable,
@@ -178,13 +197,17 @@ class IssueController(
         @RequestParam(required = false) assignee: List<String> = emptyList(),
         @RequestParam(required = false) label: List<String> = emptyList(),
         @RequestParam(required = false) component: List<String> = emptyList(),
-    ): ResponseEntity<Page<IssueResponse>> {
+        @RequestParam(required = false) cursor: String? = null,
+        @RequestParam(required = false) limit: Int? = null,
+        @RequestParam(name = "page", required = false) explicitPage: Int? = null,
+        @RequestParam(name = "size", required = false) explicitSize: Int? = null,
+    ): ResponseEntity<Any> {
         log.info("IssueController.list projectKey={} pageable={}", projectKey, pageable)
 
         val actor = CurrentActor.current()
         val filter = IssueFilterQueryParser.parse(status, assignee, label, component)
         val page = service.listIssues(actor, projectKey ?: "", pageable, filter)
-        return ResponseEntity.ok(page)
+        return ResponseEntity.ok<Any>(page)
     }
 
     /**
@@ -692,6 +715,51 @@ class IssueController(
             }
         }
 }
+
+/**
+ * cursor 모드와 offset 모드가 동시에 지정될 때 발생하는 예외 (FR-API-01 Task 3).
+ *
+ * cursor 모드: `?cursor=` 파라미터 존재. offset 모드: `?page` 또는 `?size` 파라미터.
+ * HTTP 400 매핑은 [IssueExceptionHandler] (Task 4) 에서 담당한다.
+ */
+class PaginationModeConflictException : RuntimeException(
+    "cursor 모드와 offset 모드를 동시에 지정할 수 없습니다. cursor 또는 page/size 중 하나만 사용하세요.",
+)
+
+/**
+ * cursor 페이지네이션 응답 envelope (SDD 11.3 §3.1, FR-API-01 FR-5).
+ *
+ * cursor 모드([IssueController.list] cursor 파라미터 지정 시)에서만 반환된다.
+ * offset 모드는 기존 Spring [org.springframework.data.domain.Page]<[IssueResponse]> 구조를 유지한다.
+ *
+ * 직렬화 결과: `{ "data": [...], "meta": { "page": { "next": "...|null", "limit": N } } }`.
+ *
+ * @param T 응답 데이터 타입.
+ * @property data 조회된 이슈 목록.
+ * @property meta 페이지네이션 메타.
+ */
+data class CursorPageResponse<T>(
+    val data: List<T>,
+    val meta: PageMeta,
+)
+
+/**
+ * cursor 페이지네이션 응답 메타.
+ *
+ * @property page cursor 정보.
+ */
+data class PageMeta(val page: PageCursor)
+
+/**
+ * cursor 페이지 위치 정보.
+ *
+ * @property next 다음 페이지 cursor 토큰 (opaque Base64URL). 마지막 페이지이면 null.
+ * @property limit 이 페이지에서 요청한 최대 건수.
+ */
+data class PageCursor(
+    val next: String?,
+    val limit: Int,
+)
 
 /**
  * 성공 응답 래퍼.
