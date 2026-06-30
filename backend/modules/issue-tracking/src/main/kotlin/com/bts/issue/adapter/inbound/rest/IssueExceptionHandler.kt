@@ -51,6 +51,8 @@ import java.time.Instant
  * - [HttpMessageNotReadableException] → 400 + [IssueErrorCodes.VALIDATION_FAILED]
  * - [MethodArgumentTypeMismatchException] → 400 + [IssueErrorCodes.VALIDATION_FAILED]
  * - [InvalidRankNeighborException] → 400 + [IssueErrorCodes.INVALID_RANK_NEIGHBOR]
+ * - [CursorDecodeException] → 400 + [IssueErrorCodes.INVALID_CURSOR]
+ * - [PaginationModeConflictException] → 400 + [IssueErrorCodes.PAGINATION_MODE_CONFLICT]
  * - [AuthenticationException] → 401 + [IssueErrorCodes.UNAUTHENTICATED]
  * - [IssueAccessDeniedException] → 403 + [IssueErrorCodes.ACCESS_DENIED]
  * - [IssueMovedException] → 308 Permanent Redirect + Location 헤더 (FR-MV-01, DATA.md §2)
@@ -804,9 +806,8 @@ class IssueExceptionHandler {
 /**
  * issue-tracking BC 에러 코드 상수.
  *
- * spec §6.1 의 10건 errorCode 를 한 곳에서 관리한다.
- * 모든 에러 코드는 `ISSUE_` 접두사 없이 정의되어 있으며,
- * 로그/응답에서는 그대로 사용한다.
+ * [IssueExceptionHandler] 에서 RFC 7807 ProblemDetail 의 `errorCode` 프로퍼티에 사용한다.
+ * 값은 모두 SCREAMING_SNAKE_CASE 이며 일부는 `ISSUE_` 접두사를 포함한다 (spec §6.1).
  */
 object IssueErrorCodes {
     const val VALIDATION_FAILED = "VALIDATION_FAILED"
