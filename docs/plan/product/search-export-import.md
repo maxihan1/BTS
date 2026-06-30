@@ -166,13 +166,15 @@
 
 **우선순위**. 필수 | **선행**. §2.2, §5.1 | **Plan slug**. `search/api-aql`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — 동기/비동기 응답 정책 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — `POST /api/v1/search/aql` + 페이지네이션 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — (해당 없음) (책임. -)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — envelope 표준 정의 (책임. backend-engineer)
+- [x] D2. 명세 — 동기 검색 + 대량은 export job(FR-EX-02) 위임, cursor는 후속 FR (책임. backend-engineer)
+- [x] D3. 데이터 모델 — (활용, 변경 없음) (책임. db-engineer)
+- [x] D4. 백엔드 — `POST /api/v1/search/aql` 응답 envelope `{data, meta.page}` + offset 페이지네이션 + springdoc OpenAPI (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 — 슬라이스/통합/contract/annotation (책임. backend-engineer)
+- [x] D6. 프론트 UI — (새 화면 없음 — 응답 파싱 envelope 어댑테이션만 동반) (책임. frontend-engineer)
+- [x] D7. E2E — `SearchOpenApiContractTest` + `OpenApiAnnotationTest`가 실 `/v3/api-docs`로 계약 검증 (책임. qa-engineer)
+
+> **전체 완료 (2026-06-30, PR #210)**. offset 페이지네이션 유지 + 응답을 raw Spring Page → envelope `{data, meta:{page:{number,size,totalElements,totalPages}}}`로 표준화(FR-API-01 외피 일관) + search 모듈 springdoc 2.6.0 + `OpenApiConfig`(bearerAuth) + 엔드포인트 `@Tag`/`@Operation`/`@ApiResponses`/`@SecurityRequirement` + EC5 `@Schema(implementation=AqlSearchPageResponse)` 제네릭 erasure 방어. **cursor는 AQL 동적 ORDER BY와 keyset seek 충돌로 후속 FR 분리**(ADR). `IssueSearchPort` 재사용으로 BROWSE·visibility 보안 술어 구조적 상속(변경 0, 마이그레이션 0). 프론트 `search.ts`/`search.tsx` envelope 파싱 동반(무회귀, 소비처 1곳). 적대/일반 두 리뷰 상보 — 프론트 가짜그린(envelope strip 무력화) + MSW priorityName 한글 drift(backend `IssuePriority` 영어) 적발·정정. ADR `docs/decisions/2026-06-30-fr-api-02-aql-search-offset-envelope.md`. **FR-API-02 전체 완료.**
 
 ### §5.3 FR-API-03 — Webhook (외부 시스템 통지)
 
