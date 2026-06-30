@@ -5,7 +5,14 @@ package com.bts.issue.attachment.web
 import com.bts.issue.adapter.inbound.rest.CurrentActor
 import com.bts.issue.adapter.inbound.rest.DataResponse
 import com.bts.issue.attachment.application.IssueAttachmentService
+import com.bts.issue.config.BEARER_AUTH_SCHEME
 import com.bts.issue.domain.IssueKey
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import org.slf4j.LoggerFactory
 import org.springframework.core.io.InputStreamResource
 import org.springframework.http.ContentDisposition
@@ -50,6 +57,7 @@ import java.util.UUID
  *
  * @param service 첨부 파일 유스케이스 서비스.
  */
+@Tag(name = "Attachments", description = "이슈 첨부 파일 업로드/목록/다운로드/삭제 API (FR-AC-01/02)")
 @RestController
 @RequestMapping("/api/v1/issues/{key}/attachments")
 class IssueAttachmentController(
@@ -67,6 +75,20 @@ class IssueAttachmentController(
      * @throws com.bts.issue.domain.IssueAccessDeniedException UPDATE 권한 미보유 시 → 403.
      * @throws org.springframework.web.multipart.MaxUploadSizeExceededException 크기 초과 시 → 413.
      */
+    @Operation(
+        operationId = "uploadAttachment",
+        summary = "첨부 파일 업로드",
+        description = "multipart/form-data 형식으로 파일을 업로드한다. 최대 100MB.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "201", description = "업로드 성공"),
+        ApiResponse(responseCode = "400", description = "파일 미포함", content = [Content()]),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "UPDATE 권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
+        ApiResponse(responseCode = "413", description = "파일 크기 초과 (100MB)", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PostMapping
     fun upload(
         @PathVariable key: String,
@@ -106,6 +128,14 @@ class IssueAttachmentController(
      * @throws com.bts.issue.domain.IssueNotFoundException 이슈 미존재 또는 소프트 삭제 시 → 404.
      * @throws com.bts.issue.domain.IssueAccessDeniedException VIEW 권한 미보유 시 → 403.
      */
+    @Operation(operationId = "listAttachments", summary = "첨부 파일 목록 조회")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "첨부 파일 목록"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "VIEW 권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping
     fun list(
         @PathVariable key: String,
@@ -130,6 +160,22 @@ class IssueAttachmentController(
      * @throws com.bts.issue.domain.IssueNotFoundException 첨부 또는 이슈 미존재 시 → 404.
      * @throws com.bts.issue.domain.IssueAccessDeniedException VIEW 권한 미보유 시 → 403.
      */
+    @Operation(
+        operationId = "downloadAttachment",
+        summary = "첨부 파일 다운로드",
+        description = "RFC 5987 UTF-8 인코딩 Content-Disposition 으로 한글 파일명을 안전하게 전달한다.",
+    )
+    @ApiResponses(
+        ApiResponse(
+            responseCode = "200",
+            description = "파일 바이트 스트림",
+            content = [Content(mediaType = "application/octet-stream")],
+        ),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "VIEW 권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "첨부 파일 또는 이슈 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping("/{attachmentId}")
     fun download(
         @PathVariable key: String,
@@ -164,6 +210,14 @@ class IssueAttachmentController(
      * @throws com.bts.issue.domain.IssueNotFoundException 첨부 또는 이슈 미존재 시 → 404.
      * @throws com.bts.issue.domain.IssueAccessDeniedException UPDATE 권한 미보유 시 → 403.
      */
+    @Operation(operationId = "deleteAttachment", summary = "첨부 파일 삭제")
+    @ApiResponses(
+        ApiResponse(responseCode = "204", description = "삭제 성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "UPDATE 권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "첨부 파일 또는 이슈 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @DeleteMapping("/{attachmentId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun delete(

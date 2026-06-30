@@ -3,6 +3,8 @@
 package com.bts.issue.application
 
 import com.bts.issue.adapter.inbound.rest.IssueResponse
+import com.bts.issue.adapter.inbound.rest.cursor.CursorCodec
+import com.bts.issue.adapter.inbound.rest.cursor.CursorPosition
 import com.bts.issue.adapter.outbound.AlwaysAllowIssueSecurityDirectory
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.customfield.domain.CustomFieldValueValidator
@@ -70,14 +72,33 @@ import com.bts.shared.workflow.WorkflowStartState
 import com.bts.shared.workflow.WorkflowTransitionPort
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
+import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.UUID
+
+/** cursor 페이지네이션 최대 limit. 초과 시 컨트롤러에서 400 반환. */
+private const val MAX_CURSOR_LIMIT = 100
+
+/**
+ * cursor 페이지네이션 조회 결과 (FR-API-01 Task 3).
+ *
+ * [IssueApplicationService.listIssuesByCursor] 반환 타입.
+ *
+ * @param T 응답 데이터 타입.
+ * @property items 조회된 이슈 응답 목록.
+ * @property next 다음 페이지 cursor 토큰. 마지막 페이지이면 null.
+ */
+data class CursorPage<T>(
+    val items: List<T>,
+    val next: String?,
+)
 
 /**
  * 이슈 CRUD + 전이 유스케이스를 조율하는 Application Service.
@@ -972,6 +993,71 @@ class IssueApplicationService(
         val access = securityDirectory.accessibleLevels(actor.value, projectKey)
         val page = repo.listWithType(projectKey, pageable, actor.value, access, filter)
         return maskFieldsForPage(actor, projectKey, page)
+    }
+
+    /**
+     * 이슈 목록을 keyset cursor 방식으로 조회한다 (FR-API-01 Task 3).
+     *
+     * [listIssues] 와 동일한 BROWSE 권한·visibility 술어·필터를 재사용한다.
+     * [IssueRepository.listWithTypeByCursor] 에 cursor 위치(createdAt, id) 를 분해해 전달한다.
+     * [maskFieldsForPage] 를 [PageImpl] 래핑으로 재사용하여 필드 마스킹을 적용한다.
+     * hasNext=true 이면 마지막 item 의 (createdAt, id) 를 [CursorCodec.encode] 로 next 토큰 생성.
+     * createdAt 은 [Instant] → [java.time.OffsetDateTime](UTC) 로 변환 후 인코딩한다.
+     *
+     * 타임존 주의: [CursorCodec.encode] 는 [java.time.OffsetDateTime] 을 받는다.
+     * [IssueResponse.createdAt] 은 [Instant] 이므로 [ZoneOffset.UTC] 로 변환해야
+     * 인코딩과 Repository seek 비교가 동일한 절대 시점을 가리킨다.
+     *
+     * @param actor 조회 행위자.
+     * @param projectKey 프로젝트 키.
+     * @param cursor cursor 위치. null 이면 첫 페이지.
+     * @param limit 반환 최대 건수. [MAX_CURSOR_LIMIT] 초과 시 예외(컨트롤러에서 400 변환).
+     * @param filter 보드 카드 필터. 기본값 무필터.
+     * @return [CursorPage] — items(필드 마스킹 적용) + next 토큰(마지막 페이지면 null).
+     * @throws IssueAccessDeniedException BROWSE 권한 없을 때(403).
+     * @throws IllegalArgumentException limit 이 [MAX_CURSOR_LIMIT] 초과 시(컨트롤러 400 변환).
+     */
+    @Transactional(readOnly = true)
+    fun listIssuesByCursor(
+        actor: ActorId,
+        projectKey: String,
+        cursor: CursorPosition?,
+        limit: Int,
+        filter: BoardCardFilter = BoardCardFilter.EMPTY,
+    ): CursorPage<IssueResponse> {
+        require(limit <= MAX_CURSOR_LIMIT) {
+            "limit must be $MAX_CURSOR_LIMIT or fewer, but was $limit"
+        }
+        assertPermission(actor, IssuePermission.BROWSE, IssueScope.Project(projectKey))
+        val access = securityDirectory.accessibleLevels(actor.value, projectKey)
+        val result =
+            repo.listWithTypeByCursor(
+                projectKey = projectKey,
+                seekCreatedAt = cursor?.createdAt,
+                seekId = cursor?.id,
+                limit = limit,
+                actor = actor.value,
+                access = access,
+                filter = filter,
+            )
+        // maskFieldsForPage 재사용 — PageImpl 래핑으로 Page<IssueResponse> 전달 후 content 추출
+        val tempPage =
+            PageImpl(
+                result.items,
+                Pageable.unpaged(),
+                result.items.size.toLong(),
+            )
+        val maskedItems = maskFieldsForPage(actor, projectKey, tempPage).content
+        val next =
+            if (result.hasNext && maskedItems.isNotEmpty()) {
+                val last = maskedItems.last()
+                val lastCreatedAt =
+                    last.createdAt ?: error("목록 이슈의 createdAt 이 null 일 수 없습니다")
+                CursorCodec.encode(lastCreatedAt.atOffset(ZoneOffset.UTC), last.id)
+            } else {
+                null
+            }
+        return CursorPage(items = maskedItems, next = next)
     }
 
     // ── private helpers ────────────────────────────────────────────────────────

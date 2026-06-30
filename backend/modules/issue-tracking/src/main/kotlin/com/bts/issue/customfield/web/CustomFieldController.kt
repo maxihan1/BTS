@@ -3,11 +3,18 @@
 package com.bts.issue.customfield.web
 
 import com.bts.issue.adapter.inbound.rest.DataResponse
+import com.bts.issue.config.BEARER_AUTH_SCHEME
 import com.bts.issue.customfield.application.CustomFieldApplicationService
 import com.bts.issue.customfield.domain.CustomFieldOption
 import com.bts.issue.customfield.web.dto.CreateCustomFieldRequest
 import com.bts.issue.customfield.web.dto.CustomFieldResponse
 import com.bts.issue.customfield.web.dto.UpdateCustomFieldRequest
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -47,6 +54,7 @@ private val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-0
  *
  * @param service 커스텀 필드 정의 CRUD Application Service.
  */
+@Tag(name = "Custom Fields", description = "프로젝트 커스텀 필드 정의 CRUD API (FR-IS-10)")
 @RestController
 @RequestMapping("/api/v1/projects/{projectIdOrKey}/custom-fields")
 class CustomFieldController(
@@ -65,6 +73,15 @@ class CustomFieldController(
      * @throws com.bts.issue.customfield.domain.InvalidFieldDefinitionException 불변식 위반 → 422
      * @throws com.bts.issue.customfield.domain.CustomFieldAccessDeniedException 권한 없음 → 403
      */
+    @Operation(operationId = "createCustomField", summary = "커스텀 필드 정의 생성")
+    @ApiResponses(
+        ApiResponse(responseCode = "201", description = "생성 성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "프로젝트 미존재", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "key 중복", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PostMapping
     fun create(
         @PathVariable projectIdOrKey: String,
@@ -109,6 +126,13 @@ class CustomFieldController(
      * @return 200 OK + `{ "data": [ ... ] }`.
      * @throws com.bts.issue.customfield.domain.CustomFieldProjectNotFoundException 프로젝트 미존재 → 404
      */
+    @Operation(operationId = "listCustomFields", summary = "커스텀 필드 목록 조회")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "커스텀 필드 목록 (displayOrder 오름차순)"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "프로젝트 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping
     fun list(
         @PathVariable projectIdOrKey: String,
@@ -131,6 +155,13 @@ class CustomFieldController(
      * @throws com.bts.issue.customfield.domain.CustomFieldProjectNotFoundException 프로젝트 미존재 → 404
      * @throws com.bts.issue.customfield.domain.CustomFieldNotFoundException 필드 정의 미존재 → 404
      */
+    @Operation(operationId = "getCustomFieldById", summary = "커스텀 필드 단건 조회")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "커스텀 필드"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "필드 또는 프로젝트 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping("/{fieldId}")
     fun getById(
         @PathVariable projectIdOrKey: String,
@@ -162,6 +193,14 @@ class CustomFieldController(
      * @throws com.bts.issue.customfield.domain.ImmutableFieldTypeChangeException fieldType/key 변경 시도 → 422
      * @throws com.bts.issue.customfield.domain.CustomFieldAccessDeniedException 권한 없음 → 403
      */
+    @Operation(operationId = "updateCustomField", summary = "커스텀 필드 수정")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "수정 성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "필드 또는 프로젝트 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PatchMapping("/{fieldId}")
     fun update(
         @PathVariable projectIdOrKey: String,
@@ -205,6 +244,14 @@ class CustomFieldController(
      * @throws com.bts.issue.customfield.domain.CustomFieldNotFoundException 필드 정의 미존재 → 404
      * @throws com.bts.issue.customfield.domain.CustomFieldAccessDeniedException 권한 없음 → 403
      */
+    @Operation(operationId = "deleteCustomField", summary = "커스텀 필드 소프트 삭제")
+    @ApiResponses(
+        ApiResponse(responseCode = "204", description = "삭제 성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "필드 또는 프로젝트 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @DeleteMapping("/{fieldId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun delete(

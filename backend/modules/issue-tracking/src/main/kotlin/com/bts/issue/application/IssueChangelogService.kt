@@ -2,6 +2,7 @@
 
 package com.bts.issue.application
 
+import com.bts.issue.adapter.inbound.rest.cursor.CursorDecodeException
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
@@ -20,6 +21,9 @@ import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.util.Base64
 import java.util.UUID
 
 /**
@@ -38,6 +42,97 @@ data class ChangelogGroupView(
     val createdAt: Instant,
     val items: List<IssueChangeItem>,
 )
+
+/**
+ * changelog cursor keyset seek 의 위치 정보 (FR-API-01 Task 5).
+ *
+ * [ChangelogCursorCodec] 으로 인코딩/디코딩된다.
+ * 컨트롤러가 [ChangelogCursorCodec.decode] 로 디코딩 후 서비스에 주입,
+ * 서비스가 DB 조회 후 [ChangelogCursorCodec.encode] 로 인코딩해 next 토큰으로 반환한다.
+ *
+ * @property createdAt cursor 기준 created_at (UTC OffsetDateTime).
+ * @property groupId cursor 기준 group id (BIGINT). created_at 동률 tie-break 용.
+ */
+data class ChangelogCursorPosition(val createdAt: OffsetDateTime, val groupId: Long)
+
+/**
+ * changelog cursor 토큰 인코더/디코더 (FR-API-01 Task 5).
+ *
+ * 토큰 형식: `v1:<base64url(createdAt.toInstant()|groupId)>`.
+ * 기존 [com.bts.issue.adapter.inbound.rest.cursor.CursorCodec] 과 동형이나
+ * group id 가 BIGINT 이므로 별도 정의한다.
+ *
+ * **배치 없는 Base64URL** — `=` 패딩은 URL 쿼리 파라미터에서 인코딩 충돌을 일으키므로 제거.
+ *
+ * **timezone 일치 보장.**
+ * [encode] 와 [decode] 모두 UTC 기준 [Instant] 문자열을 사용한다.
+ * DB 조회 시 `Timestamp.from(cursorCreatedAt.toInstant())` 도 UTC 기준이므로 일치한다.
+ */
+object ChangelogCursorCodec {
+    private const val VERSION = "v1"
+    private const val SEPARATOR = "|"
+
+    /**
+     * [createdAt], [groupId] 를 opaque Base64URL cursor 토큰으로 인코딩한다.
+     *
+     * @param createdAt cursor 기준 생성 시각.
+     * @param groupId cursor 기준 group id (BIGINT).
+     * @return `v1:<base64url>` 형식 cursor 토큰.
+     */
+    fun encode(
+        createdAt: OffsetDateTime,
+        groupId: Long,
+    ): String {
+        val payload = "${createdAt.toInstant()}$SEPARATOR$groupId"
+        val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(payload.toByteArray())
+        return "$VERSION:$encoded"
+    }
+
+    /**
+     * [token] 을 [ChangelogCursorPosition] 으로 디코딩한다.
+     *
+     * 빈 문자열은 첫 페이지를 의미하며 null 을 반환한다
+     * ([com.bts.issue.adapter.inbound.rest.cursor.CursorCodec.decode] 와 동형).
+     *
+     * @param token cursor 토큰 문자열.
+     * @return 디코딩된 [ChangelogCursorPosition]. 빈 문자열이면 null.
+     * @throws CursorDecodeException 형식 오류 또는 파싱 실패 시 (이슈 목록 [CursorCodec] 과 동일 예외 — 400 ISSUE_INVALID_CURSOR 통일).
+     */
+    @Suppress("ThrowsCount")
+    fun decode(token: String): ChangelogCursorPosition? {
+        if (token.isBlank()) return null
+        val colonIdx = token.indexOf(':')
+        if (colonIdx == -1 || token.substring(0, colonIdx) != VERSION) {
+            throw CursorDecodeException("changelog cursor 형식 오류 (버전 불일치): $token")
+        }
+        val encoded = token.substring(colonIdx + 1)
+        val payload =
+            try {
+                Base64.getUrlDecoder().decode(encoded).toString(Charsets.UTF_8)
+            } catch (e: IllegalArgumentException) {
+                throw CursorDecodeException("changelog cursor base64 디코드 실패: ${e.message}", e)
+            }
+        val sep = payload.indexOf(SEPARATOR)
+        if (sep == -1) {
+            throw CursorDecodeException("changelog cursor payload 구분자 없음: $payload")
+        }
+        val createdAtStr = payload.substring(0, sep)
+        val groupIdStr = payload.substring(sep + 1)
+        val createdAt =
+            try {
+                Instant.parse(createdAtStr).atOffset(ZoneOffset.UTC)
+            } catch (e: java.time.format.DateTimeParseException) {
+                throw CursorDecodeException("changelog cursor createdAt 파싱 실패: $createdAtStr", e)
+            }
+        val groupId =
+            try {
+                groupIdStr.toLong()
+            } catch (e: NumberFormatException) {
+                throw CursorDecodeException("changelog cursor groupId 파싱 실패: $groupIdStr", e)
+            }
+        return ChangelogCursorPosition(createdAt, groupId)
+    }
+}
 
 /**
  * 이슈 변경 이력 조회 서비스.
@@ -134,6 +229,73 @@ class IssueChangelogService(
 
         val views = maskedGroups.map { group -> group.toView(displayNames) }
         return PageImpl(views, pageable, total)
+    }
+
+    /**
+     * 이슈 변경 이력을 cursor keyset seek 으로 조회한다 (FR-API-01 Task 5).
+     *
+     * 흐름.
+     * 1. [IssueApplicationService.findByKey] 로 VIEW 권한 + 이슈 존재 검증 (404 게이트).
+     *    미존재·소프트삭제·VIEW 미인가 모두 [com.bts.issue.domain.IssueNotFoundException] 으로 전파.
+     * 2. [IssueChangeHistoryRepository.findByIssueCursor] 로 cursor seek (내부에서 limit+1 조회).
+     * 3. hasNext 판정: pairs.size > limit.
+     * 4. [resolveActorNames] + [maskInvisibleFields] 로 display name 해석 + 필드 마스킹.
+     * 5. next 토큰: hasNext 이면 [ChangelogCursorCodec.encode] 로 마지막 표시 항목을 인코딩.
+     *
+     * **`!!` 금지 (DEVELOPMENT.md §1).**
+     * [IssueChangeGroup.createdAt] null 체크는 `?: error(...)` 로 처리한다.
+     *
+     * **cartesian product 안전.**
+     * [IssueChangeHistoryRepository.findByIssueCursor] 가 기존 2-step 패턴을 유지한다
+     * (learnings: jOOQ-cartesian-product).
+     *
+     * @param actor 조회 행위자. VIEW 권한 검증 + 필드 마스킹에 사용.
+     * @param key 조회할 이슈 키.
+     * @param cursor cursor 위치. null 이면 첫 페이지 (seek 없음).
+     * @param limit 반환할 최대 그룹 수.
+     * @return cursor 페이지 결과. next=null 이면 마지막 페이지.
+     * @throws com.bts.issue.domain.IssueNotFoundException 이슈 미존재·소프트 삭제·VIEW 미인가 → 404.
+     */
+    @Transactional(readOnly = true)
+    fun findChangelogByCursor(
+        actor: ActorId,
+        key: IssueKey,
+        cursor: ChangelogCursorPosition?,
+        limit: Int,
+    ): CursorPage<ChangelogGroupView> {
+        val issue = issueApplicationService.findByKey(actor, key)
+        val issueId = issue.id
+
+        val pairs =
+            changeHistoryRepository.findByIssueCursor(
+                issueId,
+                cursor?.createdAt?.toInstant(),
+                cursor?.groupId,
+                limit,
+            )
+
+        val hasNext = pairs.size > limit
+        val pagePairs = if (hasNext) pairs.dropLast(1) else pairs
+        val groups = pagePairs.map { it.second }
+
+        val displayNames = resolveActorNames(groups)
+        val maskedGroups = maskInvisibleFields(actor, issue.projectKey, groups)
+        val views = maskedGroups.map { group -> group.toView(displayNames) }
+
+        val next =
+            if (hasNext) {
+                val (lastGroupId, lastGroup) = pagePairs.last()
+                val createdAt =
+                    lastGroup.createdAt
+                        ?: error(
+                            "IssueChangeGroup.createdAt DB 로드 후 null 일 수 없습니다 (issueId=$issueId)",
+                        )
+                ChangelogCursorCodec.encode(createdAt.atOffset(ZoneOffset.UTC), lastGroupId)
+            } else {
+                null
+            }
+
+        return CursorPage(items = views, next = next)
     }
 
     // ──────────────────────────────────────────────────────────────────────────────

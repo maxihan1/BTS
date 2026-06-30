@@ -1,4 +1,5 @@
 // IssueRepository Testcontainers 통합 테스트 — T1~T9 RED→GREEN 검증 (Task 5 + Task 9, FR-IS-01, FR-IS-02)
+// TC-CURSOR-* 추가 (FR-API-01 Task 2 — cursor keyset seek)
 
 package com.bts.issue.repository
 
@@ -6,6 +7,7 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
+import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.issue.IssueTypeId
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -16,6 +18,9 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestMethodOrder
 import org.springframework.data.domain.PageRequest
 import java.sql.DriverManager
+import java.sql.Timestamp
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
 import java.util.UUID
 
 /**
@@ -890,5 +895,190 @@ class IssueRepositoryTest : IssueTestcontainersBase() {
             assertThat(response.typeName).isEqualTo("Task")
             assertThat(response.typeId).isEqualTo(requireTaskTypeId().value)
         }
+    }
+
+    // ── TC-CURSOR-* — FR-API-01 Task 2 cursor keyset seek ───────────────────────
+
+    /**
+     * cursor 테스트용 JDBC 직접 삽입 헬퍼.
+     *
+     * Issue.create() 는 Instant.now() 를 사용하므로 created_at 을 제어할 수 없다.
+     * keyset seek 정렬 순서를 결정론적으로 검증하기 위해 JDBC 직접 삽입으로
+     * created_at 을 명시 설정한다. IssueTestcontainersBase.cleanIssues() 패턴 준용.
+     *
+     * @param key issues.key 값. 예: "TPRJ-1".
+     * @param createdAt 명시적 생성 시각.
+     * @param currentStateKey 현재 상태 키. 기본값 "open".
+     * @return 삽입된 이슈의 UUID.
+     */
+    private fun insertIssueAt(
+        key: String,
+        createdAt: OffsetDateTime,
+        currentStateKey: String = "open",
+    ): UUID {
+        val id = UUID.randomUUID()
+        val ts = Timestamp.from(createdAt.toInstant())
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                """INSERT INTO issues
+                   (id, key, project_id, summary, reporter_id, current_state_key, version, type_id, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)""",
+            ).use { stmt ->
+                stmt.setObject(1, id)
+                stmt.setString(2, key)
+                stmt.setObject(3, testProjectId)
+                stmt.setString(4, "Cursor test: $key")
+                stmt.setObject(5, UUID.randomUUID())
+                stmt.setString(6, currentStateKey)
+                stmt.setLong(7, requireTaskTypeId().value)
+                stmt.setTimestamp(8, ts)
+                stmt.setTimestamp(9, ts)
+                stmt.executeUpdate()
+            }
+        }
+        return id
+    }
+
+    /**
+     * TC-CURSOR-1 — cursor=null 첫 페이지, hasNext=true
+     *
+     * Given  활성 이슈 3건 (created_at 1초 간격, 오래된 순 TPRJ-1·TPRJ-2·TPRJ-3)
+     * When   listWithTypeByCursor(cursor=null, limit=2) 호출
+     * Then   최신 2건(TPRJ-3·TPRJ-2)이 created_at DESC 순으로 반환되고, hasNext=true
+     */
+    @Test
+    @Order(30)
+    fun `TC-CURSOR-1 - cursor null 첫 페이지 limit+1 hasNext true`() {
+        val actor = UUID.randomUUID()
+        val base = OffsetDateTime.now(ZoneOffset.UTC)
+        insertIssueAt("TPRJ-1", base.minusSeconds(2))
+        insertIssueAt("TPRJ-2", base.minusSeconds(1))
+        insertIssueAt("TPRJ-3", base)
+
+        val result = repository.listWithTypeByCursor("TPRJ", null, null, 2, actor)
+
+        assertThat(result.hasNext).isTrue()
+        assertThat(result.items).hasSize(2)
+        // created_at DESC 정렬 — TPRJ-3(최신)이 첫 번째, TPRJ-2가 두 번째
+        assertThat(result.items[0].key).isEqualTo("TPRJ-3")
+        assertThat(result.items[1].key).isEqualTo("TPRJ-2")
+    }
+
+    /**
+     * TC-CURSOR-2 — cursor seek: 2페이지 조회 시 중복·누락 없음
+     *
+     * Given  활성 이슈 3건 (A=t-2s, B=t-1s, C=t)
+     * When   1페이지 → cursor=null, limit=2 : [C, B], hasNext=true
+     *        2페이지 → seekCreatedAt=B.createdAt, seekId=B.id, limit=2 : [A], hasNext=false
+     * Then   두 페이지를 합치면 전체 3건 포함, 중복 없음
+     */
+    @Test
+    @Order(31)
+    fun `TC-CURSOR-2 - cursor seek 두 번째 페이지 중복 누락 없음`() {
+        val actor = UUID.randomUUID()
+        val base = OffsetDateTime.now(ZoneOffset.UTC)
+        insertIssueAt("TPRJ-1", base.minusSeconds(2))
+        insertIssueAt("TPRJ-2", base.minusSeconds(1))
+        insertIssueAt("TPRJ-3", base)
+
+        // 1페이지: [TPRJ-3, TPRJ-2]
+        val page1 = repository.listWithTypeByCursor("TPRJ", null, null, 2, actor)
+        assertThat(page1.hasNext).isTrue()
+        assertThat(page1.items).hasSize(2)
+
+        // B(TPRJ-2)의 createdAt/id 를 cursor 로 사용
+        val lastItem = page1.items.last()
+        val seekCreatedAt = lastItem.createdAt?.atOffset(ZoneOffset.UTC)
+        val seekId = lastItem.id
+
+        // 2페이지: [TPRJ-1]
+        val page2 = repository.listWithTypeByCursor("TPRJ", seekCreatedAt, seekId, 2, actor)
+        assertThat(page2.hasNext).isFalse()
+        assertThat(page2.items).hasSize(1)
+
+        // 전체 키 집합 검증 — 중복 없음, 누락 없음
+        val allKeys = (page1.items + page2.items).map { it.key }
+        assertThat(allKeys).containsExactlyInAnyOrder("TPRJ-1", "TPRJ-2", "TPRJ-3")
+        assertThat(allKeys).doesNotHaveDuplicates()
+    }
+
+    /**
+     * TC-CURSOR-3 — created_at 동률 id DESC tie-break 안정성
+     *
+     * Given  동일 created_at 을 가진 이슈 2건 (UUID 만 다름)
+     * When   1페이지 limit=1 → 1건 반환, hasNext=true
+     *        cursor=(첫 번째 항목) 2페이지 limit=1 → 나머지 1건 반환, hasNext=false
+     * Then   두 페이지 키 집합 = 전체 2건 정확히 포함, 중복 없음
+     */
+    @Test
+    @Order(32)
+    fun `TC-CURSOR-3 - created_at 동률 id DESC tie-break 안정성 누락 없음`() {
+        val actor = UUID.randomUUID()
+        val sameTimestamp = OffsetDateTime.now(ZoneOffset.UTC)
+        insertIssueAt("TPRJ-1", sameTimestamp)
+        insertIssueAt("TPRJ-2", sameTimestamp)
+
+        val page1 = repository.listWithTypeByCursor("TPRJ", null, null, 1, actor)
+        assertThat(page1.hasNext).isTrue()
+        assertThat(page1.items).hasSize(1)
+
+        val first = page1.items[0]
+        val seekCreatedAt = first.createdAt?.atOffset(ZoneOffset.UTC)
+        val seekId = first.id
+
+        val page2 = repository.listWithTypeByCursor("TPRJ", seekCreatedAt, seekId, 1, actor)
+        assertThat(page2.hasNext).isFalse()
+        assertThat(page2.items).hasSize(1)
+        // 두 번째 아이템은 첫 번째와 달라야 한다 (누락이면 id 가 같거나 비어있음)
+        assertThat(page2.items[0].id).isNotEqualTo(first.id)
+
+        val allKeys = (page1.items + page2.items).map { it.key }
+        assertThat(allKeys).containsExactlyInAnyOrder("TPRJ-1", "TPRJ-2")
+        assertThat(allKeys).doesNotHaveDuplicates()
+    }
+
+    /**
+     * TC-CURSOR-4 — 기존 status 필터 상속
+     *
+     * Given  "open" 2건 + "done" 1건
+     * When   BoardCardFilter(statusKeys=["open"]) 로 listWithTypeByCursor 호출
+     * Then   "open" 이슈 2건만 반환, "done" 이슈(TPRJ-3)는 제외
+     */
+    @Test
+    @Order(33)
+    fun `TC-CURSOR-4 - status 필터 상속 — done 이슈 제외`() {
+        val actor = UUID.randomUUID()
+        val base = OffsetDateTime.now(ZoneOffset.UTC)
+        insertIssueAt("TPRJ-1", base.minusSeconds(2), "open")
+        insertIssueAt("TPRJ-2", base.minusSeconds(1), "open")
+        insertIssueAt("TPRJ-3", base, "done")
+
+        val filter = BoardCardFilter(statusKeys = listOf("open"))
+        val result = repository.listWithTypeByCursor("TPRJ", null, null, 10, actor, filter = filter)
+
+        assertThat(result.items).hasSize(2)
+        assertThat(result.items.map { it.key }).containsExactlyInAnyOrder("TPRJ-1", "TPRJ-2")
+        assertThat(result.items.map { it.currentStateKey }).allMatch { it == "open" }
+    }
+
+    /**
+     * TC-CURSOR-5 — 마지막 페이지 hasNext=false
+     *
+     * Given  활성 이슈 정확히 2건
+     * When   limit=2 로 조회 (limit+1=3 fetch 시도)
+     * Then   2건 반환, hasNext=false (3번째 행 없음)
+     */
+    @Test
+    @Order(34)
+    fun `TC-CURSOR-5 - 정확히 limit 건 존재 시 hasNext false`() {
+        val actor = UUID.randomUUID()
+        val base = OffsetDateTime.now(ZoneOffset.UTC)
+        insertIssueAt("TPRJ-1", base.minusSeconds(1))
+        insertIssueAt("TPRJ-2", base)
+
+        val result = repository.listWithTypeByCursor("TPRJ", null, null, 2, actor)
+
+        assertThat(result.hasNext).isFalse()
+        assertThat(result.items).hasSize(2)
     }
 }

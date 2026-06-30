@@ -3,12 +3,19 @@
 package com.bts.issue.version.web
 
 import com.bts.issue.adapter.inbound.rest.DataResponse
+import com.bts.issue.config.BEARER_AUTH_SCHEME
 import com.bts.issue.version.application.VersionApplicationService
 import com.bts.issue.version.web.dto.ChangeVersionDatesRequest
 import com.bts.issue.version.web.dto.ChangeVersionStatusRequest
 import com.bts.issue.version.web.dto.CreateVersionRequest
 import com.bts.issue.version.web.dto.UpdateVersionRequest
 import com.bts.issue.version.web.dto.VersionResponse
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -50,6 +57,7 @@ private val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-0
  *
  * @param service 버전 CRUD Application Service.
  */
+@Tag(name = "Versions", description = "프로젝트 버전 CRUD 및 상태 전이 API (FR-VR-01/02)")
 @RestController
 @RequestMapping("/api/v1/projects/{projectIdOrKey}/versions")
 class VersionController(
@@ -66,6 +74,15 @@ class VersionController(
      * @throws com.bts.issue.version.domain.VersionProjectNotFoundException 프로젝트 미존재 → 404
      * @throws com.bts.issue.version.domain.DuplicateVersionNameException 이름 중복 → 409
      */
+    @Operation(operationId = "createVersion", summary = "버전 생성")
+    @ApiResponses(
+        ApiResponse(responseCode = "201", description = "생성 성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "프로젝트 미존재", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "버전명 중복", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PostMapping
     fun create(
         @PathVariable projectIdOrKey: String,
@@ -93,6 +110,13 @@ class VersionController(
      * @return 200 OK + `{ "data": [ ... ] }`.
      * @throws com.bts.issue.version.domain.VersionProjectNotFoundException 프로젝트 미존재 → 404
      */
+    @Operation(operationId = "listVersions", summary = "버전 목록 조회")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "버전 목록 (name 오름차순)"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "프로젝트 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping
     fun list(
         @PathVariable projectIdOrKey: String,
@@ -115,6 +139,13 @@ class VersionController(
      * @throws com.bts.issue.version.domain.VersionProjectNotFoundException 프로젝트 미존재 → 404
      * @throws com.bts.issue.version.domain.VersionNotFoundException 버전 미존재 → 404
      */
+    @Operation(operationId = "getVersionById", summary = "버전 단건 조회")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "버전"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "버전 또는 프로젝트 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping("/{id}")
     fun getById(
         @PathVariable projectIdOrKey: String,
@@ -142,6 +173,14 @@ class VersionController(
      * @throws com.bts.issue.version.domain.VersionProjectNotFoundException 프로젝트 미존재 → 404
      * @throws com.bts.issue.version.domain.VersionNotFoundException 버전 미존재 → 404
      */
+    @Operation(operationId = "updateVersion", summary = "버전 수정")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "수정 성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "버전 또는 프로젝트 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PatchMapping("/{id}")
     fun update(
         @PathVariable projectIdOrKey: String,
@@ -173,6 +212,14 @@ class VersionController(
      * @throws com.bts.issue.version.domain.VersionProjectNotFoundException 프로젝트 미존재 → 404
      * @throws com.bts.issue.version.domain.VersionNotFoundException 버전 미존재 → 404
      */
+    @Operation(operationId = "changeVersionDates", summary = "버전 날짜 변경")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "버전 또는 프로젝트 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PatchMapping("/{id}/dates")
     fun changeDates(
         @PathVariable projectIdOrKey: String,
@@ -211,6 +258,15 @@ class VersionController(
      * @throws com.bts.issue.version.domain.VersionNotFoundException 버전 미존재 → 404
      * @throws com.bts.issue.version.domain.VersionTransitionNotAllowedException 불허 전이 → 409
      */
+    @Operation(operationId = "changeVersionStatus", summary = "버전 상태 전이")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "버전 또는 프로젝트 미존재", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "허용되지 않는 전이", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PatchMapping("/{id}/status")
     fun changeStatus(
         @PathVariable projectIdOrKey: String,
@@ -239,6 +295,14 @@ class VersionController(
      * @throws com.bts.issue.version.domain.VersionProjectNotFoundException 프로젝트 미존재 → 404
      * @throws com.bts.issue.version.domain.VersionNotFoundException 버전 미존재 → 404
      */
+    @Operation(operationId = "deleteVersion", summary = "버전 소프트 삭제")
+    @ApiResponses(
+        ApiResponse(responseCode = "204", description = "삭제 성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "버전 또는 프로젝트 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun delete(

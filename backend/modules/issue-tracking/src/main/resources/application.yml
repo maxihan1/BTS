@@ -1,0 +1,14 @@
+# issue-tracking 모듈 공통 기본 설정 — 프로파일 무관하게 항상 적용되는 값
+# 프로파일별 설정: application-dev.yml(로컬 개발), application-test.yml(Testcontainers 통합 테스트)
+
+# ── springdoc OpenAPI 3.1 문서 설정 (FR-API-01 Task 6) ──────────────────────
+# openapi_3_1: SpringDocConfigProperties.OpenApiVersion.OPENAPI_3_1 (enum 이름, 대소문자 비감지)
+# /v3/api-docs → OpenAPI 3.1 JSON, /swagger-ui → Swagger UI HTML
+springdoc:
+  api-docs:
+    version: OPENAPI_3_1
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+  # 스케줄러 등 내부 Actuator 엔드포인트는 문서에서 제외
+  show-actuator: false

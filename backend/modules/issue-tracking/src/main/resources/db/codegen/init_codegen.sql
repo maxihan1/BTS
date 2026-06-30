@@ -751,3 +751,11 @@ CREATE INDEX idx_issues_description_trgm ON issues USING gin (lower(description)
 -- description 주석 정정 — V006 'tsvector 금지' 는 FTS 유보 표기. FR-SR-04 가 추가 시점이므로 갱신(COMMENT superseding).
 COMMENT ON COLUMN issues.description IS
     '이슈 본문 (마크다운). FR-SR-04 부터 search_vector(STORED generated tsvector) FTS + lower(description) trigram 으로 색인됨 (논리 책임 search BC, 물리 issue-tracking).';
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V033: cursor pagination keyset seek 가속 (created_at DESC, id DESC) 커버 부분 인덱스 (FR-API-01)
+-- 원본: db/migration/issue-tracking/V033__issues_created_cursor_index.sql
+-- 인덱스만 추가 — jOOQ codegen 상수 생성 대상 외이나 BTS 일관성 유지로 미러 (V029/V031 선례 동형).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+CREATE INDEX idx_issues_created_cursor ON issues (created_at DESC, id DESC) WHERE deleted_at IS NULL;

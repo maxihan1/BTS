@@ -3,11 +3,18 @@
 package com.bts.issue.worklog.aggregate.web
 
 import com.bts.issue.adapter.inbound.rest.CurrentActor
+import com.bts.issue.config.BEARER_AUTH_SCHEME
 import com.bts.issue.worklog.aggregate.application.WorklogAggregateService
 import com.bts.issue.worklog.aggregate.domain.AggregateGranularity
 import com.bts.issue.worklog.aggregate.domain.WorklogAggregateDimension
 import com.bts.issue.worklog.aggregate.web.dto.WorklogAggregateResponse
 import com.bts.issue.worklog.web.DataResponse
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.GetMapping
@@ -48,6 +55,7 @@ import java.time.ZoneOffset
  *
  * @param service 워크로그 집계 유스케이스 서비스.
  */
+@Tag(name = "Worklog Aggregate", description = "프로젝트 워크로그 집계 API (FR-TT-02)")
 @RestController
 @RequestMapping("/api/v1/worklogs")
 class WorklogAggregateController(
@@ -69,6 +77,18 @@ class WorklogAggregateController(
      * @throws ResponseStatusException 401 — 미인증 / nil-UUID / 비-UUID 주체.
      * @throws com.bts.issue.domain.IssueAccessDeniedException → 403.
      */
+    @Operation(
+        operationId = "aggregateWorklogs",
+        summary = "프로젝트 워크로그 집계 조회",
+        description = "project/by(issue|user|period)/granularity(day|week|month, period 시 필수)/from/to 파라미터로 집계한다.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "집계 결과"),
+        ApiResponse(responseCode = "400", description = "파라미터 검증 오류", content = [Content()]),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "프로젝트 BROWSE 권한 없음", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping("/aggregate")
     @Suppress("ThrowsCount") // 파라미터별 독립 검증으로 명확한 400 메시지 위해 분리 throw 유지
     fun aggregate(

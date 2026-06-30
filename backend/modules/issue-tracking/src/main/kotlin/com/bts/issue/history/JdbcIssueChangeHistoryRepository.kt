@@ -10,7 +10,12 @@ import org.springframework.jdbc.support.GeneratedKeyHolder
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import java.sql.ResultSet
+import java.sql.Timestamp
+import java.time.Instant
 import java.util.UUID
+
+// TooManyFunctions: append-only record + 다양한 조회 패턴(findByIssue, Paged, Cursor, count, findLatestAssignee)
+//   을 단일 Repository 가 담당하므로 임계치(11)를 초과한다. 기존 6개 + cursor 추가로 위반 발생 — 의도적 Suppress.
 
 /**
  * [IssueChangeHistoryRepository] DB 영속 구현체 (FR-HS-01 Task 4).
@@ -35,6 +40,7 @@ import java.util.UUID
  * `com.atlas.bts.identity.audit.JdbcAuthAuditLogService` 패턴 재사용
  * (NamedParameterJdbcTemplate + append-only + RowMapper + `getObject("col", UUID::class.java)`).
  */
+@Suppress("TooManyFunctions")
 @Repository
 class JdbcIssueChangeHistoryRepository(
     private val jdbc: NamedParameterJdbcTemplate,
@@ -151,6 +157,64 @@ class JdbcIssueChangeHistoryRepository(
             SQL_FIND_LATEST_ASSIGNEE_FROM_VALUE,
             mapOf("issueId" to issueId),
         ) { rs, _ -> rs.getString("from_value") }.firstOrNull()
+    }
+
+    /**
+     * changelog cursor keyset seek 조회 (FR-API-01 Task 5).
+     *
+     * [cursorCreatedAt] 이 null 이면 첫 페이지([SQL_FIND_GROUPS_BY_ISSUE_CURSOR_FIRST]).
+     * null 이 아니면 keyset seek([SQL_FIND_GROUPS_BY_ISSUE_CURSOR_SEEK]).
+     * **두 SQL 분리 이유:** JDBC 는 null 파라미터 바인딩 시 타입을 추론할 수 없어
+     * TIMESTAMPTZ 컬럼에 null 을 바인딩하면 SQLException 이 발생한다.
+     * 단일 SQL + nullable 파라미터 대신 두 SQL 로 분기해 타입 추론 문제를 회피한다.
+     *
+     * hasNext 판정을 위해 내부에서 [limit]+1 건을 조회해 반환한다.
+     * cartesian product 방지를 위해 기존 패턴(2-step: group → items)을 유지한다.
+     *
+     * @param issueId 조회할 이슈의 UUID.
+     * @param cursorCreatedAt cursor 기준 created_at. null 이면 첫 페이지.
+     * @param cursorGroupId cursor 기준 group id. [cursorCreatedAt] 동률 tie-break 용.
+     * @param limit 표시할 최대 그룹 수. 내부적으로 +1 하여 조회.
+     */
+    @Transactional(readOnly = true)
+    override fun findByIssueCursor(
+        issueId: UUID,
+        cursorCreatedAt: Instant?,
+        cursorGroupId: Long?,
+        limit: Int,
+    ): List<Pair<Long, IssueChangeGroup>> {
+        val fetchLimit = limit + 1
+        val groups: List<Pair<Long, IssueChangeGroup>> =
+            if (cursorCreatedAt == null) {
+                jdbc.query(
+                    SQL_FIND_GROUPS_BY_ISSUE_CURSOR_FIRST,
+                    mapOf("issueId" to issueId, "limit" to fetchLimit),
+                    groupRowMapper,
+                )
+            } else {
+                jdbc.query(
+                    SQL_FIND_GROUPS_BY_ISSUE_CURSOR_SEEK,
+                    mapOf(
+                        "issueId" to issueId,
+                        "cursorCreatedAt" to Timestamp.from(cursorCreatedAt),
+                        "cursorGroupId" to
+                            requireNotNull(cursorGroupId) {
+                                "cursorGroupId 는 cursorCreatedAt 이 null 이 아닐 때 반드시 지정해야 한다"
+                            },
+                        "limit" to fetchLimit,
+                    ),
+                    groupRowMapper,
+                )
+            }
+
+        if (groups.isEmpty()) return emptyList()
+
+        val groupIds = groups.map { it.first }
+        val itemsByGroupId = fetchItemsByGroupIds(groupIds)
+
+        return groups.map { (gid, group) ->
+            gid to group.copy(items = itemsByGroupId[gid] ?: emptyList())
+        }
     }
 
     // ── private 헬퍼 ──────────────────────────────────────────────────────────
@@ -330,6 +394,41 @@ class JdbcIssueChangeHistoryRepository(
             SELECT COUNT(*)
             FROM issue_change_group
             WHERE issue_id = :issueId
+        """
+
+        /**
+         * changelog cursor 첫 페이지 조회 (cursor null 인 경우).
+         *
+         * seek 조건 없이 issue_id 만 필터링해 최신순으로 limit+1 건 조회.
+         * 기존 [SQL_FIND_GROUPS_BY_ISSUE_PAGED] 에서 OFFSET 0 에 해당하지만,
+         * JDBC null 타입 추론 회피를 위해 별도 SQL 상수로 분리한다.
+         */
+        const val SQL_FIND_GROUPS_BY_ISSUE_CURSOR_FIRST = """
+            SELECT id, issue_id, issue_key, actor_id, created_at
+            FROM issue_change_group
+            WHERE issue_id = :issueId
+            ORDER BY created_at DESC, id DESC
+            LIMIT :limit
+        """
+
+        /**
+         * changelog cursor keyset seek 조회 (cursor 지정 시).
+         *
+         * `(created_at, id)` 복합 정렬의 연속 페이지네이션 조건.
+         * 행 값 비교: `(created_at DESC, id DESC)` 정렬에서 커서 이후 위치를 구현하기 위해
+         * `created_at < :cursorCreatedAt OR (created_at = :cursorCreatedAt AND id < :cursorGroupId)` 사용.
+         * 동률 시 id DESC tie-break 보장.
+         *
+         * `idx_issue_change_group_issue (issue_id, created_at DESC, id DESC)` 커버링 인덱스를 활용.
+         */
+        const val SQL_FIND_GROUPS_BY_ISSUE_CURSOR_SEEK = """
+            SELECT id, issue_id, issue_key, actor_id, created_at
+            FROM issue_change_group
+            WHERE issue_id = :issueId
+              AND (created_at < :cursorCreatedAt
+                   OR (created_at = :cursorCreatedAt AND id < :cursorGroupId))
+            ORDER BY created_at DESC, id DESC
+            LIMIT :limit
         """
 
         /**

@@ -639,15 +639,9 @@ class IssueRepository(
                 .fetchOne(0, Long::class.java) ?: 0L
 
         // content 쿼리: ISSUE_TYPES join 으로 type 요약 포함
+        // buildTypeSelectColumns() 재사용 — listWithTypeByCursor 와 동일 컬럼 상수 공유
         val content =
-            dsl.select(
-                ISSUES.fields().toList() +
-                    listOf(
-                        ISSUE_TYPES.ID.`as`("type_id"),
-                        ISSUE_TYPES.KEY.`as`("type_key"),
-                        ISSUE_TYPES.NAME.`as`("type_name"),
-                    ),
-            )
+            dsl.select(ISSUES.fields().toList() + buildTypeSelectColumns())
                 .from(ISSUES)
                 .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
                 .join(ISSUE_TYPES).on(ISSUES.TYPE_ID.eq(ISSUE_TYPES.ID))
@@ -655,26 +649,85 @@ class IssueRepository(
                 .orderBy(ISSUES.CREATED_AT.desc())
                 .limit(pageable.pageSize)
                 .offset(pageable.offset)
-                .fetch { record ->
-                    IssueResponse.from(
-                        issue = record.into(ISSUES).toIssue(),
-                        projectKey = projectKey,
-                        typeInfo =
-                            IssueResponse.IssueTypeInfo(
-                                id =
-                                    record.get("type_id", Long::class.java)
-                                        ?: error("issue_types.id must not be null in join result"),
-                                key =
-                                    record.get("type_key", String::class.java)
-                                        ?: error("issue_types.key must not be null in join result"),
-                                name =
-                                    record.get("type_name", String::class.java)
-                                        ?: error("issue_types.name must not be null in join result"),
-                            ),
-                    )
-                }
+                .fetch { record -> record.toIssueResponseWithType(projectKey) }
 
         return PageImpl(content, pageable, total)
+    }
+
+    /**
+     * 이슈 목록 cursor keyset seek 조회 결과 VO (FR-API-01 Task 2).
+     *
+     * `limit+1` fetch 로 다음 페이지 존재 여부를 판정한다.
+     * items 크기는 최대 limit 건이며, hasNext=true 이면 다음 커서 위치가 있다.
+     *
+     * @property items 조회된 이슈 응답 목록. 최대 limit 건.
+     * @property hasNext 다음 페이지 존재 여부. limit+1 번째 행이 조회되면 true.
+     */
+    data class IssueCursorPage(
+        val items: List<IssueResponse>,
+        val hasNext: Boolean,
+    )
+
+    /**
+     * 이슈 목록을 keyset cursor seek 방식으로 조회한다 (FR-API-01 Task 2).
+     *
+     * [listWithType] 과 동일한 [buildActiveSecureWhere] 보안 술어 + [buildFilterCondition] 필터를
+     * 재사용하여 별도 보안 경로를 신설하지 않는다.
+     *
+     * cursor 위치: `(seekCreatedAt, seekId)` 쌍으로 지정한다.
+     * `WHERE (created_at < :seekCreatedAt) OR (created_at = :seekCreatedAt AND id < :seekId)` 로
+     * keyset seek 를 표현한다 (row-value 비교와 동일 의미).
+     *
+     * 정렬: `ORDER BY created_at DESC, id DESC` — id 는 created_at 동률 tie-break.
+     * limit+1 건을 fetch 해 결과가 limit+1 이면 hasNext=true 로 판정한다.
+     *
+     * 레이어 결정: repository 는 inbound adapter(CursorPosition) 를 import 하지 않는다.
+     * 호출자(서비스 계층)가 CursorPosition.createdAt/id 를 분해해 원시값으로 전달한다.
+     *
+     * @param projectKey 프로젝트 접두사. 예: `"BTS"`.
+     * @param seekCreatedAt cursor 위치의 created_at. null 이면 첫 페이지(seek 없음).
+     * @param seekId cursor 위치의 id. null 이면 첫 페이지. seekCreatedAt 과 항상 쌍.
+     * @param limit 반환할 최대 건수. limit+1 건 fetch 로 hasNext 판정.
+     * @param actor 조회 행위자 UUID. 보안 등급 필터에 사용.
+     * @param access 접근 가능 보안 등급 집합. 기본값 unrestricted(빠른경로).
+     * @param filter 이슈 필터 조건. 기본값 무필터.
+     * @return [IssueCursorPage] — items(최대 limit 건) + hasNext.
+     */
+    @Transactional(readOnly = true)
+    @Suppress("LongParameterList") // keyset cursor seek 파라미터 집합(seek좌표 2+limit+actor+access+filter) — VO 분리 시 레이어 오염
+    fun listWithTypeByCursor(
+        projectKey: String,
+        seekCreatedAt: OffsetDateTime?,
+        seekId: UUID?,
+        limit: Int,
+        actor: UUID,
+        access: IssueSecurityAccess = UNRESTRICTED_ACCESS,
+        filter: BoardCardFilter = BoardCardFilter.EMPTY,
+    ): IssueCursorPage {
+        // C1: 보안 술어 + 삭제 필터 — listWithType 과 동일 단일 source
+        val baseWhere = buildActiveSecureWhere(projectKey, actor, access)
+        val filterCondition = buildFilterCondition(filter)
+        var effectiveWhere = if (filterCondition != null) baseWhere.and(filterCondition) else baseWhere
+
+        // C2: keyset seek — cursor 위치 이후(오래된) 행만 반환
+        if (seekCreatedAt != null && seekId != null) {
+            effectiveWhere = effectiveWhere.and(buildSeekCondition(seekCreatedAt, seekId))
+        }
+
+        // buildTypeSelectColumns() / toIssueResponseWithType() — listWithType 와 공통 빌더 공유
+        val fetched =
+            dsl.select(ISSUES.fields().toList() + buildTypeSelectColumns())
+                .from(ISSUES)
+                .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+                .join(ISSUE_TYPES).on(ISSUES.TYPE_ID.eq(ISSUE_TYPES.ID))
+                .where(effectiveWhere)
+                .orderBy(ISSUES.CREATED_AT.desc(), ISSUES.ID.desc())
+                .limit(limit + 1)
+                .fetch { record -> record.toIssueResponseWithType(projectKey) }
+
+        val hasNext = fetched.size > limit
+        val items = if (hasNext) fetched.take(limit) else fetched
+        return IssueCursorPage(items = items, hasNext = hasNext)
     }
 
     /**
@@ -904,6 +957,72 @@ class IssueRepository(
             activeInProject
         }
     }
+
+    /**
+     * keyset cursor seek 조건을 반환한다 (FR-API-01 Task 2).
+     *
+     * `ORDER BY created_at DESC, id DESC` 정렬의 cursor 위치 다음 행 필터.
+     * row-value 비교 `(created_at, id) < (seekCreatedAt, seekId)` 를 명시 OR 전개로 표현한다.
+     *
+     * ```
+     * (created_at < :seekCreatedAt)
+     * OR (created_at = :seekCreatedAt AND id < :seekId)
+     * ```
+     *
+     * id 는 tie-break 역할 — 동일 created_at 이슈 중 id DESC 순서로 seek 경계를 정한다.
+     *
+     * @param seekCreatedAt cursor 위치의 created_at.
+     * @param seekId cursor 위치의 id.
+     * @return seek 조건 [Condition].
+     */
+    private fun buildSeekCondition(
+        seekCreatedAt: OffsetDateTime,
+        seekId: UUID,
+    ): Condition =
+        ISSUES.CREATED_AT.lt(seekCreatedAt)
+            .or(ISSUES.CREATED_AT.eq(seekCreatedAt).and(ISSUES.ID.lt(seekId)))
+
+    /**
+     * [listWithType] / [listWithTypeByCursor] 공통 — issue_types 타입 정보 SELECT 컬럼 목록.
+     *
+     * 두 메서드가 동일한 alias 상수([TYPE_ID_ALIAS]/[TYPE_KEY_ALIAS]/[TYPE_NAME_ALIAS])를
+     * 단일 source 로 공유한다. alias 변경 시 양쪽 SELECT + record 읽기가 자동 동기화된다.
+     *
+     * @return [ISSUE_TYPES.ID]/[ISSUE_TYPES.KEY]/[ISSUE_TYPES.NAME] alias 컬럼 목록.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun buildTypeSelectColumns(): List<org.jooq.Field<*>> =
+        listOf(
+            ISSUE_TYPES.ID.`as`(TYPE_ID_ALIAS),
+            ISSUE_TYPES.KEY.`as`(TYPE_KEY_ALIAS),
+            ISSUE_TYPES.NAME.`as`(TYPE_NAME_ALIAS),
+        ) as List<org.jooq.Field<*>>
+
+    /**
+     * [listWithType] / [listWithTypeByCursor] 공통 — jOOQ Record 를 [IssueResponse] 로 변환한다.
+     *
+     * record 에 `issues.*` + [buildTypeSelectColumns] alias 컬럼이 포함되어 있어야 한다.
+     *
+     * @param projectKey 소속 프로젝트 키.
+     * @return type 요약(typeId/typeKey/typeName) 이 채워진 [IssueResponse].
+     */
+    private fun org.jooq.Record.toIssueResponseWithType(projectKey: String): IssueResponse =
+        IssueResponse.from(
+            issue = into(ISSUES).toIssue(),
+            projectKey = projectKey,
+            typeInfo =
+                IssueResponse.IssueTypeInfo(
+                    id =
+                        get(TYPE_ID_ALIAS, Long::class.java)
+                            ?: error("issue_types.id must not be null in type join result"),
+                    key =
+                        get(TYPE_KEY_ALIAS, String::class.java)
+                            ?: error("issue_types.key must not be null in type join result"),
+                    name =
+                        get(TYPE_NAME_ALIAS, String::class.java)
+                            ?: error("issue_types.name must not be null in type join result"),
+                ),
+        )
 
     /**
      * [BoardCardFilter] 를 SQL WHERE 술어 [Condition] 으로 변환한다.

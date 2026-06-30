@@ -3,9 +3,16 @@
 package com.bts.issue.link.web
 
 import com.bts.issue.adapter.inbound.rest.DataResponse
+import com.bts.issue.config.BEARER_AUTH_SCHEME
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.link.application.IssueGraphService
 import com.bts.issue.link.web.dto.GraphResponse
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import org.slf4j.LoggerFactory
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -30,6 +37,7 @@ import org.springframework.web.bind.annotation.RestController
  *
  * @param issueGraphService 그래프 BFS 빌드 Application Service.
  */
+@Tag(name = "Issue Graph", description = "이슈 링크 BFS 그래프 조회 API (FR-LK-02)")
 @RestController
 @RequestMapping("/api/v1/issues/{key}")
 class IssueGraphController(
@@ -44,6 +52,18 @@ class IssueGraphController(
      * @param depth 최대 홉 거리 문자열. null 또는 blank 이면 기본값(2) 적용. 1~3 범위 외 → 400.
      * @return 200 OK + [GraphResponse] (nodes/edges/truncated 포함).
      */
+    @Operation(
+        operationId = "getIssueGraph",
+        summary = "이슈 링크 BFS 그래프 조회",
+        description = "중심 이슈를 기점으로 BFS 탐색(기본 depth=2, 최대 depth=5)하여 노드·엣지 그래프를 반환한다.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "그래프 (nodes + edges)"),
+        ApiResponse(responseCode = "400", description = "depth 파라미터 범위 오류", content = [Content()]),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping("/graph")
     fun getGraph(
         @PathVariable key: String,
