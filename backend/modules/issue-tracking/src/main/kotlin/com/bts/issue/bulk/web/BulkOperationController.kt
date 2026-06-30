@@ -12,7 +12,14 @@ import com.bts.issue.bulk.domain.BULK_OPERATION_MAX_SIZE
 import com.bts.issue.bulk.domain.BulkOperationId
 import com.bts.issue.bulk.domain.BulkOperationType
 import com.bts.issue.bulk.repository.BulkOperationRepository
+import com.bts.issue.config.BEARER_AUTH_SCHEME
 import com.bts.issue.domain.ActorId
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotNull
 import org.slf4j.LoggerFactory
@@ -48,6 +55,10 @@ import java.util.UUID
  * @param repo 일괄 작업 Repository (조회 전용).
  * @param bulkAvailableTransitionsService 일괄 가용 전이 조회 서비스.
  */
+@Tag(
+    name = "Bulk Operations",
+    description = "이슈 일괄 작업 접수·조회 및 일괄 가용 전이 조회 API (FR-IS-05)",
+)
 @RestController
 class BulkOperationController(
     private val service: BulkOperationApplicationService,
@@ -66,6 +77,18 @@ class BulkOperationController(
      * @return 202 Accepted + [BulkOperationAcceptedResponse] body
      * @throws IllegalArgumentException issueKeys 비어있음/1000 초과/payload 불일치 시 → 400 (핸들러 처리)
      */
+    @Operation(
+        summary = "이슈 일괄 작업 접수",
+        description =
+            "여러 이슈에 일괄 수정(BULK_EDIT) 또는 일괄 전이(BULK_TRANSITION)를 비동기로 접수한다. " +
+                "202 Accepted 와 함께 추적용 bulkOperationId 를 반환하며, 실제 처리는 백그라운드 워커가 수행한다.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "202", description = "접수 완료 — bulkOperationId 반환"),
+        ApiResponse(responseCode = "400", description = "issueKeys 비어있음/상한 초과/payload 불일치", content = [Content()]),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PostMapping("/api/v1/issues/bulk-update")
     fun submit(
         @Valid @RequestBody request: BulkUpdateWebRequest,
@@ -109,6 +132,17 @@ class BulkOperationController(
      * @throws BulkOperationNotFoundException id 에 해당하는 작업이 없을 때 → 404
      * @throws BulkOperationForbiddenException 요청 actor 가 작업 owner 가 아닐 때 → 403
      */
+    @Operation(
+        summary = "일괄 작업 단건 조회",
+        description = "bulkOperationId 로 일괄 작업의 상태·진행 항목을 조회한다. 작업을 접수한 actor 만 조회할 수 있다.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "조회 성공"),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "작업 owner 가 아님", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "작업 없음", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @GetMapping("/api/v1/bulk-operations/{id}")
     fun get(
         @PathVariable id: UUID,
@@ -142,6 +176,18 @@ class BulkOperationController(
      * @return 200 OK + [BulkAvailableTransitionsResponse] body
      * @throws IllegalArgumentException issueKeys 비어있음 또는 1000 초과 시 → 400 (핸들러 처리)
      */
+    @Operation(
+        summary = "일괄 가용 전이 조회",
+        description =
+            "여러 이슈에 공통으로 적용 가능한 워크플로우 전이 목록(교집합)을 조회한다. " +
+                "조회에 실패한 이슈(미존재·워크플로우 미설정·접근 불가)는 unresolvedIssueKeys 로 반환한다.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "공통 가용 전이 + 미해결 이슈 키 반환"),
+        ApiResponse(responseCode = "400", description = "issueKeys 비어있음/상한 초과", content = [Content()]),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PostMapping("/api/v1/issues/bulk-transitions/available")
     fun availableTransitions(
         @RequestBody request: BulkAvailableTransitionsRequest,
