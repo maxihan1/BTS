@@ -1,4 +1,5 @@
 // 대시보드 BC MSW 핸들러 — stateful CRUD + OCC 409 + 권한 403 (FR-DB-01 D6)
+// 카탈로그 핸들러 추가 (FR-DB-02 D6/D7 Task 1)
 //
 // 교훈 반영.
 //   - msw-mutation-stateful-refetch: PATCH/DELETE 후 GET 상세에 즉시 반영
@@ -13,6 +14,7 @@ import {
   LS_KEY_DASHBOARD_CONFLICT,
   type StoredDashboard,
 } from './dashboard-fixtures'
+import { GADGET_CATALOG_FIXTURE } from './gadget-catalog-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 응답 DTO 인터페이스 — 백엔드 DashboardResponse 계약과 1:1 대응
@@ -355,6 +357,26 @@ const deleteDashboardHandler = http.delete('/api/v1/dashboards/:id', ({ params, 
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/dashboards/gadget-catalog — 가젯 카탈로그 조회 (FR-DB-02 D6/D7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/v1/dashboards/gadget-catalog — 가젯 카탈로그 전체 조회.
+ *
+ * 읽기 전용이므로 상태 없음. GADGET_CATALOG_FIXTURE를 직접 반환한다.
+ * 백엔드 GadgetCatalogResponse 1:1 응답 형식 재현 — { data: { gadgets: [...] } }.
+ *
+ * ⚠️ 계약 drift 경고.
+ *   백엔드 GadgetType.kt 변경 시 gadget-catalog-fixtures.ts도 동기화해야 한다.
+ *   (memory: frontend-zod-backend-dto-contract-gap)
+ *
+ * 성공 → 200 { data: GadgetCatalogResponse }
+ */
+const getGadgetCatalogHandler = http.get('/api/v1/dashboards/gadget-catalog', () => {
+  return HttpResponse.json({ data: { gadgets: GADGET_CATALOG_FIXTURE } })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // export
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -363,6 +385,7 @@ const deleteDashboardHandler = http.delete('/api/v1/dashboards/:id', ({ params, 
  *
  * handlers.ts에서 dashboardHandlers를 spread해 등록한다.
  * GET 목록·단건, POST 생성, PATCH 수정, DELETE 삭제 모두 포함.
+ * 가젯 카탈로그 핸들러(FR-DB-02) 포함.
  */
 export const dashboardHandlers = [
   listDashboardsHandler,
@@ -370,4 +393,5 @@ export const dashboardHandlers = [
   createDashboardHandler,
   patchDashboardHandler,
   deleteDashboardHandler,
+  getGadgetCatalogHandler,
 ]

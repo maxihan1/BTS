@@ -1,6 +1,6 @@
 // 가젯 카탈로그 api·Zod 스키마·validateGadgetConfig 단위 테스트
 
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import {
@@ -14,13 +14,8 @@ import {
 } from './gadget-catalog'
 import { GADGET_CATALOG_FIXTURE } from '@/mocks/gadget-catalog-fixtures'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MSW 서버 연결
-// ─────────────────────────────────────────────────────────────────────────────
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }))
-afterAll(() => server.close())
-afterEach(() => server.resetHandlers())
+// MSW 서버 라이프사이클은 src/test/setup.ts에서 전역 관리 (beforeAll/afterAll/afterEach)
+// 각 테스트에서 server.use(...)로 엔드포인트별 핸들러를 추가한다.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼 — 최소 GadgetCatalogEntry 생성
