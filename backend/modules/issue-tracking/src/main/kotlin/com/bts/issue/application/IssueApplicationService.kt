@@ -1025,7 +1025,38 @@ class IssueApplicationService(
         limit: Int,
         filter: BoardCardFilter = BoardCardFilter.EMPTY,
     ): CursorPage<IssueResponse> {
-        TODO("Task 3 GREEN 에서 구현 — 스텁")
+        require(limit <= MAX_CURSOR_LIMIT) {
+            "limit must be $MAX_CURSOR_LIMIT or fewer, but was $limit"
+        }
+        assertPermission(actor, IssuePermission.BROWSE, IssueScope.Project(projectKey))
+        val access = securityDirectory.accessibleLevels(actor.value, projectKey)
+        val result =
+            repo.listWithTypeByCursor(
+                projectKey = projectKey,
+                seekCreatedAt = cursor?.createdAt,
+                seekId = cursor?.id,
+                limit = limit,
+                actor = actor.value,
+                access = access,
+                filter = filter,
+            )
+        // maskFieldsForPage 재사용 — PageImpl 래핑으로 Page<IssueResponse> 전달 후 content 추출
+        val tempPage = PageImpl(
+            result.items,
+            Pageable.unpaged(),
+            result.items.size.toLong(),
+        )
+        val maskedItems = maskFieldsForPage(actor, projectKey, tempPage).content
+        val next =
+            if (result.hasNext && maskedItems.isNotEmpty()) {
+                val last = maskedItems.last()
+                val lastCreatedAt =
+                    last.createdAt ?: error("목록 이슈의 createdAt 이 null 일 수 없습니다")
+                CursorCodec.encode(lastCreatedAt.atOffset(ZoneOffset.UTC), last.id)
+            } else {
+                null
+            }
+        return CursorPage(items = maskedItems, next = next)
     }
 
     // ── private helpers ────────────────────────────────────────────────────────

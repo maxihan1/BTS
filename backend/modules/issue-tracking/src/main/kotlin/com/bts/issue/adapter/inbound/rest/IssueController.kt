@@ -202,12 +202,42 @@ class IssueController(
         @RequestParam(name = "page", required = false) explicitPage: Int? = null,
         @RequestParam(name = "size", required = false) explicitSize: Int? = null,
     ): ResponseEntity<Any> {
-        log.info("IssueController.list projectKey={} pageable={}", projectKey, pageable)
-
         val actor = CurrentActor.current()
         val filter = IssueFilterQueryParser.parse(status, assignee, label, component)
-        val page = service.listIssues(actor, projectKey ?: "", pageable, filter)
-        return ResponseEntity.ok<Any>(page)
+        return if (cursor != null) {
+            if (explicitPage != null || explicitSize != null) throw PaginationModeConflictException()
+            val effectiveLimit = limit ?: DEFAULT_CURSOR_LIMIT
+            if (effectiveLimit > MAX_CURSOR_LIMIT) {
+                throw org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "limit 은 $MAX_CURSOR_LIMIT 이하여야 합니다.",
+                )
+            }
+            log.info(
+                "IssueController.list cursor모드 projectKey={} limit={}",
+                projectKey,
+                effectiveLimit,
+            )
+            val cursorPosition = CursorCodec.decode(cursor)
+            val result =
+                service.listIssuesByCursor(
+                    actor,
+                    projectKey ?: "",
+                    cursorPosition,
+                    effectiveLimit,
+                    filter,
+                )
+            ResponseEntity.ok<Any>(
+                CursorPageResponse(
+                    data = result.items,
+                    meta = PageMeta(PageCursor(next = result.next, limit = effectiveLimit)),
+                ),
+            )
+        } else {
+            log.info("IssueController.list offset모드 projectKey={} pageable={}", projectKey, pageable)
+            val page = service.listIssues(actor, projectKey ?: "", pageable, filter)
+            ResponseEntity.ok<Any>(page)
+        }
     }
 
     /**
