@@ -3,8 +3,11 @@
 package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.adapter.inbound.rest.cursor.CursorCodec
+import com.bts.issue.application.ChangelogCursorCodec
+import com.bts.issue.application.ChangelogGroupView
 import com.bts.issue.application.CursorPage
 import com.bts.issue.application.IssueApplicationService
+import com.bts.issue.application.IssueChangelogService
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
@@ -601,6 +604,201 @@ class IssueControllerCursorModeTest {
         mockMvc.perform(
             get("/api/v1/issues")
                 .param("projectKey", "ATLAS")
+                .param("cursor", "")
+                .param("limit", "101"),
+        ).andExpect(status().isBadRequest)
+    }
+}
+
+/**
+ * FR-API-01 Task 5 — IssueController changelog cursor 모드 / offset 무회귀 / 충돌 / round-trip MockMvc 슬라이스 테스트.
+ *
+ * 테스트 케이스.
+ * - CHANGELOG-CURSOR-1: changelog cursor 모드 — envelope(data[], meta.page.next, meta.page.limit) 응답 구조 검증
+ * - CHANGELOG-CURSOR-2: changelog offset 모드 무회귀 — 기존 Page 구조(content/totalElements) 그대로 반환
+ * - CHANGELOG-CURSOR-3: cursor + page 동시 지정 → [PaginationModeConflictException] throw
+ * - CHANGELOG-CURSOR-4: next round-trip — 1페이지 next 를 2페이지 cursor 에 주입 → 마지막 next=null
+ * - CHANGELOG-CURSOR-5: changelog cursor limit > 100 → 400
+ */
+@ExtendWith(SpringExtension::class)
+@ContextConfiguration(classes = [IssueControllerChangelogCursorModeTest.ChangelogCursorTestConfig::class])
+@WebAppConfiguration
+class IssueControllerChangelogCursorModeTest {
+    /**
+     * changelog cursor 모드 테스트 전용 Spring MVC 최소 컨텍스트.
+     *
+     * [IssueApplicationService] + [IssueChangelogService] 모두 mockk 으로 제공.
+     * [IssueExceptionHandler] 등록 — PaginationModeConflictException(400), ResponseStatusException(400) 변환.
+     * [JavaTimeModule] 등록 — [Instant] 직렬화를 ISO 문자열로(타임스탬프 배열 비활성).
+     */
+    @Configuration
+    @EnableWebMvc
+    @EnableSpringDataWebSupport
+    open class ChangelogCursorTestConfig : WebMvcConfigurer {
+        @Bean
+        open fun changelogCursorSvc(): IssueApplicationService = mockk(relaxed = true)
+
+        @Bean
+        open fun changelogCursorChangelogSvc(): IssueChangelogService = mockk(relaxed = true)
+
+        @Bean
+        open fun changelogCursorCtrl(
+            svc: IssueApplicationService,
+            changelogSvc: IssueChangelogService,
+        ): IssueController = IssueController(service = svc, changelogService = changelogSvc)
+
+        @Bean
+        open fun changelogCursorExHandler(): IssueExceptionHandler = IssueExceptionHandler()
+
+        override fun extendMessageConverters(converters: MutableList<HttpMessageConverter<*>>) {
+            converters
+                .filterIsInstance<MappingJackson2HttpMessageConverter>()
+                .forEach { converter ->
+                    converter.objectMapper.registerModule(JavaTimeModule())
+                    converter.objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                }
+        }
+    }
+
+    @Autowired
+    lateinit var webApplicationContext: WebApplicationContext
+
+    @Autowired
+    lateinit var changelogService: IssueChangelogService
+
+    private lateinit var mockMvc: MockMvc
+
+    private val actorUuid = UUID.fromString("11111111-1111-4111-8111-111111111111")
+    private val createdAt1 = Instant.parse("2026-06-01T10:00:00Z")
+    private val createdAt2 = Instant.parse("2026-06-01T09:00:00Z")
+    private val createdAt3 = Instant.parse("2026-06-01T08:00:00Z")
+    private val groupId1 = 1001L
+    private val groupId2 = 1002L
+    private val groupId3 = 1003L
+
+    private fun makeChangelogView(createdAt: Instant): ChangelogGroupView =
+        ChangelogGroupView(actorId = actorUuid, actorName = "Test User", createdAt = createdAt, items = emptyList())
+
+    @BeforeEach
+    fun setUp() {
+        mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
+        SecurityContextHolder.getContext().authentication =
+            UsernamePasswordAuthenticationToken(
+                actorUuid.toString(),
+                null,
+                listOf(SimpleGrantedAuthority("ROLE_USER")),
+            )
+    }
+
+    @AfterEach
+    fun tearDown() {
+        SecurityContextHolder.clearContext()
+    }
+
+    // ── CHANGELOG-CURSOR-1: changelog cursor 모드 — envelope 응답 구조 검증 ──────
+
+    @Test
+    fun `CHANGELOG-CURSOR-1 changelog cursor 모드 — envelope 응답 구조 검증`() {
+        val view = makeChangelogView(createdAt1)
+        val nextToken = ChangelogCursorCodec.encode(createdAt1.atOffset(ZoneOffset.UTC), groupId1)
+        every {
+            changelogService.findChangelogByCursor(any(), any(), any(), any())
+        } returns CursorPage(items = listOf(view), next = nextToken)
+
+        mockMvc.perform(
+            get("/api/v1/issues/ATLAS-1/changelog")
+                .param("cursor", "")
+                .param("limit", "50"),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data").isArray)
+            .andExpect(jsonPath("$.meta.page.next").value(nextToken))
+            .andExpect(jsonPath("$.meta.page.limit").value(50))
+    }
+
+    // ── CHANGELOG-CURSOR-2: offset 모드 무회귀 ──────────────────────────────────
+
+    @Test
+    fun `CHANGELOG-CURSOR-2 changelog offset 모드 무회귀 — 기존 Page 구조 그대로 반환`() {
+        val view = makeChangelogView(createdAt1)
+        val page = PageImpl(listOf(view).map { IssueChangelogResponse.from(it) }, PageRequest.of(0, 20), 1L)
+        every { changelogService.findChangelog(any(), any(), any()) } returns
+            PageImpl(listOf(view), PageRequest.of(0, 20), 1L)
+
+        mockMvc.perform(
+            get("/api/v1/issues/ATLAS-1/changelog")
+                .param("page", "0")
+                .param("size", "20"),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.content").isArray)
+            .andExpect(jsonPath("$.totalElements").value(1))
+    }
+
+    // ── CHANGELOG-CURSOR-3: cursor+page 동시 지정 → PaginationModeConflictException ─
+
+    @Test
+    fun `CHANGELOG-CURSOR-3 cursor와 page 동시 지정 시 PaginationModeConflictException throw`() {
+        mockMvc.perform(
+            get("/api/v1/issues/ATLAS-1/changelog")
+                .param("cursor", "")
+                .param("page", "0"),
+        ).andExpect { result ->
+            assertThat(result.resolvedException).isInstanceOf(PaginationModeConflictException::class.java)
+        }
+    }
+
+    // ── CHANGELOG-CURSOR-4: next round-trip ──────────────────────────────────────
+
+    @Test
+    fun `CHANGELOG-CURSOR-4 next round-trip — 1페이지 next 를 2페이지 cursor 주입 후 마지막 next null`() {
+        val view1 = makeChangelogView(createdAt1)
+        val view2 = makeChangelogView(createdAt2)
+        val view3 = makeChangelogView(createdAt3)
+        val nextToken = ChangelogCursorCodec.encode(createdAt2.atOffset(ZoneOffset.UTC), groupId2)
+
+        every {
+            changelogService.findChangelogByCursor(any(), any(), any(), any())
+        } returnsMany
+            listOf(
+                CursorPage(items = listOf(view1, view2), next = nextToken),
+                CursorPage(items = listOf(view3), next = null),
+            )
+
+        // 1페이지 조회
+        val page1Result =
+            mockMvc.perform(
+                get("/api/v1/issues/ATLAS-1/changelog")
+                    .param("cursor", "")
+                    .param("limit", "2"),
+            )
+                .andExpect(status().isOk)
+                .andReturn()
+
+        val tree1 = ObjectMapper().readTree(page1Result.response.contentAsString)
+        val page1Next = tree1["meta"]["page"]["next"].asText()
+        assertThat(page1Next).isEqualTo(nextToken)
+
+        // 2페이지 조회 — next round-trip
+        val page2Result =
+            mockMvc.perform(
+                get("/api/v1/issues/ATLAS-1/changelog")
+                    .param("cursor", page1Next)
+                    .param("limit", "2"),
+            )
+                .andExpect(status().isOk)
+                .andReturn()
+
+        val tree2 = ObjectMapper().readTree(page2Result.response.contentAsString)
+        assertThat(tree2["meta"]["page"]["next"].isNull).isTrue()
+    }
+
+    // ── CHANGELOG-CURSOR-5: limit > 100 → 400 ────────────────────────────────────
+
+    @Test
+    fun `CHANGELOG-CURSOR-5 changelog cursor limit 100 초과 시 400 반환`() {
+        mockMvc.perform(
+            get("/api/v1/issues/ATLAS-1/changelog")
                 .param("cursor", "")
                 .param("limit", "101"),
         ).andExpect(status().isBadRequest)
