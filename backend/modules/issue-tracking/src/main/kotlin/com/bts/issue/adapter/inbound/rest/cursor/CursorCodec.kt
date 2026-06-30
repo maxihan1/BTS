@@ -9,6 +9,7 @@ import java.util.UUID
 
 private const val VERSION_PREFIX = "v1:"
 private const val PAYLOAD_DELIMITER = "|"
+private const val PREFIX_PREVIEW_LENGTH = 10
 
 /**
  * cursor 페이지네이션 위치를 나타내는 값 객체.
@@ -31,7 +32,7 @@ data class CursorPosition(
  *
  * @param message 실패 사유.
  */
-class CursorDecodeException(message: String) : RuntimeException(message)
+class CursorDecodeException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
 
 /**
  * cursor 토큰 인코딩/디코딩 유틸.
@@ -70,15 +71,23 @@ object CursorCodec {
     /**
      * opaque cursor 토큰을 [CursorPosition] 으로 디코딩한다.
      *
+     * 디코딩 단계별 독립 실패 지점 (각각 별도 진단 메시지 필요).
+     * 1. 버전 prefix 불일치 — 지원하지 않는 cursor 버전.
+     * 2. Base64URL 디코딩 실패 — 위변조 또는 형식 오류.
+     * 3. 페이로드 구분자(|) 부재 — 잘린 토큰 등 형식 오류.
+     * 4. 날짜 파싱 실패 — ISO 8601 형식 불일치.
+     * 5. UUID 파싱 실패 — UUID 형식 불일치.
+     *
      * @param token cursor 토큰. 빈 문자열이면 첫 페이지로 해석해 null 을 반환한다 (예외 아님).
      * @return 디코딩된 [CursorPosition]. 빈 문자열이면 null.
      * @throws CursorDecodeException 토큰 형식 오류, 지원하지 않는 버전 prefix, 파싱 실패 시.
      */
+    @Suppress("ThrowsCount") // 5단계 디코딩 파이프라인 — 각 단계 실패는 독립 진단 메시지가 필요해 통합 불가
     fun decode(token: String): CursorPosition? {
         if (token.isEmpty()) return null
 
         if (!token.startsWith(VERSION_PREFIX)) {
-            throw CursorDecodeException("지원하지 않는 cursor 버전 prefix: ${token.take(10)}")
+            throw CursorDecodeException("지원하지 않는 cursor 버전 prefix: ${token.take(PREFIX_PREVIEW_LENGTH)}")
         }
 
         val encoded = token.removePrefix(VERSION_PREFIX)
@@ -89,7 +98,7 @@ object CursorCodec {
                     .decode(encoded)
                     .toString(Charsets.UTF_8)
             } catch (ex: IllegalArgumentException) {
-                throw CursorDecodeException("cursor 토큰 Base64URL 디코딩 실패: ${ex.message}")
+                throw CursorDecodeException("cursor 토큰 Base64URL 디코딩 실패: ${ex.message}", ex)
             }
 
         val delimiterIndex = payload.indexOf(PAYLOAD_DELIMITER)
@@ -104,14 +113,14 @@ object CursorCodec {
             try {
                 OffsetDateTime.parse(rawDate)
             } catch (ex: DateTimeParseException) {
-                throw CursorDecodeException("cursor 토큰 날짜 파싱 실패: ${ex.message}")
+                throw CursorDecodeException("cursor 토큰 날짜 파싱 실패: ${ex.message}", ex)
             }
 
         val id =
             try {
                 UUID.fromString(rawId)
             } catch (ex: IllegalArgumentException) {
-                throw CursorDecodeException("cursor 토큰 UUID 파싱 실패: ${ex.message}")
+                throw CursorDecodeException("cursor 토큰 UUID 파싱 실패: ${ex.message}", ex)
             }
 
         return CursorPosition(createdAt, id)

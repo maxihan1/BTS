@@ -694,6 +694,7 @@ class IssueRepository(
      * @return [IssueCursorPage] — items(최대 limit 건) + hasNext.
      */
     @Transactional(readOnly = true)
+    @Suppress("LongParameterList") // keyset cursor seek 파라미터 집합(seek좌표 2+limit+actor+access+filter) — VO 분리 시 레이어 오염
     fun listWithTypeByCursor(
         projectKey: String,
         seekCreatedAt: OffsetDateTime?,
