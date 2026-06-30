@@ -152,13 +152,15 @@
 
 **우선순위**. 필수 | **선행**. issue-tracking §2.1.1 | **Plan slug**. `search/api-issue-crud`
 
-- [ ] D1. 도메인 — API 응답 표준 (페이지네이션, 에러 포맷) (책임. backend-engineer)
-- [ ] D2. 명세 — OpenAPI 3.1 스펙 작성 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — issue-tracking API에 cursor pagination + bulk ops 표준 적용 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — OpenAPI 스펙 검증 + contract test (책임. backend-engineer)
-- [ ] D6. 프론트 UI — (해당 없음 — API 문서는 §A) (책임. -)
-- [ ] D7. E2E — Postman/Insomnia 시나리오 (책임. qa-engineer)
+- [x] D1. 도메인 — API 응답 표준 (페이지네이션, 에러 포맷) (책임. backend-engineer)
+- [x] D2. 명세 — OpenAPI 3.1 스펙 작성 (책임. backend-engineer)
+- [x] D3. 데이터 모델 — (활용) (책임. db-engineer)
+- [x] D4. 백엔드 — issue-tracking API에 cursor pagination + bulk ops 표준 적용 (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 — OpenAPI 스펙 검증 + contract test (책임. backend-engineer)
+- [x] D6. 프론트 UI — (해당 없음 — API 문서는 Swagger UI) (책임. -)
+- [x] D7. E2E — OpenApiContractTest 가 실 DB로 cursor 순회·계약 검증 (Postman/Insomnia 수동 시나리오 대체) (책임. qa-engineer)
+
+> **전체 완료 (2026-06-30, PR #207 + #208)**. 논리 search-export-import / 물리 issue-tracking(새 BC 신설 0). PR #207 — cursor 병행 페이지네이션(offset 유지·프론트 무회귀, opaque Base64URL keyset `(created_at DESC, id DESC)`) + 응답 envelope(`{data, meta.page:{next,limit}}`) + RFC 7807 ProblemDetail 보강(신규 `ISSUE_INVALID_CURSOR`/`ISSUE_PAGINATION_MODE_CONFLICT`, 두 cursor 경로 계약 통일) + **전역 springdoc OpenAPI 3.1 + Swagger UI**(bearerAuth) + `OpenApiContractTest` 실 DB cursor 순회(중복0/누락0/tie-break). V033 부분 인덱스 `(created_at DESC, id DESC) WHERE deleted_at IS NULL` + init_codegen 미러. cursor seek는 `buildActiveSecureWhere` 재사용으로 visibility/소프트삭제 술어 구조적 상속(우회 0). PR #208 — 기존 bulk 엔드포인트(`BulkOperationController` 3개)에 `@Tag`/`@Operation`/`@ApiResponses`/`@SecurityRequirement` 적용(FR-IS-05 기존 주소 문서화, 신규 0). 적대/일반 두 리뷰 상보 — changelog cursor 위변조 errorCode 불일치(VALIDATION_FAILED→ISSUE_INVALID_CURSOR) 적발·통일. ADR `docs/decisions/2026-06-30-fr-api-01-cursor-pagination-envelope.md`. **FR-API-01 전체 완료.**
 
 ### §5.2 FR-API-02 — AQL 검색 REST API
 
