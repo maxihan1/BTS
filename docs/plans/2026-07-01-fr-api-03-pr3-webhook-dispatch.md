@@ -182,6 +182,7 @@ FR-NT-05 webhook dispatcher(notification 전이 webhook)의 상위집합.
 **GREEN**: 통합 테스트 작성(신규 코드 없음, 기존 컴포넌트 조립 검증).
 **REFACTOR**: 시나리오 KDoc.
 **검증**: `./gradlew :backend:modules:search-export-import:test --tests '*WebhookDispatchEndToEndIntegrationTest'`
+**구현 노트 (C2 deviation)**. BC 격리로 search 는 issue-tracking `IssueDomainEvent` 를 import 할 수 없어(모듈 의존성 없음), 발행측(Spring Boot 기본 ObjectMapper)과 **동일한 설정**(registerKotlinModule + JavaTimeModule + 타임스탬프 ISO)으로 **동일 wire shape**(내부 VO `reporterId`/`actorId`={value} 포함)를 직렬화하는 방식으로 C2 를 실현한다(occurredAt ISO 계약·소비측 파싱 호환·C3 내부 VO 누출 차단을 실제 직렬화 경로로 검증). issue-tracking 클래스 직접 직렬화가 아니라는 점만 원안과 다르다(테스트 KDoc 상세).
 
 ## Plan 메타
 
