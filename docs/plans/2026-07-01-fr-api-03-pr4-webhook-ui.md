@@ -269,4 +269,48 @@ sanity gap 9건(EC-1~9)을 스펙 §6에 선반영. 이 PR 고유 리스크는 E
 - 추가 검증: `pnpm --filter web verify`(lint+typecheck+test+build) + E2E
 - 공유 파일 주의: `mocks/handlers.ts`(T3 단독 등록), `router.ts`/`Header.tsx`(T9 단독) — 파일 겹침으로 자동 직렬화, wave 충돌 없음
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-design-review (2026-07-01) — 텍스트 리뷰(mockup 스킵, Maxi 확정)
+
+초기 7.5/10 → 보강 후 9/10. 기존 admin 화면 4종과 동형이라 새 비주얼 언어 0, AI slop 리스크 없음(App UI). gap은 전부 **기존 관례 명문화**라 진짜 갈림길 없음(미해결 결정 0).
+
+| Pass | 차원 | 전 | 후 | 조치 |
+|---|---|---|---|---|
+| 1 | 정보계층 | 6 | 9 | 테이블 컬럼 우선순위 명시(D1 보강) |
+| 2 | 상태 커버리지 | 7 | 9 | interaction state table 추가(D2 보강) |
+| 3 | 사용자 여정 | 8 | 8 | admin 내부 도구, finding 없음 |
+| 4 | AI slop | 9 | 9 | App UI·기존 패턴 재사용, finding 없음 |
+| 5 | 디자인 시스템 | 9 | 9 | DESIGN.md 정렬+컴포넌트 재사용, 강점 |
+| 6 | 반응형/a11y | 6 | 9 | a11y 명시 추가(D3 보강) |
+| 7 | 미해결 결정 | — | — | 삭제확인=인라인 관례로 해소, 0건 |
+
+**디자인 보강 (plan 반영 — 각 Task 구현 시 준수)**.
+- **D1 정보계층(Task 4/6 테이블)**. App UI 계층 규칙: `name`이 1차 시각 앵커(굵게), `url`은 2차(truncate+title), 이벤트/`enabled`/`hasSecret`/시각은 3차 메타. 좁은 화면은 컨테이너 가로 스크롤(카드 변환 금지 — 데이터 밀도 유지). 이력 테이블은 status 배지가 좌측 앵커(스캔 우선).
+- **D2 인터랙션 상태 테이블(Task 4/5/6/7)**.
+
+  | 화면 | 로딩 | 빈 상태 | 에러 | 성공 |
+  |---|---|---|---|---|
+  | 구독 목록 | 스켈레톤 행(AuditLogTable isLoading 관례) | "등록된 Webhook이 없습니다" + "새 구독" 주요 액션 | 재시도 안내(query error) | 목록 즉시 반영(invalidate) |
+  | 생성/수정 폼 | 제출 버튼 spinner+disabled | — | submitError 배너(400/409/403) | 폼 닫힘+목록 갱신 |
+  | 발송 이력 | 스켈레톤 행 | "발송 이력이 없습니다"(중립) | 재시도 안내 | 최신순 표시 |
+- **D3 접근성(전 Task)**. 삭제/토글 버튼 `aria-label`(NotificationPolicyTable 관례), 키보드 포커스 순서(폼 필드→제출), 터치타겟 44px 이상, 본문 대비 4.5:1 이상, status 배지는 색+텍스트 동시(색맹 대비), 폼 라벨 항상 가시(placeholder-as-label 금지).
+- **D4 삭제 확인(Task 4)**. 모달 라이브러리 없이 **인라인 확인**(useState "확인"/"취소" 전환, NotificationPolicyTable #121 패턴 재사용). 실수 삭제 방지 + 기존 관례 일관.
+
+**미해결 결정**: 없음(0건). 삭제 확인 UX가 유일 후보였으나 기존 인라인 확인 관례로 확정.
+
+### plan-eng-review / plan-ceo-review
+
+ui 타입 리뷰 체인은 plan-design-review 단독(bts-review-plan Step 2 분기). 순수 프론트+계약 소비라 eng/ceo 리뷰 미해당.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | n/a (ui 타입 미해당) |
+| Eng Review | `/plan-eng-review` | Architecture & tests | 0 | — | n/a (순수 프론트, 계약 소비) |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | clean | score 7.5/10 → 9/10, 4 decisions (D1~D4 보강) |
+
+**VERDICT:** DESIGN CLEARED — 9/10, 미해결 0. 순수 프론트 UI(계약 소비)라 eng/ceo 리뷰 미해당. 게이트 1 진입 준비 완료.
+
+NO UNRESOLVED DECISIONS
