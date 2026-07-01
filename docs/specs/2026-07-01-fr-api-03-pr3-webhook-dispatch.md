@@ -66,17 +66,23 @@ GET /api/v1/webhooks/{id}/deliveries?limit=20&offset=0
 
 발송 body(수신자가 받는 JSON, HMAC 서명 대상).
 ```json
-{ "event": "issue.created", "deliveryId": "<uuid>", "occurredAt": "<ISO-8601>", "data": { <이벤트 필드> } }
+{ "event": "issue.created", "deliveryId": "<stable-key>", "occurredAt": "<ISO-8601>", "data": { ... } }
 ```
+
+**data 계약 — 이벤트별 화이트리스트 (내부 VO/사용자 UUID 미노출, C3)**. 워커가 wire JSON을 파싱해 **안전 스칼라만** 재구성한다. `ActorId`/`reporterId` 등 내부 VO(`{"value":"<uuid>"}` 래핑)와 내부 사용자 UUID는 외부 공개 webhook에 노출하지 않는다(MVP — 필요 시 후속에서 bare UUID로 평탄화).
+- `issue.created`: `{ issueKey, projectKey, summary }`
+- `issue.transitioned`: `{ issueKey, projectKey, fromState, toState }` (projectKey는 issueKey에서 파싱 — EC1)
+
 헤더.
 ```
 Content-Type: application/json
 X-BTS-Event: issue.created
-X-BTS-Delivery: <deliveryId>
+X-BTS-Delivery: <stable-key>
 X-BTS-Signature: sha256=<hex>       # secret 있을 때만 (GitHub webhook 관례)
 ```
 - 서명 = `HMAC_SHA256(key=평문secret, message=raw body bytes)` → hex, `sha256=` 접두.
-- `deliveryId`는 `webhook_deliveries.id`와 동일(수신자 멱등 키로 활용 가능).
+
+**멱등키 — 재전달 안정성 (B1)**. `deliveryId`(=`X-BTS-Delivery`)는 pgmq `msg_id` 기반 **결정적 안정 키**(예: `UUIDv5(ns, "${webhookId}:${msgId}")`). VT 만료 재전달(워커 크래시 복구) 시 같은 `msg_id`라 **동일 키** → 수신자가 dedup 가능(at-least-once + 수신자 멱등, ADR). `webhook_deliveries.id`(내부 per-attempt 감사 PK)와 **분리** — 이력 조회 응답 DTO엔 내부 `id`, 외부 발송 헤더/payload엔 안정 키. 재전달로 인한 중복 발송은 이 안정 키로 수신자단 무해화(개별 재시도 없음, EC4).
 
 ## 7. 엣지 케이스
 
@@ -96,7 +102,7 @@ X-BTS-Signature: sha256=<hex>       # secret 있을 때만 (GitHub webhook 관�
 - **BC 격리**. issue-tracking은 이벤트 발행만(직접 import 0). search 워커는 issue-tracking 도메인 타입 import 금지 — pgmq JSON wire 포맷 그대로 파싱.
 - **보안 로그**. URL은 host만 로그(FR-NT-05 `extractHost` 패턴). secret 평문·서명값 로그 금지. SSRF 차단 사유는 상수(내부 host 미echo).
 - **@Scheduled 결선**. search 모듈 첫 `@Scheduled`면 `@EnableScheduling` 결선 확인(메모리 module-first-scheduled-worker). 이미 FR-EX-02 export worker가 있으면 재사용.
-- **VT/BATCH 타이밍**. read timeout × BATCH < VT (FR-NT-05: VT=60/BATCH=5). 처리 중 VT 만료 재전달로 인한 중복 발송 방지.
+- **VT/BATCH 타이밍 — fanout 재산정 (C1)**. FR-NT-05 산식 `read timeout × BATCH < VT`(VT=60/BATCH=5)는 **메시지당 발송 1건** 전제다. PR3는 fanout(메시지 1 → 매칭 구독 N 순차 POST)이라 최악 `per_call_timeout × N × BATCH`가 VT를 초과하면 처리 중 VT 만료 → 재전달 → 중복 fanout. **완화**: `BATCH_SIZE=1`(한 이벤트의 전체 fanout이 VT 안에 완료)로 시작 + per-call 타임아웃(shared connect3s/read5s) 명시. B1 안정 멱등키로 잔여 중복은 수신자단 무해화.
 - **pgmq consumer 생명주기**. 메시지 delete/archive 필수(메모리 pgmq-consumer-message-lifecycle-p0). 무한 재전달 차단.
 
 ## 9. 측정 가능한 완료 기준
