@@ -35,9 +35,23 @@ FR-API-03 — 구독형 아웃바운드 Webhook(외부 시스템 통지). search
 - **관련 ADR**: [docs/decisions/2026-07-01-fr-api-03-outbound-webhook-bc-and-reuse.md](../decisions/2026-07-01-fr-api-03-outbound-webhook-bc-and-reuse.md) (생성됨), [2026-06-14-fr-nt-05-webhook-dispatch-ssrf.md](../decisions/2026-06-14-fr-nt-05-webhook-dispatch-ssrf.md)
 - **마이그레이션 V번호**: search-export-import 최신 V602 → 신규 V603 후보(머지 직전 재확인).
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-01-fr-api-03-outbound-webhook.md](../specs/2026-07-01-fr-api-03-outbound-webhook.md)
+
+**전체 FR = 4-PR 분할(Maxi 확정). 본 run = PR1(shared 추출)만.**
+- PR1(본 run): SSRF URL 검증기 + HTTP 클라이언트 설정 → shared-kernel `com.bts.shared.http` 추출, FR-NT-05 교체. **순수 리팩터·동작불변**.
+- PR2: OutboundWebhook 구독 CRUD + secret 암호화 + V603 테이블.
+- PR3: issue-tracking dual-send(q_webhook_events) + fanout/dispatch + HMAC-SHA256 + circuit breaker + 발송이력.
+- PR4: 관리 UI + 발송이력 + E2E.
+
+이벤트 소싱(Maxi Q1=A). issue-tracking IssueEventPublisher가 q_webhook_events로도 dual-send → search 워커 소비. (PR3)
+
+핵심 사실(Explore 조사). q_issue_events는 NotificationWorker 독점소비(경합불가). SecretEncryptor(AES-256-GCM, identity-access) 재사용. REST 봉투=AqlSearchPageResponse. validator BC의존 0(추출 안전). shared-kernel은 spring-context 보유하나 **spring-web 없음**(HTTP config 이관 시 추가 필요).
+
+## Brainstorming Check
+
+✅ 통과 (직접 기술 스펙 — 정의된 순수 리팩터). Sanity gap 5건 스펙 §5 선반영. (1)설정키 이관 동작보존 (2)RestClient 빈 주입 (3)spring-web shared 추가 (4)테스트 이전 가짜그린 (5)ArchUnit BC→shared 정방향 확인.
 
 ## Plan (← /bts-plan 채움)
 
