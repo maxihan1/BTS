@@ -122,8 +122,12 @@ function PaginationControls({ page, hasNext, onPrevious, onNext }: PaginationCon
  * - 이력 보기 → `/admin/webhooks/{id}/deliveries`로 navigate (router.ts 등록 완료, Task 9).
  * - size 기반 offset 페이지네이션(EC-2, raw List·총개수 없음) — 다음 버튼은 응답 길이가
  *   페이지 크기와 같을 때만 활성화한다.
- * - mutation 에러. 409(OCC 충돌) → Form submitError + 목록 invalidate,
- *   400 → Form submitError(서버 상세 메시지), 그 외 → sonner toast.error.
+ * - mutation 에러. 409(OCC 충돌) → 페이지 레벨 배너(conflictMessage) 표시 + 폼 닫기(formState
+ *   closed) + 목록 invalidate — 폼을 닫아야 다음 편집이 fresh version을 재캡처한다,
+ *   400 → Form submitError(서버 상세 메시지, 폼 유지), 그 외 → sonner toast.error.
+ * - `<WebhookForm>`에 `key={formState.kind==='edit' ? webhook.id : 'create'}`를 줘,
+ *   편집 폼을 닫지 않고 다른 행 편집으로 전환해도 내부 필드/version state가 재초기화되게 한다
+ *   (key 없으면 이전 대상의 stale payload+version이 새 대상 id로 제출되는 OCC 우회 결함).
  *
  * @see WebhookTable 목록 테이블 컴포넌트
  * @see WebhookForm 생성/수정 겸용 폼 컴포넌트
@@ -132,6 +136,7 @@ export function AdminWebhooksPage(): JSX.Element {
   const [page, setPage] = useState(0)
   const [formState, setFormState] = useState<WebhookFormState>({ kind: 'closed' })
   const [submitError, setSubmitError] = useState<string | undefined>(undefined)
+  const [conflictMessage, setConflictMessage] = useState<string | undefined>(undefined)
 
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -147,7 +152,10 @@ export function AdminWebhooksPage(): JSX.Element {
 
   function handleMutationError(error: unknown): void {
     if (isConflictError(error)) {
-      setSubmitError(labels.error.conflict)
+      // 409는 "다른 편집이 선행됨"을 뜻하므로 폼을 닫아 다음 편집이 fresh version을
+      // 재캡처하게 한다(stale version 무한 재충돌 방지). 안내는 페이지 레벨 배너로 유지한다.
+      setConflictMessage(labels.error.conflict)
+      setFormState({ kind: 'closed' })
       void queryClient.invalidateQueries({ queryKey: WEBHOOKS_QUERY_KEY })
       return
     }
@@ -161,6 +169,7 @@ export function AdminWebhooksPage(): JSX.Element {
 
   function handleSubmit(payload: CreateWebhookRequest | UpdateWebhookRequest): void {
     setSubmitError(undefined)
+    setConflictMessage(undefined)
     if ('version' in payload) {
       if (formState.kind !== 'edit') return
       updateMutation.mutate(
@@ -180,16 +189,19 @@ export function AdminWebhooksPage(): JSX.Element {
 
   function handleNew(): void {
     setSubmitError(undefined)
+    setConflictMessage(undefined)
     setFormState({ kind: 'create' })
   }
 
   function handleEdit(webhook: WebhookResponse): void {
     setSubmitError(undefined)
+    setConflictMessage(undefined)
     setFormState({ kind: 'edit', webhook })
   }
 
   function handleCancel(): void {
     setSubmitError(undefined)
+    setConflictMessage(undefined)
     setFormState({ kind: 'closed' })
   }
 
@@ -225,9 +237,16 @@ export function AdminWebhooksPage(): JSX.Element {
         )}
       </div>
 
+      {conflictMessage !== undefined && (
+        <div role="alert" className="mb-6 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+          {conflictMessage}
+        </div>
+      )}
+
       {formState.kind !== 'closed' && (
         <div className="mb-6">
           <WebhookForm
+            key={formState.kind === 'edit' ? formState.webhook.id : 'create'}
             mode={formState.kind === 'edit' ? 'edit' : 'create'}
             initialValue={formState.kind === 'edit' ? formState.webhook : undefined}
             onSubmit={handleSubmit}
