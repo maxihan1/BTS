@@ -311,6 +311,33 @@ describe('AdminWebhooksPage — 409 OCC 충돌', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 403 권한 거부 (C1) — mutation 403은 generic toast가 아니라 페이지 배너로 표기
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AdminWebhooksPage — 403 권한 거부', () => {
+  it('수정 요청이 403이면 페이지 레벨 배너에 안내 문구가 표시되고 generic toast는 호출되지 않는다', async () => {
+    const { user } = renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText(DEFAULT_WEBHOOK.name)).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: `${DEFAULT_WEBHOOK.name} 편집` }))
+
+    server.use(
+      http.put('/api/v1/webhooks/:id', () => HttpResponse.json({ error: 'forbidden' }, { status: 403 })),
+    )
+
+    await user.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('권한이 없어 처리하지 못했습니다.')
+    })
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 목록 조회 에러 (FINDING3) — 빈 목록 문구로 은폐되지 않고 에러 배너를 표시한다
 // ─────────────────────────────────────────────────────────────────────────────
 
