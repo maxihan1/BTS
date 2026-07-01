@@ -44,9 +44,32 @@ FR-API-03(외부 시스템 통지용 구독형 아웃바운드 Webhook, search-e
   - [2026-07-01-fr-api-03-outbound-webhook-bc-and-reuse.md](../decisions/2026-07-01-fr-api-03-outbound-webhook-bc-and-reuse.md) (PR1 — BC 배치 + 재사용 방침, 크립토 키관리는 spec 위임)
   - [2026-07-01-fr-api-03-secret-encryptor-shared-extraction.md](../decisions/2026-07-01-fr-api-03-secret-encryptor-shared-extraction.md) (본 PR — SecretEncryptor shared 추출 + BC별 키, 생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-01-fr-api-03-pr2-webhook-subscription-crud.md](../specs/2026-07-01-fr-api-03-pr2-webhook-subscription-crud.md)
+
+핵심 결정 요약.
+- **권한 = SYSTEM_ADMIN 전역** (Maxi). 전 엔드포인트 `SystemPermissionResolver.isSystemAdmin` 게이트, 실패 403. project_key는 선택적 필터(null=전체).
+- **secret 암호화 = shared 추출** (Maxi). SecretEncryptor를 shared-kernel `com.bts.shared.crypto`로 이동, search는 자체 키(`BTS_WEBHOOK_ENCRYPTION_*`). 원문 응답/로그 미노출, `hasSecret`만.
+- **event_filter = NotificationEventType.wireValue 문자열 계약** 재사용. publishable allowlist 로컬 상수(초기 `issue.created`/`issue.transitioned`), BC 격리(enum import 아님).
+- **URL SSRF = OutboundUrlValidator(shared) 재사용**. 목록은 형제 SavedFilter 관례(raw List + offset paging).
+- **V603** = outbound_webhooks(소프트삭제·event_filter TEXT[] GIN) + webhook_deliveries(테이블만, PR3 발송). init_codegen 미러.
+
+핵심 시나리오 3줄.
+- SYSTEM_ADMIN이 url+eventFilter로 구독 생성 → SSRF 검증·secret 암호화 → 201(secret 미노출).
+- 목록/단건/수정(OCC)/소프트삭제 CRUD, 전 경로 admin 게이트(비admin 403, probe 차단).
+- 발송·서명·이력기록은 PR3(이번 PR은 dispatch 0, webhook_deliveries는 테이블만).
+
+## 리스크 (impl 주의)
+
+- **★cross-BC 포트 test-boot 부팅**. `SystemPermissionResolver`(impl=identity-access)·`OutboundUrlValidator`(shared.http)가 search 통합테스트 부팅에 필요. BC 격리 test-boot는 타 BC 미포함 → **stub 빈(fail-closed 기본, crossbc-resolver-nullable-fail-open)** + test-boot 스캔에 `com.bts.shared.http` 중앙 추가(shared-kernel-component-extraction-scan-regression). 검증은 타깃 아닌 **search 전체 스위트**.
+- **★SecretEncryptor shared 이동 = identity-access BC 1회 교차**(문서화된 예외, ADR D3). OidcEncryptionConfig·DbClientRegistrationRepository 등 참조 import 전수 변경. 검증은 **identity-access 전체 스위트**(OIDC 암호화 회귀 0, ktlint-detekt-linelength import 라인시프트 주의).
+- **jOOQ codegen**. V603 신규 테이블은 init_codegen.sql 미러 필수(안 하면 코드생성 누락). event_filter TEXT[] 코드생성 타입 확인.
+- **secret 키 미설정 부팅**. search SecretEncryptor 빈은 lazy=부팅 안전. secret 포함 테스트만 `BTS_WEBHOOK_ENCRYPTION_*` test property 필요.
+
+## Brainstorming Check
+
+✅ 통과 (인라인 sanity check, Maxi 결정 필요 gap 0 — 응답봉투·cross-BC부팅·projectKey검증·secret clear·deliveries스키마 6건 모두 선례/표준으로 해소, 상세는 spec §Brainstorming Check).
 
 ## Plan (← /bts-plan 채움)
 
