@@ -72,7 +72,7 @@ interface WebhookFormProps {
 }
 
 /** 텍스트 입력 필드 하나(Label+Input+선택적 에러/힌트)를 렌더하는 내부 헬퍼 props */
-interface TextFieldProps {
+interface WebhookTextFieldProps {
   id: string
   label: string
   value: string
@@ -83,8 +83,21 @@ interface TextFieldProps {
   hint?: string
 }
 
-/** name/url/secret/projectKey가 공유하는 Label+Input+에러/힌트 골격을 렌더한다 */
-function TextField({ id, label, value, onChange, type = 'text', disabled, error, hint }: TextFieldProps): JSX.Element {
+/**
+ * name/url/secret/projectKey가 공유하는 Label+Input+에러/힌트 골격을 렌더한다.
+ *
+ * 파일 내부 전용(export 없음) — 범용 폼 컴포넌트가 아니라 WebhookForm의 필드 반복을 줄이기 위한 헬퍼.
+ */
+function WebhookTextField({
+  id,
+  label,
+  value,
+  onChange,
+  type = 'text',
+  disabled,
+  error,
+  hint,
+}: WebhookTextFieldProps): JSX.Element {
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
@@ -166,7 +179,7 @@ export function WebhookForm({
         </div>
       )}
 
-      <TextField
+      <WebhookTextField
         id="webhook-form-name"
         label={labels.name}
         value={fields.name}
@@ -175,7 +188,7 @@ export function WebhookForm({
         error={errors.name}
       />
 
-      <TextField
+      <WebhookTextField
         id="webhook-form-url"
         label={labels.url}
         value={fields.url}
@@ -203,7 +216,7 @@ export function WebhookForm({
         )}
       </fieldset>
 
-      <TextField
+      <WebhookTextField
         id="webhook-form-secret"
         label={labels.secret}
         value={fields.secret}
@@ -213,7 +226,7 @@ export function WebhookForm({
         hint={mode === 'edit' ? labels.secretEditHint : undefined}
       />
 
-      <TextField
+      <WebhookTextField
         id="webhook-form-project-key"
         label={labels.projectKey}
         value={fields.projectKey}
