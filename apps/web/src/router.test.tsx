@@ -16,6 +16,13 @@ vi.mock('./routes/issues.new', () => ({
 vi.mock('./routes/issues.$key', () => ({
   IssueDetailRouteAdapter: () => <div>이슈 상세</div>,
 }))
+// admin.webhooks 어댑터들도 useQuery 등 라우터 컨텍스트 의존 — 최소 mock (Task 9)
+vi.mock('./routes/admin.webhooks', () => ({
+  AdminWebhooksRouteAdapter: () => <div>Webhook 관리 placeholder</div>,
+}))
+vi.mock('./routes/admin.webhooks.$id.deliveries', () => ({
+  WebhookDeliveriesRouteAdapter: () => <div>Webhook 발송 이력 placeholder</div>,
+}))
 
 function renderWithRoute(path: string) {
   const client = new QueryClient({
@@ -141,5 +148,43 @@ describe('Router', () => {
     })
     renderWithRoute('/issues')
     expect(await screen.findByText(/이슈 목록/)).toBeInTheDocument()
+  })
+
+  // ─── Task 9: admin.webhooks 라우트 등록 + requireSystemAdmin 가드 (FR-API-03 PR4) ────
+
+  it('/admin/webhooks 라우트 마운트 (isSystemAdmin) → AdminWebhooksRouteAdapter 렌더', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'test-access-token',
+      user: { username: 'admin', email: 'a@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: true, mfaEnrollmentRequired: false },
+    })
+    renderWithRoute('/admin/webhooks')
+    expect(await screen.findByText('Webhook 관리 placeholder')).toBeInTheDocument()
+  })
+
+  it('/admin/webhooks 라우트 — 비관리자 접근 시 /dashboard 로 리다이렉트 (requireSystemAdmin 가드)', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'test-access-token',
+      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
+    })
+    renderWithRoute('/admin/webhooks')
+    expect(await screen.findByText(/환영합니다/)).toBeInTheDocument()
+  })
+
+  it('/admin/webhooks/$id/deliveries 라우트 마운트 (isSystemAdmin) → WebhookDeliveriesRouteAdapter 렌더', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'test-access-token',
+      user: { username: 'admin', email: 'a@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: true, mfaEnrollmentRequired: false },
+    })
+    renderWithRoute('/admin/webhooks/wh-1/deliveries')
+    expect(await screen.findByText('Webhook 발송 이력 placeholder')).toBeInTheDocument()
+  })
+
+  it('/admin/webhooks/$id/deliveries 라우트 — 비관리자 접근 시 /dashboard 로 리다이렉트', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'test-access-token',
+      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
+    })
+    renderWithRoute('/admin/webhooks/wh-1/deliveries')
+    expect(await screen.findByText(/환영합니다/)).toBeInTheDocument()
   })
 })
