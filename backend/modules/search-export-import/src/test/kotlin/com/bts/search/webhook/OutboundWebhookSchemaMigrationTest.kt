@@ -176,6 +176,7 @@ class OutboundWebhookSchemaMigrationTest {
         }
 
     // 인덱스 정의(indexdef)를 반환 — GIN 여부 판정용.
+    @Suppress("NestedBlockDepth")
     private fun indexDef(indexName: String): String? =
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.prepareStatement(
