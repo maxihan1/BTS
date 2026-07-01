@@ -311,6 +311,46 @@ describe('AdminWebhooksPage — 409 OCC 충돌', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 삭제 진행 중 이중 제출 차단 (N1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AdminWebhooksPage — 삭제 진행 중 이중 제출 차단', () => {
+  it('삭제 확인 클릭 후 응답 대기 중에는 확인 버튼이 disabled되어 재클릭이 무시되고, DELETE는 한 번만 발생한다', async () => {
+    const { user } = renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText(DEFAULT_WEBHOOK.name)).toBeInTheDocument()
+    })
+
+    let resolveDelete: (() => void) | undefined
+    let deleteCallCount = 0
+    server.use(
+      http.delete('/api/v1/webhooks/:id', async () => {
+        deleteCallCount += 1
+        await new Promise<void>((resolve) => { resolveDelete = resolve })
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    await user.click(screen.getByRole('button', { name: `${DEFAULT_WEBHOOK.name} 삭제` }))
+    await user.click(screen.getByRole('button', { name: `${DEFAULT_WEBHOOK.name} 삭제 확인` }))
+
+    const confirmButton = await screen.findByRole('button', { name: `${DEFAULT_WEBHOOK.name} 삭제 확인` })
+    expect(confirmButton).toBeDisabled()
+
+    // 응답 대기 중 재클릭 시도 — disabled라 무시되어야 한다
+    await user.click(confirmButton)
+
+    resolveDelete?.()
+
+    await waitFor(() => {
+      expect(screen.queryByText(DEFAULT_WEBHOOK.name)).not.toBeInTheDocument()
+    })
+    expect(deleteCallCount).toBe(1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 편집 대상 전환(A→B) — key 재마운트 회귀 방지
 // ─────────────────────────────────────────────────────────────────────────────
 

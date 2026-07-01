@@ -245,6 +245,23 @@ describe('WebhookTable', () => {
     expect(within(row).queryByRole('button', { name: /확인/ })).not.toBeInTheDocument()
   })
 
+  it('isDeleting=true이면 인라인 확인 "확인" 버튼이 disabled 처리된다 (이중 제출 차단, N1)', async () => {
+    const user = userEvent.setup()
+    render(
+      <WebhookTable
+        webhooks={[webhookWithProject]}
+        isLoading={false}
+        isDeleting={true}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        onViewDeliveries={onViewDeliveries}
+      />,
+    )
+    const row = screen.getByRole('row', { name: /이슈 생성 알림/ })
+    await user.click(within(row).getByRole('button', { name: /이슈 생성 알림 삭제$/ }))
+    expect(within(row).getByRole('button', { name: /확인/ })).toBeDisabled()
+  })
+
   it('한 행의 인라인 삭제 확인이 다른 행에 영향을 주지 않는다', async () => {
     const user = userEvent.setup()
     render(
