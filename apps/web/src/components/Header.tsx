@@ -22,6 +22,7 @@ const ADMIN_LINKS = [
   { to: '/admin/workflow-schemes', label: '워크플로우 스킴' },
   { to: '/admin/audit-logs', label: '감사 로그' },
   { to: '/admin/notification-policies', label: '알림 정책' },
+  { to: '/admin/webhooks', label: 'Webhook' },
 ] as const
 
 export const Header = () => {
