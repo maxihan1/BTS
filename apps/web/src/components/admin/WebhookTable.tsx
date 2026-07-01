@@ -21,14 +21,22 @@ interface WebhookRowProps {
   readonly onViewDeliveries: (id: string) => void
 }
 
-/**
- * 활성/서명 여부 배지 — 색+텍스트 동시 표시로 색각이상 대응.
- */
-function StatusBadge({ active, activeLabel, inactiveLabel }: {
+interface StatusBadgeProps {
+  /** 배지가 나타내는 boolean 상태 */
   readonly active: boolean
+  /** active=true일 때 표시할 라벨 */
   readonly activeLabel: string
+  /** active=false일 때 표시할 라벨 */
   readonly inactiveLabel: string
-}): JSX.Element {
+}
+
+/**
+ * 활성/서명 여부 배지 서브컴포넌트.
+ *
+ * 색상만으로 상태를 구분하지 않고 라벨 텍스트를 함께 표시해 색각이상 사용자도
+ * 상태를 식별할 수 있게 한다 (색+텍스트 동시 표시).
+ */
+function StatusBadge({ active, activeLabel, inactiveLabel }: StatusBadgeProps): JSX.Element {
   return (
     <span
       className={
@@ -43,6 +51,26 @@ function StatusBadge({ active, activeLabel, inactiveLabel }: {
 }
 
 /**
+ * webhook의 구독 이벤트 wireValue 배열을 한국어 라벨로 변환해 쉼표로 조인한다.
+ *
+ * @param eventFilter 구독 이벤트 wireValue 배열
+ * @returns 조인된 한국어 라벨 문자열
+ */
+function joinEventLabels(eventFilter: readonly string[]): string {
+  return eventFilter.map((event) => labelForEvent(event)).join(', ')
+}
+
+/**
+ * 갱신 시각을 표시용 문자열로 변환한다. null이면 "—"로 방어한다.
+ *
+ * @param updatedAt ISO 8601 문자열 또는 null
+ * @returns 포맷된 날짜/시각 문자열, 또는 "—"
+ */
+function formatUpdatedAt(updatedAt: string | null | undefined): string {
+  return updatedAt == null ? '—' : formatDateTime(updatedAt)
+}
+
+/**
  * Webhook 구독 단건 행 컴포넌트.
  *
  * - 삭제 버튼: 클릭 시 인라인 확인(useState)으로 "확인"/"취소" 전환. 모달 라이브러리 없음 (#121 패턴).
@@ -51,8 +79,8 @@ function StatusBadge({ active, activeLabel, inactiveLabel }: {
 function WebhookRow({ webhook, onEdit, onDelete, onViewDeliveries }: WebhookRowProps): JSX.Element {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
-  const eventLabels = webhook.eventFilter.map((event) => labelForEvent(event)).join(', ')
-  const updatedAtLabel = webhook.updatedAt == null ? '—' : formatDateTime(webhook.updatedAt)
+  const eventLabels = joinEventLabels(webhook.eventFilter)
+  const updatedAtLabel = formatUpdatedAt(webhook.updatedAt)
 
   return (
     <tr className="border-b text-sm hover:bg-muted/50" aria-label={webhook.name}>
