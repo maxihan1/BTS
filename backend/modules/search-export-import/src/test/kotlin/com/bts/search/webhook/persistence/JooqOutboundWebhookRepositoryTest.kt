@@ -34,6 +34,9 @@ class JooqOutboundWebhookRepositoryTest : SearchPersistenceTestBase() {
         dsl.execute("DELETE FROM outbound_webhooks")
     }
 
+    // 도메인 OutboundWebhook.create 와 동일하게 7개 필드를 그대로 받는다 — VO 분리보다
+    // 명시적 시그니처가 명료하다(OutboundWebhook.kt REFACTOR 사유와 동일, task-3).
+    @Suppress("LongParameterList")
     private fun buildWebhook(
         createdBy: UUID = UUID.randomUUID(),
         name: String = "테스트 웹훅",
