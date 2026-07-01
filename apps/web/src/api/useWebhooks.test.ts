@@ -68,6 +68,16 @@ function createWrapper(client: QueryClient) {
   }
 }
 
+/** useWebhooksQuery(page, size)의 실제 캐시 키를 그대로 재구성하는 헬퍼 — 반복되는 스프레드 표현 제거 */
+function webhooksKey(page: number, size: number) {
+  return [...WEBHOOKS_QUERY_KEY, page, size]
+}
+
+/** useWebhookDeliveriesQuery(id, page, size)의 실제 캐시 키를 그대로 재구성하는 헬퍼 */
+function deliveriesKey(id: string, page: number, size: number) {
+  return [...WEBHOOK_DELIVERIES_QUERY_KEY, id, page, size]
+}
+
 describe('useWebhooks 훅 묶음', () => {
   let queryClient: QueryClient
 
@@ -121,8 +131,8 @@ describe('useWebhooks 훅 묶음', () => {
       expect(resultPage0.current.data?.[0]?.id).toBe(webhookFixtureA.id)
       expect(resultPage1.current.data?.[0]?.id).toBe(webhookFixtureB.id)
 
-      const cache0 = queryClient.getQueryData([...WEBHOOKS_QUERY_KEY, 0, 20])
-      const cache1 = queryClient.getQueryData([...WEBHOOKS_QUERY_KEY, 1, 20])
+      const cache0 = queryClient.getQueryData(webhooksKey(0, 20))
+      const cache1 = queryClient.getQueryData(webhooksKey(1, 20))
       expect(cache0).toBeDefined()
       expect(cache1).toBeDefined()
       expect(cache0).not.toEqual(cache1)
@@ -163,12 +173,7 @@ describe('useWebhooks 훅 묶음', () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-      const cached = queryClient.getQueryData([
-        ...WEBHOOK_DELIVERIES_QUERY_KEY,
-        webhookFixtureA.id,
-        0,
-        20,
-      ])
+      const cached = queryClient.getQueryData(deliveriesKey(webhookFixtureA.id, 0, 20))
       expect(cached).toBeDefined()
     })
   })
@@ -182,7 +187,7 @@ describe('useWebhooks 훅 묶음', () => {
       server.use(
         http.post('/api/v1/webhooks', () => HttpResponse.json(webhookFixtureA, { status: 201 })),
       )
-      queryClient.setQueryData([...WEBHOOKS_QUERY_KEY, 0, 20], [])
+      queryClient.setQueryData(webhooksKey(0, 20), [])
 
       const { result } = renderHook(() => useCreateWebhook(), {
         wrapper: createWrapper(queryClient),
@@ -197,7 +202,7 @@ describe('useWebhooks 훅 묶음', () => {
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
       // WEBHOOKS_QUERY_KEY로 invalidate하면 접두사가 일치하는 [...WEBHOOKS_QUERY_KEY, page, size] 캐시도 invalidate된다
-      const queryState = queryClient.getQueryState([...WEBHOOKS_QUERY_KEY, 0, 20])
+      const queryState = queryClient.getQueryState(webhooksKey(0, 20))
       expect(queryState?.isInvalidated).toBe(true)
     })
 
@@ -205,7 +210,7 @@ describe('useWebhooks 훅 묶음', () => {
       server.use(
         http.post('/api/v1/webhooks', () => HttpResponse.json(webhookFixtureA, { status: 201 })),
       )
-      queryClient.setQueryData([...WEBHOOKS_QUERY_KEY, 0, 20], [])
+      queryClient.setQueryData(webhooksKey(0, 20), [])
       const spy = vi.spyOn(queryClient, 'setQueryData')
 
       const { result } = renderHook(() => useCreateWebhook(), {
@@ -234,8 +239,8 @@ describe('useWebhooks 훅 묶음', () => {
       server.use(
         http.put(`/api/v1/webhooks/${webhookFixtureA.id}`, () => HttpResponse.json(webhookFixtureA)),
       )
-      queryClient.setQueryData([...WEBHOOKS_QUERY_KEY, 0, 20], [])
-      queryClient.setQueryData([...WEBHOOK_DELIVERIES_QUERY_KEY, webhookFixtureA.id, 0, 20], [])
+      queryClient.setQueryData(webhooksKey(0, 20), [])
+      queryClient.setQueryData(deliveriesKey(webhookFixtureA.id, 0, 20), [])
 
       const { result } = renderHook(() => useUpdateWebhook(), {
         wrapper: createWrapper(queryClient),
@@ -245,13 +250,8 @@ describe('useWebhooks 훅 묶음', () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-      const webhooksState = queryClient.getQueryState([...WEBHOOKS_QUERY_KEY, 0, 20])
-      const deliveriesState = queryClient.getQueryState([
-        ...WEBHOOK_DELIVERIES_QUERY_KEY,
-        webhookFixtureA.id,
-        0,
-        20,
-      ])
+      const webhooksState = queryClient.getQueryState(webhooksKey(0, 20))
+      const deliveriesState = queryClient.getQueryState(deliveriesKey(webhookFixtureA.id, 0, 20))
       expect(webhooksState?.isInvalidated).toBe(true)
       expect(deliveriesState?.isInvalidated).toBe(true)
     })
@@ -266,7 +266,7 @@ describe('useWebhooks 훅 묶음', () => {
       server.use(
         http.delete(`/api/v1/webhooks/${webhookFixtureA.id}`, () => new HttpResponse(null, { status: 204 })),
       )
-      queryClient.setQueryData([...WEBHOOKS_QUERY_KEY, 0, 20], [])
+      queryClient.setQueryData(webhooksKey(0, 20), [])
 
       const { result } = renderHook(() => useDeleteWebhook(), {
         wrapper: createWrapper(queryClient),
@@ -276,7 +276,7 @@ describe('useWebhooks 훅 묶음', () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-      const queryState = queryClient.getQueryState([...WEBHOOKS_QUERY_KEY, 0, 20])
+      const queryState = queryClient.getQueryState(webhooksKey(0, 20))
       expect(queryState?.isInvalidated).toBe(true)
     })
   })
