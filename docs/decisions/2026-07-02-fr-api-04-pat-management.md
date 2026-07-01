@@ -40,6 +40,18 @@ PAT는 stateless 자격증명이라 회전 = 기존 토큰 취소 후 새 토큰
 
 **DB 무변경.** `expires_at`은 nullable 유지(기존 무기한 PAT 데이터 호환·감사 보존). 신규 발급만 애플리케이션 레벨에서 필수+상한 검증한다. 마이그레이션 0.
 
+### 4. 개수 상한 — 사용자당 활성 PAT 20개 (sanity check)
+
+발급 시 사용자의 활성(미취소) PAT 개수를 검사해 20개 초과면 400. 무한 발급 DoS 차단(rate-limit 인프라 미도입 — 상한이 단순·충분). 동시 발급 TOCTOU는 `pg_advisory_xact_lock(userId)` 또는 count 재검증으로 직렬화.
+
+### 5. 감사 이벤트 — PAT_ISSUED / PAT_REVOKED 추가 (sanity check)
+
+자격증명 발급/폐기는 보안 감사 대상이므로 `AuthEventType`에 `PAT_ISSUED`·`PAT_REVOKED` 2종 추가(현재 22종→24종). `AuthEventEmitCoverageTest`가 미배선을 fail시키므로 emit 배선 필수 + enum 헤더 카운트 동기화([[enum-add-breaks-crossmodule-count-guard]]). FR-AU-10 append-only 감사 인프라 재사용. metadata에 patId/name만(token 원문·hash 미포함).
+
+### 6. scope 미강제 disclosure — UI 경고 (sanity check)
+
+scope 실제 강제가 후속이므로, 발급 UI에 "scope는 아직 강제되지 않으며 이 토큰은 계정 전체 권한을 가진다"는 경고를 노출한다. scope 배지만 보여 "읽기 전용"으로 오해하는 것을 차단(보안 커뮤니케이션 정직성).
+
 ---
 
 ## 범위 (D1~D7)
