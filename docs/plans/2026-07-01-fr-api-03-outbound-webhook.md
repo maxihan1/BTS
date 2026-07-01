@@ -131,3 +131,14 @@ FR-API-03 — 구독형 아웃바운드 Webhook(외부 시스템 통지). search
 **forward note(PR3 범위)**. 프로덕션 배포 조립 부재(현 표준=test-assembled). 실 assembly 도입 시 `com.bts.shared.http` 스캔 포함 필요. search-export-import(PR2+)도 자체 컨텍스트에 shared 빈 등록 필요.
 
 **BLOCKER: 없음**. type=feature·순수 리팩터. auth/migration 아님. → 게이트 1 진입 가능.
+
+## 구현 결과 (bts-impl)
+
+- **Task 1** (security-engineer) — SSRF 검증기 `OutboundUrlValidator`+`UrlCheck`→shared-kernel. TDD: RED 771dfd9b→GREEN a164fd9f/ccdf94d6(slf4j)→REFACTOR e09ca77c. PASS.
+  - impl 발견: validator가 slf4j 감사로그 사용 → shared-kernel에 `slf4j-api` 추가(감사로그 보존, 동작불변).
+- **Task 2** (backend-engineer) — `OutboundHttpClientConfig`→shared-kernel + `spring-web` 추가. TDD: RED 81579dba→GREEN 17c1902a→REFACTOR aae689bc. PASS.
+  - 빈 이름 `outboundHttpRestClient`, 키 `bts.outbound-http.*`(오버라이드 0=동작불변).
+- **회귀 수정** (backend-engineer, 6fe302ae) — **★핵심 교훈**. Task 1이 `OutboundUrlValidator`를 스캔 밖으로 옮기자, `WebhookDispatcher`(@Component)를 스캔하는 `NotificationTestBootApplication` 부팅 통합테스트 **6개가 NoSuchBeanDefinition으로 부팅 실패**(630개 중 6 실패). Task 1 검증이 타깃 테스트만 돌려 놓쳤음. 해결: `NotificationTestBootApplication` scan에 `com.bts.shared.http` 추가(중앙 등록·DRY) + 통합테스트 중복 명시등록 제거 + stale KDoc 링크 정리.
+- **최종 검증(controller 직접)**. notification 전체 **630 tests, 0 failures**(강제 재실행) · shared-kernel green · 전 모듈 컴파일 성공 · ktlint/detekt 위반 0(shared-kernel+notification, --rerun-tasks).
+- **QA(E2E)**. SKIP — 순수 백엔드 리팩터, UI/사용자 노출 동작 0, 이동된 통합테스트가 커버.
+- **교훈(회귀 방지)**. shared-kernel으로 @Component 이동 시, 그 컴포넌트를 스캔하는 모든 소비자의 test-boot 스캔이 깨진다 → 소비자 부트앱 스캔에 shared 패키지 중앙 등록 필요. 리팩터 검증은 **타깃 아닌 전체 모듈 스위트**로.
