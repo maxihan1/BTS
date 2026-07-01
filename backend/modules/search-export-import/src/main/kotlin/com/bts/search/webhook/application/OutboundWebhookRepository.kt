@@ -77,9 +77,10 @@ interface OutboundWebhookRepository {
     /**
      * [eventType] 과 [projectKey] 에 매칭되는 발송 대상 구독 목록을 조회한다 (PR3 fanout 후보 조회).
      *
-     * - `eventFilter` 에 [eventType] 이 포함된 구독만 대상으로 한다.
-     * - 구독의 `projectKey` 가 `null` 이면 전체 프로젝트 대상이라 항상 매칭되고, 값이 있으면 [projectKey]
-     *   와 정확히 일치할 때만 매칭된다.
+     * - `eventFilter` 에 [eventType] 이 포함된 구독만 대상으로 한다. PG 배열 overlap 연산자 `&&` 로
+     *   V603 GIN 인덱스(`idx_outbound_webhooks_event_filter_gin`)를 활용한다.
+     * - 구독의 `projectKey` 가 `null` 이면 **전체 프로젝트 대상**이라 [projectKey] 값과 무관하게 항상
+     *   매칭되고, 값이 있으면 [projectKey] 와 정확히 일치할 때만 매칭된다.
      * - `enabled = true` 이고 소프트 삭제되지 않은 구독만 반환한다.
      *
      * @param eventType 매칭할 이벤트 wireValue (예: `"issue.created"`).
