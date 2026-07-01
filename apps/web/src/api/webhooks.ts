@@ -161,6 +161,34 @@ async function assertOk(res: Response): Promise<void> {
   }
 }
 
+/**
+ * webhook 구독 생성(POST)/수정(PUT) 공통 요청 처리.
+ *
+ * X-XSRF-TOKEN 헤더 부착 → secret 3-state 처리 → 응답 검사 → webhookResponseSchema 파싱까지
+ * createWebhook/updateWebhook이 공유하는 절차를 한 곳에 모은다.
+ *
+ * @param path 요청 경로
+ * @param method 'POST'(생성) 또는 'PUT'(수정)
+ * @param body 생성/수정 요청 바디
+ * @returns 파싱된 WebhookResponse
+ */
+async function submitWebhook(
+  path: string,
+  method: 'POST' | 'PUT',
+  body: CreateWebhookRequest | UpdateWebhookRequest,
+): Promise<WebhookResponse> {
+  const res = await apiFetch(path, {
+    method,
+    body: withOmittedEmptySecret(body),
+    headers: {
+      'X-XSRF-TOKEN': readXsrfToken(),
+    },
+  })
+  await assertOk(res)
+  const parsed: unknown = await res.json()
+  return webhookResponseSchema.parse(parsed)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // API 함수
 // ─────────────────────────────────────────────────────────────────────────────
@@ -209,16 +237,7 @@ export async function getWebhook(id: string): Promise<WebhookResponse> {
  * @throws ApiError(401) 미인증
  */
 export async function createWebhook(body: CreateWebhookRequest): Promise<WebhookResponse> {
-  const res = await apiFetch('/api/v1/webhooks', {
-    method: 'POST',
-    body: withOmittedEmptySecret(body),
-    headers: {
-      'X-XSRF-TOKEN': readXsrfToken(),
-    },
-  })
-  await assertOk(res)
-  const parsed: unknown = await res.json()
-  return webhookResponseSchema.parse(parsed)
+  return submitWebhook('/api/v1/webhooks', 'POST', body)
 }
 
 /**
@@ -238,16 +257,7 @@ export async function createWebhook(body: CreateWebhookRequest): Promise<Webhook
  * @throws ApiError(401) 미인증
  */
 export async function updateWebhook(id: string, body: UpdateWebhookRequest): Promise<WebhookResponse> {
-  const res = await apiFetch(`/api/v1/webhooks/${id}`, {
-    method: 'PUT',
-    body: withOmittedEmptySecret(body),
-    headers: {
-      'X-XSRF-TOKEN': readXsrfToken(),
-    },
-  })
-  await assertOk(res)
-  const parsed: unknown = await res.json()
-  return webhookResponseSchema.parse(parsed)
+  return submitWebhook(`/api/v1/webhooks/${id}`, 'PUT', body)
 }
 
 /**
