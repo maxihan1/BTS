@@ -341,10 +341,20 @@ describe('AdminWebhooksPage — 삭제 진행 중 이중 제출 차단', () => {
     // 응답 대기 중 재클릭 시도 — disabled라 무시되어야 한다
     await user.click(confirmButton)
 
+    // MSW 핸들러가 실제로 요청을 받아 Promise executor를 실행할 때까지 대기 —
+    // mutate() 호출(클라이언트 isPending 전환)과 네트워크 계층 도달은 별개의 비동기 과정이다.
+    await waitFor(() => {
+      expect(resolveDelete).toBeDefined()
+    })
     resolveDelete?.()
 
+    // 응답 완료 후 disabled가 풀린다 — 재클릭이 실제로 무시되었다면 DELETE는 정확히 1회만 발생했어야 한다.
+    // (이 오버라이드 핸들러는 store를 직접 변형하지 않으므로 목록 제거 자체는 여기서 단정하지 않는다 —
+    // 실제 성공 시 목록 제거는 "삭제 확인 후 목록에서 제거된다" 테스트가 이미 커버한다.)
     await waitFor(() => {
-      expect(screen.queryByText(DEFAULT_WEBHOOK.name)).not.toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: `${DEFAULT_WEBHOOK.name} 삭제 확인` }),
+      ).not.toBeDisabled()
     })
     expect(deleteCallCount).toBe(1)
   })

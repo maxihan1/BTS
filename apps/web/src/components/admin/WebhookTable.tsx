@@ -19,6 +19,8 @@ interface WebhookRowProps {
   readonly onDelete: (id: string) => void
   /** 발송 이력 조회 핸들러 */
   readonly onViewDeliveries: (id: string) => void
+  /** 삭제 mutation 진행 중 여부 — true면 인라인 확인 "확인" 버튼을 disabled 처리해 이중 제출을 막는다 */
+  readonly isDeleting?: boolean
 }
 
 interface StatusBadgeProps {
@@ -75,8 +77,12 @@ function formatUpdatedAt(updatedAt: string | null | undefined): string {
  *
  * - 삭제 버튼: 클릭 시 인라인 확인(useState)으로 "확인"/"취소" 전환. 모달 라이브러리 없음 (#121 패턴).
  * - aria-label로 행 컨텍스트(name)를 명시해 텍스트 중복 버튼의 E2E 셀렉터 안전성 확보.
+ * - 삭제 mutation 진행 중(`isDeleting`)에는 "확인" 버튼을 disabled 처리한다 — 빠른 이중 클릭으로
+ *   DELETE 요청이 두 번 나가는 것을 막는다. "확인" 클릭 시 더 이상 즉시 확인 UI를 닫지 않고,
+ *   목록에서 행이 실제로 제거(성공 시 invalidate refetch)되거나 삭제가 실패(재시도 가능)할 때까지
+ *   확인/취소 버튼을 유지한다.
  */
-function WebhookRow({ webhook, onEdit, onDelete, onViewDeliveries }: WebhookRowProps): JSX.Element {
+function WebhookRow({ webhook, onEdit, onDelete, onViewDeliveries, isDeleting }: WebhookRowProps): JSX.Element {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const eventLabels = joinEventLabels(webhook.eventFilter)
@@ -139,7 +145,8 @@ function WebhookRow({ webhook, onEdit, onDelete, onViewDeliveries }: WebhookRowP
                 variant="destructive"
                 size="sm"
                 aria-label={`${webhook.name} 삭제 확인`}
-                onClick={() => { setConfirmingDelete(false); onDelete(webhook.id) }}
+                disabled={isDeleting}
+                onClick={() => { onDelete(webhook.id) }}
               >
                 확인
               </Button>
@@ -183,6 +190,8 @@ interface WebhookTableProps {
   readonly onDelete: (id: string) => void
   /** 발송 이력 조회 핸들러 */
   readonly onViewDeliveries: (id: string) => void
+  /** 삭제 mutation 진행 중 여부 — true면 모든 행의 인라인 확인 "확인" 버튼을 disabled 처리한다 */
+  readonly isDeleting?: boolean
 }
 
 /**
@@ -194,6 +203,8 @@ interface WebhookTableProps {
  * - projectKey/updatedAt=null: "—" 표시.
  * - 활성/서명 배지: 색+텍스트 동시 표시.
  * - 삭제: 인라인 확인(useState, 모달 없음) → 확인 시 onDelete(id).
+ * - isDeleting=true: 모든 행의 인라인 확인 "확인" 버튼을 disabled 처리해 빠른 이중 클릭으로
+ *   인한 중복 DELETE 요청을 막는다.
  * - 행마다 aria-label로 텍스트 중복 버튼 E2E 견고성 확보 (memory: playwright-getbyrole).
  */
 export function WebhookTable({
@@ -202,6 +213,7 @@ export function WebhookTable({
   onEdit,
   onDelete,
   onViewDeliveries,
+  isDeleting,
 }: WebhookTableProps): JSX.Element {
   if (isLoading) {
     return (
@@ -242,6 +254,7 @@ export function WebhookTable({
               onEdit={onEdit}
               onDelete={onDelete}
               onViewDeliveries={onViewDeliveries}
+              isDeleting={isDeleting}
             />
           ))}
         </tbody>

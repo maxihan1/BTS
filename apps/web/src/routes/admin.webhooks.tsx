@@ -263,6 +263,7 @@ export function AdminWebhooksPage(): JSX.Element {
         onEdit={handleEdit}
         onDelete={handleDelete}
         onViewDeliveries={handleViewDeliveries}
+        isDeleting={deleteMutation.isPending}
       />
 
       <PaginationControls
