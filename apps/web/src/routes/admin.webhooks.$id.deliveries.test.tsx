@@ -19,11 +19,25 @@ import type { WebhookDeliveryResponse } from '@/api/webhooks'
 import { WebhookDeliveriesPage, WebhookDeliveriesRouteAdapter } from '@/routes/admin.webhooks.$id.deliveries'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// @tanstack/react-router mock — useParams만 스텁 (workflows.$key.test.tsx 선례)
+// @tanstack/react-router mock — useParams + Link 스텁 (Task 9: plain <a> → Link 전환)
+// Link는 Header.test.tsx 선례와 동일하게 <a href>로 렌더한다.
 // ─────────────────────────────────────────────────────────────────────────────
 
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ id: SECOND_WEBHOOK_ID }),
+  Link: ({
+    to,
+    children,
+    className,
+  }: {
+    to: string
+    children: React.ReactNode
+    className?: string
+  }) => (
+    <a href={to} className={className}>
+      {children}
+    </a>
+  ),
 }))
 
 // ─────────────────────────────────────────────────────────────────────────────

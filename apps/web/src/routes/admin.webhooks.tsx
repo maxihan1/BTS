@@ -116,10 +116,10 @@ function PaginationControls({ page, hasNext, onPrevious, onNext }: PaginationCon
  * 관리자 아웃바운드 Webhook 구독 관리 페이지.
  *
  * @remarks
- * - SYSTEM_ADMIN 전용 — requireSystemAdmin 가드는 router.ts 등록(Task 9)에서 적용된다.
+ * - SYSTEM_ADMIN 전용 — requireSystemAdmin 가드는 router.ts 등록(Task 9)에서 적용됨.
  * - Table(Task 3) + Form(Task 5) 조립. "새 구독" 버튼 또는 행 편집으로 Form을 토글 표시한다.
  * - 생성 `useCreateWebhook` / 수정 `useUpdateWebhook`({id, body}) / 삭제 `useDeleteWebhook`.
- * - 이력 보기 → `/admin/webhooks/{id}/deliveries`로 navigate (해당 라우트도 Task 9 등록 예정).
+ * - 이력 보기 → `/admin/webhooks/{id}/deliveries`로 navigate (router.ts 등록 완료, Task 9).
  * - size 기반 offset 페이지네이션(EC-2, raw List·총개수 없음) — 다음 버튼은 응답 길이가
  *   페이지 크기와 같을 때만 활성화한다.
  * - mutation 에러. 409(OCC 충돌) → Form submitError + 목록 invalidate,
@@ -200,8 +200,9 @@ export function AdminWebhooksPage(): JSX.Element {
   }
 
   function handleViewDeliveries(id: string): void {
-    // '/admin/webhooks/{id}/deliveries' 경로는 router.ts 등록 완료 시 타입 추론됨 — 현재 string cast로 우회
-    void navigate({ to: `/admin/webhooks/${id}/deliveries` as string })
+    // router.ts 등록 완료(Task 9) — adminWorkflowSchemesDetailRoute 선례와 동일하게
+    // 등록된 라우트 트리 기준으로 캐스트 없이 타입 추론된다.
+    void navigate({ to: `/admin/webhooks/${id}/deliveries` })
   }
 
   function handlePrevious(): void {
@@ -263,17 +264,8 @@ export function AdminWebhooksPage(): JSX.Element {
  * router.ts에 등록되는 라우트 어댑터 컴포넌트.
  * createRoute의 component 옵션에 직접 전달한다.
  *
- * 등록 방법 (code-based 패턴, Task 9):
- * ```ts
- * import { AdminWebhooksRouteAdapter } from './routes/admin.webhooks'
- * const adminWebhooksRoute = createRoute({
- *   getParentRoute: () => rootRoute,
- *   path: '/admin/webhooks',
- *   component: AdminWebhooksRouteAdapter,
- *   staticData: { requireAuth: true },
- *   beforeLoad: composeGuards(requireAuth, requireSystemAdmin),
- * })
- * ```
+ * router.ts에 `/admin/webhooks` 경로로 등록 완료 (Task 9) —
+ * `beforeLoad: composeGuards(requireAuth, requireSystemAdmin, requirePasswordChanged, requireMfaEnrolled)`.
  */
 export function AdminWebhooksRouteAdapter(): JSX.Element {
   return <AdminWebhooksPage />
