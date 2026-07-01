@@ -14,6 +14,64 @@ import { Button } from '@/components/ui/button'
 const PAGE_SIZE = 20
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 페이지네이션 서브컴포넌트 (admin.audit-logs.tsx `PaginationControls` 선례 — size 기반 변형)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface DeliveriesPaginationControlsProps {
+  /** 현재 페이지 번호 (0-base) */
+  readonly page: number
+  /** 이전 페이지 클릭 핸들러 */
+  readonly onPrevious: () => void
+  /** 다음 페이지 클릭 핸들러 */
+  readonly onNext: () => void
+  /** 이전 버튼 disabled 여부 — `page === 0` */
+  readonly isPreviousDisabled: boolean
+  /** 다음 버튼 disabled 여부 — 받은 이력 개수가 size 미만이면 true(EC-2) */
+  readonly isNextDisabled: boolean
+}
+
+/**
+ * size 기반 prev/next 페이지네이션 컨트롤.
+ *
+ * raw List 응답(총 개수 없음)이라 "받은 개수 == size"를 다음 페이지 존재 추정으로 쓴다 —
+ * offset 페이지네이션 envelope(totalPages 보유)를 쓰는 admin.audit-logs.tsx와 달리
+ * 이 화면은 개수 기반 추정만 가능하다(EC-2).
+ */
+function DeliveriesPaginationControls({
+  page,
+  onPrevious,
+  onNext,
+  isPreviousDisabled,
+  isNextDisabled,
+}: DeliveriesPaginationControlsProps): JSX.Element {
+  return (
+    <div className="flex items-center justify-between px-2 py-3">
+      <span className="text-sm text-muted-foreground">페이지 {page + 1}</span>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onPrevious}
+          disabled={isPreviousDisabled}
+        >
+          이전
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onNext}
+          disabled={isNextDisabled}
+        >
+          다음
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 페이지 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -63,29 +121,13 @@ export function WebhookDeliveriesPage({ webhookId }: WebhookDeliveriesPageProps)
 
       <WebhookDeliveryTable deliveries={deliveries} isLoading={isLoading} />
 
-      <div className="flex items-center justify-between px-2 py-3">
-        <span className="text-sm text-muted-foreground">페이지 {page + 1}</span>
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handlePrevious}
-            disabled={isPreviousDisabled}
-          >
-            이전
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleNext}
-            disabled={isNextDisabled}
-          >
-            다음
-          </Button>
-        </div>
-      </div>
+      <DeliveriesPaginationControls
+        page={page}
+        onPrevious={handlePrevious}
+        onNext={handleNext}
+        isPreviousDisabled={isPreviousDisabled}
+        isNextDisabled={isNextDisabled}
+      />
     </div>
   )
 }
