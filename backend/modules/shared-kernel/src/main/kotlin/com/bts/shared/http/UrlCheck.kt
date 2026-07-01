@@ -1,9 +1,9 @@
-// WebhookUrlValidator 검사 결과를 표현하는 sealed 클래스
+// OutboundUrlValidator 검사 결과를 표현하는 sealed 클래스
 
-package com.bts.notification.webhook
+package com.bts.shared.http
 
 /**
- * Webhook URL 검사 결과.
+ * 아웃바운드 URL 검사 결과.
  *
  * - [Allowed] — 전송 가능한 URL
  * - [Blocked] — SSRF 위험 또는 비-http 스킴으로 차단

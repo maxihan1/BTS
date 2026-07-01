@@ -1,6 +1,6 @@
-// Webhook URL을 검증해 SSRF 내부망 차단 및 스킴 검사를 수행하는 컴포넌트
+// 아웃바운드 URL을 검증해 SSRF 내부망 차단 및 스킴 검사를 수행하는 컴포넌트
 
-package com.bts.notification.webhook
+package com.bts.shared.http
 
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -8,7 +8,7 @@ import java.net.InetAddress
 import java.net.URI
 
 /**
- * Webhook URL 의 SSRF(Server-Side Request Forgery) 위험을 평가하는 검증기.
+ * 아웃바운드 URL 의 SSRF(Server-Side Request Forgery) 위험을 평가하는 검증기.
  *
  * ## 검증 순서
  * 1. blank 또는 URI 파싱 실패 → [UrlCheck.Malformed]
@@ -27,7 +27,7 @@ import java.net.URI
  * 사설망으로 분류하지 않으므로 [isInternal] 에 명시적 검사를 추가한다.
  */
 @Component
-class WebhookUrlValidator {
+class OutboundUrlValidator {
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
@@ -35,7 +35,7 @@ class WebhookUrlValidator {
      *
      * 네트워크 요청을 보내지 않는다 — DNS 조회만 수행 (리터럴 IP 는 DNS 조회 없음).
      *
-     * @param url 검사할 Webhook URL 문자열
+     * @param url 검사할 아웃바운드 URL 문자열
      * @return [UrlCheck.Allowed], [UrlCheck.Blocked], 또는 [UrlCheck.Malformed]
      */
     @Suppress("ReturnCount") // 보안 검증 함수 특성상 단계별 early return이 로직을 명확하게 함

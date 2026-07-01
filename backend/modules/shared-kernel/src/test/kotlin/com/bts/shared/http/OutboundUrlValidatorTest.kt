@@ -1,12 +1,12 @@
-// WebhookUrlValidator 단위 테스트 — SSRF 내부망 차단, 스킴 검사, IPv6 ULA/매핑 IP 차단 검증
+// OutboundUrlValidator 단위 테스트 — SSRF 내부망 차단, 스킴 검사, IPv6 ULA/매핑 IP 차단 검증
 
-package com.bts.notification.webhook
+package com.bts.shared.http
 
 import io.kotest.core.spec.style.DescribeSpec
 import org.assertj.core.api.Assertions.assertThat
 
 /**
- * [WebhookUrlValidator] 단위 테스트.
+ * [OutboundUrlValidator] 단위 테스트.
  *
  * ### 검증 항목
  * - S1. 공인 IP 리터럴 → Allowed
@@ -21,9 +21,9 @@ import org.assertj.core.api.Assertions.assertThat
  * - S3(리뷰 보강). IPv4-mapped IPv6(::ffff:127.0.0.1) → Blocked
  * - S3(리뷰 보강). 정수형 IP(2130706433 = 127.0.0.1) → Blocked
  */
-class WebhookUrlValidatorTest : DescribeSpec({
+class OutboundUrlValidatorTest : DescribeSpec({
 
-    val validator = WebhookUrlValidator()
+    val validator = OutboundUrlValidator()
 
     describe("허용 케이스") {
         it("S1 공인 IP 리터럴(93.184.216.34)은 Allowed") {

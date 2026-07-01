@@ -2,6 +2,8 @@
 
 package com.bts.notification.webhook
 
+import com.bts.shared.http.OutboundUrlValidator
+import com.bts.shared.http.UrlCheck
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpMethod
@@ -14,7 +16,7 @@ import org.springframework.web.client.RestClientException
  * Webhook URL 로 HTTP 요청을 전송하는 디스패처.
  *
  * ## 처리 흐름
- * 1. [WebhookUrlValidator.check] 로 URL 검증 → [UrlCheck.Blocked] / [UrlCheck.Malformed] 이면
+ * 1. [OutboundUrlValidator.check] 로 URL 검증 → [UrlCheck.Blocked] / [UrlCheck.Malformed] 이면
  *    [WebhookDispatchResult.Rejected] 반환 (전송 X)
  * 2. 엔벨로프 body 구성: `{"event":"WebhookRequested","issueKey":"<key>"}`
  * 3. [RestClient] 로 HTTP 전송 (method=POST 기본, PUT 지원, 그 외는 POST fallback)
@@ -22,7 +24,7 @@ import org.springframework.web.client.RestClientException
  * 5. 예외(타임아웃/연결/DNS) → [WebhookDispatchResult.Failed]
  *
  * ## 리다이렉트 차단 (FR8)
- * [RestClient] 는 [com.bts.notification.config.WebhookHttpClientConfig] 에서
+ * [RestClient] 는 [com.bts.shared.http.OutboundHttpClientConfig] 에서
  * [java.net.http.HttpClient.Redirect.NEVER] 로 구성된 JDK HttpClient 를 사용한다.
  * 3xx 응답은 따라가지 않고 non-2xx 로 처리 → [WebhookDispatchResult.Failed].
  *
@@ -32,7 +34,7 @@ import org.springframework.web.client.RestClientException
  */
 @Component
 class WebhookDispatcher(
-    private val validator: WebhookUrlValidator,
+    private val validator: OutboundUrlValidator,
     private val restClient: RestClient,
     private val objectMapper: ObjectMapper,
 ) {

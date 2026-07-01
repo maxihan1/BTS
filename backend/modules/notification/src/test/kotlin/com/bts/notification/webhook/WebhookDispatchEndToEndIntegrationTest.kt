@@ -4,8 +4,10 @@ package com.bts.notification.webhook
 
 import com.bts.notification.NotificationTestBootApplication
 import com.bts.notification.TestPermissionConfig
-import com.bts.notification.config.WebhookHttpClientConfig
 import com.bts.notification.worker.WebhookDispatchWorker
+import com.bts.shared.http.OutboundHttpClientConfig
+import com.bts.shared.http.OutboundUrlValidator
+import com.bts.shared.http.UrlCheck
 import com.bts.shared.issue.IssueRecipientLookupPort
 import com.bts.shared.issue.IssueRecipients
 import com.bts.shared.issue.ProjectRecipientLookupPort
@@ -75,6 +77,9 @@ import javax.sql.DataSource
         NotificationTestBootApplication::class,
         WebhookDispatchEndToEndIntegrationTest.WebhookE2EConfig::class,
         TestPermissionConfig::class,
+        // OutboundUrlValidator/OutboundHttpClientConfig 는 shared-kernel(com.bts.shared.http)로 이동했으나,
+        // NotificationTestBootApplication 이 scanBasePackages 에 "com.bts.shared.http" 를 포함하도록
+        // 확장되어 스캔으로 등록되므로 여기서 명시 등록할 필요가 없다.
     ],
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
 )
@@ -86,7 +91,7 @@ class WebhookDispatchEndToEndIntegrationTest {
     lateinit var dsl: DSLContext
 
     /**
-     * Spring 컨텍스트가 조립한 autowired 워커 — 실 [WebhookUrlValidator]를 사용한다.
+     * Spring 컨텍스트가 조립한 autowired 워커 — 실 [OutboundUrlValidator]를 사용한다.
      * E2E-B(SSRF 차단) 시나리오 전용.
      */
     @Autowired
@@ -129,10 +134,10 @@ class WebhookDispatchEndToEndIntegrationTest {
      * 실 파이프라인(실 pgmq → 실 worker → 실 dispatcher → 실 RestClient → 실 HTTP POST → stub 수신)을 검증한다.
      *
      * ## SSRF validator mock 우회 이유
-     * stub 서버는 loopback(127.0.0.1)에서 실행되므로 실 [WebhookUrlValidator]가 "내부망 주소 차단"으로
+     * stub 서버는 loopback(127.0.0.1)에서 실행되므로 실 [OutboundUrlValidator]가 "내부망 주소 차단"으로
      * 거부한다. 따라서 happy-path 전달 파이프라인을 검증하려면 validator를 permissive mock으로 교체해야 한다.
      *
-     * validator의 실제 SSRF 탐지 로직은 [WebhookUrlValidatorTest](T1~T5)가 완전 검증한다.
+     * validator의 실제 SSRF 탐지 로직은 [OutboundUrlValidatorTest](T1~T5)가 완전 검증한다.
      * 이 테스트에서는 "validator가 Allowed를 반환했을 때 메시지가 stub까지 전달되는가"를 검증한다.
      */
     @Test
@@ -140,11 +145,11 @@ class WebhookDispatchEndToEndIntegrationTest {
         val webhookUrl = "http://127.0.0.1:$stubPort/webhook"
 
         // SSRF validator를 permissive mock으로 교체 — loopback stub 허용
-        val permissiveValidator = mockk<WebhookUrlValidator>()
+        val permissiveValidator = mockk<OutboundUrlValidator>()
         every { permissiveValidator.check(any()) } returns UrlCheck.Allowed
 
-        // 실 RestClient — 리다이렉트 NEVER + 기본 타임아웃 적용 (WebhookHttpClientConfig 팩토리 메서드 사용)
-        val testRestClient = WebhookHttpClientConfig().webhookRestClient()
+        // 실 RestClient — 리다이렉트 NEVER + 기본 타임아웃 적용 (OutboundHttpClientConfig 팩토리 메서드 사용)
+        val testRestClient = OutboundHttpClientConfig().outboundHttpRestClient()
 
         // 워커를 직접 조립 — validator만 mock, 나머지(dispatcher/RestClient/ObjectMapper)는 실 구현
         val testDispatcher = WebhookDispatcher(permissiveValidator, testRestClient, ObjectMapper())
@@ -195,7 +200,7 @@ class WebhookDispatchEndToEndIntegrationTest {
     // ── E2E-B. SSRF 차단 경로 ─────────────────────────────────────────────────
 
     /**
-     * 실 [WebhookUrlValidator](autowired worker)가 127.0.0.1을 SSRF로 차단한다.
+     * 실 [OutboundUrlValidator](autowired worker)가 127.0.0.1을 SSRF로 차단한다.
      *
      * 차단 흐름: Rejected → pgmq.delete (영구 거부, 재전달 없음).
      * stub 서버는 전송을 수신하지 않아야 한다.
