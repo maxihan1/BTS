@@ -759,3 +759,15 @@ COMMENT ON COLUMN issues.description IS
 -- ═══════════════════════════════════════════════════════════════════════════
 
 CREATE INDEX idx_issues_created_cursor ON issues (created_at DESC, id DESC) WHERE deleted_at IS NULL;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V034: pgmq 큐 — q_webhook_events (FR-API-03 PR3 Webhook 아웃바운드 발송 dual-send 전용 큐)
+-- 원본: db/migration/issue-tracking/V034__pgmq_queue_webhook_events.sql
+-- 이미지: quay.io/tembo/pg16-pgmq:latest — pgmq 사전 설치됨 (ADR 2026-05-22-pgmq-postgres-image).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- pgmq extension 보장 (V002 에서 이미 적용됐으나 멱등 실행)
+CREATE EXTENSION IF NOT EXISTS pgmq CASCADE;
+
+-- 큐 생성 — q_webhook_events
+SELECT pgmq.create('q_webhook_events');
