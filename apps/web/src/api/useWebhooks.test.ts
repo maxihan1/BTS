@@ -196,7 +196,8 @@ describe('useWebhooks 훅 묶음', () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-      const queryState = queryClient.getQueryState(WEBHOOKS_QUERY_KEY)
+      // WEBHOOKS_QUERY_KEY로 invalidate하면 접두사가 일치하는 [...WEBHOOKS_QUERY_KEY, page, size] 캐시도 invalidate된다
+      const queryState = queryClient.getQueryState([...WEBHOOKS_QUERY_KEY, 0, 20])
       expect(queryState?.isInvalidated).toBe(true)
     })
 
@@ -244,8 +245,13 @@ describe('useWebhooks 훅 묶음', () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-      const webhooksState = queryClient.getQueryState(WEBHOOKS_QUERY_KEY)
-      const deliveriesState = queryClient.getQueryState(WEBHOOK_DELIVERIES_QUERY_KEY)
+      const webhooksState = queryClient.getQueryState([...WEBHOOKS_QUERY_KEY, 0, 20])
+      const deliveriesState = queryClient.getQueryState([
+        ...WEBHOOK_DELIVERIES_QUERY_KEY,
+        webhookFixtureA.id,
+        0,
+        20,
+      ])
       expect(webhooksState?.isInvalidated).toBe(true)
       expect(deliveriesState?.isInvalidated).toBe(true)
     })
@@ -270,7 +276,7 @@ describe('useWebhooks 훅 묶음', () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-      const queryState = queryClient.getQueryState(WEBHOOKS_QUERY_KEY)
+      const queryState = queryClient.getQueryState([...WEBHOOKS_QUERY_KEY, 0, 20])
       expect(queryState?.isInvalidated).toBe(true)
     })
   })
