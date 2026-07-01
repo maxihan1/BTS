@@ -12,7 +12,7 @@ import java.util.UUID
  * ([DbClientRegistrationRepository]).
  *
  * [clientSecretEncrypted] 는 app key 로 **암호화된** client_secret 이다(평문 저장 금지 — §1.1.1).
- * 복호화는 본 VO 가 아니라 [DbClientRegistrationRepository] 가 [com.atlas.bts.identity.config.SecretEncryptor]
+ * 복호화는 본 VO 가 아니라 [DbClientRegistrationRepository] 가 [com.bts.shared.crypto.SecretEncryptor]
  * 로 수행하며, 복호화 결과(평문 secret)는 메모리에만 두고 **절대 로깅하지 않는다**(§1.1.2).
  */
 data class OidcProviderConfig(
