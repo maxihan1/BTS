@@ -58,6 +58,9 @@ dependencies {
     // 아웃바운드 HTTP 클라이언트 — OutboundHttpClientConfig 의 RestClient/JdkClientHttpRequestFactory 용 (버전은 Spring BOM 관리)
     implementation("org.springframework:spring-web")
 
+    // 외부 비밀값 대칭 암호화 — SecretEncryptor(AES-256-GCM) 의 Encryptors/BytesEncryptor/Hex 용 (버전은 Spring BOM 관리)
+    implementation("org.springframework.security:spring-security-crypto")
+
     // Kotlin 기본 리플렉션
     implementation("org.jetbrains.kotlin:kotlin-reflect")
 

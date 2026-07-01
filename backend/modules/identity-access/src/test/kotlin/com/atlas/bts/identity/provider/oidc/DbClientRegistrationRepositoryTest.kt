@@ -2,7 +2,7 @@
 
 package com.atlas.bts.identity.provider.oidc
 
-import com.atlas.bts.identity.config.SecretEncryptor
+import com.bts.shared.crypto.SecretEncryptor
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.security.oauth2.client.registration.ClientRegistration

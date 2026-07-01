@@ -2,9 +2,9 @@
 
 package com.atlas.bts.identity.integration
 
-import com.atlas.bts.identity.config.SecretEncryptor
 import com.atlas.bts.identity.config.TestIntegrationSecurityConfig
 import com.atlas.bts.identity.provider.oidc.DbClientRegistrationRepository
+import com.bts.shared.crypto.SecretEncryptor
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
