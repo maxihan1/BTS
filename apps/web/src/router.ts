@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 34개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + settings 5 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 2 + 알림 보관함 1 + 검색 1 | FR-TL-01: timelineRoute /projects/$projectKey/timeline 추가)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 36개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + settings 5 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 2 + 알림 보관함 1 + 검색 1 + Webhook 2 | FR-API-03: adminWebhooksRoute /admin/webhooks · adminWebhooksDeliveriesRoute /admin/webhooks/$id/deliveries 추가)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -39,6 +39,8 @@ import { DashboardDetailRouteAdapter } from './routes/dashboards.$dashboardId'
 import { InboxRouteAdapter } from './routes/inbox'
 import { SearchRouteAdapter } from './routes/search'
 import { TimelineRouteAdapter } from './routes/projects.$projectKey.timeline'
+import { AdminWebhooksRouteAdapter } from './routes/admin.webhooks'
+import { WebhookDeliveriesRouteAdapter } from './routes/admin.webhooks.$id.deliveries'
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -412,6 +414,25 @@ const dashboardDetailRoute = createRoute({
   beforeLoad: requireAuthAndPasswordChanged,
 })
 
+/** 아웃바운드 Webhook 구독 관리 라우트 — /admin/webhooks, requireAuth + requireSystemAdmin + requirePasswordChanged (FR-API-03 PR4) */
+const adminWebhooksRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin/webhooks',
+  component: AdminWebhooksRouteAdapter,
+  staticData: { requireAuth: true },
+  // requirePasswordChanged + requireMfaEnrolled 포함 — adminAuditLogsRoute 와 동일 (FR-MF-04)
+  beforeLoad: composeGuards(requireAuth, requireSystemAdmin, requirePasswordChanged, requireMfaEnrolled),
+})
+
+/** 아웃바운드 Webhook 구독 발송 이력 라우트 — /admin/webhooks/$id/deliveries, requireAuth + requireSystemAdmin + requirePasswordChanged (FR-API-03 PR4) */
+const adminWebhooksDeliveriesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin/webhooks/$id/deliveries',
+  component: WebhookDeliveriesRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: composeGuards(requireAuth, requireSystemAdmin, requirePasswordChanged, requireMfaEnrolled),
+})
+
 /** 계정 연결 설정 라우트 — /settings/account-links, requireAuth + mustChangePassword 차단 */
 const settingsAccountLinksRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -429,9 +450,10 @@ const settingsAccountLinksRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 34개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 36개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
+ *   · /admin/webhooks · /admin/webhooks/:id/deliveries
  *   · /inbox · /dashboards · /dashboards/:dashboardId · /search
  *   · /projects/:projectKey/backlog · /projects/:projectKey/board · /projects/:projectKey/timeline
  *   · /projects/:projectKey/settings/workflow-scheme · /projects/:projectKey/settings/members
@@ -462,6 +484,9 @@ export const routeTree = rootRoute.addChildren([
   adminNotificationPoliciesRoute,
   // identity-access BC — 사용자 생성 (/admin/users/new)
   adminUsersNewRoute,
+  // search-export-import BC — 아웃바운드 Webhook 구독 관리 + 발송 이력 (FR-API-03 PR4)
+  adminWebhooksRoute,
+  adminWebhooksDeliveriesRoute,
   // search-export-import BC — AQL 검색 (FR-SR-02)
   searchRoute,
   // notification BC — 알림 보관함 (FR-UX-03)
