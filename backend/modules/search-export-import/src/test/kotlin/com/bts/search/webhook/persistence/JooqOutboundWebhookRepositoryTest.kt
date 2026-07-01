@@ -24,6 +24,8 @@ import java.util.UUID
  * - listAll — 소프트삭제 제외 + 페이지네이션(created_at DESC, id ASC 안정 정렬)
  * - update — OCC 성공 시 version+1, 실패(잘못된 version) 시 null
  * - softDelete — 성공 시 true + 이후 findById=null, 존재하지 않거나 이미 삭제된 id 는 false(멱등)
+ * - findMatching(plan Task 6) — eventFilter GIN overlap + projectKey(null 또는 일치) + enabled + 미삭제
+ *   구독만 반환(각 조건마다 positive/negative control)
  */
 class JooqOutboundWebhookRepositoryTest : SearchPersistenceTestBase() {
     private val repo get() = JooqOutboundWebhookRepository(dsl)
@@ -214,5 +216,61 @@ class JooqOutboundWebhookRepositoryTest : SearchPersistenceTestBase() {
         val result = repo.softDelete(saved.id!!)
 
         assertThat(result).isFalse()
+    }
+
+    // ── findMatching 구독 매칭 조회 (plan Task 6) ────────────────────────────────
+    // positive(매칭 반환) + negative control(비매칭 부재 단언) 쌍으로 vacuous 방지.
+
+    @Test
+    fun `findMatching — eventFilter GIN overlap 매칭 구독만 반환, 비매칭 이벤트는 제외된다`() {
+        val matching = repo.save(buildWebhook(eventFilter = listOf(WebhookEventCatalog.ISSUE_CREATED)))
+        val nonMatching = repo.save(buildWebhook(eventFilter = listOf(WebhookEventCatalog.ISSUE_TRANSITIONED)))
+
+        val result = repo.findMatching(WebhookEventCatalog.ISSUE_CREATED, "ATLAS")
+
+        assertThat(result.map { it.id }).contains(matching.id)
+        assertThat(result.map { it.id }).doesNotContain(nonMatching.id)
+    }
+
+    @Test
+    fun `findMatching — projectKey가 null인 구독은 모든 프로젝트에 매칭된다(전체 스코프)`() {
+        val global =
+            repo.save(buildWebhook(eventFilter = listOf(WebhookEventCatalog.ISSUE_CREATED), projectKey = null))
+
+        val result = repo.findMatching(WebhookEventCatalog.ISSUE_CREATED, "ANY_PROJECT")
+
+        assertThat(result.map { it.id }).contains(global.id)
+    }
+
+    @Test
+    fun `findMatching — projectKey가 지정된 구독은 일치하는 프로젝트만 매칭, 불일치 프로젝트는 제외된다`() {
+        val scoped =
+            repo.save(buildWebhook(eventFilter = listOf(WebhookEventCatalog.ISSUE_CREATED), projectKey = "ATLAS"))
+
+        val matched = repo.findMatching(WebhookEventCatalog.ISSUE_CREATED, "ATLAS")
+        val mismatched = repo.findMatching(WebhookEventCatalog.ISSUE_CREATED, "OTHER")
+
+        assertThat(matched.map { it.id }).contains(scoped.id)
+        assertThat(mismatched.map { it.id }).doesNotContain(scoped.id)
+    }
+
+    @Test
+    fun `findMatching — enabled=false 구독은 제외된다`() {
+        val disabled =
+            repo.save(buildWebhook(eventFilter = listOf(WebhookEventCatalog.ISSUE_CREATED), enabled = false))
+
+        val result = repo.findMatching(WebhookEventCatalog.ISSUE_CREATED, "ATLAS")
+
+        assertThat(result.map { it.id }).doesNotContain(disabled.id)
+    }
+
+    @Test
+    fun `findMatching — 소프트삭제된 구독은 제외된다`() {
+        val deleted = repo.save(buildWebhook(eventFilter = listOf(WebhookEventCatalog.ISSUE_CREATED)))
+        repo.softDelete(deleted.id!!)
+
+        val result = repo.findMatching(WebhookEventCatalog.ISSUE_CREATED, "ATLAS")
+
+        assertThat(result.map { it.id }).doesNotContain(deleted.id)
     }
 }
