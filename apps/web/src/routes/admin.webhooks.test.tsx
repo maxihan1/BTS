@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { useAuthStore } from '@/auth/authStore'
 import { makeWhoami } from '@/mocks/auth-fixtures'
@@ -14,6 +15,7 @@ import {
   DEFAULT_WEBHOOK,
   DEFAULT_WEBHOOK_ID,
   SECOND_WEBHOOK,
+  SECOND_WEBHOOK_ID,
 } from '@/mocks/webhook-fixtures'
 import type { WebhookResponse } from '@/api/webhooks'
 import { AdminWebhooksPage } from './admin.webhooks'
@@ -278,5 +280,84 @@ describe('AdminWebhooksPage — 409 OCC 충돌', () => {
       )
     })
     expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('충돌 안내 표시 후 폼이 닫힌다 (재오픈 시 fresh version 재캡처를 위해)', async () => {
+    const { user } = renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText(DEFAULT_WEBHOOK.name)).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: `${DEFAULT_WEBHOOK.name} 편집` }))
+
+    // 폼이 열려 version=0을 캡처한 뒤, 다른 곳에서 먼저 변경된 상황을 흉내낸다.
+    seedWebhook({ ...DEFAULT_WEBHOOK, version: 5 })
+
+    await user.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        '다른 곳에서 먼저 변경되었습니다. 목록을 다시 불러오세요.',
+      )
+    })
+
+    // 폼이 닫혀야 한다 — 편집 제출 버튼("저장")이 더 이상 없고 "새 구독" 버튼이 복귀한다.
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: '저장' })).not.toBeInTheDocument()
+    })
+    expect(screen.getByRole('button', { name: '새 구독' })).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 편집 대상 전환(A→B) — key 재마운트 회귀 방지
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AdminWebhooksPage — 편집 대상 전환(A→B)', () => {
+  it('편집 폼을 닫지 않고 다른 행의 편집을 누르면 폼이 새 대상 값으로 재초기화되고, 저장 payload도 새 대상 기준이다', async () => {
+    // A/B 버전을 다르게 시드해 stale state가 어느 쪽 값을 들고 있는지 구분 가능하게 한다.
+    seedWebhook({ ...DEFAULT_WEBHOOK, version: 1 })
+    seedWebhook({ ...SECOND_WEBHOOK, version: 2 })
+
+    const { user } = renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText(DEFAULT_WEBHOOK.name)).toBeInTheDocument()
+      expect(screen.getByText(SECOND_WEBHOOK.name)).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: `${DEFAULT_WEBHOOK.name} 편집` }))
+    await waitFor(() => {
+      expect(screen.getByLabelText('이름')).toHaveValue(DEFAULT_WEBHOOK.name)
+    })
+
+    // 폼을 닫지 않고 곧바로 다른 행(B)의 편집을 누른다.
+    await user.click(screen.getByRole('button', { name: `${SECOND_WEBHOOK.name} 편집` }))
+
+    // 폼 필드가 B의 값으로 갱신되어야 한다 — key 없이는 A값이 stale하게 남는다.
+    await waitFor(() => {
+      expect(screen.getByLabelText('이름')).toHaveValue(SECOND_WEBHOOK.name)
+    })
+    expect(screen.getByLabelText('URL')).toHaveValue(SECOND_WEBHOOK.url)
+
+    let capturedId: string | undefined
+    let capturedBody: { name?: string; version?: number } | undefined
+    server.use(
+      http.put('/api/v1/webhooks/:id', async ({ params, request }) => {
+        capturedId = params['id'] as string
+        capturedBody = (await request.json()) as { name?: string; version?: number }
+        return HttpResponse.json({ ...SECOND_WEBHOOK, version: 3 })
+      }),
+    )
+
+    await user.click(screen.getByRole('button', { name: '저장' }))
+
+    // 저장 요청은 B의 id에 B의 name + B.version(=2)을 실어야 한다 — A값/version=1이면 회귀.
+    await waitFor(() => {
+      expect(capturedId).toBe(SECOND_WEBHOOK_ID)
+    })
+    expect(capturedBody?.name).toBe(SECOND_WEBHOOK.name)
+    expect(capturedBody?.version).toBe(2)
   })
 })
