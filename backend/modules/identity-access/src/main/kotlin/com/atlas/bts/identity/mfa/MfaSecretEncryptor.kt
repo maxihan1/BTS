@@ -14,7 +14,7 @@ import org.springframework.security.crypto.encrypt.Encryptors
  * 양방향 대칭 암호화를 쓴다. BTS 는 단일 호스트라 KMS 대신 app key 대칭 암호화로 KMS 정신(키 분리)을 구현한다.
  *
  * ## OIDC SecretEncryptor 와 키 격리 (의도적 중복)
- * 알고리즘은 [com.atlas.bts.identity.config.SecretEncryptor](OIDC client_secret 용)와 동일하지만
+ * 알고리즘은 [com.bts.shared.crypto.SecretEncryptor](OIDC client_secret 용)와 동일하지만
  * **키를 분리**하기 위해 별도 유틸로 둔다. 한 키가 유출되어도 다른 비밀값(OIDC client_secret ↔ TOTP secret)이
  * 함께 노출되지 않도록 폭발 반경을 좁히는 것이 목적이다. 따라서 공통 추출(상속/베이스 클래스)을 하지 않고
  * 약간의 코드 중복을 감수한다. app key/salt 는 [MfaEncryptionConfig] 가 `BTS_MFA_ENCRYPTION_*` 환경변수
