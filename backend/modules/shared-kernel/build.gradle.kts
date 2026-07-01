@@ -52,6 +52,9 @@ dependencies {
     // 트랜잭션 추상화 — WorkflowTransitionPort 의 @Transactional(MANDATORY) 선언에 필요
     implementation("org.springframework:spring-tx")
 
+    // SSRF 감사 로그 — OutboundUrlValidator 의 slf4j LoggerFactory 용 (버전은 Spring BOM 관리)
+    implementation("org.slf4j:slf4j-api")
+
     // Kotlin 기본 리플렉션
     implementation("org.jetbrains.kotlin:kotlin-reflect")
 
