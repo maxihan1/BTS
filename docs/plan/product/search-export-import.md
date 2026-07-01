@@ -180,13 +180,15 @@
 
 **우선순위**. 필수 | **선행**. §5.1, identity-access §2.10 (감사) | **Plan slug**. `search/api-webhook-out`
 
-- [ ] D1. 도메인 — OutboundWebhook (책임. backend-engineer)
-- [ ] D2. 명세 — HMAC-SHA256 서명 + 재시도 + circuit breaker (책임. backend-engineer + security-engineer)
-- [ ] D3. 데이터 모델 — `outbound_webhooks(url, secret_encrypted, event_filter)` + `webhook_deliveries(status, response_code)` (책임. db-engineer)
-- [ ] D4. 백엔드 — pgmq event → HTTP 발송 + 재시도 (책임. backend-engineer + security-engineer)
-- [ ] D5. 백엔드 테스트 — 재시도 + circuit breaker (책임. backend-engineer)
-- [ ] D6. 프론트 UI — Webhook 관리 페이지 + 발송 이력 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+> **FR-API-03 전체 완료 — PR1(#211)·PR2(#212)·PR3(#213)·PR4(#214, 2026-07-01)**. 4-PR 분할. PR1 shared-kernel `com.bts.shared.http` SSRF 검증기+HTTP 클라이언트 추출(FR-NT-05와 단일 구현 공유). PR2 `OutboundWebhook` 구독 도메인+CRUD REST+secret AES-256-GCM 암호화+V603(`outbound_webhooks`/`webhook_deliveries`), 전역 SYSTEM_ADMIN 게이트. PR3 issue-tracking dual-send(`q_webhook_events`)+search fanout/dispatch 워커+HMAC-SHA256 서명+circuit breaker+발송 이력 기록+멱등키(`X-BTS-Delivery`). PR4 관리 UI(구독 CRUD+발송 이력 화면, `apps/web`)+E2E — 전 엔드포인트 SYSTEM_ADMIN 라우트 가드+Header 게이팅 이중화, secret 미노출(hasSecret만), OCC 409, 폼 `key` 재마운트(편집전환 데이터손상 차단). **FR-API-03 전체 종료.**
+
+- [x] D1. 도메인 — OutboundWebhook (책임. backend-engineer)
+- [x] D2. 명세 — HMAC-SHA256 서명 + 재시도 + circuit breaker (책임. backend-engineer + security-engineer)
+- [x] D3. 데이터 모델 — `outbound_webhooks(url, secret_encrypted, event_filter)` + `webhook_deliveries(status, response_code)` (책임. db-engineer)
+- [x] D4. 백엔드 — pgmq event → HTTP 발송 + 재시도 (책임. backend-engineer + security-engineer)
+- [x] D5. 백엔드 테스트 — 재시도 + circuit breaker (책임. backend-engineer)
+- [x] D6. 프론트 UI — Webhook 관리 페이지 + 발송 이력 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ### §5.4 FR-API-04 — Personal Access Token
 
