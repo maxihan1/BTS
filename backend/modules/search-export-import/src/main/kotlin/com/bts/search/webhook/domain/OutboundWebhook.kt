@@ -64,6 +64,7 @@ data class OutboundWebhook(
          * @return 불변식을 만족하는 신규 [OutboundWebhook] ([id]/타임스탬프는 `null`, version=0).
          * @throws IllegalArgumentException name·url·eventFilter가 불변식을 위반한 경우.
          */
+        @Suppress("LongParameterList") // 구독 애그리거트 필드 7개 — VO 분리보다 명시적 팩토리 시그니처가 명료
         fun create(
             createdBy: UUID,
             name: String,
@@ -110,6 +111,7 @@ data class OutboundWebhook(
      * @return 변경된 [OutboundWebhook] 인스턴스.
      * @throws IllegalArgumentException name·url·eventFilter가 불변식을 위반한 경우.
      */
+    @Suppress("LongParameterList") // 구독 애그리거트 변경 가능 필드 6개 — create와 동일 사유
     fun applyUpdate(
         name: String,
         url: String,
