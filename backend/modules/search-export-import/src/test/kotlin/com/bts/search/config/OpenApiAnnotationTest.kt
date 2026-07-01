@@ -2,8 +2,10 @@
 
 package com.bts.search.config
 
+import com.bts.shared.http.OutboundUrlValidator
 import com.bts.shared.membership.GroupMembershipPort
 import com.bts.shared.membership.ProjectMembershipPort
+import com.bts.shared.permission.SystemPermissionResolver
 import com.bts.shared.search.IssueSearchPort
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -108,6 +110,14 @@ class OpenApiAnnotationTest {
     /** 프로젝트 멤버십 포트 — cross-BC, [com.bts.search.savedfilter.application.SavedFilterService] fail-closed 의존성. */
     @MockBean
     lateinit var projectMembershipPort: ProjectMembershipPort
+
+    /** 전역 admin 판정 포트 — cross-BC(identity-access), [com.bts.search.webhook.application.OutboundWebhookService] 의존성. */
+    @MockBean
+    lateinit var systemPermissionResolver: SystemPermissionResolver
+
+    /** 아웃바운드 URL SSRF 검증기 — shared-kernel, [com.bts.search.webhook.application.OutboundWebhookService] 의존성. */
+    @MockBean
+    lateinit var outboundUrlValidator: OutboundUrlValidator
 
     @Autowired
     private lateinit var webApplicationContext: WebApplicationContext
