@@ -2,6 +2,8 @@
 
 package com.bts.notification.webhook
 
+import com.bts.shared.http.OutboundUrlValidator
+import com.bts.shared.http.UrlCheck
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpMethod
@@ -14,7 +16,7 @@ import org.springframework.web.client.RestClientException
  * Webhook URL 로 HTTP 요청을 전송하는 디스패처.
  *
  * ## 처리 흐름
- * 1. [WebhookUrlValidator.check] 로 URL 검증 → [UrlCheck.Blocked] / [UrlCheck.Malformed] 이면
+ * 1. [OutboundUrlValidator.check] 로 URL 검증 → [UrlCheck.Blocked] / [UrlCheck.Malformed] 이면
  *    [WebhookDispatchResult.Rejected] 반환 (전송 X)
  * 2. 엔벨로프 body 구성: `{"event":"WebhookRequested","issueKey":"<key>"}`
  * 3. [RestClient] 로 HTTP 전송 (method=POST 기본, PUT 지원, 그 외는 POST fallback)
@@ -32,7 +34,7 @@ import org.springframework.web.client.RestClientException
  */
 @Component
 class WebhookDispatcher(
-    private val validator: WebhookUrlValidator,
+    private val validator: OutboundUrlValidator,
     private val restClient: RestClient,
     private val objectMapper: ObjectMapper,
 ) {

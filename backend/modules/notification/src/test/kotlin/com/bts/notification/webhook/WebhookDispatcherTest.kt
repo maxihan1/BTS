@@ -3,6 +3,8 @@
 package com.bts.notification.webhook
 
 import com.bts.notification.config.WebhookHttpClientConfig
+import com.bts.shared.http.OutboundUrlValidator
+import com.bts.shared.http.UrlCheck
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.sun.net.httpserver.HttpServer
 import io.kotest.core.spec.style.DescribeSpec
@@ -18,7 +20,7 @@ import java.util.concurrent.atomic.AtomicReference
  *
  * JDK 내장 [HttpServer]를 로컬 stub 서버로 사용 — 신규 의존성 0.
  * stub 서버가 127.0.0.1에서 동작하므로 URL 검증은 MockK stub으로 대체한다.
- * SSRF 차단 자체는 [WebhookUrlValidatorTest]에서 별도 검증한다.
+ * SSRF 차단 자체는 [OutboundUrlValidatorTest]에서 별도 검증한다.
  *
  * ### 검증 항목
  * - D-1. 2xx 응답 → Sent, 요청 method=POST, Content-Type=application/json, 엔벨로프 body 검증
@@ -85,11 +87,11 @@ class WebhookDispatcherTest : DescribeSpec({
     val objectMapper = ObjectMapper()
 
     // validator를 mock — stub 서버(127.0.0.1)는 Allowed로, SSRF 테스트 URL은 Blocked로 설정
-    val validator = mockk<WebhookUrlValidator>()
+    val validator = mockk<OutboundUrlValidator>()
     val restClient = WebhookHttpClientConfig().webhookRestClient()
     val dispatcher = WebhookDispatcher(validator, restClient, objectMapper)
 
-    // stub 서버 URL → Allowed (SSRF 검증은 WebhookUrlValidatorTest에서 별도 검증)
+    // stub 서버 URL → Allowed (SSRF 검증은 OutboundUrlValidatorTest에서 별도 검증)
     every {
         validator.check(match { it.contains(":$stubPort/") || it.contains(":$redirectPort/") })
     } returns UrlCheck.Allowed
