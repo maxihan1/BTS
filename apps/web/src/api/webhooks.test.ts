@@ -161,16 +161,16 @@ describe('fetchWebhooks', () => {
   })
 
   it('T-WH-1c: page/size 쿼리 파라미터를 요청에 포함한다', async () => {
-    let capturedUrl: URL | null = null
+    let capturedUrl: string | null = null
     server.use(
       http.get('/api/v1/webhooks', ({ request }) => {
-        capturedUrl = new URL(request.url)
+        capturedUrl = request.url
         return HttpResponse.json([])
       }),
     )
     await fetchWebhooks(2, 10)
-    expect(capturedUrl?.searchParams.get('page')).toBe('2')
-    expect(capturedUrl?.searchParams.get('size')).toBe('10')
+    expect(capturedUrl).toContain('page=2')
+    expect(capturedUrl).toContain('size=10')
   })
 
   it('T-WH-1d: 401 응답 → ApiError(401) throw', async () => {
@@ -421,16 +421,16 @@ describe('fetchDeliveries', () => {
   })
 
   it('T-WH-6c: page/size 쿼리 파라미터를 요청에 포함한다', async () => {
-    let capturedUrl: URL | null = null
+    let capturedUrl: string | null = null
     server.use(
       http.get(`/api/v1/webhooks/${webhookId}/deliveries`, ({ request }) => {
-        capturedUrl = new URL(request.url)
+        capturedUrl = request.url
         return HttpResponse.json([])
       }),
     )
     await fetchDeliveries(webhookId, 1, 5)
-    expect(capturedUrl?.searchParams.get('page')).toBe('1')
-    expect(capturedUrl?.searchParams.get('size')).toBe('5')
+    expect(capturedUrl).toContain('page=1')
+    expect(capturedUrl).toContain('size=5')
   })
 })
 
