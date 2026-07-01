@@ -1,4 +1,4 @@
-// 아웃바운드 webhook 구독 CRUD 컨트롤러 풀스택 통합테스트 — 컨트롤러→서비스→jOOQ→실 DB + SYSTEM_ADMIN 게이트·secret 미노출·예외 message 누출 차단 (FR-API-03 PR2)
+// 아웃바운드 webhook 구독 CRUD 컨트롤러 통합테스트 — SYSTEM_ADMIN 게이트·secret 미노출·예외 message 누출 차단 (FR-API-03 PR2)
 
 package com.bts.search.webhook.web
 
@@ -159,7 +159,8 @@ class OutboundWebhookControllerIntegrationTest {
 
         // secret 필드 생략 → 기존 암호문 유지, 나머지 전체 교체
         val body =
-            """{"name":"교체됨","url":"https://example.com/hook2","eventFilter":["issue.transitioned"],"version":0,"enabled":false}"""
+            """{"name":"교체됨","url":"https://example.com/hook2",""" +
+                """"eventFilter":["issue.transitioned"],"version":0,"enabled":false}"""
 
         mockMvc
             .perform(put("/api/v1/webhooks/$id").contentType(JSON).content(body))
@@ -342,7 +343,8 @@ class OutboundWebhookControllerIntegrationTest {
         val validCreateBody =
             """{"name":"권한테스트","url":"$VALID_URL","eventFilter":["issue.created"]}"""
 
-        fun validUpdateBody(version: Long) =
-            """{"name":"권한테스트","url":"$VALID_URL","eventFilter":["issue.created"],"version":$version}"""
+        fun validUpdateBody(version: Long): String {
+            return """{"name":"권한테스트","url":"$VALID_URL","eventFilter":["issue.created"],"version":$version}"""
+        }
     }
 }

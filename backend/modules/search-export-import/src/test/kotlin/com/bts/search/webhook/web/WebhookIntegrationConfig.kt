@@ -98,8 +98,9 @@ open class WebhookIntegrationConfig {
         outboundUrlValidator: OutboundUrlValidator,
         secretEncryptor: SecretEncryptor,
         repository: OutboundWebhookRepository,
-    ): OutboundWebhookService =
-        OutboundWebhookService(systemPermissionResolver, outboundUrlValidator, secretEncryptor, repository)
+    ): OutboundWebhookService {
+        return OutboundWebhookService(systemPermissionResolver, outboundUrlValidator, secretEncryptor, repository)
+    }
 
     /**
      * `/api/v1/webhooks` REST 컨트롤러.
