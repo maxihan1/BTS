@@ -34,10 +34,17 @@ class WebhookEncryptionConfig(
      * 키/salt 미설정 시에도 빈은 생성된다(부팅 안전). 이 경우 실제 암호화 호출에서
      * [IllegalStateException] 이 발생한다([SecretEncryptor] 참고).
      *
+     * ## 빈 이름 명시 — 조립 충돌 차단 (C1 정정)
+     * identity-access 의 `OidcEncryptionConfig` 도 같은 타입 [SecretEncryptor] 빈을 등록한다. 두 config
+     * 를 한 Spring 컨텍스트로 조립하면 기본 빈 이름(메서드명 `secretEncryptor`)이 충돌해 부팅 실패 또는
+     * 오버라이딩으로 BC 별 키 격리가 무력화된다. 이를 막기 위해 빈 이름을 `webhookSecretEncryptor` 로
+     * 명시하고 소비처([com.bts.search.webhook.application.OutboundWebhookService])는
+     * `@Qualifier("webhookSecretEncryptor")` 로 by-name 주입한다.
+     *
      * @return 환경변수 주입 키/salt 로 구성된 [SecretEncryptor]. 미설정 시 사용 시점 검증 모드.
      */
-    @Bean
-    fun secretEncryptor(): SecretEncryptor = SecretEncryptor(encryptionKey, encryptionSalt)
+    @Bean("webhookSecretEncryptor")
+    fun webhookSecretEncryptor(): SecretEncryptor = SecretEncryptor(encryptionKey, encryptionSalt)
 
     companion object {
         /** `BTS_WEBHOOK_ENCRYPTION_KEY` 환경변수가 바인딩되는 프로퍼티 키. */

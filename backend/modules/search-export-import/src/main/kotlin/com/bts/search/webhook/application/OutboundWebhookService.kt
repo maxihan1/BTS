@@ -8,6 +8,7 @@ import com.bts.shared.http.OutboundUrlValidator
 import com.bts.shared.http.UrlCheck
 import com.bts.shared.permission.SystemPermissionResolver
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
@@ -48,6 +49,7 @@ import java.util.UUID
 class OutboundWebhookService(
     private val systemPermissionResolver: SystemPermissionResolver,
     private val urlValidator: OutboundUrlValidator,
+    @Qualifier("webhookSecretEncryptor")
     private val secretEncryptor: SecretEncryptor,
     private val repository: OutboundWebhookRepository,
 ) {

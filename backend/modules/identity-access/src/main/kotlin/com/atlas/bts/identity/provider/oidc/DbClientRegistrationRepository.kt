@@ -3,6 +3,7 @@
 package com.atlas.bts.identity.provider.oidc
 
 import com.bts.shared.crypto.SecretEncryptor
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.security.oauth2.client.registration.ClientRegistration
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository
 import org.springframework.security.oauth2.client.registration.ClientRegistrations
@@ -65,6 +66,7 @@ class SpringIssuerLocationDiscovery : IssuerLocationDiscovery {
 @Component
 class DbClientRegistrationRepository(
     private val configReader: OidcProviderConfigReader,
+    @Qualifier("oidcSecretEncryptor")
     private val secretEncryptor: SecretEncryptor,
     private val discovery: IssuerLocationDiscovery,
 ) : ClientRegistrationRepository {
