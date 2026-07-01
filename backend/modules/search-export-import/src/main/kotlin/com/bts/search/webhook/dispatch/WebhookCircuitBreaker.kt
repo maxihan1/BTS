@@ -58,10 +58,16 @@ class WebhookCircuitBreaker(
      *
      * 기록이 없거나 아직 [THRESHOLD] 미만이면 false(closed). open 시각으로부터
      * [OPEN_DURATION] 이 지나지 않았으면 true(open), 지났으면 half-open 으로 간주해
-     * false(탐침 허용)를 반환한다.
+     * false(탐침 허용)를 반환한다. 경계(정확히 [OPEN_DURATION] 경과 시점)는 half-open 쪽으로
+     * 판정한다 — [isWithinOpenWindow] 비교가 `<`(엄격한 미만)이기 때문이다.
      */
     fun isOpen(id: UUID): Boolean {
         val openedAt = states[id]?.openedAt ?: return false
+        return isWithinOpenWindow(openedAt)
+    }
+
+    /** [openedAt] 이후 [OPEN_DURATION] 이 아직 지나지 않았으면 true. */
+    private fun isWithinOpenWindow(openedAt: Instant): Boolean {
         val elapsed = Duration.between(openedAt, clock.instant())
         return elapsed < OPEN_DURATION
     }
