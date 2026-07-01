@@ -53,6 +53,62 @@ FR-API-03 — 구독형 아웃바운드 Webhook(외부 시스템 통지). search
 
 ✅ 통과 (직접 기술 스펙 — 정의된 순수 리팩터). Sanity gap 5건 스펙 §5 선반영. (1)설정키 이관 동작보존 (2)RestClient 빈 주입 (3)spring-web shared 추가 (4)테스트 이전 가짜그린 (5)ArchUnit BC→shared 정방향 확인.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> PR1 = 순수 리팩터. TDD 규율은 "이동한 테스트가 새 위치에서 먼저 실패(class 없음=RED) → 클래스 이동(GREEN) → 낡은 참조 정리(REFACTOR)". 기존 회귀 테스트가 안전망.
+> 두 task는 `WebhookDispatcherTest`·통합테스트 파일을 공유 → bts-impl이 자동 직렬화(단일 wave 불가). Task 2는 depends-on [1].
+> **빈 모호성 주의**. `WebhookDispatcher`가 `RestClient`를 타입 주입 → 같은 타입 빈 2개 공존 불가 → Task 2(HTTP config)는 old 삭제+new 추가를 **원자적**으로.
+
+### Task 1. SSRF URL 검증기를 shared-kernel로 이동 (OutboundUrlValidator)
+
+**메타**.
+- agent: `security-engineer` (SSRF 보안 검증기 — 단일 출처화가 추출의 핵심 목적)
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/http/OutboundUrlValidator.kt`, `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/http/UrlCheck.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/http/OutboundUrlValidatorTest.kt`, `backend/modules/notification/src/main/kotlin/com/bts/notification/webhook/WebhookDispatcher.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/webhook/WebhookDispatcherTest.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/webhook/WebhookDispatchEndToEndIntegrationTest.kt`, `backend/modules/notification/src/main/kotlin/com/bts/notification/webhook/WebhookUrlValidator.kt`(삭제), `backend/modules/notification/src/main/kotlin/com/bts/notification/webhook/UrlCheck.kt`(삭제), `backend/modules/notification/src/test/kotlin/com/bts/notification/webhook/WebhookUrlValidatorTest.kt`(삭제/이전)]
+- depends-on: []
+
+**RED**.
+- 파일: `.../shared/http/OutboundUrlValidatorTest.kt` — 기존 `WebhookUrlValidatorTest`의 SSRF 케이스(loopback/private 10·172·192/ULA fc00::/7/IPv4-mapped ::ffff:/malformed/비-http 스킴)를 그대로 이전, 대상만 `OutboundUrlValidator`.
+- 실패(예상): `OutboundUrlValidator`/`UrlCheck`가 `com.bts.shared.http`에 없음 → 컴파일 실패.
+
+**GREEN**.
+- `com.bts.shared.http.UrlCheck`(sealed: Allowed/Blocked/Malformed) + `OutboundUrlValidator`(@Component, 기존 `check(url): UrlCheck` 로직 그대로 — `isInternal`/`extractMappedIpv4` 포함) 신설. 로직 diff 0.
+
+**REFACTOR**.
+- notification `WebhookDispatcher`의 필드 타입 `WebhookUrlValidator`→`OutboundUrlValidator`(import 교체). `WebhookDispatcherTest`의 `mockk<WebhookUrlValidator>()`→`mockk<OutboundUrlValidator>()`, 통합테스트 import 교체.
+- notification의 낡은 `WebhookUrlValidator.kt`·`UrlCheck.kt`·`WebhookUrlValidatorTest.kt` 삭제(회귀 테스트는 shared-kernel으로 이전됨 — 정확히 한 곳 실행).
+- 검증: `grep -rn "notification.webhook.WebhookUrlValidator\|notification.webhook.UrlCheck" backend/` 결과 0.
+
+**검증**. `./gradlew :backend:modules:shared-kernel:test --tests '*OutboundUrlValidatorTest*'` + `./gradlew :backend:modules:notification:test --tests '*WebhookDispatcherTest*' --tests '*WebhookDispatchEndToEndIntegrationTest*'` + `:backend:modules:shared-kernel:test --tests '*SharedKernelBoundaryArchTest*'`.
+
+### Task 2. 아웃바운드 HTTP 클라이언트 설정을 shared-kernel로 이동 (OutboundHttpClientConfig)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/build.gradle.kts`, `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/http/OutboundHttpClientConfig.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/http/OutboundHttpClientConfigTest.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/webhook/WebhookDispatcherTest.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/webhook/WebhookDispatchEndToEndIntegrationTest.kt`, `backend/modules/notification/src/main/kotlin/com/bts/notification/config/WebhookHttpClientConfig.kt`(삭제)]
+- depends-on: [1]   # WebhookDispatcherTest·통합테스트 파일 공유 → 직렬
+
+**RED**.
+- 파일: `.../shared/http/OutboundHttpClientConfigTest.kt` — RestClient 빈이 `HttpClient.Redirect.NEVER` + 기본 타임아웃(connect 3000/read 5000)로 구성되는지 단언(팩토리 `outboundHttpRestClient()` 호출로 non-null RestClient 반환·redirect 정책 검증).
+- 실패(예상): `com.bts.shared.http.OutboundHttpClientConfig` 없음 → 컴파일 실패.
+
+**GREEN**.
+- shared-kernel `build.gradle.kts` dependencies에 `implementation("org.springframework:spring-web")` 추가(현재 spring-context/spring-tx만). detekt kotlin-version 강등 우회 설정 이미 존재 — 재검증.
+- `com.bts.shared.http.OutboundHttpClientConfig`(@Configuration(proxyBeanMethods=false)) 신설. 기존 `WebhookHttpClientConfig` 로직 그대로 이전. 빈 이름 `outboundHttpRestClient`, 프로퍼티 키 `bts.outbound-http.connect-timeout-ms:3000`/`bts.outbound-http.read-timeout-ms:5000`(기본값 동일=동작보존; application.yml 오버라이드 grep 결과 0건 확인됨). `DEFAULT_CONNECT_TIMEOUT_MS`/`DEFAULT_READ_TIMEOUT_MS` 상수 보존.
+
+**REFACTOR**.
+- notification `WebhookDispatcherTest`의 `WebhookHttpClientConfig().webhookRestClient()`→`OutboundHttpClientConfig().outboundHttpRestClient()`, 통합테스트 import `com.bts.notification.config.WebhookHttpClientConfig`→`com.bts.shared.http.OutboundHttpClientConfig`.
+- notification 낡은 `WebhookHttpClientConfig.kt` 삭제(원자적 — RestClient 빈은 항상 한 개).
+- `WebhookDispatcher`는 `RestClient`를 타입 주입하므로 코드 변경 불필요(빈 출처만 shared로 이동). 통합테스트 부팅으로 빈 단일성·주입 검증.
+
+**검증**. `./gradlew :backend:modules:shared-kernel:test --tests '*OutboundHttpClientConfigTest*'` + `:backend:modules:notification:test`(webhook·worker 전체) + `:backend:modules:shared-kernel:ktlintCheck detekt`(spring-web 추가 후) + `grep -rn "config.WebhookHttpClientConfig\|bts.notification.webhook" backend/` 0건.
+
+## Plan 메타
+
+- task 수: 2 (각 원자적 이동 리팩터, TDD 이전-먼저 규율)
+- 예상 시간: 직렬 약 12분 (파일 공유로 단일 wave 불가, Task 2 depends-on [1])
+- TDD 강제: yes (이전한 회귀 테스트가 RED, 클래스 이동이 GREEN)
+- 병렬 dispatch: 불가(2 task 직렬) — bts-impl이 files 교집합으로 자동 직렬화
+- 추가 검증: 전 모듈 clean 빌드(동작불변 확인), detekt/ktlint(spring-web 추가 영향), SSRF 회귀 정확히 한 곳
+- BC 교차: notification 코드 수정 1회(shared 추출 — ADR §D2 문서화된 예외)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
