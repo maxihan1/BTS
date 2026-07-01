@@ -3,6 +3,7 @@
 package com.bts.search.webhook.web.dto
 
 import com.bts.search.webhook.domain.OutboundWebhook
+import com.bts.search.webhook.domain.WebhookDelivery
 import java.time.Instant
 import java.util.UUID
 
@@ -105,6 +106,52 @@ data class WebhookResponse(
                 createdAt = webhook.createdAt,
                 updatedAt = webhook.updatedAt,
                 version = webhook.version,
+            )
+    }
+}
+
+/**
+ * 아웃바운드 webhook 발송 이력 응답 바디.
+ *
+ * 발송 시도 1건의 결과를 나타낸다. [id]는 내부 감사용 per-attempt PK로, 외부 발송 멱등키
+ * (`X-BTS-Delivery`)와는 다르다(이력 조회는 관리자용 내부 감사 화면 소비).
+ *
+ * @param id 발송 이력 레코드 식별자(내부 감사 PK).
+ * @param eventType 발송을 트리거한 이벤트 wireValue.
+ * @param status 시도 결과(SUCCEEDED/FAILED).
+ * @param responseCode 수신자 HTTP 상태 코드. 발송 자체가 불가능했으면 null.
+ * @param attemptCount 이 이벤트에 대한 시도 순번.
+ * @param errorDetail 실패 원인 요약. 성공 시 null.
+ * @param createdAt 시도 시각.
+ * @param deliveredAt 발송 성공 시각. 실패면 null.
+ */
+data class WebhookDeliveryResponse(
+    val id: UUID,
+    val eventType: String,
+    val status: String,
+    val responseCode: Int?,
+    val attemptCount: Int,
+    val errorDetail: String?,
+    val createdAt: Instant?,
+    val deliveredAt: Instant?,
+) {
+    companion object {
+        /**
+         * 도메인 [WebhookDelivery]를 응답 DTO로 변환한다.
+         *
+         * @param delivery 변환할 발송 이력 도메인 객체(id 가 채워진 영속 결과).
+         * @return [WebhookDeliveryResponse].
+         */
+        fun from(delivery: WebhookDelivery): WebhookDeliveryResponse =
+            WebhookDeliveryResponse(
+                id = requireNotNull(delivery.id) { "영속된 발송 이력은 id 가 있어야 한다." },
+                eventType = delivery.eventType,
+                status = delivery.status.name,
+                responseCode = delivery.responseCode,
+                attemptCount = delivery.attemptCount,
+                errorDetail = delivery.errorDetail,
+                createdAt = delivery.createdAt,
+                deliveredAt = delivery.deliveredAt,
             )
     }
 }

@@ -5,6 +5,7 @@ package com.bts.search.webhook.web
 import com.bts.search.webhook.application.OutboundWebhookService
 import com.bts.search.webhook.web.dto.CreateWebhookRequest
 import com.bts.search.webhook.web.dto.UpdateWebhookRequest
+import com.bts.search.webhook.web.dto.WebhookDeliveryResponse
 import com.bts.search.webhook.web.dto.WebhookResponse
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -93,6 +94,27 @@ class OutboundWebhookController(
         validatePaging(page, size)
         val list = service.list(actorId, page, size).map { WebhookResponse.from(it) }
         return ResponseEntity.ok(list)
+    }
+
+    /**
+     * webhook 구독의 발송 이력을 offset 페이지네이션으로 조회한다(최신순).
+     *
+     * @param id 구독 식별자.
+     * @param page 0-based 페이지 번호(기본 0).
+     * @param size 페이지 크기(기본 [DEFAULT_PAGE_SIZE], [MIN_PAGE_SIZE]..[MAX_PAGE_SIZE] 범위).
+     * @return 200 OK + [WebhookDeliveryResponse] 목록.
+     */
+    @GetMapping("/{id}/deliveries")
+    fun listDeliveries(
+        @PathVariable id: UUID,
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "$DEFAULT_PAGE_SIZE") size: Int,
+    ): ResponseEntity<List<WebhookDeliveryResponse>> {
+        val actorId = OutboundWebhookActorExtractor.extract()
+        validatePaging(page, size)
+        val deliveries =
+            service.listDeliveries(actorId, id, page, size).map { WebhookDeliveryResponse.from(it) }
+        return ResponseEntity.ok(deliveries)
     }
 
     /**
