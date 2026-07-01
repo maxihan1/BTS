@@ -109,8 +109,10 @@ class WebhookDispatchWorker(
      *
      * 파싱 실패(poison)는 [handlePoison] 으로 위임한다. fanout 도중 예외가 발생하면 로그만 남기고
      * delete 를 생략한다(재전달 허용). `read_ct > [MAX_RECEIVE_COUNT]` 면 archive.
+     *
+     * early return 구조가 로직을 명확하게 함(notification WebhookDispatchWorker 동일 패턴).
      */
-    @Suppress("TooGenericExceptionCaught", "ReturnCount") // early return 구조가 로직을 명확하게 함(notification WebhookDispatchWorker 동일 패턴)
+    @Suppress("TooGenericExceptionCaught", "ReturnCount")
     private fun processMessage(
         msgId: Long,
         messageJson: String,
@@ -172,7 +174,11 @@ class WebhookDispatchWorker(
     ) {
         val webhookId = webhook.id ?: return // 영속된 구독은 항상 id 有 — 방어적 스킵
         if (circuitBreaker.isOpen(webhookId)) {
-            log.info("webhook_dispatch_worker_circuit_open webhookId={} event={} action=skip", webhookId, parsed.eventType)
+            log.info(
+                "webhook_dispatch_worker_circuit_open webhookId={} event={} action=skip",
+                webhookId,
+                parsed.eventType,
+            )
             return
         }
 
@@ -180,7 +186,13 @@ class WebhookDispatchWorker(
             try {
                 webhook.secretEncrypted?.let { secretEncryptor.decrypt(it) }
             } catch (e: IllegalStateException) {
-                log.warn("webhook_dispatch_worker_decrypt_failed webhookId={} event={}", webhookId, parsed.eventType)
+                // e.message 는 SecretEncryptor 계약상 평문/키를 포함하지 않아 로그에 남겨도 안전하다.
+                log.warn(
+                    "webhook_dispatch_worker_decrypt_failed webhookId={} event={} error={}",
+                    webhookId,
+                    parsed.eventType,
+                    e.message,
+                )
                 recordFailure(webhookId, parsed.eventType, attemptCount, DECRYPT_FAILURE_DETAIL, responseCode = null)
                 return
             }
@@ -217,7 +229,14 @@ class WebhookDispatchWorker(
         errorDetail: String,
         responseCode: Int?,
     ) {
-        webhookDeliveryRepository.record(webhookId, eventType, DeliveryStatus.FAILED, responseCode, attemptCount, errorDetail)
+        webhookDeliveryRepository.record(
+            webhookId,
+            eventType,
+            DeliveryStatus.FAILED,
+            responseCode,
+            attemptCount,
+            errorDetail,
+        )
         circuitBreaker.recordFailure(webhookId)
     }
 

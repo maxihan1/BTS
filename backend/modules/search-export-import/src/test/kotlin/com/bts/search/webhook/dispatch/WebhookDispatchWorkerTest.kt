@@ -67,7 +67,14 @@ class WebhookDispatchWorkerTest : DescribeSpec({
         )
 
     afterEach {
-        clearMocks(dsl, outboundWebhookRepository, webhookDeliveryRepository, circuitBreaker, dispatcher, secretEncryptor)
+        clearMocks(
+            dsl,
+            outboundWebhookRepository,
+            webhookDeliveryRepository,
+            circuitBreaker,
+            dispatcher,
+            secretEncryptor,
+        )
     }
 
     // ── W-1: 빈 큐 ────────────────────────────────────────────────────────────
@@ -253,7 +260,12 @@ class WebhookDispatchWorkerTest : DescribeSpec({
         val badId = UUID.randomUUID()
         val goodId = UUID.randomUUID()
         val badWebhook =
-            buildWebhook(id = badId, url = "https://bad.example.com/hook", secretEncrypted = "corrupt", projectKey = "ATLAS")
+            buildWebhook(
+                id = badId,
+                url = "https://bad.example.com/hook",
+                secretEncrypted = "corrupt",
+                projectKey = "ATLAS",
+            )
         val goodWebhook = buildWebhook(id = goodId, url = "https://good.example.com/hook", projectKey = "ATLAS")
 
         beforeEach {
@@ -279,7 +291,14 @@ class WebhookDispatchWorkerTest : DescribeSpec({
             val errorSlot = slot<String>()
             worker.pollAndProcess()
             verify(exactly = 1) {
-                webhookDeliveryRepository.record(badId, "issue.created", DeliveryStatus.FAILED, isNull(), 1, capture(errorSlot))
+                webhookDeliveryRepository.record(
+                    badId,
+                    "issue.created",
+                    DeliveryStatus.FAILED,
+                    isNull(),
+                    1,
+                    capture(errorSlot),
+                )
             }
             verify(exactly = 1) { circuitBreaker.recordFailure(badId) }
             errorSlot.captured.contains("bad key") shouldBe false
@@ -317,7 +336,14 @@ class WebhookDispatchWorkerTest : DescribeSpec({
             val errorSlot = slot<String>()
             worker.pollAndProcess()
             verify(exactly = 1) {
-                webhookDeliveryRepository.record(webhookId, "issue.created", DeliveryStatus.FAILED, isNull(), 1, capture(errorSlot))
+                webhookDeliveryRepository.record(
+                    webhookId,
+                    "issue.created",
+                    DeliveryStatus.FAILED,
+                    isNull(),
+                    1,
+                    capture(errorSlot),
+                )
             }
             errorSlot.captured.contains("10.0.0.5") shouldBe false
         }
@@ -368,7 +394,9 @@ class WebhookDispatchWorkerTest : DescribeSpec({
         val msgId = 10L
         val ids = listOf(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID())
         val webhooks =
-            ids.mapIndexed { idx, id -> buildWebhook(id = id, url = "https://example.com/hook$idx", projectKey = "ATLAS") }
+            ids.mapIndexed { idx, id ->
+                buildWebhook(id = id, url = "https://example.com/hook$idx", projectKey = "ATLAS")
+            }
 
         beforeEach {
             stubMessage(dsl, msgId, ISSUE_CREATED_JSON)
@@ -405,7 +433,11 @@ class WebhookDispatchWorkerTest : DescribeSpec({
         val msgId = 11L
         val webhookId = UUID.randomUUID()
         val webhook =
-            buildWebhook(id = webhookId, eventFilter = listOf(WebhookEventCatalog.ISSUE_TRANSITIONED), projectKey = "ATLAS")
+            buildWebhook(
+                id = webhookId,
+                eventFilter = listOf(WebhookEventCatalog.ISSUE_TRANSITIONED),
+                projectKey = "ATLAS",
+            )
 
         beforeEach {
             stubMessage(dsl, msgId, ISSUE_TRANSITIONED_JSON)

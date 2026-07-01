@@ -96,7 +96,12 @@ class WebhookDispatchWorkerIntegrationTest : SearchPersistenceTestBase() {
 
     /** 큐에 남아있는(가시 상태) 메시지 수를 확인한다. */
     private fun remainingMessages(): Int =
-        dsl.fetch("SELECT * FROM pgmq.read(?, ?, ?)", WebhookDispatchWorker.QUEUE_NAME, 1, 10).size
+        dsl.fetch(
+            "SELECT * FROM pgmq.read(?, ?, ?)",
+            WebhookDispatchWorker.QUEUE_NAME,
+            1,
+            10,
+        ).size
 
     /** 테스트 간 큐 잔여 메시지를 모두 제거한다(vt=0으로 즉시 가시화 후 delete). */
     private fun drainQueue() {
