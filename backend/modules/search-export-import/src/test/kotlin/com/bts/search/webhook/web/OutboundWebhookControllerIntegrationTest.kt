@@ -3,6 +3,7 @@
 package com.bts.search.webhook.web
 
 import com.bts.search.jooq.tables.references.OUTBOUND_WEBHOOKS
+import com.bts.search.jooq.tables.references.WEBHOOK_DELIVERIES
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -31,6 +32,8 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
 import java.util.UUID
 
 /**
@@ -76,6 +79,8 @@ class OutboundWebhookControllerIntegrationTest {
     @BeforeEach
     fun setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
+        // webhook_deliveries → outbound_webhooks FK 순서로 먼저 삭제.
+        dsl.deleteFrom(WEBHOOK_DELIVERIES).execute()
         dsl.deleteFrom(OUTBOUND_WEBHOOKS).execute()
         permissionResolver.admins.clear()
         permissionResolver.admins.add(admin)
@@ -288,6 +293,63 @@ class OutboundWebhookControllerIntegrationTest {
         mockMvc.perform(get("/api/v1/webhooks")).andExpect(status().isUnauthorized)
     }
 
+    // ── 발송 이력 조회 (Task 9) ───────────────────────────────────────────────────
+
+    @Test
+    fun `GET deliveries — admin 200, 발송 이력 최신순`() {
+        val webhookId = createWebhook("이력 있는 웹훅")
+        val wid = UUID.fromString(webhookId)
+        seedDelivery(wid, "issue.created", "SUCCEEDED", 200, 1, null, 3)
+        seedDelivery(wid, "issue.transitioned", "FAILED", 500, 2, "connect timeout", 2)
+        seedDelivery(wid, "issue.created", "SUCCEEDED", 204, 1, null, 1)
+
+        mockMvc
+            .perform(get("/api/v1/webhooks/$webhookId/deliveries"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.length()").value(3))
+            .andExpect(jsonPath("$[0].eventType").value("issue.created"))
+            .andExpect(jsonPath("$[0].status").value("SUCCEEDED"))
+            .andExpect(jsonPath("$[0].responseCode").value(204))
+            .andExpect(jsonPath("$[1].status").value("FAILED"))
+            .andExpect(jsonPath("$[1].responseCode").value(500))
+            .andExpect(jsonPath("$[1].errorDetail").value("connect timeout"))
+            .andExpect(jsonPath("$[2].responseCode").value(200))
+    }
+
+    @Test
+    fun `GET deliveries — page size 페이지네이션`() {
+        val webhookId = createWebhook("페이지 웹훅")
+        val wid = UUID.fromString(webhookId)
+        seedDelivery(wid, "issue.created", "SUCCEEDED", 200, 1, null, 3)
+        seedDelivery(wid, "issue.created", "SUCCEEDED", 200, 1, null, 2)
+        seedDelivery(wid, "issue.created", "SUCCEEDED", 200, 1, null, 1)
+
+        mockMvc
+            .perform(get("/api/v1/webhooks/$webhookId/deliveries?page=0&size=2"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.length()").value(2))
+    }
+
+    @Test
+    fun `GET deliveries — 비-admin 은 403 (probe 차단, 리소스 존재 무관)`() {
+        val webhookId = createWebhook("보호된 웹훅")
+        authenticate(nonAdmin)
+        mockMvc
+            .perform(get("/api/v1/webhooks/$webhookId/deliveries"))
+            .andExpect(status().isForbidden)
+        // 존재하지 않는 id 라도 비-admin 이면 404 가 아닌 403 (존재 여부 노출 안 함).
+        mockMvc
+            .perform(get("/api/v1/webhooks/${UUID.randomUUID()}/deliveries"))
+            .andExpect(status().isForbidden)
+    }
+
+    @Test
+    fun `GET deliveries — admin 이 미존재 webhook 조회 시 404`() {
+        mockMvc
+            .perform(get("/api/v1/webhooks/${UUID.randomUUID()}/deliveries"))
+            .andExpect(status().isNotFound)
+    }
+
     // ── private helpers ─────────────────────────────────────────────────────────
 
     private fun createWebhook(name: String): String {
@@ -315,6 +377,30 @@ class OutboundWebhookControllerIntegrationTest {
                 .andReturn()
                 .response.contentAsString
         return mapper.readValue<Map<String, Any?>>(json)["id"].toString()
+    }
+
+    @Suppress("LongParameterList")
+    private fun seedDelivery(
+        webhookId: UUID,
+        eventType: String,
+        status: String,
+        responseCode: Int?,
+        attemptCount: Int,
+        errorDetail: String?,
+        minutesAgo: Long,
+    ) {
+        val ts = OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(minutesAgo)
+        dsl
+            .insertInto(WEBHOOK_DELIVERIES)
+            .set(WEBHOOK_DELIVERIES.WEBHOOK_ID, webhookId)
+            .set(WEBHOOK_DELIVERIES.EVENT_TYPE, eventType)
+            .set(WEBHOOK_DELIVERIES.STATUS, status)
+            .set(WEBHOOK_DELIVERIES.RESPONSE_CODE, responseCode)
+            .set(WEBHOOK_DELIVERIES.ATTEMPT_COUNT, attemptCount)
+            .set(WEBHOOK_DELIVERIES.ERROR_DETAIL, errorDetail)
+            .set(WEBHOOK_DELIVERIES.CREATED_AT, ts)
+            .set(WEBHOOK_DELIVERIES.DELIVERED_AT, if (status == "SUCCEEDED") ts else null)
+            .execute()
     }
 
     private fun errorDetail(json: String): String = mapper.readValue<Map<String, Any?>>(json)["detail"].toString()
