@@ -79,6 +79,14 @@ function paginate<T>(items: T[], page: number, size: number): T[] {
   return items.slice(offset, offset + size)
 }
 
+/**
+ * secret 값이 실질적으로 설정되었는지 판단한다 (undefined/빈 문자열 = 미설정).
+ * create의 hasSecret 초기값, update의 secret 3-state(값 있음=true로 교체) 계산에 공용으로 쓴다.
+ */
+function hasNonBlankSecret(secret: string | undefined): boolean {
+  return (secret ?? '') !== ''
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/webhooks?page=&size= — raw List
 // ─────────────────────────────────────────────────────────────────────────────
@@ -126,7 +134,7 @@ const createWebhookHandler = http.post('/api/v1/webhooks', async ({ request }) =
     eventFilter: body.eventFilter ?? [],
     projectKey: body.projectKey ?? null,
     enabled: body.enabled ?? true,
-    hasSecret: (body.secret ?? '') !== '',
+    hasSecret: hasNonBlankSecret(body.secret),
     createdAt: now,
     updatedAt: now,
     version: 0,
@@ -189,7 +197,7 @@ const updateWebhookHandler = http.put('/api/v1/webhooks/:id', async ({ params, r
     return webhookConflict()
   }
 
-  const hasNewSecret = (body.secret ?? '') !== ''
+  const hasNewSecret = hasNonBlankSecret(body.secret)
 
   const updated: WebhookResponse = {
     ...existing,
