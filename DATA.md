@@ -88,7 +88,7 @@ Flyway 가 `Found more than one migration with version` 으로 실패한다.
 | automation (예정)  | V300~V399  | —                                 |
 | notification       | V400~V499  | V400, V401                        |
 | agile-planning     | V500~V599  | V500                              |
-| search-export-import | V600~V699 | V600, V601                      |
+| search-export-import | V600~V699 | V600~V603                       |
 
 **grand-fathered 예외**. identity-access (V001~V006) 와 issue-tracking (V001~V003)
 는 cross-BC 의존이 도입되기 전부터 V001 부터 시작했으므로 그대로 유지.
