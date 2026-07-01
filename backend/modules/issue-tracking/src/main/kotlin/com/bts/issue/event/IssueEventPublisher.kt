@@ -38,10 +38,28 @@ class IssueEventPublisher(
         val payload = objectMapper.writeValueAsString(event)
         dsl.execute("SELECT pgmq.send(?, ?::jsonb)", QUEUE_NAME, payload)
         log.info("event_published queue={} type={}", QUEUE_NAME, event::class.simpleName)
+
+        when (event) {
+            is IssueCreated -> true
+            is IssueTransitioned -> true
+            is IssueUpdated -> false
+            is IssueSoftDeleted -> false
+            is IssueMentioned -> false
+            is IssueDueSoon -> false
+            is IssueOverdue -> false
+        }.let { isWebhookPublishable ->
+            if (isWebhookPublishable) {
+                dsl.execute("SELECT pgmq.send(?, ?::jsonb)", WEBHOOK_QUEUE_NAME, payload)
+                log.info("event_published queue={} type={}", WEBHOOK_QUEUE_NAME, event::class.simpleName)
+            }
+        }
     }
 
     companion object {
         /** pgmq 큐 이름 — V002__pgmq_queue_issue_events.sql 에서 생성된 큐와 일치해야 한다. */
         const val QUEUE_NAME = "q_issue_events"
+
+        /** pgmq 큐 이름 — V034__pgmq_queue_webhook_events.sql 에서 생성된 큐와 일치해야 한다. */
+        const val WEBHOOK_QUEUE_NAME = "q_webhook_events"
     }
 }
