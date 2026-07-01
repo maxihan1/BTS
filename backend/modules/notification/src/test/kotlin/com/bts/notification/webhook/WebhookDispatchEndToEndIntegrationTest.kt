@@ -4,8 +4,8 @@ package com.bts.notification.webhook
 
 import com.bts.notification.NotificationTestBootApplication
 import com.bts.notification.TestPermissionConfig
-import com.bts.notification.config.WebhookHttpClientConfig
 import com.bts.notification.worker.WebhookDispatchWorker
+import com.bts.shared.http.OutboundHttpClientConfig
 import com.bts.shared.http.OutboundUrlValidator
 import com.bts.shared.http.UrlCheck
 import com.bts.shared.issue.IssueRecipientLookupPort
@@ -77,10 +77,12 @@ import javax.sql.DataSource
         NotificationTestBootApplication::class,
         WebhookDispatchEndToEndIntegrationTest.WebhookE2EConfig::class,
         TestPermissionConfig::class,
-        // OutboundUrlValidator 는 shared-kernel(com.bts.shared.http)로 이동했으므로
+        // OutboundUrlValidator/OutboundHttpClientConfig 는 shared-kernel(com.bts.shared.http)로 이동했으므로
         // NotificationTestBootApplication(scanBasePackages=["com.bts.notification"]) 의 스캔 대상이 아니다.
-        // WebhookDispatcher 가 주입받는 빈이라 명시 등록하지 않으면 부팅이 NoSuchBeanDefinition 으로 깨진다.
+        // WebhookDispatcher 가 주입받는 빈(OutboundUrlValidator/RestClient)이라 명시 등록하지 않으면
+        // 부팅이 NoSuchBeanDefinition 으로 깨진다.
         OutboundUrlValidator::class,
+        OutboundHttpClientConfig::class,
     ],
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
 )
@@ -149,8 +151,8 @@ class WebhookDispatchEndToEndIntegrationTest {
         val permissiveValidator = mockk<OutboundUrlValidator>()
         every { permissiveValidator.check(any()) } returns UrlCheck.Allowed
 
-        // 실 RestClient — 리다이렉트 NEVER + 기본 타임아웃 적용 (WebhookHttpClientConfig 팩토리 메서드 사용)
-        val testRestClient = WebhookHttpClientConfig().webhookRestClient()
+        // 실 RestClient — 리다이렉트 NEVER + 기본 타임아웃 적용 (OutboundHttpClientConfig 팩토리 메서드 사용)
+        val testRestClient = OutboundHttpClientConfig().outboundHttpRestClient()
 
         // 워커를 직접 조립 — validator만 mock, 나머지(dispatcher/RestClient/ObjectMapper)는 실 구현
         val testDispatcher = WebhookDispatcher(permissiveValidator, testRestClient, ObjectMapper())

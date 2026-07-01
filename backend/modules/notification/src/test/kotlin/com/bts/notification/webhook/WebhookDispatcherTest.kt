@@ -2,7 +2,7 @@
 
 package com.bts.notification.webhook
 
-import com.bts.notification.config.WebhookHttpClientConfig
+import com.bts.shared.http.OutboundHttpClientConfig
 import com.bts.shared.http.OutboundUrlValidator
 import com.bts.shared.http.UrlCheck
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -88,7 +88,7 @@ class WebhookDispatcherTest : DescribeSpec({
 
     // validator를 mock — stub 서버(127.0.0.1)는 Allowed로, SSRF 테스트 URL은 Blocked로 설정
     val validator = mockk<OutboundUrlValidator>()
-    val restClient = WebhookHttpClientConfig().webhookRestClient()
+    val restClient = OutboundHttpClientConfig().outboundHttpRestClient()
     val dispatcher = WebhookDispatcher(validator, restClient, objectMapper)
 
     // stub 서버 URL → Allowed (SSRF 검증은 OutboundUrlValidatorTest에서 별도 검증)
