@@ -1,5 +1,5 @@
 // 아웃바운드 webhook 구독 생성/수정 겸용 인라인 폼 (FR-API-03 PR4 Task 5)
-import type { JSX, FormEvent } from 'react'
+import type { JSX, FormEvent, ChangeEvent } from 'react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,6 +24,37 @@ const labels = {
   errorEvents: '이벤트를 최소 1개 선택해야 합니다.',
 } as const
 
+/** 폼이 관리하는 입력 필드 상태 스냅샷 — secret은 항상 빈 값에서 시작(3-state, EC-3) */
+interface WebhookFormFields {
+  name: string
+  url: string
+  eventFilter: string[]
+  secret: string
+  projectKey: string
+  enabled: boolean
+}
+
+/** 클라 검증 결과 — 필드별 에러 메시지, 통과 시 null */
+interface WebhookFormErrors {
+  name: string | null
+  url: string | null
+  events: string | null
+}
+
+const NO_ERRORS: WebhookFormErrors = { name: null, url: null, events: null }
+
+/** initialValue(edit 프리필) 또는 빈 값(create)으로 초기 필드 상태를 만든다 */
+function buildInitialFields(initialValue?: WebhookResponse): WebhookFormFields {
+  return {
+    name: initialValue?.name ?? '',
+    url: initialValue?.url ?? '',
+    eventFilter: initialValue?.eventFilter ?? [],
+    secret: '',
+    projectKey: initialValue?.projectKey ?? '',
+    enabled: initialValue?.enabled ?? true,
+  }
+}
+
 /** WebhookForm 컴포넌트 props — 생성/수정 겸용 */
 interface WebhookFormProps {
   /** 'create'면 신규 구독 생성, 'edit'이면 기존 구독 수정 */
@@ -38,6 +69,39 @@ interface WebhookFormProps {
   readonly isSubmitting: boolean
   /** 취소 버튼 핸들러 */
   readonly onCancel: () => void
+}
+
+/** 텍스트 입력 필드 하나(Label+Input+선택적 에러/힌트)를 렌더하는 내부 헬퍼 props */
+interface TextFieldProps {
+  id: string
+  label: string
+  value: string
+  onChange: (value: string) => void
+  type?: string
+  disabled: boolean
+  error?: string | null
+  hint?: string
+}
+
+/** name/url/secret/projectKey가 공유하는 Label+Input+에러/힌트 골격을 렌더한다 */
+function TextField({ id, label, value, onChange, type = 'text', disabled, error, hint }: TextFieldProps): JSX.Element {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        type={type}
+        value={value}
+        onChange={(e: ChangeEvent<HTMLInputElement>) => { onChange(e.target.value) }}
+        disabled={disabled}
+        aria-invalid={error !== null && error !== undefined}
+      />
+      {error !== null && error !== undefined && (
+        <p role="alert" className="text-xs text-destructive">{error}</p>
+      )}
+      {hint !== undefined && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  )
 }
 
 /**
@@ -56,63 +120,39 @@ export function WebhookForm({
   isSubmitting,
   onCancel,
 }: WebhookFormProps): JSX.Element {
-  const [name, setName] = useState(initialValue?.name ?? '')
-  const [url, setUrl] = useState(initialValue?.url ?? '')
-  const [eventFilter, setEventFilter] = useState<string[]>(initialValue?.eventFilter ?? [])
-  const [secret, setSecret] = useState('')
-  const [projectKey, setProjectKey] = useState(initialValue?.projectKey ?? '')
-  const [enabled, setEnabled] = useState(initialValue?.enabled ?? true)
+  const [fields, setFields] = useState<WebhookFormFields>(() => buildInitialFields(initialValue))
   const [version] = useState(initialValue?.version)
+  const [errors, setErrors] = useState<WebhookFormErrors>(NO_ERRORS)
 
-  const [nameError, setNameError] = useState<string | null>(null)
-  const [urlError, setUrlError] = useState<string | null>(null)
-  const [eventsError, setEventsError] = useState<string | null>(null)
+  function updateField<K extends keyof WebhookFormFields>(key: K, value: WebhookFormFields[K]): void {
+    setFields((prev) => ({ ...prev, [key]: value }))
+  }
 
   function toggleEvent(event: string, checked: boolean): void {
-    setEventFilter((prev) => (checked ? [...prev, event] : prev.filter((e) => e !== event)))
+    setFields((prev) => ({
+      ...prev,
+      eventFilter: checked ? [...prev.eventFilter, event] : prev.eventFilter.filter((e) => e !== event),
+    }))
   }
 
   function handleSubmit(e: FormEvent<HTMLFormElement>): void {
     e.preventDefault()
 
-    const trimmedName = name.trim()
-    const trimmedUrl = url.trim()
-
-    const nextNameError = trimmedName === '' ? labels.errorName : null
-    const nextUrlError = trimmedUrl === '' ? labels.errorUrl : null
-    const nextEventsError = eventFilter.length === 0 ? labels.errorEvents : null
-
-    setNameError(nextNameError)
-    setUrlError(nextUrlError)
-    setEventsError(nextEventsError)
-
-    if (nextNameError !== null || nextUrlError !== null || nextEventsError !== null) {
-      return
+    const trimmedName = fields.name.trim()
+    const trimmedUrl = fields.url.trim()
+    const nextErrors: WebhookFormErrors = {
+      name: trimmedName === '' ? labels.errorName : null,
+      url: trimmedUrl === '' ? labels.errorUrl : null,
+      events: fields.eventFilter.length === 0 ? labels.errorEvents : null,
     }
+    setErrors(nextErrors)
+    if (nextErrors.name !== null || nextErrors.url !== null || nextErrors.events !== null) return
 
-    const trimmedSecret = secret.trim()
-    const trimmedProjectKey = projectKey.trim()
-
-    if (mode === 'create') {
-      const payload: CreateWebhookRequest = {
-        name: trimmedName,
-        url: trimmedUrl,
-        eventFilter,
-        enabled,
-      }
-      if (trimmedSecret !== '') payload.secret = trimmedSecret
-      if (trimmedProjectKey !== '') payload.projectKey = trimmedProjectKey
-      onSubmit(payload)
-      return
-    }
-
-    const payload: UpdateWebhookRequest = {
-      name: trimmedName,
-      url: trimmedUrl,
-      eventFilter,
-      version: version ?? 0,
-      enabled,
-    }
+    const trimmedSecret = fields.secret.trim()
+    const trimmedProjectKey = fields.projectKey.trim()
+    const base = { name: trimmedName, url: trimmedUrl, eventFilter: fields.eventFilter, enabled: fields.enabled }
+    const payload: CreateWebhookRequest | UpdateWebhookRequest =
+      mode === 'create' ? { ...base } : { ...base, version: version ?? 0 }
     if (trimmedSecret !== '') payload.secret = trimmedSecret
     if (trimmedProjectKey !== '') payload.projectKey = trimmedProjectKey
     onSubmit(payload)
@@ -126,34 +166,24 @@ export function WebhookForm({
         </div>
       )}
 
-      <div className="space-y-1.5">
-        <Label htmlFor="webhook-form-name">{labels.name}</Label>
-        <Input
-          id="webhook-form-name"
-          value={name}
-          onChange={(e) => { setName(e.target.value) }}
-          disabled={isSubmitting}
-          aria-invalid={nameError !== null}
-        />
-        {nameError !== null && (
-          <p role="alert" className="text-xs text-destructive">{nameError}</p>
-        )}
-      </div>
+      <TextField
+        id="webhook-form-name"
+        label={labels.name}
+        value={fields.name}
+        onChange={(v) => { updateField('name', v) }}
+        disabled={isSubmitting}
+        error={errors.name}
+      />
 
-      <div className="space-y-1.5">
-        <Label htmlFor="webhook-form-url">{labels.url}</Label>
-        <Input
-          id="webhook-form-url"
-          type="url"
-          value={url}
-          onChange={(e) => { setUrl(e.target.value) }}
-          disabled={isSubmitting}
-          aria-invalid={urlError !== null}
-        />
-        {urlError !== null && (
-          <p role="alert" className="text-xs text-destructive">{urlError}</p>
-        )}
-      </div>
+      <TextField
+        id="webhook-form-url"
+        label={labels.url}
+        value={fields.url}
+        onChange={(v) => { updateField('url', v) }}
+        type="url"
+        disabled={isSubmitting}
+        error={errors.url}
+      />
 
       <fieldset className="space-y-1.5">
         <legend className="text-sm font-medium">{labels.events}</legend>
@@ -161,47 +191,41 @@ export function WebhookForm({
           <label key={event} className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
-              checked={eventFilter.includes(event)}
+              checked={fields.eventFilter.includes(event)}
               onChange={(e) => { toggleEvent(event, e.target.checked) }}
               disabled={isSubmitting}
             />
             {labelForEvent(event)}
           </label>
         ))}
-        {eventsError !== null && (
-          <p role="alert" className="text-xs text-destructive">{eventsError}</p>
+        {errors.events !== null && (
+          <p role="alert" className="text-xs text-destructive">{errors.events}</p>
         )}
       </fieldset>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="webhook-form-secret">{labels.secret}</Label>
-        <Input
-          id="webhook-form-secret"
-          type="password"
-          value={secret}
-          onChange={(e) => { setSecret(e.target.value) }}
-          disabled={isSubmitting}
-        />
-        {mode === 'edit' && (
-          <p className="text-xs text-muted-foreground">{labels.secretEditHint}</p>
-        )}
-      </div>
+      <TextField
+        id="webhook-form-secret"
+        label={labels.secret}
+        value={fields.secret}
+        onChange={(v) => { updateField('secret', v) }}
+        type="password"
+        disabled={isSubmitting}
+        hint={mode === 'edit' ? labels.secretEditHint : undefined}
+      />
 
-      <div className="space-y-1.5">
-        <Label htmlFor="webhook-form-project-key">{labels.projectKey}</Label>
-        <Input
-          id="webhook-form-project-key"
-          value={projectKey}
-          onChange={(e) => { setProjectKey(e.target.value) }}
-          disabled={isSubmitting}
-        />
-      </div>
+      <TextField
+        id="webhook-form-project-key"
+        label={labels.projectKey}
+        value={fields.projectKey}
+        onChange={(v) => { updateField('projectKey', v) }}
+        disabled={isSubmitting}
+      />
 
       <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"
-          checked={enabled}
-          onChange={(e) => { setEnabled(e.target.checked) }}
+          checked={fields.enabled}
+          onChange={(e) => { updateField('enabled', e.target.checked) }}
           disabled={isSubmitting}
         />
         {labels.enabled}
