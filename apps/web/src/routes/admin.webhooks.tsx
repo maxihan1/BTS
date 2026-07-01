@@ -70,6 +70,45 @@ type WebhookFormState =
   | { readonly kind: 'edit'; readonly webhook: WebhookResponse }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 페이지네이션 서브컴포넌트
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface PaginationControlsProps {
+  /** 현재 페이지 번호 (0-base) */
+  readonly page: number
+  /** 다음 버튼 활성화 여부 — 직전 응답 길이가 페이지 크기와 같을 때만 true */
+  readonly hasNext: boolean
+  /** 이전 페이지 클릭 핸들러 */
+  readonly onPrevious: () => void
+  /** 다음 페이지 클릭 핸들러 */
+  readonly onNext: () => void
+}
+
+/**
+ * size 기반 offset 페이지네이션 컨트롤 (EC-2 — raw List 응답, 총 개수 없음).
+ *
+ * audit-logs의 "N개 중 X–Y" 표시는 totalElements에 의존하므로 여기서는 쓸 수 없다.
+ * 대신 "페이지 {page+1}" 표기 + 이전/다음 버튼으로 구성한다.
+ * - 이전. page===0이면 비활성.
+ * - 다음. 직전 응답 길이가 페이지 크기와 같을 때만(더 있을 가능성) 활성.
+ */
+function PaginationControls({ page, hasNext, onPrevious, onNext }: PaginationControlsProps): JSX.Element {
+  return (
+    <div className="flex items-center justify-between px-2 py-3">
+      <span className="text-sm text-muted-foreground">{`페이지 ${page + 1}`}</span>
+      <div className="flex gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={onPrevious} disabled={page === 0}>
+          {labels.pagination.previous}
+        </Button>
+        <Button type="button" variant="outline" size="sm" onClick={onNext} disabled={!hasNext}>
+          {labels.pagination.next}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 페이지 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -206,29 +245,12 @@ export function AdminWebhooksPage(): JSX.Element {
         onViewDeliveries={handleViewDeliveries}
       />
 
-      <div className="flex items-center justify-between px-2 py-3">
-        <span className="text-sm text-muted-foreground">{`페이지 ${page + 1}`}</span>
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handlePrevious}
-            disabled={page === 0}
-          >
-            {labels.pagination.previous}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleNext}
-            disabled={!hasNext}
-          >
-            {labels.pagination.next}
-          </Button>
-        </div>
-      </div>
+      <PaginationControls
+        page={page}
+        hasNext={hasNext}
+        onPrevious={handlePrevious}
+        onNext={handleNext}
+      />
     </div>
   )
 }
