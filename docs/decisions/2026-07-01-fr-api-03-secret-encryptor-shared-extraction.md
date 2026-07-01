@@ -21,7 +21,7 @@ BTS의 BC 격리 원칙(한 PR = 한 BC, 다른 BC 직접 import 금지)상 sear
 `SecretEncryptor`(암호화 로직만 담긴 순수 클래스, cross-BC 의존 없음)를 shared-kernel `com.bts.shared.crypto.SecretEncryptor`로 이동한다. 클래스 본문(AES-256-GCM + random IV, `Encryptors.stronger`)은 변경하지 않는다.
 
 - PR1이 SSRF 가드/HTTP 클라이언트를 shared-kernel `com.bts.shared.http`로 추출한 것과 **동형 패턴**이다.
-- 보안 코드(암호화)를 단일 출처로 유지 → 한 번 감사/패치하면 모든 소비 BC에 적용. 복제(옵션 B)가 유발하는 "한쪽만 패치" 회귀를 구조적으로 차단.
+- 범용 secret 암호화를 shared 단일 클래스로 두면 webhook·OIDC가 같은 구현을 공유해, 옵션 B(search에 3번째 사본)가 유발할 "한쪽만 패치" 회귀를 차단한다. (주의: identity-access에는 키 격리 목적의 별도 `MfaSecretEncryptor`가 동일 알고리즘으로 남아 있어, 본 추출이 암호화 구현 전체를 단일화하는 것은 아니다 — OIDC/webhook 공유 경로만 통합.)
 
 **대안 기각**.
 - **옵션 B(search BC 내 자체 유틸)**: AES-GCM 보안 코드를 3번째로 복제. PR1 ADR이 SSRF 가드에 대해 복제를 기각한 원칙과 충돌. 기각.

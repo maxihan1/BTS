@@ -77,6 +77,9 @@ CREATE INDEX idx_outbound_webhooks_event_filter_gin
     ON outbound_webhooks USING GIN (event_filter);  -- PR3 매칭(&& overlap) 대비
 
 -- webhook_deliveries: 발송 이력 (이번 PR은 테이블만, 기록/조회는 PR3)
+-- ★append-only 발송 로그(audit_logs 동류) — 소프트삭제(deleted_at) 대상 아님.
+--   발송 시도는 사실 기록이라 수정/삭제하지 않는다. DATA.md §1.2 소프트삭제 기본의 예외(append-only 로그).
+--   보존 정책(TTL 등)이 필요하면 PR3에서 별도 결정.
 CREATE TABLE webhook_deliveries (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     webhook_id    UUID NOT NULL REFERENCES outbound_webhooks(id),
@@ -130,6 +133,6 @@ init_codegen.sql에 동일 DDL 미러(jOOQ 코드생성 대상).
 3. **SecretEncryptor 빈 키 미설정**. search 자체 빈은 lazy라 키 부재여도 부팅 성공, encrypt() 호출 시점에만 검증. secret 포함 테스트는 test properties에 `BTS_WEBHOOK_ENCRYPTION_*` 설정 필요. → plan/impl 세부.
 4. **projectKey 존재검증 없음**. BC 격리상 문자열·FK·존재검증 미적용(favorites 선례와 동형). 의도된 deviation, 스펙 명시.
 5. **secret clear(제거)**. PR2는 3-state 중 keep/replace만. clear는 후속(YAGNI). 명시됨.
-6. **webhook_deliveries 스키마 speculation**. PR3 발송 로직이 쓸 최소 컬럼(status/response_code/attempt/error/타임스탬프)만. 추가 필요 시 PR3가 V604로 확장. 과설계 회피.
+6. **webhook_deliveries 스키마 speculation + 삭제 모델(리뷰 C3)**. PR3 발송 로직이 쓸 최소 컬럼(status/response_code/attempt/error/타임스탬프)만. 추가 필요 시 PR3가 V604로 확장. **삭제 모델 = append-only 로그**(audit_logs 동류) — 발송 시도는 사실 기록이라 소프트삭제(deleted_at) 미적용, DATA.md §1.2 소프트삭제 기본의 명시적 예외. PR2에서 테이블 생성 유지(체크포인트 계획, PR3 마이그레이션 churn 회피).
 
 Maxi 결정 필요 gap 0 (모두 선례·표준으로 해소).

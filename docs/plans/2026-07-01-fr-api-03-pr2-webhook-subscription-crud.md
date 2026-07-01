@@ -79,13 +79,17 @@ FR-API-03(외부 시스템 통지용 구독형 아웃바운드 Webhook, search-e
 
 **메타**.
 - agent: `security-engineer`
-- files: [`bm/shared-kernel/src/main/kotlin/com/bts/shared/crypto/SecretEncryptor.kt`, `bm/shared-kernel/src/test/kotlin/com/bts/shared/crypto/SecretEncryptorTest.kt`, `bm/identity-access/src/main/kotlin/com/atlas/bts/identity/config/OidcEncryptionConfig.kt`, `bm/identity-access/src/main/kotlin/com/atlas/bts/identity/provider/oidc/DbClientRegistrationRepository.kt`, `bm/identity-access/src/test/kotlin/com/atlas/bts/identity/config/SecretEncryptorTest.kt`]
+- files: [`bm/shared-kernel/src/main/kotlin/com/bts/shared/crypto/SecretEncryptor.kt`, `bm/shared-kernel/src/test/kotlin/com/bts/shared/crypto/SecretEncryptorTest.kt`, `bm/identity-access/src/main/kotlin/com/atlas/bts/identity/config/OidcEncryptionConfig.kt`, `bm/identity-access/src/main/kotlin/com/atlas/bts/identity/provider/oidc/DbClientRegistrationRepository.kt`, `bm/identity-access/src/main/kotlin/com/atlas/bts/identity/provider/oidc/OidcProviderConfig.kt`, `bm/identity-access/src/test/kotlin/com/atlas/bts/identity/config/SecretEncryptorTest.kt`, `bm/identity-access/src/test/kotlin/com/atlas/bts/identity/integration/OidcAuthFlowIntegrationTest.kt`, `bm/identity-access/src/test/kotlin/com/atlas/bts/identity/provider/oidc/DbClientRegistrationRepositoryTest.kt`]
 - depends-on: []
 
+**★리뷰 B1 반영**. SecretEncryptor를 옮기면 아래 참조처가 import로 깨진다 — files에 전수 포함(plan-files-constructor-injection-existing-tests 재발 방지):
+  - main: `OidcEncryptionConfig`(빈 생성), `DbClientRegistrationRepository`(생성자 주입), `OidcProviderConfig`(KDoc 링크 `[...config.SecretEncryptor]` — 이동 후 dangling → 갱신)
+  - test: `OidcAuthFlowIntegrationTest`(@Autowired), `DbClientRegistrationRepositoryTest`(직접 `SecretEncryptor(...)` 생성), 옛 `SecretEncryptorTest`(이동)
+
 **RED**. shared-kernel에 `SecretEncryptorTest`(round-trip 암복호화 + 키 미설정 시 encrypt 예외 + 같은 평문 다른 ciphertext) 신규 배치 → `com.bts.shared.crypto.SecretEncryptor` 부재로 컴파일 실패.
-**GREEN**. `SecretEncryptor.kt`를 shared-kernel `com.bts.shared.crypto`로 이동(로직 변경 0, 패키지만 변경). KDoc의 OIDC 고유 문구는 "외부 비밀값 범용"으로 일반화.
-**REFACTOR**. identity-access 참조처(`OidcEncryptionConfig`, `DbClientRegistrationRepository`, 그 외 grep으로 발견되는 전부) import를 `com.bts.shared.crypto.SecretEncryptor`로 교체. identity-access의 옛 `SecretEncryptorTest` 삭제(shared로 이동).
-**검증**. `./gradlew :backend:modules:shared-kernel:test --rerun-tasks` + **identity-access 전체** `./gradlew :backend:modules:identity-access:test --rerun-tasks`(OIDC 암호화 회귀 0). ktlintCheck/detekt 두 모듈.
+**GREEN**. `SecretEncryptor.kt`를 shared-kernel `com.bts.shared.crypto`로 이동(암호화 로직 변경 0, 패키지만 변경). **★리뷰 C1 반영**: KDoc의 OIDC 고유 문구를 "외부 비밀값 범용"으로 일반화하고, `requireConfigured()` 예외 메시지도 OIDC 전용(`"...Set BTS_OIDC_ENCRYPTION_KEY/SALT"`)에서 BC 중립(`"encryption key not configured"` substring 유지, env var 이름 문구 제거)으로 일반화(운영 오도 방지, 기존 substring 단언 test-safe).
+**REFACTOR**. identity-access 참조처 import를 `com.bts.shared.crypto.SecretEncryptor`로 교체(main 2 + test 2). `OidcProviderConfig` KDoc 링크 갱신. 옛 identity-access `SecretEncryptorTest` 삭제(shared로 이동). grep `SecretEncryptor`로 잔여 참조 0 확인.
+**검증**. `./gradlew :backend:modules:shared-kernel:test --rerun-tasks` + **identity-access 전체** `./gradlew :backend:modules:identity-access:test --rerun-tasks`(OIDC 암호화 회귀 0). ktlintCheck/detekt 두 모듈. `grep -rn "config.SecretEncryptor" bm/identity-access` = 0.
 
 ### Task 2. V603 마이그레이션 + init_codegen 미러
 
@@ -147,37 +151,45 @@ FR-API-03(외부 시스템 통지용 구독형 아웃바운드 Webhook, search-e
 **REFACTOR**. 공통 admin 게이트 helper 추출, KDoc.
 **검증**. `./gradlew :backend:modules:s-e-i:test --tests *OutboundWebhookServiceTest`.
 
-### Task 7. search 통합테스트 cross-BC stub 빈 + shared.http 스캔
-
-**메타**.
-- agent: `backend-engineer`
-- files: [`bm/s-e-i/src/test/kotlin/com/bts/search/webhook/WebhookTestBootConfig.kt`, `bm/s-e-i/src/test/resources/application-test.yml`]
-- depends-on: []
-
-**RED**. search 통합 test-boot가 `SystemPermissionResolver`·`OutboundUrlValidator` 빈 부재로 `NoSuchBeanDefinitionException` 부팅 실패(스모크 부팅 테스트).
-**GREEN**. 테스트 전용 `@TestConfiguration` — `SystemPermissionResolver` stub(**fail-closed 기본**: isSystemAdmin=false, 테스트가 명시 override) + 기존 search 통합 부트 앱 스캔에 `com.bts.shared.http` 중앙 추가(OutboundUrlValidator @Component 확보). test property에 `bts.webhook-encryption.*` 세팅.
-**REFACTOR**. 공유 헬퍼로 admin/non-admin 시드.
-**검증**. search 통합테스트 부팅(스모크) 통과.
-
-### Task 8. REST 컨트롤러 + DTO + ActorExtractor + 스코프 ExceptionHandler
+### Task 7. REST 컨트롤러 + DTO + ActorExtractor + 스코프 ExceptionHandler + 통합 test fixture
 
 **메타**.
 - agent: `security-engineer`
-- files: [`bm/s-e-i/src/main/kotlin/com/bts/search/webhook/web/OutboundWebhookController.kt`, `bm/s-e-i/src/main/kotlin/com/bts/search/webhook/web/dto/OutboundWebhookDtos.kt`, `bm/s-e-i/src/main/kotlin/com/bts/search/webhook/web/OutboundWebhookActorExtractor.kt`, `bm/s-e-i/src/main/kotlin/com/bts/search/webhook/web/OutboundWebhookExceptionHandler.kt`, `bm/s-e-i/src/test/kotlin/com/bts/search/webhook/web/OutboundWebhookControllerIntegrationTest.kt`]
-- depends-on: [6, 7]
+- files: [`bm/s-e-i/src/main/kotlin/com/bts/search/webhook/web/OutboundWebhookController.kt`, `bm/s-e-i/src/main/kotlin/com/bts/search/webhook/web/dto/OutboundWebhookDtos.kt`, `bm/s-e-i/src/main/kotlin/com/bts/search/webhook/web/OutboundWebhookActorExtractor.kt`, `bm/s-e-i/src/main/kotlin/com/bts/search/webhook/web/OutboundWebhookExceptionHandler.kt`, `bm/s-e-i/src/test/kotlin/com/bts/search/webhook/web/WebhookIntegrationConfig.kt`, `bm/s-e-i/src/test/kotlin/com/bts/search/webhook/web/OutboundWebhookControllerIntegrationTest.kt`]
+- depends-on: [6]
 
-**RED**. `OutboundWebhookControllerIntegrationTest`(Testcontainers, 실 부트) — 비admin 403(전 엔드포인트)·POST 201(secret 미노출·hasSecret=true)·GET 목록/단건·PUT OCC 409·DELETE 204·존재X 404·SSRF url 400·eventFilter 빈/미지 400. actor 추출을 리소스 조회보다 먼저(probe 차단).
-**GREEN**. `/api/v1/webhooks` 컨트롤러(형제 SavedFilterController 관례: raw List·offset paging·DEFAULT 20/MAX 100) + 요청/응답 DTO(응답에 secret 원문 필드 없음, `hasSecret`) + ActorExtractor + 스코프 `@RestControllerAdvice(assignableTypes=[OutboundWebhookController])`(구체 핸들러 우선, catch-all 최후).
-**REFACTOR**. DTO 매퍼·검증 helper 정리.
-**검증**. `./gradlew :backend:modules:s-e-i:test --tests *OutboundWebhookControllerIntegrationTest` + s-e-i 전체 스위트 + ktlint/detekt.
+**★리뷰 C2 반영**. search는 통합테스트용 단일 부트 앱(`@SpringBootApplication`)이 **없다** — 형제(SavedFilterIntegrationTest 등)는 각자 `@ContextConfiguration(classes=[...IntegrationConfig])`로 로컬 `@Bean`을 직접 선언한다. 따라서 "중앙 스캔에 shared.http 추가"할 대상이 없다. 대신 이 task가 자체 `WebhookIntegrationConfig`(@TestConfiguration/@Configuration)를 선언:
+  - `SystemPermissionResolver` **stub 빈(fail-closed 기본: isSystemAdmin=false)** — 테스트가 admin actor를 명시 override.
+  - `OutboundUrlValidator`를 **명시 `@Bean OutboundUrlValidator()`**(무인자 생성자)로 주입 — `com.bts.shared.http` 패키지 스캔은 불필요한 `OutboundHttpClientConfig`의 RestClient 빈(PR2는 dispatch 0)까지 끌어오므로 회피.
+  - webhook 암호화 test property(`bts.webhook-encryption.key/salt`) 세팅으로 secret 경로 테스트 지원.
+
+**RED**. `OutboundWebhookControllerIntegrationTest`(Testcontainers, `@ContextConfiguration`으로 위 fixture + 실 서비스/repo 로드) — 비admin 403(전 엔드포인트)·POST 201(secret 미노출·hasSecret=true)·GET 목록/단건·PUT OCC 409·DELETE 204·존재X 404·SSRF url 400·eventFilter 빈/미지 400. actor 추출을 리소스 조회보다 먼저(probe 차단). fixture 부재로 컴파일/부팅 실패가 RED.
+**GREEN**. `/api/v1/webhooks` 컨트롤러(형제 SavedFilterController 관례: raw List·offset paging·DEFAULT 20/MAX 100) + 요청/응답 DTO(응답에 secret 원문 필드 없음, `hasSecret`) + ActorExtractor + 스코프 `@RestControllerAdvice(assignableTypes=[OutboundWebhookController])`(구체 핸들러 우선, catch-all 최후) + `WebhookIntegrationConfig`.
+**REFACTOR**. DTO 매퍼·검증 helper 정리, fixture admin/non-admin 시드 헬퍼.
+**검증**. `./gradlew :backend:modules:s-e-i:test --tests *OutboundWebhookControllerIntegrationTest` + **s-e-i 전체 스위트**(cross-BC 부팅 회귀 0) + ktlint/detekt.
 
 ## Plan 메타
 
-- task 수: 8
-- 예상 wave: 4 (W1: T1·T2·T3·T7 병렬[]→ W2: T4[dep1]·T5[dep2,3] → W3: T6[dep3,4,5] → W4: T8[dep6,7]). 단 s-e-i 동일 모듈 test 컴파일은 직렬화 요인(bts-plan-wave-gradle-module-compile).
-- 예상 시간: 직렬 약 30분 / wave 병렬 약 15분.
+- task 수: 7 (리뷰 C2로 옛 Task 7[test-boot 스캔] 제거 → Task 7[컨트롤러]에 통합 fixture 흡수)
+- 예상 wave: 4 (W1: T1·T2·T3 병렬[] → W2: T4[dep1]·T5[dep2,3] → W3: T6[dep3,4,5] → W4: T7[dep6]). 단 s-e-i 동일 모듈 test 컴파일은 직렬화 요인(bts-plan-wave-gradle-module-compile).
+- 예상 시간: 직렬 약 27분 / wave 병렬 약 14분.
 - TDD 강제: yes (test 커밋이 feat 커밋보다 먼저).
-- 담당: security-engineer(T1 추출·T6 게이트/암호화·T8 컨트롤러 경계) / db-engineer(T2 마이그레이션) / backend-engineer(T3·T4·T5·T7).
+- 담당: security-engineer(T1 추출·T6 게이트/암호화·T7 컨트롤러 경계) / db-engineer(T2 마이그레이션) / backend-engineer(T3·T4·T5).
 - 추가 검증: identity-access 전체 스위트(T1 OIDC 회귀), s-e-i 전체 스위트(cross-BC 부팅), ktlint/detekt 전 영향 모듈.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 독립 eng·security 리뷰 (2026-07-01, autoplan 대신 백엔드 집중 리뷰 — bts-review-plan-autoplan-overkill)
+
+리뷰가 코드베이스 실측으로 결함을 검증. 초기 판정 **BLOCKED**(B1) → plan 수정으로 해소.
+
+- **B1 (BLOCKER, 해소됨)**. Task 1 `files:`에 SecretEncryptor 이동으로 깨지는 참조 누락 — `OidcAuthFlowIntegrationTest`·`DbClientRegistrationRepositoryTest`(+`OidcProviderConfig` KDoc 링크). → Task 1 files에 전수 추가 + REFACTOR에 KDoc 갱신 명시(plan-files-constructor-injection-existing-tests 재발 방지).
+- **C1 (반영)**. SecretEncryptor 예외 메시지가 OIDC 전용(`Set BTS_OIDC_ENCRYPTION_*`) → webhook 키 미설정 시 운영 오도. Task 1 GREEN에 메시지 BC 중립화(substring `encryption key not configured` 유지=test-safe).
+- **C2 (반영)**. 옛 Task 7 "중앙 스캔 추가" 전제가 코드와 불일치(search는 단일 부트앱 없음, per-test @ContextConfiguration) + vacuous RED. → 옛 Task 7 제거, Task 7(컨트롤러)에 `WebhookIntegrationConfig`(stub SystemPermissionResolver fail-closed + 명시 `@Bean OutboundUrlValidator()`(패키지 스캔 회피, RestClient 빈 안 끌어옴) + 암호화 test property) 흡수.
+- **C3 (반영)**. webhook_deliveries는 append-only 발송 로그(audit 동류) → 소프트삭제 미적용을 spec/DDL에 명시(DATA.md §1.2 예외). PR2 테이블 생성 유지.
+- **C4 (반영)**. ADR2 "단일 출처" 문구 완화(MfaSecretEncryptor 3번째 사본 잔존 반영).
+- **C5 (수용, PR3 재확인)**. event_filter allowlist ↔ NotificationEventType wireValue drift 가드 없음(BC 격리상 불가피). PR3 dispatch 매칭 시 재확인.
+
+**OK 확인**. SYSTEM_ADMIN 게이트(actor 추출→admin 검사→리소스 조회 순, probe 차단)·cross-BC=shared 포트만·SSRF 생성/수정 양쪽 적용·secret 위생(hasSecret만)·스코프 ExceptionHandler(assignableTypes)·V603 번호 정확+init_codegen 미러+전체 스위트 검증.
+
+**최종 판정**. B1/C1/C2/C3/C4 반영 완료 → **PASS**. C5는 PR3 재확인 항목.
