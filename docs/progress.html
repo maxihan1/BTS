@@ -173,18 +173,18 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <svg viewBox="0 0 260 260" class="donut">
     <circle cx="130" cy="130" r="116" fill="none" stroke="#e5e7eb" stroke-width="28" />
     <circle cx="130" cy="130" r="116" fill="none" stroke="#22c55e" stroke-width="28"
-      stroke-dasharray="728.849495632832" stroke-dashoffset="204.077858777193"
+      stroke-dasharray="728.849495632832" stroke-dashoffset="196.78936382086465"
       transform="rotate(-90 130 130)" stroke-linecap="round" />
-    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">72%</text>
+    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">73%</text>
   </svg>
       <div class="overview-numbers">
-        <div class="big-num">89 / 123</div>
+        <div class="big-num">90 / 123</div>
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
-          <div><span class="dot dot-done"></span> 완료 <b>89</b></div>
+          <div><span class="dot dot-done"></span> 완료 <b>90</b></div>
           <div><span class="dot dot-prog"></span> 진행중 <b>0</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>34</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>33</b></div>
         </div>
       </div>
     </div>
@@ -221,9 +221,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bc-card-pct">0%</div>
     </div><div class="bc-card" data-nav="bc-search-export-import">
       <div class="bc-card-head">🔍 검색/입출력</div>
-      <div class="bc-card-stats">8 / 12 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:67%"></div></div>
-      <div class="bc-card-pct">67%</div>
+      <div class="bc-card-stats">9 / 12 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:75%"></div></div>
+      <div class="bc-card-pct">75%</div>
     </div><div class="bc-card" data-nav="bc-slack-integration">
       <div class="bc-card-head">💬 Slack 연동</div>
       <div class="bc-card-stats">0 / 6 완료</div>
@@ -1133,14 +1133,14 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h1>🔍 검색/입출력</h1>
     <p class="bc-desc">AQL 검색, CSV/Excel 내보내기/가져오기 영역.</p>
     <div class="bc-detail-stats">
-      <div class="big-pct">67%</div>
-      <div>8 / 12 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:67%"></div></div>
+      <div class="big-pct">75%</div>
+      <div>9 / 12 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:75%"></div></div>
       <div class="status-grid">
-        <div>✅ 완료 8</div>
+        <div>✅ 완료 9</div>
         <div>🔄 진행중 0</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 4</div>
+        <div>⬜ 대기 3</div>
       </div>
     </div>
     <h2>세부 기능 (12개)</h2>
@@ -1214,13 +1214,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc"><span class="term" data-def="Atlas Query Language. JQL 호환 검색 문법">AQL</span> 검색 REST API</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — envelope 표준 정의</li><li><span class="step-icon">✅</span> D2 — 명세 — 동기 검색 + 대량은 <span class="term" data-def="AQL 검색 결과를 파일로 내보내기. `POST /api/v1/search/export`(동기, 1만 행 상한, count-first). `IssueSearchPort` 재사용으로 검색의 BROWSE 권한·visibility 보안 술어를 구조적 상속(전용 쿼리 경로 없음). 컬럼=IssueSearchHit 9필드(영문 라벨) 부분선택. formula injection 방어(`ExportCellSanitizer`). 대용량(&gt;1만) 비동기는 FR-EX-02(`/search/export-jobs`)로 분리 (FR-EX-01)">export</span> job(FR-EX-02) 위임, cursor는 후속 FR</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — (활용, 변경 없음)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `POST /api/v1/search/<span class="term" data-def="Atlas Query Language. JQL 호환 검색 문법">aql</span>` 응답 envelope `{data, meta.page}` + offset 페이지네이션 + s<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>ingdoc <span class="term" data-def="&quot;API 자동 사용 설명서&quot; 개발자들이 만든 서버의 기능(API)들을 다른 사람들도 쉽게 쓸 수 있도록, 설명과 테스트 버튼까지 예쁘게 자동으로 만들어주는 문서 도구입니다.">OpenAPI</span></li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 슬라이스/통합/contract/annotation</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — (새 화면 없음 — 응답 파싱 envelope 어댑테이션만 동반)</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — `Search<span class="term" data-def="&quot;API 자동 사용 설명서&quot; 개발자들이 만든 서버의 기능(API)들을 다른 사람들도 쉽게 쓸 수 있도록, 설명과 테스트 버튼까지 예쁘게 자동으로 만들어주는 문서 도구입니다.">OpenApi</span>ContractTest` + `OpenApiAnnotationTest`가 실 `/v3/api-docs`로 계약 검증</li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-완료">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">✅</span>
         <span class="fr-id">FR-API-03</span>
         <span class="fr-desc"><span class="term" data-def="&quot;실시간 알림 호출기&quot; &quot;새 글 떴어?&quot; 하고 매번 물어볼 필요 없이, 시스템에 사건(댓글 등)이 터지면 상대방에게 &quot;방금 달렸어!&quot;라고 알아서 찔러주는 기능입니다.">Webhook</span> (외부 시스템 통지)</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — Outbound<span class="term" data-def="&quot;실시간 알림 호출기&quot; &quot;새 글 떴어?&quot; 하고 매번 물어볼 필요 없이, 시스템에 사건(댓글 등)이 터지면 상대방에게 &quot;방금 달렸어!&quot;라고 알아서 찔러주는 기능입니다.">Webhook</span></li><li><span class="step-icon">⬜</span> D2 — 명세 — HMAC-SHA256 서명 + 재시도 + <span class="term" data-def="&quot;자동화된 공장 컨베이어 벨트&quot; 코드를 수정하면 자동으로 테스트를 거쳐 이상이 없으면 실제 서비스되는 서버에 알아서 배포까지 해주는 자동화 시스템입니다.">ci</span>rc<span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">ui</span>t breaker</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `outbound_<span class="term" data-def="&quot;실시간 알림 호출기&quot; &quot;새 글 떴어?&quot; 하고 매번 물어볼 필요 없이, 시스템에 사건(댓글 등)이 터지면 상대방에게 &quot;방금 달렸어!&quot;라고 알아서 찔러주는 기능입니다.">webhook</span>s(url, secret_encrypted, event_filter)` + `webhook_deliveries(status, response_code)`</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — <span class="term" data-def="PostgreSQL 기반 메시지 큐 (Kafka 대체)">pgmq</span> event → HTTP 발송 + 재시도</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트 — 재시도 + <span class="term" data-def="&quot;자동화된 공장 컨베이어 벨트&quot; 코드를 수정하면 자동으로 테스트를 거쳐 이상이 없으면 실제 서비스되는 서버에 알아서 배포까지 해주는 자동화 시스템입니다.">ci</span>rc<span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">ui</span>t breaker</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="&quot;실시간 알림 호출기&quot; &quot;새 글 떴어?&quot; 하고 매번 물어볼 필요 없이, 시스템에 사건(댓글 등)이 터지면 상대방에게 &quot;방금 달렸어!&quot;라고 알아서 찔러주는 기능입니다.">Webhook</span> 관리 페이지 + 발송 이력</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — Outbound<span class="term" data-def="&quot;실시간 알림 호출기&quot; &quot;새 글 떴어?&quot; 하고 매번 물어볼 필요 없이, 시스템에 사건(댓글 등)이 터지면 상대방에게 &quot;방금 달렸어!&quot;라고 알아서 찔러주는 기능입니다.">Webhook</span></li><li><span class="step-icon">✅</span> D2 — 명세 — HMAC-SHA256 서명 + 재시도 + <span class="term" data-def="&quot;자동화된 공장 컨베이어 벨트&quot; 코드를 수정하면 자동으로 테스트를 거쳐 이상이 없으면 실제 서비스되는 서버에 알아서 배포까지 해주는 자동화 시스템입니다.">ci</span>rc<span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">ui</span>t breaker</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `outbound_<span class="term" data-def="&quot;실시간 알림 호출기&quot; &quot;새 글 떴어?&quot; 하고 매번 물어볼 필요 없이, 시스템에 사건(댓글 등)이 터지면 상대방에게 &quot;방금 달렸어!&quot;라고 알아서 찔러주는 기능입니다.">webhook</span>s(url, secret_encrypted, event_filter)` + `webhook_deliveries(status, response_code)`</li><li><span class="step-icon">✅</span> D4 — 백엔드 — <span class="term" data-def="PostgreSQL 기반 메시지 큐 (Kafka 대체)">pgmq</span> event → HTTP 발송 + 재시도</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 재시도 + <span class="term" data-def="&quot;자동화된 공장 컨베이어 벨트&quot; 코드를 수정하면 자동으로 테스트를 거쳐 이상이 없으면 실제 서비스되는 서버에 알아서 배포까지 해주는 자동화 시스템입니다.">ci</span>rc<span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">ui</span>t breaker</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="&quot;실시간 알림 호출기&quot; &quot;새 글 떴어?&quot; 하고 매번 물어볼 필요 없이, 시스템에 사건(댓글 등)이 터지면 상대방에게 &quot;방금 달렸어!&quot;라고 알아서 찔러주는 기능입니다.">Webhook</span> 관리 페이지 + 발송 이력</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
