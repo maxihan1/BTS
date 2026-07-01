@@ -13,6 +13,9 @@ import { Button } from '@/components/ui/button'
 
 const PAGE_SIZE = 20
 
+/** 이력 목록 쿼리 실패 시 표시할 일반 안내 문구 (내부 오류 원문 노출 금지, FINDING3) */
+const DELIVERIES_LOAD_FAILED_MESSAGE = '발송 이력을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 페이지네이션 서브컴포넌트 (admin.audit-logs.tsx `PaginationControls` 선례 — size 기반 변형)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -86,6 +89,8 @@ interface WebhookDeliveriesPageProps {
  * - `useWebhookDeliveriesQuery(webhookId, page, size)` + `WebhookDeliveryTable`.
  * - raw List 응답(총 개수 없음)이라 size 기반 prev/next: 이전은 `page>0`,
  *   다음은 "받은 이력 개수 === size"일 때만 활성화한다(EC-2).
+ * - 쿼리(`isError`)가 실패하면 "발송 이력이 없습니다" 빈 목록 문구로 은폐하지 않고
+ *   role="alert" 에러 배너를 대신 표시한다(테이블·페이지네이션은 숨김, FINDING3).
  * - "← 목록으로"는 형제 라우트(`/admin/webhooks`, Task 9에서 등록 완료)를 가리키는
  *   타입 안전 `Link`를 사용한다 — plain `<a href>`는 전체 페이지 리로드를 일으켜
  *   SPA 이동이 아니게 되고 E2E에서 MSW 상태가 초기화되는 문제가 있다(EC-7).
@@ -93,7 +98,7 @@ interface WebhookDeliveriesPageProps {
 export function WebhookDeliveriesPage({ webhookId }: WebhookDeliveriesPageProps): JSX.Element {
   const [page, setPage] = useState(0)
 
-  const { data, isLoading } = useWebhookDeliveriesQuery(webhookId, page, PAGE_SIZE)
+  const { data, isLoading, isError } = useWebhookDeliveriesQuery(webhookId, page, PAGE_SIZE)
   const deliveries = data ?? []
 
   const isPreviousDisabled = page === 0
@@ -119,15 +124,23 @@ export function WebhookDeliveriesPage({ webhookId }: WebhookDeliveriesPageProps)
         </p>
       </div>
 
-      <WebhookDeliveryTable deliveries={deliveries} isLoading={isLoading} />
+      {isError ? (
+        <div role="alert" className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+          {DELIVERIES_LOAD_FAILED_MESSAGE}
+        </div>
+      ) : (
+        <>
+          <WebhookDeliveryTable deliveries={deliveries} isLoading={isLoading} />
 
-      <DeliveriesPaginationControls
-        page={page}
-        onPrevious={handlePrevious}
-        onNext={handleNext}
-        isPreviousDisabled={isPreviousDisabled}
-        isNextDisabled={isNextDisabled}
-      />
+          <DeliveriesPaginationControls
+            page={page}
+            onPrevious={handlePrevious}
+            onNext={handleNext}
+            isPreviousDisabled={isPreviousDisabled}
+            isNextDisabled={isNextDisabled}
+          />
+        </>
+      )}
     </div>
   )
 }

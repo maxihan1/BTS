@@ -32,6 +32,7 @@ const labels = {
   error: {
     conflict: '다른 곳에서 먼저 변경되었습니다. 목록을 다시 불러오세요.',
     generic: 'Webhook 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+    listLoadFailed: 'Webhook 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
   },
 } as const
 
@@ -122,6 +123,9 @@ function PaginationControls({ page, hasNext, onPrevious, onNext }: PaginationCon
  * - 이력 보기 → `/admin/webhooks/{id}/deliveries`로 navigate (router.ts 등록 완료, Task 9).
  * - size 기반 offset 페이지네이션(EC-2, raw List·총개수 없음) — 다음 버튼은 응답 길이가
  *   페이지 크기와 같을 때만 활성화한다.
+ * - 목록 쿼리(`isError`)가 실패하면 "등록된 Webhook이 없습니다" 빈 목록 문구로 은폐하지 않고
+ *   role="alert" 에러 배너를 대신 표시한다(테이블·페이지네이션은 숨김) — 403/500/네트워크
+ *   오류를 빈 상태로 오인하지 않게 한다(FINDING3).
  * - mutation 에러. 409(OCC 충돌) → 페이지 레벨 배너(conflictMessage) 표시 + 폼 닫기(formState
  *   closed) + 목록 invalidate — 폼을 닫아야 다음 편집이 fresh version을 재캡처한다,
  *   400 → Form submitError(서버 상세 메시지, 폼 유지), 그 외 → sonner toast.error.
@@ -141,7 +145,7 @@ export function AdminWebhooksPage(): JSX.Element {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const { data, isLoading } = useWebhooksQuery(page, PAGE_SIZE)
+  const { data, isLoading, isError } = useWebhooksQuery(page, PAGE_SIZE)
   const webhooks = data ?? []
   const hasNext = webhooks.length === PAGE_SIZE
 
@@ -257,21 +261,29 @@ export function AdminWebhooksPage(): JSX.Element {
         </div>
       )}
 
-      <WebhookTable
-        webhooks={webhooks}
-        isLoading={isLoading}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        onViewDeliveries={handleViewDeliveries}
-        isDeleting={deleteMutation.isPending}
-      />
+      {isError ? (
+        <div role="alert" className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+          {labels.error.listLoadFailed}
+        </div>
+      ) : (
+        <>
+          <WebhookTable
+            webhooks={webhooks}
+            isLoading={isLoading}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            onViewDeliveries={handleViewDeliveries}
+            isDeleting={deleteMutation.isPending}
+          />
 
-      <PaginationControls
-        page={page}
-        hasNext={hasNext}
-        onPrevious={handlePrevious}
-        onNext={handleNext}
-      />
+          <PaginationControls
+            page={page}
+            hasNext={hasNext}
+            onPrevious={handlePrevious}
+            onNext={handleNext}
+          />
+        </>
+      )}
     </div>
   )
 }
