@@ -7,6 +7,7 @@ import com.bts.search.jooq.tables.references.OUTBOUND_WEBHOOKS
 import com.bts.search.webhook.application.OutboundWebhookRepository
 import com.bts.search.webhook.domain.OutboundWebhook
 import org.jooq.DSLContext
+import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
@@ -146,6 +147,27 @@ class JooqOutboundWebhookRepository(
                 .execute()
 
         return updated > 0
+    }
+
+    /**
+     * eventType 이 `event_filter` 에 포함되고(GIN overlap `&&`), projectKey 가 null(전체) 또는 일치하며,
+     * enabled=true 이고 소프트 삭제되지 않은 구독 목록을 조회한다.
+     */
+    @Transactional(readOnly = true)
+    override fun findMatching(
+        eventType: String,
+        projectKey: String,
+    ): List<OutboundWebhook> {
+        val eventTypeArr: Array<String?> = arrayOf(eventType)
+        val eventTypeVal = DSL.`val`(eventTypeArr, OUTBOUND_WEBHOOKS.EVENT_FILTER.dataType)
+
+        return dsl.selectFrom(OUTBOUND_WEBHOOKS)
+            .where(DSL.condition("{0} && {1}", OUTBOUND_WEBHOOKS.EVENT_FILTER, eventTypeVal))
+            .and(OUTBOUND_WEBHOOKS.PROJECT_KEY.isNull.or(OUTBOUND_WEBHOOKS.PROJECT_KEY.eq(projectKey)))
+            .and(OUTBOUND_WEBHOOKS.ENABLED.isTrue)
+            .and(OUTBOUND_WEBHOOKS.DELETED_AT.isNull)
+            .fetch()
+            .map { it.toDomain() }
     }
 
     // ── private mapper ─────────────────────────────────────────────────────────
