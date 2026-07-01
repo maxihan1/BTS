@@ -74,8 +74,9 @@ class SearchWebhookDispatcherTest {
     private val restClient = OutboundHttpClientConfig().outboundHttpRestClient()
     private val dispatcher = SearchWebhookDispatcher(validator, restClient)
 
-    private val payload = """{"event":"issue.created","deliveryId":"d-1","occurredAt":"2026-07-01T00:00:00Z","data":{}}"""
-        .toByteArray(Charsets.UTF_8)
+    private val payload =
+        """{"event":"issue.created","deliveryId":"d-1","occurredAt":"2026-07-01T00:00:00Z","data":{}}"""
+            .toByteArray(Charsets.UTF_8)
 
     @BeforeEach
     fun resetState() {
