@@ -54,7 +54,10 @@ import java.util.UUID
  *
  * ## BC 격리
  * issue-tracking BC 의 도메인 타입(`IssueDomainEvent` 등)을 직접 import 하지 않는다. pgmq JSON 을
- * wire 포맷 그대로 파싱해 내부 표현으로 변환한다.
+ * wire 포맷 그대로 파싱해 내부 표현으로 변환한다. 파싱하는 wire 필드명(`type`/`issueKey`/`projectKey`/
+ * `summary`/`fromState`/`toState`/`occurredAt`)의 **정본은 발행측 issue-tracking `IssueEventPublisherTest`
+ * 의 직렬화 단언**이다 — 발행측 필드가 리네임되면 그 테스트가 깨져 소비자(이 워커)를 갱신하라는 신호가
+ * 된다(모듈 간 계약 추적성, CONCERN-1).
  *
  * @param dsl jOOQ [DSLContext]. pgmq raw SQL 실행. 문자열 결합 금지 — ? 바인딩 사용.
  * @param objectMapper wire JSON 파싱 및 발송 payload 직렬화에 사용하는 Jackson [ObjectMapper].

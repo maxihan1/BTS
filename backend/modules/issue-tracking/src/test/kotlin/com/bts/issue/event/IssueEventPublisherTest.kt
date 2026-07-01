@@ -5,6 +5,7 @@ package com.bts.issue.event
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.kotest.core.spec.style.DescribeSpec
@@ -78,10 +79,14 @@ class IssueEventPublisherTest : DescribeSpec({
             postgres.password,
         )
 
+    // prod IssueEventPublisher 가 주입받는 Spring Boot 기본 ObjectMapper 와 동일 설정을 재현한다 —
+    // WRITE_DATES_AS_TIMESTAMPS=off 로 occurredAt 을 숫자가 아닌 ISO-8601 문자열로 직렬화한다.
+    // (소비자 search WebhookDispatchWorker 가 occurredAt 을 문자열로 파싱하므로 계약상 필수, CONCERN-2)
     fun buildObjectMapper(): ObjectMapper =
         ObjectMapper()
             .registerKotlinModule()
             .registerModule(JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
 
     /**
      * 단일 [conn] 위에 DSLContext 를 구성하고 트랜잭션을 열어 [block] 을 실행한 뒤 커밋한다.
@@ -155,10 +160,14 @@ class IssueEventPublisherTest : DescribeSpec({
                 val body = record!!.get("message", String::class.java)
                 val json = mapper.readTree(body)
 
+                // 아래 wire 필드명은 소비자 search WebhookDispatchWorker 가 파싱한다 —
+                // 소비자 갱신 없이 리네임 금지(모듈 간 계약 정본, CONCERN-1).
                 json.get("type").asText() shouldBe "issue.created"
                 json.get("issueKey").asText() shouldBe "ATLAS-1"
                 json.get("projectKey").asText() shouldBe "ATLAS"
                 json.get("summary").asText() shouldBe "첫 번째 이슈"
+                // occurredAt 은 숫자 타임스탬프가 아닌 ISO-8601 문자열이어야 한다(소비자 파싱 계약, CONCERN-2).
+                json.get("occurredAt").asText() shouldBe "2026-01-01T00:00:00Z"
             }
         }
 
@@ -191,10 +200,14 @@ class IssueEventPublisherTest : DescribeSpec({
                 val body = record!!.get("message", String::class.java)
                 val json = mapper.readTree(body)
 
+                // 아래 wire 필드명은 소비자 search WebhookDispatchWorker 가 파싱한다 —
+                // 소비자 갱신 없이 리네임 금지(모듈 간 계약 정본, CONCERN-1).
                 json.get("type").asText() shouldBe "issue.transitioned"
                 json.get("issueKey").asText() shouldBe "ATLAS-2"
                 json.get("fromState").asText() shouldBe "open"
                 json.get("toState").asText() shouldBe "IN_PROGRESS"
+                // occurredAt 은 숫자 타임스탬프가 아닌 ISO-8601 문자열이어야 한다(소비자 파싱 계약, CONCERN-2).
+                json.get("occurredAt").asText() shouldBe "2026-01-01T00:00:00Z"
             }
         }
 

@@ -127,7 +127,10 @@ class SearchWebhookDispatcher(
         logEvent: String,
     ): WebhookDispatchResult.Failed {
         log.warn(FAILURE_LOG_FORMAT, logEvent, extractHost(url), eventType, deliveryId, e.message)
-        return WebhookDispatchResult.Failed(e.message ?: "Unknown error")
+        // 결과 reason 은 발송 이력→admin API(WebhookDeliveryResponse.errorDetail)로 노출되므로 raw 예외
+        // 메시지(대상 host:port 등)를 담지 않고 일반 상수로 정규화한다(CONCERN-4). 상세 원인은 위 서버
+        // 로그(e.message)에만 남는다.
+        return WebhookDispatchResult.Failed(DELIVERY_ERROR_DETAIL)
     }
 
     /**
@@ -169,5 +172,8 @@ class SearchWebhookDispatcher(
         private const val REJECT_LOG_FORMAT = "{} url_host={} event={} reason={}"
         private const val RESPONSE_LOG_FORMAT = "{} url_host={} event={} delivery={} status={}"
         private const val FAILURE_LOG_FORMAT = "{} url_host={} event={} delivery={} error={}"
+
+        /** 발송 예외(타임아웃/연결/DNS) 시 이력에 남기는 일반 사유 — raw 예외 메시지(host:port 등) 미노출(CONCERN-4). */
+        private const val DELIVERY_ERROR_DETAIL = "발송 중 오류가 발생했습니다"
     }
 }
