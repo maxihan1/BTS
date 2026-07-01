@@ -31,6 +31,7 @@ const labels = {
   pagination: { previous: '이전', next: '다음' },
   error: {
     conflict: '다른 곳에서 먼저 변경되었습니다. 목록을 다시 불러오세요.',
+    forbidden: '권한이 없어 처리하지 못했습니다.',
     generic: 'Webhook 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
     listLoadFailed: 'Webhook 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
   },
@@ -48,6 +49,11 @@ function isConflictError(error: unknown): boolean {
   if (!(error instanceof ApiError)) return false
   if (error.status === 409) return true
   return extractErrorCode(error.body) === CONFLICT_ERROR_CODE
+}
+
+/** 권한 거부(403) 여부 */
+function isForbiddenError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 403
 }
 
 /** 400 유효성 실패 시 서버가 내려준 ProblemDetail.detail 메시지를 추출한다 (SSRF 차단 등) */
@@ -128,7 +134,9 @@ function PaginationControls({ page, hasNext, onPrevious, onNext }: PaginationCon
  *   오류를 빈 상태로 오인하지 않게 한다(FINDING3).
  * - mutation 에러. 409(OCC 충돌) → 페이지 레벨 배너(conflictMessage) 표시 + 폼 닫기(formState
  *   closed) + 목록 invalidate — 폼을 닫아야 다음 편집이 fresh version을 재캡처한다,
- *   400 → Form submitError(서버 상세 메시지, 폼 유지), 그 외 → sonner toast.error.
+ *   403(권한 거부) → 페이지 레벨 배너(forbiddenMessage) 표시 + 폼 유지(C1, 재제출로 고칠 수
+ *   있는 문제가 아니므로), 400 → Form submitError(서버 상세 메시지, 폼 유지),
+ *   그 외 → sonner toast.error.
  * - `<WebhookForm>`에 `key={formState.kind==='edit' ? webhook.id : 'create'}`를 줘,
  *   편집 폼을 닫지 않고 다른 행 편집으로 전환해도 내부 필드/version state가 재초기화되게 한다
  *   (key 없으면 이전 대상의 stale payload+version이 새 대상 id로 제출되는 OCC 우회 결함).
@@ -141,6 +149,7 @@ export function AdminWebhooksPage(): JSX.Element {
   const [formState, setFormState] = useState<WebhookFormState>({ kind: 'closed' })
   const [submitError, setSubmitError] = useState<string | undefined>(undefined)
   const [conflictMessage, setConflictMessage] = useState<string | undefined>(undefined)
+  const [forbiddenMessage, setForbiddenMessage] = useState<string | undefined>(undefined)
 
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -163,6 +172,12 @@ export function AdminWebhooksPage(): JSX.Element {
       void queryClient.invalidateQueries({ queryKey: WEBHOOKS_QUERY_KEY })
       return
     }
+    if (isForbiddenError(error)) {
+      // 403은 사용자가 재제출로 고칠 수 있는 문제가 아니므로 폼은 유지하되, 사유를
+      // 페이지 레벨 배너로 표기한다 — generic toast로 뭉개면 원인을 알 수 없다(C1).
+      setForbiddenMessage(labels.error.forbidden)
+      return
+    }
     const validationDetail = extractValidationDetail(error)
     if (validationDetail !== undefined) {
       setSubmitError(validationDetail)
@@ -174,6 +189,7 @@ export function AdminWebhooksPage(): JSX.Element {
   function handleSubmit(payload: CreateWebhookRequest | UpdateWebhookRequest): void {
     setSubmitError(undefined)
     setConflictMessage(undefined)
+    setForbiddenMessage(undefined)
     if ('version' in payload) {
       if (formState.kind !== 'edit') return
       updateMutation.mutate(
@@ -194,18 +210,21 @@ export function AdminWebhooksPage(): JSX.Element {
   function handleNew(): void {
     setSubmitError(undefined)
     setConflictMessage(undefined)
+    setForbiddenMessage(undefined)
     setFormState({ kind: 'create' })
   }
 
   function handleEdit(webhook: WebhookResponse): void {
     setSubmitError(undefined)
     setConflictMessage(undefined)
+    setForbiddenMessage(undefined)
     setFormState({ kind: 'edit', webhook })
   }
 
   function handleCancel(): void {
     setSubmitError(undefined)
     setConflictMessage(undefined)
+    setForbiddenMessage(undefined)
     setFormState({ kind: 'closed' })
   }
 
@@ -244,6 +263,12 @@ export function AdminWebhooksPage(): JSX.Element {
       {conflictMessage !== undefined && (
         <div role="alert" className="mb-6 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
           {conflictMessage}
+        </div>
+      )}
+
+      {forbiddenMessage !== undefined && (
+        <div role="alert" className="mb-6 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+          {forbiddenMessage}
         </div>
       )}
 
