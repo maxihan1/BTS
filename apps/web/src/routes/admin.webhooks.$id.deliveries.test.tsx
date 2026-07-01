@@ -3,6 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { webhookHandlers } from '@/mocks/webhook-handlers'
 import {
@@ -93,6 +94,37 @@ describe('WebhookDeliveriesPage — 이력 렌더', () => {
     })
     expect(screen.getByText('성공')).toBeInTheDocument()
     expect(screen.getAllByText('실패').length).toBeGreaterThan(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1-1. 이력 조회 에러 (FINDING3) — 빈 이력 문구로 은폐되지 않고 에러 배너를 표시한다
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('WebhookDeliveriesPage — 이력 조회 에러', () => {
+  it('이력 조회가 500이면 에러 배너를 표시하고, 빈 이력 문구는 표시하지 않는다', async () => {
+    seedWebhook(DEFAULT_WEBHOOK)
+
+    // renderPage()는 내부에서 server.use(...webhookHandlers)를 호출하므로, 그 다음에
+    // 오버라이드를 등록해야 LIFO 우선순위로 500 응답이 실제로 적용된다.
+    server.use(...webhookHandlers)
+    server.use(
+      http.get(
+        '/api/v1/webhooks/:id/deliveries',
+        () => HttpResponse.json({ error: 'internal' }, { status: 500 }),
+      ),
+    )
+
+    render(
+      <QueryClientProvider client={makeClient()}>
+        <WebhookDeliveriesPage webhookId={DEFAULT_WEBHOOK_ID} />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/불러오지 못했습니다/)
+    })
+    expect(screen.queryByText('발송 이력이 없습니다')).not.toBeInTheDocument()
   })
 })
 

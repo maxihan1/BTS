@@ -311,6 +311,25 @@ describe('AdminWebhooksPage — 409 OCC 충돌', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 목록 조회 에러 (FINDING3) — 빈 목록 문구로 은폐되지 않고 에러 배너를 표시한다
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AdminWebhooksPage — 목록 조회 에러', () => {
+  it('목록 조회가 500이면 에러 배너를 표시하고, 빈 목록 문구는 표시하지 않는다', async () => {
+    server.use(
+      http.get('/api/v1/webhooks', () => HttpResponse.json({ error: 'internal' }, { status: 500 })),
+    )
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/불러오지 못했습니다/)
+    })
+    expect(screen.queryByText('등록된 Webhook이 없습니다')).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 삭제 진행 중 이중 제출 차단 (N1)
 // ─────────────────────────────────────────────────────────────────────────────
 
