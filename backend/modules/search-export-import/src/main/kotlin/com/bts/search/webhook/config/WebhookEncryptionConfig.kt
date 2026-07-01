@@ -25,8 +25,8 @@ import org.springframework.context.annotation.Configuration
  */
 @Configuration
 class WebhookEncryptionConfig(
-    @param:Value("\${bts.webhook-encryption.key:}") private val encryptionKey: String,
-    @param:Value("\${bts.webhook-encryption.salt:}") private val encryptionSalt: String,
+    @param:Value("\${$PROPERTY_KEY:}") private val encryptionKey: String,
+    @param:Value("\${$PROPERTY_SALT:}") private val encryptionSalt: String,
 ) {
     /**
      * Webhook signing secret 암호화/복호화에 사용하는 [SecretEncryptor] 빈.
@@ -38,4 +38,12 @@ class WebhookEncryptionConfig(
      */
     @Bean
     fun secretEncryptor(): SecretEncryptor = SecretEncryptor(encryptionKey, encryptionSalt)
+
+    companion object {
+        /** `BTS_WEBHOOK_ENCRYPTION_KEY` 환경변수가 바인딩되는 프로퍼티 키. */
+        const val PROPERTY_KEY = "bts.webhook-encryption.key"
+
+        /** `BTS_WEBHOOK_ENCRYPTION_SALT` 환경변수가 바인딩되는 프로퍼티 키. */
+        const val PROPERTY_SALT = "bts.webhook-encryption.salt"
+    }
 }
