@@ -63,7 +63,7 @@ FR-API-03 — 구독형 아웃바운드 Webhook(외부 시스템 통지). search
 
 **메타**.
 - agent: `security-engineer` (SSRF 보안 검증기 — 단일 출처화가 추출의 핵심 목적)
-- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/http/OutboundUrlValidator.kt`, `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/http/UrlCheck.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/http/OutboundUrlValidatorTest.kt`, `backend/modules/notification/src/main/kotlin/com/bts/notification/webhook/WebhookDispatcher.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/webhook/WebhookDispatcherTest.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/webhook/WebhookDispatchEndToEndIntegrationTest.kt`, `backend/modules/notification/src/main/kotlin/com/bts/notification/webhook/WebhookUrlValidator.kt`(삭제), `backend/modules/notification/src/main/kotlin/com/bts/notification/webhook/UrlCheck.kt`(삭제), `backend/modules/notification/src/test/kotlin/com/bts/notification/webhook/WebhookUrlValidatorTest.kt`(삭제/이전)]
+- files: [`backend/modules/shared-kernel/build.gradle.kts`(slf4j-api 추가), `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/http/OutboundUrlValidator.kt`, `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/http/UrlCheck.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/http/OutboundUrlValidatorTest.kt`, `backend/modules/notification/src/main/kotlin/com/bts/notification/webhook/WebhookDispatcher.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/webhook/WebhookDispatcherTest.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/webhook/WebhookDispatchEndToEndIntegrationTest.kt`, `backend/modules/notification/src/main/kotlin/com/bts/notification/webhook/WebhookUrlValidator.kt`(삭제), `backend/modules/notification/src/main/kotlin/com/bts/notification/webhook/UrlCheck.kt`(삭제), `backend/modules/notification/src/test/kotlin/com/bts/notification/webhook/WebhookUrlValidatorTest.kt`(삭제/이전)]
 - depends-on: []
 
 **RED**.
@@ -72,6 +72,7 @@ FR-API-03 — 구독형 아웃바운드 Webhook(외부 시스템 통지). search
 
 **GREEN**.
 - `com.bts.shared.http.UrlCheck`(sealed: Allowed/Blocked/Malformed) + `OutboundUrlValidator`(@Component, 기존 `check(url): UrlCheck` 로직 그대로 — `isInternal`/`extractMappedIpv4` 포함) 신설. 로직 diff 0.
+- **[impl 발견] slf4j-api 필요**. validator가 SSRF 차단 시 `LoggerFactory.log.warn`로 보안 감사 로그를 남긴다. shared-kernel은 spring-context/spring-tx만 있어 slf4j-api가 컴파일 클래스패스에 없음(notification은 전이 획득). `shared-kernel/build.gradle.kts` dependencies에 `implementation("org.slf4j:slf4j-api")` 추가(Spring BOM 버전 관리, BC 결합 없는 중립 facade). 감사 로그 보존=동작불변. 게이트1 승인한 "shared-kernel 추출 인프라 의존 추가"(spring-web) 범위와 동일 성격.
 
 **REFACTOR**.
 - notification `WebhookDispatcher`의 필드 타입 `WebhookUrlValidator`→`OutboundUrlValidator`(import 교체). `WebhookDispatcherTest`의 `mockk<WebhookUrlValidator>()`→`mockk<OutboundUrlValidator>()`, 통합테스트 import 교체.
