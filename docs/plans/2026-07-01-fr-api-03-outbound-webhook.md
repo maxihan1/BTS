@@ -76,6 +76,7 @@ FR-API-03 — 구독형 아웃바운드 Webhook(외부 시스템 통지). search
 **REFACTOR**.
 - notification `WebhookDispatcher`의 필드 타입 `WebhookUrlValidator`→`OutboundUrlValidator`(import 교체). `WebhookDispatcherTest`의 `mockk<WebhookUrlValidator>()`→`mockk<OutboundUrlValidator>()`, 통합테스트 import 교체.
 - notification의 낡은 `WebhookUrlValidator.kt`·`UrlCheck.kt`·`WebhookUrlValidatorTest.kt` 삭제(회귀 테스트는 shared-kernel으로 이전됨 — 정확히 한 곳 실행).
+- **[리뷰 CONCERN-1] 빈 등록**. 통합테스트 `NotificationTestBootApplication`은 `scanBasePackages=["com.bts.notification"]`이라 `com.bts.shared.http`를 스캔 안 함 → 이동한 `OutboundUrlValidator`(@Component)를 `WebhookDispatchEndToEndIntegrationTest`의 `@SpringBootTest(classes=[...])` 목록에 명시 추가(또는 `WebhookE2EConfig`에 `@Import`). 누락 시 부팅 NoSuchBeanDefinition.
 - 검증: `grep -rn "notification.webhook.WebhookUrlValidator\|notification.webhook.UrlCheck" backend/` 결과 0.
 
 **검증**. `./gradlew :backend:modules:shared-kernel:test --tests '*OutboundUrlValidatorTest*'` + `./gradlew :backend:modules:notification:test --tests '*WebhookDispatcherTest*' --tests '*WebhookDispatchEndToEndIntegrationTest*'` + `:backend:modules:shared-kernel:test --tests '*SharedKernelBoundaryArchTest*'`.
@@ -98,6 +99,7 @@ FR-API-03 — 구독형 아웃바운드 Webhook(외부 시스템 통지). search
 **REFACTOR**.
 - notification `WebhookDispatcherTest`의 `WebhookHttpClientConfig().webhookRestClient()`→`OutboundHttpClientConfig().outboundHttpRestClient()`, 통합테스트 import `com.bts.notification.config.WebhookHttpClientConfig`→`com.bts.shared.http.OutboundHttpClientConfig`.
 - notification 낡은 `WebhookHttpClientConfig.kt` 삭제(원자적 — RestClient 빈은 항상 한 개).
+- **[리뷰 CONCERN-1] 빈 등록**. `OutboundHttpClientConfig`(@Configuration)도 `com.bts.shared.http`라 notification 스캔 밖 → `WebhookDispatchEndToEndIntegrationTest`의 `classes=[...]`에 `OutboundHttpClientConfig::class` 추가(또는 `@Import`). WebhookE2EConfig가 기존 WebhookHttpClientConfig를 명시 참조했다면 그 참조도 교체.
 - `WebhookDispatcher`는 `RestClient`를 타입 주입하므로 코드 변경 불필요(빈 출처만 shared로 이동). 통합테스트 부팅으로 빈 단일성·주입 검증.
 
 **검증**. `./gradlew :backend:modules:shared-kernel:test --tests '*OutboundHttpClientConfigTest*'` + `:backend:modules:notification:test`(webhook·worker 전체) + `:backend:modules:shared-kernel:ktlintCheck detekt`(spring-web 추가 후) + `grep -rn "config.WebhookHttpClientConfig\|bts.notification.webhook" backend/` 0건.
@@ -111,4 +113,20 @@ FR-API-03 — 구독형 아웃바운드 Webhook(외부 시스템 통지). search
 - 추가 검증: 전 모듈 clean 빌드(동작불변 확인), detekt/ktlint(spring-web 추가 영향), SSRF 회귀 정확히 한 곳
 - BC 교차: notification 코드 수정 1회(shared 추출 — ADR §D2 문서화된 예외)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-01) — feature/task<3 → eng 집중 리뷰
+
+**Step 0 스코프 챌린지**. ✅ 통과. 6 파일 내외·신규 서비스 0(기존 클래스 이동)·8파일 스멜 임계 미달. 병렬 인프라 신설 없음(재사용이 목적). 4-PR 분할의 PR1로 strangler-fig식 점진 접근 — 스코프 크립 없음. 완제품 기준(SSRF 회귀 보존, 동작불변).
+
+**아키텍처**. ✅ shared-kernel `com.bts.shared.http` 추출 타당(spring-context 이미 보유, IssueSecurityDirectory 선례). spring-web 추가는 ArchUnit(BC 역참조만 금지) 위반 아님 — 검증됨. **빈 타입주입 모호성**(RestClient 2개 공존 불가)을 원자적 config 이동으로 회피 — 계획이 최대 리스크를 정확히 짚음.
+
+**테스트**. ✅ `WebhookDispatcherTest`는 순수 단위(mockk+직접 인스턴스화) — 스캔 무관, import만 교체. SSRF 회귀는 shared-kernel 단일 위치로 이전(정확히 한 곳). `WebhookDispatchEndToEndIntegrationTest`가 실 컨텍스트 부팅 = 빈 모호성/등록 실패 안전망.
+
+**CONCERN-1 (등록/스캔, 반영 완료)**. `NotificationTestBootApplication`이 `scanBasePackages=["com.bts.notification"]`로 한정 → @Component/@Configuration을 `com.bts.shared.http`로 옮기면 스캔 밖이라 통합테스트 부팅 시 NoSuchBeanDefinition. **해결책**: 통합테스트 `@SpringBootTest(classes=[...])`에 `OutboundUrlValidator::class`+`OutboundHttpClientConfig::class` 명시 추가(또는 `@Import`). Task 1/2 REFACTOR에 반영함. 안전망(통합테스트 부팅)이 미이행 시 즉시 적발.
+
+**CONCERN-2 (설정키 이관) — 해소**. `bts.notification.webhook.*`→`bts.outbound-http.*` 일반화. 전 저장소 grep(yml/properties/env/docker/infra) 오버라이드 **0건** 확인 → 기본값(3000/5000) 그대로라 동작 중립.
+
+**forward note(PR3 범위)**. 프로덕션 배포 조립 부재(현 표준=test-assembled). 실 assembly 도입 시 `com.bts.shared.http` 스캔 포함 필요. search-export-import(PR2+)도 자체 컨텍스트에 shared 빈 등록 필요.
+
+**BLOCKER: 없음**. type=feature·순수 리팩터. auth/migration 아님. → 게이트 1 진입 가능.
