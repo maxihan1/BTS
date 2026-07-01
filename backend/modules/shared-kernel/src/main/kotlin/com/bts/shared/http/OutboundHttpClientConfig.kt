@@ -16,7 +16,7 @@ import java.time.Duration
  * ## 리다이렉트 차단 (FR8 / G1)
  * JDK [HttpClient]를 [HttpClient.Redirect.NEVER]로 설정해 3xx 리다이렉트를 자동으로 따라가지 않는다.
  * SSRF 공격자가 3xx → 내부망으로 우회하는 경로를 차단한다.
- * 3xx 응답은 [WebhookDispatcher]가 non-2xx 로 처리해 [WebhookDispatchResult.Failed]를 반환한다.
+ * 3xx 응답은 호출 측이 non-2xx 로 처리한다(전송 실패로 간주).
  *
  * ## 타임아웃
  * - connect: [connectTimeoutMs] (기본 3000ms)
