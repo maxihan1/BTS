@@ -195,3 +195,26 @@ FR-API-03(외부 시스템 통지용 구독형 아웃바운드 Webhook, search-e
 **OK 확인**. SYSTEM_ADMIN 게이트(actor 추출→admin 검사→리소스 조회 순, probe 차단)·cross-BC=shared 포트만·SSRF 생성/수정 양쪽 적용·secret 위생(hasSecret만)·스코프 ExceptionHandler(assignableTypes)·V603 번호 정확+init_codegen 미러+전체 스위트 검증.
 
 **최종 판정**. B1/C1/C2/C3/C4 반영 완료 → **PASS**. C5는 PR3 재확인 항목.
+
+## 구현 결과 (bts-impl, 2026-07-01)
+
+7 task 전부 완료(4 wave, TDD red→green→refactor 강제). 커밋 hash(controller git log/reflog 검증):
+- T1 SecretEncryptor 추출: `c3b34390`→`a598f4fe`→`cc2d25b2` (shared 219 + identity-access 1951 그린, OIDC 회귀 0)
+- T2 V603 마이그레이션: `e86619a0`→`8f1bd42b`→`ca0801ef`(+`c9a846fe`) (스키마테스트 21, jOOQ codegen 성공, DATA.md §4.1 갱신)
+- T3 도메인: `8a8ae55f`→`cafdd221`→`e376eba1` (17)
+- T4 WebhookEncryptionConfig: `a668b1bd`→`f77ed9e2`→`98f48e85` (2)
+- T5 jOOQ repo: `dab20e81`→`41846eb4`→`4f34eebb` (12 통합)
+- T6 Service(보안): `4731754a`→`4369bb43`→`5c6d3737` (24, 비admin 403·secret 미노출·admin-before-lookup)
+- T7 컨트롤러+통합: `a71d49e3`→`2e69a920`→`926b6d5f`(+`fix fa2c9fd9`) (15 통합)
+
+**impl 중 처리한 사고/편차**.
+- T1 BLOCKED→해소: shared-kernel build.gradle.kts에 spring-security-crypto 추가(files 확장, PR1 대칭·게이트1 범위).
+- T2 git 사고→복구: 공유 worktree `--amend`가 T1 커밋 hijack → `reset --soft`로 복구(reflog 검증, bad amend는 dangling). Wave 2+ git 안전 가드 강화.
+- T7 선언 밖 1파일: `OpenApiAnnotationTest.kt`에 @MockBean 2개(Task 6 신규 @Service의 full-boot cross-BC 빈 부재 잠복 회귀 해소, 형제 패턴 미러). 정당·수용.
+- 컨트롤러 doc 수정: MfaSecretEncryptor KDoc 링크 shared 갱신(`2934ea56`).
+
+**controller 직접 검증(에이전트 보고 불신 원칙, 최종 HEAD)**.
+- s-e-i 전체 스위트 + ktlint + detekt → BUILD SUCCESSFUL.
+- shared-kernel + identity-access ktlint + detekt + compileTestKotlin → BUILD SUCCESSFUL.
+
+**E2E SKIP 사유**. 백엔드 전용 PR(UI 없음, UI+E2E는 PR4). Playwright E2E 대상 아님. 15 컨트롤러 통합테스트 + s-e-i 711 전체 스위트가 실 부팅으로 API 동작(권한/암호화/SSRF/OCC/404/400) 커버.
