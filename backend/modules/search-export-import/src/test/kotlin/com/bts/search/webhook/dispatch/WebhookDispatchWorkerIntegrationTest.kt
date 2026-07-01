@@ -170,11 +170,23 @@ class WebhookDispatchWorkerIntegrationTest : SearchPersistenceTestBase() {
         assertThat(deliveryRepo.listByWebhook(closedWebhook.id!!, page = 0, size = 10)).hasSize(1)
     }
 
-    // ── IT-3: poison → archive ────────────────────────────────────────────────
+    // ── IT-3: 처리 예외 반복 → archive(dead-letter) ──────────────────────────────
 
+    /**
+     * pgmq `message` 컬럼은 jsonb 타입이라 `pgmq.send`로 구문상 잘못된 JSON을 애초에 enqueue할 수
+     * 없다(Postgres가 INSERT 시점에 거부) — 따라서 "JSON 파싱 실패(poison)" 경로는 real pgmq로는
+     * 재현 불가능하며 [WebhookDispatchWorkerTest]의 W-13(MockK)이 전담 검증한다.
+     *
+     * 대신 이 통합 테스트는 실 pgmq 위에서 동일한 lifecycle(재전달 대기 → read_ct 초과 시 archive)을
+     * 유발하는 **실제로 일어날 수 있는** 경로 — fanout 처리 중 예외([WebhookDispatchWorkerTest] W-14와
+     * 동일 시나리오, 예: 발송 중 예기치 못한 런타임 오류 — 로 검증한다.
+     */
     @Test
-    fun `IT-3 파싱 불가 poison 메시지는 read_ct가 MAX를 넘으면 archive되어 큐에서 사라진다`() {
-        val msgId = enqueue("NOT_VALID_JSON{{{")
+    fun `IT-3 fanout 처리 중 예외가 반복되면 read_ct가 MAX를 넘었을 때 archive되어 큐에서 사라진다`() {
+        createWebhook(url = "https://example.com/hook-exception", projectKey = "ATLAS")
+        every { dispatcher.dispatch(any(), any(), any(), any(), any()) } throws RuntimeException("stub 발송 오류")
+
+        val msgId = enqueue(ISSUE_CREATED_JSON)
 
         // MAX_RECEIVE_COUNT(5)회까지는 재전달 대기 — 매 폴링 후 vt를 0으로 되돌려 즉시 재가시화한다.
         repeat(WebhookDispatchWorker.MAX_RECEIVE_COUNT) {
