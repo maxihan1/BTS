@@ -5,11 +5,15 @@ package com.bts.issue.event
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -75,10 +79,14 @@ class IssueEventPublisherTest : DescribeSpec({
             postgres.password,
         )
 
+    // prod IssueEventPublisher 가 주입받는 Spring Boot 기본 ObjectMapper 와 동일 설정을 재현한다 —
+    // WRITE_DATES_AS_TIMESTAMPS=off 로 occurredAt 을 숫자가 아닌 ISO-8601 문자열로 직렬화한다.
+    // (소비자 search WebhookDispatchWorker 가 occurredAt 을 문자열로 파싱하므로 계약상 필수, CONCERN-2)
     fun buildObjectMapper(): ObjectMapper =
         ObjectMapper()
             .registerKotlinModule()
             .registerModule(JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
 
     /**
      * 단일 [conn] 위에 DSLContext 를 구성하고 트랜잭션을 열어 [block] 을 실행한 뒤 커밋한다.
@@ -152,10 +160,14 @@ class IssueEventPublisherTest : DescribeSpec({
                 val body = record!!.get("message", String::class.java)
                 val json = mapper.readTree(body)
 
+                // 아래 wire 필드명은 소비자 search WebhookDispatchWorker 가 파싱한다 —
+                // 소비자 갱신 없이 리네임 금지(모듈 간 계약 정본, CONCERN-1).
                 json.get("type").asText() shouldBe "issue.created"
                 json.get("issueKey").asText() shouldBe "ATLAS-1"
                 json.get("projectKey").asText() shouldBe "ATLAS"
                 json.get("summary").asText() shouldBe "첫 번째 이슈"
+                // occurredAt 은 숫자 타임스탬프가 아닌 ISO-8601 문자열이어야 한다(소비자 파싱 계약, CONCERN-2).
+                json.get("occurredAt").asText() shouldBe "2026-01-01T00:00:00Z"
             }
         }
 
@@ -188,10 +200,14 @@ class IssueEventPublisherTest : DescribeSpec({
                 val body = record!!.get("message", String::class.java)
                 val json = mapper.readTree(body)
 
+                // 아래 wire 필드명은 소비자 search WebhookDispatchWorker 가 파싱한다 —
+                // 소비자 갱신 없이 리네임 금지(모듈 간 계약 정본, CONCERN-1).
                 json.get("type").asText() shouldBe "issue.transitioned"
                 json.get("issueKey").asText() shouldBe "ATLAS-2"
                 json.get("fromState").asText() shouldBe "open"
                 json.get("toState").asText() shouldBe "IN_PROGRESS"
+                // occurredAt 은 숫자 타임스탬프가 아닌 ISO-8601 문자열이어야 한다(소비자 파싱 계약, CONCERN-2).
+                json.get("occurredAt").asText() shouldBe "2026-01-01T00:00:00Z"
             }
         }
 
@@ -206,6 +222,181 @@ class IssueEventPublisherTest : DescribeSpec({
 
             txAnnotation shouldNotBe null
             txAnnotation!!.propagation shouldBe org.springframework.transaction.annotation.Propagation.MANDATORY
+        }
+    }
+
+    // ── FR-API-03 PR3 Task 2 — q_webhook_events dual-send ──────────────────────
+    //
+    // PUBLISHABLE 2종(issue.created / issue.transitioned)은 q_issue_events 뿐 아니라
+    // q_webhook_events 에도 send 되어야 하고, 나머지 5종은 q_issue_events 에만 send 되어야 한다.
+    // mock DSLContext 로 send 호출 인자(큐 이름)를 검증한다 — Testcontainers 실행 없이 빠르게
+    // exhaustive 분류 회귀를 잡기 위함(판정 로직은 IssueEventPublisher 내부 private when).
+    //
+    // "q_webhook_events" 는 아직 프로덕션 코드에 상수로 존재하지 않으므로(GREEN 단계에서 추가)
+    // 리터럴 문자열로 검증한다 — 컴파일은 항상 성공하고, RED 단계에서는 실제 assertion 이 실패한다.
+    describe("IssueEventPublisher.publish — dual-send (FR-API-03 PR3 Task 2)") {
+
+        val mapper = buildObjectMapper()
+
+        fun mockDsl(): DSLContext {
+            val dsl = mockk<DSLContext>()
+            every { dsl.execute(any<String>(), any<String>(), any<String>()) } returns 1
+            return dsl
+        }
+
+        context("PUBLISHABLE 이벤트(issue.created / issue.transitioned)") {
+
+            it("IssueCreated 발행 시 q_issue_events 와 q_webhook_events 두 큐 모두에 send 한다") {
+                val dsl = mockDsl()
+                val publisher = IssueEventPublisher(dsl, mapper)
+
+                val event =
+                    IssueCreated(
+                        issueKey = IssueKey("ATLAS-101"),
+                        projectKey = "ATLAS",
+                        summary = "dual-send 테스트",
+                        reporterId = ActorId(UUID.fromString("11111111-1111-1111-1111-111111111111")),
+                        actorId = ActorId(UUID.fromString("11111111-1111-1111-1111-111111111111")),
+                        occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
+                    )
+
+                publisher.publish(event)
+
+                verify(exactly = 1) {
+                    dsl.execute(any<String>(), IssueEventPublisher.QUEUE_NAME, any<String>())
+                }
+                verify(exactly = 1) {
+                    dsl.execute(any<String>(), "q_webhook_events", any<String>())
+                }
+            }
+
+            it("IssueTransitioned 발행 시 q_issue_events 와 q_webhook_events 두 큐 모두에 send 한다") {
+                val dsl = mockDsl()
+                val publisher = IssueEventPublisher(dsl, mapper)
+
+                val event =
+                    IssueTransitioned(
+                        issueKey = IssueKey("ATLAS-102"),
+                        fromState = "open",
+                        toState = "in_progress",
+                        actorId = ActorId(UUID.fromString("22222222-2222-2222-2222-222222222222")),
+                        occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
+                    )
+
+                publisher.publish(event)
+
+                verify(exactly = 1) {
+                    dsl.execute(any<String>(), IssueEventPublisher.QUEUE_NAME, any<String>())
+                }
+                verify(exactly = 1) {
+                    dsl.execute(any<String>(), "q_webhook_events", any<String>())
+                }
+            }
+        }
+
+        context("non-PUBLISHABLE 이벤트(issue.updated 등 5종)는 q_issue_events 에만 send 한다") {
+
+            it("IssueUpdated 발행 시 q_webhook_events 에는 send 하지 않는다") {
+                val dsl = mockDsl()
+                val publisher = IssueEventPublisher(dsl, mapper)
+
+                publisher.publish(
+                    IssueUpdated(
+                        issueKey = IssueKey("ATLAS-103"),
+                        fields = setOf("summary"),
+                        occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
+                    ),
+                )
+
+                verify(exactly = 1) {
+                    dsl.execute(any<String>(), IssueEventPublisher.QUEUE_NAME, any<String>())
+                }
+                verify(exactly = 0) {
+                    dsl.execute(any<String>(), "q_webhook_events", any<String>())
+                }
+            }
+
+            it("IssueSoftDeleted 발행 시 q_webhook_events 에는 send 하지 않는다") {
+                val dsl = mockDsl()
+                val publisher = IssueEventPublisher(dsl, mapper)
+
+                publisher.publish(
+                    IssueSoftDeleted(
+                        issueKey = IssueKey("ATLAS-104"),
+                        occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
+                    ),
+                )
+
+                verify(exactly = 1) {
+                    dsl.execute(any<String>(), IssueEventPublisher.QUEUE_NAME, any<String>())
+                }
+                verify(exactly = 0) {
+                    dsl.execute(any<String>(), "q_webhook_events", any<String>())
+                }
+            }
+
+            it("IssueMentioned 발행 시 q_webhook_events 에는 send 하지 않는다") {
+                val dsl = mockDsl()
+                val publisher = IssueEventPublisher(dsl, mapper)
+
+                publisher.publish(
+                    IssueMentioned(
+                        issueKey = IssueKey("ATLAS-105"),
+                        projectKey = "ATLAS",
+                        mentionedUserIds = listOf(UUID.fromString("33333333-3333-3333-3333-333333333333")),
+                        actorId = ActorId(UUID.fromString("11111111-1111-1111-1111-111111111111")),
+                        sourceField = "description",
+                        occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
+                    ),
+                )
+
+                verify(exactly = 1) {
+                    dsl.execute(any<String>(), IssueEventPublisher.QUEUE_NAME, any<String>())
+                }
+                verify(exactly = 0) {
+                    dsl.execute(any<String>(), "q_webhook_events", any<String>())
+                }
+            }
+
+            it("IssueDueSoon 발행 시 q_webhook_events 에는 send 하지 않는다") {
+                val dsl = mockDsl()
+                val publisher = IssueEventPublisher(dsl, mapper)
+
+                publisher.publish(
+                    IssueDueSoon(
+                        issueKey = "ATLAS-106",
+                        projectKey = "ATLAS",
+                        occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
+                    ),
+                )
+
+                verify(exactly = 1) {
+                    dsl.execute(any<String>(), IssueEventPublisher.QUEUE_NAME, any<String>())
+                }
+                verify(exactly = 0) {
+                    dsl.execute(any<String>(), "q_webhook_events", any<String>())
+                }
+            }
+
+            it("IssueOverdue 발행 시 q_webhook_events 에는 send 하지 않는다") {
+                val dsl = mockDsl()
+                val publisher = IssueEventPublisher(dsl, mapper)
+
+                publisher.publish(
+                    IssueOverdue(
+                        issueKey = "ATLAS-107",
+                        projectKey = "ATLAS",
+                        occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
+                    ),
+                )
+
+                verify(exactly = 1) {
+                    dsl.execute(any<String>(), IssueEventPublisher.QUEUE_NAME, any<String>())
+                }
+                verify(exactly = 0) {
+                    dsl.execute(any<String>(), "q_webhook_events", any<String>())
+                }
+            }
         }
     }
 })

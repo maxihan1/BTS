@@ -4,8 +4,10 @@ package com.bts.search.webhook.web
 
 import com.bts.search.webhook.application.OutboundWebhookRepository
 import com.bts.search.webhook.application.OutboundWebhookService
+import com.bts.search.webhook.application.WebhookDeliveryRepository
 import com.bts.search.webhook.config.WebhookEncryptionConfig
 import com.bts.search.webhook.persistence.JooqOutboundWebhookRepository
+import com.bts.search.webhook.persistence.JooqWebhookDeliveryRepository
 import com.bts.shared.crypto.SecretEncryptor
 import com.bts.shared.http.OutboundUrlValidator
 import com.bts.shared.permission.SystemPermissionResolver
@@ -73,6 +75,14 @@ open class WebhookIntegrationConfig {
     open fun repository(dsl: DSLContext): OutboundWebhookRepository = JooqOutboundWebhookRepository(dsl)
 
     /**
+     * jOOQ 기반 [WebhookDeliveryRepository] 구현(발송 이력 기록/조회).
+     *
+     * @param dsl 컨테이너 기반 [DSLContext].
+     */
+    @Bean
+    open fun deliveryRepository(dsl: DSLContext): WebhookDeliveryRepository = JooqWebhookDeliveryRepository(dsl)
+
+    /**
      * fail-closed [SystemPermissionResolver] stub — 테스트가 admin actor 를 명시 등록한다.
      */
     @Bean
@@ -91,6 +101,7 @@ open class WebhookIntegrationConfig {
      * @param outboundUrlValidator SSRF 검증기.
      * @param secretEncryptor webhook 전용 키로 구성된 암호화 유틸([WebhookEncryptionConfig] 제공).
      * @param repository 구독 영속성 포트.
+     * @param deliveryRepository 발송 이력 영속성 포트.
      */
     @Bean
     open fun service(
@@ -98,8 +109,15 @@ open class WebhookIntegrationConfig {
         outboundUrlValidator: OutboundUrlValidator,
         secretEncryptor: SecretEncryptor,
         repository: OutboundWebhookRepository,
+        deliveryRepository: WebhookDeliveryRepository,
     ): OutboundWebhookService {
-        return OutboundWebhookService(systemPermissionResolver, outboundUrlValidator, secretEncryptor, repository)
+        return OutboundWebhookService(
+            systemPermissionResolver,
+            outboundUrlValidator,
+            secretEncryptor,
+            repository,
+            deliveryRepository,
+        )
     }
 
     /**

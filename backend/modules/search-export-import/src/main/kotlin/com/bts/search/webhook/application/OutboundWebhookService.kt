@@ -3,6 +3,7 @@
 package com.bts.search.webhook.application
 
 import com.bts.search.webhook.domain.OutboundWebhook
+import com.bts.search.webhook.domain.WebhookDelivery
 import com.bts.shared.crypto.SecretEncryptor
 import com.bts.shared.http.OutboundUrlValidator
 import com.bts.shared.http.UrlCheck
@@ -43,6 +44,7 @@ import java.util.UUID
  * @param urlValidator 아웃바운드 URL SSRF 검증기(shared-kernel).
  * @param secretEncryptor 외부 비밀값 대칭 암호화 유틸(shared-kernel, webhook 전용 키로 구성됨).
  * @param repository 아웃바운드 webhook 구독 영속성 포트(DIP 경계).
+ * @param deliveryRepository 발송 이력(append-only) 영속성 포트(DIP 경계).
  */
 @Service
 @Transactional
@@ -52,6 +54,7 @@ class OutboundWebhookService(
     @Qualifier("webhookSecretEncryptor")
     private val secretEncryptor: SecretEncryptor,
     private val repository: OutboundWebhookRepository,
+    private val deliveryRepository: WebhookDeliveryRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -117,6 +120,32 @@ class OutboundWebhookService(
     ): List<OutboundWebhook> {
         requireSystemAdmin(actorId)
         return repository.listAll(page, size)
+    }
+
+    /**
+     * 특정 webhook 구독의 발송 이력을 최신순(created_at DESC) offset 페이지네이션으로 조회한다.
+     *
+     * admin 게이트 → 구독 존재 확인(404) → 이력 조회 순서. 비-admin 은 리소스 조회 이전에
+     * 403(존재 probe 차단)이며, 존재하지 않는 구독의 이력 조회는 [WebhookNotFoundException](404)이다.
+     *
+     * @param actorId 요청 actor UUID(SYSTEM_ADMIN 이어야 함).
+     * @param id 이력을 조회할 구독 식별자.
+     * @param page 0-based 페이지 번호.
+     * @param size 페이지당 최대 항목 수.
+     * @return 최신순 발송 이력 목록.
+     * @throws WebhookForbiddenException actor 가 SYSTEM_ADMIN 이 아닌 경우(403, 리소스 조회 이전).
+     * @throws WebhookNotFoundException 구독이 존재하지 않거나 소프트 삭제된 경우(404).
+     */
+    @Transactional(readOnly = true)
+    fun listDeliveries(
+        actorId: UUID,
+        id: UUID,
+        page: Int,
+        size: Int,
+    ): List<WebhookDelivery> {
+        requireSystemAdmin(actorId)
+        repository.findById(id) ?: throw WebhookNotFoundException(id)
+        return deliveryRepository.listByWebhook(id, page, size)
     }
 
     /**

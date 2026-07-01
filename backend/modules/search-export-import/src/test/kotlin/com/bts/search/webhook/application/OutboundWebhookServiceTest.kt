@@ -23,8 +23,9 @@ class OutboundWebhookServiceTest {
     private val urlValidator: OutboundUrlValidator = mockk()
     private val secretEncryptor: SecretEncryptor = mockk()
     private val repository: OutboundWebhookRepository = mockk()
+    private val deliveryRepository: WebhookDeliveryRepository = mockk()
     private val service =
-        OutboundWebhookService(systemPermissionResolver, urlValidator, secretEncryptor, repository)
+        OutboundWebhookService(systemPermissionResolver, urlValidator, secretEncryptor, repository, deliveryRepository)
 
     private val adminId: UUID = UUID.randomUUID()
     private val nonAdminId: UUID = UUID.randomUUID()

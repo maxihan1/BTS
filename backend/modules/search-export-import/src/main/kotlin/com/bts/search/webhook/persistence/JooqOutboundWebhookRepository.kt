@@ -7,6 +7,7 @@ import com.bts.search.jooq.tables.references.OUTBOUND_WEBHOOKS
 import com.bts.search.webhook.application.OutboundWebhookRepository
 import com.bts.search.webhook.domain.OutboundWebhook
 import org.jooq.DSLContext
+import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
@@ -31,6 +32,10 @@ import java.util.UUID
  * ## event_filter 배열 매핑
  * PostgreSQL `text[]` 컬럼은 jOOQ 가 `Array<String?>` 로 생성한다. 도메인의 `List<String>` 과
  * 왕복 변환은 [toDbArray] / [OutboundWebhooksRecord.toDomain] 이 담당한다.
+ *
+ * ## findMatching (PR3 발송 대상 조회)
+ * `event_filter && ARRAY[eventType]` 배열 overlap 술어로 V603 GIN 인덱스를 활용한다. jOOQ DSL 이
+ * `&&` 연산자를 직접 지원하지 않아 [DSL.condition] + 타입 일치 바인드 값으로 표현한다.
  *
  * @param dsl jOOQ DSLContext — SQL 을 코드로 안전하게 작성하는 라이브러리의 핵심 진입점
  */
@@ -146,6 +151,34 @@ class JooqOutboundWebhookRepository(
                 .execute()
 
         return updated > 0
+    }
+
+    /**
+     * eventType 이 `event_filter` 에 포함되고, projectKey 가 null(전체) 또는 일치하며, enabled=true 이고
+     * 소프트 삭제되지 않은 구독 목록을 조회한다.
+     *
+     * PG 배열 overlap 연산자 `&&` 는 jOOQ DSL 이 직접 지원하지 않으므로 [DSL.condition] + 바인드
+     * 파라미터로 표현한다(IssueRepository.buildLabelCondition 과 동일 패턴). 바인딩 값은
+     * `event_filter` 와 동일한 DataType(text[])으로 생성해 타입 미스매치를 방지하고, V603
+     * `idx_outbound_webhooks_event_filter_gin` GIN 인덱스를 활용한다.
+     *
+     * `projectKey IS NULL` 은 구독이 전체 프로젝트를 대상으로 한다는 의미라 항상 매칭시킨다.
+     */
+    @Transactional(readOnly = true)
+    override fun findMatching(
+        eventType: String,
+        projectKey: String,
+    ): List<OutboundWebhook> {
+        val eventTypeArr: Array<String?> = arrayOf(eventType)
+        val eventTypeVal = DSL.`val`(eventTypeArr, OUTBOUND_WEBHOOKS.EVENT_FILTER.dataType)
+
+        return dsl.selectFrom(OUTBOUND_WEBHOOKS)
+            .where(DSL.condition("{0} && {1}", OUTBOUND_WEBHOOKS.EVENT_FILTER, eventTypeVal))
+            .and(OUTBOUND_WEBHOOKS.PROJECT_KEY.isNull.or(OUTBOUND_WEBHOOKS.PROJECT_KEY.eq(projectKey)))
+            .and(OUTBOUND_WEBHOOKS.ENABLED.isTrue)
+            .and(OUTBOUND_WEBHOOKS.DELETED_AT.isNull)
+            .fetch()
+            .map { it.toDomain() }
     }
 
     // ── private mapper ─────────────────────────────────────────────────────────

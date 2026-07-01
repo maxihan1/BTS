@@ -31,6 +31,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import org.springframework.web.client.RestClient
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import org.testcontainers.containers.PostgreSQLContainer
@@ -118,6 +119,14 @@ class OpenApiAnnotationTest {
     /** 아웃바운드 URL SSRF 검증기 — shared-kernel, [com.bts.search.webhook.application.OutboundWebhookService] 의존성. */
     @MockBean
     lateinit var outboundUrlValidator: OutboundUrlValidator
+
+    /**
+     * SSRF 재검증 + HTTP 발송용 shared RestClient — `com.bts.shared.http` 패키지는 스캔 대상이
+     * 아니라 [com.bts.search.webhook.dispatch.SearchWebhookDispatcher](FR-API-03 PR3 Task 7) 생성자
+     * 의존성이 해소되지 않는다. @MockBean 으로 채워 full-boot 부팅만 통과시킨다(OpenAPI 검증 목적과 무관).
+     */
+    @MockBean
+    lateinit var restClient: RestClient
 
     @Autowired
     private lateinit var webApplicationContext: WebApplicationContext
