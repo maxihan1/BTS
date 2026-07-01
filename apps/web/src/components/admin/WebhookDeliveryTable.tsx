@@ -5,23 +5,36 @@ import { labelForEvent, labelForStatus } from '@/i18n/webhook-labels'
 import { formatDateTime } from '@/lib/datetime'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 디자인 토큰 상수 — 매직 클래스 금지, status 배지 색상 매핑
+// SUCCEEDED=초록/FAILED=빨강 2종만 색을 갖는다. 그 외 미지 값(백엔드 enum 확장 등)은
+// STATUS_BADGE_NEUTRAL로 폴백한다 (전방호환).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** status wireValue → 배지 색상 Tailwind 클래스 (SUCCEEDED/FAILED 2종만 등록) */
+const STATUS_BADGE_CLASS: Record<string, string> = {
+  SUCCEEDED: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+  FAILED: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+}
+
+/** 미지 status 값에 적용하는 중립 배지 색상 — 색 없이도 라벨 텍스트로 구분 가능 */
+const STATUS_BADGE_NEUTRAL = 'bg-muted text-muted-foreground'
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 내부 유틸
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * status 배지 색상 클래스를 반환한다.
  *
- * SUCCEEDED=초록/FAILED=빨강 2종만 색을 갖고, 그 외 미지 값(백엔드 enum 확장 등)은
- * 중립색을 반환한다 (전방호환). 색만으로 구분하지 않고 labelForStatus 텍스트를
- * 항상 함께 표시하므로 색맹 사용자도 상태를 구분할 수 있다.
+ * STATUS_BADGE_CLASS에 등록된 SUCCEEDED/FAILED만 색을 갖고, 그 외 미지 값은
+ * STATUS_BADGE_NEUTRAL로 폴백한다. 색만으로 구분하지 않고 labelForStatus 텍스트를
+ * 배지 안에 항상 함께 표시하므로 색맹 사용자도 상태를 텍스트로 구분할 수 있다.
  *
- * @param status 발송 상태 wireValue
+ * @param status 발송 상태 wireValue (예: "SUCCEEDED", "FAILED")
  * @returns 배지에 적용할 Tailwind 클래스
  */
 function badgeClassForStatus(status: string): string {
-  if (status === 'SUCCEEDED') return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-  if (status === 'FAILED') return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-  return 'bg-muted text-muted-foreground'
+  return STATUS_BADGE_CLASS[status] ?? STATUS_BADGE_NEUTRAL
 }
 
 /**
