@@ -178,7 +178,7 @@ class OutboundWebhookControllerIntegrationTest {
     // ── OCC / 존재하지 않는 리소스 + message 누출 차단 ─────────────────────────────
 
     @Test
-    fun `PUT stale version 409 — 응답에 식별자 미노출`() {
+    fun `PUT stale version 409 — 응답 detail 에 식별자 미노출`() {
         val id = createWebhook("OCC 웹훅")
 
         val json =
@@ -188,11 +188,13 @@ class OutboundWebhookControllerIntegrationTest {
                 .andReturn()
                 .response.contentAsString
 
-        assertThat(json).doesNotContain(id)
+        // 서비스 예외 message 는 디버그용 UUID 를 포함하지만, 핸들러가 일반 메시지로 치환해
+        // detail 에는 식별자가 노출되지 않는다(instance=요청 경로는 클라이언트 자신의 입력이라 별개).
+        assertThat(errorDetail(json)).doesNotContain(id)
     }
 
     @Test
-    fun `PUT 존재하지 않는 id 404 — 응답에 식별자 미노출`() {
+    fun `PUT 존재하지 않는 id 404 — 응답 detail 에 식별자 미노출`() {
         val missing = UUID.randomUUID()
 
         val json =
@@ -202,11 +204,11 @@ class OutboundWebhookControllerIntegrationTest {
                 .andReturn()
                 .response.contentAsString
 
-        assertThat(json).doesNotContain(missing.toString())
+        assertThat(errorDetail(json)).doesNotContain(missing.toString())
     }
 
     @Test
-    fun `GET 존재하지 않는 id 404 — 응답에 식별자 미노출`() {
+    fun `GET 존재하지 않는 id 404 — 응답 detail 에 식별자 미노출`() {
         val missing = UUID.randomUUID()
 
         val json =
@@ -216,7 +218,7 @@ class OutboundWebhookControllerIntegrationTest {
                 .andReturn()
                 .response.contentAsString
 
-        assertThat(json).doesNotContain(missing.toString())
+        assertThat(errorDetail(json)).doesNotContain(missing.toString())
     }
 
     @Test
@@ -313,6 +315,8 @@ class OutboundWebhookControllerIntegrationTest {
                 .response.contentAsString
         return mapper.readValue<Map<String, Any?>>(json)["id"].toString()
     }
+
+    private fun errorDetail(json: String): String = mapper.readValue<Map<String, Any?>>(json)["detail"].toString()
 
     private fun storedSecret(id: String): String? =
         dsl
