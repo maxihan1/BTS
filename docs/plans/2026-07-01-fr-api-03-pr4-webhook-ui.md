@@ -88,6 +88,185 @@ FR-API-03(구독형 아웃바운드 Webhook)의 마지막 PR(PR4). PR1(shared �
 ✅ 통과 (직접 기술 스펙, office-hours/제품발상 부적합 — 확정 계약 소비 UI, PR1 선례).
 sanity gap 9건(EC-1~9)을 스펙 §6에 선반영. 이 PR 고유 리스크는 EC-2(raw List 총개수 부재→size 기반 hasNext), EC-3(secret 3-state UX), EC-4(OCC 409), EC-8(admin 게이팅 이중화).
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 순수 프론트(apps/web) PR. 단일 SPA라 Gradle 모듈 컴파일 직렬화 무관. wave는 파일 겹침 + depends-on으로 계산.
+> 참조 선례: `api/notification-policies.ts`·`api/useNotificationPolicies.ts`(CRUD+훅), `routes/admin.audit-logs.tsx`(Page+RouteAdapter+페이지네이션), `auth/routeGuard.ts`(requireSystemAdmin), `mocks/audit-log-handlers.ts`(MSW), `router.ts`(code-based 등록).
+
+### Task 1. webhooks API 클라이언트 + Zod 스키마 + 이벤트 상수/라벨
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/webhooks.ts`, `apps/web/src/api/webhooks.test.ts`, `apps/web/src/i18n/webhook-labels.ts`]
+- depends-on: []
+
+**RED**: `webhooks.test.ts`
+- `fetchWebhooks(page,size)` → raw List 파싱, `createWebhook/updateWebhook/deleteWebhook/getWebhook/fetchDeliveries` 계약.
+- nullish 정합: createdAt/updatedAt/projectKey=null(키 부재)여도 파싱 성공(EC-1). responseCode/errorDetail/deliveredAt=null 이력 파싱.
+- CSRF: POST/PUT/DELETE가 `X-XSRF-TOKEN` 헤더 포함(notification-policies 선례).
+- secret 3-state: update 바디에서 secret 생략 시 키 미포함 확인(EC-3), version 필수 동봉(EC-4).
+- 실패 메시지(예상): `webhooks.ts` 모듈/함수 없음.
+
+**GREEN**: `webhooks.ts`
+- `apiGet`(GET) / `apiFetch`+`readXsrfToken()`(변경) 사용. Zod `webhookResponseSchema`(createdAt/updatedAt/projectKey `.nullish()`, version `z.number()`), `webhookDeliveryResponseSchema`(responseCode/errorDetail/deliveredAt/createdAt `.nullish()`, status/eventType `z.string()` 전방호환 EC-5).
+- `WEBHOOK_PUBLISHABLE_EVENTS = ['issue.created','issue.transitioned'] as const` + 백엔드 `WebhookEventCatalog.PUBLISHABLE` 동기화 주석(audit-logs AUTH_EVENT_TYPES 선례).
+- `webhook-labels.ts`: 이벤트/status 한글 라벨 맵 + `labelForEvent`/`labelForStatus`(미지 값 원문 반환).
+
+**REFACTOR**: 요청/응답 타입 `z.infer` 추출, JSDoc, 경로 상수화.
+
+**검증**: `pnpm --filter web test -- webhooks.test.ts` + `pnpm --filter web typecheck`
+
+### Task 2. useWebhooks React Query 훅 (쿼리 + 뮤테이션)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/useWebhooks.ts`, `apps/web/src/api/useWebhooks.test.ts`]
+- depends-on: [1]
+
+**RED**: `useWebhooks.test.ts`
+- `useWebhooksQuery(page,size)` / `useWebhookDeliveriesQuery(id,page,size)` 캐시 키에 page/size 포함(filter-aware queryKey, EC-2).
+- `useCreateWebhook/useUpdateWebhook/useDeleteWebhook` onSuccess가 `invalidateQueries`(setQueryData 금지 — flicker memory).
+- 실패 메시지(예상): 훅 없음.
+
+**GREEN**: `useWebhooks.ts`
+- `WEBHOOKS_QUERY_KEY=['webhooks']`, 목록/이력 queryKey에 `[...,page,size]`/`[...,id,page,size]`. 모든 mutation onSuccess=invalidate-only.
+
+**REFACTOR**: queryKey 상수 추출, JSDoc(useNotificationPolicies 톤).
+
+**검증**: `pnpm --filter web test -- useWebhooks.test.ts`
+
+### Task 3. MSW stateful 핸들러 6종 + fixtures
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/mocks/webhook-handlers.ts`, `apps/web/src/mocks/webhook-fixtures.ts`, `apps/web/src/mocks/webhook-handlers.test.ts`, `apps/web/src/mocks/handlers.ts`]
+- depends-on: [1]
+
+**RED**: `webhook-handlers.test.ts`
+- 생성→목록 반영, 삭제→제거, PUT→version+1·secret 3-state(빈=hasSecret 유지), 이력 raw List 반환하는 stateful store(시드 가능, EC-6).
+- fixture 필드/형식이 §4 계약 1:1(계약 grep 기반, drift 금지).
+
+**GREEN**: `webhook-handlers.ts` + `webhook-fixtures.ts`
+- 모듈 store(seed 함수 export, msw-derived-behavior-shared-store 선례). `handlers.ts`에 `import { webhookHandlers }` + 배열 spread 등록.
+
+**REFACTOR**: store 리셋 헬퍼, fixture 상수화.
+
+**검증**: `pnpm --filter web test -- webhook-handlers.test.ts`
+
+### Task 4. WebhookTable (구독 목록 표)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/admin/WebhookTable.tsx`, `apps/web/src/components/admin/__tests__/WebhookTable.test.tsx`]
+- depends-on: [1]
+
+**RED/GREEN**: 순수 HTML+Tailwind 표(NotificationPolicyTable 관례, shadcn table 없음). 컬럼 name·url·eventFilter(라벨)·projectKey('—'|값)·enabled 배지·hasSecret 배지·updatedAt. 행별 `onEdit/onDelete/onViewDeliveries` 콜백 props. 빈 목록 empty state. props 기반이라 MSW 무관.
+
+**REFACTOR**: 배지 서브컴포넌트, JSDoc, DESIGN.md 토큰.
+
+**검증**: `pnpm --filter web test -- WebhookTable.test.tsx`
+
+### Task 5. WebhookForm (생성/수정 겸용, secret 3-state, 이벤트 체크박스, OCC)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/admin/WebhookForm.tsx`, `apps/web/src/components/admin/__tests__/WebhookForm.test.tsx`]
+- depends-on: [1]
+
+**RED**: `WebhookForm.test.tsx`
+- 생성 모드: name/url 필수 검증, 이벤트 최소 1개 강제(EC-9), 제출 페이로드 형태.
+- 수정 모드(initialValue): 필드 프리필 + `version` 보유해 제출에 포함(EC-4), secret 입력란 비움=미포함(3-state, "비워두면 기존 키 유지" 안내 문구 EC-3).
+- `submitError` prop 표기(400/409/403 서버 메시지, Dialog submitError 부모 전달 dead-path memory 유의).
+
+**GREEN**: `WebhookForm.tsx`
+- Input/Label/Button + 이벤트 체크박스(`WEBHOOK_PUBLISHABLE_EVENTS` 순회). `mode`/`initialValue`/`onSubmit`/`submitError`/`isSubmitting` props. 저장 전 클라 검증(빈 eventFilter/blank name·url).
+
+**REFACTOR**: 폼 상태 타입 추출, JSDoc.
+
+**검증**: `pnpm --filter web test -- WebhookForm.test.tsx`
+
+### Task 6. WebhookDeliveryTable (발송 이력 표)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/admin/WebhookDeliveryTable.tsx`, `apps/web/src/components/admin/__tests__/WebhookDeliveryTable.test.tsx`]
+- depends-on: [1]
+
+**RED/GREEN**: 컬럼 eventType(라벨)·status 배지(SUCCEEDED 초록/FAILED 빨강 2종만, 그 외 중립 EC-5)·responseCode(null='—')·attemptCount·errorDetail(null='—')·시각(deliveredAt ?? createdAt). 빈 이력 empty state. props 기반.
+
+**REFACTOR**: status 배지 매핑 상수, JSDoc.
+
+**검증**: `pnpm --filter web test -- WebhookDeliveryTable.test.tsx`
+
+### Task 7. admin.webhooks 목록 라우트 (Page + RouteAdapter 조립)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/admin.webhooks.tsx`, `apps/web/src/routes/admin.webhooks.test.tsx`]
+- depends-on: [2, 3, 4, 5]
+
+**RED**: `admin.webhooks.test.tsx` (MSW 사용)
+- 목록 렌더(useWebhooksQuery), "새 구독"→WebhookForm 생성, 행 편집→수정(version 동봉), 삭제→확인 후 제거+invalidate, "이력"→네비.
+- size 기반 페이지네이션: prev(page>0)/next(받은 len===size) disabled(EC-2, audit-logs total 미의존 변형), "페이지 P" 표기.
+- 409/400 → WebhookForm submitError로, 그 외 mutation 에러 → sonner toast.
+
+**GREEN**: `admin.webhooks.tsx`
+- `AdminWebhooksPage`(Form+Table 조립) + `AdminWebhooksRouteAdapter` export(router.ts 등록용, JSX 제약 회피). 삭제 확인 UX.
+
+**REFACTOR**: PaginationControls 서브컴포넌트(size 기반), JSDoc + code-based 라우트 등록 예시 주석.
+
+**검증**: `pnpm --filter web test -- admin.webhooks.test.tsx`
+
+### Task 8. admin.webhooks.$id.deliveries 이력 라우트
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/admin.webhooks.$id.deliveries.tsx`, `apps/web/src/routes/admin.webhooks.$id.deliveries.test.tsx`]
+- depends-on: [2, 3, 6]
+
+**RED/GREEN**: `Page`+`RouteAdapter`(useParams로 id 추출→page에 props, workflows.$key adapter 선례). useWebhookDeliveriesQuery + WebhookDeliveryTable + size 기반 prev/next + "목록으로" 네비. MSW 이력 렌더 검증.
+
+**REFACTOR**: JSDoc, 라우트 등록 예시 주석.
+
+**검증**: `pnpm --filter web test -- admin.webhooks.$id.deliveries.test.tsx`
+
+### Task 9. router.ts 라우트 등록 + Header admin 메뉴 게이팅
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/router.ts`, `apps/web/src/router.test.tsx`, `apps/web/src/components/Header.tsx`, `apps/web/src/components/Header.test.tsx`]
+- depends-on: [7, 8]
+
+**RED**: `router.test.tsx` + `Header.test.tsx`
+- `/admin/webhooks`·`/admin/webhooks/$id/deliveries` 등록, `beforeLoad: composeGuards(requireAuth, requireSystemAdmin)`.
+- 비-admin 진입→/dashboard 리다이렉트(EC-8). Header에 admin일 때만 "Webhooks" 메뉴 노출, 비-admin 미노출.
+
+**GREEN**: `router.ts`에 `createRoute`×2(RouteAdapter 참조) + `Header.tsx` admin 메뉴 항목(`isSystemAdmin===true`).
+
+**REFACTOR**: 라우트 상수 정리.
+
+**검증**: `pnpm --filter web test -- router.test.tsx Header.test.tsx` + `pnpm --filter web typecheck`
+
+### Task 10. E2E happy path (Playwright)
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/webhook.spec.ts`]
+- depends-on: [9]
+
+**RED/GREEN**: admin fixture로 `/admin/webhooks` 진입→목록·생성·수정·삭제·이력 조회, 비-admin 차단(리다이렉트). MSW 상태 변화는 SPA 내부 라우팅으로 확인(reload 금지 EC-7). getByRole exact/컨테이너 스코프(strict mode), userEvent 긴 입력 delay:null.
+
+**검증**: `pnpm --filter web test:e2e -- webhook.spec.ts` + 기존 e2e 무회귀 스모크.
+
+## Plan 메타
+
+- task 수: 10
+- 예상 wave: 5 (W1: T1 / W2: T2·T3·T4·T5·T6 5병렬 / W3: T7·T8 2병렬 / W4: T9 / W5: T10 E2E)
+- 예상 시간: 직렬 ~30분, 병렬 wave 적용 시 ~12분
+- TDD 강제: yes (모든 task RED→GREEN→REFACTOR, test 커밋이 feat 커밋보다 선행)
+- agent: frontend-engineer(T1~T9) + qa-engineer(T10)
+- 백엔드 변경: 0 (순수 프론트, 마이그레이션 0, FR 총수 123 불변)
+- 추가 검증: `pnpm --filter web verify`(lint+typecheck+test+build) + E2E
+- 공유 파일 주의: `mocks/handlers.ts`(T3 단독 등록), `router.ts`/`Header.tsx`(T9 단독) — 파일 겹침으로 자동 직렬화, wave 충돌 없음
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
