@@ -39,6 +39,7 @@ import { trustedDevicesHandlers } from './trusted-devices-handlers'
 import { userHandlers } from './user-handlers'
 import { versionHandlers } from './version-handlers'
 import { webauthnHandlers } from './webauthn-handlers'
+import { webhookHandlers } from './webhook-handlers'
 import { workflowHandlers } from './workflow-handlers'
 import { worklogHandlers } from './worklog-handlers'
 import { worklogAggregateHandlers } from './worklog-aggregate-handlers'
@@ -102,6 +103,7 @@ export const handlers = [
   ...userHandlers,
   ...versionHandlers,
   ...webauthnHandlers,
+  ...webhookHandlers,
   ...worklogHandlers,
   ...worklogAggregateHandlers,
   ...savedFilterHandlers,
