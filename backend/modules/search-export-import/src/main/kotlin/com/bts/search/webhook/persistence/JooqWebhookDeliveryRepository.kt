@@ -38,8 +38,8 @@ class JooqWebhookDeliveryRepository(
     /**
      * 발송 시도 1건을 INSERT 한다.
      *
-     * `delivered_at`은 [status]가 [DeliveryStatus.SUCCEEDED]일 때만 기록 시각으로 채워지고,
-     * [DeliveryStatus.FAILED]면 null로 남는다 — 발송 자체가 이뤄지지 않았기 때문이다.
+     * `delivered_at`은 [resolveDeliveredAt]이 [status]에 따라 결정한다 — [DeliveryStatus.SUCCEEDED]면
+     * 기록 시각, [DeliveryStatus.FAILED]면 null(발송 자체가 이뤄지지 않았기 때문).
      */
     @Transactional
     override fun record(
@@ -52,7 +52,7 @@ class JooqWebhookDeliveryRepository(
     ): WebhookDelivery {
         val id = UUID.randomUUID()
         val now = OffsetDateTime.now(clock)
-        val deliveredAt = if (status == DeliveryStatus.SUCCEEDED) now else null
+        val deliveredAt = resolveDeliveredAt(status, now)
         log.debug("웹훅 발송 이력 기록 — webhookId={}, eventType={}, status={}", webhookId, eventType, status)
 
         val record =
@@ -90,7 +90,19 @@ class JooqWebhookDeliveryRepository(
             .fetch()
             .map { it.toDomain() }
 
-    // ── private mapper ─────────────────────────────────────────────────────────
+    // ── private helpers ────────────────────────────────────────────────────────
+
+    /**
+     * [status]에 따라 `delivered_at`에 저장할 값을 결정한다.
+     *
+     * `webhook_deliveries.delivered_at`은 "실제로 발송에 성공한 시각"을 뜻하므로,
+     * [DeliveryStatus.SUCCEEDED]일 때만 [now]를 반환하고 [DeliveryStatus.FAILED]면 null을
+     * 반환한다(발송 자체가 이뤄지지 않았기 때문 — `created_at`은 시도 시각으로 항상 채워진다).
+     */
+    private fun resolveDeliveredAt(
+        status: DeliveryStatus,
+        now: OffsetDateTime,
+    ): OffsetDateTime? = if (status == DeliveryStatus.SUCCEEDED) now else null
 
     /**
      * jOOQ [WebhookDeliveriesRecord]를 도메인 [WebhookDelivery]로 변환한다.
@@ -98,6 +110,9 @@ class JooqWebhookDeliveryRepository(
      * `webhook_id`/`event_type`/`status`는 DB DEFAULT 가 없는 NOT NULL 컬럼이라 jOOQ 가 이미
      * non-null Kotlin 타입으로 생성한다. `attempt_count`는 `DEFAULT 0`이 있어 nullable 타입으로
      * 생성되지만 [record]가 항상 명시적으로 값을 채우므로 여기서는 방어적으로만 확인한다.
+     * `id`/`created_at`도 DB DEFAULT(각각 `gen_random_uuid()`/`now()`)가 있어 nullable 타입이지만,
+     * [record]의 `RETURNING`과 [listByWebhook]의 조회 결과 모두 항상 값을 가지므로
+     * 도메인 [WebhookDelivery.createdAt]에는 `?.toInstant()`로 그대로 전달한다.
      */
     private fun WebhookDeliveriesRecord.toDomain(): WebhookDelivery =
         WebhookDelivery(

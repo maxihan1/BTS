@@ -24,6 +24,7 @@ interface WebhookDeliveryRepository {
      * @param errorDetail 실패 원인 요약. 성공 시 null.
      * @return id/createdAt이 채워진 기록 결과. [status]가 [DeliveryStatus.SUCCEEDED]면 deliveredAt도 채워진다.
      */
+    @Suppress("LongParameterList") // 발송 이력 레코드 필드 6개 — VO 분리보다 명시적 시그니처가 명료(OutboundWebhook.create 동일 사유)
     fun record(
         webhookId: UUID,
         eventType: String,
