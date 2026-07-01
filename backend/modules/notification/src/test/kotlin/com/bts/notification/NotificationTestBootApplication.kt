@@ -15,13 +15,17 @@ import org.springframework.transaction.annotation.EnableTransactionManagement
  * (memory: identity-access-prod-randomport-boot-recipe / no-cross-bc-deployment-assembly — test-assembled 현 표준.)
  *
  * ## 컴포넌트 스캔
- * `com.bts.notification` 패키지 하위 전체를 스캔한다.
+ * `com.bts.notification`, `com.bts.shared.http` 패키지 하위 전체를 스캔한다.
  * - prod 빈: [com.bts.notification.repository.NotificationPolicyRepository],
  *   [com.bts.notification.application.NotificationPolicyService],
  *   [com.bts.notification.application.NotificationPolicyEvaluator],
  *   [com.bts.notification.web.NotificationPolicyController],
  *   [com.bts.notification.web.NotificationExceptionHandler]
  * - test 전용 빈: [TestPermissionConfig] — fake [com.bts.shared.permission.SystemPermissionResolver]
+ * - `com.bts.shared.http` 스캔 사유: [com.bts.notification.webhook.WebhookDispatcher] 가 주입받는
+ *   [com.bts.shared.http.OutboundUrlValidator] / [com.bts.shared.http.OutboundHttpClientConfig] 가
+ *   shared-kernel 로 이동했으므로, notification 컨텍스트를 띄우는 모든 테스트가 매번 명시 등록하지
+ *   않도록 여기서 중앙 제공한다.
  *
  * ## Flyway 자동 구성 제외
  * Flyway 마이그레이션은 [NotificationTestcontainersConfig] 에서 직접 실행하므로
@@ -32,7 +36,7 @@ import org.springframework.transaction.annotation.EnableTransactionManagement
  * (memory: 트랜잭션 self-invocation REQUIRES_NEW — prod 코드가 올바른 구성 요건.)
  */
 @SpringBootApplication(
-    scanBasePackages = ["com.bts.notification"],
+    scanBasePackages = ["com.bts.notification", "com.bts.shared.http"],
     exclude = [
         FlywayAutoConfiguration::class,
         DataSourceAutoConfiguration::class,

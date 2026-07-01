@@ -24,7 +24,7 @@ import org.springframework.web.client.RestClientException
  * 5. 예외(타임아웃/연결/DNS) → [WebhookDispatchResult.Failed]
  *
  * ## 리다이렉트 차단 (FR8)
- * [RestClient] 는 [com.bts.notification.config.WebhookHttpClientConfig] 에서
+ * [RestClient] 는 [com.bts.shared.http.OutboundHttpClientConfig] 에서
  * [java.net.http.HttpClient.Redirect.NEVER] 로 구성된 JDK HttpClient 를 사용한다.
  * 3xx 응답은 따라가지 않고 non-2xx 로 처리 → [WebhookDispatchResult.Failed].
  *

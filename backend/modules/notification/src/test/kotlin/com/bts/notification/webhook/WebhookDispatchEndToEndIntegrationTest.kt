@@ -77,12 +77,9 @@ import javax.sql.DataSource
         NotificationTestBootApplication::class,
         WebhookDispatchEndToEndIntegrationTest.WebhookE2EConfig::class,
         TestPermissionConfig::class,
-        // OutboundUrlValidator/OutboundHttpClientConfig 는 shared-kernel(com.bts.shared.http)로 이동했으므로
-        // NotificationTestBootApplication(scanBasePackages=["com.bts.notification"]) 의 스캔 대상이 아니다.
-        // WebhookDispatcher 가 주입받는 빈(OutboundUrlValidator/RestClient)이라 명시 등록하지 않으면
-        // 부팅이 NoSuchBeanDefinition 으로 깨진다.
-        OutboundUrlValidator::class,
-        OutboundHttpClientConfig::class,
+        // OutboundUrlValidator/OutboundHttpClientConfig 는 shared-kernel(com.bts.shared.http)로 이동했으나,
+        // NotificationTestBootApplication 이 scanBasePackages 에 "com.bts.shared.http" 를 포함하도록
+        // 확장되어 스캔으로 등록되므로 여기서 명시 등록할 필요가 없다.
     ],
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
 )
