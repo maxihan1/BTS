@@ -222,16 +222,17 @@ patRepository.save(PersonalAccessToken(userId, tokenHash, ...))
 - KMS 암호화 후 DB 저장
 - `application.yml`의 키는 환경 변수에서 주입 (`${BTS_KMS_KEY:?required}`)
 
-## §9. 데이터 마이그레이션 (Jira Import)
+## §9. 데이터 마이그레이션 (Jira Import) — FR-IM-01 인앱 구현으로 갱신 (2026-07-02)
 
-Phase 4에서 Jira → BTS 마이그레이션 진행. 자세히. `docs/sdd/15-migration.md`.
+**초기 SDD 원안(별도 도구 `tools/jira-import/`·Phase 4·Jira 키 보존)은 FR-IM-01(PR #218)에서 인앱 기능으로 대체됐다.** 실제 구현 방식은 아래를 정본으로 한다(SDD 15장은 원안 참조용). ADR `docs/decisions/2026-07-02-fr-im-01-csv-json-import.md`.
 
-### 핵심 원칙
+### 실제 구현 원칙 (FR-IM-01)
 
-- Jira XML/CSV → BTS 형식 변환은 별도 도구 (`tools/jira-import/`)
-- 이슈 키 보존. Jira의 `PROJ-123`을 그대로 BTS 키로 사용 (충돌 시 prefix 추가)
-- 첨부파일은 MinIO로 별도 마이그레이션 (멱등성 보장)
-- 부분 실패 재시도. 체크포인트 테이블 (`import_checkpoint`)
+- **인앱 기능** — 별도 도구 아님. `POST /api/v1/imports`(multipart) → MinIO(`bts-imports`) 저장 → pgmq `q_import_jobs` 백그라운드 worker. search-export-import BC(`com.bts.search.imports`), FR-EX-02(비동기 Export) 역방향 미러.
+- **새 키 자동생성** — Jira 원본 키는 **보존하지 않는다**(`incrementKeySequence`로 새 키 발급). "이슈 키 재사용 금지" 원칙(§1.1)·충돌 위험 회피. (SDD 원안의 "Jira 키 보존"은 superseded — Maxi 확정.)
+- **행별 best-effort** — 한 행 실패가 다른 행 롤백 안 함(행 원자성: create+update 1 tx). 실패행은 에러 로그(MinIO CSV, formula injection 정화)에 기록. 별도 `import_checkpoint` 테이블 없이 `import_jobs`(V604)가 total/succeeded/failed 카운트 집계. 재실행 시 중복 생성 가능(MVP 허용, dry-run 사전검증 권장).
+- **에픽 PR 구조** — PR1 코어(이슈 코어 필드) → PR2 컴포넌트/버전 자동생성+상태 전이 → PR3 댓글/Worklog → PR4 첨부(zip 업로드)/이력. 첨부 바이너리는 **zip 아카이브 업로드**(서버 fetch 없음=SSRF 없음), MinIO 저장은 PR4.
+- **cross-BC 쓰기** — search BC는 issue-tracking을 직접 호출하지 않고 shared-kernel `IssueImportPort`(BTS 최초 쓰기 포트)로 위임. 권한(CREATE/UPDATE)은 issue-tracking `createIssue`/`updateIssue`가 판정(우회 불가).
 
 ## §10. 변경 이력
 
