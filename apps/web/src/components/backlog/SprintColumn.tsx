@@ -44,6 +44,9 @@ export interface SprintColumnProps {
 // 내부 — 상태 배지
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 헤더 액션 버튼/링크 공통 베이스 클래스 (시작·완료·번다운 3종이 공유) */
+const ACTION_BASE_CLASS = 'self-start rounded px-2 py-1 text-xs font-medium transition-colors'
+
 /** 스프린트 상태에 따른 배지 색상 클래스를 반환한다. */
 function statusBadgeClass(status: string): string {
   switch (status) {
@@ -114,11 +117,7 @@ function SprintColumnInner({
           <button
             type="button"
             onClick={onStart}
-            className={cn(
-              'self-start rounded px-2 py-1 text-xs font-medium',
-              'bg-primary text-primary-foreground hover:bg-primary/90',
-              'transition-colors',
-            )}
+            className={cn(ACTION_BASE_CLASS, 'bg-primary text-primary-foreground hover:bg-primary/90')}
             aria-label={backlogLabels.startSprint}
           >
             {backlogLabels.startSprint}
@@ -128,11 +127,7 @@ function SprintColumnInner({
           <button
             type="button"
             onClick={onComplete}
-            className={cn(
-              'self-start rounded px-2 py-1 text-xs font-medium',
-              'bg-green-600 text-white hover:bg-green-700',
-              'transition-colors',
-            )}
+            className={cn(ACTION_BASE_CLASS, 'bg-green-600 text-white hover:bg-green-700')}
             aria-label={backlogLabels.completeSprint}
           >
             {backlogLabels.completeSprint}
@@ -143,11 +138,7 @@ function SprintColumnInner({
         <Link
           to="/projects/$projectKey/sprints/$sprintId/burndown"
           params={{ projectKey, sprintId: sprint.sprintId }}
-          className={cn(
-            'self-start rounded px-2 py-1 text-xs font-medium',
-            'bg-secondary text-secondary-foreground hover:bg-secondary/80',
-            'transition-colors',
-          )}
+          className={cn(ACTION_BASE_CLASS, 'bg-secondary text-secondary-foreground hover:bg-secondary/80')}
           aria-label={`${sprint.name} ${burndownLabels.toggle.burndown} 보기`}
         >
           {burndownLabels.toggle.burndown}
