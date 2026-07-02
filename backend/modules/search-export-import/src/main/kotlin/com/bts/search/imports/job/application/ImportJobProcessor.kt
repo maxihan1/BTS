@@ -150,6 +150,16 @@ class ImportJobProcessor(
      * 파싱/생성이 모두 끝난 뒤 작업을 COMPLETED 로 전환한다.
      *
      * 실패행이 있으면 [uploadErrorLog] 로 CSV 를 업로드해 errorLogObjectKey 를 확보한다.
+     *
+     * ## progress/totalRows 확정 (PR1 코드리뷰 C2 수정)
+     *
+     * [handleRow] 의 주기 갱신은 [PROGRESS_UPDATE_INTERVAL_ROWS] 배수 행에서만
+     * [ImportJobRepository.updateCounts] 를 호출한다. 처리 행 수가 그 배수에 못 미치는 파일
+     * (예: 50 행)은 완료 시점까지 단 한 번도 갱신되지 않아 progress=0·totalRows=null 로 남았다.
+     * 100 행 이상인 파일도 마지막 배수 이후 처리된 잔여 행이 반영되지 않아 progress/totalRows 가
+     * 실제보다 낮게 stale 된다. 이를 막기 위해 [markCompleted][ImportJobRepository.markCompleted]
+     * 직전에 진행률을 100·totalRows 를 실제 처리 행수([RowProcessingState.rowCount])로 확정하는
+     * [ImportJobRepository.updateCounts] 를 한 번 더 호출한다.
      */
     private fun finalizeCompleted(
         job: ImportJob,
@@ -157,6 +167,13 @@ class ImportJobProcessor(
     ) {
         val errorLogObjectKey = if (state.failedRecords.isEmpty()) null else uploadErrorLog(job, state.failedRecords)
         val expiresAt = clock.instant().plusSeconds(RESULT_TTL_SECONDS)
+        repository.updateCounts(
+            job.id,
+            progress = COMPLETED_PROGRESS_PERCENT,
+            totalRows = state.rowCount,
+            succeededRows = state.succeededRows,
+            failedRows = state.failedRows,
+        )
         val marked =
             repository.markCompleted(job.id, state.succeededRows, state.failedRows, errorLogObjectKey, expiresAt)
         if (!marked) {
@@ -208,6 +225,14 @@ class ImportJobProcessor(
 
         /** 진행률 갱신 주기(행 수 단위). `ExportJobProcessor.PAGE_SIZE`(100) 갱신 빈도를 미러한다. */
         const val PROGRESS_UPDATE_INTERVAL_ROWS = 100L
+
+        /**
+         * COMPLETED 전환 시 확정하는 진행률(%).
+         *
+         * [finalizeCompleted] 가 [PROGRESS_UPDATE_INTERVAL_ROWS] 주기 갱신 누락분을 보정하기 위해
+         * 항상 이 값으로 진행률을 확정한다 (PR1 코드리뷰 C2 수정).
+         */
+        const val COMPLETED_PROGRESS_PERCENT = 100
 
         /** 결과(에러 로그) 파일 TTL(초) — 24시간. `ExportJobProcessor.RESULT_TTL_SECONDS` 와 동일 값. */
         @Suppress("MagicNumber")
