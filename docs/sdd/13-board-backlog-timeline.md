@@ -69,7 +69,7 @@
 
 ### 13.5.1 번다운 차트 (FR-RP-01)
 - X축: 스프린트 일자
-- Y축: 남은 스토리 포인트
+- Y축: 잔여 추정 시간(초) — 스토리 포인트는 BTS에 미구현이라 이슈 추정 시간(`original_estimate_seconds`)으로 대체
 - Ideal Line + Actual Line
 
 ### 13.5.2 번업 차트
@@ -91,9 +91,16 @@
 
 ## 13.6 데이터 소스
 
-번다운/벨로시티/CFD는 매일 자정 스냅샷 테이블에 저장:
+**번다운(FR-RP-01)은 on-the-fly in-memory 계산을 채택한다**(ADR [FR-RP-01 번다운/번업 차트 데이터 모델](../decisions/2026-07-02-fr-rp-01-burndown-burnup.md)). 요청마다 스프린트 소속 이슈의 `original_estimate_seconds`(총 스코프) + worklog `started_at` 일자별 누적을 조회해 시계열을 즉시 재구성한다.
+
+- 신규 스냅샷 테이블·스케줄러 없음
+- 과거 스프린트도 소급 계산 가능 (스냅샷 방식은 도입 이후 데이터만 쌓여 과거 소급이 불가능)
+- 1,000명 규모에서 스프린트당 이슈·worklog 행 수가 적어 요청 시 계산 부담은 무시 가능
+
+아래는 최초 설계 시점의 스냅샷 테이블 안이며, 번다운(FR-RP-01)은 위 결정으로 대체됐다. **벨로시티(FR-RP-02)/CFD(FR-RP-03)는 아직 미구현 — 각 FR 구현 시점에 데이터 소스를 별도 확정**한다.
 
 ```sql
+-- 미채택 설계(참고). 벨로시티/CFD 구현 시 재검토 대상
 CREATE TABLE sprint_burndown_snapshot (
     sprint_id BIGINT,
     snapshot_date DATE,
@@ -102,8 +109,6 @@ CREATE TABLE sprint_burndown_snapshot (
     PRIMARY KEY (sprint_id, snapshot_date)
 );
 ```
-
-매일 비동기 작업으로 갱신. 실시간은 in-memory 계산.
 
 ## 13.7 다음 챕터
 
