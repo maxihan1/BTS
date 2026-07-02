@@ -63,6 +63,14 @@ Sprint(agile-planning)는 sprint_issues에서 issue_key 집합을 얻고, 그 �
 - **BurnupPoint** (VO). 번업 시계열의 한 점 — { date, completedSeconds, scopeSeconds }.
 - 둘 다 read-model. 애그리거트/테이블 없음.
 
+## D6. 보안 그레인 — 이슈별 가시성 필터 (게이트2 C1, Maxi 확정)
+
+초안(NFR5)은 "프로젝트 BROWSE 1회, 이슈별 필터 미적용"이었으나, 코드리뷰 C1에서 **집계 시간값(totalScope·completed)으로 이슈별 기밀 이슈의 시간을 간접 추론 가능**함이 지적됨. 게이트2에서 Maxi가 **이슈별 가시성 필터 강화**를 확정.
+
+**결정**. 2단 필터 — (1) 프로젝트 BROWSE + (2) 집계 전 이슈 키를 뷰어 가시 집합으로 좁힘. `IssueRepository.filterVisibleIssueKeys(issueKeys, projectKey, viewer, access)`가 정본 보안 술어 `buildActiveSecureWhere`를 **재사용**(복제 금지 — isomorphic-clone-permission-guard-gap 회귀 방지). 포트 시그니처 `fetchBurndownSource(issueKeys, projectKey, viewerUserId)`. 어댑터는 `securityDirectory.accessibleLevels` → `filterVisibleIssueKeys` 위임(TimelineLookupAdapter 선례).
+
+**트레이드오프(수용)**. 차트가 뷰어 스코프라 이슈별 기밀이 걸린 프로젝트에서 뷰어별 부분값이 될 수 있음. 뷰어 스코프 부분값 고지(partial 플래그)는 후속 프론트(D6) 검토.
+
 ## SDD 동기화 대상 (같은 PR 내 필수)
 
 명세 deviation이므로 §명세/범위 변경 전수 동기화 규칙에 따라 같은 PR에서 갱신.
