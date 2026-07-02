@@ -210,7 +210,8 @@ class ImportJobRepositoryTest : SearchPersistenceTestBase() {
         repo.insert(job)
         repo.claimForRun(job.id)
 
-        val result = repo.markCompleted(job.id, succeededRows = 1_000L, failedRows = 0L, null, Instant.now().plusSeconds(1))
+        val result =
+            repo.markCompleted(job.id, succeededRows = 1_000L, failedRows = 0L, null, Instant.now().plusSeconds(1))
 
         assertThat(result).isTrue()
         assertThat(repo.findByIdForRequester(job.id, job.requesterUserId)!!.errorLogObjectKey).isNull()
