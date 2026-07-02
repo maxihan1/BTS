@@ -131,11 +131,13 @@
 
 **우선순위**. 높음 | **선행**. §3.1 | **Plan slug**. `dashboard/share`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — 공유 URL + iframe 임베드 + 권한 (책임. backend-engineer + security-engineer)
-- [ ] D3. 데이터 모델 — `dashboard_share_tokens` (책임. db-engineer)
-- [ ] D4. 백엔드 — `POST /api/v1/dashboards/{id}/share` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+> **PR 분할**. PR1(#216) = 백엔드 D1~D5. PR2 = 프론트 D6/D7(공유 모달·익명 뷰·E2E). ADR `2026-07-02-fr-db-03-dashboard-share`(직교 토큰 모델·익명 뷰=정적 가젯만·iframe MVP same-origin+스니펫).
+
+- [x] D1. 도메인 — DashboardShareToken(불투명 토큰 SHA-256 hex·취소=하드삭제 ephemeral) + ShareTokenMinter + AnonymousLayoutSanitizer(STATIC 화이트리스트 fail-closed) (책임. backend-engineer + security-engineer) — PR #216
+- [x] D2. 명세 — 공유 URL 토큰 + iframe 임베드 + 권한 (책임. backend-engineer + security-engineer) — PR #216 (직교 토큰=visibility 불변·익명뷰 정적가젯만·spec 2026-07-02)
+- [x] D3. 데이터 모델 — `dashboard_share_tokens`(token_hash TEXT UNIQUE·FK CASCADE·V408) (책임. db-engineer) — PR #216 (init_codegen 미러)
+- [x] D4. 백엔드 — 관리 `POST/GET/DELETE /api/v1/dashboards/{id}/shares`(소유자·MAX 20) + 익명 `GET /api/v1/public/dashboards/{token}`(permitAll GET·정화·404 열거차단) (책임. backend-engineer + security-engineer) — PR #216 (SecurityConfig cross-BC permitAll)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #216 (토큰 해싱·열거차단 404·정화 fail-closed·Clock 만료·교차조회 차단·HTTP e2e 라운드트립)
 - [ ] D6. 프론트 UI — 공유 모달 + 임베드 코드 복사 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
