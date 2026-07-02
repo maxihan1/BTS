@@ -34,7 +34,8 @@ import java.time.Instant
  * 미존재·만료·부모 삭제는 서비스가 모두 [PublicDashboardNotFoundException] 으로 수렴시킨다(존재 숨김).
  * 이 예외는 컨트롤러-로컬 @ExceptionHandler 로 명시 매핑해 404 를 보장한다 — catch-all 로 흘러 500 으로
  * 변질되거나 타 컨트롤러 advice 에 잘못 잡히는 것을 차단한다
- * (memory: catch-all-exceptionhandler-swallows-responsestatusexception / domain-exception-http-handler-basepackage-scope).
+ * (memory: catch-all-exceptionhandler-swallows-responsestatusexception /
+ * domain-exception-http-handler-basepackage-scope).
  *
  * ## 로그
  * 토큰 원문·해시는 절대 출력하지 않는다(DEVELOPMENT.md §1.2). 결과 상태만 debug 로 남긴다.
