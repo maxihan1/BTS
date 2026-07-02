@@ -77,4 +77,27 @@ class IssueImportPortTest {
         val failure = result as IssueImportResult.Failure
         assertThat(failure.message).isNull()
     }
+
+    @Test
+    fun `IssueImportCommand 는 필수 3개 필드만 지정해도 신규 필드 기본값을 갖는다`() {
+        val command = sampleCommand()
+
+        assertThat(command.statusName).isNull()
+        assertThat(command.fixVersionNames).isEmpty()
+        assertThat(command.affectsVersionNames).isEmpty()
+    }
+
+    @Test
+    fun `IssueImportCommand 는 필수 3개 필드만 지정해도 기존 필드 기본값이 무회귀 유지된다`() {
+        val command = sampleCommand()
+
+        assertThat(command.typeName).isNull()
+        assertThat(command.description).isNull()
+        assertThat(command.priority).isNull()
+        assertThat(command.reporterEmail).isNull()
+        assertThat(command.assigneeEmail).isNull()
+        assertThat(command.labels).isEmpty()
+        assertThat(command.componentNames).isEmpty()
+        assertThat(command.dryRun).isFalse()
+    }
 }
