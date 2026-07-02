@@ -133,7 +133,8 @@ CREATE INDEX ix_dashboard_share_tokens_dashboard ON dashboard_share_tokens(dashb
 
 ## 열린 항목 (게이트1에서 Maxi 확정)
 
-- **O-1 iframe 크로스오리진 프레이밍 범위.** MVP가 (a) 임베드 라우트 한정 `frame-ancestors` 완화까지 포함할지, (b) 스니펫 복사 + same-origin 프레이밍만 하고 크로스오리진 헤더/리버스프록시 설정은 후속 인프라로 미룰지. 현 인프라에 nginx 헤더 설정 파일 없음 → SPA 서빙 계층 확인 필요. **기본 제안(b)**: MVP는 익명 뷰 + 스니펫 복사 + same-origin 임베드 동작까지, 크로스오리진 프레이밍은 security-engineer가 서빙 계층 확정 후 후속.
+- **O-1 iframe 크로스오리진 프레이밍 범위 → ✅ 확정 (Maxi 게이트1 2026-07-02): (b) MVP = same-origin + 스니펫.**
+  PR2는 공유 링크 익명 뷰 + "임베드 코드 복사" + same-origin 프레이밍까지. 외부 사이트 크로스오리진 프레이밍(임베드 라우트 한정 `frame-ancestors` 완화 + 서빙 계층 헤더/리버스프록시)은 **후속 인프라**로 분리. 백엔드 PR1은 O-1과 무관.
 
 ## PR 분할 힌트 (bts-plan에서 확정)
 
