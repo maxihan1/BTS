@@ -62,9 +62,19 @@
 - [docs/decisions/2026-07-02-fr-rp-02-velocity.md](../decisions/2026-07-02-fr-rp-02-velocity.md) (생성됨)
 - 선행: `2026-07-02-fr-rp-01-burndown-burnup`, FR-EP-02 진행률 결정.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-02-fr-rp-02-velocity.md](../specs/2026-07-02-fr-rp-02-velocity.md)
+
+핵심 계약 요약.
+- `GET /api/v1/projects/{projectKey}/velocity?limit=10` → `DataResponse<VelocityResponse>`.
+- 스프린트별 `commitmentSeconds`(현재 속한 가시 이슈 추정합) vs `completedSeconds`(그중 DONE 카테고리 추정합), 시간순 오름차순 + 평균 2개.
+- 신규 스키마 0. 신규 포트 `SprintVelocityLookupPort`(shared-kernel 정의·issue-tracking 구현)가 가시성 필터+추정합+DONE 판정을 한 곳에서.
+- 보안: 프로젝트 BROWSE(403) + actor-first(401) + 이슈별 가시성 필터(기밀 누출 0). 날짜 불필요(422 없음).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). 자체 적대 검토 3개 보강(`unit` 필드 제거·commitment deviation 명시·포트 부분반환 (0,0) 기본). 잔여 확인은 plan에서(프로젝트 미존재 404 vs 403, 포트 최종 시그니처).
 
 ## Plan (← /bts-plan 채움)
 
