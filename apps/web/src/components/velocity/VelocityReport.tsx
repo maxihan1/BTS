@@ -12,9 +12,9 @@ import { velocityLabels } from '@/i18n/velocity-labels'
 
 interface VelocityStatusMessageProps {
   /** 표시할 안내 문구 */
-  message: string
+  readonly message: string
   /** 로딩 상태에서만 role="status"로 스크린리더에 진행중임을 알린다 */
-  role?: 'status'
+  readonly role?: 'status'
 }
 
 /** 로딩/에러/빈 상태 공용 안내 화면 */
@@ -50,7 +50,7 @@ function resolveErrorMessage(error: unknown): string {
 /** VelocityReport props */
 interface VelocityReportProps {
   /** 조회할 프로젝트 키 */
-  projectKey: string
+  readonly projectKey: string
 }
 
 /**
