@@ -161,17 +161,17 @@ class JdbcPersonalAccessTokenRepository(
     private val jdbc: NamedParameterJdbcTemplate,
     private val objectMapper: ObjectMapper,
 ) : PersonalAccessTokenRepository {
-
     override fun save(pat: PersonalAccessToken): PersonalAccessToken {
         val scopesJson = serializeScopes(pat.scopes)
-        val params = mapOf(
-            "id" to pat.id,
-            "userId" to pat.userId,
-            "name" to pat.name,
-            "tokenHash" to pat.tokenHash,
-            "scopes" to scopesJson,
-            "expiresAt" to pat.expiresAt?.let { Timestamp.from(it) },
-        )
+        val params =
+            mapOf(
+                "id" to pat.id,
+                "userId" to pat.userId,
+                "name" to pat.name,
+                "tokenHash" to pat.tokenHash,
+                "scopes" to scopesJson,
+                "expiresAt" to pat.expiresAt?.let { Timestamp.from(it) },
+            )
         return jdbc.queryForObject(SQL_INSERT, params, rowMapper)
             ?: error("INSERT RETURNING 결과 없음 — id=${pat.id}")
     }
@@ -228,8 +228,7 @@ class JdbcPersonalAccessTokenRepository(
 
     // ── 직렬화 헬퍼 ──────────────────────────────────────────────────────────
 
-    private fun serializeScopes(scopes: List<String>): String =
-        objectMapper.writeValueAsString(scopes)
+    private fun serializeScopes(scopes: List<String>): String = objectMapper.writeValueAsString(scopes)
 
     private fun deserializeScopes(json: String?): List<String> {
         if (json == null) return emptyList()
@@ -260,7 +259,6 @@ class JdbcPersonalAccessTokenRepository(
     // ── SQL 상수 ─────────────────────────────────────────────────────────────
 
     private companion object {
-
         /** scopes List<String> 역직렬화 TypeReference — ObjectMapper reuse. */
         val SCOPES_TYPE_REF: TypeReference<List<String>> = object : TypeReference<List<String>>() {}
 

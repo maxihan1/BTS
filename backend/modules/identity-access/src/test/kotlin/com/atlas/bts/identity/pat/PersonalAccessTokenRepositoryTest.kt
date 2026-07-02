@@ -20,6 +20,9 @@ import java.sql.Timestamp
 import java.time.Instant
 import java.util.UUID
 
+// JacksonAutoConfiguration 명시 — @JdbcTest 슬라이스는 ObjectMapper 자동 구성을 포함하지 않으므로
+// JdbcPersonalAccessTokenRepository 의 scopes JSONB 직렬화에 필요한 ObjectMapper Bean 을 공급한다.
+
 /**
  * PersonalAccessTokenRepository 통합 테스트 (FR-AU-09 Task 10).
  *
@@ -31,14 +34,11 @@ import java.util.UUID
  * EC-26. token_hash = SHA-256("pat_" + body) 64자 hex 저장, raw token 미저장.
  * EC-27. expires_at nullable — 무기한 PAT.
  */
-// JacksonAutoConfiguration 명시 — @JdbcTest 슬라이스는 ObjectMapper 자동 구성을 포함하지 않으므로
-// JdbcPersonalAccessTokenRepository 의 scopes JSONB 직렬화에 필요한 ObjectMapper Bean 을 공급한다.
 @JdbcTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(JdbcPersonalAccessTokenRepository::class, JacksonAutoConfiguration::class)
 @Testcontainers
 class PersonalAccessTokenRepositoryTest {
-
     companion object {
         @Container
         @JvmStatic
@@ -202,10 +202,11 @@ class PersonalAccessTokenRepositoryTest {
 
     @Test
     fun `findActiveByUserId — 만료된 PAT 제외`() {
-        val expired = buildPat(
-            tokenHash = TOKEN_HASH_A,
-            expiresAt = Instant.now().minusSeconds(1),
-        )
+        val expired =
+            buildPat(
+                tokenHash = TOKEN_HASH_A,
+                expiresAt = Instant.now().minusSeconds(1),
+            )
         repo.save(expired)
         val active = repo.save(buildPat(tokenHash = TOKEN_HASH_B, expiresAt = null))
 
@@ -271,9 +272,10 @@ class PersonalAccessTokenRepositoryTest {
     @Test
     fun `listByUserIncludingExpired — revoke 만 제외하고 만료 포함, createdAt DESC 정렬`() {
         val active = repo.save(buildPat(tokenHash = TOKEN_HASH_A, name = "active"))
-        val expired = repo.save(
-            buildPat(tokenHash = TOKEN_HASH_B, name = "expired", expiresAt = Instant.now().minusSeconds(3600)),
-        )
+        val expired =
+            repo.save(
+                buildPat(tokenHash = TOKEN_HASH_B, name = "expired", expiresAt = Instant.now().minusSeconds(3600)),
+            )
         val revoked = repo.save(buildPat(tokenHash = TOKEN_HASH_C, name = "revoked"))
         repo.revoke(revoked.id)
 
@@ -412,7 +414,10 @@ class PersonalAccessTokenRepositoryTest {
     }
 
     /** created_at 을 명시적으로 세팅 — DESC 정렬을 결정적으로 검증하기 위함. */
-    private fun setCreatedAt(id: UUID, at: Instant) {
+    private fun setCreatedAt(
+        id: UUID,
+        at: Instant,
+    ) {
         jdbc.update(
             "UPDATE personal_access_tokens SET created_at = :at WHERE id = :id",
             mapOf("at" to Timestamp.from(at), "id" to id),

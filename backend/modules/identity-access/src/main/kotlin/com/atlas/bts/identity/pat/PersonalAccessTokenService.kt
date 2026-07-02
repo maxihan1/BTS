@@ -113,7 +113,6 @@ class PersonalAccessTokenService(
     private val jdbc: NamedParameterJdbcTemplate,
     private val clock: Clock = Clock.systemUTC(),
 ) {
-
     private val log = LoggerFactory.getLogger(PersonalAccessTokenService::class.java)
 
     /**
@@ -173,7 +172,10 @@ class PersonalAccessTokenService(
      * @param scope 확인할 scope 문자열 (예: `"read:issues"`)
      * @return scope 가 허용되면 true, 아니면 false
      */
-    fun hasScope(pat: PersonalAccessToken, scope: String): Boolean = pat.hasScope(scope)
+    fun hasScope(
+        pat: PersonalAccessToken,
+        scope: String,
+    ): Boolean = pat.hasScope(scope)
 
     /**
      * 새 PAT 를 발급하고 raw token(1회 노출)을 포함한 결과를 반환한다 (FR-API-04).

@@ -60,15 +60,16 @@ class AuthAuditLogServiceTest {
     @Test
     fun `record 후 findRecent 로 조회되어야 한다`() {
         val userId = UUID.randomUUID()
-        val event = AuthAuditLog(
-            userId = userId,
-            eventType = AuthEventType.LOGIN_SUCCESS,
-            providerId = "local",
-            ipAddress = "127.0.0.1",
-            userAgent = "Mozilla/5.0",
-            deviceFingerprint = null,
-            metadata = emptyMap(),
-        )
+        val event =
+            AuthAuditLog(
+                userId = userId,
+                eventType = AuthEventType.LOGIN_SUCCESS,
+                providerId = "local",
+                ipAddress = "127.0.0.1",
+                userAgent = "Mozilla/5.0",
+                deviceFingerprint = null,
+                metadata = emptyMap(),
+            )
 
         service.record(event)
 
@@ -126,7 +127,7 @@ class AuthAuditLogServiceTest {
                     eventType = eventType,
                     providerId = "local",
                     metadata = mapOf("test" to eventType.name),
-                )
+                ),
             )
         }
 
@@ -141,17 +142,18 @@ class AuthAuditLogServiceTest {
     @Test
     fun `동시 record 호출 시 데이터 유실 없이 저장된다`() {
         val userId = UUID.randomUUID()
-        val threads = (1..20).map {
-            Thread {
-                service.record(
-                    AuthAuditLog(
-                        userId = userId,
-                        eventType = AuthEventType.LOGIN_SUCCESS,
-                        providerId = "local",
+        val threads =
+            (1..20).map {
+                Thread {
+                    service.record(
+                        AuthAuditLog(
+                            userId = userId,
+                            eventType = AuthEventType.LOGIN_SUCCESS,
+                            providerId = "local",
+                        ),
                     )
-                )
+                }
             }
-        }
         threads.forEach { it.start() }
         threads.forEach { it.join() }
 
@@ -163,12 +165,13 @@ class AuthAuditLogServiceTest {
 
     @Test
     fun `userId 가 null 인 사용자 미상 이벤트를 record 할 수 있다`() {
-        val event = AuthAuditLog(
-            userId = null,
-            eventType = AuthEventType.LOGIN_FAILURE,
-            providerId = "local",
-            metadata = mapOf("reason" to "INVALID_CREDENTIALS"),
-        )
+        val event =
+            AuthAuditLog(
+                userId = null,
+                eventType = AuthEventType.LOGIN_FAILURE,
+                providerId = "local",
+                metadata = mapOf("reason" to "INVALID_CREDENTIALS"),
+            )
 
         service.record(event)
 
@@ -198,14 +201,15 @@ class AuthAuditLogServiceTest {
     @Test
     fun `metadata 는 빈 map 이 기본값이고 null 필드는 허용된다`() {
         val userId = UUID.randomUUID()
-        val event = AuthAuditLog(
-            userId = userId,
-            eventType = AuthEventType.SUSPICIOUS_REFRESH_REPLAY,
-            providerId = "local",
-            ipAddress = null,
-            userAgent = null,
-            deviceFingerprint = null,
-        )
+        val event =
+            AuthAuditLog(
+                userId = userId,
+                eventType = AuthEventType.SUSPICIOUS_REFRESH_REPLAY,
+                providerId = "local",
+                ipAddress = null,
+                userAgent = null,
+                deviceFingerprint = null,
+            )
 
         service.record(event)
 

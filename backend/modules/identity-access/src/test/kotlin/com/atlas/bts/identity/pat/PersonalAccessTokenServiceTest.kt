@@ -1,4 +1,5 @@
-// PersonalAccessTokenService 단위 테스트 — verify/markLastUsed/hasScope + issue/listByUser/revoke (FR-AU-09 Task 18 · FR-API-04 Task 4)
+// PersonalAccessTokenService 단위 테스트 — verify/markLastUsed/hasScope
+// + issue/listByUser/revoke (FR-AU-09 Task 18 · FR-API-04 Task 4)
 
 package com.atlas.bts.identity.pat
 
@@ -43,7 +44,6 @@ import java.util.UUID
  * 시각. 발급/폐기 시각 비교는 주입 [Clock] 기준 — time-bomb 회피(authcontroller-revokesession-timebomb 교훈).
  */
 class PersonalAccessTokenServiceTest {
-
     private lateinit var patRepository: PersonalAccessTokenRepository
     private lateinit var auditLogService: AuthAuditLogService
     private lateinit var jdbc: NamedParameterJdbcTemplate
@@ -56,8 +56,8 @@ class PersonalAccessTokenServiceTest {
 
     /** 테스트 환경에서 SHA-256 계산 없이 고정 hash 를 사용하기 위한 raw token.
      *  PersonalAccessTokenService 내부의 sha256Hex(raw) 결과가 아래 KNOWN_HASH 와 일치해야 통과. */
-    private val rawToken = "pat_testbody000000000000000000000000000000000000"   // "pat_" + 44자 (≠ 48자, 검증용)
-    private val rawTokenValid = "pat_" + "x".repeat(48)                          // 규격 맞는 52자 raw token
+    private val rawToken = "pat_testbody000000000000000000000000000000000000" // "pat_" + 44자 (≠ 48자, 검증용)
+    private val rawTokenValid = "pat_" + "x".repeat(48) // 규격 맞는 52자 raw token
 
     /** SHA-256("pat_" + "x".repeat(48)) 를 미리 계산해둔 hex — GREEN 단계에서 실제 계산값과 일치해야 함. */
     private val knownHash = sha256Hex(rawTokenValid)
