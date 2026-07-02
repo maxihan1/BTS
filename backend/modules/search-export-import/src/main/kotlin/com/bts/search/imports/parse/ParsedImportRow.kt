@@ -29,6 +29,10 @@ package com.bts.search.imports.parse
  *   JSON 은 `fields.fixVersions[].name`.
  * @property affectsVersionNames 영향 버전 이름 목록. CSV 는 `affects version` 컬럼(콤마/세미콜론 분리),
  *   JSON 은 `fields.versions[].name`.
+ * @property comments 이슈에 동반 import 할 댓글 목록(PR3). CSV 는 동명 `Comment` 컬럼 전부(각 셀
+ *   `date;author;body` 세미콜론 분해), JSON 은 `fields.comment.comments[]`. 원본 순서를 보존한다.
+ * @property worklogs 이슈에 동반 import 할 작업 기록(worklog) 목록(PR3). JSON `fields.worklog.worklogs[]`
+ *   전용 — CSV 는 Jira 표준 worklog export 형식이 없어 미지원(항상 emptyList).
  */
 data class ParsedImportRow(
     val rowNumber: Int,
@@ -43,4 +47,42 @@ data class ParsedImportRow(
     val statusName: String? = null,
     val fixVersionNames: List<String> = emptyList(),
     val affectsVersionNames: List<String> = emptyList(),
+    val comments: List<ParsedImportComment> = emptyList(),
+    val worklogs: List<ParsedImportWorklog> = emptyList(),
+)
+
+/**
+ * CSV/JSON import 파일에서 파싱한 댓글 1건의 raw 값(PR3).
+ *
+ * [ImportRowParser] 가 직접 생성하는 파서-로컬 값 객체다. [createdAt] 은 원본 문자열 그대로 담고
+ * (아직 [java.time.Instant] 로 변환하지 않는다), `Instant` 변환은 [com.bts.shared.issue.ImportComment]
+ * 로 매핑하는 시점([com.bts.search.imports.job.application.ImportJobProcessor.toCommand])에서 수행한다.
+ *
+ * @property body 댓글 본문. 빈 문자열/공백 처리는 다음 단계(Task 7 어댑터) 책임.
+ * @property authorEmail 작성자 이메일 원본 문자열. 매칭·소문자화는 다음 단계 책임.
+ * @property createdAt 원본 작성 시각 문자열(ISO-8601 기대). 파싱 가능 여부 판단은 다음 단계 책임.
+ */
+data class ParsedImportComment(
+    val body: String,
+    val authorEmail: String?,
+    val createdAt: String?,
+)
+
+/**
+ * CSV/JSON import 파일에서 파싱한 작업 기록(worklog) 1건의 raw 값(PR3).
+ *
+ * JSON `fields.worklog.worklogs[]` 전용 — CSV 는 미지원이라 이 타입은 JSON 파서에서만 생성된다.
+ *
+ * @property timeSpentSeconds 소요 시간(초). JSON 값이 숫자가 아니거나 없으면 0(다음 단계에서
+ *   `timeSpentSeconds <= 0` 검증으로 best-effort 스킵 처리).
+ * @property startedAt 원본 작업 시작 시각 문자열(ISO-8601 기대). [ParsedImportComment.createdAt] 과
+ *   동일하게 원본 문자열을 그대로 담는다.
+ * @property authorEmail 작성자 이메일 원본 문자열.
+ * @property comment worklog 에 첨부된 코멘트. 없으면 null.
+ */
+data class ParsedImportWorklog(
+    val timeSpentSeconds: Int,
+    val startedAt: String?,
+    val authorEmail: String?,
+    val comment: String? = null,
 )
