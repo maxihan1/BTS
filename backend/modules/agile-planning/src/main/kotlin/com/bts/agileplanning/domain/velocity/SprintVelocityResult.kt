@@ -41,10 +41,20 @@ data class SprintVelocityResult(
 
             return SprintVelocityResult(
                 projectKey = projectKey,
-                averageCommitmentSeconds = points.sumOf { it.commitmentSeconds } / points.size,
-                averageCompletedSeconds = points.sumOf { it.completedSeconds } / points.size,
+                averageCommitmentSeconds = average(points) { it.commitmentSeconds },
+                averageCompletedSeconds = average(points) { it.completedSeconds },
                 points = points,
             )
         }
+
+        /**
+         * [points] 가 비어있지 않다는 전제 하에 [selector] 값들의 산술평균을 계산한다.
+         *
+         * Long 나눗셈(`sum / count`)을 사용하므로 소수점 이하는 반내림(floor)된다.
+         */
+        private fun average(
+            points: List<VelocityPoint>,
+            selector: (VelocityPoint) -> Long,
+        ): Long = points.sumOf(selector) / points.size
     }
 }
