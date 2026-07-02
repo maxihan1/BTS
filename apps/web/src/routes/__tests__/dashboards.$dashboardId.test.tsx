@@ -51,6 +51,30 @@ vi.mock('@/components/dashboard/GadgetCatalogModal', () => ({
   },
 }))
 
+// ShareDashboardModal mock — open 시 dashboardId/visibility props를 캡처, onClose로 닫기 트리거 (FR-DB-03 D6/D7 Task 6)
+let capturedShareDashboardId: string | null = null
+let capturedShareVisibility: string | null = null
+
+vi.mock('@/components/dashboard/ShareDashboardModal', () => ({
+  ShareDashboardModal: (props: {
+    dashboardId: string
+    visibility: string
+    open: boolean
+    onClose: () => void
+  }) => {
+    if (!props.open) return null
+    capturedShareDashboardId = props.dashboardId
+    capturedShareVisibility = props.visibility
+    return (
+      <div role="dialog" data-testid="share-dashboard-modal">
+        <button type="button" onClick={props.onClose}>
+          공유 모달 닫기
+        </button>
+      </div>
+    )
+  },
+}))
+
 vi.mock('@/components/dashboard/DashboardGrid', () => ({
   DashboardGrid: (props: {
     tiles: unknown[]
@@ -210,6 +234,8 @@ beforeEach(() => {
   capturedGridOnDeleteTile = null
   capturedFavTargetType = null
   capturedFavTargetId = null
+  capturedShareDashboardId = null
+  capturedShareVisibility = null
 
   vi.clearAllMocks()
 
@@ -620,6 +646,79 @@ describe('대시보드 삭제', () => {
     // 확인 UI가 사라지고 mutateAsync가 호출되지 않아야 한다
     await waitFor(() => expect(screen.queryByRole('button', { name: /확인/i })).toBeNull())
     expect(mockDeleteMutateAsync).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 공유 버튼 배선 (FR-DB-03 D6/D7 Task 6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('공유 버튼', () => {
+  /**
+   * T-DB03-SH1. 소유자이면 헤더 액션 그룹에 "공유" 버튼이 렌더된다 (FR-8).
+   */
+  it('T-DB03-SH1: 소유자이면 공유 버튼이 렌더된다', async () => {
+    mockUseDashboard.mockReturnValue({ data: DASHBOARD_OWNED, isLoading: false, isError: false })
+    await renderDetailPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: /공유/i })).toBeInTheDocument())
+  })
+
+  /**
+   * T-DB03-SH2. 비소유자이면 공유 버튼이 없다 (FR-8 — 소유자 전용).
+   */
+  it('T-DB03-SH2: 비소유자이면 공유 버튼이 없다', async () => {
+    mockUseDashboard.mockReturnValue({ data: DASHBOARD_NOT_OWNED, isLoading: false, isError: false })
+    await renderDetailPage(DASHBOARD_NOT_OWNED.id)
+    await waitFor(() => expect(screen.getByTestId('dashboard-grid')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /공유/i })).toBeNull()
+  })
+
+  /**
+   * T-DB03-SH3. 공유 버튼 클릭 시 ShareDashboardModal이 마운트되고
+   * dashboardId·visibility props가 전달된다 (조건부 마운트 — catalogOpen 패턴).
+   */
+  it('T-DB03-SH3: 공유 버튼 클릭 시 ShareDashboardModal이 dashboardId·visibility와 함께 마운트된다', async () => {
+    const user = userEvent.setup()
+    mockUseDashboard.mockReturnValue({ data: DASHBOARD_OWNED, isLoading: false, isError: false })
+    await renderDetailPage()
+    // 모달이 클릭 전에는 마운트되지 않는다 (조건부 마운트)
+    expect(screen.queryByTestId('share-dashboard-modal')).toBeNull()
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /공유/i })).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /공유/i }))
+
+    await waitFor(() => expect(screen.getByTestId('share-dashboard-modal')).toBeInTheDocument())
+    expect(capturedShareDashboardId).toBe(DASHBOARD_OWNED.id)
+    expect(capturedShareVisibility).toBe(DASHBOARD_OWNED.visibility)
+  })
+
+  /**
+   * T-DB03-SH4. 모달의 onClose 콜백 호출 시 ShareDashboardModal이 언마운트된다.
+   */
+  it('T-DB03-SH4: 모달 onClose 호출 시 ShareDashboardModal이 닫힌다', async () => {
+    const user = userEvent.setup()
+    mockUseDashboard.mockReturnValue({ data: DASHBOARD_OWNED, isLoading: false, isError: false })
+    await renderDetailPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: /공유/i })).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /공유/i }))
+    await waitFor(() => expect(screen.getByTestId('share-dashboard-modal')).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: '공유 모달 닫기' }))
+    await waitFor(() => expect(screen.queryByTestId('share-dashboard-modal')).toBeNull())
+  })
+
+  /**
+   * T-DB03-SH5. 삭제 인라인 확인(showDeleteConfirm) 중에는 공유 버튼도 숨겨진다
+   * (정상 액션 그룹 분기 안에 배치 — 기존 가젯추가/설정/삭제/저장 버튼과 동일 규칙).
+   */
+  it('T-DB03-SH5: 삭제 인라인 확인 중에는 공유 버튼이 숨겨진다', async () => {
+    const user = userEvent.setup()
+    mockUseDashboard.mockReturnValue({ data: DASHBOARD_OWNED, isLoading: false, isError: false })
+    await renderDetailPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: /^삭제$/ })).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /^삭제$/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /확인/i })).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /공유/i })).toBeNull()
   })
 })
 
