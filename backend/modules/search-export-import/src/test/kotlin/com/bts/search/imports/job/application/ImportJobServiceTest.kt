@@ -1,4 +1,4 @@
-// ImportJobService 단위 테스트 — MockK repository/storage/enqueue/permission, 접수 권한 fail-fast/크기/형식 검증 (FR-IM-01 PR1 Task 11)
+// ImportJobService 단위 테스트 — 권한 fail-fast/크기/형식 검증, MinIO/persist/enqueue 경계 (FR-IM-01 PR1 Task 11)
 
 package com.bts.search.imports.job.application
 
@@ -62,7 +62,15 @@ class ImportJobServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = ImportJobService(repository, storage, enqueuePublisher, permissionResolver, transactionTemplate, fixedClock)
+        service =
+            ImportJobService(
+                repository,
+                storage,
+                enqueuePublisher,
+                permissionResolver,
+                transactionTemplate,
+                fixedClock,
+            )
         every {
             permissionResolver.hasPermission(any(), any(), any())
         } returns true
@@ -74,7 +82,9 @@ class ImportJobServiceTest {
         }
     }
 
-    private fun csvStream(content: String = "summary\nTest issue\n"): ByteArrayInputStream = ByteArrayInputStream(content.toByteArray())
+    private fun csvStream(content: String = "summary\nTest issue\n"): ByteArrayInputStream {
+        return ByteArrayInputStream(content.toByteArray())
+    }
 
     private fun command(
         format: String = "CSV",

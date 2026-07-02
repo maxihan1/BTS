@@ -264,7 +264,12 @@ class ImportControllerTest {
     // ── private helpers ────────────────────────────────────────────────────────
 
     private fun csvFile(): MockMultipartFile =
-        MockMultipartFile("file", "issues.csv", "text/csv", "summary\nTest issue\n".toByteArray())
+        MockMultipartFile(
+            "file",
+            "issues.csv",
+            "text/csv",
+            "summary\nTest issue\n".toByteArray(),
+        )
 
     private fun uploadRequest(
         projectKey: String = "PROJ",
