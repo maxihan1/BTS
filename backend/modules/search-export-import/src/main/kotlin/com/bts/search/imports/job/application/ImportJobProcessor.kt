@@ -54,6 +54,14 @@ import java.time.OffsetDateTime
  * 전달한다. 실제 생성 여부는 [IssueImportPort] 구현체(어댑터) 책임이며, dryRun 결과도 성공/실패
  * 집계에 동일하게 반영된다(검증 리포트 용도).
  *
+ * ## 댓글/worklog 매핑 (PR3)
+ *
+ * [toCommand] 가 [ParsedImportRow.comments]/[ParsedImportRow.worklogs](원본 문자열 raw 값)를
+ * [ImportComment]/[ImportWorklog](shared-kernel VO) 로 변환한다 — [toImportComment]/[toImportWorklog].
+ * 작성자 이메일은 소문자화하고, 원본 시각 문자열은 [parseInstantOrNull] 로 [Instant] 변환을 시도한다.
+ * 값이 없거나 파싱에 실패하면 null 을 담는다(created=now 대체, worklog 스킵 등 best-effort 폴백은
+ * 이 클래스가 아니라 어댑터(Task 7, issue-tracking) 책임 — 이 클래스는 순수 변환만 한다).
+ *
  * @param issueImportPort 이슈 생성 cross-BC 쓰기 포트.
  * @param storage 원본 파일 조회 + 에러 로그 업로드용 오브젝트 스토리지 포트.
  * @param repository Import 작업 상태 관리 저장소.

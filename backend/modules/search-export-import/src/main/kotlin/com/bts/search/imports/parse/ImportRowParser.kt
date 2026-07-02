@@ -35,6 +35,15 @@ import java.io.InputStreamReader
  *
  * 임의 Jira 헤더(`Component/s` 등)·자유 매핑은 FR-IM-02(매핑 UI) 몫 — 본 PR은 canonical 컬럼명만 인식한다.
  *
+ * ### 댓글/worklog (PR3)
+ *
+ * 댓글은 CSV/JSON 모두 지원한다. CSV 는 Jira 가 댓글 N 건을 동명 `Comment` 컬럼 N 개로 export 하므로
+ * [commentColumnPositions] 로 전 위치를 수집해 각 셀을 `date;author;body` 로 분해한다([parseCsvCommentCell]).
+ * JSON 은 `fields.comment.comments[]` 원소를 [jsonCommentOf] 로 개별 추출한다.
+ * worklog 는 **JSON 전용**(`fields.worklog.worklogs[]`, [jsonWorklogOf]) — Jira CSV 는 표준 worklog
+ * export 형식이 없어 CSV 행은 항상 `worklogs = emptyList()` 다. 원본 시각 문자열은 이 단계에서
+ * [java.time.Instant] 로 변환하지 않는다 — [ParsedImportComment]/[ParsedImportWorklog] KDoc 참조.
+ *
  * ### 파일 구조 오류
  *
  * 헤더 행이 없거나 필수 컬럼(Summary)이 없는 CSV, `issues` 배열이 없거나 문법이 깨진 JSON은
