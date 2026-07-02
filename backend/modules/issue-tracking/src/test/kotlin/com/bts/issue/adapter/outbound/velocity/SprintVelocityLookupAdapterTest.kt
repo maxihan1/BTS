@@ -88,7 +88,7 @@ class SprintVelocityLookupAdapterTest {
                     .withPassword("bts_velocity_test")
                     .apply { start() }
 
-            internal val securityDirectory = SwitchableSecurityDirectory()
+            val securityDirectory = SwitchableSecurityDirectory()
         }
 
         @Bean
@@ -186,19 +186,23 @@ class SprintVelocityLookupAdapterTest {
             WorkflowStateCatalogImpl(workflowResolver)
 
         @Bean
+        open fun isolatedWorkflowStateLookup(workflowStateCatalog: WorkflowStateCatalogImpl): IsolatedWorkflowStateLookup =
+            IsolatedWorkflowStateLookup(workflowStateCatalog)
+
+        @Bean
         open fun sprintVelocityLookupAdapter(
             dsl: DSLContext,
             securityDirectory: IssueSecurityDirectory,
             issueRepository: IssueRepository,
             issueTypeRepository: IssueTypeRepository,
-            workflowStateCatalog: WorkflowStateCatalogImpl,
+            workflowStateLookup: IsolatedWorkflowStateLookup,
         ): SprintVelocityLookupAdapter =
             SprintVelocityLookupAdapter(
                 dsl = dsl,
                 securityDirectory = securityDirectory,
                 issueRepository = issueRepository,
                 issueTypeRepository = issueTypeRepository,
-                workflowStateCatalog = workflowStateCatalog,
+                workflowStateLookup = workflowStateLookup,
             )
     }
 
@@ -644,7 +648,7 @@ class SprintVelocityLookupAdapterTest {
  * 필터 로직 자체는 정본 `buildActiveSecureWhere` SQL 술어가 담당한다 — 이 stub 은 access 값만 전달한다
  * ([SprintBurndownLookupAdapterIntegrationTest.StubSecurityDirectory] 선례와 동일 패턴).
  */
-private class SwitchableSecurityDirectory : IssueSecurityDirectory {
+class SwitchableSecurityDirectory : IssueSecurityDirectory {
     var access: IssueSecurityAccess = UNRESTRICTED
 
     override fun levelBelongsToProjectScheme(
