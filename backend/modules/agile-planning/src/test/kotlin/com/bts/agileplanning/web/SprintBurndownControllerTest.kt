@@ -82,8 +82,9 @@ class SprintBurndownControllerTest {
         open fun sprintBurndownService(): SprintBurndownService = mockk(relaxed = true)
 
         @Bean
-        open fun sprintBurndownController(service: SprintBurndownService): SprintBurndownController =
-            SprintBurndownController(service)
+        open fun sprintBurndownController(service: SprintBurndownService): SprintBurndownController {
+            return SprintBurndownController(service)
+        }
 
         @Bean
         open fun sprintExceptionHandler(): SprintExceptionHandler = SprintExceptionHandler()
