@@ -137,6 +137,7 @@ class IssueImportAdapter(
      * @param projectId 대상 프로젝트 내부 식별자.
      * @return 검증 통과 시 [IssueImportResult.success] (issueKey=[DRY_RUN_MARKER]), 실패 시 해당 사유.
      */
+    @Suppress("ReturnCount") // guard-clause early return 3개(CREATE 거부·UPDATE 거부·통과) — DEVELOPMENT.md §2.3
     private fun validateDryRun(
         cmd: IssueImportCommand,
         actor: ActorId,
