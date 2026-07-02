@@ -129,7 +129,18 @@ class ImportJobProcessor(
             throw ImportRowLimitExceededException()
         }
         when (val result = issueImportPort.importIssue(toCommand(job, row))) {
-            is IssueImportResult.Success -> state.succeededRows++
+            is IssueImportResult.Success -> {
+                state.succeededRows++
+                result.warnings.forEach { warning ->
+                    state.warningRecords +=
+                        FailedRowRecord(
+                            rowNumber = row.rowNumber,
+                            reasonCode = WARNING_REASON_CODE,
+                            message = warning,
+                            severity = FailedRowRecord.SEVERITY_WARNING,
+                        )
+                }
+            }
             is IssueImportResult.Failure -> {
                 state.failedRows++
                 state.failedRecords += FailedRowRecord(row.rowNumber, result.reasonCode, result.message)
@@ -149,7 +160,9 @@ class ImportJobProcessor(
     /**
      * 파싱/생성이 모두 끝난 뒤 작업을 COMPLETED 로 전환한다.
      *
-     * 실패행이 있으면 [uploadErrorLog] 로 CSV 를 업로드해 errorLogObjectKey 를 확보한다.
+     * 실패행 또는 경고행(둘 중 하나라도)이 있으면 [uploadErrorLog] 로 CSV 를 업로드해 errorLogObjectKey
+     * 를 확보한다. 경고행 노출은 PR2 Task 5(G1) — PR1 은 [IssueImportResult.Success.warnings] 를
+     * 폐기했다. rowNumber 오름차순으로 정렬해 업로드한다.
      *
      * ## progress/totalRows 확정 (PR1 코드리뷰 C2 수정)
      *
@@ -165,7 +178,8 @@ class ImportJobProcessor(
         job: ImportJob,
         state: RowProcessingState,
     ) {
-        val errorLogObjectKey = if (state.failedRecords.isEmpty()) null else uploadErrorLog(job, state.failedRecords)
+        val logRecords = (state.failedRecords + state.warningRecords).sortedBy { it.rowNumber }
+        val errorLogObjectKey = if (logRecords.isEmpty()) null else uploadErrorLog(job, logRecords)
         val expiresAt = clock.instant().plusSeconds(RESULT_TTL_SECONDS)
         repository.updateCounts(
             job.id,
@@ -187,7 +201,7 @@ class ImportJobProcessor(
         )
     }
 
-    /** 실패행 CSV 를 만들어 MinIO 에 업로드하고 오브젝트 키를 반환한다. */
+    /** 실패/경고행 CSV 를 만들어 MinIO 에 업로드하고 오브젝트 키를 반환한다. */
     private fun uploadErrorLog(
         job: ImportJob,
         records: List<FailedRowRecord>,
@@ -217,6 +231,9 @@ class ImportJobProcessor(
             labels = row.labels,
             componentNames = row.componentNames,
             dryRun = job.dryRun,
+            statusName = row.statusName,
+            fixVersionNames = row.fixVersionNames,
+            affectsVersionNames = row.affectsVersionNames,
         )
 
     companion object {
@@ -251,6 +268,14 @@ class ImportJobProcessor(
         const val IMPORT_INTERNAL_ERROR = "IMPORT_INTERNAL_ERROR"
 
         /**
+         * [IssueImportResult.Success.warnings] 를 [FailedRowRecord.reasonCode] 로 담을 때 쓰는 고정
+         * 사유 코드(PR2 Task 5, G1). 개별 경고 문구는 [FailedRowRecord.message] 에 담기고, 이 코드는
+         * 결과 로그 CSV 에서 "경고행" 임을 식별하는 용도다(사유별 세분화 코드는 [IssueImportResult] 가
+         * 아직 제공하지 않는다 — 자유 텍스트 [List] 하나뿐).
+         */
+        const val WARNING_REASON_CODE = "IMPORT_WARNING"
+
+        /**
          * [ParsedImportRow.priorityName] 정규화 이름 → [IssueImportCommand.priority] 숫자 매핑.
          *
          * `ImportRowParser.PRIORITY_NAME_BY_NUMBER` 의 역방향 표다. search 모듈은 issue-tracking
@@ -273,6 +298,9 @@ private class RowProcessingState {
     var succeededRows: Long = 0
     var failedRows: Long = 0
     val failedRecords: MutableList<FailedRowRecord> = mutableListOf()
+
+    /** 성공했지만 best-effort 로 일부 필드를 반영하지 못한 경고행([FailedRowRecord.severity] = WARNING). */
+    val warningRecords: MutableList<FailedRowRecord> = mutableListOf()
 }
 
 /** 행 카운터가 [ImportJob.MAX_ROWS] 를 초과했을 때 파싱을 중단시키는 내부 제어 신호. */

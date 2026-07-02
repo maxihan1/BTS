@@ -23,6 +23,12 @@ package com.bts.search.imports.parse
  * @property assigneeEmail 담당자 이메일 원본 문자열.
  * @property labels 라벨 이름 목록. CSV 는 콤마/세미콜론으로 분리한 값, JSON 은 배열 원소 그대로.
  * @property componentNames 컴포넌트 이름 목록. CSV 는 콤마/세미콜론으로 분리한 값, JSON 은 `components[].name`.
+ * @property statusName 이슈 상태 이름(예: `"In Progress"`). CSV 는 `status` 컬럼, JSON 은 `fields.status.name`.
+ *   null 이면 구현체가 프로젝트 초기 상태로 폴백한다.
+ * @property fixVersionNames 수정 버전 이름 목록. CSV 는 `fix version` 컬럼(콤마/세미콜론 분리),
+ *   JSON 은 `fields.fixVersions[].name`.
+ * @property affectsVersionNames 영향 버전 이름 목록. CSV 는 `affects version` 컬럼(콤마/세미콜론 분리),
+ *   JSON 은 `fields.versions[].name`.
  */
 data class ParsedImportRow(
     val rowNumber: Int,
@@ -34,4 +40,7 @@ data class ParsedImportRow(
     val assigneeEmail: String?,
     val labels: List<String>,
     val componentNames: List<String>,
+    val statusName: String? = null,
+    val fixVersionNames: List<String> = emptyList(),
+    val affectsVersionNames: List<String> = emptyList(),
 )

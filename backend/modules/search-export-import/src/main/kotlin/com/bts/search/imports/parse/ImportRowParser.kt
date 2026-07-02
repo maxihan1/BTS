@@ -30,6 +30,10 @@ import java.io.InputStreamReader
  * 모든 텍스트 값은 [sanitizeControlChars] 로 NUL/제어문자(탭·개행·CR 제외)를 제거한다.
  * Priority 는 [normalizePriorityName] 로 이름(대소문자 무시)·숫자(1..5) 어느 입력이든 정규화된
  * 이름으로 통일하고, 범위 밖/미인식 값은 조용히 무시(null)한다.
+ * Status 는 원본 문자열을 그대로 담고, Fix/Affects Version 은 라벨/컴포넌트와 동일하게 콤마/세미콜론
+ * 다중값을 분리한다 — 상태·버전 이름 자체의 존재 확인(프로젝트 워크플로우/버전 매칭)은 후속 단계 책임이다.
+ *
+ * 임의 Jira 헤더(`Component/s` 등)·자유 매핑은 FR-IM-02(매핑 UI) 몫 — 본 PR은 canonical 컬럼명만 인식한다.
  *
  * ### 파일 구조 오류
  *
@@ -156,6 +160,9 @@ class ImportRowParser {
             assigneeEmail = cell(HEADER_ASSIGNEE),
             labels = splitMultiValue(cell(HEADER_LABELS)),
             componentNames = splitMultiValue(cell(HEADER_COMPONENT)),
+            statusName = cell(HEADER_STATUS),
+            fixVersionNames = splitMultiValue(cell(HEADER_FIX_VERSION)),
+            affectsVersionNames = splitMultiValue(cell(HEADER_AFFECTS_VERSION)),
         )
     }
 
@@ -244,6 +251,9 @@ class ImportRowParser {
             assigneeEmail = textOf(fields.path(FIELD_ASSIGNEE), FIELD_EMAIL_ADDRESS),
             labels = textArrayOf(fields.path(FIELD_LABELS)),
             componentNames = textArrayOf(fields.path(FIELD_COMPONENTS), FIELD_NAME),
+            statusName = textOf(fields.path(FIELD_STATUS), FIELD_NAME),
+            fixVersionNames = textArrayOf(fields.path(FIELD_FIX_VERSIONS), FIELD_NAME),
+            affectsVersionNames = textArrayOf(fields.path(FIELD_VERSIONS), FIELD_NAME),
         )
     }
 
@@ -304,6 +314,9 @@ class ImportRowParser {
         private const val HEADER_ASSIGNEE = "assignee"
         private const val HEADER_LABELS = "labels"
         private const val HEADER_COMPONENT = "component"
+        private const val HEADER_STATUS = "status"
+        private const val HEADER_FIX_VERSION = "fix version"
+        private const val HEADER_AFFECTS_VERSION = "affects version"
 
         private const val CSV_DELIMITER = ','
 
@@ -319,6 +332,9 @@ class ImportRowParser {
         private const val FIELD_EMAIL_ADDRESS = "emailAddress"
         private const val FIELD_LABELS = "labels"
         private const val FIELD_COMPONENTS = "components"
+        private const val FIELD_STATUS = "status"
+        private const val FIELD_FIX_VERSIONS = "fixVersions"
+        private const val FIELD_VERSIONS = "versions"
         private const val FIELD_NAME = "name"
 
         // 정화 대상 제어문자 범위 — ASCII 0x20 미만(단 탭/개행/CR 제외) + DEL(0x7F).
