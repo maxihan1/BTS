@@ -265,7 +265,9 @@ class SprintVelocityIntegrationTest {
                 id
             }
         velocityPortStub.contributions =
-            sprintIds.associate { UUID.fromString(it) to VelocityContribution(commitmentSeconds = 1_000, completedSeconds = 900) }
+            sprintIds.associate {
+                UUID.fromString(it) to VelocityContribution(commitmentSeconds = 1_000, completedSeconds = 900)
+            }
 
         mockMvc.perform(get("/api/v1/projects/$projectKey/velocity").param("limit", "2"))
             .andExpect(status().isOk)
