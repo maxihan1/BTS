@@ -245,3 +245,204 @@ export async function deleteDashboard(id: string): Promise<void> {
     throw new ApiError(res.status, errorBody)
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Zod 스키마 — 공유 토큰 관리 API DTO 1:1 정합
+// (백엔드 DashboardShareDtos.kt / PublicDashboardDtos.kt, FR-DB-03 PR1 #216 그대로)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 공유 토큰 발급 응답 Zod 스키마 — 백엔드 IssuedShareTokenResponse 1:1.
+ *
+ * - token: 원문 공유 토큰. 이 응답에서만 노출되며 이후로는 재조회 불가(DB에는 해시만 저장).
+ *   호출측이 컴포넌트 state로 보관해야 한다.
+ * - expiresAt: `@JsonInclude(NON_NULL)`로 null이면 키 자체 생략됨 → .nullish() 필수.
+ */
+export const issuedShareTokenSchema = z.object({
+  /** 공유 토큰 식별자 (UUID) */
+  id: z.string().uuid(),
+  /** 원문 공유 토큰 (1회 노출) */
+  token: z.string(),
+  /** 발급 시각 (ISO 8601) */
+  createdAt: z.string(),
+  /** 만료 시각 (ISO 8601) — @JsonInclude(NON_NULL)로 키 생략 가능(무기한 발급) */
+  expiresAt: z.string().nullish(),
+})
+
+/** 공유 토큰 발급 응답 타입 — z.infer 자동 추론 */
+export type IssuedShareToken = z.infer<typeof issuedShareTokenSchema>
+
+/**
+ * 공유 토큰 목록 항목 요약 Zod 스키마 — 백엔드 ShareTokenSummaryResponse 1:1.
+ *
+ * ⚠️ 회귀가드: token/tokenHash 필드는 백엔드 DTO에 존재하지 않는다(설계 시점 구조적 배제).
+ * 이 스키마도 동일하게 token을 선언하지 않는다 — 응답에 실수로 섞여도 z.object가 미선언 키를
+ * 파싱 결과에서 제거하므로 프론트가 목록 화면에서 원문을 노출할 방법이 없다.
+ */
+export const shareTokenSummarySchema = z.object({
+  /** 공유 토큰 식별자 (UUID) */
+  id: z.string().uuid(),
+  /** 발급 시각 (ISO 8601) */
+  createdAt: z.string(),
+  /** 만료 시각 (ISO 8601) — @JsonInclude(NON_NULL)로 키 생략 가능 */
+  expiresAt: z.string().nullish(),
+})
+
+/** 공유 토큰 요약 타입 — z.infer 자동 추론 */
+export type ShareTokenSummary = z.infer<typeof shareTokenSummarySchema>
+
+/** 공유 토큰 목록 응답 Zod 스키마 — 백엔드 ShareTokenListResponse 1:1 (items 배열 1개) */
+export const shareTokenListSchema = z.object({
+  /** 발급된 공유 토큰 요약 목록 */
+  items: z.array(shareTokenSummarySchema),
+})
+
+/** 공유 토큰 목록 타입 — z.infer 자동 추론 */
+export type ShareTokenList = z.infer<typeof shareTokenListSchema>
+
+/**
+ * 익명 공개 대시보드 조회 응답 Zod 스키마 — 백엔드 PublicDashboardResponse 1:1.
+ *
+ * - layout: 백엔드가 정화(데이터 가젯 config 제거)한 위젯 배치 JSON *문자열* — 파싱된 객체가
+ *   아니다. 호출측이 `JSON.parse` 후 렌더링해야 한다.
+ * - description: 백엔드 DTO에 `@JsonInclude` 미부착이라 null이면 키가 존재하되 값이 null이다.
+ *   dashboardSchema의 description(@JsonInclude NON_NULL, 키 생략)과 다르지만 .nullish()가
+ *   undefined/null 양쪽을 모두 허용하므로 두 형태 모두 안전하게 파싱된다.
+ */
+export const publicDashboardSchema = z.object({
+  /** 대시보드 이름 */
+  name: z.string(),
+  /** 설명 (없으면 null 또는 키 생략) */
+  description: z.string().nullish(),
+  /** 정화된 위젯 배치 JSON 문자열 — 렌더링 전 JSON.parse 필요 */
+  layout: z.string(),
+})
+
+/** 공개 대시보드 조회 타입 — z.infer 자동 추론 */
+export type PublicDashboard = z.infer<typeof publicDashboardSchema>
+
+/**
+ * 공유 토큰 발급 요청 바디.
+ * expiresAt 생략 시 무기한 발급(백엔드 IssueShareTokenRequest.expiresAt 선택과 동일).
+ */
+export interface IssueShareTokenRequest {
+  /** 만료 시각 (ISO 8601, 선택 — 생략 시 무기한) */
+  expiresAt?: string
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 공유 토큰 관리 API 함수 — 소유자 전용 (인증 필요)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 대시보드 공유 토큰을 발급한다 (소유자 전용).
+ *
+ * `POST /api/v1/dashboards/{id}/shares`
+ * - 상태 변경 요청이므로 X-XSRF-TOKEN 헤더를 포함한다.
+ * - 응답의 원문 token은 이 호출 1회만 노출된다(이후 재조회 불가 — DB에는 해시만 저장).
+ *   호출측이 반환값을 state로 보관해야 링크 복사·임베드 스니펫을 제공할 수 있다.
+ *
+ * @param id 대상 대시보드 UUID
+ * @param body 발급 요청 바디 (expiresAt 선택, 생략 시 무기한)
+ * @returns IssuedShareToken (원문 token 포함)
+ * @throws ApiError(400) 발급 상한(20개) 초과 — errorCode: 'NOTIF_DASHBOARD_SHARE_LIMIT_EXCEEDED'
+ * @throws ApiError(403) 소유자 아님 — errorCode: 'NOTIF_DASHBOARD_FORBIDDEN'
+ * @throws ApiError(404) 대시보드 미존재 — errorCode: 'NOTIF_DASHBOARD_NOT_FOUND'
+ * @throws ApiError(401) 미인증
+ */
+export async function issueShareToken(
+  id: string,
+  body: IssueShareTokenRequest = {},
+): Promise<IssuedShareToken> {
+  const res = await apiFetch(`/api/v1/dashboards/${id}/shares`, {
+    method: 'POST',
+    body,
+    headers: {
+      'X-XSRF-TOKEN': readXsrfToken(),
+    },
+  })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  const parsed: unknown = await res.json()
+  return dataWrapper(issuedShareTokenSchema).parse(parsed).data
+}
+
+/**
+ * 대시보드에 발급된 공유 토큰 목록을 조회한다 (소유자 전용).
+ *
+ * `GET /api/v1/dashboards/{id}/shares`
+ * - 읽기 요청이므로 CSRF 헤더 불요 — apiGet 사용.
+ * - 응답에는 원문·해시가 포함되지 않는다(요약 DTO에 필드 자체가 없음 — 유출 회귀가드).
+ *
+ * @param id 대상 대시보드 UUID
+ * @returns ShareTokenList (items: 요약 목록)
+ * @throws ApiError(403) 소유자 아님 — errorCode: 'NOTIF_DASHBOARD_FORBIDDEN'
+ * @throws ApiError(404) 대시보드 미존재 — errorCode: 'NOTIF_DASHBOARD_NOT_FOUND'
+ * @throws ApiError(401) 미인증
+ */
+export async function listShareTokens(id: string): Promise<ShareTokenList> {
+  const wrapper = dataWrapper(shareTokenListSchema)
+  const res = await apiGet(`/api/v1/dashboards/${id}/shares`, wrapper)
+  return res.data
+}
+
+/**
+ * 대시보드 공유 토큰을 취소한다 (소유자 전용).
+ *
+ * `DELETE /api/v1/dashboards/{id}/shares/{shareId}`
+ * - 상태 변경 요청이므로 X-XSRF-TOKEN 헤더를 포함한다.
+ * - 204 No Content 성공 — Zod parse 없이 반환.
+ *
+ * @param id 대상 대시보드 UUID
+ * @param shareId 취소할 공유 토큰 UUID
+ * @returns void
+ * @throws ApiError(404) 공유 토큰 미존재 — errorCode: 'NOTIF_DASHBOARD_SHARE_NOT_FOUND'
+ * @throws ApiError(403) 소유자 아님 — errorCode: 'NOTIF_DASHBOARD_FORBIDDEN'
+ * @throws ApiError(401) 미인증
+ */
+export async function revokeShareToken(id: string, shareId: string): Promise<void> {
+  const res = await apiFetch(`/api/v1/dashboards/${id}/shares/${shareId}`, {
+    method: 'DELETE',
+    headers: {
+      'X-XSRF-TOKEN': readXsrfToken(),
+    },
+  })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 익명 공개 조회 API 함수 — 비인증 경로 (raw fetch, apiFetch 금지)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 불투명 공유 토큰으로 익명 공개 대시보드를 조회한다 (비인증 경로).
+ *
+ * `GET /api/v1/public/dashboards/{token}`
+ * - ⚠️ raw fetch 사용 — apiFetch 절대 금지. apiFetch는 401 응답 시 자동으로
+ *   `/api/v1/auth/refresh`를 호출하고 Authorization 헤더를 부착하는데, 이 경로는 익명
+ *   (permitAll)이라 세션 개념 자체가 없다. apiFetch를 쓰면 spurious refresh 재시도가
+ *   발생한다 (memory: auth-pre-session-401-raw-fetch, webauthn.ts의 raw fetch 선례를 따름).
+ * - credentials·X-XSRF-TOKEN 헤더 불요 — 접근 제어는 오직 불투명 토큰의 소지 여부로만
+ *   이뤄진다(직교 토큰, ADR 2026-07-02-fr-db-03-dashboard-share).
+ * - layout은 JSON *문자열*이므로 호출측이 `JSON.parse` 해야 한다
+ *   (백엔드 PublicDashboardResponse.layout: String).
+ *
+ * @param token 원문 공유 토큰 (경로 세그먼트)
+ * @returns PublicDashboard (name, description?, layout=JSON 문자열)
+ * @throws ApiError(404) 미존재·만료·취소·부모 삭제 — errorCode: 'NOTIF_DASHBOARD_NOT_FOUND'
+ *   (모든 실패 사유가 404로 수렴 — 존재 열거 차단, 로그인 리다이렉트 없음)
+ */
+export async function getPublicDashboard(token: string): Promise<PublicDashboard> {
+  const res = await fetch(`/api/v1/public/dashboards/${token}`)
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  const parsed: unknown = await res.json()
+  return dataWrapper(publicDashboardSchema).parse(parsed).data
+}

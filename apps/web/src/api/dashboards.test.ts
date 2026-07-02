@@ -514,17 +514,10 @@ describe('listShareTokens', () => {
     expect(result.items[0]?.id).toBe(SHARE_ID)
   })
 
-  it('회귀가드: 목록 항목에 token 필드가 노출되지 않는다', async () => {
-    mockApiGet.mockResolvedValueOnce({
-      data: { items: [{ ...shareTokenSummaryFixture, token: 'leaked-plaintext' }] },
-    })
-
-    const result = await listShareTokens(DASHBOARD_ID)
-
-    const firstItem = result.items[0]
-    expect(firstItem).toBeDefined()
-    expect((firstItem as unknown as Record<string, unknown> | undefined)?.['token']).toBeUndefined()
-  })
+  // 회귀가드(응답에 token 필드가 섞여도 노출되지 않음)는 shareTokenSummarySchema
+  // describe 블록에서 실제 Zod 파싱으로 검증한다. 이 describe는 apiGet을 완전히
+  // mock하므로(vi.mock('./client')) schema.parse가 실제로 실행되지 않아 여기서는
+  // 검증할 수 없다(mock이 스키마 파싱을 우회).
 
   it('403 시 ApiError를 전파한다', async () => {
     mockApiGet.mockRejectedValueOnce(new ApiError(403, { errorCode: 'NOTIF_DASHBOARD_FORBIDDEN' }))
