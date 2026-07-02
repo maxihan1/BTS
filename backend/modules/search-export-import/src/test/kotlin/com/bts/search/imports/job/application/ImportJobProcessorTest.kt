@@ -9,7 +9,9 @@ import com.bts.search.imports.job.repository.ImportJobRepository
 import com.bts.search.imports.job.storage.ImportObjectStoragePort
 import com.bts.search.imports.parse.ImportParseException
 import com.bts.search.imports.parse.ImportRowParser
+import com.bts.search.imports.parse.ParsedImportComment
 import com.bts.search.imports.parse.ParsedImportRow
+import com.bts.search.imports.parse.ParsedImportWorklog
 import com.bts.shared.issue.IssueImportCommand
 import com.bts.shared.issue.IssueImportPort
 import com.bts.shared.issue.IssueImportResult
@@ -301,5 +303,89 @@ class ImportJobProcessorTest {
         assertThat(keySlot.captured).isEqualTo("PROJ/$jobId-errors.csv")
         val csv = bytesSlot.captured.readBytes().toString(Charsets.UTF_8)
         assertThat(csv).contains("1,,IMPORT_WARNING,컴포넌트 'X' 을(를) 찾을 수 없어 건너뛰었습니다.,WARNING")
+    }
+
+    // ── (k) toCommand 매핑 — comments/worklogs (FR-IM-01 PR3 Task 6) ───────────────
+
+    @Test
+    fun `toCommand maps parsed comments to ImportComment with ISO string parsed to Instant and email lowercased`() {
+        val row =
+            makeRow(1).copy(
+                comments =
+                    listOf(
+                        ParsedImportComment(
+                            body = "First comment",
+                            authorEmail = "Bob@Corp.com",
+                            createdAt = "2024-01-15T10:00:00.000+0000",
+                        ),
+                    ),
+            )
+        stubParserWithRows(listOf(row))
+        val cmdSlot = slot<IssueImportCommand>()
+        every { issueImportPort.importIssue(capture(cmdSlot)) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        val comment = cmdSlot.captured.comments.single()
+        assertThat(comment.body).isEqualTo("First comment")
+        assertThat(comment.authorEmail).isEqualTo("bob@corp.com")
+        assertThat(comment.createdAt).isEqualTo(Instant.parse("2024-01-15T10:00:00.000Z"))
+    }
+
+    @Test
+    fun `toCommand maps parsed worklogs to ImportWorklog with ISO string parsed to Instant and email lowercased`() {
+        val row =
+            makeRow(1).copy(
+                worklogs =
+                    listOf(
+                        ParsedImportWorklog(
+                            timeSpentSeconds = 3600,
+                            startedAt = "2024-01-15T09:00:00.000+0000",
+                            authorEmail = "Bob@Corp.com",
+                            comment = "Investigated bug",
+                        ),
+                    ),
+            )
+        stubParserWithRows(listOf(row))
+        val cmdSlot = slot<IssueImportCommand>()
+        every { issueImportPort.importIssue(capture(cmdSlot)) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        val worklog = cmdSlot.captured.worklogs.single()
+        assertThat(worklog.timeSpentSeconds).isEqualTo(3600)
+        assertThat(worklog.startedAt).isEqualTo(Instant.parse("2024-01-15T09:00:00.000Z"))
+        assertThat(worklog.authorEmail).isEqualTo("bob@corp.com")
+        assertThat(worklog.comment).isEqualTo("Investigated bug")
+    }
+
+    @Test
+    fun `toCommand leaves createdAt startedAt null when the parsed date string is unparseable`() {
+        val row =
+            makeRow(1).copy(
+                comments = listOf(ParsedImportComment(body = "댓글", authorEmail = null, createdAt = "not-a-date")),
+                worklogs =
+                    listOf(ParsedImportWorklog(timeSpentSeconds = 60, startedAt = "not-a-date", authorEmail = null)),
+            )
+        stubParserWithRows(listOf(row))
+        val cmdSlot = slot<IssueImportCommand>()
+        every { issueImportPort.importIssue(capture(cmdSlot)) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        assertThat(cmdSlot.captured.comments.single().createdAt).isNull()
+        assertThat(cmdSlot.captured.worklogs.single().startedAt).isNull()
+    }
+
+    @Test
+    fun `toCommand maps empty parsed comments and worklogs to empty lists`() {
+        stubParserWithRows(listOf(makeRow(1)))
+        val cmdSlot = slot<IssueImportCommand>()
+        every { issueImportPort.importIssue(capture(cmdSlot)) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        assertThat(cmdSlot.captured.comments).isEmpty()
+        assertThat(cmdSlot.captured.worklogs).isEmpty()
     }
 }

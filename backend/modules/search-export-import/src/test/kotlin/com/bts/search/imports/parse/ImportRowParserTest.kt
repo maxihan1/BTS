@@ -299,6 +299,166 @@ class ImportRowParserTest : DescribeSpec({
             rows[0].affectsVersionNames shouldContainExactly emptyList()
         }
     }
+
+    // ── JSON: 댓글/worklog (FR-IM-01 PR3 Task 6) ─────────────────────────────
+
+    describe("ImportRowParser.parseJson — 댓글/worklog") {
+        it("fields.comment.comments[] 의 author.emailAddress/body/created 를 순서대로 추출한다") {
+            val json =
+                """
+                {
+                  "issues": [
+                    {
+                      "fields": {
+                        "summary": "Imported issue",
+                        "comment": {
+                          "comments": [
+                            {
+                              "author": { "emailAddress": "bob@corp.com" },
+                              "body": "First comment",
+                              "created": "2024-01-15T10:00:00.000+0000"
+                            },
+                            {
+                              "author": { "emailAddress": "alice@corp.com" },
+                              "body": "Second comment",
+                              "created": "2024-01-16T11:00:00.000+0000"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+                """.trimIndent()
+
+            val rows = parseJsonRows(json)
+
+            rows shouldHaveSize 1
+            rows[0].comments shouldHaveSize 2
+            rows[0].comments[0].body shouldBe "First comment"
+            rows[0].comments[0].authorEmail shouldBe "bob@corp.com"
+            rows[0].comments[0].createdAt shouldBe "2024-01-15T10:00:00.000+0000"
+            rows[0].comments[1].body shouldBe "Second comment"
+            rows[0].comments[1].authorEmail shouldBe "alice@corp.com"
+        }
+
+        it("fields.comment 가 없으면 comments=emptyList") {
+            val json = """{ "issues": [ { "fields": { "summary": "one" } } ] }"""
+
+            val rows = parseJsonRows(json)
+
+            rows[0].comments shouldContainExactly emptyList()
+        }
+
+        it("fields.worklog.worklogs[] 의 author.emailAddress/timeSpentSeconds/started/comment 를 추출한다") {
+            val json =
+                """
+                {
+                  "issues": [
+                    {
+                      "fields": {
+                        "summary": "Imported issue",
+                        "worklog": {
+                          "worklogs": [
+                            {
+                              "author": { "emailAddress": "bob@corp.com" },
+                              "timeSpentSeconds": 3600,
+                              "started": "2024-01-15T09:00:00.000+0000",
+                              "comment": "Investigated bug"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+                """.trimIndent()
+
+            val rows = parseJsonRows(json)
+
+            rows shouldHaveSize 1
+            rows[0].worklogs shouldHaveSize 1
+            val worklog = rows[0].worklogs[0]
+            worklog.timeSpentSeconds shouldBe 3600
+            worklog.startedAt shouldBe "2024-01-15T09:00:00.000+0000"
+            worklog.authorEmail shouldBe "bob@corp.com"
+            worklog.comment shouldBe "Investigated bug"
+        }
+
+        it("fields.worklog 가 없으면 worklogs=emptyList") {
+            val json = """{ "issues": [ { "fields": { "summary": "one" } } ] }"""
+
+            val rows = parseJsonRows(json)
+
+            rows[0].worklogs shouldContainExactly emptyList()
+        }
+    }
+
+    // ── CSV: 댓글 (FR-IM-01 PR3 Task 6, ★C2 회귀) ─────────────────────────────
+
+    describe("ImportRowParser.parseCsv — 댓글") {
+        it("동명 Comment 컬럼 2개 → 댓글 2건(putIfAbsent 유실 회귀 방지, eng-review C2)") {
+            val csv =
+                "Summary,Comment,Comment\r\n" +
+                    "Task A,\"2024-01-10;bob@corp.com;First comment\"," +
+                    "\"2024-01-11;alice@corp.com;Second comment\"\r\n"
+
+            val rows = parseCsvRows(csv)
+
+            rows shouldHaveSize 1
+            rows[0].comments shouldHaveSize 2
+            rows[0].comments[0].createdAt shouldBe "2024-01-10"
+            rows[0].comments[0].authorEmail shouldBe "bob@corp.com"
+            rows[0].comments[0].body shouldBe "First comment"
+            rows[0].comments[1].createdAt shouldBe "2024-01-11"
+            rows[0].comments[1].authorEmail shouldBe "alice@corp.com"
+            rows[0].comments[1].body shouldBe "Second comment"
+        }
+
+        it("comment 셀은 date;author;body 를 세미콜론 limit=3 으로 분해해 본문 내부 세미콜론을 보존한다") {
+            val csv =
+                "Summary,Comment\r\n" +
+                    "Task A,\"2024-01-10;bob@corp.com;Body; with; semicolons\"\r\n"
+
+            val rows = parseCsvRows(csv)
+
+            rows[0].comments shouldHaveSize 1
+            rows[0].comments[0].body shouldBe "Body; with; semicolons"
+        }
+
+        it("comment 셀이 3파트 미만이면 전체를 body 로, author/created 는 null 로 폴백한다") {
+            val csv =
+                "Summary,Comment\r\n" +
+                    "Task A,\"just a plain comment without delimiters\"\r\n"
+
+            val rows = parseCsvRows(csv)
+
+            rows[0].comments shouldHaveSize 1
+            rows[0].comments[0].body shouldBe "just a plain comment without delimiters"
+            rows[0].comments[0].authorEmail.shouldBeNull()
+            rows[0].comments[0].createdAt.shouldBeNull()
+        }
+
+        it("comment 셀이 비어있으면 해당 컬럼은 무시한다(빈 셀 무시, PR1 동형)") {
+            val csv =
+                "Summary,Comment,Comment\r\n" +
+                    "Task A,\"2024-01-10;bob@corp.com;Only one comment\",\r\n"
+
+            val rows = parseCsvRows(csv)
+
+            rows[0].comments shouldHaveSize 1
+        }
+
+        it("worklog 는 CSV 에서 미지원 — 항상 emptyList") {
+            val csv =
+                "Summary,Comment\r\n" +
+                    "Task A,\"2024-01-10;bob@corp.com;Comment\"\r\n"
+
+            val rows = parseCsvRows(csv)
+
+            rows[0].worklogs shouldContainExactly emptyList()
+        }
+    }
 }) {
     private companion object {
         const val LARGE_ROW_COUNT = 5_000
