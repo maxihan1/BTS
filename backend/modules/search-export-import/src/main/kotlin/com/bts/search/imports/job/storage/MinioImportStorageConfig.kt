@@ -28,9 +28,14 @@ import org.springframework.util.StringUtils
  * MinIO 미가용 시에도 앱 기동을 막지 않는다. 버킷 보장 실패는 warn 으로 로그하고 진행한다.
  *
  * 이 catch 는 [MinioImportStorageAdapter.ensureBucket] 이 던지는 [MinioImportStorageException] 만
- * 좁게 잡는다(제네릭 `Exception` catch 아님). 인증/권한 예외는 이 타입에 해당하지 않으므로 여기서
- * 삼켜지지 않고 그대로 전파된다 — best-effort catch 가 권한 예외까지 가려 조용히 삼키고
- * non-prod 에서 마스킹된 채 prod 로 누출되는 함정을 회피한다.
+ * 좁게 잡는다(제네릭 `Exception` catch 아님). ensureBucket 은 MinIO SDK 예외를 모두
+ * [MinioImportStorageException] 으로 감싸므로, 기동 시점의 버킷 보장 실패는 원인(미가용/권한)과
+ * 무관하게 이 catch 로 흡수된다 — 이는 MinIO 가 아직 뜨지 않았을 때 앱 기동을 막지 않기 위한
+ * 의도된 best-effort 설계다.
+ *
+ * 반면 **런타임 put/get/delete** 는 이 best-effort catch 밖이며, 실패 시
+ * [MinioImportStorageException] 을 호출자에게 그대로 전파한다(조용히 삼켜 non-prod 에서
+ * 마스킹된 채 prod 로 누출되는 함정 없음). 기동 흡수와 런타임 전파의 경계가 이 클래스의 핵심이다.
  *
  * ## BC 격리
  *

@@ -12,7 +12,7 @@
 3. **dry-run**. Given `dryRun=true`로 업로드, When 처리, Then 이슈 0건 생성 · 검증 리포트(총행/유효/오류행+사유) 반환 · status=COMPLETED.
 4. **사용자 매핑**. Given CSV reporter="bob@corp.com"(존재)·assignee="ghost@x.com"(미존재), When 임포트, Then reporter=bob(이메일 매칭)·assignee=null(미매칭 폴백, 실행자 아님). Given reporter도 미존재, Then reporter=import 실행자.
 5. **권한 거부**. Given 사용자가 대상 프로젝트 CREATE_ISSUE 미보유, When 임포트, Then 각 행이 FORBIDDEN으로 실패(에러 로그) — 권한은 issue-tracking createIssue가 판정(우회 불가).
-6. **행 상한 초과**. Given 파일 행 수 > MAX_ROWS(10만), When 접수, Then status=FAILED · errorCode=IMPORT_ROW_LIMIT_EXCEEDED(생성 0).
+6. **행 상한 초과**. Given 파일 행 수 > MAX_ROWS(10만), When 처리 중 10만 번째 행을 넘는 순간, Then 즉시 중단 · status=FAILED · errorCode=IMPORT_ROW_LIMIT_EXCEEDED. **단일패스 스트리밍이라 중단 전까지 생성된 최대 10만 행은 잔존(best-effort — "생성 0" 아님)**. 사전 카운트 패스(파일 2회 읽기)를 피하려는 의도적 설계. 대량 파일은 dry-run으로 사전 검증 권장.
 7. **파싱 실패**. Given 깨진 CSV/JSON(헤더 없음/파싱 불가), When 처리, Then status=FAILED · errorCode=IMPORT_PARSE_FAILED.
 
 ## 기능 요구사항 (FR)

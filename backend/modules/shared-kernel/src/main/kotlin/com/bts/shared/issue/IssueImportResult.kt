@@ -45,7 +45,12 @@ sealed interface IssueImportResult {
         /** 대상 프로젝트를 찾을 수 없다. */
         const val NOT_FOUND: String = "NOT_FOUND"
 
-        /** [IssueImportCommand.requesterUserId] 에게 대상 프로젝트의 CREATE_ISSUE 권한이 없다. */
+        /**
+         * [IssueImportCommand.requesterUserId] 에게 필요한 이슈 권한이 없다.
+         *
+         * 이슈 생성에는 CREATE 권한이, priority/labels/assignee 를 반영하는 행에는
+         * 추가로 UPDATE 권한이 필요하다. 둘 중 하나라도 없으면 이 코드로 실패한다.
+         */
         const val FORBIDDEN: String = "FORBIDDEN"
 
         /** [IssueImportCommand.typeName] 에 해당하는 이슈 유형을 찾을 수 없다. */
