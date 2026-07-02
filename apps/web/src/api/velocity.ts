@@ -50,8 +50,7 @@ export type VelocityResponse = z.infer<typeof velocityResponseSchema>
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** backend 응답 래퍼 `{ data: T }` 파싱 헬퍼 */
-const dataResponseSchema = <T>(innerSchema: z.ZodSchema<T>) =>
-  z.object({ data: innerSchema })
+const dataResponseSchema = <T>(innerSchema: z.ZodSchema<T>) => z.object({ data: innerSchema })
 
 // ─────────────────────────────────────────────────────────────────────────────
 // API 함수

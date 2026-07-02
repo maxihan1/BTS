@@ -82,7 +82,8 @@ describe('velocityResponseSchema', () => {
 
   it('averageCommitmentSeconds 누락 시 파싱에 실패한다', () => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { averageCommitmentSeconds: _averageCommitmentSeconds, ...withoutAverage } = velocityFixture
+    const { averageCommitmentSeconds: _averageCommitmentSeconds, ...withoutAverage } =
+      velocityFixture
     expect(() => velocityResponseSchema.parse(withoutAverage)).toThrow()
   })
 })
