@@ -428,8 +428,9 @@ class DashboardServiceTest {
         every { repository.findById(dashboard.id) } returns dashboard
         every { shareTokenRepository.deleteById(shareId, dashboard.id) } returns 0
 
-        assertThatThrownBy { service.revokeShareToken(actorId = ownerId, dashboardId = dashboard.id, shareId = shareId) }
-            .isInstanceOf(ShareTokenNotFoundException::class.java)
+        assertThatThrownBy {
+            service.revokeShareToken(actorId = ownerId, dashboardId = dashboard.id, shareId = shareId)
+        }.isInstanceOf(ShareTokenNotFoundException::class.java)
     }
 
     /** SHARE-9. revokeShareToken — 비소유자는 403 (deleteById 미호출). */
@@ -439,8 +440,9 @@ class DashboardServiceTest {
         val shareId = UUID.randomUUID()
         every { repository.findById(dashboard.id) } returns dashboard
 
-        assertThatThrownBy { service.revokeShareToken(actorId = otherId, dashboardId = dashboard.id, shareId = shareId) }
-            .isInstanceOf(DashboardForbiddenException::class.java)
+        assertThatThrownBy {
+            service.revokeShareToken(actorId = otherId, dashboardId = dashboard.id, shareId = shareId)
+        }.isInstanceOf(DashboardForbiddenException::class.java)
         verify(exactly = 0) { shareTokenRepository.deleteById(any(), any()) }
     }
 
@@ -511,6 +513,7 @@ class DashboardServiceTest {
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
 
+    @Suppress("LongParameterList") // 테스트 데이터 빌더 — 각 필드 기본값을 개별 오버라이드하기 위한 헬퍼
     private fun buildDashboard(
         ownerId: UUID = this.ownerId,
         visibility: DashboardVisibility = DashboardVisibility.PRIVATE,
