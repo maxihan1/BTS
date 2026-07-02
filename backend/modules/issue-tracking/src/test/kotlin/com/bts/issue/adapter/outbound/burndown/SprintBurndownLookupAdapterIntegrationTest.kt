@@ -8,6 +8,8 @@ import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.repository.IssueTestcontainersBase
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.permission.IssueSecurityAccess
+import com.bts.shared.permission.IssueSecurityDirectory
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -27,11 +29,20 @@ class SprintBurndownLookupAdapterIntegrationTest : IssueTestcontainersBase() {
 
     private lateinit var adapter: SprintBurndownLookupAdapter
 
+    /** 번다운을 조회하는 viewer UUID — 이슈별 가시성 필터 기준. */
+    private val viewerId: UUID = UUID.randomUUID()
+
+    /** accessibleLevels 를 테스트별로 제어하는 IssueSecurityDirectory stub. */
+    private val securityDirectory = StubSecurityDirectory()
+
     // ── setup ──────────────────────────────────────────────────────────────────
 
     @BeforeEach
     fun setupAdapter() {
-        adapter = SprintBurndownLookupAdapter(dsl)
+        // 정본 보안 술어(buildActiveSecureWhere)를 재사용하도록 실 IssueRepository 를 주입한다(복제 금지).
+        adapter = SprintBurndownLookupAdapter(dsl, securityDirectory, repository)
+        // 기본은 unrestricted — 개별 테스트에서 restricted access 로 덮어쓴다.
+        securityDirectory.access = StubSecurityDirectory.UNRESTRICTED
         if (taskTypeId == null) {
             taskTypeId = loadTaskTypeId()
         }
@@ -73,10 +84,16 @@ class SprintBurndownLookupAdapterIntegrationTest : IssueTestcontainersBase() {
             }
         }
 
-    /** 이슈 1건을 TPRJ 프로젝트에 삽입한다. [originalEstimateSeconds] 가 null 이 아니면 추정 시간을 함께 설정한다. */
+    /**
+     * 이슈 1건을 TPRJ 프로젝트에 삽입한다.
+     *
+     * [originalEstimateSeconds] 가 null 이 아니면 추정 시간을 함께 설정한다.
+     * [securityLevelId] 가 null 이 아니면 해당 보안 등급을 부여한다(null=공개 등급).
+     */
     private fun insertIssue(
         seqNum: Long,
         originalEstimateSeconds: Int? = null,
+        securityLevelId: UUID? = null,
     ): Issue =
         repository.insert(
             Issue.create(
@@ -87,6 +104,7 @@ class SprintBurndownLookupAdapterIntegrationTest : IssueTestcontainersBase() {
                 summary = "번다운 테스트 이슈 $seqNum",
                 reporterId = ActorId(UUID.randomUUID()),
                 currentStateKey = "open",
+                securityLevelId = securityLevelId,
             ).copy(originalEstimateSeconds = originalEstimateSeconds),
         )
 
@@ -168,6 +186,8 @@ class SprintBurndownLookupAdapterIntegrationTest : IssueTestcontainersBase() {
         val source =
             adapter.fetchBurndownSource(
                 issueKeys = setOf(issue1.key.value, issue2.key.value, issue3.key.value),
+                projectKey = "TPRJ",
+                viewerUserId = viewerId,
             )
 
         assertThat(source.totalOriginalEstimateSeconds).isEqualTo(((8 + 4) * hourInSeconds).toLong())
@@ -184,9 +204,121 @@ class SprintBurndownLookupAdapterIntegrationTest : IssueTestcontainersBase() {
      */
     @Test
     fun `empty issueKeys returns zero scope and empty worklogs`() {
-        val source = adapter.fetchBurndownSource(issueKeys = emptySet())
+        val source = adapter.fetchBurndownSource(issueKeys = emptySet(), projectKey = "TPRJ", viewerUserId = viewerId)
 
         assertThat(source.totalOriginalEstimateSeconds).isZero()
         assertThat(source.worklogEntries).isEmpty()
+    }
+
+    // ── C1. 이슈별 가시성 필터 (security_level) ──────────────────────────────────
+
+    /**
+     * Given  공개 이슈(추정 8h) + viewer 가 접근 불가한 보안등급 이슈(추정 4h). 각각 worklog 보유.
+     * When   viewer 가 restrictedLevel 미소속(NULL 등급만 접근)인 access 로 fetchBurndownSource 호출.
+     * Then   기밀 이슈의 estimate(4h)·worklog(5h) 는 집계에서 제외되고 공개 이슈만 남는다.
+     *        (정본 buildActiveSecureWhere 재사용 — 프로젝트 BROWSE 통과 뷰어의 시간값 간접 추론 차단, 리뷰 C1)
+     */
+    @Test
+    fun `restricted viewer 는 접근 불가 보안등급 이슈의 estimate·worklog 를 집계에서 제외한다`() {
+        val hourInSeconds = 3600
+        val restrictedLevel = UUID.randomUUID()
+        val publicIssue = insertIssue(seqNum = 1L, originalEstimateSeconds = 8 * hourInSeconds, securityLevelId = null)
+        val secretIssue =
+            insertIssue(seqNum = 2L, originalEstimateSeconds = 4 * hourInSeconds, securityLevelId = restrictedLevel)
+
+        insertWorklog(publicIssue.id.value, 3 * hourInSeconds, Instant.parse("2024-06-01T09:00:00Z"))
+        insertWorklog(secretIssue.id.value, 5 * hourInSeconds, Instant.parse("2024-06-01T09:00:00Z"))
+
+        // viewer 는 restrictedLevel 미소속 — NULL 등급 이슈만 접근 가능.
+        securityDirectory.access =
+            IssueSecurityAccess(
+                unrestricted = false,
+                staticLevelIds = emptySet(),
+                reporterLevelIds = emptySet(),
+                assigneeLevelIds = emptySet(),
+            )
+
+        val source =
+            adapter.fetchBurndownSource(
+                issueKeys = setOf(publicIssue.key.value, secretIssue.key.value),
+                projectKey = "TPRJ",
+                viewerUserId = viewerId,
+            )
+
+        // 기밀 이슈 estimate(4h) 제외 → 공개 이슈 8h 만.
+        assertThat(source.totalOriginalEstimateSeconds).isEqualTo((8 * hourInSeconds).toLong())
+        // 기밀 이슈 worklog(5h) 제외 → 공개 이슈 worklog 3h 만.
+        assertThat(source.worklogEntries).hasSize(1)
+        val byDate = source.worklogEntries.associateBy({ it.startedOnUtcDate }, { it.timeSpentSeconds })
+        assertThat(byDate[LocalDate.parse("2024-06-01")]).isEqualTo((3 * hourInSeconds).toLong())
+    }
+
+    /**
+     * Given  공개 이슈(추정 8h) + static 보안등급 이슈(추정 4h). 각각 같은 UTC 날짜에 worklog 보유.
+     * When   viewer 가 staticLevel 소속인 access 로 fetchBurndownSource 호출.
+     * Then   두 이슈 모두 가시 → estimate 12h·worklog 8h(3h+5h) 전부 집계에 포함된다.
+     */
+    @Test
+    fun `허가된 viewer 는 보안등급 이슈의 estimate·worklog 를 집계에 포함한다`() {
+        val hourInSeconds = 3600
+        val staticLevel = UUID.randomUUID()
+        val publicIssue = insertIssue(seqNum = 1L, originalEstimateSeconds = 8 * hourInSeconds, securityLevelId = null)
+        val secretIssue =
+            insertIssue(seqNum = 2L, originalEstimateSeconds = 4 * hourInSeconds, securityLevelId = staticLevel)
+
+        insertWorklog(publicIssue.id.value, 3 * hourInSeconds, Instant.parse("2024-06-01T09:00:00Z"))
+        insertWorklog(secretIssue.id.value, 5 * hourInSeconds, Instant.parse("2024-06-01T09:00:00Z"))
+
+        // viewer 는 staticLevel 소속 — 두 이슈 모두 접근 가능.
+        securityDirectory.access =
+            IssueSecurityAccess(
+                unrestricted = false,
+                staticLevelIds = setOf(staticLevel),
+                reporterLevelIds = emptySet(),
+                assigneeLevelIds = emptySet(),
+            )
+
+        val source =
+            adapter.fetchBurndownSource(
+                issueKeys = setOf(publicIssue.key.value, secretIssue.key.value),
+                projectKey = "TPRJ",
+                viewerUserId = viewerId,
+            )
+
+        assertThat(source.totalOriginalEstimateSeconds).isEqualTo(((8 + 4) * hourInSeconds).toLong())
+        assertThat(source.worklogEntries).hasSize(1)
+        val byDate = source.worklogEntries.associateBy({ it.startedOnUtcDate }, { it.timeSpentSeconds })
+        assertThat(byDate[LocalDate.parse("2024-06-01")]).isEqualTo(((3 + 5) * hourInSeconds).toLong())
+    }
+}
+
+/**
+ * accessibleLevels 반환값을 테스트별로 제어하는 [IssueSecurityDirectory] stub.
+ *
+ * 어댑터가 정본 보안 술어(buildActiveSecureWhere)를 이 access 로 푸시다운하는지 검증하기 위한 것으로,
+ * 등급 판정 로직 자체는 stub 이 아니라 실 SQL 술어가 담당한다(복제 없음).
+ */
+private class StubSecurityDirectory : IssueSecurityDirectory {
+    var access: IssueSecurityAccess = UNRESTRICTED
+
+    override fun levelBelongsToProjectScheme(
+        levelId: UUID,
+        projectKey: String,
+    ): Boolean = true
+
+    override fun accessibleLevels(
+        actorId: UUID,
+        projectKey: String,
+    ): IssueSecurityAccess = access
+
+    companion object {
+        /** 필터 미적용 빠른경로 — 기존 (보안등급 무관) 시나리오 기본값. */
+        val UNRESTRICTED =
+            IssueSecurityAccess(
+                unrestricted = true,
+                staticLevelIds = emptySet(),
+                reporterLevelIds = emptySet(),
+                assigneeLevelIds = emptySet(),
+            )
     }
 }
