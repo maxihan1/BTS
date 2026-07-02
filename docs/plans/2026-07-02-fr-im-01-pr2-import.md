@@ -152,6 +152,8 @@ PR1 유산:
 
 ### Task 6. issue-tracking — 통합 테스트 (Testcontainers 실 DB, cross-BC 진짜 동작)
 
+> **impl 조정**. 기존 `IssueImportAdapterTest`가 이미 Testcontainers **통합 테스트**(실 DB+실 tx, PR1 S1~S9 + tx-aware DataSourceProxy 인프라)였다. T4가 여기에 신규 시나리오 S10~S20(컴포넌트/버전 자동생성·링크·상태 direct-set·권한거부 경고[SelectiveAllow deny resolver=non-vacuous]·dry-run)을 추가해 T6 시나리오 ①②③④⑥을 이미 포괄. **별도 파일 신설은 중복**이라 폐기하고, 유일 갭인 ⑤(자동생성 컴포넌트가 행 실패 시 롤백=고아0)만 **S21**로 기존 파일에 추가(controller). 최종 27 tests green. 상태 매칭은 BC 격리로 FixedStatesWorkflowStateCatalog fake(name→key 로직은 T3 IssueImportStatusServiceTest가 mockk 검증).
+
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/outbound/imports/IssueImportAdapterIntegrationTest.kt`]
