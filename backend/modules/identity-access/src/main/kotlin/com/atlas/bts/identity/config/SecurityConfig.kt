@@ -38,11 +38,12 @@ import org.springframework.web.cors.CorsConfigurationSource
  * 미등록 상태로 404 를 반환하므로 공격 표면이 없다.
  * 사용자 로그인은 /api/v1/auth/login (Custom) 만 제공한다.
  *
- * ## permitAll 4경로 (FR-09-30)
+ * ## permitAll 5경로 (FR-09-30 · FR-DB-03)
  * - /api/v1/auth/login      — 로그인 요청 (credentials 수신, CSRF skip)
  * - /api/v1/auth/providers  — 활성 Provider 목록 조회 (인증 전 필요)
  * - /.well-known/jwks.json  — 공개키 제공 (외부 검증용, CSRF skip)
  * - /actuator/health        — 헬스체크 (로드밸런서, CSRF skip)
+ * - /api/v1/public/dashboards/{token} — 익명 공개 대시보드 조회 (FR-DB-03, GET read-only, 단일 세그먼트 토큰)
  *
  * ## CSRF Cookie 모드 (ADR docs/decisions/2026-05-20-csrf-cookie-mode.md)
  * CookieCsrfTokenRepository.withHttpOnlyFalse() — SPA가 Cookie를 읽어 X-XSRF-TOKEN 헤더로 전송.
@@ -62,6 +63,13 @@ import org.springframework.web.cors.CorsConfigurationSource
  * 잡아 IF_REQUIRED 세션을 허용하고, 그 외 모든 경로는 이 [securityFilterChain] (Order=2)이
  * STATELESS 로 처리한다. SAML 체인의 세션 허용은 일반 API 의 STATELESS/JWT/CSRF 동작에 영향을 주지 않는다.
  * 로그인 전 호출되는 [SAML_IDPS_PATH] 만 이 체인에서 permitAll 로 추가 노출한다.
+ *
+ * ## 익명 공개 대시보드 경로 (FR-DB-03 — BTS 첫 비인증 데이터 경로)
+ * [PUBLIC_DASHBOARDS_PATH] 는 로그인 없이 불투명 공유 토큰만으로 정화된 대시보드 스냅샷을 조회하는
+ * GET 전용 read-only 경로다. DEVELOPMENT.md §1.4 "인증 없는 엔드포인트 추가 금지"의 정식 예외로,
+ * 근거는 ADR 2026-07-02-fr-db-03-dashboard-share(직교 토큰·정화 fail-closed)와 게이트1 승인이다.
+ * 매처는 전역 하위경로 와일드카드가 아니라 단일 경로 세그먼트 하나(`/api/v1/public/dashboards/{token}`)만 노출한다(폭발 반경 최소화).
+ * 토큰 해싱·layout 정화·미존재/만료/삭제의 404 수렴은 모두 notification BC(DashboardService) 책임이다.
  */
 @Configuration
 @EnableWebSecurity
@@ -136,7 +144,7 @@ class SecurityConfig(
                 )
             }
             .authorizeHttpRequests { auth ->
-                // FR-09-30 permitAll 4경로 + refresh (쿠키 기반, 인증 토큰 불요)
+                // permitAll 5경로 (FR-09-30 4 + FR-DB-03 1) + refresh (쿠키 기반, 인증 토큰 불요)
                 auth.requestMatchers(
                     "/api/v1/auth/login",
                     "/api/v1/auth/refresh",
@@ -160,6 +168,10 @@ class SecurityConfig(
                     WEBAUTHN_AUTHENTICATE_START_PATH,
                     "/.well-known/jwks.json",
                     "/actuator/health",
+                    // FR-DB-03: 익명 공개 대시보드 조회 — 로그인 없이 불투명 공유 토큰만으로 정화된 스냅샷 조회.
+                    // DEVELOPMENT.md §1.4 정식 예외(ADR 2026-07-02-fr-db-03-dashboard-share·게이트1 승인). GET read-only.
+                    // 단일 세그먼트 `/*` 매처로 토큰 1개 path 만 노출. 정화·404 수렴은 notification BC(DashboardService) 책임.
+                    PUBLIC_DASHBOARDS_PATH,
                 ).permitAll()
                 auth.requestMatchers("/api/**").authenticated()
                 auth.anyRequest().authenticated()
@@ -214,5 +226,14 @@ class SecurityConfig(
          * permitAll + CSRF-ignore 양쪽에 등록한다. allowCredentials 옵션 발급만 하며 자격증명을 취급하지 않는다.
          */
         const val WEBAUTHN_AUTHENTICATE_START_PATH = "/api/v1/auth/mfa/webauthn/authenticate/start"
+
+        /**
+         * 익명 공개 대시보드 조회 엔드포인트 (FR-DB-03, [com.bts.notification.dashboard.web.PublicDashboardController]).
+         *
+         * 로그인 없이 불투명 공유 토큰만으로 접근하는 GET 전용 read-only 경로다.
+         * 단일 세그먼트 매처 — 전역 하위경로 와일드카드가 아니라 토큰 1개 path (`/api/v1/public/dashboards/{token}`)만 노출한다.
+         * DEVELOPMENT.md §1.4 정식 예외(ADR 2026-07-02-fr-db-03-dashboard-share·게이트1 승인).
+         */
+        const val PUBLIC_DASHBOARDS_PATH = "/api/v1/public/dashboards/*"
     }
 }
