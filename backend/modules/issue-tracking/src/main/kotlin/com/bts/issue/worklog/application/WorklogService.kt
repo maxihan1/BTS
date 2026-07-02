@@ -149,6 +149,73 @@ class WorklogService(
     }
 
     /**
+     * Import 전용 워크로그를 추가한다 — 원본 작성자 보존, 이력 기록 생략 (FR-IM-01 PR3).
+     *
+     * ## [create] 와의 차이
+     * - authorId 는 actor 가 아닌 **주입값**으로 저장한다 (마이그레이션 원본 작성자 보존 목적).
+     * - [IssueHistoryRecorder.record] 를 **호출하지 않는다** — before/after 스냅샷도 생성하지 않는다.
+     *   Import 는 원본 이벤트의 재생이 아니라 데이터 이관이므로, 이력 테이블이 importer(actor) 귀속
+     *   엔트리로 대량 폭주하는 것을 방지한다. 워크로그 행 자체가 authorId 로 원작성자를 보존하므로
+     *   감사 추적은 유지된다(Maxi 확정, spec R6).
+     *
+     * ## 실행 순서
+     * 1. [IssuePermission.UPDATE] 검증 — [create] 와 동일 (actor 기준, 이슈 존재 probe 방지).
+     * 2. 이슈 resolve — 미존재·소프트삭제 시 [IssueNotFoundException].
+     * 3. [WorklogRepository.insert] — authorId 는 주입값.
+     * 4. [IssueRepository.recomputeTimeSpentWithDecrement] — remaining auto-decrement
+     *    (newRemainingEstimateSeconds 직접 지정 경로는 import 에 없음, remaining NULL 이면 차감 no-op).
+     *
+     * @param actor UPDATE 권한을 보유해야 하는 행위자 (import 실행자).
+     * @param issueKey 워크로그를 추가할 이슈 키.
+     * @param authorId 워크로그에 보존할 원본 작성자.
+     * @param timeSpentSeconds 소요 시간(초, 양수).
+     * @param startedAt 작업 시작 시각.
+     * @param comment 선택적 코멘트.
+     * @return 삽입된 [Worklog].
+     * @throws [IssueAccessDeniedException] UPDATE 권한 미보유 시 (403).
+     * @throws [IssueNotFoundException] 이슈 미존재·소프트 삭제 시 (404).
+     */
+    @Suppress("LongParameterList") // worklog 생성 입력 불가분 (create 와 동일 근거)
+    fun createImported(
+        actor: ActorId,
+        issueKey: IssueKey,
+        authorId: ActorId,
+        timeSpentSeconds: Int,
+        startedAt: Instant,
+        comment: String?,
+    ): Worklog {
+        checkPermission(actor, issueKey, IssuePermission.UPDATE)
+
+        val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
+
+        val worklog =
+            Worklog(
+                id = UUID.randomUUID(),
+                issueId = issue.id.value,
+                authorId = authorId.value,
+                timeSpentSeconds = timeSpentSeconds,
+                startedAt = startedAt,
+                comment = comment,
+                createdAt = Instant.now(clock),
+                updatedAt = Instant.now(clock),
+            )
+        worklogRepository.insert(worklog)
+
+        val result = issueRepository.recomputeTimeSpentWithDecrement(issue.id.value, timeSpentSeconds)
+
+        log.info(
+            "worklog_imported issueKey={} worklogId={} actor={} authorId={} timeSpent={} remaining={}",
+            issueKey.value,
+            worklog.id,
+            actor.value,
+            authorId.value,
+            result.timeSpent,
+            result.remaining,
+        )
+        return worklog
+    }
+
+    /**
      * 워크로그를 수정한다.
      *
      * ## 실행 순서
