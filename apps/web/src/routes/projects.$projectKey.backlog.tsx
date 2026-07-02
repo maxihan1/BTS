@@ -71,6 +71,13 @@ export function BacklogPage({ projectKey }: BacklogPageProps): JSX.Element {
           >
             {backlogLabels.page.timelineLink}
           </Link>
+          <Link
+            to="/projects/$projectKey/reports/velocity"
+            params={{ projectKey }}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            {backlogLabels.page.velocityLink}
+          </Link>
         </nav>
       </div>
 

@@ -11,6 +11,7 @@ export const backlogLabels = {
     title: '백로그',
     boardLink: '보드',
     timelineLink: '타임라인',
+    velocityLink: '벨로시티',
     accessDenied: '접근 권한이 없습니다',
     accessDeniedDetail: '해당 프로젝트의 백로그에 접근할 권한이 없습니다.',
   },

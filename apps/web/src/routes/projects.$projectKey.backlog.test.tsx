@@ -183,6 +183,18 @@ describe('BacklogPage', () => {
     expect(timelineLink).toBeInTheDocument()
     expect(timelineLink).toHaveAttribute('href', '/projects/ATLAS/timeline')
   })
+
+  /**
+   * T-BL-R4c. 벨로시티 보고로 이동하는 링크가 nav에 존재한다 (FR-RP-02 D6/D7 Task 5).
+   */
+  it('T-BL-R4c: 벨로시티 링크가 nav에 존재한다', () => {
+    renderPage('ATLAS')
+
+    const nav = screen.getByRole('navigation', { name: '프로젝트 뷰 전환' })
+    const velocityLink = within(nav).getByRole('link', { name: '벨로시티' })
+    expect(velocityLink).toBeInTheDocument()
+    expect(velocityLink).toHaveAttribute('href', '/projects/ATLAS/reports/velocity')
+  })
 })
 
 describe('BacklogRouteAdapter', () => {
