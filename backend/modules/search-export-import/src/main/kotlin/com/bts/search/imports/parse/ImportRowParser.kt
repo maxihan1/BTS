@@ -39,7 +39,6 @@ import java.io.InputStreamReader
  */
 @Suppress("TooManyFunctions") // CSV+JSON 스트리밍 파서를 파일 3종(허용 목록) 제약 안에서 한 클래스로 구성
 class ImportRowParser {
-
     // ── CSV ──────────────────────────────────────────────────────────────────
 
     /**
@@ -64,12 +63,12 @@ class ImportRowParser {
             throw ImportParseException("CSV 헤더에 필수 컬럼 Summary 가 없습니다")
         }
         var rowNumber = 0
-        while (true) {
-            val line = readLogicalLine(reader) ?: break
-            if (line.isBlank()) continue
-            rowNumber++
-            onRow(buildCsvRow(rowNumber, columnIndex, parseCsvLine(line)))
-        }
+        generateSequence { readLogicalLine(reader) }
+            .filterNot { it.isBlank() }
+            .forEach { line ->
+                rowNumber++
+                onRow(buildCsvRow(rowNumber, columnIndex, parseCsvLine(line)))
+            }
     }
 
     /**
@@ -225,8 +224,9 @@ class ImportRowParser {
         }
     }
 
-    private fun nextTokenOrThrow(parser: JsonParser): JsonToken =
-        parser.nextToken() ?: throw ImportParseException("JSON 이 예기치 않게 종료되었습니다")
+    private fun nextTokenOrThrow(parser: JsonParser): JsonToken {
+        return parser.nextToken() ?: throw ImportParseException("JSON 이 예기치 않게 종료되었습니다")
+    }
 
     /** 이슈 1건의 JSON 서브트리에서 `fields` 하위 코어 필드를 추출해 [ParsedImportRow] 를 조립한다. */
     private fun buildJsonRow(
