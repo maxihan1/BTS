@@ -54,7 +54,7 @@ class DashboardShareTokenRepositoryTest : NotificationTestcontainersBase() {
 
     private fun buildToken(
         dashboardId: UUID,
-        tokenHash: String = UUID.randomUUID().toString().replace("-", "").repeat(2).take(64),
+        tokenHash: String,
         createdAt: Instant = now,
         expiresAt: Instant? = null,
     ): DashboardShareToken =
