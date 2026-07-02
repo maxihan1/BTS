@@ -23,8 +23,8 @@ import java.time.Instant
  *
  * [assignableTypes] 를 [SprintController]·[SprintBurndownController] 로 한정하여 다른 컨트롤러의
  * 예외를 잡지 않는다(memory: domain-exception-http-handler-basepackage-scope — 도메인 예외 핸들러
- * 스코프 교훈). [BoardExceptionHandler] 의 basePackages 방식과 달리 assignableTypes 를 사용하여
- * 확실하게 스코프를 제한한다.
+ * 스코프 교훈). [BoardExceptionHandler] 등 형제 핸들러와 동일하게 assignableTypes 로 대상 컨트롤러를
+ * 명시 한정하여 확실하게 스코프를 제한한다.
  *
  * catch-all [Exception] 핸들러를 두되, [ResponseStatusException] 은 별도 핸들러로 상태를 전파하여
  * catch-all 이 401/403/404/409/422 를 500 으로 변질시키지 못하게 한다
