@@ -1,4 +1,8 @@
 // 익명 공개 대시보드 조회 응답 DTO — 내부 식별자(ownerId/sharedUserIds/version/id)를 구조적으로 배제 (FR-DB-03)
+// MatchingDeclarationName/filename: PublicDashboardDtos.kt 파일에 현재 PublicDashboardResponse 클래스만 정의한다.
+// 파일명은 복수형(Dtos)으로 "응답 DTO 모음" 의미를 표현하며, 향후 추가 응답 DTO 수용을 위해 파일명을 유지하고 규칙을 억제한다
+// (agile-planning SprintResponses.kt 선례와 동일).
+@file:Suppress("ktlint:standard:filename", "MatchingDeclarationName")
 
 package com.bts.notification.dashboard.web.dto
 
