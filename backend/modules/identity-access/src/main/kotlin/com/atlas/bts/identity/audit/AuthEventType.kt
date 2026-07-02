@@ -1,9 +1,9 @@
-// 인증 감사 이벤트 유형 enum — 22종 (FR-09-31 + FR-PM-01 + FR-MF-01 + FR-MF-02 + FR-MF-03 + FR-MF-05)
+// 인증 감사 이벤트 유형 enum — 24종 (FR-09-31 + FR-PM-01 + FR-MF-01 + FR-MF-02 + FR-MF-03 + FR-MF-05 + FR-API-04)
 
 package com.atlas.bts.identity.audit
 
 /**
- * BTS 인증 감사 로그에 기록되는 이벤트 유형 22종 (FR-09-31 + FR-PM-01 + FR-MF-01 + FR-MF-02 + FR-MF-03 + FR-MF-05).
+ * BTS 인증 감사 로그에 기록되는 이벤트 유형 24종 (FR-09-31 + FR-PM-01 + FR-MF-01 + FR-MF-02 + FR-MF-03 + FR-MF-05 + FR-API-04).
  *
  * - [LOGIN_SUCCESS]: 로그인 성공
  * - [LOGIN_FAILURE]: 로그인 실패 (잘못된 자격증명, 계정 잠금 등)
@@ -27,6 +27,8 @@ package com.atlas.bts.identity.audit
  * - [MFA_WEBAUTHN_REMOVED]: WebAuthn(보안키/패스키) 자격증명 삭제 (소유자 본인)
  * - [TRUSTED_DEVICE_ADDED]: 신뢰 디바이스 등록 (MFA 통과 후 30일 면제 동의)
  * - [TRUSTED_DEVICE_REVOKED]: 신뢰 디바이스 취소 (수동 단건/전체 + 비번변경·TOTP비활성 자동 폐기)
+ * - [PAT_ISSUED]: Personal Access Token 발급 (신규 토큰 생성 — token 원문/hash 미포함)
+ * - [PAT_REVOKED]: Personal Access Token 폐기 (사용자 본인/관리자 취소)
  */
 enum class AuthEventType {
     LOGIN_SUCCESS,
@@ -51,4 +53,6 @@ enum class AuthEventType {
     MFA_WEBAUTHN_REMOVED,
     TRUSTED_DEVICE_ADDED,
     TRUSTED_DEVICE_REVOKED,
+    PAT_ISSUED,
+    PAT_REVOKED,
 }
