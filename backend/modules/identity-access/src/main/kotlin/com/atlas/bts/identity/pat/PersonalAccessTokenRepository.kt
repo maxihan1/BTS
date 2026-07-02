@@ -156,6 +156,7 @@ interface PersonalAccessTokenRepository {
  */
 @Repository
 @Transactional(propagation = Propagation.REQUIRED, isolation = Isolation.READ_COMMITTED)
+@Suppress("TooManyFunctions") // FR-API-04 셀프서비스 4메서드 추가로 12개(임계 11) — 단일 엔티티 CRUD 응집, 분리 시 오히려 산개
 class JdbcPersonalAccessTokenRepository(
     private val jdbc: NamedParameterJdbcTemplate,
     private val objectMapper: ObjectMapper,
