@@ -46,6 +46,25 @@ function BurndownStatusMessage({ message }: BurndownStatusMessageProps): JSX.Ele
   )
 }
 
+/**
+ * ApiError.status로부터 표시할 안내 문구를 결정한다.
+ * 403(권한없음)/404(스프린트없음)/422(날짜미설정)는 지정 라벨, 그 외(5xx 등)는 GENERIC_ERROR_MESSAGE로 폴백한다.
+ *
+ * @param status ApiError.status(없으면 undefined)
+ */
+function resolveErrorMessage(status: number | undefined): string {
+  switch (status) {
+    case 403:
+      return burndownLabels.status.forbidden
+    case 404:
+      return burndownLabels.status.sprintNotFound
+    case 422:
+      return burndownLabels.status.datesRequired
+    default:
+      return GENERIC_ERROR_MESSAGE
+  }
+}
+
 interface BurndownViewToggleProps {
   /** 현재 선택된 뷰 */
   view: BurndownView
@@ -122,12 +141,7 @@ export function SprintBurndownPage({ sprintId, view, onViewChange }: SprintBurnd
         <BurndownViewToggle view={view} onChange={onViewChange} />
       </header>
 
-      {isError && status === 403 && <BurndownStatusMessage message={burndownLabels.status.forbidden} />}
-      {isError && status === 404 && <BurndownStatusMessage message={burndownLabels.status.sprintNotFound} />}
-      {isError && status === 422 && <BurndownStatusMessage message={burndownLabels.status.datesRequired} />}
-      {isError && status !== 403 && status !== 404 && status !== 422 && (
-        <BurndownStatusMessage message={GENERIC_ERROR_MESSAGE} />
-      )}
+      {isError && <BurndownStatusMessage message={resolveErrorMessage(status)} />}
       {!isError && isPending && <BurndownSkeleton />}
       {!isError && !isPending && data !== undefined && data.points.length === 0 && (
         <BurndownStatusMessage message={burndownLabels.status.empty} />
