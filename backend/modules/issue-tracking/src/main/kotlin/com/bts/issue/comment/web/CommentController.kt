@@ -5,7 +5,6 @@ package com.bts.issue.comment.web
 import com.bts.issue.adapter.inbound.rest.CurrentActor
 import com.bts.issue.adapter.inbound.rest.DataResponse
 import com.bts.issue.comment.application.CommentApplicationService
-import com.bts.issue.comment.application.CommentView
 import com.bts.issue.config.BEARER_AUTH_SCHEME
 import com.bts.issue.domain.IssueKey
 import io.swagger.v3.oas.annotations.Operation
@@ -67,17 +66,7 @@ class CommentController(
         log.info("CommentController.listComments key={} actor={}", key, actor.value)
 
         val views = service.list(actor = actor, issueKey = IssueKey(key))
-        val response =
-            views.map { view: CommentView ->
-                CommentResponse(
-                    id = view.id,
-                    authorId = view.authorId,
-                    body = view.body,
-                    bodyHtml = view.bodyHtml,
-                    createdAt = view.createdAt,
-                    updatedAt = view.updatedAt,
-                )
-            }
+        val response = views.map(CommentResponse::from)
         return ResponseEntity.ok(DataResponse(data = response))
     }
 }

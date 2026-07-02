@@ -25,4 +25,25 @@ data class CommentResponse(
     val bodyHtml: String,
     val createdAt: Instant,
     val updatedAt: Instant,
-)
+) {
+    companion object {
+        /**
+         * [CommentView] 로부터 [CommentResponse] 를 생성한다.
+         *
+         * [CommentController.listComments] 가 이 팩토리로 조회 결과를 응답 DTO 로 변환한다
+         * ([com.bts.issue.worklog.web.dto.WorklogResponse.from] 과 동일한 컨트롤러-DTO 매핑 관례).
+         *
+         * @param view 변환할 조회 결과 뷰.
+         * @return 변환된 응답 DTO.
+         */
+        fun from(view: CommentView): CommentResponse =
+            CommentResponse(
+                id = view.id,
+                authorId = view.authorId,
+                body = view.body,
+                bodyHtml = view.bodyHtml,
+                createdAt = view.createdAt,
+                updatedAt = view.updatedAt,
+            )
+    }
+}
