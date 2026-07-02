@@ -348,7 +348,7 @@ class AuthController(
      * [WebAuthnSecurityKeyService.verifyLogin] 에 문자열로 넘긴다. credential 부재 시 빈 문자열을 넘기면
      * 서비스가 파싱 실패로 fail-closed([WebAuthnSecurityKeyService.VerifyResult.InvalidAssertion]) 처리한다.
      */
-    private fun credentialJsonOf(body: MfaVerifyRequest): String = body.credential?.toString() ?: ""
+    private fun credentialJsonOf(body: MfaVerifyRequest): String = body.credential?.toString().orEmpty()
 
     /** TOTP 검증 결과를 HTTP 응답으로 매핑한다(Success→세션, InvalidCode/NotEnabled→401, TooManyAttempts→429). */
     private fun mapTotpResult(

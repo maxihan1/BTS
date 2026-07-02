@@ -94,6 +94,9 @@ export const Header = () => {
           <DropdownMenuItem asChild>
             <Link to="/settings/mfa">2단계 인증</Link>
           </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link to="/settings/pats">Personal Access Token</Link>
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"

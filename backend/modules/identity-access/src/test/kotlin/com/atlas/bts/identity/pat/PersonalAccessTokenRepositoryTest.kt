@@ -16,26 +16,29 @@ import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import java.sql.Timestamp
 import java.time.Instant
 import java.util.UUID
+
+// JacksonAutoConfiguration 명시 — @JdbcTest 슬라이스는 ObjectMapper 자동 구성을 포함하지 않으므로
+// JdbcPersonalAccessTokenRepository 의 scopes JSONB 직렬화에 필요한 ObjectMapper Bean 을 공급한다.
 
 /**
  * PersonalAccessTokenRepository 통합 테스트 (FR-AU-09 Task 10).
  *
  * @JdbcTest + Testcontainers PostgreSQL + Flyway V001~V006 자동 적용.
- * 검증 대상: save / findByTokenHash / findActiveByUserId / updateLastUsed / revoke + scopes JSONB 직렬화
+ * 검증 대상: save / findByTokenHash / findActiveByUserId / updateLastUsed / revoke + scopes JSONB 직렬화.
+ * FR-API-04 Task 2 추가: listByUserIncludingExpired / findByIdAndUserId / revokeOwned / countActiveByUser
+ * (본인 소유 확인·IDOR 차단·만료 포함/제외 구분).
  *
  * EC-26. token_hash = SHA-256("pat_" + body) 64자 hex 저장, raw token 미저장.
  * EC-27. expires_at nullable — 무기한 PAT.
  */
-// JacksonAutoConfiguration 명시 — @JdbcTest 슬라이스는 ObjectMapper 자동 구성을 포함하지 않으므로
-// JdbcPersonalAccessTokenRepository 의 scopes JSONB 직렬화에 필요한 ObjectMapper Bean 을 공급한다.
 @JdbcTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(JdbcPersonalAccessTokenRepository::class, JacksonAutoConfiguration::class)
 @Testcontainers
 class PersonalAccessTokenRepositoryTest {
-
     companion object {
         @Container
         @JvmStatic
@@ -58,6 +61,7 @@ class PersonalAccessTokenRepositoryTest {
         private const val TOKEN_HASH_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         private const val TOKEN_HASH_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         private const val TOKEN_HASH_C = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        private const val TOKEN_HASH_D = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
     }
 
     @Autowired
@@ -198,10 +202,11 @@ class PersonalAccessTokenRepositoryTest {
 
     @Test
     fun `findActiveByUserId — 만료된 PAT 제외`() {
-        val expired = buildPat(
-            tokenHash = TOKEN_HASH_A,
-            expiresAt = Instant.now().minusSeconds(1),
-        )
+        val expired =
+            buildPat(
+                tokenHash = TOKEN_HASH_A,
+                expiresAt = Instant.now().minusSeconds(1),
+            )
         repo.save(expired)
         val active = repo.save(buildPat(tokenHash = TOKEN_HASH_B, expiresAt = null))
 
@@ -262,6 +267,129 @@ class PersonalAccessTokenRepositoryTest {
         repo.revoke(UUID.randomUUID())
     }
 
+    // ── listByUserIncludingExpired (FR-API-04 Task 2) ──────────────────────────
+
+    @Test
+    fun `listByUserIncludingExpired — revoke 만 제외하고 만료 포함, createdAt DESC 정렬`() {
+        val active = repo.save(buildPat(tokenHash = TOKEN_HASH_A, name = "active"))
+        val expired =
+            repo.save(
+                buildPat(tokenHash = TOKEN_HASH_B, name = "expired", expiresAt = Instant.now().minusSeconds(3600)),
+            )
+        val revoked = repo.save(buildPat(tokenHash = TOKEN_HASH_C, name = "revoked"))
+        repo.revoke(revoked.id)
+
+        // JdbcTest 단일 트랜잭션에서 DB now() 는 상수라 저장 시각이 동일해질 수 있어,
+        // 결정적 DESC 정렬 검증을 위해 created_at 을 명시적으로 벌려 세팅한다.
+        setCreatedAt(active.id, Instant.parse("2026-01-02T00:00:00Z"))
+        setCreatedAt(expired.id, Instant.parse("2026-01-01T00:00:00Z"))
+
+        val results = repo.listByUserIncludingExpired(userId)
+
+        // 만료(expired)는 포함, revoke 는 제외, 최신순(active → expired)
+        assertThat(results.map { it.id }).containsExactly(active.id, expired.id)
+        assertThat(results.map { it.id }).doesNotContain(revoked.id)
+    }
+
+    @Test
+    fun `listByUserIncludingExpired — 없으면 빈 리스트`() {
+        assertThat(repo.listByUserIncludingExpired(userId)).isEmpty()
+    }
+
+    // ── findByIdAndUserId (FR-API-04 Task 2) ───────────────────────────────────
+
+    @Test
+    fun `findByIdAndUserId — 본인 소유는 revoke 된 것도 반환`() {
+        val pat = repo.save(buildPat(tokenHash = TOKEN_HASH_A))
+        repo.revoke(pat.id)
+
+        val found = repo.findByIdAndUserId(pat.id, userId)
+
+        assertThat(found).isNotNull()
+        assertThat(found!!.id).isEqualTo(pat.id)
+        assertThat(found.revokedAt).isNotNull()
+    }
+
+    @Test
+    fun `findByIdAndUserId — 타인 소유는 null (IDOR 차단)`() {
+        val pat = repo.save(buildPat(tokenHash = TOKEN_HASH_A))
+        val otherUserId = insertUser()
+
+        assertThat(repo.findByIdAndUserId(pat.id, otherUserId)).isNull()
+    }
+
+    @Test
+    fun `findByIdAndUserId — 존재하지 않는 id 는 null`() {
+        assertThat(repo.findByIdAndUserId(UUID.randomUUID(), userId)).isNull()
+    }
+
+    // ── revokeOwned (FR-API-04 Task 2) ─────────────────────────────────────────
+
+    @Test
+    fun `revokeOwned — 활성 PAT 는 1행 revoke`() {
+        val pat = repo.save(buildPat(tokenHash = TOKEN_HASH_A))
+
+        val affected = repo.revokeOwned(pat.id, userId, Instant.now())
+
+        assertThat(affected).isEqualTo(1)
+        assertThat(repo.findByIdAndUserId(pat.id, userId)!!.revokedAt).isNotNull()
+    }
+
+    @Test
+    fun `revokeOwned — 이미 취소된 PAT 는 0행 (멱등)`() {
+        val pat = repo.save(buildPat(tokenHash = TOKEN_HASH_A))
+        repo.revokeOwned(pat.id, userId, Instant.now())
+
+        val affected = repo.revokeOwned(pat.id, userId, Instant.now())
+
+        assertThat(affected).isEqualTo(0)
+    }
+
+    @Test
+    fun `revokeOwned — 타인 소유는 0행 (IDOR 차단)`() {
+        val pat = repo.save(buildPat(tokenHash = TOKEN_HASH_A))
+        val otherUserId = insertUser()
+
+        val affected = repo.revokeOwned(pat.id, otherUserId, Instant.now())
+
+        assertThat(affected).isEqualTo(0)
+        // 원 소유자 기준으로는 여전히 활성 (취소되지 않음)
+        assertThat(repo.findByIdAndUserId(pat.id, userId)!!.revokedAt).isNull()
+    }
+
+    @Test
+    fun `revokeOwned — 존재하지 않는 id 는 0행`() {
+        assertThat(repo.revokeOwned(UUID.randomUUID(), userId, Instant.now())).isEqualTo(0)
+    }
+
+    // ── countActiveByUser (FR-API-04 Task 2) ───────────────────────────────────
+
+    @Test
+    fun `countActiveByUser — 미취소·미만료만 카운트`() {
+        val now = Instant.parse("2026-06-01T00:00:00Z")
+        repo.save(buildPat(tokenHash = TOKEN_HASH_A, expiresAt = null)) // 활성(무기한)
+        repo.save(buildPat(tokenHash = TOKEN_HASH_B, expiresAt = now.plusSeconds(3600))) // 활성(미래만료)
+        repo.save(buildPat(tokenHash = TOKEN_HASH_C, expiresAt = now.minusSeconds(3600))) // 만료
+        val revoked = repo.save(buildPat(tokenHash = TOKEN_HASH_D, name = "revoked"))
+        repo.revoke(revoked.id)
+
+        assertThat(repo.countActiveByUser(userId, now)).isEqualTo(2L)
+    }
+
+    @Test
+    fun `countActiveByUser — 없으면 0`() {
+        assertThat(repo.countActiveByUser(userId, Instant.now())).isEqualTo(0L)
+    }
+
+    @Test
+    fun `만료 PAT — 목록엔 포함되지만 활성 카운트엔 제외 (두 메서드 구분)`() {
+        val now = Instant.parse("2026-06-01T00:00:00Z")
+        val expired = repo.save(buildPat(tokenHash = TOKEN_HASH_A, expiresAt = now.minusSeconds(1)))
+
+        assertThat(repo.listByUserIncludingExpired(userId).map { it.id }).contains(expired.id)
+        assertThat(repo.countActiveByUser(userId, now)).isEqualTo(0L)
+    }
+
     // ── CASCADE ──────────────────────────────────────────────────────────────
 
     @Test
@@ -274,6 +402,27 @@ class PersonalAccessTokenRepositoryTest {
     }
 
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
+
+    /** 타인 소유(IDOR) 시나리오용 별도 users 행 삽입 후 id 반환. */
+    private fun insertUser(): UUID {
+        val id = UUID.randomUUID()
+        jdbc.update(
+            "INSERT INTO users (id, username) VALUES (:id, :username)",
+            mapOf("id" to id, "username" to "pat-other-$id"),
+        )
+        return id
+    }
+
+    /** created_at 을 명시적으로 세팅 — DESC 정렬을 결정적으로 검증하기 위함. */
+    private fun setCreatedAt(
+        id: UUID,
+        at: Instant,
+    ) {
+        jdbc.update(
+            "UPDATE personal_access_tokens SET created_at = :at WHERE id = :id",
+            mapOf("at" to Timestamp.from(at), "id" to id),
+        )
+    }
 
     private fun buildPat(
         tokenHash: String = TOKEN_HASH_A,

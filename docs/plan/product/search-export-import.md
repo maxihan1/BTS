@@ -192,15 +192,17 @@
 
 ### §5.4 FR-API-04 — Personal Access Token
 
+> **전체 완료 (2026-07-02, PR #215)**. 사용자 셀프서비스 PAT 발급/목록/취소. **물리 구현 identity-access `com.atlas.bts.identity.pat`**(논리 소속 search-export-import), FR-AU-09(#37) 자산 재사용으로 **마이그레이션 0**. scope 카탈로그 5종(`read:issues`·`write:issues`·`read:projects`·`write:projects`·`*`) 화이트리스트 검증(저장·표시만, 전면 강제는 후속 트랙 — ADR 결정 1). 회전=취소+재발급(별도 rotate API 없음). 보안. CSPRNG `SecureRandom` base62 48자 `pat_` 접두·SHA-256 저장(raw 1회 노출·로깅/localStorage 금지)·개수 상한 20 TOCTOU `pg_advisory_xact_lock(hashtextextended(userId))` 후 재count·취소 IDOR `findByIdAndUserId` 소유확인(타인/미존재 동일 404·멱등 204)·PAT 자격증명 관리 API 호출 403(JWT 전용)·감사 `PAT_ISSUED`/`PAT_REVOKED` 2종 트랜잭션 내 fail-closed(enum 22→24). TTL 사용자 선택 최대 1년(무기한 금지). 프론트 `/settings/pats`(scope 미강제 disclosure 경고 배너). ADR `docs/decisions/2026-07-02-fr-api-04-pat-management.md`. 두 독립 리뷰(code-reviewer PASS·/review 이슈 0) BLOCKER 0.
+
 **우선순위**. 필수 | **선행**. identity-access §2.9 (PAT 데이터 모델) | **Plan slug**. `search/api-pat`
 
-- [ ] D1. 도메인 (책임. security-engineer)
-- [ ] D2. 명세 — scope + TTL + 회전 + 취소 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — (identity-access §2.9 활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — `POST /api/v1/users/me/pats` 발급 + 인증 미들웨어에 PAT 인식 추가 (책임. security-engineer)
-- [ ] D5. 백엔드 테스트 — scope 위반 reject (책임. security-engineer)
-- [ ] D6. 프론트 UI — PAT 발급/회전/취소 페이지. **DEVELOPMENT.md §1.17 — 토큰은 화면 표시 1회만, localStorage 금지** (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. security-engineer)
+- [x] D2. 명세 — scope + TTL + 회전 + 취소 (책임. security-engineer)
+- [x] D3. 데이터 모델 — (identity-access §2.9 활용) (책임. db-engineer)
+- [x] D4. 백엔드 — `POST /api/v1/users/me/pats` 발급 + 인증 미들웨어에 PAT 인식 추가 (책임. security-engineer)
+- [x] D5. 백엔드 테스트 — scope 위반 reject (책임. security-engineer)
+- [x] D6. 프론트 UI — PAT 발급/회전/취소 페이지. **DEVELOPMENT.md §1.17 — 토큰은 화면 표시 1회만, localStorage 금지** (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ## §A OpenAPI 문서 게시
 

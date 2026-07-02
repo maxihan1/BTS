@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 36개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + settings 5 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 2 + 알림 보관함 1 + 검색 1 + Webhook 2 | FR-API-03: adminWebhooksRoute /admin/webhooks · adminWebhooksDeliveriesRoute /admin/webhooks/$id/deliveries 추가)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 37개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + settings 6 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 2 + 알림 보관함 1 + 검색 1 + Webhook 2 | FR-API-04: settingsPatsRoute /settings/pats 추가)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -31,6 +31,7 @@ import { PasswordSettingsRouteAdapter } from './routes/settings.password'
 import { AccountLinksSettingsRouteAdapter } from './routes/settings.account-links'
 import { MfaSettingsRouteAdapter } from './routes/settings.mfa'
 import { NotificationSettingsRouteAdapter } from './routes/settings.notifications'
+import { SettingsPatsRouteAdapter } from './routes/settings.pats'
 import { ProjectWorklogReportRouteAdapter } from './routes/projects.$projectKey.reports.worklog'
 import { BoardRouteAdapter } from './routes/projects.$projectKey.board'
 import { BacklogRouteAdapter } from './routes/projects.$projectKey.backlog'
@@ -448,9 +449,18 @@ const settingsAccountLinksRoute = createRoute({
   }),
 })
 
+/** Personal Access Token 셀프서비스 관리 라우트 — /settings/pats, requireAuth (settings.sessions/notifications/account-links 동급 가드) (FR-API-04) */
+const settingsPatsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings/pats',
+  component: SettingsPatsRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
 /**
  * 전체 라우트 트리.
- * 36개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 37개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
  *   · /admin/webhooks · /admin/webhooks/:id/deliveries
@@ -462,7 +472,7 @@ const settingsAccountLinksRoute = createRoute({
  *   · /projects/:projectKey/settings/field-permissions · /projects/:projectKey/settings/project-lead
  *   · /projects/:projectKey/reports/worklog
  *   · /settings/sessions · /settings/password · /settings/account-links · /settings/mfa
- *   · /settings/notifications
+ *   · /settings/notifications · /settings/pats
  * requireAuth 라우트: /dashboard · /inbox · /dashboards · /dashboards/* · /search · /issues · /issues/* · /admin/* · /projects/* · /settings/*
  */
 export const routeTree = rootRoute.addChildren([
@@ -528,6 +538,8 @@ export const routeTree = rootRoute.addChildren([
   settingsMfaRoute,
   // notification BC — 사용자 알림 구독 설정 (FR-NT-04)
   settingsNotificationsRoute,
+  // identity-access BC — Personal Access Token 셀프서비스 관리 (FR-API-04)
+  settingsPatsRoute,
   // workflows (레거시 workflow 상세 — 향후 마이그레이션 예정)
   workflowsKeyRoute,
 ])
