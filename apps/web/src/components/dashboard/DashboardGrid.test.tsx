@@ -74,9 +74,18 @@ async function renderGrid(props: {
   onDeleteTile?: (id: string) => void
   onEditTitle?: (id: string, title: string) => void
   onAddTile?: () => void
+  publicMode?: boolean
 }) {
   const { DashboardGrid } = await import('@/components/dashboard/DashboardGrid')
-  const { tiles = [], canEdit = false, onLayoutChange, onDeleteTile, onEditTitle, onAddTile } = props
+  const {
+    tiles = [],
+    canEdit = false,
+    onLayoutChange,
+    onDeleteTile,
+    onEditTitle,
+    onAddTile,
+    publicMode,
+  } = props
   return render(
     <DashboardGrid
       tiles={tiles}
@@ -85,6 +94,7 @@ async function renderGrid(props: {
       onDeleteTile={onDeleteTile ?? vi.fn()}
       onEditTitle={onEditTitle ?? vi.fn()}
       onAddTile={onAddTile ?? (canEdit ? vi.fn() : undefined)}
+      publicMode={publicMode}
     />,
   )
 }
@@ -222,5 +232,55 @@ describe('DashboardGrid', () => {
     await user.type(input, '수정된 제목')
     await user.keyboard('{Enter}')
     expect(onEditTitle).toHaveBeenCalledWith('tile-a', '수정된 제목')
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // publicMode — 익명 공유 뷰 강제 읽기전용 (FR-DB-03 D6/D7 Task-8)
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /**
+   * G-13. publicMode=true이면 canEdit=true여도 GridLayout에 isDraggable=false/isResizable=false가
+   * 전달된다 (canEdit과 무관하게 강제 읽기전용).
+   */
+  it('G-13: publicMode=true이면 canEdit=true여도 GridLayout이 강제로 드래그/리사이즈 비활성화된다', async () => {
+    await renderGrid({ tiles: [TILE_A], canEdit: true, publicMode: true })
+    expect(capturedGridLayoutProps?.isDraggable).toBe(false)
+    expect(capturedGridLayoutProps?.isResizable).toBe(false)
+  })
+
+  /**
+   * G-14. publicMode=true이면 canEdit=true·빈 그리드여도 "가젯 추가" 버튼이 노출되지 않는다.
+   */
+  it('G-14: publicMode=true이면 canEdit=true·빈 그리드여도 가젯 추가 버튼이 없다', async () => {
+    await renderGrid({ tiles: [], canEdit: true, publicMode: true })
+    expect(screen.queryByRole('button', { name: /가젯 추가/i })).toBeNull()
+  })
+
+  /**
+   * G-15. publicMode=true이면 canEdit=true여도 타일 삭제 버튼이 렌더되지 않는다
+   * (DashboardGrid → DashboardTile 강제 읽기전용 스레딩 확인).
+   */
+  it('G-15: publicMode=true이면 canEdit=true여도 타일 삭제 버튼이 없다', async () => {
+    await renderGrid({ tiles: [TILE_A], canEdit: true, publicMode: true })
+    expect(screen.queryByRole('button', { name: /삭제/i })).toBeNull()
+  })
+
+  /**
+   * G-16. publicMode=true이면 타일 본문이 PublicGadgetRenderer로 렌더된다(종단간 확인).
+   * TILE_A는 gadgetType이 없는 legacy 타일 — PublicGadgetRenderer는 이 경우도
+   * fail-closed로 "로그인이 필요한 가젯입니다" 플레이스홀더를 렌더한다.
+   */
+  it('G-16: publicMode=true이면 타일 본문이 PublicGadgetRenderer로 렌더된다', async () => {
+    await renderGrid({ tiles: [TILE_A], canEdit: true, publicMode: true })
+    expect(screen.getByText('로그인이 필요한 가젯입니다')).toBeInTheDocument()
+  })
+
+  /**
+   * G-17. publicMode 미전달(기본 false)이면 기존 동작 그대로다(회귀 방지 — G-3과 동일 단언).
+   */
+  it('G-17: publicMode 미전달이면 canEdit=true일 때 기존처럼 드래그/리사이즈가 활성화된다', async () => {
+    await renderGrid({ tiles: [TILE_A], canEdit: true })
+    expect(capturedGridLayoutProps?.isDraggable).toBe(true)
+    expect(capturedGridLayoutProps?.isResizable).toBe(true)
   })
 })
