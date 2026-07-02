@@ -1,6 +1,7 @@
 // CSV/JSON import 파싱 결과 1행 → IssueImportPort 커맨드 DTO
 package com.bts.shared.issue
 
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -40,6 +41,8 @@ import java.util.UUID
  *   버전 이름은 구현체가 best-effort 로 경고 처리하고 스킵한다.
  * @property affectsVersionNames 영향 버전 이름 목록. Jira export 의 `versions[].name`(affects) 출처.
  *   미매칭/미존재 버전 이름은 구현체가 best-effort 로 경고 처리하고 스킵한다.
+ * @property comments 이슈에 동반 import 할 댓글 목록(PR3).
+ * @property worklogs 이슈에 동반 import 할 작업 기록 목록(PR3).
  * @see IssueImportPort
  * @see IssueImportResult
  */
@@ -58,4 +61,21 @@ data class IssueImportCommand(
     val statusName: String? = null,
     val fixVersionNames: List<String> = emptyList(),
     val affectsVersionNames: List<String> = emptyList(),
+    val comments: List<ImportComment> = emptyList(),
+    val worklogs: List<ImportWorklog> = emptyList(),
+)
+
+/** import 대상 이슈에 동반 생성할 댓글 하나를 표현하는 값 객체(PR3). */
+data class ImportComment(
+    val body: String,
+    val authorEmail: String? = null,
+    val createdAt: Instant? = null,
+)
+
+/** import 대상 이슈에 동반 생성할 작업 기록(worklog) 하나를 표현하는 값 객체(PR3). */
+data class ImportWorklog(
+    val timeSpentSeconds: Int,
+    val startedAt: Instant? = null,
+    val authorEmail: String? = null,
+    val comment: String? = null,
 )
