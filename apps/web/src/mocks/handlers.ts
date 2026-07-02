@@ -29,6 +29,7 @@ import { notificationPolicyHandlers } from './notification-policy-handlers'
 import { userNotificationSubscriptionHandlers } from './user-notification-subscription-handlers'
 import { postActionHandlers } from './post-action-handlers'
 import { passwordHandlers } from './password-handlers'
+import { patHandlers } from './pat-handlers'
 import { projectLeadHandlers } from './project-lead-handlers'
 import { projectMemberHandlers } from './project-member-handlers'
 import { projectPermissionHandlers } from './project-permission-handlers'
@@ -89,6 +90,7 @@ export const handlers = [
   ...userNotificationSubscriptionHandlers,
   ...postActionHandlers,
   ...passwordHandlers,
+  ...patHandlers,
   ...projectLeadHandlers,
   ...projectMemberHandlers,
   ...projectPermissionHandlers,
