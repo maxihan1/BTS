@@ -59,6 +59,10 @@ import java.util.UUID
  * - S6. CREATE_ISSUE 권한 없는 requester → Failure(FORBIDDEN), 이슈 미생성
  * - S7. dryRun=true → 이슈/이벤트 미생성, 검증 결과만 반환
  * - S8(CONCERN #1). update 강제 실패(priority 범위 밖) → 이슈 롤백 + IssueCreated 이벤트 미발행
+ * - S9(CONCERN C1). dryRun 은 update-유발 행(priority/assignee)에 대해 UPDATE 권한도 미러 예측한다 —
+ *   실제 경로(executeImport)가 priority/labels 지정 시 updateIssue, assignee 매칭 시 changeAssignee 를
+ *   호출해 IssuePermission.UPDATE 를 검증하므로, dryRun 도 동일 조건에서 UPDATE 를 확인해야
+ *   "dryRun 성공 → 실제 실행 시 FORBIDDEN" 불일치를 막는다.
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [TestConfig::class, IssueImportAdapterTest.ImportTestConfig::class])
@@ -107,7 +111,13 @@ class IssueImportAdapterTest {
         @Bean
         @Primary
         open fun importPermissionResolver(): IssuePermissionResolver =
-            SelectiveDenyPermissionResolver(deniedActorId = FORBIDDEN_REQUESTER_ID)
+            SelectiveDenyPermissionResolver(
+                denied =
+                    setOf(
+                        FORBIDDEN_REQUESTER_ID to IssuePermission.CREATE,
+                        UPDATE_DENIED_REQUESTER_ID to IssuePermission.UPDATE,
+                    ),
+            )
 
         @Bean
         @Primary
@@ -160,13 +170,15 @@ class IssueImportAdapterTest {
             )
     }
 
-    /** CREATE_ISSUE 권한을 지정 actor 에게만 거부하고 그 외에는 모두 허용하는 테스트 전용 resolver. */
-    private class SelectiveDenyPermissionResolver(private val deniedActorId: UUID) : IssuePermissionResolver {
+    /** (actor, permission) 조합을 지정해 거부하고 그 외에는 모두 허용하는 테스트 전용 resolver. */
+    private class SelectiveDenyPermissionResolver(
+        private val denied: Set<Pair<UUID, IssuePermission>>,
+    ) : IssuePermissionResolver {
         override fun hasPermission(
             actorId: UUID,
             permission: IssuePermission,
             scope: IssueScope,
-        ): Boolean = !(actorId == deniedActorId && permission == IssuePermission.CREATE)
+        ): Boolean = (actorId to permission) !in denied
     }
 
     /** 고정 fixture 이메일→UUID 매핑을 제공하는 테스트 전용 [UserLookupPort]. */
@@ -201,6 +213,13 @@ class IssueImportAdapterTest {
 
         /** [SelectiveDenyPermissionResolver] 가 CREATE_ISSUE 를 거부하도록 지정한 요청자. */
         val FORBIDDEN_REQUESTER_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000202")
+
+        /**
+         * [SelectiveDenyPermissionResolver] 가 EDIT_ISSUE(UPDATE) 만 거부하도록 지정한 요청자
+         * (CREATE_ISSUE 는 보유). S9(CONCERN C1) — dryRun 이 update-유발 행에 대해 UPDATE 권한도
+         * 미러 예측하는지 검증한다.
+         */
+        val UPDATE_DENIED_REQUESTER_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000205")
 
         /** reporterEmail 매칭 fixture. */
         val ALICE_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000203")
@@ -490,6 +509,125 @@ class IssueImportAdapterTest {
         assert(readIssueEventsQueue().isEmpty()) {
             "롤백된 트랜잭션의 IssueCreated 이벤트는 q_issue_events 에 존재하지 않아야 합니다."
         }
+    }
+
+    // ── S9(C1). dryRun — update-유발 행은 UPDATE 권한도 미러 예측 ────────────────
+
+    /**
+     * priority 지정 행은 실제 경로(executeImport)에서 updateIssue(IssuePermission.UPDATE)를
+     * 호출한다. UPDATE 권한이 없는 [UPDATE_DENIED_REQUESTER_ID] 로 dryRun 하면 실제 실행과
+     * 동일하게 FORBIDDEN 이어야 한다(수정 전에는 CREATE 만 확인해 Success 를 오보 — RED).
+     */
+    @Test
+    fun `S9 dryRun priority 지정 - UPDATE 권한 없는 actor는 FORBIDDEN을 반환한다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = UPDATE_DENIED_REQUESTER_ID,
+                summary = "S9 update 권한 없음 - priority",
+                priority = 2,
+                dryRun = true,
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Failure) { "Failure 여야 하지만 $result 입니다." }
+        assert(result.reasonCode == IssueImportResult.FORBIDDEN) {
+            "reasonCode 가 FORBIDDEN 이어야 하지만 ${result.reasonCode} 입니다."
+        }
+        assert(countImportIssues() == 0) { "dryRun 은 이슈를 생성하지 않아야 하지만 ${countImportIssues()} 개 존재합니다." }
+    }
+
+    /**
+     * labels 지정 행도 priority 와 동일하게 updateIssue 경로를 유발하므로 UPDATE 권한 없는
+     * actor 는 dryRun 에서도 FORBIDDEN 이어야 한다.
+     */
+    @Test
+    fun `S9 dryRun labels 지정 - UPDATE 권한 없는 actor는 FORBIDDEN을 반환한다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = UPDATE_DENIED_REQUESTER_ID,
+                summary = "S9 update 권한 없음 - labels",
+                labels = listOf("urgent"),
+                dryRun = true,
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Failure) { "Failure 여야 하지만 $result 입니다." }
+        assert(result.reasonCode == IssueImportResult.FORBIDDEN) {
+            "reasonCode 가 FORBIDDEN 이어야 하지만 ${result.reasonCode} 입니다."
+        }
+    }
+
+    /**
+     * assigneeEmail 매칭 행은 실제 경로에서 changeAssignee(IssuePermission.UPDATE)를 호출한다.
+     * UPDATE 권한 없는 actor 는 dryRun 에서도 FORBIDDEN 이어야 한다.
+     */
+    @Test
+    fun `S9 dryRun assignee 매칭 - UPDATE 권한 없는 actor는 FORBIDDEN을 반환한다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = UPDATE_DENIED_REQUESTER_ID,
+                summary = "S9 update 권한 없음 - assignee",
+                assigneeEmail = BOB_EMAIL,
+                dryRun = true,
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Failure) { "Failure 여야 하지만 $result 입니다." }
+        assert(result.reasonCode == IssueImportResult.FORBIDDEN) {
+            "reasonCode 가 FORBIDDEN 이어야 하지만 ${result.reasonCode} 입니다."
+        }
+    }
+
+    /**
+     * assigneeEmail 이 미매칭이면 실제 경로에서 changeAssignee 를 호출하지 않으므로(resolution.assigneeId
+     * == null) UPDATE 를 유발하지 않는다. UPDATE 권한이 없어도 Success 여야 한다.
+     */
+    @Test
+    fun `S9 dryRun assignee 미매칭 - UPDATE 권한 없어도 Success이다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = UPDATE_DENIED_REQUESTER_ID,
+                summary = "S9 update 권한 없음 - assignee 미매칭",
+                assigneeEmail = "unknown@example.com",
+                dryRun = true,
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        assert(result.issueKey == IssueImportAdapter.DRY_RUN_MARKER)
+    }
+
+    /**
+     * summary/description 만 있는 행(priority/labels/assignee 모두 없음)은 실제 경로에서
+     * createIssue 만 호출하고 updateIssue/changeAssignee 는 유발하지 않는다. UPDATE 권한이
+     * 없어도 CREATE 만으로 Success 여야 한다(실제 경로와 일치).
+     */
+    @Test
+    fun `S9 dryRun summary description만 - UPDATE 미유발 행은 UPDATE 권한 없어도 Success이다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = UPDATE_DENIED_REQUESTER_ID,
+                summary = "S9 update 권한 없음 - update 미유발",
+                description = "본문만 있는 행",
+                dryRun = true,
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        assert(result.issueKey == IssueImportAdapter.DRY_RUN_MARKER) {
+            "dryRun 은 마커 값을 반환해야 하지만 ${result.issueKey} 입니다."
+        }
+        assert(countImportIssues() == 0) { "dryRun 은 이슈를 생성하지 않아야 하지만 ${countImportIssues()} 개 존재합니다." }
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
