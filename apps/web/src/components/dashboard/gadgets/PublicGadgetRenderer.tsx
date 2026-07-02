@@ -2,6 +2,7 @@
 import type { JSX } from 'react'
 import { Lock } from 'lucide-react'
 import type { DashboardTile } from '@/lib/dashboard-layout'
+import { dashboardLabels } from '@/i18n/dashboard-labels'
 import type { LinkItem } from './LinkListGadget'
 import { TextWidgetGadget } from './TextWidgetGadget'
 import { LinkListGadget } from './LinkListGadget'
@@ -76,7 +77,7 @@ function LoginRequiredPlaceholder(): JSX.Element {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
       <Lock className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-      <p className="text-sm text-muted-foreground">로그인이 필요한 가젯입니다</p>
+      <p className="text-sm text-muted-foreground">{dashboardLabels.share.authRequiredGadget}</p>
     </div>
   )
 }

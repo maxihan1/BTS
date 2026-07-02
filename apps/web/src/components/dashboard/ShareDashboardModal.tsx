@@ -190,11 +190,20 @@ export function ShareDashboardModal({
     }
   }
 
-  /** 인라인 확인 후 취소 실행 */
+  /**
+   * 인라인 확인 후 취소 실행.
+   *
+   * 방금 발급해 상단에 표시 중인 토큰(issuedToken)을 목록에서 취소한 경우, issuedToken도
+   * 함께 정리한다 — 그러지 않으면 상단 공개 URL/임베드 영역이 이미 취소된(404) 링크를
+   * 복사 가능한 상태로 계속 표시하는 데드엔드가 된다.
+   */
   async function handleRevokeConfirm(shareId: string): Promise<void> {
     try {
       await revokeMutation.mutateAsync({ id: dashboardId, shareId })
       setConfirmRevokeId(null)
+      if (issuedToken?.id === shareId) {
+        setIssuedToken(null)
+      }
     } catch {
       toast.error('공유 링크 취소 중 오류가 발생했습니다. 잠시 후 다시 시도하세요.')
     }
