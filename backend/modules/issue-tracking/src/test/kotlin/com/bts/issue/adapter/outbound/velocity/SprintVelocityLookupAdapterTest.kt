@@ -1,4 +1,5 @@
 // SprintVelocityLookupAdapter Testcontainers 통합 테스트 — 실 WorkflowStateCatalogImpl 조립 + 스프린트별 commitment/completed 집계 (FR-RP-02 Task 3)
+@file:Suppress("MaxLineLength")
 
 package com.bts.issue.adapter.outbound.velocity
 

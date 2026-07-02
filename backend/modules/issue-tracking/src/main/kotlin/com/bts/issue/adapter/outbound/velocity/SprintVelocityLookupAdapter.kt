@@ -90,14 +90,7 @@ class SprintVelocityLookupAdapter(
         projectKey: String,
         viewerUserId: UUID,
     ): Map<UUID, VelocityContribution> {
-        val allIssueKeys = issueKeysBySprint.values.flatten().toSet()
-        if (allIssueKeys.isEmpty()) {
-            return zeroContributions(issueKeysBySprint.keys)
-        }
-
-        // 정본 보안 술어(buildActiveSecureWhere) 재사용 — viewer 가시 이슈로 키 집합을 좁힌다(복제 없음).
-        val access = securityDirectory.accessibleLevels(viewerUserId, projectKey)
-        val visibleKeys = issueRepository.filterVisibleIssueKeys(allIssueKeys, projectKey, viewerUserId, access)
+        val visibleKeys = resolveVisibleIssueKeys(issueKeysBySprint, projectKey, viewerUserId)
         if (visibleKeys.isEmpty()) {
             return zeroContributions(issueKeysBySprint.keys)
         }
@@ -115,6 +108,26 @@ class SprintVelocityLookupAdapter(
 
     // ── private helpers ───────────────────────────────────────────────────────
 
+    /**
+     * 전체 이슈 키 합집합을 정본 보안 술어로 좁혀 viewer 가시 이슈 키만 반환한다.
+     *
+     * 합집합이 비어있으면 accessibleLevels 조회 없이 즉시 빈 집합을 반환한다
+     * (jOOQ 빈 `IN` 절 함정 방지 — [IssueRepository.filterVisibleIssueKeys] 자체도 방어하지만
+     * 불필요한 accessibleLevels 왕복을 피하기 위해 이 단계에서 조기 반환한다).
+     */
+    private fun resolveVisibleIssueKeys(
+        issueKeysBySprint: Map<UUID, Set<String>>,
+        projectKey: String,
+        viewerUserId: UUID,
+    ): Set<String> {
+        val allIssueKeys = issueKeysBySprint.values.flatten().toSet()
+        if (allIssueKeys.isEmpty()) return emptySet()
+
+        // 정본 보안 술어(buildActiveSecureWhere) 재사용 — viewer 가시 이슈로 키 집합을 좁힌다(복제 없음).
+        val access = securityDirectory.accessibleLevels(viewerUserId, projectKey)
+        return issueRepository.filterVisibleIssueKeys(allIssueKeys, projectKey, viewerUserId, access)
+    }
+
     /** 가시 이슈들의 (키, 추정 시간, 현재 상태 키, 타입 id) 를 스칼라 컬럼만으로 단일 조회한다 (cartesian 위험 없음). */
     private fun fetchVelocityRows(issueKeys: Set<String>): List<VelocityRow> =
         dsl
@@ -126,12 +139,17 @@ class SprintVelocityLookupAdapter(
                 VelocityRow(
                     issueKey = record.get(ISSUES.KEY) ?: error("issues.key must not be null"),
                     estimateSeconds = record.get(ISSUES.ORIGINAL_ESTIMATE_SECONDS)?.toLong() ?: 0L,
-                    currentStateKey = record.get(ISSUES.CURRENT_STATE_KEY) ?: error("issues.current_state_key must not be null"),
+                    currentStateKey =
+                        record.get(ISSUES.CURRENT_STATE_KEY)
+                            ?: error("issues.current_state_key must not be null"),
                     typeId = record.get(ISSUES.TYPE_ID) ?: error("issues.type_id must not be null"),
                 )
             }
 
-    /** issue_types.id → [IssueTypeKey] 맵 (findAll 1쿼리 — N+1 차단, [com.bts.issue.epic.application.IssueEpicService] 동형). */
+    /**
+     * issue_types.id → [IssueTypeKey] 맵 (findAll 1쿼리 — N+1 차단).
+     * [com.bts.issue.epic.application.IssueEpicService] 의 동일 패턴과 동형.
+     */
     private fun loadTypeIdToKeyMap(): Map<Long, IssueTypeKey> =
         issueTypeRepository.findAll()
             .mapNotNull { type -> type.id?.let { it.value to type.key } }
@@ -159,7 +177,7 @@ class SprintVelocityLookupAdapter(
         } catch (e: RuntimeException) {
             if (e.javaClass.simpleName == "WorkflowSchemeNoDefaultException") {
                 log.warn(
-                    "fetchVelocitySource: no workflow scheme for typeKey={} projectKey={} — defaulting to empty state map",
+                    "fetchVelocitySource: no workflow scheme for typeKey={} projectKey={} — defaulting to empty map",
                     typeKey.value,
                     projectKey,
                 )
