@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test
  * [AnonymousLayoutSanitizer.sanitize] 의 fail-closed 화이트리스트 규칙을 검증한다.
  *
  * [com.bts.notification.dashboard.domain.GadgetCategory.STATIC] (text_widget/link_list) 만
- * 원본 그대로 통과시키고, 그 외(데이터 가젯·미지 타입)는 config 를 제거한
+ * 원본 그대로 통과시키고, 그 외(데이터 가젯·미지 타입·gadgetType 없는 legacy)는 config 를 제거한
  * requiresAuth=true 플레이스홀더로 치환한다.
  */
 class AnonymousLayoutSanitizerTest {
@@ -78,14 +78,44 @@ class AnonymousLayoutSanitizerTest {
         assertThat(item.get("requiresAuth").asBoolean()).isTrue()
     }
 
-    /** SAN-5. gadgetType 미지정(legacy 타일)은 정화 대상이 아니며 원본 그대로 유지된다. */
+    /** SAN-5. gadgetType 미지정(legacy 타일)도 위치필드만 + requiresAuth=true 로 방출된다(config 없어도 fail-closed). */
     @Test
-    fun `gadgetType 미지정 legacy 타일은 원본 그대로 유지된다`() {
+    fun `gadgetType 미지정 legacy 타일도 위치필드만 requiresAuth true 로 방출된다`() {
         val layout = """[{"i":"e","x":3,"y":0,"w":1,"h":1}]"""
 
         val result = AnonymousLayoutSanitizer.sanitize(layout)
+        val item = mapper.readTree(result).single()
 
-        assertThat(mapper.readTree(result)).isEqualTo(mapper.readTree(layout))
+        assertThat(item.fieldNames().asSequence().toSet())
+            .containsExactlyInAnyOrder("i", "x", "y", "w", "h", "requiresAuth")
+        assertThat(item.get("requiresAuth").asBoolean()).isTrue()
+    }
+
+    /**
+     * SAN-9. gadgetType 이 없는 legacy 항목이 config(aql/filterId)를 실었으면
+     * config 를 제거하고 위치필드만 + requiresAuth=true 로 방출한다(legacy fail-closed 강화).
+     *
+     * gadgetType 이 없다는 이유로 원본을 통과시키면 legacy 항목에 실린 config(데이터 쿼리)가
+     * 익명 뷰어에게 그대로 새어나간다. STATIC 화이트리스트에 걸리지 않는 legacy 도 반드시 좁힌다.
+     */
+    @Test
+    fun `gadgetType 없는 legacy config 항목은 config 제거 후 위치필드만 requiresAuth true 로 방출된다`() {
+        val layout =
+            """
+            [{"i":"g","x":1,"y":2,"w":3,"h":4,"config":{"aql":"project = BTS","filterId":"42"}}]
+            """.trimIndent()
+
+        val result = AnonymousLayoutSanitizer.sanitize(layout)
+        val item = mapper.readTree(result).single()
+
+        assertThat(item.fieldNames().asSequence().toSet())
+            .containsExactlyInAnyOrder("i", "x", "y", "w", "h", "requiresAuth")
+        assertThat(item.get("requiresAuth").asBoolean()).isTrue()
+        assertThat(item.has("config")).isFalse()
+        assertThat(item.has("gadgetType")).isFalse()
+        // config 값(aql/filterId) 이 결과 어디에도 누출되지 않는다.
+        assertThat(result).doesNotContain("aql")
+        assertThat(result).doesNotContain("filterId")
     }
 
     /** SAN-6. 카탈로그 밖 알 수 없는 gadgetType 은 fail-closed 로 플레이스홀더로 치환되며 통과하지 않는다. */
