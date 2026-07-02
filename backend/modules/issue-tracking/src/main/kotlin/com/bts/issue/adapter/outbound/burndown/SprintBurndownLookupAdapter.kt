@@ -16,6 +16,14 @@ import java.time.LocalDate
 import java.time.OffsetDateTime
 
 /**
+ * TIMESTAMPTZ 컬럼을 UTC 벽시계 날짜로 변환하는 SQL 템플릿 (jOOQ `DSL.field` 바인딩용).
+ *
+ * `AT TIME ZONE 'UTC'` 는 세션 TimeZone GUC 값에 무관하게 항상 UTC 로 변환하므로,
+ * 이후 `::date` 캐스팅 결과도 세션 TZ 와 무관하게 결정적이다 — [utcDateField] 참조.
+ */
+private const val UTC_DATE_SQL_TEMPLATE = "({0} AT TIME ZONE 'UTC')::date"
+
+/**
  * [SprintBurndownLookupPort] 의 issue-tracking BC 구현 (FR-RP-01 Task 3).
  *
  * agile-planning BC 가 스프린트 번다운/번업 차트를 계산할 때 이 adapter 를 통해 스프린트에 속한
@@ -94,16 +102,15 @@ class SprintBurndownLookupAdapter(
 /**
  * TIMESTAMPTZ 컬럼을 UTC 날짜([LocalDate])로 변환하는 jOOQ 표현식을 생성한다.
  *
- * `(col AT TIME ZONE 'UTC')::date` — `AT TIME ZONE 'UTC'` 는 세션 TimeZone GUC 값에 무관하게
- * 항상 UTC 벽시계 시각으로 변환하므로, 이후 `::date` 캐스팅 결과도 세션 TZ 와 무관하게 결정적이다
- * (`date_trunc` 만 단독으로 쓸 때 발생하는 세션 TZ 의존 함정과 달리 이 표현식은 안전하다).
+ * [UTC_DATE_SQL_TEMPLATE] 을 사용한다 — `date_trunc` 만 단독으로 쓸 때 발생하는
+ * 세션 TZ 의존 함정과 달리, `AT TIME ZONE 'UTC'` 를 먼저 적용하므로 결과가 세션 TZ 와 무관하게 결정적이다.
  *
  * @param column worklogs.started_at 등 TIMESTAMPTZ 컬럼.
  * @return UTC 날짜 [Field] 표현식.
  */
 private fun utcDateField(column: Field<OffsetDateTime?>): Field<LocalDate?> =
     DSL.field(
-        "({0} AT TIME ZONE 'UTC')::date",
+        UTC_DATE_SQL_TEMPLATE,
         LocalDate::class.java,
         column,
     )
