@@ -112,8 +112,8 @@ Maxi 확정. worklog 이력 생략 · 경고 행당 집약 · worklog JSON 전�
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/comment/web/CommentController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/comment/web/CommentExceptionHandler.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/comment/web/CommentResponse.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/comment/web/CommentControllerIntegrationTest.kt`]
 - depends-on: [3]
 
-**RED**: `CommentControllerIntegrationTest`(@WebMvcTest 또는 full-boot) — `GET /api/v1/issues/{key}/comments` 200(목록)·권한없음 **403**·이슈없음 **404**(500 미변질) 검증 → 실패.
-**GREEN**: `CommentController`(GET, `CommentApplicationService.list` 위임, `CommentResponse[]`) + `CommentExceptionHandler`(`@RestControllerAdvice(assignableTypes=[CommentController::class])`, `IssueAccessDeniedException`→403·`IssueNotFoundException`→404 — memory `domain-exception-http-handler-basepackage-scope`). ProblemDetail 형식은 worklog 선례.
+**RED**: `CommentControllerIntegrationTest`(@WebMvcTest 또는 full-boot) — `GET /api/v1/issues/{key}/comments` 200(목록)·권한없음 **403**·이슈없음 **404**·**미인증 401**(모두 500 미변질) 검증 → 실패.
+**GREEN**: `CommentController`(GET, `CurrentActor.current()` **먼저** 추출 후 `CommentApplicationService.list` 위임, `CommentResponse[]`) + `CommentExceptionHandler`(`@RestControllerAdvice(assignableTypes=[CommentController::class])`) — **worklog `WorklogExceptionHandler` 전체 미러**: `IssueAccessDeniedException`→403·`IssueNotFoundException`→404·**`ResponseStatusException` 전파(미인증 401을 catch-all이 500으로 삼키는 것 차단 — C1, memory `catch-all-exceptionhandler-swallows-responsestatusexception`)**·catch-all→500. GET {key}는 문자열 path라 MethodArgumentTypeMismatch(400) 불필요. ProblemDetail 형식 worklog 선례.
 **REFACTOR**: DTO 매핑 함수 추출 + KDoc.
 **검증**: `./gradlew :modules:issue-tracking:test --tests '*CommentControllerIntegrationTest'`
 
@@ -126,7 +126,7 @@ Maxi 확정. worklog 이력 생략 · 경고 행당 집약 · worklog JSON 전�
 
 **RED**: `WorklogServiceImportTest`(Testcontainers) — `createImported(actor, issueKey, authorId, timeSpentSeconds, startedAt, comment)`가 (i) 저장된 worklog.authorId==주입 authorId(≠actor), (ii) UPDATE 권한 게이트, (iii) issues.version **불변**(no-bump), (iv) **history 미기록**(historyRecorder 호출 0) 검증 → 컴파일 실패(메서드 없음).
 **GREEN**: `createImported` 추가 — 기존 `create` 로직 재사용하되 authorId 주입 + `historyRecorder.record` **미호출** + remaining=auto-decrement(null). 기존 `create` 시그니처 불변.
-**REFACTOR**: create/createImported 공통 삽입+롤업 로직 private 추출(중복 제거) + KDoc(이력 생략 근거).
+**REFACTOR**: create/createImported 공통 **삽입+recompute 롤업**만 private 추출(중복 제거), before/after **스냅샷+historyRecorder는 create 전용 분기**(스냅샷은 이력용이라 createImported는 미생성) + KDoc(이력 생략 근거).
 **검증**: `./gradlew :modules:issue-tracking:test --tests '*WorklogServiceImportTest'`
 
 ### Task 6. search — 파서 확장 (댓글/worklog JSON·CSV + toCommand)
@@ -136,8 +136,8 @@ Maxi 확정. worklog 이력 생략 · 경고 행당 집약 · worklog JSON 전�
 - files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/parse/ParsedImportRow.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/parse/ImportRowParser.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/application/ImportJobProcessor.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/parse/ImportRowParserTest.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/job/application/ImportJobProcessorTest.kt`]
 - depends-on: [1]
 
-**RED**: `ImportRowParserTest` — (i) JSON `fields.comment.comments[]`{author.emailAddress,body,created}·`fields.worklog.worklogs[]`{author.emailAddress,timeSpentSeconds,started,comment} 추출, (ii) CSV `comment` 셀 `date;author;body` `split(limit=3)`(본문 세미콜론 보존)·3파트 미만 폴백, (iii) worklog CSV 미지원. `ImportJobProcessorTest`에서 toCommand가 ImportComment/ImportWorklog로 매핑(ISO→Instant, 이메일 소문자) 검증 → 실패.
-**GREEN**: `ParsedImportRow`에 comments/worklogs 필드 + `ImportRowParser` JSON 중첩 배열 파싱(스트리밍 유지)·CSV 댓글 3파트(limit=3) + `ImportJobProcessor.toCommand`에 매핑 라인.
+**RED**: `ImportRowParserTest` — (i) JSON `fields.comment.comments[]`{author.emailAddress,body,created}·`fields.worklog.worklogs[]`{author.emailAddress,timeSpentSeconds,started,comment} 추출(복합 원소 — `textArrayOf` 평면배열 헬퍼 재사용 불가, 신규 추출), (ii) CSV **동명 `comment` 컬럼 N개 전부 수집**(C2 — 2건 컬럼→댓글 2건, `putIfAbsent` 유실 회귀 테스트) 각 셀 `date;author;body` `split(limit=3)`(본문 세미콜론 보존)·3파트 미만 폴백, (iii) worklog CSV 미지원. `ImportJobProcessorTest`에서 toCommand가 ImportComment/ImportWorklog로 매핑(ISO→Instant, 이메일 소문자) 검증 → 실패.
+**GREEN**: `ParsedImportRow`에 comments/worklogs 필드(shared `ImportComment`/`ImportWorklog` 재사용 또는 파서-로컬 VO — 선택 명시) + `buildColumnIndex`에 **comment 다중 인덱스 수집**(동명 헤더 전 위치, 나머지 필드는 단일 유지) + JSON 중첩 배열 복합원소 파싱(스트리밍 유지)·CSV 댓글 3파트(limit=3) + `ImportJobProcessor.toCommand`에 매핑 라인.
 **REFACTOR**: 파싱 헬퍼(3파트 분해, 중첩 배열→VO) 추출 + 상수(헤더/JSON 경로) + KDoc.
 **검증**: `./gradlew :modules:search-export-import:test --tests '*ImportRowParserTest' --tests '*ImportJobProcessorTest'`
 
@@ -149,7 +149,10 @@ Maxi 확정. worklog 이력 생략 · 경고 행당 집약 · worklog JSON 전�
 - depends-on: [1, 3, 5]
 
 **RED**: `IssueImportAdapterTest`(Testcontainers 실 tx) 시나리오 추가 — (S1)댓글 생성+author 보존+조회, (S2)worklog 생성+author 보존+version 불변, (S3)UPDATE 권한 없음→댓글/worklog 스킵+집약 경고·이슈 생성, (S4)timeSpent≤0→worklog 스킵+경고(23514 미발생), (S5)author 미매칭→requester 폴백+경고, (S6)dry-run→UPDATE 권한 없으면 경고이되 **FORBIDDEN 아님**(성공)·insert 0, (S7)예상외 throw 행→이슈까지 롤백 → 실패.
-**GREEN**: `executeImport`에 createIssue 후 댓글→worklog 생성 단계 추가 — 이메일→author(`resolveByEmails` 배치 합류, 미매칭 requester 폴백), **사전 UPDATE 권한 체크** 후 `commentApplicationService.create`/`worklogService.createImported` 호출(권한 없으면 미호출+집약 경고, tx 오염 0), timeSpent≤0 사전 검증 스킵+경고. dry-run은 `warnCommentsWorklogsIfNeeded`(별도 경고 경로, `rowTriggersUpdate`/FORBIDDEN 미엮음) + 행당 유형별 집약.
+**GREEN**: `executeImport`에 createIssue 후 댓글→worklog 생성 단계 추가.
+- 이메일→author. `FieldResolution`을 **댓글/worklog author 해석 결과까지 담도록 확장**(C3 — 현재 reporter/assignee만, `resolveByEmails` 단일 배치에 댓글/worklog author 이메일도 합류), 미매칭 requester 폴백.
+- **사전 UPDATE 권한 체크** 후 `commentApplicationService.create`/`worklogService.createImported` 호출(권한 없으면 미호출+집약 경고, tx 오염 0). **잔여 throw 집합 = {UPDATE 권한, worklog timeSpent≤0(CHECK 23514), worklog started-null(NOT NULL)} 3개만 사전체크하면 완결**(body ''는 NOT NULL 만족→throw 안 함, 이슈는 직전 createIssue로 존재) — 이 셋을 하나라도 빠뜨리면 tx 오염(eng-review ★2).
+- dry-run. `warnCommentsWorklogsIfNeeded`(별도 경고 경로) — **FORBIDDEN early-return(현 `validateDryRun` L189~194) 이후에 배치**(C3, FORBIDDEN 행이 댓글 경고 중복 방출 방지), `rowTriggersUpdate`/FORBIDDEN에 **절대 미엮음**(PR2 CONCERN-A). 행당 유형별 집약.
 **REFACTOR**: 댓글/worklog 처리·집약 경고 헬퍼 추출 + KDoc(사전체크 근거).
 **검증**: `./gradlew :modules:issue-tracking:test --tests '*IssueImportAdapterTest'`
 
@@ -162,4 +165,13 @@ Maxi 확정. worklog 이력 생략 · 경고 행당 집약 · worklog JSON 전�
 - 추가 검증: ktlint, detekt, ArchUnit(BC 격리·jOOQ repository), verify-master-plan, 통합테스트(Testcontainers 실 tx)
 - FR 동기화: 댓글 도메인 FR-IM-01 흡수 → SDD 10.6.3 + fr-index 명시(카운트 123 불변). 머지 전 product/search-export-import.md §4.1 PR3 진행노트.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-03, 적대적 엔지니어링 리뷰)
+- ✅ **하드 BLOCKER 없음**. ★1 마이그레이션(V035 실제 다음 번호 확인·init_codegen 미러 포함·FK CASCADE 정합)·★2 tx 오염 사전체크(잔여 throw 집합 {권한,timeSpent≤0,started-null} 전수 강등)·★4 dry-run 별도 경고 경로 — 3 핵심축 실코드 근거로 건전 확정. 댓글 권한 VIEW+IssueScope.Issue 보안게이트 자동적용·BC 격리(신규 @MockBean 불필요)·테스트 tx-aware·wave 의존 정합 PASS.
+- ⚠️ **CONCERN 3건 → plan 반영 완료**.
+  - **C1(필수·회귀)**. CommentExceptionHandler를 worklog 핸들러 전체 미러(`ResponseStatusException` 401 전파 + catch-all), 403/404만이면 미인증 401→500 회귀 → Task 4 GREEN/RED에 401 명시 반영.
+  - **C2(필수·스펙위반)**. CSV `buildColumnIndex` `putIfAbsent`가 동명 Comment 컬럼 첫개만 보존→2..N 유실 → 다중 인덱스 수집으로 spec R8 + Task 6 반영.
+  - **C3(권장)**. dry-run `warnCommentsWorklogsIfNeeded`를 FORBIDDEN early-return 이후 배치 + `FieldResolution`에 댓글/worklog author 해석 확장 → Task 7 반영.
+- 경미(impl 중 흡수). worklog 스냅샷 create 전용 분기(T5 반영)·파서 복합원소 VO 타입 명시(T6)·tx 사전체크 전수성 명문화(T7).
+- BLOCKER: 없음.
