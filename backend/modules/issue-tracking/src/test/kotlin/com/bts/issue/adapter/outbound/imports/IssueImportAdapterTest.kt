@@ -1059,6 +1059,45 @@ class IssueImportAdapterTest {
         assert(result.warnings.isNotEmpty()) { "TRANSITION 권한없음 경고가 있어야 하지만 비어 있습니다." }
     }
 
+    // ── S21. 자동생성 tx 원자성 — 컴포넌트 auto-create 후 행 실패 시 컴포넌트도 롤백(고아 0) ──
+
+    /**
+     * BLOCKER(tx 오염) 검증 확장(T6 ⑤) — 컴포넌트 자동생성은 행 트랜잭션에 참여하므로, 자동생성
+     * 뒤 후속 updateIssue(priority 범위 밖=99)가 실패하면 이슈뿐 아니라 **자동생성된 컴포넌트까지
+     * 함께 롤백**돼야 한다(고아 0). 권한이 있는 경로(create 실제 호출)에서도 정상 실패가 tx 오염
+     * 없이 깔끔히 롤백됨을 실증한다 — 사전 체크 설계의 정합성 최종 확인.
+     *
+     * Given CREATE 권한 있는 requester + 미존재 컴포넌트 "RollbackComponent" + priority=99
+     * When  importIssue 호출
+     * Then  Failure(VALIDATION)
+     * And   이슈 0건(create 롤백)
+     * And   "RollbackComponent" 미존재(auto-create 롤백 — 고아 없음)
+     */
+    @Test
+    fun `S21 컴포넌트 자동생성 후 update 실패시 이슈와 자동생성 컴포넌트가 함께 롤백된다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = AUTO_CREATE_ALLOWED_REQUESTER_ID,
+                summary = "S21 자동생성 롤백 테스트",
+                componentNames = listOf("RollbackComponent"),
+                priority = 99,
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Failure) { "Failure 여야 하지만 $result 입니다." }
+        assert(result.reasonCode == IssueImportResult.VALIDATION) {
+            "reasonCode 가 VALIDATION 이어야 하지만 ${result.reasonCode} 입니다."
+        }
+        assert(countImportIssues() == 0) {
+            "update 실패 시 이슈가 롤백돼야 하지만 ${countImportIssues()} 개 존재합니다."
+        }
+        assert(findComponentIdOrNull(PROJECT_KEY, "RollbackComponent") == null) {
+            "행 실패 시 자동생성된 컴포넌트도 롤백돼 고아가 없어야 합니다."
+        }
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     private fun applyMigrations() {
