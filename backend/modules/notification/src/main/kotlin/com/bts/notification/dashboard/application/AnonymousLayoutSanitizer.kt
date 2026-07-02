@@ -69,16 +69,14 @@ object AnonymousLayoutSanitizer {
     /** layout 배열의 단일 항목을 화이트리스트 규칙에 따라 정화한다. */
     private fun sanitizeItem(item: JsonNode): JsonNode {
         val gadgetTypeNode = item.get(FIELD_GADGET_TYPE)
-        if (gadgetTypeNode == null || gadgetTypeNode.isNull) {
+        val gadgetType = gadgetTypeNode?.takeUnless { it.isNull }?.let { GadgetType.fromKey(it.asText()) }
+        return when {
             // legacy 타일(gadgetType 미지정) — config 가 없으므로 정화 대상 아님
-            return item
+            gadgetTypeNode == null || gadgetTypeNode.isNull -> item
+            gadgetType?.category == GadgetCategory.STATIC -> item
+            // 데이터 가젯 또는 카탈로그 밖 미지 타입 — fail-closed 플레이스홀더로 치환
+            else -> placeholder(item, gadgetTypeNode)
         }
-        val gadgetType = GadgetType.fromKey(gadgetTypeNode.asText())
-        if (gadgetType != null && gadgetType.category == GadgetCategory.STATIC) {
-            return item
-        }
-        // 데이터 가젯 또는 카탈로그 밖 미지 타입 — fail-closed 플레이스홀더로 치환
-        return placeholder(item, gadgetTypeNode)
     }
 
     /** 위치 필드 + gadgetType 만 유지하고 config 를 제거한 플레이스홀더를 만든다. */
