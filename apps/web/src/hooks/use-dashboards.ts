@@ -6,8 +6,19 @@ import {
   createDashboard,
   patchDashboard,
   deleteDashboard,
+  issueShareToken,
+  listShareTokens,
+  revokeShareToken,
 } from '@/api/dashboards'
-import type { Dashboard, DashboardPage, CreateDashboardRequest, PatchDashboardRequest } from '@/api/dashboards'
+import type {
+  Dashboard,
+  DashboardPage,
+  CreateDashboardRequest,
+  PatchDashboardRequest,
+  IssuedShareToken,
+  ShareTokenList,
+  IssueShareTokenRequest,
+} from '@/api/dashboards'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // queryKey 팩토리 — 매직 문자열 방지
@@ -23,6 +34,12 @@ export const dashboardKeys = {
    * @param id 대시보드 UUID
    */
   detail: (id: string) => ['dashboard', id] as const,
+  /**
+   * 대시보드 공유 토큰 목록 queryKey (FR-DB-03).
+   *
+   * @param id 대상 대시보드 UUID
+   */
+  shares: (id: string) => ['dashboards', id, 'shares'] as const,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -170,6 +187,92 @@ export function useDeleteDashboard() {
     onSuccess: async (_data, id) => {
       await queryClient.invalidateQueries({ queryKey: dashboardKeys.detail(id) })
       await queryClient.invalidateQueries({ queryKey: dashboardKeys.list() })
+    },
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useShareTokens — 대시보드 공유 토큰 목록 조회 (FR-DB-03)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 대시보드에 발급된 공유 토큰 목록을 조회한다 (소유자 전용).
+ *
+ * GET /api/v1/dashboards/{id}/shares → ShareTokenList (items: 요약 목록, 원문 token 미포함)
+ * staleTime 30초.
+ *
+ * @param dashboardId 대상 대시보드 UUID
+ */
+export function useShareTokens(dashboardId: string) {
+  return useQuery<ShareTokenList>({
+    queryKey: dashboardKeys.shares(dashboardId),
+    queryFn: () => listShareTokens(dashboardId),
+    staleTime: 30_000,
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useIssueShareToken — 공유 토큰 발급 mutation (FR-DB-03)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** useIssueShareToken mutation 입력 타입 */
+export interface IssueShareTokenInput {
+  /** 대상 대시보드 UUID */
+  id: string
+  /** 발급 요청 바디 (expiresAt 선택, 생략 시 무기한) */
+  body?: IssueShareTokenRequest
+}
+
+/**
+ * 대시보드 공유 토큰을 발급한다 (소유자 전용).
+ *
+ * POST /api/v1/dashboards/{id}/shares → 201 IssuedShareToken (원문 token 1회 노출)
+ *
+ * onSuccess → invalidate-only: 공유 토큰 목록 쿼리 (dashboardKeys.shares(id)) invalidate.
+ * setQueryData로 부분 응답을 캐시에 머지하지 않는다
+ * (memory: mutation-setquerydata-partial-response-flicker).
+ *
+ * ⚠️ mutation 결과(mutateAsync 반환값)에는 원문 token이 그대로 담겨 있다. 목록 조회는
+ * 토큰을 재노출하지 않으므로(해시만 저장), 호출측(모달)이 이 결과를 컴포넌트 state로
+ * 보관해 복사·임베드 스니펫을 제공해야 한다.
+ */
+export function useIssueShareToken() {
+  const queryClient = useQueryClient()
+
+  return useMutation<IssuedShareToken, unknown, IssueShareTokenInput>({
+    mutationFn: ({ id, body }) => issueShareToken(id, body),
+    onSuccess: async (_data, { id }) => {
+      await queryClient.invalidateQueries({ queryKey: dashboardKeys.shares(id) })
+    },
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useRevokeShareToken — 공유 토큰 취소 mutation (FR-DB-03)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** useRevokeShareToken mutation 입력 타입 */
+export interface RevokeShareTokenInput {
+  /** 대상 대시보드 UUID */
+  id: string
+  /** 취소할 공유 토큰 UUID */
+  shareId: string
+}
+
+/**
+ * 대시보드 공유 토큰을 취소한다 (소유자 전용).
+ *
+ * DELETE /api/v1/dashboards/{id}/shares/{shareId} → 204 No Content
+ *
+ * onSuccess → invalidate-only: 공유 토큰 목록 쿼리 (dashboardKeys.shares(id)) invalidate.
+ */
+export function useRevokeShareToken() {
+  const queryClient = useQueryClient()
+
+  return useMutation<void, unknown, RevokeShareTokenInput>({
+    mutationFn: ({ id, shareId }) => revokeShareToken(id, shareId),
+    onSuccess: async (_data, { id }) => {
+      await queryClient.invalidateQueries({ queryKey: dashboardKeys.shares(id) })
     },
   })
 }
