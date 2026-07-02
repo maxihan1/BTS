@@ -50,9 +50,20 @@ PR2와 동형 패턴 예상.
 - **관련 ADR**: 신규 ADR 후보(댓글 도메인 도입 — 범위 한정 근거·권한 재사용·멘션 억제). PR1 Import ADR(`2026-07-02-fr-im-01-csv-json-import.md`) 참조.
 - **★FR 동기화 쟁점(게이트1 확정 필요)**: 댓글 도메인을 (a) FR-IM-01 PR3의 prerequisite로 흡수(FR 카운트 123 불변, SDD 10.6.3 "댓글 보존" 이미 명시) vs (b) 신규 FR 부여(124, 8종 전수 동기화). SDD 10.6.3이 이미 import 범위에 댓글 보존을 적어둔 점 + 범위가 도메인+조회로 한정된 점에서 **(a) 흡수** 잠정 제안 — 게이트1에서 Maxi 확정.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-03-fr-im-01-pr3-comments-worklog.md](../specs/2026-07-03-fr-im-01-pr3-comments-worklog.md)
+
+핵심 3줄 요약.
+- 댓글 기능 신설(도메인+조회) — comments 테이블(신규 마이그레이션)·Comment 도메인·repo·`CommentApplicationService`(create+list)·`GET /issues/{key}/comments`(VIEW+IssueScope.Issue)·전용 `CommentExceptionHandler`(500 변질 차단). 권한 UPDATE 재사용(enum 추가 0).
+- 댓글/Worklog import — 파서(JSON `comment.comments[]`/`worklog.worklogs[]` + CSV 댓글 3파트, worklog는 JSON 전용) + `IssueImportCommand` 중첩 VO + 어댑터 위임. worklog는 `createImported`(author 보존·이력 생략). best-effort 사전 체크(tx 오염 회피 PR2).
+- dry-run은 유효성-예측 경고를 **별도 경로**로 미러(FORBIDDEN 미엮음, PR2 CONCERN-A 방지) + G1 경고 행당 유형별 집약.
+
+Maxi 확정. worklog 이력 생략 · 경고 행당 집약 · worklog JSON 전용 · 댓글 도메인 FR-IM-01 흡수(SDD/fr-index 명시, 카운트 123 불변).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). gap 10축 분석 → (A) 스펙 보강 3건(예외핸들러·dry-run 경고분리·split limit)+경미 4건 반영, (B) Maxi 결정 4건 확정.
 
 ## Plan (← /bts-plan 채움)
 
