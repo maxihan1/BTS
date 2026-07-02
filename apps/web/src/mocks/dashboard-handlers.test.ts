@@ -8,9 +8,12 @@ import {
   BOB_OTHER_ID,
   DEFAULT_DASHBOARD,
   OTHER_DASHBOARD,
+  SHARE_DEMO_DASHBOARD,
   dashboardStore,
   resetDashboardStore,
+  resetShareTokenStore,
   seedDashboard,
+  shareTokenStore,
 } from './dashboard-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -418,5 +421,250 @@ describe('S8 — X-Actor-Id 헤더 없는 통합 호출 회귀', () => {
 
     const body = (await res.json()) as { data: { name: string } }
     expect(body.data.name).toBe('헤더 없이 수정')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T2 — 공유 토큰 발급/목록/취소 + 익명 공개 조회 (FR-DB-03 D6/D7 Task 2)
+//
+// 실제 백엔드 계약 (DashboardShareController/PublicDashboardController grep 대조).
+//   - POST   /api/v1/dashboards/{id}/shares            → 201 { data: { id, token, createdAt, expiresAt? } }
+//   - GET    /api/v1/dashboards/{id}/shares            → 200 { data: { items: [{ id, createdAt, expiresAt? }] } }
+//   - DELETE /api/v1/dashboards/{id}/shares/{shareId}  → 204
+//   - GET    /api/v1/public/dashboards/{token}          → 200 { data: { name, description, layout } } / 404
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('공유 토큰 — POST/GET/DELETE + 익명 공개 조회', () => {
+  beforeEach(() => {
+    resetShareTokenStore()
+    seedDashboard(SHARE_DEMO_DASHBOARD)
+  })
+
+  // ── POST /api/v1/dashboards/:id/shares ──────────────────────────────────
+
+  describe('POST /api/v1/dashboards/:id/shares', () => {
+    it('T2-1: 소유자가 발급하면 201과 원문 token을 포함한 응답을 반환한다', async () => {
+      const res = await fetch(`/api/v1/dashboards/${SHARE_DEMO_DASHBOARD.id}/shares`, {
+        method: 'POST',
+        headers: actorHeaders(ALICE_OWNER_ID),
+        body: JSON.stringify({}),
+      })
+
+      expect(res.status).toBe(201)
+
+      const body = (await res.json()) as { data: unknown }
+      const data = body.data as { id: string; token: string; createdAt: string }
+
+      expect(typeof data.id).toBe('string')
+      expect(typeof data.token).toBe('string')
+      expect(data.token.length).toBeGreaterThan(0)
+      expect(typeof data.createdAt).toBe('string')
+    })
+
+    it('T2-2: 발급된 토큰은 store에 추가된다 (stateful)', async () => {
+      const sizeBefore = shareTokenStore.size
+
+      await fetch(`/api/v1/dashboards/${SHARE_DEMO_DASHBOARD.id}/shares`, {
+        method: 'POST',
+        headers: actorHeaders(ALICE_OWNER_ID),
+        body: JSON.stringify({}),
+      })
+
+      expect(shareTokenStore.size).toBe(sizeBefore + 1)
+    })
+
+    it('T2-3: expiresAt 생략 시 응답에 expiresAt 키가 없다 (@JsonInclude(NON_NULL) 재현)', async () => {
+      const res = await fetch(`/api/v1/dashboards/${SHARE_DEMO_DASHBOARD.id}/shares`, {
+        method: 'POST',
+        headers: actorHeaders(ALICE_OWNER_ID),
+        body: JSON.stringify({}),
+      })
+
+      const body = (await res.json()) as { data: Record<string, unknown> }
+      expect('expiresAt' in body.data).toBe(false)
+    })
+
+    it('T2-4: 비소유자가 발급 시도하면 403 NOTIF_DASHBOARD_FORBIDDEN을 반환한다', async () => {
+      const res = await fetch(`/api/v1/dashboards/${SHARE_DEMO_DASHBOARD.id}/shares`, {
+        method: 'POST',
+        headers: actorHeaders(BOB_OTHER_ID),
+        body: JSON.stringify({}),
+      })
+
+      expect(res.status).toBe(403)
+
+      const body = (await res.json()) as { errorCode: string }
+      expect(body.errorCode).toBe('NOTIF_DASHBOARD_FORBIDDEN')
+    })
+  })
+
+  // ── GET /api/v1/dashboards/:id/shares ───────────────────────────────────
+
+  describe('GET /api/v1/dashboards/:id/shares', () => {
+    it('T2-5: 발급된 토큰이 목록에 추가되고 token 필드를 포함하지 않는다 (EC-9 회귀가드)', async () => {
+      const issueRes = await fetch(`/api/v1/dashboards/${SHARE_DEMO_DASHBOARD.id}/shares`, {
+        method: 'POST',
+        headers: actorHeaders(ALICE_OWNER_ID),
+        body: JSON.stringify({}),
+      })
+      const issueBody = (await issueRes.json()) as { data: { id: string } }
+
+      const listRes = await fetch(`/api/v1/dashboards/${SHARE_DEMO_DASHBOARD.id}/shares`, {
+        headers: actorHeaders(ALICE_OWNER_ID),
+      })
+
+      expect(listRes.status).toBe(200)
+
+      const listBody = (await listRes.json()) as { data: { items: Array<Record<string, unknown>> } }
+      const items = listBody.data.items
+
+      expect(items.some((item) => item['id'] === issueBody.data.id)).toBe(true)
+      for (const item of items) {
+        expect('token' in item).toBe(false)
+        expect('lastAccessedAt' in item).toBe(false)
+      }
+    })
+
+    it('T2-6: 비소유자가 목록 조회 시도하면 403 NOTIF_DASHBOARD_FORBIDDEN을 반환한다', async () => {
+      const res = await fetch(`/api/v1/dashboards/${SHARE_DEMO_DASHBOARD.id}/shares`, {
+        headers: actorHeaders(BOB_OTHER_ID),
+      })
+
+      expect(res.status).toBe(403)
+    })
+  })
+
+  // ── DELETE /api/v1/dashboards/:id/shares/:shareId ───────────────────────
+
+  describe('DELETE /api/v1/dashboards/:id/shares/:shareId', () => {
+    it('T2-7: 소유자가 취소하면 204를 반환하고 store에서 제거된다', async () => {
+      const issueRes = await fetch(`/api/v1/dashboards/${SHARE_DEMO_DASHBOARD.id}/shares`, {
+        method: 'POST',
+        headers: actorHeaders(ALICE_OWNER_ID),
+        body: JSON.stringify({}),
+      })
+      const { id: shareId } = (await issueRes.json()) as { data: { id: string } }
+
+      const deleteRes = await fetch(`/api/v1/dashboards/${SHARE_DEMO_DASHBOARD.id}/shares/${shareId}`, {
+        method: 'DELETE',
+        headers: actorHeaders(ALICE_OWNER_ID),
+      })
+
+      expect(deleteRes.status).toBe(204)
+      expect(shareTokenStore.has(shareId)).toBe(false)
+
+      const listRes = await fetch(`/api/v1/dashboards/${SHARE_DEMO_DASHBOARD.id}/shares`, {
+        headers: actorHeaders(ALICE_OWNER_ID),
+      })
+      const listBody = (await listRes.json()) as { data: { items: Array<{ id: string }> } }
+      expect(listBody.data.items.some((item) => item.id === shareId)).toBe(false)
+    })
+
+    it('T2-8: 미존재 shareId 취소 시 404 NOTIF_DASHBOARD_SHARE_NOT_FOUND를 반환한다', async () => {
+      const res = await fetch(
+        `/api/v1/dashboards/${SHARE_DEMO_DASHBOARD.id}/shares/00000000-0000-4000-8000-000000000999`,
+        { method: 'DELETE', headers: actorHeaders(ALICE_OWNER_ID) },
+      )
+
+      expect(res.status).toBe(404)
+
+      const body = (await res.json()) as { errorCode: string }
+      expect(body.errorCode).toBe('NOTIF_DASHBOARD_SHARE_NOT_FOUND')
+    })
+  })
+
+  // ── GET /api/v1/public/dashboards/:token ────────────────────────────────
+
+  describe('GET /api/v1/public/dashboards/:token', () => {
+    it('T2-9: 유효 토큰이면 200과 정화된 layout을 반환한다 — 정적 가젯은 config를 유지한다', async () => {
+      const issueRes = await fetch(`/api/v1/dashboards/${SHARE_DEMO_DASHBOARD.id}/shares`, {
+        method: 'POST',
+        headers: actorHeaders(ALICE_OWNER_ID),
+        body: JSON.stringify({}),
+      })
+      const { token } = (await issueRes.json()) as { data: { token: string } }
+
+      const res = await fetch(`/api/v1/public/dashboards/${token}`)
+
+      expect(res.status).toBe(200)
+
+      const body = (await res.json()) as { data: { name: string; description: string | null; layout: string } }
+      expect(body.data.name).toBe(SHARE_DEMO_DASHBOARD.name)
+      expect(typeof body.data.layout).toBe('string')
+
+      const tiles = JSON.parse(body.data.layout) as Array<Record<string, unknown>>
+      const textTile = tiles.find((t) => t['gadgetType'] === 'text_widget')
+      const linkTile = tiles.find((t) => t['gadgetType'] === 'link_list')
+
+      expect(textTile).toBeDefined()
+      expect(linkTile).toBeDefined()
+      expect((textTile as Record<string, unknown>)['config']).toBeDefined()
+      expect((linkTile as Record<string, unknown>)['config']).toBeDefined()
+    })
+
+    it('T2-10: 데이터 가젯은 config가 제거되고 requiresAuth 플레이스홀더로 치환된다', async () => {
+      const issueRes = await fetch(`/api/v1/dashboards/${SHARE_DEMO_DASHBOARD.id}/shares`, {
+        method: 'POST',
+        headers: actorHeaders(ALICE_OWNER_ID),
+        body: JSON.stringify({}),
+      })
+      const { token } = (await issueRes.json()) as { data: { token: string } }
+
+      const res = await fetch(`/api/v1/public/dashboards/${token}`)
+      const body = (await res.json()) as { data: { layout: string } }
+
+      const tiles = JSON.parse(body.data.layout) as Array<Record<string, unknown>>
+      const countTile = tiles.find((t) => t['gadgetType'] === 'issue_count') as Record<string, unknown>
+
+      expect(countTile).toBeDefined()
+      expect(countTile['config']).toBeUndefined()
+      expect(countTile['requiresAuth']).toBe(true)
+      expect(typeof countTile['i']).toBe('string')
+      expect(typeof countTile['x']).toBe('number')
+      expect(typeof countTile['y']).toBe('number')
+      expect(typeof countTile['w']).toBe('number')
+      expect(typeof countTile['h']).toBe('number')
+    })
+
+    it('T2-11: 무효 토큰이면 404 NOTIF_DASHBOARD_NOT_FOUND를 반환한다', async () => {
+      const res = await fetch('/api/v1/public/dashboards/this-token-does-not-exist')
+
+      expect(res.status).toBe(404)
+
+      const body = (await res.json()) as { errorCode: string }
+      expect(body.errorCode).toBe('NOTIF_DASHBOARD_NOT_FOUND')
+    })
+
+    it('T2-12: 취소된 토큰으로 조회하면 404가 된다 (stateful — DELETE 후 즉시 반영)', async () => {
+      const issueRes = await fetch(`/api/v1/dashboards/${SHARE_DEMO_DASHBOARD.id}/shares`, {
+        method: 'POST',
+        headers: actorHeaders(ALICE_OWNER_ID),
+        body: JSON.stringify({}),
+      })
+      const { id: shareId, token } = (await issueRes.json()) as { data: { id: string; token: string } }
+
+      await fetch(`/api/v1/dashboards/${SHARE_DEMO_DASHBOARD.id}/shares/${shareId}`, {
+        method: 'DELETE',
+        headers: actorHeaders(ALICE_OWNER_ID),
+      })
+
+      const res = await fetch(`/api/v1/public/dashboards/${token}`)
+      expect(res.status).toBe(404)
+    })
+
+    it('T2-13: description이 null이어도 응답 키는 존재한다 (PublicDashboardResponse는 NON_NULL 미적용)', async () => {
+      const issueRes = await fetch(`/api/v1/dashboards/${SHARE_DEMO_DASHBOARD.id}/shares`, {
+        method: 'POST',
+        headers: actorHeaders(ALICE_OWNER_ID),
+        body: JSON.stringify({}),
+      })
+      const { token } = (await issueRes.json()) as { data: { token: string } }
+
+      const res = await fetch(`/api/v1/public/dashboards/${token}`)
+      const body = (await res.json()) as { data: Record<string, unknown> }
+
+      expect('description' in body.data).toBe(true)
+      expect(body.data['description']).toBeNull()
+    })
   })
 })
