@@ -1,8 +1,10 @@
-// 스프린트 칸 컴포넌트 — 헤더(name+status)·드롭 영역·시작/완료 버튼 슬롯 (FR-BL-02 D6/D7)
+// 스프린트 칸 컴포넌트 — 헤더(name+status)·드롭 영역·시작/완료 버튼 슬롯·번다운 링크 (FR-BL-02 D6/D7, FR-RP-01 D6/D7)
 import { memo } from 'react'
 import { useDroppable } from '@dnd-kit/core'
+import { Link } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 import { backlogLabels } from '@/i18n/backlog-labels'
+import { burndownLabels } from '@/i18n/burndown-labels'
 import type { BacklogIssue, SprintMeta } from '@/api/backlog'
 import { BacklogCard } from './BacklogCard'
 
@@ -12,6 +14,8 @@ import { BacklogCard } from './BacklogCard'
 
 /** SprintColumn 컴포넌트 Props */
 export interface SprintColumnProps {
+  /** 소속 프로젝트 키 — 번다운 링크 경로 params에 사용 */
+  projectKey: string
   /** 스프린트 메타 정보 */
   sprint: SprintMeta
   /** rank 순으로 정렬된 스프린트 이슈 목록 (부모가 정렬해 전달) */
@@ -58,6 +62,7 @@ function statusBadgeClass(status: string): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function SprintColumnInner({
+  projectKey,
   sprint,
   issues,
   assigneeNames,
@@ -133,6 +138,20 @@ function SprintColumnInner({
             {backlogLabels.completeSprint}
           </button>
         )}
+
+        {/* 번다운 진입 링크 — 스프린트 상태와 무관하게 항상 표시 (FR-RP-01 D6/D7) */}
+        <Link
+          to="/projects/$projectKey/sprints/$sprintId/burndown"
+          params={{ projectKey, sprintId: sprint.sprintId }}
+          className={cn(
+            'self-start rounded px-2 py-1 text-xs font-medium',
+            'bg-secondary text-secondary-foreground hover:bg-secondary/80',
+            'transition-colors',
+          )}
+          aria-label={`${sprint.name} ${burndownLabels.toggle.burndown} 보기`}
+        >
+          {burndownLabels.toggle.burndown}
+        </Link>
       </div>
 
       {/* 드롭 영역 + 카드 목록 */}
@@ -180,6 +199,8 @@ function SprintColumnInner({
  * - 헤더에 스프린트 이름·상태 배지·이슈 수를 표시한다.
  * - PLANNED이면 "스프린트 시작" 버튼 슬롯, ACTIVE이면 "스프린트 완료" 버튼 슬롯을 표시한다.
  *   버튼 동작은 props 콜백으로 주입된다 (Task 8 부모 담당).
+ * - 상태와 무관하게 "번다운" 링크를 항상 표시한다.
+ *   `/projects/{projectKey}/sprints/{sprintId}/burndown`로 이동한다 (FR-RP-01 D6/D7).
  * - `useDroppable`로 droppable id=`sprint-{sprintId}` 영역을 제공한다.
  * - COMPLETED 상태이면 `useDroppable`의 disabled=true로 드롭을 거부하고 시각적으로 비활성 처리한다.
  * - `isOver=true`이면 ring-2 하이라이트를 적용한다 (COMPLETED이면 무시).
