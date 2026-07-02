@@ -254,4 +254,28 @@ Maxi가 확장 범위를 택함 → FR-IM-01을 순차 PR 에픽으로 분할. *
 - 추가 검증: ktlint·detekt(--rerun-tasks, 캐시 false-green 함정)·ArchUnit(search→issue-tracking 직접의존 0)·모듈 전체 test
 - Gradle 모듈 컴파일 직렬화: shared-kernel(T3,T4)·issue-tracking(T8) 변경은 컴파일 순서 영향 — wave 내 병렬이라도 Gradle 직렬(plan-wave 선례)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-02) — 백엔드 집중 리뷰
+
+**Step 0 스코프**. ✅ 자산 재사용 최대(FR-EX-02 미러). 복잡도 게이트(>8파일)는 본질 복잡도+에픽 합의로 통과. 이노베이션 토큰 0.
+
+**BLOCKER: 없음.** plan은 출시된 FR-EX-02의 충실한 미러라 구조적 위험 낮음.
+
+**CONCERN (impl 시 반영 — 대부분 이미 plan/criteria에 내포, 명시 강화)**.
+
+1. **[아키텍처·중] IssueCreated 이벤트 vs 행 롤백**. T8이 createIssue+priority/labels/assignee update를 한 @Transactional로 묶어 행 원자성 확보. 그런데 `createIssue`가 `eventPublisher.publish(IssueCreated)`를 호출함. update 실패로 행이 롤백될 때 이 이벤트가 이미 발사되면 안 됨. **impl에서 검증** — 이벤트 발행이 (a) pgmq outbox(MANDATORY, 같은 tx라 롤백) 또는 (b) `@TransactionalEventListener(AFTER_COMMIT)` 인지 확인. 즉시 발행(in-tx 동기)이면 롤백된 이슈의 이벤트가 누출 → dryRun/실패행에서 부작용. T8 테스트에 "update 실패 시 이벤트 미발행" 케이스 추가.
+
+2. **[성능·중] JSON 파서 스트리밍 필수**. T5가 Jira JSON `{issues:[...]}`를 파싱. `readTree`/`readValue`로 전체 트리 적재 시 10만 이슈에서 OOM. Jackson `JsonParser` 스트리밍(배열 요소 단위)으로 파싱해야 NFR(스트리밍, 전체 메모리 적재 금지) 충족. CSV는 라인 단위라 자연 스트리밍. **T5 GREEN에 명시**.
+
+3. **[품질·중] 에러 로그 CSV formula injection**. T9 에러 로그가 실패행 원본 데이터(summary 등)를 CSV로 기록. 나중에 Excel로 열면 `=cmd()` 실행 위험. **FR-EX-01 `ExportCellSanitizer` 재사용**해 에러 로그 셀도 정화. import 본문(DB 저장)은 정화 불요(export 시점에 방어)지만, **에러 로그 CSV는 export 산출물이므로 정화 대상**. T9에 반영.
+
+4. **[테스트·중] vacuous 가드**. (a) ArchUnit "search→issue-tracking 직접의존 0" 룰은 오타 시 vacuous PASS(선례 다수) → 룰 작성 후 일부러 위반 넣어 fail 확인. (b) best-effort 부분실패 테스트가 succeeded/failed 카운트를 실제 assert(0통과 vacuous 금지). (c) mockk port 분기 테스트(T9)는 `any()` default 매칭 가짜그린 주의.
+
+5. **[성능·저·문서] 순차 per-row 생성 처리량**. 각 행이 incrementKeySequence(원자) + createIssue + update로 순차 처리 → 10만행 ~20분 추정(NFR 1만/120s는 충족). MVP 허용, ADR/spec에 "대용량은 시간 소요, best-effort" 명시. 배치화는 키시퀀스·이벤트 때문에 복잡 → 후속 최적화 후보.
+
+**확인된 정상 설계**.
+- default fail-closed(T3) — IssueSearchPort의 fail-safe-empty와 반대 방향(쓰기라 성공 위장 금지) 정확. test-assembled라 prod에서 어댑터 항상 존재.
+- process() @Transactional 밖 + 어댑터 자체 @Transactional(cross-bean 프록시라 self-invocation 함정 무관) 정확.
+- 접수 권한 fail-fast(FR12) + 행별 이중 방어 — resolver 경유(role 직접조회 금지) 정확.
+- VT300/stale600/dead-letter/outbox MANDATORY — FR-EX-02 검증된 값 미러.
