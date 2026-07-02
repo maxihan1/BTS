@@ -217,7 +217,12 @@ class IssueImportAdapter(
     private fun hasTransitionPermission(
         actor: ActorId,
         projectKey: String,
-    ): Boolean = permissionResolver.hasPermission(actor.value, IssuePermission.TRANSITION, IssueScope.Project(projectKey))
+    ): Boolean =
+        permissionResolver.hasPermission(
+            actor.value,
+            IssuePermission.TRANSITION,
+            IssueScope.Project(projectKey),
+        )
 
     /**
      * [cmd]/[resolution] 조합이 [executeImport] 에서 updateIssue/changeAssignee/changeAffectsVersions/
@@ -357,7 +362,11 @@ class IssueImportAdapter(
                 issueApplicationService.changeAffectsVersions(
                     actor = actor,
                     key = key,
-                    request = AppChangeVersionsRequest(versionIds = resolution.affectsVersionIds, expectedVersion = version),
+                    request =
+                        AppChangeVersionsRequest(
+                            versionIds = resolution.affectsVersionIds,
+                            expectedVersion = version,
+                        ),
                 ).version
         }
         if (resolution.fixVersionIds.isNotEmpty()) {
@@ -365,7 +374,11 @@ class IssueImportAdapter(
                 issueApplicationService.changeFixVersions(
                     actor = actor,
                     key = key,
-                    request = AppChangeVersionsRequest(versionIds = resolution.fixVersionIds, expectedVersion = version),
+                    request =
+                        AppChangeVersionsRequest(
+                            versionIds = resolution.fixVersionIds,
+                            expectedVersion = version,
+                        ),
                 ).version
         }
         return version
@@ -388,7 +401,8 @@ class IssueImportAdapter(
         warnings: MutableList<String>,
     ): Long {
         val statusName = cmd.statusName ?: return currentVersion
-        return when (val outcome = issueImportStatusService.applyImportedStatus(actor, key, statusName, currentVersion)) {
+        val outcome = issueImportStatusService.applyImportedStatus(actor, key, statusName, currentVersion)
+        return when (outcome) {
             is ImportStatusOutcome.Applied -> outcome.version
             ImportStatusOutcome.NoOp -> currentVersion
             ImportStatusOutcome.NoMatch -> {

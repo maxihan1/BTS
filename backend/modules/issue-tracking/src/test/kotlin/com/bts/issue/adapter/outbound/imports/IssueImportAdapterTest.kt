@@ -77,6 +77,7 @@ import java.util.UUID
  *   호출해 IssuePermission.UPDATE 를 검증하므로, dryRun 도 동일 조건에서 UPDATE 를 확인해야
  *   "dryRun 성공 → 실제 실행 시 FORBIDDEN" 불일치를 막는다.
  */
+@Suppress("LargeClass") // Task 4 — 컴포넌트/버전 자동생성+상태 반영 시나리오 10건 추가로 임계 초과, 분리 실익 없음
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [TestConfig::class, IssueImportAdapterTest.ImportTestConfig::class])
 @WebAppConfiguration
@@ -1190,7 +1191,8 @@ class IssueImportAdapterTest {
             }
         }
 
-    /** S16 — 자동생성 실행 후(또는 이미 존재 시) id 조회, 미존재면 null(생성 안 됨 검증용). */
+    /** S10/S11/S17 — 자동생성 실행 후(또는 이미 존재 시) id 조회, 미존재면 null(생성 안 됨 검증용). */
+    @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음
     private fun findComponentIdOrNull(
         projectKey: String,
         name: String,
@@ -1225,7 +1227,8 @@ class IssueImportAdapterTest {
         }
     }
 
-    /** S12/S16/S18 — 자동생성 실행 후(또는 이미 존재 시) id 조회, 미존재면 null(생성 안 됨 검증용). */
+    /** S12/S13/S19 — 자동생성 실행 후(또는 이미 존재 시) id 조회, 미존재면 null(생성 안 됨 검증용). */
+    @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음
     private fun findVersionIdOrNull(
         projectKey: String,
         name: String,
@@ -1285,7 +1288,8 @@ class IssueImportAdapterTest {
     private fun fetchAffectsVersionIds(issueKey: String): Set<UUID> =
         conn().use { c ->
             c.prepareStatement(
-                "SELECT iav.version_id FROM issue_affects_versions iav JOIN issues i ON iav.issue_id = i.id WHERE i.key = ?",
+                "SELECT iav.version_id FROM issue_affects_versions iav " +
+                    "JOIN issues i ON iav.issue_id = i.id WHERE i.key = ?",
             ).use { stmt ->
                 stmt.setString(1, issueKey)
                 stmt.executeQuery().use { rs ->
@@ -1301,7 +1305,8 @@ class IssueImportAdapterTest {
     private fun fetchFixVersionIds(issueKey: String): Set<UUID> =
         conn().use { c ->
             c.prepareStatement(
-                "SELECT ifv.version_id FROM issue_fix_versions ifv JOIN issues i ON ifv.issue_id = i.id WHERE i.key = ?",
+                "SELECT ifv.version_id FROM issue_fix_versions ifv " +
+                    "JOIN issues i ON ifv.issue_id = i.id WHERE i.key = ?",
             ).use { stmt ->
                 stmt.setString(1, issueKey)
                 stmt.executeQuery().use { rs ->
