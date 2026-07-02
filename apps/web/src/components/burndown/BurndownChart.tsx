@@ -107,8 +107,12 @@ function formatDateTick(value: unknown): string {
   return `${month}/${day}`
 }
 
-/** Tooltip value 포맷터. 초를 "Xh Ym" 형식으로 변환한다. */
-function tooltipValueFormatter(value: unknown): string {
+/**
+ * 초(seconds) 값 포맷터. recharts 콜백은 값을 `unknown`으로 넘기므로 방어적으로 타입을 좁힌 뒤
+ * `formatSeconds`(Task-1 `lib/duration.ts`)로 "Xh Ym" 문자열로 변환한다.
+ * Y축 tickFormatter 와 Tooltip formatter 양쪽에서 공유한다.
+ */
+function formatSecondsValue(value: unknown): string {
   if (typeof value !== 'number') return ''
   return formatSeconds(value)
 }
@@ -139,8 +143,8 @@ function renderCommonElements(): JSX.Element[] {
       interval="preserveStartEnd"
       tick={AXIS_TICK_STYLE}
     />,
-    <YAxis key="yaxis" tickFormatter={formatSeconds} tick={AXIS_TICK_STYLE} label={Y_AXIS_LABEL_PROPS} />,
-    <Tooltip key="tooltip" labelFormatter={formatDateTick} formatter={tooltipValueFormatter} />,
+    <YAxis key="yaxis" tickFormatter={formatSecondsValue} tick={AXIS_TICK_STYLE} label={Y_AXIS_LABEL_PROPS} />,
+    <Tooltip key="tooltip" labelFormatter={formatDateTick} formatter={formatSecondsValue} />,
     <Legend key="legend" />,
     <Line
       key="scope"
