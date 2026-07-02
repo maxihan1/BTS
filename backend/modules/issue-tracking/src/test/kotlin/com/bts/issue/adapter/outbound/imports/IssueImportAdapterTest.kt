@@ -4,19 +4,32 @@ package com.bts.issue.adapter.outbound.imports
 
 import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.TestConfig
 import com.bts.issue.application.IssueApplicationService
+import com.bts.issue.application.IssueImportStatusService
+import com.bts.issue.component.application.ComponentApplicationService
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.project.ProjectLookup
 import com.bts.issue.project.repository.ProjectLeadRepository
+import com.bts.issue.project.repository.ProjectLookupRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.issue.version.application.VersionApplicationService
 import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.issue.IssueImportCommand
 import com.bts.shared.issue.IssueImportResult
+import com.bts.shared.issue.IssueTypeKey
+import com.bts.shared.permission.ComponentPermission
+import com.bts.shared.permission.ComponentPermissionResolver
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import com.bts.shared.permission.VersionPermission
+import com.bts.shared.permission.VersionPermissionResolver
 import com.bts.shared.user.UserLookupPort
+import com.bts.shared.workflow.ProjectKey
+import com.bts.shared.workflow.WorkflowStateCatalog
+import com.bts.shared.workflow.WorkflowStateView
 import com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter
 import com.bts.workflow.scheme.adapter.inbound.WorkflowKeyResolverImpl
 import io.mockk.mockk
@@ -116,7 +129,83 @@ class IssueImportAdapterTest {
                     setOf(
                         FORBIDDEN_REQUESTER_ID to IssuePermission.CREATE,
                         UPDATE_DENIED_REQUESTER_ID to IssuePermission.UPDATE,
+                        TRANSITION_DENIED_REQUESTER_ID to IssuePermission.TRANSITION,
                     ),
+            )
+
+        // ── Task 4 — 컴포넌트/버전 자동생성 + 상태 반영 보조 빈 ────────────────────
+
+        @Bean
+        open fun importProjectLookupRepository(dsl: DSLContext): ProjectLookupRepository = ProjectLookupRepository(dsl)
+
+        @Bean
+        open fun importProjectLookup(repository: ProjectLookupRepository): ProjectLookup = ProjectLookup(repository)
+
+        /** 컴포넌트 CREATE 는 [AUTO_CREATE_ALLOWED_REQUESTER_ID] 만 허용, 그 외(NORMAL_REQUESTER_ID 포함)는 기본 거부. */
+        @Bean
+        open fun importComponentPermissionResolver(): ComponentPermissionResolver =
+            SelectiveAllowComponentPermissionResolver(allowed = setOf(AUTO_CREATE_ALLOWED_REQUESTER_ID))
+
+        /** 버전 CREATE 도 컴포넌트와 동형 — [AUTO_CREATE_ALLOWED_REQUESTER_ID] 만 허용, 기본 거부. */
+        @Bean
+        open fun importVersionPermissionResolver(): VersionPermissionResolver =
+            SelectiveAllowVersionPermissionResolver(allowed = setOf(AUTO_CREATE_ALLOWED_REQUESTER_ID))
+
+        @Bean
+        open fun importComponentApplicationService(
+            permissionResolver: ComponentPermissionResolver,
+            projectLookup: ProjectLookup,
+            userLookupPort: UserLookupPort,
+            repo: ComponentRepository,
+        ): ComponentApplicationService =
+            ComponentApplicationService(
+                permissionResolver = permissionResolver,
+                projectLookup = projectLookup,
+                userLookupPort = userLookupPort,
+                repo = repo,
+            )
+
+        @Bean
+        open fun importVersionApplicationService(
+            permissionResolver: VersionPermissionResolver,
+            projectLookup: ProjectLookup,
+            repo: VersionRepository,
+            clock: Clock,
+        ): VersionApplicationService =
+            VersionApplicationService(
+                permissionResolver = permissionResolver,
+                projectLookup = projectLookup,
+                repo = repo,
+                clock = clock,
+            )
+
+        // 고정 상태 목록만 반환하는 테스트 전용 WorkflowStateCatalog — project-workflow BC 의 실제
+        // 스킴 결선(WorkflowResolverImpl 등)은 이 어댑터 테스트의 책임 범위 밖이다(BC 격리).
+        // IssueImportStatusService 자체의 상태 매칭 로직은 IssueImportStatusServiceTest(mockk)가
+        // 이미 단위 검증했으므로, 여기서는 어댑터의 호출·OCC 버전 스레딩·경고 강등만 검증한다.
+        @Bean
+        open fun importWorkflowStateCatalog(): WorkflowStateCatalog =
+            FixedStatesWorkflowStateCatalog(
+                states =
+                    listOf(
+                        WorkflowStateView(key = "open", name = "Open"),
+                        WorkflowStateView(key = "in_progress", name = "In Progress"),
+                        WorkflowStateView(key = "done", name = "Done", isDone = true, category = "DONE"),
+                    ),
+            )
+
+        @Bean
+        open fun importIssueImportStatusService(
+            issueRepository: IssueRepository,
+            workflowStateCatalog: WorkflowStateCatalog,
+            permissionResolver: IssuePermissionResolver,
+            issueTypeRepository: IssueTypeRepository,
+        ): IssueImportStatusService =
+            IssueImportStatusService(
+                issueRepository = issueRepository,
+                workflowStateCatalog = workflowStateCatalog,
+                permissionResolver = permissionResolver,
+                issueTypeRepository = issueTypeRepository,
             )
 
         @Bean
@@ -152,6 +241,7 @@ class IssueImportAdapterTest {
             )
 
         @Bean
+        @Suppress("LongParameterList")
         open fun issueImportAdapter(
             issueApplicationService: IssueApplicationService,
             issueRepository: IssueRepository,
@@ -159,6 +249,12 @@ class IssueImportAdapterTest {
             componentRepository: ComponentRepository,
             userLookupPort: UserLookupPort,
             permissionResolver: IssuePermissionResolver,
+            componentApplicationService: ComponentApplicationService,
+            versionApplicationService: VersionApplicationService,
+            versionRepository: VersionRepository,
+            componentPermissionResolver: ComponentPermissionResolver,
+            versionPermissionResolver: VersionPermissionResolver,
+            issueImportStatusService: IssueImportStatusService,
         ): IssueImportAdapter =
             IssueImportAdapter(
                 issueApplicationService = issueApplicationService,
@@ -167,6 +263,12 @@ class IssueImportAdapterTest {
                 componentRepository = componentRepository,
                 userLookupPort = userLookupPort,
                 permissionResolver = permissionResolver,
+                componentApplicationService = componentApplicationService,
+                versionApplicationService = versionApplicationService,
+                versionRepository = versionRepository,
+                componentPermissionResolver = componentPermissionResolver,
+                versionPermissionResolver = versionPermissionResolver,
+                issueImportStatusService = issueImportStatusService,
             )
     }
 
@@ -179,6 +281,47 @@ class IssueImportAdapterTest {
             permission: IssuePermission,
             scope: IssueScope,
         ): Boolean = (actorId to permission) !in denied
+    }
+
+    /**
+     * actorId 가 [allowed] 집합에 있을 때만 컴포넌트 CREATE 를 허용하고 그 외에는 모두 거부하는
+     * 테스트 전용 resolver — 기본 거부(NORMAL_REQUESTER_ID 등 기존 시나리오의 actor 는 모두 미포함이라
+     * 기존 S1~S9 는 영향받지 않는다).
+     */
+    private class SelectiveAllowComponentPermissionResolver(
+        private val allowed: Set<UUID>,
+    ) : ComponentPermissionResolver {
+        override fun hasPermission(
+            actorId: UUID,
+            permission: ComponentPermission,
+            projectId: UUID,
+        ): Boolean = actorId in allowed
+    }
+
+    /** [SelectiveAllowComponentPermissionResolver] 와 동형 — 버전 CREATE 전용. */
+    private class SelectiveAllowVersionPermissionResolver(
+        private val allowed: Set<UUID>,
+    ) : VersionPermissionResolver {
+        override fun hasPermission(
+            actorId: UUID,
+            permission: VersionPermission,
+            projectId: UUID,
+        ): Boolean = actorId in allowed
+    }
+
+    /**
+     * 고정 상태 목록만 반환하는 테스트 전용 [WorkflowStateCatalog].
+     *
+     * project-workflow BC 의 실제 스킴 결선은 이 어댑터 테스트의 책임 범위 밖이다(BC 격리) —
+     * [ImportTestConfig.importWorkflowStateCatalog] KDoc 참조.
+     */
+    private class FixedStatesWorkflowStateCatalog(
+        private val states: List<WorkflowStateView>,
+    ) : WorkflowStateCatalog {
+        override fun listStates(
+            projectKey: ProjectKey,
+            issueTypeKey: IssueTypeKey?,
+        ): List<WorkflowStateView> = states
     }
 
     /** 고정 fixture 이메일→UUID 매핑을 제공하는 테스트 전용 [UserLookupPort]. */
@@ -221,6 +364,16 @@ class IssueImportAdapterTest {
          */
         val UPDATE_DENIED_REQUESTER_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000205")
 
+        /**
+         * [SelectiveAllowComponentPermissionResolver]/[SelectiveAllowVersionPermissionResolver] 가
+         * 컴포넌트/버전 CREATE 를 허용하도록 지정한 요청자(S10/S12/S16/S18). 그 외 모든 actor(
+         * NORMAL_REQUESTER_ID 포함)는 기본 거부 — 기존 S5(컴포넌트 미발견 skip) 시나리오 불변.
+         */
+        val AUTO_CREATE_ALLOWED_REQUESTER_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000206")
+
+        /** [SelectiveDenyPermissionResolver] 가 TRANSITION 만 거부하도록 지정한 요청자(S15/S19). */
+        val TRANSITION_DENIED_REQUESTER_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000207")
+
         /** reporterEmail 매칭 fixture. */
         val ALICE_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000203")
         const val ALICE_EMAIL = "alice@example.com"
@@ -229,11 +382,17 @@ class IssueImportAdapterTest {
         val BOB_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000204")
         const val BOB_EMAIL = "bob@example.com"
 
+        /** S17 — 사전 시드된 기존 버전 이름(자동생성 권한과 무관하게 이름 매칭만으로 링크된다). */
+        const val EXISTING_VERSION_NAME = "v1.0-existing"
+
         private var migrated = false
         private var seeded = false
 
         /** S5 — 매칭 대상 컴포넌트. */
         lateinit var backendComponentId: UUID
+
+        /** S17 — 매칭 대상 버전(사전 시드). */
+        lateinit var existingVersionId: UUID
     }
 
     @BeforeAll
@@ -630,6 +789,271 @@ class IssueImportAdapterTest {
         assert(countImportIssues() == 0) { "dryRun 은 이슈를 생성하지 않아야 하지만 ${countImportIssues()} 개 존재합니다." }
     }
 
+    // ── S10. 컴포넌트 자동생성 — CREATE 권한 있으면 create 후 연결 ──────────────────
+
+    @Test
+    fun `S10 컴포넌트 미존재 CREATE 권한 있음 - 자동생성 후 이슈에 연결된다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = AUTO_CREATE_ALLOWED_REQUESTER_ID,
+                summary = "S10 컴포넌트 자동생성 테스트",
+                componentNames = listOf("AutoComponent"),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        val createdComponentId = findComponentIdOrNull(PROJECT_KEY, "AutoComponent")
+        checkNotNull(createdComponentId) { "CREATE 권한이 있으므로 컴포넌트가 자동생성돼야 합니다." }
+        assert(fetchComponentIds(result.issueKey) == setOf(createdComponentId)) {
+            "자동생성된 컴포넌트가 이슈에 연결돼야 하지만 ${fetchComponentIds(result.issueKey)} 입니다."
+        }
+    }
+
+    // ── S11. 컴포넌트 자동생성 — CREATE 권한 없으면 create 미호출 + 경고 ───────────
+
+    @Test
+    fun `S11 컴포넌트 미존재 CREATE 권한 없음 - create 미호출 경고만 남기고 이슈는 생성된다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S11 컴포넌트 자동생성 권한없음 테스트",
+                componentNames = listOf("NoPermComponent"),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "이슈 생성 자체는 성공해야 하지만 $result 입니다." }
+        assert(result.warnings.any { it.contains("NoPermComponent") }) {
+            "생성 권한 없음 경고가 있어야 하지만 ${result.warnings} 입니다."
+        }
+        assert(findComponentIdOrNull(PROJECT_KEY, "NoPermComponent") == null) {
+            "CREATE 권한이 없으므로 컴포넌트가 생성되지 않아야 합니다."
+        }
+        assert(fetchComponentIds(result.issueKey).isEmpty()) {
+            "연결된 컴포넌트가 없어야 하지만 ${fetchComponentIds(result.issueKey)} 입니다."
+        }
+    }
+
+    // ── S12. 버전 자동생성 — CREATE 권한 있으면 create 후 fix/affects 연결 ─────────
+
+    @Test
+    fun `S12 fix affects 버전 미존재 CREATE 권한 있음 - 자동생성 후 각각 연결된다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = AUTO_CREATE_ALLOWED_REQUESTER_ID,
+                summary = "S12 버전 자동생성 테스트",
+                fixVersionNames = listOf("AutoFixVersion"),
+                affectsVersionNames = listOf("AutoAffectsVersion"),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        val fixVersionId = findVersionIdOrNull(PROJECT_KEY, "AutoFixVersion")
+        val affectsVersionId = findVersionIdOrNull(PROJECT_KEY, "AutoAffectsVersion")
+        checkNotNull(fixVersionId) { "CREATE 권한이 있으므로 fix 버전이 자동생성돼야 합니다." }
+        checkNotNull(affectsVersionId) { "CREATE 권한이 있으므로 affects 버전이 자동생성돼야 합니다." }
+        assert(fetchFixVersionIds(result.issueKey) == setOf(fixVersionId)) {
+            "자동생성된 fix 버전이 연결돼야 하지만 ${fetchFixVersionIds(result.issueKey)} 입니다."
+        }
+        assert(fetchAffectsVersionIds(result.issueKey) == setOf(affectsVersionId)) {
+            "자동생성된 affects 버전이 연결돼야 하지만 ${fetchAffectsVersionIds(result.issueKey)} 입니다."
+        }
+    }
+
+    // ── S13. 버전 자동생성 — CREATE 권한 없으면 create 미호출 + 경고 ───────────────
+
+    @Test
+    fun `S13 fix 버전 미존재 CREATE 권한 없음 - create 미호출 경고만 남기고 이슈는 생성된다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S13 버전 자동생성 권한없음 테스트",
+                fixVersionNames = listOf("NoPermVersion"),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "이슈 생성 자체는 성공해야 하지만 $result 입니다." }
+        assert(result.warnings.any { it.contains("NoPermVersion") }) {
+            "생성 권한 없음 경고가 있어야 하지만 ${result.warnings} 입니다."
+        }
+        assert(findVersionIdOrNull(PROJECT_KEY, "NoPermVersion") == null) {
+            "CREATE 권한이 없으므로 버전이 생성되지 않아야 합니다."
+        }
+        assert(fetchFixVersionIds(result.issueKey).isEmpty()) {
+            "연결된 fix 버전이 없어야 하지만 ${fetchFixVersionIds(result.issueKey)} 입니다."
+        }
+    }
+
+    // ── S14~S16. statusName 반영 — Applied/NoMatch/NoPermission (best-effort) ────
+
+    @Test
+    fun `S14 statusName 매칭 - 상태가 direct-set 되고 이슈가 새 상태로 저장된다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S14 상태 반영 테스트",
+                statusName = "In Progress",
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        val saved = issueRepository.findByKey(com.bts.issue.domain.IssueKey(result.issueKey))
+        checkNotNull(saved)
+        assert(saved.currentStateKey == "in_progress") {
+            "statusName 매칭이므로 in_progress 로 direct-set 돼야 하지만 ${saved.currentStateKey} 입니다."
+        }
+    }
+
+    @Test
+    fun `S15 statusName 미매칭 - 경고를 남기고 시작 상태를 유지한다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S15 상태 미매칭 테스트",
+                statusName = "Nonexistent Status",
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        assert(result.warnings.any { it.contains("Nonexistent Status") }) {
+            "상태 미매칭 경고가 있어야 하지만 ${result.warnings} 입니다."
+        }
+        val saved = issueRepository.findByKey(com.bts.issue.domain.IssueKey(result.issueKey))
+        checkNotNull(saved)
+        assert(saved.currentStateKey == "open") {
+            "미매칭이므로 시작 상태(open)를 유지해야 하지만 ${saved.currentStateKey} 입니다."
+        }
+    }
+
+    @Test
+    fun `S16 statusName 지정 - TRANSITION 권한 없으면 경고를 남기고 시작 상태를 유지한다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = TRANSITION_DENIED_REQUESTER_ID,
+                summary = "S16 상태 권한없음 테스트",
+                statusName = "In Progress",
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        assert(result.warnings.isNotEmpty()) { "TRANSITION 권한없음 경고가 있어야 하지만 비어 있습니다." }
+        val saved = issueRepository.findByKey(com.bts.issue.domain.IssueKey(result.issueKey))
+        checkNotNull(saved)
+        assert(saved.currentStateKey == "open") {
+            "TRANSITION 권한이 없으므로 시작 상태(open)를 유지해야 하지만 ${saved.currentStateKey} 입니다."
+        }
+    }
+
+    // ── S17~S20(C1 확장). dryRun — 컴포넌트/버전 자동생성·링크 미러 ────────────────
+
+    /**
+     * dryRun 은 CREATE 권한이 있어도 실제 [com.bts.issue.component.application.ComponentApplicationService.create]
+     * 를 호출하지 않는다 — 권한 확인만 수행한다(★ 최우선 제약).
+     */
+    @Test
+    fun `S17 dryRun 컴포넌트 미존재 CREATE 권한 있음 - 권한만 확인하고 실제 생성은 하지 않는다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = AUTO_CREATE_ALLOWED_REQUESTER_ID,
+                summary = "S17 dryRun 컴포넌트 미생성 테스트",
+                componentNames = listOf("DryRunComponent"),
+                dryRun = true,
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        assert(findComponentIdOrNull(PROJECT_KEY, "DryRunComponent") == null) {
+            "dryRun 은 실제 컴포넌트를 생성하지 않아야 합니다."
+        }
+    }
+
+    /**
+     * fix/affects 버전 링크는 [com.bts.issue.application.IssueApplicationService.changeFixVersions]/
+     * [com.bts.issue.application.IssueApplicationService.changeAffectsVersions] 를 통해 UPDATE 권한을
+     * 요구한다(§UPDATE 미러 확장, CONCERN C1). 이미 존재하는 버전 이름을 사용해 CREATE 권한과
+     * 무관하게(매칭이라 자동생성 불필요) UPDATE 권한 부재만 분리 검증한다.
+     */
+    @Test
+    fun `S18 dryRun fixVersionNames 기존 버전 매칭 - UPDATE 권한 없는 actor는 FORBIDDEN을 반환한다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = UPDATE_DENIED_REQUESTER_ID,
+                summary = "S18 dryRun 버전링크 UPDATE 권한없음 테스트",
+                fixVersionNames = listOf(EXISTING_VERSION_NAME),
+                dryRun = true,
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Failure) { "Failure 여야 하지만 $result 입니다." }
+        assert(result.reasonCode == IssueImportResult.FORBIDDEN) {
+            "reasonCode 가 FORBIDDEN 이어야 하지만 ${result.reasonCode} 입니다."
+        }
+    }
+
+    /**
+     * 미매칭+CREATE 권한 있는 버전 이름도(실제 생성 없이) 센티널로 대체돼 "링크를 유발한다" 는
+     * 판정에 반영된다 — UPDATE 권한까지 있으면 FORBIDDEN 으로 잘못 예측하지 않고 Success 여야 한다.
+     * dryRun 이므로 실제 [com.bts.issue.version.application.VersionApplicationService.create] 는
+     * 호출되지 않는다.
+     */
+    @Test
+    fun `S19 dryRun fixVersionNames 미존재 CREATE UPDATE 권한 모두 있음 - Success이고 실제 생성은 없다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = AUTO_CREATE_ALLOWED_REQUESTER_ID,
+                summary = "S19 dryRun 버전링크 권한있음 테스트",
+                fixVersionNames = listOf("DryRunSentinelVersion"),
+                dryRun = true,
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        assert(findVersionIdOrNull(PROJECT_KEY, "DryRunSentinelVersion") == null) {
+            "dryRun 은 실제 버전을 생성하지 않아야 합니다."
+        }
+    }
+
+    /**
+     * statusName 반영은 [com.bts.issue.application.IssueImportStatusService] 가 best-effort 로
+     * 처리하므로(권한 없어도 예외 없음) TRANSITION 권한 미리보기도 FORBIDDEN 이 아닌 경고로만
+     * 남는다 — dryRun 도 Success 를 유지한다.
+     */
+    @Test
+    fun `S20 dryRun statusName 지정 - TRANSITION 권한 없어도 Success이고 경고를 남긴다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = TRANSITION_DENIED_REQUESTER_ID,
+                summary = "S20 dryRun 상태 권한없음 테스트",
+                statusName = "In Progress",
+                dryRun = true,
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        assert(result.warnings.isNotEmpty()) { "TRANSITION 권한없음 경고가 있어야 하지만 비어 있습니다." }
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     private fun applyMigrations() {
@@ -724,6 +1148,7 @@ class IssueImportAdapterTest {
         }
 
         backendComponentId = insertComponent(PROJECT_KEY, "Backend")
+        existingVersionId = insertVersion(PROJECT_KEY, EXISTING_VERSION_NAME)
     }
 
     @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음
@@ -761,6 +1186,56 @@ class IssueImportAdapterTest {
             }
         }
 
+    /** S16 — 자동생성 실행 후(또는 이미 존재 시) id 조회, 미존재면 null(생성 안 됨 검증용). */
+    private fun findComponentIdOrNull(
+        projectKey: String,
+        name: String,
+    ): UUID? {
+        val projectId = fetchProjectId(projectKey)
+        return conn().use { c ->
+            c.prepareStatement("SELECT id FROM components WHERE project_id = ? AND name = ?").use { stmt ->
+                stmt.setObject(1, projectId)
+                stmt.setString(2, name)
+                stmt.executeQuery().use { rs -> if (rs.next()) rs.getObject(1) as UUID else null }
+            }
+        }
+    }
+
+    @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음
+    private fun insertVersion(
+        projectKey: String,
+        name: String,
+    ): UUID {
+        val projectId = fetchProjectId(projectKey)
+        return conn().use { c ->
+            c.prepareStatement(
+                "INSERT INTO versions (project_id, name) VALUES (?, ?) ON CONFLICT DO NOTHING RETURNING id",
+            ).use { stmt ->
+                stmt.setObject(1, projectId)
+                stmt.setString(2, name)
+                stmt.executeQuery().use { rs ->
+                    if (rs.next()) return rs.getObject(1) as UUID
+                }
+            }
+            checkNotNull(findVersionIdOrNull(projectKey, name)) { "$name 버전이 없습니다." }
+        }
+    }
+
+    /** S12/S16/S18 — 자동생성 실행 후(또는 이미 존재 시) id 조회, 미존재면 null(생성 안 됨 검증용). */
+    private fun findVersionIdOrNull(
+        projectKey: String,
+        name: String,
+    ): UUID? {
+        val projectId = fetchProjectId(projectKey)
+        return conn().use { c ->
+            c.prepareStatement("SELECT id FROM versions WHERE project_id = ? AND name = ?").use { stmt ->
+                stmt.setObject(1, projectId)
+                stmt.setString(2, name)
+                stmt.executeQuery().use { rs -> if (rs.next()) rs.getObject(1) as UUID else null }
+            }
+        }
+    }
+
     private fun fetchProjectId(projectKey: String): UUID =
         conn().use { c ->
             c.prepareStatement("SELECT id FROM projects WHERE key = ?").use { stmt ->
@@ -791,6 +1266,38 @@ class IssueImportAdapterTest {
         conn().use { c ->
             c.prepareStatement(
                 "SELECT ic.component_id FROM issue_components ic JOIN issues i ON ic.issue_id = i.id WHERE i.key = ?",
+            ).use { stmt ->
+                stmt.setString(1, issueKey)
+                stmt.executeQuery().use { rs ->
+                    val ids = mutableSetOf<UUID>()
+                    while (rs.next()) ids += rs.getObject(1) as UUID
+                    ids
+                }
+            }
+        }
+
+    /** S12/S18 — 이슈에 연결된 "영향받는 버전" id 목록. */
+    @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음
+    private fun fetchAffectsVersionIds(issueKey: String): Set<UUID> =
+        conn().use { c ->
+            c.prepareStatement(
+                "SELECT iav.version_id FROM issue_affects_versions iav JOIN issues i ON iav.issue_id = i.id WHERE i.key = ?",
+            ).use { stmt ->
+                stmt.setString(1, issueKey)
+                stmt.executeQuery().use { rs ->
+                    val ids = mutableSetOf<UUID>()
+                    while (rs.next()) ids += rs.getObject(1) as UUID
+                    ids
+                }
+            }
+        }
+
+    /** S12 — 이슈에 연결된 "수정 예정 버전" id 목록. */
+    @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음
+    private fun fetchFixVersionIds(issueKey: String): Set<UUID> =
+        conn().use { c ->
+            c.prepareStatement(
+                "SELECT ifv.version_id FROM issue_fix_versions ifv JOIN issues i ON ifv.issue_id = i.id WHERE i.key = ?",
             ).use { stmt ->
                 stmt.setString(1, issueKey)
                 stmt.executeQuery().use { rs ->
