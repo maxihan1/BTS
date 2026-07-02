@@ -183,14 +183,15 @@ export function SharedDashboardPage({ token, embed = false }: SharedDashboardPag
  * TanStack Router useParams + useSearch를 주입해 SharedDashboardPage에 연결하는 어댑터.
  *
  * - useParams()에서 token을 추출한다.
- * - useSearch()에서 embed 쿼리 파라미터(`?embed=1`)를 추출해 boolean으로 변환한다.
+ * - useSearch()에서 embed 쿼리 파라미터(`?embed=1`)를 추출한다 — router.ts validateSearch가 이미
+ *   숫자/문자열 표현을 boolean으로 정규화해 두므로 값이 있으면(true) 곧 임베드 모드다.
  * - auth 훅은 의도적으로 사용하지 않는다 — 이 라우트는 인증 가드 밖에 등록된 공개 라우트다.
  *
  * ★ router.ts 등록도 이 task(Task 9) 담당 — beforeLoad 가드 없이 등록한다.
  */
 export function SharedDashboardRouteAdapter(): JSX.Element {
   const { token } = useParams({ strict: false }) as { token: string }
-  const search = useSearch({ strict: false }) as { embed?: string }
+  const search = useSearch({ strict: false }) as { embed?: boolean }
 
-  return <SharedDashboardPage token={token} embed={search.embed === '1'} />
+  return <SharedDashboardPage token={token} embed={search.embed === true} />
 }
