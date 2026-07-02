@@ -223,10 +223,12 @@ describe('SharedDashboardRouteAdapter', () => {
   })
 
   /**
-   * T-DB3-SH-RA2. useSearch의 embed=1이면 임베드 모드로 전달돼 h1이 렌더되지 않는다.
+   * T-DB3-SH-RA2. validateSearch가 ?embed=1을 boolean true로 정규화한 값이 오면 임베드 모드로
+   * 전달돼 h1이 렌더되지 않는다. (라우트 validateSearch가 숫자/문자열 1을 boolean으로 변환하므로
+   * useSearch가 어댑터에 넘기는 값은 boolean이다.)
    */
-  it('T-DB3-SH-RA2: useSearch embed=1이면 임베드 모드로 전달된다', async () => {
-    mockUseSearch.mockReturnValue({ embed: '1' })
+  it('T-DB3-SH-RA2: useSearch embed=true면 임베드 모드로 전달된다', async () => {
+    mockUseSearch.mockReturnValue({ embed: true })
     mockGetPublicDashboard.mockResolvedValue(PUBLIC_DASHBOARD)
     await renderAdapter()
     await waitFor(() => expect(screen.getByTestId('dashboard-grid')).toBeInTheDocument())
