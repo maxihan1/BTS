@@ -9,6 +9,7 @@ import com.bts.search.imports.job.domain.ImportJobStatus
 import com.bts.search.imports.job.event.ImportJobEnqueuePublisher
 import com.bts.search.imports.job.repository.ImportJobRepository
 import com.bts.search.savedfilter.persistence.SearchPersistenceTestBase
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -46,6 +47,9 @@ class ImportJobWorkerTest : SearchPersistenceTestBase() {
 
     @AfterEach
     fun clean() {
+        // SearchPersistenceTestBase 는 @TestInstance(PER_CLASS) — processor mock 이 클래스 생명주기
+        // 동안 재사용되므로 메서드 간 호출 이력이 누적된다. 매 테스트 후 명시적으로 초기화한다.
+        clearMocks(processor)
         dsl.execute("DELETE FROM import_jobs")
         runCatching { dsl.execute("SELECT pgmq.purge_queue(?)", ImportJobWorker.QUEUE_NAME) }
     }

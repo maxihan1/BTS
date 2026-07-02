@@ -286,6 +286,27 @@ class ImportJobRepository(
             .fetch()
             .map { it.toImportJob() }
 
+    /**
+     * 작업 1건을 하드삭제한다.
+     *
+     * 소프트삭제 없음 — TTL 만료 후 cleanup 경로 전용 (DATA.md §3, V604 마이그레이션 근거).
+     * TTL cleanup 워커([com.bts.search.imports.job.worker.ImportJobCleanupWorker]) 또는
+     * 테스트 teardown 에서만 호출한다.
+     *
+     * `export` BC [com.bts.search.export.job.repository.ExportJobRepository.deleteById] 를 1:1 미러한다.
+     * (Task 10 — cleanup worker 가 필요로 하는 메서드를 Export Task 9 의 `findById` 추가 선례와
+     * 동일하게 워커 companion 메서드로 추가했다.)
+     *
+     * @param id 삭제할 작업 식별자.
+     */
+    @Transactional
+    fun deleteById(id: ImportJobId) {
+        log.debug("deleteById id={}", id.value)
+        dsl.deleteFrom(IMPORT_JOBS)
+            .where(IMPORT_JOBS.ID.eq(id.value))
+            .execute()
+    }
+
     // ── private helpers ──────────────────────────────────────────────────────────
 
     /**
