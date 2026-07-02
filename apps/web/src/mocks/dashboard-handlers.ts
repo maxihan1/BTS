@@ -11,8 +11,11 @@ import {
   ALICE_OWNER_ID,
   dashboardStore,
   createDashboardInStore,
+  issueShareTokenInStore,
   LS_KEY_DASHBOARD_CONFLICT,
+  shareTokenStore,
   type StoredDashboard,
+  type StoredShareToken,
 } from './dashboard-fixtures'
 import { GADGET_CATALOG_FIXTURE } from './gadget-catalog-fixtures'
 
@@ -377,6 +380,293 @@ const getGadgetCatalogHandler = http.get('/api/v1/dashboards/gadget-catalog', ()
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 공유 토큰 발급/목록/취소 + 익명 공개 조회 (FR-DB-03 D6/D7 Task 2)
+//
+// 실제 백엔드 계약 grep 대조.
+//   backend/modules/notification/.../dashboard/web/DashboardShareController.kt
+//   backend/modules/notification/.../dashboard/web/PublicDashboardController.kt
+//   backend/modules/notification/.../dashboard/web/dto/DashboardShareDtos.kt
+//   backend/modules/notification/.../dashboard/web/dto/PublicDashboardDtos.kt
+//   backend/modules/notification/.../dashboard/application/AnonymousLayoutSanitizer.kt
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 대시보드당 활성 공유 토큰 상한 — DashboardShareToken.MAX_SHARE_TOKENS 미러 */
+const MAX_SHARE_TOKENS = 20
+
+/**
+ * 대시보드를 조회하고 요청 주체가 소유자인지 검증한다.
+ * 공유 토큰 3개 핸들러(POST/GET/DELETE .../shares)의 공통 가드 —
+ * 백엔드 DashboardService.requireOwnedDashboard() 1:1 재현.
+ *
+ * @returns 검증 통과 시 대시보드, 실패 시 즉시 반환할 에러 Response
+ */
+function requireOwnedDashboardOrError(
+  id: string,
+  actorId: string,
+): { ok: true; dashboard: StoredDashboard } | { ok: false; response: ReturnType<typeof HttpResponse.json> } {
+  const stored = dashboardStore.get(id)
+  if (stored === undefined || stored.deletedAt !== null) {
+    return {
+      ok: false,
+      response: errorResponse('NOTIF_DASHBOARD_NOT_FOUND', '대시보드를 찾을 수 없습니다.', 404),
+    }
+  }
+  if (stored.ownerId !== actorId) {
+    return {
+      ok: false,
+      response: errorResponse('NOTIF_DASHBOARD_FORBIDDEN', '해당 대시보드를 수정·삭제할 권한이 없습니다.', 403),
+    }
+  }
+  return { ok: true, dashboard: stored }
+}
+
+/**
+ * 공유 토큰 발급 응답 DTO 형식 — IssuedShareTokenResponse(@JsonInclude(NON_NULL)) 1:1 재현.
+ * expiresAt이 null이면 키 자체가 응답에 없다.
+ */
+interface IssuedShareTokenDto {
+  id: string
+  token: string
+  createdAt: string
+  expiresAt?: string
+}
+
+/**
+ * 공유 토큰 목록 요약 DTO 형식 — ShareTokenSummaryResponse(@JsonInclude(NON_NULL)) 1:1 재현.
+ * token/tokenHash 필드 자체가 없다(EC-9 유출 차단). expiresAt이 null이면 키가 없다.
+ */
+interface ShareTokenSummaryDto {
+  id: string
+  createdAt: string
+  expiresAt?: string
+}
+
+/**
+ * StoredShareToken을 발급 응답 DTO로 변환한다. expiresAt이 null이면 키를 생략한다.
+ */
+function toIssuedShareTokenDto(entry: StoredShareToken): IssuedShareTokenDto {
+  const base: IssuedShareTokenDto = { id: entry.id, token: entry.token, createdAt: entry.createdAt }
+  return entry.expiresAt !== null ? { ...base, expiresAt: entry.expiresAt } : base
+}
+
+/**
+ * StoredShareToken을 목록 요약 DTO로 변환한다. token 필드는 절대 포함하지 않는다.
+ */
+function toShareTokenSummaryDto(entry: StoredShareToken): ShareTokenSummaryDto {
+  const base: ShareTokenSummaryDto = { id: entry.id, createdAt: entry.createdAt }
+  return entry.expiresAt !== null ? { ...base, expiresAt: entry.expiresAt } : base
+}
+
+/**
+ * 공개 대시보드 응답 DTO 형식 — PublicDashboardResponse 1:1 재현.
+ *
+ * ⚠️ 계약 drift 주의 — 이 DTO에는 @JsonInclude(NON_NULL)이 없다(백엔드 파일 grep 확인).
+ * 따라서 description이 null이어도 키 자체는 항상 존재한다(다른 대시보드 DTO들과 다른 정책).
+ */
+interface PublicDashboardDto {
+  name: string
+  description: string | null
+  layout: string
+}
+
+/** GADGET_CATALOG_FIXTURE에서 STATIC 카테고리 gadgetType 집합을 도출한다 — 카탈로그 변경 시 자동 동기화. */
+function staticGadgetTypes(): Set<string> {
+  return new Set(GADGET_CATALOG_FIXTURE.filter((entry) => entry.category === 'STATIC').map((entry) => entry.type))
+}
+
+/** 정화 플레이스홀더에 유지하는 위치 필드 — AnonymousLayoutSanitizer.POSITION_FIELDS 미러 */
+const POSITION_FIELDS = ['i', 'x', 'y', 'w', 'h'] as const
+
+/**
+ * layout JSON 배열을 익명 공개 뷰용으로 정화한다.
+ *
+ * 백엔드 AnonymousLayoutSanitizer.sanitize() 1:1 재현 — fail-closed 화이트리스트.
+ *   - gadgetType이 STATIC 카테고리(text_widget/link_list)면 config 포함 원본 그대로 통과.
+ *   - 그 외(데이터 가젯·카탈로그 밖 미지 타입·gadgetType 없는 legacy)는 위치 필드만 남기고
+ *     `requiresAuth: true`를 추가한 플레이스홀더로 치환한다(config 제거).
+ *   - 파싱 실패·비배열 입력은 예외를 던지지 않고 빈 배열을 반환한다(total 함수).
+ *
+ * @param layoutJson 정화할 layout JSON 배열 문자열
+ * @returns 정화된 layout JSON 배열 문자열. 파싱 실패 시 `"[]"`.
+ */
+function sanitizeLayoutForPublic(layoutJson: string): string {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(layoutJson)
+  } catch {
+    return '[]'
+  }
+  if (!Array.isArray(parsed)) {
+    return '[]'
+  }
+
+  const staticTypes = staticGadgetTypes()
+
+  const sanitized = (parsed as unknown[]).map((item) => {
+    if (typeof item !== 'object' || item === null) {
+      return item
+    }
+    const tile = item as Record<string, unknown>
+    const gadgetType = typeof tile['gadgetType'] === 'string' ? tile['gadgetType'] : undefined
+
+    if (gadgetType !== undefined && staticTypes.has(gadgetType)) {
+      // 유일한 화이트리스트 — STATIC 가젯만 config 포함 원본 통과
+      return tile
+    }
+
+    // 데이터 가젯 · 카탈로그 밖 미지 타입 · gadgetType 없는 legacy — fail-closed 플레이스홀더
+    const placeholder: Record<string, unknown> = {}
+    for (const field of POSITION_FIELDS) {
+      if (tile[field] !== undefined) {
+        placeholder[field] = tile[field]
+      }
+    }
+    if (gadgetType !== undefined) {
+      placeholder['gadgetType'] = gadgetType
+    }
+    placeholder['requiresAuth'] = true
+    return placeholder
+  })
+
+  return JSON.stringify(sanitized)
+}
+
+/**
+ * POST /api/v1/dashboards/{id}/shares — 공유 토큰 발급.
+ *
+ * 소유자 전용. 요청 바디는 선택(`{}` 또는 `{expiresAt}`).
+ * 활성 토큰 수가 MAX_SHARE_TOKENS 이상이면 400.
+ *
+ * 성공 → 201 { data: IssuedShareTokenDto } (원문 token 1회 노출)
+ * 미존재·삭제됨 → 404 NOTIF_DASHBOARD_NOT_FOUND
+ * 비소유자 → 403 NOTIF_DASHBOARD_FORBIDDEN
+ * 상한 초과 → 400 NOTIF_DASHBOARD_SHARE_LIMIT_EXCEEDED
+ */
+const issueShareTokenHandler = http.post('/api/v1/dashboards/:id/shares', async ({ params, request }) => {
+  const id = params['id'] as string
+  const actorId = extractActorId(request)
+
+  const guard = requireOwnedDashboardOrError(id, actorId)
+  if (!guard.ok) {
+    return guard.response
+  }
+
+  const activeCount = Array.from(shareTokenStore.values()).filter((entry) => entry.dashboardId === id).length
+  if (activeCount >= MAX_SHARE_TOKENS) {
+    return errorResponse(
+      'NOTIF_DASHBOARD_SHARE_LIMIT_EXCEEDED',
+      '발급 가능한 공유 링크 개수 상한을 초과했습니다.',
+      400,
+    )
+  }
+
+  let expiresAt: string | null = null
+  try {
+    const text = await request.text()
+    if (text.trim() !== '') {
+      const body = JSON.parse(text) as { expiresAt?: string | null }
+      expiresAt = body.expiresAt ?? null
+    }
+  } catch {
+    return errorResponse('NOTIF_DASHBOARD_INVALID', '요청 바디를 파싱할 수 없습니다.', 400)
+  }
+
+  const issued = issueShareTokenInStore(id, expiresAt)
+
+  return HttpResponse.json({ data: toIssuedShareTokenDto(issued) }, { status: 201 })
+})
+
+/**
+ * GET /api/v1/dashboards/{id}/shares — 발급된 공유 토큰 목록 조회.
+ *
+ * 소유자 전용. 응답에는 원문 token이 절대 포함되지 않는다(EC-9 회귀가드).
+ *
+ * 성공 → 200 { data: { items: ShareTokenSummaryDto[] } }
+ * 미존재·삭제됨 → 404 NOTIF_DASHBOARD_NOT_FOUND
+ * 비소유자 → 403 NOTIF_DASHBOARD_FORBIDDEN
+ */
+const listShareTokensHandler = http.get('/api/v1/dashboards/:id/shares', ({ params, request }) => {
+  const id = params['id'] as string
+  const actorId = extractActorId(request)
+
+  const guard = requireOwnedDashboardOrError(id, actorId)
+  if (!guard.ok) {
+    return guard.response
+  }
+
+  const items = Array.from(shareTokenStore.values())
+    .filter((entry) => entry.dashboardId === id)
+    .map(toShareTokenSummaryDto)
+
+  return HttpResponse.json({ data: { items } })
+})
+
+/**
+ * DELETE /api/v1/dashboards/{id}/shares/{shareId} — 공유 토큰 취소.
+ *
+ * 소유자 전용. shareId가 해당 대시보드 스코프에 없으면 404.
+ *
+ * 성공 → 204 No Content, store에서 즉시 제거(stateful)
+ * 미존재 대시보드·삭제됨 → 404 NOTIF_DASHBOARD_NOT_FOUND
+ * 비소유자 → 403 NOTIF_DASHBOARD_FORBIDDEN
+ * 공유 토큰 미존재·스코프 불일치 → 404 NOTIF_DASHBOARD_SHARE_NOT_FOUND
+ */
+const revokeShareTokenHandler = http.delete('/api/v1/dashboards/:id/shares/:shareId', ({ params, request }) => {
+  const id = params['id'] as string
+  const shareId = params['shareId'] as string
+  const actorId = extractActorId(request)
+
+  const guard = requireOwnedDashboardOrError(id, actorId)
+  if (!guard.ok) {
+    return guard.response
+  }
+
+  const entry = shareTokenStore.get(shareId)
+  if (entry === undefined || entry.dashboardId !== id) {
+    return errorResponse('NOTIF_DASHBOARD_SHARE_NOT_FOUND', '공유 링크를 찾을 수 없습니다.', 404)
+  }
+
+  shareTokenStore.delete(shareId)
+
+  return new HttpResponse(null, { status: 204 })
+})
+
+/**
+ * GET /api/v1/public/dashboards/{token} — 익명(비인증) 공개 대시보드 조회.
+ *
+ * SecurityContext(actor) 무참조 — 오직 토큰 소지로만 접근을 판정한다(실제 컨트롤러와 동일).
+ * 미존재·만료·부모 대시보드 삭제는 모두 404로 수렴한다(존재 여부 열거 차단).
+ *
+ * 성공 → 200 { data: PublicDashboardDto } (layout은 정화된 JSON 문자열)
+ * 무효·만료·부모삭제 → 404 NOTIF_DASHBOARD_NOT_FOUND
+ */
+const getPublicDashboardHandler = http.get('/api/v1/public/dashboards/:token', ({ params }) => {
+  const token = params['token'] as string
+
+  const entry = Array.from(shareTokenStore.values()).find((t) => t.token === token)
+  if (entry === undefined) {
+    return errorResponse('NOTIF_DASHBOARD_NOT_FOUND', '공유된 대시보드를 찾을 수 없습니다.', 404)
+  }
+
+  if (entry.expiresAt !== null && new Date(entry.expiresAt).getTime() <= Date.now()) {
+    return errorResponse('NOTIF_DASHBOARD_NOT_FOUND', '공유된 대시보드를 찾을 수 없습니다.', 404)
+  }
+
+  const dashboard = dashboardStore.get(entry.dashboardId)
+  if (dashboard === undefined || dashboard.deletedAt !== null) {
+    return errorResponse('NOTIF_DASHBOARD_NOT_FOUND', '공유된 대시보드를 찾을 수 없습니다.', 404)
+  }
+
+  const dto: PublicDashboardDto = {
+    name: dashboard.name,
+    description: dashboard.description,
+    layout: sanitizeLayoutForPublic(dashboard.layout),
+  }
+
+  return HttpResponse.json({ data: dto })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // export
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -391,6 +681,9 @@ const getGadgetCatalogHandler = http.get('/api/v1/dashboards/gadget-catalog', ()
  *   getGadgetCatalogHandler(GET /api/v1/dashboards/gadget-catalog)를
  *   getDashboardHandler(GET /api/v1/dashboards/:id) 보다 먼저 등록해야
  *   "gadget-catalog" 문자열이 :id 파라미터로 잘못 매칭되지 않는다.
+ *   공유 토큰 핸들러(.../shares, .../shares/:shareId)는 :id 단일 세그먼트 패턴과
+ *   세그먼트 수가 달라 충돌하지 않는다. 익명 공개 조회(/api/v1/public/dashboards/:token)는
+ *   완전히 다른 경로 루트라 충돌 여지가 없다.
  */
 export const dashboardHandlers = [
   listDashboardsHandler,
@@ -399,4 +692,8 @@ export const dashboardHandlers = [
   createDashboardHandler,
   patchDashboardHandler,
   deleteDashboardHandler,
+  issueShareTokenHandler,
+  listShareTokensHandler,
+  revokeShareTokenHandler,
+  getPublicDashboardHandler,
 ]

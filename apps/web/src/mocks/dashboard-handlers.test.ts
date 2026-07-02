@@ -543,7 +543,9 @@ describe('공유 토큰 — POST/GET/DELETE + 익명 공개 조회', () => {
         headers: actorHeaders(ALICE_OWNER_ID),
         body: JSON.stringify({}),
       })
-      const { id: shareId } = (await issueRes.json()) as { data: { id: string } }
+      const {
+        data: { id: shareId },
+      } = (await issueRes.json()) as { data: { id: string } }
 
       const deleteRes = await fetch(`/api/v1/dashboards/${SHARE_DEMO_DASHBOARD.id}/shares/${shareId}`, {
         method: 'DELETE',
@@ -582,7 +584,9 @@ describe('공유 토큰 — POST/GET/DELETE + 익명 공개 조회', () => {
         headers: actorHeaders(ALICE_OWNER_ID),
         body: JSON.stringify({}),
       })
-      const { token } = (await issueRes.json()) as { data: { token: string } }
+      const {
+        data: { token },
+      } = (await issueRes.json()) as { data: { token: string } }
 
       const res = await fetch(`/api/v1/public/dashboards/${token}`)
 
@@ -608,7 +612,9 @@ describe('공유 토큰 — POST/GET/DELETE + 익명 공개 조회', () => {
         headers: actorHeaders(ALICE_OWNER_ID),
         body: JSON.stringify({}),
       })
-      const { token } = (await issueRes.json()) as { data: { token: string } }
+      const {
+        data: { token },
+      } = (await issueRes.json()) as { data: { token: string } }
 
       const res = await fetch(`/api/v1/public/dashboards/${token}`)
       const body = (await res.json()) as { data: { layout: string } }
@@ -641,7 +647,9 @@ describe('공유 토큰 — POST/GET/DELETE + 익명 공개 조회', () => {
         headers: actorHeaders(ALICE_OWNER_ID),
         body: JSON.stringify({}),
       })
-      const { id: shareId, token } = (await issueRes.json()) as { data: { id: string; token: string } }
+      const {
+        data: { id: shareId, token },
+      } = (await issueRes.json()) as { data: { id: string; token: string } }
 
       await fetch(`/api/v1/dashboards/${SHARE_DEMO_DASHBOARD.id}/shares/${shareId}`, {
         method: 'DELETE',
@@ -658,7 +666,9 @@ describe('공유 토큰 — POST/GET/DELETE + 익명 공개 조회', () => {
         headers: actorHeaders(ALICE_OWNER_ID),
         body: JSON.stringify({}),
       })
-      const { token } = (await issueRes.json()) as { data: { token: string } }
+      const {
+        data: { token },
+      } = (await issueRes.json()) as { data: { token: string } }
 
       const res = await fetch(`/api/v1/public/dashboards/${token}`)
       const body = (await res.json()) as { data: Record<string, unknown> }
