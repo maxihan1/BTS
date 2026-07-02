@@ -71,15 +71,16 @@ API. 관리(인증) `POST/GET/DELETE /api/v1/dashboards/{id}/shares` + 익명(pe
 - depends-on: []
 
 **RED**: `DashboardShareTokenTest`
-- `mint 은 256bit base64url 불투명 토큰(원문)과 그 SHA-256 해시를 반환한다`
-- `동일 원문 토큰은 항상 동일 해시로 매핑된다(결정적)`
+- `mint 은 256bit base64url 불투명 토큰(원문)과 그 SHA-256 해시(hex 64자)를 반환한다`
+- `동일 원문 토큰은 항상 동일 해시 문자열로 매핑된다(결정적)`
 - `isExpired(now) 는 expiresAt<=now 에서 true, null expiresAt 은 항상 false`
-- `엔티티는 원문 토큰을 보관하지 않는다(tokenHash 필드만 존재)`
+- `엔티티는 원문 토큰을 보관하지 않는다(tokenHash 문자열 필드만 존재)`
 
-**GREEN**: `DashboardShareToken`(data class: id, dashboardId, tokenHash ByteArray, createdBy, createdAt, expiresAt?) + `isExpired(now: Instant)`. `ShareTokenMinter`: `SecureRandom` 32바이트 → base64url 인코딩(원문) + `MessageDigest("SHA-256")` 해시. `mint(dashboardId, createdBy, expiresAt, now): MintedToken(plaintext, entity)`.
-- 상수: `MAX_SHARE_TOKENS = 20`(Dashboard/도메인 상수), 토큰 바이트수 32.
+**GREEN**: `DashboardShareToken`(data class: id, dashboardId, **tokenHash: String**(SHA-256 hex 소문자), createdBy, createdAt, expiresAt?) + `isExpired(now: Instant)`. `ShareTokenMinter`: `SecureRandom` 32바이트 → base64url 인코딩(원문) + `MessageDigest("SHA-256")` → **hex 문자열**. `mint(dashboardId, createdBy, expiresAt, now): MintedToken(plaintext, entity)`. 조회 시 원문을 같은 방식으로 해싱해 문자열 비교(DB 인덱스 = lookup).
+- 상수: `MAX_SHARE_TOKENS = 20`(도메인 상수), 토큰 바이트수 32.
+- **R2(리뷰 반영)**: 해시를 ByteArray가 아니라 hex 문자열로 — Kotlin data class ByteArray equals/hashCode 함정 회피 + jOOQ TEXT 바인딩 단순화.
 
-**REFACTOR**: KDoc(원문 1회 노출·미저장 명시), ByteArray equals/hashCode 주의(data class 함정) — 해시 비교는 `MessageDigest.isEqual` 사용.
+**REFACTOR**: KDoc(원문 1회 노출·미저장 명시).
 
 **검증**: `./gradlew :backend:notification:test --tests '*DashboardShareTokenTest'`
 
@@ -116,7 +117,7 @@ API. 관리(인증) `POST/GET/DELETE /api/v1/dashboards/{id}/shares` + 익명(pe
 
 **RED**: (마이그레이션은 스키마 테스트/저장소 테스트로 검증) 기존 `SchemaMigrationTest` 류가 테이블 카운트를 단언하면 갱신 필요 — 있으면 카운트 +1(memory fr-pm-permission-seed-migration-test-coupling).
 
-**GREEN**: `V408` — 스펙 §데이터 모델 DDL 그대로(id PK, dashboard_id FK CASCADE, token_hash BYTEA NOT NULL, created_by, created_at, expires_at?, last_accessed_at?[미갱신]). UNIQUE(token_hash), INDEX(dashboard_id). init_codegen.sql에 동일 CREATE 미러(jOOQ 코드젠 소스, memory jooq-init-codegen-mirror).
+**GREEN**: `V408` — id PK, dashboard_id FK CASCADE, **token_hash TEXT NOT NULL**(SHA-256 hex, R2 반영 — BYTEA 아님), created_by, created_at, expires_at?, last_accessed_at?[미갱신]. UNIQUE(token_hash), INDEX(dashboard_id). init_codegen.sql에 동일 CREATE 미러(jOOQ 코드젠 소스, memory jooq-init-codegen-mirror).
 
 **REFACTOR**: 컬럼 주석, init_codegen 순서 정렬.
 
@@ -202,7 +203,7 @@ API. 관리(인증) `POST/GET/DELETE /api/v1/dashboards/{id}/shares` + 익명(pe
 - `무효/만료/삭제 토큰→404 동일 형식(열거차단 EC-1/3/5)`
 - `이상 토큰 문자열→404(500 금지)`
 
-**GREEN**: `PublicDashboardController` GET(permitAll·GET 전용) → `service.getPublicByToken(token)` → `PublicDashboardResponse`(정화). 무효는 컨트롤러에서 404 직접 반환(apiFetch 리다이렉트 회피는 프론트 몫). `SecurityConfig`에 `/api/v1/public/**` permitAll 등록(+ CSRF 무관 GET). MfaEnrollmentGate/SidRevoke는 익명(principal 없음) 통과 확인.
+**GREEN**: `PublicDashboardController` GET(permitAll·GET 전용) → `service.getPublicByToken(token)` → `PublicDashboardResponse`(정화). 무효는 컨트롤러에서 **명시적 404 직접 반환**(catch-all→500 변질 방지, memory catch-all-exceptionhandler-swallows-responsestatusexception. 정화기는 total — 예외로 데이터 누출 금지). `SecurityConfig`에 **`/api/v1/public/dashboards/**` permitAll 등록**(R1 반영 — 넓은 `/api/v1/public/**` 대신 좁은 매처로 폭발반경 축소, GET 전용). MfaEnrollmentGate/SidRevoke는 익명(principal 없음) 통과 확인.
 
 **REFACTOR**: permitAll 경로 상수 + KDoc(왜 익명·GET전용·정화 근거 ADR 링크).
 
@@ -233,4 +234,24 @@ API. 관리(인증) `POST/GET/DELETE /api/v1/dashboards/{id}/shares` + 익명(pe
 - 추가 검증: ktlint + detekt(--rerun-tasks) + verify-master-plan(카운트 drift). FR-DB-03 D1~D5 체크박스는 머지 시 마킹.
 - cross-BC 주의: T7이 identity-access SecurityConfig 수정 — 한 기능이 요구하는 인접 보안 레이어 변경(FR-WF-01 옵션C 선례), security-engineer 공동검토.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review + 보안 관점 (2026-07-02)
+
+백엔드 중심 보안 민감 plan이라 autoplan 대신 eng 집중 + security 관점 리뷰(memory bts-review-plan-autoplan-overkill).
+
+**BLOCKER: 없음.**
+
+**반영한 개선 (plan 수정 완료)**.
+- ✅ R1 (보안). permitAll 매처 `/api/v1/public/**` → `/api/v1/public/dashboards/**`로 축소 (폭발반경). T7 반영.
+- ✅ R2 (eng). token_hash를 ByteArray → SHA-256 **hex 문자열(TEXT 컬럼)**. Kotlin data class ByteArray equals 함정 + jOOQ 바인딩 단순화. T1/T3/T4 반영.
+- ✅ R3 (보안). 익명 컨트롤러 not-found = 명시적 404(catch-all→500 방지), 정화기 total(누출 금지). T7/T2 강화.
+
+**CONCERN (수용, MVP 허용)**.
+- ⚠️ R4. MAX_SHARE_TOKENS 캡은 countByDashboard→insert TOCTOU 경합 가능. 남용방지 목적(보안 경계 아님)이라 MVP 허용, 주석 명시. 엄격 강제는 후속.
+- ⚠️ 익명 permitAll 실동작 테스트는 SecurityConfig(identity-access) 의존 — 모듈 슬라이스 한계. T8 리스크 노트대로 code-review + (있으면)assembled 레벨 검증. 게이트2 명시 검토.
+
+**게이트1 Maxi 결정 필요 (taste/product)**.
+- 🔵 O-1. iframe 크로스오리진 프레이밍 범위 — MVP가 same-origin+스니펫까지(권장 b)인지, 크로스오리진 헤더/프록시까지인지. 주로 PR2(프론트/인프라) 사안이라 이번 백엔드 PR1은 O-1과 무관하게 진행 가능.
+
+**검증 커버리지 확인**. 토큰 해싱·열거차단 404·정화 fail-closed·Clock 만료·교차조회 차단·token 유출 회귀가드(EC-9) 모두 task RED에 포함 ✅.
