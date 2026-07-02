@@ -5,7 +5,6 @@ package com.bts.notification.dashboard.web
 import com.bts.notification.dashboard.application.DashboardConflictException
 import com.bts.notification.dashboard.application.DashboardForbiddenException
 import com.bts.notification.dashboard.application.DashboardNotFoundException
-import com.bts.notification.dashboard.application.PublicDashboardNotFoundException
 import com.bts.notification.dashboard.application.ShareTokenLimitExceededException
 import com.bts.notification.dashboard.application.ShareTokenNotFoundException
 import com.bts.notification.dashboard.domain.DashboardDomainException
@@ -42,8 +41,11 @@ import java.time.Instant
  * - DashboardConflictException -> 409 + NOTIF_DASHBOARD_CONFLICT
  * - ShareTokenLimitExceededException -> 400 + NOTIF_DASHBOARD_SHARE_LIMIT_EXCEEDED
  * - ShareTokenNotFoundException -> 404 + NOTIF_DASHBOARD_SHARE_NOT_FOUND
- * - PublicDashboardNotFoundException -> 404 + NOTIF_DASHBOARD_PUBLIC_NOT_FOUND
  * - Exception (fallback) -> 500 + NOTIF_DASHBOARD_INTERNAL_ERROR
+ *
+ * 익명 공개 조회(PublicDashboardNotFoundException)는 [com.bts.notification.dashboard.web.PublicDashboardController]
+ * 의 컨트롤러-로컬 @ExceptionHandler 가 NOTIF_DASHBOARD_NOT_FOUND(404) 로 매핑하므로 이 advice 에는 두지 않는다
+ * (컨트롤러-로컬이 우선 적용돼 advice 매핑은 데드코드 + errorCode drift 를 유발했다 — C3).
  */
 @RestControllerAdvice(basePackages = ["com.bts.notification.dashboard.web"])
 // TooManyFunctions — 예외 종류마다 독립된 HTTP 매핑 핸들러 1개씩이며, 각 핸들러는 응집된 단일 책임이다.
@@ -132,21 +134,6 @@ class DashboardExceptionHandler {
             title = "Dashboard Share Token Not Found",
             errorCode = "NOTIF_DASHBOARD_SHARE_NOT_FOUND",
             detail = "공유 링크를 찾을 수 없습니다.",
-        )
-    }
-
-    /** 익명 공개 조회 대상 공유 토큰이 유효하지 않음 — 404. */
-    @ExceptionHandler(PublicDashboardNotFoundException::class)
-    fun handlePublicDashboardNotFound(
-        @Suppress("UnusedParameter") ex: PublicDashboardNotFoundException,
-    ): ProblemDetail {
-        log.info("NOTIF_DASHBOARD_404 public_not_found")
-        return problem(
-            status = HttpStatus.NOT_FOUND,
-            type = "dashboard-public-not-found",
-            title = "Public Dashboard Not Found",
-            errorCode = "NOTIF_DASHBOARD_PUBLIC_NOT_FOUND",
-            detail = "공유된 대시보드를 찾을 수 없습니다.",
         )
     }
 
