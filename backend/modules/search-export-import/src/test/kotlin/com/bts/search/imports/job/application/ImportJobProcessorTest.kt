@@ -242,7 +242,7 @@ class ImportJobProcessorTest {
     // ── (h) 100 행 미만 완료 — 주기 갱신 미도달 시에도 progress/totalRows 확정 ──────
 
     @Test
-    fun `fewer than progress update interval rows completes with progress 100 and totalRows equal to processed count`() {
+    fun `fewer rows than progress update interval still completes with progress 100 and totalRows set`() {
         val rowCount = 50L
         stubParserWithRowCount(rowCount)
         every { issueImportPort.importIssue(any()) } returns IssueImportResult.success("PROJ-1")
