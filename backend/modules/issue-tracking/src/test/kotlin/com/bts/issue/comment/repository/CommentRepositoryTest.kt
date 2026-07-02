@@ -15,6 +15,7 @@ import org.junit.jupiter.api.MethodOrderer
 import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestMethodOrder
+import java.sql.Connection
 import java.sql.DriverManager
 import java.time.Instant
 import java.util.UUID
@@ -51,24 +52,27 @@ class CommentRepositoryTest : IssueTestcontainersBase() {
     /** 각 테스트 전 comments 전체 삭제. issues 는 부모 cleanIssues() 가 처리. */
     @BeforeEach
     fun cleanComments() {
-        DriverManager.getConnection(
-            IssueTestcontainersBase.postgres.jdbcUrl,
-            IssueTestcontainersBase.postgres.username,
-            IssueTestcontainersBase.postgres.password,
-        ).use { conn ->
-            conn.createStatement().use { it.execute("DELETE FROM comments") }
-        }
+        withJdbcConnection { conn -> conn.createStatement().use { it.execute("DELETE FROM comments") } }
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    @Suppress("NestedBlockDepth")
-    private fun loadTaskTypeId(): IssueTypeId =
+    /**
+     * Testcontainers PostgreSQL 에 직접 JDBC 연결해 [block] 을 실행한다.
+     *
+     * `IssueTestcontainersBase.postgres` 의 JDBC 접속 정보를 매번 반복하지 않도록 추출한 공통 헬퍼
+     * ([cleanComments], [loadTaskTypeId], [softDeleteComment] 가 공유).
+     */
+    private fun <T> withJdbcConnection(block: (Connection) -> T): T =
         DriverManager.getConnection(
             IssueTestcontainersBase.postgres.jdbcUrl,
             IssueTestcontainersBase.postgres.username,
             IssueTestcontainersBase.postgres.password,
-        ).use { conn ->
+        ).use(block)
+
+    @Suppress("NestedBlockDepth")
+    private fun loadTaskTypeId(): IssueTypeId =
+        withJdbcConnection { conn ->
             conn.prepareStatement(
                 "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1",
             ).use { stmt ->
@@ -112,11 +116,7 @@ class CommentRepositoryTest : IssueTestcontainersBase() {
 
     /** 지정한 id 의 댓글을 직접 소프트 삭제한다 (CommentRepository 는 이 Task 범위에서 softDelete 미제공). */
     private fun softDeleteComment(id: UUID) {
-        DriverManager.getConnection(
-            IssueTestcontainersBase.postgres.jdbcUrl,
-            IssueTestcontainersBase.postgres.username,
-            IssueTestcontainersBase.postgres.password,
-        ).use { conn ->
+        withJdbcConnection { conn ->
             conn.prepareStatement("UPDATE comments SET deleted_at = now() WHERE id = ?").use { stmt ->
                 stmt.setObject(1, id)
                 stmt.executeUpdate()
