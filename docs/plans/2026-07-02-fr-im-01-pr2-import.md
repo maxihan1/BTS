@@ -186,4 +186,6 @@ PR1 유산:
 - **NIT (반영)**. (a) `MANAGE_COMPONENTS/MANAGE_VERSIONS`는 enum 아님 → API 게이트는 `ComponentPermission.CREATE`/`VersionPermission.CREATE`(resolver가 매트릭스 권한코드로 매핑). (b) Gradle 태스크 경로 `:modules:issue-tracking:test`(backend 루트 기준). (c) `issueTypeKey`는 `issueTypeRepository.findById(created.typeId)?.key`로 재조회(per-type 워크플로우 대비 null default-mapping 금지). (d) assignee 단계 반환 version 캡처 필수(⑤⑥ 스레딩). (e) `ImportErrorLogWriter` 헤더/테스트 severity 컬럼 동반 수정 → Task 5 files에 writer 테스트 추가.
 - **PASS**. 시그니처 정합(applyTransition/changeAffectsVersions/create/listStates 실재), G1 경고구조 일치, wave/의존 그래프 겹침0·순환0, BC 격리 무위반.
 
-### 정정 반영 완료 (Task 3/4/5/6 + spec R6/R8/E9 갱신). CONCERN-1만 게이트1 Maxi 결정.
+### 정정 반영 완료 (Task 3/4/5/6 + spec R6/R8/E9 갱신).
+
+### 🛑 게이트1 승인 (2026-07-02, Maxi). **CONCERN-1 확정 = resolution NULL 허용**(옵션 A) — DONE 상태 direct-set 시 resolution 미주입(null). Task 3 `applyTransition(resolutionId=null)` 그대로. impl 시 하위 소비자(번다운=isDone 기준 확인됨, 무영향) 재확인만.
