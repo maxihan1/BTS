@@ -1098,6 +1098,70 @@ class IssueImportAdapterTest {
         }
     }
 
+    // ── S22. dry-run 상태 name 미매칭 미리보기 (CONCERN-A) ──────────────────────
+
+    /**
+     * dry-run 경고 미러 갭 수정(CONCERN-A) — TRANSITION 권한이 있어도 statusName 이 대상 워크플로우
+     * 상태 목록(Open/In Progress/Done)에 없으면, 실제 실행의 NoMatch 경고를 dry-run 에서도 미리
+     * 산출해야 한다. 권한 경고(S20)만이 아니라 name 미매칭도 미리보기로 노출한다.
+     *
+     * Given TRANSITION 권한 있는 requester(NORMAL) + 미존재 statusName "Frozen"
+     * When  dryRun importIssue 호출
+     * Then  Success (best-effort — 행 유효성엔 영향 없음)
+     * And   "찾을 수 없어" 경고 포함 (실행 경로 NoMatch 미러)
+     */
+    @Test
+    fun `S22 dryRun statusName 미매칭 - TRANSITION 권한 있어도 미매칭 경고를 미리 남긴다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S22 dryRun 상태 미매칭 미리보기 테스트",
+                statusName = "Frozen",
+                dryRun = true,
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        assert(result.warnings.any { it.contains("Frozen") && it.contains("찾을 수 없어") }) {
+            "미매칭 상태 경고가 있어야 하지만 경고 목록은 ${result.warnings} 입니다."
+        }
+    }
+
+    // ── S23. 한 셀 내 중복 컴포넌트 이름 de-dup (NIT-1) ─────────────────────────
+
+    /**
+     * NIT-1 수정 — Jira 다중값 셀이 같은 이름을 중복 포함("Dup","Dup")하면, de-dup 없이는 미매칭
+     * 이름을 같은 트랜잭션 안에서 두 번 생성 시도해 partial-unique 23505 로 행 전체가 실패한다.
+     * de-dup(distinct) 후에는 한 번만 생성돼 정상 링크된다.
+     *
+     * Given CREATE 권한 있는 requester + 미존재 컴포넌트 이름 중복 ["Dup", "Dup"]
+     * When  importIssue 호출
+     * Then  Success (23505 행 실패 없음)
+     * And   컴포넌트 "Dup" 1건 생성 + 이슈에 1개 링크
+     */
+    @Test
+    fun `S23 한 셀 내 중복 컴포넌트 이름은 de-dup 되어 한 번만 자동생성된다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = AUTO_CREATE_ALLOWED_REQUESTER_ID,
+                summary = "S23 중복 컴포넌트 이름 de-dup 테스트",
+                componentNames = listOf("Dup", "Dup"),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다(중복 이름이 23505 로 실패하면 안 됨)." }
+        assert(findComponentIdOrNull(PROJECT_KEY, "Dup") != null) {
+            "컴포넌트 'Dup' 이 자동생성돼 있어야 합니다."
+        }
+        assert(fetchComponentIds(result.issueKey).size == 1) {
+            "중복 이름은 하나로 링크돼야 하지만 ${fetchComponentIds(result.issueKey).size} 개 링크됐습니다."
+        }
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     private fun applyMigrations() {

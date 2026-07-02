@@ -179,4 +179,20 @@ class IssueImportStatusServiceTest : DescribeSpec({
             }
         }
     }
+
+    describe("statusNameMatches (dry-run 미리보기 — 실제 전이 없이 name 매칭만 검사)") {
+        beforeEach {
+            every { issueTypeRepository.findById(typeId) } returns issueType
+            every { workflowStateCatalog.listStates(projectKey, issueType.key) } returns states
+        }
+
+        it("대상 워크플로우에 존재하는 상태 이름이면 true (대소문자 무시)") {
+            sut.statusNameMatches("BTS", typeId, "완료") shouldBe true
+            sut.statusNameMatches("BTS", typeId, "열림") shouldBe true
+        }
+
+        it("존재하지 않는 상태 이름이면 false — 실행 경로의 NoMatch 를 미리 예측") {
+            sut.statusNameMatches("BTS", typeId, "Frozen") shouldBe false
+        }
+    }
 })
