@@ -2359,6 +2359,41 @@ class IssueRepository(
     }
 
     /**
+     * CFD(Cumulative Flow Diagram, 누적 흐름도) 집계용 활성·가시 이슈 원천 메타를 조회한다 (FR-RP-03 Task 2).
+     *
+     * [filterVisibleIssueKeys]/[existsVisibleIssue] 와 동일한 [buildActiveSecureWhere] 보안 술어를
+     * **재사용**한다 — soft-deleted 이슈, 타 프로젝트 이슈, [viewerUserId] 가 접근 불가한 보안 등급
+     * 이슈는 결과에서 자동 제외된다(복제 없음, isomorphic-clone 회귀 방지).
+     *
+     * @param projectKey CFD 를 집계할 프로젝트 키.
+     * @param viewerUserId 가시성을 판단할 viewer UUID.
+     * @param access viewer 가 접근 가능한 보안 등급 집합.
+     * @return 활성·가시 이슈의 [CfdIssueSourceRow] 목록.
+     */
+    @Transactional(readOnly = true)
+    fun fetchActiveVisibleIssuesForCfd(
+        projectKey: String,
+        viewerUserId: UUID,
+        access: IssueSecurityAccess,
+    ): List<CfdIssueSourceRow> =
+        dsl.select(ISSUES.ID, ISSUES.TYPE_ID, ISSUES.CURRENT_STATE_KEY, ISSUES.CREATED_AT)
+            .from(ISSUES)
+            .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+            .where(buildActiveSecureWhere(projectKey, viewerUserId, access))
+            .fetch { record ->
+                CfdIssueSourceRow(
+                    issueId = record.get(ISSUES.ID) ?: error("issues.id must not be null"),
+                    typeId = record.get(ISSUES.TYPE_ID) ?: error("issues.type_id must not be null"),
+                    currentStateKey =
+                        record.get(ISSUES.CURRENT_STATE_KEY)
+                            ?: error("issues.current_state_key must not be null"),
+                    createdAt =
+                        (record.get(ISSUES.CREATED_AT) ?: error("issues.created_at must not be null"))
+                            .toInstant(),
+                )
+            }
+
+    /**
      * ILIKE ESCAPE '\' 에서 안전하게 사용하기 위해 prefix 의 와일드카드 문자를 이스케이프한다.
      *
      * PostgreSQL ILIKE ESCAPE '\' 규칙.
