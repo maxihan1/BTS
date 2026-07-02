@@ -5,7 +5,6 @@ package com.atlas.bts.identity.pat
 import com.atlas.bts.identity.audit.AuthAuditLog
 import com.atlas.bts.identity.audit.AuthAuditLogService
 import com.atlas.bts.identity.audit.AuthEventType
-import io.mockk.capture
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
