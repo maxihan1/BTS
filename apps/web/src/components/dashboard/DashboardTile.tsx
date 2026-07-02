@@ -5,6 +5,7 @@ import { LayoutDashboard, Trash2 } from 'lucide-react'
 import { dashboardLabels, gadgetLabels } from '@/i18n/dashboard-labels'
 import type { DashboardTile as DashboardTileData } from '@/lib/dashboard-layout'
 import { GadgetRenderer } from '@/components/dashboard/gadgets/GadgetRenderer'
+import { PublicGadgetRenderer } from '@/components/dashboard/gadgets/PublicGadgetRenderer'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -20,6 +21,12 @@ export interface DashboardTileProps {
   onDelete: (id: string) => void
   /** 제목 인라인 편집 완료 콜백 */
   onEditTitle: (id: string, title: string) => void
+  /**
+   * 익명(비로그인) 공유 뷰 모드 — true면 canEdit 값과 무관하게 강제 읽기전용이며
+   * 가젯 본문을 PublicGadgetRenderer(정적 화이트리스트, fail-closed)로 렌더한다.
+   * 기본 false — 기존 인증 모드 동작 불변 (FR-DB-01 default 보호 패턴, FR-DB-03 D6/D7 Task-8).
+   */
+  publicMode?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -32,10 +39,21 @@ export interface DashboardTileProps {
  * - canEdit=true: 제목 클릭 시 인라인 편집 input 활성. 삭제 버튼 노출.
  *   드래그/리사이즈는 react-grid-layout이 담당 (cursor-grab).
  * - canEdit=false: 읽기 전용. 편집 UI 전부 숨김.
+ * - publicMode=true: canEdit 값과 무관하게 강제 읽기전용 + 본문을 PublicGadgetRenderer로 렌더
+ *   (익명 공유 뷰, FR-DB-03 D6/D7 Task-8).
  * - 접근성: 삭제 버튼 aria-label, 터치 타깃 44px.
  * - 중립 한국어 문구 — 내부 FR 식별자 노출 절대 금지.
  */
-export function DashboardTile({ tile, canEdit, onDelete, onEditTitle }: DashboardTileProps): JSX.Element {
+export function DashboardTile({
+  tile,
+  canEdit,
+  onDelete,
+  onEditTitle,
+  publicMode = false,
+}: DashboardTileProps): JSX.Element {
+  /** publicMode면 canEdit 값과 무관하게 강제 읽기전용 (FR-DB-03 D6/D7 Task-8) */
+  const effectiveCanEdit = canEdit && !publicMode
+
   const [editing, setEditing] = useState(false)
   // C3: title?: string — undefined 방어를 위해 초기값에 ?? '' 적용
   const [editValue, setEditValue] = useState(tile.title ?? '')
@@ -60,7 +78,7 @@ export function DashboardTile({ tile, canEdit, onDelete, onEditTitle }: Dashboar
 
   /** 제목 클릭 시 편집 모드 시작 */
   function handleTitleClick(): void {
-    if (!canEdit) return
+    if (!effectiveCanEdit) return
     setEditing(true)
   }
 
@@ -93,7 +111,7 @@ export function DashboardTile({ tile, canEdit, onDelete, onEditTitle }: Dashboar
     <div
       className={[
         'h-full rounded-lg border shadow-sm bg-card flex flex-col',
-        canEdit ? 'cursor-grab active:cursor-grabbing' : 'cursor-default',
+        effectiveCanEdit ? 'cursor-grab active:cursor-grabbing' : 'cursor-default',
       ].join(' ')}
     >
       {/* 타일 헤더 */}
@@ -129,20 +147,22 @@ export function DashboardTile({ tile, canEdit, onDelete, onEditTitle }: Dashboar
               type="button"
               className={[
                 'min-w-0 flex-1 text-left text-sm font-medium truncate',
-                canEdit ? 'hover:underline cursor-text' : '',
+                effectiveCanEdit ? 'hover:underline cursor-text' : '',
               ].join(' ')}
               onClick={handleTitleClick}
-              disabled={!canEdit}
+              disabled={!effectiveCanEdit}
               // C3: tile.title?: string — undefined 방어
-              aria-label={canEdit ? `${tile.title ?? ''} — 클릭하여 제목 편집` : (tile.title ?? '')}
+              aria-label={
+                effectiveCanEdit ? `${tile.title ?? ''} — 클릭하여 제목 편집` : (tile.title ?? '')
+              }
             >
               {tile.title}
             </button>
           )}
         </div>
 
-        {/* 삭제 버튼 — canEdit=true일 때만 표시 */}
-        {canEdit && (
+        {/* 삭제 버튼 — 편집 가능(effectiveCanEdit)일 때만 표시 */}
+        {effectiveCanEdit && (
           <button
             type="button"
             className="ml-2 rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
@@ -156,10 +176,16 @@ export function DashboardTile({ tile, canEdit, onDelete, onEditTitle }: Dashboar
 
       {/*
        * 타일 본문 분기.
+       * - publicMode(익명 공유 뷰): gadgetType 유무와 무관하게 PublicGadgetRenderer가
+       *   정적 화이트리스트 렌더(fail-closed) — legacy 타일도 로그인 필요 플레이스홀더로 처리(Task 7).
        * - 가젯 타일(gadgetType 있음): GadgetRenderer가 가젯 컴포넌트를 렌더.
        * - legacy 타일: 기존 placeholder 텍스트.
        */}
-      {tile.gadgetType !== undefined ? (
+      {publicMode ? (
+        <div className="flex flex-1 overflow-auto">
+          <PublicGadgetRenderer tile={tile} />
+        </div>
+      ) : tile.gadgetType !== undefined ? (
         <div className="flex flex-1 overflow-auto">
           <GadgetRenderer tile={tile} />
         </div>

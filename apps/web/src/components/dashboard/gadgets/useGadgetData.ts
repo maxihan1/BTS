@@ -132,7 +132,7 @@ async function fetchFilterResult(config: GadgetConfig): Promise<GadgetIssueRow[]
     query: filter.aqlQuery,
     size: clampMaxItems(config.maxItems),
   })
-  return searchPage.content.map(aqlHitToRow)
+  return searchPage.data.map(aqlHitToRow)
 }
 
 /**
@@ -146,7 +146,7 @@ async function fetchIssueCount(config: GadgetConfig): Promise<number> {
     query: filter.aqlQuery,
     size: 1,
   })
-  return searchPage.totalElements
+  return searchPage.meta.page.totalElements
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -37,6 +37,7 @@ import { BoardRouteAdapter } from './routes/projects.$projectKey.board'
 import { BacklogRouteAdapter } from './routes/projects.$projectKey.backlog'
 import { DashboardsRouteAdapter } from './routes/dashboards'
 import { DashboardDetailRouteAdapter } from './routes/dashboards.$dashboardId'
+import { SharedDashboardRouteAdapter } from './routes/dashboards.shared.$token'
 import { InboxRouteAdapter } from './routes/inbox'
 import { SearchRouteAdapter } from './routes/search'
 import { TimelineRouteAdapter } from './routes/projects.$projectKey.timeline'
@@ -415,6 +416,28 @@ const dashboardDetailRoute = createRoute({
   beforeLoad: requireAuthAndPasswordChanged,
 })
 
+/**
+ * 익명 대시보드 공유 뷰 라우트 — /dashboards/shared/$token, 공개(비인증) 라우트 (FR-DB-03 D6/D7 Task 9).
+ * beforeLoad 가드 없음 — 유효/무효 토큰 판정은 페이지 컴포넌트가 raw fetch 응답(200/404)으로 직접
+ * 처리한다(EC-11, 로그인 리다이렉트 금지). `?embed=1` 쿼리로 임베드(크롬 최소화) 모드를 전달한다.
+ *
+ * embed는 boolean으로 정규화한다 — TanStack Router 기본 parseSearch(JSON.parse 기반)는
+ * `?embed=1`을 문자열 '1'이 아니라 **숫자 1**로 파싱하므로, 숫자/문자열/불리언 표현을 모두
+ * 인정해야 실제 URL(ShareDashboardModal이 생성하는 iframe 스니펫 `?embed=1`)에서도 동작한다.
+ */
+const dashboardsSharedTokenRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/dashboards/shared/$token',
+  component: SharedDashboardRouteAdapter,
+  staticData: { requireAuth: false },
+  validateSearch: (search: Record<string, unknown>): { embed?: boolean } => ({
+    embed:
+      search['embed'] === 1 || search['embed'] === '1' || search['embed'] === true || search['embed'] === 'true'
+        ? true
+        : undefined,
+  }),
+})
+
 /** 아웃바운드 Webhook 구독 관리 라우트 — /admin/webhooks, requireAuth + requireSystemAdmin + requirePasswordChanged (FR-API-03 PR4) */
 const adminWebhooksRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -504,6 +527,8 @@ export const routeTree = rootRoute.addChildren([
   // notification BC — 대시보드 목록/상세 (FR-DB-01, /dashboards/$dashboardId는 /dashboards보다 뒤에 등록해 충돌 없음)
   dashboardsRoute,
   dashboardDetailRoute,
+  // notification BC — 익명 대시보드 공유 뷰, 공개 라우트 (FR-DB-03 D6/D7 Task 9)
+  dashboardsSharedTokenRoute,
   // agile-planning BC — 프로젝트 백로그·스프린트 (FR-BL-01/02)
   projectBacklogRoute,
   // agile-planning BC — 프로젝트 칸반 보드 (FR-BD-01)

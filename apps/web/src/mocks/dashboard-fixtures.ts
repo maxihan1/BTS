@@ -173,6 +173,90 @@ export function createDashboardInStore(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 공유 토큰 stateful store (FR-DB-03 D6/D7 Task 2)
+//
+// 백엔드 계약 grep 대조 (DashboardShareController/PublicDashboardController/
+// DashboardShareDtos.kt/ShareTokenMinter.kt).
+//   - id·token·createdAt·expiresAt만 보관. tokenHash가 아니라 원문 token을 그대로 들고
+//     있는 이유는 MSW가 SHA-256 해싱을 재현할 필요 없이 공개 GET에서 원문 대조만 하면
+//     되기 때문(순수 목업, 실제 보안 경계 없음).
+//   - dashboardStore와 별개 Map. dashboardId로 스코프해 조회한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * MSW store 내부에서 사용하는 공유 토큰 타입.
+ * 백엔드 DashboardShareToken 엔티티와 대응하되, tokenHash 대신 원문 token을 보관한다
+ * (MSW는 해싱 없이 원문 대조로 조회한다).
+ */
+export interface StoredShareToken {
+  /** 공유 토큰 식별자 (UUID) */
+  id: string
+  /** 대상 대시보드 식별자 */
+  dashboardId: string
+  /** 원문 공유 토큰 — 목록 응답(GET .../shares)에는 절대 포함하지 않는다(EC-9) */
+  token: string
+  /** 발급 시각 (ISO 8601) */
+  createdAt: string
+  /** 만료 시각 (ISO 8601). null이면 무기한 */
+  expiresAt: string | null
+}
+
+/**
+ * 공유 토큰 store — shareId → StoredShareToken.
+ * POST(발급)/DELETE(취소) 핸들러가 변이하고, GET(목록)/공개 GET 핸들러가 읽는다.
+ */
+export let shareTokenStore: Map<string, StoredShareToken> = new Map()
+
+/**
+ * shareTokenStore를 초기 상태(빈 Map)로 리셋한다.
+ * 공유 토큰 관련 테스트의 beforeEach에서 호출해 테스트 간 격리를 보장한다.
+ */
+export function resetShareTokenStore(): void {
+  shareTokenStore = new Map()
+}
+
+/**
+ * StoredShareToken을 store에 시드한다. 동일 id가 이미 있으면 덮어쓴다.
+ *
+ * @param entry 시드할 공유 토큰 데이터
+ */
+export function seedShareToken(entry: StoredShareToken): void {
+  shareTokenStore.set(entry.id, entry)
+}
+
+/**
+ * 실제 발급기(ShareTokenMinter)와 유사한 형태의 불투명 원문 토큰 문자열을 생성한다.
+ *
+ * 실제 백엔드는 32바이트 SecureRandom 값을 base64url(패딩 없음)로 인코딩하지만,
+ * MSW 목업은 정확한 엔트로피·인코딩 재현이 불필요하므로 UUID 두 개를 이어붙인
+ * 43자 opaque 문자열로 근사한다(형식 재현이 목적이 아니라 "해석 불가능한 문자열"이라는
+ * 속성만 필요).
+ */
+export function generateShareToken(): string {
+  return `${generateUUID().replace(/-/g, '')}${generateUUID().replace(/-/g, '')}`.slice(0, 43)
+}
+
+/**
+ * 새 공유 토큰을 store에 발급하고 StoredShareToken을 반환한다.
+ * POST /api/v1/dashboards/{id}/shares 핸들러가 내부적으로 호출한다.
+ *
+ * @param dashboardId 대상 대시보드 식별자
+ * @param expiresAt 만료 시각 (선택, null이면 무기한)
+ * @returns 발급된 StoredShareToken (원문 token 포함)
+ */
+export function issueShareTokenInStore(dashboardId: string, expiresAt: string | null): StoredShareToken {
+  const entry: StoredShareToken = {
+    id: generateUUID(),
+    dashboardId,
+    token: generateShareToken(),
+    createdAt: new Date().toISOString(),
+    expiresAt,
+  }
+  shareTokenStore.set(entry.id, entry)
+  return entry
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 기본 시드 픽스처
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -217,6 +301,69 @@ export const OTHER_DASHBOARD: StoredDashboard = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 공유 데모 대시보드 픽스처 — 정적+데이터 가젯 혼합 layout (FR-DB-03 D6/D7 Task 2)
+//
+// DEFAULT_DASHBOARD(layout='[]')는 기존 E2E(dashboard.spec.ts/dashboard-gadgets.spec.ts)가
+// "빈 그리드"를 전제하므로 건드리지 않는다. 익명 공유 뷰 E2E(정적 가젯 렌더 + 데이터 가젯
+// 플레이스홀더 검증)를 위한 별도 픽스처를 새로 둔다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 정적(STATIC)+데이터(ISSUE) 가젯 혼합 layout — 익명 공유 뷰 검증용.
+ *
+ * - text_widget/link_list(STATIC 카테고리): 익명 뷰에서 config 그대로 렌더된다.
+ * - issue_count(ISSUE 카테고리, 데이터 가젯): 익명 뷰에서 config가 제거되고
+ *   `requiresAuth: true` 플레이스홀더로 치환된다(AnonymousLayoutSanitizer 재현).
+ */
+export const MIXED_GADGET_LAYOUT: string = JSON.stringify([
+  {
+    i: 'tile-text-1',
+    x: 0,
+    y: 0,
+    w: 6,
+    h: 4,
+    gadgetType: 'text_widget',
+    config: { markdown: '이 대시보드는 팀 공지사항을 정리합니다.' },
+  },
+  {
+    i: 'tile-link-1',
+    x: 6,
+    y: 0,
+    w: 6,
+    h: 4,
+    gadgetType: 'link_list',
+    config: { links: [{ label: 'BTS 문서', url: 'https://example.com/docs' }] },
+  },
+  {
+    i: 'tile-count-1',
+    x: 0,
+    y: 4,
+    w: 6,
+    h: 4,
+    gadgetType: 'issue_count',
+    config: { aql: 'status = "Open"' },
+  },
+])
+
+/**
+ * 공유 링크 발급 대상 대시보드 픽스처 — alice 소유, 정적+데이터 가젯 혼합 layout 보유.
+ * 공유 모달·익명 뷰 E2E(FR-DB-03 D6/D7)가 사용할 전용 대시보드.
+ */
+export const SHARE_DEMO_DASHBOARD: StoredDashboard = {
+  id: 'c0000000-0000-4000-8000-000000000001',
+  ownerId: ALICE_OWNER_ID,
+  name: '공유 데모 대시보드',
+  description: null,
+  visibility: 'PRIVATE',
+  layout: MIXED_GADGET_LAYOUT,
+  sharedUserIds: [],
+  createdAt: '2026-06-01T00:00:00.000Z',
+  updatedAt: '2026-06-01T00:00:00.000Z',
+  version: 0,
+  deletedAt: null,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 모듈 로드 시 자동 시드 — dev/E2E 환경 전용
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -225,5 +372,6 @@ export const OTHER_DASHBOARD: StoredDashboard = {
 if (import.meta.env.MODE !== 'test') {
   seedDashboard(DEFAULT_DASHBOARD)
   seedDashboard(OTHER_DASHBOARD)
+  seedDashboard(SHARE_DEMO_DASHBOARD)
 }
 

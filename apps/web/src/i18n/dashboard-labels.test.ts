@@ -180,3 +180,69 @@ describe('dashboardLabels.placeholder', () => {
     expect(dashboardLabels.placeholder.title).toMatch(/[가-힣]/)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// share 그룹 — 대시보드 공유 모달 및 익명 열람 화면 라벨 (FR-DB-03 D6/D7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('dashboardLabels.share', () => {
+  it('modalTitle 이 비어있지 않다', () => {
+    expect(dashboardLabels.share.modalTitle.length).toBeGreaterThan(0)
+  })
+
+  it('generateLink 이 비어있지 않다', () => {
+    expect(dashboardLabels.share.generateLink.length).toBeGreaterThan(0)
+  })
+
+  it('copy 이 비어있지 않다', () => {
+    expect(dashboardLabels.share.copy.length).toBeGreaterThan(0)
+  })
+
+  it('copied 이 비어있지 않다 (복사 후 일시 전환 라벨)', () => {
+    expect(dashboardLabels.share.copied.length).toBeGreaterThan(0)
+  })
+
+  it('embedCode 이 비어있지 않다', () => {
+    expect(dashboardLabels.share.embedCode.length).toBeGreaterThan(0)
+  })
+
+  it('issuedLinks 이 비어있지 않다', () => {
+    expect(dashboardLabels.share.issuedLinks.length).toBeGreaterThan(0)
+  })
+
+  it('revoke 이 비어있지 않다', () => {
+    expect(dashboardLabels.share.revoke.length).toBeGreaterThan(0)
+  })
+
+  it('expiresAt 이 비어있지 않다', () => {
+    expect(dashboardLabels.share.expiresAt.length).toBeGreaterThan(0)
+  })
+
+  it('noExpiry 이 비어있지 않다', () => {
+    expect(dashboardLabels.share.noExpiry.length).toBeGreaterThan(0)
+  })
+
+  it('visibilityWarning 이 비어있지 않다 (PRIVATE/TEAM 경고 배너)', () => {
+    expect(dashboardLabels.share.visibilityWarning.length).toBeGreaterThan(0)
+  })
+
+  it('copyOnceNotice 이 비어있지 않다 (재조회 불가 안내)', () => {
+    expect(dashboardLabels.share.copyOnceNotice.length).toBeGreaterThan(0)
+  })
+
+  it('empty 이 비어있지 않다 (발급된 링크 0건 빈 상태)', () => {
+    expect(dashboardLabels.share.empty.length).toBeGreaterThan(0)
+  })
+
+  it('revokeConfirm 이 비어있지 않다 (링크 취소 인라인 확인 문구)', () => {
+    expect(dashboardLabels.share.revokeConfirm.length).toBeGreaterThan(0)
+  })
+
+  it('notFound 이 비어있지 않다 (익명 뷰 404)', () => {
+    expect(dashboardLabels.share.notFound.length).toBeGreaterThan(0)
+  })
+
+  it('authRequiredGadget 이 비어있지 않다 (데이터 가젯 플레이스홀더)', () => {
+    expect(dashboardLabels.share.authRequiredGadget.length).toBeGreaterThan(0)
+  })
+})

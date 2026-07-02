@@ -12,6 +12,8 @@ import {
   OTHER_DASHBOARD,
   resetDashboardStore,
   seedDashboard,
+  resetShareTokenStore,
+  seedShareToken,
 } from '@/mocks/dashboard-fixtures'
 import {
   useDashboards,
@@ -19,6 +21,9 @@ import {
   useCreateDashboard,
   useUpdateDashboard,
   useDeleteDashboard,
+  useShareTokens,
+  useIssueShareToken,
+  useRevokeShareToken,
   dashboardKeys,
 } from './use-dashboards'
 
@@ -62,6 +67,7 @@ beforeEach(() => {
   resetDashboardStore()
   seedDashboard(DEFAULT_DASHBOARD)
   seedDashboard(OTHER_DASHBOARD)
+  resetShareTokenStore()
 })
 
 afterEach(() => {
@@ -80,6 +86,11 @@ describe('dashboardKeys', () => {
   it('T-DB-KEY-2: detail(id)는 ["dashboard", id] tuple을 반환한다', () => {
     const id = DEFAULT_DASHBOARD.id
     expect(dashboardKeys.detail(id)).toEqual(['dashboard', id])
+  })
+
+  it('T-DB-KEY-3: shares(id)는 ["dashboards", id, "shares"] tuple을 반환한다', () => {
+    const id = DEFAULT_DASHBOARD.id
+    expect(dashboardKeys.shares(id)).toEqual(['dashboards', id, 'shares'])
   })
 })
 
@@ -356,5 +367,204 @@ describe('useDeleteDashboard', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
     expect(setQueryDataSpy).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useShareTokens — 공유 토큰 목록 조회 (FR-DB-03 D6/D7 Task 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('useShareTokens', () => {
+  it('T-DB-SHARE-LIST-1: 발급된 공유 토큰 목록을 조회한다 (원문 token 미포함)', async () => {
+    const { wrapper } = createWrapper()
+    seedShareToken({
+      id: 'd0000000-0000-4000-8000-000000000001',
+      dashboardId: DEFAULT_DASHBOARD.id,
+      token: 'raw-token-should-not-leak',
+      createdAt: '2026-07-01T00:00:00.000Z',
+      expiresAt: null,
+    })
+
+    const { result } = renderHook(() => useShareTokens(DEFAULT_DASHBOARD.id), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(result.current.data?.items.length).toBe(1)
+    expect(result.current.data?.items[0]?.id).toBe('d0000000-0000-4000-8000-000000000001')
+    // ShareTokenSummary 타입에는 token 필드가 없다 — 컴파일 시점 유출 회귀가드
+  })
+
+  it('T-DB-SHARE-LIST-2: 쿼리키는 ["dashboards", id, "shares"]에 캐시된다', async () => {
+    const { queryClient, wrapper } = createWrapper()
+
+    const { result } = renderHook(() => useShareTokens(DEFAULT_DASHBOARD.id), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    const cached = queryClient.getQueryData(dashboardKeys.shares(DEFAULT_DASHBOARD.id))
+    expect(cached).toBeDefined()
+  })
+
+  it('T-DB-SHARE-LIST-3: 발급된 토큰이 없으면 빈 목록을 반환한다', async () => {
+    const { wrapper } = createWrapper()
+
+    const { result } = renderHook(() => useShareTokens(DEFAULT_DASHBOARD.id), { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(result.current.data?.items).toEqual([])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useIssueShareToken — 공유 토큰 발급 mutation (FR-DB-03 D6/D7 Task 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('useIssueShareToken', () => {
+  it('T-DB-SHARE-ISSUE-1: 발급 성공 시 원문 token을 포함한 결과를 호출측에 반환한다', async () => {
+    const { wrapper } = createWrapper()
+
+    const { result } = renderHook(() => useIssueShareToken(), { wrapper })
+
+    let mutateResult: { token: string } | undefined
+    await act(async () => {
+      mutateResult = await result.current.mutateAsync({ id: DEFAULT_DASHBOARD.id })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    // 모달이 재조회 불가한 원문 token을 state로 보관해야 하므로 mutateAsync 반환값에 그대로 담겨야 한다
+    expect(typeof mutateResult?.token).toBe('string')
+    expect(mutateResult?.token.length).toBeGreaterThan(0)
+    expect(result.current.data?.token).toBe(mutateResult?.token)
+  })
+
+  it('T-DB-SHARE-ISSUE-2: 성공 시 공유 목록 쿼리를 invalidate한다 (invalidate-only)', async () => {
+    const { queryClient, wrapper } = createWrapper()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(() => useIssueShareToken(), { wrapper })
+
+    await act(async () => {
+      await result.current.mutateAsync({ id: DEFAULT_DASHBOARD.id })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: dashboardKeys.shares(DEFAULT_DASHBOARD.id) }),
+    )
+  })
+
+  it('T-DB-SHARE-ISSUE-3: setQueryData를 직접 호출하지 않는다 (invalidate-only)', async () => {
+    const { queryClient, wrapper } = createWrapper()
+    const setQueryDataSpy = vi.spyOn(queryClient, 'setQueryData')
+
+    const { result } = renderHook(() => useIssueShareToken(), { wrapper })
+
+    await act(async () => {
+      await result.current.mutateAsync({ id: DEFAULT_DASHBOARD.id })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(setQueryDataSpy).not.toHaveBeenCalled()
+  })
+
+  it('T-DB-SHARE-ISSUE-4: 발급 후 목록 refetch하면 새 항목이 반영된다 (stateful store 확인)', async () => {
+    const { wrapper } = createWrapper()
+
+    const { result } = renderHook(
+      () => ({
+        query: useShareTokens(DEFAULT_DASHBOARD.id),
+        mutation: useIssueShareToken(),
+      }),
+      { wrapper },
+    )
+
+    await waitFor(() => expect(result.current.query.isSuccess).toBe(true))
+    expect(result.current.query.data?.items.length).toBe(0)
+
+    await act(async () => {
+      await result.current.mutation.mutateAsync({ id: DEFAULT_DASHBOARD.id })
+    })
+
+    await waitFor(() => expect(result.current.mutation.isSuccess).toBe(true))
+
+    // invalidate → TanStack Query가 자동 refetch → MSW store에 발급된 항목이 반영
+    await waitFor(() => expect(result.current.query.data?.items.length).toBe(1))
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useRevokeShareToken — 공유 토큰 취소 mutation (FR-DB-03 D6/D7 Task 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('useRevokeShareToken', () => {
+  const SHARE_ID = 'd0000000-0000-4000-8000-000000000002'
+
+  beforeEach(() => {
+    seedShareToken({
+      id: SHARE_ID,
+      dashboardId: DEFAULT_DASHBOARD.id,
+      token: 'raw-token-to-revoke',
+      createdAt: '2026-07-01T00:00:00.000Z',
+      expiresAt: null,
+    })
+  })
+
+  it('T-DB-SHARE-REVOKE-1: 취소 성공 시 공유 목록 쿼리를 invalidate한다', async () => {
+    const { queryClient, wrapper } = createWrapper()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(() => useRevokeShareToken(), { wrapper })
+
+    await act(async () => {
+      await result.current.mutateAsync({ id: DEFAULT_DASHBOARD.id, shareId: SHARE_ID })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: dashboardKeys.shares(DEFAULT_DASHBOARD.id) }),
+    )
+  })
+
+  it('T-DB-SHARE-REVOKE-2: setQueryData를 직접 호출하지 않는다 (invalidate-only)', async () => {
+    const { queryClient, wrapper } = createWrapper()
+    const setQueryDataSpy = vi.spyOn(queryClient, 'setQueryData')
+
+    const { result } = renderHook(() => useRevokeShareToken(), { wrapper })
+
+    await act(async () => {
+      await result.current.mutateAsync({ id: DEFAULT_DASHBOARD.id, shareId: SHARE_ID })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(setQueryDataSpy).not.toHaveBeenCalled()
+  })
+
+  it('T-DB-SHARE-REVOKE-3: 취소 후 목록 refetch하면 항목이 제거된다 (stateful store 확인)', async () => {
+    const { wrapper } = createWrapper()
+
+    const { result } = renderHook(
+      () => ({
+        query: useShareTokens(DEFAULT_DASHBOARD.id),
+        mutation: useRevokeShareToken(),
+      }),
+      { wrapper },
+    )
+
+    await waitFor(() => expect(result.current.query.isSuccess).toBe(true))
+    expect(result.current.query.data?.items.length).toBe(1)
+
+    await act(async () => {
+      await result.current.mutation.mutateAsync({ id: DEFAULT_DASHBOARD.id, shareId: SHARE_ID })
+    })
+
+    await waitFor(() => expect(result.current.mutation.isSuccess).toBe(true))
+
+    await waitFor(() => expect(result.current.query.data?.items.length).toBe(0))
   })
 })

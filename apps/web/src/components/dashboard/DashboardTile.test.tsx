@@ -15,6 +15,16 @@ vi.mock('@/components/dashboard/gadgets/GadgetRenderer', () => ({
 }))
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PublicGadgetRenderer mock — publicMode 분기 단언용 (FR-DB-03 D6/D7 Task-8)
+// ─────────────────────────────────────────────────────────────────────────────
+
+vi.mock('@/components/dashboard/gadgets/PublicGadgetRenderer', () => ({
+  PublicGadgetRenderer: ({ tile }: { tile: DashboardTileData }) => (
+    <div data-testid="public-gadget-renderer" data-gadget-type={tile.gadgetType ?? ''} />
+  ),
+}))
+
+// ─────────────────────────────────────────────────────────────────────────────
 // fixtures
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -49,15 +59,23 @@ async function renderTile(opts: {
   canEdit?: boolean
   onDelete?: (id: string) => void
   onEditTitle?: (id: string, title: string) => void
+  publicMode?: boolean
 }) {
   const { DashboardTile } = await import('@/components/dashboard/DashboardTile')
-  const { tile = LEGACY_TILE, canEdit = false, onDelete = vi.fn(), onEditTitle = vi.fn() } = opts
+  const {
+    tile = LEGACY_TILE,
+    canEdit = false,
+    onDelete = vi.fn(),
+    onEditTitle = vi.fn(),
+    publicMode,
+  } = opts
   return render(
     <DashboardTile
       tile={tile}
       canEdit={canEdit}
       onDelete={onDelete}
       onEditTitle={onEditTitle}
+      publicMode={publicMode}
     />,
   )
 }
@@ -193,5 +211,65 @@ describe('DashboardTile — 가젯 타일 통합', () => {
     await renderTile({ tile: GADGET_TILE })
     const renderer = screen.getByTestId('gadget-renderer')
     expect(renderer).toHaveAttribute('data-gadget-type', 'text_widget')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// publicMode — 익명 공유 뷰 강제 읽기전용 (FR-DB-03 D6/D7 Task-8)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('DashboardTile — publicMode 익명 읽기전용', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  /**
+   * P-1: publicMode=true·가젯 타일이면 GadgetRenderer 대신 PublicGadgetRenderer가 렌더된다.
+   * RED: DashboardTile이 아직 publicMode를 몰라 GadgetRenderer가 렌더되므로 실패.
+   */
+  it('P-1: publicMode=true이면 가젯 타일 본문이 PublicGadgetRenderer로 렌더된다', async () => {
+    await renderTile({ tile: GADGET_TILE, publicMode: true })
+    expect(screen.getByTestId('public-gadget-renderer')).toBeInTheDocument()
+    expect(screen.queryByTestId('gadget-renderer')).toBeNull()
+  })
+
+  /**
+   * P-2: publicMode=true·gadgetType 없는 legacy 타일도 PublicGadgetRenderer로 렌더된다
+   * (PublicGadgetRenderer 자체가 fail-closed로 legacy 타일을 로그인 필요 플레이스홀더로 처리 — Task 7).
+   * RED: DashboardTile이 gadgetType undefined일 때 기존 placeholder 분기를 타 실패.
+   */
+  it('P-2: publicMode=true이면 gadgetType 없는 legacy 타일도 PublicGadgetRenderer로 렌더된다', async () => {
+    await renderTile({ tile: LEGACY_TILE, publicMode: true })
+    expect(screen.getByTestId('public-gadget-renderer')).toBeInTheDocument()
+    expect(screen.queryByText('이 자리에 위젯을 추가할 수 있습니다')).toBeNull()
+  })
+
+  /**
+   * P-3: publicMode=true이면 canEdit=true여도 삭제 버튼이 렌더되지 않는다
+   * (canEdit과 무관하게 publicMode면 강제 읽기전용).
+   */
+  it('P-3: publicMode=true이면 canEdit=true여도 삭제 버튼이 없다', async () => {
+    await renderTile({ tile: GADGET_TILE, canEdit: true, publicMode: true })
+    expect(screen.queryByRole('button', { name: /삭제/i })).toBeNull()
+  })
+
+  /**
+   * P-4: publicMode=true이면 canEdit=true여도 제목 클릭 시 인라인 편집 input이 뜨지 않는다.
+   */
+  it('P-4: publicMode=true이면 canEdit=true여도 제목 클릭이 편집 input을 열지 않는다', async () => {
+    const user = userEvent.setup()
+    await renderTile({ tile: LEGACY_TILE, canEdit: true, publicMode: true })
+    await user.click(screen.getByText('일반 위젯'))
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+
+  /**
+   * P-5: publicMode 미전달(기본 false)이면 gadgetType이 없는 legacy 타일은 기존처럼
+   * placeholder를 렌더한다(회귀 방지 — T7-T1과 동일 단언).
+   */
+  it('P-5: publicMode 미전달이면 legacy 타일이 기존 placeholder를 렌더한다', async () => {
+    await renderTile({ tile: LEGACY_TILE })
+    expect(screen.getByText('이 자리에 위젯을 추가할 수 있습니다')).toBeInTheDocument()
+    expect(screen.queryByTestId('public-gadget-renderer')).toBeNull()
   })
 })

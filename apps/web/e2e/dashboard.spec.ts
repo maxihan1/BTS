@@ -74,7 +74,11 @@ test.describe('FR-DB-01 대시보드 (목록/생성/상세/권한/OCC/접근성/
     await expect(page.getByText('내 첫 대시보드')).toBeVisible()
 
     // Then. "내 대시보드" 소유 배지 표시 (alice 소유 확인)
-    await expect(page.getByText('내 대시보드')).toBeVisible()
+    // alice 소유 대시보드가 2개 이상일 수 있어(SHARE_DEMO_DASHBOARD 등) "내 대시보드" 텍스트가
+    // 페이지 전역에 중복 노출된다 — "내 첫 대시보드" 카드 컨테이너로 한정한다
+    // (S1b의 getByTestId('dashboard-card-link').filter 패턴 재사용, playwright-getbyrole-exact-strict-mode).
+    const myFirstDashboardCard = page.getByTestId('dashboard-card-link').filter({ hasText: '내 첫 대시보드' })
+    await expect(myFirstDashboardCard.getByText('내 대시보드')).toBeVisible()
 
     // Then. bob 소유 ORG 대시보드 표시 (ORG — alice도 목록에서 조회 가능)
     await expect(page.getByText('Bob의 팀 대시보드')).toBeVisible()
