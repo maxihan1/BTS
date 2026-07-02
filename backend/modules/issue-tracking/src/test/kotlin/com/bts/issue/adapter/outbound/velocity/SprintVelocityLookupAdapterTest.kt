@@ -3,6 +3,7 @@
 
 package com.bts.issue.adapter.outbound.velocity
 
+import com.bts.issue.adapter.outbound.velocity.repository.SprintVelocityQueryRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
@@ -190,16 +191,20 @@ class SprintVelocityLookupAdapterTest {
         open fun isolatedWorkflowStateLookup(workflowStateCatalog: WorkflowStateCatalogImpl): IsolatedWorkflowStateLookup =
             IsolatedWorkflowStateLookup(workflowStateCatalog)
 
+        // FR-RP-02 Task 6 — jOOQ 쿼리가 SprintVelocityQueryRepository 로 추출되어 어댑터에 주입된다.
+        @Bean
+        open fun sprintVelocityQueryRepository(dsl: DSLContext): SprintVelocityQueryRepository = SprintVelocityQueryRepository(dsl)
+
         @Bean
         open fun sprintVelocityLookupAdapter(
-            dsl: DSLContext,
+            queryRepository: SprintVelocityQueryRepository,
             securityDirectory: IssueSecurityDirectory,
             issueRepository: IssueRepository,
             issueTypeRepository: IssueTypeRepository,
             workflowStateLookup: IsolatedWorkflowStateLookup,
         ): SprintVelocityLookupAdapter =
             SprintVelocityLookupAdapter(
-                dsl = dsl,
+                queryRepository = queryRepository,
                 securityDirectory = securityDirectory,
                 issueRepository = issueRepository,
                 issueTypeRepository = issueTypeRepository,

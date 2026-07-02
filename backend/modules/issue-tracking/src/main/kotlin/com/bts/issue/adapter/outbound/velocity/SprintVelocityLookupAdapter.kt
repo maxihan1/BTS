@@ -2,7 +2,8 @@
 
 package com.bts.issue.adapter.outbound.velocity
 
-import com.bts.issue.jooq.tables.references.ISSUES
+import com.bts.issue.adapter.outbound.velocity.repository.SprintVelocityQueryRepository
+import com.bts.issue.adapter.outbound.velocity.repository.VelocityRow
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeKey
@@ -12,7 +13,6 @@ import com.bts.shared.velocity.VelocityContribution
 import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.WorkflowStateCatalog
 import com.bts.shared.workflow.WorkflowStateView
-import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Propagation
@@ -64,7 +64,7 @@ private const val DONE_CATEGORY = "DONE"
  */
 @Component
 class SprintVelocityLookupAdapter(
-    private val dsl: DSLContext,
+    private val queryRepository: SprintVelocityQueryRepository,
     private val securityDirectory: IssueSecurityDirectory,
     private val issueRepository: IssueRepository,
     private val issueTypeRepository: IssueTypeRepository,
@@ -95,7 +95,7 @@ class SprintVelocityLookupAdapter(
             return zeroContributions(issueKeysBySprint.keys)
         }
 
-        val rows = fetchVelocityRows(visibleKeys)
+        val rows = queryRepository.fetchVelocityRows(visibleKeys)
         val typeIdToKey = loadTypeIdToKeyMap()
         val stateCache =
             rows.mapNotNull { typeIdToKey[it.typeId] }
@@ -127,24 +127,6 @@ class SprintVelocityLookupAdapter(
         val access = securityDirectory.accessibleLevels(viewerUserId, projectKey)
         return issueRepository.filterVisibleIssueKeys(allIssueKeys, projectKey, viewerUserId, access)
     }
-
-    /** 가시 이슈들의 (키, 추정 시간, 현재 상태 키, 타입 id) 를 스칼라 컬럼만으로 단일 조회한다 (cartesian 위험 없음). */
-    private fun fetchVelocityRows(issueKeys: Set<String>): List<VelocityRow> =
-        dsl
-            .select(ISSUES.KEY, ISSUES.ORIGINAL_ESTIMATE_SECONDS, ISSUES.CURRENT_STATE_KEY, ISSUES.TYPE_ID)
-            .from(ISSUES)
-            .where(ISSUES.KEY.`in`(issueKeys))
-            .and(ISSUES.DELETED_AT.isNull)
-            .fetch { record ->
-                VelocityRow(
-                    issueKey = record.get(ISSUES.KEY) ?: error("issues.key must not be null"),
-                    estimateSeconds = record.get(ISSUES.ORIGINAL_ESTIMATE_SECONDS)?.toLong() ?: 0L,
-                    currentStateKey =
-                        record.get(ISSUES.CURRENT_STATE_KEY)
-                            ?: error("issues.current_state_key must not be null"),
-                    typeId = record.get(ISSUES.TYPE_ID) ?: error("issues.type_id must not be null"),
-                )
-            }
 
     /**
      * issue_types.id → [IssueTypeKey] 맵 (findAll 1쿼리 — N+1 차단).
@@ -227,14 +209,6 @@ class SprintVelocityLookupAdapter(
     /** 모든 스프린트를 계획 0 · 완료 0 으로 매핑한다 (빈 이슈 키 조기 반환 — jOOQ 빈 `IN` 절 함정 방지). */
     private fun zeroContributions(sprintIds: Set<UUID>): Map<UUID, VelocityContribution> =
         sprintIds.associateWith { VelocityContribution(commitmentSeconds = 0L, completedSeconds = 0L) }
-
-    /** [fetchVelocityRows] 조회 결과 1행. */
-    private data class VelocityRow(
-        val issueKey: String,
-        val estimateSeconds: Long,
-        val currentStateKey: String,
-        val typeId: Long,
-    )
 }
 
 /**

@@ -2,6 +2,7 @@
 
 package com.bts.issue.adapter.outbound.burndown
 
+import com.bts.issue.adapter.outbound.burndown.repository.SprintBurndownQueryRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
@@ -40,7 +41,8 @@ class SprintBurndownLookupAdapterIntegrationTest : IssueTestcontainersBase() {
     @BeforeEach
     fun setupAdapter() {
         // 정본 보안 술어(buildActiveSecureWhere)를 재사용하도록 실 IssueRepository 를 주입한다(복제 금지).
-        adapter = SprintBurndownLookupAdapter(dsl, securityDirectory, repository)
+        // FR-RP-02 Task 6 — jOOQ 쿼리가 SprintBurndownQueryRepository 로 추출되어 어댑터에 주입된다.
+        adapter = SprintBurndownLookupAdapter(SprintBurndownQueryRepository(dsl), securityDirectory, repository)
         // 기본은 unrestricted — 개별 테스트에서 restricted access 로 덮어쓴다.
         securityDirectory.access = StubSecurityDirectory.UNRESTRICTED
         if (taskTypeId == null) {
