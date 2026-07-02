@@ -42,9 +42,12 @@ import java.util.UUID
  * 2. **권한 위임** — 이 어댑터 자신은 권한을 판단하지 않는다.
  *    [IssueImportCommand.requesterUserId] 를 actor 로 [IssueApplicationService.createIssue] 를
  *    그대로 호출해 기존 CREATE_ISSUE 권한 게이트를 재사용한다.
- *    유일한 예외는 [IssueImportCommand.dryRun] 검증 경로([validateDryRun]) — 실제 생성을 호출할 수
- *    없으므로 createIssue 와 동일한 [IssuePermissionResolver]/[IssuePermission.CREATE] 조합을
- *    직접 호출해 미리보기 판정만 수행한다.
+ *    유일한 예외는 [IssueImportCommand.dryRun] 검증 경로([validateDryRun]) — 실제 생성/수정을
+ *    호출할 수 없으므로 [executeImport] 가 호출하는 것과 동일한 [IssuePermissionResolver]/
+ *    [IssuePermission] 조합을 직접 호출해 미리보기 판정만 수행한다. CREATE 는 항상 확인하고,
+ *    [IssueScope.Project] 로는 판정할 수 없는 [IssueScope.Issue] 전용 UPDATE 도 행이 실제로
+ *    update 를 유발하는 경우([validateDryRun] §UPDATE 미러 참조)에 한해 Project 스코프로 미리
+ *    확인한다 — dry-run 결과가 실제 처리 결과와 정합해야 하기 때문이다(코드리뷰 CONCERN C1).
  *
  * ### 트랜잭션 롤백 안전성 (CONCERN #1)
  *
@@ -116,7 +119,18 @@ class IssueImportAdapter(
      *
      * CREATE_ISSUE 권한을 [permissionResolver] 로 직접 확인한다(이 경로에서만 예외적으로 권한을
      * 판단 — createIssue 를 호출할 수 없는 dryRun 특성상 불가피하다. 클래스 KDoc 참조).
-     * 통과하면 [resolveFields] 로 실제 생성 시와 동일한 경고(warnings) 를 미리 계산해 반환한다.
+     * 통과하면 [resolveFields] 로 실제 생성 시와 동일한 경고(warnings) 를 미리 계산하고,
+     * [rowTriggersUpdate] 로 이 행이 [executeImport] 에서 updateIssue/changeAssignee 를
+     * 유발할지 판정해 유발한다면 UPDATE 권한도 미리 확인한다(§UPDATE 미러, CONCERN C1).
+     *
+     * ### UPDATE 미러 — Project 스코프로 예측하는 이유
+     *
+     * 실제 [IssueApplicationService.updateIssue]/[IssueApplicationService.changeAssignee] 는
+     * [IssueScope.Issue] 로 UPDATE 를 검증하지만, dryRun 시점에는 아직 이슈가 생성되지 않아
+     * issueKey 가 없다. identity-access BC 의 prod [IssuePermissionResolver] 구현체는 두 스코프
+     * 모두 결국 동일한 projectId 로 멤버십+역할 매트릭스(EDIT_ISSUE)를 판정하며(UPDATE 는 VIEW 처럼
+     * 이슈별 보안 등급 게이트가 추가되지 않는다), 따라서 [IssueScope.Project] 로 미리 확인해도 실제
+     * [IssueScope.Issue] 판정과 동일한 결과를 낸다.
      *
      * @param cmd 검증할 import 커맨드.
      * @param actor 권한 판정 대상 행위자.
@@ -137,9 +151,31 @@ class IssueImportAdapter(
             )
         }
         val warnings = mutableListOf<String>()
-        resolveFields(cmd, projectId, warnings)
+        val resolution = resolveFields(cmd, projectId, warnings)
+        if (rowTriggersUpdate(cmd, resolution) && !hasUpdatePermission(actor, cmd.projectKey)) {
+            return IssueImportResult.failure(
+                IssueImportResult.FORBIDDEN,
+                "actor has no EDIT_ISSUE permission for project: ${cmd.projectKey}",
+            )
+        }
         return IssueImportResult.success(DRY_RUN_MARKER, warnings)
     }
+
+    /**
+     * [cmd]/[resolution] 조합이 [executeImport] 에서 updateIssue 또는 changeAssignee 호출을
+     * 유발하는지 판정한다 — [executeImport] 의 두 조건문(priority/labels, resolution.assigneeId)을
+     * 그대로 미러한다. 더도 덜도 아니게 실제 경로와 정확히 일치시켜야 dryRun 예측이 어긋나지 않는다.
+     */
+    private fun rowTriggersUpdate(
+        cmd: IssueImportCommand,
+        resolution: FieldResolution,
+    ): Boolean = cmd.priority != null || cmd.labels.isNotEmpty() || resolution.assigneeId != null
+
+    /** 프로젝트 스코프로 EDIT_ISSUE(UPDATE) 권한을 미리 확인한다(§UPDATE 미러 근거는 [validateDryRun] KDoc). */
+    private fun hasUpdatePermission(
+        actor: ActorId,
+        projectKey: String,
+    ): Boolean = permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Project(projectKey))
 
     /**
      * 실제 이슈 생성 + 후속 필드 설정을 같은 트랜잭션에서 수행한다.
