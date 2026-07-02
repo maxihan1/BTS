@@ -23,6 +23,10 @@ vi.mock('./routes/admin.webhooks', () => ({
 vi.mock('./routes/admin.webhooks.$id.deliveries', () => ({
   WebhookDeliveriesRouteAdapter: () => <div>Webhook 발송 이력 placeholder</div>,
 }))
+// settings.pats 어댑터도 useQuery 등 라우터 컨텍스트 의존 — 최소 mock (FR-API-04 Task 8)
+vi.mock('./routes/settings.pats', () => ({
+  SettingsPatsRouteAdapter: () => <div>PAT 관리 placeholder</div>,
+}))
 
 function renderWithRoute(path: string) {
   const client = new QueryClient({
@@ -186,5 +190,30 @@ describe('Router', () => {
     })
     renderWithRoute('/admin/webhooks/wh-1/deliveries')
     expect(await screen.findByText(/환영합니다/)).toBeInTheDocument()
+  })
+
+  // ─── FR-API-04 Task 8: /settings/pats 라우트 등록 + 가드 체인 ───────────────
+
+  it('/settings/pats 라우트 마운트 (인증 상태) → SettingsPatsRouteAdapter 렌더', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'test-access-token',
+      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
+    })
+    renderWithRoute('/settings/pats')
+    expect(await screen.findByText('PAT 관리 placeholder')).toBeInTheDocument()
+  })
+
+  it('/settings/pats 라우트 — 미인증 상태에서 /login 으로 리다이렉트 (requireAuth 가드 적용 증거)', async () => {
+    renderWithRoute('/settings/pats')
+    expect(await screen.findByText(/BTS 로그인/)).toBeInTheDocument()
+  })
+
+  it('/settings/pats 라우트 — mustChangePassword:true 이면 /settings/password 로 리다이렉트 (requirePasswordChanged 가드 적용 증거)', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'test-access-token',
+      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: true, isSystemAdmin: false, mfaEnrollmentRequired: false },
+    })
+    renderWithRoute('/settings/pats')
+    expect(await screen.findByRole('heading', { name: /비밀번호 변경/, level: 1 }, { timeout: 3000 })).toBeInTheDocument()
   })
 })

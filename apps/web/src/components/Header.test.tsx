@@ -169,6 +169,17 @@ describe('Header', () => {
     expect(screen.queryByRole('link', { name: 'Webhook' })).not.toBeInTheDocument()
   })
 
+  it('드롭다운 메뉴 안에 Personal Access Token 링크가 존재한다 (FR-API-04 Task 8)', async () => {
+    const user = userEvent.setup()
+    renderHeader()
+
+    await user.click(screen.getByRole('button', { name: /alice/ }))
+
+    const link = await screen.findByRole('link', { name: 'Personal Access Token' })
+    expect(link).toBeInTheDocument()
+    expect(link).toHaveAttribute('href', '/settings/pats')
+  })
+
   it('isSystemAdmin=false이면 로그아웃 드롭다운은 정상 노출된다', () => {
     // beforeEach에서 isSystemAdmin: false로 설정됨
     renderHeader()
