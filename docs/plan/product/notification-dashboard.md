@@ -161,11 +161,13 @@
 
 **우선순위**. 필수 | **선행**. §4.1 | **Plan slug**. `report/velocity`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — 스토리포인트 vs 완료 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /api/v1/projects/{id}/velocity` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+> **구현 범위 (#222 백엔드 D1~D5, Maxi 확정 2026-07-02)**. **지표=추정 시간(초)**(`original_estimate_seconds`, 스토리포인트 미구현 → FR-RP-01 일관), **막대=계획(Commitment, 스프린트 현재 가시이슈 추정합) vs 완료(Completed, DONE 카테고리 추정합)** 2막대. **완료 판정=on-the-fly 현재 상태**(WorkflowStateCatalog DONE, FR-EP-02 선례·스냅샷 없음). **모듈=agile-planning**(엔드포인트 `/projects/{projectKey}/velocity`가 Sprint와 co-located, FR-RP-01 선례·논리 BC 라벨 notification-dashboard 유지). cross-BC 신규 포트 `SprintVelocityLookupPort`(shared-kernel 정의·issue-tracking 구현). **보안=프로젝트 BROWSE + 이슈별 가시성 필터**(`filterVisibleIssueKeys` 재사용, 기밀 이슈 누출 0). 신규 스키마 0. **부수 성과**: TDD가 `WorkflowStateCatalog.listStates`(MANDATORY) 예외의 공유 트랜잭션 오염 버그를 표면화 → `IsolatedWorkflowStateLookup`(REQUIRES_NEW) 격리로 해결. ArchUnit 룰2가 FR-RP-01 번다운 어댑터의 캐시 마스킹된 jOOQ 위반까지 적발 → 두 어댑터 jOOQ를 repository로 추출. 프론트 D6/D7은 후속 PR. ADR `2026-07-02-fr-rp-02-velocity`.
+
+- [x] D1. 도메인 (책임. backend-engineer) (완료. PR #222 — VelocityPoint/SprintVelocityResult 순수 read-model VO + 평균 계산)
+- [x] D2. 명세 — 스토리포인트 vs 완료 (책임. backend-engineer) (완료. PR #222 — 스토리포인트 미구현→추정시간(초), commitment=가시이슈 추정합·completed=DONE 카테고리 추정합)
+- [x] D3. 데이터 모델 — (활용) (책임. db-engineer) (완료. PR #222 — 신규 스키마 0, sprints·sprint_issues·issues.original_estimate_seconds·워크플로우 카탈로그 재사용)
+- [x] D4. 백엔드 — `GET /api/v1/projects/{projectKey}/velocity` (책임. backend-engineer) (완료. PR #222 — SprintVelocityController+Service, 401/403·limit[1,50], 신규 포트 SprintVelocityLookupPort)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) (완료. PR #222 — VO 단위·어댑터 Testcontainers(비-vacuous 가시성·트랜잭션 격리 실측)·서비스 mockk·통합 S1~S6)
 - [ ] D6. 프론트 UI — recharts 바 차트 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
