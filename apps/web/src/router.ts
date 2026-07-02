@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 38개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + settings 6 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 2 + 알림 보관함 1 + 검색 1 + Webhook 2 | FR-RP-01 D6/D7: projectSprintBurndownRoute /projects/$projectKey/sprints/$sprintId/burndown 추가)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 40개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + settings 6 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 | FR-RP-02 D6/D7: projectVelocityRoute /projects/$projectKey/reports/velocity 추가 — 이전 주석의 "대시보드 2"는 dashboardsSharedTokenRoute 누락분 drift 였으므로 "대시보드 3"으로 함께 정정)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -33,6 +33,7 @@ import { MfaSettingsRouteAdapter } from './routes/settings.mfa'
 import { NotificationSettingsRouteAdapter } from './routes/settings.notifications'
 import { SettingsPatsRouteAdapter } from './routes/settings.pats'
 import { ProjectWorklogReportRouteAdapter } from './routes/projects.$projectKey.reports.worklog'
+import { ProjectVelocityReportRouteAdapter } from './routes/projects.$projectKey.reports.velocity'
 import { BoardRouteAdapter } from './routes/projects.$projectKey.board'
 import { BacklogRouteAdapter } from './routes/projects.$projectKey.backlog'
 import { DashboardsRouteAdapter } from './routes/dashboards'
@@ -383,6 +384,15 @@ const projectWorklogReportRoute = createRoute({
   beforeLoad: requireAuthAndPasswordChanged,
 })
 
+/** 벨로시티 차트 보고 라우트 — /projects/$projectKey/reports/velocity, requireAuth (FR-RP-02 D6/D7) */
+const projectVelocityRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/projects/$projectKey/reports/velocity',
+  component: ProjectVelocityReportRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
 /**
  * AQL 검색 라우트 — /search, requireAuth (FR-SR-02/03).
  * `filterId` 파라미터: 저장 필터 딥링크용 UUID. adapter가 1회 해소 후 제거한다 (FR-SR-03 Task-6).
@@ -500,18 +510,18 @@ const settingsPatsRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 38개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 40개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
  *   · /admin/webhooks · /admin/webhooks/:id/deliveries
- *   · /inbox · /dashboards · /dashboards/:dashboardId · /search
+ *   · /inbox · /dashboards · /dashboards/:dashboardId · /dashboards/shared/:token · /search
  *   · /projects/:projectKey/backlog · /projects/:projectKey/board · /projects/:projectKey/timeline
  *   · /projects/:projectKey/sprints/:sprintId/burndown
  *   · /projects/:projectKey/settings/workflow-scheme · /projects/:projectKey/settings/members
  *   · /projects/:projectKey/settings/components · /projects/:projectKey/settings/versions
  *   · /projects/:projectKey/settings/custom-fields · /projects/:projectKey/settings/issue-templates
  *   · /projects/:projectKey/settings/field-permissions · /projects/:projectKey/settings/project-lead
- *   · /projects/:projectKey/reports/worklog
+ *   · /projects/:projectKey/reports/worklog · /projects/:projectKey/reports/velocity
  *   · /settings/sessions · /settings/password · /settings/account-links · /settings/mfa
  *   · /settings/notifications · /settings/pats
  * requireAuth 라우트: /dashboard · /inbox · /dashboards · /dashboards/* · /search · /issues · /issues/* · /admin/* · /projects/* · /settings/*
@@ -573,6 +583,8 @@ export const routeTree = rootRoute.addChildren([
   projectLeadSettingsRoute,
   // issue-tracking BC — 워크로그 집계 보고 (FR-TT-02)
   projectWorklogReportRoute,
+  // agile-planning BC — 벨로시티 차트 보고 (FR-RP-02 D6/D7)
+  projectVelocityRoute,
   // identity-access BC — 내 활성 세션 관리
   settingsSessionsRoute,
   // identity-access BC — 비밀번호 변경
