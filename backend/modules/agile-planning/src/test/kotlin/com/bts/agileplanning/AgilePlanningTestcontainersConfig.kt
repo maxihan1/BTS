@@ -16,6 +16,8 @@ import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
 import com.bts.shared.timeline.TimelineItemPage
 import com.bts.shared.timeline.TimelineLookupPort
+import com.bts.shared.velocity.SprintVelocityLookupPort
+import com.bts.shared.velocity.VelocityContribution
 import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.WorkflowStateCatalog
 import com.bts.shared.workflow.WorkflowStateView
@@ -231,5 +233,23 @@ class AgilePlanningTestcontainersConfig {
                 projectKey: String,
                 viewerUserId: UUID,
             ): BurndownSource = BurndownSource(totalOriginalEstimateSeconds = 0, worklogEntries = emptyList())
+        }
+
+    /**
+     * [SprintVelocityLookupPort] 테스트 stub 빈 (FR-RP-02).
+     *
+     * agile-planning 단독 테스트 컨텍스트에는 issue-tracking 의 SprintVelocityLookupAdapter 가 없다.
+     * [com.bts.agileplanning.application.SprintVelocityService] 의 non-null 주입 요건을 충족하기 위해
+     * fail-safe(빈 map) stub 을 명시 등록한다. (memory: cross-BC SPI 부팅 함정 — 신규 포트 의존이
+     * 전체-컨텍스트 통합테스트 부팅을 깸. fr-nt-02/03·fr-rp-01 전례와 동일.)
+     */
+    @Bean
+    fun sprintVelocityLookupPort(): SprintVelocityLookupPort =
+        object : SprintVelocityLookupPort {
+            override fun fetchVelocitySource(
+                issueKeysBySprint: Map<UUID, Set<String>>,
+                projectKey: String,
+                viewerUserId: UUID,
+            ): Map<UUID, VelocityContribution> = emptyMap()
         }
 }
