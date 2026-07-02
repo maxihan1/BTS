@@ -99,18 +99,19 @@ const MOCK_HIT: AqlSearchHit = {
   updatedAt: '2026-06-25T10:00:00Z',
 }
 
-/** Spring Page<AqlSearchHit> 픽스처 생성 헬퍼 */
+/** AqlSearchPage envelope 픽스처 생성 헬퍼 — searchAql 실제 응답 계약(`{data, meta.page}`)과 1:1 대응 */
 function makeSearchPage(hits: AqlSearchHit[], total?: number): AqlSearchPage {
   const totalElements = total ?? hits.length
   return {
-    content: hits,
-    totalElements,
-    totalPages: Math.max(1, Math.ceil(totalElements / 20)),
-    size: 20,
-    number: 0,
-    first: true,
-    last: true,
-    empty: hits.length === 0,
+    data: hits,
+    meta: {
+      page: {
+        number: 0,
+        size: 20,
+        totalElements,
+        totalPages: Math.max(1, Math.ceil(totalElements / 20)),
+      },
+    },
   }
 }
 
