@@ -147,11 +147,13 @@
 
 **우선순위**. 필수 | **선행**. agile-planning §3.2 (스프린트) | **Plan slug**. `report/burndown`
 
-- [ ] D1. 도메인 — BurndownPoint (책임. backend-engineer)
-- [ ] D2. 명세 — 계산 알고리즘 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (sprint + worklog 활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /api/v1/sprints/{id}/burndown` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+> **구현 범위 (#219, Maxi 확정 2026-07-02)**. 백엔드 D1~D5만 본 PR — 프론트 D6/D7(recharts 라인 차트·E2E)은 후속 PR(FR-TL-01 백엔드 우선 선례). **모듈=agile-planning**(엔드포인트 `/sprints/{id}/burndown`가 Sprint 애그리거트와 co-located, fr-index 논리 BC 라벨 notification-dashboard 유지 — FR-TT 선례). **지표=잔여 추정 시간(초)**(스토리포인트 미구현), **데이터=on-the-fly in-memory**(스냅샷 테이블·스케줄러 없음, SDD §13.6 deviation 동기화). cross-BC 신규 포트 `SprintBurndownLookupPort`(shared-kernel 정의·issue-tracking 구현·agile-planning 소비). **보안=프로젝트 BROWSE + 이슈별 가시성 필터**(`filterVisibleIssueKeys`가 `buildActiveSecureWhere` 재사용, 게이트2 C1). ADR `2026-07-02-fr-rp-01-burndown-burnup`.
+
+- [x] D1. 도메인 — BurndownPoint (책임. backend-engineer) (완료. PR #219 — BurndownPoint/BurnupPoint read-model VO + 순수 BurndownCalculator)
+- [x] D2. 명세 — 계산 알고리즘 (책임. backend-engineer) (완료. PR #219 — 스코프=Σoriginal_estimate, 잔여=max(0,스코프−Σworklog(started_at UTC≤D)), ideal 선형, scope 평탄)
+- [x] D3. 데이터 모델 — (sprint + worklog 활용) (책임. db-engineer) (완료. PR #219 — 신규 스키마 0, sprints·sprint_issues·worklogs·issues.original_estimate_seconds 재사용)
+- [x] D4. 백엔드 — `GET /api/v1/sprints/{id}/burndown` (책임. backend-engineer) (완료. PR #219 — SprintBurndownController+Service, 401/403/404/422, 이슈별 가시성 필터)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) (완료. PR #219 — 계산기 단위·어댑터 Testcontainers·서비스 mockk·통합 5종·C1 기밀이슈 제외 가드)
 - [ ] D6. 프론트 UI — recharts 라인 차트 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
