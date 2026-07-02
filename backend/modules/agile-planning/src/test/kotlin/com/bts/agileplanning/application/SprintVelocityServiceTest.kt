@@ -43,20 +43,22 @@ class SprintVelocityServiceTest {
         permissionResolver: IssuePermissionResolver = allowAllResolver(),
     ): SprintVelocityService = SprintVelocityService(velocityPort, sprintRepository, permissionResolver)
 
-    /** created_at 오름차순을 흉내 낸 COMPLETED 스프린트 N개를 생성한다. */
+    /** created_at 오름차순을 흉내 낸 COMPLETED 스프린트 N개를 생성한다. index 가 커도 유효한 날짜를 유지한다. */
     private fun completedSprint(
         index: Int,
-    ): Sprint =
-        Sprint(
+    ): Sprint {
+        val base = LocalDate.of(2026, 1, 1).plusDays(index.toLong())
+        return Sprint(
             id = UUID.randomUUID(),
             projectKey = projectKey,
             name = "Sprint $index",
             goal = null,
             status = SprintStatus.COMPLETED,
-            startDate = LocalDate.of(2026, 1, index),
-            endDate = LocalDate.of(2026, 1, index + 5),
+            startDate = base,
+            endDate = base.plusDays(5),
             version = 0L,
         )
+    }
 
     @Test
     fun `BROWSE 권한이 없으면 403을 던진다`() {
