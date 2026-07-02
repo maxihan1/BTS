@@ -3,7 +3,7 @@ import type { JSX } from 'react'
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { Plus, Settings, Trash2 } from 'lucide-react'
+import { Plus, Settings, Trash2, Share2 } from 'lucide-react'
 import { useAuthUser } from '@/auth/authStore'
 import { useDashboard, useUpdateDashboard, useDeleteDashboard } from '@/hooks/use-dashboards'
 import { canEditDashboard } from '@/lib/dashboard-permission'
@@ -14,6 +14,7 @@ import { DashboardGrid } from '@/components/dashboard/DashboardGrid'
 import { DashboardForm } from '@/components/dashboard/DashboardForm'
 import { FavoriteButton } from '@/components/favorite/FavoriteButton'
 import { GadgetCatalogModal } from '@/components/dashboard/GadgetCatalogModal'
+import { ShareDashboardModal } from '@/components/dashboard/ShareDashboardModal'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -170,6 +171,7 @@ export function DashboardDetailPage({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [catalogOpen, setCatalogOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
 
   /** dashboard.layout이 변경될 때마다 로컬 tiles를 초기화 (key prop 재마운트 불필요 — layout 변경 감지) */
   useEffect(() => {
@@ -365,6 +367,17 @@ export function DashboardDetailPage({
                   가젯 추가
                 </button>
 
+                {/* 공유 버튼 — 소유자 전용 (FR-8), 공유 모달을 조건부 마운트 */}
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors min-h-[44px]"
+                  aria-label={dashboardLabels.share.modalTitle}
+                  onClick={() => setShareOpen(true)}
+                >
+                  <Share2 className="h-4 w-4" aria-hidden="true" />
+                  {dashboardLabels.share.modalTitle}
+                </button>
+
                 {/* 설정 버튼 */}
                 <button
                   type="button"
@@ -442,6 +455,19 @@ export function DashboardDetailPage({
           open={catalogOpen}
           onAdd={handleAddGadgetTile}
           onClose={() => setCatalogOpen(false)}
+        />
+      )}
+
+      {/*
+       * 공유 모달 — 소유자 + shareOpen일 때만 마운트 (조건부 마운트, catalogOpen 패턴 계승).
+       * 조건부 마운트로 내부 useShareTokens 쿼리가 불필요하게 실행되지 않는다.
+       */}
+      {editable && shareOpen && (
+        <ShareDashboardModal
+          dashboardId={dashboardId}
+          visibility={dashboard.visibility}
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
         />
       )}
     </div>
