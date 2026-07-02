@@ -49,4 +49,7 @@ data class IssueImportCommand(
     val labels: List<String> = emptyList(),
     val componentNames: List<String> = emptyList(),
     val dryRun: Boolean = false,
+    val statusName: String? = null,
+    val fixVersionNames: List<String> = emptyList(),
+    val affectsVersionNames: List<String> = emptyList(),
 )
