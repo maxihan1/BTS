@@ -23,6 +23,12 @@ import java.util.UUID
 /**
  * 댓글 유스케이스 오케스트레이션 서비스 (FR-IM-01 PR3).
  *
+ * ## 권한 scope 설계 — 왜 Project 가 아닌 Issue 인가
+ * [create]/[list] 모두 권한 평가 scope 를 [IssueScope.Issue] 로 고정한다.
+ * 이슈 보안 등급(security level, FR-PM-06)은 이슈 단위로 지정되므로, 프로젝트 단위([IssueScope.Project])
+ * 로 게이트하면 기밀 이슈에 접근 불가한 사용자도 해당 이슈의 댓글을 열람/작성할 수 있게 되어
+ * 보안 등급 우회(정보 누출)로 이어진다. worklog `listForIssue`/`create` 와 동일한 이유로 Issue scope 를 쓴다.
+ *
  * @param commentRepository 댓글 저장소.
  * @param issueRepository 이슈 조회 저장소.
  * @param permissionResolver 이슈 권한 판정 포트.
@@ -43,6 +49,8 @@ class CommentApplicationService(
      *
      * ## 실행 순서
      * 1. [IssuePermission.UPDATE] 검증 — 이슈 존재 probe 방지 (worklog 선례와 동일 순서).
+     *    UPDATE 를 쓰는 이유 — 댓글 작성은 이슈에 부수 정보를 더하는 수정 행위로, 이슈 자체를
+     *    수정할 수 있는 권한(UPDATE)을 요구하는 것이 자연스럽다(worklog `create` 와 동일 근거).
      * 2. 이슈 resolve([IssueRepository.findByKey]) — 미존재·소프트삭제 시 [IssueNotFoundException].
      * 3. [CommentRepository.insert] — authorId 는 주입값 그대로 저장(actor 아님, 마이그레이션 작성자 보존 목적).
      *
@@ -60,10 +68,7 @@ class CommentApplicationService(
         body: String,
         authorId: ActorId,
     ): Comment {
-        val createScope = IssueScope.Issue(issueKey.value)
-        if (!permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, createScope)) {
-            throw IssueAccessDeniedException(actor, IssuePermission.UPDATE, createScope)
-        }
+        checkPermission(actor, issueKey, IssuePermission.UPDATE)
 
         val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
 
@@ -93,8 +98,7 @@ class CommentApplicationService(
      * 이슈의 댓글 목록을 조회한다.
      *
      * ## 실행 순서
-     * 1. [IssuePermission.VIEW] 검증, scope=[IssueScope.Issue] — 기밀 이슈(security level)의 댓글 누출을
-     *    차단하기 위해 프로젝트 단위가 아닌 이슈 단위 scope 로 게이트한다(worklog `listForIssue` 선례).
+     * 1. [IssuePermission.VIEW] 검증, scope=[IssueScope.Issue] — 클래스 KDoc "권한 scope 설계" 참조.
      * 2. 이슈 resolve — 미존재 404.
      * 3. [CommentRepository.listByIssue] — created_at ASC 정렬.
      * 4. 각 댓글 body 를 [MarkdownRenderer.renderSafe] 로 렌더링해 bodyHtml 채운 [CommentView] 로 변환.
@@ -110,10 +114,7 @@ class CommentApplicationService(
         actor: ActorId,
         issueKey: IssueKey,
     ): List<CommentView> {
-        val listScope = IssueScope.Issue(issueKey.value)
-        if (!permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, listScope)) {
-            throw IssueAccessDeniedException(actor, IssuePermission.VIEW, listScope)
-        }
+        checkPermission(actor, issueKey, IssuePermission.VIEW)
 
         val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
         val comments = commentRepository.listByIssue(issue.id.value)
@@ -129,6 +130,31 @@ class CommentApplicationService(
                 createdAt = comment.createdAt,
                 updatedAt = comment.updatedAt,
             )
+        }
+    }
+
+    // ── private helpers ──────────────────────────────────────────────────────
+
+    /**
+     * 권한을 검증한다. scope 는 항상 [IssueScope.Issue] 로 고정한다 (클래스 KDoc 참조).
+     *
+     * 이슈 존재 여부 probe 방지를 위해 이슈 조회 전 호출한다.
+     * [com.bts.issue.worklog.application.WorklogService.checkPermission] 과 동일 패턴.
+     *
+     * @param actor 행위자.
+     * @param issueKey 이슈 키 (scope 생성에 사용).
+     * @param permission 요구하는 권한.
+     * @throws [IssueAccessDeniedException] 권한 미보유 시.
+     */
+    private fun checkPermission(
+        actor: ActorId,
+        issueKey: IssueKey,
+        permission: IssuePermission,
+    ) {
+        val scope = IssueScope.Issue(issueKey.value)
+        val allowed = permissionResolver.hasPermission(actor.value, permission, scope)
+        if (!allowed) {
+            throw IssueAccessDeniedException(actor, permission, scope)
         }
     }
 }
