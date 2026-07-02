@@ -314,8 +314,12 @@ class IssueImportAdapterTest {
      *
      * project-workflow BC 의 실제 스킴 결선은 이 어댑터 테스트의 책임 범위 밖이다(BC 격리) —
      * [ImportTestConfig.importWorkflowStateCatalog] KDoc 참조.
+     *
+     * `open` 필수 — [WorkflowStateCatalog.listStates] 의 인터페이스 레벨 `@Transactional` 을
+     * [TestConfig] 의 `@EnableTransactionManagement(proxyTargetClass = true)` 가 CGLIB 서브클래싱
+     * 으로 감싸려 시도하는데, Kotlin 클래스는 기본 final 이라 `open` 없이는 Enhancer 가 실패한다.
      */
-    private class FixedStatesWorkflowStateCatalog(
+    private open class FixedStatesWorkflowStateCatalog(
         private val states: List<WorkflowStateView>,
     ) : WorkflowStateCatalog {
         override fun listStates(
