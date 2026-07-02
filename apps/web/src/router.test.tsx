@@ -7,6 +7,7 @@ import { routeTree } from './router'
 import { useAuthStore } from './auth/authStore'
 import { server } from '@/test/server'
 import { burndownHandlers, resetBurndownStore, seedBurndown, DEFAULT_BURNDOWN } from '@/mocks/burndown-handlers'
+import { velocityHandlers, resetVelocityStore, seedVelocity, DEFAULT_VELOCITY } from '@/mocks/velocity-handlers'
 
 // issues 어댑터들은 useQuery/useParams 등 라우터 컨텍스트 의존 — 최소 mock
 vi.mock('./routes/issues.index', () => ({
@@ -239,6 +240,29 @@ describe('Router', () => {
     renderWithRoute('/projects/ATLAS/sprints/a0000000-0000-4000-8000-000000000001/burndown')
     expect(
       await screen.findByRole('heading', { name: '번다운 / 번업 차트', level: 1 }),
+    ).toBeInTheDocument()
+  })
+
+  // ─── FR-RP-02 D6/D7 Task-4: /projects/$projectKey/reports/velocity 라우트 등록 ───
+
+  it('/projects/ATLAS/reports/velocity 라우트 — 미인증 상태에서 /login 으로 리다이렉트 (requireAuth 가드 적용 증거)', async () => {
+    renderWithRoute('/projects/ATLAS/reports/velocity')
+    expect(await screen.findByText(/BTS 로그인/)).toBeInTheDocument()
+  })
+
+  it('/projects/ATLAS/reports/velocity 라우트 마운트 (인증 상태) → 페이지 제목 h1 렌더', async () => {
+    // 이 라우트는 useQuery로 실제 fetchProjectVelocity를 호출하므로 velocityHandlers를 MSW에 등록 + 시드한다.
+    resetVelocityStore()
+    seedVelocity(DEFAULT_VELOCITY)
+    server.use(...velocityHandlers)
+
+    useAuthStore.getState().setSession({
+      accessToken: 'test-access-token',
+      user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
+    })
+    renderWithRoute('/projects/ATLAS/reports/velocity')
+    expect(
+      await screen.findByRole('heading', { name: '벨로시티 차트', level: 1 }),
     ).toBeInTheDocument()
   })
 })
