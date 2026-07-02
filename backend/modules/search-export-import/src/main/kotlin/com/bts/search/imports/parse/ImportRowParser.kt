@@ -156,6 +156,9 @@ class ImportRowParser {
             assigneeEmail = cell(HEADER_ASSIGNEE),
             labels = splitMultiValue(cell(HEADER_LABELS)),
             componentNames = splitMultiValue(cell(HEADER_COMPONENT)),
+            statusName = cell(HEADER_STATUS),
+            fixVersionNames = splitMultiValue(cell(HEADER_FIX_VERSION)),
+            affectsVersionNames = splitMultiValue(cell(HEADER_AFFECTS_VERSION)),
         )
     }
 
@@ -244,6 +247,9 @@ class ImportRowParser {
             assigneeEmail = textOf(fields.path(FIELD_ASSIGNEE), FIELD_EMAIL_ADDRESS),
             labels = textArrayOf(fields.path(FIELD_LABELS)),
             componentNames = textArrayOf(fields.path(FIELD_COMPONENTS), FIELD_NAME),
+            statusName = textOf(fields.path(FIELD_STATUS), FIELD_NAME),
+            fixVersionNames = textArrayOf(fields.path(FIELD_FIX_VERSIONS), FIELD_NAME),
+            affectsVersionNames = textArrayOf(fields.path(FIELD_VERSIONS), FIELD_NAME),
         )
     }
 
@@ -304,6 +310,9 @@ class ImportRowParser {
         private const val HEADER_ASSIGNEE = "assignee"
         private const val HEADER_LABELS = "labels"
         private const val HEADER_COMPONENT = "component"
+        private const val HEADER_STATUS = "status"
+        private const val HEADER_FIX_VERSION = "fix version"
+        private const val HEADER_AFFECTS_VERSION = "affects version"
 
         private const val CSV_DELIMITER = ','
 
@@ -319,6 +328,9 @@ class ImportRowParser {
         private const val FIELD_EMAIL_ADDRESS = "emailAddress"
         private const val FIELD_LABELS = "labels"
         private const val FIELD_COMPONENTS = "components"
+        private const val FIELD_STATUS = "status"
+        private const val FIELD_FIX_VERSIONS = "fixVersions"
+        private const val FIELD_VERSIONS = "versions"
         private const val FIELD_NAME = "name"
 
         // 정화 대상 제어문자 범위 — ASCII 0x20 미만(단 탭/개행/CR 제외) + DEL(0x7F).

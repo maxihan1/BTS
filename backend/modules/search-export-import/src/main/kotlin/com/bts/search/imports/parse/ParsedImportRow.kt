@@ -34,4 +34,7 @@ data class ParsedImportRow(
     val assigneeEmail: String?,
     val labels: List<String>,
     val componentNames: List<String>,
+    val statusName: String? = null,
+    val fixVersionNames: List<String> = emptyList(),
+    val affectsVersionNames: List<String> = emptyList(),
 )
