@@ -126,6 +126,8 @@
 
 **우선순위**. 필수 | **선행**. issue-tracking §2~§3 (이슈/컴포넌트/버전 작성 API) | **Plan slug**. `search/import`
 
+> **PR1 기반+코어 완료 (2026-07-02, PR #218)**. Maxi 결정으로 FR-IM-01을 SDD 10.6.3 **풀 마이그레이션 에픽**(순차 PR)으로 확장 — PR1(기반+코어) → PR2(컴포넌트/버전 자동생성+소스 상태 전이) → PR3(댓글/Worklog) → PR4(첨부 zip+이력). **PR1 범위**. FR-EX-02(비동기 Export) 역방향 미러 — `ImportJob` 도메인·`import_jobs`(V604)·pgmq `q_import_jobs`·multipart 업로드→MinIO(`bts-imports`)·`POST/GET /api/v1/imports`·`ImportJobWorker`(CAS/dead-letter/VT300·stale600/TTL 24h)·CSV+JSON(Jackson 스트리밍) 파서·**코어 이슈 필드**(summary/description/type/priority/reporter·assignee 이메일매핑/labels) 생성. **BTS 최초 cross-BC 쓰기 포트** `IssueImportPort`(shared-kernel, issue-tracking `IssueImportAdapter` 구현) — `createIssue(actor=requester)` 권한 위임(우회 불가)·행별 best-effort(create+update 1 tx 원자성, `IssueCreated` outbox 롤백 안전)·dry-run(실경로 권한 정확 미러)·에러로그 CSV(ExportCellSanitizer 정화)·접수 CREATE coarse 게이트 fail-fast. `UserLookupPort.resolveByEmails` default 확장(email nullable+비유니크 다중매칭 fail-safe). 새 키 자동생성(Jira 키 보존 안 함 — 키 재사용 금지 원칙). ADR `docs/decisions/2026-07-02-fr-im-01-csv-json-import.md`. 코드리뷰 CONCERN 3건(권한발산·완료 progress·행상한 스펙) 수정 후 PASS. **D6/D7 프론트·PR2~4는 후속. D박스는 FR 전체 완료 시 마킹.**
+
 - [ ] D1. 도메인 — ImportJob (책임. backend-engineer)
 - [ ] D2. 명세 — CSV/JSON 파싱 + 트랜잭션 정책 + dry-run (책임. backend-engineer)
 - [ ] D3. 데이터 모델 — `import_jobs(status, error_log_minio_key)` (책임. db-engineer)

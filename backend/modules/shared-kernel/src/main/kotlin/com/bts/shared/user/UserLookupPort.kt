@@ -101,4 +101,41 @@ interface UserLookupPort {
      * @return 해당 사용자의 이메일 주소, 미존재 시 null
      */
     fun findEmailById(userId: UUID): String? = null
+
+    /**
+     * 주어진 이메일 집합을 실재 사용자 id 로 일괄 해석한다 (FR-IM-01 Task 4).
+     *
+     * users 테이블에서 email 로 조회해 `lower(email) -> UUID` 맵을 반환한다.
+     * 미존재 이메일은 결과 맵에서 제외된다 — 호출자(CSV/JSON import)가 명시적으로 드롭 처리.
+     * 빈 입력 시 DB 쿼리 없이 빈 맵을 즉시 반환한다.
+     *
+     * ### 대소문자 무시(case-insensitive) 매칭
+     * 구현체는 `WHERE lower(email) IN (:emails)` lower 비교로 매칭하므로,
+     * "Bob@x.com" 입력이 DB 의 "bob@x.com" 을 찾는다. 반환 맵의 키는 lower 정규화된 이메일이다.
+     *
+     * ### email nullable + UNIQUE 아님 → 다중 매칭 fail-safe
+     * users.email 은 nullable 이고 UNIQUE 제약이 없다(V001 스키마) — username 과 달리
+     * 서로 다른 사용자가 동일한 이메일을 가질 수 있다.
+     * 동일 lower(email) 로 2행 이상 매칭되면 어느 사용자로 배정해야 할지 판단할 수 없으므로,
+     * [findIdsByUsernames] 의 "과다매칭 허용" 트레이드오프와 달리 이 메서드는 그 이메일을
+     * 결과 맵에서 **제외**한다 — 잘못된 사용자에게 배정하는 것보다 안전하다(fail-safe).
+     * NULL email 행은 애초에 `IN` 매칭 대상이 아니므로 자연히 제외된다.
+     *
+     * ### 실제 구현
+     * [com.atlas.bts.identity.user.UserLookupAdapter] 가
+     * `SELECT lower(email) AS email_key, id FROM users WHERE lower(email) IN (:emails)`
+     * 단일 쿼리로 구현한다 (NamedParameterJdbcTemplate 컬렉션 바인딩).
+     * production 환경에서 이 default 구현이 호출되면 안 된다.
+     *
+     * ### 기본값 = emptyMap() 의 의미
+     * 기존 테스트 파일 ~35 개가 `object : UserLookupPort { override fun exists(...) }` 인라인으로
+     * 구현 중이다. 새 추상 메서드로 추가하면 이 파일들이 전부 컴파일 에러가 난다.
+     * default `emptyMap()` 은 기존 fake 들을 보호하는 fail-safe 이며, import 매칭 0건(전량 미해석)으로
+     * 안전하게 동작한다.
+     * production 유일 구현체는 [com.atlas.bts.identity.user.UserLookupAdapter] 로 override 한다.
+     *
+     * @param emails 해석할 이메일 집합 (대소문자 무시 매칭 — lower 비교)
+     * @return 단일 매칭된 이메일만 포함한 `lower(email) -> UUID` 맵 (다중 매칭 이메일 제외, 순서 미보장)
+     */
+    fun resolveByEmails(emails: Set<String>): Map<String, UUID> = emptyMap()
 }

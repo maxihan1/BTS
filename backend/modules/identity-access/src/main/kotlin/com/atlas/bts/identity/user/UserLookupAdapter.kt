@@ -120,6 +120,43 @@ class UserLookupAdapter(
         }.toMap()
     }
 
+    /**
+     * 주어진 이메일 집합을 실재 사용자 id 로 일괄 해석한다 (FR-IM-01 Task 4).
+     *
+     * 빈 입력 시 DB 쿼리 없이 emptyMap 을 즉시 반환한다.
+     * `WHERE lower(email) IN (:emails)` 단일 쿼리로 N+1 없이 대소문자 무시 매칭한다.
+     * 바인딩 직전 입력을 모두 lowercase 로 변환해 lower(email) 비교와 정합한다.
+     *
+     * ### 다중 매칭 fail-safe
+     * users.email 은 nullable + UNIQUE 아님(V001) — 동일 lower(email) 로 2행 이상 매칭되면
+     * 어느 사용자로 배정해야 할지 판단할 수 없으므로 그 이메일을 결과 맵에서 제외한다
+     * (잘못된 배정보다 안전, [UserLookupPort.resolveByEmails] 계약 참고).
+     * NULL email 행은 `IN` 매칭 대상이 아니므로 자연히 제외된다.
+     *
+     * SQL 인젝션 방어: named parameter `:emails` 바인딩 (문자열 결합 금지, DEVELOPMENT.md §1.3).
+     *
+     * @param emails 해석할 이메일 집합 (대소문자 무시 매칭 — lower 비교)
+     * @return 단일 매칭된 이메일만 포함한 `lower(email) -> UUID` 맵 (다중 매칭 이메일 제외, 순서 미보장)
+     */
+    @Transactional(readOnly = true)
+    override fun resolveByEmails(emails: Set<String>): Map<String, UUID> {
+        if (emails.isEmpty()) return emptyMap()
+        val lowercaseEmails = emails.map { it.lowercase() }
+        val rows =
+            jdbc.query(
+                SQL_RESOLVE_BY_EMAILS,
+                mapOf("emails" to lowercaseEmails),
+            ) { rs, _ ->
+                val emailKey = rs.getString("email_key")
+                val id = rs.getObject("id", UUID::class.java)
+                emailKey to id
+            }
+        return rows
+            .groupBy({ it.first }, { it.second })
+            .filterValues { it.size == 1 }
+            .mapValues { it.value.single() }
+    }
+
     private companion object {
         /**
          * users 행 존재 여부 확인 — EXISTS 를 사용해 불필요한 행 스캔을 방지한다.
@@ -165,6 +202,24 @@ class UserLookupAdapter(
             SELECT email
             FROM users
             WHERE id = :id
+        """
+
+        /**
+         * 이메일 집합을 id 로 일괄 해석 — 대소문자 무시(lower 비교) (FR-IM-01 Task 4).
+         *
+         * `WHERE lower(email) IN (:emails)` — 호출 전 입력을 lowercase 로 변환해 바인딩하므로
+         * DB 에 "Bob@x.com" 이 저장되어 있어도 "bob@x.com" 입력으로 매칭된다.
+         * `email_key` 별칭으로 lower(email) 값을 그대로 반환해, 호출자가 다중 매칭 여부를
+         * 애플리케이션 레벨에서 집계(groupBy)할 수 있게 한다.
+         * NamedParameterJdbcTemplate 이 Collection 을 IN 절 플레이스홀더로 자동 확장한다.
+         * email 이 NULL 인 행은 애초에 매칭 대상이 아니다.
+         *
+         * SQL 인젝션 방어: named parameter :emails 바인딩 (문자열 결합 없음, DEVELOPMENT.md §1.3).
+         */
+        const val SQL_RESOLVE_BY_EMAILS = """
+            SELECT lower(email) AS email_key, id
+            FROM users
+            WHERE lower(email) IN (:emails)
         """
 
         /**
