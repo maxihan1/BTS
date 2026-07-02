@@ -62,10 +62,9 @@ object CfdCalculator {
         if (issue.createdDate.isAfter(to)) return
 
         val effectiveStart = maxOf(issue.createdDate, from)
-        val initialCategory = issue.segments.last { !it.startDate.isAfter(effectiveStart) }.category
-        addDelta(deltas, initialCategory, dayIndex(from, effectiveStart), amount = 1)
+        var previousCategory = categoryAt(issue, effectiveStart)
+        addDelta(deltas, previousCategory, dayIndex(from, effectiveStart), amount = 1)
 
-        var previousCategory = initialCategory
         issue.segments
             .filter { it.startDate.isAfter(effectiveStart) && !it.startDate.isAfter(to) }
             .forEach { segment ->
@@ -75,6 +74,18 @@ object CfdCalculator {
                 previousCategory = segment.category
             }
     }
+
+    /**
+     * [issue]의 [asOf] 시점 카테고리를 구한다 — `startDate ≤ asOf`인 마지막 segment의 category.
+     *
+     * [asOf] 이전(또는 같은 날) segment들은 이 하나의 초기 카테고리로 접혀 들어간다(창 이전 전이 폴딩).
+     * [CfdIssueTimeline.segments]는 `segments[0].startDate == createdDate`를 만족하므로
+     * (호출자가 보장하는 불변식), [asOf]가 `createdDate` 이상이면 이 검색은 항상 결과를 찾는다.
+     */
+    private fun categoryAt(
+        issue: CfdIssueTimeline,
+        asOf: LocalDate,
+    ): CfdCategory = issue.segments.last { !it.startDate.isAfter(asOf) }.category
 
     /** [category] 배열의 [index] 위치에 [amount]를 더한다(델타 인덱싱 헬퍼). */
     private fun addDelta(
