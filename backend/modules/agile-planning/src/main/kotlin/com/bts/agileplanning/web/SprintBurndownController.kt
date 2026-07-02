@@ -31,6 +31,12 @@ import java.util.UUID
  * 1. actor 추출([currentActorId]) — 미인증이면 401(리소스 조회 이전에 차단).
  * 2. service 위임 — service 내부에서 스프린트 조회(404) -> 권한 판정(403) -> 기간 검증(422) -> 계산 순으로 처리한다.
  *
+ * ### 예외 -> HTTP 상태 매핑 ([SprintExceptionHandler] 처리)
+ * - 미인증(SecurityContext 없음/익명/비-UUID) -> 401
+ * - [com.bts.agileplanning.application.SprintNotFoundException] -> 404
+ * - 프로젝트 BROWSE 권한 미충족(403 [ResponseStatusException]) -> 403
+ * - [com.bts.agileplanning.application.SprintDatesRequiredException] -> 422 (start_date/end_date 미설정)
+ *
  * [SprintController] 는 변경하지 않는다 — 신규 GET 엔드포인트를 별도 컨트롤러로 분리해 기존 테스트 회귀를
  * 0으로 유지한다.
  *
