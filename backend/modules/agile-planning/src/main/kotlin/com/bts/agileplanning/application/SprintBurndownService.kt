@@ -32,11 +32,13 @@ import java.util.UUID
  * 3. start/end 기간 존재 검증 (422, [SprintDatesRequiredException])
  * 4. 계산 수행
  *
- * ## 보안 그레인 (NFR5)
- * 권한 판정은 스프린트 소속 projectKey 에 대한 프로젝트 BROWSE 1회만 수행한다.
- * 스프린트 소속 이슈별 [IssueScope.Issue] 가시성 필터는 적용하지 않는다 — 번다운은 스프린트
- * 집계 지표라 일부 이슈만 필터하면 차트가 부분·오값이 되기 때문이다(FR-TT-02 worklog 집계 선례와
- * 동일 그레인).
+ * ## 보안 그레인 (NFR5, 리뷰 C1 강화)
+ * 권한 판정은 스프린트 소속 projectKey 에 대한 프로젝트 BROWSE 1회를 게이트로 수행한다.
+ * 추가로, 집계 원천 조회([SprintBurndownLookupPort.fetchBurndownSource])에 actor 를 전달해
+ * 이슈별 [IssueScope.Issue] 가시성(security_level) 필터를 적용한다 — 프로젝트는 볼 수 있으나
+ * 이슈별 보안으로 차단된 기밀 이슈의 estimate/worklog 를 viewer 가 집계값으로 간접 추론하지
+ * 못하도록 한다(리뷰 C1). 이 경우 차트는 viewer 스코프의 부분값이 될 수 있으며 이는 의도된
+ * 동작이다. 가시성 판정은 issue-tracking BC 의 정본 보안 술어를 재사용한다(복제 없음).
  *
  * @param sprintRepository sprints / sprint_issues jOOQ repository.
  * @param permissionResolver cross-BC 권한 판정 포트(fail-closed, non-null 주입).
@@ -72,7 +74,7 @@ class SprintBurndownService(
         val (start, end) = requireDatesPresent(sprint.startDate, sprint.endDate)
 
         val issueKeys = sprintRepository.findIssueKeys(sprintId).toSet()
-        val source = burndownPort.fetchBurndownSource(issueKeys)
+        val source = burndownPort.fetchBurndownSource(issueKeys, sprint.projectKey, actorId)
         val worklogByUtcDate = aggregateByUtcDate(source.worklogEntries)
 
         val points =

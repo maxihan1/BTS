@@ -226,7 +226,10 @@ class AgilePlanningTestcontainersConfig {
     @Bean
     fun sprintBurndownLookupPort(): SprintBurndownLookupPort =
         object : SprintBurndownLookupPort {
-            override fun fetchBurndownSource(issueKeys: Set<String>): BurndownSource =
-                BurndownSource(totalOriginalEstimateSeconds = 0, worklogEntries = emptyList())
+            override fun fetchBurndownSource(
+                issueKeys: Set<String>,
+                projectKey: String,
+                viewerUserId: UUID,
+            ): BurndownSource = BurndownSource(totalOriginalEstimateSeconds = 0, worklogEntries = emptyList())
         }
 }

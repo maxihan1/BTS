@@ -110,7 +110,9 @@ class SprintBurndownServiceTest {
 
         val port =
             mockk<SprintBurndownLookupPort>().also {
-                every { it.fetchBurndownSource(setOf("ATLAS-1", "ATLAS-2")) } returns
+                every {
+                    it.fetchBurndownSource(setOf("ATLAS-1", "ATLAS-2"), projectKey, actorId)
+                } returns
                     BurndownSource(
                         totalOriginalEstimateSeconds = 57_600,
                         worklogEntries = listOf(WorklogContribution(LocalDate.of(2026, 7, 1), 21_600)),

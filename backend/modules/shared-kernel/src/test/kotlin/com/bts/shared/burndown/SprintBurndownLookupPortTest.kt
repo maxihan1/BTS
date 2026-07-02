@@ -5,6 +5,7 @@ package com.bts.shared.burndown
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.LocalDate
+import java.util.UUID
 
 /**
  * cross-BC 번다운 원천 데이터 조회 포트 계약 테스트.
@@ -21,7 +22,7 @@ class SprintBurndownLookupPortTest {
     fun `default fetchBurndownSource returns empty fail-safe`() {
         val port = object : SprintBurndownLookupPort {}
 
-        val result = port.fetchBurndownSource(setOf("PROJ-1", "PROJ-2"))
+        val result = port.fetchBurndownSource(setOf("PROJ-1", "PROJ-2"), "PROJ", UUID.randomUUID())
 
         assertThat(result.totalOriginalEstimateSeconds).isZero()
         assertThat(result.worklogEntries).isEmpty()
@@ -31,7 +32,7 @@ class SprintBurndownLookupPortTest {
     fun `default fetchBurndownSource returns empty fail-safe for empty issueKeys`() {
         val port = object : SprintBurndownLookupPort {}
 
-        val result = port.fetchBurndownSource(emptySet())
+        val result = port.fetchBurndownSource(emptySet(), "PROJ", UUID.randomUUID())
 
         assertThat(result.totalOriginalEstimateSeconds).isZero()
         assertThat(result.worklogEntries).isEmpty()

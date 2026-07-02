@@ -132,7 +132,11 @@ class SprintBurndownIntegrationTest {
     class BurndownPortStub : SprintBurndownLookupPort {
         var source: BurndownSource = BurndownSource(totalOriginalEstimateSeconds = 0, worklogEntries = emptyList())
 
-        override fun fetchBurndownSource(issueKeys: Set<String>): BurndownSource = source
+        override fun fetchBurndownSource(
+            issueKeys: Set<String>,
+            projectKey: String,
+            viewerUserId: UUID,
+        ): BurndownSource = source
     }
 
     @Autowired
