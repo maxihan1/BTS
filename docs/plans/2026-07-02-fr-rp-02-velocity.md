@@ -247,3 +247,19 @@
 **BLOCKER: 없음.**
 
 리뷰어 판단: 선행 FR-RP-01/FR-EP-02 패턴의 결정론적 확장. 위험 표면 작음. 게이트 1 진입 가능.
+
+## 구현 결과 (bts-impl)
+
+- **T1** shared-kernel `SprintVelocityLookupPort`+`VelocityContribution`(fail-safe default). ✅
+- **T2** agile-planning `VelocityPoint`/`SprintVelocityResult.of`(순수 평균, 반내림). ✅
+- **T3** issue-tracking `SprintVelocityLookupAdapter`. ✅ **TDD가 실제 트랜잭션 버그 표면화** — `WorkflowStateCatalog.listStates`(MANDATORY)가 `WorkflowSchemeNoDefaultException` 던지면 공유 트랜잭션이 rollback-only로 오염돼, catch 폴백에도 `UnexpectedRollbackException` 발생. `IsolatedWorkflowStateLookup`(REQUIRES_NEW 전용 빈)으로 격리 호출해 해결(memory: transaction-self-invocation-requires-new).
+- **T4** agile-planning `SprintVelocityService`(BROWSE 403 일반메시지·limit[1,50]·takeLast·(0,0)기본). ✅ `SprintVelocityExceptions.kt`는 불필요(BacklogApplicationService가 `ResponseStatusException(403)` 직접 → 동일 패턴).
+- **T5** agile-planning `SprintVelocityController`+`VelocityResponse` DTO+예외핸들러 스코프+통합테스트. ✅ 통합테스트는 로컬 `VelocityPortStub`로 concrete 값 검증(비-vacuous). 공유 config 스텁은 NoSuchBean 방지용.
+- **T6 (게이트1 후 추가, Maxi 결정)** ArchUnit 룰2(`jooqGeneratedMustOnlyBeUsedInRepositoryLayer`)가 벨로시티(신규)+**번다운(FR-RP-01 기존, Gradle 캐시 false-green으로 마스킹돼 있던 debt)** 어댑터를 둘 다 위반으로 적발. 두 어댑터의 jOOQ를 각각 `...velocity.repository.SprintVelocityQueryRepository`/`...burndown.repository.SprintBurndownQueryRepository`로 추출(어댑터는 위임). 룰 유지. ✅ RED→GREEN. 어댑터 생성자 변경으로 기존 어댑터 테스트 2개 생성지점 기계적 수정(memory: plan-files-constructor-injection-existing-tests).
+
+### ⚠️ 게이트2 보고 대상 — FR-EP-02 잠복 버그 (이 PR 범위 밖)
+T3가 실 `WorkflowStateCatalogImpl` 조립(비-vacuous) 덕분에 발견. `IssueEpicService.progress`(@Transactional readOnly)의 `resolveStateCategories`가 `listStates`(MANDATORY)를 **격리 없이** 호출+catch → 스킴 미할당 타입 자식이 있으면 `GET /api/v1/epics/{key}/progress`가 폴백 의도와 달리 **500(UnexpectedRollbackException)**. MockK 단위 테스트라 미검출. `IssueMoveService`도 동일 catch 패턴(추가 확인 필요). 별도 bugfix PR 권장.
+
+### 검증 근거 (verification-before-completion)
+- shared-kernel:test ✅ / agile-planning:test 전체 ✅(T5) / issue-tracking:test 전체 2694 tests 0 failures ✅(T6) / IssueBcArchTest RED→GREEN ✅ / 3모듈 ktlint+detekt --rerun-tasks clean ✅.
+- 프론트 D6/D7 + E2E: 이 PR 범위 밖(후속 PR).
