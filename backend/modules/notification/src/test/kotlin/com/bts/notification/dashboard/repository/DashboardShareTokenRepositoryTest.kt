@@ -38,9 +38,7 @@ class DashboardShareTokenRepositoryTest : NotificationTestcontainersBase() {
         dsl.execute("DELETE FROM dashboards")
     }
 
-    private fun insertDashboard(
-        name: String = "공유 테스트 대시보드",
-    ): Dashboard {
+    private fun insertDashboard(name: String = "공유 테스트 대시보드"): Dashboard {
         val dashboard =
             Dashboard.create(
                 ownerId = ownerId,
