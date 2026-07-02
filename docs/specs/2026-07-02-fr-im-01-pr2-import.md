@@ -40,13 +40,13 @@ API/데이터 모델은 **변경 없음**(신규 마이그레이션 0). 입력 �
 - **R5 소스 상태 직접 set**. issue-tracking에 import용 상태 반영 경로 추가(신규 `IssueApplicationService` 메서드) — TRANSITION 권한 게이트(IssueScope.Issue) + `WorkflowStateCatalog.listStates(projectKey, issueTypeKey)`로 status name→stateKey 대소문자 무시 매칭 + 대상 상태집합 포함 검증 + `current_state_key` 직접 set(FSM edge 우회, IssueMoveService 선례). 목표 == 현재 시작 상태면 no-op(경고 없음).
 - **R6 best-effort 경고**. R3~R5의 실패 중 **권한 거부**(DB 쓰기 전 예외)·**상태 name 미매칭**은 경고로 흡수하고 이슈 생성은 지속. 경고는 `IssueImportResult.Success.warnings`에 누적 → 에러로그 CSV(ExportCellSanitizer 정화)와 성공 카운트에 PR1과 동일 반영.
 - **R7 dry-run 실경로 미러**. dryRun에서 PR1의 CREATE/UPDATE 확인에 더해 — 버전 링크 유발 행(fix/affects 존재)은 UPDATE(EDIT_ISSUE)로 `rowTriggersUpdate` 확장, 컴포넌트 생성 필요 행은 MANAGE_COMPONENTS, 버전 생성 필요 행은 MANAGE_VERSIONS, 상태 전이 유발 행은 TRANSITION을 project 스코프로 미리 확인하고 동일 경고를 산출한다(PR1 CONCERN C1 원칙 계승 — dry-run 결과 == 실행 결과). admin 축 권한 부재는 dry-run에서도 경고(행 유효), basic UPDATE 부재는 dry-run에서도 FORBIDDEN(행 실패 예측).
-- **R8 행 원자성 + tx 오염 회피**. 행 1건은 여전히 1 `@Transactional`. 컴포넌트/버전 자동생성은 **사전 find 후 없을 때만 create**로 UNIQUE(23505) 히트를 회피(권한 거부는 assertPermission이 DB 쓰기 전이라 tx 무오염 → 경고화 안전). 드문 동시 다른 import job의 동명 생성 race로 23505가 실제 발생하면 해당 행은 tx 오염으로 **행 실패**(rollback, reasonCode 기록) — 재업로드로 정정(PR1 best-effort 재실행 정책 계승).
+- **R8 행 원자성 + tx 오염 회피 (eng-review BLOCKER 반영)**. 행 1건은 여전히 1 `@Transactional`. `ComponentApplicationService.create`는 이 tx에 REQUIRED **참여**하므로, 그 안에서 예외가 던져지면 `globalRollbackOnParticipationFailure`(기본 true)로 **shared tx가 rollback-only 오염** — catch-후-continue해도 커밋 시 `UnexpectedRollbackException`으로 행 전체 롤백(DB 쓰기 여부 무관, memory `transaction-self-invocation-requires-new`). 따라서 자동생성은 **`hasPermission` 사전 체크**로 처리 — 권한 없으면 `create`를 **아예 호출하지 않고**(throw 0, 오염 0) 경고. 존재 시 find로 재사용(23505 회피). 남는 실패는 (a) `create`의 부적합 name 등 기타 예외, (b) 동시 다른 job의 동명 생성 23505 race — 둘 다 tx 오염 → 해당 행 **실패**(rollback, reasonCode 기록, 재업로드 정정). 즉 **권한 부재=경고(사전 체크), 그 외 create 실패=행 실패**.
 - **R9 경고 노출 (Brainstorming G1)**. PR1 `ImportJobProcessor.handleRow`는 `Success.warnings`를 버린다(succeededRows만 증가) → PR2 best-effort 경고가 사용자에게 보이지 않는다. **경고를 결과 로그 CSV에 severity 컬럼(WARNING/FAILURE)으로 기록**한다. 실패행이 없어도 경고행이 있으면 로그를 업로드(`finalizeCompleted`의 업로드 조건을 `failedRecords ∪ warningRecords`로 확장). **스키마 변경 없음**(카운트 컬럼 추가 대신 로그로만 노출 — 신규 마이그레이션 0 유지). 행은 여전히 succeeded로 집계(경고는 성공-with-경고).
 
-### 권한 2축 (Brainstorming G2 — 명시화)
-- **생성(admin 축)** — 컴포넌트=MANAGE_COMPONENTS·버전=MANAGE_VERSIONS(PROJECT_ADMIN). 없으면 **best-effort 경고**(R3~R6, D-A).
+### 권한 3축 (Brainstorming G2 + eng-review — 명시화)
+- **생성(admin 축)** — 컴포넌트=`ComponentPermission.CREATE`·버전=`VersionPermission.CREATE`(resolver가 매트릭스 권한코드 MANAGE_COMPONENTS/MANAGE_VERSIONS=PROJECT_ADMIN으로 매핑, enum 값 아님). 어댑터가 `xxxPermissionResolver.hasPermission` **사전 체크** → 없으면 create 미호출+**best-effort 경고**(R3~R8, D-A).
 - **편집(basic 축)** — 버전 링크=EDIT_ISSUE(UPDATE). PR1이 priority/labels/assignee에서 이미 UPDATE 부재 시 **행 실패(FORBIDDEN)**로 처리하므로 버전 링크도 동일(일관). 즉 admin 권한 부재=경고, basic 편집 권한 부재=행 실패.
-- **전이 축** — status=TRANSITION. D-B에 따라 **권한 부재·상태 미매칭 모두 경고+시작 상태 유지**. 따라서 status-set은 `assertPermission`(throw) 대신 `hasPermission` **사전 체크**로 판정해 예외 없이 경고화(tx 무오염). basic 편집 축과 달리 전이는 마이그레이션 특성상 "시도"(경고)로 처리(D-B 확정).
+- **전이 축** — status=`IssuePermission.TRANSITION`. D-B에 따라 **권한 부재·상태 미매칭 모두 경고+시작 상태 유지**. status-set(별도 `IssueImportStatusService`)이 `hasPermission` **사전 체크**로 판정해 예외 없이 경고화. 마이그레이션 특성상 "시도"(경고)로 처리(D-B 확정).
 
 ### 실행 순서 + OCC 버전 스레딩 (Brainstorming G3/G5)
 행 처리 순서. ① 컴포넌트 find-or-create → ② `createIssue(componentIds)` → ③ priority/labels면 `updateIssue` → ④ assignee면 `changeAssignee` → ⑤ 버전 find-or-create + `changeAffectsVersions`/`changeFixVersions` → ⑥ status면 direct-set. ②~⑥은 각각 OCC version을 bump하므로 직전 응답의 version을 다음 호출 `expectedVersion`으로 스레딩(PR1 create→update→assignee 스레딩을 ⑤⑥까지 연장).
@@ -76,6 +76,7 @@ API/데이터 모델은 **변경 없음**(신규 마이그레이션 0). 입력 �
 - **E6**. dry-run 시점엔 컴포넌트/버전 미존재가 정상 → 존재 여부가 아니라 "생성 권한 보유 여부"로 판정(R7).
 - **E7**. 빈 status/version 셀 → PR1 빈 셀 처리 동형(무시, 경고 없음).
 - **E8**. 경고 메시지의 formula injection → PR1 ExportCellSanitizer 에러로그 정화 경로 그대로.
+- **E9 (eng-review CONCERN-1, 게이트1 Maxi 확정)**. 소스 status가 DONE 카테고리 상태로 매칭될 때, direct-set은 FSM validator(B7 "DONE 진입 시 resolution 필수")를 우회하므로 resolution 없이 진입 가능. 기본안=resolution NULL 허용(신규 import는 resolution 원천 미파싱, moveIssue도 신규엔 null 부여). 하위 소비자(예: FR-RP-01 번다운의 "완료" 판정이 state category `isDone` 기준이면 무영향, resolution 기준이면 영향) impl 시 확인. 대안=DONE 매칭 시 프로젝트 기본 resolution 주입. **게이트1 결정 반영**.
 
 ## 제약 조건
 

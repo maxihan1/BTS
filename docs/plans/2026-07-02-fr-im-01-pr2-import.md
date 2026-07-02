@@ -95,20 +95,24 @@ PR1 유산:
 
 **검증**. `./gradlew :backend:modules:search-export-import:test --tests "*ImportRowParserTest*"`
 
-### Task 3. issue-tracking — 소스 상태 direct-set 애플리케이션 메서드
+### Task 3. issue-tracking — 소스 상태 direct-set 전용 서비스 (별도 소형 서비스, CONCERN-2)
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationRequests.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueImportStatusApplicationServiceTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueImportStatusService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueImportStatusServiceTest.kt`]
 - depends-on: []
 
-**RED**. 신규 `IssueImportStatusApplicationServiceTest`(mockk) — `applyImportedStatus(actor, key, statusName, issueTypeKey, expectedVersion)`가 (a) TRANSITION 없음 → `NoPermission`, (b) name 미매칭 → `NoMatch`, (c) 목표==현재 → `NoOp`, (d) 매칭+권한 → `applyTransition(key, matchedStateKey, expectedVersion, resolutionId=null)` 호출 후 `Applied(newVersion)` 반환. 실패(메서드 없음).
+**설계**. `IssueApplicationService`(20-param 거대 클래스)에 넣지 않고 **IssueMoveService 선례**대로 별도 `@Service IssueImportStatusService`(주입: `IssueRepository`, `WorkflowStateCatalog`, `IssuePermissionResolver`, `IssueTypeRepository`)로 분리(거대 클래스/테스트 슈트 오염 회피).
 
-**GREEN**. `IssueApplicationService.applyImportedStatus(...)` 추가 — `permissionResolver.hasPermission(TRANSITION, IssueScope.Issue)` **사전 체크**(assertPermission 아님 → 예외 없이 경고화, spec R6/G2), `workflowStateCatalog.listStates(projectKey, issueTypeKey)`로 name 대소문자 무시 매칭, 대상 상태집합 포함 검증, 목표==현재면 no-op, else `repo.applyTransition(key, toStateKey, expectedVersion, resolutionId=null)`(FSM 우회, IssueMoveService 선례; DONE 카테고리도 resolution 미주입=null 허용 — glossary "닫힘+해결결과 없음" 허용, resolution 파싱은 PR2 범위 밖). 결과 sealed `ImportStatusOutcome`(Applied/NoOp/NoMatch/NoPermission)을 `IssueApplicationRequests.kt`에 정의.
+**RED**. 신규 `IssueImportStatusServiceTest`(mockk) — `applyImportedStatus(actor, key, statusName, expectedVersion): ImportStatusOutcome`가 (a) TRANSITION 없음 → `NoPermission`, (b) name 미매칭 → `NoMatch`, (c) 목표==현재 상태 → `NoOp`, (d) 매칭+권한 → `applyTransition(key, matchedStateKey, expectedVersion, resolutionId=null)` 호출 후 `Applied(newVersion)`. 실패(클래스 없음).
 
-**REFACTOR**. KDoc — FSM 우회 근거(마이그레이션 소스 상태는 edge 경로 아님) + transitionIssue와의 차이 명시.
+**GREEN**. `IssueImportStatusService.applyImportedStatus(...)` — ① 이슈 조회로 현재 상태·`typeId` 확보 → `issueTypeRepository.findById(typeId)?.key`로 **issueTypeKey 재조회**(per-type 워크플로우 대비, null default-mapping 금지). ② `permissionResolver.hasPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue)` **사전 체크**(assertPermission 아님 → 예외 없이 경고화). ③ `workflowStateCatalog.listStates(projectKey, issueTypeKey)`로 name 대소문자 무시 매칭 + 상태집합 포함 검증. ④ 목표==현재면 no-op. ⑤ else `repo.applyTransition(key, toStateKey, expectedVersion, resolutionId=null)`(FSM 우회 raw setter). `ImportStatusOutcome` sealed(Applied(version)/NoOp/NoMatch/NoPermission) 동일 파일 정의.
 
-**검증**. `./gradlew :backend:modules:issue-tracking:test --tests "*IssueImportStatusApplicationServiceTest*"`
+> **CONCERN-1 (DONE resolution)**. `applyTransition(resolutionId=null)`은 DONE 카테고리 상태에도 resolution 없이 진입(FSM validator B7 우회). 게이트1 Maxi 확정에 따라 처리(기본안: null 허용 — 신규 import는 resolution 원천 미파싱, moveIssue도 신규엔 null. 대안: DONE 진입 시 프로젝트 기본 resolution 주입). **impl 전 게이트1 답 확인**.
+
+**REFACTOR**. KDoc — FSM 우회 근거(마이그레이션 소스 상태는 edge 경로 아님) + transitionIssue/IssueMoveService와의 차이.
+
+**검증**. `./gradlew :modules:issue-tracking:test --tests "*IssueImportStatusServiceTest*"` (backend 루트)
 
 ### Task 4. issue-tracking — IssueImportAdapter 컴포넌트/버전 자동생성 + 링크 + 상태 + dry-run
 
@@ -117,20 +121,26 @@ PR1 유산:
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/outbound/imports/IssueImportAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/outbound/imports/IssueImportAdapterTest.kt`]
 - depends-on: [1, 3]
 
-**RED**. `IssueImportAdapterTest`(mockk) 케이스 추가 — ① 컴포넌트 미존재+MANAGE_COMPONENTS 있음 → `componentApplicationService.create` 호출 후 링크; ② 컴포넌트 미존재+권한 없음(create가 AccessDenied) → 경고+이슈 생성 지속; ③ fix/affects 버전 find-or-create + `changeAffectsVersions`/`changeFixVersions` 호출; ④ status → `applyImportedStatus` 호출, NoMatch/NoPermission → 경고; ⑤ dry-run이 컴포넌트/버전 create 권한·TRANSITION·버전링크 UPDATE를 미리 확인. 기존 생성자 mockk 세팅에 새 의존 3종 추가(memory plan-files-constructor-injection-existing-tests). 실패.
+**주입 확장(6종)**. `componentApplicationService`, `versionApplicationService`, `versionRepository`, `componentPermissionResolver`, `versionPermissionResolver`, `IssueImportStatusService`(T3). 기존 `issueApplicationService`(버전 링크용 changeAffectsVersions/changeFixVersions), `componentRepository`(find), `issueTypeRepository` 유지. **모두 same-BC 빈**(cross-BC 아님 → full-boot NoSuchBean 무영향). 기존 mockk 테스트 생성자 세팅 동반 갱신(memory plan-files-constructor-injection-existing-tests).
 
-**GREEN**. 생성자에 `componentApplicationService`, `versionRepository`, `versionApplicationService` 주입(모두 same-BC 빈 — cross-BC 아님, boot 무영향). `resolveComponentIds`를 find-or-create로 변경(find→없으면 `componentApplicationService.create(actor=requester)`, AccessDenied는 catch→경고). 버전 find-or-create + 링크 헬퍼 추가(fix/affects replace-all 목록 전달). `executeImport` 순서 ①~⑥(spec 실행순서)로 확장하고 OCC version 스레딩 ⑤⑥까지 연장. status는 `applyImportedStatus` 결과가 NoMatch/NoPermission이면 warnings 추가. `validateDryRun`의 `rowTriggersUpdate`를 버전링크 포함으로 확장 + MANAGE_COMPONENTS/MANAGE_VERSIONS/TRANSITION 사전 확인(R7). `resolveFields` 반환에 componentIds(생성 포함)·versionIds(fix/affects)·statusName 반영.
+**★BLOCKER 해소 — 사전 체크 설계**. 컴포넌트/버전 자동생성은 **catch-throw 강등 금지**(참여 @Transactional throw=shared tx 오염). 대신 `resolveComponentIds`/버전 헬퍼가 find→미존재 시 `xxxPermissionResolver.hasPermission(actor, Xxx Permission.CREATE, projectId)` **사전 체크** → false면 create 미호출+경고(throw 0, 오염 0), true면 `create(actor=requester)` 호출. `create`의 기타 예외(부적합 name 등 `IllegalArgumentException`)·23505 race는 tx 오염 → **행 실패**(경고 아님, spec R8 명시).
 
-**REFACTOR**. KDoc §책임에 자동생성/링크/상태 추가. 권한 3축(생성 admin=경고 / 편집 basic=행실패 / 전이=경고) 주석. `@Suppress` 재점검.
+**RED**. `IssueImportAdapterTest`(mockk) 케이스 — ① 컴포넌트 미존재+CREATE 권한 있음 → `componentApplicationService.create` 후 링크; ② 컴포넌트 미존재+`hasPermission=false` → create **미호출**+경고+이슈 생성 지속(create mock이 호출되지 않음을 verify); ③ fix/affects 버전 find-or-create + `changeAffectsVersions`/`changeFixVersions`; ④ status → `IssueImportStatusService.applyImportedStatus`, NoMatch/NoPermission → 경고; ⑤ dry-run이 `ComponentPermission.CREATE`/`VersionPermission.CREATE`/TRANSITION/버전링크 UPDATE를 사전 확인. 실패.
 
-**검증**. `./gradlew :backend:modules:issue-tracking:test --tests "*IssueImportAdapterTest*"`
+**GREEN**. `resolveComponentIds`/버전 헬퍼를 위 사전 체크 find-or-create로 구현. `executeImport` 순서 ①컴포넌트→②createIssue→③update(priority/labels)→④changeAssignee(**반환 version 캡처**)→⑤버전 create+링크→⑥status 로 확장, OCC version을 ④⑤⑥까지 스레딩. status 결과 NoMatch/NoPermission → warnings 추가(Applied면 version 갱신). `validateDryRun`의 `rowTriggersUpdate`를 버전링크(UPDATE) 포함으로 확장 + `hasPermission(ComponentPermission.CREATE)`/`hasPermission(VersionPermission.CREATE)`/`hasPermission(TRANSITION)` 사전 확인(실행 경로와 동일 호출 → 미러 자명, R7).
+
+**REFACTOR**. KDoc §책임에 자동생성/링크/상태 추가. 권한 3축(생성 admin=사전체크 경고 / 편집 basic=행실패 / 전이=경고) 주석. `@Suppress` 재점검.
+
+**검증**. `./gradlew :modules:issue-tracking:test --tests "*IssueImportAdapterTest*"` (backend 루트)
 
 ### Task 5. search — ImportJobProcessor toCommand 매핑 + 경고 로그 노출 (G1)
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/application/ImportJobProcessor.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/application/ImportErrorLogWriter.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/job/application/ImportJobProcessorTest.kt`]
+- files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/application/ImportJobProcessor.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/application/ImportErrorLogWriter.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/job/application/ImportJobProcessorTest.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/job/application/ImportErrorLogWriterTest.kt`]
 - depends-on: [1, 2]
+
+> **NIT 반영**. severity 컬럼 추가로 `ImportErrorLogWriter` CSV 헤더(`Row,Field,Reason,Message`→severity 포함)가 바뀌므로 기존 `ImportErrorLogWriterTest`의 헤더/컬럼 assert 동반 갱신(정화 sanitize→escape 순서는 재사용).
 
 **RED**. `ImportJobProcessorTest` 케이스 추가 — ① `toCommand`가 새 3필드(statusName/fixVersionNames/affectsVersionNames)를 매핑; ② Success에 warnings 있으면 결과 로그에 severity=WARNING 행 기록; ③ 실패행 0 + 경고행 있음 → 로그 업로드됨(errorLogObjectKey non-null); ④ 경고행이 있어도 행은 succeeded 집계. 실패.
 
@@ -147,9 +157,9 @@ PR1 유산:
 - files: [`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/outbound/imports/IssueImportAdapterIntegrationTest.kt`]
 - depends-on: [4, 5]
 
-**RED**. 실 DB 통합 테스트(mockk 아님, PR1 IssueImportAdapterTest 통합 선례/시드 재사용) — ① 새 컴포넌트/버전 자동생성 후 `components`/`versions` 행 확인; ② `issue_affects_versions`/`issue_fix_versions` 링크 행 확인; ③ status direct-set 후 `current_state_key` 확인; ④ MANAGE_COMPONENTS 없는 actor → 경고+이슈 생성(컴포넌트 0); ⑤ **행 실패 시 자동생성 컴포넌트/버전 롤백**(tx 원자성 — mockk로 못 잡는 tx poison 실검증, memory tx-aware-dslcontext-rollback-test-gap); ⑥ dry-run 무생성(이슈/컴포넌트/버전 0). 실패.
+**RED**. 실 DB 통합 테스트(mockk 아님, PR1 IssueImportAdapterTest 통합 선례/시드 재사용) — ① 새 컴포넌트/버전 자동생성 후 `components`/`versions` 행 확인; ② `issue_affects_versions`/`issue_fix_versions` 링크 행 확인; ③ status direct-set 후 `current_state_key` 확인; ④ **권한 거부 actor → 경고+이슈 생성(컴포넌트/버전 0)** — ★CONCERN-3: `AlwaysAllow*PermissionResolver`(@Profile("!prod"))가 vacuous(항상 true)라 거부 시나리오 미재현 → **denying resolver를 명시 주입/`@MockkBean`으로 CREATE=false 강제** 후 검증(vacuous 금지, memory best-effort-loop-permission-exception-nonprod-mask); ⑤ **행 실패 시 자동생성 컴포넌트/버전 롤백**(tx 원자성 — mockk로 못 잡는 tx poison 실검증, memory tx-aware-dslcontext-rollback-test-gap; 사전 체크 설계가 실제로 오염 없는지 실 DB로 확증); ⑥ dry-run 무생성(이슈/컴포넌트/버전 0). 실패.
 
-**GREEN**. 어댑터 실 wiring이 통과하도록(필요 시 T4 미세 조정). 시드=프로젝트+워크플로우 스킴+권한 매트릭스.
+**GREEN**. 어댑터 실 wiring이 통과하도록(필요 시 T4 미세 조정). 시드=프로젝트+워크플로우 스킴+권한 매트릭스. 거부 시나리오는 권한 resolver를 실제로 false 반환시켜 구성(profile/mock).
 
 **REFACTOR**. 시드 헬퍼 추출, 중복 제거.
 
@@ -163,4 +173,17 @@ PR1 유산:
 - TDD 강제: yes (test 커밋이 feat 커밋보다 선행)
 - 추가 검증: ktlintCheck, detekt, verify-master-plan(FR 카운트 123 불변), BC 격리 ArchUnit 무회귀
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-02, 독립 code-reviewer 서브에이전트 · 코드 대조)
+
+초안 판정 **BLOCKER 1 + CONCERN 3 + NIT 5**. 아래 반영 후 재검토 통과 기준 충족.
+
+- **🛑 BLOCKER (해소)**. 컴포넌트/버전 auto-create를 "AccessDenied catch→경고 강등"으로 설계했으나, `ComponentApplicationService.create`가 어댑터 `@Transactional`에 REQUIRED 참여 → throw 시 `globalRollbackOnParticipationFailure`(기본 true)로 shared tx가 rollback-only 오염 → catch 후 continue해도 커밋 시 `UnexpectedRollbackException`으로 행 전체 롤백. R8/D-C의 "DB 쓰기 전이라 무오염" 논거는 틀림(판단기준=참여 @Transactional throw 여부). memory `transaction-self-invocation-requires-new`(FR-IS-05 동일 함정). **해소**: 실행 경로도 `hasPermission` **사전 체크**로 전환 — 권한 없으면 create 미호출(throw 0, 오염 0)+경고. `ComponentPermissionResolver`/`VersionPermissionResolver`를 어댑터에 주입(실행+dry-run 공용). → Task 4 GREEN 정정, spec R6/R8 정정.
+- **⚠️ CONCERN-1 (Maxi 결정 → 게이트1)**. status direct-set이 `applyTransition(resolutionId=null)`로 DONE 카테고리 상태에도 resolution 없이 진입 → "DONE 진입 시 resolution 필수" 불변식(FSM validator B7) 우회. Jira Done/Closed는 다수라 산출물 상당수가 "DONE인데 resolution NULL". IssueMoveService 선례는 `moveIssue`(별개 setter)+DONE시 기존 resolution 보존이라 정확히 동일하진 않음(신규 import는 어차피 resolution 없음). 하위 소비자(FR-RP-01 번다운 등 "done=resolution 존재" 가정) 영향 점검 필요. → 게이트1에서 Maxi 확정.
+- **⚠️ CONCERN-2 (해소)**. Task 3이 `IssueApplicationService`에 `WorkflowStateCatalog` 주입 가정했으나 미주입(20-param 거대 클래스). **해소**: IssueMoveService 선례처럼 **별도 소형 서비스 `IssueImportStatusService`**(IssueRepository+WorkflowStateCatalog+IssuePermissionResolver 주입)로 분리 → 거대 클래스/테스트 슈트 오염 회피. → Task 3 정정.
+- **⚠️ CONCERN-3 (해소)**. Task 6 권한거부 통합테스트가 `AlwaysAllow*PermissionResolver`(@Profile("!prod"))로 vacuous(항상 true)→ BLOCKER·경고경로 둘 다 가림. **해소**: deny 경로를 denying resolver 명시 주입/prod 프로파일로 실제 거부시켜 검증. memory `best-effort-loop-permission-exception-nonprod-mask`. → Task 6 정정.
+- **NIT (반영)**. (a) `MANAGE_COMPONENTS/MANAGE_VERSIONS`는 enum 아님 → API 게이트는 `ComponentPermission.CREATE`/`VersionPermission.CREATE`(resolver가 매트릭스 권한코드로 매핑). (b) Gradle 태스크 경로 `:modules:issue-tracking:test`(backend 루트 기준). (c) `issueTypeKey`는 `issueTypeRepository.findById(created.typeId)?.key`로 재조회(per-type 워크플로우 대비 null default-mapping 금지). (d) assignee 단계 반환 version 캡처 필수(⑤⑥ 스레딩). (e) `ImportErrorLogWriter` 헤더/테스트 severity 컬럼 동반 수정 → Task 5 files에 writer 테스트 추가.
+- **PASS**. 시그니처 정합(applyTransition/changeAffectsVersions/create/listStates 실재), G1 경고구조 일치, wave/의존 그래프 겹침0·순환0, BC 격리 무위반.
+
+### 정정 반영 완료 (Task 3/4/5/6 + spec R6/R8/E9 갱신). CONCERN-1만 게이트1 Maxi 결정.
