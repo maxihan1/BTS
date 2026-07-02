@@ -108,6 +108,150 @@ Maxi가 확장 범위를 택함 → FR-IM-01을 순차 PR 에픽으로 분할. *
 
 ✅ 통과 (1회 iteration). gap 3건 보강 — 접수 권한 fail-fast(FR12)·JSON 구조 명시·이메일 다중매칭 폴백(email nullable+비유니크).
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> FR-EX-02 `com/bts/search/export/job/*` 구조를 `com/bts/search/imports/job/*`로 1:1 미러.
+> 경로 접두사: SEI = `backend/modules/search-export-import/src`, IT = `backend/modules/issue-tracking/src`, SK = `backend/modules/shared-kernel/src`, IA = `backend/modules/identity-access/src`.
+
+### Task 1. import_jobs 마이그레이션 + q_import_jobs 큐 (V604)
+
+**메타**.
+- agent: `db-engineer`
+- files: [`SEI/main/resources/db/migration/search-export-import/V604__import_jobs.sql`, `SEI/main/resources/db/codegen/init_codegen.sql`, `SEI/test/kotlin/com/bts/search/imports/job/SchemaMigrationImportTest.kt`]
+- depends-on: []
+
+**RED**: Testcontainers로 마이그레이션 적용 후 `import_jobs` 존재·컬럼·CHECK·인덱스 + `pgmq.q_import_jobs` 존재 검증 테스트(실패 = 테이블 없음).
+**GREEN**: `V604` — `CREATE EXTENSION IF NOT EXISTS pgmq CASCADE` + `pgmq.create('q_import_jobs')` + `import_jobs`(id·project_key·format·source_object_key·dry_run·requester_user_id·status·progress·total_rows·succeeded_rows·failed_rows·error_code·error_log_object_key·expires_at·created_at·started_at·completed_at) + CHECK(status)/CHECK(format) + idx (requester_user_id, created_at DESC) + partial (expires_at) WHERE NOT NULL. V602 export_jobs 미러.
+**REFACTOR**: init_codegen.sql에 동일 DDL 미러(jOOQ codegen 입력). L1 주석.
+**검증**: `./gradlew :backend:search-export-import:test --tests '*SchemaMigrationImportTest'`. **머지 직전 V번호 재확인**(동시 브랜치).
+
+### Task 2. ImportJob 도메인 (Aggregate + Id + Status)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`SEI/main/kotlin/com/bts/search/imports/job/domain/ImportJob.kt`, `.../domain/ImportJobId.kt`, `.../domain/ImportJobStatus.kt`, `SEI/test/kotlin/com/bts/search/imports/job/domain/ImportJobTest.kt`]
+- depends-on: []
+
+**RED**: `progressPercent(processed,total)`(total 0→100, floor) + `errorLogReady`(COMPLETED && errorLogObjectKey!=null) 순수함수 테스트.
+**GREEN**: `data class ImportJob`(불변, ExportJob 미러 + total/succeeded/failedRows + sourceObjectKey + dryRun + format) + `ImportJobId(UUID)` value class + `enum ImportJobStatus{PENDING,RUNNING,COMPLETED,FAILED}` + `companion { const val MAX_ROWS=100_000L }`.
+**REFACTOR**: KDoc(중괄호/백틱 평문 — ktlint-kdoc 함정), 상수 추출.
+**검증**: `--tests '*ImportJobTest'`.
+
+### Task 3. IssueImportPort 계약 (shared-kernel, cross-BC 쓰기)
+
+**메타**.
+- agent: `backend-engineer` (security-engineer 검토 — cross-BC 쓰기·권한 위임)
+- files: [`SK/main/kotlin/com/bts/shared/issue/IssueImportPort.kt`, `.../issue/IssueImportCommand.kt`, `.../issue/IssueImportResult.kt`, `SK/test/kotlin/com/bts/shared/issue/IssueImportPortTest.kt`]
+- depends-on: []
+
+**RED**: default 구현 호출 시 **fail-closed** 반환(성공 위장 금지) 검증 — `IssueImportResult.failure(ADAPTER_UNAVAILABLE)`.
+**GREEN**: `interface IssueImportPort { fun importIssue(cmd: IssueImportCommand): IssueImportResult = IssueImportResult.failure("ADAPTER_UNAVAILABLE") }` + `IssueImportCommand`(projectKey·requesterUserId·typeName?·summary·description?·priority?·reporterEmail?·assigneeEmail?·labels·componentNames·dryRun) + `IssueImportResult`(sealed/데이터: 생성 issueKey 또는 실패 reasonCode). KDoc에 IssueSearchPort와 fail 방향 차이(쓰기=fail-closed) 명시.
+**REFACTOR**: 사유 코드 상수(NOT_FOUND/FORBIDDEN/TRANSITION.../VALIDATION/UNKNOWN — BulkOperationItem 코드 참고).
+**검증**: `--tests '*IssueImportPortTest'`.
+
+### Task 4. UserLookupPort.resolveByEmails + identity-access 어댑터
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`SK/main/kotlin/com/bts/shared/user/UserLookupPort.kt`, `IA/main/kotlin/com/atlas/bts/identity/user/UserLookupAdapter.kt`, `IA/test/kotlin/.../user/UserLookupAdapterEmailTest.kt`]
+- depends-on: []
+
+**RED**: 어댑터 `resolveByEmails(setOf("Bob@x.com"))` → LOWER 매칭 1:1 · 다중매칭 이메일은 결과 제외(fail-safe) · NULL email 제외 · 빈 입력 빈 맵. Testcontainers 통합.
+**GREEN**: `UserLookupPort`에 `fun resolveByEmails(emails: Set<String>): Map<String, UUID> = emptyMap()` **default 메서드**(기존 ~35 인라인 구현 무회귀). 어댑터 `SELECT lower(email), id FROM users WHERE lower(email) IN (:emails)` → 다중행 이메일 드롭.
+**REFACTOR**: KDoc에 email nullable+비유니크·다중매칭 드롭 트레이드오프 명시(username 선례 동형).
+**검증**: `--tests '*UserLookupAdapterEmailTest'` + 기존 UserLookupPort 소비 모듈 컴파일(default라 무회귀).
+
+### Task 5. CSV/JSON 파서 → ParsedImportRow
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`SEI/main/kotlin/com/bts/search/imports/parse/ImportRowParser.kt`, `.../parse/ParsedImportRow.kt`, `.../parse/ImportParseException.kt`, `SEI/test/kotlin/com/bts/search/imports/parse/ImportRowParserTest.kt`]
+- depends-on: []
+
+**RED**: Jira CSV(헤더+따옴표+콤마 내포, RFC 4180) + Jira JSON(`{issues:[{fields:{...}}]}`) 각각 → `ParsedImportRow`(rowNumber·summary·description·typeName·priorityName·reporterEmail·assigneeEmail·labels·componentNames) 추출. 헤더만/빈파일→0행. 깨진 입력→`ImportParseException`. NUL/제어문자 정화.
+**GREEN**: CSV 수동 파서(FR-EX-01 RFC4180 writer 역방향 참고, zero-dep) + JSON Jackson `fields` 추출. Priority 이름→1..5 매핑(범위밖 무시).
+**REFACTOR**: 컬럼명 상수·매핑 테이블 추출.
+**검증**: `--tests '*ImportRowParserTest'`.
+
+### Task 6. ImportJobRepository (jOOQ)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`SEI/main/kotlin/com/bts/search/imports/job/repository/ImportJobRepository.kt`, `SEI/test/kotlin/com/bts/search/imports/job/repository/ImportJobRepositoryTest.kt`]
+- depends-on: [1, 2]
+
+**RED**: insert→findById 왕복 · `claimForRun`(PENDING→RUNNING CAS, 1행 true/재청 false) · `findStatus` · `findByIdForRequester`(소유자 아니면 null) · `updateCounts`(progress/total/succeeded/failed) · `markCompleted/markFailed` · `findExpired(now)` (Testcontainers).
+**GREEN**: jOOQ 구현 — ExportJobRepository 미러. `STALE_RUNNING_THRESHOLD_SECONDS=600`.
+**REFACTOR**: SQL 상수·KDoc. jOOQ repository는 `.repository` 패키지 유지(ArchUnit).
+**검증**: `--tests '*ImportJobRepositoryTest'`.
+
+### Task 7. MinIO 저장 (import 전용 클라이언트)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`SEI/main/kotlin/com/bts/search/imports/job/storage/ImportObjectStoragePort.kt`, `.../storage/MinioImportStorageAdapter.kt`, `.../storage/MinioImportStorageConfig.kt`, `.../storage/MinioImportStorageException.kt`, `SEI/test/kotlin/com/bts/search/imports/job/storage/MinioImportStorageAdapterTest.kt`]
+- depends-on: []
+
+**RED**: put(원본 InputStream)→get 왕복 · delete · 존재하지 않는 key get→예외. MinIO Testcontainers.
+**GREEN**: `importMinioClient` 빈 분리(빈이름 충돌 회피 — shared-util 선례) + bucket `bts-imports` 자동생성 + best-effort 기동(권한예외는 누출 금지 — best-effort catch 함정). MinioExportStorage 미러.
+**REFACTOR**: 설정 프로퍼티 `bts.minio.*` 재사용·KDoc.
+**검증**: `--tests '*MinioImportStorageAdapterTest'`.
+
+### Task 8. IssueImportAdapter (issue-tracking, 행별 1 트랜잭션)
+
+**메타**.
+- agent: `backend-engineer` (security-engineer 검토 — createIssue 권한 위임·행 원자성)
+- files: [`IT/main/kotlin/com/bts/issue/adapter/outbound/imports/IssueImportAdapter.kt`, `IT/test/kotlin/com/bts/issue/adapter/outbound/imports/IssueImportAdapterTest.kt`]
+- depends-on: [3, 4]
+
+**RED**: 통합 테스트 — cmd(코어 필드) → `createIssue(actor=requester)` + priority/labels/assignee update가 **한 @Transactional**로 실행(update 실패 시 create 롤백=행 원자성) · 이메일 매핑(UserLookupPort) 매칭/폴백 · component 이름 연결(없으면 스킵+result 경고) · CREATE_ISSUE 없으면 FORBIDDEN result · dryRun=true면 생성 0 + 검증 result. 실 repo+시드(mockk 금지 — 전이/권한 통합은 실 repo 선례).
+**GREEN**: `@Component IssueImportAdapter : IssueImportPort`. `@Transactional` 메서드(REQUIRES_NEW 아님 — 각 행 독립 호출). `IssueApplicationService.createIssue` + update 재사용. 예외→result 코드 변환(도메인 예외 HTTP 누출 방지).
+**REFACTOR**: 사유 코드 매핑 함수·KDoc(책임=행 1건 원자 생성).
+**검증**: `--tests '*IssueImportAdapterTest'` + ArchUnit(shared-kernel port만 의존).
+
+### Task 9. ImportJobProcessor (application 오케스트레이션 + 에러로그)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`SEI/main/kotlin/com/bts/search/imports/job/application/ImportJobProcessor.kt`, `.../application/ImportErrorLogWriter.kt`, `SEI/test/kotlin/com/bts/search/imports/job/application/ImportJobProcessorTest.kt`]
+- depends-on: [2, 3, 5, 6, 7]
+
+**RED**: process(job) — MinIO 원본 로드→파서→행수>MAX_ROWS면 markFailed(IMPORT_ROW_LIMIT_EXCEEDED) · 행별 `IssueImportPort.importIssue` 호출→성공/실패 카운트·실패행 CSV 에러로그(MinIO)·progress 갱신 · dryRun=true면 port 호출 0(검증만)·에러로그=검증리포트 · 파싱실패→markFailed(IMPORT_PARSE_FAILED). mockk port로 분기 단위테스트(nullable @Positive 0통과 함정 주의).
+**GREEN**: `@Service`(@Transactional 밖 — 분단위 I/O) 오케스트레이션. IssueImportPort 주입(포트 소비, issue-tracking 직접 의존 X). ExportJobProcessor 미러.
+**REFACTOR**: 에러로그 컬럼(rowNumber·field·reason·code) 상수·KDoc.
+**검증**: `--tests '*ImportJobProcessorTest'`.
+
+### Task 10. Enqueue publisher + Worker + Cleanup worker
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`SEI/main/kotlin/com/bts/search/imports/job/event/ImportJobEnqueuePublisher.kt`, `.../job/worker/ImportJobWorker.kt`, `.../job/worker/ImportJobCleanupWorker.kt`, `SEI/test/kotlin/com/bts/search/imports/job/worker/ImportJobWorkerTest.kt`, `.../worker/ImportJobCleanupWorkerTest.kt`]
+- depends-on: [1, 6, 9]
+
+**RED**: worker — pgmq.read→CAS claimForRun→process→delete · claim false 분기(terminal→delete/running→skip/unknown→poison) · dead-letter(read_ct>5 archive) · 파싱불가 메시지 poison. cleanup — findExpired→DB+MinIO(원본·에러로그) 하드삭제(Clock 주입). Testcontainers.
+**GREEN**: ExportJobWorker/CleanupWorker/EnqueuePublisher 1:1 미러. `QUEUE_NAME="q_import_jobs"`·VT=300·stale=600·MAX_RECEIVE=5. 발행자 `Propagation.MANDATORY`(outbox). **@EnableScheduling 결선 확인**(모듈 첫 @Scheduled면 필수 — 함정).
+**REFACTOR**: UUID 패턴·상수·KDoc(VT↔stale 정합 근거).
+**검증**: `--tests '*ImportJobWorkerTest' '*ImportJobCleanupWorkerTest'`.
+
+### Task 11. ImportJobService(접수) + Controller + DTO + ExceptionHandler
+
+**메타**.
+- agent: `backend-engineer` (security-engineer 검토 — 접수 권한 fail-fast·소유권 404·multipart)
+- files: [`SEI/main/kotlin/com/bts/search/imports/job/application/ImportJobService.kt`, `SEI/main/kotlin/com/bts/search/imports/web/ImportController.kt`, `.../web/dto/ImportJobResponse.kt`, `.../web/ImportExceptionHandler.kt`, `SEI/test/kotlin/com/bts/search/imports/web/ImportControllerTest.kt`, `SEI/test/kotlin/com/bts/search/imports/job/application/ImportJobServiceTest.kt`]
+- depends-on: [6, 7, 10]
+
+**RED**: 서비스 accept — CREATE_ISSUE 없으면 **403 fail-fast**(파일 저장·job 생성 전, cross-BC resolver 경유) · 파일>50MB→413 · format 미지원→400 · 정상→MinIO 저장+PENDING persist+enqueue(단일 트랜잭션)+202 jobId. 컨트롤러 — POST multipart 202 · GET 소유자만(타인 404 은닉) · GET /errors 완료후 스트리밍 · 401→500 변질 안 됨(ExceptionHandler). MockMvc 슬라이스.
+**GREEN**: `@Service ImportJobService`(actor SecurityContext 추출) + `@RestController ImportController`(`/api/v1/imports`) + `ImportJobResponse` + `@RestControllerAdvice(assignableTypes=[ImportController]) ImportExceptionHandler`(IMPORT_ prefix, ProblemDetail). 접수 권한은 IssueVisibilityPort/권한 resolver 경유(role 직접조회 금지). ExportController/Handler 미러.
+**REFACTOR**: 에러코드 상수·KDoc·multipart 크기 설정.
+**검증**: `--tests '*ImportControllerTest' '*ImportJobServiceTest'` + 모듈 전체 `./gradlew :backend:search-export-import:test`.
+
+## Plan 메타
+
+- task 수: 11 (에픽 PR1 — FR-EX-02 규모 동형)
+- 예상 wave: 5 (W1: T1·T2·T3·T4·T5·T7 / W2: T6·T8 / W3: T9 / W4: T10 / W5: T11)
+- TDD 강제: yes (test 커밋이 feat 커밋보다 먼저)
+- cross-BC/보안 검토 task: T3·T8·T11 (security-engineer)
+- 추가 검증: ktlint·detekt(--rerun-tasks, 캐시 false-green 함정)·ArchUnit(search→issue-tracking 직접의존 0)·모듈 전체 test
+- Gradle 모듈 컴파일 직렬화: shared-kernel(T3,T4)·issue-tracking(T8) 변경은 컴파일 순서 영향 — wave 내 병렬이라도 Gradle 직렬(plan-wave 선례)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
