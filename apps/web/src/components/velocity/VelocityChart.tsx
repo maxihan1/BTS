@@ -86,6 +86,19 @@ function formatSecondsValue(value: unknown): string {
   return formatSeconds(value)
 }
 
+/**
+ * 평균 참조선(ReferenceLine)의 `label` prop 을 만든다.
+ * 평균 계획/완료 참조선 두 곳이 값(value)/색상(fill)/위치(position)만 다르고
+ * 나머지 스타일(fontSize)은 공유하므로 중복 제거를 위해 추출했다.
+ */
+function buildAverageLineLabel(
+  value: string,
+  fill: string,
+  position: 'insideTopLeft' | 'insideBottomLeft',
+): { value: string; position: 'insideTopLeft' | 'insideBottomLeft'; fill: string; fontSize: number } {
+  return { value, position, fill, fontSize: REFERENCE_LABEL_FONT_SIZE }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
@@ -125,23 +138,17 @@ export function VelocityChart({ response }: VelocityChartProps): JSX.Element {
             y={response.averageCommitmentSeconds}
             stroke={COLOR_AVG_COMMITMENT}
             strokeDasharray="6 4"
-            label={{
-              value: velocityLabels.series.avgCommitment,
-              position: 'insideTopLeft',
-              fill: COLOR_AVG_COMMITMENT,
-              fontSize: REFERENCE_LABEL_FONT_SIZE,
-            }}
+            label={buildAverageLineLabel(velocityLabels.series.avgCommitment, COLOR_AVG_COMMITMENT, 'insideTopLeft')}
           />
           <ReferenceLine
             y={response.averageCompletedSeconds}
             stroke={COLOR_AVG_COMPLETED}
             strokeDasharray="6 4"
-            label={{
-              value: velocityLabels.series.avgCompleted,
-              position: 'insideBottomLeft',
-              fill: COLOR_AVG_COMPLETED,
-              fontSize: REFERENCE_LABEL_FONT_SIZE,
-            }}
+            label={buildAverageLineLabel(
+              velocityLabels.series.avgCompleted,
+              COLOR_AVG_COMPLETED,
+              'insideBottomLeft',
+            )}
           />
         </BarChart>
       </ResponsiveContainer>
