@@ -98,10 +98,10 @@ class ImportErrorLogWriter {
 /**
  * [ImportErrorLogWriter] 가 CSV 로 직렬화하는 실패/경고행 1건.
  *
- * PR1 에서는 [IssueImportResult.Failure] 만 표현했으나, PR2 Task 5(G1)부터 [severity] 로
- * [IssueImportResult.Success.warnings] 기반 경고행도 같은 타입으로 표현한다(둘 다 rowNumber/reasonCode/message
- * 형태로 구조가 동일하므로 별도 타입([com.bts.search.imports.job.application.ImportJobProcessor] KDoc 의
- * `ImportLogRecord` 대안) 대신 `severity` 필드만 추가하는 쪽을 택했다 — 더 단순하다).
+ * PR1 에서는 [com.bts.shared.issue.IssueImportResult.Failure] 만 표현했으나, PR2 Task 5(G1)부터
+ * [severity] 로 [com.bts.shared.issue.IssueImportResult.Success.warnings] 기반 경고행도 같은
+ * 타입으로 표현한다(둘 다 rowNumber/reasonCode/message 형태로 구조가 동일하므로 `ImportLogRecord` 같은
+ * 별도 타입 대신 `severity` 필드만 추가하는 쪽을 택했다 — 더 단순하다).
  *
  * @property rowNumber 원본 파일에서의 1-기준 데이터 행 번호. [com.bts.search.imports.parse.ParsedImportRow.rowNumber] 값.
  * @property reasonCode 실패 사유 코드. [com.bts.shared.issue.IssueImportResult] companion 상수 참조.

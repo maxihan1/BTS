@@ -284,7 +284,7 @@ class ImportJobProcessorTest {
     // ── (j) 경고 노출 — G1: PR1 이 폐기하던 warnings 를 severity=WARNING 행으로 결과 로그에 기록 ──
 
     @Test
-    fun `success result with warnings is recorded as WARNING severity row, uploads log, and still counts as succeeded`() {
+    fun `success result with warnings records WARNING severity row, uploads log, still counts succeeded`() {
         stubParserWithRows(listOf(makeRow(1)))
         every { issueImportPort.importIssue(any()) } returns
             IssueImportResult.success("PROJ-1", warnings = listOf("컴포넌트 'X' 을(를) 찾을 수 없어 건너뛰었습니다."))
