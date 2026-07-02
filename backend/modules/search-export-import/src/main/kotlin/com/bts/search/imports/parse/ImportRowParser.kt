@@ -30,6 +30,10 @@ import java.io.InputStreamReader
  * 모든 텍스트 값은 [sanitizeControlChars] 로 NUL/제어문자(탭·개행·CR 제외)를 제거한다.
  * Priority 는 [normalizePriorityName] 로 이름(대소문자 무시)·숫자(1..5) 어느 입력이든 정규화된
  * 이름으로 통일하고, 범위 밖/미인식 값은 조용히 무시(null)한다.
+ * Status 는 원본 문자열을 그대로 담고, Fix/Affects Version 은 라벨/컴포넌트와 동일하게 콤마/세미콜론
+ * 다중값을 분리한다 — 상태·버전 이름 자체의 존재 확인(프로젝트 워크플로우/버전 매칭)은 후속 단계 책임이다.
+ *
+ * 임의 Jira 헤더(`Component/s` 등)·자유 매핑은 FR-IM-02(매핑 UI) 몫 — 본 PR은 canonical 컬럼명만 인식한다.
  *
  * ### 파일 구조 오류
  *
