@@ -3,6 +3,10 @@
 import { describe, it, expect } from 'vitest'
 import { burndownLabels } from './burndown-labels'
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 그룹별 키 존재 검증 — page / toggle / series / status / chart
+// ─────────────────────────────────────────────────────────────────────────────
+
 describe('burndownLabels — page 그룹', () => {
   it('page.title 키가 존재한다', () => {
     expect(burndownLabels.page.title).toBeTruthy()
