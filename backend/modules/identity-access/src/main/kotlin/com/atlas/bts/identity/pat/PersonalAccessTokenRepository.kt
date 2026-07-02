@@ -70,11 +70,15 @@ interface PersonalAccessTokenRepository {
     fun updateLastUsed(id: UUID)
 
     /**
-     * PAT 폐기 (revoke).
+     * PAT 폐기 (revoke) — **내부 전용, user_id 미검사 (IDOR 위험)**.
      *
      * `revoked_at = NOW()` 를 설정한다. 이미 revoke 된 경우 idempotent 처리
      * — `WHERE revoked_at IS NULL` 조건으로 이미 revoke 된 행은 영향 없이 넘어간다.
      * 존재하지 않는 id 도 조용히 무시한다.
+     *
+     * 소유권 검증이 필요 없는 내부 경로(관리자 강제 폐기 등)에서만 사용한다.
+     * 사용자 self-service 취소는 반드시 [findByIdAndUserId] + [revokeOwned] 조합을 사용해
+     * 본인 소유 여부를 확인해야 한다 (FR-API-04).
      *
      * @param id 폐기할 PAT UUID
      */
@@ -100,7 +104,10 @@ interface PersonalAccessTokenRepository {
      *
      * @return 본인 소유이면 [PersonalAccessToken], 아니면 null
      */
-    fun findByIdAndUserId(id: UUID, userId: UUID): PersonalAccessToken?
+    fun findByIdAndUserId(
+        id: UUID,
+        userId: UUID,
+    ): PersonalAccessToken?
 
     /**
      * 본인 소유 활성 PAT 만 revoke — 소유권 + 활성 조건 원자 검증 (FR-API-04).
@@ -111,7 +118,11 @@ interface PersonalAccessTokenRepository {
      * @param now revoke 시각 — 호출 측 Clock 기준 주입(테스트 시각 제어 가능).
      * @return 영향 행 수. 1 = 취소 성공, 0 = 이미 취소/미존재/타인 소유
      */
-    fun revokeOwned(id: UUID, userId: UUID, now: Instant): Int
+    fun revokeOwned(
+        id: UUID,
+        userId: UUID,
+        now: Instant,
+    ): Int
 
     /**
      * 사용자의 활성 PAT 개수 — 미취소 + 미만료 (FR-API-04, 개수 상한 검사용).
@@ -121,7 +132,10 @@ interface PersonalAccessTokenRepository {
      * @param now 만료 판정 기준 시각 — 호출 측 Clock 기준 주입.
      * @return 활성 PAT 개수
      */
-    fun countActiveByUser(userId: UUID, now: Instant): Long
+    fun countActiveByUser(
+        userId: UUID,
+        now: Instant,
+    ): Long
 }
 
 /**
@@ -183,18 +197,28 @@ class JdbcPersonalAccessTokenRepository(
         jdbc.query(SQL_LIST_BY_USER_INCLUDING_EXPIRED, mapOf("userId" to userId), rowMapper)
 
     @Transactional(readOnly = true)
-    override fun findByIdAndUserId(id: UUID, userId: UUID): PersonalAccessToken? =
+    override fun findByIdAndUserId(
+        id: UUID,
+        userId: UUID,
+    ): PersonalAccessToken? =
         jdbc.query(SQL_FIND_BY_ID_AND_USER_ID, mapOf("id" to id, "userId" to userId), rowMapper)
             .firstOrNull()
 
-    override fun revokeOwned(id: UUID, userId: UUID, now: Instant): Int =
+    override fun revokeOwned(
+        id: UUID,
+        userId: UUID,
+        now: Instant,
+    ): Int =
         jdbc.update(
             SQL_REVOKE_OWNED,
             mapOf("id" to id, "userId" to userId, "now" to Timestamp.from(now)),
         )
 
     @Transactional(readOnly = true)
-    override fun countActiveByUser(userId: UUID, now: Instant): Long =
+    override fun countActiveByUser(
+        userId: UUID,
+        now: Instant,
+    ): Long =
         jdbc.queryForObject(
             SQL_COUNT_ACTIVE_BY_USER,
             mapOf("userId" to userId, "now" to Timestamp.from(now)),
