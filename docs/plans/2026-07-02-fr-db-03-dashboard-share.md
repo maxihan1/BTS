@@ -39,9 +39,23 @@ FR-DB-03 대시보드 공유 (공유 URL 토큰 + iframe 임베드 + 권한). pr
 - **관련 ADR**: [docs/decisions/2026-07-02-fr-db-03-dashboard-share.md](../decisions/2026-07-02-fr-db-03-dashboard-share.md) (생성됨)
 - **보안 핵심**: BTS 첫 **비인증(anonymous) 읽기 경로** 도입 — SecurityFilterChain 화이트리스트 + 토큰 검증 + iframe 임베드 응답 한정 X-Frame-Options/CSP 완화. D2·D4는 security-engineer 공동검토.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-02-fr-db-03-dashboard-share.md](../specs/2026-07-02-fr-db-03-dashboard-share.md)
+
+핵심 시나리오 요약.
+- 소유자가 공유 모달에서 링크 생성 → 불투명 토큰 발급(원문 1회 노출, DB엔 SHA-256만)
+- 익명 사용자가 `/dashboards/shared/{token}`로 읽기 전용 열람 — 정적 가젯만 렌더, 데이터 가젯은 "로그인 필요" 플레이스홀더
+- iframe 임베드 코드 복사 지원, 링크 목록·개별 취소(하드 삭제)
+- 무효/만료/삭제 대시보드 토큰 → 404(열거 차단), 익명 응답에 owner PII/version/데이터가젯 config 부재
+
+API. 관리(인증) `POST/GET/DELETE /api/v1/dashboards/{id}/shares` + 익명(permitAll·GET) `GET /api/v1/public/dashboards/{token}`.
+데이터. 신규 `dashboard_share_tokens`(token_hash BYTEA UNIQUE, FK CASCADE). `DashboardVisibility` 불변.
+보안 핵심. BTS 첫 permitAll 데이터 경로 → 중앙 SecurityConfig(identity-access) `/api/v1/public/**` 등록(cross-BC, security-engineer 공동검토) + 정화 fail-closed + 토큰 열거차단.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). gap 5건 스펙 반영. Maxi 결정 대기 항목: O-1 iframe 크로스오리진 프레이밍 범위(게이트1).
 
 ## Plan (← /bts-plan 채움)
 
