@@ -44,9 +44,7 @@ class SprintVelocityServiceTest {
     ): SprintVelocityService = SprintVelocityService(velocityPort, sprintRepository, permissionResolver)
 
     /** created_at 오름차순을 흉내 낸 COMPLETED 스프린트 N개를 생성한다. index 가 커도 유효한 날짜를 유지한다. */
-    private fun completedSprint(
-        index: Int,
-    ): Sprint {
+    private fun completedSprint(index: Int): Sprint {
         val base = LocalDate.of(2026, 1, 1).plusDays(index.toLong())
         return Sprint(
             id = UUID.randomUUID(),
@@ -89,7 +87,9 @@ class SprintVelocityServiceTest {
                 every { it.fetchVelocitySource(emptyMap(), projectKey, actorId) } returns emptyMap()
             }
 
-        val result = makeService(velocityPort = port, sprintRepository = repo).getVelocity(actorId, projectKey, limit = 3)
+        val result =
+            makeService(velocityPort = port, sprintRepository = repo)
+                .getVelocity(actorId, projectKey, limit = 3)
 
         assertThat(result.points.map { it.sprintId })
             .containsExactly(sprints[2].id, sprints[3].id, sprints[4].id)
@@ -110,7 +110,9 @@ class SprintVelocityServiceTest {
                 every { it.fetchVelocitySource(emptyMap(), projectKey, actorId) } returns emptyMap()
             }
 
-        val result = makeService(velocityPort = port, sprintRepository = repo).getVelocity(actorId, projectKey, limit = 0)
+        val result =
+            makeService(velocityPort = port, sprintRepository = repo)
+                .getVelocity(actorId, projectKey, limit = 0)
 
         assertThat(result.points).hasSize(1)
         assertThat(result.points.single().sprintId).isEqualTo(sprints[4].id)
@@ -129,7 +131,9 @@ class SprintVelocityServiceTest {
                 every { it.fetchVelocitySource(emptyMap(), projectKey, actorId) } returns emptyMap()
             }
 
-        val result = makeService(velocityPort = port, sprintRepository = repo).getVelocity(actorId, projectKey, limit = -5)
+        val result =
+            makeService(velocityPort = port, sprintRepository = repo)
+                .getVelocity(actorId, projectKey, limit = -5)
 
         assertThat(result.points).hasSize(1)
         assertThat(result.points.single().sprintId).isEqualTo(sprints[4].id)
@@ -148,7 +152,9 @@ class SprintVelocityServiceTest {
                 every { it.fetchVelocitySource(emptyMap(), projectKey, actorId) } returns emptyMap()
             }
 
-        val result = makeService(velocityPort = port, sprintRepository = repo).getVelocity(actorId, projectKey, limit = 100)
+        val result =
+            makeService(velocityPort = port, sprintRepository = repo)
+                .getVelocity(actorId, projectKey, limit = 100)
 
         assertThat(result.points).hasSize(50)
         // 클램프 후에도 오름차순 유지 — 마지막 50개(11..60)가 선택된다.
@@ -187,7 +193,9 @@ class SprintVelocityServiceTest {
                     )
             }
 
-        val result = makeService(velocityPort = port, sprintRepository = repo).getVelocity(actorId, projectKey, limit = 10)
+        val result =
+            makeService(velocityPort = port, sprintRepository = repo)
+                .getVelocity(actorId, projectKey, limit = 10)
 
         val point1 = result.points.first { it.sprintId == sprint1.id }
         val point2 = result.points.first { it.sprintId == sprint2.id }
@@ -234,7 +242,9 @@ class SprintVelocityServiceTest {
                     )
             }
 
-        val result = makeService(velocityPort = port, sprintRepository = repo).getVelocity(actorId, projectKey, limit = 10)
+        val result =
+            makeService(velocityPort = port, sprintRepository = repo)
+                .getVelocity(actorId, projectKey, limit = 10)
 
         // (100+150+151)/3 = 133 (floor), (90+60+30)/3 = 60
         assertThat(result.projectKey).isEqualTo(projectKey)
