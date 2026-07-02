@@ -341,6 +341,30 @@ describe('ShareDashboardModal — 발급된 링크 목록', () => {
     })
   })
 
+  it('발급 직후 그 토큰을 목록에서 취소하면 상단 공개 URL/임베드 영역이 사라진다 (데드엔드 방지, C1)', async () => {
+    const user = userEvent.setup()
+    renderModal()
+
+    // 링크 생성 — 상단에 공개 URL/임베드 영역이 뜬다
+    await user.click(screen.getByRole('button', { name: '링크 생성' }))
+    await screen.findByText('이 링크는 지금만 복사할 수 있습니다')
+    expect(screen.getByText('임베드 코드')).toBeInTheDocument()
+
+    // 목록이 refetch되어 방금 발급한 항목의 취소 버튼이 나타날 때까지 대기
+    const revokeBtn = await screen.findByRole('button', { name: '취소' })
+    await user.click(revokeBtn)
+    await screen.findByText('정말 이 링크를 취소하시겠습니까?')
+    await user.click(screen.getByRole('button', { name: '확인' }))
+
+    // 상단 영역(복사 안내/임베드 코드)이 죽은 링크를 계속 보여주지 않아야 한다
+    await waitFor(() => {
+      expect(screen.queryByText('이 링크는 지금만 복사할 수 있습니다')).toBeNull()
+    })
+    expect(screen.queryByText('임베드 코드')).toBeNull()
+    expect(screen.getByRole('button', { name: '링크 생성' })).toBeInTheDocument()
+    expect(screen.getByText('아직 발급된 공유 링크가 없습니다')).toBeInTheDocument()
+  })
+
   it('인라인 확인에서 취소(아니오) 클릭 시 확인 문구가 사라지고 항목은 유지된다', async () => {
     const user = userEvent.setup()
     seedShareToken({

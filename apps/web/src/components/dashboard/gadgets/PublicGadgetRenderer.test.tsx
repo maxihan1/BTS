@@ -2,6 +2,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import type { DashboardTile } from '@/lib/dashboard-layout'
+import { dashboardLabels } from '@/i18n/dashboard-labels'
 import { PublicGadgetRenderer } from './PublicGadgetRenderer'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -48,26 +49,26 @@ describe('PublicGadgetRenderer — 화이트리스트 차단 (fail-closed)', () 
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
     const tile: DashboardTile = { ...TILE_BASE, gadgetType, config: { projectKey: 'ATLAS' } }
     render(<PublicGadgetRenderer tile={tile} />)
-    expect(screen.getByText('로그인이 필요한 가젯입니다')).toBeInTheDocument()
+    expect(screen.getByText(dashboardLabels.share.authRequiredGadget)).toBeInTheDocument()
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
   it('미지(신규) gadgetType → 로그인 필요 플레이스홀더를 표시한다 (신규 타입 자동 차단)', () => {
     const tile: DashboardTile = { ...TILE_BASE, gadgetType: 'brand_new_future_gadget' }
     render(<PublicGadgetRenderer tile={tile} />)
-    expect(screen.getByText('로그인이 필요한 가젯입니다')).toBeInTheDocument()
+    expect(screen.getByText(dashboardLabels.share.authRequiredGadget)).toBeInTheDocument()
   })
 
   it('gadgetType 없는 legacy 타일도 플레이스홀더를 표시한다 (fail-closed)', () => {
     const tile: DashboardTile = { ...TILE_BASE, title: '레거시 타일' }
     render(<PublicGadgetRenderer tile={tile} />)
-    expect(screen.getByText('로그인이 필요한 가젯입니다')).toBeInTheDocument()
+    expect(screen.getByText(dashboardLabels.share.authRequiredGadget)).toBeInTheDocument()
   })
 
   it('플레이스홀더는 muted 텍스트 스타일이며 destructive 스타일이 아니다', () => {
     const tile: DashboardTile = { ...TILE_BASE, gadgetType: 'issue_count' }
     render(<PublicGadgetRenderer tile={tile} />)
-    const message = screen.getByText('로그인이 필요한 가젯입니다')
+    const message = screen.getByText(dashboardLabels.share.authRequiredGadget)
     expect(message.className).toContain('text-muted-foreground')
     expect(message.className).not.toContain('destructive')
   })
