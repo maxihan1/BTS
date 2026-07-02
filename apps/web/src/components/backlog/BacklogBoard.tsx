@@ -254,6 +254,7 @@ export function BacklogBoard({
           {sprints.map(({ sprint, issues }) => (
             <SprintColumn
               key={sprint.sprintId}
+              projectKey={projectKey}
               sprint={sprint}
               issues={issues}
               assigneeNames={assigneeNames}
