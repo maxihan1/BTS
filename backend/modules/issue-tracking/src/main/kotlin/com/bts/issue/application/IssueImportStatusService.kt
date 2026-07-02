@@ -69,6 +69,7 @@ class IssueImportStatusService(
      * @return 처리 결과 [ImportStatusOutcome].
      * @throws IssueVersionConflictException direct-set 시 영향 행 0(동시 수정으로 버전 불일치).
      */
+    @Suppress("ReturnCount") // guard-clause early return 4개(NoPermission·NoMatch·NoOp·Applied) — DEVELOPMENT.md §2.3
     @Transactional
     fun applyImportedStatus(
         actor: ActorId,

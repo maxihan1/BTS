@@ -55,20 +55,22 @@ class IssueImportStatusServiceTest : DescribeSpec({
     val projectKey = ProjectKey.of("BTS")
     val issueType = IssueType.TASK.copy(id = typeId)
 
-    fun makeIssue(currentStateKey: String = "open", version: Long = 1L) =
-        Issue(
-            id = IssueId(UUID.fromString("00000000-0000-4000-8000-000000000001")),
-            key = issueKey,
-            projectId = UUID.fromString("00000000-0000-4000-8000-000000000010"),
-            summary = "테스트 이슈",
-            reporterId = actor,
-            currentStateKey = currentStateKey,
-            version = version,
-            deletedAt = null,
-            createdAt = Instant.parse("2026-01-01T00:00:00Z"),
-            updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
-            typeId = typeId,
-        )
+    fun makeIssue(
+        currentStateKey: String = "open",
+        version: Long = 1L,
+    ) = Issue(
+        id = IssueId(UUID.fromString("00000000-0000-4000-8000-000000000001")),
+        key = issueKey,
+        projectId = UUID.fromString("00000000-0000-4000-8000-000000000010"),
+        summary = "테스트 이슈",
+        reporterId = actor,
+        currentStateKey = currentStateKey,
+        version = version,
+        deletedAt = null,
+        createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+        updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
+        typeId = typeId,
+    )
 
     val states =
         listOf(
