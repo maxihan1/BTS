@@ -34,6 +34,12 @@ import java.util.UUID
  * @property labels 라벨 이름 목록. 빈 목록이면 라벨 없음.
  * @property componentNames 컴포넌트 이름 목록. 존재하지 않는 이름은 구현체가 스킵 + 경고로 처리한다(PR1).
  * @property dryRun true 이면 구현체가 검증만 수행하고 실제 이슈를 생성하지 않는다.
+ * @property statusName 이슈 상태 이름. Jira export 의 `status.name` 출처. 미매칭/미존재 시
+ *   구현체가 best-effort 로 경고 처리하고 기본 상태로 폴백한다.
+ * @property fixVersionNames 수정 버전 이름 목록. Jira export 의 `fixVersions[].name` 출처. 미매칭/미존재
+ *   버전 이름은 구현체가 best-effort 로 경고 처리하고 스킵한다.
+ * @property affectsVersionNames 영향 버전 이름 목록. Jira export 의 `versions[].name`(affects) 출처.
+ *   미매칭/미존재 버전 이름은 구현체가 best-effort 로 경고 처리하고 스킵한다.
  * @see IssueImportPort
  * @see IssueImportResult
  */
