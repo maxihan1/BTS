@@ -23,6 +23,8 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
+import org.springframework.http.converter.HttpMessageConverter
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
@@ -38,6 +40,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import java.time.Instant
 import java.util.UUID
 
@@ -67,10 +70,16 @@ class DashboardShareControllerTest {
      *
      * DashboardShareController·DashboardController·DashboardExceptionHandler 를 등록한다.
      * DashboardController 를 함께 등록해 literal 경로 라우팅 회귀(ROUTE-1)를 같은 컨텍스트에서 확인한다.
+     *
+     * `@EnableWebMvc` 슬라이스는 Spring Boot Jackson 자동설정을 상속하지 않아 Instant 가
+     * epoch 숫자로 직렬화된다. `extendMessageConverters`(교체 아님)로 기존
+     * MappingJackson2HttpMessageConverter 에 JavaTimeModule + ISO 직렬화만 보강한다
+     * (memory: enablewebmvc-slice-localdate-array-serialization 교훈 — 컨버터 교체 시
+     * ProblemDetail errorCode 확장 프로퍼티 직렬화가 깨짐).
      */
     @Configuration
     @EnableWebMvc
-    open class TestMvcConfig {
+    open class TestMvcConfig : WebMvcConfigurer {
         @Bean
         open fun dashboardService(): DashboardService = mockk(relaxed = true)
 
@@ -82,6 +91,16 @@ class DashboardShareControllerTest {
 
         @Bean
         open fun dashboardExceptionHandler() = DashboardExceptionHandler()
+
+        override fun extendMessageConverters(converters: MutableList<HttpMessageConverter<*>>) {
+            converters
+                .filterIsInstance<MappingJackson2HttpMessageConverter>()
+                .forEach { converter ->
+                    converter.objectMapper
+                        .registerModule(JavaTimeModule())
+                        .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                }
+        }
     }
 
     @Autowired

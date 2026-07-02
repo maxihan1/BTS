@@ -5,6 +5,9 @@ package com.bts.notification.dashboard.web
 import com.bts.notification.dashboard.application.DashboardConflictException
 import com.bts.notification.dashboard.application.DashboardForbiddenException
 import com.bts.notification.dashboard.application.DashboardNotFoundException
+import com.bts.notification.dashboard.application.PublicDashboardNotFoundException
+import com.bts.notification.dashboard.application.ShareTokenLimitExceededException
+import com.bts.notification.dashboard.application.ShareTokenNotFoundException
 import com.bts.notification.dashboard.domain.DashboardDomainException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -37,9 +40,14 @@ import java.time.Instant
  * - DashboardNotFoundException -> 404 + NOTIF_DASHBOARD_NOT_FOUND
  * - DashboardForbiddenException -> 403 + NOTIF_DASHBOARD_FORBIDDEN
  * - DashboardConflictException -> 409 + NOTIF_DASHBOARD_CONFLICT
+ * - ShareTokenLimitExceededException -> 400 + NOTIF_DASHBOARD_SHARE_LIMIT_EXCEEDED
+ * - ShareTokenNotFoundException -> 404 + NOTIF_DASHBOARD_SHARE_NOT_FOUND
+ * - PublicDashboardNotFoundException -> 404 + NOTIF_DASHBOARD_PUBLIC_NOT_FOUND
  * - Exception (fallback) -> 500 + NOTIF_DASHBOARD_INTERNAL_ERROR
  */
 @RestControllerAdvice(basePackages = ["com.bts.notification.dashboard.web"])
+// TooManyFunctions — 예외 종류마다 독립된 HTTP 매핑 핸들러 1개씩이며, 각 핸들러는 응집된 단일 책임이다.
+@Suppress("TooManyFunctions")
 class DashboardExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -94,6 +102,51 @@ class DashboardExceptionHandler {
             title = "Dashboard Conflict",
             errorCode = "NOTIF_DASHBOARD_CONFLICT",
             detail = "대시보드가 다른 사용자에 의해 수정되었습니다. 최신 버전으로 다시 시도하세요.",
+        )
+    }
+
+    /** 대시보드당 활성 공유 토큰 상한 초과 — 400. */
+    @ExceptionHandler(ShareTokenLimitExceededException::class)
+    fun handleShareTokenLimitExceeded(
+        @Suppress("UnusedParameter") ex: ShareTokenLimitExceededException,
+    ): ProblemDetail {
+        log.info("NOTIF_DASHBOARD_400 share_limit_exceeded")
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "dashboard-share-limit-exceeded",
+            title = "Dashboard Share Token Limit Exceeded",
+            errorCode = "NOTIF_DASHBOARD_SHARE_LIMIT_EXCEEDED",
+            detail = "발급 가능한 공유 링크 개수 상한을 초과했습니다.",
+        )
+    }
+
+    /** 공유 토큰 미존재 또는 스코프 불일치 — 404. */
+    @ExceptionHandler(ShareTokenNotFoundException::class)
+    fun handleShareTokenNotFound(
+        @Suppress("UnusedParameter") ex: ShareTokenNotFoundException,
+    ): ProblemDetail {
+        log.info("NOTIF_DASHBOARD_404 share_not_found")
+        return problem(
+            status = HttpStatus.NOT_FOUND,
+            type = "dashboard-share-not-found",
+            title = "Dashboard Share Token Not Found",
+            errorCode = "NOTIF_DASHBOARD_SHARE_NOT_FOUND",
+            detail = "공유 링크를 찾을 수 없습니다.",
+        )
+    }
+
+    /** 익명 공개 조회 대상 공유 토큰이 유효하지 않음 — 404. */
+    @ExceptionHandler(PublicDashboardNotFoundException::class)
+    fun handlePublicDashboardNotFound(
+        @Suppress("UnusedParameter") ex: PublicDashboardNotFoundException,
+    ): ProblemDetail {
+        log.info("NOTIF_DASHBOARD_404 public_not_found")
+        return problem(
+            status = HttpStatus.NOT_FOUND,
+            type = "dashboard-public-not-found",
+            title = "Public Dashboard Not Found",
+            errorCode = "NOTIF_DASHBOARD_PUBLIC_NOT_FOUND",
+            detail = "공유된 대시보드를 찾을 수 없습니다.",
         )
     }
 
