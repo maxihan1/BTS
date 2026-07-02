@@ -93,3 +93,32 @@ CREATE TABLE webhook_deliveries (
 );
 
 CREATE INDEX idx_webhook_deliveries_webhook_id ON webhook_deliveries (webhook_id);
+
+-- V604 import_jobs 구조 미러 (codegen 입력, V604 CREATE TABLE 과 정확히 일치 유지 — FR-IM-01)
+-- 주의: pgmq.create / CREATE EXTENSION 은 미포함 — jOOQ codegen 은 public 스키마만 introspect 하므로
+-- pgmq 큐 메타는 불필요하고, codegen 컨테이너는 alpine(jdbc:tc:postgresql:16-alpine) 유지(jooq-init_codegen-mirror).
+
+CREATE TABLE import_jobs (
+    id                    UUID PRIMARY KEY,
+    project_key           TEXT NOT NULL,
+    format                TEXT NOT NULL,
+    source_object_key     TEXT NOT NULL,
+    dry_run               BOOLEAN NOT NULL DEFAULT FALSE,
+    requester_user_id     UUID NOT NULL,
+    status                TEXT NOT NULL DEFAULT 'PENDING',
+    progress              INT  NOT NULL DEFAULT 0,
+    total_rows            BIGINT,
+    succeeded_rows        BIGINT NOT NULL DEFAULT 0,
+    failed_rows           BIGINT NOT NULL DEFAULT 0,
+    error_code            TEXT,
+    error_log_object_key  TEXT,
+    expires_at            TIMESTAMPTZ,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    started_at            TIMESTAMPTZ,
+    completed_at          TIMESTAMPTZ,
+    CONSTRAINT chk_import_jobs_status CHECK (status IN ('PENDING','RUNNING','COMPLETED','FAILED')),
+    CONSTRAINT chk_import_jobs_format CHECK (format IN ('CSV','JSON'))
+);
+
+CREATE INDEX idx_import_jobs_requester ON import_jobs (requester_user_id, created_at DESC);
+CREATE INDEX idx_import_jobs_expires ON import_jobs (expires_at) WHERE expires_at IS NOT NULL;
