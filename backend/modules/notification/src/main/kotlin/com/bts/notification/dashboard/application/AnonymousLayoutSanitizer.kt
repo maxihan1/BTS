@@ -14,9 +14,12 @@ import org.slf4j.LoggerFactory
  *
  * 익명 뷰어는 인증 세션이 없어 이슈/차트 등 데이터를 조회할 권한이 없다.
  * 따라서 [GadgetCategory.STATIC] (text_widget, link_list) 가젯만 config 를 포함해
- * 원본 그대로 통과시키고, 그 외 모든 가젯은 config 를 제거한 플레이스홀더로 치환한다.
+ * 원본 그대로 통과시키고(유일한 화이트리스트), 그 외 모든 항목은 config 를 제거한 플레이스홀더로 치환한다.
  *
- * 카탈로그에 없는(알 수 없는) gadgetType 도 안전하지 않은 것으로 간주해 플레이스홀더로 치환한다 —
+ * "그 외 모든 항목" 은 데이터 가젯 + 카탈로그 밖 미지 타입 + gadgetType 이 없거나 null 인 legacy 타일을
+ * 모두 포함한다. gadgetType 이 없다는 이유로 legacy 를 원본 통과시키면 그 항목에 실린 config(예: aql/filterId)가
+ * 익명 뷰어에게 새어나가므로, legacy 도 STATIC 화이트리스트에 걸리지 않는 한 반드시 좁힌다.
+ *
  * "모르면 차단(fail-closed)"이 "모르면 통과(fail-open)"보다 항상 안전하다.
  * 향후 카탈로그에 새 가젯 타입이 추가돼도, 명시적으로 STATIC 으로 분류하지 않는 한
  * 이 화이트리스트에서 자동으로 차단된다.
@@ -36,11 +39,11 @@ object AnonymousLayoutSanitizer {
      * layout JSON 배열을 익명 뷰용으로 정화한다.
      *
      * 항목별 판정.
-     * - `gadgetType` 필드가 없거나 null 이면 legacy 타일로 간주해 원본 그대로 유지한다.
      * - `gadgetType` 이 [GadgetType.fromKey] 로 조회되고 category 가 [GadgetCategory.STATIC] 이면
-     *   config 를 포함한 원본 그대로 유지한다.
-     * - 그 외(데이터 가젯이거나 카탈로그 밖 미지 타입)는 [POSITION_FIELDS] + gadgetType 만 남기고
-     *   `requiresAuth: true` 를 추가한 플레이스홀더로 치환한다(config 제거).
+     *   config 를 포함한 원본 그대로 유지한다(유일한 화이트리스트).
+     * - 그 외 전부 — 데이터 가젯 · 카탈로그 밖 미지 타입 · `gadgetType` 이 없거나 null 인 legacy 항목 —
+     *   [POSITION_FIELDS] 만 남기고 `requiresAuth: true` 를 추가한 플레이스홀더로 치환한다(config 제거).
+     *   gadgetType 이 있으면 플레이스홀더에도 유지하고, legacy 처럼 없으면 gadgetType 없이 방출한다.
      *
      * 어떤 입력에도 예외를 던지지 않는 total 함수다. layout 은 [com.bts.notification.dashboard.domain.Dashboard]
      * 도메인 팩토리에서 이미 검증된 값이 정상 경로로 들어오지만, 방어적으로 파싱 실패 시
@@ -68,27 +71,30 @@ object AnonymousLayoutSanitizer {
 
     /** layout 배열의 단일 항목을 화이트리스트 규칙에 따라 정화한다. */
     private fun sanitizeItem(item: JsonNode): JsonNode {
-        val gadgetTypeNode = item.get(FIELD_GADGET_TYPE)
-        val gadgetType = gadgetTypeNode?.takeUnless { it.isNull }?.let { GadgetType.fromKey(it.asText()) }
-        return when {
-            // legacy 타일(gadgetType 미지정) — config 가 없으므로 정화 대상 아님
-            gadgetTypeNode == null || gadgetTypeNode.isNull -> item
-            gadgetType?.category == GadgetCategory.STATIC -> item
-            // 데이터 가젯 또는 카탈로그 밖 미지 타입 — fail-closed 플레이스홀더로 치환
-            else -> placeholder(item, gadgetTypeNode)
+        val gadgetTypeNode = item.get(FIELD_GADGET_TYPE)?.takeUnless { it.isNull }
+        val gadgetType = gadgetTypeNode?.let { GadgetType.fromKey(it.asText()) }
+        return if (gadgetType?.category == GadgetCategory.STATIC) {
+            // 유일한 화이트리스트 — STATIC 가젯만 config 포함 원본 통과
+            item
+        } else {
+            // 데이터 가젯 · 카탈로그 밖 미지 타입 · gadgetType 없는 legacy — fail-closed 플레이스홀더로 치환
+            placeholder(item, gadgetTypeNode)
         }
     }
 
-    /** 위치 필드 + gadgetType 만 유지하고 config 를 제거한 플레이스홀더를 만든다. */
+    /**
+     * 위치 필드(+ gadgetType 이 있으면 그것)만 유지하고 config 를 제거한 플레이스홀더를 만든다.
+     * legacy 항목처럼 gadgetType 이 없으면(null) gadgetType 필드 없이 위치 필드 + requiresAuth 만 방출한다.
+     */
     private fun placeholder(
         item: JsonNode,
-        gadgetTypeNode: JsonNode,
+        gadgetTypeNode: JsonNode?,
     ): ObjectNode {
         val node = mapper.createObjectNode()
         POSITION_FIELDS.forEach { field ->
             item.get(field)?.let { node.set<JsonNode>(field, it) }
         }
-        node.set<JsonNode>(FIELD_GADGET_TYPE, gadgetTypeNode)
+        gadgetTypeNode?.let { node.set<JsonNode>(FIELD_GADGET_TYPE, it) }
         node.put(FIELD_REQUIRES_AUTH, true)
         return node
     }
