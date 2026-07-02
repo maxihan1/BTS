@@ -37,13 +37,17 @@ import java.util.UUID
  * [Clock] 은 고정 인스턴스로 expiresAt 결정성을 보장한다.
  *
  * 검증 항목.
- * - (a) 정상 흐름: 3행 모두 성공 → markCompleted(succeeded=3, failed=0, errorLogObjectKey=null).
+ * - (a) 정상 흐름: 3행 모두 성공 → markCompleted(succeeded=3, failed=0, errorLogObjectKey=null),
+ *   완료 직전 updateCounts(progress=100, totalRows=3) 로 진행률/전체행수 확정.
  * - (b) 부분 실패: 3행 중 1행 실패 → succeeded=2, failed=1, 에러 로그 CSV 업로드(errorLogObjectKey 채워짐).
  * - (c) MAX_ROWS 초과: 카운터가 초과하는 시점에 중단 → markFailed(IMPORT_ROW_LIMIT_EXCEEDED), 초과 이후 행은 importIssue 미호출.
  * - (d) 파싱 실패: [ImportParseException] → markFailed(IMPORT_PARSE_FAILED).
  * - (e) dryRun: [IssueImportCommand.dryRun] 에 위임 + 집계는 동일하게 수행.
  * - (f) 에러 로그 정화: 실패 메시지에 formula injection 시작 문자가 있으면 sanitize 된 값이 CSV 에 기록.
  * - (g) 분류되지 않은 예외 → markFailed(IMPORT_INTERNAL_ERROR)(작업이 RUNNING 에 방치되지 않도록).
+ * - (h) 100 행 미만(PROGRESS_UPDATE_INTERVAL_ROWS 주기 미도달) 완료: handleRow 내부 주기 갱신이 한 번도
+ *   발생하지 않아도 finalizeCompleted 가 progress=100·totalRows=실제 처리 행수를 확정하는지 검증
+ *   (PR1 코드리뷰 C2 회귀 — 100 미만 파일은 완료 후 progress=0 로 남던 결함).
  */
 class ImportJobProcessorTest {
     private val issueImportPort: IssueImportPort = mockk()
@@ -135,6 +139,7 @@ class ImportJobProcessorTest {
         processor.process(makeJob())
 
         verify { repository.markCompleted(jobId, 3L, 0L, null, Instant.parse("2024-03-16T10:30:45Z")) }
+        verify(exactly = 1) { repository.updateCounts(jobId, 100, 3L, 3L, 0L) }
         verify(exactly = 3) { issueImportPort.importIssue(any()) }
         verify(exactly = 0) { storage.put(any(), any(), any(), any()) }
         verify(exactly = 0) { repository.markFailed(any(), any()) }
@@ -232,5 +237,22 @@ class ImportJobProcessorTest {
         processor.process(makeJob())
 
         verify { repository.markFailed(jobId, ImportJobProcessor.IMPORT_INTERNAL_ERROR) }
+    }
+
+    // ── (h) 100 행 미만 완료 — 주기 갱신 미도달 시에도 progress/totalRows 확정 ──────
+
+    @Test
+    fun `fewer than progress update interval rows completes with progress 100 and totalRows equal to processed count`() {
+        val rowCount = 50L
+        stubParserWithRowCount(rowCount)
+        every { issueImportPort.importIssue(any()) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        // 50 < PROGRESS_UPDATE_INTERVAL_ROWS(100) 이므로 handleRow 내부 주기 갱신은 한 번도 발생하지
+        // 않는다 — finalizeCompleted 가 확정한 updateCounts 호출 1건만 존재해야 한다.
+        verify(exactly = 1) { repository.updateCounts(any(), any(), any(), any(), any()) }
+        verify(exactly = 1) { repository.updateCounts(jobId, 100, rowCount, rowCount, 0L) }
+        verify { repository.markCompleted(jobId, rowCount, 0L, null, Instant.parse("2024-03-16T10:30:45Z")) }
     }
 }
