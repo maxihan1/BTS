@@ -41,8 +41,8 @@ import java.util.UUID
  *   버전 이름은 구현체가 best-effort 로 경고 처리하고 스킵한다.
  * @property affectsVersionNames 영향 버전 이름 목록. Jira export 의 `versions[].name`(affects) 출처.
  *   미매칭/미존재 버전 이름은 구현체가 best-effort 로 경고 처리하고 스킵한다.
- * @property comments 이슈에 동반 import 할 댓글 목록(PR3).
- * @property worklogs 이슈에 동반 import 할 작업 기록 목록(PR3).
+ * @property comments 이슈에 동반 import 할 댓글 목록. 빈 목록이면 댓글 없음(PR3).
+ * @property worklogs 이슈에 동반 import 할 작업 기록(worklog) 목록. 빈 목록이면 worklog 없음(PR3).
  * @see IssueImportPort
  * @see IssueImportResult
  */
@@ -65,14 +65,39 @@ data class IssueImportCommand(
     val worklogs: List<ImportWorklog> = emptyList(),
 )
 
-/** import 대상 이슈에 동반 생성할 댓글 하나를 표현하는 값 객체(PR3). */
+/**
+ * import 대상 이슈에 동반 생성할 댓글 하나를 표현하는 값 객체(PR3).
+ *
+ * [IssueImportCommand.comments] 목록의 원소로만 사용되며, 프레임워크 의존 없는 순수 데이터다.
+ * 구현체(issue-tracking `IssueImportAdapter`)가 실제 댓글 도메인 레코드로 변환하는 책임을 진다
+ * (이 VO 자체는 검증·변환 로직을 갖지 않는다).
+ *
+ * @property body 댓글 본문. 빈 문자열 처리는 구현체 책임.
+ * @property authorEmail 작성자 이메일. 매칭 실패 또는 null 이면 구현체가
+ *   [IssueImportCommand.requesterUserId](import 실행자)로 폴백한다
+ *   ([IssueImportCommand.reporterEmail] 폴백 규칙과 동일).
+ * @property createdAt 원본(Jira 등) 작성 시각. null 이면 구현체가 import 실행 시각을 사용한다.
+ */
 data class ImportComment(
     val body: String,
     val authorEmail: String? = null,
     val createdAt: Instant? = null,
 )
 
-/** import 대상 이슈에 동반 생성할 작업 기록(worklog) 하나를 표현하는 값 객체(PR3). */
+/**
+ * import 대상 이슈에 동반 생성할 작업 기록(worklog) 하나를 표현하는 값 객체(PR3).
+ *
+ * [IssueImportCommand.worklogs] 목록의 원소로만 사용되며, 프레임워크 의존 없는 순수 데이터다.
+ * 구현체(issue-tracking `IssueImportAdapter`)가 실제 worklog 도메인 레코드로 변환하는 책임을 진다
+ * (이 VO 자체는 검증·변환 로직을 갖지 않는다).
+ *
+ * @property timeSpentSeconds 소요 시간(초). 원본(Jira 등)의 시간 표기를 초 단위로 환산한 값.
+ * @property startedAt 작업 시작 시각. null 이면 구현체가 import 실행 시각을 사용한다.
+ * @property authorEmail 작성자 이메일. 매칭 실패 또는 null 이면 구현체가
+ *   [IssueImportCommand.requesterUserId](import 실행자)로 폴백한다
+ *   ([IssueImportCommand.reporterEmail] 폴백 규칙과 동일).
+ * @property comment worklog 에 첨부된 코멘트. null 이면 미기재.
+ */
 data class ImportWorklog(
     val timeSpentSeconds: Int,
     val startedAt: Instant? = null,
