@@ -79,6 +79,49 @@ interface PersonalAccessTokenRepository {
      * @param id 폐기할 PAT UUID
      */
     fun revoke(id: UUID)
+
+    /**
+     * 특정 사용자의 PAT 목록 조회 — revoke 만 제외, **만료 포함** (FR-API-04).
+     *
+     * `WHERE user_id = :userId AND revoked_at IS NULL ORDER BY created_at DESC`.
+     * [findActiveByUserId] 와 달리 만료(expires_at 과거) PAT 도 결과에 포함한다.
+     * 자기 PAT 목록 화면은 만료된 토큰도 보여줘야 하므로 이 메서드를 사용한다.
+     *
+     * @return 미취소 [PersonalAccessToken] 리스트 (created_at 최신순, 빈 리스트 허용)
+     */
+    fun listByUserIncludingExpired(userId: UUID): List<PersonalAccessToken>
+
+    /**
+     * id + user_id 동시 일치 PAT 조회 — 소유권 확인용 (IDOR 차단, FR-API-04).
+     *
+     * `WHERE id = :id AND user_id = :userId` — 상태 필터 없음(revoke/만료 무관).
+     * null 이면 미존재 또는 타인 소유(둘 다 404 처리 대상), non-null 이면 본인 소유 확정.
+     * 취소 요청의 멱등/IDOR 구분에 사용한다.
+     *
+     * @return 본인 소유이면 [PersonalAccessToken], 아니면 null
+     */
+    fun findByIdAndUserId(id: UUID, userId: UUID): PersonalAccessToken?
+
+    /**
+     * 본인 소유 활성 PAT 만 revoke — 소유권 + 활성 조건 원자 검증 (FR-API-04).
+     *
+     * `UPDATE ... SET revoked_at = :now WHERE id = :id AND user_id = :userId AND revoked_at IS NULL`.
+     * user_id 조건으로 타인 PAT 폐기(IDOR)를 차단하고, revoked_at IS NULL 로 이미 취소된 행은 건너뛴다.
+     *
+     * @param now revoke 시각 — 호출 측 Clock 기준 주입(테스트 시각 제어 가능).
+     * @return 영향 행 수. 1 = 취소 성공, 0 = 이미 취소/미존재/타인 소유
+     */
+    fun revokeOwned(id: UUID, userId: UUID, now: Instant): Int
+
+    /**
+     * 사용자의 활성 PAT 개수 — 미취소 + 미만료 (FR-API-04, 개수 상한 검사용).
+     *
+     * `WHERE user_id = :userId AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > :now)`.
+     *
+     * @param now 만료 판정 기준 시각 — 호출 측 Clock 기준 주입.
+     * @return 활성 PAT 개수
+     */
+    fun countActiveByUser(userId: UUID, now: Instant): Long
 }
 
 /**
@@ -134,6 +177,29 @@ class JdbcPersonalAccessTokenRepository(
     override fun revoke(id: UUID) {
         jdbc.update(SQL_REVOKE, mapOf("id" to id, "now" to Timestamp.from(Instant.now())))
     }
+
+    @Transactional(readOnly = true)
+    override fun listByUserIncludingExpired(userId: UUID): List<PersonalAccessToken> =
+        jdbc.query(SQL_LIST_BY_USER_INCLUDING_EXPIRED, mapOf("userId" to userId), rowMapper)
+
+    @Transactional(readOnly = true)
+    override fun findByIdAndUserId(id: UUID, userId: UUID): PersonalAccessToken? =
+        jdbc.query(SQL_FIND_BY_ID_AND_USER_ID, mapOf("id" to id, "userId" to userId), rowMapper)
+            .firstOrNull()
+
+    override fun revokeOwned(id: UUID, userId: UUID, now: Instant): Int =
+        jdbc.update(
+            SQL_REVOKE_OWNED,
+            mapOf("id" to id, "userId" to userId, "now" to Timestamp.from(now)),
+        )
+
+    @Transactional(readOnly = true)
+    override fun countActiveByUser(userId: UUID, now: Instant): Long =
+        jdbc.queryForObject(
+            SQL_COUNT_ACTIVE_BY_USER,
+            mapOf("userId" to userId, "now" to Timestamp.from(now)),
+            Long::class.java,
+        ) ?: 0L
 
     // ── 직렬화 헬퍼 ──────────────────────────────────────────────────────────
 
@@ -227,6 +293,54 @@ class JdbcPersonalAccessTokenRepository(
             SET revoked_at = :now
             WHERE id = :id
               AND revoked_at IS NULL
+        """
+
+        /**
+         * 사용자 PAT 목록 — revoke 만 제외(revoked_at IS NULL), 만료는 포함 (FR-API-04).
+         * [SQL_FIND_ACTIVE_BY_USER_ID] 와 달리 expires_at 필터가 없다.
+         * created_at DESC 최신순 정렬.
+         */
+        const val SQL_LIST_BY_USER_INCLUDING_EXPIRED = """
+            SELECT id, user_id, name, token_hash, scopes, expires_at, last_used_at, revoked_at, created_at
+            FROM personal_access_tokens
+            WHERE user_id = :userId
+              AND revoked_at IS NULL
+            ORDER BY created_at DESC
+        """
+
+        /**
+         * id + user_id 동시 일치 조회 — 소유권 확인(IDOR 차단, FR-API-04).
+         * 상태 필터 없음: revoke/만료 여부와 무관하게 본인 소유이면 반환.
+         */
+        const val SQL_FIND_BY_ID_AND_USER_ID = """
+            SELECT id, user_id, name, token_hash, scopes, expires_at, last_used_at, revoked_at, created_at
+            FROM personal_access_tokens
+            WHERE id = :id
+              AND user_id = :userId
+        """
+
+        /**
+         * 본인 소유 활성 PAT revoke — user_id 로 IDOR 차단, revoked_at IS NULL 로 멱등 (FR-API-04).
+         * :now 를 파라미터로 주입해 호출 측 Clock 기준 시각을 사용한다.
+         */
+        const val SQL_REVOKE_OWNED = """
+            UPDATE personal_access_tokens
+            SET revoked_at = :now
+            WHERE id = :id
+              AND user_id = :userId
+              AND revoked_at IS NULL
+        """
+
+        /**
+         * 활성 PAT 개수 — 미취소(revoked_at IS NULL) + 미만료(expires_at IS NULL OR > :now) (FR-API-04).
+         * 개수 상한 검사에 사용. :now 파라미터로 만료 기준 시각 주입.
+         */
+        const val SQL_COUNT_ACTIVE_BY_USER = """
+            SELECT COUNT(*)
+            FROM personal_access_tokens
+            WHERE user_id = :userId
+              AND revoked_at IS NULL
+              AND (expires_at IS NULL OR expires_at > :now)
         """
     }
 }
