@@ -21,17 +21,25 @@ import java.io.OutputStream
  * 셀에 formula injection 방어(`=+-@` 등으로 시작하면 `'` prefix)를 적용한 뒤 RFC 4180 이스케이프한다.
  * `export` BC `CsvExportWriter` 와 동일한 처리 순서(추출 → sanitize → escape)를 따르되, 대상 타입이
  * [FailedRowRecord] 로 다르다.
+ *
+ * ### severity 컬럼 (PR2 Task 5 — G1)
+ *
+ * PR1 은 실패행([FailedRowRecord.severity] 기본값 `FAILURE`)만 이 CSV 에 담았고,
+ * [com.bts.shared.issue.IssueImportResult.Success.warnings] 로 표현되는 best-effort 경고는
+ * [ImportJobProcessor] 가 폐기했다(G1). PR2 부터는 그 경고도 `WARNING` severity 행으로 같은 CSV 에
+ * 함께 기록해 사용자에게 노출한다. [com.bts.search.imports.job.domain.ImportJob] 도메인 스키마(카운트
+ * 컬럼 등)는 변경하지 않는다 — CSV 컬럼 추가만으로 해결한다.
  */
 @Component
 class ImportErrorLogWriter {
     /**
      * [records] 를 UTF-8 BOM + RFC 4180 CSV 로 [out] 에 작성한다.
      *
-     * 컬럼 순서는 rowNumber, field, reason(code), message 이다.
+     * 컬럼 순서는 rowNumber, field, reason(code), message, severity 이다.
      * [out] 의 닫기는 호출자 책임.
      *
      * @param out 결과를 쓸 [OutputStream].
-     * @param records 직렬화할 실패행 목록. 빈 목록이면 헤더만 출력한다.
+     * @param records 직렬화할 실패/경고행 목록([FailedRowRecord.severity] 로 구분). 빈 목록이면 헤더만 출력한다.
      */
     fun write(
         out: OutputStream,
@@ -48,13 +56,14 @@ class ImportErrorLogWriter {
         writer.flush()
     }
 
-    /** 실패행 1건을 sanitize + RFC 4180 이스케이프된 CSV 한 줄로 변환한다. */
+    /** 실패/경고행 1건을 sanitize + RFC 4180 이스케이프된 CSV 한 줄로 변환한다. */
     private fun buildDataLine(record: FailedRowRecord): String =
         listOf(
             record.rowNumber.toString(),
             record.field.orEmpty(),
             record.reasonCode,
             record.message.orEmpty(),
+            record.severity,
         ).joinToString(FIELD_SEPARATOR) { escape(ExportCellSanitizer.sanitize(it)) }
 
     /**
@@ -78,8 +87,8 @@ class ImportErrorLogWriter {
         /** RFC 4180 필드 구분자 — 쉼표. */
         private const val FIELD_SEPARATOR = ","
 
-        /** CSV 헤더 행. 컬럼 순서. rowNumber, field, reason(code), message. */
-        private const val HEADER_LINE = "Row,Field,Reason,Message"
+        /** CSV 헤더 행. 컬럼 순서. rowNumber, field, reason(code), message, severity. */
+        private const val HEADER_LINE = "Row,Field,Reason,Message,Severity"
 
         /** RFC 4180 인용 처리가 필요한 특수 문자 집합. */
         private val RFC4180_SPECIAL_CHARS = setOf(',', '"', '\n', '\r')
@@ -87,17 +96,34 @@ class ImportErrorLogWriter {
 }
 
 /**
- * [ImportErrorLogWriter] 가 CSV 로 직렬화하는 실패행 1건.
+ * [ImportErrorLogWriter] 가 CSV 로 직렬화하는 실패/경고행 1건.
+ *
+ * PR1 에서는 [IssueImportResult.Failure] 만 표현했으나, PR2 Task 5(G1)부터 [severity] 로
+ * [IssueImportResult.Success.warnings] 기반 경고행도 같은 타입으로 표현한다(둘 다 rowNumber/reasonCode/message
+ * 형태로 구조가 동일하므로 별도 타입([com.bts.search.imports.job.application.ImportJobProcessor] KDoc 의
+ * `ImportLogRecord` 대안) 대신 `severity` 필드만 추가하는 쪽을 택했다 — 더 단순하다).
  *
  * @property rowNumber 원본 파일에서의 1-기준 데이터 행 번호. [com.bts.search.imports.parse.ParsedImportRow.rowNumber] 값.
  * @property reasonCode 실패 사유 코드. [com.bts.shared.issue.IssueImportResult] companion 상수 참조.
- * @property message 사람이 읽을 수 있는 실패 상세 메시지. 없을 수 있다.
+ *   경고행([severity] = [SEVERITY_WARNING])은 개별 경고 사유 코드가 없으므로
+ *   [com.bts.search.imports.job.application.ImportJobProcessor.WARNING_REASON_CODE] 고정값을 사용한다.
+ * @property message 사람이 읽을 수 있는 실패/경고 상세 메시지. 없을 수 있다.
  * @property field 실패와 연관된 필드 이름. [com.bts.shared.issue.IssueImportResult.Failure] 가 현재
  *   필드 단위 정보를 제공하지 않으므로 PR1 에서는 항상 null(향후 확장 대비 필드).
+ * @property severity CSV 행 구분자 — [SEVERITY_FAILURE](기본값) 또는 [SEVERITY_WARNING].
  */
 data class FailedRowRecord(
     val rowNumber: Int,
     val reasonCode: String,
     val message: String? = null,
     val field: String? = null,
-)
+    val severity: String = SEVERITY_FAILURE,
+) {
+    companion object {
+        /** 이슈 생성 실패행. [FailedRowRecord.severity] 기본값. */
+        const val SEVERITY_FAILURE: String = "FAILURE"
+
+        /** 이슈 생성은 성공했으나 일부 필드가 반영되지 않은 best-effort 경고행(PR2 Task 5, G1). */
+        const val SEVERITY_WARNING: String = "WARNING"
+    }
+}
