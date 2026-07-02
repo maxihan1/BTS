@@ -138,8 +138,8 @@
 - [x] D3. 데이터 모델 — `dashboard_share_tokens`(token_hash TEXT UNIQUE·FK CASCADE·V408) (책임. db-engineer) — PR #216 (init_codegen 미러)
 - [x] D4. 백엔드 — 관리 `POST/GET/DELETE /api/v1/dashboards/{id}/shares`(소유자·MAX 20) + 익명 `GET /api/v1/public/dashboards/{token}`(permitAll GET·정화·404 열거차단) (책임. backend-engineer + security-engineer) — PR #216 (SecurityConfig cross-BC permitAll)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #216 (토큰 해싱·열거차단 404·정화 fail-closed·Clock 만료·교차조회 차단·HTTP e2e 라운드트립)
-- [ ] D6. 프론트 UI — 공유 모달 + 임베드 코드 복사 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 공유 모달 + 임베드 코드 복사 (책임. designer → frontend-engineer) — PR #217 (공유 모달[링크생성·복사·PRIVATE/TEAM amber경고·임베드 스니펫·발급목록·인라인취소·빈상태], 상세페이지 공유버튼 canEditDashboard 게이팅, 익명 뷰 라우트 `/dashboards/shared/{token}` raw fetch + PublicGadgetRenderer 정적 화이트리스트 fail-closed[데이터가젯=로그인필요 플레이스홀더·useGadgetData 미호출] + DashboardGrid publicMode 읽기전용 + embed=1 크롬최소화)
+- [x] D7. E2E (책임. qa-engineer) — PR #217 (발급→익명열람[정적 렌더+데이터 플레이스홀더+편집UI부재]→무효/취소 토큰 404, MSW 공유 store stateful. 부수 hot-fix: useGadgetData AQL 외피[.data/.meta.page.totalElements] main CI red 해소)
 
 ## §4 리포트 (FR-RP, 4개)
 
