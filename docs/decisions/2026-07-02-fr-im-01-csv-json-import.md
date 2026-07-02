@@ -68,6 +68,17 @@ search-export-import ──(port)──▶ shared-kernel ◀──(impl)── i
 
 15컬럼 안팎(export_jobs 동형): id · project_key · format(CSV|JSON) · source_object_key · dry_run · requester_user_id · status · progress · total_rows/succeeded_rows/failed_rows · error_log_object_key · expires_at(TTL 24h) · created/started/completed_at. 소프트 삭제 없음(TTL 하드삭제). init_codegen.sql 미러. **머지 직전 V번호 재확인.**
 
+### D8. 범위 — SDD 10.6.3 풀 마이그레이션을 순차 PR 에픽으로 분할 (Maxi 결정)
+
+FR-IM-01은 SDD 10.6.3의 풀 피델리티 Jira 마이그레이션(이슈 + 컴포넌트/버전 + 상태 + 댓글 + Worklog + 첨부 + 이력)을 목표로 하되, 리뷰 가능 단위로 **순차 PR**로 분할한다.
+
+- **PR1 (본 ADR 범위)**. 기반 + **코어 이슈 필드**(summary·description·type·priority·reporter/assignee(이메일)·labels). 새 키 자동생성(Jira 키 보존 안 함 — "이슈 키 재사용 금지" 원칙). 컴포넌트/버전은 이름 연결만(없으면 스킵+경고), 상태는 워크플로우 시작 상태 고정.
+- **PR2**. 컴포넌트/버전 없으면 자동 생성 + 소스 Status로 전이 시도(도달불가/게이트 폴백은 PR2 스펙).
+- **PR3**. 댓글 + Worklog.
+- **PR4**. 첨부(**zip 아카이브 업로드** — 서버 fetch 없음 = SSRF 없음) + 이력(append-only에 조작 타임스탬프/주체 주입 — 메커니즘은 PR4 스펙에서 결정).
+
+각 PR은 앞선 PR의 자산을 확장한다. 프론트(업로드/진행률 UI)는 별도 PR로 FR-IM-02 매핑 UI와 조율.
+
 ## 결과 (Consequences)
 
 - **긍정**. FR-EX-02 자산(pgmq worker·MinIO·CAS·outbox·TTL cleanup)을 최대 재사용. 권한은 기존 issue-tracking 경로에 그대로 위임(우회 0). BC 격리 유지(ArchUnit 강제).
