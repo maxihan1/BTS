@@ -66,12 +66,11 @@ function createWrapper() {
 
 interface RenderOptions {
   visibility?: string
-  onClose?: ReturnType<typeof vi.fn>
 }
 
 function renderModal(options: RenderOptions = {}) {
   const Wrapper = createWrapper()
-  const onClose = options.onClose ?? vi.fn()
+  const onClose = vi.fn()
   render(
     <ShareDashboardModal
       dashboardId={DEFAULT_DASHBOARD.id}
@@ -159,10 +158,6 @@ describe('ShareDashboardModal — 공개 범위 경고 배너', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('ShareDashboardModal — 링크 생성 및 복사', () => {
-  beforeEach(() => {
-    stubClipboard()
-  })
-
   it('링크 생성 버튼 클릭 시 발급된 토큰으로 공개 URL이 표시된다', async () => {
     const user = userEvent.setup()
     renderModal()
@@ -185,7 +180,10 @@ describe('ShareDashboardModal — 링크 생성 및 복사', () => {
   })
 
   it('복사 버튼 클릭 시 클립보드에 공개 URL이 복사되고 라벨이 "복사됨"으로 전환된다', async () => {
+    // userEvent.setup()이 navigator를 재구성하므로 clipboard 스텁은 setup() 이후에 적용한다
+    // (memory: userEvent.setup()이 vi.stubGlobal('navigator', ...)를 무효화)
     const user = userEvent.setup()
+    stubClipboard()
     renderModal()
 
     await user.click(screen.getByRole('button', { name: '링크 생성' }))
@@ -210,10 +208,6 @@ describe('ShareDashboardModal — 링크 생성 및 복사', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('ShareDashboardModal — 임베드 코드', () => {
-  beforeEach(() => {
-    stubClipboard()
-  })
-
   it('링크 생성 전에는 임베드 코드 섹션이 표시되지 않는다', () => {
     renderModal()
     expect(screen.queryByText('임베드 코드')).toBeNull()
@@ -235,6 +229,7 @@ describe('ShareDashboardModal — 임베드 코드', () => {
 
   it('임베드 복사 버튼 클릭 시 클립보드에 iframe 스니펫이 복사된다', async () => {
     const user = userEvent.setup()
+    stubClipboard()
     renderModal()
 
     await user.click(screen.getByRole('button', { name: '링크 생성' }))
