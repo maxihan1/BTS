@@ -8,6 +8,8 @@ import com.bts.shared.board.BoardIssuePage
 import com.bts.shared.board.BoardTransitionCommand
 import com.bts.shared.board.BoardTransitionResult
 import com.bts.shared.board.IssueTransitionPort
+import com.bts.shared.burndown.BurndownSource
+import com.bts.shared.burndown.SprintBurndownLookupPort
 import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
@@ -211,5 +213,20 @@ class AgilePlanningTestcontainersConfig {
                 permission: IssuePermission,
                 scope: IssueScope,
             ): Boolean = true
+        }
+
+    /**
+     * [SprintBurndownLookupPort] 테스트 stub 빈 (FR-RP-01).
+     *
+     * agile-planning 단독 테스트 컨텍스트에는 issue-tracking 의 SprintBurndownLookupAdapter 가 없다.
+     * [com.bts.agileplanning.application.SprintBurndownService] 의 non-null 주입 요건을 충족하기 위해
+     * fail-safe(스코프 0 · worklog 없음) stub 을 명시 등록한다. (memory: cross-BC SPI 부팅 함정 —
+     * 신규 포트 의존이 전체-컨텍스트 통합테스트 부팅을 깸. fr-nt-02/03·fr-tl-01 전례와 동일.)
+     */
+    @Bean
+    fun sprintBurndownLookupPort(): SprintBurndownLookupPort =
+        object : SprintBurndownLookupPort {
+            override fun fetchBurndownSource(issueKeys: Set<String>): BurndownSource =
+                BurndownSource(totalOriginalEstimateSeconds = 0, worklogEntries = emptyList())
         }
 }
