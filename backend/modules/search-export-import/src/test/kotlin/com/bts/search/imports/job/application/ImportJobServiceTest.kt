@@ -21,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.transaction.TransactionStatus
+import org.springframework.transaction.support.TransactionCallback
 import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.web.server.ResponseStatusException
 import java.io.ByteArrayInputStream
@@ -28,7 +29,6 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.UUID
-import java.util.function.Consumer
 
 /**
  * [ImportJobService] 단위 테스트.
@@ -67,10 +67,10 @@ class ImportJobServiceTest {
             permissionResolver.hasPermission(any(), any(), any())
         } returns true
         justRun { storage.put(any(), any(), any(), any()) }
-        justRun { repository.insert(any()) }
+        every { repository.insert(any()) } answers { firstArg() }
         justRun { enqueuePublisher.enqueue(any()) }
-        every { transactionTemplate.executeWithoutResult(any()) } answers {
-            firstArg<Consumer<TransactionStatus>>().accept(mockk(relaxed = true))
+        every { transactionTemplate.execute(any<TransactionCallback<Any>>()) } answers {
+            firstArg<TransactionCallback<Any>>().doInTransaction(mockk<TransactionStatus>(relaxed = true))
         }
     }
 
@@ -139,7 +139,7 @@ class ImportJobServiceTest {
     @Test
     fun `accept puts file to storage inserts PENDING job and enqueues same jobId`() {
         val jobSlot = slot<ImportJob>()
-        justRun { repository.insert(capture(jobSlot)) }
+        every { repository.insert(capture(jobSlot)) } answers { firstArg() }
 
         val result = service.accept(command(format = "csv", sizeBytes = 42L))
 
