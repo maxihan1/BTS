@@ -33,8 +33,7 @@ const COLOR_IDEAL = '#f59e0b'
 const COLOR_SCOPE = '#94a3b8'
 
 /** Y축 제목. burndown-labels.ts 는 Task-2 산출물(파일 범위 밖)이라 로컬 상수로 유지한다. */
-const Y_AXIS_TITLE = '시간'
-const Y_AXIS_LABEL_PROPS = { value: Y_AXIS_TITLE, angle: -90, position: 'insideLeft' } as const
+const Y_AXIS_LABEL_PROPS = { value: burndownLabels.chart.yAxisTitle, angle: -90, position: 'insideLeft' } as const
 
 /** 축 tick 공통 스타일. */
 const AXIS_TICK_STYLE = { fontSize: 12 }

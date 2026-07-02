@@ -9,14 +9,6 @@ import { BurndownChart } from '@/components/burndown/BurndownChart'
 import { burndownLabels } from '@/i18n/burndown-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 로컬 상수 — burndown-labels.ts(Task-2 산출물, 파일 범위 밖)에 없는 문구.
-// BurndownChart.tsx Y_AXIS_TITLE 선례와 동일 사유(로컬 상수로 유지).
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** 403/404/422 이외(5xx 등) 예상치 못한 에러 안내 문구 */
-const GENERIC_ERROR_MESSAGE = '데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'
-
-// ─────────────────────────────────────────────────────────────────────────────
 // 상태별 서브컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -48,7 +40,7 @@ function BurndownStatusMessage({ message }: BurndownStatusMessageProps): JSX.Ele
 
 /**
  * ApiError.status로부터 표시할 안내 문구를 결정한다.
- * 403(권한없음)/404(스프린트없음)/422(날짜미설정)는 지정 라벨, 그 외(5xx 등)는 GENERIC_ERROR_MESSAGE로 폴백한다.
+ * 403(권한없음)/404(스프린트없음)/422(날짜미설정)는 지정 라벨, 그 외(5xx 등)는 status.loadFailed로 폴백한다.
  *
  * @param status ApiError.status(없으면 undefined)
  */
@@ -61,7 +53,7 @@ function resolveErrorMessage(status: number | undefined): string {
     case 422:
       return burndownLabels.status.datesRequired
     default:
-      return GENERIC_ERROR_MESSAGE
+      return burndownLabels.status.loadFailed
   }
 }
 
