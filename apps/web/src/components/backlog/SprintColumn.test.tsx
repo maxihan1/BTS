@@ -6,7 +6,7 @@ import { userEvent } from '@testing-library/user-event'
 import { DndContext } from '@dnd-kit/core'
 import type { BacklogIssue, SprintMeta } from '@/api/backlog'
 
-// TanStack Router Link mock
+// TanStack Router Link mock — params 객체의 모든 키($projectKey, $sprintId 등)를 치환한다
 vi.mock('@tanstack/react-router', () => ({
   Link: ({
     to,
@@ -22,7 +22,11 @@ vi.mock('@tanstack/react-router', () => ({
     onClick?: React.MouseEventHandler
   }) => (
     <a
-      href={params ? to.replace('$key', params['key'] ?? '') : to}
+      href={
+        params
+          ? Object.entries(params).reduce((acc, [key, value]) => acc.replace(`$${key}`, value), to)
+          : to
+      }
       className={className}
       onClick={onClick}
       data-testid="issue-link"
@@ -82,10 +86,12 @@ function renderSprintColumn(
   isOver = false,
   onStart?: () => void,
   onComplete?: () => void,
+  projectKey = 'ATLAS',
 ) {
   return render(
     <DndContext>
       <SprintColumn
+        projectKey={projectKey}
         sprint={sprint}
         issues={issues}
         assigneeNames={names}
@@ -252,5 +258,28 @@ describe('SprintColumn — S5 concern-1 orderedKeys droppable data 결선', () =
     expect(dropZone).toBeInTheDocument()
     // orderedKeys가 DOM data 속성으로 노출되어야 한다 (구현 후 통과)
     expect(dropZone?.getAttribute('data-ordered-keys')).toBe('ATLAS-5,ATLAS-6')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S6. 번다운 진입 링크 (FR-RP-01 D6/D7 Task-5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SprintColumn — S6 번다운 진입 링크', () => {
+  it('S6a: 번다운 링크가 projectKey/sprintId params로 올바른 경로를 렌더한다', () => {
+    renderSprintColumn(plannedSprint, [issue1], new Map(), false, undefined, undefined, 'ATLAS')
+    const link = screen.getByRole('link', { name: /번다운/ })
+    expect(link).toHaveAttribute('href', `/projects/ATLAS/sprints/${plannedSprint.sprintId}/burndown`)
+  })
+
+  it('S6b: 다른 projectKey를 전달하면 링크 href에 그대로 반영된다', () => {
+    renderSprintColumn(activeSprint, [issue1], new Map(), false, undefined, undefined, 'BTS2')
+    const link = screen.getByRole('link', { name: /번다운/ })
+    expect(link).toHaveAttribute('href', `/projects/BTS2/sprints/${activeSprint.sprintId}/burndown`)
+  })
+
+  it('S6c: COMPLETED 스프린트에서도 번다운 링크가 렌더된다', () => {
+    renderSprintColumn(completedSprint, [])
+    expect(screen.getByRole('link', { name: /번다운/ })).toBeInTheDocument()
   })
 })

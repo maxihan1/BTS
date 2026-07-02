@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 37개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + settings 6 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 2 + 알림 보관함 1 + 검색 1 + Webhook 2 | FR-API-04: settingsPatsRoute /settings/pats 추가)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 38개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 8 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + settings 6 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 2 + 알림 보관함 1 + 검색 1 + Webhook 2 | FR-RP-01 D6/D7: projectSprintBurndownRoute /projects/$projectKey/sprints/$sprintId/burndown 추가)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -43,6 +43,7 @@ import { SearchRouteAdapter } from './routes/search'
 import { TimelineRouteAdapter } from './routes/projects.$projectKey.timeline'
 import { AdminWebhooksRouteAdapter } from './routes/admin.webhooks'
 import { WebhookDeliveriesRouteAdapter } from './routes/admin.webhooks.$id.deliveries'
+import { SprintBurndownRouteAdapter } from './routes/projects.$projectKey.sprints.$sprintId.burndown'
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -216,6 +217,22 @@ const projectBoardRoute = createRoute({
       : typeof search['component'] === 'string'
         ? search['component']
         : undefined,
+  }),
+})
+
+/**
+ * 스프린트 번다운/번업 차트 라우트 — /projects/$projectKey/sprints/$sprintId/burndown, requireAuth (FR-RP-01 D6/D7).
+ * validateSearch로 view(번다운/번업) 쿼리 파라미터를 선언한다 — 공유 URL 정합을 위해 토글 상태를 URL에 반영.
+ * 미지정·잘못된 값은 'burndown'으로 폴백한다.
+ */
+const projectSprintBurndownRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/projects/$projectKey/sprints/$sprintId/burndown',
+  component: SprintBurndownRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+  validateSearch: (search: Record<string, unknown>): { view?: 'burndown' | 'burnup' } => ({
+    view: search['view'] === 'burnup' ? 'burnup' : 'burndown',
   }),
 })
 
@@ -483,12 +500,13 @@ const settingsPatsRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 37개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 38개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
  *   · /admin/webhooks · /admin/webhooks/:id/deliveries
  *   · /inbox · /dashboards · /dashboards/:dashboardId · /search
  *   · /projects/:projectKey/backlog · /projects/:projectKey/board · /projects/:projectKey/timeline
+ *   · /projects/:projectKey/sprints/:sprintId/burndown
  *   · /projects/:projectKey/settings/workflow-scheme · /projects/:projectKey/settings/members
  *   · /projects/:projectKey/settings/components · /projects/:projectKey/settings/versions
  *   · /projects/:projectKey/settings/custom-fields · /projects/:projectKey/settings/issue-templates
@@ -535,6 +553,8 @@ export const routeTree = rootRoute.addChildren([
   projectBoardRoute,
   // agile-planning BC — 프로젝트 타임라인(Gantt) (FR-TL-01)
   projectTimelineRoute,
+  // agile-planning BC — 스프린트 번다운/번업 차트 (FR-RP-01 D6/D7)
+  projectSprintBurndownRoute,
   // project-workflow BC — 프로젝트별 스킴 할당
   projectWorkflowSchemeSettingsRoute,
   // project-membership BC — 프로젝트 멤버 관리
