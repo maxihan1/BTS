@@ -138,14 +138,18 @@ export function VelocityChart({ response }: VelocityChartProps): JSX.Element {
             y={response.averageCommitmentSeconds}
             stroke={COLOR_AVG_COMMITMENT}
             strokeDasharray="6 4"
-            label={buildAverageLineLabel(velocityLabels.series.avgCommitment, COLOR_AVG_COMMITMENT, 'insideTopLeft')}
+            label={buildAverageLineLabel(
+              `${velocityLabels.series.avgCommitment} ${formatSeconds(response.averageCommitmentSeconds)}`,
+              COLOR_AVG_COMMITMENT,
+              'insideTopLeft',
+            )}
           />
           <ReferenceLine
             y={response.averageCompletedSeconds}
             stroke={COLOR_AVG_COMPLETED}
             strokeDasharray="6 4"
             label={buildAverageLineLabel(
-              velocityLabels.series.avgCompleted,
+              `${velocityLabels.series.avgCompleted} ${formatSeconds(response.averageCompletedSeconds)}`,
               COLOR_AVG_COMPLETED,
               'insideBottomLeft',
             )}
