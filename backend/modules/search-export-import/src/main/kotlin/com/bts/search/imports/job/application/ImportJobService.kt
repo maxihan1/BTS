@@ -30,11 +30,19 @@ import java.util.UUID
  * ## 접수 흐름 — [accept]
  *
  * 1. projectKey 공백 검증.
- * 2. **권한 fail-fast(CONCERN #4 / FR12)** — [permissionResolver] 로 요청자가 대상 프로젝트에
- *    CREATE_ISSUE 권한이 있는지 확인한다. 없으면 파일 저장·job 생성 **이전**에 즉시
- *    [ImportAccessDeniedException] 을 던진다. cross-BC 권한 판정은 shared-kernel
+ * 2. **권한 fail-fast(CONCERN #4 / FR12) — CREATE 기반 coarse 게이트** — [permissionResolver] 로
+ *    요청자가 대상 프로젝트에 CREATE_ISSUE 권한이 있는지만 확인한다. 없으면 파일 저장·job 생성
+ *    **이전**에 즉시 [ImportAccessDeniedException] 을 던진다. cross-BC 권한 판정은 shared-kernel
  *    [IssuePermissionResolver] 포트(권한코드 + resolver 경유)만 사용한다 — role 직접 조회 금지
  *    (교훈 crossbc-permission-resolver-not-role-lookup).
+ *
+ *    이 접수 게이트는 "이 사용자가 대상 프로젝트에서 이슈를 하나도 못 만들면 파일 업로드
+ *    이전에 빠르게 거부한다"는 최소 게이트일 뿐, **행별 UPDATE(EDIT_ISSUE) 권한은 여기서
+ *    검증하지 않는다** — priority/labels/assignee 등 update 를 유발하는 필드가 있는 행의
+ *    UPDATE 권한 판정은 dryRun 미리보기([com.bts.issue.adapter.outbound.imports.IssueImportAdapter]
+ *    §UPDATE 미러, 코드리뷰 CONCERN C1)와 실제 처리(행별 executeImport)에서 각각 이뤄진다.
+ *    접수 단계에 UPDATE 까지 강제하면, update 를 유발하는 필드가 전혀 없는 파일(CREATE 만 필요)을
+ *    올리려는 CREATE-only 사용자를 부당하게 거부하게 되므로 의도적으로 강제하지 않는다.
  * 3. 파일 크기 검증 — [MAX_FILE_SIZE_BYTES] 초과 시 [ImportFileTooLargeException].
  * 4. format 검증 — CSV/JSON 이외는 [ImportUnsupportedFormatException].
  * 5. MinIO put(원본 업로드, 트랜잭션 밖) → [ImportJobRepository.insert] + [ImportJobEnqueuePublisher.enqueue]
