@@ -64,9 +64,9 @@ API → AqlService.execute(aql, user)
 PM → API: POST /api/v1/sprints/{id}/start
   → SprintService.start(sprintId)
     → 상태 PLANNED → ACTIVE
-    → 스냅샷 저장: 시작 시점 이슈 + 스토리 포인트
-    → 번다운 차트의 "Ideal Line" 시작점
-  → 매일 자정: 스프린트별 남은 작업량 스냅샷 → 번다운 데이터
+    → 시작 시점 이슈 스코프 확정 (sprint_issues 멤버십, 스냅샷 테이블 없음)
+    → 번다운 차트의 "Ideal Line" 시작점 (총 스코프 = Σ original_estimate_seconds)
+  → GET /api/v1/sprints/{id}/burndown 요청 시: worklog started_at 누적을 on-the-fly로 재구성 → 번다운 데이터
 ```
 
 ## 6.6 Slack Slash 명령

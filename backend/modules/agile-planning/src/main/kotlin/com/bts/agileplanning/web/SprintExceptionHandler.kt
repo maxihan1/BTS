@@ -2,6 +2,7 @@
 
 package com.bts.agileplanning.web
 
+import com.bts.agileplanning.application.SprintDatesRequiredException
 import com.bts.agileplanning.application.SprintNotFoundException
 import com.bts.agileplanning.domain.InvalidSprintTransitionException
 import org.slf4j.LoggerFactory
@@ -20,12 +21,13 @@ import java.time.Instant
 /**
  * 스프린트 REST API 의 도메인/입력 예외를 RFC 7807 ProblemDetail 형식으로 변환하는 핸들러.
  *
- * [assignableTypes] 를 [SprintController] 로 한정하여 다른 컨트롤러의 예외를 잡지 않는다
- * (memory: domain-exception-http-handler-basepackage-scope — 도메인 예외 핸들러 스코프 교훈).
- * [BoardExceptionHandler] 의 basePackages 방식과 달리 assignableTypes 를 사용하여 확실하게 스코프를 제한한다.
+ * [assignableTypes] 를 [SprintController]·[SprintBurndownController] 로 한정하여 다른 컨트롤러의
+ * 예외를 잡지 않는다(memory: domain-exception-http-handler-basepackage-scope — 도메인 예외 핸들러
+ * 스코프 교훈). [BoardExceptionHandler] 등 형제 핸들러와 동일하게 assignableTypes 로 대상 컨트롤러를
+ * 명시 한정하여 확실하게 스코프를 제한한다.
  *
  * catch-all [Exception] 핸들러를 두되, [ResponseStatusException] 은 별도 핸들러로 상태를 전파하여
- * catch-all 이 401/403/404/409 를 500 으로 변질시키지 못하게 한다
+ * catch-all 이 401/403/404/409/422 를 500 으로 변질시키지 못하게 한다
  * (memory: catch-all-exceptionhandler-swallows-responsestatusexception 교훈).
  *
  * [InvalidSprintTransitionException] 은 [IllegalStateException] 을 상속하므로 명시 핸들러로 409 에 매핑한다.
@@ -40,6 +42,7 @@ import java.time.Instant
  * - [IllegalArgumentException] → 400 + AGILE_VALIDATION_FAILED (도메인 require 위반 — name 공백·기간 역전)
  * - [SprintNotFoundException] → 404 + AGILE_SPRINT_NOT_FOUND
  * - [InvalidSprintTransitionException] → 409 + AGILE_CONFLICT
+ * - [SprintDatesRequiredException] → 422 + AGILE_SPRINT_DATES_REQUIRED (번다운 기간 미설정, FR-RP-01)
  * - [ResponseStatusException] → 명시 상태 전파(401/403/404/409 등, 일반 메시지)
  * - [Exception] (fallback) → 500 + AGILE_INTERNAL_ERROR
  *
@@ -47,7 +50,7 @@ import java.time.Instant
  * RestControllerAdvice 의 책임(예외 → HTTP 변환)은 분리 불가한 단일 관심사라 클래스 단위로 억제한다.
  */
 @Suppress("TooManyFunctions")
-@RestControllerAdvice(assignableTypes = [SprintController::class])
+@RestControllerAdvice(assignableTypes = [SprintController::class, SprintBurndownController::class])
 class SprintExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -200,6 +203,28 @@ class SprintExceptionHandler {
         )
     }
 
+    // ── 422 SPRINT_DATES_REQUIRED (번다운 기간 미설정, FR-RP-01) ─────────────
+
+    /**
+     * [SprintDatesRequiredException] — 번다운 계산에 필요한 start_date/end_date 미설정 — 422.
+     *
+     * 시간축 정박점(start~end)이 없어 Ideal/Actual 라인을 산출할 수 없을 때 던진다(스펙 S3).
+     * 보안 — 내부 메시지를 그대로 노출하지 않고 일반화된 detail 을 반환한다. 원인은 로그에만 기록한다.
+     *
+     * @param ex 기간 미설정 예외.
+     */
+    @ExceptionHandler(SprintDatesRequiredException::class)
+    fun handleSprintDatesRequired(ex: SprintDatesRequiredException): ProblemDetail {
+        log.info("AGILE_422 sprint_dates_required cause='{}'", ex.message)
+        return problem(
+            status = HttpStatus.UNPROCESSABLE_ENTITY,
+            type = "agile-sprint-dates-required",
+            title = "Sprint Dates Required",
+            errorCode = AGILE_SPRINT_DATES_REQUIRED,
+            detail = "스프린트 기간(start_date, end_date)이 설정되지 않아 번다운을 계산할 수 없습니다.",
+        )
+    }
+
     // ── ResponseStatusException 상태 전파 (catch-all 변질 차단) ─────────────
 
     /**
@@ -295,6 +320,7 @@ class SprintExceptionHandler {
         const val AGILE_ACCESS_DENIED = "AGILE_ACCESS_DENIED"
         const val AGILE_SPRINT_NOT_FOUND = "AGILE_SPRINT_NOT_FOUND"
         const val AGILE_CONFLICT = "AGILE_CONFLICT"
+        const val AGILE_SPRINT_DATES_REQUIRED = "AGILE_SPRINT_DATES_REQUIRED"
         const val AGILE_INTERNAL_ERROR = "AGILE_INTERNAL_ERROR"
     }
 }

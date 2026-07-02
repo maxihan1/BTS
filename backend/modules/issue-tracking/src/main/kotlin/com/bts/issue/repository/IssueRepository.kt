@@ -2322,6 +2322,43 @@ class IssueRepository(
     }
 
     /**
+     * 주어진 이슈 키 집합 중 [viewerUserId] 에게 가시적인 활성 이슈 키만 걸러 반환한다 (FR-RP-01 리뷰 C1).
+     *
+     * 번다운 집계(cross-BC)에서 프로젝트 BROWSE 통과 뷰어가 이슈별 보안 등급으로 차단된 기밀 이슈의
+     * estimate/worklog 를 간접 추론하지 못하도록, 집계 대상 키를 먼저 가시 집합으로 좁히는 용도다.
+     *
+     * [existsVisibleIssue]/[listVisibleForTimeline] 과 동일한 [buildActiveSecureWhere] 보안 술어를
+     * **재사용**한다 — deleted_at·projectKey·security 술어가 이미 포함되므로 별도 필터·복제 판정 경로가
+     * 필요하지 않다(보안갭 방지). soft-deleted 이슈, 타 프로젝트 이슈, 뷰어가 볼 수 없는 보안 등급 이슈는
+     * 결과에서 제외된다.
+     *
+     * @param issueKeys 가시성을 검사할 이슈 키 집합. 빈 집합이면 빈 집합을 즉시 반환한다(빈 `IN` 절 회피).
+     * @param projectKey 이슈들이 속해야 하는 프로젝트 키. 예: `"BTS"`.
+     * @param viewerUserId 가시성을 판단할 viewer UUID. 보안 술어의 reporter/assignee 동적 조건에 사용.
+     * @param access viewer 가 접근 가능한 보안 등급 집합. unrestricted=true 이면 보안 술어 미적용(빠른경로).
+     * @return 입력 키 중 가시 활성 이슈에 해당하는 키 부분집합.
+     */
+    @Transactional(readOnly = true)
+    fun filterVisibleIssueKeys(
+        issueKeys: Set<String>,
+        projectKey: String,
+        viewerUserId: UUID,
+        access: IssueSecurityAccess,
+    ): Set<String> {
+        if (issueKeys.isEmpty()) return emptySet()
+        return dsl.select(ISSUES.KEY)
+            .from(ISSUES)
+            .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+            .where(
+                buildActiveSecureWhere(projectKey, viewerUserId, access)
+                    .and(ISSUES.KEY.`in`(issueKeys)),
+            )
+            .fetch(ISSUES.KEY)
+            .filterNotNull()
+            .toSet()
+    }
+
+    /**
      * ILIKE ESCAPE '\' 에서 안전하게 사용하기 위해 prefix 의 와일드카드 문자를 이스케이프한다.
      *
      * PostgreSQL ILIKE ESCAPE '\' 규칙.
