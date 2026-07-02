@@ -10,6 +10,7 @@ import jakarta.servlet.http.HttpServletRequest
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.annotation.Order
+import org.springframework.http.HttpMethod
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
@@ -43,7 +44,7 @@ import org.springframework.web.cors.CorsConfigurationSource
  * - /api/v1/auth/providers  — 활성 Provider 목록 조회 (인증 전 필요)
  * - /.well-known/jwks.json  — 공개키 제공 (외부 검증용, CSRF skip)
  * - /actuator/health        — 헬스체크 (로드밸런서, CSRF skip)
- * - /api/v1/public/dashboards/{token} — 익명 공개 대시보드 조회 (FR-DB-03, GET read-only, 단일 세그먼트 토큰)
+ * - /api/v1/public/dashboards/{token} — 익명 공개 대시보드 조회 (FR-DB-03, GET 메서드 고정 read-only, 단일 세그먼트 토큰)
  *
  * ## CSRF Cookie 모드 (ADR docs/decisions/2026-05-20-csrf-cookie-mode.md)
  * CookieCsrfTokenRepository.withHttpOnlyFalse() — SPA가 Cookie를 읽어 X-XSRF-TOKEN 헤더로 전송.
@@ -144,7 +145,8 @@ class SecurityConfig(
                 )
             }
             .authorizeHttpRequests { auth ->
-                // permitAll 5경로 (FR-09-30 4 + FR-DB-03 1) + refresh (쿠키 기반, 인증 토큰 불요)
+                // permitAll — FR-09-30 계열(로그인/providers/jwks/actuator 등, 메서드 무관) + refresh(쿠키 기반, 인증 토큰 불요).
+                // FR-DB-03 익명 대시보드 경로만 아래에서 GET 메서드로 한정해 별도 등록한다(C1 defense-in-depth).
                 auth.requestMatchers(
                     "/api/v1/auth/login",
                     "/api/v1/auth/refresh",
@@ -168,11 +170,13 @@ class SecurityConfig(
                     WEBAUTHN_AUTHENTICATE_START_PATH,
                     "/.well-known/jwks.json",
                     "/actuator/health",
-                    // FR-DB-03: 익명 공개 대시보드 조회 — 로그인 없이 불투명 공유 토큰만으로 정화된 스냅샷 조회.
-                    // DEVELOPMENT.md §1.4 정식 예외(ADR 2026-07-02-fr-db-03-dashboard-share·게이트1 승인). GET read-only.
-                    // 단일 세그먼트 `/*` 매처로 토큰 1개 path 만 노출. 정화·404 수렴은 notification BC(DashboardService) 책임.
-                    PUBLIC_DASHBOARDS_PATH,
                 ).permitAll()
+                // FR-DB-03 (C1): 익명 공개 대시보드 조회 — 로그인 없이 불투명 공유 토큰만으로 정화된 스냅샷 조회.
+                // DEVELOPMENT.md §1.4 정식 예외(ADR 2026-07-02-fr-db-03-dashboard-share·게이트1 승인).
+                // BTS 유일의 익명 데이터 경로이므로 defense-in-depth 로 GET 메서드에만 permitAll 을 고정한다.
+                // 향후 같은 prefix 에 POST/PUT/DELETE 매핑이 추가돼도 익명 노출되지 않는다(비-GET 은 authenticated 로 떨어짐).
+                // 단일 세그먼트 `/*` 매처로 토큰 1개 path 만 노출. 정화·404 수렴은 notification BC(DashboardService) 책임.
+                auth.requestMatchers(HttpMethod.GET, PUBLIC_DASHBOARDS_PATH).permitAll()
                 auth.requestMatchers("/api/**").authenticated()
                 auth.anyRequest().authenticated()
             }
@@ -231,6 +235,8 @@ class SecurityConfig(
          * 익명 공개 대시보드 조회 엔드포인트 (FR-DB-03, [com.bts.notification.dashboard.web.PublicDashboardController]).
          *
          * 로그인 없이 불투명 공유 토큰만으로 접근하는 GET 전용 read-only 경로다.
+         * permitAll 은 `HttpMethod.GET` 으로 고정 등록한다(C1) — BTS 유일 익명 데이터 경로이므로,
+         * 같은 prefix 에 비-GET 매핑이 추가돼도 익명 노출되지 않도록 폭발 반경을 메서드 차원에서 봉인한다.
          * 단일 세그먼트 매처 — 전역 하위경로 와일드카드가 아니라 토큰 1개 path (`/api/v1/public/dashboards/{token}`)만 노출한다.
          * DEVELOPMENT.md §1.4 정식 예외(ADR 2026-07-02-fr-db-03-dashboard-share·게이트1 승인).
          */
