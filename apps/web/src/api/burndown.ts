@@ -3,6 +3,13 @@ import { z } from 'zod'
 import { apiFetch, ApiError } from './client'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 유니온 타입 — 차트 뷰 종류
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 차트 뷰 종류 — 번다운(잔여) / 번업(완료) */
+export type BurndownView = 'burndown' | 'burnup'
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Zod 스키마 — 백엔드 DTO(BurndownResponse/BurndownPointResponse, PR #219)와 1:1 대응
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -48,9 +55,6 @@ export const burndownResponseSchema = z.object({
 
 /** 스프린트 번다운/번업 응답 타입 — Zod 스키마에서 추론 */
 export type BurndownResponse = z.infer<typeof burndownResponseSchema>
-
-/** 차트 뷰 종류 — 번다운(잔여) / 번업(완료) */
-export type BurndownView = 'burndown' | 'burnup'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 헬퍼
