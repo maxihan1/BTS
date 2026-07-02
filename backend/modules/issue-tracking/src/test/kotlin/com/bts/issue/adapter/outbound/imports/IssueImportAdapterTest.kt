@@ -6,9 +6,11 @@ import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTe
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.issue.IssueImportCommand
 import com.bts.shared.issue.IssueImportResult
 import com.bts.shared.permission.IssuePermission
@@ -20,6 +22,8 @@ import com.bts.workflow.scheme.adapter.inbound.WorkflowKeyResolverImpl
 import io.mockk.mockk
 import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
+import org.jooq.SQLDialect
+import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -29,6 +33,8 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Primary
+import org.springframework.jdbc.datasource.DriverManagerDataSource
+import org.springframework.jdbc.datasource.TransactionAwareDataSourceProxy
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
@@ -69,8 +75,30 @@ class IssueImportAdapterTest {
     @Configuration
     @Suppress("LongParameterList")
     open class ImportTestConfig {
+        // [TestConfig.dslContext] 는 DSL.using(rawDataSource, ...) 로 구성돼 jOOQ 가 Spring 트랜잭션 동기화를
+        // 거치지 않고 매 쿼리마다 DriverManagerDataSource.getConnection() 을 직접 호출해 autoCommit=true 인
+        // 별도 커넥션을 매번 새로 연다(jOOQ DataSourceConnectionProvider 는 Spring-aware 조회를 하지 않음).
+        // 그 결과 createIssue 의 INSERT 가 즉시 커밋돼버려 이후 setRollbackOnly() 가 무력화된다
+        // (행 원자성 CONCERN #1 RED 단계에서 실제로 표면화됨 — 다른 기존 통합 테스트는 실패 지점이 항상
+        // insert 이전(validate)이라 이 gap 을 드러낸 적이 없었다). TransactionAwareDataSourceProxy 로 감싸
+        // jOOQ 의 getConnection() 이 DataSourceUtils 를 경유해 스레드 바인딩된 트랜잭션 커넥션을 재사용하도록
+        // 강제한다 — Spring Boot 의 실제 jOOQ 자동구성(JooqAutoConfiguration)이 프로덕션에서 하는 것과 동일한
+        // 보정을 이 테스트 컨텍스트에도 적용한다.
+        @Bean
+        @Primary
+        open fun importTransactionAwareDslContext(dataSource: DriverManagerDataSource): DSLContext =
+            DSL.using(TransactionAwareDataSourceProxy(dataSource), SQLDialect.POSTGRES)
+
         @Bean
         open fun importComponentRepository(dsl: DSLContext): ComponentRepository = ComponentRepository(dsl)
+
+        // 실 repository 필요 — mockk(relaxed=true) 는 UUID? 반환 메서드에도 nil UUID 를 fabricate 해
+        // ActorId(nil UUID) 로 이어져 resolveDefaultAssignee 가 예기치 않게 실패한다(AutoAssignTestConfig 동형 함정).
+        @Bean
+        open fun importProjectLeadRepository(dsl: DSLContext): ProjectLeadRepository = ProjectLeadRepository(dsl)
+
+        @Bean
+        open fun importVersionRepository(dsl: DSLContext): VersionRepository = VersionRepository(dsl)
 
         @Bean
         @Primary
@@ -93,6 +121,8 @@ class IssueImportAdapterTest {
             workflowKeyResolver: WorkflowKeyResolverImpl,
             userLookupPort: UserLookupPort,
             componentRepository: ComponentRepository,
+            projectLeadRepository: ProjectLeadRepository,
+            versionRepository: VersionRepository,
             clock: Clock,
         ): IssueApplicationService =
             IssueApplicationService(
@@ -105,8 +135,8 @@ class IssueImportAdapterTest {
                 workflowKeyResolver = workflowKeyResolver,
                 userLookupPort = userLookupPort,
                 componentRepository = componentRepository,
-                projectLeadRepository = mockk(relaxed = true),
-                versionRepository = mockk(relaxed = true),
+                projectLeadRepository = projectLeadRepository,
+                versionRepository = versionRepository,
                 clock = clock,
                 historyRecorder = mockk(relaxed = true),
             )
@@ -143,8 +173,7 @@ class IssueImportAdapterTest {
     private class FakeImportUserLookupPort : UserLookupPort {
         override fun exists(userId: UUID): Boolean = true
 
-        override fun resolveByEmails(emails: Set<String>): Map<String, UUID> =
-            FIXTURES.filterKeys { it in emails }
+        override fun resolveByEmails(emails: Set<String>): Map<String, UUID> = FIXTURES.filterKeys { it in emails }
 
         companion object {
             private val FIXTURES =
@@ -559,6 +588,7 @@ class IssueImportAdapterTest {
         backendComponentId = insertComponent(PROJECT_KEY, "Backend")
     }
 
+    @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음
     private fun insertComponent(
         projectKey: String,
         name: String,
@@ -604,6 +634,7 @@ class IssueImportAdapterTest {
             }
         }
 
+    @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음
     private fun fetchTypeKey(issueKey: String): String? =
         conn().use { c ->
             c.prepareStatement(
@@ -617,6 +648,7 @@ class IssueImportAdapterTest {
             }
         }
 
+    @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음
     private fun fetchComponentIds(issueKey: String): Set<UUID> =
         conn().use { c ->
             c.prepareStatement(
@@ -653,6 +685,7 @@ class IssueImportAdapterTest {
         }
 
     /** q_issue_events 큐에서 최대 10건을 읽어 반환한다(visibility_timeout=1초). */
+    @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음
     private fun readIssueEventsQueue(): List<String> =
         conn().use { c ->
             c.prepareStatement("SELECT message FROM pgmq.read(?, ?, ?)").use { stmt ->
