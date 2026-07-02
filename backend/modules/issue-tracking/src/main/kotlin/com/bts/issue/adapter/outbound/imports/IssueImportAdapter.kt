@@ -192,24 +192,35 @@ class IssueImportAdapter(
                 "actor has no EDIT_ISSUE permission for project: ${cmd.projectKey}",
             )
         }
-        warnStatusPermissionIfNeeded(cmd, actor, warnings)
+        warnStatusIfNeeded(cmd, resolution, actor, warnings)
         return IssueImportResult.success(DRY_RUN_MARKER, warnings)
     }
 
     /**
-     * [cmd.statusName] 이 지정됐는데 TRANSITION 권한이 없으면 dry-run 경고를 추가한다.
+     * [cmd.statusName] 이 지정됐을 때 실제 실행([applyStatusIfPresent])이 낼 best-effort 경고를
+     * dry-run 에서 미리 산출한다 — 경고 미리보기 갭 수정(CONCERN-A).
      *
-     * [IssueImportStatusService.applyImportedStatus] 는 TRANSITION 권한이 없어도 예외를 던지지 않고
-     * [ImportStatusOutcome.NoPermission] 로 best-effort 강등하므로(클래스 KDoc §4), 이 미리보기도
-     * FORBIDDEN 실패가 아닌 경고로만 남긴다 — 실제 실행 결과와 어긋나지 않는다.
+     * 1. TRANSITION 권한 없음 → 실행의 [ImportStatusOutcome.NoPermission] 경고를 미러.
+     * 2. 권한 있으나 statusName 이 대상 워크플로우 상태에 없음 → 실행의 [ImportStatusOutcome.NoMatch]
+     *    경고를 미러([IssueImportStatusService.statusNameMatches] 로 실제 실행과 동일 기준 검사).
+     *
+     * 두 경우 모두 실제 실행은 best-effort 강등(예외 없음, 클래스 KDoc §4)하므로 FORBIDDEN 실패가
+     * 아닌 경고로만 남긴다 — dry-run 유효성 판정은 실행과 어긋나지 않는다. 실행 시 "자동 생성했습니다"
+     * 같은 informational 경고는 dry-run 에서 생성이 없어 그대로 옮기면 거짓이므로 미러하지 않는다(실행 전용).
      */
-    private fun warnStatusPermissionIfNeeded(
+    private fun warnStatusIfNeeded(
         cmd: IssueImportCommand,
+        resolution: FieldResolution,
         actor: ActorId,
         warnings: MutableList<String>,
     ) {
-        if (cmd.statusName != null && !hasTransitionPermission(actor, cmd.projectKey)) {
-            warnings += "상태 변경 권한이 없어 '${cmd.statusName}' 적용이 건너뛰어질 수 있습니다."
+        val statusName = cmd.statusName ?: return
+        if (!hasTransitionPermission(actor, cmd.projectKey)) {
+            warnings += "상태 변경 권한이 없어 '$statusName' 적용이 건너뛰어질 수 있습니다."
+            return
+        }
+        if (!issueImportStatusService.statusNameMatches(cmd.projectKey, resolution.typeId, statusName)) {
+            warnings += "상태 '$statusName' 을(를) 찾을 수 없어 건너뛰어질 수 있습니다."
         }
     }
 
@@ -521,7 +532,9 @@ class IssueImportAdapter(
         if (names.isEmpty()) return emptyList()
         val active = componentRepository.findByProject(projectId)
         val ids = mutableListOf<UUID>()
-        for (name in names) {
+        // 한 셀 내 중복 이름(대소문자 무시)은 de-dup — 미매칭 이름을 같은 tx 에서 두 번 생성 시도해
+        // partial-unique 23505 로 행 전체가 실패하는 것을 방지(NIT-1). active 는 루프 전 1회만 조회.
+        for (name in names.distinctBy { it.lowercase() }) {
             val matchedId = active.firstOrNull { it.name.equals(name, ignoreCase = true) }?.id
             if (matchedId != null) {
                 ids += matchedId
@@ -583,7 +596,8 @@ class IssueImportAdapter(
         if (names.isEmpty()) return emptyList()
         val active = versionRepository.findByProject(projectId)
         val ids = mutableListOf<UUID>()
-        for (name in names) {
+        // 한 셀 내 중복 이름(대소문자 무시)은 de-dup — [resolveComponentIds] 와 동형(NIT-1, 23505 방지).
+        for (name in names.distinctBy { it.lowercase() }) {
             val matchedId = active.firstOrNull { it.name.equals(name, ignoreCase = true) }?.id
             if (matchedId != null) {
                 ids += matchedId

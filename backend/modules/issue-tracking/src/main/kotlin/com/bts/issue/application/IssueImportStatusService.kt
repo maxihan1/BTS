@@ -7,6 +7,7 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -100,6 +101,30 @@ class IssueImportStatusService(
             throw IssueVersionConflictException(key, expectedVersion)
         }
         return ImportStatusOutcome.Applied(expectedVersion + 1)
+    }
+
+    /**
+     * [statusName] 이 (projectKey, issueTypeId) 대상 워크플로우 상태 이름과 매칭되는지만 검사한다
+     * (실제 전이·부수효과 없음) — dry-run 미리보기 전용.
+     *
+     * [applyImportedStatus] 3단계 매칭과 **동일 기준**(같은 [WorkflowStateCatalog.listStates] +
+     * 대소문자 무시 name 비교)을 사용하므로, 매칭 결과가 실제 실행의 [ImportStatusOutcome.NoMatch]
+     * 여부와 일치한다. 어댑터는 이 결과가 false 면 dry-run 경고를 미리 남긴다(CONCERN-A).
+     *
+     * @param projectKey 대상 프로젝트 키 문자열(예: `"BTS"`).
+     * @param issueTypeId 생성될 이슈의 매칭 유형 id. null(Task 폴백)이면 기본 매핑 상태집합으로 검사.
+     * @param statusName 소스(Jira) 상태 이름.
+     * @return 대상 워크플로우 상태 name 에 매칭되면 true.
+     */
+    fun statusNameMatches(
+        projectKey: String,
+        issueTypeId: IssueTypeId?,
+        statusName: String,
+    ): Boolean {
+        val issueTypeKey = issueTypeId?.let { issueTypeRepository.findById(it)?.key }
+        return workflowStateCatalog
+            .listStates(ProjectKey.of(projectKey), issueTypeKey)
+            .any { it.name.equals(statusName, ignoreCase = true) }
     }
 }
 
