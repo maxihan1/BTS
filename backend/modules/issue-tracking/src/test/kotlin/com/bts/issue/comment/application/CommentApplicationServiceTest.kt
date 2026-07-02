@@ -1,4 +1,4 @@
-// CommentApplicationService create(UPDATE 게이트)·list(VIEW+IssueScope.Issue 게이트+렌더링+정렬) Testcontainers 통합 테스트 (FR-IM-01 PR3 Task 3)
+// CommentApplicationService 통합 테스트 — create(UPDATE 게이트)·list(VIEW+Issue scope 게이트, 렌더링, 정렬) (FR-IM-01 PR3)
 
 package com.bts.issue.comment.application
 
