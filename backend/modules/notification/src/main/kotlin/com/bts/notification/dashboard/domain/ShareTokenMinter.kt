@@ -31,6 +31,8 @@ data class MintedShareToken(
  *
  * 원문은 256bit(32바이트) 랜덤값을 base64url(패딩 없음) 로 인코딩한 불투명 문자열이며,
  * 저장·조회 시에는 SHA-256 hex(소문자 64자) 해시만 사용한다.
+ *
+ * SecureRandom 은 thread-safe 하므로 인스턴스 하나를 재사용한다.
  */
 class ShareTokenMinter {
     private val secureRandom = SecureRandom()
@@ -73,6 +75,8 @@ class ShareTokenMinter {
      *
      * 결정적 함수로, 동일 원문은 항상 동일 해시를 반환한다.
      * 조회 시 클라이언트가 제시한 원문을 재해싱해 저장된 tokenHash 와 비교하는 데 사용한다.
+     *
+     * MessageDigest 는 stateful·non-thread-safe 이므로 호출마다 새 인스턴스를 생성한다.
      *
      * @param plaintext 원문 토큰 문자열
      * @return SHA-256 hex 소문자 64자 해시
