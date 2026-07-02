@@ -7,7 +7,7 @@
 //     도출 — 필드명·타입을 grep으로 대조했다 (projectKey/averageCommitmentSeconds/averageCompletedSeconds/sprints).
 //
 import { http, HttpResponse } from 'msw'
-import type { VelocityResponse } from '@/api/velocity'
+import type { VelocityPointResponse, VelocityResponse } from '@/api/velocity'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 시나리오 트리거 projectKey 상수 — 특정 값 요청 시 고정 응답 (E2E/단위테스트 공용)
@@ -45,41 +45,63 @@ export function seedVelocity(response: VelocityResponse): void {
 // 동일한 projectKey('ATLAS')를 사용한다. 백로그→벨로시티 화면 이동 E2E에서 데이터가 이어지도록 정합.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 기본 벨로시티 픽스처의 프로젝트 키 — backlog-fixtures/burndown-handlers와 동일 값(E2E 정합) */
+const DEFAULT_VELOCITY_PROJECT_KEY = 'ATLAS'
+
+/** 기본 벨로시티 픽스처의 완료 스프린트 3개. 평균은 이 배열에서 산술 계산해 drift를 방지한다. */
+const DEFAULT_VELOCITY_SPRINTS: VelocityPointResponse[] = [
+  {
+    sprintId: 'a0000000-0000-4000-8000-000000000001',
+    name: 'Sprint 1',
+    startDate: '2026-05-01',
+    endDate: '2026-05-14',
+    commitmentSeconds: 36000,
+    completedSeconds: 27000,
+  },
+  {
+    sprintId: 'a0000000-0000-4000-8000-000000000002',
+    name: 'Sprint 2',
+    startDate: '2026-05-15',
+    endDate: '2026-05-28',
+    commitmentSeconds: 28800,
+    completedSeconds: 21600,
+  },
+  {
+    sprintId: 'a0000000-0000-4000-8000-000000000003',
+    name: 'Sprint 3',
+    startDate: '2026-05-29',
+    endDate: '2026-06-11',
+    commitmentSeconds: 25200,
+    completedSeconds: 23400,
+  },
+]
+
+/**
+ * 스프린트 배열의 commitmentSeconds/completedSeconds 산술평균을 계산한다.
+ * 백엔드 VelocityResponse KDoc 계약("스프린트가 없으면 0")과 동일하게 빈 배열이면 0을 반환한다.
+ *
+ * @param sprints 평균을 계산할 벨로시티 포인트 배열
+ * @returns [averageCommitmentSeconds, averageCompletedSeconds] 튜플
+ */
+function averageSeconds(sprints: VelocityPointResponse[]): [number, number] {
+  if (sprints.length === 0) return [0, 0]
+  const totalCommitment = sprints.reduce((sum, s) => sum + s.commitmentSeconds, 0)
+  const totalCompleted = sprints.reduce((sum, s) => sum + s.completedSeconds, 0)
+  return [Math.round(totalCommitment / sprints.length), Math.round(totalCompleted / sprints.length)]
+}
+
+const [defaultAverageCommitmentSeconds, defaultAverageCompletedSeconds] = averageSeconds(DEFAULT_VELOCITY_SPRINTS)
+
 /**
  * 기본 벨로시티 픽스처 — ATLAS 프로젝트, 완료 스프린트 3개.
- * averageCommitmentSeconds/averageCompletedSeconds는 sprints의 산술평균이다
- * (VelocityResponse.averageCommitmentSeconds KDoc — "스프린트가 없으면 0" 계약과 일치).
+ * averageCommitmentSeconds/averageCompletedSeconds는 sprints에서 산술 계산한다(frontend-zod-backend-dto-contract-gap
+ * 교훈 — 응답 스키마·계약 필드는 backend DTO와 정합해야 하므로, 프론트 픽스처도 파생 필드를 리터럴로 중복 기재하지 않는다).
  */
 export const DEFAULT_VELOCITY: VelocityResponse = {
-  projectKey: 'ATLAS',
-  averageCommitmentSeconds: 30000,
-  averageCompletedSeconds: 24000,
-  sprints: [
-    {
-      sprintId: 'a0000000-0000-4000-8000-000000000001',
-      name: 'Sprint 1',
-      startDate: '2026-05-01',
-      endDate: '2026-05-14',
-      commitmentSeconds: 36000,
-      completedSeconds: 27000,
-    },
-    {
-      sprintId: 'a0000000-0000-4000-8000-000000000002',
-      name: 'Sprint 2',
-      startDate: '2026-05-15',
-      endDate: '2026-05-28',
-      commitmentSeconds: 28800,
-      completedSeconds: 21600,
-    },
-    {
-      sprintId: 'a0000000-0000-4000-8000-000000000003',
-      name: 'Sprint 3',
-      startDate: '2026-05-29',
-      endDate: '2026-06-11',
-      commitmentSeconds: 25200,
-      completedSeconds: 23400,
-    },
-  ],
+  projectKey: DEFAULT_VELOCITY_PROJECT_KEY,
+  averageCommitmentSeconds: defaultAverageCommitmentSeconds,
+  averageCompletedSeconds: defaultAverageCompletedSeconds,
+  sprints: DEFAULT_VELOCITY_SPRINTS,
 }
 
 // 모듈 로드 시 기본 픽스처를 자동 시드한다 — fr-bd-01 교훈 (신규 store 자동 시드 필수).
