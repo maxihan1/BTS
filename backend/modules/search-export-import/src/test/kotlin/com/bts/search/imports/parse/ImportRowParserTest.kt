@@ -155,6 +155,33 @@ class ImportRowParserTest : DescribeSpec({
         }
     }
 
+    // ── CSV: status/버전 (FR-IM-01 PR2 Task 2) ───────────────────────────────
+
+    describe("ImportRowParser.parseCsv — status/버전") {
+        it("헤더에 status/fix version/affects version 이 있으면(대소문자 무시) 추출한다 — 버전은 콤마/세미콜론 다중값 분리") {
+            val csv =
+                "Summary,Status,Fix Version,Affects Version\r\n" +
+                    "a,In Progress,\"1.0,1.1\",2.0;2.1\r\n"
+
+            val rows = parseCsvRows(csv)
+
+            rows shouldHaveSize 1
+            rows[0].statusName shouldBe "In Progress"
+            rows[0].fixVersionNames shouldContainExactly listOf("1.0", "1.1")
+            rows[0].affectsVersionNames shouldContainExactly listOf("2.0", "2.1")
+        }
+
+        it("status/버전 컬럼이 헤더에 없으면 statusName=null, 버전 목록=emptyList") {
+            val csv = "Summary\r\na\r\n"
+
+            val rows = parseCsvRows(csv)
+
+            rows[0].statusName.shouldBeNull()
+            rows[0].fixVersionNames shouldContainExactly emptyList()
+            rows[0].affectsVersionNames shouldContainExactly emptyList()
+        }
+    }
+
     // ── JSON: 코어 필드 추출 ──────────────────────────────────────────────────
 
     describe("ImportRowParser.parseJson") {
@@ -231,6 +258,45 @@ class ImportRowParserTest : DescribeSpec({
             val rows = parseJsonRows(json)
 
             rows.map { it.rowNumber } shouldContainExactly listOf(1, 2)
+        }
+    }
+
+    // ── JSON: status/버전 (FR-IM-01 PR2 Task 2) ──────────────────────────────
+
+    describe("ImportRowParser.parseJson — status/버전") {
+        it("fields.status.name/fixVersions[].name/versions[].name 을 추출한다") {
+            val json =
+                """
+                {
+                  "issues": [
+                    {
+                      "fields": {
+                        "summary": "Imported issue",
+                        "status": { "name": "In Progress" },
+                        "fixVersions": [ { "name": "1.0" }, { "name": "1.1" } ],
+                        "versions": [ { "name": "2.0" } ]
+                      }
+                    }
+                  ]
+                }
+                """.trimIndent()
+
+            val rows = parseJsonRows(json)
+
+            rows shouldHaveSize 1
+            rows[0].statusName shouldBe "In Progress"
+            rows[0].fixVersionNames shouldContainExactly listOf("1.0", "1.1")
+            rows[0].affectsVersionNames shouldContainExactly listOf("2.0")
+        }
+
+        it("status/fixVersions/versions 필드가 없으면 statusName=null, 버전 목록=emptyList") {
+            val json = """{ "issues": [ { "fields": { "summary": "one" } } ] }"""
+
+            val rows = parseJsonRows(json)
+
+            rows[0].statusName.shouldBeNull()
+            rows[0].fixVersionNames shouldContainExactly emptyList()
+            rows[0].affectsVersionNames shouldContainExactly emptyList()
         }
     }
 }) {
