@@ -211,4 +211,19 @@ isLoading/isError(ApiError 403 분기)/빈 분기 → 각 문구, 정상 → `<V
 - 추가 검증: typecheck, lint, vitest, playwright(qa)
 - ★핵심 함정(선례): recharts jsdom width0(순수변환 단위+실렌더 E2E) · TanStack 타입드 Link는 라우트 등록 후 · 라우트 카운트 주석 갱신 · MSW↔계약 drift 가드 · E2E testDir=apps/web/e2e/
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-review (eng 집중, 2026-07-03) — 완료 FR 미러라 design-shotgun/autoplan machinery 생략
+- ✅ 의존성 그래프 정합 — T5(nav Link)가 T4(라우트 등록) 의존 올바름(TanStack 타입드 `to`는 등록 라우트 대조).
+- ✅ 파일 겹침 0 — 동일 wave 내 두 task가 같은 파일 안 건드림(router.ts=T4·handlers.ts=T6·backlog.tsx=T5 단독).
+- ✅ recharts jsdom width0 — T2 순수변환 단위 + 실렌더 T7 E2E 위임.
+- ✅ MSW↔계약 drift 가드 — T6 스키마 적합성 테스트.
+- ⚠️ 라우트 카운트 — "38→39"는 가정값. **impl 시점 실제 카운트 재확인** 후 증가.
+- ⚠️ 평균 `ReferenceLine` — 수평선에 값 label 필수(평균이 핵심 지표).
+- ⚠️ 에러 폴백 — 비-403 에러는 `loadFailed` 일반 폴백. 401은 apiFetch 세션 리다이렉트(기존 관례).
+- BLOCKER: 없음.
+
+### 디자인 관점 (경량)
+- 번다운 시각 언어 미러(높이 360·color 톤·Legend·`role="img"`) → 일관성 유지.
+- 두 막대(commitment/completed) 대비색 + Legend + 툴팁으로 색-단독 회피(WCAG). 접근성 색 대비 확보.
+- 로딩/빈/403 상태 문구는 번다운 status 패턴 미러.
