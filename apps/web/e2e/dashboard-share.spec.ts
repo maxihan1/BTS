@@ -7,8 +7,8 @@
 //                       렌더 + 데이터 가젯(issue_count) "로그인이 필요한 가젯입니다" 플레이스홀더 +
 //                       편집 UI(가젯 추가/저장/설정/삭제/공유) 부재 확인
 //   S3.  embed=1     — 크롬 최소화(이름 h1 미노출), 그리드(정적 가젯)는 그대로 렌더
-//                       ⚠️ test.skip — 구현 결함 발견(하단 S3 test.skip 사유 주석 참조, qa-engineer
-//                       수정 불가 — src/router.ts validateSearch가 embed=1을 숫자로 파싱해 항상 무시)
+//                       (구현 결함 수정 완료 — router.ts validateSearch가 embed=1을 숫자로 파싱해
+//                       항상 무시하던 버그. embed를 boolean으로 정규화해 숫자/문자열 둘 다 인정)
 //   S5a. 무효 토큰   — 존재하지 않는 토큰 → 404 화면(로그인 리다이렉트 아님), 완전 비로그인 세션
 //   S5b. 취소된 토큰 — 발급 후 "취소"(회수) → 같은 토큰으로 재열람 시 404
 //
@@ -237,25 +237,31 @@ test.describe('FR-DB-03 대시보드 공유 (링크 발급/복사/임베드/익�
   // ───────────────────────────────────────────────────────────────────────────
   // S3. embed=1 — 크롬 최소화(이름 미노출), 그리드(정적 가젯)는 그대로 렌더
   //
-  // ⚠️ SKIP 사유 — 재현 불가가 아니라 구현 결함 발견(qa-engineer는 src/ 수정 불가라 직접 수정 못함).
-  //   dashboardsSharedTokenRoute(router.ts)의 validateSearch가
-  //   `typeof search['embed'] === 'string' ? search['embed'] : undefined` 로 embed 값을
-  //   추출하는데, TanStack Router의 기본 parseSearch(defaultParseSearch = parseSearchWith(JSON.parse))는
-  //   각 쿼리 값을 JSON.parse로 변환한다. 즉 실제 URL `?embed=1`(ShareDashboardModal의 임베드
-  //   스니펫이 생성하는 정확히 그 형식)을 파싱하면 embed 값이 문자열 '1'이 아니라 **숫자 1**이 된다
-  //   (node로 직접 검증: defaultParseSearch('?embed=1') === { embed: 1 }, typeof 1 === 'number').
-  //   따라서 validateSearch의 `typeof === 'string'` 체크가 항상 실패해 embed가 항상 undefined로
-  //   떨어지고, SharedDashboardRouteAdapter(dashboards.shared.$token.tsx)의
-  //   `search.embed === '1'` 비교도 항상 false다 — embed=1 크롬 최소화 기능은 pushState 기반
-  //   E2E뿐 아니라 실제 브라우저 hard navigation·iframe 임베드 어디서도 절대 동작하지 않는다
-  //   (E2E 기법 문제 아님, 결정론적 코드 결함). 수정 예시(참고용, qa-engineer는 적용 불가):
-  //   validateSearch에서 `search['embed'] === 1 || search['embed'] === '1'`로 숫자/문자열 둘 다 인정.
-  //   → Maxi 보고: hot-fix(1줄) vs defer 결정 필요. 버그가 고쳐지면 이 test.skip을 test로 되돌리면
-  //   그대로 통과할 시나리오로 작성해 두었다(아래 몸체 그대로 사용 가능).
+  // Given  alice가 SHARE_DEMO_DASHBOARD에서 공유 링크를 발급함(issueShareLink)
+  // When   발급된 토큰 + `?embed=1` 쿼리로 /dashboards/shared/{token}?embed=1 진입
+  //        (pushState — store 영속)
+  // Then   대시보드 이름 h1 미노출(크롬 최소화)
+  //        정적 가젯(text_widget/link_list)은 그대로 렌더
   // ───────────────────────────────────────────────────────────────────────────
-  test.skip('S3 embed=1 — 크롬 최소화(이름 미노출) + 그리드는 렌더 (구현 결함 — embed 쿼리파싱 숫자화, 상단 주석 참조)', () => {
-    // SKIP: dashboardsSharedTokenRoute validateSearch가 JSON.parse된 숫자 1을 문자열 '1'과
-    // 비교해 항상 false — embed 모드가 실제로 활성화되지 않는 기존 구현 결함(qa-engineer 수정 불가).
+  test('S3 embed=1 — 크롬 최소화(이름 미노출) + 그리드는 렌더', async ({ page }) => {
+    // Given. alice 로그인 + 상세 진입 + 공유 링크 발급
+    await loginAsAlice(page)
+    await page.goto(SHARE_DEMO_DASHBOARD_URL)
+    const { token } = await issueShareLink(page)
+
+    // When. embed=1 쿼리와 함께 익명 공유 뷰 진입 (SPA 내부 전환 — store 영속)
+    await navigateViaPushState(page, `/dashboards/shared/${token}?embed=1`)
+
+    // Then. 그리드(정적 가젯)는 그대로 렌더 — fetch 완료(로딩 스켈레톤 종료)까지 대기해 이후
+    //   heading 부재 단언이 로딩 중 일시적 부재가 아닌 완전히 정착된 DOM 상태를 검사하게 한다
+    //   (그렇지 않으면 not.toBeVisible()이 로딩 스켈레톤 단계에서 조기 통과해 가짜그린이 된다).
+    await expect(page.getByText(STATIC_TEXT_CONTENT)).toBeVisible()
+    const link = page.getByRole('link', { name: STATIC_LINK_LABEL })
+    await expect(link).toBeVisible()
+    await expect(link).toHaveAttribute('href', STATIC_LINK_URL)
+
+    // Then. 크롬 최소화 — 대시보드 이름 h1 미노출 (컨텐츠 정착 후 확정 상태 검사)
+    await expect(page.getByRole('heading', { name: SHARE_DEMO_DASHBOARD_NAME })).not.toBeVisible()
   })
 
   // ───────────────────────────────────────────────────────────────────────────
