@@ -3,9 +3,13 @@
 package com.bts.notification.dashboard.application
 
 import com.bts.notification.dashboard.domain.Dashboard
+import com.bts.notification.dashboard.domain.DashboardShareToken
 import com.bts.notification.dashboard.domain.DashboardVisibility
+import com.bts.notification.dashboard.domain.MintedShareToken
+import com.bts.notification.dashboard.domain.ShareTokenMinter
 import com.bts.notification.dashboard.repository.DashboardPage
 import com.bts.notification.dashboard.repository.DashboardRepository
+import com.bts.notification.dashboard.repository.DashboardShareTokenRepository
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -26,6 +30,8 @@ import java.util.UUID
  */
 class DashboardServiceTest {
     private val repository: DashboardRepository = mockk()
+    private val shareTokenRepository: DashboardShareTokenRepository = mockk()
+    private val shareTokenMinter: ShareTokenMinter = mockk()
     private val fixedNow: Instant = Instant.parse("2026-06-22T12:00:00Z")
     private val clock: Clock = Clock.fixed(fixedNow, ZoneOffset.UTC)
     private lateinit var service: DashboardService
@@ -36,7 +42,14 @@ class DashboardServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = DashboardService(repository, clock)
+        service =
+            DashboardService(
+                repository = repository,
+                shareTokenRepository = shareTokenRepository,
+                shareTokenMinter = shareTokenMinter,
+                layoutSanitizer = AnonymousLayoutSanitizer,
+                clock = clock,
+            )
     }
 
     // ── 생성 ──────────────────────────────────────────────────────────────────
@@ -315,25 +328,225 @@ class DashboardServiceTest {
             .isInstanceOf(DashboardNotFoundException::class.java)
     }
 
+    // ── 공유 토큰 발급 (issueShareToken) ────────────────────────────────────────
+
+    /** SHARE-1. issueShareToken — 소유자가 발급하면 원문 토큰 포함 결과 반환 + repo.insert 호출. */
+    @Test
+    fun `issueShareToken — 소유자가 발급하면 원문 토큰을 포함한 결과를 반환하고 insert 를 호출한다`() {
+        val dashboard = buildDashboard(ownerId = ownerId)
+        val minted = MintedShareToken(plaintext = "RAW-PLAINTEXT", token = buildToken(dashboard.id))
+        every { repository.findById(dashboard.id) } returns dashboard
+        every { shareTokenRepository.countByDashboard(dashboard.id) } returns 0
+        every { shareTokenMinter.mint(dashboard.id, ownerId, null, fixedNow) } returns minted
+        every { shareTokenRepository.insert(minted.token) } returns minted.token
+
+        val result = service.issueShareToken(actorId = ownerId, dashboardId = dashboard.id, expiresAt = null)
+
+        assertThat(result.plaintext).isEqualTo("RAW-PLAINTEXT")
+        assertThat(result.token).isEqualTo(minted.token)
+        verify(exactly = 1) { shareTokenRepository.insert(minted.token) }
+    }
+
+    /** SHARE-2. issueShareToken — 비소유자가 발급하면 403. */
+    @Test
+    fun `issueShareToken — 비소유자가 발급하면 DashboardForbiddenException 발생`() {
+        val dashboard = buildDashboard(ownerId = ownerId)
+        every { repository.findById(dashboard.id) } returns dashboard
+
+        assertThatThrownBy { service.issueShareToken(actorId = otherId, dashboardId = dashboard.id, expiresAt = null) }
+            .isInstanceOf(DashboardForbiddenException::class.java)
+        verify(exactly = 0) { shareTokenRepository.insert(any()) }
+    }
+
+    /** SHARE-3. issueShareToken — 없는·삭제된 대시보드는 404. */
+    @Test
+    fun `issueShareToken — 존재하지 않는 대시보드는 DashboardNotFoundException 발생`() {
+        val id = UUID.randomUUID()
+        every { repository.findById(id) } returns null
+
+        assertThatThrownBy { service.issueShareToken(actorId = ownerId, dashboardId = id, expiresAt = null) }
+            .isInstanceOf(DashboardNotFoundException::class.java)
+    }
+
+    /** SHARE-4. issueShareToken — 활성 토큰 수가 상한 이상이면 400. */
+    @Test
+    fun `issueShareToken — 발급 토큰 수가 상한 이상이면 ShareTokenLimitExceededException 발생`() {
+        val dashboard = buildDashboard(ownerId = ownerId)
+        every { repository.findById(dashboard.id) } returns dashboard
+        every { shareTokenRepository.countByDashboard(dashboard.id) } returns DashboardShareToken.MAX_SHARE_TOKENS
+
+        assertThatThrownBy { service.issueShareToken(actorId = ownerId, dashboardId = dashboard.id, expiresAt = null) }
+            .isInstanceOf(ShareTokenLimitExceededException::class.java)
+        verify(exactly = 0) { shareTokenRepository.insert(any()) }
+    }
+
+    // ── 공유 토큰 목록 (listShareTokens) ─────────────────────────────────────────
+
+    /** SHARE-5. listShareTokens — 소유자는 repo.listByDashboard 결과를 반환한다. */
+    @Test
+    fun `listShareTokens — 소유자는 발급된 공유 토큰 목록을 반환한다`() {
+        val dashboard = buildDashboard(ownerId = ownerId)
+        val tokens = listOf(buildToken(dashboard.id), buildToken(dashboard.id))
+        every { repository.findById(dashboard.id) } returns dashboard
+        every { shareTokenRepository.listByDashboard(dashboard.id) } returns tokens
+
+        val result = service.listShareTokens(actorId = ownerId, dashboardId = dashboard.id)
+
+        assertThat(result).isEqualTo(tokens)
+    }
+
+    /** SHARE-6. listShareTokens — 비소유자는 403. */
+    @Test
+    fun `listShareTokens — 비소유자가 조회하면 DashboardForbiddenException 발생`() {
+        val dashboard = buildDashboard(ownerId = ownerId)
+        every { repository.findById(dashboard.id) } returns dashboard
+
+        assertThatThrownBy { service.listShareTokens(actorId = otherId, dashboardId = dashboard.id) }
+            .isInstanceOf(DashboardForbiddenException::class.java)
+    }
+
+    // ── 공유 토큰 취소 (revokeShareToken) ────────────────────────────────────────
+
+    /** SHARE-7. revokeShareToken — 소유자는 repo.deleteById(shareId, dashboardId) 를 호출한다. */
+    @Test
+    fun `revokeShareToken — 소유자가 취소하면 deleteById 를 dashboardId 스코프로 호출한다`() {
+        val dashboard = buildDashboard(ownerId = ownerId)
+        val shareId = UUID.randomUUID()
+        every { repository.findById(dashboard.id) } returns dashboard
+        every { shareTokenRepository.deleteById(shareId, dashboard.id) } returns 1
+
+        service.revokeShareToken(actorId = ownerId, dashboardId = dashboard.id, shareId = shareId)
+
+        verify(exactly = 1) { shareTokenRepository.deleteById(shareId, dashboard.id) }
+    }
+
+    /** SHARE-8. revokeShareToken — deleteById 가 0 을 반환하면(다른 대시보드의 shareId 등) 404. */
+    @Test
+    fun `revokeShareToken — deleteById 가 0 을 반환하면 ShareTokenNotFoundException 발생`() {
+        val dashboard = buildDashboard(ownerId = ownerId)
+        val shareId = UUID.randomUUID()
+        every { repository.findById(dashboard.id) } returns dashboard
+        every { shareTokenRepository.deleteById(shareId, dashboard.id) } returns 0
+
+        assertThatThrownBy {
+            service.revokeShareToken(actorId = ownerId, dashboardId = dashboard.id, shareId = shareId)
+        }.isInstanceOf(ShareTokenNotFoundException::class.java)
+    }
+
+    /** SHARE-9. revokeShareToken — 비소유자는 403 (deleteById 미호출). */
+    @Test
+    fun `revokeShareToken — 비소유자가 취소하면 DashboardForbiddenException 발생`() {
+        val dashboard = buildDashboard(ownerId = ownerId)
+        val shareId = UUID.randomUUID()
+        every { repository.findById(dashboard.id) } returns dashboard
+
+        assertThatThrownBy {
+            service.revokeShareToken(actorId = otherId, dashboardId = dashboard.id, shareId = shareId)
+        }.isInstanceOf(DashboardForbiddenException::class.java)
+        verify(exactly = 0) { shareTokenRepository.deleteById(any(), any()) }
+    }
+
+    // ── 익명 공개 조회 (getPublicByToken) ────────────────────────────────────────
+
+    /** SHARE-10. getPublicByToken — 유효 토큰이면 name/description/정화된 layout 을 반환한다. */
+    @Test
+    fun `getPublicByToken — 유효 토큰이면 정화된 layout 과 함께 공개 스냅샷을 반환한다`() {
+        val rawLayout =
+            """[{"i":"g1","x":0,"y":0,"w":4,"h":2,"gadgetType":"assigned_to_me","config":{"projectKey":"BTS"}}]"""
+        val dashboard =
+            buildDashboard(
+                ownerId = ownerId,
+                name = "공유 대시보드",
+                description = "공개 설명",
+                layout = rawLayout,
+            )
+        val token = buildToken(dashboard.id, expiresAt = null)
+        every { shareTokenMinter.hash("raw-token") } returns "HASHED"
+        every { shareTokenRepository.findActiveByTokenHash("HASHED") } returns token
+        every { repository.findById(dashboard.id) } returns dashboard
+
+        val snapshot = service.getPublicByToken("raw-token")
+
+        assertThat(snapshot.name).isEqualTo("공유 대시보드")
+        assertThat(snapshot.description).isEqualTo("공개 설명")
+        // sanitizer 호출 검증 — 서비스 반환 layout 이 정화 결과와 정확히 일치하고, config(projectKey)가 제거됨
+        assertThat(snapshot.layout).isEqualTo(AnonymousLayoutSanitizer.sanitize(rawLayout))
+        assertThat(snapshot.layout).doesNotContain("projectKey")
+    }
+
+    /** SHARE-11. getPublicByToken — 미존재 해시는 404. */
+    @Test
+    fun `getPublicByToken — 미존재 해시는 PublicDashboardNotFoundException 발생`() {
+        every { shareTokenMinter.hash("raw-token") } returns "HASHED"
+        every { shareTokenRepository.findActiveByTokenHash("HASHED") } returns null
+
+        assertThatThrownBy { service.getPublicByToken("raw-token") }
+            .isInstanceOf(PublicDashboardNotFoundException::class.java)
+    }
+
+    /** SHARE-12. getPublicByToken — 만료 토큰(expiresAt <= now)은 미존재와 동일하게 404 로 수렴한다. */
+    @Test
+    fun `getPublicByToken — 만료된 토큰은 PublicDashboardNotFoundException 발생`() {
+        // expiresAt == now (경계 포함) → isExpired = true
+        val expiredToken = buildToken(UUID.randomUUID(), expiresAt = fixedNow)
+        every { shareTokenMinter.hash("raw-token") } returns "HASHED"
+        every { shareTokenRepository.findActiveByTokenHash("HASHED") } returns expiredToken
+
+        assertThatThrownBy { service.getPublicByToken("raw-token") }
+            .isInstanceOf(PublicDashboardNotFoundException::class.java)
+    }
+
+    /** SHARE-13. getPublicByToken — 원문을 hash 해 조회하며 원문으로 직접 조회하지 않는다. */
+    @Test
+    fun `getPublicByToken — 원문 토큰을 해시하여 findActiveByTokenHash 로 조회한다`() {
+        every { shareTokenMinter.hash("raw-token") } returns "HASHED"
+        every { shareTokenRepository.findActiveByTokenHash("HASHED") } returns null
+
+        assertThatThrownBy { service.getPublicByToken("raw-token") }
+            .isInstanceOf(PublicDashboardNotFoundException::class.java)
+
+        verify(exactly = 1) { shareTokenMinter.hash("raw-token") }
+        verify(exactly = 1) { shareTokenRepository.findActiveByTokenHash("HASHED") }
+        // 원문으로 직접 조회하지 않는다 (해시 조회만)
+        verify(exactly = 0) { shareTokenRepository.findActiveByTokenHash("raw-token") }
+    }
+
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
 
+    @Suppress("LongParameterList") // 테스트 데이터 빌더 — 각 필드 기본값을 개별 오버라이드하기 위한 헬퍼
     private fun buildDashboard(
         ownerId: UUID = this.ownerId,
         visibility: DashboardVisibility = DashboardVisibility.PRIVATE,
         sharedUserIds: Set<UUID> = emptySet(),
         version: Long = 0L,
+        name: String = "테스트 대시보드",
+        description: String? = null,
+        layout: String = "[]",
     ): Dashboard =
         Dashboard(
             id = UUID.randomUUID(),
             ownerId = ownerId,
-            name = "테스트 대시보드",
-            description = null,
+            name = name,
+            description = description,
             visibility = visibility,
-            layout = "[]",
+            layout = layout,
             sharedUserIds = sharedUserIds,
             createdAt = fixedNow,
             updatedAt = fixedNow,
             deletedAt = null,
             version = version,
+        )
+
+    private fun buildToken(
+        dashboardId: UUID,
+        expiresAt: Instant? = null,
+    ): DashboardShareToken =
+        DashboardShareToken(
+            id = UUID.randomUUID(),
+            dashboardId = dashboardId,
+            tokenHash = "hash-${UUID.randomUUID()}",
+            createdBy = ownerId,
+            createdAt = fixedNow,
+            expiresAt = expiresAt,
         )
 }

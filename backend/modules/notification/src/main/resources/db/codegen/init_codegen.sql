@@ -97,3 +97,17 @@ CREATE TABLE favorites (
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
     CONSTRAINT uq_favorites_user_target UNIQUE (user_id, target_type, target_id)
 );
+
+-- ── dashboard_share_tokens (V408 미러) ─────────────────────────────────────────
+CREATE TABLE dashboard_share_tokens (
+    id               UUID PRIMARY KEY,
+    dashboard_id     UUID NOT NULL REFERENCES dashboards(id) ON DELETE CASCADE,
+    token_hash       TEXT NOT NULL,
+    created_by       UUID NOT NULL,
+    created_at       TIMESTAMPTZ NOT NULL,
+    expires_at       TIMESTAMPTZ,
+    last_accessed_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX ux_dashboard_share_tokens_hash ON dashboard_share_tokens (token_hash);
+CREATE INDEX ix_dashboard_share_tokens_dashboard ON dashboard_share_tokens (dashboard_id);

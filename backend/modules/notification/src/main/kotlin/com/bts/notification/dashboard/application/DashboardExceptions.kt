@@ -31,3 +31,32 @@ class DashboardForbiddenException : RuntimeException("해당 대시보드를 수
  */
 class DashboardConflictException(val id: UUID) :
     RuntimeException("대시보드가 다른 사용자에 의해 이미 수정되었습니다. 최신 버전으로 다시 시도하세요. id=$id")
+
+/**
+ * 대시보드당 공유 토큰 개수 상한(DashboardShareToken.MAX_SHARE_TOKENS)을 초과해
+ * 신규 발급이 거부됐을 때 던지는 예외.
+ *
+ * HTTP 400 으로 매핑된다. message 에 현재 개수·상한 등 내부 상태를 포함하지 않는다
+ * (memory: fr-pm-04-guard-exception-message-http-leak 교훈).
+ */
+class ShareTokenLimitExceededException :
+    RuntimeException("발급 가능한 공유 링크 개수 상한을 초과했습니다.")
+
+/**
+ * 취소하려는 공유 토큰이 존재하지 않거나 해당 대시보드 소유 토큰이 아닐 때 던지는 예외.
+ *
+ * HTTP 404 로 매핑된다. deleteById rowcount = 0(미존재 또는 dashboardId 스코프 불일치)이면
+ * Service 가 이 예외를 발생시킨다. message 에 shareId 등 내부 식별자를 포함하지 않는다.
+ */
+class ShareTokenNotFoundException :
+    RuntimeException("공유 링크를 찾을 수 없습니다.")
+
+/**
+ * 익명(비로그인) 공개 조회에서 공유 토큰이 유효하지 않을 때 던지는 예외.
+ *
+ * HTTP 404 로 매핑된다. 미존재·만료·부모 대시보드 삭제를 구분하지 않고 모두 404 로 수렴시켜
+ * 토큰 존재 여부·만료 여부가 응답으로 새어나가지 않도록 한다(존재 숨김 정책).
+ * message 에 토큰 원문·해시·내부 상태를 절대 포함하지 않는다.
+ */
+class PublicDashboardNotFoundException :
+    RuntimeException("공유된 대시보드를 찾을 수 없습니다.")
