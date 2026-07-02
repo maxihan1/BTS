@@ -31,8 +31,11 @@ SDD 14.1.2의 PUBLIC(비로그인·URL 토큰)과 14.5의 iframe 임베드(`?emb
 - **DashboardShareToken** (신규 자식 엔티티): 한 대시보드에 0개 이상. Dashboard aggregate를
   통해서만 생성/취소.
 - 토큰은 **불투명(opaque) 랜덤 토큰** — 서버가 발급하고 원문은 발급 응답에서 1회만 노출.
-  DB에는 **SHA-256 해시만** 저장한다 (FR-MF-05 신뢰 디바이스 선례 계승, 유출 시 원문 복원 불가).
-- 취소 = 하드 삭제 또는 revoked_at 무효화(spec에서 확정). 개별 링크 취소 가능.
+  DB에는 **SHA-256 해시만** 저장한다 (DATA.md §8 PAT 패턴·FR-MF-05 신뢰 디바이스 선례 계승, 유출 시 원문 복원 불가).
+- **취소 = 하드 삭제** (row 즉시 제거, `deleted_at` 컬럼 없음). 공유 토큰은 세션/refresh_token/PAT와
+  동일한 **임시 자격증명(ephemeral credential)** 범주 — DATA.md §3 하드 삭제 허용 영역에 해당한다.
+  외부 영구 인용 가치가 낮고(이슈 키와 다름) 복구는 재발급으로 대체하므로 소프트 삭제 불요. 개별 링크 취소 가능.
+  (DATA.md §1.2 "하드 삭제는 ADR 필수" 충족 — 본 ADR이 근거.)
 
 PUBLIC enum 값을 추가하는 대안은 기각. 개별 링크 취소/다중 링크 발급이 어렵고,
 product D3의 `dashboard_share_tokens` 테이블과 중복 모델이 된다.

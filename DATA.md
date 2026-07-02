@@ -52,6 +52,7 @@ AIG의 "자금 손실 5원칙"과 동일 패턴. 위반 시 즉시 PR BLOCKER.
 - **첨부** (`issue_attachments`) — 삭제 시 DB row + MinIO 객체 즉시 제거. 대용량 바이너리(스토리지 누적 회피) + 이슈 키와 달리 외부 영구 인용이 약해 보존 가치 낮음. `deleted_at` 컬럼 없음. ADR `2026-06-15-fr-ac-01-attachment-storage` (FR-AC-01, Maxi 확정)
 - **즐겨찾기** (`favorites`) — 즐겨찾기 해제(unstar)는 행 즉시 제거. 개인 북마크 토글로 복구 가치 낮음(Watcher와 동일 성격). `deleted_at` 컬럼 없음. ADR `2026-06-24-fr-ux-02-favorites` (FR-UX-02, Maxi 확정)
 - **저장된 필터** (`saved_filters`) — 필터 삭제 시 행 즉시 제거. 외부 영구 인용 약함(이슈 키와 다름). `deleted_at` 컬럼 없음. ADR `2026-06-26-fr-sr-03-saved-filters` (FR-SR-03, Maxi 확정)
+- **대시보드 공유 토큰** (`dashboard_share_tokens`) — 공유 링크 취소(revoke) 시 행 즉시 제거. 세션/refresh_token/PAT와 동일한 임시 자격증명(ephemeral credential)이며 복구는 재발급으로 대체. `deleted_at` 컬럼 없음. ADR `2026-07-02-fr-db-03-dashboard-share` (FR-DB-03, Maxi 확정)
 
 ### 영구 삭제 (GDPR 등 법적 요청)
 
