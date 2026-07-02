@@ -48,6 +48,10 @@ import java.util.UUID
  * - (h) 100 행 미만(PROGRESS_UPDATE_INTERVAL_ROWS 주기 미도달) 완료: handleRow 내부 주기 갱신이 한 번도
  *   발생하지 않아도 finalizeCompleted 가 progress=100·totalRows=실제 처리 행수를 확정하는지 검증
  *   (PR1 코드리뷰 C2 회귀 — 100 미만 파일은 완료 후 progress=0 로 남던 결함).
+ * - (i) toCommand 매핑: statusName/fixVersionNames/affectsVersionNames 가 [IssueImportCommand] 로 전달되는지 (PR2 Task 5, G1).
+ * - (j) 경고 노출: [IssueImportResult.Success.warnings] 가 있으면 severity=WARNING 행으로 결과 로그에 기록되고,
+ *   실패행이 0 이어도 로그가 업로드되며(errorLogObjectKey non-null), 해당 행은 여전히 succeeded 로 집계되는지
+ *   (PR1 은 warnings 를 폐기했다 — G1 회귀 방지, PR2 Task 5).
  */
 class ImportJobProcessorTest {
     private val issueImportPort: IssueImportPort = mockk()
@@ -254,5 +258,48 @@ class ImportJobProcessorTest {
         verify(exactly = 1) { repository.updateCounts(any(), any(), any(), any(), any()) }
         verify(exactly = 1) { repository.updateCounts(jobId, 100, rowCount, rowCount, 0L) }
         verify { repository.markCompleted(jobId, rowCount, 0L, null, Instant.parse("2024-03-16T10:30:45Z")) }
+    }
+
+    // ── (i) toCommand 매핑 — statusName/fixVersionNames/affectsVersionNames ────────
+
+    @Test
+    fun `toCommand maps statusName fixVersionNames and affectsVersionNames from parsed row`() {
+        val row =
+            makeRow(1).copy(
+                statusName = "In Progress",
+                fixVersionNames = listOf("1.0"),
+                affectsVersionNames = listOf("0.9"),
+            )
+        stubParserWithRows(listOf(row))
+        val cmdSlot = slot<IssueImportCommand>()
+        every { issueImportPort.importIssue(capture(cmdSlot)) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        assertThat(cmdSlot.captured.statusName).isEqualTo("In Progress")
+        assertThat(cmdSlot.captured.fixVersionNames).containsExactly("1.0")
+        assertThat(cmdSlot.captured.affectsVersionNames).containsExactly("0.9")
+    }
+
+    // ── (j) 경고 노출 — G1: PR1 이 폐기하던 warnings 를 severity=WARNING 행으로 결과 로그에 기록 ──
+
+    @Test
+    fun `success result with warnings is recorded as WARNING severity row, uploads log, and still counts as succeeded`() {
+        stubParserWithRows(listOf(makeRow(1)))
+        every { issueImportPort.importIssue(any()) } returns
+            IssueImportResult.success("PROJ-1", warnings = listOf("컴포넌트 'X' 을(를) 찾을 수 없어 건너뛰었습니다."))
+        val keySlot = slot<String>()
+        val bytesSlot = slot<InputStream>()
+        justRun { storage.put(capture(keySlot), capture(bytesSlot), any(), any()) }
+
+        processor.process(makeJob())
+
+        // 실패행은 0 이지만 경고행이 있으므로 로그가 업로드된다 (errorLogObjectKey non-null).
+        verify {
+            repository.markCompleted(jobId, 1L, 0L, "PROJ/$jobId-errors.csv", Instant.parse("2024-03-16T10:30:45Z"))
+        }
+        assertThat(keySlot.captured).isEqualTo("PROJ/$jobId-errors.csv")
+        val csv = bytesSlot.captured.readBytes().toString(Charsets.UTF_8)
+        assertThat(csv).contains("1,,IMPORT_WARNING,컴포넌트 'X' 을(를) 찾을 수 없어 건너뛰었습니다.,WARNING")
     }
 }
