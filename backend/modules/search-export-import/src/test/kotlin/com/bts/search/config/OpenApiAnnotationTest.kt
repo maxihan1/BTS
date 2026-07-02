@@ -3,8 +3,10 @@
 package com.bts.search.config
 
 import com.bts.shared.http.OutboundUrlValidator
+import com.bts.shared.issue.IssueImportPort
 import com.bts.shared.membership.GroupMembershipPort
 import com.bts.shared.membership.ProjectMembershipPort
+import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.SystemPermissionResolver
 import com.bts.shared.search.IssueSearchPort
 import com.fasterxml.jackson.databind.JsonNode
@@ -103,6 +105,14 @@ class OpenApiAnnotationTest {
     /** AQL 검색 실행 포트 — cross-BC 포트, stub 처리. */
     @MockBean
     lateinit var issueSearchPort: IssueSearchPort
+
+    /** 이슈 Import 쓰기 포트 — cross-BC(issue-tracking), [com.bts.search.imports.job.application.ImportJobProcessor] 의존성. */
+    @MockBean
+    lateinit var issueImportPort: IssueImportPort
+
+    /** 이슈 권한 판정 포트 — cross-BC(issue-tracking), ImportJobService 접수 권한 fail-fast 의존성. */
+    @MockBean
+    lateinit var issuePermissionResolver: IssuePermissionResolver
 
     /** 그룹 멤버십 포트 — cross-BC, [com.bts.search.savedfilter.application.SavedFilterService] fail-closed 의존성. */
     @MockBean
