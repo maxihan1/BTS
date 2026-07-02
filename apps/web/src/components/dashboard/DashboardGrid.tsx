@@ -78,6 +78,12 @@ export interface DashboardGridProps {
    * 미전달 시 버튼이 렌더되지 않는다(안전한 선택적 prop).
    */
   onAddTile?: () => void
+  /**
+   * 익명(비로그인) 공유 뷰 모드 — true면 canEdit과 무관하게 드래그/리사이즈/가젯추가 버튼을
+   * 강제 비활성화하고, 각 타일에 publicMode를 전달해 PublicGadgetRenderer로 렌더한다.
+   * 기본 false — 기존 인증 모드 동작 불변 (FR-DB-01 default 보호 패턴, FR-DB-03 D6/D7 Task-8).
+   */
+  publicMode?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -90,7 +96,9 @@ export interface DashboardGridProps {
  * - 단일 12컬럼, ROW_HEIGHT=60px (dashboard-layout.ts 상수 재사용).
  * - canEdit=true: isDraggable/isResizable=true, 타일 cursor-grab.
  * - canEdit=false: isDraggable/isResizable=false, 핸들/편집버튼 숨김.
- * - 빈 그리드: 점선 테두리 영역 + "가젯 추가" 1차 버튼(canEdit=true 일 때만, C4 가젯 일원화).
+ * - publicMode=true: canEdit 값과 무관하게 강제 읽기전용(드래그/리사이즈/가젯추가 버튼 비활성) +
+ *   타일 본문을 PublicGadgetRenderer로 렌더(FR-DB-03 D6/D7 Task-8, 익명 공유 뷰).
+ * - 빈 그리드: 점선 테두리 영역 + "가젯 추가" 1차 버튼(편집 가능할 때만, C4 가젯 일원화).
  * - 좁은 화면: overflow-x-auto 가로스크롤.
  *
  * ★ jsdom mock 주의: react-grid-layout WidthProvider는 테스트에서 stub되어야 한다.
@@ -103,7 +111,11 @@ export function DashboardGrid({
   onDeleteTile,
   onEditTitle,
   onAddTile,
+  publicMode = false,
 }: DashboardGridProps): JSX.Element {
+  /** publicMode면 canEdit 값과 무관하게 강제 읽기전용 (FR-DB-03 D6/D7 Task-8) */
+  const effectiveCanEdit = canEdit && !publicMode
+
   /** react-grid-layout Layout[] 형태로 변환 */
   const layout: Layout[] = tiles.map(({ i, x, y, w, h }) => ({ i, x, y, w, h }))
 
@@ -120,7 +132,7 @@ export function DashboardGrid({
           <p className="text-sm text-muted-foreground mb-4">
             {dashboardLabels.detail.emptyGrid}
           </p>
-          {canEdit && onAddTile !== undefined && (
+          {effectiveCanEdit && onAddTile !== undefined && (
             <button
               type="button"
               className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors min-h-[44px]"
@@ -144,8 +156,8 @@ export function DashboardGrid({
         rowHeight={ROW_HEIGHT}
         margin={MARGIN}
         containerPadding={CONTAINER_PADDING}
-        isDraggable={canEdit}
-        isResizable={canEdit}
+        isDraggable={effectiveCanEdit}
+        isResizable={effectiveCanEdit}
         onLayoutChange={handleLayoutChange}
         draggableHandle=".drag-handle"
         draggableCancel="button,input"
@@ -157,6 +169,7 @@ export function DashboardGrid({
               canEdit={canEdit}
               onDelete={onDeleteTile}
               onEditTitle={onEditTitle}
+              publicMode={publicMode}
             />
           </div>
         ))}
