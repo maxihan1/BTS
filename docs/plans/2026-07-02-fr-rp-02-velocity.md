@@ -142,7 +142,9 @@
 
 **RED** (Testcontainers).
 - 파일: `SprintVelocityLookupAdapterTest.kt`
+- **WorkflowStateCatalog는 실 impl 조립**: issue-tracking은 이미 `testImplementation(project(":modules:project-workflow"))` 보유. 테스트 config에서 `WorkflowStateCatalogImpl(WorkflowResolverImpl(...))` 실 조립 + 워크플로우 스킴 시드(`IssueMoveIntegrationTest`/`IssueEpicProgressControllerIntegrationTest` 선례). 스텁 category 매핑으로 DONE 가짜그린 금지.
 - 시드: 2개 스프린트 issue-key 집합, 이슈에 `original_estimate_seconds`, 워크플로우 상태(DONE/비-DONE 카테고리), 기밀 이슈(보안 등급), 스킴 미할당 타입.
+- **비-vacuous 보안 케이스**: 기밀 이슈에 non-zero estimate + DONE 상태를 부여해, 가시성 필터가 없으면 commitment/completed가 실제로 커지도록 구성(필터 유무로 결과 달라짐 = 필터를 진짜로 증명). AlwaysUnrestricted 고정 주입식 vacuous 금지.
 - 테스트:
   - 스프린트별 `commitmentSeconds` = 가시 이슈 추정합, `completedSeconds` = DONE 카테고리 가시 이슈 추정합.
   - 기밀 이슈 estimate가 두 합 모두에서 제외(C1).
@@ -152,7 +154,7 @@
 
 **GREEN**.
 - `@Component @Transactional(readOnly = true)` 어댑터. `WorkflowStateCatalog.listStates` MANDATORY 전파 충족.
-- 흐름: 전체 이슈키 flatten → `accessibleLevels` + `filterVisibleIssueKeys`(정본 보안술어 재사용) → 가시 이슈의 (key, estimate, currentStateKey, issueTypeKey) 조회(1쿼리, deleted_at 제외) → 타입별 `listStates` 캐싱 DONE 판정(N+1 차단, `WorkflowSchemeNoDefaultException` simpleName catch 폴백) → issueKey→sprintId 역맵(UNIQUE(issue_key))으로 스프린트별 commitment/completed 집계.
+- 흐름: 전체 이슈키 flatten → `accessibleLevels` + `filterVisibleIssueKeys`(정본 보안술어 재사용) → 가시 이슈의 (key, estimate, currentStateKey, issueTypeKey) **단일 조회**(다중 LEFT JOIN+count로 묶지 말 것 — cartesian 위험, memory: cartesian-product-jooq-leftjoin-count. 이슈 행별 스칼라만) → 타입별 `listStates` 캐싱 DONE 판정(N+1 차단, `WorkflowSchemeNoDefaultException` simpleName catch 폴백) → issueKey→sprintId 역맵(UNIQUE(issue_key))으로 스프린트별 commitment/completed 집계.
 - 주입: `IssueRepository`(또는 정본 조회), `SecurityDirectory`(accessibleLevels), `WorkflowStateCatalog`. 번다운 어댑터 주입 대조.
 
 **REFACTOR**.
@@ -169,7 +171,8 @@
 
 **RED** (mockk 단위).
 - 파일: `SprintVelocityServiceTest.kt`
-- mock: `SprintVelocityLookupPort`, `SprintRepository`(findByProject/findIssueKeysByProject), `IssuePermissionResolver`(BROWSE).
+- mock: `SprintVelocityLookupPort`, `SprintRepository`(findByProject/findIssueKeysByProject), `IssuePermissionResolver`(BROWSE). **relaxed mockk/`any()` 남발 금지** — 명시 스텁 + `verify`로 인자 검증(memory: fr-sr-01 mockk default 가짜그린).
+- **"최근 N" 정렬 기준**: `findByProject`는 `created_at ASC` 반환 → take-last-N. 완료 스프린트 의미상 created_at 순 = 대체로 시간순. end_date desc가 더 정확하나 기존 repo 메서드(created_at) 재사용 유지, 테스트에서 created_at 차등 시드로 순서 검증.
 - 테스트:
   - BROWSE 미충족 → 403(BacklogApplicationService 예외 패턴 대조 후 통일).
   - `findByProject(projectKey, COMPLETED)` 결과 최근 `limit`개만, 시간순 오름차순 정렬.
@@ -206,6 +209,8 @@
 - `SprintVelocityController` `@RequestMapping("/api/v1/projects/{projectKey}/velocity")` + `@GetMapping`(`@RequestParam limit`) → actor-first 401 → `service` 위임 → `DataResponse(VelocityResponse.from(result))`. BacklogController 헬퍼(currentActorId) 대조.
 - `VelocityResponse`/`VelocityPointResponse` + `from(result)` companion(BurndownResponse 대조).
 - `SprintExceptionHandler`의 `@RestControllerAdvice(assignableTypes=[...])`에 `SprintVelocityController::class` 추가(ResponseStatusException passthrough + 500 폴백 스코프).
+- **신규 포트 빈 NoSuchBean 회귀 차단(필수)**: `SprintVelocityService`가 신규 `SprintVelocityLookupPort`를 주입 → agile-planning full-boot 테스트 전수에 포트 빈 필요. 번다운이 `AgilePlanningTestcontainersConfig`에 스텁 등록한 방식을 답습해 스텁 빈 추가. **config를 안 쓰는 standalone boot 테스트**(OpenApi/Context load 등)가 있으면 거기에도 @MockkBean/스텁 동반(memory: new-crossbc-dep-openapi-mockbean-regression). `grep -rl 'SpringBootTest\|@ContextConfiguration' agile-planning/src/test`로 전수 확인.
+- **403 메시지 누출 금지**: BROWSE 거부 응답 메시지는 일반 메시지(리소스 존재/권한 상세 비노출, memory: guard-exception-message-http-leak).
 
 **REFACTOR**.
 - 컨트롤러/DTO KDoc. 신규 full-boot 테스트가 포트 빈 부재로 NoSuchBean 나지 않도록 다른 agile-planning boot 테스트(OpenApi/Context) 점검 — 필요 시 @MockkBean 동반(memory: new-crossbc-dep-openapi-mockbean-regression).
@@ -221,4 +226,24 @@
 - 추가 검증: ktlint/detekt(--rerun-tasks) green, verify-master-plan(카운트 불변·D1~D5 마킹)
 - 프론트 D6/D7 + E2E: **이 PR 범위 밖**(후속 PR)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-02, 백엔드 eng 집중 — autoplan overkill 회피)
+
+**✅ 통과**
+- TDD 분해 적절(5 task, RED→GREEN→REFACTOR, test 커밋 선행). 모듈 경계·포트 격리 정확(shared-kernel 정의 / issue-tracking 구현 / agile-planning 소비, 직접 import 0).
+- 보안: 프로젝트 BROWSE + 이슈별 가시성 필터(`filterVisibleIssueKeys`→`buildActiveSecureWhere`) 재사용, actor-first 401. 신규 보안 경로 0.
+- DONE 판정 FR-EP-02 선례 그대로(WorkflowStateCatalog·타입캐싱·스킴미할당 폴백). 신규 DB 스키마 0.
+
+**⚠️ 보강 반영(BLOCKER 아님)**
+1. **T3 WorkflowStateCatalog 실 impl 조립** — issue-tracking testImpl(project-workflow) + 실 `WorkflowStateCatalogImpl` + 스킴 시드(IssueMove/IssueEpicProgress 선례). 스텁 category 가짜그린 금지. → T3 RED 반영.
+2. **T5 신규 포트 빈 NoSuchBean 회귀** — agile-planning full-boot 전수 스텁 포트 빈 필요(번다운 답습 + standalone boot 테스트 grep). → T5 GREEN 필수 승격.
+3. **비-vacuous 보안 테스트** — 기밀 이슈 non-zero estimate+DONE으로 "필터 유무로 결과 달라짐" 증명. → T3 RED 반영.
+4. **mockk 가짜그린 방지** — relaxed/any() 금지, 명시 스텁+verify. → T4 RED 반영.
+5. **jOOQ cartesian 주의** — 다중 LEFT JOIN+count 금지, 이슈 행별 스칼라 단일 조회. → T3 GREEN 반영.
+6. **403 메시지 누출 금지** — 일반 메시지. → T5 GREEN 반영.
+7. **"최근 N" 정렬** — findByProject created_at ASC take-last-N, 테스트에서 순서 검증. → T4 RED 반영.
+
+**BLOCKER: 없음.**
+
+리뷰어 판단: 선행 FR-RP-01/FR-EP-02 패턴의 결정론적 확장. 위험 표면 작음. 게이트 1 진입 가능.
