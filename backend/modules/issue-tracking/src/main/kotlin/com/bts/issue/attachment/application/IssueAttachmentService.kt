@@ -91,6 +91,8 @@ class IssueAttachmentService(
      * @param contentType MIME 타입.
      * @param sizeBytes 파일 크기(바이트).
      * @param input 업로드 바이트 스트림. 호출자가 close 책임.
+     * @param createdAt 업로드 시각을 명시 주입(예: Import — 원본 Jira 첨부 시각 보존). null 이면 [clock] 사용.
+     * @param uploadedBy 업로더를 명시 주입(예: Import — 원본 Jira 첨부 작성자 보존). null 이면 [actor] 사용.
      * @return 저장된 [Attachment] 메타데이터.
      * @throws IssueAccessDeniedException UPDATE 권한 미보유 시.
      * @throws UnsupportedAttachmentTypeException 허용되지 않은 MIME/확장자 시([AttachmentTypePolicy]).
