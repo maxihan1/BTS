@@ -34,9 +34,20 @@ SDD 10.6.3 마이그레이션 보존 대상 중 남은 두 가지 — **첨부�
 - **새 용어**. 없음(첨부·이력·changelog 기존 용어). glossary 갱신 불필요.
 - **관련 ADR**. [docs/decisions/2026-07-03-fr-im-01-pr4-attachments-history.md](../decisions/2026-07-03-fr-im-01-pr4-attachments-history.md) (생성) — PR1 Import ADR(`2026-07-02-fr-im-01-csv-json-import.md`)의 후속.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-03-fr-im-01-pr4-attachments-history.md](../specs/2026-07-03-fr-im-01-pr4-attachments-history.md)
+
+핵심 요약.
+- **첨부**. `POST /api/v1/imports` 두 part(매니페스트 `file` + `attachmentsZip`) → V605 `import_jobs.attachments_object_key`. worker가 zip 추출 후 `fields.attachment[].filename`을 `<sourceKey>/<filename>`→플랫 순 매칭 → `IssueAttachmentService.upload`(ClamAV·MIME 게이트 재사용, 실패=첨부 단위 best-effort 경고) 위임. 원본 시각·업로더 보존(upload에 optional createdAt/uploadedBy).
+- **이력**. Jira `changelog.histories[]` 충실 재생 — history→`IssueChangeGroup`(actor=원본 author 해석, occurredAt=원본 created), item→`IssueChangeItem`(field 매핑, from/to=Jira 표시문자열). `recordImported`(detector 우회)+`insertGroup` created_at 명시삽입(스키마 0). 필드매핑 테이블(미매핑=스킵+경고), author 미해석=actorId null, 시각 실패=그룹 스킵, 이슈당 상한 1000.
+- **공통**. 파서 `buildJsonRow` 확장(JSON 전용, sourceKey/attachments/changelog 추출 — issueNode 이미 materialize라 스트리밍 복잡도 0). shared VO `ImportAttachment`/`ImportChangeGroup`/`ImportChangeItem` additive. 어댑터 위임(UPDATE 사전체크·resolveByEmails 합류). dry-run 별도 경고 경로(FORBIDDEN 미엮음). CSV는 첨부/이력 미지원.
+
+Maxi 확정(도메인 게이트). 이력=충실재생 · 첨부 zip=두-part · 한 PR. 게이트1 특기 — E11(BTS "created" 이력이 재생 이력과 additive 공존).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration, 적대적 self-review). gap 4건 반영 — E10 MinIO 고아객체 한계 명시 · E11 BTS-native "created" additive 공존 · R6 이력 issueKey=새 BTS 키 · R4 contentType/sizeBytes zip 엔트리 파생. Maxi 결정 필요 gap 0.
 
 ## Plan (← /bts-plan 채움)
 
