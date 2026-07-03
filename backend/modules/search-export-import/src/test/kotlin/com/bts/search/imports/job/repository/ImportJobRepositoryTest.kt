@@ -83,8 +83,9 @@ class ImportJobRepositoryTest : SearchPersistenceTestBase() {
     /**
      * status/expires_at/dry_run 을 직접 지정해 import_jobs 행을 시드한다 (FR-IM-02).
      *
-     * [ImportJobRepository.insert] 는 접수 시점 expires_at 을 세팅하지 않으므로,
-     * AWAITING_MAPPING TTL·만료·확정 레이스 시나리오는 dsl 로 직접 시드한다.
+     * 도메인 객체 생성 없이 임의 status(RUNNING/COMPLETED 등)·expires_at 조합을 바로 시드해
+     * AWAITING_MAPPING TTL·만료·확정 레이스 시나리오를 구성하는 데 쓴다. 실 insert 의 expires_at
+     * 영속은 별도 회귀 테스트(`insert 는 expires_at 을 영속한다 …`)가 실 경로로 검증한다.
      * [dryRun] 은 [ImportJobRepository.transitionToPending] 의 dry_run 확정 검증에서
      * 시드 값과 다른 값으로 전이해 실제로 컬럼이 갱신됨(기본값이 아님)을 확인하는 데 쓴다.
      */
@@ -396,6 +397,21 @@ class ImportJobRepositoryTest : SearchPersistenceTestBase() {
 
         val expired = repo.findExpired(Instant.now())
         assertThat(expired.map { it.id }).contains(id)
+    }
+
+    @Test
+    fun `insert 는 expires_at 을 영속한다 - analyze 접수 job 이 findExpired 로 정리됨 (F1 누수 회귀)`() {
+        // analyze 경로는 expiresAt 을 세팅한 job 을 실제 insert 로 저장한다(seedJob dsl 우회 아님).
+        // insert 가 expires_at 을 떨어뜨리면 findExpired 가 영원히 못 잡아 방치 job·MinIO 원본이 누수된다.
+        val expiresAt = Instant.now().minusSeconds(1)
+        val job = makeJob().copy(status = ImportJobStatus.AWAITING_MAPPING, expiresAt = expiresAt)
+
+        repo.insert(job)
+
+        assertThat(repo.findExpired(Instant.now()).map { it.id }).contains(job.id)
+        val found = repo.findById(job.id)
+        assertThat(found).isNotNull()
+        assertThat(found!!.expiresAt).isNotNull()
     }
 
     // ── transitionToPending CAS (FR-IM-02) ──────────────────────────────────────────

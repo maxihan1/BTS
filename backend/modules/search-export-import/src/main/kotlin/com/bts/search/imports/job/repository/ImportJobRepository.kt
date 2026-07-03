@@ -70,6 +70,7 @@ class ImportJobRepository(
             .set(IMPORT_JOBS.STATUS, job.status.name)
             .set(IMPORT_JOBS.PROGRESS, job.progress)
             .set(IMPORT_JOBS.ATTACHMENTS_OBJECT_KEY, job.attachmentsObjectKey)
+            .set(IMPORT_JOBS.EXPIRES_AT, job.expiresAt?.toOffsetDateTime())
             .set(IMPORT_JOBS.CREATED_AT, job.createdAt.toOffsetDateTime())
             .execute()
         return job
