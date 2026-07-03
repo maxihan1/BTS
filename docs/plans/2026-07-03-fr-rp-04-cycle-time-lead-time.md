@@ -48,9 +48,30 @@ Maxi 확정(2026-07-03). Cycle=첫 IN_PROGRESS→완료(미경유 Cycle 제외) 
 
 ## Plan
 
-패키지 `com.bts.issue.cycletime`(CFD `com.bts.issue.cfd` 미러). **재사용**(신규 아님) — `CfdStatusHistoryRepository`·`CfdStatusChangeRow`·`CfdCategory`(같은 모듈 feature 간 재사용, CFD↔velocity 선례) + `IsolatedWorkflowStateLookup`. **신규** — `CycleTimeIssueSourceRow`(repository 패키지) + `IssueRepository.fetchActiveVisibleIssuesForCycleTime`(보안 술어 재사용). 모든 도메인 VO는 read-model(영속 아님).
+패키지 `com.bts.issue.cycletime`(CFD `com.bts.issue.cfd` 미러). **게이트1 Maxi 결정(CONCERN-1) = 중립 패키지 추출**. CFD의 `Cfd*` 상태 이력 프리미티브를 `com.bts.issue.statushistory`로 추출(T1)해 CFD·cycletime 둘 다 사용. **재사용**(추출 후) — `StatusHistoryRepository`·`StatusChangeRow`·`StatusCategory`(구 `Cfd*`) + `IsolatedWorkflowStateLookup`. **신규** — `CycleTimeIssueSourceRow`(repository 패키지) + `IssueRepository.fetchActiveVisibleIssuesForCycleTime`(보안 술어 재사용). 모든 도메인 VO는 read-model(영속 아님).
 
-### Task 1. 요약 통계 VO + nearest-rank 백분위 (순수 도메인)
+### Task 1. 공유 상태 이력 프리미티브 중립 패키지 추출 (리팩터, CFD 회귀 0)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/statushistory/StatusCategory.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/statushistory/repository/StatusHistoryRepository.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/statushistory/repository/StatusChangeRow.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cfd/domain/CfdCategory.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cfd/domain/CfdIssueTimeline.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cfd/domain/CfdCalculator.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cfd/application/CfdService.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cfd/repository/CfdStatusHistoryRepository.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cfd/repository/CfdStatusChangeRow.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/cfd/domain/CfdCalculatorTest.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/cfd/application/CfdServiceTest.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/cfd/repository/CfdStatusHistoryRepositoryTest.kt`]
+- depends-on: []
+
+**성격**. 순수 리팩터(rename/move, 행위 불변). TDD RED 신규 없음 — **기존 CFD 테스트가 안전망**. Beck "make the change easy, then make the easy change" 선행 단계.
+
+**작업**.
+1. 신규 중립 패키지 파일 3종 생성.
+   - `com.bts.issue.statushistory.StatusCategory`(구 `CfdCategory` enum TODO/IN_PROGRESS/DONE + `fromCategoryString` 폴백, 도메인 enum·jOOQ 무관).
+   - `com.bts.issue.statushistory.repository.StatusHistoryRepository`(구 `CfdStatusHistoryRepository`. jOOQ ArchUnit `..repository..` 규칙 충족 — 패키지에 `.repository.` 포함). `@Repository`·`fetchStatusChanges(Set<UUID>): List<StatusChangeRow>` 동일.
+   - `com.bts.issue.statushistory.repository.StatusChangeRow`(구 `CfdStatusChangeRow`).
+2. 구 `Cfd*` 3파일 삭제 + CFD 소비자를 신규 심볼로 교체.
+   - `CfdIssueTimeline`/`CfdSegment`·`CfdCalculator`·`CfdService`의 `CfdCategory`→`StatusCategory`, `CfdStatusChangeRow`→`StatusChangeRow`, `CfdStatusHistoryRepository`→`StatusHistoryRepository` import/사용 교체.
+   - CFD 테스트 3종 import/참조 교체.
+3. `CfdCategory`/`CfdStatusChangeRow`/`CfdStatusHistoryRepository` 참조가 저장소 전역에서 0인지 grep 확인(잔존 orphan 없음).
+
+**검증**. `./gradlew :backend:modules:issue-tracking:test --tests '*Cfd*'`(CFD 전체 회귀 0) + `git grep -n "CfdCategory\|CfdStatusChangeRow\|CfdStatusHistoryRepository"` → 0건.
+
+### Task 2. 요약 통계 VO + nearest-rank 백분위 (순수 도메인)
 
 **메타**.
 - agent: `backend-engineer`
@@ -71,17 +92,17 @@ Maxi 확정(2026-07-03). Cycle=첫 IN_PROGRESS→완료(미경유 Cycle 제외) 
 
 **검증**. `./gradlew :backend:modules:issue-tracking:test --tests '*CycleTimeStatsTest'`
 
-### Task 2. 계산기 + 결과 VO (순수 도메인)
+### Task 3. 계산기 + 결과 VO (순수 도메인)
 
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cycletime/domain/IssueDurationInput.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cycletime/domain/CycleTimeSample.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cycletime/domain/CycleTimeMetric.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cycletime/domain/CycleTimeResult.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cycletime/domain/CycleTimeCalculator.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/cycletime/domain/CycleTimeCalculatorTest.kt`]
-- depends-on: [1]
+- depends-on: [2]
 
 입력. `IssueDurationInput(issueKey, createdAt: Instant, firstInProgressAt: Instant?, lastDoneAt: Instant?)` — 서비스가 상태 이력을 축약해 전달(전이 기반; 초기 event 미사용, EC8).
 
 **RED**. `CycleTimeCalculatorTest`(`calculate(from, to, inputs): CycleTimeResult`) —
-- **S1 정상**. lastDone∈창 이슈 → lead=lastDone−created, cycle=lastDone−firstInProgress. 통계 위임(Task 1).
+- **S1 정상**. lastDone∈창 이슈 → lead=lastDone−created, cycle=lastDone−firstInProgress. 통계 위임(Task 2).
 - **S2 미경유**(firstInProgressAt=null) → lead 표본 포함, cycle 표본 제외(cycle.count < lead.count).
 - **S3 재오픈**. lastDone(마지막) 기준 창 판정 + cycle=lastDone−firstInProgress.
 - **S4 창 밖**. lastDone 날짜 창 밖 → lead·cycle 모두 제외.
@@ -97,7 +118,7 @@ Maxi 확정(2026-07-03). Cycle=첫 IN_PROGRESS→완료(미경유 Cycle 제외) 
 
 **검증**. `./gradlew :backend:modules:issue-tracking:test --tests '*CycleTimeCalculatorTest'`
 
-### Task 3. 가시 이슈 원천 조회 (repository, issueKey 포함)
+### Task 4. 가시 이슈 원천 조회 (repository, issueKey 포함)
 
 **메타**.
 - agent: `db-engineer`
@@ -116,31 +137,31 @@ Maxi 확정(2026-07-03). Cycle=첫 IN_PROGRESS→완료(미경유 Cycle 제외) 
 
 **검증**. `./gradlew :backend:modules:issue-tracking:test --tests '*IssueRepositoryCycleTimeSourceTest'`
 
-### Task 4. 조회 유스케이스 서비스 (오케스트레이션)
+### Task 5. 조회 유스케이스 서비스 (오케스트레이션)
 
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cycletime/application/CycleTimeService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/cycletime/application/CycleTimeServiceTest.kt`]
-- depends-on: [2, 3]
+- depends-on: [1, 3, 4]
 
 **RED**. `CycleTimeServiceTest`(mockk) —
 - BROWSE 미보유 → `IssueAccessDeniedException`(repo 조회 전).
 - 가시 이슈 0건 → 즉시 빈 `CycleTimeResult`(status/카탈로그 조회 스킵, EC6).
 - `buildDurationInput` 정확성 — 전이 이력에서 firstInProgressAt=첫 IN_PROGRESS 전이 시각, lastDoneAt=마지막 DONE 전이 시각 추출(카테고리 매핑=stateCache). IN_PROGRESS 미경유→firstInProgressAt=null.
-- 삭제된 상태 키 → TODO 폴백(CfdCategory).
+- 삭제된 상태 키 → TODO 폴백(`StatusCategory`).
 
-**GREEN**. `CycleTimeService`(`@Service`, `@Transactional(readOnly=true)`) — CFD `CfdService` 오케스트레이션 미러. (1) `checkBrowsePermission`(선검사). (2) `securityDirectory.accessibleLevels` + `issueRepository.fetchActiveVisibleIssuesForCycleTime`. (3) 빈→빈 결과. (4) `cfdStatusHistoryRepository.fetchStatusChanges`(**재사용**) groupBy issueId. (5) `loadTypeIdToKeyMap` + `buildStateCache`(N+1 차단, CFD 미러). (6) 이슈별 `buildDurationInput`→`CycleTimeCalculator.calculate`. categoryOf=`CfdCategory.fromCategoryString`(재사용).
+**GREEN**. `CycleTimeService`(`@Service`, `@Transactional(readOnly=true)`) — CFD `CfdService` 오케스트레이션 미러. (1) `checkBrowsePermission`(선검사). (2) `securityDirectory.accessibleLevels` + `issueRepository.fetchActiveVisibleIssuesForCycleTime`. (3) 빈→빈 결과. (4) `statusHistoryRepository.fetchStatusChanges`(T1 추출 프리미티브 **재사용**) groupBy issueId. (5) `loadTypeIdToKeyMap` + `buildStateCache`(N+1 차단, CFD 미러). (6) 이슈별 `buildDurationInput`→`CycleTimeCalculator.calculate`. categoryOf=`StatusCategory.fromCategoryString`.
 
 **REFACTOR**. `buildDurationInput`·`resolveStateCategories`(WorkflowSchemeNoDefault 폴백) private 분리 + KDoc.
 
 **검증**. `./gradlew :backend:modules:issue-tracking:test --tests '*CycleTimeServiceTest'`
 
-### Task 5. REST 컨트롤러 + 응답 DTO + 예외 핸들러
+### Task 6. REST 컨트롤러 + 응답 DTO + 예외 핸들러
 
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cycletime/web/CycleTimeController.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cycletime/web/dto/CycleTimeResponse.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/cycletime/web/CycleTimeExceptionHandler.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/cycletime/web/CycleTimeControllerTest.kt`]
-- depends-on: [4]
+- depends-on: [5]
 
 **RED**. `CycleTimeControllerTest`(MockMvc 슬라이스, service mock) —
 - 200 + `DataResponse<CycleTimeResponse>` 외피 + from/to echo + cycleTime/leadTime 구조(count·min·max·avg·p25·p50·p75·p90·samples).
@@ -155,12 +176,12 @@ Maxi 확정(2026-07-03). Cycle=첫 IN_PROGRESS→완료(미경유 Cycle 제외) 
 
 **검증**. `./gradlew :backend:modules:issue-tracking:test --tests '*CycleTimeControllerTest'`
 
-### Task 6. 통합 테스트 (Testcontainers 풀 부팅)
+### Task 7. 통합 테스트 (Testcontainers 풀 부팅)
 
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/cycletime/CycleTimeIntegrationTest.kt`]
-- depends-on: [5]
+- depends-on: [6]
 
 **RED→GREEN**. `CycleTimeIntegrationTest`(CFD `CfdIntegrationTest` 미러, 실 repo+시드) —
 - S1 정상. 이슈 생성→IN_PROGRESS 전이→DONE 전이 시드 후 조회 → cycle/lead 표본·통계 실측.
@@ -173,7 +194,7 @@ Maxi 확정(2026-07-03). Cycle=첫 IN_PROGRESS→완료(미경유 Cycle 제외) 
 
 **검증**. `./gradlew :backend:modules:issue-tracking:test --tests '*CycleTimeIntegrationTest'`
 
-### Task 7. 문서 전수 동기화 (진척 불변)
+### Task 8. 문서 전수 동기화 (진척 불변)
 
 **메타**.
 - agent: `backend-engineer`
@@ -183,18 +204,19 @@ Maxi 확정(2026-07-03). Cycle=첫 IN_PROGRESS→완료(미경유 Cycle 제외) 
 **작업**(TDD 비대상 — 문서).
 - product `notification-dashboard.md §4.4` — D1~D5 `[x]` 마킹 + `구현 범위` deviation 박스 추가(Maxi 확정 3결정·CFD 인프라 재사용·프론트 D6/D7 후속). **진척 95/123 불변**(백엔드만·D6/D7 미완).
 - SDD `§13.5.5` — 구현 상세(전이 기반 duration·초 단위·응답 샘플+백분위·엔드포인트·on-the-fly) + ADR 링크. CFD §13.5.4 형식 미러.
-- ADR `2026-07-03-fr-rp-04-cycle-lead-time.md` — 맥락·결정(D1 Cycle 정의+엣지·D2 모집단/창·D3 응답형태·D4 모듈 issue-tracking·D5 보안·D6 CFD 재사용)·새 개념·SDD 동기화 대상. CFD ADR 형식 미러.
+- ADR `2026-07-03-fr-rp-04-cycle-lead-time.md` — 맥락·결정(D1 Cycle 정의+엣지·D2 모집단/창·D3 응답형태·D4 모듈 issue-tracking·D5 보안·D6 CFD 상태이력 프리미티브 `com.bts.issue.statushistory` 중립 추출[CONCERN-1 게이트1 확정])·새 개념·SDD 동기화 대상. CFD ADR 형식 미러.
 - fr-index/README/CLAUDE 카운트 **불변**(BC 라벨 유지) — 변경 없음 확인.
 
 **검증**. `bash scripts/verify-master-plan.sh`(카운트 drift 0 확인).
 
 ## Plan 메타
 
-- task 수: 7 (Task 1~6 TDD, Task 7 문서)
-- 예상 wave: 3~4 (wave1 = T1·T3·T7 병렬 / wave2 = T2 / wave3 = T4 / wave4 = T5 → T6). Gradle 모듈 컴파일 직렬화 감안.
-- TDD 강제: yes (T1~T6, test 커밋 선행)
+- task 수: 8 (T1 리팩터 추출 / T2~T7 TDD / T8 문서)
+- 예상 wave: 4~5 (wave1 = T1·T2·T4·T8 병렬 / wave2 = T3(2) / wave3 = T5(1,3,4) / wave4 = T6(5) / wave5 = T7(6)). Gradle 모듈 컴파일 직렬화 감안.
+- TDD 강제: yes (T2~T7, test 커밋 선행). T1은 순수 리팩터 — 기존 CFD 테스트가 안전망(회귀 0).
 - 신규 마이그레이션: 0
-- 재사용: CfdStatusHistoryRepository·CfdStatusChangeRow·CfdCategory·IsolatedWorkflowStateLookup·buildActiveSecureWhere
+- 추출(T1): `com.bts.issue.statushistory` — `StatusCategory`·`StatusHistoryRepository`·`StatusChangeRow`(구 `Cfd*`). CFD도 신규 심볼 사용.
+- 재사용: (추출 후) StatusHistoryRepository·StatusChangeRow·StatusCategory·IsolatedWorkflowStateLookup·buildActiveSecureWhere
 - 추가 검증: ktlint·detekt·`verify-master-plan.sh`. E2E는 프론트 D6/D7 후속 PR.
 
 ## 리뷰 결과
@@ -227,4 +249,9 @@ Maxi 확정(2026-07-03). Cycle=첫 IN_PROGRESS→완료(미경유 Cycle 제외) 
 
 **BLOCKER: 없음.** CONCERN-1(Cfd* 재사용 네이밍)만 게이트1 taste 확인.
 
-**VERDICT**: 진행 승인. 검증된 CFD 패턴 미러 + 보안/엣지/테스트 견고. 유일 열린 결정 = CONCERN-1(재사용-as-is 권장).
+**VERDICT**: 진행 승인. 검증된 CFD 패턴 미러 + 보안/엣지/테스트 견고.
+
+### 게이트1 Maxi 결정 (2026-07-03)
+
+- **CONCERN-1 → 중립 패키지 추출 채택**(권장의 reuse-as-is 대신). `Cfd*` 프리미티브를 `com.bts.issue.statushistory`로 추출(T1 신규 리팩터 task). CFD·cycletime 공유. Plan 7→8 task 갱신, T3/T5 depends-on 재계산(T3 계산기=순수, T1 무의존; T5 서비스=T1 추출 프리미티브 사용).
+- **게이트1 승인 → 구현 진입**. TDD 강제(T2~T7).
