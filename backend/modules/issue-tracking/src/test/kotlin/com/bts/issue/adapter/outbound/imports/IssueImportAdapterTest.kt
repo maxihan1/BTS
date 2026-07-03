@@ -1438,6 +1438,39 @@ class IssueImportAdapterTest {
         }
     }
 
+    /**
+     * S1/R7/E5 결함 수정 검증(PR3, Task 8) — [ImportComment.createdAt] 이 저장 단계에서 버려지지 않고
+     * 보존되며, `created_at` ASC 정렬이 import 시각이 아닌 원본 시각 기준으로 동작함을 확인한다.
+     *
+     * list 순서를 원본 시각 역순(나중 댓글 먼저)으로 넣어, 정렬이 insertion 순서가 아니라 DB
+     * `created_at` 기준임을 실증한다.
+     */
+    @Test
+    fun `S32 댓글 createdAt - 원본 시각이 보존되고 created_at ASC 로 정렬된다`() {
+        val earlier = Instant.parse("2019-01-01T09:00:00Z")
+        val later = Instant.parse("2019-06-01T09:00:00Z")
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S32 댓글 createdAt 보존 테스트",
+                comments =
+                    listOf(
+                        ImportComment(body = "나중 댓글", createdAt = later),
+                        ImportComment(body = "먼저 댓글", createdAt = earlier),
+                    ),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        val createdAts = fetchCommentCreatedAts(result.issueKey)
+        assert(createdAts == listOf(earlier, later)) {
+            "댓글 createdAt 이 원본 시각 보존 + created_at ASC 로 정렬돼야 하지만 " +
+                "$createdAts 입니다(import 실행 시각으로 뭉치면 안 됨)."
+        }
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     private fun applyMigrations() {
@@ -1709,6 +1742,23 @@ class IssueImportAdapterTest {
                     val ids = mutableListOf<UUID>()
                     while (rs.next()) ids += rs.getObject(1) as UUID
                     ids
+                }
+            }
+        }
+
+    /** S32 — 이슈에 연결된 활성 댓글 `created_at` 목록(오름차순, 원본 시각 보존 검증용). */
+    @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음
+    private fun fetchCommentCreatedAts(issueKey: String): List<Instant> =
+        conn().use { c ->
+            c.prepareStatement(
+                "SELECT c.created_at FROM comments c JOIN issues i ON c.issue_id = i.id " +
+                    "WHERE i.key = ? ORDER BY c.created_at",
+            ).use { stmt ->
+                stmt.setString(1, issueKey)
+                stmt.executeQuery().use { rs ->
+                    val createdAts = mutableListOf<Instant>()
+                    while (rs.next()) createdAts += rs.getTimestamp(1).toInstant()
+                    createdAts
                 }
             }
         }

@@ -23,7 +23,9 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestMethodOrder
 import java.sql.Connection
 import java.sql.DriverManager
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneOffset
 import java.util.UUID
 
 /**
@@ -207,6 +209,49 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
         assertThat(result).hasSize(2)
         assertThat(result[0].body).isEqualTo("먼저 댓글")
         assertThat(result[1].body).isEqualTo("나중 댓글")
+    }
+
+    // ── T3-F/T3-G. create — createdAt 파라미터 (FR-IM-01 PR3 Task 8) ──────────
+
+    /**
+     * Given  import 시나리오처럼 과거 특정 시각을 createdAt 인자로 주입
+     * When   create 호출
+     * Then   반환/저장된 comment 의 createdAt·updatedAt 모두 주입값 그대로(now() 무시) — S1/R7/E5 결함 수정.
+     */
+    @Test
+    @Order(6)
+    fun `T3-F - create 는 createdAt 인자가 있으면 그 값을 createdAt updatedAt 에 그대로 저장한다`() {
+        val issue = insertIssue(6L)
+        val importedAt = Instant.parse("2019-05-01T12:00:00Z")
+
+        val comment = service.create(actor, issue.key, "본문", ActorId(authorUuid), createdAt = importedAt)
+
+        assertThat(comment.createdAt).isEqualTo(importedAt)
+        assertThat(comment.updatedAt).isEqualTo(importedAt)
+
+        val stored = commentRepository.listByIssue(issue.id.value)
+        assertThat(stored).hasSize(1)
+        assertThat(stored[0].createdAt).isEqualTo(importedAt)
+        assertThat(stored[0].updatedAt).isEqualTo(importedAt)
+    }
+
+    /**
+     * Given  createdAt 인자를 지정하지 않은 기존 호출부(일반 사용자 댓글 작성)
+     * When   create 호출
+     * Then   comment.createdAt/updatedAt 은 [clock] 기준 현재 시각 — 기존 동작 무회귀.
+     */
+    @Test
+    @Order(7)
+    fun `T3-G - create 는 createdAt 인자가 없으면 clock 기준 현재 시각을 사용한다 (회귀 없음)`() {
+        val issue = insertIssue(7L)
+        val fixedInstant = Instant.parse("2024-06-15T10:30:00Z")
+        val fixedClockService =
+            CommentApplicationService(commentRepository, repository, resolver, Clock.fixed(fixedInstant, ZoneOffset.UTC))
+
+        val comment = fixedClockService.create(actor, issue.key, "본문", ActorId(authorUuid))
+
+        assertThat(comment.createdAt).isEqualTo(fixedInstant)
+        assertThat(comment.updatedAt).isEqualTo(fixedInstant)
     }
 
     /** 댓글 도메인 객체 생성 헬퍼 (직접 insert 용 — createdAt 제어 목적). */
