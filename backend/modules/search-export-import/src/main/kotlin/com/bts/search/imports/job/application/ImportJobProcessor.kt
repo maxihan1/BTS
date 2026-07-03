@@ -68,6 +68,17 @@ import java.time.OffsetDateTime
  * 값이 없거나 파싱에 실패하면 null 을 담는다(created=now 대체, worklog 스킵 등 best-effort 폴백은
  * 이 클래스가 아니라 어댑터(Task 7, issue-tracking) 책임 — 이 클래스는 순수 변환만 한다).
  *
+ * ## 첨부/이력 매핑 (PR4)
+ *
+ * [toCommand] 가 [ParsedImportRow.sourceKey] 를 그대로 관통시키고, [ParsedImportRow.attachments]/
+ * [ParsedImportRow.changelog](원본 문자열 raw 값)를 [ImportAttachment]/[ImportChangeGroup](shared-kernel
+ * VO) 로 변환한다 — [toImportAttachment]/[toImportChangeGroup]/[toImportChangeItem]. 댓글/worklog
+ * 매핑과 동일하게 작성자 이메일은 소문자화하고 시각 문자열은 [parseInstantOrNull] 로 변환한다.
+ * **[ImportChangeItem.field] 는 원본(Jira 등)의 raw 필드명을 그대로 옮긴다** — BTS 내부 필드명으로의
+ * 매핑은 issue-tracking BC 가 소유하는 도메인 지식이라(예: 전이 가능 상태, 담당자 개념) 이 클래스가
+ * 대신 수행하면 그 지식이 BC 경계를 넘어 흩어진다. 실제 매핑은 [ImportChangeGroup] 을 소비하는
+ * issue-tracking `IssueImportAdapter`(Task 9)가 담당한다.
+ *
  * @param issueImportPort 이슈 생성 cross-BC 쓰기 포트.
  * @param storage 원본 파일 조회 + 에러 로그 업로드용 오브젝트 스토리지 포트.
  * @param repository Import 작업 상태 관리 저장소.
