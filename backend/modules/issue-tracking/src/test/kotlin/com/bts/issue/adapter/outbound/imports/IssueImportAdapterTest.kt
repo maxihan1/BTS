@@ -1471,6 +1471,48 @@ class IssueImportAdapterTest {
         }
     }
 
+    /**
+     * dry-run/실행 미러 정합(코드리뷰 CONCERN C-1) — [applyWorklogItem] 은 timeSpentSeconds≤0 인
+     * worklog 를 생성 전에 스킵하며, 그 항목은 unmatchedAuthor/missingStartedAt 을 애초에 판정하지
+     * 않는다([WorklogApplyOutcome] KDoc — invalidTimeSpent=true 인 항목은 항상 unmatchedAuthor/
+     * missingStartedAt=false). 따라서 dry-run 미리보기([warnWorklogsPreview])도 생성될 항목
+     * (timeSpent>0)만 unmatched/missingStartedAt 을 집계해야 한다 — 그렇지 않으면 "생성되지도 않을
+     * 항목"에 대해 dry-run 이 실행보다 과다 경고를 남긴다(S27/S28/S29 실행부와 대조).
+     */
+    @Test
+    fun `S33 dryRun worklog timeSpent 0 이하 + author 미매칭 + startedAt 없음 - 실행부 스킵과 정합해 timeSpent 경고만 남는다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S33 dryRun worklog 스킵 정합 테스트",
+                worklogs =
+                    listOf(
+                        ImportWorklog(
+                            timeSpentSeconds = 0,
+                            authorEmail = "unknown@example.com",
+                            startedAt = null,
+                        ),
+                    ),
+                dryRun = true,
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        assert(result.warnings.any { it.contains("소요 시간이 0 이하") }) {
+            "timeSpent 경고가 있어야 하지만 ${result.warnings} 입니다."
+        }
+        assert(result.warnings.none { it.contains("작성자 이메일이 매칭되지 않아") }) {
+            "실행부는 timeSpent≤0 항목을 생성 전 스킵해 author 미매칭을 판정하지 않으므로 dry-run 도 " +
+                "author 경고를 남기면 안 되지만 ${result.warnings} 입니다."
+        }
+        assert(result.warnings.none { it.contains("시작 시각이 없어") }) {
+            "실행부는 timeSpent≤0 항목을 생성 전 스킵해 startedAt 을 판정하지 않으므로 dry-run 도 " +
+                "startedAt 경고를 남기면 안 되지만 ${result.warnings} 입니다."
+        }
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     private fun applyMigrations() {
