@@ -31,6 +31,7 @@ interface ProjectImportSettingsPageProps {
  * - 페이지 헤더(h1 "가져오기(Import)")와 ImportForm을 렌더한다.
  * - 파일 선택 / 접수 / 진행률 폴링 / 완료 3단계 상태머신은 ImportForm 내부에서 처리한다.
  * - 라우터 의존 없이 props로 projectKey를 받아 단위 테스트가 가능하다.
+ * - `projects.$projectKey.reports.cfd.tsx` (CfdReportPage) 어댑터/페이지 분리 패턴 미러 (FR-IM-01 D6/D7 Task-4).
  *
  * @param projectKey 프로젝트 키
  */
