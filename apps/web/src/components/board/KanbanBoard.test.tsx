@@ -58,6 +58,7 @@ const boardFixture: BoardDetail = {
   truncated: false,
   unplacedCount: 0,
   swimlaneField: 'NONE',
+  quickFilters: [],
   columns: [
     {
       columnId: COL_TODO,

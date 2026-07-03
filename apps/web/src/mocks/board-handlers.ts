@@ -1,4 +1,4 @@
-// 칸반 보드 BC MSW 핸들러 — stateful CRUD + 카드 이동 + 409 충돌 토글 (FR-BD-01 D6, FR-BD-02 D6)
+// 칸반 보드 BC MSW 핸들러 — stateful CRUD + 카드 이동 + 409 충돌 토글 (FR-BD-01 D6, FR-BD-02 D6, FR-UX-01)
 //
 // 교훈 반영.
 //   - msw-mutation-stateful-refetch: move 후 GET 상세에 즉시 반영되도록 boardStore 변이
@@ -6,12 +6,16 @@
 //   - e2e-msw-scenario-toggle-localstorage-flag: 409 토글은 localStorage 플래그로 분기
 //
 import { http, HttpResponse } from 'msw'
-import type { BoardDetail, BoardCard, SwimlaneField } from '@/api/boards'
+import type { BoardDetail, BoardCard, BoardCardFilterParams, SwimlaneField } from '@/api/boards'
+import { buildBoardFilterQuery } from '@/api/boards'
+import type { QuickFilter } from '@/api/board-quick-filters'
+import { queryStringToSearch, searchToFilter } from '@/lib/board-filter'
 import type { StoredBoardDetail, StoredCard } from './board-fixtures'
 import {
   boardStore,
   projectBoardIndex,
   createBoardInStore,
+  generateUUID,
   LS_KEY_BOARD_CONFLICT,
 } from './board-fixtures'
 
@@ -68,6 +72,7 @@ function matchesFilter(card: StoredCard, params: URLSearchParams): boolean {
  *
  * labels/componentIds는 store 내부 필터용 메타이며 응답 DTO(BoardCard)에 포함하지 않는다.
  * params가 주어지면 matchesFilter를 적용해 카드를 걸러낸다.
+ * quickFilters는 store에 없으면(WIP_BOARD 등 퀵필터를 다루지 않는 기존 fixture) 빈 배열로 방어한다.
  *
  * @param stored store 내부 보드 데이터
  * @param params 필터 파라미터 (없으면 전체 카드 반환)
@@ -88,7 +93,38 @@ function toResponseDetail(stored: StoredBoardDetail, params: URLSearchParams): B
           epicKey: epicKey ?? null,
         })),
     })),
+    quickFilters: stored.quickFilters ?? [],
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 퀵필터 query 정규화 (FR-UX-01)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 저장 query 문자열을 백엔드 `BoardFilterQueryParser.serialize` 계약과 동일한 규칙으로 정규화한다.
+ *
+ * 필드 순서(assignee→unassigned→label→component, `buildBoardFilterQuery`가 이미 이 순서로 조립)
+ * + trim + 필드별 중복 제거. raw 요청 query를 그대로 저장/에코하면(정규화 미재현) 실제 백엔드가
+ * 정규화를 적용한 후에는 프론트 테스트가 가짜그린이 된다 — 반드시 재계산해서 반환한다
+ * (memory: msw-derived-behavior-shared-store-e2e, 리뷰 C2).
+ *
+ * @param query 접두 `?` 없는 쿼리스트링(요청 body의 query)
+ * @returns 정규화된 접두 `?` 없는 쿼리스트링. 조건이 없으면 빈 문자열
+ */
+function normalizeQuickFilterQuery(query: string): string {
+  const search = queryStringToSearch(query)
+  const filter = searchToFilter(search)
+  const dedupeTrim = (values: string[]): string[] =>
+    Array.from(new Set(values.map((v) => v.trim()).filter((v) => v.length > 0)))
+  const normalized: BoardCardFilterParams = {
+    assigneeIds: dedupeTrim(filter.assigneeIds),
+    includeUnassigned: filter.includeUnassigned,
+    labels: dedupeTrim(filter.labels),
+    componentIds: dedupeTrim(filter.componentIds),
+  }
+  const qs = buildBoardFilterQuery(normalized)
+  return qs.startsWith('?') ? qs.slice(1) : qs
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -407,6 +443,200 @@ const updateSwimlaneHandler = http.patch(
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/boards/:id/quick-filters — 퀵필터 생성 (FR-UX-01)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/v1/boards/{boardId}/quick-filters — 퀵필터 생성.
+ *
+ * 요청 body: { name: string, query: string }
+ *
+ * stateful 동작.
+ *   - query는 normalizeQuickFilterQuery로 정규화(정렬/trim/중복 제거)해 저장한다.
+ *   - filterId는 generateUUID로 신규 발급(store.quickFilters에 append).
+ *   - 이후 GET 상세의 quickFilters에 즉시 반영된다 (msw-mutation-stateful-refetch).
+ *
+ * 성공 → 201 { data: QuickFilter }
+ * EC1(정규화 후 빈 query) → 400 ProblemDetail { errorCode: 'AGILE_QUICK_FILTER_EMPTY_QUERY' }
+ * EC2(같은 보드 내 name 중복) → 409 ProblemDetail { errorCode: 'AGILE_QUICK_FILTER_NAME_CONFLICT' }
+ * 보드 미존재 → 404 ProblemDetail { errorCode: 'AGILE_BOARD_NOT_FOUND' }
+ */
+const createQuickFilterHandler = http.post(
+  '/api/v1/boards/:id/quick-filters',
+  async ({ params, request }) => {
+    const boardId = params['id'] as string
+    const board = boardStore.get(boardId)
+    if (board === undefined) {
+      return HttpResponse.json(
+        { errorCode: 'AGILE_BOARD_NOT_FOUND', message: `보드를 찾을 수 없습니다: ${boardId}` },
+        { status: 404 },
+      )
+    }
+
+    let name = ''
+    let query = ''
+    try {
+      const body = (await request.json()) as { name?: string; query?: string }
+      name = body.name ?? ''
+      query = body.query ?? ''
+    } catch {
+      return HttpResponse.json(
+        { errorCode: 'INVALID_REQUEST', message: '요청 body를 파싱할 수 없습니다' },
+        { status: 400 },
+      )
+    }
+
+    const normalizedQuery = normalizeQuickFilterQuery(query)
+    if (normalizedQuery === '') {
+      return HttpResponse.json(
+        { errorCode: 'AGILE_QUICK_FILTER_EMPTY_QUERY', message: '빈 필터는 저장할 수 없습니다' },
+        { status: 400 },
+      )
+    }
+
+    const existingFilters = board.quickFilters ?? []
+    if (existingFilters.some((f) => f.name === name)) {
+      return HttpResponse.json(
+        {
+          errorCode: 'AGILE_QUICK_FILTER_NAME_CONFLICT',
+          message: `같은 이름의 퀵필터가 이미 있습니다: ${name}`,
+        },
+        { status: 409 },
+      )
+    }
+
+    const created: QuickFilter = { filterId: generateUUID(), name, query: normalizedQuery }
+    board.quickFilters = [...existingFilters, created]
+    boardStore.set(boardId, board)
+
+    return HttpResponse.json({ data: created }, { status: 201 })
+  },
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/v1/boards/:id/quick-filters/:filterId — 퀵필터 수정 (FR-UX-01)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * PATCH /api/v1/boards/{boardId}/quick-filters/{filterId} — 퀵필터 수정(name, query 전체 치환).
+ *
+ * 요청 body: { name: string, query: string }
+ *
+ * stateful 동작 — board.quickFilters의 해당 항목을 갱신한다(filterId는 불변).
+ *
+ * 성공 → 200 { data: QuickFilter }
+ * EC1(정규화 후 빈 query) → 400 ProblemDetail { errorCode: 'AGILE_QUICK_FILTER_EMPTY_QUERY' }
+ * EC2(같은 보드 내 다른 항목과 name 중복) → 409 ProblemDetail { errorCode: 'AGILE_QUICK_FILTER_NAME_CONFLICT' }
+ * EC5(타 보드 소속 또는 미존재 filterId) → 404 ProblemDetail { errorCode: 'AGILE_QUICK_FILTER_NOT_FOUND' }
+ * 보드 미존재 → 404 ProblemDetail { errorCode: 'AGILE_BOARD_NOT_FOUND' }
+ */
+const updateQuickFilterHandler = http.patch(
+  '/api/v1/boards/:id/quick-filters/:filterId',
+  async ({ params, request }) => {
+    const boardId = params['id'] as string
+    const filterId = params['filterId'] as string
+    const board = boardStore.get(boardId)
+    if (board === undefined) {
+      return HttpResponse.json(
+        { errorCode: 'AGILE_BOARD_NOT_FOUND', message: `보드를 찾을 수 없습니다: ${boardId}` },
+        { status: 404 },
+      )
+    }
+
+    const existingFilters = board.quickFilters ?? []
+    const targetIndex = existingFilters.findIndex((f) => f.filterId === filterId)
+    if (targetIndex === -1) {
+      return HttpResponse.json(
+        { errorCode: 'AGILE_QUICK_FILTER_NOT_FOUND', message: `퀵필터를 찾을 수 없습니다: ${filterId}` },
+        { status: 404 },
+      )
+    }
+
+    let name = ''
+    let query = ''
+    try {
+      const body = (await request.json()) as { name?: string; query?: string }
+      name = body.name ?? ''
+      query = body.query ?? ''
+    } catch {
+      return HttpResponse.json(
+        { errorCode: 'INVALID_REQUEST', message: '요청 body를 파싱할 수 없습니다' },
+        { status: 400 },
+      )
+    }
+
+    const normalizedQuery = normalizeQuickFilterQuery(query)
+    if (normalizedQuery === '') {
+      return HttpResponse.json(
+        { errorCode: 'AGILE_QUICK_FILTER_EMPTY_QUERY', message: '빈 필터는 저장할 수 없습니다' },
+        { status: 400 },
+      )
+    }
+
+    const nameConflict = existingFilters.some((f, idx) => idx !== targetIndex && f.name === name)
+    if (nameConflict) {
+      return HttpResponse.json(
+        {
+          errorCode: 'AGILE_QUICK_FILTER_NAME_CONFLICT',
+          message: `같은 이름의 퀵필터가 이미 있습니다: ${name}`,
+        },
+        { status: 409 },
+      )
+    }
+
+    const updated: QuickFilter = { filterId, name, query: normalizedQuery }
+    const nextFilters = [...existingFilters]
+    nextFilters[targetIndex] = updated
+    board.quickFilters = nextFilters
+    boardStore.set(boardId, board)
+
+    return HttpResponse.json({ data: updated })
+  },
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /api/v1/boards/:id/quick-filters/:filterId — 퀵필터 삭제 (FR-UX-01)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * DELETE /api/v1/boards/{boardId}/quick-filters/{filterId} — 퀵필터 삭제.
+ *
+ * stateful 동작 — board.quickFilters에서 해당 항목을 제거한다.
+ *
+ * 성공 → 204 No Content
+ * EC5(타 보드 소속 또는 미존재 filterId) → 404 ProblemDetail { errorCode: 'AGILE_QUICK_FILTER_NOT_FOUND' }
+ * 보드 미존재 → 404 ProblemDetail { errorCode: 'AGILE_BOARD_NOT_FOUND' }
+ */
+const deleteQuickFilterHandler = http.delete(
+  '/api/v1/boards/:id/quick-filters/:filterId',
+  ({ params }) => {
+    const boardId = params['id'] as string
+    const filterId = params['filterId'] as string
+    const board = boardStore.get(boardId)
+    if (board === undefined) {
+      return HttpResponse.json(
+        { errorCode: 'AGILE_BOARD_NOT_FOUND', message: `보드를 찾을 수 없습니다: ${boardId}` },
+        { status: 404 },
+      )
+    }
+
+    const existingFilters = board.quickFilters ?? []
+    const targetIndex = existingFilters.findIndex((f) => f.filterId === filterId)
+    if (targetIndex === -1) {
+      return HttpResponse.json(
+        { errorCode: 'AGILE_QUICK_FILTER_NOT_FOUND', message: `퀵필터를 찾을 수 없습니다: ${filterId}` },
+        { status: 404 },
+      )
+    }
+
+    board.quickFilters = existingFilters.filter((_, idx) => idx !== targetIndex)
+    boardStore.set(boardId, board)
+
+    return new HttpResponse(null, { status: 204 })
+  },
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
 // export
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -416,6 +646,7 @@ const updateSwimlaneHandler = http.patch(
  * handlers.ts에서 boardHandlers를 spread해 등록한다.
  * GET /api/v1/boards?projectKey= 와 GET /api/v1/boards/:id 모두 포함.
  * PATCH /api/v1/boards/:id (스윔레인 기준 변경) 포함.
+ * POST/PATCH/DELETE /api/v1/boards/:id/quick-filters[/:filterId] (퀵필터 CRUD, FR-UX-01) 포함.
  */
 export const boardHandlers = [
   getBoardsHandler,
@@ -423,4 +654,7 @@ export const boardHandlers = [
   createBoardHandler,
   moveCardHandler,
   updateSwimlaneHandler,
+  createQuickFilterHandler,
+  updateQuickFilterHandler,
+  deleteQuickFilterHandler,
 ]

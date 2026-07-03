@@ -99,3 +99,39 @@ export function isEmptyFilter(filter: BoardCardFilterParams): boolean {
     filter.componentIds.length === 0
   )
 }
+
+/**
+ * 저장된 퀵필터 query 문자열(접두 `?` 없는 쿼리스트링)을 URL search params 객체로 변환한다(FR-UX-01).
+ *
+ * `URLSearchParams`가 `application/x-www-form-urlencoded` 규칙(`+`→공백)으로 자동 디코딩하므로
+ * 백엔드 저장 형식(`BoardFilterQueryParser.serialize`)과 인코딩 계약이 일치한다(spec §API 인터페이스
+ * 인코딩 계약, 리뷰 B1 함정 — `+`를 리터럴로 오처리하면 `"my bug"`가 `"my+bug"`로 어긋난다).
+ *
+ * `filterToSearch`와 동일하게 빈 필드의 키는 결과 객체에서 생략한다 — 왕복 시(`buildBoardFilterQuery` →
+ * `queryStringToSearch` → `searchToFilter`) 원본 필터와 동등하려면 빈 배열이 아니라 키 자체가 없어야
+ * `filterToSearch`의 생략 규칙과 대칭을 이룬다.
+ *
+ * @param query 접두 `?` 없는 쿼리스트링. 예: `"assignee=uuid&label=bug"`
+ * @returns `BoardFilterSearch` — `navigate({ search })` 또는 `searchToFilter`에 바로 사용 가능
+ */
+export function queryStringToSearch(query: string): BoardFilterSearch {
+  const params = new URLSearchParams(query)
+  const result: BoardFilterSearch = {}
+
+  const assignee = params.getAll('assignee')
+  if (assignee.length > 0) {
+    result.assignee = assignee
+  }
+
+  const label = params.getAll('label')
+  if (label.length > 0) {
+    result.label = label
+  }
+
+  const component = params.getAll('component')
+  if (component.length > 0) {
+    result.component = component
+  }
+
+  return result
+}
