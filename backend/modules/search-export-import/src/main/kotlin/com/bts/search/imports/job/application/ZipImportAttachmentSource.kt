@@ -63,12 +63,13 @@ class ZipImportAttachmentSource(
     override fun open(
         filename: String,
         sourceKey: String?,
-    ): InputStream? {
-        if (closed) return null
-        val zip = zipFile ?: return null
-        val entry = findSafeEntry(zip, filename, sourceKey) ?: return null
-        return zip.getInputStream(entry)
-    }
+    ): InputStream? =
+        activeZipFileOrNull()?.let { zip ->
+            findSafeEntry(zip, filename, sourceKey)?.let { entry -> zip.getInputStream(entry) }
+        }
+
+    /** [close] 되지 않았을 때만 [zipFile] 을 반환한다 — close 이후 [open] 호출을 null 로 방어한다. */
+    private fun activeZipFileOrNull(): ZipFile? = if (closed) null else zipFile
 
     /** [ZipFile] 을 닫고 임시파일을 삭제한다. 반복 호출해도 안전하다(멱등). */
     @Suppress("TooGenericExceptionCaught")
@@ -87,21 +88,22 @@ class ZipImportAttachmentSource(
         }
     }
 
-    /** `<sourceKey>/<filename>` → 평면 `<filename>` 순으로 후보 이름을 찾아 안전성 검증까지 통과한 엔트리를 반환한다. */
+    /**
+     * `<sourceKey>/<filename>` → 평면 `<filename>` 순으로 처음 매칭된 엔트리를 찾아 안전성 검증까지
+     * 통과했을 때만 반환한다. 매칭된 엔트리가 안전성 검증에 실패하면(크기 초과·zip-slip) 다음 후보로
+     * 넘어가지 않고 즉시 null 을 반환한다(fail-closed — "일단 찾았으니 다른 후보도 더 시도" 하지 않는다).
+     */
     private fun findSafeEntry(
         zip: ZipFile,
         filename: String,
         sourceKey: String?,
     ): ZipEntry? {
-        for (name in candidateEntryNames(filename, sourceKey)) {
-            val entry = zip.getEntry(name) ?: continue
-            if (!isSafeEntry(entry)) {
-                log.warn("Import 첨부 엔트리 검증 실패 — name={} size={}", entry.name, entry.size)
-                return null
-            }
-            return entry
+        val matched = candidateEntryNames(filename, sourceKey).firstNotNullOfOrNull { name -> zip.getEntry(name) }
+        val safe = matched != null && isSafeEntry(matched)
+        if (matched != null && !safe) {
+            log.warn("Import 첨부 엔트리 검증 실패 — name={} size={}", matched.name, matched.size)
         }
-        return null
+        return if (safe) matched else null
     }
 
     /** `<sourceKey>/<filename>`(sourceKey 있을 때만) → 평면 `<filename>` 순의 후보 엔트리 이름 목록. */
@@ -111,7 +113,9 @@ class ZipImportAttachmentSource(
     ): List<String> = listOfNotNull(sourceKey?.let { "$it/$filename" }, filename)
 
     /** 엔트리 비압축 크기가 [MAX_ENTRY_SIZE_BYTES] 이하이고 zip-slip 이름이 아닌지 검증한다. */
-    private fun isSafeEntry(entry: ZipEntry): Boolean = entry.size <= MAX_ENTRY_SIZE_BYTES && !isPathTraversal(entry.name)
+    private fun isSafeEntry(entry: ZipEntry): Boolean {
+        return entry.size <= MAX_ENTRY_SIZE_BYTES && !isPathTraversal(entry.name)
+    }
 
     /** 엔트리 이름이 절대경로이거나 `..` 세그먼트(상위 디렉터리 탈출)를 포함하는지 검사한다. */
     private fun isPathTraversal(name: String): Boolean = name.startsWith("/") || name.split("/").any { it == ".." }

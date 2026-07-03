@@ -160,8 +160,7 @@ class ImportJobProcessor(
      */
     private fun openZipSourceOrNull(job: ImportJob): ZipImportAttachmentSource? {
         if (job.dryRun) return null
-        val objectKey = job.attachmentsObjectKey ?: return null
-        return ZipImportAttachmentSource(storage, objectKey)
+        return job.attachmentsObjectKey?.let { objectKey -> ZipImportAttachmentSource(storage, objectKey) }
     }
 
     /**
