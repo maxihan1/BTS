@@ -387,7 +387,7 @@ class IssueImportAdapterTest {
             comment: String?,
         ): Worklog {
             if (comment == UNEXPECTED_THROW_MARKER) {
-                throw IllegalStateException("S31 예상외 throw 시뮬레이션")
+                error("S31 예상외 throw 시뮬레이션")
             }
             return super.createImported(actor, issueKey, authorId, timeSpentSeconds, startedAt, comment)
         }

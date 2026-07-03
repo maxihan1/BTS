@@ -622,7 +622,11 @@ class IssueImportAdapter(
             startedAt = importWorklog.startedAt ?: Instant.now(clock),
             comment = importWorklog.comment,
         )
-        return WorklogApplyOutcome(invalidTimeSpent = false, unmatchedAuthor = unmatched, missingStartedAt = missingStartedAt)
+        return WorklogApplyOutcome(
+            invalidTimeSpent = false,
+            unmatchedAuthor = unmatched,
+            missingStartedAt = missingStartedAt,
+        )
     }
 
     /**
