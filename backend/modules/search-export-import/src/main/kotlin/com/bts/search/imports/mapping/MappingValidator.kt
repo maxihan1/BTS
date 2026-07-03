@@ -1,4 +1,4 @@
-// FR-IM-02 CSV Import 필드 매핑 순수 검증기 — summary 필수·중복 target·미지 target/source·미매핑 source warning (Task 5)
+// FR-IM-02 CSV Import 필드 매핑 순수 검증기 — summary 필수·target 중복·source 미지/모호·미매핑 warning (Task 5)
 
 package com.bts.search.imports.mapping
 
@@ -72,6 +72,16 @@ object MappingValidator {
     const val UNKNOWN_SOURCE = "UNKNOWN_SOURCE"
 
     /**
+     * 정규화(trim+lowercase) 시 서로 겹치는 중복 소스 헤더를 매핑에 사용함.
+     *
+     * 파서([com.bts.search.imports.parse.ImportRowParser])는 헤더를 `trim().lowercase()` 로 인식하고
+     * 같은 키의 첫 컬럼만 남기므로(putIfAbsent), "Status"/"STATUS" 처럼 대소문자/공백만 다른 중복
+     * 헤더를 매핑하면 어느 물리 컬럼을 읽을지 결정할 수 없다 — 조용한 오컬럼 import 를 막기 위해 error 다.
+     * IGNORE·미매핑 중복 헤더(예: Jira 의 동명 Comment 컬럼)는 읽지 않으므로 대상에서 제외한다.
+     */
+    const val AMBIGUOUS_SOURCE = "AMBIGUOUS_SOURCE"
+
+    /**
      * 감지된 소스 필드이지만 매핑에서 빠졌거나 IGNORE 로 지정되어 import 시 무시됨.
      *
      * 데이터 유실이 아니라 사용자의 의도된(또는 무의식적인) 선택일 수 있으므로 error 가 아닌 warning
@@ -93,6 +103,7 @@ object MappingValidator {
     ): MappingValidationResult {
         val errors = mutableListOf<MappingIssue>()
         errors += findUnknownSourceIssues(sourceFields, fieldMappings)
+        errors += findAmbiguousSourceIssues(sourceFields, fieldMappings)
         errors += findUnknownTargetIssues(fieldMappings)
         errors += findDuplicateTargetIssues(fieldMappings)
         if (!isSummaryMapped(fieldMappings)) {
@@ -114,6 +125,28 @@ object MappingValidator {
             .filter { sourceField -> sourceField !in knownSourceFields }
             .map { sourceField ->
                 MappingIssue(UNKNOWN_SOURCE, "감지되지 않은 소스 필드입니다: $sourceField", sourceField)
+            }
+    }
+
+    /**
+     * 정규화(trim+lowercase) 시 소스 헤더 목록에 둘 이상 존재하는 헤더를 매핑에 사용한 경우를
+     * 찾는다([AMBIGUOUS_SOURCE]). 파서의 첫-컬럼-우선(putIfAbsent) 인식과 검증의 완전일치 사이
+     * 비대칭이 조용한 오컬럼 import 로 이어지는 것을 막는다. IGNORE 대상은 파서가 읽지 않으므로 제외한다.
+     */
+    private fun findAmbiguousSourceIssues(
+        sourceFields: List<String>,
+        fieldMappings: Map<String, String>,
+    ): List<MappingIssue> {
+        val normalizedCounts = sourceFields.groupingBy { it.trim().lowercase() }.eachCount()
+        return fieldMappings.entries
+            .filter { (_, targetKey) -> !TargetField.isIgnoreKey(targetKey) }
+            .filter { (sourceField, _) -> (normalizedCounts[sourceField.trim().lowercase()] ?: 0) > 1 }
+            .map { (sourceField, _) ->
+                MappingIssue(
+                    AMBIGUOUS_SOURCE,
+                    "대소문자/공백만 다른 중복 소스 필드라 어느 컬럼을 읽을지 모호합니다: $sourceField",
+                    sourceField,
+                )
             }
     }
 
