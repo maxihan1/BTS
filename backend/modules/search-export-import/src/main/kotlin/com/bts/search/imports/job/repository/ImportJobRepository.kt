@@ -289,11 +289,12 @@ class ImportJobRepository(
             .map { it.toImportJob() }
 
     /**
-     * AWAITING_MAPPING 작업을 PENDING 으로 전환한다 (CAS + 만료 해제).
+     * AWAITING_MAPPING 작업을 PENDING 으로 전환한다 (CAS + 만료 해제 + dry_run 확정).
      *
      * `WHERE id=? AND status='AWAITING_MAPPING'` 조건의 단일 UPDATE 로,
-     * status 를 PENDING 으로 바꾸고 expires_at 을 NULL 로 해제한다 (FR-IM-02).
-     * 사용자가 소스 필드 ↔ 대상 필드 매핑을 확정(confirm)하면 이 전이가 일어나 워커가 처리를 시작한다.
+     * status 를 PENDING 으로 바꾸고 expires_at 을 NULL 로 해제하며 dry_run 을 [dryRun] 값으로
+     * 확정한다 (FR-IM-02). 사용자가 소스 필드 ↔ 대상 필드 매핑을 확정(confirm)하면 이 전이가 일어나
+     * 워커가 처리를 시작한다.
      *
      * **CAS 의도** — affected rows 1 = 확정 성공. 이미 PENDING/RUNNING 등 다른 상태이면 0 = false 를 반환해
      * 멱등하다(더블 confirm/재요청 시 두 번째는 무해히 false). 조회 후 UPDATE(TOCTOU) 를 쓰지 않는다.
@@ -301,16 +302,28 @@ class ImportJobRepository(
      * **expires_at 해제 이유** — AWAITING_MAPPING job 은 매핑 미확정 방치를 정리하기 위한 TTL(expires_at)을 가진다.
      * 확정 시 NULL 로 해제해 [deleteIfExpired] cleanup 대상에서 즉시 제외한다(cleanup vs confirm 레이스 차단).
      *
+     * **dry_run 확정 이유 (dryrun-fix)** — analyze 단계는 dryRun 에 대해 중립이라 [insert] 시 항상
+     * `false` 로 저장된다. 실제 dry-run 여부는 사용자가 매핑을 confirm 하는 시점에 비로소 선택되므로,
+     * 이 CAS UPDATE 에서 `dry_run` 컬럼을 [dryRun] 값으로 함께 SET 해야 워커가 확정된 선택을 읽어
+     * "검증만 하고 실제 이슈는 생성하지 않는" dry-run 실행을 수행할 수 있다. 이 SET 이 빠지면
+     * confirm 의 dryRun 파라미터가 감사 로깅에만 쓰이고 조용히 버려져, dry-run 확정 매핑이 실제
+     * Import 로 실행되는 silent bug 가 된다.
+     *
      * @param id 전환할 작업 식별자.
+     * @param dryRun 확정 시점에 사용자가 선택한 dry-run 여부. `dry_run` 컬럼에 그대로 반영된다.
      * @return 확정 전환 성공이면 true, AWAITING_MAPPING 이 아니면 false(멱등).
      */
     @Transactional
-    fun transitionToPending(id: ImportJobId): Boolean {
-        log.debug("transitionToPending id={}", id.value)
+    fun transitionToPending(
+        id: ImportJobId,
+        dryRun: Boolean,
+    ): Boolean {
+        log.debug("transitionToPending id={} dryRun={}", id.value, dryRun)
         val affected =
             dsl.update(IMPORT_JOBS)
                 .set(IMPORT_JOBS.STATUS, ImportJobStatus.PENDING.name)
                 .set(IMPORT_JOBS.EXPIRES_AT, null as OffsetDateTime?)
+                .set(IMPORT_JOBS.DRY_RUN, dryRun)
                 .where(IMPORT_JOBS.ID.eq(id.value))
                 .and(IMPORT_JOBS.STATUS.eq(ImportJobStatus.AWAITING_MAPPING.name))
                 .execute()

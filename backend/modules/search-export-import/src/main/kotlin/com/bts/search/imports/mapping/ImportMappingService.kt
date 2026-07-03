@@ -63,14 +63,16 @@ import java.util.UUID
  * 동일 이유), [confirm] 은 CAS+saveAll+enqueue 구간만 [transactionTemplate] 으로 좁게 감싸고, 그 외
  * 구간(소유확인, 검증)은 트랜잭션 밖에 둔다. 각 repo 메서드는 자기충족적 트랜잭션을 이미 갖고 있다.
  *
- * ### dryRun — 순방향 호환 파라미터
+ * ### dryRun — confirm 시점에 최종 확정되어 영속된다 (dryrun-fix)
  *
  * [confirm] 의 `dryRun` 파라미터는 API 계약(`POST /imports/{jobId}/mapping` body 의 optional
- * `dryRun` 필드, 웹 계층 sibling task)을 그대로 받는다. `AWAITING_MAPPING` job 의 [ImportJob.dryRun]
- * 은 이미 analyze 단계에서 확정되어 불변이고, 실제 dry-run 판정은 워커가 그 값을 사용해 수행한다
- * (스펙 §엣지케이스 "dryRun 확정 → 저장·전이·enqueue 동일, 워커가 dryRun 검증만"). 이 서비스가 접근
- * 가능한 [ImportJobRepository] 에는 dryRun 을 갱신하는 메서드가 없으므로(PR-A 범위 밖) 이 파라미터는
- * 감사 로깅에만 사용하고 별도로 저장하지 않는다.
+ * `dryRun` 필드, 웹 계층 sibling task)을 그대로 받는다. `AWAITING_MAPPING` job 이 analyze 단계에서
+ * 가진 [ImportJob.dryRun] 은 항상 `false`(중립값)이며, 실제 dry-run 여부는 사용자가 confirm 시
+ * 선택하는 이 파라미터로 비로소 확정된다. [transactionTemplate] 내부 CAS 전이
+ * ([ImportJobRepository.transitionToPending])가 이 값을 `dry_run` 컬럼에 함께 SET 해 영속하므로,
+ * 워커는 확정된 값을 그대로 읽어 dry-run 판정을 수행한다(스펙 §엣지케이스 "dryRun 확정 → 저장·전이·
+ * enqueue 동일, 워커가 dryRun 검증만"). 과거 이 파라미터가 감사 로깅에만 쓰이고 영속되지 않아 워커가
+ * 확정된 dryRun 선택을 무시하던 silent bug 가 있었다(재발 금지 — dryrun-fix).
  *
  * @param importMappingRepository 필드 매핑 영속 저장소([ImportMappingRepository.saveAll]).
  * @param importJobRepository Import 작업 저장소. 소유확인([ImportJobRepository.findByIdForRequester]) +
@@ -125,9 +127,11 @@ class ImportMappingService(
      * @param jobId 확정 대상 Import 작업 식별자.
      * @param actor 요청자 UUID. 소유확인에 사용.
      * @param fieldMappings 소스 필드 이름 → [TargetField.key](또는 [TargetField.IGNORE_KEY]) 매핑.
-     * @param dryRun API 계약 순방향 호환 파라미터(클래스 KDoc §dryRun 참조) — 감사 로깅에만 사용한다.
-     * @return `PENDING` 상태로 전이된 [ImportJob] — [confirm] 호출 직전 조회한 스냅샷에 status/expiresAt
-     *   만 갱신한 사본이며, CAS 이후 재조회하지 않는다(다른 필드는 확정으로 바뀌지 않는다).
+     * @param dryRun 확정 시 사용자가 선택한 dry-run 여부(클래스 KDoc §dryRun 참조). CAS 전이로
+     *   `dry_run` 컬럼에 영속된다.
+     * @return `PENDING` 상태로 전이된 [ImportJob] — [confirm] 호출 직전 조회한 스냅샷에
+     *   status/expiresAt/dryRun 만 갱신한 사본이며, CAS 이후 재조회하지 않는다(그 외 필드는 확정으로
+     *   바뀌지 않는다).
      * @throws ResponseStatusException(404) 작업이 없거나 [actor] 소유가 아닌 경우.
      * @throws ImportMappingStateConflictException 사전확인 시점 또는 CAS 시점(TOCTOU 포함)에 작업
      *   상태가 [ImportJobStatus.AWAITING_MAPPING] 이 아닌 경우.
@@ -146,7 +150,7 @@ class ImportMappingService(
         }
 
         transactionTemplate.execute {
-            if (!importJobRepository.transitionToPending(jobId)) {
+            if (!importJobRepository.transitionToPending(jobId, dryRun)) {
                 throw ImportMappingStateConflictException()
             }
             importMappingRepository.saveAll(jobId, fieldMappings)
@@ -160,7 +164,7 @@ class ImportMappingService(
             fieldMappings.size,
             dryRun,
         )
-        return job.copy(status = ImportJobStatus.PENDING, expiresAt = null)
+        return job.copy(status = ImportJobStatus.PENDING, expiresAt = null, dryRun = dryRun)
     }
 
     // ── private helpers ──────────────────────────────────────────────────────
