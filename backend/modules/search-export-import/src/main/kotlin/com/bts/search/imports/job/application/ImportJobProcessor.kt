@@ -129,24 +129,48 @@ class ImportJobProcessor(
     /**
      * 원본 파일을 열어 형식에 맞는 파서로 행을 순회하고, 완료 후 [finalizeCompleted] 로 전환한다.
      *
+     * [openZipSourceOrNull] 로 첨부 zip 소스를 job 당 1회만 열어 모든 행이 재사용하고, 파싱이 끝나면
+     * (성공/실패 무관) 닫는다 — [ZipImportAttachmentSource] 가 [java.io.Closeable] 이므로 nullable
+     * 수신자에도 안전한 Kotlin stdlib `use` 를 그대로 사용한다(source 가 null 이어도 block 은 실행된다).
+     *
      * @throws ImportParseException 파일 구조가 깨졌을 때(헤더 없음, JSON 구문 오류 등).
      * @throws ImportRowLimitExceededException 행 카운터가 [ImportJob.MAX_ROWS] 를 초과했을 때.
      */
     private fun processRows(job: ImportJob) {
         val state = RowProcessingState()
-        storage.get(job.sourceObjectKey).use { input ->
-            val onRow: (ParsedImportRow) -> Unit = { row -> handleRow(job, row, state) }
-            when (job.format) {
-                FORMAT_CSV -> parser.parseCsv(input, onRow)
-                FORMAT_JSON -> parser.parseJson(input, onRow)
-                else -> error("unsupported import format: ${job.format}") // DB CHECK 제약으로 도달불가 — 방어적 guard
+        openZipSourceOrNull(job).use { attachmentSource ->
+            storage.get(job.sourceObjectKey).use { input ->
+                val onRow: (ParsedImportRow) -> Unit = { row -> handleRow(job, row, state, attachmentSource) }
+                when (job.format) {
+                    FORMAT_CSV -> parser.parseCsv(input, onRow)
+                    FORMAT_JSON -> parser.parseJson(input, onRow)
+                    else -> error("unsupported import format: ${job.format}") // DB CHECK 제약으로 도달불가 — 방어적 guard
+                }
             }
         }
         finalizeCompleted(job, state)
     }
 
     /**
+     * [job.attachmentsObjectKey][ImportJob.attachmentsObjectKey] 가 있고 dry-run 이 아니면
+     * [ZipImportAttachmentSource] 를 연다.
+     *
+     * dry-run 은 실제 생성 없는 검증 미리보기라 최대 500MB 첨부 zip 다운로드가 낭비이므로 스킵한다
+     * (첨부는 dry-run 결과에 반영되지 않는다 — 어댑터가 dry-run 이면 첨부/이력 자체를 적용하지 않는다).
+     */
+    private fun openZipSourceOrNull(job: ImportJob): ZipImportAttachmentSource? {
+        if (job.dryRun) return null
+        val objectKey = job.attachmentsObjectKey ?: return null
+        return ZipImportAttachmentSource(storage, objectKey)
+    }
+
+    /**
      * 행 1건을 처리한다 — 카운터 증가/상한 검사, [IssueImportPort] 위임, 결과 집계, 주기적 진행률 갱신.
+     *
+     * [attachmentSource] 가 null 이 아니면 [IssueImportPort.importIssue] 2-arg 오버로드로 위임하고,
+     * null 이면(첨부 zip 미첨부·dry-run) 기존 1-arg 오버로드를 그대로 호출한다 — 어댑터 기준으로는
+     * 두 경로 모두 동일하게 첨부 소스 null 로 귀결되므로 결과는 동등하다(1-arg default 가 내부적으로
+     * `importIssue(cmd, null)` 로 위임하기 때문. [IssueImportPort] KDoc 참조).
      *
      * @throws ImportRowLimitExceededException 이 행 포함 누적 카운트가 [ImportJob.MAX_ROWS] 를
      *   초과했을 때. 이 행 자체는 [issueImportPort] 에 위임되지 않는다.
@@ -155,12 +179,20 @@ class ImportJobProcessor(
         job: ImportJob,
         row: ParsedImportRow,
         state: RowProcessingState,
+        attachmentSource: ZipImportAttachmentSource?,
     ) {
         state.rowCount++
         if (state.rowCount > ImportJob.MAX_ROWS) {
             throw ImportRowLimitExceededException()
         }
-        when (val result = issueImportPort.importIssue(toCommand(job, row))) {
+        val command = toCommand(job, row)
+        val result =
+            if (attachmentSource != null) {
+                issueImportPort.importIssue(command, attachmentSource)
+            } else {
+                issueImportPort.importIssue(command)
+            }
+        when (result) {
             is IssueImportResult.Success -> {
                 state.succeededRows++
                 result.warnings.forEach { warning ->
