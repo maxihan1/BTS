@@ -1,5 +1,5 @@
 // Import 작업 MSW 핸들러 단위 테스트 — 계약 drift 가드 + POST/GET stateful 진행 시뮬레이션 검증 (FR-IM-01 D6/D7 Task-5)
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { server } from '@/test/server'
 import { importJobStatusSchema, type ImportJobStatus } from '@/api/imports'
 import {
@@ -7,6 +7,7 @@ import {
   resetImportStore,
   seedImportJob,
   SAMPLE_IMPORT_JOB_COMPLETED,
+  LS_KEY_IMPORT_FAIL,
 } from './import-handlers'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -18,6 +19,12 @@ import {
 beforeEach(() => {
   resetImportStore()
   server.use(...importHandlers)
+})
+
+// E2E 시나리오 토글 플래그가 테스트 간 leak되지 않도록 매 테스트 후 제거
+// (board-handlers.test.ts LS_KEY_BOARD_CONFLICT 정리 패턴 미러)
+afterEach(() => {
+  localStorage.removeItem(LS_KEY_IMPORT_FAIL)
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -129,6 +136,42 @@ describe('GET /api/v1/imports/:id — 진행 시뮬레이션', () => {
   it('T3-5: store에 없는 jobId는 404를 반환한다', async () => {
     const res = await fetch('/api/v1/imports/00000000-0000-4000-a000-000000000000')
     expect(res.status).toBe(404)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/imports/:id — E2E FAILED 토글 (LS_KEY_IMPORT_FAIL)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GET /api/v1/imports/:id — E2E FAILED 토글(LS_KEY_IMPORT_FAIL)', () => {
+  it('T6-1: 플래그 true면 GET은 FAILED + errorCode IMPORT_PARSE_FAILED + errorLogReady false를 반환한다', async () => {
+    const job = await submitJob()
+    localStorage.setItem(LS_KEY_IMPORT_FAIL, 'true')
+
+    const res = await fetch(`/api/v1/imports/${job.jobId}`)
+    const parsed = importJobStatusSchema.parse(await res.json())
+    expect(parsed.status).toBe('FAILED')
+    expect(parsed.errorCode).toBe('IMPORT_PARSE_FAILED')
+    expect(parsed.errorLogReady).toBe(false)
+  })
+
+  it('T6-2: 플래그 true 상태로 반복 GET해도 FAILED가 유지된다(폴링 중단)', async () => {
+    const job = await submitJob()
+    localStorage.setItem(LS_KEY_IMPORT_FAIL, 'true')
+    await fetch(`/api/v1/imports/${job.jobId}`)
+    const res = await fetch(`/api/v1/imports/${job.jobId}`)
+    const parsed = importJobStatusSchema.parse(await res.json())
+    expect(parsed.status).toBe('FAILED')
+  })
+
+  it('T6-3: 플래그가 없으면 기존대로 정상 진행한다(PENDING→RUNNING→COMPLETED 회귀 없음)', async () => {
+    const job = await submitJob()
+    const res1 = await fetch(`/api/v1/imports/${job.jobId}`)
+    expect(importJobStatusSchema.parse(await res1.json()).status).toBe('PENDING')
+    const res2 = await fetch(`/api/v1/imports/${job.jobId}`)
+    expect(importJobStatusSchema.parse(await res2.json()).status).toBe('RUNNING')
+    const res3 = await fetch(`/api/v1/imports/${job.jobId}`)
+    expect(importJobStatusSchema.parse(await res3.json()).status).toBe('COMPLETED')
   })
 })
 
