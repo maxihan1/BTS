@@ -2,7 +2,10 @@
 
 package com.bts.agileplanning.web
 
+import com.bts.agileplanning.application.QuickFilterEmptyQueryException
+import com.bts.agileplanning.application.QuickFilterLimitExceededException
 import com.bts.agileplanning.application.QuickFilterNameConflictException
+import com.bts.agileplanning.application.QuickFilterNotFoundException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -52,6 +55,10 @@ class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니�
  * - [BoardAccessDeniedException] → 403 + AGILE_ACCESS_DENIED
  * - [BoardNotFoundException] → 404 + AGILE_BOARD_NOT_FOUND
  * - [QuickFilterNameConflictException] → 409 + AGILE_QUICK_FILTER_NAME_CONFLICT (OCC 충돌 문구와 구분, 리뷰 C4)
+ * - [QuickFilterLimitExceededException] → 409 + AGILE_QUICK_FILTER_LIMIT_EXCEEDED (코드리뷰 CONCERN-1/2 — 상한 초과를
+ *   OCC 충돌 문구와 구분)
+ * - [QuickFilterNotFoundException] → 404 + AGILE_QUICK_FILTER_NOT_FOUND (퀵필터 미존재를 보드 미존재와 구분)
+ * - [QuickFilterEmptyQueryException] → 400 + AGILE_QUICK_FILTER_EMPTY_QUERY (빈 필터 조건을 일반 검증 실패와 구분)
  * - [ResponseStatusException] → 명시 상태 전파(401/404/409/422 등, 일반 메시지)
  * - [Exception] (fallback) → 500 + AGILE_INTERNAL_ERROR
  *
@@ -125,6 +132,28 @@ class BoardExceptionHandler {
         )
     }
 
+    /**
+     * [QuickFilterEmptyQueryException] — 빈 필터 조건으로 퀵필터 저장 시도(EC1) — 400.
+     *
+     * 코드리뷰 CONCERN-1/2 — 일반 [ResponseStatusException] 핸들러의 AGILE_VALIDATION_FAILED 대신
+     * 전용 errorCode 로 원인(빈 조건)을 구분한다.
+     *
+     * @param ex 빈 필터 조건 예외(내부 식별자 미포함).
+     */
+    @ExceptionHandler(QuickFilterEmptyQueryException::class)
+    fun handleQuickFilterEmptyQuery(
+        @Suppress("UnusedParameter") ex: QuickFilterEmptyQueryException,
+    ): ProblemDetail {
+        log.info("AGILE_400 quick_filter_empty_query")
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "agile-quick-filter-empty-query",
+            title = "Quick Filter Empty Query",
+            errorCode = AGILE_QUICK_FILTER_EMPTY_QUERY,
+            detail = "필터 조건을 하나 이상 지정해야 합니다.",
+        )
+    }
+
     // ── 403 ACCESS_DENIED ─────────────────────────────────────────────────────
 
     /**
@@ -169,6 +198,28 @@ class BoardExceptionHandler {
         )
     }
 
+    /**
+     * [QuickFilterNotFoundException] — 퀵필터 미존재 또는 타 보드 소속(EC5) — 404.
+     *
+     * 코드리뷰 CONCERN-1/2 — 일반 [ResponseStatusException] 핸들러의 AGILE_BOARD_NOT_FOUND 로 뭉뚱그려지면
+     * "보드를 찾을 수 없습니다" 문구가 실제로는 필터 미존재인 상황에 부정확하게 노출된다. 전용 errorCode/문구로 구분한다.
+     *
+     * @param ex 퀵필터 미존재 예외(내부 식별자 미포함).
+     */
+    @ExceptionHandler(QuickFilterNotFoundException::class)
+    fun handleQuickFilterNotFound(
+        @Suppress("UnusedParameter") ex: QuickFilterNotFoundException,
+    ): ProblemDetail {
+        log.info("AGILE_404 quick_filter_not_found")
+        return problem(
+            status = HttpStatus.NOT_FOUND,
+            type = "agile-quick-filter-not-found",
+            title = "Quick Filter Not Found",
+            errorCode = AGILE_QUICK_FILTER_NOT_FOUND,
+            detail = "퀵필터를 찾을 수 없습니다.",
+        )
+    }
+
     // ── 409 QUICK_FILTER_NAME_CONFLICT ────────────────────────────────────────
 
     /**
@@ -190,6 +241,28 @@ class BoardExceptionHandler {
             title = "Quick Filter Name Conflict",
             errorCode = AGILE_QUICK_FILTER_NAME_CONFLICT,
             detail = "같은 이름의 퀵필터가 이미 있습니다.",
+        )
+    }
+
+    /**
+     * [QuickFilterLimitExceededException] — 보드당 퀵필터 20건 상한 초과(EC3) — 409.
+     *
+     * 코드리뷰 CONCERN-1/2 — 일반 [ResponseStatusException] 핸들러의 OCC 충돌 문구("다른 변경과 충돌이
+     * 발생했습니다. 다시 시도해 주세요.")는 상한 초과 상황에 부적절하다. 전용 errorCode/문구로 구분한다.
+     *
+     * @param ex 상한 초과 예외(내부 식별자 미포함).
+     */
+    @ExceptionHandler(QuickFilterLimitExceededException::class)
+    fun handleQuickFilterLimitExceeded(
+        @Suppress("UnusedParameter") ex: QuickFilterLimitExceededException,
+    ): ProblemDetail {
+        log.info("AGILE_409 quick_filter_limit_exceeded")
+        return problem(
+            status = HttpStatus.CONFLICT,
+            type = "agile-quick-filter-limit-exceeded",
+            title = "Quick Filter Limit Exceeded",
+            errorCode = AGILE_QUICK_FILTER_LIMIT_EXCEEDED,
+            detail = "보드당 퀵필터는 최대 20개까지 저장할 수 있습니다.",
         )
     }
 
@@ -294,6 +367,9 @@ class BoardExceptionHandler {
         const val AGILE_BOARD_NOT_FOUND = "AGILE_BOARD_NOT_FOUND"
         const val AGILE_CONFLICT = "AGILE_CONFLICT"
         const val AGILE_QUICK_FILTER_NAME_CONFLICT = "AGILE_QUICK_FILTER_NAME_CONFLICT"
+        const val AGILE_QUICK_FILTER_LIMIT_EXCEEDED = "AGILE_QUICK_FILTER_LIMIT_EXCEEDED"
+        const val AGILE_QUICK_FILTER_NOT_FOUND = "AGILE_QUICK_FILTER_NOT_FOUND"
+        const val AGILE_QUICK_FILTER_EMPTY_QUERY = "AGILE_QUICK_FILTER_EMPTY_QUERY"
         const val AGILE_UNPROCESSABLE = "AGILE_UNPROCESSABLE"
         const val AGILE_INTERNAL_ERROR = "AGILE_INTERNAL_ERROR"
     }
