@@ -37,22 +37,18 @@ class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니�
  *
  * [assignableTypes] 를 [BoardController]·[BoardQuickFilterController] 로 한정하여 SprintController 등
  * 다른 컨트롤러의 예외를 잡지 않는다(memory: domain-exception-http-handler-basepackage-scope 교훈).
- * [BoardQuickFilterController](FR-UX-01) 가 재사용하는 [BoardNotFoundException]/[BoardAccessDeniedException]/
- * [ResponseStatusException] 401/403/404 가 catch-all 로 500 변질되지 않으려면 이 목록에 포함되어야 한다
- * (리뷰 BLOCKER-B/C — 별도 전역 advice 신설 대신 기존 핸들러의 assignableTypes 를 확장한다).
+ * [BoardQuickFilterController](FR-UX-01) 가 재사용하는 401/403/404 가 catch-all 로 500 변질되지 않으려면
+ * 이 목록에 포함되어야 한다(리뷰 BLOCKER-B/C — 별도 전역 advice 신설 대신 assignableTypes 를 확장한다).
  *
  * catch-all [Exception] 핸들러를 두되, [ResponseStatusException] 은 별도 핸들러로 상태를 전파하여
  * catch-all 이 401/404/409/422 등을 500 으로 변질시키지 못하게 한다
  * (memory: catch-all-exceptionhandler-swallows-responsestatusexception 교훈).
- * [MethodArgumentTypeMismatchException]/[HttpMessageNotReadableException] 도 명시 핸들러로 등록해
- * path UUID 형식 오류·본문 손상이 500 으로 변질되지 않게 한다 (FR-WT-01 동일 패턴).
- *
- * 에러 코드 접두사는 `AGILE_` 로 고정한다 (BTS 에러 코드 규칙).
+ * [MethodArgumentTypeMismatchException]/[HttpMessageNotReadableException] 도 명시 등록해 path UUID
+ * 형식 오류·본문 손상이 500 으로 변질되지 않게 한다 (FR-WT-01 동일 패턴). 에러 코드 접두사는 `AGILE_` 고정.
  *
  * ### 매핑 규칙
- * - [MethodArgumentNotValidException] → 400 + AGILE_VALIDATION_FAILED
- * - [HttpMessageNotReadableException] → 400 + AGILE_VALIDATION_FAILED
- * - [MethodArgumentTypeMismatchException] → 400 + AGILE_VALIDATION_FAILED
+ * - [MethodArgumentNotValidException]/[HttpMessageNotReadableException]/[MethodArgumentTypeMismatchException]
+ *   → 400 + AGILE_VALIDATION_FAILED
  * - [BoardAccessDeniedException] → 403 + AGILE_ACCESS_DENIED
  * - [BoardNotFoundException] → 404 + AGILE_BOARD_NOT_FOUND
  * - [QuickFilterNameConflictException] → 409 + AGILE_QUICK_FILTER_NAME_CONFLICT (OCC 충돌 문구와 구분, 리뷰 C4)
@@ -178,11 +174,8 @@ class BoardExceptionHandler {
     /**
      * [QuickFilterNameConflictException] — 같은 보드 내 퀵필터 이름 중복(EC2) — 409.
      *
-     * 일반 [ResponseStatusException] 핸들러가 생성하는 낙관적 락(OCC) 충돌 문구
-     * ("다른 변경과 충돌이 발생했습니다")와 뉘앙스가 겹치지 않도록 전용 메시지를 반환한다(리뷰 C4).
-     * [QuickFilterNameConflictException] 도 [ResponseStatusException] 의 서브타입이지만, Spring 의
-     * [org.springframework.web.method.annotation.ExceptionHandlerMethodResolver] 는 예외 계층에서
-     * 가장 가까운(구체적인) 핸들러를 우선 선택하므로 이 핸들러가 일반 핸들러보다 먼저 매치된다.
+     * 일반 [ResponseStatusException] 핸들러의 OCC 충돌 문구와 뉘앙스가 겹치지 않도록 전용 메시지를
+     * 반환한다(리뷰 C4). 서브타입이라도 Spring 은 가장 가까운(구체적인) 핸들러를 우선 선택한다.
      *
      * @param ex 이름 중복 예외(내부 식별자 미포함).
      */
@@ -210,8 +203,7 @@ class BoardExceptionHandler {
      * `@RestControllerAdvice` 는 Spring 의 ResponseStatusExceptionResolver 보다 먼저 실행되므로,
      * [Exception] 보다 구체적인 이 핸들러를 등록해 Spring 이 우선 선택하도록 한다.
      *
-     * 보안 — detail 에 `ex.reason` 등 내부 정보를 노출하지 않고 상태 코드 기반 일반 메시지를 사용한다.
-     * 원본 사유는 로그에만 기록한다.
+     * 보안 — detail 에 `ex.reason` 등 내부 정보를 노출하지 않고 상태 코드 기반 일반 메시지를 사용한다(원본 사유는 로그에만 기록).
      *
      * @param ex 컨트롤러/서비스 계층에서 던진 상태 코드 보유 예외.
      */
