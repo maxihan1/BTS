@@ -61,3 +61,9 @@ dry-run은 유효성-예측 경고를 **별도 경로**로 미러(FORBIDDEN 미�
 - **긍정**. SDD 10.6.3 마이그레이션 보존 대상 6종 전부 충족(에픽 종결 근접). 첨부는 기존 보안 게이트 100% 재사용(스캔 우회 0). 이력은 원본 충실. 신규 BC·신규 cross-BC 포트 0, 마이그레이션 1건(V605).
 - **부정/리스크**. (a) 충실 재생은 필드 매핑 손실·이력 행 폭증 가능 — 미매핑 필드 처리와 상한을 스펙에서 확정. (b) occurredAt 명시 삽입은 append-only 감사 테이블의 관례 예외 — ADR로 근거 박제. (c) 첨부 upload가 행 tx를 오염시키지 않는지(내부 I/O tx 밖 설계 의존) 통합테스트 필수. (d) PR 규모 큼(12~16 task) — wave 분해로 관리.
 - **되돌리기**. 첨부/이력은 additive(기존 import 경로 불변). 문제 시 파서에서 `attachments`/`changelog` 추출을 비활성화하면 PR1~3 동작으로 회귀.
+
+## 코드리뷰 후속 정정 (게이트 2, 2026-07-03)
+
+- **★C1 정정 — 첨부 multipart 상한은 module-local yml이 아니라 프로그래매틱 @Bean**. 초안(D1)은 첨부 zip(500MB) 상한을 `search-export-import`의 `application-dev.yml`/`application-test.yml`로 뒀으나, 이 모듈은 `@SpringBootApplication` 부팅 앱이 없는 라이브러리(memory `no-cross-bc-deployment-assembly`)라 (a) yml을 로드하는 부팅 앱 부재 (b) 동명 `application-dev.yml` 3개 classpath 충돌 시 승자 비결정이라 실효/검증이 없었다. → 두 yml 삭제, `ImportMultipartConfiguration`의 `MultipartConfigElement` @Bean으로 교체(`MultipartAutoConfiguration` `@ConditionalOnMissingBean` 결정적 override + 단위 테스트로 상한 어서트). **미결 명시**. 전역 multipart 상한은 모듈 공유 자원 — 실제 부팅 조립 도입 시 issue-tracking 100MB 첨부 상한과 **재조정 필수**(별도 부팅 앱 분리 또는 part별 앱-레벨 검증). 그때까지 이 @Bean은 "준비된 설정"이며 end-to-end 실효는 조립 시점에 승격 검증한다.
+- **★C2 정정 — 첨부 크기는 Jira 메타 아닌 실제 바이트**. 어댑터가 Jira 보고 `sizeBytes`를 MinIO Content-Length로 신뢰하면 실제 zip 바이트가 더 클 때 침묵 절단 후 성공 위장. → 항상 100MB bounded read로 실크기 계산(zip-bomb 방어), 초과 시 best-effort 스킵(`TOO_LARGE`).
+- **★C3 정정 — 권한예외는 전파**. `applyAttachmentItem`이 `IssueAccessDeniedException`을 스킵-경고로 강등하던 것을 제거 → 행-원자성 안전망으로 전파(FORBIDDEN 롤백). D4의 best-effort 강등 집합은 insert 이전 실패(권한 사전체크·MIME·scan·put·길이·zip부재)만이며, **실행 시점 권한거부는 강등 대상이 아님**을 명확히 한다.

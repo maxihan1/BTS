@@ -205,3 +205,12 @@ Maxi 확정(도메인 게이트). 이력=충실재생 · 첨부 zip=두-part · 
 - **CONCERN-2 (중간) — 첨부 침묵 절단**. `resolveAttachmentBytes`(어댑터)가 `ImportAttachment.sizeBytes`(Jira 보고, KDoc이 "참고용·실제와 다를 수 있음"이라 규정)를 MinIO `.stream(input, size)` Content-Length로 신뢰 → 실제 zip 바이트 > 보고값이면 절단 저장 후 Success. 신뢰 가능값(`ZipEntry.size` 검증분)은 source `open`이 `InputStream?`만 반환해 미관통. spec R4(zip 엔트리 실크기) 의도와 구현 drift.
 - **CONCERN-3 (낮음) — 권한예외 강등 + 불필요 suppress**. `applyAttachmentItem`이 `IssueAccessDeniedException`을 PERMISSION_DENIED 스킵-경고로 catch(현재 선행 게이트로 도달불가+log.warn 표면화라 침묵 아님, 미래 첨부/필드 권한 분기 시 위험) + 전부 특정 타입 catch인데 `@Suppress("TooGenericExceptionCaught")` 오해소지.
 - **관찰(비차단)**. IssueImportAdapter 1498줄(@Suppress LargeClass 근거·PR1~4 누적, 향후 분리 검토) · MinIO 고아객체(PR1부터 기존, zip이 2번째 추가) · SchemaMigrationImportTest 길이500 미어서트(경미).
+
+#### CONCERN 처리 결과 (게이트 2 Maxi 결정 = C1+C2+C3 모두 hot-fix)
+
+세 CONCERN 전부 TDD hot-fix로 해소. 각 모듈 전체 테스트 무회귀 + ktlint/detekt clean.
+
+- **C1 해소** (search-export-import). module-local `application-dev.yml`/`application-test.yml`(multipart 500MB/600MB) 삭제 → 프로그래매틱 `ImportMultipartConfiguration`의 `MultipartConfigElement` @Bean으로 교체. @Bean은 `MultipartAutoConfiguration`의 `@ConditionalOnMissingBean`을 **결정적으로 override**(classpath 순서 비의존)하고 단위 테스트(`ImportMultipartConfigurationTest`)로 상한을 직접 어서트. **정직한 한계**. 부팅 앱 부재로 end-to-end 실효는 배포 조립 시점에만 검증 가능 — @Bean KDoc/ADR에 "조립 시 issue-tracking 100MB 첨부 상한과 전역 재조정 필요(별도 부팅 앱 또는 part별 검증)" 명시. 커밋 `3149b50a8`(red)→`bc64b471f`(green)→`84612a291`(refactor).
+- **C2 해소** (issue-tracking). `resolveAttachmentBytes`가 Jira 보고 `sizeBytes`를 MinIO Content-Length로 신뢰하던 분기 제거 → `readBoundedAttachmentBytes`로 **항상 실제 바이트를 100MB bounded read**(zip-bomb 방어), 실크기로 upload(절단 0). 상한 초과 시 신규 `AttachmentSkipReason.TOO_LARGE`로 best-effort 스킵. 커밋 `84b65b331`(red)→`998217916`(green)→`1855fd9ea`(refactor).
+- **C3 해소** (issue-tracking). `applyAttachmentItem` catch에서 `IssueAccessDeniedException` 제거(행-원자성 안전망으로 전파 → FORBIDDEN 행 롤백, 스킵-경고 강등 없음) + 불필요한 `@Suppress("TooGenericExceptionCaught")` 제거. (C2 커밋에 동반.)
+- **재검증**. issue-tracking `IssueImportAdapterTest` 54/54 · search-export-import 모듈 전체 suite BUILD SUCCESSFUL. 신규 시나리오 S45(C3 TOCTOU→FORBIDDEN 롤백)·S46(메타<실제→절단0)·S47(100MB+1→TOO_LARGE 스킵).
