@@ -74,7 +74,7 @@ function CycleTimeSuccessView({ data }: CycleTimeSuccessViewProps): JSX.Element 
         metric={data.leadTime}
         title={cycleTimeLabels.metric.leadTitle}
         description={cycleTimeLabels.metric.leadDesc}
-        emptyMessage={cycleTimeLabels.status.empty}
+        emptyMessage={cycleTimeLabels.metricEmpty.lead}
       />
     </div>
   )

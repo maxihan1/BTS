@@ -66,6 +66,8 @@ export const cycleTimeLabels = {
   metricEmpty: {
     /** Cycle Time 표본 없음 — 완료 이슈는 있으나 IN_PROGRESS 미경유 */
     cycle: '진행 중 상태를 거친 완료 이슈가 없습니다.',
+    /** Lead Time 표본 없음 — lead≥cycle이라 실제로는 도달 불가한 방어 분기(의미 정합용) */
+    lead: '완료된 이슈가 없습니다.',
   },
 
   /** 차트 접근성/축 제목 */

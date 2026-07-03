@@ -75,6 +75,22 @@ export function boxPlotScale(range: { min: number; max: number }, width: number)
   return (value: number) => ((value - range.min) / span) * width
 }
 
+/**
+ * 박스플롯 컨테이너 aria-label을 만든다.
+ *
+ * 정적 안내 문구(cycleTimeLabels.chart.boxPlotAriaLabel)만으로는 스크린리더
+ * 사용자가 실제 최소/중앙값/최대값을 알 수 없다. `formatDuration`으로 포맷한
+ * 실제 값을 문구에 이어 붙여, 시각적으로 도형을 볼 수 없어도 분포의 핵심 값을
+ * 읽을 수 있게 한다.
+ *
+ * @param stats 박스플롯 통계(min/p25/p50/p75/max)
+ * @returns 정적 안내 문구 뒤에 실제 min/중앙값/max 값을 이어붙인 aria-label 문자열
+ */
+function buildBoxPlotAriaLabel(stats: CycleTimeBoxPlotStats): string {
+  const { boxPlotAriaLabel } = cycleTimeLabels.chart
+  return `${boxPlotAriaLabel}. 최소 ${formatDuration(stats.min)}, 중앙값 ${formatDuration(stats.p50)}, 최대 ${formatDuration(stats.max)}`
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
@@ -114,9 +130,12 @@ export interface CycleTimeBoxPlotProps {
  * - p90은 이 컴포넌트가 그리지 않는다 — 상위 요약 타일이 별도로 표시한다.
  *
  * **값 텍스트 병기**: 장식 도형만으로는 값을 읽을 수 없으므로, min/p25/p50/p75/max
- * 5개 값 모두 `formatDuration`으로 포맷한 텍스트를 SVG 위에 병기한다.
+ * 5개 값 모두 `formatDuration`으로 포맷한 텍스트를 SVG 위에 병기한다. 단, `min===max`
+ * (전 표본이 동일한 값)이면 5개 값이 모두 같아 같은 x좌표에 겹치므로, 이 경우에는
+ * 중복을 피해 값 라벨 1개만 렌더한다.
  *
- * **접근성**: 바깥 wrapper `div`에 `role="img"` + aria-label(전체 요약 문구).
+ * **접근성**: 바깥 wrapper `div`에 `role="img"` + aria-label(정적 안내 문구 + 실제
+ * min/중앙값/max 값 — `buildBoxPlotAriaLabel` 참고).
  *
  * @param props stats — 상위 섹션이 count>0을 확인한 뒤에만 전달(non-null 값 전제)
  */
@@ -133,10 +152,14 @@ export function CycleTimeBoxPlot({ stats }: CycleTimeBoxPlotProps): JSX.Element 
   const boxLeftX = Math.min(xP25, xP75)
   const boxWidth = Math.abs(xP75 - xP25)
 
+  // min===max(전 표본 동일)이면 min/p25/p50/p75/max가 모두 같은 값이라 5개 라벨이
+  // 겹쳐 중복 렌더된다 — 이 경우 값 라벨을 1개만 렌더한다.
+  const isFlat = stats.min === stats.max
+
   return (
     <div
       role="img"
-      aria-label={cycleTimeLabels.chart.boxPlotAriaLabel}
+      aria-label={buildBoxPlotAriaLabel(stats)}
       className="w-full h-[120px]"
     >
       <svg viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
@@ -176,22 +199,31 @@ export function CycleTimeBoxPlot({ stats }: CycleTimeBoxPlotProps): JSX.Element 
         {/* 중앙선 — p50 */}
         <line x1={xP50} y1={BOX_TOP_Y} x2={xP50} y2={BOX_BOTTOM_Y} stroke={ACCENT_COLOR} strokeWidth={2.5} />
 
-        {/* 값 라벨 — 장식 도형이 아니라 실제 값을 읽을 수 있도록 병기 */}
-        <text x={xMin} y={EXTREME_LABEL_Y} textAnchor="middle" fontSize={LABEL_FONT_SIZE} className="fill-muted-foreground">
-          {formatDuration(stats.min)}
-        </text>
-        <text x={xP25} y={QUARTILE_LABEL_Y} textAnchor="middle" fontSize={LABEL_FONT_SIZE} className="fill-muted-foreground">
-          {formatDuration(stats.p25)}
-        </text>
-        <text x={xP50} y={MEDIAN_LABEL_Y} textAnchor="middle" fontSize={LABEL_FONT_SIZE} fontWeight="bold" className="fill-foreground">
-          {formatDuration(stats.p50)}
-        </text>
-        <text x={xP75} y={QUARTILE_LABEL_Y} textAnchor="middle" fontSize={LABEL_FONT_SIZE} className="fill-muted-foreground">
-          {formatDuration(stats.p75)}
-        </text>
-        <text x={xMax} y={EXTREME_LABEL_Y} textAnchor="middle" fontSize={LABEL_FONT_SIZE} className="fill-muted-foreground">
-          {formatDuration(stats.max)}
-        </text>
+        {/* 값 라벨 — 장식 도형이 아니라 실제 값을 읽을 수 있도록 병기.
+            min===max(전 표본 동일)이면 5개 값이 모두 같아 겹치므로 1개만 렌더한다. */}
+        {isFlat ? (
+          <text x={xP50} y={MEDIAN_LABEL_Y} textAnchor="middle" fontSize={LABEL_FONT_SIZE} fontWeight="bold" className="fill-foreground">
+            {formatDuration(stats.p50)}
+          </text>
+        ) : (
+          <>
+            <text x={xMin} y={EXTREME_LABEL_Y} textAnchor="middle" fontSize={LABEL_FONT_SIZE} className="fill-muted-foreground">
+              {formatDuration(stats.min)}
+            </text>
+            <text x={xP25} y={QUARTILE_LABEL_Y} textAnchor="middle" fontSize={LABEL_FONT_SIZE} className="fill-muted-foreground">
+              {formatDuration(stats.p25)}
+            </text>
+            <text x={xP50} y={MEDIAN_LABEL_Y} textAnchor="middle" fontSize={LABEL_FONT_SIZE} fontWeight="bold" className="fill-foreground">
+              {formatDuration(stats.p50)}
+            </text>
+            <text x={xP75} y={QUARTILE_LABEL_Y} textAnchor="middle" fontSize={LABEL_FONT_SIZE} className="fill-muted-foreground">
+              {formatDuration(stats.p75)}
+            </text>
+            <text x={xMax} y={EXTREME_LABEL_Y} textAnchor="middle" fontSize={LABEL_FONT_SIZE} className="fill-muted-foreground">
+              {formatDuration(stats.max)}
+            </text>
+          </>
+        )}
       </svg>
     </div>
   )
