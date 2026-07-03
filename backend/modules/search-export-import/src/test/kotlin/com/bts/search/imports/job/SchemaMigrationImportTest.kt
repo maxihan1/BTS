@@ -1,4 +1,4 @@
-// V604 마이그레이션 검증 — import_jobs 테이블 + 17컬럼 + status/format CHECK + 2 인덱스 + q_import_jobs pgmq 큐 존재 확인 (FR-IM-01)
+// V604~V605 마이그레이션 검증 — import_jobs 테이블 + 18컬럼 + status/format CHECK + 2 인덱스 + q_import_jobs pgmq 큐 존재 확인 (FR-IM-01)
 
 package com.bts.search.imports.job
 
@@ -29,10 +29,11 @@ import java.util.UUID
  * (메모리 concurrent-testcontainers-suite-flaky / ExportJobsSchemaMigrationTest 동일 패턴).
  *
  * 검증 범위 (FR-IM-01 plan Task 1 / DATA.md §4 TIMESTAMPTZ 강제).
- * - import_jobs 테이블 존재 + 17개 컬럼 (plan DDL 정합)
+ * - import_jobs 테이블 존재 + 18개 컬럼 (plan DDL 정합, V605 attachments_object_key 포함)
  * - id = uuid PK NOT NULL
  * - source_object_key = text NOT NULL (업로드 원본 MinIO 키)
  * - dry_run = boolean NOT NULL (검증 전용 실행 여부)
+ * - attachments_object_key = character varying(500) NULL 허용 (V605 — 첨부 zip MinIO 키, CSV/zip 미첨부 시 null)
  * - created_at = timestamptz NOT NULL (DATA.md §4.1#4 — TIMESTAMP without tz 금지)
  * - expires_at / started_at / completed_at = timestamptz NULL 허용 (종단/claim 시점에만 채움)
  * - chk_import_jobs_status / chk_import_jobs_format CHECK 제약 존재 + 위반 INSERT 거부
@@ -62,7 +63,7 @@ class SchemaMigrationImportTest {
                 .withPassword("bts_test")
                 .apply { start() }
 
-        // import_jobs 가 보유해야 하는 17개 컬럼 (plan §데이터 모델 DDL 정합).
+        // import_jobs 가 보유해야 하는 18개 컬럼 (plan §데이터 모델 DDL 정합, V605 attachments_object_key 포함).
         private val IMPORT_JOBS_COLUMNS =
             listOf(
                 "id",
@@ -78,6 +79,7 @@ class SchemaMigrationImportTest {
                 "failed_rows",
                 "error_code",
                 "error_log_object_key",
+                "attachments_object_key",
                 "expires_at",
                 "created_at",
                 "started_at",
@@ -233,7 +235,7 @@ class SchemaMigrationImportTest {
     }
 
     @Test
-    fun `V604 import_jobs 17개 컬럼 존재`() {
+    fun `V604-V605 import_jobs 18개 컬럼 존재`() {
         assertThat(columnsOf("import_jobs"))
             .containsExactlyInAnyOrderElementsOf(IMPORT_JOBS_COLUMNS)
     }
@@ -260,6 +262,12 @@ class SchemaMigrationImportTest {
     fun `V604 import_jobs dry_run 은 boolean NOT NULL`() {
         assertThat(columnDataType("import_jobs", "dry_run")).isEqualTo("boolean")
         assertThat(columnIsNullable("import_jobs", "dry_run")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V605 import_jobs attachments_object_key 는 character varying(500) NULL 허용`() {
+        assertThat(columnDataType("import_jobs", "attachments_object_key")).isEqualTo("character varying")
+        assertThat(columnIsNullable("import_jobs", "attachments_object_key")).isEqualTo("YES")
     }
 
     @Test

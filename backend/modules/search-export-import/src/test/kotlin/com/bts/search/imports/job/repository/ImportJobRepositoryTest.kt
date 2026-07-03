@@ -51,6 +51,7 @@ class ImportJobRepositoryTest : SearchPersistenceTestBase() {
         sourceObjectKey: String = "imports/raw/${UUID.randomUUID()}.csv",
         dryRun: Boolean = false,
         requesterUserId: UUID = UUID.randomUUID(),
+        attachmentsObjectKey: String? = null,
     ): ImportJob =
         ImportJob(
             id = id,
@@ -66,6 +67,7 @@ class ImportJobRepositoryTest : SearchPersistenceTestBase() {
             failedRows = 0,
             errorCode = null,
             errorLogObjectKey = null,
+            attachmentsObjectKey = attachmentsObjectKey,
             expiresAt = null,
             createdAt = Instant.now(),
             startedAt = null,
@@ -95,6 +97,7 @@ class ImportJobRepositoryTest : SearchPersistenceTestBase() {
         assertThat(found.failedRows).isEqualTo(0L)
         assertThat(found.errorCode).isNull()
         assertThat(found.errorLogObjectKey).isNull()
+        assertThat(found.attachmentsObjectKey).isNull()
         assertThat(found.expiresAt).isNull()
         assertThat(found.startedAt).isNull()
         assertThat(found.completedAt).isNull()
@@ -103,6 +106,28 @@ class ImportJobRepositoryTest : SearchPersistenceTestBase() {
     @Test
     fun `findById 는 존재하지 않는 id 에 대해 null 반환`() {
         assertThat(repo.findById(ImportJobId(UUID.randomUUID()))).isNull()
+    }
+
+    // ── attachmentsObjectKey round-trip (V605) ──────────────────────────────────
+
+    @Test
+    fun `insert 후 findById 로 조회 - attachmentsObjectKey 값이 있으면 그대로 라운드트립`() {
+        val job = makeJob(attachmentsObjectKey = "imports/atlas/${UUID.randomUUID()}-attachments.zip")
+        repo.insert(job)
+
+        val found = repo.findById(job.id)
+        assertThat(found).isNotNull()
+        assertThat(found!!.attachmentsObjectKey).isEqualTo(job.attachmentsObjectKey)
+    }
+
+    @Test
+    fun `insert 후 findById 로 조회 - attachmentsObjectKey 미지정이면 null 라운드트립`() {
+        val job = makeJob(attachmentsObjectKey = null)
+        repo.insert(job)
+
+        val found = repo.findById(job.id)
+        assertThat(found).isNotNull()
+        assertThat(found!!.attachmentsObjectKey).isNull()
     }
 
     // ── findStatus ────────────────────────────────────────────────────────────────
