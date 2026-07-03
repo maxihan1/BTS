@@ -99,7 +99,9 @@ import java.time.OffsetDateTime
  * @param clock expiresAt 결정용 시계. search 모듈에 Clock 빈이 없으므로 기본값 [Clock.systemUTC] 사용.
  */
 @Component
-@Suppress("TooManyFunctions") // PR3 comments/worklogs 매핑 헬퍼 추가로 임계 초과 — 단일 행 변환 책임 응집, 분리 시 오히려 산개
+// TooManyFunctions: PR3 comments/worklogs 매핑 헬퍼 추가로 임계 초과 — 단일 행 변환 책임 응집, 분리 시 오히려 산개.
+// LongParameterList: FR-IM-02 PR-A mappingRepo 추가로 7개 — 각각 단일 책임 협력자, ImportJobService 와 동일 선례.
+@Suppress("TooManyFunctions", "LongParameterList")
 class ImportJobProcessor(
     private val issueImportPort: IssueImportPort,
     private val storage: ImportObjectStoragePort,
