@@ -430,12 +430,18 @@ class IssueImportAdapterTest {
             scope: IssueScope,
         ): Boolean {
             if ((actorId to permission) in denied) return false
-            if (permission == IssuePermission.UPDATE && actorId == revokeUpdateAfterFirstCallFor) {
-                val callCount = (updateCallCounts[actorId] ?: 0) + 1
-                updateCallCounts[actorId] = callCount
-                return callCount == 1
-            }
-            return true
+            return isUpdateAllowed(actorId, permission)
+        }
+
+        /** [revokeUpdateAfterFirstCallFor] 의 최초 1회만 허용하는 TOCTOU 판정 — [hasPermission] 분리. */
+        private fun isUpdateAllowed(
+            actorId: UUID,
+            permission: IssuePermission,
+        ): Boolean {
+            if (permission != IssuePermission.UPDATE || actorId != revokeUpdateAfterFirstCallFor) return true
+            val callCount = (updateCallCounts[actorId] ?: 0) + 1
+            updateCallCounts[actorId] = callCount
+            return callCount == 1
         }
     }
 
