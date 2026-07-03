@@ -55,11 +55,13 @@ export const quickFilterLabels = {
     emptyQueryHint: '적용된 필터가 없어 저장할 수 없습니다',
   },
 
-  /** 오류 메시지 — HTTP status 기반 매핑(errorCode 계약 미확정이라 status만 사용) */
+  /** 오류 메시지 — errorCode 기반 매핑(백엔드 계약 확정, status는 하위호환 fallback) */
   errors: {
-    /** 409 — 같은 보드 내 이름 중복(EC2) */
+    /** 409 — 같은 보드 내 이름 중복(EC2), errorCode=AGILE_QUICK_FILTER_NAME_CONFLICT */
     nameConflict: '같은 이름의 퀵필터가 이미 있습니다',
-    /** 400 — 잘못된 필터 조건(EC4) */
+    /** 409 — 보드당 20건 상한 초과(EC3), errorCode=AGILE_QUICK_FILTER_LIMIT_EXCEEDED */
+    limitExceeded: '퀵필터는 보드당 최대 20개까지 저장할 수 있습니다',
+    /** 400 — 잘못된 필터 조건(EC4), errorCode=AGILE_QUICK_FILTER_EMPTY_QUERY */
     invalidQuery: '필터 조건을 확인해 주세요',
     /** 그 외 생성/수정 실패 */
     saveFailed: '퀵필터 저장에 실패했습니다',

@@ -463,6 +463,9 @@ const updateSwimlaneHandler = http.patch(
 // POST /api/v1/boards/:id/quick-filters — 퀵필터 생성 (FR-UX-01)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 보드당 퀵필터 최대 개수 상한 (spec EC3 — backend 동일 상수와 정합) */
+const MAX_QUICK_FILTER_COUNT = 20
+
 /**
  * POST /api/v1/boards/{boardId}/quick-filters — 퀵필터 생성.
  *
@@ -476,6 +479,7 @@ const updateSwimlaneHandler = http.patch(
  * 성공 → 201 { data: QuickFilter }
  * EC1(정규화 후 빈 query) → 400 ProblemDetail { errorCode: 'AGILE_QUICK_FILTER_EMPTY_QUERY' }
  * EC2(같은 보드 내 name 중복) → 409 ProblemDetail { errorCode: 'AGILE_QUICK_FILTER_NAME_CONFLICT' }
+ * EC3(보드당 20건 상한 초과) → 409 ProblemDetail { errorCode: 'AGILE_QUICK_FILTER_LIMIT_EXCEEDED' }
  * 보드 미존재 → 404 ProblemDetail { errorCode: 'AGILE_BOARD_NOT_FOUND' }
  */
 const createQuickFilterHandler = http.post(
@@ -513,6 +517,16 @@ const createQuickFilterHandler = http.post(
         {
           errorCode: 'AGILE_QUICK_FILTER_NAME_CONFLICT',
           message: `같은 이름의 퀵필터가 이미 있습니다: ${name}`,
+        },
+        { status: 409 },
+      )
+    }
+
+    if (existingFilters.length >= MAX_QUICK_FILTER_COUNT) {
+      return HttpResponse.json(
+        {
+          errorCode: 'AGILE_QUICK_FILTER_LIMIT_EXCEEDED',
+          message: `보드당 퀵필터는 최대 ${MAX_QUICK_FILTER_COUNT}건까지 저장할 수 있습니다`,
         },
         { status: 409 },
       )

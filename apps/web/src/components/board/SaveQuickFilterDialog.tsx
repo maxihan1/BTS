@@ -31,17 +31,48 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HTTP status → 사용자 메시지 매핑
+// errorCode → 사용자 메시지 매핑 (백엔드가 errorCode 문자열 계약을 확정 — 코드리뷰 CONCERN-1)
 //
-// 백엔드가 errorCode 문자열 계약을 확정하지 않았으므로(spec §API 인터페이스는 status만
-// 명시) status 코드만으로 매핑한다. errorCode 계약이 추가되면 이 함수를 확장한다.
+// 이전에는 status만으로 매핑해 EC2(이름 중복)와 EC3(20건 상한 초과)가 모두 409로 와
+// 둘 다 nameConflict로 잘못 표기됐다. errorCode를 우선 확인해 분기하고, errorCode가
+// 없거나 알려지지 않은 값이면 status 기반 매핑으로 fallback한다(하위호환).
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** ApiError.status를 사용자 노출 메시지로 변환한다. */
+/** 이 다이얼로그가 인식하는 백엔드 errorCode 상수 (board BC — CreateBoardForm.tsx 동일 로컬 정의 패턴) */
+const QUICK_FILTER_ERROR_CODES = {
+  LIMIT_EXCEEDED: 'AGILE_QUICK_FILTER_LIMIT_EXCEEDED',
+  NAME_CONFLICT: 'AGILE_QUICK_FILTER_NAME_CONFLICT',
+  EMPTY_QUERY: 'AGILE_QUICK_FILTER_EMPTY_QUERY',
+} as const
+
+/** ApiError.body에서 errorCode 문자열을 추출한다 (CreateBoardForm.tsx 동일 패턴) */
+function extractErrorCode(body: unknown): string | undefined {
+  if (body !== null && typeof body === 'object' && 'errorCode' in body) {
+    const code = (body as Record<string, unknown>)['errorCode']
+    return typeof code === 'string' ? code : undefined
+  }
+  return undefined
+}
+
+/** ApiError.status를 사용자 노출 메시지로 변환한다 (errorCode 미상 시 fallback). */
 function mapStatusToMessage(status: number): string {
   if (status === 409) return quickFilterLabels.errors.nameConflict
   if (status === 400) return quickFilterLabels.errors.invalidQuery
   return quickFilterLabels.errors.saveFailed
+}
+
+/**
+ * ApiError를 사용자 노출 메시지로 변환한다.
+ *
+ * errorCode를 우선 확인해 분기한다. errorCode가 없거나(구버전 응답) 알려지지 않은
+ * 값이면 status 기반 mapStatusToMessage로 fallback한다.
+ */
+function mapErrorToMessage(error: ApiError): string {
+  const errorCode = extractErrorCode(error.body)
+  if (errorCode === QUICK_FILTER_ERROR_CODES.LIMIT_EXCEEDED) return quickFilterLabels.errors.limitExceeded
+  if (errorCode === QUICK_FILTER_ERROR_CODES.NAME_CONFLICT) return quickFilterLabels.errors.nameConflict
+  if (errorCode === QUICK_FILTER_ERROR_CODES.EMPTY_QUERY) return quickFilterLabels.errors.invalidQuery
+  return mapStatusToMessage(error.status)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,8 +126,7 @@ function SaveQuickFilterForm({
   }
 
   function handleError(error: unknown): void {
-    const status = error instanceof ApiError ? error.status : 0
-    setSubmitError(mapStatusToMessage(status))
+    setSubmitError(error instanceof ApiError ? mapErrorToMessage(error) : quickFilterLabels.errors.saveFailed)
   }
 
   function onValid(values: FormValues): void {
