@@ -410,7 +410,7 @@ class ImportJobProcessorTest {
     }
 
     @Test
-    fun `toCommand maps parsed attachments to ImportAttachment with ISO string parsed to Instant email lowercased and size preserved`() {
+    fun `toCommand maps parsed attachments to ImportAttachment with Instant email lowercased and size preserved`() {
         val row =
             makeRow(1).copy(
                 attachments =
@@ -439,7 +439,7 @@ class ImportJobProcessorTest {
     }
 
     @Test
-    fun `toCommand maps parsed changelog groups to ImportChangeGroup with occurredAt author lowercased and items raw field preserved`() {
+    fun `toCommand maps parsed changelog groups to ImportChangeGroup with author lowercased and raw field preserved`() {
         val row =
             makeRow(1).copy(
                 changelog =

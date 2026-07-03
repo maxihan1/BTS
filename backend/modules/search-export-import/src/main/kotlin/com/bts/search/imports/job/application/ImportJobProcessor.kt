@@ -7,9 +7,15 @@ import com.bts.search.imports.job.repository.ImportJobRepository
 import com.bts.search.imports.job.storage.ImportObjectStoragePort
 import com.bts.search.imports.parse.ImportParseException
 import com.bts.search.imports.parse.ImportRowParser
+import com.bts.search.imports.parse.ParsedImportAttachment
+import com.bts.search.imports.parse.ParsedImportChangeGroup
+import com.bts.search.imports.parse.ParsedImportChangeItem
 import com.bts.search.imports.parse.ParsedImportComment
 import com.bts.search.imports.parse.ParsedImportRow
 import com.bts.search.imports.parse.ParsedImportWorklog
+import com.bts.shared.issue.ImportAttachment
+import com.bts.shared.issue.ImportChangeGroup
+import com.bts.shared.issue.ImportChangeItem
 import com.bts.shared.issue.ImportComment
 import com.bts.shared.issue.ImportWorklog
 import com.bts.shared.issue.IssueImportCommand
@@ -251,6 +257,9 @@ class ImportJobProcessor(
             affectsVersionNames = row.affectsVersionNames,
             comments = row.comments.map(::toImportComment),
             worklogs = row.worklogs.map(::toImportWorklog),
+            sourceKey = row.sourceKey,
+            attachments = row.attachments.map(::toImportAttachment),
+            changelog = row.changelog.map(::toImportChangeGroup),
         )
 
     /** [ParsedImportComment](raw 문자열) 를 [ImportComment](shared VO, `createdAt` 이 [Instant]) 로 변환한다. */
@@ -268,6 +277,47 @@ class ImportJobProcessor(
             startedAt = parseInstantOrNull(worklog.startedAt),
             authorEmail = worklog.authorEmail?.lowercase(),
             comment = worklog.comment,
+        )
+
+    /**
+     * [ParsedImportAttachment](raw 문자열) 를 [ImportAttachment](shared VO, `createdAt` 이 [Instant]) 로
+     * 변환한다. [ParsedImportAttachment.mimeType]/[ParsedImportAttachment.sizeBytes] 는 값 변환 없이 그대로
+     * 옮긴다(재판정/재계산은 어댑터 책임).
+     */
+    private fun toImportAttachment(attachment: ParsedImportAttachment): ImportAttachment =
+        ImportAttachment(
+            filename = attachment.filename,
+            authorEmail = attachment.authorEmail?.lowercase(),
+            createdAt = parseInstantOrNull(attachment.created),
+            mimeType = attachment.mimeType,
+            sizeBytes = attachment.sizeBytes,
+        )
+
+    /**
+     * [ParsedImportChangeGroup](raw 문자열) 를 [ImportChangeGroup](shared VO, `occurredAt` 이 [Instant]) 로
+     * 변환한다. [ParsedImportChangeGroup.items] 는 [toImportChangeItem] 로 원소별 변환한다.
+     */
+    private fun toImportChangeGroup(group: ParsedImportChangeGroup): ImportChangeGroup =
+        ImportChangeGroup(
+            authorEmail = group.authorEmail?.lowercase(),
+            occurredAt = parseInstantOrNull(group.created),
+            items = group.items.map(::toImportChangeItem),
+        )
+
+    /**
+     * [ParsedImportChangeItem] 을 [ImportChangeItem] 으로 변환한다.
+     *
+     * [ParsedImportChangeItem.field] 는 원본(Jira 등)의 raw 필드명을 **그대로** 옮긴다 — BTS 내부
+     * 필드명으로의 매핑은 이 클래스가 수행하지 않는다. BTS 필드는 issue-tracking BC 가 소유하는
+     * 도메인 지식(예: 전이 가능 상태 목록, 담당자 개념)이라 search 모듈(BC 격리)에서 매핑 테이블을
+     * 들고 있으면 그 지식이 두 곳에 흩어진다. 실제 매핑은 [ImportChangeGroup] 을 소비하는
+     * issue-tracking `IssueImportAdapter`(Task 9)가 담당한다.
+     */
+    private fun toImportChangeItem(item: ParsedImportChangeItem): ImportChangeItem =
+        ImportChangeItem(
+            field = item.field,
+            fromValue = item.fromValue,
+            toValue = item.toValue,
         )
 
     /**
