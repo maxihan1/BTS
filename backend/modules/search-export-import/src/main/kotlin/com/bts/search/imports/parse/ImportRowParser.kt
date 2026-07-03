@@ -176,12 +176,14 @@ class ImportRowParser {
         val emptySample = HeaderSample(headers = emptyList(), sampleRows = emptyList())
         val headerLine = readLogicalLine(reader) ?: return emptySample
         val headers = parseCsvLine(headerLine)
-        val sampleRows = mutableListOf<List<String>>()
-        while (sampleRows.size < sampleSize) {
-            val line = readLogicalLine(reader) ?: break
-            if (line.isBlank()) continue
-            sampleRows.add(parseCsvLine(line))
-        }
+        // generateSequence 는 지연 평가라 take(sampleSize) 를 채우는 데 필요한 만큼만
+        // readLogicalLine 을 호출한다 — 이후 행/손상된 데이터는 읽지 않는다(조기 중단).
+        val sampleRows =
+            generateSequence { readLogicalLine(reader) }
+                .filterNot { it.isBlank() }
+                .take(sampleSize)
+                .map { line -> parseCsvLine(line) }
+                .toList()
         return HeaderSample(headers = headers, sampleRows = sampleRows)
     }
 
