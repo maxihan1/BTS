@@ -248,10 +248,12 @@ class ImportControllerIntegrationTest {
         val json = performUpload(jsonFile(), zipFile(zipBytes), format = "JSON")
         val jobId = extractJobId(json)
 
-        val storedKey = fetchAttachmentsObjectKey(jobId)
+        val storedKey =
+            fetchAttachmentsObjectKey(jobId)
+                ?: error("attachments_object_key 가 null 입니다 — zip 저장이 수행되지 않았습니다.")
         assertThat(storedKey).isEqualTo("$projectKey/$jobId-attachments.zip")
 
-        val storedBytes = storage.get(storedKey!!).use { it.readBytes() }
+        val storedBytes = storage.get(storedKey).use { it.readBytes() }
         assertThat(storedBytes).isEqualTo(zipBytes)
     }
 
