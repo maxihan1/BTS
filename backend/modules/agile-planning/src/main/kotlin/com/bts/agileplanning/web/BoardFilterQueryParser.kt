@@ -154,24 +154,27 @@ object BoardFilterQueryParser {
             return BoardCardFilter.EMPTY
         }
 
-        val assignee = mutableListOf<String>()
-        val label = mutableListOf<String>()
-        val component = mutableListOf<String>()
+        val decodedPairs = query.split("&").mapNotNull(::decodeQueryPair)
 
-        for (pair in query.split("&")) {
-            if (pair.isBlank()) continue
-            val separatorIndex = pair.indexOf('=')
-            if (separatorIndex < 0) continue
-            val key = decode(pair.substring(0, separatorIndex))
-            val value = decode(pair.substring(separatorIndex + 1))
-            when (key) {
-                PARAM_ASSIGNEE -> assignee.add(value)
-                PARAM_LABEL -> label.add(value)
-                PARAM_COMPONENT -> component.add(value)
-            }
+        return parse(
+            assignee = decodedPairs.filter { it.first == PARAM_ASSIGNEE }.map { it.second },
+            label = decodedPairs.filter { it.first == PARAM_LABEL }.map { it.second },
+            component = decodedPairs.filter { it.first == PARAM_COMPONENT }.map { it.second },
+        )
+    }
+
+    /**
+     * `key=value` 형태의 단일 쿼리 파라미터 쌍을 디코딩한다.
+     *
+     * @param pair `&` 로 분리된 단일 파라미터 문자열.
+     * @return 디코딩된 key/value 쌍. `pair` 가 blank 이거나 `=` 구분자가 없으면 null(무시).
+     */
+    private fun decodeQueryPair(pair: String): Pair<String, String>? {
+        if (pair.isBlank()) return null
+        val separatorIndex = pair.indexOf('=')
+        return separatorIndex.takeIf { it >= 0 }?.let { index ->
+            decode(pair.substring(0, index)) to decode(pair.substring(index + 1))
         }
-
-        return parse(assignee = assignee, label = label, component = component)
     }
 
     /** [URLEncoder] 로 UTF-8 `application/x-www-form-urlencoded` 인코딩한다 (공백 → `+`). */
