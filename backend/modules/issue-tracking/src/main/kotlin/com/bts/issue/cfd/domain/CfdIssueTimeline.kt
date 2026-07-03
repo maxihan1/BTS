@@ -2,6 +2,7 @@
 
 package com.bts.issue.cfd.domain
 
+import com.bts.issue.statushistory.StatusCategory
 import java.time.LocalDate
 
 /**
@@ -30,5 +31,5 @@ data class CfdIssueTimeline(
  */
 data class CfdSegment(
     val startDate: LocalDate,
-    val category: CfdCategory,
+    val category: StatusCategory,
 )

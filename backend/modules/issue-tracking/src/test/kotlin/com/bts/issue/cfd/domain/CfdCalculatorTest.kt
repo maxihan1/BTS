@@ -2,6 +2,7 @@
 
 package com.bts.issue.cfd.domain
 
+import com.bts.issue.statushistory.StatusCategory
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.LocalDate
@@ -30,7 +31,7 @@ class CfdCalculatorTest {
         val issue =
             CfdIssueTimeline(
                 createdDate = from,
-                segments = listOf(CfdSegment(from, CfdCategory.TODO)),
+                segments = listOf(CfdSegment(from, StatusCategory.TODO)),
             )
 
         val points = CfdCalculator.calculate(from, to, listOf(issue))
@@ -52,9 +53,9 @@ class CfdCalculatorTest {
                 createdDate = from,
                 segments =
                     listOf(
-                        CfdSegment(LocalDate.of(2026, 7, 1), CfdCategory.TODO),
-                        CfdSegment(LocalDate.of(2026, 7, 3), CfdCategory.IN_PROGRESS),
-                        CfdSegment(LocalDate.of(2026, 7, 5), CfdCategory.DONE),
+                        CfdSegment(LocalDate.of(2026, 7, 1), StatusCategory.TODO),
+                        CfdSegment(LocalDate.of(2026, 7, 3), StatusCategory.IN_PROGRESS),
+                        CfdSegment(LocalDate.of(2026, 7, 5), StatusCategory.DONE),
                     ),
             )
 
@@ -81,9 +82,9 @@ class CfdCalculatorTest {
                 createdDate = LocalDate.of(2026, 7, 1),
                 segments =
                     listOf(
-                        CfdSegment(LocalDate.of(2026, 7, 1), CfdCategory.TODO),
-                        CfdSegment(LocalDate.of(2026, 7, 5), CfdCategory.IN_PROGRESS),
-                        CfdSegment(LocalDate.of(2026, 7, 12), CfdCategory.DONE),
+                        CfdSegment(LocalDate.of(2026, 7, 1), StatusCategory.TODO),
+                        CfdSegment(LocalDate.of(2026, 7, 5), StatusCategory.IN_PROGRESS),
+                        CfdSegment(LocalDate.of(2026, 7, 12), StatusCategory.DONE),
                     ),
             )
 
@@ -107,7 +108,7 @@ class CfdCalculatorTest {
         val issue =
             CfdIssueTimeline(
                 createdDate = LocalDate.of(2026, 7, 10),
-                segments = listOf(CfdSegment(LocalDate.of(2026, 7, 10), CfdCategory.TODO)),
+                segments = listOf(CfdSegment(LocalDate.of(2026, 7, 10), StatusCategory.TODO)),
             )
 
         val points = CfdCalculator.calculate(from, to, listOf(issue))
@@ -129,9 +130,9 @@ class CfdCalculatorTest {
                 createdDate = from,
                 segments =
                     listOf(
-                        CfdSegment(LocalDate.of(2026, 7, 1), CfdCategory.TODO),
-                        CfdSegment(LocalDate.of(2026, 7, 2), CfdCategory.DONE),
-                        CfdSegment(LocalDate.of(2026, 7, 4), CfdCategory.IN_PROGRESS),
+                        CfdSegment(LocalDate.of(2026, 7, 1), StatusCategory.TODO),
+                        CfdSegment(LocalDate.of(2026, 7, 2), StatusCategory.DONE),
+                        CfdSegment(LocalDate.of(2026, 7, 4), StatusCategory.IN_PROGRESS),
                     ),
             )
 
@@ -185,7 +186,7 @@ class CfdCalculatorTest {
         val issue =
             CfdIssueTimeline(
                 createdDate = from,
-                segments = listOf(CfdSegment(from, CfdCategory.TODO)),
+                segments = listOf(CfdSegment(from, StatusCategory.TODO)),
             )
 
         val points = CfdCalculator.calculate(from, to, listOf(issue))
@@ -198,13 +199,13 @@ class CfdCalculatorTest {
 
     @Test
     fun `fromCategoryString maps unknown or null to TODO`() {
-        assertThat(CfdCategory.fromCategoryString("DONE")).isEqualTo(CfdCategory.DONE)
-        assertThat(CfdCategory.fromCategoryString("IN_PROGRESS")).isEqualTo(CfdCategory.IN_PROGRESS)
-        assertThat(CfdCategory.fromCategoryString("TODO")).isEqualTo(CfdCategory.TODO)
+        assertThat(StatusCategory.fromCategoryString("DONE")).isEqualTo(StatusCategory.DONE)
+        assertThat(StatusCategory.fromCategoryString("IN_PROGRESS")).isEqualTo(StatusCategory.IN_PROGRESS)
+        assertThat(StatusCategory.fromCategoryString("TODO")).isEqualTo(StatusCategory.TODO)
         // 대소문자 무관
-        assertThat(CfdCategory.fromCategoryString("done")).isEqualTo(CfdCategory.DONE)
+        assertThat(StatusCategory.fromCategoryString("done")).isEqualTo(StatusCategory.DONE)
         // 비표준/null → TODO 폴백
-        assertThat(CfdCategory.fromCategoryString("FOO")).isEqualTo(CfdCategory.TODO)
-        assertThat(CfdCategory.fromCategoryString(null)).isEqualTo(CfdCategory.TODO)
+        assertThat(StatusCategory.fromCategoryString("FOO")).isEqualTo(StatusCategory.TODO)
+        assertThat(StatusCategory.fromCategoryString(null)).isEqualTo(StatusCategory.TODO)
     }
 }
