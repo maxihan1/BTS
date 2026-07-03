@@ -163,7 +163,9 @@ Maxi 확정. worklog 이력 생략 · 경고 행당 집약 · worklog JSON 전�
 - TDD 강제: yes (test 커밋 선행)
 - 병렬 dispatch: bts-impl이 depends-on+files로 wave 계산
 - 추가 검증: ktlint, detekt, ArchUnit(BC 격리·jOOQ repository), verify-master-plan, 통합테스트(Testcontainers 실 tx)
-- FR 동기화: 댓글 도메인 FR-IM-01 흡수 → SDD 10.6.3 + fr-index 명시(카운트 123 불변). 머지 전 product/search-export-import.md §4.1 PR3 진행노트.
+- FR 동기화: 댓글 도메인 FR-IM-01 흡수(카운트 123 불변, 신규 FR 0). product/search-export-import.md §4.1 PR3 진행노트 추가. DATA.md §9가 이미 PR3=댓글/Worklog를 에픽 정본으로 기재.
+- E2E: **생략**. 이 PR은 UI 없는 백엔드 도메인+import — Playwright 대상 표면 없음. Testcontainers 실 tx 통합테스트(S1~S31)가 백엔드 전 경로 커버. D6/D7 프론트 후속 PR에서 E2E.
+- 구현 결과: 8 task(T8=eng-review 후 발견한 댓글 createdAt 보존 갭 수정). 모듈 전체 2746 tests 0 failures, 3모듈 ktlint/detekt clean.
 
 ## 리뷰 결과
 
