@@ -1,5 +1,5 @@
 // Import(CSV/JSON) 3단계 상태머신 폼 컴포넌트 — ExportForm(FR-EX-02) 미러 적응 (FR-IM-01 D6 Task-3)
-import type { JSX, ChangeEvent } from 'react'
+import type { JSX, ChangeEvent, ReactNode } from 'react'
 import { useState, useEffect } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -55,6 +55,21 @@ function resolveImportError(error: unknown): string {
 /** 잡 실패 errorCode를 한글 메시지로 변환한다 (importFailureMessage 위임 — getFailureMessage 명명은 ExportForm 미러) */
 function getFailureMessage(errorCode: string | null | undefined): string {
   return importFailureMessage(errorCode)
+}
+
+/**
+ * 파괴적(destructive) 톤 인라인 에러 메시지 — `role=alert` 공통 렌더.
+ * FormPhase/TrackingPhase/DonePhase 5곳에서 반복되던 동일 마크업을 추출(REFACTOR).
+ */
+function ErrorAlert({ children }: { readonly children: ReactNode }): JSX.Element {
+  return (
+    <p
+      role="alert"
+      className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+    >
+      {children}
+    </p>
+  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -144,14 +159,7 @@ function FormPhase({
 
       <p className="mb-4 text-sm text-muted-foreground">먼저 검증을 실행하는 것을 권장합니다.</p>
 
-      {submitError !== null && (
-        <p
-          role="alert"
-          className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        >
-          {submitError}
-        </p>
-      )}
+      {submitError !== null && <ErrorAlert>{submitError}</ErrorAlert>}
 
       <div className="mt-2 flex justify-end gap-2">
         <Button type="button" size="sm" disabled={!canSubmit} onClick={onSubmitDryRun}>
@@ -185,12 +193,7 @@ function TrackingPhase({ pollData, pollIsError, onRetry }: TrackingPhaseProps): 
   if (pollIsError) {
     return (
       <div>
-        <p
-          role="alert"
-          className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        >
-          Import 상태를 조회하지 못했습니다. 잠시 후 다시 시도하세요.
-        </p>
+        <ErrorAlert>Import 상태를 조회하지 못했습니다. 잠시 후 다시 시도하세요.</ErrorAlert>
         <div className="mt-2 flex justify-end gap-2">
           <Button type="button" size="sm" onClick={onRetry}>
             다시 시도
@@ -256,21 +259,12 @@ function DonePhase({
   if (isFailed) {
     return (
       <div>
-        <p
-          role="alert"
-          className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        >
+        <ErrorAlert>
           Import에 실패했습니다. 사유: {getFailureMessage(pollData?.errorCode)}
-        </p>
-        {/* dead-path 방지: 다운로드 실패 submitError도 done(FAILED)에서 함께 표시 */}
-        {submitError !== null && (
-          <p
-            role="alert"
-            className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          >
-            {submitError}
-          </p>
-        )}
+        </ErrorAlert>
+        {/* dead-path 방지: 다운로드 실패 submitError도 done(FAILED)에서 함께 표시
+            (dialog-submiterror-ownership-dead-path 교훈 — 부모 미전달 시 dead path 방지) */}
+        {submitError !== null && <ErrorAlert>{submitError}</ErrorAlert>}
         <div className="mt-2 flex justify-end gap-2">
           <Button
             type="button"
@@ -303,15 +297,9 @@ function DonePhase({
         </span>
       </p>
 
-      {/* C1 dead-path 방지: done 단계도 submitError(다운로드/재제출 실패)를 렌더한다 */}
-      {submitError !== null && (
-        <p
-          role="alert"
-          className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        >
-          {submitError}
-        </p>
-      )}
+      {/* dead-path 방지: done 단계도 submitError(다운로드/재제출 실패)를 렌더한다
+          (dialog-submiterror-ownership-dead-path 교훈 — 부모 미전달 시 dead path 방지) */}
+      {submitError !== null && <ErrorAlert>{submitError}</ErrorAlert>}
 
       <div className="mt-2 flex flex-wrap justify-end gap-2">
         {showErrorLog && (

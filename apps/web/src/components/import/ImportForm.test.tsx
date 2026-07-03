@@ -123,8 +123,14 @@ describe('ImportForm', () => {
       const { user } = renderForm()
 
       await user.click(screen.getByRole('radio', { name: 'JSON' }))
-      await user.upload(screen.getByLabelText('가져올 파일'), makeFile('issues.json', 'application/json'))
-      await user.upload(screen.getByLabelText('첨부 zip 파일'), makeFile('attachments.zip', 'application/zip'))
+      await user.upload(
+        screen.getByLabelText('가져올 파일'),
+        makeFile('issues.json', 'application/json'),
+      )
+      await user.upload(
+        screen.getByLabelText('첨부 zip 파일'),
+        makeFile('attachments.zip', 'application/zip'),
+      )
 
       // CSV로 되돌림 — zip 입력 자체가 사라진다 (FR-2a)
       await user.click(screen.getByRole('radio', { name: 'CSV' }))
