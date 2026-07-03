@@ -18,8 +18,8 @@ import java.time.Clock
  *
  * ## 삭제 기준
  * [ImportJobRepository.findExpired] 로 `expires_at < now` 인 작업 목록 조회.
- * 각 작업에 대해 sourceObjectKey 삭제 → errorLogObjectKey(있으면) 삭제 →
- * [ImportJobRepository.deleteById] 순으로 실행한다.
+ * 각 작업에 대해 [ImportJobRepository.deleteIfExpired] 가 true 를 반환할 때만
+ * sourceObjectKey 삭제 → errorLogObjectKey(있으면) 삭제 순으로 실행한다(FR-IM-02 CONCERN-4).
  *
  * ## best-effort MinIO 삭제
  * [ImportObjectStoragePort.delete] 가 실패해도 다음 오브젝트 삭제와 DB 행 삭제를 진행한다
@@ -28,7 +28,7 @@ import java.time.Clock
  *
  * ## @Transactional 없음 — 의도적 설계
  * [ImportObjectStoragePort.delete] 는 MinIO 외부 I/O 이며 트랜잭션 밖에서 수행해야 한다.
- * [ImportJobRepository.deleteById] 는 단독 @Transactional 이 처리한다.
+ * [ImportJobRepository.deleteIfExpired] 는 단독 @Transactional 이 처리한다.
  * cleanup 워커에 외부 트랜잭션을 걸면 long transaction + MinIO I/O 점유 문제가 발생한다.
  * **@Transactional 없음 — 의도적 설계.**
  *
@@ -67,7 +67,14 @@ class ImportJobCleanupWorker(
 
         log.info("import_cleanup_start count={} now={}", expired.size, now)
 
+        var deletedCount = 0
         for (job in expired) {
+            if (!importRepo.deleteIfExpired(job.id, now)) {
+                log.debug("import_cleanup_job_skipped_confirmed_race jobId={}", job.id)
+                continue
+            }
+            deletedCount++
+
             removeObject(job.id.value.toString(), job.sourceObjectKey)
 
             val errorLogObjectKey = job.errorLogObjectKey
@@ -75,11 +82,10 @@ class ImportJobCleanupWorker(
                 removeObject(job.id.value.toString(), errorLogObjectKey)
             }
 
-            importRepo.deleteById(job.id)
             log.debug("import_cleanup_job_deleted jobId={}", job.id)
         }
 
-        log.info("import_cleanup_done deleted={}", expired.size)
+        log.info("import_cleanup_done deleted={}", deletedCount)
     }
 
     /**

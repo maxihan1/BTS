@@ -5,6 +5,7 @@ package com.bts.search.imports.job.application
 import com.bts.search.imports.job.domain.ImportJob
 import com.bts.search.imports.job.repository.ImportJobRepository
 import com.bts.search.imports.job.storage.ImportObjectStoragePort
+import com.bts.search.imports.mapping.repository.ImportMappingRepository
 import com.bts.search.imports.parse.ImportParseException
 import com.bts.search.imports.parse.ImportRowParser
 import com.bts.search.imports.parse.ParsedImportAttachment
@@ -25,6 +26,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.time.Clock
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -60,6 +62,10 @@ import java.time.OffsetDateTime
  * 전달한다. 실제 생성 여부는 [IssueImportPort] 구현체(어댑터) 책임이며, dryRun 결과도 성공/실패
  * 집계에 동일하게 반영된다(검증 리포트 용도).
  *
+ * ## 매핑 기반 CSV 파싱 로드 (FR-IM-02 PR-A)
+ *
+ * [processRows] 가 CSV 포맷일 때 [parseCsv] 헬퍼로 [mappingRepo] 의 매핑을 로드해 파서 오버로드를 선택한다.
+ *
  * ## 댓글/worklog 매핑 (PR3)
  *
  * [toCommand] 가 [ParsedImportRow.comments]/[ParsedImportRow.worklogs](원본 문자열 raw 값)를
@@ -82,6 +88,7 @@ import java.time.OffsetDateTime
  * @param issueImportPort 이슈 생성 cross-BC 쓰기 포트.
  * @param storage 원본 파일 조회 + 에러 로그 업로드용 오브젝트 스토리지 포트.
  * @param repository Import 작업 상태 관리 저장소.
+ * @param mappingRepo CSV 확정 매핑(source_field → target_field) 조회 저장소(FR-IM-02 PR-A).
  * @param errorLogWriter 실패행 CSV 에러 로그 직렬화기.
  * @param parser CSV/JSON 스트리밍 파서. [ImportRowParser] 는 Spring 빈으로 등록되어 있지 않으므로
  *   ([ImportJobRepository] 의 Clock 기본값 패턴과 동일하게) 기본값으로 직접 인스턴스화한다.
@@ -93,6 +100,7 @@ class ImportJobProcessor(
     private val issueImportPort: IssueImportPort,
     private val storage: ImportObjectStoragePort,
     private val repository: ImportJobRepository,
+    private val mappingRepo: ImportMappingRepository,
     private val errorLogWriter: ImportErrorLogWriter,
     private val parser: ImportRowParser = ImportRowParser(),
     private val clock: Clock = Clock.systemUTC(),
@@ -142,13 +150,27 @@ class ImportJobProcessor(
             storage.get(job.sourceObjectKey).use { input ->
                 val onRow: (ParsedImportRow) -> Unit = { row -> handleRow(job, row, state, attachmentSource) }
                 when (job.format) {
-                    FORMAT_CSV -> parser.parseCsv(input, onRow)
+                    FORMAT_CSV -> parseCsv(job, input, onRow)
                     FORMAT_JSON -> parser.parseJson(input, onRow)
                     else -> error("unsupported import format: ${job.format}") // DB CHECK 제약으로 도달불가 — 방어적 guard
                 }
             }
         }
         finalizeCompleted(job, state)
+    }
+
+    /** CSV 포맷 전용 분기 — 매핑 로드 후 [ImportRowParser.parseCsv] 오버로드를 선택한다. */
+    private fun parseCsv(
+        job: ImportJob,
+        input: InputStream,
+        onRow: (ParsedImportRow) -> Unit,
+    ) {
+        val fieldMapping = mappingRepo.findByJobId(job.id)
+        if (fieldMapping.isNotEmpty()) {
+            parser.parseCsv(input, fieldMapping, onRow)
+        } else {
+            parser.parseCsv(input, onRow)
+        }
     }
 
     /**
