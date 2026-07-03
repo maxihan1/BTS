@@ -314,7 +314,14 @@ class IssueImportAdapter(
         }
     }
 
-    /** [warnCommentsWorklogsIfNeeded] 의 worklog 부분 — [applyWorklogs] 가 낼 경고를 미리 예측한다. */
+    /**
+     * [warnCommentsWorklogsIfNeeded] 의 worklog 부분 — [applyWorklogs] 가 낼 경고를 미리 예측한다.
+     *
+     * unmatchedCount/missingStartedAtCount 는 실제로 생성될 worklog([created], timeSpentSeconds>0)만
+     * 대상으로 집계한다 — [applyWorklogItem] 이 timeSpentSeconds≤0 인 항목은 생성 전에 스킵하며
+     * unmatchedAuthor/missingStartedAt 을 애초에 판정하지 않기 때문이다([WorklogApplyOutcome] KDoc,
+     * 코드리뷰 CONCERN C-1). invalidCount(소요 시간 0 이하)만 전체([cmd.worklogs]) 기준으로 유지한다.
+     */
     private fun warnWorklogsPreview(
         cmd: IssueImportCommand,
         resolution: FieldResolution,
@@ -330,11 +337,12 @@ class IssueImportAdapter(
         if (invalidCount > 0) {
             warnings += "워크로그 ${invalidCount}건 소요 시간이 0 이하라 건너뛰어질 수 있습니다."
         }
-        val unmatchedCount = cmd.worklogs.count { isAuthorUnmatched(it.authorEmail, resolution.resolvedEmails) }
+        val created = cmd.worklogs.filter { it.timeSpentSeconds > 0 }
+        val unmatchedCount = created.count { isAuthorUnmatched(it.authorEmail, resolution.resolvedEmails) }
         if (unmatchedCount > 0) {
             warnings += "워크로그 ${unmatchedCount}건 작성자 이메일이 매칭되지 않아 요청자로 대체될 수 있습니다."
         }
-        val missingStartedAtCount = cmd.worklogs.count { it.startedAt == null }
+        val missingStartedAtCount = created.count { it.startedAt == null }
         if (missingStartedAtCount > 0) {
             warnings += "워크로그 ${missingStartedAtCount}건 시작 시각이 없어 import 실행 시각으로 대체될 수 있습니다."
         }
