@@ -89,7 +89,17 @@ class CycleTimeControllerTest {
 
     private fun sampleMetric(): CycleTimeMetric =
         CycleTimeMetric(
-            stats = CycleTimeStats(count = 1, min = 100, max = 100, avg = 100, p25 = 100, p50 = 100, p75 = 100, p90 = 100),
+            stats =
+                CycleTimeStats(
+                    count = 1,
+                    min = 100,
+                    max = 100,
+                    avg = 100,
+                    p25 = 100,
+                    p50 = 100,
+                    p75 = 100,
+                    p90 = 100,
+                ),
             samples = listOf(CycleTimeSample(issueKey = "TPRJ-1", seconds = 100)),
         )
 
@@ -107,7 +117,17 @@ class CycleTimeControllerTest {
 
     private fun emptyMetric(): CycleTimeMetric =
         CycleTimeMetric(
-            stats = CycleTimeStats(count = 0, min = null, max = null, avg = null, p25 = null, p50 = null, p75 = null, p90 = null),
+            stats =
+                CycleTimeStats(
+                    count = 0,
+                    min = null,
+                    max = null,
+                    avg = null,
+                    p25 = null,
+                    p50 = null,
+                    p75 = null,
+                    p90 = null,
+                ),
             samples = emptyList(),
         )
 
