@@ -85,6 +85,13 @@ export function BacklogPage({ projectKey }: BacklogPageProps): JSX.Element {
           >
             {backlogLabels.page.cfdLink}
           </Link>
+          <Link
+            to="/projects/$projectKey/reports/cycle-time"
+            params={{ projectKey }}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            {backlogLabels.page.cycleTimeLink}
+          </Link>
         </nav>
       </div>
 
