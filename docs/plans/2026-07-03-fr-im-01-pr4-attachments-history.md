@@ -177,6 +177,7 @@ Maxi 확정(도메인 게이트). 이력=충실재생 · 첨부 zip=두-part · 
 - 마이그레이션: V605 1건(search-export-import, 머지 직전 재확인). 이력은 코드-only(스키마 0), 첨부 테이블 변경 0
 - E2E: 생략. UI 없는 백엔드 — Playwright 표면 없음. Testcontainers 실 tx(S1~S10)가 전 경로 커버. D6/D7 프론트 후속 PR에서 E2E
 - FR 동기화: 에픽 내부(신규 FR 0, 카운트 123 불변). product/search-export-import.md §4.1 PR4 진행노트 추가(머지 단계). D박스는 FR-IM-01 전체 완료 시 일괄 마킹
+- **구현 결과**. 9 task 직렬 TDD 완료(test→feat 정순 전건 검증). 전 3모듈 풀빌드 0 failures + ktlint/detekt clean(9m53s). **T9가 실회귀 발견·해소** — 포트 1-arg default 위임이 @Transactional 프록시 self-invocation을 우회해 tx 미시작(NoTransactionException) → 어댑터가 1-arg/2-arg 모두 override+@Transactional. `IssueImportPort` KDoc 정합화 커밋. BLOCKER-1(스트림 close, CloseTrackingInputStream 실측)·BLOCKER-2(insert 전 filename/type 길이 사전체크, FaultInjectingAttachmentRepository로 행 롤백 실증) 반영. stale base 2커밋(CFD 프론트 #227, 백엔드 무충돌) — 머지 시 rebase.
 
 ## 리뷰 결과
 
