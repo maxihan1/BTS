@@ -1,12 +1,13 @@
-// URL search params ↔ BoardCardFilterParams 매핑 유틸 테스트 (FR-BD-02)
+// URL search params ↔ BoardCardFilterParams 매핑 유틸 테스트 (FR-BD-02, FR-UX-01)
 import { describe, it, expect } from 'vitest'
 import {
   searchToFilter,
   filterToSearch,
   isEmptyFilter,
+  queryStringToSearch,
   type BoardFilterSearch,
 } from './board-filter'
-import type { BoardCardFilterParams } from '../api/boards'
+import { buildBoardFilterQuery, type BoardCardFilterParams } from '../api/boards'
 
 describe('searchToFilter', () => {
   it('assignee 배열에서 unassigned 센티널을 분리해 includeUnassigned=true로 변환한다', () => {
@@ -165,5 +166,89 @@ describe('round-trip', () => {
       componentIds: [],
     }
     expect(searchToFilter(filterToSearch(empty))).toEqual(empty)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// queryStringToSearch (FR-UX-01) — 퀵필터 저장 query 문자열 → URL search 역변환
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('queryStringToSearch', () => {
+  it('assignee/label/component 파라미터를 배열로 파싱한다', () => {
+    const result = queryStringToSearch('assignee=a1&assignee=unassigned&label=bug&component=c1')
+    expect(result).toEqual<BoardFilterSearch>({
+      assignee: ['a1', 'unassigned'],
+      label: ['bug'],
+      component: ['c1'],
+    })
+  })
+
+  it('+ 기호가 공백으로 복원된다 (x-www-form-urlencoded 인코딩 계약, 리뷰 B1 함정)', () => {
+    const result = queryStringToSearch('label=my+bug')
+    expect(result.label).toEqual(['my bug'])
+  })
+
+  it('빈 문자열이면 빈 객체를 반환한다 (필드 키 생략)', () => {
+    const result = queryStringToSearch('')
+    expect(result).toEqual({})
+    expect(Object.keys(result)).toHaveLength(0)
+  })
+
+  it('일부 필드만 있으면 나머지 키는 생략한다', () => {
+    const result = queryStringToSearch('assignee=a1')
+    expect(result).toEqual<BoardFilterSearch>({ assignee: ['a1'] })
+    expect('label' in result).toBe(false)
+    expect('component' in result).toBe(false)
+  })
+
+  it('unassigned 센티널이 assignee 배열에 그대로 보존된다', () => {
+    const result = queryStringToSearch('assignee=unassigned')
+    expect(result.assignee).toEqual(['unassigned'])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// round-trip — buildBoardFilterQuery → queryStringToSearch → searchToFilter (FR-UX-01)
+// 퀵필터 저장(serialize) → 적용(deserialize) 경로의 프론트 절반을 검증한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('round-trip — buildBoardFilterQuery → queryStringToSearch → searchToFilter', () => {
+  it('공백 포함 라벨("my bug")을 포함한 필터가 왕복 후 원본과 동등하다', () => {
+    const original: BoardCardFilterParams = {
+      assigneeIds: ['a1a1a1a1-b2b2-4c3c-8d4d-e5e5e5e5e5e5'],
+      includeUnassigned: true,
+      labels: ['my bug', 'feature'],
+      componentIds: ['c1c1c1c1-d2d2-4e3e-8f4f-a5a5a5a5a5a5'],
+    }
+    const qs = buildBoardFilterQuery(original)
+    const stripped = qs.startsWith('?') ? qs.slice(1) : qs
+    const roundTripped = searchToFilter(queryStringToSearch(stripped))
+    expect(roundTripped).toEqual(original)
+  })
+
+  it('빈 필터는 왕복 후에도 빈 필터다', () => {
+    const empty: BoardCardFilterParams = {
+      assigneeIds: [],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }
+    const qs = buildBoardFilterQuery(empty)
+    expect(qs).toBe('')
+    const roundTripped = searchToFilter(queryStringToSearch(qs))
+    expect(roundTripped).toEqual(empty)
+  })
+
+  it('assigneeIds만 있는 필터가 왕복 후 동등하다', () => {
+    const original: BoardCardFilterParams = {
+      assigneeIds: ['a1a1a1a1-b2b2-4c3c-8d4d-e5e5e5e5e5e5', 'a2a2a2a2-b2b2-4c3c-8d4d-e5e5e5e5e5e5'],
+      includeUnassigned: false,
+      labels: [],
+      componentIds: [],
+    }
+    const qs = buildBoardFilterQuery(original)
+    const stripped = qs.startsWith('?') ? qs.slice(1) : qs
+    const roundTripped = searchToFilter(queryStringToSearch(stripped))
+    expect(roundTripped).toEqual(original)
   })
 })
