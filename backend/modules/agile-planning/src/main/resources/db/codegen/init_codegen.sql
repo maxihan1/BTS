@@ -1,6 +1,7 @@
--- jOOQ 코드 생성용 초기화 SQL (agile-planning BC) — V500~V503 테이블 구조 미러 (시드 제외, codegen은 구조만 필요)
+-- jOOQ 코드 생성용 초기화 SQL (agile-planning BC) — V500~V504 테이블 구조 미러 (시드 제외, codegen은 구조만 필요)
 -- boards / board_columns DDL은 V500__boards.sql + V501__board_wip_swimlane.sql + V502__board_swimlane_epic.sql 과 동일하게 유지한다(미러 누락 시 jOOQ 상수 미생성).
 -- sprints / sprint_issues DDL은 V503__sprints.sql 과 동일하게 유지한다(미러 누락 시 jOOQ 상수 미생성).
+-- board_quick_filters DDL은 V504__board_quick_filters.sql 과 동일하게 유지한다(미러 누락 시 jOOQ 상수 미생성).
 
 -- ── boards (V500 + V501 + V502 미러) ────────────────────────────────────────────────────
 CREATE TABLE boards (
@@ -57,3 +58,16 @@ CREATE TABLE sprint_issues (
 );
 
 CREATE INDEX idx_sprint_issues_sprint ON sprint_issues (sprint_id);
+
+-- ── board_quick_filters (V504 미러) ───────────────────────────────────────────────
+CREATE TABLE board_quick_filters (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    board_id   UUID NOT NULL REFERENCES boards (id) ON DELETE CASCADE,
+    name       TEXT NOT NULL,
+    query      TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_board_quick_filters_board_name UNIQUE (board_id, name)
+);
+
+CREATE INDEX idx_board_quick_filters_board ON board_quick_filters (board_id);
