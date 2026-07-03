@@ -313,7 +313,9 @@ class IssueImportAdapterTest {
         // ([FaultInjectingWorklogService] 와 동형).
 
         @Bean
-        open fun importAttachmentRepository(dsl: DSLContext): AttachmentRepository = FaultInjectingAttachmentRepository(dsl)
+        open fun importAttachmentRepository(dsl: DSLContext): AttachmentRepository {
+            return FaultInjectingAttachmentRepository(dsl)
+        }
 
         @Bean
         open fun importAttachmentStoragePort(): AttachmentStoragePort = NoOpAttachmentStoragePort()
@@ -1890,7 +1892,11 @@ class IssueImportAdapterTest {
                 sourceKey = "JIRA-513",
                 attachments =
                     listOf(
-                        ImportAttachment(filename = "ghost.png", mimeType = "image/png", authorEmail = "ghost@example.com"),
+                        ImportAttachment(
+                            filename = "ghost.png",
+                            mimeType = "image/png",
+                            authorEmail = "ghost@example.com",
+                        ),
                     ),
                 changelog =
                     listOf(
@@ -1939,7 +1945,10 @@ class IssueImportAdapterTest {
                         ),
                         ImportChangeGroup(
                             occurredAt = Instant.parse("2020-03-02T00:00:00Z"),
-                            items = listOf(ImportChangeItem(field = "customfield_99999", fromValue = "x", toValue = "y")),
+                            items =
+                                listOf(
+                                    ImportChangeItem(field = "customfield_99999", fromValue = "x", toValue = "y"),
+                                ),
                         ),
                     ),
             )
@@ -2083,7 +2092,10 @@ class IssueImportAdapterTest {
                 requesterUserId = NORMAL_REQUESTER_ID,
                 summary = "S44 첨부 예상외 throw 행원자성 테스트",
                 sourceKey = "JIRA-519",
-                attachments = listOf(ImportAttachment(filename = UNEXPECTED_ATTACHMENT_THROW_MARKER, mimeType = "image/png")),
+                attachments =
+                    listOf(
+                        ImportAttachment(filename = UNEXPECTED_ATTACHMENT_THROW_MARKER, mimeType = "image/png"),
+                    ),
             )
 
         val result = issueImportAdapter.importIssue(cmd, source)
@@ -2463,7 +2475,9 @@ class IssueImportAdapterTest {
                     }
                 }
             }
-        return rawGroups.map { (groupId, actorId, createdAt) -> ChangeGroupRow(actorId, createdAt, fetchChangeItems(groupId)) }
+        return rawGroups.map { (groupId, actorId, createdAt) ->
+            ChangeGroupRow(actorId, createdAt, fetchChangeItems(groupId))
+        }
     }
 
     /** [fetchChangeGroups] 가 groupId 로 items 를 별쿼리 조회한다(`id` 오름차순). */

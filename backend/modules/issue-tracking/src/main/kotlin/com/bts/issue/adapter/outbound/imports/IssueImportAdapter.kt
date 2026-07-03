@@ -127,10 +127,17 @@ import java.util.UUID
  * rollback-only 로 명시 설정해야 한다 — 캐치된 예외는 프록시 경계를 벗어나지 않으므로
  * 이 호출 없이는 Spring 이 기본적으로 커밋을 시도한다.
  *
+ * ### LargeClass — 분리 실익 없음 (PR4)
+ *
+ * PR1~PR4 가 같은 포트 구현체에 코어/컴포넌트·버전/댓글·worklog/첨부·이력 6단계를 누적한 결과다.
+ * 각 단계가 동일 사전체크+best-effort 강등 패턴(apply 계열 함수 + 항목별 apply 함수 + warn 계열
+ * 집약 함수)을 공유해 별도 협력자 클래스로 쪼개도 응집도 이득이 없다(모두 같은 [IssueImportCommand]
+ * 1행·같은 트랜잭션 경계를 공유) — [IssueImportAdapterTest] 의 동일 판단(`@Suppress("LargeClass")`)과 정합.
+ *
  * @see IssueImportPort
  * @see IssueApplicationService
  */
-@Suppress("TooManyFunctions", "LongParameterList")
+@Suppress("TooManyFunctions", "LongParameterList", "LargeClass")
 @Component
 class IssueImportAdapter(
     private val issueApplicationService: IssueApplicationService,
@@ -860,7 +867,7 @@ class IssueImportAdapter(
      *
      * @return 스킵 사유([AttachmentSkipReason]), 성공했으면 null.
      */
-    @Suppress("TooGenericExceptionCaught") // 잔여 throw 집합(★3)만 구체 타입으로 개별 catch — 그 외는 의도적으로 미포착(행 원자성)
+    @Suppress("TooGenericExceptionCaught", "ReturnCount") // 잔여 throw 집합(★3) 개별 catch + guard-clause return 4개(§2.3)
     private fun applyAttachmentItem(
         importAttachment: ImportAttachment,
         cmd: IssueImportCommand,
@@ -883,10 +890,15 @@ class IssueImportAdapter(
             stream.use { uploadAttachment(it, importAttachment, contentType, actor, key, uploaderId) }
             null
         } catch (e: UnsupportedAttachmentTypeException) {
-            log.warn("import_attachment_unsupported_type filename={} contentType={}", importAttachment.filename, contentType)
+            log.warn(
+                "import_attachment_unsupported_type filename={} contentType={} cause={}",
+                importAttachment.filename,
+                contentType,
+                e.message,
+            )
             AttachmentSkipReason.UNSUPPORTED_TYPE
         } catch (e: AttachmentInfectedException) {
-            log.warn("import_attachment_infected filename={}", importAttachment.filename)
+            log.warn("import_attachment_infected filename={} cause={}", importAttachment.filename, e.message)
             AttachmentSkipReason.INFECTED
         } catch (e: AttachmentScanUnavailableException) {
             log.warn("import_attachment_scan_unavailable filename={} cause={}", importAttachment.filename, e.message)
@@ -895,7 +907,7 @@ class IssueImportAdapter(
             log.warn("import_attachment_storage_failure filename={} cause={}", importAttachment.filename, e.message)
             AttachmentSkipReason.STORAGE_FAILURE
         } catch (e: IssueAccessDeniedException) {
-            log.warn("import_attachment_permission_denied filename={}", importAttachment.filename)
+            log.warn("import_attachment_permission_denied filename={} cause={}", importAttachment.filename, e.message)
             AttachmentSkipReason.PERMISSION_DENIED
         }
     }
@@ -980,7 +992,7 @@ class IssueImportAdapter(
     ) {
         val count = outcomes.count { it == reason }
         if (count > 0) {
-            warnings += "첨부 ${count}건은 ${reasonPhrase} 건너뛰었습니다."
+            warnings += "첨부 ${count}건은 $reasonPhrase 건너뛰었습니다."
         }
     }
 
@@ -1054,6 +1066,7 @@ class IssueImportAdapter(
      * (comment/worklog/첨부와 달리 requester 로 폴백하지 않음 — Maxi 결정, 원본 author 를 requester
      * 로 위장 기록하면 감사 이력이 부정확해지기 때문).
      */
+    @Suppress("ReturnCount") // guard-clause early return 3개(occurredAt없음·전부미매핑·기록완료) — DEVELOPMENT.md §2.3
     private fun applyChangelogGroup(
         importGroup: ImportChangeGroup,
         resolution: FieldResolution,
