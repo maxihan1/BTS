@@ -11,6 +11,13 @@ import { http, HttpResponse } from 'msw'
 import type { ImportJobStatus } from '@/api/imports'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// E2E 시나리오 토글용 localStorage 키 상수
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** FAILED 시나리오 강제 플래그. 'true' | null (bulk-operation-handlers.ts LS_KEY_BULK_REJECT 명명 관례 미러) */
+export const LS_KEY_IMPORT_FAIL = '__bts_e2e_import_fail'
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 계약 drift 가드용 정적 픽스처
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -45,6 +52,9 @@ interface ImportJobRecord {
 
 /** 기본 진행 시뮬레이션 총 행 수 (POST가 만든 잡의 RUNNING/COMPLETED 단계에서 사용) */
 const DEFAULT_TOTAL_ROWS = 10
+
+/** LS_KEY_IMPORT_FAIL 토글 시 표시할 중단 지점 progress (RUNNING 도달 전 파싱 실패) */
+const FAILED_INTERRUPT_PROGRESS = 30
 
 const TERMINAL_STATUSES = new Set<ImportJobStatus['status']>(['COMPLETED', 'FAILED'])
 
@@ -178,7 +188,9 @@ const submitImportHandler = http.post('/api/v1/imports', async ({ request }) => 
  * GET /api/v1/imports/{id} — 폴링 조회 핸들러 (stateful 진행 시뮬레이션).
  *
  * 종단 상태(COMPLETED/FAILED — seedImportJob으로 직접 시드된 경우 포함)면 추가 진행 없이
- * 그대로 반환한다. 그 외에는 이 jobId에 대한 GET 호출 횟수(pollCount)에 따라 진행시킨다.
+ * 그대로 반환한다. LS_KEY_IMPORT_FAIL='true'이면(E2E S3 시나리오) 진행 상태를 무시하고 이
+ * 호출에서 즉시 FAILED로 전환해 반환하며, 이후 호출은 TERMINAL_STATUSES 분기로 계속 FAILED를
+ * 유지한다(폴링 중단). 플래그가 없으면 이 jobId에 대한 GET 호출 횟수(pollCount)에 따라 진행시킨다.
  * - pollCount=0(첫 GET): PENDING 유지, progress 0
  * - pollCount=1: RUNNING, progress 50, totalRows 확정
  * - pollCount>=2: COMPLETED, progress 100, succeededRows=totalRows, failedRows 0
@@ -196,6 +208,17 @@ const getImportStatusHandler = http.get('/api/v1/imports/:id', ({ params }) => {
   }
 
   if (TERMINAL_STATUSES.has(record.status)) {
+    return HttpResponse.json(toResponse(record))
+  }
+
+  // E2E 시나리오 토글 — FAILED 강제 (LS_KEY_IMPORT_FAIL)
+  if (globalThis.localStorage?.getItem(LS_KEY_IMPORT_FAIL) === 'true') {
+    record.status = 'FAILED'
+    record.progress = FAILED_INTERRUPT_PROGRESS
+    record.succeededRows = 0
+    record.failedRows = 0
+    record.errorCode = 'IMPORT_PARSE_FAILED'
+    record.errorLogReady = false
     return HttpResponse.json(toResponse(record))
   }
 
