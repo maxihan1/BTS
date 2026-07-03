@@ -1,4 +1,12 @@
 // Import(CSV/JSON) 작업 MSW 핸들러 — jobId 기준 stateful 진행 시뮬레이션 store (FR-IM-01 D6/D7 Task-5)
+//
+// 교훈 반영.
+//   - msw-derived-behavior-shared-store-e2e: POST가 만든 잡을 GET이 조회할 수 있도록 공유 store를
+//     두고, 진행(PENDING→RUNNING→COMPLETED)을 GET 호출 횟수에 따른 파생 동작으로 구현한다.
+//   - search.ts exportJobsStatusHandler(FR-EX-02) 선례를 미러 — pollCount 0/1/2+ 3단계 진행.
+//   - frontend-zod-backend-dto-contract-gap: 응답은 importJobStatusSchema.parse가 통과해야 하며,
+//     totalRows/errorCode는 백엔드 @JsonInclude(NON_NULL)을 재현해 값이 있을 때만 키를 포함한다.
+//
 import { http, HttpResponse } from 'msw'
 import type { ImportJobStatus } from '@/api/imports'
 
@@ -43,10 +51,29 @@ const TERMINAL_STATUSES = new Set<ImportJobStatus['status']>(['COMPLETED', 'FAIL
 /** jobId → ImportJobRecord 공유 stateful store */
 let importJobStore: Map<string, ImportJobRecord> = new Map()
 
+/**
+ * Import 작업 store를 초기 상태로 리셋한다.
+ *
+ * 각 테스트의 `beforeEach`에서 호출해 테스트 간 jobId/진행 상태 leak을 방지한다
+ * (cfd-handlers.ts resetCfdStore / bulk-operation-handlers.ts resetBulkOperationState 선례).
+ */
 export function resetImportStore(): void {
   importJobStore = new Map()
 }
 
+/**
+ * ImportJobStatus를 store에 직접 시드한다. 동일 jobId가 이미 있으면 덮어쓴다.
+ *
+ * POST를 거치지 않고 임의 상태(특히 FAILED + errorCode)를 store에 주입할 때 사용한다
+ * (예: E2E S3 "seedImportJob(FAILED, IMPORT_PARSE_FAILED)" 시나리오, 단위 테스트의 종단 상태 검증).
+ * status가 COMPLETED/FAILED로 시드되면 GET 폴링 핸들러는 더 이상 진행시키지 않고 그대로 반환한다
+ * (getImportStatusHandler의 TERMINAL_STATUSES 분기 참고).
+ *
+ * totalRows/errorCode는 값이 있을 때만 내부 레코드에 포함한다 — 없으면 키 자체를 생략해
+ * NON_NULL 직렬화(@JsonInclude(NON_NULL))를 재현한다.
+ *
+ * @param job 시드할 Import 작업 상태 (importJobStatusSchema로 파싱 가능한 완전한 형태)
+ */
 export function seedImportJob(job: ImportJobStatus): void {
   importJobStore.set(job.jobId, {
     jobId: job.jobId,
@@ -66,6 +93,12 @@ export function seedImportJob(job: ImportJobStatus): void {
 // 레코드 → 응답 변환
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * 내부 store 레코드를 importJobStatusSchema 형태의 응답 객체로 변환한다.
+ *
+ * totalRows/errorCode는 레코드에 값이 있을 때만 스프레드로 포함한다 — undefined 필드를
+ * 그대로 실어 보내면 JSON.stringify가 키를 생략하므로 결과적으로 NON_NULL 직렬화와 동일해진다.
+ */
 function toResponse(record: ImportJobRecord): ImportJobStatus {
   return {
     jobId: record.jobId,
@@ -84,6 +117,12 @@ function toResponse(record: ImportJobRecord): ImportJobStatus {
 // UUID v4 생성 헬퍼 (attachment-handlers.ts/bulk-operation-handlers.ts 패턴 동일)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * RFC4122 v4 UUID를 생성한다.
+ * crypto.randomUUID()가 있으면 사용하고, 없으면 Math.random 기반 폴백.
+ * 3번째 그룹 첫 글자 '4', 4번째 그룹 첫 글자 '8'|'9'|'a'|'b' 보증 —
+ * importJobStatusSchema의 z.string().uuid() 형식 검증을 통과해야 한다.
+ */
 function generateUuidV4(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
@@ -99,6 +138,13 @@ function generateUuidV4(): string {
 // POST /api/v1/imports
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * POST /api/v1/imports — CSV/JSON Import 작업을 접수한다.
+ *
+ * FormData에서 dryRun만 읽어 응답에 반영한다(file/attachmentsZip/projectKey/format은 진행
+ * 시뮬레이션에 영향을 주지 않음 — 첨부 전송 여부는 api/imports.test.ts에서 별도 검증).
+ * 새 jobId를 발급해 PENDING 상태로 store에 등록하고 202를 반환한다.
+ */
 const submitImportHandler = http.post('/api/v1/imports', async ({ request }) => {
   let dryRun = false
   try {
@@ -128,6 +174,17 @@ const submitImportHandler = http.post('/api/v1/imports', async ({ request }) => 
 // GET /api/v1/imports/:id
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * GET /api/v1/imports/{id} — 폴링 조회 핸들러 (stateful 진행 시뮬레이션).
+ *
+ * 종단 상태(COMPLETED/FAILED — seedImportJob으로 직접 시드된 경우 포함)면 추가 진행 없이
+ * 그대로 반환한다. 그 외에는 이 jobId에 대한 GET 호출 횟수(pollCount)에 따라 진행시킨다.
+ * - pollCount=0(첫 GET): PENDING 유지, progress 0
+ * - pollCount=1: RUNNING, progress 50, totalRows 확정
+ * - pollCount>=2: COMPLETED, progress 100, succeededRows=totalRows, failedRows 0
+ *
+ * store에 없는 jobId는 404(작업 없음 또는 타인 소유 재현).
+ */
 const getImportStatusHandler = http.get('/api/v1/imports/:id', ({ params }) => {
   const id = params['id'] as string
   const record = importJobStore.get(id)
@@ -169,10 +226,18 @@ const getImportStatusHandler = http.get('/api/v1/imports/:id', ({ params }) => {
 // GET /api/v1/imports/:id/errors
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 실패행 에러 로그 최소 CSV 바이트 — UTF-8 BOM 포함 헤더 + 샘플 1행 (search.ts MINIMAL_CSV_BYTES 패턴 미러) */
 const MINIMAL_IMPORT_ERROR_CSV_BYTES = new TextEncoder().encode(
   '﻿Row,ErrorCode,Detail\r\n2,IMPORT_VALIDATION_FAILED,summary is required\r\n',
 )
 
+/**
+ * GET /api/v1/imports/{id}/errors — 완료된 Import 작업의 실패행 에러 로그 CSV를 반환한다.
+ *
+ * store에 없는 jobId는 404. errorLogReady 여부와 무관하게 store에 jobId만 있으면 CSV를
+ * 반환한다(진행 상태 무관 — downloadImportErrorLog는 errorLogReady=true일 때만 호출하도록
+ * 계약돼 있으므로 mock에서는 단순화).
+ */
 const downloadImportErrorsHandler = http.get('/api/v1/imports/:id/errors', ({ params }) => {
   const id = params['id'] as string
   if (!importJobStore.has(id)) {
@@ -194,6 +259,7 @@ const downloadImportErrorsHandler = http.get('/api/v1/imports/:id/errors', ({ pa
 // Export
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Import(CSV/JSON) BC MSW 핸들러 배열 — handlers.ts에 스프레드로 등록한다 */
 export const importHandlers = [
   submitImportHandler,
   getImportStatusHandler,
