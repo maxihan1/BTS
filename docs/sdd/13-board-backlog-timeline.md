@@ -79,12 +79,13 @@
 - 스프린트별 완료 스토리 포인트
 - 직전 N 스프린트 평균
 
-### 13.5.4 CFD (FR-RP-03) — 구현됨 (백엔드 D1~D5, PR #225)
+### 13.5.4 CFD (FR-RP-03) — 구현됨 (백엔드 D1~D5 PR #225 + 프론트 D6/D7 PR #227, 전체 완료)
 - Cumulative Flow Diagram (누적 흐름 다이어그램)
 - X축: 시간(일 단위, UTC), Y축: 상태 카테고리별 순간 이슈 수를 stacked
 - **카테고리 3띠**(TODO/IN_PROGRESS/DONE) — 워크플로우 상태별 N띠 아님(프로젝트 무관 균일, ADR D1 확정)
 - **데이터 = on-the-fly 역산**: `issue_change` status 전이 이력에서 각 이슈 상태 타임라인 재구성(스냅샷/스케줄러 0, ADR D2)
 - 엔드포인트 `GET /api/v1/projects/{projectKey}/cfd?from=&to=`(모듈 issue-tracking, 프로젝트 BROWSE + 이슈별 가시성 필터)
+- **프론트(PR #227)**: recharts 누적 영역 차트(`AreaChart` 3 stacked `Area`, 아래→위 DONE→IN_PROGRESS→TODO), 전용 라우트 `/projects/$projectKey/reports/cfd`(백로그 nav 진입), 순수변환 `toCfdSeries`+`isCfdEmpty` 단위·실렌더 E2E 위임. 날짜 피커 v1 미노출(백엔드 기본 30일). FR-RP-02 미러.
 - ADR [CFD 데이터 모델](../decisions/2026-07-03-fr-rp-03-cfd.md)
 
 ### 13.5.5 Cycle Time / Lead Time (FR-RP-04)
