@@ -1,6 +1,6 @@
 // Import 작업 MSW 핸들러 단위 테스트 — 계약 drift 가드 + POST/GET stateful 진행 시뮬레이션 검증 (FR-IM-01 D6/D7 Task-5)
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
 import { importJobStatusSchema, type ImportJobStatus } from '@/api/imports'
 import {
   importHandlers,
@@ -10,19 +10,15 @@ import {
 } from './import-handlers'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MSW 서버 설정 — cfd-handlers.test.ts 선례(개별 setupServer 인스턴스)
+// MSW 서버 설정 — imports.test.ts(Task-1) 선례: 전역 공유 server(@/test/server)에 매 테스트
+// server.use()로 등록한다. 개별 setupServer 인스턴스를 별도로 띄우면 전역 setup.ts의 서버와
+// 동시에 두 인터셉터가 활성화되어 동일 요청이 이중 디스패치되는 환경 결함이 있다(수동 확인).
 // ─────────────────────────────────────────────────────────────────────────────
-
-const server = setupServer(...importHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterAll(() => server.close())
 
 beforeEach(() => {
   resetImportStore()
+  server.use(...importHandlers)
 })
-
-afterEach(() => server.resetHandlers())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 계약 drift 가드 — 픽스처가 실제 Zod 응답 스키마를 통과하는지 검증
