@@ -71,7 +71,13 @@ class TargetFieldTest : DescribeSpec({
         }
 
         it("나머지 필드는 모두 multi=false") {
-            val multiFields = setOf(TargetField.LABELS, TargetField.COMPONENT, TargetField.FIX_VERSION, TargetField.AFFECTS_VERSION)
+            val multiFields =
+                setOf(
+                    TargetField.LABELS,
+                    TargetField.COMPONENT,
+                    TargetField.FIX_VERSION,
+                    TargetField.AFFECTS_VERSION,
+                )
             TargetField.entries.filter { it !in multiFields }
                 .forEach { field -> field.multi shouldBe false }
         }
