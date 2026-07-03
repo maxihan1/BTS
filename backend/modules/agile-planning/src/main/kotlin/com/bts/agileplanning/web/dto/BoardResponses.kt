@@ -6,6 +6,7 @@ import com.bts.agileplanning.application.BoardPlacementResult
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.PlacedColumn
+import com.bts.agileplanning.domain.QuickFilter
 import com.bts.shared.board.BoardIssueView
 import com.bts.shared.board.BoardTransitionResult
 import jakarta.validation.constraints.NotBlank
@@ -222,6 +223,8 @@ data class BoardColumnWithCardsResponse(
  *   0 이면 미매핑 이슈 없음. 양수이면 워크플로우 상태와 보드 컬럼 간 미싱 매핑이 있음을 의미한다.
  * @property swimlaneField 스윔레인 기준 필드 이름. [SwimlaneField.name] 문자열. 예: `"NONE"`, `"ASSIGNEE"`, `"PRIORITY"`.
  *   클라이언트가 스윔레인 UI 활성 여부 및 그룹화 기준을 판단하는 데 사용한다.
+ * @property quickFilters 보드에 저장된 퀵필터 목록(created_at ASC, FR-UX-01 Task 7). 보드를 보는 모든
+ *   사용자가 공유하는 사전 정의 필터 칩이다. 퀵필터가 없으면 빈 목록.
  */
 data class BoardDetailResponse(
     val boardId: UUID,
@@ -231,6 +234,7 @@ data class BoardDetailResponse(
     val truncated: Boolean,
     val unplacedCount: Int,
     val swimlaneField: String,
+    val quickFilters: List<QuickFilterResponse>,
 ) {
     companion object {
         /**
@@ -238,10 +242,12 @@ data class BoardDetailResponse(
          *
          * @param board 보드 메타(boardId/projectKey/name/swimlaneField 출처).
          * @param result 카드 배치 + 신호 필드(truncated/unplacedCount) 결과.
+         * @param quickFilters 보드에 저장된 퀵필터 도메인 목록(created_at ASC). 기본값은 빈 목록.
          */
         fun of(
             board: Board,
             result: BoardPlacementResult,
+            quickFilters: List<QuickFilter> = emptyList(),
         ): BoardDetailResponse =
             BoardDetailResponse(
                 boardId = board.id,
@@ -251,6 +257,7 @@ data class BoardDetailResponse(
                 truncated = result.truncated,
                 unplacedCount = result.unplacedCount,
                 swimlaneField = board.swimlaneField.name,
+                quickFilters = quickFilters.map(QuickFilterResponse::from),
             )
     }
 }

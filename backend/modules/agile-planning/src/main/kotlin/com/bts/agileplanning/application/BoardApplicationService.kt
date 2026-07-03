@@ -6,7 +6,9 @@ import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardCardPlacement
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.PlacedColumn
+import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.domain.SwimlaneField
+import com.bts.agileplanning.repository.BoardQuickFilterRepository
 import com.bts.agileplanning.repository.BoardRepository
 import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.board.BoardIssueLookupPort
@@ -31,11 +33,13 @@ import java.util.UUID
  * @property columns 카드가 배치된 컬럼 목록.
  * @property truncated BOARD_CARD_FETCH_LIMIT 초과로 이슈 일부가 누락됐으면 true.
  * @property unplacedCount 어느 컬럼에도 매핑되지 않아 보드에서 제외된 이슈 수 (E2 상황).
+ * @property quickFilters 보드에 저장된 퀵필터 도메인 목록(created_at ASC, FR-UX-01 Task 7). 기본값은 빈 목록.
  */
 data class BoardPlacementResult(
     val columns: List<PlacedColumn>,
     val truncated: Boolean,
     val unplacedCount: Int,
+    val quickFilters: List<QuickFilter> = emptyList(),
 )
 
 /**
@@ -62,6 +66,7 @@ data class BoardPlacementResult(
  * @param boardIssueLookupPort 프로젝트 이슈 목록 조회 포트 (issue-tracking 구현)
  * @param issueTransitionPort 전이 위임 포트 — fail-closed (issue-tracking 구현)
  * @param boardRepository boards/board_columns jOOQ repository
+ * @param boardQuickFilterRepository board_quick_filters jOOQ repository (FR-UX-01 Task 7)
  */
 @Service
 class BoardApplicationService(
@@ -69,6 +74,7 @@ class BoardApplicationService(
     private val boardIssueLookupPort: BoardIssueLookupPort,
     private val issueTransitionPort: IssueTransitionPort,
     private val boardRepository: BoardRepository,
+    private val boardQuickFilterRepository: BoardQuickFilterRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -121,11 +127,13 @@ class BoardApplicationService(
      * [filter] 를 그대로 전달한다. [BoardCardPlacement.placeCards] 로 컬럼에 배치한다.
      * [BoardPlacementResult.truncated] 가 true 이면 BOARD_CARD_FETCH_LIMIT 초과로 일부 이슈가 누락됐다.
      * [BoardPlacementResult.unplacedCount] 가 0 초과이면 컬럼에 매핑되지 않는 이슈가 있었다(E2 상황).
+     * [boardQuickFilterRepository.findByBoardId] 로 보드에 저장된 퀵필터 목록(created_at ASC)을 함께
+     * 조회해 [BoardPlacementResult.quickFilters] 에 포함한다(FR-UX-01 Task 7).
      *
      * @param boardId 조회할 보드 UUID.
      * @param viewerUserId 보드를 조회하는 사용자 UUID. visibility 필터 기준.
      * @param filter 보드 카드 필터 조건. 기본값 [BoardCardFilter.EMPTY] 이면 무필터와 동일.
-     * @return [BoardPlacementResult] — 배치 결과 + truncated + unplacedCount.
+     * @return [BoardPlacementResult] — 배치 결과 + truncated + unplacedCount + quickFilters.
      * @throws ResponseStatusException 404 — 보드 미존재 또는 soft-deleted.
      */
     @Transactional(readOnly = true)
@@ -145,10 +153,12 @@ class BoardApplicationService(
                 filter = filter,
             )
         val placed = BoardCardPlacement.placeCards(board.columns, page.issues)
+        val quickFilters = boardQuickFilterRepository.findByBoardId(boardId)
         return BoardPlacementResult(
             columns = placed.columns,
             truncated = page.truncated,
             unplacedCount = placed.unplacedCount,
+            quickFilters = quickFilters,
         )
     }
 
