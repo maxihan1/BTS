@@ -72,6 +72,14 @@ export interface ImportErrorLogResult {
 // API 함수
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 비-2xx 응답이면 ApiError를 throw하는 공통 가드 (3개 함수 중복 제거) */
+async function throwIfNotOk(res: Response): Promise<void> {
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+}
+
 /**
  * POST /api/v1/imports — CSV/JSON 파일을 multipart로 접수한다.
  *
@@ -92,10 +100,7 @@ export async function submitImportJob(params: SubmitImportParams): Promise<Impor
   fd.append('dryRun', String(params.dryRun))
 
   const res = await apiFetch('/api/v1/imports', { method: 'POST', body: fd })
-  if (!res.ok) {
-    const errorBody: unknown = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, errorBody)
-  }
+  await throwIfNotOk(res)
   return importJobStatusSchema.parse(await res.json())
 }
 
@@ -111,10 +116,7 @@ export async function submitImportJob(params: SubmitImportParams): Promise<Impor
  */
 export async function fetchImportJobStatus(jobId: string): Promise<ImportJobStatus> {
   const res = await apiFetch(`/api/v1/imports/${jobId}`)
-  if (!res.ok) {
-    const errorBody: unknown = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, errorBody)
-  }
+  await throwIfNotOk(res)
   return importJobStatusSchema.parse(await res.json())
 }
 
@@ -130,10 +132,7 @@ export async function fetchImportJobStatus(jobId: string): Promise<ImportJobStat
  */
 export async function downloadImportErrorLog(jobId: string): Promise<ImportErrorLogResult> {
   const res = await apiFetch(`/api/v1/imports/${jobId}/errors`)
-  if (!res.ok) {
-    const errorBody: unknown = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, errorBody)
-  }
+  await throwIfNotOk(res)
 
   const contentDisposition = res.headers.get('content-disposition') ?? ''
   const filenameMatch = /filename="([^"]+)"/.exec(contentDisposition)
