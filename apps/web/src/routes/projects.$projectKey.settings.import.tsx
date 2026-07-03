@@ -43,7 +43,10 @@ export function ProjectImportSettingsPage({
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold">가져오기(Import)</h1>
       </header>
-      <ImportForm projectKey={projectKey} />
+      {/* key={projectKey}: projectKey 변경 시 remount 강제 — 아니면 이전 project의
+          진행 중 phase/file/jobId/submitError state가 다음 project 화면에 leak된다
+          (react-usestate-stale-key-prop) */}
+      <ImportForm key={projectKey} projectKey={projectKey} />
     </div>
   )
 }
