@@ -1,4 +1,4 @@
-// MappingValidator 단위 테스트 — SUMMARY_NOT_MAPPED·DUPLICATE_TARGET·UNKNOWN_TARGET·UNKNOWN_SOURCE·SOURCE_FIELD_IGNORED (FR-IM-02 PR-A Task 5)
+// MappingValidator 단위 테스트 — summary 필수·중복 target·미지 target/source·미매핑 warning (FR-IM-02 Task 5)
 
 package com.bts.search.imports.mapping
 

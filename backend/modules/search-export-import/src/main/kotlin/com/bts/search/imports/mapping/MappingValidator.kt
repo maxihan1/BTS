@@ -155,6 +155,5 @@ object MappingValidator {
                 MappingIssue(SOURCE_FIELD_IGNORED, "이 소스 필드는 매핑되지 않아 import 시 무시됩니다: $sourceField", sourceField)
             }
 
-    private fun isUnmappedOrIgnored(targetKey: String?): Boolean =
-        targetKey == null || TargetField.isIgnoreKey(targetKey)
+    private fun isUnmappedOrIgnored(key: String?): Boolean = key == null || TargetField.isIgnoreKey(key)
 }
