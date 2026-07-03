@@ -530,7 +530,7 @@ const settingsPatsRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 41개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 42개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
  *   · /admin/webhooks · /admin/webhooks/:id/deliveries
