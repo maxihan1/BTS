@@ -1841,8 +1841,11 @@ class IssueImportAdapterTest {
     fun `S37 MIME 거부 스캔 미가용 원본없음 - 첨부별 경고를 남기고 이슈는 커밋된다`() {
         val source =
             FixtureImportAttachmentSource(
-                mapOf("trigger.png" to SCAN_UNAVAILABLE_TRIGGER_BYTES),
-                // "missing.png" 는 source 에 없음 → NOT_FOUND(zip 부재) 경로.
+                mapOf(
+                    "virus.exe" to byteArrayOf(1, 2, 3),
+                    "trigger.png" to SCAN_UNAVAILABLE_TRIGGER_BYTES,
+                    // "missing.png" 는 source 에 없음 → NOT_FOUND(zip 부재) 경로.
+                ),
             )
         val cmd =
             IssueImportCommand(
