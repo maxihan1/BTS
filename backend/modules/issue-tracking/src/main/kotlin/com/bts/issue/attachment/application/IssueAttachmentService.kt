@@ -19,6 +19,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.time.Clock
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -105,6 +106,8 @@ class IssueAttachmentService(
         contentType: String,
         sizeBytes: Long,
         input: InputStream,
+        createdAt: Instant? = null,
+        uploadedBy: UUID? = null,
     ): Attachment {
         checkPermission(actor, IssuePermission.UPDATE, issueKey)
         // 허용 타입 검증 — 권한 확인 직후, MinIO put·DB insert 이전(고아 객체·불필요 I/O 방지).
@@ -122,8 +125,8 @@ class IssueAttachmentService(
                 contentType = contentType,
                 sizeBytes = sizeBytes,
                 storageKey = storageKey,
-                uploadedBy = actor.value,
-                createdAt = clock.instant(),
+                uploadedBy = uploadedBy ?: actor.value,
+                createdAt = createdAt ?: clock.instant(),
             )
 
         // inbound 스트림을 임시파일로 복사 — finally 로 모든 경로에서 삭제 보장.
