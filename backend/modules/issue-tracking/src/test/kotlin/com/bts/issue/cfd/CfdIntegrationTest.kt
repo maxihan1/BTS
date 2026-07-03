@@ -45,6 +45,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.context.annotation.Import
 import org.springframework.http.converter.HttpMessageConverter
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
@@ -182,6 +183,10 @@ class CfdIntegrationTest {
     @Configuration
     @EnableWebMvc
     @EnableTransactionManagement(proxyTargetClass = true)
+    // CfdController 는 수동 @Bean 이 아니라 @Import 로 등록해, Spring 이 생성자의 optional Clock
+    // 파라미터(기본값 Clock.systemUTC())를 실제로 resolve 하는 프로덕션 배선 경로를 테스트가 태우게 한다
+    // (코드리뷰 CONCERN 2 — Clock 기본 파라미터 Spring 배선 미검증 갭 해소).
+    @Import(CfdController::class)
     open class TestConfig : WebMvcConfigurer {
         /**
          * `@EnableWebMvc` 기본 Jackson 컨버터는 [java.time.LocalDate] 를 배열로 직렬화한다.
@@ -341,8 +346,7 @@ class CfdIntegrationTest {
                 workflowStateLookup = workflowStateLookup,
             )
 
-        @Bean
-        open fun cfdController(service: CfdService): CfdController = CfdController(service)
+        // cfdController 는 @Import(CfdController::class) 로 등록 — Spring 이 optional Clock 기본값을 resolve.
 
         @Bean
         open fun cfdExceptionHandler(): CfdExceptionHandler = CfdExceptionHandler()
