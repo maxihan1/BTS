@@ -61,7 +61,8 @@ Maxi 확정(도메인 게이트). 이력=충실재생 · 첨부 zip=두-part · 
 - depends-on: []
 
 **RED**: `IssueImportPortTest`에 (i) 커맨드가 `sourceKey`·`attachments: List<ImportAttachment>`·`changelog: List<ImportChangeGroup>`를 담고 기본값 null/emptyList, (ii) `ImportAttachmentSource.open`이 fun interface로 InputStream? 반환, (iii) `importIssue(cmd, source)` 2-arg 오버로드가 default source=null로 하위호환(1-arg 호출 컴파일) 검증 → 컴파일 실패(VO/인터페이스 없음).
-**GREEN**: `IssueImportCommand`에 `sourceKey: String? = null`, `attachments: List<ImportAttachment> = emptyList()`, `changelog: List<ImportChangeGroup> = emptyList()` 추가(끝에, 기존 필드 불변) + `ImportAttachment(filename: String, authorEmail: String? = null, createdAt: Instant? = null, mimeType: String? = null, sizeBytes: Long? = null)`·`ImportChangeGroup(authorEmail: String? = null, occurredAt: Instant? = null, items: List<ImportChangeItem> = emptyList())`·`ImportChangeItem(field: String, fromValue: String? = null, toValue: String? = null)` data class + `fun interface ImportAttachmentSource { fun open(filename: String, sourceKey: String?): InputStream? }`(신규 파일, L1 한국어 주석) + `IssueImportPort.importIssue(cmd, attachments: ImportAttachmentSource? = null)`로 시그니처 확장(default 구현 `failure(ADAPTER_UNAVAILABLE)` 유지).
+**GREEN**: `IssueImportCommand`에 `sourceKey: String? = null`, `attachments: List<ImportAttachment> = emptyList()`, `changelog: List<ImportChangeGroup> = emptyList()` 추가(끝에, 기존 필드 불변) + `ImportAttachment(filename: String, authorEmail: String? = null, createdAt: Instant? = null, mimeType: String? = null, sizeBytes: Long? = null)`·`ImportChangeGroup(authorEmail: String? = null, occurredAt: Instant? = null, items: List<ImportChangeItem> = emptyList())`·`ImportChangeItem(field: String, fromValue: String? = null, toValue: String? = null)` data class + `fun interface ImportAttachmentSource { fun open(filename: String, sourceKey: String?): InputStream? }`(신규 파일, L1 한국어 주석) + `IssueImportPort`를 **2-arg로 확장**.
+  - **★위임 방향(eng-review CONCERN-6)**. `importIssue(cmd, attachments: ImportAttachmentSource?)`가 **주 메서드**(default `failure(ADAPTER_UNAVAILABLE)` fail-closed). 기존 1-arg `importIssue(cmd)`는 **default로 `importIssue(cmd, null)` 위임**(fail-closed 아님 — 그래야 기존 59개 1-arg 테스트/PR1~3 호출이 어댑터의 2-arg override로 흘러 무회귀, 첨부만 스킵). 어댑터는 **2-arg를 override**([[interface-extension-default-method]] fail-safe 방향).
 **REFACTOR**: 각 VO/인터페이스 KDoc(nullable 의미·field=raw Jira field·source 매칭 책임은 구현체) + 파일 L1 주석.
 **검증**: `./gradlew :modules:shared-kernel:test --tests '*IssueImportPortTest'`
 
@@ -85,7 +86,7 @@ Maxi 확정(도메인 게이트). 이력=충실재생 · 첨부 zip=두-part · 
 - depends-on: []
 
 **RED**: `IssueChangeImportHistoryTest`(Testcontainers, `IssueTestcontainersBase`) — `recordImported(group)`가 (i) group.createdAt(과거 시각)을 **명시 삽입**(NOW() 아님)·조회 시 그 시각 반환, (ii) group.actorId(원본 author)·null 허용, (iii) items(field/from/to) 그대로 저장, (iv) **detector 미경유**(before/after diff 없이 임의 항목 기록), (v) createdAt=null이면 기존대로 NOW() 폴백(하위호환) 검증 → 컴파일/실행 실패.
-**GREEN**: `JdbcIssueChangeHistoryRepository.insertGroup`/`SQL_INSERT_GROUP`을 `created_at` 컬럼 포함으로 확장하되 `group.createdAt ?: NOW()`(파라미터 바인딩, null이면 DB DEFAULT 유지 — `COALESCE(?, NOW())` 또는 분기). 기존 `record(group)` 경로는 group.createdAt=null이라 NOW() 그대로. `IssueHistoryRecorder.recordImported(group: IssueChangeGroup)` facade 추가 — detector 미경유, `repository.record(group)` 직접 위임.
+**GREEN**: `IssueHistoryRecorder.recordImported(group: IssueChangeGroup)` facade 추가 — detector 미경유, `repository.record(group)` 직접 위임. `JdbcIssueChangeHistoryRepository.insertGroup`을 **createdAt 유무로 SQL 분기**(eng-review CONCERN-3, 같은 파일 `:165-208`이 이미 문서화한 **JDBC null→TIMESTAMPTZ 바인딩 SQLException 함정** 회피 — `COALESCE(?, NOW())`에 untyped null 바인딩 금지). `group.createdAt == null` → **created_at 컬럼을 INSERT 목록에서 제외**(DB `DEFAULT NOW()` 발동, 기존 `SQL_INSERT_GROUP` 그대로) / non-null → created_at 포함 SQL(`Timestamp.from` 타입 명시 바인딩). 기존 `record` 경로 7곳(WorklogService·IssueEpicService·IssueApplicationService·IssueMoveService — createdAt=null) NOW() 폴백 무회귀.
 **REFACTOR**: KDoc(import 전용 경로·occurredAt 주입 근거·일반 record와의 차이 — append-only 감사 예외) + `insertGroup` 시각 분기 헬퍼.
 **검증**: `./gradlew :modules:issue-tracking:test --tests '*IssueChangeImportHistoryTest'`
 
@@ -117,10 +118,10 @@ Maxi 확정(도메인 게이트). 이력=충실재생 · 첨부 zip=두-part · 
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/search-export-import/src/main/resources/db/migration/search-export-import/V605__import_jobs_attachments.sql`, `backend/modules/search-export-import/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/domain/ImportJob.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/repository/ImportJobRepository.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/job/repository/ImportJobRepositoryTest.kt`]
+- files: [`backend/modules/search-export-import/src/main/resources/db/migration/search-export-import/V605__import_jobs_attachments.sql`, `backend/modules/search-export-import/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/domain/ImportJob.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/repository/ImportJobRepository.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/job/repository/ImportJobRepositoryTest.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/**/SchemaMigrationImportTest.kt`]
 - depends-on: []
 
-**RED**: `ImportJobRepositoryTest`(Testcontainers) — insert 후 조회 시 `attachmentsObjectKey` round-trip(값/null) 검증 → 컬럼/필드 없음으로 실패.
+**RED**: `ImportJobRepositoryTest`(Testcontainers) — insert 후 조회 시 `attachmentsObjectKey` round-trip(값/null) 검증 + `SchemaMigrationImportTest`의 **하드코딩 컬럼 카운트 17→18** 정정 및 `attachments_object_key`(VARCHAR(500) NULL) 존재/타입 단언 추가(eng-review CONCERN-7, memory `fr-pm-permission-seed-migration-test-coupling`·`enum-add-breaks-crossmodule-count-guard` 동류 — 컬럼 추가가 카운트 가드 깸) → 실패.
 **GREEN**: `V605__import_jobs_attachments.sql` = `ALTER TABLE import_jobs ADD COLUMN attachments_object_key VARCHAR(500)`(nullable) + **init_codegen.sql 동일 DDL 미러**(memory `jooq-init-codegen-mirror`) + `ImportJob`에 `attachmentsObjectKey: String? = null` 필드(끝에) + `ImportJobRepository` insert/select 매핑(jOOQ `.repository` 유지). jOOQ codegen 재생성 포함.
 **REFACTOR**: 필드 KDoc + L1 주석.
 **검증**: `./gradlew :modules:search-export-import:test --tests '*ImportJobRepositoryTest'` (codegen 재생성 포함)
@@ -142,11 +143,11 @@ Maxi 확정(도메인 게이트). 이력=충실재생 · 첨부 zip=두-part · 
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/application/ZipImportAttachmentSource.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/application/ImportJobProcessor.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/job/application/ZipImportAttachmentSourceTest.kt`]
-- depends-on: [1, 6]
+- depends-on: [1, 5, 6]   # [5]와 `ImportJobProcessor.kt` 공유 → 직렬화(eng-review CONCERN-5, memory `parallel-dispatch-precommit-hook-race` 동일파일 편집경쟁 회피)
 
-**RED**: `ZipImportAttachmentSourceTest` — (i) `open(filename, sourceKey)`가 `<sourceKey>/<filename>`→플랫 `<filename>` 순 매칭·미발견 null, (ii) 비압축 100MB 초과 엔트리 거부(null+로그), (iii) zip-slip(`..`/절대경로) 엔트리 거부, (iv) 손상 zip → 전 open null(예외 대신) 검증 → 실패.
-**GREEN**: `ZipImportAttachmentSource`(shared `ImportAttachmentSource` 구현) — MinIO에서 zip을 임시파일로 다운로드 후 `java.util.zip.ZipFile` 인덱스, `open`이 매칭 엔트리 InputStream 반환(`.use` 안전). `ImportJobProcessor.process`가 job.attachmentsObjectKey 있으면 소스 생성해 `importPort.importIssue(cmd, source)`로 주입(없으면 null), job 종료 시 zip 임시파일/ZipFile close.
-**REFACTOR**: 매칭·검증 헬퍼 + 상수(MAX_ENTRY_SIZE) + KDoc(BC 격리 — 매칭은 zip 소유 search에).
+**RED**: `ZipImportAttachmentSourceTest` — (i) `open(filename, sourceKey)`가 `<sourceKey>/<filename>`→플랫 `<filename>` 순 매칭·미발견 null, (ii) 비압축 100MB 초과 엔트리 거부(null+로그), (iii) zip-slip(`..`/절대경로) 엔트리 거부, (iv) 손상 zip → 전 open null(예외 대신), (v) `close()`가 ZipFile+임시파일 정리 검증 → 실패.
+**GREEN**: `ZipImportAttachmentSource`(shared `ImportAttachmentSource` **+ `AutoCloseable`** 겸 — eng-review PASS 유의) — MinIO에서 zip을 임시파일로 다운로드 후 `java.util.zip.ZipFile` 인덱스, `open`이 매칭 엔트리 InputStream 반환(**반환 스트림 close 책임은 소비 어댑터** — T9 BLOCKER-1 참조, 여기선 매칭만). `ImportJobProcessor.processRows`가 `storage.get(manifest).use{...}` 바깥에 **`openZipSourceOrNull(job).use{ source -> ... }`** 중첩(job당 1회 open·행 재사용·종료 close). `importPort.importIssue(cmd, source)`로 주입(source null이면 첨부 스킵). **dry-run이면 zip 다운로드/소스 생성 스킵**(eng-review NIT — 부수효과 미리보기라 500MB 낭비 회피).
+**REFACTOR**: 매칭·검증 헬퍼 + 상수(MAX_ENTRY_SIZE) + KDoc(BC 격리 — 매칭은 zip 소유 search에·반환스트림 close는 어댑터).
 **검증**: `./gradlew :modules:search-export-import:test --tests '*ZipImportAttachmentSourceTest'`
 
 ### Task 9. issue-tracking — IssueImportAdapter 위임 (첨부 upload·이력 recordImported·매핑·best-effort·dry-run) + 통합테스트
@@ -156,15 +157,20 @@ Maxi 확정(도메인 게이트). 이력=충실재생 · 첨부 zip=두-part · 
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/outbound/imports/IssueImportAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/outbound/imports/IssueImportAdapterTest.kt`]
 - depends-on: [1, 2, 3]
 
-**RED**: `IssueImportAdapterTest`(Testcontainers 실 tx) 시나리오 추가 — (S1)첨부 upload+원본 시각/uploader 보존+조회(fake `ImportAttachmentSource`로 스트림 주입), (S2)changelog recordImported+occurredAt/actor 보존+field 매핑, (S3)UPDATE 권한 없음→첨부/이력 스킵+집약 경고·이슈 생성, (S4)MIME 거부/스캔 미가용→첨부 단위 경고·이슈 커밋, (S5)author 미해석→첨부=requester·이력=actorId null, (S6)미매핑 field→스킵+경고, (S7)시각 파싱 실패→그룹 스킵+경고, (S8)이슈당 이력 상한 1000 초과→스킵+경고, (S9)dry-run→insert 0·**FORBIDDEN 미엮음**·warn 별도경로, (S10)예상외 throw→행 롤백(첨부 upload가 행 tx 미오염 실증) → 실패.
-**GREEN**: `IssueImportAdapter` 생성자에 `IssueAttachmentService`·`IssueHistoryRecorder` 주입(**기존 명시 @Bean/mock 테스트 조립 갱신** — memory `plan-files-constructor-injection-existing-tests`·`fr-hs-01`). `importIssue(cmd, attachments)` 오버라이드가 2-arg. `executeImport`에 createIssue 후 `applyAttachments`(사전 UPDATE 권한 체크 → `attachments.open` non-null·MIME 사전판정분만 `attachmentService.upload(createdAt/uploadedBy 주입)`, 실패 catch→첨부 단위 경고) → `applyChangelog`(Jira→BTS field 매핑 테이블 R8·미매핑 스킵+경고·author resolveByEmails→null 폴백·occurredAt parse 실패 스킵·상한 1000, `IssueChangeGroup` 조립 후 `historyRecorder.recordImported`). `FieldResolution`에 첨부/이력 author 이메일 합류(`resolveByEmails` 단일 배치). dry-run `warnAttachmentsIfNeeded`/`warnChangelogIfNeeded`(`validateDryRun` FORBIDDEN early-return **이후**·`rowTriggersUpdate` 미엮음).
-**REFACTOR**: 첨부/이력 처리·집약경고·필드매핑 헬퍼 추출 + KDoc(사전체크 잔여 throw 집합·매핑 근거).
+**★eng-review 반영(BLOCKER 1·2, CONCERN 4)**. 이 task가 첨부 안전성 핵심 — 아래 3점 필수.
+- **BLOCKER-1 (스트림 close)**. `IssueAttachmentService.upload`의 `input`은 **호출자 close 책임**(`IssueAttachmentService.kt:92`, upload는 `Files.copy`만·close 안 함). 어댑터는 `source.open(...)?.use { stream -> attachmentService.upload(..., input = stream) }`로 **반드시 close**(FR-AC-01 MinIO 스트림 누수 회귀 방지 [[fr-ac-01-d2-clamav-done]]).
+- **BLOCKER-2 (insert throw 사전체크)**. `AttachmentRepository.insert`는 `@Transactional`(REQUIRED)이라 행 tx에 참여 → **길이 초과(`filename` VARCHAR(500)·`content_type` VARCHAR(100)) insert throw가 rollback-only로 행 전체 롤백**(catch 무력). 잔여 throw 강등 집합에 **`filename.isNotBlank() && filename.length ≤ 500 && contentType.length ≤ 100` 사전체크** 필수(초과 시 첨부 스킵+경고, comment/worklog 사전체크와 동형). upload는 insert **이전** 실패(권한·MIME·scan·put·zip부재)만 best-effort — insert throw는 행 원자성.
+- **CONCERN-4 (테스트 조립)**. `IssueImportAdapterTest`는 `@ContextConfiguration` 수동 @Bean 조립(`:93`, `:292-325`)이라 생성자 2개 추가 시 **보조 빈 열거 필요** — fake `AttachmentStoragePort`(no-op put/remove)·fake `VirusScanPort`(CLEAN 반환)·실 `AttachmentRepository`(issue_attachments round-trip)·실 `IssueHistoryRecorder`(recordImported가 detector/resolver 우회하므로 그 둘은 `mockk` 허용, **`IssueChangeHistoryRepository`는 실빈**=occurredAt/actor 실검증). `NamedParameterJdbcTemplate` 빈 컨텍스트 확인.
+
+**RED**: `IssueImportAdapterTest`(Testcontainers 실 tx) 시나리오 추가 — (S1)첨부 upload+원본 시각/uploader 보존+조회(fake `ImportAttachmentSource`로 스트림 주입, **어댑터가 스트림 close 확인**), (S2)changelog recordImported+occurredAt/actor 보존+field 매핑, (S3)UPDATE 권한 없음→첨부/이력 스킵+집약 경고·이슈 생성, (S4)MIME 거부/스캔 미가용→첨부 단위 경고·이슈 커밋, (S5)author 미해석→첨부=requester·이력=actorId null, (S6)미매핑 field→스킵+경고, (S7)시각 파싱 실패→그룹 스킵+경고, (S8)이슈당 이력 상한 1000 초과→스킵+경고, (S9)dry-run→insert 0·**FORBIDDEN 미엮음**·warn 별도경로, (S10a)**긴 파일명(>500자) 사전체크→첨부만 스킵+이슈 커밋**(insert throw 미발생 실증), (S10b)예상외 throw→행 롤백 → 실패.
+**GREEN**: `IssueImportAdapter` 생성자에 `IssueAttachmentService`·`IssueHistoryRecorder` 주입(위 CONCERN-4 테스트 조립 갱신). `importIssue(cmd, attachments)` **2-arg override**(1-arg는 T1 default가 `(cmd, null)` 위임). `executeImport`에 createIssue 후 `applyAttachments`(사전 UPDATE 권한+**파일명/타입 길이** 체크 → `attachments.open(filename, sourceKey)?.use { stream -> attachmentService.upload(createdAt/uploadedBy 주입, input=stream) }`, put/scan/MIME 실패 catch→첨부 단위 경고. **sizeBytes**=`ZipEntry.getSize()`가 -1이면 복사 바이트 카운트 폴백[NIT]) → `applyChangelog`(Jira→BTS field 매핑 테이블 R8·미매핑 스킵+경고·author resolveByEmails→null 폴백·occurredAt parse 실패 스킵·상한 1000, `IssueChangeGroup` 조립 후 `historyRecorder.recordImported`). `FieldResolution`에 첨부/이력 author 이메일 합류(`resolveByEmails` 단일 배치). dry-run `warnAttachmentsIfNeeded`/`warnChangelogIfNeeded`(`validateDryRun` FORBIDDEN early-return **이후**·`rowTriggersUpdate` 미엮음, dry-run은 zip 미오픈이라 **권한·filename 비어있음만 검사**, 실제 스캔은 미리보기 불가).
+**REFACTOR**: 첨부/이력 처리·집약경고·필드매핑 헬퍼 추출 + KDoc(사전체크 잔여 throw 집합={권한·filename/type 길이·zip부재·MIME}·매핑 근거·스트림 close 책임).
 **검증**: `./gradlew :modules:issue-tracking:test --tests '*IssueImportAdapterTest'`
 
 ## Plan 메타
 
 - task 수: 9
-- 예상 wave. Wave1 = T1·T2·T3·T4·T6(depends-on []), Wave2 = T5(1,4)·T7(6)·T8(1,6)·T9(1,2,3). 같은 모듈(issue-tracking T2/T3/T9·search T4/T5/T6/T7/T8) Gradle 컴파일 직렬화.
+- 예상 wave. Wave1 = T1·T2·T3·T4·T6(depends-on []), Wave2 = T5(1,4)·T7(6)·T9(1,2,3), Wave3 = T8(1,**5**,6 — T5와 `ImportJobProcessor.kt` 공유 직렬화). 같은 모듈(issue-tracking T2/T3/T9·search T4/T5/T6/T7/T8) Gradle 컴파일 직렬화.
 - TDD 강제: yes (test 커밋 선행)
 - 병렬 dispatch: bts-impl이 depends-on+files로 wave 계산
 - 추가 검증: ktlint, detekt, ArchUnit(BC 격리·jOOQ `.repository`), verify-master-plan(카운트 불변 123), 통합테스트(Testcontainers 실 tx), 전 모듈 풀빌드
@@ -172,4 +178,20 @@ Maxi 확정(도메인 게이트). 이력=충실재생 · 첨부 zip=두-part · 
 - E2E: 생략. UI 없는 백엔드 — Playwright 표면 없음. Testcontainers 실 tx(S1~S10)가 전 경로 커버. D6/D7 프론트 후속 PR에서 E2E
 - FR 동기화: 에픽 내부(신규 FR 0, 카운트 123 불변). product/search-export-import.md §4.1 PR4 진행노트 추가(머지 단계). D박스는 FR-IM-01 전체 완료 시 일괄 마킹
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-03, 적대적 엔지니어링 리뷰 — 실코드 대조)
+
+6개 리스크 주장을 실코드에 대조. **BLOCKER 2건 + CONCERN 5건 전부 plan/spec/ADR에 반영 완료**.
+
+- **BLOCKER-1 (첨부 스트림 미close → FD 누수)**. `IssueAttachmentService.upload`의 `input`은 호출자 close 책임(`:92`, upload는 `Files.copy`만)인데 어댑터가 `source.open` 스트림을 안 닫으면 prod 1만이슈×N첨부 FD 고갈 — TDD 미검출(테스트 소수 스트림). FR-AC-01 MinIO 누수 회귀. → **T9에 `source.open(...)?.use{}` close 명시 + S1에 close 검증**.
+- **BLOCKER-2 (첨부 insert throw가 best-effort→행 롤백 상향)**. `AttachmentRepository.insert`는 `@Transactional`(REQUIRED) 행 tx 참여 → 긴 filename(>VARCHAR(500)) insert throw가 rollback-only로 이슈/이력/댓글까지 롤백하며 "경고"로 위장. ADR D4 무조건 "미오염" 거짓(put/scan은 insert 전이라 미오염 맞으나 insert는 참여 write). → **T9 사전체크에 filename/contentType 길이 추가·S10a/S10b 분리, spec R15·ADR D4 정정**.
+- **CONCERN-3 (COALESCE null 바인딩 함정)**. `JdbcIssueChangeHistoryRepository`가 이미 문서화한 JDBC null→TIMESTAMPTZ SQLException 함정. 이력 write 전역 반경. → **T3을 "분기 방식"(null이면 컬럼 제외 DEFAULT)으로 고정, 실 Postgres 테스트**.
+- **CONCERN-4 (어댑터 생성자 주입 테스트 조립)**. `IssueImportAdapterTest` 수동 @Bean 조립이라 fake StoragePort/ScanPort·실 AttachmentRepository·실 HistoryRecorder 보조빈 다수 필요. → **T9에 테스트 빈 목록 명시**.
+- **CONCERN-5 (T5·T8 `ImportJobProcessor.kt` 공유 병렬충돌)**. → **T8 depends-on에 [5] 추가 직렬화, wave3로**.
+- **CONCERN-6 (포트 2-arg default 위임 방향)**. 1-arg default가 fail-closed면 전 import 붕괴 / 어댑터 1-arg override 버리면 59테스트 붕괴. → **T1에 "1-arg default=`(cmd,null)` 위임·어댑터 2-arg override" 명시**.
+- **CONCERN-7 (V605가 SchemaMigrationImportTest 17컬럼 카운트 깸)**. → **T6 files에 SchemaMigrationImportTest.kt 추가(17→18)**.
+- **PASS**. Claim4(이력 필드매핑 insert 제약 — 매핑후 짧은 BTS field라 VARCHAR(64) 안전)·Claim2(BC격리 — shared 인터페이스 대칭)·MIME 정책 접근성·wave 그래프(CONCERN-5 외)·ZipFile 생명주기(AutoCloseable 겸 유의).
+- **NIT 반영**. dry-run zip 미다운로드(T8)·`ZipEntry.getSize()` -1 폴백(T9/spec R4).
+
+- **BLOCKER: 없음(2건 모두 plan 반영 해소)**. 설계 결함 아닌 plan 정밀도 문제라 수정으로 완결.

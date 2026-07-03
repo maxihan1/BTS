@@ -44,7 +44,13 @@ Jira `changelog.histories[]`의 각 `history`를 `IssueChangeGroup` 1건(actor=�
 
 ### D4. 트랜잭션 — 행별 best-effort + 사전체크 (PR2/PR3 원칙 계승)
 
-첨부 upload·이력 record는 어댑터의 행 `@Transactional`에 참여 → 예외 throw 시 rollback-only 오염. 잔여 throw 집합을 **호출 전 사전체크로 강등**한다: 첨부는 (권한 UPDATE·MIME 거부·스캔 실패·zip 부재)를 사전 판정 후 경고, 이력은 (author 이메일 미해석→requester 폴백·시각 파싱 실패→스킵·미매핑 필드→스킵)를 사전 처리. **단 첨부 upload는 내부에서 MinIO/ClamAV I/O를 tx 밖으로 수행**하므로(FR-AC-01 설계) 첨부 실패가 행 tx를 오염시키지 않는지 통합테스트로 실증(적대적 리뷰 대상). dry-run은 유효성-예측 경고를 **별도 경로**로 미러(FORBIDDEN 미엮음, PR2 CONCERN-A 재발 방지).
+첨부 upload·이력 record는 어댑터의 행 `@Transactional`에 참여 → 예외 throw 시 rollback-only 오염. 잔여 throw 집합을 **호출 전 사전체크로 강등**한다: 첨부는 (권한 UPDATE·MIME 거부·**filename/contentType 길이[≤500/≤100]**·zip 부재)를 사전 판정 후 경고, 이력은 (author 이메일 미해석→null 폴백·시각 파싱 실패→스킵·미매핑 필드→스킵)를 사전 처리.
+
+**★정정(eng-review BLOCKER-2)**. 초안은 "첨부 upload가 행 tx를 오염시키지 않음(MinIO/ClamAV I/O tx 밖)"을 무조건 주장했으나 부정확하다. upload 실행 순서 = 권한→MIME→scan→**MinIO put(tx 밖)**→**`AttachmentRepository.insert`(@Transactional REQUIRED, 행 tx 참여)**. put·scan은 insert 이전이라 throw해도 미오염(catch 안전)이 맞으나, **`insert` throw(예: Jira 과다 긴 filename이 VARCHAR(500) 초과)는 rollback-only를 세팅해 catch 무력·행 전체 롤백**. 따라서 정확한 계약은 — **insert 이전 실패(권한·MIME·scan·put·길이 사전체크·zip부재)만 best-effort 첨부 경고, insert throw는 행 원자성으로 롤백**. filename/contentType 길이를 upload 호출 전 사전체크해 insert throw를 예방한다(comment/worklog 사전체크 동형). 통합테스트 S10a(길이초과 사전체크→첨부만 스킵·이슈 커밋)·S10b(generic throw→행 롤백)로 실증.
+
+**★스트림 close(eng-review BLOCKER-1)**. `IssueAttachmentService.upload`의 `input` 스트림은 **호출자 close 책임**(upload는 복사만). 어댑터는 `ImportAttachmentSource.open(...)`이 준 스트림을 `?.use{}`로 close(FR-AC-01 MinIO put 스트림 누수 회귀 방지).
+
+dry-run은 유효성-예측 경고를 **별도 경로**로 미러(FORBIDDEN 미엮음, PR2 CONCERN-A 재발 방지) + zip 미다운로드(권한·filename 비어있음만 미리보기).
 
 ### D5. 범위 — 한 PR(첨부+이력), D6/D7 프론트는 후속
 
