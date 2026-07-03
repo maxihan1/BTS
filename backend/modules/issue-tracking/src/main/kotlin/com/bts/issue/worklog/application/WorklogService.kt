@@ -3,11 +3,13 @@
 package com.bts.issue.worklog.application
 
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.repository.RollupResult
 import com.bts.issue.worklog.domain.Worklog
 import com.bts.issue.worklog.repository.WorklogRepository
 import com.bts.shared.permission.IssuePermission
@@ -109,32 +111,23 @@ class WorklogService(
         val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
         val before = issue
 
-        val worklog =
-            Worklog(
-                id = UUID.randomUUID(),
-                issueId = issue.id.value,
+        val (worklog, result) =
+            insertAndRecompute(
+                issue = issue,
                 authorId = actor.value,
                 timeSpentSeconds = timeSpentSeconds,
                 startedAt = startedAt,
                 comment = comment,
-                createdAt = Instant.now(clock),
-                updatedAt = Instant.now(clock),
+                newRemainingEstimateSeconds = newRemainingEstimateSeconds,
             )
-        worklogRepository.insert(worklog)
 
-        val result =
-            if (newRemainingEstimateSeconds != null) {
-                issueRepository.recomputeTimeSpentSetRemaining(issue.id.value, newRemainingEstimateSeconds)
-            } else {
-                issueRepository.recomputeTimeSpentWithDecrement(issue.id.value, timeSpentSeconds)
-            }
-
+        // 이력 스냅샷 — create 전용. createImported 는 이력을 기록하지 않으므로 스냅샷도 만들지 않는다
+        // (클래스 KDoc·createImported KDoc "이력 생략" 근거 참조).
         val after =
             before.copy(
                 timeSpentSeconds = result.timeSpent,
                 remainingEstimateSeconds = result.remaining,
             )
-
         historyRecorder.record(before = before, after = after, actor = actor, projectId = issue.projectId)
 
         log.info(
@@ -142,6 +135,68 @@ class WorklogService(
             issueKey.value,
             worklog.id,
             actor.value,
+            result.timeSpent,
+            result.remaining,
+        )
+        return worklog
+    }
+
+    /**
+     * Import 전용 워크로그를 추가한다 — 원본 작성자 보존, 이력 기록 생략 (FR-IM-01 PR3).
+     *
+     * ## [create] 와의 차이
+     * - authorId 는 actor 가 아닌 **주입값**으로 저장한다 (마이그레이션 원본 작성자 보존 목적).
+     * - [IssueHistoryRecorder.record] 를 **호출하지 않는다** — before/after 스냅샷도 생성하지 않는다.
+     *   Import 는 원본 이벤트의 재생이 아니라 데이터 이관이므로, 이력 테이블이 importer(actor) 귀속
+     *   엔트리로 대량 폭주하는 것을 방지한다. 워크로그 행 자체가 authorId 로 원작성자를 보존하므로
+     *   감사 추적은 유지된다(Maxi 확정, spec R6).
+     *
+     * ## 실행 순서
+     * 1. [IssuePermission.UPDATE] 검증 — [create] 와 동일 (actor 기준, 이슈 존재 probe 방지).
+     * 2. 이슈 resolve — 미존재·소프트삭제 시 [IssueNotFoundException].
+     * 3. [insertAndRecompute] — 워크로그 삽입 + 롤업(authorId 는 주입값, remaining auto-decrement 고정
+     *    — newRemainingEstimateSeconds 직접 지정 경로는 import 에 없음, remaining NULL 이면 차감 no-op).
+     *    스냅샷·이력 기록은 하지 않는다 (KDoc 위 "create 와의 차이" 참조).
+     *
+     * @param actor UPDATE 권한을 보유해야 하는 행위자 (import 실행자).
+     * @param issueKey 워크로그를 추가할 이슈 키.
+     * @param authorId 워크로그에 보존할 원본 작성자.
+     * @param timeSpentSeconds 소요 시간(초, 양수).
+     * @param startedAt 작업 시작 시각.
+     * @param comment 선택적 코멘트.
+     * @return 삽입된 [Worklog].
+     * @throws [IssueAccessDeniedException] UPDATE 권한 미보유 시 (403).
+     * @throws [IssueNotFoundException] 이슈 미존재·소프트 삭제 시 (404).
+     */
+    @Suppress("LongParameterList") // worklog 생성 입력 불가분 (create 와 동일 근거)
+    fun createImported(
+        actor: ActorId,
+        issueKey: IssueKey,
+        authorId: ActorId,
+        timeSpentSeconds: Int,
+        startedAt: Instant,
+        comment: String?,
+    ): Worklog {
+        checkPermission(actor, issueKey, IssuePermission.UPDATE)
+
+        val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
+
+        val (worklog, result) =
+            insertAndRecompute(
+                issue = issue,
+                authorId = authorId.value,
+                timeSpentSeconds = timeSpentSeconds,
+                startedAt = startedAt,
+                comment = comment,
+                newRemainingEstimateSeconds = null,
+            )
+
+        log.info(
+            "worklog_imported issueKey={} worklogId={} actor={} authorId={} timeSpent={} remaining={}",
+            issueKey.value,
+            worklog.id,
+            actor.value,
+            authorId.value,
             result.timeSpent,
             result.remaining,
         )
@@ -325,6 +380,51 @@ class WorklogService(
     }
 
     // ── private helpers ────────────────────────────────────────────────────────────
+
+    /**
+     * 워크로그를 삽입하고 time_spent/remaining 롤업을 수행한다 ([create]/[createImported] 공통).
+     *
+     * before/after 스냅샷과 [IssueHistoryRecorder.record] 호출은 포함하지 않는다 — 이력은
+     * [create] 전용이며 [createImported] 는 이력을 생략하기 때문이다 (createImported KDoc 참조).
+     *
+     * @param issue 대상 이슈 (호출자가 이미 `findByKey` 로 resolve 함).
+     * @param authorId 워크로그에 저장할 작성자 UUID ([create]=actor.value, [createImported]=주입값).
+     * @param timeSpentSeconds 소요 시간(초, 양수).
+     * @param startedAt 작업 시작 시각.
+     * @param comment 선택적 코멘트.
+     * @param newRemainingEstimateSeconds 잔여 추정 시간 직접 지정(초). null 이면 자동 차감.
+     * @return 삽입된 [Worklog] 와 롤업 결과 [RollupResult] 쌍.
+     */
+    @Suppress("LongParameterList") // create/createImported 공통 입력 불가분
+    private fun insertAndRecompute(
+        issue: Issue,
+        authorId: UUID,
+        timeSpentSeconds: Int,
+        startedAt: Instant,
+        comment: String?,
+        newRemainingEstimateSeconds: Int?,
+    ): Pair<Worklog, RollupResult> {
+        val worklog =
+            Worklog(
+                id = UUID.randomUUID(),
+                issueId = issue.id.value,
+                authorId = authorId,
+                timeSpentSeconds = timeSpentSeconds,
+                startedAt = startedAt,
+                comment = comment,
+                createdAt = Instant.now(clock),
+                updatedAt = Instant.now(clock),
+            )
+        worklogRepository.insert(worklog)
+
+        val result =
+            if (newRemainingEstimateSeconds != null) {
+                issueRepository.recomputeTimeSpentSetRemaining(issue.id.value, newRemainingEstimateSeconds)
+            } else {
+                issueRepository.recomputeTimeSpentWithDecrement(issue.id.value, timeSpentSeconds)
+            }
+        return worklog to result
+    }
 
     /**
      * 권한을 검증한다.

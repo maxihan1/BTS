@@ -35,6 +35,15 @@ import java.io.InputStreamReader
  *
  * 임의 Jira 헤더(`Component/s` 등)·자유 매핑은 FR-IM-02(매핑 UI) 몫 — 본 PR은 canonical 컬럼명만 인식한다.
  *
+ * ### 댓글/worklog (PR3)
+ *
+ * 댓글은 CSV/JSON 모두 지원한다. CSV 는 Jira 가 댓글 N 건을 동명 `Comment` 컬럼 N 개로 export 하므로
+ * [commentColumnPositions] 로 전 위치를 수집해 각 셀을 `date;author;body` 로 분해한다([parseCsvCommentCell]).
+ * JSON 은 `fields.comment.comments[]` 원소를 [jsonCommentOf] 로 개별 추출한다.
+ * worklog 는 **JSON 전용**(`fields.worklog.worklogs[]`, [jsonWorklogOf]) — Jira CSV 는 표준 worklog
+ * export 형식이 없어 CSV 행은 항상 `worklogs = emptyList()` 다. 원본 시각 문자열은 이 단계에서
+ * [java.time.Instant] 로 변환하지 않는다 — [ParsedImportComment]/[ParsedImportWorklog] KDoc 참조.
+ *
  * ### 파일 구조 오류
  *
  * 헤더 행이 없거나 필수 컬럼(Summary)이 없는 CSV, `issues` 배열이 없거나 문법이 깨진 JSON은
@@ -62,16 +71,18 @@ class ImportRowParser {
     ) {
         val reader = BufferedReader(InputStreamReader(input, Charsets.UTF_8))
         val headerLine = readLogicalLine(reader) ?: return
-        val columnIndex = buildColumnIndex(parseCsvLine(headerLine))
+        val headers = parseCsvLine(headerLine)
+        val columnIndex = buildColumnIndex(headers)
         if (columnIndex[HEADER_SUMMARY] == null) {
             throw ImportParseException("CSV 헤더에 필수 컬럼 Summary 가 없습니다")
         }
+        val commentPositions = commentColumnPositions(headers)
         var rowNumber = 0
         generateSequence { readLogicalLine(reader) }
             .filterNot { it.isBlank() }
             .forEach { line ->
                 rowNumber++
-                onRow(buildCsvRow(rowNumber, columnIndex, parseCsvLine(line)))
+                onRow(buildCsvRow(rowNumber, columnIndex, commentPositions, parseCsvLine(line)))
             }
     }
 
@@ -139,10 +150,23 @@ class ImportRowParser {
         return index
     }
 
-    /** 컬럼 인덱스 + 셀 목록으로 [ParsedImportRow] 1건을 조립한다. */
+    /**
+     * `comment` 헤더(대소문자 무시)의 **전 위치**를 순서대로 수집한다.
+     *
+     * Jira CSV 는 댓글 N 건을 동명 `Comment` 컬럼 N 개로 export 하는데, [buildColumnIndex] 는
+     * `putIfAbsent` 라 첫 컬럼만 남고 2..N 이 조용히 유실된다(eng-review C2). 댓글만 이 함수로
+     * 별도 다중 인덱스를 수집하고, 나머지 필드는 기존 단일 인덱스([buildColumnIndex])를 그대로 쓴다.
+     */
+    private fun commentColumnPositions(headers: List<String>): List<Int> =
+        headers.withIndex()
+            .filter { (_, header) -> header.trim().lowercase() == HEADER_COMMENT }
+            .map { (position, _) -> position }
+
+    /** 컬럼 인덱스 + 댓글 다중 위치 + 셀 목록으로 [ParsedImportRow] 1건을 조립한다. */
     private fun buildCsvRow(
         rowNumber: Int,
         columnIndex: Map<String, Int>,
+        commentPositions: List<Int>,
         cells: List<String>,
     ): ParsedImportRow {
         fun cell(header: String): String? {
@@ -163,6 +187,37 @@ class ImportRowParser {
             statusName = cell(HEADER_STATUS),
             fixVersionNames = splitMultiValue(cell(HEADER_FIX_VERSION)),
             affectsVersionNames = splitMultiValue(cell(HEADER_AFFECTS_VERSION)),
+            comments = csvCommentsOf(commentPositions, cells),
+            // worklog 는 CSV 에서 미지원(Jira 표준 worklog export 형식 없음, JSON 전용).
+        )
+    }
+
+    /** 댓글 컬럼 위치 목록 + 셀 목록으로 댓글 목록을 조립한다. 빈 셀은 무시한다(PR1 빈 셀 동형). */
+    private fun csvCommentsOf(
+        commentPositions: List<Int>,
+        cells: List<String>,
+    ): List<ParsedImportComment> =
+        commentPositions.mapNotNull { position ->
+            if (position >= cells.size) return@mapNotNull null
+            val raw = sanitizeControlChars(cells[position]).trim()
+            raw.ifEmpty { null }?.let { parseCsvCommentCell(it) }
+        }
+
+    /**
+     * 댓글 셀 하나를 `date;author;body` 로 분해한다(세미콜론, [CSV_COMMENT_PART_COUNT] 제한 분할).
+     *
+     * `split(limit = 3)` 이라 본문 내부의 세미콜론은 분할되지 않고 세 번째 파트에 그대로 남는다.
+     * 파트 수가 3 미만(구분자 미준수)이면 전체를 본문으로, 작성자/작성시각은 null 로 폴백한다.
+     */
+    private fun parseCsvCommentCell(raw: String): ParsedImportComment {
+        val parts = raw.split(CSV_COMMENT_DELIMITER, limit = CSV_COMMENT_PART_COUNT)
+        if (parts.size < CSV_COMMENT_PART_COUNT) {
+            return ParsedImportComment(body = raw, authorEmail = null, createdAt = null)
+        }
+        return ParsedImportComment(
+            body = parts[COMMENT_PART_BODY].trim(),
+            authorEmail = parts[COMMENT_PART_AUTHOR].trim().ifEmpty { null },
+            createdAt = parts[COMMENT_PART_CREATED].trim().ifEmpty { null },
         )
     }
 
@@ -254,8 +309,50 @@ class ImportRowParser {
             statusName = textOf(fields.path(FIELD_STATUS), FIELD_NAME),
             fixVersionNames = textArrayOf(fields.path(FIELD_FIX_VERSIONS), FIELD_NAME),
             affectsVersionNames = textArrayOf(fields.path(FIELD_VERSIONS), FIELD_NAME),
+            comments = jsonCommentsOf(fields),
+            worklogs = jsonWorklogsOf(fields),
         )
     }
+
+    /**
+     * `fields.comment.comments[]` 배열을 [ParsedImportComment] 목록으로 변환한다.
+     *
+     * 원소가 `{ author: { emailAddress }, body, created }` 복합 객체라 [textArrayOf](평면 배열
+     * 전용)를 재사용할 수 없다 — 원소마다 [jsonCommentOf] 로 개별 추출한다. `fields.comment` 가
+     * 없으면 빈 목록.
+     */
+    private fun jsonCommentsOf(fields: JsonNode): List<ParsedImportComment> {
+        val comments = fields.path(FIELD_COMMENT).path(FIELD_COMMENTS)
+        if (!comments.isArray) return emptyList()
+        return comments.map { element -> jsonCommentOf(element) }
+    }
+
+    /** 댓글 배열 원소 하나에서 작성자 이메일/본문/작성시각을 추출한다. */
+    private fun jsonCommentOf(element: JsonNode): ParsedImportComment =
+        ParsedImportComment(
+            body = textOf(element, FIELD_BODY).orEmpty(),
+            authorEmail = textOf(element.path(FIELD_AUTHOR), FIELD_EMAIL_ADDRESS),
+            createdAt = textOf(element, FIELD_CREATED),
+        )
+
+    /**
+     * `fields.worklog.worklogs[]` 배열을 [ParsedImportWorklog] 목록으로 변환한다(JSON 전용 — CSV
+     * 는 미지원). `fields.worklog` 가 없으면 빈 목록.
+     */
+    private fun jsonWorklogsOf(fields: JsonNode): List<ParsedImportWorklog> {
+        val worklogs = fields.path(FIELD_WORKLOG).path(FIELD_WORKLOGS)
+        if (!worklogs.isArray) return emptyList()
+        return worklogs.map { element -> jsonWorklogOf(element) }
+    }
+
+    /** worklog 배열 원소 하나에서 작성자 이메일/소요시간/작업시작시각/코멘트를 추출한다. */
+    private fun jsonWorklogOf(element: JsonNode): ParsedImportWorklog =
+        ParsedImportWorklog(
+            timeSpentSeconds = element.path(FIELD_TIME_SPENT_SECONDS).asInt(0),
+            startedAt = textOf(element, FIELD_STARTED),
+            authorEmail = textOf(element.path(FIELD_AUTHOR), FIELD_EMAIL_ADDRESS),
+            comment = textOf(element, FIELD_COMMENT),
+        )
 
     private fun sanitizeText(node: JsonNode): String? {
         if (!node.isTextual) return null
@@ -317,8 +414,16 @@ class ImportRowParser {
         private const val HEADER_STATUS = "status"
         private const val HEADER_FIX_VERSION = "fix version"
         private const val HEADER_AFFECTS_VERSION = "affects version"
+        private const val HEADER_COMMENT = "comment"
 
         private const val CSV_DELIMITER = ','
+
+        // 댓글 CSV 셀(`date;author;body`) 분해 — 본문 내부 세미콜론 보존을 위한 limit 분할(PR3).
+        private const val CSV_COMMENT_DELIMITER = ';'
+        private const val CSV_COMMENT_PART_COUNT = 3
+        private const val COMMENT_PART_CREATED = 0
+        private const val COMMENT_PART_AUTHOR = 1
+        private const val COMMENT_PART_BODY = 2
 
         // JSON(Jira REST export) 필드 이름.
         private const val FIELD_ISSUES = "issues"
@@ -336,6 +441,17 @@ class ImportRowParser {
         private const val FIELD_FIX_VERSIONS = "fixVersions"
         private const val FIELD_VERSIONS = "versions"
         private const val FIELD_NAME = "name"
+
+        // JSON 댓글/worklog 중첩 배열 필드 이름(PR3) — `fields.comment.comments[]` / `fields.worklog.worklogs[]`.
+        private const val FIELD_COMMENT = "comment"
+        private const val FIELD_COMMENTS = "comments"
+        private const val FIELD_WORKLOG = "worklog"
+        private const val FIELD_WORKLOGS = "worklogs"
+        private const val FIELD_BODY = "body"
+        private const val FIELD_CREATED = "created"
+        private const val FIELD_AUTHOR = "author"
+        private const val FIELD_TIME_SPENT_SECONDS = "timeSpentSeconds"
+        private const val FIELD_STARTED = "started"
 
         // 정화 대상 제어문자 범위 — ASCII 0x20 미만(단 탭/개행/CR 제외) + DEL(0x7F).
         private const val CONTROL_CHAR_MAX = 0x20

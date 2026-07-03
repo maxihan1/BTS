@@ -3,6 +3,7 @@ package com.bts.shared.issue
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -99,5 +100,70 @@ class IssueImportPortTest {
         assertThat(command.labels).isEmpty()
         assertThat(command.componentNames).isEmpty()
         assertThat(command.dryRun).isFalse()
+    }
+
+    @Test
+    fun `IssueImportCommand 는 필수 3개 필드만 지정해도 comments worklogs 기본값이 emptyList 다`() {
+        val command = sampleCommand()
+
+        assertThat(command.comments).isEmpty()
+        assertThat(command.worklogs).isEmpty()
+    }
+
+    @Test
+    fun `ImportComment 는 body 만 필수이고 authorEmail createdAt 은 기본값 null 이다`() {
+        val comment = ImportComment(body = "댓글 본문")
+
+        assertThat(comment.body).isEqualTo("댓글 본문")
+        assertThat(comment.authorEmail).isNull()
+        assertThat(comment.createdAt).isNull()
+    }
+
+    @Test
+    fun `ImportComment 는 authorEmail createdAt 을 명시적으로 지정할 수 있다`() {
+        val createdAt = Instant.parse("2026-07-01T00:00:00Z")
+
+        val comment = ImportComment(body = "댓글 본문", authorEmail = "reporter@example.com", createdAt = createdAt)
+
+        assertThat(comment.authorEmail).isEqualTo("reporter@example.com")
+        assertThat(comment.createdAt).isEqualTo(createdAt)
+    }
+
+    @Test
+    fun `ImportWorklog 는 timeSpentSeconds 만 필수이고 나머지는 기본값 null 이다`() {
+        val worklog = ImportWorklog(timeSpentSeconds = 3600)
+
+        assertThat(worklog.timeSpentSeconds).isEqualTo(3600)
+        assertThat(worklog.startedAt).isNull()
+        assertThat(worklog.authorEmail).isNull()
+        assertThat(worklog.comment).isNull()
+    }
+
+    @Test
+    fun `ImportWorklog 는 startedAt authorEmail comment 를 명시적으로 지정할 수 있다`() {
+        val startedAt = Instant.parse("2026-07-01T09:00:00Z")
+
+        val worklog =
+            ImportWorklog(
+                timeSpentSeconds = 1800,
+                startedAt = startedAt,
+                authorEmail = "worker@example.com",
+                comment = "작업 내용",
+            )
+
+        assertThat(worklog.startedAt).isEqualTo(startedAt)
+        assertThat(worklog.authorEmail).isEqualTo("worker@example.com")
+        assertThat(worklog.comment).isEqualTo("작업 내용")
+    }
+
+    @Test
+    fun `IssueImportCommand 는 comments worklogs 를 명시적으로 지정할 수 있다`() {
+        val comment = ImportComment(body = "댓글")
+        val worklog = ImportWorklog(timeSpentSeconds = 60)
+
+        val command = sampleCommand().copy(comments = listOf(comment), worklogs = listOf(worklog))
+
+        assertThat(command.comments).containsExactly(comment)
+        assertThat(command.worklogs).containsExactly(worklog)
     }
 }

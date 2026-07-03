@@ -5,9 +5,14 @@ package com.bts.issue.adapter.outbound.imports
 import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.TestConfig
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.IssueImportStatusService
+import com.bts.issue.comment.application.CommentApplicationService
+import com.bts.issue.comment.repository.CommentRepository
 import com.bts.issue.component.application.ComponentApplicationService
 import com.bts.issue.component.repository.ComponentRepository
+import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.IssueKey
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.project.ProjectLookup
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.project.repository.ProjectLookupRepository
@@ -16,6 +21,11 @@ import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.issue.version.application.VersionApplicationService
 import com.bts.issue.version.repository.VersionRepository
+import com.bts.issue.worklog.application.WorklogService
+import com.bts.issue.worklog.domain.Worklog
+import com.bts.issue.worklog.repository.WorklogRepository
+import com.bts.shared.issue.ImportComment
+import com.bts.shared.issue.ImportWorklog
 import com.bts.shared.issue.IssueImportCommand
 import com.bts.shared.issue.IssueImportResult
 import com.bts.shared.issue.IssueTypeKey
@@ -55,6 +65,7 @@ import org.springframework.test.context.web.WebAppConfiguration
 import org.springframework.web.context.WebApplicationContext
 import java.sql.DriverManager
 import java.time.Clock
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -241,6 +252,43 @@ class IssueImportAdapterTest {
                 historyRecorder = mockk(relaxed = true),
             )
 
+        // ── Task 7(PR3) — 댓글/worklog 동반 생성 보조 빈 ────────────────────────────
+
+        @Bean
+        open fun importCommentRepository(dsl: DSLContext): CommentRepository = CommentRepository(dsl)
+
+        @Bean
+        open fun importCommentApplicationService(
+            commentRepository: CommentRepository,
+            issueRepository: IssueRepository,
+            permissionResolver: IssuePermissionResolver,
+            clock: Clock,
+        ): CommentApplicationService =
+            CommentApplicationService(
+                commentRepository = commentRepository,
+                issueRepository = issueRepository,
+                permissionResolver = permissionResolver,
+                clock = clock,
+            )
+
+        @Bean
+        open fun importWorklogRepository(dsl: DSLContext): WorklogRepository = WorklogRepository(dsl)
+
+        // FaultInjectingWorklogService 로 감싼다 — S31(예상외 throw → 행 원자성 안전망) 전용, 그 외
+        // 모든 시나리오는 UNEXPECTED_THROW_MARKER 를 쓰지 않으므로 실 WorklogService 로 그대로 위임된다.
+        @Bean
+        open fun importWorklogService(
+            worklogRepository: WorklogRepository,
+            issueRepository: IssueRepository,
+            permissionResolver: IssuePermissionResolver,
+        ): WorklogService =
+            FaultInjectingWorklogService(
+                worklogRepository = worklogRepository,
+                issueRepository = issueRepository,
+                permissionResolver = permissionResolver,
+                historyRecorder = mockk(relaxed = true),
+            )
+
         @Bean
         @Suppress("LongParameterList")
         open fun issueImportAdapter(
@@ -256,6 +304,8 @@ class IssueImportAdapterTest {
             componentPermissionResolver: ComponentPermissionResolver,
             versionPermissionResolver: VersionPermissionResolver,
             issueImportStatusService: IssueImportStatusService,
+            commentApplicationService: CommentApplicationService,
+            worklogService: WorklogService,
         ): IssueImportAdapter =
             IssueImportAdapter(
                 issueApplicationService = issueApplicationService,
@@ -270,6 +320,8 @@ class IssueImportAdapterTest {
                 componentPermissionResolver = componentPermissionResolver,
                 versionPermissionResolver = versionPermissionResolver,
                 issueImportStatusService = issueImportStatusService,
+                commentApplicationService = commentApplicationService,
+                worklogService = worklogService,
             )
     }
 
@@ -308,6 +360,37 @@ class IssueImportAdapterTest {
             permission: VersionPermission,
             projectId: UUID,
         ): Boolean = actorId in allowed
+    }
+
+    /**
+     * [WorklogService.createImported] 를 그대로 위임하되, `comment` 가 [UNEXPECTED_THROW_MARKER] 일
+     * 때만 의도적으로 예상외 [RuntimeException] 을 던지는 테스트 전용 spy(S31 전용).
+     *
+     * 행 원자성 안전망(★2 KDoc 참조)이 "사전체크로 걸러지지 않는 예상외 예외"가 실제로 나더라도
+     * 여전히 이슈까지 롤백하는지 실 tx 로 검증하기 위한 fault-injection — 마커를 쓰지 않는 다른
+     * 모든 시나리오(S24/S25/S27/S29 등)는 `super.createImported` 로 그대로 위임돼 영향받지 않는다.
+     * kotlin-spring 컴파일러 플러그인이 `@Service` 를 자동 open 하므로(all-open) 별도 `open` 없이도
+     * 서브클래싱·override 가능하다.
+     */
+    private class FaultInjectingWorklogService(
+        worklogRepository: WorklogRepository,
+        issueRepository: IssueRepository,
+        permissionResolver: IssuePermissionResolver,
+        historyRecorder: IssueHistoryRecorder,
+    ) : WorklogService(worklogRepository, issueRepository, permissionResolver, historyRecorder) {
+        override fun createImported(
+            actor: ActorId,
+            issueKey: IssueKey,
+            authorId: ActorId,
+            timeSpentSeconds: Int,
+            startedAt: Instant,
+            comment: String?,
+        ): Worklog {
+            if (comment == UNEXPECTED_THROW_MARKER) {
+                error("S31 예상외 throw 시뮬레이션")
+            }
+            return super.createImported(actor, issueKey, authorId, timeSpentSeconds, startedAt, comment)
+        }
     }
 
     /**
@@ -389,6 +472,9 @@ class IssueImportAdapterTest {
 
         /** S17 — 사전 시드된 기존 버전 이름(자동생성 권한과 무관하게 이름 매칭만으로 링크된다). */
         const val EXISTING_VERSION_NAME = "v1.0-existing"
+
+        /** S31 — [FaultInjectingWorklogService] 가 이 값을 comment 로 받으면 의도적으로 예상외 예외를 던진다. */
+        const val UNEXPECTED_THROW_MARKER = "__unexpected_throw__"
 
         private var migrated = false
         private var seeded = false
@@ -1162,6 +1248,271 @@ class IssueImportAdapterTest {
         }
     }
 
+    // ── S24~S31(PR3, Task 7). 댓글/worklog 동반 생성 — 권한 사전체크·best-effort 집약·행 원자성 ──
+
+    @Test
+    fun `S24 댓글 생성 - author가 보존되고 조회로 확인된다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S24 댓글 생성 테스트",
+                comments = listOf(ImportComment(body = "원본 댓글", authorEmail = ALICE_EMAIL)),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        val authorIds = fetchCommentAuthorIds(result.issueKey)
+        assert(authorIds == listOf(ALICE_ID)) { "댓글 작성자가 Alice 로 보존돼야 하지만 $authorIds 입니다." }
+    }
+
+    @Test
+    fun `S25 worklog 생성 - author가 보존되고 issues version이 불변한다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S25 worklog 생성 테스트",
+                worklogs = listOf(ImportWorklog(timeSpentSeconds = 3600, authorEmail = BOB_EMAIL)),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        val authorIds = fetchWorklogAuthorIds(result.issueKey)
+        assert(authorIds == listOf(BOB_ID)) { "worklog 작성자가 Bob 이어야 하지만 $authorIds 입니다." }
+        val saved = issueRepository.findByKey(IssueKey(result.issueKey))
+        checkNotNull(saved)
+        assert(saved.version == 1L) {
+            "worklog 롤업은 issues.version 을 증가시키지 않아야(no-bump) 하지만 ${saved.version} 입니다."
+        }
+    }
+
+    @Test
+    fun `S26 UPDATE 권한 없음 - 댓글 worklog 모두 스킵되고 집약 경고를 남기며 이슈는 생성된다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = UPDATE_DENIED_REQUESTER_ID,
+                summary = "S26 댓글 worklog 권한없음 테스트",
+                comments = listOf(ImportComment(body = "댓글1"), ImportComment(body = "댓글2")),
+                worklogs = listOf(ImportWorklog(timeSpentSeconds = 60)),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "이슈 생성 자체는 성공해야 하지만 $result 입니다." }
+        assert(result.warnings.any { it.contains("댓글") && it.contains("2") }) {
+            "댓글 집약 경고가 있어야 하지만 ${result.warnings} 입니다."
+        }
+        assert(result.warnings.any { it.contains("워크로그") && it.contains("1") }) {
+            "워크로그 집약 경고가 있어야 하지만 ${result.warnings} 입니다."
+        }
+        assert(fetchCommentAuthorIds(result.issueKey).isEmpty()) { "권한 없으면 댓글이 생성되지 않아야 합니다." }
+        assert(fetchWorklogAuthorIds(result.issueKey).isEmpty()) { "권한 없으면 worklog 이 생성되지 않아야 합니다." }
+    }
+
+    @Test
+    fun `S27 worklog timeSpent 0 이하 - 스킵되고 경고를 남기며 CHECK 위반 없이 이슈는 생성된다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S27 worklog timeSpent 0 이하 테스트",
+                worklogs = listOf(ImportWorklog(timeSpentSeconds = 0), ImportWorklog(timeSpentSeconds = -10)),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다(23514 로 행 실패하면 안 됨)." }
+        assert(result.warnings.any { it.contains("워크로그") && it.contains("2") }) {
+            "timeSpent 경고가 있어야 하지만 ${result.warnings} 입니다."
+        }
+        assert(fetchWorklogAuthorIds(result.issueKey).isEmpty()) { "timeSpent 0 이하는 생성되지 않아야 합니다." }
+    }
+
+    @Test
+    fun `S28 댓글 authorEmail 미매칭 - requester로 폴백되고 경고를 남긴다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S28 댓글 author 미매칭 테스트",
+                comments = listOf(ImportComment(body = "댓글", authorEmail = "unknown@example.com")),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        assert(result.warnings.any { it.contains("댓글") }) { "author 미매칭 경고가 있어야 하지만 ${result.warnings} 입니다." }
+        assert(fetchCommentAuthorIds(result.issueKey) == listOf(NORMAL_REQUESTER_ID)) {
+            "author 미매칭이므로 requester 로 폴백돼야 하지만 ${fetchCommentAuthorIds(result.issueKey)} 입니다."
+        }
+    }
+
+    @Test
+    fun `S28 worklog authorEmail 미매칭 - requester로 폴백되고 경고를 남긴다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S28 worklog author 미매칭 테스트",
+                worklogs = listOf(ImportWorklog(timeSpentSeconds = 60, authorEmail = "unknown@example.com")),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        assert(result.warnings.any { it.contains("워크로그") }) { "author 미매칭 경고가 있어야 하지만 ${result.warnings} 입니다." }
+        assert(fetchWorklogAuthorIds(result.issueKey) == listOf(NORMAL_REQUESTER_ID)) {
+            "author 미매칭이므로 requester 로 폴백돼야 하지만 ${fetchWorklogAuthorIds(result.issueKey)} 입니다."
+        }
+    }
+
+    @Test
+    fun `S29 worklog startedAt 없음 - import 실행 시각으로 대체되고 경고를 남기며 정상 생성된다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S29 worklog startedAt 없음 테스트",
+                worklogs = listOf(ImportWorklog(timeSpentSeconds = 60, startedAt = null)),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        assert(result.warnings.any { it.contains("시작 시각") }) {
+            "startedAt 부재 경고가 있어야 하지만 ${result.warnings} 입니다."
+        }
+        assert(fetchWorklogAuthorIds(result.issueKey).size == 1) { "startedAt 없어도 worklog 은 생성돼야 합니다." }
+    }
+
+    /**
+     * dry-run 별도 경고 경로(★C3) — UPDATE 권한 없는 댓글/worklog 는 [rowTriggersUpdate] 하드 FORBIDDEN
+     * 판정에 절대 엮이지 않는다(CONCERN-A 재발 방지). 실행 시(S26) best-effort 스킵과 동일하게
+     * dry-run 도 경고만 남기고 Success 를 유지해야 한다.
+     */
+    @Test
+    fun `S30 dryRun UPDATE 권한 없는 댓글 worklog - FORBIDDEN 아닌 Success이고 경고만 남기며 insert 없다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = UPDATE_DENIED_REQUESTER_ID,
+                summary = "S30 dryRun 댓글 worklog 권한없음 테스트",
+                comments = listOf(ImportComment(body = "댓글")),
+                worklogs = listOf(ImportWorklog(timeSpentSeconds = 60)),
+                dryRun = true,
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "FORBIDDEN 아닌 Success 여야 하지만 $result 입니다." }
+        assert(result.warnings.any { it.contains("댓글") }) { "댓글 경고가 있어야 하지만 ${result.warnings} 입니다." }
+        assert(result.warnings.any { it.contains("워크로그") }) { "워크로그 경고가 있어야 하지만 ${result.warnings} 입니다." }
+        assert(countImportIssues() == 0) { "dryRun 은 이슈를 생성하지 않아야 하지만 ${countImportIssues()} 개 존재합니다." }
+    }
+
+    /**
+     * 행 원자성 안전망 실증(★2) — 사전체크가 커버하지 않는 예상외 예외가 worklog 처리 중 발생해도
+     * [importIssue] 의 catch 블록이 트랜잭션 전체를 rollback-only 로 표시해 직전 삽입된 이슈까지
+     * 함께 롤백해야 한다. [FaultInjectingWorklogService] 로 실제 tx 경계에서 검증한다(mockk 로는
+     * 표면화되지 않음 — 메모리 advisory-lock-bigint-toctou 동형 함정).
+     */
+    @Test
+    fun `S31 worklog 처리 중 예상외 throw - 이슈까지 함께 롤백된다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S31 예상외 throw 행원자성 테스트",
+                worklogs = listOf(ImportWorklog(timeSpentSeconds = 60, comment = UNEXPECTED_THROW_MARKER)),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Failure) { "Failure 여야 하지만 $result 입니다." }
+        assert(countImportIssues() == 0) {
+            "예상외 throw 시 이슈까지 롤백돼야 하지만 ${countImportIssues()} 개 존재합니다."
+        }
+    }
+
+    /**
+     * S1/R7/E5 결함 수정 검증(PR3, Task 8) — [ImportComment.createdAt] 이 저장 단계에서 버려지지 않고
+     * 보존되며, `created_at` ASC 정렬이 import 시각이 아닌 원본 시각 기준으로 동작함을 확인한다.
+     *
+     * list 순서를 원본 시각 역순(나중 댓글 먼저)으로 넣어, 정렬이 insertion 순서가 아니라 DB
+     * `created_at` 기준임을 실증한다.
+     */
+    @Test
+    fun `S32 댓글 createdAt - 원본 시각이 보존되고 created_at ASC 로 정렬된다`() {
+        val earlier = Instant.parse("2019-01-01T09:00:00Z")
+        val later = Instant.parse("2019-06-01T09:00:00Z")
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S32 댓글 createdAt 보존 테스트",
+                comments =
+                    listOf(
+                        ImportComment(body = "나중 댓글", createdAt = later),
+                        ImportComment(body = "먼저 댓글", createdAt = earlier),
+                    ),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        val createdAts = fetchCommentCreatedAts(result.issueKey)
+        assert(createdAts == listOf(earlier, later)) {
+            "댓글 createdAt 이 원본 시각 보존 + created_at ASC 로 정렬돼야 하지만 " +
+                "$createdAts 입니다(import 실행 시각으로 뭉치면 안 됨)."
+        }
+    }
+
+    /**
+     * dry-run/실행 미러 정합(코드리뷰 CONCERN C-1) — [applyWorklogItem] 은 timeSpentSeconds≤0 인
+     * worklog 를 생성 전에 스킵하며, 그 항목은 unmatchedAuthor/missingStartedAt 을 애초에 판정하지
+     * 않는다([WorklogApplyOutcome] KDoc — invalidTimeSpent=true 인 항목은 항상 unmatchedAuthor/
+     * missingStartedAt=false). 따라서 dry-run 미리보기([warnWorklogsPreview])도 생성될 항목
+     * (timeSpent>0)만 unmatched/missingStartedAt 을 집계해야 한다 — 그렇지 않으면 "생성되지도 않을
+     * 항목"에 대해 dry-run 이 실행보다 과다 경고를 남긴다(S27/S28/S29 실행부와 대조).
+     */
+    @Test
+    fun `S33 dryRun worklog timeSpent 0 이하 + author 미매칭 + startedAt 없음 - 실행부 스킵과 정합해 timeSpent 경고만 남는다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S33 dryRun worklog 스킵 정합 테스트",
+                worklogs =
+                    listOf(
+                        ImportWorklog(
+                            timeSpentSeconds = 0,
+                            authorEmail = "unknown@example.com",
+                            startedAt = null,
+                        ),
+                    ),
+                dryRun = true,
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        assert(result.warnings.any { it.contains("소요 시간이 0 이하") }) {
+            "timeSpent 경고가 있어야 하지만 ${result.warnings} 입니다."
+        }
+        assert(result.warnings.none { it.contains("작성자 이메일이 매칭되지 않아") }) {
+            "실행부는 timeSpent≤0 항목을 생성 전 스킵해 author 미매칭을 판정하지 않으므로 dry-run 도 " +
+                "author 경고를 남기면 안 되지만 ${result.warnings} 입니다."
+        }
+        assert(result.warnings.none { it.contains("시작 시각이 없어") }) {
+            "실행부는 timeSpent≤0 항목을 생성 전 스킵해 startedAt 을 판정하지 않으므로 dry-run 도 " +
+                "startedAt 경고를 남기면 안 되지만 ${result.warnings} 입니다."
+        }
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     private fun applyMigrations() {
@@ -1414,6 +1765,57 @@ class IssueImportAdapterTest {
                 stmt.setString(1, issueKey)
                 stmt.executeQuery().use { rs ->
                     val ids = mutableSetOf<UUID>()
+                    while (rs.next()) ids += rs.getObject(1) as UUID
+                    ids
+                }
+            }
+        }
+
+    /** S24/S26/S28 — 이슈에 연결된 활성 댓글 작성자 id 목록(`created_at` 오름차순). */
+    @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음
+    private fun fetchCommentAuthorIds(issueKey: String): List<UUID> =
+        conn().use { c ->
+            c.prepareStatement(
+                "SELECT c.author_id FROM comments c JOIN issues i ON c.issue_id = i.id " +
+                    "WHERE i.key = ? ORDER BY c.created_at",
+            ).use { stmt ->
+                stmt.setString(1, issueKey)
+                stmt.executeQuery().use { rs ->
+                    val ids = mutableListOf<UUID>()
+                    while (rs.next()) ids += rs.getObject(1) as UUID
+                    ids
+                }
+            }
+        }
+
+    /** S32 — 이슈에 연결된 활성 댓글 `created_at` 목록(오름차순, 원본 시각 보존 검증용). */
+    @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음
+    private fun fetchCommentCreatedAts(issueKey: String): List<Instant> =
+        conn().use { c ->
+            c.prepareStatement(
+                "SELECT c.created_at FROM comments c JOIN issues i ON c.issue_id = i.id " +
+                    "WHERE i.key = ? ORDER BY c.created_at",
+            ).use { stmt ->
+                stmt.setString(1, issueKey)
+                stmt.executeQuery().use { rs ->
+                    val createdAts = mutableListOf<Instant>()
+                    while (rs.next()) createdAts += rs.getTimestamp(1).toInstant()
+                    createdAts
+                }
+            }
+        }
+
+    /** S25/S26/S27/S28/S29 — 이슈에 연결된 활성 worklog 작성자 id 목록(`created_at` 오름차순). */
+    @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음
+    private fun fetchWorklogAuthorIds(issueKey: String): List<UUID> =
+        conn().use { c ->
+            c.prepareStatement(
+                "SELECT w.author_id FROM worklogs w JOIN issues i ON w.issue_id = i.id " +
+                    "WHERE i.key = ? ORDER BY w.created_at",
+            ).use { stmt ->
+                stmt.setString(1, issueKey)
+                stmt.executeQuery().use { rs ->
+                    val ids = mutableListOf<UUID>()
                     while (rs.next()) ids += rs.getObject(1) as UUID
                     ids
                 }

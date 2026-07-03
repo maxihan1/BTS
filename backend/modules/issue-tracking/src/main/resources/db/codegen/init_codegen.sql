@@ -772,3 +772,25 @@ CREATE EXTENSION IF NOT EXISTS pgmq CASCADE;
 
 -- 큐 생성 — q_webhook_events
 SELECT pgmq.create('q_webhook_events');
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V035: comments 테이블 신설 (FR-IM-01 PR3 댓글 도메인 신설 + 댓글/Worklog Import)
+-- 원본: db/migration/issue-tracking/V035__comments.sql
+-- jOOQ: Comments 테이블 + ID/ISSUE_ID/AUTHOR_ID/BODY/CREATED_AT/UPDATED_AT/DELETED_AT 상수 생성 대상.
+--       이 미러가 빠지면 상수/테이블 미생성 → CommentRepository 컴파일 불가 (jooq-init-codegen-mirror).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- 이슈에 작성된 댓글 단건. 엔티티라 deleted_at 소프트 삭제. issue_id 실 FK + ON DELETE CASCADE (같은 BC).
+-- author_id 는 identity-access BC users.id 대응이나 BC 격리로 FK 미적용 (worklog author_id 선례).
+CREATE TABLE comments (
+    id         UUID        PRIMARY KEY,
+    issue_id   UUID        NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+    author_id  UUID        NOT NULL,
+    body       TEXT        NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ NULL
+);
+
+-- FK 인덱스 (DATA.md §7). 이슈별 활성 댓글 목록 조회용(created_at 정렬 동반) 부분 인덱스.
+CREATE INDEX idx_comments_issue_created ON comments (issue_id, created_at) WHERE deleted_at IS NULL;

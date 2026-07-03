@@ -7,7 +7,11 @@ import com.bts.search.imports.job.repository.ImportJobRepository
 import com.bts.search.imports.job.storage.ImportObjectStoragePort
 import com.bts.search.imports.parse.ImportParseException
 import com.bts.search.imports.parse.ImportRowParser
+import com.bts.search.imports.parse.ParsedImportComment
 import com.bts.search.imports.parse.ParsedImportRow
+import com.bts.search.imports.parse.ParsedImportWorklog
+import com.bts.shared.issue.ImportComment
+import com.bts.shared.issue.ImportWorklog
 import com.bts.shared.issue.IssueImportCommand
 import com.bts.shared.issue.IssueImportPort
 import com.bts.shared.issue.IssueImportResult
@@ -16,6 +20,8 @@ import org.springframework.stereotype.Component
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.time.Clock
+import java.time.Instant
+import java.time.OffsetDateTime
 
 /**
  * [ImportJob] 처리기 — 스트리밍 CSV/JSON 파싱 + 행별 [IssueImportPort] 위임 + 상태 갱신.
@@ -48,6 +54,14 @@ import java.time.Clock
  * 전달한다. 실제 생성 여부는 [IssueImportPort] 구현체(어댑터) 책임이며, dryRun 결과도 성공/실패
  * 집계에 동일하게 반영된다(검증 리포트 용도).
  *
+ * ## 댓글/worklog 매핑 (PR3)
+ *
+ * [toCommand] 가 [ParsedImportRow.comments]/[ParsedImportRow.worklogs](원본 문자열 raw 값)를
+ * [ImportComment]/[ImportWorklog](shared-kernel VO) 로 변환한다 — [toImportComment]/[toImportWorklog].
+ * 작성자 이메일은 소문자화하고, 원본 시각 문자열은 [parseInstantOrNull] 로 [Instant] 변환을 시도한다.
+ * 값이 없거나 파싱에 실패하면 null 을 담는다(created=now 대체, worklog 스킵 등 best-effort 폴백은
+ * 이 클래스가 아니라 어댑터(Task 7, issue-tracking) 책임 — 이 클래스는 순수 변환만 한다).
+ *
  * @param issueImportPort 이슈 생성 cross-BC 쓰기 포트.
  * @param storage 원본 파일 조회 + 에러 로그 업로드용 오브젝트 스토리지 포트.
  * @param repository Import 작업 상태 관리 저장소.
@@ -57,6 +71,7 @@ import java.time.Clock
  * @param clock expiresAt 결정용 시계. search 모듈에 Clock 빈이 없으므로 기본값 [Clock.systemUTC] 사용.
  */
 @Component
+@Suppress("TooManyFunctions") // PR3 comments/worklogs 매핑 헬퍼 추가로 임계 초과 — 단일 행 변환 책임 응집, 분리 시 오히려 산개
 class ImportJobProcessor(
     private val issueImportPort: IssueImportPort,
     private val storage: ImportObjectStoragePort,
@@ -234,7 +249,43 @@ class ImportJobProcessor(
             statusName = row.statusName,
             fixVersionNames = row.fixVersionNames,
             affectsVersionNames = row.affectsVersionNames,
+            comments = row.comments.map(::toImportComment),
+            worklogs = row.worklogs.map(::toImportWorklog),
         )
+
+    /** [ParsedImportComment](raw 문자열) 를 [ImportComment](shared VO, `createdAt` 이 [Instant]) 로 변환한다. */
+    private fun toImportComment(comment: ParsedImportComment): ImportComment =
+        ImportComment(
+            body = comment.body,
+            authorEmail = comment.authorEmail?.lowercase(),
+            createdAt = parseInstantOrNull(comment.createdAt),
+        )
+
+    /** [ParsedImportWorklog](raw 문자열) 를 [ImportWorklog](shared VO, `startedAt` 이 [Instant]) 로 변환한다. */
+    private fun toImportWorklog(worklog: ParsedImportWorklog): ImportWorklog =
+        ImportWorklog(
+            timeSpentSeconds = worklog.timeSpentSeconds,
+            startedAt = parseInstantOrNull(worklog.startedAt),
+            authorEmail = worklog.authorEmail?.lowercase(),
+            comment = worklog.comment,
+        )
+
+    /**
+     * Jira 소스(comment/worklog) 의 ISO-8601 시각 문자열을 [Instant] 로 변환한다.
+     *
+     * [OffsetDateTime.parse] 는 콜론 포함 오프셋(`+09:00`)과 `Z` 는 그대로 받아들이지만, Jira 레거시
+     * export 의 콜론 없는 오프셋(`+0000`)은 [normalizeNoColonOffset] 으로 콜론을 삽입한 뒤 파싱한다.
+     * 파싱 불가(값 없음/형식 오류)면 null — 이후 폴백(예: import 실행 시각 사용)은 다음 단계
+     * (Task 7 어댑터) 책임이다.
+     */
+    private fun parseInstantOrNull(raw: String?): Instant? {
+        if (raw.isNullOrBlank()) return null
+        return runCatching { OffsetDateTime.parse(normalizeNoColonOffset(raw)).toInstant() }.getOrNull()
+    }
+
+    /** 콜론 없는 오프셋(`+0000`)을 [OffsetDateTime.parse] 가 요구하는 콜론 포함 형식(`+00:00`)으로 정규화한다. */
+    private fun normalizeNoColonOffset(raw: String): String =
+        NO_COLON_OFFSET_REGEX.replace(raw) { match -> "${match.groupValues[1]}:${match.groupValues[2]}" }
 
     companion object {
         private const val FORMAT_CSV = "CSV"
@@ -289,6 +340,9 @@ class ImportJobProcessor(
                 "Low" to 4,
                 "Lowest" to 5,
             )
+
+        /** 콜론 없는 오프셋(`+0000`/`-0500`, 문자열 끝) 매칭 — [normalizeNoColonOffset] 정규화용. */
+        private val NO_COLON_OFFSET_REGEX = Regex("""([+-]\d{2})(\d{2})$""")
     }
 }
 
