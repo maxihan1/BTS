@@ -64,7 +64,11 @@ import java.time.OffsetDateTime
  *
  * ## 매핑 기반 CSV 파싱 로드 (FR-IM-02 PR-A)
  *
- * [processRows] 가 CSV 포맷일 때 [parseCsv] 헬퍼로 [mappingRepo] 의 매핑을 로드해 파서 오버로드를 선택한다.
+ * [processRows] 가 CSV 포맷일 때만 [parseCsv] 헬퍼로 [mappingRepo] 에서 [job] 의 확정 매핑
+ * ([ImportMappingRepository.findByJobId])을 로드한다. 매핑이 하나라도 있으면(Map 비어있지 않음)
+ * [ImportRowParser.parseCsv] 3-인자(mapped) 오버로드로, 없으면(빈 Map — 매핑을 저장한 적 없는 job,
+ * 기존 canonical 흐름) 2-인자(canonical) 오버로드로 위임한다. JSON 포맷은 이 로드를 거치지 않는다
+ * (canonical 흐름 불변 — FR-IM-02 매핑 UI 는 CSV 임의 헤더 전용).
  *
  * ## 댓글/worklog 매핑 (PR3)
  *
@@ -159,7 +163,14 @@ class ImportJobProcessor(
         finalizeCompleted(job, state)
     }
 
-    /** CSV 포맷 전용 분기 — 매핑 로드 후 [ImportRowParser.parseCsv] 오버로드를 선택한다. */
+    /**
+     * CSV 포맷 전용 분기 — [mappingRepo] 로 [job] 의 확정 매핑을 로드해 [ImportRowParser.parseCsv]
+     * 2-인자(canonical)/3-인자(mapped) 오버로드 중 하나로 위임한다(클래스 KDoc §매핑 기반 CSV 파싱 로드).
+     *
+     * @param job 처리 중인 Import 작업 — [ImportMappingRepository.findByJobId] 조회 키(`job.id`)로 사용.
+     * @param input CSV 원본 스트림.
+     * @param onRow 파싱된 행 1건을 전달받는 콜백.
+     */
     private fun parseCsv(
         job: ImportJob,
         input: InputStream,
