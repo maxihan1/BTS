@@ -3,6 +3,7 @@ import { backlogHandlers } from './backlog-handlers'
 import { burndownHandlers } from './burndown-handlers'
 import { velocityHandlers } from './velocity-handlers'
 import { cfdHandlers } from './cfd-handlers'
+import { cycleTimeHandlers } from './cycle-time-handlers'
 import { favoriteHandlers } from './favorite-handlers'
 import { inboxHandlers } from './inbox-handlers'
 import { boardHandlers } from './board-handlers'
@@ -67,6 +68,7 @@ export const handlers = [
   ...burndownHandlers,
   ...velocityHandlers,
   ...cfdHandlers,
+  ...cycleTimeHandlers,
   ...favoriteHandlers,
   ...inboxHandlers,
   ...boardHandlers,
