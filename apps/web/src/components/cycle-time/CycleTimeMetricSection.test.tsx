@@ -24,7 +24,7 @@ import { CycleTimeMetricSection } from './CycleTimeMetricSection'
  * 표본이 있는 지표 픽스처. formatDuration 결과가 8개 값 모두 서로 다르도록
  * 초 값을 선택해 텍스트 단언 시 모호함이 없게 한다.
  * count=12(그대로), min=60→"1분", p25=120→"2분", p50=3600→"1시간",
- * p75=7200→"2시간", avg=5400→"1시간 30분", p90=8100→"2시간 45분", max=90000→"1일 1시간"
+ * p75=7200→"2시간", avg=5400→"1시간 30분", p90=8100→"2시간 15분", max=90000→"1일 1시간"
  */
 const fullMetric: MetricResponse = {
   count: 12,
@@ -87,7 +87,7 @@ describe('CycleTimeMetricSection — count>0', () => {
     expect(screen.getByText('1시간')).toBeInTheDocument()
     expect(screen.getByText('2시간')).toBeInTheDocument()
     expect(screen.getByText('1시간 30분')).toBeInTheDocument()
-    expect(screen.getByText('2시간 45분')).toBeInTheDocument()
+    expect(screen.getByText('2시간 15분')).toBeInTheDocument()
     expect(screen.getByText('1일 1시간')).toBeInTheDocument()
   })
 
