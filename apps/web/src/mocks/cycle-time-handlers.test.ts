@@ -179,3 +179,56 @@ describe('GET /api/v1/projects/:projectKey/cycle-time', () => {
     expect(parsed).toEqual(DEFAULT_CYCLE_TIME)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ATLAS 기본 시드 정합성 (Task 8b — dev/E2E 빈 화면 방지 회귀 가드)
+//
+// cfd-handlers.ts/velocity-handlers.ts와 동일하게 DEFAULT_CYCLE_TIME은 projectKey='ATLAS'로
+// populated(count>0) 응답이어야 하고, 모듈 로드 시 자동 시드되어야 한다(dev 서버·E2E 진입 시
+// 빈 화면 노출 방지 — fr-bd-01/msw-derived-behavior-shared-store-e2e 교훈).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ATLAS 기본 시드 정합성', () => {
+  it('T3-1: DEFAULT_CYCLE_TIME의 projectKey는 backlog/cfd/velocity 기본 픽스처와 동일한 ATLAS다', () => {
+    expect(DEFAULT_CYCLE_TIME.projectKey).toBe('ATLAS')
+  })
+
+  it('T3-2: leadTime 표본 수가 cycleTime 표본 수 이상이다 (IN_PROGRESS 미경유 이슈는 leadTime에만 집계되는 도메인 정합)', () => {
+    expect(DEFAULT_CYCLE_TIME.leadTime.samples.length).toBeGreaterThanOrEqual(
+      DEFAULT_CYCLE_TIME.cycleTime.samples.length,
+    )
+  })
+
+  it('T3-3: seedCycleTime(DEFAULT_CYCLE_TIME) 시드 후 ATLAS 조회 시 cycleTime/leadTime 모두 count>0을 반환한다', async () => {
+    // beforeEach가 이미 resetCycleTimeStore() + seedCycleTime(DEFAULT_CYCLE_TIME)을 수행한다.
+    // 이 테스트는 그 상태에서 실제 dev/E2E 진입 시(모듈 로드 자동 시드) 관찰될 응답과 동일한지
+    // 명시적으로 고정한다 — 'ATLAS' 요청이 우연히 EMPTY/UNSEEDED 분기로 빠지지 않음을 검증한다.
+    const res = await fetch('/api/v1/projects/ATLAS/cycle-time')
+
+    expect(res.status).toBe(200)
+
+    const body = (await res.json()) as { data: unknown }
+    const parsed = cycleTimeResponseSchema.parse(body.data)
+
+    expect(parsed.cycleTime.count).toBeGreaterThan(0)
+    expect(parsed.leadTime.count).toBeGreaterThan(0)
+    expect(parsed.leadTime.samples.length).toBeGreaterThanOrEqual(parsed.cycleTime.samples.length)
+  })
+
+  it('T3-4: 단위 테스트 환경(MODE=test)에서는 모듈 로드 시 자동 시드가 유지되지 않는다 — 재시드 없이 리셋만 하면 ATLAS도 count=0을 반환한다', async () => {
+    // beforeEach의 시드를 이 테스트 안에서 명시적으로 되돌린다 — MODE='test'라 모듈 로드
+    // 시점의 자동 시드(import.meta.env.MODE !== 'test' 가드)가 건너뛰어졌음을 전제로 하는
+    // 검증이다. 자동 시드가 가드 없이 항상 실행되도록 바뀌면 이 테스트가 실패해 회귀를 잡는다.
+    resetCycleTimeStore()
+
+    const res = await fetch('/api/v1/projects/ATLAS/cycle-time')
+
+    expect(res.status).toBe(200)
+
+    const body = (await res.json()) as { data: unknown }
+    const parsed = cycleTimeResponseSchema.parse(body.data)
+
+    expect(parsed.cycleTime.count).toBe(0)
+    expect(parsed.leadTime.count).toBe(0)
+  })
+})
