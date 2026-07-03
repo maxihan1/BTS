@@ -37,7 +37,7 @@ import java.util.UUID
 /**
  * [CfdService] 단위 테스트.
  *
- * permissionResolver / issueRepository / cfdStatusHistoryRepository / securityDirectory /
+ * permissionResolver / issueRepository / statusHistoryRepository / securityDirectory /
  * issueTypeRepository / workflowStateLookup 6개 협력자를 MockK 로 stub 한다.
  *
  * 검증 목록.
@@ -52,7 +52,7 @@ class CfdServiceTest : DescribeSpec({
 
     val permissionResolver = mockk<IssuePermissionResolver>()
     val issueRepository = mockk<IssueRepository>()
-    val cfdStatusHistoryRepository = mockk<StatusHistoryRepository>()
+    val statusHistoryRepository = mockk<StatusHistoryRepository>()
     val securityDirectory = mockk<IssueSecurityDirectory>()
     val issueTypeRepository = mockk<IssueTypeRepository>()
     val workflowStateLookup = mockk<IsolatedWorkflowStateLookup>()
@@ -61,7 +61,7 @@ class CfdServiceTest : DescribeSpec({
         CfdService(
             permissionResolver = permissionResolver,
             issueRepository = issueRepository,
-            cfdStatusHistoryRepository = cfdStatusHistoryRepository,
+            statusHistoryRepository = statusHistoryRepository,
             securityDirectory = securityDirectory,
             issueTypeRepository = issueTypeRepository,
             workflowStateLookup = workflowStateLookup,
@@ -99,7 +99,7 @@ class CfdServiceTest : DescribeSpec({
         clearMocks(
             permissionResolver,
             issueRepository,
-            cfdStatusHistoryRepository,
+            statusHistoryRepository,
             securityDirectory,
             issueTypeRepository,
             workflowStateLookup,
@@ -138,7 +138,7 @@ class CfdServiceTest : DescribeSpec({
                 point.doneCount shouldBe 0
             }
 
-            verify(exactly = 0) { cfdStatusHistoryRepository.fetchStatusChanges(any()) }
+            verify(exactly = 0) { statusHistoryRepository.fetchStatusChanges(any()) }
             // value class(ProjectKey/IssueTypeKey) 인자에 any() 매처를 쓰면 MockK 리플렉션 오류가
             // 발생하므로(IssueEpicServiceProgressTest 선례), 인자 매칭 없이 호출 자체가 없었음을 검증한다.
             verify { workflowStateLookup wasNot Called }
@@ -163,7 +163,7 @@ class CfdServiceTest : DescribeSpec({
                 issueRepository.fetchActiveVisibleIssuesForCfd(projectKey, actor.value, unrestrictedAccess)
             } returns issues
             every {
-                cfdStatusHistoryRepository.fetchStatusChanges(setOf(issueId1, issueId2))
+                statusHistoryRepository.fetchStatusChanges(setOf(issueId1, issueId2))
             } returns emptyList()
             val cacheType =
                 IssueType.create(key = IssueTypeKey("cachetype"), name = "Cache Type").copy(id = IssueTypeId(typeId))
@@ -189,7 +189,7 @@ class CfdServiceTest : DescribeSpec({
             every {
                 issueRepository.fetchActiveVisibleIssuesForCfd(projectKey, actor.value, unrestrictedAccess)
             } returns listOf(issue)
-            every { cfdStatusHistoryRepository.fetchStatusChanges(setOf(issueId)) } returns emptyList()
+            every { statusHistoryRepository.fetchStatusChanges(setOf(issueId)) } returns emptyList()
             every { issueTypeRepository.findAll() } returns
                 listOf(
                     IssueType.create(key = IssueTypeKey("gaptype"), name = "Gap Type").copy(id = IssueTypeId(typeId)),
@@ -223,7 +223,7 @@ class CfdServiceTest : DescribeSpec({
             every {
                 issueRepository.fetchActiveVisibleIssuesForCfd(projectKey, actor.value, unrestrictedAccess)
             } returns listOf(issue)
-            every { cfdStatusHistoryRepository.fetchStatusChanges(setOf(issueId)) } returns emptyList()
+            every { statusHistoryRepository.fetchStatusChanges(setOf(issueId)) } returns emptyList()
             val noTransType =
                 IssueType.create(key = IssueTypeKey("notrans"), name = "No Transition").copy(id = IssueTypeId(typeId))
             every { issueTypeRepository.findAll() } returns listOf(noTransType)
@@ -247,7 +247,7 @@ class CfdServiceTest : DescribeSpec({
             every {
                 issueRepository.fetchActiveVisibleIssuesForCfd(projectKey, actor.value, unrestrictedAccess)
             } returns listOf(issue)
-            every { cfdStatusHistoryRepository.fetchStatusChanges(setOf(issueId)) } returns
+            every { statusHistoryRepository.fetchStatusChanges(setOf(issueId)) } returns
                 listOf(
                     StatusChangeRow(
                         issueId = issueId,
@@ -295,7 +295,7 @@ class CfdServiceTest : DescribeSpec({
             every {
                 issueRepository.fetchActiveVisibleIssuesForCfd(projectKey, actor.value, unrestrictedAccess)
             } returns listOf(issue)
-            every { cfdStatusHistoryRepository.fetchStatusChanges(setOf(issueId)) } returns
+            every { statusHistoryRepository.fetchStatusChanges(setOf(issueId)) } returns
                 listOf(
                     StatusChangeRow(
                         issueId = issueId,

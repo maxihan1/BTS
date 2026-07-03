@@ -50,7 +50,7 @@ import java.time.ZoneOffset
  *
  * @param permissionResolver 이슈 권한 판정 포트.
  * @param issueRepository CFD 원천 이슈 메타 조회 리포지토리.
- * @param cfdStatusHistoryRepository status 전이 이력 배치 조회 리포지토리.
+ * @param statusHistoryRepository status 전이 이력 배치 조회 리포지토리.
  * @param securityDirectory 이슈 보안 등급 조회 포트.
  * @param issueTypeRepository 이슈 타입 조회 리포지토리(`id → key` 역매핑용).
  * @param workflowStateLookup 워크플로우 상태 목록 격리 조회 Bean(velocity 가 정의한 기존 Bean 재사용).
@@ -59,7 +59,7 @@ import java.time.ZoneOffset
 class CfdService(
     private val permissionResolver: IssuePermissionResolver,
     private val issueRepository: IssueRepository,
-    private val cfdStatusHistoryRepository: StatusHistoryRepository,
+    private val statusHistoryRepository: StatusHistoryRepository,
     private val securityDirectory: IssueSecurityDirectory,
     private val issueTypeRepository: IssueTypeRepository,
     private val workflowStateLookup: IsolatedWorkflowStateLookup,
@@ -93,7 +93,7 @@ class CfdService(
         }
 
         val changesByIssueId =
-            cfdStatusHistoryRepository
+            statusHistoryRepository
                 .fetchStatusChanges(issues.map { it.issueId }.toSet())
                 .groupBy { it.issueId }
         val typeIdToKey = loadTypeIdToKeyMap()

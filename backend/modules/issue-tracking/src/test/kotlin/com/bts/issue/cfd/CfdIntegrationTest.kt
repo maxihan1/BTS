@@ -241,7 +241,7 @@ class CfdIntegrationTest {
         open fun issueTypeRepository(dsl: DSLContext): IssueTypeRepository = IssueTypeRepository(dsl)
 
         @Bean
-        open fun cfdStatusHistoryRepository(dsl: DSLContext): StatusHistoryRepository = StatusHistoryRepository(dsl)
+        open fun statusHistoryRepository(dsl: DSLContext): StatusHistoryRepository = StatusHistoryRepository(dsl)
 
         @Bean
         open fun permissionResolver(): IssuePermissionResolver = TestConfig.permissionResolver
@@ -332,7 +332,7 @@ class CfdIntegrationTest {
         open fun cfdService(
             permissionResolver: IssuePermissionResolver,
             issueRepository: IssueRepository,
-            cfdStatusHistoryRepository: StatusHistoryRepository,
+            statusHistoryRepository: StatusHistoryRepository,
             securityDirectory: IssueSecurityDirectory,
             issueTypeRepository: IssueTypeRepository,
             workflowStateLookup: IsolatedWorkflowStateLookup,
@@ -340,7 +340,7 @@ class CfdIntegrationTest {
             CfdService(
                 permissionResolver = permissionResolver,
                 issueRepository = issueRepository,
-                cfdStatusHistoryRepository = cfdStatusHistoryRepository,
+                statusHistoryRepository = statusHistoryRepository,
                 securityDirectory = securityDirectory,
                 issueTypeRepository = issueTypeRepository,
                 workflowStateLookup = workflowStateLookup,
