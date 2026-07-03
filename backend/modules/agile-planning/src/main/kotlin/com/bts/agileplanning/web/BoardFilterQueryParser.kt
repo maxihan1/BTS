@@ -5,6 +5,9 @@ package com.bts.agileplanning.web
 import com.bts.shared.board.BoardCardFilter
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
+import java.net.URLDecoder
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import java.util.UUID
 
 /**
@@ -34,6 +37,15 @@ import java.util.UUID
 object BoardFilterQueryParser {
     /** 미배정 이슈를 포함하도록 지정하는 `assignee` 파라미터 센티널 값 (대소문자 구분). */
     private const val SENTINEL_UNASSIGNED = "unassigned"
+
+    /** `assignee` 쿼리 파라미터 키. */
+    private const val PARAM_ASSIGNEE = "assignee"
+
+    /** `label` 쿼리 파라미터 키. */
+    private const val PARAM_LABEL = "label"
+
+    /** `component` 쿼리 파라미터 키. */
+    private const val PARAM_COMPONENT = "component"
 
     /**
      * 쿼리 파라미터 목록을 [BoardCardFilter] VO 로 파싱한다.
@@ -83,6 +95,79 @@ object BoardFilterQueryParser {
         } else {
             filter
         }
+    }
+
+    /**
+     * [BoardCardFilter] 를 정규 쿼리스트링으로 직렬화한다.
+     *
+     * `assignee=<uuid>&label=<name>&component=<uuid>` 형식(`?` 없음)으로 조립한다.
+     * `assignee`(UUID 오름차순) → `unassigned` 센티널 → `label`(문자열 오름차순) → `component`(UUID 오름차순)
+     * 순서로 필드를 배치하며, 각 목록은 trim 후 중복을 제거한다. `statusKeys` 는 직렬화하지 않는다
+     * (board GET 이 아직 상태 필터를 지원하지 않는 범위 밖 — 지원 시 parse/serialize 동반 확장).
+     * 값은 [URLEncoder] (UTF-8, `application/x-www-form-urlencoded`: 공백 → `+`) 로 인코딩한다.
+     *
+     * @param filter 직렬화할 [BoardCardFilter].
+     * @return 정규 쿼리스트링. 필터 조건이 없으면 빈 문자열.
+     */
+    fun serialize(filter: BoardCardFilter): String {
+        val pairs = mutableListOf<Pair<String, String>>()
+
+        filter.assigneeIds.distinct().sorted().forEach { pairs.add(PARAM_ASSIGNEE to it.toString()) }
+        if (filter.includeUnassigned) {
+            pairs.add(PARAM_ASSIGNEE to SENTINEL_UNASSIGNED)
+        }
+        filter.labels.map { it.trim() }.filter { it.isNotBlank() }.distinct().sorted().forEach {
+            pairs.add(PARAM_LABEL to it)
+        }
+        filter.componentIds.distinct().sorted().forEach { pairs.add(PARAM_COMPONENT to it.toString()) }
+
+        return pairs.joinToString("&") { (key, value) -> "$key=${encode(value)}" }
+    }
+
+    /**
+     * 정규 쿼리스트링을 [BoardCardFilter] 로 역직렬화한다.
+     *
+     * `&` 로 파라미터 쌍을 분리하고, 각 쌍을 첫 `=` 기준으로 key/value 로 나눈 뒤
+     * [URLDecoder] (UTF-8, `+` → 공백) 로 디코딩한다. `assignee`/`label`/`component` 키만 인식하며,
+     * 그 외 키는 무시한다. 추출한 값 목록은 [parse] 에 위임해 UUID 검증·센티널 처리를 재사용한다.
+     *
+     * @param query [serialize] 가 생성한 형식의 쿼리스트링(또는 동등한 형식). 빈 문자열이면 [BoardCardFilter.EMPTY].
+     * @return 파싱된 [BoardCardFilter].
+     * @throws ResponseStatusException 400 — assignee 또는 component 값이 유효한 UUID 형식이 아닐 때.
+     */
+    fun deserialize(query: String): BoardCardFilter {
+        if (query.isBlank()) {
+            return BoardCardFilter.EMPTY
+        }
+
+        val assignee = mutableListOf<String>()
+        val label = mutableListOf<String>()
+        val component = mutableListOf<String>()
+
+        for (pair in query.split("&")) {
+            if (pair.isBlank()) continue
+            val separatorIndex = pair.indexOf('=')
+            if (separatorIndex < 0) continue
+            val key = decode(pair.substring(0, separatorIndex))
+            val value = decode(pair.substring(separatorIndex + 1))
+            when (key) {
+                PARAM_ASSIGNEE -> assignee.add(value)
+                PARAM_LABEL -> label.add(value)
+                PARAM_COMPONENT -> component.add(value)
+            }
+        }
+
+        return parse(assignee = assignee, label = label, component = component)
+    }
+
+    /** [URLEncoder] 로 UTF-8 `application/x-www-form-urlencoded` 인코딩한다 (공백 → `+`). */
+    private fun encode(value: String): String {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8)
+    }
+
+    /** [URLDecoder] 로 UTF-8 `application/x-www-form-urlencoded` 디코딩한다 (`+` → 공백). */
+    private fun decode(value: String): String {
+        return URLDecoder.decode(value, StandardCharsets.UTF_8)
     }
 
     /**
