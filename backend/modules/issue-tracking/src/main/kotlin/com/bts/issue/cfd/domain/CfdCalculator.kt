@@ -2,6 +2,7 @@
 
 package com.bts.issue.cfd.domain
 
+import com.bts.issue.statushistory.StatusCategory
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
@@ -40,7 +41,7 @@ object CfdCalculator {
         require(!from.isAfter(to)) { "from ($from) must not be after to ($to)." }
 
         val windowDays = dayIndex(from, to) + 1
-        val deltas: Map<CfdCategory, IntArray> = CfdCategory.entries.associateWith { IntArray(windowDays) }
+        val deltas: Map<StatusCategory, IntArray> = StatusCategory.entries.associateWith { IntArray(windowDays) }
 
         issues.forEach { issue -> applyIssueDeltas(issue, from, to, deltas) }
         deltas.values.forEach { accumulate(it) }
@@ -57,7 +58,7 @@ object CfdCalculator {
         issue: CfdIssueTimeline,
         from: LocalDate,
         to: LocalDate,
-        deltas: Map<CfdCategory, IntArray>,
+        deltas: Map<StatusCategory, IntArray>,
     ) {
         if (issue.createdDate.isAfter(to)) return
 
@@ -85,12 +86,12 @@ object CfdCalculator {
     private fun categoryAt(
         issue: CfdIssueTimeline,
         asOf: LocalDate,
-    ): CfdCategory = issue.segments.last { !it.startDate.isAfter(asOf) }.category
+    ): StatusCategory = issue.segments.last { !it.startDate.isAfter(asOf) }.category
 
     /** [category] 배열의 [index] 위치에 [amount]를 더한다(델타 인덱싱 헬퍼). */
     private fun addDelta(
-        deltas: Map<CfdCategory, IntArray>,
-        category: CfdCategory,
+        deltas: Map<StatusCategory, IntArray>,
+        category: StatusCategory,
         index: Int,
         amount: Int,
     ) {
@@ -114,12 +115,12 @@ object CfdCalculator {
     private fun pointAt(
         from: LocalDate,
         index: Int,
-        deltas: Map<CfdCategory, IntArray>,
+        deltas: Map<StatusCategory, IntArray>,
     ): CfdPoint =
         CfdPoint(
             date = from.plusDays(index.toLong()),
-            todoCount = deltas.getValue(CfdCategory.TODO)[index],
-            inProgressCount = deltas.getValue(CfdCategory.IN_PROGRESS)[index],
-            doneCount = deltas.getValue(CfdCategory.DONE)[index],
+            todoCount = deltas.getValue(StatusCategory.TODO)[index],
+            inProgressCount = deltas.getValue(StatusCategory.IN_PROGRESS)[index],
+            doneCount = deltas.getValue(StatusCategory.DONE)[index],
         )
 }

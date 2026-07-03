@@ -5,12 +5,12 @@ package com.bts.issue.cfd
 
 import com.bts.issue.adapter.outbound.velocity.IsolatedWorkflowStateLookup
 import com.bts.issue.cfd.application.CfdService
-import com.bts.issue.cfd.repository.CfdStatusHistoryRepository
 import com.bts.issue.cfd.web.CfdController
 import com.bts.issue.cfd.web.CfdExceptionHandler
 import com.bts.issue.jooq.tables.references.ISSUE_CHANGE_GROUP
 import com.bts.issue.jooq.tables.references.ISSUE_CHANGE_ITEM
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.statushistory.repository.StatusHistoryRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
@@ -241,7 +241,7 @@ class CfdIntegrationTest {
         open fun issueTypeRepository(dsl: DSLContext): IssueTypeRepository = IssueTypeRepository(dsl)
 
         @Bean
-        open fun cfdStatusHistoryRepository(dsl: DSLContext): CfdStatusHistoryRepository = CfdStatusHistoryRepository(dsl)
+        open fun cfdStatusHistoryRepository(dsl: DSLContext): StatusHistoryRepository = StatusHistoryRepository(dsl)
 
         @Bean
         open fun permissionResolver(): IssuePermissionResolver = TestConfig.permissionResolver
@@ -332,7 +332,7 @@ class CfdIntegrationTest {
         open fun cfdService(
             permissionResolver: IssuePermissionResolver,
             issueRepository: IssueRepository,
-            cfdStatusHistoryRepository: CfdStatusHistoryRepository,
+            cfdStatusHistoryRepository: StatusHistoryRepository,
             securityDirectory: IssueSecurityDirectory,
             issueTypeRepository: IssueTypeRepository,
             workflowStateLookup: IsolatedWorkflowStateLookup,

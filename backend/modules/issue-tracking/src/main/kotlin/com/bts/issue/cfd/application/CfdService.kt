@@ -4,16 +4,16 @@ package com.bts.issue.cfd.application
 
 import com.bts.issue.adapter.outbound.velocity.IsolatedWorkflowStateLookup
 import com.bts.issue.cfd.domain.CfdCalculator
-import com.bts.issue.cfd.domain.CfdCategory
 import com.bts.issue.cfd.domain.CfdIssueTimeline
 import com.bts.issue.cfd.domain.CfdResult
 import com.bts.issue.cfd.domain.CfdSegment
-import com.bts.issue.cfd.repository.CfdStatusChangeRow
-import com.bts.issue.cfd.repository.CfdStatusHistoryRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.repository.CfdIssueSourceRow
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.statushistory.StatusCategory
+import com.bts.issue.statushistory.repository.StatusChangeRow
+import com.bts.issue.statushistory.repository.StatusHistoryRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.permission.IssuePermission
@@ -37,7 +37,7 @@ import java.time.ZoneOffset
  *    [IssueRepository.fetchActiveVisibleIssuesForCfd] 로 활성·가시 이슈 메타를 가져온다.
  * 3. 가시 이슈가 없으면 fetchStatusChanges/listStates 호출 없이 창 전체 0점을 즉시 반환한다
  *    (jOOQ 빈 `IN` 절 방어).
- * 4. [CfdStatusHistoryRepository.fetchStatusChanges] 로 status 전이 이력을 일괄 조회해
+ * 4. [StatusHistoryRepository.fetchStatusChanges] 로 status 전이 이력을 일괄 조회해
  *    이슈별로 그룹핑한다.
  * 5. `issue_types.id → IssueTypeKey` 역매핑을 1쿼리로 로드하고, 이슈에 등장하는 타입별로
  *    [IsolatedWorkflowStateLookup.listStates] 결과를 캐싱한다(N+1 차단). 스킴/매핑이 없어
@@ -59,7 +59,7 @@ import java.time.ZoneOffset
 class CfdService(
     private val permissionResolver: IssuePermissionResolver,
     private val issueRepository: IssueRepository,
-    private val cfdStatusHistoryRepository: CfdStatusHistoryRepository,
+    private val cfdStatusHistoryRepository: StatusHistoryRepository,
     private val securityDirectory: IssueSecurityDirectory,
     private val issueTypeRepository: IssueTypeRepository,
     private val workflowStateLookup: IsolatedWorkflowStateLookup,
@@ -196,20 +196,20 @@ class CfdService(
      */
     private fun buildTimeline(
         issue: CfdIssueSourceRow,
-        changes: List<CfdStatusChangeRow>,
+        changes: List<StatusChangeRow>,
         typeIdToKey: Map<Long, IssueTypeKey>,
         stateCache: Map<IssueTypeKey, Map<String, String>>,
     ): CfdIssueTimeline {
         val createdDate = issue.createdAt.atZone(ZoneOffset.UTC).toLocalDate()
         val categoryMap = typeIdToKey[issue.typeId]?.let { stateCache[it] }.orEmpty()
 
-        fun categoryOf(stateKey: String?): CfdCategory {
-            return CfdCategory.fromCategoryString(stateKey?.let { categoryMap[it] })
+        fun categoryOf(stateKey: String?): StatusCategory {
+            return StatusCategory.fromCategoryString(stateKey?.let { categoryMap[it] })
         }
 
         // fromValue 가 null(전이 0건 포함)이면 currentStateKey 로 폴백 — !! 금지.
         val initialStateKey = changes.firstOrNull()?.fromValue ?: issue.currentStateKey
-        val byDate = linkedMapOf<LocalDate, CfdCategory>()
+        val byDate = linkedMapOf<LocalDate, StatusCategory>()
         byDate[createdDate] = categoryOf(initialStateKey)
 
         changes.forEach { change ->

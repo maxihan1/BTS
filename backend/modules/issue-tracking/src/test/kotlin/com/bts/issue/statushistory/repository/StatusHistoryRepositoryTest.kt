@@ -1,6 +1,6 @@
-// CfdStatusHistoryRepository Testcontainers 통합 테스트 — status 전이 이력 배치 조회 검증 (FR-RP-03 Task 3)
+// StatusHistoryRepository Testcontainers 통합 테스트 — status 전이 이력 배치 조회 검증 (FR-RP-03 Task 3, FR-RP-04 Task 1 통계 이관)
 
-package com.bts.issue.cfd.repository
+package com.bts.issue.statushistory.repository
 
 import com.bts.issue.jooq.tables.references.ISSUE_CHANGE_GROUP
 import com.bts.issue.jooq.tables.references.ISSUE_CHANGE_ITEM
@@ -12,7 +12,7 @@ import java.time.ZoneOffset
 import java.util.UUID
 
 /**
- * [CfdStatusHistoryRepository.fetchStatusChanges] 통합 테스트 (FR-RP-03 Task 3).
+ * [StatusHistoryRepository.fetchStatusChanges] 통합 테스트 (FR-RP-03 Task 3).
  *
  * [IssueTestcontainersBase] 의 JVM singleton PostgreSQL + Flyway 마이그레이션(V018 포함)을 재사용한다.
  * `issue_change_group`/`issue_change_item` 은 `issues` 로 FK 를 두지 않으므로(이력 보존 우선),
@@ -24,8 +24,8 @@ import java.util.UUID
  * - CFD-T3-3. 여러 이슈를 배치 조회하면 issueId 별로 결과가 구분된다.
  * - CFD-T3-4. 빈 issueIds 는 빈 리스트를 즉시 반환한다.
  */
-class CfdStatusHistoryRepositoryTest : IssueTestcontainersBase() {
-    private val cfdRepository: CfdStatusHistoryRepository by lazy { CfdStatusHistoryRepository(dsl) }
+class StatusHistoryRepositoryTest : IssueTestcontainersBase() {
+    private val cfdRepository: StatusHistoryRepository by lazy { StatusHistoryRepository(dsl) }
 
     /**
      * `issue_change_group` 1행 + `issue_change_item` N행을 시드하고 group id 를 반환한다.

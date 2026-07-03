@@ -3,12 +3,12 @@
 package com.bts.issue.cfd.application
 
 import com.bts.issue.adapter.outbound.velocity.IsolatedWorkflowStateLookup
-import com.bts.issue.cfd.repository.CfdStatusChangeRow
-import com.bts.issue.cfd.repository.CfdStatusHistoryRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.repository.CfdIssueSourceRow
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.statushistory.repository.StatusChangeRow
+import com.bts.issue.statushistory.repository.StatusHistoryRepository
 import com.bts.issue.type.domain.IssueType
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
@@ -52,7 +52,7 @@ class CfdServiceTest : DescribeSpec({
 
     val permissionResolver = mockk<IssuePermissionResolver>()
     val issueRepository = mockk<IssueRepository>()
-    val cfdStatusHistoryRepository = mockk<CfdStatusHistoryRepository>()
+    val cfdStatusHistoryRepository = mockk<StatusHistoryRepository>()
     val securityDirectory = mockk<IssueSecurityDirectory>()
     val issueTypeRepository = mockk<IssueTypeRepository>()
     val workflowStateLookup = mockk<IsolatedWorkflowStateLookup>()
@@ -249,7 +249,7 @@ class CfdServiceTest : DescribeSpec({
             } returns listOf(issue)
             every { cfdStatusHistoryRepository.fetchStatusChanges(setOf(issueId)) } returns
                 listOf(
-                    CfdStatusChangeRow(
+                    StatusChangeRow(
                         issueId = issueId,
                         changedAt = Instant.parse("2026-06-02T00:00:00Z"),
                         groupId = 1L,
@@ -297,14 +297,14 @@ class CfdServiceTest : DescribeSpec({
             } returns listOf(issue)
             every { cfdStatusHistoryRepository.fetchStatusChanges(setOf(issueId)) } returns
                 listOf(
-                    CfdStatusChangeRow(
+                    StatusChangeRow(
                         issueId = issueId,
                         changedAt = Instant.parse("2026-06-01T05:00:00Z"),
                         groupId = 1L,
                         fromValue = "open",
                         toValue = "in_progress",
                     ),
-                    CfdStatusChangeRow(
+                    StatusChangeRow(
                         issueId = issueId,
                         changedAt = Instant.parse("2026-06-01T20:00:00Z"),
                         groupId = 2L,
