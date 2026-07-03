@@ -159,6 +159,7 @@ class IssueImportAdapterTest {
                         UPDATE_DENIED_REQUESTER_ID to IssuePermission.UPDATE,
                         TRANSITION_DENIED_REQUESTER_ID to IssuePermission.TRANSITION,
                     ),
+                revokeUpdateAfterFirstCallFor = TOCTOU_ATTACHMENT_REQUESTER_ID,
             )
 
         // ── Task 4 — 컴포넌트/버전 자동생성 + 상태 반영 보조 빈 ────────────────────
@@ -317,8 +318,12 @@ class IssueImportAdapterTest {
             return FaultInjectingAttachmentRepository(dsl)
         }
 
+        // 반환 타입을 구현체(NoOpAttachmentStoragePort)로 선언 — S46(C2 hot-fix)이 lastPutReceivedByteCount
+        // 를 검증하려면 테스트가 이 구체 타입으로 autowire 해야 한다(AttachmentStoragePort 인터페이스에는
+        // 없는 테스트 전용 계측 필드). IssueAttachmentService(storagePort: AttachmentStoragePort) 주입은
+        // 서브타입이라 그대로 성립한다.
         @Bean
-        open fun importAttachmentStoragePort(): AttachmentStoragePort = NoOpAttachmentStoragePort()
+        open fun importAttachmentStoragePort(): NoOpAttachmentStoragePort = NoOpAttachmentStoragePort()
 
         @Bean
         open fun importVirusScanPort(): VirusScanPort = SelectivelyUnavailableVirusScanPort()
@@ -404,15 +409,34 @@ class IssueImportAdapterTest {
             )
     }
 
-    /** (actor, permission) 조합을 지정해 거부하고 그 외에는 모두 허용하는 테스트 전용 resolver. */
+    /**
+     * (actor, permission) 조합을 지정해 거부하고 그 외에는 모두 허용하는 테스트 전용 resolver.
+     *
+     * [revokeUpdateAfterFirstCallFor] 가 지정되면 그 actor 의 UPDATE 판정만 최초 1회는 허용하고
+     * 이후 호출부터는 거부한다(S45 hot-fix — [IssueImportAdapter.applyAttachments] 사전체크(1회차)는
+     * 통과시키되 곧바로 이어지는 [IssueAttachmentService.upload] 내부 checkPermission(2회차)에서
+     * 거부해, 사전체크 통과 이후 실행 시점에만 권한이 취소되는 레이스를 재현한다 — 둘 다 동일
+     * (actor, UPDATE, [IssueScope.Issue]) 조합이라 호출 순서로만 구분할 수 있다).
+     */
     private class SelectiveDenyPermissionResolver(
         private val denied: Set<Pair<UUID, IssuePermission>>,
+        private val revokeUpdateAfterFirstCallFor: UUID? = null,
     ) : IssuePermissionResolver {
+        private val updateCallCounts = mutableMapOf<UUID, Int>()
+
         override fun hasPermission(
             actorId: UUID,
             permission: IssuePermission,
             scope: IssueScope,
-        ): Boolean = (actorId to permission) !in denied
+        ): Boolean {
+            if ((actorId to permission) in denied) return false
+            if (permission == IssuePermission.UPDATE && actorId == revokeUpdateAfterFirstCallFor) {
+                val callCount = (updateCallCounts[actorId] ?: 0) + 1
+                updateCallCounts[actorId] = callCount
+                return callCount == 1
+            }
+            return true
+        }
     }
 
     /**
@@ -496,16 +520,30 @@ class IssueImportAdapterTest {
     /**
      * MinIO 를 실제로 호출하지 않는 테스트 전용 storage port(CONCERN-4) — 이 테스트는
      * `issue_attachments` round-trip 만 검증하면 충분하고 실 MinIO 컨테이너는 불필요하다.
+     *
+     * [put] 은 [size] 만큼만 bound-read 한다 — 실제 [com.bts.issue.attachment.adapter.MinioStorageAdapter.put]
+     * 이 `PutObjectArgs.stream(input, size, ...)` 로 정확히 size 바이트만 읽는 동작을 재현한다(S46,
+     * C2 hot-fix). [size] 가 호출자(어댑터)로부터 신뢰할 수 없는 값을 받으면 여기서도 동일하게
+     * 절단이 재현돼야 회귀를 표면화할 수 있다. [lastPutReceivedByteCount] 로 마지막 호출이 실제
+     * bound-read 한 바이트 수를 기록해 절단 여부를 검증한다.
+     *
+     * `private` 이 아니다 — S46(C2 hot-fix)의 `@Autowired lateinit var attachmentStoragePort:
+     * NoOpAttachmentStoragePort` 필드와 [ImportTestConfig.importAttachmentStoragePort] 의 반환
+     * 타입이 이 구체 타입을 그대로 노출해야 하는데, Kotlin 은 public 멤버가 `private-in-class`
+     * 타입을 노출하는 것을 컴파일 에러로 막는다.
      */
-    private class NoOpAttachmentStoragePort : AttachmentStoragePort {
+    class NoOpAttachmentStoragePort : AttachmentStoragePort {
+        /** 마지막 [put] 호출이 실제로 bound-read 한 바이트 수(S46 검증용). */
+        var lastPutReceivedByteCount: Int = 0
+            private set
+
         override fun put(
             storageKey: String,
             input: InputStream,
             size: Long,
             contentType: String,
         ) {
-            // 실제 MinIO put 처럼 스트림을 끝까지 소비한다(호출자 close 책임은 어댑터/서비스 쪽에 있음).
-            input.readBytes()
+            lastPutReceivedByteCount = input.readNBytes(size.toInt()).size
         }
 
         override fun get(storageKey: String): InputStream = ByteArrayInputStream(ByteArray(0))
@@ -576,6 +614,49 @@ class IssueImportAdapterTest {
     }
 
     /**
+     * [remaining] 바이트만큼 고정 바이트(0)를 지연 생성하는 테스트 전용 [InputStream](S47, C2 hot-fix
+     * TOO_LARGE 경계 테스트 전용) — 100MB + 1 바이트를 실제 [ByteArray] 로 미리 전량 할당하지 않고도
+     * 경계값 스트림을 만들기 위함이다.
+     */
+    private class FixedLengthInputStream(
+        private var remaining: Long,
+    ) : InputStream() {
+        override fun read(): Int {
+            if (remaining <= 0) return -1
+            remaining--
+            return 0
+        }
+
+        override fun read(
+            b: ByteArray,
+            off: Int,
+            len: Int,
+        ): Int {
+            if (remaining <= 0) return -1
+            val toRead = minOf(len.toLong(), remaining).toInt()
+            remaining -= toRead
+            return toRead
+        }
+    }
+
+    /**
+     * [filename] 요청 시 [totalBytes] 길이의 [FixedLengthInputStream] 을 제공하는 테스트 전용
+     * [ImportAttachmentSource](S47, C2 hot-fix TOO_LARGE 경계 테스트 전용).
+     */
+    private class OversizedImportAttachmentSource(
+        private val filename: String,
+        private val totalBytes: Long,
+    ) : ImportAttachmentSource {
+        override fun open(
+            filename: String,
+            sourceKey: String?,
+        ): InputStream? {
+            if (filename != this.filename) return null
+            return FixedLengthInputStream(totalBytes)
+        }
+    }
+
+    /**
      * 고정 상태 목록만 반환하는 테스트 전용 [WorkflowStateCatalog].
      *
      * project-workflow BC 의 실제 스킴 결선은 이 어댑터 테스트의 책임 범위 밖이다(BC 격리) —
@@ -618,6 +699,10 @@ class IssueImportAdapterTest {
     @Autowired
     lateinit var issueRepository: IssueRepository
 
+    /** S46(C2 hot-fix) — [NoOpAttachmentStoragePort.lastPutReceivedByteCount] 검증용 구체 타입 autowire. */
+    @Autowired
+    lateinit var attachmentStoragePort: NoOpAttachmentStoragePort
+
     companion object {
         private const val PROJECT_KEY = "IMPORT"
 
@@ -644,6 +729,12 @@ class IssueImportAdapterTest {
         /** [SelectiveDenyPermissionResolver] 가 TRANSITION 만 거부하도록 지정한 요청자(S15/S19). */
         val TRANSITION_DENIED_REQUESTER_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000207")
 
+        /**
+         * [SelectiveDenyPermissionResolver] 가 UPDATE 판정을 최초 1회만 허용하고 이후 거부하도록
+         * 지정한 요청자(S45, C3 hot-fix — 사전체크 통과 이후 실행 시점 권한 취소 레이스 시뮬레이션).
+         */
+        val TOCTOU_ATTACHMENT_REQUESTER_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000208")
+
         /** reporterEmail 매칭 fixture. */
         val ALICE_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000203")
         const val ALICE_EMAIL = "alice@example.com"
@@ -663,6 +754,13 @@ class IssueImportAdapterTest {
 
         /** S37(Task9-S4) — [SelectivelyUnavailableVirusScanPort] 가 이 바이트와 일치하면 스캔 미가용 예외를 던진다. */
         val SCAN_UNAVAILABLE_TRIGGER_BYTES: ByteArray = byteArrayOf(9, 9, 9, 9)
+
+        /**
+         * S47(C2 hot-fix) — [IssueImportAdapter] 의 `MAX_ATTACHMENT_UPLOAD_BYTES`(private) 와
+         * 동일한 100MB 상한값의 테스트 전용 사본. 어댑터 private const 는 이 테스트에서 직접
+         * 참조할 수 없어 값만 그대로 복제한다.
+         */
+        const val MAX_ATTACHMENT_UPLOAD_BYTES_FOR_TEST: Long = 100L * 1024 * 1024
 
         private var migrated = false
         private var seeded = false
@@ -2103,6 +2201,120 @@ class IssueImportAdapterTest {
         check(result is IssueImportResult.Failure) { "Failure 여야 하지만 $result 입니다." }
         assert(countImportIssues() == 0) {
             "예상외 throw 시 이슈까지 롤백돼야 하지만 ${countImportIssues()} 개 존재합니다."
+        }
+    }
+
+    // ── S45~S47(코드리뷰 CONCERN-2/3 hot-fix). sizeBytes 신뢰경계 + zip-bomb 방어 + 권한예외 전파 ──
+
+    /**
+     * (C3 hot-fix) 첨부 사전체크 통과 이후 실제 upload 시점의 권한 거부(TOCTOU) —
+     * [com.bts.issue.domain.IssueAccessDeniedException] 이 더 이상 스킵-경고로 강등되지 않고
+     * 그대로 전파돼 행 전체가 롤백된다(CONCERN-3). [S36]([applyAttachments] 사전체크 자체가 거부하는
+     * 경우)과 대칭 — 이 시나리오는 사전체크는 통과하되 그 직후 실행 시점에만 거부되는 레이스를
+     * [TOCTOU_ATTACHMENT_REQUESTER_ID]([SelectiveDenyPermissionResolver] revokeUpdateAfterFirstCallFor)
+     * 로 시뮬레이션한다.
+     */
+    @Test
+    fun `S45 첨부 upload 시점 권한거부 TOCTOU - 스킵경고로 강등되지 않고 행 전체가 롤백된다`() {
+        val source = FixtureImportAttachmentSource(mapOf("race.png" to byteArrayOf(1, 2, 3)))
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = TOCTOU_ATTACHMENT_REQUESTER_ID,
+                summary = "S45 첨부 TOCTOU 권한거부 테스트",
+                sourceKey = "JIRA-520",
+                attachments = listOf(ImportAttachment(filename = "race.png", mimeType = "image/png")),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd, source)
+
+        check(result is IssueImportResult.Failure) {
+            "사전체크 이후 거부는 스킵-경고가 아닌 행 전체 Failure 여야 하지만 $result 입니다."
+        }
+        assert(result.reasonCode == IssueImportResult.FORBIDDEN) {
+            "reasonCode 가 FORBIDDEN 이어야 하지만 ${result.reasonCode} 입니다."
+        }
+        assert(countImportIssues() == 0) {
+            "권한 거부가 전파되면 이슈까지 함께 롤백돼야 하지만 ${countImportIssues()} 개 존재합니다."
+        }
+    }
+
+    /**
+     * (C2 hot-fix) Jira 메타 sizeBytes 가 실제 스트림보다 작음 — 절단 없이 실제 전체 바이트가
+     * 저장된다. [com.bts.issue.attachment.adapter.MinioStorageAdapter.put] 은 Content-Length(size)
+     * 만큼만 읽으므로, 신뢰할 수 없는 작은 메타값을 그대로 넘기면 초과분이 조용히 버려진다(CONCERN-2).
+     * 항상 실제 스트림 바이트를 세어 upload 해야 한다 — [attachmentStoragePort] 가 실제로 bound-read
+     * 한 바이트 수까지 함께 검증한다.
+     */
+    @Test
+    fun `S46 첨부 메타 sizeBytes가 실제보다 작음 - 절단 없이 실제 전체 바이트가 저장된다`() {
+        val actualBytes = ByteArray(10) { it.toByte() }
+        val source = FixtureImportAttachmentSource(mapOf("meta-mismatch.png" to actualBytes))
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S46 첨부 sizeBytes 신뢰경계 테스트",
+                sourceKey = "JIRA-521",
+                attachments =
+                    listOf(
+                        ImportAttachment(
+                            filename = "meta-mismatch.png",
+                            mimeType = "image/png",
+                            // Jira 보고값(참고용) — 실제(10바이트)보다 작다.
+                            sizeBytes = 3,
+                        ),
+                    ),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd, source)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        val saved = fetchAttachments(result.issueKey).single()
+        assert(saved.sizeBytes == actualBytes.size.toLong()) {
+            "메타 sizeBytes(3)를 신뢰해 절단되면 안 되고 실제 크기(${actualBytes.size})로 저장돼야 하지만 " +
+                "${saved.sizeBytes} 입니다."
+        }
+        assert(attachmentStoragePort.lastPutReceivedByteCount == actualBytes.size) {
+            "MinIO put 이 실제로 받은 바이트 수도 절단 없이 전체(${actualBytes.size})여야 하지만 " +
+                "${attachmentStoragePort.lastPutReceivedByteCount} 입니다."
+        }
+    }
+
+    /**
+     * (C2 hot-fix) 100MB 초과 스트림 — zip-bomb 방어(bounded read) 검증. Jira 보고 sizeBytes 와
+     * 무관하게 실제 스트림이 상한(100MB)을 초과하면 업로드를 시도하지 않고 TOO_LARGE 로 스킵 +
+     * 경고를 남기며, 이슈 자체는 커밋된다.
+     */
+    @Test
+    fun `S47 첨부 100MB 초과 스트림 - TOO_LARGE로 스킵되고 경고를 남기며 이슈는 커밋된다`() {
+        val oversizedByteCount = MAX_ATTACHMENT_UPLOAD_BYTES_FOR_TEST + 1
+        val source = OversizedImportAttachmentSource("huge.bin", oversizedByteCount)
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S47 첨부 100MB 초과 테스트",
+                sourceKey = "JIRA-522",
+                attachments =
+                    listOf(
+                        ImportAttachment(
+                            filename = "huge.bin",
+                            mimeType = "application/octet-stream",
+                            // Jira 보고값(참고용, 실제 상한 초과 여부와 무관 — 실제 스트림 크기로만 판정한다).
+                            sizeBytes = 10,
+                        ),
+                    ),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd, source)
+
+        check(result is IssueImportResult.Success) { "이슈 생성은 성공해야 하지만 $result 입니다." }
+        assert(fetchAttachments(result.issueKey).isEmpty()) {
+            "100MB 초과 첨부는 저장되면 안 되지만 ${fetchAttachments(result.issueKey)} 가 저장됐습니다."
+        }
+        assert(result.warnings.any { it.contains("상한") && it.contains("100MB") }) {
+            "TOO_LARGE 경고가 있어야 하지만 ${result.warnings} 입니다."
         }
     }
 
