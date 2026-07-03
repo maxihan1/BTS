@@ -224,20 +224,36 @@ class JdbcIssueChangeHistoryRepository(
      *
      * [GeneratedKeyHolder] 를 사용하면 INSERT … RETURNING id 결과를 Spring JDBC 가
      * keyHolder 에 저장한다. `keyHolder.keys?.get("id")` 로 BIGINT id 를 꺼낸다.
+     *
+     * [group.createdAt] 유무로 SQL 을 분기한다(null 이면 [SQL_INSERT_GROUP], 아니면
+     * [SQL_INSERT_GROUP_WITH_CREATED_AT]) — COALESCE(:createdAt, NOW()) 로 단일 SQL 을
+     * 쓰지 않는 이유는 [findByIssueCursor] KDoc 에 이미 문서화된 함정과 동일하다.
+     * JDBC 는 null 파라미터 바인딩 시 타입을 추론할 수 없어 TIMESTAMPTZ 컬럼에 null 을
+     * 바인딩하면 SQLException 이 발생한다. import 진입점([IssueHistoryRecorder.recordImported])이
+     * 과거 시각을 명시 삽입하는 반경([findByIssueCursor] 포함)이 전역이라 이 함정을 재발시키면
+     * 안 된다.
      */
     private fun insertGroup(group: IssueChangeGroup): Long {
         val keyHolder = GeneratedKeyHolder()
-        val params =
-            MapSqlParameterSource()
-                .addValue("issueId", group.issueId)
-                .addValue("issueKey", group.issueKey)
-                .addValue("actorId", group.actorId)
+        val createdAt = group.createdAt
 
-        jdbc.update(SQL_INSERT_GROUP, params, keyHolder, arrayOf("id"))
+        if (createdAt == null) {
+            jdbc.update(SQL_INSERT_GROUP, baseGroupParams(group), keyHolder, arrayOf("id"))
+        } else {
+            val params = baseGroupParams(group).addValue("createdAt", Timestamp.from(createdAt))
+            jdbc.update(SQL_INSERT_GROUP_WITH_CREATED_AT, params, keyHolder, arrayOf("id"))
+        }
 
         return (keyHolder.keys?.get("id") as? Number)?.toLong()
             ?: error("issue_change_group INSERT RETURNING id 값이 없음 — issueKey=${group.issueKey}")
     }
+
+    /** [SQL_INSERT_GROUP] / [SQL_INSERT_GROUP_WITH_CREATED_AT] 공통 파라미터. */
+    private fun baseGroupParams(group: IssueChangeGroup): MapSqlParameterSource =
+        MapSqlParameterSource()
+            .addValue("issueId", group.issueId)
+            .addValue("issueKey", group.issueKey)
+            .addValue("actorId", group.actorId)
 
     /**
      * items 를 groupId 로 batch INSERT 한다.
@@ -339,6 +355,18 @@ class JdbcIssueChangeHistoryRepository(
         const val SQL_INSERT_GROUP = """
             INSERT INTO issue_change_group (issue_id, issue_key, actor_id)
             VALUES (:issueId, :issueKey, :actorId)
+        """
+
+        /**
+         * 변경 그룹 append-only INSERT — created_at 명시 삽입 버전 (FR-IM-01 PR4 Task 3).
+         *
+         * [IssueHistoryRecorder.recordImported] 처럼 [IssueChangeGroup.createdAt] 이
+         * non-null(과거 시각 재생)인 경우에만 사용한다. created_at 컬럼을 명시하면
+         * V018 의 `DEFAULT NOW()` 가 발동하지 않고 바인딩된 시각이 그대로 저장된다.
+         */
+        const val SQL_INSERT_GROUP_WITH_CREATED_AT = """
+            INSERT INTO issue_change_group (issue_id, issue_key, actor_id, created_at)
+            VALUES (:issueId, :issueKey, :actorId, :createdAt)
         """
 
         /**
