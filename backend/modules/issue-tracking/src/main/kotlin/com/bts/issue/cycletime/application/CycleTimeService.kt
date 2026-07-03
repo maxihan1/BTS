@@ -206,8 +206,9 @@ class CycleTimeService(
     ): IssueDurationInput {
         val categoryMap = typeIdToKey[issue.typeId]?.let { stateCache[it] }.orEmpty()
 
-        fun categoryOf(stateKey: String?): StatusCategory =
-            StatusCategory.fromCategoryString(stateKey?.let { categoryMap[it] })
+        fun categoryOf(stateKey: String?): StatusCategory {
+            return StatusCategory.fromCategoryString(stateKey?.let { categoryMap[it] })
+        }
 
         val firstInProgressAt =
             changes.firstOrNull { categoryOf(it.toValue) == StatusCategory.IN_PROGRESS }?.changedAt
