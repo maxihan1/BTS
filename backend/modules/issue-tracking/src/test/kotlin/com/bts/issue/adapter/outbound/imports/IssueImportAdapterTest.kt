@@ -5,6 +5,13 @@ package com.bts.issue.adapter.outbound.imports
 import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.TestConfig
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.IssueImportStatusService
+import com.bts.issue.attachment.application.AttachmentScanUnavailableException
+import com.bts.issue.attachment.application.AttachmentStoragePort
+import com.bts.issue.attachment.application.IssueAttachmentService
+import com.bts.issue.attachment.application.ScanVerdict
+import com.bts.issue.attachment.application.VirusScanPort
+import com.bts.issue.attachment.domain.Attachment
+import com.bts.issue.attachment.repository.AttachmentRepository
 import com.bts.issue.comment.application.CommentApplicationService
 import com.bts.issue.comment.repository.CommentRepository
 import com.bts.issue.component.application.ComponentApplicationService
@@ -12,7 +19,9 @@ import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.history.IssueChangeHistoryRepository
 import com.bts.issue.history.IssueHistoryRecorder
+import com.bts.issue.history.JdbcIssueChangeHistoryRepository
 import com.bts.issue.project.ProjectLookup
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.project.repository.ProjectLookupRepository
@@ -24,6 +33,10 @@ import com.bts.issue.version.repository.VersionRepository
 import com.bts.issue.worklog.application.WorklogService
 import com.bts.issue.worklog.domain.Worklog
 import com.bts.issue.worklog.repository.WorklogRepository
+import com.bts.shared.issue.ImportAttachment
+import com.bts.shared.issue.ImportAttachmentSource
+import com.bts.shared.issue.ImportChangeGroup
+import com.bts.shared.issue.ImportChangeItem
 import com.bts.shared.issue.ImportComment
 import com.bts.shared.issue.ImportWorklog
 import com.bts.shared.issue.IssueImportCommand
@@ -56,6 +69,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Primary
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.jdbc.datasource.TransactionAwareDataSourceProxy
 import org.springframework.test.context.ActiveProfiles
@@ -63,6 +77,8 @@ import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import org.springframework.test.context.web.WebAppConfiguration
 import org.springframework.web.context.WebApplicationContext
+import java.io.ByteArrayInputStream
+import java.io.InputStream
 import java.sql.DriverManager
 import java.time.Clock
 import java.time.Instant
@@ -289,6 +305,63 @@ class IssueImportAdapterTest {
                 historyRecorder = mockk(relaxed = true),
             )
 
+        // ── Task 9(PR4) — 첨부/이력 동반 생성 보조 빈 ────────────────────────────────
+        // CONCERN-4 — fake AttachmentStoragePort(no-op put/remove)·fake VirusScanPort(선택적
+        // 미가용 트리거)·실 AttachmentRepository(issue_attachments round-trip). AttachmentRepository 는
+        // [FaultInjectingAttachmentRepository] 로 감싸 S44(Task9-S10b) 행 원자성 안전망만 검증하고,
+        // 그 외 모든 시나리오는 super.insert 로 그대로 위임돼 실 DB round-trip 이 보존된다
+        // ([FaultInjectingWorklogService] 와 동형).
+
+        @Bean
+        open fun importAttachmentRepository(dsl: DSLContext): AttachmentRepository = FaultInjectingAttachmentRepository(dsl)
+
+        @Bean
+        open fun importAttachmentStoragePort(): AttachmentStoragePort = NoOpAttachmentStoragePort()
+
+        @Bean
+        open fun importVirusScanPort(): VirusScanPort = SelectivelyUnavailableVirusScanPort()
+
+        @Bean
+        @Suppress("LongParameterList")
+        open fun importIssueAttachmentService(
+            storagePort: AttachmentStoragePort,
+            attachmentRepository: AttachmentRepository,
+            permissionResolver: IssuePermissionResolver,
+            issueRepository: IssueRepository,
+            scanPort: VirusScanPort,
+            clock: Clock,
+        ): IssueAttachmentService =
+            IssueAttachmentService(
+                storagePort = storagePort,
+                attachmentRepository = attachmentRepository,
+                permissionResolver = permissionResolver,
+                issueRepository = issueRepository,
+                scanPort = scanPort,
+                clock = clock,
+            )
+
+        // NamedParameterJdbcTemplate 은 raw dataSource 로도 Spring 트랜잭션에 올바르게 참여한다
+        // (JdbcTemplate 계열은 DataSourceUtils.getConnection 을 내부적으로 항상 사용 — jOOQ 의
+        // DataSourceConnectionProvider 와 달리 TransactionAwareDataSourceProxy 래핑이 불필요하다.
+        // IssueChangeHistoryE2EIntegrationTest.HistoryE2EConfig 와 동일 근거·동일 패턴).
+        @Bean
+        open fun importChangeHistoryJdbcTemplate(dataSource: DriverManagerDataSource): NamedParameterJdbcTemplate =
+            NamedParameterJdbcTemplate(dataSource)
+
+        @Bean
+        open fun importIssueChangeHistoryRepository(jdbc: NamedParameterJdbcTemplate): IssueChangeHistoryRepository =
+            JdbcIssueChangeHistoryRepository(jdbc)
+
+        // detector/resolver 는 recordImported 가 우회하므로 mockk(relaxed=true) 로 충분하다(CONCERN-4).
+        // repository 는 실 빈 — occurredAt/actorId 실제 저장·조회를 검증해야 하기 때문이다.
+        @Bean
+        open fun importIssueHistoryRecorder(repository: IssueChangeHistoryRepository): IssueHistoryRecorder =
+            IssueHistoryRecorder(
+                detector = mockk(relaxed = true),
+                resolver = mockk(relaxed = true),
+                repository = repository,
+            )
+
         @Bean
         @Suppress("LongParameterList")
         open fun issueImportAdapter(
@@ -306,6 +379,8 @@ class IssueImportAdapterTest {
             issueImportStatusService: IssueImportStatusService,
             commentApplicationService: CommentApplicationService,
             worklogService: WorklogService,
+            attachmentService: IssueAttachmentService,
+            historyRecorder: IssueHistoryRecorder,
         ): IssueImportAdapter =
             IssueImportAdapter(
                 issueApplicationService = issueApplicationService,
@@ -322,6 +397,8 @@ class IssueImportAdapterTest {
                 issueImportStatusService = issueImportStatusService,
                 commentApplicationService = commentApplicationService,
                 worklogService = worklogService,
+                attachmentService = attachmentService,
+                historyRecorder = historyRecorder,
             )
     }
 
@@ -390,6 +467,109 @@ class IssueImportAdapterTest {
                 error("S31 예상외 throw 시뮬레이션")
             }
             return super.createImported(actor, issueKey, authorId, timeSpentSeconds, startedAt, comment)
+        }
+    }
+
+    /**
+     * filename 이 [UNEXPECTED_ATTACHMENT_THROW_MARKER] 일 때만 insert 에서 의도적으로 예상외
+     * [RuntimeException] 을 던지는 테스트 전용 spy(S44/Task9-S10b) — [FaultInjectingWorklogService] 와
+     * 동형. 마커를 쓰지 않는 모든 시나리오는 `super.insert` 로 그대로 위임돼 실 DB round-trip 이 보존된다.
+     *
+     * insert() 가 `error(...)` 로 super 호출 이전에 즉시 throw 하므로 실제 DB write 는 발생하지 않는다 —
+     * 사전체크(길이 등)가 커버하지 않는 "예상외" 예외가 발생해도 [IssueImportAdapter.importIssue] 의
+     * catch 블록이 트랜잭션 전체를 rollback-only 로 표시해 이슈까지 함께 롤백하는지가 검증 대상이다
+     * (BLOCKER-2 — insert throw 는 행 원자성 롤백 대상이지 best-effort 경고 대상이 아님).
+     */
+    private class FaultInjectingAttachmentRepository(
+        dsl: DSLContext,
+    ) : AttachmentRepository(dsl) {
+        override fun insert(attachment: Attachment) {
+            if (attachment.filename == UNEXPECTED_ATTACHMENT_THROW_MARKER) {
+                error("S44 예상외 throw 시뮬레이션")
+            }
+            super.insert(attachment)
+        }
+    }
+
+    /**
+     * MinIO 를 실제로 호출하지 않는 테스트 전용 storage port(CONCERN-4) — 이 테스트는
+     * `issue_attachments` round-trip 만 검증하면 충분하고 실 MinIO 컨테이너는 불필요하다.
+     */
+    private class NoOpAttachmentStoragePort : AttachmentStoragePort {
+        override fun put(
+            storageKey: String,
+            input: InputStream,
+            size: Long,
+            contentType: String,
+        ) {
+            // 실제 MinIO put 처럼 스트림을 끝까지 소비한다(호출자 close 책임은 어댑터/서비스 쪽에 있음).
+            input.readBytes()
+        }
+
+        override fun get(storageKey: String): InputStream = ByteArrayInputStream(ByteArray(0))
+
+        override fun remove(storageKey: String) {
+            // no-op
+        }
+    }
+
+    /**
+     * 스트림 내용이 [SCAN_UNAVAILABLE_TRIGGER_BYTES] 와 일치할 때만 스캔 미가용 예외를 던지고,
+     * 그 외에는 CLEAN 을 반환하는 테스트 전용 스캐너(S37/Task9-S4). [VirusScanPort.scan] 은 filename 을
+     * 받지 않으므로(스트림만 받음) 파일별 분기는 내용 기반으로 트리거한다.
+     */
+    private class SelectivelyUnavailableVirusScanPort : VirusScanPort {
+        override fun scan(input: InputStream): ScanVerdict {
+            val bytes = input.readBytes()
+            if (bytes.contentEquals(SCAN_UNAVAILABLE_TRIGGER_BYTES)) {
+                throw AttachmentScanUnavailableException("test-trigger: scanner unavailable")
+            }
+            return ScanVerdict.CLEAN
+        }
+    }
+
+    /**
+     * [open] 이 반환한 스트림의 close() 호출 여부를 기록하는 테스트 전용 래퍼(BLOCKER-1 검증) —
+     * 어댑터가 [ImportAttachmentSource.open] 스트림을 반드시 `.use { }` 로 닫는지 실증한다.
+     */
+    private class CloseTrackingInputStream(
+        private val delegate: InputStream,
+    ) : InputStream() {
+        var closed: Boolean = false
+            private set
+
+        override fun read(): Int = delegate.read()
+
+        override fun read(
+            b: ByteArray,
+            off: Int,
+            len: Int,
+        ): Int = delegate.read(b, off, len)
+
+        override fun close() {
+            closed = true
+            delegate.close()
+        }
+    }
+
+    /**
+     * filename → 바이트 내용 매핑을 제공하는 테스트 전용 [ImportAttachmentSource].
+     * 미매칭 filename 은 null(스킵)을 반환한다. [open] 이 반환하는 모든 스트림을 [CloseTrackingInputStream]
+     * 으로 감싸 [openedStreams] 에 기록해, 어댑터가 실제로 close() 하는지(BLOCKER-1) 검증할 수 있게 한다.
+     */
+    private class FixtureImportAttachmentSource(
+        private val filesByName: Map<String, ByteArray>,
+    ) : ImportAttachmentSource {
+        val openedStreams = mutableListOf<CloseTrackingInputStream>()
+
+        override fun open(
+            filename: String,
+            sourceKey: String?,
+        ): InputStream? {
+            val bytes = filesByName[filename] ?: return null
+            val tracker = CloseTrackingInputStream(ByteArrayInputStream(bytes))
+            openedStreams += tracker
+            return tracker
         }
     }
 
@@ -476,6 +656,12 @@ class IssueImportAdapterTest {
         /** S31 — [FaultInjectingWorklogService] 가 이 값을 comment 로 받으면 의도적으로 예상외 예외를 던진다. */
         const val UNEXPECTED_THROW_MARKER = "__unexpected_throw__"
 
+        /** S44(Task9-S10b) — [FaultInjectingAttachmentRepository] 가 이 filename 이면 의도적으로 예상외 예외를 던진다. */
+        const val UNEXPECTED_ATTACHMENT_THROW_MARKER = "__attachment_unexpected_throw__.png"
+
+        /** S37(Task9-S4) — [SelectivelyUnavailableVirusScanPort] 가 이 바이트와 일치하면 스캔 미가용 예외를 던진다. */
+        val SCAN_UNAVAILABLE_TRIGGER_BYTES: ByteArray = byteArrayOf(9, 9, 9, 9)
+
         private var migrated = false
         private var seeded = false
 
@@ -506,6 +692,13 @@ class IssueImportAdapterTest {
                     "DELETE FROM issue_components WHERE issue_id IN " +
                         "(SELECT id FROM issues WHERE key LIKE '$PROJECT_KEY-%')",
                 )
+                // issue_change_group/item 은 issues 로 FK 가 없다(이력 보존 우선 — V018 주석) — issue_key 로 직접 정리.
+                // issue_attachments 는 issue_id ON DELETE CASCADE 라 아래 issues 삭제로 자동 정리된다.
+                stmt.execute(
+                    "DELETE FROM issue_change_item WHERE group_id IN " +
+                        "(SELECT id FROM issue_change_group WHERE issue_key LIKE '$PROJECT_KEY-%')",
+                )
+                stmt.execute("DELETE FROM issue_change_group WHERE issue_key LIKE '$PROJECT_KEY-%'")
                 stmt.execute("DELETE FROM issues WHERE key LIKE '$PROJECT_KEY-%'")
                 stmt.execute("UPDATE projects SET key_sequence = 0 WHERE key = '$PROJECT_KEY'")
                 stmt.execute("SELECT pgmq.purge_queue('q_issue_events')")
@@ -1513,6 +1706,391 @@ class IssueImportAdapterTest {
         }
     }
 
+    // ── S34~S44(PR4, Task 9). 첨부 upload·이력 recordImported — 사전체크·best-effort 집약·행 원자성 ──
+    // 각 제목의 (Task9-Sx) 는 plan Task 9 명세의 시나리오 번호(S1~S10b)와의 대응 표기다.
+
+    /**
+     * (Task9-S1) 첨부 upload — 원본 시각/uploader 보존 + sizeBytes/contentType 유추 + 스트림 close(BLOCKER-1).
+     */
+    @Test
+    fun `S34 첨부 upload - 원본 시각 uploader가 보존되고 스트림이 close된다`() {
+        val bytes = byteArrayOf(1, 2, 3, 4, 5)
+        val source = FixtureImportAttachmentSource(mapOf("photo.png" to bytes))
+        val originalCreatedAt = Instant.parse("2018-03-01T00:00:00Z")
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S34 첨부 upload 테스트",
+                sourceKey = "JIRA-500",
+                attachments =
+                    listOf(
+                        ImportAttachment(
+                            filename = "photo.png",
+                            authorEmail = BOB_EMAIL,
+                            createdAt = originalCreatedAt,
+                            sizeBytes = null,
+                        ),
+                    ),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd, source)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        val attachments = fetchAttachments(result.issueKey)
+        assert(attachments.size == 1) { "첨부가 1건 저장돼야 하지만 ${attachments.size}건입니다." }
+        val saved = attachments.single()
+        assert(saved.filename == "photo.png") { "filename 이 보존돼야 하지만 ${saved.filename} 입니다." }
+        assert(saved.contentType == "image/png") {
+            "mimeType 미지정 시 확장자 기반 유추(image/png)여야 하지만 ${saved.contentType} 입니다."
+        }
+        assert(saved.sizeBytes == bytes.size.toLong()) {
+            "sizeBytes 미지정 시 실제 스트림 바이트 수로 유추돼야 하지만 ${saved.sizeBytes} 입니다."
+        }
+        assert(saved.uploadedBy == BOB_ID) { "authorEmail 매칭이므로 uploadedBy 가 Bob 이어야 하지만 ${saved.uploadedBy} 입니다." }
+        assert(saved.createdAt == originalCreatedAt) { "createdAt 이 원본 시각으로 보존돼야 하지만 ${saved.createdAt} 입니다." }
+        assert(source.openedStreams.isNotEmpty() && source.openedStreams.all { it.closed }) {
+            "어댑터가 open() 이 반환한 스트림을 반드시 close 해야 합니다(BLOCKER-1, FD 누수 방지)."
+        }
+    }
+
+    /**
+     * (Task9-S2) changelog recordImported — occurredAt/actor 보존 + Jira→BTS field 매핑 테이블 적용.
+     */
+    @Test
+    fun `S35 changelog recordImported - occurredAt actor가 보존되고 field가 BTS 필드로 매핑된다`() {
+        val occurredAt = Instant.parse("2017-05-01T09:00:00Z")
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S35 changelog 매핑 테스트",
+                sourceKey = "JIRA-510",
+                changelog =
+                    listOf(
+                        ImportChangeGroup(
+                            authorEmail = ALICE_EMAIL,
+                            occurredAt = occurredAt,
+                            items =
+                                listOf(
+                                    ImportChangeItem(field = "status", fromValue = "Open", toValue = "In Progress"),
+                                    ImportChangeItem(field = "issuetype", fromValue = "Bug", toValue = "Task"),
+                                    ImportChangeItem(field = "Fix Version", fromValue = null, toValue = "1.0"),
+                                ),
+                        ),
+                    ),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        val groups = fetchChangeGroups(result.issueKey)
+        assert(groups.size == 1) { "그룹이 1건 기록돼야 하지만 ${groups.size}건입니다." }
+        val group = groups.single()
+        assert(group.actorId == ALICE_ID) { "actorId 가 Alice 여야 하지만 ${group.actorId} 입니다." }
+        assert(group.createdAt == occurredAt) { "createdAt 이 원본 발생 시각으로 보존돼야 하지만 ${group.createdAt} 입니다." }
+        val fields = group.items.map { it.field }
+        assert(fields == listOf("status", "type", "fixVersions")) {
+            "status/issuetype/Fix Version 이 각각 status/type/fixVersions 로 매핑돼야 하지만 $fields 입니다."
+        }
+        val fixVersionItem = group.items.first { it.field == "fixVersions" }
+        assert(fixVersionItem.fromValue == null && fixVersionItem.toValue == "1.0") {
+            "fromValue/toValue 는 Jira 원본 문자열 그대로 보존돼야 하지만 $fixVersionItem 입니다."
+        }
+    }
+
+    /**
+     * (Task9-S3) UPDATE 권한 없음 — 첨부/이력 모두 스킵되고 집약 경고를 남기며 이슈는 생성된다.
+     */
+    @Test
+    fun `S36 UPDATE 권한 없음 - 첨부 이력 모두 스킵되고 집약 경고를 남기며 이슈는 생성된다`() {
+        val source = FixtureImportAttachmentSource(mapOf("a.png" to byteArrayOf(1, 2, 3)))
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = UPDATE_DENIED_REQUESTER_ID,
+                summary = "S36 첨부 이력 권한없음 테스트",
+                sourceKey = "JIRA-511",
+                attachments = listOf(ImportAttachment(filename = "a.png", mimeType = "image/png")),
+                changelog =
+                    listOf(
+                        ImportChangeGroup(
+                            occurredAt = Instant.parse("2020-01-01T00:00:00Z"),
+                            items = listOf(ImportChangeItem(field = "priority", fromValue = "1", toValue = "2")),
+                        ),
+                    ),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd, source)
+
+        check(result is IssueImportResult.Success) { "이슈 생성 자체는 성공해야 하지만 $result 입니다." }
+        assert(result.warnings.any { it.contains("첨부") && it.contains("권한") }) {
+            "첨부 권한없음 집약 경고가 있어야 하지만 ${result.warnings} 입니다."
+        }
+        assert(result.warnings.any { it.contains("변경 이력") && it.contains("권한") }) {
+            "변경 이력 권한없음 집약 경고가 있어야 하지만 ${result.warnings} 입니다."
+        }
+        assert(fetchAttachments(result.issueKey).isEmpty()) { "권한 없으면 첨부가 생성되지 않아야 합니다." }
+        assert(fetchChangeGroups(result.issueKey).isEmpty()) { "권한 없으면 이력이 생성되지 않아야 합니다." }
+    }
+
+    /**
+     * (Task9-S4) MIME 거부 / 스캔 미가용 / 원본 없음(zip 부재) — 첨부별 경고를 남기고 이슈는 커밋된다.
+     */
+    @Test
+    fun `S37 MIME 거부 스캔 미가용 원본없음 - 첨부별 경고를 남기고 이슈는 커밋된다`() {
+        val source =
+            FixtureImportAttachmentSource(
+                mapOf("trigger.png" to SCAN_UNAVAILABLE_TRIGGER_BYTES),
+                // "missing.png" 는 source 에 없음 → NOT_FOUND(zip 부재) 경로.
+            )
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S37 첨부 실패 유형 테스트",
+                sourceKey = "JIRA-512",
+                attachments =
+                    listOf(
+                        ImportAttachment(filename = "virus.exe", mimeType = "application/x-msdownload"),
+                        ImportAttachment(filename = "trigger.png", mimeType = "image/png"),
+                        ImportAttachment(filename = "missing.png", mimeType = "image/png"),
+                    ),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd, source)
+
+        check(result is IssueImportResult.Success) { "이슈 생성은 성공해야 하지만 $result 입니다." }
+        assert(fetchAttachments(result.issueKey).isEmpty()) {
+            "3건 모두 실패해야 하지만 ${fetchAttachments(result.issueKey)} 가 저장됐습니다."
+        }
+        assert(result.warnings.any { it.contains("허용되지 않는") }) { "MIME 거부 경고가 있어야 하지만 ${result.warnings} 입니다." }
+        assert(result.warnings.any { it.contains("바이러스 스캔을 수행") }) {
+            "스캔 미가용 경고가 있어야 하지만 ${result.warnings} 입니다."
+        }
+        assert(result.warnings.any { it.contains("원본 파일을 찾을 수 없") }) {
+            "원본 없음 경고가 있어야 하지만 ${result.warnings} 입니다."
+        }
+    }
+
+    /**
+     * (Task9-S5) author 미해석 — 첨부는 requester 로 폴백, 이력은 actorId=null(요청자 아님, 비대칭 규칙).
+     */
+    @Test
+    fun `S38 author 미해석 - 첨부는 requester로 폴백되고 이력은 actorId가 null로 저장된다`() {
+        val source = FixtureImportAttachmentSource(mapOf("ghost.png" to byteArrayOf(1, 2, 3, 4)))
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S38 author 미해석 테스트",
+                sourceKey = "JIRA-513",
+                attachments =
+                    listOf(
+                        ImportAttachment(filename = "ghost.png", mimeType = "image/png", authorEmail = "ghost@example.com"),
+                    ),
+                changelog =
+                    listOf(
+                        ImportChangeGroup(
+                            authorEmail = "ghost@example.com",
+                            occurredAt = Instant.parse("2020-02-01T00:00:00Z"),
+                            items = listOf(ImportChangeItem(field = "priority", fromValue = "1", toValue = "2")),
+                        ),
+                    ),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd, source)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        val attachment = fetchAttachments(result.issueKey).single()
+        assert(attachment.uploadedBy == NORMAL_REQUESTER_ID) {
+            "첨부 author 미매칭이므로 uploadedBy 가 requester 로 폴백돼야 하지만 ${attachment.uploadedBy} 입니다."
+        }
+        val group = fetchChangeGroups(result.issueKey).single()
+        assert(group.actorId == null) {
+            "이력 author 미매칭이면 requester 로 폴백하지 않고 actorId 가 null 이어야 하지만 ${group.actorId} 입니다."
+        }
+    }
+
+    /**
+     * (Task9-S6) 미매칭 field — 스킵 + 경고. 그룹 내 일부 미매핑은 해당 item 만 스킵하고, 전 item
+     * 미매핑이면 그룹 자체를 스킵한다.
+     */
+    @Test
+    fun `S39 미매칭 field - 스킵되고 경고를 남기며 전부 미매핑인 그룹은 통째로 스킵된다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S39 미매칭 field 테스트",
+                sourceKey = "JIRA-514",
+                changelog =
+                    listOf(
+                        ImportChangeGroup(
+                            occurredAt = Instant.parse("2020-03-01T00:00:00Z"),
+                            items =
+                                listOf(
+                                    ImportChangeItem(field = "priority", fromValue = "1", toValue = "2"),
+                                    ImportChangeItem(field = "customfield_10001", fromValue = "a", toValue = "b"),
+                                ),
+                        ),
+                        ImportChangeGroup(
+                            occurredAt = Instant.parse("2020-03-02T00:00:00Z"),
+                            items = listOf(ImportChangeItem(field = "customfield_99999", fromValue = "x", toValue = "y")),
+                        ),
+                    ),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        val groups = fetchChangeGroups(result.issueKey)
+        assert(groups.size == 1) { "전부 미매핑인 두 번째 그룹은 스킵돼야 하지만 ${groups.size}건 기록됐습니다." }
+        assert(groups.single().items.map { it.field } == listOf("priority")) {
+            "미매핑 item 은 스킵되고 매핑된 priority 만 남아야 하지만 ${groups.single().items} 입니다."
+        }
+        assert(result.warnings.any { it.contains("2") && it.contains("매핑") }) {
+            "미매핑 field 2건 집약 경고가 있어야 하지만 ${result.warnings} 입니다."
+        }
+    }
+
+    /**
+     * (Task9-S7) occurredAt 파싱 실패(null) — 그룹 전체를 스킵하고 경고를 남긴다.
+     */
+    @Test
+    fun `S40 occurredAt 파싱 실패 - 그룹 전체가 스킵되고 경고를 남긴다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S40 occurredAt 파싱 실패 테스트",
+                sourceKey = "JIRA-515",
+                changelog =
+                    listOf(
+                        ImportChangeGroup(
+                            occurredAt = null,
+                            items = listOf(ImportChangeItem(field = "priority", fromValue = "1", toValue = "2")),
+                        ),
+                    ),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        assert(fetchChangeGroups(result.issueKey).isEmpty()) { "occurredAt 없는 그룹은 기록되면 안 됩니다." }
+        assert(result.warnings.any { it.contains("시각") }) { "시각 확인불가 경고가 있어야 하지만 ${result.warnings} 입니다." }
+    }
+
+    /**
+     * (Task9-S8) 이슈당 이력 상한(1000건) 초과 — 초과분은 스킵되고 경고를 남긴다.
+     */
+    @Test
+    fun `S41 이력 상한 1000건 초과 - 1000건만 기록되고 초과분은 스킵되며 경고를 남긴다`() {
+        val groups =
+            (1..1001).map { i ->
+                ImportChangeGroup(
+                    occurredAt = Instant.parse("2020-01-01T00:00:00Z").plusSeconds(i.toLong()),
+                    items = listOf(ImportChangeItem(field = "priority", fromValue = "1", toValue = "2")),
+                )
+            }
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S41 이력 상한 테스트",
+                sourceKey = "JIRA-516",
+                changelog = groups,
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        assert(fetchChangeGroups(result.issueKey).size == 1000) {
+            "상한 1000건만 기록돼야 하지만 ${fetchChangeGroups(result.issueKey).size}건입니다."
+        }
+        assert(result.warnings.any { it.contains("상한") }) { "상한 초과 경고가 있어야 하지만 ${result.warnings} 입니다." }
+    }
+
+    /**
+     * (Task9-S9) dry-run — 첨부/이력 권한없음 미리보기는 FORBIDDEN 하드 실패로 엮이지 않고
+     * 별도 경고 경로로만 남는다([warnCommentsWorklogsIfNeeded]·S30 과 동일 원칙, CONCERN-A 재발 방지).
+     */
+    @Test
+    fun `S42 dryRun 첨부 이력 권한없음 - FORBIDDEN 아닌 Success이고 경고만 남기며 insert 없다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = UPDATE_DENIED_REQUESTER_ID,
+                summary = "S42 dryRun 첨부 이력 권한없음 테스트",
+                sourceKey = "JIRA-517",
+                attachments = listOf(ImportAttachment(filename = "x.png")),
+                changelog =
+                    listOf(
+                        ImportChangeGroup(
+                            occurredAt = Instant.parse("2020-01-01T00:00:00Z"),
+                            items = listOf(ImportChangeItem(field = "priority", fromValue = "1", toValue = "2")),
+                        ),
+                    ),
+                dryRun = true,
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "FORBIDDEN 아닌 Success 여야 하지만 $result 입니다." }
+        assert(result.warnings.any { it.contains("첨부") }) { "첨부 경고가 있어야 하지만 ${result.warnings} 입니다." }
+        assert(result.warnings.any { it.contains("변경 이력") }) { "변경 이력 경고가 있어야 하지만 ${result.warnings} 입니다." }
+        assert(countImportIssues() == 0) { "dryRun 은 이슈를 생성하지 않아야 하지만 ${countImportIssues()} 개 존재합니다." }
+    }
+
+    /**
+     * (Task9-S10a) 첨부 파일명 500자 초과 — BLOCKER-2 사전체크로 첨부만 스킵되고, insert throw
+     * 없이(=행 롤백 없이) 이슈는 커밋된다.
+     */
+    @Test
+    fun `S43 첨부 파일명 500자 초과 - 사전체크로 스킵되고 insert throw 없이 이슈는 커밋된다`() {
+        val longFilename = "a".repeat(501) + ".png"
+        val source = FixtureImportAttachmentSource(mapOf(longFilename to byteArrayOf(1, 2, 3)))
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S43 파일명 초과 테스트",
+                sourceKey = "JIRA-518",
+                attachments = listOf(ImportAttachment(filename = longFilename, mimeType = "image/png")),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd, source)
+
+        check(result is IssueImportResult.Success) { "사전체크로 스킵되고 이슈는 커밋돼야 하지만 $result 입니다." }
+        assert(fetchAttachments(result.issueKey).isEmpty()) { "길이 초과 첨부는 저장되면 안 됩니다." }
+        assert(result.warnings.any { it.contains("파일명") }) { "파일명 초과 경고가 있어야 하지만 ${result.warnings} 입니다." }
+    }
+
+    /**
+     * (Task9-S10b) 첨부 insert 중 예상외 throw — [FaultInjectingAttachmentRepository] 로 실제 tx 경계에서
+     * 이슈까지 함께 롤백되는지 검증한다(BLOCKER-2 — insert throw 는 best-effort 로 강등하면 안 됨).
+     */
+    @Test
+    fun `S44 첨부 insert 중 예상외 throw - 이슈까지 함께 롤백된다`() {
+        val source =
+            FixtureImportAttachmentSource(mapOf(UNEXPECTED_ATTACHMENT_THROW_MARKER to byteArrayOf(1, 2, 3, 4)))
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S44 첨부 예상외 throw 행원자성 테스트",
+                sourceKey = "JIRA-519",
+                attachments = listOf(ImportAttachment(filename = UNEXPECTED_ATTACHMENT_THROW_MARKER, mimeType = "image/png")),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd, source)
+
+        check(result is IssueImportResult.Failure) { "Failure 여야 하지만 $result 입니다." }
+        assert(countImportIssues() == 0) {
+            "예상외 throw 시 이슈까지 롤백돼야 하지만 ${countImportIssues()} 개 존재합니다."
+        }
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     private fun applyMigrations() {
@@ -1818,6 +2396,85 @@ class IssueImportAdapterTest {
                     val ids = mutableListOf<UUID>()
                     while (rs.next()) ids += rs.getObject(1) as UUID
                     ids
+                }
+            }
+        }
+
+    /** S34/S37/S38/S43 — 첨부 조회 결과 1행([fetchAttachments]). */
+    private data class AttachmentRow(
+        val filename: String,
+        val contentType: String,
+        val sizeBytes: Long,
+        val uploadedBy: UUID,
+        val createdAt: Instant,
+    )
+
+    /** S34/S37/S38/S43 — 이슈에 저장된 첨부 목록(`created_at` 오름차순). */
+    @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음
+    private fun fetchAttachments(issueKey: String): List<AttachmentRow> =
+        conn().use { c ->
+            c.prepareStatement(
+                "SELECT a.filename, a.content_type, a.size_bytes, a.uploaded_by, a.created_at " +
+                    "FROM issue_attachments a JOIN issues i ON a.issue_id = i.id " +
+                    "WHERE i.key = ? ORDER BY a.created_at",
+            ).use { stmt ->
+                stmt.setString(1, issueKey)
+                stmt.executeQuery().use { rs ->
+                    val rows = mutableListOf<AttachmentRow>()
+                    while (rs.next()) {
+                        rows +=
+                            AttachmentRow(
+                                filename = rs.getString(1),
+                                contentType = rs.getString(2),
+                                sizeBytes = rs.getLong(3),
+                                uploadedBy = rs.getObject(4) as UUID,
+                                createdAt = rs.getTimestamp(5).toInstant(),
+                            )
+                    }
+                    rows
+                }
+            }
+        }
+
+    /** S35/S38/S39/S40/S41 — 변경 이력 항목 1건([fetchChangeGroups] 의 [ChangeGroupRow.items] 원소). */
+    private data class ChangeItemRow(val field: String, val fromValue: String?, val toValue: String?)
+
+    /** S35/S38/S39/S40/S41 — 변경 이력 그룹 1건(items 포함). */
+    private data class ChangeGroupRow(val actorId: UUID?, val createdAt: Instant, val items: List<ChangeItemRow>)
+
+    /** 이슈에 기록된 변경 이력 그룹 목록(`id` 오름차순, items 포함). */
+    @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음
+    private fun fetchChangeGroups(issueKey: String): List<ChangeGroupRow> {
+        val rawGroups =
+            conn().use { c ->
+                c.prepareStatement(
+                    "SELECT id, actor_id, created_at FROM issue_change_group WHERE issue_key = ? ORDER BY id",
+                ).use { stmt ->
+                    stmt.setString(1, issueKey)
+                    stmt.executeQuery().use { rs ->
+                        val rows = mutableListOf<Triple<Long, UUID?, Instant>>()
+                        while (rs.next()) {
+                            rows += Triple(rs.getLong(1), rs.getObject(2) as UUID?, rs.getTimestamp(3).toInstant())
+                        }
+                        rows
+                    }
+                }
+            }
+        return rawGroups.map { (groupId, actorId, createdAt) -> ChangeGroupRow(actorId, createdAt, fetchChangeItems(groupId)) }
+    }
+
+    /** [fetchChangeGroups] 가 groupId 로 items 를 별쿼리 조회한다(`id` 오름차순). */
+    @Suppress("NestedBlockDepth") // conn/stmt/rs 3단 use 중첩 — JDBC 표준 패턴, 분리 실익 없음
+    private fun fetchChangeItems(groupId: Long): List<ChangeItemRow> =
+        conn().use { c ->
+            c.prepareStatement(
+                "SELECT field, from_value, to_value FROM issue_change_item WHERE group_id = ? ORDER BY id",
+            ).use { stmt ->
+                stmt.setLong(1, groupId)
+                stmt.executeQuery().use { rs ->
+                    val items = mutableListOf<ChangeItemRow>()
+                    while (rs.next()) items += ChangeItemRow(rs.getString(1), rs.getString(2), rs.getString(3))
+                    items
                 }
             }
         }
