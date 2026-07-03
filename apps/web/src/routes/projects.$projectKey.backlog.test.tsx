@@ -195,6 +195,18 @@ describe('BacklogPage', () => {
     expect(velocityLink).toBeInTheDocument()
     expect(velocityLink).toHaveAttribute('href', '/projects/ATLAS/reports/velocity')
   })
+
+  /**
+   * T-BL-R4d. 누적 흐름도(CFD) 보고로 이동하는 링크가 nav에 존재한다 (FR-RP-03 D6/D7 Task 7).
+   */
+  it('T-BL-R4d: 누적 흐름도 링크가 nav에 존재한다', () => {
+    renderPage('ATLAS')
+
+    const nav = screen.getByRole('navigation', { name: '프로젝트 뷰 전환' })
+    const cfdLink = within(nav).getByRole('link', { name: '누적 흐름도' })
+    expect(cfdLink).toBeInTheDocument()
+    expect(cfdLink).toHaveAttribute('href', '/projects/ATLAS/reports/cfd')
+  })
 })
 
 describe('BacklogRouteAdapter', () => {
