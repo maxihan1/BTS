@@ -67,6 +67,7 @@ Maxi 확정(2026-07-03). ① 기간 피커 없음(기본 30일) ② 세로 스�
 
 **RED**. 라벨 존재·콜론 종결 금지(정규식) 회귀 테스트(`cfd-labels.test.ts` 미러).
 **GREEN**. `cycleTimeLabels` — page(title "Cycle / Lead Time 분포", description)·metric(cycleTitle "Cycle Time", leadTitle "Lead Time", cycleDesc, leadDesc)·stats(count/min/max/avg/p25/p50/p75/p90 라벨)·status(loading/forbidden/empty/loadFailed)·metricEmpty(cycle 표본 없음 안내)·chart(histogramAriaLabel/boxPlotAriaLabel/xAxisTitle/yAxisTitle)·window(from~to 표기 접두).
+**디자인 리뷰 반영(FIX-4)**. 빈 상태 문구는 맥락 제공(empty state=feature) — 전체 빈은 "최근 30일 내 완료된 이슈가 없습니다" 톤, cycle 표본 없음은 "진행 중 상태를 거친 완료 이슈가 없습니다" 톤. bare "데이터 없음" 지양.
 **REFACTOR**. 그룹 KDoc.
 **검증**. `pnpm --filter web test cycle-time-labels`.
 
@@ -104,6 +105,7 @@ Maxi 확정(2026-07-03). ① 기간 피커 없음(기본 30일) ② 세로 스�
 **RED**. `boxPlotScale({min,max}, width)` 순수 함수 — 값→[0,width] 선형 매핑, `min===max` 0-division 방어(폭 0). 통계값 텍스트 병기 여부 단위 검증(min/p25/p50/p75/max 텍스트 렌더).
 **GREEN**. 커스텀 SVG(recharts 미지원) — 수염 min~max 라인, 상자 p25~p75 rect, 중앙선 p50, 값 텍스트 병기. `boxPlotScale` export. `role="img"`+aria-label. count=0(통계 null)이면 렌더 안 함(상위 섹션이 가드).
 **REFACTOR**. SVG 좌표 상수·높이 상수 + KDoc(FR-TL-01 커스텀 SVG 선례 인용).
+**디자인 리뷰 반영(FIX-2)**. 박스플롯은 장식 도형이 아니라 **값을 읽을 수 있어야** 한다 — 최소한 축 양 끝점(min/max) 라벨 + 중앙값(p50) 라벨을 `formatDuration`으로 병기(수치 없는 상자만 두지 않는다). **(FIX-3)** 차트 색은 단일 기능 accent(DESIGN.md `primary` 우선 검토, 필요 시 CFD hex 선례로 신규 등록). Cycle/Lead 구분은 **섹션 헤더·라벨**로 하고 색으로 구분하지 않는다(색-단독 금지, WCAG).
 **검증**. `pnpm --filter web test CycleTimeBoxPlot` + typecheck.
 
 ### Task 6. CycleTimeMetricSection(요약 타일 + 조립)
@@ -116,6 +118,7 @@ Maxi 확정(2026-07-03). ① 기간 피커 없음(기본 30일) ② 세로 스�
 **RED**. (a) count>0이면 요약 타일(count/min/max/avg/p25~p90 formatDuration)+히스토그램+박스플롯 렌더, (b) count=0이면 `metricEmpty` 안내만·차트 미렌더(S2). props로 `metric: MetricResponse` + `title/description/emptyMessage`.
 **GREEN**. 타일 그리드 + count 가드 분기 + Histogram/BoxPlot 조립.
 **REFACTOR**. 타일 서브컴포넌트 추출·DESIGN.md 토큰(muted-foreground 등) 정합.
+**디자인 리뷰 반영(FIX-1)**. 타일 위계 — **중앙값(p50)을 대표 타일로 강조**(text-lg font-semibold), count는 표본 맥락(보조), min/max/avg/p25/p75/p90는 secondary(muted-foreground). 8개 수치를 평평한 숫자 나열로 두지 않는다(scan test). 타일 그리드는 좁은 폭에서 wrap(반응형).
 **검증**. `pnpm --filter web test CycleTimeMetricSection` + typecheck.
 
 ### Task 7. CycleTimeReport(useQuery 상태분기 + 세로 스택)
@@ -174,4 +177,23 @@ Maxi 확정(2026-07-03). ① 기간 피커 없음(기본 30일) ② 세로 스�
 - 추가 검증: typecheck(tsconfig.app), vitest, build, playwright(qa)
 - 박스플롯=커스텀 SVG(recharts 미지원, FR-TL-01/02 선례). 히스토그램=recharts BarChart
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-design-review (2026-07-03) — 초점화 디자인 렌즈
+
+> 자매 패턴(CFD) 미러 + Maxi 3결정 확정 상태라 목업 생성/비교 보드 전체 플로우는 과함 → 디자인 렌즈 비평만 수행(DESIGN.md·CFD 페이지 대조).
+
+- **초기 평점**. 7/10 — 강점: 상태분기 4종·접근성(role=img/aria/색+텍스트)·엣지(표본1·전동일·cycle빈)·Maxi 3결정. gap 4건.
+- **반영 완료(평점→9/10)**.
+  - FIX-1(Task 6). 요약 타일 위계 — 중앙값(p50) 대표 강조, count 맥락, 나머지 secondary. 8수치 평평한 나열 방지(scan test).
+  - FIX-2(Task 5). 박스플롯 값 가독성 — 축 끝점(min/max)+중앙값(p50) 라벨 병기(장식 도형 금지).
+  - FIX-3(Task 4/5). 단일 기능 accent 색, Cycle/Lead는 헤더·라벨로 구분(색-단독 금지, WCAG).
+  - FIX-4(Task 2/7). 빈 상태 맥락 문구(30일 창·cycle 미경유 사유).
+- **잔여(수용)**. 박스플롯 Cycle/Lead 독립 스케일(v1 단순화, 절대값=타일). 다크 모드 미지원(DESIGN.md 전역 정책).
+- **BLOCKER**. 없음.
+
+### 엔지니어링 정합 점검(self)
+
+- BC 격리 준수(프론트 뷰, 백엔드 변경 0). Zod 백엔드 DTO 1:1(count=0→null). 순수함수 4종 단위테스트 핵심.
+- 회귀 가드(메모리): recharts jsdom width0→실렌더 E2E 위임, MSW SPA 내부이동(reload 금지), 공유파일(handlers/router/backlog) pre-commit 자기파일만 stage, tsc 동반(vitest 타입무시).
+- **BLOCKER**. 없음.
