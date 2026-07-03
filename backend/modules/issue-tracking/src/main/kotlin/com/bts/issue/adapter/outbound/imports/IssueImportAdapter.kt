@@ -9,6 +9,7 @@ import com.bts.issue.application.ImportStatusOutcome
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.IssueImportStatusService
 import com.bts.issue.application.UpdateIssueRequest
+import com.bts.issue.comment.application.CommentApplicationService
 import com.bts.issue.component.application.ComponentApplicationService
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.domain.ActorId
@@ -21,6 +22,9 @@ import com.bts.issue.type.domain.IssueTypeNotFoundException
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.issue.version.application.VersionApplicationService
 import com.bts.issue.version.repository.VersionRepository
+import com.bts.issue.worklog.application.WorklogService
+import com.bts.shared.issue.ImportComment
+import com.bts.shared.issue.ImportWorklog
 import com.bts.shared.issue.IssueImportCommand
 import com.bts.shared.issue.IssueImportPort
 import com.bts.shared.issue.IssueImportResult
@@ -37,6 +41,8 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.interceptor.TransactionAspectSupport
+import java.time.Clock
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -69,6 +75,13 @@ import java.util.UUID
  * 4. **상태 반영 — best-effort** — [IssueImportCommand.statusName] 이 있으면
  *    [IssueImportStatusService.applyImportedStatus] 로 위임한다. 이 서비스도 TRANSITION 권한을
  *    사전 체크해 예외를 던지지 않으므로([ImportStatusOutcome.NoPermission]), 3과 동일하게 tx 오염이 없다.
+ * 5. **댓글/worklog 동반 생성 — 사전 체크(throw 0, PR3)** — [applyComments]/[applyWorklogs] 는
+ *    [CommentApplicationService.create]/[WorklogService.createImported] 가 같은 REQUIRED 트랜잭션에
+ *    참여하므로(3과 동일 오염 위험) UPDATE 권한을 [hasIssueUpdatePermission] 으로 **먼저** 확인하고,
+ *    권한이 없으면 전량 스킵 + 집약 경고만 남긴다. worklog 는 추가로 timeSpentSeconds≤0
+ *    (worklogs.time_spent_seconds CHECK 23514)도 항목별 사전체크해 스킵한다 — 이 두 조건이 이
+ *    두 서비스에서 던질 수 있는 예외의 전부다(★2 "잔여 throw 집합"). startedAt 이 null 이면
+ *    throw 대상이 아니라 [Instant.now] 로 대체한다([ImportWorklog.startedAt] KDoc).
  *
  * ### 트랜잭션 롤백 안전성 (CONCERN #1)
  *
@@ -97,6 +110,9 @@ class IssueImportAdapter(
     private val componentPermissionResolver: ComponentPermissionResolver,
     private val versionPermissionResolver: VersionPermissionResolver,
     private val issueImportStatusService: IssueImportStatusService,
+    private val commentApplicationService: CommentApplicationService,
+    private val worklogService: WorklogService,
+    private val clock: Clock = Clock.systemUTC(),
 ) : IssueImportPort {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -153,7 +169,8 @@ class IssueImportAdapter(
      * 유발한다면 UPDATE 권한도 미리 확인한다(§UPDATE 미러, CONCERN C1).
      * 마지막으로 [cmd.statusName] 이 있으면 TRANSITION 권한을 미리 확인해 경고로 남긴다 —
      * 상태 반영은 [IssueImportStatusService] 가 best-effort 로 처리하므로(권한 없어도 예외를 던지지
-     * 않음) FORBIDDEN 하드 실패로 미러하지 않는다.
+     * 않음) FORBIDDEN 하드 실패로 미러하지 않는다. 댓글/worklog 도 동일하게 [warnCommentsWorklogsIfNeeded]
+     * 로 미리보기 경고만 남기고 [rowTriggersUpdate] 에는 엮지 않는다(PR3, ★C3 — CONCERN-A 재발 방지).
      *
      * ### UPDATE 미러 — Project 스코프로 예측하는 이유
      *
@@ -193,6 +210,7 @@ class IssueImportAdapter(
             )
         }
         warnStatusIfNeeded(cmd, resolution, actor, warnings)
+        warnCommentsWorklogsIfNeeded(cmd, resolution, actor, warnings)
         return IssueImportResult.success(DRY_RUN_MARKER, warnings)
     }
 
@@ -257,6 +275,72 @@ class IssueImportAdapter(
     ): Boolean = permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Project(projectKey))
 
     /**
+     * dry-run 에서 [cmd.comments]/[cmd.worklogs] 가 실제 실행([applyComments]/[applyWorklogs]) 시 낼
+     * best-effort 경고를 미리 산출한다 (PR3, ★C3).
+     *
+     * 이 헬퍼가 남기는 경고는 어떤 경우에도 [IssueImportResult.FORBIDDEN] 하드 실패로 이어지지 않는다 —
+     * [rowTriggersUpdate] 에 절대 엮지 않는다(CONCERN-A 재발 방지, [warnStatusIfNeeded] 와 동일 원칙).
+     * 이슈가 아직 생성되지 않은 시점이라 UPDATE 권한은 [hasUpdatePermission](Project 스코프, §UPDATE 미러)로
+     * 예측한다. 권한이 없으면 [applyComments]/[applyWorklogs] 가 전량 스킵할 것이므로 집약 경고 1건만
+     * 남기고, 있으면 [cmd] 값만으로 순수 계산 가능한 timeSpent≤0/author 미매칭/startedAt 부재를
+     * 미리 경고한다(부수 효과 없음 — 실제 create/createImported 호출은 하지 않는다).
+     */
+    private fun warnCommentsWorklogsIfNeeded(
+        cmd: IssueImportCommand,
+        resolution: FieldResolution,
+        actor: ActorId,
+        warnings: MutableList<String>,
+    ) {
+        val hasUpdate = hasUpdatePermission(actor, cmd.projectKey)
+        warnCommentsPreview(cmd, resolution, hasUpdate, warnings)
+        warnWorklogsPreview(cmd, resolution, hasUpdate, warnings)
+    }
+
+    /** [warnCommentsWorklogsIfNeeded] 의 댓글 부분 — [applyComments] 가 낼 경고를 미리 예측한다. */
+    private fun warnCommentsPreview(
+        cmd: IssueImportCommand,
+        resolution: FieldResolution,
+        hasUpdate: Boolean,
+        warnings: MutableList<String>,
+    ) {
+        if (cmd.comments.isEmpty()) return
+        if (!hasUpdate) {
+            warnings += "댓글 ${cmd.comments.size}건은 권한이 없어 건너뛰어질 수 있습니다."
+            return
+        }
+        val unmatchedCount = cmd.comments.count { isAuthorUnmatched(it.authorEmail, resolution.resolvedEmails) }
+        if (unmatchedCount > 0) {
+            warnings += "댓글 ${unmatchedCount}건 작성자 이메일이 매칭되지 않아 요청자로 대체될 수 있습니다."
+        }
+    }
+
+    /** [warnCommentsWorklogsIfNeeded] 의 worklog 부분 — [applyWorklogs] 가 낼 경고를 미리 예측한다. */
+    private fun warnWorklogsPreview(
+        cmd: IssueImportCommand,
+        resolution: FieldResolution,
+        hasUpdate: Boolean,
+        warnings: MutableList<String>,
+    ) {
+        if (cmd.worklogs.isEmpty()) return
+        if (!hasUpdate) {
+            warnings += "워크로그 ${cmd.worklogs.size}건은 권한이 없어 건너뛰어질 수 있습니다."
+            return
+        }
+        val invalidCount = cmd.worklogs.count { it.timeSpentSeconds <= 0 }
+        if (invalidCount > 0) {
+            warnings += "워크로그 ${invalidCount}건 소요 시간이 0 이하라 건너뛰어질 수 있습니다."
+        }
+        val unmatchedCount = cmd.worklogs.count { isAuthorUnmatched(it.authorEmail, resolution.resolvedEmails) }
+        if (unmatchedCount > 0) {
+            warnings += "워크로그 ${unmatchedCount}건 작성자 이메일이 매칭되지 않아 요청자로 대체될 수 있습니다."
+        }
+        val missingStartedAtCount = cmd.worklogs.count { it.startedAt == null }
+        if (missingStartedAtCount > 0) {
+            warnings += "워크로그 ${missingStartedAtCount}건 시작 시각이 없어 import 실행 시각으로 대체될 수 있습니다."
+        }
+    }
+
+    /**
      * 실제 이슈 생성 + 후속 필드 설정을 같은 트랜잭션에서 수행한다.
      *
      * 1. [resolveFields] — 이메일→담당자/리포터, 이름→타입/컴포넌트/버전 매핑(미매칭 시 권한 있으면 자동생성).
@@ -265,10 +349,16 @@ class IssueImportAdapter(
      * 4. [applyAssigneeIfPresent] — assignee 매칭 시 changeAssignee.
      * 5. [applyVersionLinks] — affects/fix 버전이 매칭·자동생성됐으면 링크.
      * 6. [applyStatusIfPresent] — [cmd.statusName] 있으면 상태 반영(best-effort).
+     * 7. [applyComments] — [cmd.comments] 를 [CommentApplicationService.create] 로 위임(best-effort, PR3).
+     * 8. [applyWorklogs] — [cmd.worklogs] 를 [WorklogService.createImported] 로 위임(best-effort, PR3).
      *
-     * 3~6 중 어느 하나라도 예외를 던지면 [importIssue] 의 catch 블록이 트랜잭션 전체를
+     * 3~8 중 어느 하나라도 예외를 던지면 [importIssue] 의 catch 블록이 트랜잭션 전체를
      * rollback-only 로 표시하므로, 이미 삽입된 이슈(2)까지 함께 롤백된다(행 원자성).
-     * OCC 버전은 각 단계의 반환값으로 계속 스레딩한다(currentVersion).
+     * 7·8 은 UPDATE 권한/timeSpent≤0 을 호출 전에 사전체크해 스킵으로 강등하므로(★2, [applyComments]/
+     * [applyWorklogs] KDoc 참조) 정상 경로에서는 이 예외를 던지지 않는다 — 그럼에도 예상외 예외가
+     * 발생하면 이 안전망(행 원자성)이 여전히 이슈까지 롤백해 부분 반영을 막는다.
+     * OCC 버전은 각 단계의 반환값으로 계속 스레딩한다(currentVersion). 7·8 은 issues.version 을
+     * 증가시키지 않으므로(worklog 롤업 no-bump 원칙, [WorklogService] KDoc) currentVersion 스레딩과 무관하다.
      *
      * @param cmd 처리할 import 커맨드.
      * @param actor 생성 행위자(=requesterUserId).
@@ -302,6 +392,8 @@ class IssueImportAdapter(
         currentVersion = applyAssigneeIfPresent(resolution, actor, created.key, currentVersion)
         currentVersion = applyVersionLinks(resolution, actor, created.key, currentVersion)
         currentVersion = applyStatusIfPresent(cmd, actor, created.key, currentVersion, warnings)
+        applyComments(cmd, resolution, actor, created.key, warnings)
+        applyWorklogs(cmd, resolution, actor, created.key, warnings)
 
         log.info("issue_imported key={} actor={}", created.key.value, actor.value)
         return IssueImportResult.success(created.key.value, warnings)
@@ -428,6 +520,179 @@ class IssueImportAdapter(
     }
 
     /**
+     * [cmd.comments] 를 [CommentApplicationService.create] 로 위임한다 — best-effort (PR3, ★2).
+     *
+     * UPDATE 권한이 없으면 [CommentApplicationService.create] 를 아예 호출하지 않고(throw 0, 참여
+     * 트랜잭션 오염 0 — 클래스 KDoc ★2) 집약 경고 1건만 남긴다. 권한이 있으면 각 댓글의
+     * [ImportComment.authorEmail] 을 [resolution.resolvedEmails] 로 해석해([resolveAuthorId], 미매칭
+     * 시 [cmd.requesterUserId] 폴백) create 를 호출하고, 미매칭 건수를 집약해 경고 1건으로 남긴다
+     * ([warnCommentsPreview] 와 동일 카테고리 — dry-run/실행 경고 정합).
+     *
+     * body 빈 문자열은 comments.body NOT NULL 을 만족하므로 throw 하지 않는다 — 스킵하지 않고 그대로
+     * 생성한다(★2 KDoc "잔여 throw 집합" 참조, 스킵은 선택적 품질 개선이라 이 PR 범위 밖).
+     *
+     * @param cmd import 커맨드([ImportComment] 목록 출처).
+     * @param resolution [resolveFields] 결과(author 이메일 배치 해석 [FieldResolution.resolvedEmails] 포함).
+     * @param actor UPDATE 권한 판정 및 create 호출 actor(=[cmd.requesterUserId]).
+     * @param key 방금 생성된 이슈 키 — 직전 createIssue 로 존재가 보장되므로 404 없음(★2).
+     * @param warnings 집약 경고를 추가할 목록(호출자 소유, 누적).
+     */
+    private fun applyComments(
+        cmd: IssueImportCommand,
+        resolution: FieldResolution,
+        actor: ActorId,
+        key: IssueKey,
+        warnings: MutableList<String>,
+    ) {
+        if (cmd.comments.isEmpty()) return
+        if (!hasIssueUpdatePermission(actor, key)) {
+            warnings += "댓글 ${cmd.comments.size}건은 권한이 없어 건너뛰었습니다."
+            return
+        }
+        var unmatchedAuthorCount = 0
+        for (importComment in cmd.comments) {
+            if (isAuthorUnmatched(importComment.authorEmail, resolution.resolvedEmails)) unmatchedAuthorCount++
+            val authorId = resolveAuthorId(importComment.authorEmail, resolution.resolvedEmails, cmd.requesterUserId)
+            commentApplicationService.create(actor, key, importComment.body, ActorId(authorId))
+        }
+        if (unmatchedAuthorCount > 0) {
+            warnings += "댓글 ${unmatchedAuthorCount}건 작성자 이메일이 매칭되지 않아 요청자로 대체했습니다."
+        }
+    }
+
+    /**
+     * [cmd.worklogs] 를 [WorklogService.createImported] 로 위임한다 — best-effort (PR3, ★2).
+     *
+     * UPDATE 권한이 없으면 [WorklogService.createImported] 를 아예 호출하지 않고 집약 경고 1건만
+     * 남긴다([applyComments] 와 동일 근거). 권한이 있으면 [applyWorklogItem] 으로 항목별 사전체크
+     * (timeSpent≤0 스킵)와 author/startedAt 해석을 수행하고, 그 결과를 [warnWorklogOutcomes] 로
+     * 집약 경고로 변환한다.
+     *
+     * @param cmd import 커맨드([ImportWorklog] 목록 출처).
+     * @param resolution [resolveFields] 결과(author 이메일 배치 해석 포함).
+     * @param actor UPDATE 권한 판정 및 createImported 호출 actor(=[cmd.requesterUserId]).
+     * @param key 방금 생성된 이슈 키 — 직전 createIssue 로 존재가 보장되므로 404 없음(★2).
+     * @param warnings 집약 경고를 추가할 목록(호출자 소유, 누적).
+     */
+    private fun applyWorklogs(
+        cmd: IssueImportCommand,
+        resolution: FieldResolution,
+        actor: ActorId,
+        key: IssueKey,
+        warnings: MutableList<String>,
+    ) {
+        if (cmd.worklogs.isEmpty()) return
+        if (!hasIssueUpdatePermission(actor, key)) {
+            warnings += "워크로그 ${cmd.worklogs.size}건은 권한이 없어 건너뛰었습니다."
+            return
+        }
+        val outcomes = cmd.worklogs.map { applyWorklogItem(it, resolution, actor, cmd.requesterUserId, key) }
+        warnWorklogOutcomes(outcomes, warnings)
+    }
+
+    /**
+     * worklog 1건의 사전체크 + 생성을 수행한다([applyWorklogs] 루프 본체).
+     *
+     * timeSpentSeconds≤0 이면 worklogs.time_spent_seconds CHECK(>0, 23514) 를 사전 회피하기 위해
+     * [WorklogService.createImported] 를 호출하지 않고 스킵한다(★2 잔여 throw 집합 #2). startedAt 이
+     * null 이면 [Instant.now] 로 대체한다(★2 잔여 throw 집합 #3 — worklogs.started_at NOT NULL 회피,
+     * [ImportWorklog.startedAt] KDoc "null 이면 구현체가 import 실행 시각을 사용한다"). 두 사전체크 모두
+     * throw 없이 [WorklogApplyOutcome] 으로 결과만 보고한다.
+     *
+     * @return 스킵/대체 여부를 담은 [WorklogApplyOutcome] — [warnWorklogOutcomes] 가 집약 경고로 변환한다.
+     */
+    private fun applyWorklogItem(
+        importWorklog: ImportWorklog,
+        resolution: FieldResolution,
+        actor: ActorId,
+        requesterUserId: UUID,
+        key: IssueKey,
+    ): WorklogApplyOutcome {
+        if (importWorklog.timeSpentSeconds <= 0) {
+            return WorklogApplyOutcome(invalidTimeSpent = true, unmatchedAuthor = false, missingStartedAt = false)
+        }
+        val unmatched = isAuthorUnmatched(importWorklog.authorEmail, resolution.resolvedEmails)
+        val authorId = resolveAuthorId(importWorklog.authorEmail, resolution.resolvedEmails, requesterUserId)
+        val missingStartedAt = importWorklog.startedAt == null
+        worklogService.createImported(
+            actor = actor,
+            issueKey = key,
+            authorId = ActorId(authorId),
+            timeSpentSeconds = importWorklog.timeSpentSeconds,
+            startedAt = importWorklog.startedAt ?: Instant.now(clock),
+            comment = importWorklog.comment,
+        )
+        return WorklogApplyOutcome(invalidTimeSpent = false, unmatchedAuthor = unmatched, missingStartedAt = missingStartedAt)
+    }
+
+    /**
+     * [applyWorklogItem] 결과 목록을 유형별로 집계해 경고 1건씩으로 강등한다(best-effort 집약 —
+     * "댓글 5건 권한 없어 스킵" 처럼 건별이 아닌 유형별 1줄, Maxi 확정).
+     * [warnWorklogsPreview] 와 동일 카테고리·집계 방식(dry-run/실행 경고 정합).
+     */
+    private fun warnWorklogOutcomes(
+        outcomes: List<WorklogApplyOutcome>,
+        warnings: MutableList<String>,
+    ) {
+        val invalidCount = outcomes.count { it.invalidTimeSpent }
+        if (invalidCount > 0) {
+            warnings += "워크로그 ${invalidCount}건 소요 시간이 0 이하라 건너뛰었습니다."
+        }
+        val unmatchedCount = outcomes.count { it.unmatchedAuthor }
+        if (unmatchedCount > 0) {
+            warnings += "워크로그 ${unmatchedCount}건 작성자 이메일이 매칭되지 않아 요청자로 대체했습니다."
+        }
+        val missingStartedAtCount = outcomes.count { it.missingStartedAt }
+        if (missingStartedAtCount > 0) {
+            warnings += "워크로그 ${missingStartedAtCount}건 시작 시각이 없어 import 실행 시각으로 대체했습니다."
+        }
+    }
+
+    /**
+     * worklog 1건 사전체크·생성 결과([applyWorklogItem]) — [warnWorklogOutcomes] 집계 입력.
+     *
+     * @property invalidTimeSpent timeSpentSeconds≤0 이라 생성을 스킵했으면 true.
+     * @property unmatchedAuthor authorEmail 이 지정됐지만 매칭 실패해 requester 로 폴백했으면 true
+     *   ([invalidTimeSpent]=true 인 항목은 생성 자체를 스킵하므로 항상 false).
+     * @property missingStartedAt startedAt 이 null 이라 import 실행 시각으로 대체했으면 true
+     *   ([invalidTimeSpent]=true 인 항목은 항상 false).
+     */
+    private data class WorklogApplyOutcome(
+        val invalidTimeSpent: Boolean,
+        val unmatchedAuthor: Boolean,
+        val missingStartedAt: Boolean,
+    )
+
+    /**
+     * [key] 스코프로 EDIT_ISSUE(UPDATE) 권한을 실제 확인한다 — 댓글/worklog 실행 사전체크 전용(★2).
+     *
+     * [hasUpdatePermission] 의 dry-run 전용 Project 스코프 예측과 달리, 이 시점엔 이슈가 실제로
+     * 존재하므로([applyComments]/[applyWorklogs] 는 createIssue 직후에만 호출된다) [CommentApplicationService.create]/
+     * [WorklogService.createImported] 내부 checkPermission 과 동일한 [IssueScope.Issue] 로 확인해야
+     * 사전체크와 실제 판정이 어긋나지 않는다.
+     */
+    private fun hasIssueUpdatePermission(
+        actor: ActorId,
+        key: IssueKey,
+    ): Boolean = permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(key.value))
+
+    /**
+     * 댓글/worklog author 이메일을 실제 식별자로 해석한다 — 미매칭 시 [requesterUserId] 로 폴백한다
+     * ([ImportComment.authorEmail]/[ImportWorklog.authorEmail] KDoc, [resolveFields] 의 reporter 폴백과 동일 규칙).
+     */
+    private fun resolveAuthorId(
+        authorEmail: String?,
+        resolvedEmails: Map<String, UUID>,
+        requesterUserId: UUID,
+    ): UUID = authorEmail?.lowercase()?.let { resolvedEmails[it] } ?: requesterUserId
+
+    /** [authorEmail] 이 지정됐지만 [resolvedEmails] 에 매칭되지 않았는지 여부([resolveAuthorId] 의 폴백 발생 조건과 동일). */
+    private fun isAuthorUnmatched(
+        authorEmail: String?,
+        resolvedEmails: Map<String, UUID>,
+    ): Boolean = authorEmail != null && resolvedEmails[authorEmail.lowercase()] == null
+
+    /**
      * import 커맨드의 이메일/이름 필드를 실제 식별자로 해석한 결과.
      *
      * @property reporterId 리포터 사용자 UUID. 이메일 미매칭 시 requesterUserId 로 폴백된 값.
@@ -436,6 +701,10 @@ class IssueImportAdapter(
      * @property componentIds 매칭·자동생성된 컴포넌트 UUID 목록. 미매칭+생성권한없음 이름은 제외된다.
      * @property affectsVersionIds 매칭·자동생성된 "영향받는 버전" UUID 목록.
      * @property fixVersionIds 매칭·자동생성된 "수정 예정 버전" UUID 목록.
+     * @property resolvedEmails [resolveFields] 가 한 번에 배치 해석한 `lower(email) -> UUID` 전체 맵
+     *   (reporter/assignee 뿐 아니라 댓글/worklog author 이메일도 포함, PR3). [applyComments]/
+     *   [applyWorklogs]/[warnCommentsPreview]/[warnWorklogsPreview] 가 [resolveAuthorId]/[isAuthorUnmatched]
+     *   로 재사용해 author 이메일마다 개별 조회를 반복하지 않는다.
      */
     private data class FieldResolution(
         val reporterId: UUID,
@@ -444,12 +713,14 @@ class IssueImportAdapter(
         val componentIds: List<UUID>,
         val affectsVersionIds: List<UUID>,
         val fixVersionIds: List<UUID>,
+        val resolvedEmails: Map<String, UUID>,
     )
 
     /**
      * [cmd] 의 이메일/이름 필드를 실제 식별자로 일괄 해석한다.
      *
-     * - reporterEmail/assigneeEmail: [userLookupPort.resolveByEmails] 1회 배치 호출로 해석.
+     * - reporterEmail/assigneeEmail/댓글·worklog authorEmail: [userLookupPort.resolveByEmails] 1회
+     *   배치 호출로 해석([FieldResolution.resolvedEmails] 로 전체 맵을 보존해 author 해석에 재사용, PR3).
      * - typeName: [resolveTypeId] — 활성 타입 이름 대소문자 무시 매칭.
      * - componentNames/affectsVersionNames/fixVersionNames: [resolveComponentIds]/[resolveVersionIds]
      *   — 프로젝트 활성 이름 대소문자 무시 매칭, 미매칭 시 권한 있으면 자동생성([cmd.dryRun] 이면
@@ -468,9 +739,11 @@ class IssueImportAdapter(
         warnings: MutableList<String>,
     ): FieldResolution {
         val emailsToResolve =
-            listOfNotNull(cmd.reporterEmail, cmd.assigneeEmail)
-                .map { it.lowercase() }
-                .toSet()
+            (
+                listOfNotNull(cmd.reporterEmail, cmd.assigneeEmail) +
+                    cmd.comments.mapNotNull { it.authorEmail } +
+                    cmd.worklogs.mapNotNull { it.authorEmail }
+            ).map { it.lowercase() }.toSet()
         val resolvedEmails =
             if (emailsToResolve.isEmpty()) emptyMap() else userLookupPort.resolveByEmails(emailsToResolve)
 
@@ -482,7 +755,15 @@ class IssueImportAdapter(
         val affectsVersionIds = resolveVersionIds(cmd.affectsVersionNames, projectId, actor, cmd, warnings)
         val fixVersionIds = resolveVersionIds(cmd.fixVersionNames, projectId, actor, cmd, warnings)
 
-        return FieldResolution(reporterId, assigneeId, typeId, componentIds, affectsVersionIds, fixVersionIds)
+        return FieldResolution(
+            reporterId,
+            assigneeId,
+            typeId,
+            componentIds,
+            affectsVersionIds,
+            fixVersionIds,
+            resolvedEmails,
+        )
     }
 
     /**
