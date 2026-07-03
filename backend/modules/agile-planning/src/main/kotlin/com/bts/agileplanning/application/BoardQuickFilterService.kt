@@ -91,7 +91,7 @@ class BoardQuickFilterService(
         name: String,
         query: String,
     ): QuickFilter {
-        repository.findByIdAndBoardId(filterId, boardId) ?: throw QuickFilterNotFoundException()
+        requireExists(boardId, filterId)
 
         val normalizedQuery = validateAndNormalize(boardId, query)
         val quickFilter = QuickFilter(id = filterId, boardId = boardId, name = name, query = normalizedQuery)
@@ -112,7 +112,7 @@ class BoardQuickFilterService(
         boardId: UUID,
         filterId: UUID,
     ) {
-        repository.findByIdAndBoardId(filterId, boardId) ?: throw QuickFilterNotFoundException()
+        requireExists(boardId, filterId)
         repository.delete(filterId, boardId)
         log.debug("퀵필터 삭제 완료 — id={}, boardId={}", filterId, boardId)
     }
@@ -125,6 +125,20 @@ class BoardQuickFilterService(
      */
     @Transactional(readOnly = true)
     fun list(boardId: UUID): List<QuickFilter> = repository.findByBoardId(boardId)
+
+    /**
+     * boardId 소속 퀵필터 존재를 확인한다 (EC5 공통 검증 — update/delete 공유).
+     *
+     * @param boardId 소속 보드 UUID.
+     * @param filterId 확인할 퀵필터 UUID.
+     * @throws QuickFilterNotFoundException 404 — 대상 미존재 또는 타 보드 소속(EC5).
+     */
+    private fun requireExists(
+        boardId: UUID,
+        filterId: UUID,
+    ) {
+        repository.findByIdAndBoardId(filterId, boardId) ?: throw QuickFilterNotFoundException()
+    }
 
     /**
      * query 문자열을 파싱·검증하고 정규화된 문자열을 반환한다 (EC1/EC3/EC4 공통 검증).
