@@ -127,6 +127,22 @@ function normalizeQuickFilterQuery(query: string): string {
   return qs.startsWith('?') ? qs.slice(1) : qs
 }
 
+/**
+ * 퀵필터 생성/수정 요청 body({ name, query })를 파싱한다.
+ * POST/PATCH 핸들러가 공유하는 파싱 로직 응집 — createQuickFilterHandler/updateQuickFilterHandler 동일 계약.
+ *
+ * @param request MSW가 전달한 원본 Request
+ * @returns 파싱된 { name, query } (누락 필드는 빈 문자열). JSON 파싱 자체가 실패하면 null
+ */
+async function parseQuickFilterBody(request: Request): Promise<{ name: string; query: string } | null> {
+  try {
+    const body = (await request.json()) as { name?: string; query?: string }
+    return { name: body.name ?? '', query: body.query ?? '' }
+  } catch {
+    return null
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/boards?projectKey=
 // ─────────────────────────────────────────────────────────────────────────────
@@ -473,18 +489,14 @@ const createQuickFilterHandler = http.post(
       )
     }
 
-    let name = ''
-    let query = ''
-    try {
-      const body = (await request.json()) as { name?: string; query?: string }
-      name = body.name ?? ''
-      query = body.query ?? ''
-    } catch {
+    const parsed = await parseQuickFilterBody(request)
+    if (parsed === null) {
       return HttpResponse.json(
         { errorCode: 'INVALID_REQUEST', message: '요청 body를 파싱할 수 없습니다' },
         { status: 400 },
       )
     }
+    const { name, query } = parsed
 
     const normalizedQuery = normalizeQuickFilterQuery(query)
     if (normalizedQuery === '') {
@@ -552,18 +564,14 @@ const updateQuickFilterHandler = http.patch(
       )
     }
 
-    let name = ''
-    let query = ''
-    try {
-      const body = (await request.json()) as { name?: string; query?: string }
-      name = body.name ?? ''
-      query = body.query ?? ''
-    } catch {
+    const parsed = await parseQuickFilterBody(request)
+    if (parsed === null) {
       return HttpResponse.json(
         { errorCode: 'INVALID_REQUEST', message: '요청 body를 파싱할 수 없습니다' },
         { status: 400 },
       )
     }
+    const { name, query } = parsed
 
     const normalizedQuery = normalizeQuickFilterQuery(query)
     if (normalizedQuery === '') {
