@@ -46,7 +46,7 @@ class BoardQuickFilterRepository(
     fun insert(quickFilter: QuickFilter): QuickFilter {
         log.debug("퀵필터 삽입 — id={}, boardId={}, name={}", quickFilter.id, quickFilter.boardId, quickFilter.name)
 
-        val now = OffsetDateTime.now(ZoneOffset.UTC)
+        val now = nowUtc()
         dsl.insertInto(BOARD_QUICK_FILTERS)
             .set(BOARD_QUICK_FILTERS.ID, quickFilter.id)
             .set(BOARD_QUICK_FILTERS.BOARD_ID, quickFilter.boardId)
@@ -108,7 +108,7 @@ class BoardQuickFilterRepository(
     fun update(quickFilter: QuickFilter): QuickFilter {
         log.debug("퀵필터 갱신 — id={}, boardId={}", quickFilter.id, quickFilter.boardId)
 
-        val now = OffsetDateTime.now(ZoneOffset.UTC)
+        val now = nowUtc()
         val affected =
             dsl.update(BOARD_QUICK_FILTERS)
                 .set(BOARD_QUICK_FILTERS.NAME, quickFilter.name)
@@ -164,6 +164,9 @@ class BoardQuickFilterRepository(
         id: UUID,
         boardId: UUID,
     ): Condition = BOARD_QUICK_FILTERS.ID.eq(id).and(BOARD_QUICK_FILTERS.BOARD_ID.eq(boardId))
+
+    /** UTC 기준 현재 시각. insert/update 의 created_at·updated_at 갱신에 공용. */
+    private fun nowUtc(): OffsetDateTime = OffsetDateTime.now(ZoneOffset.UTC)
 
     /**
      * [BoardQuickFiltersRecord] 를 도메인 [QuickFilter] 로 변환한다.
