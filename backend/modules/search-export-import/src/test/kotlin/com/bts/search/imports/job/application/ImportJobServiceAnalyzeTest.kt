@@ -1,4 +1,4 @@
-// ImportJobService.analyze 단위 테스트 — 공통 검증 재사용(400/403/413/400) + AWAITING_MAPPING 접수(enqueue 없음) + 헤더/샘플 감지 (FR-IM-02 PR-A Task 6)
+// ImportJobService.analyze 단위 테스트 — 공통 검증 재사용(400/403/413) + AWAITING_MAPPING 접수(enqueue 없음) + 헤더/샘플 감지
 
 package com.bts.search.imports.job.application
 
@@ -84,8 +84,9 @@ class ImportJobServiceAnalyzeTest {
             HeaderSample(headers = listOf("Summary"), sampleRows = listOf(listOf("Test issue")))
     }
 
-    private fun csvStream(content: String = "summary\nTest issue\n"): ByteArrayInputStream =
-        ByteArrayInputStream(content.toByteArray())
+    private fun csvStream(content: String = "summary\nTest issue\n"): ByteArrayInputStream {
+        return ByteArrayInputStream(content.toByteArray())
+    }
 
     private fun command(
         format: String = "CSV",
