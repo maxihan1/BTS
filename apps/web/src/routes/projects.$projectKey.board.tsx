@@ -1,13 +1,15 @@
-// 칸반 보드 라우트 — BoardRouteAdapter + BoardPage (FR-BD-01 Task 7 + FR-BD-02 Task 6 + FR-BD-03 Task 6)
+// 칸반 보드 라우트 — BoardRouteAdapter + BoardPage (FR-BD-01 Task 7 + FR-BD-02 Task 6 + FR-BD-03 Task 6 + FR-UX-01 Task 9)
 import type { JSX } from 'react'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearch, useNavigate, Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
 import { toast } from 'sonner'
 import { ApiError } from '@/api/client'
 import { fetchUsers } from '@/api/users'
+import { buildBoardFilterQuery } from '@/api/boards'
 import type { BoardSummary, BoardDetail, BoardCardFilterParams, SwimlaneField } from '@/api/boards'
+import type { QuickFilter } from '@/api/board-quick-filters'
 import { useBoards, useBoard } from '@/hooks/use-boards'
 import { useUpdateSwimlane } from '@/hooks/use-update-swimlane'
 import { useProjectPermissions } from '@/hooks/use-project-permissions'
@@ -15,10 +17,11 @@ import { KanbanBoard } from '@/components/board/KanbanBoard'
 import type { CardAssigneeDisplay } from '@/components/board/BoardCard'
 import { CreateBoardForm } from '@/components/board/CreateBoardForm'
 import { BoardFilterBar } from '@/components/board/BoardFilterBar'
+import { QuickFilterChips } from '@/components/board/QuickFilterChips'
 import { SwimlaneSelector } from '@/components/board/SwimlaneSelector'
 import { boardFilterLabels } from '@/i18n/board-filter-labels'
 import { boardLabels } from '@/i18n/board-labels'
-import { searchToFilter, filterToSearch, isEmptyFilter } from '@/lib/board-filter'
+import { searchToFilter, filterToSearch, isEmptyFilter, queryStringToSearch } from '@/lib/board-filter'
 import {
   Select,
   SelectContent,
@@ -285,6 +288,24 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   // CREATE 권한 여부 — undefined이면 false-safe (로딩 중에는 셀렉터 미노출)
   const canCreate: boolean = projectPermissions?.permissions.CREATE === true
 
+  // ── FR-UX-01 — 활성 퀵필터 id 추적 (FR6). navigate와 co-locate (리뷰 BLOCKER-B).
+  const [activeQuickFilterId, setActiveQuickFilterId] = useState<string | null>(null)
+
+  // C3-d: boardId가 바뀌면(보드 전환) 활성 퀵필터 표시를 초기화한다 — 다른 보드의 퀵필터이므로 무효.
+  const previousBoardIdRef = useRef<string | undefined>(currentBoardId)
+  useEffect(() => {
+    if (previousBoardIdRef.current !== currentBoardId) {
+      setActiveQuickFilterId(null)
+      previousBoardIdRef.current = currentBoardId
+    }
+  }, [currentBoardId])
+
+  // 현재 적용된 보드 필터를 퀵필터 저장 payload용 쿼리스트링(접두 `?` 없음)으로 변환한다.
+  const currentQueryString = useMemo(() => {
+    const qs = buildBoardFilterQuery(stableFilter)
+    return qs.startsWith('?') ? qs.slice(1) : qs
+  }, [stableFilter])
+
   /**
    * SwimlaneSelector onChange 핸들러.
    * PATCH 요청 후 invalidate-only (setQueryData 캐시 덮기 금지 — mutation 부분응답 플리커 방지).
@@ -326,7 +347,9 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   }, [boardDetail, stableFilter])
 
   // BoardFilterBar onChange 핸들러 — filterToSearch 결과와 board를 합쳐 navigate
+  // C3-b: 수동 필터 변경은 활성 퀵필터 표시를 해제한다 (더 이상 그 퀵필터의 조건과 일치한다는 보장이 없음).
   function handleFilterChange(next: BoardCardFilterParams): void {
+    setActiveQuickFilterId(null)
     const filterSearch = filterToSearch(next)
     void navigate({
       to: '/projects/$projectKey/board',
@@ -338,8 +361,9 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
     })
   }
 
-  // 빈 상태 초기화 핸들러 — 빈 필터로 navigate (board만 유지)
+  // 빈 상태 초기화 핸들러 — 빈 필터로 navigate (board만 유지). 활성 퀵필터 표시도 해제한다.
   function handleFilterReset(): void {
+    setActiveQuickFilterId(null)
     void navigate({
       to: '/projects/$projectKey/board',
       params: { projectKey },
@@ -347,6 +371,39 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
         ...(currentBoardId !== undefined ? { board: currentBoardId } : {}),
       },
     })
+  }
+
+  /**
+   * 퀵필터 칩 클릭 핸들러 (FR6).
+   * QuickFilterChips가 토글 여부(활성 칩 재클릭 → null)를 판정해 전달한다.
+   * null이면 필터 해제(handleFilterReset), 아니면 저장된 query를 URL search로 반영해 적용한다.
+   */
+  function handleQuickFilterApply(filter: QuickFilter | null): void {
+    if (filter === null) {
+      handleFilterReset()
+      return
+    }
+    setActiveQuickFilterId(filter.filterId)
+    const filterSearch = queryStringToSearch(filter.query)
+    void navigate({
+      to: '/projects/$projectKey/board',
+      params: { projectKey },
+      search: {
+        ...(currentBoardId !== undefined ? { board: currentBoardId } : {}),
+        ...filterSearch,
+      },
+    })
+  }
+
+  /**
+   * 퀵필터 삭제 완료 핸들러 (C3-c).
+   * 삭제된 필터가 현재 활성 상태였다면 activeQuickFilterId를 초기화한다.
+   * (URL에 이미 반영된 필터 조건 자체는 건드리지 않는다 — 칩만 비활성 표시로 돌아간다.)
+   */
+  function handleQuickFilterDeleted(_filterId: string, wasActive: boolean): void {
+    if (wasActive) {
+      setActiveQuickFilterId(null)
+    }
   }
 
   // ── 공통 헤더 — projectKey 기반 즐겨찾기 버튼 (로딩/빈 보드 분기 무관하게 항상 노출)
@@ -463,6 +520,19 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
           projectKey={projectKey}
           value={stableFilter}
           onChange={handleFilterChange}
+        />
+      )}
+
+      {/* QuickFilterChips — BoardFilterBar 인접 배치 (리뷰 BLOCKER-B, FR-UX-01) */}
+      {boardDetail !== undefined && currentBoardId !== undefined && (
+        <QuickFilterChips
+          boardId={currentBoardId}
+          quickFilters={boardDetail.quickFilters}
+          activeQuickFilterId={activeQuickFilterId}
+          canManage={canCreate}
+          currentQuery={currentQueryString}
+          onApply={handleQuickFilterApply}
+          onFilterDeleted={handleQuickFilterDeleted}
         />
       )}
 
