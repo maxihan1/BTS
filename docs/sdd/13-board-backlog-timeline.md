@@ -79,10 +79,13 @@
 - 스프린트별 완료 스토리 포인트
 - 직전 N 스프린트 평균
 
-### 13.5.4 CFD (FR-RP-03)
-- Cumulative Flow Diagram
-- X축: 시간, Y축: 누적 이슈 수
-- 카테고리별 컬러 스택
+### 13.5.4 CFD (FR-RP-03) — 구현됨 (백엔드 D1~D5, PR #225)
+- Cumulative Flow Diagram (누적 흐름 다이어그램)
+- X축: 시간(일 단위, UTC), Y축: 상태 카테고리별 순간 이슈 수를 stacked
+- **카테고리 3띠**(TODO/IN_PROGRESS/DONE) — 워크플로우 상태별 N띠 아님(프로젝트 무관 균일, ADR D1 확정)
+- **데이터 = on-the-fly 역산**: `issue_change` status 전이 이력에서 각 이슈 상태 타임라인 재구성(스냅샷/스케줄러 0, ADR D2)
+- 엔드포인트 `GET /api/v1/projects/{projectKey}/cfd?from=&to=`(모듈 issue-tracking, 프로젝트 BROWSE + 이슈별 가시성 필터)
+- ADR [CFD 데이터 모델](../decisions/2026-07-03-fr-rp-03-cfd.md)
 
 ### 13.5.5 Cycle Time / Lead Time (FR-RP-04)
 - Cycle Time: In Progress → Done
@@ -97,7 +100,7 @@
 - 과거 스프린트도 소급 계산 가능 (스냅샷 방식은 도입 이후 데이터만 쌓여 과거 소급이 불가능)
 - 1,000명 규모에서 스프린트당 이슈·worklog 행 수가 적어 요청 시 계산 부담은 무시 가능
 
-아래는 최초 설계 시점의 스냅샷 테이블 안이며, 번다운(FR-RP-01)은 위 결정으로 대체됐다. **벨로시티(FR-RP-02)/CFD(FR-RP-03)는 아직 미구현 — 각 FR 구현 시점에 데이터 소스를 별도 확정**한다.
+아래는 최초 설계 시점의 스냅샷 테이블 안이며, 번다운(FR-RP-01)은 위 결정으로 대체됐다. **벨로시티(FR-RP-02, ADR [벨로시티](../decisions/2026-07-02-fr-rp-02-velocity.md))·CFD(FR-RP-03, ADR [CFD](../decisions/2026-07-03-fr-rp-03-cfd.md))도 스냅샷 테이블을 채택하지 않고 on-the-fly 재구성으로 구현됐다** — 벨로시티는 현재 상태 집계, CFD는 `issue_change` status 전이 이력에서 상태 타임라인을 소급 재구성. 스냅샷 안은 셋 다 미채택.
 
 ```sql
 -- 미채택 설계(참고). 벨로시티/CFD 구현 시 재검토 대상
