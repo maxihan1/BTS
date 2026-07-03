@@ -1,6 +1,7 @@
 // Jira 호환 CSV/JSON import 파일을 코어 필드 행(ParsedImportRow)으로 변환하는 스트리밍 파서
 package com.bts.search.imports.parse
 
+import com.bts.search.imports.mapping.TargetField
 import com.fasterxml.jackson.core.JsonFactory
 import com.fasterxml.jackson.core.JsonParseException
 import com.fasterxml.jackson.core.JsonParser
@@ -33,7 +34,8 @@ import java.io.InputStreamReader
  * Status 는 원본 문자열을 그대로 담고, Fix/Affects Version 은 라벨/컴포넌트와 동일하게 콤마/세미콜론
  * 다중값을 분리한다 — 상태·버전 이름 자체의 존재 확인(프로젝트 워크플로우/버전 매칭)은 후속 단계 책임이다.
  *
- * 임의 Jira 헤더(`Component/s` 등)·자유 매핑은 FR-IM-02(매핑 UI) 몫 — 본 PR은 canonical 컬럼명만 인식한다.
+ * 임의 Jira 헤더(`Component/s` 등)·자유 매핑은 FR-IM-02(매핑 UI) 몫 — [parseCsv] 3-인자 오버로드
+ * (mapped 모드, §매핑 기반 파싱)로 지원한다.
  *
  * ### 댓글/worklog (PR3)
  *
@@ -58,6 +60,32 @@ import java.io.InputStreamReader
  * 이미 이슈 단위로 스트리밍되는 [buildJsonRow] 부분 트리([issueNode])에서 읽기만 하므로 추가
  * 스트리밍 복잡도는 없다.
  *
+ * ### 매핑 기반 파싱 (FR-IM-02 PR-A, mapped 모드)
+ *
+ * [parseCsv] 는 2개 오버로드를 제공한다. `fieldMapping` 없이 호출하면(2-인자, canonical) 기존
+ * canonical 헤더 이름(`summary`/`description`/... — [CANONICAL_HEADER_BY_TARGET_FIELD])으로
+ * 컬럼을 찾는다. `fieldMapping`(소스 헤더 → [TargetField.key], FR-IM-02 매핑 UI 확정값)을 함께
+ * 넘기면(3-인자, mapped) 리터럴 헤더 이름과 무관하게 매핑이 지정한 컬럼을 사용한다 — 임의 헤더
+ * (예: `"제목"`)를 자유롭게 매핑할 수 있다. 두 경로는 [resolveTargetColumns] 로 공통 처리한다.
+ *
+ * `fieldMapping` 을 **두 번째 인자의 기본값**(`fieldMapping: Map<String, String>? = null`)으로
+ * 두지 않고 별도 오버로드로 분리한 이유 — 기존 호출부(`ImportJobProcessor`)가 이미
+ * `parser.parseCsv(input, onRow)` positional 2-인자로 호출 중이라, 중간에 기본인자가 끼어들면
+ * `onRow` 람다가 `fieldMapping` 자리에 바인딩되어 컴파일이 깨진다.
+ *
+ * 필수 컬럼(Summary) 검사는 canonical 리터럴 헤더 존재가 아니라 [resolveTargetColumns] 결과에
+ * [TargetField.SUMMARY] 위치가 있는지로 판정한다(두 오버로드 공통) — mapped 모드는 `fieldMapping`
+ * 에 summary 매핑이 있으면 리터럴 `summary` 헤더가 없어도 통과한다. mapped 모드에서 사용자가
+ * summary 매핑 자체를 누락한 경우의 필수값 검증은 이 파서가 아니라 매핑 확정(confirm) 단계 책임이다.
+ *
+ * 댓글 다중 `Comment` 컬럼 수집([commentColumnPositions])은 [TargetField] 매핑 대상이 아니다
+ * (카탈로그에 댓글 항목이 없다, [TargetField] KDoc) — mapped 모드에서도 canonical 과 동일하게
+ * 리터럴 헤더 이름(대소문자 무시)으로 동작한다.
+ *
+ * [readHeaderAndSample] 은 매핑 UI 진입 전 analyze 단계에서 헤더 + 소량 샘플 값을 보여주기 위한
+ * 별도 진입점이다 — [parseCsv] 와 달리 전체 파일을 순회하지 않고 헤더 + 최대 N 개 데이터 행만
+ * 읽은 뒤 조기 중단한다.
+ *
  * ### 파일 구조 오류
  *
  * 헤더 행이 없거나 필수 컬럼(Summary)이 없는 CSV, `issues` 배열이 없거나 문법이 깨진 JSON은
@@ -69,7 +97,7 @@ class ImportRowParser {
     // ── CSV ──────────────────────────────────────────────────────────────────
 
     /**
-     * Jira 호환 CSV(RFC 4180)를 파싱해 행마다 [onRow] 를 호출한다.
+     * Jira 호환 CSV(RFC 4180)를 canonical 헤더 이름으로 파싱해 행마다 [onRow] 를 호출한다.
      *
      * 헤더 행으로 컬럼을 인식한다(대소문자 무시). 완전히 빈 입력이거나 헤더만 있으면 [onRow] 를
      * 한 번도 호출하지 않는다. 헤더에 필수 컬럼(Summary)이 없거나 따옴표가 닫히지 않은 채 파일이
@@ -82,12 +110,40 @@ class ImportRowParser {
     fun parseCsv(
         input: InputStream,
         onRow: (ParsedImportRow) -> Unit,
+    ) = parseCsvWith(input, fieldMapping = null, onRow)
+
+    /**
+     * Jira 호환 CSV(RFC 4180)를 FR-IM-02 매핑 UI 가 확정한 [fieldMapping] 으로 파싱해 행마다
+     * [onRow] 를 호출한다(클래스 KDoc §매핑 기반 파싱).
+     *
+     * 리터럴 canonical 헤더 이름과 무관하게 [fieldMapping] 이 지정한 소스 헤더 → [TargetField] 로
+     * 컬럼을 찾는다. 그 외 동작(빈 입력/헤더만 있는 입력 → 0행, 필수 컬럼 부재/따옴표 미종결 →
+     * [ImportParseException], 댓글 다중 컬럼 수집)은 [parseCsv] 2-인자 오버로드와 동일하다.
+     *
+     * @param input CSV 원본 스트림(UTF-8). 닫기는 호출자 책임.
+     * @param fieldMapping 소스 헤더 이름 → [TargetField.key] 매핑(`trim + lowercase` 무시 매칭).
+     *   [TargetField.fromKey] 로 해석되지 않는 값(예: [TargetField.IGNORE_KEY], 미지 키)은 무시한다.
+     * @param onRow 파싱된 행 1건을 전달받는 콜백. 데이터 행 순서대로, 1-기준 rowNumber 와 함께 호출된다.
+     * @throws ImportParseException [fieldMapping] 으로 Summary 대상 컬럼을 찾지 못했거나 CSV 구조가
+     *   깨졌을 때.
+     */
+    fun parseCsv(
+        input: InputStream,
+        fieldMapping: Map<String, String>,
+        onRow: (ParsedImportRow) -> Unit,
+    ) = parseCsvWith(input, fieldMapping, onRow)
+
+    /** [parseCsv] 두 오버로드가 공유하는 실제 CSV 파싱 로직. [fieldMapping] 이 null 이면 canonical. */
+    private fun parseCsvWith(
+        input: InputStream,
+        fieldMapping: Map<String, String>?,
+        onRow: (ParsedImportRow) -> Unit,
     ) {
         val reader = BufferedReader(InputStreamReader(input, Charsets.UTF_8))
         val headerLine = readLogicalLine(reader) ?: return
         val headers = parseCsvLine(headerLine)
-        val columnIndex = buildColumnIndex(headers)
-        if (columnIndex[HEADER_SUMMARY] == null) {
+        val targetColumns = resolveTargetColumns(headers, fieldMapping)
+        if (targetColumns[TargetField.SUMMARY] == null) {
             throw ImportParseException("CSV 헤더에 필수 컬럼 Summary 가 없습니다")
         }
         val commentPositions = commentColumnPositions(headers)
@@ -96,8 +152,37 @@ class ImportRowParser {
             .filterNot { it.isBlank() }
             .forEach { line ->
                 rowNumber++
-                onRow(buildCsvRow(rowNumber, columnIndex, commentPositions, parseCsvLine(line)))
+                onRow(buildCsvRow(rowNumber, targetColumns, commentPositions, parseCsvLine(line)))
             }
+    }
+
+    /**
+     * FR-IM-02 analyze 단계 — CSV 헤더 + 최대 [sampleSize] 데이터 행만 읽고 조기 중단한다.
+     *
+     * 매핑 UI 미리보기용이라 전체 파일을 파싱하지 않는다 — 헤더 행 + [sampleSize] 개 데이터 행을
+     * 읽은 직후 스트림을 더 읽지 않고 반환한다. [sampleSize] 이후에 손상된 데이터(예: 따옴표
+     * 미종결)가 있어도 도달하지 않으므로 [parseCsv] 와 달리 [ImportParseException] 을 던지지
+     * 않는다. 값 정화([sanitizeControlChars])/트림도 하지 않는다 — 원본 그대로 미리보기에 노출한다.
+     *
+     * @param input CSV 원본 스트림(UTF-8). 닫기는 호출자 책임.
+     * @param sampleSize 읽을 최대 데이터 행 수(헤더 제외). 기본 [DEFAULT_SAMPLE_SIZE].
+     * @return 헤더 셀 목록 + 샘플 데이터 행(각 행은 셀 목록) 최대 [sampleSize] 건. 빈 입력이면 둘 다 비어있다.
+     */
+    fun readHeaderAndSample(
+        input: InputStream,
+        sampleSize: Int = DEFAULT_SAMPLE_SIZE,
+    ): HeaderSample {
+        val reader = BufferedReader(InputStreamReader(input, Charsets.UTF_8))
+        val emptySample = HeaderSample(headers = emptyList(), sampleRows = emptyList())
+        val headerLine = readLogicalLine(reader) ?: return emptySample
+        val headers = parseCsvLine(headerLine)
+        val sampleRows = mutableListOf<List<String>>()
+        while (sampleRows.size < sampleSize) {
+            val line = readLogicalLine(reader) ?: break
+            if (line.isBlank()) continue
+            sampleRows.add(parseCsvLine(line))
+        }
+        return HeaderSample(headers = headers, sampleRows = sampleRows)
     }
 
     /**
@@ -165,6 +250,48 @@ class ImportRowParser {
     }
 
     /**
+     * 헤더 목록을 [TargetField] 별 컬럼 위치로 해석한다(canonical/mapped 두 경로 공통, 클래스
+     * KDoc §매핑 기반 파싱).
+     *
+     * [fieldMapping] 이 null 이면 canonical 헤더 이름([CANONICAL_HEADER_BY_TARGET_FIELD])으로,
+     * 아니면 FR-IM-02 매핑 UI 가 확정한 소스 헤더 → [TargetField.key] 매핑으로 위치를 찾는다.
+     */
+    private fun resolveTargetColumns(
+        headers: List<String>,
+        fieldMapping: Map<String, String>?,
+    ): Map<TargetField, Int> {
+        val columnIndex = buildColumnIndex(headers)
+        return if (fieldMapping != null) {
+            resolveMappedTargetColumns(columnIndex, fieldMapping)
+        } else {
+            resolveCanonicalTargetColumns(columnIndex)
+        }
+    }
+
+    /** canonical 헤더 이름([CANONICAL_HEADER_BY_TARGET_FIELD])으로 [TargetField] 별 위치를 찾는다. */
+    private fun resolveCanonicalTargetColumns(columnIndex: Map<String, Int>): Map<TargetField, Int> =
+        CANONICAL_HEADER_BY_TARGET_FIELD
+            .mapNotNull { (field, header) -> columnIndex[header]?.let { position -> field to position } }
+            .toMap()
+
+    /**
+     * FR-IM-02 매핑 UI 가 확정한 소스 헤더 → [TargetField.key] 매핑으로 [TargetField] 별 위치를
+     * 찾는다. 소스 헤더 비교는 [buildColumnIndex] 와 동일하게 `trim + lowercase` 무시 매칭이다.
+     * [TargetField.fromKey] 로 해석되지 않는 값(예: [TargetField.IGNORE_KEY], 미지 키)과 CSV
+     * 헤더에 없는 소스 헤더는 조용히 걸러진다.
+     */
+    private fun resolveMappedTargetColumns(
+        columnIndex: Map<String, Int>,
+        fieldMapping: Map<String, String>,
+    ): Map<TargetField, Int> =
+        fieldMapping
+            .mapNotNull { (sourceHeader, targetKey) ->
+                val targetField = TargetField.fromKey(targetKey) ?: return@mapNotNull null
+                val position = columnIndex[sourceHeader.trim().lowercase()] ?: return@mapNotNull null
+                targetField to position
+            }.toMap()
+
+    /**
      * `comment` 헤더(대소문자 무시)의 **전 위치**를 순서대로 수집한다.
      *
      * Jira CSV 는 댓글 N 건을 동명 `Comment` 컬럼 N 개로 export 하는데, [buildColumnIndex] 는
@@ -176,31 +303,35 @@ class ImportRowParser {
             .filter { (_, header) -> header.trim().lowercase() == HEADER_COMMENT }
             .map { (position, _) -> position }
 
-    /** 컬럼 인덱스 + 댓글 다중 위치 + 셀 목록으로 [ParsedImportRow] 1건을 조립한다. */
+    /**
+     * 대상 컬럼 위치([resolveTargetColumns]) + 댓글 다중 위치 + 셀 목록으로 [ParsedImportRow] 1건을
+     * 조립한다. canonical/mapped 두 경로가 이 함수 하나를 공유한다([TargetField] 로 조회하므로
+     * 리터럴 헤더 이름을 몰라도 된다).
+     */
     private fun buildCsvRow(
         rowNumber: Int,
-        columnIndex: Map<String, Int>,
+        targetColumns: Map<TargetField, Int>,
         commentPositions: List<Int>,
         cells: List<String>,
     ): ParsedImportRow {
-        fun cell(header: String): String? {
-            val position = columnIndex[header]
+        fun cell(field: TargetField): String? {
+            val position = targetColumns[field]
             val raw = if (position != null && position < cells.size) cells[position] else null
             return raw?.let { sanitizeControlChars(it).trim().ifEmpty { null } }
         }
         return ParsedImportRow(
             rowNumber = rowNumber,
-            summary = cell(HEADER_SUMMARY),
-            description = cell(HEADER_DESCRIPTION),
-            typeName = cell(HEADER_ISSUE_TYPE),
-            priorityName = normalizePriorityName(cell(HEADER_PRIORITY)),
-            reporterEmail = cell(HEADER_REPORTER),
-            assigneeEmail = cell(HEADER_ASSIGNEE),
-            labels = splitMultiValue(cell(HEADER_LABELS)),
-            componentNames = splitMultiValue(cell(HEADER_COMPONENT)),
-            statusName = cell(HEADER_STATUS),
-            fixVersionNames = splitMultiValue(cell(HEADER_FIX_VERSION)),
-            affectsVersionNames = splitMultiValue(cell(HEADER_AFFECTS_VERSION)),
+            summary = cell(TargetField.SUMMARY),
+            description = cell(TargetField.DESCRIPTION),
+            typeName = cell(TargetField.TYPE),
+            priorityName = normalizePriorityName(cell(TargetField.PRIORITY)),
+            reporterEmail = cell(TargetField.REPORTER),
+            assigneeEmail = cell(TargetField.ASSIGNEE),
+            labels = splitMultiValue(cell(TargetField.LABELS)),
+            componentNames = splitMultiValue(cell(TargetField.COMPONENT)),
+            statusName = cell(TargetField.STATUS),
+            fixVersionNames = splitMultiValue(cell(TargetField.FIX_VERSION)),
+            affectsVersionNames = splitMultiValue(cell(TargetField.AFFECTS_VERSION)),
             comments = csvCommentsOf(commentPositions, cells),
             // worklog 는 CSV 에서 미지원(Jira 표준 worklog export 형식 없음, JSON 전용).
         )
@@ -495,6 +626,25 @@ class ImportRowParser {
         private const val HEADER_AFFECTS_VERSION = "affects version"
         private const val HEADER_COMMENT = "comment"
 
+        /** canonical 모드([resolveCanonicalTargetColumns])가 쓰는 [TargetField] → 헤더 이름 매핑. */
+        private val CANONICAL_HEADER_BY_TARGET_FIELD =
+            mapOf(
+                TargetField.SUMMARY to HEADER_SUMMARY,
+                TargetField.DESCRIPTION to HEADER_DESCRIPTION,
+                TargetField.TYPE to HEADER_ISSUE_TYPE,
+                TargetField.PRIORITY to HEADER_PRIORITY,
+                TargetField.REPORTER to HEADER_REPORTER,
+                TargetField.ASSIGNEE to HEADER_ASSIGNEE,
+                TargetField.LABELS to HEADER_LABELS,
+                TargetField.COMPONENT to HEADER_COMPONENT,
+                TargetField.STATUS to HEADER_STATUS,
+                TargetField.FIX_VERSION to HEADER_FIX_VERSION,
+                TargetField.AFFECTS_VERSION to HEADER_AFFECTS_VERSION,
+            )
+
+        /** [readHeaderAndSample] 기본 샘플 행 수. */
+        private const val DEFAULT_SAMPLE_SIZE = 5
+
         private const val CSV_DELIMITER = ','
 
         // 댓글 CSV 셀(`date;author;body`) 분해 — 본문 내부 세미콜론 보존을 위한 limit 분할(PR3).
@@ -564,3 +714,17 @@ class ImportRowParser {
         private val OBJECT_MAPPER = ObjectMapper()
     }
 }
+
+/**
+ * [ImportRowParser.readHeaderAndSample] 결과 — FR-IM-02 매핑 UI analyze 단계의 헤더 + 미리보기.
+ *
+ * @property headers CSV 헤더 셀 목록(원본 순서, `trim`/`lowercase` 미적용 — 매핑 UI에 원본 그대로
+ *   노출한다. 대소문자 무시 매칭이 필요한 곳(예: [ImportRowParser.parseCsv] mapped 모드)은 이 값을
+ *   그대로 `fieldMapping` 키로 넘겨도 된다).
+ * @property sampleRows 헤더 다음 데이터 행 최대 N 건([ImportRowParser.readHeaderAndSample] 의
+ *   `sampleSize`). 각 행은 셀 목록(원본 그대로, 정화/트림 미적용).
+ */
+data class HeaderSample(
+    val headers: List<String>,
+    val sampleRows: List<List<String>>,
+)
