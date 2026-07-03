@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- boxPlotScale은 테스트용 named export (spec FR-RP-04 task-5 명시, WorklogAggregateChart 선례) */
 // Cycle/Lead Time 분포 박스플롯 — 표준 Tukey 박스플롯(상자 p25~p75, 중앙선 p50, 수염 min~max) 커스텀 SVG (FR-RP-04 D6/D7)
 import type { JSX } from 'react'
 import { formatDuration } from '@/lib/format-duration'
