@@ -326,6 +326,7 @@ class BoardQuickFilterControllerIntegrationTest {
                 .content(mapper.writeValueAsString(body)),
         )
             .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_QUICK_FILTER_EMPTY_QUERY"))
     }
 
     // ── CREATE-8. POST name blank → 400 ───────────────────────────────────────
@@ -380,6 +381,7 @@ class BoardQuickFilterControllerIntegrationTest {
                 .content(mapper.writeValueAsString(body)),
         )
             .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_QUICK_FILTER_LIMIT_EXCEEDED"))
     }
 
     // ── UPDATE-1. PATCH 정상 → 200 ────────────────────────────────────────────
@@ -480,6 +482,7 @@ class BoardQuickFilterControllerIntegrationTest {
                 .content(mapper.writeValueAsString(body)),
         )
             .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_QUICK_FILTER_NOT_FOUND"))
     }
 
     // ── UPDATE-6. PATCH 이름 중복 → 409 ───────────────────────────────────────
@@ -571,6 +574,7 @@ class BoardQuickFilterControllerIntegrationTest {
 
         mockMvc.perform(delete("/api/v1/boards/${board.id}/quick-filters/$filterId"))
             .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_QUICK_FILTER_NOT_FOUND"))
     }
 
     // ── ORDER-1. 권한 거부 시 리소스(서비스)가 호출되지 않는다 ─────────────────
