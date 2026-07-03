@@ -38,6 +38,15 @@ import java.util.UUID
  * 기준 시각을 2027-01-01(현재 실행 시점보다 명백히 미래)로 고정한다.
  * 만료 작업의 expires_at 을 이 기준 이전으로 설정해, 실제 시스템 시각이 아니라
  * **주입된 [Clock] 을 사용해 만료를 판정**하는지 검증한다(learnings: authcontroller-revokesession-timebomb).
+ *
+ * ## CONCERN-4 — cleanup vs confirm 레이스 (deleteIfExpired 가드)
+ * [ImportJobRepository.findExpired] 스냅샷 이후, 삭제 직전에 사용자가 매핑을 확정
+ * ([ImportJobRepository.transitionToPending])하는 레이스 타이밍은 실 DB(Testcontainers) 위에서
+ * 결정론적으로 재현할 수 없다(고정 스레드 개입 없이는 순서를 보장 못한다). 이 클래스의 다른
+ * 테스트와 달리 CONCERN-4 전용 테스트만 [ImportJobRepository] 를 MockK 로 대체해
+ * "[ImportJobRepository.deleteIfExpired] 가 이미 false 를 반환한(가드가 레이스를 잡아낸) 상황에서
+ * 워커가 취해야 할 동작"(MinIO 오브젝트를 절대 건드리지 않음)을 직접 검증한다. 가드 SQL 자체
+ * (`expires_at` 조건)의 정확성은 [ImportJobRepository] 자체 테스트(Task 4) 책임이다.
  */
 class ImportJobCleanupWorkerTest : SearchPersistenceTestBase() {
     private val repo get() = ImportJobRepository(dsl)
@@ -85,6 +94,31 @@ class ImportJobCleanupWorkerTest : SearchPersistenceTestBase() {
         repo.markCompleted(job.id, succeededRows = 900L, failedRows = 100L, errorLogObjectKey, expiresAt)
         return repo.findById(job.id) ?: error("insertCompletedJob: job not found after markCompleted")
     }
+
+    /**
+     * CONCERN-4 테스트 전용 — DB 에 삽입하지 않고 만료된 AWAITING_MAPPING [ImportJob] 도메인 객체만
+     * 만든다. [ImportJobRepository] 를 MockK 로 대체하는 테스트에서 `findExpired` 스텁 반환값으로 쓴다.
+     */
+    private fun makeExpiredAwaitingMappingJob(errorLogObjectKey: String?): ImportJob =
+        ImportJob(
+            id = ImportJobId(UUID.randomUUID()),
+            projectKey = "ATLAS",
+            format = "CSV",
+            sourceObjectKey = "imports/raw/${UUID.randomUUID()}.csv",
+            dryRun = false,
+            requesterUserId = UUID.randomUUID(),
+            status = ImportJobStatus.AWAITING_MAPPING,
+            progress = 0,
+            totalRows = null,
+            succeededRows = 0,
+            failedRows = 0,
+            errorCode = null,
+            errorLogObjectKey = errorLogObjectKey,
+            expiresAt = fixedNow.minusSeconds(1),
+            createdAt = Instant.now(),
+            startedAt = null,
+            completedAt = null,
+        )
 
     // ── (a) 만료 작업 없음 ────────────────────────────────────────────────────────
 
@@ -167,5 +201,21 @@ class ImportJobCleanupWorkerTest : SearchPersistenceTestBase() {
         assertThat(repo.findById(notExpiredJob.id))
             .describedAs("fixedNow 이후 만료 작업은 보존되어야 한다")
             .isNotNull()
+    }
+
+    // ── (g) CONCERN-4 — cleanup vs confirm 레이스: deleteIfExpired 가 false 면 오브젝트도 보존 ──
+
+    @Test
+    fun `deleteIfExpired 가 false 를 반환하면(confirm 레이스로 이미 보존된 job) MinIO 오브젝트를 삭제하지 않는다`() {
+        val mockRepo = mockk<ImportJobRepository>()
+        val job = makeExpiredAwaitingMappingJob(errorLogObjectKey = "ATLAS/errors.csv")
+        every { mockRepo.findExpired(fixedNow) } returns listOf(job)
+        every { mockRepo.deleteIfExpired(job.id, fixedNow) } returns false
+        val worker = ImportJobCleanupWorker(mockRepo, storage, fixedClock)
+
+        worker.cleanupExpired()
+
+        verify(exactly = 1) { mockRepo.deleteIfExpired(job.id, fixedNow) }
+        verify(exactly = 0) { storage.delete(any()) }
     }
 }
