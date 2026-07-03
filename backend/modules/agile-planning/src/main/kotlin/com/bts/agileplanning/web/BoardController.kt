@@ -42,7 +42,7 @@ import java.util.UUID
  *
  * 엔드포인트 목록.
  * - POST `/api/v1/boards` — 보드 생성. 권한 [IssuePermission.CREATE] on [IssueScope.Project].
- * - GET  `/api/v1/boards/{id}` — 보드 단건 조회(컬럼+카드). 권한 [IssuePermission.BROWSE].
+ * - GET  `/api/v1/boards/{id}` — 보드 단건 조회(컬럼+카드+퀵필터). 권한 [IssuePermission.BROWSE].
  * - GET  `/api/v1/boards?projectKey=` — 프로젝트별 보드 목록. 권한 [IssuePermission.BROWSE].
  * - POST `/api/v1/boards/{id}/cards/{issueKey}/move` — 카드 이동. 보드 접근 [IssuePermission.BROWSE] +
  *   이동 자체는 [com.bts.shared.board.IssueTransitionPort] 가 TRANSITION 을 강제한다.
