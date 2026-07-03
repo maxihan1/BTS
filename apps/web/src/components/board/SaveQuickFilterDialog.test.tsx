@@ -230,6 +230,40 @@ describe('SaveQuickFilterDialog — 이름 중복(d)', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// (d-2) 409 상한 초과(EC3) — errorCode 분기로 nameConflict와 구분(코드리뷰 CONCERN-1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SaveQuickFilterDialog — 상한 초과(d-2)', () => {
+  it('errorCode=AGILE_QUICK_FILTER_LIMIT_EXCEEDED인 409 → limitExceeded 메시지 표시(nameConflict 아님)', async () => {
+    server.use(
+      http.post(`/api/v1/boards/${BOARD_ID}/quick-filters`, () =>
+        HttpResponse.json({ errorCode: 'AGILE_QUICK_FILTER_LIMIT_EXCEEDED' }, { status: 409 }),
+      ),
+    )
+
+    render(
+      <SaveQuickFilterDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        mode="create"
+        boardId={BOARD_ID}
+        currentQuery="assignee=abc"
+      />,
+      { wrapper: createWrapper() },
+    )
+
+    const user = userEvent.setup()
+    await user.type(screen.getByRole('textbox', { name: /이름/i }), '스물한 번째 필터')
+    await user.click(screen.getByRole('button', { name: quickFilterLabels.form.saveButton }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(quickFilterLabels.errors.limitExceeded)
+    })
+    expect(screen.getByRole('alert')).not.toHaveTextContent(quickFilterLabels.errors.nameConflict)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // (e) 400 잘못된 query → 인라인 오류(EC4)
 // ─────────────────────────────────────────────────────────────────────────────
 
