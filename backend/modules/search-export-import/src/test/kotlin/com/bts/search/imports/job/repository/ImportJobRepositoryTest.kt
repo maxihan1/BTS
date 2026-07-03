@@ -37,7 +37,8 @@ import java.util.UUID
  * - markFailed: RUNNING/PENDING→FAILED CAS (errorCode/completedAt 설정)
  * - findByIdForRequester: 소유자 성공 / 타인 null
  * - findExpired: expires_at < now 포함 / expires_at NULL 제외 / 미래 expires_at 제외 / AWAITING_MAPPING 도 포함(status 무관)
- * - transitionToPending(FR-IM-02): AWAITING_MAPPING→PENDING CAS + expires_at=NULL / 다른 상태 false(멱등)
+ * - transitionToPending(FR-IM-02): AWAITING_MAPPING→PENDING CAS + expires_at=NULL + dry_run 확정
+ *   (confirm 파라미터 영속, dryrun-fix) / 다른 상태 false(멱등)
  * - deleteIfExpired(FR-IM-02): expires_at 지난 행만 가드 삭제 / NULL·미래 expires_at 은 보존
  */
 class ImportJobRepositoryTest : SearchPersistenceTestBase() {
@@ -80,15 +81,18 @@ class ImportJobRepositoryTest : SearchPersistenceTestBase() {
         )
 
     /**
-     * status/expires_at 를 직접 지정해 import_jobs 행을 시드한다 (FR-IM-02).
+     * status/expires_at/dry_run 을 직접 지정해 import_jobs 행을 시드한다 (FR-IM-02).
      *
      * [ImportJobRepository.insert] 는 접수 시점 expires_at 을 세팅하지 않으므로,
      * AWAITING_MAPPING TTL·만료·확정 레이스 시나리오는 dsl 로 직접 시드한다.
+     * [dryRun] 은 [ImportJobRepository.transitionToPending] 의 dry_run 확정 검증에서
+     * 시드 값과 다른 값으로 전이해 실제로 컬럼이 갱신됨(기본값이 아님)을 확인하는 데 쓴다.
      */
     private fun seedJob(
         status: ImportJobStatus,
         expiresAt: Instant?,
         id: ImportJobId = ImportJobId(UUID.randomUUID()),
+        dryRun: Boolean = false,
     ): ImportJobId {
         dsl.insertInto(IMPORT_JOBS)
             .set(IMPORT_JOBS.ID, id.value)
@@ -98,6 +102,7 @@ class ImportJobRepositoryTest : SearchPersistenceTestBase() {
             .set(IMPORT_JOBS.REQUESTER_USER_ID, UUID.randomUUID())
             .set(IMPORT_JOBS.STATUS, status.name)
             .set(IMPORT_JOBS.EXPIRES_AT, expiresAt?.let { OffsetDateTime.ofInstant(it, ZoneOffset.UTC) })
+            .set(IMPORT_JOBS.DRY_RUN, dryRun)
             .execute()
         return id
     }
@@ -399,7 +404,7 @@ class ImportJobRepositoryTest : SearchPersistenceTestBase() {
     fun `transitionToPending 은 AWAITING_MAPPING 작업을 PENDING 으로 전환하고 expires_at 을 NULL 로 만든 뒤 true 반환`() {
         val id = seedJob(ImportJobStatus.AWAITING_MAPPING, Instant.now().plusSeconds(3_600))
 
-        assertThat(repo.transitionToPending(id)).isTrue()
+        assertThat(repo.transitionToPending(id, dryRun = false)).isTrue()
         val found = repo.findById(id)
         assertThat(found).isNotNull()
         assertThat(found!!.status).isEqualTo(ImportJobStatus.PENDING)
@@ -410,7 +415,7 @@ class ImportJobRepositoryTest : SearchPersistenceTestBase() {
     fun `transitionToPending 은 이미 PENDING 인 작업에 대해 false 반환 - 멱등`() {
         val id = seedJob(ImportJobStatus.PENDING, null)
 
-        assertThat(repo.transitionToPending(id)).isFalse()
+        assertThat(repo.transitionToPending(id, dryRun = false)).isFalse()
         assertThat(repo.findStatus(id)).isEqualTo(ImportJobStatus.PENDING)
     }
 
@@ -418,8 +423,32 @@ class ImportJobRepositoryTest : SearchPersistenceTestBase() {
     fun `transitionToPending 은 RUNNING 작업에 대해 false 반환 - AWAITING_MAPPING 아님`() {
         val id = seedJob(ImportJobStatus.RUNNING, null)
 
-        assertThat(repo.transitionToPending(id)).isFalse()
+        assertThat(repo.transitionToPending(id, dryRun = false)).isFalse()
         assertThat(repo.findStatus(id)).isEqualTo(ImportJobStatus.RUNNING)
+    }
+
+    @Test
+    fun `transitionToPending 은 dryRun=true 전달 시 dry_run 컬럼을 true 로 확정한다`() {
+        // 시드는 dry_run=false — 전이 호출이 실제로 컬럼을 갱신함(단순 유지가 아님)을 확인한다.
+        val id = seedJob(ImportJobStatus.AWAITING_MAPPING, Instant.now().plusSeconds(3_600), dryRun = false)
+
+        assertThat(repo.transitionToPending(id, dryRun = true)).isTrue()
+        val found = repo.findById(id)
+        assertThat(found).isNotNull()
+        assertThat(found!!.status).isEqualTo(ImportJobStatus.PENDING)
+        assertThat(found.expiresAt).isNull()
+        assertThat(found.dryRun).isTrue()
+    }
+
+    @Test
+    fun `transitionToPending 은 dryRun=false 전달 시 dry_run 컬럼을 false 로 확정한다`() {
+        // 시드는 dry_run=true — 전이 호출이 실제로 false 로 덮어씀을 확인한다.
+        val id = seedJob(ImportJobStatus.AWAITING_MAPPING, Instant.now().plusSeconds(3_600), dryRun = true)
+
+        assertThat(repo.transitionToPending(id, dryRun = false)).isTrue()
+        val found = repo.findById(id)
+        assertThat(found).isNotNull()
+        assertThat(found!!.dryRun).isFalse()
     }
 
     // ── deleteIfExpired 가드 삭제 (FR-IM-02) ─────────────────────────────────────────

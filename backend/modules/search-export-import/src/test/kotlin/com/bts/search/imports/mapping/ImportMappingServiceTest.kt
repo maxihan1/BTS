@@ -41,7 +41,11 @@ import java.util.UUID
  *   (g) 정상 확정 — CAS 성공 후 saveAll+enqueue 각 1회, PENDING 반환,
  *   (h) **핵심(CONCERN-3) — 사전확인은 통과했지만 실제 CAS(transitionToPending)가 실패하는
  *   TOCTOU/반복confirm 상황에서는 409 로 전환되고 saveAll/enqueue 는 단 한 번도 실행되지 않는다**
- *   (중복 enqueue 0 을 verify(exactly=1)/verify(exactly=0) 으로 명시 단언).
+ *   (중복 enqueue 0 을 verify(exactly=1)/verify(exactly=0) 으로 명시 단언),
+ *   (i) **dryrun-fix — [ImportMappingService.confirm] 의 `dryRun` 파라미터가
+ *   [ImportJobRepository.transitionToPending] 호출에 그대로 전달되어 영속됨을 mockk `verify` 로
+ *   단언한다.** T7 구현 당시 `dryRun` 이 감사 로깅에만 쓰이고 영속되지 않아 워커가 confirm 의 dryRun
+ *   선택을 무시하는 silent bug 가 있었다(더 이상 재발 금지).
  */
 class ImportMappingServiceTest {
     private val importMappingRepository: ImportMappingRepository = mockk()
@@ -178,7 +182,7 @@ class ImportMappingServiceTest {
         assertThrows<ResponseStatusException> {
             service.confirm(jobId, otherActor, mapOf("Title" to "summary"), dryRun = false)
         }
-        verify(exactly = 0) { importJobRepository.transitionToPending(any()) }
+        verify(exactly = 0) { importJobRepository.transitionToPending(any(), any()) }
         verify(exactly = 0) { importMappingRepository.saveAll(any(), any()) }
         verify(exactly = 0) { enqueuePublisher.enqueue(any()) }
     }
@@ -191,7 +195,7 @@ class ImportMappingServiceTest {
         assertThrows<ImportMappingStateConflictException> {
             service.confirm(job.id, actor, mapOf("Title" to "summary"), dryRun = false)
         }
-        verify(exactly = 0) { importJobRepository.transitionToPending(any()) }
+        verify(exactly = 0) { importJobRepository.transitionToPending(any(), any()) }
         verify(exactly = 0) { importMappingRepository.saveAll(any(), any()) }
         verify(exactly = 0) { enqueuePublisher.enqueue(any()) }
     }
@@ -208,7 +212,7 @@ class ImportMappingServiceTest {
             }
 
         assertThat(ex.errors.map { it.code }).contains(MappingValidator.SUMMARY_NOT_MAPPED)
-        verify(exactly = 0) { importJobRepository.transitionToPending(any()) }
+        verify(exactly = 0) { importJobRepository.transitionToPending(any(), any()) }
         verify(exactly = 0) { importMappingRepository.saveAll(any(), any()) }
         verify(exactly = 0) { enqueuePublisher.enqueue(any()) }
     }
@@ -221,7 +225,7 @@ class ImportMappingServiceTest {
         val mapping = mapOf("Title" to "summary", "Desc" to "description")
         every { importJobRepository.findByIdForRequester(job.id, actor) } returns job
         every { storage.get(job.sourceObjectKey) } returns csvStream()
-        every { importJobRepository.transitionToPending(job.id) } returns true
+        every { importJobRepository.transitionToPending(job.id, false) } returns true
         justRun { importMappingRepository.saveAll(job.id, mapping) }
         justRun { enqueuePublisher.enqueue(job.id) }
 
@@ -229,9 +233,30 @@ class ImportMappingServiceTest {
 
         assertThat(result.status).isEqualTo(ImportJobStatus.PENDING)
         assertThat(result.expiresAt).isNull()
-        verify(exactly = 1) { importJobRepository.transitionToPending(job.id) }
+        verify(exactly = 1) { importJobRepository.transitionToPending(job.id, false) }
         verify(exactly = 1) { importMappingRepository.saveAll(job.id, mapping) }
         verify(exactly = 1) { enqueuePublisher.enqueue(job.id) }
+    }
+
+    // ── confirm — dryrun-fix: dryRun 파라미터가 transitionToPending 에 영속 전달 ─
+
+    @Test
+    fun `confirm with dryRun=true propagates dryRun to transitionToPending and reflects it in the returned snapshot`() {
+        // T7 구현 당시 confirm 의 dryRun 파라미터는 감사 로깅에만 쓰이고 영속되지 않아, 워커가 확정된
+        // dryRun 선택을 무시하고 dry-run 매핑 Import 를 실제로 실행하는 silent bug 가 있었다.
+        // transitionToPending(jobId, dryRun) 호출로 CAS 전이와 같은 UPDATE 에서 dry_run 을 확정해야 한다.
+        val job = makeJob(format = "CSV")
+        val mapping = mapOf("Title" to "summary", "Desc" to "description")
+        every { importJobRepository.findByIdForRequester(job.id, actor) } returns job
+        every { storage.get(job.sourceObjectKey) } returns csvStream()
+        every { importJobRepository.transitionToPending(job.id, true) } returns true
+        justRun { importMappingRepository.saveAll(job.id, mapping) }
+        justRun { enqueuePublisher.enqueue(job.id) }
+
+        val result = service.confirm(job.id, actor, mapping, dryRun = true)
+
+        assertThat(result.dryRun).isTrue()
+        verify(exactly = 1) { importJobRepository.transitionToPending(job.id, true) }
     }
 
     // ── confirm — 핵심(CONCERN-3): CAS 실패 시 중복 enqueue 차단(TOCTOU) ───────
@@ -246,13 +271,13 @@ class ImportMappingServiceTest {
         val mapping = mapOf("Title" to "summary")
         every { importJobRepository.findByIdForRequester(job.id, actor) } returns job
         every { storage.get(job.sourceObjectKey) } returns csvStream()
-        every { importJobRepository.transitionToPending(job.id) } returns false
+        every { importJobRepository.transitionToPending(job.id, false) } returns false
 
         assertThrows<ImportMappingStateConflictException> {
             service.confirm(job.id, actor, mapping, dryRun = false)
         }
 
-        verify(exactly = 1) { importJobRepository.transitionToPending(job.id) }
+        verify(exactly = 1) { importJobRepository.transitionToPending(job.id, false) }
         verify(exactly = 0) { importMappingRepository.saveAll(any(), any()) }
         verify(exactly = 0) { enqueuePublisher.enqueue(any()) }
     }
