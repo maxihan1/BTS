@@ -31,6 +31,8 @@ import java.util.UUID
  * - project_key 는 FK 없음 (issue-tracking projects 테이블 BC 격리, notification 선례)
  * - (V501) board_columns.wip_limit INTEGER NULL + CHECK(wip_limit IS NULL OR wip_limit > 0)
  * - (V501) boards.swimlane_field VARCHAR NOT NULL DEFAULT 'NONE' + CHECK(IN ('NONE','ASSIGNEE','PRIORITY'))
+ * - (V504) board_quick_filters 테이블 + 6개 컬럼(id/board_id/name/query/created_at/updated_at)
+ *   + board_id FK boards(id) ON DELETE CASCADE + UNIQUE(board_id,name) + idx_board_quick_filters_board (FR-UX-01)
  *
  * 정보 스키마(information_schema / pg_indexes / pg_constraint) 조회로 단언한다.
  * SQL 문자열 결합 없이 prepared statement 사용.
@@ -82,6 +84,17 @@ class BoardSchemaMigrationTest {
                 "updated_at",
                 "deleted_at",
                 "swimlane_field",
+            )
+
+        // board_quick_filters 가 보유해야 하는 6개 컬럼 (V504 FR-UX-01 퀵 필터).
+        private val BOARD_QUICK_FILTERS_COLUMNS =
+            listOf(
+                "id",
+                "board_id",
+                "name",
+                "query",
+                "created_at",
+                "updated_at",
             )
     }
 
@@ -340,6 +353,23 @@ class BoardSchemaMigrationTest {
         }
     }
 
+    // board_quick_filters 한 행 INSERT — UNIQUE(board_id, name) / CASCADE 검증용. 위반 시 예외 전파.
+    private fun insertQuickFilter(
+        boardId: UUID,
+        name: String,
+    ) {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "INSERT INTO board_quick_filters (board_id, name, query) VALUES (?, ?, ?)",
+            ).use { stmt ->
+                stmt.setObject(1, boardId)
+                stmt.setString(2, name)
+                stmt.setString(3, "assignee=me")
+                stmt.executeUpdate()
+            }
+        }
+    }
+
     // ── boards 테이블/컬럼/인덱스 검증 ─────────────────────────────────────────
 
     @Test
@@ -593,5 +623,107 @@ class BoardSchemaMigrationTest {
     fun `V502 boards swimlane_field EPIC INSERT 가 허용된다`() {
         // V502 이후 EPIC 은 유효한 스윔레인 값이므로 CHECK 를 통과해야 한다.
         insertBoardWithSwimlaneField("SWIM-EPIC", "EPIC")
+    }
+
+    // ── V504 board_quick_filters 검증 (FR-UX-01 퀵 필터) ───────────────────────
+
+    @Test
+    fun `V504 board_quick_filters 테이블 존재`() {
+        assertThat(tableExists("board_quick_filters")).isTrue()
+    }
+
+    @Test
+    fun `V504 board_quick_filters 6개 컬럼 존재`() {
+        assertThat(columnsOf("board_quick_filters"))
+            .containsExactlyInAnyOrderElementsOf(BOARD_QUICK_FILTERS_COLUMNS)
+    }
+
+    @Test
+    fun `V504 board_quick_filters id 는 uuid PK NOT NULL`() {
+        assertThat(columnDataType("board_quick_filters", "id")).isEqualTo("uuid")
+        assertThat(columnIsNullable("board_quick_filters", "id")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V504 board_quick_filters board_id 는 uuid NOT NULL`() {
+        assertThat(columnDataType("board_quick_filters", "board_id")).isEqualTo("uuid")
+        assertThat(columnIsNullable("board_quick_filters", "board_id")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V504 board_quick_filters name 은 text NOT NULL`() {
+        assertThat(columnDataType("board_quick_filters", "name")).isEqualTo("text")
+        assertThat(columnIsNullable("board_quick_filters", "name")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V504 board_quick_filters query 는 text NOT NULL`() {
+        assertThat(columnDataType("board_quick_filters", "query")).isEqualTo("text")
+        assertThat(columnIsNullable("board_quick_filters", "query")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V504 board_quick_filters created_at 은 timestamptz NOT NULL`() {
+        assertThat(columnDataType("board_quick_filters", "created_at")).isEqualTo("timestamp with time zone")
+        assertThat(columnIsNullable("board_quick_filters", "created_at")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V504 board_quick_filters updated_at 은 timestamptz NOT NULL`() {
+        assertThat(columnDataType("board_quick_filters", "updated_at")).isEqualTo("timestamp with time zone")
+        assertThat(columnIsNullable("board_quick_filters", "updated_at")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V504 board_quick_filters board_id FK 는 boards 를 참조`() {
+        assertThat(foreignKeyExists("board_quick_filters", "board_id", "boards")).isTrue()
+    }
+
+    @Test
+    fun `V504 board_quick_filters board_id FK 는 ON DELETE CASCADE`() {
+        assertThat(foreignKeyDeleteRule("board_quick_filters", "board_id")).isEqualTo("CASCADE")
+    }
+
+    @Test
+    fun `V504 인덱스 idx_board_quick_filters_board 존재`() {
+        assertThat(indexExists("idx_board_quick_filters_board")).isTrue()
+    }
+
+    @Test
+    fun `V504 같은 board_id+name 조합 중복 INSERT 는 유니크 위반`() {
+        val boardId = insertBoard("QF-UNIQUE")
+        insertQuickFilter(boardId, "내 버그")
+        // 같은 (board_id, name) 조합은 중복 퀵필터이므로 UNIQUE 위반이어야 한다.
+        assertThatThrownBy { insertQuickFilter(boardId, "내 버그") }
+            .hasMessageContaining("board_quick_filters")
+    }
+
+    @Test
+    fun `V504 다른 board 에서는 같은 name 재사용 가능`() {
+        val boardA = insertBoard("QF-BOARD-A")
+        val boardB = insertBoard("QF-BOARD-B")
+        insertQuickFilter(boardA, "내 버그")
+        // UNIQUE 는 (board_id, name) 복합이므로 다른 보드의 동일 name 은 허용되어야 한다(예외 없음).
+        insertQuickFilter(boardB, "내 버그")
+    }
+
+    @Test
+    fun `V504 board_id CASCADE — 부모 boards 삭제 시 board_quick_filters 도 삭제`() {
+        val boardId = insertBoard("QF-CASCADE")
+        insertQuickFilter(boardId, "내 버그")
+        // 부모 boards 행 하드 삭제 → CASCADE 로 board_quick_filters 자식 행도 사라져야 한다.
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement("DELETE FROM boards WHERE id = ?").use { stmt ->
+                stmt.setObject(1, boardId)
+                stmt.executeUpdate()
+            }
+            conn.prepareStatement("SELECT COUNT(*) FROM board_quick_filters WHERE board_id = ?").use { stmt ->
+                stmt.setObject(1, boardId)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    assertThat(rs.getInt(1)).isZero()
+                }
+            }
+        }
     }
 }

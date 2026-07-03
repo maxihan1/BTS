@@ -34,6 +34,7 @@ const MOCK_BOARD_DETAIL: BoardDetail = {
   truncated: false,
   unplacedCount: 0,
   swimlaneField: 'NONE',
+  quickFilters: [],
 }
 
 const MOCK_BOARD_CREATED: BoardCreated = {
@@ -256,6 +257,7 @@ describe('useBoard (filter-aware)', () => {
     truncated: false,
     unplacedCount: 0,
     swimlaneField: 'NONE',
+    quickFilters: [],
   }
 
   beforeEach(() => {

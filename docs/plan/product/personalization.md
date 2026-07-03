@@ -111,13 +111,13 @@
 
 **우선순위**. 필수 | **선행**. agile-planning §2.1 | **Plan slug**. `personal/quick-filters`
 
-- [ ] D1. 도메인 — QuickFilter (책임. backend-engineer)
-- [ ] D2. 명세 — 보드별 사전 정의 필터 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `board_quick_filters(board_id, name, query)` (책임. db-engineer)
-- [ ] D4. 백엔드 — CRUD API + 보드 응답에 포함 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 보드 상단 필터 칩 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — QuickFilter (책임. backend-engineer)
+- [x] D2. 명세 — 보드별 사전 정의 필터 (책임. backend-engineer)
+- [x] D3. 데이터 모델 — `board_quick_filters(board_id, name, query)` (책임. db-engineer)
+- [x] D4. 백엔드 — CRUD API + 보드 응답에 포함 (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D6. 프론트 UI — 보드 상단 필터 칩 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ### §4.2 FR-UX-04 — Slash 명령어
 

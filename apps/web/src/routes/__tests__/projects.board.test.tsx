@@ -196,6 +196,7 @@ const BOARD_DETAIL: BoardDetail = {
   truncated: false,
   unplacedCount: 0,
   swimlaneField: 'NONE',
+  quickFilters: [],
 }
 
 const BOARD_DETAIL_TRUNCATED: BoardDetail = {
@@ -243,6 +244,7 @@ const BOARD_DETAIL_WITH_ASSIGNEES: BoardDetail = {
   ],
   truncated: false,
   unplacedCount: 0,
+  quickFilters: [],
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

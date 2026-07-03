@@ -1,9 +1,10 @@
-// 칸반 보드 MSW 픽스처 — 기본 시드 데이터 + store 관리 함수 (FR-BD-01 D6, FR-BD-02 D6)
+// 칸반 보드 MSW 픽스처 — 기본 시드 데이터 + store 관리 함수 (FR-BD-01 D6, FR-BD-02 D6, FR-UX-01)
 import type {
   BoardCard,
   BoardDetail,
   BoardCreated,
 } from '@/api/boards'
+import type { QuickFilter } from '@/api/board-quick-filters'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FILTER_BOARD 담당자 UUID 상수 — user-fixtures.ts와 동기화
@@ -59,6 +60,11 @@ export interface StoredBoardDetail {
   }>
   truncated: boolean
   unplacedCount: number
+  /**
+   * 보드 퀵필터 목록 (FR-UX-01). optional — WIP_BOARD/SWIMLANE_BOARD 등 퀵필터를 다루지 않는
+   * 기존 fixture를 강제로 갱신하지 않기 위함. 미정의 시 `toResponseDetail`이 빈 배열로 방어한다.
+   */
+  quickFilters?: QuickFilter[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,8 +75,10 @@ export interface StoredBoardDetail {
  * RFC4122 v4 UUID를 생성한다.
  * crypto.randomUUID()가 있으면 사용하고, 없으면 Math.random 기반 폴백.
  * Zod v4 z.string().uuid() 검증을 통과하는 형식을 보장한다.
+ *
+ * export — board-handlers.ts가 퀵필터 생성(FR-UX-01) 시 신규 filterId 발급에 재사용한다.
  */
-function generateUUID(): string {
+export function generateUUID(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
   }
@@ -226,6 +234,7 @@ export function createBoardInStore(
     columns: createdColumns.map((col) => ({ ...col, wipLimit: null, wipExceeded: false, cards: [] })),
     truncated: false,
     unplacedCount: 0,
+    quickFilters: [],
   }
 
   const created: BoardCreated = {
@@ -324,6 +333,7 @@ export const DEFAULT_BOARD: BoardDetail = {
   ],
   truncated: false,
   unplacedCount: 0,
+  quickFilters: [],
 }
 
 /**

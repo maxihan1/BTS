@@ -1,6 +1,7 @@
-// 칸반 보드 REST API 클라이언트 — Zod 스키마 + fetch 함수 (FR-BD-01/02/03)
+// 칸반 보드 REST API 클라이언트 — Zod 스키마 + fetch 함수 (FR-BD-01/02/03, FR-UX-01)
 import { z } from 'zod'
 import { apiGet, apiPost, apiFetch, ApiError } from './client'
+import { quickFilterSchema } from './board-quick-filters'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 헬퍼 — DataResponse 래퍼 파싱 (resolutions.ts 동일 패턴)
@@ -107,6 +108,12 @@ export const boardDetailSchema = z.object({
   unplacedCount: z.number().int(),
   /** 스윔레인 기준 필드. NONE=없음, ASSIGNEE=담당자별, PRIORITY=우선순위별. 백엔드 FR-BD-03 D4 신호. */
   swimlaneField: swimlaneFieldSchema,
+  /**
+   * 보드 퀵필터 목록(created_at ASC). FR-UX-01.
+   * 백엔드가 필드를 생략해도(레거시 응답·인라인 mock) 빈 배열로 방어한다
+   * (백엔드 @JsonInclude 대비 .default — memory: FR-EP-01 epicKey 선례 동일 패턴).
+   */
+  quickFilters: z.array(quickFilterSchema).default([]),
 })
 
 /**

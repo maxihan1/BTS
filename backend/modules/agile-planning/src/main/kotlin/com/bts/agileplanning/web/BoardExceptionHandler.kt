@@ -2,6 +2,10 @@
 
 package com.bts.agileplanning.web
 
+import com.bts.agileplanning.application.QuickFilterEmptyQueryException
+import com.bts.agileplanning.application.QuickFilterLimitExceededException
+import com.bts.agileplanning.application.QuickFilterNameConflictException
+import com.bts.agileplanning.application.QuickFilterNotFoundException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -34,23 +38,27 @@ class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니�
 /**
  * agile-planning BC 의 도메인/권한 예외를 RFC 7807 ProblemDetail 형식으로 변환하는 핸들러.
  *
- * [assignableTypes] 를 [BoardController] 로 한정하여 SprintController 등 다른 컨트롤러의 예외를 잡지 않는다
- * (memory: domain-exception-http-handler-basepackage-scope 교훈).
+ * [assignableTypes] 를 [BoardController]·[BoardQuickFilterController] 로 한정하여 SprintController 등
+ * 다른 컨트롤러의 예외를 잡지 않는다(memory: domain-exception-http-handler-basepackage-scope 교훈).
+ * [BoardQuickFilterController](FR-UX-01) 가 재사용하는 401/403/404 가 catch-all 로 500 변질되지 않으려면
+ * 이 목록에 포함되어야 한다(리뷰 BLOCKER-B/C — 별도 전역 advice 신설 대신 assignableTypes 를 확장한다).
  *
  * catch-all [Exception] 핸들러를 두되, [ResponseStatusException] 은 별도 핸들러로 상태를 전파하여
  * catch-all 이 401/404/409/422 등을 500 으로 변질시키지 못하게 한다
  * (memory: catch-all-exceptionhandler-swallows-responsestatusexception 교훈).
- * [MethodArgumentTypeMismatchException]/[HttpMessageNotReadableException] 도 명시 핸들러로 등록해
- * path UUID 형식 오류·본문 손상이 500 으로 변질되지 않게 한다 (FR-WT-01 동일 패턴).
- *
- * 에러 코드 접두사는 `AGILE_` 로 고정한다 (BTS 에러 코드 규칙).
+ * [MethodArgumentTypeMismatchException]/[HttpMessageNotReadableException] 도 명시 등록해 path UUID
+ * 형식 오류·본문 손상이 500 으로 변질되지 않게 한다 (FR-WT-01 동일 패턴). 에러 코드 접두사는 `AGILE_` 고정.
  *
  * ### 매핑 규칙
- * - [MethodArgumentNotValidException] → 400 + AGILE_VALIDATION_FAILED
- * - [HttpMessageNotReadableException] → 400 + AGILE_VALIDATION_FAILED
- * - [MethodArgumentTypeMismatchException] → 400 + AGILE_VALIDATION_FAILED
+ * - [MethodArgumentNotValidException]/[HttpMessageNotReadableException]/[MethodArgumentTypeMismatchException]
+ *   → 400 + AGILE_VALIDATION_FAILED
  * - [BoardAccessDeniedException] → 403 + AGILE_ACCESS_DENIED
  * - [BoardNotFoundException] → 404 + AGILE_BOARD_NOT_FOUND
+ * - [QuickFilterNameConflictException] → 409 + AGILE_QUICK_FILTER_NAME_CONFLICT (OCC 충돌 문구와 구분, 리뷰 C4)
+ * - [QuickFilterLimitExceededException] → 409 + AGILE_QUICK_FILTER_LIMIT_EXCEEDED (코드리뷰 CONCERN-1/2 — 상한 초과를
+ *   OCC 충돌 문구와 구분)
+ * - [QuickFilterNotFoundException] → 404 + AGILE_QUICK_FILTER_NOT_FOUND (퀵필터 미존재를 보드 미존재와 구분)
+ * - [QuickFilterEmptyQueryException] → 400 + AGILE_QUICK_FILTER_EMPTY_QUERY (빈 필터 조건을 일반 검증 실패와 구분)
  * - [ResponseStatusException] → 명시 상태 전파(401/404/409/422 등, 일반 메시지)
  * - [Exception] (fallback) → 500 + AGILE_INTERNAL_ERROR
  *
@@ -58,7 +66,7 @@ class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니�
  * RestControllerAdvice 의 책임(예외→HTTP 변환)은 분리 불가한 단일 관심사라 클래스 단위로 억제한다.
  */
 @Suppress("TooManyFunctions")
-@RestControllerAdvice(assignableTypes = [BoardController::class])
+@RestControllerAdvice(assignableTypes = [BoardController::class, BoardQuickFilterController::class])
 class BoardExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -124,6 +132,28 @@ class BoardExceptionHandler {
         )
     }
 
+    /**
+     * [QuickFilterEmptyQueryException] — 빈 필터 조건으로 퀵필터 저장 시도(EC1) — 400.
+     *
+     * 코드리뷰 CONCERN-1/2 — 일반 [ResponseStatusException] 핸들러의 AGILE_VALIDATION_FAILED 대신
+     * 전용 errorCode 로 원인(빈 조건)을 구분한다.
+     *
+     * @param ex 빈 필터 조건 예외(내부 식별자 미포함).
+     */
+    @ExceptionHandler(QuickFilterEmptyQueryException::class)
+    fun handleQuickFilterEmptyQuery(
+        @Suppress("UnusedParameter") ex: QuickFilterEmptyQueryException,
+    ): ProblemDetail {
+        log.info("AGILE_400 quick_filter_empty_query")
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "agile-quick-filter-empty-query",
+            title = "Quick Filter Empty Query",
+            errorCode = AGILE_QUICK_FILTER_EMPTY_QUERY,
+            detail = "필터 조건을 하나 이상 지정해야 합니다.",
+        )
+    }
+
     // ── 403 ACCESS_DENIED ─────────────────────────────────────────────────────
 
     /**
@@ -168,6 +198,74 @@ class BoardExceptionHandler {
         )
     }
 
+    /**
+     * [QuickFilterNotFoundException] — 퀵필터 미존재 또는 타 보드 소속(EC5) — 404.
+     *
+     * 코드리뷰 CONCERN-1/2 — 일반 [ResponseStatusException] 핸들러의 AGILE_BOARD_NOT_FOUND 로 뭉뚱그려지면
+     * "보드를 찾을 수 없습니다" 문구가 실제로는 필터 미존재인 상황에 부정확하게 노출된다. 전용 errorCode/문구로 구분한다.
+     *
+     * @param ex 퀵필터 미존재 예외(내부 식별자 미포함).
+     */
+    @ExceptionHandler(QuickFilterNotFoundException::class)
+    fun handleQuickFilterNotFound(
+        @Suppress("UnusedParameter") ex: QuickFilterNotFoundException,
+    ): ProblemDetail {
+        log.info("AGILE_404 quick_filter_not_found")
+        return problem(
+            status = HttpStatus.NOT_FOUND,
+            type = "agile-quick-filter-not-found",
+            title = "Quick Filter Not Found",
+            errorCode = AGILE_QUICK_FILTER_NOT_FOUND,
+            detail = "퀵필터를 찾을 수 없습니다.",
+        )
+    }
+
+    // ── 409 QUICK_FILTER_NAME_CONFLICT ────────────────────────────────────────
+
+    /**
+     * [QuickFilterNameConflictException] — 같은 보드 내 퀵필터 이름 중복(EC2) — 409.
+     *
+     * 일반 [ResponseStatusException] 핸들러의 OCC 충돌 문구와 뉘앙스가 겹치지 않도록 전용 메시지를
+     * 반환한다(리뷰 C4). 서브타입이라도 Spring 은 가장 가까운(구체적인) 핸들러를 우선 선택한다.
+     *
+     * @param ex 이름 중복 예외(내부 식별자 미포함).
+     */
+    @ExceptionHandler(QuickFilterNameConflictException::class)
+    fun handleQuickFilterNameConflict(
+        @Suppress("UnusedParameter") ex: QuickFilterNameConflictException,
+    ): ProblemDetail {
+        log.info("AGILE_409 quick_filter_name_conflict")
+        return problem(
+            status = HttpStatus.CONFLICT,
+            type = "agile-quick-filter-name-conflict",
+            title = "Quick Filter Name Conflict",
+            errorCode = AGILE_QUICK_FILTER_NAME_CONFLICT,
+            detail = "같은 이름의 퀵필터가 이미 있습니다.",
+        )
+    }
+
+    /**
+     * [QuickFilterLimitExceededException] — 보드당 퀵필터 20건 상한 초과(EC3) — 409.
+     *
+     * 코드리뷰 CONCERN-1/2 — 일반 [ResponseStatusException] 핸들러의 OCC 충돌 문구("다른 변경과 충돌이
+     * 발생했습니다. 다시 시도해 주세요.")는 상한 초과 상황에 부적절하다. 전용 errorCode/문구로 구분한다.
+     *
+     * @param ex 상한 초과 예외(내부 식별자 미포함).
+     */
+    @ExceptionHandler(QuickFilterLimitExceededException::class)
+    fun handleQuickFilterLimitExceeded(
+        @Suppress("UnusedParameter") ex: QuickFilterLimitExceededException,
+    ): ProblemDetail {
+        log.info("AGILE_409 quick_filter_limit_exceeded")
+        return problem(
+            status = HttpStatus.CONFLICT,
+            type = "agile-quick-filter-limit-exceeded",
+            title = "Quick Filter Limit Exceeded",
+            errorCode = AGILE_QUICK_FILTER_LIMIT_EXCEEDED,
+            detail = "보드당 퀵필터는 최대 20개까지 저장할 수 있습니다.",
+        )
+    }
+
     // ── ResponseStatusException 상태 전파 (catch-all 변질 차단) ────────────────
 
     /**
@@ -178,8 +276,7 @@ class BoardExceptionHandler {
      * `@RestControllerAdvice` 는 Spring 의 ResponseStatusExceptionResolver 보다 먼저 실행되므로,
      * [Exception] 보다 구체적인 이 핸들러를 등록해 Spring 이 우선 선택하도록 한다.
      *
-     * 보안 — detail 에 `ex.reason` 등 내부 정보를 노출하지 않고 상태 코드 기반 일반 메시지를 사용한다.
-     * 원본 사유는 로그에만 기록한다.
+     * 보안 — detail 에 `ex.reason` 등 내부 정보를 노출하지 않고 상태 코드 기반 일반 메시지를 사용한다(원본 사유는 로그에만 기록).
      *
      * @param ex 컨트롤러/서비스 계층에서 던진 상태 코드 보유 예외.
      */
@@ -269,6 +366,10 @@ class BoardExceptionHandler {
         const val AGILE_ACCESS_DENIED = "AGILE_ACCESS_DENIED"
         const val AGILE_BOARD_NOT_FOUND = "AGILE_BOARD_NOT_FOUND"
         const val AGILE_CONFLICT = "AGILE_CONFLICT"
+        const val AGILE_QUICK_FILTER_NAME_CONFLICT = "AGILE_QUICK_FILTER_NAME_CONFLICT"
+        const val AGILE_QUICK_FILTER_LIMIT_EXCEEDED = "AGILE_QUICK_FILTER_LIMIT_EXCEEDED"
+        const val AGILE_QUICK_FILTER_NOT_FOUND = "AGILE_QUICK_FILTER_NOT_FOUND"
+        const val AGILE_QUICK_FILTER_EMPTY_QUERY = "AGILE_QUICK_FILTER_EMPTY_QUERY"
         const val AGILE_UNPROCESSABLE = "AGILE_UNPROCESSABLE"
         const val AGILE_INTERNAL_ERROR = "AGILE_INTERNAL_ERROR"
     }

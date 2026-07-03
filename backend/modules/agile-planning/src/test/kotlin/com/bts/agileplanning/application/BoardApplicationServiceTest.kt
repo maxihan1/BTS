@@ -6,7 +6,9 @@ import com.bts.agileplanning.AgilePlanningTestBootApplication
 import com.bts.agileplanning.AgilePlanningTestcontainersConfig
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
+import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.domain.SwimlaneField
+import com.bts.agileplanning.repository.BoardQuickFilterRepository
 import com.bts.agileplanning.repository.BoardRepository
 import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.board.BoardIssueLookupPort
@@ -46,6 +48,7 @@ import java.util.UUID
  * - (d) 카드 이동 = toColumnId → state_key 도출 후 IssueTransitionPort 위임
  * - (e) E3: 같은 컬럼으로 이동 → no-op 200
  * - (f) E8: 보드-이슈 프로젝트 정합 위반 → 거부
+ * - (g) 보드 조회 시 BoardQuickFilterRepository 결과가 quickFilters 로 포함(FR-UX-01 Task 7)
  */
 @SpringBootTest(
     classes = [AgilePlanningTestBootApplication::class],
@@ -83,12 +86,14 @@ class BoardApplicationServiceTest {
         lookup: BoardIssueLookupPort = mockk(relaxed = true),
         transition: IssueTransitionPort = mockk(relaxed = true),
         repo: BoardRepository = boardRepository,
+        quickFilterRepo: BoardQuickFilterRepository = mockk(relaxed = true),
     ): BoardApplicationService =
         BoardApplicationService(
             workflowStateCatalog = catalog,
             boardIssueLookupPort = lookup,
             issueTransitionPort = transition,
             boardRepository = repo,
+            boardQuickFilterRepository = quickFilterRepo,
         )
 
     // ── (a) 보드 생성 시 컬럼 시드 + 영속 ────────────────────────────────────────
@@ -404,6 +409,45 @@ class BoardApplicationServiceTest {
                 resolutionId = null,
             )
         }.isInstanceOf(ResponseStatusException::class.java)
+    }
+
+    // ── (g) 보드 조회 시 quickFilters 포함 (FR-UX-01 Task 7) ─────────────────────
+
+    @Test
+    fun `보드 조회 시 BoardQuickFilterRepository 결과가 quickFilters 로 포함된다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("QF"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("QF", "퀵필터 테스트 보드")
+
+        val viewerId = UUID.randomUUID()
+        val expectedFilters =
+            listOf(
+                QuickFilter(id = UUID.randomUUID(), boardId = board.id, name = "내 버그", query = "label=bug"),
+                QuickFilter(id = UUID.randomUUID(), boardId = board.id, name = "긴급", query = "label=urgent"),
+            )
+        val quickFilterRepo = mockk<BoardQuickFilterRepository>()
+        every { quickFilterRepo.findByBoardId(board.id) } returns expectedFilters
+
+        val result =
+            serviceWith(quickFilterRepo = quickFilterRepo).getBoard(boardId = board.id, viewerUserId = viewerId)
+
+        assertThat(result.quickFilters).isEqualTo(expectedFilters)
+    }
+
+    @Test
+    fun `보드 조회 시 퀵필터가 없으면 quickFilters 는 빈 목록이다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("QF2"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("QF2", "퀵필터 없음 보드")
+
+        val viewerId = UUID.randomUUID()
+        val quickFilterRepo = mockk<BoardQuickFilterRepository>()
+        every { quickFilterRepo.findByBoardId(board.id) } returns emptyList()
+
+        val result =
+            serviceWith(quickFilterRepo = quickFilterRepo).getBoard(boardId = board.id, viewerUserId = viewerId)
+
+        assertThat(result.quickFilters).isEmpty()
     }
 
     // ── 보드 목록 조회 ────────────────────────────────────────────────────────────

@@ -29,6 +29,7 @@ const INITIAL_BOARD: BoardDetail = {
   truncated: false,
   unplacedCount: 0,
   swimlaneField: 'NONE',
+  quickFilters: [],
   columns: [
     {
       columnId: COL_A_ID,

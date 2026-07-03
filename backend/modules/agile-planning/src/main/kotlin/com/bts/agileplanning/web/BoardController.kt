@@ -42,7 +42,7 @@ import java.util.UUID
  *
  * 엔드포인트 목록.
  * - POST `/api/v1/boards` — 보드 생성. 권한 [IssuePermission.CREATE] on [IssueScope.Project].
- * - GET  `/api/v1/boards/{id}` — 보드 단건 조회(컬럼+카드). 권한 [IssuePermission.BROWSE].
+ * - GET  `/api/v1/boards/{id}` — 보드 단건 조회(컬럼+카드+퀵필터). 권한 [IssuePermission.BROWSE].
  * - GET  `/api/v1/boards?projectKey=` — 프로젝트별 보드 목록. 권한 [IssuePermission.BROWSE].
  * - POST `/api/v1/boards/{id}/cards/{issueKey}/move` — 카드 이동. 보드 접근 [IssuePermission.BROWSE] +
  *   이동 자체는 [com.bts.shared.board.IssueTransitionPort] 가 TRANSITION 을 강제한다.
@@ -114,12 +114,13 @@ class BoardController(
      *
      * 필터 파싱은 [BoardFilterQueryParser.parse] 에 위임한다.
      * UUID 형식 오류 시 400 — [BoardExceptionHandler.handleResponseStatus] 가 처리한다.
+     * 응답에는 보드에 저장된 퀵필터 목록(created_at ASC)도 함께 포함한다(FR-UX-01 Task 7).
      *
      * @param id path variable 보드 UUID.
      * @param assignee 담당자 필터 파라미터 목록. UUID 또는 "unassigned" 센티널.
      * @param label 라벨 필터 파라미터 목록. 문자열 그대로 사용.
      * @param component 컴포넌트 필터 파라미터 목록. UUID.
-     * @return 200 OK + [BoardDetailResponse].
+     * @return 200 OK + [BoardDetailResponse](quickFilters 포함).
      * @throws BoardNotFoundException 보드 미존재 또는 soft-deleted → 404.
      * @throws BoardAccessDeniedException BROWSE 권한 미충족 → 403.
      * @throws ResponseStatusException 400 — 필터 파라미터 UUID 형식 오류.
@@ -137,7 +138,7 @@ class BoardController(
 
         val filter = BoardFilterQueryParser.parse(assignee, label, component)
         val result = service.getBoard(id, actor, filter)
-        return ResponseEntity.ok(DataResponse(BoardDetailResponse.of(board, result)))
+        return ResponseEntity.ok(DataResponse(BoardDetailResponse.of(board, result, result.quickFilters)))
     }
 
     /**

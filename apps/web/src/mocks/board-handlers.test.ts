@@ -489,6 +489,181 @@ describe('PATCH /api/v1/boards/:id — 스윔레인 기준 변경 (FR-BD-03)', (
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 퀵필터 CRUD (FR-UX-01) — POST/PATCH/DELETE /api/v1/boards/:id/quick-filters[/:filterId]
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface QuickFilterDto {
+  filterId: string
+  name: string
+  query: string
+}
+
+async function postQuickFilter(
+  boardId: string,
+  body: { name: string; query: string },
+): Promise<Response> {
+  return fetch(`/api/v1/boards/${boardId}/quick-filters`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+async function patchQuickFilter(
+  boardId: string,
+  filterId: string,
+  body: { name: string; query: string },
+): Promise<Response> {
+  return fetch(`/api/v1/boards/${boardId}/quick-filters/${filterId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+async function deleteQuickFilterRequest(boardId: string, filterId: string): Promise<Response> {
+  return fetch(`/api/v1/boards/${boardId}/quick-filters/${filterId}`, { method: 'DELETE' })
+}
+
+describe('POST /api/v1/boards/:id/quick-filters — 퀵필터 생성 (FR-UX-01)', () => {
+  it('생성 → 201 { data: QuickFilter } — query가 정규화되어 저장된다(중복 제거, 가짜그린 차단)', async () => {
+    seedBoard(DEFAULT_BOARD)
+    const res = await postQuickFilter(DEFAULT_BOARD.boardId, {
+      name: '내 버그',
+      query: 'label=bug&label=bug&assignee=00000000-0000-4000-8000-000000000001',
+    })
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as DataResponse<QuickFilterDto>
+    expect(body.data.name).toBe('내 버그')
+    expect(body.data.filterId).toBeTruthy()
+    // 중복 label 정규화(dedupe) 확인 — raw echo가 아님을 보장 (msw-derived-behavior-shared-store-e2e)
+    const labelOccurrences = (body.data.query.match(/label=bug/g) ?? []).length
+    expect(labelOccurrences).toBe(1)
+  })
+
+  it('생성 후 → GET 보드 상세 quickFilters에 반영된다 (stateful)', async () => {
+    seedBoard(DEFAULT_BOARD)
+    await postQuickFilter(DEFAULT_BOARD.boardId, { name: '내 버그', query: 'label=bug' })
+
+    const res = await getBoard(DEFAULT_BOARD.boardId)
+    const body = (await res.json()) as DataResponse<{ quickFilters: QuickFilterDto[] }>
+    expect(body.data.quickFilters).toHaveLength(1)
+    expect(body.data.quickFilters[0]?.name).toBe('내 버그')
+  })
+
+  it('빈 query(EC1) → 400', async () => {
+    seedBoard(DEFAULT_BOARD)
+    const res = await postQuickFilter(DEFAULT_BOARD.boardId, { name: '빈 필터', query: '' })
+    expect(res.status).toBe(400)
+  })
+
+  it('같은 보드 내 이름 중복(EC2) → 409', async () => {
+    seedBoard(DEFAULT_BOARD)
+    await postQuickFilter(DEFAULT_BOARD.boardId, { name: '내 버그', query: 'label=bug' })
+    const res = await postQuickFilter(DEFAULT_BOARD.boardId, { name: '내 버그', query: 'label=feature' })
+    expect(res.status).toBe(409)
+  })
+
+  it('없는 보드 → 404 errorCode AGILE_BOARD_NOT_FOUND', async () => {
+    const res = await postQuickFilter('00000000-0000-4000-8000-000000000099', {
+      name: '내 버그',
+      query: 'label=bug',
+    })
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as ProblemDetail
+    expect(body.errorCode).toBe('AGILE_BOARD_NOT_FOUND')
+  })
+})
+
+describe('PATCH /api/v1/boards/:id/quick-filters/:filterId — 퀵필터 수정 (FR-UX-01)', () => {
+  it('수정 → 200 { data: QuickFilter } 갱신 반영', async () => {
+    seedBoard(DEFAULT_BOARD)
+    const createRes = await postQuickFilter(DEFAULT_BOARD.boardId, { name: '내 버그', query: 'label=bug' })
+    const created = (await createRes.json()) as DataResponse<QuickFilterDto>
+
+    const res = await patchQuickFilter(DEFAULT_BOARD.boardId, created.data.filterId, {
+      name: '긴급 버그',
+      query: 'label=urgent',
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as DataResponse<QuickFilterDto>
+    expect(body.data.name).toBe('긴급 버그')
+    expect(body.data.query).toBe('label=urgent')
+    expect(body.data.filterId).toBe(created.data.filterId)
+  })
+
+  it('수정 후 → GET 보드 상세에 반영된다 (stateful)', async () => {
+    seedBoard(DEFAULT_BOARD)
+    const createRes = await postQuickFilter(DEFAULT_BOARD.boardId, { name: '내 버그', query: 'label=bug' })
+    const created = (await createRes.json()) as DataResponse<QuickFilterDto>
+
+    await patchQuickFilter(DEFAULT_BOARD.boardId, created.data.filterId, {
+      name: '긴급 버그',
+      query: 'label=urgent',
+    })
+
+    const res = await getBoard(DEFAULT_BOARD.boardId)
+    const body = (await res.json()) as DataResponse<{ quickFilters: QuickFilterDto[] }>
+    expect(body.data.quickFilters).toHaveLength(1)
+    expect(body.data.quickFilters[0]?.name).toBe('긴급 버그')
+  })
+
+  it('타 보드 소속(존재하지 않는) filterId(EC5) → 404', async () => {
+    seedBoard(DEFAULT_BOARD)
+    const res = await patchQuickFilter(DEFAULT_BOARD.boardId, '00000000-0000-4000-8000-000000000099', {
+      name: '내 버그',
+      query: 'label=bug',
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('없는 보드 → 404 errorCode AGILE_BOARD_NOT_FOUND', async () => {
+    const res = await patchQuickFilter(
+      '00000000-0000-4000-8000-000000000099',
+      '00000000-0000-4000-8000-000000000001',
+      { name: '내 버그', query: 'label=bug' },
+    )
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as ProblemDetail
+    expect(body.errorCode).toBe('AGILE_BOARD_NOT_FOUND')
+  })
+})
+
+describe('DELETE /api/v1/boards/:id/quick-filters/:filterId — 퀵필터 삭제 (FR-UX-01)', () => {
+  it('삭제 → 204, 이후 GET 상세에서 사라짐 (stateful)', async () => {
+    seedBoard(DEFAULT_BOARD)
+    const createRes = await postQuickFilter(DEFAULT_BOARD.boardId, { name: '내 버그', query: 'label=bug' })
+    const created = (await createRes.json()) as DataResponse<QuickFilterDto>
+
+    const res = await deleteQuickFilterRequest(DEFAULT_BOARD.boardId, created.data.filterId)
+    expect(res.status).toBe(204)
+
+    const getRes = await getBoard(DEFAULT_BOARD.boardId)
+    const body = (await getRes.json()) as DataResponse<{ quickFilters: QuickFilterDto[] }>
+    expect(body.data.quickFilters).toHaveLength(0)
+  })
+
+  it('없는 filterId → 404', async () => {
+    seedBoard(DEFAULT_BOARD)
+    const res = await deleteQuickFilterRequest(
+      DEFAULT_BOARD.boardId,
+      '00000000-0000-4000-8000-000000000099',
+    )
+    expect(res.status).toBe(404)
+  })
+
+  it('없는 보드 → 404 errorCode AGILE_BOARD_NOT_FOUND', async () => {
+    const res = await deleteQuickFilterRequest(
+      '00000000-0000-4000-8000-000000000099',
+      '00000000-0000-4000-8000-000000000001',
+    )
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as ProblemDetail
+    expect(body.errorCode).toBe('AGILE_BOARD_NOT_FOUND')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // resetBoardStore / seedBoard 헬퍼 동작 검증
 // ─────────────────────────────────────────────────────────────────────────────
 
