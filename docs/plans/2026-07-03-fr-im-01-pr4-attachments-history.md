@@ -49,6 +49,127 @@ Maxi 확정(도메인 게이트). 이력=충실재생 · 첨부 zip=두-part · 
 
 ✅ 통과 (1회 iteration, 적대적 self-review). gap 4건 반영 — E10 MinIO 고아객체 한계 명시 · E11 BTS-native "created" additive 공존 · R6 이력 issueKey=새 BTS 키 · R4 contentType/sizeBytes zip 엔트리 파생. Maxi 결정 필요 gap 0.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 모듈 배치. shared-kernel(T1) → search 파서/처리기/업로드/worker(T4·T5·T6·T7·T8) · issue-tracking 첨부시그니처(T2)·이력recorder(T3)·어댑터(T9). 같은 모듈 task는 Gradle 컴파일 직렬화(memory `bts-plan-wave-gradle-module-compile`) — depends-on은 코드 의존만 선언. 마이그레이션 V605 잠정(머지 직전 재확인 — 동시 세션, memory `migration-vnumber-concurrent-branch-collision`). 통합테스트는 Testcontainers 실 tx(mockk 가짜그린 회피 memory `tx-aware-dslcontext-rollback-test-gap`·`issue-tracking-transition-test-mocks-workflow-repo`).
+
+### Task 1. shared-kernel — IssueImportCommand VO 확장 + ImportAttachmentSource 포트
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/issue/IssueImportCommand.kt`, `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/issue/ImportAttachmentSource.kt`, `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/issue/IssueImportPort.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/issue/IssueImportPortTest.kt`]
+- depends-on: []
+
+**RED**: `IssueImportPortTest`에 (i) 커맨드가 `sourceKey`·`attachments: List<ImportAttachment>`·`changelog: List<ImportChangeGroup>`를 담고 기본값 null/emptyList, (ii) `ImportAttachmentSource.open`이 fun interface로 InputStream? 반환, (iii) `importIssue(cmd, source)` 2-arg 오버로드가 default source=null로 하위호환(1-arg 호출 컴파일) 검증 → 컴파일 실패(VO/인터페이스 없음).
+**GREEN**: `IssueImportCommand`에 `sourceKey: String? = null`, `attachments: List<ImportAttachment> = emptyList()`, `changelog: List<ImportChangeGroup> = emptyList()` 추가(끝에, 기존 필드 불변) + `ImportAttachment(filename: String, authorEmail: String? = null, createdAt: Instant? = null, mimeType: String? = null, sizeBytes: Long? = null)`·`ImportChangeGroup(authorEmail: String? = null, occurredAt: Instant? = null, items: List<ImportChangeItem> = emptyList())`·`ImportChangeItem(field: String, fromValue: String? = null, toValue: String? = null)` data class + `fun interface ImportAttachmentSource { fun open(filename: String, sourceKey: String?): InputStream? }`(신규 파일, L1 한국어 주석) + `IssueImportPort.importIssue(cmd, attachments: ImportAttachmentSource? = null)`로 시그니처 확장(default 구현 `failure(ADAPTER_UNAVAILABLE)` 유지).
+**REFACTOR**: 각 VO/인터페이스 KDoc(nullable 의미·field=raw Jira field·source 매칭 책임은 구현체) + 파일 L1 주석.
+**검증**: `./gradlew :modules:shared-kernel:test --tests '*IssueImportPortTest'`
+
+### Task 2. issue-tracking — IssueAttachmentService.upload createdAt/uploadedBy 주입
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/attachment/application/IssueAttachmentService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/attachment/application/IssueAttachmentServiceImportTest.kt`]
+- depends-on: []
+
+**RED**: `IssueAttachmentServiceImportTest`(기존 `AttachmentTestConfig` 명시 @Bean 조립 재사용 — memory `fr-ac-01-d2-clamav-done` B1) — `upload(..., createdAt=원본시각, uploadedBy=원본uploaderId)`가 저장 Attachment의 (i) createdAt==주입시각(≠clock), (ii) uploadedBy==주입값(≠actor), (iii) null 전달 시 기존 clock/actor 폴백을 검증 → 컴파일 실패(파라미터 없음).
+**GREEN**: `upload` 시그니처에 `createdAt: Instant? = null`, `uploadedBy: UUID? = null` 추가. 도메인 조립 시 `createdAt = createdAt ?: clock.instant()`, `uploadedBy = uploadedBy ?: actor.value`. 스캔/타입/권한/put/insert 순서·보상삭제 로직 불변. 기존 upload 호출부(컨트롤러) 동작 불변(default).
+**REFACTOR**: KDoc에 주입 파라미터 의미(import 원본 메타 보존) 추가.
+**검증**: `./gradlew :modules:issue-tracking:test --tests '*IssueAttachmentServiceImportTest'`
+
+### Task 3. issue-tracking — IssueHistoryRecorder.recordImported + created_at 명시삽입
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/history/IssueHistoryRecorder.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/history/JdbcIssueChangeHistoryRepository.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/history/IssueChangeImportHistoryTest.kt`]
+- depends-on: []
+
+**RED**: `IssueChangeImportHistoryTest`(Testcontainers, `IssueTestcontainersBase`) — `recordImported(group)`가 (i) group.createdAt(과거 시각)을 **명시 삽입**(NOW() 아님)·조회 시 그 시각 반환, (ii) group.actorId(원본 author)·null 허용, (iii) items(field/from/to) 그대로 저장, (iv) **detector 미경유**(before/after diff 없이 임의 항목 기록), (v) createdAt=null이면 기존대로 NOW() 폴백(하위호환) 검증 → 컴파일/실행 실패.
+**GREEN**: `JdbcIssueChangeHistoryRepository.insertGroup`/`SQL_INSERT_GROUP`을 `created_at` 컬럼 포함으로 확장하되 `group.createdAt ?: NOW()`(파라미터 바인딩, null이면 DB DEFAULT 유지 — `COALESCE(?, NOW())` 또는 분기). 기존 `record(group)` 경로는 group.createdAt=null이라 NOW() 그대로. `IssueHistoryRecorder.recordImported(group: IssueChangeGroup)` facade 추가 — detector 미경유, `repository.record(group)` 직접 위임.
+**REFACTOR**: KDoc(import 전용 경로·occurredAt 주입 근거·일반 record와의 차이 — append-only 감사 예외) + `insertGroup` 시각 분기 헬퍼.
+**검증**: `./gradlew :modules:issue-tracking:test --tests '*IssueChangeImportHistoryTest'`
+
+### Task 4. search — 파서 확장 (buildJsonRow: sourceKey/attachments/changelog 추출)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/parse/ParsedImportRow.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/parse/ImportRowParser.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/parse/ImportRowParserTest.kt`]
+- depends-on: []
+
+**RED**: `ImportRowParserTest` — (i) JSON `issues[].key`→`sourceKey`, (ii) `fields.attachment[]`{filename, author.emailAddress, created, mimeType, size}→`ParsedImportAttachment` 목록, (iii) `issues[].changelog.histories[]`{author.emailAddress, created, items[]{field, fromString, toString}}→`ParsedImportChangeGroup` 목록(중첩 items 복합원소), (iv) CSV는 첨부/changelog 무시(빈 목록), (v) changelog 부재 시 빈 목록 검증 → 실패.
+**GREEN**: `ParsedImportRow`에 `sourceKey: String?`·`attachments: List<ParsedImportAttachment>`·`changelog: List<ParsedImportChangeGroup>` 추가 + 파서-로컬 VO `ParsedImportAttachment(filename, authorEmail?, created: String?, mimeType?, sizeBytes: Long?)`·`ParsedImportChangeGroup(authorEmail?, created: String?, items: List<ParsedImportChangeItem>)`·`ParsedImportChangeItem(field, fromValue?, toValue?)`(raw 문자열 시각). `buildJsonRow`에 `sourceKey=textOf(issueNode, "key")` + `jsonAttachmentsOf(fields)`(`fields.attachment[]`, jsonCommentsOf 패턴) + `jsonChangelogOf(issueNode)`(`issueNode.changelog.histories[]`, 중첩 items 추출). **issueNode 이미 readTree라 추가 스트리밍 없음**. changelog `total>maxResults` truncated 감지 플래그(선택). CSV parseCsv 경로 불변(빈 목록).
+**REFACTOR**: 중첩 배열→VO 추출 헬퍼 + JSON 필드 상수(`FIELD_ATTACHMENT`/`FIELD_CHANGELOG`/`FIELD_HISTORIES`/`FIELD_ITEMS`/`FIELD_FROM_STRING`/`FIELD_TO_STRING`/`FIELD_KEY`/`FIELD_MIME_TYPE`/`FIELD_SIZE`) + KDoc.
+**검증**: `./gradlew :modules:search-export-import:test --tests '*ImportRowParserTest'`
+
+### Task 5. search — ImportJobProcessor.toCommand 매핑 (attachments/changelog → shared VO)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/application/ImportJobProcessor.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/job/application/ImportJobProcessorTest.kt`]
+- depends-on: [1, 4]
+
+**RED**: `ImportJobProcessorTest` — `toCommand`가 (i) `sourceKey` 관통, (ii) `ParsedImportAttachment`→`ImportAttachment`(created→Instant `parseInstantOrNull`, email 소문자, size Long), (iii) `ParsedImportChangeGroup`→`ImportChangeGroup`(created→occurredAt Instant, author 소문자, items→`ImportChangeItem` raw field 보존)로 매핑 검증 → 실패.
+**GREEN**: `toCommand`에 `sourceKey`·`attachments`·`changelog` 매핑 라인 + `toImportAttachment`/`toImportChangeGroup`/`toImportChangeItem` 헬퍼(comment/worklog 매핑 선례). 시각은 기존 `parseInstantOrNull` 재사용. **필드 매핑은 여기서 안 함**(raw Jira field 그대로 운반 — 어댑터가 BTS field로 매핑).
+**REFACTOR**: 매핑 헬퍼 KDoc(raw field 운반 이유).
+**검증**: `./gradlew :modules:search-export-import:test --tests '*ImportJobProcessorTest'`
+
+### Task 6. search — V605 마이그레이션 + ImportJob.attachmentsObjectKey + init_codegen 미러
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/search-export-import/src/main/resources/db/migration/search-export-import/V605__import_jobs_attachments.sql`, `backend/modules/search-export-import/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/domain/ImportJob.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/repository/ImportJobRepository.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/job/repository/ImportJobRepositoryTest.kt`]
+- depends-on: []
+
+**RED**: `ImportJobRepositoryTest`(Testcontainers) — insert 후 조회 시 `attachmentsObjectKey` round-trip(값/null) 검증 → 컬럼/필드 없음으로 실패.
+**GREEN**: `V605__import_jobs_attachments.sql` = `ALTER TABLE import_jobs ADD COLUMN attachments_object_key VARCHAR(500)`(nullable) + **init_codegen.sql 동일 DDL 미러**(memory `jooq-init-codegen-mirror`) + `ImportJob`에 `attachmentsObjectKey: String? = null` 필드(끝에) + `ImportJobRepository` insert/select 매핑(jOOQ `.repository` 유지). jOOQ codegen 재생성 포함.
+**REFACTOR**: 필드 KDoc + L1 주석.
+**검증**: `./gradlew :modules:search-export-import:test --tests '*ImportJobRepositoryTest'` (codegen 재생성 포함)
+
+### Task 7. search — 업로드 계약 (POST /imports attachmentsZip part → MinIO) + config
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/web/ImportController.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/application/ImportJobService.kt`, `backend/modules/search-export-import/src/main/resources/application-dev.yml`, `backend/modules/search-export-import/src/main/resources/application-test.yml`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/web/ImportControllerIntegrationTest.kt`]
+- depends-on: [6]
+
+**RED**: `ImportControllerIntegrationTest` — `POST /api/v1/imports`에 `file`+`attachmentsZip` 두 part → (i) zip이 MinIO `bts-imports`에 별도 오브젝트 저장·`import_jobs.attachments_object_key` 기록, (ii) `attachmentsZip` 없으면 key=null(하위호환), (iii) CSV+zip → zip 무시(key=null) 검증 → 실패.
+**GREEN**: `ImportController` upload 핸들러에 `@RequestPart("attachmentsZip") attachmentsZip: MultipartFile?` 추가. `ImportAcceptCommand`에 zip stream/size/filename optional 필드 추가. `ImportJobService.accept`가 zip을 `{projectKey}/{jobId}-attachments.zip` 키로 `storage.put` 후 `attachmentsObjectKey` 세팅(CSV면 스킵). config `bts.import.attachments-zip.max-size`(기본 500MB) + `application-*.yml` `spring.servlet.multipart.max-request-size` 상향(매니페스트+zip 합).
+**REFACTOR**: zip 저장 헬퍼 추출 + KDoc(SSRF 0·두-part 근거).
+**검증**: `./gradlew :modules:search-export-import:test --tests '*ImportControllerIntegrationTest'`
+
+### Task 8. search — ZipImportAttachmentSource + worker 배선
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/application/ZipImportAttachmentSource.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/application/ImportJobProcessor.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/job/application/ZipImportAttachmentSourceTest.kt`]
+- depends-on: [1, 6]
+
+**RED**: `ZipImportAttachmentSourceTest` — (i) `open(filename, sourceKey)`가 `<sourceKey>/<filename>`→플랫 `<filename>` 순 매칭·미발견 null, (ii) 비압축 100MB 초과 엔트리 거부(null+로그), (iii) zip-slip(`..`/절대경로) 엔트리 거부, (iv) 손상 zip → 전 open null(예외 대신) 검증 → 실패.
+**GREEN**: `ZipImportAttachmentSource`(shared `ImportAttachmentSource` 구현) — MinIO에서 zip을 임시파일로 다운로드 후 `java.util.zip.ZipFile` 인덱스, `open`이 매칭 엔트리 InputStream 반환(`.use` 안전). `ImportJobProcessor.process`가 job.attachmentsObjectKey 있으면 소스 생성해 `importPort.importIssue(cmd, source)`로 주입(없으면 null), job 종료 시 zip 임시파일/ZipFile close.
+**REFACTOR**: 매칭·검증 헬퍼 + 상수(MAX_ENTRY_SIZE) + KDoc(BC 격리 — 매칭은 zip 소유 search에).
+**검증**: `./gradlew :modules:search-export-import:test --tests '*ZipImportAttachmentSourceTest'`
+
+### Task 9. issue-tracking — IssueImportAdapter 위임 (첨부 upload·이력 recordImported·매핑·best-effort·dry-run) + 통합테스트
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/outbound/imports/IssueImportAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/outbound/imports/IssueImportAdapterTest.kt`]
+- depends-on: [1, 2, 3]
+
+**RED**: `IssueImportAdapterTest`(Testcontainers 실 tx) 시나리오 추가 — (S1)첨부 upload+원본 시각/uploader 보존+조회(fake `ImportAttachmentSource`로 스트림 주입), (S2)changelog recordImported+occurredAt/actor 보존+field 매핑, (S3)UPDATE 권한 없음→첨부/이력 스킵+집약 경고·이슈 생성, (S4)MIME 거부/스캔 미가용→첨부 단위 경고·이슈 커밋, (S5)author 미해석→첨부=requester·이력=actorId null, (S6)미매핑 field→스킵+경고, (S7)시각 파싱 실패→그룹 스킵+경고, (S8)이슈당 이력 상한 1000 초과→스킵+경고, (S9)dry-run→insert 0·**FORBIDDEN 미엮음**·warn 별도경로, (S10)예상외 throw→행 롤백(첨부 upload가 행 tx 미오염 실증) → 실패.
+**GREEN**: `IssueImportAdapter` 생성자에 `IssueAttachmentService`·`IssueHistoryRecorder` 주입(**기존 명시 @Bean/mock 테스트 조립 갱신** — memory `plan-files-constructor-injection-existing-tests`·`fr-hs-01`). `importIssue(cmd, attachments)` 오버라이드가 2-arg. `executeImport`에 createIssue 후 `applyAttachments`(사전 UPDATE 권한 체크 → `attachments.open` non-null·MIME 사전판정분만 `attachmentService.upload(createdAt/uploadedBy 주입)`, 실패 catch→첨부 단위 경고) → `applyChangelog`(Jira→BTS field 매핑 테이블 R8·미매핑 스킵+경고·author resolveByEmails→null 폴백·occurredAt parse 실패 스킵·상한 1000, `IssueChangeGroup` 조립 후 `historyRecorder.recordImported`). `FieldResolution`에 첨부/이력 author 이메일 합류(`resolveByEmails` 단일 배치). dry-run `warnAttachmentsIfNeeded`/`warnChangelogIfNeeded`(`validateDryRun` FORBIDDEN early-return **이후**·`rowTriggersUpdate` 미엮음).
+**REFACTOR**: 첨부/이력 처리·집약경고·필드매핑 헬퍼 추출 + KDoc(사전체크 잔여 throw 집합·매핑 근거).
+**검증**: `./gradlew :modules:issue-tracking:test --tests '*IssueImportAdapterTest'`
+
+## Plan 메타
+
+- task 수: 9
+- 예상 wave. Wave1 = T1·T2·T3·T4·T6(depends-on []), Wave2 = T5(1,4)·T7(6)·T8(1,6)·T9(1,2,3). 같은 모듈(issue-tracking T2/T3/T9·search T4/T5/T6/T7/T8) Gradle 컴파일 직렬화.
+- TDD 강제: yes (test 커밋 선행)
+- 병렬 dispatch: bts-impl이 depends-on+files로 wave 계산
+- 추가 검증: ktlint, detekt, ArchUnit(BC 격리·jOOQ `.repository`), verify-master-plan(카운트 불변 123), 통합테스트(Testcontainers 실 tx), 전 모듈 풀빌드
+- 마이그레이션: V605 1건(search-export-import, 머지 직전 재확인). 이력은 코드-only(스키마 0), 첨부 테이블 변경 0
+- E2E: 생략. UI 없는 백엔드 — Playwright 표면 없음. Testcontainers 실 tx(S1~S10)가 전 경로 커버. D6/D7 프론트 후속 PR에서 E2E
+- FR 동기화: 에픽 내부(신규 FR 0, 카운트 123 불변). product/search-export-import.md §4.1 PR4 진행노트 추가(머지 단계). D박스는 FR-IM-01 전체 완료 시 일괄 마킹
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
