@@ -43,6 +43,14 @@ import java.util.UUID
  *   미매칭/미존재 버전 이름은 구현체가 best-effort 로 경고 처리하고 스킵한다.
  * @property comments 이슈에 동반 import 할 댓글 목록. 빈 목록이면 댓글 없음(PR3).
  * @property worklogs 이슈에 동반 import 할 작업 기록(worklog) 목록. 빈 목록이면 worklog 없음(PR3).
+ * @property sourceKey 원본(Jira 등) 이슈 키. 예: `"JIRA-123"`. [ImportAttachmentSource.open] 이 첨부
+ *   파일을 찾을 때 사용하는 힌트이며, 신규 이슈의 [projectKey]/키 발급과는 무관하다. null 이면
+ *   첨부 매칭을 시도하지 않는다(구현체 책임).
+ * @property attachments 이슈에 동반 import 할 첨부 파일 메타 목록(PR4). 빈 목록이면 첨부 없음.
+ *   실제 바이너리는 이 커맨드가 담지 않고 [ImportAttachmentSource] 를 통해 구현체가 조회한다.
+ * @property changelog 이슈에 동반 import 할 변경 이력(changelog) 그룹 목록(PR4). 빈 목록이면 이력 없음.
+ *   원본(Jira 등)의 changelog history 를 그대로 재생하기 위한 목록이며, 신규 필드 변경 감지(detector)를
+ *   거치지 않고 구현체가 그대로 기록한다.
  * @see IssueImportPort
  * @see IssueImportResult
  */
@@ -63,6 +71,9 @@ data class IssueImportCommand(
     val affectsVersionNames: List<String> = emptyList(),
     val comments: List<ImportComment> = emptyList(),
     val worklogs: List<ImportWorklog> = emptyList(),
+    val sourceKey: String? = null,
+    val attachments: List<ImportAttachment> = emptyList(),
+    val changelog: List<ImportChangeGroup> = emptyList(),
 )
 
 /**
@@ -103,4 +114,63 @@ data class ImportWorklog(
     val startedAt: Instant? = null,
     val authorEmail: String? = null,
     val comment: String? = null,
+)
+
+/**
+ * import 대상 이슈에 동반 생성할 첨부 파일 하나의 메타데이터를 표현하는 값 객체(PR4).
+ *
+ * [IssueImportCommand.attachments] 목록의 원소로만 사용되며, 프레임워크 의존 없는 순수 데이터다.
+ * 실제 바이너리 내용은 이 VO 가 담지 않는다 — 구현체가 [ImportAttachmentSource.open] 을 호출해
+ * [filename] 과 [IssueImportCommand.sourceKey] 로 스트림을 조회한다(zip 내 파일명 매칭 등은
+ * [ImportAttachmentSource] 구현체 책임).
+ *
+ * @property filename 원본 파일명. [ImportAttachmentSource.open] 호출 시 매칭 키로 사용된다.
+ * @property authorEmail 업로더 이메일. 매칭 실패 또는 null 이면 구현체가
+ *   [IssueImportCommand.requesterUserId](import 실행자)로 폴백한다
+ *   ([IssueImportCommand.reporterEmail] 폴백 규칙과 동일).
+ * @property createdAt 원본(Jira 등) 업로드 시각. null 이면 구현체가 import 실행 시각을 사용한다.
+ * @property mimeType 원본 MIME 타입. null 이면 구현체가 파일 내용/확장자 기반으로 재판정한다.
+ * @property sizeBytes 원본 파일 크기(바이트). 실제 조회한 스트림 크기와 다를 수 있으며 참고용이다.
+ */
+data class ImportAttachment(
+    val filename: String,
+    val authorEmail: String? = null,
+    val createdAt: Instant? = null,
+    val mimeType: String? = null,
+    val sizeBytes: Long? = null,
+)
+
+/**
+ * import 대상 이슈에 동반 재생할 변경 이력(changelog) 그룹 하나를 표현하는 값 객체(PR4).
+ *
+ * 원본(Jira 등)의 changelog history 한 건(한 시점에 한 작성자가 여러 필드를 동시 변경한 단위)에
+ * 대응한다. [IssueImportCommand.changelog] 목록의 원소로만 사용되며, 프레임워크 의존 없는
+ * 순수 데이터다. 신규 필드 변경 감지(detector)를 거치지 않고 구현체가 [items] 를 그대로 기록한다.
+ *
+ * @property authorEmail 변경을 수행한 작성자 이메일. 매칭 실패 또는 null 이면 구현체가
+ *   [IssueImportCommand.requesterUserId](import 실행자)로 폴백한다
+ *   ([IssueImportCommand.reporterEmail] 폴백 규칙과 동일).
+ * @property occurredAt 원본(Jira 등) 변경 발생 시각. null 이면 구현체가 import 실행 시각을 사용한다.
+ * @property items 이 그룹에 속한 필드별 변경 항목 목록. 빈 목록이면 변경 항목 없음.
+ */
+data class ImportChangeGroup(
+    val authorEmail: String? = null,
+    val occurredAt: Instant? = null,
+    val items: List<ImportChangeItem> = emptyList(),
+)
+
+/**
+ * [ImportChangeGroup] 에 속한 필드 하나의 변경 전/후 값을 표현하는 값 객체(PR4).
+ *
+ * [field] 는 BTS 내부 필드명이 아니라 원본(Jira 등) export 의 raw 필드명을 그대로 담는다
+ * (예: `"status"`, `"assignee"`). BTS 필드로의 매핑은 이 VO 자체가 하지 않으며 구현체 책임이다.
+ *
+ * @property field 원본(Jira 등)의 raw 필드명. BTS 내부 필드명으로 매핑되지 않은 원본 값이다.
+ * @property fromValue 변경 전 값(원본 표기 그대로). null 이면 이전 값 없음(신규 설정).
+ * @property toValue 변경 후 값(원본 표기 그대로). null 이면 값 제거.
+ */
+data class ImportChangeItem(
+    val field: String,
+    val fromValue: String? = null,
+    val toValue: String? = null,
 )

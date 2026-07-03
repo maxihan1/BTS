@@ -44,6 +44,20 @@ import java.io.InputStreamReader
  * export 형식이 없어 CSV 행은 항상 `worklogs = emptyList()` 다. 원본 시각 문자열은 이 단계에서
  * [java.time.Instant] 로 변환하지 않는다 — [ParsedImportComment]/[ParsedImportWorklog] KDoc 참조.
  *
+ * ### sourceKey/첨부/변경이력 (PR4)
+ *
+ * 세 항목 모두 **JSON 전용** — Jira CSV export 에는 원본 키·첨부 바이너리·변경이력에 대응하는
+ * 표준 컬럼이 없어 CSV 행은 항상 `sourceKey = null`, `attachments`/`changelog = emptyList()` 다.
+ * `sourceKey`(원본 이슈 키)와 `changelog`(변경이력)는 `fields` 하위가 아니라 **이슈 노드 최상위**
+ * 필드([FIELD_KEY]/[FIELD_CHANGELOG])에서 읽는다 — `fields.attachment[]` 만 다른 코어 필드처럼
+ * `fields` 하위다. 첨부는 [jsonAttachmentOf] 로 원소를 개별 추출하고, 변경이력은 그룹([jsonChangeGroupOf])
+ * 안에 중첩된 `items[]` 를 [jsonChangeItemOf] 로 한 번 더 개별 추출한다 — 댓글/worklog 와 동일하게
+ * `fields.comment.comments[]`/`fields.worklog.worklogs[]` 같은 복합 배열은 [textArrayOf](평면 배열
+ * 전용)를 재사용할 수 없다. 첨부 크기([ParsedImportAttachment.sizeBytes])는 [longOrNull] 로 숫자
+ * 노드 여부를 먼저 확인한다 — `asLong(0)` 폴백은 "값 없음"과 "0바이트"를 구분하지 못해 미사용.
+ * 이미 이슈 단위로 스트리밍되는 [buildJsonRow] 부분 트리([issueNode])에서 읽기만 하므로 추가
+ * 스트리밍 복잡도는 없다.
+ *
  * ### 파일 구조 오류
  *
  * 헤더 행이 없거나 필수 컬럼(Summary)이 없는 CSV, `issues` 배열이 없거나 문법이 깨진 JSON은
@@ -311,6 +325,9 @@ class ImportRowParser {
             affectsVersionNames = textArrayOf(fields.path(FIELD_VERSIONS), FIELD_NAME),
             comments = jsonCommentsOf(fields),
             worklogs = jsonWorklogsOf(fields),
+            sourceKey = textOf(issueNode, FIELD_KEY),
+            attachments = jsonAttachmentsOf(fields),
+            changelog = jsonChangelogOf(issueNode),
         )
     }
 
@@ -353,6 +370,68 @@ class ImportRowParser {
             authorEmail = textOf(element.path(FIELD_AUTHOR), FIELD_EMAIL_ADDRESS),
             comment = textOf(element, FIELD_COMMENT),
         )
+
+    /**
+     * `fields.attachment[]` 배열을 [ParsedImportAttachment] 목록으로 변환한다(JSON 전용 — CSV 는
+     * 미지원). `fields.attachment` 가 없으면 빈 목록.
+     */
+    private fun jsonAttachmentsOf(fields: JsonNode): List<ParsedImportAttachment> {
+        val attachments = fields.path(FIELD_ATTACHMENT)
+        if (!attachments.isArray) return emptyList()
+        return attachments.map { element -> jsonAttachmentOf(element) }
+    }
+
+    /** 첨부 배열 원소 하나에서 파일명/작성자 이메일/업로드시각/MIME 타입/크기를 추출한다. */
+    private fun jsonAttachmentOf(element: JsonNode): ParsedImportAttachment =
+        ParsedImportAttachment(
+            filename = textOf(element, FIELD_FILENAME).orEmpty(),
+            authorEmail = textOf(element.path(FIELD_AUTHOR), FIELD_EMAIL_ADDRESS),
+            created = textOf(element, FIELD_CREATED),
+            mimeType = textOf(element, FIELD_MIME_TYPE),
+            sizeBytes = longOrNull(element, FIELD_SIZE),
+        )
+
+    /**
+     * `changelog.histories[]` 배열을 [ParsedImportChangeGroup] 목록으로 변환한다(JSON 전용 — CSV
+     * 는 미지원). `changelog` 는 `fields` 가 아니라 이슈 노드 최상위에 위치한다. `changelog` 가
+     * 없으면 빈 목록.
+     */
+    private fun jsonChangelogOf(issueNode: JsonNode): List<ParsedImportChangeGroup> {
+        val histories = issueNode.path(FIELD_CHANGELOG).path(FIELD_HISTORIES)
+        if (!histories.isArray) return emptyList()
+        return histories.map { element -> jsonChangeGroupOf(element) }
+    }
+
+    /** 변경 이력 배열 원소 하나에서 작성자 이메일/변경시각/중첩 items[] 를 추출한다. */
+    private fun jsonChangeGroupOf(element: JsonNode): ParsedImportChangeGroup =
+        ParsedImportChangeGroup(
+            authorEmail = textOf(element.path(FIELD_AUTHOR), FIELD_EMAIL_ADDRESS),
+            created = textOf(element, FIELD_CREATED),
+            items = jsonChangeItemsOf(element.path(FIELD_ITEMS)),
+        )
+
+    /** `items[]` 배열 노드를 [ParsedImportChangeItem] 목록으로 변환한다. 배열이 아니면 빈 목록. */
+    private fun jsonChangeItemsOf(node: JsonNode): List<ParsedImportChangeItem> {
+        if (!node.isArray) return emptyList()
+        return node.map { element -> jsonChangeItemOf(element) }
+    }
+
+    /** 변경 항목 배열 원소 하나에서 필드명/변경 전 값/변경 후 값을 추출한다. */
+    private fun jsonChangeItemOf(element: JsonNode): ParsedImportChangeItem =
+        ParsedImportChangeItem(
+            field = textOf(element, FIELD_ITEM_FIELD).orEmpty(),
+            fromValue = textOf(element, FIELD_FROM_STRING),
+            toValue = textOf(element, FIELD_TO_STRING),
+        )
+
+    /** 숫자 노드면 [Long] 값을, 숫자가 아니거나(누락 포함) 없으면 null 을 반환한다. */
+    private fun longOrNull(
+        node: JsonNode,
+        field: String,
+    ): Long? {
+        val target = node.path(field)
+        return if (target.isNumber) target.asLong() else null
+    }
 
     private fun sanitizeText(node: JsonNode): String? {
         if (!node.isTextual) return null
@@ -452,6 +531,20 @@ class ImportRowParser {
         private const val FIELD_AUTHOR = "author"
         private const val FIELD_TIME_SPENT_SECONDS = "timeSpentSeconds"
         private const val FIELD_STARTED = "started"
+
+        // JSON sourceKey/첨부/변경이력 필드 이름(PR4) — `issues[].key`, `fields.attachment[]`,
+        // `changelog.histories[]`(중첩 `items[]`). CSV 는 세 항목 모두 미지원(JSON 전용).
+        private const val FIELD_KEY = "key"
+        private const val FIELD_ATTACHMENT = "attachment"
+        private const val FIELD_FILENAME = "filename"
+        private const val FIELD_MIME_TYPE = "mimeType"
+        private const val FIELD_SIZE = "size"
+        private const val FIELD_CHANGELOG = "changelog"
+        private const val FIELD_HISTORIES = "histories"
+        private const val FIELD_ITEMS = "items"
+        private const val FIELD_ITEM_FIELD = "field"
+        private const val FIELD_FROM_STRING = "fromString"
+        private const val FIELD_TO_STRING = "toString"
 
         // 정화 대상 제어문자 범위 — ASCII 0x20 미만(단 탭/개행/CR 제외) + DEL(0x7F).
         private const val CONTROL_CHAR_MAX = 0x20

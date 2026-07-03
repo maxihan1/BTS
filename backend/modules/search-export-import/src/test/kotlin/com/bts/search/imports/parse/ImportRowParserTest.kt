@@ -22,6 +22,8 @@ import java.io.InputStream
  * - Priority 이름/숫자(1..5) → 정규화 이름 매핑, 범위밖/미인식 → null
  * - NUL/제어문자 정화 (CSV/JSON 공통)
  * - 대량 입력에서도 콜백 기반으로 전체 리스트를 만들지 않고 처리(구조적 스트리밍 보장)
+ * - JSON: `issues[].key`→sourceKey, `fields.attachment[]`→첨부, `changelog.histories[]`(중첩
+ *   `items[]`)→변경이력 — CSV 는 세 필드 모두 미지원(JSON 전용, sourceKey=null·목록=emptyList)
  */
 class ImportRowParserTest : DescribeSpec({
 
@@ -457,6 +459,145 @@ class ImportRowParserTest : DescribeSpec({
             val rows = parseCsvRows(csv)
 
             rows[0].worklogs shouldContainExactly emptyList()
+        }
+    }
+
+    // ── JSON: sourceKey/첨부/변경이력 (FR-IM-01 PR4 Task 4) ──────────────────────
+
+    describe("ImportRowParser.parseJson — sourceKey/첨부/변경이력") {
+        it("issues[].key 를 sourceKey 로 추출한다") {
+            val json = """{ "issues": [ { "key": "JIRA-42", "fields": { "summary": "one" } } ] }"""
+
+            val rows = parseJsonRows(json)
+
+            rows[0].sourceKey shouldBe "JIRA-42"
+        }
+
+        it("key 가 없으면 sourceKey=null") {
+            val json = """{ "issues": [ { "fields": { "summary": "one" } } ] }"""
+
+            val rows = parseJsonRows(json)
+
+            rows[0].sourceKey.shouldBeNull()
+        }
+
+        it("fields.attachment[] 의 filename/author.emailAddress/created/mimeType/size 를 순서대로 추출한다") {
+            val json =
+                """
+                {
+                  "issues": [
+                    {
+                      "key": "JIRA-1",
+                      "fields": {
+                        "summary": "Imported issue",
+                        "attachment": [
+                          {
+                            "filename": "screenshot.png",
+                            "author": { "emailAddress": "bob@corp.com" },
+                            "created": "2024-01-15T10:00:00.000+0000",
+                            "mimeType": "image/png",
+                            "size": 20480
+                          },
+                          {
+                            "filename": "log.txt",
+                            "author": { "emailAddress": "alice@corp.com" },
+                            "created": "2024-01-16T11:00:00.000+0000",
+                            "mimeType": "text/plain",
+                            "size": 1024
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """.trimIndent()
+
+            val rows = parseJsonRows(json)
+
+            rows shouldHaveSize 1
+            rows[0].attachments shouldHaveSize 2
+            val first = rows[0].attachments[0]
+            first.filename shouldBe "screenshot.png"
+            first.authorEmail shouldBe "bob@corp.com"
+            first.created shouldBe "2024-01-15T10:00:00.000+0000"
+            first.mimeType shouldBe "image/png"
+            first.sizeBytes shouldBe 20480L
+            rows[0].attachments[1].filename shouldBe "log.txt"
+            rows[0].attachments[1].authorEmail shouldBe "alice@corp.com"
+        }
+
+        it("fields.attachment 가 없으면 attachments=emptyList") {
+            val json = """{ "issues": [ { "fields": { "summary": "one" } } ] }"""
+
+            val rows = parseJsonRows(json)
+
+            rows[0].attachments shouldContainExactly emptyList()
+        }
+
+        it(
+            "changelog.histories[] 의 author.emailAddress/created 와 중첩 items[] " +
+                "(field/fromString/toString) 을 추출한다",
+        ) {
+            val json =
+                """
+                {
+                  "issues": [
+                    {
+                      "key": "JIRA-1",
+                      "fields": { "summary": "Imported issue" },
+                      "changelog": {
+                        "histories": [
+                          {
+                            "author": { "emailAddress": "bob@corp.com" },
+                            "created": "2024-01-15T10:00:00.000+0000",
+                            "items": [
+                              { "field": "status", "fromString": "To Do", "toString": "In Progress" },
+                              { "field": "assignee", "fromString": null, "toString": "alice@corp.com" }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """.trimIndent()
+
+            val rows = parseJsonRows(json)
+
+            rows shouldHaveSize 1
+            rows[0].changelog shouldHaveSize 1
+            val group = rows[0].changelog[0]
+            group.authorEmail shouldBe "bob@corp.com"
+            group.created shouldBe "2024-01-15T10:00:00.000+0000"
+            group.items shouldHaveSize 2
+            group.items[0].field shouldBe "status"
+            group.items[0].fromValue shouldBe "To Do"
+            group.items[0].toValue shouldBe "In Progress"
+            group.items[1].field shouldBe "assignee"
+            group.items[1].fromValue.shouldBeNull()
+            group.items[1].toValue shouldBe "alice@corp.com"
+        }
+
+        it("changelog 가 없으면 changelog=emptyList") {
+            val json = """{ "issues": [ { "fields": { "summary": "one" } } ] }"""
+
+            val rows = parseJsonRows(json)
+
+            rows[0].changelog shouldContainExactly emptyList()
+        }
+    }
+
+    // ── CSV: sourceKey/첨부/변경이력 (JSON 전용, FR-IM-01 PR4 Task 4) ────────────
+
+    describe("ImportRowParser.parseCsv — sourceKey/첨부/변경이력") {
+        it("CSV 는 sourceKey=null, attachments/changelog=emptyList 를 반환한다(JSON 전용)") {
+            val csv = "Summary\r\na\r\n"
+
+            val rows = parseCsvRows(csv)
+
+            rows[0].sourceKey.shouldBeNull()
+            rows[0].attachments shouldContainExactly emptyList()
+            rows[0].changelog shouldContainExactly emptyList()
         }
     }
 }) {

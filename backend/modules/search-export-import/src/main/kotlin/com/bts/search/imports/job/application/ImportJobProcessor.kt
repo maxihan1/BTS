@@ -7,9 +7,15 @@ import com.bts.search.imports.job.repository.ImportJobRepository
 import com.bts.search.imports.job.storage.ImportObjectStoragePort
 import com.bts.search.imports.parse.ImportParseException
 import com.bts.search.imports.parse.ImportRowParser
+import com.bts.search.imports.parse.ParsedImportAttachment
+import com.bts.search.imports.parse.ParsedImportChangeGroup
+import com.bts.search.imports.parse.ParsedImportChangeItem
 import com.bts.search.imports.parse.ParsedImportComment
 import com.bts.search.imports.parse.ParsedImportRow
 import com.bts.search.imports.parse.ParsedImportWorklog
+import com.bts.shared.issue.ImportAttachment
+import com.bts.shared.issue.ImportChangeGroup
+import com.bts.shared.issue.ImportChangeItem
 import com.bts.shared.issue.ImportComment
 import com.bts.shared.issue.ImportWorklog
 import com.bts.shared.issue.IssueImportCommand
@@ -62,6 +68,17 @@ import java.time.OffsetDateTime
  * 값이 없거나 파싱에 실패하면 null 을 담는다(created=now 대체, worklog 스킵 등 best-effort 폴백은
  * 이 클래스가 아니라 어댑터(Task 7, issue-tracking) 책임 — 이 클래스는 순수 변환만 한다).
  *
+ * ## 첨부/이력 매핑 (PR4)
+ *
+ * [toCommand] 가 [ParsedImportRow.sourceKey] 를 그대로 관통시키고, [ParsedImportRow.attachments]/
+ * [ParsedImportRow.changelog](원본 문자열 raw 값)를 [ImportAttachment]/[ImportChangeGroup](shared-kernel
+ * VO) 로 변환한다 — [toImportAttachment]/[toImportChangeGroup]/[toImportChangeItem]. 댓글/worklog
+ * 매핑과 동일하게 작성자 이메일은 소문자화하고 시각 문자열은 [parseInstantOrNull] 로 변환한다.
+ * **[ImportChangeItem.field] 는 원본(Jira 등)의 raw 필드명을 그대로 옮긴다** — BTS 내부 필드명으로의
+ * 매핑은 issue-tracking BC 가 소유하는 도메인 지식이라(예: 전이 가능 상태, 담당자 개념) 이 클래스가
+ * 대신 수행하면 그 지식이 BC 경계를 넘어 흩어진다. 실제 매핑은 [ImportChangeGroup] 을 소비하는
+ * issue-tracking `IssueImportAdapter`(Task 9)가 담당한다.
+ *
  * @param issueImportPort 이슈 생성 cross-BC 쓰기 포트.
  * @param storage 원본 파일 조회 + 에러 로그 업로드용 오브젝트 스토리지 포트.
  * @param repository Import 작업 상태 관리 저장소.
@@ -112,24 +129,47 @@ class ImportJobProcessor(
     /**
      * 원본 파일을 열어 형식에 맞는 파서로 행을 순회하고, 완료 후 [finalizeCompleted] 로 전환한다.
      *
+     * [openZipSourceOrNull] 로 첨부 zip 소스를 job 당 1회만 열어 모든 행이 재사용하고, 파싱이 끝나면
+     * (성공/실패 무관) 닫는다 — [ZipImportAttachmentSource] 가 [java.io.Closeable] 이므로 nullable
+     * 수신자에도 안전한 Kotlin stdlib `use` 를 그대로 사용한다(source 가 null 이어도 block 은 실행된다).
+     *
      * @throws ImportParseException 파일 구조가 깨졌을 때(헤더 없음, JSON 구문 오류 등).
      * @throws ImportRowLimitExceededException 행 카운터가 [ImportJob.MAX_ROWS] 를 초과했을 때.
      */
     private fun processRows(job: ImportJob) {
         val state = RowProcessingState()
-        storage.get(job.sourceObjectKey).use { input ->
-            val onRow: (ParsedImportRow) -> Unit = { row -> handleRow(job, row, state) }
-            when (job.format) {
-                FORMAT_CSV -> parser.parseCsv(input, onRow)
-                FORMAT_JSON -> parser.parseJson(input, onRow)
-                else -> error("unsupported import format: ${job.format}") // DB CHECK 제약으로 도달불가 — 방어적 guard
+        openZipSourceOrNull(job).use { attachmentSource ->
+            storage.get(job.sourceObjectKey).use { input ->
+                val onRow: (ParsedImportRow) -> Unit = { row -> handleRow(job, row, state, attachmentSource) }
+                when (job.format) {
+                    FORMAT_CSV -> parser.parseCsv(input, onRow)
+                    FORMAT_JSON -> parser.parseJson(input, onRow)
+                    else -> error("unsupported import format: ${job.format}") // DB CHECK 제약으로 도달불가 — 방어적 guard
+                }
             }
         }
         finalizeCompleted(job, state)
     }
 
     /**
+     * [job.attachmentsObjectKey][ImportJob.attachmentsObjectKey] 가 있고 dry-run 이 아니면
+     * [ZipImportAttachmentSource] 를 연다.
+     *
+     * dry-run 은 실제 생성 없는 검증 미리보기라 최대 500MB 첨부 zip 다운로드가 낭비이므로 스킵한다
+     * (첨부는 dry-run 결과에 반영되지 않는다 — 어댑터가 dry-run 이면 첨부/이력 자체를 적용하지 않는다).
+     */
+    private fun openZipSourceOrNull(job: ImportJob): ZipImportAttachmentSource? {
+        if (job.dryRun) return null
+        return job.attachmentsObjectKey?.let { objectKey -> ZipImportAttachmentSource(storage, objectKey) }
+    }
+
+    /**
      * 행 1건을 처리한다 — 카운터 증가/상한 검사, [IssueImportPort] 위임, 결과 집계, 주기적 진행률 갱신.
+     *
+     * [attachmentSource] 가 null 이 아니면 [IssueImportPort.importIssue] 2-arg 오버로드로 위임하고,
+     * null 이면(첨부 zip 미첨부·dry-run) 기존 1-arg 오버로드를 그대로 호출한다 — 어댑터 기준으로는
+     * 두 경로 모두 동일하게 첨부 소스 null 로 귀결되므로 결과는 동등하다(1-arg default 가 내부적으로
+     * `importIssue(cmd, null)` 로 위임하기 때문. [IssueImportPort] KDoc 참조).
      *
      * @throws ImportRowLimitExceededException 이 행 포함 누적 카운트가 [ImportJob.MAX_ROWS] 를
      *   초과했을 때. 이 행 자체는 [issueImportPort] 에 위임되지 않는다.
@@ -138,12 +178,20 @@ class ImportJobProcessor(
         job: ImportJob,
         row: ParsedImportRow,
         state: RowProcessingState,
+        attachmentSource: ZipImportAttachmentSource?,
     ) {
         state.rowCount++
         if (state.rowCount > ImportJob.MAX_ROWS) {
             throw ImportRowLimitExceededException()
         }
-        when (val result = issueImportPort.importIssue(toCommand(job, row))) {
+        val command = toCommand(job, row)
+        val result =
+            if (attachmentSource != null) {
+                issueImportPort.importIssue(command, attachmentSource)
+            } else {
+                issueImportPort.importIssue(command)
+            }
+        when (result) {
             is IssueImportResult.Success -> {
                 state.succeededRows++
                 result.warnings.forEach { warning ->
@@ -251,6 +299,9 @@ class ImportJobProcessor(
             affectsVersionNames = row.affectsVersionNames,
             comments = row.comments.map(::toImportComment),
             worklogs = row.worklogs.map(::toImportWorklog),
+            sourceKey = row.sourceKey,
+            attachments = row.attachments.map(::toImportAttachment),
+            changelog = row.changelog.map(::toImportChangeGroup),
         )
 
     /** [ParsedImportComment](raw 문자열) 를 [ImportComment](shared VO, `createdAt` 이 [Instant]) 로 변환한다. */
@@ -268,6 +319,47 @@ class ImportJobProcessor(
             startedAt = parseInstantOrNull(worklog.startedAt),
             authorEmail = worklog.authorEmail?.lowercase(),
             comment = worklog.comment,
+        )
+
+    /**
+     * [ParsedImportAttachment](raw 문자열) 를 [ImportAttachment](shared VO, `createdAt` 이 [Instant]) 로
+     * 변환한다. [ParsedImportAttachment.mimeType]/[ParsedImportAttachment.sizeBytes] 는 값 변환 없이 그대로
+     * 옮긴다(재판정/재계산은 어댑터 책임).
+     */
+    private fun toImportAttachment(attachment: ParsedImportAttachment): ImportAttachment =
+        ImportAttachment(
+            filename = attachment.filename,
+            authorEmail = attachment.authorEmail?.lowercase(),
+            createdAt = parseInstantOrNull(attachment.created),
+            mimeType = attachment.mimeType,
+            sizeBytes = attachment.sizeBytes,
+        )
+
+    /**
+     * [ParsedImportChangeGroup](raw 문자열) 를 [ImportChangeGroup](shared VO, `occurredAt` 이 [Instant]) 로
+     * 변환한다. [ParsedImportChangeGroup.items] 는 [toImportChangeItem] 로 원소별 변환한다.
+     */
+    private fun toImportChangeGroup(group: ParsedImportChangeGroup): ImportChangeGroup =
+        ImportChangeGroup(
+            authorEmail = group.authorEmail?.lowercase(),
+            occurredAt = parseInstantOrNull(group.created),
+            items = group.items.map(::toImportChangeItem),
+        )
+
+    /**
+     * [ParsedImportChangeItem] 을 [ImportChangeItem] 으로 변환한다.
+     *
+     * [ParsedImportChangeItem.field] 는 원본(Jira 등)의 raw 필드명을 **그대로** 옮긴다 — BTS 내부
+     * 필드명으로의 매핑은 이 클래스가 수행하지 않는다. BTS 필드는 issue-tracking BC 가 소유하는
+     * 도메인 지식(예: 전이 가능 상태 목록, 담당자 개념)이라 search 모듈(BC 격리)에서 매핑 테이블을
+     * 들고 있으면 그 지식이 두 곳에 흩어진다. 실제 매핑은 [ImportChangeGroup] 을 소비하는
+     * issue-tracking `IssueImportAdapter`(Task 9)가 담당한다.
+     */
+    private fun toImportChangeItem(item: ParsedImportChangeItem): ImportChangeItem =
+        ImportChangeItem(
+            field = item.field,
+            fromValue = item.fromValue,
+            toValue = item.toValue,
         )
 
     /**

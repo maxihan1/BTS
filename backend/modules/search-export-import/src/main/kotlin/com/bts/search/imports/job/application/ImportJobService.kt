@@ -12,6 +12,7 @@ import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -48,6 +49,17 @@ import java.util.UUID
  * 5. MinIO put(원본 업로드, 트랜잭션 밖) → [ImportJobRepository.insert] + [ImportJobEnqueuePublisher.enqueue]
  *    (단일 트랜잭션) 순으로 실행한다.
  *
+ * ## 첨부 zip — [putAttachmentsZipIfPresent] (PR4 Task 7)
+ *
+ * `POST /api/v1/imports` 는 매니페스트(`file`)와 별개로 첨부 zip(`attachmentsZip`, optional)을
+ * 두 번째 multipart part 로 받을 수 있다. **JSON import 이고 zip 이 첨부된 경우에만**
+ * `{projectKey}/{jobId}-attachments.zip` 키로 MinIO 에 저장하고 [ImportJob.attachmentsObjectKey] 에 기록한다.
+ * **CSV import 는 zip 을 무시한다**(attachmentsObjectKey=null) — CSV 포맷에는 첨부 매핑 개념이 없으므로
+ * 클라이언트가 실수로 zip 을 함께 올려도 조용히 무시해 하위호환을 유지한다. zip 은 원본 파일과 마찬가지로
+ * URL 을 따라가지 않고 클라이언트가 올린 바이트를 그대로 MinIO 에 적재할 뿐이라 SSRF 표면을 추가하지 않는다.
+ * 실제 zip 내부 압축 해제·첨부 매핑은 워커([com.bts.search.imports.job.worker.ImportJobWorker], PR4 후속 Task)
+ * 책임이다 — 이 서비스는 원본 zip 을 안전하게 보관하는 것까지만 담당한다.
+ *
  * ## 트랜잭션 경계 — MinIO put 은 트랜잭션 밖, persist+enqueue 만 원자적
  *
  * [ImportJobEnqueuePublisher.enqueue] 는 [org.springframework.transaction.annotation.Propagation.MANDATORY]
@@ -71,13 +83,18 @@ import java.util.UUID
  * 트랜잭션을 갖고 있고, MinIO 스트림 open 동안 DB 커넥션을 점유하지 않기 위함이다.
  *
  * @param repository Import 작업 영속 저장소.
- * @param storage Import 원본/에러로그 오브젝트 스토리지 포트.
+ * @param storage Import 원본/에러로그/첨부 zip 오브젝트 스토리지 포트.
  * @param enqueuePublisher pgmq 큐에 작업 ID 를 발행하는 아웃바운드 어댑터.
  * @param permissionResolver cross-BC 이슈 권한 판정 포트. CREATE_ISSUE fail-fast 판정에 사용.
  * @param transactionTemplate persist+enqueue 구간의 프로그래밍 방식 트랜잭션 경계.
  * @param clock createdAt 결정용 시계. search 모듈에 Clock 빈이 없으므로 기본값 [Clock.systemUTC] 사용.
+ * @param attachmentsZipMaxSizeBytes 첨부 zip 업로드 허용 최대 크기(바이트). `bts.import.attachments-zip.max-size`
+ *   프로퍼티로 오버라이드 가능. 기본값 [DEFAULT_ATTACHMENTS_ZIP_MAX_SIZE_BYTES](500MB) — SpEL 기본값 문자열과
+ *   Kotlin 기본 인자가 이중 정의되므로 값 변경 시 둘 다 동기화해야 한다(Spring 이 직접 생성자를 호출하는
+ *   실 빈 경로에서는 SpEL 기본값이, 테스트가 인자를 생략하고 수동 호출하는 경로에서는 Kotlin 기본 인자가 적용된다).
  */
 @Service
+@Suppress("LongParameterList")
 class ImportJobService(
     private val repository: ImportJobRepository,
     private val storage: ImportObjectStoragePort,
@@ -85,6 +102,8 @@ class ImportJobService(
     private val permissionResolver: IssuePermissionResolver,
     private val transactionTemplate: TransactionTemplate,
     private val clock: Clock = Clock.systemUTC(),
+    @Value("\${bts.import.attachments-zip.max-size:524288000}")
+    private val attachmentsZipMaxSizeBytes: Long = DEFAULT_ATTACHMENTS_ZIP_MAX_SIZE_BYTES,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -112,6 +131,7 @@ class ImportJobService(
             command.sizeBytes,
             resolveContentType(normalizedFormat, command.contentType),
         )
+        val attachmentsObjectKey = putAttachmentsZipIfPresent(command, jobId, normalizedFormat)
 
         val job =
             ImportJob(
@@ -132,6 +152,7 @@ class ImportJobService(
                 createdAt = clock.instant(),
                 startedAt = null,
                 completedAt = null,
+                attachmentsObjectKey = attachmentsObjectKey,
             )
 
         transactionTemplate.execute {
@@ -140,12 +161,14 @@ class ImportJobService(
         }
 
         log.info(
-            "import_job_accepted jobId={} projectKey={} format={} dryRun={} filename={} actor={}",
+            "import_job_accepted jobId={} projectKey={} format={} dryRun={} filename={} " +
+                "attachmentsObjectKey={} actor={}",
             jobId.value,
             command.projectKey,
             normalizedFormat,
             command.dryRun,
             command.filename,
+            attachmentsObjectKey,
             command.requesterUserId,
         )
         return job
@@ -244,6 +267,19 @@ class ImportJobService(
             )
             throw ImportUnsupportedFormatException(command.format)
         }
+
+        // CSV 는 zip 을 무시하므로(§첨부 zip) 크기 검증도 JSON 에서만 수행한다 — CSV+zip 조합은
+        // zip 자체를 아예 건드리지 않아야 하위호환 시나리오(zip 무시)가 일관된다.
+        val zipSizeBytes = command.attachmentsZipSizeBytes
+        if (normalizedFormat == FORMAT_JSON && zipSizeBytes != null && zipSizeBytes > attachmentsZipMaxSizeBytes) {
+            log.warn(
+                "import_accept_attachments_zip_too_large projectKey={} sizeBytes={} actor={}",
+                command.projectKey,
+                zipSizeBytes,
+                command.requesterUserId,
+            )
+            throw ImportFileTooLargeException(zipSizeBytes, attachmentsZipMaxSizeBytes)
+        }
         return normalizedFormat
     }
 
@@ -253,6 +289,49 @@ class ImportJobService(
         jobId: ImportJobId,
         normalizedFormat: String,
     ): String = "$projectKey/${jobId.value}.${normalizedFormat.lowercase()}"
+
+    /**
+     * JSON import 이고 첨부 zip 이 있는 경우에만 zip 을 MinIO 에 저장하고 오브젝트 키를 반환한다.
+     *
+     * CSV import 이거나 zip 미첨부면 저장 없이 null 을 반환한다 — [ImportJob.attachmentsObjectKey] 도
+     * null 로 남아 하위호환(zip 미지원 클라이언트/CSV import)을 보장한다(클래스 KDoc §첨부 zip 참조).
+     *
+     * @param command 접수 커맨드. [ImportAcceptCommand.attachmentsZipInputStream]/
+     *   [ImportAcceptCommand.attachmentsZipSizeBytes] 참조.
+     * @param jobId 이번 접수에서 발급된 작업 식별자 — 오브젝트 키 생성에 사용.
+     * @param normalizedFormat [validateAndAuthorize] 가 정규화한 format(`"CSV"`/`"JSON"`).
+     * @return 저장한 zip 오브젝트 키. 저장하지 않았으면 null.
+     */
+    private fun putAttachmentsZipIfPresent(
+        command: ImportAcceptCommand,
+        jobId: ImportJobId,
+        normalizedFormat: String,
+    ): String? {
+        val zipStream = command.attachmentsZipInputStream ?: return null
+
+        if (normalizedFormat != FORMAT_JSON) {
+            log.info(
+                "import_attachments_zip_ignored reason=non_json_format projectKey={} jobId={} format={}",
+                command.projectKey,
+                jobId.value,
+                normalizedFormat,
+            )
+        }
+
+        return if (normalizedFormat == FORMAT_JSON) {
+            val objectKey = buildAttachmentsZipObjectKey(command.projectKey, jobId)
+            storage.put(objectKey, zipStream, command.attachmentsZipSizeBytes ?: 0L, ATTACHMENTS_ZIP_CONTENT_TYPE)
+            objectKey
+        } else {
+            null
+        }
+    }
+
+    /** `{projectKey}/{jobId}-attachments.zip` 형식의 첨부 zip 오브젝트 키를 생성한다. */
+    private fun buildAttachmentsZipObjectKey(
+        projectKey: String,
+        jobId: ImportJobId,
+    ): String = "$projectKey/${jobId.value}$ATTACHMENTS_ZIP_KEY_SUFFIX"
 
     /** 업로드된 파일의 contentType 이 없거나 공백이면 format 기반 기본값으로 대체한다. */
     private fun resolveContentType(
@@ -268,10 +347,23 @@ class ImportJobService(
         @Suppress("MagicNumber")
         const val MAX_FILE_SIZE_BYTES: Long = 50L * 1024 * 1024
 
+        /**
+         * 첨부 zip 업로드 허용 최대 크기(바이트) 기본값 — 500MB.
+         * `bts.import.attachments-zip.max-size` 프로퍼티로 오버라이드 가능(생성자 KDoc 참조).
+         */
+        @Suppress("MagicNumber")
+        const val DEFAULT_ATTACHMENTS_ZIP_MAX_SIZE_BYTES: Long = 500L * 1024 * 1024
+
         private val SUPPORTED_FORMATS = setOf("CSV", "JSON")
         private const val FORMAT_JSON = "JSON"
         private const val DEFAULT_CSV_CONTENT_TYPE = "text/csv; charset=UTF-8"
         private const val DEFAULT_JSON_CONTENT_TYPE = "application/json"
+
+        /** 첨부 zip MinIO 저장 시 고정 Content-Type — 클라이언트가 보낸 Content-Type 헤더를 신뢰하지 않는다. */
+        private const val ATTACHMENTS_ZIP_CONTENT_TYPE = "application/zip"
+
+        /** [buildAttachmentsZipObjectKey] 오브젝트 키 접미사. */
+        private const val ATTACHMENTS_ZIP_KEY_SUFFIX = "-attachments.zip"
     }
 }
 
@@ -289,6 +381,9 @@ class ImportJobService(
  * @property sizeBytes 업로드 파일 크기(바이트).
  * @property inputStream 업로드 바이트 스트림. 호출자가 close 책임.
  * @property requesterUserId 접수를 요청한 사용자 UUID.
+ * @property attachmentsZipInputStream 첨부 zip 바이트 스트림(PR4 Task 7). `attachmentsZip` part 미첨부 시 null.
+ *   호출자가 close 책임. null 이면 [ImportJobService] 가 zip 저장을 완전히 건너뛴다.
+ * @property attachmentsZipSizeBytes 첨부 zip 크기(바이트). [attachmentsZipInputStream] 이 null 이 아닐 때만 의미 있다.
  */
 data class ImportAcceptCommand(
     val projectKey: String,
@@ -299,6 +394,8 @@ data class ImportAcceptCommand(
     val sizeBytes: Long,
     val inputStream: InputStream,
     val requesterUserId: UUID,
+    val attachmentsZipInputStream: InputStream? = null,
+    val attachmentsZipSizeBytes: Long? = null,
 )
 
 /**

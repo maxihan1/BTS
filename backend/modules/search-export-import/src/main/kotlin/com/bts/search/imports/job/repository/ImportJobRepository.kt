@@ -52,6 +52,7 @@ class ImportJobRepository(
      * status=PENDING 가 보장된 [ImportJob] 을 받아 INSERT 한다.
      * totalRows/errorCode/errorLogObjectKey/expiresAt/startedAt/completedAt 은
      * DB DEFAULT(succeededRows=0, failedRows=0) 또는 NULL 로 남는다.
+     * attachmentsObjectKey(V605)는 접수 시점(업로드 요청)에 이미 결정되므로 함께 INSERT 한다.
      *
      * @param job 삽입할 [ImportJob]. status=PENDING 이 보장되어야 한다.
      * @return 삽입한 [job] 그대로. INSERT 로 값이 파생되는 컬럼이 없어 재조회하지 않는다.
@@ -68,6 +69,7 @@ class ImportJobRepository(
             .set(IMPORT_JOBS.REQUESTER_USER_ID, job.requesterUserId)
             .set(IMPORT_JOBS.STATUS, job.status.name)
             .set(IMPORT_JOBS.PROGRESS, job.progress)
+            .set(IMPORT_JOBS.ATTACHMENTS_OBJECT_KEY, job.attachmentsObjectKey)
             .set(IMPORT_JOBS.CREATED_AT, job.createdAt.toOffsetDateTime())
             .execute()
         return job
@@ -334,6 +336,7 @@ class ImportJobRepository(
             createdAt = (createdAt ?: error("import_jobs.created_at must not be null")).toInstant(),
             startedAt = startedAt?.toInstant(),
             completedAt = completedAt?.toInstant(),
+            attachmentsObjectKey = attachmentsObjectKey,
         )
 
     companion object {

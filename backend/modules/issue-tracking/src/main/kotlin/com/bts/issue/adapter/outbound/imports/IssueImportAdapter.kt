@@ -9,6 +9,11 @@ import com.bts.issue.application.ImportStatusOutcome
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.IssueImportStatusService
 import com.bts.issue.application.UpdateIssueRequest
+import com.bts.issue.attachment.MinioStorageException
+import com.bts.issue.attachment.application.AttachmentInfectedException
+import com.bts.issue.attachment.application.AttachmentScanUnavailableException
+import com.bts.issue.attachment.application.IssueAttachmentService
+import com.bts.issue.attachment.application.UnsupportedAttachmentTypeException
 import com.bts.issue.comment.application.CommentApplicationService
 import com.bts.issue.component.application.ComponentApplicationService
 import com.bts.issue.component.repository.ComponentRepository
@@ -17,12 +22,19 @@ import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
+import com.bts.issue.history.IssueChangeGroup
+import com.bts.issue.history.IssueChangeItem
+import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.domain.IssueTypeNotFoundException
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.issue.version.application.VersionApplicationService
 import com.bts.issue.version.repository.VersionRepository
 import com.bts.issue.worklog.application.WorklogService
+import com.bts.shared.issue.ImportAttachment
+import com.bts.shared.issue.ImportAttachmentSource
+import com.bts.shared.issue.ImportChangeGroup
+import com.bts.shared.issue.ImportChangeItem
 import com.bts.shared.issue.ImportComment
 import com.bts.shared.issue.ImportWorklog
 import com.bts.shared.issue.IssueImportCommand
@@ -41,6 +53,9 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.interceptor.TransactionAspectSupport
+import java.io.ByteArrayInputStream
+import java.io.InputStream
+import java.net.URLConnection
 import java.time.Clock
 import java.time.Instant
 import java.util.UUID
@@ -82,6 +97,40 @@ import java.util.UUID
  *    (worklogs.time_spent_seconds CHECK 23514)도 항목별 사전체크해 스킵한다 — 이 두 조건이 이
  *    두 서비스에서 던질 수 있는 예외의 전부다(★2 "잔여 throw 집합"). startedAt 이 null 이면
  *    throw 대상이 아니라 [Instant.now] 로 대체한다([ImportWorklog.startedAt] KDoc).
+ * 6. **첨부/이력 동반 생성 — 사전 체크 + 행 원자성 (PR4, ★3)** — [applyAttachments]/[applyChangelog]
+ *    도 5와 동일하게 UPDATE 권한을 [hasIssueUpdatePermission] 으로 먼저 확인해 권한 없으면 전량
+ *    스킵 + 집약 경고만 남긴다. 아래 두 함정을 eng-review 에서 BLOCKER 로 지정해 반영했다.
+ *    - **BLOCKER-1(스트림 close)** — [IssueAttachmentService.upload] 의 `input` 은 호출자 close
+ *      책임([IssueAttachmentService] KDoc). [ImportAttachmentSource.open] 이 반환한 스트림을
+ *      [applyAttachmentItem] 이 반드시 `.use { }` 로 닫는다 — 안 닫으면 대량 import 에서 FD/inflater
+ *      누수(FR-AC-01 MinIO 스트림 누수 회귀 동형).
+ *    - **BLOCKER-2(insert throw 사전체크)** — [com.bts.issue.attachment.repository.AttachmentRepository.insert]
+ *      는 `@Transactional`(REQUIRED)이라 이 메서드의 참여 트랜잭션에 합류한다. 긴 filename
+ *      (issue_attachments.filename VARCHAR(500) 초과) 이나 긴 contentType(content_type VARCHAR(100)
+ *      초과)로 insert 가 throw 하면 catch 해도 rollback-only 가 이미 세팅돼 무력하다 — 즉 "첨부 하나
+ *      건너뛰기"가 아니라 **행 전체(이슈+댓글+worklog+다른 첨부)가 함께 롤백**된다. 따라서
+ *      [applyAttachmentItem] 은 upload 호출 **이전에** filename/contentType 길이를 사전 판정해
+ *      초과 시 스킵+경고로 강등한다(길이는 insert 이전에 이미 알 수 있으므로 throw 자체가 발생하지
+ *      않는다 — best-effort 로 "강등"하는 게 아니라 **애초에 throw 를 유발하지 않는** 설계).
+ *      이 사전체크 이후에도 [applyAttachmentItem] 이 잡는 잔여 throw 집합은 **MIME 거부·바이러스
+ *      스캔 미가용/감염·MinIO put 실패·크기 상한(100MB) 초과([AttachmentSkipReason.TOO_LARGE])**
+ *      뿐이다 — 권한 예외([IssueAccessDeniedException])는 더 이상 이 목록에 없다(코드리뷰 CONCERN-3
+ *      hot-fix). [applyAttachments] 의 사전 UPDATE 권한 체크와 [IssueAttachmentService.upload]
+ *      내부 checkPermission 이 항상 동일 [IssueScope.Issue] 스코프를 쓰므로 정상 경로에서 방어적으로
+ *      잡을 필요가 없고, 오히려 미래 첨부/필드 권한 분기가 늘어날 때 실제 권한거부가 스킵-경고로
+ *      조용히 강등되는 위험이 더 크다(메모리 best-effort-loop-permission-exception-nonprod-mask 동형).
+ *      이 목록 밖의 예외(예: 예상외 insert 실패, 그리고 이제는 권한 예외도)는 잡지 않고 그대로
+ *      전파해 [importIssue] 의 catch 블록이 행 전체를 롤백하도록 둔다(행 원자성 안전망,
+ *      S31/[FaultInjectingWorklogService] 동형 — `IssueImportAdapterTest` S44 참조).
+ *    - **CONCERN-2 hot-fix(sizeBytes 신뢰 경계)** — [uploadAttachment]/[readBoundedAttachmentBytes]
+ *      는 [ImportAttachment.sizeBytes](Jira 보고값, "참고용" KDoc)를 [AttachmentStoragePort.put] 의
+ *      Content-Length 로 신뢰하지 않는다. [com.bts.issue.attachment.adapter.MinioStorageAdapter.put]
+ *      은 선언된 size 바이트만 정확히 읽으므로, 실제 스트림이 더 크면 초과분을 조용히 버리고 절단
+ *      저장한 뒤 "성공"을 보고하는 침묵 데이터 손실이 발생할 수 있었다. 그래서 메타 유무와 무관하게
+ *      항상 스트림의 실제 바이트를 세어 그 크기로 upload 한다(no-metadata 경로와 통합). 무제한
+ *      [InputStream.readBytes] 는 선언 크기를 속인 zip 이 OOM 을 유발할 수 있으므로
+ *      [InputStream.readNBytes] 로 100MB + 1 바이트까지만 bounded read 하고, 초과하면 업로드
+ *      자체를 시도하지 않고 [AttachmentSkipReason.TOO_LARGE] 로 스킵한다(zip-bomb 방어).
  *
  * ### 트랜잭션 롤백 안전성 (CONCERN #1)
  *
@@ -92,10 +141,17 @@ import java.util.UUID
  * rollback-only 로 명시 설정해야 한다 — 캐치된 예외는 프록시 경계를 벗어나지 않으므로
  * 이 호출 없이는 Spring 이 기본적으로 커밋을 시도한다.
  *
+ * ### LargeClass — 분리 실익 없음 (PR4)
+ *
+ * PR1~PR4 가 같은 포트 구현체에 코어/컴포넌트·버전/댓글·worklog/첨부·이력 6단계를 누적한 결과다.
+ * 각 단계가 동일 사전체크+best-effort 강등 패턴(apply 계열 함수 + 항목별 apply 함수 + warn 계열
+ * 집약 함수)을 공유해 별도 협력자 클래스로 쪼개도 응집도 이득이 없다(모두 같은 [IssueImportCommand]
+ * 1행·같은 트랜잭션 경계를 공유) — [IssueImportAdapterTest] 의 동일 판단(`@Suppress("LargeClass")`)과 정합.
+ *
  * @see IssueImportPort
  * @see IssueApplicationService
  */
-@Suppress("TooManyFunctions", "LongParameterList")
+@Suppress("TooManyFunctions", "LongParameterList", "LargeClass")
 @Component
 class IssueImportAdapter(
     private val issueApplicationService: IssueApplicationService,
@@ -112,26 +168,61 @@ class IssueImportAdapter(
     private val issueImportStatusService: IssueImportStatusService,
     private val commentApplicationService: CommentApplicationService,
     private val worklogService: WorklogService,
+    private val attachmentService: IssueAttachmentService,
+    private val historyRecorder: IssueHistoryRecorder,
     private val clock: Clock = Clock.systemUTC(),
 ) : IssueImportPort {
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
-     * 파싱된 import 행 1건으로 이슈 생성을 요청한다.
+     * 파싱된 import 행 1건으로 이슈 생성을 요청한다(하위호환 1-arg — 첨부 소스 없음).
+     *
+     * [IssueImportPort] 의 1-arg default 구현(`importIssue(cmd, null)` 위임, CONCERN-6)을 그대로
+     * 써도 **기능적으로는** 동일하지만, 이 어댑터는 명시적으로 override 하고 별도로 `@Transactional`
+     * 을 붙인다 — Kotlin 인터페이스 default 메서드를 통한 위임은 Spring AOP self-invocation
+     * 함정과 동형이다. reflection 기반 join point 호출([org.springframework.aop.support.AopUtils]
+     * `invokeJoinpointUsingReflection`)이 **raw target 인스턴스**에서 메서드를 실행하므로, default
+     * 구현 내부의 `importIssue(cmd, null)` 호출이 CGLIB 프록시를 다시 거치지 않고 raw target 을
+     * 직접 호출한다 — 이 자체는 REQUIRED 전파라 무해하지만(이미 활성 트랜잭션에 합류),
+     * **진입점인 1-arg 메서드 자체**가 `@Transactional` 프록시 인터셉션을 받지 못하면 애초에
+     * 트랜잭션이 시작되지 않는다(메모리 transaction-self-invocation-requires-new 동형 — 실제로
+     * `TestConfig` 의 `@EnableTransactionManagement(proxyTargetClass=true)` 하에서 1-arg 진입 시
+     * `TransactionAspectSupport.currentTransactionStatus()` 가 `NoTransactionException` 을 던지는
+     * 것으로 실증됨, `IssueImportAdapterTest` 무회귀 검증 중 발견). 따라서 이 메서드에 직접
+     * `@Transactional` 을 선언해 1-arg 진입점도 확실히 프록시 인터셉션을 받도록 한다.
+     *
+     * @param cmd 이슈 생성 커맨드.
+     * @return 생성 결과. [importIssue] 2-arg 오버로드(첨부 소스=null)에 위임한 결과와 동일하다.
+     */
+    @Transactional
+    override fun importIssue(cmd: IssueImportCommand): IssueImportResult = importIssue(cmd, null)
+
+    /**
+     * 파싱된 import 행 1건으로 이슈 생성을 요청한다(첨부 소스 포함, PR4 주 메서드).
      *
      * 흐름.
      * 1. summary 공백 검증 — 즉시 [IssueImportResult.VALIDATION] 실패 반환(부수 효과 없음).
      * 2. 프로젝트 존재 확인 — 없으면 [IssueImportResult.NOT_FOUND] (부수 효과 없음).
-     * 3. [cmd.dryRun] 이면 [validateDryRun], 아니면 [executeImport] 위임.
+     * 3. [cmd.dryRun] 이면 [validateDryRun](첨부 소스 미사용 — zip 미오픈), 아니면 [executeImport] 위임.
      * 4. 위 3에서 발생한 도메인/검증 예외는 트랜잭션을 rollback-only 로 표시한 뒤
      *    [toFailure] 로 결과 객체 변환 — 도메인 예외가 호출자(cross-BC)까지 누출되지 않는다.
      *
+     * 이 메서드도 [importIssue](1-arg)와 동일 이유로 `@Transactional` 을 직접 선언한다 — 외부
+     * 호출자가 2-arg 를 직접 호출하는 경로(예: search-export-import 워커)는 물론, 1-arg 진입 후
+     * 내부 위임되는 경로에서도 REQUIRED 전파로 이미 활성화된 트랜잭션에 합류한다.
+     *
      * @param cmd 이슈 생성 커맨드.
+     * @param attachments 첨부 파일 바이너리 조회 포트. null 이면 [cmd.attachments] 가 있어도 전량
+     *   스킵된다([applyAttachmentItem] 이 매 항목 [ImportAttachmentSource.open] 호출 전에 null 을
+     *   확인 — "원본 없음"과 동일하게 처리, 별도 예외 없음).
      * @return 생성 결과. dryRun 이면 실제 생성 없이 검증 결과만 반환.
      */
     @Suppress("TooGenericExceptionCaught", "ReturnCount")
     @Transactional
-    override fun importIssue(cmd: IssueImportCommand): IssueImportResult {
+    override fun importIssue(
+        cmd: IssueImportCommand,
+        attachments: ImportAttachmentSource?,
+    ): IssueImportResult {
         if (cmd.summary.isBlank()) {
             return IssueImportResult.failure(IssueImportResult.VALIDATION, "summary must not be blank")
         }
@@ -147,7 +238,7 @@ class IssueImportAdapter(
             if (cmd.dryRun) {
                 validateDryRun(cmd, actor, projectId)
             } else {
-                executeImport(cmd, actor, projectId)
+                executeImport(cmd, actor, projectId, attachments)
             }
         } catch (e: RuntimeException) {
             // 캐치된 예외는 프록시 경계를 벗어나지 않으므로 명시적으로 rollback-only 표시가 필요하다
@@ -211,6 +302,8 @@ class IssueImportAdapter(
         }
         warnStatusIfNeeded(cmd, resolution, actor, warnings)
         warnCommentsWorklogsIfNeeded(cmd, resolution, actor, warnings)
+        warnAttachmentsIfNeeded(cmd, actor, warnings)
+        warnChangelogIfNeeded(cmd, actor, warnings)
         return IssueImportResult.success(DRY_RUN_MARKER, warnings)
     }
 
@@ -349,6 +442,54 @@ class IssueImportAdapter(
     }
 
     /**
+     * dry-run 에서 [cmd.attachments] 가 실제 실행([applyAttachments]) 시 낼 best-effort 경고를
+     * 미리 산출한다(PR4, ★3). [warnCommentsWorklogsIfNeeded] 와 동일 원칙 — 이 헬퍼의 경고는
+     * [rowTriggersUpdate] 하드 FORBIDDEN 판정에 절대 엮이지 않는다(CONCERN-A 재발 방지).
+     *
+     * dry-run 은 zip 을 열지 않으므로(실제 스캔·업로드 불가) 권한과 filename 유효성(빈 값/길이 초과,
+     * BLOCKER-2 사전체크와 동일 기준)만 미리보기하고, MIME/스캔/저장 실패는 미리 판정하지 않는다.
+     */
+    private fun warnAttachmentsIfNeeded(
+        cmd: IssueImportCommand,
+        actor: ActorId,
+        warnings: MutableList<String>,
+    ) {
+        if (cmd.attachments.isEmpty()) return
+        if (!hasUpdatePermission(actor, cmd.projectKey)) {
+            warnings += "첨부 ${cmd.attachments.size}건은 권한이 없어 건너뛰어질 수 있습니다."
+            return
+        }
+        val invalidCount =
+            cmd.attachments.count { it.filename.isBlank() || it.filename.length > MAX_ATTACHMENT_FILENAME_LENGTH }
+        if (invalidCount > 0) {
+            warnings += "첨부 ${invalidCount}건은 파일명 값이 유효하지 않아 건너뛰어질 수 있습니다."
+        }
+    }
+
+    /**
+     * dry-run 에서 [cmd.changelog] 가 실제 실행([applyChangelog]) 시 낼 best-effort 경고를
+     * 미리 산출한다(PR4, ★3) — [warnAttachmentsIfNeeded] 와 동일 원칙(CONCERN-A 재발 방지).
+     *
+     * zip 을 열지 않는 dry-run 특성과 무관하게 occurredAt 은 이미 파싱된 [ImportChangeGroup.occurredAt]
+     * 값이므로(널이면 파싱 실패) 이 검사는 실제 실행과 100% 동일 기준이다.
+     */
+    private fun warnChangelogIfNeeded(
+        cmd: IssueImportCommand,
+        actor: ActorId,
+        warnings: MutableList<String>,
+    ) {
+        if (cmd.changelog.isEmpty()) return
+        if (!hasUpdatePermission(actor, cmd.projectKey)) {
+            warnings += "변경 이력 ${cmd.changelog.size}건은 권한이 없어 건너뛰어질 수 있습니다."
+            return
+        }
+        val missingTimeCount = cmd.changelog.count { it.occurredAt == null }
+        if (missingTimeCount > 0) {
+            warnings += "변경 이력 ${missingTimeCount}건은 발생 시각을 확인할 수 없어 건너뛰어질 수 있습니다."
+        }
+    }
+
+    /**
      * 실제 이슈 생성 + 후속 필드 설정을 같은 트랜잭션에서 수행한다.
      *
      * 1. [resolveFields] — 이메일→담당자/리포터, 이름→타입/컴포넌트/버전 매핑(미매칭 시 권한 있으면 자동생성).
@@ -359,24 +500,30 @@ class IssueImportAdapter(
      * 6. [applyStatusIfPresent] — [cmd.statusName] 있으면 상태 반영(best-effort).
      * 7. [applyComments] — [cmd.comments] 를 [CommentApplicationService.create] 로 위임(best-effort, PR3).
      * 8. [applyWorklogs] — [cmd.worklogs] 를 [WorklogService.createImported] 로 위임(best-effort, PR3).
+     * 9. [applyAttachments] — [cmd.attachments] 를 [IssueAttachmentService.upload] 로 위임
+     *    (best-effort, PR4). [attachmentSource] 가 제공한 스트림을 조회한다.
+     * 10. [applyChangelog] — [cmd.changelog] 를 [IssueHistoryRecorder.recordImported] 로 위임
+     *     (best-effort, PR4).
      *
-     * 3~8 중 어느 하나라도 예외를 던지면 [importIssue] 의 catch 블록이 트랜잭션 전체를
+     * 3~10 중 어느 하나라도 예외를 던지면 [importIssue] 의 catch 블록이 트랜잭션 전체를
      * rollback-only 로 표시하므로, 이미 삽입된 이슈(2)까지 함께 롤백된다(행 원자성).
-     * 7·8 은 UPDATE 권한/timeSpent≤0 을 호출 전에 사전체크해 스킵으로 강등하므로(★2, [applyComments]/
-     * [applyWorklogs] KDoc 참조) 정상 경로에서는 이 예외를 던지지 않는다 — 그럼에도 예상외 예외가
-     * 발생하면 이 안전망(행 원자성)이 여전히 이슈까지 롤백해 부분 반영을 막는다.
-     * OCC 버전은 각 단계의 반환값으로 계속 스레딩한다(currentVersion). 7·8 은 issues.version 을
+     * 7~10 은 각자 사전체크(UPDATE 권한, worklog timeSpent≤0, 첨부 filename/contentType 길이 —
+     * ★2/★3 KDoc)로 호출 전에 스킵을 강등하므로 정상 경로에서는 이 예외를 던지지 않는다 —
+     * 그럼에도 예상외 예외가 발생하면 이 안전망(행 원자성)이 여전히 이슈까지 롤백해 부분 반영을 막는다.
+     * OCC 버전은 각 단계의 반환값으로 계속 스레딩한다(currentVersion). 7~10 은 issues.version 을
      * 증가시키지 않으므로(worklog 롤업 no-bump 원칙, [WorklogService] KDoc) currentVersion 스레딩과 무관하다.
      *
      * @param cmd 처리할 import 커맨드.
      * @param actor 생성 행위자(=requesterUserId).
      * @param projectId 대상 프로젝트 내부 식별자.
+     * @param attachmentSource 첨부 파일 바이너리 조회 포트. null 이면 첨부 전량 스킵.
      * @return 생성된 이슈 키를 포함한 [IssueImportResult.success].
      */
     private fun executeImport(
         cmd: IssueImportCommand,
         actor: ActorId,
         projectId: UUID,
+        attachmentSource: ImportAttachmentSource?,
     ): IssueImportResult {
         val warnings = mutableListOf<String>()
         val resolution = resolveFields(cmd, projectId, actor, warnings)
@@ -402,6 +549,8 @@ class IssueImportAdapter(
         currentVersion = applyStatusIfPresent(cmd, actor, created.key, currentVersion, warnings)
         applyComments(cmd, resolution, actor, created.key, warnings)
         applyWorklogs(cmd, resolution, actor, created.key, warnings)
+        applyAttachments(cmd, resolution, actor, created.key, attachmentSource, warnings)
+        applyChangelog(cmd, resolution, actor, created.id.value, created.key, warnings)
 
         log.info("issue_imported key={} actor={}", created.key.value, actor.value)
         return IssueImportResult.success(created.key.value, warnings)
@@ -679,12 +828,360 @@ class IssueImportAdapter(
         val missingStartedAt: Boolean,
     )
 
+    // ── 첨부 동반 생성 (PR4, ★3) ─────────────────────────────────────────────────
+
     /**
-     * [key] 스코프로 EDIT_ISSUE(UPDATE) 권한을 실제 확인한다 — 댓글/worklog 실행 사전체크 전용(★2).
+     * [cmd.attachments] 를 [IssueAttachmentService.upload] 로 위임한다 — best-effort (PR4, ★3).
+     *
+     * [applyComments]/[applyWorklogs] 와 동일하게 UPDATE 권한이 없으면 전량 스킵 + 집약 경고만
+     * 남긴다. 권한이 있으면 [applyAttachmentItem] 으로 항목별 사전체크(길이·MIME·스캔·저장)와
+     * upload 를 수행하고, 그 결과를 [warnAttachmentOutcomes] 로 집약 경고로 변환한다.
+     *
+     * @param cmd import 커맨드([ImportAttachment] 목록 출처).
+     * @param resolution [resolveFields] 결과(author 이메일 배치 해석 포함).
+     * @param actor UPDATE 권한 판정 및 upload 호출 actor(=[cmd.requesterUserId]).
+     * @param key 방금 생성된 이슈 키 — 직전 createIssue 로 존재가 보장되므로 404 없음(★2 동형).
+     * @param attachmentSource 첨부 바이너리 조회 포트. null 이면 모든 항목이 NOT_FOUND 로 스킵된다.
+     * @param warnings 집약 경고를 추가할 목록(호출자 소유, 누적).
+     */
+    private fun applyAttachments(
+        cmd: IssueImportCommand,
+        resolution: FieldResolution,
+        actor: ActorId,
+        key: IssueKey,
+        attachmentSource: ImportAttachmentSource?,
+        warnings: MutableList<String>,
+    ) {
+        if (cmd.attachments.isEmpty()) return
+        if (!hasIssueUpdatePermission(actor, key)) {
+            warnings += "첨부 ${cmd.attachments.size}건은 권한이 없어 건너뛰었습니다."
+            return
+        }
+        val outcomes =
+            cmd.attachments.map { applyAttachmentItem(it, cmd, resolution, actor, key, attachmentSource) }
+        warnAttachmentOutcomes(outcomes, warnings)
+    }
+
+    /**
+     * 첨부 1건의 사전체크 + upload 를 수행한다([applyAttachments] 루프 본체).
+     *
+     * 순서. (1) filename/contentType 길이 사전체크(BLOCKER-2, [IssueImportAdapter] 클래스 KDoc ★3
+     * 참조 — insert throw 를 애초에 유발하지 않기 위함) → (2) [attachmentSource] 로 스트림 조회
+     * (null 이거나 zip 내 미발견이면 NOT_FOUND) → (3) [InputStream.use] 로 스트림을 반드시 닫으며
+     * upload(BLOCKER-1, FD 누수 방지).
+     *
+     * upload 가 던질 수 있는 예외 중 [UnsupportedAttachmentTypeException]/[AttachmentInfectedException]/
+     * [AttachmentScanUnavailableException]/[MinioStorageException] 은 모두 insert **이전** 단계에서
+     * 발생하므로(클래스 KDoc ★3) 여기서 잡아 best-effort 로 강등해도 참여 트랜잭션이 오염되지 않는다.
+     * [IssueAccessDeniedException] 은 더 이상 여기서 잡지 않는다(코드리뷰 CONCERN-3 hot-fix) —
+     * [applyAttachments] 의 사전 UPDATE 권한 확인과 이 시점의 [IssueAttachmentService.upload] 내부
+     * 권한 확인이 동일 [IssueScope.Issue] 스코프라 정상 경로에서는 도달하지 않지만, 미래 첨부/필드
+     * 권한 분기가 늘어날 때 실제 권한거부를 스킵-경고로 조용히 강등시키는 위험이 더 크므로(메모리
+     * best-effort-loop-permission-exception-nonprod-mask) 잡지 않고 그대로 전파한다 — 행 원자성
+     * 안전망([importIssue] 의 catch 블록)이 행 전체를 FORBIDDEN 실패로 롤백한다.
+     * 이 목록 밖의 예외(즉 insert 자체의 예상외 실패, 그리고 이제는 권한 예외도)는 잡지 않고 그대로
+     * 전파한다 — 행 원자성 안전망이 이슈까지 롤백한다(`IssueImportAdapterTest` S44).
+     *
+     * @return 스킵 사유([AttachmentSkipReason]), 성공했으면 null.
+     */
+    @Suppress("ReturnCount") // guard-clause early return 4개(파일명·contentType·NOT_FOUND·업로드결과) — DEVELOPMENT.md §2.3
+    private fun applyAttachmentItem(
+        importAttachment: ImportAttachment,
+        cmd: IssueImportCommand,
+        resolution: FieldResolution,
+        actor: ActorId,
+        key: IssueKey,
+        attachmentSource: ImportAttachmentSource?,
+    ): AttachmentSkipReason? {
+        if (importAttachment.filename.isBlank() || importAttachment.filename.length > MAX_ATTACHMENT_FILENAME_LENGTH) {
+            return AttachmentSkipReason.INVALID_FILENAME
+        }
+        val contentType = resolveAttachmentContentType(importAttachment)
+        if (contentType.length > MAX_ATTACHMENT_CONTENT_TYPE_LENGTH) {
+            return AttachmentSkipReason.CONTENT_TYPE_TOO_LONG
+        }
+        val stream =
+            attachmentSource?.open(importAttachment.filename, cmd.sourceKey) ?: return AttachmentSkipReason.NOT_FOUND
+        val uploaderId = resolveAuthorId(importAttachment.authorEmail, resolution.resolvedEmails, cmd.requesterUserId)
+        return try {
+            stream.use { uploadAttachment(it, importAttachment, contentType, actor, key, uploaderId) }
+        } catch (e: UnsupportedAttachmentTypeException) {
+            log.warn(
+                "import_attachment_unsupported_type filename={} contentType={} cause={}",
+                importAttachment.filename,
+                contentType,
+                e.message,
+            )
+            AttachmentSkipReason.UNSUPPORTED_TYPE
+        } catch (e: AttachmentInfectedException) {
+            log.warn("import_attachment_infected filename={} cause={}", importAttachment.filename, e.message)
+            AttachmentSkipReason.INFECTED
+        } catch (e: AttachmentScanUnavailableException) {
+            log.warn("import_attachment_scan_unavailable filename={} cause={}", importAttachment.filename, e.message)
+            AttachmentSkipReason.SCAN_UNAVAILABLE
+        } catch (e: MinioStorageException) {
+            log.warn("import_attachment_storage_failure filename={} cause={}", importAttachment.filename, e.message)
+            AttachmentSkipReason.STORAGE_FAILURE
+        }
+    }
+
+    /**
+     * [importAttachment.mimeType] 이 없으면 파일명 확장자로 MIME 을 유추하고, 그마저 실패하면
+     * [DEFAULT_ATTACHMENT_CONTENT_TYPE] 으로 폴백한다([com.bts.shared.issue.ImportAttachment.mimeType] KDoc).
+     */
+    private fun resolveAttachmentContentType(importAttachment: ImportAttachment): String =
+        importAttachment.mimeType
+            ?: URLConnection.guessContentTypeFromName(importAttachment.filename)
+            ?: DEFAULT_ATTACHMENT_CONTENT_TYPE
+
+    /**
+     * 사전체크·스트림 조회를 통과한 첨부 1건을 실제 업로드한다.
+     *
+     * [importAttachment.createdAt]/[uploaderId] 를 그대로 전달해 원본(Jira 등) 업로드 시각·업로더를
+     * 보존한다(Task 2, [IssueAttachmentService.upload] createdAt/uploadedBy 주입 파라미터).
+     *
+     * [readBoundedAttachmentBytes] 가 상한(100MB) 초과로 null 을 반환하면 upload 자체를 호출하지
+     * 않고 [AttachmentSkipReason.TOO_LARGE] 로 스킵한다(CONCERN-2 hot-fix, zip-bomb 방어).
+     *
+     * @return 상한 초과로 스킵했으면 [AttachmentSkipReason.TOO_LARGE], 업로드에 성공했으면 null.
+     */
+    @Suppress("LongParameterList")
+    private fun uploadAttachment(
+        stream: InputStream,
+        importAttachment: ImportAttachment,
+        contentType: String,
+        actor: ActorId,
+        key: IssueKey,
+        uploaderId: UUID,
+    ): AttachmentSkipReason? {
+        val bytes = readBoundedAttachmentBytes(stream) ?: return AttachmentSkipReason.TOO_LARGE
+        attachmentService.upload(
+            actor = actor,
+            issueKey = key,
+            filename = importAttachment.filename,
+            contentType = contentType,
+            sizeBytes = bytes.size.toLong(),
+            input = ByteArrayInputStream(bytes),
+            createdAt = importAttachment.createdAt,
+            uploadedBy = uploaderId,
+        )
+        return null
+    }
+
+    /**
+     * [stream] 의 실제 바이트를 [MAX_ATTACHMENT_UPLOAD_BYTES] + 1 바이트까지만 bounded 로 읽는다
+     * (코드리뷰 CONCERN-2 hot-fix).
+     *
+     * ### 신뢰 경계 — [ImportAttachment.sizeBytes] 를 절대 신뢰하지 않는다
+     * Jira 가 보고하는 [ImportAttachment.sizeBytes] 는 참고용([ImportAttachment.sizeBytes] KDoc
+     * "실제 조회한 스트림 크기와 다를 수 있으며 참고용이다")일 뿐인데, 종전 코드는 이 값이 있으면
+     * 그대로 [AttachmentStoragePort.put] 의 Content-Length 로 넘겼다.
+     * [com.bts.issue.attachment.adapter.MinioStorageAdapter.put] 은 `PutObjectArgs.stream(input,
+     * size, ...)` 로 정확히 size 바이트만 읽으므로, 실제 스트림이 더 크면 초과분을 조용히 버리고
+     * 절단 저장한 뒤 "성공"을 보고하는 침묵 데이터 손실이 발생했다. 따라서 (원본 메타 유무와 무관하게)
+     * 항상 이 함수로 실제 바이트를 세어 사용한다 — 기존 no-metadata 경로와 통합.
+     *
+     * ### zip-bomb 방어 — bounded read
+     * 무제한 [InputStream.readBytes] 는 선언 크기를 속인 zip 이 OOM 을 유발할 수 있으므로,
+     * [InputStream.readNBytes] 로 상한 + 1 바이트까지만 읽는다 — 이 상한은 스트림이 실제로
+     * 제공하는 바이트 수와 무관하게 항상 적용된다.
+     *
+     * @return 상한(100MB) 이내면 실제 바이트 배열, 초과하면 null(호출자가
+     *   [AttachmentSkipReason.TOO_LARGE] 로 스킵해야 함을 의미).
+     */
+    private fun readBoundedAttachmentBytes(stream: InputStream): ByteArray? {
+        val bytes = stream.readNBytes((MAX_ATTACHMENT_UPLOAD_BYTES + 1).toInt())
+        return if (bytes.size > MAX_ATTACHMENT_UPLOAD_BYTES) null else bytes
+    }
+
+    /**
+     * [applyAttachmentItem] 결과 목록을 유형별로 집계해 경고 1건씩으로 강등한다
+     * ([warnWorklogOutcomes] 와 동일한 best-effort 집약 방식, Maxi 확정).
+     */
+    private fun warnAttachmentOutcomes(
+        outcomes: List<AttachmentSkipReason?>,
+        warnings: MutableList<String>,
+    ) {
+        warnAttachmentReasonIfPresent(outcomes, AttachmentSkipReason.INVALID_FILENAME, "파일명이 비어있거나 너무 길어", warnings)
+        warnAttachmentReasonIfPresent(outcomes, AttachmentSkipReason.CONTENT_TYPE_TOO_LONG, "파일 형식 값이 너무 길어", warnings)
+        warnAttachmentReasonIfPresent(outcomes, AttachmentSkipReason.NOT_FOUND, "원본 파일을 찾을 수 없어", warnings)
+        warnAttachmentReasonIfPresent(outcomes, AttachmentSkipReason.UNSUPPORTED_TYPE, "허용되지 않는 파일 형식이라", warnings)
+        warnAttachmentReasonIfPresent(outcomes, AttachmentSkipReason.INFECTED, "바이러스 스캔에서 감염이 탐지되어", warnings)
+        warnAttachmentReasonIfPresent(outcomes, AttachmentSkipReason.SCAN_UNAVAILABLE, "바이러스 스캔을 수행할 수 없어", warnings)
+        warnAttachmentReasonIfPresent(outcomes, AttachmentSkipReason.STORAGE_FAILURE, "저장소 오류로", warnings)
+        warnAttachmentReasonIfPresent(outcomes, AttachmentSkipReason.TOO_LARGE, "크기가 상한(100MB)을 초과해", warnings)
+    }
+
+    /** [warnAttachmentOutcomes] 의 사유별 집계 1줄 — 사유가 0건이면 경고를 남기지 않는다. */
+    private fun warnAttachmentReasonIfPresent(
+        outcomes: List<AttachmentSkipReason?>,
+        reason: AttachmentSkipReason,
+        reasonPhrase: String,
+        warnings: MutableList<String>,
+    ) {
+        val count = outcomes.count { it == reason }
+        if (count > 0) {
+            warnings += "첨부 ${count}건은 $reasonPhrase 건너뛰었습니다."
+        }
+    }
+
+    /**
+     * 첨부 1건 스킵 사유([applyAttachmentItem]) — [warnAttachmentOutcomes] 집계 입력.
+     * insert 이전 단계에서만 발생하는 사유만 포함한다(★3 "잔여 throw 집합") — insert 자체의
+     * 예상외 실패는 이 enum 에 없으며 [applyAttachmentItem] 이 잡지 않고 그대로 전파한다.
+     */
+    private enum class AttachmentSkipReason {
+        INVALID_FILENAME,
+        CONTENT_TYPE_TOO_LONG,
+        NOT_FOUND,
+        UNSUPPORTED_TYPE,
+        INFECTED,
+        SCAN_UNAVAILABLE,
+        STORAGE_FAILURE,
+        TOO_LARGE,
+    }
+
+    // ── 변경 이력(changelog) 동반 재생 (PR4, ★3) ────────────────────────────────
+
+    /**
+     * [cmd.changelog] 를 [IssueHistoryRecorder.recordImported] 로 위임한다 — best-effort (PR4, ★3).
+     *
+     * [applyAttachments] 와 동일하게 UPDATE 권한이 없으면 전량 스킵 + 집약 경고만 남긴다. 권한이
+     * 있으면 [capChangelogGroups] 로 이슈당 상한(1000)을 적용하고, 각 그룹을 [applyChangelogGroup]
+     * 으로 처리한 뒤 [warnChangelogOutcomes] 로 집약 경고를 남긴다.
+     *
+     * [IssueHistoryRecorder.recordImported] 자체는 권한 확인을 하지 않는다([IssueHistoryRecorder] KDoc
+     * "detector/resolver 미경유") — 그래서 이 사전 UPDATE 권한 체크가 유일한 게이트다.
+     *
+     * @param cmd import 커맨드([ImportChangeGroup] 목록 출처).
+     * @param resolution [resolveFields] 결과(author 이메일 배치 해석 포함).
+     * @param actor UPDATE 권한 판정 actor(=[cmd.requesterUserId]).
+     * @param issueId 방금 생성된 이슈의 내부 UUID([IssueChangeGroup.issueId] 대상).
+     * @param key 방금 생성된 이슈 키([IssueChangeGroup.issueKey] 대상 — 새로 발급된 BTS 키).
+     * @param warnings 집약 경고를 추가할 목록(호출자 소유, 누적).
+     */
+    private fun applyChangelog(
+        cmd: IssueImportCommand,
+        resolution: FieldResolution,
+        actor: ActorId,
+        issueId: UUID,
+        key: IssueKey,
+        warnings: MutableList<String>,
+    ) {
+        if (cmd.changelog.isEmpty()) return
+        if (!hasIssueUpdatePermission(actor, key)) {
+            warnings += "변경 이력 ${cmd.changelog.size}건은 권한이 없어 건너뛰었습니다."
+            return
+        }
+        val (groups, cappedCount) = capChangelogGroups(cmd.changelog)
+        var skippedTimeCount = 0
+        var unmappedFieldCount = 0
+        for (importGroup in groups) {
+            val outcome = applyChangelogGroup(importGroup, resolution, issueId, key)
+            skippedTimeCount += outcome.skippedTime
+            unmappedFieldCount += outcome.unmappedFields
+        }
+        warnChangelogOutcomes(skippedTimeCount, unmappedFieldCount, cappedCount, warnings)
+    }
+
+    /**
+     * 이력 그룹 1건을 처리한다([applyChangelog] 루프 본체).
+     *
+     * occurredAt(이미 파싱된 [ImportChangeGroup.occurredAt])이 null 이면 그룹 전체를 스킵한다
+     * (Maxi 결정 — comment/worklog/첨부의 "시각 없으면 import 실행 시각으로 대체" 폴백과 달리,
+     * 재생 이력은 원본 발생 시각 없이는 감사 가치가 없어 대체하지 않고 스킵한다). items 를
+     * [mapChangelogItems] 로 BTS 필드로 매핑하고, 매핑된 항목이 하나도 없으면(전 item 미매핑)
+     * 그룹 자체를 기록하지 않는다. author 이메일이 매칭되지 않으면 **actorId=null** 로 저장한다
+     * (comment/worklog/첨부와 달리 requester 로 폴백하지 않음 — Maxi 결정, 원본 author 를 requester
+     * 로 위장 기록하면 감사 이력이 부정확해지기 때문).
+     */
+    @Suppress("ReturnCount") // guard-clause early return 3개(occurredAt없음·전부미매핑·기록완료) — DEVELOPMENT.md §2.3
+    private fun applyChangelogGroup(
+        importGroup: ImportChangeGroup,
+        resolution: FieldResolution,
+        issueId: UUID,
+        key: IssueKey,
+    ): ChangelogGroupOutcome {
+        val occurredAt = importGroup.occurredAt ?: return ChangelogGroupOutcome(skippedTime = 1, unmappedFields = 0)
+        var unmappedFieldCount = 0
+        val mappedItems = mapChangelogItems(importGroup.items) { unmappedFieldCount++ }
+        if (mappedItems.isEmpty()) return ChangelogGroupOutcome(skippedTime = 0, unmappedFields = unmappedFieldCount)
+        val actorId = importGroup.authorEmail?.lowercase()?.let { resolution.resolvedEmails[it] }
+        historyRecorder.recordImported(
+            IssueChangeGroup(
+                issueId = issueId,
+                issueKey = key.value,
+                actorId = actorId,
+                items = mappedItems,
+                createdAt = occurredAt,
+            ),
+        )
+        return ChangelogGroupOutcome(skippedTime = 0, unmappedFields = unmappedFieldCount)
+    }
+
+    /**
+     * [items] 를 [CHANGELOG_FIELD_MAP] 으로 BTS 필드에 매핑한다. 매핑되지 않는 field 는
+     * [onUnmapped] 콜백으로 집계만 하고 결과에서 제외한다(스킵) — fromValue/toValue 는 Jira
+     * 원본 표시 문자열을 그대로 보존한다(BTS 라벨 resolver 미적용, plan Maxi 결정 §1).
+     */
+    private fun mapChangelogItems(
+        items: List<ImportChangeItem>,
+        onUnmapped: () -> Unit,
+    ): List<IssueChangeItem> =
+        items.mapNotNull { item ->
+            val mappedField = CHANGELOG_FIELD_MAP[item.field]
+            if (mappedField == null) {
+                onUnmapped()
+                null
+            } else {
+                IssueChangeItem(field = mappedField, fromValue = item.fromValue, toValue = item.toValue)
+            }
+        }
+
+    /**
+     * [groups] 가 [MAX_CHANGELOG_GROUPS] 를 초과하면 앞에서부터 상한만큼만 반환하고 초과분
+     * 개수를 함께 반환한다. 초과하지 않으면 초과분=0.
+     */
+    private fun capChangelogGroups(groups: List<ImportChangeGroup>): Pair<List<ImportChangeGroup>, Int> {
+        if (groups.size <= MAX_CHANGELOG_GROUPS) return groups to 0
+        return groups.take(MAX_CHANGELOG_GROUPS) to (groups.size - MAX_CHANGELOG_GROUPS)
+    }
+
+    /** [applyChangelog] 루프 결과를 유형별로 집계해 경고로 강등한다([warnWorklogOutcomes] 와 동형). */
+    private fun warnChangelogOutcomes(
+        skippedTimeCount: Int,
+        unmappedFieldCount: Int,
+        cappedCount: Int,
+        warnings: MutableList<String>,
+    ) {
+        if (skippedTimeCount > 0) {
+            warnings += "변경 이력 ${skippedTimeCount}건은 발생 시각을 확인할 수 없어 건너뛰었습니다."
+        }
+        if (unmappedFieldCount > 0) {
+            warnings += "변경 이력 항목 ${unmappedFieldCount}건은 매핑되지 않는 필드라 건너뛰었습니다."
+        }
+        if (cappedCount > 0) {
+            warnings += "변경 이력 ${cappedCount}건은 이슈당 상한(${MAX_CHANGELOG_GROUPS}건)을 초과해 건너뛰었습니다."
+        }
+    }
+
+    /**
+     * 이력 그룹 1건 처리 결과([applyChangelogGroup]) — [applyChangelog] 가 [warnChangelogOutcomes] 로
+     * 집계하기 위해 누적하는 카운트 쌍.
+     *
+     * @property skippedTime occurredAt 이 null 이라 그룹 전체를 스킵했으면 1, 아니면 0.
+     * @property unmappedFields 이 그룹 내에서 [CHANGELOG_FIELD_MAP] 에 없어 스킵된 item 개수.
+     */
+    private data class ChangelogGroupOutcome(val skippedTime: Int, val unmappedFields: Int)
+
+    /**
+     * [key] 스코프로 EDIT_ISSUE(UPDATE) 권한을 실제 확인한다 — 댓글/worklog/첨부/이력 실행
+     * 사전체크 공용(★2/★3).
      *
      * [hasUpdatePermission] 의 dry-run 전용 Project 스코프 예측과 달리, 이 시점엔 이슈가 실제로
-     * 존재하므로([applyComments]/[applyWorklogs] 는 createIssue 직후에만 호출된다) [CommentApplicationService.create]/
-     * [WorklogService.createImported] 내부 checkPermission 과 동일한 [IssueScope.Issue] 로 확인해야
+     * 존재하므로([applyComments]/[applyWorklogs]/[applyAttachments]/[applyChangelog] 는 createIssue
+     * 직후에만 호출된다) [CommentApplicationService.create]/[WorklogService.createImported]/
+     * [IssueAttachmentService.upload] 내부 checkPermission 과 동일한 [IssueScope.Issue] 로 확인해야
      * 사전체크와 실제 판정이 어긋나지 않는다.
      */
     private fun hasIssueUpdatePermission(
@@ -718,9 +1215,11 @@ class IssueImportAdapter(
      * @property affectsVersionIds 매칭·자동생성된 "영향받는 버전" UUID 목록.
      * @property fixVersionIds 매칭·자동생성된 "수정 예정 버전" UUID 목록.
      * @property resolvedEmails [resolveFields] 가 한 번에 배치 해석한 `lower(email) -> UUID` 전체 맵
-     *   (reporter/assignee 뿐 아니라 댓글/worklog author 이메일도 포함, PR3). [applyComments]/
-     *   [applyWorklogs]/[warnCommentsPreview]/[warnWorklogsPreview] 가 [resolveAuthorId]/[isAuthorUnmatched]
-     *   로 재사용해 author 이메일마다 개별 조회를 반복하지 않는다.
+     *   (reporter/assignee 뿐 아니라 댓글/worklog/첨부/이력 author 이메일도 포함, PR3/PR4). [applyComments]/
+     *   [applyWorklogs]/[applyAttachmentItem]/[applyChangelogGroup]/[warnCommentsPreview]/[warnWorklogsPreview]
+     *   가 [resolveAuthorId]/[isAuthorUnmatched] 로 재사용해 author 이메일마다 개별 조회를 반복하지 않는다.
+     *   단, [applyChangelogGroup] 은 미매칭 시 [resolveAuthorId] 의 requester 폴백을 쓰지 않고 이
+     *   맵을 직접 조회해 actorId=null 로 남긴다(Maxi 결정 — 비대칭 폴백, [applyChangelogGroup] KDoc).
      */
     private data class FieldResolution(
         val reporterId: UUID,
@@ -735,8 +1234,9 @@ class IssueImportAdapter(
     /**
      * [cmd] 의 이메일/이름 필드를 실제 식별자로 일괄 해석한다.
      *
-     * - reporterEmail/assigneeEmail/댓글·worklog authorEmail: [userLookupPort.resolveByEmails] 1회
-     *   배치 호출로 해석([FieldResolution.resolvedEmails] 로 전체 맵을 보존해 author 해석에 재사용, PR3).
+     * - reporterEmail/assigneeEmail/댓글·worklog·첨부·이력 authorEmail: [userLookupPort.resolveByEmails]
+     *   1회 배치 호출로 해석([FieldResolution.resolvedEmails] 로 전체 맵을 보존해 author 해석에 재사용,
+     *   PR3/PR4).
      * - typeName: [resolveTypeId] — 활성 타입 이름 대소문자 무시 매칭.
      * - componentNames/affectsVersionNames/fixVersionNames: [resolveComponentIds]/[resolveVersionIds]
      *   — 프로젝트 활성 이름 대소문자 무시 매칭, 미매칭 시 권한 있으면 자동생성([cmd.dryRun] 이면
@@ -758,7 +1258,9 @@ class IssueImportAdapter(
             (
                 listOfNotNull(cmd.reporterEmail, cmd.assigneeEmail) +
                     cmd.comments.mapNotNull { it.authorEmail } +
-                    cmd.worklogs.mapNotNull { it.authorEmail }
+                    cmd.worklogs.mapNotNull { it.authorEmail } +
+                    cmd.attachments.mapNotNull { it.authorEmail } +
+                    cmd.changelog.mapNotNull { it.authorEmail }
             ).map { it.lowercase() }.toSet()
         val resolvedEmails =
             if (emailsToResolve.isEmpty()) emptyMap() else userLookupPort.resolveByEmails(emailsToResolve)
@@ -981,5 +1483,53 @@ class IssueImportAdapter(
          * 표시하는 용도로만 쓰이며, dry-run 경로는 이 값을 실제 링크 호출에 전달하지 않는다.
          */
         private val DRY_RUN_VERSION_PLACEHOLDER: UUID = UUID(0L, 0L)
+
+        /**
+         * issue_attachments.filename VARCHAR(500) 상한(V023) — 초과 시 insert 가 22001(value too long)
+         * 로 throw 한다(BLOCKER-2). [applyAttachmentItem] 이 upload 호출 이전에 사전체크해 애초에
+         * throw 를 유발하지 않는다.
+         */
+        private const val MAX_ATTACHMENT_FILENAME_LENGTH = 500
+
+        /** issue_attachments.content_type VARCHAR(100) 상한(V023) — [MAX_ATTACHMENT_FILENAME_LENGTH] 와 동일 근거. */
+        private const val MAX_ATTACHMENT_CONTENT_TYPE_LENGTH = 100
+
+        /** [ImportAttachment.mimeType] 미지정 + 확장자 유추도 실패한 첨부의 기본 MIME. */
+        private const val DEFAULT_ATTACHMENT_CONTENT_TYPE = "application/octet-stream"
+
+        /**
+         * 첨부 파일 업로드 상한(100MB, 코드리뷰 CONCERN-2 hot-fix) — 기존 클라이언트/서버 100MB
+         * 상한(`spring.servlet.multipart.max-file-size`, [com.bts.issue.attachment.web.IssueAttachmentController]
+         * KDoc)과 정합시킨 값이다. [readBoundedAttachmentBytes] 가 이 상한 + 1 바이트까지만 bounded
+         * read 해 선언 크기를 속인 zip(zip-bomb)을 방어한다.
+         */
+        private const val MAX_ATTACHMENT_UPLOAD_BYTES: Long = 100L * 1024 * 1024
+
+        /** 이슈당 import 변경 이력 그룹 상한(Maxi 결정, plan Task 9) — 초과분은 스킵 + 경고. */
+        private const val MAX_CHANGELOG_GROUPS = 1000
+
+        /**
+         * Jira changelog raw field → BTS [IssueChangeItem.field] 매핑 테이블(Maxi 결정, plan Task 9
+         * "구현 요지"). [IssueChangeDetector.SCALAR_FIELD_EXTRACTORS] 가 쓰는 BTS 필드명과 정합시켰다
+         * (status/priority/assignee/summary/description/resolution 은 이름이 같고, issuetype→type/
+         * Fix Version→fixVersions/Version→affectsVersions/duedate→dueDate/Epic Link→epic 은 개명).
+         * 여기 없는 field(예: Jira custom field)는 [mapChangelogItems] 가 스킵 + 경고로 강등한다.
+         */
+        private val CHANGELOG_FIELD_MAP: Map<String, String> =
+            mapOf(
+                "status" to "status",
+                "priority" to "priority",
+                "assignee" to "assignee",
+                "summary" to "summary",
+                "description" to "description",
+                "resolution" to "resolution",
+                "issuetype" to "type",
+                "labels" to "labels",
+                "Component" to "components",
+                "Fix Version" to "fixVersions",
+                "Version" to "affectsVersions",
+                "duedate" to "dueDate",
+                "Epic Link" to "epic",
+            )
     }
 }

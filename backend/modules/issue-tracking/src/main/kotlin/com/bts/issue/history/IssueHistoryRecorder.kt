@@ -25,6 +25,10 @@ import java.util.UUID
  * 별도 @Service 빈이므로 [IssueApplicationService] 의 트랜잭션(REQUIRED)에 참여한다.
  * self-invocation 함정 없음 (메모리 트랜잭션-self-invocation-REQUIRES_NEW).
  *
+ * **import 전용 진입점.**
+ * [recordImported] 는 외부 소스(Jira changelog 등)가 이미 완성한 [IssueChangeGroup] 을
+ * detector/resolver 없이 그대로 기록하는 별도 진입점이다. [record] 와 함께 참고할 것.
+ *
  * @see IssueChangeDetector
  * @see IssueChangeLabelResolver
  * @see IssueChangeHistoryRepository
@@ -84,6 +88,42 @@ class IssueHistoryRecorder(
             issue.key.value,
             actor?.value,
             resolvedItems.size,
+        )
+    }
+
+    /**
+     * import 전용 이력 기록 진입점 (FR-IM-01 PR4 Task 3).
+     *
+     * 외부 소스(Jira changelog 등)가 이미 완성한 [group] 을 detector/resolver 없이 그대로
+     * [repository] 에 위임한다. [record] 는 before/after [Issue] 스냅샷으로 diff 를 계산해야
+     * 하지만, import 는 원본 시스템이 이미 계산해 둔 변경 항목(items)·행위자(actorId)·
+     * 발생 시각(createdAt)을 그대로 재생(replay)하므로 diff 계산이 불필요하고 무의미하다.
+     *
+     * **occurredAt 보존 근거.**
+     * import 이력이 감사(append-only audit trail)로서 의미를 가지려면 원본 시스템에서
+     * 실제로 변경이 발생한 시각을 보존해야 한다. [group.createdAt] 이 과거 시각으로 채워져
+     * 있으면 [IssueChangeHistoryRepository.record] 구현체가 그 값을 그대로 저장한다
+     * (import 시각 NOW() 로 덮어쓰지 않음). [group.createdAt] 이 null 이면(하위 호환) DB
+     * DEFAULT NOW() 로 폴백한다 — [record] 가 만드는 그룹과 동일한 동작이다.
+     *
+     * **[record] 와의 차이.**
+     * - [record] — before/after 로 diff 계산(detector) + 라벨 채움(resolver) 후 기록.
+     * - [recordImported] — 이미 조립된 [group] 을 그대로 기록. detector/resolver 미경유.
+     *
+     * append-only 감사 이력 원칙(DATA.md §3)은 이 진입점에도 동일하게 적용된다 —
+     * 기록 후 수정·삭제 없음.
+     *
+     * @param group 외부 소스에서 이미 완성한 변경 그룹(items/actorId/createdAt 포함).
+     */
+    @Transactional
+    fun recordImported(group: IssueChangeGroup) {
+        repository.record(group)
+        log.info(
+            "history_recorded_imported issueKey={} actor={} itemCount={} createdAt={}",
+            group.issueKey,
+            group.actorId,
+            group.items.size,
+            group.createdAt,
         )
     }
 }
