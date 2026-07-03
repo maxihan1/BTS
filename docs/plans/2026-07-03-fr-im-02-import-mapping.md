@@ -119,7 +119,7 @@ CREATE TABLE import_mappings (
 ```
 `init_codegen.sql`에 동일 DDL 미러(jOOQ `ImportMappingsRecord` 생성용).
 
-**REFACTOR**. DDL 주석(L1 역할 + CHECK 확장 사유). V602 export_jobs 미러 스타일 정합.
+**REFACTOR**. DDL 주석(L1 역할 + CHECK 확장 사유). V602 export_jobs 미러 스타일 정합. **`idx_import_jobs_expires` 주석("expires_at 채워진 COMPLETED job만") 갱신** — AWAITING_MAPPING도 expires_at 사용하므로 부정확(NIT).
 
 **검증**. `./gradlew :backend:modules:search-export-import:test --tests '*SchemaMigrationImportTest*'`. **머지 직전 V606 번호 재확인**(동시 브랜치 충돌).
 
@@ -145,11 +145,11 @@ CREATE TABLE import_mappings (
 - files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/parse/ImportRowParser.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/parse/ImportRowParserTest.kt`]
 - depends-on: [2]
 
-**RED**. (1) 임의 헤더 CSV("제목,설명" + fieldMapping 제목→summary·설명→description)가 매핑대로 파싱됨. (2) fieldMapping=null이면 canonical 동작 불변(회귀). (3) `readHeaderAndSample(input, n=5)`가 헤더+최대 5행만 읽고 조기중단 → 미구현 FAIL.
+**RED**. (1) 임의 헤더 CSV("제목,설명" + fieldMapping 제목→summary·설명→description)가 매핑대로 파싱됨. (2) fieldMapping=null이면 canonical 동작 불변(회귀). (3) **mapped 모드에서 리터럴 "summary" 헤더가 없어도**(예: "제목") throw 없이 파싱됨(canonical summary 하드-throw 회피 검증 — 아래 BLOCKER-1/CONCERN-6). (4) **mapped 모드에서도 CSV 다중 `Comment` 컬럼 수집 불변**(canonical 회귀 방지). (5) `readHeaderAndSample(input, n=5)`가 헤더+최대 5행만 읽고 조기중단 → 미구현 FAIL.
 
-**GREEN**. `parseCsv(input, fieldMapping: Map<String,String>? = null, onRow)` — fieldMapping 있으면 `TargetField`별 컬럼 위치를 매핑으로 해석(trim+lowercase), 없으면 기존 `HEADER_*` canonical. 공통 `resolveTargetColumns(headers, fieldMapping)` → `Map<TargetField,Int>`. `readHeaderAndSample`(analyze용, 헤더 + N행 후 중단).
+**GREEN**. ⚠️ **오버로드 사용(중간 기본인자 금지 — BLOCKER-1)**. 기존 `fun parseCsv(input, onRow)` 시그니처 **유지**(canonical, 기존 positional 호출·trailing-lambda 테스트 불변) + 신규 `fun parseCsv(input, fieldMapping: Map<String,String>, onRow)` 오버로드 추가(`onRow` 항상 마지막). fieldMapping 있으면 `TargetField`별 컬럼 위치를 매핑으로 해석(trim+lowercase), 2-arg는 기존 `HEADER_*` canonical. 공통 `resolveTargetColumns(headers, fieldMapping?)` → `Map<TargetField,Int>`. **summary 필수 검사는 canonical 리터럴 헤더가 아니라 resolveTargetColumns 결과의 summary 위치 존재로 판정**(mapped 모드는 confirm 시 `SUMMARY_NOT_MAPPED`로 이미 게이트됨). 댓글 다중컬럼 수집(`commentColumnPositions`)은 두 모드 공통 유지. `readHeaderAndSample`(analyze용, 헤더 + N행 후 중단).
 
-**REFACTOR**. 중복 제거(canonical/mapped 단일 경로). KDoc §매핑-aware 절 추가. JSON 경로 불변 명시.
+**REFACTOR**. 중복 제거(canonical/mapped 공통 resolveTargetColumns). KDoc §매핑-aware 절 + 오버로드 사유. JSON 경로·댓글 수집 불변 명시.
 
 **검증**. `./gradlew :backend:modules:search-export-import:test --tests '*ImportRowParserTest*'`.
 
@@ -160,11 +160,11 @@ CREATE TABLE import_mappings (
 - files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/mapping/repository/ImportMappingRepository.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/mapping/repository/ImportMappingRepositoryTest.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/repository/ImportJobRepository.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/job/repository/ImportJobRepositoryTest.kt`]
 - depends-on: [1]
 
-**RED**. (1) `ImportMappingRepository.saveAll(jobId, mappings)` + `findByJobId(jobId)` 라운드트립. (2) `ImportJobRepository.transitionToPending(jobId)` — AWAITING_MAPPING→PENDING CAS + expiresAt=null 반환 true, 다른 상태면 false(멱등). → 미구현 FAIL. **(jOOQ codegen: T1 migration→init_codegen 반영 후 build로 `ImportMappingsRecord` 생성 확인)**.
+**RED**. (1) `ImportMappingRepository.saveAll(jobId, mappings)` + `findByJobId(jobId)` 라운드트립. (2) `ImportJobRepository.transitionToPending(jobId)` — AWAITING_MAPPING→PENDING CAS + expiresAt=null 반환 true, 다른 상태면 false(멱등). (3) **`findExpired`가 만료된 AWAITING_MAPPING job도 반환**(status-agnostic 확인). (4) **`deleteIfExpired(id, now)` 가드 삭제** — expires_at 지난 행만 삭제(confirm으로 expires_at=NULL 된 job은 0행 → cleanup 레이스 차단, CONCERN-4). → 미구현 FAIL. **(jOOQ codegen: T1 migration→init_codegen 반영 후 build로 `ImportMappingsRecord` 생성 확인. 스테일 캐시 방지 `--rerun-tasks`/clean-codegen — 메모리 backend-clean-build-broken)**.
 
-**GREEN**. jOOQ 기반 saveAll(멱등 — 기존 삭제 후 삽입 or ON CONFLICT)·findByJobId. `transitionToPending` — `UPDATE ... SET status='PENDING', expires_at=NULL WHERE id=? AND status='AWAITING_MAPPING'` rowsAffected>0.
+**GREEN**. jOOQ 기반 saveAll(멱등 — 기존 삭제 후 삽입 or ON CONFLICT)·findByJobId. `transitionToPending` — `UPDATE ... SET status='PENDING', expires_at=NULL WHERE id=? AND status='AWAITING_MAPPING'` rowsAffected>0. `deleteIfExpired` — `DELETE ... WHERE id=? AND expires_at IS NOT NULL AND expires_at < ?` (기존 무조건 `deleteById`를 대체하지 않고 cleanup 전용 가드 삭제 추가).
 
-**REFACTOR**. Testcontainers 시드(import_jobs FK 충족). KDoc CAS 의도.
+**REFACTOR**. Testcontainers 시드(import_jobs FK 충족). KDoc CAS·가드삭제 의도(레이스 차단).
 
 **검증**. `./gradlew :backend:modules:search-export-import:test --tests '*ImportMappingRepositoryTest*' --tests '*ImportJobRepositoryTest*'`.
 
@@ -190,9 +190,9 @@ CREATE TABLE import_mappings (
 - files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/application/ImportJobService.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/job/application/ImportJobServiceAnalyzeTest.kt`]
 - depends-on: [2, 3]
 
-**RED**. `analyze(command)` — `validateAndAuthorize` 재사용(권한/크기/형식) → storage.put → `insert(AWAITING_MAPPING, expiresAt=now+ABANDON_TTL)` → 파서 bounded read로 sourceFields+sampleRows 감지 → `ImportAnalysisResult(job, sourceFields, sampleRows, targetFields)`. JSON이면 sourceFields=canonical. → 미구현 FAIL(mockk storage/repo/parser).
+**RED**. `analyze(command)` — `validateAndAuthorize` 재사용(권한/크기/형식) → storage.put → `insert(AWAITING_MAPPING, expiresAt=now+ABANDON_TTL_SECONDS)` → 파서 bounded read로 sourceFields+sampleRows 감지 → `ImportAnalysisResult(job, sourceFields, sampleRows, targetFields)`. JSON이면 sourceFields=canonical. → 미구현 FAIL(mockk storage/repo/parser).
 
-**GREEN**. accept 미러하되 status=AWAITING_MAPPING·enqueue 없음·expiresAt 설정. CSV는 `readHeaderAndSample`, JSON은 canonical 카탈로그.
+**GREEN**. accept 미러하되 status=AWAITING_MAPPING·enqueue 없음·expiresAt 설정. `ABANDON_TTL_SECONDS = 24*60*60`(방치 매핑 job 정리 기준, `RESULT_TTL_SECONDS` 선례값 — 매핑 세션보다 충분히 김). CSV는 `readHeaderAndSample`, JSON은 canonical 카탈로그.
 
 **REFACTOR**. buildSourceObjectKey 재사용. KDoc §분석 흐름.
 
@@ -205,11 +205,11 @@ CREATE TABLE import_mappings (
 - files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/mapping/ImportMappingService.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/mapping/ImportMappingServiceTest.kt`]
 - depends-on: [3, 4, 5]
 
-**RED**. (1) `validate(jobId, actor, fieldMappings)` — 소유+AWAITING_MAPPING 아니면 예외, persist 파일 헤더 재읽기로 sourceFields 확보 → MappingValidator → result. (2) `confirm(jobId, actor, fieldMappings, dryRun)` — 검증 실패→`ImportMappingInvalidException`(422), 상태 불일치→`ImportMappingStateConflictException`(409), 성공→transactionTemplate{ saveAll + transitionToPending + enqueue } → job(PENDING). → 미구현 FAIL.
+**RED**. (1) `validate(jobId, actor, fieldMappings)` — 소유+AWAITING_MAPPING 아니면 예외, persist 파일 헤더 재읽기로 sourceFields 확보 → MappingValidator → result. (2) `confirm(jobId, actor, fieldMappings, dryRun)` — 검증 실패→`ImportMappingInvalidException`(422), 성공→transactionTemplate{ **CAS 먼저** }. (3) **반복/동시 confirm 시 단일 enqueue + 두 번째 409**(CONCERN-3 — CAS 게이트가 saveAll/enqueue보다 먼저). → 미구현 FAIL.
 
-**GREEN**. 서비스 조립(ImportMappingRepository·MappingValidator·ImportJobRepository·enqueuePublisher·storage·parser·transactionTemplate). 소유 검증 `findByIdForRequester`.
+**GREEN**. 서비스 조립(ImportMappingRepository·MappingValidator·ImportJobRepository·enqueuePublisher·storage·parser·transactionTemplate). 소유 검증 `findByIdForRequester`. **confirm 트랜잭션 순서(CONCERN-3)**. `transactionTemplate{ transitionToPending(CAS) == false → throw ImportMappingStateConflictException(롤백); else saveAll; enqueue }`. CAS를 saveAll/enqueue보다 **먼저** 실행해 이미-PENDING job의 매핑 덮어씀·중복 enqueue 차단.
 
-**REFACTOR**. 예외 클래스(web와 공유 위치). KDoc §확정 트랜잭션 경계(outbox 선례 `ImportJobEnqueuePublisher`).
+**REFACTOR**. 예외 클래스(web와 공유 위치). KDoc §확정 트랜잭션 경계(CAS-게이트 우선, outbox 선례 `ImportJobEnqueuePublisher`).
 
 **검증**. `./gradlew :backend:modules:search-export-import:test --tests '*ImportMappingServiceTest*'`.
 
@@ -220,28 +220,28 @@ CREATE TABLE import_mappings (
 - files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/web/ImportMappingController.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/web/dto/ImportAnalysisResponse.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/web/dto/MappingValidationResponse.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/web/ImportExceptionHandler.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/web/ImportMappingControllerTest.kt`]
 - depends-on: [6, 7]
 
-**RED**. 슬라이스/통합 — `POST /api/v1/imports/analyze` 202+분석결과·`POST /imports/{id}/mapping/validate` 200+검증·`POST /imports/{id}/mapping` 200(PENDING). 미인증 401·타인 404·검증실패 422·상태충돌 409·actor 추출 우선(auth-extraction-before-resource-lookup). → 미구현 FAIL.
+**RED**. 슬라이스/통합 — `POST /api/v1/imports/analyze` **200**+분석결과·`POST /imports/{id}/mapping/validate` 200+검증·`POST /imports/{id}/mapping` 200(PENDING). 미인증 401·타인 404·검증실패 422·상태충돌 409·actor 추출 우선(auth-extraction-before-resource-lookup). ⚠️ **슬라이스 테스트는 `webAppContextSetup`(컨텍스트 스캔 — assignableTypes 스코프 실제 적용)**, standalone `setControllerAdvice` **금지**(스코프 무시로 가짜그린, BLOCKER-2). → 미구현 FAIL.
 
-**GREEN**. `ImportMappingController`(신규, `imports.web`이지만 `ImportExceptionHandler` 커버 위해 동일 패키지). analyze는 multipart(기존 ImportController currentActorId/validateProjectKey 패턴 재사용). ExceptionHandler에 `ImportMappingInvalidException`→422 `IMPORT_MAPPING_INVALID`·`ImportMappingStateConflictException`→409 `IMPORT_MAPPING_STATE_CONFLICT` 추가.
+**GREEN**. `ImportMappingController`(신규, `imports.web`). ⚠️ **`ImportExceptionHandler`의 `@RestControllerAdvice(assignableTypes)`에 `ImportMappingController::class` 추가**(BLOCKER-2 — assignableTypes는 클래스 리스트, 같은 패키지로 커버 안 됨. 메모리 domain-exception-http-handler-basepackage-scope). analyze는 multipart(기존 ImportController currentActorId/validateProjectKey 패턴 재사용). ExceptionHandler에 `ImportMappingInvalidException`→422 `IMPORT_MAPPING_INVALID`·`ImportMappingStateConflictException`→409 `IMPORT_MAPPING_STATE_CONFLICT` 추가. analyze는 동기 완결(분석결과 body 반환)이라 202 아닌 **200**.
 
-**REFACTOR**. DTO from() 팩토리. currentActorId 헬퍼 중복은 기존 BC 격리 관례(재사용 안 함) 유지.
+**REFACTOR**. DTO from() 팩토리. currentActorId 헬퍼 중복은 기존 BC 격리 관례(재사용 안 함) 유지. **ImportExceptionHandler.kt를 files에 포함**(assignableTypes 수정).
 
 **검증**. `./gradlew :backend:modules:search-export-import:test --tests '*ImportMappingControllerTest*'`.
 
-### Task 9. 워커 통합 — ImportJobProcessor field mapping 로드+전달
+### Task 9. 워커 통합 — Processor field mapping 로드 + Cleanup AWAITING_MAPPING 정리
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/application/ImportJobProcessor.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/job/application/ImportJobProcessorTest.kt`]
+- files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/application/ImportJobProcessor.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/job/application/ImportJobProcessorTest.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/worker/ImportJobCleanupWorker.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/job/worker/ImportJobCleanupWorkerTest.kt`]
 - depends-on: [3, 4]
 
-**RED**. (1) job에 import_mappings 있으면 프로세서가 로드해 `parseCsv(input, fieldMapping, onRow)` 호출(임의 헤더→대상 필드). (2) 매핑 없으면 canonical 파싱(회귀 불변). → 미구현 FAIL(mockk repository.findByJobId).
+**RED**. (1) job에 import_mappings 있으면 프로세서가 로드해 3-arg `parseCsv(input, fieldMapping, onRow)` 호출(임의 헤더→대상 필드). (2) 매핑 없으면 2-arg canonical 파싱(회귀 불변). (3) **CleanupWorker가 만료된 AWAITING_MAPPING job의 원본 MinIO 오브젝트 삭제 + `deleteIfExpired`로 행 삭제(FK CASCADE로 매핑 동반 삭제)** — 방치 정리 검증(CONCERN-5, 지금까지 untested). → 미구현 FAIL(mockk repository.findByJobId/findExpired).
 
-**GREEN**. `ImportJobProcessor`에 `ImportMappingRepository` 주입. `processRows`에서 CSV 분기 시 fieldMapping 로드해 전달. JSON은 불변.
+**GREEN**. `ImportJobProcessor`에 `ImportMappingRepository` 주입. `processRows` CSV 분기 시 fieldMapping 로드(있으면 3-arg, 없으면 2-arg). JSON 불변. `ImportJobCleanupWorker`가 `deleteById` 대신 `deleteIfExpired`(가드 삭제, CONCERN-4) 사용 + AWAITING_MAPPING 원본 오브젝트도 삭제 대상 포함(sourceObjectKey 이미 존재).
 
-**REFACTOR**. mapping 없을 때 null 전달로 canonical 폴백 단일 경로. KDoc §매핑 로드.
+**REFACTOR**. mapping 없을 때 2-arg 오버로드로 canonical 폴백. KDoc §매핑 로드·§방치 정리.
 
-**검증**. `./gradlew :backend:modules:search-export-import:test --tests '*ImportJobProcessorTest*'`.
+**검증**. `./gradlew :backend:modules:search-export-import:test --tests '*ImportJobProcessorTest*' --tests '*ImportJobCleanupWorkerTest*'`.
 
 ### Task 10. 통합테스트 — happy path + canonical 회귀
 
@@ -267,4 +267,26 @@ CREATE TABLE import_mappings (
 - 추가 검증: ktlint, detekt(--rerun-tasks로 캐시 false-green 방지), 모듈 전체 test 회귀 0, verify-master-plan
 - jOOQ codegen: T1 migration→init_codegen 미러 후 build로 ImportMappingsRecord 생성(T4 선행)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+### 이월 노트 (후속 PR)
+- **프론트 Zod enum**. `apps/web/src/api/imports.ts:21` `z.enum(['PENDING','RUNNING','COMPLETED','FAILED'])`에 `AWAITING_MAPPING` 추가는 **프론트 PR**에서(PR-A는 기존 클라이언트가 즉시경로 job만 폴링 → AWAITING_MAPPING 미노출, 회귀 0). 메모리 frontend-zod-backend-dto-contract-gap.
+- **multi 필드 단일컬럼**. CSV에서 multi target(labels 등)도 단일 컬럼 매핑(구분자 분리). Jira 반복 동명 컬럼은 첫 컬럼만(putIfAbsent) — PR-A 문서화(버그 아님).
+
+## 리뷰 결과
+
+### eng + devex 독립 리뷰 (2026-07-03, general-purpose 서브에이전트, 코드 대조)
+
+**BLOCKER 2건 (수정 완료 → plan 반영)**.
+- **B1** 매핑 파서 중간 기본인자(`parseCsv(input, fieldMapping=null, onRow)`)가 기존 positional 호출(`ImportJobProcessor.kt:145`)을 깨고 단일 모듈이라 Task 3 컴파일 불가 → **오버로드**로 변경(Task 3/9 반영).
+- **B2** `ImportExceptionHandler @RestControllerAdvice(assignableTypes=[ImportController])`는 클래스 스코프 — 새 컨트롤러 미커버("같은 패키지" 가정 오류) → assignableTypes에 `ImportMappingController` 추가 + 슬라이스 `webAppContextSetup`(standalone 가짜그린 금지). Task 8 반영.
+
+**CONCERN 4건 (수정 완료 → plan 반영)**.
+- **C3** confirm 트랜잭션: transitionToPending(CAS)를 saveAll/enqueue보다 **먼저** → 반복 confirm 시 중복 enqueue 차단(Task 7).
+- **C4** cleanup 삭제 레이스: `deleteIfExpired`(expires_at 가드) 추가 — confirm으로 expires_at=NULL 된 job은 0행(Task 4/9).
+- **C5** 방치 정리 untested + ABANDON_TTL 미정의 → CleanupWorker 테스트 추가 + `ABANDON_TTL_SECONDS=24h`(Task 6/9).
+- **C6** 매핑 파서 회귀: mapped 모드 summary 하드-throw 회피 + CSV 댓글 수집 불변 명시(Task 3).
+
+**NIT (반영/이월)**. analyze 202→**200**(동기완결), idx 주석 갱신(Task 1), Zod enum·multi 단일컬럼 이월노트, 워커 poison 방어 스킵(선택), codegen --rerun-tasks.
+
+**코드 대조 확인된 긍정**. enum 추가 카운트가드 무영향·`findExpired`/cleanup가 AWAITING_MAPPING 처리 가능(expires_at set 시)·워커 PENDING-only 불변·`validateAndAuthorize` private 동일클래스 재사용 유효·V606+init_codegen 정확.
+
+**BLOCKER 잔여: 없음** (2건 모두 plan 수정 반영). 게이트 1 진입 가능.

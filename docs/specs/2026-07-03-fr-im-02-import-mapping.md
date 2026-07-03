@@ -43,7 +43,7 @@ FR-IM-01은 CSV 헤더를 canonical 이름(`summary`/`priority`/…)으로만 �
 ### 신규 1 — 분석
 ```
 POST /api/v1/imports/analyze          (multipart: file, projectKey, format)
-→ 202 { jobId, status:"AWAITING_MAPPING", format,
+→ 200 { jobId, status:"AWAITING_MAPPING", format,   // 동기 완결(분석결과 body 반환)
         sourceFields:[{name}], sampleRows:[[cell,...]],   // JSON이면 sourceFields=canonical 고정
         targetFields:[{key,label,required,multi}] }
 ```
