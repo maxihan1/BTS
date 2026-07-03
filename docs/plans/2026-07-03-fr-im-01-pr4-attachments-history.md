@@ -196,3 +196,12 @@ Maxi 확정(도메인 게이트). 이력=충실재생 · 첨부 zip=두-part · 
 - **NIT 반영**. dry-run zip 미다운로드(T8)·`ZipEntry.getSize()` -1 폴백(T9/spec R4).
 
 - **BLOCKER: 없음(2건 모두 plan 반영 해소)**. 설계 결함 아닌 plan 정밀도 문제라 수정으로 완결.
+
+### PR 단위 코드리뷰 (2026-07-03, 게이트 2)
+
+두 상보 리뷰(적대적 code-reviewer 에이전트 + controller lean 체크리스트 pass). **Hard BLOCKER 0 / CONCERN 3**. 두 eng-review BLOCKER(스트림 close·insert 사전체크) 실코드 반영 확인 + T9 tx 정합·필드매핑 13종·dry-run·zip-slip 방어 등 9항목 PASS. 절대 규칙 19 위반 0.
+
+- **CONCERN-1 (높음) — T7 multipart yml 실효/검증 부재**. `search-export-import`는 `@SpringBootApplication` 부팅 앱이 없고 어느 모듈도 이를 의존하지 않음(`settings.gradle.kts` app 조립 부재, memory `no-cross-bc-deployment-assembly`). 동명 `application-dev.yml` 3개(issue-tracking 100MB·identity-access 미설정·search 500MB) → Spring은 `classpath:/application-dev.yml` 단일 해석(병합 아님)이라 조립 시 승자 비결정, 500MB 상한 침묵 무시 가능. MockMvc 통합테스트는 서블릿 multipart 강제 우회라 커버 0. **지금 파손 재현 근거 없음(부팅 경로 부재)이나 조립 도입 시 BLOCKER 승격**.
+- **CONCERN-2 (중간) — 첨부 침묵 절단**. `resolveAttachmentBytes`(어댑터)가 `ImportAttachment.sizeBytes`(Jira 보고, KDoc이 "참고용·실제와 다를 수 있음"이라 규정)를 MinIO `.stream(input, size)` Content-Length로 신뢰 → 실제 zip 바이트 > 보고값이면 절단 저장 후 Success. 신뢰 가능값(`ZipEntry.size` 검증분)은 source `open`이 `InputStream?`만 반환해 미관통. spec R4(zip 엔트리 실크기) 의도와 구현 drift.
+- **CONCERN-3 (낮음) — 권한예외 강등 + 불필요 suppress**. `applyAttachmentItem`이 `IssueAccessDeniedException`을 PERMISSION_DENIED 스킵-경고로 catch(현재 선행 게이트로 도달불가+log.warn 표면화라 침묵 아님, 미래 첨부/필드 권한 분기 시 위험) + 전부 특정 타입 catch인데 `@Suppress("TooGenericExceptionCaught")` 오해소지.
+- **관찰(비차단)**. IssueImportAdapter 1498줄(@Suppress LargeClass 근거·PR1~4 누적, 향후 분리 검토) · MinIO 고아객체(PR1부터 기존, zip이 2번째 추가) · SchemaMigrationImportTest 길이500 미어서트(경미).
