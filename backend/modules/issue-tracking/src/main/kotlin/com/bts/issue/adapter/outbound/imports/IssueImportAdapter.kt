@@ -112,11 +112,25 @@ import java.util.UUID
  *      [applyAttachmentItem] 은 upload 호출 **이전에** filename/contentType 길이를 사전 판정해
  *      초과 시 스킵+경고로 강등한다(길이는 insert 이전에 이미 알 수 있으므로 throw 자체가 발생하지
  *      않는다 — best-effort 로 "강등"하는 게 아니라 **애초에 throw 를 유발하지 않는** 설계).
- *      이 사전체크 이후에도 [applyAttachmentItem] 이 잡는 잔여 throw 집합은 **권한(방어적,
- *      실제로는 5와 동일하게 사전 확인됨)·MIME 거부·바이러스 스캔 미가용/감염·MinIO put 실패**
- *      뿐이며, 이 목록 밖의 예외(예: 예상외 insert 실패)는 잡지 않고 그대로 전파해 [importIssue]
- *      의 catch 블록이 행 전체를 롤백하도록 둔다(행 원자성 안전망, S31/[FaultInjectingWorklogService]
- *      동형 — `IssueImportAdapterTest` S44 참조).
+ *      이 사전체크 이후에도 [applyAttachmentItem] 이 잡는 잔여 throw 집합은 **MIME 거부·바이러스
+ *      스캔 미가용/감염·MinIO put 실패·크기 상한(100MB) 초과([AttachmentSkipReason.TOO_LARGE])**
+ *      뿐이다 — 권한 예외([IssueAccessDeniedException])는 더 이상 이 목록에 없다(코드리뷰 CONCERN-3
+ *      hot-fix). [applyAttachments] 의 사전 UPDATE 권한 체크와 [IssueAttachmentService.upload]
+ *      내부 checkPermission 이 항상 동일 [IssueScope.Issue] 스코프를 쓰므로 정상 경로에서 방어적으로
+ *      잡을 필요가 없고, 오히려 미래 첨부/필드 권한 분기가 늘어날 때 실제 권한거부가 스킵-경고로
+ *      조용히 강등되는 위험이 더 크다(메모리 best-effort-loop-permission-exception-nonprod-mask 동형).
+ *      이 목록 밖의 예외(예: 예상외 insert 실패, 그리고 이제는 권한 예외도)는 잡지 않고 그대로
+ *      전파해 [importIssue] 의 catch 블록이 행 전체를 롤백하도록 둔다(행 원자성 안전망,
+ *      S31/[FaultInjectingWorklogService] 동형 — `IssueImportAdapterTest` S44 참조).
+ *    - **CONCERN-2 hot-fix(sizeBytes 신뢰 경계)** — [uploadAttachment]/[readBoundedAttachmentBytes]
+ *      는 [ImportAttachment.sizeBytes](Jira 보고값, "참고용" KDoc)를 [AttachmentStoragePort.put] 의
+ *      Content-Length 로 신뢰하지 않는다. [com.bts.issue.attachment.adapter.MinioStorageAdapter.put]
+ *      은 선언된 size 바이트만 정확히 읽으므로, 실제 스트림이 더 크면 초과분을 조용히 버리고 절단
+ *      저장한 뒤 "성공"을 보고하는 침묵 데이터 손실이 발생할 수 있었다. 그래서 메타 유무와 무관하게
+ *      항상 스트림의 실제 바이트를 세어 그 크기로 upload 한다(no-metadata 경로와 통합). 무제한
+ *      [InputStream.readBytes] 는 선언 크기를 속인 zip 이 OOM 을 유발할 수 있으므로
+ *      [InputStream.readNBytes] 로 100MB + 1 바이트까지만 bounded read 하고, 초과하면 업로드
+ *      자체를 시도하지 않고 [AttachmentSkipReason.TOO_LARGE] 로 스킵한다(zip-bomb 방어).
  *
  * ### 트랜잭션 롤백 안전성 (CONCERN #1)
  *
@@ -859,15 +873,18 @@ class IssueImportAdapter(
      * upload 가 던질 수 있는 예외 중 [UnsupportedAttachmentTypeException]/[AttachmentInfectedException]/
      * [AttachmentScanUnavailableException]/[MinioStorageException] 은 모두 insert **이전** 단계에서
      * 발생하므로(클래스 KDoc ★3) 여기서 잡아 best-effort 로 강등해도 참여 트랜잭션이 오염되지 않는다.
-     * [IssueAccessDeniedException] 도 방어적으로 잡는다([applyAttachments] 의 사전 UPDATE 권한 확인과
-     * 이 시점의 [IssueAttachmentService.upload] 내부 권한 확인이 동일 스코프이므로 정상 경로에서는
-     * 발생하지 않지만, 목록 형태로 남겨 두는 것이 ★3 "잔여 throw 집합"의 완전성을 보장한다).
-     * 이 목록 밖의 예외(즉 insert 자체의 예상외 실패)는 잡지 않고 그대로 전파한다 — 행 원자성 안전망이
-     * 이슈까지 롤백한다(`IssueImportAdapterTest` S44).
+     * [IssueAccessDeniedException] 은 더 이상 여기서 잡지 않는다(코드리뷰 CONCERN-3 hot-fix) —
+     * [applyAttachments] 의 사전 UPDATE 권한 확인과 이 시점의 [IssueAttachmentService.upload] 내부
+     * 권한 확인이 동일 [IssueScope.Issue] 스코프라 정상 경로에서는 도달하지 않지만, 미래 첨부/필드
+     * 권한 분기가 늘어날 때 실제 권한거부를 스킵-경고로 조용히 강등시키는 위험이 더 크므로(메모리
+     * best-effort-loop-permission-exception-nonprod-mask) 잡지 않고 그대로 전파한다 — 행 원자성
+     * 안전망([importIssue] 의 catch 블록)이 행 전체를 FORBIDDEN 실패로 롤백한다.
+     * 이 목록 밖의 예외(즉 insert 자체의 예상외 실패, 그리고 이제는 권한 예외도)는 잡지 않고 그대로
+     * 전파한다 — 행 원자성 안전망이 이슈까지 롤백한다(`IssueImportAdapterTest` S44).
      *
      * @return 스킵 사유([AttachmentSkipReason]), 성공했으면 null.
      */
-    @Suppress("TooGenericExceptionCaught", "ReturnCount") // 잔여 throw 집합(★3) 개별 catch + guard-clause return 4개(§2.3)
+    @Suppress("ReturnCount") // guard-clause early return 4개(파일명·contentType·NOT_FOUND·업로드결과) — DEVELOPMENT.md §2.3
     private fun applyAttachmentItem(
         importAttachment: ImportAttachment,
         cmd: IssueImportCommand,
@@ -888,7 +905,6 @@ class IssueImportAdapter(
         val uploaderId = resolveAuthorId(importAttachment.authorEmail, resolution.resolvedEmails, cmd.requesterUserId)
         return try {
             stream.use { uploadAttachment(it, importAttachment, contentType, actor, key, uploaderId) }
-            null
         } catch (e: UnsupportedAttachmentTypeException) {
             log.warn(
                 "import_attachment_unsupported_type filename={} contentType={} cause={}",
@@ -906,9 +922,6 @@ class IssueImportAdapter(
         } catch (e: MinioStorageException) {
             log.warn("import_attachment_storage_failure filename={} cause={}", importAttachment.filename, e.message)
             AttachmentSkipReason.STORAGE_FAILURE
-        } catch (e: IssueAccessDeniedException) {
-            log.warn("import_attachment_permission_denied filename={} cause={}", importAttachment.filename, e.message)
-            AttachmentSkipReason.PERMISSION_DENIED
         }
     }
 
@@ -926,6 +939,11 @@ class IssueImportAdapter(
      *
      * [importAttachment.createdAt]/[uploaderId] 를 그대로 전달해 원본(Jira 등) 업로드 시각·업로더를
      * 보존한다(Task 2, [IssueAttachmentService.upload] createdAt/uploadedBy 주입 파라미터).
+     *
+     * [readBoundedAttachmentBytes] 가 상한(100MB) 초과로 null 을 반환하면 upload 자체를 호출하지
+     * 않고 [AttachmentSkipReason.TOO_LARGE] 로 스킵한다(CONCERN-2 hot-fix, zip-bomb 방어).
+     *
+     * @return 상한 초과로 스킵했으면 [AttachmentSkipReason.TOO_LARGE], 업로드에 성공했으면 null.
      */
     @Suppress("LongParameterList")
     private fun uploadAttachment(
@@ -935,34 +953,45 @@ class IssueImportAdapter(
         actor: ActorId,
         key: IssueKey,
         uploaderId: UUID,
-    ) {
-        val (resolvedStream, sizeBytes) = resolveAttachmentBytes(stream, importAttachment.sizeBytes)
+    ): AttachmentSkipReason? {
+        val bytes = readBoundedAttachmentBytes(stream) ?: return AttachmentSkipReason.TOO_LARGE
         attachmentService.upload(
             actor = actor,
             issueKey = key,
             filename = importAttachment.filename,
             contentType = contentType,
-            sizeBytes = sizeBytes,
-            input = resolvedStream,
+            sizeBytes = bytes.size.toLong(),
+            input = ByteArrayInputStream(bytes),
             createdAt = importAttachment.createdAt,
             uploadedBy = uploaderId,
         )
+        return null
     }
 
     /**
-     * [providedSizeBytes] 가 있으면(원본 메타 보존) 그대로 사용한다. 없으면(원본 메타 누락) 스트림을
-     * 1회 전량 읽어 실제 바이트 수를 계산한다 — [AttachmentStoragePort.put] 에 정확한 Content-Length
-     * 를 전달해야 하므로(부정확한 값은 MinIO put 실패/손상으로 이어질 수 있음) "미상"을 그대로
-     * 흘려보낼 수 없다. 이 경로만 스트림 전체를 메모리에 적재하는 트레이드오프를 감수한다 — Jira
-     * export 는 통상 `fields.attachment[].size` 를 포함하므로 일반 경로는 스트리밍을 유지한다.
+     * [stream] 의 실제 바이트를 [MAX_ATTACHMENT_UPLOAD_BYTES] + 1 바이트까지만 bounded 로 읽는다
+     * (코드리뷰 CONCERN-2 hot-fix).
+     *
+     * ### 신뢰 경계 — [ImportAttachment.sizeBytes] 를 절대 신뢰하지 않는다
+     * Jira 가 보고하는 [ImportAttachment.sizeBytes] 는 참고용([ImportAttachment.sizeBytes] KDoc
+     * "실제 조회한 스트림 크기와 다를 수 있으며 참고용이다")일 뿐인데, 종전 코드는 이 값이 있으면
+     * 그대로 [AttachmentStoragePort.put] 의 Content-Length 로 넘겼다.
+     * [com.bts.issue.attachment.adapter.MinioStorageAdapter.put] 은 `PutObjectArgs.stream(input,
+     * size, ...)` 로 정확히 size 바이트만 읽으므로, 실제 스트림이 더 크면 초과분을 조용히 버리고
+     * 절단 저장한 뒤 "성공"을 보고하는 침묵 데이터 손실이 발생했다. 따라서 (원본 메타 유무와 무관하게)
+     * 항상 이 함수로 실제 바이트를 세어 사용한다 — 기존 no-metadata 경로와 통합.
+     *
+     * ### zip-bomb 방어 — bounded read
+     * 무제한 [InputStream.readBytes] 는 선언 크기를 속인 zip 이 OOM 을 유발할 수 있으므로,
+     * [InputStream.readNBytes] 로 상한 + 1 바이트까지만 읽는다 — 이 상한은 스트림이 실제로
+     * 제공하는 바이트 수와 무관하게 항상 적용된다.
+     *
+     * @return 상한(100MB) 이내면 실제 바이트 배열, 초과하면 null(호출자가
+     *   [AttachmentSkipReason.TOO_LARGE] 로 스킵해야 함을 의미).
      */
-    private fun resolveAttachmentBytes(
-        stream: InputStream,
-        providedSizeBytes: Long?,
-    ): Pair<InputStream, Long> {
-        if (providedSizeBytes != null) return stream to providedSizeBytes
-        val bytes = stream.readBytes()
-        return ByteArrayInputStream(bytes) to bytes.size.toLong()
+    private fun readBoundedAttachmentBytes(stream: InputStream): ByteArray? {
+        val bytes = stream.readNBytes((MAX_ATTACHMENT_UPLOAD_BYTES + 1).toInt())
+        return if (bytes.size > MAX_ATTACHMENT_UPLOAD_BYTES) null else bytes
     }
 
     /**
@@ -980,7 +1009,7 @@ class IssueImportAdapter(
         warnAttachmentReasonIfPresent(outcomes, AttachmentSkipReason.INFECTED, "바이러스 스캔에서 감염이 탐지되어", warnings)
         warnAttachmentReasonIfPresent(outcomes, AttachmentSkipReason.SCAN_UNAVAILABLE, "바이러스 스캔을 수행할 수 없어", warnings)
         warnAttachmentReasonIfPresent(outcomes, AttachmentSkipReason.STORAGE_FAILURE, "저장소 오류로", warnings)
-        warnAttachmentReasonIfPresent(outcomes, AttachmentSkipReason.PERMISSION_DENIED, "권한이 없어", warnings)
+        warnAttachmentReasonIfPresent(outcomes, AttachmentSkipReason.TOO_LARGE, "크기가 상한(100MB)을 초과해", warnings)
     }
 
     /** [warnAttachmentOutcomes] 의 사유별 집계 1줄 — 사유가 0건이면 경고를 남기지 않는다. */
@@ -1009,7 +1038,7 @@ class IssueImportAdapter(
         INFECTED,
         SCAN_UNAVAILABLE,
         STORAGE_FAILURE,
-        PERMISSION_DENIED,
+        TOO_LARGE,
     }
 
     // ── 변경 이력(changelog) 동반 재생 (PR4, ★3) ────────────────────────────────
@@ -1467,6 +1496,14 @@ class IssueImportAdapter(
 
         /** [ImportAttachment.mimeType] 미지정 + 확장자 유추도 실패한 첨부의 기본 MIME. */
         private const val DEFAULT_ATTACHMENT_CONTENT_TYPE = "application/octet-stream"
+
+        /**
+         * 첨부 파일 업로드 상한(100MB, 코드리뷰 CONCERN-2 hot-fix) — 기존 클라이언트/서버 100MB
+         * 상한(`spring.servlet.multipart.max-file-size`, [com.bts.issue.attachment.web.IssueAttachmentController]
+         * KDoc)과 정합시킨 값이다. [readBoundedAttachmentBytes] 가 이 상한 + 1 바이트까지만 bounded
+         * read 해 선언 크기를 속인 zip(zip-bomb)을 방어한다.
+         */
+        private const val MAX_ATTACHMENT_UPLOAD_BYTES: Long = 100L * 1024 * 1024
 
         /** 이슈당 import 변경 이력 그룹 상한(Maxi 결정, plan Task 9) — 초과분은 스킵 + 경고. */
         private const val MAX_CHANGELOG_GROUPS = 1000
