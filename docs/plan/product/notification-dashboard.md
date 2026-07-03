@@ -189,11 +189,13 @@
 
 **우선순위**. 높음 | **선행**. §4.3 | **Plan slug**. `report/cycle-lead-time`
 
-- [ ] D1. 도메인 — CycleTime / LeadTime VO (책임. backend-engineer)
-- [ ] D2. 명세 — 상태 시작/종료 시점 정의 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `issue_history` 활용 (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /api/v1/projects/{id}/cycle-time` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+> **구현 범위 (#228 백엔드 D1~D5, Maxi 확정 2026-07-03)**. **완료된 이슈**의 소요 시간 **분포**를 조회한다. **Lead Time = 생성(created)→완료(마지막 DONE 카테고리 전이)**, **Cycle Time = 첫 IN_PROGRESS 카테고리 전이→완료**. **초 단위**(CFD의 day 절삭과 달리 실제 타임스탬프 — 같은 날 완료 이슈가 0으로 뭉개지면 분포 무의미). **Maxi 확정 3결정**. ① Cycle 미경유(IN_PROGRESS 안 거친) 이슈는 Cycle 분포 제외·Lead만 집계 ② 모집단=완료일(마지막 DONE 전이일) 기준 창 내 완료 이슈(기본 30일·상한 180일) ③ 응답=이슈별 `samples[{issueKey,seconds}]` + 서버 계산 요약 통계(count·min·max·avg·**p25**·p50·p75·p90, nearest-rank, count=0→null·p25는 프론트 박스플롯 Q1용). **모듈=issue-tracking**(상태 이력·이슈 로컬 소유, cross-BC 포트 0 — CFD 동형. 논리 BC 라벨 notification-dashboard 유지, 총수 14·123 불변). **데이터=on-the-fly 역산**(`issue_change_group`/`issue_change_item` status 전이 이력, 신규 스키마·스케줄러 0). **CONCERN-1(게이트1)**. CFD의 상태 이력 프리미티브를 `com.bts.issue.statushistory`(StatusCategory·StatusHistoryRepository·StatusChangeRow, 구 `Cfd*`) 중립 패키지로 추출해 CFD·cycletime 공유. **보안**. 프로젝트 BROWSE + 이슈별 가시성 필터(`buildActiveSecureWhere` 재사용, 기밀 누출 0). **v1 한계(수용)**. status 전이 이력 없는(V018 이전·직접 생성) 이슈 제외·이동 이슈 현재 소속 기준. **프론트 D6/D7 후속 PR**(히스토그램+박스플롯). **진척 95/123 불변**(백엔드만·D6/D7 미완). ADR `2026-07-03-fr-rp-04-cycle-lead-time`.
+
+- [x] D1. 도메인 — CycleTime / LeadTime VO (책임. backend-engineer) (완료. PR #228 — CycleTimeStats(nearest-rank 백분위)·IssueDurationInput·CycleTimeSample·CycleTimeMetric·CycleTimeResult·순수 CycleTimeCalculator)
+- [x] D2. 명세 — 상태 시작/종료 시점 정의 (책임. backend-engineer) (완료. PR #228 — Cycle=첫 IN_PROGRESS 전이→마지막 DONE 전이·미경유/음수 제외, Lead=created→마지막 DONE, 전이 기반 신뢰(EC8))
+- [x] D3. 데이터 모델 — `issue_history` 활용 (책임. db-engineer) (완료. PR #228 — 신규 스키마 0, issue_change_group/item·issues 재사용, CycleTimeIssueSourceRow(+issueKey)·fetchActiveVisibleIssuesForCycleTime(보안술어 재사용))
+- [x] D4. 백엔드 — `GET /api/v1/projects/{id}/cycle-time` (책임. backend-engineer) (완료. PR #228 — CycleTimeController+Service, 401/403/400, BROWSE 선검사·이슈별 가시성 필터·StatusCategory 카테고리 매핑·창 기본30/상한180)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) (완료. PR #228 — 통계 단위 6·계산기 단위 9·repo Testcontainers 4(비-vacuous 기밀 제외)·서비스 mockk 5·컨트롤러 슬라이스 12·통합 8(S2 lead>cycle·S6 기밀 before/after 대조))
 - [ ] D6. 프론트 UI — 히스토그램 + 박스플롯 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 

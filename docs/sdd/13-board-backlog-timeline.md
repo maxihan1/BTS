@@ -88,10 +88,15 @@
 - **프론트(PR #227)**: recharts 누적 영역 차트(`AreaChart` 3 stacked `Area`, 아래→위 DONE→IN_PROGRESS→TODO), 전용 라우트 `/projects/$projectKey/reports/cfd`(백로그 nav 진입), 순수변환 `toCfdSeries`+`isCfdEmpty` 단위·실렌더 E2E 위임. 날짜 피커 v1 미노출(백엔드 기본 30일). FR-RP-02 미러.
 - ADR [CFD 데이터 모델](../decisions/2026-07-03-fr-rp-03-cfd.md)
 
-### 13.5.5 Cycle Time / Lead Time (FR-RP-04)
-- Cycle Time: In Progress → Done
-- Lead Time: Created → Done
-- 분포 히스토그램
+### 13.5.5 Cycle Time / Lead Time (FR-RP-04) — 구현됨 (백엔드 D1~D5 PR #228, 프론트 D6/D7 후속)
+- **Lead Time**: Created → Done(마지막 DONE 카테고리 전이). **Cycle Time**: 첫 In Progress 카테고리 전이 → Done.
+- **분포**: 이슈별 소요 **초(seconds)** 배열(`samples[{issueKey,seconds}]`) + 서버 계산 요약 통계(count·min·max·avg·p25·p50·p75·p90, **nearest-rank** `idx=clamp(ceil(p/100·n)−1,0,n−1)`, count=0→null). 프론트(후속)가 히스토그램 binning + 박스플롯(min·p25·p50·p75·max) 렌더.
+- **CFD와 차이**: CFD는 날짜별 누적 카운트(day 절삭), FR-RP-04는 이슈별 소요 기간의 분포 → 실제 타임스탬프 초 단위(같은 날 완료 이슈가 0으로 뭉개지는 것 방지).
+- **모집단**: 완료(마지막 DONE 전이)일이 창 `[from,to]` 안인 이슈. Cycle 미경유(IN_PROGRESS 전이 없음)·음수(firstInProgress>lastDone) 이슈는 Cycle 분포 제외(Lead는 유지). status 전이 이력 없는 이슈(V018 이전·직접 생성)는 제외(v1 한계).
+- **데이터 = on-the-fly 역산**: CFD와 동일하게 `issue_change_group`/`issue_change_item` status 전이 이력에서 첫 IN_PROGRESS·마지막 DONE 전이 시각을 추출(스냅샷/스케줄러 0). 상태키→카테고리는 `WorkflowStateCatalog.category`(TODO/IN_PROGRESS/DONE).
+- 엔드포인트 `GET /api/v1/projects/{projectKey}/cycle-time?from=&to=`(모듈 issue-tracking, 프로젝트 BROWSE + 이슈별 가시성 필터 `buildActiveSecureWhere` 재사용, 창 기본 30일·상한 180일·잘못된 창 400·미존재/무권한 403).
+- **공유 프리미티브**: CFD의 상태 이력 재구성 프리미티브를 `com.bts.issue.statushistory`(StatusCategory·StatusHistoryRepository·StatusChangeRow) 중립 패키지로 추출해 CFD·cycletime 공유(FR-RP-04 CONCERN-1).
+- ADR [Cycle Time / Lead Time 분포 데이터 모델](../decisions/2026-07-03-fr-rp-04-cycle-lead-time.md)
 
 ## 13.6 데이터 소스
 
