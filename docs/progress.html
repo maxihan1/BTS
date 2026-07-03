@@ -182,9 +182,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
           <div><span class="dot dot-done"></span> 완료 <b>94</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>0</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>1</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>29</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>28</b></div>
         </div>
       </div>
     </div>
@@ -924,9 +924,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bar"><div class="bar-fill" style="width:86%"></div></div>
       <div class="status-grid">
         <div>✅ 완료 12</div>
-        <div>🔄 진행중 0</div>
+        <div>🔄 진행중 1</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 2</div>
+        <div>⬜ 대기 1</div>
       </div>
     </div>
     <h2>세부 기능 (14개)</h2>
@@ -1000,13 +1000,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc"><span class="term" data-def="여러 완료(COMPLETED) 스프린트에 걸쳐 계획량(Commitment)과 완료량(Completed)을 추정 시간(초, `originalestimateseconds`) 기준으로 스프린트별 집계한 애자일 리포트. 계획=스프린트 현재 가시 이슈 추정합, 완료=그중 워크플로우 상태 카테고리 DONE인 이슈 추정합(on-the-fly 현재 상태). 스토리포인트 미구현이라 초 단위(FR-RP-01 번다운과 동일 지표). `GET /api/v1/projects/{projectKey}/velocity`, agile-planning 구현(논리 BC notification-dashboard). (FR-RP-02)">벨로시티</span> 차트</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인</li><li><span class="step-icon">✅</span> D2 — 명세 — 스토리포인트 vs 완료</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — (활용)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `GET /api/v1/<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>oject</span>s/{projectKey}/<span class="term" data-def="여러 완료(COMPLETED) 스프린트에 걸쳐 계획량(Commitment)과 완료량(Completed)을 추정 시간(초, `originalestimateseconds`) 기준으로 스프린트별 집계한 애자일 리포트. 계획=스프린트 현재 가시 이슈 추정합, 완료=그중 워크플로우 상태 카테고리 DONE인 이슈 추정합(on-the-fly 현재 상태). 스토리포인트 미구현이라 초 단위(FR-RP-01 번다운과 동일 지표). `GET /api/v1/projects/{projectKey}/velocity`, agile-planning 구현(논리 BC notification-dashboard). (FR-RP-02)">velocity</span>`</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — recharts 바 차트</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-진행중">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">🔄</span>
         <span class="fr-id">FR-RP-03</span>
         <span class="fr-desc">CFD (Cumulative Flow Diagram)</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인</li><li><span class="step-icon">⬜</span> D2 — 명세 — 상태별 누적</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>_hi<span class="term" data-def="&quot;작업 쪼개기 단위&quot; 큰 프로젝트(에픽) → 사용자 기능(스토리) → 개발자 작업(태스크).">story</span>` 활용 + <span class="term" data-def="&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">인덱스</span></li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `GET /api/v1/<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>oject</span>s/{id}/cfd?from=&amp;to=`</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — recharts 영역 차트</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인</li><li><span class="step-icon">✅</span> D2 — 명세 — 상태별 누적</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>_hi<span class="term" data-def="&quot;작업 쪼개기 단위&quot; 큰 프로젝트(에픽) → 사용자 기능(스토리) → 개발자 작업(태스크).">story</span>` 활용 + <span class="term" data-def="&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">인덱스</span></li><li><span class="step-icon">✅</span> D4 — 백엔드 — `GET /api/v1/<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>oject</span>s/{id}/cfd?from=&amp;to=`</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — recharts 영역 차트</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
