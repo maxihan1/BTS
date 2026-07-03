@@ -25,6 +25,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.mockk.Called
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -138,7 +139,9 @@ class CfdServiceTest : DescribeSpec({
             }
 
             verify(exactly = 0) { cfdStatusHistoryRepository.fetchStatusChanges(any()) }
-            verify(exactly = 0) { workflowStateLookup.listStates(any(), any()) }
+            // value class(ProjectKey/IssueTypeKey) 인자에 any() 매처를 쓰면 MockK 리플렉션 오류가
+            // 발생하므로(IssueEpicServiceProgressTest 선례), 인자 매칭 없이 호출 자체가 없었음을 검증한다.
+            verify { workflowStateLookup wasNot Called }
             verify(exactly = 0) { issueTypeRepository.findAll() }
         }
     }
@@ -162,8 +165,9 @@ class CfdServiceTest : DescribeSpec({
             every {
                 cfdStatusHistoryRepository.fetchStatusChanges(setOf(issueId1, issueId2))
             } returns emptyList()
-            every { issueTypeRepository.findAll() } returns
-                listOf(IssueType.create(key = IssueTypeKey("cachetype"), name = "Cache Type").copy(id = IssueTypeId(typeId)))
+            val cacheType =
+                IssueType.create(key = IssueTypeKey("cachetype"), name = "Cache Type").copy(id = IssueTypeId(typeId))
+            every { issueTypeRepository.findAll() } returns listOf(cacheType)
             every {
                 workflowStateLookup.listStates(ProjectKey.of(projectKey), IssueTypeKey("cachetype"))
             } returns listOf(WorkflowStateView(key = "open", name = "Open", category = "TODO"))
@@ -187,7 +191,9 @@ class CfdServiceTest : DescribeSpec({
             } returns listOf(issue)
             every { cfdStatusHistoryRepository.fetchStatusChanges(setOf(issueId)) } returns emptyList()
             every { issueTypeRepository.findAll() } returns
-                listOf(IssueType.create(key = IssueTypeKey("gaptype"), name = "Gap Type").copy(id = IssueTypeId(typeId)))
+                listOf(
+                    IssueType.create(key = IssueTypeKey("gaptype"), name = "Gap Type").copy(id = IssueTypeId(typeId)),
+                )
             every {
                 workflowStateLookup.listStates(ProjectKey.of(projectKey), IssueTypeKey("gaptype"))
             } throws WorkflowSchemeNoDefaultException()
@@ -218,8 +224,9 @@ class CfdServiceTest : DescribeSpec({
                 issueRepository.fetchActiveVisibleIssuesForCfd(projectKey, actor.value, unrestrictedAccess)
             } returns listOf(issue)
             every { cfdStatusHistoryRepository.fetchStatusChanges(setOf(issueId)) } returns emptyList()
-            every { issueTypeRepository.findAll() } returns
-                listOf(IssueType.create(key = IssueTypeKey("notrans"), name = "No Transition").copy(id = IssueTypeId(typeId)))
+            val noTransType =
+                IssueType.create(key = IssueTypeKey("notrans"), name = "No Transition").copy(id = IssueTypeId(typeId))
+            every { issueTypeRepository.findAll() } returns listOf(noTransType)
             every {
                 workflowStateLookup.listStates(ProjectKey.of(projectKey), IssueTypeKey("notrans"))
             } returns listOf(WorkflowStateView(key = "done", name = "Done", category = "DONE"))
@@ -251,7 +258,10 @@ class CfdServiceTest : DescribeSpec({
                     ),
                 )
             every { issueTypeRepository.findAll() } returns
-                listOf(IssueType.create(key = IssueTypeKey("withtrans"), name = "With Transition").copy(id = IssueTypeId(typeId)))
+                listOf(
+                    IssueType.create(key = IssueTypeKey("withtrans"), name = "With Transition")
+                        .copy(id = IssueTypeId(typeId)),
+                )
             every {
                 workflowStateLookup.listStates(ProjectKey.of(projectKey), IssueTypeKey("withtrans"))
             } returns
@@ -303,7 +313,9 @@ class CfdServiceTest : DescribeSpec({
                     ),
                 )
             every { issueTypeRepository.findAll() } returns
-                listOf(IssueType.create(key = IssueTypeKey("sameday"), name = "Same Day").copy(id = IssueTypeId(typeId)))
+                listOf(
+                    IssueType.create(key = IssueTypeKey("sameday"), name = "Same Day").copy(id = IssueTypeId(typeId)),
+                )
             every {
                 workflowStateLookup.listStates(ProjectKey.of(projectKey), IssueTypeKey("sameday"))
             } returns
