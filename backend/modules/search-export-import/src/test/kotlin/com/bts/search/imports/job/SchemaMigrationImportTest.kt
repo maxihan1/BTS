@@ -1,4 +1,5 @@
-// V604~V606 마이그레이션 검증 — import_jobs 테이블(18컬럼·status/format CHECK·2인덱스·q_import_jobs 큐, FR-IM-01) + import_mappings 매핑 테이블(복합PK·CASCADE FK·AWAITING_MAPPING status 확장, FR-IM-02)
+// V604~V606 마이그레이션 검증 — import_jobs 테이블(18컬럼·status/format CHECK·2인덱스·q_import_jobs 큐, FR-IM-01)
+// + import_mappings 매핑 테이블(복합PK·CASCADE FK·AWAITING_MAPPING status 확장, FR-IM-02)
 
 package com.bts.search.imports.job
 
