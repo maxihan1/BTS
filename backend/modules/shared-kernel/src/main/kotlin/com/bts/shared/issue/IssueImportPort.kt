@@ -65,8 +65,13 @@ interface IssueImportPort {
      * 처리해야 한다. [IssueImportCommand.dryRun] 이 true 이면 실제 생성 없이 검증만 수행해야 한다.
      *
      * default 구현은 어댑터 부재 환경에서 실패 결과를 반환한다(fail-closed) — 성공으로
-     * 위장해 데이터 유실을 감추지 않는다. 어댑터는 이 2-arg 메서드를 override 해야 하며,
-     * [importIssue] 1-arg 오버로드는 이 메서드로 위임하므로 별도 override 가 불필요하다.
+     * 위장해 데이터 유실을 감추지 않는다. 어댑터는 이 2-arg 메서드를 override 해야 한다.
+     *
+     * **주의(Spring AOP)**. 순수 함수 관점에선 1-arg default 가 2-arg 로 위임하므로 1-arg
+     * override 가 불필요해 보이나, `@Transactional` 등 프록시 기반 AOP 를 적용한 구현체는
+     * 1-arg default 의 `importIssue(cmd, null)` 위임이 **self-invocation**(프록시 우회)이라
+     * 트랜잭션이 시작되지 않는다. 따라서 트랜잭션 구현체(예 `IssueImportAdapter`)는 1-arg 와
+     * 2-arg 를 **모두 override** 하고 각각 `@Transactional` 을 부착해야 한다(어댑터 KDoc 참조).
      *
      * @param cmd 이슈 생성 커맨드 객체. projectKey, requesterUserId, summary 등 포함.
      * @param attachments import 대상 이슈의 첨부 파일 바이너리를 조회하는 포트. null 이면
