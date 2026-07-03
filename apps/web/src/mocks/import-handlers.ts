@@ -14,7 +14,19 @@ import type { ImportJobStatus } from '@/api/imports'
 // E2E 시나리오 토글용 localStorage 키 상수
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** FAILED 시나리오 강제 플래그. 'true' | null (bulk-operation-handlers.ts LS_KEY_BULK_REJECT 명명 관례 미러) */
+/**
+ * FAILED 시나리오 강제 플래그. 'true' | null.
+ *
+ * GET 상태 폴링 핸들러는 기본적으로 PENDING→RUNNING→COMPLETED로만 진행해 실패 경로를
+ * Playwright(브라우저 MSW 워커)에서 재현할 수단이 없었다. 이 플래그를 'true'로 설정하면
+ * 다음 GET 호출에서 해당 job을 FAILED로 강제 전환한다 (E2E S3 "Import FAILED → 에러
+ * 메시지 + [다시 시도]" 시나리오 재현용).
+ *
+ * 회귀 학습 e2e-msw-scenario-toggle-localstorage-flag 근거 — localStorage 플래그는
+ * addInitScript 등으로 goto 전에 심어야 하며, 매 테스트 후 반드시 제거해 leak을 막는다
+ * (bulk-operation-handlers.ts LS_KEY_BULK_REJECT, board-handlers.ts LS_KEY_BOARD_CONFLICT
+ * 명명·정리 관례를 그대로 미러).
+ */
 export const LS_KEY_IMPORT_FAIL = '__bts_e2e_import_fail'
 
 // ─────────────────────────────────────────────────────────────────────────────
