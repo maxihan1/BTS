@@ -91,6 +91,180 @@ FR-IM-02 Import 매핑 UI (필드/사용자 매핑). 선행 FR-IM-01(CSV/JSON Im
 
 ✅ 통과 (자기-비평 1회). 수정가능 갭 6건 스펙 반영. 범위 경계 2건(전 작성자 사용자매핑·값 매핑)은 Maxi 결정으로 PR-B/PR-C 분리 → 이번 PR-A는 필드 매핑에 집중.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> **PR-A 범위 — search-export-import 모듈 단일 BC. shared-kernel/issue-tracking 무변경**(사용자/값 매핑은 PR-B/C). 회귀면 최소.
+> 신규 패키지 `com.bts.search.imports.mapping`. 파일 경로는 repo 루트 기준.
+
+### Task 1. V606 마이그레이션 + init_codegen 미러 + 스키마 테스트
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/search-export-import/src/main/resources/db/migration/search-export-import/V606__import_mappings.sql`, `backend/modules/search-export-import/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/job/SchemaMigrationImportTest.kt`]
+- depends-on: []
+
+**RED**. `SchemaMigrationImportTest`에 (1) `import_mappings` 테이블 존재+3컬럼+PK(import_job_id, source_field)+FK ON DELETE CASCADE, (2) `chk_import_jobs_status`가 `AWAITING_MAPPING` INSERT 허용, (3) 기존 status INSERT 여전히 허용 검증 테스트 추가 → migration 부재로 FAIL.
+
+**GREEN**. V606 작성.
+```sql
+ALTER TABLE import_jobs DROP CONSTRAINT chk_import_jobs_status;
+ALTER TABLE import_jobs ADD CONSTRAINT chk_import_jobs_status
+  CHECK (status IN ('AWAITING_MAPPING','PENDING','RUNNING','COMPLETED','FAILED'));
+CREATE TABLE import_mappings (
+  import_job_id UUID NOT NULL REFERENCES import_jobs(id) ON DELETE CASCADE,
+  source_field  TEXT NOT NULL,
+  target_field  TEXT NOT NULL,
+  PRIMARY KEY (import_job_id, source_field)
+);
+```
+`init_codegen.sql`에 동일 DDL 미러(jOOQ `ImportMappingsRecord` 생성용).
+
+**REFACTOR**. DDL 주석(L1 역할 + CHECK 확장 사유). V602 export_jobs 미러 스타일 정합.
+
+**검증**. `./gradlew :backend:modules:search-export-import:test --tests '*SchemaMigrationImportTest*'`. **머지 직전 V606 번호 재확인**(동시 브랜치 충돌).
+
+### Task 2. 도메인 — AWAITING_MAPPING + TargetField 카탈로그 + ImportMapping VO
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/domain/ImportJobStatus.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/mapping/TargetField.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/mapping/ImportMapping.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/mapping/TargetFieldTest.kt`]
+- depends-on: []
+
+**RED**. `TargetFieldTest` — 카탈로그 11개 키(summary required·multi 플래그)·`fromKey("summary")` 해석·`IGNORE` 인식·미지 키 null → 클래스 부재 FAIL.
+
+**GREEN**. `ImportJobStatus`에 `AWAITING_MAPPING` 추가(맨 앞). `TargetField` enum/카탈로그 — key·label·required·multi. `ImportMapping` VO(`Map<sourceField,targetField>` 래핑 + IGNORE 필터).
+
+**REFACTOR**. KDoc(각 필드 대응 ParsedImportRow 필드 명시). enum 추가 파급 grep(`ImportJobStatus` 카운트 가드 없음 확인 — 안전).
+
+**검증**. `./gradlew :backend:modules:search-export-import:test --tests '*TargetFieldTest*'`.
+
+### Task 3. 매핑-aware CSV 파서 (field-mapping + canonical 폴백 + bounded read)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/parse/ImportRowParser.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/parse/ImportRowParserTest.kt`]
+- depends-on: [2]
+
+**RED**. (1) 임의 헤더 CSV("제목,설명" + fieldMapping 제목→summary·설명→description)가 매핑대로 파싱됨. (2) fieldMapping=null이면 canonical 동작 불변(회귀). (3) `readHeaderAndSample(input, n=5)`가 헤더+최대 5행만 읽고 조기중단 → 미구현 FAIL.
+
+**GREEN**. `parseCsv(input, fieldMapping: Map<String,String>? = null, onRow)` — fieldMapping 있으면 `TargetField`별 컬럼 위치를 매핑으로 해석(trim+lowercase), 없으면 기존 `HEADER_*` canonical. 공통 `resolveTargetColumns(headers, fieldMapping)` → `Map<TargetField,Int>`. `readHeaderAndSample`(analyze용, 헤더 + N행 후 중단).
+
+**REFACTOR**. 중복 제거(canonical/mapped 단일 경로). KDoc §매핑-aware 절 추가. JSON 경로 불변 명시.
+
+**검증**. `./gradlew :backend:modules:search-export-import:test --tests '*ImportRowParserTest*'`.
+
+### Task 4. ImportMappingRepository + ImportJobRepository.transitionToPending
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/mapping/repository/ImportMappingRepository.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/mapping/repository/ImportMappingRepositoryTest.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/repository/ImportJobRepository.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/job/repository/ImportJobRepositoryTest.kt`]
+- depends-on: [1]
+
+**RED**. (1) `ImportMappingRepository.saveAll(jobId, mappings)` + `findByJobId(jobId)` 라운드트립. (2) `ImportJobRepository.transitionToPending(jobId)` — AWAITING_MAPPING→PENDING CAS + expiresAt=null 반환 true, 다른 상태면 false(멱등). → 미구현 FAIL. **(jOOQ codegen: T1 migration→init_codegen 반영 후 build로 `ImportMappingsRecord` 생성 확인)**.
+
+**GREEN**. jOOQ 기반 saveAll(멱등 — 기존 삭제 후 삽입 or ON CONFLICT)·findByJobId. `transitionToPending` — `UPDATE ... SET status='PENDING', expires_at=NULL WHERE id=? AND status='AWAITING_MAPPING'` rowsAffected>0.
+
+**REFACTOR**. Testcontainers 시드(import_jobs FK 충족). KDoc CAS 의도.
+
+**검증**. `./gradlew :backend:modules:search-export-import:test --tests '*ImportMappingRepositoryTest*' --tests '*ImportJobRepositoryTest*'`.
+
+### Task 5. MappingValidator — 필드 매핑 검증 규칙
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/mapping/MappingValidator.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/mapping/MappingValidatorTest.kt`]
+- depends-on: [2]
+
+**RED**. `validate(sourceFields, fieldMappings)` → errors/warnings. 케이스. summary 미매핑→`SUMMARY_NOT_MAPPED`; 둘이 같은 target→`DUPLICATE_TARGET`; 카탈로그 밖 target→`UNKNOWN_TARGET`; 감지 밖 source→`UNKNOWN_SOURCE`; 미매핑 감지 필드→warning `SOURCE_FIELD_IGNORED`; 정상→valid. → 미구현 FAIL.
+
+**GREEN**. 순수 검증 로직(DB 무관). `MappingValidationResult(valid, errors, warnings)` + 코드 상수.
+
+**REFACTOR**. 코드 카탈로그 companion. IGNORE는 DUPLICATE 제외.
+
+**검증**. `./gradlew :backend:modules:search-export-import:test --tests '*MappingValidatorTest*'`.
+
+### Task 6. ImportJobService.analyze
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/application/ImportJobService.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/job/application/ImportJobServiceAnalyzeTest.kt`]
+- depends-on: [2, 3]
+
+**RED**. `analyze(command)` — `validateAndAuthorize` 재사용(권한/크기/형식) → storage.put → `insert(AWAITING_MAPPING, expiresAt=now+ABANDON_TTL)` → 파서 bounded read로 sourceFields+sampleRows 감지 → `ImportAnalysisResult(job, sourceFields, sampleRows, targetFields)`. JSON이면 sourceFields=canonical. → 미구현 FAIL(mockk storage/repo/parser).
+
+**GREEN**. accept 미러하되 status=AWAITING_MAPPING·enqueue 없음·expiresAt 설정. CSV는 `readHeaderAndSample`, JSON은 canonical 카탈로그.
+
+**REFACTOR**. buildSourceObjectKey 재사용. KDoc §분석 흐름.
+
+**검증**. `./gradlew :backend:modules:search-export-import:test --tests '*ImportJobServiceAnalyzeTest*'`.
+
+### Task 7. ImportMappingService — validate + confirm
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/mapping/ImportMappingService.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/mapping/ImportMappingServiceTest.kt`]
+- depends-on: [3, 4, 5]
+
+**RED**. (1) `validate(jobId, actor, fieldMappings)` — 소유+AWAITING_MAPPING 아니면 예외, persist 파일 헤더 재읽기로 sourceFields 확보 → MappingValidator → result. (2) `confirm(jobId, actor, fieldMappings, dryRun)` — 검증 실패→`ImportMappingInvalidException`(422), 상태 불일치→`ImportMappingStateConflictException`(409), 성공→transactionTemplate{ saveAll + transitionToPending + enqueue } → job(PENDING). → 미구현 FAIL.
+
+**GREEN**. 서비스 조립(ImportMappingRepository·MappingValidator·ImportJobRepository·enqueuePublisher·storage·parser·transactionTemplate). 소유 검증 `findByIdForRequester`.
+
+**REFACTOR**. 예외 클래스(web와 공유 위치). KDoc §확정 트랜잭션 경계(outbox 선례 `ImportJobEnqueuePublisher`).
+
+**검증**. `./gradlew :backend:modules:search-export-import:test --tests '*ImportMappingServiceTest*'`.
+
+### Task 8. 웹 계층 — 3 엔드포인트 + DTO + ExceptionHandler
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/web/ImportMappingController.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/web/dto/ImportAnalysisResponse.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/web/dto/MappingValidationResponse.kt`, `backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/web/ImportExceptionHandler.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/web/ImportMappingControllerTest.kt`]
+- depends-on: [6, 7]
+
+**RED**. 슬라이스/통합 — `POST /api/v1/imports/analyze` 202+분석결과·`POST /imports/{id}/mapping/validate` 200+검증·`POST /imports/{id}/mapping` 200(PENDING). 미인증 401·타인 404·검증실패 422·상태충돌 409·actor 추출 우선(auth-extraction-before-resource-lookup). → 미구현 FAIL.
+
+**GREEN**. `ImportMappingController`(신규, `imports.web`이지만 `ImportExceptionHandler` 커버 위해 동일 패키지). analyze는 multipart(기존 ImportController currentActorId/validateProjectKey 패턴 재사용). ExceptionHandler에 `ImportMappingInvalidException`→422 `IMPORT_MAPPING_INVALID`·`ImportMappingStateConflictException`→409 `IMPORT_MAPPING_STATE_CONFLICT` 추가.
+
+**REFACTOR**. DTO from() 팩토리. currentActorId 헬퍼 중복은 기존 BC 격리 관례(재사용 안 함) 유지.
+
+**검증**. `./gradlew :backend:modules:search-export-import:test --tests '*ImportMappingControllerTest*'`.
+
+### Task 9. 워커 통합 — ImportJobProcessor field mapping 로드+전달
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/search-export-import/src/main/kotlin/com/bts/search/imports/job/application/ImportJobProcessor.kt`, `backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/job/application/ImportJobProcessorTest.kt`]
+- depends-on: [3, 4]
+
+**RED**. (1) job에 import_mappings 있으면 프로세서가 로드해 `parseCsv(input, fieldMapping, onRow)` 호출(임의 헤더→대상 필드). (2) 매핑 없으면 canonical 파싱(회귀 불변). → 미구현 FAIL(mockk repository.findByJobId).
+
+**GREEN**. `ImportJobProcessor`에 `ImportMappingRepository` 주입. `processRows`에서 CSV 분기 시 fieldMapping 로드해 전달. JSON은 불변.
+
+**REFACTOR**. mapping 없을 때 null 전달로 canonical 폴백 단일 경로. KDoc §매핑 로드.
+
+**검증**. `./gradlew :backend:modules:search-export-import:test --tests '*ImportJobProcessorTest*'`.
+
+### Task 10. 통합테스트 — happy path + canonical 회귀
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`backend/modules/search-export-import/src/test/kotlin/com/bts/search/imports/mapping/ImportMappingFlowIntegrationTest.kt`]
+- depends-on: [8, 9]
+
+**RED**. 실 DB/MinIO(Testcontainers) — 임의 헤더 CSV(예: "Título,담당,비고") 업로드 → analyze(AWAITING_MAPPING) → confirm(Título→summary) → 워커 process → COMPLETED, 이슈 생성 확인(mockk/stub IssueImportPort success). canonical 즉시경로(기존 accept) 여전히 동작(회귀). → FAIL.
+
+**GREEN**. 전 경로 결선 확인. IssueImportPort는 test stub(BC 격리 — cross-BC 조립 없음, test-assembled).
+
+**REFACTOR**. 시나리오 KDoc. 기존 `ImportControllerIntegrationTest` 스타일 정합.
+
+**검증**. `./gradlew :backend:modules:search-export-import:test --tests '*ImportMappingFlowIntegrationTest*'` + 모듈 전체 `./gradlew :backend:modules:search-export-import:test`(회귀 0).
+
+## Plan 메타
+
+- task 수: 10
+- 예상 wave: 5 (W1: T1,T2 / W2: T3,T4,T5 / W3: T6,T7,T9 / W4: T8 / W5: T10)
+- 단일 모듈(search-export-import) — Gradle 모듈 컴파일 wave 내 직렬(bts-plan-wave-gradle-module-compile), shared-kernel/issue-tracking 무변경
+- TDD 강제: yes (test: 커밋 먼저)
+- 추가 검증: ktlint, detekt(--rerun-tasks로 캐시 false-green 방지), 모듈 전체 test 회귀 0, verify-master-plan
+- jOOQ codegen: T1 migration→init_codegen 미러 후 build로 ImportMappingsRecord 생성(T4 선행)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
