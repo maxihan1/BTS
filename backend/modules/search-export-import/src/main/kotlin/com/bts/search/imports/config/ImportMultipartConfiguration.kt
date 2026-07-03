@@ -8,11 +8,17 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.util.unit.DataSize
 
-/** 개별 multipart part 상한 — 두 part(매니페스트/첨부 zip) 중 더 큰 zip(500MB) 기준. */
-private val MAX_FILE_SIZE: DataSize = DataSize.ofMegabytes(500)
+/** 개별 multipart part 상한(MB) — 두 part(매니페스트/첨부 zip) 중 더 큰 zip(500MB) 기준. */
+private const val MAX_FILE_SIZE_MB: Long = 500
 
-/** 전체 요청 상한 — 매니페스트(최대 50MB) + 첨부 zip(최대 500MB) 합(최대 550MB)보다 여유 있게 600MB. */
-private val MAX_REQUEST_SIZE: DataSize = DataSize.ofMegabytes(600)
+/** 전체 요청 상한(MB) — 매니페스트(최대 50MB) + 첨부 zip(최대 500MB) 합(최대 550MB)보다 여유 있게 600MB. */
+private const val MAX_REQUEST_SIZE_MB: Long = 600
+
+/** 개별 multipart part 상한 — [MAX_FILE_SIZE_MB] 참조. */
+private val MAX_FILE_SIZE: DataSize = DataSize.ofMegabytes(MAX_FILE_SIZE_MB)
+
+/** 전체 요청 상한 — [MAX_REQUEST_SIZE_MB] 참조. */
+private val MAX_REQUEST_SIZE: DataSize = DataSize.ofMegabytes(MAX_REQUEST_SIZE_MB)
 
 /**
  * `POST /api/v1/imports` 의 multipart 상한을 프로그래매틱 `MultipartConfigElement` 빈으로 설정한다.
