@@ -118,9 +118,20 @@ CREATE TABLE import_jobs (
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
     started_at              TIMESTAMPTZ,
     completed_at            TIMESTAMPTZ,
-    CONSTRAINT chk_import_jobs_status CHECK (status IN ('PENDING','RUNNING','COMPLETED','FAILED')),
+    -- V606 chk_import_jobs_status 확장 반영 — AWAITING_MAPPING 포함 5-상태(FR-IM-02, jooq-init_codegen-mirror).
+    CONSTRAINT chk_import_jobs_status CHECK (status IN ('AWAITING_MAPPING','PENDING','RUNNING','COMPLETED','FAILED')),
     CONSTRAINT chk_import_jobs_format CHECK (format IN ('CSV','JSON'))
 );
 
 CREATE INDEX idx_import_jobs_requester ON import_jobs (requester_user_id, created_at DESC);
 CREATE INDEX idx_import_jobs_expires ON import_jobs (expires_at) WHERE expires_at IS NOT NULL;
+
+-- V606 import_mappings 구조 미러 (codegen 입력, V606 CREATE TABLE 과 정확히 일치 유지 — FR-IM-02)
+-- (import_job_id, source_field) 복합 PK, FK → import_jobs(id) ON DELETE CASCADE.
+
+CREATE TABLE import_mappings (
+    import_job_id  UUID NOT NULL REFERENCES import_jobs(id) ON DELETE CASCADE,
+    source_field   TEXT NOT NULL,
+    target_field   TEXT NOT NULL,
+    PRIMARY KEY (import_job_id, source_field)
+);
