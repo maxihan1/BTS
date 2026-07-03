@@ -24,7 +24,8 @@ data class MappingValidationResponse(
     /**
      * [MappingIssue] 직렬화 형태.
      *
-     * @property field 이슈와 연관된 필드 이름. 전역 이슈([com.bts.search.imports.mapping.MappingValidator.SUMMARY_NOT_MAPPED])는 null이라 직렬화에서 제외한다.
+     * @property field 이슈와 연관된 필드 이름. 전역 이슈
+     *   ([com.bts.search.imports.mapping.MappingValidator.SUMMARY_NOT_MAPPED])는 null이라 직렬화에서 제외한다.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     data class MappingIssueItem(
@@ -47,6 +48,8 @@ data class MappingValidationResponse(
                 warnings = result.warnings.map { it.toItem() },
             )
 
-        private fun MappingIssue.toItem(): MappingIssueItem = MappingIssueItem(code = code, message = message, field = field)
+        private fun MappingIssue.toItem(): MappingIssueItem {
+            return MappingIssueItem(code = code, message = message, field = field)
+        }
     }
 }

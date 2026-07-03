@@ -47,6 +47,7 @@ import java.time.Instant
  * 필드를 통해 폴링 응답에 노출될 뿐 이 핸들러의 매핑 대상이 아니다.
  */
 @RestControllerAdvice(assignableTypes = [ImportController::class, ImportMappingController::class])
+@Suppress("TooManyFunctions")
 class ImportExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -214,7 +215,8 @@ class ImportExceptionHandler {
                 IMPORT_MAPPING_INVALID,
                 "필드 매핑 검증에 실패했습니다.",
             )
-        pd.setProperty("errors", ex.errors.map { MappingIssueItem(code = it.code, message = it.message, field = it.field) })
+        val errorItems = ex.errors.map { MappingIssueItem(code = it.code, message = it.message, field = it.field) }
+        pd.setProperty("errors", errorItems)
         return pd
     }
 
