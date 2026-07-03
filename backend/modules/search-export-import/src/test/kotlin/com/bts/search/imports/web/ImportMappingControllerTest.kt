@@ -103,12 +103,15 @@ class ImportMappingControllerTest {
     }
 
     @Autowired
+    @Suppress("VarCouldBeVal") // Spring @Autowired lateinit은 val 불가 — detekt VarCouldBeVal 오탐
     private lateinit var webApplicationContext: WebApplicationContext
 
     @Autowired
+    @Suppress("VarCouldBeVal")
     private lateinit var mockImportJobService: ImportJobService
 
     @Autowired
+    @Suppress("VarCouldBeVal")
     private lateinit var mockImportMappingService: ImportMappingService
 
     private lateinit var mockMvc: MockMvc
