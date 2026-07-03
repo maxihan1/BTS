@@ -47,8 +47,9 @@ class IssueChangeImportHistoryTest : IssueTestcontainersBase() {
 
     /** resolver 가 호출되면 안 되므로, 호출 시 즉시 실패하는 UserLookupPort 스텁. */
     private object UnusedUserLookupPort : UserLookupPort {
-        override fun exists(userId: UUID): Boolean =
+        override fun exists(userId: UUID): Boolean {
             error("recordImported 는 resolver 를 경유하면 안 된다 — UserLookupPort.exists 호출됨")
+        }
     }
 
     /** resolver 가 호출되면 안 되므로, 호출 시 즉시 실패하는 IssueSecurityDirectory 스텁. */
