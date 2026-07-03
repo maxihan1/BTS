@@ -37,6 +37,7 @@ import java.util.UUID
  * @property createdAt 작업 생성 시각(UTC).
  * @property startedAt 워커 클레임 시각(UTC). PENDING 상태에서 null.
  * @property completedAt 작업 완료(성공 또는 실패) 시각(UTC). 진행 중에는 null.
+ * @property attachmentsObjectKey 첨부 zip MinIO 오브젝트 키(V605). CSV import 이거나 zip 미첨부면 null.
  */
 data class ImportJob(
     val id: ImportJobId,
@@ -56,6 +57,7 @@ data class ImportJob(
     val createdAt: Instant,
     val startedAt: Instant?,
     val completedAt: Instant?,
+    val attachmentsObjectKey: String? = null,
 ) {
     /**
      * 처리된 행 수와 전체 행 수를 받아 진행률(0..100)을 계산한다.
