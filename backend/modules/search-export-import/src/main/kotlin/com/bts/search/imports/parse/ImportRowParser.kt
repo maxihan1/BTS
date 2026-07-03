@@ -44,6 +44,20 @@ import java.io.InputStreamReader
  * export 형식이 없어 CSV 행은 항상 `worklogs = emptyList()` 다. 원본 시각 문자열은 이 단계에서
  * [java.time.Instant] 로 변환하지 않는다 — [ParsedImportComment]/[ParsedImportWorklog] KDoc 참조.
  *
+ * ### sourceKey/첨부/변경이력 (PR4)
+ *
+ * 세 항목 모두 **JSON 전용** — Jira CSV export 에는 원본 키·첨부 바이너리·변경이력에 대응하는
+ * 표준 컬럼이 없어 CSV 행은 항상 `sourceKey = null`, `attachments`/`changelog = emptyList()` 다.
+ * `sourceKey`(원본 이슈 키)와 `changelog`(변경이력)는 `fields` 하위가 아니라 **이슈 노드 최상위**
+ * 필드([FIELD_KEY]/[FIELD_CHANGELOG])에서 읽는다 — `fields.attachment[]` 만 다른 코어 필드처럼
+ * `fields` 하위다. 첨부는 [jsonAttachmentOf] 로 원소를 개별 추출하고, 변경이력은 그룹([jsonChangeGroupOf])
+ * 안에 중첩된 `items[]` 를 [jsonChangeItemOf] 로 한 번 더 개별 추출한다 — 댓글/worklog 와 동일하게
+ * `fields.comment.comments[]`/`fields.worklog.worklogs[]` 같은 복합 배열은 [textArrayOf](평면 배열
+ * 전용)를 재사용할 수 없다. 첨부 크기([ParsedImportAttachment.sizeBytes])는 [longOrNull] 로 숫자
+ * 노드 여부를 먼저 확인한다 — `asLong(0)` 폴백은 "값 없음"과 "0바이트"를 구분하지 못해 미사용.
+ * 이미 이슈 단위로 스트리밍되는 [buildJsonRow] 부분 트리([issueNode])에서 읽기만 하므로 추가
+ * 스트리밍 복잡도는 없다.
+ *
  * ### 파일 구조 오류
  *
  * 헤더 행이 없거나 필수 컬럼(Summary)이 없는 CSV, `issues` 배열이 없거나 문법이 깨진 JSON은
