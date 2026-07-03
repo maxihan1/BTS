@@ -600,6 +600,83 @@ class ImportRowParserTest : DescribeSpec({
             rows[0].changelog shouldContainExactly emptyList()
         }
     }
+
+    // ── CSV: 매핑 기반 파싱 (FR-IM-02 PR-A Task 3) ────────────────────────────
+
+    describe("ImportRowParser.parseCsv — fieldMapping (매핑 모드)") {
+        fun parseMappedCsvRows(
+            text: String,
+            fieldMapping: Map<String, String>,
+        ): List<ParsedImportRow> {
+            val rows = mutableListOf<ParsedImportRow>()
+            parser.parseCsv(stream(text), fieldMapping) { rows.add(it) }
+            return rows
+        }
+
+        it("임의 헤더 CSV + fieldMapping 이 있으면 매핑대로 파싱한다") {
+            val csv = "제목,설명\r\n버그 수정,긴급 처리 필요\r\n"
+            val fieldMapping = mapOf("제목" to "summary", "설명" to "description")
+
+            val rows = parseMappedCsvRows(csv, fieldMapping)
+
+            rows shouldHaveSize 1
+            rows[0].summary shouldBe "버그 수정"
+            rows[0].description shouldBe "긴급 처리 필요"
+        }
+
+        it("fieldMapping 을 넘기지 않으면(2-인자) canonical 동작이 그대로 유지된다(회귀)") {
+            val csv = "Summary,Description\r\nCanonical works,Body\r\n"
+
+            val rows = parseCsvRows(csv)
+
+            rows shouldHaveSize 1
+            rows[0].summary shouldBe "Canonical works"
+            rows[0].description shouldBe "Body"
+        }
+
+        it("매핑 모드에서는 리터럴 summary 헤더가 없어도 throw 없이 파싱된다") {
+            val csv = "제목\r\n제목만 있음\r\n"
+            val fieldMapping = mapOf("제목" to "summary")
+
+            val rows = parseMappedCsvRows(csv, fieldMapping)
+
+            rows shouldHaveSize 1
+            rows[0].summary shouldBe "제목만 있음"
+        }
+
+        it("매핑 모드에서도 동명 Comment 컬럼 다중 수집이 유지된다(카탈로그에 댓글 항목 없음)") {
+            val csv =
+                "제목,Comment,Comment\r\n" +
+                    "Task A,\"2024-01-10;bob@corp.com;First comment\"," +
+                    "\"2024-01-11;alice@corp.com;Second comment\"\r\n"
+            val fieldMapping = mapOf("제목" to "summary")
+
+            val rows = parseMappedCsvRows(csv, fieldMapping)
+
+            rows shouldHaveSize 1
+            rows[0].comments shouldHaveSize 2
+            rows[0].comments[0].authorEmail shouldBe "bob@corp.com"
+            rows[0].comments[1].authorEmail shouldBe "alice@corp.com"
+        }
+    }
+
+    // ── CSV: 헤더 + 샘플 미리보기 (FR-IM-02 PR-A Task 3, analyze 단계) ───────────
+
+    describe("ImportRowParser.readHeaderAndSample") {
+        it("헤더 + 최대 5행만 읽고 조기중단한다(이후 손상된 데이터가 있어도 무시)") {
+            val header = "Summary,Priority\r\n"
+            val validRows = (1..10).joinToString("") { "Row $it,Medium\r\n" }
+            val corruptedTail = "\"unterminated"
+            val csv = header + validRows + corruptedTail
+
+            val sample = parser.readHeaderAndSample(stream(csv))
+
+            sample.headers shouldContainExactly listOf("Summary", "Priority")
+            sample.sampleRows shouldHaveSize 5
+            sample.sampleRows[0] shouldContainExactly listOf("Row 1", "Medium")
+            sample.sampleRows[4] shouldContainExactly listOf("Row 5", "Medium")
+        }
+    }
 }) {
     private companion object {
         const val LARGE_ROW_COUNT = 5_000

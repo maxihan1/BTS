@@ -1,8 +1,10 @@
-// V604~V605 마이그레이션 검증 — import_jobs 테이블 + 18컬럼 + status/format CHECK + 2 인덱스 + q_import_jobs pgmq 큐 존재 확인 (FR-IM-01)
+// V604~V606 마이그레이션 검증 — import_jobs 테이블(18컬럼·status/format CHECK·2인덱스·q_import_jobs 큐, FR-IM-01)
+// + import_mappings 매핑 테이블(복합PK·CASCADE FK·AWAITING_MAPPING status 확장, FR-IM-02)
 
 package com.bts.search.imports.job
 
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.BeforeAll
@@ -40,7 +42,15 @@ import java.util.UUID
  * - 인덱스 idx_import_jobs_requester / idx_import_jobs_expires 존재
  * - pgmq 큐 q_import_jobs 존재 (pgmq.list_queues() 확인)
  *
+ * 검증 범위 (FR-IM-02 plan Task 1 / V606 import_mappings).
+ * - import_mappings 테이블 존재 + 3개 컬럼 (import_job_id / source_field / target_field)
+ * - import_job_id = uuid NOT NULL, source_field / target_field = text NOT NULL
+ * - 복합 PK (import_job_id, source_field)
+ * - FK import_job_id → import_jobs(id) ON DELETE CASCADE (부모 job 삭제 시 매핑 동반 하드삭제 — 행동 검증)
+ * - chk_import_jobs_status 가 AWAITING_MAPPING 를 허용 (기존 PENDING 등은 여전히 허용)
+ *
  * 정보 스키마(information_schema / pg_indexes / pg_constraint) + pgmq.list_queues() 조회로 단언한다.
+ * CASCADE 는 confdeltype 내성보다 신뢰도 높은 행동 검증(부모 삭제 → 자식 소멸)으로 확인한다.
  * SQL 문자열 결합 없이 prepared statement(? 바인딩)를 사용한다 (NEVER-3).
  */
 class SchemaMigrationImportTest {
@@ -227,6 +237,94 @@ class SchemaMigrationImportTest {
         }
     }
 
+    // import_jobs 한 행을 지정 id 로 INSERT — import_mappings CASCADE 검증용 부모 행 확보.
+    private fun insertImportJobWithId(
+        id: UUID,
+        status: String = "PENDING",
+    ) {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "INSERT INTO import_jobs" +
+                    " (id, project_key, format, source_object_key, requester_user_id, status)" +
+                    " VALUES (?, ?, ?, ?, ?, ?)",
+            ).use { stmt ->
+                stmt.setObject(1, id)
+                stmt.setString(2, "ATLAS")
+                stmt.setString(3, "CSV")
+                stmt.setString(4, "imports/atlas/source.csv")
+                stmt.setObject(5, UUID.randomUUID())
+                stmt.setString(6, status)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    // import_mappings 한 행 INSERT — (import_job_id, source_field) 복합 PK, target_field 매핑 대상.
+    private fun insertImportMapping(
+        importJobId: UUID,
+        sourceField: String,
+        targetField: String,
+    ) {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "INSERT INTO import_mappings (import_job_id, source_field, target_field)" +
+                    " VALUES (?, ?, ?)",
+            ).use { stmt ->
+                stmt.setObject(1, importJobId)
+                stmt.setString(2, sourceField)
+                stmt.setString(3, targetField)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    // 특정 import_job 에 매달린 매핑 행 수 — CASCADE 삭제 전후 대조용.
+    private fun countImportMappings(importJobId: UUID): Int =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "SELECT COUNT(*) FROM import_mappings WHERE import_job_id = ?",
+            ).use { stmt ->
+                stmt.setObject(1, importJobId)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getInt(1)
+                }
+            }
+        }
+
+    // import_jobs 한 행 삭제 — ON DELETE CASCADE 로 매핑이 동반 삭제되는지 검증용.
+    private fun deleteImportJob(id: UUID) {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement("DELETE FROM import_jobs WHERE id = ?").use { stmt ->
+                stmt.setObject(1, id)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    // 테이블의 PRIMARY KEY 컬럼을 ordinal 순서로 조회 — 복합 PK 순서 검증용.
+    @Suppress("NestedBlockDepth")
+    private fun primaryKeyColumns(tableName: String): List<String> =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "SELECT kcu.column_name" +
+                    " FROM information_schema.table_constraints tc" +
+                    " JOIN information_schema.key_column_usage kcu" +
+                    "   ON tc.constraint_name = kcu.constraint_name" +
+                    "   AND tc.table_schema = kcu.table_schema" +
+                    " WHERE tc.table_schema = 'public' AND tc.table_name = ?" +
+                    "   AND tc.constraint_type = 'PRIMARY KEY'" +
+                    " ORDER BY kcu.ordinal_position",
+            ).use { stmt ->
+                stmt.setString(1, tableName)
+                stmt.executeQuery().use { rs ->
+                    val cols = mutableListOf<String>()
+                    while (rs.next()) cols.add(rs.getString(1))
+                    cols
+                }
+            }
+        }
+
     // ── 테이블 / 컬럼 존재 검증 ────────────────────────────────────────────────
 
     @Test
@@ -363,5 +461,69 @@ class SchemaMigrationImportTest {
     @Test
     fun `V604 q_import_jobs 큐 존재`() {
         assertThat(pgmqQueueExists("q_import_jobs")).isTrue()
+    }
+
+    // ── V606 import_mappings 테이블 / 제약 검증 (FR-IM-02) ─────────────────────
+
+    @Test
+    fun `V606 import_mappings 테이블 존재`() {
+        assertThat(tableExists("import_mappings")).isTrue()
+    }
+
+    @Test
+    fun `V606 import_mappings 3개 컬럼 존재`() {
+        assertThat(columnsOf("import_mappings"))
+            .containsExactlyInAnyOrder("import_job_id", "source_field", "target_field")
+    }
+
+    @Test
+    fun `V606 import_mappings import_job_id 는 uuid NOT NULL`() {
+        assertThat(columnDataType("import_mappings", "import_job_id")).isEqualTo("uuid")
+        assertThat(columnIsNullable("import_mappings", "import_job_id")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V606 import_mappings source_field 는 text NOT NULL`() {
+        assertThat(columnDataType("import_mappings", "source_field")).isEqualTo("text")
+        assertThat(columnIsNullable("import_mappings", "source_field")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V606 import_mappings target_field 는 text NOT NULL`() {
+        assertThat(columnDataType("import_mappings", "target_field")).isEqualTo("text")
+        assertThat(columnIsNullable("import_mappings", "target_field")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V606 import_mappings 복합 PK 는 (import_job_id, source_field)`() {
+        assertThat(primaryKeyColumns("import_mappings"))
+            .containsExactly("import_job_id", "source_field")
+    }
+
+    @Test
+    fun `V606 import_mappings FK 는 import_jobs 삭제 시 CASCADE`() {
+        // 부모 job 을 하드삭제하면 매달린 매핑이 동반 삭제되어야 한다 (join-table FK ON DELETE CASCADE).
+        val jobId = UUID.randomUUID()
+        insertImportJobWithId(jobId)
+        insertImportMapping(jobId, sourceField = "Summary", targetField = "summary")
+        assertThat(countImportMappings(jobId)).isEqualTo(1)
+
+        deleteImportJob(jobId)
+
+        assertThat(countImportMappings(jobId)).isZero()
+    }
+
+    // ── V606 chk_import_jobs_status AWAITING_MAPPING 확장 (FR-IM-02) ───────────
+
+    @Test
+    fun `V606 AWAITING_MAPPING status INSERT 허용`() {
+        assertThatCode { insertImportJob(format = "CSV", status = "AWAITING_MAPPING") }
+            .doesNotThrowAnyException()
+    }
+
+    @Test
+    fun `V606 기존 PENDING status INSERT 여전히 허용`() {
+        assertThatCode { insertImportJob(format = "CSV", status = "PENDING") }
+            .doesNotThrowAnyException()
     }
 }

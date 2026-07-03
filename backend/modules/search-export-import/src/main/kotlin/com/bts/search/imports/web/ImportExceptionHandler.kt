@@ -5,6 +5,9 @@ package com.bts.search.imports.web
 import com.bts.search.imports.job.application.ImportAccessDeniedException
 import com.bts.search.imports.job.application.ImportFileTooLargeException
 import com.bts.search.imports.job.application.ImportUnsupportedFormatException
+import com.bts.search.imports.mapping.ImportMappingInvalidException
+import com.bts.search.imports.mapping.ImportMappingStateConflictException
+import com.bts.search.imports.web.dto.MappingValidationResponse.MappingIssueItem
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -18,12 +21,14 @@ import java.net.URI
 import java.time.Instant
 
 /**
- * [ImportController] 전용 예외 핸들러.
+ * [ImportController]·[ImportMappingController] 전용 예외 핸들러.
  *
- * [assignableTypes] 를 [ImportController] 로 한정해 다른 컨트롤러의 예외를 가로채지 않는다
- * (교훈 domain-exception-http-handler-basepackage-scope). catch-all [Exception] 핸들러를 두되
- * [ResponseStatusException] 은 별도 핸들러로 상태를 전파해 401/404 등이 500 으로 변질되지 않도록 한다
- * (교훈 catch-all-exceptionhandler-swallows-responsestatusexception).
+ * [assignableTypes] 를 [ImportController]·[ImportMappingController] 로 한정해 다른 컨트롤러의 예외를
+ * 가로채지 않는다(교훈 domain-exception-http-handler-basepackage-scope). `assignableTypes` 는 클래스
+ * 목록이지 패키지 스코프가 아니므로, 같은 패키지에 신규 컨트롤러를 추가할 때마다 이 목록에도 명시적으로
+ * 추가해야 한다(BLOCKER-2 — [ImportMappingController] 추가 시 실제로 누락되어 발견된 회귀).
+ * catch-all [Exception] 핸들러를 두되 [ResponseStatusException] 은 별도 핸들러로 상태를 전파해
+ * 401/404 등이 500 으로 변질되지 않도록 한다(교훈 catch-all-exceptionhandler-swallows-responsestatusexception).
  *
  * ### 에러코드 카탈로그 — `IMPORT_` prefix
  *
@@ -31,6 +36,8 @@ import java.time.Instant
  * - [ImportFileTooLargeException] / [MaxUploadSizeExceededException] → 413 [IMPORT_FILE_TOO_LARGE]
  * - [ImportUnsupportedFormatException] → 400 [IMPORT_UNSUPPORTED_FORMAT]
  * - [ImportValidationException] → 400 [IMPORT_VALIDATION_FAILED]
+ * - [ImportMappingInvalidException] → 422 [IMPORT_MAPPING_INVALID]
+ * - [ImportMappingStateConflictException] → 409 [IMPORT_MAPPING_STATE_CONFLICT]
  * - [ResponseStatusException](401/404/기타) → 상태 전파
  * - [Exception] (fallback) → 500 [IMPORT_INTERNAL_ERROR]
  *
@@ -39,7 +46,8 @@ import java.time.Instant
  * `ImportJob.errorCode` 컬럼에 기록하는 값으로, [com.bts.search.imports.web.dto.ImportJobResponse.errorCode]
  * 필드를 통해 폴링 응답에 노출될 뿐 이 핸들러의 매핑 대상이 아니다.
  */
-@RestControllerAdvice(assignableTypes = [ImportController::class])
+@RestControllerAdvice(assignableTypes = [ImportController::class, ImportMappingController::class])
+@Suppress("TooManyFunctions")
 class ImportExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -184,6 +192,57 @@ class ImportExceptionHandler {
         )
     }
 
+    // ── 422 필드 매핑 검증 실패 ────────────────────────────────────────────────
+
+    /**
+     * [ImportMappingInvalidException] — [com.bts.search.imports.mapping.ImportMappingService.confirm]
+     * 필드 매핑 검증 실패 — 422.
+     *
+     * [ImportMappingInvalidException.errors] 를 그대로 ProblemDetail extension property 에 담아
+     * 클라이언트가 어느 대상 필드가 왜 실패했는지 손실 없이 렌더링할 수 있게 한다
+     * ([com.bts.search.imports.mapping.ImportMappingInvalidException] KDoc §errors 참조).
+     *
+     * @param ex 필드 매핑 검증 실패 예외. 실패 사유 목록을 포함한다.
+     */
+    @ExceptionHandler(ImportMappingInvalidException::class)
+    fun handleMappingInvalid(ex: ImportMappingInvalidException): ProblemDetail {
+        log.info("IMPORT_422 mapping_invalid errorCount={}", ex.errors.size)
+        val pd =
+            problem(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "import-mapping-invalid",
+                "Mapping Invalid",
+                IMPORT_MAPPING_INVALID,
+                "필드 매핑 검증에 실패했습니다.",
+            )
+        val errorItems = ex.errors.map { MappingIssueItem(code = it.code, message = it.message, field = it.field) }
+        pd.setProperty("errors", errorItems)
+        return pd
+    }
+
+    // ── 409 매핑 상태 충돌 ────────────────────────────────────────────────────
+
+    /**
+     * [ImportMappingStateConflictException] — 작업 상태가
+     * [com.bts.search.imports.job.domain.ImportJobStatus.AWAITING_MAPPING] 이 아닐 때(사전확인 또는
+     * CAS 시점의 TOCTOU 포함) [com.bts.search.imports.mapping.ImportMappingService] 가 던지는 예외 — 409.
+     *
+     * @param ex 매핑 상태 충돌 예외.
+     */
+    @ExceptionHandler(ImportMappingStateConflictException::class)
+    fun handleMappingStateConflict(
+        @Suppress("UnusedParameter") ex: ImportMappingStateConflictException,
+    ): ProblemDetail {
+        log.info("IMPORT_409 mapping_state_conflict")
+        return problem(
+            HttpStatus.CONFLICT,
+            "import-mapping-state-conflict",
+            "Conflict",
+            IMPORT_MAPPING_STATE_CONFLICT,
+            "Import 작업이 매핑 대기(AWAITING_MAPPING) 상태가 아닙니다.",
+        )
+    }
+
     // ── ResponseStatusException 상태 전파 ─────────────────────────────────────
 
     /**
@@ -257,5 +316,7 @@ class ImportExceptionHandler {
         const val IMPORT_UNAUTHENTICATED = "IMPORT_UNAUTHENTICATED"
         const val IMPORT_NOT_FOUND = "IMPORT_NOT_FOUND"
         const val IMPORT_INTERNAL_ERROR = "IMPORT_INTERNAL_ERROR"
+        const val IMPORT_MAPPING_INVALID = "IMPORT_MAPPING_INVALID"
+        const val IMPORT_MAPPING_STATE_CONFLICT = "IMPORT_MAPPING_STATE_CONFLICT"
     }
 }

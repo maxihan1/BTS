@@ -1,4 +1,4 @@
-// 비동기 CSV/JSON Import 작업 접수 서비스 — 권한 fail-fast + 크기/형식 검증 + MinIO put(tx 밖) + persist/enqueue(단일 tx)
+// 비동기 CSV/JSON Import 접수(accept)+분석(analyze) 서비스 — 검증 공유 + MinIO put(tx 밖) + persist(enqueue는 accept만)
 
 package com.bts.search.imports.job.application
 
@@ -8,6 +8,8 @@ import com.bts.search.imports.job.domain.ImportJobStatus
 import com.bts.search.imports.job.event.ImportJobEnqueuePublisher
 import com.bts.search.imports.job.repository.ImportJobRepository
 import com.bts.search.imports.job.storage.ImportObjectStoragePort
+import com.bts.search.imports.mapping.TargetField
+import com.bts.search.imports.parse.ImportRowParser
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -48,6 +50,34 @@ import java.util.UUID
  * 4. format 검증 — CSV/JSON 이외는 [ImportUnsupportedFormatException].
  * 5. MinIO put(원본 업로드, 트랜잭션 밖) → [ImportJobRepository.insert] + [ImportJobEnqueuePublisher.enqueue]
  *    (단일 트랜잭션) 순으로 실행한다.
+ *
+ * ## 분석 흐름 — [analyze] (FR-IM-02 PR-A Task 6)
+ *
+ * `analyze → map → run` 2 단계 매핑 UI 흐름의 1 단계. [accept] 와 검증 로직은 완전히 동일하지만
+ * ([validateCoreAndAuthorize] 로 공유 — 두 진입점 모두 CREATE_ISSUE 권한 fail-fast 를 반드시 거친다,
+ * 보안 회귀 방지), 다음 두 가지가 다르다.
+ *
+ * 1. 영속되는 [ImportJob] 의 status 가 PENDING 이 아니라 [ImportJobStatus.AWAITING_MAPPING] 이고,
+ *    [ImportJobEnqueuePublisher.enqueue] 를 호출하지 않는다 — 사용자가 소스 필드 ↔ 대상 필드 매핑을
+ *    확정([ImportJobRepository.transitionToPending], 매핑 확정 API 는 이 Task 의 책임 범위 밖)해야
+ *    비로소 PENDING 으로 전이하고 워커 처리가 시작된다.
+ * 2. [ImportJob.expiresAt] 을 [ABANDON_TTL_SECONDS] 후로 설정해, 매핑을 확정하지 않고 방치된 job 을
+ *    cleanup 워커([com.bts.search.imports.job.worker.ImportJobCleanupWorker])가 정리할 수 있게 한다.
+ *    매핑을 확정하면 이 만료 시각은 NULL 로 해제된다([ImportJobRepository.transitionToPending] KDoc).
+ *
+ * 원본을 MinIO 에 저장한 뒤 [detectSourceFieldsAndSample] 로 매핑 UI 가 보여줄 소스 필드 목록과
+ * 미리보기 샘플 행을 감지한다.
+ * - **CSV** — 방금 저장한 오브젝트를 [storage] 에서 다시 열어(`storage.get`) [parser] 로 헤더 +
+ *   최대 5 개 샘플 행만 읽는다([ImportRowParser.readHeaderAndSample], 조기 중단). [storage.put] 이
+ *   이미 소비한 원본 [ImportAnalyzeCommand.inputStream] 을 재사용하지 않고 저장된 오브젝트를
+ *   재조회하는 이유 — 임의 [java.io.InputStream] 이 mark/reset 을 지원한다는 보장이 없어, 이미
+ *   신뢰할 수 있는 조회 경로([getErrorLog] 가 쓰는 [storage].get)를 재사용하는 편이 더 견고하다.
+ * - **JSON** — Jira REST export 는 항상 고정된 canonical 필드 구조([com.bts.search.imports.parse.ImportRowParser.parseJson])
+ *   라 사용자가 자유롭게 매핑할 소스 헤더가 없다. [TargetField.entries] 의 key 목록을 그대로
+ *   sourceFields 로 반환해 프론트엔드가 매핑 UI 단계를 스킵할 수 있게 한다 — sampleRows 는 항상 빈 목록.
+ *
+ * 반환하는 [ImportAnalysisResult] 는 대상 필드 카탈로그([TargetField.entries])를 포함하지 않는다 —
+ * 요청과 무관한 정적 값이라 컨트롤러(PR-A Task 8)가 별도로 직렬화한다.
  *
  * ## 첨부 zip — [putAttachmentsZipIfPresent] (PR4 Task 7)
  *
@@ -92,9 +122,12 @@ import java.util.UUID
  *   프로퍼티로 오버라이드 가능. 기본값 [DEFAULT_ATTACHMENTS_ZIP_MAX_SIZE_BYTES](500MB) — SpEL 기본값 문자열과
  *   Kotlin 기본 인자가 이중 정의되므로 값 변경 시 둘 다 동기화해야 한다(Spring 이 직접 생성자를 호출하는
  *   실 빈 경로에서는 SpEL 기본값이, 테스트가 인자를 생략하고 수동 호출하는 경로에서는 Kotlin 기본 인자가 적용된다).
+ * @param parser [analyze] CSV 헤더/샘플 감지용 스트리밍 파서. [ImportRowParser] 는 Spring 빈으로 등록되어
+ *   있지 않으므로([ImportJobProcessor] 의 동일 Clock/parser 기본값 패턴과 동일하게) 기본값으로 직접
+ *   인스턴스화한다.
  */
 @Service
-@Suppress("LongParameterList")
+@Suppress("LongParameterList", "TooManyFunctions")
 class ImportJobService(
     private val repository: ImportJobRepository,
     private val storage: ImportObjectStoragePort,
@@ -104,6 +137,7 @@ class ImportJobService(
     private val clock: Clock = Clock.systemUTC(),
     @Value("\${bts.import.attachments-zip.max-size:524288000}")
     private val attachmentsZipMaxSizeBytes: Long = DEFAULT_ATTACHMENTS_ZIP_MAX_SIZE_BYTES,
+    private val parser: ImportRowParser = ImportRowParser(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -175,6 +209,77 @@ class ImportJobService(
     }
 
     /**
+     * Import 파일을 분석해 매핑 UI 진입에 필요한 소스 필드 목록과 미리보기 샘플을 반환한다.
+     *
+     * 클래스 KDoc §분석 흐름 참조. [accept] 와 동일한 공통 검증([validateCoreAndAuthorize])을 거친 뒤
+     * 원본 파일을 MinIO 에 업로드하고 [ImportJobStatus.AWAITING_MAPPING] 상태의 [ImportJob] 을
+     * 영속한다 — [accept] 와 달리 pgmq enqueue 는 하지 않는다(매핑 확정 전에는 워커가 처리하지 않는다).
+     *
+     * @param command 분석 요청 커맨드. [ImportAnalyzeCommand] 참조.
+     * @return 분석 결과 [ImportAnalysisResult] — status=AWAITING_MAPPING 인 job + sourceFields + sampleRows.
+     * @throws ResponseStatusException(400) projectKey 가 공백인 경우.
+     * @throws ImportAccessDeniedException 요청자가 대상 프로젝트에 CREATE_ISSUE 권한이 없는 경우.
+     * @throws ImportFileTooLargeException 파일 크기가 [MAX_FILE_SIZE_BYTES] 를 초과하는 경우.
+     * @throws ImportUnsupportedFormatException format 이 CSV/JSON 이 아닌 경우.
+     */
+    fun analyze(command: ImportAnalyzeCommand): ImportAnalysisResult {
+        val normalizedFormat =
+            validateCoreAndAuthorize(
+                projectKey = command.projectKey,
+                requesterUserId = command.requesterUserId,
+                sizeBytes = command.sizeBytes,
+                format = command.format,
+            )
+
+        val jobId = ImportJobId(UUID.randomUUID())
+        val objectKey = buildSourceObjectKey(command.projectKey, jobId, normalizedFormat)
+        storage.put(
+            objectKey,
+            command.inputStream,
+            command.sizeBytes,
+            resolveContentType(normalizedFormat, command.contentType),
+        )
+        val (sourceFields, sampleRows) = detectSourceFieldsAndSample(objectKey, normalizedFormat)
+
+        val job =
+            ImportJob(
+                id = jobId,
+                projectKey = command.projectKey,
+                format = normalizedFormat,
+                sourceObjectKey = objectKey,
+                dryRun = false,
+                requesterUserId = command.requesterUserId,
+                status = ImportJobStatus.AWAITING_MAPPING,
+                progress = 0,
+                totalRows = null,
+                succeededRows = 0,
+                failedRows = 0,
+                errorCode = null,
+                errorLogObjectKey = null,
+                expiresAt = clock.instant().plusSeconds(ABANDON_TTL_SECONDS),
+                createdAt = clock.instant(),
+                startedAt = null,
+                completedAt = null,
+                attachmentsObjectKey = null,
+            )
+
+        transactionTemplate.execute {
+            repository.insert(job)
+        }
+
+        log.info(
+            "import_job_analyzed jobId={} projectKey={} format={} filename={} sourceFieldCount={} actor={}",
+            jobId.value,
+            command.projectKey,
+            normalizedFormat,
+            command.filename,
+            sourceFields.size,
+            command.requesterUserId,
+        )
+        return ImportAnalysisResult(job = job, sourceFields = sourceFields, sampleRows = sampleRows)
+    }
+
+    /**
      * 요청자 소유의 Import 작업을 조회한다.
      *
      * 타인 소유 작업은 null 을 반환해 존재 자체를 은닉한다 — 컨트롤러가 404 로 변환한다.
@@ -216,57 +321,22 @@ class ImportJobService(
     // ── private helpers ──────────────────────────────────────────────────────────
 
     /**
-     * projectKey 공백·CREATE_ISSUE 권한·파일 크기·format 을 순서대로 검증한다.
+     * [accept] 전용 검증 — 공통 검증([validateCoreAndAuthorize])에 첨부 zip 크기 검증을 더한다.
      *
      * @return 대문자로 정규화된 format 문자열 (`"CSV"` 또는 `"JSON"`).
      * @throws ResponseStatusException(400) projectKey 가 공백인 경우.
      * @throws ImportAccessDeniedException CREATE_ISSUE 권한이 없는 경우.
-     * @throws ImportFileTooLargeException 파일 크기 초과 시.
+     * @throws ImportFileTooLargeException 파일(또는 첨부 zip) 크기 초과 시.
      * @throws ImportUnsupportedFormatException 미지원 format 시.
      */
-    @Suppress("ThrowsCount")
     private fun validateAndAuthorize(command: ImportAcceptCommand): String {
-        if (command.projectKey.isBlank()) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "projectKey는 필수입니다.")
-        }
-
-        val allowed =
-            permissionResolver.hasPermission(
-                command.requesterUserId,
-                IssuePermission.CREATE,
-                IssueScope.Project(command.projectKey),
+        val normalizedFormat =
+            validateCoreAndAuthorize(
+                projectKey = command.projectKey,
+                requesterUserId = command.requesterUserId,
+                sizeBytes = command.sizeBytes,
+                format = command.format,
             )
-        if (!allowed) {
-            log.warn(
-                "import_accept_forbidden projectKey={} actor={}",
-                command.projectKey,
-                command.requesterUserId,
-            )
-            throw ImportAccessDeniedException(
-                "actor has no CREATE_ISSUE permission for project: ${command.projectKey}",
-            )
-        }
-
-        if (command.sizeBytes > MAX_FILE_SIZE_BYTES) {
-            log.warn(
-                "import_accept_file_too_large projectKey={} sizeBytes={} actor={}",
-                command.projectKey,
-                command.sizeBytes,
-                command.requesterUserId,
-            )
-            throw ImportFileTooLargeException(command.sizeBytes, MAX_FILE_SIZE_BYTES)
-        }
-
-        val normalizedFormat = command.format.trim().uppercase()
-        if (normalizedFormat !in SUPPORTED_FORMATS) {
-            log.warn(
-                "import_accept_unsupported_format projectKey={} format={} actor={}",
-                command.projectKey,
-                command.format,
-                command.requesterUserId,
-            )
-            throw ImportUnsupportedFormatException(command.format)
-        }
 
         // CSV 는 zip 을 무시하므로(§첨부 zip) 크기 검증도 JSON 에서만 수행한다 — CSV+zip 조합은
         // zip 자체를 아예 건드리지 않아야 하위호환 시나리오(zip 무시)가 일관된다.
@@ -281,6 +351,89 @@ class ImportJobService(
             throw ImportFileTooLargeException(zipSizeBytes, attachmentsZipMaxSizeBytes)
         }
         return normalizedFormat
+    }
+
+    /**
+     * projectKey 공백·CREATE_ISSUE 권한·파일 크기·format 을 순서대로 검증한다([accept]/[analyze] 공유).
+     *
+     * 두 진입점(파일 접수 [accept], 매핑 분석 [analyze])이 완전히 동일한 검증 순서·예외를 거치도록
+     * 이 메서드 하나로 통합했다 — 검증 로직이 진입점별로 갈라지면 한쪽에서 권한 검증이 누락되는
+     * 보안 회귀가 발생할 수 있다.
+     *
+     * @return 대문자로 정규화된 format 문자열 (`"CSV"` 또는 `"JSON"`).
+     * @throws ResponseStatusException(400) projectKey 가 공백인 경우.
+     * @throws ImportAccessDeniedException CREATE_ISSUE 권한이 없는 경우.
+     * @throws ImportFileTooLargeException 파일 크기 초과 시.
+     * @throws ImportUnsupportedFormatException 미지원 format 시.
+     */
+    @Suppress("ThrowsCount")
+    private fun validateCoreAndAuthorize(
+        projectKey: String,
+        requesterUserId: UUID,
+        sizeBytes: Long,
+        format: String,
+    ): String {
+        if (projectKey.isBlank()) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "projectKey는 필수입니다.")
+        }
+
+        val allowed =
+            permissionResolver.hasPermission(
+                requesterUserId,
+                IssuePermission.CREATE,
+                IssueScope.Project(projectKey),
+            )
+        if (!allowed) {
+            log.warn(
+                "import_validate_forbidden projectKey={} actor={}",
+                projectKey,
+                requesterUserId,
+            )
+            throw ImportAccessDeniedException(
+                "actor has no CREATE_ISSUE permission for project: $projectKey",
+            )
+        }
+
+        if (sizeBytes > MAX_FILE_SIZE_BYTES) {
+            log.warn(
+                "import_validate_file_too_large projectKey={} sizeBytes={} actor={}",
+                projectKey,
+                sizeBytes,
+                requesterUserId,
+            )
+            throw ImportFileTooLargeException(sizeBytes, MAX_FILE_SIZE_BYTES)
+        }
+
+        val normalizedFormat = format.trim().uppercase()
+        if (normalizedFormat !in SUPPORTED_FORMATS) {
+            log.warn(
+                "import_validate_unsupported_format projectKey={} format={} actor={}",
+                projectKey,
+                format,
+                requesterUserId,
+            )
+            throw ImportUnsupportedFormatException(format)
+        }
+        return normalizedFormat
+    }
+
+    /**
+     * FR-IM-02 매핑 UI 진입에 필요한 소스 필드 목록과 미리보기 샘플 행을 감지한다(클래스 KDoc §분석 흐름).
+     *
+     * @param objectKey [analyze] 가 방금 MinIO 에 저장한 원본 오브젝트 키.
+     * @param normalizedFormat [validateCoreAndAuthorize] 가 정규화한 format(`"CSV"`/`"JSON"`).
+     * @return sourceFields(소스 필드 이름 목록) + sampleRows(미리보기 샘플 행, 각 행은 셀 목록) 쌍.
+     */
+    private fun detectSourceFieldsAndSample(
+        objectKey: String,
+        normalizedFormat: String,
+    ): Pair<List<String>, List<List<String>>> {
+        if (normalizedFormat == FORMAT_JSON) {
+            return JSON_CANONICAL_SOURCE_FIELDS to emptyList()
+        }
+        val headerSample =
+            storage.get(objectKey).use { stream -> parser.readHeaderAndSample(stream, ANALYZE_SAMPLE_SIZE) }
+        return headerSample.headers to headerSample.sampleRows
     }
 
     /** `{projectKey}/{jobId}.{ext}` 형식의 원본 오브젝트 키를 생성한다([ImportObjectStoragePort] KDoc §오브젝트 키 패턴). */
@@ -364,6 +517,33 @@ class ImportJobService(
 
         /** [buildAttachmentsZipObjectKey] 오브젝트 키 접미사. */
         private const val ATTACHMENTS_ZIP_KEY_SUFFIX = "-attachments.zip"
+
+        /**
+         * 매핑 미확정 상태([ImportJobStatus.AWAITING_MAPPING])로 방치된 job 을 정리하는 기준 TTL(초) — 24시간.
+         *
+         * [ImportJobProcessor.RESULT_TTL_SECONDS] 선례와 동일한 값을 사용한다. 매핑 UI 세션(사용자가
+         * 파일을 올리고 필드를 매핑해 확정하는 데 걸리는 시간)보다 충분히 길게 잡아, 정상적으로 매핑을
+         * 진행 중인 사용자의 job 이 조기 삭제되지 않도록 한다. 확정 시([ImportJobRepository.transitionToPending])
+         * expiresAt 은 NULL 로 해제되어 이 TTL cleanup 대상에서 제외된다.
+         */
+        @Suppress("MagicNumber")
+        const val ABANDON_TTL_SECONDS: Long = 24 * 60 * 60
+
+        /**
+         * [analyze] 단계에서 미리보기로 노출할 최대 CSV 샘플 행 수.
+         * [com.bts.search.imports.parse.ImportRowParser.readHeaderAndSample] 기본값과 동일하게 5.
+         */
+        @Suppress("MagicNumber")
+        private const val ANALYZE_SAMPLE_SIZE = 5
+
+        /**
+         * JSON import 의 canonical sourceFields([analyze] §JSON 분기).
+         *
+         * Jira REST export 는 항상 고정된 canonical 필드 구조를 가지므로 사용자가 자유롭게 매핑할
+         * 소스 헤더가 없다. [TargetField.entries] 의 key 를 그대로 사용해 프론트엔드가 매핑 UI 단계를
+         * 스킵할 수 있게 한다.
+         */
+        private val JSON_CANONICAL_SOURCE_FIELDS: List<String> = TargetField.entries.map { it.key }
     }
 }
 
@@ -396,6 +576,48 @@ data class ImportAcceptCommand(
     val requesterUserId: UUID,
     val attachmentsZipInputStream: InputStream? = null,
     val attachmentsZipSizeBytes: Long? = null,
+)
+
+/**
+ * Import 파일 분석(analyze) 커맨드(FR-IM-02 PR-A Task 6) — 매핑 UI 진입 전 헤더/샘플 감지 단계.
+ *
+ * [ImportAcceptCommand] 와 달리 dryRun/첨부 zip 필드가 없다. analyze 로 생성된 job 은 항상
+ * dryRun=false 로 고정되고([ImportJobService.analyze] 참조), 첨부 zip 업로드는 매핑 확정 이후의
+ * 접수([ImportJobService.accept]) 단계 몫이다.
+ *
+ * @property projectKey Import 대상 프로젝트 키.
+ * @property format 업로드 파일 형식 문자열(대소문자 무관, `"CSV"` 또는 `"JSON"`으로 정규화된다).
+ * @property filename 원본 파일명(로깅용 — 오브젝트 키에는 사용하지 않는다).
+ * @property contentType 업로드 파일의 MIME 타입. null/공백이면 format 기반 기본값을 사용한다.
+ * @property sizeBytes 업로드 파일 크기(바이트).
+ * @property inputStream 업로드 바이트 스트림. 호출자가 close 책임.
+ * @property requesterUserId 분석을 요청한 사용자 UUID.
+ */
+data class ImportAnalyzeCommand(
+    val projectKey: String,
+    val format: String,
+    val filename: String,
+    val contentType: String?,
+    val sizeBytes: Long,
+    val inputStream: InputStream,
+    val requesterUserId: UUID,
+)
+
+/**
+ * [ImportJobService.analyze] 반환 결과 — 접수된 [ImportJob](status=AWAITING_MAPPING) + 매핑 UI 가
+ * 노출할 소스 필드 목록 + 미리보기 샘플 행.
+ *
+ * 대상 필드 카탈로그([TargetField.entries])는 요청과 무관한 정적 값이라 이 결과에 포함하지 않는다 —
+ * 컨트롤러(PR-A Task 8)가 별도로 직렬화한다.
+ *
+ * @property job 분석 단계에서 생성된 [ImportJob](status=AWAITING_MAPPING).
+ * @property sourceFields CSV 헤더 셀 목록(원본 순서) 또는 JSON canonical [TargetField.key] 고정 목록.
+ * @property sampleRows CSV 미리보기 샘플 행(각 행은 셀 목록, 최대 5 건). JSON 은 항상 빈 목록.
+ */
+data class ImportAnalysisResult(
+    val job: ImportJob,
+    val sourceFields: List<String>,
+    val sampleRows: List<List<String>>,
 )
 
 /**

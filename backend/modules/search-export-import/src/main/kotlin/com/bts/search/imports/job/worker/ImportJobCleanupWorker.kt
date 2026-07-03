@@ -16,10 +16,19 @@ import java.time.Clock
  * import 는 결과 산출물이 아닌 **업로드 원본**([sourceObjectKey])이 항상 존재하고 에러로그
  * ([errorLogObjectKey])는 실패행이 있을 때만 존재하는 2-오브젝트 구조로 조정했다.
  *
- * ## 삭제 기준
- * [ImportJobRepository.findExpired] 로 `expires_at < now` 인 작업 목록 조회.
- * 각 작업에 대해 sourceObjectKey 삭제 → errorLogObjectKey(있으면) 삭제 →
- * [ImportJobRepository.deleteById] 순으로 실행한다.
+ * ## 삭제 기준 — deleteIfExpired 가드 + 삭제 성공 시에만 객체 제거 (FR-IM-02 CONCERN-4)
+ * [ImportJobRepository.findExpired] 로 `expires_at < now` 인 작업 목록을 스냅샷 조회한다.
+ * 각 작업에 대해 [ImportJobRepository.deleteIfExpired] 를 **먼저** 호출해 DB 행을 가드 조건부로
+ * 하드삭제하고, 그 반환값이 true(실제로 삭제됨)일 때만 sourceObjectKey → errorLogObjectKey(있으면)
+ * 순으로 MinIO 오브젝트를 삭제한다. false(가드 불일치)면 오브젝트/행 모두 손대지 않고 건너뛴다.
+ *
+ * ### cleanup vs confirm 레이스 차단
+ * [ImportJobRepository.findExpired] 스냅샷 이후, 삭제 실행 직전에 사용자가 매핑을 확정
+ * ([ImportJobRepository.transitionToPending])하면 해당 job 의 `expires_at` 이 NULL 로 해제된다.
+ * 기존에는(무조건 `removeObject` → `deleteById` 순으로 실행) 이 레이스에서 확정된 job 의 원본
+ * 오브젝트가 지워지거나 살아있는 PENDING 행이 삭제됐다. 이제는 [ImportJobRepository.deleteIfExpired]
+ * 의 `expires_at` 가드가 0 row(= false)를 반환하므로 확정된 job 은 행·오브젝트 모두 보존된다
+ * (오삭제 0).
  *
  * ## best-effort MinIO 삭제
  * [ImportObjectStoragePort.delete] 가 실패해도 다음 오브젝트 삭제와 DB 행 삭제를 진행한다
@@ -28,7 +37,7 @@ import java.time.Clock
  *
  * ## @Transactional 없음 — 의도적 설계
  * [ImportObjectStoragePort.delete] 는 MinIO 외부 I/O 이며 트랜잭션 밖에서 수행해야 한다.
- * [ImportJobRepository.deleteById] 는 단독 @Transactional 이 처리한다.
+ * [ImportJobRepository.deleteIfExpired] 는 단독 @Transactional 이 처리한다.
  * cleanup 워커에 외부 트랜잭션을 걸면 long transaction + MinIO I/O 점유 문제가 발생한다.
  * **@Transactional 없음 — 의도적 설계.**
  *
@@ -53,6 +62,10 @@ class ImportJobCleanupWorker(
      *
      * 실행 주기: [CLEANUP_CRON] (매일 새벽 4시 UTC — [ExportJobCleanupWorker.CLEANUP_CRON] 미러).
      * **@Transactional 없음 — 의도적 설계** (클래스 KDoc 참조).
+     *
+     * 각 작업마다 [ImportJobRepository.deleteIfExpired] 를 먼저 호출하고, 그 결과(true = 실제
+     * 삭제됨)일 때만 MinIO 오브젝트를 제거한다 — false 면 cleanup vs confirm 레이스로 이미 보존된
+     * job 이므로 오브젝트/행 모두 건드리지 않고 건너뛴다(클래스 KDoc §삭제 기준 참조).
      */
     @Scheduled(cron = CLEANUP_CRON)
     @Suppress("TooGenericExceptionCaught")
@@ -67,7 +80,14 @@ class ImportJobCleanupWorker(
 
         log.info("import_cleanup_start count={} now={}", expired.size, now)
 
+        var deletedCount = 0
         for (job in expired) {
+            if (!importRepo.deleteIfExpired(job.id, now)) {
+                log.debug("import_cleanup_job_skipped_confirmed_race jobId={}", job.id)
+                continue
+            }
+            deletedCount++
+
             removeObject(job.id.value.toString(), job.sourceObjectKey)
 
             val errorLogObjectKey = job.errorLogObjectKey
@@ -75,11 +95,10 @@ class ImportJobCleanupWorker(
                 removeObject(job.id.value.toString(), errorLogObjectKey)
             }
 
-            importRepo.deleteById(job.id)
             log.debug("import_cleanup_job_deleted jobId={}", job.id)
         }
 
-        log.info("import_cleanup_done deleted={}", expired.size)
+        log.info("import_cleanup_done deleted={}", deletedCount)
     }
 
     /**

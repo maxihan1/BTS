@@ -148,11 +148,13 @@
 
 **우선순위**. 필수 | **선행**. §4.1 | **Plan slug**. `search/import-mapping`
 
-- [ ] D1. 도메인 — ImportMapping (책임. backend-engineer)
+> **PR-A 완료 (기반 + 필드 매핑, 2026-07-03)**. Maxi 결정으로 FR-IM-02를 **순차 에픽 3-PR(A/B/C) + 프론트**로 확장 — 사용자 매핑을 **전 작성자 필드**로·값 매핑을 **status/type/priority**로 확장하면서 백엔드가 커져 분할. **2단계 흐름(analyze→map→run)** 채택 — 기존 즉시-업로드(`POST /api/v1/imports`, canonical 자동매핑)는 하위호환 유지. **PR-A 범위**. `ImportJobStatus.AWAITING_MAPPING` 신규 상태(V606 `chk_import_jobs_status` 확장) + `import_mappings(import_job_id, source_field, target_field)`(V606, FK ON DELETE CASCADE) + `TargetField` 카탈로그 11종 + 매핑-aware `ImportRowParser`(CSV 임의 헤더 자유매핑 오버로드·canonical 폴백 불변, JSON canonical 유지) + `readHeaderAndSample` bounded 분석 + `ImportJobService.analyze`(persist+AWAITING_MAPPING+ABANDON_TTL 24h) + `ImportMappingService.validate/confirm`(CAS-우선 트랜잭션으로 중복 enqueue 차단) + `MappingValidator`(SUMMARY_NOT_MAPPED/DUPLICATE_TARGET/UNKNOWN_TARGET/UNKNOWN_SOURCE + SOURCE_FIELD_IGNORED 경고) + `ImportMappingController` 3 엔드포인트(`POST /imports/analyze` 200 · `/imports/{id}/mapping/validate` 200 · `/imports/{id}/mapping` 200 PENDING 전이) + `ImportJobProcessor` 매핑 로드 + `ImportJobCleanupWorker` `deleteIfExpired` 가드(cleanup↔confirm 레이스 차단). ADR `docs/decisions/2026-07-03-fr-im-02-import-mapping.md`. **D3 데이터 모델 deviation** — 단일 `import_mappings`(PR-A) → 사용자 매핑용 `import_user_mappings`(PR-B)·값 매핑용 `import_value_mappings`(PR-C) 확장. **PR-B(사용자 매핑 전 작성자)·PR-C(값 매핑)·D6/D7 프론트 마법사는 후속. D박스는 FR 전체 완료 시 마킹.**
+
+- [ ] D1. 도메인 — ImportMapping (책임. backend-engineer) — PR-A 필드 매핑 도메인 완료(TargetField·ImportMapping·AWAITING_MAPPING). 사용자/값 매핑 도메인은 PR-B/C.
 - [ ] D2. 명세 — 필드 매핑 + 사용자 매핑 + 미매핑 처리 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `import_mappings(import_job_id, source_field, target_field)` (책임. db-engineer)
-- [ ] D4. 백엔드 — 매핑 검증 API (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [ ] D3. 데이터 모델 — `import_mappings(import_job_id, source_field, target_field)`(PR-A) + `import_user_mappings`(PR-B) + `import_value_mappings`(PR-C) (책임. db-engineer)
+- [ ] D4. 백엔드 — 매핑 검증 API (책임. backend-engineer) — PR-A 필드 매핑 validate/confirm 완료. 사용자/값 검증은 PR-B/C.
+- [ ] D5. 백엔드 테스트 (책임. backend-engineer) — PR-A 완료(단위+통합, 매핑 흐름 E2E).
 - [ ] D6. 프론트 UI — 매핑 마법사 (다단계) (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 

@@ -5,6 +5,7 @@ package com.bts.search.imports.job.application
 import com.bts.search.imports.job.domain.ImportJob
 import com.bts.search.imports.job.repository.ImportJobRepository
 import com.bts.search.imports.job.storage.ImportObjectStoragePort
+import com.bts.search.imports.mapping.repository.ImportMappingRepository
 import com.bts.search.imports.parse.ImportParseException
 import com.bts.search.imports.parse.ImportRowParser
 import com.bts.search.imports.parse.ParsedImportAttachment
@@ -25,6 +26,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.time.Clock
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -60,6 +62,14 @@ import java.time.OffsetDateTime
  * 전달한다. 실제 생성 여부는 [IssueImportPort] 구현체(어댑터) 책임이며, dryRun 결과도 성공/실패
  * 집계에 동일하게 반영된다(검증 리포트 용도).
  *
+ * ## 매핑 기반 CSV 파싱 로드 (FR-IM-02 PR-A)
+ *
+ * [processRows] 가 CSV 포맷일 때만 [parseCsv] 헬퍼로 [mappingRepo] 에서 [job] 의 확정 매핑
+ * ([ImportMappingRepository.findByJobId])을 로드한다. 매핑이 하나라도 있으면(Map 비어있지 않음)
+ * [ImportRowParser.parseCsv] 3-인자(mapped) 오버로드로, 없으면(빈 Map — 매핑을 저장한 적 없는 job,
+ * 기존 canonical 흐름) 2-인자(canonical) 오버로드로 위임한다. JSON 포맷은 이 로드를 거치지 않는다
+ * (canonical 흐름 불변 — FR-IM-02 매핑 UI 는 CSV 임의 헤더 전용).
+ *
  * ## 댓글/worklog 매핑 (PR3)
  *
  * [toCommand] 가 [ParsedImportRow.comments]/[ParsedImportRow.worklogs](원본 문자열 raw 값)를
@@ -82,17 +92,21 @@ import java.time.OffsetDateTime
  * @param issueImportPort 이슈 생성 cross-BC 쓰기 포트.
  * @param storage 원본 파일 조회 + 에러 로그 업로드용 오브젝트 스토리지 포트.
  * @param repository Import 작업 상태 관리 저장소.
+ * @param mappingRepo CSV 확정 매핑(source_field → target_field) 조회 저장소(FR-IM-02 PR-A).
  * @param errorLogWriter 실패행 CSV 에러 로그 직렬화기.
  * @param parser CSV/JSON 스트리밍 파서. [ImportRowParser] 는 Spring 빈으로 등록되어 있지 않으므로
  *   ([ImportJobRepository] 의 Clock 기본값 패턴과 동일하게) 기본값으로 직접 인스턴스화한다.
  * @param clock expiresAt 결정용 시계. search 모듈에 Clock 빈이 없으므로 기본값 [Clock.systemUTC] 사용.
  */
 @Component
-@Suppress("TooManyFunctions") // PR3 comments/worklogs 매핑 헬퍼 추가로 임계 초과 — 단일 행 변환 책임 응집, 분리 시 오히려 산개
+// TooManyFunctions: PR3 comments/worklogs 매핑 헬퍼 추가로 임계 초과 — 단일 행 변환 책임 응집, 분리 시 오히려 산개.
+// LongParameterList: FR-IM-02 PR-A mappingRepo 추가로 7개 — 각각 단일 책임 협력자, ImportJobService 와 동일 선례.
+@Suppress("TooManyFunctions", "LongParameterList")
 class ImportJobProcessor(
     private val issueImportPort: IssueImportPort,
     private val storage: ImportObjectStoragePort,
     private val repository: ImportJobRepository,
+    private val mappingRepo: ImportMappingRepository,
     private val errorLogWriter: ImportErrorLogWriter,
     private val parser: ImportRowParser = ImportRowParser(),
     private val clock: Clock = Clock.systemUTC(),
@@ -142,13 +156,34 @@ class ImportJobProcessor(
             storage.get(job.sourceObjectKey).use { input ->
                 val onRow: (ParsedImportRow) -> Unit = { row -> handleRow(job, row, state, attachmentSource) }
                 when (job.format) {
-                    FORMAT_CSV -> parser.parseCsv(input, onRow)
+                    FORMAT_CSV -> parseCsv(job, input, onRow)
                     FORMAT_JSON -> parser.parseJson(input, onRow)
                     else -> error("unsupported import format: ${job.format}") // DB CHECK 제약으로 도달불가 — 방어적 guard
                 }
             }
         }
         finalizeCompleted(job, state)
+    }
+
+    /**
+     * CSV 포맷 전용 분기 — [mappingRepo] 로 [job] 의 확정 매핑을 로드해 [ImportRowParser.parseCsv]
+     * 2-인자(canonical)/3-인자(mapped) 오버로드 중 하나로 위임한다(클래스 KDoc §매핑 기반 CSV 파싱 로드).
+     *
+     * @param job 처리 중인 Import 작업 — [ImportMappingRepository.findByJobId] 조회 키(`job.id`)로 사용.
+     * @param input CSV 원본 스트림.
+     * @param onRow 파싱된 행 1건을 전달받는 콜백.
+     */
+    private fun parseCsv(
+        job: ImportJob,
+        input: InputStream,
+        onRow: (ParsedImportRow) -> Unit,
+    ) {
+        val fieldMapping = mappingRepo.findByJobId(job.id)
+        if (fieldMapping.isNotEmpty()) {
+            parser.parseCsv(input, fieldMapping, onRow)
+        } else {
+            parser.parseCsv(input, onRow)
+        }
     }
 
     /**

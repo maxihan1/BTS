@@ -7,6 +7,7 @@ import com.bts.search.imports.job.domain.ImportJobId
 import com.bts.search.imports.job.domain.ImportJobStatus
 import com.bts.search.imports.job.repository.ImportJobRepository
 import com.bts.search.imports.job.storage.ImportObjectStoragePort
+import com.bts.search.imports.mapping.repository.ImportMappingRepository
 import com.bts.search.imports.parse.ImportParseException
 import com.bts.search.imports.parse.ImportRowParser
 import com.bts.search.imports.parse.ParsedImportAttachment
@@ -60,11 +61,15 @@ import java.util.UUID
  * - (l) toCommand 매핑: sourceKey 관통 + attachments/changelog 가 각각 [com.bts.shared.issue.ImportAttachment]/
  *   [com.bts.shared.issue.ImportChangeGroup] 로 변환되는지 — 시각 문자열→[Instant], 이메일 소문자화,
  *   changelog item 은 BTS 필드로 매핑하지 않고 raw field 를 그대로 운반하는지 (FR-IM-01 PR4 Task 5).
+ * - (m) 매핑 기반 CSV 파싱 로드: job 의 저장된 매핑([ImportMappingRepository.findByJobId])이 있으면
+ *   [ImportRowParser.parseCsv] 3-인자(mapped) 오버로드로, 없으면(빈 Map) 기존 2-인자(canonical)
+ *   오버로드로 위임하는지 — mockk verify 로 두 오버로드 호출을 구분해 단언 (FR-IM-02 PR-A Task 9).
  */
 class ImportJobProcessorTest {
     private val issueImportPort: IssueImportPort = mockk()
     private val storage: ImportObjectStoragePort = mockk()
     private val repository: ImportJobRepository = mockk()
+    private val mappingRepo: ImportMappingRepository = mockk()
     private val errorLogWriter: ImportErrorLogWriter = ImportErrorLogWriter()
     private val parser: ImportRowParser = mockk()
     private val fixedClock: Clock = Clock.fixed(Instant.parse("2024-03-15T10:30:45Z"), ZoneOffset.UTC)
@@ -76,12 +81,16 @@ class ImportJobProcessorTest {
 
     @BeforeEach
     fun setUp() {
-        processor = ImportJobProcessor(issueImportPort, storage, repository, errorLogWriter, parser, fixedClock)
+        processor =
+            ImportJobProcessor(issueImportPort, storage, repository, mappingRepo, errorLogWriter, parser, fixedClock)
         every { storage.get(any()) } returns ByteArrayInputStream(ByteArray(0))
         justRun { storage.put(any(), any(), any(), any()) }
         every { repository.markCompleted(any(), any(), any(), any(), any()) } returns true
         every { repository.markFailed(any(), any()) } returns true
         justRun { repository.updateCounts(any(), any(), any(), any(), any()) }
+        // canonical 회귀 불변 — 매핑을 명시적으로 스텁하지 않는 기존 테스트는 빈 Map(매핑 없음)이
+        // 기본값이라 CSV 분기가 기존 2-인자 canonical parseCsv 오버로드를 계속 사용한다.
+        every { mappingRepo.findByJobId(any()) } returns emptyMap()
     }
 
     /** 기본 테스트용 ImportJob. */
@@ -488,5 +497,39 @@ class ImportJobProcessorTest {
         assertThat(cmdSlot.captured.attachments).isEmpty()
         assertThat(cmdSlot.captured.changelog).isEmpty()
         assertThat(cmdSlot.captured.sourceKey).isNull()
+    }
+
+    // ── (m) 매핑 기반 CSV 파싱 로드 (FR-IM-02 PR-A Task 9) ──────────────────────────
+
+    @Test
+    fun `job with saved field mapping loads mapping and calls mapped 3-arg parseCsv overload`() {
+        val fieldMapping = mapOf("제목" to "summary")
+        every { mappingRepo.findByJobId(jobId) } returns fieldMapping
+        val callbackSlot = slot<(ParsedImportRow) -> Unit>()
+        val mappingSlot = slot<Map<String, String>>()
+        every { parser.parseCsv(any(), capture(mappingSlot), capture(callbackSlot)) } answers {
+            callbackSlot.captured(makeRow(1))
+        }
+        every { issueImportPort.importIssue(any()) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        verify(exactly = 1) { mappingRepo.findByJobId(jobId) }
+        verify(exactly = 1) { parser.parseCsv(any(), any(), any()) }
+        verify(exactly = 0) { parser.parseCsv(any(), any()) }
+        assertThat(mappingSlot.captured).isEqualTo(fieldMapping)
+    }
+
+    @Test
+    fun `job with no saved field mapping loads empty map and calls canonical 2-arg parseCsv overload`() {
+        every { mappingRepo.findByJobId(jobId) } returns emptyMap()
+        stubParserWithRows(listOf(makeRow(1)))
+        every { issueImportPort.importIssue(any()) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        verify(exactly = 1) { mappingRepo.findByJobId(jobId) }
+        verify(exactly = 1) { parser.parseCsv(any(), any()) }
+        verify(exactly = 0) { parser.parseCsv(any(), any(), any()) }
     }
 }
