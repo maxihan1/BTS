@@ -132,13 +132,17 @@
 
 > **PR3 댓글/Worklog Import 완료 (2026-07-03, PR #224)**. **PR3 범위**. Jira 소스 이슈의 댓글·Worklog를 생성 이슈에 함께 import. **댓글 도메인 신설**(BTS에 댓글 기능 부재 → 이 PR에서 도입, DATA.md §3에 이미 예정된 `comments` 소프트삭제 테이블) — `V035__comments.sql`(issue_id FK ON DELETE CASCADE·author_id FK 미적용 BC격리·deleted_at·`(issue_id, created_at) WHERE deleted_at IS NULL` 인덱스, init_codegen 미러) + `Comment`/`CommentRepository`(jOOQ) + `CommentApplicationService`(create=`IssuePermission.UPDATE` 게이트·**원본 authorId·createdAt 보존**, list=**VIEW+`IssueScope.Issue`** 기밀이슈 누출차단) + `GET /api/v1/issues/{key}/comments`(`CommentView` created_at ASC·`MarkdownRenderer.renderSafe` bodyHtml) + **전용 `CommentExceptionHandler`**(worklog 핸들러 전체 미러 — `ResponseStatusException` 401 전파로 catch-all 500 변질 차단). 작성/수정/삭제 REST·UI·멘션은 별도 FR. **Worklog** — `WorklogService.createImported`(author 주입·**이력 생략**[Import는 이벤트 재생 아님]·no-bump·remaining auto). **파서/커맨드 확장** — `IssueImportCommand`(shared-kernel)에 `comments`/`worklogs` + `ImportComment`/`ImportWorklog` VO. JSON 정본(`fields.comment.comments[]`/`fields.worklog.worklogs[]` 중첩 스트리밍), **CSV 댓글은 동명 `Comment` 컬럼 다중 수집**(기존 `putIfAbsent` 첫 컬럼만 보존→2..N 유실 회귀 수정, `date;author;body` split limit=3), **worklog는 JSON 전용**(Maxi 확정). **어댑터 위임** — `IssueImportAdapter`가 createIssue 후 댓글→worklog 생성, 이메일→author `resolveByEmails` 단일 배치 합류+requester 폴백, **tx 오염 사전체크**(잔여 throw {UPDATE 권한·timeSpent≤0(23514)} 호출 전 강등, PR2 원칙) + **행당 유형별 집약 경고**(Maxi 확정) + dry-run **별도 경고 경로**(`warnCommentsWorklogsIfNeeded`, FORBIDDEN early-return 이후·`rowTriggersUpdate` 미엮음, PR2 CONCERN-A 재발 방지). **신규 마이그레이션 V035**(issue-tracking, 머지 직전 재확인). 8 task TDD·전 통합테스트 Testcontainers 실 tx(S3 권한없음→이슈 커밋·S6 dry-run→FORBIDDEN 아님·S7 예상외 throw→행 롤백). eng-review C1(예외핸들러 401)/C2(CSV 다중컬럼)/C3(dry-run 배관) 반영. **D6/D7 프론트·PR4는 후속. D박스는 FR 전체 완료 시 마킹.**
 
-- [ ] D1. 도메인 — ImportJob (책임. backend-engineer)
-- [ ] D2. 명세 — CSV/JSON 파싱 + 트랜잭션 정책 + dry-run (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `import_jobs(status, error_log_minio_key)` (책임. db-engineer)
-- [ ] D4. 백엔드 — `POST /api/v1/imports` + 백그라운드 worker (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — Jira CSV 샘플 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 파일 업로드 + 진행률 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+> **PR4 첨부/이력 Import 완료 (2026-07-03, PR #226)**. **PR4 범위**. Jira 첨부파일 zip과 변경 이력(changelog)을 생성 이슈에 함께 import — 백엔드 4/4 완결. **첨부** = zip 두-part 멀티파트 업로드(`attachmentsZip` optional part, 서버가 외부 파일을 직접 fetch하지 않아 SSRF 경로 0). shared-kernel `ImportAttachmentSource`(fun interface, search가 zip 보유·issue-tracking이 스트림 소비, BC 격리) → 어댑터가 FR-AC-01 `IssueAttachmentService.upload`(ClamAV/MIME 게이트 재사용, 우회 불가)로 위임, 행별 best-effort. `ZipImportAttachmentSource`가 zip-slip·엔트리 100MB 초과를 거부(외부가 보고한 size가 아닌 실측 바이트로 검증 — 침묵 절단 방지). V605 `import_jobs.attachments_object_key`. **이력** = Jira `changelog.histories[]`를 detector 우회하고 충실 재생(Maxi 확정) — `recordImported`가 `issue_change_group/item`에 원본 `occurredAt`을 그대로 주입(스키마 변경 0), `CHANGELOG_FIELD_MAP` 13필드 매핑(미매핑 필드는 스킵), author 미해석 시 actorId는 null 처리(requester 폴백 안 함), 이력 항목 상한 1000. 코드리뷰 CONCERN 3건(무부팅 모듈 프로파일 yml 실효 없음·외부 보고 size 신뢰 금지→실측·best-effort catch의 권한예외 스킵-경고 강등 금지) 수정 후 PASS. **D6/D7 프론트는 후속. D박스는 FR 전체 완료 시 마킹.**
+
+> **D6/D7 프론트 + FR-IM-01 전체 완료 (2026-07-03)**. FR-EX-02(비동기 Export) 프론트의 역방향 미러 — `api/imports.ts`(Zod `importJobStatusSchema` + `submitImportJob`/`fetchImportJobStatus`/`downloadImportErrorLog` + 에러코드 7종 한국어 매핑) + `use-import-job-polling.ts`(react-query v5 `refetchInterval:(query)=>`, 종단 COMPLETED/FAILED에서 중단) + `ImportForm.tsx`(3-phase 상태머신 form→tracking→done, dry-run 2-step — [검증만 실행]=primary·[Import 시작]=secondary 버튼 위계로 마이그레이션 안전 유도, done에서 실패 수 destructive 강조 + 에러 로그 CSV 다운로드 + "이 파일로 실제 Import" 재제출) + `/projects/$projectKey/settings/import` 전용 설정 페이지(router.ts 등록) + MSW stateful 핸들러(jobId-keyed 진행 시뮬레이션) + E2E(S1 진입/S2 dry-run→실제 Import 완료/S3 FAILED→재시도). 백엔드 변경 0(view-layer 소비). **FR-IM-01 전체 완료 — PR1(#218)·PR2(#221)·PR3(#224)·PR4(#226) + D6/D7 프론트.**
+
+- [x] D1. 도메인 — ImportJob (책임. backend-engineer)
+- [x] D2. 명세 — CSV/JSON 파싱 + 트랜잭션 정책 + dry-run (책임. backend-engineer)
+- [x] D3. 데이터 모델 — `import_jobs(status, error_log_minio_key)` (책임. db-engineer)
+- [x] D4. 백엔드 — `POST /api/v1/imports` + 백그라운드 worker (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 — Jira CSV 샘플 (책임. backend-engineer)
+- [x] D6. 프론트 UI — 파일 업로드 + 진행률 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ### §4.2 FR-IM-02 — Import 매핑 UI (필드/사용자 매핑)
 
