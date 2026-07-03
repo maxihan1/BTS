@@ -528,6 +528,10 @@ class IssueImportAdapter(
      * 시 [cmd.requesterUserId] 폴백) create 를 호출하고, 미매칭 건수를 집약해 경고 1건으로 남긴다
      * ([warnCommentsPreview] 와 동일 카테고리 — dry-run/실행 경고 정합).
      *
+     * [ImportComment.createdAt] 을 create 의 createdAt 인자로 그대로 전달해 원본(Jira 등) 작성 시각을
+     * 보존한다(null 이면 [CommentApplicationService.create] 가 import 실행 시각으로 폴백) — worklog
+     * `createImported` 의 startedAt 보존과 대칭.
+     *
      * body 빈 문자열은 comments.body NOT NULL 을 만족하므로 throw 하지 않는다 — 스킵하지 않고 그대로
      * 생성한다(★2 KDoc "잔여 throw 집합" 참조, 스킵은 선택적 품질 개선이라 이 PR 범위 밖).
      *

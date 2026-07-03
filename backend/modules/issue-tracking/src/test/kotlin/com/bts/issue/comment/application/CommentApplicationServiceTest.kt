@@ -245,8 +245,8 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
     fun `T3-G - create 는 createdAt 인자가 없으면 clock 기준 현재 시각을 사용한다 (회귀 없음)`() {
         val issue = insertIssue(7L)
         val fixedInstant = Instant.parse("2024-06-15T10:30:00Z")
-        val fixedClockService =
-            CommentApplicationService(commentRepository, repository, resolver, Clock.fixed(fixedInstant, ZoneOffset.UTC))
+        val fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC)
+        val fixedClockService = CommentApplicationService(commentRepository, repository, resolver, fixedClock)
 
         val comment = fixedClockService.create(actor, issue.key, "본문", ActorId(authorUuid))
 
