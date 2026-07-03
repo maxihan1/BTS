@@ -50,8 +50,10 @@ dependencies {
 
     // Servlet API — spring-webmvc가 참조. 실제 구현은 런타임 컨테이너(Tomcat 등)가 제공
     compileOnly("jakarta.servlet:jakarta.servlet-api")
-    // Jakarta Validation API — @Valid, @NotBlank 등
-    implementation("jakarta.validation:jakarta.validation-api")
+    // Jakarta Validation API(@Valid, @NotBlank 등) + Hibernate Validator 구현체(런타임 provider).
+    // API만 있고 구현체가 없으면 OptionalValidatorFactoryBean 이 provider 미발견을 조용히 무시해
+    // @Valid 가 슬라이스 테스트에서 no-op 된다(identity-access/issue-tracking 모듈 동일 패턴, FR-UX-01 Task 6 적발).
+    implementation("org.springframework.boot:spring-boot-starter-validation")
 
     // @PreAuthorize + method security
     implementation("org.springframework.security:spring-security-core")

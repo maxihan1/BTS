@@ -2,6 +2,7 @@
 
 package com.bts.agileplanning.web
 
+import com.bts.agileplanning.application.QuickFilterNameConflictException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -34,8 +35,11 @@ class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니�
 /**
  * agile-planning BC 의 도메인/권한 예외를 RFC 7807 ProblemDetail 형식으로 변환하는 핸들러.
  *
- * [assignableTypes] 를 [BoardController] 로 한정하여 SprintController 등 다른 컨트롤러의 예외를 잡지 않는다
- * (memory: domain-exception-http-handler-basepackage-scope 교훈).
+ * [assignableTypes] 를 [BoardController]·[BoardQuickFilterController] 로 한정하여 SprintController 등
+ * 다른 컨트롤러의 예외를 잡지 않는다(memory: domain-exception-http-handler-basepackage-scope 교훈).
+ * [BoardQuickFilterController](FR-UX-01) 가 재사용하는 [BoardNotFoundException]/[BoardAccessDeniedException]/
+ * [ResponseStatusException] 401/403/404 가 catch-all 로 500 변질되지 않으려면 이 목록에 포함되어야 한다
+ * (리뷰 BLOCKER-B/C — 별도 전역 advice 신설 대신 기존 핸들러의 assignableTypes 를 확장한다).
  *
  * catch-all [Exception] 핸들러를 두되, [ResponseStatusException] 은 별도 핸들러로 상태를 전파하여
  * catch-all 이 401/404/409/422 등을 500 으로 변질시키지 못하게 한다
@@ -51,6 +55,7 @@ class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니�
  * - [MethodArgumentTypeMismatchException] → 400 + AGILE_VALIDATION_FAILED
  * - [BoardAccessDeniedException] → 403 + AGILE_ACCESS_DENIED
  * - [BoardNotFoundException] → 404 + AGILE_BOARD_NOT_FOUND
+ * - [QuickFilterNameConflictException] → 409 + AGILE_QUICK_FILTER_NAME_CONFLICT (OCC 충돌 문구와 구분, 리뷰 C4)
  * - [ResponseStatusException] → 명시 상태 전파(401/404/409/422 등, 일반 메시지)
  * - [Exception] (fallback) → 500 + AGILE_INTERNAL_ERROR
  *
@@ -58,7 +63,7 @@ class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니�
  * RestControllerAdvice 의 책임(예외→HTTP 변환)은 분리 불가한 단일 관심사라 클래스 단위로 억제한다.
  */
 @Suppress("TooManyFunctions")
-@RestControllerAdvice(assignableTypes = [BoardController::class])
+@RestControllerAdvice(assignableTypes = [BoardController::class, BoardQuickFilterController::class])
 class BoardExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -168,6 +173,33 @@ class BoardExceptionHandler {
         )
     }
 
+    // ── 409 QUICK_FILTER_NAME_CONFLICT ────────────────────────────────────────
+
+    /**
+     * [QuickFilterNameConflictException] — 같은 보드 내 퀵필터 이름 중복(EC2) — 409.
+     *
+     * 일반 [ResponseStatusException] 핸들러가 생성하는 낙관적 락(OCC) 충돌 문구
+     * ("다른 변경과 충돌이 발생했습니다")와 뉘앙스가 겹치지 않도록 전용 메시지를 반환한다(리뷰 C4).
+     * [QuickFilterNameConflictException] 도 [ResponseStatusException] 의 서브타입이지만, Spring 의
+     * [org.springframework.web.method.annotation.ExceptionHandlerMethodResolver] 는 예외 계층에서
+     * 가장 가까운(구체적인) 핸들러를 우선 선택하므로 이 핸들러가 일반 핸들러보다 먼저 매치된다.
+     *
+     * @param ex 이름 중복 예외(내부 식별자 미포함).
+     */
+    @ExceptionHandler(QuickFilterNameConflictException::class)
+    fun handleQuickFilterNameConflict(
+        @Suppress("UnusedParameter") ex: QuickFilterNameConflictException,
+    ): ProblemDetail {
+        log.info("AGILE_409 quick_filter_name_conflict")
+        return problem(
+            status = HttpStatus.CONFLICT,
+            type = "agile-quick-filter-name-conflict",
+            title = "Quick Filter Name Conflict",
+            errorCode = AGILE_QUICK_FILTER_NAME_CONFLICT,
+            detail = "같은 이름의 퀵필터가 이미 있습니다.",
+        )
+    }
+
     // ── ResponseStatusException 상태 전파 (catch-all 변질 차단) ────────────────
 
     /**
@@ -269,6 +301,7 @@ class BoardExceptionHandler {
         const val AGILE_ACCESS_DENIED = "AGILE_ACCESS_DENIED"
         const val AGILE_BOARD_NOT_FOUND = "AGILE_BOARD_NOT_FOUND"
         const val AGILE_CONFLICT = "AGILE_CONFLICT"
+        const val AGILE_QUICK_FILTER_NAME_CONFLICT = "AGILE_QUICK_FILTER_NAME_CONFLICT"
         const val AGILE_UNPROCESSABLE = "AGILE_UNPROCESSABLE"
         const val AGILE_INTERNAL_ERROR = "AGILE_INTERNAL_ERROR"
     }
