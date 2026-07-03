@@ -99,8 +99,9 @@ class ImportMappingServiceTest {
             completedAt = null,
         )
 
-    private fun csvStream(content: String = "Title,Desc\nHello,World\n"): ByteArrayInputStream =
-        ByteArrayInputStream(content.toByteArray())
+    private fun csvStream(content: String = "Title,Desc\nHello,World\n"): ByteArrayInputStream {
+        return ByteArrayInputStream(content.toByteArray())
+    }
 
     // ── validate ────────────────────────────────────────────────────────────
 

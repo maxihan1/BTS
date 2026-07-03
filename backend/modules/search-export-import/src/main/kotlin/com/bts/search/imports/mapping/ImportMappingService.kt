@@ -95,6 +95,9 @@ class ImportMappingService(
     /**
      * 제안된 필드 매핑을 저장 없이 검증한다.
      *
+     * `@Transactional` **의도적 생략** — 클래스 KDoc §@Transactional 의도적 생략 참조(MinIO 헤더
+     * 재읽기 I/O 동안 DB 커넥션을 점유하지 않기 위함).
+     *
      * @param jobId 검증 대상 Import 작업 식별자.
      * @param actor 요청자 UUID. 소유확인에 사용.
      * @param fieldMappings 소스 필드 이름 → [TargetField.key](또는 [TargetField.IGNORE_KEY]) 매핑.
@@ -115,7 +118,9 @@ class ImportMappingService(
      * 필드 매핑을 검증한 뒤 저장하고, 작업을 PENDING 으로 전이해 실행 큐에 enqueue 한다.
      *
      * 클래스 KDoc §확정 트랜잭션 경계 참조 — CAS([ImportJobRepository.transitionToPending])가
-     * saveAll/enqueue 보다 먼저 실행되어 반복/동시 confirm 의 중복 실행을 차단한다.
+     * saveAll/enqueue 보다 먼저 실행되어 반복/동시 confirm 의 중복 실행을 차단한다. `@Transactional`
+     * 은 메서드 전체가 아니라 [transactionTemplate] 으로 CAS+saveAll+enqueue 구간만 좁게 감싼다(클래스
+     * KDoc §@Transactional 의도적 생략 참조).
      *
      * @param jobId 확정 대상 Import 작업 식별자.
      * @param actor 요청자 UUID. 소유확인에 사용.
