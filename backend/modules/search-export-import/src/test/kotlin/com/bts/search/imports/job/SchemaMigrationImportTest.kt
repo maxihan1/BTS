@@ -13,7 +13,7 @@ import java.sql.DriverManager
 import java.util.UUID
 
 /**
- * Flyway V600~V604 마이그레이션 적용 후 import_jobs 테이블(FR-IM-01 CSV/JSON Import) + q_import_jobs 큐를 검증한다.
+ * Flyway V600~V605 마이그레이션 적용 후 import_jobs 테이블(FR-IM-01 CSV/JSON Import) + q_import_jobs 큐를 검증한다.
  *
  * **선례 V602 export_jobs 1:1 미러** — ExportJobsSchemaMigrationTest 구조를 그대로 복제하되 import 컬럼으로 조정한다.
  *

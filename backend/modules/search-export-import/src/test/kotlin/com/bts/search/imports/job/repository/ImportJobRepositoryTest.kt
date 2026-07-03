@@ -19,7 +19,7 @@ import java.util.UUID
  * ImportJobRepository 통합 테스트.
  *
  * Testcontainers (테스트용 DB 를 도커로 자동 실행하는 라이브러리) PG16-pgmq 위에서
- * Flyway V600~V604 마이그레이션 체인 적용 후 Repository 동작을 검증한다.
+ * Flyway V600~V605 마이그레이션 체인 적용 후 Repository 동작을 검증한다.
  *
  * 테스트 DSLContext 는 Spring 없이 수동 구성되므로 [SearchPersistenceTestBase] 의 [dsl] 을 재사용한다.
  * `export` BC [com.bts.search.export.job.repository.ExportJobRepositoryTest] 를 1:1 미러하되
@@ -27,7 +27,7 @@ import java.util.UUID
  *
  * ## 검증 범위
  *
- * - insert → findById 라운드트립 (모든 필드 일치)
+ * - insert → findById 라운드트립 (모든 필드 일치, attachmentsObjectKey 값/null 포함 — V605)
  * - claimForRun: PENDING→RUNNING CAS, 동시 2호출 시 1성공, stale RUNNING 재청
  * - updateCounts: progress/totalRows/succeededRows/failedRows 갱신
  * - markCompleted: RUNNING→COMPLETED CAS (succeededRows/failedRows/errorLogObjectKey/expiresAt/completedAt 설정)
