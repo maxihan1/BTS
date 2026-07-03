@@ -175,11 +175,13 @@
 
 **우선순위**. 필수 | **선행**. §4.1 | **Plan slug**. `report/cfd`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — 상태별 누적 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `issue_history` 활용 + 인덱스 (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /api/v1/projects/{id}/cfd?from=&to=` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+> **구현 범위 (#225 백엔드 D1~D5, Maxi 확정 2026-07-03)**. **누적 띠 = 카테고리 3띠**(TODO/IN_PROGRESS/DONE, 워크플로우 상태별 N띠 아님 — 프로젝트 무관 균일·비교 가능, WorkflowStateCatalog category 매핑·삭제된 상태 TODO 폴백[EpicProgress 선례]). **시계열 = on-the-fly 역산**(`issue_change_group`/`issue_change_item` V018 status 전이 이력에서 각 이슈 상태 타임라인 재구성 — 스냅샷 테이블·@Scheduled 0, 번다운 D3 선례). 초기상태 = 첫 status 전이 from_value(없으면 current_state_key), day D = end-of-day 스냅샷(`created_at::date ≤ D` 마지막 전이). **모듈 = issue-tracking**(데이터 로컬 소유, cross-BC 신규 포트 0 — 스프린트 미참조. 논리 BC 라벨 notification-dashboard 유지, 총수 14 불변). **보안 = 프로젝트 BROWSE + 이슈별 가시성 필터**(`filterVisibleIssueKeys`→`buildActiveSecureWhere` 재사용, 기밀 누출 0). 창 = from/to UTC 날짜(기본 최근 30일·상한 180일, Clock 주입), 잘못된 창 400. 신규 스키마·인덱스 0. **v1 한계(수용)**: 삭제 이슈 제외(과거 소폭 언더카운트)·V018 이전 이슈는 current_state_key로만·이동 이슈는 현재 소속 기준(on-the-fly 철학 정합). 프론트 D6/D7(recharts 영역 차트·E2E)은 후속 PR. ADR `2026-07-03-fr-rp-03-cfd`.
+
+- [x] D1. 도메인 (책임. backend-engineer) (완료. PR #225 — CfdPoint/CfdResult/CfdCategory 순수 read-model VO + CfdCalculator 델타-누적 계산기)
+- [x] D2. 명세 — 상태별 누적 (책임. backend-engineer) (완료. PR #225 — 카테고리 3띠 on-the-fly 역산, 상태 타임라인 end-of-day 스냅샷)
+- [x] D3. 데이터 모델 — `issue_history` 활용 + 인덱스 (책임. db-engineer) (완료. PR #225 — 신규 스키마·인덱스 0, issue_change_group/item·issues·WorkflowStateCatalog 재사용, 기존 인덱스 커버)
+- [x] D4. 백엔드 — `GET /api/v1/projects/{id}/cfd?from=&to=` (책임. backend-engineer) (완료. PR #225 — CfdController+CfdService, 401/403/400, BROWSE 가드·이슈별 가시성 필터·IsolatedWorkflowStateLookup 재사용)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) (완료. PR #225 — 계산기 단위 9·repo Testcontainers·서비스 mockk·컨트롤러·통합 S1~S9 11, 비-vacuous 기밀/삭제 대조)
 - [ ] D6. 프론트 UI — recharts 영역 차트 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
