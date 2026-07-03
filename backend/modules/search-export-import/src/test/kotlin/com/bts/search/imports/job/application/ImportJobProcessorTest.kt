@@ -9,6 +9,9 @@ import com.bts.search.imports.job.repository.ImportJobRepository
 import com.bts.search.imports.job.storage.ImportObjectStoragePort
 import com.bts.search.imports.parse.ImportParseException
 import com.bts.search.imports.parse.ImportRowParser
+import com.bts.search.imports.parse.ParsedImportAttachment
+import com.bts.search.imports.parse.ParsedImportChangeGroup
+import com.bts.search.imports.parse.ParsedImportChangeItem
 import com.bts.search.imports.parse.ParsedImportComment
 import com.bts.search.imports.parse.ParsedImportRow
 import com.bts.search.imports.parse.ParsedImportWorklog
@@ -54,6 +57,9 @@ import java.util.UUID
  * - (j) 경고 노출: [IssueImportResult.Success.warnings] 가 있으면 severity=WARNING 행으로 결과 로그에 기록되고,
  *   실패행이 0 이어도 로그가 업로드되며(errorLogObjectKey non-null), 해당 행은 여전히 succeeded 로 집계되는지
  *   (PR1 은 warnings 를 폐기했다 — G1 회귀 방지, PR2 Task 5).
+ * - (l) toCommand 매핑: sourceKey 관통 + attachments/changelog 가 각각 [com.bts.shared.issue.ImportAttachment]/
+ *   [com.bts.shared.issue.ImportChangeGroup] 로 변환되는지 — 시각 문자열→[Instant], 이메일 소문자화,
+ *   changelog item 은 BTS 필드로 매핑하지 않고 raw field 를 그대로 운반하는지 (FR-IM-01 PR4 Task 5).
  */
 class ImportJobProcessorTest {
     private val issueImportPort: IssueImportPort = mockk()
@@ -387,5 +393,100 @@ class ImportJobProcessorTest {
 
         assertThat(cmdSlot.captured.comments).isEmpty()
         assertThat(cmdSlot.captured.worklogs).isEmpty()
+    }
+
+    // ── (l) toCommand 매핑 — sourceKey/attachments/changelog (FR-IM-01 PR4 Task 5) ─
+
+    @Test
+    fun `toCommand passes through sourceKey from parsed row`() {
+        val row = makeRow(1).copy(sourceKey = "JIRA-123")
+        stubParserWithRows(listOf(row))
+        val cmdSlot = slot<IssueImportCommand>()
+        every { issueImportPort.importIssue(capture(cmdSlot)) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        assertThat(cmdSlot.captured.sourceKey).isEqualTo("JIRA-123")
+    }
+
+    @Test
+    fun `toCommand maps parsed attachments to ImportAttachment with ISO string parsed to Instant email lowercased and size preserved`() {
+        val row =
+            makeRow(1).copy(
+                attachments =
+                    listOf(
+                        ParsedImportAttachment(
+                            filename = "screenshot.png",
+                            authorEmail = "Bob@Corp.com",
+                            created = "2024-01-15T10:00:00.000+0000",
+                            mimeType = "image/png",
+                            sizeBytes = 2048L,
+                        ),
+                    ),
+            )
+        stubParserWithRows(listOf(row))
+        val cmdSlot = slot<IssueImportCommand>()
+        every { issueImportPort.importIssue(capture(cmdSlot)) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        val attachment = cmdSlot.captured.attachments.single()
+        assertThat(attachment.filename).isEqualTo("screenshot.png")
+        assertThat(attachment.authorEmail).isEqualTo("bob@corp.com")
+        assertThat(attachment.createdAt).isEqualTo(Instant.parse("2024-01-15T10:00:00.000Z"))
+        assertThat(attachment.mimeType).isEqualTo("image/png")
+        assertThat(attachment.sizeBytes).isEqualTo(2048L)
+    }
+
+    @Test
+    fun `toCommand maps parsed changelog groups to ImportChangeGroup with occurredAt author lowercased and items raw field preserved`() {
+        val row =
+            makeRow(1).copy(
+                changelog =
+                    listOf(
+                        ParsedImportChangeGroup(
+                            authorEmail = "Alice@Corp.com",
+                            created = "2024-01-16T08:30:00.000+0000",
+                            items =
+                                listOf(
+                                    ParsedImportChangeItem(
+                                        field = "status",
+                                        fromValue = "To Do",
+                                        toValue = "In Progress",
+                                    ),
+                                    ParsedImportChangeItem(field = "assignee", fromValue = null, toValue = "bob"),
+                                ),
+                        ),
+                    ),
+            )
+        stubParserWithRows(listOf(row))
+        val cmdSlot = slot<IssueImportCommand>()
+        every { issueImportPort.importIssue(capture(cmdSlot)) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        val group = cmdSlot.captured.changelog.single()
+        assertThat(group.authorEmail).isEqualTo("alice@corp.com")
+        assertThat(group.occurredAt).isEqualTo(Instant.parse("2024-01-16T08:30:00.000Z"))
+        assertThat(group.items).hasSize(2)
+        assertThat(group.items[0].field).isEqualTo("status")
+        assertThat(group.items[0].fromValue).isEqualTo("To Do")
+        assertThat(group.items[0].toValue).isEqualTo("In Progress")
+        assertThat(group.items[1].field).isEqualTo("assignee")
+        assertThat(group.items[1].fromValue).isNull()
+        assertThat(group.items[1].toValue).isEqualTo("bob")
+    }
+
+    @Test
+    fun `toCommand maps empty parsed attachments and changelog to empty lists and null sourceKey`() {
+        stubParserWithRows(listOf(makeRow(1)))
+        val cmdSlot = slot<IssueImportCommand>()
+        every { issueImportPort.importIssue(capture(cmdSlot)) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        assertThat(cmdSlot.captured.attachments).isEmpty()
+        assertThat(cmdSlot.captured.changelog).isEmpty()
+        assertThat(cmdSlot.captured.sourceKey).isNull()
     }
 }
