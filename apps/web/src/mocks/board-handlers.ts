@@ -17,6 +17,7 @@ import {
   createBoardInStore,
   generateUUID,
   LS_KEY_BOARD_CONFLICT,
+  seedBoardWithMeta,
 } from './board-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -643,6 +644,81 @@ const deleteQuickFilterHandler = http.delete(
     return new HttpResponse(null, { status: 204 })
   },
 )
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-01 Task 10 E2E 시나리오 전용 시드 — 권한 게이팅(FR5) 검증용 보드
+//
+// board-fixtures.ts는 이 작업(qa-engineer, Task 10)의 파일 범위(files: [quick-filter.spec.ts,
+// board-handlers.ts])에 포함되지 않아 신규 보드 데이터를 이 파일에 직접 정의한다.
+// FILTER_BOARD를 재사용하지 않는 이유 — FILTER_BOARD에 퀵필터를 영구 시드하면
+// board-filter.spec.ts(FR-BD-02, S1~S9)와 quick-filter.spec.ts 자체 happy-path 테스트
+// (빈 칩 목록에서 출발해야 함)에 교차 오염된다. 전용 보드로 데이터 격리한다.
+//
+// CREATE:false(E2E_FORCE_CREATE_FALSE_KEY) 사용자는 "필터 저장" 버튼이 canManage
+// 게이팅으로 숨겨져 UI로 퀵필터를 생성할 수 없다. 따라서 퀵필터 1건을 모듈 로드 시
+// 미리 시드해 "칩은 보이지만 저장/편집/삭제 버튼은 없음"을 검증할 수 있게 한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** quick-filter.spec.ts S7 권한 게이팅 시나리오 전용 보드 UUID */
+const QUICK_FILTER_PERM_BOARD_ID = '10000000-0000-4000-8000-000000000006'
+/** quick-filter.spec.ts S7 권한 게이팅 시나리오 전용 프로젝트 키 */
+const QUICK_FILTER_PERM_PROJECT_KEY = 'QFPERM'
+
+/**
+ * S7 시나리오 전용 보드 — 퀵필터 1건("버그만", query=`label=bug`) 사전 시드.
+ * QFPERM-1(bug 라벨)만 통과, QFPERM-2(feature 라벨)는 제외되어 칩 클릭 시
+ * 2개→1개로 감소하는 실제 필터링을 검증할 수 있다.
+ */
+const QUICK_FILTER_PERM_SEED: StoredBoardDetail = {
+  boardId: QUICK_FILTER_PERM_BOARD_ID,
+  projectKey: QUICK_FILTER_PERM_PROJECT_KEY,
+  name: '퀵필터 권한 게이팅 테스트 보드',
+  swimlaneField: 'NONE',
+  columns: [
+    {
+      columnId: '80000000-0000-4000-8000-000000000001',
+      stateKey: 'open',
+      name: 'TODO',
+      category: 'TODO',
+      displayOrder: 1,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [
+        {
+          issueKey: 'QFPERM-1',
+          summary: '퀵필터 권한 테스트 이슈 1 — bug 라벨',
+          assigneeId: null,
+          version: 0,
+          priority: 1,
+          epicKey: null,
+          labels: ['bug'],
+          componentIds: [],
+        },
+        {
+          issueKey: 'QFPERM-2',
+          summary: '퀵필터 권한 테스트 이슈 2 — feature 라벨',
+          assigneeId: null,
+          version: 0,
+          priority: 2,
+          epicKey: null,
+          labels: ['feature'],
+          componentIds: [],
+        },
+      ],
+    },
+  ],
+  truncated: false,
+  unplacedCount: 0,
+  quickFilters: [
+    { filterId: '90000000-0000-4000-8000-000000000001', name: '버그만', query: 'label=bug' },
+  ],
+}
+
+// 모듈 로드 시 자동 시드 — board-fixtures.ts DEFAULT_BOARD 등과 동일한 가드 패턴.
+// Vitest 단위 테스트(MODE='test')에서는 건너뜀 — board-handlers.test.ts가 resetBoardStore로 직접 제어.
+if (import.meta.env.MODE !== 'test') {
+  seedBoardWithMeta(QUICK_FILTER_PERM_SEED)
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // export
