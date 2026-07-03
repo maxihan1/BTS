@@ -22,6 +22,7 @@ import { SwimlaneSelector } from '@/components/board/SwimlaneSelector'
 import { boardFilterLabels } from '@/i18n/board-filter-labels'
 import { boardLabels } from '@/i18n/board-labels'
 import { searchToFilter, filterToSearch, isEmptyFilter, queryStringToSearch } from '@/lib/board-filter'
+import type { BoardFilterSearch } from '@/lib/board-filter'
 import {
   Select,
   SelectContent,
@@ -175,6 +176,21 @@ function buildAssigneeNames(
     }
   }
   return map
+}
+
+/**
+ * navigate({ search }) 호출용 검색 파라미터 객체를 조립한다.
+ * boardId가 있을 때만 `board` 키를 포함하고, filterSearch(assignee/label/component)를 덧붙인다.
+ * handleFilterChange/handleFilterReset/handleQuickFilterApply가 공유하는 조립 규칙 (FR-UX-01 리팩터).
+ */
+function buildBoardSearch(
+  boardId: string | undefined,
+  filterSearch: BoardFilterSearch = {},
+): Record<string, unknown> {
+  return {
+    ...(boardId !== undefined ? { board: boardId } : {}),
+    ...filterSearch,
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -350,14 +366,10 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   // C3-b: 수동 필터 변경은 활성 퀵필터 표시를 해제한다 (더 이상 그 퀵필터의 조건과 일치한다는 보장이 없음).
   function handleFilterChange(next: BoardCardFilterParams): void {
     setActiveQuickFilterId(null)
-    const filterSearch = filterToSearch(next)
     void navigate({
       to: '/projects/$projectKey/board',
       params: { projectKey },
-      search: {
-        ...(currentBoardId !== undefined ? { board: currentBoardId } : {}),
-        ...filterSearch,
-      },
+      search: buildBoardSearch(currentBoardId, filterToSearch(next)),
     })
   }
 
@@ -367,9 +379,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
     void navigate({
       to: '/projects/$projectKey/board',
       params: { projectKey },
-      search: {
-        ...(currentBoardId !== undefined ? { board: currentBoardId } : {}),
-      },
+      search: buildBoardSearch(currentBoardId),
     })
   }
 
@@ -384,14 +394,10 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
       return
     }
     setActiveQuickFilterId(filter.filterId)
-    const filterSearch = queryStringToSearch(filter.query)
     void navigate({
       to: '/projects/$projectKey/board',
       params: { projectKey },
-      search: {
-        ...(currentBoardId !== undefined ? { board: currentBoardId } : {}),
-        ...filterSearch,
-      },
+      search: buildBoardSearch(currentBoardId, queryStringToSearch(filter.query)),
     })
   }
 
