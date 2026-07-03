@@ -76,6 +76,11 @@ describe('cycleTimeLabels — metricEmpty 그룹', () => {
     expect(cycleTimeLabels.metricEmpty.cycle).toBeTruthy()
     expect(cycleTimeLabels.metricEmpty.cycle).toContain('진행 중')
   })
+
+  it('metricEmpty.lead 키가 존재하며 전역 status.empty와 다른 문구다 (review-fix 1)', () => {
+    expect(cycleTimeLabels.metricEmpty.lead).toBeTruthy()
+    expect(cycleTimeLabels.metricEmpty.lead).not.toBe(cycleTimeLabels.status.empty)
+  })
 })
 
 describe('cycleTimeLabels — chart 그룹', () => {

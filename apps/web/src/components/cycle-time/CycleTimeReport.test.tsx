@@ -24,8 +24,10 @@ vi.mock('@/api/cycle-time', async () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 vi.mock('./CycleTimeMetricSection', () => ({
-  CycleTimeMetricSection: ({ title }: { title: string }) => (
-    <div data-testid="cycle-time-metric-section">{title}</div>
+  CycleTimeMetricSection: ({ title, emptyMessage }: { title: string; emptyMessage: string }) => (
+    <div data-testid="cycle-time-metric-section" data-empty-message={emptyMessage}>
+      {title}
+    </div>
   ),
 }))
 
@@ -142,6 +144,20 @@ describe('CycleTimeReport — 성공 상태', () => {
     expect(sections).toHaveLength(2)
     expect(sections[0]).toHaveTextContent(cycleTimeLabels.metric.cycleTitle)
     expect(sections[1]).toHaveTextContent(cycleTimeLabels.metric.leadTitle)
+  })
+
+  it('Lead 섹션에는 metricEmpty.lead가, Cycle 섹션에는 metricEmpty.cycle이 emptyMessage로 전달된다 (review-fix 1)', async () => {
+    mockFetchProjectCycleTime.mockResolvedValue(mockData)
+
+    renderReport()
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('cycle-time-metric-section')).toHaveLength(2)
+    })
+
+    const sections = screen.getAllByTestId('cycle-time-metric-section')
+    expect(sections[0]?.getAttribute('data-empty-message')).toBe(cycleTimeLabels.metricEmpty.cycle)
+    expect(sections[1]?.getAttribute('data-empty-message')).toBe(cycleTimeLabels.metricEmpty.lead)
   })
 })
 
