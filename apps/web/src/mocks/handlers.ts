@@ -20,6 +20,7 @@ import { componentHandlers } from './component-handlers'
 import { customFieldHandlers } from './custom-field-handlers'
 import { fieldPermissionHandlers } from './field-permission-handlers'
 import { groupHandlers } from './group-handlers'
+import { importHandlers } from './import-handlers'
 import { issueHandlers } from './issue-handlers'
 import { issueMoveHandlers } from './issue-move-handlers'
 import { issueWatcherHandlers } from './issue-watcher-handlers'
@@ -81,6 +82,7 @@ export const handlers = [
   ...customFieldHandlers,
   ...fieldPermissionHandlers,
   ...groupHandlers,
+  ...importHandlers,
   ...issueGraphHandlers,
   // issueMoveHandlers를 issueHandlers보다 앞에 두어야 moved 이슈 GET을 먼저 가로챈다
   ...issueMoveHandlers,
