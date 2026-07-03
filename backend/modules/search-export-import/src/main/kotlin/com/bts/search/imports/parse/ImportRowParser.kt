@@ -311,6 +311,9 @@ class ImportRowParser {
             affectsVersionNames = textArrayOf(fields.path(FIELD_VERSIONS), FIELD_NAME),
             comments = jsonCommentsOf(fields),
             worklogs = jsonWorklogsOf(fields),
+            sourceKey = textOf(issueNode, FIELD_KEY),
+            attachments = jsonAttachmentsOf(fields),
+            changelog = jsonChangelogOf(issueNode),
         )
     }
 
@@ -353,6 +356,68 @@ class ImportRowParser {
             authorEmail = textOf(element.path(FIELD_AUTHOR), FIELD_EMAIL_ADDRESS),
             comment = textOf(element, FIELD_COMMENT),
         )
+
+    /**
+     * `fields.attachment[]` 배열을 [ParsedImportAttachment] 목록으로 변환한다(JSON 전용 — CSV 는
+     * 미지원). `fields.attachment` 가 없으면 빈 목록.
+     */
+    private fun jsonAttachmentsOf(fields: JsonNode): List<ParsedImportAttachment> {
+        val attachments = fields.path(FIELD_ATTACHMENT)
+        if (!attachments.isArray) return emptyList()
+        return attachments.map { element -> jsonAttachmentOf(element) }
+    }
+
+    /** 첨부 배열 원소 하나에서 파일명/작성자 이메일/업로드시각/MIME 타입/크기를 추출한다. */
+    private fun jsonAttachmentOf(element: JsonNode): ParsedImportAttachment =
+        ParsedImportAttachment(
+            filename = textOf(element, FIELD_FILENAME).orEmpty(),
+            authorEmail = textOf(element.path(FIELD_AUTHOR), FIELD_EMAIL_ADDRESS),
+            created = textOf(element, FIELD_CREATED),
+            mimeType = textOf(element, FIELD_MIME_TYPE),
+            sizeBytes = longOrNull(element, FIELD_SIZE),
+        )
+
+    /**
+     * `changelog.histories[]` 배열을 [ParsedImportChangeGroup] 목록으로 변환한다(JSON 전용 — CSV
+     * 는 미지원). `changelog` 는 `fields` 가 아니라 이슈 노드 최상위에 위치한다. `changelog` 가
+     * 없으면 빈 목록.
+     */
+    private fun jsonChangelogOf(issueNode: JsonNode): List<ParsedImportChangeGroup> {
+        val histories = issueNode.path(FIELD_CHANGELOG).path(FIELD_HISTORIES)
+        if (!histories.isArray) return emptyList()
+        return histories.map { element -> jsonChangeGroupOf(element) }
+    }
+
+    /** 변경 이력 배열 원소 하나에서 작성자 이메일/변경시각/중첩 items[] 를 추출한다. */
+    private fun jsonChangeGroupOf(element: JsonNode): ParsedImportChangeGroup =
+        ParsedImportChangeGroup(
+            authorEmail = textOf(element.path(FIELD_AUTHOR), FIELD_EMAIL_ADDRESS),
+            created = textOf(element, FIELD_CREATED),
+            items = jsonChangeItemsOf(element.path(FIELD_ITEMS)),
+        )
+
+    /** `items[]` 배열 노드를 [ParsedImportChangeItem] 목록으로 변환한다. 배열이 아니면 빈 목록. */
+    private fun jsonChangeItemsOf(node: JsonNode): List<ParsedImportChangeItem> {
+        if (!node.isArray) return emptyList()
+        return node.map { element -> jsonChangeItemOf(element) }
+    }
+
+    /** 변경 항목 배열 원소 하나에서 필드명/변경 전 값/변경 후 값을 추출한다. */
+    private fun jsonChangeItemOf(element: JsonNode): ParsedImportChangeItem =
+        ParsedImportChangeItem(
+            field = textOf(element, FIELD_ITEM_FIELD).orEmpty(),
+            fromValue = textOf(element, FIELD_FROM_STRING),
+            toValue = textOf(element, FIELD_TO_STRING),
+        )
+
+    /** 숫자 노드면 [Long] 값을, 숫자가 아니거나(누락 포함) 없으면 null 을 반환한다. */
+    private fun longOrNull(
+        node: JsonNode,
+        field: String,
+    ): Long? {
+        val target = node.path(field)
+        return if (target.isNumber) target.asLong() else null
+    }
 
     private fun sanitizeText(node: JsonNode): String? {
         if (!node.isTextual) return null
@@ -452,6 +517,20 @@ class ImportRowParser {
         private const val FIELD_AUTHOR = "author"
         private const val FIELD_TIME_SPENT_SECONDS = "timeSpentSeconds"
         private const val FIELD_STARTED = "started"
+
+        // JSON sourceKey/첨부/변경이력 필드 이름(PR4) — `issues[].key`, `fields.attachment[]`,
+        // `changelog.histories[]`(중첩 `items[]`). CSV 는 세 항목 모두 미지원(JSON 전용).
+        private const val FIELD_KEY = "key"
+        private const val FIELD_ATTACHMENT = "attachment"
+        private const val FIELD_FILENAME = "filename"
+        private const val FIELD_MIME_TYPE = "mimeType"
+        private const val FIELD_SIZE = "size"
+        private const val FIELD_CHANGELOG = "changelog"
+        private const val FIELD_HISTORIES = "histories"
+        private const val FIELD_ITEMS = "items"
+        private const val FIELD_ITEM_FIELD = "field"
+        private const val FIELD_FROM_STRING = "fromString"
+        private const val FIELD_TO_STRING = "toString"
 
         // 정화 대상 제어문자 범위 — ASCII 0x20 미만(단 탭/개행/CR 제외) + DEL(0x7F).
         private const val CONTROL_CHAR_MAX = 0x20

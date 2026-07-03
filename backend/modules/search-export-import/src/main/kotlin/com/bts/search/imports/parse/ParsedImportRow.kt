@@ -33,6 +33,13 @@ package com.bts.search.imports.parse
  *   `date;author;body` 세미콜론 분해), JSON 은 `fields.comment.comments[]`. 원본 순서를 보존한다.
  * @property worklogs 이슈에 동반 import 할 작업 기록(worklog) 목록(PR3). JSON `fields.worklog.worklogs[]`
  *   전용 — CSV 는 Jira 표준 worklog export 형식이 없어 미지원(항상 emptyList).
+ * @property sourceKey 원본(Jira) 이슈 키(예: `"JIRA-1"`, PR4). JSON `issues[].key` 전용 — CSV 는
+ *   미지원(항상 null). 새로 발급되는 BTS 이슈 키와는 무관하며, import 이력 추적용 원본 참조값이다.
+ * @property attachments 이슈에 동반 import 할 첨부파일 메타데이터 목록(PR4). JSON
+ *   `fields.attachment[]` 전용 — CSV 는 미지원(항상 emptyList). 실제 파일 바이너리는 이 단계에서
+ *   내려받지 않고 메타데이터만 담는다(다운로드/저장은 후속 단계 책임).
+ * @property changelog 이슈에 동반 import 할 변경 이력(changelog) 목록(PR4). JSON
+ *   `changelog.histories[]` 전용 — CSV 는 미지원(항상 emptyList).
  */
 data class ParsedImportRow(
     val rowNumber: Int,
@@ -49,6 +56,9 @@ data class ParsedImportRow(
     val affectsVersionNames: List<String> = emptyList(),
     val comments: List<ParsedImportComment> = emptyList(),
     val worklogs: List<ParsedImportWorklog> = emptyList(),
+    val sourceKey: String? = null,
+    val attachments: List<ParsedImportAttachment> = emptyList(),
+    val changelog: List<ParsedImportChangeGroup> = emptyList(),
 )
 
 /**
@@ -85,4 +95,53 @@ data class ParsedImportWorklog(
     val startedAt: String?,
     val authorEmail: String?,
     val comment: String? = null,
+)
+
+/**
+ * CSV/JSON import 파일에서 파싱한 첨부파일 메타데이터 1건의 raw 값(PR4).
+ *
+ * JSON `fields.attachment[]` 전용 — CSV 는 미지원이라 이 타입은 JSON 파서에서만 생성된다.
+ * [created] 는 [ParsedImportComment.createdAt] 과 동일하게 원본 문자열을 그대로 담는다.
+ *
+ * @property filename 원본 파일명. 값이 없으면 빈 문자열(구현체가 검증 실패로 처리해야 한다).
+ * @property authorEmail 업로드한 사용자 이메일 원본 문자열.
+ * @property created 원본 업로드 시각 문자열(ISO-8601 기대).
+ * @property mimeType 원본 MIME 타입 문자열. 없으면 null.
+ * @property sizeBytes 원본 파일 크기(byte). JSON 값이 숫자가 아니거나 없으면 null.
+ */
+data class ParsedImportAttachment(
+    val filename: String,
+    val authorEmail: String?,
+    val created: String?,
+    val mimeType: String?,
+    val sizeBytes: Long?,
+)
+
+/**
+ * CSV/JSON import 파일에서 파싱한 변경 이력(changelog) 그룹 1건의 raw 값(PR4).
+ *
+ * JSON `changelog.histories[]` 전용 — CSV 는 미지원이라 이 타입은 JSON 파서에서만 생성된다.
+ * Jira 는 한 시점에 여러 필드가 함께 바뀌면 [items] 배열 하나에 변경 항목을 모아 담는다.
+ *
+ * @property authorEmail 변경을 수행한 사용자 이메일 원본 문자열.
+ * @property created 원본 변경 시각 문자열(ISO-8601 기대).
+ * @property items 이 그룹에서 함께 변경된 필드 항목 목록. 원본 순서를 보존한다.
+ */
+data class ParsedImportChangeGroup(
+    val authorEmail: String?,
+    val created: String?,
+    val items: List<ParsedImportChangeItem>,
+)
+
+/**
+ * 변경 이력 그룹 하나에 속한 필드 변경 항목 1건의 raw 값(PR4).
+ *
+ * @property field 변경된 필드 이름(Jira 원본 이름, 예: `"status"`/`"assignee"`). 값이 없으면 빈 문자열.
+ * @property fromValue 변경 전 값 문자열(`fromString`). 없으면 null.
+ * @property toValue 변경 후 값 문자열(`toString`). 없으면 null.
+ */
+data class ParsedImportChangeItem(
+    val field: String,
+    val fromValue: String?,
+    val toValue: String?,
 )
