@@ -11,12 +11,19 @@ import java.nio.charset.StandardCharsets
 import java.util.UUID
 
 /**
- * 보드 카드 필터 쿼리 파라미터를 [BoardCardFilter] VO 로 파싱한다.
+ * 보드 카드 필터 쿼리 파라미터를 [BoardCardFilter] VO 로 (역)직렬화한다.
  *
  * GET /api/v1/boards/{id} 요청의 `assignee`, `label`, `component` 쿼리 파라미터를 받아
- * [BoardCardFilter] 로 조립한다.
+ * [BoardCardFilter] 로 조립한다. 퀵필터(FR-UX-01) 저장·적용을 위해 문자열↔VO 양방향이
+ * 필요해 [serialize]/[deserialize] 를 [parse] 대칭 구조로 추가했다.
  *
- * ### 파싱 규칙
+ * ### 세 함수의 관계
+ *
+ * - [parse]: 이미 쪼개진 값 목록(`List<String>`) → [BoardCardFilter]. UUID 검증·센티널 처리의 단일 진실 출처.
+ * - [deserialize]: 쿼리스트링(`String`) → 값 목록 추출(split + URL 디코딩) → **[parse] 에 위임**.
+ * - [serialize]: [BoardCardFilter] → 정규 쿼리스트링(`String`). [deserialize] 의 역함수(정규화 포함).
+ *
+ * ### 파싱 규칙 ([parse]/[deserialize] 공통)
  *
  * - 모든 값은 trim 처리하며, blank(공백만) 값은 무시한다.
  * - `assignee` 값이 [SENTINEL_UNASSIGNED]("unassigned", 대소문자 구분) 이면 [BoardCardFilter.includeUnassigned]=true.
@@ -26,6 +33,13 @@ import java.util.UUID
  *   UUID 파싱 실패 시 [ResponseStatusException] 400 을 던진다.
  * - `label` 값은 문자열 그대로 [BoardCardFilter.labels] 에 추가한다.
  * - 세 파라미터가 모두 비거나 blank 이면 [BoardCardFilter.EMPTY] 를 반환한다 (EC2).
+ *
+ * ### 인코딩 계약 (고정)
+ *
+ * `application/x-www-form-urlencoded` 규칙을 따른다 — 공백은 `+`, 그 외 특수문자는 percent-encoding.
+ * [serialize] 는 [URLEncoder], [deserialize] 는 [URLDecoder] 를 UTF-8 로 사용해 왕복이 항상 일치하도록
+ * 보장한다. `+` 를 리터럴 문자로 오처리하면 라벨 `"my bug"` 가 `"my+bug"` 로 어긋난다(리뷰 B1 함정) —
+ * 반드시 URLDecoder 로 디코딩해 `+` → 공백 복원을 거쳐야 한다.
  *
  * ### 400 에러 경로
  *
