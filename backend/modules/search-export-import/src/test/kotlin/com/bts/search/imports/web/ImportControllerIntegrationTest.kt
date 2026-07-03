@@ -108,7 +108,9 @@ class ImportControllerIntegrationTest {
             DataSourceTransactionManager(dataSource)
 
         @Bean
-        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext = DSL.using(dataSource, SQLDialect.POSTGRES)
+        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext {
+            return DSL.using(dataSource, SQLDialect.POSTGRES)
+        }
 
         @Bean
         open fun transactionTemplate(transactionManager: PlatformTransactionManager): TransactionTemplate =
@@ -153,8 +155,9 @@ class ImportControllerIntegrationTest {
             enqueuePublisher: ImportJobEnqueuePublisher,
             permissionResolver: StubIssuePermissionResolver,
             transactionTemplate: TransactionTemplate,
-        ): ImportJobService =
-            ImportJobService(repository, storage, enqueuePublisher, permissionResolver, transactionTemplate)
+        ): ImportJobService {
+            return ImportJobService(repository, storage, enqueuePublisher, permissionResolver, transactionTemplate)
+        }
 
         @Bean
         open fun controller(service: ImportJobService): ImportController = ImportController(service)

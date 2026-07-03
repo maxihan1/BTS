@@ -61,7 +61,15 @@ class ImportController(
      *
      * 권한 fail-fast·파일 크기·format 검증은 [ImportJobService.accept] 내부에서 수행된다.
      *
+     * ### 첨부 zip (`attachmentsZip`, PR4 Task 7)
+     *
+     * `file`(매니페스트)과 별개의 두 번째 multipart part 로 첨부 zip 을 선택적으로 받는다.
+     * `name="attachmentsZip"` part 가 없으면 `null` — 하위호환(기존 클라이언트는 이 part 를 보내지 않는다).
+     * zip 저장 여부·저장 위치 결정은 컨트롤러가 아니라 [ImportJobService.accept] 책임이다
+     * (CSV import 는 zip 을 무시한다 — [ImportJobService] KDoc §첨부 zip 참조).
+     *
      * @param file 업로드할 CSV/JSON 파일. `name="file"` part 필수.
+     * @param attachmentsZip 첨부 zip 파일. `name="attachmentsZip"` part. 선택 — 없으면 null.
      * @param projectKey Import 대상 프로젝트 키.
      * @param format 파일 형식 문자열(`"CSV"` 또는 `"JSON"`, 대소문자 무관).
      * @param dryRun 검증 전용 실행 여부. 기본값 false.
@@ -75,6 +83,7 @@ class ImportController(
     @PostMapping("/api/v1/imports")
     fun accept(
         @RequestParam("file") file: MultipartFile,
+        @RequestParam(name = "attachmentsZip", required = false) attachmentsZip: MultipartFile?,
         @RequestParam("projectKey") projectKey: String,
         @RequestParam("format") format: String,
         @RequestParam(name = "dryRun", required = false, defaultValue = "false") dryRun: Boolean,
@@ -82,11 +91,12 @@ class ImportController(
         val actorId = currentActorId()
         validateProjectKey(projectKey)
         log.info(
-            "import_accept_request projectKey={} format={} dryRun={} filename={} actor={}",
+            "import_accept_request projectKey={} format={} dryRun={} filename={} hasAttachmentsZip={} actor={}",
             projectKey,
             format,
             dryRun,
             file.originalFilename,
+            attachmentsZip != null,
             actorId,
         )
 
@@ -101,6 +111,8 @@ class ImportController(
                     sizeBytes = file.size,
                     inputStream = file.inputStream,
                     requesterUserId = actorId,
+                    attachmentsZipInputStream = attachmentsZip?.inputStream,
+                    attachmentsZipSizeBytes = attachmentsZip?.size,
                 ),
             )
 
