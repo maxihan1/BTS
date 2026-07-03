@@ -7,6 +7,7 @@ import com.bts.agileplanning.application.BoardPlacementResult
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.PlacedColumn
+import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.repository.BoardRepository
 import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.board.BoardIssueView
@@ -64,6 +65,8 @@ import java.util.UUID
  * - GET-2. GET BROWSE 권한 미충족 → 403
  * - GET-3. GET 보드 미존재 → 404
  * - GET-4. GET path id 가 UUID 형식 아님 → 400 (catch-all 이 500 으로 삼키지 않음)
+ * - GET-QF1. GET /api/v1/boards/{id} 정상 → 응답에 quickFilters 목록 포함(FR-UX-01 Task 7)
+ * - GET-QF2. GET /api/v1/boards/{id} 퀵필터 없음 → quickFilters 빈 배열
  * - LIST-1. GET /api/v1/boards?projectKey= 정상 → 200 + 배열
  * - LIST-2. GET 목록 BROWSE 권한 미충족 → 403
  * - MOVE-1. POST move 정상 → 200 + 전이 결과 + columnId echo
@@ -393,6 +396,52 @@ class BoardControllerIntegrationTest {
         mockMvc.perform(get("/api/v1/boards/not-a-uuid").accept(MediaType.APPLICATION_JSON))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
+    }
+
+    // ── GET-QF1. GET /{id} 정상이면 quickFilters 포함 (FR-UX-01 Task 7) ───────
+
+    @Test
+    fun `GET boards id 정상이면 응답에 quickFilters 목록이 포함된다`() {
+        val board = sampleBoard()
+        val quickFilters =
+            listOf(
+                QuickFilter(id = UUID.randomUUID(), boardId = board.id, name = "내 버그", query = "label=bug"),
+                QuickFilter(id = UUID.randomUUID(), boardId = board.id, name = "긴급", query = "label=urgent"),
+            )
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.getBoard(board.id, actorId, BoardCardFilter.EMPTY) } returns
+            BoardPlacementResult(
+                columns = board.columns.map { PlacedColumn(it, emptyList()) },
+                truncated = false,
+                unplacedCount = 0,
+                quickFilters = quickFilters,
+            )
+
+        mockMvc.perform(get("/api/v1/boards/${board.id}").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.quickFilters.length()").value(2))
+            .andExpect(jsonPath("$.data.quickFilters[0].filterId").value(quickFilters[0].id.toString()))
+            .andExpect(jsonPath("$.data.quickFilters[0].name").value("내 버그"))
+            .andExpect(jsonPath("$.data.quickFilters[1].query").value("label=urgent"))
+    }
+
+    // ── GET-QF2. GET /{id} 퀵필터 없음 → quickFilters 빈 배열 ────────────────
+
+    @Test
+    fun `GET boards id 퀵필터가 없으면 quickFilters 는 빈 배열이다`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.getBoard(board.id, actorId, BoardCardFilter.EMPTY) } returns
+            BoardPlacementResult(
+                columns = board.columns.map { PlacedColumn(it, emptyList()) },
+                truncated = false,
+                unplacedCount = 0,
+            )
+
+        mockMvc.perform(get("/api/v1/boards/${board.id}").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.quickFilters").isArray)
+            .andExpect(jsonPath("$.data.quickFilters.length()").value(0))
     }
 
     // ── LIST-1. GET ?projectKey= 정상 → 200 ───────────────────────────────────

@@ -6,6 +6,7 @@ import com.bts.agileplanning.application.BoardPlacementResult
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.PlacedColumn
+import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.domain.SwimlaneField
 import com.bts.shared.board.BoardIssueView
 import org.assertj.core.api.Assertions.assertThat
@@ -25,6 +26,7 @@ import java.util.UUID
  * - (c) swimlaneField — board.swimlaneField.name 을 문자열로 노출
  * - (d) priority 노출 — BoardCardResponse.priority == BoardIssueView.priority (FR-BD-03 D6 스윔레인 근거)
  * - (e) 기존 필드 보존 — 신규 필드 추가 후 기존 필드 비파괴 확인
+ * - (f) quickFilters 노출 — BoardDetailResponse.of 가 QuickFilter 도메인 목록을 QuickFilterResponse 로 변환(FR-UX-01 Task 7)
  */
 class BoardResponsesTest {
     // --- 픽스처 헬퍼 ---
@@ -76,6 +78,12 @@ class BoardResponsesTest {
             truncated = false,
             unplacedCount = 0,
         )
+
+    private fun quickFilter(
+        name: String = "내 버그",
+        query: String = "label=bug",
+        boardId: UUID = UUID.randomUUID(),
+    ) = QuickFilter(id = UUID.randomUUID(), boardId = boardId, name = name, query = query)
 
     // --- (a) wipLimit echo ---
 
@@ -255,6 +263,41 @@ class BoardResponsesTest {
             assertThat(response.name).isEqualTo(b.name)
             assertThat(response.truncated).isFalse()
             assertThat(response.unplacedCount).isEqualTo(0)
+        }
+    }
+
+    // --- (f) quickFilters 노출 (FR-UX-01 Task 7) ---
+
+    @Nested
+    inner class QuickFiltersExposure {
+        @Test
+        fun `BoardDetailResponse of 는 QuickFilter 도메인 목록을 QuickFilterResponse 로 변환해 created_at 순서를 보존한다`() {
+            val boardId = UUID.randomUUID()
+            val filters =
+                listOf(
+                    quickFilter(name = "내 버그", query = "label=bug", boardId = boardId),
+                    quickFilter(name = "긴급", query = "label=urgent", boardId = boardId),
+                )
+
+            val response = BoardDetailResponse.of(board(), placementResult(), filters)
+
+            assertThat(response.quickFilters).hasSize(2)
+            assertThat(response.quickFilters.map { it.name }).containsExactly("내 버그", "긴급")
+            assertThat(response.quickFilters[0].filterId).isEqualTo(filters[0].id)
+            assertThat(response.quickFilters[0].query).isEqualTo(filters[0].query)
+            assertThat(response.quickFilters[1].filterId).isEqualTo(filters[1].id)
+        }
+
+        @Test
+        fun `quickFilters 가 빈 목록이면 응답 quickFilters 도 빈 목록이다`() {
+            val response = BoardDetailResponse.of(board(), placementResult(), emptyList())
+            assertThat(response.quickFilters).isEmpty()
+        }
+
+        @Test
+        fun `quickFilters 인자 없이 호출하면 기본값으로 빈 목록이 반환된다`() {
+            val response = BoardDetailResponse.of(board(), placementResult())
+            assertThat(response.quickFilters).isEmpty()
         }
     }
 }
