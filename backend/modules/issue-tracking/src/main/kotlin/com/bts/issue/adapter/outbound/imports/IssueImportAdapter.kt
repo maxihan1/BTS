@@ -553,7 +553,7 @@ class IssueImportAdapter(
         for (importComment in cmd.comments) {
             if (isAuthorUnmatched(importComment.authorEmail, resolution.resolvedEmails)) unmatchedAuthorCount++
             val authorId = resolveAuthorId(importComment.authorEmail, resolution.resolvedEmails, cmd.requesterUserId)
-            commentApplicationService.create(actor, key, importComment.body, ActorId(authorId))
+            commentApplicationService.create(actor, key, importComment.body, ActorId(authorId), importComment.createdAt)
         }
         if (unmatchedAuthorCount > 0) {
             warnings += "댓글 ${unmatchedAuthorCount}건 작성자 이메일이 매칭되지 않아 요청자로 대체했습니다."

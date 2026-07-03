@@ -58,6 +58,9 @@ class CommentApplicationService(
      * @param issueKey 댓글을 추가할 이슈 키.
      * @param body 댓글 본문 (raw markdown).
      * @param authorId 댓글 작성자로 기록할 사용자. actor 와 다를 수 있다(예. Import 시 원본 작성자 보존).
+     * @param createdAt 댓글의 createdAt/updatedAt 에 사용할 시각. null 이면 [clock] 기준 현재 시각을
+     *   사용한다(기존 동작). Import 시 원본(Jira 등) 작성 시각을 보존할 때만 값을 넘긴다
+     *   ([com.bts.shared.issue.ImportComment.createdAt] — S1/R7/E5).
      * @return 저장된 [Comment].
      * @throws [IssueAccessDeniedException] UPDATE 권한 미보유 시 (403).
      * @throws [IssueNotFoundException] 이슈 미존재·소프트 삭제 시 (404).
@@ -67,20 +70,21 @@ class CommentApplicationService(
         issueKey: IssueKey,
         body: String,
         authorId: ActorId,
+        createdAt: Instant? = null,
     ): Comment {
         checkPermission(actor, issueKey, IssuePermission.UPDATE)
 
         val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
 
-        val now = Instant.now(clock)
+        val effectiveCreatedAt = createdAt ?: Instant.now(clock)
         val comment =
             Comment(
                 id = UUID.randomUUID(),
                 issueId = issue.id.value,
                 authorId = authorId.value,
                 body = body,
-                createdAt = now,
-                updatedAt = now,
+                createdAt = effectiveCreatedAt,
+                updatedAt = effectiveCreatedAt,
             )
         commentRepository.insert(comment)
 
