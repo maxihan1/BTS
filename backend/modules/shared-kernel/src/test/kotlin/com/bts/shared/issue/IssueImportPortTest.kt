@@ -3,6 +3,7 @@ package com.bts.shared.issue
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import java.io.ByteArrayInputStream
 import java.time.Instant
 import java.util.UUID
 
@@ -165,5 +166,153 @@ class IssueImportPortTest {
 
         assertThat(command.comments).containsExactly(comment)
         assertThat(command.worklogs).containsExactly(worklog)
+    }
+
+    @Test
+    fun `IssueImportCommand 는 필수 3개 필드만 지정해도 sourceKey attachments changelog 기본값을 갖는다`() {
+        val command = sampleCommand()
+
+        assertThat(command.sourceKey).isNull()
+        assertThat(command.attachments).isEmpty()
+        assertThat(command.changelog).isEmpty()
+    }
+
+    @Test
+    fun `IssueImportCommand 는 sourceKey attachments changelog 를 명시적으로 지정할 수 있다`() {
+        val attachment = ImportAttachment(filename = "screenshot.png")
+        val changeGroup = ImportChangeGroup(items = listOf(ImportChangeItem(field = "status")))
+
+        val command =
+            sampleCommand().copy(
+                sourceKey = "JIRA-1",
+                attachments = listOf(attachment),
+                changelog = listOf(changeGroup),
+            )
+
+        assertThat(command.sourceKey).isEqualTo("JIRA-1")
+        assertThat(command.attachments).containsExactly(attachment)
+        assertThat(command.changelog).containsExactly(changeGroup)
+    }
+
+    @Test
+    fun `ImportAttachment 는 filename 만 필수이고 나머지는 기본값 null 이다`() {
+        val attachment = ImportAttachment(filename = "screenshot.png")
+
+        assertThat(attachment.filename).isEqualTo("screenshot.png")
+        assertThat(attachment.authorEmail).isNull()
+        assertThat(attachment.createdAt).isNull()
+        assertThat(attachment.mimeType).isNull()
+        assertThat(attachment.sizeBytes).isNull()
+    }
+
+    @Test
+    fun `ImportAttachment 는 필드를 명시적으로 지정할 수 있다`() {
+        val createdAt = Instant.parse("2026-07-01T00:00:00Z")
+
+        val attachment =
+            ImportAttachment(
+                filename = "screenshot.png",
+                authorEmail = "reporter@example.com",
+                createdAt = createdAt,
+                mimeType = "image/png",
+                sizeBytes = 1024L,
+            )
+
+        assertThat(attachment.authorEmail).isEqualTo("reporter@example.com")
+        assertThat(attachment.createdAt).isEqualTo(createdAt)
+        assertThat(attachment.mimeType).isEqualTo("image/png")
+        assertThat(attachment.sizeBytes).isEqualTo(1024L)
+    }
+
+    @Test
+    fun `ImportChangeGroup 은 모든 필드가 기본값을 갖는다`() {
+        val group = ImportChangeGroup()
+
+        assertThat(group.authorEmail).isNull()
+        assertThat(group.occurredAt).isNull()
+        assertThat(group.items).isEmpty()
+    }
+
+    @Test
+    fun `ImportChangeGroup 은 authorEmail occurredAt items 를 명시적으로 지정할 수 있다`() {
+        val occurredAt = Instant.parse("2026-07-01T09:00:00Z")
+        val item = ImportChangeItem(field = "status", fromValue = "To Do", toValue = "In Progress")
+
+        val group =
+            ImportChangeGroup(
+                authorEmail = "worker@example.com",
+                occurredAt = occurredAt,
+                items = listOf(item),
+            )
+
+        assertThat(group.authorEmail).isEqualTo("worker@example.com")
+        assertThat(group.occurredAt).isEqualTo(occurredAt)
+        assertThat(group.items).containsExactly(item)
+    }
+
+    @Test
+    fun `ImportChangeItem 은 field 만 필수이고 fromValue toValue 는 기본값 null 이다`() {
+        val item = ImportChangeItem(field = "priority")
+
+        assertThat(item.field).isEqualTo("priority")
+        assertThat(item.fromValue).isNull()
+        assertThat(item.toValue).isNull()
+    }
+
+    @Test
+    fun `ImportChangeItem 은 fromValue toValue 를 명시적으로 지정할 수 있다`() {
+        val item = ImportChangeItem(field = "priority", fromValue = "Low", toValue = "High")
+
+        assertThat(item.fromValue).isEqualTo("Low")
+        assertThat(item.toValue).isEqualTo("High")
+    }
+
+    @Test
+    fun `ImportAttachmentSource open 은 fun interface 로 InputStream 을 반환할 수 있다`() {
+        val bytes = "content".toByteArray()
+        val source = ImportAttachmentSource { _, _ -> ByteArrayInputStream(bytes) }
+
+        val stream = source.open("screenshot.png", "JIRA-1")
+
+        assertThat(stream).isNotNull
+        assertThat(stream!!.readBytes()).isEqualTo(bytes)
+    }
+
+    @Test
+    fun `ImportAttachmentSource open 은 미매칭 시 null 을 반환할 수 있다`() {
+        val source = ImportAttachmentSource { _, _ -> null }
+
+        val stream = source.open("missing.png", null)
+
+        assertThat(stream).isNull()
+    }
+
+    @Test
+    fun `importIssue 2-arg 오버로드 default 구현은 fail-closed 실패 결과를 반환한다`() {
+        val port = object : IssueImportPort {}
+
+        val result = port.importIssue(sampleCommand(), null)
+
+        assertThat(result).isInstanceOf(IssueImportResult.Failure::class.java)
+        val failure = result as IssueImportResult.Failure
+        assertThat(failure.reasonCode).isEqualTo(IssueImportResult.ADAPTER_UNAVAILABLE)
+    }
+
+    @Test
+    fun `importIssue 1-arg 호출은 어댑터가 override 한 2-arg 구현으로 위임된다`() {
+        val port =
+            object : IssueImportPort {
+                override fun importIssue(
+                    cmd: IssueImportCommand,
+                    attachments: ImportAttachmentSource?,
+                ): IssueImportResult {
+                    return IssueImportResult.success("PROJ-1")
+                }
+            }
+
+        val result = port.importIssue(sampleCommand())
+
+        assertThat(result).isInstanceOf(IssueImportResult.Success::class.java)
+        assertThat((result as IssueImportResult.Success).issueKey).isEqualTo("PROJ-1")
     }
 }
