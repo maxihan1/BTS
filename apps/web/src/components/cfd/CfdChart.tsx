@@ -21,6 +21,9 @@ import { cfdLabels } from '@/i18n/cfd-labels'
 /** recharts ResponsiveContainer / wrapper div 의 고정 높이 (px). */
 const CHART_HEIGHT = 360
 
+/** AreaChart 내부 여백 — 형제 차트(VelocityChart)와 톤 통일. Y축 라벨 클리핑 방지. */
+const CHART_MARGIN = { top: 8, right: 24, bottom: 8, left: 8 }
+
 /** 누적 영역(Area)이 공유하는 stack id — 세 시리즈를 하나의 스택으로 쌓는다. */
 const STACK_ID = 'cfd'
 
@@ -95,7 +98,7 @@ export function CfdChart({ response }: CfdChartProps): JSX.Element {
     // h-[360px]: 높이는 Tailwind 임의값으로 지정 (CHART_HEIGHT 와 동기화).
     <div role="img" aria-label={cfdLabels.chart.ariaLabel} className="w-full h-[360px]">
       <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
-        <AreaChart data={toCfdSeries(response)}>
+        <AreaChart data={toCfdSeries(response)} margin={CHART_MARGIN}>
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis dataKey="date" tick={AXIS_TICK_STYLE} />
           <YAxis allowDecimals={false} tick={AXIS_TICK_STYLE} label={Y_AXIS_LABEL_PROPS} />
