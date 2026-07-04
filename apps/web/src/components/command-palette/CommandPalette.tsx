@@ -1,6 +1,6 @@
 // Cmd+K 명령 팔레트 — cmdk 기반 슬래시 명령(goto/search/issue) 실행 UI (FR-UX-04 Task-2)
 /* eslint-disable react-refresh/only-export-components -- runCommand 헬퍼를 컴포넌트와 같은 파일에 배치(응집도 우선, NodeMappingSection.tsx 선례) */
-import { useState, type JSX, type KeyboardEvent } from 'react'
+import { useEffect, useState, type JSX, type KeyboardEvent } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Command as CommandPrimitive } from 'cmdk'
 import { parseCommand, COMMANDS, QUICK_LINKS, type ParsedCommand } from './commands'
@@ -24,7 +24,7 @@ const commandPaletteStrings = {
   inputPlaceholder: '검색하거나 슬래시 명령(/goto, /search, /issue)을 입력하세요',
   quickLinksHeading: '바로가기',
   commandsHeading: '명령어',
-  unknownCommand: (name: string) => `알 수 없는 명령입니다: /${name}`,
+  unknownCommand: (name: string) => `알 수 없는 명령입니다. /${name}`,
   invalidIssueKey: '이슈 키 형식이 올바르지 않습니다. 예: PROJ-12',
 }
 
@@ -117,6 +117,15 @@ const EXECUTABLE_KINDS: ReadonlySet<ParsedCommand['kind']> = new Set(['goto', 's
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps): JSX.Element {
   const navigate = useNavigate()
   const [inputValue, setInputValue] = useState('')
+
+  // 외부(useCommandPalette)에서 open이 false로 바뀌는 경우(Cmd+K 토글 재오픈)
+  // Radix Command.Dialog는 onOpenChange를 호출하지 않으므로 handleClose가 실행되지
+  // 않는다 — open prop 자체를 감시해 입력을 초기화한다(codereview CONCERN-1)
+  useEffect(() => {
+    if (!open) {
+      setInputValue('')
+    }
+  }, [open])
 
   const parsed = parseCommand(inputValue)
   const showQuickLinks = parsed.kind === 'not-command' && inputValue === ''
