@@ -26,10 +26,11 @@
 - **FR4. IssueTypeCatalog SPI 신설.** `com.bts.shared.issue.IssueTypeCatalog.listTypes(): List<IssueTypeRef>` (shared-kernel). issue-tracking `IssueTypeCatalogAdapter`가 `IssueTypeRepository.findAll()` 재사용해 구현(타입 전역). `@Transactional(readOnly=true)`.
 - **FR5. confirm valueMappings 확장.** `MappingConfirmRequest`에 `valueMappings: List<ValueMappingEntry(targetField, sourceValue, targetValue)>` 추가. `confirm(...)` 시그니처에 `valueMappings: List<Triple<ValueTargetField, String, String>>` 추가(PR-B userMappings 뒤, 기존 컨트롤러 호출부 파급 최소).
 - **FR6. CAS 트랜잭션 저장.** validate(타깃값 실재검증, cross-BC I/O)는 트랜잭션 **밖**. `transitionToPending`(CAS) → 필드 saveAll(PR-A) → 사용자 saveAll(PR-B) → **값 saveAll(신규)** → enqueue 순으로 한 트랜잭션. CAS false → 상태충돌 예외로 중복 enqueue·중복 저장 차단.
-- **FR7. 타깃값 실재검증 (필드별 강도 비대칭 — Brainstorming Gap A).** `targetValue` 유효성을 target_field별로 다른 강도로 검증. 미실재 → 422(ImportValueMappingInvalidException, errorCode=IMPORT_VALUE_MAPPING_INVALID).
-  - **type → 엄격.** `IssueTypeCatalog.listTypes()`에 정규화 일치하는 타입명이 없으면 422. **이유**: 어댑터가 미존재 타입명에 `IssueTypeNotFoundException`(행 hard-fail)을 던지므로 사전 차단 필수.
-  - **priority → 엄격.** canonical 5종에 없으면 422.
-  - **status → 관대(best-effort 일치).** targetValue가 비공백이면 통과. **이유**: 어댑터 `applyImportedStatus`가 apply 시점 `statusNameMatches`로 best-effort 처리(미매칭=경고+스킵, tx 오염 없음)하고, 상태는 타입별 워크플로우라 `listStates(null)` 엄격검증 시 타 타입에서 유효한 상태를 오거부한다. 따라서 status는 사전 엄격검증하지 않고 기존 apply-time best-effort에 위임(회귀 0). collect 자동추천(FR2)은 여전히 listStates(null)로 힌트 제시.
+- **FR7. 타깃값 실재검증 (필드별 강도 비대칭 — Brainstorming Gap A, eng 리뷰 C1/C2 교정).** `targetValue` 유효성을 target_field별로 다른 강도로 검증. 미실재 → 422(ImportValueMappingInvalidException, errorCode=IMPORT_VALUE_MAPPING_INVALID).
+  - **type → 엄격.** `IssueTypeCatalog.listTypes()`에 대소문자 무시 일치하는 타입명이 없으면 422. **이유(교정)**: 어댑터 `resolveTypeId`는 미매칭 타입명에 hard-fail이 아니라 **경고+기본 Task 폴백**(best-effort). 그러나 **명시 값매핑은 사용자 의도**이므로 오타(예 "Storyy")를 confirm에서 즉시 차단해 조용한 Task 강등을 예방한다(UX 근거). **의도적 경로 비대칭**: 명시 매핑 대상=검증(엄격), 미매핑 원본 값=apply-time best-effort 폴백. 문서화된 의식적 결정.
+  - **priority → 엄격.** canonical 5종에 대소문자 무시 일치 없으면 422. type과 동일 UX 근거.
+  - **status → 관대.** targetValue가 비공백이면 통과. **이유**: 어댑터 `applyImportedStatus`가 apply 시점 `statusNameMatches`로 best-effort(미매칭=경고+시작상태 유지, tx 오염 0), 상태는 타입별 워크플로우라 `listStates(null)` 엄격검증 시 타 타입 유효 상태를 오거부한다. status는 apply-time best-effort에 위임(회귀 0). collect 자동추천(FR2)은 listStates(null)로 힌트만 제시.
+  - **★C1 저장값 canonical화.** type/priority는 검증 시 catalog와 대소문자 무시 매칭한 **canonical 정확형(예 "Medium")을 target_value로 저장**(사용자 입력 소문자 그대로 저장 금지). **이유**: 프로세서 priority 치환은 대소문자 정확 일치 맵(`PRIORITY_NUMBER_BY_NAME`, 대문자 키)이라 소문자 target 저장 시 조용히 소실된다. status는 어댑터가 ignoreCase 매칭이라 원본 저장 무해.
 - **FR8. import_value_mappings 저장(멱등).** delete-then-batchInsert(jobId 스코프). jOOQ DSL 전용. `@Transactional`.
 - **FR9. 프로세서 값 치환.** `ImportJobProcessor`가 `findByJobId`로 매핑 1회 로드. 행별로 `normalize(statusName)` 등을 키로 `(targetField, normalizedSource)→targetValue` 조회해 치환. 미매핑이면 원본 값 유지(name-match 폴백). null 소스값은 치환 대상 아님.
 - **FR10. F2 정규화 삼자 일치.** `ValueMappingNormalizer`(신규 object)가 수집(FR1)·저장 키(FR6/8)·치환 조회(FR9)의 유일 정규화 원천(`trim().lowercase()`). 별도 정규화 잔재 금지 — 어긋나면 조용한 오치환.

@@ -112,11 +112,11 @@ FR-IM-02 Import 매핑 에픽(3-PR)의 마지막 백엔드 조각. 소스 파일
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`search/main/kotlin/com/bts/search/imports/parse/ImportRowParser.kt`, `search/main/kotlin/com/bts/search/imports/mapping/ImportMappingService.kt`, `search/main/kotlin/com/bts/search/imports/mapping/ValueCollectionResult.kt`, `search/main/kotlin/com/bts/search/imports/mapping/ImportMappingExceptions.kt`, `search/test/kotlin/com/bts/search/imports/mapping/ImportMappingServiceValueTest.kt`, `search/test/kotlin/com/bts/search/imports/mapping/ImportMappingServiceTest.kt`, `search/test/kotlin/com/bts/search/config/OpenApiAnnotationTest.kt`, `search/test/kotlin/com/bts/search/imports/mapping/ImportMappingFlowIntegrationTest.kt`, `search/test/kotlin/com/bts/search/imports/mapping/ImportUserMappingFlowIntegrationTest.kt`]
+- files: [`search/main/kotlin/com/bts/search/imports/parse/ImportRowParser.kt`, `search/main/kotlin/com/bts/search/imports/mapping/ImportMappingService.kt`, `search/main/kotlin/com/bts/search/imports/mapping/ValueCollectionResult.kt`, `search/main/kotlin/com/bts/search/imports/mapping/ImportMappingExceptions.kt`, `search/test/kotlin/com/bts/search/imports/mapping/ImportMappingServiceValueTest.kt`, `search/test/kotlin/com/bts/search/imports/mapping/ImportMappingServiceTest.kt`, `search/test/kotlin/com/bts/search/imports/mapping/ImportMappingServiceUserTest.kt`, `search/test/kotlin/com/bts/search/config/OpenApiAnnotationTest.kt`, `search/test/kotlin/com/bts/search/imports/mapping/ImportMappingFlowIntegrationTest.kt`, `search/test/kotlin/com/bts/search/imports/mapping/ImportUserMappingFlowIntegrationTest.kt`]
 - depends-on: [1, 3, 4]
 
-**RED**: `ImportMappingServiceValueTest`(mockk) — (a) collectValues: 무효 필드매핑 조기종료(C1, storage 헤더 1회), distinct 값+자동추천(status=WorkflowStateCatalog·type=IssueTypeCatalog·priority=canonical5); (b) confirm valueMappings: CAS 트랜잭션 저장, 상태충돌 시 값 saveAll 0회, FR7 비대칭(type/priority 미실재 422·status 관대), E6 중복 422.
-**GREEN**: ImportRowParser에 canonical priority 이름 집합 노출(`internal val canonicalPriorityNames` 또는 접근자); ImportMappingService에 `issueTypeCatalog`·`workflowStateCatalog`·`importValueMappingRepository`·`transactionTemplate`(기존) 주입 → `collectValues(jobId,actor,fieldMappings)`(C1 선검증→전량스캔→ValueMappingNormalizer.collectValues→NFR2 짧은 tx로 후보조회+suggest) + `confirm(...valueMappings: List<Triple<ValueTargetField,String,String>> = emptyList())`(validateValueMappings 트랜잭션 밖→CAS 안 값 saveAll); `ValueCollectionResult`; `ImportValueMappingInvalidException`(errorCode IMPORT_VALUE_MAPPING_INVALID). **기존 mockk 테스트(ImportMappingServiceTest)·통합 TestConfig(2개 Flow 통합테스트)·OpenApiAnnotationTest에 신규 생성자 인자/@MockBean(IssueTypeCatalog·WorkflowStateCatalog) 배선**(생성자 파급+NFR4 module-compile).
+**RED**: `ImportMappingServiceValueTest`(mockk) — (a) collectValues: 무효 필드매핑 조기종료(C1, storage 헤더 1회), distinct 값+자동추천(status=WorkflowStateCatalog·type=IssueTypeCatalog·priority=canonical5); (b) confirm valueMappings: CAS 트랜잭션 저장, 상태충돌 시 값 saveAll 0회, FR7 비대칭(type/priority 미실재 422·status 관대), E6 중복 422, **저장된 target_value가 catalog canonical 정확형인지 단언(C1 casing)**.
+**GREEN**: ImportRowParser에 canonical priority 이름 집합 노출(`internal val canonicalPriorityNames` 또는 접근자); ImportMappingService에 `issueTypeCatalog`·`workflowStateCatalog`·`importValueMappingRepository`·`transactionTemplate`(기존) 주입 → `collectValues(jobId,actor,fieldMappings)`(C1 선검증→전량스캔→ValueMappingNormalizer.collectValues→NFR2 짧은 tx로 후보조회+suggest) + `confirm(...valueMappings: List<Triple<ValueTargetField,String,String>> = emptyList())`(validateValueMappings 트랜잭션 밖→CAS 안 값 saveAll); `ValueCollectionResult`; `ImportValueMappingInvalidException`(errorCode IMPORT_VALUE_MAPPING_INVALID). **★C1 casing 수정**: validateValueMappings가 type/priority 타깃을 catalog와 대소문자 무시 매칭 후 **매칭된 canonical 정확형(대문자)을 저장값으로 반환**(프로세서 `PRIORITY_NUMBER_BY_NAME` exact-case 맵과 정합, 소문자 target 조용한 소실 차단). status는 관대라 원본 저장(어댑터 ignoreCase 매칭). **★C3 로그**: collect/confirm 로그에 소스/타깃 원문 대량 노출 금지(jobId·count만, 기존 패턴 계승). **기존 mockk 테스트(ImportMappingServiceTest·ImportMappingServiceUserTest)·통합 TestConfig(2개 Flow 통합테스트)·OpenApiAnnotationTest에 신규 생성자 인자/@MockBean(IssueTypeCatalog·WorkflowStateCatalog) 배선**(생성자 파급+NFR4 module-compile, B2 수정).
 **REFACTOR**: KDoc(값매핑 흐름·FR7 비대칭 근거).
 **검증**: `./gradlew :modules:search-export-import:test --tests '*ImportMappingServiceValueTest' --tests '*ImportMappingServiceTest' --tests '*OpenApiAnnotationTest'`
 
@@ -124,11 +124,11 @@ FR-IM-02 Import 매핑 에픽(3-PR)의 마지막 백엔드 조각. 소스 파일
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`search/main/kotlin/com/bts/search/imports/job/application/ImportJobProcessor.kt`, `search/test/kotlin/com/bts/search/imports/job/application/ImportJobProcessorTest.kt`]
+- files: [`search/main/kotlin/com/bts/search/imports/job/application/ImportJobProcessor.kt`, `search/test/kotlin/com/bts/search/imports/job/application/ImportJobProcessorTest.kt`, `search/test/kotlin/com/bts/search/imports/mapping/ImportMappingFlowIntegrationTest.kt`, `search/test/kotlin/com/bts/search/imports/mapping/ImportUserMappingFlowIntegrationTest.kt`]
 - depends-on: [3, 4, 5]
 
-**RED**: `ImportJobProcessorTest` — 값매핑 로드 후 행별 `typeName`/`statusName`/`priorityName`이 타깃값으로 치환됨; 미매핑 값은 원본 유지(폴백); null 소스값 미치환.
-**GREEN**: `importValueMappingRepository` 주입, `findByJobId` 1회 로드, `toCommand` 전/중 `ValueMappingNormalizer.normalize` 키로 `(field,source)→target` 조회 치환. 기존 mockk 테스트 생성자 파급 반영.
+**RED**: `ImportJobProcessorTest` — 값매핑 로드 후 행별 `typeName`/`statusName`/`priorityName`이 타깃값으로 치환됨; 미매핑 값은 원본 유지(폴백); null 소스값 미치환; **priority 치환 후 canonical 정확형이라 `PRIORITY_NUMBER_BY_NAME` 조회 성공(C1 회귀)**.
+**GREEN**: `importValueMappingRepository` 주입, `findByJobId` 1회 로드, `toCommand` 전/중 `ValueMappingNormalizer.normalize` 키로 `(field,source)→target` 조회 치환. **기존 mockk 테스트(ImportJobProcessorTest) + 2개 Flow 통합 TestConfig의 ImportJobProcessor 생성자 호출부(+importValueMappingRepository) 배선**(B1 module-compile 수정).
 **REFACTOR**: KDoc.
 **검증**: `./gradlew :modules:search-export-import:test --tests '*ImportJobProcessorTest'`
 
@@ -165,4 +165,19 @@ FR-IM-02 Import 매핑 에픽(3-PR)의 마지막 백엔드 조각. 소스 파일
 - 추가 검증: 3모듈 test + ktlintCheck + detekt `--rerun-tasks`(search CI 없음, false-green 방지) + verify-master-plan(FR수 불변 123).
 - 회귀 가드: F1(insert round-trip)·F2(ValueMappingNormalizer 삼자)·CAS 중복 enqueue·NFR4(full-boot @MockBean)·하위호환(미매핑 폴백).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-04, Plan 아키텍트 에이전트, 코드 대조)
+
+초기 판정 **BLOCKER 2 + CONCERN 3** → plan/spec 수정 완료 후 **해소**.
+
+- **B1 (수정됨)**: T6 files에 ImportJobProcessor 생성자 호출부 2개 Flow 통합테스트(ImportMappingFlowIntegrationTest·ImportUserMappingFlowIntegrationTest) 누락 → `:search:test` 컴파일 붕괴. **T6 files에 추가.**
+- **B2 (수정됨)**: T5 files에 ImportMappingServiceUserTest.kt(PR-B 산출물, 8-인자 positional 생성자 호출) 누락 → 컴파일 붕괴. **T5 files에 추가.**
+- **C1 (수정됨)**: 프로세서 priority 치환이 대소문자 정확 일치 맵(PRIORITY_NUMBER_BY_NAME)이라 소문자 target_value 저장 시 priority 조용히 소실. **FR7에 저장값 canonical화(type/priority 매칭 canonical 정확형 저장) 추가**, T5 RED에 casing 단언·T6 RED에 조회성공 회귀 추가.
+- **C2 (수정됨)**: FR7 type "엄격" 근거 오류(어댑터 resolveTypeId는 hard-fail 아닌 Task 폴백 best-effort). **근거를 "명시 매핑 오타 조기차단 UX"로 교정 + mapped-vs-unmapped 의도적 경로 비대칭 문서화**(엄격 유지). status 관대 근거는 정확(그대로).
+- **C3 (수정됨)**: NFR3 로그 안전 → T5 GREEN에 "jobId·count만 로깅" 한 줄 명시.
+- **확인/반영됨**: FR6 CAS 순서·중복 enqueue 차단(PR-B 정합) · NFR2 collect tx 경계(listStates MANDATORY→짧은 tx) · IssueTypeCatalog BC 격리(IssueTypeLookupAdapter 동일 패턴, ArchUnit 안전) · V608 번호·init_codegen 미러 · F1/F2 회귀 가드 · NFR4 full-boot @MockBean(OpenApiAnnotationTest 유일 full-boot).
+
+- **BLOCKER: 없음 (전부 plan 반영 완료)**
+
+### plan-ceo-review — skip (type=backend, auth/migration 아님)
