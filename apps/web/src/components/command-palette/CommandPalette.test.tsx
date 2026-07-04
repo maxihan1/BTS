@@ -96,11 +96,34 @@ describe('CommandPalette', () => {
     const input = screen.getByRole('combobox')
     await user.type(input, '/foo x')
 
-    expect(screen.getByRole('alert')).toHaveTextContent('foo')
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('알 수 없는 명령입니다. /foo')
+    // 문장 종결에 콜론을 쓰지 않는다 (§5 회귀 방지, codereview CONCERN-2)
+    expect(alert.textContent).not.toContain(':')
 
     await user.keyboard('{Enter}')
     expect(mockNavigate).not.toHaveBeenCalled()
     expect(onOpenChange).not.toHaveBeenCalled()
+  })
+
+  it('외부 open이 false로 바뀌었다가 다시 true가 되면 입력을 초기화한다 (Cmd+K 토글 재오픈, codereview CONCERN-1)', async () => {
+    const user = userEvent.setup()
+    const onOpenChange = vi.fn()
+    const { rerender } = render(<CommandPalette open onOpenChange={onOpenChange} />)
+
+    const input = screen.getByRole('combobox')
+    await user.type(input, '/goto ')
+    // 인자 없는 /goto → 안내 문구만 표시, 빠른이동 목록은 숨겨진다
+    expect(screen.queryAllByRole('option')).toHaveLength(0)
+
+    // Radix Command.Dialog는 controlled open이 외부에서 false로 바뀌어도
+    // onOpenChange를 호출하지 않는다 — useCommandPalette의 토글(Cmd+K)을 흉내
+    rerender(<CommandPalette open={false} onOpenChange={onOpenChange} />)
+    rerender(<CommandPalette open onOpenChange={onOpenChange} />)
+
+    const reopenedInput = screen.getByRole('combobox') as HTMLInputElement
+    expect(reopenedInput.value).toBe('')
+    expect(screen.getAllByRole('option')).toHaveLength(QUICK_LINKS.length + COMMANDS.length)
   })
 
   it('인자 없는 /goto는 사용법 안내를 표시하고 navigate하지 않는다 (E2)', async () => {
