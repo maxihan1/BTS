@@ -9,6 +9,19 @@
 //
 import { http, HttpResponse } from 'msw'
 import type { ImportJobStatus } from '@/api/imports'
+import {
+  importAnalysisResponseSchema,
+  mappingValidationResponseSchema,
+  userCollectionResponseSchema,
+  valueCollectionResponseSchema,
+} from '@/api/import-mappings'
+import type {
+  FieldMappingEntry,
+  ImportAnalysisResponse,
+  MappingValidationResponse,
+  UserCollectionResponse,
+  ValueCollectionResponse,
+} from '@/api/import-mappings'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // E2E 시나리오 토글용 localStorage 키 상수
@@ -157,6 +170,262 @@ function generateUuidV4(): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// FR-IM-02 D6/D7 — 매핑 마법사(analyze/validate/collect/confirm) 정적 픽스처
+//
+// 교훈 반영.
+//   - frontend-zod-backend-dto-contract-gap: 카탈로그 11종은 backend
+//     search-export-import TargetField.kt(key/label/required/multi)를 그대로 미러한다 — 이 파일에서
+//     새로 발명하지 않는다.
+//   - 아래 "계약 drift 가드" 블록이 모듈 로드 시점에 각 픽스처를 실제 Zod 응답 스키마로 즉시 parse해,
+//     이 파일과 api/import-mappings.ts 스키마 사이의 drift를 이 모듈을 import하는 어떤 테스트에서도
+//     즉시 표면화한다(별도 RED 테스트 파일 불필요 — 인프라 task 특성).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** BTS 대상 필드 카탈로그 11종 — backend TargetField.kt entries 순서·값과 1:1 대응 */
+const TARGET_FIELD_CATALOG_FIXTURE: ImportAnalysisResponse['targetFields'] = [
+  { key: 'summary', label: '제목', required: true, multi: false },
+  { key: 'description', label: '설명', required: false, multi: false },
+  { key: 'type', label: '유형', required: false, multi: false },
+  { key: 'priority', label: '우선순위', required: false, multi: false },
+  { key: 'reporter', label: '보고자', required: false, multi: false },
+  { key: 'assignee', label: '담당자', required: false, multi: false },
+  { key: 'labels', label: '라벨', required: false, multi: true },
+  { key: 'component', label: '컴포넌트', required: false, multi: true },
+  { key: 'status', label: '상태', required: false, multi: false },
+  { key: 'fixVersion', label: '수정 버전', required: false, multi: true },
+  { key: 'affectsVersion', label: '영향 버전', required: false, multi: true },
+]
+
+/** analyze가 감지했다고 가정하는 고정 CSV 소스 헤더 목록(원본 순서) */
+const SOURCE_FIELD_NAMES_FIXTURE = ['Summary', 'Description', 'Status', 'Priority', 'Reporter', 'Assignee', 'Labels']
+
+/** CSV 미리보기 샘플 행 — SOURCE_FIELD_NAMES_FIXTURE와 같은 컬럼 순서(2행) */
+const SAMPLE_ROWS_FIXTURE: string[][] = [
+  ['로그인 실패 이슈', '로그인 시도 시 500 에러 발생', 'Open', 'High', 'alice@example.com', 'bob@example.com', 'bug,urgent'],
+  ['UI 정렬 깨짐', '모바일 뷰에서 카드 정렬이 깨짐', 'In Progress', 'Medium', 'carol@example.com', '', 'ui'],
+]
+
+/** collectUsers 고정 픽스처 — 추천 있음 2건 + 추천 없음(null) 1건 */
+const USER_COLLECTION_FIXTURE: UserCollectionResponse['users'] = [
+  {
+    sourceIdentifier: 'alice@example.com',
+    suggestedUserId: '33333333-0000-4000-a000-000000000001',
+    suggestedDisplayName: 'Alice',
+  },
+  {
+    sourceIdentifier: 'bob@example.com',
+    suggestedUserId: '33333333-0000-4000-a000-000000000002',
+    suggestedDisplayName: 'Bob',
+  },
+  { sourceIdentifier: 'carol@example.com' },
+]
+
+/**
+ * collectValues 고정 픽스처 — STATUS/TYPE/PRIORITY 각 소스 값(일부는 suggestedTargetValue 없음).
+ *
+ * sourceValue는 backend `ValueMappingNormalizer.normalize`(trim + lowercase, 정본
+ * search-export-import/.../mapping/ValueMappingNormalizer.kt)가 반환하는 정규화된 값과 케이스를
+ * 맞춘다 — 원본 대소문자('Open' 등)를 그대로 쓰면 실제 API 응답과 달라 E2E가 가짜로 통과한다
+ * (suggestedTargetValue는 BTS canonical 대상 값이라 정규화 대상이 아니다).
+ */
+const VALUE_COLLECTION_FIXTURE: ValueCollectionResponse['fields'] = [
+  {
+    targetField: 'STATUS',
+    values: [
+      { sourceValue: 'open', suggestedTargetValue: '할 일' },
+      { sourceValue: 'in progress', suggestedTargetValue: '진행 중' },
+      { sourceValue: 'resolved' },
+    ],
+  },
+  {
+    targetField: 'TYPE',
+    values: [
+      { sourceValue: 'bug', suggestedTargetValue: '버그' },
+      { sourceValue: 'story' },
+    ],
+  },
+  {
+    targetField: 'PRIORITY',
+    values: [
+      { sourceValue: 'high', suggestedTargetValue: '높음' },
+      { sourceValue: 'low' },
+    ],
+  },
+]
+
+// ── 계약 drift 가드 — 모듈 로드 시 즉시 self-parse ─────────────────────────────
+importAnalysisResponseSchema.parse({
+  jobId: '00000000-0000-4000-a000-000000000001',
+  status: 'AWAITING_MAPPING',
+  format: 'CSV',
+  sourceFields: SOURCE_FIELD_NAMES_FIXTURE.map((name) => ({ name })),
+  sampleRows: SAMPLE_ROWS_FIXTURE,
+  targetFields: TARGET_FIELD_CATALOG_FIXTURE,
+})
+mappingValidationResponseSchema.parse({
+  valid: false,
+  errors: [{ code: 'SUMMARY_NOT_MAPPED', message: 'summary(제목) 대상에 매핑된 소스 필드가 없습니다.' }],
+  warnings: [{ code: 'SOURCE_FIELD_IGNORED', message: '이 소스 필드는 매핑되지 않아 import 시 무시됩니다: Labels', field: 'Labels' }],
+})
+userCollectionResponseSchema.parse({ users: USER_COLLECTION_FIXTURE })
+valueCollectionResponseSchema.parse({ fields: VALUE_COLLECTION_FIXTURE })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/imports/analyze
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * analyze 응답 본문을 조립한다. format이 'JSON'이면 sampleRows는 항상 빈 배열이다
+ * (backend ImportAnalysisResponse KDoc — "JSON은 항상 빈 목록").
+ *
+ * @param jobId 새로 발급한 Import 작업 UUID
+ * @param format 정규화된 업로드 형식
+ */
+function buildAnalysisResponse(jobId: string, format: 'CSV' | 'JSON'): ImportAnalysisResponse {
+  return {
+    jobId,
+    status: 'AWAITING_MAPPING',
+    format,
+    sourceFields: SOURCE_FIELD_NAMES_FIXTURE.map((name) => ({ name })),
+    sampleRows: format === 'JSON' ? [] : SAMPLE_ROWS_FIXTURE,
+    targetFields: TARGET_FIELD_CATALOG_FIXTURE,
+  }
+}
+
+/**
+ * POST /api/v1/imports/analyze — CSV/JSON 파일을 분석해 매핑 UI 진입 정보를 반환한다.
+ *
+ * 새 jobId를 매 호출마다 발급하고, 요청 FormData의 format을 그대로 응답에 반영한다(대소문자 무관,
+ * 'JSON' 외에는 모두 'CSV'로 취급). 저장 없이 고정 픽스처(sourceFields/sampleRows/targetFields)를
+ * 즉시 200으로 반환한다 — 실제 파일 파싱은 수행하지 않는다(백엔드 동기 완결 흐름의 mock 단순화).
+ */
+const analyzeImportHandler = http.post('/api/v1/imports/analyze', async ({ request }) => {
+  let format: 'CSV' | 'JSON' = 'CSV'
+  try {
+    const formData = await request.formData()
+    const rawFormat = formData.get('format')
+    if (typeof rawFormat === 'string' && rawFormat.toUpperCase() === 'JSON') {
+      format = 'JSON'
+    }
+  } catch {
+    format = 'CSV'
+  }
+
+  return HttpResponse.json(buildAnalysisResponse(generateUuidV4(), format))
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/imports/:id/mapping/validate
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** validate/collectUsers/collectValues가 공유하는 `{ fieldMappings }` 요청 바디를 읽는다 */
+async function readFieldMappings(request: Request): Promise<FieldMappingEntry[]> {
+  const body = (await request.json()) as { fieldMappings?: FieldMappingEntry[] }
+  return body.fieldMappings ?? []
+}
+
+/**
+ * 필드 매핑 검증 응답을 조립한다 — backend MappingValidator의 핵심 규칙(summary 필수, 미매핑
+ * source는 warning)만 재현한다.
+ *
+ * @param fieldMappings 요청으로 제안된 소스 필드 → 대상 필드 매핑
+ */
+function buildValidationResponse(fieldMappings: FieldMappingEntry[]): MappingValidationResponse {
+  const summaryMapped = fieldMappings.some((entry) => entry.targetField === 'summary')
+  const errors: MappingValidationResponse['errors'] = summaryMapped
+    ? []
+    : [{ code: 'SUMMARY_NOT_MAPPED', message: 'summary(제목) 대상에 매핑된 소스 필드가 없습니다.' }]
+
+  const targetBySourceField = new Map(fieldMappings.map((entry) => [entry.sourceField, entry.targetField]))
+  const warnings: MappingValidationResponse['warnings'] = SOURCE_FIELD_NAMES_FIXTURE.filter((sourceField) => {
+    const targetField = targetBySourceField.get(sourceField)
+    return targetField === undefined || targetField === 'IGNORE'
+  }).map((sourceField) => ({
+    code: 'SOURCE_FIELD_IGNORED',
+    message: `이 소스 필드는 매핑되지 않아 import 시 무시됩니다: ${sourceField}`,
+    field: sourceField,
+  }))
+
+  return { valid: errors.length === 0, errors, warnings }
+}
+
+/**
+ * POST /api/v1/imports/{id}/mapping/validate — 제안된 필드 매핑을 저장 없이 검증한다.
+ *
+ * summary 대상에 매핑된 소스 필드가 없으면 error(SUMMARY_NOT_MAPPED)로 valid=false, 있으면
+ * valid=true이며 미매핑/IGNORE 소스 필드는 warning(SOURCE_FIELD_IGNORED)으로 노출한다.
+ */
+const validateMappingHandler = http.post('/api/v1/imports/:id/mapping/validate', async ({ request }) => {
+  const fieldMappings = await readFieldMappings(request)
+  return HttpResponse.json(buildValidationResponse(fieldMappings))
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/imports/:id/mapping/users
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/v1/imports/{id}/mapping/users — 원본 작성자 식별자를 수집하고 BTS 사용자 추천을 계산한다.
+ *
+ * 저장 없이 고정 픽스처(USER_COLLECTION_FIXTURE)를 반환한다 — 요청 fieldMappings과 무관하다.
+ */
+const collectUsersHandler = http.post('/api/v1/imports/:id/mapping/users', () => {
+  const response: UserCollectionResponse = { users: USER_COLLECTION_FIXTURE }
+  return HttpResponse.json(response)
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/imports/:id/mapping/values
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/v1/imports/{id}/mapping/values — 원본 상태/유형/우선순위 값을 수집하고 대상 값 추천을 계산한다.
+ *
+ * 저장 없이 고정 픽스처(VALUE_COLLECTION_FIXTURE)를 반환한다 — 요청 fieldMappings과 무관하다.
+ */
+const collectValuesHandler = http.post('/api/v1/imports/:id/mapping/values', () => {
+  const response: ValueCollectionResponse = { fields: VALUE_COLLECTION_FIXTURE }
+  return HttpResponse.json(response)
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/imports/:id/mapping (confirm)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/v1/imports/{id}/mapping — 매핑을 확정하고 작업을 PENDING으로 등록한다.
+ *
+ * 기존 `importJobStore`(진행 시뮬레이션 store)를 재사용한다 — 여기서 등록한 레코드는 이후 기존
+ * `GET /api/v1/imports/{id}` 폴링 핸들러가 그대로 RUNNING→COMPLETED로 진행시킨다. 요청 dryRun을
+ * 레코드에 반영한다. `LS_KEY_IMPORT_FAIL='true'`이면(E2E 시나리오) 등록 직후의 첫 GET 호출에서
+ * 기존 토글 분기가 그대로 FAILED로 전환한다(이 핸들러가 별도로 처리하지 않아도 됨).
+ */
+const confirmMappingHandler = http.post('/api/v1/imports/:id/mapping', async ({ request, params }) => {
+  const id = params['id'] as string
+  let dryRun = false
+  try {
+    const body = (await request.json()) as { dryRun?: boolean }
+    dryRun = body.dryRun === true
+  } catch {
+    dryRun = false
+  }
+
+  const record: ImportJobRecord = {
+    jobId: id,
+    status: 'PENDING',
+    progress: 0,
+    succeededRows: 0,
+    failedRows: 0,
+    errorLogReady: false,
+    dryRun,
+    pollCount: 0,
+  }
+  importJobStore.set(id, record)
+
+  return HttpResponse.json(toResponse(record))
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/v1/imports
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -299,4 +568,9 @@ export const importHandlers = [
   submitImportHandler,
   getImportStatusHandler,
   downloadImportErrorsHandler,
+  analyzeImportHandler,
+  validateMappingHandler,
+  collectUsersHandler,
+  collectValuesHandler,
+  confirmMappingHandler,
 ]
