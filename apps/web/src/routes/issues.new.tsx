@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import { createIssue } from '@/api/issues'
 import { ApiError } from '@/api/client'
 import {
@@ -31,17 +31,35 @@ import type { CustomField } from '@/api/custom-fields.types'
 // Zod 폼 스키마 — interface 중복 정의 금지
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 이슈 제목(summary) 최대 길이 — zod 검증과 URL summary 프리필 clamp(FR-UX-04 FR7)가 공유 */
+const SUMMARY_MAX_LENGTH = 500
+
 /** 이슈 생성 폼 입력 Zod 스키마 */
 const issueCreateSchema = z.object({
   projectKey: z.string().min(1, issueCreateStrings.projectKeyRequired),
   summary: z
     .string()
     .min(1, issueCreateStrings.summaryRequired)
-    .max(500, issueCreateStrings.summaryTooLong),
+    .max(SUMMARY_MAX_LENGTH, issueCreateStrings.summaryTooLong),
 })
 
 /** Zod 스키마에서 추론한 폼 값 타입 */
 type IssueCreateFormValues = z.infer<typeof issueCreateSchema>
+
+/**
+ * 명령 팔레트 `/issue <제목>`(FR-UX-04)가 넘긴 URL summary를 폼 기본값으로 쓸 수 있게 정제한다.
+ *
+ * - undefined → 빈 문자열(기존 동작 유지, 회귀 방지)
+ * - 앞뒤 공백 trim
+ * - zod max(SUMMARY_MAX_LENGTH)를 넘으면 제출 시 검증 에러가 바로 뜨는 것을 막기 위해 clamp
+ *
+ * @param rawSummary URL search param에서 읽은 summary(선택)
+ * @returns 폼 defaultValues.summary에 바로 쓸 수 있는 문자열
+ */
+function sanitizeInitialSummary(rawSummary: string | undefined): string {
+  if (rawSummary === undefined) return ''
+  return rawSummary.trim().slice(0, SUMMARY_MAX_LENGTH)
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // isRequiredFieldEmpty — required 필드 빈값 판정 헬퍼 (스펙 E-3)
@@ -107,6 +125,8 @@ function resolveCreateErrorMessage(err: unknown): string {
 interface IssueCreateFormProps {
   /** 이슈 생성 성공 후 호출되는 콜백 — 생성된 이슈 key를 전달 */
   onSuccess?: (key: string) => void
+  /** 제목 필드 기본값 — 명령 팔레트 `/issue <제목>`(FR-UX-04 FR7)의 URL summary 프리필용 */
+  initialSummary?: string
 }
 
 /**
@@ -117,10 +137,11 @@ interface IssueCreateFormProps {
  * - 제출 성공 시 onSuccess(key) 콜백 호출
  * - PROJECT_NOT_FOUND(404) 시 role="alert" 에러 메시지 노출
  * - projectKey 비어있으면 ComponentMultiSelect disabled (lazy 로드)
+ * - initialSummary가 있으면 제목 필드 기본값으로 사용(FR-UX-04 FR7)
  *
  * 라우터 의존 없이 props로 onSuccess를 받아 단위 테스트가 가능하다.
  */
-export function IssueCreateForm({ onSuccess }: IssueCreateFormProps = {}): JSX.Element {
+export function IssueCreateForm({ onSuccess, initialSummary }: IssueCreateFormProps = {}): JSX.Element {
   const [serverError, setServerError] = useState<string | null>(null)
   const [selectedComponentIds, setSelectedComponentIds] = useState<string[]>([])
   const [selectedSecurityLevelId, setSelectedSecurityLevelId] = useState<string | null>(null)
@@ -129,7 +150,7 @@ export function IssueCreateForm({ onSuccess }: IssueCreateFormProps = {}): JSX.E
 
   const form = useForm<IssueCreateFormValues>({
     resolver: zodResolver(issueCreateSchema),
-    defaultValues: { projectKey: '', summary: '' },
+    defaultValues: { projectKey: '', summary: sanitizeInitialSummary(initialSummary) },
   })
 
   const projectKey = form.watch('projectKey')
@@ -317,10 +338,23 @@ export function IssueCreateForm({ onSuccess }: IssueCreateFormProps = {}): JSX.E
  */
 export function IssueCreateRouteAdapter(): JSX.Element {
   const navigate = useNavigate()
+  // summary(선택) search param — 명령 팔레트 `/issue <제목>` 실행(FR-UX-04 FR7) 시 제목 프리필
+  const search = useSearch({ strict: false }) as { summary?: string }
+  const initialSummary = search.summary
 
   function handleSuccess(key: string): void {
     void navigate({ to: '/issues/$key', params: { key } })
   }
 
-  return <IssueCreateForm onSuccess={handleSuccess} />
+  // CONCERN-1(plan 리뷰): react-hook-form의 defaultValues는 mount 시 1회만 적용된다.
+  // 이미 /issues/new에 머문 상태에서 URL summary만 바뀌면 같은 라우트라 컴포넌트가
+  // 자연스럽게 리마운트되지 않아 프리필이 갱신되지 않는다. key={initialSummary}로
+  // summary 값이 바뀔 때마다 폼을 강제 리마운트해 항상 최신 프리필을 반영한다.
+  return (
+    <IssueCreateForm
+      key={initialSummary ?? ''}
+      initialSummary={initialSummary}
+      onSuccess={handleSuccess}
+    />
+  )
 }
