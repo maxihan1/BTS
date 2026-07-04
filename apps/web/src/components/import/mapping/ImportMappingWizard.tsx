@@ -489,6 +489,172 @@ function DoneStep({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// WizardStepContent — 단계별 렌더 스위치(REFACTOR: 메인 컴포넌트에서 분리)
+// state/handlers 두 객체로 나눠 props 폭발을 완화한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface WizardStepContentState {
+  readonly step: WizardStep
+  readonly visibleSteps: WizardStep[]
+  readonly format: ImportFormat
+  readonly analysis: ImportAnalysisResponse | null
+  readonly jobId: string | null
+  readonly fieldMappings: Record<string, string>
+  readonly fieldEntries: FieldMappingEntry[]
+  readonly userOverrides: Record<string, string | null>
+  readonly valueOverrides: Record<string, string>
+  readonly collectedUsers: UserCollectionResponse['users'] | null
+  readonly collectedValues: ValueCollectionResponse['fields'] | null
+  readonly lastDryRun: boolean
+  readonly submitError: string | null
+  readonly recollectNotice: boolean
+  readonly pollData: ImportJobStatus | undefined
+  readonly pollIsError: boolean
+  readonly canAnalyze: boolean
+  readonly isAnalyzing: boolean
+  readonly isConfirmPending: boolean
+  readonly pendingDryRun: boolean | null
+  readonly isDownloadPending: boolean
+  readonly isReapplyPending: boolean
+}
+
+interface WizardStepContentHandlers {
+  readonly onFormatChange: (format: ImportFormat) => void
+  readonly onFileChange: (file: File | null) => void
+  readonly onAnalyze: () => void
+  readonly onFieldMappingsChange: (next: Record<string, string>) => void
+  readonly onFieldsNext: (entries: FieldMappingEntry[]) => void
+  readonly onFieldsBack: () => void
+  readonly onUserOverridesChange: (next: Record<string, string | null>) => void
+  readonly onUsersNext: () => void
+  readonly onUsersBack: () => void
+  readonly onValueOverridesChange: (next: Record<string, string>) => void
+  readonly onValuesNext: () => void
+  readonly onValuesBack: () => void
+  readonly onConfirm: (dryRun: boolean) => void
+  readonly onDownload: () => void
+  readonly onReapplyReal: () => void
+  readonly onReset: () => void
+}
+
+function WizardStepContent({
+  state,
+  handlers,
+}: {
+  readonly state: WizardStepContentState
+  readonly handlers: WizardStepContentHandlers
+}): JSX.Element {
+  const { step, visibleSteps } = state
+
+  if (step === 'upload') {
+    return (
+      <WizardLayout steps={visibleSteps} current={step}>
+        <UploadStep
+          format={state.format}
+          onFormatChange={handlers.onFormatChange}
+          onFileChange={handlers.onFileChange}
+          canAnalyze={state.canAnalyze}
+          isAnalyzing={state.isAnalyzing}
+          submitError={state.submitError}
+          onAnalyze={handlers.onAnalyze}
+        />
+      </WizardLayout>
+    )
+  }
+
+  if (step === 'fields') {
+    return (
+      <WizardLayout steps={visibleSteps} current={step}>
+        {state.analysis !== null && state.jobId !== null ? (
+          <FieldMappingStep
+            jobId={state.jobId}
+            sourceFields={state.analysis.sourceFields.map((f) => f.name)}
+            sampleRows={state.analysis.sampleRows}
+            targetFields={state.analysis.targetFields}
+            value={state.fieldMappings}
+            onChange={handlers.onFieldMappingsChange}
+            onNext={handlers.onFieldsNext}
+            onBack={handlers.onFieldsBack}
+          />
+        ) : (
+          <ErrorAlert>분석 정보를 불러오지 못했습니다. 처음부터 다시 시도하세요.</ErrorAlert>
+        )}
+      </WizardLayout>
+    )
+  }
+
+  if (step === 'users') {
+    return (
+      <WizardLayout steps={visibleSteps} current={step}>
+        {state.recollectNotice && (
+          <p className="mb-2 text-xs text-muted-foreground">필드 매핑이 바뀌어 작성자를 다시 수집했습니다.</p>
+        )}
+        <UserMappingStep
+          users={state.collectedUsers ?? []}
+          value={state.userOverrides}
+          onChange={handlers.onUserOverridesChange}
+          onNext={handlers.onUsersNext}
+          onBack={handlers.onUsersBack}
+        />
+      </WizardLayout>
+    )
+  }
+
+  if (step === 'values') {
+    return (
+      <WizardLayout steps={visibleSteps} current={step}>
+        <ValueMappingStep
+          fields={state.collectedValues ?? []}
+          value={state.valueOverrides}
+          onChange={handlers.onValueOverridesChange}
+          onNext={handlers.onValuesNext}
+          onBack={handlers.onValuesBack}
+        />
+      </WizardLayout>
+    )
+  }
+
+  if (step === 'review') {
+    return (
+      <WizardLayout steps={visibleSteps} current={step}>
+        <ReviewStep
+          fieldCount={state.fieldEntries.filter((entry) => entry.targetField !== FIELD_MAPPING_IGNORE).length}
+          userCount={(state.collectedUsers ?? []).length}
+          valueCount={buildValueMappingsPayload(state.collectedValues ?? [], state.valueOverrides).length}
+          isPending={state.isConfirmPending}
+          pendingDryRun={state.pendingDryRun}
+          submitError={state.submitError}
+          onConfirm={handlers.onConfirm}
+        />
+      </WizardLayout>
+    )
+  }
+
+  if (step === 'tracking') {
+    return (
+      <WizardLayout steps={visibleSteps} current={step}>
+        <TrackingStep pollData={state.pollData} pollIsError={state.pollIsError} />
+      </WizardLayout>
+    )
+  }
+
+  return (
+    <WizardLayout steps={visibleSteps} current={step}>
+      <DoneStep
+        pollData={state.pollData}
+        lastDryRun={state.lastDryRun}
+        submitError={state.submitError}
+        isDownloadPending={state.isDownloadPending}
+        isReapplyPending={state.isReapplyPending}
+        onDownload={handlers.onDownload}
+        onReapplyReal={handlers.onReapplyReal}
+        onReset={handlers.onReset}
+      />
+    </WizardLayout>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -699,124 +865,64 @@ export const ImportMappingWizard = ({ projectKey }: ImportMappingWizardProps): J
 
   const visibleSteps = computeVisibleSteps(format, collectedUsers, collectedValues)
 
-  if (step === 'upload') {
-    return (
-      <WizardLayout steps={visibleSteps} current={step}>
-        <UploadStep
-          format={format}
-          onFormatChange={setFormat}
-          onFileChange={setFile}
-          canAnalyze={file !== null && !analyzeMutation.isPending}
-          isAnalyzing={analyzeMutation.isPending}
-          submitError={submitError}
-          onAnalyze={handleAnalyze}
-        />
-      </WizardLayout>
-    )
-  }
-
-  if (step === 'fields') {
-    return (
-      <WizardLayout steps={visibleSteps} current={step}>
-        {analysis !== null && jobId !== null ? (
-          <FieldMappingStep
-            jobId={jobId}
-            sourceFields={analysis.sourceFields.map((f) => f.name)}
-            sampleRows={analysis.sampleRows}
-            targetFields={analysis.targetFields}
-            value={fieldMappings}
-            onChange={setFieldMappings}
-            onNext={handleFieldsNext}
-            onBack={() => {
-              setStep('upload')
-            }}
-          />
-        ) : (
-          <ErrorAlert>분석 정보를 불러오지 못했습니다. 처음부터 다시 시도하세요.</ErrorAlert>
-        )}
-      </WizardLayout>
-    )
-  }
-
-  if (step === 'users') {
-    return (
-      <WizardLayout steps={visibleSteps} current={step}>
-        {recollectNotice && (
-          <p className="mb-2 text-xs text-muted-foreground">필드 매핑이 바뀌어 작성자를 다시 수집했습니다.</p>
-        )}
-        <UserMappingStep
-          users={collectedUsers ?? []}
-          value={userOverrides}
-          onChange={setUserOverrides}
-          onNext={handleUsersNext}
-          onBack={() => {
-            setStep(format === 'CSV' ? 'fields' : 'upload')
-          }}
-        />
-      </WizardLayout>
-    )
-  }
-
-  if (step === 'values') {
-    return (
-      <WizardLayout steps={visibleSteps} current={step}>
-        <ValueMappingStep
-          fields={collectedValues ?? []}
-          value={valueOverrides}
-          onChange={setValueOverrides}
-          onNext={() => {
-            setStep('review')
-          }}
-          onBack={() => {
-            setStep('users')
-          }}
-        />
-      </WizardLayout>
-    )
-  }
-
-  if (step === 'review') {
-    return (
-      <WizardLayout steps={visibleSteps} current={step}>
-        <ReviewStep
-          fieldCount={fieldEntries.filter((entry) => entry.targetField !== FIELD_MAPPING_IGNORE).length}
-          userCount={(collectedUsers ?? []).length}
-          valueCount={buildValueMappingsPayload(collectedValues ?? [], valueOverrides).length}
-          isPending={confirmMutation.isPending}
-          pendingDryRun={confirmMutation.isPending ? (confirmMutation.variables ?? null) : null}
-          submitError={submitError}
-          onConfirm={(dryRun) => {
-            confirmMutation.mutate(dryRun)
-          }}
-        />
-      </WizardLayout>
-    )
-  }
-
-  if (step === 'tracking') {
-    return (
-      <WizardLayout steps={visibleSteps} current={step}>
-        <TrackingStep pollData={pollData} pollIsError={pollIsError} />
-      </WizardLayout>
-    )
-  }
-
   return (
-    <WizardLayout steps={visibleSteps} current={step}>
-      <DoneStep
-        pollData={pollData}
-        lastDryRun={lastDryRun}
-        submitError={submitError}
-        isDownloadPending={downloadMutation.isPending}
-        isReapplyPending={reapplyMutation.isPending}
-        onDownload={() => {
+    <WizardStepContent
+      state={{
+        step,
+        visibleSteps,
+        format,
+        analysis,
+        jobId,
+        fieldMappings,
+        fieldEntries,
+        userOverrides,
+        valueOverrides,
+        collectedUsers,
+        collectedValues,
+        lastDryRun,
+        submitError,
+        recollectNotice,
+        pollData,
+        pollIsError,
+        canAnalyze: file !== null && !analyzeMutation.isPending,
+        isAnalyzing: analyzeMutation.isPending,
+        isConfirmPending: confirmMutation.isPending,
+        pendingDryRun: confirmMutation.isPending ? (confirmMutation.variables ?? null) : null,
+        isDownloadPending: downloadMutation.isPending,
+        isReapplyPending: reapplyMutation.isPending,
+      }}
+      handlers={{
+        onFormatChange: setFormat,
+        onFileChange: setFile,
+        onAnalyze: handleAnalyze,
+        onFieldMappingsChange: setFieldMappings,
+        onFieldsNext: handleFieldsNext,
+        onFieldsBack: () => {
+          setStep('upload')
+        },
+        onUserOverridesChange: setUserOverrides,
+        onUsersNext: handleUsersNext,
+        onUsersBack: () => {
+          setStep(format === 'CSV' ? 'fields' : 'upload')
+        },
+        onValueOverridesChange: setValueOverrides,
+        onValuesNext: () => {
+          setStep('review')
+        },
+        onValuesBack: () => {
+          setStep('users')
+        },
+        onConfirm: (dryRun) => {
+          confirmMutation.mutate(dryRun)
+        },
+        onDownload: () => {
           downloadMutation.mutate()
-        }}
-        onReapplyReal={handleReapplyReal}
-        onReset={() => {
+        },
+        onReapplyReal: handleReapplyReal,
+        onReset: () => {
           handleReset(pollData?.status === 'COMPLETED' && !lastDryRun)
-        }}
-      />
-    </WizardLayout>
+        },
+      }}
+    />
   )
 }
