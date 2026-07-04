@@ -140,7 +140,7 @@ class ImportMappingServiceUserTest {
     }
 
     @Test
-    fun `collectUsers collects distinct normalized identifiers from CSV and returns suggested user id and display name`() {
+    fun `collectUsers collects distinct normalized identifiers from CSV and returns suggested user info`() {
         val job = makeJob(format = "CSV")
         val fieldMappings =
             mapOf(
@@ -250,7 +250,7 @@ class ImportMappingServiceUserTest {
     // ── confirm — 정상 확정: 필드매핑 저장 뒤·enqueue 앞에 사용자매핑 저장 ────────
 
     @Test
-    fun `confirm saves normalized user mappings after field mapping and before enqueue, allowing null targetUserId as fallback`() {
+    fun `confirm saves user mappings after field mapping and before enqueue, null targetUserId allowed`() {
         val job = makeJob(format = "JSON")
         val fieldMappings = mapOf("x" to "summary")
         val expectedNormalized = mapOf("alice@corp.com" to aliceId, "carol@corp.com" to null)

@@ -102,6 +102,7 @@ import java.util.UUID
  *   (`ImportJobProcessor` 의 동일 기본값 패턴을 따라) 기본값으로 직접 인스턴스화한다.
  */
 @Service
+@Suppress("LongParameterList") // DI 생성자 — 필드/사용자 매핑 영속·CAS 전이·enqueue·cross-BC 조회 협력자 8개
 class ImportMappingService(
     private val importMappingRepository: ImportMappingRepository,
     private val importJobRepository: ImportJobRepository,

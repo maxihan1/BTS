@@ -189,6 +189,7 @@ class ImportMappingFlowIntegrationTest {
         }
 
         @Bean
+        @Suppress("LongParameterList") // 테스트 빈 조립 — ImportMappingService 생성자 협력자를 그대로 나열
         open fun importMappingService(
             importMappingRepository: ImportMappingRepository,
             importJobRepository: ImportJobRepository,
