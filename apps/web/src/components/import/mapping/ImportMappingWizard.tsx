@@ -21,6 +21,7 @@ import type {
   ConfirmMappingParams,
   UserCollectionResponse,
   ValueCollectionResponse,
+  MappingIssue,
 } from '@/api/import-mappings'
 import { suggestFieldMappings, FIELD_MAPPING_IGNORE } from './field-mapping-suggest'
 import { FieldMappingStep } from './FieldMappingStep'
@@ -114,6 +115,42 @@ function seedValueOverrides(fields: ValueCollectionResponse['fields']): Record<s
   return result
 }
 
+/**
+ * 재수집된 사용자 목록과 이전 override map을 병합한다(게이트2 리뷰 BLOCKER 수정).
+ * 생존 키(재수집 결과에도 존재)는 사용자가 지정한 이전 override를 그대로 유지하고,
+ * 신규 키만 추천값으로 시드한다. 사라진 키(재수집 결과에 없음)는 폐기한다 — 통째 재-seed는
+ * 사용자가 명시적으로 선택한 override(예: "미매핑")를 조용히 되돌리는 회귀였다.
+ */
+function mergeUserOverrides(
+  prev: Record<string, string | null>,
+  users: UserCollectionResponse['users'],
+): Record<string, string | null> {
+  const seeded = seedUserOverrides(users)
+  const next: Record<string, string | null> = {}
+  for (const entry of users) {
+    next[entry.sourceIdentifier] = Object.prototype.hasOwnProperty.call(prev, entry.sourceIdentifier)
+      ? (prev[entry.sourceIdentifier] ?? null)
+      : (seeded[entry.sourceIdentifier] ?? null)
+  }
+  return next
+}
+
+/** 값 매핑 override map 버전의 mergeUserOverrides — 키는 `targetField::sourceValue` */
+function mergeValueOverrides(
+  prev: Record<string, string>,
+  fields: ValueCollectionResponse['fields'],
+): Record<string, string> {
+  const seeded = seedValueOverrides(fields)
+  const next: Record<string, string> = {}
+  for (const field of fields) {
+    for (const entry of field.values) {
+      const key = `${field.targetField}::${entry.sourceValue}`
+      next[key] = Object.prototype.hasOwnProperty.call(prev, key) ? (prev[key] ?? '') : (seeded[key] ?? '')
+    }
+  }
+  return next
+}
+
 /** 사용자 매핑 override map을 confirmMapping 페이로드 항목으로 변환한다 */
 function buildUserMappingsPayload(
   users: UserCollectionResponse['users'],
@@ -181,6 +218,27 @@ function resolveMappingError(error: unknown): string {
   return importMappingFailureMessage(undefined)
 }
 
+/** value가 MappingIssue 형태(`code`/`message` 문자열 필드 보유)인지 구조적으로 확인한다 */
+function isMappingIssueLike(value: unknown): value is MappingIssue {
+  if (value === null || typeof value !== 'object') return false
+  const record = value as Record<string, unknown>
+  return typeof record['code'] === 'string' && typeof record['message'] === 'string'
+}
+
+/**
+ * confirm 실패(422 등) ApiError body의 ProblemDetail `errors[]` 확장 속성을 추출한다(게이트2 리뷰
+ * 높은 CONCERN 수정). 어느 소스값/식별자가 왜 실패했는지(`field` 포함)를 사용자에게 보여주기 위함 —
+ * 기존에는 이 목록을 버리고 제네릭 문구만 노출해 사용자가 무엇을 고쳐야 할지 알 수 없었다.
+ */
+function extractConfirmErrors(error: unknown): MappingIssue[] {
+  if (!(error instanceof ApiError)) return []
+  const body = error.body
+  if (body === null || typeof body !== 'object') return []
+  const errors = (body as Record<string, unknown>)['errors']
+  if (!Array.isArray(errors)) return []
+  return errors.filter(isMappingIssueLike)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 공통 인라인 렌더
 // ─────────────────────────────────────────────────────────────────────────────
@@ -190,6 +248,27 @@ function ErrorAlert({ children }: { readonly children: ReactNode }): JSX.Element
     <p role="alert" className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
       {children}
     </p>
+  )
+}
+
+/**
+ * confirm 실패 시 ProblemDetail `errors[]` 각 사유를 role=alert 목록으로 표시한다(게이트2 리뷰
+ * 높은 CONCERN 수정). field가 있으면 어느 값/필드가 문제인지 함께 노출한다.
+ */
+function ConfirmErrorList({ errors }: { readonly errors: MappingIssue[] }): JSX.Element | null {
+  if (errors.length === 0) return null
+  return (
+    <div className="mb-4 space-y-1">
+      {errors.map((issue, i) => (
+        <p
+          key={`${issue.code}-${issue.field ?? 'global'}-${i}`}
+          role="alert"
+          className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {issue.field != null ? `값/필드: ${issue.field} — ${issue.message}` : issue.message}
+        </p>
+      ))}
+    </div>
   )
 }
 
@@ -323,7 +402,9 @@ interface ReviewStepProps {
   readonly isPending: boolean
   readonly pendingDryRun: boolean | null
   readonly submitError: string | null
+  readonly confirmErrors: MappingIssue[]
   readonly onConfirm: (dryRun: boolean) => void
+  readonly onBack: () => void
 }
 
 function ReviewStep({
@@ -333,15 +414,24 @@ function ReviewStep({
   isPending,
   pendingDryRun,
   submitError,
+  confirmErrors,
   onConfirm,
+  onBack,
 }: ReviewStepProps): JSX.Element {
   return (
     <div>
       <p className="mb-4 text-sm text-foreground">
         필드 매핑 {fieldCount}건 · 사용자 매핑 {userCount}건 · 값 매핑 {valueCount}건을 확정합니다.
       </p>
-      {submitError !== null && <ErrorAlert>{submitError}</ErrorAlert>}
+      {confirmErrors.length > 0 ? (
+        <ConfirmErrorList errors={confirmErrors} />
+      ) : (
+        submitError !== null && <ErrorAlert>{submitError}</ErrorAlert>
+      )}
       <div className="mt-2 flex justify-end gap-2">
+        <Button type="button" variant="outline" size="sm" disabled={isPending} onClick={onBack}>
+          이전
+        </Button>
         <Button
           type="button"
           size="sm"
@@ -507,6 +597,7 @@ interface WizardStepContentState {
   readonly collectedValues: ValueCollectionResponse['fields'] | null
   readonly lastDryRun: boolean
   readonly submitError: string | null
+  readonly confirmErrors: MappingIssue[]
   readonly recollectNotice: boolean
   readonly pollData: ImportJobStatus | undefined
   readonly pollIsError: boolean
@@ -532,6 +623,7 @@ interface WizardStepContentHandlers {
   readonly onValuesNext: () => void
   readonly onValuesBack: () => void
   readonly onConfirm: (dryRun: boolean) => void
+  readonly onReviewBack: () => void
   readonly onDownload: () => void
   readonly onReapplyReal: () => void
   readonly onReset: () => void
@@ -603,6 +695,9 @@ function WizardStepContent({
   if (step === 'values') {
     return (
       <WizardLayout steps={visibleSteps} current={step}>
+        {state.recollectNotice && (
+          <p className="mb-2 text-xs text-muted-foreground">필드 매핑이 바뀌어 값을 다시 수집했습니다.</p>
+        )}
         <ValueMappingStep
           fields={state.collectedValues ?? []}
           value={state.valueOverrides}
@@ -619,12 +714,18 @@ function WizardStepContent({
       <WizardLayout steps={visibleSteps} current={step}>
         <ReviewStep
           fieldCount={state.fieldEntries.filter((entry) => entry.targetField !== FIELD_MAPPING_IGNORE).length}
-          userCount={(state.collectedUsers ?? []).length}
+          userCount={
+            buildUserMappingsPayload(state.collectedUsers ?? [], state.userOverrides).filter(
+              (entry) => entry.targetUserId !== null,
+            ).length
+          }
           valueCount={buildValueMappingsPayload(state.collectedValues ?? [], state.valueOverrides).length}
           isPending={state.isConfirmPending}
           pendingDryRun={state.pendingDryRun}
           submitError={state.submitError}
+          confirmErrors={state.confirmErrors}
           onConfirm={handlers.onConfirm}
+          onBack={handlers.onReviewBack}
         />
       </WizardLayout>
     )
@@ -692,6 +793,7 @@ export const ImportMappingWizard = ({ projectKey }: ImportMappingWizardProps): J
   const [collectedValues, setCollectedValues] = useState<ValueCollectionResponse['fields'] | null>(null)
   const [lastDryRun, setLastDryRun] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [confirmErrors, setConfirmErrors] = useState<MappingIssue[]>([])
   const [recollectNotice, setRecollectNotice] = useState(false)
   const hasVisitedUsersRef = useRef(false)
 
@@ -711,11 +813,16 @@ export const ImportMappingWizard = ({ projectKey }: ImportMappingWizardProps): J
     },
     onSuccess: (_data, dryRun) => {
       setSubmitError(null)
+      setConfirmErrors([])
       setLastDryRun(dryRun)
       setStep('tracking')
     },
     onError: (error: unknown) => {
-      setSubmitError(resolveMappingError(error))
+      // errors[] 확장속성이 있으면 그 사유들만 보여주고, 없을 때만 제네릭 detail 폴백을 쓴다
+      // (게이트2 리뷰 높은 CONCERN 수정 — 중복 알림 방지).
+      const issues = extractConfirmErrors(error)
+      setConfirmErrors(issues)
+      setSubmitError(issues.length > 0 ? null : resolveMappingError(error))
     },
   })
   const reapplyMutation = useMutation<ImportJobStatus, unknown, File>({
@@ -775,7 +882,9 @@ export const ImportMappingWizard = ({ projectKey }: ImportMappingWizardProps): J
             enterValuesStep(jobIdParam, entries)
             return
           }
-          setUserOverrides(seedUserOverrides(result.users))
+          // 재수집 시 생존 키는 이전 override를 유지하고, 신규 키만 추천값으로 시드한다
+          // (게이트2 리뷰 BLOCKER 수정 — 통째 재-seed는 사용자 override를 조용히 되돌렸다).
+          setUserOverrides((prev) => mergeUserOverrides(prev, result.users))
           setStep('users')
         },
         onError: (error: unknown) => {
@@ -797,7 +906,8 @@ export const ImportMappingWizard = ({ projectKey }: ImportMappingWizardProps): J
             setStep('review')
             return
           }
-          setValueOverrides(seedValueOverrides(result.fields))
+          // 값 매핑도 동형 — 생존 키(동일 targetField::sourceValue)는 이전 override를 유지한다.
+          setValueOverrides((prev) => mergeValueOverrides(prev, result.fields))
           setStep('values')
         },
         onError: (error: unknown) => {
@@ -845,6 +955,32 @@ export const ImportMappingWizard = ({ projectKey }: ImportMappingWizardProps): J
     enterValuesStep(jobId, fieldEntries)
   }
 
+  /** 검토 확정 클릭 — 재시도 시 이전 confirm 실패 사유가 남아있지 않도록 지우고 mutate한다 */
+  function handleConfirm(dryRun: boolean): void {
+    setConfirmErrors([])
+    confirmMutation.mutate(dryRun)
+  }
+
+  /**
+   * 검토 [이전] — 직전에 실제로 거친 활성 단계로 복귀한다(게이트2 리뷰 높은 CONCERN 수정).
+   * 값 매핑이 존재하면 values, 아니면 사용자 매핑이 존재하면 users, 아니면(CSV) fields,
+   * 그것도 아니면 upload로 복귀한다. 422 등 confirm 실패 후 새로고침 없이 되돌아갈 수단이 없던
+   * dead-end를 해소한다.
+   */
+  function handleReviewBack(): void {
+    setSubmitError(null)
+    setConfirmErrors([])
+    if (collectedValues !== null && countValues(collectedValues) > 0) {
+      setStep('values')
+      return
+    }
+    if (collectedUsers !== null && collectedUsers.length > 0) {
+      setStep('users')
+      return
+    }
+    setStep(format === 'CSV' ? 'fields' : 'upload')
+  }
+
   function handleReapplyReal(): void {
     if (file === null) return
     reapplyMutation.mutate(file)
@@ -862,6 +998,7 @@ export const ImportMappingWizard = ({ projectKey }: ImportMappingWizardProps): J
     setCollectedValues(null)
     setLastDryRun(false)
     setSubmitError(null)
+    setConfirmErrors([])
     setRecollectNotice(false)
     hasVisitedUsersRef.current = false
     if (clearFile) setFile(null)
@@ -885,6 +1022,7 @@ export const ImportMappingWizard = ({ projectKey }: ImportMappingWizardProps): J
         collectedValues,
         lastDryRun,
         submitError,
+        confirmErrors,
         recollectNotice,
         pollData,
         pollIsError,
@@ -916,9 +1054,8 @@ export const ImportMappingWizard = ({ projectKey }: ImportMappingWizardProps): J
         onValuesBack: () => {
           setStep('users')
         },
-        onConfirm: (dryRun) => {
-          confirmMutation.mutate(dryRun)
-        },
+        onConfirm: handleConfirm,
+        onReviewBack: handleReviewBack,
         onDownload: () => {
           downloadMutation.mutate()
         },
