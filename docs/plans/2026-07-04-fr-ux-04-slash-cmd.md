@@ -198,4 +198,20 @@ learnings.md 반복 함정(FR-SR-02·FR-RP-01 동일). agent는 plan task별 지
 - 추가 검증: typecheck, lint(eslint), vitest, playwright(qa), verify-master-plan(T6)
 - backend/security/db agent: 미사용 (프론트 전용)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 집중 리뷰 (eng + design, 2026-07-04)
+
+autoplan(codex 4-phase 듀얼보이스) 대신 규모 맞춤 집중 리뷰 — 프론트 전용·저위험(mutation 0·보안표면 0·신규의존성 0·관용 UI 패턴)이라 [[bts-review-plan-autoplan-overkill]] 정신 적용.
+
+**Eng**.
+- ✅ T3 전역 keydown: `__root` 단일 마운트 + 인증 가드 + cleanup 명시. Cmd+K modifier라 타이핑 충돌 없음.
+- ✅ 파서 정규식 `^[A-Z][A-Z0-9]*-\d+$` 프로젝트 키 규칙(대문자 시작) 부합.
+- ✅ T2 dispatch `runCommand(parsed, navigate)` 순수 분리 → 테스트 용이.
+- ⚠️ **CONCERN-1 (T4)**: react-hook-form `defaultValues`는 mount 1회 적용. 이미 `/issues/new`에 있는 상태에서 `/issue 다른제목` 재실행 시 같은 라우트라 프리필 미갱신 가능. → T4 GREEN에서 `useSearch(summary)`를 `defaultValues` 뿐 아니라 마운트 후 반영 확인, E2E는 "다른 페이지→/issue" 경로로 검증(같은 페이지 재실행은 엣지, 필요 시 key 재마운트).
+
+**Design**.
+- ✅ cmdk unstyled → 기존 모달/오버레이 DESIGN.md 토큰 재사용(C4). 새 토큰 신설 없음.
+- ✅ 빈/알수없음 상태(E1~E3), 키보드 조작·focus trap·포커스 복원(NFR2) 명세됨.
+
+**BLOCKER: 없음.** CONCERN 1건은 T4 구현 시 해소(implementer 인계).
