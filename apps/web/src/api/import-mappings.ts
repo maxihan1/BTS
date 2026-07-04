@@ -183,6 +183,27 @@ async function throwIfNotOk(res: Response): Promise<void> {
 }
 
 /**
+ * `{ fieldMappings }` body를 POST하고 스키마로 파싱하는 공통 헬퍼.
+ *
+ * validateFieldMapping/collectUsers/collectValues 3개 함수가 동일한 요청 계약(jobId 경로 접미사만
+ * 다른 `POST /api/v1/imports/{jobId}/mapping/{suffix}`, body `{ fieldMappings }`)을 공유하므로
+ * 이 helper로 중복을 제거한다.
+ */
+async function postFieldMappings<T>(
+  jobId: string,
+  suffix: 'validate' | 'users' | 'values',
+  fieldMappings: FieldMappingEntry[],
+  schema: z.ZodType<T>,
+): Promise<T> {
+  const res = await apiFetch(`/api/v1/imports/${jobId}/mapping/${suffix}`, {
+    method: 'POST',
+    body: { fieldMappings },
+  })
+  await throwIfNotOk(res)
+  return schema.parse(await res.json())
+}
+
+/**
  * POST /api/v1/imports/analyze — CSV/JSON 파일을 분석해 매핑 UI 진입 정보를 받는다.
  *
  * apiFetch가 body instanceof FormData를 감지해 Content-Type을 자동 설정한다 (raw fetch 금지).
@@ -215,12 +236,7 @@ export async function validateFieldMapping(
   jobId: string,
   fieldMappings: FieldMappingEntry[],
 ): Promise<MappingValidationResponse> {
-  const res = await apiFetch(`/api/v1/imports/${jobId}/mapping/validate`, {
-    method: 'POST',
-    body: { fieldMappings },
-  })
-  await throwIfNotOk(res)
-  return mappingValidationResponseSchema.parse(await res.json())
+  return postFieldMappings(jobId, 'validate', fieldMappings, mappingValidationResponseSchema)
 }
 
 /**
@@ -237,12 +253,7 @@ export async function collectUsers(
   jobId: string,
   fieldMappings: FieldMappingEntry[],
 ): Promise<UserCollectionResponse> {
-  const res = await apiFetch(`/api/v1/imports/${jobId}/mapping/users`, {
-    method: 'POST',
-    body: { fieldMappings },
-  })
-  await throwIfNotOk(res)
-  return userCollectionResponseSchema.parse(await res.json())
+  return postFieldMappings(jobId, 'users', fieldMappings, userCollectionResponseSchema)
 }
 
 /**
@@ -259,12 +270,7 @@ export async function collectValues(
   jobId: string,
   fieldMappings: FieldMappingEntry[],
 ): Promise<ValueCollectionResponse> {
-  const res = await apiFetch(`/api/v1/imports/${jobId}/mapping/values`, {
-    method: 'POST',
-    body: { fieldMappings },
-  })
-  await throwIfNotOk(res)
-  return valueCollectionResponseSchema.parse(await res.json())
+  return postFieldMappings(jobId, 'values', fieldMappings, valueCollectionResponseSchema)
 }
 
 /**
