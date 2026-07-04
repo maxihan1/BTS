@@ -146,3 +146,18 @@ CREATE TABLE import_user_mappings (
     target_user_id     UUID NULL,
     PRIMARY KEY (import_job_id, source_identifier)
 );
+
+-- V608 import_value_mappings 구조 미러 (codegen 입력, V608 CREATE TABLE 과 정확히 일치 유지 — FR-IM-02 PR-C)
+-- (import_job_id, target_field, source_value) 복합 PK, FK → import_jobs(id) ON DELETE CASCADE.
+-- target_value 는 NOT NULL — V607 import_user_mappings 의 target_user_id NULL 허용과 다른 비대칭(값 매핑 행은
+-- 항상 매핑 완료 상태로만 저장).
+
+CREATE TABLE import_value_mappings (
+    import_job_id  UUID NOT NULL REFERENCES import_jobs(id) ON DELETE CASCADE,
+    target_field   TEXT NOT NULL,
+    source_value   TEXT NOT NULL,
+    target_value   TEXT NOT NULL,
+    PRIMARY KEY (import_job_id, target_field, source_value),
+    CONSTRAINT chk_import_value_mappings_field
+        CHECK (target_field IN ('STATUS','TYPE','PRIORITY'))
+);
