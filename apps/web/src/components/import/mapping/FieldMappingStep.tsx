@@ -108,14 +108,58 @@ function IssueList({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 소스 헤더별 매핑 row — DR-2 시각 위계(required=강조, 추천=muted 배지, 미매핑=primary 강조)
+// DR-2 시각 위계 — required 강조 / 추천 muted 배지 / 미매핑 primary 강조.
+// `foreground`/`muted-foreground`/`primary` 세 토큰만 사용한다(DESIGN.md §1-4, 임의 색상 추가 금지).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 소스 행 하나의 시각 상태 — 판별 로직을 JSX에서 분리해 테스트/재사용 가능하게 유지한다 */
+interface RowVisualState {
+  /** 현재 선택이 "매핑 안 함"인지 — true면 primary 톤으로 눈에 띄게 한다 */
+  readonly isIgnored: boolean
+  /** 현재 선택된 대상이 required 카탈로그 항목인지 — true면 행 라벨을 강조한다 */
+  readonly isRequiredTarget: boolean
+  /** 초기 추천값에서 아직 바뀌지 않았는지 — true면 "추천" muted 배지를 보여준다 */
+  readonly isSuggested: boolean
+}
+
+/** 선택값·추천값·카탈로그로부터 행의 시각 상태를 판별한다(순수 함수) */
+function computeRowVisualState(
+  selectedKey: string,
+  suggestedKey: string | undefined,
+  targetFields: TargetFieldCatalogEntry[],
+): RowVisualState {
+  const isIgnored = selectedKey === FIELD_MAPPING_IGNORE
+  return {
+    isIgnored,
+    isRequiredTarget: targetFields.find((target) => target.key === selectedKey)?.required === true,
+    isSuggested: !isIgnored && suggestedKey === selectedKey,
+  }
+}
+
+/** "추천"/"매핑 필요"/"필수" 등 짧은 인라인 배지 — tone별로 muted/primary만 사용 */
+function MappingBadge({
+  tone,
+  children,
+}: {
+  readonly tone: 'muted' | 'primary'
+  readonly children: ReactNode
+}): JSX.Element {
+  return (
+    <span className={cn('text-xs', tone === 'primary' ? 'font-medium text-primary' : 'text-muted-foreground')}>
+      {children}
+    </span>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 소스 헤더별 매핑 row
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface FieldMappingRowProps {
   readonly sourceField: string
   readonly targetFields: TargetFieldCatalogEntry[]
   readonly selectedKey: string
-  readonly isSuggested: boolean
+  readonly suggestedKey: string | undefined
   readonly errors: MappingIssue[]
   readonly warnings: MappingIssue[]
   readonly onSelect: (nextKey: string) => void
@@ -125,13 +169,16 @@ function FieldMappingRow({
   sourceField,
   targetFields,
   selectedKey,
-  isSuggested,
+  suggestedKey,
   errors,
   warnings,
   onSelect,
 }: FieldMappingRowProps): JSX.Element {
-  const isIgnored = selectedKey === FIELD_MAPPING_IGNORE
-  const isRequiredTarget = targetFields.find((target) => target.key === selectedKey)?.required === true
+  const { isIgnored, isRequiredTarget, isSuggested } = computeRowVisualState(
+    selectedKey,
+    suggestedKey,
+    targetFields,
+  )
 
   return (
     <div
@@ -151,8 +198,8 @@ function FieldMappingRow({
           >
             {sourceField}
           </span>
-          {isSuggested && <span className="text-xs text-muted-foreground">추천</span>}
-          {isIgnored && <span className="text-xs font-medium text-primary">매핑 필요</span>}
+          {isSuggested && <MappingBadge tone="muted">추천</MappingBadge>}
+          {isIgnored && <MappingBadge tone="primary">매핑 필요</MappingBadge>}
         </div>
 
         <Select value={selectedKey} onValueChange={onSelect}>
@@ -164,7 +211,7 @@ function FieldMappingRow({
             {targetFields.map((target) => (
               <SelectItem key={target.key} value={target.key}>
                 {target.label}
-                {target.required && <span className="ml-1 text-primary">필수</span>}
+                {target.required && <MappingBadge tone="primary"> 필수</MappingBadge>}
               </SelectItem>
             ))}
           </SelectContent>
@@ -286,9 +333,7 @@ export const FieldMappingStep = ({
               sourceField={sourceField}
               targetFields={targetFields}
               selectedKey={selectedKey}
-              isSuggested={
-                suggestions[sourceField] === selectedKey && selectedKey !== FIELD_MAPPING_IGNORE
-              }
+              suggestedKey={suggestions[sourceField]}
               errors={issuesForSourceField(errors, sourceField)}
               warnings={issuesForSourceField(warnings, sourceField)}
               onSelect={(nextKey) => {
