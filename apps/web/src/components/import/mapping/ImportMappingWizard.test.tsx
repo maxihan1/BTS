@@ -8,7 +8,7 @@
 //     JSON 업로드(필드 매핑 스킵) 또는 collectUsers/collectValues 빈 결과(자동 스킵) 경로로
 //     FieldMappingStep의 Select 상호작용 없이 시나리오를 구성한다("다음" 버튼 클릭만 사용).
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
@@ -335,6 +335,60 @@ describe('ImportMappingWizard', () => {
     await waitFor(() => {
       expect(vi.mocked(useImportJobPolling)).toHaveBeenCalledWith(JOB_ID_2, true)
     })
+  })
+
+  // (h) 게이트2 리뷰 BLOCKER — 재수집 시 override 보존(생존 키 유지·사라진 키 폐기·신규 키만 추천 시드)
+  it('필드 매핑을 바꿔 사용자를 재수집해도, 사용자가 지정한 override는 유지되고 사라진 키는 폐기되며 신규 키만 추천값으로 시드된다', async () => {
+    const ALICE_ID = '11111111-0000-4000-a000-000000000001'
+    const CAROL_ID = '11111111-0000-4000-a000-000000000003'
+    vi.mocked(analyzeImport).mockResolvedValue(makeCsvAnalysis())
+    vi.mocked(validateFieldMapping).mockResolvedValue({ valid: true, errors: [], warnings: [] })
+    vi.mocked(collectUsers)
+      .mockResolvedValueOnce({
+        users: [
+          { sourceIdentifier: 'alice@example.com', suggestedUserId: ALICE_ID, suggestedDisplayName: 'Alice' },
+          { sourceIdentifier: 'bob@example.com' },
+        ],
+      })
+      .mockResolvedValueOnce({
+        users: [
+          { sourceIdentifier: 'alice@example.com', suggestedUserId: ALICE_ID, suggestedDisplayName: 'Alice' },
+          { sourceIdentifier: 'carol@example.com', suggestedUserId: CAROL_ID, suggestedDisplayName: 'Carol' },
+        ],
+      })
+    const { user } = renderWizard()
+
+    await uploadAndAnalyze(user, 'CSV')
+    await waitFor(() => screen.getByTestId('field-mapping-row-Summary'))
+    await user.click(screen.getByRole('button', { name: '다음' }))
+
+    // 1차 수집 — alice에 추천이 잡혀 있다. 사용자가 명시적으로 "미매핑"으로 override한다.
+    await waitFor(() => screen.getByText('alice@example.com'))
+    const aliceRow = screen.getByTestId('user-mapping-row-alice@example.com')
+    await user.click(within(aliceRow).getByRole('button', { name: /미매핑/ }))
+    expect(within(aliceRow).getByRole('button', { name: /미매핑/ })).toHaveAttribute('aria-pressed', 'true')
+
+    // 필드 매핑으로 돌아갔다가 다시 [다음] — 재수집을 트리거한다(매핑 자체는 바뀌지 않아도 재수집은 발생)
+    await user.click(screen.getByRole('button', { name: '이전' }))
+    await waitFor(() => screen.getByTestId('field-mapping-row-Summary'))
+    await user.click(screen.getByRole('button', { name: '다음' }))
+
+    // 2차 수집 — bob은 사라지고(폐기 확인) carol이 새로 등장한다(추천 시드 확인). alice는 생존 키.
+    await waitFor(() => {
+      expect(vi.mocked(collectUsers)).toHaveBeenCalledTimes(2)
+    })
+    await waitFor(() => screen.getByText('carol@example.com'))
+
+    expect(screen.queryByText('bob@example.com')).not.toBeInTheDocument()
+
+    const aliceRowAfter = screen.getByTestId('user-mapping-row-alice@example.com')
+    expect(within(aliceRowAfter).getByRole('button', { name: /미매핑/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+
+    const carolRow = screen.getByTestId('user-mapping-row-carol@example.com')
+    expect(within(carolRow).getByRole('button', { name: /추천/ })).toHaveAttribute('aria-pressed', 'true')
   })
 
   // (g) DR-6 — 빈 sourceFields면 에러 + upload 단계 유지
