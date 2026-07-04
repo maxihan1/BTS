@@ -125,13 +125,20 @@ const issuesIndexRoute = createRoute({
   }),
 })
 
-/** 이슈 생성 라우트 — /issues/new, requireAuth */
+/**
+ * 이슈 생성 라우트 — /issues/new, requireAuth.
+ * validateSearch로 summary(선택) 쿼리 파라미터 선언 — 명령 팔레트 `/issue <제목>`(FR-UX-04 FR7)이
+ * `/issues/new?summary=...`로 이동할 때 제목 프리필에 쓰인다.
+ */
 const issuesNewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/issues/new',
   component: IssueCreateRouteAdapter,
   staticData: { requireAuth: true },
   beforeLoad: requireAuthAndPasswordChanged,
+  validateSearch: (search: Record<string, unknown>): { summary?: string } => ({
+    summary: typeof search['summary'] === 'string' ? search['summary'] : undefined,
+  }),
 })
 
 /** 이슈 상세 라우트 — /issues/$key, requireAuth */

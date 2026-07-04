@@ -14,6 +14,11 @@ vi.mock('@/components/Header', () => ({
   Header: () => null,
 }))
 
+// CommandPalette mock — 내부에서 useNavigate(TanStack Router)를 쓰므로 Outlet-only mock과 충돌 방지
+vi.mock('@/components/command-palette/CommandPalette', () => ({
+  CommandPalette: () => null,
+}))
+
 // useNotificationStream mock — 호출 여부 검증 대상
 vi.mock('@/notifications/useNotificationStream', () => ({
   useNotificationStream: vi.fn(),

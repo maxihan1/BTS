@@ -7,14 +7,17 @@ import { issueHandlers, createdIssueFixture } from '@/mocks/issue-handlers'
 import { componentHandlers, resetComponentStore } from '@/mocks/component-handlers'
 import { server } from '@/test/server'
 import { http, HttpResponse } from 'msw'
-import { IssueCreateForm } from './issues.new'
+import { IssueCreateForm, IssueCreateRouteAdapter } from './issues.new'
 import type { CustomField } from '@/api/custom-fields.types'
 
-// useNavigate mock — TanStack Router 의존 없이 폼 자체 테스트
+// useNavigate/useSearch mock — TanStack Router 의존 없이 폼/어댑터 테스트
+// mockUseSearch: FR-UX-04 FR7 — issues.new의 summary URL 프리필(useSearch) 테스트용
 const mockNavigate = vi.fn()
+const mockUseSearch = vi.fn((): { summary?: string } => ({}))
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mockNavigate,
   useParams: () => ({}),
+  useSearch: () => mockUseSearch(),
 }))
 
 // useCustomFields mock — 네트워크 없이 커스텀필드 정의 제어 (타이핑 중간 경로 요청 제거)
@@ -88,6 +91,7 @@ describe('IssueCreateForm', () => {
     resetComponentStore()
     server.use(...issueHandlers, ...componentHandlers)
     mockNavigate.mockReset()
+    mockUseSearch.mockReturnValue({})
     // 기본값: 커스텀 필드 없음 — T9-* 테스트에서 개별 오버라이드
     vi.mocked(useCustomFields).mockReturnValue(
       EMPTY_CUSTOM_FIELDS_RESULT as unknown as ReturnType<typeof useCustomFields>,
@@ -454,5 +458,89 @@ describe('IssueCreateForm', () => {
     await waitFor(() => expect(mockNavigate).toHaveBeenCalled())
 
     expect(capturedBody['componentIds']).toEqual([])
+  })
+
+  /**
+   * FR7 — IssueCreateRouteAdapter의 summary URL search param 프리필.
+   * 명령 팔레트 `/issue <제목>` 실행(FR-UX-04) 시 `/issues/new?summary=...`로 이동한 뒤
+   * 제목 필드가 프리필되는지 검증한다. useSearch를 목킹해 URL 파싱은 라우터에 위임하고
+   * 어댑터의 defaultValues 반영 로직만 단위 테스트한다.
+   */
+  describe('IssueCreateRouteAdapter — summary URL 프리필 (FR7)', () => {
+    /** QueryClientProvider로 감싸 useComponents/useCustomFields/useMutation 훅 의존성을 충족한다 */
+    function renderRouteAdapter() {
+      const client = new QueryClient({
+        defaultOptions: {
+          queries: { retry: false },
+          mutations: { retry: false },
+        },
+      })
+      const result = render(
+        <QueryClientProvider client={client}>
+          <IssueCreateRouteAdapter />
+        </QueryClientProvider>,
+      )
+      return {
+        ...result,
+        rerenderAdapter: () =>
+          result.rerender(
+            <QueryClientProvider client={client}>
+              <IssueCreateRouteAdapter />
+            </QueryClientProvider>,
+          ),
+      }
+    }
+
+    it('FR7-1: URL summary가 있으면 제목 필드 기본값에 반영된다', () => {
+      mockUseSearch.mockReturnValue({ summary: '결제 실패' })
+
+      renderRouteAdapter()
+
+      expect(screen.getByLabelText('제목')).toHaveValue('결제 실패')
+    })
+
+    it('FR7-2 (회귀): URL summary가 없으면 제목 필드가 기존처럼 빈 값이다', () => {
+      mockUseSearch.mockReturnValue({})
+
+      renderRouteAdapter()
+
+      expect(screen.getByLabelText('제목')).toHaveValue('')
+    })
+
+    it('FR7-3: URL summary 앞뒤 공백은 trim되어 반영된다', () => {
+      mockUseSearch.mockReturnValue({ summary: '  공백 포함 제목  ' })
+
+      renderRouteAdapter()
+
+      expect(screen.getByLabelText('제목')).toHaveValue('공백 포함 제목')
+    })
+
+    it('FR7-4: URL summary가 500자를 넘으면 zod max(500)에 맞춰 잘린다', () => {
+      mockUseSearch.mockReturnValue({ summary: 'a'.repeat(600) })
+
+      renderRouteAdapter()
+
+      expect(screen.getByLabelText('제목')).toHaveValue('a'.repeat(500))
+    })
+
+    /**
+     * CONCERN-1 (plan 리뷰): react-hook-form defaultValues는 mount 시 1회만 적용된다.
+     * 이미 /issues/new에 머문 상태에서 URL summary만 바뀌면(같은 라우트라 컴포넌트가
+     * 자연 리마운트되지 않음) 프리필이 갱신되지 않을 수 있다. key={summary} 강제 리마운트로
+     * 해소했는지 검증한다.
+     */
+    it('FR7-5 (CONCERN-1): 같은 라우트에서 summary가 바뀌면 제목 필드가 새 값으로 갱신된다', async () => {
+      mockUseSearch.mockReturnValue({ summary: '첫 번째 제목' })
+      const { rerenderAdapter } = renderRouteAdapter()
+
+      expect(screen.getByLabelText('제목')).toHaveValue('첫 번째 제목')
+
+      mockUseSearch.mockReturnValue({ summary: '두 번째 제목' })
+      rerenderAdapter()
+
+      await waitFor(() =>
+        expect(screen.getByLabelText('제목')).toHaveValue('두 번째 제목'),
+      )
+    })
   })
 })

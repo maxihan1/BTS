@@ -123,13 +123,15 @@
 
 **우선순위**. 높음 | **선행**. §0 | **Plan slug**. `personal/slash-cmd`
 
-- [ ] D1. 도메인 — Command (책임. backend-engineer)
-- [ ] D2. 명세 — `/issue`, `/search`, `/goto` 등 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용. 명령어 정의는 코드 상수) (책임. -)
-- [ ] D4. 백엔드 — `POST /api/v1/commands/execute` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — cmdk 명령 팔레트 (`Cmd+K`) (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+**아키텍처**. 프론트 전용 (ADR [decisions/2026-07-04-fr-ux-04-slash-cmd.md](../../decisions/2026-07-04-fr-ux-04-slash-cmd.md)). 명령 3종(`/goto`·`/search`·`/issue`)이 전부 네비게이션이라 백엔드 executor 미도입 — 클라이언트 라우팅으로 dispatch. cmdk(FR-IS-09 도입) 재사용.
+
+- [x] D1. 도메인 — 프론트 명령 레지스트리(`commands.ts` 코드 상수). 백엔드 도메인 없음 (책임. frontend-engineer)
+- [x] D2. 명세 — `/goto`(이슈 이동) · `/search`(검색) · `/issue`(새 이슈 폼 프리필), 전부 네비게이션 (책임. frontend-engineer)
+- [x] D3. 데이터 모델 — 없음 (명령 정의는 프론트 코드 상수) (책임. -)
+- [x] D4. 백엔드 — 없음 (프론트 전용, ADR 2026-07-04). `POST /api/v1/commands/execute` 미도입 (책임. -)
+- [x] D5. 백엔드 테스트 — 해당 없음 (프론트 전용) (책임. -)
+- [x] D6. 프론트 UI — cmdk 명령 팔레트 (`Cmd+K`) (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ### §4.3 FR-UX-05 — 키보드 단축키
 
