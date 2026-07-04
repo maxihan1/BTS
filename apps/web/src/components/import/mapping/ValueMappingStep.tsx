@@ -15,12 +15,16 @@ const FIELD_LABELS: Record<ValueTargetField, string> = {
   PRIORITY: '우선순위',
 }
 
-/** STATUS 자유 입력 안내 힌트 */
-const FREE_INPUT_HINT = '자유롭게 입력할 수 있습니다. BTS에 없는 값이면 새 값으로 등록됩니다.'
-
-/** TYPE/PRIORITY canonical 일치 힌트 */
-const CANONICAL_HINT =
-  'BTS에 등록된 값과 정확히 일치해야 합니다. 일치하지 않으면 확정 단계에서 거부됩니다.'
+/**
+ * 대상 필드별 엄격도 힌트.
+ * STATUS는 자유 입력(불일치해도 새 값으로 등록)이고, TYPE/PRIORITY는 BTS canonical
+ * 값과 정확히 일치해야 확정 단계를 통과한다 — FIELD_LABELS와 동형으로 필드별 매핑.
+ */
+const FIELD_HINTS: Record<ValueTargetField, string> = {
+  STATUS: '자유롭게 입력할 수 있습니다. BTS에 없는 값이면 새 값으로 등록됩니다.',
+  TYPE: 'BTS에 등록된 값과 정확히 일치해야 합니다. 일치하지 않으면 확정 단계에서 거부됩니다.',
+  PRIORITY: 'BTS에 등록된 값과 정확히 일치해야 합니다. 일치하지 않으면 확정 단계에서 거부됩니다.',
+}
 
 /** targetField/sourceValue 쌍을 override map 키로 합성한다 */
 function toOverrideKey(targetField: ValueTargetField, sourceValue: string): string {
@@ -115,7 +119,7 @@ interface ValueMappingGroupProps {
 /** 대상 필드 하나(상태/유형/우선순위) 그룹 — 라벨 + 엄격도 힌트 + 소스 값 행 목록 */
 function ValueMappingGroup({ field, value, onValueChange }: ValueMappingGroupProps): JSX.Element {
   const label = FIELD_LABELS[field.targetField]
-  const hint = field.targetField === 'STATUS' ? FREE_INPUT_HINT : CANONICAL_HINT
+  const hint = FIELD_HINTS[field.targetField]
 
   return (
     <fieldset className="mb-4">
