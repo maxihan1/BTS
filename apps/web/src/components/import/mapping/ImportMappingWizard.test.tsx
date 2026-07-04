@@ -4,15 +4,18 @@
 //   - '@/api/import-mappings' 전체를 mock해 analyze/collectUsers/collectValues/confirmMapping을 제어한다.
 //   - '@/hooks/use-import-job-polling'를 mock해 폴링 결과(tracking→done 전이)를 직접 제어한다.
 //   - FieldMappingStep/UserMappingStep/ValueMappingStep은 실제 컴포넌트를 그대로 렌더한다(모킹 없음) —
-//     단, Radix Select를 여는 상호작용(jsdom pointer-capture 미지원)을 피하기 위해 이 테스트들은
-//     JSON 업로드(필드 매핑 스킵) 또는 collectUsers/collectValues 빈 결과(자동 스킵) 경로로
-//     FieldMappingStep의 Select 상호작용 없이 시나리오를 구성한다("다음" 버튼 클릭만 사용).
+//     대부분은 Radix Select를 여는 상호작용(jsdom pointer-capture 미지원)을 피하기 위해 JSON 업로드
+//     (필드 매핑 스킵) 또는 collectUsers/collectValues 빈 결과(자동 스킵) 경로로 Select 상호작용 없이
+//     시나리오를 구성한다("다음" 버튼 클릭만 사용). 단, 재수집 통지(DR-4) 검증처럼 실제로 필드 매핑
+//     값을 바꿔야 하는 테스트만 '@/components/ui/select'를 네이티브 <select> mock으로 교체한다
+//     (FieldMappingStep.test.tsx 동형 선례 — jsdom pointer-capture 미지원 우회).
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
+import { ApiError } from '@/api/client'
 import type {
   ImportAnalysisResponse,
   UserCollectionResponse,
@@ -44,6 +47,61 @@ vi.mock('@/hooks/use-import-job-polling', () => ({
 vi.mock('@/lib/download', () => ({
   triggerBlobDownload: vi.fn(),
 }))
+
+// shadcn Select → 네이티브 <select> mock (jsdom pointer-capture 미지원 우회,
+// FieldMappingStep.test.tsx 동형 선례). aria-label/옵션 구조를 그대로 보존해
+// 이 파일의 다른 테스트(Select 상호작용 없음)에도 영향을 주지 않는다.
+vi.mock('@/components/ui/select', async () => {
+  const { createElement: ce, useRef, Children } = await vi.importActual<typeof import('react')>('react')
+
+  function Select({
+    children,
+    onValueChange,
+    value,
+  }: {
+    children: ReactNode
+    onValueChange?: (v: string) => void
+    value?: string
+  }) {
+    const triggerLabel = useRef<string>('')
+    const contentOptions = useRef<ReactNode>(null)
+
+    Children.forEach(children, (child) => {
+      if (child !== null && typeof child === 'object' && 'props' in (child as object)) {
+        const el = child as { props: { 'aria-label'?: string; children?: ReactNode } }
+        if (el.props['aria-label']) triggerLabel.current = el.props['aria-label']
+        if (el.props.children) contentOptions.current = el.props.children
+      }
+    })
+
+    return ce(
+      'select',
+      {
+        'aria-label': triggerLabel.current,
+        value: value ?? '',
+        onChange: (e: { target: { value: string } }) => {
+          if (onValueChange) onValueChange(e.target.value)
+        },
+      },
+      contentOptions.current,
+    )
+  }
+
+  function SelectTrigger({ children, 'aria-label': ariaLabel }: { children?: ReactNode; 'aria-label'?: string }) {
+    return ce('span', { 'aria-label': ariaLabel }, children)
+  }
+  function SelectValue() {
+    return null
+  }
+  function SelectContent({ children }: { children: ReactNode }) {
+    return ce('span', {}, children)
+  }
+  function SelectItem({ value, children }: { value: string; children: ReactNode }) {
+    return ce('option', { value }, children)
+  }
+
+  return { Select, SelectTrigger, SelectValue, SelectContent, SelectItem }
+})
 
 import {
   analyzeImport,
@@ -389,6 +447,104 @@ describe('ImportMappingWizard', () => {
 
     const carolRow = screen.getByTestId('user-mapping-row-carol@example.com')
     expect(within(carolRow).getByRole('button', { name: /추천/ })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  // (i) 게이트2 리뷰 높은 CONCERN — review 422 dead-end 해소: errors[] 렌더 + [이전] 복구
+  it('confirm이 422(errors[] 포함)로 실패하면 각 사유가 role=alert로 표시되고, [이전]으로 값 매핑 단계로 복귀할 수 있다', async () => {
+    vi.mocked(analyzeImport).mockResolvedValue(makeJsonAnalysis())
+    vi.mocked(collectUsers).mockResolvedValue({ users: [] })
+    vi.mocked(collectValues).mockResolvedValue({ fields: VALUES_FIXTURE })
+    vi.mocked(confirmMapping).mockRejectedValue(
+      new ApiError(422, {
+        errorCode: 'IMPORT_VALUE_MAPPING_INVALID',
+        errors: [
+          { code: 'TARGET_VALUE_NOT_FOUND', message: '대상 값을 찾을 수 없습니다.', field: 'Bug' },
+        ],
+      }),
+    )
+    const { user } = renderWizard()
+
+    await uploadAndAnalyze(user, 'JSON')
+    await waitFor(() => screen.getByLabelText('상태 Open 대상 값'))
+    await user.click(screen.getByRole('button', { name: '다음' }))
+
+    await waitFor(() => screen.getByRole('button', { name: '가져오기 실행' }))
+    await user.click(screen.getByRole('button', { name: '가져오기 실행' }))
+
+    await waitFor(() => {
+      const alerts = screen.getAllByRole('alert')
+      expect(alerts.some((el) => el.textContent?.includes('Bug') && el.textContent?.includes('대상 값을 찾을 수 없습니다.'))).toBe(true)
+    })
+
+    // [이전] — collectedValues가 존재(non-empty)하므로 값 매핑 단계로 복귀해야 한다
+    await user.click(screen.getByRole('button', { name: '이전' }))
+    await waitFor(() => {
+      expect(screen.getByLabelText('상태 Open 대상 값')).toBeInTheDocument()
+    })
+  })
+
+  // (j) 게이트2 리뷰 경미 — 검토 요약 카운트 기준 통일(사용자 매핑 건수는 실제 매핑=non-null 기준)
+  it('검토 요약의 사용자 매핑 건수는 실제로 대상 사용자에 매핑된(non-null) 건수만 센다', async () => {
+    const ALICE_ID = '11111111-0000-4000-a000-000000000001'
+    const BOB_ID = '11111111-0000-4000-a000-000000000002'
+    vi.mocked(analyzeImport).mockResolvedValue(makeJsonAnalysis())
+    vi.mocked(collectUsers).mockResolvedValue({
+      users: [
+        { sourceIdentifier: 'alice@example.com', suggestedUserId: ALICE_ID, suggestedDisplayName: 'Alice' },
+        { sourceIdentifier: 'bob@example.com', suggestedUserId: BOB_ID, suggestedDisplayName: 'Bob' },
+      ],
+    })
+    vi.mocked(collectValues).mockResolvedValue({ fields: [] })
+    const { user } = renderWizard()
+
+    await uploadAndAnalyze(user, 'JSON')
+    await waitFor(() => screen.getByText('alice@example.com'))
+
+    // bob은 명시적으로 "미매핑"으로 override — 실제 매핑 건수는 alice 1건뿐이어야 한다(collected 총 2건과 구분)
+    const bobRow = screen.getByTestId('user-mapping-row-bob@example.com')
+    await user.click(within(bobRow).getByRole('button', { name: /미매핑/ }))
+
+    await user.click(screen.getByRole('button', { name: '다음' }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/사용자 매핑 1건/)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/사용자 매핑 2건/)).not.toBeInTheDocument()
+  })
+
+  // (k) 게이트2 리뷰 경미 — DR-4 재수집 통지를 값 매핑 단계에도 노출
+  it('필드 매핑 변경으로 재수집되면 값 매핑 단계에도 재수집 통지가 표시된다', async () => {
+    vi.mocked(analyzeImport).mockResolvedValue(
+      makeCsvAnalysis({ sourceFields: [{ name: 'Summary' }, { name: 'Status' }] }),
+    )
+    vi.mocked(validateFieldMapping).mockResolvedValue({ valid: true, errors: [], warnings: [] })
+    vi.mocked(collectUsers)
+      .mockResolvedValueOnce({ users: USERS_FIXTURE })
+      .mockResolvedValueOnce({ users: USERS_FIXTURE })
+    vi.mocked(collectValues).mockResolvedValue({ fields: VALUES_FIXTURE })
+    const { user } = renderWizard()
+
+    await uploadAndAnalyze(user, 'CSV')
+    await waitFor(() => screen.getByTestId('field-mapping-row-Summary'))
+    await user.click(screen.getByRole('button', { name: '다음' }))
+
+    await waitFor(() => screen.getByText('alice@example.com'))
+    expect(screen.queryByText('필드 매핑이 바뀌어 작성자를 다시 수집했습니다.')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '이전' }))
+    await waitFor(() => screen.getByTestId('field-mapping-row-Status'))
+    await user.selectOptions(screen.getByLabelText('Status 매핑 대상'), 'IGNORE')
+    await user.click(screen.getByRole('button', { name: '다음' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('필드 매핑이 바뀌어 작성자를 다시 수집했습니다.')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: '다음' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('필드 매핑이 바뀌어 값을 다시 수집했습니다.')).toBeInTheDocument()
+    })
   })
 
   // (g) DR-6 — 빈 sourceFields면 에러 + upload 단계 유지
