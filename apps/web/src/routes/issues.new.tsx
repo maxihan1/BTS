@@ -325,6 +325,7 @@ export function IssueCreateForm({ onSuccess, initialSummary }: IssueCreateFormPr
 /**
  * router.ts 에 등록되는 라우트 어댑터 컴포넌트.
  * useNavigate로 성공 후 이슈 상세 페이지로 이동한다.
+ * URL summary(선택) search param을 제목 필드 기본값으로 프리필한다(FR-UX-04 FR7).
  *
  * 등록 방법 (code-based 패턴 — PR #11 컨벤션):
  * ```ts
