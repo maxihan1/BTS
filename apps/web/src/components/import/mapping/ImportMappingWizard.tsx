@@ -749,7 +749,11 @@ export const ImportMappingWizard = ({ projectKey }: ImportMappingWizardProps): J
     },
   })
 
-  const { data: pollData, isError: pollIsError } = useImportJobPolling(jobId, true)
+  // 폴링은 tracking 단계에서만 활성화한다 — jobId는 confirm 이전(fields/users/values/review)에도
+  // 이미 세팅돼 있어 상수 true로 켜두면 confirm 전 미등록 jobId로 즉시 GET을 쏘아 404를 받고,
+  // retry:false 환경에서 쿼리가 error로 굳어 refetchInterval이 영구 false를 반환한다(회귀 방지 —
+  // confirm 이후 재등록된 잡을 되살릴 refetch/invalidate가 없어 tracking 화면이 영원히 고착).
+  const { data: pollData, isError: pollIsError } = useImportJobPolling(jobId, step === 'tracking')
 
   useEffect(() => {
     if (step !== 'tracking') return
