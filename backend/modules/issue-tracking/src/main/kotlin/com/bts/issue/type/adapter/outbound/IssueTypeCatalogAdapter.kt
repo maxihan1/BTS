@@ -20,6 +20,12 @@ import org.springframework.transaction.annotation.Transactional
  * `IssueTypeLookupPort`(project-workflow consumer) 구현체이고, 이 어댑터는 전체 목록을
  * 조회하는 [IssueTypeCatalog](search-export-import consumer) 구현체다.
  *
+ * ## 책임 분리
+ *
+ * - 조회 로직은 [IssueTypeRepository.findAll] 이 담당한다 (active 필터, is_standard 무관 전체 반환).
+ * - 본 구현체는 SPI 경계 변환만 수행한다 — 도메인 [com.bts.issue.type.domain.IssueType] → [IssueTypeRef]
+ *   (key, name 두 필드만 노출).
+ *
  * ## BC 격리
  *
  * 이 어댑터는 issue-tracking BC 내부에 위치하므로 [IssueTypeRepository] 를 직접 참조할 수 있다.
