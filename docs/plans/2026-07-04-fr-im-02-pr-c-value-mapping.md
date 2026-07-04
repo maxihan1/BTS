@@ -27,7 +27,17 @@ FR-IM-02 Import 매핑 에픽(3-PR)의 마지막 백엔드 조각. 소스 파일
 - 모듈: shared-kernel(신규 type 카탈로그 포트) + issue-tracking(포트 구현) + search-export-import(주). project-workflow는 WorkflowStateCatalog 재사용(무변경).
 - V608 `import_value_mappings`.
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**: search-export-import(주) + shared-kernel(신규 SPI) + issue-tracking(SPI 구현). project-workflow는 `WorkflowStateCatalog` 재사용(무변경).
+- **영향 엔티티**: `ImportJob`(기존) · `import_value_mappings`(신규 매핑 레코드 테이블, `import_mappings`/`import_user_mappings`와 동형 — rich 도메인 엔티티 아님).
+- **새 용어**: **값 매핑(value mapping)** — `target_field`(STATUS/TYPE/PRIORITY) × `source_value` → `target_value`. 필드 매핑(PR-A)/사용자 매핑(PR-B)의 자매 3번째 차원. glossary 미등재(필드/사용자 매핑도 미등재, 선례 일치 — 정의는 ADR).
+- **신규 cross-BC SPI**: `IssueTypeCatalog.listTypes(): List<IssueTypeRef>` (shared-kernel 인터페이스 + issue-tracking `IssueTypeCatalogAdapter` 구현, `IssueTypeRepository.findAll()` 재사용). `WorkflowStateCatalog` 자매. **이슈 타입은 전역**(issue_types 스키마 project 스코프 없음·`findAll()` 존재)이라 projectKey 불필요. 기존 `IssueTypeLookupPort`(project-workflow 패키지)는 **ID 기반 조회**라 "전체 목록"에 부적합 → 신규 SPI 정당.
+- **재사용 포트**: `WorkflowStateCatalog.listStates(projectKey, issueTypeKey=null)` — status 타깃 후보(기본 매핑 워크플로우 상태). `Propagation.MANDATORY`라 호출부 트랜잭션 필요(collect suggest 시 주의).
+- **priority 타깃 후보**: canonical 5종(Highest~Lowest). 파서 정규화 집합과 **단일 출처 공유**(drift 방지). 파서 사전정규화로 커스텀 우선순위명은 값매핑 전 소실 → 값매핑은 5종 간 remap만 유효(실효 narrow, Maxi 확정).
+- **값 치환 위치**: 프로세서가 `import_value_mappings` 1회 로드 → 행별 `typeName`/`statusName`/`priorityName`(파싱 문자열) 치환. 커맨드 기존 문자열 필드 재사용 → **shared-kernel 커맨드/issue-tracking 어댑터 무변경**(PR-B보다 작은 blast radius).
+- **기존 결정 충돌**: 없음. PR-A ADR이 PR-C를 D3/D5에서 사전설계(3-테이블 모델·순서 의존).
+- **관련 ADR**: [2026-07-03-fr-im-02-import-mapping](../decisions/2026-07-03-fr-im-02-import-mapping.md)(에픽 정본·D3 값매핑 상속) · [2026-05-27-shared-kernel-extraction] · [2026-05-28-workflow-scheme-frontend-view-layer-cross-bc-lookup](신규 SPI 패턴 선례). **신규 ADR 파일 미생성** — IssueTypeCatalog SPI는 WorkflowStateCatalog 미러 + 두 기존 ADR 패턴 계승. 도메인 정리에 결정 명시(bts-review-plan eng 리뷰가 이 판단 검증).
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
