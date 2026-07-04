@@ -1,4 +1,4 @@
-// ValueMappingNormalizer 단위 테스트 — normalize trim+lowercase·status/type/priority 3필드 distinct 수집·null/blank 제외·대소문자 dedup (FR-IM-02 PR-C Task 3)
+// ValueMappingNormalizer 단위 테스트 — normalize + 3필드 distinct 수집·dedup (FR-IM-02 PR-C Task 3)
 
 package com.bts.search.imports.mapping
 
