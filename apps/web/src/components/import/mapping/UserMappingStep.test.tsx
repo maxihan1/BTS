@@ -26,13 +26,6 @@ import { fetchUsers } from '@/api/users'
 const ALICE_ID = '11111111-1111-4111-a111-111111111111'
 const CAROL_ID = '33333333-3333-4333-c333-333333333333'
 
-const ALICE: UserSummary = {
-  id: ALICE_ID,
-  username: 'alice',
-  displayName: '앨리스',
-  email: 'alice@example.com',
-}
-
 const CAROL: UserSummary = {
   id: CAROL_ID,
   username: 'carol',
