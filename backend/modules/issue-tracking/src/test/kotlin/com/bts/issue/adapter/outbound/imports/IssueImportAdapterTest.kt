@@ -749,6 +749,13 @@ class IssueImportAdapterTest {
         val BOB_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000204")
         const val BOB_EMAIL = "bob@example.com"
 
+        /**
+         * S48~S53(Task 7, PR-B) — 명시적 userId 매핑 전용 fixture. [FakeImportUserLookupPort.FIXTURES]
+         * 에는 등록돼 있지 않다 — 이메일 해석 경로를 전혀 거치지 않고 [IssueImportCommand.reporterUserId]
+         * 등 userId 필드만으로 해석돼야 함을 실증하기 위함이다(이메일 fixture 로 우연히 통과하는 것을 방지).
+         */
+        val CAROL_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000209")
+
         /** S17 — 사전 시드된 기존 버전 이름(자동생성 권한과 무관하게 이름 매칭만으로 링크된다). */
         const val EXISTING_VERSION_NAME = "v1.0-existing"
 
@@ -2321,6 +2328,196 @@ class IssueImportAdapterTest {
         }
         assert(result.warnings.any { it.contains("상한") && it.contains("100MB") }) {
             "TOO_LARGE 경고가 있어야 하지만 ${result.warnings} 입니다."
+        }
+    }
+
+    // ── S48~S53(Task 7, PR-B). 명시적 userId 매핑 — 이메일 해석보다 우선 ─────────────
+    // [IssueImportCommand] KDoc §userId 우선 규칙(PR2) — reporterUserId/assigneeUserId/authorUserId
+    // 가 있으면 구현체가 이메일 해석보다 먼저 사용해야 한다. CAROL_ID 는 이메일 fixture 에 없어
+    // "우연히 이메일 경로로 통과"하는 거짓양성을 차단한다.
+
+    /**
+     * (Task7-S1) reporterUserId/assigneeUserId 우선 — 매칭되는 이메일이 있어도 명시적 userId 가
+     * 우선 적용된다.
+     */
+    @Test
+    fun `S48 reporterUserId assigneeUserId 우선 - 매칭되는 이메일보다 우선 적용된다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S48 reporterUserId assigneeUserId 우선 테스트",
+                reporterEmail = ALICE_EMAIL,
+                reporterUserId = CAROL_ID,
+                assigneeEmail = BOB_EMAIL,
+                assigneeUserId = CAROL_ID,
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        val saved = issueRepository.findByKey(IssueKey(result.issueKey))
+        checkNotNull(saved)
+        assert(saved.reporterId.value == CAROL_ID) {
+            "reporterUserId 가 매칭되는 reporterEmail(Alice)보다 우선해야 하지만 ${saved.reporterId.value} 입니다."
+        }
+        assert(saved.assigneeId?.value == CAROL_ID) {
+            "assigneeUserId 가 매칭되는 assigneeEmail(Bob)보다 우선해야 하지만 ${saved.assigneeId?.value} 입니다."
+        }
+    }
+
+    /**
+     * (Task7-S2) 댓글 authorUserId 우선 — 미매칭 이메일이어도 명시적 userId 가 있으면 그 값을
+     * 그대로 사용하고, requester 폴백 경고([IssueImportAdapter.isAuthorUnmatched])도 남기지 않는다.
+     */
+    @Test
+    fun `S49 댓글 authorUserId 우선 - 미매칭 이메일이어도 명시적 userId가 적용되고 미매칭 경고가 없다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S49 댓글 authorUserId 우선 테스트",
+                comments =
+                    listOf(
+                        ImportComment(body = "댓글", authorEmail = "unknown@example.com", authorUserId = CAROL_ID),
+                    ),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        assert(fetchCommentAuthorIds(result.issueKey) == listOf(CAROL_ID)) {
+            "authorUserId 가 댓글 작성자로 적용돼야 하지만 ${fetchCommentAuthorIds(result.issueKey)} 입니다."
+        }
+        assert(result.warnings.none { it.contains("작성자 이메일이 매칭되지 않아") }) {
+            "authorUserId 로 이미 해석됐으므로 미매칭 경고가 없어야 하지만 ${result.warnings} 입니다."
+        }
+    }
+
+    /** (Task7-S2) worklog authorUserId 우선 — [S49] 와 동형. */
+    @Test
+    fun `S50 worklog authorUserId 우선 - 미매칭 이메일이어도 명시적 userId가 적용되고 미매칭 경고가 없다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S50 worklog authorUserId 우선 테스트",
+                worklogs =
+                    listOf(
+                        ImportWorklog(
+                            timeSpentSeconds = 60,
+                            authorEmail = "unknown@example.com",
+                            authorUserId = CAROL_ID,
+                        ),
+                    ),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        assert(fetchWorklogAuthorIds(result.issueKey) == listOf(CAROL_ID)) {
+            "authorUserId 가 worklog 작성자로 적용돼야 하지만 ${fetchWorklogAuthorIds(result.issueKey)} 입니다."
+        }
+        assert(result.warnings.none { it.contains("작성자 이메일이 매칭되지 않아") }) {
+            "authorUserId 로 이미 해석됐으므로 미매칭 경고가 없어야 하지만 ${result.warnings} 입니다."
+        }
+    }
+
+    /** (Task7-S2) 첨부 authorUserId 우선 — [S49] 와 동형(uploadedBy 대상). */
+    @Test
+    fun `S51 첨부 authorUserId 우선 - 미매칭 이메일이어도 명시적 userId가 uploadedBy로 적용된다`() {
+        val source = FixtureImportAttachmentSource(mapOf("carol.png" to byteArrayOf(1, 2, 3)))
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S51 첨부 authorUserId 우선 테스트",
+                sourceKey = "JIRA-530",
+                attachments =
+                    listOf(
+                        ImportAttachment(
+                            filename = "carol.png",
+                            mimeType = "image/png",
+                            authorEmail = "unknown@example.com",
+                            authorUserId = CAROL_ID,
+                        ),
+                    ),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd, source)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        val saved = fetchAttachments(result.issueKey).single()
+        assert(saved.uploadedBy == CAROL_ID) {
+            "authorUserId 가 uploadedBy 로 적용돼야 하지만 ${saved.uploadedBy} 입니다."
+        }
+    }
+
+    /**
+     * (Task7-S3) changelog authorUserId 우선 — 매칭되는 이메일이 있어도 명시적 userId 가 우선한다.
+     * 비대칭 규칙([applyChangelogGroup] KDoc — requester 폴백 없음)은 그대로 유지되므로 이 테스트는
+     * userId 우선 적용만 검증하고, "미매칭 시 requester 로 폴백하지 않고 null" 회귀는 S38 이 계속 검증한다.
+     */
+    @Test
+    fun `S52 changelog authorUserId 우선 - 매칭되는 이메일보다 우선 적용된다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S52 changelog authorUserId 우선 테스트",
+                sourceKey = "JIRA-531",
+                changelog =
+                    listOf(
+                        ImportChangeGroup(
+                            authorEmail = BOB_EMAIL,
+                            authorUserId = CAROL_ID,
+                            occurredAt = Instant.parse("2021-01-01T00:00:00Z"),
+                            items = listOf(ImportChangeItem(field = "priority", fromValue = "1", toValue = "2")),
+                        ),
+                    ),
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        val group = fetchChangeGroups(result.issueKey).single()
+        assert(group.actorId == CAROL_ID) {
+            "authorUserId 가 매칭되는 authorEmail(Bob)보다 우선해야 하지만 ${group.actorId} 입니다."
+        }
+    }
+
+    /**
+     * (Task7-S5, C3) dryRun 미리보기도 userId 우선을 반영해야 한다 — `warnCommentsPreview`/
+     * `warnWorklogsPreview` 가 authorUserId 를 전달받지 못하면 실행부(S49/S50)와 어긋나게 미리보기만
+     * 거짓 미매칭 경고를 남긴다(dry-run/실행 정합 원칙, CONCERN-A 재발 방지와 동일 근거).
+     */
+    @Test
+    fun `S53 dryRun 댓글 worklog authorUserId 우선 - 미리보기에서도 미매칭 경고가 없다`() {
+        val cmd =
+            IssueImportCommand(
+                projectKey = PROJECT_KEY,
+                requesterUserId = NORMAL_REQUESTER_ID,
+                summary = "S53 dryRun authorUserId 미리보기 테스트",
+                comments =
+                    listOf(
+                        ImportComment(body = "댓글", authorEmail = "unknown@example.com", authorUserId = CAROL_ID),
+                    ),
+                worklogs =
+                    listOf(
+                        ImportWorklog(
+                            timeSpentSeconds = 60,
+                            authorEmail = "unknown@example.com",
+                            authorUserId = CAROL_ID,
+                        ),
+                    ),
+                dryRun = true,
+            )
+
+        val result = issueImportAdapter.importIssue(cmd)
+
+        check(result is IssueImportResult.Success) { "Success 여야 하지만 $result 입니다." }
+        assert(result.warnings.none { it.contains("작성자 이메일이 매칭되지 않아") }) {
+            "authorUserId 로 이미 매칭됐으므로 dryRun 미리보기 경고도 없어야 하지만 ${result.warnings} 입니다."
         }
     }
 
