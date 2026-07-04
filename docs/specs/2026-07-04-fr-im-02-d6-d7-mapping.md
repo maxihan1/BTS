@@ -187,6 +187,9 @@ affectsVersion(영향 버전,multi) + 센티널 IGNORE(키="IGNORE", "매핑 안
 - **EC9 JSON 필드 매핑.** JSON은 필드 매핑 단계 스킵·fieldMappings=[] 전송(validate 항상 valid).
 - **EC10 대량 소스 필드/작성자.** 수십 개 헤더·수백 작성자 스크롤 UX. 값 매핑 소스 값도 다수 가능 —
   가상화는 범위 밖(YAGNI), 스크롤 컨테이너로 처리.
+- **EC11 빈/오형식 analyze.** (DR-6) analyze가 sourceFields 빈 목록 반환(빈 CSV·헤더만·오형식) 시 빈
+  필드 매핑 표가 아니라 명확한 에러 메시지 + 업로드 단계 복귀. 400 계열 에러도 업로드 단계 인라인 표시.
+- **EC12 async 로딩.** (DR-1) analyze/collect/confirm 진행 중 disabled + 진행 라벨. 중복 제출 차단.
 
 ## 제약 조건
 
