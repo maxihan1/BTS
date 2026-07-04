@@ -55,6 +55,114 @@ FR-IM-02 Import 매핑 에픽(3-PR)의 마지막 백엔드 조각. 소스 파일
 - Gap B(단순화): collect 응답 occurrences 제거(PR-B 동형).
 - Gap C(명확화): priority canonical 5 출처 = search 내부 ImportRowParser 정규화 집합 재사용(신규 하드코드/포트 0).
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 경로 접두. search = `backend/modules/search-export-import/src`, issue = `backend/modules/issue-tracking/src`, shared = `backend/modules/shared-kernel/src`.
+> PR-B 산출물 미러: UserMappingNormalizer→ValueMappingNormalizer, ImportUserMappingRepository→ImportValueMappingRepository, UserCollectionResult→ValueCollectionResult, UserCollectionResponse→ValueCollectionResponse.
+
+### Task 1. IssueTypeCatalog SPI + issue-tracking 어댑터
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`shared/main/kotlin/com/bts/shared/issue/IssueTypeCatalog.kt`, `issue/main/kotlin/com/bts/issue/type/adapter/outbound/IssueTypeCatalogAdapter.kt`, `issue/test/kotlin/com/bts/issue/type/adapter/outbound/IssueTypeCatalogAdapterTest.kt`]
+- depends-on: []
+
+**RED**: `IssueTypeCatalogAdapterTest` — 2개 이슈타입 시드 후 `listTypes()`가 `IssueTypeRef(key,name)` 2건 반환. 빈 DB → 빈 리스트.
+**GREEN**: `interface IssueTypeCatalog { @Transactional(readOnly=true) fun listTypes(): List<IssueTypeRef> }`(shared) + `IssueTypeCatalogAdapter`(issue-tracking)가 `IssueTypeRepository.findAll().map { IssueTypeRef(it.key.value, it.name) }`.
+**REFACTOR**: KDoc — WorkflowStateCatalog 미러, 타입 전역 명시, ADR 2건 참조.
+**검증**: `./gradlew :modules:issue-tracking:test --tests '*IssueTypeCatalogAdapterTest'`
+
+### Task 2. V608 import_value_mappings + init_codegen 미러
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`search/main/resources/db/migration/search-export-import/V608__import_value_mappings.sql`, `search/main/resources/db/codegen/init_codegen.sql`, `search/test/kotlin/com/bts/search/imports/job/SchemaMigrationImportTest.kt`]
+- depends-on: []
+
+**RED**: `SchemaMigrationImportTest` 확장 — import_value_mappings 존재·3컬럼·복합PK(import_job_id,target_field,source_value)·`chk_import_value_mappings_field` CHECK·FK CASCADE 행동·`target_value` NOT NULL.
+**GREEN**: V608 DDL(스펙 §데이터 모델) + init_codegen.sql 동일 미러 추가.
+**REFACTOR**: DDL 주석(NULL 비대칭=PR-B와 다름 명시).
+**검증**: `./gradlew :modules:search-export-import:test --tests '*SchemaMigrationImportTest'`
+
+### Task 3. ValueTargetField enum + ValueMappingNormalizer (F2 삼자일치)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`search/main/kotlin/com/bts/search/imports/mapping/ValueTargetField.kt`, `search/main/kotlin/com/bts/search/imports/mapping/ValueMappingNormalizer.kt`, `search/test/kotlin/com/bts/search/imports/mapping/ValueMappingNormalizerTest.kt`]
+- depends-on: []
+
+**RED**: 정규화 `"  In Progress "`→`"in progress"`; `collectValues(rows)`가 `statusName`/`typeName`/`priorityName` distinct를 `Map<ValueTargetField, Set<String>>`로 수집(null/blank 제외·대소문자 dedup).
+**GREEN**: `enum class ValueTargetField { STATUS, TYPE, PRIORITY }` + `object ValueMappingNormalizer { fun normalize(raw)=trim().lowercase(); fun collectValues(rows: List<ParsedImportRow>): Map<ValueTargetField, Set<String>> }`.
+**REFACTOR**: KDoc — F2 유일 정규화 원천(수집·저장·치환), UserMappingNormalizer 미러.
+**검증**: `./gradlew :modules:search-export-import:test --tests '*ValueMappingNormalizerTest'`
+
+### Task 4. ImportValueMappingRepository (jOOQ)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`search/main/kotlin/com/bts/search/imports/mapping/repository/ImportValueMappingRepository.kt`, `search/test/kotlin/com/bts/search/imports/mapping/repository/ImportValueMappingRepositoryTest.kt`]
+- depends-on: [2, 3]
+
+**RED**: `saveAll(jobId, Map<Pair<ValueTargetField,String>, String>)` delete-then-batchInsert; `findByJobId` 실 DB round-trip으로 저장 값 재조회(F1). 빈 맵=삭제만.
+**GREEN**: jOOQ DSL saveAll/findByJobId(target_value NOT NULL — `?: error` 방어 불요, source/field/target 모두 non-null).
+**REFACTOR**: KDoc(멱등·jOOQ DSL 전용·PR-B NULL 비대칭 대비).
+**검증**: `./gradlew :modules:search-export-import:test --tests '*ImportValueMappingRepositoryTest'`
+
+### Task 5. priority canonical 노출 + collectValues + confirm 확장 + full-boot @MockBean
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`search/main/kotlin/com/bts/search/imports/parse/ImportRowParser.kt`, `search/main/kotlin/com/bts/search/imports/mapping/ImportMappingService.kt`, `search/main/kotlin/com/bts/search/imports/mapping/ValueCollectionResult.kt`, `search/main/kotlin/com/bts/search/imports/mapping/ImportMappingExceptions.kt`, `search/test/kotlin/com/bts/search/imports/mapping/ImportMappingServiceValueTest.kt`, `search/test/kotlin/com/bts/search/imports/mapping/ImportMappingServiceTest.kt`, `search/test/kotlin/com/bts/search/config/OpenApiAnnotationTest.kt`, `search/test/kotlin/com/bts/search/imports/mapping/ImportMappingFlowIntegrationTest.kt`, `search/test/kotlin/com/bts/search/imports/mapping/ImportUserMappingFlowIntegrationTest.kt`]
+- depends-on: [1, 3, 4]
+
+**RED**: `ImportMappingServiceValueTest`(mockk) — (a) collectValues: 무효 필드매핑 조기종료(C1, storage 헤더 1회), distinct 값+자동추천(status=WorkflowStateCatalog·type=IssueTypeCatalog·priority=canonical5); (b) confirm valueMappings: CAS 트랜잭션 저장, 상태충돌 시 값 saveAll 0회, FR7 비대칭(type/priority 미실재 422·status 관대), E6 중복 422.
+**GREEN**: ImportRowParser에 canonical priority 이름 집합 노출(`internal val canonicalPriorityNames` 또는 접근자); ImportMappingService에 `issueTypeCatalog`·`workflowStateCatalog`·`importValueMappingRepository`·`transactionTemplate`(기존) 주입 → `collectValues(jobId,actor,fieldMappings)`(C1 선검증→전량스캔→ValueMappingNormalizer.collectValues→NFR2 짧은 tx로 후보조회+suggest) + `confirm(...valueMappings: List<Triple<ValueTargetField,String,String>> = emptyList())`(validateValueMappings 트랜잭션 밖→CAS 안 값 saveAll); `ValueCollectionResult`; `ImportValueMappingInvalidException`(errorCode IMPORT_VALUE_MAPPING_INVALID). **기존 mockk 테스트(ImportMappingServiceTest)·통합 TestConfig(2개 Flow 통합테스트)·OpenApiAnnotationTest에 신규 생성자 인자/@MockBean(IssueTypeCatalog·WorkflowStateCatalog) 배선**(생성자 파급+NFR4 module-compile).
+**REFACTOR**: KDoc(값매핑 흐름·FR7 비대칭 근거).
+**검증**: `./gradlew :modules:search-export-import:test --tests '*ImportMappingServiceValueTest' --tests '*ImportMappingServiceTest' --tests '*OpenApiAnnotationTest'`
+
+### Task 6. ImportJobProcessor 값 치환
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`search/main/kotlin/com/bts/search/imports/job/application/ImportJobProcessor.kt`, `search/test/kotlin/com/bts/search/imports/job/application/ImportJobProcessorTest.kt`]
+- depends-on: [3, 4, 5]
+
+**RED**: `ImportJobProcessorTest` — 값매핑 로드 후 행별 `typeName`/`statusName`/`priorityName`이 타깃값으로 치환됨; 미매핑 값은 원본 유지(폴백); null 소스값 미치환.
+**GREEN**: `importValueMappingRepository` 주입, `findByJobId` 1회 로드, `toCommand` 전/중 `ValueMappingNormalizer.normalize` 키로 `(field,source)→target` 조회 치환. 기존 mockk 테스트 생성자 파급 반영.
+**REFACTOR**: KDoc.
+**검증**: `./gradlew :modules:search-export-import:test --tests '*ImportJobProcessorTest'`
+
+### Task 7. collect 엔드포인트 + confirm valueMappings DTO + 예외 핸들러
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`search/main/kotlin/com/bts/search/imports/web/ImportMappingController.kt`, `search/main/kotlin/com/bts/search/imports/web/dto/MappingConfirmRequest.kt`, `search/main/kotlin/com/bts/search/imports/web/dto/ValueCollectionResponse.kt`, `search/main/kotlin/com/bts/search/imports/web/ImportExceptionHandler.kt`, `search/test/kotlin/com/bts/search/imports/web/ImportMappingControllerTest.kt`]
+- depends-on: [5, 6]
+
+**RED**: `ImportMappingControllerTest` — `POST /imports/{jobId}/mapping/values`(actor 우선추출·미인증 401·미소유 404·200 3필드 응답); confirm에 valueMappings 전달 200; 미실재 타깃 422 IMPORT_VALUE_MAPPING_INVALID; 필드매핑 무효 422.
+**GREEN**: collect 핸들러(currentActorId 먼저→collectValues), MappingConfirmRequest에 `valueMappings: List<ValueMappingEntry>` + `toValueMappingTriples()`, ValueCollectionResponse, ImportExceptionHandler에 ImportValueMappingInvalidException→422 매핑.
+**REFACTOR**: KDoc/OpenAPI 주석.
+**검증**: `./gradlew :modules:search-export-import:test --tests '*ImportMappingControllerTest'`
+
+### Task 8. 값매핑 통합 flow + 하위호환 회귀
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`search/test/kotlin/com/bts/search/imports/mapping/ImportValueMappingFlowIntegrationTest.kt`]
+- depends-on: [5, 6, 7]
+
+**RED**: 실 DB+IssueImportPort stub — (a) 전체 flow: collect→confirm(valueMappings)→process, stub이 치환된 커맨드 `typeName`/`statusName`/`priorityName` 캡처; (b) 회귀: 값매핑 미제공 시 커맨드 원본 값 불변(하위호환). vacuous 방지(stub 캡처 단언).
+**GREEN**: (통합테스트라 GREEN 구현 없음 — 앞 task 산출물로 통과 확인). TestConfig에 IssueTypeCatalog·WorkflowStateCatalog seeded fake + ImportValueMappingRepository 실 빈.
+**REFACTOR**: 시나리오 KDoc.
+**검증**: `./gradlew :modules:search-export-import:test --tests '*ImportValueMappingFlowIntegrationTest'`
+
+## Plan 메타
+
+- task 수: 8
+- 예상 wave: 6 (Wave1=[T1,T2,T3] 병렬·독립/타모듈, Wave2=[T4], Wave3=[T5], Wave4=[T6], Wave5=[T7], Wave6=[T8]). 무거운 search 모듈 task(T5~T8)는 생성자/모듈컴파일 파급 회피 위해 **직렬화**.
+- TDD 강제: yes
+- 병렬 dispatch: Wave1만 3-병렬 — **엄격 커밋 위생**(자기파일 pathspec `git commit --no-verify -- <path>`만, `--amend`/`-A`/rebase/reset/stash 금지, [[parallel-dispatch-precommit-hook-race]]).
+- 추가 검증: 3모듈 test + ktlintCheck + detekt `--rerun-tasks`(search CI 없음, false-green 방지) + verify-master-plan(FR수 불변 123).
+- 회귀 가드: F1(insert round-trip)·F2(ValueMappingNormalizer 삼자)·CAS 중복 enqueue·NFR4(full-boot @MockBean)·하위호환(미매핑 폴백).
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
