@@ -612,7 +612,7 @@ class ImportJobProcessorTest {
     }
 
     @Test
-    fun `job without any saved user mapping leaves all userId fields null across reporter assignee comment worklog attachment and changelog`() {
+    fun `job without any saved user mapping leaves all userId fields null across all VOs (regression)`() {
         val row =
             makeRow(1).copy(
                 reporterEmail = "alice@corp.com",
@@ -637,7 +637,10 @@ class ImportJobProcessorTest {
                         ParsedImportChangeGroup(
                             authorEmail = "alice@corp.com",
                             created = null,
-                            items = listOf(ParsedImportChangeItem(field = "status", fromValue = null, toValue = "Done")),
+                            items =
+                                listOf(
+                                    ParsedImportChangeItem(field = "status", fromValue = null, toValue = "Done"),
+                                ),
                         ),
                     ),
             )
@@ -661,7 +664,7 @@ class ImportJobProcessorTest {
     }
 
     @Test
-    fun `toCommand resolves authorUserId for comments worklogs attachments and changelog via normalized email lookup`() {
+    fun `toCommand resolves authorUserId across comments worklogs attachments and changelog`() {
         val row =
             makeRow(1).copy(
                 comments = listOf(ParsedImportComment(body = "댓글", authorEmail = "Bob@Corp.com", createdAt = null)),
@@ -684,7 +687,10 @@ class ImportJobProcessorTest {
                         ParsedImportChangeGroup(
                             authorEmail = "Alice@Corp.com",
                             created = null,
-                            items = listOf(ParsedImportChangeItem(field = "status", fromValue = null, toValue = "Done")),
+                            items =
+                                listOf(
+                                    ParsedImportChangeItem(field = "status", fromValue = null, toValue = "Done"),
+                                ),
                         ),
                     ),
             )
