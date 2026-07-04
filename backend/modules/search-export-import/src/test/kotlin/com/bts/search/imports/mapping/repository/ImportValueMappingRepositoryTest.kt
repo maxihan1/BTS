@@ -88,7 +88,11 @@ class ImportValueMappingRepositoryTest : SearchPersistenceTestBase() {
         assertThat(rowCount).isEqualTo(1)
 
         val row =
-            dsl.select(IMPORT_VALUE_MAPPINGS.TARGET_FIELD, IMPORT_VALUE_MAPPINGS.SOURCE_VALUE, IMPORT_VALUE_MAPPINGS.TARGET_VALUE)
+            dsl.select(
+                IMPORT_VALUE_MAPPINGS.TARGET_FIELD,
+                IMPORT_VALUE_MAPPINGS.SOURCE_VALUE,
+                IMPORT_VALUE_MAPPINGS.TARGET_VALUE,
+            )
                 .from(IMPORT_VALUE_MAPPINGS)
                 .where(IMPORT_VALUE_MAPPINGS.IMPORT_JOB_ID.eq(jobId.value))
                 .fetchOne()
