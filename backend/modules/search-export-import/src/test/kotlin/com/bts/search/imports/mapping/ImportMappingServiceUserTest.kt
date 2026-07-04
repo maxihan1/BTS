@@ -209,6 +209,10 @@ class ImportMappingServiceUserTest {
     fun `confirm throws ImportUserMappingInvalidException for duplicate normalized source identifiers`() {
         val job = makeJob(format = "JSON")
         every { importJobRepository.findByIdForRequester(job.id, actor) } returns job
+        // 대상 사용자 실재 검증은 중복 검증과 독립적으로(단축 없이) 함께 수행되므로, 이 케이스에서
+        // 중복 오류만 순수하게 관찰하려면 두 targetUserId 모두 실재하는 것으로 stub 한다.
+        every { userLookupPort.findDisplayNamesByIds(setOf(aliceId, daveId)) } returns
+            mapOf(aliceId to "Alice Kim", daveId to "Dave Lee")
         val userMappings = listOf("Alice@Corp.com" to aliceId, "alice@corp.com" to daveId)
 
         val ex =

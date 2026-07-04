@@ -16,6 +16,7 @@ import com.bts.search.imports.job.storage.MinioImportStorageAdapter
 import com.bts.search.imports.job.storage.MinioImportStorageConfig
 import com.bts.search.imports.job.worker.ImportJobWorker
 import com.bts.search.imports.mapping.repository.ImportMappingRepository
+import com.bts.search.imports.mapping.repository.ImportUserMappingRepository
 import com.bts.search.jooq.tables.references.IMPORT_JOBS
 import com.bts.shared.issue.ImportAttachmentSource
 import com.bts.shared.issue.IssueImportCommand
@@ -24,6 +25,7 @@ import com.bts.shared.issue.IssueImportResult
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import com.bts.shared.user.UserLookupPort
 import io.minio.MinioClient
 import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
@@ -125,6 +127,22 @@ class ImportMappingFlowIntegrationTest {
         open fun importMappingRepository(dsl: DSLContext): ImportMappingRepository = ImportMappingRepository(dsl)
 
         @Bean
+        open fun importUserMappingRepository(dsl: DSLContext): ImportUserMappingRepository =
+            ImportUserMappingRepository(dsl)
+
+        /**
+         * [UserLookupPort] cross-BC 포트의 test-assembled 최소 stub (no-cross-bc-deployment-assembly) —
+         * 이 흐름 테스트는 `confirm` 을 `userMappings` 생략(기본값 빈 목록)으로만 호출하므로
+         * [ImportMappingService.confirm] 이 [UserLookupPort] 를 실제로 호출하지 않는다. 배선 컴파일만
+         * 목적이라 `exists` 외 override 가 필요 없다.
+         */
+        @Bean
+        open fun userLookupPort(): UserLookupPort =
+            object : UserLookupPort {
+                override fun exists(userId: UUID): Boolean = false
+            }
+
+        @Bean
         open fun enqueuePublisher(dsl: DSLContext): ImportJobEnqueuePublisher = ImportJobEnqueuePublisher(dsl)
 
         @Bean
@@ -177,6 +195,8 @@ class ImportMappingFlowIntegrationTest {
             enqueuePublisher: ImportJobEnqueuePublisher,
             storage: MinioImportStorageAdapter,
             transactionTemplate: TransactionTemplate,
+            userLookupPort: UserLookupPort,
+            importUserMappingRepository: ImportUserMappingRepository,
         ): ImportMappingService {
             return ImportMappingService(
                 importMappingRepository,
@@ -184,6 +204,8 @@ class ImportMappingFlowIntegrationTest {
                 enqueuePublisher,
                 storage,
                 transactionTemplate,
+                userLookupPort,
+                importUserMappingRepository,
             )
         }
 

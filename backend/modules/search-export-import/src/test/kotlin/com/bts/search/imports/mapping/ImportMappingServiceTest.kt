@@ -8,7 +8,9 @@ import com.bts.search.imports.job.event.ImportJobEnqueuePublisher
 import com.bts.search.imports.job.repository.ImportJobRepository
 import com.bts.search.imports.job.storage.ImportObjectStoragePort
 import com.bts.search.imports.mapping.repository.ImportMappingRepository
+import com.bts.search.imports.mapping.repository.ImportUserMappingRepository
 import com.bts.search.imports.parse.ImportRowParser
+import com.bts.shared.user.UserLookupPort
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
@@ -53,6 +55,8 @@ class ImportMappingServiceTest {
     private val enqueuePublisher: ImportJobEnqueuePublisher = mockk()
     private val storage: ImportObjectStoragePort = mockk()
     private val transactionTemplate: TransactionTemplate = mockk()
+    private val userLookupPort: UserLookupPort = mockk()
+    private val importUserMappingRepository: ImportUserMappingRepository = mockk()
     private val parser = ImportRowParser()
 
     private lateinit var service: ImportMappingService
@@ -70,11 +74,16 @@ class ImportMappingServiceTest {
                 enqueuePublisher,
                 storage,
                 transactionTemplate,
+                userLookupPort,
+                importUserMappingRepository,
                 parser,
             )
         every { transactionTemplate.execute(any<TransactionCallback<Any>>()) } answers {
             firstArg<TransactionCallback<Any>>().doInTransaction(mockk<TransactionStatus>(relaxed = true))
         }
+        // confirm 은 userMappings 를 생략하면 항상 빈 맵을 저장한다(하위호환) — 이 파일의 기존
+        // confirm 테스트는 모두 userMappings 를 생략하므로 공통으로 stub 한다.
+        justRun { importUserMappingRepository.saveAll(any(), any()) }
     }
 
     private fun makeJob(
@@ -184,6 +193,7 @@ class ImportMappingServiceTest {
         }
         verify(exactly = 0) { importJobRepository.transitionToPending(any(), any()) }
         verify(exactly = 0) { importMappingRepository.saveAll(any(), any()) }
+        verify(exactly = 0) { importUserMappingRepository.saveAll(any(), any()) }
         verify(exactly = 0) { enqueuePublisher.enqueue(any()) }
     }
 
@@ -197,6 +207,7 @@ class ImportMappingServiceTest {
         }
         verify(exactly = 0) { importJobRepository.transitionToPending(any(), any()) }
         verify(exactly = 0) { importMappingRepository.saveAll(any(), any()) }
+        verify(exactly = 0) { importUserMappingRepository.saveAll(any(), any()) }
         verify(exactly = 0) { enqueuePublisher.enqueue(any()) }
     }
 
@@ -214,6 +225,7 @@ class ImportMappingServiceTest {
         assertThat(ex.errors.map { it.code }).contains(MappingValidator.SUMMARY_NOT_MAPPED)
         verify(exactly = 0) { importJobRepository.transitionToPending(any(), any()) }
         verify(exactly = 0) { importMappingRepository.saveAll(any(), any()) }
+        verify(exactly = 0) { importUserMappingRepository.saveAll(any(), any()) }
         verify(exactly = 0) { enqueuePublisher.enqueue(any()) }
     }
 
@@ -235,6 +247,8 @@ class ImportMappingServiceTest {
         assertThat(result.expiresAt).isNull()
         verify(exactly = 1) { importJobRepository.transitionToPending(job.id, false) }
         verify(exactly = 1) { importMappingRepository.saveAll(job.id, mapping) }
+        // userMappings 를 생략하면(하위호환) 빈 맵을 저장한다.
+        verify(exactly = 1) { importUserMappingRepository.saveAll(job.id, emptyMap()) }
         verify(exactly = 1) { enqueuePublisher.enqueue(job.id) }
     }
 
@@ -279,6 +293,7 @@ class ImportMappingServiceTest {
 
         verify(exactly = 1) { importJobRepository.transitionToPending(job.id, false) }
         verify(exactly = 0) { importMappingRepository.saveAll(any(), any()) }
+        verify(exactly = 0) { importUserMappingRepository.saveAll(any(), any()) }
         verify(exactly = 0) { enqueuePublisher.enqueue(any()) }
     }
 }
