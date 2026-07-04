@@ -1,4 +1,4 @@
-// Import 필드 매핑 확정(confirm) 요청 DTO — fieldMappings 배열 + optional dryRun + userMappings/valueMappings (FR-IM-02 PR-A/B/C Task 8)
+// Import 필드 매핑 확정(confirm) 요청 DTO — fieldMappings 배열 + dryRun + userMappings/valueMappings (FR-IM-02 PR-A/B/C)
 
 package com.bts.search.imports.web.dto
 
