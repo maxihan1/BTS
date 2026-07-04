@@ -25,9 +25,11 @@ describe('ShortcutsHelpDialog', () => {
     expect(screen.getByText('대시보드로 이동')).toBeInTheDocument()
   })
 
-  it('Cmd+K 명령 팔레트 항목이 표시된다', () => {
+  it('Cmd+K 명령 팔레트 항목이 표시된다 (혼합 OS 대응 Cmd/Ctrl 병기)', () => {
     render(<ShortcutsHelpDialog open onOpenChange={vi.fn()} />)
     expect(screen.getByText('명령 팔레트 열기')).toBeInTheDocument()
+    // 혼합 OS에서 Windows 사용자에게 Cmd만 오표기하지 않도록 Cmd/Ctrl 병기 검증 (C1)
+    expect(screen.getByText('Cmd/Ctrl')).toBeInTheDocument()
   })
 
   it('비구현 단축키(편집/담당자 변경/상태 변경)는 표시되지 않는다 (FR8)', () => {

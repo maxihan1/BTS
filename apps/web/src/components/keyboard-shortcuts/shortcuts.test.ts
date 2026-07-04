@@ -132,7 +132,7 @@ describe('SHORTCUTS', () => {
 
 describe('PALETTE_HELP_ITEM', () => {
   it('명령 팔레트 도움말 표기 항목을 제공한다', () => {
-    expect(PALETTE_HELP_ITEM).toEqual({ keys: ['Cmd', 'K'], description: '명령 팔레트 열기' })
+    expect(PALETTE_HELP_ITEM).toEqual({ keys: ['Cmd/Ctrl', 'K'], description: '명령 팔레트 열기' })
   })
 })
 

@@ -75,9 +75,14 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
   },
 ]
 
-/** 명령 팔레트(FR-UX-04, Cmd+K)는 별도 훅이 처리 — 도움말 모달 표기 전용 항목 */
+/**
+ * 명령 팔레트(FR-UX-04, Cmd+K)는 별도 훅이 처리 — 도움말 모달 표기 전용 항목.
+ *
+ * 팔레트 토글은 `metaKey || ctrlKey`로 mac(Cmd)·win/linux(Ctrl)를 모두 지원하므로
+ * (useCommandPalette) 혼합 OS 환경에서 오표기하지 않도록 `Cmd/Ctrl`을 병기한다.
+ */
 export const PALETTE_HELP_ITEM: { readonly keys: readonly string[]; readonly description: string } = {
-  keys: ['Cmd', 'K'],
+  keys: ['Cmd/Ctrl', 'K'],
   description: '명령 팔레트 열기',
 }
 
