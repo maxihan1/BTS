@@ -243,6 +243,7 @@ class ImportMappingFlowIntegrationTest {
             importJobRepository: ImportJobRepository,
             importMappingRepository: ImportMappingRepository,
             importUserMappingRepository: ImportUserMappingRepository,
+            importValueMappingRepository: ImportValueMappingRepository,
             errorLogWriter: ImportErrorLogWriter,
         ): ImportJobProcessor {
             return ImportJobProcessor(
@@ -251,6 +252,7 @@ class ImportMappingFlowIntegrationTest {
                 importJobRepository,
                 importMappingRepository,
                 importUserMappingRepository,
+                importValueMappingRepository,
                 errorLogWriter,
             )
         }
