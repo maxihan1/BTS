@@ -135,3 +135,14 @@ CREATE TABLE import_mappings (
     target_field   TEXT NOT NULL,
     PRIMARY KEY (import_job_id, source_field)
 );
+
+-- V607 import_user_mappings 구조 미러 (codegen 입력, V607 CREATE TABLE 과 정확히 일치 유지 — FR-IM-02 PR-B)
+-- (import_job_id, source_identifier) 복합 PK, FK → import_jobs(id) ON DELETE CASCADE.
+-- target_user_id 는 FK 미적용 — cross-BC users(identity-access 소유) 미참조(앱 계층 UserLookupPort 검증).
+
+CREATE TABLE import_user_mappings (
+    import_job_id      UUID NOT NULL REFERENCES import_jobs(id) ON DELETE CASCADE,
+    source_identifier  TEXT NOT NULL,
+    target_user_id     UUID NULL,
+    PRIMARY KEY (import_job_id, source_identifier)
+);
