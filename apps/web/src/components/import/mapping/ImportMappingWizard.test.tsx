@@ -13,7 +13,6 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
-import { ApiError } from '@/api/client'
 import type {
   ImportAnalysisResponse,
   UserCollectionResponse,
