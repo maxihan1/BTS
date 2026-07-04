@@ -8,6 +8,7 @@ import com.bts.search.imports.job.domain.ImportJobStatus
 import com.bts.search.imports.job.repository.ImportJobRepository
 import com.bts.search.imports.job.storage.ImportObjectStoragePort
 import com.bts.search.imports.mapping.repository.ImportMappingRepository
+import com.bts.search.imports.mapping.repository.ImportUserMappingRepository
 import com.bts.search.imports.parse.ImportParseException
 import com.bts.search.imports.parse.ImportRowParser
 import com.bts.search.imports.parse.ParsedImportAttachment
@@ -64,12 +65,18 @@ import java.util.UUID
  * - (m) 매핑 기반 CSV 파싱 로드: job 의 저장된 매핑([ImportMappingRepository.findByJobId])이 있으면
  *   [ImportRowParser.parseCsv] 3-인자(mapped) 오버로드로, 없으면(빈 Map) 기존 2-인자(canonical)
  *   오버로드로 위임하는지 — mockk verify 로 두 오버로드 호출을 구분해 단언 (FR-IM-02 PR-A Task 9).
+ * - (n) 사용자 매핑 해석: job 의 저장된 사용자 매핑([ImportUserMappingRepository.findByJobId])을 행 수와
+ *   무관하게 job 당 1 회만 로드하고, reporter/assignee/댓글/worklog/첨부/changelog 각 식별자를
+ *   [com.bts.search.imports.mapping.UserMappingNormalizer.normalize] 로 정규화해 조회한 뒤 커맨드/각 VO
+ *   의 userId 필드에 세팅하는지, 매핑에 없는 식별자·값이 null 인 매핑·매핑 자체가 없는 job(회귀)은
+ *   모두 userId null 폴백인지 검증한다 (FR-IM-02 PR-B Task 6).
  */
 class ImportJobProcessorTest {
     private val issueImportPort: IssueImportPort = mockk()
     private val storage: ImportObjectStoragePort = mockk()
     private val repository: ImportJobRepository = mockk()
     private val mappingRepo: ImportMappingRepository = mockk()
+    private val userMappingRepo: ImportUserMappingRepository = mockk()
     private val errorLogWriter: ImportErrorLogWriter = ImportErrorLogWriter()
     private val parser: ImportRowParser = mockk()
     private val fixedClock: Clock = Clock.fixed(Instant.parse("2024-03-15T10:30:45Z"), ZoneOffset.UTC)
@@ -82,7 +89,16 @@ class ImportJobProcessorTest {
     @BeforeEach
     fun setUp() {
         processor =
-            ImportJobProcessor(issueImportPort, storage, repository, mappingRepo, errorLogWriter, parser, fixedClock)
+            ImportJobProcessor(
+                issueImportPort,
+                storage,
+                repository,
+                mappingRepo,
+                userMappingRepo,
+                errorLogWriter,
+                parser,
+                fixedClock,
+            )
         every { storage.get(any()) } returns ByteArrayInputStream(ByteArray(0))
         justRun { storage.put(any(), any(), any(), any()) }
         every { repository.markCompleted(any(), any(), any(), any(), any()) } returns true
@@ -91,6 +107,9 @@ class ImportJobProcessorTest {
         // canonical 회귀 불변 — 매핑을 명시적으로 스텁하지 않는 기존 테스트는 빈 Map(매핑 없음)이
         // 기본값이라 CSV 분기가 기존 2-인자 canonical parseCsv 오버로드를 계속 사용한다.
         every { mappingRepo.findByJobId(any()) } returns emptyMap()
+        // 사용자 매핑 회귀 불변 — 명시적으로 스텁하지 않는 기존 테스트는 빈 Map(매핑 없음)이 기본값이라
+        // reporterUserId/assigneeUserId/각 VO authorUserId 가 전부 null 로 남는다.
+        every { userMappingRepo.findByJobId(any()) } returns emptyMap()
     }
 
     /** 기본 테스트용 ImportJob. */
@@ -531,5 +550,156 @@ class ImportJobProcessorTest {
         verify(exactly = 1) { mappingRepo.findByJobId(jobId) }
         verify(exactly = 1) { parser.parseCsv(any(), any()) }
         verify(exactly = 0) { parser.parseCsv(any(), any(), any()) }
+    }
+
+    // ── (n) 사용자 매핑 해석 (FR-IM-02 PR-B Task 6) ─────────────────────────────────
+
+    private val aliceId = UUID.fromString("00000000-0000-0000-0000-0000000000a1")
+    private val bobId = UUID.fromString("00000000-0000-0000-0000-0000000000b1")
+
+    @Test
+    fun `job with saved user mapping resolves reporter and assignee userId via normalized email lookup`() {
+        val row = makeRow(1).copy(reporterEmail = "Alice@Corp.com", assigneeEmail = "Bob@Corp.com")
+        stubParserWithRows(listOf(row))
+        every { userMappingRepo.findByJobId(jobId) } returns
+            mapOf("alice@corp.com" to aliceId, "bob@corp.com" to bobId)
+        val cmdSlot = slot<IssueImportCommand>()
+        every { issueImportPort.importIssue(capture(cmdSlot)) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        assertThat(cmdSlot.captured.reporterUserId).isEqualTo(aliceId)
+        assertThat(cmdSlot.captured.assigneeUserId).isEqualTo(bobId)
+        // 이메일 필드는 그대로 보존 — 어댑터 폴백용(userId 우선 규칙, IssueImportCommand KDoc).
+        assertThat(cmdSlot.captured.reporterEmail).isEqualTo("Alice@Corp.com")
+        assertThat(cmdSlot.captured.assigneeEmail).isEqualTo("Bob@Corp.com")
+    }
+
+    @Test
+    fun `user mapping is loaded exactly once per job regardless of row count`() {
+        stubParserWithRows(listOf(makeRow(1), makeRow(2), makeRow(3)))
+        every { issueImportPort.importIssue(any()) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        verify(exactly = 1) { userMappingRepo.findByJobId(jobId) }
+    }
+
+    @Test
+    fun `identifier absent from saved user mapping resolves to null userId fallback`() {
+        val row = makeRow(1).copy(reporterEmail = "unknown@corp.com")
+        stubParserWithRows(listOf(row))
+        every { userMappingRepo.findByJobId(jobId) } returns mapOf("alice@corp.com" to aliceId)
+        val cmdSlot = slot<IssueImportCommand>()
+        every { issueImportPort.importIssue(capture(cmdSlot)) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        assertThat(cmdSlot.captured.reporterUserId).isNull()
+    }
+
+    @Test
+    fun `identifier mapped to explicit null target value resolves to null userId fallback`() {
+        val row = makeRow(1).copy(reporterEmail = "Alice@Corp.com")
+        stubParserWithRows(listOf(row))
+        every { userMappingRepo.findByJobId(jobId) } returns mapOf("alice@corp.com" to null)
+        val cmdSlot = slot<IssueImportCommand>()
+        every { issueImportPort.importIssue(capture(cmdSlot)) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        assertThat(cmdSlot.captured.reporterUserId).isNull()
+    }
+
+    @Test
+    fun `job without any saved user mapping leaves all userId fields null across reporter assignee comment worklog attachment and changelog`() {
+        val row =
+            makeRow(1).copy(
+                reporterEmail = "alice@corp.com",
+                assigneeEmail = "bob@corp.com",
+                comments = listOf(ParsedImportComment(body = "댓글", authorEmail = "bob@corp.com", createdAt = null)),
+                worklogs =
+                    listOf(
+                        ParsedImportWorklog(timeSpentSeconds = 60, startedAt = null, authorEmail = "bob@corp.com"),
+                    ),
+                attachments =
+                    listOf(
+                        ParsedImportAttachment(
+                            filename = "a.png",
+                            authorEmail = "alice@corp.com",
+                            created = null,
+                            mimeType = null,
+                            sizeBytes = null,
+                        ),
+                    ),
+                changelog =
+                    listOf(
+                        ParsedImportChangeGroup(
+                            authorEmail = "alice@corp.com",
+                            created = null,
+                            items = listOf(ParsedImportChangeItem(field = "status", fromValue = null, toValue = "Done")),
+                        ),
+                    ),
+            )
+        // userMappingRepo.findByJobId 는 setUp() 기본값(emptyMap) 그대로 — 매핑을 저장한 적 없는 job.
+        stubParserWithRows(listOf(row))
+        val cmdSlot = slot<IssueImportCommand>()
+        every { issueImportPort.importIssue(capture(cmdSlot)) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        val command = cmdSlot.captured
+        assertThat(command.reporterUserId).isNull()
+        assertThat(command.assigneeUserId).isNull()
+        assertThat(command.comments.single().authorUserId).isNull()
+        assertThat(command.worklogs.single().authorUserId).isNull()
+        assertThat(command.attachments.single().authorUserId).isNull()
+        assertThat(command.changelog.single().authorUserId).isNull()
+        // 기존 이메일 필드는 회귀 없이 그대로 보존된다.
+        assertThat(command.reporterEmail).isEqualTo("alice@corp.com")
+        assertThat(command.assigneeEmail).isEqualTo("bob@corp.com")
+    }
+
+    @Test
+    fun `toCommand resolves authorUserId for comments worklogs attachments and changelog via normalized email lookup`() {
+        val row =
+            makeRow(1).copy(
+                comments = listOf(ParsedImportComment(body = "댓글", authorEmail = "Bob@Corp.com", createdAt = null)),
+                worklogs =
+                    listOf(
+                        ParsedImportWorklog(timeSpentSeconds = 60, startedAt = null, authorEmail = "Bob@Corp.com"),
+                    ),
+                attachments =
+                    listOf(
+                        ParsedImportAttachment(
+                            filename = "a.png",
+                            authorEmail = "Alice@Corp.com",
+                            created = null,
+                            mimeType = null,
+                            sizeBytes = null,
+                        ),
+                    ),
+                changelog =
+                    listOf(
+                        ParsedImportChangeGroup(
+                            authorEmail = "Alice@Corp.com",
+                            created = null,
+                            items = listOf(ParsedImportChangeItem(field = "status", fromValue = null, toValue = "Done")),
+                        ),
+                    ),
+            )
+        stubParserWithRows(listOf(row))
+        every { userMappingRepo.findByJobId(jobId) } returns
+            mapOf("bob@corp.com" to bobId, "alice@corp.com" to aliceId)
+        val cmdSlot = slot<IssueImportCommand>()
+        every { issueImportPort.importIssue(capture(cmdSlot)) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        val command = cmdSlot.captured
+        assertThat(command.comments.single().authorUserId).isEqualTo(bobId)
+        assertThat(command.worklogs.single().authorUserId).isEqualTo(bobId)
+        assertThat(command.attachments.single().authorUserId).isEqualTo(aliceId)
+        assertThat(command.changelog.single().authorUserId).isEqualTo(aliceId)
     }
 }
