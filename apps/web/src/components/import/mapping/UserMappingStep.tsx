@@ -61,6 +61,46 @@ function resolveEffectiveValue(entry: UserMappingEntry, value: Record<string, st
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// UserSearchResultList — 다른 사용자 검색 결과 listbox (UserMappingRow에서 분리)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface UserSearchResultListProps {
+  readonly listboxLabel: string
+  readonly candidates: UserSummary[]
+  readonly effectiveValue: string | null
+  readonly onSelect: (candidate: UserSummary) => void
+}
+
+function UserSearchResultList({
+  listboxLabel,
+  candidates,
+  effectiveValue,
+  onSelect,
+}: UserSearchResultListProps): JSX.Element {
+  return (
+    <ul
+      role="listbox"
+      aria-label={listboxLabel}
+      className="mt-1 max-h-40 overflow-y-auto rounded-md border border-border bg-popover"
+    >
+      {candidates.map((candidate) => (
+        <li
+          key={candidate.id}
+          role="option"
+          aria-selected={effectiveValue === candidate.id}
+          onClick={() => {
+            onSelect(candidate)
+          }}
+          className="cursor-pointer select-none px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+        >
+          {candidate.displayName ?? candidate.username}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // UserMappingRow — 행 하나(추천/미매핑 선택 + 다른 사용자 검색)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -133,25 +173,12 @@ function UserMappingRow({ entry, effectiveValue, onSelect }: UserMappingRowProps
         />
         {isFetching && <p className="mt-1 text-xs text-muted-foreground">검색 중...</p>}
         {!isFetching && candidates.length > 0 && (
-          <ul
-            role="listbox"
-            aria-label={`${entry.sourceIdentifier} 검색 결과`}
-            className="mt-1 max-h-40 overflow-y-auto rounded-md border border-border bg-popover"
-          >
-            {candidates.map((candidate) => (
-              <li
-                key={candidate.id}
-                role="option"
-                aria-selected={effectiveValue === candidate.id}
-                onClick={() => {
-                  handleCandidateSelect(candidate)
-                }}
-                className="cursor-pointer select-none px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
-              >
-                {candidate.displayName ?? candidate.username}
-              </li>
-            ))}
-          </ul>
+          <UserSearchResultList
+            listboxLabel={`${entry.sourceIdentifier} 검색 결과`}
+            candidates={candidates}
+            effectiveValue={effectiveValue}
+            onSelect={handleCandidateSelect}
+          />
         )}
       </div>
     </div>
