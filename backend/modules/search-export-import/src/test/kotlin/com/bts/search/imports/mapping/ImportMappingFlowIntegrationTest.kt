@@ -211,11 +211,13 @@ class ImportMappingFlowIntegrationTest {
         }
 
         @Bean
+        @Suppress("LongParameterList") // 테스트 빈 조립 — ImportJobProcessor 생성자 협력자를 그대로 나열
         open fun importJobProcessor(
             issueImportPort: CapturingIssueImportPort,
             storage: MinioImportStorageAdapter,
             importJobRepository: ImportJobRepository,
             importMappingRepository: ImportMappingRepository,
+            importUserMappingRepository: ImportUserMappingRepository,
             errorLogWriter: ImportErrorLogWriter,
         ): ImportJobProcessor {
             return ImportJobProcessor(
@@ -223,6 +225,7 @@ class ImportMappingFlowIntegrationTest {
                 storage,
                 importJobRepository,
                 importMappingRepository,
+                importUserMappingRepository,
                 errorLogWriter,
             )
         }
