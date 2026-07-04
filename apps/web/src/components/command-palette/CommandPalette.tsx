@@ -1,4 +1,5 @@
 // Cmd+K 명령 팔레트 — cmdk 기반 슬래시 명령(goto/search/issue) 실행 UI (FR-UX-04 Task-2)
+/* eslint-disable react-refresh/only-export-components -- runCommand 헬퍼를 컴포넌트와 같은 파일에 배치(응집도 우선, NodeMappingSection.tsx 선례) */
 import { useState, type JSX, type KeyboardEvent } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Command as CommandPrimitive } from 'cmdk'
@@ -26,6 +27,14 @@ const commandPaletteStrings = {
   unknownCommand: (name: string) => `알 수 없는 명령입니다: /${name}`,
   invalidIssueKey: '이슈 키 형식이 올바르지 않습니다. 예: PROJ-12',
 }
+
+/** cmdk Group heading 스타일 — 두 그룹(바로가기/명령어)에서 공유 */
+const GROUP_HEADING_CLASS =
+  '[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground'
+
+/** cmdk Item 공통 스타일 — 바로가기/명령 힌트 항목에서 공유 */
+const ITEM_CLASS =
+  'flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-2 text-sm outline-none data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입
@@ -61,6 +70,29 @@ function buildGuidanceMessage(parsed: ParsedCommand): string | null {
   }
   return null
 }
+
+/**
+ * 파싱된 명령의 라우팅 부수효과를 실행하는 순수 dispatch 헬퍼(C3).
+ *
+ * goto/search/issue만 navigate를 호출한다. unknown/incomplete/not-command는
+ * 실행할 라우트가 없으므로 아무 것도 하지 않는다(FR5 — 안내 문구만 표시, 라우팅 없음).
+ * 컴포넌트 렌더 로직과 분리해 테스트하기 쉽게 만든다.
+ *
+ * @param parsed parseCommand의 판별 유니온 결과
+ * @param navigate useNavigate()가 반환하는 TanStack Router navigate 함수
+ */
+export function runCommand(parsed: ParsedCommand, navigate: ReturnType<typeof useNavigate>): void {
+  if (parsed.kind === 'goto') {
+    void navigate({ to: '/issues/$key', params: { key: parsed.issueKey } })
+  } else if (parsed.kind === 'search') {
+    void navigate({ to: '/search', search: { q: parsed.query } })
+  } else if (parsed.kind === 'issue') {
+    void navigate({ to: '/issues/new', search: { summary: parsed.summary } })
+  }
+}
+
+/** runCommand가 실제로 navigate를 실행하는(=팔레트를 닫아야 하는) kind 목록 */
+const EXECUTABLE_KINDS: ReadonlySet<ParsedCommand['kind']> = new Set(['goto', 'search', 'issue'])
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 컴포넌트
@@ -124,17 +156,11 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps): JSX
     if (parsed.kind === 'not-command') return // cmdk 기본 목록 선택(Enter)에 위임
 
     e.preventDefault()
-    if (parsed.kind === 'goto') {
-      void navigate({ to: '/issues/$key', params: { key: parsed.issueKey } })
-      handleClose()
-    } else if (parsed.kind === 'search') {
-      void navigate({ to: '/search', search: { q: parsed.query } })
-      handleClose()
-    } else if (parsed.kind === 'issue') {
-      void navigate({ to: '/issues/new', search: { summary: parsed.summary } })
+    runCommand(parsed, navigate)
+    // unknown/incomplete → 안내 문구만 유지, 팔레트는 열린 채로 둔다(FR5)
+    if (EXECUTABLE_KINDS.has(parsed.kind)) {
       handleClose()
     }
-    // unknown/incomplete → 안내 문구만 유지, 팔레트는 열린 채로 둔다(FR5)
   }
 
   return (
@@ -158,14 +184,14 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps): JSX
           <>
             <CommandPrimitive.Group
               heading={commandPaletteStrings.quickLinksHeading}
-              className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground"
+              className={GROUP_HEADING_CLASS}
             >
               {QUICK_LINKS.map((link) => (
                 <CommandPrimitive.Item
                   key={link.to}
                   value={link.to}
                   onSelect={() => handleQuickLinkSelect(link.to)}
-                  className="flex cursor-pointer select-none items-center rounded-md px-2 py-2 text-sm outline-none data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground"
+                  className={ITEM_CLASS}
                 >
                   {link.label}
                 </CommandPrimitive.Item>
@@ -173,14 +199,14 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps): JSX
             </CommandPrimitive.Group>
             <CommandPrimitive.Group
               heading={commandPaletteStrings.commandsHeading}
-              className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground"
+              className={GROUP_HEADING_CLASS}
             >
               {COMMANDS.map((cmd) => (
                 <CommandPrimitive.Item
                   key={cmd.name}
                   value={cmd.name}
                   onSelect={() => handleCommandHintSelect(cmd.prefix)}
-                  className="flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-2 text-sm outline-none data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground"
+                  className={ITEM_CLASS}
                 >
                   <span className="font-mono text-xs text-muted-foreground">{cmd.prefix.trim()}</span>
                   <span>{cmd.description}</span>
