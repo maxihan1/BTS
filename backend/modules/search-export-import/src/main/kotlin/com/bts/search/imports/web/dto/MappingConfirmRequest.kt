@@ -37,8 +37,7 @@ data class MappingConfirmRequest(
      * [com.bts.search.imports.mapping.ImportUserMappingInvalidException.DUPLICATE_SOURCE_IDENTIFIER]
      * 검증이 무력화된다.
      */
-    fun toUserMappingPairs(): List<Pair<String, UUID?>> =
-        userMappings.map { it.sourceIdentifier to it.targetUserId }
+    fun toUserMappingPairs(): List<Pair<String, UUID?>> = userMappings.map { it.sourceIdentifier to it.targetUserId }
 }
 
 /**
