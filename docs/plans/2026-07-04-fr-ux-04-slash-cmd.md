@@ -65,6 +65,137 @@ learnings.md 반복 함정(FR-SR-02·FR-RP-01 동일). agent는 plan task별 지
 - SearchRouteAdapter projectKey optional 검증 → `/search?q=` 라우팅 성립 확인.
 - 명령 힌트 prefill / projectKey 위임 / 포커스 복원 / 모달 중첩 정책 명시.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+### Task 1. 명령 파서/레지스트리 (순수 함수)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/command-palette/commands.ts`, `apps/web/src/components/command-palette/commands.test.ts`]
+- depends-on: []
+
+**RED**: `commands.test.ts`
+- `parseCommand('/goto PROJ-12')` → `{ kind: 'goto', issueKey: 'PROJ-12' }`
+- `parseCommand('/goto proj-12')` → 대문자 정규화 `PROJ-12` (E4)
+- `parseCommand('/search 로그인 버그')` → `{ kind: 'search', query: '로그인 버그' }`
+- `parseCommand('/issue 결제 실패')` → `{ kind: 'issue', summary: '결제 실패' }`
+- `parseCommand('/foo x')` → `{ kind: 'unknown', name: 'foo' }` (E1)
+- `parseCommand('/goto')` → `{ kind: 'incomplete', name: 'goto' }` (E2)
+- `parseCommand('/goto 안녕')` → `{ kind: 'incomplete', name: 'goto', reason: 'invalid-key' }` (E3)
+- `parseCommand('hello')` → `{ kind: 'not-command' }`
+- 실패 메시지(예상): `parseCommand`/`commands.ts` 없음
+- + 정적 목적지 레지스트리 `QUICK_LINKS`(내 이슈/검색/대시보드/받은편지함) export 테스트
+
+**GREEN**: `commands.ts`
+- `ParsedCommand` 판별 유니온 + `parseCommand(input)` 순수 함수(정규식 이슈키 `^[A-Z][A-Z0-9]*-\d+$`, 대문자 정규화).
+- `COMMANDS`(goto/search/issue 힌트 메타) + `QUICK_LINKS` 상수.
+
+**REFACTOR**: 정규식/명령명 상수 추출 + JSDoc. 파일 L1 한국어 헤더 주석.
+
+**검증**: `pnpm --filter web test -- commands.test.ts` + `pnpm --filter web typecheck`
+
+### Task 2. CommandPalette 컴포넌트 (cmdk UI)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/command-palette/CommandPalette.tsx`, `apps/web/src/components/command-palette/CommandPalette.test.tsx`]
+- depends-on: [1]
+
+**RED**: `CommandPalette.test.tsx` (navigate mock 주입)
+- 빈 입력 → QUICK_LINKS 4개 + 명령 힌트 3개 렌더 (S2).
+- 명령 힌트 `/goto` 선택 → 입력창에 `/goto ` prefill, 라우팅 안 함 (S2 보강).
+- `/goto PROJ-12` + Enter → `navigate({ to:'/issues/$key', params:{key:'PROJ-12'} })` 호출 (S3).
+- `/search 버그` + Enter → `navigate({ to:'/search', search:{ q:'버그' } })` (S4).
+- `/issue 제목` + Enter → `navigate({ to:'/issues/new', search:{ summary:'제목' } })` (S5).
+- 알 수 없는/불완전 명령 → 안내 문구, navigate 미호출 (E1~E3, FR5).
+- IME 조합 중 Enter(isComposing) → 실행 안 함 (NFR4).
+- 실패 메시지(예상): `CommandPalette` 없음
+
+**GREEN**: `CommandPalette.tsx`
+- cmdk `Command`/`Command.Input`/`Command.List`/`Command.Item` 기반. props: `open`, `onOpenChange`.
+- `useNavigate()`로 dispatch. `parseCommand` 결과 kind별 라우팅. 선택/실행 후 `onOpenChange(false)` + 입력 초기화(FR6).
+- DESIGN.md 토큰(overlay/card/muted/border/ring). `*Strings` 객체로 문구.
+
+**REFACTOR**: dispatch 로직을 `runCommand(parsed, navigate)` 헬퍼로 분리(부수효과 격리, C3).
+
+**검증**: `pnpm --filter web test -- CommandPalette.test.tsx` + typecheck
+
+### Task 3. 전역 Cmd+K 훅 + RootLayout 마운트
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/command-palette/useCommandPalette.ts`, `apps/web/src/components/command-palette/useCommandPalette.test.tsx`, `apps/web/src/routes/__root.tsx`]
+- depends-on: [2]
+
+**RED**: `useCommandPalette.test.tsx`
+- `Cmd+K`(metaKey) keydown → open=true, `preventDefault` 호출 (FR1, E6).
+- `Ctrl+K`(ctrlKey) keydown → open=true (win/linux).
+- 열린 상태에서 다시 `Cmd+K` → 토글 close (E7).
+- 실패 메시지(예상): `useCommandPalette` 없음
+
+**GREEN**:
+- `useCommandPalette()`: open state + document keydown 리스너(metaKey||ctrlKey && key==='k' → preventDefault + toggle). cleanup 등록.
+- `__root.tsx` RootLayout: `isAuthenticated`일 때만 `useCommandPalette` + `<CommandPalette open onOpenChange />` 마운트(FR2, C1).
+
+**REFACTOR**: 키 매칭 상수화. `__root.tsx` L1 주석 보존.
+
+**검증**: `pnpm --filter web test -- useCommandPalette.test.tsx __root` + typecheck
+
+### Task 4. issues.new summary URL 프리필 (뷰레이어)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/issues.new.tsx`, `apps/web/src/routes/issues.new.test.tsx`]
+- depends-on: []
+
+**RED**: `issues.new.test.tsx`
+- URL `?summary=결제 실패`로 마운트 → 제목 input 기본값이 `결제 실패` (FR7, S5).
+- summary 없을 때 → 기존 동작(빈 제목) 유지(회귀 방지).
+
+**GREEN**:
+- 라우트 `validateSearch`에 `summary?: string` 추가(router.ts의 issues.new 등록부 또는 route 파일 스키마).
+- `useSearch`로 summary 추출 → `defaultValues.summary`에 반영.
+
+**REFACTOR**: summary trim/최대길이(500, 기존 zod max) 방어.
+
+**검증**: `pnpm --filter web test -- issues.new.test.tsx` + typecheck
+
+### Task 5. E2E — 명령 팔레트 시나리오
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/command-palette.spec.ts`]
+- depends-on: [2, 3, 4]
+
+**시나리오** (기존 E2E fixture/로그인 헬퍼 재사용):
+- `Cmd+K` 토글 → 팔레트 열림/`Esc` 닫힘 (S1).
+- `/goto PROJ-…` → 이슈 상세 URL 이동 (S3).
+- `/search <질의>` → `/search?q=` 이동 + 검색 실행 (S4).
+- `/issue <제목>` → `/issues/new` 제목 프리필 (S5).
+- 비로그인 시 `Cmd+K` 무반응 (E5) — 로그인 전 페이지.
+- axe-core 0 violations (NFR2).
+
+**검증**: `pnpm --filter web test:e2e -- command-palette.spec.ts`
+
+### Task 6. product 문서 deviation 동기화 (D3~D5 조정)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`docs/plan/product/personalization.md`]
+- depends-on: []
+
+**내용**: §4.2 FR-UX-04의 D3~D5(데이터모델/백엔드/백엔드테스트)를 "프론트 전용, 백엔드 없음(ADR 2026-07-04)"로 조정. D6/D7 유지. ADR 링크 추가. fr-index BC 매핑·카운트 불변(변경 없음).
+- **주의**: FR 완료 마킹(`[x]`)은 bts-merge 게이트에서 일괄. 이 task는 D단계 텍스트 조정만.
+
+**검증**: `bash scripts/verify-master-plan.sh` (카운트 drift 0 확인)
+
+## Plan 메타
+
+- task 수: 6
+- 예상 wave: 4 (W1: T1·T4·T6 / W2: T2 / W3: T3 / W4: T5)
+- TDD 강제: yes (T1~T4 프론트 vitest red→green, T5 E2E)
+- 병렬 dispatch: files 교집합 0 → 독립 task 동시 실행
+- 추가 검증: typecheck, lint(eslint), vitest, playwright(qa), verify-master-plan(T6)
+- backend/security/db agent: 미사용 (프론트 전용)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
