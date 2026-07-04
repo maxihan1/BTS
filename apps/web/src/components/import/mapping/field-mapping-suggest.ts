@@ -16,6 +16,11 @@ export interface TargetFieldCatalogEntry {
 /** 매칭되는 대상 필드가 없을 때 사용하는 센티널 값 */
 export const FIELD_MAPPING_IGNORE = 'IGNORE'
 
+/** 매칭 비교를 위해 문자열을 정규화한다 (trim + lowercase) */
+function normalize(value: string): string {
+  return value.trim().toLowerCase()
+}
+
 /**
  * 소스 헤더 배열을 대상 필드 카탈로그와 매칭해 초기 필드 매핑을 추천한다.
  *
@@ -35,11 +40,9 @@ export function suggestFieldMappings(
   const result: Record<string, string> = {}
 
   for (const sourceField of sourceFields) {
-    const normalizedSource = sourceField.trim().toLowerCase()
+    const normalizedSource = normalize(sourceField)
     const matched = targetFields.find(
-      (target) =>
-        target.key.trim().toLowerCase() === normalizedSource ||
-        target.label.trim().toLowerCase() === normalizedSource,
+      (target) => normalize(target.key) === normalizedSource || normalize(target.label) === normalizedSource,
     )
     result[sourceField] = matched?.key ?? FIELD_MAPPING_IGNORE
   }
