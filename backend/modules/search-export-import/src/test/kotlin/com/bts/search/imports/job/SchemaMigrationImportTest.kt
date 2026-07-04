@@ -1,6 +1,7 @@
-// V604~V607 마이그레이션 검증 — import_jobs 테이블(18컬럼·status/format CHECK·2인덱스·q_import_jobs 큐, FR-IM-01)
+// V604~V608 마이그레이션 검증 — import_jobs 테이블(18컬럼·status/format CHECK·2인덱스·q_import_jobs 큐, FR-IM-01)
 // + import_mappings 필드 매핑 테이블(복합PK·CASCADE FK·AWAITING_MAPPING status 확장, FR-IM-02 PR-A)
 // + import_user_mappings 사용자 매핑 테이블(복합PK·CASCADE FK·target_user_id nullable·cross-BC users FK 미적용, FR-IM-02 PR-B)
+// + import_value_mappings 값 매핑 테이블(복합PK 3컬럼·CASCADE FK·target_field CHECK·target_value NOT NULL, FR-IM-02 PR-C)
 
 package com.bts.search.imports.job
 
@@ -58,6 +59,15 @@ import java.util.UUID
  * - FK import_job_id → import_jobs(id) ON DELETE CASCADE (부모 job 삭제 시 사용자 매핑 동반 삭제 — 행동 검증)
  * - target_user_id 는 FK 미적용 — cross-BC users(identity-access 소유) 미참조. FK 참여 컬럼은 import_job_id 뿐이며,
  *   users 부재 임의 UUID 도 DB 계층에서 거부되지 않는다(앱 계층 UserLookupPort 검증에 위임 — favorites 선례).
+ *
+ * 검증 범위 (FR-IM-02 PR-C Task 2 / V608 import_value_mappings).
+ * - import_value_mappings 테이블 존재 + 4개 컬럼 (import_job_id / target_field / source_value / target_value)
+ * - import_job_id = uuid NOT NULL, target_field / source_value / target_value = text NOT NULL
+ * - 복합 PK (import_job_id, target_field, source_value)
+ * - chk_import_value_mappings_field CHECK 제약 — target_field IN ('STATUS','TYPE','PRIORITY') 만 허용
+ * - FK import_job_id → import_jobs(id) ON DELETE CASCADE (부모 job 삭제 시 값 매핑 동반 삭제 — 행동 검증)
+ * - target_value 는 NOT NULL — V607 import_user_mappings 의 target_user_id NULL 비대칭과 달리, 값 매핑 행은
+ *   항상 매핑 완료 상태로만 저장된다(미해결 값은 행 자체를 만들지 않음).
  *
  * 정보 스키마(information_schema / pg_indexes / pg_constraint) + pgmq.list_queues() 조회로 단언한다.
  * CASCADE 는 confdeltype 내성보다 신뢰도 높은 행동 검증(부모 삭제 → 자식 소멸)으로 확인한다.
@@ -337,6 +347,43 @@ class SchemaMigrationImportTest {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.prepareStatement(
                 "SELECT COUNT(*) FROM import_user_mappings WHERE import_job_id = ?",
+            ).use { stmt ->
+                stmt.setObject(1, importJobId)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getInt(1)
+                }
+            }
+        }
+
+    // import_value_mappings 한 행 INSERT — (import_job_id, target_field, source_value) 복합 PK, target_value 매핑 대상.
+    // targetValue 가 null 이면 SQL NULL 로 바인딩 — NOT NULL 위반 유도용(target_value 는 NOT NULL, PR-B target_user_id
+    // 와 달리 비대칭 없음).
+    private fun insertImportValueMapping(
+        importJobId: UUID,
+        targetField: String,
+        sourceValue: String,
+        targetValue: String?,
+    ) {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "INSERT INTO import_value_mappings (import_job_id, target_field, source_value, target_value)" +
+                    " VALUES (?, ?, ?, ?)",
+            ).use { stmt ->
+                stmt.setObject(1, importJobId)
+                stmt.setString(2, targetField)
+                stmt.setString(3, sourceValue)
+                stmt.setString(4, targetValue)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    // 특정 import_job 에 매달린 값 매핑 행 수 — CASCADE 삭제 전후 대조용.
+    private fun countImportValueMappings(importJobId: UUID): Int =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "SELECT COUNT(*) FROM import_value_mappings WHERE import_job_id = ?",
             ).use { stmt ->
                 stmt.setObject(1, importJobId)
                 stmt.executeQuery().use { rs ->
@@ -669,5 +716,104 @@ class SchemaMigrationImportTest {
         assertThatCode {
             insertImportUserMapping(jobId, sourceIdentifier = "unmapped", targetUserId = null)
         }.doesNotThrowAnyException()
+    }
+
+    // ── V608 import_value_mappings 테이블 / 제약 검증 (FR-IM-02 PR-C) ───────────
+
+    @Test
+    fun `V608 import_value_mappings 테이블 존재`() {
+        assertThat(tableExists("import_value_mappings")).isTrue()
+    }
+
+    @Test
+    fun `V608 import_value_mappings 4개 컬럼 존재`() {
+        assertThat(columnsOf("import_value_mappings"))
+            .containsExactlyInAnyOrder("import_job_id", "target_field", "source_value", "target_value")
+    }
+
+    @Test
+    fun `V608 import_value_mappings import_job_id 는 uuid NOT NULL`() {
+        assertThat(columnDataType("import_value_mappings", "import_job_id")).isEqualTo("uuid")
+        assertThat(columnIsNullable("import_value_mappings", "import_job_id")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V608 import_value_mappings target_field 는 text NOT NULL`() {
+        assertThat(columnDataType("import_value_mappings", "target_field")).isEqualTo("text")
+        assertThat(columnIsNullable("import_value_mappings", "target_field")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V608 import_value_mappings source_value 는 text NOT NULL`() {
+        assertThat(columnDataType("import_value_mappings", "source_value")).isEqualTo("text")
+        assertThat(columnIsNullable("import_value_mappings", "source_value")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V608 import_value_mappings target_value 는 text NOT NULL (PR-B target_user_id NULL 비대칭과 다름)`() {
+        assertThat(columnDataType("import_value_mappings", "target_value")).isEqualTo("text")
+        assertThat(columnIsNullable("import_value_mappings", "target_value")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V608 import_value_mappings 복합 PK 는 (import_job_id, target_field, source_value)`() {
+        assertThat(primaryKeyColumns("import_value_mappings"))
+            .containsExactly("import_job_id", "target_field", "source_value")
+    }
+
+    @Test
+    fun `V608 chk_import_value_mappings_field CHECK 제약 존재`() {
+        assertThat(constraintExists("chk_import_value_mappings_field")).isTrue()
+    }
+
+    @Test
+    fun `V608 허용 외 target_field 값 INSERT 는 CHECK 위반`() {
+        // target_field IN ('STATUS','TYPE','PRIORITY') 외 값은 거부되어야 한다.
+        val jobId = UUID.randomUUID()
+        insertImportJobWithId(jobId)
+        assertThatThrownBy {
+            insertImportValueMapping(jobId, targetField = "BOGUS", sourceValue = "Open", targetValue = "OPEN")
+        }.hasMessageContaining("chk_import_value_mappings_field")
+    }
+
+    @Test
+    fun `V608 허용 target_field 값 STATUS TYPE PRIORITY INSERT 허용`() {
+        val jobId = UUID.randomUUID()
+        insertImportJobWithId(jobId)
+        assertThatCode {
+            insertImportValueMapping(jobId, targetField = "STATUS", sourceValue = "Open", targetValue = "OPEN")
+            insertImportValueMapping(jobId, targetField = "TYPE", sourceValue = "Bug", targetValue = "BUG")
+            insertImportValueMapping(jobId, targetField = "PRIORITY", sourceValue = "High", targetValue = "HIGH")
+        }.doesNotThrowAnyException()
+    }
+
+    @Test
+    fun `V608 import_value_mappings target_value NULL INSERT 는 NOT NULL 위반`() {
+        // 값 매핑 행은 항상 매핑 완료 상태로만 저장 — target_value NULL 은 거부되어야 한다
+        // (V607 import_user_mappings target_user_id NULL 허용과의 비대칭 검증).
+        val jobId = UUID.randomUUID()
+        insertImportJobWithId(jobId)
+        assertThatThrownBy {
+            insertImportValueMapping(jobId, targetField = "STATUS", sourceValue = "Open", targetValue = null)
+        }.hasMessageContaining("null value")
+    }
+
+    @Test
+    fun `V608 import_value_mappings FK 는 import_jobs 삭제 시 CASCADE`() {
+        // 부모 job 하드삭제 시 값 매핑이 동반 삭제되어야 한다 (join-table FK ON DELETE CASCADE).
+        val jobId = UUID.randomUUID()
+        insertImportJobWithId(jobId)
+        insertImportValueMapping(jobId, targetField = "STATUS", sourceValue = "Open", targetValue = "OPEN")
+        assertThat(countImportValueMappings(jobId)).isEqualTo(1)
+
+        deleteImportJob(jobId)
+
+        assertThat(countImportValueMappings(jobId)).isZero()
+    }
+
+    @Test
+    fun `V608 import_value_mappings 는 import_job_id 만 FK 참여`() {
+        // 유일한 FK 는 import_job_id → import_jobs(id). target_value 는 문자열 값이라 FK 대상이 없다.
+        assertThat(foreignKeyColumns("import_value_mappings")).containsExactly("import_job_id")
     }
 }
