@@ -754,7 +754,7 @@ class ImportJobProcessorTest {
     }
 
     @Test
-    fun `job with saved value mapping substitutes priorityName to canonical target and resolves priority number (C1)`() {
+    fun `job with saved value mapping substitutes priorityName to canonical target and resolves priority number`() {
         val row = makeRow(1).copy(priorityName = "urgent")
         stubParserWithRows(listOf(row))
         // ImportMappingService.confirm 이 저장 시 이미 canonical 정확 표기("Medium")로 치환해 두므로
