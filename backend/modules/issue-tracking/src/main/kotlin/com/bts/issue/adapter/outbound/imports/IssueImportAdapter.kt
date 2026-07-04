@@ -401,7 +401,8 @@ class IssueImportAdapter(
             warnings += "댓글 ${cmd.comments.size}건은 권한이 없어 건너뛰어질 수 있습니다."
             return
         }
-        val unmatchedCount = cmd.comments.count { isAuthorUnmatched(it.authorEmail, resolution.resolvedEmails) }
+        val unmatchedCount =
+            cmd.comments.count { isAuthorUnmatched(it.authorUserId, it.authorEmail, resolution.resolvedEmails) }
         if (unmatchedCount > 0) {
             warnings += "댓글 ${unmatchedCount}건 작성자 이메일이 매칭되지 않아 요청자로 대체될 수 있습니다."
         }
@@ -431,7 +432,8 @@ class IssueImportAdapter(
             warnings += "워크로그 ${invalidCount}건 소요 시간이 0 이하라 건너뛰어질 수 있습니다."
         }
         val created = cmd.worklogs.filter { it.timeSpentSeconds > 0 }
-        val unmatchedCount = created.count { isAuthorUnmatched(it.authorEmail, resolution.resolvedEmails) }
+        val unmatchedCount =
+            created.count { isAuthorUnmatched(it.authorUserId, it.authorEmail, resolution.resolvedEmails) }
         if (unmatchedCount > 0) {
             warnings += "워크로그 ${unmatchedCount}건 작성자 이메일이 매칭되지 않아 요청자로 대체될 수 있습니다."
         }
@@ -680,10 +682,12 @@ class IssueImportAdapter(
      * [cmd.comments] 를 [CommentApplicationService.create] 로 위임한다 — best-effort (PR3, ★2).
      *
      * UPDATE 권한이 없으면 [CommentApplicationService.create] 를 아예 호출하지 않고(throw 0, 참여
-     * 트랜잭션 오염 0 — 클래스 KDoc ★2) 집약 경고 1건만 남긴다. 권한이 있으면 각 댓글의
-     * [ImportComment.authorEmail] 을 [resolution.resolvedEmails] 로 해석해([resolveAuthorId], 미매칭
-     * 시 [cmd.requesterUserId] 폴백) create 를 호출하고, 미매칭 건수를 집약해 경고 1건으로 남긴다
-     * ([warnCommentsPreview] 와 동일 카테고리 — dry-run/실행 경고 정합).
+     * 트랜잭션 오염 0 — 클래스 KDoc ★2) 집약 경고 1건만 남긴다. 권한이 있으면 각 댓글의 author 를
+     * [resolveAuthorId] 로 해석한다 — [ImportComment.authorUserId](PR2 명시적 매핑)가 있으면 이메일
+     * 해석보다 우선하고, null 이면 [ImportComment.authorEmail] 을 [resolution.resolvedEmails] 로
+     * 해석해 미매칭 시 [cmd.requesterUserId] 로 폴백한다. 미매칭 건수([isAuthorUnmatched], authorUserId
+     * 있으면 항상 matched)를 집약해 경고 1건으로 남긴다([warnCommentsPreview] 와 동일 카테고리 —
+     * dry-run/실행 경고 정합).
      *
      * [ImportComment.createdAt] 을 create 의 createdAt 인자로 그대로 전달해 원본(Jira 등) 작성 시각을
      * 보존한다(null 이면 [CommentApplicationService.create] 가 import 실행 시각으로 폴백) — worklog
@@ -712,8 +716,16 @@ class IssueImportAdapter(
         }
         var unmatchedAuthorCount = 0
         for (importComment in cmd.comments) {
-            if (isAuthorUnmatched(importComment.authorEmail, resolution.resolvedEmails)) unmatchedAuthorCount++
-            val authorId = resolveAuthorId(importComment.authorEmail, resolution.resolvedEmails, cmd.requesterUserId)
+            if (isAuthorUnmatched(importComment.authorUserId, importComment.authorEmail, resolution.resolvedEmails)) {
+                unmatchedAuthorCount++
+            }
+            val authorId =
+                resolveAuthorId(
+                    importComment.authorUserId,
+                    importComment.authorEmail,
+                    resolution.resolvedEmails,
+                    cmd.requesterUserId,
+                )
             commentApplicationService.create(actor, key, importComment.body, ActorId(authorId), importComment.createdAt)
         }
         if (unmatchedAuthorCount > 0) {
@@ -772,8 +784,15 @@ class IssueImportAdapter(
         if (importWorklog.timeSpentSeconds <= 0) {
             return WorklogApplyOutcome(invalidTimeSpent = true, unmatchedAuthor = false, missingStartedAt = false)
         }
-        val unmatched = isAuthorUnmatched(importWorklog.authorEmail, resolution.resolvedEmails)
-        val authorId = resolveAuthorId(importWorklog.authorEmail, resolution.resolvedEmails, requesterUserId)
+        val unmatched =
+            isAuthorUnmatched(importWorklog.authorUserId, importWorklog.authorEmail, resolution.resolvedEmails)
+        val authorId =
+            resolveAuthorId(
+                importWorklog.authorUserId,
+                importWorklog.authorEmail,
+                resolution.resolvedEmails,
+                requesterUserId,
+            )
         val missingStartedAt = importWorklog.startedAt == null
         worklogService.createImported(
             actor = actor,
@@ -817,8 +836,9 @@ class IssueImportAdapter(
      * worklog 1건 사전체크·생성 결과([applyWorklogItem]) — [warnWorklogOutcomes] 집계 입력.
      *
      * @property invalidTimeSpent timeSpentSeconds≤0 이라 생성을 스킵했으면 true.
-     * @property unmatchedAuthor authorEmail 이 지정됐지만 매칭 실패해 requester 로 폴백했으면 true
-     *   ([invalidTimeSpent]=true 인 항목은 생성 자체를 스킵하므로 항상 false).
+     * @property unmatchedAuthor authorUserId 가 없고 authorEmail 이 지정됐지만 매칭 실패해 requester
+     *   로 폴백했으면 true(authorUserId 가 있으면 이메일 매칭 여부와 무관하게 항상 false —
+     *   [isAuthorUnmatched] 참조). [invalidTimeSpent]=true 인 항목은 생성 자체를 스킵하므로 항상 false.
      * @property missingStartedAt startedAt 이 null 이라 import 실행 시각으로 대체했으면 true
      *   ([invalidTimeSpent]=true 인 항목은 항상 false).
      */
@@ -902,7 +922,13 @@ class IssueImportAdapter(
         }
         val stream =
             attachmentSource?.open(importAttachment.filename, cmd.sourceKey) ?: return AttachmentSkipReason.NOT_FOUND
-        val uploaderId = resolveAuthorId(importAttachment.authorEmail, resolution.resolvedEmails, cmd.requesterUserId)
+        val uploaderId =
+            resolveAuthorId(
+                importAttachment.authorUserId,
+                importAttachment.authorEmail,
+                resolution.resolvedEmails,
+                cmd.requesterUserId,
+            )
         return try {
             stream.use { uploadAttachment(it, importAttachment, contentType, actor, key, uploaderId) }
         } catch (e: UnsupportedAttachmentTypeException) {
@@ -1091,9 +1117,11 @@ class IssueImportAdapter(
      * (Maxi 결정 — comment/worklog/첨부의 "시각 없으면 import 실행 시각으로 대체" 폴백과 달리,
      * 재생 이력은 원본 발생 시각 없이는 감사 가치가 없어 대체하지 않고 스킵한다). items 를
      * [mapChangelogItems] 로 BTS 필드로 매핑하고, 매핑된 항목이 하나도 없으면(전 item 미매핑)
-     * 그룹 자체를 기록하지 않는다. author 이메일이 매칭되지 않으면 **actorId=null** 로 저장한다
-     * (comment/worklog/첨부와 달리 requester 로 폴백하지 않음 — Maxi 결정, 원본 author 를 requester
-     * 로 위장 기록하면 감사 이력이 부정확해지기 때문).
+     * 그룹 자체를 기록하지 않는다. actorId 는 [ImportChangeGroup.authorUserId](PR2)가 있으면 그
+     * 값을 그대로 쓰고, 없으면 authorEmail 을 이메일 배치로 해석한다 — 그마저 매칭되지 않으면
+     * **actorId=null** 로 저장한다(comment/worklog/첨부와 달리 requester 로 폴백하지 않음 — Maxi
+     * 결정, 원본 author 를 requester 로 위장 기록하면 감사 이력이 부정확해지기 때문. userId/email
+     * 모두 없을 때만 null 이며, [resolveAuthorId] 의 requester 폴백은 이 경로에서 쓰지 않는다).
      */
     @Suppress("ReturnCount") // guard-clause early return 3개(occurredAt없음·전부미매핑·기록완료) — DEVELOPMENT.md §2.3
     private fun applyChangelogGroup(
@@ -1106,7 +1134,9 @@ class IssueImportAdapter(
         var unmappedFieldCount = 0
         val mappedItems = mapChangelogItems(importGroup.items) { unmappedFieldCount++ }
         if (mappedItems.isEmpty()) return ChangelogGroupOutcome(skippedTime = 0, unmappedFields = unmappedFieldCount)
-        val actorId = importGroup.authorEmail?.lowercase()?.let { resolution.resolvedEmails[it] }
+        val actorId =
+            importGroup.authorUserId
+                ?: importGroup.authorEmail?.lowercase()?.let { resolution.resolvedEmails[it] }
         historyRecorder.recordImported(
             IssueChangeGroup(
                 issueId = issueId,
@@ -1190,26 +1220,35 @@ class IssueImportAdapter(
     ): Boolean = permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(key.value))
 
     /**
-     * 댓글/worklog author 이메일을 실제 식별자로 해석한다 — 미매칭 시 [requesterUserId] 로 폴백한다
-     * ([ImportComment.authorEmail]/[ImportWorklog.authorEmail] KDoc, [resolveFields] 의 reporter 폴백과 동일 규칙).
+     * 댓글/worklog/첨부 author 를 실제 식별자로 해석한다 — [authorUserId](PR2 명시적 매핑)가 있으면
+     * 이메일 해석보다 우선하고, null 이면 이메일 매칭 → 미매칭 시 [requesterUserId] 로 폴백한다
+     * ([ImportComment.authorUserId]/[ImportComment.authorEmail] 등 KDoc, [resolveFields] 의 reporter
+     * 폴백과 동일 규칙).
      */
     private fun resolveAuthorId(
+        authorUserId: UUID?,
         authorEmail: String?,
         resolvedEmails: Map<String, UUID>,
         requesterUserId: UUID,
-    ): UUID = authorEmail?.lowercase()?.let { resolvedEmails[it] } ?: requesterUserId
+    ): UUID = authorUserId ?: (authorEmail?.lowercase()?.let { resolvedEmails[it] } ?: requesterUserId)
 
-    /** [authorEmail] 이 지정됐지만 [resolvedEmails] 에 매칭되지 않았는지 여부([resolveAuthorId] 의 폴백 발생 조건과 동일). */
+    /**
+     * author 가 아직 실제 식별자로 해석되지 않았는지 여부([resolveAuthorId] 의 requester 폴백 발생
+     * 조건과 동일) — [authorUserId] 가 지정됐으면 이메일 매칭 여부와 무관하게 항상 matched(false) 다.
+     */
     private fun isAuthorUnmatched(
+        authorUserId: UUID?,
         authorEmail: String?,
         resolvedEmails: Map<String, UUID>,
-    ): Boolean = authorEmail != null && resolvedEmails[authorEmail.lowercase()] == null
+    ): Boolean = authorUserId == null && authorEmail != null && resolvedEmails[authorEmail.lowercase()] == null
 
     /**
      * import 커맨드의 이메일/이름 필드를 실제 식별자로 해석한 결과.
      *
-     * @property reporterId 리포터 사용자 UUID. 이메일 미매칭 시 requesterUserId 로 폴백된 값.
-     * @property assigneeId 담당자 사용자 UUID. 이메일 미매칭 시 null(미할당).
+     * @property reporterId 리포터 사용자 UUID. [IssueImportCommand.reporterUserId](PR2)가 있으면
+     *   그 값, 없으면 이메일 해석 결과(미매칭 시 requesterUserId 로 폴백).
+     * @property assigneeId 담당자 사용자 UUID. [IssueImportCommand.assigneeUserId](PR2)가 있으면
+     *   그 값, 없으면 이메일 해석 결과(미매칭 시 null=미할당).
      * @property typeId 매칭된 이슈 타입 식별자. typeName 미지정/미매칭 시 null(Task 폴백).
      * @property componentIds 매칭·자동생성된 컴포넌트 UUID 목록. 미매칭+생성권한없음 이름은 제외된다.
      * @property affectsVersionIds 매칭·자동생성된 "영향받는 버전" UUID 목록.
@@ -1234,9 +1273,13 @@ class IssueImportAdapter(
     /**
      * [cmd] 의 이메일/이름 필드를 실제 식별자로 일괄 해석한다.
      *
+     * - reporterUserId/assigneeUserId(PR2) 가 지정되면 이메일 해석보다 우선한다([IssueImportCommand]
+     *   KDoc §userId 우선 규칙). null 인 필드만 아래 이메일 배치 해석으로 채운다.
      * - reporterEmail/assigneeEmail/댓글·worklog·첨부·이력 authorEmail: [userLookupPort.resolveByEmails]
      *   1회 배치 호출로 해석([FieldResolution.resolvedEmails] 로 전체 맵을 보존해 author 해석에 재사용,
-     *   PR3/PR4).
+     *   PR3/PR4). userId 가 이미 지정된 필드도 이메일은 그대로 배치에 포함해 수집한다(다른 슬롯의
+     *   이메일 폴백 대비 — 예: 댓글 authorUserId 는 있어도 worklog authorEmail 은 여전히 이 배치가
+     *   필요할 수 있으므로 무조건 수집).
      * - typeName: [resolveTypeId] — 활성 타입 이름 대소문자 무시 매칭.
      * - componentNames/affectsVersionNames/fixVersionNames: [resolveComponentIds]/[resolveVersionIds]
      *   — 프로젝트 활성 이름 대소문자 무시 매칭, 미매칭 시 권한 있으면 자동생성([cmd.dryRun] 이면
@@ -1265,8 +1308,10 @@ class IssueImportAdapter(
         val resolvedEmails =
             if (emailsToResolve.isEmpty()) emptyMap() else userLookupPort.resolveByEmails(emailsToResolve)
 
-        val reporterId = cmd.reporterEmail?.lowercase()?.let { resolvedEmails[it] } ?: cmd.requesterUserId
-        val assigneeId = cmd.assigneeEmail?.lowercase()?.let { resolvedEmails[it] }
+        val reporterId =
+            cmd.reporterUserId
+                ?: (cmd.reporterEmail?.lowercase()?.let { resolvedEmails[it] } ?: cmd.requesterUserId)
+        val assigneeId = cmd.assigneeUserId ?: cmd.assigneeEmail?.lowercase()?.let { resolvedEmails[it] }
 
         val typeId = resolveTypeId(cmd.typeName, warnings)
         val componentIds = resolveComponentIds(cmd.componentNames, projectId, actor, cmd, warnings)

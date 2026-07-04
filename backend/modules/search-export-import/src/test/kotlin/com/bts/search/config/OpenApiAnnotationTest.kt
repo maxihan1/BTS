@@ -9,6 +9,7 @@ import com.bts.shared.membership.ProjectMembershipPort
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.SystemPermissionResolver
 import com.bts.shared.search.IssueSearchPort
+import com.bts.shared.user.UserLookupPort
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -109,6 +110,13 @@ class OpenApiAnnotationTest {
     /** 이슈 Import 쓰기 포트 — cross-BC(issue-tracking), [com.bts.search.imports.job.application.ImportJobProcessor] 의존성. */
     @MockBean
     lateinit var issueImportPort: IssueImportPort
+
+    /**
+     * 사용자 조회 포트 — cross-BC(identity-access). 사용자매핑 자동해석·실재확인
+     * ([com.bts.search.imports.mapping.ImportMappingService]) + 프로세서 의존성(FR-IM-02 PR-B).
+     */
+    @MockBean
+    lateinit var userLookupPort: UserLookupPort
 
     /** 이슈 권한 판정 포트 — cross-BC(issue-tracking), ImportJobService 접수 권한 fail-fast 의존성. */
     @MockBean

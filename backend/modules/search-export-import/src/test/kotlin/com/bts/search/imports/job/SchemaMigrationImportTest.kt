@@ -1,5 +1,6 @@
-// V604~V606 마이그레이션 검증 — import_jobs 테이블(18컬럼·status/format CHECK·2인덱스·q_import_jobs 큐, FR-IM-01)
-// + import_mappings 매핑 테이블(복합PK·CASCADE FK·AWAITING_MAPPING status 확장, FR-IM-02)
+// V604~V607 마이그레이션 검증 — import_jobs 테이블(18컬럼·status/format CHECK·2인덱스·q_import_jobs 큐, FR-IM-01)
+// + import_mappings 필드 매핑 테이블(복합PK·CASCADE FK·AWAITING_MAPPING status 확장, FR-IM-02 PR-A)
+// + import_user_mappings 사용자 매핑 테이블(복합PK·CASCADE FK·target_user_id nullable·cross-BC users FK 미적용, FR-IM-02 PR-B)
 
 package com.bts.search.imports.job
 
@@ -48,6 +49,15 @@ import java.util.UUID
  * - 복합 PK (import_job_id, source_field)
  * - FK import_job_id → import_jobs(id) ON DELETE CASCADE (부모 job 삭제 시 매핑 동반 하드삭제 — 행동 검증)
  * - chk_import_jobs_status 가 AWAITING_MAPPING 를 허용 (기존 PENDING 등은 여전히 허용)
+ *
+ * 검증 범위 (FR-IM-02 PR-B Task 2 / V607 import_user_mappings).
+ * - import_user_mappings 테이블 존재 + 3개 컬럼 (import_job_id / source_identifier / target_user_id)
+ * - import_job_id = uuid NOT NULL, source_identifier = text NOT NULL
+ * - target_user_id = uuid NULL 허용 (미해결 사용자는 NULL 로 저장)
+ * - 복합 PK (import_job_id, source_identifier)
+ * - FK import_job_id → import_jobs(id) ON DELETE CASCADE (부모 job 삭제 시 사용자 매핑 동반 삭제 — 행동 검증)
+ * - target_user_id 는 FK 미적용 — cross-BC users(identity-access 소유) 미참조. FK 참여 컬럼은 import_job_id 뿐이며,
+ *   users 부재 임의 UUID 도 DB 계층에서 거부되지 않는다(앱 계층 UserLookupPort 검증에 위임 — favorites 선례).
  *
  * 정보 스키마(information_schema / pg_indexes / pg_constraint) + pgmq.list_queues() 조회로 단언한다.
  * CASCADE 는 confdeltype 내성보다 신뢰도 높은 행동 검증(부모 삭제 → 자식 소멸)으로 확인한다.
@@ -302,6 +312,63 @@ class SchemaMigrationImportTest {
         }
     }
 
+    // import_user_mappings 한 행 INSERT — (import_job_id, source_identifier) 복합 PK, target_user_id 매핑 대상(NULL 허용).
+    // targetUserId 가 null 이면 SQL NULL 로 저장(미해결 사용자). setObject(idx, null) 은 SQL NULL 을 바인딩한다.
+    private fun insertImportUserMapping(
+        importJobId: UUID,
+        sourceIdentifier: String,
+        targetUserId: UUID?,
+    ) {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "INSERT INTO import_user_mappings (import_job_id, source_identifier, target_user_id)" +
+                    " VALUES (?, ?, ?)",
+            ).use { stmt ->
+                stmt.setObject(1, importJobId)
+                stmt.setString(2, sourceIdentifier)
+                stmt.setObject(3, targetUserId)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    // 특정 import_job 에 매달린 사용자 매핑 행 수 — CASCADE 삭제 전후 대조용.
+    private fun countImportUserMappings(importJobId: UUID): Int =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "SELECT COUNT(*) FROM import_user_mappings WHERE import_job_id = ?",
+            ).use { stmt ->
+                stmt.setObject(1, importJobId)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getInt(1)
+                }
+            }
+        }
+
+    // 테이블의 FOREIGN KEY 제약에 참여하는 컬럼 목록 — target_user_id FK 미적용(cross-BC users 미참조) 검증용.
+    @Suppress("NestedBlockDepth")
+    private fun foreignKeyColumns(tableName: String): List<String> =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "SELECT kcu.column_name" +
+                    " FROM information_schema.table_constraints tc" +
+                    " JOIN information_schema.key_column_usage kcu" +
+                    "   ON tc.constraint_name = kcu.constraint_name" +
+                    "   AND tc.table_schema = kcu.table_schema" +
+                    " WHERE tc.table_schema = 'public' AND tc.table_name = ?" +
+                    "   AND tc.constraint_type = 'FOREIGN KEY'" +
+                    " ORDER BY kcu.ordinal_position",
+            ).use { stmt ->
+                stmt.setString(1, tableName)
+                stmt.executeQuery().use { rs ->
+                    val cols = mutableListOf<String>()
+                    while (rs.next()) cols.add(rs.getString(1))
+                    cols
+                }
+            }
+        }
+
     // 테이블의 PRIMARY KEY 컬럼을 ordinal 순서로 조회 — 복합 PK 순서 검증용.
     @Suppress("NestedBlockDepth")
     private fun primaryKeyColumns(tableName: String): List<String> =
@@ -525,5 +592,82 @@ class SchemaMigrationImportTest {
     fun `V606 기존 PENDING status INSERT 여전히 허용`() {
         assertThatCode { insertImportJob(format = "CSV", status = "PENDING") }
             .doesNotThrowAnyException()
+    }
+
+    // ── V607 import_user_mappings 테이블 / 제약 검증 (FR-IM-02 PR-B) ────────────
+
+    @Test
+    fun `V607 import_user_mappings 테이블 존재`() {
+        assertThat(tableExists("import_user_mappings")).isTrue()
+    }
+
+    @Test
+    fun `V607 import_user_mappings 3개 컬럼 존재`() {
+        assertThat(columnsOf("import_user_mappings"))
+            .containsExactlyInAnyOrder("import_job_id", "source_identifier", "target_user_id")
+    }
+
+    @Test
+    fun `V607 import_user_mappings import_job_id 는 uuid NOT NULL`() {
+        assertThat(columnDataType("import_user_mappings", "import_job_id")).isEqualTo("uuid")
+        assertThat(columnIsNullable("import_user_mappings", "import_job_id")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V607 import_user_mappings source_identifier 는 text NOT NULL`() {
+        assertThat(columnDataType("import_user_mappings", "source_identifier")).isEqualTo("text")
+        assertThat(columnIsNullable("import_user_mappings", "source_identifier")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V607 import_user_mappings target_user_id 는 uuid NULL 허용`() {
+        assertThat(columnDataType("import_user_mappings", "target_user_id")).isEqualTo("uuid")
+        assertThat(columnIsNullable("import_user_mappings", "target_user_id")).isEqualTo("YES")
+    }
+
+    @Test
+    fun `V607 import_user_mappings 복합 PK 는 (import_job_id, source_identifier)`() {
+        assertThat(primaryKeyColumns("import_user_mappings"))
+            .containsExactly("import_job_id", "source_identifier")
+    }
+
+    @Test
+    fun `V607 import_user_mappings FK 는 import_jobs 삭제 시 CASCADE`() {
+        // 부모 job 하드삭제 시 사용자 매핑이 동반 삭제되어야 한다 (join-table FK ON DELETE CASCADE).
+        val jobId = UUID.randomUUID()
+        insertImportJobWithId(jobId)
+        insertImportUserMapping(jobId, sourceIdentifier = "jdoe", targetUserId = UUID.randomUUID())
+        assertThat(countImportUserMappings(jobId)).isEqualTo(1)
+
+        deleteImportJob(jobId)
+
+        assertThat(countImportUserMappings(jobId)).isZero()
+    }
+
+    @Test
+    fun `V607 import_user_mappings 는 import_job_id 만 FK 참여 (target_user_id FK 미적용)`() {
+        // 유일한 FK 는 import_job_id → import_jobs(id). target_user_id 는 cross-BC users(identity-access
+        // 소유)를 참조하지 않으므로 FK 제약이 없어야 한다 (favorites 선례: 앱 계층 UserLookupPort 검증).
+        assertThat(foreignKeyColumns("import_user_mappings")).containsExactly("import_job_id")
+    }
+
+    @Test
+    fun `V607 import_user_mappings 는 users 부재 target_user_id INSERT 허용`() {
+        // FK 부재 증명 — users 에 없는 임의 UUID 도 DB 계층에서 거부되지 않는다(앱 계층 검증에 위임).
+        val jobId = UUID.randomUUID()
+        insertImportJobWithId(jobId)
+        assertThatCode {
+            insertImportUserMapping(jobId, sourceIdentifier = "ghost", targetUserId = UUID.randomUUID())
+        }.doesNotThrowAnyException()
+    }
+
+    @Test
+    fun `V607 import_user_mappings target_user_id NULL INSERT 허용`() {
+        // 미해결(unmapped) 사용자는 target_user_id = NULL 로 저장 — nullable 행동 검증.
+        val jobId = UUID.randomUUID()
+        insertImportJobWithId(jobId)
+        assertThatCode {
+            insertImportUserMapping(jobId, sourceIdentifier = "unmapped", targetUserId = null)
+        }.doesNotThrowAnyException()
     }
 }

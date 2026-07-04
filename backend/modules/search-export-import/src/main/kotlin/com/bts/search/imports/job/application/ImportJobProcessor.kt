@@ -5,7 +5,9 @@ package com.bts.search.imports.job.application
 import com.bts.search.imports.job.domain.ImportJob
 import com.bts.search.imports.job.repository.ImportJobRepository
 import com.bts.search.imports.job.storage.ImportObjectStoragePort
+import com.bts.search.imports.mapping.UserMappingNormalizer
 import com.bts.search.imports.mapping.repository.ImportMappingRepository
+import com.bts.search.imports.mapping.repository.ImportUserMappingRepository
 import com.bts.search.imports.parse.ImportParseException
 import com.bts.search.imports.parse.ImportRowParser
 import com.bts.search.imports.parse.ParsedImportAttachment
@@ -30,6 +32,7 @@ import java.io.InputStream
 import java.time.Clock
 import java.time.Instant
 import java.time.OffsetDateTime
+import java.util.UUID
 
 /**
  * [ImportJob] 처리기 — 스트리밍 CSV/JSON 파싱 + 행별 [IssueImportPort] 위임 + 상태 갱신.
@@ -78,6 +81,20 @@ import java.time.OffsetDateTime
  * 값이 없거나 파싱에 실패하면 null 을 담는다(created=now 대체, worklog 스킵 등 best-effort 폴백은
  * 이 클래스가 아니라 어댑터(Task 7, issue-tracking) 책임 — 이 클래스는 순수 변환만 한다).
  *
+ * ## 사용자 매핑 로드 및 해석 (FR-IM-02 PR-B)
+ *
+ * [processRows] 가 CSV/JSON 포맷 공통으로 job 당 [userMappingRepo] 를 **1 회만** 호출해
+ * ([ImportUserMappingRepository.findByJobId]) 확정 사용자 매핑(source_identifier → target_user_id?)을
+ * 로드하고, 행 순회 전체에 재사용한다(행마다 조회하면 대량 파일에서 N+1 쿼리가 된다). [toCommand] 가
+ * 각 행의 reporter/assignee 이메일과 댓글/worklog/첨부/changelog 의 authorEmail 을
+ * [UserMappingNormalizer.normalize] 로 정규화한 뒤 이 맵에서 조회해 [IssueImportCommand.reporterUserId]/
+ * [IssueImportCommand.assigneeUserId]/각 VO 의 `authorUserId` 를 세팅한다([resolveUserId]). 정규화는
+ * [UserMappingNormalizer] 하나만 사용한다 — 저장(`ImportMappingService` 의 distinct 식별자 수집)과 조회
+ * (이 클래스)가 서로 다른 정규화 규칙을 쓰면 같은 사용자가 다른 키로 취급되어 조용한 오배정이 발생한다.
+ * 매핑에 없는 식별자, 매핑 값이 명시적으로 null(미매핑으로 저장됨), 매핑을 저장한 적 없는 job(빈 Map)
+ * 은 모두 동일하게 userId null 로 귀결된다 — 기존 `reporterEmail`/`assigneeEmail`/`authorEmail` 필드는
+ * 그대로 보존되어 구현체(어댑터)의 이메일 폴백 경로가 살아있다.
+ *
  * ## 첨부/이력 매핑 (PR4)
  *
  * [toCommand] 가 [ParsedImportRow.sourceKey] 를 그대로 관통시키고, [ParsedImportRow.attachments]/
@@ -93,6 +110,7 @@ import java.time.OffsetDateTime
  * @param storage 원본 파일 조회 + 에러 로그 업로드용 오브젝트 스토리지 포트.
  * @param repository Import 작업 상태 관리 저장소.
  * @param mappingRepo CSV 확정 매핑(source_field → target_field) 조회 저장소(FR-IM-02 PR-A).
+ * @param userMappingRepo 확정 사용자 매핑(source_identifier → target_user_id?) 조회 저장소(FR-IM-02 PR-B).
  * @param errorLogWriter 실패행 CSV 에러 로그 직렬화기.
  * @param parser CSV/JSON 스트리밍 파서. [ImportRowParser] 는 Spring 빈으로 등록되어 있지 않으므로
  *   ([ImportJobRepository] 의 Clock 기본값 패턴과 동일하게) 기본값으로 직접 인스턴스화한다.
@@ -100,13 +118,14 @@ import java.time.OffsetDateTime
  */
 @Component
 // TooManyFunctions: PR3 comments/worklogs 매핑 헬퍼 추가로 임계 초과 — 단일 행 변환 책임 응집, 분리 시 오히려 산개.
-// LongParameterList: FR-IM-02 PR-A mappingRepo 추가로 7개 — 각각 단일 책임 협력자, ImportJobService 와 동일 선례.
+// LongParameterList: FR-IM-02 PR-B userMappingRepo 추가로 8개 — 각각 단일 책임 협력자, ImportJobService 와 동일 선례.
 @Suppress("TooManyFunctions", "LongParameterList")
 class ImportJobProcessor(
     private val issueImportPort: IssueImportPort,
     private val storage: ImportObjectStoragePort,
     private val repository: ImportJobRepository,
     private val mappingRepo: ImportMappingRepository,
+    private val userMappingRepo: ImportUserMappingRepository,
     private val errorLogWriter: ImportErrorLogWriter,
     private val parser: ImportRowParser = ImportRowParser(),
     private val clock: Clock = Clock.systemUTC(),
@@ -152,9 +171,12 @@ class ImportJobProcessor(
      */
     private fun processRows(job: ImportJob) {
         val state = RowProcessingState()
+        val userMappings = userMappingRepo.findByJobId(job.id)
         openZipSourceOrNull(job).use { attachmentSource ->
             storage.get(job.sourceObjectKey).use { input ->
-                val onRow: (ParsedImportRow) -> Unit = { row -> handleRow(job, row, state, attachmentSource) }
+                val onRow: (ParsedImportRow) -> Unit = { row ->
+                    handleRow(job, row, state, attachmentSource, userMappings)
+                }
                 when (job.format) {
                     FORMAT_CSV -> parseCsv(job, input, onRow)
                     FORMAT_JSON -> parser.parseJson(input, onRow)
@@ -214,12 +236,13 @@ class ImportJobProcessor(
         row: ParsedImportRow,
         state: RowProcessingState,
         attachmentSource: ZipImportAttachmentSource?,
+        userMappings: Map<String, UUID?>,
     ) {
         state.rowCount++
         if (state.rowCount > ImportJob.MAX_ROWS) {
             throw ImportRowLimitExceededException()
         }
-        val command = toCommand(job, row)
+        val command = toCommand(job, row, userMappings)
         val result =
             if (attachmentSource != null) {
                 issueImportPort.importIssue(command, attachmentSource)
@@ -316,6 +339,7 @@ class ImportJobProcessor(
     private fun toCommand(
         job: ImportJob,
         row: ParsedImportRow,
+        userMappings: Map<String, UUID?>,
     ): IssueImportCommand =
         IssueImportCommand(
             projectKey = job.projectKey,
@@ -332,28 +356,51 @@ class ImportJobProcessor(
             statusName = row.statusName,
             fixVersionNames = row.fixVersionNames,
             affectsVersionNames = row.affectsVersionNames,
-            comments = row.comments.map(::toImportComment),
-            worklogs = row.worklogs.map(::toImportWorklog),
+            comments = row.comments.map { toImportComment(it, userMappings) },
+            worklogs = row.worklogs.map { toImportWorklog(it, userMappings) },
             sourceKey = row.sourceKey,
-            attachments = row.attachments.map(::toImportAttachment),
-            changelog = row.changelog.map(::toImportChangeGroup),
+            attachments = row.attachments.map { toImportAttachment(it, userMappings) },
+            changelog = row.changelog.map { toImportChangeGroup(it, userMappings) },
+            reporterUserId = resolveUserId(row.reporterEmail, userMappings),
+            assigneeUserId = resolveUserId(row.assigneeEmail, userMappings),
         )
 
+    /**
+     * 소스 식별자(이메일) [email] 을 [UserMappingNormalizer.normalize] 로 정규화한 뒤 [userMappings] 에서
+     * 조회한다. [email] 이 없거나 공백뿐이면, 매핑에 키 자체가 없으면, 매핑 값이 명시적으로 null(미매핑으로
+     * 저장됨)이면 전부 동일하게 null 을 반환한다(userId 폴백 — 클래스 KDoc §사용자 매핑 로드 및 해석).
+     */
+    private fun resolveUserId(
+        email: String?,
+        userMappings: Map<String, UUID?>,
+    ): UUID? {
+        if (email.isNullOrBlank()) return null
+        return userMappings[UserMappingNormalizer.normalize(email)]
+    }
+
     /** [ParsedImportComment](raw 문자열) 를 [ImportComment](shared VO, `createdAt` 이 [Instant]) 로 변환한다. */
-    private fun toImportComment(comment: ParsedImportComment): ImportComment =
+    private fun toImportComment(
+        comment: ParsedImportComment,
+        userMappings: Map<String, UUID?>,
+    ): ImportComment =
         ImportComment(
             body = comment.body,
             authorEmail = comment.authorEmail?.lowercase(),
             createdAt = parseInstantOrNull(comment.createdAt),
+            authorUserId = resolveUserId(comment.authorEmail, userMappings),
         )
 
     /** [ParsedImportWorklog](raw 문자열) 를 [ImportWorklog](shared VO, `startedAt` 이 [Instant]) 로 변환한다. */
-    private fun toImportWorklog(worklog: ParsedImportWorklog): ImportWorklog =
+    private fun toImportWorklog(
+        worklog: ParsedImportWorklog,
+        userMappings: Map<String, UUID?>,
+    ): ImportWorklog =
         ImportWorklog(
             timeSpentSeconds = worklog.timeSpentSeconds,
             startedAt = parseInstantOrNull(worklog.startedAt),
             authorEmail = worklog.authorEmail?.lowercase(),
             comment = worklog.comment,
+            authorUserId = resolveUserId(worklog.authorEmail, userMappings),
         )
 
     /**
@@ -361,24 +408,32 @@ class ImportJobProcessor(
      * 변환한다. [ParsedImportAttachment.mimeType]/[ParsedImportAttachment.sizeBytes] 는 값 변환 없이 그대로
      * 옮긴다(재판정/재계산은 어댑터 책임).
      */
-    private fun toImportAttachment(attachment: ParsedImportAttachment): ImportAttachment =
+    private fun toImportAttachment(
+        attachment: ParsedImportAttachment,
+        userMappings: Map<String, UUID?>,
+    ): ImportAttachment =
         ImportAttachment(
             filename = attachment.filename,
             authorEmail = attachment.authorEmail?.lowercase(),
             createdAt = parseInstantOrNull(attachment.created),
             mimeType = attachment.mimeType,
             sizeBytes = attachment.sizeBytes,
+            authorUserId = resolveUserId(attachment.authorEmail, userMappings),
         )
 
     /**
      * [ParsedImportChangeGroup](raw 문자열) 를 [ImportChangeGroup](shared VO, `occurredAt` 이 [Instant]) 로
      * 변환한다. [ParsedImportChangeGroup.items] 는 [toImportChangeItem] 로 원소별 변환한다.
      */
-    private fun toImportChangeGroup(group: ParsedImportChangeGroup): ImportChangeGroup =
+    private fun toImportChangeGroup(
+        group: ParsedImportChangeGroup,
+        userMappings: Map<String, UUID?>,
+    ): ImportChangeGroup =
         ImportChangeGroup(
             authorEmail = group.authorEmail?.lowercase(),
             occurredAt = parseInstantOrNull(group.created),
             items = group.items.map(::toImportChangeItem),
+            authorUserId = resolveUserId(group.authorEmail, userMappings),
         )
 
     /**

@@ -12,12 +12,16 @@ import com.bts.search.imports.job.domain.ImportJobStatus
 import com.bts.search.imports.mapping.ImportMappingInvalidException
 import com.bts.search.imports.mapping.ImportMappingService
 import com.bts.search.imports.mapping.ImportMappingStateConflictException
+import com.bts.search.imports.mapping.ImportUserMappingInvalidException
 import com.bts.search.imports.mapping.MappingIssue
 import com.bts.search.imports.mapping.MappingValidationResult
 import com.bts.search.imports.mapping.MappingValidator
+import com.bts.search.imports.mapping.UserCollectionEntry
+import com.bts.search.imports.mapping.UserCollectionResult
 import com.bts.search.imports.web.dto.FieldMappingEntry
 import com.bts.search.imports.web.dto.MappingConfirmRequest
 import com.bts.search.imports.web.dto.MappingValidateRequest
+import com.bts.search.imports.web.dto.UserMappingEntry
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.clearMocks
@@ -78,6 +82,12 @@ import java.util.UUID
  * - C12 POST /imports/{jobId}/mapping 타인/없음 → 404 IMPORT_NOT_FOUND
  * - C13 POST /imports/{jobId}/mapping 상태충돌 → 409 IMPORT_MAPPING_STATE_CONFLICT
  * - C14 POST /imports/{jobId}/mapping 미인증 → 401
+ * - C15 POST /imports/{jobId}/mapping/users → 200 + UserCollectionResponse(users)
+ * - C16 POST /imports/{jobId}/mapping/users 미인증 → 401 (actor 추출 우선, 서비스 미호출 검증)
+ * - C17 POST /imports/{jobId}/mapping/users 타인/없음 → 404 IMPORT_NOT_FOUND
+ * - C18 POST /imports/{jobId}/mapping/users 상태충돌 → 409 IMPORT_MAPPING_STATE_CONFLICT
+ * - C19 POST /imports/{jobId}/mapping userMappings → 서비스에 Pair 목록으로 전달 확인
+ * - C20 POST /imports/{jobId}/mapping 사용자매핑 검증실패 → 422 IMPORT_USER_MAPPING_INVALID
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [ImportMappingControllerTest.TestMvcConfig::class])
@@ -371,6 +381,166 @@ class ImportMappingControllerTest {
             .andExpect(status().isUnauthorized)
             .andExpect(jsonPath("$.errorCode").value("IMPORT_UNAUTHENTICATED"))
         verify(exactly = 0) { mockImportMappingService.confirm(any(), any(), any(), any()) }
+    }
+
+    // ── C15 POST /mapping/users → 200 UserCollectionResponse ──────────────────
+
+    @Test
+    fun `C15 - POST imports jobId mapping users 200 UserCollectionResponse`() {
+        val jobId = ImportJobId(UUID.randomUUID())
+        val collectionResult =
+            UserCollectionResult(
+                users =
+                    listOf(
+                        UserCollectionEntry(
+                            sourceIdentifier = "alice@example.com",
+                            suggestedUserId = actorId,
+                            suggestedDisplayName = "Alice",
+                        ),
+                        UserCollectionEntry(
+                            sourceIdentifier = "bob@example.com",
+                            suggestedUserId = null,
+                            suggestedDisplayName = null,
+                        ),
+                    ),
+            )
+        every {
+            mockImportMappingService.collectUsers(jobId, actorId, mapOf("제목" to "summary"))
+        } returns collectionResult
+
+        mockMvc.perform(
+            post("/api/v1/imports/${jobId.value}/mapping/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(validateRequestBody())),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.users[0].sourceIdentifier").value("alice@example.com"))
+            .andExpect(jsonPath("$.users[0].suggestedUserId").value(actorId.toString()))
+            .andExpect(jsonPath("$.users[0].suggestedDisplayName").value("Alice"))
+            .andExpect(jsonPath("$.users[1].sourceIdentifier").value("bob@example.com"))
+            .andExpect(jsonPath("$.users[1].suggestedUserId").doesNotExist())
+    }
+
+    // ── C16 POST /mapping/users 미인증 → 401 (actor 추출 우선) ─────────────────
+
+    @Test
+    fun `C16 - POST imports jobId mapping users 미인증 401 actor 추출 우선 서비스 미호출`() {
+        SecurityContextHolder.clearContext()
+        val jobId = ImportJobId(UUID.randomUUID())
+
+        mockMvc.perform(
+            post("/api/v1/imports/${jobId.value}/mapping/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(validateRequestBody())),
+        )
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value("IMPORT_UNAUTHENTICATED"))
+        verify(exactly = 0) { mockImportMappingService.collectUsers(any(), any(), any()) }
+    }
+
+    // ── C17 POST /mapping/users 타인/없음 → 404 ────────────────────────────────
+
+    @Test
+    fun `C17 - POST imports jobId mapping users 타인 404 존재 은닉 IMPORT_NOT_FOUND`() {
+        val jobId = ImportJobId(UUID.randomUUID())
+        every { mockImportMappingService.collectUsers(jobId, actorId, any()) } throws
+            ResponseStatusException(HttpStatus.NOT_FOUND, "Import 작업을 찾을 수 없습니다.")
+
+        mockMvc.perform(
+            post("/api/v1/imports/${jobId.value}/mapping/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(validateRequestBody())),
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("IMPORT_NOT_FOUND"))
+    }
+
+    // ── C18 POST /mapping/users 상태충돌 → 409 ─────────────────────────────────
+
+    @Test
+    fun `C18 - POST imports jobId mapping users 상태충돌 409 IMPORT_MAPPING_STATE_CONFLICT`() {
+        val jobId = ImportJobId(UUID.randomUUID())
+        every { mockImportMappingService.collectUsers(jobId, actorId, any()) } throws
+            ImportMappingStateConflictException()
+
+        mockMvc.perform(
+            post("/api/v1/imports/${jobId.value}/mapping/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(validateRequestBody())),
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("IMPORT_MAPPING_STATE_CONFLICT"))
+    }
+
+    // ── C19 POST /mapping userMappings → 서비스에 Pair 목록 전달 확인 ──────────
+
+    @Test
+    fun `C19 - POST imports jobId mapping userMappings 서비스에 Pair 목록으로 전달`() {
+        val jobId = ImportJobId(UUID.randomUUID())
+        val confirmedJob = makePendingJob(jobId, actorId)
+        val targetUserId = UUID.randomUUID()
+        every {
+            mockImportMappingService.confirm(
+                jobId,
+                actorId,
+                mapOf("제목" to "summary"),
+                false,
+                listOf("alice@example.com" to targetUserId, "bob@example.com" to null),
+            )
+        } returns confirmedJob
+
+        val requestBody =
+            MappingConfirmRequest(
+                fieldMappings = listOf(FieldMappingEntry("제목", "summary")),
+                dryRun = false,
+                userMappings =
+                    listOf(
+                        UserMappingEntry("alice@example.com", targetUserId),
+                        UserMappingEntry("bob@example.com", null),
+                    ),
+            )
+
+        mockMvc.perform(
+            post("/api/v1/imports/${jobId.value}/mapping")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(requestBody)),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.jobId").value(jobId.value.toString()))
+        verify(exactly = 1) {
+            mockImportMappingService.confirm(
+                jobId,
+                actorId,
+                mapOf("제목" to "summary"),
+                false,
+                listOf("alice@example.com" to targetUserId, "bob@example.com" to null),
+            )
+        }
+    }
+
+    // ── C20 POST /mapping 사용자매핑 검증실패 → 422 IMPORT_USER_MAPPING_INVALID ─
+
+    @Test
+    fun `C20 - POST imports jobId mapping 사용자매핑 검증실패 422 IMPORT_USER_MAPPING_INVALID`() {
+        val jobId = ImportJobId(UUID.randomUUID())
+        every { mockImportMappingService.confirm(jobId, actorId, any(), any(), any()) } throws
+            ImportUserMappingInvalidException(
+                listOf(
+                    MappingIssue(
+                        ImportUserMappingInvalidException.DUPLICATE_SOURCE_IDENTIFIER,
+                        "정규화 시 중복되는 사용자 매핑 소스 식별자입니다: alice@example.com",
+                        "alice@example.com",
+                    ),
+                ),
+            )
+
+        mockMvc.perform(
+            post("/api/v1/imports/${jobId.value}/mapping")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(confirmRequestBody())),
+        )
+            .andExpect(status().isUnprocessableEntity)
+            .andExpect(jsonPath("$.errorCode").value("IMPORT_USER_MAPPING_INVALID"))
     }
 
     // ── private helpers ────────────────────────────────────────────────────────

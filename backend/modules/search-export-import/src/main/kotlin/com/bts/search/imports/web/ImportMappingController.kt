@@ -11,6 +11,7 @@ import com.bts.search.imports.web.dto.ImportJobResponse
 import com.bts.search.imports.web.dto.MappingConfirmRequest
 import com.bts.search.imports.web.dto.MappingValidateRequest
 import com.bts.search.imports.web.dto.MappingValidationResponse
+import com.bts.search.imports.web.dto.UserCollectionResponse
 import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -33,7 +34,9 @@ import java.util.UUID
  * 엔드포인트.
  * - `POST /api/v1/imports/analyze` — CSV/JSON 파일을 분석해 매핑 UI 진입 정보를 200으로 즉시 반환한다.
  * - `POST /api/v1/imports/{jobId}/mapping/validate` — 제안된 필드 매핑을 저장 없이 검증한다.
- * - `POST /api/v1/imports/{jobId}/mapping` — 필드 매핑을 확정하고 작업을 PENDING으로 전이한다.
+ * - `POST /api/v1/imports/{jobId}/mapping/users` — 원본에 등장하는 작성자 식별자를 수집하고 BTS 사용자
+ *   추천을 계산한다(저장 없이 조회만, FR-IM-02 PR-B).
+ * - `POST /api/v1/imports/{jobId}/mapping` — 필드 매핑 + 사용자 매핑을 확정하고 작업을 PENDING으로 전이한다.
  *
  * ### BC 격리 — [ImportController]와 동형 복제
  *
@@ -136,14 +139,41 @@ class ImportMappingController(
     }
 
     /**
-     * 필드 매핑을 검증한 뒤 확정하고, 작업을 PENDING으로 전이해 실행 큐에 enqueue한다.
+     * Import 원본을 전량 스캔해 등장하는 작성자 식별자를 수집하고, BTS 사용자 추천을 계산한다.
+     *
+     * 저장 없이 조회만 수행한다([com.bts.search.imports.mapping.ImportMappingService.collectUsers]
+     * KDoc 참조). 요청 바디는 [validateMapping]과 동일한 [MappingValidateRequest]를 재사용한다 —
+     * 필드 매핑 검증(CSV 한정)에 그대로 필요한 계약이기 때문이다.
+     *
+     * @param jobId 대상 Import 작업 식별자(경로 변수).
+     * @param request 필드 매핑 목록(CSV 전량 스캔 전 선검증에 사용, JSON은 스킵).
+     * @return 200 OK + [UserCollectionResponse].
+     * @throws ResponseStatusException(401) 미인증 시.
+     * @throws ResponseStatusException(404) 작업이 없거나 타인 소유인 경우(존재 은닉).
+     * @throws com.bts.search.imports.mapping.ImportMappingStateConflictException 작업 상태가
+     *   AWAITING_MAPPING이 아닌 경우 → 409.
+     * @throws com.bts.search.imports.mapping.ImportMappingInvalidException CSV 필드 매핑 검증 실패 → 422.
+     */
+    @PostMapping("/api/v1/imports/{jobId}/mapping/users")
+    fun collectUsers(
+        @PathVariable jobId: UUID,
+        @Valid @RequestBody request: MappingValidateRequest,
+    ): ResponseEntity<UserCollectionResponse> {
+        val actorId = currentActorId()
+        val result = importMappingService.collectUsers(ImportJobId(jobId), actorId, request.toFieldMappingsMap())
+        return ResponseEntity.ok(UserCollectionResponse.from(result))
+    }
+
+    /**
+     * 필드 매핑 + 사용자 매핑을 검증한 뒤 확정하고, 작업을 PENDING으로 전이해 실행 큐에 enqueue한다.
      *
      * @param jobId 확정 대상 Import 작업 식별자(경로 변수).
-     * @param request 확정할 필드 매핑 목록 + optional dryRun.
+     * @param request 확정할 필드 매핑 목록 + optional dryRun + optional 사용자 매핑 목록.
      * @return 200 OK + [ImportJobResponse](status="PENDING"). 이후 상태 폴링은 기존 `GET /{jobId}` 경로를 사용한다.
      * @throws ResponseStatusException(401) 미인증 시.
      * @throws ResponseStatusException(404) 작업이 없거나 타인 소유인 경우(존재 은닉).
      * @throws com.bts.search.imports.mapping.ImportMappingInvalidException 필드 매핑 검증 실패 → 422.
+     * @throws com.bts.search.imports.mapping.ImportUserMappingInvalidException 사용자 매핑 검증 실패 → 422.
      * @throws com.bts.search.imports.mapping.ImportMappingStateConflictException 작업 상태가
      *   사전확인 또는 CAS 시점(TOCTOU 포함)에 AWAITING_MAPPING이 아닌 경우 → 409.
      */
@@ -159,6 +189,7 @@ class ImportMappingController(
                 actorId,
                 request.toFieldMappingsMap(),
                 request.dryRun,
+                request.toUserMappingPairs(),
             )
         return ResponseEntity.ok(ImportJobResponse.from(job))
     }

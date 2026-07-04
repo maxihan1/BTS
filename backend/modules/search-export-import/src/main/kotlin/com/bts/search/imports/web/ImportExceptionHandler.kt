@@ -7,6 +7,7 @@ import com.bts.search.imports.job.application.ImportFileTooLargeException
 import com.bts.search.imports.job.application.ImportUnsupportedFormatException
 import com.bts.search.imports.mapping.ImportMappingInvalidException
 import com.bts.search.imports.mapping.ImportMappingStateConflictException
+import com.bts.search.imports.mapping.ImportUserMappingInvalidException
 import com.bts.search.imports.web.dto.MappingValidationResponse.MappingIssueItem
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -37,6 +38,7 @@ import java.time.Instant
  * - [ImportUnsupportedFormatException] → 400 [IMPORT_UNSUPPORTED_FORMAT]
  * - [ImportValidationException] → 400 [IMPORT_VALIDATION_FAILED]
  * - [ImportMappingInvalidException] → 422 [IMPORT_MAPPING_INVALID]
+ * - [ImportUserMappingInvalidException] → 422 [IMPORT_USER_MAPPING_INVALID]
  * - [ImportMappingStateConflictException] → 409 [IMPORT_MAPPING_STATE_CONFLICT]
  * - [ResponseStatusException](401/404/기타) → 상태 전파
  * - [Exception] (fallback) → 500 [IMPORT_INTERNAL_ERROR]
@@ -220,6 +222,34 @@ class ImportExceptionHandler {
         return pd
     }
 
+    // ── 422 사용자 매핑 검증 실패 ──────────────────────────────────────────────
+
+    /**
+     * [ImportUserMappingInvalidException] — [com.bts.search.imports.mapping.ImportMappingService.confirm]
+     * 사용자 매핑 검증 실패 — 422.
+     *
+     * [ImportUserMappingInvalidException.errors] 를 그대로 ProblemDetail extension property 에 담아
+     * 클라이언트가 어느 소스 식별자가 왜 실패했는지 손실 없이 렌더링할 수 있게 한다
+     * ([com.bts.search.imports.mapping.ImportUserMappingInvalidException] KDoc §errors 참조).
+     *
+     * @param ex 사용자 매핑 검증 실패 예외. 실패 사유 목록을 포함한다.
+     */
+    @ExceptionHandler(ImportUserMappingInvalidException::class)
+    fun handleUserMappingInvalid(ex: ImportUserMappingInvalidException): ProblemDetail {
+        log.info("IMPORT_422 user_mapping_invalid errorCount={}", ex.errors.size)
+        val pd =
+            problem(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "import-user-mapping-invalid",
+                "User Mapping Invalid",
+                IMPORT_USER_MAPPING_INVALID,
+                "사용자 매핑 검증에 실패했습니다.",
+            )
+        val errorItems = ex.errors.map { MappingIssueItem(code = it.code, message = it.message, field = it.field) }
+        pd.setProperty("errors", errorItems)
+        return pd
+    }
+
     // ── 409 매핑 상태 충돌 ────────────────────────────────────────────────────
 
     /**
@@ -317,6 +347,7 @@ class ImportExceptionHandler {
         const val IMPORT_NOT_FOUND = "IMPORT_NOT_FOUND"
         const val IMPORT_INTERNAL_ERROR = "IMPORT_INTERNAL_ERROR"
         const val IMPORT_MAPPING_INVALID = "IMPORT_MAPPING_INVALID"
+        const val IMPORT_USER_MAPPING_INVALID = "IMPORT_USER_MAPPING_INVALID"
         const val IMPORT_MAPPING_STATE_CONFLICT = "IMPORT_MAPPING_STATE_CONFLICT"
     }
 }

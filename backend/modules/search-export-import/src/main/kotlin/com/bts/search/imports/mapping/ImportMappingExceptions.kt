@@ -30,3 +30,30 @@ class ImportMappingInvalidException(val errors: List<MappingIssue>) :
  *    실제 쓰기 직전 CAS 결과를 다시 확인해야 한다.
  */
 class ImportMappingStateConflictException : RuntimeException("Import 작업이 매핑 대기(AWAITING_MAPPING) 상태가 아닙니다.")
+
+/**
+ * 확정하려는 사용자 매핑(소스 작성자 식별자 → 대상 사용자 UUID?)이 검증 규칙을 통과하지 못했을 때
+ * [ImportMappingService.confirm] 이 던지는 예외 (FR-IM-02 PR-B Task 5).
+ *
+ * `ImportExceptionHandler`(후속 웹 계층 task, `com.bts.search.imports.web`)가 422
+ * `IMPORT_USER_MAPPING_INVALID` 로 변환한다.
+ *
+ * 두 검증 규칙 위반에서 던져진다.
+ * 1. [DUPLICATE_SOURCE_IDENTIFIER] — 정규화([UserMappingNormalizer.normalize]) 시 서로 겹치는
+ *    (대소문자/공백만 다른 포함) 중복 소스 식별자를 사용자 매핑에 사용한 경우.
+ * 2. [TARGET_USER_NOT_FOUND] — targetUserId 가 null 이 아닌데 실재 사용자를 찾을 수 없는 경우
+ *    ([com.bts.shared.user.UserLookupPort.findDisplayNamesByIds] 결과에 없음). null targetUserId 는
+ *    미매핑(폴백) 의도로 허용되며 이 검증 대상이 아니다.
+ *
+ * @property errors 검증 실패 사유 목록. [MappingIssue.field] 에는 문제가 된 소스 식별자를 담는다.
+ */
+class ImportUserMappingInvalidException(val errors: List<MappingIssue>) :
+    RuntimeException("사용자 매핑 검증에 실패했습니다: ${errors.joinToString { it.code }}") {
+    companion object {
+        /** 정규화(trim+lowercase) 시 서로 겹치는 중복 소스 식별자를 사용자 매핑에 사용함. */
+        const val DUPLICATE_SOURCE_IDENTIFIER = "DUPLICATE_SOURCE_IDENTIFIER"
+
+        /** targetUserId 가 non-null 인데 실재 사용자(users 테이블)를 찾을 수 없음. */
+        const val TARGET_USER_NOT_FOUND = "TARGET_USER_NOT_FOUND"
+    }
+}

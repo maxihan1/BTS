@@ -8,7 +8,9 @@ import com.bts.search.imports.job.event.ImportJobEnqueuePublisher
 import com.bts.search.imports.job.repository.ImportJobRepository
 import com.bts.search.imports.job.storage.ImportObjectStoragePort
 import com.bts.search.imports.mapping.repository.ImportMappingRepository
+import com.bts.search.imports.mapping.repository.ImportUserMappingRepository
 import com.bts.search.imports.parse.ImportRowParser
+import com.bts.shared.user.UserLookupPort
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -74,22 +76,41 @@ import java.util.UUID
  * enqueue 동일, 워커가 dryRun 검증만"). 과거 이 파라미터가 감사 로깅에만 쓰이고 영속되지 않아 워커가
  * 확정된 dryRun 선택을 무시하던 silent bug 가 있었다(재발 금지 — dryrun-fix).
  *
+ * ## 사용자 매핑 흐름 — [collectUsers] + `confirm` 의 `userMappings` (FR-IM-02 PR-B)
+ *
+ * 필드 매핑과 별개로, Import 원본에 등장하는 작성자(보고자/담당자/댓글/worklog/첨부/변경이력 작성자)
+ * 식별자를 BTS 사용자로 매핑하는 흐름이다. [UserMappingNormalizer] 가 정규화(trim+lowercase)의
+ * 유일 진실원천이다.
+ *
+ * 1. **[collectUsers]** — 원본을 전량 스캔해 distinct 정규화 식별자를 수집하고,
+ *    [userLookupPort]`.resolveByEmails` 로 추천 사용자 UUID 를, `findDisplayNamesByIds` 로 추천 표시명을
+ *    조회해 [UserCollectionResult] 로 반환한다. 저장하지 않는다([validate] 와 동일하게 조회 전용).
+ * 2. **`confirm` 의 `userMappings`** — 사용자가 [collectUsers] 결과를 참고해 확정한
+ *    `sourceIdentifier to targetUserId?` 목록을 검증(정규화 후 중복/미실재 대상 확인, [confirm] KDoc
+ *    §사용자 매핑 검증 참조) 한 뒤, CAS 트랜잭션 안에서 [importUserMappingRepository] 로 저장한다.
+ *
  * @param importMappingRepository 필드 매핑 영속 저장소([ImportMappingRepository.saveAll]).
  * @param importJobRepository Import 작업 저장소. 소유확인([ImportJobRepository.findByIdForRequester]) +
  *   CAS 전이([ImportJobRepository.transitionToPending])에 사용.
  * @param enqueuePublisher pgmq 큐에 작업 ID 를 발행하는 아웃바운드 어댑터.
- * @param storage Import 원본 오브젝트 스토리지 포트. 헤더 재읽기용.
+ * @param storage Import 원본 오브젝트 스토리지 포트. 헤더/전량 재읽기용.
  * @param transactionTemplate CAS+saveAll+enqueue 구간의 프로그래밍 방식 트랜잭션 경계.
+ * @param userLookupPort 사용자 실재 확인 + 이메일→UUID/UUID→표시명 일괄 조회 cross-BC 포트.
+ *   [collectUsers] 의 추천 계산과 `confirm` 의 대상 사용자 실재 검증에 사용한다.
+ * @param importUserMappingRepository 확정 사용자 매핑 영속 저장소([ImportUserMappingRepository.saveAll]).
  * @param parser CSV/JSON 스트리밍 파서. [ImportRowParser] 는 Spring 빈으로 등록되어 있지 않으므로
  *   (`ImportJobProcessor` 의 동일 기본값 패턴을 따라) 기본값으로 직접 인스턴스화한다.
  */
 @Service
+@Suppress("LongParameterList") // DI 생성자 — 필드/사용자 매핑 영속·CAS 전이·enqueue·cross-BC 조회 협력자 8개
 class ImportMappingService(
     private val importMappingRepository: ImportMappingRepository,
     private val importJobRepository: ImportJobRepository,
     private val enqueuePublisher: ImportJobEnqueuePublisher,
     private val storage: ImportObjectStoragePort,
     private val transactionTemplate: TransactionTemplate,
+    private val userLookupPort: UserLookupPort,
+    private val importUserMappingRepository: ImportUserMappingRepository,
     private val parser: ImportRowParser = ImportRowParser(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -124,11 +145,31 @@ class ImportMappingService(
      * 은 메서드 전체가 아니라 [transactionTemplate] 으로 CAS+saveAll+enqueue 구간만 좁게 감싼다(클래스
      * KDoc §@Transactional 의도적 생략 참조).
      *
+     * ### 사용자 매핑 검증 — [userMappings] (클래스 KDoc §사용자 매핑 흐름 참조)
+     *
+     * [validateUserMappings] 가 트랜잭션 **밖**에서(cross-BC [userLookupPort] I/O 포함) 다음을
+     * 검증한다.
+     * 1. 정규화([UserMappingNormalizer.normalize]) 시 중복되는 소스 식별자가 없어야 한다(대소문자/공백
+     *    변형 포함) — [ImportUserMappingInvalidException.DUPLICATE_SOURCE_IDENTIFIER].
+     * 2. targetUserId 가 null 이 아니면 실재 사용자여야 한다([userLookupPort]`.findDisplayNamesByIds`
+     *    로 확인) — [ImportUserMappingInvalidException.TARGET_USER_NOT_FOUND]. targetUserId 가 null
+     *    이면 미매핑(폴백) 의도로 그대로 허용한다.
+     *
+     * 검증을 통과하면 정규화된 `sourceIdentifier -> targetUserId?` 맵을 CAS 트랜잭션 안에서
+     * [importUserMappingRepository]`.saveAll` 로 저장한다 — [importMappingRepository]`.saveAll`(필드
+     * 매핑) 뒤, [enqueuePublisher]`.enqueue` 앞이다. [userMappings] 가 비어 있으면(기본값) 빈 맵을
+     * 저장해 기존 매핑을 전량 제거한다(하위호환 — 사용자 매핑 없이 confirm 하던 기존 호출부를 그대로
+     * 지원).
+     *
      * @param jobId 확정 대상 Import 작업 식별자.
      * @param actor 요청자 UUID. 소유확인에 사용.
      * @param fieldMappings 소스 필드 이름 → [TargetField.key](또는 [TargetField.IGNORE_KEY]) 매핑.
      * @param dryRun 확정 시 사용자가 선택한 dry-run 여부(클래스 KDoc §dryRun 참조). CAS 전이로
      *   `dry_run` 컬럼에 영속된다.
+     * @param userMappings 확정할 사용자 매핑 `sourceIdentifier to targetUserId?` 목록. **Map 이 아닌
+     *   List** — Map 으로 받으면 동일 키(정규화 전 원본이 다르더라도 정규화 후 겹치는 경우)가 먼저
+     *   붕괴돼 [DUPLICATE_SOURCE_IDENTIFIER][ImportUserMappingInvalidException.DUPLICATE_SOURCE_IDENTIFIER]
+     *   검증이 무력화된다. 기본값 빈 목록 — 사용자 매핑 없이 confirm 하는 기존 호출부와 하위호환.
      * @return `PENDING` 상태로 전이된 [ImportJob] — [confirm] 호출 직전 조회한 스냅샷에
      *   status/expiresAt/dryRun 만 갱신한 사본이며, CAS 이후 재조회하지 않는다(그 외 필드는 확정으로
      *   바뀌지 않는다).
@@ -136,35 +177,115 @@ class ImportMappingService(
      * @throws ImportMappingStateConflictException 사전확인 시점 또는 CAS 시점(TOCTOU 포함)에 작업
      *   상태가 [ImportJobStatus.AWAITING_MAPPING] 이 아닌 경우.
      * @throws ImportMappingInvalidException 필드 매핑 검증 실패 시(422 위임).
+     * @throws ImportUserMappingInvalidException 사용자 매핑 검증 실패 시(422 위임).
      */
     fun confirm(
         jobId: ImportJobId,
         actor: UUID,
         fieldMappings: Map<String, String>,
         dryRun: Boolean,
+        userMappings: List<Pair<String, UUID?>> = emptyList(),
     ): ImportJob {
         val job = requireOwnedAwaitingMapping(jobId, actor)
         val result = computeValidationResult(job, fieldMappings)
         if (!result.valid) {
             throw ImportMappingInvalidException(result.errors)
         }
+        val normalizedUserMappings = validateUserMappings(userMappings)
 
         transactionTemplate.execute {
             if (!importJobRepository.transitionToPending(jobId, dryRun)) {
                 throw ImportMappingStateConflictException()
             }
             importMappingRepository.saveAll(jobId, fieldMappings)
+            importUserMappingRepository.saveAll(jobId, normalizedUserMappings)
             enqueuePublisher.enqueue(jobId)
         }
 
         log.info(
-            "import_mapping_confirmed jobId={} actor={} fieldCount={} dryRun={}",
+            "import_mapping_confirmed jobId={} actor={} fieldCount={} userMappingCount={} dryRun={}",
             jobId.value,
             actor,
             fieldMappings.size,
+            normalizedUserMappings.size,
             dryRun,
         )
         return job.copy(status = ImportJobStatus.PENDING, expiresAt = null, dryRun = dryRun)
+    }
+
+    /**
+     * Import 원본을 전량 스캔해 등장하는 작성자 식별자를 수집하고, BTS 사용자 추천을 계산한다
+     * (클래스 KDoc §사용자 매핑 흐름 참조). 저장하지 않는다 — [validate] 와 동일하게 조회 전용이다.
+     *
+     * `@Transactional` **의도적 생략** — 클래스 KDoc §@Transactional 의도적 생략과 동일 이유([storage]
+     * 스트림 I/O + [userLookupPort] cross-BC I/O 동안 DB 커넥션을 점유하지 않기 위함).
+     *
+     * ### CSV — 필드 매핑 선검증 후 전량 스캔 (C1)
+     *
+     * [computeValidationResult] 로 필드 매핑을 먼저 검증한다(헤더만 재읽기, 전량 스캔 아님). 매핑이
+     * 무효(예: summary 미매핑)면 곧바로 [ImportMappingInvalidException](422) 을 던지고 전량 스캔을
+     * 하지 않는다 — 검증 없이 바로 전량 파싱하면, 무효한 매핑으로 인한 실패가 [ImportParseException]
+     * (예상치 못한 500)으로 표면화될 수 있기 때문이다. 검증을 통과해야만 [storage] 를 다시 열어
+     * [ImportRowParser.parseCsv] 로 전량을 스캔한다.
+     *
+     * ### JSON — 필드 매핑 검증 스킵 후 전량 스캔
+     *
+     * [computeValidationResult] 는 JSON 이면 저장소를 읽지 않고 즉시 valid=true 를 반환하므로([validate]
+     * KDoc 참조), 곧바로 [storage] 를 열어 [ImportRowParser.parseJson] 으로 전량 스캔한다.
+     *
+     * ### 추천 계산
+     *
+     * 전량 스캔 중 각 행에서 [UserMappingNormalizer.collectIdentifiers] 로 정규화된 식별자를 모아
+     * distinct 집합을 만든다. 식별자가 하나도 없으면 조회 없이 빈 결과를 반환한다. 그 외에는
+     * [userLookupPort]`.resolveByEmails` 로 식별자 → 추천 사용자 UUID 를, 추천된 UUID 집합으로
+     * `findDisplayNamesByIds` 를 호출해 표시명을 조회한다. 추천을 찾지 못한 식별자는
+     * `suggestedUserId`/`suggestedDisplayName` 모두 null — 매핑 UI 가 사용자에게 수동 선택을 요구한다.
+     *
+     * @param jobId 대상 Import 작업 식별자.
+     * @param actor 요청자 UUID. 소유확인에 사용.
+     * @param fieldMappings 소스 필드 이름 → [TargetField.key](또는 [TargetField.IGNORE_KEY]) 매핑.
+     *   JSON 형식이면 검증에 사용되지 않는다.
+     * @return 정규화된 소스 식별자별 추천 사용자 정보([UserCollectionResult.users] — sourceIdentifier
+     *   오름차순 정렬).
+     * @throws ResponseStatusException(404) 작업이 없거나 [actor] 소유가 아닌 경우(존재 은닉).
+     * @throws ImportMappingStateConflictException 작업 상태가 [ImportJobStatus.AWAITING_MAPPING] 이 아닌 경우.
+     * @throws ImportMappingInvalidException CSV 필드 매핑 검증 실패 시(422 위임).
+     */
+    fun collectUsers(
+        jobId: ImportJobId,
+        actor: UUID,
+        fieldMappings: Map<String, String>,
+    ): UserCollectionResult {
+        val job = requireOwnedAwaitingMapping(jobId, actor)
+        val validation = computeValidationResult(job, fieldMappings)
+        if (!validation.valid) {
+            throw ImportMappingInvalidException(validation.errors)
+        }
+
+        val identifiers = mutableSetOf<String>()
+        storage.get(job.sourceObjectKey).use { stream ->
+            if (job.format == FORMAT_JSON) {
+                parser.parseJson(stream) { row -> identifiers += UserMappingNormalizer.collectIdentifiers(row) }
+            } else {
+                parser.parseCsv(stream, fieldMappings) { row ->
+                    identifiers += UserMappingNormalizer.collectIdentifiers(row)
+                }
+            }
+        }
+        if (identifiers.isEmpty()) return UserCollectionResult(users = emptyList())
+
+        val suggestions = userLookupPort.resolveByEmails(identifiers)
+        val displayNames = userLookupPort.findDisplayNamesByIds(suggestions.values.toSet())
+        val entries =
+            identifiers.sorted().map { identifier ->
+                val suggestedUserId = suggestions[identifier]
+                UserCollectionEntry(
+                    sourceIdentifier = identifier,
+                    suggestedUserId = suggestedUserId,
+                    suggestedDisplayName = suggestedUserId?.let(displayNames::get),
+                )
+            }
+        return UserCollectionResult(users = entries)
     }
 
     // ── private helpers ──────────────────────────────────────────────────────
@@ -207,6 +328,60 @@ class ImportMappingService(
                 parser.readHeaderAndSample(stream).headers
             }
         return MappingValidator.validate(sourceFields, fieldMappings)
+    }
+
+    /**
+     * [confirm] 의 `userMappings` 를 정규화 + 검증한 뒤, 저장 가능한 `sourceIdentifier -> targetUserId?`
+     * 맵으로 변환한다([confirm] KDoc §사용자 매핑 검증 참조). [userLookupPort] I/O 를 포함하므로
+     * 트랜잭션 **밖**에서 호출한다.
+     *
+     * @throws ImportUserMappingInvalidException 정규화 시 중복되는 소스 식별자가 있거나, null 이 아닌
+     *   targetUserId 가 실재 사용자가 아닌 경우.
+     */
+    private fun validateUserMappings(userMappings: List<Pair<String, UUID?>>): Map<String, UUID?> {
+        if (userMappings.isEmpty()) return emptyMap()
+
+        val normalized =
+            userMappings.map { (sourceIdentifier, targetUserId) ->
+                UserMappingNormalizer.normalize(sourceIdentifier) to targetUserId
+            }
+
+        val errors = mutableListOf<MappingIssue>()
+        errors +=
+            normalized
+                .groupBy({ it.first }, { it.second })
+                .filterValues { targetUserIds -> targetUserIds.size > 1 }
+                .map { (identifier, _) ->
+                    MappingIssue(
+                        ImportUserMappingInvalidException.DUPLICATE_SOURCE_IDENTIFIER,
+                        "정규화 시 중복되는 사용자 매핑 소스 식별자입니다: $identifier",
+                        identifier,
+                    )
+                }
+
+        val requestedTargetUserIds = normalized.mapNotNull { it.second }.toSet()
+        val existingTargetUserIds =
+            if (requestedTargetUserIds.isEmpty()) {
+                emptySet()
+            } else {
+                userLookupPort.findDisplayNamesByIds(requestedTargetUserIds).keys
+            }
+        errors +=
+            normalized
+                .mapNotNull { (identifier, targetUserId) -> targetUserId?.let { identifier to it } }
+                .filter { (_, targetUserId) -> targetUserId !in existingTargetUserIds }
+                .map { (identifier, targetUserId) ->
+                    MappingIssue(
+                        ImportUserMappingInvalidException.TARGET_USER_NOT_FOUND,
+                        "존재하지 않는 대상 사용자입니다: $targetUserId",
+                        identifier,
+                    )
+                }
+
+        if (errors.isNotEmpty()) {
+            throw ImportUserMappingInvalidException(errors)
+        }
+        return normalized.toMap()
     }
 
     companion object {

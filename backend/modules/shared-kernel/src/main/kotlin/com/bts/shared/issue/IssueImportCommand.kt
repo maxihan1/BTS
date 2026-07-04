@@ -23,6 +23,11 @@ import java.util.UUID
  * 미매칭 시 reporter 는 [requesterUserId](import 실행자), assignee 는 미할당(null)으로
  * 폴백하는 것이 구현체 책임이다(이 커맨드 객체 자체는 폴백을 수행하지 않는다).
  *
+ * ### userId 우선 규칙 (PR2 명시적 사용자 매핑)
+ *
+ * 구현체(어댑터)는 [reporterUserId]/[assigneeUserId] 가 있으면 이메일 해석보다 우선한다.
+ * null 이면 기존 [reporterEmail]/[assigneeEmail] 폴백 규칙을 그대로 따른다.
+ *
  * @property projectKey 이슈를 생성할 프로젝트 키. 예: `"PROJ"`.
  * @property requesterUserId import 를 실행한 사용자 UUID. CREATE_ISSUE 권한 검증 actor 이자,
  *   reporterEmail 미매칭 시 reporter 폴백 대상.
@@ -31,7 +36,9 @@ import java.util.UUID
  * @property description 이슈 본문. null 이면 미기재.
  * @property priority 우선순위 숫자 값(1..5). null 이면 구현체 기본값을 사용한다.
  * @property reporterEmail 리포터 이메일. 매칭 실패 또는 null 이면 [requesterUserId] 로 폴백한다.
+ *   [reporterUserId] 가 있으면 이 필드보다 우선한다.
  * @property assigneeEmail 담당자 이메일. 매칭 실패 또는 null 이면 미배정으로 처리한다.
+ *   [assigneeUserId] 가 있으면 이 필드보다 우선한다.
  * @property labels 라벨 이름 목록. 빈 목록이면 라벨 없음.
  * @property componentNames 컴포넌트 이름 목록. 존재하지 않는 이름은 구현체가 스킵 + 경고로 처리한다(PR1).
  * @property dryRun true 이면 구현체가 검증만 수행하고 실제 이슈를 생성하지 않는다.
@@ -51,6 +58,10 @@ import java.util.UUID
  * @property changelog 이슈에 동반 import 할 변경 이력(changelog) 그룹 목록(PR4). 빈 목록이면 이력 없음.
  *   원본(Jira 등)의 changelog history 를 그대로 재생하기 위한 목록이며, 신규 필드 변경 감지(detector)를
  *   거치지 않고 구현체가 그대로 기록한다.
+ * @property reporterUserId 프로세서가 명시적으로 해석한 리포터 사용자 UUID(PR2). null 이면
+ *   구현체가 [reporterEmail] 폴백 규칙을 따른다.
+ * @property assigneeUserId 프로세서가 명시적으로 해석한 담당자 사용자 UUID(PR2). null 이면
+ *   구현체가 [assigneeEmail] 폴백 규칙을 따른다.
  * @see IssueImportPort
  * @see IssueImportResult
  */
@@ -74,6 +85,8 @@ data class IssueImportCommand(
     val sourceKey: String? = null,
     val attachments: List<ImportAttachment> = emptyList(),
     val changelog: List<ImportChangeGroup> = emptyList(),
+    val reporterUserId: UUID? = null,
+    val assigneeUserId: UUID? = null,
 )
 
 /**
@@ -88,11 +101,14 @@ data class IssueImportCommand(
  *   [IssueImportCommand.requesterUserId](import 실행자)로 폴백한다
  *   ([IssueImportCommand.reporterEmail] 폴백 규칙과 동일).
  * @property createdAt 원본(Jira 등) 작성 시각. null 이면 구현체가 import 실행 시각을 사용한다.
+ * @property authorUserId 프로세서가 명시적으로 해석한 작성자 사용자 UUID(PR2). 있으면
+ *   구현체가 [authorEmail] 해석보다 우선한다. null 이면 [authorEmail] 폴백 규칙을 따른다.
  */
 data class ImportComment(
     val body: String,
     val authorEmail: String? = null,
     val createdAt: Instant? = null,
+    val authorUserId: UUID? = null,
 )
 
 /**
@@ -108,12 +124,15 @@ data class ImportComment(
  *   [IssueImportCommand.requesterUserId](import 실행자)로 폴백한다
  *   ([IssueImportCommand.reporterEmail] 폴백 규칙과 동일).
  * @property comment worklog 에 첨부된 코멘트. null 이면 미기재.
+ * @property authorUserId 프로세서가 명시적으로 해석한 작성자 사용자 UUID(PR2). 있으면
+ *   구현체가 [authorEmail] 해석보다 우선한다. null 이면 [authorEmail] 폴백 규칙을 따른다.
  */
 data class ImportWorklog(
     val timeSpentSeconds: Int,
     val startedAt: Instant? = null,
     val authorEmail: String? = null,
     val comment: String? = null,
+    val authorUserId: UUID? = null,
 )
 
 /**
@@ -131,6 +150,8 @@ data class ImportWorklog(
  * @property createdAt 원본(Jira 등) 업로드 시각. null 이면 구현체가 import 실행 시각을 사용한다.
  * @property mimeType 원본 MIME 타입. null 이면 구현체가 파일 내용/확장자 기반으로 재판정한다.
  * @property sizeBytes 원본 파일 크기(바이트). 실제 조회한 스트림 크기와 다를 수 있으며 참고용이다.
+ * @property authorUserId 프로세서가 명시적으로 해석한 업로더 사용자 UUID(PR2). 있으면
+ *   구현체가 [authorEmail] 해석보다 우선한다. null 이면 [authorEmail] 폴백 규칙을 따른다.
  */
 data class ImportAttachment(
     val filename: String,
@@ -138,6 +159,7 @@ data class ImportAttachment(
     val createdAt: Instant? = null,
     val mimeType: String? = null,
     val sizeBytes: Long? = null,
+    val authorUserId: UUID? = null,
 )
 
 /**
@@ -152,11 +174,14 @@ data class ImportAttachment(
  *   ([IssueImportCommand.reporterEmail] 폴백 규칙과 동일).
  * @property occurredAt 원본(Jira 등) 변경 발생 시각. null 이면 구현체가 import 실행 시각을 사용한다.
  * @property items 이 그룹에 속한 필드별 변경 항목 목록. 빈 목록이면 변경 항목 없음.
+ * @property authorUserId 프로세서가 명시적으로 해석한 변경 수행자 사용자 UUID(PR2). 있으면
+ *   구현체가 [authorEmail] 해석보다 우선한다. null 이면 [authorEmail] 폴백 규칙을 따른다.
  */
 data class ImportChangeGroup(
     val authorEmail: String? = null,
     val occurredAt: Instant? = null,
     val items: List<ImportChangeItem> = emptyList(),
+    val authorUserId: UUID? = null,
 )
 
 /**

@@ -1,14 +1,11 @@
-// FR-IM-02 매핑 흐름 전체 통합테스트 — analyze→confirm→워커 처리(COMPLETED)까지 실 PostgreSQL(pgmq)+MinIO
-// Testcontainers 로 관통하고, canonical 즉시경로(accept) 회귀도 같이 검증한다 (PR-A Task 10)
+// FR-IM-02 PR-B 사용자 매핑 흐름 전체 통합테스트 — analyze→collectUsers→confirm(userMappings)→워커 처리까지 실 PostgreSQL+MinIO 관통 (Task 9)
 
 package com.bts.search.imports.mapping
 
-import com.bts.search.imports.job.application.ImportAcceptCommand
 import com.bts.search.imports.job.application.ImportAnalyzeCommand
 import com.bts.search.imports.job.application.ImportErrorLogWriter
 import com.bts.search.imports.job.application.ImportJobProcessor
 import com.bts.search.imports.job.application.ImportJobService
-import com.bts.search.imports.job.domain.ImportJobId
 import com.bts.search.imports.job.domain.ImportJobStatus
 import com.bts.search.imports.job.event.ImportJobEnqueuePublisher
 import com.bts.search.imports.job.repository.ImportJobRepository
@@ -53,45 +50,58 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * FR-IM-02 매핑 UI 2단계 흐름(`analyze → confirm → 워커 처리`) 풀스택 통합테스트.
+ * FR-IM-02 PR-B 사용자 매핑 흐름(`analyze → collectUsers → confirm(userMappings) → 워커 처리`) 풀스택
+ * 통합테스트.
  *
- * [ImportJobService.analyze] → [ImportMappingService.confirm] → [ImportJobWorker.pollAndProcess]
- * (내부에서 [ImportJobProcessor.process] 호출) 을 **실 PostgreSQL(pgmq, Testcontainers)** +
- * **실 MinIO(Testcontainers)** 위에서 관통시켜, 임의 헤더(비-canonical) CSV 가 사용자가 확정한 필드
- * 매핑대로 이슈 생성 커맨드로 변환되는지 검증한다.
+ * [ImportJobService.analyze] → [ImportMappingService.collectUsers] → [ImportMappingService.confirm] →
+ * [ImportJobWorker.pollAndProcess](내부에서 [ImportJobProcessor.process] 호출)을 **실 PostgreSQL
+ * (pgmq, Testcontainers)** + **실 MinIO(Testcontainers)** 위에서 관통시켜, CSV 원본에 등장하는
+ * 보고자/담당자/댓글 작성자 이메일이 사용자가 확정한 사용자 매핑대로 [IssueImportCommand] 의
+ * `reporterUserId`/`assigneeUserId`(+ 동반 VO [com.bts.shared.issue.ImportComment.authorUserId])로
+ * 세팅되는지 검증한다.
  *
- * `IssueImportPort`(shared-kernel cross-BC 쓰기 포트)는 search 모듈 test-boot 에 실 구현이 없으므로
- * [TestConfig.CapturingIssueImportPort] 로 대체한다 — [ImportControllerIntegrationTest][com.bts.search.imports.web.ImportControllerIntegrationTest]
- * 의 `StubIssuePermissionResolver` 와 동일하게 test-assembled 표준(no-cross-bc-deployment-assembly)을
- * 따르되, 이 테스트는 success 결과를 반환하며 전달받은 [IssueImportCommand] 를 캡처해 매핑 결과를
- * 실제로 단언한다(vacuous 금지 — "COMPLETED 만 확인"으로 끝내지 않는다).
+ * `IssueImportPort`(shared-kernel cross-BC 쓰기 포트)는 [ImportMappingFlowIntegrationTest] 와 동일하게
+ * [TestConfig.CapturingIssueImportPort] 로 대체한다(test-assembled 표준, no-cross-bc-deployment-assembly).
+ * `UserLookupPort` 도 동일 이유로 [TestConfig.SeededUserLookupPort] 로 대체하되, 이 테스트는 이메일→추천
+ * userId(`resolveByEmails`)와 userId→표시명(`findDisplayNamesByIds`) 응답을 테스트가 직접 시딩할 수
+ * 있는 가변 맵으로 구현한다 — [ImportMappingService.collectUsers] 의 추천 계산과 `confirm` 의 대상
+ * 사용자 실재 검증이 모두 이 포트를 거치기 때문이다.
  *
- * ## 검증 (plan Task 10 RED 시나리오)
- * - (i) 임의 헤더 CSV(`Título`/`담당`/`비고`) 를 [ImportJobService.analyze] 로 접수하면
- *   status=AWAITING_MAPPING, sourceFields 에 세 헤더가 감지된다.
- * - (ii) [ImportMappingService.confirm] 으로 `Título→summary, 담당→assignee, 비고→IGNORE` 매핑을
- *   확정하면 status=PENDING 으로 전이하고 [ImportMappingRepository] 에 매핑이 저장된다.
- * - (iii) [ImportJobWorker.pollAndProcess] 로 워커를 직접 호출하면 COMPLETED 로 전환되고,
- *   [TestConfig.CapturingIssueImportPort] 가 캡처한 커맨드의 `summary` 가 매핑된 소스 셀 값
- *   (`"버그입니다"`)과 일치한다 — `비고`(IGNORE) 컬럼 값은 어떤 필드에도 반영되지 않는다.
- * - (iv) canonical 헤더(`summary`) CSV 를 매핑 없이 [ImportJobService.accept] 즉시경로로 접수해도
- *   여전히 정상 처리된다(회귀) — [ImportMappingRepository] 에 매핑 행이 없어도 canonical 파싱이
- *   그대로 동작해야 한다.
- * - (v)(선택) [ImportMappingService.confirm] 을 `dryRun=true` 로 호출하면 `import_jobs.dry_run` 컬럼이
- *   영속되고, 워커가 그 값을 읽어 dry-run 커맨드로 처리한다(dryrun-fix 회귀 방지).
+ * ## 검증 (plan Task 9 RED 시나리오)
+ * - (i) 임의 헤더 CSV(`Título`/`보고자`/`담당`/`Comment`/`비고`)를 [ImportJobService.analyze] 로
+ *   접수하면 status=AWAITING_MAPPING, sourceFields 에 다섯 헤더가 감지된다.
+ * - (ii) [ImportMappingService.collectUsers] 를 필드 매핑(`Título→summary, 보고자→reporter,
+ *   담당→assignee, 비고→IGNORE`)으로 호출하면, 원본을 전량 스캔해 보고자/담당자/댓글 작성자 이메일
+ *   (`bob@corp.com`/`alice@corp.com`/`carol@corp.com`) 세 건을 distinct·정렬된 목록으로 반환하고,
+ *   [TestConfig.SeededUserLookupPort] 에 미리 시딩해 둔 `alice@corp.com` 만 추천 userId/표시명이 채워
+ *   진다(bob/carol 은 추천 없음 — 매핑 UI 가 수동 선택을 요구하는 케이스).
+ * - (iii) [ImportMappingService.confirm] 으로 위 필드 매핑 + 사용자 매핑(`bob@corp.com→bobUserId,
+ *   alice@corp.com→aliceUserId, carol@corp.com→carolUserId`, 셋 다 실재 사용자로 시딩됨)을 확정하면
+ *   [ImportUserMappingRepository] 에 세 매핑이 저장되고 status=PENDING 으로 전이한다.
+ * - (iv) [ImportJobWorker.pollAndProcess] 로 워커를 직접 호출하면 COMPLETED 로 전환되고,
+ *   [TestConfig.CapturingIssueImportPort] 가 캡처한 커맨드의 `reporterUserId`=bobUserId,
+ *   `assigneeUserId`=aliceUserId, 댓글 VO 의 `authorUserId`=carolUserId 로 세팅된다 — 이메일 필드
+ *   (`reporterEmail`/`assigneeEmail`/댓글 `authorEmail`)는 그대로 보존된다(어댑터 폴백 경로 불변).
+ *   `비고`(IGNORE) 컬럼 값은 어떤 필드에도 반영되지 않는다.
+ *
+ * ## 회귀 — 사용자 매핑 없이 confirm 하면 커맨드 userId 필드가 전부 null
+ *
+ * [ImportMappingService.confirm] 을 `userMappings` 생략(기본값 빈 목록)으로 호출한 job 은
+ * [ImportUserMappingRepository] 에 매핑이 저장되지 않고, 워커가 처리한 커맨드의 `reporterUserId`/
+ * `assigneeUserId` 가 전부 null 이어야 한다 — 이메일 필드는 여전히 채워져(기존 어댑터 이메일 폴백
+ * 경로가 살아있는지 확인) `userMappings` 기본값 도입이 기존 호출부(사용자 매핑 없이 confirm 하던
+ * PR-A 호출부)를 깨지 않았는지 검증한다.
  *
  * ## 트랜잭션 배선
  *
- * [ImportJobService]/[ImportMappingService] 생성자가 [TransactionTemplate] 을 직접 요구하므로
- * (persist+enqueue 원자성, `ImportJobService` KDoc §트랜잭션 경계) 실 [PlatformTransactionManager] 를
- * 등록한다. `dataSource`/`transactionManager`/`dslContext` 세 빈이 **동일한 [DriverManagerDataSource]
- * 인스턴스**를 공유해야 [ImportJobEnqueuePublisher.enqueue]([org.springframework.transaction.annotation.Propagation.MANDATORY])
- * 가 [TransactionTemplate] 이 연 트랜잭션 안에서 정상 동작한다 — [ImportControllerIntegrationTest][com.bts.search.imports.web.ImportControllerIntegrationTest]
- * 와 동일 패턴.
+ * [ImportMappingFlowIntegrationTest] 와 동일 패턴 — `dataSource`/`transactionManager`/`dslContext`
+ * 세 빈이 동일한 [DriverManagerDataSource] 인스턴스를 공유해야 [ImportJobEnqueuePublisher.enqueue]
+ * ([org.springframework.transaction.annotation.Propagation.MANDATORY])가 [TransactionTemplate] 이
+ * 연 트랜잭션 안에서 정상 동작한다.
  */
 @ExtendWith(SpringExtension::class)
-@ContextConfiguration(classes = [ImportMappingFlowIntegrationTest.TestConfig::class])
-class ImportMappingFlowIntegrationTest {
+@ContextConfiguration(classes = [ImportUserMappingFlowIntegrationTest.TestConfig::class])
+class ImportUserMappingFlowIntegrationTest {
     @Configuration
     @EnableTransactionManagement(proxyTargetClass = true)
     open class TestConfig {
@@ -129,17 +139,8 @@ class ImportMappingFlowIntegrationTest {
         @Bean
         open fun importUserMappingRepository(dsl: DSLContext): ImportUserMappingRepository = ImportUserMappingRepository(dsl)
 
-        /**
-         * [UserLookupPort] cross-BC 포트의 test-assembled 최소 stub (no-cross-bc-deployment-assembly) —
-         * 이 흐름 테스트는 `confirm` 을 `userMappings` 생략(기본값 빈 목록)으로만 호출하므로
-         * [ImportMappingService.confirm] 이 [UserLookupPort] 를 실제로 호출하지 않는다. 배선 컴파일만
-         * 목적이라 `exists` 외 override 가 필요 없다.
-         */
         @Bean
-        open fun userLookupPort(): UserLookupPort =
-            object : UserLookupPort {
-                override fun exists(userId: UUID): Boolean = false
-            }
+        open fun userLookupPort(): SeededUserLookupPort = SeededUserLookupPort()
 
         @Bean
         open fun enqueuePublisher(dsl: DSLContext): ImportJobEnqueuePublisher = ImportJobEnqueuePublisher(dsl)
@@ -195,7 +196,7 @@ class ImportMappingFlowIntegrationTest {
             enqueuePublisher: ImportJobEnqueuePublisher,
             storage: MinioImportStorageAdapter,
             transactionTemplate: TransactionTemplate,
-            userLookupPort: UserLookupPort,
+            userLookupPort: SeededUserLookupPort,
             importUserMappingRepository: ImportUserMappingRepository,
         ): ImportMappingService {
             return ImportMappingService(
@@ -252,12 +253,12 @@ class ImportMappingFlowIntegrationTest {
 
         /**
          * 전달받은 [IssueImportCommand] 를 순서대로 캡처하고 항상 성공을 반환하는
-         * [IssueImportPort] stub — 매핑대로 커맨드가 조립됐는지 검증하는 이 테스트의 핵심 장치.
+         * [IssueImportPort] stub — 사용자 매핑대로 커맨드가 조립됐는지 검증하는 이 테스트의 핵심 장치.
          *
-         * [ImportAttachmentSource] 를 받는 2-arg 오버로드만 override 한다 — [IssueImportPort] 의
-         * 1-arg default 구현이 `importIssue(cmd, null)` 로 위임하므로([IssueImportPort] KDoc §주의)
-         * 첨부 소스가 없는(analyze/accept 모두 zip 미첨부) 이 테스트의 행 처리는 항상 이 메서드로
-         * 귀결된다.
+         * [ImportMappingFlowIntegrationTest.TestConfig.CapturingIssueImportPort] 와 동일 패턴 —
+         * [ImportAttachmentSource] 를 받는 2-arg 오버로드만 override 한다(1-arg default 가
+         * `importIssue(cmd, null)` 로 위임하므로, 첨부 미포함인 이 테스트의 행 처리는 항상 이 메서드로
+         * 귀결된다).
          */
         class CapturingIssueImportPort : IssueImportPort {
             val capturedCommands: MutableList<IssueImportCommand> = mutableListOf()
@@ -271,11 +272,35 @@ class ImportMappingFlowIntegrationTest {
             }
         }
 
+        /**
+         * [UserLookupPort] cross-BC 포트의 test-assembled 시딩 가능 fake(no-cross-bc-deployment-assembly).
+         *
+         * [suggestionsByEmail] 은 [ImportMappingService.collectUsers] 가 `resolveByEmails` 로 조회하는
+         * "이메일→추천 BTS 사용자 UUID" 응답을, [displayNamesById] 는 `collectUsers` 의 추천 표시명과
+         * `confirm` 의 대상 사용자 실재 검증([ImportMappingService] KDoc §사용자 매핑 검증 참조)이 공용으로
+         * 쓰는 "UUID→표시명" 응답을 시뮬레이션한다. 테스트가 각 시나리오에 필요한 항목만 채워 넣는다 —
+         * 예를 들어 `alice@corp.com` 만 [suggestionsByEmail] 에 있으면(추천 매칭), bob/carol 은
+         * [displayNamesById] 에는 있지만(confirm 의 대상 사용자 실재 검증 통과용) 추천 매칭은 없는
+         * 상태를 표현할 수 있다.
+         */
+        class SeededUserLookupPort : UserLookupPort {
+            val suggestionsByEmail: MutableMap<String, UUID> = ConcurrentHashMap()
+            val displayNamesById: MutableMap<UUID, String> = ConcurrentHashMap()
+
+            override fun exists(userId: UUID): Boolean = displayNamesById.containsKey(userId)
+
+            override fun resolveByEmails(emails: Set<String>): Map<String, UUID> =
+                emails.mapNotNull { email -> suggestionsByEmail[email]?.let { email to it } }.toMap()
+
+            override fun findDisplayNamesByIds(ids: Set<UUID>): Map<UUID, String> =
+                ids.mapNotNull { id -> displayNamesById[id]?.let { id to it } }.toMap()
+        }
+
         companion object {
             /**
              * JVM 단위 singleton PostgreSQL container.
              * quay.io/tembo/pg16-pgmq:latest — V604(pgmq 확장) 때문에 postgres:16-alpine 으로는 실패한다
-             * (ADR 2026-05-22-pgmq-postgres-image, `ImportControllerIntegrationTest` 동일 패턴).
+             * (ADR 2026-05-22-pgmq-postgres-image, `ImportMappingFlowIntegrationTest` 동일 패턴).
              */
             @JvmStatic
             val pg: PostgreSQLContainer<*> =
@@ -283,19 +308,19 @@ class ImportMappingFlowIntegrationTest {
                     DockerImageName
                         .parse("quay.io/tembo/pg16-pgmq:latest")
                         .asCompatibleSubstituteFor("postgres"),
-                ).withDatabaseName("bts_import_mapping_flow_it")
+                ).withDatabaseName("bts_import_user_mapping_flow_it")
                     .withUsername("bts")
                     .withPassword("bts_test")
                     .apply { start() }
 
-            /** JVM 단위 singleton MinIO container — `ImportControllerIntegrationTest` 와 동일 pinned 버전. */
+            /** JVM 단위 singleton MinIO container — 다른 Import 통합테스트와 동일 pinned 버전. */
             @JvmStatic
             val minio: MinIOContainer =
                 MinIOContainer("minio/minio:RELEASE.2023-09-04T19-57-37Z")
                     .apply { start() }
 
             /** 이 테스트 전용 버킷 — 다른 Import 통합테스트의 버킷과 물리적으로 분리한다. */
-            const val TEST_BUCKET = "bts-imports-mapping-flow-it"
+            const val TEST_BUCKET = "bts-imports-user-mapping-flow-it"
         }
     }
 
@@ -317,7 +342,7 @@ class ImportMappingFlowIntegrationTest {
 
     @Autowired
     @Suppress("VarCouldBeVal")
-    private lateinit var importMappingRepository: ImportMappingRepository
+    private lateinit var importUserMappingRepository: ImportUserMappingRepository
 
     @Autowired
     @Suppress("VarCouldBeVal")
@@ -331,48 +356,84 @@ class ImportMappingFlowIntegrationTest {
     @Suppress("VarCouldBeVal")
     private lateinit var issueImportPort: TestConfig.CapturingIssueImportPort
 
+    @Autowired
+    @Suppress("VarCouldBeVal")
+    private lateinit var userLookupPort: TestConfig.SeededUserLookupPort
+
     private val actorId: UUID = UUID.fromString("aaaaaaaa-0000-0000-0000-0000000000b1")
     private val projectKey = "ATLAS"
 
+    private val bobUserId: UUID = UUID.randomUUID()
+    private val aliceUserId: UUID = UUID.randomUUID()
+    private val carolUserId: UUID = UUID.randomUUID()
+
     @BeforeEach
     fun setUp() {
-        dsl.deleteFrom(IMPORT_JOBS).execute() // import_mappings 는 FK ON DELETE CASCADE(V606)로 동반 삭제된다.
+        dsl.deleteFrom(IMPORT_JOBS).execute() // import_user_mappings 는 FK ON DELETE CASCADE(V607)로 동반 삭제된다.
         runCatching { dsl.execute("SELECT pgmq.purge_queue(?)", ImportJobWorker.QUEUE_NAME) }
         permissionResolver.allowed.clear()
         permissionResolver.allowed.add(actorId)
         issueImportPort.capturedCommands.clear()
+        userLookupPort.suggestionsByEmail.clear()
+        userLookupPort.displayNamesById.clear()
     }
 
-    // ── (i)~(iii) analyze → confirm → 워커 처리, 매핑대로 summary/assignee 반영 ──────
+    // ── (i)~(iv) analyze → collectUsers → confirm(userMappings) → 워커 처리 ─────
 
     @Test
-    fun `임의 헤더 CSV는 analyze 로 매핑UI 진입 후 confirm 매핑대로 워커가 처리해 COMPLETED 되고 비고는 무시된다`() {
-        val csv = "Título,담당,비고\n버그입니다,alice@corp.com,무시할값\n"
+    fun `보고자 담당자 댓글작성자 이메일이 collectUsers로 수집되고 confirm 사용자매핑대로 워커가 커맨드에 userId를 세팅한다`() {
+        val csv =
+            "Título,보고자,담당,Comment,비고\n" +
+                "버그입니다,bob@corp.com,alice@corp.com,2024-01-01;carol@corp.com;코멘트내용,무시할값\n"
 
         val analysis = importJobService.analyze(analyzeCommand(csv))
         assertThat(analysis.job.status).isEqualTo(ImportJobStatus.AWAITING_MAPPING)
-        assertThat(analysis.sourceFields).containsExactly("Título", "담당", "비고")
+        assertThat(analysis.sourceFields).containsExactly("Título", "보고자", "담당", "Comment", "비고")
         val jobId = analysis.job.id
+
+        val fieldMappings =
+            mapOf(
+                "Título" to TargetField.SUMMARY.key,
+                "보고자" to TargetField.REPORTER.key,
+                "담당" to TargetField.ASSIGNEE.key,
+                "비고" to TargetField.IGNORE_KEY,
+            )
+
+        // alice@corp.com 만 기존 BTS 사용자 추천이 있고, bob/carol 은 수동 선택이 필요한 케이스.
+        userLookupPort.suggestionsByEmail["alice@corp.com"] = aliceUserId
+        userLookupPort.displayNamesById[aliceUserId] = "Alice"
+        // confirm 시 대상 사용자 실재 검증에 필요 — bob/carol 은 추천은 없지만 실재 사용자다.
+        userLookupPort.displayNamesById[bobUserId] = "Bob"
+        userLookupPort.displayNamesById[carolUserId] = "Carol"
+
+        val collected = importMappingService.collectUsers(jobId, actorId, fieldMappings)
+        assertThat(collected.users)
+            .containsExactly(
+                UserCollectionEntry("alice@corp.com", aliceUserId, "Alice"),
+                UserCollectionEntry("bob@corp.com", null, null),
+                UserCollectionEntry("carol@corp.com", null, null),
+            )
 
         val confirmed =
             importMappingService.confirm(
                 jobId = jobId,
                 actor = actorId,
-                fieldMappings =
-                    mapOf(
-                        "Título" to TargetField.SUMMARY.key,
-                        "담당" to TargetField.ASSIGNEE.key,
-                        "비고" to TargetField.IGNORE_KEY,
-                    ),
+                fieldMappings = fieldMappings,
                 dryRun = false,
+                userMappings =
+                    listOf(
+                        "bob@corp.com" to bobUserId,
+                        "alice@corp.com" to aliceUserId,
+                        "carol@corp.com" to carolUserId,
+                    ),
             )
         assertThat(confirmed.status).isEqualTo(ImportJobStatus.PENDING)
-        assertThat(importMappingRepository.findByJobId(jobId))
+        assertThat(importUserMappingRepository.findByJobId(jobId))
             .containsExactlyInAnyOrderEntriesOf(
                 mapOf(
-                    "Título" to TargetField.SUMMARY.key,
-                    "담당" to TargetField.ASSIGNEE.key,
-                    "비고" to TargetField.IGNORE_KEY,
+                    "bob@corp.com" to bobUserId,
+                    "alice@corp.com" to aliceUserId,
+                    "carol@corp.com" to carolUserId,
                 ),
             )
 
@@ -381,80 +442,57 @@ class ImportMappingFlowIntegrationTest {
         assertThat(importJobRepository.findStatus(jobId)).isEqualTo(ImportJobStatus.COMPLETED)
         assertThat(issueImportPort.capturedCommands).hasSize(1)
         val command = issueImportPort.capturedCommands.single()
-        assertThat(command.summary).isEqualTo("버그입니다")
+        assertThat(command.reporterEmail).isEqualTo("bob@corp.com")
         assertThat(command.assigneeEmail).isEqualTo("alice@corp.com")
+        assertThat(command.reporterUserId).isEqualTo(bobUserId)
+        assertThat(command.assigneeUserId).isEqualTo(aliceUserId)
         assertThat(command.description).isNull() // "비고" 는 IGNORE 라 어떤 필드에도 반영되지 않는다.
+
+        assertThat(command.comments).hasSize(1)
+        val comment = command.comments.single()
+        assertThat(comment.body).isEqualTo("코멘트내용")
+        assertThat(comment.authorEmail).isEqualTo("carol@corp.com")
+        assertThat(comment.authorUserId).isEqualTo(carolUserId)
     }
 
-    // ── (iv) canonical 즉시경로(accept) 회귀 — 매핑 없이도 정상 처리 ───────────────
+    // ── 회귀 — 사용자매핑 없이 confirm 하면 커맨드 userId 필드가 전부 null ────────
 
     @Test
-    fun `canonical 헤더 CSV는 accept 즉시경로로 매핑 없이도 정상 COMPLETED 된다 (회귀)`() {
-        val csv = "summary\n캐노니컬 이슈\n"
-
-        val job = importJobService.accept(acceptCommand(csv))
-        assertThat(job.status).isEqualTo(ImportJobStatus.PENDING)
-        assertThat(importMappingRepository.findByJobId(job.id)).isEmpty()
-
-        importJobWorker.pollAndProcess()
-
-        assertThat(importJobRepository.findStatus(job.id)).isEqualTo(ImportJobStatus.COMPLETED)
-        assertThat(issueImportPort.capturedCommands).hasSize(1)
-        assertThat(issueImportPort.capturedCommands.single().summary).isEqualTo("캐노니컬 이슈")
-    }
-
-    // ── (v) dryRun 확정 — dry_run 컬럼 영속 + 워커가 확정값을 읽어 처리 ────────────
-
-    @Test
-    fun `confirm 을 dryRun true 로 호출하면 dry_run 이 영속되고 워커가 dryRun true 커맨드로 처리한다`() {
-        val csv = "Título\n드라이런 이슈\n"
+    fun `사용자 매핑 없이 confirm 하면 커맨드 userId 필드가 전부 null 이다 (기존 이메일 폴백 동작 불변, 회귀)`() {
+        val csv = "Título,보고자,담당\n다른버그입니다,dave@corp.com,eve@corp.com\n"
 
         val analysis = importJobService.analyze(analyzeCommand(csv))
         val jobId = analysis.job.id
 
-        val confirmed =
-            importMappingService.confirm(
-                jobId = jobId,
-                actor = actorId,
-                fieldMappings = mapOf("Título" to TargetField.SUMMARY.key),
-                dryRun = true,
+        val fieldMappings =
+            mapOf(
+                "Título" to TargetField.SUMMARY.key,
+                "보고자" to TargetField.REPORTER.key,
+                "담당" to TargetField.ASSIGNEE.key,
             )
-        assertThat(confirmed.dryRun).isTrue()
-        assertThat(fetchDryRun(jobId)).isTrue()
+
+        // userMappings 인자를 생략 — PR-A 시절부터 있던 기존 confirm 호출부와 동일한 형태.
+        importMappingService.confirm(jobId = jobId, actor = actorId, fieldMappings = fieldMappings, dryRun = false)
+        assertThat(importUserMappingRepository.findByJobId(jobId)).isEmpty()
 
         importJobWorker.pollAndProcess()
 
         assertThat(importJobRepository.findStatus(jobId)).isEqualTo(ImportJobStatus.COMPLETED)
-        assertThat(issueImportPort.capturedCommands.single().dryRun).isTrue()
+        assertThat(issueImportPort.capturedCommands).hasSize(1)
+        val command = issueImportPort.capturedCommands.single()
+        assertThat(command.reporterEmail).isEqualTo("dave@corp.com")
+        assertThat(command.assigneeEmail).isEqualTo("eve@corp.com")
+        assertThat(command.reporterUserId).isNull()
+        assertThat(command.assigneeUserId).isNull()
     }
 
     // ── private helpers ────────────────────────────────────────────────────────
-
-    private fun fetchDryRun(jobId: ImportJobId): Boolean? =
-        dsl.select(IMPORT_JOBS.DRY_RUN)
-            .from(IMPORT_JOBS)
-            .where(IMPORT_JOBS.ID.eq(jobId.value))
-            .fetchOne(IMPORT_JOBS.DRY_RUN)
 
     private fun analyzeCommand(csv: String): ImportAnalyzeCommand {
         val bytes = csv.toByteArray(Charsets.UTF_8)
         return ImportAnalyzeCommand(
             projectKey = projectKey,
             format = "CSV",
-            filename = "issues.csv",
-            contentType = null,
-            sizeBytes = bytes.size.toLong(),
-            inputStream = ByteArrayInputStream(bytes),
-            requesterUserId = actorId,
-        )
-    }
-
-    private fun acceptCommand(csv: String): ImportAcceptCommand {
-        val bytes = csv.toByteArray(Charsets.UTF_8)
-        return ImportAcceptCommand(
-            projectKey = projectKey,
-            format = "CSV",
-            dryRun = false,
             filename = "issues.csv",
             contentType = null,
             sizeBytes = bytes.size.toLong(),
