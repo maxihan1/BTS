@@ -220,28 +220,35 @@ const USER_COLLECTION_FIXTURE: UserCollectionResponse['users'] = [
   { sourceIdentifier: 'carol@example.com' },
 ]
 
-/** collectValues 고정 픽스처 — STATUS/TYPE/PRIORITY 각 소스 값(일부는 suggestedTargetValue 없음) */
+/**
+ * collectValues 고정 픽스처 — STATUS/TYPE/PRIORITY 각 소스 값(일부는 suggestedTargetValue 없음).
+ *
+ * sourceValue는 backend `ValueMappingNormalizer.normalize`(trim + lowercase, 정본
+ * search-export-import/.../mapping/ValueMappingNormalizer.kt)가 반환하는 정규화된 값과 케이스를
+ * 맞춘다 — 원본 대소문자('Open' 등)를 그대로 쓰면 실제 API 응답과 달라 E2E가 가짜로 통과한다
+ * (suggestedTargetValue는 BTS canonical 대상 값이라 정규화 대상이 아니다).
+ */
 const VALUE_COLLECTION_FIXTURE: ValueCollectionResponse['fields'] = [
   {
     targetField: 'STATUS',
     values: [
-      { sourceValue: 'Open', suggestedTargetValue: '할 일' },
-      { sourceValue: 'In Progress', suggestedTargetValue: '진행 중' },
-      { sourceValue: 'Resolved' },
+      { sourceValue: 'open', suggestedTargetValue: '할 일' },
+      { sourceValue: 'in progress', suggestedTargetValue: '진행 중' },
+      { sourceValue: 'resolved' },
     ],
   },
   {
     targetField: 'TYPE',
     values: [
-      { sourceValue: 'Bug', suggestedTargetValue: '버그' },
-      { sourceValue: 'Story' },
+      { sourceValue: 'bug', suggestedTargetValue: '버그' },
+      { sourceValue: 'story' },
     ],
   },
   {
     targetField: 'PRIORITY',
     values: [
-      { sourceValue: 'High', suggestedTargetValue: '높음' },
-      { sourceValue: 'Low' },
+      { sourceValue: 'high', suggestedTargetValue: '높음' },
+      { sourceValue: 'low' },
     ],
   },
 ]

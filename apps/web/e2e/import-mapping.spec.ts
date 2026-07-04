@@ -158,7 +158,7 @@ async function proceedUsersStep(page: Page): Promise<void> {
 
 /** 값 매핑 단계 진입을 확인하고(추천값 기본 유지) [다음]을 클릭한다 */
 async function proceedValuesStep(page: Page): Promise<void> {
-  await expect(page.getByLabel('상태 Open 대상 값', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('상태 open 대상 값', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '다음', exact: true }).click()
 }
 
