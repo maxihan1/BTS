@@ -17,15 +17,22 @@ import com.bts.search.imports.job.storage.MinioImportStorageConfig
 import com.bts.search.imports.job.worker.ImportJobWorker
 import com.bts.search.imports.mapping.repository.ImportMappingRepository
 import com.bts.search.imports.mapping.repository.ImportUserMappingRepository
+import com.bts.search.imports.mapping.repository.ImportValueMappingRepository
 import com.bts.search.jooq.tables.references.IMPORT_JOBS
 import com.bts.shared.issue.ImportAttachmentSource
 import com.bts.shared.issue.IssueImportCommand
 import com.bts.shared.issue.IssueImportPort
 import com.bts.shared.issue.IssueImportResult
+import com.bts.shared.issue.IssueTypeCatalog
+import com.bts.shared.issue.IssueTypeKey
+import com.bts.shared.issue.IssueTypeRef
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
 import com.bts.shared.user.UserLookupPort
+import com.bts.shared.workflow.ProjectKey
+import com.bts.shared.workflow.WorkflowStateCatalog
+import com.bts.shared.workflow.WorkflowStateView
 import io.minio.MinioClient
 import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
@@ -127,7 +134,14 @@ class ImportMappingFlowIntegrationTest {
         open fun importMappingRepository(dsl: DSLContext): ImportMappingRepository = ImportMappingRepository(dsl)
 
         @Bean
-        open fun importUserMappingRepository(dsl: DSLContext): ImportUserMappingRepository = ImportUserMappingRepository(dsl)
+        open fun importUserMappingRepository(dsl: DSLContext): ImportUserMappingRepository {
+            return ImportUserMappingRepository(dsl)
+        }
+
+        @Bean
+        open fun importValueMappingRepository(dsl: DSLContext): ImportValueMappingRepository {
+            return ImportValueMappingRepository(dsl)
+        }
 
         /**
          * [UserLookupPort] cross-BC 포트의 test-assembled 최소 stub (no-cross-bc-deployment-assembly) —
@@ -140,6 +154,12 @@ class ImportMappingFlowIntegrationTest {
             object : UserLookupPort {
                 override fun exists(userId: UUID): Boolean = false
             }
+
+        @Bean
+        open fun issueTypeCatalog(): FixedIssueTypeCatalog = FixedIssueTypeCatalog()
+
+        @Bean
+        open fun workflowStateCatalog(): FixedWorkflowStateCatalog = FixedWorkflowStateCatalog()
 
         @Bean
         open fun enqueuePublisher(dsl: DSLContext): ImportJobEnqueuePublisher = ImportJobEnqueuePublisher(dsl)
@@ -197,6 +217,9 @@ class ImportMappingFlowIntegrationTest {
             transactionTemplate: TransactionTemplate,
             userLookupPort: UserLookupPort,
             importUserMappingRepository: ImportUserMappingRepository,
+            issueTypeCatalog: FixedIssueTypeCatalog,
+            workflowStateCatalog: FixedWorkflowStateCatalog,
+            importValueMappingRepository: ImportValueMappingRepository,
         ): ImportMappingService {
             return ImportMappingService(
                 importMappingRepository,
@@ -206,6 +229,9 @@ class ImportMappingFlowIntegrationTest {
                 transactionTemplate,
                 userLookupPort,
                 importUserMappingRepository,
+                issueTypeCatalog,
+                workflowStateCatalog,
+                importValueMappingRepository,
             )
         }
 
@@ -269,6 +295,29 @@ class ImportMappingFlowIntegrationTest {
                 capturedCommands += cmd
                 return IssueImportResult.success("ATLAS-${capturedCommands.size}")
             }
+        }
+
+        /**
+         * 고정 빈 목록만 반환하는 테스트 전용 [IssueTypeCatalog] (FR-IM-02 PR-C) — 이 통합테스트는
+         * `confirm` 을 `valueMappings` 생략(기본값 빈 목록)으로만 호출하므로
+         * [ImportMappingService.confirm]/[ImportMappingService.collectValues] 가 이 포트를 실제로
+         * 호출하지 않는다. 배선 컴파일만 목적이다.
+         *
+         * `open` 필수 — [IssueTypeCatalog.listTypes] 의 인터페이스 레벨 `@Transactional` 을 [TestConfig]
+         * 의 `@EnableTransactionManagement(proxyTargetClass = true)` 가 CGLIB 서브클래싱으로 감싸려
+         * 시도하는데, Kotlin 클래스는 기본 final 이라 `open` 없이는 Enhancer 가 실패한다
+         * (`IssueImportAdapterTest.FixedStatesWorkflowStateCatalog` 와 동일 근거).
+         */
+        open class FixedIssueTypeCatalog : IssueTypeCatalog {
+            override fun listTypes(): List<IssueTypeRef> = emptyList()
+        }
+
+        /** [FixedIssueTypeCatalog] 와 동일 근거 — 고정 빈 목록만 반환하는 테스트 전용 [WorkflowStateCatalog]. */
+        open class FixedWorkflowStateCatalog : WorkflowStateCatalog {
+            override fun listStates(
+                projectKey: ProjectKey,
+                issueTypeKey: IssueTypeKey?,
+            ): List<WorkflowStateView> = emptyList()
         }
 
         companion object {

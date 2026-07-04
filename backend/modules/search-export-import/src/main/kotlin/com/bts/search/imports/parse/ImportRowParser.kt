@@ -33,6 +33,8 @@ import java.io.InputStreamReader
  * 이름으로 통일하고, 범위 밖/미인식 값은 조용히 무시(null)한다.
  * Status 는 원본 문자열을 그대로 담고, Fix/Affects Version 은 라벨/컴포넌트와 동일하게 콤마/세미콜론
  * 다중값을 분리한다 — 상태·버전 이름 자체의 존재 확인(프로젝트 워크플로우/버전 매칭)은 후속 단계 책임이다.
+ * canonical 우선순위 이름 5 종은 [canonicalPriorityNames] 로도 노출한다(FR-IM-02 PR-C 값매핑 위저드가
+ * 자동추천·확정값 검증의 단일 출처로 재사용).
  *
  * 임의 Jira 헤더(`Component/s` 등)·자유 매핑은 FR-IM-02(매핑 UI) 몫 — [parseCsv] 3-인자 오버로드
  * (mapped 모드, §매핑 기반 파싱)로 지원한다.
@@ -711,6 +713,16 @@ class ImportRowParser {
                 4 to "Low",
                 5 to "Lowest",
             )
+
+        /**
+         * canonical 우선순위 이름 5 종(노출, drift 방지 단일 출처, FR-IM-02 PR-C).
+         *
+         * [PRIORITY_NAME_BY_NUMBER] 의 값 집합을 그대로 노출한다. Import 값매핑 위저드의 자동추천
+         * 계산([com.bts.search.imports.mapping.ImportMappingService.collectValues])과 확정값 검증
+         * ([com.bts.search.imports.mapping.ImportMappingService.confirm] 의 `valueMappings` FR7 엄격
+         * 검증)이 이 집합을 재사용해 우선순위 5 종의 정본 표기를 이 파일과 어긋나지 않게 유지한다.
+         */
+        internal val canonicalPriorityNames: Set<String> = PRIORITY_NAME_BY_NUMBER.values.toSet()
 
         private val JSON_FACTORY = JsonFactory()
         private val OBJECT_MAPPER = ObjectMapper()
