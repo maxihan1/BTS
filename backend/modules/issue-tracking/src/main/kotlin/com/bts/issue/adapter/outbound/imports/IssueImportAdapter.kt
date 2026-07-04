@@ -401,7 +401,8 @@ class IssueImportAdapter(
             warnings += "댓글 ${cmd.comments.size}건은 권한이 없어 건너뛰어질 수 있습니다."
             return
         }
-        val unmatchedCount = cmd.comments.count { isAuthorUnmatched(it.authorEmail, resolution.resolvedEmails) }
+        val unmatchedCount =
+            cmd.comments.count { isAuthorUnmatched(it.authorUserId, it.authorEmail, resolution.resolvedEmails) }
         if (unmatchedCount > 0) {
             warnings += "댓글 ${unmatchedCount}건 작성자 이메일이 매칭되지 않아 요청자로 대체될 수 있습니다."
         }
@@ -431,7 +432,8 @@ class IssueImportAdapter(
             warnings += "워크로그 ${invalidCount}건 소요 시간이 0 이하라 건너뛰어질 수 있습니다."
         }
         val created = cmd.worklogs.filter { it.timeSpentSeconds > 0 }
-        val unmatchedCount = created.count { isAuthorUnmatched(it.authorEmail, resolution.resolvedEmails) }
+        val unmatchedCount =
+            created.count { isAuthorUnmatched(it.authorUserId, it.authorEmail, resolution.resolvedEmails) }
         if (unmatchedCount > 0) {
             warnings += "워크로그 ${unmatchedCount}건 작성자 이메일이 매칭되지 않아 요청자로 대체될 수 있습니다."
         }
@@ -712,8 +714,16 @@ class IssueImportAdapter(
         }
         var unmatchedAuthorCount = 0
         for (importComment in cmd.comments) {
-            if (isAuthorUnmatched(importComment.authorEmail, resolution.resolvedEmails)) unmatchedAuthorCount++
-            val authorId = resolveAuthorId(importComment.authorEmail, resolution.resolvedEmails, cmd.requesterUserId)
+            if (isAuthorUnmatched(importComment.authorUserId, importComment.authorEmail, resolution.resolvedEmails)) {
+                unmatchedAuthorCount++
+            }
+            val authorId =
+                resolveAuthorId(
+                    importComment.authorUserId,
+                    importComment.authorEmail,
+                    resolution.resolvedEmails,
+                    cmd.requesterUserId,
+                )
             commentApplicationService.create(actor, key, importComment.body, ActorId(authorId), importComment.createdAt)
         }
         if (unmatchedAuthorCount > 0) {
@@ -772,8 +782,15 @@ class IssueImportAdapter(
         if (importWorklog.timeSpentSeconds <= 0) {
             return WorklogApplyOutcome(invalidTimeSpent = true, unmatchedAuthor = false, missingStartedAt = false)
         }
-        val unmatched = isAuthorUnmatched(importWorklog.authorEmail, resolution.resolvedEmails)
-        val authorId = resolveAuthorId(importWorklog.authorEmail, resolution.resolvedEmails, requesterUserId)
+        val unmatched =
+            isAuthorUnmatched(importWorklog.authorUserId, importWorklog.authorEmail, resolution.resolvedEmails)
+        val authorId =
+            resolveAuthorId(
+                importWorklog.authorUserId,
+                importWorklog.authorEmail,
+                resolution.resolvedEmails,
+                requesterUserId,
+            )
         val missingStartedAt = importWorklog.startedAt == null
         worklogService.createImported(
             actor = actor,
@@ -902,7 +919,13 @@ class IssueImportAdapter(
         }
         val stream =
             attachmentSource?.open(importAttachment.filename, cmd.sourceKey) ?: return AttachmentSkipReason.NOT_FOUND
-        val uploaderId = resolveAuthorId(importAttachment.authorEmail, resolution.resolvedEmails, cmd.requesterUserId)
+        val uploaderId =
+            resolveAuthorId(
+                importAttachment.authorUserId,
+                importAttachment.authorEmail,
+                resolution.resolvedEmails,
+                cmd.requesterUserId,
+            )
         return try {
             stream.use { uploadAttachment(it, importAttachment, contentType, actor, key, uploaderId) }
         } catch (e: UnsupportedAttachmentTypeException) {
@@ -1106,7 +1129,7 @@ class IssueImportAdapter(
         var unmappedFieldCount = 0
         val mappedItems = mapChangelogItems(importGroup.items) { unmappedFieldCount++ }
         if (mappedItems.isEmpty()) return ChangelogGroupOutcome(skippedTime = 0, unmappedFields = unmappedFieldCount)
-        val actorId = importGroup.authorEmail?.lowercase()?.let { resolution.resolvedEmails[it] }
+        val actorId = importGroup.authorUserId ?: importGroup.authorEmail?.lowercase()?.let { resolution.resolvedEmails[it] }
         historyRecorder.recordImported(
             IssueChangeGroup(
                 issueId = issueId,
@@ -1190,20 +1213,27 @@ class IssueImportAdapter(
     ): Boolean = permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(key.value))
 
     /**
-     * 댓글/worklog author 이메일을 실제 식별자로 해석한다 — 미매칭 시 [requesterUserId] 로 폴백한다
-     * ([ImportComment.authorEmail]/[ImportWorklog.authorEmail] KDoc, [resolveFields] 의 reporter 폴백과 동일 규칙).
+     * 댓글/worklog/첨부 author 를 실제 식별자로 해석한다 — [authorUserId](PR2 명시적 매핑)가 있으면
+     * 이메일 해석보다 우선하고, null 이면 이메일 매칭 → 미매칭 시 [requesterUserId] 로 폴백한다
+     * ([ImportComment.authorUserId]/[ImportComment.authorEmail] 등 KDoc, [resolveFields] 의 reporter
+     * 폴백과 동일 규칙).
      */
     private fun resolveAuthorId(
+        authorUserId: UUID?,
         authorEmail: String?,
         resolvedEmails: Map<String, UUID>,
         requesterUserId: UUID,
-    ): UUID = authorEmail?.lowercase()?.let { resolvedEmails[it] } ?: requesterUserId
+    ): UUID = authorUserId ?: (authorEmail?.lowercase()?.let { resolvedEmails[it] } ?: requesterUserId)
 
-    /** [authorEmail] 이 지정됐지만 [resolvedEmails] 에 매칭되지 않았는지 여부([resolveAuthorId] 의 폴백 발생 조건과 동일). */
+    /**
+     * author 가 아직 실제 식별자로 해석되지 않았는지 여부([resolveAuthorId] 의 requester 폴백 발생
+     * 조건과 동일) — [authorUserId] 가 지정됐으면 이메일 매칭 여부와 무관하게 항상 matched(false) 다.
+     */
     private fun isAuthorUnmatched(
+        authorUserId: UUID?,
         authorEmail: String?,
         resolvedEmails: Map<String, UUID>,
-    ): Boolean = authorEmail != null && resolvedEmails[authorEmail.lowercase()] == null
+    ): Boolean = authorUserId == null && authorEmail != null && resolvedEmails[authorEmail.lowercase()] == null
 
     /**
      * import 커맨드의 이메일/이름 필드를 실제 식별자로 해석한 결과.
@@ -1265,8 +1295,10 @@ class IssueImportAdapter(
         val resolvedEmails =
             if (emailsToResolve.isEmpty()) emptyMap() else userLookupPort.resolveByEmails(emailsToResolve)
 
-        val reporterId = cmd.reporterEmail?.lowercase()?.let { resolvedEmails[it] } ?: cmd.requesterUserId
-        val assigneeId = cmd.assigneeEmail?.lowercase()?.let { resolvedEmails[it] }
+        val reporterId =
+            cmd.reporterUserId
+                ?: (cmd.reporterEmail?.lowercase()?.let { resolvedEmails[it] } ?: cmd.requesterUserId)
+        val assigneeId = cmd.assigneeUserId ?: cmd.assigneeEmail?.lowercase()?.let { resolvedEmails[it] }
 
         val typeId = resolveTypeId(cmd.typeName, warnings)
         val componentIds = resolveComponentIds(cmd.componentNames, projectId, actor, cmd, warnings)
