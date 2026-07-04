@@ -12,6 +12,9 @@ import { ImportMappingWizard } from '@/components/import/mapping/ImportMappingWi
 
 type ImportPageMode = 'simple' | 'mapping'
 
+/** 토글 렌더 순서 — Record 키 순회 시 필요한 `as` 캐스트를 피하기 위한 명시적 배열 */
+const IMPORT_MODE_ORDER: readonly ImportPageMode[] = ['simple', 'mapping']
+
 const IMPORT_MODE_LABELS: Record<ImportPageMode, string> = {
   simple: '바로 가져오기',
   mapping: '매핑하며 가져오기',
@@ -34,7 +37,7 @@ function ImportModeToggle({ mode, onModeChange }: ImportModeToggleProps): JSX.El
   return (
     <div className="space-y-1.5">
       <div role="group" aria-label="Import 방식" className="flex gap-2">
-        {(Object.keys(IMPORT_MODE_LABELS) as ImportPageMode[]).map((candidate) => (
+        {IMPORT_MODE_ORDER.map((candidate) => (
           <Button
             key={candidate}
             type="button"
