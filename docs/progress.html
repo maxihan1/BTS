@@ -152,7 +152,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 <aside class="sidebar">
     <div class="sidebar-head">
       <div class="logo">🏢 BTS Dashboard</div>
-      <div class="updated">2026-07-03 갱신</div>
+      <div class="updated">2026-07-04 갱신</div>
     </div>
     <nav>
       <ul class="nav-top">
@@ -1048,7 +1048,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <summary>
         <span class="fr-status">✅</span>
         <span class="fr-id">FR-UX-01</span>
-        <span class="fr-desc">퀵 필터 (보드 상단 즉시 필터)</span>
+        <span class="fr-desc"><span class="term" data-def="보드 상단에서 자주 쓰는 필터 조합을 이름 붙여 저장하고 칩 클릭 한 번으로 즉시 적용. 보드 공유(그 보드를 보는 모두가 함께 봄). 저장 형식=`BoardCardFilter` 쿼리스트링(`BoardFilterQueryParser` 양방향 serialize/deserialize, `x-www-form-urlencoded` 인코딩 계약—공백↔`+`). 물리 BC=agile-planning·논리=personalization(FR-SR-01 &quot;논리≠물리&quot; 선례). CREATE 권한 CRUD·BROWSE 조회. 활성 칩은 `activeQuickFilterId` id 추적(문자열 비교 아님). 보드당 20건 상한. (FR-UX-01)">퀵 필터</span> (보드 상단 즉시 필터)</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — Q<span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">ui</span>ckFilter</li><li><span class="step-icon">✅</span> D2 — 명세 — 보드별 사전 정의 필터</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `board_q<span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">ui</span>ck_filters(board_id, name, query)`</li><li><span class="step-icon">✅</span> D4 — 백엔드 — CRUD API + 보드 응답에 포함</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 보드 상단 필터 칩</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-미진행">
@@ -1740,6 +1740,10 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">ExportFormat</div>
       <div class="term-cat">도메인 — 검색 / AQL</div>
       <div class="term-def">Export 출력 형식 enum. `CSV`(UTF-8 BOM + RFC 4180, zero-dep) / `XLSX`(Apache POI). 각 contentType·fileExtension 보유 (FR-EX-01)</div>
+    </div><div class="term-item" data-cat="도메인 — 검색 / AQL" data-search="퀵 필터 보드 상단에서 자주 쓰는 필터 조합을 이름 붙여 저장하고 칩 클릭 한 번으로 즉시 적용. 보드 공유(그 보드를 보는 모두가 함께 봄). 저장 형식=`boardcardfilter` 쿼리스트링(`boardfilterqueryparser` 양방향 serialize/deserialize, `x-www-form-urlencoded` 인코딩 계약—공백↔`+`). 물리 bc=agile-planning·논리=personalization(fr-sr-01 &quot;논리≠물리&quot; 선례). create 권한 crud·browse 조회. 활성 칩은 `activequickfilterid` id 추적(문자열 비교 아님). 보드당 20건 상한. (fr-ux-01)">
+      <div class="term-name">퀵 필터</div>
+      <div class="term-cat">도메인 — 검색 / AQL</div>
+      <div class="term-def">보드 상단에서 자주 쓰는 필터 조합을 이름 붙여 저장하고 칩 클릭 한 번으로 즉시 적용. 보드 공유(그 보드를 보는 모두가 함께 봄). 저장 형식=`BoardCardFilter` 쿼리스트링(`BoardFilterQueryParser` 양방향 serialize/deserialize, `x-www-form-urlencoded` 인코딩 계약—공백↔`+`). 물리 BC=agile-planning·논리=personalization(FR-SR-01 &quot;논리≠물리&quot; 선례). CREATE 권한 CRUD·BROWSE 조회. 활성 칩은 `activeQuickFilterId` id 추적(문자열 비교 아님). 보드당 20건 상한. (FR-UX-01)</div>
     </div><div class="term-item" data-cat="도메인 — 인증" data-search="authenticationprovider 플러그형 인증 백엔드 (ldap/saml/oidc/local/oauth)">
       <div class="term-name">AuthenticationProvider</div>
       <div class="term-cat">도메인 — 인증</div>
