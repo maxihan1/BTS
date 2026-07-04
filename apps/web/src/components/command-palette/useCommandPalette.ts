@@ -1,12 +1,25 @@
 // Cmd+K/Ctrl+K 전역 단축키로 명령 팔레트를 여닫는 훅 — FR-UX-04 Task-3
 import { useEffect, useState } from 'react'
 
+/** 명령 팔레트를 토글하는 단축키 문자 — Cmd(mac)/Ctrl(win·linux) + 이 키 */
+const TOGGLE_KEY = 'k'
+
 /** useCommandPalette 반환값 */
 interface UseCommandPaletteResult {
   /** 팔레트 열림 여부 */
   readonly open: boolean
   /** 열림 상태를 직접 제어하는 setter — CommandPalette의 onOpenChange에 연결 */
   readonly setOpen: (open: boolean) => void
+}
+
+/**
+ * keydown 이벤트가 명령 팔레트 토글 단축키(Cmd+K/Ctrl+K)인지 판별한다.
+ *
+ * @param e keydown 이벤트
+ * @returns 토글 단축키이면 true
+ */
+function isToggleShortcut(e: KeyboardEvent): boolean {
+  return (e.metaKey || e.ctrlKey) && e.key === TOGGLE_KEY
 }
 
 /**
@@ -31,7 +44,7 @@ export function useCommandPalette(enabled: boolean): UseCommandPaletteResult {
     }
 
     function handleKeyDown(e: KeyboardEvent): void {
-      if (!(e.metaKey || e.ctrlKey) || e.key !== 'k') return
+      if (!isToggleShortcut(e)) return
       e.preventDefault()
       setOpen((prev) => !prev)
     }
