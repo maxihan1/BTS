@@ -1,12 +1,13 @@
-// RootLayout 단위 테스트 — useNotificationStream 마운트 검증
+// RootLayout 단위 테스트 — useNotificationStream 마운트 + 단축키/도움말 모달 결선 검증
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { useAuthStore } from '@/auth/authStore'
 import { RootLayout } from './__root'
 
-// TanStack Router Outlet mock — 라우터 컨텍스트 없이 단위 테스트 가능
+// TanStack Router Outlet/useNavigate mock — useKeyboardShortcuts가 useNavigate를 호출하므로 no-op spy 제공
 vi.mock('@tanstack/react-router', () => ({
   Outlet: () => null,
+  useNavigate: () => vi.fn(),
 }))
 
 // Header mock — Header 내부 의존성(라우터/쿼리) 격리
@@ -60,5 +61,40 @@ describe('RootLayout', () => {
     render(<RootLayout />)
 
     expect(useNotificationStream).toHaveBeenCalledTimes(1)
+  })
+
+  it('인증 상태에서 ?를 누르면 단축키 도움말 모달이 열린다', () => {
+    useAuthStore.setState({
+      accessToken: 'test-token',
+      user: {
+        userId: 'u1',
+        username: 'alice',
+        email: 'alice@bts.local',
+        authMethod: 'local',
+        mustChangePassword: false,
+        isSystemAdmin: false,
+        mfaEnrollmentRequired: false,
+      },
+    })
+
+    render(<RootLayout />)
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true }))
+    })
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('비인증 상태에서 ?를 눌러도 단축키 도움말 모달이 열리지 않는다', () => {
+    useAuthStore.setState({ accessToken: null, user: null })
+
+    render(<RootLayout />)
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true }))
+    })
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })
