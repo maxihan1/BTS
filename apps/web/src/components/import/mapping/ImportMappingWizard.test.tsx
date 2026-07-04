@@ -269,6 +269,30 @@ describe('ImportMappingWizard', () => {
     })
   })
 
+  // (e-1) 버그 수정 회귀 테스트 — 폴링은 tracking 단계에서만 활성화된다
+  // (실측 결함: enabled가 상수 true라 analyze 직후[confirm 이전] 존재하지 않는 jobId로 즉시
+  // GET가 나가 404 → retry:false라 쿼리가 error 상태로 굳고 refetchInterval이 영구 false를 반환해
+  // confirm 이후에도 tracking 화면이 "상태를 조회하지 못했습니다"에 고착되는 회귀를 고정한다.)
+  it('confirm 이전(검토 단계까지)에는 폴링이 비활성화되고, confirm 성공 후 tracking 진입 시에만 활성화된다', async () => {
+    vi.mocked(analyzeImport).mockResolvedValue(makeJsonAnalysis())
+    vi.mocked(collectUsers).mockResolvedValue({ users: [] })
+    vi.mocked(collectValues).mockResolvedValue({ fields: [] })
+    vi.mocked(confirmMapping).mockResolvedValue(makeJobStatus({ status: 'PENDING', dryRun: false }))
+    const { user } = renderWizard()
+
+    await uploadAndAnalyze(user, 'JSON')
+    await waitFor(() => screen.getByRole('button', { name: '가져오기 실행' }))
+
+    // jobId는 이미 세팅됐지만(analyze 응답) 아직 confirm 전 — 폴링은 비활성이어야 한다
+    expect(vi.mocked(useImportJobPolling)).toHaveBeenLastCalledWith(JOB_ID_1, false)
+
+    await user.click(screen.getByRole('button', { name: '가져오기 실행' }))
+
+    await waitFor(() => {
+      expect(vi.mocked(useImportJobPolling)).toHaveBeenLastCalledWith(JOB_ID_1, true)
+    })
+  })
+
   // (f) dry-run 완료 후 [이 매핑으로 실제 가져오기] → 재-analyze + confirm 재호출
   it('dry-run 완료 후 [이 매핑으로 실제 가져오기] 클릭 시 재-analyze 후 dryRun=false로 confirmMapping이 재호출된다', async () => {
     vi.mocked(analyzeImport).mockResolvedValueOnce(makeJsonAnalysis())
@@ -302,6 +326,11 @@ describe('ImportMappingWizard', () => {
         JOB_ID_2,
         expect.objectContaining({ dryRun: false }),
       )
+    })
+
+    // dry-run 재적용(G1) — 폴링이 이전 jobId가 아니라 새로 발급된 jobId를 tracking 활성 상태로 추적해야 한다
+    await waitFor(() => {
+      expect(vi.mocked(useImportJobPolling)).toHaveBeenLastCalledWith(JOB_ID_2, true)
     })
   })
 
