@@ -74,6 +74,8 @@ data class IssueImportCommand(
     val sourceKey: String? = null,
     val attachments: List<ImportAttachment> = emptyList(),
     val changelog: List<ImportChangeGroup> = emptyList(),
+    val reporterUserId: UUID? = null,
+    val assigneeUserId: UUID? = null,
 )
 
 /**
@@ -93,6 +95,7 @@ data class ImportComment(
     val body: String,
     val authorEmail: String? = null,
     val createdAt: Instant? = null,
+    val authorUserId: UUID? = null,
 )
 
 /**
@@ -114,6 +117,7 @@ data class ImportWorklog(
     val startedAt: Instant? = null,
     val authorEmail: String? = null,
     val comment: String? = null,
+    val authorUserId: UUID? = null,
 )
 
 /**
@@ -138,6 +142,7 @@ data class ImportAttachment(
     val createdAt: Instant? = null,
     val mimeType: String? = null,
     val sizeBytes: Long? = null,
+    val authorUserId: UUID? = null,
 )
 
 /**
@@ -157,6 +162,7 @@ data class ImportChangeGroup(
     val authorEmail: String? = null,
     val occurredAt: Instant? = null,
     val items: List<ImportChangeItem> = emptyList(),
+    val authorUserId: UUID? = null,
 )
 
 /**
