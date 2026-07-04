@@ -137,13 +137,15 @@
 
 **우선순위**. 높음 | **선행**. §0 | **Plan slug**. `personal/keymap`
 
-- [ ] D1. 도메인 — Shortcut (책임. backend-engineer)
-- [ ] D2. 명세 — 기본 단축키 매핑 (Gmail/Linear 스타일 참조) (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (코드 상수 + §3.3 커스텀) (책임. -)
-- [ ] D4. 백엔드 — (해당 없음) (책임. -)
-- [ ] D5. 백엔드 테스트 — (해당 없음) (책임. -)
-- [ ] D6. 프론트 UI — react-hotkeys-hook + 도움말 (`?`) (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+**아키텍처**. 프론트 전용 (ADR [decisions/2026-07-05-fr-ux-05-keymap.md](../../decisions/2026-07-05-fr-ux-05-keymap.md)). FR-UX-04와 상보. **커스텀 훅(의존성 0)** 으로 구현 — product 원안의 `react-hotkeys-hook`는 미도입(신규 의존성 회피 + `g i` 시퀀스 미지원, ADR D2 deviation). MVP 범위 = 전역 네비게이션 5종(`?`·`c`·`/`·`g i`·`g d`) + 도움말 모달. 컨텍스트 의존 단축키(`j/k/e/m/s`)는 후속 FR로 제외(Maxi 결정 2026-07-05). `cmd+k`는 FR-UX-04에서 이미 구현.
+
+- [x] D1. 도메인 — 프론트 단축키 레지스트리(`shortcuts.ts` SHORTCUTS 상수). 백엔드 도메인 없음 (책임. frontend-engineer)
+- [x] D2. 명세 — 전역 5종 매핑(Gmail/Linear 스타일, 네비게이션 전용) + 가드(입력포커스/IME/수정자/enabled) (책임. frontend-engineer)
+- [x] D3. 데이터 모델 — 없음 (단축키 정의는 프론트 코드 상수). 커스텀 키맵은 §3.3 FR-PF-03(범위 밖) (책임. -)
+- [x] D4. 백엔드 — 없음 (프론트 전용, ADR 2026-07-05) (책임. -)
+- [x] D5. 백엔드 테스트 — 해당 없음 (프론트 전용) (책임. -)
+- [x] D6. 프론트 UI — 커스텀 훅(`useKeyboardShortcuts`) + radix Dialog 도움말 모달(`?`) (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ## §5 캘린더 (FR-CA, 2개)
 

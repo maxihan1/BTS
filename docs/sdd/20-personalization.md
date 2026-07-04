@@ -115,6 +115,8 @@ https://atlas.company.com/api/v1/users/me/calendar.ics?token=...
 
 ## 20.9 키보드 단축키 (FR-UX-05)
 
+> **구현 현황 (2026-07-05, ADR [decisions/2026-07-05-fr-ux-05-keymap.md](../decisions/2026-07-05-fr-ux-05-keymap.md))**. MVP는 **전역 네비게이션 5종 + 도움말**(`?`·`c`·`/`·`g i`·`g d`)을 커스텀 훅(의존성 0)으로 구현 완료. 컨텍스트 의존 단축키(`j/k`·`e`·`m`·`s`)는 이슈 상세/보드와의 깊은 결선이 필요해 후속 FR로 미룸. `cmd+k`는 FR-UX-04에서 구현. 사용자 커스텀 키맵은 FR-PF-03.
+
 표준 단축키 + 사용자 커스텀:
 
 | 단축키 | 동작 |
