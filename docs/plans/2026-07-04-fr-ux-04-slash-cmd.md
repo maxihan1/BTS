@@ -46,9 +46,24 @@ learnings.md 반복 함정(FR-SR-02·FR-RP-01 동일). agent는 plan task별 지
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-04-fr-ux-04-slash-cmd.md](../specs/2026-07-04-fr-ux-04-slash-cmd.md)
+
+핵심 시나리오 요약.
+- `Cmd+K`/`Ctrl+K`로 전역 명령 팔레트 토글(인증 시만, `__root` RootLayout에 마운트).
+- 빈 입력 시 빠른 이동 목록(내 이슈/검색/대시보드/받은편지함) + 명령 힌트.
+- `/goto <이슈키>` → `/issues/$key`, `/search <질의>` → `/search?q=`, `/issue <제목>` → `/issues/new?summary=`(프리필).
+- 전부 네비게이션(mutation 없음). 백엔드 0(product D4 deviation).
+
+핵심 뷰레이어 변경.
+- `issues.new` 라우트에 `summary`(선택) search param 추가 → 폼 기본값 프리필(FR7).
+
+## Brainstorming Check
+
+✅ 통과 (sanity-check 1회 보강, gap 4건 수정 반영).
+- SearchRouteAdapter projectKey optional 검증 → `/search?q=` 라우팅 성립 확인.
+- 명령 힌트 prefill / projectKey 위임 / 포커스 복원 / 모달 중첩 정책 명시.
 
 ## Plan (← /bts-plan 채움)
 
