@@ -127,8 +127,7 @@ class ImportMappingFlowIntegrationTest {
         open fun importMappingRepository(dsl: DSLContext): ImportMappingRepository = ImportMappingRepository(dsl)
 
         @Bean
-        open fun importUserMappingRepository(dsl: DSLContext): ImportUserMappingRepository =
-            ImportUserMappingRepository(dsl)
+        open fun importUserMappingRepository(dsl: DSLContext): ImportUserMappingRepository = ImportUserMappingRepository(dsl)
 
         /**
          * [UserLookupPort] cross-BC 포트의 test-assembled 최소 stub (no-cross-bc-deployment-assembly) —

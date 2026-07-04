@@ -38,10 +38,21 @@ class UserMappingNormalizerTest : DescribeSpec({
                 baseRow(
                     reporterEmail = " Reporter@Example.com ",
                     assigneeEmail = "Assignee@Example.com",
-                    comments = listOf(ParsedImportComment(body = "c", authorEmail = "Commenter@Example.com", createdAt = null)),
+                    comments =
+                        listOf(
+                            ParsedImportComment(
+                                body = "c",
+                                authorEmail = "Commenter@Example.com",
+                                createdAt = null,
+                            ),
+                        ),
                     worklogs =
                         listOf(
-                            ParsedImportWorklog(timeSpentSeconds = 60, startedAt = null, authorEmail = "Worklogger@Example.com"),
+                            ParsedImportWorklog(
+                                timeSpentSeconds = 60,
+                                startedAt = null,
+                                authorEmail = "Worklogger@Example.com",
+                            ),
                         ),
                     attachments =
                         listOf(
@@ -55,7 +66,11 @@ class UserMappingNormalizerTest : DescribeSpec({
                         ),
                     changelog =
                         listOf(
-                            ParsedImportChangeGroup(authorEmail = "Changer@Example.com", created = null, items = emptyList()),
+                            ParsedImportChangeGroup(
+                                authorEmail = "Changer@Example.com",
+                                created = null,
+                                items = emptyList(),
+                            ),
                         ),
                 )
 
@@ -102,6 +117,7 @@ class UserMappingNormalizerTest : DescribeSpec({
  * 테스트 전용 [ParsedImportRow] 빌더. 코어 필드는 최소값으로 고정하고 작성자 관련 필드만
  * 파라미터로 받는다.
  */
+@Suppress("LongParameterList") // 6종 작성자 필드를 개별 지정하는 테스트 빌더 — 의도적 다인자
 private fun baseRow(
     reporterEmail: String?,
     assigneeEmail: String?,

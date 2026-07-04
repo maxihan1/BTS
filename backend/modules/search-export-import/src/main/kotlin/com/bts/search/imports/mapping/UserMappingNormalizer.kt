@@ -14,7 +14,6 @@ import com.bts.search.imports.parse.ParsedImportRow
  * 가리키는 식별자가 서로 다른 키로 취급되어 조용한 오배정(엉뚱한 사용자에게 배정)이 발생한다.
  */
 object UserMappingNormalizer {
-
     /**
      * 소스 식별자(이메일) 원본 문자열을 정규화한다 — 앞뒤 공백 제거 후 소문자 변환.
      *
