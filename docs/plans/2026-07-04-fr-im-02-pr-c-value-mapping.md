@@ -39,9 +39,21 @@ FR-IM-02 Import 매핑 에픽(3-PR)의 마지막 백엔드 조각. 소스 파일
 - **기존 결정 충돌**: 없음. PR-A ADR이 PR-C를 D3/D5에서 사전설계(3-테이블 모델·순서 의존).
 - **관련 ADR**: [2026-07-03-fr-im-02-import-mapping](../decisions/2026-07-03-fr-im-02-import-mapping.md)(에픽 정본·D3 값매핑 상속) · [2026-05-27-shared-kernel-extraction] · [2026-05-28-workflow-scheme-frontend-view-layer-cross-bc-lookup](신규 SPI 패턴 선례). **신규 ADR 파일 미생성** — IssueTypeCatalog SPI는 WorkflowStateCatalog 미러 + 두 기존 ADR 패턴 계승. 도메인 정리에 결정 명시(bts-review-plan eng 리뷰가 이 판단 검증).
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-04-fr-im-02-pr-c-value-mapping.md](../specs/2026-07-04-fr-im-02-pr-c-value-mapping.md)
+
+핵심 시나리오 3줄 요약.
+- collect(POST .../mapping/values): 필드매핑 기준 전량스캔 → status/type/priority distinct 소스값 + 자동추천(status=WorkflowStateCatalog·type=IssueTypeCatalog·priority=파서 canonical5).
+- confirm 확장: valueMappings를 CAS 트랜잭션(필드→사용자→값 saveAll→enqueue) 저장, 타깃값 실재검증(type/priority 엄격·status 관대) 트랜잭션 밖.
+- 프로세서가 매핑 로드해 행별 typeName/statusName/priorityName 치환(ValueMappingNormalizer 삼자일치), 미매핑=기존 name-match 폴백(하위호환).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration, gap 3건 보정).
+- Gap A(수정): FR7 타깃값 검증 필드별 비대칭 — type/priority 엄격, status 관대(apply-time best-effort 위임, 타 타입 유효상태 오거부 회피).
+- Gap B(단순화): collect 응답 occurrences 제거(PR-B 동형).
+- Gap C(명확화): priority canonical 5 출처 = search 내부 ImportRowParser 정규화 집합 재사용(신규 하드코드/포트 0).
 
 ## Plan (← /bts-plan 채움)
 
