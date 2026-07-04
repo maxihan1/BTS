@@ -9,8 +9,11 @@ import com.bts.search.imports.job.repository.ImportJobRepository
 import com.bts.search.imports.job.storage.ImportObjectStoragePort
 import com.bts.search.imports.mapping.repository.ImportMappingRepository
 import com.bts.search.imports.mapping.repository.ImportUserMappingRepository
+import com.bts.search.imports.mapping.repository.ImportValueMappingRepository
 import com.bts.search.imports.parse.ImportRowParser
+import com.bts.shared.issue.IssueTypeCatalog
 import com.bts.shared.user.UserLookupPort
+import com.bts.shared.workflow.WorkflowStateCatalog
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
@@ -57,6 +60,9 @@ class ImportMappingServiceTest {
     private val transactionTemplate: TransactionTemplate = mockk()
     private val userLookupPort: UserLookupPort = mockk()
     private val importUserMappingRepository: ImportUserMappingRepository = mockk()
+    private val issueTypeCatalog: IssueTypeCatalog = mockk()
+    private val workflowStateCatalog: WorkflowStateCatalog = mockk()
+    private val importValueMappingRepository: ImportValueMappingRepository = mockk()
     private val parser = ImportRowParser()
 
     private lateinit var service: ImportMappingService
@@ -76,14 +82,18 @@ class ImportMappingServiceTest {
                 transactionTemplate,
                 userLookupPort,
                 importUserMappingRepository,
+                issueTypeCatalog,
+                workflowStateCatalog,
+                importValueMappingRepository,
                 parser,
             )
         every { transactionTemplate.execute(any<TransactionCallback<Any>>()) } answers {
             firstArg<TransactionCallback<Any>>().doInTransaction(mockk<TransactionStatus>(relaxed = true))
         }
-        // confirm 은 userMappings 를 생략하면 항상 빈 맵을 저장한다(하위호환) — 이 파일의 기존
-        // confirm 테스트는 모두 userMappings 를 생략하므로 공통으로 stub 한다.
+        // confirm 은 userMappings/valueMappings 를 생략하면 항상 빈 맵을 저장한다(하위호환) — 이 파일의
+        // 기존 confirm 테스트는 모두 두 파라미터를 생략하므로 공통으로 stub 한다.
         justRun { importUserMappingRepository.saveAll(any(), any()) }
+        justRun { importValueMappingRepository.saveAll(any(), any()) }
     }
 
     private fun makeJob(

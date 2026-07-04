@@ -57,3 +57,31 @@ class ImportUserMappingInvalidException(val errors: List<MappingIssue>) :
         const val TARGET_USER_NOT_FOUND = "TARGET_USER_NOT_FOUND"
     }
 }
+
+/**
+ * 확정하려는 값 매핑(대상 필드 + 소스 값 → 대상 값)이 검증 규칙을 통과하지 못했을 때
+ * [ImportMappingService.confirm] 이 던지는 예외 (FR-IM-02 PR-C Task 5).
+ *
+ * `ImportExceptionHandler`(후속 웹 계층 task, `com.bts.search.imports.web`)가 422
+ * `IMPORT_VALUE_MAPPING_INVALID` 로 변환한다.
+ *
+ * 두 검증 규칙 위반에서 던져진다.
+ * 1. [TARGET_VALUE_NOT_FOUND] — FR7 필드별 비대칭 검증 위반. [ValueTargetField.TYPE]/
+ *    [ValueTargetField.PRIORITY] 대상 값이 카탈로그/canonical 5 와 정규화 정확일치
+ *    ([ValueMappingNormalizer.normalize], 대소문자 무시)하지 않거나, [ValueTargetField.STATUS] 대상
+ *    값이 공백인 경우.
+ * 2. [DUPLICATE_VALUE_MAPPING] — 정규화([ValueMappingNormalizer.normalize]) 시 서로 겹치는
+ *    (대상 필드, 소스 값) 조합을 값 매핑에 중복 사용한 경우(대상 값이 같아도 위반).
+ *
+ * @property errors 검증 실패 사유 목록. [MappingIssue.field] 에는 문제가 된 소스 값을 담는다.
+ */
+class ImportValueMappingInvalidException(val errors: List<MappingIssue>) :
+    RuntimeException("값 매핑 검증에 실패했습니다: ${errors.joinToString { it.code }}") {
+    companion object {
+        /** TYPE/PRIORITY 대상 값이 카탈로그/canonical 5 와 불일치하거나 STATUS 대상 값이 공백임. */
+        const val TARGET_VALUE_NOT_FOUND = "TARGET_VALUE_NOT_FOUND"
+
+        /** 정규화(trim+lowercase) 시 서로 겹치는 (대상 필드, 소스 값) 조합을 값 매핑에 중복 사용함. */
+        const val DUPLICATE_VALUE_MAPPING = "DUPLICATE_VALUE_MAPPING"
+    }
+}

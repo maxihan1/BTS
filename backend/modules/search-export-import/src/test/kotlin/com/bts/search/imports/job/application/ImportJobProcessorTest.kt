@@ -7,8 +7,10 @@ import com.bts.search.imports.job.domain.ImportJobId
 import com.bts.search.imports.job.domain.ImportJobStatus
 import com.bts.search.imports.job.repository.ImportJobRepository
 import com.bts.search.imports.job.storage.ImportObjectStoragePort
+import com.bts.search.imports.mapping.ValueTargetField
 import com.bts.search.imports.mapping.repository.ImportMappingRepository
 import com.bts.search.imports.mapping.repository.ImportUserMappingRepository
+import com.bts.search.imports.mapping.repository.ImportValueMappingRepository
 import com.bts.search.imports.parse.ImportParseException
 import com.bts.search.imports.parse.ImportRowParser
 import com.bts.search.imports.parse.ParsedImportAttachment
@@ -70,6 +72,13 @@ import java.util.UUID
  *   [com.bts.search.imports.mapping.UserMappingNormalizer.normalize] 로 정규화해 조회한 뒤 커맨드/각 VO
  *   의 userId 필드에 세팅하는지, 매핑에 없는 식별자·값이 null 인 매핑·매핑 자체가 없는 job(회귀)은
  *   모두 userId null 폴백인지 검증한다 (FR-IM-02 PR-B Task 6).
+ * - (o) 값 매핑 치환: job 의 저장된 값 매핑([ImportValueMappingRepository.findByJobId])을 행 수와 무관하게
+ *   job 당 1 회만 로드하고, 행별 statusName/typeName/priorityName 을
+ *   [com.bts.search.imports.mapping.ValueMappingNormalizer.normalize] 로 정규화한 키로 조회해 저장된
+ *   대상 값으로 치환하는지, 미매핑 값은 원본을 그대로 유지하는지, null 소스값은 치환을 시도하지 않는지
+ *   검증한다. priorityName 치환은 [ImportMappingService][com.bts.search.imports.mapping.ImportMappingService]
+ *   가 저장 시 canonical 정확 표기로 치환해 두므로, 치환된 값이 그대로
+ *   `PRIORITY_NUMBER_BY_NAME` 조회에 성공하는지도 함께 검증한다 (C1 회귀, FR-IM-02 PR-C Task 6).
  */
 class ImportJobProcessorTest {
     private val issueImportPort: IssueImportPort = mockk()
@@ -77,6 +86,7 @@ class ImportJobProcessorTest {
     private val repository: ImportJobRepository = mockk()
     private val mappingRepo: ImportMappingRepository = mockk()
     private val userMappingRepo: ImportUserMappingRepository = mockk()
+    private val valueMappingRepo: ImportValueMappingRepository = mockk()
     private val errorLogWriter: ImportErrorLogWriter = ImportErrorLogWriter()
     private val parser: ImportRowParser = mockk()
     private val fixedClock: Clock = Clock.fixed(Instant.parse("2024-03-15T10:30:45Z"), ZoneOffset.UTC)
@@ -95,6 +105,7 @@ class ImportJobProcessorTest {
                 repository,
                 mappingRepo,
                 userMappingRepo,
+                valueMappingRepo,
                 errorLogWriter,
                 parser,
                 fixedClock,
@@ -110,6 +121,9 @@ class ImportJobProcessorTest {
         // 사용자 매핑 회귀 불변 — 명시적으로 스텁하지 않는 기존 테스트는 빈 Map(매핑 없음)이 기본값이라
         // reporterUserId/assigneeUserId/각 VO authorUserId 가 전부 null 로 남는다.
         every { userMappingRepo.findByJobId(any()) } returns emptyMap()
+        // 값 매핑 회귀 불변 — 명시적으로 스텁하지 않는 기존 테스트는 빈 Map(매핑 없음)이 기본값이라
+        // statusName/typeName/priorityName 이 파싱된 원본 그대로 유지된다.
+        every { valueMappingRepo.findByJobId(any()) } returns emptyMap()
     }
 
     /** 기본 테스트용 ImportJob. */
@@ -707,5 +721,89 @@ class ImportJobProcessorTest {
         assertThat(command.worklogs.single().authorUserId).isEqualTo(bobId)
         assertThat(command.attachments.single().authorUserId).isEqualTo(aliceId)
         assertThat(command.changelog.single().authorUserId).isEqualTo(aliceId)
+    }
+
+    // ── (o) 값 매핑 치환 (FR-IM-02 PR-C Task 6) ─────────────────────────────────────
+
+    @Test
+    fun `job with saved value mapping substitutes statusName to mapped target value`() {
+        val row = makeRow(1).copy(statusName = "Open")
+        stubParserWithRows(listOf(row))
+        every { valueMappingRepo.findByJobId(jobId) } returns
+            mapOf((ValueTargetField.STATUS to "open") to "In Progress")
+        val cmdSlot = slot<IssueImportCommand>()
+        every { issueImportPort.importIssue(capture(cmdSlot)) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        assertThat(cmdSlot.captured.statusName).isEqualTo("In Progress")
+    }
+
+    @Test
+    fun `job with saved value mapping substitutes typeName to mapped target value`() {
+        val row = makeRow(1).copy(typeName = "Story")
+        stubParserWithRows(listOf(row))
+        every { valueMappingRepo.findByJobId(jobId) } returns
+            mapOf((ValueTargetField.TYPE to "story") to "Task")
+        val cmdSlot = slot<IssueImportCommand>()
+        every { issueImportPort.importIssue(capture(cmdSlot)) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        assertThat(cmdSlot.captured.typeName).isEqualTo("Task")
+    }
+
+    @Test
+    fun `job with saved value mapping substitutes priorityName to canonical target and resolves priority number`() {
+        val row = makeRow(1).copy(priorityName = "urgent")
+        stubParserWithRows(listOf(row))
+        // ImportMappingService.confirm 이 저장 시 이미 canonical 정확 표기("Medium")로 치환해 두므로
+        // 프로세서는 그 값을 그대로 PRIORITY_NUMBER_BY_NAME 조회 키로 쓸 수 있어야 한다 (C1 회귀).
+        every { valueMappingRepo.findByJobId(jobId) } returns
+            mapOf((ValueTargetField.PRIORITY to "urgent") to "Medium")
+        val cmdSlot = slot<IssueImportCommand>()
+        every { issueImportPort.importIssue(capture(cmdSlot)) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        assertThat(cmdSlot.captured.priority).isEqualTo(3)
+    }
+
+    @Test
+    fun `unmapped source value falls back to original parsed value`() {
+        val row = makeRow(1).copy(typeName = "Bug", statusName = "Custom Status")
+        stubParserWithRows(listOf(row))
+        every { valueMappingRepo.findByJobId(jobId) } returns
+            mapOf((ValueTargetField.TYPE to "story") to "Task")
+        val cmdSlot = slot<IssueImportCommand>()
+        every { issueImportPort.importIssue(capture(cmdSlot)) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        assertThat(cmdSlot.captured.typeName).isEqualTo("Bug")
+        assertThat(cmdSlot.captured.statusName).isEqualTo("Custom Status")
+    }
+
+    @Test
+    fun `null source value is left unmapped even when a mapping exists for the target field`() {
+        stubParserWithRows(listOf(makeRow(1)))
+        every { valueMappingRepo.findByJobId(jobId) } returns
+            mapOf((ValueTargetField.TYPE to "") to "Task")
+        val cmdSlot = slot<IssueImportCommand>()
+        every { issueImportPort.importIssue(capture(cmdSlot)) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        assertThat(cmdSlot.captured.typeName).isNull()
+    }
+
+    @Test
+    fun `value mapping is loaded exactly once per job regardless of row count`() {
+        stubParserWithRows(listOf(makeRow(1), makeRow(2), makeRow(3)))
+        every { issueImportPort.importIssue(any()) } returns IssueImportResult.success("PROJ-1")
+
+        processor.process(makeJob())
+
+        verify(exactly = 1) { valueMappingRepo.findByJobId(jobId) }
     }
 }

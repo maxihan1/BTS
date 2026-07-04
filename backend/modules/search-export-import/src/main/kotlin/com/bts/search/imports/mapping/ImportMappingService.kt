@@ -9,14 +9,25 @@ import com.bts.search.imports.job.repository.ImportJobRepository
 import com.bts.search.imports.job.storage.ImportObjectStoragePort
 import com.bts.search.imports.mapping.repository.ImportMappingRepository
 import com.bts.search.imports.mapping.repository.ImportUserMappingRepository
+import com.bts.search.imports.mapping.repository.ImportValueMappingRepository
 import com.bts.search.imports.parse.ImportRowParser
+import com.bts.search.imports.parse.ParsedImportRow
+import com.bts.shared.issue.IssueTypeCatalog
 import com.bts.shared.user.UserLookupPort
+import com.bts.shared.workflow.ProjectKey
+import com.bts.shared.workflow.WorkflowStateCatalog
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
+
+/**
+ * (대상 필드, 소스 값, 대상 값) 튜플 — [ImportMappingService.confirm] 의 `valueMappings` 원본 계약 및
+ * [ImportMappingService] 내부 정규화 중간값과 동일 shape 를 짧게 부른다(줄 길이 축소 목적, 순수 표기 alias).
+ */
+private typealias ValueMappingTriple = Triple<ValueTargetField, String, String>
 
 /**
  * FR-IM-02 Import 필드 매핑 검증([validate]) + 확정([confirm]) 서비스.
@@ -89,20 +100,46 @@ import java.util.UUID
  *    `sourceIdentifier to targetUserId?` 목록을 검증(정규화 후 중복/미실재 대상 확인, [confirm] KDoc
  *    §사용자 매핑 검증 참조) 한 뒤, CAS 트랜잭션 안에서 [importUserMappingRepository] 로 저장한다.
  *
+ * ## 값 매핑 흐름 — [collectValues] + `confirm` 의 `valueMappings` (FR-IM-02 PR-C)
+ *
+ * 필드/사용자 매핑과 별개로, Import 원본에 등장하는 상태/유형/우선순위 이름([ValueTargetField])을
+ * BTS 대상 값으로 매핑하는 흐름이다. [ValueMappingNormalizer] 가 정규화(trim+lowercase)의 유일
+ * 진실원천이다.
+ *
+ * 1. **[collectValues]** — 원본을 전량 스캔해 [ValueTargetField] 별 distinct 정규화 소스값을 수집하고,
+ *    [workflowStateCatalog]/[issueTypeCatalog]/[ImportRowParser.canonicalPriorityNames] 후보와 정규화
+ *    정확일치하는 자동추천을 계산해 [ValueCollectionResult] 로 반환한다. 저장하지 않는다([collectUsers]
+ *    와 동일하게 조회 전용).
+ * 2. **`confirm` 의 `valueMappings`** — 사용자가 [collectValues] 결과를 참고해 확정한
+ *    `(대상 필드, 소스 값, 대상 값)` 목록을 검증([validateValueMappings], FR7 필드별 비대칭 +
+ *    C1 canonical 치환 + E6 중복 검증) 한 뒤, CAS 트랜잭션 안에서 [importValueMappingRepository] 로
+ *    저장한다.
+ *
  * @param importMappingRepository 필드 매핑 영속 저장소([ImportMappingRepository.saveAll]).
  * @param importJobRepository Import 작업 저장소. 소유확인([ImportJobRepository.findByIdForRequester]) +
  *   CAS 전이([ImportJobRepository.transitionToPending])에 사용.
  * @param enqueuePublisher pgmq 큐에 작업 ID 를 발행하는 아웃바운드 어댑터.
  * @param storage Import 원본 오브젝트 스토리지 포트. 헤더/전량 재읽기용.
- * @param transactionTemplate CAS+saveAll+enqueue 구간의 프로그래밍 방식 트랜잭션 경계.
+ * @param transactionTemplate CAS+saveAll+enqueue 구간의 프로그래밍 방식 트랜잭션 경계. [collectValues]
+ *   의 자동추천 계산 구간(짧은 별도 트랜잭션)에도 재사용한다([buildValueSuggestions]).
  * @param userLookupPort 사용자 실재 확인 + 이메일→UUID/UUID→표시명 일괄 조회 cross-BC 포트.
  *   [collectUsers] 의 추천 계산과 `confirm` 의 대상 사용자 실재 검증에 사용한다.
  * @param importUserMappingRepository 확정 사용자 매핑 영속 저장소([ImportUserMappingRepository.saveAll]).
+ * @param issueTypeCatalog 전역 이슈타입 전체 목록 조회 cross-BC 포트(issue-tracking). [collectValues]
+ *   의 TYPE 자동추천 + `confirm` 의 TYPE 대상 값 검증([validateValueMappings])에 사용한다.
+ * @param workflowStateCatalog 프로젝트 워크플로우 상태 전체 목록 조회 cross-BC 포트(project-workflow).
+ *   [collectValues] 의 STATUS 자동추천 계산에만 사용한다(`confirm` 의 STATUS 검증은 관대해 호출하지
+ *   않는다) — `Propagation.MANDATORY` 라 [transactionTemplate] 안에서만 호출한다.
+ * @param importValueMappingRepository 확정 값 매핑 영속 저장소([ImportValueMappingRepository.saveAll]).
  * @param parser CSV/JSON 스트리밍 파서. [ImportRowParser] 는 Spring 빈으로 등록되어 있지 않으므로
  *   (`ImportJobProcessor` 의 동일 기본값 패턴을 따라) 기본값으로 직접 인스턴스화한다.
+ *
+ * Suppress 근거. `LongParameterList` — DI 생성자, 필드/사용자/값 매핑 영속·CAS 전이·enqueue·cross-BC 조회
+ * 협력자 11개. `TooManyFunctions` — 필드/사용자/값 매핑 3종의 검증+확정 책임이 늘며 임계값(11)을 자연
+ * 초과(12, validate/confirm/collectUsers/collectValues 4개 public API + 매핑 종류별 전용 private 헬퍼).
  */
 @Service
-@Suppress("LongParameterList") // DI 생성자 — 필드/사용자 매핑 영속·CAS 전이·enqueue·cross-BC 조회 협력자 8개
+@Suppress("LongParameterList", "TooManyFunctions")
 class ImportMappingService(
     private val importMappingRepository: ImportMappingRepository,
     private val importJobRepository: ImportJobRepository,
@@ -111,6 +148,9 @@ class ImportMappingService(
     private val transactionTemplate: TransactionTemplate,
     private val userLookupPort: UserLookupPort,
     private val importUserMappingRepository: ImportUserMappingRepository,
+    private val issueTypeCatalog: IssueTypeCatalog,
+    private val workflowStateCatalog: WorkflowStateCatalog,
+    private val importValueMappingRepository: ImportValueMappingRepository,
     private val parser: ImportRowParser = ImportRowParser(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -170,6 +210,32 @@ class ImportMappingService(
      *   List** — Map 으로 받으면 동일 키(정규화 전 원본이 다르더라도 정규화 후 겹치는 경우)가 먼저
      *   붕괴돼 [DUPLICATE_SOURCE_IDENTIFIER][ImportUserMappingInvalidException.DUPLICATE_SOURCE_IDENTIFIER]
      *   검증이 무력화된다. 기본값 빈 목록 — 사용자 매핑 없이 confirm 하는 기존 호출부와 하위호환.
+     *
+     * ### 값 매핑 검증 — [valueMappings] (클래스 KDoc §값 매핑 흐름 참조)
+     *
+     * [validateValueMappings] 가 트랜잭션 **밖**에서(cross-BC [issueTypeCatalog] I/O 포함) 다음을
+     * 검증한다.
+     * 1. **FR7 필드별 비대칭** — [ValueTargetField.TYPE]/[ValueTargetField.PRIORITY] 는 엄격하다.
+     *    [issueTypeCatalog]`.listTypes`/[ImportRowParser.canonicalPriorityNames] 와 정규화
+     *    정확일치(대소문자 무시)하지 않으면
+     *    [TARGET_VALUE_NOT_FOUND][ImportValueMappingInvalidException.TARGET_VALUE_NOT_FOUND] 다.
+     *    [ValueTargetField.STATUS] 는 관대하다 — 비어 있지만 않으면 그대로 통과한다(워크플로우 YAML
+     *    정본이 상태 이름의 최종 진실원천이라 여기서는 카탈로그 존재 확인을 하지 않는다).
+     * 2. **C1 저장값 canonical 치환** — TYPE/PRIORITY 는 사용자가 입력한 대소문자가 아니라 매칭된
+     *    카탈로그/canonical 값의 정확한 표기로 치환해 저장한다. 사용자 입력 그대로 저장하면
+     *    [com.bts.search.imports.job.application.ImportJobProcessor] 의 대소문자 정확일치 치환 맵에서
+     *    조용히 유실될 수 있다. STATUS 는 원본 그대로 저장한다.
+     * 3. **E6 중복** — 정규화([ValueMappingNormalizer.normalize]) 후 (대상 필드, 소스 값) 조합이
+     *    중복되면 대상 값이 같더라도
+     *    [DUPLICATE_VALUE_MAPPING][ImportValueMappingInvalidException.DUPLICATE_VALUE_MAPPING] 이다.
+     *
+     * 검증을 통과하면 `(대상 필드, 소스 값) -> 대상 값` 맵을 CAS 트랜잭션 안에서
+     * [importValueMappingRepository]`.saveAll` 로 저장한다 — [importUserMappingRepository]`.saveAll`
+     * 뒤, [enqueuePublisher]`.enqueue` 앞이다. [valueMappings] 가 비어 있으면(기본값) 빈 맵을 저장해
+     * 기존 매핑을 전량 제거한다(하위호환).
+     *
+     * @param valueMappings 확정할 값 매핑 `(대상 필드, 소스 값, 대상 값)` 목록. 기본값 빈 목록 — 값
+     *   매핑 없이 confirm 하는 기존 호출부와 하위호환.
      * @return `PENDING` 상태로 전이된 [ImportJob] — [confirm] 호출 직전 조회한 스냅샷에
      *   status/expiresAt/dryRun 만 갱신한 사본이며, CAS 이후 재조회하지 않는다(그 외 필드는 확정으로
      *   바뀌지 않는다).
@@ -178,6 +244,7 @@ class ImportMappingService(
      *   상태가 [ImportJobStatus.AWAITING_MAPPING] 이 아닌 경우.
      * @throws ImportMappingInvalidException 필드 매핑 검증 실패 시(422 위임).
      * @throws ImportUserMappingInvalidException 사용자 매핑 검증 실패 시(422 위임).
+     * @throws ImportValueMappingInvalidException 값 매핑 검증 실패 시(422 위임).
      */
     fun confirm(
         jobId: ImportJobId,
@@ -185,6 +252,7 @@ class ImportMappingService(
         fieldMappings: Map<String, String>,
         dryRun: Boolean,
         userMappings: List<Pair<String, UUID?>> = emptyList(),
+        valueMappings: List<Triple<ValueTargetField, String, String>> = emptyList(),
     ): ImportJob {
         val job = requireOwnedAwaitingMapping(jobId, actor)
         val result = computeValidationResult(job, fieldMappings)
@@ -192,6 +260,7 @@ class ImportMappingService(
             throw ImportMappingInvalidException(result.errors)
         }
         val normalizedUserMappings = validateUserMappings(userMappings)
+        val normalizedValueMappings = validateValueMappings(valueMappings)
 
         transactionTemplate.execute {
             if (!importJobRepository.transitionToPending(jobId, dryRun)) {
@@ -199,15 +268,18 @@ class ImportMappingService(
             }
             importMappingRepository.saveAll(jobId, fieldMappings)
             importUserMappingRepository.saveAll(jobId, normalizedUserMappings)
+            importValueMappingRepository.saveAll(jobId, normalizedValueMappings)
             enqueuePublisher.enqueue(jobId)
         }
 
         log.info(
-            "import_mapping_confirmed jobId={} actor={} fieldCount={} userMappingCount={} dryRun={}",
+            "import_mapping_confirmed jobId={} actor={} fieldCount={} userMappingCount={} " +
+                "valueMappingCount={} dryRun={}",
             jobId.value,
             actor,
             fieldMappings.size,
             normalizedUserMappings.size,
+            normalizedValueMappings.size,
             dryRun,
         )
         return job.copy(status = ImportJobStatus.PENDING, expiresAt = null, dryRun = dryRun)
@@ -286,6 +358,73 @@ class ImportMappingService(
                 )
             }
         return UserCollectionResult(users = entries)
+    }
+
+    /**
+     * Import 원본을 전량 스캔해 등장하는 상태/유형/우선순위([ValueTargetField]) 소스값을 수집하고,
+     * BTS 대상 값 자동추천을 계산한다(클래스 KDoc §값 매핑 흐름 참조). 저장하지 않는다 — [collectUsers]
+     * 와 동일하게 조회 전용이다.
+     *
+     * `@Transactional` **의도적 생략** — 클래스 KDoc §@Transactional 의도적 생략과 동일 이유([storage]
+     * 스트림 I/O 동안 DB 커넥션을 점유하지 않기 위함). 단, 자동추천 계산 구간만 [buildValueSuggestions]
+     * 안에서 짧은 [transactionTemplate] 으로 감싼다 — [workflowStateCatalog]`.listStates` 가
+     * `Propagation.MANDATORY`([com.bts.shared.workflow.WorkflowStateCatalog] KDoc)라 활성 트랜잭션
+     * 밖에서 호출하면 `IllegalTransactionStateException` 이 던져지기 때문이다.
+     *
+     * ### 필드 매핑 선검증 (C1, [collectUsers] 와 동일 이유)
+     *
+     * [computeValidationResult] 로 필드 매핑을 먼저 검증한다. 무효(예: summary 미매핑)면 곧바로
+     * [ImportMappingInvalidException](422) 을 던지고 전량 스캔을 하지 않는다 — 검증 없이 바로 전량
+     * 파싱하면 무효한 매핑으로 인한 실패가 [ImportParseException](예상치 못한 500)으로 표면화될 수
+     * 있기 때문이다.
+     *
+     * ### 소스값 수집 + 자동추천
+     *
+     * [storage] 를 열어 각 행을 최소 투영([minimalValueRow])으로 전량 수집한 뒤,
+     * [ValueMappingNormalizer.collectValues] 로 [ValueTargetField] 별 distinct 정규화 소스값 집합을
+     * 얻는다. 각 소스값에 대해 정규화 정확일치하는 후보([workflowStateCatalog]/[issueTypeCatalog]/
+     * [ImportRowParser.canonicalPriorityNames])가 있으면 그 원본 표기(대소문자 보존)를 추천값으로
+     * 제시하고, 없으면 null(매핑 UI 가 사용자에게 수동 선택을 요구한다).
+     *
+     * @param jobId 대상 Import 작업 식별자.
+     * @param actor 요청자 UUID. 소유확인에 사용.
+     * @param fieldMappings 소스 필드 이름 → [TargetField.key](또는 [TargetField.IGNORE_KEY]) 매핑.
+     *   JSON 형식이면 검증에 사용되지 않는다.
+     * @return [ValueTargetField] 별 소스값+자동추천 목록([ValueCollectionResult]).
+     * @throws ResponseStatusException(404) 작업이 없거나 [actor] 소유가 아닌 경우(존재 은닉).
+     * @throws ImportMappingStateConflictException 작업 상태가 [ImportJobStatus.AWAITING_MAPPING] 이 아닌 경우.
+     * @throws ImportMappingInvalidException CSV 필드 매핑 검증 실패 시(422 위임).
+     */
+    fun collectValues(
+        jobId: ImportJobId,
+        actor: UUID,
+        fieldMappings: Map<String, String>,
+    ): ValueCollectionResult {
+        val job = requireOwnedAwaitingMapping(jobId, actor)
+        val validation = computeValidationResult(job, fieldMappings)
+        if (!validation.valid) {
+            throw ImportMappingInvalidException(validation.errors)
+        }
+
+        val rows = mutableListOf<ParsedImportRow>()
+        storage.get(job.sourceObjectKey).use { stream ->
+            if (job.format == FORMAT_JSON) {
+                parser.parseJson(stream) { row -> rows += minimalValueRow(row) }
+            } else {
+                parser.parseCsv(stream, fieldMappings) { row -> rows += minimalValueRow(row) }
+            }
+        }
+        val collectedValues = ValueMappingNormalizer.collectValues(rows)
+        val values = buildValueSuggestions(ProjectKey.of(job.projectKey), collectedValues)
+
+        log.info(
+            "import_value_collected jobId={} statusCount={} typeCount={} priorityCount={}",
+            jobId.value,
+            values.getValue(ValueTargetField.STATUS).size,
+            values.getValue(ValueTargetField.TYPE).size,
+            values.getValue(ValueTargetField.PRIORITY).size,
+        )
+        return ValueCollectionResult(values = values)
     }
 
     // ── private helpers ──────────────────────────────────────────────────────
@@ -382,6 +521,142 @@ class ImportMappingService(
             throw ImportUserMappingInvalidException(errors)
         }
         return normalized.toMap()
+    }
+
+    /**
+     * [collectValues] 가 전량 스캔 시 보존하는 최소 투영 — status/type/priority 3 필드만 남기고
+     * 나머지는 기본값으로 비운다. [ImportJob.MAX_ROWS](최대 10 만 행) 규모의 대량 Import 에서
+     * summary/description/댓글 등 값 매핑과 무관한 필드까지 메모리에 쌓아 두지 않기 위함
+     * ([ImportRowParser] 클래스 KDoc §스트리밍 설계와 동일 OOM 방지 원칙).
+     */
+    private fun minimalValueRow(row: ParsedImportRow): ParsedImportRow =
+        ParsedImportRow(
+            rowNumber = row.rowNumber,
+            summary = null,
+            description = null,
+            typeName = row.typeName,
+            priorityName = row.priorityName,
+            reporterEmail = null,
+            assigneeEmail = null,
+            labels = emptyList(),
+            componentNames = emptyList(),
+            statusName = row.statusName,
+        )
+
+    /**
+     * [collectValues] 의 자동추천 계산 구간 — [ValueTargetField] 별 후보 조회 + 정규화 정확일치 매칭을
+     * 짧은 [transactionTemplate] 으로 감싼다([collectValues] KDoc §@Transactional 의도적 생략 참조,
+     * [workflowStateCatalog]`.listStates` 의 `Propagation.MANDATORY` 제약 때문). [issueTypeCatalog] 는
+     * 자체 `@Transactional(readOnly = true)` 라 트랜잭션 밖에서도 안전하지만, 두 카탈로그 조회를 한
+     * 트랜잭션 경계 안에 일관되게 묶는다. 해당 필드의 소스값 집합이 비어 있으면 그 필드의 카탈로그
+     * 조회 자체를 생략한다 — 등장하지 않은 필드까지 불필요한 cross-BC 호출을 하지 않기 위함이다.
+     */
+    private fun buildValueSuggestions(
+        projectKey: ProjectKey,
+        collectedValues: Map<ValueTargetField, Set<String>>,
+    ): Map<ValueTargetField, List<ValueCollectionEntry>> =
+        transactionTemplate.execute {
+            val statusValues = collectedValues.getValue(ValueTargetField.STATUS)
+            val typeValues = collectedValues.getValue(ValueTargetField.TYPE)
+            val priorityValues = collectedValues.getValue(ValueTargetField.PRIORITY)
+
+            val statusNames =
+                if (statusValues.isEmpty()) {
+                    emptyList()
+                } else {
+                    workflowStateCatalog.listStates(projectKey, issueTypeKey = null).map { it.name }
+                }
+            val typeNames = if (typeValues.isEmpty()) emptyList() else issueTypeCatalog.listTypes().map { it.name }
+
+            mapOf(
+                ValueTargetField.STATUS to suggestEntries(statusValues, statusNames),
+                ValueTargetField.TYPE to suggestEntries(typeValues, typeNames),
+                ValueTargetField.PRIORITY to suggestEntries(priorityValues, ImportRowParser.canonicalPriorityNames),
+            )
+        } ?: error("collectValues 자동추천 계산 결과가 null 입니다 — unexpected (transactionTemplate.execute 반환)")
+
+    /** 정규화 정확일치로 [sourceValues] 각각에 [candidateNames] 중 대응하는 원본 표기를 추천한다. */
+    private fun suggestEntries(
+        sourceValues: Set<String>,
+        candidateNames: Collection<String>,
+    ): List<ValueCollectionEntry> {
+        val candidateByNormalized = candidateNames.associateBy { name -> ValueMappingNormalizer.normalize(name) }
+        return sourceValues.sorted().map { sourceValue ->
+            ValueCollectionEntry(sourceValue = sourceValue, suggestedTargetValue = candidateByNormalized[sourceValue])
+        }
+    }
+
+    /**
+     * [confirm] 의 `valueMappings` 를 정규화 + 검증한 뒤, 저장 가능한 `(대상 필드, 소스 값) -> 대상 값`
+     * 맵으로 변환한다([confirm] KDoc §값 매핑 검증 참조). [issueTypeCatalog] cross-BC I/O 를 포함하므로
+     * 트랜잭션 **밖**에서 호출한다. [valueMappings] 에 [ValueTargetField.TYPE] 항목이 하나도 없으면
+     * [issueTypeCatalog] 조회 자체를 생략한다(`by lazy` — 불필요한 cross-BC 호출 방지).
+     *
+     * @throws ImportValueMappingInvalidException 정규화 시 중복되는 (대상 필드, 소스 값) 조합이 있거나,
+     *   TYPE/PRIORITY 대상 값이 카탈로그/canonical 5 와 불일치하거나, STATUS 대상 값이 공백인 경우.
+     */
+    private fun validateValueMappings(
+        valueMappings: List<Triple<ValueTargetField, String, String>>,
+    ): Map<Pair<ValueTargetField, String>, String> {
+        if (valueMappings.isEmpty()) return emptyMap()
+
+        val normalized =
+            valueMappings.map { (targetField, sourceValue, targetValue) ->
+                Triple(targetField, ValueMappingNormalizer.normalize(sourceValue), targetValue)
+            }
+
+        val errors = mutableListOf<MappingIssue>()
+        errors += findDuplicateValueMappingIssues(normalized)
+
+        // TYPE 항목이 하나도 없으면 issueTypeCatalog 조회 자체를 생략한다(불필요한 cross-BC 호출 방지).
+        val typeNamesByNormalized: Map<String, String> by lazy {
+            issueTypeCatalog.listTypes().associate { type -> ValueMappingNormalizer.normalize(type.name) to type.name }
+        }
+        val priorityNamesByNormalized =
+            ImportRowParser.canonicalPriorityNames.associateBy { name -> ValueMappingNormalizer.normalize(name) }
+
+        val resolved = mutableMapOf<Pair<ValueTargetField, String>, String>()
+        normalized.forEach { (targetField, sourceValue, targetValue) ->
+            // FR7 필드별 비대칭 검증 + C1 canonical 치환 — TYPE/PRIORITY 는 카탈로그/canonical 값의
+            // 정확한 표기로 치환(없으면 null), STATUS 는 공백이 아니면 원본 그대로(공백이면 null).
+            val resolvedValue =
+                when (targetField) {
+                    ValueTargetField.STATUS -> targetValue.takeIf { it.isNotBlank() }
+                    ValueTargetField.TYPE -> typeNamesByNormalized[ValueMappingNormalizer.normalize(targetValue)]
+                    ValueTargetField.PRIORITY ->
+                        priorityNamesByNormalized[ValueMappingNormalizer.normalize(targetValue)]
+                }
+            if (resolvedValue == null) {
+                errors +=
+                    MappingIssue(
+                        ImportValueMappingInvalidException.TARGET_VALUE_NOT_FOUND,
+                        "존재하지 않거나 비어 있는 대상 값입니다: $targetField/$targetValue",
+                        sourceValue,
+                    )
+            } else {
+                resolved[targetField to sourceValue] = resolvedValue
+            }
+        }
+
+        if (errors.isNotEmpty()) {
+            throw ImportValueMappingInvalidException(errors)
+        }
+        return resolved
+    }
+
+    /** 정규화 후 (대상 필드, 소스 값) 조합이 둘 이상 존재하는 경우를 찾는다([DUPLICATE_VALUE_MAPPING], E6). */
+    private fun findDuplicateValueMappingIssues(normalized: List<ValueMappingTriple>): List<MappingIssue> {
+        return normalized
+            .groupBy { (targetField, sourceValue, _) -> targetField to sourceValue }
+            .filterValues { entries -> entries.size > 1 }
+            .map { (key, _) ->
+                val (targetField, sourceValue) = key
+                MappingIssue(
+                    ImportValueMappingInvalidException.DUPLICATE_VALUE_MAPPING,
+                    "정규화 시 중복되는 값 매핑입니다: $targetField/$sourceValue",
+                    sourceValue,
+                )
+            }
     }
 
     companion object {

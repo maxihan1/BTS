@@ -13,15 +13,20 @@ import com.bts.search.imports.mapping.ImportMappingInvalidException
 import com.bts.search.imports.mapping.ImportMappingService
 import com.bts.search.imports.mapping.ImportMappingStateConflictException
 import com.bts.search.imports.mapping.ImportUserMappingInvalidException
+import com.bts.search.imports.mapping.ImportValueMappingInvalidException
 import com.bts.search.imports.mapping.MappingIssue
 import com.bts.search.imports.mapping.MappingValidationResult
 import com.bts.search.imports.mapping.MappingValidator
 import com.bts.search.imports.mapping.UserCollectionEntry
 import com.bts.search.imports.mapping.UserCollectionResult
+import com.bts.search.imports.mapping.ValueCollectionEntry
+import com.bts.search.imports.mapping.ValueCollectionResult
+import com.bts.search.imports.mapping.ValueTargetField
 import com.bts.search.imports.web.dto.FieldMappingEntry
 import com.bts.search.imports.web.dto.MappingConfirmRequest
 import com.bts.search.imports.web.dto.MappingValidateRequest
 import com.bts.search.imports.web.dto.UserMappingEntry
+import com.bts.search.imports.web.dto.ValueMappingEntry
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.clearMocks
@@ -88,6 +93,13 @@ import java.util.UUID
  * - C18 POST /imports/{jobId}/mapping/users 상태충돌 → 409 IMPORT_MAPPING_STATE_CONFLICT
  * - C19 POST /imports/{jobId}/mapping userMappings → 서비스에 Pair 목록으로 전달 확인
  * - C20 POST /imports/{jobId}/mapping 사용자매핑 검증실패 → 422 IMPORT_USER_MAPPING_INVALID
+ * - C21 POST /imports/{jobId}/mapping/values → 200 + ValueCollectionResponse(fields[targetField,values])
+ * - C22 POST /imports/{jobId}/mapping/values 미인증 → 401 (actor 추출 우선, 서비스 미호출 검증)
+ * - C23 POST /imports/{jobId}/mapping/values 타인/없음 → 404 IMPORT_NOT_FOUND
+ * - C24 POST /imports/{jobId}/mapping/values 상태충돌 → 409 IMPORT_MAPPING_STATE_CONFLICT
+ * - C25 POST /imports/{jobId}/mapping valueMappings → 서비스에 Triple 목록으로 전달 확인
+ * - C26 POST /imports/{jobId}/mapping 값매핑 검증실패 → 422 IMPORT_VALUE_MAPPING_INVALID
+ * - C27 POST /imports/{jobId}/mapping valueMappings 잘못된 targetField enum명 → 400 (서비스 미호출)
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [ImportMappingControllerTest.TestMvcConfig::class])
@@ -541,6 +553,186 @@ class ImportMappingControllerTest {
         )
             .andExpect(status().isUnprocessableEntity)
             .andExpect(jsonPath("$.errorCode").value("IMPORT_USER_MAPPING_INVALID"))
+    }
+
+    // ── C21 POST /mapping/values → 200 ValueCollectionResponse ────────────────
+
+    @Test
+    fun `C21 - POST imports jobId mapping values 200 ValueCollectionResponse`() {
+        val jobId = ImportJobId(UUID.randomUUID())
+        val collectionResult =
+            ValueCollectionResult(
+                values =
+                    mapOf(
+                        ValueTargetField.STATUS to
+                            listOf(
+                                ValueCollectionEntry(sourceValue = "open", suggestedTargetValue = "Open"),
+                                ValueCollectionEntry(sourceValue = "미해결", suggestedTargetValue = null),
+                            ),
+                        ValueTargetField.TYPE to
+                            listOf(ValueCollectionEntry(sourceValue = "bug", suggestedTargetValue = "Bug")),
+                        ValueTargetField.PRIORITY to emptyList(),
+                    ),
+            )
+        every {
+            mockImportMappingService.collectValues(jobId, actorId, mapOf("제목" to "summary"))
+        } returns collectionResult
+
+        mockMvc.perform(
+            post("/api/v1/imports/${jobId.value}/mapping/values")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(validateRequestBody())),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.fields[0].targetField").value("STATUS"))
+            .andExpect(jsonPath("$.fields[0].values[0].sourceValue").value("open"))
+            .andExpect(jsonPath("$.fields[0].values[0].suggestedTargetValue").value("Open"))
+            .andExpect(jsonPath("$.fields[0].values[1].sourceValue").value("미해결"))
+            .andExpect(jsonPath("$.fields[0].values[1].suggestedTargetValue").doesNotExist())
+            .andExpect(jsonPath("$.fields[1].targetField").value("TYPE"))
+            .andExpect(jsonPath("$.fields[1].values[0].sourceValue").value("bug"))
+            .andExpect(jsonPath("$.fields[2].targetField").value("PRIORITY"))
+            .andExpect(jsonPath("$.fields[2].values").isEmpty)
+    }
+
+    // ── C22 POST /mapping/values 미인증 → 401 (actor 추출 우선) ────────────────
+
+    @Test
+    fun `C22 - POST imports jobId mapping values 미인증 401 actor 추출 우선 서비스 미호출`() {
+        SecurityContextHolder.clearContext()
+        val jobId = ImportJobId(UUID.randomUUID())
+
+        mockMvc.perform(
+            post("/api/v1/imports/${jobId.value}/mapping/values")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(validateRequestBody())),
+        )
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value("IMPORT_UNAUTHENTICATED"))
+        verify(exactly = 0) { mockImportMappingService.collectValues(any(), any(), any()) }
+    }
+
+    // ── C23 POST /mapping/values 타인/없음 → 404 ────────────────────────────────
+
+    @Test
+    fun `C23 - POST imports jobId mapping values 타인 404 존재 은닉 IMPORT_NOT_FOUND`() {
+        val jobId = ImportJobId(UUID.randomUUID())
+        every { mockImportMappingService.collectValues(jobId, actorId, any()) } throws
+            ResponseStatusException(HttpStatus.NOT_FOUND, "Import 작업을 찾을 수 없습니다.")
+
+        mockMvc.perform(
+            post("/api/v1/imports/${jobId.value}/mapping/values")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(validateRequestBody())),
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("IMPORT_NOT_FOUND"))
+    }
+
+    // ── C24 POST /mapping/values 상태충돌 → 409 ─────────────────────────────────
+
+    @Test
+    fun `C24 - POST imports jobId mapping values 상태충돌 409 IMPORT_MAPPING_STATE_CONFLICT`() {
+        val jobId = ImportJobId(UUID.randomUUID())
+        every { mockImportMappingService.collectValues(jobId, actorId, any()) } throws
+            ImportMappingStateConflictException()
+
+        mockMvc.perform(
+            post("/api/v1/imports/${jobId.value}/mapping/values")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(validateRequestBody())),
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("IMPORT_MAPPING_STATE_CONFLICT"))
+    }
+
+    // ── C25 POST /mapping valueMappings → 서비스에 Triple 목록 전달 확인 ────────
+
+    @Test
+    fun `C25 - POST imports jobId mapping valueMappings 서비스에 Triple 목록으로 전달`() {
+        val jobId = ImportJobId(UUID.randomUUID())
+        val confirmedJob = makePendingJob(jobId, actorId)
+        every {
+            mockImportMappingService.confirm(
+                jobId,
+                actorId,
+                mapOf("제목" to "summary"),
+                false,
+                emptyList(),
+                listOf(Triple(ValueTargetField.STATUS, "open", "Open")),
+            )
+        } returns confirmedJob
+
+        val requestBody =
+            MappingConfirmRequest(
+                fieldMappings = listOf(FieldMappingEntry("제목", "summary")),
+                dryRun = false,
+                valueMappings = listOf(ValueMappingEntry("STATUS", "open", "Open")),
+            )
+
+        mockMvc.perform(
+            post("/api/v1/imports/${jobId.value}/mapping")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(requestBody)),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.jobId").value(jobId.value.toString()))
+        verify(exactly = 1) {
+            mockImportMappingService.confirm(
+                jobId,
+                actorId,
+                mapOf("제목" to "summary"),
+                false,
+                emptyList(),
+                listOf(Triple(ValueTargetField.STATUS, "open", "Open")),
+            )
+        }
+    }
+
+    // ── C26 POST /mapping 값매핑 검증실패 → 422 ─────────────────────────────────
+
+    @Test
+    fun `C26 - POST imports jobId mapping 값매핑 검증실패 422 IMPORT_VALUE_MAPPING_INVALID`() {
+        val jobId = ImportJobId(UUID.randomUUID())
+        every { mockImportMappingService.confirm(jobId, actorId, any(), any(), any(), any()) } throws
+            ImportValueMappingInvalidException(
+                listOf(
+                    MappingIssue(
+                        ImportValueMappingInvalidException.TARGET_VALUE_NOT_FOUND,
+                        "존재하지 않거나 비어 있는 대상 값입니다: STATUS/Unknown",
+                        "open",
+                    ),
+                ),
+            )
+
+        mockMvc.perform(
+            post("/api/v1/imports/${jobId.value}/mapping")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(confirmRequestBody())),
+        )
+            .andExpect(status().isUnprocessableEntity)
+            .andExpect(jsonPath("$.errorCode").value("IMPORT_VALUE_MAPPING_INVALID"))
+    }
+
+    // ── C27 POST /mapping valueMappings 잘못된 targetField enum명 → 400 ────────
+
+    @Test
+    fun `C27 - POST imports jobId mapping valueMappings 잘못된 targetField enum명 400 서비스 미호출`() {
+        val jobId = ImportJobId(UUID.randomUUID())
+        val requestBody =
+            MappingConfirmRequest(
+                fieldMappings = listOf(FieldMappingEntry("제목", "summary")),
+                dryRun = false,
+                valueMappings = listOf(ValueMappingEntry("UNKNOWN_FIELD", "open", "Open")),
+            )
+
+        mockMvc.perform(
+            post("/api/v1/imports/${jobId.value}/mapping")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(requestBody)),
+        )
+            .andExpect(status().isBadRequest)
+        verify(exactly = 0) { mockImportMappingService.confirm(any(), any(), any(), any(), any(), any()) }
     }
 
     // ── private helpers ────────────────────────────────────────────────────────

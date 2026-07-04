@@ -10,8 +10,11 @@ import com.bts.search.imports.job.repository.ImportJobRepository
 import com.bts.search.imports.job.storage.ImportObjectStoragePort
 import com.bts.search.imports.mapping.repository.ImportMappingRepository
 import com.bts.search.imports.mapping.repository.ImportUserMappingRepository
+import com.bts.search.imports.mapping.repository.ImportValueMappingRepository
 import com.bts.search.imports.parse.ImportRowParser
+import com.bts.shared.issue.IssueTypeCatalog
 import com.bts.shared.user.UserLookupPort
+import com.bts.shared.workflow.WorkflowStateCatalog
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
@@ -53,6 +56,9 @@ class ImportMappingServiceUserTest {
     private val transactionTemplate: TransactionTemplate = mockk()
     private val userLookupPort: UserLookupPort = mockk()
     private val importUserMappingRepository: ImportUserMappingRepository = mockk()
+    private val issueTypeCatalog: IssueTypeCatalog = mockk()
+    private val workflowStateCatalog: WorkflowStateCatalog = mockk()
+    private val importValueMappingRepository: ImportValueMappingRepository = mockk()
     private val parser = ImportRowParser()
 
     private lateinit var service: ImportMappingService
@@ -74,6 +80,9 @@ class ImportMappingServiceUserTest {
                 transactionTemplate,
                 userLookupPort,
                 importUserMappingRepository,
+                issueTypeCatalog,
+                workflowStateCatalog,
+                importValueMappingRepository,
                 parser,
             )
         every { transactionTemplate.execute(any<TransactionCallback<Any>>()) } answers {
@@ -259,6 +268,7 @@ class ImportMappingServiceUserTest {
         every { userLookupPort.findDisplayNamesByIds(setOf(aliceId)) } returns mapOf(aliceId to "Alice Kim")
         justRun { importMappingRepository.saveAll(job.id, fieldMappings) }
         justRun { importUserMappingRepository.saveAll(job.id, expectedNormalized) }
+        justRun { importValueMappingRepository.saveAll(job.id, emptyMap()) }
         justRun { enqueuePublisher.enqueue(job.id) }
         val userMappings = listOf("Alice@Corp.com" to aliceId, "carol@corp.com" to null)
 
@@ -280,6 +290,7 @@ class ImportMappingServiceUserTest {
         every { importJobRepository.transitionToPending(job.id, false) } returns true
         justRun { importMappingRepository.saveAll(job.id, fieldMappings) }
         justRun { importUserMappingRepository.saveAll(job.id, emptyMap()) }
+        justRun { importValueMappingRepository.saveAll(job.id, emptyMap()) }
         justRun { enqueuePublisher.enqueue(job.id) }
 
         val result = service.confirm(job.id, actor, fieldMappings, dryRun = false)

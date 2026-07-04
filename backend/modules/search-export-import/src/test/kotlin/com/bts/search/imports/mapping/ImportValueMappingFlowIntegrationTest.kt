@@ -1,14 +1,11 @@
-// FR-IM-02 매핑 흐름 전체 통합테스트 — analyze→confirm→워커 처리(COMPLETED)까지 실 PostgreSQL(pgmq)+MinIO
-// Testcontainers 로 관통하고, canonical 즉시경로(accept) 회귀도 같이 검증한다 (PR-A Task 10)
+// FR-IM-02 PR-C 값 매핑 흐름 전체 통합테스트 — analyze→collectValues→confirm(valueMappings)→워커 처리까지 실 PostgreSQL+MinIO 관통 (Task 8)
 
 package com.bts.search.imports.mapping
 
-import com.bts.search.imports.job.application.ImportAcceptCommand
 import com.bts.search.imports.job.application.ImportAnalyzeCommand
 import com.bts.search.imports.job.application.ImportErrorLogWriter
 import com.bts.search.imports.job.application.ImportJobProcessor
 import com.bts.search.imports.job.application.ImportJobService
-import com.bts.search.imports.job.domain.ImportJobId
 import com.bts.search.imports.job.domain.ImportJobStatus
 import com.bts.search.imports.job.event.ImportJobEnqueuePublisher
 import com.bts.search.imports.job.repository.ImportJobRepository
@@ -60,45 +57,59 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * FR-IM-02 매핑 UI 2단계 흐름(`analyze → confirm → 워커 처리`) 풀스택 통합테스트.
+ * FR-IM-02 PR-C 값 매핑 흐름(`analyze → collectValues → confirm(valueMappings) → 워커 처리`) 풀스택
+ * 통합테스트.
  *
- * [ImportJobService.analyze] → [ImportMappingService.confirm] → [ImportJobWorker.pollAndProcess]
- * (내부에서 [ImportJobProcessor.process] 호출) 을 **실 PostgreSQL(pgmq, Testcontainers)** +
- * **실 MinIO(Testcontainers)** 위에서 관통시켜, 임의 헤더(비-canonical) CSV 가 사용자가 확정한 필드
- * 매핑대로 이슈 생성 커맨드로 변환되는지 검증한다.
+ * [ImportJobService.analyze] → [ImportMappingService.collectValues] → [ImportMappingService.confirm] →
+ * [ImportJobWorker.pollAndProcess](내부에서 [ImportJobProcessor.process] 호출)을 **실 PostgreSQL
+ * (pgmq, Testcontainers)** + **실 MinIO(Testcontainers)** 위에서 관통시켜, CSV 원본에 등장하는
+ * 상태/유형/우선순위 이름이 사용자가 확정한 값 매핑대로 [IssueImportCommand] 의
+ * `statusName`/`typeName`/`priority`로 세팅되는지 검증한다.
  *
- * `IssueImportPort`(shared-kernel cross-BC 쓰기 포트)는 search 모듈 test-boot 에 실 구현이 없으므로
- * [TestConfig.CapturingIssueImportPort] 로 대체한다 — [ImportControllerIntegrationTest][com.bts.search.imports.web.ImportControllerIntegrationTest]
- * 의 `StubIssuePermissionResolver` 와 동일하게 test-assembled 표준(no-cross-bc-deployment-assembly)을
- * 따르되, 이 테스트는 success 결과를 반환하며 전달받은 [IssueImportCommand] 를 캡처해 매핑 결과를
- * 실제로 단언한다(vacuous 금지 — "COMPLETED 만 확인"으로 끝내지 않는다).
+ * `IssueImportPort`(shared-kernel cross-BC 쓰기 포트)는 [ImportUserMappingFlowIntegrationTest] 와
+ * 동일하게 [TestConfig.CapturingIssueImportPort] 로 대체한다(test-assembled 표준,
+ * no-cross-bc-deployment-assembly). `IssueTypeCatalog`/`WorkflowStateCatalog` 도 동일 이유로
+ * [TestConfig.SeededIssueTypeCatalog]/[TestConfig.SeededWorkflowStateCatalog] 로 대체하되, 이
+ * 테스트는 [ImportMappingService.collectValues] 의 자동추천 계산이 실제로 매치되도록 생성자로 받은
+ * 고정 목록을 그대로 반환한다(`issue-tracking` `IssueImportAdapterTest.FixedStatesWorkflowStateCatalog`
+ * 와 동일한 생성자-주입 fixture 패턴) — `PR-A`/`PR-B` 흐름 테스트의 `FixedIssueTypeCatalog`/
+ * `FixedWorkflowStateCatalog`(항상 빈 목록)와 달리, 이 값 매핑 흐름 테스트에서는 추천 계산 자체가
+ * 검증 대상이라 실제 후보 목록을 반환해야 한다. **인스턴스 필드를 테스트가 mutate 하는 방식은 쓰지
+ * 않는다** — `@EnableTransactionManagement(proxyTargetClass = true)` 가 만드는 CGLIB 프록시는
+ * `@Transactional` 인터페이스 메서드([IssueTypeCatalog.listTypes]/[WorkflowStateCatalog.listStates])
+ * 만 오버라이드하고, Kotlin 프로퍼티 getter 는 기본 `final` 이라 오버라이드 대상이 아닌 별도 mutable
+ * 프로퍼티에 접근하면 Objenesis 가 생성자를 건너뛰고 만든 프록시 자체 인스턴스의(실제 target 이
+ * 아닌) 미초기화 필드가 조회되어 NPE 가 난다 — 생성자 인자로 고정하면 이 문제 자체가 성립하지 않는다.
  *
- * ## 검증 (plan Task 10 RED 시나리오)
- * - (i) 임의 헤더 CSV(`Título`/`담당`/`비고`) 를 [ImportJobService.analyze] 로 접수하면
- *   status=AWAITING_MAPPING, sourceFields 에 세 헤더가 감지된다.
- * - (ii) [ImportMappingService.confirm] 으로 `Título→summary, 담당→assignee, 비고→IGNORE` 매핑을
- *   확정하면 status=PENDING 으로 전이하고 [ImportMappingRepository] 에 매핑이 저장된다.
- * - (iii) [ImportJobWorker.pollAndProcess] 로 워커를 직접 호출하면 COMPLETED 로 전환되고,
- *   [TestConfig.CapturingIssueImportPort] 가 캡처한 커맨드의 `summary` 가 매핑된 소스 셀 값
- *   (`"버그입니다"`)과 일치한다 — `비고`(IGNORE) 컬럼 값은 어떤 필드에도 반영되지 않는다.
- * - (iv) canonical 헤더(`summary`) CSV 를 매핑 없이 [ImportJobService.accept] 즉시경로로 접수해도
- *   여전히 정상 처리된다(회귀) — [ImportMappingRepository] 에 매핑 행이 없어도 canonical 파싱이
- *   그대로 동작해야 한다.
- * - (v)(선택) [ImportMappingService.confirm] 을 `dryRun=true` 로 호출하면 `import_jobs.dry_run` 컬럼이
- *   영속되고, 워커가 그 값을 읽어 dry-run 커맨드로 처리한다(dryrun-fix 회귀 방지).
+ * ## 검증 (plan Task 8 acceptance 시나리오)
+ *
+ * - (a) 전체 flow. 임의 헤더 CSV(`Título`/`Estado`/`Tipo`/`Prioridad`)를 [ImportJobService.analyze]
+ *   로 접수하고 필드 매핑(`summary`/`status`/`type`/`priority`)을 확정한 뒤
+ *   [ImportMappingService.collectValues] 를 호출하면, 소스 상태/유형/우선순위 이름(`"In Progress"`/
+ *   `"Task"`/`"High"`)이 각각 정규화되어 수집되고, [TestConfig.SeededWorkflowStateCatalog]/
+ *   [TestConfig.SeededIssueTypeCatalog]/`ImportRowParser.canonicalPriorityNames` 와 정규화 정확일치하는
+ *   자동추천(`"In Progress"`/`"Task"`/`"High"`)이 채워진다. [ImportMappingService.confirm] 을
+ *   `valueMappings`(상태→`"진행 중"`, 유형→`"작업"`, 우선순위→`"Highest"` — 자동추천과 다른 값으로
+ *   사용자가 명시 override)으로 확정하면 [ImportValueMappingRepository] 에 세 매핑이 저장되고
+ *   status=PENDING 으로 전이한다. [ImportJobWorker.pollAndProcess] 로 워커를 직접 호출하면 COMPLETED
+ *   로 전환되고, [TestConfig.CapturingIssueImportPort] 가 캡처한 커맨드의 `typeName`=`"작업"`,
+ *   `statusName`=`"진행 중"`, `priority`=1(canonical `"Highest"` 의 숫자 값)로 세팅된다.
+ * - (b) 회귀. 값매핑 미제공(`confirm` 에 `valueMappings` 인자 생략, 기본값 빈 목록)으로 확정한 job 은
+ *   [ImportValueMappingRepository] 에 매핑이 저장되지 않고, 워커가 처리한 커맨드의 `typeName`/
+ *   `statusName`/`priority` 가 원본 소스 값 그대로(`"Task"`/`"In Progress"`/2 — canonical `"High"` 의
+ *   숫자 값) 유지된다 — `valueMappings` 기본값 도입이 기존 호출부(값 매핑 없이 confirm 하던 PR-A/PR-B
+ *   호출부)를 깨지 않았는지 검증한다.
  *
  * ## 트랜잭션 배선
  *
- * [ImportJobService]/[ImportMappingService] 생성자가 [TransactionTemplate] 을 직접 요구하므로
- * (persist+enqueue 원자성, `ImportJobService` KDoc §트랜잭션 경계) 실 [PlatformTransactionManager] 를
- * 등록한다. `dataSource`/`transactionManager`/`dslContext` 세 빈이 **동일한 [DriverManagerDataSource]
- * 인스턴스**를 공유해야 [ImportJobEnqueuePublisher.enqueue]([org.springframework.transaction.annotation.Propagation.MANDATORY])
- * 가 [TransactionTemplate] 이 연 트랜잭션 안에서 정상 동작한다 — [ImportControllerIntegrationTest][com.bts.search.imports.web.ImportControllerIntegrationTest]
- * 와 동일 패턴.
+ * [ImportMappingFlowIntegrationTest]/[ImportUserMappingFlowIntegrationTest] 와 동일 패턴 —
+ * `dataSource`/`transactionManager`/`dslContext` 세 빈이 동일한 [DriverManagerDataSource] 인스턴스를
+ * 공유해야 [ImportJobEnqueuePublisher.enqueue]([org.springframework.transaction.annotation.Propagation.MANDATORY])
+ * 가 [TransactionTemplate] 이 연 트랜잭션 안에서 정상 동작한다.
  */
 @ExtendWith(SpringExtension::class)
-@ContextConfiguration(classes = [ImportMappingFlowIntegrationTest.TestConfig::class])
-class ImportMappingFlowIntegrationTest {
+@ContextConfiguration(classes = [ImportValueMappingFlowIntegrationTest.TestConfig::class])
+class ImportValueMappingFlowIntegrationTest {
     @Configuration
     @EnableTransactionManagement(proxyTargetClass = true)
     open class TestConfig {
@@ -145,9 +156,9 @@ class ImportMappingFlowIntegrationTest {
 
         /**
          * [UserLookupPort] cross-BC 포트의 test-assembled 최소 stub (no-cross-bc-deployment-assembly) —
-         * 이 흐름 테스트는 `confirm` 을 `userMappings` 생략(기본값 빈 목록)으로만 호출하므로
+         * 이 값 매핑 흐름 테스트는 `confirm` 을 `userMappings` 생략(기본값 빈 목록)으로만 호출하므로
          * [ImportMappingService.confirm] 이 [UserLookupPort] 를 실제로 호출하지 않는다. 배선 컴파일만
-         * 목적이라 `exists` 외 override 가 필요 없다.
+         * 목적이라 `exists` 외 override 가 필요 없다([ImportMappingFlowIntegrationTest] 와 동일 패턴).
          */
         @Bean
         open fun userLookupPort(): UserLookupPort =
@@ -155,11 +166,33 @@ class ImportMappingFlowIntegrationTest {
                 override fun exists(userId: UUID): Boolean = false
             }
 
+        /**
+         * TYPE 자동추천이 소스 "Task" 와 정규화 정확일치하도록 고정 목록을 생성자로 주입한다. "작업" 은
+         * confirm 이 override 로 선택할 대상 값(자동추천과 다른 값)이다.
+         */
         @Bean
-        open fun issueTypeCatalog(): FixedIssueTypeCatalog = FixedIssueTypeCatalog()
+        open fun issueTypeCatalog(): SeededIssueTypeCatalog =
+            SeededIssueTypeCatalog(
+                listOf(
+                    IssueTypeRef(key = "task", name = "Task"),
+                    IssueTypeRef(key = "translated-task", name = "작업"),
+                ),
+            )
 
+        /** STATUS 자동추천이 소스 "In Progress" 와 정규화 정확일치하도록 고정 목록을 생성자로 주입한다. */
         @Bean
-        open fun workflowStateCatalog(): FixedWorkflowStateCatalog = FixedWorkflowStateCatalog()
+        open fun workflowStateCatalog(): SeededWorkflowStateCatalog =
+            SeededWorkflowStateCatalog(
+                listOf(
+                    WorkflowStateView(
+                        key = "in-progress",
+                        name = "In Progress",
+                        isDone = false,
+                        category = "IN_PROGRESS",
+                        displayOrder = 1,
+                    ),
+                ),
+            )
 
         @Bean
         open fun enqueuePublisher(dsl: DSLContext): ImportJobEnqueuePublisher = ImportJobEnqueuePublisher(dsl)
@@ -217,8 +250,8 @@ class ImportMappingFlowIntegrationTest {
             transactionTemplate: TransactionTemplate,
             userLookupPort: UserLookupPort,
             importUserMappingRepository: ImportUserMappingRepository,
-            issueTypeCatalog: FixedIssueTypeCatalog,
-            workflowStateCatalog: FixedWorkflowStateCatalog,
+            issueTypeCatalog: SeededIssueTypeCatalog,
+            workflowStateCatalog: SeededWorkflowStateCatalog,
             importValueMappingRepository: ImportValueMappingRepository,
         ): ImportMappingService {
             return ImportMappingService(
@@ -280,12 +313,12 @@ class ImportMappingFlowIntegrationTest {
 
         /**
          * 전달받은 [IssueImportCommand] 를 순서대로 캡처하고 항상 성공을 반환하는
-         * [IssueImportPort] stub — 매핑대로 커맨드가 조립됐는지 검증하는 이 테스트의 핵심 장치.
+         * [IssueImportPort] stub — 값 매핑대로 커맨드가 조립됐는지 검증하는 이 테스트의 핵심 장치.
          *
-         * [ImportAttachmentSource] 를 받는 2-arg 오버로드만 override 한다 — [IssueImportPort] 의
-         * 1-arg default 구현이 `importIssue(cmd, null)` 로 위임하므로([IssueImportPort] KDoc §주의)
-         * 첨부 소스가 없는(analyze/accept 모두 zip 미첨부) 이 테스트의 행 처리는 항상 이 메서드로
-         * 귀결된다.
+         * [ImportUserMappingFlowIntegrationTest.TestConfig.CapturingIssueImportPort] 와 동일 패턴 —
+         * [ImportAttachmentSource] 를 받는 2-arg 오버로드만 override 한다(1-arg default 가
+         * `importIssue(cmd, null)` 로 위임하므로, 첨부 미포함인 이 테스트의 행 처리는 항상 이 메서드로
+         * 귀결된다).
          */
         class CapturingIssueImportPort : IssueImportPort {
             val capturedCommands: MutableList<IssueImportCommand> = mutableListOf()
@@ -300,33 +333,43 @@ class ImportMappingFlowIntegrationTest {
         }
 
         /**
-         * 고정 빈 목록만 반환하는 테스트 전용 [IssueTypeCatalog] (FR-IM-02 PR-C) — 이 통합테스트는
-         * `confirm` 을 `valueMappings` 생략(기본값 빈 목록)으로만 호출하므로
-         * [ImportMappingService.confirm]/[ImportMappingService.collectValues] 가 이 포트를 실제로
-         * 호출하지 않는다. 배선 컴파일만 목적이다.
+         * 생성자로 받은 고정 목록만 반환해 [ImportMappingService.collectValues] 의 TYPE 자동추천이
+         * 실제로 매치되도록 하는 [IssueTypeCatalog] fake(FR-IM-02 PR-C).
+         *
+         * `issue-tracking` `IssueImportAdapterTest.FixedStatesWorkflowStateCatalog` 와 동일한 생성자
+         * 주입 fixture 패턴이다 — 테스트 인스턴스 필드를 나중에 mutate 하는 방식(예: `MutableList` 프로퍼티에
+         * 직접 채워 넣기)은 쓰지 않는다. `@EnableTransactionManagement(proxyTargetClass = true)` 가 만드는
+         * CGLIB 프록시는 [IssueTypeCatalog.listTypes] 처럼 `@Transactional` 인 인터페이스 오버라이드
+         * 메서드만 오버라이드할 수 있고, Kotlin 프로퍼티 getter 는 기본 `final` 이라 그런 별도 mutable
+         * 프로퍼티에 접근하면 Objenesis 가 생성자를 건너뛰고 만든 프록시 인스턴스 자체의(실제 target 이
+         * 아닌) 미초기화 필드가 조회되어 NPE 가 난다 — 생성자 인자로 고정해 이 문제를 원천 차단한다.
          *
          * `open` 필수 — [IssueTypeCatalog.listTypes] 의 인터페이스 레벨 `@Transactional` 을 [TestConfig]
          * 의 `@EnableTransactionManagement(proxyTargetClass = true)` 가 CGLIB 서브클래싱으로 감싸려
          * 시도하는데, Kotlin 클래스는 기본 final 이라 `open` 없이는 Enhancer 가 실패한다
-         * (`IssueImportAdapterTest.FixedStatesWorkflowStateCatalog` 와 동일 근거).
+         * ([ImportMappingFlowIntegrationTest.TestConfig.FixedIssueTypeCatalog] 와 동일 근거).
          */
-        open class FixedIssueTypeCatalog : IssueTypeCatalog {
-            override fun listTypes(): List<IssueTypeRef> = emptyList()
+        open class SeededIssueTypeCatalog(
+            private val types: List<IssueTypeRef>,
+        ) : IssueTypeCatalog {
+            override fun listTypes(): List<IssueTypeRef> = types
         }
 
-        /** [FixedIssueTypeCatalog] 와 동일 근거 — 고정 빈 목록만 반환하는 테스트 전용 [WorkflowStateCatalog]. */
-        open class FixedWorkflowStateCatalog : WorkflowStateCatalog {
+        /** [SeededIssueTypeCatalog] 와 동일 근거 — collectValues STATUS 자동추천용 고정 목록 [WorkflowStateCatalog] fake. */
+        open class SeededWorkflowStateCatalog(
+            private val states: List<WorkflowStateView>,
+        ) : WorkflowStateCatalog {
             override fun listStates(
                 projectKey: ProjectKey,
                 issueTypeKey: IssueTypeKey?,
-            ): List<WorkflowStateView> = emptyList()
+            ): List<WorkflowStateView> = states
         }
 
         companion object {
             /**
              * JVM 단위 singleton PostgreSQL container.
              * quay.io/tembo/pg16-pgmq:latest — V604(pgmq 확장) 때문에 postgres:16-alpine 으로는 실패한다
-             * (ADR 2026-05-22-pgmq-postgres-image, `ImportControllerIntegrationTest` 동일 패턴).
+             * (ADR 2026-05-22-pgmq-postgres-image, `ImportMappingFlowIntegrationTest` 동일 패턴).
              */
             @JvmStatic
             val pg: PostgreSQLContainer<*> =
@@ -334,19 +377,19 @@ class ImportMappingFlowIntegrationTest {
                     DockerImageName
                         .parse("quay.io/tembo/pg16-pgmq:latest")
                         .asCompatibleSubstituteFor("postgres"),
-                ).withDatabaseName("bts_import_mapping_flow_it")
+                ).withDatabaseName("bts_import_value_mapping_flow_it")
                     .withUsername("bts")
                     .withPassword("bts_test")
                     .apply { start() }
 
-            /** JVM 단위 singleton MinIO container — `ImportControllerIntegrationTest` 와 동일 pinned 버전. */
+            /** JVM 단위 singleton MinIO container — 다른 Import 통합테스트와 동일 pinned 버전. */
             @JvmStatic
             val minio: MinIOContainer =
                 MinIOContainer("minio/minio:RELEASE.2023-09-04T19-57-37Z")
                     .apply { start() }
 
             /** 이 테스트 전용 버킷 — 다른 Import 통합테스트의 버킷과 물리적으로 분리한다. */
-            const val TEST_BUCKET = "bts-imports-mapping-flow-it"
+            const val TEST_BUCKET = "bts-imports-value-mapping-flow-it"
         }
     }
 
@@ -368,7 +411,7 @@ class ImportMappingFlowIntegrationTest {
 
     @Autowired
     @Suppress("VarCouldBeVal")
-    private lateinit var importMappingRepository: ImportMappingRepository
+    private lateinit var importValueMappingRepository: ImportValueMappingRepository
 
     @Autowired
     @Suppress("VarCouldBeVal")
@@ -382,48 +425,68 @@ class ImportMappingFlowIntegrationTest {
     @Suppress("VarCouldBeVal")
     private lateinit var issueImportPort: TestConfig.CapturingIssueImportPort
 
-    private val actorId: UUID = UUID.fromString("aaaaaaaa-0000-0000-0000-0000000000b1")
+    private val actorId: UUID = UUID.fromString("aaaaaaaa-0000-0000-0000-0000000000c1")
     private val projectKey = "ATLAS"
 
     @BeforeEach
     fun setUp() {
-        dsl.deleteFrom(IMPORT_JOBS).execute() // import_mappings 는 FK ON DELETE CASCADE(V606)로 동반 삭제된다.
+        dsl.deleteFrom(IMPORT_JOBS).execute() // import_value_mappings 는 FK ON DELETE CASCADE(V608)로 동반 삭제된다.
         runCatching { dsl.execute("SELECT pgmq.purge_queue(?)", ImportJobWorker.QUEUE_NAME) }
         permissionResolver.allowed.clear()
         permissionResolver.allowed.add(actorId)
         issueImportPort.capturedCommands.clear()
     }
 
-    // ── (i)~(iii) analyze → confirm → 워커 처리, 매핑대로 summary/assignee 반영 ──────
+    // ── (a) 전체 flow — collectValues 추천 + confirm(valueMappings) 로 워커 커맨드 치환 ─
 
     @Test
-    fun `임의 헤더 CSV는 analyze 로 매핑UI 진입 후 confirm 매핑대로 워커가 처리해 COMPLETED 되고 비고는 무시된다`() {
-        val csv = "Título,담당,비고\n버그입니다,alice@corp.com,무시할값\n"
+    fun `collectValues로 수집된 상태 유형 우선순위가 confirm 값매핑대로 워커 커맨드에 치환된다`() {
+        val csv =
+            "Título,Estado,Tipo,Prioridad\n" +
+                "버그입니다,In Progress,Task,High\n"
 
         val analysis = importJobService.analyze(analyzeCommand(csv))
         assertThat(analysis.job.status).isEqualTo(ImportJobStatus.AWAITING_MAPPING)
-        assertThat(analysis.sourceFields).containsExactly("Título", "담당", "비고")
+        assertThat(analysis.sourceFields).containsExactly("Título", "Estado", "Tipo", "Prioridad")
         val jobId = analysis.job.id
 
+        val fieldMappings =
+            mapOf(
+                "Título" to TargetField.SUMMARY.key,
+                "Estado" to TargetField.STATUS.key,
+                "Tipo" to TargetField.TYPE.key,
+                "Prioridad" to TargetField.PRIORITY.key,
+            )
+
+        val collected = importMappingService.collectValues(jobId, actorId, fieldMappings)
+        assertThat(collected.values.getValue(ValueTargetField.STATUS))
+            .containsExactly(ValueCollectionEntry(sourceValue = "in progress", suggestedTargetValue = "In Progress"))
+        assertThat(collected.values.getValue(ValueTargetField.TYPE))
+            .containsExactly(ValueCollectionEntry(sourceValue = "task", suggestedTargetValue = "Task"))
+        assertThat(collected.values.getValue(ValueTargetField.PRIORITY))
+            .containsExactly(ValueCollectionEntry(sourceValue = "high", suggestedTargetValue = "High"))
+
+        // 사용자가 자동추천과 다른 대상 값으로 명시 override 한다 — 단순 추천 echo 가 아님을 증명.
         val confirmed =
             importMappingService.confirm(
                 jobId = jobId,
                 actor = actorId,
-                fieldMappings =
-                    mapOf(
-                        "Título" to TargetField.SUMMARY.key,
-                        "담당" to TargetField.ASSIGNEE.key,
-                        "비고" to TargetField.IGNORE_KEY,
-                    ),
+                fieldMappings = fieldMappings,
                 dryRun = false,
+                valueMappings =
+                    listOf(
+                        Triple(ValueTargetField.STATUS, "In Progress", "진행 중"),
+                        Triple(ValueTargetField.TYPE, "Task", "작업"),
+                        Triple(ValueTargetField.PRIORITY, "High", "Highest"),
+                    ),
             )
         assertThat(confirmed.status).isEqualTo(ImportJobStatus.PENDING)
-        assertThat(importMappingRepository.findByJobId(jobId))
+        assertThat(importValueMappingRepository.findByJobId(jobId))
             .containsExactlyInAnyOrderEntriesOf(
                 mapOf(
-                    "Título" to TargetField.SUMMARY.key,
-                    "담당" to TargetField.ASSIGNEE.key,
-                    "비고" to TargetField.IGNORE_KEY,
+                    (ValueTargetField.STATUS to "in progress") to "진행 중",
+                    (ValueTargetField.TYPE to "task") to "작업",
+                    (ValueTargetField.PRIORITY to "high") to "Highest",
                 ),
             )
 
@@ -431,81 +494,59 @@ class ImportMappingFlowIntegrationTest {
 
         assertThat(importJobRepository.findStatus(jobId)).isEqualTo(ImportJobStatus.COMPLETED)
         assertThat(issueImportPort.capturedCommands).hasSize(1)
-        val command = issueImportPort.capturedCommands.single()
-        assertThat(command.summary).isEqualTo("버그입니다")
-        assertThat(command.assigneeEmail).isEqualTo("alice@corp.com")
-        assertThat(command.description).isNull() // "비고" 는 IGNORE 라 어떤 필드에도 반영되지 않는다.
+        assertCommandReflectsValueMappings(issueImportPort.capturedCommands.single())
     }
 
-    // ── (iv) canonical 즉시경로(accept) 회귀 — 매핑 없이도 정상 처리 ───────────────
-
-    @Test
-    fun `canonical 헤더 CSV는 accept 즉시경로로 매핑 없이도 정상 COMPLETED 된다 (회귀)`() {
-        val csv = "summary\n캐노니컬 이슈\n"
-
-        val job = importJobService.accept(acceptCommand(csv))
-        assertThat(job.status).isEqualTo(ImportJobStatus.PENDING)
-        assertThat(importMappingRepository.findByJobId(job.id)).isEmpty()
-
-        importJobWorker.pollAndProcess()
-
-        assertThat(importJobRepository.findStatus(job.id)).isEqualTo(ImportJobStatus.COMPLETED)
-        assertThat(issueImportPort.capturedCommands).hasSize(1)
-        assertThat(issueImportPort.capturedCommands.single().summary).isEqualTo("캐노니컬 이슈")
+    /**
+     * 워커가 처리한 캡처 커맨드가 값 매핑(상태→"진행 중", 유형→"작업", 우선순위→"Highest")대로
+     * 세팅됐는지 단언하는 헬퍼 — 위 테스트 메서드의 LongMethod(detekt) 방지 목적으로 분리했다.
+     */
+    private fun assertCommandReflectsValueMappings(command: IssueImportCommand) {
+        assertThat(command.typeName).isEqualTo("작업")
+        assertThat(command.statusName).isEqualTo("진행 중")
+        assertThat(command.priority).isEqualTo(1) // canonical "Highest" 의 숫자 값(1)
     }
 
-    // ── (v) dryRun 확정 — dry_run 컬럼 영속 + 워커가 확정값을 읽어 처리 ────────────
+    // ── (b) 회귀 — 값매핑 없이 confirm 하면 커맨드가 원본 소스 값 그대로 유지된다 ──────
 
     @Test
-    fun `confirm 을 dryRun true 로 호출하면 dry_run 이 영속되고 워커가 dryRun true 커맨드로 처리한다`() {
-        val csv = "Título\n드라이런 이슈\n"
+    fun `값 매핑 없이 confirm 하면 워커 커맨드의 상태 유형 우선순위가 원본 그대로 유지된다 (기존 호출부 불변, 회귀)`() {
+        val csv =
+            "Título,Estado,Tipo,Prioridad\n" +
+                "다른버그입니다,In Progress,Task,High\n"
 
         val analysis = importJobService.analyze(analyzeCommand(csv))
         val jobId = analysis.job.id
 
-        val confirmed =
-            importMappingService.confirm(
-                jobId = jobId,
-                actor = actorId,
-                fieldMappings = mapOf("Título" to TargetField.SUMMARY.key),
-                dryRun = true,
+        val fieldMappings =
+            mapOf(
+                "Título" to TargetField.SUMMARY.key,
+                "Estado" to TargetField.STATUS.key,
+                "Tipo" to TargetField.TYPE.key,
+                "Prioridad" to TargetField.PRIORITY.key,
             )
-        assertThat(confirmed.dryRun).isTrue()
-        assertThat(fetchDryRun(jobId)).isTrue()
+
+        // valueMappings 인자를 생략 — 값 매핑 없이 confirm 하던 PR-A/PR-B 시절 기존 호출부와 동일한 형태.
+        importMappingService.confirm(jobId = jobId, actor = actorId, fieldMappings = fieldMappings, dryRun = false)
+        assertThat(importValueMappingRepository.findByJobId(jobId)).isEmpty()
 
         importJobWorker.pollAndProcess()
 
         assertThat(importJobRepository.findStatus(jobId)).isEqualTo(ImportJobStatus.COMPLETED)
-        assertThat(issueImportPort.capturedCommands.single().dryRun).isTrue()
+        assertThat(issueImportPort.capturedCommands).hasSize(1)
+        val command = issueImportPort.capturedCommands.single()
+        assertThat(command.typeName).isEqualTo("Task")
+        assertThat(command.statusName).isEqualTo("In Progress")
+        assertThat(command.priority).isEqualTo(2) // canonical "High" 의 숫자 값(2), 원본 그대로
     }
 
     // ── private helpers ────────────────────────────────────────────────────────
-
-    private fun fetchDryRun(jobId: ImportJobId): Boolean? =
-        dsl.select(IMPORT_JOBS.DRY_RUN)
-            .from(IMPORT_JOBS)
-            .where(IMPORT_JOBS.ID.eq(jobId.value))
-            .fetchOne(IMPORT_JOBS.DRY_RUN)
 
     private fun analyzeCommand(csv: String): ImportAnalyzeCommand {
         val bytes = csv.toByteArray(Charsets.UTF_8)
         return ImportAnalyzeCommand(
             projectKey = projectKey,
             format = "CSV",
-            filename = "issues.csv",
-            contentType = null,
-            sizeBytes = bytes.size.toLong(),
-            inputStream = ByteArrayInputStream(bytes),
-            requesterUserId = actorId,
-        )
-    }
-
-    private fun acceptCommand(csv: String): ImportAcceptCommand {
-        val bytes = csv.toByteArray(Charsets.UTF_8)
-        return ImportAcceptCommand(
-            projectKey = projectKey,
-            format = "CSV",
-            dryRun = false,
             filename = "issues.csv",
             contentType = null,
             sizeBytes = bytes.size.toLong(),

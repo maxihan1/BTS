@@ -6,8 +6,11 @@ import com.bts.search.imports.job.domain.ImportJob
 import com.bts.search.imports.job.repository.ImportJobRepository
 import com.bts.search.imports.job.storage.ImportObjectStoragePort
 import com.bts.search.imports.mapping.UserMappingNormalizer
+import com.bts.search.imports.mapping.ValueMappingNormalizer
+import com.bts.search.imports.mapping.ValueTargetField
 import com.bts.search.imports.mapping.repository.ImportMappingRepository
 import com.bts.search.imports.mapping.repository.ImportUserMappingRepository
+import com.bts.search.imports.mapping.repository.ImportValueMappingRepository
 import com.bts.search.imports.parse.ImportParseException
 import com.bts.search.imports.parse.ImportRowParser
 import com.bts.search.imports.parse.ParsedImportAttachment
@@ -106,11 +109,32 @@ import java.util.UUID
  * 대신 수행하면 그 지식이 BC 경계를 넘어 흩어진다. 실제 매핑은 [ImportChangeGroup] 을 소비하는
  * issue-tracking `IssueImportAdapter`(Task 9)가 담당한다.
  *
+ * ## 값 매핑 로드 및 치환 (FR-IM-02 PR-C)
+ *
+ * [processRows] 가 사용자 매핑과 동일한 패턴으로 job 당 [valueMappingRepo] 를 **1 회만** 호출해
+ * ([ImportValueMappingRepository.findByJobId]) 확정 값 매핑((대상 필드, source_value) → target_value)을
+ * 로드하고, 행 순회 전체에 재사용한다(행마다 조회하면 N+1 쿼리가 된다). [toCommand] 가 각 행의
+ * statusName/typeName/priorityName 을 [resolveMappedValue] 로 [ValueMappingNormalizer.normalize] 정규화한
+ * 뒤 이 맵에서 조회해 저장된 대상 값으로 치환한다. 저장(`ImportMappingService` 의 `collectValues`/`confirm`
+ * 검증)과 조회(이 클래스)가 서로 다른 정규화 규칙을 쓰면 같은 소스값이 다른 키로 취급되어 조용한
+ * 오치환이 발생하므로 [ValueMappingNormalizer] 하나만 정규화 진실원천으로 쓴다.
+ *
+ * 소스값이 null 이면(파싱된 행에 해당 필드 값 자체가 없음) 치환을 시도하지 않고 null 을 그대로 유지한다.
+ * 정규화 후 매핑에 없는 값(미매핑) 또는 값 매핑을 저장한 적 없는 job(빈 Map, 기존 canonical 흐름)은
+ * 원본 값을 그대로 유지한다 — 하위호환.
+ *
+ * **priorityName 치환과 [PRIORITY_NUMBER_BY_NAME] 조회 순서(C1)** — `ImportMappingService.confirm` 이
+ * PRIORITY 대상 값을 저장 시점에 이미 canonical 5 종의 정확한 표기(`"Highest"`/`"High"`/`"Medium"`/
+ * `"Low"`/`"Lowest"`)로 치환해 두므로, [valueMappingRepo] 가 반환하는 target_value 는 항상 이 정확한
+ * 표기다. 따라서 [resolveMappedValue] 로 치환된 priorityName 을 그대로 [PRIORITY_NUMBER_BY_NAME] 의
+ * 조회 키로 써도 안전하다 — 대소문자가 어긋나 조회가 조용히 실패(null)하는 일이 없다.
+ *
  * @param issueImportPort 이슈 생성 cross-BC 쓰기 포트.
  * @param storage 원본 파일 조회 + 에러 로그 업로드용 오브젝트 스토리지 포트.
  * @param repository Import 작업 상태 관리 저장소.
  * @param mappingRepo CSV 확정 매핑(source_field → target_field) 조회 저장소(FR-IM-02 PR-A).
  * @param userMappingRepo 확정 사용자 매핑(source_identifier → target_user_id?) 조회 저장소(FR-IM-02 PR-B).
+ * @param valueMappingRepo 확정 값 매핑((대상 필드, source_value) → target_value) 조회 저장소(FR-IM-02 PR-C).
  * @param errorLogWriter 실패행 CSV 에러 로그 직렬화기.
  * @param parser CSV/JSON 스트리밍 파서. [ImportRowParser] 는 Spring 빈으로 등록되어 있지 않으므로
  *   ([ImportJobRepository] 의 Clock 기본값 패턴과 동일하게) 기본값으로 직접 인스턴스화한다.
@@ -126,6 +150,7 @@ class ImportJobProcessor(
     private val repository: ImportJobRepository,
     private val mappingRepo: ImportMappingRepository,
     private val userMappingRepo: ImportUserMappingRepository,
+    private val valueMappingRepo: ImportValueMappingRepository,
     private val errorLogWriter: ImportErrorLogWriter,
     private val parser: ImportRowParser = ImportRowParser(),
     private val clock: Clock = Clock.systemUTC(),
@@ -172,10 +197,11 @@ class ImportJobProcessor(
     private fun processRows(job: ImportJob) {
         val state = RowProcessingState()
         val userMappings = userMappingRepo.findByJobId(job.id)
+        val valueMappings = valueMappingRepo.findByJobId(job.id)
         openZipSourceOrNull(job).use { attachmentSource ->
             storage.get(job.sourceObjectKey).use { input ->
                 val onRow: (ParsedImportRow) -> Unit = { row ->
-                    handleRow(job, row, state, attachmentSource, userMappings)
+                    handleRow(job, row, state, attachmentSource, userMappings, valueMappings)
                 }
                 when (job.format) {
                     FORMAT_CSV -> parseCsv(job, input, onRow)
@@ -237,12 +263,13 @@ class ImportJobProcessor(
         state: RowProcessingState,
         attachmentSource: ZipImportAttachmentSource?,
         userMappings: Map<String, UUID?>,
+        valueMappings: Map<Pair<ValueTargetField, String>, String>,
     ) {
         state.rowCount++
         if (state.rowCount > ImportJob.MAX_ROWS) {
             throw ImportRowLimitExceededException()
         }
-        val command = toCommand(job, row, userMappings)
+        val command = toCommand(job, row, userMappings, valueMappings)
         val result =
             if (attachmentSource != null) {
                 issueImportPort.importIssue(command, attachmentSource)
@@ -335,25 +362,35 @@ class ImportJobProcessor(
 
     private fun buildErrorLogObjectKey(job: ImportJob): String = "${job.projectKey}/${job.id}-errors.csv"
 
-    /** [ParsedImportRow] 1건을 [IssueImportCommand] 로 변환한다. */
+    /**
+     * [ParsedImportRow] 1건을 [IssueImportCommand] 로 변환한다.
+     *
+     * statusName/typeName/priorityName 은 [resolveMappedValue] 로 [valueMappings] 치환을 먼저 거친 뒤
+     * 커맨드에 반영한다(클래스 KDoc §값 매핑 로드 및 치환 참조). priorityName 은 치환 결과를
+     * [PRIORITY_NUMBER_BY_NAME] 으로 숫자 변환하는 기존 순서를 그대로 유지한다.
+     */
     private fun toCommand(
         job: ImportJob,
         row: ParsedImportRow,
         userMappings: Map<String, UUID?>,
-    ): IssueImportCommand =
-        IssueImportCommand(
+        valueMappings: Map<Pair<ValueTargetField, String>, String>,
+    ): IssueImportCommand {
+        val typeName = resolveMappedValue(ValueTargetField.TYPE, row.typeName, valueMappings)
+        val statusName = resolveMappedValue(ValueTargetField.STATUS, row.statusName, valueMappings)
+        val priorityName = resolveMappedValue(ValueTargetField.PRIORITY, row.priorityName, valueMappings)
+        return IssueImportCommand(
             projectKey = job.projectKey,
             requesterUserId = job.requesterUserId,
             summary = row.summary.orEmpty(),
-            typeName = row.typeName,
+            typeName = typeName,
             description = row.description,
-            priority = row.priorityName?.let { PRIORITY_NUMBER_BY_NAME[it] },
+            priority = priorityName?.let { PRIORITY_NUMBER_BY_NAME[it] },
             reporterEmail = row.reporterEmail,
             assigneeEmail = row.assigneeEmail,
             labels = row.labels,
             componentNames = row.componentNames,
             dryRun = job.dryRun,
-            statusName = row.statusName,
+            statusName = statusName,
             fixVersionNames = row.fixVersionNames,
             affectsVersionNames = row.affectsVersionNames,
             comments = row.comments.map { toImportComment(it, userMappings) },
@@ -364,6 +401,23 @@ class ImportJobProcessor(
             reporterUserId = resolveUserId(row.reporterEmail, userMappings),
             assigneeUserId = resolveUserId(row.assigneeEmail, userMappings),
         )
+    }
+
+    /**
+     * 소스 값(상태/유형/우선순위 이름) [rawValue] 를 [ValueMappingNormalizer.normalize] 로 정규화한 뒤
+     * [targetField] 와 조합한 키로 [valueMappings] 에서 조회한다. [rawValue] 가 null 이면 치환을 시도하지
+     * 않고 null 을 그대로 반환한다(클래스 KDoc §값 매핑 로드 및 치환 참조). 매핑에 없으면(미매핑) [rawValue]
+     * 원본을 그대로 반환한다 — 기존 canonical 흐름(값 매핑을 저장한 적 없는 job, 빈 Map)의 하위호환이다.
+     */
+    private fun resolveMappedValue(
+        targetField: ValueTargetField,
+        rawValue: String?,
+        valueMappings: Map<Pair<ValueTargetField, String>, String>,
+    ): String? {
+        if (rawValue == null) return null
+        val normalized = ValueMappingNormalizer.normalize(rawValue)
+        return valueMappings[targetField to normalized] ?: rawValue
+    }
 
     /**
      * 소스 식별자(이메일) [email] 을 [UserMappingNormalizer.normalize] 로 정규화한 뒤 [userMappings] 에서

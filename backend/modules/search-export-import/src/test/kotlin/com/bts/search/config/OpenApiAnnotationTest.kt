@@ -4,12 +4,14 @@ package com.bts.search.config
 
 import com.bts.shared.http.OutboundUrlValidator
 import com.bts.shared.issue.IssueImportPort
+import com.bts.shared.issue.IssueTypeCatalog
 import com.bts.shared.membership.GroupMembershipPort
 import com.bts.shared.membership.ProjectMembershipPort
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.SystemPermissionResolver
 import com.bts.shared.search.IssueSearchPort
 import com.bts.shared.user.UserLookupPort
+import com.bts.shared.workflow.WorkflowStateCatalog
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -117,6 +119,20 @@ class OpenApiAnnotationTest {
      */
     @MockBean
     lateinit var userLookupPort: UserLookupPort
+
+    /**
+     * 전역 이슈타입 전체 목록 조회 포트 — cross-BC(issue-tracking). 값매핑 TYPE 자동추천/검증
+     * ([com.bts.search.imports.mapping.ImportMappingService]) 의존성(FR-IM-02 PR-C).
+     */
+    @MockBean
+    lateinit var issueTypeCatalog: IssueTypeCatalog
+
+    /**
+     * 프로젝트 워크플로우 상태 전체 목록 조회 포트 — cross-BC(project-workflow). 값매핑 STATUS
+     * 자동추천([com.bts.search.imports.mapping.ImportMappingService]) 의존성(FR-IM-02 PR-C).
+     */
+    @MockBean
+    lateinit var workflowStateCatalog: WorkflowStateCatalog
 
     /** 이슈 권한 판정 포트 — cross-BC(issue-tracking), ImportJobService 접수 권한 fail-fast 의존성. */
     @MockBean
