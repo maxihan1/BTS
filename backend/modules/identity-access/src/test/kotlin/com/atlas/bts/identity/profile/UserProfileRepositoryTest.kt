@@ -28,7 +28,6 @@ import java.util.UUID
 @Import(JdbcUserProfileRepository::class)
 @Testcontainers
 class UserProfileRepositoryTest {
-
     companion object {
         @Container
         @JvmStatic
