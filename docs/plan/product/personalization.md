@@ -23,13 +23,13 @@
 
 **우선순위**. 필수 | **선행**. §0 | **Plan slug**. `personal/profile`
 
-- [ ] D1. 도메인 — UserProfile (책임. backend-engineer)
-- [ ] D2. 명세 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `user_profiles(user_id, display_name, avatar_url, timezone, department)` (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET/PATCH /api/v1/users/me/profile`. MinIO 아바타 (책임. backend-engineer + security-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 프로필 페이지 + 아바타 업로드 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — UserProfile (책임. backend-engineer)
+- [x] D2. 명세 (책임. backend-engineer)
+- [x] D3. 데이터 모델 — `user_profiles(user_id, avatar_object_key, timezone, department)` — display_name은 users 유지 (ADR 2026-07-05, avatar_url→avatar_object_key 파생) (책임. db-engineer)
+- [x] D4. 백엔드 — `GET/PATCH /api/v1/users/me/profile` + 아바타 3종. MinIO 아바타 (책임. backend-engineer + security-engineer)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer)
+- [ ] D6. 프론트 UI — 프로필 페이지 + 아바타 업로드 (후속 UI PR) (책임. designer → frontend-engineer)
+- [ ] D7. E2E (후속 UI PR) (책임. qa-engineer)
 
 ### §2.2 FR-PR-02 — 상태 메시지 (이모지 + 텍스트)
 
