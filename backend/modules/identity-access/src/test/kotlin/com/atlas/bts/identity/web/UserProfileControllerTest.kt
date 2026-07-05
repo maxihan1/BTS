@@ -5,6 +5,7 @@ package com.atlas.bts.identity.web
 import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
+import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.profile.ProfilePatch
 import com.atlas.bts.identity.profile.ProfilePatchField
 import com.atlas.bts.identity.profile.ProfileUserNotFoundException
@@ -12,7 +13,6 @@ import com.atlas.bts.identity.profile.ProfileValidationException
 import com.atlas.bts.identity.profile.ProfileView
 import com.atlas.bts.identity.profile.UserProfileService
 import com.atlas.bts.identity.profile.avatar.AvatarObject
-import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.profile.avatar.AvatarObjectNotFoundException
 import com.atlas.bts.identity.profile.avatar.AvatarValidationException
 import com.atlas.bts.identity.session.SessionService
@@ -85,8 +85,9 @@ class UserProfileControllerTest {
         }
 
         @Bean
-        fun corsConfigurationSource(): CorsConfigurationSource =
-            CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        fun corsConfigurationSource(): CorsConfigurationSource {
+            return CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        }
 
         @Bean
         fun personalAccessTokenService(): PersonalAccessTokenService = mockk(relaxed = true)

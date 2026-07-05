@@ -25,8 +25,8 @@ import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PatchMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -76,6 +76,9 @@ import java.util.UUID
  */
 @RestController
 @RequestMapping("/api/v1/users")
+// TooManyFunctions 억제 — 5개 엔드포인트 + 로컬 예외 핸들러 3개 + DTO 변환/식별자 추출 helper 들이 응집돼야
+// 하는 단일 컨트롤러다([AccountLinkController] 선례와 동일 원칙 — 분리하면 SecurityBeans/errorResponse 중복).
+@Suppress("TooManyFunctions")
 class UserProfileController(
     private val userProfileService: UserProfileService,
 ) {
@@ -249,7 +252,9 @@ class UserProfileController(
         status: HttpStatus,
         code: String,
         message: String,
-    ): ResponseEntity<Map<String, String>> = ResponseEntity.status(status).body(mapOf("code" to code, "message" to message))
+    ): ResponseEntity<Map<String, String>> {
+        return ResponseEntity.status(status).body(mapOf("code" to code, "message" to message))
+    }
 
     private companion object {
         /** MIME 스니핑 차단 헤더명. */
