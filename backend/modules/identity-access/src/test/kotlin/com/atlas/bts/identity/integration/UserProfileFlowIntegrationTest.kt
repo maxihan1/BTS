@@ -170,16 +170,22 @@ class UserProfileFlowIntegrationTest {
 
     @MockBean lateinit var ldapTemplate: LdapTemplate
 
+    // @Suppress("VarCouldBeVal") — Spring 이 reflection 으로 주입하는 lateinit 은 소스상 재대입이 없어
+    // detekt 가 val 로 오판한다(신규 코드 @Suppress 관례). lateinit 특성상 var 여야 한다.
     @Autowired
+    @Suppress("VarCouldBeVal")
     private lateinit var mockMvc: MockMvc
 
     @Autowired
+    @Suppress("VarCouldBeVal")
     private lateinit var jwtEncoder: JwtEncoder
 
     @Autowired
+    @Suppress("VarCouldBeVal")
     private lateinit var jdbc: NamedParameterJdbcTemplate
 
     @Autowired
+    @Suppress("VarCouldBeVal")
     private lateinit var objectMapper: ObjectMapper
 
     // ── 픽스처 식별값 ──────────────────────────────────────────────────────────
@@ -273,6 +279,9 @@ class UserProfileFlowIntegrationTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.avatarUrl").value("/api/v1/users/$meId/avatar"))
 
+        // 업로드 후 프로필 GET 도 avatarUrl 을 파생 노출한다(avatarObjectKey → URL 매핑 경로 검증)
+        assertThat(getProfile(token)["avatarUrl"]).isEqualTo("/api/v1/users/$meId/avatar")
+
         // 다운로드 → 200 + nosniff + image/png + 바이트 일치
         val downloaded =
             mockMvc.perform(
@@ -295,6 +304,9 @@ class UserProfileFlowIntegrationTest {
         mockMvc.perform(
             get("/api/v1/users/$meId/avatar").header(HttpHeaders.AUTHORIZATION, "Bearer $token"),
         ).andExpect(status().isNotFound)
+
+        // 삭제 후 프로필 GET 의 avatarUrl 도 다시 null 로 파생된다
+        assertThat(getProfile(token)["avatarUrl"]).isNull()
     }
 
     // ── 시나리오 5. 무효 업로드 ────────────────────────────────────────────────
@@ -427,7 +439,12 @@ class UserProfileFlowIntegrationTest {
             jdbc.update(
                 "INSERT INTO users (id, username, email, display_name) VALUES (:id, :username, :email, :displayName)" +
                     " ON CONFLICT (id) DO NOTHING",
-                mapOf("id" to id, "username" to username, "email" to "$username@example.com", "displayName" to displayName),
+                mapOf(
+                    "id" to id,
+                    "username" to username,
+                    "email" to "$username@example.com",
+                    "displayName" to displayName,
+                ),
             )
         }
     }
