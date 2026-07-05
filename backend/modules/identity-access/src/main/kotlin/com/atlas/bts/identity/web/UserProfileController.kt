@@ -32,6 +32,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.multipart.MaxUploadSizeExceededException
 import org.springframework.web.multipart.MultipartFile
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
@@ -181,6 +182,20 @@ class UserProfileController(
         log.info("프로필/아바타 검증 실패 exceptionType={}", ex.javaClass.simpleName)
         val code = if (ex is ProfileValidationException) ERROR_PROFILE_VALIDATION else ERROR_AVATAR_VALIDATION
         return errorResponse(HttpStatus.BAD_REQUEST, code, ex.message ?: DEFAULT_VALIDATION_MESSAGE)
+    }
+
+    /**
+     * 서블릿 멀티파트 크기 상한(`spring.servlet.multipart.max-file-size`) 초과 → 400.
+     *
+     * 앱 정책([AvatarTypePolicy], 5MB)보다 위에 둔 하드 상한(6MB)을 넘는 업로드는 바이트를 컨트롤러까지
+     * 읽어들이지 않고 서블릿 파싱 단계에서 거부된다. 응답은 [handleValidation] 과 동일한 `{code,message}`
+     * 봉투를 쓰되 메시지는 내부 한도값을 노출하지 않는 일반 문구로 고정한다. (resolve-lazily=true 로 파싱을
+     * 핸들러 인자 바인딩 시점까지 미뤄, 이 예외가 컨트롤러 로컬 핸들러 스코프에서 잡힌다 — application.yml 참고.)
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException::class)
+    fun handleMaxUploadSize(): ResponseEntity<Map<String, String>> {
+        log.info("아바타 업로드 크기 상한 초과 — 서블릿 멀티파트 한도 초과")
+        return errorResponse(HttpStatus.BAD_REQUEST, ERROR_AVATAR_VALIDATION, "아바타 파일이 너무 큽니다.")
     }
 
     /** 대상 사용자가 BTS 에 없음 → 404. 원본 메시지(userId 포함)는 노출하지 않고 고정 메시지로 치환. */

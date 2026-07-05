@@ -18,8 +18,14 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.mock.mockito.MockBean
+import org.springframework.boot.test.web.client.TestRestTemplate
+import org.springframework.boot.test.web.server.LocalServerPort
+import org.springframework.core.io.ByteArrayResource
+import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.http.ResponseEntity
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.ldap.core.LdapTemplate
 import org.springframework.mock.web.MockMultipartFile
@@ -38,6 +44,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.util.LinkedMultiValueMap
 import org.testcontainers.containers.MinIOContainer
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
@@ -188,6 +195,15 @@ class UserProfileFlowIntegrationTest {
     @Suppress("VarCouldBeVal")
     private lateinit var objectMapper: ObjectMapper
 
+    // 실 서블릿 멀티파트 경로(서블릿이 바디를 실제 파싱) 검증용 — MockMvc 는 서블릿 파싱을 우회한다.
+    @Autowired
+    @Suppress("VarCouldBeVal")
+    private lateinit var restTemplate: TestRestTemplate
+
+    @LocalServerPort
+    @Suppress("VarCouldBeVal")
+    private var port: Int = 0
+
     // ── 픽스처 식별값 ──────────────────────────────────────────────────────────
     private val meId: UUID = UUID.fromString("0f000000-0000-0000-0000-000000000601")
     private val peerId: UUID = UUID.fromString("0f000000-0000-0000-0000-000000000602")
@@ -309,8 +325,16 @@ class UserProfileFlowIntegrationTest {
         assertThat(getProfile(token)["avatarUrl"]).isNull()
     }
 
-    // ── 시나리오 5. 무효 업로드 ────────────────────────────────────────────────
+    // ── 시나리오 5. 무효 업로드 (앱 정책) ──────────────────────────────────────
 
+    /**
+     * 아바타 업로드 앱-레벨 검증(MIME 화이트리스트 + [AvatarTypePolicy] 5MB 크기 상한) → 400.
+     *
+     * MockMvc 는 DispatcherServlet 로 직접 디스패치해 서블릿 멀티파트 크기 제한을 우회하므로 이 테스트는
+     * 앱 정책만 검증한다(5MB 초과 바이트가 컨트롤러 [AvatarTypePolicy] 까지 도달해 400). 서블릿 하드
+     * 상한(max-file-size) 경로는 실 HTTP(TestRestTemplate)를 태우는 아래 시나리오 5b 가 담당한다
+     * (2MB 정상 → 200, 6MB 초과 → 400).
+     */
     @Test
     fun `허용되지 않는 MIME과 5MB 초과 업로드는 400`() {
         val token = issueJwt(meId, meSessionId)
@@ -331,6 +355,35 @@ class UserProfileFlowIntegrationTest {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
                 .with(csrf()),
         ).andExpect(status().isBadRequest)
+    }
+
+    // ── 시나리오 5b. 실 서블릿 경로 크기 상한 (회귀 방지) ──────────────────────
+
+    /**
+     * 실제 HTTP 멀티파트 업로드로 서블릿 크기 상한 동작을 검증한다(MockMvc 가 우회하는 서블릿 경로).
+     *
+     * ## 회귀 방지 핵심
+     * 서블릿 기본 max-file-size 는 1MB 라, 이 설정이 없으면 정상 2MB 아바타가 컨트롤러 검증 이전에
+     * MaxUploadSizeExceededException 으로 거부돼 500 이 된다(prod 에서 2MB 아바타 업로드가 깨짐).
+     * application.yml 에서 6MB 로 올렸으므로 2MB 는 200 이어야 한다 — 이것이 버그의 본질이다.
+     *
+     * 5.5MB(앱 정책 5MB 초과 & 서블릿 6MB 미만)는 서블릿을 통과해 컨트롤러가 바디를 끝까지 읽은 뒤
+     * [AvatarTypePolicy] 로 400 을 반환한다. 바디가 완전히 소비돼 연결 리셋 없이 400 을 온전히 관측한다.
+     * 이 케이스도 회귀를 함께 잡는다 — 서블릿 상한이 1MB 기본이면 5.5MB 는 400 이 아니라 500 이 된다.
+     * (서블릿 하드 상한 6MB 초과 시의 MaxUploadSizeExceededException 핸들러는 백스톱으로 남겨두되, 그
+     * 경로의 실 HTTP 관측은 Tomcat 의 즉시 100-continue + 스트림 도중 거부 시 연결 리셋 때문에 불안정하다.)
+     */
+    @Test
+    fun `실 서블릿 경로 — 2MB 아바타는 200, 5·5MB는 400`() {
+        val token = issueJwt(meId, meSessionId)
+
+        // ~2MB 유효 PNG — 상한을 6MB 로 올린 덕에 서블릿 1MB 기본에 걸리지 않고 정상 저장돼야 한다.
+        val twoMb = ByteArray(2 * 1024 * 1024).also { pngBytes.copyInto(it) }
+        assertThat(uploadAvatarOverHttp(token, twoMb).statusCode).isEqualTo(HttpStatus.OK)
+
+        // 5.5MB — 앱 정책(5MB) 초과, 서블릿(6MB) 미만 → 컨트롤러가 바디 전체를 읽고 앱 정책으로 400(클린).
+        val overLimit = ByteArray(5 * 1024 * 1024 + 512 * 1024).also { pngBytes.copyInto(it) }
+        assertThat(uploadAvatarOverHttp(token, overLimit).statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
     }
 
     // ── 시나리오 6. 동료 아바타 조회 ───────────────────────────────────────────
@@ -396,6 +449,41 @@ class UserProfileFlowIntegrationTest {
             .content(json)
             .with(csrf()),
     )
+
+    /**
+     * 실제 HTTP(TestRestTemplate)로 image/png 멀티파트 아바타를 업로드한다(서블릿 파싱 경로).
+     *
+     * JWT Bearer 인증 요청은 CSRF 를 면제받으므로(SecurityConfig — oauth2ResourceServer) CSRF 토큰은
+     * 붙이지 않는다. part content-type 을 image/png 로 명시해 [AvatarTypePolicy] MIME 검증을 통과시킨다.
+     * [TestRestTemplate] 은 4xx 를 예외로 던지지 않고 [ResponseEntity] 로 반환하므로 상태코드를 직접 단언한다.
+     *
+     * @param token Bearer 액세스 토큰.
+     * @param bytes 업로드 바이트.
+     * @return 상태코드 단언용 응답.
+     */
+    private fun uploadAvatarOverHttp(
+        token: String,
+        bytes: ByteArray,
+    ): ResponseEntity<String> {
+        val filePart =
+            HttpEntity(
+                object : ByteArrayResource(bytes) {
+                    override fun getFilename(): String = "avatar.png"
+                },
+                HttpHeaders().apply { contentType = MediaType.IMAGE_PNG },
+            )
+        val body = LinkedMultiValueMap<String, Any>().apply { add("file", filePart) }
+        val headers =
+            HttpHeaders().apply {
+                contentType = MediaType.MULTIPART_FORM_DATA
+                set(HttpHeaders.AUTHORIZATION, "Bearer $token")
+            }
+        return restTemplate.postForEntity(
+            "http://localhost:$port/api/v1/users/me/profile/avatar",
+            HttpEntity(body, headers),
+            String::class.java,
+        )
+    }
 
     /**
      * 주어진 userId 를 subject, sessionId 를 sid claim 으로 하는 JWT 를 발급한다

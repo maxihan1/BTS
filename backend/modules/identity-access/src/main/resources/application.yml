@@ -23,6 +23,21 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  servlet:
+    multipart:
+      # FR-PR-01 아바타 업로드 크기 정책.
+      # 앱 정책(AvatarTypePolicy)은 5MB(=5MiB)를 상한으로 400 처리한다. 그런데 서블릿 기본
+      # max-file-size 는 1MB 라, 그대로 두면 정상 1~5MB 아바타가 컨트롤러 검증에 도달하기 전에
+      # MaxUploadSizeExceededException 으로 거부돼 500 이 된다(2MB 아바타 업로드가 prod 에서 깨짐).
+      # 앱 정책보다 약간 위(6MB)로 올려, 5~6MB 는 앱이 400(AvatarValidationException),
+      # 6MB 초과는 서블릿이 MaxUploadSizeExceededException → 컨트롤러 핸들러가 400 으로 매핑한다.
+      max-file-size: 6MB
+      max-request-size: 7MB
+      # resolve-lazily=true: 멀티파트 파싱을 핸들러 인자 바인딩 시점으로 미뤄, 크기 초과 예외가
+      # 컨트롤러 로컬 @ExceptionHandler 스코프(핸들러 메서드 컨텍스트) 안에서 잡히게 한다.
+      # 모듈에 전역 @ControllerAdvice 가 없으므로, eager(기본) 파싱이면 예외가 핸들러 밖(DispatcherServlet
+      # checkMultipart)에서 던져져 로컬 핸들러가 못 잡고 500 이 된다 — lazy 로 핸들러 컨텍스트로 끌어온다.
+      resolve-lazily: true
   ldap:
     urls: ${BTS_LDAP_URL:ldap://localhost:389}
     base: ${BTS_LDAP_BASE_DN:dc=bts,dc=local}
