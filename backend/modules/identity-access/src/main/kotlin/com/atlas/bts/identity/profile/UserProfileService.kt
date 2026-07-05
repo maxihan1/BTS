@@ -83,8 +83,20 @@ class UserProfileService(
         userId: UUID,
         patch: ProfilePatch,
     ): ProfileView {
-        val newDisplayName = validatedDisplayName(patch.displayName)
-        val newTimezone = validatedTimezone(patch.timezone)
+        val newDisplayName =
+            validateIfPresent(patch.displayName) { name ->
+                if (name.isBlank() || name.length > MAX_DISPLAY_NAME_LENGTH) {
+                    throw ProfileValidationException("표시 이름은 공백일 수 없고 ${MAX_DISPLAY_NAME_LENGTH}자를 초과할 수 없습니다.")
+                }
+            }
+        val newTimezone =
+            validateIfPresent(patch.timezone) { tz ->
+                try {
+                    ZoneId.of(tz)
+                } catch (e: DateTimeException) {
+                    throw ProfileValidationException("유효하지 않은 타임존입니다.", e)
+                }
+            }
 
         if (newDisplayName != null) {
             userRepository.updateDisplayName(userId, newDisplayName)
@@ -117,7 +129,7 @@ class UserProfileService(
         contentType: String,
     ): String {
         AvatarTypePolicy.validate(contentType, bytes.size.toLong())
-        val oldKey = profileRepository.findByUserId(userId)?.avatarObjectKey
+        val oldKey = currentAvatarKey(userId)
         val newKey = "avatars/$userId/${UUID.randomUUID()}.${AvatarTypePolicy.extensionFor(contentType)}"
 
         storagePort.put(newKey, bytes, contentType)
@@ -137,7 +149,7 @@ class UserProfileService(
      * @param userId 대상 사용자 id.
      */
     fun deleteAvatar(userId: UUID) {
-        val oldKey = profileRepository.findByUserId(userId)?.avatarObjectKey
+        val oldKey = currentAvatarKey(userId)
         profileRepository.clearAvatar(userId)
         if (oldKey != null) {
             deleteBestEffort(oldKey)
@@ -152,9 +164,7 @@ class UserProfileService(
      * @throws AvatarObjectNotFoundException 아바타가 설정되어 있지 않을 때(컨트롤러가 404 매핑).
      */
     fun getAvatar(userId: UUID): AvatarObject {
-        val key =
-            profileRepository.findByUserId(userId)?.avatarObjectKey
-                ?: throw AvatarObjectNotFoundException("아바타가 설정되어 있지 않습니다.")
+        val key = currentAvatarKey(userId) ?: throw AvatarObjectNotFoundException("아바타가 설정되어 있지 않습니다.")
         return storagePort.get(key)
     }
 
@@ -196,27 +206,24 @@ class UserProfileService(
         profileRepository.upsertProfile(userId, finalTimezone, finalDepartment)
     }
 
-    /** displayName 명시 시 공백/255자 초과를 검증한다. 부재면 null(변경 없음). */
-    private fun validatedDisplayName(field: ProfilePatchField<String>): String? {
+    /**
+     * [field] 가 [ProfilePatchField.Present] 면 [validator] 로 값을 검증한 뒤 그 값을 반환하고,
+     * [ProfilePatchField.Absent] 면 null(변경 없음)을 반환한다.
+     *
+     * [validator] 는 검증 실패 시 [ProfileValidationException] 을 던진다 — displayName/timezone
+     * 두 검증(각각 다른 규칙)의 "부재면 스킵" 공통 분기를 여기 한 곳으로 모은다.
+     */
+    private fun <T> validateIfPresent(
+        field: ProfilePatchField<T>,
+        validator: (T) -> Unit,
+    ): T? {
         if (field !is ProfilePatchField.Present) return null
-        val value = field.value
-        if (value.isBlank() || value.length > MAX_DISPLAY_NAME_LENGTH) {
-            throw ProfileValidationException("표시 이름은 공백일 수 없고 ${MAX_DISPLAY_NAME_LENGTH}자를 초과할 수 없습니다.")
-        }
-        return value
+        validator(field.value)
+        return field.value
     }
 
-    /** timezone 명시 시 유효한 IANA 타임존인지 검증한다. 부재면 null(변경 없음). */
-    private fun validatedTimezone(field: ProfilePatchField<String>): String? {
-        if (field !is ProfilePatchField.Present) return null
-        val value = field.value
-        try {
-            ZoneId.of(value)
-        } catch (e: DateTimeException) {
-            throw ProfileValidationException("유효하지 않은 타임존입니다.", e)
-        }
-        return value
-    }
+    /** 대상 사용자의 현재 avatar_object_key 를 조회한다(프로필 행 없으면 null) — upload/delete/get 공통 조회. */
+    private fun currentAvatarKey(userId: UUID): String? = profileRepository.findByUserId(userId)?.avatarObjectKey
 
     /** 아바타 오브젝트 삭제를 best-effort 로 수행한다 — 실패해도 로그만 남기고 흐름을 막지 않는다. */
     private fun deleteBestEffort(objectKey: String) {
