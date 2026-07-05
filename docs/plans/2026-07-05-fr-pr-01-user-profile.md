@@ -35,9 +35,21 @@ product 문서: `docs/plan/product/personalization.md §2.1`
 - **기존 결정 충돌**: 없음. `PreferencesController` stub(`/api/v1/users/me/preferences`)은 CSRF 시연용 — 경로 다름(`/profile`), 무충돌
 - **관련 ADR**: [docs/decisions/2026-07-05-fr-pr-01-user-profile-placement.md](../decisions/2026-07-05-fr-pr-01-user-profile-placement.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-05-fr-pr-01-user-profile.md](../specs/2026-07-05-fr-pr-01-user-profile.md)
+
+**스코프**: 백엔드 D1~D5. D6~D7(프론트 프로필 페이지·E2E)는 후속 UI PR(FR-TL-01 선례).
+
+핵심 시나리오 요약.
+- `GET /api/v1/users/me/profile` — users JOIN user_profiles. row 없으면 defaults(avatar null, tz 'UTC').
+- `PATCH /api/v1/users/me/profile` — displayName→users, timezone/department→user_profiles(lazy upsert). 3-state(부재/null).
+- 아바타 3종 — `POST/DELETE /me/profile/avatar` + `GET /users/{id}/avatar`. MinIO, MIME 화이트리스트, 5MB, nosniff, I/O tx밖.
+- 테이블 `user_profiles(user_id PK/FK CASCADE, avatar_object_key, timezone, department, ts)`. **JdbcTemplate**(identity-access 관례, jOOQ 아님).
+
+## Brainstorming Check
+
+✅ 통과 (1회, 코드 대조 gap 6건 보강 — F1 JdbcTemplate 교정 / F2 avatar_object_key 파생 / F3 tz 'UTC' / F4 soft-delete 없음 / F5 OCC 불필요 / F6 마이그레이션 카운트).
 
 ## Plan (← /bts-plan 채움)
 
