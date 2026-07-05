@@ -138,18 +138,19 @@ COMMENT ON TABLE user_profiles IS 'FR-PR-01 사용자 프로필 확장 — 아�
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/profile/UserProfileService.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/profile/UserProfileServiceTest.kt`]
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/profile/UserProfileService.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/profile/UserProfileServiceTest.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/user/UserRepository.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/user/JdbcUserRepository.kt`]
 - depends-on: [2, 3]
+- 주의(C3): `UserRepository.updateDisplayName` 추가 시 기존 `UserRepositoryTest`/타 소비처 fake·mock가 깨지지 않게 `default` 메서드 + 구현 갱신. 파일 겹침 없음(다른 task는 UserRepository 미수정).
 
 **RED**:
 - `UserProfileServiceTest` (mockk: UserRepository, UserProfileRepository, AvatarStoragePort):
   - `getProfile` — users + user_profiles 병합. profile row 없으면 defaults(avatarUrl 파생 null, tz 'UTC', dept null), displayName은 users에서.
   - `patchProfile` — displayName→users.save, timezone/department→upsert. **3-state**: 부재=미변경, null=삭제(department). timezone 무효(`ZoneId.of` 실패) → `ProfileValidationException`(400), 부분 적용 없음(검증 먼저).
-  - `uploadAvatar` — 정책 검증 → **MinIO put(tx 밖)** → 기존 key best-effort delete(교체) → repo.setAvatarObjectKey. avatarUrl 파생 반환.
-  - `deleteAvatar` — repo.clearAvatar → MinIO delete(best-effort, 실패 무시).
+  - `uploadAvatar` — **순서(C1)**: ① 기존 avatar_object_key 읽기 → ② 정책 검증 → ③ **MinIO put 신규(tx 밖)** → ④ `repo.setAvatarObjectKey(new)` **DB 커밋** → ⑤ **커밋 후** 기존 key best-effort delete. (옛 key를 DB 커밋 전에 지우면 DB 실패 시 깨진 아바타 → 순서 엄수). avatarUrl 파생 반환.
+  - `deleteAvatar` — repo.clearAvatar(DB 커밋) → **커밋 후** MinIO delete(best-effort, 실패 무시).
   - `getAvatar(userId)` — key 없으면 도메인 404 신호.
 
-**GREEN**: 서비스 구현. `@Service`(ArchUnit `TransactionalServiceArchTest`). DB 쓰기만 `@Transactional`, MinIO I/O는 트랜잭션 경계 밖(memory: 첨부 I/O tx밖). displayName 편집은 `UserRepository.save` 재사용(username/email 보존).
+**GREEN**: 서비스 구현. `@Service`(ArchUnit `TransactionalServiceArchTest`). **`patchProfile`는 단일 `@Transactional`(C2)** — displayName(users) + timezone/department(user_profiles) 두 테이블 쓰기 원자성 보장(부분 적용 방지, 검증은 tx 진입 전). MinIO I/O는 트랜잭션 경계 밖(memory: 첨부 I/O tx밖). displayName 편집(C3): `UserRepository.updateDisplayName(userId, name)` 전용 메서드 신설 권장(기존 `save` UPSERT-by-username 재사용은 현재 username/email 선조회 필요해 어색). 인터페이스 확장 시 `default` 메서드로 fail-safe + `JdbcUserRepository` 구현 + 기존 테스트 fake/mock 갱신(memory: interface-extension default·plan-files 생성자주입).
 
 **REFACTOR**: avatarUrl 파생 헬퍼(`/api/v1/users/{id}/avatar`) 추출, 예외 메시지 일반화(권한/경로 누출 금지).
 
@@ -174,7 +175,7 @@ COMMENT ON TABLE user_profiles IS 'FR-PR-01 사용자 프로필 확장 — 아�
   - **3-state 역직렬화**: `ProfilePatchRequest`는 `JsonNullable` 또는 `Map` 기반(부재 vs 명시 null 구분). BTS DatePatch 선례 패턴 재사용.
 
 **GREEN**:
-- DTO 3종. `ProfilePatchRequest`는 부재/null 구분 가능한 표현(선례 grep: DatePatch 3-state).
+- DTO 3종. `ProfilePatchRequest`는 부재/null 구분 가능한 표현. **C4: issue-tracking의 DatePatch 타입 import 금지(모듈 격리)** — identity-access 자체 3-state 표현(`JsonNullable`(org.openapitools.jackson.nullable) 가용 시 사용, 아니면 로컬 wrapper). impl 시작 시 라이브러리 가용성 grep 확인.
 - `UserProfileController` — 현재 userId = `@AuthenticationPrincipal Jwt`.subject(WhoamiController 패턴). 5 엔드포인트를 서비스에 위임. 아바타 GET은 `StreamingResponseBody`/`ByteArray` + 헤더. **인증 필수**(우회 금지).
 
 **REFACTOR**: 헤더 상수화 + KDoc(인증 방식·nosniff 사유).
@@ -207,4 +208,20 @@ COMMENT ON TABLE user_profiles IS 'FR-PR-01 사용자 프로필 확장 — 아�
 - 스코프: 백엔드 D1~D5. D6(프론트 프로필 페이지)·D7(E2E)는 후속 UI PR
 - 담당: db-engineer(T1), backend-engineer(T2·T4·T5), security-engineer(T3·T6 — 파일 업로드/인증)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-05) — 집중 리뷰 (type=api, 저위험)
+
+- ✅ 통과: BC 격리(identity-access 내부), JdbcTemplate 관례 일치, MinIO I/O tx 밖, ArchUnit `@Transactional` 룰 준수, 마이그레이션 개별 스키마 테스트 패턴.
+- **C1 (반영 완료)**: 아바타 교체 순서 결함 → put new → DB 커밋 → **커밋 후** 옛 key 삭제로 수정(T4).
+- **C2 (반영 완료)**: `patchProfile` 단일 `@Transactional` 원자성 명시(T4).
+- **C3 (반영 완료·권장)**: `UserRepository.updateDisplayName` 전용 메서드 신설(default 메서드 fail-safe) → T4 files/주의 추가.
+- **BLOCKER: 없음.**
+
+### plan-devex-review (2026-07-05)
+
+- ✅ REST 컨벤션: `/me/profile`(자기 편집) + `/users/{id}/avatar`(동료 읽기) 분리 합리적. DELETE 멱등(204).
+- **C4 (반영 완료)**: 3-state PATCH는 issue-tracking DatePatch import 금지(모듈 격리) → identity-access 자체 표현/`JsonNullable`, impl 시 가용성 확인(T5).
+- ✅ 에러 처리: 신규 예외(Avatar/Profile ValidationException)는 identity-access `@RestControllerAdvice` 스코프 내 400 매핑 + 메시지 일반화, T6 통합테스트가 401/400/404 검증(memory: 도메인예외 핸들러 스코프).
+- **참고(무액션)**: N1 MinIO 빈 구분 명명(반영됨), N2 ClamAV/매직바이트 스코프 밖·nosniff 완화(EC7), N3 프로필 변경 PAT 허용 여부는 security-engineer가 impl 확정.
+- **BLOCKER: 없음.**
