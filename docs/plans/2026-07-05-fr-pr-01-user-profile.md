@@ -225,3 +225,22 @@ COMMENT ON TABLE user_profiles IS 'FR-PR-01 사용자 프로필 확장 — 아�
 - ✅ 에러 처리: 신규 예외(Avatar/Profile ValidationException)는 identity-access `@RestControllerAdvice` 스코프 내 400 매핑 + 메시지 일반화, T6 통합테스트가 401/400/404 검증(memory: 도메인예외 핸들러 스코프).
 - **참고(무액션)**: N1 MinIO 빈 구분 명명(반영됨), N2 ClamAV/매직바이트 스코프 밖·nosniff 완화(EC7), N3 프로필 변경 PAT 허용 여부는 security-engineer가 impl 확정.
 - **BLOCKER: 없음.**
+
+## 구현 결과 (/bts-impl)
+
+6 task 5 wave TDD 완료. 전 task RED→GREEN(→REFACTOR) 커밋 순서 준수, verifier/직접검증 통과.
+
+- **T1** V027 user_profiles + UserProfilesSchemaTest 10/10 (db-engineer)
+- **T2** UserProfile + UserProfileRepository(JdbcTemplate, ON CONFLICT upsert, avatar_object_key 보존) 8/8 (backend-engineer)
+- **T3** AvatarTypePolicy(MIME 화이트리스트·5MB)·AvatarStoragePort·MinioAvatarStorage(identity-access 자체 배선, 승인된 io.minio 의존성) 18/18 (security-engineer)
+- **T4** UserProfileService — C1 아바타 교체순서·C2 patchProfile 단일 tx·C3 UserRepository.updateDisplayName·C4 ProfilePatchField 3-state 21/21 (backend-engineer)
+- **T5** UserProfileController + DTO 3종 — JWT-only me-scope(PAT 401)·nosniff·3-state JsonNode·로컬 @ExceptionHandler 16/16 (backend-engineer)
+- **T6** UserProfileFlowIntegrationTest — prod 부팅 + PostgreSQL + MinIO Testcontainers, 7 시나리오(401·defaults·3-state·아바타 왕복·무효업로드·동료아바타·auth-before-lookup) 7/7 (security-engineer)
+
+**부수 처리(controller)**:
+- detekt VarCouldBeVal — 신규 코드 @Suppress + 캐시로 가려졌던 사전존재 9건 baseline 동결(chore 852b8e6b8)
+- **MinIO eager-bean 회귀 수정**(fix 3b8f766f4): `MinioAvatarStorageConfig.avatarMinioClient`가 빈 credential로 생성 시점 예외 → full-boot @SpringBootTest ~350건 차단. endpoint+credentials dev fallback + prod fallback 시 WARNING(조용히 안 씀). 회귀 victim(LocalAuthFlow·MyProjectPermission·SystemAdminInfra) 재통과 확인.
+
+verification: `:modules:identity-access:test`(FR-PR-01 전부) + ktlintCheck + detektMain + detektTest BUILD SUCCESSFUL.
+
+**후속(본 PR 밖)**: D6 프론트 프로필 페이지 + D7 E2E(UI PR), FR-PR-04 LDAP 소스 분리.
