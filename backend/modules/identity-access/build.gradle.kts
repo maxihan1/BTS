@@ -102,6 +102,10 @@ dependencies {
     implementation("com.webauthn4j:webauthn4j-core:0.28.4.RELEASE")
     testImplementation("com.webauthn4j:webauthn4j-test:0.28.4.RELEASE")
 
+    // FR-PR-01 아바타 오브젝트 스토리지 — MinIO Java SDK (Maxi 승인 2026-07-05, 절대규칙 #17).
+    // issue-tracking 과 동일 버전 정렬(8.5.17). identity-access 자체 배선(모듈 격리, 타 모듈 import 없음).
+    implementation("io.minio:minio:8.5.17")
+
     // Kotlin 기본
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
@@ -115,6 +119,8 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers:1.20.3")
     testImplementation("org.testcontainers:postgresql:1.20.3")
     testImplementation("org.testcontainers:junit-jupiter:1.20.3")
+    // FR-PR-01 MinioAvatarStorageAdapterTest 통합 테스트용 — issue-tracking 과 동일 버전(1.20.3).
+    testImplementation("org.testcontainers:minio:1.20.3")
     testImplementation("org.springframework.security:spring-security-test")
     testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
     // LocalAuthFlowIntegrationTest — 401 응답 body 읽기 (HttpURLConnection 재시도 방지)
