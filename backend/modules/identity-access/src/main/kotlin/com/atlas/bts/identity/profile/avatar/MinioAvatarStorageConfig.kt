@@ -9,6 +9,12 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
+/** identity-access 에 `bts.minio.endpoint` 미설정 시 폴백 endpoint(docker-compose dev 기준). */
+private const val DEFAULT_MINIO_ENDPOINT = "http://localhost:9000"
+
+/** 아바타 전용 기본 버킷 — 첨부 버킷과 분리. `bts.minio.avatar-bucket` 으로 override. */
+private const val DEFAULT_AVATAR_BUCKET = "bts-avatars"
+
 /**
  * 아바타 전용 MinIO Spring 설정.
  *
@@ -44,7 +50,7 @@ class MinioAvatarStorageConfig {
         val endpoint: String = "",
         val accessKey: String = "",
         val secretKey: String = "",
-        val avatarBucket: String = "bts-avatars",
+        val avatarBucket: String = DEFAULT_AVATAR_BUCKET,
     )
 
     /**
@@ -55,7 +61,7 @@ class MinioAvatarStorageConfig {
      */
     @Bean
     fun avatarMinioClient(properties: Properties): MinioClient {
-        val endpoint = properties.endpoint.ifBlank { "http://localhost:9000" }
+        val endpoint = properties.endpoint.ifBlank { DEFAULT_MINIO_ENDPOINT }
         log.info("avatarMinioClient 초기화 — endpoint={}", endpoint)
         return MinioClient.builder()
             .endpoint(endpoint)
