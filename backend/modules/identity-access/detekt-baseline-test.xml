@@ -44,7 +44,6 @@
     <ID>UnnecessaryAbstractClass:KeycloakSamlTestcontainersBase.kt$KeycloakSamlTestcontainersBase$KeycloakSamlTestcontainersBase</ID>
     <ID>UnnecessaryAbstractClass:LdapTestcontainersBase.kt$LdapTestcontainersBase$LdapTestcontainersBase</ID>
     <ID>UnusedPrivateProperty:LdapAuthFlowIntegrationTest.kt$LdapAuthFlowIntegrationTest$@Autowired private lateinit var externalAccountRepo: ExternalAccountRepository</ID>
-    <ID>UnusedPrivateProperty:PersonalAccessTokenServiceTest.kt$PersonalAccessTokenServiceTest$/** 테스트 환경에서 SHA-256 계산 없이 고정 hash 를 사용하기 위한 raw token. * PersonalAccessTokenService 내부의 sha256Hex(raw) 결과가 아래 KNOWN_HASH 와 일치해야 통과. */ private val rawToken = "pat_testbody000000000000000000000000000000000000" // "pat_" + 44자 (≠ 48자, 검증용)</ID>
     <ID>UseOrEmpty:AccountLinkIntegrationTest.kt$AccountLinkIntegrationTest$(resp.body?.get("links") as? List&lt;Map&lt;*, *&gt;&gt;) ?: emptyList()</ID>
     <ID>UseOrEmpty:LocalAuthFlowIntegrationTest.kt$LocalAuthFlowIntegrationTest$cookie .split(";") .firstOrNull { it.trim().startsWith("refresh_token=") } ?.substringAfter("refresh_token=") ?.trim() ?: ""</ID>
     <ID>UseOrEmpty:LocalCredentialsMigrationTest.kt$LocalCredentialsMigrationTest$rs.getString("column_default") ?: ""</ID>
@@ -72,6 +71,8 @@
     <ID>VarCouldBeVal:ExternalAccountRepositoryTest.kt$ExternalAccountRepositoryTest$@Autowired private lateinit var repo: ExternalAccountRepository</ID>
     <ID>VarCouldBeVal:FieldPermissionRepositoryTest.kt$FieldPermissionRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:FieldPermissionRepositoryTest.kt$FieldPermissionRepositoryTest$@Autowired private lateinit var repository: FieldPermissionRepository</ID>
+    <ID>VarCouldBeVal:GroupMembershipAdapterTest.kt$GroupMembershipAdapterTest$@Autowired private lateinit var adapter: GroupMembershipPort</ID>
+    <ID>VarCouldBeVal:GroupMembershipAdapterTest.kt$GroupMembershipAdapterTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:IdentityAccessComponentPermissionResolverIntegrationTest.kt$IdentityAccessComponentPermissionResolverIntegrationTest$/** prod 프로파일에서 IdentityAccessComponentPermissionResolver가 주입되어야 한다. */ @Autowired private lateinit var resolver: ComponentPermissionResolver</ID>
     <ID>VarCouldBeVal:IdentityAccessComponentPermissionResolverIntegrationTest.kt$IdentityAccessComponentPermissionResolverIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:IdentityAccessCustomFieldPermissionResolverTest.kt$IdentityAccessCustomFieldPermissionResolverTest$/** prod 프로파일에서 IdentityAccessCustomFieldPermissionResolver가 주입되어야 한다. */ @Autowired private lateinit var resolver: CustomFieldPermissionResolver</ID>
@@ -91,6 +92,9 @@
     <ID>VarCouldBeVal:IdentityAccessWorkflowSchemePermissionResolverIntegrationTest.kt$IdentityAccessWorkflowSchemePermissionResolverIntegrationTest$/** prod 프로파일에서 IdentityAccessWorkflowSchemePermissionResolver 가 주입되어야 한다. */ @Autowired private lateinit var resolver: WorkflowSchemePermissionResolver</ID>
     <ID>VarCouldBeVal:IdentityAccessWorkflowSchemePermissionResolverIntegrationTest.kt$IdentityAccessWorkflowSchemePermissionResolverIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:IssueSecuritySchemaMigrationTest.kt$IssueSecuritySchemaMigrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
+    <ID>VarCouldBeVal:IssueVisibilityAdapterIntegrationTest.kt$IssueVisibilityAdapterIntegrationTest$/** prod 프로파일에서 IssueVisibilityAdapter 가 주입되어야 한다. */ @Autowired private lateinit var port: IssueVisibilityPort</ID>
+    <ID>VarCouldBeVal:IssueVisibilityAdapterIntegrationTest.kt$IssueVisibilityAdapterIntegrationTest$@Autowired private lateinit var groupRepo: UserGroupRepository</ID>
+    <ID>VarCouldBeVal:IssueVisibilityAdapterIntegrationTest.kt$IssueVisibilityAdapterIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:JdbcAuthAuditLogAdminQueryRepositoryIntegrationTest.kt$JdbcAuthAuditLogAdminQueryRepositoryIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:JdbcAuthAuditLogAdminQueryRepositoryIntegrationTest.kt$JdbcAuthAuditLogAdminQueryRepositoryIntegrationTest$@Autowired private lateinit var repository: JdbcAuthAuditLogAdminQueryRepository</ID>
     <ID>VarCouldBeVal:JdbcAuthAuditLogServiceIntegrationTest.kt$JdbcAuthAuditLogServiceIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
@@ -136,8 +140,12 @@
     <ID>VarCouldBeVal:PermissionSchemaMigrationTest.kt$PermissionSchemaMigrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:PersonalAccessTokenRepositoryTest.kt$PersonalAccessTokenRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:PersonalAccessTokenRepositoryTest.kt$PersonalAccessTokenRepositoryTest$@Autowired private lateinit var repo: PersonalAccessTokenRepository</ID>
+    <ID>VarCouldBeVal:ProjectMembershipAdapterTest.kt$ProjectMembershipAdapterTest$@Autowired private lateinit var adapter: ProjectMembershipAdapter</ID>
+    <ID>VarCouldBeVal:ProjectMembershipAdapterTest.kt$ProjectMembershipAdapterTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:ProjectMembershipRepositoryIntegrationTest.kt$ProjectMembershipRepositoryIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:ProjectMembershipRepositoryIntegrationTest.kt$ProjectMembershipRepositoryIntegrationTest$@Autowired private lateinit var repo: ProjectMembershipRepository</ID>
+    <ID>VarCouldBeVal:ProjectRecipientLookupAdapterIntegrationTest.kt$ProjectRecipientLookupAdapterIntegrationTest$@Autowired private lateinit var adapter: ProjectRecipientLookupPort</ID>
+    <ID>VarCouldBeVal:ProjectRecipientLookupAdapterIntegrationTest.kt$ProjectRecipientLookupAdapterIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:RefreshTokenRepositoryTest.kt$RefreshTokenRepositoryTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>
     <ID>VarCouldBeVal:RefreshTokenRepositoryTest.kt$RefreshTokenRepositoryTest$@Autowired private lateinit var repo: RefreshTokenRepository</ID>
     <ID>VarCouldBeVal:SamlAuthFlowIntegrationTest.kt$SamlAuthFlowIntegrationTest$@Autowired private lateinit var jdbc: NamedParameterJdbcTemplate</ID>

@@ -93,6 +93,20 @@ interface UserRepository {
     fun updateLastLogin(id: UUID)
 
     /**
+     * display_name 만 갱신한다 (FR-PR-01 프로필 편집 — Task 4).
+     *
+     * users.updated_at 도 함께 NOW() 로 갱신한다. 존재하지 않는 id 는 조용히 무시한다 (0 행 영향).
+     * 값 검증(공백/길이)은 호출 측 [com.atlas.bts.identity.profile.UserProfileService] 책임이다.
+     *
+     * @param userId 갱신 대상 사용자 id
+     * @param displayName 새 표시 이름
+     */
+    fun updateDisplayName(
+        userId: UUID,
+        displayName: String,
+    )
+
+    /**
      * id 목록으로 사용자 다건 조회 (FR-IS-03 Task 6 — 현재 담당자 이름 안정 해소).
      *
      * 존재하지 않는 id 는 결과에서 조용히 제외한다 (404 아님 — 부분 결과 허용).
@@ -232,6 +246,21 @@ class JdbcUserRepository(
     }
 
     /**
+     * display_name 만 갱신한다 (FR-PR-01 Task 4).
+     *
+     * 존재하지 않는 id 는 조용히 무시한다 (0 행 영향 — 예외 없음).
+     */
+    override fun updateDisplayName(
+        userId: UUID,
+        displayName: String,
+    ) {
+        jdbc.update(
+            SQL_UPDATE_DISPLAY_NAME,
+            mapOf("userId" to userId, "displayName" to displayName),
+        )
+    }
+
+    /**
      * id 목록으로 사용자 다건 조회 (FR-IS-03 Task 6).
      *
      * 빈 리스트 입력 시 DB 호출 없이 빈 리스트를 즉시 반환한다.
@@ -358,6 +387,16 @@ class JdbcUserRepository(
             UPDATE users
             SET updated_at = :now
             WHERE id = :id
+        """
+
+        /**
+         * display_name 갱신 (FR-PR-01 Task 4) — updated_at 도 함께 NOW() 로 갱신한다.
+         */
+        const val SQL_UPDATE_DISPLAY_NAME = """
+            UPDATE users
+            SET display_name = :displayName,
+                updated_at   = NOW()
+            WHERE id = :userId
         """
 
         /**
