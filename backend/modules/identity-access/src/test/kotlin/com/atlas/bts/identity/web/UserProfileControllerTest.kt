@@ -12,6 +12,7 @@ import com.atlas.bts.identity.profile.ProfileValidationException
 import com.atlas.bts.identity.profile.ProfileView
 import com.atlas.bts.identity.profile.UserProfileService
 import com.atlas.bts.identity.profile.avatar.AvatarObject
+import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.profile.avatar.AvatarObjectNotFoundException
 import com.atlas.bts.identity.profile.avatar.AvatarValidationException
 import com.atlas.bts.identity.session.SessionService
@@ -86,6 +87,9 @@ class UserProfileControllerTest {
         @Bean
         fun corsConfigurationSource(): CorsConfigurationSource =
             CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+
+        @Bean
+        fun personalAccessTokenService(): PersonalAccessTokenService = mockk(relaxed = true)
 
         @Bean
         fun userProfileService(): UserProfileService = mockk()
