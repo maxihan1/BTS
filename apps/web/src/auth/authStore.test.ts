@@ -18,6 +18,7 @@ const MOCK_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.test.token'
 describe('authStore', () => {
   beforeEach(() => {
     useAuthStore.getState().clearSession()
+    useAuthStore.setState({ avatarVersion: 0 })
     sessionStorage.clear()
     localStorage.clear()
   })
@@ -106,6 +107,17 @@ describe('authStore', () => {
     const parsed = JSON.parse(raw as string) as { state: { accessToken: string; user: WhoamiResponse } }
     expect(parsed.state.accessToken).toBe(MOCK_TOKEN)
     expect(parsed.state.user).toEqual(fresh)
+  })
+
+  it('초기 avatarVersion은 0이다', () => {
+    expect(useAuthStore.getState().avatarVersion).toBe(0)
+  })
+
+  it('bumpAvatarVersion 호출 시 avatarVersion이 1씩 증가한다 (아바타 교체 캐시버스트)', () => {
+    useAuthStore.getState().bumpAvatarVersion()
+    expect(useAuthStore.getState().avatarVersion).toBe(1)
+    useAuthStore.getState().bumpAvatarVersion()
+    expect(useAuthStore.getState().avatarVersion).toBe(2)
   })
 
   it('sessionStorage에 데이터 있을 때 store 재생성 시 hydrate', () => {

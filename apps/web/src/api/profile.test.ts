@@ -366,6 +366,16 @@ describe('buildPatchBody', () => {
     expect(result).toEqual({ department: '신규팀' })
   })
 
+  it('T-PR-6-10: displayName 앞뒤 공백만 다르면(trim 후 동일) 키를 생략한다', () => {
+    const result = buildPatchBody(original, { ...original, displayName: `${original.displayName} ` })
+    expect(result).toEqual({})
+  })
+
+  it('T-PR-6-11: displayName이 trim 후에도 다르면 trim된 값을 전송한다', () => {
+    const result = buildPatchBody(original, { ...original, displayName: '  김맥시  ' })
+    expect(result).toEqual({ displayName: '김맥시' })
+  })
+
   it('T-PR-6-9: 여러 필드가 동시에 변경되면 모두 포함한다', () => {
     const result = buildPatchBody(original, {
       displayName: '김맥시',

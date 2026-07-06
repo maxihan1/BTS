@@ -1,5 +1,5 @@
 // Avatar 컴포넌트 단위 테스트 — blob fetch 렌더/이니셜 폴백/revoke 검증
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { ApiError } from '@/api/client'
 import { Avatar } from './avatar'
@@ -145,5 +145,45 @@ describe('TC-4: 언마운트 cleanup', () => {
 
     expect(revokeSpy).toHaveBeenCalledWith('blob:mock')
     expect(createSpy).toHaveBeenCalledTimes(2)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TC-5: cacheBust — 아바타 교체 시 회귀 방지(핵심)
+// avatarUrl 문자열 자체는 userId에서만 파생되는 고정 경로라 아바타를 교체해도 바뀌지
+// 않는다. cacheBust(authStore.avatarVersion)가 바뀌면 avatarUrl이 그대로여도
+// 강제로 재fetch되어야 한다 — 아니면 옛 아바타가 리로드 전까지 표시된다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('TC-5: cacheBust — avatarUrl 고정 + cacheBust 변경 시 재fetch', () => {
+  it('avatarUrl이 같아도 cacheBust가 바뀌면 재fetch하고 이전 objectURL을 revoke한다', async () => {
+    const { fetchAvatarBlob } = await import('@/api/profile')
+    vi.mocked(fetchAvatarBlob).mockResolvedValue(new Blob(['x'], { type: 'image/png' }))
+
+    const { rerender } = render(
+      <Avatar avatarUrl="/api/v1/users/u1/avatar" displayName="홍길동" username="hong" cacheBust={0} />,
+    )
+    await screen.findByRole('img', { name: '홍길동' })
+    expect(fetchAvatarBlob).toHaveBeenCalledTimes(1)
+    expect(fetchAvatarBlob).toHaveBeenLastCalledWith('/api/v1/users/u1/avatar?v=0')
+
+    rerender(
+      <Avatar avatarUrl="/api/v1/users/u1/avatar" displayName="홍길동" username="hong" cacheBust={1} />,
+    )
+
+    await waitFor(() => expect(fetchAvatarBlob).toHaveBeenCalledTimes(2))
+    expect(fetchAvatarBlob).toHaveBeenLastCalledWith('/api/v1/users/u1/avatar?v=1')
+    expect(revokeSpy).toHaveBeenCalledWith('blob:mock')
+    expect(createSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it('cacheBust prop이 없으면 기존 동작대로 원본 avatarUrl 그대로 fetch한다(하위 호환)', async () => {
+    const { fetchAvatarBlob } = await import('@/api/profile')
+    vi.mocked(fetchAvatarBlob).mockResolvedValue(new Blob(['x'], { type: 'image/png' }))
+
+    render(<Avatar avatarUrl="/api/v1/users/u1/avatar" displayName="홍길동" username="hong" />)
+
+    await screen.findByRole('img', { name: '홍길동' })
+    expect(fetchAvatarBlob).toHaveBeenCalledWith('/api/v1/users/u1/avatar')
   })
 })

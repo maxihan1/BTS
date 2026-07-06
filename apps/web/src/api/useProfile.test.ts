@@ -155,6 +155,37 @@ describe('useUploadAvatar', () => {
       expect(useAuthStore.getState().user?.avatarUrl).toBe(freshAvatarUrl),
     )
   })
+
+  it('성공 시 authStore.avatarVersion이 1 증가한다 (고정 avatarUrl 캐시버스트 — 회귀 방지)', async () => {
+    useAuthStore.setState({ avatarVersion: 0 })
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useUploadAvatar(), { wrapper })
+    const file = new File(['x'], 'avatar.png', { type: 'image/png' })
+
+    await act(async () => {
+      result.current.mutate(file)
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    })
+
+    expect(useAuthStore.getState().avatarVersion).toBe(1)
+  })
+
+  it('whoami 재조회가 실패해도 mutation onSuccess는 reject되지 않고 성공 처리된다', async () => {
+    server.use(
+      http.get('/api/v1/users/me/whoami', () => new HttpResponse(null, { status: 500 })),
+    )
+
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useUploadAvatar(), { wrapper })
+    const file = new File(['x'], 'avatar.png', { type: 'image/png' })
+
+    await act(async () => {
+      result.current.mutate(file)
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    })
+
+    expect(result.current.isError).toBe(false)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -189,6 +220,19 @@ describe('useDeleteAvatar', () => {
     )
     await waitFor(() => expect(useAuthStore.getState().user?.avatarUrl).toBeNull())
   })
+
+  it('성공 시 authStore.avatarVersion이 1 증가한다 (고정 avatarUrl 캐시버스트 — 회귀 방지)', async () => {
+    useAuthStore.setState({ avatarVersion: 0 })
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useDeleteAvatar(), { wrapper })
+
+    await act(async () => {
+      result.current.mutate()
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    })
+
+    expect(useAuthStore.getState().avatarVersion).toBe(1)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -219,5 +263,18 @@ describe('refreshWhoami', () => {
     await refreshWhoami()
 
     expect(useAuthStore.getState().user?.displayName).toBe('프레시이름')
+  })
+
+  it('whoami 조회가 실패해도 reject되지 않는다 (graceful degradation — PATCH/업로드 자체는 이미 성공)', async () => {
+    server.use(
+      http.get('/api/v1/users/me/whoami', () => new HttpResponse(null, { status: 500 })),
+    )
+    useAuthStore.getState().setSession({
+      accessToken: ALICE_TOKEN,
+      user: { ...aliceUser, displayName: '변경안됨' },
+    })
+
+    await expect(refreshWhoami()).resolves.toBeUndefined()
+    expect(useAuthStore.getState().user?.displayName).toBe('변경안됨')
   })
 })

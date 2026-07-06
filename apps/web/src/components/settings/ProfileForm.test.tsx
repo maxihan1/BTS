@@ -24,11 +24,17 @@ vi.mock('@/components/ui/avatar', () => ({
   Avatar: ({
     avatarUrl,
     displayName,
+    cacheBust,
   }: {
     avatarUrl?: string | null
     displayName?: string | null
+    cacheBust?: number
   }) => (
-    <div data-testid="avatar-mock" data-avatar-url={avatarUrl ?? ''}>
+    <div
+      data-testid="avatar-mock"
+      data-avatar-url={avatarUrl ?? ''}
+      data-cache-bust={cacheBust ?? ''}
+    >
       {displayName}
     </div>
   ),
@@ -351,6 +357,26 @@ describe('ProfileForm — F8 저장 isPending', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('ProfileForm — 아바타 업로드/삭제', () => {
+  it('아바타 업로드 성공 후 Avatar에 전달되는 cacheBust(authStore.avatarVersion)가 1 증가한다 (회귀 방지)', async () => {
+    useAuthStore.setState({ avatarVersion: 0 })
+    const user = userEvent.setup({ delay: null })
+    renderForm()
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(profileLabels.avatar.fileInputLabel)).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('avatar-mock')).toHaveAttribute('data-cache-bust', '0')
+
+    const fileInput = screen.getByLabelText(
+      profileLabels.avatar.fileInputLabel,
+    ) as HTMLInputElement
+    await user.upload(fileInput, new File(['x'], 'avatar.png', { type: 'image/png' }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('avatar-mock')).toHaveAttribute('data-cache-bust', '1')
+    })
+  })
+
   it('S4/EC9 — 파일 선택 시 즉시 업로드되고, 성공 후 Avatar에 새 avatarUrl이 반영되며 input이 초기화된다', async () => {
     const user = userEvent.setup({ delay: null })
     renderForm()

@@ -36,16 +36,19 @@ vi.mock('@/components/ui/avatar', () => ({
     avatarUrl,
     displayName,
     username,
+    cacheBust,
   }: {
     avatarUrl?: string | null
     displayName?: string | null
     username?: string | null
+    cacheBust?: number
   }) => (
     <div
       data-testid="header-avatar-mock"
       data-avatar-url={avatarUrl ?? ''}
       data-display-name={displayName ?? ''}
       data-username={username ?? ''}
+      data-cache-bust={cacheBust ?? ''}
     />
   ),
 }))
@@ -94,6 +97,17 @@ describe('Header', () => {
     renderHeader()
 
     expect(screen.getByTestId('header-avatar-mock')).toBeInTheDocument()
+  })
+
+  it('Avatar에 authStore.avatarVersion을 cacheBust로 전달한다 (아바타 교체 재fetch 회귀 방지)', () => {
+    useAuthStore.setState({
+      accessToken: 'test-token',
+      user: { username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
+      avatarVersion: 3,
+    })
+    renderHeader()
+
+    expect(screen.getByTestId('header-avatar-mock')).toHaveAttribute('data-cache-bust', '3')
   })
 
   it('displayName이 있으면 계정 트리거에 username 대신 displayName이 표시된다 (FR-PR-01 D6 Task 8)', () => {
