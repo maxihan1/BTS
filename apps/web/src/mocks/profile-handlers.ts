@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw'
 import { AUTH_USERS } from './auth-fixtures'
 import { PROFILE_FIXTURES } from './profile-fixtures'
 import type { ProfileFixture } from './profile-fixtures'
+import type { AvatarUploadResponse, ProfileResponse } from '@/api/profile'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 저장소 — userId → ProfileFixture Map (msw-derived-behavior-shared-store 선례)
@@ -59,16 +60,12 @@ function errorBody(code: string, message: string): { code: string; message: stri
   return { code, message }
 }
 
-/** ProfileFixture(store 레코드) → ProfileResponse(API 응답 형태) 변환 */
-function toProfileResponse(record: ProfileFixture): {
-  userId: string
-  username: string
-  email: string | null
-  displayName: string
-  avatarUrl: string | null
-  timezone: string
-  department: string | null
-} {
+/**
+ * ProfileFixture(store 레코드) → {@link ProfileResponse}(백엔드 `ProfileResponse` DTO와
+ * 1:1인 api/profile.ts의 Zod 추론 타입) 변환. 반환 타입을 실 계약 타입으로 고정해
+ * 필드 drift가 생기면 컴파일 시점에 즉시 드러난다(attachment-handlers.ts 선례).
+ */
+function toProfileResponse(record: ProfileFixture): ProfileResponse {
   return {
     userId: record.userId,
     username: record.username,
@@ -244,7 +241,8 @@ const uploadAvatarHandler = http.post(
     const next: ProfileFixture = { ...current, avatarObjectKey: `avatars/${userId}/${file.name}` }
     profileStore.set(userId, next)
 
-    return HttpResponse.json({ avatarUrl: avatarUrlFor(userId) })
+    const response: AvatarUploadResponse = { avatarUrl: avatarUrlFor(userId) }
+    return HttpResponse.json(response)
   },
 )
 
