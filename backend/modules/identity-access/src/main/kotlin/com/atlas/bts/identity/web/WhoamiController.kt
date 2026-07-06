@@ -8,6 +8,7 @@ import com.atlas.bts.identity.audit.AuthEventType
 import com.atlas.bts.identity.credential.StoredPasswordCredentialRepository
 import com.atlas.bts.identity.dto.WhoamiResponse
 import com.atlas.bts.identity.jwt.JwtIssuer
+import com.atlas.bts.identity.ooo.OutOfOfficeRepository
 import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.profile.UserProfileRepository
@@ -21,6 +22,7 @@ import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
+import java.time.Clock
 import java.util.UUID
 
 /**
@@ -38,7 +40,8 @@ import java.util.UUID
  *   (FR-MF-04). 발급 chokepoint([JwtIssuer])가 박은 클레임을 백엔드 게이트 필터와 **단일 출처**로 공유하므로
  *   whoami 노출 값과 게이트 차단 판정이 항상 일치하며, whoami 가 정책을 라이브 재계산하지 않는다(EC7).
  *   또한 프로필 view-layer(FR-PR-01)로 `displayName`(users.display_name)과 `avatarUrl`
- *   (user_profiles.avatar_object_key 파생, [avatarUrlFor])을 노출한다.
+ *   (user_profiles.avatar_object_key 파생, [avatarUrlFor])을 노출한다. 부재중 view-layer(FR-PR-03)로
+ *   `oooActive`/`oooUntil`(user_ooo 활성 필터 파생, [OutOfOfficeRepository.findActiveByUserId])도 노출한다.
  *
  * - **PAT**: `Authorization: Bearer pat_xxx` 형식의 요청을 감지하여 [PersonalAccessTokenService.verify] 로
  *   검증한다. 검증 성공 시 `authMethod = "pat"` + `userId` 를 반환하고,
@@ -59,7 +62,7 @@ import java.util.UUID
  * 설정한다. SecurityConfig 의 `BearerTokenResolver` 커스텀으로 `pat_` 토큰은 JWT 파싱 대상에서 제외된다.
  */
 @RestController
-@Suppress("LongParameterList") // whoami view-layer 집약점 — 인증(PAT/JWT)·감사·프로필/상태 뷰레이어 협력자를 한 곳에서 조립
+@Suppress("LongParameterList") // whoami view-layer 집약점 — 인증(PAT/JWT)·감사·프로필/상태/부재중 뷰레이어 협력자를 한 곳에서 조립
 class WhoamiController(
     private val personalAccessTokenService: PersonalAccessTokenService,
     private val authAuditLogService: AuthAuditLogService,
@@ -68,6 +71,8 @@ class WhoamiController(
     private val systemPermissionResolver: SystemPermissionResolver,
     private val userProfileRepository: UserProfileRepository,
     private val userStatusRepository: UserStatusRepository,
+    private val outOfOfficeRepository: OutOfOfficeRepository,
+    private val clock: Clock = Clock.systemUTC(),
 ) {
     /**
      * `GET /api/v1/users/me/whoami` — 현재 인증된 사용자 정보 반환.
@@ -105,6 +110,8 @@ class WhoamiController(
                 jwt.getClaim<Boolean>(JwtIssuer.CLAIM_MFA_ENROLLMENT_REQUIRED) ?: false
             // FR-PR-02: 활성(미만료) 상태만 노출. 만료 필터는 repository 의 findActiveByUserId 책임.
             val status = userStatusRepository.findActiveByUserId(userId)
+            // FR-PR-03: 활성(startsAt<=now<endsAt) 부재중만 노출. 활성 필터는 repository 책임, now 는 공유 clock 기준.
+            val ooo = outOfOfficeRepository.findActiveByUserId(userId, clock)
             return WhoamiResponse(
                 username = user.username,
                 email = user.email.orEmpty(),
@@ -117,6 +124,8 @@ class WhoamiController(
                 avatarUrl = avatarUrlFor(userId),
                 statusEmoji = status?.emoji,
                 statusText = status?.text,
+                oooActive = ooo != null,
+                oooUntil = ooo?.endsAt?.toString(),
             )
         }
 
@@ -167,6 +176,9 @@ class WhoamiController(
             // 상태 view-layer(statusEmoji/statusText, FR-PR-02)도 봇 컨텍스트라 null 고정.
             statusEmoji = null,
             statusText = null,
+            // 부재중 view-layer(oooActive/oooUntil, FR-PR-03)도 봇 컨텍스트라 고정(repository 미조회).
+            oooActive = false,
+            oooUntil = null,
         )
     }
 
