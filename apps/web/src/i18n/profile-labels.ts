@@ -70,10 +70,25 @@ const PROFILE_FALLBACK_ERROR = '요청을 처리하지 못했습니다. 잠시 �
 const UNAUTHENTICATED_ERROR = '로그인이 만료되었습니다. 다시 로그인해 주세요.'
 
 /**
+ * `ApiError.body`에서 대문자 스네이크 에러 코드를 추출한다.
+ *
+ * 프로필/아바타 에러 봉투는 `{code, message}` 형태(`UserProfileController.errorResponse`) —
+ * 계정 연결의 `{error}` 형태와는 다른 관례이므로 공유 `extractErrorCode`(lib) 대신
+ * ChangePasswordForm과 동일한 로컬 파싱을 사용한다(frontend-api-convention-per-bc).
+ * `mapProfileError`/`mapAvatarError`가 공통으로 사용한다.
+ */
+function extractProfileErrorCode(body: unknown): string | undefined {
+  if (body === null || typeof body !== 'object') return undefined
+  const code = (body as { code?: unknown }).code
+  return typeof code === 'string' ? code : undefined
+}
+
+/**
  * 프로필 조회/PATCH 에러를 한글 메시지로 변환한다.
  *
  * 백엔드 `message` 필드는 무시하고 `code`(대문자 스네이크)만 신뢰한다
  * (ChangePasswordForm 선례 — 소문자 비교 금지, PR #41 BLOCKER 재발 방지).
+ * 401은 code와 무관하게 세션 만료로 취급한다.
  *
  * @param error PATCH `/api/v1/users/me/profile` 등에서 던져진 {@link ApiError}
  * @returns 표시할 한글 에러 메시지
@@ -81,10 +96,7 @@ const UNAUTHENTICATED_ERROR = '로그인이 만료되었습니다. 다시 로그
 export function mapProfileError(error: ApiError): string {
   if (error.status === 401) return UNAUTHENTICATED_ERROR
 
-  const body = error.body
-  const code = body !== null && typeof body === 'object' ? (body as { code?: unknown }).code : undefined
-
-  switch (code) {
+  switch (extractProfileErrorCode(error.body)) {
     case 'PROFILE_VALIDATION_FAILED':
       return '표시 이름을 입력해 주세요.'
     case 'PROFILE_NOT_FOUND':
@@ -98,7 +110,8 @@ export function mapProfileError(error: ApiError): string {
  * 아바타 업로드/삭제 에러를 한글 메시지로 변환한다.
  *
  * 백엔드는 MIME 위반과 5MB 초과 모두 동일 코드(`AVATAR_VALIDATION_FAILED`)로 응답하므로
- * 두 위반 계열을 함께 안내하는 메시지 한 종류로 대응한다(스펙 S7).
+ * (message만 다르고 code 기준 매핑 원칙상 message는 무시) 두 위반 계열을 함께 안내하는
+ * 메시지 한 종류로 대응한다(스펙 S7).
  *
  * @param error 아바타 업로드/삭제 API에서 던져진 {@link ApiError}
  * @returns 표시할 한글 에러 메시지
@@ -106,10 +119,7 @@ export function mapProfileError(error: ApiError): string {
 export function mapAvatarError(error: ApiError): string {
   if (error.status === 401) return UNAUTHENTICATED_ERROR
 
-  const body = error.body
-  const code = body !== null && typeof body === 'object' ? (body as { code?: unknown }).code : undefined
-
-  switch (code) {
+  switch (extractProfileErrorCode(error.body)) {
     case 'AVATAR_VALIDATION_FAILED':
       return '아바타 파일이 너무 크거나 지원하지 않는 형식입니다. 5MB 이하의 JPEG·PNG·GIF·WebP 이미지를 선택해 주세요.'
     case 'AVATAR_NOT_FOUND':

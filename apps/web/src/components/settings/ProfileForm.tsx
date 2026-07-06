@@ -1,6 +1,6 @@
 // 사용자 프로필 편집 폼 — 조회 프리필 + 3-state PATCH + 아바타 업로드/삭제 (FR-PR-01 D6 Task 7)
 import type { JSX, ChangeEvent, FormEvent } from 'react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useProfile, usePatchProfile, useUploadAvatar, useDeleteAvatar } from '@/api/useProfile'
 import { buildPatchBody } from '@/api/profile'
 import type { ProfileResponse } from '@/api/profile'
@@ -61,7 +61,9 @@ function ProfileFormContent({ profile }: ProfileFormContentProps): JSX.Element {
   const [department, setDepartment] = useState(profile.department ?? '')
   const [saveSuccess, setSaveSuccess] = useState(false)
 
-  const timezoneOptions = buildTimezoneOptions(profile.timezone)
+  // Intl.supportedValuesOf('timeZone')는 417개 고정 목록 순회라 렌더마다 재계산할 필요가 없다 —
+  // profile.timezone(초기 서버 값)이 바뀌지 않는 한 재사용한다.
+  const timezoneOptions = useMemo(() => buildTimezoneOptions(profile.timezone), [profile.timezone])
   const isSaveDisabled = displayName.trim().length === 0 || patchProfile.isPending
 
   function handleSubmit(e: FormEvent<HTMLFormElement>): void {
