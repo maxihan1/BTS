@@ -79,6 +79,8 @@ export function resetMfaStore(): void {
 /**
  * alice fixture — backend DB seed 사용자와 일치.
  * userId: RFC4122 v4 형식 (version=4, variant=8) — Zod v4 z.string().uuid() 통과 보장.
+ * displayName은 profile-fixtures.ALICE_PROFILE_FIXTURE와 동일 값으로 정합(FR-PR-01 D6 Task 4).
+ * avatarUrl은 아바타 미설정 기본 상태를 반영해 null.
  */
 export const aliceUser: WhoamiResponse = {
   username: 'alice',
@@ -88,6 +90,8 @@ export const aliceUser: WhoamiResponse = {
   mustChangePassword: false,
   isSystemAdmin: false,
   mfaEnrollmentRequired: false,
+  displayName: '김앨리스',
+  avatarUrl: null,
 }
 
 /** bob fixture — 추가 fixture 사용자 */
@@ -99,6 +103,8 @@ export const bobUser: WhoamiResponse = {
   mustChangePassword: false,
   isSystemAdmin: false,
   mfaEnrollmentRequired: false,
+  displayName: 'bob',
+  avatarUrl: null,
 }
 
 /** username → fixture 사용자 맵 */

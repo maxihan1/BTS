@@ -1,22 +1,21 @@
 // 사용자 프로필 MSW 핸들러 stateful 동작 단위 테스트 (FR-PR-01 D6 Task 4)
-import { setupServer } from 'msw/node'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { profileHandlers, resetProfileStore } from './profile-handlers'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { server } from '@/test/server'
+import { profileHandlers, resetProfileStore, validateAvatarUpload } from './profile-handlers'
 import { mockAccessToken } from './auth-fixtures'
 import { ALICE_PROFILE_FIXTURE, BOB_PROFILE_FIXTURE } from './profile-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 테스트 전용 MSW 서버 (handlers.ts 공유 서버와 독립 — favorite-handlers.test.ts 선례)
+// MSW 서버 설정 — 전역 공유 server(@/test/server)에 매 테스트 server.use()로 등록한다.
+// 개별 setupServer 인스턴스를 별도로 띄우면 전역 setup.ts의 서버와 동시에 두 인터셉터가
+// 활성화되어 동일 요청(특히 FormData 업로드)이 이중 디스패치되는 환경 결함이 있다
+// (import-handlers.test.ts 선례 — "Body is unusable: Body has already been read").
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...profileHandlers)
-
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => {
-  server.resetHandlers()
+beforeEach(() => {
   resetProfileStore()
+  server.use(...profileHandlers)
 })
-afterAll(() => server.close())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처 / 공통 헬퍼
@@ -182,6 +181,34 @@ describe('PATCH /api/v1/users/me/profile', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// validateAvatarUpload — 크기/MIME 검증 순수 함수 단위 테스트.
+// jsdom `File`은 `.stream()`을 구현하지 않아 실제 멀티파트 전송 시 대용량 바이트가
+// 손상된다(환경 한계). 6MB 크기 초과 판정은 실제 HTTP round-trip 대신 이 함수로
+// 직접 검증한다(msw-derived-behavior-shared-store 계열 환경 제약, attachments.test.ts의
+// 413 테스트가 실제 바이트 대신 server.use() 스텁으로 우회하는 것과 동일한 이유).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('validateAvatarUpload', () => {
+  it('5MB(정확히 상한)는 통과한다(null)', () => {
+    expect(validateAvatarUpload('image/png', 5 * 1024 * 1024)).toBeNull()
+  })
+
+  it('5MB + 1byte는 400 AVATAR_VALIDATION_FAILED를 반환한다(6MB 초과 케이스 대표)', () => {
+    const result = validateAvatarUpload('image/png', 6 * 1024 * 1024)
+    expect(result?.code).toBe('AVATAR_VALIDATION_FAILED')
+  })
+
+  it('비이미지 MIME이면 크기와 무관하게 AVATAR_VALIDATION_FAILED를 반환한다', () => {
+    const result = validateAvatarUpload('text/plain', 10)
+    expect(result?.code).toBe('AVATAR_VALIDATION_FAILED')
+  })
+
+  it('허용 MIME + 상한 이하 크기는 null(통과)을 반환한다', () => {
+    expect(validateAvatarUpload('image/webp', 1024)).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/v1/users/me/profile/avatar — 업로드
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -196,14 +223,6 @@ describe('POST /api/v1/users/me/profile/avatar', () => {
     const getRes = await getProfile()
     const getBody = (await getRes.json()) as ProfileResponseBody
     expect(getBody.avatarUrl).toBe(`/api/v1/users/${ALICE_ID}/avatar`)
-  })
-
-  it('6MB 파일이면 400 AVATAR_VALIDATION_FAILED를 반환한다', async () => {
-    const oversized = new File([new Uint8Array(6 * 1024 * 1024)], 'huge.png', { type: 'image/png' })
-    const res = await uploadAvatar(oversized)
-    expect(res.status).toBe(400)
-    const body = (await res.json()) as ErrorBody
-    expect(body.code).toBe('AVATAR_VALIDATION_FAILED')
   })
 
   it('비이미지 MIME이면 400 AVATAR_VALIDATION_FAILED를 반환한다', async () => {
