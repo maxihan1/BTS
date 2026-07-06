@@ -1,6 +1,9 @@
 // 상태 메시지 만료 프리셋을 실제 만료 시각(ISO Instant)으로 변환하는 순수 함수
 export type ExpiryPreset = 'none' | '30m' | '1h' | '4h' | 'today' | 'week'
 
+/** 선택 가능한 만료 프리셋 전체 목록 — UI 드롭다운 등에서 순회용으로 재사용한다. */
+export const EXPIRY_PRESETS: readonly ExpiryPreset[] = ['none', '30m', '1h', '4h', 'today', 'week']
+
 const MINUTE_MS = 60 * 1000
 const HOUR_MS = 60 * MINUTE_MS
 

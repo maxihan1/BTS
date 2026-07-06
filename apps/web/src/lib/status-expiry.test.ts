@@ -1,6 +1,12 @@
 // status-expiry 유틸 단위 테스트 — 프리셋별 만료 시각 계산 검증
 import { describe, it, expect } from 'vitest'
-import { resolveExpiry } from './status-expiry'
+import { resolveExpiry, EXPIRY_PRESETS } from './status-expiry'
+
+describe('EXPIRY_PRESETS', () => {
+  it('명세의 6개 프리셋을 모두 포함한다', () => {
+    expect(EXPIRY_PRESETS).toEqual(['none', '30m', '1h', '4h', 'today', 'week'])
+  })
+})
 
 describe('resolveExpiry', () => {
   const now = new Date('2026-07-06T05:30:00Z')
