@@ -28,6 +28,31 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }))
 
+// Avatar 컴포넌트 mock — jsdom URL.createObjectURL 미구현 회피(ProfileForm.test.tsx 동일 패턴).
+// blob fetch/objectURL 내부 동작은 avatar.test.tsx가 이미 검증하므로, Header 자체 로직(props 전달 +
+// displayName/username 폴백)에 테스트를 집중한다.
+vi.mock('@/components/ui/avatar', () => ({
+  Avatar: ({
+    avatarUrl,
+    displayName,
+    username,
+    cacheBust,
+  }: {
+    avatarUrl?: string | null
+    displayName?: string | null
+    username?: string | null
+    cacheBust?: number
+  }) => (
+    <div
+      data-testid="header-avatar-mock"
+      data-avatar-url={avatarUrl ?? ''}
+      data-display-name={displayName ?? ''}
+      data-username={username ?? ''}
+      data-cache-bust={cacheBust ?? ''}
+    />
+  ),
+}))
+
 function createWrapper() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -66,6 +91,61 @@ describe('Header', () => {
 
     // 사용자명이 헤더에 표시되어야 함
     expect(screen.getByRole('button', { name: /alice/ })).toBeInTheDocument()
+  })
+
+  it('계정 트리거 안에 Avatar 컴포넌트가 렌더된다 (FR-PR-01 D6 Task 8)', () => {
+    renderHeader()
+
+    expect(screen.getByTestId('header-avatar-mock')).toBeInTheDocument()
+  })
+
+  it('Avatar에 authStore.avatarVersion을 cacheBust로 전달한다 (아바타 교체 재fetch 회귀 방지)', () => {
+    useAuthStore.setState({
+      accessToken: 'test-token',
+      user: { username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
+      avatarVersion: 3,
+    })
+    renderHeader()
+
+    expect(screen.getByTestId('header-avatar-mock')).toHaveAttribute('data-cache-bust', '3')
+  })
+
+  it('displayName이 있으면 계정 트리거에 username 대신 displayName이 표시된다 (FR-PR-01 D6 Task 8)', () => {
+    useAuthStore.setState({
+      accessToken: 'test-token',
+      user: {
+        username: 'alice',
+        email: 'alice@bts.local',
+        authMethod: 'local',
+        userId: 'u1',
+        mustChangePassword: false,
+        isSystemAdmin: false,
+        mfaEnrollmentRequired: false,
+        displayName: '김앨리스',
+        avatarUrl: null,
+      },
+    })
+    renderHeader()
+
+    expect(screen.getByRole('button', { name: '김앨리스 계정 메뉴' })).toBeInTheDocument()
+  })
+
+  it('displayName이 없으면 username으로 폴백해 계정 트리거에 표시된다 (FR-PR-01 D6 Task 8)', () => {
+    // beforeEach 기본 상태 — displayName/avatarUrl 미설정
+    renderHeader()
+
+    expect(screen.getByRole('button', { name: 'alice 계정 메뉴' })).toBeInTheDocument()
+  })
+
+  it('드롭다운 메뉴 안에 프로필 링크가 존재한다 (FR-PR-01 D6 Task 8)', async () => {
+    const user = userEvent.setup()
+    renderHeader()
+
+    await user.click(screen.getByRole('button', { name: /alice/ }))
+
+    const link = await screen.findByRole('link', { name: '프로필' })
+    expect(link).toBeInTheDocument()
+    expect(link).toHaveAttribute('href', '/settings/profile')
   })
 
   it('로그아웃 메뉴 항목 클릭 시 useLogoutMutation.mutate()가 호출된다', async () => {

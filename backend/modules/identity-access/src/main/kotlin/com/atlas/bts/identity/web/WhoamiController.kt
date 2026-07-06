@@ -10,6 +10,7 @@ import com.atlas.bts.identity.dto.WhoamiResponse
 import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
+import com.atlas.bts.identity.profile.UserProfileRepository
 import com.atlas.bts.identity.user.UserRepository
 import com.bts.shared.permission.SystemPermissionResolver
 import jakarta.servlet.http.HttpServletRequest
@@ -35,12 +36,15 @@ import java.util.UUID
  *   access JWT 의 [JwtIssuer.CLAIM_MFA_ENROLLMENT_REQUIRED] 클레임 값(부재=false)을 그대로 읽어 노출한다
  *   (FR-MF-04). 발급 chokepoint([JwtIssuer])가 박은 클레임을 백엔드 게이트 필터와 **단일 출처**로 공유하므로
  *   whoami 노출 값과 게이트 차단 판정이 항상 일치하며, whoami 가 정책을 라이브 재계산하지 않는다(EC7).
+ *   또한 프로필 view-layer(FR-PR-01)로 `displayName`(users.display_name)과 `avatarUrl`
+ *   (user_profiles.avatar_object_key 파생, [avatarUrlFor])을 노출한다.
  *
  * - **PAT**: `Authorization: Bearer pat_xxx` 형식의 요청을 감지하여 [PersonalAccessTokenService.verify] 로
  *   검증한다. 검증 성공 시 `authMethod = "pat"` + `userId` 를 반환하고,
  *   [AuthEventType.PAT_USED] 감사 이벤트를 기록한다.
  *   검증 실패(만료·revoke·미존재) 시 401 을 반환한다.
  *   강제 변경·시스템 관리자·MFA 강제 등록 플래그는 봇 컨텍스트(PAT)와 무관하므로 모두 false 로 고정한다.
+ *   프로필 view-layer(displayName/avatarUrl)도 봇 컨텍스트와 무관하므로 둘 다 null 로 고정한다.
  *
  * ## EC-26 prefix 검사
  *
@@ -60,6 +64,7 @@ class WhoamiController(
     private val userRepository: UserRepository,
     private val storedPasswordCredentialRepository: StoredPasswordCredentialRepository,
     private val systemPermissionResolver: SystemPermissionResolver,
+    private val userProfileRepository: UserProfileRepository,
 ) {
     /**
      * `GET /api/v1/users/me/whoami` — 현재 인증된 사용자 정보 반환.
@@ -103,6 +108,8 @@ class WhoamiController(
                 mustChangePassword = mustChangePassword,
                 isSystemAdmin = systemPermissionResolver.isSystemAdmin(userId),
                 mfaEnrollmentRequired = mfaEnrollmentRequired,
+                displayName = user.displayName,
+                avatarUrl = avatarUrlFor(userId),
             )
         }
 
@@ -147,8 +154,28 @@ class WhoamiController(
             mustChangePassword = false,
             isSystemAdmin = false,
             mfaEnrollmentRequired = false,
+            // 프로필 view-layer(displayName/avatarUrl)도 봇 컨텍스트(PAT)와 무관하므로 null 고정.
+            displayName = null,
+            avatarUrl = null,
         )
     }
+
+    /**
+     * 사용자 아바타 다운로드 경로를 파생한다 (FR-PR-01, JWT 분기 전용).
+     *
+     * 파생 근거는 `user_profiles.avatar_object_key` 다 — [UserProfileRepository.findByUserId] 로 조회해
+     * 오브젝트 키가 설정돼 있으면 다운로드 경로 `/api/v1/users/{userId}/avatar` 를, 미설정(프로필 행 부재
+     * 또는 키가 null)이면 null 을 반환한다([UserProfileController.getAvatar] 와 동일한 경로 형식). MinIO
+     * 오브젝트 키 자체는 응답에 노출하지 않고, 인증 필터가 보호하는 다운로드 엔드포인트 경로만 노출한다.
+     *
+     * PAT(봇) 분기는 이 파생을 호출하지 않고 avatarUrl 을 항상 null 로 고정한다.
+     *
+     * @param userId JWT subject 로 식별한 현재 사용자 id.
+     * @return 아바타가 설정돼 있으면 다운로드 경로, 아니면 null.
+     */
+    private fun avatarUrlFor(userId: UUID): String? =
+        userProfileRepository.findByUserId(userId)?.avatarObjectKey
+            ?.let { "/api/v1/users/$userId/avatar" }
 
     /**
      * `Authorization: Bearer <token>` 헤더에서 raw token 을 추출한다.

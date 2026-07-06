@@ -18,6 +18,7 @@ const MOCK_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.test.token'
 describe('authStore', () => {
   beforeEach(() => {
     useAuthStore.getState().clearSession()
+    useAuthStore.setState({ avatarVersion: 0 })
     sessionStorage.clear()
     localStorage.clear()
   })
@@ -78,6 +79,45 @@ describe('authStore', () => {
         expect(value).not.toContain(MOCK_TOKEN)
       }
     }
+  })
+
+  it('setUser 호출 시 accessToken은 보존하고 user만 교체 (FR-PR-01 D6 Task 5)', () => {
+    useAuthStore.getState().setSession({ accessToken: MOCK_TOKEN, user: MOCK_USER })
+    const fresh: WhoamiResponse = {
+      ...MOCK_USER,
+      displayName: '새표시이름',
+      avatarUrl: '/api/v1/users/user-001/avatar',
+    }
+
+    useAuthStore.getState().setUser(fresh)
+
+    const { accessToken, user } = useAuthStore.getState()
+    expect(accessToken).toBe(MOCK_TOKEN)
+    expect(user).toEqual(fresh)
+  })
+
+  it('setUser 후 sessionStorage에도 갱신된 user가 반영됨', () => {
+    useAuthStore.getState().setSession({ accessToken: MOCK_TOKEN, user: MOCK_USER })
+    const fresh: WhoamiResponse = { ...MOCK_USER, displayName: '새표시이름' }
+
+    useAuthStore.getState().setUser(fresh)
+
+    const raw = sessionStorage.getItem('bts.auth')
+    expect(raw).not.toBeNull()
+    const parsed = JSON.parse(raw as string) as { state: { accessToken: string; user: WhoamiResponse } }
+    expect(parsed.state.accessToken).toBe(MOCK_TOKEN)
+    expect(parsed.state.user).toEqual(fresh)
+  })
+
+  it('초기 avatarVersion은 0이다', () => {
+    expect(useAuthStore.getState().avatarVersion).toBe(0)
+  })
+
+  it('bumpAvatarVersion 호출 시 avatarVersion이 1씩 증가한다 (아바타 교체 캐시버스트)', () => {
+    useAuthStore.getState().bumpAvatarVersion()
+    expect(useAuthStore.getState().avatarVersion).toBe(1)
+    useAuthStore.getState().bumpAvatarVersion()
+    expect(useAuthStore.getState().avatarVersion).toBe(2)
   })
 
   it('sessionStorage에 데이터 있을 때 store 재생성 시 hydrate', () => {

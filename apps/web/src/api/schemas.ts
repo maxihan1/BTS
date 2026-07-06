@@ -23,6 +23,21 @@ export const WhoamiResponseSchema = z.object({
   mustChangePassword: z.boolean(),
   isSystemAdmin: z.boolean(),
   mfaEnrollmentRequired: z.boolean(),
+  /**
+   * 표시 이름 — FR-PR-01 user_profiles.display_name 그대로 노출. PAT(개인용 액세스 토큰) 분기는
+   * 대화형 UI 대상이 아니라 null(기존 username="" 관례와 동일, backend WhoamiController 참고).
+   * `.nullable().optional()`인 이유 — 키 부재도 허용해야 하기 때문. authMethod: 를 참조하는
+   * 인라인 whoami mock이 ~37개 파일에 산재돼 있어 required로 강화하면 전부 z.parse 실패로 깨진다
+   * (zod-schema-strengthen-inline-mock-fanout 사고 재발 방지). 실 백엔드는 항상 키를 포함해 응답한다.
+   */
+  displayName: z.string().nullable().optional(),
+  /**
+   * 아바타 조회 URL — 저장값이 아니라 avatar_object_key 존재 여부에서 파생된 `/api/v1/users/{userId}/avatar`.
+   * PAT 분기는 displayName과 동일하게 null. STATELESS JWT라 `<img src>` 직접 사용 금지 —
+   * apiFetch로 blob 인증 fetch 후 objectURL로 렌더한다(AttachmentPreviewModal 선례).
+   * optional 사유는 displayName과 동일(인라인 mock blast-radius 회피).
+   */
+  avatarUrl: z.string().nullable().optional(),
 })
 
 export const ApiErrorResponseSchema = z.object({

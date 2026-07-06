@@ -1,7 +1,8 @@
-// 전역 헤더 컴포넌트 — 관리 nav(isSystemAdmin 게이팅) + 사용자명 표시 + 로그아웃 드롭다운 메뉴
+// 전역 헤더 컴포넌트 — 관리 nav(isSystemAdmin 게이팅) + 계정 트리거(아바타+표시이름) + 로그아웃 드롭다운 메뉴
 import { useNavigate, Link } from '@tanstack/react-router'
 import { Search } from 'lucide-react'
-import { useAuthUser } from '@/auth/authStore'
+import type { WhoamiResponse } from '@/api/schemas'
+import { useAuthUser, useAuthStore } from '@/auth/authStore'
 import { useLogoutMutation } from '@/auth/useLogoutMutation'
 import {
   DropdownMenu,
@@ -10,6 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
+import { Avatar } from '@/components/ui/avatar'
 import { FavoritesMenu } from '@/components/favorite/FavoritesMenu'
 import { InboxBell } from '@/components/inbox/InboxBell'
 
@@ -25,8 +27,27 @@ const ADMIN_LINKS = [
   { to: '/admin/webhooks', label: 'Webhook' },
 ] as const
 
+/**
+ * 계정 트리거에 표시할 라벨을 계산한다 — displayName 우선, 없으면 username, 둘 다 없으면 빈 문자열.
+ * 트리거 텍스트 · aria-label · Avatar 이니셜 폴백이 모두 이 우선순위를 공유한다(FR-PR-01 F10).
+ *
+ * @param user whoami 응답(authStore.user) — 미인증이면 null
+ * @returns 표시할 계정 라벨
+ */
+function resolveAccountLabel(user: WhoamiResponse | null): string {
+  return user?.displayName ?? user?.username ?? ''
+}
+
+/**
+ * 전역 헤더 — 메인/관리 nav, 즐겨찾기, 검색, 알림 보관함, 계정 드롭다운을 렌더한다.
+ *
+ * 계정 드롭다운 트리거는 Avatar(아바타 이미지 또는 이니셜 폴백) + displayName(없으면
+ * username 폴백)을 함께 표시한다(spec S9). 드롭다운 메뉴에는 프로필/2단계 인증/PAT
+ * 설정 링크와 로그아웃 항목이 있다.
+ */
 export const Header = () => {
   const user = useAuthUser()
+  const avatarVersion = useAuthStore((s) => s.avatarVersion)
   const navigate = useNavigate()
   const logoutMutation = useLogoutMutation()
 
@@ -39,7 +60,7 @@ export const Header = () => {
     })
   }
 
-  const username = user?.username ?? ''
+  const accountLabel = resolveAccountLabel(user)
 
   // === true 명시비교 — undefined/null/'admin' 오인 방지 (routeGuard.requireSystemAdmin 일관)
   const isAdmin = user?.isSystemAdmin === true
@@ -85,12 +106,26 @@ export const Header = () => {
           <button
             type="button"
             className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium hover:bg-accent"
-            aria-label={`${username} 계정 메뉴`}
+            aria-label={`${accountLabel} 계정 메뉴`}
           >
-            {username}
+            {/* aria-hidden — 버튼의 aria-label이 접근 가능한 이름을 이미 제공하므로
+                내부 Avatar(role=img)/텍스트가 스크린리더에 중복 announce 되지 않게 숨긴다 */}
+            <span aria-hidden="true" className="flex items-center gap-2">
+              <Avatar
+                avatarUrl={user?.avatarUrl}
+                displayName={user?.displayName}
+                username={user?.username}
+                size="sm"
+                cacheBust={avatarVersion}
+              />
+              <span>{accountLabel}</span>
+            </span>
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem asChild>
+            <Link to="/settings/profile">프로필</Link>
+          </DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link to="/settings/mfa">2단계 인증</Link>
           </DropdownMenuItem>

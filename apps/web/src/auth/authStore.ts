@@ -6,12 +6,22 @@ import type { WhoamiResponse } from '@/api/schemas'
 interface AuthState {
   accessToken: string | null
   user: WhoamiResponse | null
+  /**
+   * 아바타 캐시버스트 카운터 — 아바타 업로드/삭제 성공마다 1씩 증가한다.
+   * 아바타 다운로드 URL(`/api/v1/users/{userId}/avatar`)은 userId에서만 파생되는
+   * 고정 문자열이라 아바타를 교체해도 URL 자체는 바뀌지 않는다. Avatar 컴포넌트가
+   * 이 값을 `cacheBust` prop으로 받아 fetch URL에 쿼리스트링(`?v=N`)으로 덧붙여
+   * 강제 재fetch를 트리거한다.
+   */
+  avatarVersion: number
 }
 
 interface AuthActions {
   setSession: (payload: { accessToken: string; user: WhoamiResponse }) => void
   clearSession: () => void
   setAccessToken: (token: string | null) => void
+  setUser: (user: WhoamiResponse) => void
+  bumpAvatarVersion: () => void
 }
 
 export const useAuthStore = create<AuthState & AuthActions>()(
@@ -19,12 +29,15 @@ export const useAuthStore = create<AuthState & AuthActions>()(
     (set) => ({
       accessToken: null,
       user: null,
+      avatarVersion: 0,
       setSession: ({ accessToken, user }) => set({ accessToken, user }),
       clearSession: () => {
         set({ accessToken: null, user: null })
         sessionStorage.removeItem('bts.auth')
       },
       setAccessToken: (accessToken) => set({ accessToken }),
+      setUser: (user) => set({ user }),
+      bumpAvatarVersion: () => set((s) => ({ avatarVersion: s.avatarVersion + 1 })),
     }),
     {
       name: 'bts.auth',

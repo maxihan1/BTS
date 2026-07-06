@@ -15,7 +15,7 @@ import { loginStrings, loginPageStrings } from '../src/i18n/ko'
  *
  * Given  /login 진입 후 1단계 미매칭 이메일 입력 → 2단계 폼 진입
  * When   LDAP-corp 선택 → alice / Test1234! 입력 → 로그인 버튼 클릭
- * Then   /dashboard 리다이렉트 + 환영 메시지 'alice' + Header 'alice 계정 메뉴'
+ * Then   /dashboard 리다이렉트 + 환영 메시지 'alice' + Header 계정 메뉴 버튼(displayName '김앨리스' 표시)
  */
 test('S1-ldap LDAP-corp 정상 로그인 — alice/Test1234! → /dashboard 환영 메시지', async ({ page }) => {
   await page.goto('/login')
@@ -48,8 +48,8 @@ test('S1-ldap LDAP-corp 정상 로그인 — alice/Test1234! → /dashboard 환�
   // dashboard 본문에 환영 메시지 존재 확인
   await expect(page.getByRole('heading', { name: '환영합니다, alice' })).toBeVisible()
 
-  // Header 트리거 버튼에 alice 표시 확인 (DropdownMenu trigger)
-  await expect(page.getByRole('button', { name: 'alice 계정 메뉴' })).toBeVisible()
+  // Header 트리거 버튼 표시 확인 (DropdownMenu trigger) — displayName(김앨리스) 우선 표시되므로 정규식으로 한정
+  await expect(page.getByRole('button', { name: /계정 메뉴$/ })).toBeVisible()
 })
 
 /**

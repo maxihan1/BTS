@@ -230,7 +230,7 @@ test.describe('신뢰 디바이스 설정 화면 (FR-MF-05)', () => {
     await loginAsAlice(page)
 
     // /dashboard 에서 계정 메뉴 클릭 → 2단계 인증 링크 클릭 (SPA 내부 이동)
-    await page.getByRole('button', { name: 'alice 계정 메뉴' }).click()
+    await page.getByRole('button', { name: /계정 메뉴$/ }).click()
     await page.getByRole('menuitem', { name: '2단계 인증', exact: true }).click()
 
     // Given. /settings/mfa TrustedDevicesSection 로딩 완료
@@ -248,7 +248,7 @@ test.describe('신뢰 디바이스 설정 화면 (FR-MF-05)', () => {
     await page.waitForURL('**/dashboard')
 
     // When. 계정 메뉴 → "2단계 인증" 링크로 /settings/mfa 재진입 (SPA 내부 이동)
-    await page.getByRole('button', { name: 'alice 계정 메뉴' }).click()
+    await page.getByRole('button', { name: /계정 메뉴$/ }).click()
     await page.getByRole('menuitem', { name: '2단계 인증', exact: true }).click()
 
     // Then. MFA 설정 페이지 로딩 완료

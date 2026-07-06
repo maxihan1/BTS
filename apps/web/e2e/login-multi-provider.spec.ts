@@ -73,7 +73,7 @@ test.describe('다중 Provider 명시 선택 (FR-AU-06)', () => {
 
     // Then. 환영 메시지 + Header 계정 메뉴 확인
     await expect(page.getByRole('heading', { name: '환영합니다, alice' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'alice 계정 메뉴' })).toBeVisible()
+    await expect(page.getByRole('button', { name: /계정 메뉴$/ })).toBeVisible()
   })
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -103,7 +103,7 @@ test.describe('다중 Provider 명시 선택 (FR-AU-06)', () => {
 
     // Then. 환영 메시지 + Header 계정 메뉴 확인
     await expect(page.getByRole('heading', { name: '환영합니다, alice' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'alice 계정 메뉴' })).toBeVisible()
+    await expect(page.getByRole('button', { name: /계정 메뉴$/ })).toBeVisible()
   })
 
   // ─────────────────────────────────────────────────────────────────────────────
