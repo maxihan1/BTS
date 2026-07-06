@@ -258,7 +258,8 @@ FR-PR-02 — 사용자 상태 메시지(이모지 + 텍스트). Slack 스타일 
 - SQL 파라미터 바인딩·@Transactional 스테레오타입(ArchUnit)·JWT me-scope(PAT 401)·XSS(React 이스케이프)·검증 메시지 비누출·FK CASCADE·CHECK·멱등 UPSERT·만료 필터 DRY 확인.
 - **CONCERNS**:
   - **C1 (수정 완료)**: 상태 모달에 클라이언트 길이 가드·에러 표시 부재로 400 무음 실패 → `maxLength` 32/100 추가(초과 입력 원천 차단) + `mutation.isError` 시 `role="alert"` 에러 표시(defense-in-depth). TDD(codereview-C1 red→green) 반영.
-  - **C2 (문서화·미수정)**: 검증(`Instant.now()`)과 만료 lazy 필터(DB `NOW()`)의 이중 클럭. 단일 호스트 Docker Compose(앱·DB 동일 시계)에서 실질 무해, flaky 없음. Clock 주입 통일은 후속 선택 사항.
+  - **C2 (수정 완료 — Maxi 게이트 2 선택)**: 검증(`Instant.now()`)과 만료 lazy 필터(DB `NOW()`)의 이중 클럭 → `UserStatusService`에 `Clock` 주입(`= Clock.systemUTC()` 기본값, identity-access 15곳 관례)해 `Instant.now(clock)`로 통일. TDD(codereview-C2 red[컴파일 red]→green) 반영. 고정 Clock 주입 테스트 2건 추가.
+  - **캐시-마스킹 lint debt 해소(C2 재컴파일이 노출)**: 앞선 백엔드 검증의 "exit 0"은 gradle ktlint/detekt 캐시 false-green([[backend-detekt-lint-debt-unmasked]])이었고, C2 변경의 모듈 재컴파일이 진짜 상태를 드러냄. `--rerun-tasks` 강제 재분석으로 3건 확정·수정: ① WhoamiController LongParameterList(T5가 7번째 협력자 추가 → whoami view-layer 집약점이라 `@Suppress`+사유), ② WhoamiControllerTest import 정렬(session<status), ③ UserStatusService.toView·UserStatusControllerTest.corsConfigurationSource expr-body(같은 줄 130/132자로 detekt MaxLineLength 초과 → 블록 body, [[ktlint-detekt-linelength-and-baseline-traps]] AuthControllerTest 선례). 전부 이 PR 신규 코드의 debt(baseline 부적합).
 - **minor(문서화)**: M1 열린 모달의 백그라운드 리페치가 입력 덮어쓸 이론적 여지(저장 즉시 닫힘으로 실무 무해), M2 whoami 2회 PK 조회(NFR1 범위 내).
 
 ### /review (gstack) — 저위험 통합 처리
