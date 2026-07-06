@@ -4,6 +4,7 @@ package com.atlas.bts.identity.status
 
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Clock
 import java.time.Instant
 import java.util.UUID
 
@@ -20,11 +21,18 @@ private const val MAX_TEXT_LENGTH = 100
  * [setStatus] 는 검증을 어떤 write 보다 먼저 수행하므로, 검증 실패 시 아무 것도 쓰지 않고
  * [StatusValidationException](unchecked)으로 빈 트랜잭션이 롤백된다("검증 먼저, 부분 적용 없음").
  *
+ * ## 시각 일관성 (C2)
+ * 만료 과거 판정은 주입된 [clock] 기준([Instant.now] 벽시계 아님)으로 수행한다. 조회 시의 만료 lazy
+ * 필터는 DB `NOW()`를 쓰므로, 검증 클럭을 [clock]으로 통일해 경계값에서의 비대칭을 없앤다. 기본값은
+ * `Clock.systemUTC()`(identity-access 관례) — 테스트는 고정 Clock을 주입해 결정성을 확보한다.
+ *
  * @param repository user_statuses 접근 포트.
+ * @param clock 만료 판정 기준 시각 소스.
  */
 @Service
 class UserStatusService(
     private val repository: UserStatusRepository,
+    private val clock: Clock = Clock.systemUTC(),
 ) {
     /**
      * 활성 상태를 조회한다. 미설정/만료면 all-null [StatusView].
@@ -79,7 +87,7 @@ class UserStatusService(
                     "이모지는 ${MAX_EMOJI_LENGTH}자를 초과할 수 없습니다."
                 text != null && text.length > MAX_TEXT_LENGTH ->
                     "상태 텍스트는 ${MAX_TEXT_LENGTH}자를 초과할 수 없습니다."
-                expiresAt != null && expiresAt.isBefore(Instant.now()) ->
+                expiresAt != null && expiresAt.isBefore(Instant.now(clock)) ->
                     "만료 시각은 과거일 수 없습니다."
                 else -> null
             }
