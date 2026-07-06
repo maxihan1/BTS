@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { server } from '@/test/server'
 import { statusHandlers, resetStatusStore, seedStatusRecord } from './status-handlers'
 import { mockAccessToken } from './auth-fixtures'
-import { ALICE_STATUS_FIXTURE, BOB_STATUS_FIXTURE } from './status-fixtures'
+import { ALICE_STATUS_FIXTURE } from './status-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MSW 서버 설정 — 전역 공유 server(@/test/server)에 매 테스트 server.use()로 등록한다
@@ -21,7 +21,6 @@ beforeEach(() => {
 
 const ALICE_TOKEN = mockAccessToken('alice')
 const ALICE_ID = ALICE_STATUS_FIXTURE.userId
-const BOB_ID = BOB_STATUS_FIXTURE.userId
 
 interface StatusResponseBody {
   emoji: string | null
