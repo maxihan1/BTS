@@ -23,6 +23,8 @@ export const WhoamiResponseSchema = z.object({
   mustChangePassword: z.boolean(),
   isSystemAdmin: z.boolean(),
   mfaEnrollmentRequired: z.boolean(),
+  displayName: z.string().nullable().optional(),
+  avatarUrl: z.string().nullable().optional(),
 })
 
 export const ApiErrorResponseSchema = z.object({
