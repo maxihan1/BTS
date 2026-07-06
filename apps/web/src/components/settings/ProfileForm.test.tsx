@@ -8,6 +8,7 @@ import type { ReactNode } from 'react'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { profileHandlers, resetProfileStore } from '@/mocks/profile-handlers'
+import { authHandlers } from '@/mocks/auth-handlers'
 import { ALICE_PROFILE_FIXTURE, BOB_PROFILE_FIXTURE } from '@/mocks/profile-fixtures'
 import { aliceUser, bobUser, mockAccessToken } from '@/mocks/auth-fixtures'
 import { useAuthStore } from '@/auth/authStore'
@@ -75,7 +76,7 @@ const BOB_TOKEN = mockAccessToken('bob')
 
 beforeEach(() => {
   resetProfileStore()
-  server.use(...profileHandlers)
+  server.use(...profileHandlers, ...authHandlers)
   useAuthStore.getState().setSession({ accessToken: ALICE_TOKEN, user: aliceUser })
 })
 
