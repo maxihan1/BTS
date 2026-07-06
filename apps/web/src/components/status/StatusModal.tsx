@@ -17,6 +17,11 @@ export interface StatusModalProps {
   readonly onOpenChange: (open: boolean) => void
 }
 
+/** 이모지 최대 길이 — 백엔드 UserStatusService.MAX_EMOJI_LENGTH·NFR3와 일치(단일 이모지+변형선택자 수용). */
+const EMOJI_MAX_LENGTH = 32
+/** 상태 텍스트 최대 길이 — 백엔드 UserStatusService.MAX_TEXT_LENGTH·NFR3(Slack 관례)와 일치. */
+const TEXT_MAX_LENGTH = 100
+
 /** 공백을 null로 정규화한다 — 서버 replace 시맨틱과 일치(둘 다 null이면 서버가 해제). */
 function normalize(value: string): string | null {
   const trimmed = value.trim()
@@ -79,6 +84,7 @@ export function StatusModal({ open, onOpenChange }: StatusModalProps): JSX.Eleme
               <Label htmlFor="status-emoji">{statusLabels.emojiLabel}</Label>
               <Input
                 id="status-emoji" value={emoji} placeholder={statusLabels.emojiPlaceholder}
+                maxLength={EMOJI_MAX_LENGTH}
                 disabled={mutation.isPending} onChange={(e) => { setEmoji(e.target.value) }}
               />
             </div>
@@ -86,6 +92,7 @@ export function StatusModal({ open, onOpenChange }: StatusModalProps): JSX.Eleme
               <Label htmlFor="status-text">{statusLabels.textLabel}</Label>
               <Input
                 id="status-text" value={text} placeholder={statusLabels.textPlaceholder}
+                maxLength={TEXT_MAX_LENGTH}
                 disabled={mutation.isPending} onChange={(e) => { setText(e.target.value) }}
               />
             </div>
@@ -101,6 +108,12 @@ export function StatusModal({ open, onOpenChange }: StatusModalProps): JSX.Eleme
                 ))}
               </select>
             </div>
+
+            {mutation.isError && (
+              <p role="alert" className="text-sm text-destructive">
+                {statusLabels.errorMessage}
+              </p>
+            )}
 
             <div className="flex justify-between gap-2 pt-2">
               <Button
