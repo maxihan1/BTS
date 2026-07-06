@@ -38,6 +38,33 @@ export const WhoamiResponseSchema = z.object({
    * optional 사유는 displayName과 동일(인라인 mock blast-radius 회피).
    */
   avatarUrl: z.string().nullable().optional(),
+  /**
+   * 상태 이모지 — FR-PR-02 `user_statuses.emoji` 노출(활성 상태만, 만료/미설정/PAT는 null).
+   * `.nullable().optional()`인 이유 — 키 부재도 허용해야 하기 때문. authMethod: 를 참조하는
+   * 인라인 whoami mock이 다수 파일에 산재돼 있어 required로 강화하면 전부 z.parse 실패로 깨진다
+   * (zod-schema-strengthen-inline-mock-fanout 사고 재발 방지, FR-PR-01 displayName/avatarUrl 선례).
+   * 실 백엔드는 항상 키를 포함해 응답한다.
+   */
+  statusEmoji: z.string().nullable().optional(),
+  /**
+   * 상태 텍스트 — FR-PR-02 `user_statuses.text` 노출(활성 상태만, 만료/미설정/PAT는 null).
+   * optional 사유는 statusEmoji와 동일(인라인 mock blast-radius 회피).
+   */
+  statusText: z.string().nullable().optional(),
+})
+
+/**
+ * 사용자 상태 메시지(이모지+텍스트+만료) 응답 Zod 스키마 — FR-PR-02.
+ * `GET`/`PATCH /api/v1/users/me/status` 응답 형태 — 래퍼 없음.
+ * 미설정/만료/해제 시 세 필드 모두 null(강제 생성 안 함, backend UserStatusController 참고).
+ */
+export const statusResponseSchema = z.object({
+  /** 상태 이모지 — 미설정/만료 시 null */
+  emoji: z.string().nullable(),
+  /** 상태 텍스트 — 미설정/만료 시 null */
+  text: z.string().nullable(),
+  /** 만료 시각(ISO 8601 Instant) — 만료 없음/미설정 시 null */
+  expiresAt: z.string().nullable(),
 })
 
 export const ApiErrorResponseSchema = z.object({
@@ -141,3 +168,4 @@ export type BackupCodesResponse = z.infer<typeof BackupCodesResponseSchema>
 export type BackupCodesStatusResponse = z.infer<typeof BackupCodesStatusResponseSchema>
 export type WebauthnKey = z.infer<typeof WebauthnKeySchema>
 export type WebauthnKeysResponse = z.infer<typeof WebauthnKeysResponseSchema>
+export type StatusResponse = z.infer<typeof statusResponseSchema>

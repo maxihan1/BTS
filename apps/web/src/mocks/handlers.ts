@@ -42,6 +42,7 @@ import { projectPermissionHandlers } from './project-permission-handlers'
 import { resolutionHandlers } from './resolution-handlers'
 import { schemeHandlers } from './scheme-handlers'
 import { sessionHandlers } from './session-handlers'
+import { statusHandlers } from './status-handlers'
 import { trustedDevicesHandlers } from './trusted-devices-handlers'
 import { userHandlers } from './user-handlers'
 import { versionHandlers } from './version-handlers'
@@ -113,6 +114,7 @@ export const handlers = [
   ...securityLevelHandlers,
   ...schemeHandlers,
   ...sessionHandlers,
+  ...statusHandlers,
   ...trustedDevicesHandlers,
   ...userHandlers,
   ...versionHandlers,

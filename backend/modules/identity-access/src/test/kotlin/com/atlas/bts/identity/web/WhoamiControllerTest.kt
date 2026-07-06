@@ -17,6 +17,8 @@ import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.profile.UserProfile
 import com.atlas.bts.identity.profile.UserProfileRepository
 import com.atlas.bts.identity.session.SessionService
+import com.atlas.bts.identity.status.UserStatus
+import com.atlas.bts.identity.status.UserStatusRepository
 import com.atlas.bts.identity.user.User
 import com.atlas.bts.identity.user.UserRepository
 import com.bts.shared.permission.SystemPermissionResolver
@@ -101,6 +103,10 @@ class WhoamiControllerTest {
         // (미공급 시 "No qualifying bean of type UserProfileRepository").
         @Bean
         fun userProfileRepository(): UserProfileRepository = mockk(relaxed = true)
+
+        // WhoamiController 가 상태 view-layer(statusEmoji/statusText) 파생을 위해 새로 주입받는 의존 (FR-PR-02).
+        @Bean
+        fun userStatusRepository(): UserStatusRepository = mockk(relaxed = true)
     }
 
     @Autowired
@@ -123,6 +129,9 @@ class WhoamiControllerTest {
 
     @Autowired
     lateinit var userProfileRepository: UserProfileRepository
+
+    @Autowired
+    lateinit var userStatusRepository: UserStatusRepository
 
     // @WebMvcTest 슬라이스는 mockk 빈을 컨텍스트 캐시로 공유하므로 record() 호출 수가 테스트 간 누적된다.
     // PAT_USED 감사 테스트의 verify(exactly=1) 가 실행 순서에 의존하지 않도록 각 테스트 시작 시 감사 mock 의
@@ -568,6 +577,67 @@ class WhoamiControllerTest {
             // PAT 분기는 봇 컨텍스트라 프로필 view-layer(displayName/avatarUrl)를 노출하지 않는다
             .andExpect(jsonPath("$.displayName").value(nullValue()))
             .andExpect(jsonPath("$.avatarUrl").value(nullValue()))
+            // FR-PR-02: 상태 view-layer(statusEmoji/statusText)도 봇 컨텍스트라 노출하지 않는다
+            .andExpect(jsonPath("$.statusEmoji").value(nullValue()))
+            .andExpect(jsonPath("$.statusText").value(nullValue()))
+    }
+
+    // ── FR-PR-02: statusEmoji / statusText (상태 메시지 view-layer) ────────────────
+
+    @Test
+    fun `whoami JWT 사용자의 활성 상태를 statusEmoji-statusText 로 노출`() {
+        val userId = UUID.fromString("00000000-0000-0000-0000-0000000000b1")
+        val now = Instant.parse("2026-07-06T10:00:00Z")
+        every { userRepository.findById(userId) } returns
+            User(
+                id = userId,
+                username = "erin",
+                email = "erin@bts.local",
+                displayName = "Erin Park",
+                createdAt = now,
+                updatedAt = now,
+            )
+        every { storedPasswordCredentialRepository.findByUserId(userId) } returns credential(userId, mustChange = false)
+        every { systemPermissionResolver.isSystemAdmin(userId) } returns false
+        every { userStatusRepository.findActiveByUserId(userId) } returns
+            UserStatus(userId = userId, emoji = "🌴", text = "휴가 중", expiresAt = null)
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami").with(
+                jwt().jwt { builder -> builder.subject(userId.toString()) },
+            ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.statusEmoji").value("🌴"))
+            .andExpect(jsonPath("$.statusText").value("휴가 중"))
+    }
+
+    @Test
+    fun `whoami JWT 사용자가 상태 미설정(또는 만료) 시 statusEmoji-statusText 는 null`() {
+        val userId = UUID.fromString("00000000-0000-0000-0000-0000000000b2")
+        val now = Instant.parse("2026-07-06T10:00:00Z")
+        every { userRepository.findById(userId) } returns
+            User(
+                id = userId,
+                username = "frank",
+                email = "frank@bts.local",
+                displayName = "Frank Oh",
+                createdAt = now,
+                updatedAt = now,
+            )
+        every { storedPasswordCredentialRepository.findByUserId(userId) } returns credential(userId, mustChange = false)
+        every { systemPermissionResolver.isSystemAdmin(userId) } returns false
+        // 활성 상태 없음(만료 필터는 repository.findActiveByUserId 책임) → null 노출
+        every { userStatusRepository.findActiveByUserId(userId) } returns null
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami").with(
+                jwt().jwt { builder -> builder.subject(userId.toString()) },
+            ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.statusEmoji").value(nullValue()))
+            .andExpect(jsonPath("$.statusText").value(nullValue()))
     }
 
     /** local_credentials 행 픽스처 — mustChangePassword 플래그만 변주 */

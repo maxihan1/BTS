@@ -53,6 +53,12 @@ vi.mock('@/components/ui/avatar', () => ({
   ),
 }))
 
+// StatusModal mock — Header가 open prop으로 모달을 여는지에 집중(모달 내부는 StatusModal.test가 검증).
+vi.mock('@/components/status/StatusModal', () => ({
+  StatusModal: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="status-modal-mock" /> : null,
+}))
+
 function createWrapper() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -128,6 +134,36 @@ describe('Header', () => {
     renderHeader()
 
     expect(screen.getByRole('button', { name: '김앨리스 계정 메뉴' })).toBeInTheDocument()
+  })
+
+  it('활성 상태가 있으면 아바타 옆에 상태 이모지 배지를 렌더한다 (FR-PR-02)', () => {
+    useAuthStore.setState({
+      accessToken: 'test-token',
+      user: {
+        username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1',
+        mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false,
+        statusEmoji: '🌴', statusText: '휴가 중',
+      },
+    })
+    renderHeader()
+
+    expect(screen.getByText('🌴')).toBeInTheDocument()
+  })
+
+  it('활성 상태가 없으면 상태 배지를 렌더하지 않는다 (FR-PR-02)', () => {
+    renderHeader()
+
+    expect(screen.queryByText('🌴')).toBeNull()
+  })
+
+  it('계정 메뉴의 "상태 설정" 클릭 시 StatusModal이 열린다 (FR-PR-02)', async () => {
+    const user = userEvent.setup()
+    renderHeader()
+
+    await user.click(screen.getByRole('button', { name: /계정 메뉴/ }))
+    await user.click(await screen.findByText('상태 설정'))
+
+    expect(screen.getByTestId('status-modal-mock')).toBeInTheDocument()
   })
 
   it('displayName이 없으면 username으로 폴백해 계정 트리거에 표시된다 (FR-PR-01 D6 Task 8)', () => {

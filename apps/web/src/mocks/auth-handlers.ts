@@ -10,6 +10,7 @@ import {
   mockAccessToken,
 } from './auth-fixtures'
 import { trustedThisBrowser } from './trusted-devices-handlers'
+import { getActiveStatusForUser } from './status-handlers'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // E2E 시나리오 토글용 localStorage 키 — FR-AU-05 Task 9
@@ -134,7 +135,17 @@ const whoamiHandler = http.get('/api/v1/users/me/whoami', ({ request }) => {
     globalThis.localStorage?.getItem(E2E_MFA_ENFORCEMENT_KEY) === 'true'
   const mfaEnrollmentRequired = enforcementOn ? !mfaStore.enabled : user.mfaEnrollmentRequired
 
-  return HttpResponse.json({ ...user, mustChangePassword, isSystemAdmin, mfaEnrollmentRequired })
+  // FR-PR-02: 활성 상태(statusStore) view-layer 파생 — 백엔드 whoami가 UserStatusRepository로 채우는 흐름 재현.
+  const status = getActiveStatusForUser(user.userId)
+
+  return HttpResponse.json({
+    ...user,
+    mustChangePassword,
+    isSystemAdmin,
+    mfaEnrollmentRequired,
+    statusEmoji: status?.emoji ?? null,
+    statusText: status?.text ?? null,
+  })
 })
 
 /**
