@@ -107,13 +107,17 @@ export const Header = () => {
             className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium hover:bg-accent"
             aria-label={`${accountLabel} 계정 메뉴`}
           >
-            <Avatar
-              avatarUrl={user?.avatarUrl}
-              displayName={user?.displayName}
-              username={user?.username}
-              size="sm"
-            />
-            <span>{accountLabel}</span>
+            {/* aria-hidden — 버튼의 aria-label이 접근 가능한 이름을 이미 제공하므로
+                내부 Avatar(role=img)/텍스트가 스크린리더에 중복 announce 되지 않게 숨긴다 */}
+            <span aria-hidden="true" className="flex items-center gap-2">
+              <Avatar
+                avatarUrl={user?.avatarUrl}
+                displayName={user?.displayName}
+                username={user?.username}
+                size="sm"
+              />
+              <span>{accountLabel}</span>
+            </span>
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
