@@ -250,3 +250,19 @@ FR-PR-02 — 사용자 상태 메시지(이모지 + 텍스트). Slack 스타일 
 - **T9 스코프 확장(정당)**: T6가 plan gap 발견 — whoami mock 핸들러는 `mocks/handlers.ts`가 아니라 `mocks/auth-handlers.ts`에 있음. 헤더 배지 E2E end-to-end를 위해 T9 파일 목록에 `mocks/auth-handlers.ts`(whoami에 statusEmoji/statusText 채움) + `mocks/status-handlers.ts`(`getActiveStatusForUser` export) 추가. 백엔드 whoami가 UserStatusRepository로 채우는 흐름을 mock에서 재현.
 - **구현 경위**: wave 1(T1·T6·T7)은 sub-agent 병렬 dispatch 완료. wave 2 이후 sub-agent가 인프라 오류(API 연결 끊김/stall)로 반복 실패 → controller가 TDD 규율(test→feat 커밋 순서) 유지하며 직접 구현(T2~T5·T8·T9·T10). 전 task `test:` 커밋이 `feat:` 선행 확인.
 - **회귀 검증**: 백엔드 test+ktlint+detekt ✅, 프론트 typecheck+eslint+test(6120)✅, E2E status 3/3 + profile 6/6(Header aria-label 무회귀) ✅. workflows.$key T5-1 flaky는 mermaid getBBox(PRE_EXISTING·무관, 단독 통과).
+
+## 리뷰 결과 (PR 단위 — bts-codereview)
+
+### superpowers:code-reviewer 에이전트 — ✅ PASS (BLOCKER 0, CONCERNS 2, minor 2)
+- 절대 규칙 19개·데이터 무결성·보안·learnings 회귀·replace 시맨틱 정합 전부 통과.
+- SQL 파라미터 바인딩·@Transactional 스테레오타입(ArchUnit)·JWT me-scope(PAT 401)·XSS(React 이스케이프)·검증 메시지 비누출·FK CASCADE·CHECK·멱등 UPSERT·만료 필터 DRY 확인.
+- **CONCERNS**:
+  - **C1 (수정 완료)**: 상태 모달에 클라이언트 길이 가드·에러 표시 부재로 400 무음 실패 → `maxLength` 32/100 추가(초과 입력 원천 차단) + `mutation.isError` 시 `role="alert"` 에러 표시(defense-in-depth). TDD(codereview-C1 red→green) 반영.
+  - **C2 (문서화·미수정)**: 검증(`Instant.now()`)과 만료 lazy 필터(DB `NOW()`)의 이중 클럭. 단일 호스트 Docker Compose(앱·DB 동일 시계)에서 실질 무해, flaky 없음. Clock 주입 통일은 후속 선택 사항.
+- **minor(문서화)**: M1 열린 모달의 백그라운드 리페치가 입력 덮어쓸 이론적 여지(저장 즉시 닫힘으로 실무 무해), M2 whoami 2회 PK 조회(NFR1 범위 내).
+
+### /review (gstack) — 저위험 통합 처리
+- 저위험 feature(FR-PR-01 전 계층 미러, 신규 인프라 0)라 gstack /review의 구조/안전성 카테고리(SQL 안전성·race·LLM 신뢰 경계·PRE_EXISTING 판별)를 code-reviewer 에이전트 + controller 중앙 검증(typecheck/eslint/test/E2E/회귀)으로 통합 수행([[bts-review-plan-autoplan-overkill]] 선례). Maxi 요청 시 전체 gstack /review 별도 실행 가능.
+
+### /plan-ceo-review — skip
+- type=feature(auth/migration 아님). V028은 격리된 신규 테이블(사용자/세션 스키마 미변경)이라 PR-level ceo-review 불요.
