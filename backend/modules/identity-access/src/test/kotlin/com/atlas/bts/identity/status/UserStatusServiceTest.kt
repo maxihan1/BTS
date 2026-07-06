@@ -10,7 +10,9 @@ import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneOffset
 import java.util.UUID
 
 /**
@@ -127,6 +129,34 @@ class UserStatusServiceTest {
         val past = Instant.parse("2020-01-01T00:00:00Z")
 
         assertThatThrownBy { service.setStatus(userId, StatusPatch("🌴", null, past)) }
+            .isInstanceOf(StatusValidationException::class.java)
+
+        verify(exactly = 0) { repo.upsert(any(), any(), any(), any()) }
+    }
+
+    // C2(이중 클럭) — 만료 과거 판정을 벽시계가 아닌 주입된 Clock 기준으로 수행해야 한다.
+    // 만료 lazy 필터(repository의 DB NOW())와 판정 클럭을 일관되게 만들기 위함.
+
+    @Test
+    fun `setStatus는 주입된 Clock 기준으로 만료 미래 여부를 판정한다`() {
+        // 고정 Clock(2000-01-01). 벽시계(현재)로는 과거지만 이 Clock 기준으로는 미래인 값을 통과시켜야 한다.
+        val fixedNow = Instant.parse("2000-01-01T00:00:00Z")
+        val clockedService = UserStatusService(repo, Clock.fixed(fixedNow, ZoneOffset.UTC))
+        val futurePerClock = fixedNow.plusSeconds(3600)
+        every { repo.upsert(userId, null, "회의 중", futurePerClock) } just Runs
+
+        clockedService.setStatus(userId, StatusPatch(null, "회의 중", futurePerClock))
+
+        verify { repo.upsert(userId, null, "회의 중", futurePerClock) }
+    }
+
+    @Test
+    fun `setStatus는 주입된 Clock 기준 과거 만료를 거부한다`() {
+        val fixedNow = Instant.parse("2000-01-01T00:00:00Z")
+        val clockedService = UserStatusService(repo, Clock.fixed(fixedNow, ZoneOffset.UTC))
+        val pastPerClock = fixedNow.minusSeconds(1)
+
+        assertThatThrownBy { clockedService.setStatus(userId, StatusPatch(null, "회의 중", pastPerClock)) }
             .isInstanceOf(StatusValidationException::class.java)
 
         verify(exactly = 0) { repo.upsert(any(), any(), any(), any()) }
