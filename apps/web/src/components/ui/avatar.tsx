@@ -26,38 +26,37 @@ const SIZE_CLASSES: Record<'sm' | 'md' | 'lg', string> = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 이니셜 폴백 헬퍼
+// 인증 이미지 blob fetch 훅
 // ─────────────────────────────────────────────────────────────────────────────
 
-function resolveLabel(displayName?: string | null, username?: string | null): string {
-  return displayName ?? username ?? '아바타'
+interface AvatarObjectUrlState {
+  /** 표시 가능한 objectURL — 아직 로드 전이거나 실패하면 null */
+  readonly objectUrl: string | null
+  /** fetch 실패 여부 (404 AVATAR_NOT_FOUND 포함, EC8) */
+  readonly hasError: boolean
 }
-
-function resolveInitial(displayName?: string | null, username?: string | null): string {
-  const source = displayName ?? username
-  if (source === null || source === undefined || source.length === 0) {
-    return '?'
-  }
-  return source.charAt(0)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 컴포넌트
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 아바타 이미지를 표시하는 재사용 컴포넌트.
+ * 인증이 필요한 아바타 이미지를 objectURL로 변환해 반환하는 훅.
  *
- * avatarUrl이 있으면 인증 blob fetch 후 `<img>`로 렌더하고, 없거나 fetch가
- * 실패하면 displayName/username 첫 글자를 이니셜 폴백으로 렌더한다(둘 다 없으면 '?').
- * 프로필 페이지·Header 등에서 공통으로 재사용한다.
+ * 아바타 GET 엔드포인트(`/api/v1/users/{userId}/avatar`)는 STATELESS JWT 인증
+ * (`@PreAuthorize("isAuthenticated()")`)이 걸려 있어 `<img src={avatarUrl}>`로
+ * 직접 로드하면 Authorization 헤더가 실리지 않아 401로 깨진다. 그래서 JWT Bearer를
+ * 포함해 fetch하는 `fetchAvatarBlob`으로 Blob을 받아 `URL.createObjectURL`로 변환한
+ * 뒤 `<img>`에 표시한다(AttachmentPreviewModal.tsx의 blob fetch 선례와 동일 패턴).
+ *
+ * avatarUrl이 없거나(null/undefined/빈 문자열) fetch가 실패하면 objectUrl은 null로
+ * 유지되고, 호출측이 hasError를 보고 이니셜 폴백을 렌더한다 — 에러 배너는 띄우지 않는다.
+ *
+ * avatarUrl이 바뀌면 이전 objectURL을 `revokeObjectURL`로 해제한 뒤 재요청하고,
+ * 언마운트 시에도 동일하게 해제한다(cleanup).
+ *
+ * @param avatarUrl 아바타 다운로드 경로
+ * @returns 현재 objectURL과 fetch 실패 여부
  */
-export function Avatar({ avatarUrl, displayName, username, size = 'md' }: AvatarProps): JSX.Element {
+function useAvatarObjectUrl(avatarUrl: string | null | undefined): AvatarObjectUrlState {
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   const [hasError, setHasError] = useState(false)
-  const sizeClass = SIZE_CLASSES[size]
-  const label = resolveLabel(displayName, username)
-  const hasAvatarUrl = avatarUrl !== null && avatarUrl !== undefined && avatarUrl !== ''
 
   useEffect(() => {
     setObjectUrl(null)
@@ -91,6 +90,42 @@ export function Avatar({ avatarUrl, displayName, username, size = 'md' }: Avatar
       }
     }
   }, [avatarUrl])
+
+  return { objectUrl, hasError }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 이니셜 폴백 헬퍼
+// ─────────────────────────────────────────────────────────────────────────────
+
+function resolveLabel(displayName?: string | null, username?: string | null): string {
+  return displayName ?? username ?? '아바타'
+}
+
+function resolveInitial(displayName?: string | null, username?: string | null): string {
+  const source = displayName ?? username
+  if (source === null || source === undefined || source.length === 0) {
+    return '?'
+  }
+  return source.charAt(0)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 컴포넌트
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 아바타 이미지를 표시하는 재사용 컴포넌트.
+ *
+ * avatarUrl이 있으면 인증 blob fetch 후 `<img>`로 렌더하고, 없거나 fetch가
+ * 실패하면 displayName/username 첫 글자를 이니셜 폴백으로 렌더한다(둘 다 없으면 '?').
+ * 프로필 페이지·Header 등에서 공통으로 재사용한다.
+ */
+export function Avatar({ avatarUrl, displayName, username, size = 'md' }: AvatarProps): JSX.Element {
+  const { objectUrl, hasError } = useAvatarObjectUrl(avatarUrl)
+  const sizeClass = SIZE_CLASSES[size]
+  const label = resolveLabel(displayName, username)
+  const hasAvatarUrl = avatarUrl !== null && avatarUrl !== undefined && avatarUrl !== ''
 
   if (objectUrl !== null) {
     return (
