@@ -35,13 +35,13 @@
 
 **우선순위**. 높음 | **선행**. §2.1 | **Plan slug**. `personal/status-msg`
 
-- [ ] D1. 도메인 — UserStatus (책임. backend-engineer)
-- [ ] D2. 명세 — TTL 옵션 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `user_statuses(user_id, emoji, text, expires_at)` (책임. db-engineer)
-- [ ] D4. 백엔드 — `PATCH /api/v1/users/me/status` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 아바타 옆 상태 + 설정 모달 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — UserStatus (책임. backend-engineer)
+- [x] D2. 명세 — TTL 옵션 (책임. backend-engineer)
+- [x] D3. 데이터 모델 — `user_statuses(user_id, emoji, text, expires_at)` (책임. db-engineer)
+- [x] D4. 백엔드 — `PATCH /api/v1/users/me/status` (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D6. 프론트 UI — 아바타 옆 상태 + 설정 모달 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ### §2.3 FR-PR-03 — 부재중 (Out of Office)
 
