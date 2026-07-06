@@ -40,6 +40,18 @@ export const avatarUploadResponseSchema = z.object({
 /** 아바타 업로드 응답 타입 */
 export type AvatarUploadResponse = z.infer<typeof avatarUploadResponseSchema>
 
+/**
+ * 비-2xx 응답이면 body를 파싱해 {@link ApiError}를 throw한다.
+ * PATCH/POST/DELETE/blob GET 등 응답 형태가 제각각인 함수들이 공통으로 쓰는
+ * 에러 처리 — 각 함수는 자기 응답 body 파싱(json/blob)을 이 호출 다음에 이어간다.
+ */
+async function throwIfNotOk(res: Response): Promise<void> {
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PATCH 요청 바디 타입 — 3-state (부재/명시 null/명시 값)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -92,10 +104,7 @@ export async function patchProfile(body: ProfilePatchBody): Promise<ProfileRespo
       'X-XSRF-TOKEN': readXsrfToken(),
     },
   })
-  if (!res.ok) {
-    const errorBody: unknown = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, errorBody)
-  }
+  await throwIfNotOk(res)
   return profileResponseSchema.parse(await res.json())
 }
 
@@ -125,10 +134,7 @@ export async function uploadAvatar(file: File): Promise<AvatarUploadResponse> {
       'X-XSRF-TOKEN': readXsrfToken(),
     },
   })
-  if (!res.ok) {
-    const errorBody: unknown = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, errorBody)
-  }
+  await throwIfNotOk(res)
   return avatarUploadResponseSchema.parse(await res.json())
 }
 
@@ -147,10 +153,7 @@ export async function deleteAvatar(): Promise<void> {
       'X-XSRF-TOKEN': readXsrfToken(),
     },
   })
-  if (!res.ok) {
-    const errorBody: unknown = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, errorBody)
-  }
+  await throwIfNotOk(res)
 }
 
 /**
@@ -169,10 +172,7 @@ export async function deleteAvatar(): Promise<void> {
  */
 export async function fetchAvatarBlob(avatarUrl: string): Promise<Blob> {
   const res = await apiFetch(avatarUrl, { method: 'GET' })
-  if (!res.ok) {
-    const errorBody: unknown = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, errorBody)
-  }
+  await throwIfNotOk(res)
   return res.blob()
 }
 
