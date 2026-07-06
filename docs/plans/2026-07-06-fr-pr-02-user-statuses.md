@@ -243,3 +243,10 @@ FR-PR-02 — 사용자 상태 메시지(이모지 + 텍스트). Slack 스타일 
 - BLOCKER: 없음.
 
 **종합**: BLOCKER 0. 유일한 Maxi 결정 = PR 스코프(단일 vs 분리). 나머지는 반영 완료 또는 구현 단계 verifier 체크 항목.
+
+## 구현 노트 (bts-impl)
+
+- **스코프 결정**: Maxi 게이트 1 승인 = 단일 풀스택 PR(10 task 그대로).
+- **T9 스코프 확장(정당)**: T6가 plan gap 발견 — whoami mock 핸들러는 `mocks/handlers.ts`가 아니라 `mocks/auth-handlers.ts`에 있음. 헤더 배지 E2E end-to-end를 위해 T9 파일 목록에 `mocks/auth-handlers.ts`(whoami에 statusEmoji/statusText 채움) + `mocks/status-handlers.ts`(`getActiveStatusForUser` export) 추가. 백엔드 whoami가 UserStatusRepository로 채우는 흐름을 mock에서 재현.
+- **구현 경위**: wave 1(T1·T6·T7)은 sub-agent 병렬 dispatch 완료. wave 2 이후 sub-agent가 인프라 오류(API 연결 끊김/stall)로 반복 실패 → controller가 TDD 규율(test→feat 커밋 순서) 유지하며 직접 구현(T2~T5·T8·T9·T10). 전 task `test:` 커밋이 `feat:` 선행 확인.
+- **회귀 검증**: 백엔드 test+ktlint+detekt ✅, 프론트 typecheck+eslint+test(6120)✅, E2E status 3/3 + profile 6/6(Header aria-label 무회귀) ✅. workflows.$key T5-1 flaky는 mermaid getBBox(PRE_EXISTING·무관, 단독 통과).
