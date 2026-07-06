@@ -20,12 +20,14 @@ import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.user.User
 import com.atlas.bts.identity.user.UserRepository
 import com.bts.shared.permission.SystemPermissionResolver
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.hamcrest.Matchers.nullValue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration
@@ -121,6 +123,14 @@ class WhoamiControllerTest {
 
     @Autowired
     lateinit var userProfileRepository: UserProfileRepository
+
+    // @WebMvcTest 슬라이스는 mockk 빈을 컨텍스트 캐시로 공유하므로 record() 호출 수가 테스트 간 누적된다.
+    // PAT_USED 감사 테스트의 verify(exactly=1) 가 실행 순서에 의존하지 않도록 각 테스트 시작 시 감사 mock 의
+    // 기록된 호출을 초기화한다(응답 stub 은 테스트 본문에서 다시 설정하므로 격리에 안전하다).
+    @BeforeEach
+    fun clearAuditRecordedCalls() {
+        clearMocks(authAuditLogService)
+    }
 
     // ── 기존 JWT 케이스 (PR #2 회귀 방지) ─────────────────────────────────────
 
