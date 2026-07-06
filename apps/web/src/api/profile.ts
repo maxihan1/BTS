@@ -191,7 +191,9 @@ export interface ProfileFormFields {
  * 서버 원본 값(`original`)과 폼 입력값(`next`)을 비교해 변경된 필드만 담은
  * {@link ProfilePatchBody}를 만든다.
  *
- * - displayName/timezone: 값이 다르면 그대로 포함(2-state, 부재=미변경).
+ * - displayName: `next`를 trim한 값으로 비교·전송한다(department와 동일하게 앞뒤 공백
+ *   비대칭 방지 — 트림 후 원본과 같으면 키를 생략한다).
+ * - timezone: 값이 다르면 그대로 포함(2-state, 부재=미변경, select 값이라 trim 불필요).
  * - department: `next`를 trim한 뒤 빈 문자열이면 `null`(삭제 의도)로, 비어있지 않으면
  *   trim된 값으로 비교한다. 비교 결과가 `original.department`와 같으면 키를 생략한다
  *   (미변경 시 부재 — EC2).
@@ -206,8 +208,9 @@ export function buildPatchBody(
 ): ProfilePatchBody {
   const body: ProfilePatchBody = {}
 
-  if (next.displayName !== original.displayName) {
-    body.displayName = next.displayName
+  const trimmedDisplayName = next.displayName.trim()
+  if (trimmedDisplayName !== original.displayName) {
+    body.displayName = trimmedDisplayName
   }
 
   if (next.timezone !== original.timezone) {

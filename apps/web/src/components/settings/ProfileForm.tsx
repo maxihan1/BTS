@@ -5,6 +5,7 @@ import { useProfile, usePatchProfile, useUploadAvatar, useDeleteAvatar } from '@
 import { buildPatchBody } from '@/api/profile'
 import type { ProfileResponse } from '@/api/profile'
 import { ApiError } from '@/api/client'
+import { useAuthStore } from '@/auth/authStore'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -48,6 +49,7 @@ function ProfileFormContent({ profile }: ProfileFormContentProps): JSX.Element {
   const patchProfile = usePatchProfile()
   const uploadAvatar = useUploadAvatar()
   const deleteAvatar = useDeleteAvatar()
+  const avatarVersion = useAuthStore((s) => s.avatarVersion)
 
   const [displayName, setDisplayName] = useState(profile.displayName)
   const [timezone, setTimezone] = useState(profile.timezone)
@@ -109,7 +111,7 @@ function ProfileFormContent({ profile }: ProfileFormContentProps): JSX.Element {
       <div className="flex items-center gap-4">
         <Avatar
           avatarUrl={profile.avatarUrl} displayName={profile.displayName}
-          username={profile.username} size="lg"
+          username={profile.username} size="lg" cacheBust={avatarVersion}
         />
         <div className="space-y-2">
           <Label htmlFor="profile-avatar-file">{profileLabels.avatar.fileInputLabel}</Label>

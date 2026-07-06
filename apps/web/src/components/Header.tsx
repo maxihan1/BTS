@@ -2,7 +2,7 @@
 import { useNavigate, Link } from '@tanstack/react-router'
 import { Search } from 'lucide-react'
 import type { WhoamiResponse } from '@/api/schemas'
-import { useAuthUser } from '@/auth/authStore'
+import { useAuthUser, useAuthStore } from '@/auth/authStore'
 import { useLogoutMutation } from '@/auth/useLogoutMutation'
 import {
   DropdownMenu,
@@ -47,6 +47,7 @@ function resolveAccountLabel(user: WhoamiResponse | null): string {
  */
 export const Header = () => {
   const user = useAuthUser()
+  const avatarVersion = useAuthStore((s) => s.avatarVersion)
   const navigate = useNavigate()
   const logoutMutation = useLogoutMutation()
 
@@ -115,6 +116,7 @@ export const Header = () => {
                 displayName={user?.displayName}
                 username={user?.username}
                 size="sm"
+                cacheBust={avatarVersion}
               />
               <span>{accountLabel}</span>
             </span>

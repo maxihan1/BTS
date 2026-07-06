@@ -17,6 +17,12 @@ interface AvatarProps {
   readonly username?: string | null
   /** 크기 프리셋 */
   readonly size?: 'sm' | 'md' | 'lg'
+  /**
+   * 아바타 캐시버스트 버전(authStore.avatarVersion) — 값이 바뀌면 avatarUrl 문자열이
+   * 그대로여도 강제 재fetch한다. avatarUrl은 userId에서만 파생되는 고정 경로라
+   * 아바타를 교체해도 문자열 자체는 바뀌지 않기 때문(현재 로그인 사용자 아바타 소비처만 전달).
+   */
+  readonly cacheBust?: number
 }
 
 const SIZE_CLASSES: Record<'sm' | 'md' | 'lg', string> = {
@@ -51,10 +57,19 @@ interface AvatarObjectUrlState {
  * avatarUrl이 바뀌면 이전 objectURL을 `revokeObjectURL`로 해제한 뒤 재요청하고,
  * 언마운트 시에도 동일하게 해제한다(cleanup).
  *
+ * avatarUrl은 userId에서만 파생되는 고정 문자열이라 아바타를 교체(재업로드)해도 문자열
+ * 자체는 바뀌지 않는다 — `cacheBust`가 바뀌면 avatarUrl이 그대로여도 fetch URL에
+ * `?v={cacheBust}` 쿼리스트링을 덧붙여 강제로 재fetch한다(백엔드는 미지의 쿼리파라미터를
+ * 무시하므로 안전).
+ *
  * @param avatarUrl 아바타 다운로드 경로
+ * @param cacheBust 아바타 캐시버스트 버전 — 값이 바뀔 때마다 재fetch를 트리거
  * @returns 현재 objectURL과 fetch 실패 여부
  */
-function useAvatarObjectUrl(avatarUrl: string | null | undefined): AvatarObjectUrlState {
+function useAvatarObjectUrl(
+  avatarUrl: string | null | undefined,
+  cacheBust?: number,
+): AvatarObjectUrlState {
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   const [hasError, setHasError] = useState(false)
 
@@ -66,10 +81,12 @@ function useAvatarObjectUrl(avatarUrl: string | null | undefined): AvatarObjectU
       return
     }
 
+    const fetchUrl = cacheBust !== undefined ? `${avatarUrl}?v=${cacheBust}` : avatarUrl
+
     let ignore = false
     let createdUrl: string | null = null
 
-    fetchAvatarBlob(avatarUrl)
+    fetchAvatarBlob(fetchUrl)
       .then((blob) => {
         if (ignore) return
         const url = URL.createObjectURL(blob)
@@ -89,7 +106,7 @@ function useAvatarObjectUrl(avatarUrl: string | null | undefined): AvatarObjectU
         createdUrl = null
       }
     }
-  }, [avatarUrl])
+  }, [avatarUrl, cacheBust])
 
   return { objectUrl, hasError }
 }
@@ -121,8 +138,14 @@ function resolveInitial(displayName?: string | null, username?: string | null): 
  * 실패하면 displayName/username 첫 글자를 이니셜 폴백으로 렌더한다(둘 다 없으면 '?').
  * 프로필 페이지·Header 등에서 공통으로 재사용한다.
  */
-export function Avatar({ avatarUrl, displayName, username, size = 'md' }: AvatarProps): JSX.Element {
-  const { objectUrl, hasError } = useAvatarObjectUrl(avatarUrl)
+export function Avatar({
+  avatarUrl,
+  displayName,
+  username,
+  size = 'md',
+  cacheBust,
+}: AvatarProps): JSX.Element {
+  const { objectUrl, hasError } = useAvatarObjectUrl(avatarUrl, cacheBust)
   const sizeClass = SIZE_CLASSES[size]
   const label = resolveLabel(displayName, username)
   const hasAvatarUrl = avatarUrl !== null && avatarUrl !== undefined && avatarUrl !== ''
