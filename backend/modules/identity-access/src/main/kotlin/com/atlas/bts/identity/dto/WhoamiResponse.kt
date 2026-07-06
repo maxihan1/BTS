@@ -24,6 +24,9 @@ import java.util.UUID
  * @property avatarUrl 아바타 다운로드 경로 (FR-PR-01). 파생 근거는 user_profiles.avatar_object_key —
  *   설정돼 있으면 `/api/v1/users/{userId}/avatar`, 미설정이면 null 이다(오브젝트 키 자체는 노출하지 않는다).
  *   PAT 분기는 항상 null 이다.
+ * @property statusEmoji 상태 메시지 이모지 (FR-PR-02). 활성 상태(미만료)면 값, 미설정/만료면 null 이다.
+ *   파생 근거는 user_statuses(만료 필터는 UserStatusRepository.findActiveByUserId 책임). PAT 분기는 항상 null.
+ * @property statusText 상태 메시지 텍스트 (FR-PR-02). statusEmoji 와 동일 규칙. PAT 분기는 항상 null.
  */
 data class WhoamiResponse(
     val username: String,
@@ -35,4 +38,6 @@ data class WhoamiResponse(
     val mfaEnrollmentRequired: Boolean,
     val displayName: String?,
     val avatarUrl: String?,
+    val statusEmoji: String?,
+    val statusText: String?,
 )
