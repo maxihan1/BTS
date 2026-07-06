@@ -12,6 +12,7 @@ export const statusLabels = {
   saveButton: '저장',
   savingButton: '저장 중...',
   clearButton: '상태 지우기',
+  errorMessage: '상태를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.',
   presets: {
     none: '안 지움',
     '30m': '30분',

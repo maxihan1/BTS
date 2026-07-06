@@ -5,16 +5,22 @@ import { StatusModal } from '@/components/status/StatusModal'
 import { statusLabels } from '@/i18n/status-labels'
 
 // 저장 mutation 과 whoami 재조회를 스파이로 대체 — new Date() 의존 없이 호출 인자를 검증한다.
-const { mutate, refreshWhoamiMock } = vi.hoisted(() => ({
+// mutationState는 각 테스트가 isPending/isError를 조정하도록 mutable(에러 표시 검증용).
+const { mutate, refreshWhoamiMock, mutationState } = vi.hoisted(() => ({
   mutate: vi.fn((_body: unknown, opts?: { onSuccess?: () => void }) => {
     opts?.onSuccess?.()
   }),
   refreshWhoamiMock: vi.fn(() => Promise.resolve()),
+  mutationState: { isPending: false, isError: false },
 }))
 
 vi.mock('@/api/useStatus', () => ({
   useStatusQuery: () => ({ data: { emoji: null, text: null, expiresAt: null } }),
-  useUpdateStatusMutation: () => ({ mutate, isPending: false }),
+  useUpdateStatusMutation: () => ({
+    mutate,
+    isPending: mutationState.isPending,
+    isError: mutationState.isError,
+  }),
 }))
 
 vi.mock('@/api/useProfile', () => ({ refreshWhoami: refreshWhoamiMock }))
@@ -23,6 +29,8 @@ describe('StatusModal', () => {
   beforeEach(() => {
     mutate.mockClear()
     refreshWhoamiMock.mockClear()
+    mutationState.isPending = false
+    mutationState.isError = false
   })
   afterEach(cleanup)
 
@@ -79,6 +87,26 @@ describe('StatusModal', () => {
     const body = mutate.mock.calls[0]?.[0] as { emoji: string | null; text: string | null }
     expect(body.emoji).toBeNull()
     expect(body.text).toBeNull()
+  })
+
+  it('이모지/텍스트 입력에 maxLength가 걸려 초과 입력을 원천 차단한다 (C1 — 400 무음실패 방지)', () => {
+    render(<StatusModal open onOpenChange={vi.fn()} />)
+
+    expect(screen.getByLabelText(statusLabels.emojiLabel)).toHaveAttribute('maxlength', '32')
+    expect(screen.getByLabelText(statusLabels.textLabel)).toHaveAttribute('maxlength', '100')
+  })
+
+  it('저장 실패(mutation.isError) 시 에러 메시지를 표시한다 (C1 — defense-in-depth)', () => {
+    mutationState.isError = true
+    render(<StatusModal open onOpenChange={vi.fn()} />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent(statusLabels.errorMessage)
+  })
+
+  it('정상 상태에서는 에러 메시지를 표시하지 않는다', () => {
+    render(<StatusModal open onOpenChange={vi.fn()} />)
+
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('닫았다 다시 열면 폼이 초기화된다(stale 입력 방지)', () => {
