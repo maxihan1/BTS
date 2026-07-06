@@ -12,6 +12,7 @@ interface AuthActions {
   setSession: (payload: { accessToken: string; user: WhoamiResponse }) => void
   clearSession: () => void
   setAccessToken: (token: string | null) => void
+  setUser: (user: WhoamiResponse) => void
 }
 
 export const useAuthStore = create<AuthState & AuthActions>()(
@@ -25,6 +26,7 @@ export const useAuthStore = create<AuthState & AuthActions>()(
         sessionStorage.removeItem('bts.auth')
       },
       setAccessToken: (accessToken) => set({ accessToken }),
+      setUser: (user) => set({ user }),
     }),
     {
       name: 'bts.auth',
