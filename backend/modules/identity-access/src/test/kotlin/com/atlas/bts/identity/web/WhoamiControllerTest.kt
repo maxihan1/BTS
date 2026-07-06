@@ -14,6 +14,8 @@ import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
 import com.atlas.bts.identity.pat.PatVerificationException
 import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
+import com.atlas.bts.identity.profile.UserProfile
+import com.atlas.bts.identity.profile.UserProfileRepository
 import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.user.User
 import com.atlas.bts.identity.user.UserRepository
@@ -23,6 +25,7 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
+import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration
@@ -90,6 +93,12 @@ class WhoamiControllerTest {
 
         @Bean
         fun systemPermissionResolver(): SystemPermissionResolver = mockk(relaxed = true)
+
+        // WhoamiController 가 avatarUrl 파생을 위해 새로 주입받는 의존 —
+        // @WebMvcTest 슬라이스에는 실 빈이 없으므로 mockk 로 공급해야 컨텍스트가 로드된다
+        // (미공급 시 "No qualifying bean of type UserProfileRepository").
+        @Bean
+        fun userProfileRepository(): UserProfileRepository = mockk(relaxed = true)
     }
 
     @Autowired
@@ -109,6 +118,9 @@ class WhoamiControllerTest {
 
     @Autowired
     lateinit var systemPermissionResolver: SystemPermissionResolver
+
+    @Autowired
+    lateinit var userProfileRepository: UserProfileRepository
 
     // ── 기존 JWT 케이스 (PR #2 회귀 방지) ─────────────────────────────────────
 
@@ -454,6 +466,98 @@ class WhoamiControllerTest {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.mfaEnrollmentRequired").value(false))
+    }
+
+    // ── FR-PR-01: displayName / avatarUrl (프로필 view-layer) ─────────────────────
+
+    @Test
+    fun `whoami JWT 사용자는 displayName 을 노출하고 아바타 미설정 시 avatarUrl 은 null`() {
+        val userId = UUID.fromString("00000000-0000-0000-0000-0000000000a1")
+        val now = Instant.parse("2026-05-21T10:00:00Z")
+        every { userRepository.findById(userId) } returns
+            User(
+                id = userId,
+                username = "carol",
+                email = "carol@bts.local",
+                displayName = "Carol Kim",
+                createdAt = now,
+                updatedAt = now,
+            )
+        every { storedPasswordCredentialRepository.findByUserId(userId) } returns credential(userId, mustChange = false)
+        every { systemPermissionResolver.isSystemAdmin(userId) } returns false
+        // 프로필 행은 있으나 아바타 미설정(avatarObjectKey=null) → avatarUrl 은 null 로 파생
+        every { userProfileRepository.findByUserId(userId) } returns
+            UserProfile(userId = userId, avatarObjectKey = null, timezone = "UTC", department = null)
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami").with(
+                jwt().jwt { builder -> builder.subject(userId.toString()) },
+            ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.displayName").value("Carol Kim"))
+            .andExpect(jsonPath("$.avatarUrl").value(nullValue()))
+    }
+
+    @Test
+    fun `whoami JWT 사용자가 아바타 설정 시 avatarUrl 은 아바타 다운로드 경로`() {
+        val userId = UUID.fromString("00000000-0000-0000-0000-0000000000a2")
+        val now = Instant.parse("2026-05-21T10:00:00Z")
+        every { userRepository.findById(userId) } returns
+            User(
+                id = userId,
+                username = "dave",
+                email = "dave@bts.local",
+                displayName = "Dave Lee",
+                createdAt = now,
+                updatedAt = now,
+            )
+        every { storedPasswordCredentialRepository.findByUserId(userId) } returns credential(userId, mustChange = false)
+        every { systemPermissionResolver.isSystemAdmin(userId) } returns false
+        // 아바타 설정됨(avatarObjectKey 존재) → avatarUrl 은 다운로드 경로로 파생(objectKey 자체는 미노출)
+        every { userProfileRepository.findByUserId(userId) } returns
+            UserProfile(
+                userId = userId,
+                avatarObjectKey = "avatars/$userId/original.png",
+                timezone = "UTC",
+                department = null,
+            )
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami").with(
+                jwt().jwt { builder -> builder.subject(userId.toString()) },
+            ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.displayName").value("Dave Lee"))
+            .andExpect(jsonPath("$.avatarUrl").value("/api/v1/users/$userId/avatar"))
+    }
+
+    @Test
+    fun `whoami PAT 인증은 displayName 과 avatarUrl 모두 null (봇 컨텍스트)`() {
+        val activePat =
+            PersonalAccessToken(
+                id = PAT_ID,
+                userId = PAT_USER_ID,
+                name = "ci-token",
+                tokenHash = "irrelevant-hash",
+                scopes = listOf("*"),
+                expiresAt = null,
+                lastUsedAt = null,
+                revokedAt = null,
+                createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+            )
+        every { personalAccessTokenService.verify(RAW_PAT) } returns Result.success(activePat)
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami")
+                .header("Authorization", "Bearer $RAW_PAT"),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.authMethod").value("pat"))
+            // PAT 분기는 봇 컨텍스트라 프로필 view-layer(displayName/avatarUrl)를 노출하지 않는다
+            .andExpect(jsonPath("$.displayName").value(nullValue()))
+            .andExpect(jsonPath("$.avatarUrl").value(nullValue()))
     }
 
     /** local_credentials 행 픽스처 — mustChangePassword 플래그만 변주 */
