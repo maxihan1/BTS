@@ -222,6 +222,52 @@ describe('WhoamiResponseSchema', () => {
       WhoamiResponseSchema.parse({ ...base, mfaEnrollmentRequired: true }).mfaEnrollmentRequired,
     ).toBe(true)
   })
+
+  it('displayName/avatarUrl 값이 있으면 parse 성공하고 값을 그대로 노출한다', () => {
+    const result = WhoamiResponseSchema.parse({
+      username: 'alice',
+      email: 'alice@example.com',
+      authMethod: 'local',
+      userId: 'usr-0001',
+      mustChangePassword: false,
+      isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
+      displayName: 'Alice Kim',
+      avatarUrl: '/api/v1/users/usr-0001/avatar',
+    })
+    expect(result.displayName).toBe('Alice Kim')
+    expect(result.avatarUrl).toBe('/api/v1/users/usr-0001/avatar')
+  })
+
+  it('displayName/avatarUrl이 null이어도 parse 성공한다', () => {
+    const result = WhoamiResponseSchema.parse({
+      username: 'alice',
+      email: 'alice@example.com',
+      authMethod: 'local',
+      userId: 'usr-0001',
+      mustChangePassword: false,
+      isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
+      displayName: null,
+      avatarUrl: null,
+    })
+    expect(result.displayName).toBeNull()
+    expect(result.avatarUrl).toBeNull()
+  })
+
+  it('displayName/avatarUrl 키가 없어도 parse 성공한다 (하위호환 — 기존 인라인 mock)', () => {
+    const result = WhoamiResponseSchema.parse({
+      username: 'alice',
+      email: 'alice@example.com',
+      authMethod: 'local',
+      userId: 'usr-0001',
+      mustChangePassword: false,
+      isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
+    })
+    expect(result.displayName).toBeUndefined()
+    expect(result.avatarUrl).toBeUndefined()
+  })
 })
 
 describe('ApiErrorResponseSchema', () => {
