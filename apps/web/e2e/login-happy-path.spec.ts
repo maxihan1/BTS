@@ -40,6 +40,6 @@ test('S1 정상 로그인 — alice/password (Local) → /dashboard 환영 메�
   // dashboard 본문에 환영 메시지 존재 확인
   await expect(page.getByRole('heading', { name: '환영합니다, alice' })).toBeVisible()
 
-  // Header 트리거 버튼에 alice 표시 확인 (DropdownMenu trigger)
-  await expect(page.getByRole('button', { name: 'alice 계정 메뉴' })).toBeVisible()
+  // Header 트리거 버튼 표시 확인 (DropdownMenu trigger) — displayName(김앨리스) 우선 표시되므로 정규식으로 한정
+  await expect(page.getByRole('button', { name: /계정 메뉴$/ })).toBeVisible()
 })

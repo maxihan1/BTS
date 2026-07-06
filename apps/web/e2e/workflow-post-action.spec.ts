@@ -241,11 +241,11 @@ test.describe('FR-NT-05 post-action 섹션 비admin 미노출', () => {
     })
 
     // D3 — whoami 해결 보장.
-    // Header.tsx가 whoami 결과(user.username)로 "alice 계정 메뉴" 버튼을 렌더한다.
+    // Header.tsx가 whoami 결과(displayName '김앨리스', 없으면 user.username)로 "계정 메뉴" 버튼을 렌더한다.
     // 다이어그램은 별도 fetchWorkflow 쿼리라 whoami 해결을 보장하지 않는다.
     // 이 버튼이 보이면 whoami가 해결됐음(비admin)이 확정되므로 그 다음 섹션 미노출 단언이 진짜 비admin 게이팅을 검증한다.
     await expect(
-      page.getByRole('button', { name: /alice 계정 메뉴/, exact: false }),
+      page.getByRole('button', { name: /계정 메뉴$/ }),
     ).toBeVisible()
 
     // Then: post-action 섹션 제목 미노출
