@@ -80,6 +80,34 @@ describe('authStore', () => {
     }
   })
 
+  it('setUser 호출 시 accessToken은 보존하고 user만 교체 (FR-PR-01 D6 Task 5)', () => {
+    useAuthStore.getState().setSession({ accessToken: MOCK_TOKEN, user: MOCK_USER })
+    const fresh: WhoamiResponse = {
+      ...MOCK_USER,
+      displayName: '새표시이름',
+      avatarUrl: '/api/v1/users/user-001/avatar',
+    }
+
+    useAuthStore.getState().setUser(fresh)
+
+    const { accessToken, user } = useAuthStore.getState()
+    expect(accessToken).toBe(MOCK_TOKEN)
+    expect(user).toEqual(fresh)
+  })
+
+  it('setUser 후 sessionStorage에도 갱신된 user가 반영됨', () => {
+    useAuthStore.getState().setSession({ accessToken: MOCK_TOKEN, user: MOCK_USER })
+    const fresh: WhoamiResponse = { ...MOCK_USER, displayName: '새표시이름' }
+
+    useAuthStore.getState().setUser(fresh)
+
+    const raw = sessionStorage.getItem('bts.auth')
+    expect(raw).not.toBeNull()
+    const parsed = JSON.parse(raw as string) as { state: { accessToken: string; user: WhoamiResponse } }
+    expect(parsed.state.accessToken).toBe(MOCK_TOKEN)
+    expect(parsed.state.user).toEqual(fresh)
+  })
+
   it('sessionStorage에 데이터 있을 때 store 재생성 시 hydrate', () => {
     // sessionStorage에 미리 persist 형식으로 데이터 삽입 (새로고침 시뮬레이션)
     const persistedData = {
