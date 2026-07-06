@@ -59,6 +59,7 @@ import java.util.UUID
  * 설정한다. SecurityConfig 의 `BearerTokenResolver` 커스텀으로 `pat_` 토큰은 JWT 파싱 대상에서 제외된다.
  */
 @RestController
+@Suppress("LongParameterList") // whoami view-layer 집약점 — 인증(PAT/JWT)·감사·프로필/상태 뷰레이어 협력자를 한 곳에서 조립
 class WhoamiController(
     private val personalAccessTokenService: PersonalAccessTokenService,
     private val authAuditLogService: AuthAuditLogService,

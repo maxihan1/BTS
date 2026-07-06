@@ -94,8 +94,11 @@ class UserStatusService(
         if (error != null) throw StatusValidationException(error)
     }
 
-    private fun UserStatus?.toView(): StatusView =
-        StatusView(emoji = this?.emoji, text = this?.text, expiresAt = this?.expiresAt)
+    // 블록 body — expr body(같은 줄)는 130자로 detekt MaxLineLength(120) 위반이라 블록으로 회피
+    // (ktlint↔detekt 라인길이 함정).
+    private fun UserStatus?.toView(): StatusView {
+        return StatusView(emoji = this?.emoji, text = this?.text, expiresAt = this?.expiresAt)
+    }
 }
 
 /**

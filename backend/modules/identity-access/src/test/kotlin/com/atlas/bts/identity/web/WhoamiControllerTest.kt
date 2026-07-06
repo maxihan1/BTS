@@ -16,9 +16,9 @@ import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.profile.UserProfile
 import com.atlas.bts.identity.profile.UserProfileRepository
+import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.status.UserStatus
 import com.atlas.bts.identity.status.UserStatusRepository
-import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.user.User
 import com.atlas.bts.identity.user.UserRepository
 import com.bts.shared.permission.SystemPermissionResolver
