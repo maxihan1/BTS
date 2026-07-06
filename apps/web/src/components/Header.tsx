@@ -1,4 +1,5 @@
-// 전역 헤더 컴포넌트 — 관리 nav(isSystemAdmin 게이팅) + 계정 트리거(아바타+표시이름) + 로그아웃 드롭다운 메뉴
+// 전역 헤더 컴포넌트 — 관리 nav(isSystemAdmin 게이팅) + 계정 트리거(아바타+상태 배지+표시이름) + 로그아웃 드롭다운 메뉴
+import { useState } from 'react'
 import { useNavigate, Link } from '@tanstack/react-router'
 import { Search } from 'lucide-react'
 import type { WhoamiResponse } from '@/api/schemas'
@@ -14,6 +15,7 @@ import {
 import { Avatar } from '@/components/ui/avatar'
 import { FavoritesMenu } from '@/components/favorite/FavoritesMenu'
 import { InboxBell } from '@/components/inbox/InboxBell'
+import { StatusModal } from '@/components/status/StatusModal'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // admin 링크 목록 — isSystemAdmin=true 시 관리 메뉴에 표시할 링크
@@ -50,6 +52,11 @@ export const Header = () => {
   const avatarVersion = useAuthStore((s) => s.avatarVersion)
   const navigate = useNavigate()
   const logoutMutation = useLogoutMutation()
+  const [statusOpen, setStatusOpen] = useState(false)
+
+  // 활성 상태 이모지(whoami view-layer, FR-PR-02). 빈 문자열/null이면 배지 미표시.
+  const statusEmoji = user?.statusEmoji != null && user.statusEmoji !== '' ? user.statusEmoji : null
+  const statusText = user?.statusText ?? null
 
   const handleLogout = () => {
     logoutMutation.mutate(undefined, {
@@ -106,23 +113,34 @@ export const Header = () => {
           <button
             type="button"
             className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium hover:bg-accent"
-            aria-label={`${accountLabel} 계정 메뉴`}
+            aria-label={`${accountLabel}${statusText !== null ? `, ${statusText}` : ''} 계정 메뉴`}
           >
-            {/* aria-hidden — 버튼의 aria-label이 접근 가능한 이름을 이미 제공하므로
-                내부 Avatar(role=img)/텍스트가 스크린리더에 중복 announce 되지 않게 숨긴다 */}
+            {/* aria-hidden — 버튼의 aria-label이 접근 가능한 이름(계정명 + 상태 텍스트)을 이미 제공하므로
+                내부 Avatar(role=img)/텍스트/상태 배지가 스크린리더에 중복 announce 되지 않게 숨긴다 */}
             <span aria-hidden="true" className="flex items-center gap-2">
-              <Avatar
-                avatarUrl={user?.avatarUrl}
-                displayName={user?.displayName}
-                username={user?.username}
-                size="sm"
-                cacheBust={avatarVersion}
-              />
+              <span className="relative inline-flex">
+                <Avatar
+                  avatarUrl={user?.avatarUrl}
+                  displayName={user?.displayName}
+                  username={user?.username}
+                  size="sm"
+                  cacheBust={avatarVersion}
+                />
+                {statusEmoji !== null && (
+                  <span
+                    title={statusText ?? undefined}
+                    className="absolute -bottom-1 -right-1 rounded-full bg-background text-xs leading-none"
+                  >
+                    {statusEmoji}
+                  </span>
+                )}
+              </span>
               <span>{accountLabel}</span>
             </span>
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={() => { setStatusOpen(true) }}>상태 설정</DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link to="/settings/profile">프로필</Link>
           </DropdownMenuItem>
@@ -142,6 +160,7 @@ export const Header = () => {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <StatusModal open={statusOpen} onOpenChange={setStatusOpen} />
     </header>
   )
 }

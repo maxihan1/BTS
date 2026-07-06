@@ -42,6 +42,22 @@ export function seedStatusRecord(fixture: StatusFixture): void {
   statusStore.set(fixture.userId, { ...fixture })
 }
 
+/**
+ * 활성(미만료) 상태를 조회한다 — whoami view-layer(auth-handlers)가 statusEmoji/statusText 파생에 사용.
+ *
+ * 백엔드 WhoamiController가 UserStatusRepository.findActiveByUserId로 statusEmoji/statusText를 채우는
+ * 흐름을 mock에서 재현한다(FR-PR-02 D6 Header 배지 E2E). 미설정/만료/해제(둘 다 null)면 null.
+ *
+ * @param userId 조회 대상 사용자 id
+ * @returns 활성 상태의 emoji/text, 없으면 null
+ */
+export function getActiveStatusForUser(userId: string): { emoji: string | null; text: string | null } | null {
+  const record = statusStore.get(userId)
+  if (record === undefined || isExpired(record)) return null
+  if (record.emoji === null && record.text === null) return null
+  return { emoji: record.emoji, text: record.text }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 헬퍼 — Authorization Bearer 토큰 파싱 (profile-handlers.ts와 동일 규약)
 // ─────────────────────────────────────────────────────────────────────────────
