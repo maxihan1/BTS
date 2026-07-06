@@ -53,10 +53,13 @@ class OutOfOfficeService(
      */
     @Transactional(readOnly = true)
     fun getOoo(userId: UUID): OooView {
-        val raw = repository.findByUserId(userId) ?: return OooView.EMPTY
+        val raw = repository.findByUserId(userId)
         val now = Instant.now(clock)
-        if (!raw.endsAt.isAfter(now)) return OooView.EMPTY
-        return raw.toView(active = isActive(raw.startsAt, raw.endsAt, now))
+        return if (raw == null || !raw.endsAt.isAfter(now)) {
+            OooView.EMPTY
+        } else {
+            raw.toView(active = isActive(raw.startsAt, raw.endsAt, now))
+        }
     }
 
     /**
@@ -110,21 +113,25 @@ class OutOfOfficeService(
         message: String?,
     ): User? {
         val now = Instant.now(clock)
-        if (!endsAt.isAfter(startsAt)) {
-            throw OooValidationException("종료 시각은 시작 시각보다 이후여야 합니다.")
-        }
-        if (!endsAt.isAfter(now)) {
-            throw OooValidationException("종료 시각은 현재보다 이후여야 합니다.")
-        }
+        requireOoo(endsAt.isAfter(startsAt)) { "종료 시각은 시작 시각보다 이후여야 합니다." }
+        requireOoo(endsAt.isAfter(now)) { "종료 시각은 현재보다 이후여야 합니다." }
         val delegate =
             delegateUserId?.let { id ->
-                if (id == userId) throw OooValidationException("본인을 대체 담당자로 지정할 수 없습니다.")
+                requireOoo(id != userId) { "본인을 대체 담당자로 지정할 수 없습니다." }
                 userRepository.findById(id) ?: throw OooValidationException("대체 담당자를 찾을 수 없습니다.")
             }
-        if (message != null && message.length > MAX_MESSAGE_LENGTH) {
-            throw OooValidationException("메시지는 ${MAX_MESSAGE_LENGTH}자를 초과할 수 없습니다.")
+        requireOoo(message == null || message.length <= MAX_MESSAGE_LENGTH) {
+            "메시지는 ${MAX_MESSAGE_LENGTH}자를 초과할 수 없습니다."
         }
         return delegate
+    }
+
+    /** 검증 조건 위반 시 단일 [OooValidationException] 을 던지는 헬퍼(detekt ThrowsCount 회피 + 의도 명시). */
+    private fun requireOoo(
+        condition: Boolean,
+        message: () -> String,
+    ) {
+        if (!condition) throw OooValidationException(message())
     }
 
     private fun isActive(

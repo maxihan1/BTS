@@ -90,7 +90,10 @@ class OutOfOfficeControllerTest {
             registry.add("bts.auth.jwt.private-key-pem-path") { pemFilePath }
         }
 
-        /** 테스트용 임시 RSA 2048 PEM(PKCS#8) 파일 ([com.atlas.bts.identity.integration.MyProjectPermissionIntegrationTest] 미러). */
+        /**
+         * 테스트용 임시 RSA 2048 PEM(PKCS#8) 파일
+         * ([com.atlas.bts.identity.integration.MyProjectPermissionIntegrationTest] 미러).
+         */
         val pemFilePath: String =
             run {
                 if (Security.getProvider("BC") == null) {
