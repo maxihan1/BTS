@@ -211,4 +211,35 @@ FR-PR-02 — 사용자 상태 메시지(이모지 + 텍스트). Slack 스타일 
 - 추가 검증: ktlint/detekt/ArchUnit(백) + pnpm lint/typecheck/test/e2e(프론트)
 - 회귀 주의: V028 번호 재확인 · whoami Zod fanout · MSW stateful · Radix Dialog stale · text 컬럼(PG 비예약어, 사용 가능)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+> 저위험 plan(FR-PR-01 미러·격리 테이블·인증 표면 최소) → autoplan 4-phase 대신 **eng + design 집중 리뷰**(memory: bts-review-plan-autoplan-overkill).
+
+### plan-eng-review (2026-07-06)
+
+**Step 0 스코프 챌린지.**
+- 기존 코드 재사용: FR-PR-01 전 계층(JdbcTemplate repo·service·controller·whoami view-layer·프론트 api/mocks/i18n/Header)이 그대로 template. 병렬 인프라 신설 0 — DRY 강함.
+- 최소 변경: D1~D7 전부 기능 성립에 필요. deferrable 항목 없음. 신규 의존성 0(이모지 피커 라이브러리 미도입 → 네이티브 입력, boring-by-default).
+- **⚠️ 복잡도 스멜(Maxi 결정 사안)**: 10 task / ~25 파일 / 신규 클래스 6개(UserStatus·Repository·JdbcRepository·Service·Controller·StatusModal)는 단일-PR 스멜 임계(8파일/2클래스) 초과. FR-PR-01은 백엔드(#238)/프론트(#239) 분리 선례. → **Gate 1에서 단일 풀스택 PR vs 백엔드/프론트 분리 결정**. 권장: 단일 PR 수용 가능(로직 사소·미러 패턴 검증됨·파일당 diff 작음), 단 Maxi 판단.
+
+**Architecture / Quality.**
+- ✅ replace 시맨틱이 FR-PR-01 3-state(JsonNode)보다 단순 — StatusPatchRequest 평이 nullable. 우발적 복잡도 회피(Brooks).
+- ✅ 만료 lazy 필터(스케줄러 0) — 1K 규모에 boring 선택. whoami·GET 공통 `findActiveByUserId` SQL로 DRY.
+- ✅ CHECK(emoji OR text) + upsert(≥1 non-null일 때만) + delete(해제) 상호작용 정합 — CHECK 위반 경로 없음.
+- ⚠️ T5 whoami depends [2](repo만) — T3/T4와 병렬 가능, WhoamiController/Response 파일 무겹침. wave 안전. 단 새 repo 주입이 whoami full-boot 테스트에 `@MockBean` 필요할 수 있음(memory: new-crossbc-dep-openapi-mockbean 유사 — 동일 모듈이라 위험 낮으나 T5 verifier 확인).
+- ⚠️ `text` 컬럼명 = PG 비예약어(사용 가능). SQL에서 혼동 없게 명시적 컬럼 리스트 사용(select *).
+
+**Tests.**
+- ✅ 전 task RED-first TDD. 스키마(Testcontainers)·repo 통합·service 단위(mockk)·controller slice·whoami·프론트 단위·E2E 커버. under-tested 없음.
+- ⚠️ 만료 필터는 `now()` 의존 — repo 통합테스트에서 과거 expires_at 시드로 검증(T2 RED에 명시됨). 실시간 `now()` flakiness 방지 위해 충분한 과거값 사용.
+- BLOCKER: 없음.
+
+### plan-design-review (2026-07-06)
+
+- ✅ 상태 배지 = 아바타 우하단 오버레이(DESIGN.md 토큰, Avatar 시그니처 불변). a11y: 배지 `title=statusText` + aria(T9 명시).
+- ⚠️ StatusModal Radix controlled Dialog 토글닫기 stale 함정(memory: react-usestate-stale-key-prop·onOpenChange 미발화) — T8에 명시됨. useEffect([open]) 초기화 준수.
+- ⚠️ 이모지 입력 = 네이티브(피커 라이브러리 없음). 데스크톱서 "이모지 타이핑" UX 약함 → status-labels에 추천 이모지 quick-pick 상수 세트 제공 권장(T8, 신규 의존성 없이 UX 보강). 선택.
+- ✅ 프리셋(안 지움/30분/1시간/4시간/오늘/이번 주) = Slack 표준. i18n 상수화.
+- BLOCKER: 없음.
+
+**종합**: BLOCKER 0. 유일한 Maxi 결정 = PR 스코프(단일 vs 분리). 나머지는 반영 완료 또는 구현 단계 verifier 체크 항목.
