@@ -49,7 +49,7 @@ describe('StatusModal', () => {
     fireEvent.click(screen.getByRole('button', { name: statusLabels.saveButton }))
 
     expect(mutate).toHaveBeenCalledTimes(1)
-    const body = mutate.mock.calls[0][0] as { emoji: string | null; text: string | null; expiresAt: string | null }
+    const body = mutate.mock.calls[0]?.[0] as { emoji: string | null; text: string | null; expiresAt: string | null }
     expect(body.emoji).toBe('🌴')
     expect(body.text).toBe('회의 중')
     // 프리셋 기본값 'none' → 만료 없음
@@ -65,7 +65,7 @@ describe('StatusModal', () => {
     fireEvent.change(screen.getByLabelText(statusLabels.expiryLabel), { target: { value: '1h' } })
     fireEvent.click(screen.getByRole('button', { name: statusLabels.saveButton }))
 
-    const body = mutate.mock.calls[0][0] as { expiresAt: string | null }
+    const body = mutate.mock.calls[0]?.[0] as { expiresAt: string | null }
     expect(body.expiresAt).not.toBeNull()
     expect(() => new Date(body.expiresAt as string).toISOString()).not.toThrow()
   })
@@ -76,7 +76,7 @@ describe('StatusModal', () => {
     fireEvent.click(screen.getByRole('button', { name: statusLabels.clearButton }))
 
     expect(mutate).toHaveBeenCalledTimes(1)
-    const body = mutate.mock.calls[0][0] as { emoji: string | null; text: string | null }
+    const body = mutate.mock.calls[0]?.[0] as { emoji: string | null; text: string | null }
     expect(body.emoji).toBeNull()
     expect(body.text).toBeNull()
   })
