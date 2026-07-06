@@ -121,6 +121,38 @@ const TEXT_MAX_LENGTH = 100
 /** 상태 이모지 최대 길이 — 스펙 NFR3(단일 이모지+변형선택자 수용) */
 const EMOJI_MAX_LENGTH = 32
 
+/**
+ * 상태 PATCH 필드가 백엔드 `UserStatusService` 검증 정책(NFR3/NFR5/EC4/EC5)을 통과하는지
+ * 판정한다. HTTP 핸들러 로직과 분리한 순수 함수(profile-handlers.validateAvatarUpload 선례).
+ *
+ * @param emoji 정규화된(blank→null) 이모지
+ * @param text 정규화된(blank→null) 텍스트
+ * @param rawExpiresAt 원본 expiresAt 문자열(정규화 없음, ISO 파싱 검증 대상) — 없으면 null
+ * @returns 위반 시 `{code, message}` 에러 봉투, 통과 시 `null`
+ */
+export function validateStatusPatch(
+  emoji: string | null,
+  text: string | null,
+  rawExpiresAt: string | null,
+): { code: string; message: string } | null {
+  if (emoji !== null && emoji.length > EMOJI_MAX_LENGTH) {
+    return errorBody('STATUS_VALIDATION_FAILED', '이모지가 너무 깁니다.')
+  }
+  if (text !== null && text.length > TEXT_MAX_LENGTH) {
+    return errorBody('STATUS_VALIDATION_FAILED', '상태 텍스트가 너무 깁니다.')
+  }
+  if (rawExpiresAt !== null) {
+    const parsed = new Date(rawExpiresAt)
+    if (Number.isNaN(parsed.getTime())) {
+      return errorBody('STATUS_VALIDATION_FAILED', '만료 시각 형식이 올바르지 않습니다.')
+    }
+    if (parsed.getTime() <= Date.now()) {
+      return errorBody('STATUS_VALIDATION_FAILED', '만료 시각은 미래여야 합니다.')
+    }
+  }
+  return null
+}
+
 const patchMyStatusHandler = http.patch('/api/v1/users/me/status', async ({ request }) => {
   const userId = resolveUserIdFromRequest(request)
   if (userId === null) return new HttpResponse(null, { status: 401 })
@@ -139,32 +171,9 @@ const patchMyStatusHandler = http.patch('/api/v1/users/me/status', async ({ requ
   const text = normalize(body['text'])
   const rawExpiresAt = typeof body['expiresAt'] === 'string' ? (body['expiresAt'] as string) : null
 
-  if (emoji !== null && emoji.length > EMOJI_MAX_LENGTH) {
-    return HttpResponse.json(
-      errorBody('STATUS_VALIDATION_FAILED', '이모지가 너무 깁니다.'),
-      { status: 400 },
-    )
-  }
-  if (text !== null && text.length > TEXT_MAX_LENGTH) {
-    return HttpResponse.json(
-      errorBody('STATUS_VALIDATION_FAILED', '상태 텍스트가 너무 깁니다.'),
-      { status: 400 },
-    )
-  }
-  if (rawExpiresAt !== null) {
-    const parsed = new Date(rawExpiresAt)
-    if (Number.isNaN(parsed.getTime())) {
-      return HttpResponse.json(
-        errorBody('STATUS_VALIDATION_FAILED', '만료 시각 형식이 올바르지 않습니다.'),
-        { status: 400 },
-      )
-    }
-    if (parsed.getTime() <= Date.now()) {
-      return HttpResponse.json(
-        errorBody('STATUS_VALIDATION_FAILED', '만료 시각은 미래여야 합니다.'),
-        { status: 400 },
-      )
-    }
+  const validationError = validateStatusPatch(emoji, text, rawExpiresAt)
+  if (validationError !== null) {
+    return HttpResponse.json(validationError, { status: 400 })
   }
 
   // emoji·text 정규화 결과 둘 다 null → 해제(row 삭제, expiresAt 유무 무관, S5)
