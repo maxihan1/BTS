@@ -234,7 +234,14 @@ class ExternalAccountRepository(
     // ── FR-PR-04 디렉터리 동기화 대상 판별 ────────────────────────────────────
 
     /**
-     * 해당 사용자가 외부 IdP 계정(user_external_accounts)을 하나라도 보유하는지 판별한다.
+     * 해당 사용자가 외부 IdP 계정(user_external_accounts)을 하나라도 보유하는지 판별한다 (FR-PR-04).
+     *
+     * **의미(ldapLinked)**: 외부 IdP 연결 = 디렉터리 동기화 대상.
+     * 외부 계정이 있으면 로그인 시 JIT 프로비저닝으로 display_name(cn)이 동기화될 수 있어
+     * 프로필 UI 가 "출처(source)" 라벨/재설정 어포던스를 노출한다. 로컬 전용 사용자(false)는 미노출.
+     *
+     * **책임 경계**: user_external_accounts 단일 테이블만 조회한다.
+     * users 등 다른 테이블 UPSERT 를 섞지 않는다(과거 책임 침범 FK 회귀 방지).
      *
      * @return 외부 계정 매핑 존재 시 true, 없으면 false.
      */
