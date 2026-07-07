@@ -100,28 +100,50 @@ class SlackOAuthStateSigner(
      */
     fun verify(state: String): UUID {
         requireKeyConfigured()
-        val parts = state.split(SEPARATOR)
-        if (parts.size != EXPECTED_PARTS || parts[0].isEmpty() || parts[1].isEmpty()) {
-            throw SlackStateInvalidException()
-        }
-        val payloadBytes: ByteArray
-        val providedSignature: ByteArray
-        try {
-            payloadBytes = urlDecoder.decode(parts[0])
-            providedSignature = urlDecoder.decode(parts[1])
-        } catch (e: IllegalArgumentException) {
-            throw SlackStateInvalidException(cause = e)
-        }
-        // 상수 시간 비교 — 서명 바이트를 타이밍으로 한 자리씩 유추하지 못하게 한다.
-        if (!MessageDigest.isEqual(hmac(payloadBytes), providedSignature)) {
-            throw SlackStateInvalidException()
-        }
-        // 서명이 일치하면 payload는 우리가 발급한 그대로이므로(HMAC 무결성) JSON/UUID 파싱은 실패하지 않는다.
-        val payload: StatePayload = objectMapper.readValue(payloadBytes)
+        val payload = parseSignedPayload(state)
         if (clock.millis() > payload.exp) {
             throw SlackStateInvalidException()
         }
         return UUID.fromString(payload.installedBy)
+    }
+
+    /**
+     * state를 `.`로 두 조각으로 분리한다.
+     *
+     * @return `(base64url payload, base64url signature)` 쌍.
+     * @throws SlackStateInvalidException 형식 위반(조각 수 불일치 / 빈 조각) 시.
+     */
+    private fun splitState(state: String): Pair<String, String> {
+        val parts = state.split(SEPARATOR)
+        if (parts.size != EXPECTED_PARTS || parts[0].isEmpty() || parts[1].isEmpty()) {
+            throw SlackStateInvalidException()
+        }
+        return parts[0] to parts[1]
+    }
+
+    /**
+     * state의 형식·서명을 검증하고 payload를 복원한다. (만료는 [verify]에서 별도 판정한다.)
+     *
+     * 서명 비교는 [MessageDigest.isEqual] 상수 시간 비교로 수행해 서명 바이트를 타이밍으로 한 자리씩
+     * 유추하지 못하게 한다. 서명이 일치하면 payload는 우리가 발급한 그대로이므로(HMAC 무결성) JSON/UUID
+     * 파싱은 실패하지 않는다.
+     *
+     * @throws SlackStateInvalidException 형식 위반 / base64 손상 / 서명 불일치 시.
+     */
+    private fun parseSignedPayload(state: String): StatePayload {
+        val (payloadB64, signatureB64) = splitState(state)
+        val payloadBytes: ByteArray
+        val providedSignature: ByteArray
+        try {
+            payloadBytes = urlDecoder.decode(payloadB64)
+            providedSignature = urlDecoder.decode(signatureB64)
+        } catch (e: IllegalArgumentException) {
+            throw SlackStateInvalidException(cause = e)
+        }
+        if (!MessageDigest.isEqual(hmac(payloadBytes), providedSignature)) {
+            throw SlackStateInvalidException()
+        }
+        return objectMapper.readValue(payloadBytes)
     }
 
     /** [stateKey] 미설정 시 키/payload를 노출하지 않는 일반 [IllegalStateException]을 던진다. */
