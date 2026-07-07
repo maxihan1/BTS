@@ -27,3 +27,15 @@ CREATE TABLE slack_installs (
     -- team_id 단위 멱등 upsert(ON CONFLICT (team_id))의 대상 제약. 워크스페이스당 설치 1행 보장.
     CONSTRAINT uq_slack_installs_team_id UNIQUE (team_id)
 );
+
+COMMENT ON TABLE  slack_installs                       IS 'Slack App 설치 Aggregate — 워크스페이스별 봇 설치 + AES 암호화 봇 토큰(FR-SL-01)';
+COMMENT ON COLUMN slack_installs.team_id               IS 'Slack workspace(team) id — upsert 기준(ON CONFLICT (team_id))';
+COMMENT ON COLUMN slack_installs.team_name             IS '워크스페이스 표시명';
+COMMENT ON COLUMN slack_installs.bot_user_id           IS '봇 사용자 id(Uxxxx)';
+COMMENT ON COLUMN slack_installs.app_id                IS 'Slack App id(Axxxx)';
+COMMENT ON COLUMN slack_installs.bot_token_encrypted   IS '봇 토큰 AES 암호문(hex) — 평문 저장/로깅 금지(SecretEncryptor)';
+COMMENT ON COLUMN slack_installs.scopes                IS '발급 스코프 CSV';
+COMMENT ON COLUMN slack_installs.is_enterprise_install IS '조직 전체 설치 여부 — 앱 레벨에서 거부(방어적 기록), DEFAULT false';
+COMMENT ON COLUMN slack_installs.installed_by          IS 'BTS user id(cross-BC, BC 격리로 FK 아님)';
+COMMENT ON COLUMN slack_installs.installed_at          IS '최초 설치 시각';
+COMMENT ON COLUMN slack_installs.updated_at            IS 'upsert 갱신 시각';
