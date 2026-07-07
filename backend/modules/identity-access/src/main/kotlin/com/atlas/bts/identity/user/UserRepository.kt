@@ -18,9 +18,11 @@ import java.util.UUID
  *
  * Task 13 LocalProvider / Task 15 LdapProvider Auto-provisioning 에서 사용한다.
  * 구현체: [JdbcUserRepository].
+ *
+ * 메서드 응집(TooManyFunctions 억제) — 단일 users 접근층이라 조회/UPSERT/갱신이 모이며,
+ * FR-PR-04 의 source 조회/재동기화 2개로 임계를 넘는다. baseline 동결 대신 클래스 단위 명시 억제
+ * (ExternalAccountRepository 선례).
  */
-// 단일 테이블(users) 접근층이라 조회/UPSERT/갱신 메서드가 응집해 자연히 11개를 넘는다.
-// FR-PR-04 에서 source 조회/재동기화 2개가 추가돼 임계 초과 — baseline 동결 대신 클래스 단위 명시 억제(ExternalAccountRepository 선례).
 @Suppress("TooManyFunctions")
 interface UserRepository {
     /**
