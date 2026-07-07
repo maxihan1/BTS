@@ -231,6 +231,17 @@ class ExternalAccountRepository(
         jdbc.queryForList(SQL_ACQUIRE_SUBJECT_LOCK, mapOf("lockKey" to lockKey))
     }
 
+    // ── FR-PR-04 디렉터리 동기화 대상 판별 ────────────────────────────────────
+
+    /**
+     * 해당 사용자가 외부 IdP 계정(user_external_accounts)을 하나라도 보유하는지 판별한다.
+     *
+     * @return 외부 계정 매핑 존재 시 true, 없으면 false.
+     */
+    @Transactional(readOnly = true)
+    fun existsByUserId(userId: UUID): Boolean =
+        jdbc.queryForObject(SQL_EXISTS_BY_USER_ID, mapOf("userId" to userId), Boolean::class.java) ?: false
+
     // ── SQL 상수 ─────────────────────────────────────────────────────────────
 
     private companion object {
@@ -326,6 +337,11 @@ class ExternalAccountRepository(
          */
         const val SQL_ACQUIRE_SUBJECT_LOCK = """
             SELECT pg_advisory_xact_lock(hashtextextended(:lockKey, 0))
+        """
+
+        /** 사용자의 외부 IdP 계정 존재 여부 (FR-PR-04 디렉터리 동기화 대상 판별). */
+        const val SQL_EXISTS_BY_USER_ID = """
+            SELECT EXISTS(SELECT 1 FROM user_external_accounts WHERE user_id = :userId)
         """
     }
 }
