@@ -49,7 +49,10 @@ interface ProfileFormContentProps {
   readonly profile: ProfileResponse
 }
 
-/** 실제 편집 폼 — 조회 성공 후에만 렌더. displayName/timezone/department 편집 상태 소유. */
+/**
+ * 실제 편집 폼 — 조회 성공 후에만 렌더. displayName/timezone/department 편집 상태 소유.
+ * FR-PR-04 — displayName 필드 인접에 LDAP 출처 배지(동기화/직접 편집)와 재설정 버튼을 함께 그린다.
+ */
 function ProfileFormContent({ profile }: ProfileFormContentProps): JSX.Element {
   const patchProfile = usePatchProfile()
   const uploadAvatar = useUploadAvatar()
@@ -129,6 +132,9 @@ function ProfileFormContent({ profile }: ProfileFormContentProps): JSX.Element {
       ? mapProfileError(resyncDisplayNameMutation.error)
       : null
   const errorMessage = patchErrorMessage ?? avatarErrorMessage ?? resyncErrorMessage
+  // FR-PR-04 — true면 표시 이름이 여전히 LDAP 동기화 대상(source=LDAP), false면 직접 편집으로
+  // 동기화가 중단된 상태(source=USER, 재설정 버튼 노출 대상)
+  const isDisplayNameSynced = profile.displayNameSource === 'LDAP'
 
   return (
     <div className="space-y-6">
@@ -182,15 +188,19 @@ function ProfileFormContent({ profile }: ProfileFormContentProps): JSX.Element {
             aria-describedby={profile.ldapLinked ? DISPLAY_NAME_SOURCE_HINT_ID : undefined}
             onChange={(e) => { setDisplayName(e.target.value) }}
           />
+          {/*
+            FR-PR-04 — LDAP 연결 사용자(ldapLinked)에게만 출처 배지를 노출한다.
+            source=LDAP(동기화 중)이면 정보성 배지+힌트만, source=USER(직접 편집으로 동기화
+            중단)면 배지+"LDAP 값으로 재설정" 버튼을 함께 보여준다. 로컬 전용 사용자
+            (ldapLinked=false)는 이 블록 전체가 렌더되지 않는다(기존 UI 그대로, S5).
+          */}
           {profile.ldapLinked && (
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                  {profile.displayNameSource === 'LDAP'
-                    ? profileLabels.ldapSource.syncedBadge
-                    : profileLabels.ldapSource.overriddenBadge}
+                  {isDisplayNameSynced ? profileLabels.ldapSource.syncedBadge : profileLabels.ldapSource.overriddenBadge}
                 </span>
-                {profile.displayNameSource === 'USER' && (
+                {!isDisplayNameSynced && (
                   <Button
                     type="button" variant="link" size="sm" className="h-auto p-0 text-xs"
                     disabled={resyncDisplayNameMutation.isPending} onClick={handleResyncDisplayName}
@@ -202,9 +212,7 @@ function ProfileFormContent({ profile }: ProfileFormContentProps): JSX.Element {
                 )}
               </div>
               <p id={DISPLAY_NAME_SOURCE_HINT_ID} className="text-xs text-muted-foreground">
-                {profile.displayNameSource === 'LDAP'
-                  ? profileLabels.ldapSource.syncedHint
-                  : profileLabels.ldapSource.overriddenHint}
+                {isDisplayNameSynced ? profileLabels.ldapSource.syncedHint : profileLabels.ldapSource.overriddenHint}
               </p>
             </div>
           )}
