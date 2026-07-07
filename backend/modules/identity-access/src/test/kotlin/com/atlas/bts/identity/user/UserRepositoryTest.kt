@@ -22,7 +22,8 @@ import java.util.UUID
  * JdbcUserRepository 통합 테스트 (Task 32 — FR-AU-09).
  *
  * @JdbcTest + Testcontainers PostgreSQL + Flyway V001 자동 적용.
- * 검증 대상: findById / findByUsername / save (UPSERT) / updateLastLogin.
+ * 검증 대상: findById / findByUsername / save (UPSERT) / updateLastLogin
+ * / provisionFromExternal display_name source 게이트 · resyncDisplayNameSource / findDisplayNameSource (FR-PR-04).
  */
 @JdbcTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -280,5 +281,57 @@ class UserRepositoryTest {
 
         val found = repo.findById(user.id)!!
         assertThat(found.updatedAt).isAfterOrEqualTo(user.updatedAt)
+    }
+
+    // ── display_name source 게이트 (FR-PR-04 — LDAP 재로그인 vs 사용자 편집) ─────
+
+    @Test
+    fun `provisionFromExternal이 source=USER 행의 display_name을 보존한다`() {
+        // S2: LDAP 최초 provision → 사용자가 편집(source=USER) → 재로그인 provision.
+        // 편집한 이름이 LDAP 값으로 덮어써지면 안 된다 (ADR 2026-07-07 D2).
+        val first = repo.provisionFromExternal("ldap-alice", "alice@ldap.bts.local", "Alice")
+        repo.updateDisplayName(first.user.id, "앨리스")
+
+        val second = repo.provisionFromExternal("ldap-alice", "alice-new@ldap.bts.local", "Alice Updated")
+
+        val found = repo.findById(first.user.id)
+        assertThat(found).isNotNull()
+        assertThat(found!!.displayName).isEqualTo("앨리스") // 편집 이름 보존
+        assertThat(second.user.displayName).isEqualTo("앨리스") // RETURNING 도 보존값
+        assertThat(found.email).isEqualTo("alice-new@ldap.bts.local") // email 은 계속 동기화
+    }
+
+    @Test
+    fun `provisionFromExternal이 source=LDAP 행의 display_name을 동기화한다`() {
+        // S3: 편집 없이(source=LDAP 유지) 재로그인 → LDAP 최신 값으로 동기화되어야 한다.
+        val first = repo.provisionFromExternal("ldap-bob", "bob@ldap.bts.local", "Bob")
+
+        repo.provisionFromExternal("ldap-bob", "bob@ldap.bts.local", "Bob Jr")
+
+        val found = repo.findById(first.user.id)
+        assertThat(found).isNotNull()
+        assertThat(found!!.displayName).isEqualTo("Bob Jr") // LDAP 동기화
+    }
+
+    @Test
+    fun `updateDisplayName이 display_name_source를 USER로 전환한다`() {
+        // 편집은 override 의도 → source 를 USER 로 전환해 이후 LDAP 동기화로부터 보호한다.
+        val first = repo.provisionFromExternal("ldap-carol", "carol@ldap.bts.local", "Carol")
+
+        repo.updateDisplayName(first.user.id, "캐롤")
+
+        assertThat(repo.findDisplayNameSource(first.user.id)).isEqualTo("USER")
+    }
+
+    @Test
+    fun `resyncDisplayNameSource가 source를 LDAP로 되돌리고 findDisplayNameSource가 현재 source를 반환한다`() {
+        // 관리자 재동기화: 편집(USER)된 행의 source 를 LDAP 로 되돌려 다음 재로그인 시 동기화되게 한다.
+        val first = repo.provisionFromExternal("ldap-dave", "dave@ldap.bts.local", "Dave")
+        repo.updateDisplayName(first.user.id, "데이브")
+        assertThat(repo.findDisplayNameSource(first.user.id)).isEqualTo("USER")
+
+        repo.resyncDisplayNameSource(first.user.id)
+
+        assertThat(repo.findDisplayNameSource(first.user.id)).isEqualTo("LDAP")
     }
 }
