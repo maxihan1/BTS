@@ -11,6 +11,8 @@ import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.ooo.OutOfOfficeRepository
 import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
+import com.atlas.bts.identity.preferences.UserPreferences
+import com.atlas.bts.identity.preferences.UserPreferencesService
 import com.atlas.bts.identity.profile.UserProfileRepository
 import com.atlas.bts.identity.status.UserStatusRepository
 import com.atlas.bts.identity.user.UserRepository
@@ -72,6 +74,7 @@ class WhoamiController(
     private val userProfileRepository: UserProfileRepository,
     private val userStatusRepository: UserStatusRepository,
     private val outOfOfficeRepository: OutOfOfficeRepository,
+    private val userPreferencesService: UserPreferencesService,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     /**
@@ -112,6 +115,8 @@ class WhoamiController(
             val status = userStatusRepository.findActiveByUserId(userId)
             // FR-PR-03: 활성(startsAt<=now<endsAt) 부재중만 노출. 활성 필터는 repository 책임, now 는 공유 clock 기준.
             val ooo = outOfOfficeRepository.findActiveByUserId(userId, clock)
+            // FR-PF-01: 환경설정(theme/locale/dateFormat) — 행 부재 시 서비스가 기본값(system/ko/iso)으로 귀결.
+            val preferences = userPreferencesService.getPreferences(userId)
             return WhoamiResponse(
                 username = user.username,
                 email = user.email.orEmpty(),
@@ -126,6 +131,9 @@ class WhoamiController(
                 statusText = status?.text,
                 oooActive = ooo != null,
                 oooUntil = ooo?.endsAt?.toString(),
+                theme = preferences.theme,
+                locale = preferences.locale,
+                dateFormat = preferences.dateFormat,
             )
         }
 
@@ -179,6 +187,10 @@ class WhoamiController(
             // 부재중 view-layer(oooActive/oooUntil, FR-PR-03)도 봇 컨텍스트라 고정(repository 미조회).
             oooActive = false,
             oooUntil = null,
+            // 환경설정(theme/locale/dateFormat, FR-PF-01)도 봇 컨텍스트라 조회 없이 기본값으로 고정.
+            theme = UserPreferences.DEFAULT_THEME,
+            locale = UserPreferences.DEFAULT_LOCALE,
+            dateFormat = UserPreferences.DEFAULT_DATE_FORMAT,
         )
     }
 
