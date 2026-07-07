@@ -2,7 +2,7 @@
 import type { JSX } from 'react'
 import type { AuditLogEntry } from '@/api/audit-logs'
 import { auditLogLabels, authEventTypeLabels } from '@/i18n/audit-log-labels'
-import { formatDateTime } from '@/lib/datetime'
+import { useDateFormat } from '@/hooks/use-date-format'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 유틸
@@ -48,6 +48,7 @@ interface AuditLogRowProps {
  * 감사 로그 단건 행 컴포넌트.
  */
 function AuditLogRow({ entry }: AuditLogRowProps): JSX.Element {
+  const { formatDateTime } = useDateFormat()
   const subject = resolveSubject(entry)
   const eventLabel = resolveEventLabel(entry.eventType)
   const ip = entry.ipAddress ?? '—'

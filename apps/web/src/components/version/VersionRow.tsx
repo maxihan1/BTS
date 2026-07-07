@@ -4,6 +4,7 @@ import type { JSX } from 'react'
 import { Button } from '@/components/ui/button'
 import { useDeleteVersion, useChangeVersionStatus } from '@/hooks/use-versions'
 import { versionLabels, versionStatusLabel, versionTransitionLabel } from '@/i18n/version-labels'
+import { useDateFormat } from '@/hooks/use-date-format'
 import type { Version, VersionStatus } from '@/api/versions.types'
 import { ReleaseNotesDialog } from './ReleaseNotesDialog'
 
@@ -25,21 +26,6 @@ interface VersionRowProps {
    * false(로딩/에러/미인가)이면 수정·삭제 버튼을 disabled로 게이팅(fail-closed).
    */
   readonly canManage: boolean
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 날짜 표시 헬퍼
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 날짜 문자열을 표시한다.
- * null인 경우 "—"를 반환한다.
- *
- * @param date yyyy-MM-dd 형식의 날짜 문자열 또는 null
- * @returns 표시할 문자열
- */
-function formatDate(date: string | null): string {
-  return date ?? '—'
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -164,6 +150,7 @@ export function VersionRow({
 }: VersionRowProps): JSX.Element {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [releaseNotesOpen, setReleaseNotesOpen] = useState(false)
+  const { formatDate } = useDateFormat()
 
   const deleteMutation = useDeleteVersion(projectKey)
   const statusMutation = useChangeVersionStatus(projectKey)

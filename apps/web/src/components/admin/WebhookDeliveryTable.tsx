@@ -2,7 +2,7 @@
 import type { JSX } from 'react'
 import type { WebhookDeliveryResponse } from '@/api/webhooks'
 import { labelForEvent, labelForStatus } from '@/i18n/webhook-labels'
-import { formatDateTime } from '@/lib/datetime'
+import { useDateFormat } from '@/hooks/use-date-format'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 디자인 토큰 상수 — 매직 클래스 금지, status 배지 색상 매핑
@@ -41,9 +41,13 @@ function badgeClassForStatus(status: string): string {
  * 발송 이력 시각을 결정한다. deliveredAt 우선, 없으면 createdAt, 둘 다 없으면 "—".
  *
  * @param delivery 발송 이력 단건
- * @returns ko-KR 로컬 시각 문자열 또는 "—"
+ * @param formatDateTime 사용자 date_format 프리셋이 바인딩된 포맷 함수 (useDateFormat 훅 반환값)
+ * @returns 프리셋 기준 로컬 시각 문자열 또는 "—"
  */
-function resolveTimestamp(delivery: WebhookDeliveryResponse): string {
+function resolveTimestamp(
+  delivery: WebhookDeliveryResponse,
+  formatDateTime: (iso: string) => string,
+): string {
   const iso = delivery.deliveredAt ?? delivery.createdAt
   if (iso === null || iso === undefined) return '—'
   return formatDateTime(iso)
@@ -61,6 +65,7 @@ interface WebhookDeliveryRowProps {
  * 발송 이력 단건 행 컴포넌트.
  */
 function WebhookDeliveryRow({ delivery }: WebhookDeliveryRowProps): JSX.Element {
+  const { formatDateTime } = useDateFormat()
   return (
     <tr className="border-b text-sm hover:bg-muted/50">
       <td className="px-4 py-2 whitespace-nowrap font-medium">
@@ -86,7 +91,7 @@ function WebhookDeliveryRow({ delivery }: WebhookDeliveryRowProps): JSX.Element 
         {delivery.errorDetail ?? '—'}
       </td>
       <td className="px-4 py-2 whitespace-nowrap text-muted-foreground">
-        {resolveTimestamp(delivery)}
+        {resolveTimestamp(delivery, formatDateTime)}
       </td>
     </tr>
   )

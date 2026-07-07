@@ -1,44 +1,18 @@
-// 날짜 포맷 유틸 — ISO 문자열을 KST(Asia/Seoul) 기준 "YYYY-MM-DD HH:mm" 형식으로 변환
+// 날짜 포맷 유틸 — ISO 문자열을 iso 프리셋(YYYY-MM-DD HH:mm, Asia/Seoul)으로 위임 — 비-컴포넌트 호출처 전용 (FR-PF-01 Task 8)
+import { formatDateTimeByPreset } from './date-preferences'
 
 /**
- * ISO 날짜 문자열을 KST(Asia/Seoul, UTC+9) 기준 "YYYY-MM-DD HH:mm" 형식으로 포맷한다.
+ * ISO 날짜 문자열을 iso 프리셋(YYYY-MM-DD HH:mm, Asia/Seoul 기준) 형식으로 포맷한다.
  * null이면 "—"를 반환한다.
  *
- * UTC 기반 toISOString() 대신 Intl.DateTimeFormat을 사용해
- * 자정 근처 하루 밀림 버그(UTC ≠ KST)를 방지한다.
+ * 컴포넌트에서 절대 날짜를 렌더할 때는 로그인 사용자의 `date_format` 환경설정을 반영하는
+ * `useDateFormat()` 훅을 사용해야 한다. 이 함수는 훅을 호출할 수 없는 순수 유틸(비-컴포넌트)
+ * 호출처를 위해 기본 프리셋(iso)으로 고정 위임한다. iso 프리셋 출력은 기존 KST 정규화 구현과
+ * 동일한 "YYYY-MM-DD HH:mm" 형식이라 회귀가 없다.
  *
  * @param iso ISO 8601 날짜 문자열 또는 null
- * @returns KST 기준 포맷된 날짜 문자열 또는 "—"
+ * @returns iso 프리셋 기준 포맷된 날짜 문자열 또는 "—"
  */
 export function formatDate(iso: string | null): string {
-  if (iso === null) return '—'
-  const d = new Date(iso)
-
-  const datePart = new Intl.DateTimeFormat('ko-KR', {
-    timeZone: 'Asia/Seoul',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(d)
-
-  const timePart = new Intl.DateTimeFormat('ko-KR', {
-    timeZone: 'Asia/Seoul',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(d)
-
-  // ko-KR 로케일은 "2026. 01. 02." 형태 — "YYYY-MM-DD"로 정규화
-  const normalizedDate = datePart
-    .replace(/\.\s*/g, '-')  // ". " → "-"
-    .replace(/-$/, '')        // 끝 "-" 제거
-    .replace(/\s/g, '')       // 공백 제거
-
-  // 시간은 "08:00" 또는 "08시 00분" 형태 — "HH:mm"으로 정규화
-  const normalizedTime = timePart
-    .replace(/시\s*/, ':')
-    .replace(/분/, '')
-    .replace(/\s/g, '')
-
-  return `${normalizedDate} ${normalizedTime}`
+  return formatDateTimeByPreset(iso, 'iso')
 }

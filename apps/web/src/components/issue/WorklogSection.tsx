@@ -8,6 +8,7 @@ import { fetchWorklogs, addWorklog, updateWorklog, deleteWorklog } from '@/api/w
 import type { WorklogResponse, WorklogListResponse } from '@/api/worklogs'
 import { parseHm, formatSeconds } from '@/lib/duration'
 import { useUsersByIds } from '@/hooks/use-users'
+import { useDateFormat } from '@/hooks/use-date-format'
 import { issueQueryKey } from '@/api/useUpdateIssueSummary'
 import { worklogStrings } from '@/i18n/ko'
 
@@ -405,6 +406,7 @@ function WorklogRow({
   canUpdate,
 }: WorklogRowProps): JSX.Element {
   const queryClient = useQueryClient()
+  const { formatDateTime } = useDateFormat()
   const [isEditing, setIsEditing] = useState(false)
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
 
@@ -464,7 +466,7 @@ function WorklogRow({
               {worklogStrings.worklogAuthorLabel}: {displayName ?? worklog.authorId}
             </p>
             <p className="text-xs text-muted-foreground">
-              {new Date(worklog.startedAt).toLocaleString()}
+              {formatDateTime(worklog.startedAt)}
             </p>
             {worklog.comment !== null && (
               <p className="text-xs text-foreground">{worklog.comment}</p>

@@ -11,25 +11,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 날짜 포맷 유틸
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * ISO 8601 날짜 문자열을 한국어 로컬 형식으로 포맷한다.
- * 예: "2026-05-29T10:00:00Z" → "2026. 5. 29. 오후 7:00"
- */
-function formatDateTime(iso: string): string {
-  const date = new Date(iso)
-  return date.toLocaleString('ko-KR', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+import { useDateFormat } from '@/hooks/use-date-format'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 현재 세션 배지 — shadcn badge 미존재 → styled span 대체
@@ -66,6 +48,7 @@ interface SessionCardProps {
  * - userAgent/ipAddress null 시 fallback 텍스트 표시 (EC-6)
  */
 function SessionCard({ session, isRevoking, onRevoke }: SessionCardProps): JSX.Element {
+  const { formatDateTime } = useDateFormat()
   const device = session.userAgent ?? '알 수 없는 기기'
   const location = session.ipAddress ?? '알 수 없는 위치'
 

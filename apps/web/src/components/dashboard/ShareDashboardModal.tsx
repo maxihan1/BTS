@@ -6,7 +6,7 @@ import { AlertTriangle } from 'lucide-react'
 import { useShareTokens, useIssueShareToken, useRevokeShareToken } from '@/hooks/use-dashboards'
 import type { IssuedShareToken, ShareTokenSummary } from '@/api/dashboards'
 import { dashboardLabels } from '@/i18n/dashboard-labels'
-import { formatDate } from '@/lib/date-format'
+import { useDateFormat } from '@/hooks/use-date-format'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 공통 버튼 스타일 (SettingsModal/DashboardDetailPage 액션 버튼 톤 계승, 터치 타깃 44px)
@@ -87,15 +87,16 @@ function ShareTokenListItem({
   onConfirm,
   onCancel,
 }: ShareTokenListItemProps): JSX.Element {
+  const { formatDateTime } = useDateFormat()
   const expiresLabel =
     item.expiresAt !== null && item.expiresAt !== undefined
-      ? `${dashboardLabels.share.expiresAt}: ${formatDate(item.expiresAt)}`
+      ? `${dashboardLabels.share.expiresAt}: ${formatDateTime(item.expiresAt)}`
       : dashboardLabels.share.noExpiry
 
   return (
     <li className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm">
       <div className="min-w-0">
-        <p className="truncate">{formatDate(item.createdAt)}</p>
+        <p className="truncate">{formatDateTime(item.createdAt)}</p>
         <p className="text-xs text-muted-foreground">{expiresLabel}</p>
       </div>
 

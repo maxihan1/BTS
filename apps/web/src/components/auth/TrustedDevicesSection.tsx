@@ -10,31 +10,7 @@ import {
 } from '@/api/trusted-devices'
 import { mfaStrings } from '@/i18n/ko'
 import { Button } from '@/components/ui/button'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 날짜 포맷 헬퍼 — InvalidDate 방어 (IssueChangelog 선례)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * ISO Instant 문자열을 한국어 날짜+시각으로 포맷한다.
- * 파싱 불가한 값은 "—"를 반환한다 (IssueChangelog InvalidDate 방어 패턴).
- *
- * @param iso ISO 8601 날짜 문자열
- * @returns ko-KR 로컬 날짜+시각 문자열, 파싱 실패 시 "—"
- */
-function formatDate(iso: string): string {
-  const date = new Date(iso)
-  if (isNaN(date.getTime())) {
-    return '—'
-  }
-  return date.toLocaleString('ko-KR', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+import { useDateFormat } from '@/hooks/use-date-format'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 하위 컴포넌트 — 인라인 확인 박스
@@ -107,9 +83,20 @@ function DeviceRow({
   onConfirm,
   onCancel,
 }: DeviceRowProps): JSX.Element {
+  const { formatDateTime } = useDateFormat()
+
+  /**
+   * ISO Instant 문자열을 사용자 dateFormat 프리셋 날짜+시각으로 포맷한다.
+   * 파싱 불가한 값은 "—"를 반환한다 (IssueChangelog InvalidDate 방어 패턴 — preset 포맷터는
+   * Invalid Date에 대해 RangeError를 던지므로 호출 전 별도 가드가 필요하다).
+   */
+  function safeFormatDateTime(iso: string): string {
+    return isNaN(new Date(iso).getTime()) ? '—' : formatDateTime(iso)
+  }
+
   const label = device.label ?? mfaStrings.trustedDevicesLabelFallback
   const lastUsed = device.lastUsedAt !== null
-    ? formatDate(device.lastUsedAt)
+    ? safeFormatDateTime(device.lastUsedAt)
     : mfaStrings.trustedDevicesLastUsedNever
 
   return (
@@ -118,13 +105,13 @@ function DeviceRow({
         <div className="min-w-0 space-y-1">
           <p className="truncate text-sm font-medium">{label}</p>
           <p className="text-xs text-muted-foreground">
-            {mfaStrings.trustedDevicesRegisteredLabel}: {formatDate(device.createdAt)}
+            {mfaStrings.trustedDevicesRegisteredLabel}: {safeFormatDateTime(device.createdAt)}
           </p>
           <p className="text-xs text-muted-foreground">
             {mfaStrings.trustedDevicesLastUsedLabel}: <span>{lastUsed}</span>
           </p>
           <p className="text-xs text-muted-foreground">
-            {mfaStrings.trustedDevicesExpiresLabel}: {formatDate(device.expiresAt)}
+            {mfaStrings.trustedDevicesExpiresLabel}: {safeFormatDateTime(device.expiresAt)}
           </p>
         </div>
         {!isConfirming && (
