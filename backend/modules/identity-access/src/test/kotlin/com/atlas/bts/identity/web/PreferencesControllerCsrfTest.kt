@@ -67,8 +67,9 @@ class PreferencesControllerCsrfTest {
         }
 
         @Bean
-        fun corsConfigurationSource(): CorsConfigurationSource =
-            CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        fun corsConfigurationSource(): CorsConfigurationSource {
+            return CorsConfig().corsConfigurationSource(listOf("http://localhost:5173"))
+        }
 
         // SecurityConfig 가 PatAuthenticationFilter 생성을 위해 요구하는 Bean.
         // PreferencesController CSRF 검증 자체는 PAT 를 사용하지 않으나 SecurityFilterChain 빌드 시점에 필요하다.

@@ -84,7 +84,11 @@ class PreferencesController(
     @ExceptionHandler(PreferencesValidationException::class)
     fun handleValidation(ex: PreferencesValidationException): ResponseEntity<Map<String, String>> {
         log.info("환경설정 검증 실패 exceptionType={}", ex.javaClass.simpleName)
-        return errorResponse(HttpStatus.BAD_REQUEST, "PREFERENCES_VALIDATION_FAILED", ex.message ?: "잘못된 요청입니다.")
+        return errorResponse(
+            HttpStatus.BAD_REQUEST,
+            ERROR_PREFERENCES_VALIDATION,
+            ex.message ?: DEFAULT_VALIDATION_MESSAGE,
+        )
     }
 
     // ── private helpers ─────────────────────────────────────────────────────────
@@ -114,5 +118,15 @@ class PreferencesController(
         status: HttpStatus,
         code: String,
         message: String,
-    ): ResponseEntity<Map<String, String>> = ResponseEntity.status(status).body(mapOf("code" to code, "message" to message))
+    ): ResponseEntity<Map<String, String>> {
+        return ResponseEntity.status(status).body(mapOf("code" to code, "message" to message))
+    }
+
+    private companion object {
+        /** theme/locale/dateFormat 검증 실패 에러 코드([UserProfileController] `PROFILE_VALIDATION_FAILED` 대응). */
+        const val ERROR_PREFERENCES_VALIDATION = "PREFERENCES_VALIDATION_FAILED"
+
+        /** 검증 예외 message 가 비어 있을 때(도달 불가— 예외는 항상 message 를 채운다) fallback. */
+        const val DEFAULT_VALIDATION_MESSAGE = "잘못된 요청입니다."
+    }
 }
