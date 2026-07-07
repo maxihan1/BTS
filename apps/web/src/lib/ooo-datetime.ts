@@ -1,4 +1,4 @@
-// 부재중(Out of Office) 날짜/시각 순수 함수 — datetime-local↔ISO Instant 변환, 활성 판정, 복귀일 표시 (FR-PR-03)
+// 부재중(Out of Office) 날짜/시각 순수 함수 — datetime-local↔ISO Instant 변환, 복귀일 표시 (FR-PR-03)
 
 /**
  * `<input type="datetime-local">`의 bare 값(예: "2026-07-10T09:00", 타임존 정보 없음)을
@@ -33,23 +33,6 @@ export function toLocalInputValue(instant: string | null): string {
   if (Number.isNaN(date.getTime())) return ''
   const pad = (n: number): string => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
-}
-
-/**
- * 부재중 활성 여부를 판정한다 — `startsAt<=now<endsAt`(백엔드 `OutOfOfficeRepository.findActiveByUserId`
- * 활성 판정 규칙과 동일).
- *
- * @param startsAt 부재 시작 Instant(ISO) — null이면 미설정으로 간주해 false
- * @param endsAt 부재 종료 Instant(ISO) — null이면 미설정으로 간주해 false
- * @param now 기준 시각 — 테스트 결정성 확보를 위해 주입(내부에서 new Date() 직접 호출 금지)
- * @returns 활성 여부
- */
-export function isActive(startsAt: string | null, endsAt: string | null, now: Date): boolean {
-  if (startsAt === null || endsAt === null) return false
-  const start = new Date(startsAt).getTime()
-  const end = new Date(endsAt).getTime()
-  const current = now.getTime()
-  return start <= current && current < end
 }
 
 /**

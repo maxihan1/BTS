@@ -1,6 +1,6 @@
 // ooo-datetime 유틸 단위 테스트 — datetime-local↔ISO Instant 변환, 활성 판정, 복귀일 표시 검증
 import { describe, it, expect } from 'vitest'
-import { toInstant, toLocalInputValue, isActive, formatOooReturnDate } from './ooo-datetime'
+import { toInstant, toLocalInputValue, formatOooReturnDate } from './ooo-datetime'
 
 describe('toInstant', () => {
   it('datetime-local bare 값을 로컬 기준으로 해석해 ISO Instant 문자열로 변환한다', () => {
@@ -29,39 +29,6 @@ describe('toLocalInputValue', () => {
     expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)
     // 왕복 변환 시 분 단위까지 원래 로컬 시각과 일치해야 한다
     expect(toInstant(result)).toBe(new Date(2026, 6, 10, 9, 0, 0).toISOString())
-  })
-})
-
-describe('isActive', () => {
-  const startsAt = '2026-07-05T00:00:00.000Z'
-  const endsAt = '2026-07-14T00:00:00.000Z'
-
-  it('startsAt<=now<endsAt이면 true를 반환한다', () => {
-    expect(isActive(startsAt, endsAt, new Date('2026-07-07T00:00:00.000Z'))).toBe(true)
-  })
-
-  it('now가 startsAt과 정확히 같으면 true를 반환한다(경계 포함)', () => {
-    expect(isActive(startsAt, endsAt, new Date(startsAt))).toBe(true)
-  })
-
-  it('now가 endsAt과 정확히 같으면 false를 반환한다(종료 경계 배제)', () => {
-    expect(isActive(startsAt, endsAt, new Date(endsAt))).toBe(false)
-  })
-
-  it('now가 startsAt 이전(미래 예약)이면 false를 반환한다', () => {
-    expect(isActive(startsAt, endsAt, new Date('2026-07-01T00:00:00.000Z'))).toBe(false)
-  })
-
-  it('now가 endsAt 이후(종료)이면 false를 반환한다', () => {
-    expect(isActive(startsAt, endsAt, new Date('2026-07-20T00:00:00.000Z'))).toBe(false)
-  })
-
-  it('startsAt이 null이면 false를 반환한다(미설정)', () => {
-    expect(isActive(null, endsAt, new Date())).toBe(false)
-  })
-
-  it('endsAt이 null이면 false를 반환한다(미설정)', () => {
-    expect(isActive(startsAt, null, new Date())).toBe(false)
   })
 })
 
