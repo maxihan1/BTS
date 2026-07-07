@@ -107,6 +107,28 @@ interface UserRepository {
     )
 
     /**
+     * display_name 값 출처를 LDAP 로 되돌린다 (FR-PR-04 관리자 재동기화).
+     *
+     * source=USER(사용자 편집)로 잠긴 행을 LDAP 동기화 대상으로 되돌려, 다음 [provisionFromExternal]
+     * 재로그인 시 디렉터리 값으로 다시 갱신되게 한다. users.updated_at 도 함께 NOW() 로 갱신한다.
+     * 존재하지 않는 id 는 조용히 무시한다 (0 행 영향).
+     *
+     * @param userId 대상 사용자 id
+     */
+    fun resyncDisplayNameSource(userId: UUID)
+
+    /**
+     * display_name 값 출처를 조회한다 (FR-PR-04).
+     *
+     * 공유 [User] 도메인 / [UserRowMapper] 에 컬럼을 추가하지 않고 이 targeted 쿼리로만 읽는다
+     * (다수 SELECT fanout 회피 — plan 제약).
+     *
+     * @param userId 대상 사용자 id
+     * @return 'LDAP' 또는 'USER', 존재하지 않으면 null
+     */
+    fun findDisplayNameSource(userId: UUID): String?
+
+    /**
      * id 목록으로 사용자 다건 조회 (FR-IS-03 Task 6 — 현재 담당자 이름 안정 해소).
      *
      * 존재하지 않는 id 는 결과에서 조용히 제외한다 (404 아님 — 부분 결과 허용).
@@ -261,6 +283,29 @@ class JdbcUserRepository(
     }
 
     /**
+     * display_name 출처를 LDAP 로 되돌린다 (FR-PR-04 재동기화).
+     *
+     * 존재하지 않는 id 는 조용히 무시한다 (0 행 영향 — 예외 없음).
+     */
+    override fun resyncDisplayNameSource(userId: UUID) {
+        jdbc.update(
+            SQL_RESYNC_DISPLAY_NAME_SOURCE,
+            mapOf("userId" to userId),
+        )
+    }
+
+    /**
+     * display_name 출처를 조회한다 (FR-PR-04).
+     *
+     * 없는 id 는 null 을 반환한다 ([queryForObject] 의 EmptyResultDataAccessException 회피 위해 query().firstOrNull()).
+     */
+    @Transactional(readOnly = true)
+    override fun findDisplayNameSource(userId: UUID): String? =
+        jdbc.query(SQL_FIND_DISPLAY_NAME_SOURCE, mapOf("userId" to userId)) { rs, _ ->
+            rs.getString("display_name_source")
+        }.firstOrNull()
+
+    /**
      * id 목록으로 사용자 다건 조회 (FR-IS-03 Task 6).
      *
      * 빈 리스트 입력 시 DB 호출 없이 빈 리스트를 즉시 반환한다.
@@ -365,16 +410,25 @@ class JdbcUserRepository(
         """
 
         /**
-         * 외부 IdP Auto-provisioning UPSERT — [SQL_UPSERT] 와 동일하나 RETURNING 에 `(xmax = 0) AS is_new` 추가.
-         * `xmax = 0` 은 이번 호출이 신규 INSERT 였음을(true), 0 이 아니면 ON CONFLICT UPDATE(기존 사용자)였음을 뜻한다.
-         * USER_PROVISIONED 감사 emit(신규 only, EC-3) 판정에 사용한다 (FR-AU-10).
+         * 외부 IdP Auto-provisioning UPSERT — [SQL_UPSERT] 와 동일하나 두 가지가 다르다 (FR-PR-04 / FR-AU-10).
+         *
+         * 1. display_name 은 CASE 게이트로 보호한다 — source=USER(사용자 편집)면 기존 값을 보존하고,
+         *    아니면(source=LDAP) EXCLUDED 로 동기화한다. LDAP 재로그인이 사용자가 편집한 이름을 덮어쓰지
+         *    않게 한다 (ADR 2026-07-07 D2, S2 보존 / S3 동기화). display_name_source 컬럼 자체는 갱신하지 않는다.
+         * 2. RETURNING 에 `(xmax = 0) AS is_new` 추가 — xmax = 0 이면 신규 INSERT(true), 아니면 ON CONFLICT
+         *    UPDATE(기존 사용자, false). USER_PROVISIONED 감사 emit(신규 only, EC-3) 판정에 쓴다 (FR-AU-10).
+         *
+         * email·updated_at 은 계속 동기화한다.
          */
         const val SQL_PROVISION_UPSERT = """
             INSERT INTO users (id, username, email, display_name)
             VALUES (:id, :username, :email, :displayName)
             ON CONFLICT (username) DO UPDATE
-                SET email        = EXCLUDED.email,
-                    display_name = EXCLUDED.display_name,
+                SET display_name = CASE
+                        WHEN users.display_name_source = 'USER' THEN users.display_name
+                        ELSE EXCLUDED.display_name
+                    END,
+                    email        = EXCLUDED.email,
                     updated_at   = NOW()
             RETURNING id, username, email, display_name, created_at, updated_at, (xmax = 0) AS is_new
         """
@@ -391,11 +445,35 @@ class JdbcUserRepository(
 
         /**
          * display_name 갱신 (FR-PR-01 Task 4) — updated_at 도 함께 NOW() 로 갱신한다.
+         *
+         * display_name_source 를 'USER' 로 전환한다 (FR-PR-04) — 편집은 override 의도이므로, 같은 값이어도
+         * USER 로 잠가 이후 LDAP 재로그인([SQL_PROVISION_UPSERT] CASE 게이트)이 덮어쓰지 못하게 한다.
          */
         const val SQL_UPDATE_DISPLAY_NAME = """
             UPDATE users
-            SET display_name = :displayName,
-                updated_at   = NOW()
+            SET display_name        = :displayName,
+                display_name_source = 'USER',
+                updated_at          = NOW()
+            WHERE id = :userId
+        """
+
+        /**
+         * display_name 출처 재동기화 (FR-PR-04) — source 를 'LDAP' 로 되돌려 다음 재로그인 시 동기화되게 한다.
+         * updated_at 도 함께 NOW() 로 갱신한다.
+         */
+        const val SQL_RESYNC_DISPLAY_NAME_SOURCE = """
+            UPDATE users
+            SET display_name_source = 'LDAP',
+                updated_at          = NOW()
+            WHERE id = :userId
+        """
+
+        /**
+         * display_name 출처 조회 (FR-PR-04) — 공유 [User] SELECT 목록에 컬럼을 늘리지 않는 targeted 쿼리.
+         */
+        const val SQL_FIND_DISPLAY_NAME_SOURCE = """
+            SELECT display_name_source
+            FROM users
             WHERE id = :userId
         """
 
