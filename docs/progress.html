@@ -178,13 +178,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">85%</text>
   </svg>
       <div class="overview-numbers">
-        <div class="big-num">104 / 123</div>
+        <div class="big-num">105 / 123</div>
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
-          <div><span class="dot dot-done"></span> 완료 <b>104</b></div>
+          <div><span class="dot dot-done"></span> 완료 <b>105</b></div>
           <div><span class="dot dot-prog"></span> 진행중 <b>0</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>19</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>18</b></div>
         </div>
       </div>
     </div>
@@ -216,9 +216,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bc-card-pct">100%</div>
     </div><div class="bc-card" data-nav="bc-personalization">
       <div class="bc-card-head">🎨 개인화</div>
-      <div class="bc-card-stats">6 / 12 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:50%"></div></div>
-      <div class="bc-card-pct">50%</div>
+      <div class="bc-card-stats">7 / 12 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:58%"></div></div>
+      <div class="bc-card-pct">58%</div>
     </div><div class="bc-card" data-nav="bc-search-export-import">
       <div class="bc-card-head">🔍 검색/입출력</div>
       <div class="bc-card-stats">12 / 12 완료</div>
@@ -1033,14 +1033,14 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h1>🎨 개인화</h1>
     <p class="bc-desc">필터/뷰/단축키 등 사용자별 환경 설정 영역.</p>
     <div class="bc-detail-stats">
-      <div class="big-pct">50%</div>
-      <div>6 / 12 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:50%"></div></div>
+      <div class="big-pct">58%</div>
+      <div>7 / 12 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:58%"></div></div>
       <div class="status-grid">
-        <div>✅ 완료 6</div>
+        <div>✅ 완료 7</div>
         <div>🔄 진행중 0</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 6</div>
+        <div>⬜ 대기 5</div>
       </div>
     </div>
     <h2>세부 기능 (12개)</h2>
@@ -1086,13 +1086,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc">부재중 (Out of Office)</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — OutOfOffice (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #241)</li><li><span class="step-icon">✅</span> D2 — 명세 — 기간 + 대체 <span class="term" data-def="Assignee. 이슈 해결을 책임지는 사용자(0~1명). 미할당(null) 허용, `PATCH /issues/{key}/assignee`로 변경 (FR-IS-03)">담당자</span> + 자동 응답(표시용 안내 메시지) (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #241)</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `user_ooo(user_id, starts_at, ends_at, delegate_user_id, message)` — V029, <span class="term" data-def="&quot;기술 결정 일기장&quot; &quot;왜 A 대신 B 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.">ADR</span> 2026-07-07</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `GET/<span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span>CH/DELETE /api/v1/users/me/ooo` (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>oduct 원안 `POST` 표기 → 관례 수렴). **자동 위임 = 대리자 지정·저장·표시까지(A안, 단일 <span class="term" data-def="&quot;관련 업무 부서&quot; 시스템을 &#39;로그인 부서&#39;, &#39;알림 부서&#39;처럼 책임 범위별로 깔끔하게 나눈 구역입니다.">BC</span> identity-access); 실제 <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> <span class="term" data-def="&quot;신고자 / 담당자&quot; 버그를 찾아서 올린 사람(Reporter)과, 실제로 고칠 책임이 있는 사람(Assignee)입니다.">assignee</span> 자동 전환은 후속 FR로 분리**(Maxi 확정, <span class="term" data-def="&quot;기술 결정 일기장&quot; &quot;왜 A 대신 B 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.">ADR</span> 2026-07-07 D3)</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #241)</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — OOO 설정 모달(기간+대리자검색+메시지) + Header 부재중 표시 (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #241)</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> (<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #241)</li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-완료">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">✅</span>
         <span class="fr-id">FR-PR-04</span>
         <span class="fr-desc">LDAP 동기화 필드 vs 사용자 편집 분리</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — <span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">Pr</span>ofileField (source: LDAP vs USER)</li><li><span class="step-icon">⬜</span> D2 — 명세 — LDAP 우선 필드 / 사용자 우선 필드 매트릭스</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — `user_<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>ofiles` 컬럼별 source 표시</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — LDAP 동기화 시 USER 필드는 덮어쓰지 않음</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트 — 충돌 시나리오</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 필드별 &quot;LDAP에서 동기화됨&quot; 라벨 + 편집 불가 표시</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — di<span class="term" data-def="Service Provider — IdP의 보증을 받아 로그인시키는 쪽. BTS 자신">sp</span>lay_name 출처(source: LDAP vs USER). users.display_name_source 컬럼</li><li><span class="step-icon">✅</span> D2 — 명세 — LDAP 동기화 필드(di<span class="term" data-def="Service Provider — IdP의 보증을 받아 로그인시키는 쪽. BTS 자신">sp</span>lay_name) vs 사용자 편집 분리 + 재동기화</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `users.di<span class="term" data-def="Service Provider — IdP의 보증을 받아 로그인시키는 쪽. BTS 자신">sp</span>lay_name_source` 단일 컬럼(V030, <span class="term" data-def="&quot;기술 결정 일기장&quot; &quot;왜 A 대신 B 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.">ADR</span> 2026-07-07 D1 — display_name이 users에 있어 원안 &quot;user_profiles 컬럼별 source&quot;를 정정)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — LDAP 재로그인 UPSERT CASE <span class="term" data-def="Gate. 전이에 걸린 조건 (권한/필드/검증)">게이트</span>(source=USER면 보존) + resync 엔드포인트</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 충돌 시나리오(S2 보존/S3 동기화) + resync 200/409</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — di<span class="term" data-def="Service Provider — IdP의 보증을 받아 로그인시키는 쪽. BTS 자신">sp</span>lay_name &quot;디렉터리에서 동기화됨&quot; 배지 + &quot;디렉터리 값으로 재설정&quot;(provider-중립 문구, 로컬 사용자 미노출)</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
