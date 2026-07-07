@@ -15,6 +15,8 @@ import com.atlas.bts.identity.ooo.OutOfOfficeRepository
 import com.atlas.bts.identity.pat.PatVerificationException
 import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
+import com.atlas.bts.identity.preferences.UserPreferences
+import com.atlas.bts.identity.preferences.UserPreferencesService
 import com.atlas.bts.identity.profile.UserProfile
 import com.atlas.bts.identity.profile.UserProfileRepository
 import com.atlas.bts.identity.session.SessionService
@@ -114,6 +116,12 @@ class WhoamiControllerTest {
         // (미공급 시 "No qualifying bean of type OutOfOfficeRepository").
         @Bean
         fun outOfOfficeRepository(): OutOfOfficeRepository = mockk(relaxed = true)
+
+        // WhoamiController 가 환경설정 view-layer(theme/locale/dateFormat) 파생을 위해 새로 주입받는 의존 (FR-PF-01).
+        // @WebMvcTest 슬라이스에는 실 빈이 없으므로 mockk 로 공급해야 컨텍스트가 로드된다
+        // (미공급 시 "No qualifying bean of type UserPreferencesService").
+        @Bean
+        fun userPreferencesService(): UserPreferencesService = mockk(relaxed = true)
     }
 
     @Autowired
@@ -139,6 +147,9 @@ class WhoamiControllerTest {
 
     @Autowired
     lateinit var userStatusRepository: UserStatusRepository
+
+    @Autowired
+    lateinit var userPreferencesService: UserPreferencesService
 
     // @WebMvcTest 슬라이스는 mockk 빈을 컨텍스트 캐시로 공유하므로 record() 호출 수가 테스트 간 누적된다.
     // PAT_USED 감사 테스트의 verify(exactly=1) 가 실행 순서에 의존하지 않도록 각 테스트 시작 시 감사 mock 의
@@ -645,6 +656,95 @@ class WhoamiControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.statusEmoji").value(nullValue()))
             .andExpect(jsonPath("$.statusText").value(nullValue()))
+    }
+
+    // ── FR-PF-01: theme / locale / dateFormat (환경설정 view-layer) ────────────────
+
+    @Test
+    fun `whoami JWT 사용자의 환경설정 행이 없으면 기본값 system-ko-iso 반영`() {
+        val userId = UUID.fromString("00000000-0000-0000-0000-0000000000c1")
+        val now = Instant.parse("2026-07-06T10:00:00Z")
+        every { userRepository.findById(userId) } returns
+            User(
+                id = userId,
+                username = "grace",
+                email = "grace@bts.local",
+                displayName = "Grace Choi",
+                createdAt = now,
+                updatedAt = now,
+            )
+        every { storedPasswordCredentialRepository.findByUserId(userId) } returns credential(userId, mustChange = false)
+        every { systemPermissionResolver.isSystemAdmin(userId) } returns false
+        // user_preferences 행 없음 → UserPreferencesService(Task 2) 가 기본값으로 귀결한 결과를 그대로 반영
+        every { userPreferencesService.getPreferences(userId) } returns
+            UserPreferences(userId = userId, theme = "system", locale = "ko", dateFormat = "iso")
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami").with(
+                jwt().jwt { builder -> builder.subject(userId.toString()) },
+            ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.theme").value("system"))
+            .andExpect(jsonPath("$.locale").value("ko"))
+            .andExpect(jsonPath("$.dateFormat").value("iso"))
+    }
+
+    @Test
+    fun `whoami JWT 사용자의 환경설정이 저장돼 있으면 그 값 반영`() {
+        val userId = UUID.fromString("00000000-0000-0000-0000-0000000000c2")
+        val now = Instant.parse("2026-07-06T10:00:00Z")
+        every { userRepository.findById(userId) } returns
+            User(
+                id = userId,
+                username = "heidi",
+                email = "heidi@bts.local",
+                displayName = "Heidi Song",
+                createdAt = now,
+                updatedAt = now,
+            )
+        every { storedPasswordCredentialRepository.findByUserId(userId) } returns credential(userId, mustChange = false)
+        every { systemPermissionResolver.isSystemAdmin(userId) } returns false
+        every { userPreferencesService.getPreferences(userId) } returns
+            UserPreferences(userId = userId, theme = "dark", locale = "en", dateFormat = "us")
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami").with(
+                jwt().jwt { builder -> builder.subject(userId.toString()) },
+            ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.theme").value("dark"))
+            .andExpect(jsonPath("$.locale").value("en"))
+            .andExpect(jsonPath("$.dateFormat").value("us"))
+    }
+
+    @Test
+    fun `whoami PAT 인증은 theme-locale-dateFormat 기본값 system-ko-iso 로 고정`() {
+        val activePat =
+            PersonalAccessToken(
+                id = PAT_ID,
+                userId = PAT_USER_ID,
+                name = "ci-token",
+                tokenHash = "irrelevant-hash",
+                scopes = listOf("*"),
+                expiresAt = null,
+                lastUsedAt = null,
+                revokedAt = null,
+                createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+            )
+        every { personalAccessTokenService.verify(RAW_PAT) } returns Result.success(activePat)
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami")
+                .header("Authorization", "Bearer $RAW_PAT"),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.authMethod").value("pat"))
+            // PAT 분기는 봇 컨텍스트라 환경설정을 조회하지 않고 기본값으로 고정
+            .andExpect(jsonPath("$.theme").value("system"))
+            .andExpect(jsonPath("$.locale").value("ko"))
+            .andExpect(jsonPath("$.dateFormat").value("iso"))
     }
 
     /** local_credentials 행 픽스처 — mustChangePassword 플래그만 변주 */
