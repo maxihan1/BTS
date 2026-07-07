@@ -18,6 +18,8 @@ import java.util.UUID
  * @property avatarUrl 아바타 다운로드 경로(`/api/v1/users/{userId}/avatar`). 아바타 미설정 시 null.
  * @property timezone IANA 타임존(기본 "UTC").
  * @property department 부서(없으면 null).
+ * @property displayNameSource displayName 값의 출처 — `LDAP`(디렉터리 동기화) 또는 `USER`(사용자 편집으로 잠김). FR-PR-04.
+ * @property ldapLinked 외부 IdP(디렉터리) 계정 연결 여부 — true 면 UI 가 출처 라벨/재동기화 어포던스를 노출한다. FR-PR-04.
  */
 data class ProfileResponse(
     val userId: UUID,
@@ -27,4 +29,6 @@ data class ProfileResponse(
     val avatarUrl: String?,
     val timezone: String,
     val department: String?,
+    val displayNameSource: String,
+    val ldapLinked: Boolean,
 )
