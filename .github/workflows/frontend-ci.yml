@@ -1,5 +1,7 @@
-# .github/workflows/frontend-ci.yml — BTS 첫 GitHub Actions CI workflow
-# Scope. apps/web (frontend) — lint / typecheck / test. ADR. docs/decisions/2026-05-22-frontend-logging-policy.md (D5-c)
+# .github/workflows/frontend-ci.yml — BTS 프론트엔드 CI (lint / typecheck / test 병렬 잡)
+# Scope. apps/web (frontend). ADR. docs/decisions/2026-05-22-frontend-logging-policy.md (D5-c)
+# 잡 분리 이유. 단일 잡(install→lint→typecheck→test)이 10분 예산을 공유해 vitest 전체 스위트가
+# 타임아웃으로 cancelled 되던 문제(FR-PR-01~03 공통)를 해소. 세 잡을 병렬화해 test가 독립 예산을 갖는다.
 name: frontend-ci
 
 on:
@@ -41,7 +43,43 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Lint (no-console + react-hooks + tseslint)
         run: pnpm --filter @bts/web lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - name: Setup Node 22 (with pnpm cache)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
       - name: Typecheck (TS strict)
         run: pnpm --filter @bts/web typecheck
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - name: Setup Node 22 (with pnpm cache)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
       - name: Test (vitest unit + msw)
         run: pnpm --filter @bts/web test
