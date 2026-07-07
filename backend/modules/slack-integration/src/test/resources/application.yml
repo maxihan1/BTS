@@ -1,0 +1,4 @@
+# slack-integration test-boot 전용 최소 설정 (DataSource/Flyway는 SlackIntegrationTestBootApplication에서 제외)
+spring:
+  main:
+    banner-mode: "off"
