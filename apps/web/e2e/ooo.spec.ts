@@ -107,7 +107,7 @@ test.describe('FR-PR-03 부재중(Out of Office)', () => {
     ).toBeVisible()
   })
 
-  test('S3 검증 에러(종료<=시작) → alert 표시 + 모달 유지 + 배지 미표시', async ({ page }) => {
+  test('S3 검증 에러(종료<=시작) → 인라인 에러 배너 + 모달 유지 + 배지 미표시', async ({ page }) => {
     const dialog = await openOooModal(page)
 
     // Given/When. 종료 시각이 시작 시각보다 앞서도록 입력(EC2 위반)
@@ -115,16 +115,10 @@ test.describe('FR-PR-03 부재중(Out of Office)', () => {
     const end = new Date(start.getTime() - 60 * 60 * 1000) // 시작보다 1시간 전
     await dialog.getByLabel(oooLabels.startsAtLabel).fill(toDatetimeLocalValue(start))
     await dialog.getByLabel(oooLabels.endsAtLabel).fill(toDatetimeLocalValue(end))
-
-    let dialogMessage: string | null = null
-    page.once('dialog', (d) => {
-      dialogMessage = d.message()
-      void d.dismiss()
-    })
     await dialog.getByRole('button', { name: oooLabels.saveButton, exact: true }).click()
 
-    // Then. window.alert() 발생 + 모달은 닫히지 않고 유지 + 헤더 배지 없음(저장 안 됨)
-    await expect.poll(() => dialogMessage).toBe(oooLabels.errorMessage)
+    // Then. 인라인 role=alert 배너(분기별 구체 메시지) 노출 + 모달 유지 + 헤더 배지 없음(저장 안 됨)
+    await expect(dialog.getByRole('alert')).toHaveText(oooLabels.endBeforeStartError)
     await expect(page.getByRole('dialog')).toBeVisible()
     await expect(page.getByText(oooLabels.headerBadge, { exact: true })).toHaveCount(0)
   })
