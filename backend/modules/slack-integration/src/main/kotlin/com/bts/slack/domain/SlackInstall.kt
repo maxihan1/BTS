@@ -37,10 +37,13 @@ data class SlackInstall(
     /** 암호화된 봇 토큰조차 노출하지 않는 마스킹 toString (방어적, §1.1.2). */
     override fun toString(): String =
         "SlackInstall(teamId=$teamId, teamName=$teamName, botUserId=$botUserId, appId=$appId, " +
-            "botTokenEncrypted=<redacted>, scopes=$scopes, " +
+            "botTokenEncrypted=$REDACTED, scopes=$scopes, " +
             "isEnterpriseInstall=$isEnterpriseInstall, installedBy=$installedBy)"
 
     companion object {
+        /** 봇 토큰(암호문) 마스킹 표기 — 로그/toString 노출 최소화(§1.1.2). */
+        private const val REDACTED = "<redacted>"
+
         /**
          * 성공한 `oauth.v2.access` 응답 + 미리 암호화된 봇 토큰으로 설치 VO 를 조립한다.
          *
@@ -50,19 +53,17 @@ data class SlackInstall(
          * @param response Slack 토큰 교환 응답(성공·워크스페이스 설치여야 함).
          * @param installedBy 설치 개시자 BTS 사용자 id.
          * @param botTokenEncrypted 서비스가 미리 암호화한 봇 토큰(**평문 금지**).
-         * @throws IllegalArgumentException 응답이 `ok:false` 이거나, enterprise install(team 부재)이거나,
-         *   필수 메타 필드/암호화 토큰이 비어 있을 때.
+         * @throws IllegalArgumentException 응답이 `ok:false`(EC3)이거나, enterprise install(team 부재, EC5)이거나,
+         *   필수 메타 필드/암호화 토큰이 비어 있을 때(EC7).
          */
         fun fromToken(
             response: SlackOAuthTokenResponse,
             installedBy: UUID,
             botTokenEncrypted: String,
         ): SlackInstall {
-            require(response.ok) { "slack oauth response not ok" }
-            val teamId =
-                requireNotNull(response.teamId) {
-                    "workspace team_id missing (enterprise install unsupported)"
-                }
+            // 설치 유형 정책 — 성공 + 워크스페이스 설치여야 진행(EC3/EC5). 실패·enterprise 는 여기서 거부.
+            val teamId = requireWorkspaceInstall(response)
+            // 필수 메타 필드 존재 검증(EC7) — 하나라도 없으면 저장하지 않는다.
             val teamName = requireNotNull(response.teamName) { "workspace team_name missing" }
             val botUserId = requireNotNull(response.botUserId) { "bot_user_id missing" }
             val appId = requireNotNull(response.appId) { "app_id missing" }
@@ -78,6 +79,20 @@ data class SlackInstall(
                 isEnterpriseInstall = response.isEnterpriseInstall,
                 installedBy = installedBy,
             )
+        }
+
+        /**
+         * 보안 핵심 가드 — 지원하는 워크스페이스 설치인지 검증하고 team_id 를 돌려준다.
+         *
+         * FR-SL-01 은 워크스페이스 단위 설치만 지원하므로 `ok:false`(EC3) 또는 `team` 부재
+         * (org-wide enterprise install, EC5/G1)는 명시적으로 거부한다. 예외 메시지에는 봇 토큰 등
+         * 비밀값을 담지 않는다(§1.1.2).
+         */
+        private fun requireWorkspaceInstall(response: SlackOAuthTokenResponse): String {
+            require(response.ok) { "slack oauth response not ok" }
+            return requireNotNull(response.teamId) {
+                "workspace team_id missing (enterprise install unsupported)"
+            }
         }
     }
 }
