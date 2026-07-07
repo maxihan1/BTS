@@ -54,6 +54,22 @@ export const profileLabels = {
     /** 아바타 삭제 버튼 텍스트(제출 중, isPending) */
     deletingButton: '삭제 중...',
   },
+
+  /** 표시 이름 필드 출처(FR-PR-04) — 배지/힌트/재설정 버튼. ldapLinked=true인 사용자에만 노출 */
+  ldapSource: {
+    /** 동기화 상태 배지(source=LDAP) */
+    syncedBadge: 'LDAP에서 동기화됨',
+    /** 동기화 상태 힌트 — 직접 수정 시 동기화가 끊김을 안내 */
+    syncedHint: '직접 수정하면 LDAP 동기화가 중단됩니다.',
+    /** 직접 편집 상태 배지(source=USER) */
+    overriddenBadge: '직접 편집됨',
+    /** 직접 편집 상태 힌트 — 재설정의 지연 동기화 semantics 안내 */
+    overriddenHint: '재설정하면 다음 로그인 시 LDAP 값으로 동기화됩니다.',
+    /** LDAP 값으로 재설정 버튼 텍스트(평상시) */
+    resyncButton: 'LDAP 값으로 재설정',
+    /** LDAP 값으로 재설정 버튼 텍스트(제출 중, isPending) */
+    resyncingButton: '재설정 중...',
+  },
 } as const
 
 /** profileLabels const 추론 타입 */
@@ -101,6 +117,8 @@ export function mapProfileError(error: ApiError): string {
       return '표시 이름을 입력해 주세요.'
     case 'PROFILE_NOT_FOUND':
       return '프로필을 찾을 수 없습니다.'
+    case 'DISPLAY_NAME_NOT_LDAP_LINKED':
+      return '연결된 LDAP 계정이 없어 재설정할 수 없습니다.'
     default:
       return PROFILE_FALLBACK_ERROR
   }
