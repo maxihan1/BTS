@@ -22,8 +22,7 @@ import java.util.UUID
  * JdbcUserRepository 통합 테스트 (Task 32 — FR-AU-09).
  *
  * @JdbcTest + Testcontainers PostgreSQL + Flyway V001 자동 적용.
- * 검증 대상: findById / findByUsername / save (UPSERT) / updateLastLogin
- * / provisionFromExternal display_name source 게이트 · resyncDisplayNameSource / findDisplayNameSource (FR-PR-04).
+ * 검증 대상: findById / findByUsername / save (UPSERT) / updateLastLogin.
  */
 @JdbcTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
