@@ -2,6 +2,24 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
+    <!-- FOUC(첫 페인트 전 테마 깜빡임) 방지 — bts.theme localStorage(lib/theme.ts, 비민감 enum) 읽어
+         React 마운트 전 .dark 클래스를 미리 적용한다. 동기 클래식 스크립트라 파서가 여기 도달하는
+         즉시(첫 페인트 이전) 실행된다 — next-themes 등 표준 프리하이드레이션 패턴과 동일. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('bts.theme')
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+          var isDark = stored === 'dark' || (stored !== 'light' && prefersDark)
+          if (isDark) {
+            document.documentElement.classList.add('dark')
+          }
+        } catch (e) {
+          // localStorage/matchMedia 접근 불가(프라이빗 모드 등) 시 라이트 테마로 진행 — FOUC 방지 목적이라 실패해도 무해
+          console.error('[bts] FOUC 테마 프리하이드레이션 실패', e)
+        }
+      })()
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BTS — Atlas</title>
   </head>

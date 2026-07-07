@@ -5,6 +5,7 @@ import { RouterProvider } from '@tanstack/react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { router } from './router'
 import { Toaster } from './components/ui/sonner'
+import { PreferencesProvider } from './components/preferences/PreferencesProvider'
 import './index.css'
 
 const rootElement = document.getElementById('root')
@@ -31,10 +32,12 @@ async function mountApp(root: HTMLElement) {
 
   createRoot(root).render(
     <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-        <Toaster />
-      </QueryClientProvider>
+      <PreferencesProvider>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+          <Toaster />
+        </QueryClientProvider>
+      </PreferencesProvider>
     </StrictMode>,
   )
 }

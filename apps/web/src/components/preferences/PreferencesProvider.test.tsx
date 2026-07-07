@@ -1,6 +1,6 @@
 // PreferencesProvider 컴포넌트 단위 테스트 — theme 적용/html lang 반영/OS 변경 추종 (FR-PF-01 Task-6 RED)
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, waitFor } from '@testing-library/react'
+import { render, waitFor, cleanup } from '@testing-library/react'
 import { useAuthStore } from '@/auth/authStore'
 import type { WhoamiResponse } from '@/api/schemas'
 import { PreferencesProvider } from './PreferencesProvider'
@@ -63,6 +63,11 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  // RTL 자동 cleanup(afterEach)보다 먼저 명시적으로 unmount한다 — 그렇지 않으면 아직 마운트된
+  // PreferencesProvider가 남아있는 상태에서 다음 줄의 setState(user: null)가 실시간 리렌더를
+  // 유발해 theme이 'system'으로 폴백하며 matchMedia를 호출한다(테스트 크래시 원인, 실제 앱 동작과
+  // 무관한 테스트 정리 순서 문제). cleanup()은 멱등이라 RTL의 자체 afterEach가 다시 호출해도 안전.
+  cleanup()
   useAuthStore.setState({ accessToken: null, user: null })
   vi.unstubAllGlobals()
   localStorage.clear()
