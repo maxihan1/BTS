@@ -339,11 +339,11 @@ describe('WhoamiResponseSchema — theme/locale/dateFormat 확장 (FR-PF-01)', (
     expect(result.dateFormat).toBe('us')
   })
 
-  it('theme/locale/dateFormat 키가 없으면 기본값(system/ko/iso)으로 채워진다(기존 whoami mock fanout 회귀 방지)', () => {
+  it('theme/locale/dateFormat 키가 없어도 parse 성공한다 (하위호환 — 기존 인라인 whoami mock, mock fanout 방어)', () => {
     const result = WhoamiResponseSchema.parse(BASE_WHOAMI)
-    expect(result.theme).toBe('system')
-    expect(result.locale).toBe('ko')
-    expect(result.dateFormat).toBe('iso')
+    expect(result.theme).toBeUndefined()
+    expect(result.locale).toBeUndefined()
+    expect(result.dateFormat).toBeUndefined()
   })
 })
 
