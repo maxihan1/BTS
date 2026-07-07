@@ -11,6 +11,7 @@ import {
 } from './auth-fixtures'
 import { trustedThisBrowser } from './trusted-devices-handlers'
 import { getActiveStatusForUser } from './status-handlers'
+import { getActiveOooForUser } from './ooo-handlers'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // E2E 시나리오 토글용 localStorage 키 — FR-AU-05 Task 9
@@ -138,6 +139,9 @@ const whoamiHandler = http.get('/api/v1/users/me/whoami', ({ request }) => {
   // FR-PR-02: 활성 상태(statusStore) view-layer 파생 — 백엔드 whoami가 UserStatusRepository로 채우는 흐름 재현.
   const status = getActiveStatusForUser(user.userId)
 
+  // FR-PR-03: 활성 부재중(oooStore) view-layer 파생 — 백엔드 whoami가 OutOfOfficeRepository로 채우는 흐름 재현.
+  const activeOoo = getActiveOooForUser(user.userId)
+
   return HttpResponse.json({
     ...user,
     mustChangePassword,
@@ -145,6 +149,8 @@ const whoamiHandler = http.get('/api/v1/users/me/whoami', ({ request }) => {
     mfaEnrollmentRequired,
     statusEmoji: status?.emoji ?? null,
     statusText: status?.text ?? null,
+    oooActive: activeOoo !== null,
+    oooUntil: activeOoo?.until ?? null,
   })
 })
 
