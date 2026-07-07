@@ -40,18 +40,21 @@ const emptyOoo: OooResponse = {
 // (StatusModal.test.tsx 선례와 동일한 패턴).
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { updateMutate, clearMutate, refreshWhoamiMock, mutationState, oooQueryState } = vi.hoisted(() => ({
+const { updateMutate, clearMutate, refreshWhoamiMock, mutationState, oooQueryState, usersByIdsState } = vi.hoisted(() => ({
   updateMutate: vi.fn(
     (_body: unknown, opts?: { onSuccess?: () => void; onError?: () => void }) => {
       opts?.onSuccess?.()
     },
   ),
-  clearMutate: vi.fn((_arg: unknown, opts?: { onSuccess?: () => void }) => {
+  clearMutate: vi.fn((_arg: unknown, opts?: { onSuccess?: () => void; onError?: () => void }) => {
     opts?.onSuccess?.()
   }),
   refreshWhoamiMock: vi.fn(() => Promise.resolve()),
   mutationState: { updatePending: false, clearPending: false },
   oooQueryState: { data: undefined as OooResponse | undefined },
+  // true면 useUsersByIds가 아직 로딩 중인 상태(data:undefined)를 흉내낸다 — 대리자 선택 직후
+  // 파생 조회가 늦게 붙는 윈도를 재현하기 위함(F4 회귀 테스트 전용).
+  usersByIdsState: { simulateLoading: false },
 }))
 
 vi.mock('@/hooks/use-ooo', () => ({
@@ -73,8 +76,10 @@ vi.mock('@/hooks/use-user-directory', () => ({
 
 vi.mock('@/hooks/use-users', () => ({
   useUsersByIds: (ids: string[]) => ({
-    data: DELEGATE_DIRECTORY.filter((u) => ids.includes(u.id)),
-    isLoading: false,
+    data: usersByIdsState.simulateLoading
+      ? undefined
+      : DELEGATE_DIRECTORY.filter((u) => ids.includes(u.id)),
+    isLoading: usersByIdsState.simulateLoading,
   }),
 }))
 
@@ -95,7 +100,7 @@ describe('OooModal', () => {
     mutationState.updatePending = false
     mutationState.clearPending = false
     oooQueryState.data = emptyOoo
-    vi.spyOn(window, 'alert').mockImplementation(() => {})
+    usersByIdsState.simulateLoading = false
   })
 
   afterEach(() => {
@@ -208,7 +213,16 @@ describe('OooModal', () => {
     expect(body.message).toBeNull()
   })
 
-  it('종료 시각이 시작 시각보다 이전(또는 같음)이면 alert를 표시하고 mutate를 호출하지 않는다', () => {
+  it('기간을 입력하지 않고 저장하면 인라인 에러 배너(시작·종료 필수)를 표시하고 mutate를 호출하지 않는다', () => {
+    render(<OooModal open onOpenChange={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: oooLabels.saveButton }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent(oooLabels.periodRequiredError)
+    expect(updateMutate).not.toHaveBeenCalled()
+  })
+
+  it('종료 시각이 시작 시각보다 이전(또는 같음)이면 인라인 에러 배너를 표시하고 mutate를 호출하지 않는다', () => {
     render(<OooModal open onOpenChange={vi.fn()} />)
 
     fireEvent.change(screen.getByLabelText(oooLabels.startsAtLabel), {
@@ -219,11 +233,11 @@ describe('OooModal', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: oooLabels.saveButton }))
 
-    expect(window.alert).toHaveBeenCalledWith(oooLabels.errorMessage)
+    expect(screen.getByRole('alert')).toHaveTextContent(oooLabels.endBeforeStartError)
     expect(updateMutate).not.toHaveBeenCalled()
   })
 
-  it('종료 시각이 현재보다 과거(또는 같음)이면 alert를 표시하고 mutate를 호출하지 않는다', () => {
+  it('종료 시각이 현재보다 과거(또는 같음)이면 인라인 에러 배너를 표시하고 mutate를 호출하지 않는다', () => {
     render(<OooModal open onOpenChange={vi.fn()} />)
 
     fireEvent.change(screen.getByLabelText(oooLabels.startsAtLabel), {
@@ -234,11 +248,11 @@ describe('OooModal', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: oooLabels.saveButton }))
 
-    expect(window.alert).toHaveBeenCalledWith(oooLabels.errorMessage)
+    expect(screen.getByRole('alert')).toHaveTextContent(oooLabels.endNotFutureError)
     expect(updateMutate).not.toHaveBeenCalled()
   })
 
-  it('백엔드가 400을 반환(mutation onError)하면 alert를 표시한다', () => {
+  it('백엔드가 400을 반환(updateOoo mutation onError)하면 인라인 에러 배너를 표시한다', () => {
     updateMutate.mockImplementationOnce(
       (_body: unknown, opts?: { onSuccess?: () => void; onError?: () => void }) => {
         opts?.onError?.()
@@ -254,7 +268,7 @@ describe('OooModal', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: oooLabels.saveButton }))
 
-    expect(window.alert).toHaveBeenCalledWith(oooLabels.errorMessage)
+    expect(screen.getByRole('alert')).toHaveTextContent(oooLabels.saveFailedError)
   })
 
   it('"부재중 해제" 클릭 시 clearOoo mutate를 호출하고 성공 후 whoami 재조회 + 닫기', () => {
@@ -266,6 +280,22 @@ describe('OooModal', () => {
     expect(clearMutate).toHaveBeenCalledTimes(1)
     expect(refreshWhoamiMock).toHaveBeenCalledTimes(1)
     expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('부재중 해제가 실패(clearOoo mutation onError)하면 인라인 에러 배너를 표시하고 모달을 유지한다(F1)', () => {
+    clearMutate.mockImplementationOnce(
+      (_arg: unknown, opts?: { onSuccess?: () => void; onError?: () => void }) => {
+        opts?.onError?.()
+      },
+    )
+    const onOpenChange = vi.fn()
+    render(<OooModal open onOpenChange={onOpenChange} />)
+
+    fireEvent.click(screen.getByRole('button', { name: oooLabels.clearButton }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent(oooLabels.saveFailedError)
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+    expect(refreshWhoamiMock).not.toHaveBeenCalled()
   })
 
   it('닫았다 다시 열면 폼이 현재 설정으로 초기화된다(stale 입력 방지)', () => {
@@ -293,5 +323,38 @@ describe('OooModal', () => {
 
     expect(screen.getByLabelText(oooLabels.messageLabel)).toHaveValue('기존 메시지')
     expect(screen.getByText(bobUser.displayName as string)).toBeInTheDocument()
+  })
+
+  it('모달이 열린 채 OOO 쿼리가 refetch되어 current가 바뀌어도 편집 중인 입력이 유지된다(F2)', () => {
+    const { rerender } = render(<OooModal open onOpenChange={vi.fn()} />)
+
+    fireEvent.change(screen.getByLabelText(oooLabels.messageLabel), { target: { value: '편집 중인 메모' } })
+
+    // open은 그대로 true인데 OOO 쿼리가 refetch되어 current만 바뀐 상황을 흉내낸다
+    // (window focus refetch/invalidate 등). 열림 전이(false→true)가 아니므로 재초기화되면 안 된다.
+    oooQueryState.data = {
+      startsAt: null,
+      endsAt: null,
+      delegateUserId: null,
+      delegateName: null,
+      message: '서버에서 새로 온 메시지',
+      active: false,
+    }
+    rerender(<OooModal open onOpenChange={vi.fn()} />)
+
+    expect(screen.getByLabelText(oooLabels.messageLabel)).toHaveValue('편집 중인 메모')
+  })
+
+  it('대리자 선택 직후 useUsersByIds가 아직 로딩 중이어도 UUID가 아니라 선택한 이름이 보인다(F4)', () => {
+    usersByIdsState.simulateLoading = true
+    render(<OooModal open onOpenChange={vi.fn()} />)
+
+    fireEvent.change(screen.getByPlaceholderText(oooLabels.delegateSearchPlaceholder), {
+      target: { value: '밥밥' },
+    })
+    fireEvent.click(screen.getByText('밥'))
+
+    expect(screen.getByText(bobUser.displayName as string)).toBeInTheDocument()
+    expect(screen.queryByText(bobUser.id)).toBeNull()
   })
 })
