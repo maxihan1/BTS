@@ -7,6 +7,7 @@ import com.atlas.bts.identity.profile.avatar.AvatarObjectNotFoundException
 import com.atlas.bts.identity.profile.avatar.AvatarStorageException
 import com.atlas.bts.identity.profile.avatar.AvatarStoragePort
 import com.atlas.bts.identity.profile.avatar.AvatarTypePolicy
+import com.atlas.bts.identity.provider.ldap.ExternalAccountRepository
 import com.atlas.bts.identity.user.UserRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -17,6 +18,14 @@ import java.util.UUID
 
 private const val MAX_DISPLAY_NAME_LENGTH = 255
 private const val DEFAULT_TIMEZONE = "UTC"
+
+/**
+ * display_name 출처 방어적 기본값 (FR-PR-04).
+ *
+ * users.display_name_source 컬럼은 NOT NULL(DEFAULT 'LDAP')이라 행이 존재하면 항상 non-null 이지만,
+ * [UserRepository.findDisplayNameSource] 가 (경합·미존재 등으로) null 을 돌려줄 경우를 대비한 fallback.
+ */
+private const val DEFAULT_DISPLAY_NAME_SOURCE = "LDAP"
 
 /**
  * 사용자 프로필 조회/수정/아바타 유스케이스 조율 서비스 (FR-PR-01 Task 4).
@@ -37,15 +46,17 @@ private const val DEFAULT_TIMEZONE = "UTC"
  * 모두 완료하므로, 검증 실패 시 아무 write 도 발생하지 않고 예외(unchecked)로 인해 빈 트랜잭션이
  * 그대로 롤백된다 — "검증 먼저, 부분 적용 없음" 요구를 별도 Bean 분리 없이 만족한다.
  *
- * @param userRepository users 테이블 접근 — displayName 갱신 + 존재 확인.
+ * @param userRepository users 테이블 접근 — displayName 갱신 + 존재 확인 + display_name 출처(source) 조회/재동기화.
  * @param profileRepository user_profiles 테이블 접근 — timezone/department/avatar 확장 속성.
  * @param storagePort 아바타 바이너리 오브젝트 스토리지 outbound port.
+ * @param externalAccountRepository user_external_accounts 접근 — 외부 IdP 연결(ldapLinked) 판별 및 resync 가드 (FR-PR-04).
  */
 @Service
 class UserProfileService(
     private val userRepository: UserRepository,
     private val profileRepository: UserProfileRepository,
     private val storagePort: AvatarStoragePort,
+    private val externalAccountRepository: ExternalAccountRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -103,6 +114,30 @@ class UserProfileService(
         }
         applyProfileFields(userId, newTimezone, patch.department)
 
+        return loadView(userId)
+    }
+
+    /**
+     * display_name 동기화 출처를 LDAP 로 되돌린다 (FR-PR-04 사용자 재동기화).
+     *
+     * 사용자가 편집해 `source=USER` 로 잠긴 display_name 을 다시 디렉터리 동기화 대상으로 되돌려,
+     * 다음 외부 IdP 재로그인(JIT 프로비저닝) 시 디렉터리 값(cn)으로 갱신되게 한다. 즉시 재설정은 하지 않는
+     * 지연(lazy) semantics(Maxi 확정)이므로, 반환 뷰의 [ProfileView.displayName] 은 편집값 그대로이고
+     * [ProfileView.displayNameSource] 만 `LDAP` 으로 바뀐다.
+     *
+     * 외부 IdP 계정이 없는 로컬 전용 사용자는 되돌릴 디렉터리 출처가 없어 거부한다. 이 판별은
+     * [UserRepository.resyncDisplayNameSource] 호출 이전에 수행하므로, 거부 시 아무 write 도 발생하지 않는다.
+     *
+     * @param userId 대상 사용자 id(컨트롤러가 JWT subject 로 식별한 본인 — me-scope, Task 5).
+     * @return source 전환 후 최신 [ProfileView].
+     * @throws DisplayNameNotLdapLinkedException 외부 IdP 계정이 없어 되돌릴 디렉터리 출처가 없을 때(→ 409).
+     */
+    @Transactional
+    fun resyncDisplayName(userId: UUID): ProfileView {
+        if (!externalAccountRepository.existsByUserId(userId)) {
+            throw DisplayNameNotLdapLinkedException("표시 이름을 디렉터리 값으로 되돌릴 수 없습니다.")
+        }
+        userRepository.resyncDisplayNameSource(userId)
         return loadView(userId)
     }
 
@@ -170,7 +205,13 @@ class UserProfileService(
 
     // ── private helpers ───────────────────────────────────────────────────────
 
-    /** users + user_profiles 를 조회해 [ProfileView] 로 병합한다(private — self-invocation 회피). */
+    /**
+     * users + user_profiles 를 조회해 [ProfileView] 로 병합한다(private — self-invocation 회피).
+     *
+     * [ProfileView] 를 만드는 유일한 지점이므로 FR-PR-04 의 `displayNameSource`(users.display_name_source)
+     * 와 `ldapLinked`(외부 IdP 연결 존재) 도 여기서 채운다 — 사용자 존재 확인([UserRepository.findById])
+     * 이후에 조회하므로, 미존재 사용자는 두 targeted 쿼리를 타지 않고 [ProfileUserNotFoundException] 로 끝난다.
+     */
     private fun loadView(userId: UUID): ProfileView {
         val user = userRepository.findById(userId) ?: throw ProfileUserNotFoundException(userId)
         val profile = profileRepository.findByUserId(userId)
@@ -182,6 +223,8 @@ class UserProfileService(
             avatarObjectKey = profile?.avatarObjectKey,
             timezone = profile?.timezone ?: DEFAULT_TIMEZONE,
             department = profile?.department,
+            displayNameSource = userRepository.findDisplayNameSource(userId) ?: DEFAULT_DISPLAY_NAME_SOURCE,
+            ldapLinked = externalAccountRepository.existsByUserId(userId),
         )
     }
 
@@ -236,9 +279,18 @@ class UserProfileService(
 }
 
 /**
- * [UserProfileService.getProfile] / [UserProfileService.patchProfile] 반환용 조회 뷰 (FR-PR-01).
+ * [UserProfileService.getProfile] / [UserProfileService.patchProfile] / [UserProfileService.resyncDisplayName]
+ * 반환용 조회 뷰 (FR-PR-01, FR-PR-04).
  *
  * avatarUrl(다운로드 경로) 파생은 컨트롤러(Task 5) 책임 — 여기서는 raw `avatarObjectKey` 만 노출한다.
+ *
+ * @property displayNameSource display_name 값의 출처 — `LDAP`(디렉터리 동기화) 또는 `USER`(사용자 편집으로 잠김). FR-PR-04.
+ * @property ldapLinked 외부 IdP(디렉터리) 계정 연결 여부 — true 면 UI 가 출처 라벨/재동기화 어포던스를 노출한다. FR-PR-04.
+ *
+ * `displayNameSource`/`ldapLinked` 는 보수적 기본값(출처 미상 → `LDAP` 라벨, 미연결 → false)을 가진다.
+ * 프로덕션 유일 생성 지점 [UserProfileService.loadView] 는 항상 두 값을 명시로 채우므로 기본값이 쓰이지 않으며,
+ * 기본값은 하위 호환(다른 구성 지점의 필드 fanout 완충)만을 위한 것이다. resync 인가 판정은 이 뷰 필드가 아니라
+ * [ExternalAccountRepository.existsByUserId] 를 직접 사용하므로 기본값이 권한 경로에 영향을 주지 않는다.
  */
 data class ProfileView(
     val userId: UUID,
@@ -248,6 +300,8 @@ data class ProfileView(
     val avatarObjectKey: String?,
     val timezone: String,
     val department: String?,
+    val displayNameSource: String = DEFAULT_DISPLAY_NAME_SOURCE,
+    val ldapLinked: Boolean = false,
 )
 
 /**
@@ -289,3 +343,10 @@ class ProfileUserNotFoundException(userId: UUID) : RuntimeException("user not fo
  * @param cause 원인 예외(예: [DateTimeException]) — 체이닝 보존, 메시지 자체는 노출하지 않는다.
  */
 class ProfileValidationException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
+
+/**
+ * display_name 재동기화 대상이 외부 IdP(디렉터리) 연결이 없는 사용자일 때 발생하는 예외(→ 409, 컨트롤러 매핑). FR-PR-04.
+ *
+ * @param message 사용자 노출용 일반화 메시지 — userId 등 내부 정보를 담지 않는다(DEVELOPMENT.md §1.2).
+ */
+class DisplayNameNotLdapLinkedException(message: String) : RuntimeException(message)
