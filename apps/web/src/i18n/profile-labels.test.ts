@@ -108,12 +108,12 @@ describe('mapProfileError', () => {
     expect(mapProfileError(error)).toBe('요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.')
   })
 
-  it('DISPLAY_NAME_NOT_LDAP_LINKED(FR-PR-04 resync 409) → LDAP 미연결 안내 메시지를 반환한다', () => {
+  it('DISPLAY_NAME_NOT_LDAP_LINKED(FR-PR-04 resync 409) → 디렉터리 미연결 안내 메시지를 반환한다', () => {
     const error = new ApiError(409, {
       code: 'DISPLAY_NAME_NOT_LDAP_LINKED',
       message: 'ignored',
     })
-    expect(mapProfileError(error)).toContain('LDAP')
+    expect(mapProfileError(error)).toContain('디렉터리')
   })
 })
 

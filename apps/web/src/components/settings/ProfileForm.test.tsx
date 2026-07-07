@@ -558,7 +558,7 @@ describe('ProfileForm — FR-PR-04 LDAP 출처 배지 + 재설정', () => {
     await user.click(screen.getByRole('button', { name: profileLabels.ldapSource.resyncButton }))
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('LDAP')
+      expect(screen.getByRole('alert')).toHaveTextContent('디렉터리')
     })
   })
 

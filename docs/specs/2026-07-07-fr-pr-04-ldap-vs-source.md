@@ -44,8 +44,8 @@
 - **Given** LDAP 연결 사용자
 - **When** 프로필 페이지 진입
 - **Then** display_name 필드에 출처 상태가 표시된다.
-  - source=LDAP: "LDAP에서 동기화됨" 배지 + "직접 편집"(override) 버튼
-  - source=USER: "직접 편집됨" 표시 + "LDAP 값으로 재설정" 버튼
+  - source=LDAP: "디렉터리에서 동기화됨" 배지 + "직접 편집"(override) 버튼
+  - source=USER: "직접 편집됨" 표시 + "디렉터리 값으로 재설정" 버튼 (문구는 provider-중립)
 
 ## 기능 요구사항 (FR)
 
@@ -54,7 +54,7 @@
 - **FR-3** 프로필 PATCH로 displayName을 수정하면 서비스가 같은 트랜잭션에서 `display_name_source='USER'`로 전환한다.
 - **FR-4** GET `/me/profile` 응답에 `displayNameSource`(LDAP|USER)와 `ldapLinked`(외부 IdP 계정 보유=디렉터리 동기화 대상) 노출.
 - **FR-5** 재동기화 엔드포인트: 사용자가 display_name_source를 `USER`→`LDAP`로 되돌린다. 외부 계정이 없는 사용자에겐 409.
-- **FR-6** 프론트: display_name 필드에 출처 배지 + override(직접 편집) + "LDAP 값으로 재설정" 액션. 로컬 전용 사용자에겐 미노출.
+- **FR-6** 프론트: display_name 필드에 출처 배지 + override(직접 편집) + "디렉터리 값으로 재설정"(provider-중립 문구) 액션. 로컬 전용 사용자에겐 미노출.
 
 ## API 인터페이스 (REST)
 

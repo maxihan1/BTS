@@ -66,7 +66,7 @@
 - [x] D3. 데이터 모델 — `users.display_name_source` 단일 컬럼(V030, ADR 2026-07-07 D1 — display_name이 users에 있어 원안 "user_profiles 컬럼별 source"를 정정) (책임. db-engineer)
 - [x] D4. 백엔드 — LDAP 재로그인 UPSERT CASE 게이트(source=USER면 보존) + resync 엔드포인트 (책임. backend-engineer)
 - [x] D5. 백엔드 테스트 — 충돌 시나리오(S2 보존/S3 동기화) + resync 200/409 (책임. backend-engineer)
-- [x] D6. 프론트 UI — display_name "LDAP에서 동기화됨" 배지 + "LDAP 값으로 재설정"(로컬 사용자 미노출) (책임. designer → frontend-engineer)
+- [x] D6. 프론트 UI — display_name "디렉터리에서 동기화됨" 배지 + "디렉터리 값으로 재설정"(provider-중립 문구, 로컬 사용자 미노출) (책임. designer → frontend-engineer)
 - [x] D7. E2E (책임. qa-engineer)
 
 ## §3 환경 설정 (FR-PF, 3개)
