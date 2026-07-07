@@ -106,7 +106,7 @@ FR-PF-01 — 사용자별 환경 설정. 테마(라이트/다크) · 언어(loca
 
 **GREEN**.
 - `PreferencesController` 재작성 — `UserProfileController` 미러(JWT-only `currentUserId`, 로컬 `@ExceptionHandler`로 `PreferencesValidationException`→400). **기존 POST 핸들러 제거**.
-- `PreferencesResponse(theme, locale, dateFormat)` + `PreferencesPatchRequest`(3-state 부분 수정; profile의 `JsonNode`/`ProfilePatchField` 패턴 또는 nullable enum 문자열).
+- `PreferencesResponse(theme, locale, dateFormat)` + `PreferencesPatchRequest`. **eng-review E-4**: enum은 null-delete 상태가 없으므로 **2-state(Absent/Present)**로 충분 — nullable enum 문자열(null=미제공) DTO면 되고 profile의 `JsonNode` 3-state 과설계 회피.
 - CSRF 데모 테스트 3곳(`PreferencesControllerCsrfTest`·`PatAndConcurrencyIntegrationTest` CSRF-B·`PasswordControllerMvcTest` 참조) POST→PATCH 이관.
 
 **REFACTOR**. 에러코드 상수 + KDoc(profile 컨트롤러 톤). PoC 표현 잔재 제거.
@@ -122,7 +122,7 @@ FR-PF-01 — 사용자별 환경 설정. 테마(라이트/다크) · 언어(loca
 
 **RED**. `WhoamiControllerTest` — JWT 분기 whoami가 theme/locale/dateFormat 포함(행 없으면 기본값) + PAT 분기는 기본값(system/ko/iso). 실패: 필드 없음.
 
-**GREEN**. `WhoamiResponse`에 `theme`/`locale`/`dateFormat: String` 추가(FR-PR-02/03 view-layer 패턴). `WhoamiController` JWT 분기가 `UserPreferencesService.getPreferences` 반영, PAT 분기는 기본값 상수.
+**GREEN**. `WhoamiResponse`에 `theme`/`locale`/`dateFormat: String` 추가(FR-PR-02/03 view-layer 패턴). **eng-review E-1**: 3필드 모두 Kotlin 기본값(`= "system"`/`= "ko"`/`= "iso"`) 부여 — 기존 모든 WhoamiResponse 생성 지점 churn 최소화(`userId = null` 선례). `WhoamiController` JWT 분기가 `UserPreferencesService.getPreferences` 반영, PAT 분기는 기본값 상수.
 
 **REFACTOR**. KDoc 필드 설명(기존 톤).
 
@@ -194,7 +194,7 @@ FR-PF-01 — 사용자별 환경 설정. 테마(라이트/다크) · 언어(loca
 
 **RED**. 대표 사이트에 프리셋 반영 검증 테스트(예: IssueMetaPanel이 dateFormat=us면 `07/07/2026`) + 기존 날짜 단위 테스트가 기본 프리셋(iso)에서 그대로 통과. **상대시간("N일 전") 표시는 이관 대상 아님** — 뭉갬 금지.
 
-**GREEN**. `lib/datetime.ts`·`lib/date-format.ts`를 공통 preset 포맷터 위임으로 재작성(기본 iso=기존 출력 유지). 인라인 `toLocaleDateString`/`toLocaleString`/`Intl.DateTimeFormat` 절대 날짜 사이트를 `useDateFormat`/공통 포맷터로 이관. 착수 전 `grep -rn "toLocaleDateString\|toLocaleString\|Intl.DateTimeFormat" apps/web/src --include=*.tsx`로 전수 목록 확정(E7 커버).
+**GREEN**. `lib/datetime.ts`·`lib/date-format.ts`를 공통 preset 포맷터 위임으로 재작성. **eng-review E-2**: 기본 iso 프리셋은 `date-format.ts`(YYYY-MM-DD) 출력과 동일(회귀 0)이나, `datetime.ts`는 현재 ko-KR 롱폼("2026. 5. 29. 오후 7:00")이라 preset 체계로 **정규화됨**(회귀 발생 — Maxi 감수) → `datetime.test.ts` 기대값 동반 갱신. 인라인 `toLocaleDateString`/`toLocaleString`/`Intl.DateTimeFormat` 절대 날짜 사이트를 `useDateFormat`/공통 포맷터로 이관. 착수 전 `grep -rn "toLocaleDateString|toLocaleString|Intl.DateTimeFormat" apps/web/src`로 전수 목록 확정(E7 커버).
 
 **REFACTOR**. 중복 포맷 헬퍼 제거 + import 정리.
 
@@ -222,4 +222,19 @@ FR-PF-01 — 사용자별 환경 설정. 테마(라이트/다크) · 언어(loca
 - 추가 검증: ktlint/detekt(`--rerun-tasks`), typecheck(tsconfig.app), vitest, playwright
 - BC 격리: identity-access 단일. cross-BC 없음. (프론트+same-BC view-layer는 한 PR 정상 — FR-PR 선례)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+집중 eng+devex 리뷰(메모리 `bts-review-plan-autoplan-overkill` — 저위험 FR-PR 복제 plan은 autoplan 4-phase 대신 집중 리뷰). **BLOCKER: 없음**.
+
+### plan-eng-review (2026-07-07)
+- ✅ 트랜잭션 경계 명시(T2 `@Transactional` upsert).
+- ✅ **Flyway V번호 충돌 없음** — 각 모듈은 독립 Boot 앱 + `classpath:db/migration` 별도 schema_version 히스토리. 동시 세션 fr-sl-01(slack-integration)과 네임스페이스 분리. 단 동일 모듈 대비 머지 직전 V031 max 재확인(T1).
+- ⚠️ **E-1** (T4 반영): WhoamiResponse non-null 3필드 → Kotlin 기본값 부여로 call-site churn 최소화.
+- ⚠️ **E-2** (T8 반영): datetime.ts는 iso 기본에서도 정규화 발생(회귀, Maxi 감수) → 테스트 동반 갱신.
+- ⚠️ **E-4** (T3 반영): PATCH는 2-state로 충분, JsonNode 3-state 과설계 회피.
+
+### plan-devex-review (2026-07-07)
+- ✅ **D-1**: POST stub 제거는 내부 CSRF 데모 전용 → 외부 API 호환성 무영향. 신규 GET/PATCH는 additive.
+- ✅ **D-2**: whoami 필드 추가는 additive backward-compatible.
+- ⚠️ **D-3** (T5/T7): `api/preferences.ts`는 same-BC 프론트 관례(`api/useProfile.ts`) grep 후 작성(메모리 `frontend-api-convention-per-bc`).
+- ✅ date_format 프리셋(iso/kr/us/eu) 명확, 시각부 HH:mm 고정.
