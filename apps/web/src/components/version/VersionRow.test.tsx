@@ -1,5 +1,5 @@
 // VersionRow 단위 테스트 — 렌더/날짜표시/수정콜백/삭제확인/aria-label/날짜 null 분기/릴리즈 노트 버튼
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -9,6 +9,8 @@ import type { ReactNode } from 'react'
 import { server } from '@/test/server'
 import { versionHandlers, resetVersionStore } from '@/mocks/version-handlers'
 import type { Version } from '@/api/versions.types'
+import { useAuthStore } from '@/auth/authStore'
+import { aliceUser } from '@/mocks/auth-fixtures'
 import { VersionRow } from './VersionRow'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -683,5 +685,42 @@ describe('VersionRow — 릴리즈 노트 버튼', () => {
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-PF-01 Task 8 — 시작일/릴리즈 예정일 표시가 사용자 dateFormat 프리셋을 따른다
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('VersionRow — 날짜 표시 프리셋 반영 (FR-PF-01 Task 8)', () => {
+  afterEach(() => {
+    useAuthStore.getState().clearSession()
+  })
+
+  /**
+   * 로그인 사용자의 dateFormat='eu'이면 시작일이 DD/MM/YYYY 순서로 표시된다.
+   * startDate='2026-07-08'(날짜만) → KST 기준 같은 날짜 → eu 프리셋 "08/07/2026".
+   */
+  it('dateFormat=eu이면 시작일이 DD/MM/YYYY로 표시된다', () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'test-token',
+      user: { ...aliceUser, dateFormat: 'eu' },
+    })
+    const versionEu: Version = { ...versionWithDates, startDate: '2026-07-08' }
+    const onEdit = vi.fn()
+    const onDelete = vi.fn()
+    const Wrapper = createWrapper()
+    render(
+      <VersionRow
+        version={versionEu}
+        projectKey={PROJECT_KEY}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        canManage={true}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    expect(screen.getByText('08/07/2026')).toBeInTheDocument()
   })
 })
