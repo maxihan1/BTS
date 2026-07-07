@@ -59,9 +59,9 @@ class UserPreferencesService(
         userId: UUID,
         patch: PreferencesPatch,
     ): UserPreferences {
-        patch.theme?.let(::validateTheme)
-        patch.locale?.let(::validateLocale)
-        patch.dateFormat?.let(::validateDateFormat)
+        patch.theme?.let { validateAllowed(it, UserPreferences.THEMES, "테마") }
+        patch.locale?.let { validateAllowed(it, UserPreferences.LOCALES, "로케일") }
+        patch.dateFormat?.let { validateAllowed(it, UserPreferences.DATE_FORMATS, "날짜 형식") }
 
         val current = repository.findByUserId(userId)
         val effective =
@@ -86,21 +86,19 @@ class UserPreferencesService(
             dateFormat = UserPreferences.DEFAULT_DATE_FORMAT,
         )
 
-    private fun validateTheme(theme: String) {
-        if (theme !in UserPreferences.THEMES) {
-            throw PreferencesValidationException("유효하지 않은 테마 값입니다.")
-        }
-    }
-
-    private fun validateLocale(locale: String) {
-        if (locale !in UserPreferences.LOCALES) {
-            throw PreferencesValidationException("유효하지 않은 로케일 값입니다.")
-        }
-    }
-
-    private fun validateDateFormat(dateFormat: String) {
-        if (dateFormat !in UserPreferences.DATE_FORMATS) {
-            throw PreferencesValidationException("유효하지 않은 날짜 형식 값입니다.")
+    /**
+     * [value] 가 [allowed] 에 없으면 [PreferencesValidationException] 을 던진다.
+     *
+     * theme/locale/dateFormat 세 필드 모두 "값이 있으면 companion 허용 목록 중 하나" 라는 동일 규칙을
+     * 공유하므로, 필드별 개별 검증 메서드 대신 이 헬퍼 하나로 응집한다([fieldLabel] 만 메시지에 반영).
+     */
+    private fun validateAllowed(
+        value: String,
+        allowed: Set<String>,
+        fieldLabel: String,
+    ) {
+        if (value !in allowed) {
+            throw PreferencesValidationException("유효하지 않은 $fieldLabel 값입니다.")
         }
     }
 }
