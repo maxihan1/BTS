@@ -58,4 +58,191 @@ FR-PR-04 = "LDAP 동기화 시 USER 편집 필드는 덮어쓰지 않음" + 필�
 
 ## Plan (← /bts-plan 채움)
 
+## Plan
+
+> 모든 identity-access 리포지토리/서비스 테스트는 Testcontainers(실 Postgres)로 마이그레이션을 적용해 돈다.
+> 공유 `User` 도메인/`UserRowMapper`에 컬럼 추가 금지(8 SELECT fanout 회피) — 프로필 전용 targeted 쿼리 사용.
+
+### Task 1. 마이그레이션 V030 — users.display_name_source 컬럼
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/identity-access/src/main/resources/db/migration/V030__user_display_name_source.sql`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/profile/UserDisplayNameSourceSchemaTest.kt`]
+- depends-on: []
+
+**RED**: `UserDisplayNameSourceSchemaTest` — Testcontainers로 마이그레이션 적용 후 `information_schema.columns` 조회.
+- `users.display_name_source` 존재 · 타입 `character varying(8)` · NOT NULL · DEFAULT `'LDAP'`
+- CHECK 제약이 `('LDAP','USER')`만 허용(INSERT 위반 시 예외) → 실패(컬럼 없음)
+
+**GREEN**: V030 SQL 작성.
+```sql
+ALTER TABLE users
+  ADD COLUMN display_name_source VARCHAR(8) NOT NULL DEFAULT 'LDAP'
+    CHECK (display_name_source IN ('LDAP', 'USER'));
+COMMENT ON COLUMN users.display_name_source IS 'FR-PR-04 ...';
+```
+기존 행은 DEFAULT로 자동 backfill='LDAP'.
+
+**REFACTOR**: COMMENT 문구 정리. init_codegen 미러 불요(jdbc-only) 주석 명시.
+
+**검증**: `./gradlew :backend:identity-access:test --tests "*UserDisplayNameSourceSchemaTest"`
+
+---
+
+### Task 2. UserRepository — CASE 게이트 + 편집 시 USER 전환 + resync + source 조회
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/user/UserRepository.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/user/UserRepositoryTest.kt`]
+- depends-on: [1]
+
+**RED**: UserRepositoryTest에 4개 테스트 추가.
+- `provisionFromExternal이 source=USER 행의 display_name을 보존한다`(S2): provision → updateDisplayName("앨리스")로 source=USER 전환 → provisionFromExternal(cn="Alice") 재호출 → display_name still "앨리스"
+- `provisionFromExternal이 source=LDAP 행의 display_name을 동기화한다`(S3): provision → cn 변경 재provision → display_name 갱신
+- `updateDisplayName이 display_name_source를 USER로 전환한다`
+- `resyncDisplayNameSource가 source를 LDAP로 되돌린다` + `findDisplayNameSource가 현재 source를 반환한다`
+
+**GREEN**:
+- `SQL_PROVISION_UPSERT`의 `DO UPDATE` display_name을 `CASE WHEN users.display_name_source='USER' THEN users.display_name ELSE EXCLUDED.display_name END`로 변경. email·updated_at은 유지. source 컬럼은 동기화가 미변경. (`SQL_UPSERT` 로컬 경로는 손대지 않음)
+- `SQL_UPDATE_DISPLAY_NAME`에 `display_name_source='USER'` 추가.
+- 신규 `SQL_RESYNC_DISPLAY_NAME_SOURCE`(`SET display_name_source='LDAP', updated_at=NOW() WHERE id=:userId`) + `resyncDisplayNameSource(userId)`.
+- 신규 `SQL_FIND_DISPLAY_NAME_SOURCE` + `findDisplayNameSource(userId): String?`.
+- 인터페이스(UserRepository)에 신규 메서드 시그니처 추가.
+
+**REFACTOR**: SQL 상수 KDoc(왜 CASE 게이트인지 — S2 보존). ktlint/detekt 라인길이 점검.
+
+**검증**: `./gradlew :backend:identity-access:test --tests "*UserRepositoryTest"`
+
+---
+
+### Task 3. ExternalAccountRepository — existsByUserId (ldapLinked 판별)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/provider/ldap/ExternalAccountRepository.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/provider/ldap/ExternalAccountRepositoryTest.kt`]
+- depends-on: [1]
+
+**RED**: `existsByUserId가 외부계정 있으면 true, 없으면 false`. provisionUser로 매핑 생성한 userId=true, 미매핑 userId=false.
+
+**GREEN**: `SQL_EXISTS_BY_USER_ID`(`SELECT EXISTS(SELECT 1 FROM user_external_accounts WHERE user_id=:userId)`) + `existsByUserId(userId): Boolean`.
+
+**REFACTOR**: KDoc — "외부 IdP 연결 = 디렉터리 동기화 대상". 책임 경계(user_external_accounts만) 유지.
+
+**검증**: `./gradlew :backend:identity-access:test --tests "*ExternalAccountRepositoryTest"`
+
+---
+
+### Task 4. UserProfileService — ProfileView 확장 + resyncDisplayName + 예외
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/profile/UserProfileService.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/profile/UserProfileServiceTest.kt`]
+- depends-on: [2, 3]
+
+**RED**: UserProfileServiceTest에 추가.
+- `getProfile가 displayNameSource·ldapLinked를 채운다`(외부계정 있음/없음 두 케이스)
+- `patchProfile로 displayName 편집 시 source가 USER로 반영된다`(loadView 재조회 값 확인)
+- `resyncDisplayName이 외부계정 있는 사용자의 source를 LDAP로 되돌린다`
+- `resyncDisplayName이 외부계정 없는 사용자에 DisplayNameNotLdapLinkedException을 던진다`
+
+**GREEN**:
+- `ProfileView`에 `displayNameSource: String`, `ldapLinked: Boolean` 추가.
+- `loadView`가 `userRepository.findDisplayNameSource(userId)` + `externalAccountRepository.existsByUserId(userId)`로 채움.
+- 생성자에 `ExternalAccountRepository` 주입.
+- `resyncDisplayName(userId)`: `existsByUserId` false면 `DisplayNameNotLdapLinkedException` throw, true면 `userRepository.resyncDisplayNameSource(userId)` 후 `loadView` 반환. `@Transactional`.
+- 신규 예외 클래스 `DisplayNameNotLdapLinkedException`.
+
+**REFACTOR**: KDoc(source 채우기 경로). patchProfile은 로직 변경 없음(source 전환은 repo SQL) — loadView만 확장됨을 주석 명시.
+
+**검증**: `./gradlew :backend:identity-access:test --tests "*UserProfileServiceTest"`
+
+---
+
+### Task 5. DTO + Controller — 응답 필드 + resync 엔드포인트 + 409
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/dto/ProfileResponse.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/UserProfileController.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/web/UserProfileControllerTest.kt`]
+- depends-on: [4]
+
+**RED**: UserProfileControllerTest에 추가.
+- `GET /me/profile 응답에 displayNameSource·ldapLinked가 포함된다`
+- `POST /me/profile/display-name/resync가 200과 source=LDAP 응답을 반환한다`
+- `resync가 외부계정 없는 사용자에 409(DISPLAY_NAME_NOT_LDAP_LINKED)를 반환한다`
+- `resync가 PAT/비JWT 인증에 401`
+
+**GREEN**:
+- `ProfileResponse`에 `displayNameSource: String`, `ldapLinked: Boolean` 추가. `toResponse`가 view에서 매핑.
+- `POST /me/profile/display-name/resync` 핸들러 → `userProfileService.resyncDisplayName(currentUserId(jwt))` → `toResponse`.
+- 로컬 `@ExceptionHandler(DisplayNameNotLdapLinkedException)` → 409 `{code:"DISPLAY_NAME_NOT_LDAP_LINKED", message:"..."}`(내부정보 없음).
+
+**REFACTOR**: 엔드포인트 KDoc + 에러코드 상수. `@Suppress("TooManyFunctions")` 유지.
+
+**검증**: `./gradlew :backend:identity-access:test --tests "*UserProfileControllerTest"`
+
+---
+
+### Task 6. 프론트 — 출처 배지 + override + LDAP 재설정
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/features/profile/*` (프로필 페이지 컴포넌트), `apps/web/src/features/profile/api.ts`(또는 해당 BC api), `apps/web/src/features/profile/*.test.tsx`]
+- depends-on: [5]
+
+**RED**: 컴포넌트 테스트(vitest + MSW).
+- `displayNameSource=LDAP + ldapLinked=true면 "LDAP에서 동기화됨" 배지 + "직접 편집" 노출`
+- `displayNameSource=USER면 "LDAP 값으로 재설정" 노출, 클릭 시 resync 호출 후 배지가 LDAP로 갱신`
+- `ldapLinked=false(로컬 사용자)면 출처 배지·재설정 미노출`
+
+**GREEN**:
+- Zod 스키마에 `displayNameSource`('LDAP'|'USER'), `ldapLinked`(boolean) 추가(backend DTO와 정합 — 스펙 grep).
+- 프로필 페이지 display_name 필드 근처에 출처 상태 UI. override(직접 편집)/재설정 어포던스.
+- resync mutation(`POST /me/profile/display-name/resync`) + 성공 시 프로필 invalidate.
+
+**REFACTOR**: 문자열 상수/aria-label. 기존 프로필 페이지 스타일 관례 준수.
+
+**검증**: `pnpm --filter web test`(해당 스펙) + `pnpm --filter web typecheck`
+
+---
+
+### Task 7. E2E — 출처 배지 / override / 재설정 플로우
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/profile-ldap-source.spec.ts`, `apps/web/src/mocks/**`(MSW 핸들러 — resync + source 필드 시나리오 토글)]
+- depends-on: [6]
+
+**RED/GREEN**: Playwright + MSW로 S1/S4/S5 해피패스.
+- LDAP 소싱 사용자: 배지 표시 → 이름 편집(override) → USER 배지 → "재설정" → LDAP 배지
+- 로컬 사용자: 배지/재설정 미노출
+- MSW mutation stateful(재설정 후 재조회 반영) — msw-mutation-stateful-refetch 패턴
+
+**검증**: `pnpm --filter web test:e2e --grep "profile-ldap-source"`
+
+---
+
+### Task 8. 문서 전수 동기화 — product §2.4 D1~D7 + D3 정정
+
+**메타**.
+- agent: `security-engineer` (문서 작업, TDD 없음)
+- files: [`docs/plan/product/personalization.md`]
+- depends-on: [5]
+
+**작업**(테스트 없음 — 문서).
+- `§2.4 FR-PR-04` D1~D7 체크박스 `[x]` 마킹(실제 구현 반영).
+- D3 표기 "user_profiles 컬럼별 source 표시" → "users.display_name_source 단일 컬럼(ADR 2026-07-07 D1, 실 충돌 필드 display_name)"로 정정.
+- FR 카운트 무변(상태만) — verify-master-plan.sh 통과 확인.
+
+**검증**: `bash scripts/verify-master-plan.sh`
+
+## Plan 메타
+
+- task 수: 8
+- 예상 wave: 약 6 (Task1 → {2,3} → 4 → 5 → 6 → 7). Task 8은 depends-on [5]라 5 이후 아무 wave.
+- 예상 시간: 직렬 기준 약 24분, wave 병렬 적용 시 약 15분(backend→frontend→e2e 계약 의존 체인이 본질적 직렬).
+- TDD 강제: yes (Task 8 문서 제외)
+- 병렬 dispatch: Task 2·3만 동시(Task1 이후, 파일 무겹침). 나머지는 계약 의존으로 직렬.
+- 추가 검증: ktlint/detekt(backend), typecheck/vitest(front), playwright(qa), verify-master-plan(docs)
+- 주의(메모리): User RowMapper fanout 금지 · 스키마 스냅샷 테스트 점검 · MSW stateful refetch · frontend Zod↔backend DTO 정합 · V030 머지 직전 재확인
+
 ## 리뷰 결과 (← /bts-review-plan 채움)
