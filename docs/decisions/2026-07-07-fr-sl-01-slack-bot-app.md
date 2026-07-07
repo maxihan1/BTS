@@ -16,7 +16,11 @@ FR-SL-01은 **slack-integration BC의 첫 구현**이다. 이 BC는 아직 코�
 
 ### D1. slack-integration BC를 신규 Gradle 모듈로 신설
 
-`backend/modules/slack-integration`. 다른 BC를 직접 import하지 않는다(CLAUDE.md §핵심 패턴 BC 격리). notification BC가 발행하는 알림 이벤트를 Slack으로 변환(FR-SL-02+), issue-tracking URL을 Unfurl(FR-SL-03)하는 등의 연동은 이벤트/포트 경유로만 한다. 패키지 루트 `com.atlas.bts.slack`.
+`backend/modules/slack-integration`. 다른 BC를 직접 import하지 않는다(CLAUDE.md §핵심 패턴 BC 격리). notification BC가 발행하는 알림 이벤트를 Slack으로 변환(FR-SL-02+), issue-tracking URL을 Unfurl(FR-SL-03)하는 등의 연동은 이벤트/포트 경유로만 한다.
+
+- **패키지 루트 `com.bts.slack`**. 최신 BC 관례(`com.bts.notification`/`com.bts.search`)와 일관. `com.atlas.bts.identity`는 최초 모듈의 예외 표기.
+- **부팅 모델 = test-boot only**. search-export-import 등 최신 BC처럼 프로덕션 `@SpringBootApplication` 없이 `SlackIntegrationTestBootApplication`(test)으로 통합 검증한다. 통합 배포 조립 앱은 현재 리포에 부재(Phase 1, `no-cross-bc-deployment-assembly`) — 후속.
+- **build.gradle.kts는 각 모듈 직접 선언**(루트 subprojects 상속 없음). `implementation(project(":modules:shared-kernel"))` + `com.slack.api:slack-api-client:<버전>` 리터럴 + `detekt { baseline = file("detekt-baseline.xml") }`.
 
 ### D2. Slack 연동 = `slack-api-client` (공식 SDK의 client 층만, Bolt 프레임워크 미도입)
 
@@ -45,6 +49,14 @@ Slack 공식 Java SDK(`java-slack-sdk`)는 두 층으로 나뉜다.
 ### D5. 스코프 = 백엔드 코어(D1~D5). 실 Slack App 없음 → 통합 테스트는 Slack API stub
 
 이번 PR은 D1(도메인)~D5(백엔드 테스트)까지. D6(관리자 "Slack 연결" 프론트 UI)·D7(E2E)은 후속 PR. 실제 Slack 워크스페이스/App credentials가 없으므로 통합 테스트는 Slack `oauth.v2.access` 응답을 stub/mock하고, 실 credentials(`BTS_SLACK_CLIENT_ID`/`BTS_SLACK_CLIENT_SECRET`)는 환경변수로 후주입한다. 완제품 품질의 OAuth 흐름 코드는 실 App 유무와 무관하게 작성한다.
+
+### D6. DB 접근 = JdbcTemplate
+
+`slack_installs`는 단일 테이블 단순 CRUD(`team_id` upsert + `findByTeamId`)다. identity-access(동일 auth/security 영역)의 JdbcTemplate 관례를 따른다 — jOOQ codegen 스택(Testcontainers introspection·`src/generated/jooq` 소스셋·`init_codegen.sql` 미러) 신설 부담을 피하고 새 모듈 첫 컴파일 리스크를 최소화. DATA.md §5(파라미터 바인딩 `?` placeholder로 injection 방어)를 준수한다. Flyway 로케이션 `classpath:db/migration/slack-integration` + 버전 블록 **V700~V799**(BC별 100단위 예약 관례).
+
+### D7. SecurityFilterChain = 이번 범위는 test-boot SecurityConfig, 배포 조립 시 중앙 등록은 후속
+
+프로덕션 `SecurityFilterChain`은 identity-access 중앙 `SecurityConfig`에만 있다. `/slack/install/callback` permitAll을 이 중앙 config에 넣으면 **BC 격리 위반**이므로, 이번 PR은 slack test-boot의 자체 SecurityConfig로 검증만 한다(`/slack/install` 인증 필요·`/slack/install/callback` permitAll GET). 배포 조립 시점에 중앙 `SecurityConfig`에 콜백 permitAll을 추가하는 것은 **DEVELOPMENT.md §1.4 예외로 ADR/게이트 승인이 필요한 후속 작업**(public dashboards 경로 선례와 동일 취급).
 
 ## 알려진 한계 (수용)
 
