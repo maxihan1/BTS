@@ -16,6 +16,9 @@ import { Avatar } from '@/components/ui/avatar'
 import { FavoritesMenu } from '@/components/favorite/FavoritesMenu'
 import { InboxBell } from '@/components/inbox/InboxBell'
 import { StatusModal } from '@/components/status/StatusModal'
+import { OooModal } from '@/components/ooo/OooModal'
+import { oooLabels } from '@/i18n/ooo-labels'
+import { formatOooReturnDate } from '@/lib/ooo-datetime'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // admin 링크 목록 — isSystemAdmin=true 시 관리 메뉴에 표시할 링크
@@ -53,10 +56,19 @@ export const Header = () => {
   const navigate = useNavigate()
   const logoutMutation = useLogoutMutation()
   const [statusOpen, setStatusOpen] = useState(false)
+  const [oooOpen, setOooOpen] = useState(false)
 
   // 활성 상태 이모지(whoami view-layer, FR-PR-02). 빈 문자열/null이면 배지 미표시.
   const statusEmoji = user?.statusEmoji != null && user.statusEmoji !== '' ? user.statusEmoji : null
   const statusText = user?.statusText ?? null
+
+  // 활성 부재중(whoami view-layer, FR-PR-03). 상태 배지(FR-PR-02)와 동시 표시 가능 — 서로 다른
+  // 위치에 배치해 시각 충돌 없이 공존한다(C2, 아바타 오버레이 vs 계정명 옆 별도 뱃지).
+  const oooActive = user?.oooActive === true
+  const oooReturnDate = formatOooReturnDate(user?.oooUntil ?? null)
+  const oooSuffix = oooActive
+    ? `, ${oooLabels.headerBadge}${oooReturnDate !== null ? `(${oooLabels.headerBadgeReturnPrefix} ${oooReturnDate})` : ''}`
+    : ''
 
   const handleLogout = () => {
     logoutMutation.mutate(undefined, {
@@ -113,7 +125,7 @@ export const Header = () => {
           <button
             type="button"
             className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium hover:bg-accent"
-            aria-label={`${accountLabel}${statusText !== null ? `, ${statusText}` : ''} 계정 메뉴`}
+            aria-label={`${accountLabel}${statusText !== null ? `, ${statusText}` : ''}${oooSuffix} 계정 메뉴`}
           >
             {/* aria-hidden — 버튼의 aria-label이 접근 가능한 이름(계정명 + 상태 텍스트)을 이미 제공하므로
                 내부 Avatar(role=img)/텍스트/상태 배지가 스크린리더에 중복 announce 되지 않게 숨긴다 */}
@@ -136,11 +148,20 @@ export const Header = () => {
                 )}
               </span>
               <span>{accountLabel}</span>
+              {oooActive && (
+                <span
+                  title={oooReturnDate !== null ? `${oooLabels.headerBadgeReturnPrefix}: ${oooReturnDate}` : undefined}
+                  className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                >
+                  {oooLabels.headerBadge}
+                </span>
+              )}
             </span>
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onSelect={() => { setStatusOpen(true) }}>상태 설정</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => { setOooOpen(true) }}>{oooLabels.accountMenuItem}</DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link to="/settings/profile">프로필</Link>
           </DropdownMenuItem>
@@ -161,6 +182,7 @@ export const Header = () => {
         </DropdownMenuContent>
       </DropdownMenu>
       <StatusModal open={statusOpen} onOpenChange={setStatusOpen} />
+      <OooModal open={oooOpen} onOpenChange={setOooOpen} />
     </header>
   )
 }
