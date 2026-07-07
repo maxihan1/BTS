@@ -36,9 +36,22 @@ SDD 09장(알림/Slack). product: docs/plan/product/slack-integration.md §2.1
 - **기존 결정 충돌**: 없음 (slack-integration BC 첫 ADR). domain 노트 "KMS" 표기만 정정 필요 (머지 시 동기화).
 - **관련 ADR**: [docs/decisions/2026-07-07-fr-sl-01-slack-bot-app.md](../decisions/2026-07-07-fr-sl-01-slack-bot-app.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-07-fr-sl-01-slack-bot-app.md](../specs/2026-07-07-fr-sl-01-slack-bot-app.md)
+
+핵심 시나리오 3줄 요약.
+- 시스템 관리자가 `GET /slack/install` → Slack authorize 302 (서명 state에 installedBy 박제, cross-BC `SystemPermissionResolver`로 관리자 판정)
+- Slack 동의 후 `GET /slack/install/callback` → state 서명·만료 검증 → `oauth.v2.access` 토큰 교환 → bot token AES 암호화 저장(`slack_installs`, team_id upsert)
+- STATELESS 정합 = 서명 self-contained state(서버 저장 0), enterprise install 거부, 실 App 없어 Slack API stub 통합 테스트
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration, adversarial sanity check). gap 4건 발견·보강.
+- G1 enterprise install `team` null → 워크스페이스 설치만, enterprise 거부
+- G2 관리자 가드 → `SystemPermissionResolver` cross-BC 포트(OutboundWebhookService 선례), identity-access import 금지
+- G3 redirect_uri → `BTS_SLACK_REDIRECT_URI` 환경변수, authorize/exchange 동일값
+- G4 callback 목적지 → 프론트 결과 경로 302(D6 예약)
 
 ## Plan (← /bts-plan 채움)
 
