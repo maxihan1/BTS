@@ -44,6 +44,9 @@ import java.util.UUID
  *   또한 프로필 view-layer(FR-PR-01)로 `displayName`(users.display_name)과 `avatarUrl`
  *   (user_profiles.avatar_object_key 파생, [avatarUrlFor])을 노출한다. 부재중 view-layer(FR-PR-03)로
  *   `oooActive`/`oooUntil`(user_ooo 활성 필터 파생, [OutOfOfficeRepository.findActiveByUserId])도 노출한다.
+ *   환경설정 view-layer(FR-PF-01)로 `theme`/`locale`/`dateFormat`(user_preferences 파생,
+ *   [UserPreferencesService.getPreferences])도 노출한다 — 행이 없어도 서비스가 기본값(system/ko/iso)으로
+ *   귀결하므로 항상 값이 채워진다(null 없음).
  *
  * - **PAT**: `Authorization: Bearer pat_xxx` 형식의 요청을 감지하여 [PersonalAccessTokenService.verify] 로
  *   검증한다. 검증 성공 시 `authMethod = "pat"` + `userId` 를 반환하고,
@@ -51,6 +54,8 @@ import java.util.UUID
  *   검증 실패(만료·revoke·미존재) 시 401 을 반환한다.
  *   강제 변경·시스템 관리자·MFA 강제 등록 플래그는 봇 컨텍스트(PAT)와 무관하므로 모두 false 로 고정한다.
  *   프로필 view-layer(displayName/avatarUrl)도 봇 컨텍스트와 무관하므로 둘 다 null 로 고정한다.
+ *   환경설정 view-layer(theme/locale/dateFormat)도 봇 컨텍스트와 무관하므로 조회 없이
+ *   [UserPreferences] 기본값 상수로 고정한다.
  *
  * ## EC-26 prefix 검사
  *
