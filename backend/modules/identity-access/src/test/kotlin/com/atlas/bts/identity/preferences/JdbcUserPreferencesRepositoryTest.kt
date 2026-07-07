@@ -49,9 +49,11 @@ class JdbcUserPreferencesRepositoryTest {
     }
 
     @Autowired
+    @Suppress("VarCouldBeVal") // @Autowired lateinit var 는 val 불가(주입). detekt false-positive 억제
     private lateinit var repo: JdbcUserPreferencesRepository
 
     @Autowired
+    @Suppress("VarCouldBeVal") // @Autowired lateinit var 는 val 불가(주입). detekt false-positive 억제
     private lateinit var jdbc: NamedParameterJdbcTemplate
 
     private lateinit var userId: UUID

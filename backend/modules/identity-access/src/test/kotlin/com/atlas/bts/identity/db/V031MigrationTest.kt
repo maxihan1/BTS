@@ -193,7 +193,8 @@ class V031MigrationTest {
                 ).execute()
 
                 return conn.prepareStatement(
-                    "SELECT theme, locale, date_format FROM user_preferences WHERE user_id = '00000000-0000-0000-0000-0000000000d1'",
+                    "SELECT theme, locale, date_format FROM user_preferences " +
+                        "WHERE user_id = '00000000-0000-0000-0000-0000000000d1'",
                 ).executeQuery().use { rs ->
                     rs.next()
                     Triple(rs.getString("theme"), rs.getString("locale"), rs.getString("date_format"))
