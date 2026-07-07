@@ -44,6 +44,13 @@ interface UserRepository {
      *
      * username 충돌 시 email / displayName 을 최신값으로 갱신한다 (id 보존).
      *
+     * **용도 — 테스트 시딩 전용**: 현재 production 호출처가 없다(테스트에서만 사용자 행을 손쉽게 만들 때 쓴다).
+     * 외부 IdP 프로비저닝은 [provisionFromExternal] 이 담당한다 — 그쪽은 FR-PR-04 의 display_name 출처 게이트
+     * (`display_name_source='USER'` 면 사용자 편집 이름을 보존)를 적용하지만, 이 [save]/[SQL_UPSERT] 는
+     * **게이트를 적용하지 않아** display_name 을 무조건 덮어쓴다. 따라서 디렉터리 동기화(재로그인) 같은
+     * production 경로에 [save] 를 배선하면 사용자가 편집한 이름이 원복된다 — 그런 경로에는 반드시
+     * [provisionFromExternal] 을 쓸 것.
+     *
      * @return DB 에 반영된 최신 상태의 [User]
      */
     fun save(
@@ -405,6 +412,10 @@ class JdbcUserRepository(
          * users UPSERT — 신규 INSERT, username 충돌 시 email / displayName 갱신 (id 보존).
          * EC-11 race condition 은 ON CONFLICT 로 방어.
          * RETURNING 으로 DB now() 기준 타임스탬프 반환 — 클라이언트 측 now() 의존 없음.
+         *
+         * **주의 (FR-PR-04)**: [SQL_PROVISION_UPSERT] 와 달리 display_name 출처 CASE 게이트가 없어
+         * display_name 을 무조건 EXCLUDED 로 덮어쓴다. 테스트 시딩([save]) 전용 — production 디렉터리
+         * 동기화 경로에는 사용하지 말 것(사용자 편집 이름 원복). 그 경로는 [SQL_PROVISION_UPSERT].
          */
         const val SQL_UPSERT = """
             INSERT INTO users (id, username, email, display_name)
