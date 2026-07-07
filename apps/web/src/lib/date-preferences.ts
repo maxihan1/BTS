@@ -64,27 +64,27 @@ export function formatDateTimeByPreset(
 }
 
 /**
- * 날짜(연-월-일) 부분을 프리셋에 맞는 로케일로 포맷하는 내부 헬퍼.
+ * 프리셋별 날짜 부분(연/월/일) 포맷에 사용하는 Intl 로케일 맵.
+ *
  * 각 로케일의 기본 숫자 날짜 포맷이 스펙 §date_format 프리셋 표기와 정확히 일치해
- * 문자열 재조립 없이 그대로 사용한다(iso→en-CA, kr→ko-KR, us→en-US, eu→en-GB).
+ * (iso→en-CA "YYYY-MM-DD", kr→ko-KR "YYYY. MM. DD.", us→en-US "MM/DD/YYYY",
+ * eu→en-GB "DD/MM/YYYY") 별도 문자열 재조립 없이 그대로 사용한다.
  */
+const DATE_PRESET_LOCALES: Record<DatePreset, string> = {
+  iso: 'en-CA',
+  kr: 'ko-KR',
+  us: 'en-US',
+  eu: 'en-GB',
+}
+
+/** 날짜(연-월-일) 부분을 프리셋에 맞는 로케일로 포맷하는 내부 헬퍼. */
 function formatDatePart(date: Date, preset: DatePreset, tz: string): string {
-  const options: Intl.DateTimeFormatOptions = {
+  return new Intl.DateTimeFormat(DATE_PRESET_LOCALES[preset], {
     timeZone: tz,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }
-  switch (preset) {
-    case 'iso':
-      return new Intl.DateTimeFormat('en-CA', options).format(date)
-    case 'kr':
-      return new Intl.DateTimeFormat('ko-KR', options).format(date)
-    case 'us':
-      return new Intl.DateTimeFormat('en-US', options).format(date)
-    case 'eu':
-      return new Intl.DateTimeFormat('en-GB', options).format(date)
-  }
+  }).format(date)
 }
 
 /**
