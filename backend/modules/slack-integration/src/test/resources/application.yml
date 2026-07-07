@@ -2,3 +2,10 @@
 spring:
   main:
     banner-mode: "off"
+  # slack-integration BC 마이그레이션의 정본 위치. 현재 test-boot 앱은 FlywayAutoConfiguration을 제외하므로
+  # 이 설정은 비활성이며, 마이그레이션 검증은 SlackInstallSchemaMigrationTest가 Flyway를 코드로 직접 배선한다.
+  # 후속 통합 테스트가 FlywayAutoConfiguration을 활성화할 때 참조할 수 있도록 정본 위치를 선언해 둔다.
+  flyway:
+    locations: classpath:db/migration/slack-integration
+    baseline-on-migrate: true
+    placeholder-replacement: false
