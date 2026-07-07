@@ -42,11 +42,12 @@ import java.util.UUID
  * 사용자 프로필 조회/수정 + 아바타 업로드/다운로드/삭제 REST 컨트롤러 (FR-PR-01 Task 5).
  *
  * ## 엔드포인트 ([RequestMapping] `/api/v1/users`)
- * - [getMyProfile]   GET    `/me/profile`        — 본인 프로필 조회.
- * - [patchMyProfile] PATCH  `/me/profile`        — 3-state 부분 수정.
- * - [uploadAvatar]   POST   `/me/profile/avatar` — 아바타 업로드.
- * - [getAvatar]      GET    `/{userId}/avatar`   — 아바타 다운로드(동료 것도 조회 가능).
- * - [deleteAvatar]   DELETE `/me/profile/avatar` — 아바타 삭제(멱등).
+ * - [getMyProfile]      GET    `/me/profile`                       — 본인 프로필 조회.
+ * - [patchMyProfile]    PATCH  `/me/profile`                       — 3-state 부분 수정.
+ * - [resyncDisplayName] POST   `/me/profile/display-name/resync`   — displayName 출처를 LDAP 로 재동기화(FR-PR-04).
+ * - [uploadAvatar]      POST   `/me/profile/avatar`                — 아바타 업로드.
+ * - [getAvatar]         GET    `/{userId}/avatar`                  — 아바타 다운로드(동료 것도 조회 가능).
+ * - [deleteAvatar]      DELETE `/me/profile/avatar`                — 아바타 삭제(멱등).
  *
  * ## 현재 사용자 식별 (JWT subject 전용, [WhoamiController] 미러)
  * `me` 스코프 4개 엔드포인트는 [AuthenticationPrincipal] 로 주입된 [Jwt] 의 subject(UUID)로 현재 사용자를
@@ -73,12 +74,13 @@ import java.util.UUID
  * 모듈에 전역 `@RestControllerAdvice` 가 없으므로([PersonalAccessTokenController] 선례) 도메인 예외를
  * **이 컨트롤러 로컬 [ExceptionHandler]** 로만 상태 매핑한다. [ProfileUserNotFoundException] 의 원본
  * 메시지는 userId 를 포함하므로 노출하지 않고 고정 일반 메시지로 치환한다([handleProfileNotFound]).
- * [ProfileValidationException]/[AvatarValidationException] 의 메시지는 서비스가 사용자 노출용으로 미리
- * 작성한 안전한 값이므로 그대로 응답에 담는다([handleValidation]).
+ * [DisplayNameNotLdapLinkedException] 도 내부 사정(연결 여부/정책)을 감추기 위해 고정 일반 메시지로
+ * 치환해 409 로 매핑한다([handleNotLdapLinked]). [ProfileValidationException]/[AvatarValidationException] 의
+ * 메시지는 서비스가 사용자 노출용으로 미리 작성한 안전한 값이므로 그대로 응답에 담는다([handleValidation]).
  */
 @RestController
 @RequestMapping("/api/v1/users")
-// TooManyFunctions 억제 — 5개 엔드포인트 + 로컬 예외 핸들러 3개 + DTO 변환/식별자 추출 helper 들이 응집돼야
+// TooManyFunctions 억제 — 6개 엔드포인트 + 로컬 예외 핸들러 4개 + DTO 변환/식별자 추출 helper 들이 응집돼야
 // 하는 단일 컨트롤러다([AccountLinkController] 선례와 동일 원칙 — 분리하면 SecurityBeans/errorResponse 중복).
 @Suppress("TooManyFunctions")
 class UserProfileController(
