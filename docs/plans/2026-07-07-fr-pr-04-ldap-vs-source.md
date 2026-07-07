@@ -261,3 +261,20 @@ COMMENT ON COLUMN users.display_name_source IS 'FR-PR-04 ...';
 - ✅ 올바른 유예: email source·shadow-column 즉시재설정·범용 field-source 테이블은 후속(YAGNI).
 - ✅ taste decision(지연 재설정 semantics)은 Maxi 사전 확정.
 - **BLOCKER: 없음**
+
+## 리뷰 결과 (PR 단위, 2026-07-07)
+
+### superpowers:code-reviewer — 종합 PASS
+- ✅ 절대 규칙 19개(§1.1~1.4) 전부 통과: SQL 전부 파라미터 바인딩·resync me-scope JWT-only(IDOR 불가)·409 메시지 누출 없음·V030 Flyway DEFAULT backfill·@Transactional 명시·any/`!!`/빈catch/PoC 0.
+- ✅ PR 고유 위험 8종 전부 PASS: CASE 게이트 정확(S2 보존/S3 동기화·email 계속 동기화·source 컬럼 미변경)·동시성 행 락 직렬화(lost-update 없음)·게이트 우회 없음(save/upsert prod 호출처 0)·resync 권한·RowMapper fanout 회피·findDisplayNameSource null-safe·Zod↔DTO 정합·Void→Unit hot-fix 안전.
+- ✅ learnings 회귀 없음. verify-master-plan 123/123.
+- **BLOCKER: 없음. 수정 필수: 없음.**
+- 비블로커 관찰 3건(후속 후보): (1) `UserRepository.save()`/`upsert()` prod 데드코드 + KDoc 오기(향후 sync 경로 배선 시 게이트 우회 위험) (2) `ldapLinked`="외부 IdP 보유"인데 배지 라벨 "LDAP" 고정 — SAML/OIDC 결선 시 일반화 (3) loadView 단일행 다중쿼리(RowMapper fanout 회피 tradeoff, 인덱스 단일행·단일 tx라 무해).
+
+### 검증(controller 실측)
+- 백엔드: identity-access 전체 test PASS + ktlintCheck PASS + detektMain/Test PASS.
+- 프론트: profile unit 106/106 + typecheck + eslint clean. E2E profile+profile-ldap-source 9 passed.
+- docs: verify-master-plan.sh 종료 0.
+
+### 후속(별도 FR 후보)
+- FR-PR-03 자동전환(issue-tracking) / FR-PR-04 관찰#1 save() 정리 / 관찰#2 SAML·OIDC 라벨 일반화 / 관찰#3 loadView 쿼리 통합.
