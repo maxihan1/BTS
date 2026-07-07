@@ -52,6 +52,174 @@ FR-PF-01 — 사용자별 환경 설정. 테마(라이트/다크) · 언어(loca
 
 ✅ 통과 (집중 gap 분석, 4건 발견·반영). G1 whoami 통합은 plan 결정 사항(권장: whoami에 preferences 추가). G2 상대시간 제외·G3 설정 내비·G4 PAT 정책은 스펙 반영.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> TDD red→green→refactor. 각 task 메타(agent/files/depends-on)로 bts-impl이 wave 계산.
+> identity-access는 JdbcTemplate 모듈 → **jOOQ codegen 불필요**(profile/status/ooo 선례).
+> 백엔드 테스트: `./gradlew :backend:identity-access:test`. 프론트: `pnpm --filter web test`.
+
+### Task 1. V031 user_preferences 마이그레이션
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/identity-access/src/main/resources/db/migration/V031__user_preferences.sql`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/db/V031MigrationTest.kt`]
+- depends-on: []
+
+**RED**. `V031MigrationTest` (Testcontainers) — `user_preferences` 테이블 존재 + 컬럼(theme/locale/date_format/created_at/updated_at) + 기본값(system/ko/iso) + PK(user_id) + FK(users ON DELETE CASCADE) 단언. 실패: 테이블 없음.
+
+**GREEN**. `V031__user_preferences.sql` — 스펙 §데이터 모델 그대로. `user_id UUID PK REFERENCES users(id) ON DELETE CASCADE`, theme/locale/date_format `VARCHAR(16) NOT NULL DEFAULT`, timestamps.
+
+**REFACTOR**. 컬럼 주석(COMMENT) + L1 한국어 헤더 주석.
+
+**검증**. `./gradlew :backend:identity-access:test --tests '*V031MigrationTest'`. ⚠️ 기존 SchemaMigrationTest류가 전체 테이블/마이그레이션 수를 카운트하면 동반 갱신(메모리 `fr-pm-permission-seed-migration-test-coupling`) — 먼저 grep.
+
+### Task 2. UserPreferences 도메인 + JdbcUserPreferencesRepository + UserPreferencesService
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/preferences/UserPreferences.kt`, `.../preferences/UserPreferencesRepository.kt`, `.../preferences/JdbcUserPreferencesRepository.kt`, `.../preferences/UserPreferencesService.kt`, `.../preferences/PreferencesValidationException.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/preferences/UserPreferencesServiceTest.kt`, `.../preferences/JdbcUserPreferencesRepositoryTest.kt`]
+- depends-on: [1]
+
+**RED**.
+- `UserPreferencesServiceTest` (mock repo) — (a) 행 없으면 `getPreferences`가 기본값(system/ko/iso) 반환, (b) `patchPreferences` 부분 수정 upsert 위임 + 갱신값 반환, (c) 잘못된 enum → `PreferencesValidationException`.
+- `JdbcUserPreferencesRepositoryTest` (Testcontainers) — upsert(INSERT ... ON CONFLICT (user_id) DO UPDATE) 멱등 + findByUserId nullable.
+
+**GREEN**.
+- `UserPreferences`(theme/locale/dateFormat) + `PreferencesView` + `PreferencesPatch`(부분 — nullable 필드) + 허용 enum 상수(THEMES/LOCALES/DATE_FORMATS) + `PreferencesValidationException`.
+- `JdbcUserPreferencesRepository` — `JdbcUserProfileRepository` 미러. `findByUserId`→nullable, `upsert`.
+- `UserPreferencesService` — `@Service` + `@Transactional`. getPreferences(defaults if null), patchPreferences(enum 검증→upsert→effective 반환).
+
+**REFACTOR**. enum 허용값 companion 상수 응집 + KDoc.
+
+**검증**. `./gradlew :backend:identity-access:test --tests '*UserPreferences*'`.
+
+### Task 3. PreferencesController GET/PATCH (POST stub 제거) + CSRF 데모 테스트 이관
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/PreferencesController.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/dto/PreferencesResponse.kt`, `.../dto/PreferencesPatchRequest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/web/PreferencesControllerMvcTest.kt`, `.../web/PreferencesControllerCsrfTest.kt`, `.../integration/PatAndConcurrencyIntegrationTest.kt`, `.../web/PasswordControllerMvcTest.kt`]
+- depends-on: [2]
+
+**RED**.
+- `PreferencesControllerMvcTest` — GET `/me/preferences` 기본값 200 / PATCH 갱신 200 / 잘못된 enum 400 / PAT·미인증 401.
+- `PreferencesControllerCsrfTest` — POST→**PATCH** 이관: CSRF 토큰 없는 PATCH → 403, 있으면 200(스텁 데모 의도 보존).
+
+**GREEN**.
+- `PreferencesController` 재작성 — `UserProfileController` 미러(JWT-only `currentUserId`, 로컬 `@ExceptionHandler`로 `PreferencesValidationException`→400). **기존 POST 핸들러 제거**.
+- `PreferencesResponse(theme, locale, dateFormat)` + `PreferencesPatchRequest`(3-state 부분 수정; profile의 `JsonNode`/`ProfilePatchField` 패턴 또는 nullable enum 문자열).
+- CSRF 데모 테스트 3곳(`PreferencesControllerCsrfTest`·`PatAndConcurrencyIntegrationTest` CSRF-B·`PasswordControllerMvcTest` 참조) POST→PATCH 이관.
+
+**REFACTOR**. 에러코드 상수 + KDoc(profile 컨트롤러 톤). PoC 표현 잔재 제거.
+
+**검증**. `./gradlew :backend:identity-access:test --tests '*Preferences*' --tests '*PatAndConcurrency*'`.
+
+### Task 4. whoami에 preferences 필드 추가 (view-layer)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/dto/WhoamiResponse.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/WhoamiController.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/web/WhoamiControllerTest.kt`]
+- depends-on: [2]
+
+**RED**. `WhoamiControllerTest` — JWT 분기 whoami가 theme/locale/dateFormat 포함(행 없으면 기본값) + PAT 분기는 기본값(system/ko/iso). 실패: 필드 없음.
+
+**GREEN**. `WhoamiResponse`에 `theme`/`locale`/`dateFormat: String` 추가(FR-PR-02/03 view-layer 패턴). `WhoamiController` JWT 분기가 `UserPreferencesService.getPreferences` 반영, PAT 분기는 기본값 상수.
+
+**REFACTOR**. KDoc 필드 설명(기존 톤).
+
+**검증**. `./gradlew :backend:identity-access:test --tests '*WhoamiController*'`.
+
+### Task 5. 공통 preference-aware 날짜 포맷터 + useDateFormat 훅 + preferences Zod
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/lib/date-preferences.ts`, `apps/web/src/lib/date-preferences.test.ts`, `apps/web/src/api/preferences.ts`, `apps/web/src/api/preferences.test.ts`, `apps/web/src/hooks/use-date-format.ts`, `apps/web/src/api/schemas.ts`, `apps/web/src/api/schemas.test.ts`]
+- depends-on: []
+
+**RED**.
+- `date-preferences.test.ts` — 프리셋별 순수 포맷 함수(iso→`2026-07-07`, kr→`2026. 07. 07.`, us→`07/07/2026`, eu→`07/07/2026`) + datetime = 날짜+` HH:mm`(24h, Asia/Seoul).
+- `schemas.test.ts` — whoami 스키마가 theme/locale/dateFormat 파싱(`.default()`로 기존 mock 무영향) + preferences 스키마 enum 검증.
+
+**GREEN**.
+- `date-preferences.ts` — `formatDateByPreset(iso, preset, tz)` / `formatDateTimeByPreset` 순수 함수(Intl, preset 인자).
+- `use-date-format.ts` — 현재 사용자 preference(authStore.user.dateFormat)를 읽어 포맷터 바인딩하는 훅.
+- `api/preferences.ts` — `preferencesSchema`(theme/locale/dateFormat enum) + GET/PATCH 클라이언트.
+- `schemas.ts` — whoami 스키마에 3필드 `.default(...)` 추가(메모리 `zod-schema-strengthen-inline-mock-fanout`·whoami mock fanout 회피).
+
+**REFACTOR**. 프리셋→Intl 옵션 맵 상수화.
+
+**검증**. `pnpm --filter web test -- date-preferences schemas preferences`.
+
+### Task 6. PreferencesProvider + 테마 적용 + FOUC 프리하이드레이션
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/preferences/PreferencesProvider.tsx`, `apps/web/src/components/preferences/PreferencesProvider.test.tsx`, `apps/web/src/lib/theme.ts`, `apps/web/src/lib/theme.test.ts`, `apps/web/src/main.tsx`, `apps/web/index.html`]
+- depends-on: [5]
+
+**RED**. `PreferencesProvider.test.tsx` — theme=dark면 `<html>`에 `.dark` 부착, theme=light면 제거, theme=system이면 `matchMedia(prefers-color-scheme)` 추종 + OS 변경 이벤트 반영, locale→`<html lang>`. `theme.test.ts` — `applyTheme`/`resolveSystemTheme` 순수 로직.
+
+**GREEN**.
+- `lib/theme.ts` — `applyTheme(theme)`(`.dark` 토글, system→matchMedia), `readStoredTheme`/`writeStoredTheme`(**별도 `bts.theme` localStorage 키 — 비민감 테마 enum만. authStore의 sessionStorage 규칙은 인증 토큰 대상이라 무관, 근거 주석 명시**).
+- `PreferencesProvider.tsx` — whoami(authStore.user) 변화에 theme/lang/dateFormat 적용 + `bts.theme` 미러. `main.tsx`에서 앱 루트 래핑.
+- `index.html` — `<head>` 인라인 스크립트로 `bts.theme` 읽어 첫 페인트 전 `.dark` 적용(FOUC 0).
+
+**REFACTOR**. matchMedia 구독 cleanup(theme≠system 시 해제) + KDoc.
+
+**검증**. `pnpm --filter web test -- PreferencesProvider theme`.
+
+### Task 7. /settings/preferences 페이지 + 네비 + PATCH mutation
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/settings.preferences.tsx`, `apps/web/src/routes/__tests__/settings.preferences.test.tsx`, `apps/web/src/components/settings/PreferencesForm.tsx`, `apps/web/src/components/settings/PreferencesForm.test.tsx`, `apps/web/src/router.ts`, `apps/web/src/api/preferences.ts`]
+- depends-on: [5, 6]
+
+**RED**. `PreferencesForm.test.tsx` — theme 셀렉터 변경→PATCH 호출, date_format 변경→라이브 프리뷰 즉시 갱신(formatter), locale 셀렉터 저장 + "UI 번역 후속" 안내 문구. `settings.preferences.test.tsx` — 라우트 렌더 + 저장 성공 시 whoami invalidate + setUser(메모리 `mutation-setquerydata-partial-response-flicker`→invalidate).
+
+**GREEN**.
+- `settings.preferences.tsx`(page + RouteAdapter, code-based) + `router.ts` 등록(메모리 tanstack adapter 패턴) + 기존 설정 네비에 "환경 설정" 링크 추가.
+- `PreferencesForm.tsx` — theme(light/dark/system)·date_format(라이브 프리뷰)·locale 셀렉터 + `usePreferencesMutation`(PATCH → whoami invalidate + setUser).
+- `api/preferences.ts` — mutation 추가(Task 5 파일에 이어서).
+
+**REFACTOR**. 셀렉터 옵션 상수화 + shadcn Select 재사용.
+
+**검증**. `pnpm --filter web test -- settings.preferences PreferencesForm`.
+
+### Task 8. 날짜 표시 사이트 전면 이관 (절대 날짜만)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/lib/datetime.ts`, `apps/web/src/lib/date-format.ts`, `apps/web/src/lib/datetime.test.ts`, `apps/web/src/lib/date-format.test.ts`, + 인라인 날짜 렌더 컴포넌트 ~20(예: `components/issue/IssueMetaPanel.tsx`, `IssueChangelog.tsx`, `WorklogSection.tsx`, `AttachmentSection.tsx`, `version/VersionRow.tsx`, `auth/SessionList.tsx`, `admin/AuditLogTable.tsx` 등 — 착수 시 전수 grep) + 각 테스트]
+- depends-on: [5, 6]
+
+**RED**. 대표 사이트에 프리셋 반영 검증 테스트(예: IssueMetaPanel이 dateFormat=us면 `07/07/2026`) + 기존 날짜 단위 테스트가 기본 프리셋(iso)에서 그대로 통과. **상대시간("N일 전") 표시는 이관 대상 아님** — 뭉갬 금지.
+
+**GREEN**. `lib/datetime.ts`·`lib/date-format.ts`를 공통 preset 포맷터 위임으로 재작성(기본 iso=기존 출력 유지). 인라인 `toLocaleDateString`/`toLocaleString`/`Intl.DateTimeFormat` 절대 날짜 사이트를 `useDateFormat`/공통 포맷터로 이관. 착수 전 `grep -rn "toLocaleDateString\|toLocaleString\|Intl.DateTimeFormat" apps/web/src --include=*.tsx`로 전수 목록 확정(E7 커버).
+
+**REFACTOR**. 중복 포맷 헬퍼 제거 + import 정리.
+
+**검증**. `pnpm --filter web test -- datetime date-format` + 이관 컴포넌트 테스트 + `pnpm --filter web typecheck`.
+
+### Task 9. E2E (테마 지속 · date_format 반영 · 설정 저장)
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/preferences.spec.ts`, `apps/web/src/mocks/preferences-handlers.ts`, `apps/web/src/mocks/auth-fixtures.ts`]
+- depends-on: [7, 8]
+
+**RED/시나리오**. (1) 테마 다크 선택→새로고침·다른 라우트 이동해도 다크 유지(localStorage 프리하이드레이션), (2) date_format=us 저장→이슈 상세 날짜가 `MM/DD/YYYY`로 렌더, (3) 설정 저장 왕복(PATCH→whoami 반영). MSW: preferences GET/PATCH stateful 핸들러(메모리 `msw-mutation-stateful-refetch`) + whoami fixture에 preferences 필드.
+
+**검증**. `pnpm --filter web test:e2e -- preferences`. ⚠️ worktree 5173 orphan vite kill(메모리 `e2e-orphan-vite-after-worktree-remove`).
+
+## Plan 메타
+
+- task 수: 9 (백엔드 4 · 프론트 4 · E2E 1)
+- depends-on 그래프. T1:[] T2:[1] T3:[2] T4:[2] T5:[] T6:[5] T7:[5,6] T8:[5,6] T9:[7,8]
+- 예상 wave. W1{T1,T5} → W2{T2,T6} → W3{T3,T4,T7,T8} → W4{T9}. 약 4 wave.
+  - ⚠️ 백엔드 T1~T4는 identity-access 단일 모듈 → Gradle 모듈 컴파일 직렬화(메모리 `bts-plan-wave-gradle-module-compile`). 프론트와는 병렬.
+- TDD 강제: yes (test 커밋이 feat 커밋보다 먼저)
+- 신규 외부 의존성: 없음
+- 추가 검증: ktlint/detekt(`--rerun-tasks`), typecheck(tsconfig.app), vitest, playwright
+- BC 격리: identity-access 단일. cross-BC 없음. (프론트+same-BC view-layer는 한 PR 정상 — FR-PR 선례)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
