@@ -1,8 +1,10 @@
 // 사용자 프로필 편집 폼 — 조회 프리필 + 3-state PATCH + 아바타 업로드/삭제 (FR-PR-01 D6 Task 7)
+// + LDAP 출처 배지/재설정(FR-PR-04)
 import type { JSX, ChangeEvent, FormEvent } from 'react'
 import { useMemo, useState } from 'react'
-import { useProfile, usePatchProfile, useUploadAvatar, useDeleteAvatar } from '@/api/useProfile'
-import { buildPatchBody } from '@/api/profile'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useProfile, usePatchProfile, useUploadAvatar, useDeleteAvatar, PROFILE_QUERY_KEY } from '@/api/useProfile'
+import { buildPatchBody, resyncDisplayName } from '@/api/profile'
 import type { ProfileResponse } from '@/api/profile'
 import { ApiError } from '@/api/client'
 import { useAuthStore } from '@/auth/authStore'
@@ -11,6 +13,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { profileLabels, mapProfileError, mapAvatarError } from '@/i18n/profile-labels'
+
+/** displayName 입력 필드의 출처 힌트 문구를 연결하는 `aria-describedby` 대상 id */
+const DISPLAY_NAME_SOURCE_HINT_ID = 'profile-display-name-source-hint'
 
 /** `Intl.supportedValuesOf('timeZone')` 목록에 현재 값이 없으면 추가한다(EC3 방어). */
 function buildTimezoneOptions(currentTimezone: string): string[] {
@@ -44,12 +49,25 @@ interface ProfileFormContentProps {
   readonly profile: ProfileResponse
 }
 
-/** 실제 편집 폼 — 조회 성공 후에만 렌더. displayName/timezone/department 편집 상태 소유. */
+/**
+ * 실제 편집 폼 — 조회 성공 후에만 렌더. displayName/timezone/department 편집 상태 소유.
+ * FR-PR-04 — displayName 필드 인접에 LDAP 출처 배지(동기화/직접 편집)와 재설정 버튼을 함께 그린다.
+ */
 function ProfileFormContent({ profile }: ProfileFormContentProps): JSX.Element {
   const patchProfile = usePatchProfile()
   const uploadAvatar = useUploadAvatar()
   const deleteAvatar = useDeleteAvatar()
   const avatarVersion = useAuthStore((s) => s.avatarVersion)
+  const queryClient = useQueryClient()
+
+  // FR-PR-04 — "LDAP 값으로 재설정". invalidate-only(캐시 직접 덮어쓰기 금지) —
+  // 응답을 setQueryData로 그대로 반영하면 이 요청에 없는 다른 파생 필드가 유실될 수 있다
+  // (mutation-setquerydata-partial-response-flicker 선례). refetch된 profile.displayNameSource가
+  // 곧바로 배지에 반영된다.
+  const resyncDisplayNameMutation = useMutation<ProfileResponse, ApiError, void>({
+    mutationFn: resyncDisplayName,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY }),
+  })
 
   const [displayName, setDisplayName] = useState(profile.displayName)
   const [timezone, setTimezone] = useState(profile.timezone)
@@ -99,12 +117,24 @@ function ProfileFormContent({ profile }: ProfileFormContentProps): JSX.Element {
     deleteAvatar.mutate()
   }
 
+  function handleResyncDisplayName(): void {
+    resyncDisplayNameMutation.reset()
+    resyncDisplayNameMutation.mutate()
+  }
+
   const avatarBusy = uploadAvatar.isPending || deleteAvatar.isPending
   const patchErrorMessage =
     patchProfile.error instanceof ApiError ? mapProfileError(patchProfile.error) : null
   const avatarError = uploadAvatar.error ?? deleteAvatar.error
   const avatarErrorMessage = avatarError instanceof ApiError ? mapAvatarError(avatarError) : null
-  const errorMessage = patchErrorMessage ?? avatarErrorMessage
+  const resyncErrorMessage =
+    resyncDisplayNameMutation.error instanceof ApiError
+      ? mapProfileError(resyncDisplayNameMutation.error)
+      : null
+  const errorMessage = patchErrorMessage ?? avatarErrorMessage ?? resyncErrorMessage
+  // FR-PR-04 — true면 표시 이름이 여전히 LDAP 동기화 대상(source=LDAP), false면 직접 편집으로
+  // 동기화가 중단된 상태(source=USER, 재설정 버튼 노출 대상)
+  const isDisplayNameSynced = profile.displayNameSource === 'LDAP'
 
   return (
     <div className="space-y-6">
@@ -155,8 +185,37 @@ function ProfileFormContent({ profile }: ProfileFormContentProps): JSX.Element {
           <Label htmlFor="profile-display-name">{profileLabels.form.displayNameLabel}</Label>
           <Input
             id="profile-display-name" value={displayName} disabled={patchProfile.isPending}
+            aria-describedby={profile.ldapLinked ? DISPLAY_NAME_SOURCE_HINT_ID : undefined}
             onChange={(e) => { setDisplayName(e.target.value) }}
           />
+          {/*
+            FR-PR-04 — LDAP 연결 사용자(ldapLinked)에게만 출처 배지를 노출한다.
+            source=LDAP(동기화 중)이면 정보성 배지+힌트만, source=USER(직접 편집으로 동기화
+            중단)면 배지+"LDAP 값으로 재설정" 버튼을 함께 보여준다. 로컬 전용 사용자
+            (ldapLinked=false)는 이 블록 전체가 렌더되지 않는다(기존 UI 그대로, S5).
+          */}
+          {profile.ldapLinked && (
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                  {isDisplayNameSynced ? profileLabels.ldapSource.syncedBadge : profileLabels.ldapSource.overriddenBadge}
+                </span>
+                {!isDisplayNameSynced && (
+                  <Button
+                    type="button" variant="link" size="sm" className="h-auto p-0 text-xs"
+                    disabled={resyncDisplayNameMutation.isPending} onClick={handleResyncDisplayName}
+                  >
+                    {resyncDisplayNameMutation.isPending
+                      ? profileLabels.ldapSource.resyncingButton
+                      : profileLabels.ldapSource.resyncButton}
+                  </Button>
+                )}
+              </div>
+              <p id={DISPLAY_NAME_SOURCE_HINT_ID} className="text-xs text-muted-foreground">
+                {isDisplayNameSynced ? profileLabels.ldapSource.syncedHint : profileLabels.ldapSource.overriddenHint}
+              </p>
+            </div>
+          )}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="profile-timezone">{profileLabels.form.timezoneLabel}</Label>

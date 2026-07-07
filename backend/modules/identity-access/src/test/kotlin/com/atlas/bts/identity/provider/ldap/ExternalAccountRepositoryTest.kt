@@ -432,4 +432,25 @@ class ExternalAccountRepositoryTest {
             )
         assertThat(account.userId).isEqualTo(aliceUserId)
     }
+
+    // ── FR-PR-04 디렉터리 동기화 대상 판별 (existsByUserId = ldapLinked) ──────────
+
+    @Test
+    fun `existsByUserId 가 외부계정 있는 사용자에 true 를 반환한다`() {
+        // provisionUser 로 외부 IdP 매핑 생성 → 디렉터리 동기화 대상.
+        repo.provisionUser(
+            providerId = providerId,
+            externalSubject = "uid=alice,ou=people,dc=bts,dc=local",
+            userId = aliceUserId,
+            groups = emptyList(),
+        )
+
+        assertThat(repo.existsByUserId(aliceUserId)).isTrue()
+    }
+
+    @Test
+    fun `existsByUserId 가 외부계정 없는 사용자에 false 를 반환한다`() {
+        // aliceUserId 는 users 에만 존재(provisionUser 미호출) → 외부계정 없음 = 로컬 전용.
+        assertThat(repo.existsByUserId(aliceUserId)).isFalse()
+    }
 }

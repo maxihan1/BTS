@@ -24,6 +24,13 @@ export const profileResponseSchema = z.object({
   timezone: z.string().min(1),
   /** 부서 — 없으면 null */
   department: z.string().nullable(),
+  /**
+   * 표시 이름 필드의 출처(FR-PR-04) — `LDAP`(로그인 시 cn 동기화 대상) 또는
+   * `USER`(사용자가 직접 편집해 동기화가 중단된 상태).
+   */
+  displayNameSource: z.enum(['LDAP', 'USER']),
+  /** 외부 IdP(LDAP 등) 계정 연결 여부(FR-PR-04) — false면 출처 배지/재설정 UI 자체가 무의미(로컬 전용 사용자) */
+  ldapLinked: z.boolean(),
 })
 
 /** 사용자 프로필 응답 타입 — Zod 스키마에서 추론 */
@@ -100,6 +107,30 @@ export async function patchProfile(body: ProfilePatchBody): Promise<ProfileRespo
   const res = await apiFetch('/api/v1/users/me/profile', {
     method: 'PATCH',
     body,
+    headers: {
+      'X-XSRF-TOKEN': readXsrfToken(),
+    },
+  })
+  await throwIfNotOk(res)
+  return profileResponseSchema.parse(await res.json())
+}
+
+/**
+ * 표시 이름 필드 출처를 LDAP로 되돌린다(source: USER → LDAP, FR-PR-04).
+ *
+ * `POST /api/v1/users/me/profile/display-name/resync` → 200 갱신 후 {@link ProfileResponse}
+ * (`displayNameSource` = `"LDAP"`).
+ * - 지연(delayed) semantics — 이 호출 자체는 표시 이름 **값**을 바꾸지 않는다. 다음 로그인
+ *   (LDAP JIT 재동기화) 시 cn 값으로 실제 반영된다(ADR 2026-07-07 D4).
+ * - X-XSRF-TOKEN 헤더를 포함해 CSRF 공격을 방어한다.
+ *
+ * @returns 갱신 후 사용자 프로필(`displayNameSource: "LDAP"`)
+ * @throws ApiError(409) DISPLAY_NAME_NOT_LDAP_LINKED — 연결된 외부 IdP 계정이 없음(`ldapLinked: false`)
+ * @throws ApiError(401) 미인증
+ */
+export async function resyncDisplayName(): Promise<ProfileResponse> {
+  const res = await apiFetch('/api/v1/users/me/profile/display-name/resync', {
+    method: 'POST',
     headers: {
       'X-XSRF-TOKEN': readXsrfToken(),
     },

@@ -6,6 +6,7 @@ import com.atlas.bts.identity.profile.avatar.AvatarObject
 import com.atlas.bts.identity.profile.avatar.AvatarObjectNotFoundException
 import com.atlas.bts.identity.profile.avatar.AvatarStoragePort
 import com.atlas.bts.identity.profile.avatar.AvatarValidationException
+import com.atlas.bts.identity.provider.ldap.ExternalAccountRepository
 import com.atlas.bts.identity.user.User
 import com.atlas.bts.identity.user.UserRepository
 import io.mockk.every
@@ -35,12 +36,16 @@ import java.util.UUID
  *   기존 key 교체 시 커밋 후 old delete, put 실패 시 DB 미변경.
  * - deleteAvatar: clearAvatar 호출 + 커밋 후 best-effort delete, 멱등.
  * - getAvatar: key 없으면 404 신호, 있으면 storage.get 위임.
+ * - displayNameSource/ldapLinked/resyncDisplayName(FR-PR-04): getProfile 이 두 필드를 채움(외부계정 유무),
+ *   displayName 편집 후 재조회 source=USER 반영, resync 는 외부계정 있으면 LDAP 로 되돌리고 최신 뷰 반환·
+ *   없으면 DisplayNameNotLdapLinkedException.
  * - Annotation 회귀 가드: @Service + tx 경계(readOnly/write 조회·수정, MinIO I/O 메서드는 @Transactional 없음).
  */
 class UserProfileServiceTest {
     private lateinit var userRepository: UserRepository
     private lateinit var profileRepository: UserProfileRepository
     private lateinit var storagePort: AvatarStoragePort
+    private lateinit var externalAccountRepository: ExternalAccountRepository
     private lateinit var service: UserProfileService
 
     private val userId = UUID.fromString("11111111-1111-4111-8111-111111111111")
@@ -50,7 +55,8 @@ class UserProfileServiceTest {
         userRepository = mockk()
         profileRepository = mockk()
         storagePort = mockk()
-        service = UserProfileService(userRepository, profileRepository, storagePort)
+        externalAccountRepository = mockk()
+        service = UserProfileService(userRepository, profileRepository, storagePort, externalAccountRepository)
     }
 
     private fun persistedUser(displayName: String = "Alice Cooper"): User =
@@ -75,6 +81,8 @@ class UserProfileServiceTest {
     fun `getProfile — profile row 있으면 users+user_profiles 병합`() {
         every { userRepository.findById(userId) } returns persistedUser()
         every { profileRepository.findByUserId(userId) } returns persistedProfile()
+        every { userRepository.findDisplayNameSource(userId) } returns "LDAP"
+        every { externalAccountRepository.existsByUserId(userId) } returns false
 
         val view = service.getProfile(userId)
 
@@ -91,6 +99,8 @@ class UserProfileServiceTest {
     fun `getProfile — profile row 없으면 defaults(UTC, department null, avatarObjectKey null)`() {
         every { userRepository.findById(userId) } returns persistedUser()
         every { profileRepository.findByUserId(userId) } returns null
+        every { userRepository.findDisplayNameSource(userId) } returns "LDAP"
+        every { externalAccountRepository.existsByUserId(userId) } returns false
 
         val view = service.getProfile(userId)
 
@@ -116,6 +126,8 @@ class UserProfileServiceTest {
         every { userRepository.updateDisplayName(userId, "New Name") } returns Unit
         every { userRepository.findById(userId) } returns persistedUser(displayName = "New Name")
         every { profileRepository.findByUserId(userId) } returns null
+        every { userRepository.findDisplayNameSource(userId) } returns "USER"
+        every { externalAccountRepository.existsByUserId(userId) } returns false
 
         val patch = ProfilePatch(displayName = ProfilePatchField.Present("New Name"))
         val view = service.patchProfile(userId, patch)
@@ -131,6 +143,8 @@ class UserProfileServiceTest {
         every { profileRepository.findByUserId(userId) } returns
             persistedProfile(timezone = "UTC", department = "Sales")
         every { profileRepository.upsertProfile(userId, "Asia/Seoul", "Sales") } returns Unit
+        every { userRepository.findDisplayNameSource(userId) } returns "LDAP"
+        every { externalAccountRepository.existsByUserId(userId) } returns false
 
         val patch = ProfilePatch(timezone = ProfilePatchField.Present("Asia/Seoul"))
         service.patchProfile(userId, patch)
@@ -145,6 +159,8 @@ class UserProfileServiceTest {
         every { profileRepository.findByUserId(userId) } returns
             persistedProfile(timezone = "Asia/Seoul", department = "Sales")
         every { profileRepository.upsertProfile(userId, "Asia/Seoul", null) } returns Unit
+        every { userRepository.findDisplayNameSource(userId) } returns "LDAP"
+        every { externalAccountRepository.existsByUserId(userId) } returns false
 
         val patch = ProfilePatch(department = ProfilePatchField.Present(null))
         service.patchProfile(userId, patch)
@@ -157,6 +173,8 @@ class UserProfileServiceTest {
         every { userRepository.findById(userId) } returns persistedUser()
         every { profileRepository.findByUserId(userId) } returns null
         every { profileRepository.upsertProfile(userId, "UTC", "Marketing") } returns Unit
+        every { userRepository.findDisplayNameSource(userId) } returns "LDAP"
+        every { externalAccountRepository.existsByUserId(userId) } returns false
 
         val patch = ProfilePatch(department = ProfilePatchField.Present("Marketing"))
         service.patchProfile(userId, patch)
@@ -309,6 +327,69 @@ class UserProfileServiceTest {
 
         assertThat(result).isSameAs(expected)
         verify(exactly = 1) { storagePort.get("avatars/$userId/current.png") }
+    }
+
+    // ── displayNameSource / ldapLinked / resyncDisplayName (FR-PR-04) ───────────
+
+    @Test
+    fun `getProfile가 displayNameSource·ldapLinked를 채운다`() {
+        every { userRepository.findById(userId) } returns persistedUser()
+        every { profileRepository.findByUserId(userId) } returns persistedProfile()
+
+        // 외부 IdP 계정 있음 → ldapLinked=true, source는 리포지토리 값 그대로 반영
+        every { userRepository.findDisplayNameSource(userId) } returns "LDAP"
+        every { externalAccountRepository.existsByUserId(userId) } returns true
+
+        val linked = service.getProfile(userId)
+        assertThat(linked.ldapLinked).isTrue()
+        assertThat(linked.displayNameSource).isEqualTo("LDAP")
+
+        // 외부 IdP 계정 없음(로컬 전용) → ldapLinked=false
+        every { userRepository.findDisplayNameSource(userId) } returns "USER"
+        every { externalAccountRepository.existsByUserId(userId) } returns false
+
+        val local = service.getProfile(userId)
+        assertThat(local.ldapLinked).isFalse()
+        assertThat(local.displayNameSource).isEqualTo("USER")
+    }
+
+    @Test
+    fun `patchProfile로 displayName 편집 시 재조회 결과의 displayNameSource가 USER다`() {
+        every { userRepository.updateDisplayName(userId, "Edited Name") } returns Unit
+        every { userRepository.findById(userId) } returns persistedUser(displayName = "Edited Name")
+        every { profileRepository.findByUserId(userId) } returns persistedProfile()
+        // 편집 시 users SQL 이 source 를 USER 로 전환(Task 2) — loadView 재조회가 이를 반영해야 한다
+        every { userRepository.findDisplayNameSource(userId) } returns "USER"
+        every { externalAccountRepository.existsByUserId(userId) } returns true
+
+        val view = service.patchProfile(userId, ProfilePatch(displayName = ProfilePatchField.Present("Edited Name")))
+
+        assertThat(view.displayNameSource).isEqualTo("USER")
+    }
+
+    @Test
+    fun `resyncDisplayName이 외부계정 있는 사용자의 source를 LDAP로 되돌리고 최신 뷰를 반환한다`() {
+        every { externalAccountRepository.existsByUserId(userId) } returns true
+        every { userRepository.resyncDisplayNameSource(userId) } returns Unit
+        every { userRepository.findById(userId) } returns persistedUser()
+        every { profileRepository.findByUserId(userId) } returns persistedProfile()
+        every { userRepository.findDisplayNameSource(userId) } returns "LDAP"
+
+        val view = service.resyncDisplayName(userId)
+
+        assertThat(view.displayNameSource).isEqualTo("LDAP")
+        assertThat(view.ldapLinked).isTrue()
+        verify(exactly = 1) { userRepository.resyncDisplayNameSource(userId) }
+    }
+
+    @Test
+    fun `resyncDisplayName이 외부계정 없는 사용자에 DisplayNameNotLdapLinkedException을 던진다`() {
+        every { externalAccountRepository.existsByUserId(userId) } returns false
+
+        assertThatThrownBy { service.resyncDisplayName(userId) }
+            .isInstanceOf(DisplayNameNotLdapLinkedException::class.java)
+
+        verify(exactly = 0) { userRepository.resyncDisplayNameSource(any()) }
     }
 
     // ── Annotation 회귀 가드 ──────────────────────────────────────────────────────

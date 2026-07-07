@@ -59,13 +59,15 @@
 
 **우선순위**. 필수 | **선행**. §2.1, identity-access §2.2 (LDAP) | **Plan slug**. `personal/ldap-sync-separation`
 
-- [ ] D1. 도메인 — ProfileField (source: LDAP vs USER) (책임. backend-engineer)
-- [ ] D2. 명세 — LDAP 우선 필드 / 사용자 우선 필드 매트릭스 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `user_profiles` 컬럼별 source 표시 (책임. db-engineer)
-- [ ] D4. 백엔드 — LDAP 동기화 시 USER 필드는 덮어쓰지 않음 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — 충돌 시나리오 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 필드별 "LDAP에서 동기화됨" 라벨 + 편집 불가 표시 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+**아키텍처**. 실제 LDAP 동기화 ∩ 사용자 편집 필드는 `display_name` 하나뿐(email 편집 불가, timezone/department/avatar는 LDAP 미접촉) → **`users.display_name_source` 단일 enum 컬럼**(`LDAP`|`USER`)으로 출처 추적. ADR [decisions/2026-07-07-fr-pr-04-ldap-field-source.md](../../decisions/2026-07-07-fr-pr-04-ldap-field-source.md). 편집 시 source=USER 전환→LDAP 재로그인 CASE 게이트가 보존, "LDAP 값으로 재설정"으로 되돌림(지연 동기화).
+
+- [x] D1. 도메인 — display_name 출처(source: LDAP vs USER). users.display_name_source 컬럼 (책임. backend-engineer)
+- [x] D2. 명세 — LDAP 동기화 필드(display_name) vs 사용자 편집 분리 + 재동기화 (책임. backend-engineer)
+- [x] D3. 데이터 모델 — `users.display_name_source` 단일 컬럼(V030, ADR 2026-07-07 D1 — display_name이 users에 있어 원안 "user_profiles 컬럼별 source"를 정정) (책임. db-engineer)
+- [x] D4. 백엔드 — LDAP 재로그인 UPSERT CASE 게이트(source=USER면 보존) + resync 엔드포인트 (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 — 충돌 시나리오(S2 보존/S3 동기화) + resync 200/409 (책임. backend-engineer)
+- [x] D6. 프론트 UI — display_name "디렉터리에서 동기화됨" 배지 + "디렉터리 값으로 재설정"(provider-중립 문구, 로컬 사용자 미노출) (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ## §3 환경 설정 (FR-PF, 3개)
 

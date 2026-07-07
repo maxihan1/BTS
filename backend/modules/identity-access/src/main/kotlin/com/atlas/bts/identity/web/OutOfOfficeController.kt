@@ -87,7 +87,7 @@ class OutOfOfficeController(
     @DeleteMapping("/me/ooo")
     fun deleteMyOoo(
         @AuthenticationPrincipal jwt: Jwt?,
-    ): ResponseEntity<Void> {
+    ): ResponseEntity<Unit> {
         outOfOfficeService.clearOoo(currentUserId(jwt))
         return ResponseEntity.noContent().build()
     }

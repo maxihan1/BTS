@@ -11,6 +11,7 @@ import {
   deleteAvatar,
   fetchAvatarBlob,
   buildPatchBody,
+  resyncDisplayName,
 } from './profile'
 import { ApiError } from './client'
 
@@ -38,6 +39,9 @@ const PROFILE_FIXTURE_FULL = {
   avatarUrl: '/api/v1/users/a1b2c3d4-e5f6-4890-abcd-ef1234567890/avatar',
   timezone: 'Asia/Seoul',
   department: '플랫폼팀',
+  // FR-PR-04 — LDAP 연결 + 동기화 상태(source=LDAP) 대표 픽스처
+  displayNameSource: 'LDAP',
+  ldapLinked: true,
 }
 
 const PROFILE_FIXTURE_MINIMAL = {
@@ -48,6 +52,9 @@ const PROFILE_FIXTURE_MINIMAL = {
   avatarUrl: null,
   timezone: 'UTC',
   department: null,
+  // FR-PR-04 — LDAP 미연결(로컬 전용) + 직접 편집 상태(source=USER) 대표 픽스처
+  displayNameSource: 'USER',
+  ldapLinked: false,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -63,6 +70,8 @@ describe('profileResponseSchema', () => {
     expect(result.avatarUrl).toBe(PROFILE_FIXTURE_FULL.avatarUrl)
     expect(result.timezone).toBe('Asia/Seoul')
     expect(result.department).toBe('플랫폼팀')
+    expect(result.displayNameSource).toBe('LDAP')
+    expect(result.ldapLinked).toBe(true)
   })
 
   it('T-PR-S-2: email/avatarUrl/department이 null이어도 파싱 성공한다', () => {
@@ -70,6 +79,8 @@ describe('profileResponseSchema', () => {
     expect(result.email).toBeNull()
     expect(result.avatarUrl).toBeNull()
     expect(result.department).toBeNull()
+    expect(result.displayNameSource).toBe('USER')
+    expect(result.ldapLinked).toBe(false)
   })
 
   it('T-PR-S-3: userId가 UUID 형식이 아니면 ZodError를 throw한다', () => {
@@ -79,6 +90,18 @@ describe('profileResponseSchema', () => {
   it('T-PR-S-4: username 필드 누락 시 ZodError를 throw한다', () => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { username: _username, ...without } = PROFILE_FIXTURE_FULL
+    expect(() => profileResponseSchema.parse(without)).toThrow()
+  })
+
+  it('T-PR-S-5: displayNameSource가 LDAP/USER가 아니면 ZodError를 throw한다(FR-PR-04)', () => {
+    expect(() =>
+      profileResponseSchema.parse({ ...PROFILE_FIXTURE_FULL, displayNameSource: 'ADMIN' }),
+    ).toThrow()
+  })
+
+  it('T-PR-S-6: displayNameSource/ldapLinked 필드 누락 시 ZodError를 throw한다(FR-PR-04)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { displayNameSource: _s, ldapLinked: _l, ...without } = PROFILE_FIXTURE_FULL
     expect(() => profileResponseSchema.parse(without)).toThrow()
   })
 })
@@ -284,6 +307,64 @@ describe('deleteAvatar', () => {
       ),
     )
     await expect(deleteAvatar()).rejects.toMatchObject({ status: 404 })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-PR-7. resyncDisplayName — POST /api/v1/users/me/profile/display-name/resync (FR-PR-04)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('resyncDisplayName', () => {
+  it('T-PR-7-1: 200 응답을 displayNameSource=LDAP인 ProfileResponse로 파싱해 반환한다', async () => {
+    server.use(
+      http.post('/api/v1/users/me/profile/display-name/resync', () =>
+        HttpResponse.json({ ...PROFILE_FIXTURE_FULL, displayNameSource: 'LDAP' }),
+      ),
+    )
+    const result = await resyncDisplayName()
+    expect(result.displayNameSource).toBe('LDAP')
+  })
+
+  it('T-PR-7-2: X-XSRF-TOKEN 헤더가 요청에 포함된다', async () => {
+    let capturedXsrf: string | null = null
+    server.use(
+      http.post('/api/v1/users/me/profile/display-name/resync', ({ request }) => {
+        capturedXsrf = request.headers.get('x-xsrf-token')
+        return HttpResponse.json(PROFILE_FIXTURE_FULL)
+      }),
+    )
+    await resyncDisplayName()
+    expect(capturedXsrf).toBe(XSRF_COOKIE_VALUE)
+  })
+
+  it('T-PR-7-3: 409 DISPLAY_NAME_NOT_LDAP_LINKED → ApiError(409) throw', async () => {
+    server.use(
+      http.post('/api/v1/users/me/profile/display-name/resync', () =>
+        HttpResponse.json(
+          { code: 'DISPLAY_NAME_NOT_LDAP_LINKED', message: '연결된 LDAP 계정이 없습니다.' },
+          { status: 409 },
+        ),
+      ),
+    )
+    let thrown: unknown
+    try {
+      await resyncDisplayName()
+    } catch (e) {
+      thrown = e
+    }
+    expect(thrown).toBeInstanceOf(ApiError)
+    if (!(thrown instanceof ApiError)) throw new Error('type guard missed')
+    expect(thrown.status).toBe(409)
+    expect((thrown.body as { code?: string } | null)?.code).toBe('DISPLAY_NAME_NOT_LDAP_LINKED')
+  })
+
+  it('T-PR-7-4: 401 응답 → ApiError(401) throw', async () => {
+    server.use(
+      http.post('/api/v1/users/me/profile/display-name/resync', () =>
+        HttpResponse.json({ code: 'UNAUTHORIZED' }, { status: 401 }),
+      ),
+    )
+    await expect(resyncDisplayName()).rejects.toBeInstanceOf(ApiError)
+    await expect(resyncDisplayName()).rejects.toMatchObject({ status: 401 })
   })
 })
 

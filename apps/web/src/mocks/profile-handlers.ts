@@ -74,6 +74,8 @@ function toProfileResponse(record: ProfileFixture): ProfileResponse {
     avatarUrl: record.avatarObjectKey !== null ? avatarUrlFor(record.userId) : null,
     timezone: record.timezone,
     department: record.department,
+    displayNameSource: record.displayNameSource,
+    ldapLinked: record.ldapLinked,
   }
 }
 
@@ -139,6 +141,9 @@ const patchMyProfileHandler = http.patch('/api/v1/users/me/profile', async ({ re
       )
     }
     next.displayName = value
+    // FR-PR-04 — 표시 이름을 직접 편집하면 출처가 USER로 전환된다
+    // (백엔드 UserRepository.updateDisplayName의 display_name_source='USER' 갱신 미러).
+    next.displayNameSource = 'USER'
   }
 
   if ('timezone' in body) {
@@ -156,6 +161,45 @@ const patchMyProfileHandler = http.patch('/api/v1/users/me/profile', async ({ re
   profileStore.set(userId, next)
   return HttpResponse.json(toProfileResponse(next))
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/users/me/profile/display-name/resync — LDAP 값으로 재설정 (FR-PR-04)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 표시 이름 필드 출처를 LDAP로 되돌린다(source: USER → LDAP).
+ *
+ * 외부 IdP 연결이 없는 사용자(`ldapLinked=false`)는 409 `DISPLAY_NAME_NOT_LDAP_LINKED`를
+ * 반환한다(백엔드 UserProfileService.resyncDisplayName의 DisplayNameNotLdapLinkedException 미러).
+ * 표시 이름 값 자체는 이 요청으로 바뀌지 않는다 — 다음 로그인(LDAP JIT 동기화) 시 cn으로
+ * 갱신되는 지연 semantics다(ADR 2026-07-07 D4).
+ */
+const resyncDisplayNameHandler = http.post(
+  '/api/v1/users/me/profile/display-name/resync',
+  ({ request }) => {
+    const userId = resolveUserIdFromRequest(request)
+    if (userId === null) return new HttpResponse(null, { status: 401 })
+
+    const current = profileStore.get(userId)
+    if (current === undefined) {
+      return HttpResponse.json(
+        errorBody('PROFILE_NOT_FOUND', '사용자를 찾을 수 없습니다.'),
+        { status: 404 },
+      )
+    }
+
+    if (!current.ldapLinked) {
+      return HttpResponse.json(
+        errorBody('DISPLAY_NAME_NOT_LDAP_LINKED', '연결된 LDAP 계정이 없습니다.'),
+        { status: 409 },
+      )
+    }
+
+    const next: ProfileFixture = { ...current, displayNameSource: 'LDAP' }
+    profileStore.set(userId, next)
+    return HttpResponse.json(toProfileResponse(next))
+  },
+)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 아바타 검증 정책 — AvatarTypePolicy.kt(backend) 미러
@@ -312,6 +356,7 @@ const getAvatarHandler = http.get('/api/v1/users/:userId/avatar', ({ params, req
 export const profileHandlers = [
   getMyProfileHandler,
   patchMyProfileHandler,
+  resyncDisplayNameHandler,
   uploadAvatarHandler,
   deleteAvatarHandler,
   getAvatarHandler,

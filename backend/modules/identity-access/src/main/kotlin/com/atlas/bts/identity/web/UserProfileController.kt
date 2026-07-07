@@ -5,6 +5,7 @@ package com.atlas.bts.identity.web
 import com.atlas.bts.identity.dto.AvatarUploadResponse
 import com.atlas.bts.identity.dto.ProfilePatchRequest
 import com.atlas.bts.identity.dto.ProfileResponse
+import com.atlas.bts.identity.profile.DisplayNameNotLdapLinkedException
 import com.atlas.bts.identity.profile.ProfilePatch
 import com.atlas.bts.identity.profile.ProfilePatchField
 import com.atlas.bts.identity.profile.ProfileUserNotFoundException
@@ -41,11 +42,12 @@ import java.util.UUID
  * 사용자 프로필 조회/수정 + 아바타 업로드/다운로드/삭제 REST 컨트롤러 (FR-PR-01 Task 5).
  *
  * ## 엔드포인트 ([RequestMapping] `/api/v1/users`)
- * - [getMyProfile]   GET    `/me/profile`        — 본인 프로필 조회.
- * - [patchMyProfile] PATCH  `/me/profile`        — 3-state 부분 수정.
- * - [uploadAvatar]   POST   `/me/profile/avatar` — 아바타 업로드.
- * - [getAvatar]      GET    `/{userId}/avatar`   — 아바타 다운로드(동료 것도 조회 가능).
- * - [deleteAvatar]   DELETE `/me/profile/avatar` — 아바타 삭제(멱등).
+ * - [getMyProfile]      GET    `/me/profile`                       — 본인 프로필 조회.
+ * - [patchMyProfile]    PATCH  `/me/profile`                       — 3-state 부분 수정.
+ * - [resyncDisplayName] POST   `/me/profile/display-name/resync`   — displayName 출처를 LDAP 로 재동기화(FR-PR-04).
+ * - [uploadAvatar]      POST   `/me/profile/avatar`                — 아바타 업로드.
+ * - [getAvatar]         GET    `/{userId}/avatar`                  — 아바타 다운로드(동료 것도 조회 가능).
+ * - [deleteAvatar]      DELETE `/me/profile/avatar`                — 아바타 삭제(멱등).
  *
  * ## 현재 사용자 식별 (JWT subject 전용, [WhoamiController] 미러)
  * `me` 스코프 4개 엔드포인트는 [AuthenticationPrincipal] 로 주입된 [Jwt] 의 subject(UUID)로 현재 사용자를
@@ -72,12 +74,13 @@ import java.util.UUID
  * 모듈에 전역 `@RestControllerAdvice` 가 없으므로([PersonalAccessTokenController] 선례) 도메인 예외를
  * **이 컨트롤러 로컬 [ExceptionHandler]** 로만 상태 매핑한다. [ProfileUserNotFoundException] 의 원본
  * 메시지는 userId 를 포함하므로 노출하지 않고 고정 일반 메시지로 치환한다([handleProfileNotFound]).
- * [ProfileValidationException]/[AvatarValidationException] 의 메시지는 서비스가 사용자 노출용으로 미리
- * 작성한 안전한 값이므로 그대로 응답에 담는다([handleValidation]).
+ * [DisplayNameNotLdapLinkedException] 도 내부 사정(연결 여부/정책)을 감추기 위해 고정 일반 메시지로
+ * 치환해 409 로 매핑한다([handleNotLdapLinked]). [ProfileValidationException]/[AvatarValidationException] 의
+ * 메시지는 서비스가 사용자 노출용으로 미리 작성한 안전한 값이므로 그대로 응답에 담는다([handleValidation]).
  */
 @RestController
 @RequestMapping("/api/v1/users")
-// TooManyFunctions 억제 — 5개 엔드포인트 + 로컬 예외 핸들러 3개 + DTO 변환/식별자 추출 helper 들이 응집돼야
+// TooManyFunctions 억제 — 6개 엔드포인트 + 로컬 예외 핸들러 4개 + DTO 변환/식별자 추출 helper 들이 응집돼야
 // 하는 단일 컨트롤러다([AccountLinkController] 선례와 동일 원칙 — 분리하면 SecurityBeans/errorResponse 중복).
 @Suppress("TooManyFunctions")
 class UserProfileController(
@@ -115,6 +118,25 @@ class UserProfileController(
     ): ProfileResponse {
         val userId = currentUserId(jwt)
         return toResponse(userProfileService.patchProfile(userId, toPatch(req)))
+    }
+
+    /**
+     * POST `/api/v1/users/me/profile/display-name/resync` — 본인 displayName 출처를 LDAP 로 되돌린다 (FR-PR-04).
+     *
+     * `source=USER` 로 잠긴 displayName 을 다시 디렉터리 동기화 대상으로 되돌려, 다음 외부 IdP 재로그인 시
+     * 디렉터리 값으로 갱신되게 한다(지연 semantics — 즉시 값은 바뀌지 않고 [ProfileResponse.displayNameSource]
+     * 만 `LDAP` 으로 전환). 외부 IdP 계정이 없는 로컬 전용 사용자는 되돌릴 출처가 없어 409 로 거부된다.
+     *
+     * @param jwt 인증 JWT principal. PAT 등 미지원 인증이면 401.
+     * @return 200 source 전환 후 [ProfileResponse].
+     * @throws DisplayNameNotLdapLinkedException 외부 IdP 계정이 없을 때(→ 409, [handleNotLdapLinked]).
+     */
+    @PostMapping("/me/profile/display-name/resync")
+    fun resyncDisplayName(
+        @AuthenticationPrincipal jwt: Jwt?,
+    ): ProfileResponse {
+        val userId = currentUserId(jwt)
+        return toResponse(userProfileService.resyncDisplayName(userId))
     }
 
     /**
@@ -203,6 +225,15 @@ class UserProfileController(
     fun handleProfileNotFound(): ResponseEntity<Map<String, String>> =
         errorResponse(HttpStatus.NOT_FOUND, ERROR_PROFILE_NOT_FOUND, "사용자를 찾을 수 없습니다.")
 
+    /** 외부 IdP(디렉터리) 연결이 없어 displayName 재동기화 불가 → 409. 고정 일반 메시지(내부정보 없음). */
+    @ExceptionHandler(DisplayNameNotLdapLinkedException::class)
+    fun handleNotLdapLinked(): ResponseEntity<Map<String, String>> =
+        errorResponse(
+            HttpStatus.CONFLICT,
+            ERROR_DISPLAY_NAME_NOT_LDAP_LINKED,
+            "LDAP 연결 계정이 아니어서 재동기화할 수 없습니다.",
+        )
+
     /** 아바타 미설정 → 404. */
     @ExceptionHandler(AvatarObjectNotFoundException::class)
     fun handleAvatarNotFound(): ResponseEntity<Map<String, String>> =
@@ -232,6 +263,8 @@ class UserProfileController(
             avatarUrl = view.avatarObjectKey?.let { avatarUrlFor(view.userId) },
             timezone = view.timezone,
             department = view.department,
+            displayNameSource = view.displayNameSource,
+            ldapLinked = view.ldapLinked,
         )
 
     /** [ProfilePatchRequest] 의 [JsonNode] 3-state 를 [ProfilePatch] 로 변환한다. */
@@ -292,6 +325,9 @@ class UserProfileController(
 
         /** 프로필 대상 사용자 미존재 에러 코드. */
         const val ERROR_PROFILE_NOT_FOUND = "PROFILE_NOT_FOUND"
+
+        /** displayName 재동기화 대상이 LDAP(외부 IdP) 미연결 사용자일 때 에러 코드 (FR-PR-04). */
+        const val ERROR_DISPLAY_NAME_NOT_LDAP_LINKED = "DISPLAY_NAME_NOT_LDAP_LINKED"
 
         /** 아바타 미설정 에러 코드. */
         const val ERROR_AVATAR_NOT_FOUND = "AVATAR_NOT_FOUND"

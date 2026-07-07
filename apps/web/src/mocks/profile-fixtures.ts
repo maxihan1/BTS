@@ -15,9 +15,19 @@ export interface ProfileFixture {
   avatarObjectKey: string | null
   timezone: string
   department: string | null
+  /**
+   * 표시 이름 필드 출처(FR-PR-04) — `LDAP`(로그인 시 cn 동기화 대상) 또는
+   * `USER`(직접 편집으로 동기화가 중단된 상태).
+   */
+  displayNameSource: 'LDAP' | 'USER'
+  /** 외부 IdP(LDAP 등) 계정 연결 여부(FR-PR-04) — false면 출처 배지/재설정 UI가 미노출되는 로컬 전용 사용자 */
+  ldapLinked: boolean
 }
 
-/** alice 프로필 fixture — auth-fixtures.aliceUser와 동일 userId/username/email로 정합. */
+/**
+ * alice 프로필 fixture — auth-fixtures.aliceUser와 동일 userId/username/email로 정합.
+ * FR-PR-04 — LDAP 연결 + 동기화 상태(source=LDAP) 대표 픽스처.
+ */
 export const ALICE_PROFILE_FIXTURE: ProfileFixture = {
   userId: aliceUser.userId,
   username: aliceUser.username,
@@ -26,9 +36,14 @@ export const ALICE_PROFILE_FIXTURE: ProfileFixture = {
   avatarObjectKey: null,
   timezone: 'Asia/Seoul',
   department: '플랫폼팀',
+  displayNameSource: 'LDAP',
+  ldapLinked: true,
 }
 
-/** bob 프로필 fixture — 아바타/부서 미설정 상태(EC1 lazy 케이스) 대표. */
+/**
+ * bob 프로필 fixture — 아바타/부서 미설정 상태(EC1 lazy 케이스) 대표.
+ * FR-PR-04 — LDAP 미연결(로컬 전용 사용자) 대표 픽스처.
+ */
 export const BOB_PROFILE_FIXTURE: ProfileFixture = {
   userId: bobUser.userId,
   username: bobUser.username,
@@ -37,6 +52,8 @@ export const BOB_PROFILE_FIXTURE: ProfileFixture = {
   avatarObjectKey: null,
   timezone: 'UTC',
   department: null,
+  displayNameSource: 'LDAP',
+  ldapLinked: false,
 }
 
 /** 프로필 store 초기 시드 배열 — profile-handlers.ts가 이 값으로 store를 채운다. */

@@ -6,6 +6,7 @@ import com.atlas.bts.identity.config.CorsConfig
 import com.atlas.bts.identity.config.SecurityConfig
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
+import com.atlas.bts.identity.profile.DisplayNameNotLdapLinkedException
 import com.atlas.bts.identity.profile.ProfilePatch
 import com.atlas.bts.identity.profile.ProfilePatchField
 import com.atlas.bts.identity.profile.ProfileUserNotFoundException
@@ -38,6 +39,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delet
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
@@ -53,8 +55,9 @@ import java.util.UUID
  * [UserProfileController] WebMvcTest 슬라이스 테스트 (FR-PR-01 Task 5).
  *
  * ## 검증 시나리오
- * - GET  /me/profile  — 200 + avatarUrl 파생(키 있음/null) / 미인증 401.
+ * - GET  /me/profile  — 200 + avatarUrl 파생(키 있음/null) + displayNameSource/ldapLinked 노출 / 미인증 401.
  * - PATCH /me/profile — displayName 만 명시 / department 명시 null(삭제) / timezone 무효 400 / displayName 공백 400.
+ * - POST /me/profile/display-name/resync — 200 + source=LDAP / 외부계정 없음 409 / 비-JWT principal 401 (FR-PR-04).
  * - POST /me/profile/avatar — 200 + avatarUrl / 무효 MIME·크기 400.
  * - GET  /{userId}/avatar — 200 + Content-Type/nosniff/inline 헤더 / 미존재 404.
  * - DELETE /me/profile/avatar — 204.
@@ -114,6 +117,8 @@ class UserProfileControllerTest {
     private fun profileView(
         avatarObjectKey: String? = null,
         department: String? = "Engineering",
+        displayNameSource: String = "LDAP",
+        ldapLinked: Boolean = false,
     ): ProfileView =
         ProfileView(
             userId = userId,
@@ -123,6 +128,8 @@ class UserProfileControllerTest {
             avatarObjectKey = avatarObjectKey,
             timezone = "UTC",
             department = department,
+            displayNameSource = displayNameSource,
+            ldapLinked = ldapLinked,
         )
 
     // ── GET /me/profile ───────────────────────────────────────────────────────
@@ -156,6 +163,58 @@ class UserProfileControllerTest {
         mockMvc.perform(get("/api/v1/users/me/profile").with(jwtFor(userId)))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.avatarUrl").value(nullValue()))
+    }
+
+    @Test
+    fun `GET me profile includes displayNameSource and ldapLinked`() {
+        every { userProfileService.getProfile(userId) } returns
+            profileView(displayNameSource = "USER", ldapLinked = true)
+
+        mockMvc.perform(get("/api/v1/users/me/profile").with(jwtFor(userId)))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.displayNameSource").value("USER"))
+            .andExpect(jsonPath("$.ldapLinked").value(true))
+    }
+
+    // ── POST /me/profile/display-name/resync ───────────────────────────────────
+
+    @Test
+    fun `POST resync returns 200 with source LDAP`() {
+        every { userProfileService.resyncDisplayName(userId) } returns
+            profileView(displayNameSource = "LDAP", ldapLinked = true)
+
+        mockMvc.perform(
+            post("/api/v1/users/me/profile/display-name/resync")
+                .with(jwtFor(userId))
+                .with(csrf()),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.displayNameSource").value("LDAP"))
+            .andExpect(jsonPath("$.ldapLinked").value(true))
+    }
+
+    @Test
+    fun `POST resync returns 409 when user is not LDAP-linked`() {
+        every { userProfileService.resyncDisplayName(userId) } throws
+            DisplayNameNotLdapLinkedException("표시 이름을 디렉터리 값으로 되돌릴 수 없습니다.")
+
+        mockMvc.perform(
+            post("/api/v1/users/me/profile/display-name/resync")
+                .with(jwtFor(userId))
+                .with(csrf()),
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code").value("DISPLAY_NAME_NOT_LDAP_LINKED"))
+    }
+
+    @Test
+    fun `POST resync with PAT-style non-JWT principal returns 401`() {
+        mockMvc.perform(
+            post("/api/v1/users/me/profile/display-name/resync")
+                .with(user("some-authenticated-principal"))
+                .with(csrf()),
+        )
+            .andExpect(status().isUnauthorized)
     }
 
     // ── PATCH /me/profile ──────────────────────────────────────────────────────
