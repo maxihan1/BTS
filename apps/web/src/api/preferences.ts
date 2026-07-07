@@ -1,7 +1,10 @@
 // identity-access 사용자 환경설정(테마/언어/날짜포맷) REST API 클라이언트 — FR-PF-01
 import { z } from 'zod'
+import { useMutation } from '@tanstack/react-query'
+import type { UseMutationResult } from '@tanstack/react-query'
 import { apiFetch, apiGet, ApiError } from './client'
 import { readXsrfToken } from './sessions'
+import { refreshWhoami } from './useProfile'
 import { DATE_PRESETS } from '@/lib/date-preferences'
 import type { DatePreset } from '@/lib/date-preferences'
 
@@ -21,6 +24,18 @@ const LOCALES = ['ko', 'en'] as const
 
 /** {@link LOCALES} 중 하나 */
 export type Locale = (typeof LOCALES)[number]
+
+/**
+ * 값이 지원하는 {@link Locale}인지 판별하는 타입 가드.
+ * whoami 등 외부에서 온 느슨한 string 값을 안전하게 좁힐 때 사용한다
+ * (`lib/theme.ts`의 isTheme·`lib/date-preferences.ts`의 isDatePreset 선례와 동일한 패턴).
+ *
+ * @param value 검사할 문자열
+ * @returns Locale 여부
+ */
+export function isLocale(value: string): value is Locale {
+  return (LOCALES as readonly string[]).includes(value)
+}
 
 /**
  * 사용자 환경설정 응답 Zod 스키마.
@@ -102,4 +117,30 @@ export async function patchPreferences(body: PreferencesPatchBody): Promise<Pref
   })
   await throwIfNotOk(res)
   return preferencesSchema.parse(await res.json())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// mutation 훅 — PATCH 성공 시 whoami 재조회로 authStore 갱신 (Task 7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 환경설정 PATCH mutation 훅.
+ *
+ * 성공 시 {@link refreshWhoami}(`api/useProfile.ts` 선례)로 authStore.user의
+ * theme/locale/dateFormat을 최신화한다 — `PreferencesProvider`가 이 값을 구독해 테마/
+ * `<html lang>`을 즉시 재적용한다. PATCH 응답을 캐시에 직접 덮어쓰지 않고 별도 GET으로
+ * 재조회하는 이유는 프로필/상태/부재중 mutation과 동일하다(invalidate-only 원칙,
+ * memory: mutation-setquerydata-partial-response-flicker).
+ *
+ * @returns TanStack Query `useMutation` 결과 — `mutate(body)`로 실행
+ */
+export function usePreferencesMutation(): UseMutationResult<
+  PreferencesResponse,
+  ApiError,
+  PreferencesPatchBody
+> {
+  return useMutation<PreferencesResponse, ApiError, PreferencesPatchBody>({
+    mutationFn: patchPreferences,
+    onSuccess: () => refreshWhoami(),
+  })
 }
