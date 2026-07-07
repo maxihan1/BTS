@@ -36,6 +36,9 @@ import java.util.UUID
  *   기존 key 교체 시 커밋 후 old delete, put 실패 시 DB 미변경.
  * - deleteAvatar: clearAvatar 호출 + 커밋 후 best-effort delete, 멱등.
  * - getAvatar: key 없으면 404 신호, 있으면 storage.get 위임.
+ * - displayNameSource/ldapLinked/resyncDisplayName(FR-PR-04): getProfile 이 두 필드를 채움(외부계정 유무),
+ *   displayName 편집 후 재조회 source=USER 반영, resync 는 외부계정 있으면 LDAP 로 되돌리고 최신 뷰 반환·
+ *   없으면 DisplayNameNotLdapLinkedException.
  * - Annotation 회귀 가드: @Service + tx 경계(readOnly/write 조회·수정, MinIO I/O 메서드는 @Transactional 없음).
  */
 class UserProfileServiceTest {

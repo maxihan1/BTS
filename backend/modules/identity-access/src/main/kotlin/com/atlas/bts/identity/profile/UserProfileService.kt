@@ -50,7 +50,13 @@ private const val DEFAULT_DISPLAY_NAME_SOURCE = "LDAP"
  * @param profileRepository user_profiles 테이블 접근 — timezone/department/avatar 확장 속성.
  * @param storagePort 아바타 바이너리 오브젝트 스토리지 outbound port.
  * @param externalAccountRepository user_external_accounts 접근 — 외부 IdP 연결(ldapLinked) 판별 및 resync 가드 (FR-PR-04).
+ *
+ * ## TooManyFunctions 억제 근거
+ * 단일 프로필 유스케이스(조회 / 3-state PATCH / 아바타 오케스트레이션 / FR-PR-04 재동기화)를 조율하는 서비스라
+ * 응집한 public·private 헬퍼가 자연히 11개를 넘는다. 억지로 클래스를 쪼개면 오히려 응집을 해치므로
+ * (ExternalAccountRepository 와 동일 판단) 클래스 단위로 명시 억제한다.
  */
+@Suppress("TooManyFunctions")
 @Service
 class UserProfileService(
     private val userRepository: UserRepository,
@@ -82,6 +88,10 @@ class UserProfileService(
      *
      * 검증(displayName 공백/길이, timezone 형식)은 어떤 write 보다도 먼저 수행되므로
      * 하나라도 실패하면 전체가 원자적으로 무효화된다(부분 적용 없음).
+     *
+     * displayName 을 수정하면 [UserRepository.updateDisplayName] 의 SQL 이 users.display_name_source 를
+     * `USER` 로 함께 잠근다(FR-PR-04 Task 2 — 이 서비스는 source 전환을 위한 별도 write 를 하지 않는다).
+     * 반환 전 [loadView] 재조회가 그 전환을 [ProfileView.displayNameSource] 에 반영한다.
      *
      * @param userId 갱신 대상 사용자 id.
      * @param patch 3-state 변경 의도.
