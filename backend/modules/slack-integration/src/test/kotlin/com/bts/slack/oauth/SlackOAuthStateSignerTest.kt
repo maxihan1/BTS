@@ -33,7 +33,7 @@ class SlackOAuthStateSignerTest {
     }
 
     @Test
-    fun `발급 state는 점(.)으로 구분된 두 조각 형식이다`() {
+    fun `발급 state는 점 문자 하나로 구분된 두 조각 형식이다`() {
         val signer = SlackOAuthStateSigner(stateKey, fixedClock)
         val state = signer.issue(installedBy)
         assertThat(state.count { it == '.' }).isEqualTo(1)
