@@ -84,13 +84,16 @@ class DefaultSlackOAuthClient(
     override fun buildAuthorizeUrl(state: String): String {
         properties.requireConfiguredForAuthorize()
         val query =
-            "client_id=${encode(properties.clientId)}" +
-                "&scope=${encode(properties.scopes)}" +
-                "&state=${encode(state)}" +
-                "&redirect_uri=${encode(properties.redirectUri)}"
+            listOf(
+                "client_id" to properties.clientId,
+                "scope" to properties.scopes,
+                "state" to state,
+                "redirect_uri" to properties.redirectUri,
+            ).joinToString("&") { (key, value) -> "$key=${encode(value)}" }
         return "$AUTHORIZE_ENDPOINT?$query"
     }
 
+    /** 쿼리 파라미터 값을 퍼센트 인코딩한다(예약 문자 `:`·`,`·`/` → `%3A`·`%2C`·`%2F`). */
     private fun encode(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8)
 
     private companion object {
