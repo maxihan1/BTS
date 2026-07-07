@@ -2,24 +2,19 @@
 
 package com.bts.slack.application
 
-/**
- * Slack App 설치 흐름([SlackInstallService])이 던지는 도메인 예외 모음.
- *
- * ## 예외 → HTTP 매핑 (Task 9 웹 레이어가 소비)
- * | 예외 | 의미 | HTTP |
- * |---|---|---|
- * | [SlackForbiddenException] | 시스템 관리자 아닌 사용자의 설치 시도(S5) | 403 |
- * | [com.bts.slack.oauth.SlackStateInvalidException] | state 부재/서명 위조/만료(EC1) | 400 |
- * | [SlackOAuthFailedException] | `oauth.v2.access` `ok:false` 또는 토큰 부재(EC3/EC7) | 502 |
- * | [SlackUnsupportedInstallException] | enterprise 등 미지원 설치 유형(EC5/G1) | 400 |
- *
- * `SlackStateInvalidException` 은 Task 4 가 `oauth` 패키지에 이미 정의한 것을 **재사용**한다(재정의 금지).
- *
- * ## 예외 메시지 위생 (DEVELOPMENT.md §1.1.2 / 교훈 fr-pm-04-guard-exception-message-http-leak)
- * 모든 메시지는 봇 토큰·암호화 키·내부 정책/존재 여부를 담지 않는 **일반 메시지**로 고정한다. Slack 이
- * 돌려준 실패 코드처럼 리다이렉트에 필요한 비-비밀 값은 [SlackOAuthFailedException.errorCode] 같은
- * 별도 속성으로만 전달하고, `message` 로는 노출하지 않는다(HTTP detail 누출 차단).
- */
+// SlackInstallService 가 던지는 도메인 예외 모음.
+//
+// 예외 → HTTP 매핑 (Task 9 웹 레이어가 소비).
+//   SlackForbiddenException          — 시스템 관리자 아닌 사용자의 설치 시도(S5)          → 403
+//   SlackStateInvalidException(Task4) — state 부재/서명 위조/만료(EC1)                    → 400
+//   SlackOAuthFailedException        — oauth.v2.access ok:false 또는 토큰 부재(EC3/EC7)  → 502
+//   SlackUnsupportedInstallException — enterprise 등 미지원 설치 유형(EC5/G1)            → 400
+// SlackStateInvalidException 은 Task 4 가 oauth 패키지에 이미 정의한 것을 재사용한다(재정의 금지).
+//
+// 예외 메시지 위생 (DEVELOPMENT.md §1.1.2 / 교훈 fr-pm-04-guard-exception-message-http-leak).
+// 모든 메시지는 봇 토큰·암호화 키·내부 정책/존재 여부를 담지 않는 일반 메시지로 고정한다. Slack 이 돌려준
+// 실패 코드처럼 리다이렉트에 필요한 비-비밀 값은 errorCode 같은 별도 속성으로만 전달하고 message 로는
+// 노출하지 않는다(HTTP detail 누출 차단).
 
 /**
  * 시스템 전역 관리자가 아닌 행위자가 Slack App 설치를 시도했음을 나타낸다(스펙 S5).

@@ -9,10 +9,10 @@ import com.bts.slack.oauth.SlackOAuthClient
 import com.bts.slack.oauth.SlackOAuthStateSigner
 import com.bts.slack.oauth.SlackOAuthTokenResponse
 import com.bts.slack.oauth.SlackStateInvalidException
+import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
-import io.mockk.Runs
 import io.mockk.slot
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat

@@ -7,6 +7,7 @@ import com.bts.shared.permission.SystemPermissionResolver
 import com.bts.slack.domain.SlackInstall
 import com.bts.slack.oauth.SlackOAuthClient
 import com.bts.slack.oauth.SlackOAuthStateSigner
+import com.bts.slack.oauth.SlackOAuthTokenResponse
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -90,14 +91,8 @@ class SlackInstallService(
         val installedBy = stateSigner.verify(state)
 
         val response = oauthClient.exchangeCode(code)
-        if (!response.ok) {
-            // Slack 이 정상 응답으로 돌려준 실패(EC3) — error 코드는 리다이렉트용으로만 보존, 메시지 누출 금지.
-            throw SlackOAuthFailedException(response.error)
-        }
         // 평문 봇 토큰은 여기서만 잠깐 보유하고 곧바로 암호화한다(§1.1.1 평문 저장 금지).
-        val plaintextToken =
-            response.accessToken
-                ?: throw SlackOAuthFailedException(MISSING_ACCESS_TOKEN)
+        val plaintextToken = requireUsableBotToken(response)
         val encryptedToken = secretEncryptor.encrypt(plaintextToken)
 
         // 워크스페이스 설치 조립. enterprise install/필수 필드 부재는 fromToken 이 IllegalArgumentException 으로
@@ -111,6 +106,20 @@ class SlackInstallService(
 
         installRepository.upsert(install)
         return SlackInstallResult(teamId = install.teamId, teamName = install.teamName)
+    }
+
+    /**
+     * 교환 응답에서 저장에 쓸 **평문 봇 토큰**을 꺼낸다.
+     *
+     * Slack 이 정상 응답으로 돌려준 실패(`ok:false`, EC3)와 `ok:true` 이지만 `access_token` 이 없는
+     * 경우(EC7)를 모두 [SlackOAuthFailedException] 으로 거부한다. `ok:false` 의 error 코드는 리다이렉트용으로만
+     * 보존하고 예외 메시지로는 노출하지 않는다(§1.1.2).
+     */
+    private fun requireUsableBotToken(response: SlackOAuthTokenResponse): String {
+        if (!response.ok) {
+            throw SlackOAuthFailedException(response.error)
+        }
+        return response.accessToken ?: throw SlackOAuthFailedException(MISSING_ACCESS_TOKEN)
     }
 
     private companion object {
