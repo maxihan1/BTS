@@ -51,6 +51,20 @@ export const WhoamiResponseSchema = z.object({
    * optional 사유는 statusEmoji와 동일(인라인 mock blast-radius 회피).
    */
   statusText: z.string().nullable().optional(),
+  /**
+   * 부재중(Out of Office) 활성 여부 — FR-PR-03 `user_ooo` 노출(활성 판정 `startsAt<=now<endsAt`,
+   * 미설정/종료/미래예약이면 false, PAT 분기도 항상 false).
+   * `.optional()`인 이유 — 키 부재도 허용해야 하기 때문. authMethod:를 참조하는 인라인 whoami mock이
+   * 다수 파일에 산재돼 있어 required로 강화하면 전부 z.parse 실패로 깨진다
+   * (zod-schema-strengthen-inline-mock-fanout 사고 재발 방지, FR-PR-01/02 displayName/statusEmoji 선례).
+   * 실 백엔드는 항상 키를 포함해 응답한다.
+   */
+  oooActive: z.boolean().optional(),
+  /**
+   * 부재중 종료 시각(ISO-8601 문자열) — FR-PR-03. `oooActive`가 true일 때만 값을 갖고 그 외는 null이다.
+   * optional 사유는 oooActive와 동일(인라인 mock blast-radius 회피).
+   */
+  oooUntil: z.string().nullable().optional(),
 })
 
 /**
@@ -65,6 +79,27 @@ export const statusResponseSchema = z.object({
   text: z.string().nullable(),
   /** 만료 시각(ISO 8601 Instant) — 만료 없음/미설정 시 null */
   expiresAt: z.string().nullable(),
+})
+
+/**
+ * 부재중(Out of Office) 응답 Zod 스키마 — FR-PR-03.
+ * `GET`/`PATCH /api/v1/users/me/ooo` 응답 형태 — 래퍼 없음.
+ * 미설정/종료 시 다섯 필드 모두 null·active:false(강제 row 생성 안 함, backend
+ * OutOfOfficeController/OooResponse 참고).
+ */
+export const oooResponseSchema = z.object({
+  /** 부재 시작 시각(ISO 8601 Instant) — 미설정/종료 시 null */
+  startsAt: z.string().nullable(),
+  /** 부재 종료 시각(ISO 8601 Instant) — 미설정/종료 시 null */
+  endsAt: z.string().nullable(),
+  /** 대체 담당자 사용자 id — 미지정 시 null */
+  delegateUserId: z.string().uuid().nullable(),
+  /** 대체 담당자 표시 이름(파생) — 대리자 삭제/미지정 시 null */
+  delegateName: z.string().nullable(),
+  /** 안내 메시지(평문) — 미설정 시 null */
+  message: z.string().nullable(),
+  /** 활성 여부(`startsAt<=now<endsAt`, Clock 기준) */
+  active: z.boolean(),
 })
 
 export const ApiErrorResponseSchema = z.object({
@@ -169,3 +204,4 @@ export type BackupCodesStatusResponse = z.infer<typeof BackupCodesStatusResponse
 export type WebauthnKey = z.infer<typeof WebauthnKeySchema>
 export type WebauthnKeysResponse = z.infer<typeof WebauthnKeysResponseSchema>
 export type StatusResponse = z.infer<typeof statusResponseSchema>
+export type OooResponse = z.infer<typeof oooResponseSchema>

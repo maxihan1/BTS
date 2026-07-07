@@ -27,6 +27,11 @@ import java.util.UUID
  * @property statusEmoji 상태 메시지 이모지 (FR-PR-02). 활성 상태(미만료)면 값, 미설정/만료면 null 이다.
  *   파생 근거는 user_statuses(만료 필터는 UserStatusRepository.findActiveByUserId 책임). PAT 분기는 항상 null.
  * @property statusText 상태 메시지 텍스트 (FR-PR-02). statusEmoji 와 동일 규칙. PAT 분기는 항상 null.
+ * @property oooActive 부재중(Out of Office) 활성 여부 (FR-PR-03). 활성(`startsAt<=now<endsAt`)이면 true,
+ *   미설정/종료/미래예약(비활성)이면 false 다. 파생 근거는 user_ooo
+ *   (활성 필터는 OutOfOfficeRepository.findActiveByUserId 책임). PAT 분기는 항상 false.
+ * @property oooUntil 부재중 종료 시각(ISO-8601 문자열) (FR-PR-03). [oooActive] 가 true 일 때만 값을 갖고,
+ *   그 외는 null 이다. PAT 분기는 항상 null.
  */
 data class WhoamiResponse(
     val username: String,
@@ -40,4 +45,6 @@ data class WhoamiResponse(
     val avatarUrl: String?,
     val statusEmoji: String?,
     val statusText: String?,
+    val oooActive: Boolean,
+    val oooUntil: String?,
 )

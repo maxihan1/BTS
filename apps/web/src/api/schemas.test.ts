@@ -268,6 +268,52 @@ describe('WhoamiResponseSchema', () => {
     expect(result.displayName).toBeUndefined()
     expect(result.avatarUrl).toBeUndefined()
   })
+
+  it('oooActive/oooUntil 값이 있으면 parse 성공하고 값을 그대로 노출한다 (FR-PR-03)', () => {
+    const result = WhoamiResponseSchema.parse({
+      username: 'alice',
+      email: 'alice@example.com',
+      authMethod: 'local',
+      userId: 'usr-0001',
+      mustChangePassword: false,
+      isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
+      oooActive: true,
+      oooUntil: '2026-07-14T00:00:00Z',
+    })
+    expect(result.oooActive).toBe(true)
+    expect(result.oooUntil).toBe('2026-07-14T00:00:00Z')
+  })
+
+  it('oooActive:false·oooUntil:null이어도 parse 성공한다 (FR-PR-03 비활성)', () => {
+    const result = WhoamiResponseSchema.parse({
+      username: 'alice',
+      email: 'alice@example.com',
+      authMethod: 'local',
+      userId: 'usr-0001',
+      mustChangePassword: false,
+      isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
+      oooActive: false,
+      oooUntil: null,
+    })
+    expect(result.oooActive).toBe(false)
+    expect(result.oooUntil).toBeNull()
+  })
+
+  it('oooActive/oooUntil 키가 없어도 parse 성공한다 (하위호환 — 기존 인라인 whoami mock, mock fanout 방어)', () => {
+    const result = WhoamiResponseSchema.parse({
+      username: 'alice',
+      email: 'alice@example.com',
+      authMethod: 'local',
+      userId: 'usr-0001',
+      mustChangePassword: false,
+      isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
+    })
+    expect(result.oooActive).toBeUndefined()
+    expect(result.oooUntil).toBeUndefined()
+  })
 })
 
 describe('ApiErrorResponseSchema', () => {

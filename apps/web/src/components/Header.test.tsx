@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { useAuthStore } from '@/auth/authStore'
+import { oooLabels } from '@/i18n/ooo-labels'
 import { Header } from './Header'
 
 // TanStack Router useNavigate + Link 모킹 — 라우터 컨텍스트 없이 단위 테스트 가능
@@ -57,6 +58,12 @@ vi.mock('@/components/ui/avatar', () => ({
 vi.mock('@/components/status/StatusModal', () => ({
   StatusModal: ({ open }: { open: boolean }) =>
     open ? <div data-testid="status-modal-mock" /> : null,
+}))
+
+// OooModal mock — Header가 open prop으로 모달을 여는지에 집중(모달 내부는 OooModal.test가 검증).
+vi.mock('@/components/ooo/OooModal', () => ({
+  OooModal: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="ooo-modal-mock" /> : null,
 }))
 
 function createWrapper() {
@@ -164,6 +171,70 @@ describe('Header', () => {
     await user.click(await screen.findByText('상태 설정'))
 
     expect(screen.getByTestId('status-modal-mock')).toBeInTheDocument()
+  })
+
+  it('계정 메뉴의 "부재중 설정" 클릭 시 OooModal이 열린다 (FR-PR-03)', async () => {
+    const user = userEvent.setup()
+    renderHeader()
+
+    await user.click(screen.getByRole('button', { name: /계정 메뉴/ }))
+    await user.click(await screen.findByText(oooLabels.accountMenuItem))
+
+    expect(screen.getByTestId('ooo-modal-mock')).toBeInTheDocument()
+  })
+
+  it('whoami oooActive:true이면 계정 메뉴 영역에 부재중 배지를 표시한다 (FR-PR-03)', () => {
+    useAuthStore.setState({
+      accessToken: 'test-token',
+      user: {
+        username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1',
+        mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false,
+        oooActive: true, oooUntil: new Date(2026, 6, 14, 12, 0, 0).toISOString(),
+      },
+    })
+    renderHeader()
+
+    expect(screen.getByText(oooLabels.headerBadge)).toBeInTheDocument()
+  })
+
+  it('whoami oooActive:false(미설정)이면 부재중 배지를 표시하지 않는다 (FR-PR-03)', () => {
+    // beforeEach 기본 상태 — oooActive 미설정
+    renderHeader()
+
+    expect(screen.queryByText(oooLabels.headerBadge)).toBeNull()
+  })
+
+  it('부재중 배지에 복귀 예정일이 tooltip(title)으로 표시된다 (FR-PR-03)', () => {
+    useAuthStore.setState({
+      accessToken: 'test-token',
+      user: {
+        username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1',
+        mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false,
+        oooActive: true, oooUntil: new Date(2026, 6, 14, 12, 0, 0).toISOString(),
+      },
+    })
+    renderHeader()
+
+    expect(screen.getByText(oooLabels.headerBadge)).toHaveAttribute(
+      'title',
+      expect.stringContaining('2026-07-14'),
+    )
+  })
+
+  it('상태 배지와 부재중 배지가 동시에 표시된다 — 시각 공존 (C2, FR-PR-03)', () => {
+    useAuthStore.setState({
+      accessToken: 'test-token',
+      user: {
+        username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1',
+        mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false,
+        statusEmoji: '🌴', statusText: '휴가 중',
+        oooActive: true, oooUntil: new Date(2026, 6, 14, 12, 0, 0).toISOString(),
+      },
+    })
+    renderHeader()
+
+    expect(screen.getByText('🌴')).toBeInTheDocument()
+    expect(screen.getByText(oooLabels.headerBadge)).toBeInTheDocument()
   })
 
   it('displayName이 없으면 username으로 폴백해 계정 트리거에 표시된다 (FR-PR-01 D6 Task 8)', () => {

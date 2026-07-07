@@ -43,6 +43,7 @@ import { resolutionHandlers } from './resolution-handlers'
 import { schemeHandlers } from './scheme-handlers'
 import { sessionHandlers } from './session-handlers'
 import { statusHandlers } from './status-handlers'
+import { oooHandlers } from './ooo-handlers'
 import { trustedDevicesHandlers } from './trusted-devices-handlers'
 import { userHandlers } from './user-handlers'
 import { versionHandlers } from './version-handlers'
@@ -115,6 +116,7 @@ export const handlers = [
   ...schemeHandlers,
   ...sessionHandlers,
   ...statusHandlers,
+  ...oooHandlers,
   ...trustedDevicesHandlers,
   ...userHandlers,
   ...versionHandlers,

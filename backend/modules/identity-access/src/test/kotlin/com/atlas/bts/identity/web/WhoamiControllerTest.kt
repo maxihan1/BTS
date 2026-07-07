@@ -11,6 +11,7 @@ import com.atlas.bts.identity.credential.StoredPasswordCredential
 import com.atlas.bts.identity.credential.StoredPasswordCredentialRepository
 import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
+import com.atlas.bts.identity.ooo.OutOfOfficeRepository
 import com.atlas.bts.identity.pat.PatVerificationException
 import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
@@ -107,6 +108,12 @@ class WhoamiControllerTest {
         // WhoamiController 가 상태 view-layer(statusEmoji/statusText) 파생을 위해 새로 주입받는 의존 (FR-PR-02).
         @Bean
         fun userStatusRepository(): UserStatusRepository = mockk(relaxed = true)
+
+        // WhoamiController 가 부재중 view-layer(oooActive/oooUntil) 파생을 위해 새로 주입받는 의존 (FR-PR-03).
+        // @WebMvcTest 슬라이스에는 실 빈이 없으므로 mockk 로 공급해야 컨텍스트가 로드된다
+        // (미공급 시 "No qualifying bean of type OutOfOfficeRepository").
+        @Bean
+        fun outOfOfficeRepository(): OutOfOfficeRepository = mockk(relaxed = true)
     }
 
     @Autowired

@@ -47,13 +47,13 @@
 
 **우선순위**. 높음 | **선행**. §2.2 | **Plan slug**. `personal/ooo`
 
-- [ ] D1. 도메인 — OutOfOffice (책임. backend-engineer)
-- [ ] D2. 명세 — 기간 + 대체 담당자 + 자동 응답 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `user_ooo(user_id, starts_at, ends_at, delegate_user_id)` (책임. db-engineer)
-- [ ] D4. 백엔드 — `POST /api/v1/users/me/ooo` + 할당 시 자동 위임 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — OOO 설정 폼 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — OutOfOffice (PR #241) (책임. backend-engineer)
+- [x] D2. 명세 — 기간 + 대체 담당자 + 자동 응답(표시용 안내 메시지) (PR #241) (책임. backend-engineer)
+- [x] D3. 데이터 모델 — `user_ooo(user_id, starts_at, ends_at, delegate_user_id, message)` — V029, ADR 2026-07-07 (책임. db-engineer)
+- [x] D4. 백엔드 — `GET/PATCH/DELETE /api/v1/users/me/ooo` (product 원안 `POST` 표기 → 관례 수렴). **자동 위임 = 대리자 지정·저장·표시까지(A안, 단일 BC identity-access); 실제 이슈 assignee 자동 전환은 후속 FR로 분리**(Maxi 확정, ADR 2026-07-07 D3) (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 (PR #241) (책임. backend-engineer)
+- [x] D6. 프론트 UI — OOO 설정 모달(기간+대리자검색+메시지) + Header 부재중 표시 (PR #241) (책임. designer → frontend-engineer)
+- [x] D7. E2E (PR #241) (책임. qa-engineer)
 
 ### §2.4 FR-PR-04 — LDAP 동기화 필드 vs 사용자 편집 분리
 
