@@ -212,4 +212,24 @@ SDD 09장(알림/Slack). product: docs/plan/product/slack-integration.md §2.1
 - **BC 격리**. slack-integration은 identity-access를 import하지 않음 — `SystemPermissionResolver`·`SecretEncryptor`·`OutboundHttpClientConfig`는 모두 shared-kernel 경유. 중앙 SecurityConfig 미수정(배포 조립 후속, ADR D7).
 - **문서 동기화**. 신규 모듈이지만 FR-SL-01은 기존 FR(총수 123 불변). 머지 시 domain 노트 "KMS"→"AES" 정정, product `slack-integration.md` D1~D5 체크박스.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+type=auth → plan-eng-review + plan-ceo-review 관점 집중 리뷰(대화형 gstack 스킬 대신, learnings `bts-review-plan-autoplan-overkill` 정신).
+
+### plan-eng-review (2026-07-07) — 기술 건전성
+
+- ✅ 통과. TDD task 분해·의존성 그래프·wave 계산 건전. 재사용 자산(SecretEncryptor·SystemPermissionResolver·ActorExtractor·ExceptionHandler)이 webhook 선례로 검증됨.
+- ⚠️ **E1 (정정 완료)**. Task 6은 slack-api-client `MethodsClient` 내장 HTTP 클라이언트 사용(고정 호스트 `slack.com`). 스펙 N5의 "webhook RestClient 준용"은 부정확 → 정정함(사용자 URL 없으므로 SSRF 무관, SDK 클라이언트 사용). shared `OutboundHttpClientConfig`는 재사용 안 함.
+- ⚠️ **E2**. Task 1(모듈 스캐폴딩)은 순수 red→green 예외 — `SlackContextLoadTest`(컨텍스트 로드)로 검증. bts-impl TDD 게이트가 인프라 task를 test-first 위반으로 오판하지 않도록 커밋 메시지에 스캐폴딩 명시.
+- ⚠️ **E3**. Task 9 통합 테스트는 test-boot에 인증 setup 필요 — `/slack/install`의 "인증 필요"를 검증하려면 `@WithMockUser(username=<uuid>)` 또는 test JWT로 SecurityContext 주입(`SlackActorExtractor`가 principal name=UUID 추출). search webhook test-boot 인증 패턴 참조.
+- 🛑 BLOCKER: 없음.
+
+### plan-ceo-review (2026-07-07) — 스코프·보안
+
+- ✅ 스코프. 9 task는 신규 BC 첫 구현치고 적정. 백엔드 코어만, UI/E2E 분리 — 리뷰 부담·리스크 관리 우수.
+- ✅ 보안. state 서명 키·client_secret·bot_token 3중 키 분리, 평문 로깅 금지 검증(T9), cross-BC fail-closed 가드. auth 폭발반경 대비 방어 충실.
+- ⚠️ **C1 state replay**. stateless 서명 state는 서버 미저장이라 10분 내 재사용 가능. 그러나 Slack OAuth `code`가 1회용(재사용 시 Slack 거부)이라 실효 방어됨 — 수용, `SlackOAuthStateSigner` KDoc에 명시.
+- ⚠️ **C2 배포 조립**. 중앙 identity-access SecurityConfig에 `/slack/install/callback` permitAll 추가는 DEVELOPMENT.md §1.4 예외로 별도 ADR/게이트 승인 필요(이번 범위 밖, ADR D7 후속).
+- 🛑 BLOCKER: 없음.
+
+**종합**. BLOCKER 0. 주의 5건(E1 정정 완료, E2·E3·C1·C2는 impl/후속에서 처리). 게이트 1 진입 가능.

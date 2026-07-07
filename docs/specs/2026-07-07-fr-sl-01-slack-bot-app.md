@@ -31,7 +31,7 @@
 - **N2 CSRF**. `state`는 `SecureRandom` 기반 추측 불가값. **STATELESS 정합** — 서버 세션 없이 검증 가능해야 함(아래 §state 메커니즘).
 - **N3 client_secret**. `BTS_SLACK_CLIENT_SECRET` 환경변수 주입, DB/코드/로그 저장 금지.
 - **N4 부팅 안전성**. 암호화 키·Slack credentials 미설정이어도 빈은 등록되고 컨텍스트 부팅이 깨지지 않음(사용 시점 검증). `profile-scoped-bean-boot-failure`/`minio-eager-bean-fullboot-regression` 회귀 방지.
-- **N5 아웃바운드 SSRF**. 토큰 교환 대상은 Slack 고정 호스트(`slack.com`)뿐 — 사용자 입력 URL 없음. 리다이렉트 자동 추적 비활성(webhook RestClient 패턴 준용).
+- **N5 아웃바운드 SSRF**. 토큰 교환 대상은 Slack 고정 호스트(`slack.com`)뿐 — 사용자 입력 URL이 없어 SSRF 표면이 없다. 호출은 `slack-api-client`의 `MethodsClient`(내장 HTTP 클라이언트)로 수행한다(ADR D2). webhook의 `OutboundHttpClientConfig` RestClient는 **사용자 지정 URL** 전송용이므로 여기선 재사용하지 않는다 — 고정 엔드포인트에는 SDK 클라이언트가 적합.
 - **N6 성능**. 설치 콜백 p95 < 3s (Slack API 왕복 포함).
 
 ## state 메커니즘 (STATELESS 정합 — 핵심 설계 결정)
