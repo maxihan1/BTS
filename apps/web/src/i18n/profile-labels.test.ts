@@ -43,8 +43,25 @@ describe('profileLabels', () => {
     })
   })
 
+  describe('ldapSource 그룹 (FR-PR-04)', () => {
+    it('배지 2종 + 힌트 2종 + 버튼 2종 키가 존재한다', () => {
+      expect(profileLabels.ldapSource.syncedBadge).toBeTruthy()
+      expect(profileLabels.ldapSource.syncedHint).toBeTruthy()
+      expect(profileLabels.ldapSource.overriddenBadge).toBeTruthy()
+      expect(profileLabels.ldapSource.overriddenHint).toBeTruthy()
+      expect(profileLabels.ldapSource.resyncButton).toBeTruthy()
+      expect(profileLabels.ldapSource.resyncingButton).toBeTruthy()
+    })
+  })
+
   it('모든 최상위 그룹 문자열은 콜론으로 끝나지 않는다', () => {
-    const groups = [profileLabels.page, profileLabels.status, profileLabels.form, profileLabels.avatar]
+    const groups = [
+      profileLabels.page,
+      profileLabels.status,
+      profileLabels.form,
+      profileLabels.avatar,
+      profileLabels.ldapSource,
+    ]
     for (const group of groups) {
       for (const value of Object.values(group)) {
         expect(value).not.toMatch(/:$/)
@@ -89,6 +106,14 @@ describe('mapProfileError', () => {
   it('body가 객체가 아니어도 폴백 메시지를 반환한다', () => {
     const error = new ApiError(500, null)
     expect(mapProfileError(error)).toBe('요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+  })
+
+  it('DISPLAY_NAME_NOT_LDAP_LINKED(FR-PR-04 resync 409) → LDAP 미연결 안내 메시지를 반환한다', () => {
+    const error = new ApiError(409, {
+      code: 'DISPLAY_NAME_NOT_LDAP_LINKED',
+      message: 'ignored',
+    })
+    expect(mapProfileError(error)).toContain('LDAP')
   })
 })
 

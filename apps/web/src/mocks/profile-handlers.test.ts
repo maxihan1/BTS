@@ -33,6 +33,8 @@ interface ProfileResponseBody {
   avatarUrl: string | null
   timezone: string
   department: string | null
+  displayNameSource: 'LDAP' | 'USER'
+  ldapLinked: boolean
 }
 
 interface ErrorBody {
@@ -77,6 +79,13 @@ function getAvatarBytes(userId: string, token: string = ALICE_TOKEN): Promise<Re
   return fetch(`/api/v1/users/${userId}/avatar`, { headers: authHeaders(token) })
 }
 
+function resyncDisplayName(token: string = ALICE_TOKEN): Promise<Response> {
+  return fetch('/api/v1/users/me/profile/display-name/resync', {
+    method: 'POST',
+    headers: authHeaders(token),
+  })
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/users/me/profile
 // ─────────────────────────────────────────────────────────────────────────────
@@ -92,6 +101,9 @@ describe('GET /api/v1/users/me/profile', () => {
     expect(body.timezone).toBe('Asia/Seoul')
     expect(body.department).toBe('플랫폼팀')
     expect(body.avatarUrl).toBeNull()
+    // FR-PR-04 — alice는 LDAP 연결 + 동기화 상태 대표 픽스처
+    expect(body.displayNameSource).toBe('LDAP')
+    expect(body.ldapLinked).toBe(true)
   })
 
   it('미인증(Authorization 헤더 없음)이면 401을 반환한다', async () => {
@@ -105,6 +117,8 @@ describe('GET /api/v1/users/me/profile', () => {
     expect(body.userId).toBe(BOB_ID)
     expect(body.department).toBeNull()
     expect(body.timezone).toBe('UTC')
+    // FR-PR-04 — bob은 LDAP 미연결(로컬 전용) 대표 픽스처
+    expect(body.ldapLinked).toBe(false)
   })
 })
 
@@ -125,6 +139,16 @@ describe('PATCH /api/v1/users/me/profile', () => {
     // 미변경 필드는 유지
     expect(getBody.timezone).toBe('Asia/Seoul')
     expect(getBody.department).toBe('플랫폼팀')
+  })
+
+  it('FR-PR-04 — displayName을 직접 편집하면 displayNameSource가 USER로 전환된다', async () => {
+    const patchRes = await patchProfile({ displayName: '김맥시' })
+    const patchBody = (await patchRes.json()) as ProfileResponseBody
+    expect(patchBody.displayNameSource).toBe('USER')
+
+    const getRes = await getProfile()
+    const getBody = (await getRes.json()) as ProfileResponseBody
+    expect(getBody.displayNameSource).toBe('USER')
   })
 
   it('department를 명시 null로 보내면 삭제되어 이후 GET에서 null이 반영된다', async () => {
@@ -301,6 +325,42 @@ describe('GET /api/v1/users/:userId/avatar', () => {
 
   it('미인증이면 401을 반환한다', async () => {
     const res = await fetch(`/api/v1/users/${ALICE_ID}/avatar`)
+    expect(res.status).toBe(401)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/users/me/profile/display-name/resync — LDAP 값으로 재설정 (FR-PR-04)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('POST /api/v1/users/me/profile/display-name/resync', () => {
+  it('displayName을 직접 편집(source=USER)한 뒤 resync하면 source가 LDAP로 되돌아간다', async () => {
+    await patchProfile({ displayName: '김맥시' })
+    const beforeResync = await getProfile()
+    const beforeBody = (await beforeResync.json()) as ProfileResponseBody
+    expect(beforeBody.displayNameSource).toBe('USER')
+
+    const resyncRes = await resyncDisplayName()
+    expect(resyncRes.status).toBe(200)
+    const resyncBody = (await resyncRes.json()) as ProfileResponseBody
+    expect(resyncBody.displayNameSource).toBe('LDAP')
+
+    const afterResync = await getProfile()
+    const afterBody = (await afterResync.json()) as ProfileResponseBody
+    expect(afterBody.displayNameSource).toBe('LDAP')
+    // 표시 이름 값 자체는 이 호출로 바뀌지 않는다 — 다음 로그인의 지연 동기화 몫(ADR D4)
+    expect(afterBody.displayName).toBe('김맥시')
+  })
+
+  it('ldapLinked=false(bob)이면 409 DISPLAY_NAME_NOT_LDAP_LINKED를 반환한다', async () => {
+    const res = await resyncDisplayName(mockAccessToken('bob'))
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as ErrorBody
+    expect(body.code).toBe('DISPLAY_NAME_NOT_LDAP_LINKED')
+  })
+
+  it('미인증이면 401을 반환한다', async () => {
+    const res = await fetch('/api/v1/users/me/profile/display-name/resync', { method: 'POST' })
     expect(res.status).toBe(401)
   })
 })

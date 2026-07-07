@@ -63,7 +63,10 @@ function renderForm() {
   return render(<ProfileForm />, { wrapper })
 }
 
-/** ALICE_PROFILE_FIXTURE 기반 응답 병합 헬퍼 — avatarUrl은 avatarObjectKey null 상태이므로 null 고정 */
+/**
+ * ALICE_PROFILE_FIXTURE 기반 응답 병합 헬퍼 — avatarUrl은 avatarObjectKey null 상태이므로 null 고정.
+ * displayNameSource/ldapLinked 기본값은 alice 픽스처(LDAP 연결 + 동기화 상태)와 동일(FR-PR-04).
+ */
 function buildAliceResponse(overrides: Partial<ProfileResponse> = {}): ProfileResponse {
   return {
     userId: ALICE_PROFILE_FIXTURE.userId,
@@ -73,6 +76,8 @@ function buildAliceResponse(overrides: Partial<ProfileResponse> = {}): ProfileRe
     avatarUrl: null,
     timezone: ALICE_PROFILE_FIXTURE.timezone,
     department: ALICE_PROFILE_FIXTURE.department,
+    displayNameSource: 'LDAP',
+    ldapLinked: true,
     ...overrides,
   }
 }
@@ -479,5 +484,97 @@ describe('ProfileForm — 아바타 업로드/삭제', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent('5MB')
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-PR-04 — LDAP 출처 배지 + "LDAP 값으로 재설정"
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProfileForm — FR-PR-04 LDAP 출처 배지 + 재설정', () => {
+  it('ldapLinked=true && source=LDAP이면 동기화 배지·힌트가 보이고 재설정 버튼은 없다', async () => {
+    renderForm()
+
+    await waitFor(() => {
+      expect(screen.getByText(profileLabels.ldapSource.syncedBadge)).toBeInTheDocument()
+    })
+    expect(screen.getByText(profileLabels.ldapSource.syncedHint)).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: profileLabels.ldapSource.resyncButton }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('source=USER면 직접편집 배지·재설정 버튼이 보이고, 클릭 시 resync 호출 후 배지가 LDAP로 갱신된다', async () => {
+    let currentSource: 'LDAP' | 'USER' = 'USER'
+    server.use(
+      http.get('/api/v1/users/me/profile', () =>
+        HttpResponse.json(buildAliceResponse({ displayNameSource: currentSource })),
+      ),
+      http.post('/api/v1/users/me/profile/display-name/resync', () => {
+        currentSource = 'LDAP'
+        return HttpResponse.json(buildAliceResponse({ displayNameSource: 'LDAP' }))
+      }),
+    )
+
+    const user = userEvent.setup({ delay: null })
+    renderForm()
+
+    await waitFor(() => {
+      expect(screen.getByText(profileLabels.ldapSource.overriddenBadge)).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: profileLabels.ldapSource.resyncButton }))
+
+    await waitFor(() => {
+      expect(screen.getByText(profileLabels.ldapSource.syncedBadge)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(profileLabels.ldapSource.overriddenBadge)).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: profileLabels.ldapSource.resyncButton }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('resync가 409 DISPLAY_NAME_NOT_LDAP_LINKED를 반환하면 role=alert 한글 메시지를 표시한다', async () => {
+    server.use(
+      http.get('/api/v1/users/me/profile', () =>
+        HttpResponse.json(buildAliceResponse({ displayNameSource: 'USER' })),
+      ),
+      http.post('/api/v1/users/me/profile/display-name/resync', () =>
+        HttpResponse.json(
+          { code: 'DISPLAY_NAME_NOT_LDAP_LINKED', message: 'ignored' },
+          { status: 409 },
+        ),
+      ),
+    )
+
+    const user = userEvent.setup({ delay: null })
+    renderForm()
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: profileLabels.ldapSource.resyncButton }),
+      ).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: profileLabels.ldapSource.resyncButton }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('LDAP')
+    })
+  })
+
+  it('ldapLinked=false(로컬 사용자, bob)면 배지·재설정 버튼이 모두 미노출된다', async () => {
+    useAuthStore.getState().setSession({ accessToken: BOB_TOKEN, user: bobUser })
+    renderForm()
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(profileLabels.form.displayNameLabel)).toHaveValue(
+        BOB_PROFILE_FIXTURE.displayName,
+      )
+    })
+    expect(screen.queryByText(profileLabels.ldapSource.syncedBadge)).not.toBeInTheDocument()
+    expect(screen.queryByText(profileLabels.ldapSource.overriddenBadge)).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: profileLabels.ldapSource.resyncButton }),
+    ).not.toBeInTheDocument()
   })
 })
