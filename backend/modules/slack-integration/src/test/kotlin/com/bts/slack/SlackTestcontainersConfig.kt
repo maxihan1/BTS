@@ -1,4 +1,4 @@
-// slack-integration 통합 테스트용 Testcontainers DataSource + Flyway(V700) + JdbcTemplate + fail-closed 권한 stub 배선 (FR-SL-01 Task 9)
+// slack-integration 통합 테스트용 Testcontainers DataSource + Flyway V700 + JdbcTemplate + 권한 stub (FR-SL-01 Task 9)
 
 package com.bts.slack
 
@@ -58,8 +58,9 @@ class SlackTestcontainersConfig {
      * @param dataSource Testcontainers DataSource.
      */
     @Bean
-    fun namedParameterJdbcTemplate(dataSource: DataSource): NamedParameterJdbcTemplate =
-        NamedParameterJdbcTemplate(dataSource)
+    fun namedParameterJdbcTemplate(dataSource: DataSource): NamedParameterJdbcTemplate {
+        return NamedParameterJdbcTemplate(dataSource)
+    }
 
     /**
      * 통합 테스트가 `slack_installs` 를 직접 조회/정리할 때 쓰는 [JdbcTemplate] 빈.
@@ -75,8 +76,9 @@ class SlackTestcontainersConfig {
      * @param dataSource Testcontainers DataSource.
      */
     @Bean
-    fun transactionManager(dataSource: DataSource): PlatformTransactionManager =
-        DataSourceTransactionManager(dataSource)
+    fun transactionManager(dataSource: DataSource): PlatformTransactionManager {
+        return DataSourceTransactionManager(dataSource)
+    }
 
     /**
      * cross-BC 전역 관리자 판정 포트 — fail-closed [StubSystemPermissionResolver].

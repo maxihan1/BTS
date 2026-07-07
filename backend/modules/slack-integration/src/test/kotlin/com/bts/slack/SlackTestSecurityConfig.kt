@@ -1,4 +1,4 @@
-// slack-integration 통합 테스트용 SecurityFilterChain — /slack/install/callback permitAll, /slack/install authenticated (FR-SL-01 Task 9)
+// slack-integration 통합 테스트용 SecurityFilterChain — callback permitAll, install authenticated (FR-SL-01 Task 9)
 
 package com.bts.slack
 

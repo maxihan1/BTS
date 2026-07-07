@@ -84,17 +84,34 @@ class SlackInstallController(
             log.info("SLACK_CALLBACK cancelled")
             return redirectFailure(sanitizeErrorCode(error))
         }
-        // 필수 파라미터 부재 — 저장 없이 실패 처리.
-        if (code.isNullOrBlank() || state.isNullOrBlank()) {
+        return if (code.isNullOrBlank() || state.isNullOrBlank()) {
+            // 필수 파라미터 부재 — 저장 없이 실패 처리.
             log.info("SLACK_CALLBACK missing_params")
-            return redirectFailure(MISSING_PARAMS)
+            redirectFailure(MISSING_PARAMS)
+        } else {
+            completeInstall(code, state)
         }
+    }
+
+    /**
+     * state 검증 → `code↔token` 교환 → 봇 토큰 암호화 upsert 를 수행하고 결과 경로로 302 한다.
+     *
+     * 실패는 예외별 비-비밀 코드로 실패 302 로 매핑한다(EC1/EC3/EC5/EC7 + 전송 오류). 예외 `message`·`cause`·
+     * 내부 식별자는 응답에 노출하지 않고 코드만 싣는다(§1.1.2). state 검증 실패([SlackStateInvalidException])는
+     * 예상된 클라이언트 오류라 원인을 전파하지 않고 일반 코드로 치환한다 — 이 의도적 swallow 를 detekt 에
+     * 알린다.
+     */
+    @Suppress("SwallowedException")
+    private fun completeInstall(
+        code: String,
+        state: String,
+    ): ResponseEntity<Void> {
         return try {
             val result = service.completeInstall(code, state)
             log.info("SLACK_CALLBACK installed team={}", result.teamId)
             redirectSuccess(result.teamName)
         } catch (e: SlackStateInvalidException) {
-            // 형식/서명/만료 실패(EC1). 원인·내부 사정은 노출하지 않는다.
+            // 형식/서명/만료 실패(EC1). 원인·내부 사정은 노출하지 않는다(의도적 swallow).
             log.info("SLACK_CALLBACK state_invalid")
             redirectFailure(INVALID_STATE)
         } catch (e: SlackOAuthFailedException) {
@@ -115,12 +132,14 @@ class SlackInstallController(
     // ── private helpers ───────────────────────────────────────────────────────
 
     /** 완료 화면으로 302 — `?installed=<teamName>`(URL 인코딩). */
-    private fun redirectSuccess(teamName: String): ResponseEntity<Void> =
-        redirect("$FRONT_RESULT_PATH?installed=${encode(teamName)}")
+    private fun redirectSuccess(teamName: String): ResponseEntity<Void> {
+        return redirect("$FRONT_RESULT_PATH?installed=${encode(teamName)}")
+    }
 
     /** 실패 화면으로 302 — `?error=<code>`(비-비밀 코드, URL 인코딩). */
-    private fun redirectFailure(errorCode: String): ResponseEntity<Void> =
-        redirect("$FRONT_RESULT_PATH?error=${encode(errorCode)}")
+    private fun redirectFailure(errorCode: String): ResponseEntity<Void> {
+        return redirect("$FRONT_RESULT_PATH?error=${encode(errorCode)}")
+    }
 
     /** 302 Found + Location 헤더. [location] 은 이미 안전하게 인코딩된 문자열이어야 한다. */
     private fun redirect(location: String): ResponseEntity<Void> =
