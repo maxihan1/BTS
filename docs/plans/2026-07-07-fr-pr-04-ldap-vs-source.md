@@ -245,4 +245,19 @@ COMMENT ON COLUMN users.display_name_source IS 'FR-PR-04 ...';
 - 추가 검증: ktlint/detekt(backend), typecheck/vitest(front), playwright(qa), verify-master-plan(docs)
 - 주의(메모리): User RowMapper fanout 금지 · 스키마 스냅샷 테스트 점검 · MSW stateful refetch · frontend Zod↔backend DTO 정합 · V030 머지 직전 재확인
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-07, auth 집중)
+- ✅ **게이트 우회 경로 없음** (코드 확인): `users.display_name` 쓰기는 `provisionFromExternal`(CASE 게이트, Task 2) + `updateDisplayName`(source=USER, Task 2) 둘뿐. `save()`/`upsert()`는 main 호출처 0 → 게이트 우회 write 없음.
+- ✅ **ArchUnit 위반 없음** (코드 확인): SpiBoundaryArchTest는 `..spi..`/Spring `AuthenticationProvider`만 제약. Task 4의 `profile → provider/ldap`(ExternalAccountRepository 주입) 의존은 허용.
+- ✅ **동시성 안전** (EC-5): 편집(source=USER)과 재로그인 UPSERT는 동일 users 행 락으로 직렬화됨(ON CONFLICT DO UPDATE가 편집 커밋 대기 후 커밋된 source 읽음) → lost update 없음.
+- ✅ **마이그레이션 안전**: `ADD COLUMN ... DEFAULT 'LDAP'`은 PG11+ 메타데이터 변경. CHECK는 backfill='LDAP' 전행 통과. 1K 규모 락 무시 가능.
+- ⚠️ 주의(비블로커) 1: `ldapLinked`=외부계정 보유(향후 SAML/OIDC 포함)인데 라벨은 "LDAP에서 동기화됨". 현재 LDAP+Local만 결선이라 무해. SAML/OIDC 결선 시 라벨 일반화 필요.
+- ⚠️ 주의(비블로커) 2: users 컬럼 추가가 스키마 스냅샷/카운트 테스트에 걸리는지 Task 1/impl에서 전체 identity-access suite로 확인(제약 조건 반영됨).
+- **BLOCKER: 없음**
+
+### plan-ceo-review (2026-07-07)
+- ✅ 스코프 최소·FR 정합: 실 충돌 필드 display_name 하나만 추적, 단일 컬럼. gold-plating 없음.
+- ✅ 올바른 유예: email source·shadow-column 즉시재설정·범용 field-source 테이블은 후속(YAGNI).
+- ✅ taste decision(지연 재설정 semantics)은 Maxi 사전 확정.
+- **BLOCKER: 없음**
