@@ -63,5 +63,11 @@ export function resolveStartPageNav(
     case 'my_issues':
       if (userId === undefined) return FALLBACK_NAV
       return { to: '/issues', search: { assignee: userId } }
+    default: {
+      // 미래에 StartPage에 새 값이 추가되면 TypeScript 컴파일 에러로 감지된다
+      // (WorkflowDiagram.tsx의 categoryToClass 선례와 동일한 패턴).
+      const _exhaustive: never = startPage
+      return _exhaustive
+    }
   }
 }

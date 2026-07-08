@@ -1,8 +1,16 @@
-// 라우트 가드 헬퍼 단위 테스트 — requireAuth / redirectIfAuth / isSafeReturnTo / requirePasswordChanged / requireSystemAdmin / requireMfaEnrolled
+// 라우트 가드 헬퍼 단위 테스트 — requireAuth / redirectIfAuth / isSafeReturnTo / resolvePostLoginNav / requirePasswordChanged / requireSystemAdmin / requireMfaEnrolled
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { isRedirect } from '@tanstack/react-router'
 import { useAuthStore } from './authStore'
-import { requireAuth, redirectIfAuth, isSafeReturnTo, requirePasswordChanged, requireSystemAdmin, requireMfaEnrolled } from './routeGuard'
+import {
+  requireAuth,
+  redirectIfAuth,
+  isSafeReturnTo,
+  resolvePostLoginNav,
+  requirePasswordChanged,
+  requireSystemAdmin,
+  requireMfaEnrolled,
+} from './routeGuard'
 import { makeWhoami } from '@/mocks/auth-fixtures'
 
 // TanStack Router beforeLoad 컨텍스트 중 가드에서 사용하는 최소 형태
@@ -70,6 +78,29 @@ describe('isSafeReturnTo', () => {
   it('슬래시 없이 시작하는 상대 경로 → 차단 (경로 탈출 위험)', () => {
     expect(isSafeReturnTo('evil.com')).toBe(false)
     expect(isSafeReturnTo('dashboard')).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────
+// resolvePostLoginNav — 로그인 후 목적지 우선순위 공유 헬퍼(routes/login.tsx handleSuccess와 공유)
+// ─────────────────────────────────────────────
+describe('resolvePostLoginNav', () => {
+  it('rawReturnTo가 안전한 내부 경로이면 startPage와 무관하게 returnTo가 우선한다', () => {
+    expect(resolvePostLoginNav('/issues/PROJ-5', 'inbox', 'u-1')).toEqual({
+      to: '/issues/PROJ-5',
+    })
+  })
+
+  it('rawReturnTo가 안전하지 않으면(외부 URL) 무시하고 start_page 매핑으로 폴백한다', () => {
+    expect(resolvePostLoginNav('http://evil.com', 'inbox', 'u-1')).toEqual({ to: '/inbox' })
+  })
+
+  it('rawReturnTo가 null이면 start_page 매핑으로 폴백한다', () => {
+    expect(resolvePostLoginNav(null, 'issues', 'u-1')).toEqual({ to: '/issues' })
+  })
+
+  it('rawReturnTo도 startPage도 없으면 /dashboards로 폴백한다', () => {
+    expect(resolvePostLoginNav(null, undefined, undefined)).toEqual({ to: '/dashboards' })
   })
 })
 
