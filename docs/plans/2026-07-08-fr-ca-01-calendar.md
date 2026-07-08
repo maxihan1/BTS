@@ -35,9 +35,20 @@ cross-BC 조회(issue-tracking, agile-planning)가 핵심 설계 포인트.
 - **기존 결정 충돌**: 없음. read-only, 별도 테이블 X, FR 카운트/BC 매핑 변경 0(논리 ≠ 물리).
 - **관련 ADR**: [docs/decisions/2026-07-08-fr-ca-01-calendar.md](../decisions/2026-07-08-fr-ca-01-calendar.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-08-fr-ca-01-calendar.md](../specs/2026-07-08-fr-ca-01-calendar.md)
+
+핵심 요약.
+- `GET /api/v1/users/me/calendar?from=&to=` — 내 담당 예정 이슈(start/due) + 내 Worklog를 `[from,to]`(≤90일)로 반환.
+- cross-BC = 신규 shared-kernel `UserCalendarLookupPort`(issue-tracking adapter, fail-safe). identity-access가 timezone 변환 책임.
+- issueEvents는 viewer(=me) 가시성 fail-closed 필터. worklogEvents는 본인 것만. 프로필 timezone(기본 UTC) 기준 날짜 매핑.
+- UI = `/calendar` 월/주 뷰(네이티브 Date, 신규 의존성 0), 이슈 막대+마감일 점+Worklog 칩, 이벤트 클릭→이슈 상세. D6 designer→frontend.
+
+## Brainstorming Check
+
+✅ 통과 (자체 sanity 1회). gap 3건 인라인 보강(결정적 정렬·프론트 이중 tz변환 금지·cross-project visibility 술어 검증).
+이월 리스크: 새 포트 소비 full-boot/슬라이스 stub 배선, adapter cross-project visibility 술어 실재 확인.
 
 ## Plan (← /bts-plan 채움)
 
