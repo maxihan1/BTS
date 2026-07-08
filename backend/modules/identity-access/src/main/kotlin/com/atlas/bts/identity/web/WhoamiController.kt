@@ -122,6 +122,8 @@ class WhoamiController(
             // FR-PR-03: 활성(startsAt<=now<endsAt) 부재중만 노출. 활성 필터는 repository 책임, now 는 공유 clock 기준.
             val ooo = outOfOfficeRepository.findActiveByUserId(userId, clock)
             // FR-PF-01: 환경설정(theme/locale/dateFormat) — 행 부재 시 서비스가 기본값(system/ko/iso)으로 귀결.
+            // FR-PF-02: 시작 페이지(startPage)도 같은 조회로 함께 채워지며, 행 부재 시 기본값(dashboards)으로
+            // 귀결한다 — DTO 기본값 리터럴·PAT 분기 상수(UserPreferences.DEFAULT_START_PAGE)와 동일 값으로 수렴.
             val preferences = userPreferencesService.getPreferences(userId)
             return WhoamiResponse(
                 username = user.username,
