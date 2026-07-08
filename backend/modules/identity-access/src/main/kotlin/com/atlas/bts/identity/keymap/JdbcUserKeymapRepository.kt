@@ -3,7 +3,9 @@
 package com.atlas.bts.identity.keymap
 
 import org.springframework.jdbc.core.RowMapper
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
+import org.springframework.jdbc.core.namedparam.SqlParameterSource
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Propagation
@@ -41,11 +43,16 @@ class JdbcUserKeymapRepository(
     ) {
         jdbc.update(SQL_DELETE_BY_USER_ID, mapOf("userId" to userId))
         if (overrides.isEmpty()) return
-        val batchParams =
+
+        val batch: Array<SqlParameterSource> =
             overrides
-                .map { mapOf("userId" to userId, "action" to it.action, "keyCombo" to it.keyCombo) }
-                .toTypedArray()
-        jdbc.batchUpdate(SQL_INSERT, batchParams)
+                .map { binding ->
+                    MapSqlParameterSource()
+                        .addValue("userId", userId)
+                        .addValue("action", binding.action)
+                        .addValue("keyCombo", binding.keyCombo)
+                }.toTypedArray()
+        jdbc.batchUpdate(SQL_INSERT, batch)
     }
 
     // ── SQL 상수 ─────────────────────────────────────────────────────────────
