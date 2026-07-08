@@ -58,7 +58,7 @@ class SlackInstallController(
      * @return 302 + `Location: <Slack authorize URL>`.
      */
     @GetMapping("/slack/install")
-    fun startInstall(): ResponseEntity<Void> {
+    fun startInstall(): ResponseEntity<Unit> {
         val actorId = SlackActorExtractor.extract()
         val authorizeUrl = service.startInstall(actorId)
         log.info("SLACK_INSTALL_START actor={}", actorId)
@@ -71,14 +71,14 @@ class SlackInstallController(
      * @param code Slack 1회용 인가 코드(성공 시 존재).
      * @param state [startInstall] 이 발급한 서명 state.
      * @param error 사용자가 Slack 동의 화면에서 취소했을 때의 코드(예: `access_denied`, EC2).
-     * @return 302 + 결과 경로(`/settings/slack?installed=…` 또는 `?error=…`).
+     * @return 302 + 결과 경로(`/admin/slack?installed=…` 또는 `?error=…`).
      */
     @GetMapping("/slack/install/callback")
     fun callback(
         @RequestParam(required = false) code: String?,
         @RequestParam(required = false) state: String?,
         @RequestParam(required = false) error: String?,
-    ): ResponseEntity<Void> {
+    ): ResponseEntity<Unit> {
         // EC2 — 사용자가 Slack 동의 화면에서 취소(외부 입력 error 코드는 안전 문자셋으로 정화).
         if (!error.isNullOrBlank()) {
             log.info("SLACK_CALLBACK cancelled")
@@ -105,7 +105,7 @@ class SlackInstallController(
     private fun completeInstall(
         code: String,
         state: String,
-    ): ResponseEntity<Void> {
+    ): ResponseEntity<Unit> {
         return try {
             val result = service.completeInstall(code, state)
             log.info("SLACK_CALLBACK installed team={}", result.teamId)
@@ -132,17 +132,17 @@ class SlackInstallController(
     // ── private helpers ───────────────────────────────────────────────────────
 
     /** 완료 화면으로 302 — `?installed=<teamName>`(URL 인코딩). */
-    private fun redirectSuccess(teamName: String): ResponseEntity<Void> {
+    private fun redirectSuccess(teamName: String): ResponseEntity<Unit> {
         return redirect("$FRONT_RESULT_PATH?installed=${encode(teamName)}")
     }
 
     /** 실패 화면으로 302 — `?error=<code>`(비-비밀 코드, URL 인코딩). */
-    private fun redirectFailure(errorCode: String): ResponseEntity<Void> {
+    private fun redirectFailure(errorCode: String): ResponseEntity<Unit> {
         return redirect("$FRONT_RESULT_PATH?error=${encode(errorCode)}")
     }
 
     /** 302 Found + Location 헤더. [location] 은 이미 안전하게 인코딩된 문자열이어야 한다. */
-    private fun redirect(location: String): ResponseEntity<Void> =
+    private fun redirect(location: String): ResponseEntity<Unit> =
         ResponseEntity.status(HttpStatus.FOUND).location(URI.create(location)).build()
 
     /** 쿼리 파라미터 값을 퍼센트 인코딩한다(공백·제어문자 포함 — Location 헤더 주입 차단). */
@@ -161,8 +161,8 @@ class SlackInstallController(
     }
 
     private companion object {
-        /** 프론트 설치 결과 화면 경로(D6 예약, spec §완료 리다이렉트 G4). */
-        const val FRONT_RESULT_PATH = "/settings/slack"
+        /** 프론트 설치 결과 화면 경로(관리자 Slack 연결 페이지, spec §완료 리다이렉트 G4). */
+        const val FRONT_RESULT_PATH = "/admin/slack"
 
         /** state 검증 실패(EC1) 리다이렉트 코드. */
         const val INVALID_STATE = "invalid_state"

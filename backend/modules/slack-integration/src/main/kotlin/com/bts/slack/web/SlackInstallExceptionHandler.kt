@@ -15,9 +15,15 @@ import java.time.Instant
 /**
  * [SlackInstallController] 예외를 RFC 7807 [ProblemDetail] 로 변환한다 (FR-SL-01 Task 9).
  *
- * [assignableTypes] 를 [SlackInstallController] 하나로 한정해 형제/타 BC 컨트롤러를 가로채지 않는다
- * (교훈 domain-exception-http-handler-basepackage-scope). 이 핸들러는 **개시(`GET /slack/install`) 계열**
- * 예외를 담당한다 — 콜백의 실패는 컨트롤러가 결과 경로 302 로 직접 처리하므로 여기 도달하지 않는다.
+ * [assignableTypes] 를 [SlackInstallController] 와 [SlackInstallQueryController] 두 Slack 설치 컨트롤러로
+ * 한정해 형제/타 BC 컨트롤러를 가로채지 않는다(교훈 domain-exception-http-handler-basepackage-scope). 이
+ * 핸들러는 **개시(`GET /slack/install`) 계열** 예외와 **SPA 상태 조회(`GET /api/v1/slack/…`) 계열** 예외를
+ * 담당한다 — 콜백의 실패는 컨트롤러가 결과 경로 302 로 직접 처리하므로 여기 도달하지 않는다.
+ *
+ * ## 쿼리 컨트롤러도 반드시 포함 (교훈 domain-exception-http-handler-basepackage-scope)
+ * [SlackInstallQueryController] 를 [assignableTypes] 에 넣지 않으면, 그 컨트롤러의 관리자 가드가 던지는
+ * [SlackForbiddenException] 이 이 핸들러의 403 매핑을 타지 못하고 스프링 기본 500 으로 변질된다(내부 사정
+ * 누출·오상태). 두 컨트롤러의 예외 → HTTP 매핑을 한 핸들러가 일관되게 담당한다.
  *
  * ## 처리 대상
  * - [SlackForbiddenException] — 시스템 관리자 아닌 사용자의 설치 시도(S5) → **403**(일반 메시지).
@@ -32,7 +38,7 @@ import java.time.Instant
  * [ResponseStatusException] 은 전용 핸들러가 상태를 전파하고, 분류되지 않은 예외만 [handleInternal] 이
  * 500 으로 매핑한다(401 이 500 으로 변질되지 않게 한다).
  */
-@RestControllerAdvice(assignableTypes = [SlackInstallController::class])
+@RestControllerAdvice(assignableTypes = [SlackInstallController::class, SlackInstallQueryController::class])
 class SlackInstallExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)
 

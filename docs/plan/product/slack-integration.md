@@ -29,8 +29,8 @@
 - [x] D3. 데이터 모델 — `slack_installs(team_id UNIQUE, bot_token_encrypted, ...)` (책임. db-engineer) *[deviation. workspace_id → team_id. JdbcTemplate]*
 - [x] D4. 백엔드 — slack-api-client(client 층) + 설치 콜백 (`/slack/install/callback`) (책임. security-engineer) *[deviation. Bolt 프레임워크 → slack-api-client, ADR D2]*
 - [x] D5. 백엔드 테스트 (책임. security-engineer) *[69 tests, PR #244]*
-- [ ] D6. 프론트 UI — 관리자 "Slack 연결" 페이지 (책임. designer → frontend-engineer) *[후속 PR]*
-- [ ] D7. E2E (책임. qa-engineer) *[후속 PR]*
+- [x] D6. 프론트 UI — 관리자 "Slack 연결" 페이지 `/admin/slack` (책임. frontend-engineer) *[PR #247. 상태 카드+연결/다시연결+결과 배너. Bearer 제약으로 view-layer JSON 엔드포인트 2종(`/api/v1/slack/installation`·`/install-url`) 신설. 라우트 `/settings/slack`→`/admin/slack`(게이트 결정)]*
+- [x] D7. E2E (책임. qa-engineer) *[PR #247. MSW 5 시나리오]*
 
 ### §2.2 FR-SL-02 — 알림 발송 (DM + 채널)
 

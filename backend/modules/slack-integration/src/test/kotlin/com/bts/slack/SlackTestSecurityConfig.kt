@@ -19,6 +19,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint
  * ## 경계 (spec §API 표)
  * - `GET /slack/install/callback` — **permitAll**. Slack 이 브라우저를 통해 부르는 최상위 GET 리다이렉트라
  *   사용자 JWT 가 없다. 인가는 서명 state 로 대체된다([SlackOAuthStateSigner]).
+ * - `/api/v1/slack/…` (SPA 상태 조회/설치 URL) — **authenticated**. SPA(Bearer)가 호출하는 JSON view-layer.
  * - `/slack/install` (및 그 외 전부) — **authenticated**. 미인증은 [HttpStatusEntryPoint] 로 401.
  *   (관리자 여부는 컨트롤러 뒤 `SlackInstallService` 가 fail-closed 로 판정해 403 — 필터+서비스 이중 가드.)
  *
@@ -40,6 +41,7 @@ class SlackTestSecurityConfig {
             .csrf { it.disable() }
             .authorizeHttpRequests {
                 it.requestMatchers(HttpMethod.GET, "/slack/install/callback").permitAll()
+                it.requestMatchers("/api/v1/slack/**").authenticated()
                 it.anyRequest().authenticated()
             }.exceptionHandling {
                 it.authenticationEntryPoint(HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))

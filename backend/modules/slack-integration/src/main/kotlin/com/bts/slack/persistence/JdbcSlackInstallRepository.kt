@@ -3,6 +3,7 @@
 package com.bts.slack.persistence
 
 import com.bts.slack.application.SlackInstallRepository
+import com.bts.slack.application.SlackInstallationView
 import com.bts.slack.domain.SlackInstall
 import org.springframework.jdbc.core.RowMapper
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
@@ -47,6 +48,10 @@ class JdbcSlackInstallRepository(
         jdbc.query(SQL_FIND_BY_TEAM_ID, mapOf("teamId" to teamId), SlackInstallRowMapper)
             .firstOrNull()
 
+    @Transactional(readOnly = true)
+    override fun findCurrentInstallation(): SlackInstallationView? =
+        jdbc.query(SQL_FIND_CURRENT, SlackInstallationViewRowMapper).firstOrNull()
+
     private companion object {
         /** 워크스페이스 설치 멱등 업서트 — UNIQUE(team_id) 위반 시 최신 값으로 갱신(last-write-wins). */
         const val SQL_UPSERT = """
@@ -74,6 +79,24 @@ class JdbcSlackInstallRepository(
             FROM slack_installs
             WHERE team_id = :teamId
         """
+
+        /**
+         * 현재 설치 조회 — 관리자 연결 페이지의 상태 표시용 경량 projection.
+         *
+         * **`bot_token_encrypted` 를 의도적으로 선택하지 않는다** — 상태 조회 경로에 봇 토큰의
+         * 암호문조차 싣지 않기 위한 방어적 조회다(DEVELOPMENT.md §1.1.2). FR-SL-01 은
+         * 워크스페이스 단위 설치만 지원하므로(enterprise install 은 앱 레벨 거부),
+         * `installed_at` 이 가장 최신인 1행이 곧 '현재 설치'다.
+         *
+         * `bot_user_id` / `updated_at` 는 응답 메타 표시용, `installed_by` 는 설치자 이름 해석
+         * 전용(응답 본문 미노출)이다. 토큰 암호문은 여전히 선택하지 않는다.
+         */
+        const val SQL_FIND_CURRENT = """
+            SELECT team_id, team_name, bot_user_id, installed_at, updated_at, installed_by
+            FROM slack_installs
+            ORDER BY installed_at DESC
+            LIMIT 1
+        """
     }
 }
 
@@ -91,6 +114,27 @@ private object SlackInstallRowMapper : RowMapper<SlackInstall> {
             botTokenEncrypted = rs.getString("bot_token_encrypted"),
             scopes = rs.getString("scopes"),
             isEnterpriseInstall = rs.getBoolean("is_enterprise_install"),
+            installedBy = rs.getObject("installed_by", UUID::class.java),
+        )
+}
+
+/**
+ * `slack_installs` 한 행 → [SlackInstallationView] 매핑.
+ *
+ * 상태 표시·메타 필드만 매핑한다 — `bot_token_encrypted` 는 projection 쿼리가 애초에 선택하지
+ * 않으므로 여기서도 읽지 않는다(방어적). `installed_by` 는 설치자 이름 해석 전용이다.
+ */
+private object SlackInstallationViewRowMapper : RowMapper<SlackInstallationView> {
+    override fun mapRow(
+        rs: ResultSet,
+        rowNum: Int,
+    ): SlackInstallationView =
+        SlackInstallationView(
+            teamId = rs.getString("team_id"),
+            teamName = rs.getString("team_name"),
+            botUserId = rs.getString("bot_user_id"),
+            installedAt = rs.getTimestamp("installed_at").toInstant(),
+            updatedAt = rs.getTimestamp("updated_at").toInstant(),
             installedBy = rs.getObject("installed_by", UUID::class.java),
         )
 }

@@ -4,6 +4,7 @@ package com.bts.slack.application
 
 import com.bts.shared.crypto.SecretEncryptor
 import com.bts.shared.permission.SystemPermissionResolver
+import com.bts.shared.user.UserLookupPort
 import com.bts.slack.domain.SlackInstall
 import com.bts.slack.oauth.SlackOAuthClient
 import com.bts.slack.oauth.SlackOAuthStateSigner
@@ -43,6 +44,7 @@ class SlackInstallServiceTest {
     private val resolver = mockk<SystemPermissionResolver>()
     private val oauthClient = mockk<SlackOAuthClient>()
     private val repository = mockk<SlackInstallRepository>()
+    private val userLookupPort = mockk<UserLookupPort>()
 
     private val service =
         SlackInstallService(
@@ -51,6 +53,7 @@ class SlackInstallServiceTest {
             oauthClient = oauthClient,
             secretEncryptor = encryptor,
             installRepository = repository,
+            userLookupPort = userLookupPort,
         )
 
     private val adminId = UUID.fromString("11111111-2222-3333-4444-555555555555")
@@ -81,6 +84,92 @@ class SlackInstallServiceTest {
 
         // 가드는 리소스 접근 이전에 — authorize URL 생성으로 진행하지 않는다.
         verify(exactly = 0) { oauthClient.buildAuthorizeUrl(any()) }
+    }
+
+    // ── getInstallation (관리자 가드 + 현재 설치 상태 조회) ─────────────────────
+
+    @Test
+    fun `getInstallation - 관리자이고 설치가 있으면 connected=true와 표시 필드+설치자 이름을 반환한다`() {
+        every { resolver.isSystemAdmin(adminId) } returns true
+        every { repository.findCurrentInstallation() } returns
+            SlackInstallationView(
+                teamId = "T123WS",
+                teamName = "Acme Workspace",
+                botUserId = "U0BOT",
+                installedAt = INSTALLED_AT,
+                updatedAt = UPDATED_AT,
+                installedBy = INSTALLER_ID,
+            )
+        // 설치자 UUID 는 이름 해석에만 쓰이고, 응답에는 해석된 이름만 실린다(원시 UUID 미노출).
+        every { userLookupPort.findDisplayNamesByIds(setOf(INSTALLER_ID)) } returns
+            mapOf(INSTALLER_ID to INSTALLER_NAME)
+
+        val status = service.getInstallation(adminId)
+
+        assertThat(status.connected).isTrue()
+        assertThat(status.teamId).isEqualTo("T123WS")
+        assertThat(status.teamName).isEqualTo("Acme Workspace")
+        assertThat(status.botUserId).isEqualTo("U0BOT")
+        assertThat(status.installedAt).isEqualTo(INSTALLED_AT)
+        assertThat(status.updatedAt).isEqualTo(UPDATED_AT)
+        assertThat(status.installerName).isEqualTo(INSTALLER_NAME)
+    }
+
+    @Test
+    fun `getInstallation - 설치자 이름이 미해석되면 installerName은 null이고 나머지 필드는 값을 유지한다`() {
+        every { resolver.isSystemAdmin(adminId) } returns true
+        every { repository.findCurrentInstallation() } returns
+            SlackInstallationView(
+                teamId = "T123WS",
+                teamName = "Acme Workspace",
+                botUserId = "U0BOT",
+                installedAt = INSTALLED_AT,
+                updatedAt = UPDATED_AT,
+                installedBy = INSTALLER_ID,
+            )
+        // 포트가 빈 맵(미해석: default fail-safe 또는 삭제된 사용자)을 돌려주면 이름만 null 이고 나머지는 유지.
+        every { userLookupPort.findDisplayNamesByIds(setOf(INSTALLER_ID)) } returns emptyMap()
+
+        val status = service.getInstallation(adminId)
+
+        assertThat(status.connected).isTrue()
+        assertThat(status.teamId).isEqualTo("T123WS")
+        assertThat(status.teamName).isEqualTo("Acme Workspace")
+        assertThat(status.botUserId).isEqualTo("U0BOT")
+        assertThat(status.installedAt).isEqualTo(INSTALLED_AT)
+        assertThat(status.updatedAt).isEqualTo(UPDATED_AT)
+        assertThat(status.installerName).isNull()
+    }
+
+    @Test
+    fun `getInstallation - 관리자이지만 설치가 없으면 connected=false와 null 필드를 반환한다`() {
+        every { resolver.isSystemAdmin(adminId) } returns true
+        every { repository.findCurrentInstallation() } returns null
+
+        val status = service.getInstallation(adminId)
+
+        assertThat(status.connected).isFalse()
+        assertThat(status.teamId).isNull()
+        assertThat(status.teamName).isNull()
+        assertThat(status.botUserId).isNull()
+        assertThat(status.installedAt).isNull()
+        assertThat(status.updatedAt).isNull()
+        assertThat(status.installerName).isNull()
+        // 설치가 없으면 이름 해석 포트를 호출하지 않는다.
+        verify(exactly = 0) { userLookupPort.findDisplayNamesByIds(any()) }
+    }
+
+    @Test
+    fun `getInstallation - 비관리자면 SlackForbiddenException을 던지고 설치를 조회하지 않는다`() {
+        every { resolver.isSystemAdmin(nonAdminId) } returns false
+
+        assertThatThrownBy { service.getInstallation(nonAdminId) }
+            .isInstanceOf(SlackForbiddenException::class.java)
+
+        // 가드는 조회보다 먼저 — findCurrentInstallation 으로 진행하지 않는다(auth-extraction-before-lookup).
+        verify(exactly = 0) { repository.findCurrentInstallation() }
+        // 설치자 이름 해석 포트도 호출하지 않는다(가드 우선).
+        verify(exactly = 0) { userLookupPort.findDisplayNamesByIds(any()) }
     }
 
     // ── completeInstall (state 검증 → 교환 → 암호화 → upsert) ──────────────────
@@ -203,6 +292,13 @@ class SlackInstallServiceTest {
 
         // Encryptors.stronger 는 salt 가 유효 hex 문자열일 것을 런타임에 요구한다.
         const val ENCRYPTION_SALT = "deadbeefcafef00d"
+
+        val INSTALLED_AT: Instant = Instant.parse("2026-07-01T09:30:00Z")
+        val UPDATED_AT: Instant = Instant.parse("2026-07-05T14:00:00Z")
+
+        // 설치자(installedBy) — 상태 조회 actor(adminId)와 별개인 최초 설치자.
+        val INSTALLER_ID: UUID = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        const val INSTALLER_NAME = "Alice Admin"
 
         const val PLAINTEXT_TOKEN = "xoxb-plaintext-bot-token-1234567890"
         const val VALID_CODE = "valid-oauth-code"

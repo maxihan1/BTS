@@ -4,6 +4,7 @@ package com.bts.slack.application
 
 import com.bts.shared.crypto.SecretEncryptor
 import com.bts.shared.permission.SystemPermissionResolver
+import com.bts.shared.user.UserLookupPort
 import com.bts.slack.domain.SlackInstall
 import com.bts.slack.oauth.SlackOAuthClient
 import com.bts.slack.oauth.SlackOAuthStateSigner
@@ -48,6 +49,8 @@ import java.util.UUID
  * @param oauthClient `oauth.v2.access` 교환 + authorize URL 생성 클라이언트.
  * @param secretEncryptor 봇 토큰 암호화용(`@Qualifier("slackSecretEncryptor")` by-name — BC 간 키 격리).
  * @param installRepository `slack_installs` 영속화 포트(upsert 멱등).
+ * @param userLookupPort 설치자 표시명 해석 cross-BC 포트(non-null · fail-safe — 미해석 시 이름만 null,
+ *   identity-access 를 직접 의존하지 않고 shared-kernel 포트로만 접근).
  */
 @Service
 class SlackInstallService(
@@ -56,6 +59,7 @@ class SlackInstallService(
     private val oauthClient: SlackOAuthClient,
     @param:Qualifier("slackSecretEncryptor") private val secretEncryptor: SecretEncryptor,
     private val installRepository: SlackInstallRepository,
+    private val userLookupPort: UserLookupPort,
 ) {
     /**
      * 설치를 개시한다 — 관리자 가드를 통과하면 개시자([actorId])를 박제한 서명 state 로 Slack authorize URL 을
@@ -73,6 +77,51 @@ class SlackInstallService(
         }
         val state = stateSigner.issue(actorId)
         return oauthClient.buildAuthorizeUrl(state)
+    }
+
+    /**
+     * 현재 Slack 워크스페이스 연결 상태를 조회한다 — 관리자 Slack 연결 페이지의 상태 배너용.
+     *
+     * 가드는 조회보다 **먼저** 수행한다(auth-extraction-before-lookup) — 비관리자에게는 설치 유무조차
+     * 노출하지 않고 [SlackForbiddenException] 으로 즉시 거부하며, [SlackInstallRepository.findCurrentInstallation]
+     * 은 호출되지 않는다.
+     *
+     * 반환하는 [SlackInstallationStatus] 에는 **표시용 비-비밀 필드만** 담는다(connected/teamId/teamName/
+     * botUserId/installedAt/updatedAt/installerName). 봇 토큰 암호문은 애초에 [SlackInstallationView] 에
+     * 로드되지 않아 타입 상 새어 나갈 수 없다(방어적, DEVELOPMENT.md §1.1.2).
+     *
+     * ## 설치자 이름 해석 (fail-safe · installed_by 미노출)
+     * 설치자 원시 id([SlackInstallationView.installedBy], UUID)는 cross-BC [UserLookupPort] 로 표시명을
+     * 해석하는 데에만 쓰고, 해석된 이름([SlackInstallationStatus.installerName])만 응답에 싣는다 — 원시
+     * 사용자 id 는 상태/응답에 포함하지 않는다. 포트가 이름을 돌려주지 못하면(default emptyMap fail-safe /
+     * 삭제된 사용자 / prod 어댑터 미주입) `installerName` 만 null 이 되고 나머지 표시 필드는 값을 유지한다
+     * — 이름 미해석이 상태 표시 전체를 막지 않는다. 설치가 없으면 `connected=false` 이고 나머지 필드는 모두
+     * null 이며, 이때 [UserLookupPort] 는 호출하지 않는다.
+     *
+     * @param actorId 상태를 조회하는 행위자(JWT 에서 추출한 사용자 id).
+     * @return 현재 연결 상태 — 미설치 시 `SlackInstallationStatus(connected=false, …=null)`.
+     * @throws SlackForbiddenException [actorId] 가 시스템 전역 관리자가 아닌 경우.
+     */
+    fun getInstallation(actorId: UUID): SlackInstallationStatus {
+        if (!permissionResolver.isSystemAdmin(actorId)) {
+            throw SlackForbiddenException()
+        }
+        return installRepository.findCurrentInstallation()
+            ?.let { view ->
+                // installed_by(UUID)는 설치자 표시명 해석에만 쓰고 응답 본문에는 담지 않는다(원시 id 미노출).
+                // 포트가 이름을 못 돌려주면(default fail-safe / 삭제된 사용자) installerName 만 null 이 된다.
+                val installerName = userLookupPort.findDisplayNamesByIds(setOf(view.installedBy))[view.installedBy]
+                SlackInstallationStatus(
+                    connected = true,
+                    teamId = view.teamId,
+                    teamName = view.teamName,
+                    botUserId = view.botUserId,
+                    installedAt = view.installedAt,
+                    updatedAt = view.updatedAt,
+                    installerName = installerName,
+                )
+            }
+            ?: SlackInstallationStatus(false, null, null, null, null, null, null)
     }
 
     /**
@@ -136,7 +185,7 @@ class SlackInstallService(
 }
 
 /**
- * 설치 완료 결과 — 완료 화면 리다이렉트(`/settings/slack?installed=<teamName>`)에 필요한 메타만 담는다.
+ * 설치 완료 결과 — 완료 화면 리다이렉트(`/admin/slack?installed=<teamName>`)에 필요한 메타만 담는다.
  *
  * **평문 봇 토큰이나 암호문을 포함하지 않는다**(§1.1.2 — 비밀값 노출 최소화). 웹 레이어는 [teamName] 을
  * 완료 배너에 노출한다.
@@ -147,4 +196,30 @@ class SlackInstallService(
 data class SlackInstallResult(
     val teamId: String,
     val teamName: String,
+)
+
+/**
+ * 관리자 Slack 연결 페이지의 상태 배너에 노출하는 현재 연결 상태.
+ *
+ * **표시용 비-비밀 필드만** 담는다 — 봇 토큰(평문/암호문)이나 설치자 원시 id(`installedBy`, UUID)는
+ * 포함하지 않는다(DEVELOPMENT.md §1.1.2 — 비밀값·원시 id 노출 최소화). 설치자는 표시명([installerName])
+ * 으로만 노출하고, 이름 해석에 실패하면 [installerName] 만 null 이 된다(fail-safe). 설치가 없으면
+ * [connected] 는 false 이고 나머지 필드는 모두 null 이다(미설치와 설치 상태를 [connected] 로 구분).
+ *
+ * @property connected Slack 워크스페이스가 연결되어 있으면 true.
+ * @property teamId 연결된 워크스페이스 id(`T…`) — 미설치 시 null.
+ * @property teamName 워크스페이스 표시명 — 미설치 시 null.
+ * @property botUserId 봇 사용자 id(`U…`) — 미설치 시 null.
+ * @property installedAt 최초 설치 시각 — 미설치 시 null.
+ * @property updatedAt 마지막 갱신(재설치 upsert) 시각 — 미설치 시 null.
+ * @property installerName 설치자 표시명 — 미설치 또는 이름 미해석 시 null(원시 id 는 미노출).
+ */
+data class SlackInstallationStatus(
+    val connected: Boolean,
+    val teamId: String?,
+    val teamName: String?,
+    val botUserId: String?,
+    val installedAt: java.time.Instant?,
+    val updatedAt: java.time.Instant?,
+    val installerName: String?,
 )

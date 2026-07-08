@@ -23,4 +23,12 @@ interface SlackInstallRepository {
      * team_id 로 설치를 조회한다. 존재하지 않으면 null.
      */
     fun findByTeamId(teamId: String): SlackInstall?
+
+    /**
+     * 현재(단일 워크스페이스 최신) 설치를 경량 projection 으로 조회한다. 설치가 없으면 null.
+     *
+     * 봇 토큰(암호문 포함)을 로드하지 않는 [SlackInstallationView] 를 반환한다 — 상태 표시
+     * 경로에 비밀값을 싣지 않기 위한 방어적 조회(DEVELOPMENT.md §1.1.2).
+     */
+    fun findCurrentInstallation(): SlackInstallationView?
 }

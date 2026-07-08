@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 45개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 9 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + 프로젝트 CFD 1 + 프로젝트 Cycle/Lead Time 1 + settings 8 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 | FR-IM-01 D6/D7: projectImportSettingsRoute /projects/$projectKey/settings/import 추가 | FR-RP-04 D6/D7: projectCycleTimeRoute /projects/$projectKey/reports/cycle-time 추가 | FR-PR-01 D6: settingsProfileRoute /settings/profile 추가 | FR-PF-01 Task 7: settingsPreferencesRoute /settings/preferences 추가)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 46개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 9 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + 프로젝트 CFD 1 + 프로젝트 Cycle/Lead Time 1 + settings 8 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 + Slack 연결 1 | FR-IM-01 D6/D7: projectImportSettingsRoute /projects/$projectKey/settings/import 추가 | FR-RP-04 D6/D7: projectCycleTimeRoute /projects/$projectKey/reports/cycle-time 추가 | FR-PR-01 D6: settingsProfileRoute /settings/profile 추가 | FR-PF-01 Task 7: settingsPreferencesRoute /settings/preferences 추가 | FR-SL-01 D6/D7 Task 7: adminSlackRoute /admin/slack 추가)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -50,6 +50,7 @@ import { TimelineRouteAdapter } from './routes/projects.$projectKey.timeline'
 import { AdminWebhooksRouteAdapter } from './routes/admin.webhooks'
 import { WebhookDeliveriesRouteAdapter } from './routes/admin.webhooks.$id.deliveries'
 import { SprintBurndownRouteAdapter } from './routes/projects.$projectKey.sprints.$sprintId.burndown'
+import { SlackConnectionSettingsRouteAdapter } from './routes/admin.slack'
 
 const rootRoute = createRootRoute({
   component: RootLayout,
@@ -523,6 +524,23 @@ const adminWebhooksDeliveriesRoute = createRoute({
   beforeLoad: composeGuards(requireAuth, requireSystemAdmin, requirePasswordChanged, requireMfaEnrolled),
 })
 
+/**
+ * Slack 연결 관리자 라우트 — /admin/slack, requireAuth + requireSystemAdmin (FR-SL-01 D6/D7 Task 7).
+ * `?installed=`/`?error=` OAuth 콜백 쿼리 파라미터 타입 선언 — 값은 페이지가 마운트 시 캡처 후
+ * navigate로 제거한다(새로고침 재표시 방지).
+ */
+const adminSlackRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin/slack',
+  component: SlackConnectionSettingsRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: composeGuards(requireAuth, requireSystemAdmin),
+  validateSearch: (search: Record<string, unknown>): { installed?: string; error?: string } => ({
+    installed: typeof search['installed'] === 'string' ? search['installed'] : undefined,
+    error: typeof search['error'] === 'string' ? search['error'] : undefined,
+  }),
+})
+
 /** 계정 연결 설정 라우트 — /settings/account-links, requireAuth + mustChangePassword 차단 */
 const settingsAccountLinksRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -567,10 +585,10 @@ const settingsPreferencesRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 45개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 46개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
- *   · /admin/webhooks · /admin/webhooks/:id/deliveries
+ *   · /admin/webhooks · /admin/webhooks/:id/deliveries · /admin/slack
  *   · /inbox · /dashboards · /dashboards/:dashboardId · /dashboards/shared/:token · /search
  *   · /projects/:projectKey/backlog · /projects/:projectKey/board · /projects/:projectKey/timeline
  *   · /projects/:projectKey/sprints/:sprintId/burndown
@@ -607,6 +625,8 @@ export const routeTree = rootRoute.addChildren([
   // search-export-import BC — 아웃바운드 Webhook 구독 관리 + 발송 이력 (FR-API-03 PR4)
   adminWebhooksRoute,
   adminWebhooksDeliveriesRoute,
+  // slack-integration BC — Slack 연결 관리 (FR-SL-01 D6/D7 Task 7)
+  adminSlackRoute,
   // search-export-import BC — AQL 검색 (FR-SR-02)
   searchRoute,
   // notification BC — 알림 보관함 (FR-UX-03)
