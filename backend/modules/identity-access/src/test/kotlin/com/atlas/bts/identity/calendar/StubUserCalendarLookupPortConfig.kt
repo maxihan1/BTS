@@ -1,4 +1,4 @@
-// CalendarControllerIntegrationTest 용 UserCalendarLookupPort stub — BC 격리로 실 issue-tracking adapter 미사용 (FR-CA-01 Task 4)
+// CalendarControllerIntegrationTest 용 UserCalendarLookupPort stub — BC 격리로 시드값만 반환 (FR-CA-01)
 
 package com.atlas.bts.identity.calendar
 
