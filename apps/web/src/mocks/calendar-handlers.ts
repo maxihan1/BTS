@@ -40,6 +40,20 @@ const DEFAULT_FROM = '2026-07-01'
 const DEFAULT_TO = '2026-07-31'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// E2E 시나리오 토글 — localStorage 플래그 키 (FR-CA-01 Task 8)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * E2E 테스트 전용 localStorage 플래그 키.
+ * 이 키가 `'true'`이면 조회 핸들러가 이벤트 0건(빈 응답)을 반환한다 — 빈 상태 E2E 시나리오용.
+ *
+ * Playwright `addInitScript`로 goto 전에 설정하면 첫 GET 요청부터 적용된다
+ * (board-handlers.ts `LS_KEY_BOARD_CONFLICT` 선례와 동일한
+ * e2e-msw-scenario-toggle-localstorage-flag 패턴).
+ */
+export const LS_KEY_CALENDAR_EMPTY = '__bts_e2e_calendar_empty'
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/users/me/calendar
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -50,19 +64,23 @@ const DEFAULT_TO = '2026-07-31'
  * worklogEvents)은 고정 시드를 반환한다 — 읽기 전용 조회라 stateful store가 불필요하다
  * (worklog-aggregate-handlers 선례).
  *
+ * `LS_KEY_CALENDAR_EMPTY` 플래그가 `'true'`이면 이벤트 0건(빈 응답)을 반환한다 — E2E 빈 상태
+ * 시나리오 전용 토글(Task 8, 기존 시드 데이터/로직은 그대로 유지).
+ *
  * @see 스펙 docs/specs/2026-07-08-fr-ca-01-calendar.md §API 인터페이스
  */
 const getCalendarHandler = http.get('/api/v1/users/me/calendar', ({ request }) => {
   const url = new URL(request.url)
   const from = url.searchParams.get('from') ?? DEFAULT_FROM
   const to = url.searchParams.get('to') ?? DEFAULT_TO
+  const isEmptyScenario = (globalThis.localStorage?.getItem(LS_KEY_CALENDAR_EMPTY) ?? '') === 'true'
 
   const response: CalendarResponse = {
     from,
     to,
     timezone: 'Asia/Seoul',
-    issueEvents: SEED_ISSUE_EVENTS,
-    worklogEvents: SEED_WORKLOG_EVENTS,
+    issueEvents: isEmptyScenario ? [] : SEED_ISSUE_EVENTS,
+    worklogEvents: isEmptyScenario ? [] : SEED_WORKLOG_EVENTS,
     truncated: false,
   }
 
