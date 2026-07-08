@@ -164,15 +164,14 @@ API 2종(관리자 가드) + 신규 read projection `SlackInstallationView`(토�
 - files: [`apps/web/src/components/settings/SlackResultBanner.tsx`, `apps/web/src/components/settings/SlackResultBanner.test.tsx`]
 - depends-on: []
 
-**RED**. 컴포넌트 테스트.
-- `?installed=Acme%20Corp` → `role="alert"` 성공 "Acme Corp 워크스페이스에 연결되었습니다".
-- `?error=access_denied|invalid_state|missing_params|exchange_failed|unsupported_install_type|missing_access_token|invalid_code` → 각 한국어 메시지(스펙 §에러 매핑).
-- 미지원 코드 `?error=weird_xyz` → 일반 fallback(코드 원문 미노출).
+**RED**. 컴포넌트 테스트(순수 컴포넌트 — props `installed?`/`error?`, 라우터 의존 없음).
+- `installed="Acme Corp"` → `role="alert"` 성공 "Acme Corp 워크스페이스에 연결되었습니다".
+- `error="access_denied|invalid_state|missing_params|exchange_failed|unsupported_install_type|missing_access_token|invalid_code"` → 각 한국어 메시지(스펙 §에러 매핑).
+- 미지원 코드 `error="weird_xyz"` → 일반 fallback(코드 원문 미노출).
 - `installed`+`error` 동시 → error 우선.
-- 파라미터 없음 → 배너 미렌더(null).
-- 배너 표시 후 쿼리 정리(navigate replace, mock 으로 호출 검증).
+- 둘 다 undefined → 배너 미렌더(null).
 
-**GREEN**. `SlackResultBanner` + `slackErrorMessages` 맵(스펙 표). TanStack Router `useSearch` 로 `installed`/`error` 읽고, `useEffect` 로 표시 후 `navigate({ search:{}, replace:true })` 정리.
+**GREEN**. `SlackResultBanner`(순수 프레젠테이션, props `{ installed?: string; error?: string }`) + `slackErrorMessages` 맵(스펙 표) + `resolveSlackBannerMessage(installed, error)` 순수 함수. **라우터 search 읽기·쿼리 정리는 route 소유 T7 페이지가 담당**(props 전달) — wave 1 독립성 + 순수 함수 테스트.
 
 **REFACTOR**. 메시지 맵 상수 분리 + 기본 메시지 fallback 명시.
 **검증**. `pnpm --filter web test SlackResultBanner`.
@@ -189,7 +188,7 @@ API 2종(관리자 가드) + 신규 read projection `SlackInstallationView`(토�
 - `Header.test.tsx` — isSystemAdmin=true 시 관리 메뉴에 "Slack 연결"(`/admin/slack`) 링크; 비관리자 시 부재.
 
 **GREEN**.
-- `routes/admin.slack.tsx`(L1 주석) — `SlackConnectionSettingsPage`(배너+카드, `mx-auto max-w-2xl` 관례) + `SlackConnectionSettingsRouteAdapter`. `validateSearch`로 `installed?`/`error?` 노출(T6 배너가 `useSearch`로 읽고 정리).
+- `routes/admin.slack.tsx`(L1 주석) — `SlackConnectionSettingsPage`(배너+카드, `mx-auto max-w-2xl` 관례) + `SlackConnectionSettingsRouteAdapter`. `validateSearch`로 `installed?`/`error?` 노출, 페이지가 `useSearch`로 읽어 `SlackResultBanner`에 props 전달 + 표시 후 `navigate({ search:{}, replace:true })`로 쿼리 정리(배너는 순수 컴포넌트).
 - `router.ts` — `adminSlackRoute`(`path:'/admin/slack'`, `beforeLoad: composeGuards(requireAuth, requireSystemAdmin)`) 등록(상단 카운트 주석 갱신, admin.webhooks 선례).
 - `Header.tsx` — `adminLinks` 배열에 `{ to:'/admin/slack', label:'Slack 연결' }` 추가.
 
