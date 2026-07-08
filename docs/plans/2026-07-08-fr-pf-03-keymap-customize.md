@@ -141,7 +141,7 @@ FR-PF-03 — 단축키 커스터마이즈. 사용자가 FR-UX-05에서 하드코
 **RED**: `shortcuts.test.ts` — (1)각 ShortcutDef에 안정 action id 존재, (2)`resolveKeydown(e, pending, helpOpen, keymap)`가 override 키맵으로 발화(c→n 재배치 시 n 발화·c 무동작), (3)FR5-a: help를 다른 키로 재배치 시 도움말 열림 중 그 키로 toggle-help·기존 `?`는 무동작. + 기존 5종 기본 동작 무회귀. → 시그니처/병합 없어 실패.
 **GREEN**: `ShortcutDef`에 `action: KeymapActionId` 추가. `resolveKeydown`에 effective keymap 인자 추가 — SHORTCUTS 기본 대신 병합 키맵으로 매칭. helpOpen 분기의 `?` 하드코딩 → help action의 effective combo 참조(FR5-a). leader/single 파싱은 keyCombo 형식(`g X`/단일)에서 유도.
 **REFACTOR**: 기본 키맵 상수 export(백엔드 KeymapAction 기본값과 값 일치 — 계약). KDoc 갱신.
-**함정**: 기존 shortcuts.test.ts + useKeyboardShortcuts.test.tsx + ShortcutsHelpDialog.test.tsx 무회귀 필수(resolveKeydown 호출부 전수). `?`는 e.key로 판별([[jsdom-browser-textarea-selectionstart]] 계열 주의).
+**함정**: 기존 shortcuts.test.ts + useKeyboardShortcuts.test.tsx + ShortcutsHelpDialog.test.tsx 무회귀 필수(resolveKeydown 호출부 전수). `?`는 e.key로 판별([[jsdom-browser-textarea-selectionstart]] 계열 주의). **★resolveKeydown의 keymap 인자는 옵셔널(기본값=기본 키맵)로 확장** — 그래야 T8 전 useKeyboardShortcuts.ts 호출부가 컴파일 깨지지 않음(교차파일 typecheck 회귀 방지, 인터페이스 확장 default 패턴 [[interface-extension-default-method]]·#26 교차파일 타입에러). T8이 override 주입으로 확장.
 **검증**: `pnpm --filter web test shortcuts && pnpm --filter web test keyboard-shortcuts`
 
 ### Task 7. keymap API 클라이언트 + Zod + react-query 훅
@@ -205,4 +205,25 @@ FR-PF-03 — 단축키 커스터마이즈. 사용자가 FR-UX-05에서 하드코
 - 추가 검증: ktlint/detekt(backend), typecheck(tsconfig.app)/vitest/playwright(frontend).
 - 전수 동기화 대상(머지 전): fr-index FR-PF-03 D체크박스·product §3.3 D단계·SDD 20/02·README·verify-master-plan.sh.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### self eng+devex review (2026-07-08, autoplan 대체 — 저위험 집중리뷰 [[bts-review-plan-autoplan-overkill]])
+
+**BLOCKER: 없음.**
+
+- ✅ TDD 형식 — 10 task 전부 RED/GREEN/REFACTOR + 메타(agent/files/depends-on) 완비.
+- ✅ 트랜잭션 경계 — Service @Transactional(T4), Repository 경계(T3 JdbcUserPreferencesRepository 미러), 검증 우선(부분 적용 없음).
+- ✅ 의존성 그래프 — 순환 없음(T1→T3→T4→T5→T7→T8/T9→T10, T2→T4, T6→T8/T9).
+- ✅ BC 격리 — 백엔드 identity-access, 프론트 same-BC view-layer, cross-BC import 0(users FK만).
+- ✅ 계약 정합 — T7 Zod가 T5 실제 DTO 참조(depends-on[5], invent 금지).
+- ✅ 보안 — JWT-only·PAT 403·본인만·action CHECK 화이트리스트(DB 최후 방어선).
+- ✅ whoami 미변경(FR5-b 옵션 b) → 슬라이스 mock fanout 0.
+- ✅ **Issue-4 보강 반영** — T6 resolveKeydown keymap 인자 옵셔널화(교차파일 typecheck 회귀 방지).
+
+**주의 (BLOCKER 아님, impl 시 확인)**.
+- ⚠️ Issue-1: PATCH replace-all(preferences 2-state와 다름) — 충돌 검출이 전체 집합 대상이라 정당(FR-SR-03 선례). spec/plan 근거 명시됨.
+- ⚠️ Issue-3: T8 앱 부트 keymap 로드는 useKeyboardShortcuts 훅 내부 useKemap 구독으로 충분 추정 — 훅 마운트 위치 impl 시 grep 확인(별도 App.tsx 배선 불요면 files 그대로).
+- ⚠️ Issue-5: 프론트 충돌 검사(T9)는 백엔드 KeymapValidator 규칙 복제(SSOT=백엔드). drift는 E2E(T10) 실서버 검증이 차단.
+
+### devex 관점
+- ✅ API 형식 preferences 미러(일관), 에러코드 규칙 일관(KEYMAP_VALIDATION_FAILED/KEYMAP_CONFLICT), 파생 필드(trigger/customized) 백엔드 계산.
