@@ -55,7 +55,7 @@ async function loginToMfaStep(page: import('@playwright/test').Page): Promise<vo
 // When    로그인 1+2단계 완료 → MFA 코드 입력 화면 전환
 // Then    loginStepGuide 안내 문구 + 코드 입력 필드 + 확인 버튼 표시
 // When    코드 "123456" 입력 → "확인" 버튼 클릭 → POST /api/v1/auth/mfa/verify 호출
-// Then    /dashboard 도달 + 환영 메시지 표시
+// Then    로그인 성공(목적지는 FR-PF-02 startPage 매핑 부수사항 — alice 기본값 /dashboards)
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe('S3 MFA 로그인 2단계 성공 (FR-MF-01)', () => {
@@ -76,7 +76,7 @@ test.describe('S3 MFA 로그인 2단계 성공 (FR-MF-01)', () => {
     await expect(page.getByRole('button', { name: mfaStrings.loginBackToLogin, exact: true })).toBeVisible()
   })
 
-  test('Given MFA 코드 입력 화면 When 123456 입력 → 확인 Then /dashboard 도달', async ({ page }) => {
+  test('Given MFA 코드 입력 화면 When 123456 입력 → 확인 Then 로그인 성공', async ({ page }) => {
     // Given. MFA 코드 입력 화면까지 도달
     await loginToMfaStep(page)
 
@@ -84,9 +84,10 @@ test.describe('S3 MFA 로그인 2단계 성공 (FR-MF-01)', () => {
     await page.getByLabel(mfaStrings.loginCodeLabel, { exact: true }).fill('123456')
     await page.getByRole('button', { name: mfaStrings.loginVerifyButton, exact: true }).click()
 
-    // Then. /dashboard 도달
-    await page.waitForURL('**/dashboard')
-    await expect(page.getByRole('heading', { name: '환영합니다, alice' })).toBeVisible()
+    // Then. 로그인 성공 — 목적지는 FR-PF-02 startPage 매핑 부수사항(alice 기본값 /dashboards)
+    await page.waitForURL('**/dashboard*')
+    await expect(page).toHaveURL(/\/dashboards/)
+    await expect(page.getByRole('button', { name: /계정 메뉴$/ })).toBeVisible()
   })
 })
 

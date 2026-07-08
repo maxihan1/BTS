@@ -181,7 +181,7 @@ test.describe('S4 비관리자 미노출 + 차단 (FR-AU-10)', () => {
     await page.goto('/admin/audit-logs')
 
     // Then 2. requireSystemAdmin 가드 → /dashboard redirect
-    await page.waitForURL('**/dashboard')
+    await page.waitForURL('**/dashboard*')
     expect(new URL(page.url()).pathname).toBe('/dashboard')
   })
 })

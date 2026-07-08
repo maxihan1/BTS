@@ -226,7 +226,7 @@ test.describe('S3 백업코드 재생성 인라인 확인 (FR-MF-02)', () => {
 // When    "백업 코드로 로그인" 버튼 클릭 → 백업코드 입력 화면 전환
 // Then    loginBackupStepGuide 안내 문구 + 백업코드 입력 필드 + 확인 버튼 표시
 // When    MFA_VALID_BACKUP_CODE('aaaaa-bbbbb') 입력 → "확인" 클릭
-// Then    /dashboard 도달 + "환영합니다, alice" 헤딩 표시
+// Then    로그인 성공(목적지는 FR-PF-02 startPage 매핑 부수사항 — alice 기본값 /dashboards)
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe('S4 백업코드 로그인 2단계 성공 (FR-MF-02)', () => {
@@ -257,7 +257,7 @@ test.describe('S4 백업코드 로그인 2단계 성공 (FR-MF-02)', () => {
     await expect(page.getByRole('button', { name: mfaStrings.loginUseTotp, exact: true })).toBeVisible()
   })
 
-  test('Given 백업코드 화면 When aaaaa-bbbbb 입력 → 확인 Then /dashboard 도달', async ({ page }) => {
+  test('Given 백업코드 화면 When aaaaa-bbbbb 입력 → 확인 Then 로그인 성공', async ({ page }) => {
     // Given. TOTP 코드 입력 화면까지 도달 → 백업코드 화면 전환
     await loginToMfaStep(page)
     await page.getByRole('button', { name: mfaStrings.loginUseBackupCode, exact: true }).click()
@@ -267,9 +267,10 @@ test.describe('S4 백업코드 로그인 2단계 성공 (FR-MF-02)', () => {
     await page.getByLabel(mfaStrings.loginBackupCodeLabel, { exact: true }).fill(MFA_VALID_BACKUP_CODE)
     await page.getByRole('button', { name: mfaStrings.loginVerifyButton, exact: true }).click()
 
-    // Then. /dashboard 도달
-    await page.waitForURL('**/dashboard')
-    await expect(page.getByRole('heading', { name: '환영합니다, alice' })).toBeVisible()
+    // Then. 로그인 성공 — 목적지는 FR-PF-02 startPage 매핑 부수사항(alice 기본값 /dashboards)
+    await page.waitForURL('**/dashboard*')
+    await expect(page).toHaveURL(/\/dashboards/)
+    await expect(page.getByRole('button', { name: /계정 메뉴$/ })).toBeVisible()
   })
 })
 

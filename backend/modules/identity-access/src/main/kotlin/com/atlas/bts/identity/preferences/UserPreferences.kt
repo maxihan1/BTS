@@ -1,4 +1,4 @@
-// user_preferences 테이블 행 매핑 엔티티 — 테마/로케일/날짜형식 (FR-PF-01)
+// user_preferences 테이블 행 매핑 엔티티 — 테마/로케일/날짜형식/시작 페이지 (FR-PF-01/FR-PF-02)
 
 package com.atlas.bts.identity.preferences
 
@@ -7,8 +7,8 @@ import java.util.UUID
 /**
  * 사용자 환경설정 엔티티 (FR-PF-01, V031 user_preferences).
  *
- * users 테이블과 1:1 확장 — 테마/로케일/날짜형식 3개 필드만 담는다. 세 필드 모두 허용값이
- * 고정된 열거형 성격이라 companion object 에 허용 목록 + 기본값을 응집해
+ * users 테이블과 1:1 확장 — 테마/로케일/날짜형식/시작 페이지 4개 필드만 담는다. 네 필드 모두
+ * 허용값이 고정된 열거형 성격이라 companion object 에 허용 목록 + 기본값을 응집해
  * [UserPreferencesService] 의 검증/기본값 채움이 참조한다.
  *
  * 프론트엔드 `apps/web/src/api/preferences.ts` THEMES/LOCALES,
@@ -19,12 +19,14 @@ import java.util.UUID
  * @property theme UI 테마 — [THEMES] 중 하나.
  * @property locale 로케일 — [LOCALES] 중 하나 (저장만, UI 번역은 후속 범위).
  * @property dateFormat 날짜 표시 형식 — [DATE_FORMATS] 중 하나.
+ * @property startPage 로그인 후 시작 페이지 논리 키 — [START_PAGES] 중 하나 (FR-PF-02).
  */
 data class UserPreferences(
     val userId: UUID,
     val theme: String,
     val locale: String,
     val dateFormat: String,
+    val startPage: String = DEFAULT_START_PAGE,
 ) {
     companion object {
         /** 지원 테마 값 3종. */
@@ -36,6 +38,15 @@ data class UserPreferences(
         /** 지원 날짜 표시 형식 4종. */
         val DATE_FORMATS: Set<String> = setOf("iso", "kr", "us", "eu")
 
+        /**
+         * 지원 시작 페이지 값 4종 (FR-PF-02) — dashboards/my_issues/issues/inbox.
+         *
+         * 프론트엔드 `apps/web/src/api/preferences.ts` 의 `START_PAGES`
+         * (`apps/web/src/lib/start-page.ts` 의 `START_PAGE_KEYS` 를 그대로 재노출) 와
+         * 동기화 계약 — 값 목록을 바꿀 때 두 곳을 함께 갱신해야 한다.
+         */
+        val START_PAGES: Set<String> = setOf("dashboards", "my_issues", "issues", "inbox")
+
         /** [theme] 기본값. */
         const val DEFAULT_THEME: String = "system"
 
@@ -44,5 +55,8 @@ data class UserPreferences(
 
         /** [dateFormat] 기본값. */
         const val DEFAULT_DATE_FORMAT: String = "iso"
+
+        /** [startPage] 기본값. */
+        const val DEFAULT_START_PAGE: String = "dashboards"
     }
 }

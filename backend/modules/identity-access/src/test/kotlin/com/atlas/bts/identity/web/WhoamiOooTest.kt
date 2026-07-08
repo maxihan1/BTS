@@ -12,6 +12,7 @@ import com.atlas.bts.identity.ooo.OutOfOffice
 import com.atlas.bts.identity.ooo.OutOfOfficeRepository
 import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
+import com.atlas.bts.identity.preferences.UserPreferencesService
 import com.atlas.bts.identity.profile.UserProfileRepository
 import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.status.UserStatusRepository
@@ -104,6 +105,11 @@ class WhoamiOooTest {
         // (미공급 시 "No qualifying bean of type OutOfOfficeRepository").
         @Bean
         fun outOfOfficeRepository(): OutOfOfficeRepository = mockk(relaxed = true)
+
+        // WhoamiController 가 환경설정 view-layer(theme/locale/dateFormat/startPage)를 위해 주입받는 의존 (FR-PF-01/02).
+        // @WebMvcTest 슬라이스에는 실 빈이 없으므로 mockk 로 공급 (미공급 시 "No qualifying bean of type UserPreferencesService").
+        @Bean
+        fun userPreferencesService(): UserPreferencesService = mockk(relaxed = true)
     }
 
     @Autowired

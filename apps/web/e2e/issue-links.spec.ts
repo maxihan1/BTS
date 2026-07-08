@@ -330,7 +330,7 @@ test.describe('FR-LK-01 이슈 링크 패널 (IssueLinksPanel)', () => {
       window.dispatchEvent(new PopStateEvent('popstate'))
     })
     // /dashboard 진입 대기
-    await page.waitForURL('**/dashboard')
+    await page.waitForURL('**/dashboard*')
 
     // 이슈 상세로 재진입
     await navigateToIssueDetail(page)

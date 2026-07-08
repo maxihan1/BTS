@@ -131,7 +131,7 @@ describe('PreferencesSettingsPage — 저장 성공 시 whoami 갱신', () => {
   it('T4: 테마 저장 성공 시 whoami가 재조회되어 authStore.user.theme이 갱신된다', async () => {
     server.use(
       http.patch('/api/v1/users/me/preferences', () =>
-        HttpResponse.json({ theme: 'dark', locale: 'ko', dateFormat: 'iso' }),
+        HttpResponse.json({ theme: 'dark', locale: 'ko', dateFormat: 'iso', startPage: 'dashboards' }),
       ),
       http.get('/api/v1/users/me/whoami', () => HttpResponse.json(makeWhoami({ theme: 'dark' }))),
     )

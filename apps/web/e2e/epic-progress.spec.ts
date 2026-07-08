@@ -182,7 +182,7 @@ test.describe('FR-EP-02 에픽 진행률 막대 (EpicProgressBar)', () => {
       window.history.pushState({}, '', '/dashboard')
       window.dispatchEvent(new PopStateEvent('popstate'))
     })
-    await page.waitForURL('**/dashboard')
+    await page.waitForURL('**/dashboard*')
 
     await navigateToIssueDetail(page, EPIC_URL, EPIC_CHILDREN_SECTION_TESTID)
 

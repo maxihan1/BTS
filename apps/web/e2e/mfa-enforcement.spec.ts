@@ -181,7 +181,7 @@ test.describe('E2E-3 MFA 등록 후 강제 게이트 해제 (FR-MF-04)', () => {
 
       // Then. FR-D6-4 — 강제 모드 enable 성공 시 refreshSession → /dashboard 이동
       //       POST /api/v1/auth/refresh (refreshHandler) + GET whoami(mfaEnrollmentRequired=false)
-      await page.waitForURL('**/dashboard')
+      await page.waitForURL('**/dashboard*')
 
       // Then. /dashboard 진입 성공
       await expect(page).toHaveURL(/\/dashboard/)
@@ -223,7 +223,7 @@ test.describe('E2E-4 비강제 사용자 회귀 — 리다이렉트·배너 없�
       await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
 
       // Then. /dashboard 진입 정상 — 리다이렉트 없음
-      await page.waitForURL('**/dashboard')
+      await page.waitForURL('**/dashboard*')
       await expect(page).toHaveURL(/\/dashboard/)
 
       // Then. /settings/mfa 이동 시 배너 없음 (비강제)

@@ -1,17 +1,18 @@
-// 사용자 환경설정(테마/언어/날짜포맷) MSW 핸들러 — GET/PATCH stateful, whoami와 동일 객체 공유 (FR-PF-01 Task 9)
+// 사용자 환경설정(테마/언어/날짜포맷/시작 페이지) MSW 핸들러 — GET/PATCH stateful, whoami와 동일 객체 공유 (FR-PF-01 Task 9, FR-PF-02 Task 8)
 import { http, HttpResponse } from 'msw'
 import { AUTH_USERS } from './auth-fixtures'
 import { isTheme } from '@/lib/theme'
 import { isDatePreset } from '@/lib/date-preferences'
 import { isLocale } from '@/api/preferences'
 import type { PreferencesResponse } from '@/api/preferences'
+import { isStartPage } from '@/lib/start-page'
 import type { WhoamiResponse } from '@/api/schemas'
 
 /**
  * 교훈 반영 — msw-mutation-stateful-refetch.
  *
  * PATCH는 AUTH_USERS[username](= auth-handlers.ts의 whoamiHandler가 `{ ...user }`로 스프레드하는
- * 것과 동일한 객체 참조)의 theme/locale/dateFormat 필드를 직접 mutate한다. auth-handlers.ts를
+ * 것과 동일한 객체 참조)의 theme/locale/dateFormat/startPage 필드를 직접 mutate한다. auth-handlers.ts를
  * 건드리지 않고도 whoamiHandler가 갱신값을 자동으로 반영한다 — 값 소유권은 auth-fixtures.ts의
  * AUTH_USERS 객체 하나(단일 진실 출처)에 있다.
  *
@@ -38,14 +39,16 @@ function resolveUserFromRequest(request: Request): WhoamiResponse | null {
 
 /**
  * whoami fixture(느슨한 optional string)를 강타입 {@link PreferencesResponse}로 정규화한다.
- * 필드 부재/알 수 없는 값은 서버 기본값(EC1 — theme=system, locale=ko, dateFormat=iso)으로 폴백한다.
+ * 필드 부재/알 수 없는 값은 서버 기본값(EC1 — theme=system, locale=ko, dateFormat=iso,
+ * startPage=dashboards)으로 폴백한다.
  */
 function toPreferencesResponse(user: WhoamiResponse): PreferencesResponse {
-  const { theme, locale, dateFormat } = user
+  const { theme, locale, dateFormat, startPage } = user
   return {
     theme: theme !== undefined && isTheme(theme) ? theme : 'system',
     locale: locale !== undefined && isLocale(locale) ? locale : 'ko',
     dateFormat: dateFormat !== undefined && isDatePreset(dateFormat) ? dateFormat : 'iso',
+    startPage: startPage !== undefined && isStartPage(startPage) ? startPage : 'dashboards',
   }
 }
 
@@ -100,6 +103,13 @@ const patchMyPreferencesHandler = http.patch('/api/v1/users/me/preferences', asy
       return HttpResponse.json(errorBody('지원하지 않는 날짜 형식입니다.'), { status: 400 })
     }
     user.dateFormat = value
+  }
+  if ('startPage' in body) {
+    const value = body['startPage']
+    if (typeof value !== 'string' || !isStartPage(value)) {
+      return HttpResponse.json(errorBody('지원하지 않는 시작 페이지입니다.'), { status: 400 })
+    }
+    user.startPage = value
   }
 
   return HttpResponse.json(toPreferencesResponse(user))

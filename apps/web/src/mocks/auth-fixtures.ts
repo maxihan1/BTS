@@ -82,8 +82,10 @@ export function resetMfaStore(): void {
  * displayName은 profile-fixtures.ALICE_PROFILE_FIXTURE와 동일 값으로 정합(FR-PR-01 D6 Task 4).
  * avatarUrl은 아바타 미설정 기본 상태를 반영해 null.
  * theme/locale/dateFormat은 사용자 환경설정(FR-PF-01) 미저장 기본값(EC1, 서버 lazy upsert 기본값과
- * 동일) — system/ko/iso. preferences-handlers.ts의 PATCH가 이 객체 참조를 직접 mutate하고,
- * auth-handlers.ts의 whoamiHandler가 `{ ...user }` 스프레드로 그대로 반영한다(단일 진실 출처).
+ * 동일) — system/ko/iso. startPage는 시작 페이지(FR-PF-02) 미저장 기본값(백엔드
+ * UserPreferences.DEFAULT_START_PAGE와 동일) — dashboards. preferences-handlers.ts의 PATCH가 이
+ * 객체 참조를 직접 mutate하고, auth-handlers.ts의 whoamiHandler가 `{ ...user }` 스프레드로 그대로
+ * 반영한다(단일 진실 출처).
  */
 export const aliceUser: WhoamiResponse = {
   username: 'alice',
@@ -98,9 +100,13 @@ export const aliceUser: WhoamiResponse = {
   theme: 'system',
   locale: 'ko',
   dateFormat: 'iso',
+  startPage: 'dashboards',
 }
 
-/** bob fixture — 추가 fixture 사용자. theme/locale/dateFormat 기본값은 aliceUser와 동일(EC1). */
+/**
+ * bob fixture — 추가 fixture 사용자.
+ * theme/locale/dateFormat/startPage 기본값은 aliceUser와 동일(EC1).
+ */
 export const bobUser: WhoamiResponse = {
   username: 'bob',
   email: 'bob@bts.local',
@@ -114,6 +120,7 @@ export const bobUser: WhoamiResponse = {
   theme: 'system',
   locale: 'ko',
   dateFormat: 'iso',
+  startPage: 'dashboards',
 }
 
 /** username → fixture 사용자 맵 */

@@ -120,7 +120,7 @@ test.describe('S2 비 SYSTEM_ADMIN 권한 차단 (FR-AU-05)', () => {
     await page.goto('/admin/users/new')
 
     // Then. requireSystemAdmin 가드 → /dashboard redirect
-    await page.waitForURL('**/dashboard')
+    await page.waitForURL('**/dashboard*')
     expect(new URL(page.url()).pathname).toBe('/dashboard')
   })
 })
@@ -184,7 +184,7 @@ test.describe('S4/S5 비밀번호 강제 변경 흐름 (FR-AU-05)', () => {
     // password 변경 성공 시 password-handlers.ts 가 LS_MUST_CHANGE_PASSWORD 플래그를 removeItem
     // 이후 whoami fetch에서 mustChangePassword:false → requirePasswordChanged 가드 통과
     await page.goto('/dashboard')
-    await page.waitForURL('**/dashboard')
+    await page.waitForURL('**/dashboard*')
     expect(new URL(page.url()).pathname).toBe('/dashboard')
   })
 })

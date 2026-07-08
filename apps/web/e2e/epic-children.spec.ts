@@ -135,7 +135,7 @@ test.describe('FR-EP-01 에픽 자식 연결/해제 + 소속 에픽 지정/해�
       window.history.pushState({}, '', '/dashboard')
       window.dispatchEvent(new PopStateEvent('popstate'))
     })
-    await page.waitForURL('**/dashboard')
+    await page.waitForURL('**/dashboard*')
 
     await navigateToIssueDetail(page, EPIC_URL, EPIC_CHILDREN_SECTION_TESTID)
 
@@ -284,7 +284,7 @@ test.describe('FR-EP-01 에픽 자식 연결/해제 + 소속 에픽 지정/해�
       window.history.pushState({}, '', '/dashboard')
       window.dispatchEvent(new PopStateEvent('popstate'))
     })
-    await page.waitForURL('**/dashboard')
+    await page.waitForURL('**/dashboard*')
 
     await navigateToIssueDetail(page, CHILD_ISSUE_URL, EPIC_SECTION_TESTID)
 

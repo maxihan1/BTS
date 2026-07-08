@@ -37,6 +37,8 @@ import java.util.UUID
  *   기본값(`"system"`)을 그대로 노출한다(항상 값 존재, null 없음). PAT 분기는 조회 없이 기본값으로 고정.
  * @property locale 로케일 (FR-PF-01). theme 과 동일 파생 규칙(기본값 `"ko"`). PAT 분기는 기본값 고정.
  * @property dateFormat 날짜 표시 형식 (FR-PF-01). theme 과 동일 파생 규칙(기본값 `"iso"`). PAT 분기는 기본값 고정.
+ * @property startPage 로그인 후 시작 페이지 논리 키 (FR-PF-02). theme 과 동일 파생 규칙(기본값 `"dashboards"`).
+ *   PAT 분기는 기본값 고정.
  */
 data class WhoamiResponse(
     val username: String,
@@ -55,4 +57,5 @@ data class WhoamiResponse(
     val theme: String = "system",
     val locale: String = "ko",
     val dateFormat: String = "iso",
+    val startPage: String = "dashboards",
 )

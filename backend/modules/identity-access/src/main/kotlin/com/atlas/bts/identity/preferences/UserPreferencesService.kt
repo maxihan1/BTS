@@ -7,16 +7,16 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
- * 사용자 환경설정(테마/로케일/날짜형식) 조회/수정 유스케이스 서비스 (FR-PF-01 Task 2).
+ * 사용자 환경설정(테마/로케일/날짜형식/시작 페이지) 조회/수정 유스케이스 서비스 (FR-PF-01 Task 2, FR-PF-02).
  *
  * user_preferences 행이 없는 사용자에게는 기본값([UserPreferences.DEFAULT_THEME] 등)을 채워
  * 노출한다 — 행을 강제로 생성하지 않는다(lazy 생성은 [patchPreferences] 최초 호출 시점).
  *
  * ## PATCH 는 2-state
- * profile 의 `department` 와 달리 theme/locale/dateFormat 은 값이 있으면 반드시 [UserPreferences.THEMES]
- * 등 고정 열거값 중 하나이고 "삭제(null)" 개념이 없다. 따라서 [PreferencesPatch] 는 3-state
- * (`ProfilePatchField`) 가 아니라 `필드? = null`(부재=미변경) 2-state 로 충분하다(eng-review E-4, 프론트
- * `PreferencesPatchBody` 와 동일 설계).
+ * profile 의 `department` 와 달리 theme/locale/dateFormat/startPage 는 값이 있으면 반드시
+ * [UserPreferences.THEMES] 등 고정 열거값 중 하나이고 "삭제(null)" 개념이 없다. 따라서 [PreferencesPatch]
+ * 는 3-state (`ProfilePatchField`) 가 아니라 `필드? = null`(부재=미변경) 2-state 로 충분하다(eng-review
+ * E-4, 프론트 `PreferencesPatchBody` 와 동일 설계).
  *
  * ## 검증 우선 원칙
  * [patchPreferences] 는 제공된 필드를 리포지토리 조회/쓰기 이전에 모두 검증한다 — 하나라도
@@ -33,8 +33,8 @@ class UserPreferencesService(
      * 사용자 환경설정을 조회한다.
      *
      * user_preferences 행이 없으면 기본값(theme=[UserPreferences.DEFAULT_THEME],
-     * locale=[UserPreferences.DEFAULT_LOCALE], dateFormat=[UserPreferences.DEFAULT_DATE_FORMAT])
-     * 으로 채운다.
+     * locale=[UserPreferences.DEFAULT_LOCALE], dateFormat=[UserPreferences.DEFAULT_DATE_FORMAT],
+     * startPage=[UserPreferences.DEFAULT_START_PAGE]) 으로 채운다.
      *
      * @param userId 조회 대상 사용자 id.
      * @return 유효 [UserPreferences](저장값 또는 기본값).
@@ -52,7 +52,7 @@ class UserPreferencesService(
      * @param userId 갱신 대상 사용자 id.
      * @param patch 부분 변경 의도(부재=미변경).
      * @return 갱신 후 effective [UserPreferences].
-     * @throws PreferencesValidationException theme/locale/dateFormat 중 하나라도 허용값 밖일 때.
+     * @throws PreferencesValidationException theme/locale/dateFormat/startPage 중 하나라도 허용값 밖일 때.
      */
     @Transactional
     fun patchPreferences(
@@ -62,6 +62,7 @@ class UserPreferencesService(
         patch.theme?.let { validateAllowed(it, UserPreferences.THEMES, "테마") }
         patch.locale?.let { validateAllowed(it, UserPreferences.LOCALES, "로케일") }
         patch.dateFormat?.let { validateAllowed(it, UserPreferences.DATE_FORMATS, "날짜 형식") }
+        patch.startPage?.let { validateAllowed(it, UserPreferences.START_PAGES, "시작 페이지") }
 
         val current = repository.findByUserId(userId)
         val effective =
@@ -70,6 +71,7 @@ class UserPreferencesService(
                 theme = patch.theme ?: current?.theme ?: UserPreferences.DEFAULT_THEME,
                 locale = patch.locale ?: current?.locale ?: UserPreferences.DEFAULT_LOCALE,
                 dateFormat = patch.dateFormat ?: current?.dateFormat ?: UserPreferences.DEFAULT_DATE_FORMAT,
+                startPage = patch.startPage ?: current?.startPage ?: UserPreferences.DEFAULT_START_PAGE,
             )
         repository.upsert(effective)
         return effective
@@ -84,13 +86,14 @@ class UserPreferencesService(
             theme = UserPreferences.DEFAULT_THEME,
             locale = UserPreferences.DEFAULT_LOCALE,
             dateFormat = UserPreferences.DEFAULT_DATE_FORMAT,
+            startPage = UserPreferences.DEFAULT_START_PAGE,
         )
 
     /**
      * [value] 가 [allowed] 에 없으면 [PreferencesValidationException] 을 던진다.
      *
-     * theme/locale/dateFormat 세 필드 모두 "값이 있으면 companion 허용 목록 중 하나" 라는 동일 규칙을
-     * 공유하므로, 필드별 개별 검증 메서드 대신 이 헬퍼 하나로 응집한다([fieldLabel] 만 메시지에 반영).
+     * theme/locale/dateFormat/startPage 네 필드 모두 "값이 있으면 companion 허용 목록 중 하나" 라는 동일
+     * 규칙을 공유하므로, 필드별 개별 검증 메서드 대신 이 헬퍼 하나로 응집한다([fieldLabel] 만 메시지에 반영).
      */
     private fun validateAllowed(
         value: String,
@@ -104,13 +107,15 @@ class UserPreferencesService(
 }
 
 /**
- * [UserPreferencesService.patchPreferences] 입력 — theme/locale/dateFormat 2-state PATCH (FR-PF-01).
+ * [UserPreferencesService.patchPreferences] 입력 — theme/locale/dateFormat/startPage 2-state PATCH
+ * (FR-PF-01, FR-PF-02).
  *
- * 각 필드 기본값은 `null`(부재=미변경)이다. 세 필드 모두 고정 열거값이라 "명시적 삭제" 개념이
+ * 각 필드 기본값은 `null`(부재=미변경)이다. 네 필드 모두 고정 열거값이라 "명시적 삭제" 개념이
  * 없으므로(profile 의 `department: String?` 과 달리) 3-state sealed 타입 없이 nullable 로 충분하다.
  */
 data class PreferencesPatch(
     val theme: String? = null,
     val locale: String? = null,
     val dateFormat: String? = null,
+    val startPage: String? = null,
 )

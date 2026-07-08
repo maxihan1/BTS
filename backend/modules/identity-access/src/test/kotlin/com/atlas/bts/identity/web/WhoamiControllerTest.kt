@@ -59,6 +59,7 @@ import java.util.UUID
     excludeAutoConfiguration = [OAuth2ClientAutoConfiguration::class],
 )
 @Import(SecurityConfig::class, WhoamiControllerTest.MockSecurityBeans::class)
+@Suppress("LargeClass") // whoami 인증(JWT/PAT) 전 view-layer 필드(프로필·상태·부재중·환경설정·시작페이지)를 단일 슬라이스로 커버
 class WhoamiControllerTest {
     companion object {
         // EC-26: "pat_" prefix 포함 52자 raw token (pat_ + 48자 body)
@@ -745,6 +746,101 @@ class WhoamiControllerTest {
             .andExpect(jsonPath("$.theme").value("system"))
             .andExpect(jsonPath("$.locale").value("ko"))
             .andExpect(jsonPath("$.dateFormat").value("iso"))
+    }
+
+    // ── FR-PF-02: startPage (시작 페이지 view-layer) ────────────────────────────
+
+    @Test
+    fun `whoami JWT 사용자의 시작 페이지가 저장돼 있으면 그 값 반영`() {
+        val userId = UUID.fromString("00000000-0000-0000-0000-0000000000d1")
+        val now = Instant.parse("2026-07-06T10:00:00Z")
+        every { userRepository.findById(userId) } returns
+            User(
+                id = userId,
+                username = "ivan",
+                email = "ivan@bts.local",
+                displayName = "Ivan Yoon",
+                createdAt = now,
+                updatedAt = now,
+            )
+        every { storedPasswordCredentialRepository.findByUserId(userId) } returns credential(userId, mustChange = false)
+        every { systemPermissionResolver.isSystemAdmin(userId) } returns false
+        every { userPreferencesService.getPreferences(userId) } returns
+            UserPreferences(
+                userId = userId,
+                theme = "system",
+                locale = "ko",
+                dateFormat = "iso",
+                startPage = "my_issues",
+            )
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami").with(
+                jwt().jwt { builder -> builder.subject(userId.toString()) },
+            ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.startPage").value("my_issues"))
+    }
+
+    @Test
+    fun `whoami JWT 사용자의 시작 페이지 행이 없으면 기본값 dashboards 반영`() {
+        val userId = UUID.fromString("00000000-0000-0000-0000-0000000000d2")
+        val now = Instant.parse("2026-07-06T10:00:00Z")
+        every { userRepository.findById(userId) } returns
+            User(
+                id = userId,
+                username = "judy",
+                email = "judy@bts.local",
+                displayName = "Judy Han",
+                createdAt = now,
+                updatedAt = now,
+            )
+        every { storedPasswordCredentialRepository.findByUserId(userId) } returns credential(userId, mustChange = false)
+        every { systemPermissionResolver.isSystemAdmin(userId) } returns false
+        // user_preferences 행 없음 → UserPreferencesService 가 기본값(dashboards)으로 귀결한 결과를 그대로 반영
+        every { userPreferencesService.getPreferences(userId) } returns
+            UserPreferences(
+                userId = userId,
+                theme = UserPreferences.DEFAULT_THEME,
+                locale = UserPreferences.DEFAULT_LOCALE,
+                dateFormat = UserPreferences.DEFAULT_DATE_FORMAT,
+                startPage = UserPreferences.DEFAULT_START_PAGE,
+            )
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami").with(
+                jwt().jwt { builder -> builder.subject(userId.toString()) },
+            ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.startPage").value("dashboards"))
+    }
+
+    @Test
+    fun `whoami PAT 인증은 startPage 기본값 dashboards 로 고정`() {
+        val activePat =
+            PersonalAccessToken(
+                id = PAT_ID,
+                userId = PAT_USER_ID,
+                name = "ci-token",
+                tokenHash = "irrelevant-hash",
+                scopes = listOf("*"),
+                expiresAt = null,
+                lastUsedAt = null,
+                revokedAt = null,
+                createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+            )
+        every { personalAccessTokenService.verify(RAW_PAT) } returns Result.success(activePat)
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami")
+                .header("Authorization", "Bearer $RAW_PAT"),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.authMethod").value("pat"))
+            // PAT 분기는 봇 컨텍스트라 시작 페이지를 조회하지 않고 기본값으로 고정
+            .andExpect(jsonPath("$.startPage").value("dashboards"))
     }
 
     /** local_credentials 행 픽스처 — mustChangePassword 플래그만 변주 */

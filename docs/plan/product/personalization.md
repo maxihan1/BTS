@@ -87,13 +87,13 @@
 
 **우선순위**. 높음 | **선행**. §3.1 | **Plan slug**. `personal/start-page`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — 로그인 후 리다이렉트 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `user_preferences.start_page` (책임. db-engineer)
-- [ ] D4. 백엔드 — (활용) (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 설정 페이지 + 로그인 후 자동 라우팅 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. backend-engineer)
+- [x] D2. 명세 — 로그인 후 리다이렉트 (책임. backend-engineer)
+- [x] D3. 데이터 모델 — `user_preferences.start_page` (책임. db-engineer)
+- [x] D4. 백엔드 — (활용) (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D6. 프론트 UI — 설정 페이지 + 로그인 후 자동 라우팅 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ### §3.3 FR-PF-03 — 단축키 커스터마이즈
 

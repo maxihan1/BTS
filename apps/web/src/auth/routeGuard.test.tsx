@@ -1,8 +1,16 @@
-// 라우트 가드 헬퍼 단위 테스트 — requireAuth / redirectIfAuth / isSafeReturnTo / requirePasswordChanged / requireSystemAdmin / requireMfaEnrolled
+// 라우트 가드 헬퍼 단위 테스트 — requireAuth / redirectIfAuth / isSafeReturnTo / resolvePostLoginNav / requirePasswordChanged / requireSystemAdmin / requireMfaEnrolled
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { isRedirect } from '@tanstack/react-router'
 import { useAuthStore } from './authStore'
-import { requireAuth, redirectIfAuth, isSafeReturnTo, requirePasswordChanged, requireSystemAdmin, requireMfaEnrolled } from './routeGuard'
+import {
+  requireAuth,
+  redirectIfAuth,
+  isSafeReturnTo,
+  resolvePostLoginNav,
+  requirePasswordChanged,
+  requireSystemAdmin,
+  requireMfaEnrolled,
+} from './routeGuard'
 import { makeWhoami } from '@/mocks/auth-fixtures'
 
 // TanStack Router beforeLoad 컨텍스트 중 가드에서 사용하는 최소 형태
@@ -70,6 +78,29 @@ describe('isSafeReturnTo', () => {
   it('슬래시 없이 시작하는 상대 경로 → 차단 (경로 탈출 위험)', () => {
     expect(isSafeReturnTo('evil.com')).toBe(false)
     expect(isSafeReturnTo('dashboard')).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────
+// resolvePostLoginNav — 로그인 후 목적지 우선순위 공유 헬퍼(routes/login.tsx handleSuccess와 공유)
+// ─────────────────────────────────────────────
+describe('resolvePostLoginNav', () => {
+  it('rawReturnTo가 안전한 내부 경로이면 startPage와 무관하게 returnTo가 우선한다', () => {
+    expect(resolvePostLoginNav('/issues/PROJ-5', 'inbox', 'u-1')).toEqual({
+      to: '/issues/PROJ-5',
+    })
+  })
+
+  it('rawReturnTo가 안전하지 않으면(외부 URL) 무시하고 start_page 매핑으로 폴백한다', () => {
+    expect(resolvePostLoginNav('http://evil.com', 'inbox', 'u-1')).toEqual({ to: '/inbox' })
+  })
+
+  it('rawReturnTo가 null이면 start_page 매핑으로 폴백한다', () => {
+    expect(resolvePostLoginNav(null, 'issues', 'u-1')).toEqual({ to: '/issues' })
+  })
+
+  it('rawReturnTo도 startPage도 없으면 /dashboards로 폴백한다', () => {
+    expect(resolvePostLoginNav(null, undefined, undefined)).toEqual({ to: '/dashboards' })
   })
 })
 
@@ -152,8 +183,8 @@ describe('redirectIfAuth', () => {
     expect(r.options.to).toBe('/dashboard')
   })
 
-  it('인증 상태 + 외부 URL returnTo (http://evil.com) → /dashboard 로 리다이렉트', () => {
-    useAuthStore.setState({ accessToken: 'valid-token' })
+  it('인증 상태 + 외부 URL returnTo (http://evil.com) → start_page 매핑 폴백(/dashboards)으로 리다이렉트', () => {
+    useAuthStore.setState({ accessToken: 'valid-token', user: null })
 
     let thrown: unknown
     try {
@@ -163,11 +194,11 @@ describe('redirectIfAuth', () => {
     }
 
     const r = thrown as RedirectResponse
-    expect(r.options.to).toBe('/dashboard')
+    expect(r.options.to).toBe('/dashboards')
   })
 
-  it('인증 상태 + 프로토콜 상대 URL (//evil.com) → /dashboard 로 리다이렉트', () => {
-    useAuthStore.setState({ accessToken: 'valid-token' })
+  it('인증 상태 + 프로토콜 상대 URL (//evil.com) → start_page 매핑 폴백(/dashboards)으로 리다이렉트', () => {
+    useAuthStore.setState({ accessToken: 'valid-token', user: null })
 
     let thrown: unknown
     try {
@@ -177,11 +208,11 @@ describe('redirectIfAuth', () => {
     }
 
     const r = thrown as RedirectResponse
-    expect(r.options.to).toBe('/dashboard')
+    expect(r.options.to).toBe('/dashboards')
   })
 
-  it('인증 상태 + javascript: returnTo → /dashboard 로 리다이렉트', () => {
-    useAuthStore.setState({ accessToken: 'valid-token' })
+  it('인증 상태 + javascript: returnTo → start_page 매핑 폴백(/dashboards)으로 리다이렉트', () => {
+    useAuthStore.setState({ accessToken: 'valid-token', user: null })
 
     let thrown: unknown
     try {
@@ -191,15 +222,53 @@ describe('redirectIfAuth', () => {
     }
 
     const r = thrown as RedirectResponse
-    expect(r.options.to).toBe('/dashboard')
+    expect(r.options.to).toBe('/dashboards')
   })
 
-  it('인증 상태 + returnTo 없음 → /dashboard 로 리다이렉트', () => {
-    useAuthStore.setState({ accessToken: 'valid-token' })
+  it('인증 상태 + returnTo 없음 + user.startPage 없음 → /dashboards 로 리다이렉트', () => {
+    useAuthStore.setState({ accessToken: 'valid-token', user: null })
 
     let thrown: unknown
     try {
       redirectIfAuth(makeCtx('/login'))
+    } catch (e) {
+      thrown = e
+    }
+
+    const r = thrown as RedirectResponse
+    expect(r.options.to).toBe('/dashboards')
+  })
+
+  // ───────────────────────────────────────────
+  // FR-PF-02 Task 7 — returnTo 없을 때 start_page 매핑 우선순위
+  // 게이트1 확정 우선순위: returnTo(안전 검증 통과) > start_page 매핑 > /dashboards
+  // ───────────────────────────────────────────
+  it('returnTo 없음 + user.startPage="issues" → /issues 로 리다이렉트', () => {
+    useAuthStore.setState({
+      accessToken: 'valid-token',
+      user: makeWhoami({ startPage: 'issues' }),
+    })
+
+    let thrown: unknown
+    try {
+      redirectIfAuth(makeCtx('/login'))
+    } catch (e) {
+      thrown = e
+    }
+
+    const r = thrown as RedirectResponse
+    expect(r.options.to).toBe('/issues')
+  })
+
+  it('returnTo가 있고 안전하면 user.startPage와 무관하게 returnTo가 우선한다', () => {
+    useAuthStore.setState({
+      accessToken: 'valid-token',
+      user: makeWhoami({ startPage: 'issues' }),
+    })
+
+    let thrown: unknown
+    try {
+      redirectIfAuth(makeCtx('/login', '?returnTo=/dashboard'))
     } catch (e) {
       thrown = e
     }

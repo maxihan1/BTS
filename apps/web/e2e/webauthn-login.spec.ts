@@ -65,7 +65,7 @@ async function loginToMfaStep(page: import('@playwright/test').Page): Promise<vo
 // Then    "보안 키로 인증" 버튼 표시
 // When    "보안 키로 인증" 버튼 클릭
 //         → authenticate/start → stub get → verify(method:'webauthn') → 200 토큰
-// Then    /dashboard 도달
+// Then    로그인 성공(목적지는 FR-PF-02 startPage 매핑 부수사항 — alice 기본값 /dashboards)
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe('S3 보안 키 로그인 인증 성공 (FR-MF-03)', () => {
@@ -87,7 +87,7 @@ test.describe('S3 보안 키 로그인 인증 성공 (FR-MF-03)', () => {
     ).toBeVisible()
   })
 
-  test('Given MFA 화면 When 보안 키로 인증 클릭 Then /dashboard 도달', async ({ page }) => {
+  test('Given MFA 화면 When 보안 키로 인증 클릭 Then 로그인 성공', async ({ page }) => {
     // Given. MFA 코드 입력 화면까지 도달
     await loginToMfaStep(page)
     await expect(
@@ -99,9 +99,10 @@ test.describe('S3 보안 키 로그인 인증 성공 (FR-MF-03)', () => {
     //   → MSW verifyHandler: credential 객체 존재 → 200 mock-access-token-alice
     await page.getByRole('button', { name: mfaStrings.webauthnVerifyButton, exact: true }).click()
 
-    // Then. /dashboard 도달
-    await page.waitForURL('**/dashboard')
-    await expect(page.getByRole('heading', { name: '환영합니다, alice' })).toBeVisible()
+    // Then. 로그인 성공 — 목적지는 FR-PF-02 startPage 매핑 부수사항(alice 기본값 /dashboards)
+    await page.waitForURL('**/dashboard*')
+    await expect(page).toHaveURL(/\/dashboards/)
+    await expect(page.getByRole('button', { name: /계정 메뉴$/ })).toBeVisible()
   })
 })
 

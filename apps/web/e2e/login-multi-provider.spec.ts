@@ -3,12 +3,12 @@
 // S1 — Local provider 선택 후 정상 로그인
 //   Given  /login 진입 후 1단계 미매칭 이메일 입력 → "계속" → 2단계 폼 진입
 //   When   드롭다운에서 "Local" 선택 → alice / password 입력 → 로그인
-//   Then   /dashboard 리다이렉트 + 환영 메시지 'alice'
+//   Then   로그인 성공 (목적지는 FR-PF-02 startPage 매핑에 따르는 부수사항 — alice 기본값 /dashboards)
 //
 // S2 — LDAP provider 선택 후 정상 로그인
 //   Given  /login 진입 후 1단계 미매칭 이메일 입력 → "계속" → 2단계 폼 진입
 //   When   드롭다운에서 "LDAP-corp" 선택 → alice / Test1234! 입력 → 로그인
-//   Then   /dashboard 리다이렉트 + 환영 메시지 'alice'
+//   Then   로그인 성공 (목적지는 FR-PF-02 startPage 매핑에 따르는 부수사항 — alice 기본값 /dashboards)
 //
 // S3 — LDAP 비활성 시 드롭다운에 LDAP 항목 미표시
 //   Given  /login 진입 + addInitScript 로 localStorage '__bts_e2e_providers_local_only' = 'true' 설정
@@ -48,7 +48,7 @@ test.describe('다중 Provider 명시 선택 (FR-AU-06)', () => {
   // ─────────────────────────────────────────────────────────────────────────────
   // S1 — Local provider 선택 후 정상 로그인
   // ─────────────────────────────────────────────────────────────────────────────
-  test('S1 Local provider 선택 → alice/password → /dashboard 환영 메시지', async ({ page }) => {
+  test('S1 Local provider 선택 → alice/password → 로그인 성공', async ({ page }) => {
     // Given. 로그인 페이지 진입 — MSW 기본 핸들러가 LDAP+Local 반환 (LDAP이 기본값)
     await page.goto('/login')
 
@@ -68,18 +68,18 @@ test.describe('다중 Provider 명시 선택 (FR-AU-06)', () => {
     // When. 로그인 버튼 클릭 (exact:true — SSO 버튼과 구분)
     await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
 
-    // Then. /dashboard 리다이렉트 대기
-    await page.waitForURL('**/dashboard')
+    // Then. 로그인 성공 후 리다이렉트 대기 (목적지는 FR-PF-02 startPage 매핑 부수사항)
+    await page.waitForURL('**/dashboard*')
 
-    // Then. 환영 메시지 + Header 계정 메뉴 확인
-    await expect(page.getByRole('heading', { name: '환영합니다, alice' })).toBeVisible()
+    // Then. 로그인 성공 신호 — 목적지 경로 무관, alice 기본 startPage='dashboards'로 도착 확인 + Header 계정 메뉴 확인
+    await expect(page).toHaveURL(/\/dashboards/)
     await expect(page.getByRole('button', { name: /계정 메뉴$/ })).toBeVisible()
   })
 
   // ─────────────────────────────────────────────────────────────────────────────
   // S2 — LDAP provider 선택 후 정상 로그인
   // ─────────────────────────────────────────────────────────────────────────────
-  test('S2 LDAP provider 선택 → alice/Test1234! → /dashboard 환영 메시지', async ({ page }) => {
+  test('S2 LDAP provider 선택 → alice/Test1234! → 로그인 성공', async ({ page }) => {
     // Given. 로그인 페이지 진입 — MSW 기본 핸들러가 LDAP+Local 반환 (LDAP이 기본값)
     await page.goto('/login')
 
@@ -98,11 +98,11 @@ test.describe('다중 Provider 명시 선택 (FR-AU-06)', () => {
     // When. 로그인 버튼 클릭
     await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
 
-    // Then. /dashboard 리다이렉트 대기
-    await page.waitForURL('**/dashboard')
+    // Then. 로그인 성공 후 리다이렉트 대기 (목적지는 FR-PF-02 startPage 매핑 부수사항)
+    await page.waitForURL('**/dashboard*')
 
-    // Then. 환영 메시지 + Header 계정 메뉴 확인
-    await expect(page.getByRole('heading', { name: '환영합니다, alice' })).toBeVisible()
+    // Then. 로그인 성공 신호 — 목적지 경로 무관, alice 기본 startPage='dashboards'로 도착 확인 + Header 계정 메뉴 확인
+    await expect(page).toHaveURL(/\/dashboards/)
     await expect(page.getByRole('button', { name: /계정 메뉴$/ })).toBeVisible()
   })
 

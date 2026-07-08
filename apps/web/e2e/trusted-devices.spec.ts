@@ -245,7 +245,7 @@ test.describe('신뢰 디바이스 설정 화면 (FR-MF-05)', () => {
     // When. /dashboard SPA 내부 이동 (로고 클릭 또는 URL 직접 이동 대신 window.history)
     // SPA 내부 이동이어야 revokedIds 가 유지된다.
     await page.evaluate(() => { window.history.pushState({}, '', '/dashboard') })
-    await page.waitForURL('**/dashboard')
+    await page.waitForURL('**/dashboard*')
 
     // When. 계정 메뉴 → "2단계 인증" 링크로 /settings/mfa 재진입 (SPA 내부 이동)
     await page.getByRole('button', { name: /계정 메뉴$/ }).click()
@@ -314,7 +314,7 @@ test.describe('로그인 신뢰 디바이스 체크박스 (FR-MF-05)', () => {
     await page.getByRole('button', { name: mfaStrings.loginVerifyButton, exact: true }).click()
 
     // Then. /dashboard 도달 (정식 로그인 성공 — trust_device=true 여부와 관계없이 verify 성공)
-    await page.waitForURL('**/dashboard')
+    await page.waitForURL('**/dashboard*')
 
     // Then. MFA 코드 입력 화면이 사라짐 (verify 완료 + 로그인 성공)
     await expect(page.getByText(mfaStrings.loginStepGuide)).not.toBeVisible()
@@ -358,7 +358,7 @@ test.describe('로그인 신뢰 디바이스 체크박스 (FR-MF-05)', () => {
     // When. 코드 입력 → "확인" → /dashboard 도달
     await page.getByLabel(mfaStrings.loginCodeLabel, { exact: true }).fill('123456')
     await page.getByRole('button', { name: mfaStrings.loginVerifyButton, exact: true }).click()
-    await page.waitForURL('**/dashboard')
+    await page.waitForURL('**/dashboard*')
 
     // When. 로그아웃 — sessionStorage 직접 클리어로 authStore 세션 초기화
     await page.evaluate(async () => {

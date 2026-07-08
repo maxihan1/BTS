@@ -31,5 +31,5 @@ export async function loginAsAlice(page: Page): Promise<void> {
   await page.getByLabel(loginStrings.usernameLabel).fill('alice')
   await page.getByLabel(loginStrings.passwordLabel).fill('password')
   await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
-  await page.waitForURL('**/dashboard')
+  await page.waitForURL('**/dashboard*')
 }

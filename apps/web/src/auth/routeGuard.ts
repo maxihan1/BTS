@@ -1,6 +1,8 @@
-// 라우트 가드 헬퍼 — requireAuth / redirectIfAuth / isSafeReturnTo / requirePasswordChanged / requireMfaEnrolled / requireSystemAdmin / composeGuards
+// 라우트 가드 헬퍼 — requireAuth / redirectIfAuth / isSafeReturnTo / resolvePostLoginNav / requirePasswordChanged / requireMfaEnrolled / requireSystemAdmin / composeGuards
 import { redirect } from '@tanstack/react-router'
 import { useAuthStore } from './authStore'
+import { resolveStartPageNav } from '@/lib/start-page'
+import type { StartPageNav } from '@/lib/start-page'
 
 /** beforeLoad 컨텍스트 중 가드에서 사용하는 최소 구조 */
 interface GuardContext {
@@ -33,6 +35,35 @@ export function isSafeReturnTo(value: string): boolean {
 }
 
 /**
+ * 로그인 후 이동할 목적지를 우선순위에 따라 해석한다.
+ *
+ * 목적지 우선순위(게이트1 확정, FR-PF-02 Task 7). returnTo(안전 검증 통과) > start_page 매핑 > /dashboards.
+ * - rawReturnTo가 있고 {@link isSafeReturnTo}를 통과하면 그 경로로 이동.
+ * - 아니면 {@link resolveStartPageNav}로 startPage를 해석해 이동
+ *   (화이트리스트 밖 값·userId 부재 시 내부적으로 `/dashboards`로 폴백).
+ *
+ * `routes/login.tsx`(handleSuccess)와 {@link redirectIfAuth} 양쪽에서 재사용한다.
+ * returnTo 원본 문자열을 추출하는 방식(전자는 `window.location.search`, 후자는
+ * `location.href` 파싱)은 호출부마다 정당하게 다르므로 그대로 유지하고,
+ * 우선순위 판정 로직만 이 함수로 공유한다(중복 정의 금지).
+ *
+ * @param rawReturnTo 쿼리파라미터에서 추출한 returnTo 원본 값(없으면 null)
+ * @param startPage 사용자 환경설정 startPage 값(whoami 등에서 온 느슨한 string)
+ * @param userId 현재 로그인 사용자 id
+ * @returns 이동할 라우트(`{ to, search? }`)
+ */
+export function resolvePostLoginNav(
+  rawReturnTo: string | null,
+  startPage: string | undefined,
+  userId: string | undefined,
+): StartPageNav {
+  if (rawReturnTo !== null && isSafeReturnTo(rawReturnTo)) {
+    return { to: rawReturnTo }
+  }
+  return resolveStartPageNav(startPage, userId)
+}
+
+/**
  * 보호된 라우트에서 호출. 미인증 상태이면 /login?returnTo=<현재경로> 로 throw redirect.
  *
  * 사용 예.
@@ -51,7 +82,9 @@ export function requireAuth({ location }: GuardContext): void {
 }
 
 /**
- * 로그인 페이지에서 호출. 이미 인증된 상태이면 returnTo(검증 후) 또는 /dashboard 로 throw redirect.
+ * 로그인 페이지에서 호출. 이미 인증된 상태이면 목적지로 throw redirect한다.
+ *
+ * 목적지 우선순위는 {@link resolvePostLoginNav} 참조(returnTo(안전 검증 통과) > start_page 매핑 > /dashboards).
  *
  * 사용 예.
  * ```ts
@@ -66,9 +99,8 @@ export function redirectIfAuth({ location }: GuardContext): void {
   const params = new URLSearchParams(qIdx !== -1 ? location.href.slice(qIdx + 1) : '')
   const returnTo = params.get('returnTo')
 
-  const safeTo = returnTo !== null && isSafeReturnTo(returnTo) ? returnTo : '/dashboard'
-
-  throw redirect({ to: safeTo })
+  const user = useAuthStore.getState().user
+  throw redirect(resolvePostLoginNav(returnTo, user?.startPage, user?.userId))
 }
 
 /**

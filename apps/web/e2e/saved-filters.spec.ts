@@ -144,7 +144,7 @@ async function loginAsAliceWithSeed(
   await page.getByLabel(loginStrings.passwordLabel).fill('password')
   await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
   // SPA 이동 — 모듈 스코프(savedFilterStore) 유지
-  await page.waitForURL('**/dashboard')
+  await page.waitForURL('**/dashboard*')
 }
 
 /**
@@ -169,7 +169,7 @@ async function loginAsBobWithSeed(
   await page.getByLabel(loginStrings.usernameLabel).fill('bob')
   await page.getByLabel(loginStrings.passwordLabel).fill('password')
   await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
-  await page.waitForURL('**/dashboard')
+  await page.waitForURL('**/dashboard*')
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

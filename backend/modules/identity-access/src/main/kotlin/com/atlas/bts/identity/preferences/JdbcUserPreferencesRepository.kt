@@ -20,7 +20,7 @@ import java.util.UUID
  *
  * **UPSERT 설계 (DATA.md §5)**:
  * INSERT ... ON CONFLICT (user_id) DO UPDATE 로 멱등성 + lazy 생성을 함께 보장한다.
- * theme/locale/date_format 세 컬럼을 항상 함께 덮어쓴다 — 부분 SET(profile 의 avatar 분리 SET)
+ * theme/locale/date_format/start_page 네 컬럼을 항상 함께 덮어쓴다 — 부분 SET(profile 의 avatar 분리 SET)
  * 은 필요 없다. 3-state 가 아니라 [UserPreferencesService] 가 이미 계산한 effective 값을 그대로 받기 때문.
  *
  * **UUID RowMapper**:
@@ -45,6 +45,7 @@ class JdbcUserPreferencesRepository(
                 "theme" to preferences.theme,
                 "locale" to preferences.locale,
                 "dateFormat" to preferences.dateFormat,
+                "startPage" to preferences.startPage,
             ),
         )
     }
@@ -53,19 +54,23 @@ class JdbcUserPreferencesRepository(
 
     private companion object {
         const val SQL_FIND_BY_USER_ID = """
-            SELECT user_id, theme, locale, date_format
+            SELECT user_id, theme, locale, date_format, start_page
             FROM user_preferences
             WHERE user_id = :userId
         """
 
-        /** theme/locale/date_format UPSERT — user_id 가 처음 등장하면 INSERT(lazy 생성), 이미 있으면 ON CONFLICT UPDATE. */
+        /**
+         * theme/locale/date_format/start_page UPSERT — user_id 가 처음 등장하면 INSERT(lazy 생성),
+         * 이미 있으면 ON CONFLICT UPDATE.
+         */
         const val SQL_UPSERT = """
-            INSERT INTO user_preferences (user_id, theme, locale, date_format)
-            VALUES (:userId, :theme, :locale, :dateFormat)
+            INSERT INTO user_preferences (user_id, theme, locale, date_format, start_page)
+            VALUES (:userId, :theme, :locale, :dateFormat, :startPage)
             ON CONFLICT (user_id) DO UPDATE
                 SET theme       = EXCLUDED.theme,
                     locale      = EXCLUDED.locale,
                     date_format = EXCLUDED.date_format,
+                    start_page  = EXCLUDED.start_page,
                     updated_at  = NOW()
         """
     }
@@ -83,5 +88,6 @@ private object UserPreferencesRowMapper : RowMapper<UserPreferences> {
             theme = rs.getString("theme"),
             locale = rs.getString("locale"),
             dateFormat = rs.getString("date_format"),
+            startPage = rs.getString("start_page"),
         )
 }

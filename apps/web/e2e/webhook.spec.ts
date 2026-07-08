@@ -263,7 +263,7 @@ test.describe('S6 비관리자 미노출 + 차단 (FR-API-03)', () => {
     await page.goto(PAGE_URL)
 
     // Then 2. requireSystemAdmin 가드 → /dashboard redirect
-    await page.waitForURL('**/dashboard')
+    await page.waitForURL('**/dashboard*')
     expect(new URL(page.url()).pathname).toBe('/dashboard')
   })
 })
