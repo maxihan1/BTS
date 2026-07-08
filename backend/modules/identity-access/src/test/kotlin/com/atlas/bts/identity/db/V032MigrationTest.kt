@@ -3,6 +3,7 @@
 package com.atlas.bts.identity.db
 
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.MigrationVersion
 import org.junit.jupiter.api.BeforeAll
@@ -11,15 +12,17 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.sql.DriverManager
+import java.sql.SQLException
 
 /**
- * Flyway V001~V032 마이그레이션 자동 적용 후 user_preferences.start_page 컬럼/타입/기본값/백필을 검증한다.
+ * Flyway V001~V032 마이그레이션 자동 적용 후 user_preferences.start_page 컬럼/타입/기본값/백필/CHECK 제약을 검증한다.
  * Testcontainers PostgreSQL 을 직접 사용하며 Spring 컨텍스트 없이 실행한다(V031MigrationTest 선례).
  *
  * 회귀 가드.
- *  - start_page VARCHAR(32) NOT NULL DEFAULT 'dashboards' — 미설정 사용자도 기본 시작 페이지 보장
+ *  - start_page VARCHAR(16) NOT NULL DEFAULT 'dashboards' — 미설정 사용자도 기본 시작 페이지 보장 (형제 컬럼과 길이 일치)
  *  - NOT NULL + DEFAULT 이므로 V032 이전에 삽입된 user_preferences 행도 'dashboards' 로 백필됨
- *  - 값 화이트리스트(dashboards/my_issues/issues/inbox) 검증은 후속 백엔드 task 담당 — 이 마이그레이션은 스키마만
+ *  - CHECK (start_page IN ('dashboards','my_issues','issues','inbox')) — 값 화이트리스트를 DB 최후 방어선으로 강제.
+ *    앱 우회 raw SQL 쓰기도 무효값이면 제약 위반으로 차단
  */
 @Testcontainers
 class V032MigrationTest {
@@ -166,14 +169,77 @@ class V032MigrationTest {
         }
     }
 
+    private fun insertWithExplicitStartPage(
+        userIdSuffix: String,
+        username: String,
+        startPage: String,
+    ): String {
+        // 명시적 start_page 값으로 user + user_preferences 를 INSERT 후 롤백. CHECK 위반 시 SQLException 을 던진다.
+        val userId = "00000000-0000-0000-0000-0000000000$userIdSuffix"
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.autoCommit = false
+            try {
+                val userStmt =
+                    conn.prepareStatement(
+                        "INSERT INTO users(id, username, display_name, email, created_at, updated_at) " +
+                            "VALUES (?::uuid, ?, 'SP Check', ?, NOW(), NOW())",
+                    )
+                userStmt.setString(1, userId)
+                userStmt.setString(2, username)
+                userStmt.setString(3, "$username@test.com")
+                userStmt.execute()
+
+                val prefStmt =
+                    conn.prepareStatement(
+                        "INSERT INTO user_preferences(user_id, start_page) VALUES (?::uuid, ?)",
+                    )
+                prefStmt.setString(1, userId)
+                prefStmt.setString(2, startPage)
+                prefStmt.execute()
+
+                val selectStmt =
+                    conn.prepareStatement(
+                        "SELECT start_page FROM user_preferences WHERE user_id = ?::uuid",
+                    )
+                selectStmt.setString(1, userId)
+                return selectStmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getString("start_page")
+                }
+            } finally {
+                conn.rollback()
+            }
+        }
+    }
+
+    @Test
+    fun `V032 CHECK accepts whitelisted start_page values`() {
+        // 화이트리스트 4종 모두 INSERT 성공해야 한다 (기본값 외 값도 명시 허용)
+        assertThat(insertWithExplicitStartPage("f0", "sp_valid_inbox", "inbox")).isEqualTo("inbox")
+        assertThat(insertWithExplicitStartPage("f1", "sp_valid_my_issues", "my_issues")).isEqualTo("my_issues")
+        assertThat(insertWithExplicitStartPage("f2", "sp_valid_issues", "issues")).isEqualTo("issues")
+        assertThat(insertWithExplicitStartPage("f3", "sp_valid_dashboards", "dashboards")).isEqualTo("dashboards")
+    }
+
+    @Test
+    fun `V032 CHECK rejects non-whitelisted start_page values`() {
+        // 화이트리스트 밖 값은 앱 우회 raw SQL 이라도 CHECK 제약 위반(SQLException)으로 차단돼야 한다
+        assertThatThrownBy { insertWithExplicitStartPage("fa", "sp_evil", "evil") }
+            .isInstanceOf(SQLException::class.java)
+        assertThatThrownBy { insertWithExplicitStartPage("fb", "sp_path", "/etc/passwd") }
+            .isInstanceOf(SQLException::class.java)
+        assertThatThrownBy { insertWithExplicitStartPage("fc", "sp_empty", "") }
+            .isInstanceOf(SQLException::class.java)
+    }
+
     @Test
     fun `V032 adds start_page to user_preferences NOT NULL default dashboards`() {
         // 컬럼 존재 확인 — V032 없으면 실패
         assertThat(columnExists("user_preferences", "start_page")).isTrue()
 
-        // VARCHAR(32)
+        // VARCHAR(16) — 형제 컬럼(theme/locale/date_format) 과 길이 일치
         assertThat(columnDataType("user_preferences", "start_page")).isEqualTo("character varying")
-        assertThat(columnCharMaxLength("user_preferences", "start_page")).isEqualTo(32)
+        assertThat(columnCharMaxLength("user_preferences", "start_page")).isEqualTo(16)
 
         // NOT NULL
         assertThat(isNullable("user_preferences", "start_page")).isFalse()
