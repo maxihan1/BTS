@@ -11,7 +11,9 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
+import java.time.Instant
 import java.time.OffsetDateTime
+import java.time.ZoneOffset
 import java.util.UUID
 import javax.sql.DataSource
 
@@ -28,6 +30,8 @@ import javax.sql.DataSource
  * - 같은 team_id 재upsert 시 행 수 1 유지 + 필드 갱신
  * - 재upsert 시 updated_at 증가
  * - 저장된 bot_token_encrypted 가 전달한 암호문과 일치(평문 변환 없이 그대로 저장됨을 확인)
+ * - findCurrentInstallation 부재 시 null
+ * - findCurrentInstallation 이 installed_at 최신 1건을 경량 projection(봇 토큰 미로드)으로 반환
  */
 class JdbcSlackInstallRepositoryTest {
     companion object {
@@ -144,6 +148,44 @@ class JdbcSlackInstallRepositoryTest {
             mapOf("teamId" to teamId),
             OffsetDateTime::class.java,
         )!!
+
+    // ── findCurrentInstallation 경량 projection (봇 토큰 미로드) ─────────────────
+
+    @Test
+    fun `findCurrentInstallation — 설치가 하나도 없으면 null 을 반환한다`() {
+        assertThat(repository.findCurrentInstallation()).isNull()
+    }
+
+    @Test
+    fun `findCurrentInstallation — installed_at 이 가장 최신인 워크스페이스 1건을 반환한다`() {
+        // 서로 다른 team_id 두 워크스페이스를 설치한다.
+        repository.upsert(sampleInstall(teamId = "T_OLD", teamName = "Old Workspace"))
+        repository.upsert(sampleInstall(teamId = "T_NEW", teamName = "New Workspace"))
+
+        // installed_at 은 upsert 경로에서 DEFAULT now() 라 순서가 비결정적이므로,
+        // 결정적 검증을 위해 두 워크스페이스의 installed_at 을 고정 값으로 지정한다.
+        val older = Instant.parse("2026-01-01T00:00:00Z")
+        val newer = Instant.parse("2026-06-01T00:00:00Z")
+        setInstalledAt("T_OLD", older)
+        setInstalledAt("T_NEW", newer)
+
+        val current = repository.findCurrentInstallation()
+
+        assertThat(current).isNotNull
+        assertThat(current!!.teamId).isEqualTo("T_NEW")
+        assertThat(current.teamName).isEqualTo("New Workspace")
+        assertThat(current.installedAt).isEqualTo(newer)
+    }
+
+    private fun setInstalledAt(
+        teamId: String,
+        at: Instant,
+    ) {
+        jdbc.update(
+            "UPDATE slack_installs SET installed_at = :installedAt WHERE team_id = :teamId",
+            mapOf("installedAt" to at.atOffset(ZoneOffset.UTC), "teamId" to teamId),
+        )
+    }
 
     // ── bot_token_encrypted 그대로 저장 검증 (평문 변환 없음) ────────────────────
 
