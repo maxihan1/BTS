@@ -345,6 +345,18 @@ describe('Header', () => {
     expect(link).toHaveAttribute('href', '/admin/webhooks')
   })
 
+  it('isSystemAdmin=true이면 관리 nav 안에 Slack 연결 링크가 존재한다 (FR-SL-01 D6/D7 Task 7)', () => {
+    useAuthStore.setState({
+      accessToken: 'test-token',
+      user: { username: 'alice', email: 'alice@bts.local', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: true, mfaEnrollmentRequired: false },
+    })
+    renderHeader()
+
+    const link = screen.getByRole('link', { name: 'Slack 연결' })
+    expect(link).toBeInTheDocument()
+    expect(link).toHaveAttribute('href', '/admin/slack')
+  })
+
   it('isSystemAdmin=false이면 관리 메뉴 nav가 렌더되지 않는다', () => {
     // beforeEach에서 isSystemAdmin: false로 설정됨
     renderHeader()
@@ -354,6 +366,7 @@ describe('Header', () => {
     expect(screen.queryByRole('link', { name: '감사 로그' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '알림 정책' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Webhook' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Slack 연결' })).not.toBeInTheDocument()
   })
 
   it('드롭다운 메뉴 안에 Personal Access Token 링크가 존재한다 (FR-API-04 Task 8)', async () => {
