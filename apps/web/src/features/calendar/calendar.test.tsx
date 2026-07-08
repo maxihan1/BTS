@@ -204,7 +204,8 @@ describe('CalendarView — S3 이벤트 배치', () => {
 
     for (const dateStr of ['2026-07-03', '2026-07-05', '2026-07-08', '2026-07-10']) {
       const cell = findCellByDate(container, dateStr)
-      expect(within(cell).getByText(/ATLAS-12/)).toBeInTheDocument()
+      // 2026-07-05는 같은 날 Worklog 칩도 렌더돼 "ATLAS-12" 매치가 2건일 수 있으므로 getAllByText 사용
+      expect(within(cell).getAllByText(/ATLAS-12/).length).toBeGreaterThan(0)
     }
   })
 
@@ -229,7 +230,8 @@ describe('CalendarView — S3 이벤트 배치', () => {
     await screen.findAllByRole('gridcell')
 
     const cell = findCellByDate(container, '2026-07-05')
-    expect(within(cell).getByText(/ATLAS-12/)).toBeInTheDocument()
+    // 2026-07-05는 ATLAS-12 기간 막대(중간 날짜)와 Worklog 칩이 함께 렌더되므로 2건 매치돼야 한다
+    expect(within(cell).getAllByText(/ATLAS-12/)).toHaveLength(2)
   })
 })
 
@@ -266,7 +268,7 @@ describe('CalendarView — S4 이슈 클릭 네비게이션', () => {
     await screen.findAllByRole('gridcell')
 
     const cell = findCellByDate(container, '2026-07-03')
-    const bar = within(cell).getByText(/ATLAS-12/)
+    const bar = within(cell).getByRole('button', { name: /ATLAS-12/ })
     bar.focus()
     await user.keyboard('{Enter}')
 
