@@ -1,6 +1,7 @@
-// Slack 연결 관리자 페이지 라우트 단위 테스트 — 조립 렌더 + 콜백 배너 + 쿼리 정리 (FR-SL-01 D6/D7 Task 7)
+// Slack 연결 관리자 페이지 라우트 단위 테스트 — 조립 렌더 + 콜백 배너 + 쿼리 정리 + 재시도/닫기 배선 (FR-SL-01 D6/D7 Task 7/R8)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { getSlackInstallation, getSlackInstallUrl } from '@/api/slack'
 
@@ -131,6 +132,46 @@ describe('SlackConnectionSettingsPage — 쿼리 정리', () => {
     rerender(<SlackConnectionSettingsPage />)
 
     expect(screen.getByRole('alert')).toHaveTextContent('Acme 워크스페이스에 연결되었습니다')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 배너 재시도/닫기 배선 — 페이지가 SlackResultBanner에 onRetry/onDismiss를 주입
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SlackConnectionSettingsPage — 배너 재시도/닫기 배선', () => {
+  it('T11: 실패 배너의 "다시 시도" 클릭 시 getSlackInstallUrl을 호출하고 반환된 url로 이동한다', async () => {
+    mockUseSearch.mockReturnValue({ error: 'exchange_failed' })
+    vi.mocked(getSlackInstallUrl).mockResolvedValue({
+      url: 'https://slack.com/oauth/v2/authorize?client_id=retry',
+    })
+    const assignMock = vi.fn()
+    vi.spyOn(window, 'location', 'get').mockReturnValue({
+      ...window.location,
+      assign: assignMock,
+    } as unknown as Location)
+
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(screen.getByRole('button', { name: '다시 시도' }))
+
+    await waitFor(() => {
+      expect(getSlackInstallUrl).toHaveBeenCalled()
+      expect(assignMock).toHaveBeenCalledWith('https://slack.com/oauth/v2/authorize?client_id=retry')
+    })
+  })
+
+  it('T12: 배너의 "닫기" 클릭 시 배너가 화면에서 사라진다', async () => {
+    mockUseSearch.mockReturnValue({ installed: 'Acme' })
+    const user = userEvent.setup()
+    renderPage()
+
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '닫기' }))
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
 
