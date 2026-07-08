@@ -75,6 +75,15 @@ class SlackInstallService(
         return oauthClient.buildAuthorizeUrl(state)
     }
 
+    fun getInstallation(actorId: UUID): SlackInstallationStatus {
+        if (!permissionResolver.isSystemAdmin(actorId)) {
+            throw SlackForbiddenException()
+        }
+        return installRepository.findCurrentInstallation()
+            ?.let { SlackInstallationStatus(true, it.teamId, it.teamName, it.installedAt) }
+            ?: SlackInstallationStatus(false, null, null, null)
+    }
+
     /**
      * 콜백을 처리한다 — state 를 검증해 개시자를 복원하고 `code↔token` 교환 → 봇 토큰 암호화 → upsert 한다.
      *
@@ -147,4 +156,11 @@ class SlackInstallService(
 data class SlackInstallResult(
     val teamId: String,
     val teamName: String,
+)
+
+data class SlackInstallationStatus(
+    val connected: Boolean,
+    val teamId: String?,
+    val teamName: String?,
+    val installedAt: java.time.Instant?,
 )
