@@ -1,5 +1,5 @@
 // 관리자 Slack 연결 상태 카드 — 현재 연결 표시 + 연결/다시연결 버튼 (FR-SL-01 D6)
-import type { JSX } from 'react'
+import type { JSX, ReactNode } from 'react'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card'
@@ -14,8 +14,26 @@ const SLACK_INSTALLATION_QUERY_KEY = ['slack', 'installation'] as const
 /** 연결됨인데 teamName이 없을 때(계약상 발생하지 않아야 하는 방어적 폴백) 표시할 문구 */
 const UNKNOWN_TEAM_NAME = '알 수 없는 워크스페이스'
 
+/** `GET /api/v1/slack/installation` 조회 실패 시 표시할 오류 메시지 */
+const LOAD_ERROR_MESSAGE = 'Slack 연결 상태를 불러오지 못했습니다.'
+
 /** authorize URL 조회(`getSlackInstallUrl`) 실패 시 표시할 일반 오류 메시지 */
 const CONNECT_ERROR_MESSAGE = 'Slack 연결을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+
+/**
+ * 로딩/에러/본문 세 상태가 공유하는 카드 레이아웃(Card > CardHeader > CardTitle).
+ * 제목("Slack 연결")을 한 곳에서만 관리해 상태별 중복을 없앤다.
+ */
+function SlackConnectionCardShell({ children }: { readonly children: ReactNode }): JSX.Element {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Slack 연결</CardTitle>
+      </CardHeader>
+      {children}
+    </Card>
+  )
+}
 
 /**
  * 관리자 Slack 연결 상태 카드 — 진입점.
@@ -31,29 +49,23 @@ export function SlackConnectionCard(): JSX.Element {
 
   if (isLoading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Slack 연결</CardTitle>
-        </CardHeader>
+      <SlackConnectionCardShell>
         <CardContent>
           <p className="text-sm text-muted-foreground">불러오는 중...</p>
         </CardContent>
-      </Card>
+      </SlackConnectionCardShell>
     )
   }
 
   if (isError || data === undefined) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Slack 연결</CardTitle>
-        </CardHeader>
+      <SlackConnectionCardShell>
         <CardContent>
           <p role="alert" aria-live="polite" className="text-sm text-destructive">
-            Slack 연결 상태를 불러오지 못했습니다.
+            {LOAD_ERROR_MESSAGE}
           </p>
         </CardContent>
-      </Card>
+      </SlackConnectionCardShell>
     )
   }
 
@@ -90,10 +102,7 @@ function SlackConnectionCardContent({ installation }: SlackConnectionCardContent
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Slack 연결</CardTitle>
-      </CardHeader>
+    <SlackConnectionCardShell>
       <CardContent className="space-y-3">
         {installation.connected ? (
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
@@ -117,6 +126,6 @@ function SlackConnectionCardContent({ installation }: SlackConnectionCardContent
           {installation.connected ? '다시 연결' : 'Slack에 연결'}
         </Button>
       </CardFooter>
-    </Card>
+    </SlackConnectionCardShell>
   )
 }
