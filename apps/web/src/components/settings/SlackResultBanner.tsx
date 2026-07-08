@@ -85,7 +85,9 @@ export function SlackResultBanner({
       role="alert"
       className={cn(
         'flex items-start gap-2 rounded-lg border p-3 text-sm',
-        isSuccess ? 'border-primary/20 bg-primary/10 text-primary' : 'border-destructive/30 bg-destructive/10 text-destructive',
+        isSuccess
+          ? 'border-primary/20 bg-primary/10 text-primary'
+          : 'border-destructive/30 bg-destructive/10 text-destructive',
       )}
     >
       {isSuccess ? (
@@ -101,7 +103,13 @@ export function SlackResultBanner({
           </Button>
         )}
         {onDismiss !== undefined && (
-          <Button type="button" variant="ghost" size="icon-xs" aria-label="닫기" onClick={onDismiss}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label="닫기"
+            onClick={onDismiss}
+          >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
           </Button>
         )}

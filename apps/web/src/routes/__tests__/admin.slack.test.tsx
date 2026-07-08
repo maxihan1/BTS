@@ -23,7 +23,10 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 
 // 대상 import — mock 이후 (vi.mock hoisting)
-import { SlackConnectionSettingsPage, SlackConnectionSettingsRouteAdapter } from '@/routes/admin.slack'
+import {
+  SlackConnectionSettingsPage,
+  SlackConnectionSettingsRouteAdapter,
+} from '@/routes/admin.slack'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -54,7 +57,9 @@ beforeEach(() => {
     updatedAt: null,
     installerName: null,
   })
-  vi.mocked(getSlackInstallUrl).mockResolvedValue({ url: 'https://slack.com/oauth/v2/authorize?client_id=abc' })
+  vi.mocked(getSlackInstallUrl).mockResolvedValue({
+    url: 'https://slack.com/oauth/v2/authorize?client_id=abc',
+  })
 })
 
 afterEach(() => {
@@ -161,7 +166,9 @@ describe('SlackConnectionSettingsPage — 배너 재시도/닫기 배선', () =>
 
     await waitFor(() => {
       expect(getSlackInstallUrl).toHaveBeenCalled()
-      expect(assignMock).toHaveBeenCalledWith('https://slack.com/oauth/v2/authorize?client_id=retry')
+      expect(assignMock).toHaveBeenCalledWith(
+        'https://slack.com/oauth/v2/authorize?client_id=retry',
+      )
     })
   })
 

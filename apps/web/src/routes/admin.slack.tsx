@@ -18,7 +18,8 @@ interface SlackConnectSearch {
 
 const labels = {
   heading: 'Slack 연결',
-  description: '이 워크스페이스에 연결된 Slack 앱을 관리합니다. 연결하면 이슈 알림을 채널로 받아볼 수 있습니다.',
+  description:
+    '이 워크스페이스에 연결된 Slack 앱을 관리합니다. 연결하면 이슈 알림을 채널로 받아볼 수 있습니다.',
 } as const
 
 // ─────────────────────────────────────────────────────────────────────────────
