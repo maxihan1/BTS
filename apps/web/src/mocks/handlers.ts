@@ -28,6 +28,7 @@ import { issueWatcherHandlers } from './issue-watcher-handlers'
 import { issuePermissionHandlers } from './issue-permission-handlers'
 import { issueTemplateHandlers } from './issue-template-handlers'
 import { issueTypeHandlers } from './issue-type-handlers'
+import { keymapHandlers } from './keymap-handlers'
 import { labelHandlers } from './label-handlers'
 import { mfaHandlers } from './mfa-handlers'
 import { notificationPolicyHandlers } from './notification-policy-handlers'
@@ -99,6 +100,7 @@ export const handlers = [
   ...issuePermissionHandlers,
   ...issueTemplateHandlers,
   ...issueTypeHandlers,
+  ...keymapHandlers,
   ...labelHandlers,
   ...mfaHandlers,
   ...notificationPolicyHandlers,
