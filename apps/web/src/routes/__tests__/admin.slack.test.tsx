@@ -183,6 +183,29 @@ describe('SlackConnectionSettingsPage — 배너 재시도/닫기 배선', () =>
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
+
+  it('R10: 실패 배너의 "다시 시도" 클릭 시 getSlackInstallUrl이 reject해도 unhandled rejection 없이 재시도 실패 인라인 오류가 표시된다', async () => {
+    mockUseSearch.mockReturnValue({ error: 'exchange_failed' })
+    vi.mocked(getSlackInstallUrl).mockRejectedValue(new Error('network error'))
+    const assignMock = vi.fn()
+    vi.spyOn(window, 'location', 'get').mockReturnValue({
+      ...window.location,
+      assign: assignMock,
+    } as unknown as Location)
+
+    const user = userEvent.setup()
+    renderPage()
+
+    // 클릭 자체가 unhandled rejection을 던지지 않아야 한다 — reject되면 catch로 흡수된다
+    await user.click(screen.getByRole('button', { name: '다시 시도' }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Slack 연결을 다시 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.'),
+      ).toBeInTheDocument()
+    })
+    expect(assignMock).not.toHaveBeenCalled()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
