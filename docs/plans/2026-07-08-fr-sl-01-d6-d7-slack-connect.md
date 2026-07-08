@@ -219,4 +219,26 @@ API 2종(관리자 가드) + 신규 read projection `SlackInstallationView`(토�
 - 추가 검증: ktlintCheck·detekt(--rerun-tasks)·ArchUnit(BC 격리) / vitest·typecheck / playwright.
 - 파일 겹침: 없음(같은 wave 내). router.ts·Header.tsx 는 T7 단독.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+> 저위험 plan(마이그레이션 0·기존 302 흐름 불변·같은 BC view-layer) → autoplan 4-phase 대체, **eng+design 집중 리뷰**(교훈 bts-review-plan-autoplan-overkill).
+
+### eng-review (2026-07-08)
+
+- ✅ **예외핸들러 스코프**. T3의 `assignableTypes` 확장이 정확한 수정. 미포함 시 403→500 변질(교훈 반영).
+- ✅ **가드 순서**. actor 추출(401) → 관리자(403) → 조회. auth-extraction-before-lookup 준수.
+- ✅ **토큰 미노출**. projection이 `botTokenEncrypted`를 아예 로드 안 함. 통합테스트 부재 실증. 방어적 우수.
+- ✅ **install-url 재사용**. `startInstall` 그대로 재사용(신규 가드 로직 0). 매 클릭 신선 state(10분 exp).
+- ✅ **V700 `installed_at` 실재 확인** — 마이그레이션 불필요 확정.
+- ✅ **wave/의존성**. longest path=4, 같은 wave 파일 겹침 0. 정확.
+- ⚠️ **주의(Instant ISO)**. T3는 full test-boot 통합(슬라이스 아님)이라 Jackson JavaTimeModule ISO 직렬화가 기본. 그래도 응답 assertion에서 ISO 문자열 형식 명시 확인(교훈 enablewebmvc-slice-localdate-array-serialization는 @EnableWebMvc 슬라이스 한정 — 본 케이스 무관하나 방어).
+- ⚠️ **주의(TanStack search)**. 쿼리 정리(T6 banner `navigate({search:{}, replace:true})`)를 위해 T7 라우트가 `validateSearch`로 `installed?`/`error?`를 노출해야 함. T6/T7 계약 명시(구현 시 coordinate).
+- BLOCKER: 없음.
+
+### design-review (2026-07-08)
+
+- ✅ **페이지 일관성**. `mx-auto max-w-2xl` settings 레이아웃 + card/button 재사용. settings.preferences/profile 관례 일치.
+- ✅ **상태 카드**. 연결됨(teamName·installedAt·다시 연결) / 미연결(안내·Slack에 연결) 분기 명확.
+- ✅ **결과 배너**. `role="alert"` 상단, 성공/실패, 쿼리 정리로 새로고침 재표시 차단. admin.webhooks 배너 관례.
+- ❓ **라우트 위치(taste — Maxi 결정)**. 계획은 `/settings/slack`(백엔드 `FRONT_RESULT_PATH` 상수 존중). 그러나 **기존 관리자 페이지는 전부 `/admin/*`**(webhooks·notification-policies·audit-logs·workflow-schemes), `/settings/*`는 전부 사용자 개인 설정. Slack 워크스페이스 연결은 조직-레벨 관리자 설정이라 `/admin/slack`이 관례상 더 일관. 변경 비용=백엔드 상수 1 + KDoc 3 + 통합테스트 assertion 5(전부 slack 모듈, 본 PR이 이미 T3에서 수정). **지금이 URL 변경 최저비용 시점**(페이지 아직 어디에도 없음). → 게이트 1에서 Maxi 결정.
+- BLOCKER: 없음.
