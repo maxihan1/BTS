@@ -1,4 +1,4 @@
-// user_preferences 테이블 행 매핑 엔티티 — 테마/로케일/날짜형식 (FR-PF-01)
+// user_preferences 테이블 행 매핑 엔티티 — 테마/로케일/날짜형식/시작 페이지 (FR-PF-01/FR-PF-02)
 
 package com.atlas.bts.identity.preferences
 
@@ -38,7 +38,13 @@ data class UserPreferences(
         /** 지원 날짜 표시 형식 4종. */
         val DATE_FORMATS: Set<String> = setOf("iso", "kr", "us", "eu")
 
-        /** 지원 시작 페이지 값 4종 (FR-PF-02). */
+        /**
+         * 지원 시작 페이지 값 4종 (FR-PF-02) — dashboards/my_issues/issues/inbox.
+         *
+         * 프론트엔드 `apps/web/src/api/preferences.ts` 의 `START_PAGES`
+         * (`apps/web/src/lib/start-page.ts` 의 `START_PAGE_KEYS` 를 그대로 재노출) 와
+         * 동기화 계약 — 값 목록을 바꿀 때 두 곳을 함께 갱신해야 한다.
+         */
         val START_PAGES: Set<String> = setOf("dashboards", "my_issues", "issues", "inbox")
 
         /** [theme] 기본값. */
