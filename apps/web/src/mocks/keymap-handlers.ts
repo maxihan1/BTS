@@ -121,9 +121,61 @@ interface ConflictErrorBody extends ValidationErrorBody {
   conflicts: Array<{ type: KeymapConflictType; actions: string[]; keyCombo: string | null }>
 }
 
+/** `conflicts` 배열 원소 하나 — {@link ConflictErrorBody.conflicts}에서 추출 */
+type ConflictEntry = ConflictErrorBody['conflicts'][number]
+
 /** 백엔드 `{code, message}` 에러 봉투 생성(preferences/status-handlers.ts 선례와 동일 형식) */
 function validationError(message: string): ValidationErrorBody {
   return { code: 'KEYMAP_VALIDATION_FAILED', message }
+}
+
+// ── 개별 검증 함수 — 백엔드 KeymapValidator의 6종 규칙과 1:1 대응(Task 10 확장 시 참조 용이) ──
+
+/** 화이트리스트 완비 검사 — action 5종 누락 또는 화이트리스트 밖 action 존재 여부 */
+function hasWhitelistViolation(bindings: RawBindingInput[]): boolean {
+  const actionSet = new Set(bindings.map((b) => b.action))
+  const whitelist: readonly string[] = KEYMAP_ACTIONS
+  return KEYMAP_ACTIONS.some((action) => !actionSet.has(action)) || [...actionSet].some((a) => !whitelist.includes(a))
+}
+
+/** 빈값(공백 포함) 금지 검사 */
+function hasBlankViolation(bindings: RawBindingInput[]): boolean {
+  return bindings.some((b) => b.keyCombo.trim().length === 0)
+}
+
+/** key_combo 형식 검사 — 빈 값은 {@link hasBlankViolation}이 담당하므로 제외 */
+function hasFormatViolation(bindings: RawBindingInput[]): boolean {
+  return bindings.some((b) => b.keyCombo.trim().length > 0 && !hasValidFormat(b.keyCombo))
+}
+
+/** 완전 중복 검사 — 같은 key_combo를 가진 action이 둘 이상이면 각각 `duplicate` 위반 */
+function findDuplicateConflicts(structurallyValid: RawBindingInput[]): ConflictEntry[] {
+  const byCombo = new Map<string, string[]>()
+  for (const b of structurallyValid) {
+    byCombo.set(b.keyCombo, [...(byCombo.get(b.keyCombo) ?? []), b.action])
+  }
+  return [...byCombo.entries()]
+    .filter(([, actions]) => actions.length > 1)
+    .map(([keyCombo, actions]) => ({ type: 'duplicate' as const, actions: [...actions].sort(), keyCombo }))
+}
+
+/** leader 접두 충돌 검사 — single `g`와 leader(`g X`)가 공존하면 `leaderPrefix` 위반 */
+function findLeaderPrefixConflict(structurallyValid: RawBindingInput[]): ConflictEntry | null {
+  const singleLeaderKey = structurallyValid.find((b) => triggerOf(b.keyCombo) === 'single' && b.keyCombo === LEADER_KEY)
+  const leaderBindings = structurallyValid.filter((b) => triggerOf(b.keyCombo) === 'leader')
+  if (singleLeaderKey === undefined || leaderBindings.length === 0) return null
+  return {
+    type: 'leaderPrefix',
+    actions: [singleLeaderKey.action, ...leaderBindings.map((b) => b.action)].sort(),
+    keyCombo: null,
+  }
+}
+
+/** dead leader combo 검사 — continuation 키가 leader 키와 같은 `g g`면 각각 `deadLeader` 위반 */
+function findDeadLeaderConflicts(structurallyValid: RawBindingInput[]): ConflictEntry[] {
+  return structurallyValid
+    .filter((b) => triggerOf(b.keyCombo) === 'leader' && leaderContinuationKey(b.keyCombo) === LEADER_KEY)
+    .map((b) => ({ type: 'deadLeader' as const, actions: [b.action], keyCombo: null }))
 }
 
 /**
@@ -136,48 +188,17 @@ function validationError(message: string): ValidationErrorBody {
 function validateBindings(
   bindings: RawBindingInput[],
 ): { status: 400; body: ValidationErrorBody } | { status: 409; body: ConflictErrorBody } | null {
-  const actionSet = new Set(bindings.map((b) => b.action))
-  const whitelist: readonly string[] = KEYMAP_ACTIONS
-  const missing = KEYMAP_ACTIONS.filter((action) => !actionSet.has(action))
-  const unknown = [...actionSet].filter((action) => !whitelist.includes(action))
-  const blank = bindings.filter((b) => b.keyCombo.trim().length === 0)
-  const malformed = bindings.filter((b) => b.keyCombo.trim().length > 0 && !hasValidFormat(b.keyCombo))
-
-  if (missing.length > 0 || unknown.length > 0 || blank.length > 0 || malformed.length > 0) {
+  if (hasWhitelistViolation(bindings) || hasBlankViolation(bindings) || hasFormatViolation(bindings)) {
     return { status: 400, body: validationError('유효하지 않은 단축키 설정입니다.') }
   }
 
   const structurallyValid = bindings.filter((b) => b.keyCombo.trim().length > 0 && hasValidFormat(b.keyCombo))
-  const conflicts: ConflictErrorBody['conflicts'] = []
-
-  // 완전 중복 — 같은 key_combo를 가진 action이 둘 이상
-  const byCombo = new Map<string, string[]>()
-  for (const b of structurallyValid) {
-    byCombo.set(b.keyCombo, [...(byCombo.get(b.keyCombo) ?? []), b.action])
-  }
-  for (const [keyCombo, actions] of byCombo) {
-    if (actions.length > 1) {
-      conflicts.push({ type: 'duplicate', actions: [...actions].sort(), keyCombo })
-    }
-  }
-
-  // leader 접두 충돌 — single `g`와 leader(`g X`) 공존
-  const singleLeaderKey = structurallyValid.find((b) => triggerOf(b.keyCombo) === 'single' && b.keyCombo === LEADER_KEY)
-  const leaderBindings = structurallyValid.filter((b) => triggerOf(b.keyCombo) === 'leader')
-  if (singleLeaderKey !== undefined && leaderBindings.length > 0) {
-    conflicts.push({
-      type: 'leaderPrefix',
-      actions: [singleLeaderKey.action, ...leaderBindings.map((b) => b.action)].sort(),
-      keyCombo: null,
-    })
-  }
-
-  // dead leader combo — continuation 키가 leader 키와 같은 `g g`
-  for (const b of structurallyValid) {
-    if (triggerOf(b.keyCombo) === 'leader' && leaderContinuationKey(b.keyCombo) === LEADER_KEY) {
-      conflicts.push({ type: 'deadLeader', actions: [b.action], keyCombo: null })
-    }
-  }
+  const leaderPrefixConflict = findLeaderPrefixConflict(structurallyValid)
+  const conflicts: ConflictEntry[] = [
+    ...findDuplicateConflicts(structurallyValid),
+    ...(leaderPrefixConflict !== null ? [leaderPrefixConflict] : []),
+    ...findDeadLeaderConflicts(structurallyValid),
+  ]
 
   if (conflicts.length > 0) {
     return {
