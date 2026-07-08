@@ -204,9 +204,21 @@ class CalendarServiceTest {
         every { userProfileService.getProfile(userId) } returns profileView("UTC")
         every { calendarLookupPort.listAssignedScheduledIssues(userId, from, to) } returns
             CalendarIssuePage(emptyList(), truncated = false)
-        val late = worklogView(id = UUID.fromString("00000000-0000-4000-8000-000000000001"), startedAt = Instant.parse("2026-07-10T14:00:00Z"))
-        val early = worklogView(id = UUID.fromString("00000000-0000-4000-8000-000000000002"), startedAt = Instant.parse("2026-07-05T09:00:00Z"))
-        val sameDayLate = worklogView(id = UUID.fromString("00000000-0000-4000-8000-000000000003"), startedAt = Instant.parse("2026-07-05T18:00:00Z"))
+        val late =
+            worklogView(
+                id = UUID.fromString("00000000-0000-4000-8000-000000000001"),
+                startedAt = Instant.parse("2026-07-10T14:00:00Z"),
+            )
+        val early =
+            worklogView(
+                id = UUID.fromString("00000000-0000-4000-8000-000000000002"),
+                startedAt = Instant.parse("2026-07-05T09:00:00Z"),
+            )
+        val sameDayLate =
+            worklogView(
+                id = UUID.fromString("00000000-0000-4000-8000-000000000003"),
+                startedAt = Instant.parse("2026-07-05T18:00:00Z"),
+            )
         every { calendarLookupPort.listWorklogs(userId, any(), any()) } returns
             CalendarWorklogPage(listOf(late, sameDayLate, early), truncated = false)
 

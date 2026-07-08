@@ -6,6 +6,7 @@ import com.atlas.bts.identity.profile.UserProfileService
 import com.bts.shared.calendar.CalendarIssueView
 import com.bts.shared.calendar.CalendarWorklogView
 import com.bts.shared.calendar.UserCalendarLookupPort
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -43,6 +44,8 @@ class CalendarService(
     private val userProfileService: UserProfileService,
     private val calendarLookupPort: UserCalendarLookupPort,
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     /**
      * 개인 캘린더를 조회한다.
      *
@@ -94,6 +97,7 @@ class CalendarService(
         return try {
             ZoneId.of(timezone)
         } catch (e: DateTimeException) {
+            log.debug("유효하지 않은 프로필 timezone — {} 로 대체합니다. cause={}", FALLBACK_TIMEZONE, e.message)
             ZoneId.of(FALLBACK_TIMEZONE)
         }
     }
