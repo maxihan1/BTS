@@ -79,4 +79,15 @@ describe('LoginPage handleSuccess — 로그인 후 라우팅 우선순위', () 
 
     expect(mockNavigate).toHaveBeenCalledWith({ to: '/dashboards' })
   })
+
+  it('returnTo가 없고 store user.startPage="my_issues"이면 store의 userId를 실어 /issues?assignee=<userId>로 navigate한다', async () => {
+    // my_issues는 resolveStartPageNav가 유일하게 userId를 주입하는 경로 — 이 배선이
+    // store에서 실제로 threading되는지(드롭되지 않는지) 검증한다.
+    const userId = '00000000-0000-4000-8000-000000000099'
+    useAuthStore.setState({ user: makeWhoami({ startPage: 'my_issues', userId }) })
+
+    await triggerSuccess()
+
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues', search: { assignee: userId } })
+  })
 })
