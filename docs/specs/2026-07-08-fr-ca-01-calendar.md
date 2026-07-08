@@ -147,7 +147,8 @@ data class CalendarWorklogView(val id: UUID, issueKey, issueSummary: String,
 | 담당이나 BROWSE 불가 이슈 | 제외(fail-closed, S3, 프로젝트별 필터) |
 | 여러 프로젝트 상이 스킴 | 프로젝트별 등급 격리 적용(fail-open 방지 — 타 프로젝트 등급 오적용 금지) |
 | worklog 참조 이슈 현재 비가시 | worklog 이벤트는 표시, issueSummary=null 마스킹(issueKey 유지, C4) |
-| soft-deleted 이슈/worklog | 제외 |
+| soft-deleted 이슈 | issueEvents에서 제외. 단 그 이슈에 달린 내 worklog는 worklog 이벤트로 표시되되 issueSummary=null 마스킹(issueKey 유지, 본인 시간기록 보존) |
+| soft-deleted worklog | 제외 |
 | 프로필 timezone 미설정/무효 | 기본 UTC(UserProfileService.DEFAULT_TIMEZONE) |
 | adapter 미등록(단계적 배포/테스트 stub) | 빈 결과, 200 |
 | 이벤트 0건 | 빈 배열, 200. UI 빈 상태 |
