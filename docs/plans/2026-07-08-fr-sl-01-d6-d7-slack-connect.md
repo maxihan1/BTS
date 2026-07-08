@@ -33,9 +33,20 @@ FR-SL-01 백엔드 코어(D1~D5, PR #244)의 후속. D6 프론트 + D7 E2E.
 - **관련 ADR**: [docs/decisions/2026-07-08-fr-sl-01-d6-slack-connect-page.md](../decisions/2026-07-08-fr-sl-01-d6-slack-connect-page.md) (생성됨) · 선행 [2026-07-07-fr-sl-01-slack-bot-app.md](../decisions/2026-07-07-fr-sl-01-slack-bot-app.md).
 - **도메인 리뷰 방식**: 전면 grill-with-docs 스킵. 이미 확립된 BC의 view-layer 후속이라 신규 용어/엔티티 0 — focused 점검(ADR·glossary·domain 노트 대조)으로 대체.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-08-fr-sl-01-d6-d7-slack-connect.md](../specs/2026-07-08-fr-sl-01-d6-d7-slack-connect.md)
+
+핵심 시나리오 3줄 요약.
+- 관리자가 `/settings/slack` 진입 → 상태 조회(`GET /api/v1/slack/installation`)로 연결됨/미연결 표시.
+- "연결/다시 연결" 클릭 → `GET /api/v1/slack/install-url`(Bearer)로 authorize URL 받아 `window.location.href` 이동(Bearer 제약 회피).
+- 콜백 복귀 시 `?installed=`/`?error=` 파싱 → 결과 배너(에러 코드 7종 매핑 + fallback), 쿼리 정리.
+
+API 2종(관리자 가드) + 신규 read projection `SlackInstallationView`(토큰 미로드) + repo `findCurrentInstallation`. 마이그레이션 0. Header adminLinks에 nav 링크(FR7).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). gap 1건 = 발견성(nav 링크) → Header `adminLinks` 패턴으로 해소(FR7). Maxi 결정 gap 없음.
 
 ## Plan (← /bts-plan 채움)
 
