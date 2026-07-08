@@ -1,9 +1,16 @@
 // 전역 keydown 리스너로 단축키를 처리하고 도움말 모달 열림 상태를 소유하는 훅 — FR-UX-05 Task-2, FR-PF-03 Task-8(useKeymap 구독·부트 로드)
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useKeymap } from '@/api/keymap'
-import type { KeymapBinding } from '@/api/keymap'
-import { DEFAULT_KEYMAP, LEADER_TIMEOUT_MS, resolveKeydown, shouldIgnoreEvent, type Keymap, type KeymapActionId, type ShortcutAction } from './shortcuts'
+import { useKeymap, type KeymapBinding } from '@/api/keymap'
+import {
+  DEFAULT_KEYMAP,
+  LEADER_TIMEOUT_MS,
+  resolveKeydown,
+  shouldIgnoreEvent,
+  type Keymap,
+  type KeymapActionId,
+  type ShortcutAction,
+} from './shortcuts'
 
 /** useKeyboardShortcuts 반환값 */
 interface UseKeyboardShortcutsResult {
@@ -136,7 +143,12 @@ function attachShortcutListener(
 
   function handleKeyDown(e: KeyboardEvent): void {
     if (shouldIgnoreEvent(e)) return
-    const action = resolveKeydown(e, leader.pendingLeaderRef.current, ctx.helpOpenRef.current, keymap)
+    const action = resolveKeydown(
+      e,
+      leader.pendingLeaderRef.current,
+      ctx.helpOpenRef.current,
+      keymap,
+    )
     dispatchAction(action, e, { ...ctx, leader })
   }
 
