@@ -486,4 +486,127 @@ class UserCalendarLookupAdapterIntegrationTest : IssueTestcontainersBase() {
         assertThat(result.truncated).isTrue()
         assertThat(result.items).hasSize(UserCalendarLookupAdapter.CALENDAR_WORKLOG_FETCH_LIMIT)
     }
+
+    // ── S7. 보안등급 reporter 스코프(R3) — drift 가드 ──────────────────────────
+
+    /**
+     * `buildSecurityLevelCondition` (원본 `IssueRepository.buildSecurityCondition` R3) 의
+     * reporter 조건부 등급 규칙 drift 가드.
+     *
+     * securityLevelId 가 reporterLevelIds 에 속하는 담당(assignee=me) 이슈는, me 가 그 이슈의
+     * reporter 일 때만 포함되고 reporter 가 아니면 fail-closed 로 제외된다.
+     */
+    @Test
+    @Order(10)
+    fun `S7 - 보안등급이 reporter 스코프(R3)이면 me 가 reporter 일 때만 포함되고 아니면 제외된다`() {
+        val me = UUID.randomUUID()
+        val other = UUID.randomUUID()
+        val reporterLevel = UUID.randomUUID()
+
+        insertIssue(seq = 1, reporterId = me, assigneeId = me, securityLevelId = reporterLevel)
+        setDates("TPRJ-1", LocalDate.of(2024, 6, 10), null)
+        insertIssue(seq = 2, reporterId = other, assigneeId = me, securityLevelId = reporterLevel)
+        setDates("TPRJ-2", LocalDate.of(2024, 6, 11), null)
+
+        val result =
+            adapterWith(mapOf("TPRJ" to restricted(reporterLevelIds = setOf(reporterLevel))))
+                .listAssignedScheduledIssues(me, LocalDate.of(2024, 6, 1), LocalDate.of(2024, 6, 30))
+
+        assertThat(result.items.map { it.key }).containsExactly("TPRJ-1")
+    }
+
+    // ── S8. 보안등급 assignee 스코프(R4) — drift 가드 ──────────────────────────
+
+    /**
+     * `buildSecurityLevelCondition` (원본 `IssueRepository.buildSecurityCondition` R4) 의
+     * assignee 조건부 등급 규칙 drift 가드.
+     *
+     * securityLevelId 가 assigneeLevelIds 에 속하는 담당(assignee=me) 이슈는 reporter 여부와
+     * 무관하게 포함되고, assigneeLevelIds 에 속하지 않는 등급은 fail-closed 로 제외된다
+     * (reporterId 를 me 가 아닌 타인으로 두어 R3 분기가 아닌 R4 분기가 매칭을 만드는지 확인한다).
+     */
+    @Test
+    @Order(11)
+    fun `S8 - 보안등급이 assignee 스코프(R4)이면 assignee=me 인 이슈가 포함된다`() {
+        val me = UUID.randomUUID()
+        val other = UUID.randomUUID()
+        val assigneeLevel = UUID.randomUUID()
+        val otherLevel = UUID.randomUUID()
+
+        insertIssue(seq = 1, reporterId = other, assigneeId = me, securityLevelId = assigneeLevel)
+        setDates("TPRJ-1", LocalDate.of(2024, 6, 10), null)
+        insertIssue(seq = 2, reporterId = other, assigneeId = me, securityLevelId = otherLevel)
+        setDates("TPRJ-2", LocalDate.of(2024, 6, 11), null)
+
+        val result =
+            adapterWith(mapOf("TPRJ" to restricted(assigneeLevelIds = setOf(assigneeLevel))))
+                .listAssignedScheduledIssues(me, LocalDate.of(2024, 6, 1), LocalDate.of(2024, 6, 30))
+
+        assertThat(result.items.map { it.key }).containsExactly("TPRJ-1")
+    }
+
+    // ── W4. worklog 언마스킹 — reporter/assignee 스코프 등급 접근 허용 ──────────
+
+    /**
+     * `isIssueVisibleToActor` 의 R3/R4 허용 분기 drift 가드.
+     *
+     * 참조 이슈가 reporter/assignee 조건부 등급이어도 me 가 그 역할(reporter/assignee)로 접근
+     * 가능하면 W2 의 마스킹 경로가 아니라 언마스킹(issueSummary 노출) 경로를 탄다.
+     */
+    @Test
+    @Order(12)
+    fun `W4 - 참조 이슈가 reporter,assignee 스코프 등급이고 me 가 그 역할이면 issueSummary 가 노출된다`() {
+        val me = UUID.randomUUID()
+        val other = UUID.randomUUID()
+        val reporterLevel = UUID.randomUUID()
+        val assigneeLevel = UUID.randomUUID()
+
+        val reporterScopeIssue =
+            insertIssue(seq = 1, reporterId = me, assigneeId = other, securityLevelId = reporterLevel)
+        val assigneeScopeIssue =
+            insertIssue(seq = 2, reporterId = other, assigneeId = me, securityLevelId = assigneeLevel)
+
+        val from = Instant.parse("2024-06-10T00:00:00Z")
+        val to = Instant.parse("2024-06-15T00:00:00Z")
+        insertWorklog(reporterScopeIssue.id.value, me, startedAt = Instant.parse("2024-06-12T09:00:00Z"))
+        insertWorklog(assigneeScopeIssue.id.value, me, startedAt = Instant.parse("2024-06-12T10:00:00Z"))
+
+        val access =
+            restricted(reporterLevelIds = setOf(reporterLevel), assigneeLevelIds = setOf(assigneeLevel))
+        val result = adapterWith(mapOf("TPRJ" to access)).listWorklogs(me, from, to)
+
+        assertThat(result.items).hasSize(2)
+        val reporterView = result.items.first { it.issueKey == "TPRJ-1" }
+        assertThat(reporterView.issueSummary).isEqualTo("calendar issue TPRJ-1")
+        val assigneeView = result.items.first { it.issueKey == "TPRJ-2" }
+        assertThat(assigneeView.issueSummary).isEqualTo("calendar issue TPRJ-2")
+    }
+
+    // ── W5. soft-deleted 참조 이슈 — !deleted 가드 drift 가드 ──────────────────
+
+    /**
+     * `isIssueVisibleToActor` 의 deleted 가드 drift 가드.
+     *
+     * 참조 이슈가 unrestricted 등급이라도 soft-delete 되면 deleted 가드에 의해 비가시로 취급되어
+     * issueSummary 가 마스킹된다. worklog 자체는 issue 의 soft-delete 와 무관하게 반환되며
+     * issueKey 는 유지된다(W1 은 worklog 자체 삭제만 다루고, 이 케이스(참조 이슈 삭제)는 다루지 않는다).
+     */
+    @Test
+    @Order(13)
+    fun `W5 - 참조 이슈가 soft-delete 되면 issueSummary 는 마스킹되고 issueKey 는 유지된다`() {
+        val me = UUID.randomUUID()
+        val issue = insertIssue(seq = 1, assigneeId = me, securityLevelId = null)
+        softDeleteIssue("TPRJ-1")
+
+        val from = Instant.parse("2024-06-10T00:00:00Z")
+        val to = Instant.parse("2024-06-15T00:00:00Z")
+        insertWorklog(issue.id.value, me, startedAt = Instant.parse("2024-06-12T09:00:00Z"))
+
+        val result = adapterWith().listWorklogs(me, from, to)
+
+        assertThat(result.items).hasSize(1)
+        val view = result.items.first()
+        assertThat(view.issueKey).isEqualTo("TPRJ-1")
+        assertThat(view.issueSummary).isNull()
+    }
 }
