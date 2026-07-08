@@ -18,11 +18,18 @@ export const E2E_SLACK_CONNECTED_KEY = '__bts_e2e_slack_connected'
 export const MOCK_SLACK_TEAM_ID = 'T123'
 export const MOCK_SLACK_TEAM_NAME = 'Acme Corp'
 export const MOCK_SLACK_INSTALLED_AT = '2026-07-08T00:00:00Z'
+/** connected:true 시나리오의 봇 사용자 ID — 카드 "봇 사용자 ID" 필드 검증에서 재사용 (라운드 2) */
+export const MOCK_SLACK_BOT_USER_ID = 'U0BOT'
+/** connected:true 시나리오의 최근 갱신 시각 — 카드 "최근 갱신" 필드 검증에서 재사용 (라운드 2) */
+export const MOCK_SLACK_UPDATED_AT = '2026-07-08T03:00:00Z'
+/** connected:true 시나리오의 설치자 이름 — 카드 "설치자" 필드 검증에서 재사용 (라운드 2) */
+export const MOCK_SLACK_INSTALLER_NAME = '홍길동'
 
 /**
  * GET /api/v1/slack/installation — 현재 워크스페이스의 Slack 연결 상태 조회.
  *
- * 응답 schema: `SlackInstallationSchema` (connected/teamId/teamName/installedAt).
+ * 응답 schema: `SlackInstallationSchema`
+ * (connected/teamId/teamName/botUserId/installedAt/updatedAt/installerName).
  * localStorage 플래그 미설정(기본) 시 미연결, 설정 시 연결됨 고정 fixture를 반환한다.
  */
 const installationHandler = http.get('/api/v1/slack/installation', () => {
@@ -33,7 +40,10 @@ const installationHandler = http.get('/api/v1/slack/installation', () => {
       connected: true,
       teamId: MOCK_SLACK_TEAM_ID,
       teamName: MOCK_SLACK_TEAM_NAME,
+      botUserId: MOCK_SLACK_BOT_USER_ID,
       installedAt: MOCK_SLACK_INSTALLED_AT,
+      updatedAt: MOCK_SLACK_UPDATED_AT,
+      installerName: MOCK_SLACK_INSTALLER_NAME,
     })
   }
 
@@ -41,7 +51,10 @@ const installationHandler = http.get('/api/v1/slack/installation', () => {
     connected: false,
     teamId: null,
     teamName: null,
+    botUserId: null,
     installedAt: null,
+    updatedAt: null,
+    installerName: null,
   })
 })
 
