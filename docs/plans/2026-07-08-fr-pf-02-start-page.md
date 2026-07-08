@@ -155,9 +155,9 @@ ALTER TABLE user_preferences
 
 **RED**: `PreferencesForm.test.tsx` — "시작 페이지" Select 렌더(4옵션), 옵션 선택 시 `patchPreferences({startPage})` 호출 + 응답 재동기화. 초기값은 whoami `user.startPage`(폴백 dashboards).
 
-**GREEN**: 기존 theme Select 블록 복제 — `resolveInitialStartPage(user?.startPage)` + `useState` + `handleStartPageChange`(mutate + syncFromResponse) + `<Select>` 블록. `syncFromResponse`에 `setStartPage` 추가.
+**GREEN**: 기존 theme Select 블록 복제 — `resolveInitialStartPage(user?.startPage)` + `useState` + `handleStartPageChange`(mutate + syncFromResponse) + `<Select>` 블록. `syncFromResponse`에 `setStartPage` 추가. **Select 아래 헬프텍스트**("다음 로그인부터 적용됩니다" — 게이트1 확정, 즉시 적용 아님 안내).
 
-**REFACTOR**: 라벨 상수 `START_PAGE_LABELS` 재사용(T5). Select 접근성(name).
+**REFACTOR**: 라벨 상수 `START_PAGE_LABELS` 재사용(T5). Select 접근성(name). 헬프텍스트 문구 상수화.
 
 **검증**: `pnpm --filter web test -- PreferencesForm`
 
@@ -220,6 +220,7 @@ ALTER TABLE user_preferences
 - ⚠️ taste(게이트1): 시작 페이지는 "다음 로그인부터" 적용(즉시 아님) → 안내 문구 유무를 Maxi 확인.
 - BLOCKER: 없음.
 
-### 게이트1 확인 대상 (taste decision)
-1. returnTo 우선순위 도입(returnTo > start_page > dashboards, 기존 handleSuccess returnTo 무시 개선 포함).
-2. 설정 변경 "다음 로그인부터 적용" 안내 문구 표시 여부.
+### 게이트1 확정 (2026-07-08 Maxi 승인)
+1. ✅ **returnTo > start_page > dashboards** 채택 (기존 handleSuccess returnTo 무시 개선 포함) — T7.
+2. ✅ **"다음 로그인부터 적용" 안내 문구 표시** — T6 헬프텍스트.
+→ 승인, bts-impl 진입.
