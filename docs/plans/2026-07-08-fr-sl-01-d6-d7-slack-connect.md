@@ -38,7 +38,7 @@ FR-SL-01 백엔드 코어(D1~D5, PR #244)의 후속. D6 프론트 + D7 E2E.
 전체 스펙. [docs/specs/2026-07-08-fr-sl-01-d6-d7-slack-connect.md](../specs/2026-07-08-fr-sl-01-d6-d7-slack-connect.md)
 
 핵심 시나리오 3줄 요약.
-- 관리자가 `/settings/slack` 진입 → 상태 조회(`GET /api/v1/slack/installation`)로 연결됨/미연결 표시.
+- 관리자가 `/admin/slack` 진입 → 상태 조회(`GET /api/v1/slack/installation`)로 연결됨/미연결 표시.
 - "연결/다시 연결" 클릭 → `GET /api/v1/slack/install-url`(Bearer)로 authorize URL 받아 `window.location.href` 이동(Bearer 제약 회피).
 - 콜백 복귀 시 `?installed=`/`?error=` 파싱 → 결과 배너(에러 코드 7종 매핑 + fallback), 쿼리 정리.
 
@@ -101,7 +101,7 @@ API 2종(관리자 가드) + 신규 read projection `SlackInstallationView`(토�
 
 **메타**.
 - agent: `security-engineer`
-- files: [`backend/modules/slack-integration/src/main/kotlin/com/bts/slack/web/SlackInstallQueryController.kt`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/web/SlackInstallQueryResponses.kt`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/web/SlackInstallExceptionHandler.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/SlackTestSecurityConfig.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/web/SlackInstallQueryControllerIntegrationTest.kt`]
+- files: [`backend/modules/slack-integration/src/main/kotlin/com/bts/slack/web/SlackInstallQueryController.kt`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/web/SlackInstallQueryResponses.kt`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/web/SlackInstallExceptionHandler.kt`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/web/SlackInstallController.kt`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/application/SlackInstallExceptions.kt`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/application/SlackInstallService.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/SlackTestSecurityConfig.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/web/SlackInstallQueryControllerIntegrationTest.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/web/SlackInstallIntegrationTest.kt`]
 - depends-on: [2]
 
 **RED**. `SlackInstallQueryControllerIntegrationTest`(test-boot + Testcontainers, `SlackInstallIntegrationTest` 미러).
@@ -115,6 +115,7 @@ API 2종(관리자 가드) + 신규 read projection `SlackInstallationView`(토�
 - 응답 DTO(`SlackInstallationResponse(connected, teamId, teamName, installedAt)`, `SlackInstallUrlResponse(url)`). `installedAt: Instant?` → Jackson ISO(배열 아님, full-boot JavaTimeModule) 확인.
 - **★예외핸들러 확장**. `SlackInstallExceptionHandler` `assignableTypes = [SlackInstallController::class, SlackInstallQueryController::class]` (교훈 domain-exception-http-handler-basepackage-scope — 스코프 밖이면 403→500 변질). 401(ResponseStatusException)·403(SlackForbiddenException) 둘 다 두 컨트롤러 커버 확인.
 - **test-boot SecurityConfig**. `SlackTestSecurityConfig` 에 `/api/v1/slack/**` authenticated 추가(콜백 permitAll 와 별개, 관리자 가드 실행되도록).
+- **★라우트 상수 변경(게이트 1 결정)**. `SlackInstallController.FRONT_RESULT_PATH = "/admin/slack"`(기존 `/settings/slack`). RED = `SlackInstallIntegrationTest` 5개 assertion(`Location` 헤더 `/settings/slack…` → `/admin/slack…`) 먼저 갱신해 실패 확인 → GREEN = 상수 변경. `SlackInstallController`/`SlackInstallExceptions`/`SlackInstallService` KDoc 내 `/settings/slack` 문자열 3곳도 `/admin/slack`으로 동기화. 콜백 302 로직 자체는 불변.
 
 **REFACTOR**. KDoc(Bearer 제약·302 흐름과의 관계) + ktlint/detekt(신규 파일 MaxLineLength·detektMain type-resolved) 확인.
 **검증**. `--tests '*SlackInstallQueryController*'` + `ktlintCheck detekt --rerun-tasks`(캐시 false-green 방지).
@@ -180,17 +181,17 @@ API 2종(관리자 가드) + 신규 read projection `SlackInstallationView`(토�
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/routes/settings.slack.tsx`, `apps/web/src/router.ts`, `apps/web/src/components/Header.tsx`, `apps/web/src/components/Header.test.tsx`, `apps/web/src/routes/__tests__/settings.slack.test.tsx`]
+- files: [`apps/web/src/routes/admin.slack.tsx`, `apps/web/src/router.ts`, `apps/web/src/components/Header.tsx`, `apps/web/src/components/Header.test.tsx`, `apps/web/src/routes/__tests__/admin.slack.test.tsx`]
 - depends-on: [5, 6]
 
 **RED**.
-- `settings.slack.test.tsx` — 페이지가 `SlackConnectionCard` + `SlackResultBanner` 렌더.
-- `Header.test.tsx` — isSystemAdmin=true 시 관리 메뉴에 "Slack 연결"(`/settings/slack`) 링크; 비관리자 시 부재.
+- `admin.slack.test.tsx` — 페이지가 `SlackConnectionCard` + `SlackResultBanner` 렌더.
+- `Header.test.tsx` — isSystemAdmin=true 시 관리 메뉴에 "Slack 연결"(`/admin/slack`) 링크; 비관리자 시 부재.
 
 **GREEN**.
-- `routes/settings.slack.tsx`(L1 주석) — `SlackConnectionSettingsPage`(배너+카드, `mx-auto max-w-2xl` 관례) + `SlackConnectionSettingsRouteAdapter`.
-- `router.ts` — `settingsSlackRoute`(`path:'/settings/slack'`, `beforeLoad: composeGuards(requireAuth, requireSystemAdmin)`) 등록(상단 카운트 주석 갱신).
-- `Header.tsx` — `adminLinks` 배열에 `{ to:'/settings/slack', label:'Slack 연결' }` 추가.
+- `routes/admin.slack.tsx`(L1 주석) — `SlackConnectionSettingsPage`(배너+카드, `mx-auto max-w-2xl` 관례) + `SlackConnectionSettingsRouteAdapter`. `validateSearch`로 `installed?`/`error?` 노출(T6 배너가 `useSearch`로 읽고 정리).
+- `router.ts` — `adminSlackRoute`(`path:'/admin/slack'`, `beforeLoad: composeGuards(requireAuth, requireSystemAdmin)`) 등록(상단 카운트 주석 갱신, admin.webhooks 선례).
+- `Header.tsx` — `adminLinks` 배열에 `{ to:'/admin/slack', label:'Slack 연결' }` 추가.
 
 **REFACTOR**. 페이지 제목/설명 카피 정리.
 **검증**. `pnpm --filter web test settings.slack Header` + `typecheck`.
@@ -206,7 +207,7 @@ API 2종(관리자 가드) + 신규 read projection `SlackInstallationView`(토�
 
 **RED/GREEN(E2E는 시나리오 기반)**.
 - `slack-handlers.ts` — `GET /api/v1/slack/installation`(연결됨/미연결 **localStorage 플래그 토글**, 교훈 e2e-msw-scenario-toggle-localstorage-flag) + `GET /api/v1/slack/install-url`(`{url}` stub). `handlers.ts` 에 등록.
-- `slack-connect.spec.ts` — (1) 관리자 미연결 진입 → `[Slack에 연결]` 노출. (2) 연결됨 토글 → teamName 표시 + `[다시 연결]`. (3) `/settings/slack?installed=Acme` → 성공 배너. (4) `?error=invalid_state` → 오류 배너. (5) 비관리자(whoami isSystemAdmin=false 토글) → `/dashboard` 리다이렉트.
+- `slack-connect.spec.ts` — (1) 관리자 미연결 진입(`/admin/slack`) → `[Slack에 연결]` 노출. (2) 연결됨 토글 → teamName 표시 + `[다시 연결]`. (3) `/admin/slack?installed=Acme` → 성공 배너. (4) `/admin/slack?error=invalid_state` → 오류 배너. (5) 비관리자(whoami isSystemAdmin=false 토글) → `/dashboard` 리다이렉트.
 
 **검증**. `pnpm --filter web test:e2e slack-connect`. E2E 후 orphan vite(5173) 정리(교훈 e2e-orphan-vite).
 

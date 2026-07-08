@@ -39,9 +39,9 @@ OAuth 설치는 본질적으로 전체 페이지 리다이렉트(slack.com 왕�
 
 `installation`은 `slack_installs`의 비-비밀 컬럼(`team_id`·`team_name`·`bot_user_id`·`installed_at`)만 반환한다. **봇 토큰(암호화/평문)은 절대 응답에 싣지 않는다**(백엔드 코어의 3중 미노출 원칙 연장). `installed_by`(user id)는 값으로도 반환하지 않는다 — "설치자 이름" 표시는 identity-access users 조인이 필요해 FR-SL-01 스펙의 명시적 범위 밖(후속). 미설치 시 `{ connected: false }`.
 
-### D6-3. 라우트 = `/settings/slack` (백엔드 `FRONT_RESULT_PATH` 상수와 일치)
+### D6-3. 라우트 = `/admin/slack` (관리자 페이지 관례 일치, 게이트 1 결정)
 
-백엔드 콜백이 이미 `/settings/slack`으로 302하도록 상수 박제(`SlackInstallController.FRONT_RESULT_PATH`)돼 있으므로, D6 페이지는 그 경로에 둔다. 시스템 관리자 전용 내용이지만(페이지 내 `isSystemAdmin` 게이팅), 백엔드가 예약한 결과 경로를 존중해 상수 변경 churn을 피한다.
+**정정(게이트 1)**. 초안은 백엔드가 예약한 `/settings/slack`(`SlackInstallController.FRONT_RESULT_PATH`)을 존중했으나, 기존 **관리자 전용 페이지는 전부 `/admin/*`**(webhooks·notification-policies·audit-logs·workflow-schemes)이고 `/settings/*`는 전부 사용자 개인 설정이다. Slack 워크스페이스 연결은 조직-레벨 관리자 설정이므로 `/admin/slack`이 관례상 일관된다. 페이지가 아직 어디에도 없는 지금이 URL 변경 최저비용 시점이라, 백엔드 `FRONT_RESULT_PATH` 상수를 `/admin/slack`으로 갱신한다(상수 1 + KDoc 3 + 통합테스트 assertion 5, 전부 slack 모듈 내 — 이번 PR이 이미 수정). 콜백 302 로직 자체는 불변.
 
 ### D7. E2E = MSW 기반 (실 Slack/OAuth 왕복 없음)
 
