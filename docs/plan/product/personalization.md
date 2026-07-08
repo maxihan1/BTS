@@ -155,13 +155,13 @@
 
 **우선순위**. 높음 | **선행**. issue-tracking §6.1 (FR-PL-01) | **Plan slug**. `personal/calendar`
 
-- [ ] D1. 도메인 — CalendarEvent (책임. backend-engineer)
-- [ ] D2. 명세 — 할당 이슈 + 마감일 + Worklog 일정 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (조회만, 별도 테이블 X) (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /api/v1/users/me/calendar?from=&to=` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 월/주 캘린더 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — CalendarEvent (책임. backend-engineer)
+- [x] D2. 명세 — 할당 이슈 + 마감일 + Worklog 일정 (책임. backend-engineer)
+- [x] D3. 데이터 모델 — (조회만, 별도 테이블 X) (책임. db-engineer)
+- [x] D4. 백엔드 — `GET /api/v1/users/me/calendar?from=&to=` (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D6. 프론트 UI — 월/주 캘린더 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ### §5.2 FR-CA-02 — iCal Export (외부 캘린더 연동)
 
