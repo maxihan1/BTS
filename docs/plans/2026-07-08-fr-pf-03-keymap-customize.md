@@ -38,9 +38,27 @@ FR-PF-03 — 단축키 커스터마이즈. 사용자가 FR-UX-05에서 하드코
 - **기존 결정 충돌**. 없음. FR-UX-05 ADR이 커스텀 키맵을 명시적으로 FR-PF-03에 위임.
 - **관련 ADR**. [docs/decisions/2026-07-08-fr-pf-03-keymap-customize.md](../decisions/2026-07-08-fr-pf-03-keymap-customize.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-08-fr-pf-03-keymap-customize.md](../specs/2026-07-08-fr-pf-03-keymap-customize.md)
+
+핵심 요약.
+- 5종 action(`help`·`create-issue`·`search`·`goto-my-issues`·`goto-dashboard`)의 키만 재배치, 동작은 고정.
+- key_combo 형식: single(1글자) 또는 `g <key>` leader. leader 키 `g` 고정. single↔leader 자유 변환.
+- 충돌 검출 6종(백엔드 SSOT): 화이트리스트·형식·빈값·완전중복·leader접두·dead(`g g`). 위반 400/409.
+- `GET/PATCH /me/keymap` replace-all, JWT-only, override 정규화(기본값=행 미저장). PreferencesController 미러.
+- `user_keymap(user_id, action, key_combo)` V033, PK(user_id,action), action CHECK.
+- 프론트 SHORTCUTS에 action ID 부여 + resolveKeydown 병합 키맵 참조(FR5-a 도움말 닫기 키 동기화 포함).
+- `/settings/keymap` UI, 실시간 충돌·기본 복원. 저장 후 invalidate 실시간 반영.
+
+**plan 확정 위임 (FR5-b)**. 초기 로드 override 반영 경로 — (a) whoami view-layer 노출 vs (b) 앱 부트 GET /me/keymap.
+
+## Brainstorming Check
+
+✅ 통과 (self adversarial sanity check, 1회 iteration). gap 3건 발견 후 스펙 보강.
+- G1 → FR5-a: `help` 재배치 시 도움말 닫기 키 하드코딩(`?`) 동기화.
+- G2 → FR3-6: `g g` dead leader combo 형식 거부.
+- G3 → FR5-b: 초기 로드 override 반영 경로(whoami vs 부트 GET) plan 확정 위임.
 
 ## Plan (← /bts-plan 채움)
 
