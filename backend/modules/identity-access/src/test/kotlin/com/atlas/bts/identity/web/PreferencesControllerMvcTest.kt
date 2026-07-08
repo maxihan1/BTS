@@ -100,7 +100,15 @@ class PreferencesControllerMvcTest {
         theme: String = UserPreferences.DEFAULT_THEME,
         locale: String = UserPreferences.DEFAULT_LOCALE,
         dateFormat: String = UserPreferences.DEFAULT_DATE_FORMAT,
-    ): UserPreferences = UserPreferences(userId = userId, theme = theme, locale = locale, dateFormat = dateFormat)
+        startPage: String = UserPreferences.DEFAULT_START_PAGE,
+    ): UserPreferences =
+        UserPreferences(
+            userId = userId,
+            theme = theme,
+            locale = locale,
+            dateFormat = dateFormat,
+            startPage = startPage,
+        )
 
     // ── GET /me/preferences ─────────────────────────────────────────────────────
 
@@ -125,6 +133,7 @@ class PreferencesControllerMvcTest {
             .andExpect(jsonPath("$.theme").value("system"))
             .andExpect(jsonPath("$.locale").value("ko"))
             .andExpect(jsonPath("$.dateFormat").value("iso"))
+            .andExpect(jsonPath("$.startPage").value("dashboards"))
     }
 
     // ── PATCH /me/preferences ───────────────────────────────────────────────────
@@ -145,6 +154,39 @@ class PreferencesControllerMvcTest {
             .andExpect(jsonPath("$.theme").value("dark"))
             .andExpect(jsonPath("$.locale").value("ko"))
             .andExpect(jsonPath("$.dateFormat").value("iso"))
+    }
+
+    @Test
+    fun `PATCH me preferences with startPage only maps to 2-state patch and returns 200 updated`() {
+        every { userPreferencesService.patchPreferences(userId, PreferencesPatch(startPage = "issues")) } returns
+            preferences(startPage = "issues")
+
+        mockMvc.perform(
+            patch("/api/v1/users/me/preferences")
+                .with(jwtFor(userId))
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"startPage":"issues"}"""),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.startPage").value("issues"))
+    }
+
+    @Test
+    fun `PATCH me preferences with invalid startPage returns 400`() {
+        every { userPreferencesService.patchPreferences(userId, any()) } throws
+            PreferencesValidationException("유효하지 않은 시작 페이지 값입니다.")
+
+        mockMvc.perform(
+            patch("/api/v1/users/me/preferences")
+                .with(jwtFor(userId))
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"startPage":"bad"}"""),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("PREFERENCES_VALIDATION_FAILED"))
+            .andExpect(jsonPath("$.message").value("유효하지 않은 시작 페이지 값입니다."))
     }
 
     @Test

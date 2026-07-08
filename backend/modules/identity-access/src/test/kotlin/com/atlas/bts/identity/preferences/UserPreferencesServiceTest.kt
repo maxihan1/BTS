@@ -40,7 +40,8 @@ class UserPreferencesServiceTest {
         theme: String = "dark",
         locale: String = "en",
         dateFormat: String = "us",
-    ): UserPreferences = UserPreferences(userId, theme, locale, dateFormat)
+        startPage: String = UserPreferences.DEFAULT_START_PAGE,
+    ): UserPreferences = UserPreferences(userId, theme, locale, dateFormat, startPage)
 
     // ── getPreferences ────────────────────────────────────────────────────────
 
@@ -118,6 +119,52 @@ class UserPreferencesServiceTest {
         assertThatThrownBy { service.patchPreferences(userId, PreferencesPatch(dateFormat = "yyyy-mm-dd")) }
             .isInstanceOf(PreferencesValidationException::class.java)
 
+        verify(exactly = 0) { repository.upsert(any()) }
+    }
+
+    // ── patchPreferences — startPage (FR-PF-02) ─────────────────────────────────
+
+    @Test
+    fun `patchPreferences — startPage만 명시하면 나머지는 현재값 유지 후 upsert`() {
+        every { repository.findByUserId(userId) } returns
+            persisted(theme = "light", locale = "en", dateFormat = "eu", startPage = "my_issues")
+        every { repository.upsert(any()) } returns Unit
+
+        val result = service.patchPreferences(userId, PreferencesPatch(startPage = "inbox"))
+
+        assertThat(result.theme).isEqualTo("light")
+        assertThat(result.locale).isEqualTo("en")
+        assertThat(result.dateFormat).isEqualTo("eu")
+        assertThat(result.startPage).isEqualTo("inbox")
+        verify(exactly = 1) { repository.upsert(UserPreferences(userId, "light", "en", "eu", "inbox")) }
+    }
+
+    @Test
+    fun `patchPreferences — startPage 미지정이고 현재 값 있으면 유지`() {
+        every { repository.findByUserId(userId) } returns persisted(startPage = "my_issues")
+        every { repository.upsert(any()) } returns Unit
+
+        val result = service.patchPreferences(userId, PreferencesPatch(theme = "dark"))
+
+        assertThat(result.startPage).isEqualTo("my_issues")
+    }
+
+    @Test
+    fun `patchPreferences — startPage 미지정이고 현재 행 없으면 기본값(dashboards)`() {
+        every { repository.findByUserId(userId) } returns null
+        every { repository.upsert(any()) } returns Unit
+
+        val result = service.patchPreferences(userId, PreferencesPatch(dateFormat = "kr"))
+
+        assertThat(result.startPage).isEqualTo(UserPreferences.DEFAULT_START_PAGE)
+    }
+
+    @Test
+    fun `patchPreferences — 잘못된 startPage 값은 PreferencesValidationException, upsert 미호출(부분 적용 없음)`() {
+        assertThatThrownBy { service.patchPreferences(userId, PreferencesPatch(startPage = "evil")) }
+            .isInstanceOf(PreferencesValidationException::class.java)
+
+        verify(exactly = 0) { repository.findByUserId(any()) }
         verify(exactly = 0) { repository.upsert(any()) }
     }
 
