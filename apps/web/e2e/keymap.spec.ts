@@ -90,16 +90,26 @@ async function loginAndGotoKeymap(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: KEYMAP_PAGE_HEADING, exact: true })).toBeVisible()
 }
 
+/** 저장 버튼 Locator(keymapSettingsStrings.saveButtonAriaLabel 정본 사용) — 페이지에 하나뿐이라 exact:true로 충분 */
+function saveButtonFor(page: Page): Locator {
+  return page.getByRole('button', { name: SAVE_BUTTON_NAME, exact: true })
+}
+
 /**
- * 저장 버튼을 클릭하고 PATCH 응답(200)을 기다린다 — mutation.isPending 해제만으로는 성공/실패를
- * 구분할 수 없으므로 응답 자체를 관찰한다.
+ * 저장 버튼을 클릭하고 PATCH 응답을 기다려 반환한다(mutation.isPending 해제만으로는 성공/실패를
+ * 구분할 수 없으므로 응답 자체를 관찰한다). 상태 코드 단언은 호출부 책임(200/409 등 시나리오별로 다름).
  */
-async function saveAndWaitForPatch(page: Page): Promise<void> {
+async function clickSaveAndWaitForPatch(page: Page) {
   const patchResponse = page.waitForResponse(
     (res) => res.url().includes('/api/v1/users/me/keymap') && res.request().method() === 'PATCH',
   )
-  await page.getByRole('button', { name: SAVE_BUTTON_NAME, exact: true }).click()
-  const res = await patchResponse
+  await saveButtonFor(page).click()
+  return patchResponse
+}
+
+/** 저장 버튼을 클릭해 PATCH 200(성공)을 확인한다 — S1/S4의 정상 저장 흐름 전용. */
+async function saveAndExpectSuccess(page: Page): Promise<void> {
+  const res = await clickSaveAndWaitForPatch(page)
   expect(res.status()).toBe(200)
 }
 
@@ -125,7 +135,7 @@ test.describe('FR-PF-03 단축키 커스터마이즈 (/settings/keymap)', () => 
     await expect(createIssueInput).toHaveValue('n')
 
     // When. 저장(PATCH 200 대기)
-    await saveAndWaitForPatch(page)
+    await saveAndExpectSuccess(page)
 
     // When. SPA 내부 이동(하드 리로드 없음 — keymapStore override 메모리 보존)으로 포커스 이탈
     await page.getByRole('link', { name: DASHBOARDS_LINK_NAME, exact: true }).click()
@@ -165,7 +175,7 @@ test.describe('FR-PF-03 단축키 커스터마이즈 (/settings/keymap)', () => 
     ).toHaveCount(2)
 
     // Then. 저장 버튼 비활성화
-    await expect(page.getByRole('button', { name: SAVE_BUTTON_NAME, exact: true })).toBeDisabled()
+    await expect(saveButtonFor(page)).toBeDisabled()
   })
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -192,7 +202,7 @@ test.describe('FR-PF-03 단축키 커스터마이즈 (/settings/keymap)', () => 
     ).toBeVisible()
 
     // Then. 저장 버튼 비활성화
-    await expect(page.getByRole('button', { name: SAVE_BUTTON_NAME, exact: true })).toBeDisabled()
+    await expect(saveButtonFor(page)).toBeDisabled()
   })
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -209,13 +219,13 @@ test.describe('FR-PF-03 단축키 커스터마이즈 (/settings/keymap)', () => 
     const createIssueInput = captureInputFor(page, 'create-issue')
     await createIssueInput.click()
     await page.keyboard.press('n')
-    await saveAndWaitForPatch(page)
+    await saveAndExpectSuccess(page)
     await expect(createIssueInput).toHaveValue('n')
 
     // When. "기본값 복원" 클릭 후 재저장
     await resetButtonFor(page, 'create-issue').click()
     await expect(createIssueInput).toHaveValue('c')
-    await saveAndWaitForPatch(page)
+    await saveAndExpectSuccess(page)
 
     // When. 하드 리로드로 재진입(GET 재조회 — override가 실제로 삭제됐는지 서버 상태 확인)
     await page.goto('/settings/keymap')
@@ -247,13 +257,9 @@ test.describe('FR-PF-03 단축키 커스터마이즈 (/settings/keymap)', () => 
     await searchInput.click()
     await page.keyboard.press('x')
     await expect(searchInput).toHaveValue('x')
-    await expect(page.getByRole('button', { name: SAVE_BUTTON_NAME, exact: true })).toBeEnabled()
+    await expect(saveButtonFor(page)).toBeEnabled()
 
-    const patchResponse = page.waitForResponse(
-      (res) => res.url().includes('/api/v1/users/me/keymap') && res.request().method() === 'PATCH',
-    )
-    await page.getByRole('button', { name: SAVE_BUTTON_NAME, exact: true }).click()
-    const res = await patchResponse
+    const res = await clickSaveAndWaitForPatch(page)
 
     // Then. 서버가 409로 거부 + 서버 충돌 배너 표시
     expect(res.status()).toBe(409)
