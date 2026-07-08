@@ -226,8 +226,9 @@ API 2종(관리자 가드) + 신규 read projection `SlackInstallationView`(토�
 
 ### Task R1. projection 확장 — botUserId·updatedAt·installedBy
 - agent: `security-engineer`
-- files: [`.../application/SlackInstallationView.kt`, `.../persistence/JdbcSlackInstallRepository.kt`, `.../test/.../persistence/JdbcSlackInstallRepositoryTest.kt`]
+- files: [`.../application/SlackInstallationView.kt`, `.../persistence/JdbcSlackInstallRepository.kt`, `.../test/.../persistence/JdbcSlackInstallRepositoryTest.kt`, `.../test/.../application/SlackInstallServiceTest.kt`]
 - depends-on: []
+- **주의(constructor-injection 함정, plan-files-constructor-injection-existing-tests)**. View에 필수 필드 추가 → 기존 `SlackInstallServiceTest.kt`의 `SlackInstallationView(...)` 생성자 호출이 깨짐. 그 stub도 R1 스코프에 포함해 신규 필드 명시 보정(installedBy는 명시 UUID, default 금지). R2가 이후 같은 파일을 확장(순차, depends-on [R1]).
 - RED: 조회 결과가 botUserId·installedAt·updatedAt·installedBy를 담고, updatedAt≠installedAt(재upsert) 케이스 검증. GREEN: `SlackInstallationView`에 botUserId:String·updatedAt:Instant·installedBy:UUID 추가, SELECT 확장(bot_user_id·updated_at·installed_by). **봇 토큰은 여전히 미조회**.
 
 ### Task R5. SlackInstallController Void→Unit
