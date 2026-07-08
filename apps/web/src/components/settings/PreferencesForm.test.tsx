@@ -1,4 +1,4 @@
-// PreferencesForm 컴포넌트 테스트 — 셀렉터 즉시 PATCH 저장·라이브 프리뷰·언어 안내 문구 (FR-PF-01 Task 7)
+// PreferencesForm 컴포넌트 테스트 — 셀렉터 즉시 PATCH 저장·라이브 프리뷰·언어/시작 페이지 안내 문구 (FR-PF-01 Task 7, FR-PF-02 Task 6)
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -101,7 +101,7 @@ describe('PreferencesForm — 테마', () => {
     server.use(
       http.patch('/api/v1/users/me/preferences', async ({ request }) => {
         capturedBody = await request.json()
-        return HttpResponse.json({ theme: 'dark', locale: 'ko', dateFormat: 'iso' })
+        return HttpResponse.json({ theme: 'dark', locale: 'ko', dateFormat: 'iso', startPage: 'dashboards' })
       }),
       http.get('/api/v1/users/me/whoami', () => HttpResponse.json(makeWhoami({ theme: 'dark' }))),
     )
@@ -118,7 +118,7 @@ describe('PreferencesForm — 테마', () => {
   it('T2: 저장 성공 후 whoami가 재조회되어 authStore.user.theme이 갱신된다', async () => {
     server.use(
       http.patch('/api/v1/users/me/preferences', () =>
-        HttpResponse.json({ theme: 'dark', locale: 'ko', dateFormat: 'iso' }),
+        HttpResponse.json({ theme: 'dark', locale: 'ko', dateFormat: 'iso', startPage: 'dashboards' }),
       ),
       http.get('/api/v1/users/me/whoami', () => HttpResponse.json(makeWhoami({ theme: 'dark' }))),
     )
@@ -147,7 +147,7 @@ describe('PreferencesForm — 날짜 표시 형식 라이브 프리뷰', () => {
     server.use(
       http.patch('/api/v1/users/me/preferences', async () => {
         await new Promise((resolve) => setTimeout(resolve, 50))
-        return HttpResponse.json({ theme: 'system', locale: 'ko', dateFormat: 'us' })
+        return HttpResponse.json({ theme: 'system', locale: 'ko', dateFormat: 'us', startPage: 'dashboards' })
       }),
       http.get('/api/v1/users/me/whoami', () => HttpResponse.json(makeWhoami({ dateFormat: 'us' }))),
     )
@@ -183,7 +183,7 @@ describe('PreferencesForm — 언어', () => {
     server.use(
       http.patch('/api/v1/users/me/preferences', async ({ request }) => {
         capturedBody = await request.json()
-        return HttpResponse.json({ theme: 'system', locale: 'en', dateFormat: 'iso' })
+        return HttpResponse.json({ theme: 'system', locale: 'en', dateFormat: 'iso', startPage: 'dashboards' })
       }),
       http.get('/api/v1/users/me/whoami', () => HttpResponse.json(makeWhoami({ locale: 'en' }))),
     )
@@ -195,6 +195,61 @@ describe('PreferencesForm — 언어', () => {
     await waitFor(() => {
       expect(capturedBody).toEqual({ locale: 'en' })
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 시작 페이지 — 4옵션 렌더·즉시 PATCH 저장·whoami 재조회·안내 문구 (FR-PF-02 Task 6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PreferencesForm — 시작 페이지', () => {
+  it('T9: 시작 페이지 Select가 4옵션(대시보드 목록/내 이슈/전체 이슈 목록/받은 알림함)을 렌더한다', () => {
+    renderForm()
+    expect(screen.getByRole('option', { name: '대시보드 목록' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '내 이슈' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '전체 이슈 목록' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '받은 알림함' })).toBeInTheDocument()
+  })
+
+  it('T10: whoami startPage 미설정 시 초기값은 dashboards로 폴백한다', () => {
+    renderForm()
+    expect(screen.getByRole('combobox', { name: '시작 페이지' })).toHaveTextContent('dashboards')
+  })
+
+  it('T11: whoami startPage가 설정돼 있으면 그 값이 초기값이다', () => {
+    useAuthStore.getState().setSession({
+      accessToken: ALICE_TOKEN,
+      user: makeWhoami({ startPage: 'issues' }),
+    })
+    renderForm()
+    expect(screen.getByRole('combobox', { name: '시작 페이지' })).toHaveTextContent('issues')
+  })
+
+  it('T12: 내 이슈 선택 시 PATCH가 {startPage: "my_issues"}로 호출되고 응답으로 재동기화된다', async () => {
+    let capturedBody: unknown
+    server.use(
+      http.patch('/api/v1/users/me/preferences', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json({ theme: 'system', locale: 'ko', dateFormat: 'iso', startPage: 'my_issues' })
+      }),
+      http.get('/api/v1/users/me/whoami', () => HttpResponse.json(makeWhoami({ startPage: 'my_issues' }))),
+    )
+    const user = userEvent.setup()
+    renderForm()
+
+    await user.click(screen.getByRole('option', { name: '내 이슈' }))
+
+    await waitFor(() => {
+      expect(capturedBody).toEqual({ startPage: 'my_issues' })
+    })
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: '시작 페이지' })).toHaveTextContent('my_issues')
+    })
+  })
+
+  it('T13: "다음 로그인부터 적용됩니다" 안내 문구가 렌더된다', () => {
+    renderForm()
+    expect(screen.getByText('다음 로그인부터 적용됩니다.')).toBeInTheDocument()
   })
 })
 
