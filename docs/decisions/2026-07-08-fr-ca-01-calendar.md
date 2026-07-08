@@ -61,11 +61,25 @@ adapter를 구현한다. identity-access는 issue-tracking을 gradle 직접 의�
 
 이슈 이벤트는 `assignee_id = 조회자` 이슈만. reporter/watcher는 제외(product "할당" 문구).
 
-### D5. visibility 보안 필터 = issue-tracking adapter 책임 (fail-closed)
+### D5. visibility 보안 필터 = issue-tracking adapter 책임 (fail-closed, 프로젝트별 루프)
 
-adapter는 viewer(=조회자) 기준 visibility 보안 필터를 SQL 수준에서 적용한다. 담당자여도 조회자가 볼 수 없는
-보안 등급 이슈는 결과에서 제외(권한 상실·보안등급 상향 엣지 케이스 누출 차단). TimelineLookupAdapter의
-visibility 필터 패턴 재사용. Worklog는 조회자 본인 것만이라 이슈 가시성과 별개(본인 데이터).
+adapter는 viewer(=조회자) 기준 visibility 보안 필터를 적용한다. 담당자여도 조회자가 볼 수 없는 보안 등급
+이슈는 결과에서 제외(권한 상실·보안등급 상향 엣지 누출 차단).
+
+**⚠ 정정 (게이트1 리뷰 2026-07-08)**: 초안은 "기존 cross-project visibility 술어 재사용"으로 기술했으나,
+grep 결과 issue-tracking의 모든 visibility 술어가 **프로젝트 축**으로 하드코딩됨(`IssueRepository.buildActiveSecureWhere`
+= `PROJECTS.KEY.eq(projectKey)` 무조건 AND / `IssueSecurityDirectory.accessibleLevels(actorId, projectKey)` projectKey 필수
+/ `IssueSearchQuery` KDoc "cross-project는 후속 PR"). 재사용 가능한 cross-project 술어는 **존재하지 않음**.
+
+**결정 (D1, Maxi 확정)**: adapter가 **프로젝트별 accessibleLevels 루프**로 fail-closed 필터.
+`SELECT DISTINCT project_id WHERE assignee_id=me AND (start|due)` → 프로젝트마다 `accessibleLevels(me, projectKey)`
+→ 프로젝트별 보안조건 OR 조립. 기존 primitive 재사용, 모듈 신규 0(adapter-local). **fail-open 방지 핵심**:
+한 프로젝트의 등급 집합을 절대 타 프로젝트 이슈에 적용하지 않음(프로젝트별 조건 격리). 대안 B(cross-project primitive
+신규, 3모듈)·대안 C(본인 데이터로 visibility 미적용)는 기각.
+
+**Worklog 이슈 제목(C4)**: worklog는 본인 기록이나 VO에 `issueSummary`(현재 비가시 이슈 제목) 포함 가능 →
+worklog 참조 이슈에도 같은 프로젝트별 가시성 검사 적용. 비가시 시 `issueSummary`를 null 마스킹(issueKey는 유지,
+worklog 이벤트 자체는 표시 = 본인 시간기록 보존). fail-closed 일관.
 
 ### D6. timezone = 사용자 프로필 timezone 기준 날짜 매핑
 
@@ -77,6 +91,13 @@ visibility 필터 패턴 재사용. Worklog는 조회자 본인 것만이라 이
 ### D7. read-only, 별도 테이블 없음
 
 product 데이터 모델 "조회만, 별도 테이블 X" 준수. 신규 마이그레이션 없음. jOOQ 조회 쿼리만 추가.
+
+### D8. 성능 인덱스 = 측정 후 유예 (D2, Maxi 확정 게이트1)
+
+`idx_issues_due_date_open`(V026, 부분+due_date 선행)·`idx_issues_project_assignee_active`(V029, project_id 선행)는
+cross-project 담당 조회에 부분 적합. **D1=프로젝트별 필터**라 쿼리가 project_id 스코프 → V029 재사용 가능.
+impl에서 **EXPLAIN ANALYZE 실측** → 적합 시 마이그레이션 0 유지, 부적합 시 후속 PR로 assignee 선행 부분 인덱스.
+NFR 성능 문구는 "측정 기반"으로 정정(무근거 인덱스 재사용 주장 제거).
 
 ## 결과 (Consequences)
 

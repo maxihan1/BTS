@@ -75,9 +75,9 @@ cross-BC 조회(issue-tracking, agile-planning)가 핵심 설계 포인트.
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/outbound/calendar/UserCalendarLookupAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/outbound/calendar/UserCalendarLookupAdapterIntegrationTest.kt`]
 - depends-on: [1]
 
-**RED**: Testcontainers 통합 테스트. 시드 — 이슈(assignee=me 날짜있음/없음, assignee=타인, 보안등급 비가시, soft-deleted), worklog(author=me 범위내/밖, author=타인, deleted). 검증: assignee=me + (start|due) + span∩[from,to] + viewer 가시만 / worklog author=me 활성 + started_at∈[fromInstant,toInstant).
-**GREEN**: jOOQ 2쿼리. **cross-project visibility 술어 재사용**(IssueSearchPort/IssueRepository 검색 경로 grep — 프로젝트 축 술어 오재사용 금지, spec ⚠). LIMIT 500 + truncated.
-**REFACTOR**: 술어 추출·KDoc·인덱스 활용 주석(idx_issues_due_date·idx_worklogs_author_started).
+**RED**: Testcontainers 통합 테스트. 시드 — 이슈(assignee=me 날짜있음/없음, assignee=타인, 보안등급 비가시, soft-deleted, **여러 프로젝트 상이 스킴**), worklog(author=me 범위내/밖, author=타인, deleted, **참조 이슈 비가시**). 검증: assignee=me + (start|due) + span∩[from,to] + viewer 가시만 / worklog author=me 활성 + started_at∈[fromInstant,toInstant). **★fail-open 방지(D1 핵심)**: 타 프로젝트 고보안 이슈가 내 다른 프로젝트 접근등급으로 잘못 노출되지 않음(프로젝트별 등급 격리). **★C4**: 비가시 이슈 참조 worklog는 이벤트 표시하되 issueSummary=null 마스킹.
+**GREEN**: jOOQ. **D1=프로젝트별 필터(재사용 가능 cross-project 술어 없음 확정)**: `SELECT DISTINCT project_id WHERE assignee_id=me AND (start|due)` → 프로젝트마다 `IssueSecurityDirectory.accessibleLevels(me, projectKey)`(기존 primitive) → 프로젝트별 보안조건 OR 조립(등급 격리). worklog는 author=me 범위쿼리 + 참조 이슈 가시성 검사로 summary 마스킹. LIMIT 500 + truncated.
+**REFACTOR**: 술어 추출·KDoc(fail-open 방지 사유·프로젝트별 격리)·**EXPLAIN ANALYZE 실측(D2)**: project_id 스코프라 V029 재사용 확인 → 마이그레이션 0 유지 여부 판정(부적합 시 후속 PR).
 **검증**: `./gradlew :backend:issue-tracking:test --tests *UserCalendarLookupAdapterIntegrationTest`
 
 ### Task 3. identity-access `CalendarService` (tz 변환·검증·정렬·조립)
@@ -178,4 +178,7 @@ cross-BC 조회(issue-tracking, agile-planning)가 핵심 설계 포인트.
 - OK1 — 포트 토폴로지(사용자 축 신규 포트)는 TimelineLookupPort 선례와 정합. BC 격리 준수(identity-access→shared-kernel만, ArchUnit 강제). fail-safe default 동형.
 - OK2 — depends-on 그래프 순환 없음, wave 분리 타당. (경미: T6·T8이 MSW handler 파일 공유하나 T8→T7→T6 의존으로 직렬화 → 충돌 없음.)
 
-**미해결(게이트 1 Maxi 결정)**: D1(B1+C4 visibility 범위/방식), D2(C2 인덱스). 결정 후 Task 2 확장/신규 db task 반영.
+**게이트1 Maxi 결정 (2026-07-08)**:
+- **D1 = 프로젝트별 필터** (Option A). adapter 내부 `accessibleLevels(me, projectKey)` 프로젝트별 루프, fail-closed, 모듈 신규 0, V029 재사용. C4(worklog issueSummary) 동일 가시성 마스킹. → Task 2 확장 반영 완료.
+- **D2 = 측정 후 유예** (Option B). EXPLAIN 실측, 마이그레이션 0 목표(D1이 project_id 스코프라 V029 재사용), NFR 문구 "측정 기반" 정정. → 신규 db task 없음.
+- 결과: task 수 8 유지(모듈/task 신규 0), Task 2 RED/GREEN 확장.

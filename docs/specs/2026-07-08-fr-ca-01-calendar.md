@@ -53,14 +53,14 @@
 - **FR-CA-01.1** `GET /api/v1/users/me/calendar?from=&to=`는 인증 사용자 본인의 (a) 담당 예정 이슈, (b) 본인 Worklog를 `[from,to]` 창으로 반환한다. 세션 JWT 인증(PAT 비대상은 spec 범위 밖, 기본 인증필터 따름).
 - **FR-CA-01.2** `from`·`to`는 필수. ISO `YYYY-MM-DD`(사용자 프로필 timezone 기준 로컬 날짜). `from ≤ to`, 창 길이 ≤ 90일. 위반 시 400.
 - **FR-CA-01.3** issueEvents = `assignee_id = me` AND `deleted_at IS NULL` AND (`start_date` 또는 `due_date` 중 ≥1 non-null) AND 이슈 날짜 span이 `[from,to]`와 교차 AND viewer(=me) 가시. span = `[start ?: due, due ?: start]`, 교차 = `spanStart ≤ to AND spanEnd ≥ from`.
-- **FR-CA-01.4** worklogEvents = `author_id = me` AND `deleted_at IS NULL` AND `started_at`이 사용자 timezone 기준 `[from, to]` 로컬 날짜 범위 내. 각 이벤트 `date` = `started_at`을 사용자 timezone으로 변환한 로컬 날짜. Worklog는 본인 것만이라 이슈 가시성과 무관.
+- **FR-CA-01.4** worklogEvents = `author_id = me` AND `deleted_at IS NULL` AND `started_at`이 사용자 timezone 기준 `[from, to]` 로컬 날짜 범위 내. 각 이벤트 `date` = `started_at`을 사용자 timezone으로 변환한 로컬 날짜. worklog 이벤트 자체는 본인 기록이라 항상 표시하되, **참조 이슈가 현재 조회자에게 비가시면 `issueSummary`를 null 마스킹**(issueKey는 유지). fail-closed 일관(C4, D5).
 - **FR-CA-01.5** cross-BC 조회는 신규 shared-kernel `UserCalendarLookupPort`(issue-tracking adapter 구현) 경유. adapter 미등록 시 빈 결과(fail-safe) 반환하되 엔드포인트는 200.
 - **FR-CA-01.6** (UI) `/calendar` 라우트. 월 뷰(6주 그리드) + 주 뷰(7일) 토글. 이전/다음/오늘 네비게이션. 이슈=마감일 점 + start~due 기간 막대(상태색), Worklog=시간 칩. 전역 네비게이션에서 진입.
 - **FR-CA-01.7** (UI) 이슈 이벤트 클릭 → 이슈 상세 이동. 빈 상태·로딩·에러 배너. WCAG AA(키보드 네비·대비).
 
 ## 비기능 요구사항 (NFR)
 
-- **성능**: 30일 창 조회 p95 < 500ms(product NFR). `idx_worklogs_author_started`·`idx_issues_due_date` + assignee 필터 활용.
+- **성능**: 30일 창 조회 p95 < 500ms(product NFR). worklog는 `idx_worklogs_author_started`(author 선행+범위) 적합. 이슈는 **D1=프로젝트별 필터라 project_id 스코프 → V029(`project_id,assignee_id`) 재사용**. **측정 기반(D2)**: impl에서 EXPLAIN ANALYZE 실측 → 적합 시 마이그레이션 0 유지, 부적합 시 후속 PR 인덱스(무근거 재사용 주장 제거).
 - **보안**: issueEvents는 viewer 가시성 fail-closed 필터(구현체 책임). 본인 데이터만 노출.
 - **의존성**: 프론트 신규 라이브러리 0(네이티브 `Date` 자체 그리드, FR-UX-05 선례). 백엔드 신규 마이그레이션 0.
 - **BC 격리**: identity-access는 issue-tracking을 gradle 직접 의존하지 않음(ArchUnit). shared-kernel 포트만.
@@ -132,7 +132,7 @@ data class CalendarWorklogView(val id: UUID, issueKey, issueSummary: String,
 **없음** (read-only). 재사용 인덱스.
 - `idx_issues_due_date`(V026, 부분 인덱스) + `issues.assignee_id`(V007) + `start_date/due_date`(V025)
 - `idx_worklogs_author_started(author_id, started_at)`(V027)
-- viewer 가시성: issue-tracking 기존 visibility 술어 재사용. **⚠ impl 검증 포인트**: 캘린더는 프로젝트 축이 아닌 **전체 프로젝트 담당 이슈**를 조회하므로, board-scoped(TimelineLookupAdapter)가 아닌 **cross-project visibility 술어**(IssueSearchPort/IssueRepository의 검색 경로)를 재사용해야 한다. 프로젝트 스코프 술어를 잘못 재사용하면 필터 누락 또는 vacuous 통과 위험.
+- **viewer 가시성 (D1 확정 — 프로젝트별 필터)**: 재사용 가능한 cross-project 술어가 **없으므로**(모두 프로젝트 축 하드코딩), adapter가 `SELECT DISTINCT project_id WHERE assignee_id=me AND (start|due)` → 프로젝트마다 `accessibleLevels(me, projectKey)` → 프로젝트별 보안조건 OR 조립. **fail-open 방지**: 한 프로젝트 등급을 타 프로젝트 이슈에 적용 금지(조건 격리). worklog issueSummary도 동일 가시성 검사로 마스킹.
 
 ## 엣지 케이스
 
@@ -144,7 +144,9 @@ data class CalendarWorklogView(val id: UUID, issueKey, issueSummary: String,
 | 이슈 start만 / due만 | 단일 점(포트 VO 한쪽 null). span=단일 날짜 |
 | 이슈가 창 경계 걸침(start<from, due>to) | 포함(교차). 클라이언트가 그리드에서 클리핑 |
 | worklog 타임존 경계 | 사용자 tz 기준 로컬 날짜로 귀속(S4) |
-| 담당이나 BROWSE 불가 이슈 | 제외(fail-closed, S3) |
+| 담당이나 BROWSE 불가 이슈 | 제외(fail-closed, S3, 프로젝트별 필터) |
+| 여러 프로젝트 상이 스킴 | 프로젝트별 등급 격리 적용(fail-open 방지 — 타 프로젝트 등급 오적용 금지) |
+| worklog 참조 이슈 현재 비가시 | worklog 이벤트는 표시, issueSummary=null 마스킹(issueKey 유지, C4) |
 | soft-deleted 이슈/worklog | 제외 |
 | 프로필 timezone 미설정/무효 | 기본 UTC(UserProfileService.DEFAULT_TIMEZONE) |
 | adapter 미등록(단계적 배포/테스트 stub) | 빈 결과, 200 |
