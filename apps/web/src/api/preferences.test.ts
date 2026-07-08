@@ -26,12 +26,14 @@ const PREFERENCES_FIXTURE_DEFAULT = {
   theme: 'system',
   locale: 'ko',
   dateFormat: 'iso',
+  startPage: 'dashboards',
 }
 
 const PREFERENCES_FIXTURE_CUSTOM = {
   theme: 'dark',
   locale: 'en',
   dateFormat: 'us',
+  startPage: 'my_issues',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
