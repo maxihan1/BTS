@@ -30,9 +30,10 @@ import org.springframework.web.bind.annotation.RestController
  * 포함돼 있어야 403 이 500 으로 변질되지 않는다 — 교훈 domain-exception-http-handler-basepackage-scope).
  *
  * ## 비밀값 미노출 (§1.1.2)
- * 상태 응답은 [SlackInstallationResponse] 의 표시용 필드(connected/teamId/teamName/installedAt)만 담는다 —
- * 봇 토큰(평문/암호문)·`installedBy` 는 [com.bts.slack.application.SlackInstallationStatus] 에 애초에
- * 로드되지 않아 타입 상 새어 나갈 수 없다.
+ * 상태 응답은 [SlackInstallationResponse] 의 표시용 필드(connected/teamId/teamName/botUserId/installedAt/
+ * updatedAt/installerName)만 담는다 — 봇 토큰(평문/암호문)·설치자 원시 id(`installedBy` UUID)는
+ * [com.bts.slack.application.SlackInstallationStatus] 에 애초에 로드되지 않아 타입 상 새어 나갈 수 없다.
+ * 설치자는 이미 해석된 표시명(installerName)으로만 노출한다.
  *
  * @param service Slack 설치 오케스트레이션 서비스(관리자 가드 + 상태 조회 + authorize URL 생성).
  */
@@ -56,7 +57,12 @@ class SlackInstallQueryController(
             connected = status.connected,
             teamId = status.teamId,
             teamName = status.teamName,
+            botUserId = status.botUserId,
             installedAt = status.installedAt,
+            updatedAt = status.updatedAt,
+            // 설치자는 표시명만 노출 — status.installerName 은 이미 UserLookupPort 로 해석된 값이며
+            // 원시 installed_by UUID 는 SlackInstallationStatus 에 애초에 담기지 않는다(타입 경계, §1.1.2).
+            installerName = status.installerName,
         )
     }
 

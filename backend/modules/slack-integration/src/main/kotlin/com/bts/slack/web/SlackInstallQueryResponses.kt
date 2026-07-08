@@ -10,18 +10,26 @@ import java.time.Instant
  * **표시용 비-비밀 필드만** 담는다(DEVELOPMENT.md §1.1.2 — 비밀값 노출 최소화). 봇 토큰(평문/암호문)이나
  * `installedBy`(설치자 UUID) 등 비-표시 필드는 애초에
  * [com.bts.slack.application.SlackInstallationStatus] 에 로드되지 않아 타입 상 새어 나갈 수 없다(방어적).
+ * 설치자는 표시명([installerName])으로만 노출하며, 원시 사용자 id 는 응답에 싣지 않는다(이름 해석에만 사용).
  * 미설치 시 [connected] 는 false 이고 나머지 필드는 모두 null 이다.
  *
  * @property connected Slack 워크스페이스가 연결되어 있으면 true.
  * @property teamId 연결된 워크스페이스 id(`T…`) — 미설치 시 null.
  * @property teamName 워크스페이스 표시명 — 미설치 시 null.
+ * @property botUserId 봇 사용자 id(`U…`) — 미설치 시 null. 비-비밀 표시 메타.
  * @property installedAt 최초 설치 시각 — 미설치 시 null. JSON 직렬화 시 ISO-8601 문자열.
+ * @property updatedAt 마지막 갱신(재설치 upsert) 시각 — 미설치 시 null. JSON 직렬화 시 ISO-8601 문자열.
+ * @property installerName 설치자 표시명 — 미설치 또는 이름 미해석 시 null. 원시 `installed_by` UUID 는
+ *   응답에 노출하지 않고 표시명만 싣는다(방어적, §1.1.2).
  */
 data class SlackInstallationResponse(
     val connected: Boolean,
     val teamId: String?,
     val teamName: String?,
+    val botUserId: String?,
     val installedAt: Instant?,
+    val updatedAt: Instant?,
+    val installerName: String?,
 )
 
 /**
