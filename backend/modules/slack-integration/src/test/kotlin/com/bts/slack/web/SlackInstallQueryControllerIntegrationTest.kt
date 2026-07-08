@@ -6,6 +6,7 @@ import com.bts.slack.SlackIntegrationTestBootApplication
 import com.bts.slack.SlackTestSecurityConfig
 import com.bts.slack.SlackTestcontainersConfig
 import com.bts.slack.StubSystemPermissionResolver
+import com.bts.slack.StubUserLookupPort
 import org.assertj.core.api.Assertions.assertThat
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.nullValue
@@ -43,7 +44,8 @@ private const val NON_ADMIN_UUID = "22222222-2222-2222-2222-222222222222"
  *
  * ## 커버 (spec §API — 상태 배너 + 설치 개시 버튼)
  * - `GET /api/v1/slack/installation` — 관리자 & 미설치 → 200 `connected:false`(나머지 null), 설치됨 →
- *   200 `connected:true` + 표시필드(teamId/teamName/installedAt ISO-8601). 비관리자 → 403, 미인증 → 401.
+ *   200 `connected:true` + 표시필드(teamId/teamName/botUserId·installedAt·updatedAt ISO-8601·설치자
+ *   표시명 installerName). 비관리자 → 403, 미인증 → 401.
  * - `GET /api/v1/slack/install-url` — 관리자 → 200 `{url}`(authorize URL + `state=`), 비관리자 → 403.
  *
  * ## 비밀값 미노출 (§1.1.2)
@@ -78,6 +80,9 @@ class SlackInstallQueryControllerIntegrationTest {
     @Autowired
     private lateinit var permissionResolver: StubSystemPermissionResolver
 
+    @Autowired
+    private lateinit var userLookupPort: StubUserLookupPort
+
     private lateinit var mockMvc: MockMvc
 
     @BeforeEach
@@ -90,11 +95,14 @@ class SlackInstallQueryControllerIntegrationTest {
         jdbc.update("DELETE FROM slack_installs", emptyMap<String, Any>())
         permissionResolver.admins.clear()
         permissionResolver.admins.add(UUID.fromString(ADMIN_UUID))
+        // 공유 stub 이므로 테스트 간 표시명 등록이 새지 않도록 비운다.
+        userLookupPort.displayNames.clear()
     }
 
     @AfterEach
     fun tearDown() {
         jdbc.update("DELETE FROM slack_installs", emptyMap<String, Any>())
+        userLookupPort.displayNames.clear()
     }
 
     // ── GET /api/v1/slack/installation ───────────────────────────────────────────
@@ -115,6 +123,8 @@ class SlackInstallQueryControllerIntegrationTest {
     @WithMockUser(username = ADMIN_UUID)
     fun `GET installation - 관리자 설치됨이면 200 connected true 표시필드만`() {
         insertInstallation()
+        // 설치자 UUID → 표시명 등록. 응답에는 해석된 표시명만 실리고 원시 UUID 는 실리지 않아야 한다.
+        userLookupPort.displayNames[UUID.fromString(INSTALLER_UUID)] = INSTALLER_NAME
 
         val body =
             mockMvc
@@ -126,6 +136,13 @@ class SlackInstallQueryControllerIntegrationTest {
                 // installedAt 은 ISO-8601 문자열(epoch 숫자가 아님).
                 .andExpect(jsonPath("$.installedAt").isString)
                 .andExpect(jsonPath("$.installedAt", startsWith("2026-07-08T12:34:56")))
+                // botUserId — 봇 사용자 id(`U…`) 표시 메타.
+                .andExpect(jsonPath("$.botUserId").value(BOT_USER_ID))
+                // updatedAt 은 ISO-8601 문자열이며 installedAt 과 구분되는 값(필드 매핑 오배치 검증).
+                .andExpect(jsonPath("$.updatedAt").isString)
+                .andExpect(jsonPath("$.updatedAt", startsWith("2026-07-08T13:00:00")))
+                // installerName — 설치자 표시명(원시 UUID 대체, 이것만이 유일한 설치자 표현).
+                .andExpect(jsonPath("$.installerName").value(INSTALLER_NAME))
                 .andReturn()
                 .response
                 .contentAsString
@@ -179,28 +196,30 @@ class SlackInstallQueryControllerIntegrationTest {
      * 상태=connected true 를 재현할 설치 1행을 직접 삽입한다.
      *
      * 봇 토큰 암호문([CIPHERTEXT_SENTINEL])·설치자 UUID([INSTALLER_UUID])를 함께 저장해, 상태 조회 응답이
-     * 이 비-표시 필드들을 실지 않음을 검증할 수 있게 한다. `installed_at` 은 고정 instant 로 넣어 ISO-8601
-     * 직렬화를 결정적으로 assert 한다.
+     * 이 비-표시 필드들을 실지 않음을 검증할 수 있게 한다. `installed_at`/`updated_at` 은 서로 다른 고정
+     * instant 로 넣어 ISO-8601 직렬화와 필드 매핑을 결정적으로 assert 한다(updatedAt 이 installedAt 값을
+     * 잘못 실지 않는지까지 검증).
      */
     private fun insertInstallation() {
         jdbc.update(
             """
             INSERT INTO slack_installs
                 (team_id, team_name, bot_user_id, app_id, bot_token_encrypted, scopes,
-                 is_enterprise_install, installed_by, installed_at)
+                 is_enterprise_install, installed_by, installed_at, updated_at)
             VALUES
                 (:teamId, :teamName, :botUserId, :appId, :botTokenEncrypted, :scopes,
-                 false, :installedBy, :installedAt)
+                 false, :installedBy, :installedAt, :updatedAt)
             """,
             mapOf(
                 "teamId" to TEAM_ID,
                 "teamName" to TEAM_NAME,
-                "botUserId" to "U123BOT",
+                "botUserId" to BOT_USER_ID,
                 "appId" to "A123APP",
                 "botTokenEncrypted" to CIPHERTEXT_SENTINEL,
                 "scopes" to "chat:write,commands",
                 "installedBy" to UUID.fromString(INSTALLER_UUID),
                 "installedAt" to Timestamp.from(FIXED_INSTALLED_AT),
+                "updatedAt" to Timestamp.from(FIXED_UPDATED_AT),
             ),
         )
     }
@@ -209,13 +228,22 @@ class SlackInstallQueryControllerIntegrationTest {
         const val TEAM_ID = "T123WS"
         const val TEAM_NAME = "Acme Workspace"
 
+        /** 봇 사용자 id — 표시 메타로 응답에 실린다(비-비밀). */
+        const val BOT_USER_ID = "U123BOT"
+
         /** 저장된 봇 토큰 암호문을 흉내 내는 sentinel — 상태 응답에 새어 나오면 안 된다. */
         const val CIPHERTEXT_SENTINEL = "CIPHERTEXT-deadbeef-should-never-leak"
 
-        /** 설치자 UUID — 상태 응답에 새어 나오면 안 된다(비-표시 필드). */
+        /** 설치자 UUID — 상태 응답에 새어 나오면 안 된다(비-표시 필드, 이름 해석 전용). */
         const val INSTALLER_UUID = "99999999-9999-9999-9999-999999999999"
+
+        /** 설치자 표시명 — 응답에 실리는 유일한 설치자 표현(원시 UUID 대체). */
+        const val INSTALLER_NAME = "홍길동"
 
         /** 결정적 ISO-8601 직렬화 검증용 고정 설치 시각. */
         val FIXED_INSTALLED_AT: Instant = Instant.parse("2026-07-08T12:34:56Z")
+
+        /** 재설치 갱신 시각 — installedAt 과 다른 값으로 updatedAt 필드 매핑을 검증한다. */
+        val FIXED_UPDATED_AT: Instant = Instant.parse("2026-07-08T13:00:00Z")
     }
 }
