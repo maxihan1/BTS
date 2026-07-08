@@ -85,7 +85,7 @@ FR-UX-05가 전역 단축키 5종을 `apps/web/src/components/keyboard-shortcuts
 
 - keymap 조회 p95 100ms(§NFR 프로필 조회 대응). 단축키 동작률 100%(E2E 전수).
 - 설정 페이지 WCAG 2.1 AA(키 입력 캡처의 스크린리더 접근성 포함).
-- 보안: JWT-only(PAT 403 — session/preferences 선례). 본인 키맵만 접근(userId=JWT subject).
+- 보안: JWT-only(PAT 등 non-JWT principal은 **401** — preferences/profile 패밀리 선례). 본인 키맵만 접근(userId=JWT subject).
 
 ## API 인터페이스 (REST)
 
@@ -149,7 +149,7 @@ CREATE TABLE user_keymap (
 
 ## 제약 조건
 
-- **JWT-only**. PAT 403(session-management-pat-exclusion 선례).
+- **JWT-only**. PAT 등 non-JWT principal은 **401**(preferences/profile의 `currentUserId`가 non-JWT에 401 — session-management의 특수 403 로직과 구분).
 - **BC 격리**. 백엔드=identity-access 물리 모듈. 프론트 SHORTCUTS 확장=same-BC(FR-UX-05 논리 personalization) view-layer.
 - **product deviation 없음**. D3/D4 스키마·엔드포인트 그대로. 스코프 확정은 D2 "충돌 검출" 구체화.
 
@@ -158,7 +158,7 @@ CREATE TABLE user_keymap (
 - [ ] V033 마이그레이션 + jOOQ/JdbcTemplate repository (init_codegen 미러 확인)
 - [ ] GET/PATCH `/me/keymap` — JWT-only, 검증 우선, override 정규화
 - [ ] 충돌 검출 5종(화이트리스트·형식·빈값·완전중복·leader접두) 백엔드 단위 테스트
-- [ ] 백엔드 통합 테스트(400/409/200, 부분 저장자, PAT 403)
+- [ ] 백엔드 통합 테스트(400/409/200, 부분 저장자, PAT 401)
 - [ ] 프론트 SHORTCUTS action ID 정규화 + resolveKeydown 병합 키맵 참조(단위 테스트 무회귀)
 - [ ] `/settings/keymap` UI — 재배치·실시간 충돌·기본 복원
 - [ ] keymap 조회/저장 mutation invalidate 실시간 반영

@@ -125,7 +125,7 @@ FR-PF-03 — 단축키 커스터마이즈. 사용자가 FR-UX-05에서 하드코
 - files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/KeymapController.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/dto/KeymapResponse.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/dto/KeymapPatchRequest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/web/KeymapControllerTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/web/KeymapControllerIntegrationTest.kt`]
 - depends-on: [4]
 
-**RED**: `KeymapControllerTest`(@WebMvcTest 슬라이스, MockSecurityBeans) — GET 200 병합 응답, PATCH 200/400(KEYMAP_VALIDATION_FAILED)/409(KEYMAP_CONFLICT), JWT 아니면 401. `KeymapControllerIntegrationTest`(prod+RANDOM_PORT, PAT 403·부분 저장자) → 구현 없어 실패.
+**RED**: `KeymapControllerTest`(@WebMvcTest 슬라이스, MockSecurityBeans) — GET 200 병합 응답, PATCH 200/400(KEYMAP_VALIDATION_FAILED)/409(KEYMAP_CONFLICT), JWT 아니면 401. `KeymapControllerIntegrationTest`(prod+RANDOM_PORT, PAT 401·부분 저장자) → 구현 없어 실패.
 **GREEN**: `KeymapController`(@RequestMapping `/api/v1/users`, PreferencesController 미러 — JWT subject currentUserId, 로컬 @ExceptionHandler로 KeymapValidationException→400·KeymapConflictException→409). `KeymapResponse`(bindings: action/keyCombo/trigger/customized), `KeymapPatchRequest`(bindings replace-all).
 **REFACTOR**: toResponse/toPatch 헬퍼 + 에러코드 상수(PreferencesController 형식 일관).
 **함정**: 새 컨트롤러 슬라이스 test-boot 협력자 전수 mock([[whoami-slice-mock-skipci-masking]] — 단 whoami는 미변경). identity-access prod+RANDOM_PORT 부팅 레시피([[identity-access-prod-randomport-boot-recipe]]). catch-all 없음(401 전파, [[catch-all-exceptionhandler-swallows-responsestatusexception]]). 새 @Service 빈 full-boot 배선([[new-bc-first-repository-testboot-context-regression]] 정신).
@@ -216,7 +216,7 @@ FR-PF-03 — 단축키 커스터마이즈. 사용자가 FR-UX-05에서 하드코
 - ✅ 의존성 그래프 — 순환 없음(T1→T3→T4→T5→T7→T8/T9→T10, T2→T4, T6→T8/T9).
 - ✅ BC 격리 — 백엔드 identity-access, 프론트 same-BC view-layer, cross-BC import 0(users FK만).
 - ✅ 계약 정합 — T7 Zod가 T5 실제 DTO 참조(depends-on[5], invent 금지).
-- ✅ 보안 — JWT-only·PAT 403·본인만·action CHECK 화이트리스트(DB 최후 방어선).
+- ✅ 보안 — JWT-only·PAT 등 non-JWT는 401(preferences/profile 선례)·본인만·action CHECK 화이트리스트(DB 최후 방어선).
 - ✅ whoami 미변경(FR5-b 옵션 b) → 슬라이스 mock fanout 0.
 - ✅ **Issue-4 보강 반영** — T6 resolveKeydown keymap 인자 옵셔널화(교차파일 typecheck 회귀 방지).
 
