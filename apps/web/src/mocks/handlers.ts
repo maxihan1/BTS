@@ -62,6 +62,7 @@ import { securityLevelHandlers } from './security-level-handlers'
 import { savedFilterHandlers } from './saved-filter-handlers'
 import { searchHandlers } from './search-handlers'
 import { timelineHandlers } from './timeline-handlers'
+import { calendarHandlers } from './calendar-handlers'
 
 /**
  * 애플리케이션 전체 MSW 핸들러 집합.
@@ -134,4 +135,5 @@ export const handlers = [
   ...searchHandlers,
   ...timelineHandlers,
   ...workflowHandlers,
+  ...calendarHandlers,
 ]

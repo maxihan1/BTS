@@ -4,7 +4,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement, type ReactNode } from 'react'
 import { server } from '@/test/server'
-import { calendarHandlers } from '@/test/msw/handlers/calendar'
+import { calendarHandlers } from '@/mocks/calendar-handlers'
 import { CALENDAR_QUERY_KEY, useCalendar } from './useCalendar'
 
 // ─────────────────────────────────────────────────────────────────────────────
