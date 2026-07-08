@@ -103,6 +103,27 @@ class JdbcUserPreferencesRepositoryTest {
     }
 
     @Test
+    fun `upsert startPage 지정 시 findByUserId로 왕복`() {
+        val prefs = UserPreferences(userId, "dark", "en", "us")
+        repo.upsert(prefs.copy(startPage = "my_issues"))
+
+        val found = repo.findByUserId(userId)
+
+        assertThat(found).isNotNull()
+        assertThat(found!!.startPage).isEqualTo("my_issues")
+    }
+
+    @Test
+    fun `upsert startPage 미지정 시 도메인 기본값으로 저장 후 findByUserId로 왕복`() {
+        repo.upsert(UserPreferences(userId, "dark", "en", "us"))
+
+        val found = repo.findByUserId(userId)
+
+        assertThat(found).isNotNull()
+        assertThat(found!!.startPage).isEqualTo(UserPreferences.DEFAULT_START_PAGE)
+    }
+
+    @Test
     fun `users CASCADE 삭제 — users 행 삭제 시 user_preferences 자동 삭제`() {
         repo.upsert(UserPreferences(userId, "dark", "en", "us"))
 
