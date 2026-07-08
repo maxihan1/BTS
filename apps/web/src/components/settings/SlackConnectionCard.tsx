@@ -108,8 +108,18 @@ function SlackConnectionCardContent({ installation }: SlackConnectionCardContent
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
             <dt className="text-muted-foreground">워크스페이스</dt>
             <dd>{installation.teamName ?? UNKNOWN_TEAM_NAME}</dd>
+            {installation.installerName !== null && (
+              <>
+                <dt className="text-muted-foreground">설치자</dt>
+                <dd>{installation.installerName}</dd>
+              </>
+            )}
+            <dt className="text-muted-foreground">봇 사용자 ID</dt>
+            <dd>{installation.botUserId}</dd>
             <dt className="text-muted-foreground">설치일</dt>
             <dd>{formatDate(installation.installedAt)}</dd>
+            <dt className="text-muted-foreground">최근 갱신</dt>
+            <dd>{formatDate(installation.updatedAt)}</dd>
           </dl>
         ) : (
           <p className="text-sm text-muted-foreground">Slack에 연결되어 있지 않습니다.</p>
