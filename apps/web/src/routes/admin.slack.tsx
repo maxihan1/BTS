@@ -1,9 +1,10 @@
-// Slack 연결 관리자 페이지 — /admin/slack, SlackConnectionCard + SlackResultBanner 조립 (FR-SL-01 D6/D7 Task 7)
+// Slack 연결 관리자 페이지 — /admin/slack, SlackConnectionCard + SlackResultBanner 조립 (FR-SL-01 D6/D7 Task 7/R8)
 import type { JSX } from 'react'
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { SlackConnectionCard } from '@/components/settings/SlackConnectionCard'
 import { SlackResultBanner } from '@/components/settings/SlackResultBanner'
+import { getSlackInstallUrl } from '@/api/slack'
 
 /** /admin/slack 쿼리 파라미터 — OAuth 콜백 결과(성공 시 installed, 실패 시 error) */
 interface SlackConnectSearch {
@@ -50,6 +51,18 @@ export function SlackConnectionSettingsPage(): JSX.Element {
     installed: search.installed,
     error: search.error,
   }))
+  // "닫기" 클릭 시 배너를 화면에서 숨긴다(쿼리 정리와 별개 — 쿼리는 이미 위 useEffect가 정리)
+  const [dismissed, setDismissed] = useState(false)
+
+  /** 오류 배너의 "다시 시도" — authorize URL을 새로 조회해 그대로 이동한다(SlackConnectionCard 연결 흐름과 동일 패턴) */
+  async function handleRetry(): Promise<void> {
+    const { url } = await getSlackInstallUrl()
+    window.location.assign(url)
+  }
+
+  function handleDismiss(): void {
+    setDismissed(true)
+  }
 
   useEffect(() => {
     // 캡처한 콜백 값이 둘 다 없으면(=일반 진입) 정리할 쿼리가 없다 — navigate 생략
@@ -68,7 +81,14 @@ export function SlackConnectionSettingsPage(): JSX.Element {
         <p className="mt-1 text-sm text-muted-foreground">{labels.description}</p>
       </div>
       <div className="mb-6">
-        <SlackResultBanner installed={bannerParams.installed} error={bannerParams.error} />
+        {!dismissed && (
+          <SlackResultBanner
+            installed={bannerParams.installed}
+            error={bannerParams.error}
+            onRetry={handleRetry}
+            onDismiss={handleDismiss}
+          />
+        )}
       </div>
       <SlackConnectionCard />
     </div>

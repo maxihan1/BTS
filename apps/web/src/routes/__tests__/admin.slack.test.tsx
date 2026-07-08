@@ -49,7 +49,10 @@ beforeEach(() => {
     connected: false,
     teamId: null,
     teamName: null,
+    botUserId: null,
     installedAt: null,
+    updatedAt: null,
+    installerName: null,
   })
   vi.mocked(getSlackInstallUrl).mockResolvedValue({ url: 'https://slack.com/oauth/v2/authorize?client_id=abc' })
 })
