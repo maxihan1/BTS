@@ -59,6 +59,7 @@ import java.util.UUID
     excludeAutoConfiguration = [OAuth2ClientAutoConfiguration::class],
 )
 @Import(SecurityConfig::class, WhoamiControllerTest.MockSecurityBeans::class)
+@Suppress("LargeClass") // whoami 인증(JWT/PAT) 전 view-layer 필드(프로필·상태·부재중·환경설정·시작페이지)를 단일 슬라이스로 커버
 class WhoamiControllerTest {
     companion object {
         // EC-26: "pat_" prefix 포함 52자 raw token (pat_ + 48자 body)
@@ -765,7 +766,13 @@ class WhoamiControllerTest {
         every { storedPasswordCredentialRepository.findByUserId(userId) } returns credential(userId, mustChange = false)
         every { systemPermissionResolver.isSystemAdmin(userId) } returns false
         every { userPreferencesService.getPreferences(userId) } returns
-            UserPreferences(userId = userId, theme = "system", locale = "ko", dateFormat = "iso", startPage = "my_issues")
+            UserPreferences(
+                userId = userId,
+                theme = "system",
+                locale = "ko",
+                dateFormat = "iso",
+                startPage = "my_issues",
+            )
 
         mockMvc.perform(
             get("/api/v1/users/me/whoami").with(
