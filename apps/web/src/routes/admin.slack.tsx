@@ -12,6 +12,15 @@ interface SlackConnectSearch {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 상수 / 문구 — 관리자 전용 고정 한국어 (admin.webhooks.tsx 관례)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const labels = {
+  heading: 'Slack 연결',
+  description: '이 워크스페이스에 연결된 Slack 앱을 관리합니다. 연결하면 이슈 알림을 채널로 받아볼 수 있습니다.',
+} as const
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 페이지 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -43,7 +52,10 @@ export function SlackConnectionSettingsPage(): JSX.Element {
   }))
 
   useEffect(() => {
+    // 캡처한 콜백 값이 둘 다 없으면(=일반 진입) 정리할 쿼리가 없다 — navigate 생략
     if (bannerParams.installed === undefined && bannerParams.error === undefined) return
+    // 배너는 이미 위 useState 캡처값으로 렌더되었으므로, 여기서 쿼리만 제거해도 화면에서
+    // 배너가 사라지지 않는다. replace:true로 히스토리에 콜백 URL을 남기지 않는다.
     void navigate({ to: '/admin/slack', search: {}, replace: true })
     // navigate는 stable ref, bannerParams는 마운트 시 캡처된 값이라 최초 1회만 실행하면 된다
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -52,10 +64,8 @@ export function SlackConnectionSettingsPage(): JSX.Element {
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold">Slack 연결</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Slack 워크스페이스와 연결해 이슈 알림을 채널로 받아보세요.
-        </p>
+        <h1 className="text-xl font-semibold">{labels.heading}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{labels.description}</p>
       </div>
       <div className="mb-6">
         <SlackResultBanner installed={bannerParams.installed} error={bannerParams.error} />
