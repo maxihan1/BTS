@@ -25,6 +25,10 @@ import java.util.UUID
 class UserKeymapService(
     private val repository: UserKeymapRepository,
 ) {
+    /** 기본 key_combo 를 action 으로 조회하는 맵 — [normalizeOverrides] 재계산 방지용 캐시. */
+    private val defaultKeyComboByAction: Map<String, String> =
+        KeymapAction.DEFAULT_BINDINGS.associate { it.action to it.keyCombo }
+
     /**
      * 사용자의 effective 단축키 목록(5종 완비)을 조회한다.
      *
@@ -70,10 +74,8 @@ class UserKeymapService(
     }
 
     /** [bindings] 중 기본값과 다른 것만 남긴다 — 저장할 override 목록으로 정규화. */
-    private fun normalizeOverrides(bindings: List<KeymapBinding>): List<KeymapBinding> {
-        val defaultByAction = KeymapAction.DEFAULT_BINDINGS.associate { it.action to it.keyCombo }
-        return bindings.filter { it.keyCombo != defaultByAction[it.action] }
-    }
+    private fun normalizeOverrides(bindings: List<KeymapBinding>): List<KeymapBinding> =
+        bindings.filter { it.keyCombo != defaultKeyComboByAction[it.action] }
 
     /**
      * [violations] 를 카테고리로 분기해 적절한 예외를 던진다.
