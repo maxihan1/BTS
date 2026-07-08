@@ -106,7 +106,14 @@ class UserCalendarLookupAdapter(
     /**
      * [userId] 가 담당자이고 기간(시작일/마감일 중 하나)이 설정된 활성 이슈가 존재하는 프로젝트 id 집합.
      *
-     * V029(`project_id, assignee_id`) 복합 부분 인덱스를 태우는 술어와 동일한 컬럼 조합을 사용한다.
+     * ### EXPLAIN ANALYZE 실측 (D2, 20,000행 시드, 2프로젝트 분산)
+     *
+     * 이 술어는 `project_id` 조건이 없어 V029 복합 부분 인덱스(`project_id, assignee_id`)의
+     * 선행 컬럼을 활용하지 못한다 — 실측 결과 `Seq Scan on issues`(assignee_id 는 Filter 로만 적용,
+     * 19,960/20,000 행 제거) 로 20,000행에서 2.5ms 소요. 개인 캘린더는 저빈도·저동시성 조회이므로
+     * 이 정도 스캔 비용은 현재 유예 가능하다고 판단한다(D2). 향후 다량 데이터에서 병목 확인 시
+     * `assignee_id` 단독(또는 `assignee_id, project_id` 순) 인덱스를 후속 PR 로 권고하며,
+     * 이번 PR 에서는 신규 마이그레이션을 추가하지 않는다.
      */
     private fun fetchAssignedScheduledProjectIds(userId: UUID): List<UUID> =
         dsl.selectDistinct(ISSUES.PROJECT_ID)
@@ -114,11 +121,6 @@ class UserCalendarLookupAdapter(
             .where(buildAssignedScheduledActiveCondition(userId))
             .fetch(ISSUES.PROJECT_ID)
             .filterNotNull()
-
-    private fun buildAssignedScheduledActiveCondition(userId: UUID): Condition =
-        ISSUES.ASSIGNEE_ID.eq(userId)
-            .and(ISSUES.DELETED_AT.isNull)
-            .and(ISSUES.START_DATE.isNotNull.or(ISSUES.DUE_DATE.isNotNull))
 
     /** [projectIds] 에 대응하는 project_id → project_key 맵. 미존재 id 는 결과에서 제외된다. */
     private fun fetchProjectKeysById(projectIds: List<UUID>): Map<UUID, String> =
@@ -133,6 +135,18 @@ class UserCalendarLookupAdapter(
             }
             .toMap()
 
+    /**
+     * 담당 이슈 본 조회 — [visibilityCondition] 의 프로젝트별 격리 `AND` 절이 V029 인덱스를 태운다.
+     *
+     * ### EXPLAIN ANALYZE 실측 (D2, 20,000행 시드, 2프로젝트 분산)
+     *
+     * `WHERE assignee_id=? AND deleted_at IS NULL AND ((project_id=P1 AND assignee_id=?) OR
+     * (project_id=P2 AND assignee_id=?))` 형태는 프로젝트별 `Bitmap Index Scan on
+     * idx_issues_project_assignee_active` 2회 + `BitmapOr` 로 실행됐다(실행시간 0.054ms,
+     * [fetchAssignedScheduledProjectIds] 의 seq scan 2.5ms 대비 대폭 개선). [buildIsolatedProjectVisibilityCondition]
+     * 이 `project_id = Pn AND ...` 로 프로젝트별 격리한 설계가 V029(`project_id, assignee_id`)
+     * 인덱스와 정확히 일치하는 컬럼 순서임을 실측으로 확인했다 — 신규 인덱스 불필요.
+     */
     private fun fetchAssignedScheduledIssueRows(
         userId: UUID,
         from: LocalDate,
@@ -182,66 +196,6 @@ class UserCalendarLookupAdapter(
             }
         return perProjectConditions.fold(DSL.falseCondition() as Condition) { acc, condition -> acc.or(condition) }
     }
-
-    /**
-     * [IssueSecurityAccess] 등급 판정 규칙을 SQL [Condition] 으로 표현한다.
-     *
-     * [IssueRepository][com.bts.issue.repository.IssueRepository] 의 (동명) 보안 조건 빌더는
-     * private 이라 재사용 불가하므로 동일 규칙을 재구현한다(D1).
-     * NULL 등급은 항상 공개, static 등급은 항상 노출, reporter/assignee 조건부 등급은
-     * actor 가 해당 역할(REPORTER_ID/ASSIGNEE_ID = actor)일 때만 노출.
-     */
-    private fun buildSecurityLevelCondition(
-        actor: UUID,
-        access: IssueSecurityAccess,
-    ): Condition {
-        if (access.unrestricted) return DSL.trueCondition()
-
-        var condition: Condition = ISSUES.SECURITY_LEVEL_ID.isNull
-        if (access.staticLevelIds.isNotEmpty()) {
-            condition = condition.or(ISSUES.SECURITY_LEVEL_ID.`in`(access.staticLevelIds))
-        }
-        if (access.reporterLevelIds.isNotEmpty()) {
-            condition =
-                condition.or(
-                    ISSUES.SECURITY_LEVEL_ID.`in`(access.reporterLevelIds).and(ISSUES.REPORTER_ID.eq(actor)),
-                )
-        }
-        if (access.assigneeLevelIds.isNotEmpty()) {
-            condition =
-                condition.or(
-                    ISSUES.SECURITY_LEVEL_ID.`in`(access.assigneeLevelIds).and(ISSUES.ASSIGNEE_ID.eq(actor)),
-                )
-        }
-        return condition
-    }
-
-    /**
-     * `[from, to]` 구간과 이슈 기간(start_date/due_date)의 교차 여부.
-     *
-     * start_date 또는 due_date 하나만 설정된 이슈는 `COALESCE` 로 단일 시점 이슈처럼 취급한다
-     * (예: due_date 만 있으면 effectiveStart = effectiveEnd = due_date).
-     */
-    private fun buildDateOverlapCondition(
-        from: LocalDate,
-        to: LocalDate,
-    ): Condition {
-        val effectiveStart = DSL.coalesce(ISSUES.START_DATE, ISSUES.DUE_DATE)
-        val effectiveEnd = DSL.coalesce(ISSUES.DUE_DATE, ISSUES.START_DATE)
-        return effectiveStart.lessOrEqual(to).and(effectiveEnd.greaterOrEqual(from))
-    }
-
-    private fun Record.toCalendarIssueView(): CalendarIssueView =
-        CalendarIssueView(
-            key = get(ISSUES.KEY) ?: error("issues.key must not be null after DB read"),
-            summary = get(ISSUES.SUMMARY) ?: error("issues.summary must not be null after DB read"),
-            issueType = get(ISSUE_TYPES.KEY) ?: error("issue_types.key must not be null after DB read"),
-            currentStateKey =
-                get(ISSUES.CURRENT_STATE_KEY)
-                    ?: error("issues.current_state_key must not be null after DB read"),
-            startDate = get(ISSUES.START_DATE),
-            dueDate = get(ISSUES.DUE_DATE),
-        )
 
     // ── private — listWorklogs 조회 ───────────────────────────────────────────
 
@@ -300,57 +254,6 @@ class UserCalendarLookupAdapter(
         }
     }
 
-    /**
-     * worklog 행을 [CalendarWorklogView] 로 매핑한다.
-     *
-     * 참조 이슈가 [isIssueVisibleToActor] 기준으로 비가시면 [CalendarWorklogView.issueSummary] 를
-     * null 로 마스킹한다. [CalendarWorklogView.issueKey] 는 마스킹 대상이 아니다(포트 계약).
-     */
-    private fun Record.toCalendarWorklogView(
-        actor: UUID,
-        accessByProjectId: Map<UUID, IssueSecurityAccess>,
-    ): CalendarWorklogView {
-        val issueKey = get(ISSUES.KEY) ?: error("issues.key must not be null after DB read")
-        val projectId = get(ISSUES.PROJECT_ID) ?: error("issues.project_id must not be null after DB read")
-        val access = accessByProjectId[projectId]
-        val visible = access != null && isIssueVisibleToActor(actor, access)
-        return CalendarWorklogView(
-            id = get(WORKLOGS.ID) ?: error("worklogs.id must not be null after DB read"),
-            issueKey = issueKey,
-            issueSummary = if (visible) get(ISSUES.SUMMARY) else null,
-            startedAt =
-                (get(WORKLOGS.STARTED_AT) ?: error("worklogs.started_at must not be null after DB read")).toInstant(),
-            timeSpentSeconds =
-                get(WORKLOGS.TIME_SPENT_SECONDS)
-                    ?: error("worklogs.time_spent_seconds must not be null after DB read"),
-        )
-    }
-
-    /**
-     * 참조 이슈가 [actor] 에게 가시인지 판정한다(worklog 마스킹 전용, [buildSecurityLevelCondition] 과 동일 규칙).
-     *
-     * soft-deleted 이슈는 비가시로 취급한다. [IssueSecurityAccess] 가 없으면(프로젝트 키 조회 실패)
-     * fail-closed 로 비가시 처리한다.
-     */
-    private fun Record.isIssueVisibleToActor(
-        actor: UUID,
-        access: IssueSecurityAccess,
-    ): Boolean {
-        if (get(ISSUES.DELETED_AT) != null) return false
-        if (access.unrestricted) return true
-
-        val securityLevelId = get(ISSUES.SECURITY_LEVEL_ID) ?: return true
-        if (securityLevelId in access.staticLevelIds) return true
-
-        val reporterId = get(ISSUES.REPORTER_ID)
-        if (securityLevelId in access.reporterLevelIds && reporterId == actor) return true
-
-        val assigneeId = get(ISSUES.ASSIGNEE_ID)
-        if (securityLevelId in access.assigneeLevelIds && assigneeId == actor) return true
-
-        return false
-    }
-
     companion object {
         /** [listAssignedScheduledIssues] 최대 반환 건수. 초과 시 [CalendarIssuePage.truncated]=true. */
         const val CALENDAR_ISSUE_FETCH_LIMIT = 500
@@ -358,4 +261,122 @@ class UserCalendarLookupAdapter(
         /** [listWorklogs] 최대 반환 건수. 초과 시 [CalendarWorklogPage.truncated]=true. */
         const val CALENDAR_WORKLOG_FETCH_LIMIT = 500
     }
+}
+
+// ── file-scope private helpers — dsl/securityDirectory 인스턴스 상태에 의존하지 않는 순수 조건/매핑 ──
+
+/** [userId] 담당 + 미삭제 + 기간(시작일/마감일 중 하나) 설정 조건. 이슈 열거·본 조회 양쪽에서 공유. */
+private fun buildAssignedScheduledActiveCondition(userId: UUID): Condition =
+    ISSUES.ASSIGNEE_ID.eq(userId)
+        .and(ISSUES.DELETED_AT.isNull)
+        .and(ISSUES.START_DATE.isNotNull.or(ISSUES.DUE_DATE.isNotNull))
+
+/**
+ * [IssueSecurityAccess] 등급 판정 규칙을 SQL [Condition] 으로 표현한다.
+ *
+ * [IssueRepository][com.bts.issue.repository.IssueRepository] 의 (동명) 보안 조건 빌더는
+ * private 이라 재사용 불가하므로 동일 규칙을 재구현한다(D1).
+ * NULL 등급은 항상 공개, static 등급은 항상 노출, reporter/assignee 조건부 등급은
+ * actor 가 해당 역할(REPORTER_ID/ASSIGNEE_ID = actor)일 때만 노출.
+ */
+private fun buildSecurityLevelCondition(
+    actor: UUID,
+    access: IssueSecurityAccess,
+): Condition {
+    if (access.unrestricted) return DSL.trueCondition()
+
+    var condition: Condition = ISSUES.SECURITY_LEVEL_ID.isNull
+    if (access.staticLevelIds.isNotEmpty()) {
+        condition = condition.or(ISSUES.SECURITY_LEVEL_ID.`in`(access.staticLevelIds))
+    }
+    if (access.reporterLevelIds.isNotEmpty()) {
+        condition =
+            condition.or(
+                ISSUES.SECURITY_LEVEL_ID.`in`(access.reporterLevelIds).and(ISSUES.REPORTER_ID.eq(actor)),
+            )
+    }
+    if (access.assigneeLevelIds.isNotEmpty()) {
+        condition =
+            condition.or(
+                ISSUES.SECURITY_LEVEL_ID.`in`(access.assigneeLevelIds).and(ISSUES.ASSIGNEE_ID.eq(actor)),
+            )
+    }
+    return condition
+}
+
+/**
+ * `[from, to]` 구간과 이슈 기간(start_date/due_date)의 교차 여부.
+ *
+ * start_date 또는 due_date 하나만 설정된 이슈는 `COALESCE` 로 단일 시점 이슈처럼 취급한다
+ * (예: due_date 만 있으면 effectiveStart = effectiveEnd = due_date).
+ */
+private fun buildDateOverlapCondition(
+    from: LocalDate,
+    to: LocalDate,
+): Condition {
+    val effectiveStart = DSL.coalesce(ISSUES.START_DATE, ISSUES.DUE_DATE)
+    val effectiveEnd = DSL.coalesce(ISSUES.DUE_DATE, ISSUES.START_DATE)
+    return effectiveStart.lessOrEqual(to).and(effectiveEnd.greaterOrEqual(from))
+}
+
+private fun Record.toCalendarIssueView(): CalendarIssueView =
+    CalendarIssueView(
+        key = get(ISSUES.KEY) ?: error("issues.key must not be null after DB read"),
+        summary = get(ISSUES.SUMMARY) ?: error("issues.summary must not be null after DB read"),
+        issueType = get(ISSUE_TYPES.KEY) ?: error("issue_types.key must not be null after DB read"),
+        currentStateKey =
+            get(ISSUES.CURRENT_STATE_KEY)
+                ?: error("issues.current_state_key must not be null after DB read"),
+        startDate = get(ISSUES.START_DATE),
+        dueDate = get(ISSUES.DUE_DATE),
+    )
+
+/**
+ * worklog 행을 [CalendarWorklogView] 로 매핑한다.
+ *
+ * 참조 이슈가 [isIssueVisibleToActor] 기준으로 비가시면 [CalendarWorklogView.issueSummary] 를
+ * null 로 마스킹한다. [CalendarWorklogView.issueKey] 는 마스킹 대상이 아니다(포트 계약).
+ */
+private fun Record.toCalendarWorklogView(
+    actor: UUID,
+    accessByProjectId: Map<UUID, IssueSecurityAccess>,
+): CalendarWorklogView {
+    val issueKey = get(ISSUES.KEY) ?: error("issues.key must not be null after DB read")
+    val projectId = get(ISSUES.PROJECT_ID) ?: error("issues.project_id must not be null after DB read")
+    val access = accessByProjectId[projectId]
+    val visible = access != null && isIssueVisibleToActor(actor, access)
+    return CalendarWorklogView(
+        id = get(WORKLOGS.ID) ?: error("worklogs.id must not be null after DB read"),
+        issueKey = issueKey,
+        issueSummary = if (visible) get(ISSUES.SUMMARY) else null,
+        startedAt =
+            (get(WORKLOGS.STARTED_AT) ?: error("worklogs.started_at must not be null after DB read")).toInstant(),
+        timeSpentSeconds =
+            get(WORKLOGS.TIME_SPENT_SECONDS)
+                ?: error("worklogs.time_spent_seconds must not be null after DB read"),
+    )
+}
+
+/**
+ * 참조 이슈가 [actor] 에게 가시인지 판정한다(worklog 마스킹 전용, [buildSecurityLevelCondition] 과 동일 규칙).
+ *
+ * soft-deleted 이슈는 비가시로 취급한다. [access] 는 호출측이 프로젝트 키로 미리 조회해 전달한다.
+ */
+private fun Record.isIssueVisibleToActor(
+    actor: UUID,
+    access: IssueSecurityAccess,
+): Boolean {
+    val deleted = get(ISSUES.DELETED_AT) != null
+    val securityLevelId = get(ISSUES.SECURITY_LEVEL_ID)
+    val reporterId = get(ISSUES.REPORTER_ID)
+    val assigneeId = get(ISSUES.ASSIGNEE_ID)
+
+    return !deleted &&
+        (
+            access.unrestricted ||
+                securityLevelId == null ||
+                securityLevelId in access.staticLevelIds ||
+                (securityLevelId in access.reporterLevelIds && reporterId == actor) ||
+                (securityLevelId in access.assigneeLevelIds && assigneeId == actor)
+        )
 }

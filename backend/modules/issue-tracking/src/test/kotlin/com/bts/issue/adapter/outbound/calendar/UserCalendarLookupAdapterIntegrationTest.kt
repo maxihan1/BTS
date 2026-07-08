@@ -125,8 +125,8 @@ class UserCalendarLookupAdapterIntegrationTest : IssueTestcontainersBase() {
     }
 
     /** stub directory + 실 dsl 로 adapter 구성. */
-    private fun adapterWith(accessByProjectKey: Map<String, IssueSecurityAccess> = emptyMap()): UserCalendarLookupAdapter =
-        UserCalendarLookupAdapter(dsl, StubSecurityDirectory(accessByProjectKey))
+    private fun adapterWith(access: Map<String, IssueSecurityAccess> = emptyMap()): UserCalendarLookupAdapter =
+        UserCalendarLookupAdapter(dsl, StubSecurityDirectory(access))
 
     @Suppress("LongParameterList")
     private fun insertIssueInProject(
@@ -353,7 +353,8 @@ class UserCalendarLookupAdapterIntegrationTest : IssueTestcontainersBase() {
             conn.autoCommit = false
             conn.prepareStatement(
                 "INSERT INTO issues " +
-                    "(id, key, project_id, type_id, summary, reporter_id, current_state_key, assignee_id, start_date) " +
+                    "(id, key, project_id, type_id, summary, reporter_id, " +
+                    "current_state_key, assignee_id, start_date) " +
                     "VALUES (gen_random_uuid(), ?, ?, ?, ?, gen_random_uuid(), 'open', ?, '2024-06-10')",
             ).use { stmt ->
                 for (seq in 1..insertCount) {
@@ -388,7 +389,13 @@ class UserCalendarLookupAdapterIntegrationTest : IssueTestcontainersBase() {
         val from = Instant.parse("2024-06-10T00:00:00Z")
         val to = Instant.parse("2024-06-15T00:00:00Z")
 
-        val inRangeId = insertWorklog(issue.id.value, me, timeSpentSeconds = 1800, startedAt = Instant.parse("2024-06-12T09:00:00Z"))
+        val inRangeId =
+            insertWorklog(
+                issue.id.value,
+                me,
+                timeSpentSeconds = 1800,
+                startedAt = Instant.parse("2024-06-12T09:00:00Z"),
+            )
         insertWorklog(issue.id.value, me, startedAt = Instant.parse("2024-06-09T23:59:59Z")) // 범위 밖(이전) — 제외
         insertWorklog(issue.id.value, me, startedAt = to) // to 경계 — exclusive 이므로 제외
         insertWorklog(issue.id.value, other, startedAt = Instant.parse("2024-06-12T10:00:00Z")) // author 다름 — 제외
