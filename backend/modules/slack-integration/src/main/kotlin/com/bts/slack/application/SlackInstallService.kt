@@ -10,7 +10,6 @@ import com.bts.slack.oauth.SlackOAuthStateSigner
 import com.bts.slack.oauth.SlackOAuthTokenResponse
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
@@ -35,6 +34,15 @@ import java.util.UUID
  * [SlackInstall] 에 담아 저장한다(평문 저장 금지). 예외 메시지·반환값([SlackInstallResult])·로그에는
  * 평문 토큰이나 암호화 키를 담지 않는다.
  *
+ * ## @Transactional 없음 — 의도적 (DATA.md §6 트랜잭션 경계)
+ * 클래스/메서드 어디에도 `@Transactional` 을 두지 않는다 — [completeInstall] 의 외부 Slack HTTP 왕복
+ * ([SlackOAuthClient.exchangeCode])을 트랜잭션 밖에 두어 네트워크 지연 동안 DB 커넥션을 점유하지 않게
+ * 하기 위함이다. 실제 DB 쓰기는 단건 [SlackInstallRepository.upsert] 뿐이고, 그 구현
+ * [com.bts.slack.persistence.JdbcSlackInstallRepository.upsert] 가 자체 `@Transactional` 로 원자성을
+ * 보장한다. [startInstall] 은 DB 쓰기가 없고, [completeInstall] 은 다른 tx 메서드를 자기호출하지 않는다
+ * (self-invocation 무효화 무관). issue-tracking `IssueAttachmentService`(MinIO I/O tx밖)·notification
+ * `WebhookDispatchWorker`(외부 HTTP tx밖) 관례와 정합.
+ *
  * @param permissionResolver 전역 관리자 판정 cross-BC 포트(fail-closed, non-null).
  * @param stateSigner OAuth `state` 서명 발급/검증기(개시자 박제).
  * @param oauthClient `oauth.v2.access` 교환 + authorize URL 생성 클라이언트.
@@ -42,7 +50,6 @@ import java.util.UUID
  * @param installRepository `slack_installs` 영속화 포트(upsert 멱등).
  */
 @Service
-@Transactional
 class SlackInstallService(
     private val permissionResolver: SystemPermissionResolver,
     private val stateSigner: SlackOAuthStateSigner,

@@ -115,13 +115,13 @@ class SlackInstallController(
             log.info("SLACK_CALLBACK state_invalid")
             redirectFailure(INVALID_STATE)
         } catch (e: SlackOAuthFailedException) {
-            // ok:false 또는 access_token 부재(EC3/EC7). Slack 비-비밀 코드만 싣는다.
+            // ok:false 또는 access_token 부재(EC3/EC7). Slack 이 준 코드도 방어심층으로 안전 문자셋만 싣는다.
             log.info("SLACK_CALLBACK oauth_failed code={}", e.errorCode)
-            redirectFailure(e.errorCode)
+            redirectFailure(sanitizeErrorCode(e.errorCode))
         } catch (e: SlackUnsupportedInstallException) {
-            // enterprise 등 미지원 설치 유형(EC5/G1).
+            // enterprise 등 미지원 설치 유형(EC5/G1). 내부 상수지만 리다이렉트 전 일관되게 정화한다.
             log.info("SLACK_CALLBACK unsupported code={}", e.errorCode)
-            redirectFailure(e.errorCode)
+            redirectFailure(sanitizeErrorCode(e.errorCode))
         } catch (e: SlackOAuthExchangeException) {
             // 전송/네트워크 오류로 교환 자체 실패 — 사용자에겐 일반 실패 화면으로 302(요청 값 미노출).
             log.warn("SLACK_CALLBACK exchange_failed", e)
@@ -149,10 +149,11 @@ class SlackInstallController(
     private fun encode(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8)
 
     /**
-     * 외부 입력(Slack `error` 쿼리) 에러 코드를 안전 문자셋(`[A-Za-z0-9_-]`)으로 제한한다.
+     * Slack 이 준 에러 코드(콜백 `error` 쿼리 + 교환 응답 `error`)를 안전 문자셋(`[A-Za-z0-9_-]`)으로 제한한다.
      *
      * 빈 값·허용 문자 외 문자만 있는 경우 일반 코드로 치환하고, 과도한 길이는 잘라 오픈 리다이렉트/헤더
-     * 주입 표면을 없앤다. Slack 이 실제로 보내는 코드(`access_denied` 등)는 그대로 통과한다.
+     * 주입 표면을 없앤다. Slack 이 실제로 보내는 코드(`access_denied`·`invalid_code` 등)는 그대로 통과한다.
+     * [URLEncoder] 인코딩만으로도 주입은 막히지만, 방어심층으로 컨트롤러에서도 문자셋을 좁힌다.
      */
     private fun sanitizeErrorCode(raw: String): String {
         val cleaned = raw.filter { it.isLetterOrDigit() || it == '_' || it == '-' }.take(MAX_ERROR_CODE_LEN)
