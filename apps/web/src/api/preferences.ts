@@ -7,6 +7,8 @@ import { readXsrfToken } from './sessions'
 import { refreshWhoami } from './useProfile'
 import { DATE_PRESETS } from '@/lib/date-preferences'
 import type { DatePreset } from '@/lib/date-preferences'
+import { START_PAGE_KEYS } from '@/lib/start-page'
+import type { StartPage } from '@/lib/start-page'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zod 스키마 정의
@@ -38,6 +40,16 @@ export function isLocale(value: string): value is Locale {
 }
 
 /**
+ * 지원 시작 페이지(startPage) 값 4종 — 백엔드 `UserPreferences.START_PAGES` companion 미러.
+ * `lib/start-page.ts`의 `START_PAGE_KEYS`(단일 출처)를 그대로 재노출해 키→라우트 매핑 로직과
+ * 값 목록이 drift하지 않게 한다 — FR-PF-02.
+ */
+export const START_PAGES = START_PAGE_KEYS
+
+/** {@link START_PAGES} 중 하나 — `lib/start-page.ts`의 {@link StartPage}와 동일 */
+export type { StartPage }
+
+/**
  * 사용자 환경설정 응답 Zod 스키마.
  * `GET`/`PATCH /api/v1/users/me/preferences` 응답 형태 — 래퍼 없음.
  */
@@ -45,6 +57,7 @@ export const preferencesSchema = z.object({
   theme: z.enum(THEMES),
   locale: z.enum(LOCALES),
   dateFormat: z.enum(DATE_PRESETS),
+  startPage: z.enum(START_PAGES),
 })
 
 /** 사용자 환경설정 응답 타입 — Zod 스키마에서 추론 */
@@ -75,6 +88,7 @@ export interface PreferencesPatchBody {
   theme?: Theme
   locale?: Locale
   dateFormat?: DatePreset
+  startPage?: StartPage
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

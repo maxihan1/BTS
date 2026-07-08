@@ -89,6 +89,17 @@ export const WhoamiResponseSchema = z.object({
    * optional 사유는 theme과 동일(인라인 mock blast-radius 회피).
    */
   dateFormat: z.string().optional(),
+  /**
+   * 시작 페이지 설정 — FR-PF-02 `user_preferences.start_page` 노출(로그인 후 자동 라우팅 목적지의
+   * 논리 키, 백엔드 view-layer는 plain String). 프론트 강한 화이트리스트 검증은 `lib/start-page.ts`의
+   * `isStartPage`/`resolveStartPageNav`가 담당(오픈 리다이렉트 차단, 화이트리스트 밖 값은 `/dashboards`
+   * 폴백). `.optional()`인 이유 — 키 부재도 허용해야 하기 때문. authMethod:를 참조하는 인라인 whoami
+   * mock이 다수 파일에 산재돼 있어 required로 강화하면 전부 z.parse 실패로 깨진다
+   * (zod-schema-strengthen-inline-mock-fanout 사고 재발 방지, FR-PF-01 theme/locale/dateFormat 선례와
+   * 동일한 패턴 — `.default()`는 z.infer 출력을 non-optional화해 기존 mock을 깨뜨리므로 금지).
+   * 실 백엔드는 항상 키를 포함해 응답한다.
+   */
+  startPage: z.string().optional(),
 })
 
 /**
