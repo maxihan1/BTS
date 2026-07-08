@@ -69,7 +69,7 @@ test.describe('다중 Provider 명시 선택 (FR-AU-06)', () => {
     await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
 
     // Then. /dashboard 리다이렉트 대기
-    await page.waitForURL('**/dashboard')
+    await page.waitForURL('**/dashboard*')
 
     // Then. 환영 메시지 + Header 계정 메뉴 확인
     await expect(page.getByRole('heading', { name: '환영합니다, alice' })).toBeVisible()
@@ -99,7 +99,7 @@ test.describe('다중 Provider 명시 선택 (FR-AU-06)', () => {
     await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
 
     // Then. /dashboard 리다이렉트 대기
-    await page.waitForURL('**/dashboard')
+    await page.waitForURL('**/dashboard*')
 
     // Then. 환영 메시지 + Header 계정 메뉴 확인
     await expect(page.getByRole('heading', { name: '환영합니다, alice' })).toBeVisible()

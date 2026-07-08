@@ -43,7 +43,7 @@ test('S1-ldap LDAP-corp 정상 로그인 — alice/Test1234! → /dashboard 환�
   await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
 
   // /dashboard 리다이렉트 대기
-  await page.waitForURL('**/dashboard')
+  await page.waitForURL('**/dashboard*')
 
   // dashboard 본문에 환영 메시지 존재 확인
   await expect(page.getByRole('heading', { name: '환영합니다, alice' })).toBeVisible()

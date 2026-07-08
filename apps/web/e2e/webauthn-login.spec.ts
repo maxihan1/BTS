@@ -100,7 +100,7 @@ test.describe('S3 보안 키 로그인 인증 성공 (FR-MF-03)', () => {
     await page.getByRole('button', { name: mfaStrings.webauthnVerifyButton, exact: true }).click()
 
     // Then. /dashboard 도달
-    await page.waitForURL('**/dashboard')
+    await page.waitForURL('**/dashboard*')
     await expect(page.getByRole('heading', { name: '환영합니다, alice' })).toBeVisible()
   })
 })

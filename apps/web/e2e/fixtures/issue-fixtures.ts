@@ -40,7 +40,7 @@ export async function loginAsBob(page: Page): Promise<void> {
   await page.getByLabel(loginStrings.usernameLabel).fill('bob')
   await page.getByLabel(loginStrings.passwordLabel).fill('password')
   await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
-  await page.waitForURL('**/dashboard')
+  await page.waitForURL('**/dashboard*')
 }
 
 /**

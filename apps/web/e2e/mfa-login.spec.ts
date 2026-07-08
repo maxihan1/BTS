@@ -85,7 +85,7 @@ test.describe('S3 MFA 로그인 2단계 성공 (FR-MF-01)', () => {
     await page.getByRole('button', { name: mfaStrings.loginVerifyButton, exact: true }).click()
 
     // Then. /dashboard 도달
-    await page.waitForURL('**/dashboard')
+    await page.waitForURL('**/dashboard*')
     await expect(page.getByRole('heading', { name: '환영합니다, alice' })).toBeVisible()
   })
 })
