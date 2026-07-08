@@ -15,9 +15,10 @@ import { loginStrings, loginPageStrings } from '../src/i18n/ko'
  *
  * Given  /login 진입 후 1단계 미매칭 이메일 입력 → 2단계 폼 진입
  * When   LDAP-corp 선택 → alice / Test1234! 입력 → 로그인 버튼 클릭
- * Then   /dashboard 리다이렉트 + 환영 메시지 'alice' + Header 계정 메뉴 버튼(displayName '김앨리스' 표시)
+ * Then   로그인 성공(목적지는 startPage 설정에 따르는 부수 사항 — FR-PF-02, alice 기본값
+ *        'dashboards'라 /dashboards 도착) + Header 계정 메뉴 버튼(displayName '김앨리스' 표시)
  */
-test('S1-ldap LDAP-corp 정상 로그인 — alice/Test1234! → /dashboard 환영 메시지', async ({ page }) => {
+test('S1-ldap LDAP-corp 정상 로그인 — alice/Test1234! → 로그인 성공', async ({ page }) => {
   await page.goto('/login')
 
   // 1단계. 이메일 입력 + "계속" — example.com 은 routeStore 미등록 → matched:false → 2단계 진입
@@ -42,11 +43,11 @@ test('S1-ldap LDAP-corp 정상 로그인 — alice/Test1234! → /dashboard 환�
   // 로그인 버튼 클릭 (exact:true — "Okta SSO 로 로그인" 버튼과 구분)
   await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
 
-  // /dashboard 리다이렉트 대기
+  // 로그인 성공 후 리다이렉트 대기 (목적지는 FR-PF-02 startPage 매핑에 따름 — 이 테스트의 관심사 아님)
   await page.waitForURL('**/dashboard*')
 
-  // dashboard 본문에 환영 메시지 존재 확인
-  await expect(page.getByRole('heading', { name: '환영합니다, alice' })).toBeVisible()
+  // 로그인 성공 신호 — 목적지 경로 무관, alice 기본 startPage='dashboards'로 도착 확인
+  await expect(page).toHaveURL(/\/dashboards/)
 
   // Header 트리거 버튼 표시 확인 (DropdownMenu trigger) — displayName(김앨리스) 우선 표시되므로 정규식으로 한정
   await expect(page.getByRole('button', { name: /계정 메뉴$/ })).toBeVisible()

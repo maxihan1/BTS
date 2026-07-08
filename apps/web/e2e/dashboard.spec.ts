@@ -403,16 +403,20 @@ test.describe('FR-DB-01 대시보드 (목록/생성/상세/권한/OCC/접근성/
   })
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 회귀 1: /dashboard (환영) 경로 정상 동작
+  // 회귀 1: /dashboard (환영, 단수) 경로 정상 동작
   //
-  // Given  alice 로그인 → waitForURL('/dashboard')
+  // FR-PF-02로 로그인 직후 목적지는 /dashboards(복수, 목록)로 바뀌었지만, /dashboard(단수,
+  // DashboardPage 환영 화면)는 폐기되지 않은 별개 라우트로 여전히 직접 방문 가능해야 한다.
+  //
+  // Given  alice 로그인(기본 startPage='dashboards'라 /dashboards 도착) → /dashboard 직접 방문
   // Then   "환영합니다, alice" 텍스트 표시 (dashboard.tsx DashboardPage)
   // ───────────────────────────────────────────────────────────────────────────
   test('회귀 — /dashboard 환영 경로 정상 렌더', async ({ page }) => {
-    // Given. alice 로그인 → 로그인 성공 후 /dashboard 이동
+    // Given. alice 로그인 (로그인 직후 목적지는 /dashboards — 이 테스트의 관심사 아님)
     await loginAsAlice(page)
 
-    // loginAsAlice가 /dashboard로 이동하므로 이미 해당 경로에 있음
+    // When. /dashboard(단수) 경로를 명시적으로 방문 — 여전히 유효한 라우트인지 검증
+    await page.goto('/dashboard')
     await expect(page).toHaveURL(/\/dashboard$/)
 
     // Then. 환영 메시지 표시
@@ -422,20 +426,20 @@ test.describe('FR-DB-01 대시보드 (목록/생성/상세/권한/OCC/접근성/
   // ───────────────────────────────────────────────────────────────────────────
   // 회귀 2: 네비게이션 "대시보드" 링크 동작
   //
-  // Given  alice 로그인 + /dashboard 진입
+  // Given  alice 로그인 (기본 startPage='dashboards'라 이미 /dashboards에 도착)
   // When   Header nav의 "대시보드" 링크 클릭
-  // Then   /dashboards 로 SPA 이동
+  // Then   /dashboards 로 SPA 이동 유지
   //        alice 소유 대시보드 목록 표시
   // ───────────────────────────────────────────────────────────────────────────
   test('회귀 — 네비게이션 "대시보드" 링크 → /dashboards 이동', async ({ page }) => {
-    // Given. alice 로그인 → /dashboard 환영 페이지
+    // Given. alice 로그인 → 로그인 직후 목적지(기본값)가 이미 /dashboards
     await loginAsAlice(page)
-    await expect(page).toHaveURL(/\/dashboard$/)
+    await expect(page).toHaveURL(/\/dashboards$/)
 
-    // When. 메인 메뉴 "대시보드" 링크 클릭
+    // When. 메인 메뉴 "대시보드" 링크 클릭 (이미 /dashboards에 있어도 링크 자체의 동작 검증)
     await page.getByRole('navigation', { name: '메인 메뉴' }).getByRole('link', { name: '대시보드', exact: true }).click()
 
-    // Then. /dashboards 로 이동
+    // Then. /dashboards 로 이동(유지)
     await expect(page).toHaveURL(/\/dashboards$/)
 
     // Then. alice 소유 대시보드 목록 표시
