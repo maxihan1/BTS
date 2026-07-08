@@ -33,6 +33,10 @@ data class KeymapBinding(
     val action: String,
     val keyCombo: String,
 ) {
+    /** [keyCombo] 를 [LEADER_SEPARATOR] 기준으로 나눈 토큰 — trigger 파생/형식 검사가 공유. */
+    private val tokens: List<String>
+        get() = keyCombo.split(LEADER_SEPARATOR)
+
     /**
      * [keyCombo] 형식에서 파생한 발화 방식.
      *
@@ -41,10 +45,7 @@ data class KeymapBinding(
      * ([hasValidFormat] 이 검사).
      */
     val trigger: KeymapTrigger
-        get() {
-            val tokens = keyCombo.split(LEADER_SEPARATOR)
-            return if (tokens.size == 2 && tokens[0] == LEADER_KEY) KeymapTrigger.LEADER else KeymapTrigger.SINGLE
-        }
+        get() = if (tokens.size == 2 && tokens[0] == LEADER_KEY) KeymapTrigger.LEADER else KeymapTrigger.SINGLE
 
     /**
      * [keyCombo] 가 single(1글자) 또는 `"g <key>"` leader(공백 1칸, 2토큰, 두 번째 토큰 1글자)
@@ -55,22 +56,18 @@ data class KeymapBinding(
      *
      * @return 형식을 만족하면 true
      */
-    fun hasValidFormat(): Boolean {
-        val tokens = keyCombo.split(LEADER_SEPARATOR)
-        return when {
+    fun hasValidFormat(): Boolean =
+        when {
             keyCombo.isBlank() -> false
             tokens.size == 1 -> keyCombo.length == KEY_TOKEN_LENGTH
             tokens.size == 2 -> tokens[0] == LEADER_KEY && tokens[1].length == KEY_TOKEN_LENGTH
             else -> false
         }
-    }
 
     /**
      * leader continuation 키(두 번째 토큰)를 반환한다.
      *
      * @return [trigger] 가 [KeymapTrigger.LEADER] 이면 두 번째 토큰, 아니면 null.
      */
-    fun leaderContinuationKey(): String? {
-        return if (trigger == KeymapTrigger.LEADER) keyCombo.split(LEADER_SEPARATOR)[1] else null
-    }
+    fun leaderContinuationKey(): String? = if (trigger == KeymapTrigger.LEADER) tokens[1] else null
 }
