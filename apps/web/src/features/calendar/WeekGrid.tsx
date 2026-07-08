@@ -154,6 +154,17 @@ function handleActivationKeyDown(e: KeyboardEvent<HTMLElement>, onActivate: () =
   }
 }
 
+/** 클릭 가능한 이벤트 칩 3종(막대/마감일칩/Worklog칩 활성)이 공유하는 hover/active/포커스 링 클래스 */
+const INTERACTIVE_CHIP_CLASSES =
+  'hover:brightness-95 active:brightness-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-ring'
+
+/** 이슈 이벤트(기간 막대/마감일 칩)가 공유하는 색/아이콘/aria-label 계산(T5 §4.1) — 중복 제거 리팩터 */
+function getIssueEventPresentation(event: CalendarIssueEvent): CategoryStyle & { ariaLabel: string } {
+  const style = STATE_CATEGORY_STYLE[deriveStateCategory(event.currentStateKey)]
+  const ariaLabel = calendarLabels.a11y.eventAriaLabel(event.key, event.summary, style.label, event.startDate, event.dueDate)
+  return { ...style, ariaLabel }
+}
+
 /** 이슈 기간 막대 세그먼트 Props */
 export interface IssueBarSegmentProps {
   event: CalendarIssueEvent
@@ -166,12 +177,10 @@ export interface IssueBarSegmentProps {
 
 /** 이슈 기간 막대 세그먼트 — 각 날짜 셀이 독립적으로 렌더하는 조각(T5 결정 2, 좌표 계산 없음) */
 export function IssueBarSegment({ event, isStart, isEnd, onNavigate }: IssueBarSegmentProps): JSX.Element {
-  const category = deriveStateCategory(event.currentStateKey)
-  const style = STATE_CATEGORY_STYLE[category]
-  const Icon = style.Icon
+  const { bgClass, Icon, ariaLabel } = getIssueEventPresentation(event)
+  const isDone = deriveStateCategory(event.currentStateKey) === 'DONE'
   const rounded = `${isStart ? 'rounded-l-sm' : ''} ${isEnd ? 'rounded-r-sm' : ''}`.trim()
   const mid = !isStart && !isEnd ? '-mx-1' : ''
-  const ariaLabel = calendarLabels.a11y.eventAriaLabel(event.key, event.summary, style.label, event.startDate, event.dueDate)
   const activate = () => onNavigate(event.key)
 
   return (
@@ -182,10 +191,10 @@ export function IssueBarSegment({ event, isStart, isEnd, onNavigate }: IssueBarS
       aria-label={ariaLabel}
       onClick={activate}
       onKeyDown={(e) => handleActivationKeyDown(e, activate)}
-      className={`flex h-5 items-center gap-1 overflow-hidden px-1 text-xs font-medium text-white ${style.bgClass} ${rounded} ${mid} hover:brightness-95 active:brightness-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-ring`}
+      className={`flex h-5 items-center gap-1 overflow-hidden px-1 text-xs font-medium text-white ${bgClass} ${rounded} ${mid} ${INTERACTIVE_CHIP_CLASSES}`}
     >
       <Icon className="size-3 shrink-0" aria-hidden="true" />
-      <span className={`truncate ${category === 'DONE' ? 'line-through' : ''}`}>
+      <span className={`truncate ${isDone ? 'line-through' : ''}`}>
         {event.key} {event.summary}
       </span>
     </div>
@@ -200,10 +209,7 @@ export interface DueDateChipProps {
 
 /** 마감일 전용 알약형 칩(T5 §4.3) — 기간 막대의 "셀 전체 폭 사각형"과 형태로 구분 */
 export function DueDateChip({ event, onNavigate }: DueDateChipProps): JSX.Element {
-  const category = deriveStateCategory(event.currentStateKey)
-  const style = STATE_CATEGORY_STYLE[category]
-  const Icon = style.Icon
-  const ariaLabel = calendarLabels.a11y.eventAriaLabel(event.key, event.summary, style.label, event.startDate, event.dueDate)
+  const { bgClass, Icon, ariaLabel } = getIssueEventPresentation(event)
   const activate = () => onNavigate(event.key)
 
   return (
@@ -214,7 +220,7 @@ export function DueDateChip({ event, onNavigate }: DueDateChipProps): JSX.Elemen
       aria-label={ariaLabel}
       onClick={activate}
       onKeyDown={(e) => handleActivationKeyDown(e, activate)}
-      className={`flex w-fit items-center gap-1 overflow-hidden rounded-full px-1.5 text-xs font-medium text-white ${style.bgClass} hover:brightness-95 active:brightness-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-ring`}
+      className={`flex w-fit items-center gap-1 overflow-hidden rounded-full px-1.5 text-xs font-medium text-white ${bgClass} ${INTERACTIVE_CHIP_CLASSES}`}
     >
       <Icon className="size-3 shrink-0" aria-hidden="true" />
       <span className="truncate">{event.key}</span>
@@ -257,7 +263,7 @@ export function WorklogChip({ worklog, onNavigate }: WorklogChipProps): JSX.Elem
       title={label}
       onClick={activate}
       onKeyDown={(e) => handleActivationKeyDown(e, activate)}
-      className="flex w-fit items-center gap-1 overflow-hidden rounded-full bg-violet-800 px-1.5 text-xs font-medium text-white hover:brightness-95 active:brightness-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-ring"
+      className={`flex w-fit items-center gap-1 overflow-hidden rounded-full bg-violet-800 px-1.5 text-xs font-medium text-white ${INTERACTIVE_CHIP_CLASSES}`}
     >
       <Clock className="size-3 shrink-0" aria-hidden="true" />
       <span className="truncate">{label}</span>
