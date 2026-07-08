@@ -59,7 +59,10 @@ class JdbcUserPreferencesRepository(
             WHERE user_id = :userId
         """
 
-        /** theme/locale/date_format/start_page UPSERT — user_id 가 처음 등장하면 INSERT(lazy 생성), 이미 있으면 ON CONFLICT UPDATE. */
+        /**
+         * theme/locale/date_format/start_page UPSERT — user_id 가 처음 등장하면 INSERT(lazy 생성),
+         * 이미 있으면 ON CONFLICT UPDATE.
+         */
         const val SQL_UPSERT = """
             INSERT INTO user_preferences (user_id, theme, locale, date_format, start_page)
             VALUES (:userId, :theme, :locale, :dateFormat, :startPage)
