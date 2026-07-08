@@ -12,7 +12,10 @@ export const SlackInstallationSchema = z.object({
   connected: z.boolean(),
   teamId: z.string().nullable(),
   teamName: z.string().nullable(),
+  botUserId: z.string().nullable(),
   installedAt: z.string().nullable(),
+  updatedAt: z.string().nullable(),
+  installerName: z.string().nullable(),
 })
 
 /** Slack authorize URL 응답 스키마 — `GET /api/v1/slack/install-url` */
@@ -38,7 +41,7 @@ export type SlackInstallUrl = z.infer<typeof SlackInstallUrlSchema>
  * 현재 워크스페이스의 Slack 연결 상태를 조회한다.
  *
  * `GET /api/v1/slack/installation` → 200 {@link SlackInstallationSchema}.
- * 미연결이면 `connected: false`와 함께 teamId/teamName/installedAt이 모두 null로 온다.
+ * 미연결이면 `connected: false`와 함께 teamId/teamName/botUserId/installedAt/updatedAt/installerName이 모두 null로 온다.
  *
  * @returns Slack 연결 상태
  * @throws ApiError 서버 오류 또는 미인증 시
