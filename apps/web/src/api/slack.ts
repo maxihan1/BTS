@@ -21,6 +21,16 @@ export const SlackInstallUrlSchema = z.object({
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 추론된 타입 (interface 중복 정의 금지)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Slack 연결 상태 타입 — Zod 스키마에서 추론 */
+export type SlackInstallation = z.infer<typeof SlackInstallationSchema>
+
+/** Slack authorize URL 응답 타입 — Zod 스키마에서 추론 */
+export type SlackInstallUrl = z.infer<typeof SlackInstallUrlSchema>
+
+// ─────────────────────────────────────────────────────────────────────────────
 // API 함수
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -33,7 +43,7 @@ export const SlackInstallUrlSchema = z.object({
  * @returns Slack 연결 상태
  * @throws ApiError 서버 오류 또는 미인증 시
  */
-export async function getSlackInstallation(): Promise<z.infer<typeof SlackInstallationSchema>> {
+export async function getSlackInstallation(): Promise<SlackInstallation> {
   return apiGet('/api/v1/slack/installation', SlackInstallationSchema)
 }
 
@@ -46,6 +56,6 @@ export async function getSlackInstallation(): Promise<z.infer<typeof SlackInstal
  * @returns Slack authorize URL
  * @throws ApiError 서버 오류 또는 미인증 시
  */
-export async function getSlackInstallUrl(): Promise<z.infer<typeof SlackInstallUrlSchema>> {
+export async function getSlackInstallUrl(): Promise<SlackInstallUrl> {
   return apiGet('/api/v1/slack/install-url', SlackInstallUrlSchema)
 }
