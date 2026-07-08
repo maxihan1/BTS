@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 46개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 9 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + 프로젝트 CFD 1 + 프로젝트 Cycle/Lead Time 1 + settings 8 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 + Slack 연결 1 | FR-IM-01 D6/D7: projectImportSettingsRoute /projects/$projectKey/settings/import 추가 | FR-RP-04 D6/D7: projectCycleTimeRoute /projects/$projectKey/reports/cycle-time 추가 | FR-PR-01 D6: settingsProfileRoute /settings/profile 추가 | FR-PF-01 Task 7: settingsPreferencesRoute /settings/preferences 추가 | FR-SL-01 D6/D7 Task 7: adminSlackRoute /admin/slack 추가)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 47개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 9 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + 프로젝트 CFD 1 + 프로젝트 Cycle/Lead Time 1 + settings 9 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 + Slack 연결 1 | FR-IM-01 D6/D7: projectImportSettingsRoute /projects/$projectKey/settings/import 추가 | FR-RP-04 D6/D7: projectCycleTimeRoute /projects/$projectKey/reports/cycle-time 추가 | FR-PR-01 D6: settingsProfileRoute /settings/profile 추가 | FR-PF-01 Task 7: settingsPreferencesRoute /settings/preferences 추가 | FR-SL-01 D6/D7 Task 7: adminSlackRoute /admin/slack 추가 | FR-PF-03 Task 9: settingsKeymapRoute /settings/keymap 추가)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -35,6 +35,7 @@ import { NotificationSettingsRouteAdapter } from './routes/settings.notification
 import { SettingsPatsRouteAdapter } from './routes/settings.pats'
 import { ProfileSettingsRouteAdapter } from './routes/settings.profile'
 import { PreferencesSettingsRouteAdapter } from './routes/settings.preferences'
+import { KeymapSettingsRouteAdapter } from './routes/settings.keymap'
 import { ProjectWorklogReportRouteAdapter } from './routes/projects.$projectKey.reports.worklog'
 import { ProjectVelocityReportRouteAdapter } from './routes/projects.$projectKey.reports.velocity'
 import { ProjectCfdReportRouteAdapter } from './routes/projects.$projectKey.reports.cfd'
@@ -583,9 +584,18 @@ const settingsPreferencesRoute = createRoute({
   beforeLoad: requireAuth,
 })
 
+/** 단축키 커스터마이즈 설정 라우트 — /settings/keymap, requireAuthAndPasswordChanged (settings.sessions/notifications/pats와 동일 가드) (FR-PF-03 Task 9) */
+const settingsKeymapRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings/keymap',
+  component: KeymapSettingsRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
 /**
  * 전체 라우트 트리.
- * 46개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 47개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
  *   · /admin/webhooks · /admin/webhooks/:id/deliveries · /admin/slack
@@ -600,7 +610,7 @@ const settingsPreferencesRoute = createRoute({
  *   · /projects/:projectKey/reports/worklog · /projects/:projectKey/reports/velocity · /projects/:projectKey/reports/cfd
  *   · /projects/:projectKey/reports/cycle-time
  *   · /settings/sessions · /settings/password · /settings/account-links · /settings/mfa
- *   · /settings/notifications · /settings/pats · /settings/profile · /settings/preferences
+ *   · /settings/notifications · /settings/pats · /settings/profile · /settings/preferences · /settings/keymap
  * requireAuth 라우트: /dashboard · /inbox · /dashboards · /dashboards/* · /search · /issues · /issues/* · /admin/* · /projects/* · /settings/*
  */
 export const routeTree = rootRoute.addChildren([
@@ -686,6 +696,8 @@ export const routeTree = rootRoute.addChildren([
   settingsProfileRoute,
   // identity-access BC — 사용자 환경설정(테마/언어/날짜포맷) (FR-PF-01 Task 7)
   settingsPreferencesRoute,
+  // identity-access BC — 단축키 커스터마이즈 설정 (FR-PF-03 Task 9)
+  settingsKeymapRoute,
   // workflows (레거시 workflow 상세 — 향후 마이그레이션 예정)
   workflowsKeyRoute,
 ])

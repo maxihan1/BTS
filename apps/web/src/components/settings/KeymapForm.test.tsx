@@ -9,7 +9,7 @@ import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { aliceUser, mockAccessToken } from '@/mocks/auth-fixtures'
 import { useAuthStore } from '@/auth/authStore'
-import { resetKeymapStore } from '@/mocks/keymap-handlers'
+import { keymapHandlers, resetKeymapStore } from '@/mocks/keymap-handlers'
 import { KeymapForm } from './KeymapForm'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -36,11 +36,13 @@ const ALICE_TOKEN = mockAccessToken('alice')
 
 beforeEach(() => {
   resetKeymapStore()
+  server.use(...keymapHandlers)
   useAuthStore.getState().setSession({ accessToken: ALICE_TOKEN, user: aliceUser })
 })
 
 afterEach(() => {
   useAuthStore.getState().clearSession()
+  server.resetHandlers()
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -119,9 +121,9 @@ describe('KeymapForm — 실시간 충돌 배지', () => {
 
     fireEvent.keyDown(searchInput, { key: 'c' })
 
-    expect(
-      await screen.findByText('"c"가 새 이슈 생성, 검색으로 이동에 중복 배정되었습니다.'),
-    ).toBeInTheDocument()
+    // 완전중복은 관련된 두 action(create-issue/search) 행 모두에 동일 메시지가 배지로 표시된다.
+    const badges = await screen.findAllByText('"c"가 새 이슈 생성, 검색으로 이동에 중복 배정되었습니다.')
+    expect(badges).toHaveLength(2)
   })
 
   it('T8: dead leader("g g") 시 배지가 즉시 표시된다', async () => {

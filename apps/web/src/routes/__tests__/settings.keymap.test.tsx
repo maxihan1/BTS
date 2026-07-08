@@ -7,7 +7,7 @@ import { server } from '@/test/server'
 import { aliceUser, mockAccessToken, makeWhoami } from '@/mocks/auth-fixtures'
 import { useAuthStore } from '@/auth/authStore'
 import { composeGuards, requireAuth, requirePasswordChanged, requireMfaEnrolled } from '@/auth/routeGuard'
-import { resetKeymapStore } from '@/mocks/keymap-handlers'
+import { keymapHandlers, resetKeymapStore } from '@/mocks/keymap-handlers'
 import { KeymapSettingsPage } from '@/routes/settings.keymap'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,6 +44,7 @@ const ALICE_TOKEN = mockAccessToken('alice')
 
 beforeEach(() => {
   resetKeymapStore()
+  server.use(...keymapHandlers)
   useAuthStore.getState().setSession({ accessToken: ALICE_TOKEN, user: aliceUser })
 })
 
