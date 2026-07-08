@@ -124,6 +124,8 @@ data class CalendarWorklogView(val id: UUID, issueKey, issueSummary: String,
 ```
 
 - **timezone 책임 경계**: identity-access 서비스가 프로필 timezone 읽기 → 로컬 날짜/Instant 변환 → 포트 호출 → worklog `startedAt`(Instant)을 로컬 date로 매핑. issue-tracking adapter는 timezone 무지(DATE는 tz 무관, worklog는 Instant 범위만 받음).
+- **Instant 변환 공식(고정)**: `fromInstant = from.atStartOfDay(userZone).toInstant()`, `toInstant = to.plusDays(1).atStartOfDay(userZone).toInstant()` (half-open `[fromInstant, toInstant)`, `to` 당일 포함). 선례 `WorklogAggregateRepository.aggregate`(`STARTED_AT >= fromOdt AND STARTED_AT < toExcl`)와 동형. `to` 당일 자정/23:59:59로 오해 시 마지막 날 worklog 누락(off-by-one-day) — 반드시 `to+1일 로컬 자정` exclusive.
+- **DST 경계**: `atStartOfDay(zone)`은 DST gap/overlap 날 경계가 밀릴 수 있음(한국은 DST 없음). 테스트에 DST 존(America/New_York 봄 전환) 경계 1건 포함.
 
 ## 데이터 모델 변경
 

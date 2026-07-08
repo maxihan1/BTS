@@ -87,7 +87,7 @@ cross-BC 조회(issue-tracking, agile-planning)가 핵심 설계 포인트.
 - files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/calendar/CalendarService.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/calendar/CalendarResponse.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/calendar/CalendarServiceTest.kt`]
 - depends-on: [1]
 
-**RED**: 단위 테스트(fake `UserCalendarLookupPort`). from>to→400, 창>90일→400, 날짜형식오류→400, tz 변환(worklog Instant→로컬 date, S4 경계), 정렬(issueEvents `(start?:due,key)`·worklogEvents `(date,startedAt)`), 빈/truncated, 프로필 tz 미설정→UTC.
+**RED**: 단위 테스트(fake `UserCalendarLookupPort`). from>to→400, 창>90일→400, 날짜형식오류→400, tz 변환(worklog Instant→로컬 date, S4 KST 경계), **★C5 DST 존 경계 1건(America/New_York 봄 전환일, `atStartOfDay` 밀림 검증)**, Instant 변환 공식(`from.atStartOfDay`·`to.plusDays(1).atStartOfDay` half-open), 정렬(issueEvents `(start?:due,key)`·worklogEvents `(date,startedAt)`), 빈/truncated, 프로필 tz 미설정→UTC.
 **GREEN**: 서비스. `UserProfileService`(같은 모듈 직접)로 timezone 조회 → from/to 로컬날짜↔Instant 범위 변환 → 포트 2회 호출 → worklog date 매핑 → 정렬 → `CalendarResponse` 조립. 검증 실패는 `ResponseStatusException(400, INVALID_CALENDAR_RANGE)`.
 **REFACTOR**: 창 검증 상수(90일)·KDoc.
 **검증**: `./gradlew :backend:identity-access:test --tests *CalendarServiceTest`
@@ -96,11 +96,12 @@ cross-BC 조회(issue-tracking, agile-planning)가 핵심 설계 포인트.
 
 **메타**.
 - agent: `backend-engineer` (인증 게이트 = security-engineer 리뷰 대상)
-- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/calendar/CalendarController.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/calendar/CalendarControllerIntegrationTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/calendar/StubUserCalendarLookupPortConfig.kt`]
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/calendar/CalendarController.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/calendar/CalendarPortConfig.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/calendar/CalendarControllerIntegrationTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/calendar/StubUserCalendarLookupPortConfig.kt`]
 - depends-on: [3]
 
 **RED**: HTTP 통합 테스트(full-boot + `@TestConfiguration` stub `UserCalendarLookupPort` @Bean — BC 격리로 실 adapter 불가). 200(stub 시드), 400(잘못된 창), 401(미인증). identity-access RANDOM_PORT 부팅 레시피(memory [[identity-access-prod-randomport-boot-recipe]]).
-**GREEN**: `GET /api/v1/users/me/calendar` 컨트롤러(actor=JWT me), DTO 직렬화(issueEvents/worklogEvents/timezone/truncated), 포트 소비 배선(런타임 fail-safe default). @WebMvcTest 로드 슬라이스는 신규 협력자 mock(memory [[whoami-slice-mock-skipci-masking]]·[[new-crossbc-dep-openapi-mockbean-regression]]).
+**GREEN**: `GET /api/v1/users/me/calendar` 컨트롤러(actor=JWT me), DTO 직렬화(issueEvents/worklogEvents/timezone/truncated).
+  **★C1 회귀 방지(리뷰 BLOCKER 파생)**: identity-access는 자체 컨텍스트 부팅(`com.atlas.bts.identity`, `com.bts.issue` 미스캔)이라 `CalendarService`가 포트 빈을 요구하면 기존 full-boot 테스트 15개+가 NoSuchBean으로 깨짐. **MAIN에 `CalendarPortConfig` = `@Bean @ConditionalOnMissingBean UserCalendarLookupPort`(인터페이스 default 반환) fail-safe 빈을 명시 산출물로 추가** → prod 부팅 + 전 full-boot 테스트 동시 커버. 시드 필요한 200 검증만 per-test stub. (memory [[new-crossbc-dep-openapi-mockbean-regression]]·[[profile-scoped-bean-boot-failure]]·[[whoami-slice-mock-skipci-masking]]).
 **REFACTOR**: OpenApi 어노테이션·KDoc.
 **검증**: `./gradlew :backend:identity-access:test --tests *CalendarControllerIntegrationTest`
 
@@ -131,11 +132,11 @@ cross-BC 조회(issue-tracking, agile-planning)가 핵심 설계 포인트.
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/routes/calendar.tsx`, `apps/web/src/features/calendar/CalendarView.tsx`, `apps/web/src/features/calendar/MonthGrid.tsx`, `apps/web/src/features/calendar/WeekGrid.tsx`, `apps/web/src/features/calendar/calendar.test.tsx`]
+- files: [`apps/web/src/routes/calendar.tsx`, `apps/web/src/features/calendar/CalendarView.tsx`, `apps/web/src/features/calendar/MonthGrid.tsx`, `apps/web/src/features/calendar/WeekGrid.tsx`, `apps/web/src/features/calendar/calendar.test.tsx`, `apps/web/src/components/Header.tsx`]
 - depends-on: [5, 6]
 
-**RED**: 컴포넌트 테스트 — 월 뷰 6주 그리드 렌더, 주 뷰 7일, 이벤트가 올바른 날짜 셀에 배치, 이슈 클릭→`/issues/{key}` 네비, 빈 상태, from/to→useCalendar 호출.
-**GREEN**: 네이티브 `Date` 그리드(신규 의존성 0). 디자인 스펙(T5) 반영. 이전/다음/오늘·월↔주 토글이 from/to 갱신. 전역 네비게이션 진입점 추가.
+**RED**: 컴포넌트 테스트 — 월 뷰 6주 그리드 렌더, 주 뷰 7일, 이벤트가 올바른 날짜 셀에 배치, 이슈 클릭→`/issues/{key}` 네비, 빈 상태, from/to→useCalendar 호출, **★C3 전역 nav에 캘린더 링크 렌더(`Header.tsx`)**.
+**GREEN**: 네이티브 `Date` 그리드(신규 의존성 0). 디자인 스펙(T5) 반영. 이전/다음/오늘·월↔주 토글이 from/to 갱신. **★C3 전역 nav 진입점 = `apps/web/src/components/Header.tsx`에 `/calendar` Link 추가**(리뷰 지적 — 이전 계획서 미선언 공유파일).
 **REFACTOR**: 날짜 유틸 순수함수 추출(테스트 용이)·접근성 속성.
 **검증**: `pnpm --filter web test calendar` + `pnpm --filter web typecheck`
 
@@ -159,4 +160,22 @@ cross-BC 조회(issue-tracking, agile-planning)가 핵심 설계 포인트.
 - 보안 리뷰: T2(cross-project visibility 필터) + T4(/users/me 인증 게이트) → gate 2 security-engineer 집중.
 - 리스크: (a) T2 cross-project visibility 술어 실재 grep 확인, (b) T4 새 포트 소비 슬라이스/full-boot stub 배선.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 엔지니어링 적대적 리뷰 (2026-07-08, Plan 서브에이전트 — autoplan 대체 [[bts-review-plan-autoplan-overkill]])
+
+**🛑 BLOCKER (Maxi 결정 필요)**
+- **B1 — cross-project visibility 술어는 재사용 불가, 신규 필요(security-critical).** 근거: `IssueRepository.buildActiveSecureWhere`(:945-951)가 `PROJECTS.KEY.eq(projectKey)` 무조건 AND / `IssueSecurityDirectory.accessibleLevels(actorId, projectKey)` projectKey 필수(프로젝트별 스킴) / `IssueSearchQuery` KDoc "cross-project는 후속 PR". 유일한 cross-project 스캔(`findOpenIssuesDueOn` :2080)은 visibility 필터 **없음**(알림용=본인 데이터). → 한 프로젝트 등급을 타 프로젝트 이슈에 오적용 시 **fail-open 누출**. **게이트 1 결정 D1로 승격**(아래).
+  - C4(worklog issueSummary 누출)도 같은 결정에 포함 — worklog VO의 `issueSummary`가 현재 비가시 이슈 제목 노출 가능.
+
+**⚠️ CONCERN**
+- **C1 (반영됨)** — identity-access 자체 부팅 컨텍스트 → 새 포트 소비 시 full-boot 테스트 15개+ NoSuchBean. Task 4에 MAIN `@ConditionalOnMissingBean` fail-safe 빈 명시 산출물 추가.
+- **C2 (Maxi 결정 필요, D2)** — 성능 인덱스. `idx_issues_due_date_open`(V026)은 부분(열린 이슈만)+due_date 선행, `idx_issues_project_assignee_active`(V029)는 project_id 선행 → cross-project 담당 조회 부적합. "마이그레이션 0" 주장과 불일치. → 게이트 1 결정 D2.
+- **C3 (반영됨)** — 전역 nav 진입점 `Header.tsx`(:92-109)가 T7 미선언. T7 파일+어서션 추가.
+- **C5 (반영됨)** — toInstant 공식 미고정(off-by-one-day)+DST 존 테스트 부재. 스펙 공식 고정 + T3 DST 테스트.
+
+**✅ OK**
+- OK1 — 포트 토폴로지(사용자 축 신규 포트)는 TimelineLookupPort 선례와 정합. BC 격리 준수(identity-access→shared-kernel만, ArchUnit 강제). fail-safe default 동형.
+- OK2 — depends-on 그래프 순환 없음, wave 분리 타당. (경미: T6·T8이 MSW handler 파일 공유하나 T8→T7→T6 의존으로 직렬화 → 충돌 없음.)
+
+**미해결(게이트 1 Maxi 결정)**: D1(B1+C4 visibility 범위/방식), D2(C2 인덱스). 결정 후 Task 2 확장/신규 db task 반영.
