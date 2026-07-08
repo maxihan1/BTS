@@ -31,7 +31,8 @@ import javax.sql.DataSource
  * - 재upsert 시 updated_at 증가
  * - 저장된 bot_token_encrypted 가 전달한 암호문과 일치(평문 변환 없이 그대로 저장됨을 확인)
  * - findCurrentInstallation 부재 시 null
- * - findCurrentInstallation 이 installed_at 최신 1건을 경량 projection(봇 토큰 미로드)으로 반환
+ * - findCurrentInstallation 이 installed_at 최신 1건을 경량 projection(botUserId·installedBy 포함, 봇 토큰 미로드)으로 반환
+ * - findCurrentInstallation view 의 updatedAt 이 재upsert 로 installedAt 과 벌어져 별도 컬럼으로 매핑됨
  */
 class JdbcSlackInstallRepositoryTest {
     companion object {
@@ -159,8 +160,9 @@ class JdbcSlackInstallRepositoryTest {
     @Test
     fun `findCurrentInstallation — installed_at 이 가장 최신인 워크스페이스 1건을 반환한다`() {
         // 서로 다른 team_id 두 워크스페이스를 설치한다.
+        val newerInstall = sampleInstall(teamId = "T_NEW", teamName = "New Workspace")
         repository.upsert(sampleInstall(teamId = "T_OLD", teamName = "Old Workspace"))
-        repository.upsert(sampleInstall(teamId = "T_NEW", teamName = "New Workspace"))
+        repository.upsert(newerInstall)
 
         // installed_at 은 upsert 경로에서 DEFAULT now() 라 순서가 비결정적이므로,
         // 결정적 검증을 위해 두 워크스페이스의 installed_at 을 고정 값으로 지정한다.
@@ -175,6 +177,30 @@ class JdbcSlackInstallRepositoryTest {
         assertThat(current!!.teamId).isEqualTo("T_NEW")
         assertThat(current.teamName).isEqualTo("New Workspace")
         assertThat(current.installedAt).isEqualTo(newer)
+        // 확장 projection — 이름 해석·응답 메타에 쓰이는 필드가 삽입한 행과 일치한다(봇 토큰은 여전히 미로드).
+        assertThat(current.botUserId).isEqualTo(newerInstall.botUserId)
+        assertThat(current.installedBy).isEqualTo(newerInstall.installedBy)
+    }
+
+    @Test
+    fun `findCurrentInstallation — 재upsert 로 updated_at 만 갱신되면 view 의 updatedAt 이 installedAt 이후로 반환된다`() {
+        repository.upsert(sampleInstall())
+
+        // installed_at 을 과거 고정 값으로 내려 두면, 재upsert 가 now() 로 갱신하는 updated_at 과 벌어진다.
+        val installedAt = Instant.parse("2026-01-01T00:00:00Z")
+        setInstalledAt("T_WORKSPACE_A", installedAt)
+
+        // updated_at 해상도 차이를 보장하기 위한 최소 대기 (재upsert updated_at 테스트와 동형).
+        Thread.sleep(10)
+        repository.upsert(sampleInstall(teamName = "Renamed"))
+
+        val current = repository.findCurrentInstallation()
+
+        assertThat(current).isNotNull
+        assertThat(current!!.installedAt).isEqualTo(installedAt)
+        // updated_at 은 재upsert 로 now() 갱신되어 installed_at 이후이며, 별도 컬럼으로 매핑된다.
+        assertThat(current.updatedAt).isAfter(current.installedAt)
+        assertThat(current.updatedAt).isEqualTo(updatedAtOf("T_WORKSPACE_A").toInstant())
     }
 
     private fun setInstalledAt(
