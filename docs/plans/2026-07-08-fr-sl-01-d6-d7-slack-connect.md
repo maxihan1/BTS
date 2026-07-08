@@ -243,11 +243,12 @@ API 2종(관리자 가드) + 신규 read projection `SlackInstallationView`(토�
 - depends-on: []
 - RED: 스키마가 botUserId·updatedAt·installerName(전부 `.string().nullable()`) 파싱. GREEN: `SlackInstallationSchema` 필드 추가 + 타입 export 갱신.
 
-### Task R2. service — installerName 해석 + 필드 확장
+### Task R2. service — installerName 해석 + 필드 확장 + test-boot 스텁
 - agent: `security-engineer`
-- files: [`.../application/SlackInstallService.kt`, `.../test/.../application/SlackInstallServiceTest.kt`]
+- files: [`.../application/SlackInstallService.kt`, `.../test/.../application/SlackInstallServiceTest.kt`, `.../test/.../StubUserLookupPort.kt`(신규), `.../test/.../SlackTestcontainersConfig.kt`]
 - depends-on: [R1]
 - RED: 관리자+설치 → status에 botUserId·updatedAt·installerName 포함. `UserLookupPort.findDisplayNamesByIds(setOf(installedBy))`로 이름 해석(mock), 미해석 시 installerName=null. 비관리자 여전히 SlackForbiddenException(가드 먼저). GREEN: `SlackInstallService` 생성자에 `UserLookupPort` 주입, `SlackInstallationStatus`에 botUserId·updatedAt·installerName 추가. installed_by는 이름 해석에만.
+- **★test-boot 컨텍스트 로드**(new-crossbc-dep-openapi-mockbean-regression). 생성자에 새 포트 추가 시 test-boot 컨텍스트가 UserLookupPort 빈 부재로 로드 실패 → `StubUserLookupPort`(신규, StubSystemPermissionResolver 선례. `findDisplayNamesByIds` 반환을 테스트가 등록 가능한 mutable map) + `SlackTestcontainersConfig`에 `@Bean` 등록. **R2 직후 모듈 `:test` 전체 green이어야 함**(SlackContextLoadTest·기존 통합테스트 포함). R3의 통합테스트가 이 stub에 이름을 등록해 installerName 검증.
 
 ### Task R7. 카드 — 신규 필드 표시
 - agent: `frontend-engineer`
@@ -255,11 +256,11 @@ API 2종(관리자 가드) + 신규 read projection `SlackInstallationView`(토�
 - depends-on: [R6]
 - RED: 연결됨 → installerName(있으면)·botUserId·설치일(installedAt)·최근 갱신(updatedAt) 표시. GREEN: 카드 dl 확장. installerName null이면 해당 행 생략.
 
-### Task R3. controller/DTO 확장 + test-boot UserLookupPort stub
+### Task R3. controller/DTO 확장 (응답 표면)
 - agent: `security-engineer`
-- files: [`.../web/SlackInstallQueryResponses.kt`, `.../web/SlackInstallQueryController.kt`, `.../test/.../StubUserLookupPort.kt`(신규), `.../test/.../SlackTestcontainersConfig.kt`, `.../test/.../web/SlackInstallQueryControllerIntegrationTest.kt`]
+- files: [`.../web/SlackInstallQueryResponses.kt`, `.../web/SlackInstallQueryController.kt`, `.../test/.../web/SlackInstallQueryControllerIntegrationTest.kt`]
 - depends-on: [R2]
-- RED: 통합테스트 — 응답에 botUserId·updatedAt·installerName 포함, installerName은 stub이 등록한 이름, **installed_by UUID·봇토큰 여전히 미노출**. GREEN: `SlackInstallationResponse`에 3필드 추가, 컨트롤러 매핑, `StubUserLookupPort`(findDisplayNamesByIds 등록형) @Bean 등록.
+- RED: 통합테스트 — 응답에 botUserId·updatedAt·installerName 포함, installerName은 R2가 등록한 `StubUserLookupPort`에 이름을 세팅해 검증, **installed_by UUID·봇토큰 여전히 미노출**. GREEN: `SlackInstallationResponse`에 botUserId·updatedAt·installerName 3필드 추가, 컨트롤러가 status→response 매핑. (test-boot 스텁은 R2가 이미 등록.)
 
 ### Task R8. 배너 개선 + 페이지 배선 + 에러 매핑
 - agent: `frontend-engineer`
