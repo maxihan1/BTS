@@ -75,6 +75,22 @@ class SlackInstallService(
         return oauthClient.buildAuthorizeUrl(state)
     }
 
+    /**
+     * 현재 Slack 워크스페이스 연결 상태를 조회한다 — 관리자 Slack 연결 페이지의 상태 배너용.
+     *
+     * 가드는 조회보다 **먼저** 수행한다(auth-extraction-before-lookup) — 비관리자에게는 설치 유무조차
+     * 노출하지 않고 [SlackForbiddenException] 으로 즉시 거부하며, [SlackInstallRepository.findCurrentInstallation]
+     * 은 호출되지 않는다.
+     *
+     * 반환하는 [SlackInstallationStatus] 에는 **표시용 비-비밀 필드만** 담는다(connected/teamId/teamName/
+     * installedAt). 봇 토큰 암호문·`installedBy` 등은 애초에 [SlackInstallationView] 에 로드되지 않아
+     * 타입 상 새어 나갈 수 없다(방어적, DEVELOPMENT.md §1.1.2). 설치가 없으면 `connected=false` 이고
+     * 나머지 필드는 모두 null 이다.
+     *
+     * @param actorId 상태를 조회하는 행위자(JWT 에서 추출한 사용자 id).
+     * @return 현재 연결 상태 — 미설치 시 `SlackInstallationStatus(connected=false, …=null)`.
+     * @throws SlackForbiddenException [actorId] 가 시스템 전역 관리자가 아닌 경우.
+     */
     fun getInstallation(actorId: UUID): SlackInstallationStatus {
         if (!permissionResolver.isSystemAdmin(actorId)) {
             throw SlackForbiddenException()
@@ -158,6 +174,18 @@ data class SlackInstallResult(
     val teamName: String,
 )
 
+/**
+ * 관리자 Slack 연결 페이지의 상태 배너에 노출하는 현재 연결 상태.
+ *
+ * **표시용 비-비밀 필드만** 담는다 — 봇 토큰(평문/암호문)이나 `installedBy` 등 비-표시 필드는 포함하지
+ * 않는다(DEVELOPMENT.md §1.1.2 — 비밀값 노출 최소화). 설치가 없으면 [connected] 는 false 이고 나머지
+ * 필드는 모두 null 이다(미설치와 설치 상태를 [connected] 로 구분).
+ *
+ * @property connected Slack 워크스페이스가 연결되어 있으면 true.
+ * @property teamId 연결된 워크스페이스 id(`T…`) — 미설치 시 null.
+ * @property teamName 워크스페이스 표시명 — 미설치 시 null.
+ * @property installedAt 최초 설치 시각 — 미설치 시 null.
+ */
 data class SlackInstallationStatus(
     val connected: Boolean,
     val teamId: String?,
