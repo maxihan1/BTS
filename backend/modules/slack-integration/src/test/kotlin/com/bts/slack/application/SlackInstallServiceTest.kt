@@ -89,7 +89,14 @@ class SlackInstallServiceTest {
     fun `getInstallation - 관리자이고 설치가 있으면 connected=true와 표시 필드를 반환한다`() {
         every { resolver.isSystemAdmin(adminId) } returns true
         every { repository.findCurrentInstallation() } returns
-            SlackInstallationView(teamId = "T123WS", teamName = "Acme Workspace", installedAt = INSTALLED_AT)
+            SlackInstallationView(
+                teamId = "T123WS",
+                teamName = "Acme Workspace",
+                botUserId = "U0BOT",
+                installedAt = INSTALLED_AT,
+                updatedAt = INSTALLED_AT,
+                installedBy = UUID.randomUUID(),
+            )
 
         val status = service.getInstallation(adminId)
 
