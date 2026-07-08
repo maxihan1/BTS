@@ -1,6 +1,7 @@
 // 라우트 가드 헬퍼 — requireAuth / redirectIfAuth / isSafeReturnTo / requirePasswordChanged / requireMfaEnrolled / requireSystemAdmin / composeGuards
 import { redirect } from '@tanstack/react-router'
 import { useAuthStore } from './authStore'
+import { resolveStartPageNav } from '@/lib/start-page'
 
 /** beforeLoad 컨텍스트 중 가드에서 사용하는 최소 구조 */
 interface GuardContext {
@@ -51,7 +52,12 @@ export function requireAuth({ location }: GuardContext): void {
 }
 
 /**
- * 로그인 페이지에서 호출. 이미 인증된 상태이면 returnTo(검증 후) 또는 /dashboard 로 throw redirect.
+ * 로그인 페이지에서 호출. 이미 인증된 상태이면 목적지로 throw redirect한다.
+ *
+ * 목적지 우선순위(게이트1 확정, FR-PF-02 Task 7). returnTo(안전 검증 통과) > start_page 매핑 > /dashboards.
+ * - returnTo 쿼리파라미터가 있고 {@link isSafeReturnTo}를 통과하면 그 경로로 이동.
+ * - 아니면 store의 `user.startPage`를 {@link resolveStartPageNav}로 해석해 이동
+ *   (화이트리스트 밖 값·user 부재 시 내부적으로 `/dashboards`로 폴백).
  *
  * 사용 예.
  * ```ts
@@ -66,9 +72,12 @@ export function redirectIfAuth({ location }: GuardContext): void {
   const params = new URLSearchParams(qIdx !== -1 ? location.href.slice(qIdx + 1) : '')
   const returnTo = params.get('returnTo')
 
-  const safeTo = returnTo !== null && isSafeReturnTo(returnTo) ? returnTo : '/dashboard'
+  if (returnTo !== null && isSafeReturnTo(returnTo)) {
+    throw redirect({ to: returnTo })
+  }
 
-  throw redirect({ to: safeTo })
+  const user = useAuthStore.getState().user
+  throw redirect(resolveStartPageNav(user?.startPage, user?.userId))
 }
 
 /**
