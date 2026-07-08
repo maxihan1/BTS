@@ -2,7 +2,7 @@
 import { Link } from '@tanstack/react-router'
 import type { InboxItem } from '@/api/inbox'
 import { inboxLabels } from '@/i18n/inbox-labels'
-import { formatCreatedAt } from './InboxListItem.utils'
+import { useDateFormat } from '@/hooks/use-date-format'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -55,6 +55,7 @@ export const InboxListItem = ({
   onToggleRead,
   onToggleArchive,
 }: InboxListItemProps) => {
+  const { formatDateTime } = useDateFormat()
   const isUnread = item.readAt === null
   const isArchived = item.archivedAt !== null
   const displaySender = actorName ?? inboxLabels.sender.system
@@ -109,7 +110,7 @@ export const InboxListItem = ({
           dateTime={item.createdAt}
           className="ml-auto shrink-0"
         >
-          {formatCreatedAt(item.createdAt)}
+          {formatDateTime(item.createdAt)}
         </time>
       </div>
 

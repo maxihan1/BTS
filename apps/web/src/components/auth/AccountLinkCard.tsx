@@ -5,7 +5,7 @@ import { AlertDialog } from 'radix-ui'
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { formatDateTime } from '@/lib/datetime'
+import { useDateFormat } from '@/hooks/use-date-format'
 import { accountLinkLabels } from '@/i18n/account-link-labels'
 import type { AccountLinkResponse } from '@/api/account-links'
 
@@ -85,6 +85,7 @@ export interface AccountLinkCardProps {
  */
 export function AccountLinkCard({ link, onUnlink, isUnlinking }: AccountLinkCardProps): JSX.Element {
   const [dialogOpen, setDialogOpen] = useState(false)
+  const { formatDateTime } = useDateFormat()
 
   const providerName = link.providerName ?? accountLinkLabels.card.unknownProvider
   const lastLogin =

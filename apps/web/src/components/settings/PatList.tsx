@@ -2,7 +2,7 @@
 import type { JSX } from 'react'
 import { useState } from 'react'
 import type { Pat } from '@/api/pats'
-import { formatDateTime } from '@/lib/datetime'
+import { useDateFormat } from '@/hooks/use-date-format'
 import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -35,8 +35,13 @@ function isExpired(expiresAt: string | null): boolean {
   return date.getTime() < Date.now()
 }
 
-/** 만료 배지 텍스트 — 과거면 "만료됨", null(레거시)이면 "무기한", 그 외 포맷된 날짜 */
-function expiryLabel(expiresAt: string | null): string {
+/**
+ * 만료 배지 텍스트 — 과거면 "만료됨", null(레거시)이면 "무기한", 그 외 포맷된 날짜.
+ *
+ * @param expiresAt 만료 시각 ISO 문자열 또는 null
+ * @param formatDateTime 사용자 date_format 프리셋이 바인딩된 포맷 함수 (useDateFormat 훅 반환값)
+ */
+function expiryLabel(expiresAt: string | null, formatDateTime: (iso: string) => string): string {
   if (expiresAt === null) return labels.unlimitedBadge
   if (isExpired(expiresAt)) return labels.expiredBadge
   return formatDateTime(expiresAt)
@@ -57,6 +62,7 @@ interface PatRowProps {
 
 /** PAT 단건 행 — name·scope 배지·만료/최근사용 + 인라인 폐기 확인 UI(WebhookRow 동형 구조) */
 function PatRow({ pat, isConfirming, isRevoking, onRevokeClick, onConfirm, onCancel }: PatRowProps): JSX.Element {
+  const { formatDateTime } = useDateFormat()
   const lastUsed = pat.lastUsedAt !== null ? formatDateTime(pat.lastUsedAt) : labels.lastUsedNever
   const expired = isExpired(pat.expiresAt)
 
@@ -77,7 +83,7 @@ function PatRow({ pat, isConfirming, isRevoking, onRevokeClick, onConfirm, onCan
             <span
               className={expired ? 'rounded bg-destructive/10 px-1.5 py-0.5 font-medium text-destructive' : undefined}
             >
-              {expiryLabel(pat.expiresAt)}
+              {expiryLabel(pat.expiresAt, formatDateTime)}
             </span>
           </p>
           <p className="text-xs text-muted-foreground">

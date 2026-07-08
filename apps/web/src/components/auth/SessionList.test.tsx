@@ -9,6 +9,7 @@ import type { ReactNode } from 'react'
 import { server } from '@/test/server'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/auth/authStore'
+import { aliceUser } from '@/mocks/auth-fixtures'
 import { SessionList } from './SessionList'
 
 // sonner toast mock
@@ -218,6 +219,32 @@ describe('SessionList', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/활성 세션이 없습니다/)).toBeInTheDocument()
+    })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-PF-01 Task 8 — 날짜 표시가 사용자 dateFormat 프리셋을 따른다
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SessionList — 날짜 표시 프리셋 반영 (FR-PF-01 Task 8)', () => {
+  it('dateFormat=kr이면 날짜가 "YYYY. MM. DD." 형식으로 표시된다', async () => {
+    useAuthStore.setState({
+      accessToken: 'test-token',
+      user: { ...aliceUser, dateFormat: 'kr' },
+    })
+    server.use(
+      http.get('/api/v1/auth/sessions', () =>
+        HttpResponse.json({ sessions: MOCK_SESSIONS }),
+      ),
+    )
+
+    const Wrapper = createWrapper()
+    render(<SessionList />, { wrapper: Wrapper })
+
+    // MOCK_SESSIONS[0].lastSeenAt/createdAt 모두 2026-05-29 → "2026. 05. 29." 패턴 매치가 최소 1개 이상
+    await waitFor(() => {
+      expect(screen.getAllByText(/2026\.\s*05\.\s*29\./).length).toBeGreaterThan(0)
     })
   })
 })

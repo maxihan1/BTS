@@ -8,7 +8,7 @@ import {
 } from '@/lib/changelog-labels'
 import type { ChangelogRefs, ChangeItem as LabelsChangeItem } from '@/lib/changelog-labels'
 import type { ChangeGroup, ChangeItem } from '@/api/changelog'
-import { formatDateTime } from '@/lib/datetime'
+import { useDateFormat } from '@/hooks/use-date-format'
 import { Button } from '@/components/ui/button'
 import { issueDetailStrings } from '@/i18n/ko'
 
@@ -110,6 +110,7 @@ interface ChangeGroupRowProps {
  * createdAt이 파싱 불가한 값이면 원문을 그대로 표시한다 (Invalid Date 방어).
  */
 export function ChangeGroupRow({ group, refs }: ChangeGroupRowProps): JSX.Element {
+  const { formatDateTime } = useDateFormat()
   const actorDisplay = group.actorName ?? issueDetailStrings.changelogSystemActor
   const timeDisplay = isNaN(new Date(group.createdAt).getTime())
     ? group.createdAt

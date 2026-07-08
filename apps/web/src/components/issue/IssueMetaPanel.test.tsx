@@ -1,6 +1,6 @@
 // IssueMetaPanel 유형 행 + 셀렉터 + 상태전이 + 우선순위/영향도/환경/라벨 + 담당자 + 즐겨찾기 단위 테스트 — FR-IS-04 D6 Task-5, FR-IS-03 D6 Task-3, FR-IS-09 Task-6, FR-UX-02 D6 Task-6
 import type { ReactElement } from 'react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -11,6 +11,8 @@ import type { IssueTypeResponse } from '@/api/issue-types'
 import type { UserSummary } from '@/api/users'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
 import { issueDetailStrings } from '@/i18n/ko'
+import { useAuthStore } from '@/auth/authStore'
+import { aliceUser } from '@/mocks/auth-fixtures'
 
 // useIssuePermissions를 mock — 기존 테스트는 권한 관련 동작을 검증하지 않으므로 UPDATE/SOFT_DELETE=true로 고정
 vi.mock('@/hooks/use-issue-permissions', () => ({
@@ -1524,5 +1526,30 @@ describe('IssueMetaPanel — 즐겨찾기 버튼 (FR-UX-02 Task-6)', () => {
     expect(btn).toBeInTheDocument()
     // 즐겨찾기 미등록 초기 상태 — GET /api/v1/favorites → items:[] 이므로 aria-pressed=false
     expect(btn).toHaveAttribute('aria-pressed', 'false')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-PF-01 Task 8 — 생성일/수정일 표시가 사용자 dateFormat 프리셋을 따른다
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueMetaPanel — 날짜 표시 프리셋 반영 (FR-PF-01 Task 8)', () => {
+  afterEach(() => {
+    useAuthStore.getState().clearSession()
+  })
+
+  /**
+   * IMP-81: 로그인 사용자의 dateFormat='us'이면 생성일이 MM/DD/YYYY 순서로 표시된다.
+   * createdAt='2026-07-08T03:00:00Z' → KST 2026-07-08T12:00:00+09:00 → us 프리셋 "07/08/2026".
+   */
+  it('IMP-81: dateFormat=us이면 생성일이 MM/DD/YYYY로 표시된다', () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'test-token',
+      user: { ...aliceUser, dateFormat: 'us' },
+    })
+    const issueUs: IssueResponse = { ...issueFixture, createdAt: '2026-07-08T03:00:00Z' }
+    renderPanel(issueUs)
+    const aside = screen.getByRole('complementary')
+    expect(within(aside).getByText(/07\/08\/2026/)).toBeInTheDocument()
   })
 })

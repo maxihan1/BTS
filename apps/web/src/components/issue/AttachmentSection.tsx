@@ -8,6 +8,7 @@ import { downloadAttachment, MAX_ATTACHMENT_BYTES } from '@/api/attachments'
 import { triggerBlobDownload } from '@/lib/download'
 import { attachmentLabels } from '@/i18n/attachment-labels'
 import { isPreviewable } from '@/lib/attachment-preview'
+import { useDateFormat } from '@/hooks/use-date-format'
 import { AttachmentPreviewModal } from './AttachmentPreviewModal'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -31,27 +32,6 @@ function formatFileSize(bytes: number): string {
     return `${(bytes / 1024).toFixed(1)} ${attachmentLabels.sizeKB}`
   }
   return `${bytes} ${attachmentLabels.sizeBytes}`
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 날짜 포맷 헬퍼
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * ISO 8601 날짜 문자열을 로컬 날짜+시각 표시 문자열로 변환한다.
- *
- * @param isoString ISO 8601 날짜 문자열 (예: "2026-06-15T09:00:00Z")
- * @returns 포맷된 날짜 문자열 (예: "2026. 6. 15. 09:00")
- */
-function formatCreatedAt(isoString: string): string {
-  const d = new Date(isoString)
-  return d.toLocaleString('ko-KR', {
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -81,6 +61,7 @@ function AttachmentRow({ attachment, issueKey, canDelete }: AttachmentRowProps):
   const [isDownloading, setIsDownloading] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
   const { mutate: deleteMutate, isPending: isDeleting } = useDeleteAttachment(issueKey)
+  const { formatDateTime } = useDateFormat()
   const canPreview = isPreviewable(attachment.contentType)
 
   async function handleDownload(): Promise<void> {
@@ -125,7 +106,7 @@ function AttachmentRow({ attachment, issueKey, canDelete }: AttachmentRowProps):
         {formatFileSize(attachment.sizeBytes)}
       </td>
       <td className="py-2 pr-3 text-xs text-muted-foreground whitespace-nowrap">
-        {formatCreatedAt(attachment.createdAt)}
+        {formatDateTime(attachment.createdAt)}
       </td>
       <td className="py-2 text-right">
         <div className="flex items-center justify-end gap-1">

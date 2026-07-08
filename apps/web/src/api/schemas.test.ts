@@ -316,6 +316,37 @@ describe('WhoamiResponseSchema', () => {
   })
 })
 
+describe('WhoamiResponseSchema — theme/locale/dateFormat 확장 (FR-PF-01)', () => {
+  const BASE_WHOAMI = {
+    username: 'alice',
+    email: 'alice@example.com',
+    authMethod: 'jwt',
+    userId: 'usr-0001',
+    mustChangePassword: false,
+    isSystemAdmin: false,
+    mfaEnrollmentRequired: false,
+  }
+
+  it('theme/locale/dateFormat 값이 있으면 파싱 성공하고 값을 그대로 노출한다', () => {
+    const result = WhoamiResponseSchema.parse({
+      ...BASE_WHOAMI,
+      theme: 'dark',
+      locale: 'en',
+      dateFormat: 'us',
+    })
+    expect(result.theme).toBe('dark')
+    expect(result.locale).toBe('en')
+    expect(result.dateFormat).toBe('us')
+  })
+
+  it('theme/locale/dateFormat 키가 없어도 parse 성공한다 (하위호환 — 기존 인라인 whoami mock, mock fanout 방어)', () => {
+    const result = WhoamiResponseSchema.parse(BASE_WHOAMI)
+    expect(result.theme).toBeUndefined()
+    expect(result.locale).toBeUndefined()
+    expect(result.dateFormat).toBeUndefined()
+  })
+})
+
 describe('ApiErrorResponseSchema', () => {
   it('정상 ApiErrorResponse → safeParse success', () => {
     const result = ApiErrorResponseSchema.safeParse({

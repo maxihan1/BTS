@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { JSX } from 'react'
 import { Button } from '@/components/ui/button'
 import { issueTemplateLabels } from '@/i18n/issue-template-labels'
+import { useDateFormat } from '@/hooks/use-date-format'
 import type { IssueTemplate } from '@/api/issue-templates.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -90,6 +91,7 @@ export function IssueTemplateRow({
 }: IssueTemplateRowProps): JSX.Element {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const { actions } = issueTemplateLabels
+  const { formatDateTime } = useDateFormat()
 
   const displayTypeName = issueTypeName ?? String(template.issueTypeId)
 
@@ -126,13 +128,7 @@ export function IssueTemplateRow({
           dateTime={template.updatedAt}
           className="block text-xs text-muted-foreground mt-0.5"
         >
-          {new Date(template.updatedAt).toLocaleString('ko-KR', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-          })}
+          {formatDateTime(template.updatedAt)}
         </time>
       </div>
 

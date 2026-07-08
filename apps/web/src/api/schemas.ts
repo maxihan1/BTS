@@ -65,6 +65,30 @@ export const WhoamiResponseSchema = z.object({
    * optional 사유는 oooActive와 동일(인라인 mock blast-radius 회피).
    */
   oooUntil: z.string().nullable().optional(),
+  /**
+   * 테마 설정 — FR-PF-01 `user_preferences.theme` 노출(백엔드 view-layer는 plain String,
+   * 프론트 강한 enum 검증은 `api/preferences.ts`의 `preferencesSchema`가 담당).
+   * `.optional()`인 이유 — 키 부재도 허용해야 하기 때문. authMethod:를 참조하는 인라인 whoami
+   * mock이 다수 파일에 산재돼 있어 required로 강화하면 전부 z.parse 실패로 깨진다
+   * (zod-schema-strengthen-inline-mock-fanout 사고 재발 방지, FR-PR-01~03 displayName/statusEmoji/
+   * oooActive 선례와 동일한 패턴). ⚠️ `.default()`는 z.infer 출력 타입에서 필드를 non-optional로
+   * 만들어 기존 리터럴 whoami mock ~40개 파일이 "필드 누락" 컴파일 에러로 깨지는 것을 실측 확인
+   * (tsc 81 errors) — 그래서 `.default()` 대신 다른 FR-PR 필드와 동일하게 `.optional()`을 쓴다.
+   * 미인증/부재 시 폴백은 소비측(`useDateFormat` 훅의 `isDatePreset` 가드)이 담당한다.
+   * 실 백엔드는 항상 키를 포함해 응답한다.
+   */
+  theme: z.string().optional(),
+  /**
+   * 언어(locale) 설정 — FR-PF-01 `user_preferences.locale` 노출. UI 문자열 번역(i18next)은
+   * 이번 범위 밖이며 저장 값 + `<html lang>` 반영에만 쓰인다. optional 사유는 theme과 동일
+   * (인라인 mock blast-radius 회피).
+   */
+  locale: z.string().optional(),
+  /**
+   * 날짜 표시 프리셋 — FR-PF-01 `user_preferences.date_format` 노출(iso/kr/us/eu).
+   * optional 사유는 theme과 동일(인라인 mock blast-radius 회피).
+   */
+  dateFormat: z.string().optional(),
 })
 
 /**

@@ -3,7 +3,7 @@ import type { JSX } from 'react'
 import { useState } from 'react'
 import type { WebhookResponse } from '@/api/webhooks'
 import { labelForEvent } from '@/i18n/webhook-labels'
-import { formatDateTime } from '@/lib/datetime'
+import { useDateFormat } from '@/hooks/use-date-format'
 import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,9 +66,13 @@ function joinEventLabels(eventFilter: readonly string[]): string {
  * 갱신 시각을 표시용 문자열로 변환한다. null이면 "—"로 방어한다.
  *
  * @param updatedAt ISO 8601 문자열 또는 null
+ * @param formatDateTime 사용자 date_format 프리셋이 바인딩된 포맷 함수 (useDateFormat 훅 반환값)
  * @returns 포맷된 날짜/시각 문자열, 또는 "—"
  */
-function formatUpdatedAt(updatedAt: string | null | undefined): string {
+function formatUpdatedAt(
+  updatedAt: string | null | undefined,
+  formatDateTime: (iso: string) => string,
+): string {
   return updatedAt == null ? '—' : formatDateTime(updatedAt)
 }
 
@@ -84,9 +88,10 @@ function formatUpdatedAt(updatedAt: string | null | undefined): string {
  */
 function WebhookRow({ webhook, onEdit, onDelete, onViewDeliveries, isDeleting }: WebhookRowProps): JSX.Element {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const { formatDateTime } = useDateFormat()
 
   const eventLabels = joinEventLabels(webhook.eventFilter)
-  const updatedAtLabel = formatUpdatedAt(webhook.updatedAt)
+  const updatedAtLabel = formatUpdatedAt(webhook.updatedAt, formatDateTime)
 
   return (
     <tr className="border-b text-sm hover:bg-muted/50" aria-label={webhook.name}>

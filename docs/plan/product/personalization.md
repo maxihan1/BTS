@@ -75,13 +75,13 @@
 
 **우선순위**. 필수 | **선행**. §0 | **Plan slug**. `personal/preferences`
 
-- [ ] D1. 도메인 — UserPreferences (책임. backend-engineer)
-- [ ] D2. 명세 — 기본값 + 사용자 override (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `user_preferences(theme, locale, date_format, ...)` (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET/PATCH /api/v1/users/me/preferences` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — i18next + theme 토글 + date-fns-tz (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — UserPreferences (책임. backend-engineer)
+- [x] D2. 명세 — 기본값(system/ko/iso) + 사용자 override (책임. backend-engineer)
+- [x] D3. 데이터 모델 — `user_preferences(theme, locale, date_format, ...)` V031 (책임. db-engineer)
+- [x] D4. 백엔드 — `GET/PATCH /api/v1/users/me/preferences` + whoami view-layer (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D6. 프론트 UI — theme 토글(.dark, FOUC 프리하이드레이션) + date_format 전면 이관(**네이티브 Intl**) + locale 저장. **UI 번역(i18next)은 후속 i18n 에픽 보류**(C안, 신규 의존성 0) — spec 2026-07-07 / ADR `2026-07-07-fr-pf-01-preferences-i18n-defer` (책임. frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ### §3.2 FR-PF-02 — 기본 뷰/시작 페이지
 

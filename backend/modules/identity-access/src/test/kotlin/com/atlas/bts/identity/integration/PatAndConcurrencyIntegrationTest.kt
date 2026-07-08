@@ -65,7 +65,7 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * ### CSRF (EC-13 / FR-09-30)
  * - CSRF-A: `/api/v1/auth/login`은 CSRF 검증 skip → CSRF 토큰 없이도 POST 가능 (200 또는 인증 실패)
- * - CSRF-B: CSRF 토큰 없는 POST `/api/v1/users/me/preferences` → 403
+ * - CSRF-B: CSRF 토큰 없는 PATCH `/api/v1/users/me/preferences` → 403
  * - CSRF-C: XSRF-TOKEN Cookie를 받아 X-XSRF-TOKEN 헤더로 echo한 POST → 403 아님 (200 또는 401)
  *
  * ## 보안 계약 (EC-26)
@@ -387,26 +387,26 @@ class PatAndConcurrencyIntegrationTest {
     // ── CSRF — STATELESS 정책에서 미인증 POST 응답 코드 확인 (CSRF-B) ──────────────────
 
     /**
-     * CSRF-B: Spring Security 6 + STATELESS 세션 정책에서 미인증 POST 요청의 차단 동작을 검증한다.
+     * CSRF-B: Spring Security 6 + STATELESS 세션 정책에서 미인증 PATCH 요청의 차단 동작을 검증한다.
      *
      * ## 실제 동작 (STATELESS 환경)
      * `SessionCreationPolicy.STATELESS` 정책에서 Spring Security 6은 인증 필터가 CSRF 필터보다
      * 먼저 실행되어 미인증 요청을 401로 차단한다.
-     * 결과적으로 CSRF 토큰이 없는 미인증 POST는 401 또는 403을 반환한다.
+     * 결과적으로 CSRF 토큰이 없는 미인증 PATCH는 401 또는 403을 반환한다.
      *
      * ## PreferencesControllerCsrfTest와의 일관성
-     * 슬라이스 테스트(MockMvc)에서 미인증 POST는 403을 반환하지만, 이는 MockMvc의 필터 처리
+     * 슬라이스 테스트(MockMvc)에서 미인증 PATCH는 403을 반환하지만, 이는 MockMvc의 필터 처리
      * 순서가 실제 서버와 다르기 때문이다. 통합 테스트에서는 실제 동작(401)을 검증한다.
      *
      * 중요한 것은 CSRF 비활성화가 아닌 "인증이 없으면 접근이 차단됨"이다.
      */
     @Test
-    fun `CSRF-B 미인증 POST — 접근 거부 (401 또는 403)`() {
+    fun `CSRF-B 미인증 PATCH — 접근 거부 (401 또는 403)`() {
         val headers = HttpHeaders().apply { contentType = MediaType.APPLICATION_JSON }
 
         val resp = restTemplate.exchange(
             "/api/v1/users/me/preferences",
-            HttpMethod.POST,
+            HttpMethod.PATCH,
             HttpEntity("{}", headers),
             String::class.java,
         )
@@ -452,7 +452,7 @@ class PatAndConcurrencyIntegrationTest {
 
         val resp = restTemplate.exchange(
             "/api/v1/users/me/preferences",
-            HttpMethod.POST,
+            HttpMethod.PATCH,
             HttpEntity("{}", headers),
             Void::class.java,
         )

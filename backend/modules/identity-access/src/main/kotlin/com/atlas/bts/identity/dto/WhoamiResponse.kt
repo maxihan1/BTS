@@ -32,6 +32,11 @@ import java.util.UUID
  *   (활성 필터는 OutOfOfficeRepository.findActiveByUserId 책임). PAT 분기는 항상 false.
  * @property oooUntil 부재중 종료 시각(ISO-8601 문자열) (FR-PR-03). [oooActive] 가 true 일 때만 값을 갖고,
  *   그 외는 null 이다. PAT 분기는 항상 null.
+ * @property theme UI 테마 (FR-PF-01). 파생 근거는 user_preferences —
+ *   [com.atlas.bts.identity.preferences.UserPreferencesService.getPreferences] 가 행 부재 시 채우는
+ *   기본값(`"system"`)을 그대로 노출한다(항상 값 존재, null 없음). PAT 분기는 조회 없이 기본값으로 고정.
+ * @property locale 로케일 (FR-PF-01). theme 과 동일 파생 규칙(기본값 `"ko"`). PAT 분기는 기본값 고정.
+ * @property dateFormat 날짜 표시 형식 (FR-PF-01). theme 과 동일 파생 규칙(기본값 `"iso"`). PAT 분기는 기본값 고정.
  */
 data class WhoamiResponse(
     val username: String,
@@ -47,4 +52,7 @@ data class WhoamiResponse(
     val statusText: String?,
     val oooActive: Boolean,
     val oooUntil: String?,
+    val theme: String = "system",
+    val locale: String = "ko",
+    val dateFormat: String = "iso",
 )

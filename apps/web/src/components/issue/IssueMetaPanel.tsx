@@ -11,7 +11,7 @@ import { ComponentMultiSelect } from '@/components/issue/ComponentMultiSelect'
 import { VersionMultiSelect } from '@/components/issue/VersionMultiSelect'
 import { IssueSecurityLevelSelect } from '@/components/issue/IssueSecurityLevelSelect'
 import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
-import { formatDate } from '@/lib/date-format'
+import { useDateFormat } from '@/hooks/use-date-format'
 import { issueDetailStrings } from '@/i18n/ko'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
 import { LabelAutocompleteInput } from '@/components/labels/LabelAutocompleteInput'
@@ -182,6 +182,9 @@ export function IssueMetaPanel({
 }: IssueMetaPanelProps): JSX.Element {
   // 프로젝트 커스텀 필드 정의 조회 (FR-IS-10)
   const { data: customFieldDefs = [] } = useCustomFields(issue.projectKey)
+
+  // 로그인 사용자의 date_format 환경설정을 반영한 날짜 포맷터 (FR-PF-01 Task 8)
+  const { formatDateTime } = useDateFormat()
 
   // 권한 조회 — fail-closed: 로딩 중·에러·미확정이면 false(비활성)
   const { data: permissionsData, isLoading: isPermissionsLoading, isError: isPermissionsError } =
@@ -397,13 +400,13 @@ export function IssueMetaPanel({
         {/* 생성일 */}
         <div className="px-3.5 py-3 border-b border-border">
           <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.createdAtLabel}</p>
-          <p className="text-sm font-medium">{formatDate(issue.createdAt)}</p>
+          <p className="text-sm font-medium">{formatDateTime(issue.createdAt)}</p>
         </div>
 
         {/* 수정일 */}
         <div className="px-3.5 py-3">
           <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.updatedAtLabel}</p>
-          <p className="text-sm font-medium">{formatDate(issue.updatedAt)}</p>
+          <p className="text-sm font-medium">{formatDateTime(issue.updatedAt)}</p>
         </div>
       </div>
 
