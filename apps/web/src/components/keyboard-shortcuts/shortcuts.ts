@@ -138,6 +138,17 @@ function parseKeyCombo(keyCombo: string): ShortcutTrigger {
 }
 
 /**
+ * 단축키의 effective 발화 트리거를 병합 키맵 기준으로 유도한다.
+ *
+ * @param shortcut 트리거를 조회할 단축키 정의
+ * @param keymap effective(기본값+사용자 override 병합) 키맵
+ * @returns 그 단축키의 현재 발화 트리거
+ */
+function effectiveTrigger(shortcut: ShortcutDef, keymap: Keymap): ShortcutTrigger {
+  return parseKeyCombo(keymap[shortcut.action])
+}
+
+/**
  * keydown을 단축키 액션으로 해석하는 순수 함수. 부수효과 없음(호출부=훅 책임).
  *
  * 검사 순서(중요) — (1) 도움말 열림 중이면 `help` action의 effective key_combo가
@@ -176,14 +187,14 @@ export function resolveKeydown(
 
   if (pendingLeader === LEADER_KEY) {
     const continuation = SHORTCUTS.find((shortcut) => {
-      const trigger = parseKeyCombo(keymap[shortcut.action])
+      const trigger = effectiveTrigger(shortcut, keymap)
       return trigger.type === 'leader' && trigger.key === e.key
     })
     return continuation ? continuation.effect : { kind: 'reset' }
   }
 
   const single = SHORTCUTS.find((shortcut) => {
-    const trigger = parseKeyCombo(keymap[shortcut.action])
+    const trigger = effectiveTrigger(shortcut, keymap)
     return trigger.type === 'single' && trigger.key === e.key
   })
   return single ? single.effect : { kind: 'none' }
