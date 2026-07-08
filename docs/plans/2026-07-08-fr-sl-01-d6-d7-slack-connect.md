@@ -219,6 +219,61 @@ API 2종(관리자 가드) + 신규 read projection `SlackInstallationView`(토�
 - 추가 검증: ktlintCheck·detekt(--rerun-tasks)·ArchUnit(BC 격리) / vitest·typecheck / playwright.
 - 파일 겹침: 없음(같은 wave 내). router.ts·Header.tsx 는 T7 단독.
 
+## Plan — 라운드 2 (게이트 2 확장, 스펙 §게이트 2 수정 R-A~R-E)
+
+> 8 task · 4 wave. 프론트↔프론트 race 회피 위해 각 wave에 프론트 task 1개만.
+> WR1=R1·R5·R6 / WR2=R2·R7 / WR3=R3·R8 / WR4=R9.
+
+### Task R1. projection 확장 — botUserId·updatedAt·installedBy
+- agent: `security-engineer`
+- files: [`.../application/SlackInstallationView.kt`, `.../persistence/JdbcSlackInstallRepository.kt`, `.../test/.../persistence/JdbcSlackInstallRepositoryTest.kt`]
+- depends-on: []
+- RED: 조회 결과가 botUserId·installedAt·updatedAt·installedBy를 담고, updatedAt≠installedAt(재upsert) 케이스 검증. GREEN: `SlackInstallationView`에 botUserId:String·updatedAt:Instant·installedBy:UUID 추가, SELECT 확장(bot_user_id·updated_at·installed_by). **봇 토큰은 여전히 미조회**.
+
+### Task R5. SlackInstallController Void→Unit
+- agent: `security-engineer`
+- files: [`.../web/SlackInstallController.kt`]
+- depends-on: []
+- RED: (기존 통합테스트가 이미 Location/status 검증 — 그대로 green 유지가 목표라 별도 실패테스트 대신 컴파일-후 detektMain 확인). GREEN: 6× `ResponseEntity<Void>`→`ResponseEntity<Unit>`, `.build()` 유지(body 없음 불변). TDD: 이 task는 리팩터 성격 — `refactor:` 커밋 + 기존 테스트 green 유지로 대체(순수 기계적, 신규 테스트 불요. 커밋 메시지에 근거 명시).
+
+### Task R6. Zod·API 확장
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/slack.ts`, `apps/web/src/api/slack.test.ts`]
+- depends-on: []
+- RED: 스키마가 botUserId·updatedAt·installerName(전부 `.string().nullable()`) 파싱. GREEN: `SlackInstallationSchema` 필드 추가 + 타입 export 갱신.
+
+### Task R2. service — installerName 해석 + 필드 확장
+- agent: `security-engineer`
+- files: [`.../application/SlackInstallService.kt`, `.../test/.../application/SlackInstallServiceTest.kt`]
+- depends-on: [R1]
+- RED: 관리자+설치 → status에 botUserId·updatedAt·installerName 포함. `UserLookupPort.findDisplayNamesByIds(setOf(installedBy))`로 이름 해석(mock), 미해석 시 installerName=null. 비관리자 여전히 SlackForbiddenException(가드 먼저). GREEN: `SlackInstallService` 생성자에 `UserLookupPort` 주입, `SlackInstallationStatus`에 botUserId·updatedAt·installerName 추가. installed_by는 이름 해석에만.
+
+### Task R7. 카드 — 신규 필드 표시
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/settings/SlackConnectionCard.tsx`, `.../SlackConnectionCard.test.tsx`]
+- depends-on: [R6]
+- RED: 연결됨 → installerName(있으면)·botUserId·설치일(installedAt)·최근 갱신(updatedAt) 표시. GREEN: 카드 dl 확장. installerName null이면 해당 행 생략.
+
+### Task R3. controller/DTO 확장 + test-boot UserLookupPort stub
+- agent: `security-engineer`
+- files: [`.../web/SlackInstallQueryResponses.kt`, `.../web/SlackInstallQueryController.kt`, `.../test/.../StubUserLookupPort.kt`(신규), `.../test/.../SlackTestcontainersConfig.kt`, `.../test/.../web/SlackInstallQueryControllerIntegrationTest.kt`]
+- depends-on: [R2]
+- RED: 통합테스트 — 응답에 botUserId·updatedAt·installerName 포함, installerName은 stub이 등록한 이름, **installed_by UUID·봇토큰 여전히 미노출**. GREEN: `SlackInstallationResponse`에 3필드 추가, 컨트롤러 매핑, `StubUserLookupPort`(findDisplayNamesByIds 등록형) @Bean 등록.
+
+### Task R8. 배너 개선 + 페이지 배선 + 에러 매핑
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/settings/SlackResultBanner.tsx`, `.../SlackResultBanner.test.tsx`, `apps/web/src/routes/admin.slack.tsx`, `apps/web/src/routes/__tests__/admin.slack.test.tsx`]
+- depends-on: [R6]
+- RED: 오류 배너에 "다시 시도"(onRetry 호출)·"닫기"(onDismiss 호출) 버튼, `invalid_code` 분리 메시지, 성공/실패 색·아이콘. 페이지가 onRetry→getSlackInstallUrl+assign, onDismiss→숨김. GREEN: `SlackResultBanner`에 `onRetry?`·`onDismiss?` props + 버튼, `slackErrorMessages`에 invalid_code, admin.slack.tsx 배선(dismiss useState).
+
+### Task R9. E2E 확장
+- agent: `qa-engineer`
+- files: [`apps/web/src/mocks/slack-handlers.ts`, `apps/web/e2e/slack-connect.spec.ts`]
+- depends-on: [R3, R7, R8]
+- 시나리오 추가: 연결 버튼 클릭→install-url 요청 발생, 배너 "다시 시도"/"닫기" 동작, 연결됨 카드에 installerName·botUserId·updatedAt 표시. MSW stub에 신규 필드 추가.
+
+## 라운드 2 리뷰 (← 재리뷰 채움)
+
 ## 리뷰 결과
 
 > 저위험 plan(마이그레이션 0·기존 302 흐름 불변·같은 BC view-layer) → autoplan 4-phase 대체, **eng+design 집중 리뷰**(교훈 bts-review-plan-autoplan-overkill).

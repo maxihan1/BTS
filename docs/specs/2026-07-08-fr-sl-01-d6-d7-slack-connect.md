@@ -91,6 +91,35 @@
 - [ ] 백엔드 test + ktlint + detekt + ArchUnit(BC 격리) green. 프론트 lint + typecheck + test green.
 - [ ] Header 관리 메뉴에 "Slack 연결"(관리자만) 링크 표시.
 
+## 게이트 2 수정 (라운드 2 — Maxi 요청)
+
+게이트 2에서 4개 영역 확장 요청. 전수 반영.
+
+### R-A. installation 응답 필드 확장
+새 계약: `{ connected, teamId, teamName, botUserId, installedAt, updatedAt, installerName }`.
+- **botUserId** (string|null) — 봇 사용자 id(`U…`, 비-비밀). projection SELECT + DTO + Zod + 카드 표시.
+- **updatedAt** (string|null, ISO) — 마지막 upsert(재연결) 시각. `installedAt`(최초 설치)와 **분리**. 카드에 "설치일"/"최근 갱신" 둘 다.
+- **installerName** (string|null) — 설치자 표시명. **cross-BC `UserLookupPort.findDisplayNamesByIds` 재사용**(shared-kernel, 기존 포트, prod=identity-access `UserLookupAdapter`, default emptyMap fail-safe). installed_by(UUID)는 projection에 로드해 이름 해석에만 쓰고 **응답에 UUID 자체는 여전히 미노출**(이름만). 미해석 시 null.
+  - 스펙 초안이 "후속"으로 뒀던 항목을 게이트 2에서 in-scope 전환. 새 cross-BC 의존이므로 slack test-boot에 `StubUserLookupPort` @Bean 필요(StubSystemPermissionResolver 선례, `new-crossbc-dep-openapi-mockbean-regression`).
+- 봇 토큰(평문/암호문)은 여전히 절대 미노출. installed_by UUID도 응답 미노출.
+
+### R-B. 에러 코드 매핑 세분화
+`invalid_code` → "Slack이 인증 코드를 거부했습니다. 다시 시도해 주세요."(기존 일반 fallback에서 분리). 나머지 표는 유지, 미지원 코드 fallback 유지.
+
+### R-C. 결과 배너 개선 (SlackResultBanner)
+- **다시 시도 버튼**(오류 배너 한정) — `onRetry` 콜백. 페이지가 `getSlackInstallUrl()` → `window.location.assign` 배선(카드 버튼과 동일 핸들러 재사용).
+- **닫기(X) 버튼** — `onDismiss` 콜백. 페이지가 배너 숨김 상태로 전환.
+- **색/아이콘 강화** + **문구 톤 다듬기**(성공 녹색/실패 적색 대비·아이콘 유지·카피 자연스럽게).
+- 배너는 콜백을 받는 형태로 확장(순수성 유지 — 로직은 페이지가 주입).
+
+### R-D. SlackInstallController Void→Unit
+pre-existing `ResponseEntity<Void>` 6건 → `ResponseEntity<Unit>`(detektMain type-resolved 경고 해소). 통합테스트는 Location/status만 검증해 body 영향 없음. 302 로직 불변.
+
+### R-E. E2E 버튼클릭 흐름 + 신규 필드
+- 연결 버튼 클릭 → `install-url` 요청 발생 검증(assign은 외부 nav라 요청까지만).
+- 배너 "다시 시도"/"닫기" 버튼 동작.
+- 연결됨 카드에 installerName/botUserId/updatedAt 표시 검증. MSW stub에 신규 필드 추가.
+
 ## Brainstorming Check
 
 ✅ 통과 (1회 iteration). 발견 gap 1건 — **페이지 발견성**(어떤 nav로 `/admin/slack`에 도달?). 기존 `Header.tsx` `adminLinks`(isSystemAdmin 게이팅) 패턴으로 해소 → FR7 추가. Maxi 결정 필요 gap 없음(기존 관례 재사용). 검토한 나머지: installedAt DB 컬럼 존재(impl 검증)·Instant ISO 직렬화 함정·projection으로 토큰 미로드·reconnect 멱등(확인 다이얼로그 불요)·배너 후 쿼리 정리(EC-F)·loading 상태(FR8) — 모두 스펙 반영.

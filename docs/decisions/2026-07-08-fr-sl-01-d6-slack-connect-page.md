@@ -47,6 +47,15 @@ OAuth 설치는 본질적으로 전체 페이지 리다이렉트(slack.com 왕�
 
 D7 E2E는 slack.com 실제 왕복을 재현하지 않는다(외부 리다이렉트). MSW로 `installation`/`install-url` 응답을 stub하고, 콜백 결과는 `/admin/slack?installed=|error=`로 직접 진입해 배너 렌더를 검증한다. 비관리자 게이팅·연결됨/미연결 상태·성공/실패 배너를 커버.
 
+### D6-4. 라운드 2 확장 (게이트 2 결정)
+
+게이트 2에서 Maxi가 4영역 확장 요청. 반영.
+- **설치자 이름 in-scope 전환**. D6-2가 "후속"으로 뒀던 설치자 이름을, **기존 `UserLookupPort.findDisplayNamesByIds`(shared-kernel) 재사용**으로 in-scope 전환. slack이 이 포트를 소비(identity-access 직접 import 0, BC 격리 유지). prod 구현 `UserLookupAdapter`(identity-access), slack test-boot엔 `StubUserLookupPort` @Bean. installed_by(UUID)는 이름 해석에만 쓰고 응답엔 이름만 노출(UUID 미노출).
+- **botUserId·updatedAt 응답 추가**. 비-비밀. `updatedAt`은 최초 `installedAt`과 분리(재연결 시각).
+- **배너 상호작용**. 다시 시도/닫기 버튼(콜백 주입) + 시각 강화 + 문구 톤. `invalid_code` 에러 메시지 분리.
+- **Void→Unit**. SlackInstallController 6건 정리(surgical 유예를 게이트 2에서 해소 결정).
+- 봇 토큰·installed_by UUID는 **여전히 응답 미노출**(비밀/식별자 최소 원칙 불변).
+
 ## 알려진 한계 (수용)
 
 - **disconnect/revoke 없음**. 연결 해제(하드 삭제)는 별도 ADR(삭제 시맨틱·감사) 필요 — 후속.
