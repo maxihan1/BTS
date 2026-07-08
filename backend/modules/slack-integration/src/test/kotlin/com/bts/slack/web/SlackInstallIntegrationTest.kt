@@ -148,7 +148,7 @@ class SlackInstallIntegrationTest {
         mockMvc
             .perform(get("/slack/install/callback").param("code", "valid-code").param("state", state))
             .andExpect(status().isFound)
-            .andExpect(header().string("Location", "/settings/slack?installed=Acme+Workspace"))
+            .andExpect(header().string("Location", "/admin/slack?installed=Acme+Workspace"))
 
         // 설치 1행이 저장되고 installedBy 는 state 에서 복원된 개시자다.
         assertThat(rowCount(TEAM_ID)).isEqualTo(1)
@@ -222,7 +222,7 @@ class SlackInstallIntegrationTest {
         mockMvc
             .perform(get("/slack/install/callback").param("code", "code").param("state", "tampered.state"))
             .andExpect(status().isFound)
-            .andExpect(header().string("Location", "/settings/slack?error=invalid_state"))
+            .andExpect(header().string("Location", "/admin/slack?error=invalid_state"))
 
         assertThat(rowCount(TEAM_ID)).isEqualTo(0)
     }
@@ -235,7 +235,7 @@ class SlackInstallIntegrationTest {
         mockMvc
             .perform(get("/slack/install/callback").param("code", "bad").param("state", state))
             .andExpect(status().isFound)
-            .andExpect(header().string("Location", "/settings/slack?error=invalid_code"))
+            .andExpect(header().string("Location", "/admin/slack?error=invalid_code"))
 
         assertThat(rowCount(TEAM_ID)).isEqualTo(0)
     }
@@ -256,7 +256,7 @@ class SlackInstallIntegrationTest {
                 .getHeader("Location")
 
         // 정화 결과 — 공백·`!`·CRLF·`:` 는 제거되고 퍼센트 인코딩 잔재(%)도 남지 않는다.
-        assertThat(location).isEqualTo("/settings/slack?error=invalidcodeSet-Cookieevil")
+        assertThat(location).isEqualTo("/admin/slack?error=invalidcodeSet-Cookieevil")
         assertThat(rowCount(TEAM_ID)).isEqualTo(0)
     }
 
@@ -265,7 +265,7 @@ class SlackInstallIntegrationTest {
         mockMvc
             .perform(get("/slack/install/callback").param("error", "access_denied"))
             .andExpect(status().isFound)
-            .andExpect(header().string("Location", "/settings/slack?error=access_denied"))
+            .andExpect(header().string("Location", "/admin/slack?error=access_denied"))
 
         assertThat(rowCount(TEAM_ID)).isEqualTo(0)
     }
