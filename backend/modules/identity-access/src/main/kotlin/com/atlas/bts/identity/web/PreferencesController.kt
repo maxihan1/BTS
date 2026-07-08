@@ -107,11 +107,21 @@ class PreferencesController(
 
     /** [UserPreferences] → [PreferencesResponse]. */
     private fun toResponse(prefs: UserPreferences): PreferencesResponse =
-        PreferencesResponse(theme = prefs.theme, locale = prefs.locale, dateFormat = prefs.dateFormat)
+        PreferencesResponse(
+            theme = prefs.theme,
+            locale = prefs.locale,
+            dateFormat = prefs.dateFormat,
+            startPage = prefs.startPage,
+        )
 
     /** [PreferencesPatchRequest] 의 nullable 2-state 를 도메인 [PreferencesPatch] 로 변환한다. */
     private fun toPatch(req: PreferencesPatchRequest): PreferencesPatch =
-        PreferencesPatch(theme = req.theme, locale = req.locale, dateFormat = req.dateFormat)
+        PreferencesPatch(
+            theme = req.theme,
+            locale = req.locale,
+            dateFormat = req.dateFormat,
+            startPage = req.startPage,
+        )
 
     /** `{"code":..., "message":...}` 본문을 가진 [status] 응답을 생성한다([UserProfileController] 에러 응답 형식 일관). */
     private fun errorResponse(

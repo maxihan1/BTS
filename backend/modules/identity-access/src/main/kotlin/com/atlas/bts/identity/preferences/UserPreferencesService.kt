@@ -62,6 +62,7 @@ class UserPreferencesService(
         patch.theme?.let { validateAllowed(it, UserPreferences.THEMES, "테마") }
         patch.locale?.let { validateAllowed(it, UserPreferences.LOCALES, "로케일") }
         patch.dateFormat?.let { validateAllowed(it, UserPreferences.DATE_FORMATS, "날짜 형식") }
+        patch.startPage?.let { validateAllowed(it, UserPreferences.START_PAGES, "시작 페이지") }
 
         val current = repository.findByUserId(userId)
         val effective =
@@ -70,6 +71,7 @@ class UserPreferencesService(
                 theme = patch.theme ?: current?.theme ?: UserPreferences.DEFAULT_THEME,
                 locale = patch.locale ?: current?.locale ?: UserPreferences.DEFAULT_LOCALE,
                 dateFormat = patch.dateFormat ?: current?.dateFormat ?: UserPreferences.DEFAULT_DATE_FORMAT,
+                startPage = patch.startPage ?: current?.startPage ?: UserPreferences.DEFAULT_START_PAGE,
             )
         repository.upsert(effective)
         return effective
@@ -84,6 +86,7 @@ class UserPreferencesService(
             theme = UserPreferences.DEFAULT_THEME,
             locale = UserPreferences.DEFAULT_LOCALE,
             dateFormat = UserPreferences.DEFAULT_DATE_FORMAT,
+            startPage = UserPreferences.DEFAULT_START_PAGE,
         )
 
     /**
@@ -104,13 +107,15 @@ class UserPreferencesService(
 }
 
 /**
- * [UserPreferencesService.patchPreferences] 입력 — theme/locale/dateFormat 2-state PATCH (FR-PF-01).
+ * [UserPreferencesService.patchPreferences] 입력 — theme/locale/dateFormat/startPage 2-state PATCH
+ * (FR-PF-01, FR-PF-02).
  *
- * 각 필드 기본값은 `null`(부재=미변경)이다. 세 필드 모두 고정 열거값이라 "명시적 삭제" 개념이
+ * 각 필드 기본값은 `null`(부재=미변경)이다. 네 필드 모두 고정 열거값이라 "명시적 삭제" 개념이
  * 없으므로(profile 의 `department: String?` 과 달리) 3-state sealed 타입 없이 nullable 로 충분하다.
  */
 data class PreferencesPatch(
     val theme: String? = null,
     val locale: String? = null,
     val dateFormat: String? = null,
+    val startPage: String? = null,
 )
