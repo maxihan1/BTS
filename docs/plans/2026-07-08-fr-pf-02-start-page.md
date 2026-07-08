@@ -137,7 +137,8 @@ ALTER TABLE user_preferences
 **RED**: `start-page.test.ts` — `resolveStartPagePath(startPage, userId)`가 `dashboards→/dashboards`, `my_issues→/issues?assignee=<userId>`, `issues→/issues`, `inbox→/inbox`. 화이트리스트 밖 키·userId 부재 → `/dashboards` 폴백. `preferencesSchema`가 startPage enum 파싱.
 
 **GREEN**:
-- (신규) `lib/start-page.ts`: `START_PAGE_KEYS`, `START_PAGE_LABELS`(한국어), `resolveStartPagePath(key, userId)` 매핑+폴백, `isStartPage` 타입가드.
+- (신규) `lib/start-page.ts`: `START_PAGE_KEYS`, `START_PAGE_LABELS`(한국어), `resolveStartPageNav(key, userId)` 매핑+폴백, `isStartPage` 타입가드.
+  - **반환형(eng 리뷰)**: TanStack `navigate/redirect` 호환. `my_issues`는 쿼리 필요(`/issues?assignee=<id>`) → `{ to, search? }` 객체 반환 권장(`redirect({to:'/issues', search:{assignee:userId}})`). 쿼리 포함 문자열 `to`도 기존 `redirectIfAuth` returnTo 패턴과 동일 동작하나 타입 안전 위해 객체형 우선. 폴백은 `{ to: '/dashboards' }`.
 - `api/preferences.ts`: `preferencesSchema`에 `startPage: z.enum(START_PAGES)`, `PreferencesPatchBody`에 `startPage?`, `START_PAGES` 상수(백엔드 companion 미러).
 - `api/schemas.ts`: `WhoamiResponseSchema`에 `startPage: z.string().optional()` (**`.optional()` 필수** — `.default()`는 z.infer non-optional화로 mock fan-out, [[zod-schema-strengthen-inline-mock-fanout]]).
 
@@ -172,8 +173,8 @@ ALTER TABLE user_preferences
 - `routeGuard.test.ts`: `redirectIfAuth` fallback이 `/dashboard` 대신 start_page 매핑(returnTo 우선 유지).
 
 **GREEN**:
-- `login.tsx handleSuccess`: `const returnTo = safe(new URLSearchParams(window.location.search).get('returnTo'))` → returnTo ?? `resolveStartPagePath(user?.startPage, user?.userId)` → navigate. (`useAuthStore.getState().user`)
-- `routeGuard.ts redirectIfAuth`: safeTo fallback을 `resolveStartPagePath(user?.startPage, user?.userId)`로. (store user 접근)
+- `login.tsx handleSuccess`: `const returnTo = safe(new URLSearchParams(window.location.search).get('returnTo'))`(redirectIfAuth와 동일 파싱 패턴) → returnTo 있으면 `navigate({to: returnTo})`, 없으면 `navigate(resolveStartPageNav(user?.startPage, user?.userId))`. (`useAuthStore.getState().user`)
+- `routeGuard.ts redirectIfAuth`: safeTo fallback을 `resolveStartPageNav(user?.startPage, user?.userId)`로. (store user 접근, returnTo는 기존대로 우선)
 
 **REFACTOR**: returnTo 안전검증은 기존 `isSafeReturnTo` 재사용. 우선순위 주석(returnTo > start_page > dashboards).
 
@@ -205,3 +206,20 @@ ALTER TABLE user_preferences
 - BC 격리: identity-access 단일. issue-tracking 직접 변경 0(assignee=me는 프론트 userId 주입으로 회피)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
+
+**리뷰 방식**. 저위험(FR-PF-01 동형·BC 격리·신규 의존성 0·스펙 명확)이라 autoplan 4-phase 대신 eng+design 집중 리뷰([[bts-review-plan-autoplan-overkill]] 교훈).
+
+### plan-eng-review (2026-07-08)
+- ✅ TDD 사이클·트랜잭션 경계(기존 재사용)·BC 격리(identity-access 단일)·wave 직렬화(백엔드 파일 겹침)·depends-on(T4→[3] whoami가 service.defaults 의존)·Repository 5지점 명시·검증 커맨드 — 충족.
+- ⚠️ 주의(반영됨): T5 `resolveStartPageNav` 반환형을 TanStack `navigate/redirect` 호환 `{to, search}` 객체로. `my_issues` 쿼리 처리. → plan T5/T7 보강.
+- ✅ 보안: 화이트리스트 검증(백엔드 권위)·오픈 리다이렉트 차단·whoami 하위호환(Zod optional)·returnTo `isSafeReturnTo` 재사용·start_page 경로 4종 모두 `requireAuthAndPasswordChanged`(비번/MFA 강제 심층방어, EC7).
+- BLOCKER: 없음.
+
+### plan-design-review (2026-07-08)
+- ✅ 기존 theme/locale/dateFormat Select와 동일 패턴·한국어 라벨(START_PAGE_LABELS)·기본값 우선 배치·접근성(name).
+- ⚠️ taste(게이트1): 시작 페이지는 "다음 로그인부터" 적용(즉시 아님) → 안내 문구 유무를 Maxi 확인.
+- BLOCKER: 없음.
+
+### 게이트1 확인 대상 (taste decision)
+1. returnTo 우선순위 도입(returnTo > start_page > dashboards, 기존 handleSuccess returnTo 무시 개선 포함).
+2. 설정 변경 "다음 로그인부터 적용" 안내 문구 표시 여부.
