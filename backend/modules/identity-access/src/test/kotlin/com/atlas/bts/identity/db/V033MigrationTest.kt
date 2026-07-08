@@ -24,9 +24,11 @@ import java.sql.SQLException
  *    앱 우회 raw SQL 쓰기도 무효 action 이면 제약 위반으로 차단
  *  - key_combo VARCHAR(16) NOT NULL — 신규 테이블이라 backfill 불요
  *  - 시각 컬럼은 모두 TIMESTAMPTZ(DATA.md — TIMESTAMP without tz 금지)
+ *
+ * NestedBlockDepth 억제 사유 — 마이그레이션 검증 헬퍼의 raw JDBC 3중 use
+ * (connection→statement→resultSet) + 결과 수집 루프는 구조상 불가피
+ * (V006/V007 detekt-baseline 선례와 동일 성격, 신규 코드라 baseline 대신 @Suppress 명시).
  */
-// 마이그레이션 검증 헬퍼의 raw JDBC 3중 use(connection→statement→resultSet) + 결과 수집은 구조상 불가피
-// (V006/V007 detekt-baseline 선례와 동일 성격, 신규 코드라 baseline 대신 @Suppress 로 명시)
 @Testcontainers
 @Suppress("NestedBlockDepth")
 class V033MigrationTest {
