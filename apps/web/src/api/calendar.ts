@@ -83,7 +83,7 @@ export type CalendarResponse = z.infer<typeof calendarResponseSchema>
  * @param from 조회 시작일 (ISO date, `"YYYY-MM-DD"`)
  * @param to 조회 종료일 (ISO date, `"YYYY-MM-DD"`, 포함)
  * @returns CalendarResponse
- * @throws ApiError(400) INVALID_CALENDAR_RANGE — from&gt;to / 창&gt;90일 / 날짜 형식 오류
+ * @throws ApiError(400) INVALID_CALENDAR_RANGE — from>to, 창(from~to)>90일, 날짜 형식 오류 중 하나
  * @throws ApiError(401) 미인증
  * @throws ZodError 응답 스키마 불일치 시
  *
