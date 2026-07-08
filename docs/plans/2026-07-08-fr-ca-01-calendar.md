@@ -50,6 +50,113 @@ cross-BC 조회(issue-tracking, agile-planning)가 핵심 설계 포인트.
 ✅ 통과 (자체 sanity 1회). gap 3건 인라인 보강(결정적 정렬·프론트 이중 tz변환 금지·cross-project visibility 술어 검증).
 이월 리스크: 새 포트 소비 full-boot/슬라이스 stub 배선, adapter cross-project visibility 술어 실재 확인.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> cross-BC 테스트 분리(memory [[no-cross-bc-deployment-assembly]]): adapter 실 SQL 검증은 **issue-tracking 모듈**(실 DB),
+> identity-access 컨트롤러 검증은 **stub 포트 @Bean**(BC 격리로 issue-tracking gradle 의존 불가).
+> 프론트는 spec §API 계약 고정 → MSW-first로 백엔드와 병렬.
+
+### Task 1. shared-kernel `UserCalendarLookupPort` + VO
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/calendar/UserCalendarLookupPort.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/calendar/UserCalendarLookupPortTest.kt`]
+- depends-on: []
+
+**RED**: 포트 default 메서드가 빈 페이지(truncated=false) 반환 검증 (TimelineLookupPortTest 패턴).
+**GREEN**: `interface UserCalendarLookupPort` — `listAssignedScheduledIssues(userId, from: LocalDate, to: LocalDate): CalendarIssuePage` + `listWorklogs(userId, fromInstant: Instant, toInstant: Instant): CalendarWorklogPage`, 둘 다 default 빈 반환. `CalendarIssueView`(key/summary/issueType/currentStateKey/startDate?/dueDate?), `CalendarIssuePage`, `CalendarWorklogView`(id/issueKey/issueSummary/startedAt: Instant/timeSpentSeconds), `CalendarWorklogPage`.
+**REFACTOR**: KDoc — BC 격리 사유·fail-safe·timezone 책임 경계(소비측이 Instant→로컬 date 매핑).
+**검증**: `./gradlew :backend:shared-kernel:test --tests *UserCalendarLookupPortTest`
+
+### Task 2. issue-tracking `UserCalendarLookupAdapter` (실 SQL + visibility)
+
+**메타**.
+- agent: `backend-engineer` (visibility 필터 = security-engineer 리뷰 대상)
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/outbound/calendar/UserCalendarLookupAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/outbound/calendar/UserCalendarLookupAdapterIntegrationTest.kt`]
+- depends-on: [1]
+
+**RED**: Testcontainers 통합 테스트. 시드 — 이슈(assignee=me 날짜있음/없음, assignee=타인, 보안등급 비가시, soft-deleted), worklog(author=me 범위내/밖, author=타인, deleted). 검증: assignee=me + (start|due) + span∩[from,to] + viewer 가시만 / worklog author=me 활성 + started_at∈[fromInstant,toInstant).
+**GREEN**: jOOQ 2쿼리. **cross-project visibility 술어 재사용**(IssueSearchPort/IssueRepository 검색 경로 grep — 프로젝트 축 술어 오재사용 금지, spec ⚠). LIMIT 500 + truncated.
+**REFACTOR**: 술어 추출·KDoc·인덱스 활용 주석(idx_issues_due_date·idx_worklogs_author_started).
+**검증**: `./gradlew :backend:issue-tracking:test --tests *UserCalendarLookupAdapterIntegrationTest`
+
+### Task 3. identity-access `CalendarService` (tz 변환·검증·정렬·조립)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/calendar/CalendarService.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/calendar/CalendarResponse.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/calendar/CalendarServiceTest.kt`]
+- depends-on: [1]
+
+**RED**: 단위 테스트(fake `UserCalendarLookupPort`). from>to→400, 창>90일→400, 날짜형식오류→400, tz 변환(worklog Instant→로컬 date, S4 경계), 정렬(issueEvents `(start?:due,key)`·worklogEvents `(date,startedAt)`), 빈/truncated, 프로필 tz 미설정→UTC.
+**GREEN**: 서비스. `UserProfileService`(같은 모듈 직접)로 timezone 조회 → from/to 로컬날짜↔Instant 범위 변환 → 포트 2회 호출 → worklog date 매핑 → 정렬 → `CalendarResponse` 조립. 검증 실패는 `ResponseStatusException(400, INVALID_CALENDAR_RANGE)`.
+**REFACTOR**: 창 검증 상수(90일)·KDoc.
+**검증**: `./gradlew :backend:identity-access:test --tests *CalendarServiceTest`
+
+### Task 4. identity-access `CalendarController` + DTO + boot 배선 + HTTP 통합
+
+**메타**.
+- agent: `backend-engineer` (인증 게이트 = security-engineer 리뷰 대상)
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/calendar/CalendarController.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/calendar/CalendarControllerIntegrationTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/calendar/StubUserCalendarLookupPortConfig.kt`]
+- depends-on: [3]
+
+**RED**: HTTP 통합 테스트(full-boot + `@TestConfiguration` stub `UserCalendarLookupPort` @Bean — BC 격리로 실 adapter 불가). 200(stub 시드), 400(잘못된 창), 401(미인증). identity-access RANDOM_PORT 부팅 레시피(memory [[identity-access-prod-randomport-boot-recipe]]).
+**GREEN**: `GET /api/v1/users/me/calendar` 컨트롤러(actor=JWT me), DTO 직렬화(issueEvents/worklogEvents/timezone/truncated), 포트 소비 배선(런타임 fail-safe default). @WebMvcTest 로드 슬라이스는 신규 협력자 mock(memory [[whoami-slice-mock-skipci-masking]]·[[new-crossbc-dep-openapi-mockbean-regression]]).
+**REFACTOR**: OpenApi 어노테이션·KDoc.
+**검증**: `./gradlew :backend:identity-access:test --tests *CalendarControllerIntegrationTest`
+
+### Task 5. 디자인 스펙 — 캘린더 월/주 뷰 (D6 designer)
+
+**메타**.
+- agent: `designer`
+- files: [`docs/design/fr-ca-01-calendar.md`]
+- depends-on: []
+- **TDD 예외**: 디자인 스펙 산출(코드/테스트 없음). RED/GREEN 미적용.
+
+**산출**: 월 6주 그리드 + 주 7일 레이아웃. 이벤트 렌더(상태색 이슈 기간 막대·마감일 점·worklog 시간 칩·셀 오버플로 "+N개"), 이전/다음/오늘·월↔주 토글, 빈/로딩/에러 상태. DESIGN.md 토큰(색/여백/타이포) 준수. WCAG AA(대비·키보드).
+**검증**: 스펙 문서 완성 + frontend task가 참조 가능.
+
+### Task 6. 프론트 calendar API + Zod + `useCalendar` 훅
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/calendar.ts`, `apps/web/src/api/calendar.test.ts`, `apps/web/src/api/useCalendar.ts`, `apps/web/src/api/useCalendar.test.ts`, `apps/web/src/test/msw/handlers/calendar.ts`]
+- depends-on: []
+
+**RED**: Zod parse 테스트(spec §API 응답 fixture — nullable startDate/dueDate, worklog id UUID). 훅 filter-aware queryKey(from/to). MSW 핸들러.
+**GREEN**: Zod 스키마(spec §API **정확 미러**, DTO invent 금지 memory [[frontend-zod-backend-dto-contract-gap]]·Zod v4 UUID fixture memory [[zod-v4-uuid-fixture-strictness]]). `apiFetch` 기반 fetch. `useCalendar(from,to)` 쿼리 훅(queryKey에 from/to 포함).
+**REFACTOR**: 타입 export·KDoc.
+**검증**: `pnpm --filter web test calendar`
+
+### Task 7. 프론트 `/calendar` 월/주 뷰 컴포넌트 + 라우트
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/calendar.tsx`, `apps/web/src/features/calendar/CalendarView.tsx`, `apps/web/src/features/calendar/MonthGrid.tsx`, `apps/web/src/features/calendar/WeekGrid.tsx`, `apps/web/src/features/calendar/calendar.test.tsx`]
+- depends-on: [5, 6]
+
+**RED**: 컴포넌트 테스트 — 월 뷰 6주 그리드 렌더, 주 뷰 7일, 이벤트가 올바른 날짜 셀에 배치, 이슈 클릭→`/issues/{key}` 네비, 빈 상태, from/to→useCalendar 호출.
+**GREEN**: 네이티브 `Date` 그리드(신규 의존성 0). 디자인 스펙(T5) 반영. 이전/다음/오늘·월↔주 토글이 from/to 갱신. 전역 네비게이션 진입점 추가.
+**REFACTOR**: 날짜 유틸 순수함수 추출(테스트 용이)·접근성 속성.
+**검증**: `pnpm --filter web test calendar` + `pnpm --filter web typecheck`
+
+### Task 8. E2E (Playwright)
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/calendar.spec.ts`, `apps/web/src/test/msw/handlers/calendar.ts`(시나리오 시드 확장)]
+- depends-on: [7]
+
+**시나리오**: 월↔주 전환·이전/다음/오늘·이벤트 클릭→이슈 상세·빈 상태. MSW 시드(serviceWorker block 금지 memory [[e2e-msw-serviceworker-block]], 시나리오 토글 memory [[e2e-msw-scenario-toggle-localstorage-flag]]).
+**검증**: `pnpm --filter web test:e2e calendar` (E2E 후 5173 orphan kill memory [[e2e-orphan-vite-after-worktree-remove]])
+
+## Plan 메타
+
+- task 수: 8
+- 예상 wave: 3 — Wave1[T1·T5·T6] → Wave2[T2·T3·T7] → Wave3[T4·T8]
+- TDD 강제: yes (T5 디자인 스펙만 예외)
+- 병렬 dispatch: bts-impl이 depends-on + files 겹침으로 wave 계산. 파일 겹침 0 확인됨.
+- 추가 검증: ktlintCheck·detekt(backend), typecheck·lint·vitest(frontend), playwright(qa)
+- 보안 리뷰: T2(cross-project visibility 필터) + T4(/users/me 인증 게이트) → gate 2 security-engineer 집중.
+- 리스크: (a) T2 cross-project visibility 술어 실재 grep 확인, (b) T4 새 포트 소비 슬라이스/full-boot stub 배선.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
