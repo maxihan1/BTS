@@ -20,6 +20,13 @@ vi.mock('@/components/command-palette/CommandPalette', () => ({
   CommandPalette: () => null,
 }))
 
+// useKeymap mock — RootLayout이 마운트하는 useKeyboardShortcuts가 useKeymap(react-query)을 구독하므로
+// (FR-PF-03 Task-8), QueryClientProvider 없이 렌더하기 위해 mock. data undefined면 useKeyboardShortcuts가
+// DEFAULT_KEYMAP으로 폴백해 기존 '?' 도움말 동작이 무회귀한다.
+vi.mock('@/api/keymap', () => ({
+  useKeymap: () => ({ data: undefined }),
+}))
+
 // useNotificationStream mock — 호출 여부 검증 대상
 vi.mock('@/notifications/useNotificationStream', () => ({
   useNotificationStream: vi.fn(),
