@@ -3,6 +3,7 @@
 package com.bts.slack.persistence
 
 import com.bts.slack.application.SlackInstallRepository
+import com.bts.slack.application.SlackInstallationView
 import com.bts.slack.domain.SlackInstall
 import org.springframework.jdbc.core.RowMapper
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
@@ -46,6 +47,18 @@ class JdbcSlackInstallRepository(
     override fun findByTeamId(teamId: String): SlackInstall? =
         jdbc.query(SQL_FIND_BY_TEAM_ID, mapOf("teamId" to teamId), SlackInstallRowMapper)
             .firstOrNull()
+
+    @Transactional(readOnly = true)
+    override fun findCurrentInstallation(): SlackInstallationView? =
+        jdbc.query(
+            """
+            SELECT team_id, team_name, installed_at
+            FROM slack_installs
+            ORDER BY installed_at DESC
+            LIMIT 1
+            """,
+            SlackInstallationViewRowMapper,
+        ).firstOrNull()
 
     private companion object {
         /** 워크스페이스 설치 멱등 업서트 — UNIQUE(team_id) 위반 시 최신 값으로 갱신(last-write-wins). */
@@ -92,5 +105,23 @@ private object SlackInstallRowMapper : RowMapper<SlackInstall> {
             scopes = rs.getString("scopes"),
             isEnterpriseInstall = rs.getBoolean("is_enterprise_install"),
             installedBy = rs.getObject("installed_by", UUID::class.java),
+        )
+}
+
+/**
+ * `slack_installs` 한 행 → [SlackInstallationView] 매핑.
+ *
+ * 3필드(`team_id`/`team_name`/`installed_at`)만 매핑한다 — `bot_token_encrypted` 는
+ * projection 쿼리가 애초에 선택하지 않으므로 여기서도 읽지 않는다(방어적).
+ */
+private object SlackInstallationViewRowMapper : RowMapper<SlackInstallationView> {
+    override fun mapRow(
+        rs: ResultSet,
+        rowNum: Int,
+    ): SlackInstallationView =
+        SlackInstallationView(
+            teamId = rs.getString("team_id"),
+            teamName = rs.getString("team_name"),
+            installedAt = rs.getTimestamp("installed_at").toInstant(),
         )
 }
