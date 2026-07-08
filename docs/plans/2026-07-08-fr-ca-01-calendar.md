@@ -120,8 +120,9 @@ cross-BC 조회(issue-tracking, agile-planning)가 핵심 설계 포인트.
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/api/calendar.ts`, `apps/web/src/api/calendar.test.ts`, `apps/web/src/api/useCalendar.ts`, `apps/web/src/api/useCalendar.test.ts`, `apps/web/src/test/msw/handlers/calendar.ts`]
+- files: [`apps/web/src/api/calendar.ts`, `apps/web/src/api/calendar.test.ts`, `apps/web/src/api/useCalendar.ts`, `apps/web/src/api/useCalendar.test.ts`, `apps/web/src/mocks/calendar-handlers.ts`, `apps/web/src/mocks/handlers.ts`]
 - depends-on: []
+- **정정(리뷰)**: MSW 핸들러는 레포 관례 `apps/web/src/mocks/calendar-handlers.ts`(`export const calendarHandlers`) + `mocks/handlers.ts` aggregator 등록. (초안 `src/test/msw/handlers/calendar.ts`는 관례 이탈 — 폐기.)
 
 **RED**: Zod parse 테스트(spec §API 응답 fixture — nullable startDate/dueDate, worklog id UUID). 훅 filter-aware queryKey(from/to). MSW 핸들러.
 **GREEN**: Zod 스키마(spec §API **정확 미러**, DTO invent 금지 memory [[frontend-zod-backend-dto-contract-gap]]·Zod v4 UUID fixture memory [[zod-v4-uuid-fixture-strictness]]). `apiFetch` 기반 fetch. `useCalendar(from,to)` 쿼리 훅(queryKey에 from/to 포함).
@@ -144,7 +145,7 @@ cross-BC 조회(issue-tracking, agile-planning)가 핵심 설계 포인트.
 
 **메타**.
 - agent: `qa-engineer`
-- files: [`apps/web/e2e/calendar.spec.ts`, `apps/web/src/test/msw/handlers/calendar.ts`(시나리오 시드 확장)]
+- files: [`apps/web/e2e/calendar.spec.ts`, `apps/web/src/mocks/calendar-handlers.ts`(시나리오 시드 확장)]
 - depends-on: [7]
 
 **시나리오**: 월↔주 전환·이전/다음/오늘·이벤트 클릭→이슈 상세·빈 상태. MSW 시드(serviceWorker block 금지 memory [[e2e-msw-serviceworker-block]], 시나리오 토글 memory [[e2e-msw-scenario-toggle-localstorage-flag]]).
