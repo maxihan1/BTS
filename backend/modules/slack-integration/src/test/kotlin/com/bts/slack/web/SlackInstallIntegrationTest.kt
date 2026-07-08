@@ -241,6 +241,26 @@ class SlackInstallIntegrationTest {
     }
 
     @Test
+    fun `GET callback - Slack이 준 errorCode도 안전 문자셋으로 정화된다 (NIT-1)`() {
+        // Slack 이 비정상/악의적 error 코드(공백·특수문자·CRLF 주입 시도)를 돌려줘도, 방어심층으로 안전
+        // 문자셋([A-Za-z0-9_-])만 리다이렉트 쿼리에 실린다(URLEncoder 만이 아니라 컨트롤러 정화도 적용).
+        fakeOAuth.responder = { failedResponse("invalid code!\r\nSet-Cookie: evil") }
+        val state = stateSigner.issue(UUID.fromString(ADMIN_UUID))
+
+        val location =
+            mockMvc
+                .perform(get("/slack/install/callback").param("code", "bad").param("state", state))
+                .andExpect(status().isFound)
+                .andReturn()
+                .response
+                .getHeader("Location")
+
+        // 정화 결과 — 공백·`!`·CRLF·`:` 는 제거되고 퍼센트 인코딩 잔재(%)도 남지 않는다.
+        assertThat(location).isEqualTo("/settings/slack?error=invalidcodeSet-Cookieevil")
+        assertThat(rowCount(TEAM_ID)).isEqualTo(0)
+    }
+
+    @Test
     fun `GET callback - 사용자 취소 error 파라미터면 302 error 리다이렉트이고 저장하지 않는다`() {
         mockMvc
             .perform(get("/slack/install/callback").param("error", "access_denied"))
