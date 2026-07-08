@@ -10,7 +10,7 @@
 
 FR-SL-01 백엔드 코어(D1~D5, PR #244)는 브라우저 전체 페이지 흐름을 가정한 두 엔드포인트를 제공한다.
 - `GET /slack/install` — `SecurityContextHolder`에서 시스템 관리자 판정 후 Slack authorize URL로 **302**.
-- `GET /slack/install/callback` — permitAll(서명 state 자체 검증) 후 프론트 결과 경로 `/settings/slack?installed=|error=`로 **302**.
+- `GET /slack/install/callback` — permitAll(서명 state 자체 검증) 후 프론트 결과 경로 `/admin/slack?installed=|error=`로 **302**.
 
 D6은 이 흐름을 개시·표시하는 관리자 UI다. 그런데 BTS SPA의 인증 모델과 정면으로 부딪히는 제약이 있다.
 
@@ -26,10 +26,10 @@ OAuth 설치는 본질적으로 전체 페이지 리다이렉트(slack.com 왕�
 
 | Method | Path | 인가 | 응답 |
 |---|---|---|---|
-| GET | `/api/v1/slack/installation` | JWT + 시스템 관리자 | `{ connected: bool, teamName?, teamId?, botUserId?, installedAt? }` |
+| GET | `/api/v1/slack/installation` | JWT + 시스템 관리자 | `{ connected: bool, teamId?, teamName?, installedAt? }` |
 | GET | `/api/v1/slack/install-url` | JWT + 시스템 관리자 | `{ url: <신선한 서명 state를 실은 Slack authorize URL> }` |
 
-프론트 흐름. 페이지 진입 시 `installation`으로 연결 상태 표시 → "연결/다시 연결" 클릭 시 `install-url`을 apiFetch로 받아 `window.location.href = url`(slack.com은 인증 불필요). Slack 콜백은 기존 302 흐름 그대로 `/settings/slack?installed=|error=`로 복귀.
+프론트 흐름. 페이지 진입 시 `installation`으로 연결 상태 표시 → "연결/다시 연결" 클릭 시 `install-url`을 apiFetch로 받아 `window.location.href = url`(slack.com은 인증 불필요). Slack 콜백은 기존 302 흐름 그대로 `/admin/slack?installed=|error=`로 복귀.
 
 - **관리자 가드**는 기존 백엔드 코어와 동일하게 cross-BC `SystemPermissionResolver` 포트(shared-kernel, fail-closed)로 판정. identity-access import 0(BC 격리).
 - `install-url`은 `SlackInstallService.startInstall(actorId)`가 만드는 authorize URL을 그대로 반환한다(관리자 판정·서명 state 발급 로직 재사용). 302 대신 JSON body로 감싸는 차이만 있다.
@@ -37,7 +37,7 @@ OAuth 설치는 본질적으로 전체 페이지 리다이렉트(slack.com 왕�
 
 ### D6-2. 상태 조회는 비-비밀 메타만, users 조인 없음 (BC 격리 유지)
 
-`installation`은 `slack_installs`의 비-비밀 컬럼(`team_id`·`team_name`·`bot_user_id`·`installed_at`)만 반환한다. **봇 토큰(암호화/평문)은 절대 응답에 싣지 않는다**(백엔드 코어의 3중 미노출 원칙 연장). `installed_by`(user id)는 값으로도 반환하지 않는다 — "설치자 이름" 표시는 identity-access users 조인이 필요해 FR-SL-01 스펙의 명시적 범위 밖(후속). 미설치 시 `{ connected: false }`.
+`installation`은 `slack_installs`의 비-비밀 컬럼(`team_id`·`team_name`·`installed_at`)만 반환(표시에 불필요한 `bot_user_id`는 최소화 원칙상 제외)한다. **봇 토큰(암호화/평문)은 절대 응답에 싣지 않는다**(백엔드 코어의 3중 미노출 원칙 연장). `installed_by`(user id)는 값으로도 반환하지 않는다 — "설치자 이름" 표시는 identity-access users 조인이 필요해 FR-SL-01 스펙의 명시적 범위 밖(후속). 미설치 시 `{ connected: false }`.
 
 ### D6-3. 라우트 = `/admin/slack` (관리자 페이지 관례 일치, 게이트 1 결정)
 
@@ -45,7 +45,7 @@ OAuth 설치는 본질적으로 전체 페이지 리다이렉트(slack.com 왕�
 
 ### D7. E2E = MSW 기반 (실 Slack/OAuth 왕복 없음)
 
-D7 E2E는 slack.com 실제 왕복을 재현하지 않는다(외부 리다이렉트). MSW로 `installation`/`install-url` 응답을 stub하고, 콜백 결과는 `/settings/slack?installed=|error=`로 직접 진입해 배너 렌더를 검증한다. 비관리자 게이팅·연결됨/미연결 상태·성공/실패 배너를 커버.
+D7 E2E는 slack.com 실제 왕복을 재현하지 않는다(외부 리다이렉트). MSW로 `installation`/`install-url` 응답을 stub하고, 콜백 결과는 `/admin/slack?installed=|error=`로 직접 진입해 배너 렌더를 검증한다. 비관리자 게이팅·연결됨/미연결 상태·성공/실패 배너를 커버.
 
 ## 알려진 한계 (수용)
 

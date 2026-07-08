@@ -9,9 +9,9 @@
 
 FR-SL-01 백엔드 코어(D1~D5, PR #244)의 후속. D6 프론트 + D7 E2E.
 
-- **D6 프론트**. `/settings/slack` 시스템 관리자 전용 페이지 — 현재 연결 상태 표시(연결됨/미연결) + 연결/다시연결 버튼 + 콜백 결과 배너(`?installed=` 성공 / `?error=<code>` 실패).
+- **D6 프론트**. `/admin/slack` 시스템 관리자 전용 페이지 — 현재 연결 상태 표시(연결됨/미연결) + 연결/다시연결 버튼 + 콜백 결과 배너(`?installed=` 성공 / `?error=<code>` 실패).
 - **D6 백엔드(같은 BC view-layer)**. Bearer 인증 제약(전체 페이지 이동은 Authorization 헤더 미전송)으로 관리자 가드 JSON 엔드포인트 2종 필요.
-  - `GET /api/v1/slack/installation` — 연결 상태 `{ connected, teamName?, teamId?, botUserId?, installedAt? }` (users 조인 없음, 설치자 이름 제외).
+  - `GET /api/v1/slack/installation` — 연결 상태 `{ connected, teamId?, teamName?, installedAt? }` (users 조인 없음·설치자 이름 제외·botUserId 미표시라 제외).
   - `GET /api/v1/slack/install-url` — 신선한 서명 state 실은 authorize URL `{ url }`.
   - 둘 다 SystemPermissionResolver 관리자 가드.
 - **D7 E2E**. MSW 기반 — 관리자 접근/비관리자 게이팅, 연결됨/미연결 상태, `?installed`/`?error` 배너.
