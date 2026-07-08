@@ -72,7 +72,8 @@ ALTER TABLE user_preferences
 
 **주의**. 마이그레이션 개수 카운트 가드(SchemaMigrationTest류)가 있으면 함께 +1 갱신([[fr-pm-permission-seed-migration-test-coupling]] 교훈). grep으로 존재 확인 후 대응.
 
-**검증**: `./gradlew :backend:identity-access:test --tests '*V032MigrationTest*'`
+**검증**: `backend/gradlew -p backend :modules:identity-access:test --tests '*V032MigrationTest*'` (⚠️ 정정: gradlew는 backend/에, 프로젝트 경로는 `:modules:identity-access`. 이하 모든 백엔드 task 동일)
+**결과**: ✅ PASS — RED `5333b90c5` → GREEN `4bb042061`, 2 tests green.
 
 ### Task 2. 도메인 + Repository 확장 (startPage 왕복)
 
@@ -131,8 +132,9 @@ ALTER TABLE user_preferences
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/lib/start-page.ts`, `apps/web/src/lib/start-page.test.ts`, `apps/web/src/api/preferences.ts`, `apps/web/src/api/schemas.ts`]
+- files: [`apps/web/src/lib/start-page.ts`, `apps/web/src/lib/start-page.test.ts`, `apps/web/src/api/preferences.ts`, `apps/web/src/api/schemas.ts`, `apps/web/src/api/preferences.test.ts`]
 - depends-on: []
+- **impl 노트**: `preferencesSchema`에 startPage 필수 enum 추가 → 기존 FR-PF-01 `preferences.test.ts` fixture(startPage 부재) 16건 ZodError 회귀([[zod-schema-strengthen-inline-mock-fanout]]). 같은 스키마 강화의 파급이라 T5 files에 `preferences.test.ts` 추가(fixture에 startPage 보강).
 
 **RED**: `start-page.test.ts` — `resolveStartPagePath(startPage, userId)`가 `dashboards→/dashboards`, `my_issues→/issues?assignee=<userId>`, `issues→/issues`, `inbox→/inbox`. 화이트리스트 밖 키·userId 부재 → `/dashboards` 폴백. `preferencesSchema`가 startPage enum 파싱.
 
@@ -184,8 +186,9 @@ ALTER TABLE user_preferences
 
 **메타**.
 - agent: `qa-engineer`
-- files: [`apps/web/e2e/start-page.spec.ts`, `apps/web/src/mocks/preferences-handlers.ts`, `apps/web/src/mocks/fixtures/auth-fixtures.ts`]
+- files: [`apps/web/e2e/start-page.spec.ts`, `apps/web/src/mocks/preferences-handlers.ts`, `apps/web/src/mocks/fixtures/auth-fixtures.ts`, `apps/web/src/routes/__tests__/settings.preferences.test.tsx`, `apps/web/e2e/login-happy-path.spec.ts`, `apps/web/e2e/already-authed.spec.ts`]
 - depends-on: [6, 7]
+- **impl 노트(회귀 흡수)**: T5 startPage required화 파급 → `settings.preferences.test.tsx` mock에 startPage 보강. T7 폴백 `/dashboard`→`/dashboards` 변경 → `login-happy-path.spec.ts`·`already-authed.spec.ts`의 `waitForURL('**/dashboard')` 갱신. 모두 테스트/인프라라 qa 범위.
 
 **RED/시나리오**:
 - MSW preferences PATCH가 startPage를 AUTH_USERS에 반영, whoami가 startPage 노출(mock).
@@ -224,3 +227,39 @@ ALTER TABLE user_preferences
 1. ✅ **returnTo > start_page > dashboards** 채택 (기존 handleSuccess returnTo 무시 개선 포함) — T7.
 2. ✅ **"다음 로그인부터 적용" 안내 문구 표시** — T6 헬프텍스트.
 → 승인, bts-impl 진입.
+
+## 구현 결과 (bts-impl)
+
+**wave 진행** (TDD red→green, verifier/controller PASS).
+- T1 (db) ✅ `5333b90c5`→`4bb042061` — V032 마이그레이션, 2 tests
+- T2 (backend) ✅ `c318eb30f`→`9e846b8eb`→`d20310f24` — 도메인+repo 5지점, startPage 기본값(4-인자 생성자 보존), 6 tests
+- T3 (backend) ✅ `96c66ea08`→`381148833`→`0fd85f863` — service 검증/병합+DTO+controller, 21 tests
+- T4 (backend) ✅ `b8e26655e`→`6f6766162`→`e37622749`/`38c7348f6` — whoami startPage(JWT/PAT), 29 tests
+- T5 (frontend) ✅ `8c49f269c`→`c6224350b`→`9f2527ed9(fix)` — 키→경로 매핑+Zod, preferences.test fixture 보강, 33 tests
+- T6 (frontend) ✅ `b99654683`→`b8348a8d1` — PreferencesForm Select+안내문구, 13 tests
+- T7 (frontend) ✅ `b09d65797`→`ba542ff57` — 로그인 라우팅 우선순위(returnTo>start_page>dashboards), 34 tests
+- T8 (qa) ✅ `39a33d2c6` — E2E start-page 2 시나리오 + mock/fixture startPage + 회귀 흡수(settings.preferences·login-happy-path·already-authed)
+
+**hot-fix** (controller + qa).
+- `fix` E2E 로그인 대기 glob 완화 — 폴백 `/dashboard`→`/dashboards` 파급 24곳을 `**/dashboard*`로(옵션 A, 로그인 완료 확인 의도·목적지 가변성 견고, Maxi 확인).
+- `fix` detekt MaxLineLength — JdbcUserPreferencesRepository SQL_UPSERT KDoc 줄바꿈.
+- `fix ca07fec03` WhoamiOooTest UserPreferencesService mock — pre-existing #245 잠복(main도 실패). whoami 슬라이스 2개 전수 확인.
+- `fix a372e3b25` WhoamiOooTest import 순서(ktlint import-ordering, mock import 알파벳 위치).
+- `fix f8dcc71f2` E2E 8개 로그인 성공 검증 완제품 갱신(qa T8) — 인증 플로우 5개는 목적지 무관(`toHaveURL(/dashboards/)`+계정메뉴), dashboard 환영은 명시 `goto('/dashboard')`. 재실행 39 passed 0 failed. 전수 확인 완료.
+
+**검증**. 프론트 typecheck ✅ / lint ✅ / 관련 vitest 86 tests ✅.
+- 백엔드 full test(2244) → WhoamiOooTest 3건 실패 발견. **원인=pre-existing**: #245(FR-PF-01)가 WhoamiController에 UserPreferencesService 주입 추가 시 WhoamiOooTest 슬라이스의 MockSecurityBeans에 mock 추가를 놓침(WhoamiControllerTest엔 추가). 이후 커밋이 `[skip ci]`(dashboard regen)라 잠복. **main 단독 실행도 동일 실패 확인**(내 변경 무관). → hot-fix `ca07fec03`(mock 1개 추가, WhoamiControllerTest 동일 패턴). WhoamiController 로드 슬라이스 2개(Ooo/Controller) 전수 확인 완료. 재실행 ✅ BUILD SUCCESSFUL.
+- 백엔드 detekt hot-fix + ktlint ✅.
+- E2E full(451 pass/12 fail):
+  - **8개=FR-PF-02 폴백 파급**(로그인 성공을 `/dashboard` 환영 페이지로 검증 → `/dashboards`로 변경). dashboard×2·login-ldap·login-multi-provider×2·mfa-backup·mfa-login·webauthn. → **완제품 갱신**(qa T8: 인증 플로우는 목적지 무관 검증, dashboard 환영은 명시 goto('/dashboard')). 전수 확인 포함.
+  - **4개=FR-PF-02 무관 pre-existing**(board-wip:122 `김앨리스 서브그룹 가시성`·project-member×2·saved-filters:265, `proxy ECONNREFUSED` 동반). board-wip 상세 assertion이 스윔레인 서브그룹 로직으로 로그인 목적지 무관 확정. main 대조는 vite webServer 환경 실패로 무산, 정황·assertion 근거로 판정. → **이 PR 밖, 별도 후속 조사**.
+
+## 후속 작업 추가
+
+- **E2E pre-existing 4건** — board-wip-swimlane:122(스윔레인 서브그룹 가시성), project-member-management:57/150, saved-filters:265. `proxy ECONNREFUSED`(MSW 미커버 `/api/v1/projects//versions` 등) 동반. FR-PF-02 무관, 별도 조사.
+- **learning 후보** — whoami view-layer 확장(#245) 시 WhoamiController 로드 슬라이스 전수(@WebMvcTest MockSecurityBeans) 미동기화 + `[skip ci]` dashboard regen이 잠복 은폐. whoami 슬라이스 mock 전수 동기화 규칙.
+
+## 후속 작업 (별도, 이 PR 범위 밖)
+
+- **Header 로그아웃 버그** (FR-PF-02 무관, 기존): `Header.tsx handleLogout`이 세션(`bts.auth`)은 지우나 `navigate({to:'/login'})`을 실행하지 않음(T8이 start-page E2E에서 실제 로그아웃 클릭 시 발견, 계측으로 호출 부재 확인). **별도 후속 이슈로** 처리(Maxi 확정). 기존 E2E는 sessionStorage 직접 클리어로 우회해와 잠복해 있었음.
+- (선례) blob 훅 공통화, save() 정리 등 personalization 공통 후속과 함께.
