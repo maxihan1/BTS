@@ -82,6 +82,10 @@ user_keymap(
   프론트 `SHORTCUTS`의 기본 key_combo를 사용한다. 재배치한 action만 행으로 존재한다.
 - **action CHECK 화이트리스트** — DB 최후 방어선. 임의 action 저장 차단(FR-PF-02 start_page CHECK 선례).
 - **마이그레이션 번호** — identity-access 모듈 V032가 최신 → **V033**. 머지 직전 재확인(V번호 동시 브랜치 충돌 방지).
+- **하드 삭제(override 제거)** — 기본값 복원 시 override 행을 `DELETE ... WHERE user_id`로 즉시 제거한다(soft-delete 아님).
+  개인 설정 토글이라 복구 가치가 낮고(favorites·saved_filters·dashboard_share_tokens 선례) 프론트 기본 키맵으로 언제든
+  재구성 가능하므로 하드 삭제가 정당하다. DATA.md §1.2/§3 규칙에 따라 §3 하드 삭제 예외 목록에 `user_keymap`을 등록한다.
+  (WHERE 절 필수 — DEVELOPMENT.md §1.2 #7 충족.)
 
 ### D5. 충돌 검출 — 완전 중복 + leader 접두 충돌 (백엔드 SSOT + 프론트 실시간)
 
