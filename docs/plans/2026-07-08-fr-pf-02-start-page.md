@@ -33,7 +33,20 @@
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
+전체 스펙. [docs/specs/2026-07-08-fr-pf-02-start-page.md](../specs/2026-07-08-fr-pf-02-start-page.md)
+
+핵심 시나리오 요약.
+- 설정에서 시작 페이지 선택(4종) → PATCH 즉시 저장 → **다음 로그인 시 그 경로로 자동 이동**.
+- 로그인 후 목적지 우선순위: **returnTo(안전) > start_page 매핑 > /dashboards**.
+- 논리 키 화이트리스트 저장(오픈 리다이렉트 차단). `my_issues`는 whoami userId 동적 주입(`/issues?assignee=${userId}`).
+
+**게이트1 검토 포인트 2건**.
+1. returnTo 우선순위 도입 — 기존 handleSuccess의 returnTo 무시(항상 /dashboard) 동작을 `returnTo > start_page`로 개선(로그인 플로우 변경 포함).
+2. `assignee=me` 미지원 → userId 동적 주입으로 해결(issue-tracking BC 미변경).
+
 ## Brainstorming Check (← /bts-spec Phase B 채움)
+
+✅ 통과 (1 iteration). 보안 gap 후보(start_page navigate가 비밀번호/MFA 강제 우회?) 코드 검증 → 4개 후보 라우트 모두 `requireAuthAndPasswordChanged` 보유, 우회 없음(EC7). 잔여 gap 없음.
 
 ## Plan (← /bts-plan 채움)
 
