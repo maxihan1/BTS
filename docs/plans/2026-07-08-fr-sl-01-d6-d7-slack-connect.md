@@ -23,7 +23,15 @@ FR-SL-01 백엔드 코어(D1~D5, PR #244)의 후속. D6 프론트 + D7 E2E.
 - 기존 `SlackInstallController`(`/slack/install` 302, `/slack/install/callback` 302)는 그대로 유지(배포 조립/쿠키 경로용). D6은 `/api/v1/slack/*` JSON 경로 신설.
 - BC 격리 — identity-access import 0, SystemPermissionResolver 포트만 소비.
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**: slack-integration (기존, FR-SL-01 백엔드 코어로 확립).
+- **영향 엔티티**: `SlackInstall`(기존). 신규 엔티티/마이그레이션 **없음** — view-layer 조회 read + UI만.
+- **새 용어**: 없음. "연결 상태"·"다시 연결"은 UI 라벨, 도메인 용어 아님. glossary 변경 불필요.
+- **기존 결정 충돌**: 없음. 기존 302 `/slack/install`·`/slack/install/callback` 유지 + SPA용 JSON 경로 신설(병존).
+- **핵심 결정**: Bearer 인증 제약(전체 페이지 nav는 Authorization 헤더 미전송) → 관리자 가드 JSON 엔드포인트 `GET /api/v1/slack/{installation,install-url}` 신설. authorize URL을 apiFetch로 받아 nav.
+- **관련 ADR**: [docs/decisions/2026-07-08-fr-sl-01-d6-slack-connect-page.md](../decisions/2026-07-08-fr-sl-01-d6-slack-connect-page.md) (생성됨) · 선행 [2026-07-07-fr-sl-01-slack-bot-app.md](../decisions/2026-07-07-fr-sl-01-slack-bot-app.md).
+- **도메인 리뷰 방식**: 전면 grill-with-docs 스킵. 이미 확립된 BC의 view-layer 후속이라 신규 용어/엔티티 0 — focused 점검(ADR·glossary·domain 노트 대조)으로 대체.
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
