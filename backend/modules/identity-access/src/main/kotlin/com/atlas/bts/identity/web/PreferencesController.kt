@@ -23,7 +23,7 @@ import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
- * 사용자 환경설정(테마/로케일/날짜형식) 조회/부분 수정 REST 컨트롤러 (FR-PF-01 Task 3).
+ * 사용자 환경설정(테마/로케일/날짜형식/시작 페이지) 조회/부분 수정 REST 컨트롤러 (FR-PF-01 Task 3, FR-PF-02).
  *
  * ## 엔드포인트 ([RequestMapping] `/api/v1/users`)
  * - [getMyPreferences]   GET   `/me/preferences` — 본인 환경설정 조회(행 없으면 기본값).
@@ -67,7 +67,8 @@ class PreferencesController(
      * @param jwt 인증 JWT principal. PAT 등 미지원 인증이면 401.
      * @param req 2-state PATCH 요청 바디([PreferencesPatchRequest]).
      * @return 200 갱신 후 [PreferencesResponse].
-     * @throws PreferencesValidationException theme/locale/dateFormat 중 하나라도 허용값 밖일 때(→ 400, [handleValidation]).
+     * @throws PreferencesValidationException theme/locale/dateFormat/startPage 중 하나라도 허용값 밖일 때
+     * (→ 400, [handleValidation]).
      */
     @PatchMapping("/me/preferences")
     fun patchMyPreferences(
@@ -80,7 +81,7 @@ class PreferencesController(
 
     // ── 로컬 예외 핸들러 (환경설정 도메인 예외 → HTTP) ─────────────────────────────
 
-    /** theme/locale/dateFormat 허용값 위반 → 400. 메시지는 서비스가 사용자 노출용으로 미리 작성한 일반화 값이다. */
+    /** theme/locale/dateFormat/startPage 허용값 위반 → 400. 메시지는 서비스가 사용자 노출용으로 미리 작성한 일반화 값이다. */
     @ExceptionHandler(PreferencesValidationException::class)
     fun handleValidation(ex: PreferencesValidationException): ResponseEntity<Map<String, String>> {
         log.info("환경설정 검증 실패 exceptionType={}", ex.javaClass.simpleName)
@@ -133,7 +134,7 @@ class PreferencesController(
     }
 
     private companion object {
-        /** theme/locale/dateFormat 검증 실패 에러 코드([UserProfileController] `PROFILE_VALIDATION_FAILED` 대응). */
+        /** theme/locale/dateFormat/startPage 검증 실패 에러 코드([UserProfileController] `PROFILE_VALIDATION_FAILED` 대응). */
         const val ERROR_PREFERENCES_VALIDATION = "PREFERENCES_VALIDATION_FAILED"
 
         /** 검증 예외 message 가 비어 있을 때(도달 불가— 예외는 항상 message 를 채운다) fallback. */
