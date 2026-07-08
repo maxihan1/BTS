@@ -1,0 +1,100 @@
+// 개인 캘린더 BC MSW 핸들러 — 읽기 전용 고정 시드 응답 (FR-CA-01 Task 6)
+import { http, HttpResponse } from 'msw'
+import type { CalendarResponse } from '@/api/calendar'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 고정 시드 — spec §API 응답 예시 1:1 (docs/specs/2026-07-08-fr-ca-01-calendar.md)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SEED_ISSUE_EVENTS: CalendarResponse['issueEvents'] = [
+  {
+    key: 'ATLAS-12',
+    summary: '결제 모듈 리팩터링',
+    issueType: 'task',
+    currentStateKey: 'in_progress',
+    startDate: '2026-07-03',
+    dueDate: '2026-07-10',
+  },
+  {
+    key: 'ATLAS-30',
+    summary: '릴리스 노트',
+    issueType: 'task',
+    currentStateKey: 'todo',
+    startDate: null,
+    dueDate: '2026-07-25',
+  },
+]
+
+const SEED_WORKLOG_EVENTS: CalendarResponse['worklogEvents'] = [
+  {
+    id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+    issueKey: 'ATLAS-12',
+    issueSummary: '결제 모듈 리팩터링',
+    date: '2026-07-05',
+    timeSpentSeconds: 10800,
+  },
+]
+
+/** from/to 쿼리파라미터가 없을 때 사용하는 기본 창 — 스펙 예시와 동일 */
+const DEFAULT_FROM = '2026-07-01'
+const DEFAULT_TO = '2026-07-31'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E2E 시나리오 토글 — localStorage 플래그 키 (FR-CA-01 Task 8)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * E2E 테스트 전용 localStorage 플래그 키.
+ * 이 키가 `'true'`이면 조회 핸들러가 이벤트 0건(빈 응답)을 반환한다 — 빈 상태 E2E 시나리오용.
+ *
+ * Playwright `addInitScript`로 goto 전에 설정하면 첫 GET 요청부터 적용된다
+ * (board-handlers.ts `LS_KEY_BOARD_CONFLICT` 선례와 동일한
+ * e2e-msw-scenario-toggle-localstorage-flag 패턴).
+ */
+export const LS_KEY_CALENDAR_EMPTY = '__bts_e2e_calendar_empty'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/users/me/calendar
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 개인 캘린더 조회 핸들러.
+ *
+ * 요청 쿼리파라미터 `from`/`to`를 응답에 그대로 반영하고, 이벤트 목록(issueEvents/
+ * worklogEvents)은 고정 시드를 반환한다 — 읽기 전용 조회라 stateful store가 불필요하다
+ * (worklog-aggregate-handlers 선례).
+ *
+ * `LS_KEY_CALENDAR_EMPTY` 플래그가 `'true'`이면 이벤트 0건(빈 응답)을 반환한다 — E2E 빈 상태
+ * 시나리오 전용 토글(Task 8, 기존 시드 데이터/로직은 그대로 유지).
+ *
+ * @see 스펙 docs/specs/2026-07-08-fr-ca-01-calendar.md §API 인터페이스
+ */
+const getCalendarHandler = http.get('/api/v1/users/me/calendar', ({ request }) => {
+  const url = new URL(request.url)
+  const from = url.searchParams.get('from') ?? DEFAULT_FROM
+  const to = url.searchParams.get('to') ?? DEFAULT_TO
+  const isEmptyScenario = (globalThis.localStorage?.getItem(LS_KEY_CALENDAR_EMPTY) ?? '') === 'true'
+
+  const response: CalendarResponse = {
+    from,
+    to,
+    timezone: 'Asia/Seoul',
+    issueEvents: isEmptyScenario ? [] : SEED_ISSUE_EVENTS,
+    worklogEvents: isEmptyScenario ? [] : SEED_WORKLOG_EVENTS,
+    truncated: false,
+  }
+
+  return HttpResponse.json(response)
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Export
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 개인 캘린더 BC MSW 핸들러 배열.
+ *
+ * `handlers.ts`에서 `...calendarHandlers`로 spread해 전역 등록한다(timelineHandlers 선례).
+ * 단위 테스트에서는 `server.use(...calendarHandlers)`로도 등록 가능(profileHandlers 선례).
+ */
+export const calendarHandlers = [getCalendarHandler]

@@ -95,6 +95,12 @@ export const Header = () => {
         >
           대시보드
         </Link>
+        <Link
+          to="/calendar"
+          className="text-muted-foreground hover:text-foreground [&.active]:text-foreground [&.active]:font-semibold"
+        >
+          캘린더
+        </Link>
       </nav>
       {/* 관리 nav — SYSTEM_ADMIN 전용 (isSystemAdmin === true일 때만 렌더) */}
       {isAdmin && (
