@@ -24,13 +24,13 @@
 
 **우선순위**. 필수 | **선행**. §0 | **Plan slug**. `slack/bot-app`
 
-- [ ] D1. 도메인 — SlackWorkspace + BotInstall (책임. backend-engineer + security-engineer)
-- [ ] D2. 명세 — OAuth 2.0 설치 흐름 + Token 보관 (책임. security-engineer)
-- [ ] D3. 데이터 모델 — `slack_installs(workspace_id, bot_token_encrypted, ...)` (책임. db-engineer)
-- [ ] D4. 백엔드 — Slack Bolt SDK + 설치 콜백 (`/slack/install/callback`) (책임. backend-engineer + security-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 관리자 "Slack 연결" 페이지 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — SlackInstall (책임. security-engineer) *[deviation. SlackWorkspace+BotInstall → 단일 SlackInstall VO]*
+- [x] D2. 명세 — OAuth 2.0 설치 흐름 + 서명 state + Token 보관 (책임. security-engineer)
+- [x] D3. 데이터 모델 — `slack_installs(team_id UNIQUE, bot_token_encrypted, ...)` (책임. db-engineer) *[deviation. workspace_id → team_id. JdbcTemplate]*
+- [x] D4. 백엔드 — slack-api-client(client 층) + 설치 콜백 (`/slack/install/callback`) (책임. security-engineer) *[deviation. Bolt 프레임워크 → slack-api-client, ADR D2]*
+- [x] D5. 백엔드 테스트 (책임. security-engineer) *[69 tests, PR #244]*
+- [ ] D6. 프론트 UI — 관리자 "Slack 연결" 페이지 (책임. designer → frontend-engineer) *[후속 PR]*
+- [ ] D7. E2E (책임. qa-engineer) *[후속 PR]*
 
 ### §2.2 FR-SL-02 — 알림 발송 (DM + 채널)
 
@@ -104,7 +104,7 @@
 | Unfurl 응답 (3초 제한 — Slack 정책) | 3s | ___ | Bolt handler |
 | Slash 명령어 응답 | 3s | ___ | Bolt handler |
 | Interactive 응답 | 3s | ___ | Bolt handler |
-| Bot Token 암호화 (KMS or AES-256) | 적용 | ___ | DEVELOPMENT.md §1.1 |
+| Bot Token 암호화 (KMS or AES-256) | 적용 | AES-256-GCM (SecretEncryptor, FR-SL-01) | DEVELOPMENT.md §1.1. KMS는 v0.4+ |
 | 권한 위반 액션 차단율 | 100% | ___ | 보안 가드 |
 
 ### BC 완료 조건
