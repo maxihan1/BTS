@@ -235,6 +235,13 @@ API 2종(관리자 가드) + 신규 read projection `SlackInstallationView`(토�
 - ⚠️ **주의(TanStack search)**. 쿼리 정리(T6 banner `navigate({search:{}, replace:true})`)를 위해 T7 라우트가 `validateSearch`로 `installed?`/`error?`를 노출해야 함. T6/T7 계약 명시(구현 시 coordinate).
 - BLOCKER: 없음.
 
+### PR-level 코드리뷰 (2026-07-08, 게이트 2 직전)
+
+- **code-reviewer 에이전트**: ✅ PASS (BLOCKER 0, CONCERN 0). 6+1 중점 항목 증거 실증 — (1)봇토큰/비밀값 미노출(projection 3중 타입경계+통합테스트가 sentinel 암호문·installedBy를 DB에 넣고 응답 미노출 실증), (2)인가 순서 401→403→조회(verify exactly=0 존재 probe 차단), (3)예외핸들러 assignableTypes 두 컨트롤러, (4)BC 격리 identity-access import 0, (5)SQL named binding, (6)프론트 XSS-safe·에러코드 원문 미노출·Zod↔DTO 정합·window.location.assign, (7)TDD 8 task test→feat 선행.
+- **controller 직접 검증**: 동일 결론(쿼리 컨트롤러·응답 DTO·서비스 가드·게이팅·배너 정리 직접 확인).
+- **이월 CONCERN(Void→Unit)**: 수용 타당(surgical, #244 부채, 표준 detekt green, 후속 위임). minor 관찰 2건(SQL 정렬 시맨틱·E2E 버튼클릭 흐름) 조치 불요.
+- BLOCKER: 없음.
+
 ### design-review (2026-07-08)
 
 - ✅ **페이지 일관성**. `mx-auto max-w-2xl` settings 레이아웃 + card/button 재사용. settings.preferences/profile 관례 일치.
