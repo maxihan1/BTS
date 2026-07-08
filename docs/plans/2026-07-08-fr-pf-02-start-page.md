@@ -254,6 +254,21 @@ ALTER TABLE user_preferences
   - **8개=FR-PF-02 폴백 파급**(로그인 성공을 `/dashboard` 환영 페이지로 검증 → `/dashboards`로 변경). dashboard×2·login-ldap·login-multi-provider×2·mfa-backup·mfa-login·webauthn. → **완제품 갱신**(qa T8: 인증 플로우는 목적지 무관 검증, dashboard 환영은 명시 goto('/dashboard')). 전수 확인 포함.
   - **4개=FR-PF-02 무관 pre-existing**(board-wip:122 `김앨리스 서브그룹 가시성`·project-member×2·saved-filters:265, `proxy ECONNREFUSED` 동반). board-wip 상세 assertion이 스윔레인 서브그룹 로직으로 로그인 목적지 무관 확정. main 대조는 vite webServer 환경 실패로 무산, 정황·assertion 근거로 판정. → **이 PR 밖, 별도 후속 조사**.
 
+## 코드리뷰 결과 (게이트2, PR #246)
+
+3종 병렬 리뷰 + controller critical pass. **BLOCKER 0, CRITICAL 0 — 머지 승인 가능**.
+
+- **superpowers code-reviewer (절대규칙19+데이터5원칙)**: ✅ PASS. 보안 4항목·데이터 3항목·learnings 회귀·TDD 순서 전부 통과. 선택제안 3건(S1 DB CHECK 부재[형제컬럼 일관]·S2 VARCHAR(32)vs(16)[trivial]·S3 우선순위 로직 login.tsx+routeGuard 2곳[공유헬퍼 재사용, drift낮음]).
+- **/review security+migration 적대**: ✅ NO CRITICAL. 오픈리다이렉트·V032·검증SSOT·whoami·enum완전성·가드우회 6항목 CLEAN. informational 2(DB CHECK·WhoamiResponse DTO 리터럴). Postgres11+ metadata-only ADD COLUMN, 타모듈 V032는 별도 Flyway location(충돌無).
+- **/review testing+maintainability 적대**: ✅ NO CRITICAL. 핵심 경로 전부 테스트됨. informational 6.
+- **controller critical pass**: ✅ PASS. V번호 충돌無(main V031→V032)·init_codegen 미러 불요(identity-access jdbc-only, user_preferences 참조 0)·resolveStartPageNav switch는 명시 반환타입 StartPageNav로 TS2366 소진보호.
+
+**머지 전 처리(테스트 전용, 내 변경 drift)**.
+- F#4: already-authed.spec.ts 주석 정정 — loginAsAlice가 같은 PR(4e1d557d8)에서 `**/dashboard*`로 이미 호환됐는데 주석은 "여전히 깨짐"이라 거짓.
+- F#1: my_issues call-site 커버리지 — resolveStartPageNav 단위는 커버하나 login.test.tsx에 userId threading 미검증 → 1건 추가.
+
+**후속(문서화, 선례일치/이미결정)**. DB CHECK 제약(S1)·VARCHAR 길이(S2)·우선순위 헬퍼 추출(S3)·START_PAGES drift guard(F#3, THEMES/LOCALES 선례)·assertNever 구조가드(F#2, TS 보호됨)·loginAsAlice glob 정밀화(F#6, 의도적 destination-agnostic)·Header 로그아웃 네비 버그(F#5, 이미 별도 후속 결정).
+
 ## 후속 작업 추가
 
 - **E2E pre-existing 4건** — board-wip-swimlane:122(스윔레인 서브그룹 가시성), project-member-management:57/150, saved-filters:265. `proxy ECONNREFUSED`(MSW 미커버 `/api/v1/projects//versions` 등) 동반. FR-PF-02 무관, 별도 조사.
