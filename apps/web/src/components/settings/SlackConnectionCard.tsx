@@ -14,6 +14,9 @@ const SLACK_INSTALLATION_QUERY_KEY = ['slack', 'installation'] as const
 /** 연결됨인데 teamName이 없을 때(계약상 발생하지 않아야 하는 방어적 폴백) 표시할 문구 */
 const UNKNOWN_TEAM_NAME = '알 수 없는 워크스페이스'
 
+/** botUserId가 null일 때(연결 직후 아직 봇 정보가 채워지지 않은 과도기 등) 표시할 자리표시자 — 날짜 포맷의 "—" 관례와 통일 */
+const UNKNOWN_BOT_USER_ID = '—'
+
 /** `GET /api/v1/slack/installation` 조회 실패 시 표시할 오류 메시지 */
 const LOAD_ERROR_MESSAGE = 'Slack 연결 상태를 불러오지 못했습니다.'
 
@@ -79,7 +82,7 @@ interface SlackConnectionCardContentProps {
 /**
  * 조회 성공 후에만 렌더되는 실제 카드 본문.
  *
- * - connected=true → 워크스페이스 이름 + 설치일 + "다시 연결" 버튼
+ * - connected=true → 워크스페이스 이름 + 설치자(있을 때만) + 봇 사용자 ID + 설치일 + 최근 갱신 + "다시 연결" 버튼
  * - connected=false → 미연결 안내 + "Slack에 연결" 버튼
  * - 두 경우 모두 버튼 클릭 시 authorize URL을 조회해 `window.location.assign`으로 이동한다.
  *   실패하면 카드를 유지한 채 인라인 오류 메시지를 표시한다.
@@ -115,7 +118,7 @@ function SlackConnectionCardContent({ installation }: SlackConnectionCardContent
               </>
             )}
             <dt className="text-muted-foreground">봇 사용자 ID</dt>
-            <dd>{installation.botUserId}</dd>
+            <dd>{installation.botUserId ?? UNKNOWN_BOT_USER_ID}</dd>
             <dt className="text-muted-foreground">설치일</dt>
             <dd>{formatDate(installation.installedAt)}</dd>
             <dt className="text-muted-foreground">최근 갱신</dt>
