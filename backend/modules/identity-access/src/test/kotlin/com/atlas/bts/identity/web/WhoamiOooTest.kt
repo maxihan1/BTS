@@ -10,9 +10,9 @@ import com.atlas.bts.identity.credential.StoredPasswordCredentialRepository
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
 import com.atlas.bts.identity.ooo.OutOfOffice
 import com.atlas.bts.identity.ooo.OutOfOfficeRepository
-import com.atlas.bts.identity.preferences.UserPreferencesService
 import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
+import com.atlas.bts.identity.preferences.UserPreferencesService
 import com.atlas.bts.identity.profile.UserProfileRepository
 import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.status.UserStatusRepository
