@@ -12,14 +12,20 @@ const SLACK_INSTALLATION_FIXTURE_CONNECTED = {
   connected: true,
   teamId: 'T1',
   teamName: 'Acme',
+  botUserId: 'U-BOT-1',
   installedAt: '2026-07-08T00:00:00Z',
+  updatedAt: '2026-07-08T01:00:00Z',
+  installerName: '홍길동',
 }
 
 const SLACK_INSTALLATION_FIXTURE_DISCONNECTED = {
   connected: false,
   teamId: null,
   teamName: null,
+  botUserId: null,
   installedAt: null,
+  updatedAt: null,
+  installerName: null,
 }
 
 const SLACK_INSTALL_URL_FIXTURE = {
@@ -30,20 +36,34 @@ const SLACK_INSTALL_URL_FIXTURE = {
 // T-SL-S. SlackInstallationSchema / SlackInstallUrlSchema — Zod 파싱 검증
 // ─────────────────────────────────────────────────────────────────────────────
 describe('SlackInstallationSchema', () => {
-  it('T-SL-S-1: 연결됨 응답(teamId/teamName/installedAt 값 존재)을 파싱한다', () => {
+  it('T-SL-S-1: 연결됨 응답(teamId/teamName/botUserId/installedAt/updatedAt/installerName 값 존재)을 파싱한다', () => {
     const result = SlackInstallationSchema.parse(SLACK_INSTALLATION_FIXTURE_CONNECTED)
     expect(result.connected).toBe(true)
     expect(result.teamId).toBe('T1')
     expect(result.teamName).toBe('Acme')
+    expect(result.botUserId).toBe('U-BOT-1')
     expect(result.installedAt).toBe('2026-07-08T00:00:00Z')
+    expect(result.updatedAt).toBe('2026-07-08T01:00:00Z')
+    expect(result.installerName).toBe('홍길동')
   })
 
-  it('T-SL-S-2: 미연결 응답(teamId/teamName/installedAt 모두 null)을 파싱한다', () => {
+  it('T-SL-S-2: 미연결 응답(teamId/teamName/botUserId/installedAt/updatedAt/installerName 모두 null)을 파싱한다', () => {
     const result = SlackInstallationSchema.parse(SLACK_INSTALLATION_FIXTURE_DISCONNECTED)
     expect(result.connected).toBe(false)
     expect(result.teamId).toBeNull()
     expect(result.teamName).toBeNull()
+    expect(result.botUserId).toBeNull()
     expect(result.installedAt).toBeNull()
+    expect(result.updatedAt).toBeNull()
+    expect(result.installerName).toBeNull()
+  })
+
+  it('T-SL-S-2b: 연결됨이지만 installerName 미해석 시 null을 허용한다', () => {
+    const result = SlackInstallationSchema.parse({
+      ...SLACK_INSTALLATION_FIXTURE_CONNECTED,
+      installerName: null,
+    })
+    expect(result.installerName).toBeNull()
   })
 
   it('T-SL-S-3: connected 필드 누락 시 throw한다', () => {
