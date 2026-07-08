@@ -22,6 +22,9 @@ const labels = {
     '이 워크스페이스에 연결된 Slack 앱을 관리합니다. 연결하면 이슈 알림을 채널로 받아볼 수 있습니다.',
 } as const
 
+/** 오류 배너 "다시 시도"에서 authorize URL 조회(`getSlackInstallUrl`) 실패 시 표시할 메시지 */
+const RETRY_ERROR_MESSAGE = 'Slack 연결을 다시 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 페이지 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
@@ -54,11 +57,22 @@ export function SlackConnectionSettingsPage(): JSX.Element {
   }))
   // "닫기" 클릭 시 배너를 화면에서 숨긴다(쿼리 정리와 별개 — 쿼리는 이미 위 useEffect가 정리)
   const [dismissed, setDismissed] = useState(false)
+  // "다시 시도" 재조회 실패 시 표시할 인라인 오류(SlackConnectionCard.handleConnect의 connectError와 대칭)
+  const [retryError, setRetryError] = useState<string | null>(null)
 
-  /** 오류 배너의 "다시 시도" — authorize URL을 새로 조회해 그대로 이동한다(SlackConnectionCard 연결 흐름과 동일 패턴) */
+  /**
+   * 오류 배너의 "다시 시도" — authorize URL을 새로 조회해 그대로 이동한다(SlackConnectionCard 연결
+   * 흐름과 동일 패턴). 조회 자체가 실패하면(네트워크 오류 등) 페이지를 유지한 채 인라인 오류를
+   * 표시한다 — 실패해도 catch 없이 방치하면 unhandled rejection + 피드백 없는 무반응이 된다.
+   */
   async function handleRetry(): Promise<void> {
-    const { url } = await getSlackInstallUrl()
-    window.location.assign(url)
+    setRetryError(null)
+    try {
+      const { url } = await getSlackInstallUrl()
+      window.location.assign(url)
+    } catch {
+      setRetryError(RETRY_ERROR_MESSAGE)
+    }
   }
 
   function handleDismiss(): void {
@@ -89,6 +103,11 @@ export function SlackConnectionSettingsPage(): JSX.Element {
             onRetry={handleRetry}
             onDismiss={handleDismiss}
           />
+        )}
+        {retryError !== null && (
+          <p role="alert" aria-live="polite" className="mt-2 text-sm text-destructive">
+            {retryError}
+          </p>
         )}
       </div>
       <SlackConnectionCard />
