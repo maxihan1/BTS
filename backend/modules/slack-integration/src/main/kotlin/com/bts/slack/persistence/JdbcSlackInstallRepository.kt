@@ -50,15 +50,7 @@ class JdbcSlackInstallRepository(
 
     @Transactional(readOnly = true)
     override fun findCurrentInstallation(): SlackInstallationView? =
-        jdbc.query(
-            """
-            SELECT team_id, team_name, installed_at
-            FROM slack_installs
-            ORDER BY installed_at DESC
-            LIMIT 1
-            """,
-            SlackInstallationViewRowMapper,
-        ).firstOrNull()
+        jdbc.query(SQL_FIND_CURRENT, SlackInstallationViewRowMapper).firstOrNull()
 
     private companion object {
         /** 워크스페이스 설치 멱등 업서트 — UNIQUE(team_id) 위반 시 최신 값으로 갱신(last-write-wins). */
@@ -86,6 +78,21 @@ class JdbcSlackInstallRepository(
                    is_enterprise_install, installed_by
             FROM slack_installs
             WHERE team_id = :teamId
+        """
+
+        /**
+         * 현재 설치 조회 — 관리자 연결 페이지의 상태 표시용 경량 projection.
+         *
+         * **`bot_token_encrypted` 를 의도적으로 선택하지 않는다** — 상태 조회 경로에 봇 토큰의
+         * 암호문조차 싣지 않기 위한 방어적 조회다(DEVELOPMENT.md §1.1.2). FR-SL-01 은
+         * 워크스페이스 단위 설치만 지원하므로(enterprise install 은 앱 레벨 거부),
+         * `installed_at` 이 가장 최신인 1행이 곧 '현재 설치'다.
+         */
+        const val SQL_FIND_CURRENT = """
+            SELECT team_id, team_name, installed_at
+            FROM slack_installs
+            ORDER BY installed_at DESC
+            LIMIT 1
         """
     }
 }
