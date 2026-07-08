@@ -954,3 +954,51 @@ export const notificationSubscriptionStrings = {
   /** 토글 비활성 상태 레이블 (시각적 보조) */
   toggleDisabled: '알림 꺼짐',
 } as const
+
+/** 단축키 커스터마이즈 설정 페이지 문자열 — /settings/keymap (FR-PF-03 Task 9) */
+export const keymapSettingsStrings = {
+  /** 페이지 제목 */
+  pageTitle: '단축키 설정',
+  /** 페이지 설명 */
+  pageDescription: '자주 쓰는 동작에 원하는 키를 배정하세요. 변경 후에는 저장을 눌러야 적용됩니다.',
+  /** 로딩 중 안내 */
+  loadingMessage: '단축키 설정을 불러오는 중입니다.',
+  /** 조회 실패 안내 */
+  loadErrorMessage: '단축키 설정을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
+  /** action id → 한국어 표시명 — 백엔드 KeymapAction.displayName 미러 (값을 바꿀 때 함께 갱신) */
+  actionLabels: {
+    help: '단축키 도움말',
+    'create-issue': '새 이슈 생성',
+    search: '검색으로 이동',
+    'goto-my-issues': '내 이슈로 이동',
+    'goto-dashboard': '대시보드로 이동',
+  },
+  /** 키 캡처 input aria-label — action 표시명 포함(중복 텍스트 input E2E 견고성) */
+  captureInputAriaLabel: (actionLabel: string) => `${actionLabel} 단축키 입력`,
+  /** 키 캡처 input placeholder */
+  captureInputPlaceholder: '키 입력',
+  /** 기본값 복원 버튼 레이블 */
+  resetButtonLabel: '기본값 복원',
+  /** 기본값 복원 버튼 aria-label — action 표시명 포함(중복 텍스트 버튼 E2E 견고성) */
+  resetButtonAriaLabel: (actionLabel: string) => `${actionLabel} 기본값 복원`,
+  /** 저장 버튼 레이블 */
+  saveButtonLabel: '저장',
+  /** 저장 버튼 aria-label */
+  saveButtonAriaLabel: '단축키 설정 저장',
+  /** 저장 실패(충돌 아닌 일반 에러) 메시지 */
+  saveErrorMessage: '단축키 설정을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+  /** 서버 409 충돌 배너 제목 */
+  conflictHeading: '겹치는 단축키가 있습니다.',
+  /** 빈값 위반 메시지 */
+  conflictBlank: (actionNames: string) => `${actionNames}의 단축키가 비어 있습니다.`,
+  /** key_combo 형식 위반 메시지 */
+  conflictFormat: (actionNames: string) => `${actionNames}의 단축키 형식이 올바르지 않습니다. (예: c 또는 g i)`,
+  /** 완전중복 위반 메시지 */
+  conflictDuplicate: (keyCombo: string, actionNames: string) =>
+    `"${keyCombo}"가 ${actionNames}에 중복 배정되었습니다.`,
+  /** leader 접두 충돌 메시지 — single "g"와 leader(g X)가 공존 */
+  conflictLeaderPrefix: (actionNames: string) =>
+    `단일 키 "g"와 리더 시퀀스가 함께 배정될 수 없습니다. (${actionNames})`,
+  /** dead leader(연속키가 leader 키와 동일, 예: "g g") 충돌 메시지 */
+  conflictDeadLeader: (actionNames: string) => `"g g"는 사용할 수 없습니다. (${actionNames})`,
+} as const

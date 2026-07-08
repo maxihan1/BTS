@@ -170,6 +170,9 @@ export const Header = () => {
             <Link to="/settings/preferences">환경 설정</Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
+            <Link to="/settings/keymap">단축키</Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
             <Link to="/settings/mfa">2단계 인증</Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>

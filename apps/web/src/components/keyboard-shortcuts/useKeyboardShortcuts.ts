@@ -1,7 +1,16 @@
-// 전역 keydown 리스너로 단축키를 처리하고 도움말 모달 열림 상태를 소유하는 훅 — FR-UX-05 Task-2
-import { useEffect, useRef, useState, type RefObject } from 'react'
+// 전역 keydown 리스너로 단축키를 처리하고 도움말 모달 열림 상태를 소유하는 훅 — FR-UX-05 Task-2, FR-PF-03 Task-8(useKeymap 구독·부트 로드)
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { LEADER_TIMEOUT_MS, resolveKeydown, shouldIgnoreEvent, type ShortcutAction } from './shortcuts'
+import { useKeymap, type KeymapBinding } from '@/api/keymap'
+import {
+  DEFAULT_KEYMAP,
+  LEADER_TIMEOUT_MS,
+  resolveKeydown,
+  shouldIgnoreEvent,
+  type Keymap,
+  type KeymapActionId,
+  type ShortcutAction,
+} from './shortcuts'
 
 /** useKeyboardShortcuts 반환값 */
 interface UseKeyboardShortcutsResult {
@@ -89,6 +98,27 @@ function dispatchAction(action: ShortcutAction, e: KeyboardEvent, ctx: DispatchC
 }
 
 /**
+ * {@link useKeymap} 응답의 `bindings` 배열을 action → key_combo record(`Keymap`)로 병합한다.
+ *
+ * 데이터가 아직 없으면(비로그인 idle, 로딩 중, 에러) `DEFAULT_KEYMAP`을 그대로 반환한다.
+ * 응답에 포함된 action만 덮어쓰는 방어적 병합이라 서버가 5종을 완비해 내려주는 계약이
+ * 깨지더라도 나머지 action은 기본 키맵으로 계속 동작한다.
+ *
+ * @param bindings useKeymap이 반환한 KeymapResponse.bindings, 없으면 undefined
+ * @returns effective 키맵(기본값 + 서버 override 병합)
+ */
+function toEffectiveKeymap(bindings: readonly KeymapBinding[] | undefined): Keymap {
+  if (bindings === undefined) return DEFAULT_KEYMAP
+  return bindings.reduce<Record<KeymapActionId, string>>(
+    (acc, binding) => {
+      acc[binding.action] = binding.keyCombo
+      return acc
+    },
+    { ...DEFAULT_KEYMAP },
+  )
+}
+
+/**
  * enabled일 때만 document keydown 리스너를 등록하고 cleanup 함수를 반환한다.
  *
  * enabled=false이면(비로그인) 리스너를 등록하지 않고 leader 대기 상태를
@@ -97,12 +127,14 @@ function dispatchAction(action: ShortcutAction, e: KeyboardEvent, ctx: DispatchC
  * @param enabled 훅 활성화 여부
  * @param leader leader 상태 참조 묶음
  * @param ctx navigate/setHelpOpen/helpOpenRef 의존성 묶음(leader 제외)
+ * @param keymap effective(기본값+서버 override 병합) 키맵 — resolveKeydown에 그대로 전달(FR-PF-03 Task-8)
  * @returns 리스너 해제 cleanup 함수, 등록하지 않았다면 undefined
  */
 function attachShortcutListener(
   enabled: boolean,
   leader: LeaderState,
   ctx: Omit<DispatchContext, 'leader'>,
+  keymap: Keymap,
 ): (() => void) | undefined {
   if (!enabled) {
     clearLeader(leader)
@@ -111,7 +143,12 @@ function attachShortcutListener(
 
   function handleKeyDown(e: KeyboardEvent): void {
     if (shouldIgnoreEvent(e)) return
-    const action = resolveKeydown(e, leader.pendingLeaderRef.current, ctx.helpOpenRef.current)
+    const action = resolveKeydown(
+      e,
+      leader.pendingLeaderRef.current,
+      ctx.helpOpenRef.current,
+      keymap,
+    )
     dispatchAction(action, e, { ...ctx, leader })
   }
 
@@ -133,6 +170,10 @@ function attachShortcutListener(
  * - `helpOpen` 상태는 리스너 클로저의 stale 참조를 막기 위해 `helpOpenRef`로
  *   동시에 미러링한다.
  * - 언마운트 또는 `enabled` 변경 시 리스너와 타이머를 모두 해제한다(NFR4).
+ * - `enabled`와 같은 조건으로 `useKeymap`을 구독해 사용자가 커스터마이즈한 단축키
+ *   override를 로드한다(FR-PF-03 Task-8, FR5-b) — 이 훅이 앱 전역에서 한 번 마운트되는
+ *   지점(RootLayout)이 그대로 "부트 로드"가 되므로 별도의 App 부트 배선이 필요 없다.
+ *   데이터가 아직 없으면(비로그인/로딩 중/에러) `DEFAULT_KEYMAP`으로 폴백해 무회귀를 보장한다.
  *
  * @param enabled 훅 활성화 여부 — RootLayout에서 인증 상태를 전달
  * @returns 도움말 모달 열림 상태와 setter
@@ -143,6 +184,8 @@ export function useKeyboardShortcuts(enabled: boolean): UseKeyboardShortcutsResu
   const helpOpenRef = useRef(helpOpen)
   const pendingLeaderRef = useRef<string | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const { data: keymapResponse } = useKeymap({ enabled })
+  const keymap = useMemo(() => toEffectiveKeymap(keymapResponse?.bindings), [keymapResponse])
 
   useEffect(() => {
     helpOpenRef.current = helpOpen
@@ -150,8 +193,8 @@ export function useKeyboardShortcuts(enabled: boolean): UseKeyboardShortcutsResu
 
   useEffect(() => {
     const leader: LeaderState = { pendingLeaderRef, timerRef }
-    return attachShortcutListener(enabled, leader, { navigate, setHelpOpen, helpOpenRef })
-  }, [enabled, navigate])
+    return attachShortcutListener(enabled, leader, { navigate, setHelpOpen, helpOpenRef }, keymap)
+  }, [enabled, navigate, keymap])
 
   return { helpOpen, setHelpOpen }
 }

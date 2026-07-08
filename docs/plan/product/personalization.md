@@ -99,13 +99,13 @@
 
 **우선순위**. 중간 | **선행**. §4.3 (FR-UX-05) | **Plan slug**. `personal/keymap-customize`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — 충돌 검출 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `user_keymap(action, key_combo)` (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET/PATCH /api/v1/users/me/keymap` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 단축키 설정 + 실시간 reassign (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — UserKeymap(action→key_combo override), KeymapAction 5종 (책임. backend-engineer)
+- [x] D2. 명세 — 충돌 검출 6종(화이트리스트·형식·빈값·완전중복·leader접두·dead `g g`) (책임. backend-engineer)
+- [x] D3. 데이터 모델 — `user_keymap(user_id, action, key_combo)` V033, PK(user_id,action), action CHECK, override 패턴 (책임. db-engineer)
+- [x] D4. 백엔드 — `GET/PATCH /api/v1/users/me/keymap` JWT-only, 검증우선, override 정규화, PreferencesController 미러 (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 — Validator 6종·Repository·Service·Controller(MVC+통합 401/400/409/PAT401) (책임. backend-engineer)
+- [x] D6. 프론트 UI — SHORTCUTS action ID 정규화 + resolveKeydown 병합 + 부트 GET + `/settings/keymap` 재배치·실시간충돌·기본복원 (책임. frontend-engineer)
+- [x] D7. E2E — 재배치→발화·충돌거부·기본복원(dead-leader·서버409 MSW토글) (책임. qa-engineer)
 
 ## §4 UX 편의 (FR-UX-01, 04, 05)
 

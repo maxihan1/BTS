@@ -1,4 +1,4 @@
-// 전역 키보드 단축키 레지스트리 + keydown 판별 순수 로직 단위 테스트 — FR-UX-05 Task-1
+// 전역 키보드 단축키 레지스트리 + keydown 판별 순수 로직 단위 테스트 — FR-UX-05 Task-1, FR-PF-03 Task-6(action id·병합 키맵)
 import { describe, it, expect } from 'vitest'
 import {
   resolveKeydown,
@@ -7,6 +7,8 @@ import {
   PALETTE_HELP_ITEM,
   LEADER_KEY,
   LEADER_TIMEOUT_MS,
+  DEFAULT_KEYMAP,
+  type Keymap,
 } from './shortcuts'
 
 describe('resolveKeydown', () => {
@@ -127,6 +129,65 @@ describe('SHORTCUTS', () => {
     for (const shortcut of SHORTCUTS) {
       expect(shortcut.description.length).toBeGreaterThan(0)
     }
+  })
+
+  it('각 ShortcutDef가 안정 action id를 갖는다 (FR-PF-03 백엔드 KeymapAction 화이트리스트와 계약)', () => {
+    expect(SHORTCUTS.map((shortcut) => shortcut.action)).toEqual([
+      'help',
+      'create-issue',
+      'search',
+      'goto-my-issues',
+      'goto-dashboard',
+    ])
+  })
+})
+
+describe('DEFAULT_KEYMAP', () => {
+  it('백엔드 KeymapAction 기본값과 값이 일치한다 (계약)', () => {
+    expect(DEFAULT_KEYMAP).toEqual({
+      help: '?',
+      'create-issue': 'c',
+      search: '/',
+      'goto-my-issues': 'g i',
+      'goto-dashboard': 'g d',
+    })
+  })
+})
+
+describe('resolveKeydown — 병합 키맵(override) 발화 (FR-PF-03 Task-6)', () => {
+  it('create-issue를 n으로 재배치한 키맵 전달 시 n이 새 이슈 생성으로 navigate하고 c는 무동작한다', () => {
+    const overrideKeymap: Keymap = { ...DEFAULT_KEYMAP, 'create-issue': 'n' }
+
+    expect(resolveKeydown({ key: 'n' }, null, false, overrideKeymap)).toEqual({
+      kind: 'navigate',
+      to: '/issues/new',
+    })
+    expect(resolveKeydown({ key: 'c' }, null, false, overrideKeymap)).toEqual({ kind: 'none' })
+  })
+
+  it('goto-my-issues를 x(single)로 재배치한 키맵 전달 시 x가 즉시 내 이슈로 navigate한다 (leader→single 변환)', () => {
+    const overrideKeymap: Keymap = { ...DEFAULT_KEYMAP, 'goto-my-issues': 'x' }
+
+    expect(resolveKeydown({ key: 'x' }, null, false, overrideKeymap)).toEqual({
+      kind: 'navigate',
+      to: '/issues',
+    })
+  })
+
+  it('keymap 인자를 생략하면 기존(기본 키맵) 동작과 동일하다 (무회귀)', () => {
+    expect(resolveKeydown({ key: 'c' }, null, false)).toEqual({
+      kind: 'navigate',
+      to: '/issues/new',
+    })
+  })
+
+  it('FR5-a — help를 h로 재배치한 키맵에서 도움말 열림 중 h가 toggle-help, 기존 ?는 무동작한다', () => {
+    const overrideKeymap: Keymap = { ...DEFAULT_KEYMAP, help: 'h' }
+
+    expect(resolveKeydown({ key: 'h' }, null, true, overrideKeymap)).toEqual({
+      kind: 'toggle-help',
+    })
+    expect(resolveKeydown({ key: '?' }, null, true, overrideKeymap)).toEqual({ kind: 'none' })
   })
 })
 
