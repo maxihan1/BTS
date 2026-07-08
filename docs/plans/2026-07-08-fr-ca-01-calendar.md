@@ -161,6 +161,28 @@ cross-BC 조회(issue-tracking, agile-planning)가 핵심 설계 포인트.
 - 보안 리뷰: T2(cross-project visibility 필터) + T4(/users/me 인증 게이트) → gate 2 security-engineer 집중.
 - 리스크: (a) T2 cross-project visibility 술어 실재 grep 확인, (b) T4 새 포트 소비 슬라이스/full-boot stub 배선.
 
+## 구현 완료 (2026-07-08, 3 wave)
+
+- **T1** shared-kernel 포트+VO ✅ (test+ArchUnit) — 4705f1b19/084666168/105e72360
+- **T2** issue-tracking adapter ✅ (9 통합테스트+ktlint+detekt) — 70b956fa4/d60793835/c8a967585. 프로젝트별 격리 visibility(fail-open 방지 S4 검증)·EXPLAIN V029 사용 확인
+- **T3** identity-access 서비스 ✅ (11 단위+DST 테스트) — b9df592eb/0336ee302/13bb51f08
+- **T4** 컨트롤러+fail-safe빈 ✅ (통합+identity-access 전체 2309 회귀 0 → C1 커버 검증) — b8d3cc858/6d12971d1/05115f001
+- **T5** 디자인 스펙 ✅
+- **T6** 프론트 API/Zod/훅 ✅ (+MSW 관례 위치 정정 fix) — 5ee455f76/a0e3f20b8/da6b96049/1253d5c47
+- **T7** 월/주 UI+라우트+nav ✅ (19 컴포넌트 테스트) — 9410948cd/2739ec2dc/c4690a487
+- **T8** E2E ✅ (5 시나리오) — 2b1b365d6
+- **통합 검증**: 프론트 typecheck+build+6427 테스트 전부 통과·회귀 0. 백엔드 모듈별 test+ktlint+detekt 통과.
+
+### 정당 deviation (T7, 프로토콜대로 보고됨)
+- **라우터 = code-based** (file-based 아님, 내 프롬프트 오류). `router.ts` 수동 등록 + RouteAdapter(memory 학습 일치). `router.ts` 편집 필요(라우트 미등록 시 unreachable+tsc fail).
+- `apps/web/src/i18n/calendar-labels.ts` 신규 — 디자인 스펙 §11 지정 + 레포 i18n 관례(board-labels.ts).
+
+### gate 2 codereview로 넘길 concern
+1. **T2 보안 로직 중복** — `IssueRepository.buildSecurityCondition`(private, 재사용 불가)의 규칙(NULL/static 등급 항상 가시·reporter/assignee 스코프 등급은 본인만)을 adapter가 재구현. 정확성 검증 + 향후 drift 위험(memory [[isomorphic-clone-permission-guard-gap]]). security-engineer 집중.
+2. **T7 deriveStateCategory 휴리스틱** — 백엔드가 category 미제공(currentStateKey 원시 키만), 프론트가 4개 기본 워크플로우 룩업+fallback TODO → 커스텀 워크플로우 오색. TimelineItemView도 동일 패턴(코드베이스 일관). 후속: 백엔드 `stateCategory` 필드 추가 검토.
+3. **T7 skeleton flicker** — `useCalendar`에 `placeholderData: keepPreviousData` 없음(월 이동 시 전체 스켈레톤 깜빡). 1줄 후속.
+4. 경미: overflow 셀 카운트 단일값(3), aria-label ISO 날짜, worklog 칩 클릭이동(스펙 optional 구현).
+
 ## 리뷰 결과
 
 ### 엔지니어링 적대적 리뷰 (2026-07-08, Plan 서브에이전트 — autoplan 대체 [[bts-review-plan-autoplan-overkill]])
