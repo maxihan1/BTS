@@ -71,7 +71,7 @@ class SlackInstallController(
      * @param code Slack 1회용 인가 코드(성공 시 존재).
      * @param state [startInstall] 이 발급한 서명 state.
      * @param error 사용자가 Slack 동의 화면에서 취소했을 때의 코드(예: `access_denied`, EC2).
-     * @return 302 + 결과 경로(`/settings/slack?installed=…` 또는 `?error=…`).
+     * @return 302 + 결과 경로(`/admin/slack?installed=…` 또는 `?error=…`).
      */
     @GetMapping("/slack/install/callback")
     fun callback(
@@ -161,8 +161,8 @@ class SlackInstallController(
     }
 
     private companion object {
-        /** 프론트 설치 결과 화면 경로(D6 예약, spec §완료 리다이렉트 G4). */
-        const val FRONT_RESULT_PATH = "/settings/slack"
+        /** 프론트 설치 결과 화면 경로(관리자 Slack 연결 페이지, spec §완료 리다이렉트 G4). */
+        const val FRONT_RESULT_PATH = "/admin/slack"
 
         /** state 검증 실패(EC1) 리다이렉트 코드. */
         const val INVALID_STATE = "invalid_state"

@@ -161,7 +161,7 @@ class SlackInstallService(
 }
 
 /**
- * 설치 완료 결과 — 완료 화면 리다이렉트(`/settings/slack?installed=<teamName>`)에 필요한 메타만 담는다.
+ * 설치 완료 결과 — 완료 화면 리다이렉트(`/admin/slack?installed=<teamName>`)에 필요한 메타만 담는다.
  *
  * **평문 봇 토큰이나 암호문을 포함하지 않는다**(§1.1.2 — 비밀값 노출 최소화). 웹 레이어는 [teamName] 을
  * 완료 배너에 노출한다.

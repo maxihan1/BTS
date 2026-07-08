@@ -35,7 +35,7 @@ class SlackForbiddenException :
  * `ok:false` 아닌 **전송 자체 실패**(네트워크/타임아웃)는 이 예외가 아니라
  * [com.bts.slack.oauth.SlackOAuthExchangeException] 으로 구분된다.
  *
- * [errorCode] 는 실패 화면 리다이렉트(`/settings/slack?error=<code>`)에 쓰이는 **비-비밀** 값이며,
+ * [errorCode] 는 실패 화면 리다이렉트(`/admin/slack?error=<code>`)에 쓰이는 **비-비밀** 값이며,
  * 예외 `message` 로는 노출하지 않는다(§1.1.2 — 내부 사정 HTTP detail 누출 차단).
  *
  * @param code Slack 에러 코드(`ok:false`) 또는 내부 실패 사유 코드. null 이면 일반 코드로 치환한다.
