@@ -13,6 +13,23 @@ import type { KeymapActionId, KeymapBinding, KeymapConflictType, KeymapResponse,
  * `UserKeymapService.mergeWithDefaults`/`normalizeOverrides` 1:1 미러).
  */
 
+/**
+ * E2E 테스트 전용 localStorage 플래그 키 — 'true'이면 PATCH 요청 본문 검증과 무관하게
+ * 409 KEYMAP_CONFLICT를 강제 반환한다(E2E_FORCE_CREATE_FALSE_KEY 선례와 동일한 시나리오
+ * 토글 패턴, project-permission-handlers.ts).
+ *
+ * KeymapForm의 로컬 검증(`detectLocalViolations`)이 서버 `KeymapValidator` 6종 규칙을
+ * 1:1 복제하므로, 실제 사용자 흐름으로는 로컬 검증을 통과하면서 서버가 거부하는 body를
+ * 만들 수 없다 — 저장 버튼 자체가 로컬 위반이 있으면 비활성화되기 때문이다. 그 결과
+ * `KeymapForm`의 서버 409 배너 렌더 경로(`resolveServerConflicts`)는 정상 UI 흐름만으로는
+ * 도달 불가능하다(단위 테스트만 `server.use` 오버라이드로 도달 가능, KeymapForm.test.tsx T12).
+ * 이 플래그는 그 경로를 실제 네트워크 왕복으로 검증하기 위한 E2E 전용 시나리오 토글이다.
+ *
+ * MSW 핸들러는 페이지 메인 스레드에서 실행되므로 localStorage 접근이 가능하다 — Playwright
+ * `addInitScript`로 goto 전에 플래그를 심으면 첫 PATCH 시점부터 적용된다.
+ */
+export const LS_KEY_KEYMAP_FORCE_CONFLICT = '__bts_e2e_keymap_force_conflict'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 기본값 — 백엔드 KeymapAction.DEFAULT_BINDINGS 미러 (값을 바꿀 때 백엔드와 함께 갱신)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -229,6 +246,16 @@ const getMyKeymapHandler = http.get('/api/v1/users/me/keymap', ({ request }) => 
 const patchMyKeymapHandler = http.patch('/api/v1/users/me/keymap', async ({ request }) => {
   const userId = resolveUserIdFromRequest(request)
   if (userId === null) return new HttpResponse(null, { status: 401 })
+
+  // E2E 강제 409 시나리오 — 본문 검증보다 먼저 확인(로컬 검증을 통과한 유효한 body도 강제 거부)
+  if (globalThis.localStorage?.getItem(LS_KEY_KEYMAP_FORCE_CONFLICT) === 'true') {
+    const forcedConflict: ConflictErrorBody = {
+      code: 'KEYMAP_CONFLICT',
+      message: '겹치는 단축키가 있습니다.',
+      conflicts: [{ type: 'duplicate', actions: ['create-issue', 'search'], keyCombo: 'x' }],
+    }
+    return HttpResponse.json(forcedConflict, { status: 409 })
+  }
 
   let body: Record<string, unknown>
   try {
