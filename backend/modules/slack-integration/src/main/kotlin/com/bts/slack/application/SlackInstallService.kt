@@ -49,6 +49,8 @@ import java.util.UUID
  * @param oauthClient `oauth.v2.access` 교환 + authorize URL 생성 클라이언트.
  * @param secretEncryptor 봇 토큰 암호화용(`@Qualifier("slackSecretEncryptor")` by-name — BC 간 키 격리).
  * @param installRepository `slack_installs` 영속화 포트(upsert 멱등).
+ * @param userLookupPort 설치자 표시명 해석 cross-BC 포트(non-null · fail-safe — 미해석 시 이름만 null,
+ *   identity-access 를 직접 의존하지 않고 shared-kernel 포트로만 접근).
  */
 @Service
 class SlackInstallService(
@@ -85,9 +87,16 @@ class SlackInstallService(
      * 은 호출되지 않는다.
      *
      * 반환하는 [SlackInstallationStatus] 에는 **표시용 비-비밀 필드만** 담는다(connected/teamId/teamName/
-     * installedAt). 봇 토큰 암호문·`installedBy` 등은 애초에 [SlackInstallationView] 에 로드되지 않아
-     * 타입 상 새어 나갈 수 없다(방어적, DEVELOPMENT.md §1.1.2). 설치가 없으면 `connected=false` 이고
-     * 나머지 필드는 모두 null 이다.
+     * botUserId/installedAt/updatedAt/installerName). 봇 토큰 암호문은 애초에 [SlackInstallationView] 에
+     * 로드되지 않아 타입 상 새어 나갈 수 없다(방어적, DEVELOPMENT.md §1.1.2).
+     *
+     * ## 설치자 이름 해석 (fail-safe · installed_by 미노출)
+     * 설치자 원시 id([SlackInstallationView.installedBy], UUID)는 cross-BC [UserLookupPort] 로 표시명을
+     * 해석하는 데에만 쓰고, 해석된 이름([SlackInstallationStatus.installerName])만 응답에 싣는다 — 원시
+     * 사용자 id 는 상태/응답에 포함하지 않는다. 포트가 이름을 돌려주지 못하면(default emptyMap fail-safe /
+     * 삭제된 사용자 / prod 어댑터 미주입) `installerName` 만 null 이 되고 나머지 표시 필드는 값을 유지한다
+     * — 이름 미해석이 상태 표시 전체를 막지 않는다. 설치가 없으면 `connected=false` 이고 나머지 필드는 모두
+     * null 이며, 이때 [UserLookupPort] 는 호출하지 않는다.
      *
      * @param actorId 상태를 조회하는 행위자(JWT 에서 추출한 사용자 id).
      * @return 현재 연결 상태 — 미설치 시 `SlackInstallationStatus(connected=false, …=null)`.
@@ -192,14 +201,18 @@ data class SlackInstallResult(
 /**
  * 관리자 Slack 연결 페이지의 상태 배너에 노출하는 현재 연결 상태.
  *
- * **표시용 비-비밀 필드만** 담는다 — 봇 토큰(평문/암호문)이나 `installedBy` 등 비-표시 필드는 포함하지
- * 않는다(DEVELOPMENT.md §1.1.2 — 비밀값 노출 최소화). 설치가 없으면 [connected] 는 false 이고 나머지
- * 필드는 모두 null 이다(미설치와 설치 상태를 [connected] 로 구분).
+ * **표시용 비-비밀 필드만** 담는다 — 봇 토큰(평문/암호문)이나 설치자 원시 id(`installedBy`, UUID)는
+ * 포함하지 않는다(DEVELOPMENT.md §1.1.2 — 비밀값·원시 id 노출 최소화). 설치자는 표시명([installerName])
+ * 으로만 노출하고, 이름 해석에 실패하면 [installerName] 만 null 이 된다(fail-safe). 설치가 없으면
+ * [connected] 는 false 이고 나머지 필드는 모두 null 이다(미설치와 설치 상태를 [connected] 로 구분).
  *
  * @property connected Slack 워크스페이스가 연결되어 있으면 true.
  * @property teamId 연결된 워크스페이스 id(`T…`) — 미설치 시 null.
  * @property teamName 워크스페이스 표시명 — 미설치 시 null.
+ * @property botUserId 봇 사용자 id(`U…`) — 미설치 시 null.
  * @property installedAt 최초 설치 시각 — 미설치 시 null.
+ * @property updatedAt 마지막 갱신(재설치 upsert) 시각 — 미설치 시 null.
+ * @property installerName 설치자 표시명 — 미설치 또는 이름 미해석 시 null(원시 id 는 미노출).
  */
 data class SlackInstallationStatus(
     val connected: Boolean,
