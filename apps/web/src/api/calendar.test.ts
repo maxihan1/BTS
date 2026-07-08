@@ -95,7 +95,13 @@ describe('calendarResponseSchema', () => {
   })
 
   it('truncated 필드가 없으면 ZodError를 throw한다', () => {
-    const { truncated: _truncated, ...withoutTruncated } = fullResponse
+    const withoutTruncated = {
+      from: fullResponse.from,
+      to: fullResponse.to,
+      timezone: fullResponse.timezone,
+      issueEvents: fullResponse.issueEvents,
+      worklogEvents: fullResponse.worklogEvents,
+    }
     expect(() => calendarResponseSchema.parse(withoutTruncated)).toThrow()
   })
 })
