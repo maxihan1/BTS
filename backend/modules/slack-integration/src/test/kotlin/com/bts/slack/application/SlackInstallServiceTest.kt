@@ -83,6 +83,46 @@ class SlackInstallServiceTest {
         verify(exactly = 0) { oauthClient.buildAuthorizeUrl(any()) }
     }
 
+    // ── getInstallation (관리자 가드 + 현재 설치 상태 조회) ─────────────────────
+
+    @Test
+    fun `getInstallation - 관리자이고 설치가 있으면 connected=true와 표시 필드를 반환한다`() {
+        every { resolver.isSystemAdmin(adminId) } returns true
+        every { repository.findCurrentInstallation() } returns
+            SlackInstallationView(teamId = "T123WS", teamName = "Acme Workspace", installedAt = INSTALLED_AT)
+
+        val status = service.getInstallation(adminId)
+
+        assertThat(status.connected).isTrue()
+        assertThat(status.teamId).isEqualTo("T123WS")
+        assertThat(status.teamName).isEqualTo("Acme Workspace")
+        assertThat(status.installedAt).isEqualTo(INSTALLED_AT)
+    }
+
+    @Test
+    fun `getInstallation - 관리자이지만 설치가 없으면 connected=false와 null 필드를 반환한다`() {
+        every { resolver.isSystemAdmin(adminId) } returns true
+        every { repository.findCurrentInstallation() } returns null
+
+        val status = service.getInstallation(adminId)
+
+        assertThat(status.connected).isFalse()
+        assertThat(status.teamId).isNull()
+        assertThat(status.teamName).isNull()
+        assertThat(status.installedAt).isNull()
+    }
+
+    @Test
+    fun `getInstallation - 비관리자면 SlackForbiddenException을 던지고 설치를 조회하지 않는다`() {
+        every { resolver.isSystemAdmin(nonAdminId) } returns false
+
+        assertThatThrownBy { service.getInstallation(nonAdminId) }
+            .isInstanceOf(SlackForbiddenException::class.java)
+
+        // 가드는 조회보다 먼저 — findCurrentInstallation 으로 진행하지 않는다(auth-extraction-before-lookup).
+        verify(exactly = 0) { repository.findCurrentInstallation() }
+    }
+
     // ── completeInstall (state 검증 → 교환 → 암호화 → upsert) ──────────────────
 
     @Test
@@ -203,6 +243,8 @@ class SlackInstallServiceTest {
 
         // Encryptors.stronger 는 salt 가 유효 hex 문자열일 것을 런타임에 요구한다.
         const val ENCRYPTION_SALT = "deadbeefcafef00d"
+
+        val INSTALLED_AT: Instant = Instant.parse("2026-07-01T09:30:00Z")
 
         const val PLAINTEXT_TOKEN = "xoxb-plaintext-bot-token-1234567890"
         const val VALID_CODE = "valid-oauth-code"
