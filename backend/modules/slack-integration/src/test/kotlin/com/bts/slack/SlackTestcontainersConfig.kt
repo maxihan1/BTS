@@ -88,6 +88,16 @@ class SlackTestcontainersConfig {
     @Bean
     fun systemPermissionResolver(): StubSystemPermissionResolver = StubSystemPermissionResolver()
 
+    /**
+     * cross-BC 사용자 표시명 해석 포트 — settable [StubUserLookupPort].
+     *
+     * [com.bts.slack.application.SlackInstallService] 생성자가 non-null `UserLookupPort` 를 요구하므로
+     * test-boot 컨텍스트 로드를 위해 등록한다(빈 부재 시 [SlackContextLoadTest] 회귀). 기본 displayNames 가
+     * 비어 있어 아무 이름도 해석하지 않으며, 테스트가 설치자 UUID→표시명을 명시 등록한다.
+     */
+    @Bean
+    fun userLookupPort(): StubUserLookupPort = StubUserLookupPort()
+
     companion object {
         /**
          * JVM 단위 singleton PostgreSQL 16-alpine container.

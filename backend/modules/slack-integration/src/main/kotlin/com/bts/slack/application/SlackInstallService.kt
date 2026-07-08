@@ -4,6 +4,7 @@ package com.bts.slack.application
 
 import com.bts.shared.crypto.SecretEncryptor
 import com.bts.shared.permission.SystemPermissionResolver
+import com.bts.shared.user.UserLookupPort
 import com.bts.slack.domain.SlackInstall
 import com.bts.slack.oauth.SlackOAuthClient
 import com.bts.slack.oauth.SlackOAuthStateSigner
@@ -56,6 +57,7 @@ class SlackInstallService(
     private val oauthClient: SlackOAuthClient,
     @param:Qualifier("slackSecretEncryptor") private val secretEncryptor: SecretEncryptor,
     private val installRepository: SlackInstallRepository,
+    private val userLookupPort: UserLookupPort,
 ) {
     /**
      * 설치를 개시한다 — 관리자 가드를 통과하면 개시자([actorId])를 박제한 서명 state 로 Slack authorize URL 을
@@ -96,8 +98,21 @@ class SlackInstallService(
             throw SlackForbiddenException()
         }
         return installRepository.findCurrentInstallation()
-            ?.let { SlackInstallationStatus(true, it.teamId, it.teamName, it.installedAt) }
-            ?: SlackInstallationStatus(false, null, null, null)
+            ?.let { view ->
+                // installed_by(UUID)는 설치자 표시명 해석에만 쓰고 응답 본문에는 담지 않는다(원시 id 미노출).
+                // 포트가 이름을 못 돌려주면(default fail-safe / 삭제된 사용자) installerName 만 null 이 된다.
+                val installerName = userLookupPort.findDisplayNamesByIds(setOf(view.installedBy))[view.installedBy]
+                SlackInstallationStatus(
+                    connected = true,
+                    teamId = view.teamId,
+                    teamName = view.teamName,
+                    botUserId = view.botUserId,
+                    installedAt = view.installedAt,
+                    updatedAt = view.updatedAt,
+                    installerName = installerName,
+                )
+            }
+            ?: SlackInstallationStatus(false, null, null, null, null, null, null)
     }
 
     /**
@@ -190,5 +205,8 @@ data class SlackInstallationStatus(
     val connected: Boolean,
     val teamId: String?,
     val teamName: String?,
+    val botUserId: String?,
     val installedAt: java.time.Instant?,
+    val updatedAt: java.time.Instant?,
+    val installerName: String?,
 )
