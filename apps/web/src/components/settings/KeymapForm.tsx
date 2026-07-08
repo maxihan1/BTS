@@ -8,6 +8,7 @@ import {
   KEYMAP_ACTIONS,
 } from '@/api/keymap'
 import type { KeymapActionId, KeymapBinding, KeymapBindingInput, KeymapConflictType } from '@/api/keymap'
+import type { ApiError } from '@/api/client'
 import { DEFAULT_KEYMAP, LEADER_KEY } from '@/components/keyboard-shortcuts/shortcuts'
 import { keymapSettingsStrings } from '@/i18n/ko'
 import { Label } from '@/components/ui/label'
@@ -146,6 +147,18 @@ const VIOLATION_MESSAGE_BUILDERS: Record<LocalViolationType, (keyCombo: string, 
 function describeViolation(v: LocalViolation): string {
   const actionNames = v.actions.map(actionLabelOf).join(', ')
   return VIOLATION_MESSAGE_BUILDERS[v.type](v.keyCombo ?? '', actionNames)
+}
+
+/**
+ * mutation 실패(ApiError)에서 서버 409 KeymapConflictError의 conflicts를 안전하게 추출한다.
+ * 409가 아니거나 conflicts 스키마 파싱에 실패하면(예상치 못한 에러 바디) 빈 배열 — 이 경우
+ * 호출부가 일반 저장 실패 메시지로 폴백한다.
+ */
+function resolveServerConflicts(error: ApiError | null): LocalViolation[] {
+  if (error === null || error.status !== 409) return []
+  const parsed = keymapConflictErrorSchema.safeParse(error.body)
+  if (!parsed.success) return []
+  return parsed.data.conflicts.map((c) => ({ type: c.type, actions: c.actions, keyCombo: c.keyCombo ?? undefined }))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -300,11 +313,7 @@ export function KeymapForm(): JSX.Element {
   const localViolations = detectLocalViolations(currentBindings)
   const violationsByAction = groupViolationsByAction(localViolations)
 
-  const conflictParse = mutation.error !== null ? keymapConflictErrorSchema.safeParse(mutation.error.body) : null
-  const serverConflicts: LocalViolation[] =
-    mutation.isError && mutation.error.status === 409 && conflictParse?.success === true
-      ? conflictParse.data.conflicts.map((c) => ({ type: c.type, actions: c.actions, keyCombo: c.keyCombo ?? undefined }))
-      : []
+  const serverConflicts = resolveServerConflicts(mutation.error)
   const showGenericSaveError = mutation.isError && serverConflicts.length === 0
 
   return (
