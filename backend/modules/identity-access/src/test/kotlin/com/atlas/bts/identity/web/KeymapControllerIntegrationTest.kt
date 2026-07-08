@@ -93,7 +93,7 @@ class KeymapControllerIntegrationTest {
             registry.add("bts.auth.jwt.private-key-pem-path") { pemFilePath }
         }
 
-        /** 테스트용 임시 RSA 2048 PEM(PKCS#8) 파일 ([com.atlas.bts.identity.integration.MyProjectPermissionIntegrationTest] 미러). */
+        /** 테스트용 임시 RSA 2048 PEM(PKCS#8) 파일 (MyProjectPermissionIntegrationTest 미러). */
         val pemFilePath: String =
             run {
                 if (Security.getProvider("BC") == null) {
@@ -112,7 +112,7 @@ class KeymapControllerIntegrationTest {
                 tmpFile.toAbsolutePath().toString()
             }
 
-        /** EC-26: PAT 시나리오용 SHA-256(rawToken) hex — [com.atlas.bts.identity.integration.PatAndConcurrencyIntegrationTest] 미러. */
+        /** EC-26: PAT 시나리오용 SHA-256(rawToken) hex — PatAndConcurrencyIntegrationTest 미러. */
         private fun sha256Hex(raw: String): String {
             val digest = MessageDigest.getInstance("SHA-256")
             return digest.digest(raw.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }

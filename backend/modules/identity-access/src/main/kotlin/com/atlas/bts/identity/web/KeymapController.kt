@@ -123,8 +123,9 @@ class KeymapController(
             ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
 
     /** effective [KeymapBinding] 목록 → [KeymapResponse]. */
-    private fun toResponse(bindings: List<KeymapBinding>): KeymapResponse =
-        KeymapResponse(bindings = bindings.map(::toBindingView))
+    private fun toResponse(bindings: List<KeymapBinding>): KeymapResponse {
+        return KeymapResponse(bindings = bindings.map(::toBindingView))
+    }
 
     /** [KeymapBinding] → [KeymapBindingView](trigger/customized 파생). */
     private fun toBindingView(binding: KeymapBinding): KeymapBindingView =
@@ -136,8 +137,9 @@ class KeymapController(
         )
 
     /** [KeymapBindingInput] → 도메인 [KeymapBinding]. */
-    private fun toBinding(input: KeymapBindingInput): KeymapBinding =
-        KeymapBinding(action = input.action, keyCombo = input.keyCombo)
+    private fun toBinding(input: KeymapBindingInput): KeymapBinding {
+        return KeymapBinding(action = input.action, keyCombo = input.keyCombo)
+    }
 
     /**
      * [KeymapViolation] → [KeymapConflictView].
