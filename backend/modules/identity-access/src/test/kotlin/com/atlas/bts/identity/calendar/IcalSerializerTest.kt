@@ -30,19 +30,18 @@ class IcalSerializerTest {
     private val now = Instant.parse("2026-07-09T10:15:30Z")
     private val feedBaseUrl = "https://bts.example.com"
 
+    /** `issueType="task"`/`currentStateKey="open"` 고정 — 다른 값이 필요한 케이스는 [CalendarIssueView] 를 직접 구성한다. */
     private fun issueView(
         key: String,
         summary: String = "summary-$key",
-        issueType: String = "task",
-        currentStateKey: String = "open",
         startDate: LocalDate? = null,
         dueDate: LocalDate? = null,
     ): CalendarIssueView =
         CalendarIssueView(
             key = key,
             summary = summary,
-            issueType = issueType,
-            currentStateKey = currentStateKey,
+            issueType = "task",
+            currentStateKey = "open",
             startDate = startDate,
             dueDate = dueDate,
         )
@@ -88,7 +87,7 @@ class IcalSerializerTest {
     @Test
     fun `시작일과 마감일이 모두 있으면 DTEND는 마감일+1일(exclusive)이다`() {
         val issue =
-            issueView(
+            CalendarIssueView(
                 key = "PROJ-1",
                 summary = "Design review",
                 issueType = "task",
@@ -157,11 +156,13 @@ class IcalSerializerTest {
     @Test
     fun `시작일만 있으면 시작일+1일을 DTEND로 사용한다`() {
         val issue =
-            issueView(
+            CalendarIssueView(
                 key = "PROJ-3",
                 summary = "Kickoff",
                 issueType = "epic",
+                currentStateKey = "open",
                 startDate = LocalDate.of(2026, 7, 20),
+                dueDate = null,
             )
 
         val actual = IcalSerializer.serialize(listOf(issue), emptyList(), now, feedBaseUrl)
@@ -262,7 +263,6 @@ class IcalSerializerTest {
             issueView(
                 key = "PROJ-5",
                 summary = "Fix bug, urgent; needs\\review\nplease check",
-                issueType = "bug",
                 startDate = LocalDate.of(2026, 7, 10),
                 dueDate = LocalDate.of(2026, 7, 10),
             )
@@ -282,7 +282,7 @@ class IcalSerializerTest {
                 "DTSTART;VALUE=DATE:20260710",
                 "DTEND;VALUE=DATE:20260711",
                 "SUMMARY:[PROJ-5] Fix bug\\, urgent\\; needs\\\\review\\nplease check",
-                "DESCRIPTION:이슈 타입: bug / 상태: open",
+                "DESCRIPTION:이슈 타입: task / 상태: open",
                 "URL:https://bts.example.com/issues/PROJ-5",
                 "STATUS:CONFIRMED",
                 "END:VEVENT",
@@ -297,7 +297,6 @@ class IcalSerializerTest {
             issueView(
                 key = "PROJ-5",
                 summary = "Fix bug, urgent; needs\\review\nplease check",
-                issueType = "bug",
                 startDate = LocalDate.of(2026, 7, 10),
                 dueDate = LocalDate.of(2026, 7, 10),
             )
@@ -316,7 +315,7 @@ class IcalSerializerTest {
     @Test
     fun `이슈와 Worklog를 함께 직렬화하면 각 VEVENT가 안정적 UID와 DTSTAMP를 포함한다`() {
         val issue =
-            issueView(
+            CalendarIssueView(
                 key = "PROJ-1",
                 summary = "Design review",
                 issueType = "task",
@@ -407,9 +406,10 @@ class IcalSerializerTest {
     @Test
     fun `75옥텟을 초과하는 DESCRIPTION은 속성명을 포함한 옥텟 수 기준으로 폴딩된다`() {
         val issue =
-            issueView(
+            CalendarIssueView(
                 key = "PROJ-6",
                 summary = "Short",
+                issueType = "task",
                 currentStateKey = "requires-additional-manager-approval-before-final-close-signoff",
                 startDate = LocalDate.of(2026, 7, 10),
                 dueDate = LocalDate.of(2026, 7, 10),
