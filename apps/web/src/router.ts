@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 48개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 9 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + 프로젝트 CFD 1 + 프로젝트 Cycle/Lead Time 1 + settings 9 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 + Slack 연결 1 + 캘린더 1 | FR-IM-01 D6/D7: projectImportSettingsRoute /projects/$projectKey/settings/import 추가 | FR-RP-04 D6/D7: projectCycleTimeRoute /projects/$projectKey/reports/cycle-time 추가 | FR-PR-01 D6: settingsProfileRoute /settings/profile 추가 | FR-PF-01 Task 7: settingsPreferencesRoute /settings/preferences 추가 | FR-SL-01 D6/D7 Task 7: adminSlackRoute /admin/slack 추가 | FR-PF-03 Task 9: settingsKeymapRoute /settings/keymap 추가 | FR-CA-01 Task 7: calendarRoute /calendar 추가)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 49개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 9 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + 프로젝트 CFD 1 + 프로젝트 Cycle/Lead Time 1 + settings 10 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 + Slack 연결 1 + 캘린더 1 | FR-IM-01 D6/D7: projectImportSettingsRoute /projects/$projectKey/settings/import 추가 | FR-RP-04 D6/D7: projectCycleTimeRoute /projects/$projectKey/reports/cycle-time 추가 | FR-PR-01 D6: settingsProfileRoute /settings/profile 추가 | FR-PF-01 Task 7: settingsPreferencesRoute /settings/preferences 추가 | FR-SL-01 D6/D7 Task 7: adminSlackRoute /admin/slack 추가 | FR-PF-03 Task 9: settingsKeymapRoute /settings/keymap 추가 | FR-CA-01 Task 7: calendarRoute /calendar 추가 | FR-CA-02 Task 9: settingsCalendarRoute /settings/calendar 추가)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -36,6 +36,7 @@ import { SettingsPatsRouteAdapter } from './routes/settings.pats'
 import { ProfileSettingsRouteAdapter } from './routes/settings.profile'
 import { PreferencesSettingsRouteAdapter } from './routes/settings.preferences'
 import { KeymapSettingsRouteAdapter } from './routes/settings.keymap'
+import { CalendarFeedSettingsRouteAdapter } from './routes/settings.calendar'
 import { CalendarRouteAdapter } from './routes/calendar'
 import { ProjectWorklogReportRouteAdapter } from './routes/projects.$projectKey.reports.worklog'
 import { ProjectVelocityReportRouteAdapter } from './routes/projects.$projectKey.reports.velocity'
@@ -594,6 +595,15 @@ const settingsKeymapRoute = createRoute({
   beforeLoad: requireAuthAndPasswordChanged,
 })
 
+/** 캘린더 iCal 구독(Export) 설정 라우트 — /settings/calendar, requireAuthAndPasswordChanged (settings.keymap과 동일 가드) (FR-CA-02 Task 9) */
+const settingsCalendarRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings/calendar',
+  component: CalendarFeedSettingsRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
 /** 개인 캘린더 월/주 뷰 라우트 — /calendar, requireAuth (identity-access BC, FR-CA-01 Task 7) */
 const calendarRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -605,7 +615,7 @@ const calendarRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 48개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 49개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
  *   · /admin/webhooks · /admin/webhooks/:id/deliveries · /admin/slack
@@ -621,6 +631,7 @@ const calendarRoute = createRoute({
  *   · /projects/:projectKey/reports/cycle-time
  *   · /settings/sessions · /settings/password · /settings/account-links · /settings/mfa
  *   · /settings/notifications · /settings/pats · /settings/profile · /settings/preferences · /settings/keymap
+ *   · /settings/calendar
  *   · /calendar
  * requireAuth 라우트: /dashboard · /inbox · /dashboards · /dashboards/* · /search · /issues · /issues/* · /admin/* · /projects/* · /settings/* · /calendar
  */
@@ -709,6 +720,8 @@ export const routeTree = rootRoute.addChildren([
   settingsPreferencesRoute,
   // identity-access BC — 단축키 커스터마이즈 설정 (FR-PF-03 Task 9)
   settingsKeymapRoute,
+  // identity-access BC — 캘린더 iCal 구독(Export) 설정 (FR-CA-02 Task 9)
+  settingsCalendarRoute,
   // identity-access BC — 개인 캘린더 월/주 뷰 (FR-CA-01 Task 7)
   calendarRoute,
   // workflows (레거시 workflow 상세 — 향후 마이그레이션 예정)

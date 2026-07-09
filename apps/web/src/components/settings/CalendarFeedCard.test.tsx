@@ -23,6 +23,14 @@ interface FeedFixture {
 let feedState: FeedFixture | null = null
 let tokenSeq = 0
 
+/**
+ * 최초 발급(POST 1회째) 시 응답되는 feedUrl — https:// 원문. webcal:// 변환본과 텍스트가
+ * 부분 중첩되므로("...ical/feed/issued-token-1.ics"가 양쪽에 공통) 조회 시 반드시 스킴을
+ * 포함한 완전 문자열로 매칭해 `getByText`가 두 element(코드 블록/webcal 힌트)를 동시에
+ * 찾는 "Found multiple elements" 오탐을 피한다.
+ */
+const FIRST_ISSUED_URL = 'https://bts.local/ical/feed/issued-token-1.ics'
+
 function resetFeedStore(): void {
   feedState = null
   tokenSeq = 0
@@ -116,7 +124,7 @@ describe('CalendarFeedCard — 발급 + 1회 노출', () => {
 
     expect(await screen.findByText(/다시 표시되지 않습니다/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '복사' })).toBeInTheDocument()
-    expect(screen.getByText(/ical\/feed\/issued-token-1\.ics/)).toBeInTheDocument()
+    expect(screen.getByText(FIRST_ISSUED_URL)).toBeInTheDocument()
   })
 
   it('발급된 URL 노출 화면에 webcal:// 구독 힌트가 함께 표시된다 (spec FR7)', async () => {
@@ -124,35 +132,43 @@ describe('CalendarFeedCard — 발급 + 1회 노출', () => {
 
     await user.click(await screen.findByRole('button', { name: '구독 URL 발급' }))
 
-    await screen.findByText(/ical\/feed\/issued-token-1\.ics/)
-    expect(screen.getByText(/webcal:\/\//)).toBeInTheDocument()
+    await screen.findByText(FIRST_ISSUED_URL)
+    expect(screen.getByText(`webcal://${FIRST_ISSUED_URL.replace(/^https:\/\//, '')}`)).toBeInTheDocument()
   })
 
   it('복사 버튼 클릭 시 clipboard.writeText가 발급 URL로 호출되고 라벨이 "복사됨"으로 바뀐다', async () => {
+    const { user } = renderCard()
+    await user.click(await screen.findByRole('button', { name: '구독 URL 발급' }))
+    await screen.findByText(FIRST_ISSUED_URL)
+
+    // 렌더/발급 흐름이 끝난 뒤에 clipboard mock을 심는다 — 마운트 중 발생하는 전역 재초기화
+    // 이후에 심어야 vi.spyOn 참조가 클릭 시점의 navigator.clipboard.writeText와 동일하게 유지된다.
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
       writable: true,
       configurable: true,
     })
-    const writeTextSpy = vi.spyOn(navigator.clipboard, 'writeText')
+    // Object.defineProperty 단순 할당은 vitest spy가 아니므로 vi.spyOn으로 감싸 호출 추적을 붙인다
+    // (MfaSettings.test.tsx T3-S8-2 선례 — .mockResolvedValue를 다시 명시적으로 체이닝).
+    const writeTextSpy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
 
-    const { user } = renderCard()
-    await user.click(await screen.findByRole('button', { name: '구독 URL 발급' }))
     await user.click(await screen.findByRole('button', { name: '복사' }))
 
-    expect(writeTextSpy).toHaveBeenCalledWith('https://bts.local/ical/feed/issued-token-1.ics')
+    await waitFor(() => {
+      expect(writeTextSpy).toHaveBeenCalledWith(FIRST_ISSUED_URL)
+    })
     expect(await screen.findByRole('button', { name: '복사됨' })).toBeInTheDocument()
   })
 
   it('닫기 클릭 시 노출된 URL 텍스트가 화면에서 사라진다', async () => {
     const { user } = renderCard()
     await user.click(await screen.findByRole('button', { name: '구독 URL 발급' }))
-    await screen.findByText(/ical\/feed\/issued-token-1\.ics/)
+    await screen.findByText(FIRST_ISSUED_URL)
 
     await user.click(screen.getByRole('button', { name: '닫기' }))
 
     await waitFor(() => {
-      expect(screen.queryByText(/ical\/feed\/issued-token-1\.ics/)).not.toBeInTheDocument()
+      expect(screen.queryByText(FIRST_ISSUED_URL)).not.toBeInTheDocument()
     })
   })
 })
@@ -178,7 +194,7 @@ describe('CalendarFeedCard — 재발급 확인', () => {
     await user.click(await screen.findByRole('button', { name: '재발급' }))
     await user.click(await screen.findByRole('button', { name: '확인' }))
 
-    expect(await screen.findByText(/ical\/feed\/issued-token-1\.ics/)).toBeInTheDocument()
+    expect(await screen.findByText(FIRST_ISSUED_URL)).toBeInTheDocument()
   })
 
   it('재발급 확인 화면에서 "취소" 클릭 시 확인 단계가 닫히고 재발급 버튼으로 돌아간다', async () => {

@@ -179,6 +179,9 @@ export const Header = () => {
             <Link to="/settings/keymap">단축키</Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
+            <Link to="/settings/calendar">캘린더 구독</Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
             <Link to="/settings/mfa">2단계 인증</Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>

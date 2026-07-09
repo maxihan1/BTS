@@ -63,6 +63,7 @@ import { savedFilterHandlers } from './saved-filter-handlers'
 import { searchHandlers } from './search-handlers'
 import { timelineHandlers } from './timeline-handlers'
 import { calendarHandlers } from './calendar-handlers'
+import { calendarFeedHandlers } from './calendar-feed-handlers'
 
 /**
  * 애플리케이션 전체 MSW 핸들러 집합.
@@ -136,4 +137,5 @@ export const handlers = [
   ...timelineHandlers,
   ...workflowHandlers,
   ...calendarHandlers,
+  ...calendarFeedHandlers,
 ]
