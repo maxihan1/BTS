@@ -31,13 +31,12 @@
 
 **신규 외부 의존성 0** — 자체 iCal 직렬화기 구현(mermaid 자체SVG·Gantt SVG·AQL 파서·네이티브 캘린더 그리드 선례, DEVELOPMENT.md §외부 의존성 승인 회피). ical4j 등 미도입.
 
-**VCALENDAR wrapper**.
+**VCALENDAR wrapper** (구독 read-only 피드 — `METHOD:PUBLISH` 제외: iTIP METHOD는 VEVENT별 ORGANIZER를 요구하고 엄격 검증기 경고 유발, 구독 피드엔 불요).
 ```
 BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//BTS//Atlas Issues//KO
 CALSCALE:GREGORIAN
-METHOD:PUBLISH
 X-WR-CALNAME:BTS 내 일정
 ...VEVENT...
 END:VCALENDAR
@@ -59,7 +58,7 @@ END:VCALENDAR
 
 **공통 규칙 (footgun 방지, 단위 테스트 필수)**.
 1. **텍스트 이스케이핑**(RFC 5545 §3.3.11): `\` → `\\`, `;` → `\;`, `,` → `\,`, 개행 → `\n`. SUMMARY/DESCRIPTION 전부.
-2. **라인 폴딩**(§3.1): 75 **옥텟**(UTF-8 바이트 기준, 문자 수 아님 — 한글 3바이트 주의) 초과 시 CRLF + 선행 공백으로 접기.
+2. **라인 폴딩**(§3.1): 75 **옥텟**(UTF-8 바이트 기준, 문자 수 아님 — 한글 3바이트 주의) 초과 시 CRLF + 선행 공백으로 접기. **모든 content line 대상**(SUMMARY뿐 아니라 긴 URL/DESCRIPTION도, 속성명 포함 옥텟 카운트) — 직렬화 최종 단계 generic per-line pass.
 3. **줄바꿈 = CRLF**(`\r\n`). LF 단독 금지.
 4. `DTSTART`/`DTEND` DATE 포맷 = `yyyyMMdd`, DATE-TIME UTC = `yyyyMMdd'T'HHmmss'Z'`.
 
@@ -67,7 +66,7 @@ END:VCALENDAR
 
 - 피드 응답 p95 < 500ms(product 게이트, k6). 포트 조회 + 직렬화.
 - 토큰 엔트로피 256비트(추측 불가). 원문 DB·로그 미저장(DEVELOPMENT.md §1.1.1).
-- 익명 경로 rate-limit = **측정 후 유예**(spec 기록, MVP 미도입 — FR-DB-03 동일 수준).
+- 익명 경로 rate-limit = **측정 후 유예**(spec 기록, MVP 미도입 — FR-DB-03 동일 수준). 단 fan-out은 FR-DB-03(단일 스냅샷)보다 큼(요청당 포트 2회 조회+직렬화, 1000명×앱 폴링) — 운영 관찰 대상.
 - 피드 URL은 **HTTPS 전제**(토큰이 path에 노출 — http 시 유출). prod https. `app.base-url` 설정에서 스킴 확정.
 - 접근 로그 토큰 노출 = 기존 FR-DB-03 익명 경로와 동일 이슈. 문서화, 마스킹은 후속.
 

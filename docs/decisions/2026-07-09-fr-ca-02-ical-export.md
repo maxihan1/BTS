@@ -80,7 +80,7 @@ D3에서 확정). 캘린더 데이터 자체는 여전히 FR-CA-01 포트 위임
   토큰 서비스/리포지토리 추가. FR-CA-01 `UserCalendarLookupPort` 소비 배선 재사용.
 - 신규 마이그레이션 1개(`user_calendar_tokens`, token_hash UNIQUE).
 - **두 번째 비인증 경로**(FR-DB-03 `/api/v1/public/*` 이후) → SecurityFilterChain 화이트리스트 확장.
-  경로 프리픽스 `/ical/**` permitAll. identity-access 중앙 SecurityConfig 변경(BC 내부라 정상).
+  **GET-only 단일 세그먼트 `/ical/feed/*` permitAll**(FR-DB-03 `PUBLIC_DASHBOARDS_PATH` defense-in-depth 동형 — 하위경로/비-GET 와일드카드 금지, `/api/**` authenticated 앞). identity-access 중앙 SecurityConfig 변경(BC 내부라 정상).
 - fr-index/SDD FR 카운트·BC 매핑 불변(논리 ≠ 물리). personalization 11/12 → 12/12(BC 완료).
 - 새 용어 후보: **캘린더 피드 토큰(Calendar Feed Token)**. Maxi 승인 후 머지 단계 glossary 동기화.
 - 기존 결정 충돌: 없음. FR-CA-01 포트·FR-DB-03 익명 토큰 패턴을 조합·구체화.
