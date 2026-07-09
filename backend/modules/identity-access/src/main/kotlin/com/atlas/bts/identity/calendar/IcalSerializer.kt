@@ -9,7 +9,6 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
-private const val ICS_CRLF = "\r\n"
 private const val ICS_PRODID = "-//BTS//Atlas Issues//KO"
 private const val ICS_CALENDAR_NAME = "BTS 내 일정"
 
@@ -30,13 +29,14 @@ private val ICS_DATE_TIME_FORMATTER: DateTimeFormatter =
  * 네이티브 캘린더 그리드와 동일한 근거([docs/specs/2026-07-09-fr-ca-02-ical-export.md] 참조).
  * 부수 효과 없는 순수 함수만 노출한다 — `now`(DTSTAMP·롤링 윈도 기준 시각)는 항상 호출부가 주입한다.
  *
- * ## 이스케이핑·폴딩 정책
- * - TEXT 값(SUMMARY/DESCRIPTION)만 [escapeText] 로 이스케이핑한다. UID·DATE·URL·파라미터 값은
- *   RFC 5545 §3.3.11 TEXT 값 규칙 대상이 아니므로 이스케이핑하지 않는다.
- * - 직렬화 최종 단계에서 [foldLine] 을 **모든 content line 에 예외 없이** 적용한다
- *   (`BEGIN:VEVENT` 같은 짧은 구조 라인도 통과하지만 75옥텟 미만이라 실질적 변화는 없다).
+ * ## 책임 분리
+ * 이 오브젝트는 이슈/worklog 도메인 값을 VEVENT content line 목록으로 매핑하는 **조립 책임**만
+ * 진다. TEXT 값 이스케이핑과 75옥텟 라인 폴딩 같은 RFC 5545 저수준 문자열 규칙은 [IcalLineFormat]
+ * 에 위임한다 — 두 관심사(도메인 매핑 vs 문자 인코딩 규칙)를 분리해 각각 독립적으로 이해·검증할 수
+ * 있게 한다.
  *
  * @see IcalSerializer.serialize
+ * @see IcalLineFormat
  */
 object IcalSerializer {
     /**
@@ -44,6 +44,9 @@ object IcalSerializer {
      *
      * 결과는 `METHOD` 프로퍼티를 포함하지 않는다 — 읽기 전용 구독 피드는 iTIP `METHOD:PUBLISH` 가
      * 요구하는 `ORGANIZER` 를 채울 수 없고, 엄격한 검증기가 경고를 낼 수 있어 의도적으로 생략한다.
+     *
+     * 직렬화 최종 단계에서 [IcalLineFormat.foldLine] 을 **모든 content line 에 예외 없이** 적용한다
+     * (`BEGIN:VEVENT` 같은 짧은 구조 라인도 통과하지만 75옥텟 미만이라 실질적 변화는 없다).
      *
      * @param issues 캘린더에 표시할 담당 이슈 목록. all-day VEVENT 로 변환된다.
      * @param worklogs 캘린더에 표시할 작업 기록 목록. UTC 타임드 VEVENT 로 변환된다.
@@ -67,7 +70,7 @@ object IcalSerializer {
         worklogs.forEach { lines += worklogEventLines(it, now) }
         lines += "END:VCALENDAR"
 
-        return lines.joinToString(ICS_CRLF) { foldLine(it) } + ICS_CRLF
+        return lines.joinToString(IcalLineFormat.CRLF) { IcalLineFormat.foldLine(it) } + IcalLineFormat.CRLF
     }
 
     /**
@@ -94,8 +97,9 @@ object IcalSerializer {
             "DTSTAMP:${formatDateTimeUtc(now)}",
             "DTSTART;VALUE=DATE:${formatDate(dtStart)}",
             "DTEND;VALUE=DATE:${formatDate(dtEnd)}",
-            "SUMMARY:[${issue.key}] ${escapeText(issue.summary)}",
-            "DESCRIPTION:${escapeText("이슈 타입: ${issue.issueType} / 상태: ${issue.currentStateKey}")}",
+            "SUMMARY:[${issue.key}] ${IcalLineFormat.escapeText(issue.summary)}",
+            "DESCRIPTION:" +
+                IcalLineFormat.escapeText("이슈 타입: ${issue.issueType} / 상태: ${issue.currentStateKey}"),
             "URL:${feedBaseUrl.trimEnd('/')}/issues/${issue.key}",
             "STATUS:CONFIRMED",
             "END:VEVENT",
@@ -127,7 +131,7 @@ object IcalSerializer {
             "DTSTAMP:${formatDateTimeUtc(now)}",
             "DTSTART:${formatDateTimeUtc(worklog.startedAt)}",
             "DTEND:${formatDateTimeUtc(dtEnd)}",
-            "SUMMARY:${escapeText(summary)}",
+            "SUMMARY:${IcalLineFormat.escapeText(summary)}",
             "END:VEVENT",
         )
     }
@@ -146,58 +150,71 @@ object IcalSerializer {
 }
 
 /**
- * RFC 5545 §3.3.11 TEXT 값 이스케이핑 — `SUMMARY`/`DESCRIPTION` 같은 TEXT 값에만 적용한다.
+ * RFC 5545 저수준 content line 인코딩 규칙(이스케이핑·줄바꿈·라인 폴딩) 전담 오브젝트.
  *
- * 순서가 중요하다. 백슬래시를 먼저 두 배로 만든 뒤 `;`/`,` 를 이스케이핑해야, 이스케이핑으로
- * 새로 삽입된 백슬래시가 다시 이스케이핑되는 이중 처리를 피할 수 있다. 개행(`\r\n`/`\n`/`\r`)은
- * 마지막에 리터럴 두 글자 `\n` 으로 치환한다(실제 개행 문자를 결과에 남기지 않는다 — CRLF 불변식).
+ * [IcalSerializer] 의 도메인 매핑 책임과 분리한다 — 이 오브젝트는 이슈/worklog 를 전혀 알지 못하고
+ * 순수하게 RFC 5545 문자열 규칙(§3.1 라인 폴딩, §3.3.11 TEXT 이스케이핑)만 다룬다.
  */
-private fun escapeText(raw: String): String =
-    raw
-        .replace("\\", "\\\\")
-        .replace(";", "\\;")
-        .replace(",", "\\,")
-        .replace("\r\n", "\\n")
-        .replace("\n", "\\n")
-        .replace("\r", "\\n")
+private object IcalLineFormat {
+    /** RFC 5545 §3.1 이 요구하는 줄바꿈 — LF 단독 사용 금지. */
+    const val CRLF = "\r\n"
 
-/**
- * RFC 5545 §3.1 라인 폴딩 — content line 이 75 **옥텟**(UTF-8 바이트, 문자 수 아님)을 초과하면
- * CRLF + 선행 공백 하나로 접는다. 속성명(`SUMMARY:` 등)도 옥텟 카운트에 포함된다.
- *
- * UTF-8 멀티바이트 문자(한글 등, 3바이트)의 중간에서 자르지 않도록, 분할 지점의 다음 바이트가
- * UTF-8 연속 바이트(상위 2비트가 `10`)이면 문자 경계까지 분할 지점을 앞으로 물린다
- * (RFC 5545 §3.1 "SHOULD be avoided" 권고 준수).
- */
-private fun foldLine(
-    line: String,
-    maxOctets: Int = 75,
-): String {
-    val bytes = line.toByteArray(Charsets.UTF_8)
-    if (bytes.size <= maxOctets) return line
+    /** RFC 5545 §3.1 라인 폴딩 임계값 — **옥텟**(UTF-8 바이트) 기준이며 문자 수가 아니다(한글 등 멀티바이트 문자 주의). */
+    private const val MAX_LINE_OCTETS = 75
 
-    val chunks = mutableListOf<String>()
-    var start = 0
-    var isFirstChunk = true
-    while (start < bytes.size) {
-        // 첫 줄은 maxOctets 전부 콘텐츠, 후속 줄은 선행 공백 1옥텟을 뺀 나머지가 콘텐츠 한도다.
-        val chunkLimit = if (isFirstChunk) maxOctets else maxOctets - 1
-        var end = minOf(start + chunkLimit, bytes.size)
-        while (end < bytes.size && end > start && isUtf8ContinuationByte(bytes[end])) {
-            end--
+    /** UTF-8 연속 바이트를 가려내는 비트마스크(`11000000`) — 이 마스크를 적용한 결과가 [UTF8_CONT_TAG] 면 연속 바이트다. */
+    private const val UTF8_CONT_MASK = 0xC0
+
+    /** UTF-8 연속 바이트(멀티바이트 문자의 2번째 이후 바이트)의 상위 비트 패턴(`10000000`). */
+    private const val UTF8_CONT_TAG = 0x80
+
+    /**
+     * RFC 5545 §3.3.11 TEXT 값 이스케이핑 — `SUMMARY`/`DESCRIPTION` 같은 TEXT 값에만 적용한다.
+     * UID·DATE·URL·파라미터 값은 TEXT 값 규칙 대상이 아니므로 이 함수를 거치지 않는다.
+     *
+     * 순서가 중요하다. 백슬래시를 먼저 두 배로 만든 뒤 `;`/`,` 를 이스케이핑해야, 이스케이핑으로
+     * 새로 삽입된 백슬래시가 다시 이스케이핑되는 이중 처리를 피할 수 있다. 개행(`\r\n`/`\n`/`\r`)은
+     * 마지막에 리터럴 두 글자 `\n` 으로 치환한다(실제 개행 문자를 결과에 남기지 않는다 — CRLF 불변식).
+     */
+    fun escapeText(raw: String): String =
+        raw
+            .replace("\\", "\\\\")
+            .replace(";", "\\;")
+            .replace(",", "\\,")
+            .replace("\r\n", "\\n")
+            .replace("\n", "\\n")
+            .replace("\r", "\\n")
+
+    /**
+     * RFC 5545 §3.1 라인 폴딩 — content line 이 [MAX_LINE_OCTETS] 옥텟을 초과하면 CRLF + 선행 공백
+     * 하나로 접는다. **모든 content line 에 예외 없이 적용**하며(SUMMARY 뿐 아니라 URL·DESCRIPTION
+     * 등 어떤 프로퍼티든 동일), 속성명(`SUMMARY:` 등)도 옥텟 카운트에 포함한다.
+     *
+     * UTF-8 멀티바이트 문자(한글 등, 3바이트)의 중간에서 자르지 않도록, 분할 지점의 다음 바이트가
+     * UTF-8 연속 바이트(상위 2비트가 `10`)이면 문자 경계까지 분할 지점을 앞으로 물린다
+     * (RFC 5545 §3.1 "SHOULD be avoided" 권고 준수).
+     */
+    fun foldLine(line: String): String {
+        val bytes = line.toByteArray(Charsets.UTF_8)
+        if (bytes.size <= MAX_LINE_OCTETS) return line
+
+        val chunks = mutableListOf<String>()
+        var start = 0
+        var isFirstChunk = true
+        while (start < bytes.size) {
+            // 첫 줄은 MAX_LINE_OCTETS 전부 콘텐츠, 후속 줄은 선행 공백 1옥텟을 뺀 나머지가 콘텐츠 한도다.
+            val chunkLimit = if (isFirstChunk) MAX_LINE_OCTETS else MAX_LINE_OCTETS - 1
+            var end = minOf(start + chunkLimit, bytes.size)
+            while (end < bytes.size && end > start && isUtf8ContinuationByte(bytes[end])) {
+                end--
+            }
+            chunks += String(bytes, start, end - start, Charsets.UTF_8)
+            start = end
+            isFirstChunk = false
         }
-        chunks += String(bytes, start, end - start, Charsets.UTF_8)
-        start = end
-        isFirstChunk = false
+        return chunks.joinToString("$CRLF ")
     }
-    return chunks.joinToString("$ICS_CRLF ")
+
+    /** UTF-8 연속 바이트(상위 2비트 `10xxxxxx`, 멀티바이트 문자의 2번째 이후 바이트)인지 판별한다. */
+    private fun isUtf8ContinuationByte(byte: Byte): Boolean = (byte.toInt() and UTF8_CONT_MASK) == UTF8_CONT_TAG
 }
-
-/** UTF-8 연속 바이트를 가려내는 비트마스크(`11000000`) — 이 마스크를 적용한 결과가 [UTF8_CONT_TAG] 면 연속 바이트다. */
-private const val UTF8_CONT_MASK = 0xC0
-
-/** UTF-8 연속 바이트(멀티바이트 문자의 2번째 이후 바이트)의 상위 비트 패턴(`10000000`). */
-private const val UTF8_CONT_TAG = 0x80
-
-/** UTF-8 연속 바이트(상위 2비트 `10xxxxxx`, 멀티바이트 문자의 2번째 이후 바이트)인지 판별한다. */
-private fun isUtf8ContinuationByte(byte: Byte): Boolean = (byte.toInt() and UTF8_CONT_MASK) == UTF8_CONT_TAG
