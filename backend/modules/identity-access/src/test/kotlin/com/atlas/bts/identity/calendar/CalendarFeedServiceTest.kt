@@ -1,4 +1,4 @@
-// CalendarFeedService 단위 테스트 — 토큰 생명주기(발급/rotate/취소/상태) + 익명 피드 생성(윈도·timezone fallback·truncated WARN) (FR-CA-02 Task 4)
+// CalendarFeedService 단위 테스트 — 토큰 생명주기 + 익명 피드(.ics) 생성(윈도·timezone fallback·truncated WARN) (FR-CA-02 Task 4)
 
 package com.atlas.bts.identity.calendar
 

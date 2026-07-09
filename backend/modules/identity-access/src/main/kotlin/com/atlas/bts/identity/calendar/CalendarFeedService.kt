@@ -36,8 +36,8 @@ private const val FALLBACK_TIMEZONE = "UTC"
  *     [UserCalendarLookupPort] 로 조회해 [IcalSerializer] 로 RFC 5545 문자열로 직렬화한다.
  *
  * ## 왜 [CalendarService] 를 재사용하지 않고 포트를 직접 호출하는가
- * [CalendarService] 는 인앱 캘린더용으로 조회 창을 [최대 90일][CalendarService]로 검증하고 worklog 를
- * 로컬 날짜([CalendarWorklogEvent.date])로 매핑해 버린다. 반면 iCal 피드는
+ * [CalendarService] 는 인앱 캘린더용으로 조회 창을 최대 90일로 검증하고 worklog 를
+ * 로컬 날짜로 매핑해 버린다. 반면 iCal 피드는
  * (a) 윈도가 210일(30+180)로 90일 캡을 넘고,
  * (b) worklog VEVENT 를 UTC `Instant` 타임드 이벤트로 그대로 내보내야 해서 원본 [Instant] 보존이
  *     필요하다. 두 요구가 [CalendarService] 의 계약과 충돌하므로 포트([UserCalendarLookupPort])를
