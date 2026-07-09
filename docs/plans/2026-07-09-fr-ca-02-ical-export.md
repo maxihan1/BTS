@@ -29,11 +29,35 @@ FR-CA-01(개인 캘린더 — 할당/마감일/Worklog 통합, PR #249)의 데�
 - D6. 프론트 UI — 구독 URL 발급/취소 페이지 (designer → frontend-engineer)
 - D7. E2E (qa-engineer)
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
 
-## 스펙 (← /bts-spec Phase A 채움)
+- **BC**: personalization (논리) / **identity-access** (물리) — FR-CA-01·FR-PR-01 선례, `/users/me/*` 응집
+- **재사용 (신규 cross-BC 포트 0)**: FR-CA-01 `UserCalendarLookupPort`(shared-kernel). `listAssignedScheduledIssues` + `listWorklogs` 둘 다 호출. viewer=토큰 소유자 → visibility fail-closed 유지
+- **피드 taxonomy (Maxi 확정 2026-07-09)**: **이슈 + Worklog** (FR-CA-01 인앱 캘린더 동일). 이슈=all-day VEVENT(start~due), Worklog=타임드 VEVENT(UTC)
+- **토큰 모델**: 불투명 랜덤 토큰 + **SHA-256 해시만 저장**(원문 1회 노출). 사용자당 활성 1개(재발급=rotate). 취소=하드삭제(임시 자격증명). → product `token` 평문 컬럼 **deviation** (ADR D4)
+- **익명 엔드포인트**: `GET /ical/feed/{token}.ics` permitAll·`text/calendar`·해시 조회 실패 404. 관리 `POST/GET/DELETE /api/v1/users/me/calendar/feed` JWT-only(PAT 401)
+- **롤링 윈도**: 과거 30일 ~ 미래 180일(피드엔 from/to 없음). timezone=user_profiles.timezone(FR-CA-01 D6)
+- **신규 테이블 1개**: `user_calendar_tokens`(token_hash UNIQUE) — FR-CA-01은 조회만이었으나 토큰 저장 필요
+- **SecurityFilterChain**: `/ical/**` permitAll 화이트리스트 (FR-DB-03 `/api/v1/public/*` 이후 두 번째 비인증 경로)
+- **새 용어 후보**: 캘린더 피드 토큰 (Calendar Feed Token) — Maxi 승인 후 glossary 동기화
+- **기존 결정 충돌**: 없음. FR-CA-01 포트 + FR-DB-03 익명 토큰 패턴 조합
+- **관련 ADR**: [docs/decisions/2026-07-09-fr-ca-02-ical-export.md](../decisions/2026-07-09-fr-ca-02-ical-export.md) (생성됨)
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+## 스펙
+
+전체 스펙. [docs/specs/2026-07-09-fr-ca-02-ical-export.md](../specs/2026-07-09-fr-ca-02-ical-export.md)
+
+핵심 요약.
+- 관리 API 3종(`POST/GET/DELETE /api/v1/users/me/calendar/feed`, JWT me-scope·PAT 401) + 익명 피드 `GET /ical/feed/{token}.ics`(permitAll·GET-only·404 수렴).
+- 토큰 = `TrustedDeviceToken` 동형 minter(256비트 CSPRNG hex + SHA-256 해시). DB `user_calendar_tokens(user_id PK, token_hash UNIQUE, created_at)`. 사용자당 1개(UPSERT rotate)·취소=하드삭제.
+- 피드 = FR-CA-01 `UserCalendarLookupPort` 재사용(이슈+Worklog, 롤링 -30d/+180d, viewer=소유자 visibility). **자체 RFC 5545 직렬화기**(신규 의존성 0): 이슈 all-day VEVENT(DTEND exclusive) + Worklog 타임드 VEVENT(UTC), 이스케이핑·75옥텟 폴딩·CRLF.
+- 격리: issue-tracking·shared-kernel·whoami 무변경 → identity-access 단일 BC.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). 5 gap(G1~G5) 스펙 보강 흡수, Maxi 결정 불요.
+- **게이트1 Maxi 확인 지점**: 자체 iCal 직렬화기 vs ical4j(관례상 자체 채택). 이견 시 변경.
+- Maxi 확정 이력: 피드 taxonomy=이슈+Worklog(2026-07-09).
 
 ## Plan (← /bts-plan 채움)
 
