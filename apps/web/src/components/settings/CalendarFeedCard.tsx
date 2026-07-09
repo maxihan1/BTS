@@ -51,6 +51,8 @@ type ConfirmKind = 'reissue' | 'revoke' | null
  *   "기존 URL 무효화" 경고를, 취소는 "URL 동작 중단" 경고를 보여준다.
  * - 재발급도 최초 발급과 동일 mutation({@link useIssueCalendarFeed})을 쓴다 — 서버가
  *   upsert(rotate)로 처리하므로 프론트는 발급/재발급을 구분할 필요가 없다.
+ * - `navigator.clipboard.writeText` 실패(권한 거부 등) 시 빈 catch로 무시하지 않고
+ *   {@link labels.copyFailed} 안내 문구를 노출한다(PatTokenModal 동형 폴백).
  */
 export function CalendarFeedCard(): JSX.Element {
   const { data: status, isLoading } = useCalendarFeedStatus()

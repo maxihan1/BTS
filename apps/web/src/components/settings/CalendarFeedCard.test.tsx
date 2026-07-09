@@ -160,6 +160,25 @@ describe('CalendarFeedCard — 발급 + 1회 노출', () => {
     expect(await screen.findByRole('button', { name: '복사됨' })).toBeInTheDocument()
   })
 
+  it('clipboard.writeText가 실패(권한 거부 등)하면 폴백 안내 문구가 표시된다', async () => {
+    const { user } = renderCard()
+    await user.click(await screen.findByRole('button', { name: '구독 URL 발급' }))
+    await screen.findByText(FIRST_ISSUED_URL)
+
+    // 복사 성공 테스트와 동일하게 발급 흐름이 끝난 뒤에 clipboard mock을 심는다.
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockRejectedValue(new Error('permission denied')) },
+      writable: true,
+      configurable: true,
+    })
+
+    await user.click(await screen.findByRole('button', { name: '복사' }))
+
+    expect(await screen.findByText('복사에 실패했습니다. 직접 선택해 복사해 주세요.')).toBeInTheDocument()
+    // 실패 시 라벨은 "복사"로 유지된다 — "복사됨"으로 바뀌지 않음
+    expect(screen.getByRole('button', { name: '복사' })).toBeInTheDocument()
+  })
+
   it('닫기 클릭 시 노출된 URL 텍스트가 화면에서 사라진다', async () => {
     const { user } = renderCard()
     await user.click(await screen.findByRole('button', { name: '구독 URL 발급' }))
