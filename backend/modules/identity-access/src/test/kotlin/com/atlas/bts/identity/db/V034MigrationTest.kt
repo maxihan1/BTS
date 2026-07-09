@@ -1,4 +1,4 @@
-// V034 마이그레이션 검증 — user_calendar_tokens 테이블(익명 iCal 구독 토큰) + user_id PK/FK CASCADE + token_hash UNIQUE + created_at TIMESTAMPTZ (FR-CA-02)
+// V034 마이그레이션 검증 — user_calendar_tokens 테이블 스키마(PK/FK CASCADE·token_hash UNIQUE·created_at) FR-CA-02
 
 package com.atlas.bts.identity.db
 
