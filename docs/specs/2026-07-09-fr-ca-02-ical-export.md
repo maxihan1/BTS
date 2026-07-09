@@ -25,7 +25,7 @@
 - **FR5 취소**. `DELETE /api/v1/users/me/calendar/feed`. 하드삭제. 204.
 - **FR6 상태 조회**. `GET /api/v1/users/me/calendar/feed`. `{enabled, createdAt?}`. 원문 토큰·해시 미노출.
 - **FR7 프론트**. `/settings/calendar` 설정 카드. 미발급→발급 버튼 / 발급됨→URL 1회표시·복사·재발급·취소 + 구독 방법 안내(webcal 힌트).
-- **FR8 관리 API me-scope**. FR1·5·6은 JWT subject 본인만(**PAT 401**, 세션관리/FR-PR 선례).
+- **FR8 관리 API me-scope**. FR1·5·6은 JWT subject 본인만. **PAT→403** `calendar_feed_requires_interactive_login`(자격증명 관리라 401 아닌 403, 세션관리 선례, Maxi 게이트1 확정). 미인증→401.
 
 ## RFC 5545 직렬화 규칙 (핵심 — 자체 직렬화기)
 
@@ -113,7 +113,7 @@ CREATE TABLE user_calendar_tokens (
 - **자체 직렬화기**. 외부 iCal 라이브러리 미도입(신규 의존성 0 관례). ← **게이트1에서 Maxi 확인 지점**(ical4j 선호 시 변경 가능).
 - **SecurityConfig 확장**. `auth.requestMatchers(HttpMethod.GET, "/ical/feed/*").permitAll()` — FR-DB-03 defense-in-depth(GET-only·단일 세그먼트) 동형. `/api/**`보다 앞. 60줄 임계 주의(FR-MF-01 선례).
 - **Clock 주입**. DTSTAMP·롤링 윈도 now는 Clock(identity-access 관례, FR-CA-01/FR-PR-02 선례).
-- **me-scope**. 관리 API JWT-only(PAT 401).
+- **me-scope**. 관리 API JWT-only(**PAT 403** `calendar_feed_requires_interactive_login`, 세션관리 `AuthController` nullable-jwt→`PAT_FORBIDDEN_RESPONSE` 선례).
 - **(G3) whoami 변경 0**. 피드 상태는 전용 GET API로 조회 → whoami view-layer 미변경 → 슬라이스 mock fanout 회피(FR-PR/PF 대비 단순). 긍정적 격리.
 - **(G4) issue-tracking 변경 0**. `UserCalendarLookupPort` 완전 재사용 → issue-tracking adapter 무변경. 한 PR = identity-access 단일 BC(+shared-kernel 무변경).
 - **(G5) product 문서 동기화(머지 시)**. product §5.2 D3 `user_calendar_tokens(user_id, token, revoked_at)` → `token_hash`(revoked_at 제거)로 정정. §명세 변경 전수 동기화(fr-index는 FR 카운트 불변, D1~D7 체크만).
@@ -123,7 +123,7 @@ CREATE TABLE user_calendar_tokens (
 1. 발급→익명 구독(.ics 파싱)→재발급(기존 404)→취소(404) **E2E** 통과.
 2. RFC 5545 직렬화 **단위 테스트** — 이스케이핑(특수문자·한글), 75옥텟 폴딩, CRLF, all-day DTEND exclusive, UTC Worklog. (검증: 표준 iCal 파서 또는 골든 문자열 대조.)
 3. 익명 엔드포인트 **negative-probe** — 무효/취소 토큰 404, 응답에 다른 사용자 데이터·원문 토큰·해시 미노출.
-4. me-scope 통합 테스트 — PAT 401, 타 사용자 토큰 접근 불가.
+4. me-scope 통합 테스트 — PAT 403, 타 사용자 토큰 접근 불가.
 5. 백엔드 `:modules:identity-access:test` + ktlint + detekt green. 프론트 typecheck+lint+vitest+E2E green. `verify-master-plan.sh` 123/123.
 6. personalization BC 12/12 완료(product §5.2 D1~D7 전부 체크).
 

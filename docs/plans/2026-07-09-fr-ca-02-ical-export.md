@@ -35,7 +35,7 @@ FR-CA-01(개인 캘린더 — 할당/마감일/Worklog 통합, PR #249)의 데�
 - **재사용 (신규 cross-BC 포트 0)**: FR-CA-01 `UserCalendarLookupPort`(shared-kernel). `listAssignedScheduledIssues` + `listWorklogs` 둘 다 호출. viewer=토큰 소유자 → visibility fail-closed 유지
 - **피드 taxonomy (Maxi 확정 2026-07-09)**: **이슈 + Worklog** (FR-CA-01 인앱 캘린더 동일). 이슈=all-day VEVENT(start~due), Worklog=타임드 VEVENT(UTC)
 - **토큰 모델**: 불투명 랜덤 토큰 + **SHA-256 해시만 저장**(원문 1회 노출). 사용자당 활성 1개(재발급=rotate). 취소=하드삭제(임시 자격증명). → product `token` 평문 컬럼 **deviation** (ADR D4)
-- **익명 엔드포인트**: `GET /ical/feed/{token}.ics` permitAll·`text/calendar`·해시 조회 실패 404. 관리 `POST/GET/DELETE /api/v1/users/me/calendar/feed` JWT-only(PAT 401)
+- **익명 엔드포인트**: `GET /ical/feed/{token}.ics` permitAll·`text/calendar`·해시 조회 실패 404. 관리 `POST/GET/DELETE /api/v1/users/me/calendar/feed` JWT-only(**PAT 403** `calendar_feed_requires_interactive_login`, Maxi 확정·세션관리 선례)
 - **롤링 윈도**: 과거 30일 ~ 미래 180일(피드엔 from/to 없음). timezone=user_profiles.timezone(FR-CA-01 D6)
 - **신규 테이블 1개**: `user_calendar_tokens`(token_hash UNIQUE) — FR-CA-01은 조회만이었으나 토큰 저장 필요
 - **SecurityFilterChain**: `GET /ical/feed/*` permitAll(GET-only 단일 세그먼트, FR-DB-03 defense-in-depth 동형) — 두 번째 비인증 경로
@@ -48,7 +48,7 @@ FR-CA-01(개인 캘린더 — 할당/마감일/Worklog 통합, PR #249)의 데�
 전체 스펙. [docs/specs/2026-07-09-fr-ca-02-ical-export.md](../specs/2026-07-09-fr-ca-02-ical-export.md)
 
 핵심 요약.
-- 관리 API 3종(`POST/GET/DELETE /api/v1/users/me/calendar/feed`, JWT me-scope·PAT 401) + 익명 피드 `GET /ical/feed/{token}.ics`(permitAll·GET-only·404 수렴).
+- 관리 API 3종(`POST/GET/DELETE /api/v1/users/me/calendar/feed`, JWT me-scope·**PAT 403**) + 익명 피드 `GET /ical/feed/{token}.ics`(permitAll·GET-only·404 수렴).
 - 토큰 = `TrustedDeviceToken` 동형 minter(256비트 CSPRNG hex + SHA-256 해시). DB `user_calendar_tokens(user_id PK, token_hash UNIQUE, created_at)`. 사용자당 1개(UPSERT rotate)·취소=하드삭제.
 - 피드 = FR-CA-01 `UserCalendarLookupPort` 재사용(이슈+Worklog, 롤링 -30d/+180d, viewer=소유자 visibility). **자체 RFC 5545 직렬화기**(신규 의존성 0): 이슈 all-day VEVENT(DTEND exclusive) + Worklog 타임드 VEVENT(UTC), 이스케이핑·75옥텟 폴딩·CRLF.
 - 격리: issue-tracking·shared-kernel·whoami 무변경 → identity-access 단일 BC.
@@ -146,9 +146,9 @@ CREATE TABLE user_calendar_tokens (
 - files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/calendar/CalendarFeedController.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/calendar/CalendarFeedDtos.kt`, `.../test/.../calendar/CalendarFeedControllerTest.kt`]
 - depends-on: [4]
 
-**RED**(`@WebMvcTest` 슬라이스): POST→201 `{feedUrl, token, createdAt}`(원문 1회) · GET→200 `{enabled, createdAt?}` · DELETE→204 · **PAT 인증→401**(me-scope JWT-only) · 미인증→401.
-**GREEN**: **차단 메커니즘 = `@AuthenticationPrincipal jwt: Jwt?` nullable 바인딩**(FR-PR `UserProfileController.currentUserId` 선례) — PAT principal은 `UsernamePasswordAuthenticationToken`이라 jwt=null→401. 공용 `SecurityContextHolder` userId 헬퍼(PAT도 userId 보유) 사용 금지(PAT 조용히 통과 구멍). **feedUrl base = `bts.auth.issuer-uri` 재사용**(`@Value("\${bts.auth.issuer-uri:http://localhost:8080}")`, 백엔드 자체 외부 URL이 피드 서빙 주소 — 리뷰 BLOCKER 해소, yml 편집 0). `feedUrl`=`issuer-uri` + `/ical/feed/<raw>.ics`(발급 응답에서만 조합). DTO 3종.
-**REFACTOR**: KDoc(원문 노출은 발급 응답 1회 한정 · PAT 401 me-scope 사유). **상태코드=401**(personalization me-scope 가족 일관: profile/preferences/status/ooo/keymap 전부 401. 세션관리 403과 다름 — 게이트1 노트, Maxi 이견 시 403 전환).
+**RED**(`@WebMvcTest` 슬라이스): POST→201 `{feedUrl, token, createdAt}`(원문 1회) · GET→200 `{enabled, createdAt?}` · DELETE→204 · **PAT 인증→403**(`calendar_feed_requires_interactive_login`, Maxi 게이트1 확정) · 미인증→401.
+**GREEN**: **차단 메커니즘 = 세션 관리 선례**(`AuthController.listSessions` L708~711, memory: session-management-pat-exclusion) — `@AuthenticationPrincipal jwt: Jwt?` nullable 바인딩. PAT principal은 `UsernamePasswordAuthenticationToken`이라 jwt=null → **403 Forbidden** + `calendar_feed_requires_interactive_login`(자격증명 관리라 401 아닌 403이 의미상 정확). 공용 `SecurityContextHolder` userId 헬퍼(PAT도 userId 보유) 사용 금지(PAT 조용히 통과 구멍). **feedUrl base = `bts.auth.issuer-uri` 재사용**(`@Value("\${bts.auth.issuer-uri:http://localhost:8080}")`, 백엔드 자체 외부 URL이 피드 서빙 주소 — 리뷰 BLOCKER 해소, yml 편집 0). `feedUrl`=`issuer-uri` + `/ical/feed/<raw>.ics`(발급 응답에서만 조합). DTO 3종.
+**REFACTOR**: KDoc(원문 노출은 발급 응답 1회 한정 · PAT 403 자격증명관리 사유, 세션관리 선례 링크). ReturnCount 억제 필요 시 guard clause early return(세션관리 선례).
 **검증**: `./gradlew :modules:identity-access:test --tests '*CalendarFeedControllerTest*'`
 
 ### Task 6. IcalFeedController — 익명 피드 + SecurityConfig permitAll
@@ -163,14 +163,14 @@ CREATE TABLE user_calendar_tokens (
 **REFACTOR**: 60줄 임계 주의(FR-MF-01 선례, permitAll 1줄 추가) · KDoc(404 수렴=probe 최소화, SecurityContext 무참조).
 **검증**: `./gradlew :modules:identity-access:test --tests '*IcalFeedControllerTest*'`
 
-### Task 7. 백엔드 통합 테스트 (full-boot · negative-probe · PAT 401)
+### Task 7. 백엔드 통합 테스트 (full-boot · negative-probe · PAT 403)
 
 **메타**.
 - agent: `security-engineer`
 - files: [`.../test/.../calendar/CalendarFeedIntegrationTest.kt`]
 - depends-on: [5, 6]
 
-**RED/GREEN**(prod 프로파일 + RANDOM_PORT + Testcontainers, FR-CA-01/identity-access 부팅 레시피): 발급→익명 GET .ics 파싱(이슈+Worklog VEVENT)→재발급(기존 URL 404)→취소(404) 왕복. **negative-probe**: 응답 본문 `doesNotContain` 원문토큰/token_hash/타 사용자. **강한 교차사용자 격리**(리뷰 반영): userA 토큰 + userB-전용 가시 이슈 시드 → userA 피드 GET → B 이슈 **부재** 단언(문자열 미포함 아닌 실 데이터 격리). PAT로 관리 API→401. 빈 캘린더→유효 .ics 200. user 삭제→토큰 CASCADE→404.
+**RED/GREEN**(prod 프로파일 + RANDOM_PORT + Testcontainers, FR-CA-01/identity-access 부팅 레시피): 발급→익명 GET .ics 파싱(이슈+Worklog VEVENT)→재발급(기존 URL 404)→취소(404) 왕복. **negative-probe**: 응답 본문 `doesNotContain` 원문토큰/token_hash/타 사용자. **강한 교차사용자 격리**(리뷰 반영): userA 토큰 + userB-전용 가시 이슈 시드 → userA 피드 GET → B 이슈 **부재** 단언(문자열 미포함 아닌 실 데이터 격리). PAT로 관리 API→**403**(`calendar_feed_requires_interactive_login`). 빈 캘린더→유효 .ics 200. user 삭제→토큰 CASCADE→404.
 **검증**: `./gradlew :modules:identity-access:test --tests '*CalendarFeedIntegrationTest*'`
 
 ### Task 8. 프론트 api/calendarFeed + useCalendarFeed 훅 + Zod
@@ -224,7 +224,7 @@ CREATE TABLE user_calendar_tokens (
 **security 리뷰. BLOCKER 0.** ✅ permitAll GET-only·hash-only 저장·404 수렴·viewer=owner fail-closed·negative-probe 모두 커버 확인.
 - CONCERN 3건 반영:
   - **비활성 소유자 토큰 유출(§4)** → **해소**: BTS엔 비활성화 개념 없음(`UserLookupAdapter.kt:24` "행 존재=실재"). 삭제만 존재→FK CASCADE→404. 유출 벡터 없음(Maxi 질문 불요).
-  - **PAT 401 vs 403(§5)** → **401 채택**(personalization me-scope 가족 일관: profile/preferences/status/ooo/keymap 전부 401). Jwt-nullable 차단 메커니즘 T5 GREEN 명시. 게이트1 Maxi 이견 시 403 전환 가능.
+  - **PAT 401 vs 403(§5)** → **Maxi 게이트1 확정: 403**(`calendar_feed_requires_interactive_login`, 자격증명 관리라 의미상 정확·세션관리 선례 일관). 세션관리 `AuthController.listSessions` L708~711 메커니즘(nullable jwt→`PAT_FORBIDDEN_RESPONSE`) T5 GREEN 반영.
   - **ADR/domain `/ical/**` 드리프트(§1)** → **정정**: ADR·plan-domain을 `GET /ical/feed/*`(GET-only 단일세그먼트)로 동기화.
 - NIT 반영: SecurityConfig KDoc 6경로+const(T6)·@Pattern 금지(T6)·비-GET 방어 테스트(T6)·강한 교차사용자 격리 테스트(T7)·토큰 미로깅 KDoc(T6).
 

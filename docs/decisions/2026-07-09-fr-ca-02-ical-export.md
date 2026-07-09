@@ -58,8 +58,8 @@ FR-CA-01 taxonomy 계승이 우선.
 ### D5. 익명 피드 엔드포인트 = 비인증 공개 경로 (backend + security-engineer)
 - 피드. `GET /ical/feed/{token}.ics` — **비인증**(SecurityFilterChain permitAll 화이트리스트). `text/calendar; charset=utf-8`.
   토큰 해시 조회 실패 시 **404**(토큰 존재 여부 probe 최소화, 계정 열거 차단). 정상 시 200 + .ics 본문.
-- 관리. `POST /api/v1/users/me/calendar/feed`(발급) · `GET`(현재 상태 조회) · `DELETE`(취소) — me-scope **JWT-only**
-  (PAT 401, 세션관리/FR-PR 선례). 응답에 원문 토큰은 발급 시 1회만, 이후 조회는 존재 여부/생성시각만(원문 미노출).
+- 관리. `POST /api/v1/users/me/calendar/feed`(발급) · `GET`(현재 상태 조회) · `DELETE`(취소) — me-scope **JWT-only**.
+  **PAT→403** `calendar_feed_requires_interactive_login`(Maxi 게이트1 확정 — 자격증명 관리라 401 아닌 403이 의미상 정확, 세션관리 `AuthController.listSessions` nullable-jwt→`PAT_FORBIDDEN_RESPONSE` 선례). 미인증→401. 응답에 원문 토큰은 발급 시 1회만, 이후 조회는 존재 여부/생성시각만(원문 미노출).
 - **타이밍/probe 방어**. 토큰 조회는 상수시간 비교 불필요(해시 인덱스 조회) — 존재 여부만 404로 구분, 본문 차이 없음.
   익명 경로는 rate-limit 대상 후보(측정 후 유예, spec NFR 기록).
 
