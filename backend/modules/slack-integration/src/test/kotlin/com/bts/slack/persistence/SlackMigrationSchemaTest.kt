@@ -1,4 +1,4 @@
-// V701 마이그레이션 검증 — user_slack_mapping(사용자↔Slack 매핑) + slack_delivery_log(전송 멱등 dedup) (FR-SL-02)
+// V701/V702 마이그레이션 검증 — user_slack_mapping(사용자↔Slack 매핑) + slack_delivery_log(전송 멱등 dedup) + 역방향 UNIQUE 인덱스 (FR-SL-02/03)
 
 package com.bts.slack.persistence
 
@@ -34,7 +34,13 @@ import java.util.UUID
  * - dedup_key = text PK NOT NULL — 재삽입 거부(전송 멱등 dedup 의 근거)
  * - sent_at = timestamptz NOT NULL DEFAULT now()
  *
- * 정보 스키마(information_schema / pg_constraint) 조회로 단언한다. SQL 문자열 결합 없이 prepared statement 사용.
+ * 추가 검증 범위 (FR-SL-03 plan Task 3 / V702 역방향 매핑 UNIQUE 인덱스).
+ * - idx_user_slack_mapping_slack_user = (slack_user_id, team_id) 위 **UNIQUE** 인덱스(pg_indexes.indexdef 조회)
+ *   FR-SL-03 unfurl 은 slack_user_id → user_id 역방향으로 열람 주체(viewer)를 해석한다. 한 Slack 계정에
+ *   두 Atlas 계정이 매핑되면 더 높은 권한 계정이 잘못 선택돼 이슈 카드가 과다노출되는 fail-open 이 생기므로,
+ *   UNIQUE 로 스키마 차원에서 이중 매핑을 차단한다(crossbc-resolver-nullable-fail-open).
+ *
+ * 정보 스키마(information_schema / pg_constraint / pg_indexes) 조회로 단언한다. SQL 문자열 결합 없이 prepared statement 사용.
  */
 class SlackMigrationSchemaTest {
     companion object {
@@ -204,6 +210,38 @@ class SlackMigrationSchemaTest {
         }
     }
 
+    // slack 계정을 명시하는 매핑 INSERT — (slack_user_id, team_id) UNIQUE(V702) 위반 유도용.
+    // 다른 user_id 로 같은 slack 계정을 두 번 넣어 UNIQUE 를 검증한다. 기존 테스트의 고정값(U0USER/T_WORKSPACE_A)과
+    // 겹치지 않는 값을 인자로 받아 테스트 간 데이터 오염을 피한다.
+    private fun insertMapping(
+        userId: UUID,
+        slackUserId: String,
+        teamId: String,
+    ) {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "INSERT INTO user_slack_mapping (user_id, slack_user_id, team_id) VALUES (?, ?, ?)",
+            ).use { stmt ->
+                stmt.setObject(1, userId)
+                stmt.setString(2, slackUserId)
+                stmt.setString(3, teamId)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    // 지정 인덱스의 정의(pg_indexes.indexdef) 조회 — UNIQUE 여부/구성 컬럼 단언용. 없으면 null.
+    private fun indexDefinition(indexName: String): String? =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "SELECT indexdef FROM pg_indexes" +
+                    " WHERE schemaname = 'public' AND tablename = 'user_slack_mapping' AND indexname = ?",
+            ).use { stmt ->
+                stmt.setString(1, indexName)
+                stmt.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
+            }
+        }
+
     // 지정 pgmq 큐가 등록됐는지 조회 — V701 의 pgmq.create('q_slack_deliveries') 검증용.
     private fun queueExists(queueName: String): Boolean =
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
@@ -306,5 +344,26 @@ class SlackMigrationSchemaTest {
         // 같은 dedup_key 재삽입 시 PK 위반 — 중복 Slack 발송 차단(전송 멱등)의 근거.
         assertThatThrownBy { insertDeliveryLog("issue-123:assigned:U0USER") }
             .hasMessageContaining("slack_delivery_log_pkey")
+    }
+
+    // ── V702 역방향 매핑 UNIQUE 인덱스 검증 (FR-SL-03) ─────────────────────────
+
+    @Test
+    fun `V702 (slack_user_id, team_id) UNIQUE 인덱스 존재`() {
+        val def = indexDefinition("idx_user_slack_mapping_slack_user")
+        // 역방향 조회(slack_user_id → user_id)용 인덱스가 UNIQUE 여야 한 Slack 계정에 두 Atlas 계정 매핑이
+        // 차단된다(unfurl viewer 뒤바뀜 → 이슈 카드 과다노출 fail-open 방지).
+        assertThat(def).isNotNull()
+        assertThat(def).contains("UNIQUE")
+        assertThat(def).contains("(slack_user_id, team_id)")
+    }
+
+    @Test
+    fun `V702 서로 다른 user_id 가 같은 slack 계정을 매핑하면 UNIQUE 위반`() {
+        insertMapping(UUID.randomUUID(), "U0UNFURL", "T_WORKSPACE_UNFURL")
+        // 다른 user_id 로 같은 (slack_user_id, team_id) 재매핑 시 UNIQUE 위반 —
+        // 한 Slack 계정에 두 Atlas 계정 매핑 차단(fail-closed 강화).
+        assertThatThrownBy { insertMapping(UUID.randomUUID(), "U0UNFURL", "T_WORKSPACE_UNFURL") }
+            .hasMessageContaining("idx_user_slack_mapping_slack_user")
     }
 }
