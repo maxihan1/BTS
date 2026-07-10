@@ -5,7 +5,13 @@ package com.bts.slack.config
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 
-/** @Value 기본값은 컴파일 타임 상수여야 하므로 봇 스코프 기본값을 top-level const로 둔다(SDD 09.3.1). */
+/**
+ * @Value 기본값은 컴파일 타임 상수여야 하므로 봇 스코프 기본값을 top-level const로 둔다(SDD 09.3.1).
+ *
+ * `users:read.email`은 `users.lookupByEmail`(D6 사용자 연결)용 스코프다. 스코프 추가는 기존
+ * Slack 워크스페이스 설치에 소급 적용되지 않으므로, 이미 설치된 워크스페이스는 재연결(OAuth 재승인)이
+ * 필요하다.
+ */
 const val DEFAULT_SLACK_SCOPES: String =
     "chat:write,chat:write.public,links:read,links:write,commands,app_mentions:read,users:read.email"
 
