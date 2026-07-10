@@ -58,8 +58,28 @@
 - 복구: (1) app 스캐폴드 커밋해 트리 정리 → (2) `git rebase --onto main 7a36fa07d deploy/prod-foundation`(docs 커밋 재배치) → (3) `git branch -f main origin/main`(main 원복). 모든 커밋 브랜치 도달 가능 유지, main 무오염 확인.
 - **교훈**: 장시간 작업 중 주기적으로 `git rev-parse --abbrev-ref HEAD` 확인. 커밋 직후 브랜치 검증. 멀티세션 동시 작업 시 브랜치 전환 위험.
 
+## 2026-07-10 — P2 완료: 조립 앱 prod 프로파일 부팅 성공 ✅
+
+**BtsApplicationContextTest (@ActiveProfiles("prod")) BUILD SUCCESSFUL** — 8개 BC 가 하나의 Spring Boot 컨텍스트로 부팅됨(STOMP·Hikari 정상 기동 후 클린 종료). 단 workflow PermissionResolver 는 테스트 스텁(AssemblyGapStubConfig)으로 대체.
+
+**prod 부팅 디버깅(실제 에러 로그 기반).**
+1. NoUniqueBean IssuePermissionResolver → prod 프로파일로 해소.
+2. NoSuchBean `com.bts.workflow.port.outbound.PermissionResolver` → **운영 어댑터 부재(FR-WF-03)**, 테스트 스텁 우회(★).
+3. PemFileKeyProvider NoSuchProvider "BC" → BouncyCastle 미등록 잠복버그 → BtsApplication 등록.
+4. Flyway ConnectException → dev postgres 볼륨 권한 깨짐 → 볼륨 재생성.
+5. Flyway V004 "relation issues does not exist" → baselineVersion 기본1이 V001 스킵 → **baselineVersion=0**.
+6. Flyway "non-empty schema no history" → baselineOnMigrate=true 유지.
+7. YamlSeedService JsonParse '#' → @Primary JSON 매퍼 오주입 → **WorkflowSeedConfig + @Qualifier YAML 매퍼**(KDoc `/*` 중첩주석 컴파일실패→평문, [[ktlint-kdoc-brace-parse-failure]]).
+8. 부팅 성공.
+
+**★ 유일한 미해결 배포 블로커 — FR-WF-03 (보안 크리티컬).**
+- `com.bts.workflow.port.outbound.PermissionResolver` 운영 어댑터(IdentityAccessPermissionResolver) 미구현. `AlwaysAllowPermissionResolver`(@Profile("!prod")) 스텁만 존재. prod 에서 없으면 워크플로우 전이 권한검사 결선 불가, 스텁 prod 활성화는 **auth bypass** — 금지.
+- 배포 전 필수: identity-access 가 이 포트 구현(security-engineer + TDD). 타 권한 포트는 전부 IdentityAccess* prod 구현 존재 — 이 하나만 갭.
+
+**부수(후속).** BC 프로바이더는 identity 잠복버그(등록 이관 검토) · allow-overriding 오버라이드 로그 감사 미실시 · ContextTest 로컬 postgres(5433) 의존(Testcontainers 전환 후속, 백엔드 CI 없어 무해).
+
 ## 다음 세션 진입점
 
-- **P2 계속**: (1) 조립 앱 `application-prod.yml` 작성, (2) 로컬 RSA 테스트키 생성 + prod 프로파일로 BtsApplicationContextTest 재실행, (3) prod boot-until-green(35 prod 빈 활성 후 추가 config/NoSuchBean 순차 해소), (4) allow-overriding 오버라이드 로그 감사.
-- 그 후 P3(Docker/compose) → P4(로컬 전체 스택) → P5(서버, 별도 승인).
-- 실제 에러 로그 기반으로만. 권한/보안 배선은 security-engineer 검토 대상.
+- **BLOCKER**: FR-WF-03 workflow PermissionResolver 운영 어댑터 — Maxi 결정 대기(빌드 vs defer). 빌드 시 security-engineer.
+- 그 후 P3(Docker/compose: fat jar·nginx·격리 compose·.env) → P4(로컬 docker compose up) → P5(서버, 별도 승인).
+- 커밋: 1c22551ea(YAML), aebe4a4f8(조립 부팅). 브랜치 deploy/prod-foundation.

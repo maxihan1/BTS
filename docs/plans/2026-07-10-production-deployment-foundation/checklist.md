@@ -20,13 +20,16 @@
 - [ ] 컨텍스트 로드 성공 → **prod 프로파일 필요**로 판명 (P2로 이관)
 
 ## P2 통합 Flyway/설정/보안/cross-BC
-- [x] 모듈별 다중 Flyway 빈 (이력 테이블 분리) — FlywayAssemblyConfig, 실행 순서 포함
-- [~] 통합 application.yml (base 완료) — application-prod.yml 대기
-- [ ] 로컬 RSA 테스트키 생성 + prod 프로파일 컨텍스트 로드
-- [ ] cross-BC 결선 prod 승격 (prod 프로파일이 실제 resolver 활성화로 해소, boot-until-green)
+- [x] 모듈별 다중 Flyway 빈 (이력 테이블 분리) — FlywayAssemblyConfig + baselineVersion=0
+- [x] 통합 application.yml + application-prod.yml
+- [x] 로컬 RSA 테스트키 생성 + prod 프로파일 컨텍스트 로드 **성공**
+- [x] cross-BC 결선 prod 승격 (prod 프로파일이 실제 resolver 활성화로 해소)
+- [x] BouncyCastle "BC" 프로바이더 등록 (identity 잠복버그 보완)
+- [x] 마이그레이션 전량 적용 (7개 모듈, 다중 이력 테이블)
+- [ ] 🚧 **BLOCKER FR-WF-03**: workflow PermissionResolver 운영 어댑터 미구현 (현재 테스트 스텁) — 배포 전 필수, security-engineer
 - [ ] allow-bean-definition-overriding 오버라이드 로그 감사 (진짜 충돌 없는지)
-- [ ] SecurityFilterChain @Order 정렬 (security-engineer 검토)
-- [ ] 마이그레이션 전량 적용 + actuator /health UP
+- [ ] SecurityFilterChain @Order 정렬 확인 (security-engineer)
+- [ ] BtsApplicationContextTest Testcontainers 전환 (현재 로컬 postgres 의존)
 
 ## P3 컨테이너화
 - [ ] 백엔드 Dockerfile (multi-stage, JRE21, fat jar)
