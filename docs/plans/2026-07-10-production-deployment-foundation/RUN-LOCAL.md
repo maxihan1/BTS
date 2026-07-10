@@ -7,7 +7,7 @@
 
 | 항목 | 값 |
 |---|---|
-| 접속 주소 | `http://localhost:18080` |
+| 접속 주소 | **`http://localhost:18080/login`** (루트 `/`는 아직 placeholder — 아래 주의 참고) |
 | 로그인 | 아이디 `alice` / 비밀번호 `password` |
 | 로그인 후 | 한 번 **MFA(2단계 인증) 등록** 필요 (alice = 최고 관리자라서) |
 | 실행 방식 | Docker Compose 6서비스 (`infra/docker-compose.prod.yml`, prod 프로파일) |
@@ -48,9 +48,11 @@ docker compose -f infra/docker-compose.prod.yml --env-file infra/prod/.env down 
 
 > `bts-clamav` 는 amd64 이미지라 Apple Silicon Mac에서는 에뮬레이션으로 뜬다 (경고만, healthy 도달까지 시간 좀 걸림).
 
+> ⚠️ **루트 `/`는 개발용 placeholder("홈 (T13 가드 추가 전 placeholder)")를 보여준다.** 루트 접속 시 인증 여부에 따라 `/login`·시작페이지로 자동 이동시키는 가드("T13")가 아직 미구현이라서다. **테스트는 `http://localhost:18080/login` 으로 바로 접속**하면 된다. 이 루트 리다이렉트는 **배포 전 필수 처리 항목**(context-notes 참고) — prod에서 개발용 문자열이 노출되면 안 됨.
+
 ## 로그인 → MFA 등록 (최초 1회)
 
-1. 브라우저에서 `http://localhost:18080` 접속.
+1. 브라우저에서 `http://localhost:18080/login` 접속.
 2. 아이디 `alice`, 비밀번호 `password` 로 로그인.
 3. alice는 최고 관리자(SYSTEM_ADMIN)라 **MFA 등록 화면**이 뜬다 (보안 설계 — 관리자는 2단계 인증 필수).
 4. 휴대폰 **인증 앱**(Google Authenticator · 1Password · Authy 등)으로 화면의 **QR 코드**를 스캔.

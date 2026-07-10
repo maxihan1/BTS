@@ -156,6 +156,12 @@ Maxi "옵션 B로 진행" 확정 → security-engineer + TDD.
 - **수정(로컬)**: `.env`에 `BTS_MFA_ENCRYPTION_KEY`(hex 48)·`BTS_MFA_ENCRYPTION_SALT`(**hex 16** — `Encryptors.stronger`가 hex 검증) 추가 후 backend 재시작. `/totp/setup` 재호출 → **200**(otpauth_uri + qr_png_data_uri 정상 발급) 확인. `.env`는 gitignored.
 - **★P5 배포 영향**: prod `.env`에도 **동일 두 변수 필수**(salt는 반드시 hex). 현재 prod `.env`의 필수 변수를 문서화한 **커밋된 템플릿 부재**(`infra/deploy/config.sh.example`은 SSH 접속 설정 전용) → **P5 후속: `infra/prod/.env.example` 작성**(placeholder로 전 필수 변수 나열: DB·JWT PEM·부트스트랩 admin·issuer·MFA 암호화·OIDC 암호화 등). 안 만들면 VM 배포에서 같은 500 재현.
 
+## 2026-07-10 — 배포 전 필수: 루트(/) 리다이렉트(T13) 미구현
+
+로컬 실사용 중 발견 — `http://localhost:18080` 루트 접속 시 `apps/web/src/routes/index.tsx`의 개발용 placeholder(`홈 (T13 가드 추가 전 placeholder)`)가 그대로 노출. 원인 = 루트 인덱스 라우트에 인증 여부별 리다이렉트 가드("T13")가 미구현(`router.ts:65` 주석 "T13 라우트 가드에서 dashboard / login 으로 리다이렉트 예정"). 앱 자체는 정상 — `/login`·`/dashboard`·`/issues` 직접 접속하면 동작.
+- **배포 전 필수 처리**: index 라우트에 `beforeLoad` 추가 — 미인증→`/login`, 인증→`resolveStartPageNav`(시작페이지). 기존 `routeGuard.ts` 헬퍼(`requireAuth`/`redirectIfAuth`/`resolveStartPageNav`) 재사용 가능. TDD 주의 — `router.test.tsx:67` "/ 라우트 마운트 → 인덱스 placeholder 렌더"(`findByText(/홈/)`)가 리다이렉트 기대로 바뀌어야 함. 수정 후 dist·web 이미지 재빌드 필요. 프론트 변경이라 frontend-engineer 경유 권장.
+- Maxi 결정(2026-07-10): 지금은 `/login` 직접 접속으로 테스트, T13은 배포 전 처리로 미룸.
+
 ## 다음 세션 진입점
 
 - ✅ **크리티컬 코드 블로커(workflow PermissionResolver prod 어댑터) 해소** — DelegatingPermissionResolver.
