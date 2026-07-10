@@ -78,8 +78,15 @@
 
 **부수(후속).** BC 프로바이더는 identity 잠복버그(등록 이관 검토) · allow-overriding 오버라이드 로그 감사 미실시 · ContextTest 로컬 postgres(5433) 의존(Testcontainers 전환 후속, 백엔드 CI 없어 무해).
 
+## 2026-07-10 — P3 완료: 컨테이너화 (커밋 29b1baf39)
+
+- Dockerfile.backend(JRE21+bts-app.jar, prod) 이미지 빌드 검증 843MB · Dockerfile.web+nginx.conf(SPA+프록시, Docker DNS 지연해석) 빌드+nginx -t 검증 · docker-compose.prod.yml(bts-net 격리·18080·digest 고정·mem_limit·minio 버킷 init) config 검증 6서비스 · .env.prod.example · deploy/bts-deploy.sh 스캐폴드.
+- app bootJar=bts-app.jar(호스트 빌드, jOOQ codegen 이 Docker 요구해 이미지 내부 빌드 불가 → 산출물 COPY).
+- **P4 두 블로커**: (1) FR-WF-03 — 운영 jar 는 테스트 스텁 없어 백엔드 부팅 불가. (2) 프론트 fresh 빌드 — pnpm deps 미설치(no-TTY `pnpm install` 실패, node_modules 부분설치)로 dist stale(2026-05-27). vite 직접호출도 MODULE_NOT_FOUND. → pnpm 환경 정비 필요(별개 이슈).
+
 ## 다음 세션 진입점
 
-- **BLOCKER**: FR-WF-03 workflow PermissionResolver 운영 어댑터 — Maxi 결정 대기(빌드 vs defer). 빌드 시 security-engineer.
-- 그 후 P3(Docker/compose: fat jar·nginx·격리 compose·.env) → P4(로컬 docker compose up) → P5(서버, 별도 승인).
-- 커밋: 1c22551ea(YAML), aebe4a4f8(조립 부팅). 브랜치 deploy/prod-foundation.
+- **크리티컬 패스 = FR-WF-03** (P4/배포의 유일 코드 블로커). identity-access 가 `com.bts.workflow.port.outbound.PermissionResolver` 구현하는 어댑터. security-engineer + TDD.
+- 프론트 fresh 빌드용 pnpm 환경 정비(정상 `pnpm install`).
+- 그 후 P4(docker compose up 전체) → P5(서버: VM Docker·RAM 확인 → bts-deploy.sh).
+- 커밋 흐름: 3b334c15f(계획)→fc8e75ac1(identity mig)→f75b22144(스캐폴드)→1c22551ea(YAML)→aebe4a4f8(조립부팅)→29b1baf39(P3). 브랜치 deploy/prod-foundation, main 무오염.

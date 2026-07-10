@@ -31,18 +31,19 @@
 - [ ] SecurityFilterChain @Order 정렬 확인 (security-engineer)
 - [ ] BtsApplicationContextTest Testcontainers 전환 (현재 로컬 postgres 의존)
 
-## P3 컨테이너화
-- [ ] 백엔드 Dockerfile (multi-stage, JRE21, fat jar)
-- [ ] 프론트 Dockerfile (nginx dist 서빙 + /api 프록시)
-- [ ] `infra/docker-compose.prod.yml` (bts-net 격리·포트 18xxx·버전 고정·mem_limit)
-- [ ] `infra/prod/.env.prod.example` (시크릿 키 목록)
-- [ ] `infra/deploy/bts-deploy.sh` 스캐폴드 (Docker 기반, P5용)
+## P3 컨테이너화 ✅
+- [x] 백엔드 Dockerfile (JRE21, 호스트빌드 fat jar) — 이미지 빌드 검증 843MB
+- [x] 프론트 Dockerfile + nginx.conf (SPA + 백엔드 프록시, Docker DNS 지연해석) — 빌드+nginx -t 검증
+- [x] `infra/docker-compose.prod.yml` (bts-net 격리·18080·digest 고정·mem_limit·minio 버킷 init) — config 검증 6서비스
+- [x] `infra/prod/.env.prod.example` (시크릿 키 목록)
+- [x] `infra/deploy/bts-deploy.sh` + config.sh.example 스캐폴드 (P5용)
+- [x] app bootJar 이름 고정 + mainClass, 시크릿 gitignore
 
-## P4 로컬 전체 스택 검증
-- [ ] `docker compose -f infra/docker-compose.prod.yml up` 전체 기동
-- [ ] health/actuator UP + 마이그레이션 적용 확인
-- [ ] 프론트 로그인 → 이슈 CRUD 스모크
-- [ ] 기존 백엔드 테스트 green (조립 모듈이 기존 테스트 안 깨뜨림)
+## P4 로컬 전체 스택 검증 — 🚧 두 블로커
+- [ ] 🚧 **FR-WF-03** — 운영 jar 에는 테스트 스텁이 없어 백엔드가 부팅 불가(workflow PermissionResolver). P4 선결.
+- [ ] 🚧 **프론트 fresh 빌드** — pnpm deps 미설치(이 세션 환경)로 dist 갱신 실패(현 dist 2026-05-27 stale). pnpm 정비 필요.
+- [ ] `docker compose -f infra/docker-compose.prod.yml up` 전체 기동 (위 둘 해소 후)
+- [ ] health/actuator UP + 프론트 로그인→이슈 CRUD 스모크
 
 ## P5 서버 배포 (별도 승인 — 이번 범위 밖)
 - [ ] VM RAM/디스크 여유 확인 (free -m, df -h)
