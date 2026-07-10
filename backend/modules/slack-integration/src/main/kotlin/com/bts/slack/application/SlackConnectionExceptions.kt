@@ -7,7 +7,7 @@ package com.bts.slack.application
 // 예외 → HTTP 매핑 예정(웹 레이어 후속 태스크가 소비).
 //   EmailUnavailableException            — 행위자의 BTS 계정에 이메일이 없음               → 422
 //   WorkspaceNotInstalledException       — Slack 워크스페이스 미설치(또는 TOCTOU 삭제 레이스) → 409
-//   SlackScopeMissingException           — 봇 토큰에 users:read.email 스코프 없음(운영자 조치) → 502
+//   SlackScopeMissingException           — 봇 토큰에 users:read.email 스코프 없음(운영자 조치) → 409
 //   SlackUserNotFoundException           — 이메일에 매칭되는 Slack 사용자 없음               → 404
 //   SlackTemporarilyUnavailableException — Slack 일시 오류(429/5xx/네트워크, 재시도 가능)      → 503
 //
