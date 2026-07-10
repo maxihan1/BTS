@@ -294,7 +294,10 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
 
   async function onValid(values: FormValues): Promise<void> {
     setSubmitError(null)
-    const triggerConfig = serializeTriggerConfig(effectiveTriggerType, { cron: values.cron, fields })
+    // 편집 모드는 editingRule.triggerConfig를 병합 시작점으로 넘겨 백엔드 미지 키를 보존한다
+    // (코드리뷰 SUGGESTION 2 — 트리거 타입은 편집 모드에서 잠겨 있어 키 집합이 일관된다).
+    const baseConfigJson = hasEditingRule(editingRule) ? editingRule.triggerConfig : undefined
+    const triggerConfig = serializeTriggerConfig(effectiveTriggerType, { cron: values.cron, fields }, baseConfigJson)
 
     try {
       if (hasEditingRule(editingRule)) {

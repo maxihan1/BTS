@@ -83,32 +83,72 @@ export interface PatchAutomationRuleInput {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * 편집 저장 시 병합 시작점으로 쓸 기존 triggerConfig JSON 문자열을 파싱한다.
+ * base 미지정(생성 모드)이면 빈 객체에서 시작 — 기존 동작과 동일.
+ * JSON 파싱 실패이거나 객체가 아니면(배열·원시값 포함) 안전하게 빈 객체로 폴백한다
+ * (§1.13 빈 catch 금지 — 최소한 콘솔 로그를 남긴다).
+ */
+function parseBaseConfig(baseConfigJson: string | undefined): Record<string, unknown> {
+  if (baseConfigJson === undefined) return {}
+  try {
+    const parsed: unknown = JSON.parse(baseConfigJson)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return {}
+    }
+    return parsed as Record<string, unknown>
+  } catch (error) {
+    console.error('automation triggerConfig base 파싱 실패 — 빈 객체로 폴백', error)
+    return {}
+  }
+}
+
+/** base 객체에서 폼이 관리하는 키들을 제거한 사본을 반환한다 (원본은 변경하지 않는다). */
+function omitManagedKeys(base: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
+  const rest: Record<string, unknown> = { ...base }
+  for (const key of keys) {
+    delete rest[key]
+  }
+  return rest
+}
+
+/**
  * 트리거 타입별 구조화 입력을 backend triggerConfig JSON 문자열로 직렬화한다.
  *
  * backend `TriggerConfig.validate` 형식과 1:1 대응.
- * - ISSUE_CREATED / ISSUE_COMMENTED / WEBHOOK — 입력 무시, 빈 객체 `"{}"` 고정.
- * - ISSUE_UPDATED — `fields` 배열이 비어있지 않으면 `{"fields":[...]}`, 없거나 비어있으면 `"{}"`.
- * - SCHEDULED — `{"cron":"..."}` 로 직렬화한다. cron 형식 자체의 유효성(파싱 가능 여부)은
- *   검증하지 않는다 — 프론트 사전검증은 폼 컴포넌트에서 별도로 수행한다.
+ * - ISSUE_CREATED / ISSUE_COMMENTED / WEBHOOK — 폼 입력 무시, base 그대로(없으면 빈 객체 `"{}"`).
+ * - ISSUE_UPDATED — `fields` 배열이 비어있지 않으면 `{"fields":[...]}`(base 병합), 없거나
+ *   비어있으면 base에서 `fields` 키만 제거한 나머지(base 없으면 `"{}"`).
+ * - SCHEDULED — `{"cron":"..."}` 로 직렬화한다(base 병합). cron 형식 자체의 유효성(파싱 가능
+ *   여부)은 검증하지 않는다 — 프론트 사전검증은 폼 컴포넌트에서 별도로 수행한다.
+ *
+ * `baseConfigJson`(편집 모드에서 백엔드가 내려준 기존 triggerConfig)을 주면 그 JSON을 병합
+ * 시작점으로 삼아, 폼이 인지하지 못하는 키(백엔드가 향후 config에 추가할 수 있는 필드)를
+ * 보존한다 — 폼이 관리하는 키(cron·fields)만 새 값으로 덮어쓴다. 생성 모드처럼 base를
+ * 지정하지 않으면 기존 동작(빈 객체에서 시작) 그대로다.
  *
  * @param triggerType 직렬화 기준이 되는 트리거 타입.
  * @param config 트리거 타입에 대응하는 구조화 입력. 해당 타입에 쓰이지 않는 필드는 무시된다.
+ * @param baseConfigJson 편집 모드에서 병합 시작점으로 쓸 기존 triggerConfig JSON 문자열.
  * @returns backend triggerConfig 필드와 동일한 형식의 JSON 문자열.
  */
 export function serializeTriggerConfig(
   triggerType: TriggerType,
   config: { cron?: string; fields?: string[] } = {},
+  baseConfigJson?: string,
 ): string {
+  const base = parseBaseConfig(baseConfigJson)
   switch (triggerType) {
     case 'SCHEDULED':
-      return JSON.stringify({ cron: config.cron ?? '' })
-    case 'ISSUE_UPDATED':
+      return JSON.stringify({ ...base, cron: config.cron ?? '' })
+    case 'ISSUE_UPDATED': {
+      const rest = omitManagedKeys(base, ['fields'])
       return config.fields && config.fields.length > 0
-        ? JSON.stringify({ fields: config.fields })
-        : '{}'
+        ? JSON.stringify({ ...rest, fields: config.fields })
+        : JSON.stringify(rest)
+    }
     case 'ISSUE_CREATED':
     case 'ISSUE_COMMENTED':
     case 'WEBHOOK':
-      return '{}'
+      return JSON.stringify(base)
   }
 }
