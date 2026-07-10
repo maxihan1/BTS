@@ -46,8 +46,10 @@
 - [x] ✅ **`docker compose up` 전체 6서비스 기동** — postgres·minio·minio-init·clamav·backend·web. **backend `Started BtsApplicationKt in 15s`**(Flyway·MinIO버킷·워크플로우시드·DelegatingPermissionResolver 배선). worktree `.worktrees/deploy-prod-foundation`에서(2차 hijack 격리).
 - [x] ✅ **health/actuator UP + 프록시 검증** — backend `/actuator/health` 200 UP(env crutch 없이 application.yml 수정만) · web healthy · nginx SPA 서빙(`<title>BTS — Atlas</title>`) · nginx→백엔드 프록시(`/api/v1/whoami`→401 정상). **health 오탐 2건 소스 수정**(commit bdccebbde). (로그인→CRUD 브라우저 스모크는 시드 사용자 없어 미실시 — 후속.)
 
-## P5 서버 배포 (별도 승인 — 이번 범위 밖)
-- [ ] VM RAM/디스크 여유 확인 (free -m, df -h)
-- [ ] VM Docker/Compose 설치 여부
-- [ ] 포트/도메인/TLS 결정
-- [ ] 격리 배포 + AIG 무영향 확인
+## P5 서버 배포 (Maxi 승인 — 준비 착수)
+- [x] ✅ `bts-deploy.sh` health 버그 수정 (nginx /actuator 미프록시 → docker exec 백엔드 직접 확인). config.sh.example 완비(REMOTE_DIR=/home/testify/bts, AIG와 분리).
+- [ ] 🚧 **VM 점검 (네트워크 블로커)** — 이 Mac에서 `61.107.200.30:22` 라우팅 불가("Network is unreachable", 게이트웨이 10.22.6.60). AIG는 이 Mac에서 로컬 배포하므로 평소엔 접속됨 → **사내망/VPN 미접속 상태로 추정**. 네트워크 회복 후 아래 읽기전용 점검 실행:
+  - `ssh -i ~/.ssh/id_ed25519 testify@61.107.200.30 'free -m; df -h /; nproc; docker --version; docker compose version; ps aux --sort=-%mem | head'`
+  - 확인 항목: RAM 여유(BTS ~4.5GB + AIG 기존), 디스크, **Docker/Compose 설치 여부(AIG는 PM2라 미설치 가능성)**, AIG 현재 메모리 점유.
+- [ ] 포트/도메인/TLS 결정 (현재 18080 평문, P5서 Let's Encrypt/앞단 프록시)
+- [ ] 격리 배포 + AIG 무영향 확인 (bts-net·18080·/home/testify/bts 분리 설계 완료)
