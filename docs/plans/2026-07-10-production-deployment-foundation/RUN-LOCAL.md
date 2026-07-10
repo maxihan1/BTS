@@ -63,6 +63,31 @@ docker compose -f infra/docker-compose.prod.yml --env-file infra/prod/.env down 
 
 > LDAP은 로컬에 서버·활성 provider 설정이 없어 미동작(로그인 화면의 provider 목록엔 available:true 로 보이지만 실제 bind 대상 없음). 필요해지면 OpenLDAP 컨테이너 구동을 별도 작업으로 진행(context-notes 참고).
 
+## 프로젝트 만들기 (아직 앱 기능 없음 → 시드)
+
+**앱에는 아직 "프로젝트 생성" 기능이 없다**(Project Management BC 미구현). 프로젝트 생성 API·화면·서비스가 모두 없고, 모든 `/projects/...` 라우트는 이미 존재하는 프로젝트를 전제한다. 그래서 테스트용 프로젝트는 DB 시드로 만든다.
+
+이슈를 만들 수 있는 "완전한" 프로젝트가 되려면 프로젝트 row 하나로는 부족하고, 원래 프로젝트 생성 기능이 해줄 세팅이 함께 필요하다(권한 스킴 배정 · 관리자 멤버십 · 워크플로우 스킴 배정 + 기본 워크플로우 매핑). `seed-project.sql` 이 이 5가지를 한 번에 시드한다(멱등).
+
+```bash
+# 전제: seed-admin.sql 을 먼저 실행(admin@bts.com 이 있어야 멤버로 등록됨)
+docker exec -i bts-postgres psql -U bts -d bts < infra/local/seed-project.sql
+```
+
+시드되는 것 — 프로젝트 **ATLAS** · 기본 권한 스킴 배정 · admin@bts.com 을 PROJECT_ADMIN 멤버로 · software-scheme 워크플로우 배정 + 기본 워크플로우(software-default) 매핑. 이후 admin 은 ATLAS 에서 이슈를 만들 수 있다(검증 완료).
+
+> 왜 관리자인데 멤버십이 필요한가. prod 권한 리졸버는 **SYSTEM_ADMIN 자동 우회가 없다**(ADR §결정5). 프로젝트 멤버 + 역할이 있어야 CREATE_ISSUE 권한 매트릭스를 통과한다.
+
+## 이슈 만들기 (UI)
+
+프로젝트가 준비되면 이슈 생성은 앱 기능으로 된다.
+
+1. 로그인(admin@bts.com) 후 주소창에 `http://localhost:18080/issues/new` 접속.
+2. **프로젝트 키** 입력란에 `ATLAS` 를 직접 타이핑(드롭다운 아님 — 프로젝트 목록 API가 아직 없어 키를 직접 입력).
+3. **제목** 입력 후 제출 → 이슈가 `ATLAS-1`, `ATLAS-2` … 로 생성되고 상세 페이지로 이동. (이슈 타입은 미지정 시 기본값 Task.)
+
+API 로는 `POST /api/v1/issues` `{"projectKey":"ATLAS","summary":"..."}`.
+
 ## 로그인 → MFA 등록 (최초 1회)
 
 1. 브라우저에서 `http://localhost:18080/login` 접속.
