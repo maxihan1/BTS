@@ -7,7 +7,7 @@
 -- trigger_type(5종)은 DB CHECK 제약으로 화이트리스트를 강제한다 — 데이터 무결성은 시스템의 마지막 방어선이므로
 -- 앱 검증(TriggerType enum, Task 3)에 더해 DB 레벨에서도 이중 방어한다.
 -- trigger_config(JSONB)는 트리거별 형식만 담는다(favorites/가젯 선례 — cross-BC 존재 검증 안 함). 예:
---   ISSUE_UPDATED = {fields: [...]} 필터 / SCHEDULED = {cron: "0 9 * * *"} / WEBHOOK = 발급 토큰 부수정보.
+--   ISSUE_UPDATED = {fields: [...]} 필터 / SCHEDULED = {cron: "0 0 9 * * *"}(Spring CronExpression 6필드) / WEBHOOK = 발급 토큰 부수정보.
 --
 -- webhook_token_hash: WEBHOOK 트리거 전용(그 외 NULL). 인바운드 토큰의 SHA-256 해시만 저장한다(평문 미저장).
 -- next_fire_at: SCHEDULED 트리거 전용(그 외 NULL). @Scheduled 워커의 발화 대상 조회 + 중복억제 기준(Task 8).

@@ -43,7 +43,7 @@ CRUD로 정의하고, 5종 트리거(ISSUE_CREATED / ISSUE_UPDATED / ISSUE_COMME
 - **Then** R3 매칭 → enqueue
 
 ### S6. SCHEDULED 트리거 (cron)
-- **Given** enabled 룰 R4 (SCHEDULED, triggerConfig `{cron: "0 9 * * *"}`, nextFireAt=오늘 09:00)
+- **Given** enabled 룰 R4 (SCHEDULED, triggerConfig `{cron: "0 0 9 * * *"}`(Spring `CronExpression` 6필드=초 분 시 일 월 요일), nextFireAt=오늘 09:00)
 - **When** AutomationScheduleWorker의 @Scheduled 폴링 시각이 nextFireAt을 지남
 - **Then** R4 발화(enqueue) + nextFireAt을 다음 cron 시각으로 갱신(중복 발화 방지)
 

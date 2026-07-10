@@ -36,7 +36,7 @@ automation BC(TCA — Trigger-Condition-Action 자동화 엔진, 7 FR)의 첫 �
   (product 문서 명명 정본. SDD 8.2의 8종 중 `issue.transitioned`/`issue.assigned`는 이 FR 범위 밖,
   `pr.merged`는 FR-AT-07).
 - `trigger_config`는 트리거별 형식만 검증(favorites/가젯 선례 — cross-BC 존재 검증 안 함). 예:
-  `ISSUE_UPDATED`는 `{fields: [...]}` 필터, `SCHEDULED`는 `{cron: "0 9 * * *"}`, `WEBHOOK`은 발급 토큰.
+  `ISSUE_UPDATED`는 `{fields: [...]}` 필터, `SCHEDULED`는 `{cron: "0 0 9 * * *"}`(Spring `CronExpression` 6필드), `WEBHOOK`은 발급 토큰.
 - 조건·액션 컬럼은 FR-AT-02/03이 추가(현 스키마에 미포함).
 
 ### D2. 이벤트 통합 — 전용 큐 `q_automation_events` + fan-out
