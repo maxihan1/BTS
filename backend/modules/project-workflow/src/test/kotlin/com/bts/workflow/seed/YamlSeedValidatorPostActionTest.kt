@@ -127,7 +127,6 @@ class YamlSeedValidatorPostActionTest {
                     postgres.password,
                 )
             val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
-            val yamlMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
 
             // 실제 factory — unknown type 에 IllegalArgumentException 을 던져야 fail-fast 가 작동한다.
             val spelExecutor = Executors.newCachedThreadPool()
@@ -145,7 +144,6 @@ class YamlSeedValidatorPostActionTest {
                     workflowRepo,
                     dsl,
                     DefaultResourceLoader(),
-                    yamlMapper,
                     validatorFactory,
                     postActionFactory,
                 )
@@ -326,7 +324,6 @@ class YamlSeedValidatorPostActionTest {
                 WorkflowRepository(dsl),
                 dsl,
                 modifiedLoader,
-                yamlMapper,
                 DefaultWorkflowValidatorFactory(
                     permissionResolver = AlwaysAllowPermissionResolver(),
                     spelEvaluator = SpelEvaluator(executor = spelExecutor, timeoutMillis = 5000L),
@@ -387,7 +384,6 @@ class YamlSeedValidatorPostActionTest {
                 WorkflowRepository(dsl),
                 dsl,
                 DefaultResourceLoader(),
-                yamlMapper,
                 DefaultWorkflowValidatorFactory(
                     permissionResolver = AlwaysAllowPermissionResolver(),
                     spelEvaluator = SpelEvaluator(executor = spelExecutor, timeoutMillis = 5000L),
@@ -423,7 +419,6 @@ class YamlSeedValidatorPostActionTest {
                 WorkflowRepository(dsl),
                 dsl,
                 DefaultResourceLoader(),
-                yamlMapper,
                 validatorFactory,
                 postActionFactory,
             )

@@ -3,9 +3,6 @@
 package com.bts.workflow.seed
 
 import com.bts.workflow.repository.WorkflowRepository
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -123,9 +120,6 @@ class YamlSeedServiceTest {
             // jOOQ DSLContext — SQL을 코드로 안전하게 작성하는 라이브러리의 핵심 진입점
             val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
 
-            // Jackson YAML 매퍼 — YAML 파일을 Kotlin 데이터 클래스로 역직렬화
-            val yamlMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
-
             repository = WorkflowRepository(dsl)
             // 표준 4 워크플로우는 validator/postAction 이 없어 factory 미호출 → relaxed mock 으로 충분
             service =
@@ -133,7 +127,6 @@ class YamlSeedServiceTest {
                     repository,
                     dsl,
                     DefaultResourceLoader(),
-                    yamlMapper,
                     mockk(relaxed = true),
                     mockk(relaxed = true),
                 )
@@ -212,7 +205,6 @@ class YamlSeedServiceTest {
                 postgres.password,
             )
         val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
-        val yamlMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
 
         // "simple" 워크플로우의 name 을 변경한 버전으로 재적재를 검증한다.
         // 표준 4 YAML 중 simple 만 수정된 ResourceLoader 를 주입한다.
@@ -222,7 +214,6 @@ class YamlSeedServiceTest {
                 WorkflowRepository(dsl),
                 dsl,
                 modifiedResourceLoader,
-                yamlMapper,
                 mockk(relaxed = true),
                 mockk(relaxed = true),
             )
@@ -249,7 +240,6 @@ class YamlSeedServiceTest {
                 postgres.password,
             )
         val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
-        val yamlMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
 
         // states 가 비어 있는 잘못된 YAML 을 제공하는 ResourceLoader
         val invalidResourceLoader = InvalidWorkflowResourceLoader()
@@ -258,7 +248,6 @@ class YamlSeedServiceTest {
                 WorkflowRepository(dsl),
                 dsl,
                 invalidResourceLoader,
-                yamlMapper,
                 mockk(relaxed = true),
                 mockk(relaxed = true),
             )
@@ -281,7 +270,6 @@ class YamlSeedServiceTest {
                 postgres.password,
             )
         val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
-        val yamlMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
 
         // (from: open, to: done) 이 name 만 다르게 두 번 정의된 중복 YAML
         val duplicateTransitionResourceLoader = DuplicateTransitionResourceLoader()
@@ -290,7 +278,6 @@ class YamlSeedServiceTest {
                 WorkflowRepository(dsl),
                 dsl,
                 duplicateTransitionResourceLoader,
-                yamlMapper,
                 mockk(relaxed = true),
                 mockk(relaxed = true),
             )
@@ -403,17 +390,12 @@ class YamlSeedServiceTest {
         assertThat(countBefore).isGreaterThanOrEqualTo(1L)
 
         // 동일 YAML 로 재시드 — differsInPostActions 제거 전에는 isDirty=true 로 재적재하여 소실
-        val yamlMapper =
-            com.fasterxml.jackson.databind.ObjectMapper(
-                com.fasterxml.jackson.dataformat.yaml.YAMLFactory(),
-            ).registerKotlinModule()
         // ModifiedSimpleWorkflowResourceLoader 는 Order(3) 와 동일 내용 → no-op 기대
         val serviceToReseed =
             YamlSeedService(
                 WorkflowRepository(dsl),
                 dsl,
                 ModifiedSimpleWorkflowResourceLoader(),
-                yamlMapper,
                 mockk(relaxed = true),
                 mockk(relaxed = true),
             )

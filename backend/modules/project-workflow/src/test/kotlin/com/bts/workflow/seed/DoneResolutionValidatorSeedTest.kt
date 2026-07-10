@@ -15,9 +15,6 @@ import com.bts.workflow.engine.WorkflowEngine
 import com.bts.workflow.expression.SpelEvaluator
 import com.bts.workflow.repository.DefaultWorkflowDefinitionRepository
 import com.bts.workflow.repository.WorkflowRepository
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
@@ -141,7 +138,6 @@ class DoneResolutionValidatorSeedTest {
 
             val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
             dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
-            val yamlMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
 
             val validatorFactory =
                 DefaultWorkflowValidatorFactory(
@@ -164,7 +160,6 @@ class DoneResolutionValidatorSeedTest {
                     workflowRepository,
                     dsl,
                     DefaultResourceLoader(),
-                    yamlMapper,
                     validatorFactory,
                     postActionFactory,
                 )
