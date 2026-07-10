@@ -3,11 +3,13 @@ import { useState } from 'react'
 import type { JSX } from 'react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import {
   useAutomationRules,
   useUpdateAutomationRule,
   useDeleteAutomationRule,
+  AUTOMATION_RULES_QUERY_KEY,
 } from '@/api/useAutomationRules'
 import { extractAutomationRuleErrorCode } from '@/api/automation-rules'
 import { useDateFormat } from '@/hooks/use-date-format'
@@ -221,8 +223,9 @@ function AutomationRuleRow({ rule, isToggling, onToggle, onEdit, onDeleteClick }
  *   (Task 6 AutomationRuleFormDialog, 조립은 Task 8이 담당).
  * - 행 "수정" 클릭은 onEditRule(rule)을 위임한다.
  * - 활성 토글은 useUpdateAutomationRule로 `{ version, enabled: !enabled }`를 PATCH한다(OCC).
- *   실패(예: 버전 충돌 409) 시 toast로만 알리고 캐시는 그대로 둔다 — invalidate가 일어나지
- *   않으므로 화면은 이전 상태를 유지한다.
+ *   실패 시 toast로 알린다. 버전 충돌(409 AUTOMATION_RULE_VERSION_CONFLICT)이면 목록 쿼리를
+ *   invalidate해 refetch를 유도한다 — 그렇지 않으면 stale version으로 재시도가 반복되어
+ *   무한 409에 빠진다 (스펙 §4 FR-7 · §6 E5 · §2 S4).
  * - 삭제는 확인 모달(DeleteConfirmDialog) → 확인 시 useDeleteAutomationRule.
  *
  * @param projectKey 프로젝트 식별 키
@@ -233,13 +236,21 @@ export function AutomationRuleList({ projectKey, onAddRule, onEditRule }: Automa
   const { data: rules, isLoading, isError, error } = useAutomationRules(projectKey)
   const updateRule = useUpdateAutomationRule(projectKey)
   const deleteRule = useDeleteAutomationRule(projectKey)
+  const queryClient = useQueryClient()
 
   const [deletingRule, setDeletingRule] = useState<AutomationRule | null>(null)
 
   function handleToggle(rule: AutomationRule): void {
     updateRule.mutate(
       { id: rule.id, body: { version: rule.version, enabled: !rule.enabled } },
-      { onError: () => toast.error(labels.toggleFailed) },
+      {
+        onError: (toggleError) => {
+          toast.error(labels.toggleFailed)
+          if (extractAutomationRuleErrorCode(toggleError) === 'AUTOMATION_RULE_VERSION_CONFLICT') {
+            void queryClient.invalidateQueries({ queryKey: AUTOMATION_RULES_QUERY_KEY(projectKey) })
+          }
+        },
+      },
     )
   }
 

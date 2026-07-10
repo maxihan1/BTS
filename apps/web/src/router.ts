@@ -308,7 +308,7 @@ const projectFieldPermissionsSettingsRoute = createRoute({
   beforeLoad: requireAuth,
 })
 
-/** 프로젝트 자동화 설정 라우트 — /projects/$projectKey/settings/automation, requireAuth (FR-AT-01 D6 Task 8) */
+/** 프로젝트 자동화 설정 라우트 — /projects/$projectKey/settings/automation, requireAuthAndPasswordChanged (FR-AT-01 D6 Task 8) */
 const projectAutomationSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects/$projectKey/settings/automation',

@@ -6,11 +6,16 @@ import type { UseFormRegister } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Dialog as DialogPrimitive } from 'radix-ui'
+import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { extractAutomationRuleErrorCode } from '@/api/automation-rules'
 import { triggerTypeSchema, serializeTriggerConfig } from '@/api/automation-rules.types'
 import type { AutomationRule, TriggerType } from '@/api/automation-rules.types'
-import { useCreateAutomationRule, useUpdateAutomationRule } from '@/api/useAutomationRules'
+import {
+  useCreateAutomationRule,
+  useUpdateAutomationRule,
+  AUTOMATION_RULES_QUERY_KEY,
+} from '@/api/useAutomationRules'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 문구 — BC 내 고정 한국어 (WebhookTokenModal.tsx 선례, i18n 미도입 BC 관례)
@@ -247,6 +252,7 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
   const [fieldDraft, setFieldDraft] = useState('')
   const [submitError, setSubmitError] = useState<string | null>(null)
 
+  const queryClient = useQueryClient()
   const createRule = useCreateAutomationRule(projectKey)
   const updateRule = useUpdateAutomationRule(projectKey)
 
@@ -308,6 +314,11 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
       }
       onOpenChange(false)
     } catch (error) {
+      // 409(OCC 버전 충돌)는 목록을 invalidate해 refetch를 유도한다 — 그렇지 않으면 stale
+      // version으로 재시도가 반복되어 무한 409에 빠진다 (스펙 §4 FR-7 · §6 E5 · §2 S4).
+      if (extractAutomationRuleErrorCode(error) === 'AUTOMATION_RULE_VERSION_CONFLICT') {
+        void queryClient.invalidateQueries({ queryKey: AUTOMATION_RULES_QUERY_KEY(projectKey) })
+      }
       setSubmitError(resolveErrorMessage(error))
     }
   }
