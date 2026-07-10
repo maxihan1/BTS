@@ -19,9 +19,6 @@ import com.bts.workflow.seed.TransitionYamlDto
 import com.bts.workflow.seed.ValidatorYamlDto
 import com.bts.workflow.seed.WorkflowYamlDto
 import com.bts.workflow.seed.YamlSeedService
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
@@ -161,14 +158,12 @@ class WorkflowEngineWiringIntegrationTest {
             val txManager = DataSourceTransactionManager(dataSource)
             txTemplate = TransactionTemplate(txManager)
 
-            val yamlMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
             // TestConfig 에 이미 factory 빈 있음 — 동일 인스턴스를 시드 서비스에 주입
             seedService =
                 YamlSeedService(
                     workflowRepository,
                     dsl,
                     DefaultResourceLoader(),
-                    yamlMapper,
                     validatorFactory,
                     postActionFactory,
                 )

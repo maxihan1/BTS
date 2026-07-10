@@ -71,3 +71,4 @@ venv/
 *.crt
 secrets/
 .gstack/
+infra/deploy/config.sh

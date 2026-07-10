@@ -12,6 +12,8 @@ import com.bts.workflow.jooq.tables.WorkflowValidators.Companion.WORKFLOW_VALIDA
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
 import com.bts.workflow.repository.WorkflowRepository
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
+import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.konform.validation.Validation
 import io.konform.validation.jsonschema.minItems
 import io.konform.validation.jsonschema.minLength
@@ -154,11 +156,20 @@ class YamlSeedService(
     private val workflowRepository: WorkflowRepository,
     private val dsl: DSLContext,
     private val resourceLoader: ResourceLoader,
-    private val yamlMapper: ObjectMapper,
     private val validatorFactory: WorkflowValidatorFactory,
     private val postActionFactory: WorkflowPostActionFactory,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+
+    /**
+     * YAML 워크플로우 파일 역직렬화 전용 매퍼 — YAMLFactory 기반, 내부 생성.
+     *
+     * Spring `@Bean ObjectMapper`(YAMLFactory)로 노출하면 Spring Boot 의 기본 JSON ObjectMapper 가
+     * `@ConditionalOnMissingBean(ObjectMapper)` 로 backoff 되어, HTTP 메시지 컨버터가 이 YAML 매퍼를
+     * 사용해 **모든 REST 응답이 YAML 로 직렬화되는 회귀**(조립 앱 전 API 파손)를 유발한다. 따라서
+     * Bean 으로 노출하지 않고 이 서비스 내부에서만 보유한다.
+     */
+    private val yamlMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
 
     /** config Map → JSON 직렬화 전용. yamlMapper 는 YAMLFactory 기반이므로 별도 JSON ObjectMapper 필요. */
     private val jsonMapper = ObjectMapper()

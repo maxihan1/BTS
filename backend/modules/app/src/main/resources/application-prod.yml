@@ -1,0 +1,17 @@
+# 배포 조립 앱 prod 프로파일 — 운영 전용 override. 모든 시크릿은 환경변수 fail-fast(미설정 시 기동 즉시 실패).
+# base application.yml 위에 병합된다. identity-access application-prod.yml 의 prod 정책을 조립 앱으로 중앙화.
+
+server:
+  servlet:
+    session:
+      cookie:
+        # prod 는 https 강제이므로 JSESSIONID 에 Secure 플래그(base 의 SameSite=None 과 짝).
+        secure: true
+
+bts:
+  auth:
+    # 운영 issuer URI — 미설정 시 placeholder 해소 실패로 fail-fast (EC-30). 예: https://bts.example.com
+    issuer-uri: ${BTS_AUTH_ISSUER_URI}
+    jwt:
+      # 운영 RSA 개인키 PEM 절대경로 — PemFileKeyProvider(@Profile("prod")) 가 로드, dev 인메모리 fallback 금지 (BLOCKER #6).
+      private-key-pem-path: ${BTS_JWT_PRIVATE_KEY_PATH}

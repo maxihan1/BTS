@@ -1,0 +1,106 @@
+# 배포 조립 앱 통합 설정 — 8개 BC 의 설정을 하나로 병합 (모듈 개별 application.yml 을 classpath 우선순위로 덮어씀)
+# ${ENV:기본값} 형식이라 dev 는 기본값, prod 는 환경변수 주입으로 동작. prod 전용 override 는 application-prod.yml.
+
+server:
+  port: ${BTS_SERVER_PORT:8080}
+  servlet:
+    session:
+      cookie:
+        # SAML ACS cross-site POST 콜백 세션 유지 (identity-access 원설정). prod 는 secure:true 추가.
+        same-site: none
+
+spring:
+  application:
+    name: bts
+  main:
+    # 여러 BC 가 동일한 인프라 @Bean(jsonNullableModule 등)을 중복 정의하므로 조립 시 오버라이드 허용.
+    # ⚠️ 오버라이드된 빈 목록은 부팅 로그(Overriding bean definition)로 감사해 '서로 다른 빈이 이름만 같아
+    #    조용히 덮이는' 진짜 충돌이 없는지 P2 에서 확인한다.
+    allow-bean-definition-overriding: true
+  datasource:
+    url: ${BTS_DB_URL:jdbc:postgresql://localhost:5433/bts}
+    username: ${BTS_DB_USERNAME:bts}
+    password: ${BTS_DB_PASSWORD:bts}
+    driver-class-name: org.postgresql.Driver
+  # Flyway 는 Spring 단일 auto-config 를 끄고 FlywayAssemblyConfig 가 모듈별 이력 테이블로 직접 실행한다
+  # (identity V001~ ↔ issue V001~ 버전 충돌을 이력 테이블 분리로 회피).
+  flyway:
+    enabled: false
+  # dev seed(data-dev.sql) 는 모듈마다 존재해 classpath 충돌 → 조립 앱에선 비활성. 필요 시 별도 seed 전략.
+  sql:
+    init:
+      mode: never
+  servlet:
+    multipart:
+      # 첨부(issue-tracking) 100MB 수용. 아바타 5MB 정책은 앱 레이어(AvatarTypePolicy)에서 400 처리.
+      max-file-size: ${BTS_MAX_FILE_SIZE:100MB}
+      max-request-size: ${BTS_MAX_REQUEST_SIZE:110MB}
+      resolve-lazily: true
+  ldap:
+    urls: ${BTS_LDAP_URL:ldap://localhost:389}
+    base: ${BTS_LDAP_BASE_DN:dc=bts,dc=local}
+    username: ${BTS_LDAP_BIND_DN:cn=admin,dc=bts,dc=local}
+    password: ${BTS_LDAP_BIND_PASSWORD:admin}
+  # 인앱 알림 이메일 발송 (notification BC)
+  mail:
+    host: ${BTS_MAIL_HOST:localhost}
+    port: ${BTS_MAIL_PORT:1025}
+    properties:
+      mail:
+        smtp:
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${bts.auth.issuer-uri:http://localhost:8080}/.well-known/jwks.json
+
+bts:
+  auth:
+    issuer-uri: ${BTS_AUTH_ISSUER_URI:http://localhost:8080}
+  security:
+    cors:
+      allowed-origins: ${BTS_CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  minio:
+    endpoint: ${BTS_MINIO_ENDPOINT:http://localhost:9000}
+    access-key: ${BTS_MINIO_ACCESS_KEY:minioadmin}
+    secret-key: ${BTS_MINIO_SECRET_KEY:minioadmin}
+    bucket: ${BTS_MINIO_BUCKET:bts-attachments}
+  clamav:
+    host: ${BTS_CLAMAV_HOST:localhost}
+    port: ${BTS_CLAMAV_PORT:3310}
+  issue:
+    due-scan:
+      cron: ${BTS_ISSUE_DUE_SCAN_CRON:0 0 0 * * *}
+  notification:
+    email:
+      from: ${BTS_NOTIFICATION_EMAIL_FROM:no-reply@bts.local}
+
+# OpenAPI 문서 (issue-tracking)
+springdoc:
+  api-docs:
+    version: OPENAPI_3_1
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+  show-actuator: false
+
+# actuator health 엔드포인트 (배포 헬스체크용)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  health:
+    # LDAP·SMTP 는 선택적 외부 연동 — 미구성/미가동이어도 앱 health 를 DOWN 시키지 않는다.
+    # (indicator 를 켜두면 오케스트레이터가 정상 컨테이너를 unhealthy 로 오판해 재시작 루프에 빠진다.)
+    ldap:
+      enabled: false
+    mail:
+      enabled: false

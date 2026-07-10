@@ -1,0 +1,17 @@
+# BTS 프론트 nginx 이미지 — 호스트에서 빌드한 Vite dist 를 nginx 로 정적 서빙 + 백엔드 리버스 프록시
+#
+# dist 빌드는 호스트/CI 에서 수행한다: pnpm --filter @bts/web build (→ apps/web/dist).
+# 빌드 컨텍스트는 리포지토리 루트.
+
+FROM nginx:1.27-alpine
+
+# 기본 서버 블록 제거 후 BTS 설정 주입
+RUN rm -f /etc/nginx/conf.d/default.conf
+COPY infra/prod/nginx.conf /etc/nginx/conf.d/bts.conf
+COPY apps/web/dist /usr/share/nginx/html
+
+EXPOSE 80
+
+# 127.0.0.1(IPv4) 명시 — 컨테이너 localhost 는 ::1(IPv6) 로 먼저 해석되나 nginx 는 IPv4 리슨이라 refused 된다.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -qO- http://127.0.0.1/ >/dev/null 2>&1 || exit 1
