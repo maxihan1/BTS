@@ -10,3 +10,6 @@ include(":modules:notification")
 include(":modules:agile-planning")
 include(":modules:search-export-import")
 include(":modules:slack-integration")
+
+// 배포 조립 모듈 — 8개 BC 를 하나의 실행 가능한 Spring Boot 앱으로 통합 (프로덕션 배포 산출물)
+include(":modules:app")
