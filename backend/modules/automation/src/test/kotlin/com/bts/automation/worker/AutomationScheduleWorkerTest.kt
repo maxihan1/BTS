@@ -4,10 +4,12 @@ package com.bts.automation.worker
 
 import com.bts.automation.AutomationTestBootApplication
 import com.bts.automation.AutomationTestcontainersBase
+import com.bts.automation.StubAutomationPermissionResolver
 import com.bts.automation.adapter.AutomationExecutionEnqueuer
 import com.bts.automation.adapter.AutomationRuleRepository
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.TriggerType
+import com.bts.shared.permission.AutomationPermissionResolver
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
@@ -15,6 +17,8 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import java.time.Clock
@@ -36,12 +40,24 @@ import java.util.UUID
  * - 발화 대상이 없으면 아무 것도 하지 않는다(enqueue 없음, nextFireAt 불변)
  * - 고정 [Clock] 주입 — 실제 벽시계와 무관하게 주입된 시각 기준으로만 결정적으로 계산된다
  *   (역사적 과거 시각으로 고정해, Clock 을 무시하고 실제 시스템 시각을 쓰는 회귀를 확실히 잡는다)
+ *
+ * ## [TestSupportConfig] — [AutomationPermissionResolver] 스텁 빈
+ * [AutomationTestBootApplication] 이 `com.bts.automation` 전체를 컴포넌트 스캔하므로, Task 6 산출물인
+ * `AutomationRuleController`/`AutomationRuleService` 도 이 테스트의 컨텍스트 기동 대상에 포함된다.
+ * 이 서비스는 [AutomationPermissionResolver] 를 non-null 생성자 주입으로 요구하므로([[crossbc-resolver-nullable-fail-open]]
+ * 회귀 방지), 이 테스트 파일도 [AutomationRuleControllerTest] 와 동일하게 자신의 nested
+ * `@TestConfiguration` 에서 [StubAutomationPermissionResolver] 를 등록한다(consumer-owns-stub, 파일
+ * 범위 제약상 [AutomationTestcontainersBase] 는 수정 불가 — Task 8 파일 범위 밖).이 워커 테스트 자체는
+ * 권한 판정 경로를 타지 않으므로(레포지토리/enqueuer 직접 호출) 스텁의 allow/deny 상태는 무관하다.
  */
 @SpringBootTest(
     classes = [AutomationTestBootApplication::class],
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
 )
-@Import(AutomationTestcontainersBase::class)
+@Import(
+    AutomationTestcontainersBase::class,
+    AutomationScheduleWorkerTest.TestSupportConfig::class,
+)
 class AutomationScheduleWorkerTest {
     @Autowired
     @Suppress("VarCouldBeVal")
@@ -181,5 +197,15 @@ class AutomationScheduleWorkerTest {
     private companion object {
         const val DAILY_9AM_CRON = "0 0 9 * * *"
         const val HOURLY_CRON = "0 0 * * * *"
+    }
+
+    /**
+     * [AutomationTestBootApplication] 전체 컴포넌트 스캔이 요구하는 [AutomationPermissionResolver] 스텁
+     * 등록 전용 설정([AutomationRuleControllerTest] 동형, 클래스 KDoc 참조).
+     */
+    @TestConfiguration
+    class TestSupportConfig {
+        @Bean
+        fun automationPermissionResolver(): AutomationPermissionResolver = StubAutomationPermissionResolver()
     }
 }
