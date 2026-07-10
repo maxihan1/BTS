@@ -97,7 +97,8 @@ class AutomationRuleRepositoryTest {
             projectKey = projectKey,
             name = "매일 9시 리마인더",
             triggerType = TriggerType.SCHEDULED,
-            triggerConfig = """{"cron":"0 9 * * *"}""",
+            // Spring CronExpression 은 6필드(초 분 시 일 월 요일). 매일 09:00:00.
+            triggerConfig = """{"cron":"0 0 9 * * *"}""",
             nextFireAt = nextFireAt,
         )
 
