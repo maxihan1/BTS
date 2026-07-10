@@ -26,7 +26,7 @@
 - [x] cross-BC 결선 prod 승격 (prod 프로파일이 실제 resolver 활성화로 해소)
 - [x] BouncyCastle "BC" 프로바이더 등록 (identity 잠복버그 보완)
 - [x] 마이그레이션 전량 적용 (7개 모듈, 다중 이력 테이블)
-- [ ] 🚧 **BLOCKER FR-WF-03**: workflow PermissionResolver 운영 어댑터 미구현 (현재 테스트 스텁) — 배포 전 필수, security-engineer
+- [x] ✅ **workflow PermissionResolver prod 어댑터** — `DelegatingPermissionResolver`(@Profile prod, com.bts.workflow.adapter) 신설. shared-kernel `IssuePermissionResolver`+`SystemPermissionResolver`에 위임(BC 격리 준수, prod는 identity가 채움). 권한문자열→IssuePermission 매핑 7종, 미등록은 fail-closed deny+WARN. TDD(test #313eebcc8→feat #64a7e7b62), 단위 8케이스 green. security-engineer.
 - [ ] allow-bean-definition-overriding 오버라이드 로그 감사 (진짜 충돌 없는지)
 - [ ] SecurityFilterChain @Order 정렬 확인 (security-engineer)
 - [ ] BtsApplicationContextTest Testcontainers 전환 (현재 로컬 postgres 의존)
@@ -39,9 +39,9 @@
 - [x] `infra/deploy/bts-deploy.sh` + config.sh.example 스캐폴드 (P5용)
 - [x] app bootJar 이름 고정 + mainClass, 시크릿 gitignore
 
-## P4 로컬 전체 스택 검증 — 🚧 두 블로커
-- [ ] 🚧 **FR-WF-03** — 운영 jar 에는 테스트 스텁이 없어 백엔드가 부팅 불가(workflow PermissionResolver). P4 선결.
-- [ ] 🚧 **프론트 fresh 빌드** — pnpm deps 미설치(이 세션 환경)로 dist 갱신 실패(현 dist 2026-05-27 stale). pnpm 정비 필요.
+## P4 로컬 전체 스택 검증 — 🚧 남은 블로커 1
+- [x] ✅ **workflow PermissionResolver prod 어댑터** — `DelegatingPermissionResolver` 신설로 해소. **`BtsApplicationContextTest`(@ActiveProfiles prod)가 스텁 없이 8개 BC 전체를 실제 어댑터로 부팅 성공** — NoSuchBean 갭 실배선 확인.
+- [ ] 🚧 **프론트 fresh 빌드** — pnpm deps 미설치(이 세션 환경)로 dist 갱신 실패(현 dist 2026-05-27 stale). pnpm 정비 필요. **이제 유일한 P4 블로커.**
 - [ ] `docker compose -f infra/docker-compose.prod.yml up` 전체 기동 (위 둘 해소 후)
 - [ ] health/actuator UP + 프론트 로그인→이슈 CRUD 스모크
 

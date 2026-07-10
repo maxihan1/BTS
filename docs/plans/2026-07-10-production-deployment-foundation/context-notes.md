@@ -84,9 +84,46 @@
 - app bootJar=bts-app.jar(호스트 빌드, jOOQ codegen 이 Docker 요구해 이미지 내부 빌드 불가 → 산출물 COPY).
 - **P4 두 블로커**: (1) FR-WF-03 — 운영 jar 는 테스트 스텁 없어 백엔드 부팅 불가. (2) 프론트 fresh 빌드 — pnpm deps 미설치(no-TTY `pnpm install` 실패, node_modules 부분설치)로 dist stale(2026-05-27). vite 직접호출도 MODULE_NOT_FOUND. → pnpm 환경 정비 필요(별개 이슈).
 
+## 2026-07-10 — FR-WF-03 설계 리뷰 (구현 전, Maxi "먼저 설계만 검토" 지시)
+
+**포트 계약** (`com.bts.workflow.port.outbound.PermissionResolver`).
+- `hasPermission(actorId: ActorId, permission: String, scope: Scope): Boolean` — deny-by-false. raw String 권한 + Scope(Global/Project(key)/Issue(key)).
+- 호출부: `PermissionValidator`(type="permission-check"). resolver false/예외 → 전이 차단(보안우선). Scope는 ValidatorScope.ISSUE(기본, Scope.Issue) / PROJECT(Scope.Project).
+- `permission-check`는 `DefaultWorkflowValidatorFactory`에 **결선돼 있음**(line 60). config["permission"] 필수, config["scope"] 선택.
+
+**★ 결정적 발견 1 — 시드 표준 워크플로우 4종은 permission-check 미사용.**
+- simple/bug-tracking/software-default/kanban-basic YAML은 `RequiredField` validator만 사용. permission-check 0건.
+- ∴ workflow `PermissionResolver` 빈은 **DI 생성 요건**(factory가 생성자 주입)일 뿐, 시드 구성의 런타임 핫패스가 아니다. 실제 호출은 **사용자가 custom 워크플로우 YAML에 permission-check를 선언할 때만** 발생(고급 미사용 기능).
+- 배포 블로커의 본질 = (a) prod 빈 부재로 컨텍스트 부팅 실패(NoSuchBean), (b) custom-workflow-permission-check 기능의 정확성. 시드 워크플로우 동작엔 무영향.
+
+**★ 결정적 발견 2 — identity에 재사용할 prod 패턴 3종 존재.**
+- `IdentityAccessWorkflowSchemePermissionResolver`(@Profile prod): Global=`systemPermissionResolver.isSystemAdmin`, Project=`resolveKeyToId`→멤버게이트→`permissionSchemeRepo.roleHasPermission(projectId, role, code)`. **이 어댑터가 그대로 템플릿.**
+- `IdentityAccessIssuePermissionResolver`(@Profile prod): issueKey→project 해석 방식 = `projectDirectory.resolveKeyToId(scope.key.substringBefore('-'))` (prefix 파싱). Scope.Issue 처리에 재사용.
+- 매핑표(`toCodeOrNull`): BROWSE→BROWSE_PROJECT · VIEW→VIEW_ISSUE · CREATE→CREATE_ISSUE · UPDATE→**EDIT_ISSUE** · SOFT_DELETE→DELETE_ISSUE · SET_SECURITY→SET_ISSUE_SECURITY.
+
+**★ 결정적 발견 3 — "전이(transition)" 권한은 identity 카탈로그에 코드가 없다.**
+- 타입 enum `IssuePermission.TRANSITION` 조차 `toCodeOrNull → null`(HARD_DELETE와 함께 매트릭스 미위임). identity 권한코드 카탈로그 = BROWSE_PROJECT/VIEW_ISSUE/CREATE_ISSUE/EDIT_ISSUE/DELETE_ISSUE/SET_ISSUE_SECURITY/MANAGE_WORKFLOW/MANAGE_COMPONENTS/MANAGE_VERSIONS(+역할 MEMBER/PROJECT_ADMIN).
+- ∴ 포트 KDoc 예시 문자열 "TRANSITION_ISSUE"는 **권威 DB 코드가 없다**. 전이 권한의 의미론(=EDIT_ISSUE로 볼지, 별도 코드 신설할지)은 **미결 제품 결정**. 그냥 복사 불가.
+
+**설계 옵션(Maxi 판단 대기).**
+- **옵션 A (완전 어댑터)**: 스킴 리졸버 복제. Global/Project/Issue 3분기 + String→코드 매핑표 + fail-closed. 단 전이 의미론 미결이라 제품결정 선행 필요. security-engineer + TDD. 범위 큼.
+- **옵션 B (fail-closed prod 빈, 권장)**: Global→isSystemAdmin(실판정) · Project/Issue→멤버게이트+매트릭스, **권한 String이 identity 카탈로그 코드면 실검사·미등록 코드면 deny+WARN**. auth-bypass 0(deny-by-default). 시드 워크플로우 무영향이라 현 기능 완전. custom 워크플로우가 카탈로그 밖 문자열 쓰면 항상 거부(fail-closed=안전, 미사용 고급기능의 경계일 뿐). "완제품" 부합(스텁 아님, deny-by-default는 정식 보안 자세).
+  - 계약 정의: "permission-check의 permission 문자열은 identity 권한코드여야 한다". 유효코드=실검사, 무효=거부+경고. 완결된 계약. 워크플로우 전용 어휘(TRANSITION_ISSUE 등) 도입은 제품이 정하면 후속.
+
+## 2026-07-10 — 옵션 B 구현 완료: DelegatingPermissionResolver (P4 코드 블로커 해소) ✅
+
+Maxi "옵션 B로 진행" 확정 → security-engineer + TDD.
+- **신설** `com.bts.workflow.adapter.DelegatingPermissionResolver`(@Component @Profile("prod")) — 포트와 같은 BC라 격리 위반 0. shared-kernel `IssuePermissionResolver`+`SystemPermissionResolver`에 위임(prod는 identity가 채움). Global→isSystemAdmin, Project/Issue→String→IssuePermission 매핑 후 위임, 미등록 문자열→fail-closed deny+WARN(위임 미호출).
+- **매핑 7종**: BROWSE_PROJECT→BROWSE · VIEW_ISSUE→VIEW · CREATE_ISSUE→CREATE · EDIT_ISSUE→UPDATE · TRANSITION_ISSUE→TRANSITION · DELETE_ISSUE→SOFT_DELETE · SET_ISSUE_SECURITY→SET_SECURITY. else→deny.
+- **★ TRANSITION 현행 정책 상속**: identity가 TRANSITION(코드 null)을 "프로젝트 멤버면 통과"로 처리(매트릭스 미위임, FR-PM-04 이관 예정) → 위임이므로 현행 정책 그대로, 향후 전이 매트릭스 자동 반영.
+- **TDD**: test #313eebcc8(RED, mockk 8케이스, ActorId는 value class라 실인스턴스만·목킹 금지) → feat #64a7e7b62 → chore #c290102a6(조립 스텁 `AssemblyGapStubConfig` 삭제 + `BtsApplicationContextTest` @Import 제거).
+- **★ 조립 실배선 검증**: `:modules:app:test *BtsApplicationContextTest*` GREEN — @ActiveProfiles("prod")로 8개 BC가 **스텁 없이 실제 DelegatingPermissionResolver로 부팅**. NoSuchBean 갭 실해소 확인.
+- 검증: project-workflow 단위테스트·detekt(--rerun-tasks)·ArchUnit 모두 green. ktlint는 앞선 커밋 1c22551ea의 WorkflowSeedConfig import 순서 위반 1건 잔존 → **#4fc54e6cf로 정정**(databind→dataformat, 내 세션 mess).
+- 배치 근거: 포트 KDoc이 예고한 "IdentityAccessPermissionResolver"는 identity 거주 가정이었으나 BC 격리(ArchUnit identity→com.bts.workflow 금지)상 project-workflow에 두고 shared 포트 위임으로 확정. WorkflowSchemePermissionResolver 선례 동형.
+
 ## 다음 세션 진입점
 
-- **크리티컬 패스 = FR-WF-03** (P4/배포의 유일 코드 블로커). identity-access 가 `com.bts.workflow.port.outbound.PermissionResolver` 구현하는 어댑터. security-engineer + TDD.
-- 프론트 fresh 빌드용 pnpm 환경 정비(정상 `pnpm install`).
+- ✅ **크리티컬 코드 블로커(workflow PermissionResolver prod 어댑터) 해소** — DelegatingPermissionResolver.
+- **남은 유일 P4 블로커 = 프론트 fresh 빌드** — pnpm 환경 정비(정상 `pnpm install`). 현 dist 2026-05-27 stale.
 - 그 후 P4(docker compose up 전체) → P5(서버: VM Docker·RAM 확인 → bts-deploy.sh).
-- 커밋 흐름: 3b334c15f(계획)→fc8e75ac1(identity mig)→f75b22144(스캐폴드)→1c22551ea(YAML)→aebe4a4f8(조립부팅)→29b1baf39(P3). 브랜치 deploy/prod-foundation, main 무오염.
+- 커밋 흐름: 3b334c15f(계획)→fc8e75ac1(identity mig)→f75b22144(스캐폴드)→1c22551ea(YAML)→aebe4a4f8(조립부팅)→29b1baf39(P3)→313eebcc8(test)→64a7e7b62(feat FR-WF-03 어댑터)→c290102a6(스텁제거)→4fc54e6cf(ktlint fix). 브랜치 deploy/prod-foundation, main 무오염(=origin/main e5c81bdd28).
