@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component
 
 /** @Value 기본값은 컴파일 타임 상수여야 하므로 봇 스코프 기본값을 top-level const로 둔다(SDD 09.3.1). */
 const val DEFAULT_SLACK_SCOPES: String =
-    "chat:write,chat:write.public,links:read,links:write,commands,app_mentions:read"
+    "chat:write,chat:write.public,links:read,links:write,commands,app_mentions:read,users:read.email"
 
 /**
  * Slack App OAuth 설치 흐름에 필요한 client 설정값 (FR-SL-01 Task 6).
