@@ -32,6 +32,11 @@ class IssueEventPublisher(
      * [isWebhookPublishable] 이 `true` 인 이벤트는 [WEBHOOK_QUEUE_NAME] 큐로도 동일 payload 를
      * dual-send 한다 (FR-API-03 PR3 — 구독형 아웃바운드 Webhook 발송 트리거).
      *
+     * [isAutomationPublishable] 이 `true` 인 이벤트는 [AUTOMATION_QUEUE_NAME] 큐로도 동일 payload 를
+     * fan-out 한다 (FR-AT-01 Task 10 — automation BC 트리거 감지). `q_issue_events` 발행은 특수분기
+     * 없이 uniform 하게 유지한다 — automation 전용 이벤트([IssueCommented] 등)가 섞여 들어가도
+     * NotificationWorker 는 미지원 타입으로 무해하게 삭제한다(리뷰 E2 확인).
+     *
      * 호출 시 활성 트랜잭션이 없으면 [org.springframework.transaction.IllegalTransactionStateException] 이 발생한다.
      *
      * @param event 발행할 이슈 도메인 이벤트.
@@ -45,6 +50,11 @@ class IssueEventPublisher(
         if (isWebhookPublishable(event)) {
             dsl.execute("SELECT pgmq.send(?, ?::jsonb)", WEBHOOK_QUEUE_NAME, payload)
             log.info("event_published queue={} type={}", WEBHOOK_QUEUE_NAME, event::class.simpleName)
+        }
+
+        if (isAutomationPublishable(event)) {
+            dsl.execute("SELECT pgmq.send(?, ?::jsonb)", AUTOMATION_QUEUE_NAME, payload)
+            log.info("event_published queue={} type={}", AUTOMATION_QUEUE_NAME, event::class.simpleName)
         }
     }
 
@@ -74,6 +84,32 @@ class IssueEventPublisher(
             is IssueMentioned -> false
             is IssueDueSoon -> false
             is IssueOverdue -> false
+            is IssueCommented -> false
+        }
+
+    /**
+     * [event] 가 automation BC 트리거 감지 대상인지 판정한다 (FR-AT-01 Task 10).
+     *
+     * automation 대상 = `issue.created` / `issue.updated` / `issue.commented`
+     * (ADR 2026-07-10-fr-at-01-automation-triggers D2 — `ISSUE_CREATED`/`ISSUE_UPDATED`/
+     * `ISSUE_COMMENTED` 트리거 타입과 정합).
+     *
+     * `else` 분기 없는 exhaustive `when` — [isWebhookPublishable] 과 동일한 이유로, [IssueDomainEvent]
+     * 에 새 구현체가 추가되면 이 함수가 컴파일에 실패해 분류 누락(under-send)을 원천 차단한다.
+     *
+     * @param event 판정 대상 이슈 도메인 이벤트.
+     * @return `q_automation_events` 로도 발행해야 하면 `true`.
+     */
+    private fun isAutomationPublishable(event: IssueDomainEvent): Boolean =
+        when (event) {
+            is IssueCreated -> true
+            is IssueUpdated -> true
+            is IssueCommented -> true
+            is IssueTransitioned -> false
+            is IssueSoftDeleted -> false
+            is IssueMentioned -> false
+            is IssueDueSoon -> false
+            is IssueOverdue -> false
         }
 
     companion object {
@@ -82,5 +118,8 @@ class IssueEventPublisher(
 
         /** pgmq 큐 이름 — V034__pgmq_queue_webhook_events.sql 에서 생성된 큐와 일치해야 한다. */
         const val WEBHOOK_QUEUE_NAME = "q_webhook_events"
+
+        /** pgmq 큐 이름 — V036__pgmq_queue_automation_events.sql 에서 생성된 큐와 일치해야 한다. */
+        const val AUTOMATION_QUEUE_NAME = "q_automation_events"
     }
 }

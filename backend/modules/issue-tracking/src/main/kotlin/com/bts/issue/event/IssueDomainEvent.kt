@@ -29,6 +29,7 @@ import java.util.UUID
     JsonSubTypes.Type(value = IssueMentioned::class, name = "issue.mentioned"),
     JsonSubTypes.Type(value = IssueDueSoon::class, name = "issue.due_soon"),
     JsonSubTypes.Type(value = IssueOverdue::class, name = "issue.overdue"),
+    JsonSubTypes.Type(value = IssueCommented::class, name = "issue.commented"),
 )
 sealed interface IssueDomainEvent
 
@@ -155,5 +156,31 @@ data class IssueDueSoon(
 data class IssueOverdue(
     val issueKey: String,
     val projectKey: String,
+    val occurredAt: Instant,
+) : IssueDomainEvent
+
+/**
+ * 이슈에 댓글이 작성되었을 때 발행되는 이벤트 (FR-AT-01 Task 10 — automation COMMENTED 트리거).
+ *
+ * 발행 주체: [com.bts.issue.comment.application.CommentApplicationService.create].
+ * 수신자: automation 모듈의 `AutomationEventWorker` — `q_automation_events` fan-out 큐를 폴링해
+ * COMMENTED 트리거로 등록된 [com.bts.automation.domain.AutomationRule] 을 매칭한다
+ * (ADR 2026-07-10-fr-at-01-automation-triggers D2·D3).
+ *
+ * `q_issue_events` 로도 함께 발행되지만(uniform [IssueDomainEvent] 발행 모델), NotificationWorker 는
+ * 이 타입을 모르는 이벤트로 취급해 무해하게 삭제(delete)한다 — 알림 발송 회귀 없음(리뷰 E2 확인).
+ *
+ * @property issueKey 댓글이 작성된 이슈의 키.
+ * @property projectKey 소속 프로젝트 키. 예: `ATLAS`
+ * @property commentId 작성된 댓글의 UUID.
+ * @property actorId 댓글을 작성한 행위자 ID.
+ * @property occurredAt 이벤트 발생 시각 (UTC).
+ */
+@JsonTypeName("issue.commented")
+data class IssueCommented(
+    val issueKey: IssueKey,
+    val projectKey: String,
+    val commentId: UUID,
+    val actorId: ActorId,
     val occurredAt: Instant,
 ) : IssueDomainEvent
