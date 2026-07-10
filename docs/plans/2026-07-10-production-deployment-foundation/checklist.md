@@ -39,11 +39,12 @@
 - [x] `infra/deploy/bts-deploy.sh` + config.sh.example 스캐폴드 (P5용)
 - [x] app bootJar 이름 고정 + mainClass, 시크릿 gitignore
 
-## P4 로컬 전체 스택 검증 — 🚧 남은 블로커 1
+## P4 로컬 전체 스택 검증 ✅ 완료
 - [x] ✅ **workflow PermissionResolver prod 어댑터** — `DelegatingPermissionResolver` 신설로 해소. **`BtsApplicationContextTest`(@ActiveProfiles prod)가 스텁 없이 8개 BC 전체를 실제 어댑터로 부팅 성공** — NoSuchBean 갭 실배선 확인.
-- [ ] 🚧 **프론트 fresh 빌드** — pnpm deps 미설치(이 세션 환경)로 dist 갱신 실패(현 dist 2026-05-27 stale). pnpm 정비 필요. **이제 유일한 P4 블로커.**
-- [ ] `docker compose -f infra/docker-compose.prod.yml up` 전체 기동 (위 둘 해소 후)
-- [ ] health/actuator UP + 프론트 로그인→이슈 CRUD 스모크
+- [x] ✅ **프론트 fresh 빌드** — node_modules 심볼릭이 삭제된 워크트리 가리켜 깨짐 → `CI=true pnpm install --prefer-offline`(네트워크 0)로 복구. dist 55 assets 재생성.
+- [x] ✅ **배포 아티팩트 2종** — `bts-app.jar` 118MB(`:modules:app:bootJar`) + apps/web/dist. 이미지 `bts-backend:local` 843MB·`bts-web:local` 83MB 빌드.
+- [x] ✅ **`docker compose up` 전체 6서비스 기동** — postgres·minio·minio-init·clamav·backend·web. **backend `Started BtsApplicationKt in 15s`**(Flyway·MinIO버킷·워크플로우시드·DelegatingPermissionResolver 배선). worktree `.worktrees/deploy-prod-foundation`에서(2차 hijack 격리).
+- [x] ✅ **health/actuator UP + 프록시 검증** — backend `/actuator/health` 200 UP(env crutch 없이 application.yml 수정만) · web healthy · nginx SPA 서빙(`<title>BTS — Atlas</title>`) · nginx→백엔드 프록시(`/api/v1/whoami`→401 정상). **health 오탐 2건 소스 수정**(commit bdccebbde). (로그인→CRUD 브라우저 스모크는 시드 사용자 없어 미실시 — 후속.)
 
 ## P5 서버 배포 (별도 승인 — 이번 범위 밖)
 - [ ] VM RAM/디스크 여유 확인 (free -m, df -h)

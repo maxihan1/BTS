@@ -121,6 +121,34 @@ Maxi "옵션 B로 진행" 확정 → security-engineer + TDD.
 - 검증: project-workflow 단위테스트·detekt(--rerun-tasks)·ArchUnit 모두 green. ktlint는 앞선 커밋 1c22551ea의 WorkflowSeedConfig import 순서 위반 1건 잔존 → **#4fc54e6cf로 정정**(databind→dataformat, 내 세션 mess).
 - 배치 근거: 포트 KDoc이 예고한 "IdentityAccessPermissionResolver"는 identity 거주 가정이었으나 BC 격리(ArchUnit identity→com.bts.workflow 금지)상 project-workflow에 두고 shared 포트 위임으로 확정. WorkflowSchemePermissionResolver 선례 동형.
 
+## 2026-07-10 — P4 진행: 프론트 빌드 복구 + 산출물 + 컨테이너화 검증 + ★2차 hijack→worktree 격리
+
+**프론트 fresh 빌드 블로커 해소.** 원인 = apps/web/node_modules 심볼릭이 **삭제된 워크트리(.worktrees/fr-ca-01-calendar)** store를 가리켜 vite 패키지 자체가 깨짐(.bin/vite 직접호출도 MODULE_NOT_FOUND). store(메인 .pnpm)엔 vite 존재. 해법 = `CI=true pnpm install --prefer-offline`(reused 795·downloaded 0, 네트워크 0, 52초)로 심볼릭 메인 store 재연결. 메모리 [[worktree-pnpm-verify-deps-symlink]] "★후속 발견" 그대로.
+
+**★2차 멀티세션 hijack + worktree 격리(durable fix).** 프론트 빌드 후 확인하니 작업트리가 다른 세션에 의해 `main`으로 checkout돼 있었음(git status "On branch main", HEAD=3b3849d17 dashboard regen). 내 P3/FR-WF-03 커밋은 전부 `deploy/prod-foundation`(a0886cae6)에 온전, main 무오염 확인. 임시 checkout 재시도는 3차 충돌 위험 → **전용 worktree `.worktrees/deploy-prod-foundation` 생성**해 격리(BTS 관례·메모리 권장). backend/modules/app·infra/prod가 이 브랜치에만 있어 main 트리에선 애초에 P4 불가. 이후 모든 P4 작업은 이 worktree에서.
+  - worktree node_modules = 메인에서 심볼릭(`ln -sfn`), 검증은 `node_modules/.bin/vite build` 직접호출([[worktree-pnpm-verify-deps-symlink]] point1·2). pnpm install 금지(메인 .modules.yaml 오염).
+
+**배포 산출물 2종 생성 완료.**
+- 백엔드: `./gradlew :modules:app:bootJar` → **bts-app.jar 118MB** BUILD SUCCESSFUL.
+- 프론트: worktree에서 vite build → apps/web/dist(55 assets, index.html Jul10 15:48).
+
+**컨테이너화 검증(진행 중).** Docker v29.1.2·compose v2.40.3 가동. `infra/prod/.env`(로컬 테스트값)+`infra/secrets/bts-jwt.pem`(RSA2048 PKCS#8, `openssl genpkey`) 생성 — **둘 다 gitignore 확인**. `compose config` 6서비스 파싱 OK. 이미지 빌드(bts-backend eclipse-temurin:21-jre + bts-web nginx:1.27-alpine) 실행 중.
+  - ⚠️ 다음 관문: `docker compose up`. backend는 clamav `service_healthy` 의존 → clamav freshclam 시그니처 다운로드(네트워크·~120s+)가 관문. postgres/minio는 가벼움. RAM ~4.5GB(clamav 2g 최대).
+
+## 2026-07-10 — P4 완주: docker compose 전체 스택 부팅 + 프로덕션 health 수정 2건
+
+**전체 스택 6서비스 기동 성공** (worktree, `docker compose -f infra/docker-compose.prod.yml --env-file infra/prod/.env up -d`).
+- postgres·minio·minio-init·clamav·backend·web 전부 기동. postgres/minio/clamav Healthy.
+- ⚠️ clamav 이미지는 amd64 → arm64 Mac에서 에뮬레이션(경고만, Healthy 도달).
+- **★백엔드 조립 앱 컨테이너 부팅 완주**: `Started BtsApplicationKt in 15.869s`. Flyway 마이그레이션(POSTGRES 16.8)·MinIO 버킷 자동생성(exports/imports/avatars)·표준 4워크플로우 시드(YamlSeedService, WorkflowSeedConfig YAML매퍼 컨테이너서도 작동, validators만·postActions 0)·DelegatingPermissionResolver 배선(없으면 NoSuchBean 부팅실패이므로 healthy=배선 증명).
+- **nginx→백엔드 프록시 검증**: `/api/v1/whoami`→HTTP 401(백엔드 미인증 정상 거부). SPA 서빙 `<title>BTS — Atlas</title>`+assets(127.0.0.1).
+
+**★프로덕션 health 수정 2건 (소스 영구 반영).**
+1. **backend root health 503→UP**. 원인 = LDAP(`spring.ldap.urls` 기본 `ldap://localhost:389`)·mail(`bts-mailhog`) health indicator가 선택적 연동 부재로 DOWN→root DOWN. 오케스트레이터가 정상 컨테이너 재시작하는 실제 위험. **수정**: `application.yml` `management.health.ldap.enabled=false`·`mail.enabled=false`. env override(MANAGEMENT_HEALTH_*)로 먼저 검증(health UP 확인) 후 yml에 영구 반영·override 제거.
+2. **web 컨테이너 unhealthy→healthy**. 원인 = healthcheck `wget http://localhost/`의 localhost가 컨테이너서 `::1`(IPv6) 우선 해석되나 nginx는 IPv4만 리슨(default.conf→bts.conf 리네임으로 nginx ipv6 자동리슨 스크립트 무력화)→refused. 실제 서빙은 127.0.0.1 정상. **수정**: `Dockerfile.web` healthcheck `localhost`→`127.0.0.1`.
+
+**후속(다음 세션)**: 위 2수정 반영해 jar+이미지 재빌드→양쪽 native healthy 재확인 진행중. 그 후 P5(서버 배포, 별도 승인). 로컬 스택 정리 = `docker compose ... down`(볼륨 유지) 또는 `down -v`(볼륨 삭제).
+
 ## 다음 세션 진입점
 
 - ✅ **크리티컬 코드 블로커(workflow PermissionResolver prod 어댑터) 해소** — DelegatingPermissionResolver.
