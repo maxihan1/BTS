@@ -31,9 +31,21 @@ D1~D7: 도메인·명세·데이터모델·백엔드·테스트·UI·E2E.
 - **관련 ADR**: [docs/decisions/2026-07-10-fr-at-01-automation-triggers.md](../decisions/2026-07-10-fr-at-01-automation-triggers.md) (생성됨)
 - **회귀 함정(memory)**: 신규BC 첫 @Repository test-boot 회귀 · 모듈 첫 @Scheduled/detektMain · pgmq consumer 생명주기 P0 · sealed 서브타입 추가→exhaustive when 전수 · 권한시드↔SchemaMigrationTest 카운트 · Flyway V번호 충돌
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-10-fr-at-01-automation-triggers.md](../specs/2026-07-10-fr-at-01-automation-triggers.md)
+
+핵심 시나리오 요약.
+- 룰 CRUD(MANAGE_AUTOMATION 가드, PROJECT_ADMIN) + 5종 트리거 타입 enum + triggerConfig 형식 검증
+- 5종 트리거 감지 → 매칭 → `q_automation_execution` enqueue (액션 실행은 FR-AT-02)
+  - 이슈 이벤트(created/updated/commented): `q_automation_events`(신규 fan-out 큐) 폴링
+  - SCHEDULED: @Scheduled + cron(UTC) + nextFireAt 중복억제
+  - WEBHOOK: 불투명 토큰 인바운드 엔드포인트(202, 미존재 404)
+- cross-BC touch 3곳: issue-tracking(fan-out+IssueCommented)·identity-access(MANAGE_AUTOMATION 시드+resolver)·shared-kernel(port)
+
+## Brainstorming Check
+
+✅ 통과 (자기검토 — 명확 FR이라 대화형 office-hours 대신 직접 작성+적대적 검토). gap 6건(projectKey 파싱·payload 상한·nextFireAt/cron TZ·실행큐 dead-end·disabled 웹훅 404·액터 컨텍스트) 발견 후 전부 자체 해소, Maxi 결정 불필요.
 
 ## Plan (← /bts-plan 채움)
 
