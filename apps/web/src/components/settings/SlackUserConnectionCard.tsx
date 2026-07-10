@@ -50,6 +50,20 @@ function mapConnectionError(error: unknown): string {
 }
 
 /**
+ * 연결/해제 두 mutation의 에러 중 표시할 것을 골라 한국어 메시지로 변환한다.
+ * connect 에러를 disconnect 에러보다 우선한다(동시에 발생할 일은 없지만 결정적 우선순위 고정).
+ *
+ * @param connectError `connectMutation.error`
+ * @param disconnectError `disconnectMutation.error`
+ * @returns 표시할 오류 메시지, 둘 다 없으면 null
+ */
+function resolveConnectionErrorMessage(connectError: unknown, disconnectError: unknown): string | null {
+  if (connectError !== null) return mapConnectionError(connectError)
+  if (disconnectError !== null) return mapConnectionError(disconnectError)
+  return null
+}
+
+/**
  * 로딩/에러/본문 세 상태가 공유하는 카드 레이아웃(Card > CardHeader > CardTitle).
  * 제목("Slack 연결")을 한 곳에서만 관리해 상태별 중복을 없앤다.
  */
@@ -106,74 +120,89 @@ interface SlackUserConnectionCardContentProps {
 }
 
 /**
+ * 연결 상태 본문 — connected=true면 워크스페이스 이름 + 연결 시각을,
+ * connected=false면 미연결 안내 문구를 표시한다.
+ */
+function SlackUserConnectionDetails({ connection }: { readonly connection: SlackConnection }): JSX.Element {
+  const { formatDateTime } = useDateFormat()
+
+  if (!connection.connected) {
+    return <p className="text-sm text-muted-foreground">Slack에 연결되어 있지 않습니다.</p>
+  }
+
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+      <dt className="text-muted-foreground">워크스페이스</dt>
+      <dd>{connection.workspaceName}</dd>
+      <dt className="text-muted-foreground">연결 시각</dt>
+      <dd>{formatDateTime(connection.linkedAt)}</dd>
+    </dl>
+  )
+}
+
+interface SlackUserConnectionActionsProps {
+  readonly connected: boolean
+  readonly isPending: boolean
+  readonly onConnect: () => void
+  readonly onDisconnect: () => void
+}
+
+/** 연결 상태에 따라 "Slack 연결" 또는 "연결 해제" 버튼을 렌더하는 카드 푸터. */
+function SlackUserConnectionActions({
+  connected,
+  isPending,
+  onConnect,
+  onDisconnect,
+}: SlackUserConnectionActionsProps): JSX.Element {
+  return (
+    <CardFooter className="justify-end">
+      {connected ? (
+        <Button type="button" variant="outline" disabled={isPending} onClick={onDisconnect}>
+          연결 해제
+        </Button>
+      ) : (
+        <Button type="button" disabled={isPending} onClick={onConnect}>
+          Slack 연결
+        </Button>
+      )}
+    </CardFooter>
+  )
+}
+
+/**
  * 조회 성공 후에만 렌더되는 실제 카드 본문.
  *
- * - connected=true → 워크스페이스 이름 + 연결 시각 + "연결 해제" 버튼
- * - connected=false → 미연결 안내 + "Slack 연결" 버튼
- * - 두 mutation 모두 성공 시 `invalidateQueries`로 재조회한다(캐시 통째 덮어쓰기 금지 — 부분응답 플리커 회귀 방지).
- * - 실패하면 카드를 유지한 채 인라인 오류 배너를 표시한다.
+ * 두 mutation 모두 성공 시 `invalidateQueries`로 재조회한다(캐시 통째 덮어쓰기 금지 — 부분응답 플리커 회귀 방지).
+ * 실패하면 카드를 유지한 채 인라인 오류 배너를 표시한다.
  */
 function SlackUserConnectionCardContent({ connection }: SlackUserConnectionCardContentProps): JSX.Element {
-  const { formatDateTime } = useDateFormat()
   const queryClient = useQueryClient()
 
   const invalidate = (): Promise<void> =>
     queryClient.invalidateQueries({ queryKey: SLACK_ME_CONNECTION_QUERY_KEY })
 
-  const connectMutation = useMutation({
-    mutationFn: connectSlack,
-    onSuccess: invalidate,
-  })
-  const disconnectMutation = useMutation({
-    mutationFn: disconnectSlack,
-    onSuccess: invalidate,
-  })
+  const connectMutation = useMutation({ mutationFn: connectSlack, onSuccess: invalidate })
+  const disconnectMutation = useMutation({ mutationFn: disconnectSlack, onSuccess: invalidate })
 
-  const errorMessage =
-    connectMutation.error !== null
-      ? mapConnectionError(connectMutation.error)
-      : disconnectMutation.error !== null
-        ? mapConnectionError(disconnectMutation.error)
-        : null
-
+  const errorMessage = resolveConnectionErrorMessage(connectMutation.error, disconnectMutation.error)
   const isPending = connectMutation.isPending || disconnectMutation.isPending
 
   return (
     <SlackUserConnectionCardShell>
       <CardContent className="space-y-3">
-        {connection.connected ? (
-          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-            <dt className="text-muted-foreground">워크스페이스</dt>
-            <dd>{connection.workspaceName}</dd>
-            <dt className="text-muted-foreground">연결 시각</dt>
-            <dd>{formatDateTime(connection.linkedAt)}</dd>
-          </dl>
-        ) : (
-          <p className="text-sm text-muted-foreground">Slack에 연결되어 있지 않습니다.</p>
-        )}
-
+        <SlackUserConnectionDetails connection={connection} />
         {errorMessage !== null && (
           <p role="alert" aria-live="polite" className="text-sm text-destructive">
             {errorMessage}
           </p>
         )}
       </CardContent>
-      <CardFooter className="justify-end">
-        {connection.connected ? (
-          <Button
-            type="button"
-            variant="outline"
-            disabled={isPending}
-            onClick={() => disconnectMutation.mutate()}
-          >
-            연결 해제
-          </Button>
-        ) : (
-          <Button type="button" disabled={isPending} onClick={() => connectMutation.mutate()}>
-            Slack 연결
-          </Button>
-        )}
-      </CardFooter>
+      <SlackUserConnectionActions
+        connected={connection.connected}
+        isPending={isPending}
+        onConnect={() => connectMutation.mutate()}
+        onDisconnect={() => disconnectMutation.mutate()}
+      />
     </SlackUserConnectionCardShell>
   )
 }
