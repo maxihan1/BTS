@@ -2,11 +2,17 @@
 
 package com.bts.slack.config
 
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.scheduling.annotation.EnableAsync
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor
 import java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy
+
+/** `@Value` 기본값은 컴파일 타임 상수여야 하므로 top-level const로 둔다([com.bts.slack.config.DEFAULT_SLACK_SCOPES] 동일 관례). */
+private const val DEFAULT_UNFURL_CORE_POOL_SIZE = 2
+private const val DEFAULT_UNFURL_MAX_POOL_SIZE = 4
+private const val DEFAULT_UNFURL_QUEUE_CAPACITY = 100
 
 /**
  * Slack unfurl 처리(`@Async` 카드 렌더 + `chat.unfurl` 호출)를 위한 executor 설정 (FR-SL-03 ADR D4).
@@ -28,19 +34,27 @@ import java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy
  */
 @Configuration(proxyBeanMethods = false)
 @EnableAsync
-class SlackAsyncConfig {
+class SlackAsyncConfig(
+    @param:Value("\${bts.slack.unfurl-executor.core-pool-size:$DEFAULT_UNFURL_CORE_POOL_SIZE}")
+    private val unfurlCorePoolSize: Int,
+    @param:Value("\${bts.slack.unfurl-executor.max-pool-size:$DEFAULT_UNFURL_MAX_POOL_SIZE}")
+    private val unfurlMaxPoolSize: Int,
+    @param:Value("\${bts.slack.unfurl-executor.queue-capacity:$DEFAULT_UNFURL_QUEUE_CAPACITY}")
+    private val unfurlQueueCapacity: Int,
+) {
     /**
      * Slack unfurl 처리 전용 경계 스레드풀. 다른 `@Async` 작업과 스레드 자원을 공유하지 않도록
      * [SLACK_UNFURL_EXECUTOR_BEAN_NAME]으로 명시해, `@Async("slackUnfurlExecutor")`가 이 빈만 사용하게 한다.
+     * core/max/queue는 `bts.slack.unfurl-executor.*` 프로퍼티로 환경별 조정 가능(미설정 시 안전한 기본값).
      */
     @Bean(SLACK_UNFURL_EXECUTOR_BEAN_NAME)
     fun slackUnfurlExecutor(): ThreadPoolTaskExecutor =
         ThreadPoolTaskExecutor().apply {
-            corePoolSize = CORE_POOL_SIZE
-            maxPoolSize = MAX_POOL_SIZE
-            queueCapacity = QUEUE_CAPACITY
+            corePoolSize = unfurlCorePoolSize
+            maxPoolSize = unfurlMaxPoolSize
+            queueCapacity = unfurlQueueCapacity
             setThreadNamePrefix(THREAD_NAME_PREFIX)
-            setRejectedExecutionHandler(java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy())
+            setRejectedExecutionHandler(CallerRunsPolicy())
             initialize()
         }
 
@@ -48,9 +62,6 @@ class SlackAsyncConfig {
         /** `@Async("slackUnfurlExecutor")`가 참조하는 빈 이름. */
         const val SLACK_UNFURL_EXECUTOR_BEAN_NAME = "slackUnfurlExecutor"
 
-        private const val CORE_POOL_SIZE = 2
-        private const val MAX_POOL_SIZE = 4
-        private const val QUEUE_CAPACITY = 100
         private const val THREAD_NAME_PREFIX = "slack-unfurl-"
     }
 }
