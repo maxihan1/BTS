@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
 import { createElement } from 'react'
-import type { ReactNode } from 'react'
+import type { JSX, ReactNode } from 'react'
 import { AutomationRuleFormDialog } from './AutomationRuleFormDialog'
 import { automationRuleHandlers } from '@/mocks/automation-rule-handlers'
 import { DEFAULT_AUTOMATION_PROJECT_KEY, resetAutomationRuleStore } from '@/mocks/automation-rule-fixtures'
@@ -148,14 +148,12 @@ describe('AutomationRuleFormDialog — cron 사전검증', () => {
 
 describe('AutomationRuleFormDialog — 생성 시 triggerConfig 직렬화 전달', () => {
   it('SCHEDULED 생성: POST body의 triggerConfig가 {"cron":"..."}로 직렬화된다', async () => {
-    let capturedBody: CreateAutomationRuleInput | null = null
+    const capturedBodies: CreateAutomationRuleInput[] = []
     server.use(
       http.post('/api/v1/projects/:projectKey/automation/rules', async ({ request }) => {
-        capturedBody = (await request.json()) as CreateAutomationRuleInput
-        return HttpResponse.json(
-          { rule: { ...SCHEDULED_EDIT_RULE, ...capturedBody }, webhookToken: null },
-          { status: 201 },
-        )
+        const body = (await request.json()) as CreateAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({ rule: { ...SCHEDULED_EDIT_RULE, ...body }, webhookToken: null }, { status: 201 })
       }),
     )
     const onOpenChange = vi.fn()
@@ -168,20 +166,22 @@ describe('AutomationRuleFormDialog — 생성 시 triggerConfig 직렬화 전달
     await user.type(screen.getByTestId('automation-rule-cron-input'), '0 0 9 * * *')
     await user.click(screen.getByTestId('automation-rule-save-button'))
 
-    await waitFor(() => expect(capturedBody).not.toBeNull())
-    expect(capturedBody?.triggerConfig).toBe(JSON.stringify({ cron: '0 0 9 * * *' }))
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    const capturedBody = capturedBodies[0]
+    if (capturedBody === undefined) {
+      throw new Error('capturedBodies[0]이 캡처되지 않음')
+    }
+    expect(capturedBody.triggerConfig).toBe(JSON.stringify({ cron: '0 0 9 * * *' }))
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
   it('ISSUE_UPDATED 생성: fields 태그 추가 후 POST body triggerConfig가 {"fields":[...]}로 직렬화된다', async () => {
-    let capturedBody: CreateAutomationRuleInput | null = null
+    const capturedBodies: CreateAutomationRuleInput[] = []
     server.use(
       http.post('/api/v1/projects/:projectKey/automation/rules', async ({ request }) => {
-        capturedBody = (await request.json()) as CreateAutomationRuleInput
-        return HttpResponse.json(
-          { rule: { ...SCHEDULED_EDIT_RULE, ...capturedBody }, webhookToken: null },
-          { status: 201 },
-        )
+        const body = (await request.json()) as CreateAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({ rule: { ...SCHEDULED_EDIT_RULE, ...body }, webhookToken: null }, { status: 201 })
       }),
     )
     renderWithClient(
@@ -195,8 +195,12 @@ describe('AutomationRuleFormDialog — 생성 시 triggerConfig 직렬화 전달
     await user.type(fieldsInput, 'assignee{Enter}')
     await user.click(screen.getByTestId('automation-rule-save-button'))
 
-    await waitFor(() => expect(capturedBody).not.toBeNull())
-    expect(capturedBody?.triggerConfig).toBe(JSON.stringify({ fields: ['status', 'assignee'] }))
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    const capturedBody = capturedBodies[0]
+    if (capturedBody === undefined) {
+      throw new Error('capturedBodies[0]이 캡처되지 않음')
+    }
+    expect(capturedBody.triggerConfig).toBe(JSON.stringify({ fields: ['status', 'assignee'] }))
   })
 })
 
@@ -220,13 +224,14 @@ describe('AutomationRuleFormDialog — 수정 모드', () => {
   })
 
   it('수정 저장 시 PATCH body에 version이 동봉되고 triggerConfig가 갱신된다', async () => {
-    let capturedBody: PatchAutomationRuleInput | null = null
+    const capturedBodies: PatchAutomationRuleInput[] = []
     server.use(
       http.patch('/api/v1/projects/:projectKey/automation/rules/:id', async ({ request }) => {
-        capturedBody = (await request.json()) as PatchAutomationRuleInput
+        const body = (await request.json()) as PatchAutomationRuleInput
+        capturedBodies.push(body)
         return HttpResponse.json({
           ...SCHEDULED_EDIT_RULE,
-          ...capturedBody,
+          ...body,
           version: SCHEDULED_EDIT_RULE.version + 1,
         })
       }),
@@ -246,9 +251,13 @@ describe('AutomationRuleFormDialog — 수정 모드', () => {
     await user.type(cronInput, '0 30 8 * * *')
     await user.click(screen.getByTestId('automation-rule-save-button'))
 
-    await waitFor(() => expect(capturedBody).not.toBeNull())
-    expect(capturedBody?.version).toBe(SCHEDULED_EDIT_RULE.version)
-    expect(capturedBody?.triggerConfig).toBe(JSON.stringify({ cron: '0 30 8 * * *' }))
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    const capturedBody = capturedBodies[0]
+    if (capturedBody === undefined) {
+      throw new Error('capturedBodies[0]이 캡처되지 않음')
+    }
+    expect(capturedBody.version).toBe(SCHEDULED_EDIT_RULE.version)
+    expect(capturedBody.triggerConfig).toBe(JSON.stringify({ cron: '0 30 8 * * *' }))
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 })
