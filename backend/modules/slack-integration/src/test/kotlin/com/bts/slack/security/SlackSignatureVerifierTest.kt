@@ -116,10 +116,11 @@ class SlackSignatureVerifierTest {
     @Test
     fun `signing secret 미설정이면 형식이 유효해도 거부한다`() {
         val ts = t0.epochSecond.toString()
-        // 미설정(빈) secret으로 서명해도 검증기는 스킵 없이 거부해야 한다(fail-open 방지).
+        // 형식상 완전한 서명을 줘도, 검증기 자신의 secret이 미설정이면 스킵 없이 거부해야 한다(fail-open 방지).
+        val wellFormed = sign(signingSecret, ts, body)
         val verifier = verifierAt(t0, "")
 
-        assertThat(verifier.isValid(ts, sign("", ts, body), body)).isFalse()
+        assertThat(verifier.isValid(ts, wellFormed, body)).isFalse()
     }
 
     private fun verifierAt(

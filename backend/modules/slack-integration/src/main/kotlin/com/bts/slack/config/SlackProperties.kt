@@ -23,6 +23,8 @@ const val DEFAULT_SLACK_SCOPES: String =
  * - [clientSecret] ← `BTS_SLACK_CLIENT_SECRET` (`bts.slack.client-secret`). **비밀값** — DB/코드/로그 저장 금지(N3).
  * - [redirectUri] ← `BTS_SLACK_REDIRECT_URI` (`bts.slack.redirect-uri`). authorize/exchange 동일값 사용(G3).
  * - [scopes] ← `bts.slack.scopes` (기본값 [DEFAULT_SLACK_SCOPES]). 발급 요청 봇 스코프 CSV.
+ * - [signingSecret] ← `BTS_SLACK_SIGNING_SECRET` (`bts.slack.signing-secret`). **비밀값** — Slack Events API
+ *   요청 서명(`X-Slack-Signature`) 검증용 HMAC 키(FR-SL-03 ADR D6). DB/코드/로그 저장 금지(N3).
  *
  * `System.getenv` 직접 호출 없이 Spring 프로퍼티 경유로만 접근한다(`SlackEncryptionConfig` 동일 패턴).
  *
@@ -32,8 +34,8 @@ const val DEFAULT_SLACK_SCOPES: String =
  * [requireConfiguredForAuthorize]/[requireConfiguredForExchange]로 미설정을 검증한다.
  *
  * ## 비밀값 로깅 금지 (§1.1.2)
- * [clientSecret]을 우연히라도 로그에 흘리지 않도록 [toString]에서 마스킹한다. [clientId]는 비밀값이
- * 아니므로(authorize URL 공개 파라미터) 마스킹하지 않는다.
+ * [clientSecret]·[signingSecret]을 우연히라도 로그에 흘리지 않도록 [toString]에서 마스킹한다. [clientId]는
+ * 비밀값이 아니므로(authorize URL 공개 파라미터) 마스킹하지 않는다.
  */
 @Component
 class SlackProperties(
@@ -41,6 +43,7 @@ class SlackProperties(
     @param:Value("\${bts.slack.client-secret:}") val clientSecret: String,
     @param:Value("\${bts.slack.redirect-uri:}") val redirectUri: String,
     @param:Value("\${bts.slack.scopes:" + DEFAULT_SLACK_SCOPES + "}") val scopes: String,
+    @param:Value("\${bts.slack.signing-secret:}") val signingSecret: String = "",
 ) {
     /**
      * authorize URL 생성에 필요한 값([clientId]·[redirectUri])이 설정되었는지 검증한다.
@@ -63,10 +66,10 @@ class SlackProperties(
         }
     }
 
-    /** client_secret을 노출하지 않는 마스킹 toString (§1.1.2). */
+    /** client_secret·signing_secret을 노출하지 않는 마스킹 toString (§1.1.2). */
     override fun toString(): String =
         "SlackProperties(clientId=$clientId, clientSecret=${maskSecret(clientSecret)}, " +
-            "redirectUri=$redirectUri, scopes=$scopes)"
+            "redirectUri=$redirectUri, scopes=$scopes, signingSecret=${maskSecret(signingSecret)})"
 
     private companion object {
         const val NOT_CONFIGURED_MESSAGE = "Slack OAuth client is not configured"
