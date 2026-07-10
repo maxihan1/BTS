@@ -24,6 +24,7 @@ object TriggerConfig {
 
     private const val FIELD_CRON = "cron"
     private const val FIELD_FIELDS = "fields"
+    private const val MSG_INVALID_JSON = "triggerConfig는 유효한 JSON 객체여야 합니다."
 
     private val objectMapper = ObjectMapper()
 
@@ -47,19 +48,22 @@ object TriggerConfig {
     }
 
     private fun parseJsonObject(configJson: String): JsonNode {
-        if (configJson.isBlank()) {
-            throw TriggerConfigInvalidException("triggerConfig는 유효한 JSON 객체여야 합니다.")
-        }
-        val node =
-            try {
-                objectMapper.readTree(configJson)
-            } catch (e: JsonParseException) {
-                throw TriggerConfigInvalidException("triggerConfig는 유효한 JSON 객체여야 합니다.")
-            }
-        if (node == null || !node.isObject) {
-            throw TriggerConfigInvalidException("triggerConfig는 유효한 JSON 객체여야 합니다.")
+        val node = readJson(configJson)
+        if (!node.isObject) {
+            throw TriggerConfigInvalidException(MSG_INVALID_JSON)
         }
         return node
+    }
+
+    private fun readJson(configJson: String): JsonNode {
+        if (configJson.isBlank()) {
+            throw TriggerConfigInvalidException(MSG_INVALID_JSON)
+        }
+        return try {
+            objectMapper.readTree(configJson)
+        } catch (e: JsonParseException) {
+            throw TriggerConfigInvalidException(MSG_INVALID_JSON, e)
+        }
     }
 
     private fun validateScheduled(node: JsonNode) {
@@ -71,11 +75,10 @@ object TriggerConfig {
         try {
             CronExpression.parse(cron)
         } catch (e: IllegalArgumentException) {
-            throw TriggerConfigInvalidException("cron 표현식을 파싱할 수 없습니다: $cron")
+            throw TriggerConfigInvalidException("cron 표현식을 파싱할 수 없습니다: $cron", e)
         }
     }
 
-    @Suppress("ThrowsCount")
     private fun validateIssueUpdated(node: JsonNode) {
         val fieldsNode = node.get(FIELD_FIELDS) ?: return
         if (fieldsNode.isNull) return
