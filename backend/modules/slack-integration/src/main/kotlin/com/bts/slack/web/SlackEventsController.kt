@@ -64,6 +64,7 @@ class SlackEventsController(
      * @return `url_verification` 은 `{"challenge": …}` 200, 그 외 정상 처리·무시는 빈 200,
      *   서명 검증 실패는 빈 401.
      */
+    @Suppress("ReturnCount") // 서명 거부·파싱 실패·타입 분기별 guard clause 가 흐름을 명확히 한다(SlackSignatureVerifier.isValid 동형)
     @PostMapping(SLACK_EVENTS_PATH)
     fun receive(
         @RequestHeader(name = TIMESTAMP_HEADER, required = false) timestamp: String?,
@@ -95,6 +96,7 @@ class SlackEventsController(
      * 즉시 빈 200 을 반환한다(3초 룰, 위임은 `@Async` 라 블록하지 않는다). 그 외 이벤트 타입이거나
      * unfurl 대상을 특정할 teamId·channel·messageTs 가 없으면(방어적 파싱) 무시한다.
      */
+    @Suppress("ReturnCount") // link_shared 아님/필수 필드 부재별 guard clause=무시(200) 조기 반환
     private fun handleEventCallback(envelope: SlackEventEnvelope): ResponseEntity<Any> {
         val event = envelope.event
         val teamId = envelope.teamId
@@ -126,6 +128,7 @@ class SlackEventsController(
      * @return 유효한 JSON 봉투. 파싱 실패(유효한 JSON 이 아님)면 `null`(무시 — 400 대신 빈 200으로
      *   수렴시켜 불필요한 Slack 재전송을 유발하지 않는다. 원문·예외 message 는 로그에 남기지 않는다).
      */
+    @Suppress("SwallowedException") // 파싱 실패 원인은 무시(200 수렴)로 의도한 처리 — 예외 message 는 노출하지 않는다
     private fun parseEnvelope(rawBody: String): SlackEventEnvelope? =
         try {
             objectMapper.readValue(rawBody, SlackEventEnvelope::class.java)
