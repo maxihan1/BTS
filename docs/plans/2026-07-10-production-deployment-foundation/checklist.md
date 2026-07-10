@@ -11,17 +11,20 @@
 - [x] prod 프로파일·env 키·redis 미사용 확인
 
 ## P1 조립 모듈 신설
-- [ ] `backend/modules/app` 모듈 + settings.gradle.kts 등록
-- [ ] `build.gradle.kts` — 8개 모듈 의존 + application 플러그인 + bootJar
-- [ ] `com.bts.app.BtsApplication` (`scanBasePackages = com.bts, com.atlas.bts`)
-- [ ] 기존 2개 @SpringBootApplication 스캔 제외 필터
-- [ ] @EnableScheduling 단일화
-- [ ] 로컬 dev 인프라(docker-compose.dev.yml) 대상 컨텍스트 로드 성공
+- [x] `backend/modules/app` 모듈 + settings.gradle.kts 등록
+- [x] `build.gradle.kts` — 8개 모듈 의존 + application 플러그인 + bootJar (+flyway/jdbc)
+- [x] `com.bts.app.BtsApplication` (`scanBasePackages = com.bts, com.atlas.bts` + FQN 이름생성기)
+- [x] 기존 2개 @SpringBootApplication 스캔 제외 필터 (+ SchedulingConfiguration REGEX 제외)
+- [x] @EnableScheduling 단일화
+- [x] **컴파일 성공** (8개 모듈 jar + jOOQ codegen 통과)
+- [ ] 컨텍스트 로드 성공 → **prod 프로파일 필요**로 판명 (P2로 이관)
 
 ## P2 통합 Flyway/설정/보안/cross-BC
-- [ ] 모듈별 다중 Flyway 빈 (이력 테이블 분리) — 실행 순서 포함
-- [ ] 통합 application.yml + application-prod.yml (단일 datasource/port, BC 키 병합)
-- [ ] cross-BC 결선 prod 승격 (Workflow* 등 NoSuchBean 순차 해소)
+- [x] 모듈별 다중 Flyway 빈 (이력 테이블 분리) — FlywayAssemblyConfig, 실행 순서 포함
+- [~] 통합 application.yml (base 완료) — application-prod.yml 대기
+- [ ] 로컬 RSA 테스트키 생성 + prod 프로파일 컨텍스트 로드
+- [ ] cross-BC 결선 prod 승격 (prod 프로파일이 실제 resolver 활성화로 해소, boot-until-green)
+- [ ] allow-bean-definition-overriding 오버라이드 로그 감사 (진짜 충돌 없는지)
 - [ ] SecurityFilterChain @Order 정렬 (security-engineer 검토)
 - [ ] 마이그레이션 전량 적용 + actuator /health UP
 

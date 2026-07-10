@@ -30,7 +30,36 @@
 - prod env 키(identity 기준): BTS_DB_URL/USERNAME/PASSWORD · BTS_AUTH_ISSUER_URI · BTS_JWT_PRIVATE_KEY_PATH · BTS_LDAP_* · BTS_WEBAUTHN_* · BTS_BOOTSTRAP_ADMIN_USERNAME. + minio 키(issue/search 모듈), clamav host/port.
 - 프론트: Vite build → apps/web/dist. nginx 서빙 대상.
 
+## 2026-07-10 — P1 실행 로그 (조립 모듈 신설 + 부팅 디버깅)
+
+브랜치 `deploy/prod-foundation`(origin/main=fd7e60005 기반, FR-CA-02 포함).
+
+**완료.**
+- `backend/modules/app` 조립 모듈 (settings.gradle.kts 등록). 8개 BC + spring-boot-starter-web/actuator/jdbc + flyway-core/database-postgresql. **컴파일 성공**.
+- `com.bts.app.BtsApplication` — `@SpringBootApplication @EnableScheduling @ComponentScan(basePackages=[com.bts, com.atlas.bts], nameGenerator=FullyQualifiedAnnotationBeanNameGenerator, excludeFilters=[IdentityAccessApplication·IssueTrackingApplication·*.SchedulingConfiguration])`.
+- `FlywayAssemblyConfig` — 모듈별 이력 테이블(`flyway_history_<bc>`) 순차 마이그레이션 (identity→issue→workflow→notification→agile→search→slack).
+- 통합 `application.yml` (dev 기본값 + ${ENV} prod 주입, flyway.enabled=false, sql.init.mode=never, allow-bean-definition-overriding=true).
+- identity 마이그레이션 서브디렉토리 정규화(커밋 fc8e75ac1) — FR-CA-02 V034 포함 34개 전량 이동, 루트 잔존 0.
+
+**부팅 디버깅 순서 (BtsApplicationContextTest, dev postgres 5433).**
+1. `Unresolved reference flywaydb` → app에 flyway 컴파일 의존 추가.
+2. `ConflictingBeanDefinitionException schedulingConfiguration` (issue·notification·search) → REGEX 제외.
+3. `ConflictingBeanDefinitionException jacksonNullableConfiguration` (issue·agile) → **FullyQualifiedAnnotationBeanNameGenerator**.
+4. `BeanDefinitionOverrideException jsonNullableModule` (@Bean 메서드명, FQN 밖) → `allow-bean-definition-overriding=true`. ⚠️ 오버라이드 목록 로그 감사 필요(P2).
+5. `NoUniqueBeanDefinitionException IssuePermissionResolver` — **핵심**.
+
+**★ 핵심 발견 — 조립 앱은 prod 프로파일 산출물.**
+- 권한 포트는 프로파일 배타 구현: `IdentityAccess*Resolver`(@Profile("prod"), 실제 DB기반) ↔ `DevAllow*`/`AlwaysAllow*`(@Profile("!prod"), 스텁).
+- **프로파일 없이** 부팅→issue AlwaysAllow + identity DevAllow(둘 다 !prod) 동시활성 충돌. **prod 프로파일**→실제 resolver 하나만 활성, 깨끗이 해소(auth-bypass 위험 없음, 설계의도). prod 활성 빈 35개.
+- prod 부팅 추가 필요: `BTS_AUTH_ISSUER_URI` + `BTS_JWT_PRIVATE_KEY_PATH`(RSA CRT PEM, PemFileKeyProvider fail-fast). 로컬 검증용 테스트 RSA키 생성 필요.
+
+**⚠️ 사고/복구 — 멀티세션 브랜치 바꿔치기 (learnings 후보).**
+- 다른 세션(FR-CA-02 iCal #250)이 작업 중 `git checkout deploy/prod-foundation→main`을 실행해 HEAD가 몰래 main으로 이동. 그 상태에서 내 identity-move 커밋이 **main에 잘못 안착**. `.bts-cache 멀티세션 충돌` 메모리가 경고한 케이스.
+- 복구: (1) app 스캐폴드 커밋해 트리 정리 → (2) `git rebase --onto main 7a36fa07d deploy/prod-foundation`(docs 커밋 재배치) → (3) `git branch -f main origin/main`(main 원복). 모든 커밋 브랜치 도달 가능 유지, main 무오염 확인.
+- **교훈**: 장시간 작업 중 주기적으로 `git rev-parse --abbrev-ref HEAD` 확인. 커밋 직후 브랜치 검증. 멀티세션 동시 작업 시 브랜치 전환 위험.
+
 ## 다음 세션 진입점
 
-- Maxi 승인 대기 중(P1 착수 게이트). 승인 시 worktree `.worktrees/prod-foundation`에서 P1(조립 모듈)부터.
-- P1은 "boot until green" 반복 — NoSuchBean/빈충돌/보안체인 순서를 로그 보고 순차 해소. 추측 금지, 실제 에러 로그 기반.
+- **P2 계속**: (1) 조립 앱 `application-prod.yml` 작성, (2) 로컬 RSA 테스트키 생성 + prod 프로파일로 BtsApplicationContextTest 재실행, (3) prod boot-until-green(35 prod 빈 활성 후 추가 config/NoSuchBean 순차 해소), (4) allow-overriding 오버라이드 로그 감사.
+- 그 후 P3(Docker/compose) → P4(로컬 전체 스택) → P5(서버, 별도 승인).
+- 실제 에러 로그 기반으로만. 권한/보안 배선은 security-engineer 검토 대상.
