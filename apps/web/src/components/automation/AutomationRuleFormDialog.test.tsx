@@ -7,6 +7,7 @@ import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
 import { createElement } from 'react'
 import type { JSX, ReactNode } from 'react'
+import { toast } from 'sonner'
 import { AutomationRuleFormDialog } from './AutomationRuleFormDialog'
 import { automationRuleHandlers } from '@/mocks/automation-rule-handlers'
 import { DEFAULT_AUTOMATION_PROJECT_KEY, resetAutomationRuleStore } from '@/mocks/automation-rule-fixtures'
@@ -16,6 +17,13 @@ import type {
   CreateAutomationRuleInput,
   PatchAutomationRuleInput,
 } from '@/api/automation-rules.types'
+
+vi.mock('sonner', () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+  },
+}))
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MSW 서버 설정 — useAutomationRules.test.tsx / automation-rules.test.ts와 동형
@@ -31,6 +39,7 @@ beforeEach(() => {
 afterEach(() => {
   server.resetHandlers()
   resetAutomationRuleStore()
+  vi.clearAllMocks()
   document.cookie = 'XSRF-TOKEN=; Max-Age=0'
 })
 afterAll(() => server.close())
@@ -402,11 +411,13 @@ describe('AutomationRuleFormDialog — key 재마운트(stale state 회피)', ()
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 409(OCC 버전 충돌) — 목록 invalidate (스펙 §4 FR-7 · §6 E5 · §2 S4: 409는 refetch 유도)
+// 409(OCC 버전 충돌) — 폼 자동 닫기 + 목록 invalidate + 토스트 (/review F1)
+// (스펙 §4 FR-7 · §6 E5 · §2 S4: 409는 refetch 유도. 폼을 열어둔 채 재시도하면
+// stale version으로 무한 409에 빠지므로, 폼을 닫고 사용자가 fresh 데이터로 재오픈하게 한다.)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('AutomationRuleFormDialog — 409 버전 충돌 시 목록 invalidate', () => {
-  it('수정 저장이 409로 실패하면 자동화 룰 목록 쿼리를 invalidate하고 에러 메시지를 표시한다', async () => {
+describe('AutomationRuleFormDialog — 409 버전 충돌 시 폼 자동 닫기', () => {
+  it('수정 저장이 409로 실패하면 목록 쿼리를 invalidate하고 토스트를 표시하며 폼을 닫는다', async () => {
     server.use(
       http.patch('/api/v1/projects/:projectKey/automation/rules/:id', () =>
         HttpResponse.json(
@@ -434,11 +445,66 @@ describe('AutomationRuleFormDialog — 409 버전 충돌 시 목록 invalidate',
     await user.click(screen.getByTestId('automation-rule-save-button'))
 
     await waitFor(() => {
-      expect(
-        screen.getByText('다른 곳에서 먼저 변경되었습니다. 최신 정보를 다시 불러온 뒤 시도해주세요.'),
-      ).toBeInTheDocument()
+      expect(onOpenChange).toHaveBeenCalledWith(false)
     })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: AUTOMATION_RULES_QUERY_KEY(PROJECT_KEY) })
+    expect(toast.error).toHaveBeenCalledWith(
+      '다른 곳에서 먼저 변경되었습니다. 최신 정보로 다시 열어 시도해주세요.',
+    )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 비-409 에러 — 폼 유지 + submitError 표시 (/review F1 분기 확인 · F2 오류코드 매핑)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AutomationRuleFormDialog — 비-409 에러는 폼을 유지한다', () => {
+  it('500(AUTOMATION_INTERNAL_ERROR) 실패 시 폼이 닫히지 않고 매핑된 오류 메시지가 표시된다', async () => {
+    server.use(
+      http.patch('/api/v1/projects/:projectKey/automation/rules/:id', () =>
+        HttpResponse.json({ errorCode: 'AUTOMATION_INTERNAL_ERROR' }, { status: 500 }),
+      ),
+    )
+    const onOpenChange = vi.fn()
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={onOpenChange}
+        editingRule={SCHEDULED_EDIT_RULE}
+      />,
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => {
+      expect(screen.getByText('서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')).toBeInTheDocument()
+    })
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('401(AUTOMATION_UNAUTHENTICATED) 실패 시 재로그인 안내 메시지가 표시된다', async () => {
+    server.use(
+      http.patch('/api/v1/projects/:projectKey/automation/rules/:id', () =>
+        HttpResponse.json({ errorCode: 'AUTOMATION_UNAUTHENTICATED' }, { status: 401 }),
+      ),
+    )
+    const onOpenChange = vi.fn()
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={onOpenChange}
+        editingRule={SCHEDULED_EDIT_RULE}
+      />,
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => {
+      expect(screen.getByText('세션이 만료되었습니다. 다시 로그인해주세요.')).toBeInTheDocument()
+    })
     expect(onOpenChange).not.toHaveBeenCalledWith(false)
   })
 })
