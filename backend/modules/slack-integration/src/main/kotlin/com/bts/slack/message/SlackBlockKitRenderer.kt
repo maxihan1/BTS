@@ -4,6 +4,8 @@ package com.bts.slack.message
 
 import com.bts.shared.issue.IssueUnfurlView
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ArrayNode
+import com.fasterxml.jackson.databind.node.ObjectNode
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 
@@ -51,18 +53,7 @@ class SlackBlockKitRenderer(
 
         val blocks =
             objectMapper.createArrayNode().apply {
-                add(
-                    objectMapper.createObjectNode().apply {
-                        put("type", "section")
-                        set<com.fasterxml.jackson.databind.node.ObjectNode>(
-                            "text",
-                            objectMapper.createObjectNode().apply {
-                                put("type", "mrkdwn")
-                                put("text", mrkdwn)
-                            },
-                        )
-                    },
-                )
+                add(sectionBlock(mrkdwnText(mrkdwn)))
             }
 
         return RenderedSlackMessage(
@@ -81,28 +72,20 @@ class SlackBlockKitRenderer(
      * @return `{"blocks": [...]}` 형태의 카드 JSON — [com.bts.slack.message.SlackUnfurlClient]가 URL 키에
      *   매핑해 `chat.unfurl`의 `unfurls`에 싣는다.
      */
-    fun renderUnfurlCard(view: IssueUnfurlView): com.fasterxml.jackson.databind.node.ObjectNode {
-        val titleSection =
-            objectMapper.createObjectNode().apply {
-                put("type", "section")
-                set<com.fasterxml.jackson.databind.node.ObjectNode>(
-                    "text",
-                    mrkdwnText("<${issueUrl(view.issueKey)}|${view.issueKey}> ${view.summary}"),
-                )
-            }
+    fun renderUnfurlCard(view: IssueUnfurlView): ObjectNode {
+        val titleSection = sectionBlock(mrkdwnText("<${issueUrl(view.issueKey)}|${view.issueKey}> ${view.summary}"))
 
         val assigneeLabel = view.assigneeDisplayName ?: UNASSIGNED_LABEL
+        val fields =
+            objectMapper.createArrayNode().apply {
+                add(mrkdwnText("*상태*\n${view.statusLabel}"))
+                add(mrkdwnText("*우선순위*\n${view.priorityLabel}"))
+                add(mrkdwnText("*담당자*\n$assigneeLabel"))
+            }
         val detailSection =
             objectMapper.createObjectNode().apply {
                 put("type", "section")
-                set<com.fasterxml.jackson.databind.node.ArrayNode>(
-                    "fields",
-                    objectMapper.createArrayNode().apply {
-                        add(mrkdwnText("*상태*\n${view.statusLabel}"))
-                        add(mrkdwnText("*우선순위*\n${view.priorityLabel}"))
-                        add(mrkdwnText("*담당자*\n$assigneeLabel"))
-                    },
-                )
+                set<ArrayNode>("fields", fields)
             }
 
         val blocks =
@@ -112,15 +95,22 @@ class SlackBlockKitRenderer(
             }
 
         return objectMapper.createObjectNode().apply {
-            set<com.fasterxml.jackson.databind.node.ArrayNode>("blocks", blocks)
+            set<ArrayNode>("blocks", blocks)
         }
     }
 
     /** `{atlasBaseUrl}/issues/{issueKey}` — base URL 끝 슬래시를 제거해 이중 슬래시를 막는다. */
     private fun issueUrl(issueKey: String): String = "${atlasBaseUrl.trimEnd('/')}/issues/$issueKey"
 
+    /** `{"type": "section", "text": text}` — 단일 text를 담은 Block Kit section block. */
+    private fun sectionBlock(text: ObjectNode): ObjectNode =
+        objectMapper.createObjectNode().apply {
+            put("type", "section")
+            set<ObjectNode>("text", text)
+        }
+
     /** `{"type": "mrkdwn", "text": text}` — Block Kit text object. */
-    private fun mrkdwnText(text: String): com.fasterxml.jackson.databind.node.ObjectNode =
+    private fun mrkdwnText(text: String): ObjectNode =
         objectMapper.createObjectNode().apply {
             put("type", "mrkdwn")
             put("text", text)
