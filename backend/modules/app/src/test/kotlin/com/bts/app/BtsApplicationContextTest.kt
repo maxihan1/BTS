@@ -4,6 +4,7 @@ package com.bts.app
 
 import org.junit.jupiter.api.Test
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.context.annotation.Import
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -24,6 +25,7 @@ import java.util.Base64
  */
 @SpringBootTest
 @ActiveProfiles("prod")
+@Import(AssemblyGapStubConfig::class)
 class BtsApplicationContextTest {
     @Test
     fun `조립 컨텍스트가 prod 프로파일로 로드된다`() {

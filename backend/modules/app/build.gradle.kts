@@ -57,6 +57,9 @@ dependencies {
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-database-postgresql")
 
+    // BouncyCastle — 조립 앱이 부팅 시 "BC" 보안 프로바이더를 등록(identity PemFileKeyProvider 가 참조).
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78")
+
     // Kotlin 기본
     implementation("org.jetbrains.kotlin:kotlin-reflect")
 

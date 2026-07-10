@@ -50,7 +50,13 @@ class FlywayAssemblyConfig {
                         .dataSource(dataSource)
                         .locations(location)
                         .table("flyway_history_$name")
+                        // 공유 public 스키마 + BC 별 이력 테이블 조합의 핵심 설정.
+                        // identity 가 먼저 실행되면 스키마가 비므로, 뒤따르는 모듈은 "non-empty schema + no history table"
+                        // 상태가 된다. baselineOnMigrate=true 라야 이 상태에서 자기 이력 테이블을 초기화한다.
+                        // 단 기본 baselineVersion(=1)은 V001 을 baseline 으로 건너뛰므로, baselineVersion=0 으로 낮춰
+                        // 실제 마이그레이션(V001+)이 하나도 스킵되지 않게 한다.
                         .baselineOnMigrate(true)
+                        .baselineVersion("0")
                         // ${...} 를 Flyway 변수 치환으로 오인하지 않도록 비활성 (모듈 dev yml 과 동일).
                         .placeholders(emptyMap())
                         .placeholderReplacement(false)

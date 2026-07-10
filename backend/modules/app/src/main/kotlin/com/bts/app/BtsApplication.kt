@@ -4,12 +4,14 @@ package com.bts.app
 
 import com.atlas.bts.identity.IdentityAccessApplication
 import com.bts.issue.IssueTrackingApplication
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication
 import org.springframework.context.annotation.ComponentScan
 import org.springframework.context.annotation.FilterType
 import org.springframework.context.annotation.FullyQualifiedAnnotationBeanNameGenerator
 import org.springframework.scheduling.annotation.EnableScheduling
+import java.security.Security
 
 /**
  * BTS 전체 조립 앱.
@@ -48,7 +50,18 @@ import org.springframework.scheduling.annotation.EnableScheduling
         ),
     ],
 )
-class BtsApplication
+class BtsApplication {
+    companion object {
+        init {
+            // identity-access PemFileKeyProvider(@Profile("prod")) 가 JcaPEMKeyConverter.setProvider("BC") 로
+            // BouncyCastle 를 참조하나, 운영 main 코드엔 등록이 없다(identity 테스트만 수동 등록 — identity 단독 배포
+            // 부재로 잠복). 배포 산출물인 조립 앱이 진입점 클래스 로드 시점에 한 번 등록한다(부팅·@SpringBootTest 공통).
+            if (Security.getProvider("BC") == null) {
+                Security.addProvider(BouncyCastleProvider())
+            }
+        }
+    }
+}
 
 @Suppress("SpreadOperator")
 fun main(args: Array<String>) {
