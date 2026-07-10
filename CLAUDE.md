@@ -7,7 +7,7 @@
 
 **BTS (Project Atlas)** — 사내 1,000명 규모 협업 워크스페이스. Atlas Issues (이슈 트래커) + Atlas Wiki (v0.5 예정). Kotlin/Spring + React 19, Naver Cloud Docker Compose 단일 호스트. Maxi 1인 + Claude Code 개발 모델.
 
-**현재 단계**. **Phase 1 진행 중** (123 FR, 진척 현황은 `docs/plan/progress.html` / `docs/plan/README.md`). backend 8개 모듈(identity-access · issue-tracking · project-workflow · shared-kernel · agile-planning · notification-dashboard · search-export-import · slack-integration) + `apps/web` SPA 구현 중. SDD v0.5.0.
+**현재 단계**. **Phase 1 진행 중** (123 FR, 진척 현황은 `docs/plan/progress.html` / `docs/plan/README.md`). backend 9개 모듈(identity-access · issue-tracking · project-workflow · shared-kernel · agile-planning · notification-dashboard · search-export-import · slack-integration · automation) + `apps/web` SPA 구현 중. SDD v0.5.0.
 
 - 워크플로우. `/bts` 스킬 체인, `scripts/workflow/*` (Node 22+ 필요)
 - 빌드/실행. Gradle / pnpm / Docker Compose — 이미 적용 중 (아래 §자주 쓰는 명령어)
