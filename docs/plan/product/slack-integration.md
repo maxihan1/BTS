@@ -36,12 +36,12 @@
 
 **우선순위**. 필수 | **선행**. §2.1, notification-dashboard §2.2 | **Plan slug**. `slack/notifications`
 
-- [ ] D1. 도메인 — SlackNotificationChannel (책임. backend-engineer)
-- [ ] D2. 명세 — DM vs 채널 라우팅. 메시지 포맷 (Block Kit) (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `user_slack_mapping(user_id, slack_user_id)` (책임. db-engineer)
-- [ ] D4. 백엔드 — Channel 추상 구현 (Slack). Bolt `chat.postMessage` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — Mockito + slack-api mock (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 사용자 ↔ Slack 계정 매핑 페이지 (책임. designer → frontend-engineer)
+- [x] D1. 도메인 — SlackNotificationChannel (책임. backend-engineer) *[PR #252. deviation. 비동기 pgmq 큐(`q_slack_deliveries`) — notification `SlackChannelSender`(producer) + slack `SlackDeliveryWorker`(consumer), BC 격리 JSON 경계. issue-tracking `IssueAssigned` 이벤트 신설로 할당 알림 파이프라인 수리(ADR)]*
+- [x] D2. 명세 — DM vs 채널 라우팅. 메시지 포맷 (Block Kit) (책임. backend-engineer) *[PR #252. DM 중심(채널 라우팅은 FR-SL-06). `SlackBlockKitRenderer`(제목+이슈링크 mrkdwn). spec/ADR]*
+- [x] D3. 데이터 모델 — `user_slack_mapping(user_id, slack_user_id)` (책임. db-engineer) *[PR #252. V701. `user_slack_mapping` + `slack_delivery_log`(dedup, effectively-once). JdbcTemplate]*
+- [x] D4. 백엔드 — Channel 추상 구현 (Slack). Bolt `chat.postMessage` (책임. backend-engineer) *[PR #252. deviation. Bolt→slack-api-client `chat.postMessage`(FR-SL-01 관례). pgmq consumer 워커(vt/재시도/dead-letter), 봇토큰 3중 미노출, exists→send→record dedup 순서]*
+- [x] D5. 백엔드 테스트 — Mockito + slack-api mock (책임. backend-engineer) *[PR #252. mockk. SlackMessageClientTest·SlackBlockKitRendererTest·SlackUserMappingServiceIntegrationTest·SlackDeliveryWorkerIntegrationTest(9, dead-letter/poison 포함). Testcontainers pgmq 이미지]*
+- [ ] D6. 프론트 UI — 사용자 ↔ Slack 계정 매핑 페이지 (책임. designer → frontend-engineer) *[매핑 영속화·서비스(link/unlink `SlackUserMappingService`)는 PR #252에 존재. 연결 플로우 UI/엔드포인트는 후속(스코프 결정)]*
 - [ ] D7. E2E (책임. qa-engineer)
 
 ### §2.3 FR-SL-06 — 채널 ↔ 프로젝트 매핑
