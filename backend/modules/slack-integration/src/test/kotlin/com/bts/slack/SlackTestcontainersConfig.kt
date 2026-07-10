@@ -103,9 +103,9 @@ class SlackTestcontainersConfig {
          * JVM 단위 singleton PostgreSQL 16-alpine container.
          * `.apply { start() }` 로 JVM 시작 시 한 번만 기동. Ryuk 이 종료 시 자동 정리한다.
          */
-        // V701 이 q_slack_deliveries pgmq 큐를 생성하므로 pgmq 바이너리 포함 이미지 사용(issue-tracking·notification 선례).
         @JvmStatic
         val postgres: PostgreSQLContainer<*> =
+            // V701(FR-SL-02)이 q_slack_deliveries pgmq 큐를 생성하므로 pgmq 바이너리 포함 이미지 사용.
             PostgreSQLContainer(
                 DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
                     .asCompatibleSubstituteFor("postgres"),
