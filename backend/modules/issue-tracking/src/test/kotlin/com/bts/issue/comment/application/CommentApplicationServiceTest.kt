@@ -9,11 +9,15 @@ import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.event.IssueCommented
+import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.repository.IssueTestcontainersBase
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import io.mockk.mockk
+import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -41,6 +45,8 @@ import java.util.UUID
  * - T3-C. list — VIEW 권한 없는 actor → [IssueAccessDeniedException] (403), scope=[IssueScope.Issue].
  * - T3-D. list — bodyHtml 은 [com.bts.issue.markdown.MarkdownRenderer.renderSafe] 로 렌더링됨.
  * - T3-E. list — created_at ASC 정렬.
+ * - T3-H. create — [IssueEventPublisher.publish] 가 [IssueCommented] 이벤트로 호출됨 (FR-AT-01 Task 10,
+ *   mockk — [IssueEventPublisher] 는 pgmq 발행 아웃바운드 어댑터라 실 DB 검증 대상이 아니다).
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class CommentApplicationServiceTest : IssueTestcontainersBase() {
@@ -49,6 +55,7 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
 
     private lateinit var commentRepository: CommentRepository
     private lateinit var resolver: RecordingPermissionResolver
+    private lateinit var eventPublisher: IssueEventPublisher
     private lateinit var service: CommentApplicationService
 
     private val actorUuid: UUID = UUID.fromString("11111111-1111-4111-8111-111111111111")
@@ -61,7 +68,8 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
     fun setupService() {
         commentRepository = CommentRepository(dsl)
         resolver = RecordingPermissionResolver()
-        service = CommentApplicationService(commentRepository, repository, resolver)
+        eventPublisher = mockk(relaxed = true)
+        service = CommentApplicationService(commentRepository, repository, resolver, eventPublisher)
         if (taskTypeId == null) {
             taskTypeId = loadTaskTypeId()
         }
@@ -246,12 +254,44 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
         val issue = insertIssue(7L)
         val fixedInstant = Instant.parse("2024-06-15T10:30:00Z")
         val fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC)
-        val fixedClockService = CommentApplicationService(commentRepository, repository, resolver, fixedClock)
+        val fixedClockService = CommentApplicationService(commentRepository, repository, resolver, eventPublisher, fixedClock)
 
         val comment = fixedClockService.create(actor, issue.key, "본문", ActorId(authorUuid))
 
         assertThat(comment.createdAt).isEqualTo(fixedInstant)
         assertThat(comment.updatedAt).isEqualTo(fixedInstant)
+    }
+
+    // ── T3-H. create — IssueCommented 이벤트 발행 (FR-AT-01 Task 10) ──────────
+
+    /**
+     * Given  UPDATE 권한 보유 actor
+     * When   create 호출
+     * Then   [IssueEventPublisher.publish] 가 [IssueCommented] 이벤트 1건으로 호출된다
+     *        (issueKey/projectKey/commentId/actorId/occurredAt 필드 정합).
+     */
+    @Test
+    @Order(8)
+    fun `T3-H - create 는 IssueCommented 이벤트를 발행한다`() {
+        val issue = insertIssue(8L)
+        val fixedInstant = Instant.parse("2024-06-15T10:30:00Z")
+        val fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC)
+        val fixedClockService = CommentApplicationService(commentRepository, repository, resolver, eventPublisher, fixedClock)
+
+        val comment = fixedClockService.create(actor, issue.key, "본문", ActorId(authorUuid))
+
+        verify(exactly = 1) {
+            eventPublisher.publish(
+                match {
+                    it is IssueCommented &&
+                        it.issueKey == issue.key &&
+                        it.projectKey == issue.key.projectPrefix &&
+                        it.commentId == comment.id &&
+                        it.actorId == actor &&
+                        it.occurredAt == fixedInstant
+                },
+            )
+        }
     }
 
     /** 댓글 도메인 객체 생성 헬퍼 (직접 insert 용 — createdAt 제어 목적). */
