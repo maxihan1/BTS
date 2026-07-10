@@ -45,9 +45,27 @@ SDD 참조: 08장 (자동화 엔진). 선행: FR-AT-01(완료, PR #251/#254).
 - **기존 결정 충돌**: 없음 (FR-AT-01 ADR D4 이음선을 그대로 소비)
 - **관련 ADR**: [docs/decisions/2026-07-11-fr-at-02-automation-actions.md](../decisions/2026-07-11-fr-at-02-automation-actions.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-11-fr-at-02-automation-actions.md](../specs/2026-07-11-fr-at-02-automation-actions.md)
+
+핵심 시나리오 3줄 요약.
+- executor 워커가 `q_automation_execution`(FR-AT-01 이음선) 첫 소비자로서 룰의 액션 리스트를 순차 실행
+- 이슈 변경 3종(SetField/Assign/AddComment)은 shared-kernel `IssueMutationPort`(동기)로 위임,
+  외부호출 1종(CallWebhook)은 기존 `OutboundUrlValidator`(SSRF) 재사용
+- 권한은 **선택 가능한 rule actor**(기본 created_by)로 fail-closed 강제 + dry-run + 체인 상한
+
+핵심 결정(ADR + Maxi 확정).
+- cross-BC 실행 = 동기 커맨드 포트 / rule actor = 선택형(지라 Actor) / 댓글 작성자 = rule actor
+- AddComment 템플릿 변수 `{{ var }}` 포함 / 무한루프 = 런타임 상한 + FR-AT-04 위임 / 이번 PR = D1~D5
+
+## Brainstorming Check
+
+✅ 통과 (Phase B adversarial 검토 — gap 4건 발견 후 해소).
+- Gap A 댓글 작성자 → 선택 가능한 rule actor(지라 모델), D3 정제
+- Gap B 템플릿 변수 → 포함(FR10 신설)
+- Gap C 무한루프(왕복 시 깊이 리셋) → 런타임 상한 + FR-AT-04 위임(FR8 정제)
+- Gap D at-least-once 중복 → best-effort 수용, dedup 은 FR-AT-05 위임(EC9)
 
 ## Plan (← /bts-plan 채움)
 

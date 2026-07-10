@@ -58,25 +58,46 @@ automation은 issue-tracking을 직접 import하지 않는다(BC 격리). 이슈
 **대안 기각**: 커맨드 이벤트 큐(q_automation_commands)로 비동기 위임 — dry-run·실행 결과를 동기로 받지
 못하고 큐가 하나 늘며 FR-AT-05 실행 이력과 어긋남. 기각.
 
-### D3. 실행 권한 모델 — rule actor = 룰 생성자 (fail-closed)
+### D3. 실행 권한 모델 — rule actor = 선택 가능한 실행 주체 (기본 생성자, fail-closed)
 
-액션은 **룰 생성자(`automation_rules.created_by`)의 권한**으로 실행된다(Maxi 확정 — Jira rule-actor 모델).
+액션은 **룰의 rule actor 권한**으로 실행된다. rule actor 는 **룰마다 선택 가능한 사용자**이며 기본값은
+룰 생성자다(Maxi 확정 — Jira "Actor" 설정 모델. 원래 D3 "룰 생성자 고정"을 선택형으로 정제).
 
-- executor가 액션 실행 전, 커맨드 포트에 actor=`created_by`를 전달. issue-tracking이 그 actor의
+- `automation_rules.actor_user_id`(신규 컬럼, NOT NULL, 기본값=생성 시 `created_by`). 룰 편집에서 이
+  프로젝트의 다른 사용자로 변경 가능(변경 UI 는 D6 후속 — 본 PR 은 스키마·도메인·CRUD payload 필드까지).
+- 이 actor 가 **모든 액션의 권한 주체 + AddComment 의 댓글 작성자**를 결정한다(일관된 단일 actor).
+- executor 가 액션 실행 전, 커맨드 포트에 actor=`actor_user_id` 전달. issue-tracking 이 그 actor 의
   이슈 필드 편집/담당자 지정/댓글 작성 권한을 강제(기존 이슈 권한 경로 재사용).
-- 권한 부족 시 **fail-closed** — 해당 액션 거부, 실행 이력에 `PERMISSION_DENIED` 기록(FR-AT-05 이음선),
-  다음 액션 진행 여부는 D5 정책.
+- 권한 부족 시 **fail-closed** — 해당 액션 거부, `PERMISSION_DENIED` 기록(FR-AT-05 이음선), best-effort 진행.
+- rule actor 는 유효한 프로젝트 사용자여야 한다(형식 검증). 실제 권한 충족 여부는 실행 시점 fail-closed 판정.
 - **대안 기각**: (a) 트리거 유발자 actor — 유발자마다 실행 주체가 바뀌어 예측 불가, 저권한→고권한 우발
-  실행 위험. (b) 자동화 시스템 액터 — 액터·권한 관리 UI 신설 필요, FR-AT-02 범위 초과. 둘 다 기각.
+  실행 위험. (b) 자동화 시스템 봇 액터 — 봇 계정·author 스키마 신설 필요, 범위 초과. 둘 다 기각.
+
+### D3b. AddComment 템플릿 변수 (Maxi 확정 — 포함)
+
+AddComment(및 문자열 값을 받는 SetField/CallWebhook)의 본문에 **템플릿 변수 치환**을 지원한다
+(SDD 8.4 "템플릿 변수 지원" 충족).
+
+- 문법: `{{ path.to.var }}` **단순 치환만**(로직/조건/표현식 없음 — 조건은 FR-AT-03 영역).
+- 변수 컨텍스트: 대상 이슈 스냅샷 + 트리거 이벤트에서 구성. 예: `{{ issue.key }}` / `{{ issue.summary }}` /
+  `{{ issue.status }}` / `{{ issue.priority }}` / `{{ issue.assignee.name }}` / `{{ trigger.type }}` / `{{ actor.name }}`.
+- 미정의 변수 → **빈 문자열**(관대), 경고 로그. 문법 오류(닫히지 않은 `{{`)는 리터럴 유지.
+- XSS: 치환값은 댓글 저장 시 기존 issue-tracking 댓글 새니타이즈 경로를 그대로 탄다(포트가 도메인 우회 안 함).
 
 ### D4. dry-run 모드 + 무한 루프 방지 (체인 깊이)
 
 - **dry-run**: 액션을 실제 커밋하지 않고 "무엇이 바뀔지 + 권한 통과 여부"만 계산해 반환. 커맨드 포트에
   dryRun 플래그 전달, issue-tracking이 검증까지만 수행하고 미커밋. 액션 빌더 UI(D6)의 미리보기 근거.
 - **체인 깊이 제한**: 액션이 이슈를 바꾸면 새 `issue.updated` 이벤트가 발행돼 다른 룰을 다시 발화할 수
-  있다(자동화 체인). automation.md 결정(깊이 10 제한)을 본 FR에서 도입 — `q_automation_execution`
-  payload에 `executionDepth`를 실어 나르고, executor가 10 초과 시 실행 중단(무한 루프 차단).
-  FR-AT-01 enqueuer는 depth=0으로 시작, executor가 유발한 후속 발화는 depth+1.
+  있다(자동화 체인). **주의**: 이 후속 이벤트는 issue-tracking → `q_automation_events` → AutomationEventWorker
+  왕복을 거치며, issue-tracking 이벤트는 automation 의 depth 개념을 모르므로 **깊이 카운터가 왕복에서
+  리셋된다**. 따라서 본 FR 의 런타임 가드는(Maxi 확정 — 런타임 상한 + FR-AT-04 위임):
+  - (a) automation 이 **직접 제어하는 체인**(예: 향후 RunSubrule)에는 `q_automation_execution` payload 의
+    `executionDepth`(기본 0, +1) 적용, 10 초과 중단.
+  - (b) issue-tracking 왕복 사이클에는 **단일 root 트리거당 실행 횟수 상한**(간단 런타임 안전장치) —
+    예: 동일 이슈에 대한 automation 실행을 짧은 창(window) 내 N회로 제한.
+  - (c) 견고한 규칙 사이클(A→B→A) 검출은 **FR-AT-04 규칙 충돌 정적 분석**(룰 저장 시점)에 위임.
+  cross-BC 결합을 늘리는 이벤트 마커 전파(issue-tracking 이벤트에 automation depth 실기)는 기각.
 
 ### D5. 부분 실패 정책 — best-effort 순차 + 상태 집계
 
