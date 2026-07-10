@@ -3,8 +3,9 @@ import { z } from 'zod'
 import { apiGet, apiPost, apiFetch, ApiError } from './client'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Zod 스키마 — 백엔드 view-layer 응답 계약과 1:1 정합 (스펙 FR1/FR2 확정본,
-// 봇 토큰/installedBy/scopes/appId 등 민감/내부 필드는 응답에 없음)
+// Zod 스키마 — 백엔드 view-layer 응답 계약과 1:1 정합.
+// FR-SL-01 스펙 FR1/FR2 확정본(관리자 워크스페이스 설치) + FR-SL-02 스펙 FR3(본인 계정 연결).
+// 봇 토큰/installedBy/scopes/appId/slack_user_id/이메일 등 민감/내부 필드는 응답에 없음(3중 미노출 관례)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Slack 연결 상태 응답 스키마 — `GET /api/v1/slack/installation` */
@@ -35,15 +36,17 @@ export const SlackConnectionSchema = z.object({
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 추론된 타입 (interface 중복 정의 금지)
+// 추론된 타입 (interface 중복 정의 금지) — 위 Zod 스키마 그룹과 동일 순서로 정리
 // ─────────────────────────────────────────────────────────────────────────────
 
+// FR-SL-01(관리자 워크스페이스 설치)
 /** Slack 연결 상태 타입 — Zod 스키마에서 추론 */
 export type SlackInstallation = z.infer<typeof SlackInstallationSchema>
 
 /** Slack authorize URL 응답 타입 — Zod 스키마에서 추론 */
 export type SlackInstallUrl = z.infer<typeof SlackInstallUrlSchema>
 
+// FR-SL-02(본인 계정 연결)
 /** 본인 Slack 계정 연결 상태 타입 — Zod 스키마에서 추론 */
 export type SlackConnection = z.infer<typeof SlackConnectionSchema>
 
