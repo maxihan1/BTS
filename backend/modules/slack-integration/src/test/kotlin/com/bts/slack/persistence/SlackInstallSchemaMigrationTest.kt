@@ -16,8 +16,8 @@ import java.util.UUID
  * Flyway V700 마이그레이션 적용 후 slack_installs 테이블(FR-SL-01 Slack App 설치 + 봇 토큰 보관)을 검증한다.
  *
  * Testcontainers (테스트용 DB 를 도커로 자동 실행하는 라이브러리) 의 PostgreSQL 을 직접 사용하며
- * Spring 컨텍스트 없이 실행한다. slack-integration BC 마이그레이션(V700)은 pgmq 확장을 요구하지 않으므로
- * postgres:16-alpine 이미지로 충분하다 (notification FavoritesSchemaMigrationTest 동일 패턴).
+ * Spring 컨텍스트 없이 실행한다. slack 전체 마이그레이션(V700 + V701)을 적용하는데 V701(FR-SL-02)이
+ * q_slack_deliveries pgmq 큐를 생성하므로 pgmq 바이너리가 포함된 `quay.io/tembo/pg16-pgmq` 이미지를 사용한다.
  *
  * **test-boot 앱 비의존** — [com.bts.slack.SlackIntegrationTestBootApplication] 은 DataSource/Flyway
  * AutoConfiguration 을 제외했으므로(Task 1 인계) 마이그레이션 검증은 부트 클래스에 의존하지 않고
@@ -48,7 +48,10 @@ class SlackInstallSchemaMigrationTest {
          */
         @JvmStatic
         val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(DockerImageName.parse("postgres:16-alpine"))
+            PostgreSQLContainer(
+                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
+                    .asCompatibleSubstituteFor("postgres"),
+            )
                 .withDatabaseName("bts_slack_test")
                 .withUsername("bts")
                 .withPassword("bts_test")

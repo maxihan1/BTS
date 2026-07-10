@@ -28,6 +28,7 @@ import com.bts.issue.domain.IssueSecurityLevelNotInSchemeException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
+import com.bts.issue.event.IssueAssigned
 import com.bts.issue.event.IssueCreated
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueMentioned
@@ -755,7 +756,9 @@ class IssueApplicationService(
      *    false 이면 [AssigneeNotFoundException]. null 이면 exists 호출 생략.
      * 4. 도메인 경유 — [Issue.assignTo] 또는 [Issue.unassign] 호출(불변식 일관성).
      * 5. [IssueRepository.updateAssignee] 호출 — 0 row 이면 [IssueVersionConflictException].
-     * 6. 재조회 → [IssueResponse] 반환.
+     * 6. [IssueAssigned] 이벤트 발행 (q_issue_events 큐) — FR-SL-02 할당 알림 파이프라인 트리거.
+     *    no-op(요청값이 기존 담당자와 동일)이면 앞서 조기 반환되어 발행되지 않는다.
+     * 7. 재조회 → [IssueResponse] 반환.
      *
      * @param actor 변경 행위자.
      * @param key 변경할 이슈 키.
@@ -807,6 +810,7 @@ class IssueApplicationService(
             autoWatch(existing.id.value, listOf(assigneeId))
         }
         recordHistory(before = existing, after = updated, actor = actor, projectId = existing.projectId)
+        eventPublisher.publish(IssueAssigned(issueKey = key, actorId = actor, occurredAt = Instant.now(clock)))
         log.info("issue_assignee_changed key={} assigneeId={} actor={}", key.value, assigneeId, actor.value)
         return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
     }

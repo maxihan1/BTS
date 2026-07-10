@@ -105,7 +105,11 @@ class SlackTestcontainersConfig {
          */
         @JvmStatic
         val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(DockerImageName.parse("postgres:16-alpine"))
+            // V701(FR-SL-02)이 q_slack_deliveries pgmq 큐를 생성하므로 pgmq 바이너리 포함 이미지 사용.
+            PostgreSQLContainer(
+                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
+                    .asCompatibleSubstituteFor("postgres"),
+            )
                 .withDatabaseName("bts_slack_web_it")
                 .withUsername("bts")
                 .withPassword("bts_test")

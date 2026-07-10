@@ -29,6 +29,7 @@ import java.util.UUID
     JsonSubTypes.Type(value = IssueMentioned::class, name = "issue.mentioned"),
     JsonSubTypes.Type(value = IssueDueSoon::class, name = "issue.due_soon"),
     JsonSubTypes.Type(value = IssueOverdue::class, name = "issue.overdue"),
+    JsonSubTypes.Type(value = IssueAssigned::class, name = "issue.assigned"),
 )
 sealed interface IssueDomainEvent
 
@@ -155,5 +156,22 @@ data class IssueDueSoon(
 data class IssueOverdue(
     val issueKey: String,
     val projectKey: String,
+    val occurredAt: Instant,
+) : IssueDomainEvent
+
+/**
+ * 이슈 담당자가 배정 또는 변경되었을 때 발행되는 이벤트 (FR-SL-02 — Slack 할당 알림).
+ *
+ * 담당자가 실제로 바뀔 때만 발행된다. 요청값이 기존 담당자와 동일한 no-op 은 발행하지 않는다
+ * (dedupKey 결정성 유지 — 임의 재발행으로 인한 중복 알림 방지).
+ *
+ * @property issueKey 담당자가 변경된 이슈의 키.
+ * @property actorId 변경을 수행한 행위자 ID. 알림 수신자 자기제외에 사용.
+ * @property occurredAt 이벤트 발생 시각 (UTC).
+ */
+@JsonTypeName("issue.assigned")
+data class IssueAssigned(
+    val issueKey: IssueKey,
+    val actorId: ActorId,
     val occurredAt: Instant,
 ) : IssueDomainEvent
