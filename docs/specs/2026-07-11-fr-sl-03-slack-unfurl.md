@@ -43,7 +43,7 @@ slack-integration BC 최초의 **인바운드 Events API** 구현.
 ## 기능 요구사항 (FR)
 
 - **FR1**. `POST /slack/events` 엔드포인트. `url_verification`(챌린지)와 `event_callback`(`link_shared`) 두 타입 처리. 그 외 타입은 200 ack 후 무시.
-- **FR2**. 요청 서명 검증. `v0=HMAC-SHA256(signing_secret, "v0:{X-Slack-Request-Timestamp}:{raw_body}")`를 `X-Slack-Signature`와 **상수시간 비교**. timestamp 5분 윈도우 밖이면 거부(재전송 방어). `X-Slack-Signature`/`X-Slack-Request-Timestamp` 헤더 **누락 시에도 401**(Brainstorming G3). SDK `SlackSignature.Verifier` 래핑 또는 동등 구현.
+- **FR2**. 요청 서명 검증. `v0=HMAC-SHA256(signing_secret, "v0:{X-Slack-Request-Timestamp}:{raw_body}")`를 `X-Slack-Signature`와 **상수시간 비교**. timestamp 5분 윈도우 밖이면 거부(재전송 방어). `X-Slack-Signature`/`X-Slack-Request-Timestamp` 헤더 **누락·빈 문자열·`v0=`접두 없음·비숫자 timestamp 시에도 401**(Brainstorming G3, 리뷰). ⚠️리뷰: SDK `SlackSignature.Verifier`는 slack-api-client 1.45.4에 **부재**(bolt 전용)이며 비상수시간이므로 사용 금지 → `SlackOAuthStateSigner`의 `MessageDigest.isEqual` **직접 구현**(신규 의존성 금지). signing secret 미설정 시 **검증 스킵 금지·항상 401 거부**.
 - **FR3**. Atlas 이슈 URL 파서. `{bts.atlas.base-url}/issues/{ISSUE_KEY}` 패턴에서 이슈 키 추출. base-url 불일치/패턴 불일치는 스킵. trailing slash·쿼리스트링·fragment 허용.
 - **FR4**. 역방향 매핑. 이벤트의 공유자 `event.user`(slack_user_id) + top-level `team_id` → `findUserIdBySlackUserId(slackUserId, teamId): UUID?`. null이면 스킵.
 - **FR5**. 결합 fail-closed 조회. `IssueUnfurlPort.getVisibleIssueCard(issueKey, viewerUserId): IssueUnfurlView?`(shared-kernel 신규 포트 + issue-tracking 어댑터). 권한확인+상세조회 원자적, 볼 수 없으면 null.
@@ -85,8 +85,8 @@ data class IssueUnfurlView(
 
 ## 데이터 모델 변경
 
-- **V702** (`db/migration/slack-integration/`). 테이블 변경 없음. `user_slack_mapping(slack_user_id, team_id)` **인덱스 추가**(역방향 조회 성능). 예: `CREATE INDEX idx_user_slack_mapping_slack_user ON user_slack_mapping(slack_user_id, team_id);`
-- `SlackUserMappingRepository.findUserIdBySlackUserId(slackUserId, teamId): UUID?` 신규 쿼리(`WHERE slack_user_id = ? AND team_id = ?`).
+- **V702** (`db/migration/slack-integration/`). 테이블 변경 없음. `user_slack_mapping(slack_user_id, team_id)` **UNIQUE 인덱스 추가**(⚠️리뷰: 한 slack_user_id에 두 Atlas 계정 매핑 시 잘못된 viewer 과다노출 fail-open을 스키마로 차단 + 역방향 조회 성능). 예: `CREATE UNIQUE INDEX idx_user_slack_mapping_slack_user ON user_slack_mapping(slack_user_id, team_id);` (선행: FR-SL-02 upsert 중복 가능성 db-engineer 점검).
+- `SlackUserMappingRepository.findUserIdBySlackUserId(slackUserId, teamId): UUID?` 신규 쿼리(`WHERE slack_user_id = ? AND team_id = ?`). **다중행이면 null(fail-closed, arbitrary pick 금지)**.
 
 ## 엣지 케이스
 
