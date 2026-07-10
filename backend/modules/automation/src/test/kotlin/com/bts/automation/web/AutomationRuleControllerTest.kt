@@ -366,14 +366,14 @@ class AutomationRuleControllerTest {
 
     @Test
     @WithMockUser(username = ACTOR_UUID)
-    fun `PATCH version 필드 누락 - 400 (잘못된 바디)`() {
+    fun `PATCH version 타입 불일치 - 400 (잘못된 바디)`() {
         val ruleId = createRule(name = "바디 검증")
 
         mockMvc
             .perform(
                 patch("/api/v1/projects/$PROJECT_KEY/automation/rules/$ruleId")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{"name":"버전 없음"}"""),
+                    .content("""{"version":"숫자아님","name":"타입 불일치"}"""),
             ).andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value("AUTOMATION_MALFORMED_REQUEST"))
     }

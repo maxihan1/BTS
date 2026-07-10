@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
+import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.security.authentication.AnonymousAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -273,6 +274,26 @@ class AutomationRuleExceptionHandler {
         )
     }
 
+    /**
+     * 요청 바디가 유효한 JSON 이 아니거나 필수 필드(예: PATCH `version`)가 누락됨 — 400.
+     *
+     * catch-all 보다 구체적인 예외라 Spring 이 이 핸들러를 우선 매칭한다. 클라이언트 입력 오류를
+     * 500(서버 오류)으로 변질시키지 않는다.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun handleMalformedRequest(
+        @Suppress("UnusedParameter") ex: HttpMessageNotReadableException,
+    ): ProblemDetail {
+        log.info("AUTOMATION_400 malformed_request")
+        return problem(
+            HttpStatus.BAD_REQUEST,
+            "automation-rule-malformed-request",
+            "Bad Request",
+            AUTOMATION_MALFORMED_REQUEST,
+            "요청 본문이 유효하지 않습니다. 필수 필드와 JSON 형식을 확인해 주세요.",
+        )
+    }
+
     /** 분류되지 않은 모든 예외 — 500. 스택트레이스는 서버 로그 전용, 응답에는 일반 메시지만. */
     @ExceptionHandler(Exception::class)
     fun handleInternal(ex: Exception): ProblemDetail {
@@ -310,6 +331,7 @@ class AutomationRuleExceptionHandler {
         const val AUTOMATION_RULE_NOT_FOUND = "AUTOMATION_RULE_NOT_FOUND"
         const val AUTOMATION_RULE_VERSION_CONFLICT = "AUTOMATION_RULE_VERSION_CONFLICT"
         const val AUTOMATION_RULE_INVALID = "AUTOMATION_RULE_INVALID"
+        const val AUTOMATION_MALFORMED_REQUEST = "AUTOMATION_MALFORMED_REQUEST"
         const val AUTOMATION_UNAUTHENTICATED = "AUTOMATION_UNAUTHENTICATED"
         const val AUTOMATION_INTERNAL_ERROR = "AUTOMATION_INTERNAL_ERROR"
     }
