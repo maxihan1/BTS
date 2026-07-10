@@ -61,6 +61,19 @@ COMMENTED 트리거를 위해 issue-tracking에 `IssueCommented` 이벤트를 �
   exhaustive `when`이 컴파일 실패. 전 모듈 `when (event)` grep으로 전수 갱신(`IssueCommented -> false`
   기본, over-send 무해화). [[enum-add-breaks-crossmodule-count-guard]] 패턴.
 
+> **게이트 2 정정 (2026-07-10, 코드리뷰 발견 → Maxi 옵션 A 확정)**. 계획 단계 전제
+> "`IssueCommented`가 `q_issue_events`에 실려도 NotificationWorker가 미지원 타입으로 무해하게 삭제"는
+> **사실과 달랐다** — `NotificationEventType.ISSUE_COMMENTED("issue.commented")`는 origin/main에 이미
+> 존재하는 **지원 타입**이고, V401 시드(FR-NT-01 §9.1.2 매트릭스)에 `issue.commented` →
+> REPORTER/ASSIGNEE/WATCHER/MENTIONED(IN_APP) 정책이 이미 심어져 있다. `q_issue_events` 발행은 무해
+> 삭제가 아니라 **실제 댓글 인앱 알림을 발송**한다. 빠졌던 것은 producer 하나뿐이었고(다른 이벤트는 이미
+> producer 보유), 본 PR의 `IssueCommented` 배선이 **사전 설계된 댓글 알림 경로를 완성**한다. Maxi가
+> **옵션 A(활성화 + 전수 동기화)**로 확정 → `IssueCommented`를 `q_issue_events`에 유지하고, notification
+> 쪽 end-to-end 검증 테스트(수신자 해석·작성자 자기제외·가시성 필터)를 본 PR에 추가한다. 새 FR 없음
+> (FR-NT-01 기존 매트릭스의 producer 완성이라 fr-index/SDD 카운트 불변). 안전성은 `EventRecipientResolver`
+> 의 actor 제외 + fail-closed 가시성 필터로 보장되고, MENTIONED는 댓글 이벤트에 mention 데이터가 없어
+> 0명 매치(멘션은 별도 `IssueMentioned` 이벤트라 중복 없음).
+
 ### D4. 발화 결과 — `q_automation_execution` enqueue (FR-AT-02 이음선)
 
 액션(FR-AT-02) 부재 상태에서 매칭된 트리거의 결과(Maxi 확정 — 실행 큐 enqueue).
