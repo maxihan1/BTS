@@ -37,9 +37,20 @@ Slack이 `link_shared` 이벤트를 백엔드로 전송 → 백엔드가 열람 
 - **기존 결정 충돌**: 없음. FR-SL-01(수신=자체 컨트롤러)·FR-SL-02(봇토큰/매핑) 자산 연장.
 - **관련 ADR**: [docs/decisions/2026-07-11-fr-sl-03-slack-unfurl.md](../decisions/2026-07-11-fr-sl-03-slack-unfurl.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-11-fr-sl-03-slack-unfurl.md](../specs/2026-07-11-fr-sl-03-slack-unfurl.md)
+
+핵심 시나리오 3줄 요약.
+- 연결된 사용자가 볼 수 있는 이슈 URL을 채널에 붙이면 `POST /slack/events`(서명검증)로 수신 → 200 즉시 ack → @Async로 카드 unfurl.
+- 미매핑/무권한/없는 키 → `getVisibleIssueCard` null → unfurl 안 함(fail-closed, 정보 누출 0).
+- 다중 링크는 볼 수 있는 것만 unfurls 맵에 담아 1회 `chat.unfurl`.
+
+신규 구현. ① X-Slack-Signature 검증기(+`BTS_SLACK_SIGNING_SECRET`) ② `POST /slack/events` 컨트롤러 ③ 역방향 매핑 `findUserIdBySlackUserId`+V702 인덱스 ④ `IssueUnfurlPort`(shared-kernel 결합 fail-closed)+issue-tracking 어댑터 ⑤ `chat.unfurl` 클라이언트 ⑥ unfurl 카드 렌더 ⑦ 경계 `@Async` executor.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). 갭 4건 발견·보강 — G1 @Async 경계 executor(NFR6)·G2 test-boot Stub 배선·G3 서명헤더 401+라벨 해석 책임·G4 봇 채널멤버 런북. Maxi 결정 필요 0.
 
 ## Plan (← /bts-plan 채움)
 
