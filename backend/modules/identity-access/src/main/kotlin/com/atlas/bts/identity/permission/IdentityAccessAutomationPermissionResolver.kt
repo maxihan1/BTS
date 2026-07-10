@@ -63,7 +63,7 @@ class IdentityAccessAutomationPermissionResolver(
 
     private companion object {
         /**
-         * 자동화 규칙 관리 권한 코드 (SDD 12.3 정본). V034 시드의 `permission_code` 와 일치한다.
+         * 자동화 규칙 관리 권한 코드 (SDD 12.3 정본). V035 시드의 `permission_code` 와 일치한다.
          */
         const val MANAGE_AUTOMATION_CODE = "MANAGE_AUTOMATION"
     }
