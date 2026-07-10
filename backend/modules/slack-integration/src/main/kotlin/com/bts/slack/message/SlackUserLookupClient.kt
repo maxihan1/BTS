@@ -94,7 +94,7 @@ class SlackUserLookupClient(
                 SlackUserLookupResult.NotFound
             }
             response.error == ERROR_USERS_NOT_FOUND -> SlackUserLookupResult.NotFound
-            response.error == ERROR_MISSING_SCOPE -> SlackUserLookupResult.MissingScope
+            response.error in RECONNECT_REQUIRED_ERRORS -> SlackUserLookupResult.MissingScope
             else -> {
                 log.warn("slack_user_lookup_error error={}", response.error ?: "unknown")
                 SlackUserLookupResult.NotFound
@@ -105,5 +105,11 @@ class SlackUserLookupClient(
     private companion object {
         const val ERROR_USERS_NOT_FOUND = "users_not_found"
         const val ERROR_MISSING_SCOPE = "missing_scope"
+        const val ERROR_INVALID_AUTH = "invalid_auth"
+        const val ERROR_TOKEN_REVOKED = "token_revoked"
+        const val ERROR_ACCOUNT_INACTIVE = "account_inactive"
+        const val ERROR_NOT_AUTHED = "not_authed"
+        val RECONNECT_REQUIRED_ERRORS =
+            setOf(ERROR_MISSING_SCOPE, ERROR_INVALID_AUTH, ERROR_TOKEN_REVOKED, ERROR_ACCOUNT_INACTIVE, ERROR_NOT_AUTHED)
     }
 }
