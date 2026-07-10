@@ -254,7 +254,8 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
         val issue = insertIssue(7L)
         val fixedInstant = Instant.parse("2024-06-15T10:30:00Z")
         val fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC)
-        val fixedClockService = CommentApplicationService(commentRepository, repository, resolver, eventPublisher, fixedClock)
+        val fixedClockService =
+            CommentApplicationService(commentRepository, repository, resolver, eventPublisher, fixedClock)
 
         val comment = fixedClockService.create(actor, issue.key, "본문", ActorId(authorUuid))
 
@@ -276,7 +277,8 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
         val issue = insertIssue(8L)
         val fixedInstant = Instant.parse("2024-06-15T10:30:00Z")
         val fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC)
-        val fixedClockService = CommentApplicationService(commentRepository, repository, resolver, eventPublisher, fixedClock)
+        val fixedClockService =
+            CommentApplicationService(commentRepository, repository, resolver, eventPublisher, fixedClock)
 
         val comment = fixedClockService.create(actor, issue.key, "본문", ActorId(authorUuid))
 
