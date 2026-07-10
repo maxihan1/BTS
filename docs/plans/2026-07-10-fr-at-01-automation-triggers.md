@@ -195,4 +195,31 @@ D1~D7: 도메인·명세·데이터모델·백엔드·테스트·UI·E2E.
 - 신규 BC 단일 PR — D1~D5 코어(Maxi 확정). D6/D7은 후속 PR. task 11개는 BC 부트스트랩 특성상 응집(추가 PR 분할 시 수직슬라이스 파편화)
 - 추가 검증: ktlint + detekt(신규 모듈 빈 baseline) + ArchUnit(BC 격리) + verify-master-plan.sh
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-10, 적대적 자기 리뷰 — 코드 검증 동반)
+
+- **E1. 큐 소유권 확정 (CONCERN → 해소)**. q_webhook_events 선례(producer 모듈=issue-tracking이 큐 생성) 준거로 확정.
+  - `q_automation_events` = **issue-tracking 소유**(T10에서 생성, `V0xx__pgmq_queue_automation_events.sql`). producer가 fan-out 대상 큐를 생성.
+  - `q_automation_execution` = **automation 소유**(T2, V300대, automation-internal, 소비=FR-AT-02).
+  - **T7 test-boot는 q_automation_events가 필요** → automation `AutomationTestcontainersBase`가 테스트 픽스처로 `pgmq.create('q_automation_events')` 프로그램적 생성([[bts-cross-bc-test-migration]] 패턴, prod 이중생성 아님). end-to-end fan-out은 T11 전조립에서.
+  - **T2 수정**: q_automation_events 생성 제거(issue-tracking로 이전). T2는 automation_rules + q_automation_execution만.
+- **E2. IssueCommented → q_issue_events 회귀 위험 (CONCERN → 안전 확인)**. NotificationWorker는 `NotificationEventType.fromWire()==null`이면 `unsupported_type` 로그 후 **delete**(우아한 스킵) — 코드 확인. 새 issue.commented가 q_issue_events에 실려도 회귀 없음(무해 삭제).
+  - **결정**: `publish(IssueCommented)`는 기존 모델 유지 — q_issue_events(무해 삭제) + q_automation_events fan-out. 특수분기 없이 uniform publish. (원하면 후속에 commented의 q_issue_events 생략 최적화 가능, v1은 단순성 우선.)
+  - **T10 보강**: CommentApplicationService는 **현재 이벤트 미발행** → IssueEventPublisher **생성자 주입 신규**([[plan-files-constructor-injection-existing-tests]] 기존 mock 테스트 갱신 동반).
+- **E3. exhaustive when 폭발반경 (확인)**. IssueCommented sealed 서브타입 추가는 **issue-tracking 모듈 내부** when만 깸(isWebhookPublishable 등). notification/slack은 issue-tracking 클래스 미import(BC 격리, JSON type 문자열로 역직렬화)라 컴파일 영향 없음. T10 grep 범위=issue-tracking 모듈.
+- **E4. automation test-boot 권한 빈 (CONCERN → 해소)**. AutomationPermissionResolver는 non-null 주입인데 automation 클래스패스에 identity-access 구현 없음(BC 격리). **T6 test는 fake resolver 빈(allow/deny 토글)** 필요([[new-crossbc-dep-openapi-mockbean-regression]]·fake는 interface @Transactional 아니라 CGLIB NPE 무관[[test-fake-transactional-interface-cglib-npe]]).
+- **E5. @EnableScheduling 타이밍 (확인)**. T7/T8 @Scheduled 워커의 스케줄 결선은 T11(@EnableScheduling). **T7/T8 test는 worker 폴링 메서드 직접 호출**(스케줄 대기 아님), 실제 스케줄 결선은 T11에서 검증.
+- **E6. 첫 @Repository test-boot DataSource (확인)**. T1 `AutomationTestcontainersBase`가 DataSource/JdbcTemplate을 처음부터 Testcontainers로 배선 → T4 @Repository 추가 시 NoSuchBean 회귀 예방([[new-bc-first-repository-testboot-context-regression]]).
+- **BLOCKER: 없음**.
+
+### plan-devex-review (2026-07-10)
+
+- **D1. 웹훅 토큰 분실 시 재발급 부재 (수용)**. 토큰은 생성 시 1회 노출. 분실 시 룰 재생성(v1). 토큰 regenerate 엔드포인트는 후속(D6 UI PR 후보). 명시.
+- **D2. triggerConfig 스키마 발견성 (수용)**. 각 트리거 타입의 config 형식을 알려주는 카탈로그 API 없음. 백엔드 코어 범위라 수용 — D6 UI PR에서 카탈로그 추가(가젯 catalog 선례).
+- **D3. 에러 응답 일관성 (반영)**. 403/404/400/409/413은 기존 에러 엔벨로프 관례 따름. 권한 403은 일반 메시지([[fr-pm-04-guard-exception-message-http-leak]]).
+- **BLOCKER: 없음**.
+
+### 종합
+
+BLOCKER 0. CONCERN 3건(E1·E2·E4) 전부 plan 내 해소 반영. plan 유효 — 게이트 1 진입.
