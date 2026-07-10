@@ -97,3 +97,10 @@ management:
     health:
       probes:
         enabled: true
+  health:
+    # LDAP·SMTP 는 선택적 외부 연동 — 미구성/미가동이어도 앱 health 를 DOWN 시키지 않는다.
+    # (indicator 를 켜두면 오케스트레이터가 정상 컨테이너를 unhealthy 로 오판해 재시작 루프에 빠진다.)
+    ldap:
+      enabled: false
+    mail:
+      enabled: false
