@@ -83,15 +83,13 @@ class AutomationEventWorker(
     private fun processMessage(message: PgmqMessage) {
         val node = parseJson(message.messageJson, message.msgId)
         if (node == null) {
-            log.info("automation_event_worker_deserialize_failed msgId={} action=delete", message.msgId)
-            deleteMessage(message.msgId)
+            skipAndDelete(message.msgId, reason = "deserialize_failed")
             return
         }
 
         val matched = TriggerMatcher.match(node)
         if (matched == null) {
-            log.debug("automation_event_worker_unmatched_event msgId={} action=delete", message.msgId)
-            deleteMessage(message.msgId)
+            skipAndDelete(message.msgId, reason = "unmatched_event")
             return
         }
 
@@ -111,6 +109,21 @@ class AutomationEventWorker(
             }
             // delete 하지 않음 — vt 만료 후 재전달(at-least-once)
         }
+    }
+
+    /**
+     * 역직렬화 실패/미관심 타입(unmatched) 메시지를 [reason] 로그와 함께 즉시 삭제한다. 두 상황 모두
+     * 재시도해도 절대 성공하지 못하므로 즉시 skip+delete 한다(under-processing 방지).
+     *
+     * @param msgId 대상 메시지 id.
+     * @param reason 로그에 남길 skip 사유.
+     */
+    private fun skipAndDelete(
+        msgId: Long,
+        reason: String,
+    ) {
+        log.info("automation_event_worker_skipped msgId={} reason={} action=delete", msgId, reason)
+        deleteMessage(msgId)
     }
 
     /**

@@ -59,9 +59,16 @@ object TriggerMatcher {
      * @return 매칭된 [MatchedIssueEvent] 또는 `null`(skip 대상).
      */
     fun match(event: JsonNode): MatchedIssueEvent? {
-        val triggerType = WIRE_TYPE_TO_TRIGGER_TYPE[event.path(FIELD_TYPE).asText("")] ?: return null
-        val issueKey = event.path(FIELD_ISSUE_KEY).asText(null).takeIf { it?.isNotBlank() == true } ?: return null
-        val projectKey = projectKeyOf(issueKey) ?: return null
+        val triggerType = WIRE_TYPE_TO_TRIGGER_TYPE[event.path(FIELD_TYPE).asText("")]
+        val projectKey =
+            event
+                .path(FIELD_ISSUE_KEY)
+                .asText(null)
+                .takeIf { it?.isNotBlank() == true }
+                ?.let(::projectKeyOf)
+
+        if (triggerType == null || projectKey == null) return null
+
         val updatedFields =
             if (triggerType == TriggerType.ISSUE_UPDATED) parseFieldArray(event, FIELD_FIELDS) else emptySet()
         return MatchedIssueEvent(projectKey = projectKey, triggerType = triggerType, updatedFields = updatedFields)
