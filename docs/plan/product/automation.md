@@ -25,13 +25,15 @@
 
 **우선순위**. 필수 | **선행**. §0 | **Plan slug**. `automation/triggers`
 
-- [ ] D1. 도메인 — Trigger 다형성 (책임. backend-engineer)
-- [ ] D2. 명세 — 5종 트리거 (CREATED/UPDATED/COMMENTED/SCHEDULED/WEBHOOK) (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `automation_rules(trigger_type, config)` (책임. db-engineer)
-- [ ] D4. 백엔드 — pgmq consumer + Spring `@Scheduled` + Webhook 엔드포인트 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — Testcontainers (책임. backend-engineer)
+- [x] D1. 도메인 — Trigger 다형성 (책임. backend-engineer)
+- [x] D2. 명세 — 5종 트리거 (CREATED/UPDATED/COMMENTED/SCHEDULED/WEBHOOK) (책임. backend-engineer)
+- [x] D3. 데이터 모델 — `automation_rules(trigger_type, config)` (책임. db-engineer)
+- [x] D4. 백엔드 — pgmq consumer + Spring `@Scheduled` + Webhook 엔드포인트 (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 — Testcontainers (책임. backend-engineer)
 - [ ] D6. 프론트 UI — 트리거 선택 UI (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
+
+> **D1~D5 완료 (2026-07-10, PR #251)**. automation BC 착수 — BTS 9번째 Gradle 모듈(`com.bts.automation`, test-boot only, JdbcTemplate). 5종 트리거(ISSUE_CREATED/UPDATED/COMMENTED/SCHEDULED/WEBHOOK) 감지 → 매칭 → `q_automation_execution` enqueue(액션 실행은 FR-AT-02 이음선). 감지 3경로 — pgmq consumer(`q_automation_events` fan-out) / `@Scheduled` cron(6필드·UTC·nextFireAt 중복억제) / 인바운드 웹훅 토큰(SHA-256·202·404·413). cross-BC 3곳 — issue-tracking(`IssueEventPublisher` fan-out + 신규 `IssueCommented` 이벤트 + V036 큐, producer 소유) · identity-access(`MANAGE_AUTOMATION` 시드 V035 + resolver, PROJECT_ADMIN) · shared-kernel(`AutomationPermissionResolver` 포트, consumer-owns-stub). **게이트2 옵션A(코드리뷰 발견)**: 신규 `IssueCommented`가 `q_issue_events`에도 실려 FR-NT-01 §9.1.2 사전시드 댓글 인앱 알림 경로(REPORTER/ASSIGNEE/WATCHER, 작성자 제외)를 producer 완성으로 활성화 — notification e2e 검증 테스트 동반, 새 FR 없음. BC 격리 ArchTest(cross-BC import 0)·@EnableScheduling opt-in(배포조립 후속). ADR [2026-07-10-fr-at-01-automation-triggers](../../decisions/2026-07-10-fr-at-01-automation-triggers.md). **D6/D7(트리거 선택 UI + E2E)는 후속 PR**(slack FR-SL-01 선례).
 
 ### §2.2 FR-AT-02 — 액션 (필드 변경/담당자/댓글/API 호출)
 

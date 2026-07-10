@@ -8,6 +8,8 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
+import com.bts.issue.event.IssueCommented
+import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.markdown.MarkdownRenderer
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.permission.IssuePermission
@@ -32,6 +34,8 @@ import java.util.UUID
  * @param commentRepository 댓글 저장소.
  * @param issueRepository 이슈 조회 저장소.
  * @param permissionResolver 이슈 권한 판정 포트.
+ * @param eventPublisher 댓글 생성 시 [IssueCommented] 이벤트를 발행하는 아웃바운드 어댑터
+ *   (FR-AT-01 Task 10 — automation COMMENTED 트리거 감지).
  * @param clock 현재 시각 공급자 (테스트 제어 가능).
  */
 @Service
@@ -40,6 +44,7 @@ class CommentApplicationService(
     private val commentRepository: CommentRepository,
     private val issueRepository: IssueRepository,
     private val permissionResolver: IssuePermissionResolver,
+    private val eventPublisher: IssueEventPublisher,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -53,6 +58,9 @@ class CommentApplicationService(
      *    수정할 수 있는 권한(UPDATE)을 요구하는 것이 자연스럽다(worklog `create` 와 동일 근거).
      * 2. 이슈 resolve([IssueRepository.findByKey]) — 미존재·소프트삭제 시 [IssueNotFoundException].
      * 3. [CommentRepository.insert] — authorId 는 주입값 그대로 저장(actor 아님, 마이그레이션 작성자 보존 목적).
+     * 4. [IssueEventPublisher.publish] 로 [IssueCommented] 발행 — 같은 트랜잭션 내
+     *    ([Propagation.MANDATORY][org.springframework.transaction.annotation.Propagation.MANDATORY],
+     *    FR-AT-01 Task 10 — automation COMMENTED 트리거 감지).
      *
      * @param actor 작업을 수행하는 행위자 (UPDATE 권한 보유 필요).
      * @param issueKey 댓글을 추가할 이슈 키.
@@ -87,6 +95,16 @@ class CommentApplicationService(
                 updatedAt = effectiveCreatedAt,
             )
         commentRepository.insert(comment)
+
+        eventPublisher.publish(
+            IssueCommented(
+                issueKey = issueKey,
+                projectKey = issueKey.projectPrefix,
+                commentId = comment.id,
+                actorId = actor,
+                occurredAt = effectiveCreatedAt,
+            ),
+        )
 
         log.info(
             "comment_created issueKey={} commentId={} actor={} authorId={}",

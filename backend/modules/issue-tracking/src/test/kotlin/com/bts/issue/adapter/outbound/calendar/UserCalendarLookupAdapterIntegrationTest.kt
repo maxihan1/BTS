@@ -2,6 +2,7 @@
 
 package com.bts.issue.adapter.outbound.calendar
 
+import com.bts.issue.adapter.outbound.calendar.repository.UserCalendarQueryRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
@@ -124,9 +125,9 @@ class UserCalendarLookupAdapterIntegrationTest : IssueTestcontainersBase() {
         return id
     }
 
-    /** stub directory + 실 dsl 로 adapter 구성. */
+    /** stub directory + 실 dsl 기반 [UserCalendarQueryRepository] 로 adapter 구성. */
     private fun adapterWith(access: Map<String, IssueSecurityAccess> = emptyMap()): UserCalendarLookupAdapter =
-        UserCalendarLookupAdapter(dsl, StubSecurityDirectory(access))
+        UserCalendarLookupAdapter(UserCalendarQueryRepository(dsl), StubSecurityDirectory(access))
 
     @Suppress("LongParameterList")
     private fun insertIssueInProject(

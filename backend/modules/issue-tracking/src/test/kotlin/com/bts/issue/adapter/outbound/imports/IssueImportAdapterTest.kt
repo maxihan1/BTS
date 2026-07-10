@@ -279,12 +279,14 @@ class IssueImportAdapterTest {
             commentRepository: CommentRepository,
             issueRepository: IssueRepository,
             permissionResolver: IssuePermissionResolver,
+            eventPublisher: IssueEventPublisher,
             clock: Clock,
         ): CommentApplicationService =
             CommentApplicationService(
                 commentRepository = commentRepository,
                 issueRepository = issueRepository,
                 permissionResolver = permissionResolver,
+                eventPublisher = eventPublisher,
                 clock = clock,
             )
 
