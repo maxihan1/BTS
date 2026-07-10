@@ -105,6 +105,7 @@ class IssueEventPublisher(
             is IssueDueSoon -> false
             is IssueOverdue -> false
             is IssueCommented -> false
+            is IssueAssigned -> false
         }
 
     /**
@@ -130,6 +131,7 @@ class IssueEventPublisher(
             is IssueMentioned -> false
             is IssueDueSoon -> false
             is IssueOverdue -> false
+            is IssueAssigned -> false
         }
 
     companion object {

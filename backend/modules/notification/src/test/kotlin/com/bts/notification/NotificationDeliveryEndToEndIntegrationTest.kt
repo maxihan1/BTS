@@ -224,23 +224,29 @@ class NotificationDeliveryEndToEndIntegrationTest {
         assertThat(received["title"].toString()).contains(issueKey)
 
         // notifications 테이블 기록 확인 (status=SENT)
+        // V409(FR-SL-02)로 issue.mentioned/MENTIONED/SLACK 전역 정책이 추가되어 멘션 이벤트가
+        // IN_APP+SLACK 2채널로 fan-out 된다 — IN_APP 채널만 필터링해 단일 행을 단언한다.
         await()
             .atMost(5, TimeUnit.SECONDS)
             .untilAsserted {
                 val count =
                     dsl.fetchOne(
-                        "SELECT COUNT(*) FROM notifications WHERE recipient_user_id = ? AND event_type = ?",
+                        "SELECT COUNT(*) FROM notifications" +
+                            " WHERE recipient_user_id = ? AND event_type = ? AND channel = ?",
                         RECIPIENT_USER_ID,
                         "issue.mentioned",
+                        "IN_APP",
                     )!!.get(0, Long::class.java)
                 assertThat(count).isEqualTo(1L)
             }
 
         val notificationRow =
             dsl.fetchOne(
-                "SELECT status, issue_key FROM notifications WHERE recipient_user_id = ? AND event_type = ?",
+                "SELECT status, issue_key FROM notifications" +
+                    " WHERE recipient_user_id = ? AND event_type = ? AND channel = ?",
                 RECIPIENT_USER_ID,
                 "issue.mentioned",
+                "IN_APP",
             )
         assertThat(notificationRow).isNotNull()
         assertThat(notificationRow!!.get(0, String::class.java)).isEqualTo("SENT")
@@ -298,11 +304,14 @@ class NotificationDeliveryEndToEndIntegrationTest {
         assertThat(secondReceived).isNull()
 
         // DB 에도 1건만 존재
+        // V409(FR-SL-02) SLACK 정책 추가로 멘션 이벤트가 IN_APP+SLACK 2채널로 fan-out 되므로
+        // IN_APP 채널만 필터링해 멱등 단언(1건)을 유지한다.
         val count =
             dsl.fetchOne(
-                "SELECT COUNT(*) FROM notifications WHERE recipient_user_id = ? AND issue_key = ?",
+                "SELECT COUNT(*) FROM notifications WHERE recipient_user_id = ? AND issue_key = ? AND channel = ?",
                 RECIPIENT_USER_ID,
                 issueKey,
+                "IN_APP",
             )!!.get(0, Long::class.java)
         assertThat(count).isEqualTo(1L)
 

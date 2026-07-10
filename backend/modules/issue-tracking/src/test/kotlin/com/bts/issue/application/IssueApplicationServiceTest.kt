@@ -1188,6 +1188,7 @@ class IssueApplicationServiceTest : DescribeSpec({
                 every { userLookupPort.exists(assigneeUuid) } returns true
                 every { repo.updateAssignee(issueKey, assigneeUuid, expectedVersion) } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns updatedResponse
+                every { eventPublisher.publish(any()) } returns Unit
             }
 
             it("repo.updateAssignee 가 assigneeId 와 함께 호출된다") {
@@ -1236,6 +1237,7 @@ class IssueApplicationServiceTest : DescribeSpec({
                 every { repo.findByKey(issueKey) } returns existingIssue
                 every { repo.updateAssignee(issueKey, null, expectedVersion) } returns 1
                 every { repo.findByKeyWithType(issueKey) } returns updatedResponse
+                every { eventPublisher.publish(any()) } returns Unit
             }
 
             it("userLookupPort.exists 가 전혀 호출되지 않는다") {
