@@ -75,6 +75,15 @@ dependencies {
     testImplementation("org.testcontainers:junit-jupiter:1.20.3")
 }
 
+// 배포 fat jar — 진입점 명시 + 이름 고정(Dockerfile 이 예측 가능한 경로로 COPY).
+springBoot {
+    mainClass.set("com.bts.app.BtsApplicationKt")
+}
+
+tasks.bootJar {
+    archiveFileName.set("bts-app.jar")
+}
+
 tasks.withType<KotlinCompile> {
     compilerOptions {
         freeCompilerArgs.addAll("-Xjsr305=strict")

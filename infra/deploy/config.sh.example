@@ -1,0 +1,10 @@
+#!/bin/bash
+# BTS 배포 서버 설정 — 실제 값은 config.sh 에 저장 (gitignored). 사용: cp config.sh.example config.sh && vi config.sh
+# AIG 와 같은 VM 을 쓰되 BTS 는 Docker 격리 배포 (포트 18080, 네트워크 bts-net).
+
+SERVER="61.107.200.30"
+SSH_USER="testify"
+SSH_KEY="$HOME/.ssh/id_ed25519"
+REMOTE_DIR="/home/testify/bts"      # AIG(/home/testify/aig)와 분리된 디렉토리
+
+DEPLOY_BRANCH="main"                 # 배포 대상 브랜치 (조립 기반 머지 후)

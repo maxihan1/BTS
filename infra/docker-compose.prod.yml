@@ -1,0 +1,151 @@
+# BTS 프로덕션 스택 — 같은 VM 의 AIG(Next.js/PM2 :13579)와 격리 (별도 네트워크 bts-net · 포트 18xxx · 컨테이너 bts-* · 메모리 제한)
+#
+# 사전: 호스트에서 산출물 빌드 (./gradlew :modules:app:bootJar, pnpm --filter @bts/web build)
+#       + infra/prod/.env (← .env.prod.example 복사·기입) + infra/secrets/bts-jwt.pem (RSA 개인키)
+# 실행: docker compose -f infra/docker-compose.prod.yml --env-file infra/prod/.env up -d
+# 이미지 버전은 :latest 금지 — 재현성 위해 digest/버전 태그로 고정. VM 아키텍처(amd64)에서 pull 전 digest 재확인 권장.
+
+name: bts
+
+services:
+  bts-postgres:
+    # pgmq 사전 설치 Tembo 이미지 (dev 와 동일 계열, digest 고정)
+    image: quay.io/tembo/pg16-pgmq@sha256:7f80d046257d585d1af9d19cf28bd355a4b854b0a7d643c02ebbe6b84457868a
+    container_name: bts-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${BTS_DB_NAME:-bts}
+      POSTGRES_USER: ${BTS_DB_USERNAME:-bts}
+      POSTGRES_PASSWORD: ${BTS_DB_PASSWORD:?BTS_DB_PASSWORD 필수}
+    volumes:
+      - bts-pg-data:/var/lib/postgresql/data
+    networks:
+      - bts-net
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BTS_DB_USERNAME:-bts} -d ${BTS_DB_NAME:-bts}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  bts-minio:
+    # 오브젝트 스토리지 (첨부). RELEASE 버전 태그로 고정.
+    image: minio/minio:RELEASE.2023-09-04T19-57-37Z
+    container_name: bts-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${BTS_MINIO_ACCESS_KEY:?BTS_MINIO_ACCESS_KEY 필수}
+      MINIO_ROOT_PASSWORD: ${BTS_MINIO_SECRET_KEY:?BTS_MINIO_SECRET_KEY 필수}
+    volumes:
+      - bts-minio-data:/data
+    networks:
+      - bts-net
+    ports:
+      # 관리 콘솔만 호스트 노출 (선택). API(9000)는 내부 네트워크 전용.
+      - "127.0.0.1:19001:9001"
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  bts-minio-init:
+    # 최초 1회 버킷 생성 후 종료 (bts-attachments)
+    image: minio/mc:RELEASE.2023-09-07T22-48-55Z
+    container_name: bts-minio-init
+    depends_on:
+      bts-minio:
+        condition: service_healthy
+    networks:
+      - bts-net
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set bts http://bts-minio:9000 $${BTS_MINIO_ACCESS_KEY} $${BTS_MINIO_SECRET_KEY} &&
+      mc mb --ignore-existing bts/$${BTS_MINIO_BUCKET:-bts-attachments} &&
+      echo 'bucket ready'
+      "
+    environment:
+      BTS_MINIO_ACCESS_KEY: ${BTS_MINIO_ACCESS_KEY:?}
+      BTS_MINIO_SECRET_KEY: ${BTS_MINIO_SECRET_KEY:?}
+      BTS_MINIO_BUCKET: ${BTS_MINIO_BUCKET:-bts-attachments}
+    restart: "no"
+
+  bts-clamav:
+    # 안티바이러스 데몬 (첨부 스캔). ⚠️ 시그니처 DB 로 RAM ~1.3GB+ 소요 — VM 여유 확인 필수.
+    image: clamav/clamav@sha256:8df57e58b9127333f9ab5748a03a0f80f99d3c4830727c1c9ba9bffaa45a1b9c
+    container_name: bts-clamav
+    restart: unless-stopped
+    networks:
+      - bts-net
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "echo PING | nc -w 5 localhost 3310 | grep -q PONG"]
+      interval: 20s
+      timeout: 6s
+      retries: 10
+      start_period: 120s
+
+  bts-backend:
+    # 8개 BC 조립 앱 (com.bts.app.BtsApplication, prod 프로파일)
+    build:
+      context: ..
+      dockerfile: infra/prod/Dockerfile.backend
+    image: bts-backend:local
+    container_name: bts-backend
+    restart: unless-stopped
+    depends_on:
+      bts-postgres:
+        condition: service_healthy
+      bts-clamav:
+        condition: service_healthy
+      bts-minio:
+        condition: service_healthy
+    env_file:
+      # 배포 시 infra/prod/.env 필수(비밀값). 부재 시 컨테이너 기동은 되나 백엔드가 env fail-fast 로 즉시 종료.
+      - path: ./prod/.env
+        required: false
+    environment:
+      # 인프라 접속점은 compose 서비스명으로 고정 (env 로 덮어쓰지 않음)
+      BTS_DB_URL: jdbc:postgresql://bts-postgres:5432/${BTS_DB_NAME:-bts}
+      BTS_MINIO_ENDPOINT: http://bts-minio:9000
+      BTS_CLAMAV_HOST: bts-clamav
+      BTS_CLAMAV_PORT: "3310"
+      BTS_MAIL_HOST: ${BTS_MAIL_HOST:-bts-mailhog}
+    volumes:
+      # RSA 개인키 (PemFileKeyProvider) — 호스트 secrets 를 읽기전용 마운트. 이미지에 굽지 않음.
+      - ./secrets/bts-jwt.pem:/secrets/bts-jwt.pem:ro
+    networks:
+      - bts-net
+    mem_limit: 1536m
+
+  bts-web:
+    # React SPA (nginx) + 백엔드 리버스 프록시 — 유일한 호스트 공개 진입점
+    build:
+      context: ..
+      dockerfile: infra/prod/Dockerfile.web
+    image: bts-web:local
+    container_name: bts-web
+    restart: unless-stopped
+    depends_on:
+      - bts-backend
+    ports:
+      # 공개 진입 — AIG(13579)와 충돌 없는 18080. TLS 종단은 P5 에서 (Let's Encrypt / 앞단 프록시).
+      - "18080:80"
+    networks:
+      - bts-net
+    mem_limit: 128m
+
+networks:
+  bts-net:
+    name: bts-net
+    driver: bridge
+
+volumes:
+  bts-pg-data:
+    name: bts-pg-data
+  bts-minio-data:
+    name: bts-minio-data

@@ -1,0 +1,27 @@
+# BTS 백엔드 조립 앱 런타임 이미지 — 호스트에서 빌드한 fat jar 를 JRE 21 에 담아 prod 프로파일로 실행
+#
+# jar 빌드는 호스트/CI 에서 수행한다: ./gradlew :modules:app:bootJar
+# (jOOQ 코드 생성이 Testcontainers=Docker 를 요구해 이미지 빌드 내부에서 실행 불가하므로 산출물만 COPY).
+# 빌드 컨텍스트는 리포지토리 루트.
+
+FROM eclipse-temurin:21-jre-jammy
+
+# 헬스체크용 curl + 비루트 사용자
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -r bts && useradd -r -g bts -d /app bts
+
+WORKDIR /app
+COPY backend/modules/app/build/libs/bts-app.jar app.jar
+RUN chown -R bts:bts /app
+
+USER bts
+EXPOSE 8080
+
+# 컨테이너 메모리 한도의 75%까지 힙 사용 (compose mem_limit 와 정렬)
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0"
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=90s --retries=5 \
+    CMD curl -fsS http://localhost:8080/actuator/health || exit 1
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar --spring.profiles.active=prod"]
