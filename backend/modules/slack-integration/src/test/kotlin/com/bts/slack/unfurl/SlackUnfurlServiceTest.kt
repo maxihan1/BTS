@@ -55,7 +55,13 @@ class SlackUnfurlServiceTest {
     private fun command(
         slackUserId: String? = this.slackUserId,
         links: List<String> = listOf(issueUrl),
-    ) = LinkSharedCommand(teamId = teamId, slackUserId = slackUserId, channel = channel, messageTs = messageTs, links = links)
+    ) = LinkSharedCommand(
+        teamId = teamId,
+        slackUserId = slackUserId,
+        channel = channel,
+        messageTs = messageTs,
+        links = links,
+    )
 
     private fun view(key: String = issueKey) = IssueUnfurlView(key, "제목", "진행 중", "Medium", null)
 

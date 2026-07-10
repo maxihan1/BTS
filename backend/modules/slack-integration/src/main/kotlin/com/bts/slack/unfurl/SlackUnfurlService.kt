@@ -61,6 +61,7 @@ class SlackUnfurlService(
      * 이미 200 ack 를 보낸 뒤이므로 여기서 예외가 나도 호출자에게 전파할 대상이 없다. 예외는 로그로만
      * 남는다).
      */
+    @Suppress("ReturnCount") // 단계별 fail-closed skip 을 early return 으로 표현(SlackDeliveryWorker.dispatch 동형)
     @Async(SlackAsyncConfig.SLACK_UNFURL_EXECUTOR_BEAN_NAME)
     fun handleLinkShared(command: LinkSharedCommand) {
         val botToken = botTokenResolver.resolve(command.teamId)
@@ -69,17 +70,7 @@ class SlackUnfurlService(
             return
         }
 
-        val slackUserId = command.slackUserId
-        if (slackUserId.isNullOrBlank()) {
-            log.info("slack_unfurl_skip_no_sharer teamId={}", command.teamId)
-            return
-        }
-
-        val viewerUserId = mappingRepository.findUserIdBySlackUserId(slackUserId, command.teamId)
-        if (viewerUserId == null) {
-            log.info("slack_unfurl_skip_unmapped teamId={}", command.teamId)
-            return
-        }
+        val viewerUserId = resolveViewer(command) ?: return
 
         val atlasLinks = urlParser.parseAll(command.links)
         val unfurls = buildUnfurls(atlasLinks, viewerUserId)
@@ -89,6 +80,25 @@ class SlackUnfurlService(
         }
 
         unfurlClient.unfurl(botToken, command.channel, command.messageTs, unfurls)
+    }
+
+    /**
+     * `event.user`([LinkSharedCommand.slackUserId]) 부재/공백과 역매핑 실패를 모두 `null`(skip)로
+     * 수렴시켜 공유자의 Atlas viewer id를 해석한다. "공유자를 특정할 수 없음"과 "매핑이 없음"을 같은
+     * 방식(skip)으로 다루되, 원인은 로그로 구분한다.
+     */
+    private fun resolveViewer(command: LinkSharedCommand): UUID? {
+        val slackUserId = command.slackUserId
+        if (slackUserId.isNullOrBlank()) {
+            log.info("slack_unfurl_skip_no_sharer teamId={}", command.teamId)
+            return null
+        }
+
+        val viewerUserId = mappingRepository.findUserIdBySlackUserId(slackUserId, command.teamId)
+        if (viewerUserId == null) {
+            log.info("slack_unfurl_skip_unmapped teamId={}", command.teamId)
+        }
+        return viewerUserId
     }
 
     /**
