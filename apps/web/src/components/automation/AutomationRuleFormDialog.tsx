@@ -58,6 +58,15 @@ function resolveErrorMessage(error: unknown): string {
   return AUTOMATION_ERROR_MESSAGES[code] ?? DEFAULT_ERROR_MESSAGE
 }
 
+/**
+ * editingRule prop이 실제 값을 가지는지 판정하는 타입 가드.
+ * `editingRule !== undefined && editingRule !== null` 반복 대신 이 함수를 조건식에 직접 호출하면
+ * TypeScript가 호출 지점에서 editingRule을 `AutomationRule`로 narrowing한다.
+ */
+function hasEditingRule(rule: AutomationRule | null | undefined): rule is AutomationRule {
+  return rule !== undefined && rule !== null
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // triggerConfig 파싱 헬퍼 — 수정 모드 초기값 로드용 (serializeTriggerConfig의 역방향)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -230,10 +239,9 @@ interface FormBodyProps {
 }
 
 function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: FormBodyProps): JSX.Element {
-  const initialConfig =
-    editingRule !== undefined && editingRule !== null
-      ? parseTriggerConfig(editingRule.triggerConfig)
-      : { cron: '', fields: [] }
+  const initialConfig = hasEditingRule(editingRule)
+    ? parseTriggerConfig(editingRule.triggerConfig)
+    : { cron: '', fields: [] }
 
   const [fields, setFields] = useState<string[]>(initialConfig.fields)
   const [fieldDraft, setFieldDraft] = useState('')
@@ -257,9 +265,8 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
   })
 
   const watchedTriggerType = watch('triggerType')
-  const effectiveTriggerType =
-    editingRule !== undefined && editingRule !== null ? editingRule.triggerType : watchedTriggerType
-  const isEditMode = editingRule !== undefined && editingRule !== null
+  const effectiveTriggerType = hasEditingRule(editingRule) ? editingRule.triggerType : watchedTriggerType
+  const isEditMode = hasEditingRule(editingRule)
 
   function addField(): void {
     const trimmed = fieldDraft.trim()
@@ -284,7 +291,7 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
     const triggerConfig = serializeTriggerConfig(effectiveTriggerType, { cron: values.cron, fields })
 
     try {
-      if (editingRule !== undefined && editingRule !== null) {
+      if (hasEditingRule(editingRule)) {
         await updateRule.mutateAsync({
           id: editingRule.id,
           body: { version: editingRule.version, name: values.name, triggerConfig },
@@ -410,7 +417,7 @@ export const AutomationRuleFormDialog = ({
   onWebhookToken,
 }: AutomationRuleFormDialogProps): JSX.Element => {
   const formKey = `${open ? 'open' : 'closed'}:${editingRule?.id ?? 'new'}`
-  const title = editingRule !== undefined && editingRule !== null ? labels.editTitle : labels.createTitle
+  const title = hasEditingRule(editingRule) ? labels.editTitle : labels.createTitle
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
