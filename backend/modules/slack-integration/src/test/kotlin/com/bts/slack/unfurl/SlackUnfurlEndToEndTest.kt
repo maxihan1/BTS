@@ -167,7 +167,7 @@ class SlackUnfurlEndToEndTest {
         val requestSlot = slot<ChatUnfurlConfigurator>()
         every { methodsClient.chatUnfurl(capture(requestSlot)) } returns ChatUnfurlResponse().apply { isOk = true }
 
-        val body = linkSharedEventJson(slackUserId = SLACK_USER_ID, links = listOf(ISSUE_URL))
+        val body = LinkSharedEventFixture().toJson()
         mockMvc.perform(postSignedEvents(body)).andExpect(status().isOk)
 
         awaitAsyncSettled()
@@ -186,7 +186,7 @@ class SlackUnfurlEndToEndTest {
         seedInstallation()
         // mappingRepository.upsert 를 호출하지 않는다 — event.user 가 어떤 BTS 계정으로도 역매핑되지 않는다.
 
-        val body = linkSharedEventJson(slackUserId = SLACK_USER_ID, links = listOf(ISSUE_URL))
+        val body = LinkSharedEventFixture().toJson()
         mockMvc.perform(postSignedEvents(body)).andExpect(status().isOk)
 
         awaitAsyncSettled()
@@ -201,7 +201,7 @@ class SlackUnfurlEndToEndTest {
         mappingRepository.upsert(USER_ID, SLACK_USER_ID, TEAM_ID)
         // issueUnfurlPort.visibleIssues 를 비운 채로 둔다 — StubIssueUnfurlPort 는 미등록 issueKey 를 null(fail-closed)로 되돌린다.
 
-        val body = linkSharedEventJson(slackUserId = SLACK_USER_ID, links = listOf(ISSUE_URL))
+        val body = LinkSharedEventFixture().toJson()
         mockMvc.perform(postSignedEvents(body)).andExpect(status().isOk)
 
         awaitAsyncSettled()
@@ -212,7 +212,7 @@ class SlackUnfurlEndToEndTest {
 
     @Test
     fun `url_verification - 서명 검증 통과 후 challenge 를 그대로 반환한다`() {
-        val body = urlVerificationJson(CHALLENGE)
+        val body = urlVerificationEventJson()
 
         mockMvc.perform(postSignedEvents(body))
             .andExpect(status().isOk)
@@ -240,30 +240,39 @@ class SlackUnfurlEndToEndTest {
         return "v0=" + HexFormat.of().formatHex(mac.doFinal(baseString.toByteArray(Charsets.UTF_8)))
     }
 
-    // ── payload 헬퍼 ──────────────────────────────────────────────────────────────
+    // ── 이벤트 fixture 빌더 ──────────────────────────────────────────────────────────
 
-    private fun linkSharedEventJson(
-        slackUserId: String?,
-        links: List<String>,
-    ): String {
-        val linksJson = links.joinToString(",") { url -> """{"url":"$url"}""" }
-        val userField = slackUserId?.let { """"user": "$it",""" } ?: ""
-        return """
-            {
-              "type": "event_callback",
-              "team_id": "$TEAM_ID",
-              "event": {
-                "type": "link_shared",
-                $userField
-                "channel": "$CHANNEL",
-                "message_ts": "$MESSAGE_TS",
-                "links": [$linksJson]
-              }
-            }
-            """.trimIndent()
+    /**
+     * `link_shared` 이벤트 payload 조립기(REFACTOR — 3개 테스트가 반복하던 JSON 문자열 조립을 한 곳에
+     * 모았다). 기본값이 이미 happy-path 조합(공유자=[SLACK_USER_ID], 링크=[ISSUE_URL] 1개)이라 각
+     * 시나리오는 실제로 달라지는 값([slackUserId]·[links])만 명시하면 된다 — teamId/channel/messageTs 는
+     * 이 테스트 파일의 고정 시나리오 상수를 그대로 쓴다.
+     */
+    private data class LinkSharedEventFixture(
+        val slackUserId: String? = SLACK_USER_ID,
+        val links: List<String> = listOf(ISSUE_URL),
+    ) {
+        fun toJson(): String {
+            val linksJson = links.joinToString(",") { url -> """{"url":"$url"}""" }
+            val userField = slackUserId?.let { """"user": "$it",""" } ?: ""
+            return """
+                {
+                  "type": "event_callback",
+                  "team_id": "$TEAM_ID",
+                  "event": {
+                    "type": "link_shared",
+                    $userField
+                    "channel": "$CHANNEL",
+                    "message_ts": "$MESSAGE_TS",
+                    "links": [$linksJson]
+                  }
+                }
+                """.trimIndent()
+        }
     }
 
-    private fun urlVerificationJson(challenge: String): String {
+    /** `url_verification` 이벤트 payload — 기본값은 이 테스트 파일의 고정 [CHALLENGE] 상수. */
+    private fun urlVerificationEventJson(challenge: String = CHALLENGE): String {
         return """{"type":"url_verification","challenge":"$challenge"}"""
     }
 
