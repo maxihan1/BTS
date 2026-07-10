@@ -485,7 +485,10 @@ describe('AutomationRuleFormDialog — 비-409 에러는 폼을 유지한다', (
   })
 
   it('401(AUTOMATION_UNAUTHENTICATED) 실패 시 재로그인 안내 메시지가 표시된다', async () => {
+    // apiFetch는 401을 가로채 /auth/refresh 후 1회 retry한다(client.ts 인터셉터) — retry도
+    // 같은 401을 받도록 refresh는 성공시켜 두어야 최종 ApiError(401, errorCode)까지 도달한다.
     server.use(
+      http.post('/api/v1/auth/refresh', () => HttpResponse.json({ access_token: 'fresh-token' })),
       http.patch('/api/v1/projects/:projectKey/automation/rules/:id', () =>
         HttpResponse.json({ errorCode: 'AUTOMATION_UNAUTHENTICATED' }, { status: 401 }),
       ),

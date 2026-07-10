@@ -7,6 +7,8 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { useQueryClient } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { extractAutomationRuleErrorCode } from '@/api/automation-rules'
 import { triggerTypeSchema, serializeTriggerConfig } from '@/api/automation-rules.types'
@@ -45,13 +47,15 @@ const TRIGGER_LABELS: Record<TriggerType, string> = {
   WEBHOOK: '웹훅 호출',
 }
 
-/** automation BC errorCode → 한국어 메시지 매핑 (스펙 §4 FR-7) */
+/** automation BC errorCode → 한국어 메시지 매핑 (스펙 §4 FR-7, 401/500은 /review F2 추가) */
 const AUTOMATION_ERROR_MESSAGES: Record<string, string> = {
   AUTOMATION_RULE_INVALID: '입력값을 확인해주세요.',
   AUTOMATION_MALFORMED_REQUEST: '요청 형식이 올바르지 않습니다.',
-  AUTOMATION_RULE_VERSION_CONFLICT: '다른 곳에서 먼저 변경되었습니다. 최신 정보를 다시 불러온 뒤 시도해주세요.',
+  AUTOMATION_RULE_VERSION_CONFLICT: '다른 곳에서 먼저 변경되었습니다. 최신 정보로 다시 열어 시도해주세요.',
   AUTOMATION_ACCESS_DENIED: '권한이 없습니다.',
   AUTOMATION_RULE_NOT_FOUND: '자동화 룰을 찾을 수 없습니다.',
+  AUTOMATION_UNAUTHENTICATED: '세션이 만료되었습니다. 다시 로그인해주세요.',
+  AUTOMATION_INTERNAL_ERROR: '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
 }
 
 const DEFAULT_ERROR_MESSAGE = '저장에 실패했습니다. 다시 시도해주세요.'
@@ -61,6 +65,32 @@ function resolveErrorMessage(error: unknown): string {
   const code = extractAutomationRuleErrorCode(error)
   if (code === null) return DEFAULT_ERROR_MESSAGE
   return AUTOMATION_ERROR_MESSAGES[code] ?? DEFAULT_ERROR_MESSAGE
+}
+
+/**
+ * 저장 mutation 실패를 처리한다 (/review F1).
+ *
+ * 409(AUTOMATION_RULE_VERSION_CONFLICT)는 `editingRule.version`(부모 useState 스냅샷)이
+ * stale해 폼을 열어둔 채 재시도해도 다시 409가 반복된다. 그래서 목록 쿼리를 invalidate해
+ * refetch를 유도하고, 폼을 닫아(onOpenChange(false)) 사용자가 최신 version으로 재오픈하게
+ * 한다 — 폼이 닫히므로 인라인 submitError 대신 토스트로 안내한다.
+ * 그 외 에러(500/네트워크/Zod 등)는 재시도 가능하므로 폼을 유지한 채 submitError로 보여준다.
+ */
+function handleSubmitFailure(
+  error: unknown,
+  projectKey: string,
+  queryClient: QueryClient,
+  onOpenChange: (open: boolean) => void,
+  setSubmitError: (message: string | null) => void,
+): void {
+  const message = resolveErrorMessage(error)
+  if (extractAutomationRuleErrorCode(error) === 'AUTOMATION_RULE_VERSION_CONFLICT') {
+    void queryClient.invalidateQueries({ queryKey: AUTOMATION_RULES_QUERY_KEY(projectKey) })
+    toast.error(message)
+    onOpenChange(false)
+    return
+  }
+  setSubmitError(message)
 }
 
 /**
@@ -317,12 +347,9 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
       }
       onOpenChange(false)
     } catch (error) {
-      // 409(OCC 버전 충돌)는 목록을 invalidate해 refetch를 유도한다 — 그렇지 않으면 stale
-      // version으로 재시도가 반복되어 무한 409에 빠진다 (스펙 §4 FR-7 · §6 E5 · §2 S4).
-      if (extractAutomationRuleErrorCode(error) === 'AUTOMATION_RULE_VERSION_CONFLICT') {
-        void queryClient.invalidateQueries({ queryKey: AUTOMATION_RULES_QUERY_KEY(projectKey) })
-      }
-      setSubmitError(resolveErrorMessage(error))
+      // 409는 폼을 닫고 목록을 refetch해 사용자가 최신 version으로 재오픈하도록 유도한다
+      // (스펙 §4 FR-7 · §6 E5 · §2 S4). 그 외 에러는 폼을 유지한다 — handleSubmitFailure 참고.
+      handleSubmitFailure(error, projectKey, queryClient, onOpenChange, setSubmitError)
     }
   }
 
