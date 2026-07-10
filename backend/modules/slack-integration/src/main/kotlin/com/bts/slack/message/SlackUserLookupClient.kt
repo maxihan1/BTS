@@ -127,6 +127,12 @@ class SlackUserLookupClient(
          * → [SlackUserLookupResult.MissingScope]로 분류한다.
          */
         val RECONNECT_REQUIRED_ERRORS =
-            setOf(ERROR_MISSING_SCOPE, ERROR_INVALID_AUTH, ERROR_TOKEN_REVOKED, ERROR_ACCOUNT_INACTIVE, ERROR_NOT_AUTHED)
+            setOf(
+                ERROR_MISSING_SCOPE,
+                ERROR_INVALID_AUTH,
+                ERROR_TOKEN_REVOKED,
+                ERROR_ACCOUNT_INACTIVE,
+                ERROR_NOT_AUTHED,
+            )
     }
 }
