@@ -82,6 +82,8 @@ class IssueUnfurlAdapter(
      * 담당자 UUID 는 반환값([IssueUnfurlView])에 노출하지 않는다.
      */
     @Transactional(readOnly = true)
+    // 각 return은 독립적 fail-closed 게이트(파싱/BROWSE/보안등급/이슈·타입 부재) — 합치면 보안 판정 가독성 저하
+    @Suppress("ReturnCount")
     override fun getVisibleIssueCard(
         issueKey: String,
         viewerUserId: UUID,
@@ -109,7 +111,9 @@ class IssueUnfurlAdapter(
      *
      * 예외를 던지지 않고 `null` 로 수렴시켜, Slack에서 붙여넣은 임의 문자열이 이슈 키처럼 보이지만
      * 실제로는 잘못된 형식일 때도 unfurl 이 조용히 생략되게 한다(파서 단계 통과 이력과 무관하게 방어).
+     * 예외 message 는 사용자 붙여넣기 원문을 포함할 수 있어 로깅하지 않는다(NFR2) — `@Suppress("SwallowedException")` 근거.
      */
+    @Suppress("SwallowedException")
     private fun parseIssueKeyOrNull(issueKey: String): IssueKey? =
         try {
             IssueKey(issueKey)

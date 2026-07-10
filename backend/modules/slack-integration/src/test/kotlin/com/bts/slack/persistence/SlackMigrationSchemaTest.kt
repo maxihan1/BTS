@@ -1,4 +1,5 @@
-// V701/V702 마이그레이션 검증 — user_slack_mapping(사용자↔Slack 매핑) + slack_delivery_log(전송 멱등 dedup) + 역방향 UNIQUE 인덱스 (FR-SL-02/03)
+// V701/V702 마이그레이션 검증 — user_slack_mapping(사용자↔Slack 매핑)
+// + slack_delivery_log(전송 멱등 dedup) + 역방향 UNIQUE 인덱스 (FR-SL-02/03)
 
 package com.bts.slack.persistence
 
@@ -238,7 +239,8 @@ class SlackMigrationSchemaTest {
                     " WHERE schemaname = 'public' AND tablename = 'user_slack_mapping' AND indexname = ?",
             ).use { stmt ->
                 stmt.setString(1, indexName)
-                stmt.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
+                val rs = stmt.executeQuery()
+                if (rs.next()) rs.getString(1) else null
             }
         }
 

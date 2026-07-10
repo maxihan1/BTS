@@ -148,7 +148,8 @@ class SlackSignatureVerifierTest {
     ): String {
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(secret.toByteArray(Charsets.UTF_8), "HmacSHA256"))
-        val hex = mac.doFinal("v0:$timestamp:$rawBody".toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+        val digest = mac.doFinal("v0:$timestamp:$rawBody".toByteArray(Charsets.UTF_8))
+        val hex = digest.joinToString("") { "%02x".format(it) }
         return "v0=$hex"
     }
 }

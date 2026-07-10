@@ -136,7 +136,10 @@ class JdbcSlackUserMappingRepositoryReverseTest {
         } finally {
             // 다음 테스트(및 이후 실행)를 위해 인덱스를 원복한다 — 테스트 간 스키마 상태 오염 방지.
             // 중복 행을 먼저 정리해야 UNIQUE 인덱스 재생성이 위반 없이 성공한다.
-            jdbc.update("DELETE FROM user_slack_mapping WHERE slack_user_id = :slackUserId", mapOf("slackUserId" to "U0DUP000"))
+            jdbc.update(
+                "DELETE FROM user_slack_mapping WHERE slack_user_id = :slackUserId",
+                mapOf("slackUserId" to "U0DUP000"),
+            )
             jdbc.update(
                 "CREATE UNIQUE INDEX idx_user_slack_mapping_slack_user ON user_slack_mapping (slack_user_id, team_id)",
                 emptyMap<String, Any>(),
