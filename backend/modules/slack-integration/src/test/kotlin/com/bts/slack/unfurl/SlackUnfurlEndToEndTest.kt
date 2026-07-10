@@ -54,6 +54,9 @@ import javax.crypto.spec.SecretKeySpec
  */
 private const val ATLAS_BASE_URL = "https://atlas.example.com"
 
+/** `mockk`의 `chatUnfurl` 오버로드 모호성 해소용 타입 별칭([com.bts.slack.message.SlackUnfurlClientTest] 동형 필요). */
+private typealias ChatUnfurlConfigurator = RequestConfigurator<ChatUnfurlRequest.ChatUnfurlRequestBuilder>
+
 /**
  * `POST /slack/events` 로 들어오는 가짜 Slack `link_shared` 이벤트의 풀스택 E2E (FR-SL-03 Task 12).
  *
@@ -161,14 +164,14 @@ class SlackUnfurlEndToEndTest {
                 priorityLabel = "높음",
                 assigneeDisplayName = null,
             )
-        val requestSlot = slot<RequestConfigurator<ChatUnfurlRequest.ChatUnfurlRequestBuilder>>()
+        val requestSlot = slot<ChatUnfurlConfigurator>()
         every { methodsClient.chatUnfurl(capture(requestSlot)) } returns ChatUnfurlResponse().apply { isOk = true }
 
         val body = linkSharedEventJson(slackUserId = SLACK_USER_ID, links = listOf(ISSUE_URL))
         mockMvc.perform(postSignedEvents(body)).andExpect(status().isOk)
 
         awaitAsyncSettled()
-        verify(exactly = 1) { methodsClient.chatUnfurl(any<RequestConfigurator<ChatUnfurlRequest.ChatUnfurlRequestBuilder>>()) }
+        verify(exactly = 1) { methodsClient.chatUnfurl(any<ChatUnfurlConfigurator>()) }
         val built = ChatUnfurlRequest.builder().also { requestSlot.captured.configure(it) }.build()
         assertThat(built.channel).isEqualTo(CHANNEL)
         assertThat(built.ts).isEqualTo(MESSAGE_TS)
@@ -187,7 +190,7 @@ class SlackUnfurlEndToEndTest {
         mockMvc.perform(postSignedEvents(body)).andExpect(status().isOk)
 
         awaitAsyncSettled()
-        verify(exactly = 0) { methodsClient.chatUnfurl(any<RequestConfigurator<ChatUnfurlRequest.ChatUnfurlRequestBuilder>>()) }
+        verify(exactly = 0) { methodsClient.chatUnfurl(any<ChatUnfurlConfigurator>()) }
     }
 
     // ── fail-closed — 무권한/없는 키 ───────────────────────────────────────────────
@@ -202,7 +205,7 @@ class SlackUnfurlEndToEndTest {
         mockMvc.perform(postSignedEvents(body)).andExpect(status().isOk)
 
         awaitAsyncSettled()
-        verify(exactly = 0) { methodsClient.chatUnfurl(any<RequestConfigurator<ChatUnfurlRequest.ChatUnfurlRequestBuilder>>()) }
+        verify(exactly = 0) { methodsClient.chatUnfurl(any<ChatUnfurlConfigurator>()) }
     }
 
     // ── url_verification 왕복 ────────────────────────────────────────────────────
@@ -260,8 +263,9 @@ class SlackUnfurlEndToEndTest {
             """.trimIndent()
     }
 
-    private fun urlVerificationJson(challenge: String): String =
-        """{"type":"url_verification","challenge":"$challenge"}"""
+    private fun urlVerificationJson(challenge: String): String {
+        return """{"type":"url_verification","challenge":"$challenge"}"""
+    }
 
     // ── DB 시드 헬퍼 ─────────────────────────────────────────────────────────────
 
