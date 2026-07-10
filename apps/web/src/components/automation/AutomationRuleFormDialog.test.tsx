@@ -10,6 +10,7 @@ import type { JSX, ReactNode } from 'react'
 import { AutomationRuleFormDialog } from './AutomationRuleFormDialog'
 import { automationRuleHandlers } from '@/mocks/automation-rule-handlers'
 import { DEFAULT_AUTOMATION_PROJECT_KEY, resetAutomationRuleStore } from '@/mocks/automation-rule-fixtures'
+import { AUTOMATION_RULES_QUERY_KEY } from '@/api/useAutomationRules'
 import type {
   AutomationRule,
   CreateAutomationRuleInput,
@@ -346,6 +347,48 @@ describe('AutomationRuleFormDialog — key 재마운트(stale state 회피)', ()
     rerender(<AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />)
 
     expect(screen.getByLabelText('이름')).toHaveValue('')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 409(OCC 버전 충돌) — 목록 invalidate (스펙 §4 FR-7 · §6 E5 · §2 S4: 409는 refetch 유도)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AutomationRuleFormDialog — 409 버전 충돌 시 목록 invalidate', () => {
+  it('수정 저장이 409로 실패하면 자동화 룰 목록 쿼리를 invalidate하고 에러 메시지를 표시한다', async () => {
+    server.use(
+      http.patch('/api/v1/projects/:projectKey/automation/rules/:id', () =>
+        HttpResponse.json(
+          { errorCode: 'AUTOMATION_RULE_VERSION_CONFLICT', detail: '버전 충돌' },
+          { status: 409 },
+        ),
+      ),
+    )
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    const onOpenChange = vi.fn()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AutomationRuleFormDialog
+          projectKey={PROJECT_KEY}
+          open
+          onOpenChange={onOpenChange}
+          editingRule={SCHEDULED_EDIT_RULE}
+        />
+      </QueryClientProvider>,
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('다른 곳에서 먼저 변경되었습니다. 최신 정보를 다시 불러온 뒤 시도해주세요.'),
+      ).toBeInTheDocument()
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: AUTOMATION_RULES_QUERY_KEY(PROJECT_KEY) })
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
   })
 })
 

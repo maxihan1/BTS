@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
+import { toast } from 'sonner'
 import { AutomationRuleList } from './AutomationRuleList'
 import { automationRuleHandlers } from '@/mocks/automation-rule-handlers'
 import {
@@ -13,6 +14,7 @@ import {
   resetAutomationRuleStore,
   seedAutomationRules,
 } from '@/mocks/automation-rule-fixtures'
+import { AUTOMATION_RULES_QUERY_KEY } from '@/api/useAutomationRules'
 import type { PatchAutomationRuleInput } from '@/api/automation-rules.types'
 
 vi.mock('sonner', () => ({
@@ -134,6 +136,29 @@ describe('AutomationRuleList', () => {
     await waitFor(() => {
       expect(capturedBody).toEqual({ version: target.version, enabled: false })
     })
+  })
+
+  it('토글이 409(버전 충돌)로 실패하면 목록 쿼리를 invalidate하고 실패 토스트를 표시한다', async () => {
+    seedAutomationRules(DEFAULT_AUTOMATION_RULES)
+    const target = issueCreatedRule()
+    const user = userEvent.setup()
+
+    server.use(
+      http.patch('/api/v1/projects/:projectKey/automation/rules/:id', () =>
+        HttpResponse.json({ errorCode: 'AUTOMATION_RULE_VERSION_CONFLICT' }, { status: 409 }),
+      ),
+    )
+
+    const { queryClient } = renderList()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    await waitFor(() => screen.getByText(target.name))
+    await user.click(screen.getByTestId(`automation-rule-toggle-${target.id}`))
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: AUTOMATION_RULES_QUERY_KEY(PROJECT_KEY) })
+    })
+    expect(toast.error).toHaveBeenCalledWith('변경에 실패했습니다.')
   })
 
   it('삭제 확인 흐름 — 삭제 → 확인 모달 → 확인 클릭 시 delete mutation이 호출되어 목록에서 사라진다', async () => {
