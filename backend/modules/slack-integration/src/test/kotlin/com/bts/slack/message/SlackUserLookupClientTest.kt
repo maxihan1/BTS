@@ -15,6 +15,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.io.IOException
 
+private typealias LookupConfigurator = RequestConfigurator<UsersLookupByEmailRequest.UsersLookupByEmailRequestBuilder>
+
 class SlackUserLookupClientTest {
     private val methods = mockk<MethodsClient>()
     private val client = SlackUserLookupClient(methods)
@@ -23,13 +25,13 @@ class SlackUserLookupClientTest {
 
     private fun stubResponse(response: UsersLookupByEmailResponse) {
         every {
-            methods.usersLookupByEmail(any<RequestConfigurator<UsersLookupByEmailRequest.UsersLookupByEmailRequestBuilder>>())
+            methods.usersLookupByEmail(any<LookupConfigurator>())
         } returns response
     }
 
     @Test
     fun `ok 응답이면 Found 반환하고 token·email 을 요청에 싣는다`() {
-        val slot = slot<RequestConfigurator<UsersLookupByEmailRequest.UsersLookupByEmailRequestBuilder>>()
+        val slot = slot<LookupConfigurator>()
         val user =
             User().apply {
                 id = "U123"
@@ -80,7 +82,7 @@ class SlackUserLookupClientTest {
     @Test
     fun `SlackApiException(429·rate_limited) 은 Transient 이고 토큰을 담지 않는다`() {
         every {
-            methods.usersLookupByEmail(any<RequestConfigurator<UsersLookupByEmailRequest.UsersLookupByEmailRequestBuilder>>())
+            methods.usersLookupByEmail(any<LookupConfigurator>())
         } throws mockk<SlackApiException>(relaxed = true)
 
         val result = client.lookupByEmail(botToken, "person@example.com")
@@ -93,7 +95,7 @@ class SlackUserLookupClientTest {
     @Test
     fun `IOException(네트워크) 은 Transient 이고 토큰을 담지 않는다`() {
         every {
-            methods.usersLookupByEmail(any<RequestConfigurator<UsersLookupByEmailRequest.UsersLookupByEmailRequestBuilder>>())
+            methods.usersLookupByEmail(any<LookupConfigurator>())
         } throws IOException("network")
 
         val result = client.lookupByEmail(botToken, "person@example.com")

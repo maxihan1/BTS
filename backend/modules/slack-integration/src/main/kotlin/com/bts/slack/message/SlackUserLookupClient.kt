@@ -5,6 +5,7 @@ package com.bts.slack.message
 import com.slack.api.Slack
 import com.slack.api.methods.MethodsClient
 import com.slack.api.methods.SlackApiException
+import com.slack.api.methods.response.users.UsersLookupByEmailResponse
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.io.IOException
@@ -71,23 +72,7 @@ class SlackUserLookupClient(
                 methods.usersLookupByEmail { req ->
                     req.token(botToken).email(email)
                 }
-            when {
-                response.isOk -> {
-                    val user = response.user
-                    if (user == null) {
-                        log.warn("slack_user_lookup_missing_user")
-                        SlackUserLookupResult.NotFound
-                    } else {
-                        SlackUserLookupResult.Found(user.id, user.teamId)
-                    }
-                }
-                response.error == ERROR_USERS_NOT_FOUND -> SlackUserLookupResult.NotFound
-                response.error == ERROR_MISSING_SCOPE -> SlackUserLookupResult.MissingScope
-                else -> {
-                    log.warn("slack_user_lookup_error error={}", response.error ?: "unknown")
-                    SlackUserLookupResult.NotFound
-                }
-            }
+            classify(response)
         } catch (e: IOException) {
             // 네트워크 오류 — 재시도 가능. 토큰/이메일 미노출(예외 클래스명만).
             log.warn("slack_user_lookup_io_error error={}", e.javaClass.simpleName)
@@ -96,6 +81,24 @@ class SlackUserLookupClient(
             // HTTP 비2xx(429/5xx 등) — 재시도 가능. 토큰/이메일 미노출.
             log.warn("slack_user_lookup_api_error error={}", e.javaClass.simpleName)
             SlackUserLookupResult.Transient("http:${e.javaClass.simpleName}")
+        }
+    }
+
+    /** 논리 응답(`ok:true/false`)을 [SlackUserLookupResult]로 분류한다. 예외 경로는 호출부에서 처리한다. */
+    private fun classify(response: UsersLookupByEmailResponse): SlackUserLookupResult {
+        val user = response.user
+        return when {
+            response.isOk && user != null -> SlackUserLookupResult.Found(user.id, user.teamId)
+            response.isOk -> {
+                log.warn("slack_user_lookup_missing_user")
+                SlackUserLookupResult.NotFound
+            }
+            response.error == ERROR_USERS_NOT_FOUND -> SlackUserLookupResult.NotFound
+            response.error == ERROR_MISSING_SCOPE -> SlackUserLookupResult.MissingScope
+            else -> {
+                log.warn("slack_user_lookup_error error={}", response.error ?: "unknown")
+                SlackUserLookupResult.NotFound
+            }
         }
     }
 
