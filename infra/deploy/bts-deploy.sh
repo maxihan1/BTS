@@ -53,7 +53,11 @@ docker compose -f infra/docker-compose.prod.yml --env-file infra/prod/.env build
 docker compose -f infra/docker-compose.prod.yml --env-file infra/prod/.env up -d
 sleep 10
 curl -fsS http://localhost:18080/ >/dev/null && echo "✅ 프론트 응답"
-curl -fsS http://localhost:18080/actuator/health || echo "⚠️ 백엔드 health 대기 필요(기동 시간)"
+# 백엔드 health 는 nginx 가 /actuator 를 프록시하지 않으므로(SPA fallback 가짜그린 방지)
+# 백엔드 컨테이너 내부에서 직접 확인한다.
+docker exec bts-backend curl -fsS http://localhost:8080/actuator/health >/dev/null \
+  && echo "✅ 백엔드 health UP" \
+  || echo "⚠️ 백엔드 health 대기 필요(기동 수십 초 소요) — 'docker compose ... ps'로 healthy 확인"
 REMOTE
 
 echo "✅ 배포 명령 완료 (health 는 기동까지 수십 초 소요될 수 있음)"
