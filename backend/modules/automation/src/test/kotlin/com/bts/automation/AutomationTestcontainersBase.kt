@@ -2,6 +2,7 @@
 
 package com.bts.automation
 
+import org.flywaydb.core.Flyway
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.jdbc.core.JdbcTemplate
@@ -11,6 +12,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.transaction.PlatformTransactionManager
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
+import java.sql.DriverManager
 import javax.sql.DataSource
 
 /**
@@ -32,10 +34,17 @@ import javax.sql.DataSource
  * 이 클래스는 [AutomationTestBootApplication] 컴포넌트 스캔에 잡히지 않으며(`@TestConfiguration`
  * 은 명시 `@Import` 로만 등록), 이를 import 하지 않는 다른 테스트를 오염하지 않는다.
  *
- * ## Flyway 마이그레이션은 이 클래스 책임이 아님
- * Task 1 시점에는 마이그레이션이 없다(Task 2 가 `db/migration/automation` 을 추가). 스키마가
- * 필요한 후속 테스트(SchemaMigrationTest 등)는 [postgres] 컨테이너를 직접 참조해 자체 Flyway
- * 를 실행한다(notification `NotificationTestcontainersConfig` 선례).
+ * ## pgmq 이미지 + Flyway 선적용 (Task 2 이후 강화)
+ * automation 은 pgmq 큐(q_automation_execution 소비·q_automation_events 발화)를 test-boot 에서
+ * 사용하므로 컨테이너 이미지는 pgmq 확장이 사전 설치된 `quay.io/tembo/pg16-pgmq` 여야 한다
+ * (`postgres:16-alpine` 은 pgmq 미탑재 → V301 `pgmq.create` 실패. ADR 2026-05-22-pgmq-postgres-image).
+ * 컨테이너 기동 직후 `db/migration/automation` Flyway 를 한 번 적용해 Spring 컨텍스트 기반 후속
+ * 테스트(Task 4 Repository·Task 6 컨트롤러·Task 7/8 워커)가 스키마+큐를 즉시 사용하게 한다.
+ *
+ * ## q_automation_events 는 test 픽스처로 생성 (plan-eng-review E1)
+ * prod 에서는 producer 인 issue-tracking(Task 10)이 `q_automation_events` 를 소유·생성한다. automation
+ * 소비자 테스트(Task 7 AutomationEventWorker)는 이 큐가 필요하므로 test 픽스처로만 생성한다
+ * ([[bts-cross-bc-test-migration]] 패턴 — automation 마이그레이션에 넣으면 prod 이중생성이 되므로 금지).
  */
 @TestConfiguration
 class AutomationTestcontainersBase {
@@ -76,16 +85,37 @@ class AutomationTestcontainersBase {
     }
 
     companion object {
+        // quay.io/tembo/pg16-pgmq:latest — pgmq 확장 사전 설치. asCompatibleSubstituteFor 로 Testcontainers
+        // 이미지 호환성 검증을 우회한다(SchemaMigrationTest 동형).
+        private val temboImage: DockerImageName =
+            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
+                .asCompatibleSubstituteFor("postgres")
+
         /**
-         * JVM 단위 singleton PostgreSQL 16-alpine container.
-         * `.apply { start() }` 로 JVM 시작 시 한 번만 기동. Ryuk 이 종료 시 자동 정리한다.
+         * JVM 단위 singleton pgmq PostgreSQL container.
+         * `.apply { start() }` 로 JVM 시작 시 한 번만 기동(Ryuk 종료 시 자동 정리), `.also { }` 에서
+         * Flyway 선적용 + q_automation_events 픽스처 생성을 1회 수행한다.
          */
         @JvmStatic
         val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(DockerImageName.parse("postgres:16-alpine"))
+            PostgreSQLContainer(temboImage)
                 .withDatabaseName("bts_automation_test")
                 .withUsername("bts")
                 .withPassword("bts_test")
                 .apply { start() }
+                .also { container ->
+                    Flyway.configure()
+                        .dataSource(container.jdbcUrl, container.username, container.password)
+                        .placeholderReplacement(false)
+                        .locations("classpath:db/migration/automation")
+                        .load()
+                        .migrate()
+                    // q_automation_events: prod 은 issue-tracking 소유(E1). automation 소비자 테스트용 픽스처.
+                    DriverManager
+                        .getConnection(container.jdbcUrl, container.username, container.password)
+                        .use { c ->
+                            c.prepareStatement("SELECT pgmq.create('q_automation_events')").use { it.execute() }
+                        }
+                }
     }
 }
