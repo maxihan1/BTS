@@ -28,6 +28,7 @@ import com.bts.issue.domain.IssueSecurityLevelNotInSchemeException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
+import com.bts.issue.event.IssueAssigned
 import com.bts.issue.event.IssueCreated
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueMentioned
@@ -807,6 +808,7 @@ class IssueApplicationService(
             autoWatch(existing.id.value, listOf(assigneeId))
         }
         recordHistory(before = existing, after = updated, actor = actor, projectId = existing.projectId)
+        eventPublisher.publish(IssueAssigned(issueKey = key, actorId = actor, occurredAt = Instant.now(clock)))
         log.info("issue_assignee_changed key={} assigneeId={} actor={}", key.value, assigneeId, actor.value)
         return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
     }

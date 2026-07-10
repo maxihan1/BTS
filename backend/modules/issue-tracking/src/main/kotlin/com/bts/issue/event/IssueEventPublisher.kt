@@ -74,6 +74,7 @@ class IssueEventPublisher(
             is IssueMentioned -> false
             is IssueDueSoon -> false
             is IssueOverdue -> false
+            is IssueAssigned -> false
         }
 
     companion object {
