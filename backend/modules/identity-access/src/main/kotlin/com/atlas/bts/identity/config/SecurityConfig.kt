@@ -39,12 +39,13 @@ import org.springframework.web.cors.CorsConfigurationSource
  * 미등록 상태로 404 를 반환하므로 공격 표면이 없다.
  * 사용자 로그인은 /api/v1/auth/login (Custom) 만 제공한다.
  *
- * ## permitAll 5경로 (FR-09-30 · FR-DB-03)
+ * ## permitAll 6경로 (FR-09-30 · FR-DB-03 · FR-CA-02)
  * - /api/v1/auth/login      — 로그인 요청 (credentials 수신, CSRF skip)
  * - /api/v1/auth/providers  — 활성 Provider 목록 조회 (인증 전 필요)
  * - /.well-known/jwks.json  — 공개키 제공 (외부 검증용, CSRF skip)
  * - /actuator/health        — 헬스체크 (로드밸런서, CSRF skip)
  * - /api/v1/public/dashboards/{token} — 익명 공개 대시보드 조회 (FR-DB-03, GET 메서드 고정 read-only, 단일 세그먼트 토큰)
+ * - /ical/feed/{token}.ics — 익명 iCal 구독 피드 (FR-CA-02, GET 메서드 고정 read-only, 단일 세그먼트 토큰)
  *
  * ## CSRF Cookie 모드 (ADR docs/decisions/2026-05-20-csrf-cookie-mode.md)
  * CookieCsrfTokenRepository.withHttpOnlyFalse() — SPA가 Cookie를 읽어 X-XSRF-TOKEN 헤더로 전송.
@@ -177,6 +178,10 @@ class SecurityConfig(
                 // 향후 같은 prefix 에 POST/PUT/DELETE 매핑이 추가돼도 익명 노출되지 않는다(비-GET 은 authenticated 로 떨어짐).
                 // 단일 세그먼트 `/*` 매처로 토큰 1개 path 만 노출. 정화·404 수렴은 notification BC(DashboardService) 책임.
                 auth.requestMatchers(HttpMethod.GET, PUBLIC_DASHBOARDS_PATH).permitAll()
+                // FR-CA-02: 익명 iCal 구독 피드 — 외부 앱이 Authorization 없이 폴링하는 read-only 경로.
+                // PUBLIC_DASHBOARDS_PATH 와 동일 defense-in-depth(GET 고정·단일 세그먼트). 404 수렴은 IcalFeedController.
+                // DEVELOPMENT.md §1.4 정식 예외(ADR 2026-07-09-fr-ca-02·게이트1 승인). 상세는 ICAL_FEED_PATH KDoc.
+                auth.requestMatchers(HttpMethod.GET, ICAL_FEED_PATH).permitAll()
                 auth.requestMatchers("/api/**").authenticated()
                 auth.anyRequest().authenticated()
             }
@@ -241,5 +246,16 @@ class SecurityConfig(
          * DEVELOPMENT.md §1.4 정식 예외(ADR 2026-07-02-fr-db-03-dashboard-share·게이트1 승인).
          */
         const val PUBLIC_DASHBOARDS_PATH = "/api/v1/public/dashboards/*"
+
+        /**
+         * 익명 iCal 구독 피드 엔드포인트 (FR-CA-02, [com.atlas.bts.identity.calendar.IcalFeedController]).
+         *
+         * 외부 캘린더 앱이 Authorization 헤더 없이 폴링하는 GET 전용 read-only 경로다.
+         * permitAll 은 `HttpMethod.GET` 으로 고정 등록한다 — 같은 prefix 에 비-GET 매핑이 추가돼도
+         * 익명 노출되지 않도록 폭발 반경을 메서드 차원에서 봉인한다(PUBLIC_DASHBOARDS_PATH 와 동일 원칙).
+         * 단일 세그먼트 매처 — 토큰 1개 path (`/ical/feed/{token}.ics`)만 노출한다(하위경로 와일드카드 아님).
+         * DEVELOPMENT.md §1.4 정식 예외(ADR 2026-07-09-fr-ca-02-ical-export·게이트1 승인).
+         */
+        const val ICAL_FEED_PATH = "/ical/feed/*"
     }
 }
