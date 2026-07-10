@@ -117,12 +117,14 @@ class AutomationScheduleWorker(
         rule: AutomationRule,
         now: Instant,
     ): Instant? {
-        val cron =
-            objectMapper.readTree(rule.triggerConfig).get(FIELD_CRON)?.asText()
-                ?: error("SCHEDULED 룰(${rule.id})의 triggerConfig 에 cron 필드가 없습니다.")
         val nowUtc = LocalDateTime.ofInstant(now, ZoneOffset.UTC)
-        return CronExpression.parse(cron).next(nowUtc)?.toInstant(ZoneOffset.UTC)
+        return CronExpression.parse(extractCron(rule)).next(nowUtc)?.toInstant(ZoneOffset.UTC)
     }
+
+    /** [rule] 의 triggerConfig JSON 에서 `cron` 필드값을 꺼낸다. 필드가 없으면 예외([fireRule] 이 처리). */
+    private fun extractCron(rule: AutomationRule): String =
+        objectMapper.readTree(rule.triggerConfig).get(FIELD_CRON)?.asText()
+            ?: error("SCHEDULED 룰(${rule.id})의 triggerConfig 에 cron 필드가 없습니다.")
 
     private companion object {
         /** triggerConfig JSON 의 cron 필드명 — [com.bts.automation.domain.TriggerConfig] 와 동일 계약. */
