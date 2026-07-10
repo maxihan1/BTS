@@ -60,6 +60,30 @@ function automationRuleNotFound(id: string): HttpResponse<ProblemDetail> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 소유권 조회 헬퍼 — get/patch/delete 3개 핸들러가 공유하는 404 분기를 한 곳에 모은다
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** findOwnedRule 결과 — 조회 성공 또는 404 응답 중 하나 */
+type OwnedRuleLookup =
+  | { readonly ok: true; readonly rule: AutomationRule }
+  | { readonly ok: false; readonly response: HttpResponse<ProblemDetail> }
+
+/**
+ * store에서 지정한 프로젝트에 소속된 룰을 조회한다.
+ * 룰이 없거나 다른 프로젝트 소속이면(경로의 projectKey와 불일치) 404 응답을 담아 반환한다.
+ *
+ * @param id 조회할 룰 UUID
+ * @param projectKey 요청 경로의 프로젝트 키
+ */
+function findOwnedRule(id: string, projectKey: string): OwnedRuleLookup {
+  const stored = ruleStore.get(id)
+  if (stored === undefined || stored.projectKey !== projectKey) {
+    return { ok: false, response: automationRuleNotFound(id) }
+  }
+  return { ok: true, rule: stored }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 내부 헬퍼 — WEBHOOK 토큰 원문 생성 + SCHEDULED 다음 발화 시각 계산
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -163,12 +187,12 @@ const getRuleHandler = http.get(
     const projectKey = params['projectKey'] as string
     const id = params['id'] as string
 
-    const stored = ruleStore.get(id)
-    if (stored === undefined || stored.projectKey !== projectKey) {
-      return automationRuleNotFound(id)
+    const found = findOwnedRule(id, projectKey)
+    if (!found.ok) {
+      return found.response
     }
 
-    return HttpResponse.json(stored)
+    return HttpResponse.json(found.rule)
   },
 )
 
@@ -192,10 +216,11 @@ const patchRuleHandler = http.patch(
     const projectKey = params['projectKey'] as string
     const id = params['id'] as string
 
-    const stored = ruleStore.get(id)
-    if (stored === undefined || stored.projectKey !== projectKey) {
-      return automationRuleNotFound(id)
+    const found = findOwnedRule(id, projectKey)
+    if (!found.ok) {
+      return found.response
     }
+    const stored = found.rule
 
     const body = (await request.json()) as PatchAutomationRuleInput
 
@@ -246,9 +271,9 @@ const deleteRuleHandler = http.delete(
     const projectKey = params['projectKey'] as string
     const id = params['id'] as string
 
-    const stored = ruleStore.get(id)
-    if (stored === undefined || stored.projectKey !== projectKey) {
-      return automationRuleNotFound(id)
+    const found = findOwnedRule(id, projectKey)
+    if (!found.ok) {
+      return found.response
     }
 
     ruleStore.delete(id)
