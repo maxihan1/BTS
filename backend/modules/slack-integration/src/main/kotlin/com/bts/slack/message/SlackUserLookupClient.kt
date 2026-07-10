@@ -15,7 +15,8 @@ import java.io.IOException
  *
  * - [Found]: 이메일에 매칭되는 Slack 사용자를 찾음.
  * - [NotFound]: 워크스페이스에 해당 이메일 사용자 없음(`users_not_found` 및 그 외 논리 오류) → 재시도 무의미.
- * - [MissingScope]: 봇 토큰에 `users:read.email` 스코프 없음(`missing_scope`) → 재시도 무의미(운영자 조치 필요).
+ * - [MissingScope]: 스코프 부족(`missing_scope`) 또는 봇 토큰/설치 무효(`invalid_auth`·`token_revoked`·
+ *   `account_inactive`·`not_authed`) → 재시도 무의미, 관리자가 Slack 앱을 다시 연결해야 한다.
  * - [Transient]: 일시 오류(429/5xx/네트워크) → 재시도 가능.
  */
 sealed interface SlackUserLookupResult {
@@ -25,7 +26,7 @@ sealed interface SlackUserLookupResult {
     /** 워크스페이스에 해당 이메일 사용자 없음. */
     data object NotFound : SlackUserLookupResult
 
-    /** 봇 토큰에 필요 스코프 없음. */
+    /** 스코프 부족 또는 봇 토큰/설치 무효 — 관리자 재연결 필요. */
     data object MissingScope : SlackUserLookupResult
 
     /** 재시도 가능한 일시 실패. [reason]은 비밀값을 담지 않는 진단 문자열이다. */
@@ -103,12 +104,28 @@ class SlackUserLookupClient(
     }
 
     private companion object {
+        /** 워크스페이스에 해당 이메일 사용자 없음 — [SlackUserLookupResult.NotFound]. */
         const val ERROR_USERS_NOT_FOUND = "users_not_found"
+
+        /** 봇 토큰에 `users:read.email` 스코프 없음. */
         const val ERROR_MISSING_SCOPE = "missing_scope"
+
+        /** 봇 토큰이 유효하지 않음(폐기·워크스페이스 설정 변경 등). */
         const val ERROR_INVALID_AUTH = "invalid_auth"
+
+        /** 봇 토큰이 명시적으로 폐기됨(앱 제거/재설치). */
         const val ERROR_TOKEN_REVOKED = "token_revoked"
+
+        /** 설치 계정이 비활성화됨. */
         const val ERROR_ACCOUNT_INACTIVE = "account_inactive"
+
+        /** 인증 컨텍스트 없음(세션 만료 등). */
         const val ERROR_NOT_AUTHED = "not_authed"
+
+        /**
+         * 스코프 부족 또는 봇 토큰/설치 무효로 관리자 재연결이 필요한 Slack 오류 코드 전체
+         * → [SlackUserLookupResult.MissingScope]로 분류한다.
+         */
         val RECONNECT_REQUIRED_ERRORS =
             setOf(ERROR_MISSING_SCOPE, ERROR_INVALID_AUTH, ERROR_TOKEN_REVOKED, ERROR_ACCOUNT_INACTIVE, ERROR_NOT_AUTHED)
     }
