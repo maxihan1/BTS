@@ -167,13 +167,13 @@
 
 **우선순위**. 높음 | **선행**. §5.1 | **Plan slug**. `personal/icalendar`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — RFC 5545 + 구독 URL 토큰 (책임. backend-engineer + security-engineer)
-- [ ] D3. 데이터 모델 — `user_calendar_tokens(user_id, token, revoked_at)` (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /ical/feed/{token}.ics` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — iCal 포맷 검증 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 구독 URL 발급/취소 페이지 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — CalendarFeedToken(불투명 토큰+SHA-256 해시) (책임. security-engineer)
+- [x] D2. 명세 — RFC 5545(자체 직렬화기) + 구독 URL 토큰 (책임. backend-engineer + security-engineer)
+- [x] D3. 데이터 모델 — `user_calendar_tokens(user_id PK, token_hash UNIQUE, created_at)` — V034. **원안 `token`(평문)·`revoked_at` 정정**: FR-DB-03/PAT 관례로 SHA-256 **해시만** 저장(원문 1회 노출·미저장), 취소=하드삭제(revoked_at 불요), ADR 2026-07-09 D4 (책임. db-engineer)
+- [x] D4. 백엔드 — 익명 `GET /ical/feed/{token}.ics`(permitAll·GET-only·404 수렴) + 관리 `POST/GET/DELETE /api/v1/users/me/calendar/feed`(JWT me-scope·PAT 403). FR-CA-01 `UserCalendarLookupPort` 재사용(신규 포트 0) (책임. backend-engineer + security-engineer)
+- [x] D5. 백엔드 테스트 — iCal 골든 문자열(이스케이핑/폴딩/CRLF) + 통합(익명GET/rotate/PAT403/CASCADE/격리/negative-probe) (책임. backend-engineer)
+- [x] D6. 프론트 UI — `/settings/calendar` 구독 URL 발급/1회복사/재발급/취소 카드 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 ## §NFR personalization BC 완료 게이트
 
