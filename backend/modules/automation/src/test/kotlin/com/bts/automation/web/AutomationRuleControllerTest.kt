@@ -335,6 +335,35 @@ class AutomationRuleControllerTest {
             ).andExpect(status().isForbidden)
     }
 
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `PATCH 무변경 (version만 전송) - 200 version 유지`() {
+        val ruleId = createRule(name = "무변경 대상")
+
+        mockMvc
+            .perform(
+                patch("/api/v1/projects/$PROJECT_KEY/automation/rules/$ruleId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"version":0}"""),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.version").value(0))
+    }
+
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `PATCH 동일값 enabled=true (이미 활성) - 200 무변경 version 유지`() {
+        val ruleId = createRule(name = "이미 활성")
+
+        mockMvc
+            .perform(
+                patch("/api/v1/projects/$PROJECT_KEY/automation/rules/$ruleId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"version":0,"enabled":true}"""),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.enabled").value(true))
+            .andExpect(jsonPath("$.version").value(0))
+    }
+
     // ── DELETE 삭제 ──────────────────────────────────────────────────────────────
 
     @Test
