@@ -93,13 +93,19 @@ class SlackDeliveryWorker(
     // ── private helpers ───────────────────────────────────────────────────────
 
     /**
-     * 단일 메시지를 처리한다. 파싱 실패는 poison 으로, 처리 중 예외는 재전달(재시도)로 다룬다.
+     * 단일 메시지를 처리한다. 파싱 실패는 poison 으로 다룬다.
+     *
+     * ## 배치 격리 (NotificationWorker 동형)
+     * 발송(dispatch)과 성공 시 [deleteMessage] 를 **한 try 안**에 둔다. dispatch 재시도 실패(throw)나
+     * delete 의 일시 오류가 for 루프 밖으로 전파돼 같은 배치의 나머지 메시지를 굶기지 않도록 per-message 로
+     * 흡수한다. 흡수된 메시지는 delete 되지 않으므로 vt 만료 후 재전달되고, read_ct > [MAX_RECEIVE_COUNT] 면
+     * archive(dead-letter) 한다.
      *
      * @param msgId pgmq 메시지 ID.
      * @param messageJson pgmq 메시지 JSON 문자열.
      * @param readCt pgmq 메시지 수신 횟수.
      */
-    @Suppress("TooGenericExceptionCaught", "ReturnCount") // early return 이 로직을 명확히 함 (WebhookDispatchWorker 동일 패턴)
+    @Suppress("TooGenericExceptionCaught") // 재시도 실패·delete 일시오류를 per-message 흡수(배치 격리)
     private fun processMessage(
         msgId: Long,
         messageJson: String,
@@ -111,27 +117,28 @@ class SlackDeliveryWorker(
                 return
             }
 
-        val ack =
-            try {
-                dispatch(event)
-            } catch (e: Exception) {
-                log.error("slack_delivery_processing_failed msgId={} error={}", msgId, e.message, e)
-                Ack.RETAIN
-            }
-
-        when (ack) {
-            Ack.DELETE -> deleteMessage(msgId)
-            Ack.RETAIN -> if (readCt > MAX_RECEIVE_COUNT) archiveMessage(msgId, readCt)
+        try {
+            dispatch(event)
+            // dispatch 가 정상 반환하면 처리 완료(발송/skip/영구실패) → 삭제.
+            deleteMessage(msgId)
+        } catch (e: Exception) {
+            log.error("slack_delivery_processing_failed msgId={} error={}", msgId, e.message, e)
+            // 재시도 가능(throw) → delete 안 함(vt 만료 재전달). 반복 실패는 dead-letter 로 수렴.
+            if (readCt > MAX_RECEIVE_COUNT) archiveMessage(msgId, readCt)
         }
     }
 
     /**
-     * 매핑/dedup/토큰 해석 후 발송하고, 큐 ack 방식([Ack])을 반환한다.
+     * 매핑/dedup/토큰 해석 후 발송한다.
      *
-     * @return [Ack.DELETE] (발송 완료/skip/영구실패) 또는 [Ack.RETAIN] (재시도 가능 실패).
+     * 정상 반환 = 큐에서 삭제해도 되는 종료 상태(발송 완료/skip/영구실패). 재시도 가능한 실패는
+     * [RetryableDeliveryException] 을 던져 [processMessage] 의 재전달 경로로 넘긴다(NotificationWorker 가
+     * 재시도를 예외로 표현하는 것과 동형).
+     *
+     * @throws RetryableDeliveryException 429/5xx/네트워크 등 재시도 가능한 전송 실패 시.
      */
     @Suppress("ReturnCount") // 단계별 skip 을 early return 으로 표현 (가독성)
-    private fun dispatch(event: SlackDeliveryEvent): Ack {
+    private fun dispatch(event: SlackDeliveryEvent) {
         val mapping = mappingRepository.findByUserId(event.recipientUserId)
         if (mapping == null) {
             log.info(
@@ -139,33 +146,30 @@ class SlackDeliveryWorker(
                 event.recipientUserId,
                 event.dedupKey,
             )
-            return Ack.DELETE
+            return
         }
         if (deliveryLogRepository.exists(event.dedupKey)) {
             log.info("slack_delivery_skip_duplicate dedupKey={}", event.dedupKey)
-            return Ack.DELETE
+            return
         }
         val botToken = botTokenResolver.resolve(mapping.teamId)
         if (botToken == null) {
             log.warn("slack_delivery_skip_no_install teamId={} dedupKey={}", mapping.teamId, event.dedupKey)
-            return Ack.DELETE
+            return
         }
 
         val rendered = renderer.render(event.title, event.issueKey)
-        return when (val result = messageClient.postDirectMessage(botToken, mapping.slackUserId, rendered)) {
+        when (val result = messageClient.postDirectMessage(botToken, mapping.slackUserId, rendered)) {
             is SlackSendResult.Sent -> {
                 // B4: 전송 성공 이후에만 dedup 을 박제한다(전송 실패가 dedup 되어 유실되는 것 방지).
                 deliveryLogRepository.record(event.dedupKey)
                 log.info("slack_delivery_sent dedupKey={}", event.dedupKey)
-                Ack.DELETE
             }
-            is SlackSendResult.PermanentFailure -> {
+            is SlackSendResult.PermanentFailure ->
                 log.warn("slack_delivery_permanent_failure dedupKey={} reason={}", event.dedupKey, result.reason)
-                Ack.DELETE
-            }
             is SlackSendResult.RetryableFailure -> {
                 log.warn("slack_delivery_retryable_failure dedupKey={} reason={}", event.dedupKey, result.reason)
-                Ack.RETAIN
+                throw RetryableDeliveryException(result.reason)
             }
         }
     }
@@ -251,14 +255,12 @@ class SlackDeliveryWorker(
         val dedupKey: String,
     )
 
-    /** 메시지 처리 후 큐 ack 방식. */
-    private enum class Ack {
-        /** 큐에서 삭제(발송 완료/skip/영구실패). */
-        DELETE,
-
-        /** 큐 보존(재시도 가능 실패) — vt 만료 후 재전달. */
-        RETAIN,
-    }
+    /**
+     * 재시도 가능한 전송 실패를 [processMessage] 의 재전달 경로로 넘기는 내부 신호 예외.
+     *
+     * [reason] 은 비밀값을 담지 않는 진단 문자열([SlackSendResult.RetryableFailure.reason]) 이다.
+     */
+    private class RetryableDeliveryException(reason: String) : RuntimeException(reason)
 
     companion object {
         /** notification SlackChannelSender 가 발행하는 큐 이름과 일치해야 한다(V701 에서 생성). */

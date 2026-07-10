@@ -54,10 +54,11 @@ class SlackDeliveryWorkerIntegrationTest {
                 renderer = SlackBlockKitRenderer("https://atlas.example.com", objectMapper),
                 messageClient = messageClient,
             )
-        // 각 테스트 격리 — 큐/테이블 초기화
+        // 각 테스트 격리 — 큐/archive/테이블 초기화 (purge_queue 는 archive 테이블을 비우지 않으므로 별도 DELETE)
         jdbc.execute("DELETE FROM user_slack_mapping")
         jdbc.execute("DELETE FROM slack_delivery_log")
         jdbc.execute("SELECT pgmq.purge_queue('q_slack_deliveries')")
+        jdbc.execute("DELETE FROM pgmq.\"${pgmqTable("a")}\"")
     }
 
     // ── 시나리오 ────────────────────────────────────────────────────────────────
@@ -147,6 +148,46 @@ class SlackDeliveryWorkerIntegrationTest {
         assertThat(undeliveredCount()).isEqualTo(0) // 재시도 무의미 → 삭제
     }
 
+    @Test
+    fun `parse 실패(poison)면 postMessage 미호출 + readCt 낮으면 큐 보존`() {
+        enqueuePoison()
+
+        worker.pollAndProcess()
+
+        verify(exactly = 0) { messageClient.postDirectMessage(any(), any(), any()) }
+        assertThat(undeliveredCount()).isEqualTo(1) // 재전달 대기(아직 dead-letter 아님)
+        assertThat(archivedCount()).isEqualTo(0)
+    }
+
+    @Test
+    fun `parse 실패(poison)가 readCt MAX 초과면 archive(dead-letter)`() {
+        enqueuePoison()
+        forceReadCount(SlackDeliveryWorker.MAX_RECEIVE_COUNT) // read 시 +1 → MAX 초과
+
+        worker.pollAndProcess()
+
+        assertThat(undeliveredCount()).isEqualTo(0) // 큐에서 제거
+        assertThat(archivedCount()).isEqualTo(1) // dead-letter 이동
+    }
+
+    @Test
+    fun `재시도가능 실패가 readCt MAX 초과면 archive + dedup 미기록`() {
+        val userId = UUID.randomUUID()
+        mappingRepository.upsert(userId, "U0RECIPIENT", "T_TEAM")
+        every { tokenResolver.resolve("T_TEAM") } returns "xoxb-token"
+        every { messageClient.postDirectMessage(any(), any(), any()) } returns
+            SlackSendResult.RetryableFailure("rate_limited")
+        enqueue(userId, dedupKey = "PROJ-7:issue.mentioned:$userId", title = "멘션", issueKey = "PROJ-7")
+        forceReadCount(SlackDeliveryWorker.MAX_RECEIVE_COUNT)
+
+        worker.pollAndProcess()
+
+        // 반복 재시도 실패는 dead-letter 로 수렴하되, dedup 에는 여전히 기록하지 않는다(B4).
+        assertThat(deliveryLogRepository.exists("PROJ-7:issue.mentioned:$userId")).isFalse()
+        assertThat(undeliveredCount()).isEqualTo(0)
+        assertThat(archivedCount()).isEqualTo(1)
+    }
+
     // ── 헬퍼 ────────────────────────────────────────────────────────────────────
 
     private fun enqueue(
@@ -169,16 +210,46 @@ class SlackDeliveryWorkerIntegrationTest {
         jdbc.queryForObject("SELECT pgmq.send('q_slack_deliveries', ?::jsonb)", Long::class.java, payload)
     }
 
+    /** 유효 JSON 이지만 recipientUserId 가 UUID 가 아니라 parse 실패(poison)하는 메시지를 넣는다. */
+    private fun enqueuePoison() {
+        val payload =
+            objectMapper.writeValueAsString(
+                mapOf(
+                    "recipientUserId" to "not-a-uuid",
+                    "eventType" to "issue.mentioned",
+                    "title" to "제목",
+                    "dedupKey" to "poison-key",
+                ),
+            )
+        jdbc.queryForObject("SELECT pgmq.send('q_slack_deliveries', ?::jsonb)", Long::class.java, payload)
+    }
+
+    /** 큐에 남은 메시지의 read_ct 를 [value] 로 강제한다 — pgmq.read 가 +1 하므로 dead-letter 임계 검증에 쓴다. */
+    private fun forceReadCount(value: Int) {
+        jdbc.update("UPDATE pgmq.\"${queueTableName()}\" SET read_ct = ?", value)
+    }
+
     /** 큐에 남아 있는(삭제·archive 되지 않은) 메시지 수 — 보이지 않는(vt 미래) 메시지도 포함. */
     private fun undeliveredCount(): Int {
-        val table =
-            jdbc.queryForObject(
-                "SELECT table_name FROM information_schema.tables" +
-                    " WHERE table_schema = 'pgmq' AND table_name LIKE 'q\\_%slack_deliveries'",
-                String::class.java,
-            )
-        return jdbc.queryForObject("SELECT count(*) FROM pgmq.\"$table\"", Int::class.java) ?: 0
+        return jdbc.queryForObject("SELECT count(*) FROM pgmq.\"${queueTableName()}\"", Int::class.java) ?: 0
     }
+
+    /** archive(dead-letter) 테이블로 이동한 메시지 수. */
+    private fun archivedCount(): Int {
+        return jdbc.queryForObject("SELECT count(*) FROM pgmq.\"${pgmqTable("a")}\"", Int::class.java) ?: 0
+    }
+
+    /** q_slack_deliveries 큐 테이블 이름(pgmq prefix `q_`). */
+    private fun queueTableName(): String = pgmqTable("q")
+
+    /** pgmq 스키마에서 [prefix](`q`=큐·`a`=archive)로 시작하는 slack_deliveries 테이블 이름을 찾는다. */
+    private fun pgmqTable(prefix: String): String =
+        jdbc.queryForObject(
+            "SELECT table_name FROM information_schema.tables" +
+                " WHERE table_schema = 'pgmq' AND table_name LIKE ? ESCAPE '!'",
+            String::class.java,
+            "$prefix!_%slack_deliveries",
+        ) ?: error("pgmq $prefix table for slack_deliveries not found")
 
     companion object {
         @JvmStatic
