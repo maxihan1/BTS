@@ -16,13 +16,15 @@ import java.util.UUID
  * (예: assigneeId 가 실제 프로젝트 멤버인지, field 가 실존 이슈 필드인지)은 검증하지 않는다 — 실행
  * 시점 issue-tracking 위임([TriggerConfig] 선례 동형).
  *
+ * 실제 파싱/검증 로직은 이 파일의 private 최상위 함수([parseSetField] 등)에 위임한다 — companion object
+ * 를 얇게 유지해 detekt `TooManyFunctions` 를 회피하면서, 파싱 세부는 외부에 노출하지 않는다.
+ *
  * - [SetFieldAction] — 이슈 필드 값 설정
  * - [AssignAction] — 담당자 지정/해제
  * - [AddCommentAction] — 댓글 추가
  * - [CallWebhookAction] — 아웃바운드 웹훅 호출
  */
 sealed class Action {
-
     /**
      * 이슈 필드 값을 설정하는 액션.
      *
@@ -68,36 +70,6 @@ sealed class Action {
         /** [CallWebhookAction.body] 기본값. */
         const val DEFAULT_BODY: String = ""
 
-        private const val SCHEME_HTTP = "http"
-        private const val SCHEME_HTTPS = "https"
-
-        private const val FIELD_FIELD = "field"
-        private const val FIELD_VALUE = "value"
-        private const val FIELD_ASSIGNEE_ID = "assigneeId"
-        private const val FIELD_BODY = "body"
-        private const val FIELD_URL = "url"
-        private const val FIELD_METHOD = "method"
-        private const val FIELD_HEADERS = "headers"
-
-        private const val MSG_INVALID_JSON = "action_config는 유효한 JSON 객체여야 합니다."
-        private const val MSG_SET_FIELD_FIELD_REQUIRED =
-            "SET_FIELD 액션은 비어있지 않은 field 문자열이 필요합니다."
-        private const val MSG_SET_FIELD_VALUE_REQUIRED = "SET_FIELD 액션은 value 필드가 필요합니다."
-        private const val MSG_ASSIGN_ASSIGNEE_ID_REQUIRED = "ASSIGN 액션은 assigneeId 필드가 필요합니다."
-        private const val MSG_ASSIGN_ASSIGNEE_ID_INVALID =
-            "ASSIGN 액션의 assigneeId는 uuid 문자열 또는 null이어야 합니다."
-        private const val MSG_ADD_COMMENT_BODY_REQUIRED =
-            "ADD_COMMENT 액션은 비어있지 않은 body 문자열이 필요합니다."
-        private const val MSG_CALL_WEBHOOK_URL_REQUIRED =
-            "CALL_WEBHOOK 액션은 비어있지 않은 url 문자열이 필요합니다."
-        private const val MSG_CALL_WEBHOOK_METHOD_INVALID =
-            "CALL_WEBHOOK 액션의 method는 비어있지 않은 문자열이어야 합니다."
-        private const val MSG_CALL_WEBHOOK_HEADERS_INVALID = "CALL_WEBHOOK 액션의 headers는 JSON 객체여야 합니다."
-        private const val MSG_CALL_WEBHOOK_HEADERS_VALUE_INVALID =
-            "CALL_WEBHOOK 액션의 headers 값은 문자열이어야 합니다."
-
-        private val objectMapper = ObjectMapper()
-
         /**
          * `actionType` 에 맞는 형식으로 `configJson` 을 파싱해 [Action] 인스턴스를 생성한다.
          *
@@ -118,123 +90,157 @@ sealed class Action {
                 ActionType.CALL_WEBHOOK -> parseCallWebhook(node)
             }
         }
-
-        private fun parseJsonObject(configJson: String): JsonNode {
-            val node = readJson(configJson)
-            if (!node.isObject) {
-                throw ActionConfigInvalidException(MSG_INVALID_JSON)
-            }
-            return node
-        }
-
-        private fun readJson(configJson: String): JsonNode {
-            if (configJson.isBlank()) {
-                throw ActionConfigInvalidException(MSG_INVALID_JSON)
-            }
-            return try {
-                objectMapper.readTree(configJson)
-            } catch (e: JsonParseException) {
-                throw ActionConfigInvalidException(MSG_INVALID_JSON, e)
-            }
-        }
-
-        private fun parseSetField(node: JsonNode): SetFieldAction {
-            val field = requireNonBlankText(node, FIELD_FIELD, MSG_SET_FIELD_FIELD_REQUIRED)
-            val value = node.get(FIELD_VALUE) ?: throw ActionConfigInvalidException(MSG_SET_FIELD_VALUE_REQUIRED)
-            return SetFieldAction(field = field, value = value)
-        }
-
-        private fun parseAssign(node: JsonNode): AssignAction {
-            val assigneeNode =
-                node.get(FIELD_ASSIGNEE_ID) ?: throw ActionConfigInvalidException(MSG_ASSIGN_ASSIGNEE_ID_REQUIRED)
-            if (assigneeNode.isNull) {
-                return AssignAction(assigneeId = null)
-            }
-            if (!assigneeNode.isTextual) {
-                throw ActionConfigInvalidException(MSG_ASSIGN_ASSIGNEE_ID_INVALID)
-            }
-            val assigneeId =
-                try {
-                    UUID.fromString(assigneeNode.asText())
-                } catch (e: IllegalArgumentException) {
-                    throw ActionConfigInvalidException(MSG_ASSIGN_ASSIGNEE_ID_INVALID, e)
-                }
-            return AssignAction(assigneeId = assigneeId)
-        }
-
-        private fun parseAddComment(node: JsonNode): AddCommentAction {
-            val body = requireNonBlankText(node, FIELD_BODY, MSG_ADD_COMMENT_BODY_REQUIRED)
-            return AddCommentAction(body = body)
-        }
-
-        private fun parseCallWebhook(node: JsonNode): CallWebhookAction {
-            val url = requireNonBlankText(node, FIELD_URL, MSG_CALL_WEBHOOK_URL_REQUIRED)
-            validateUrlScheme(url)
-            return CallWebhookAction(
-                url = url,
-                method = parseOptionalMethod(node),
-                headers = parseOptionalHeaders(node),
-                body = parseOptionalBody(node),
-            )
-        }
-
-        private fun validateUrlScheme(url: String) {
-            val uri =
-                try {
-                    URI(url)
-                } catch (e: URISyntaxException) {
-                    throw ActionConfigInvalidException("url을 파싱할 수 없습니다: $url", e)
-                }
-            val scheme = uri.scheme
-            val isHttpOrHttps =
-                scheme != null && (scheme.equals(SCHEME_HTTP, ignoreCase = true) || scheme.equals(SCHEME_HTTPS, ignoreCase = true))
-            if (!isHttpOrHttps) {
-                throw ActionConfigInvalidException("url은 http(s) 스킴이어야 합니다: $url")
-            }
-        }
-
-        private fun parseOptionalMethod(node: JsonNode): String {
-            val methodNode = node.get(FIELD_METHOD) ?: return DEFAULT_METHOD
-            if (methodNode.isNull) return DEFAULT_METHOD
-            if (!methodNode.isTextual || methodNode.asText().isBlank()) {
-                throw ActionConfigInvalidException(MSG_CALL_WEBHOOK_METHOD_INVALID)
-            }
-            return methodNode.asText()
-        }
-
-        private fun parseOptionalBody(node: JsonNode): String {
-            val bodyNode = node.get(FIELD_BODY) ?: return DEFAULT_BODY
-            if (bodyNode.isNull) return DEFAULT_BODY
-            if (!bodyNode.isTextual) {
-                throw ActionConfigInvalidException("CALL_WEBHOOK 액션의 body는 문자열이어야 합니다.")
-            }
-            return bodyNode.asText()
-        }
-
-        private fun parseOptionalHeaders(node: JsonNode): Map<String, String> {
-            val headersNode = node.get(FIELD_HEADERS) ?: return emptyMap()
-            if (headersNode.isNull) return emptyMap()
-            if (!headersNode.isObject) {
-                throw ActionConfigInvalidException(MSG_CALL_WEBHOOK_HEADERS_INVALID)
-            }
-            return headersNode.fields().asSequence().associate { (key, value) ->
-                if (!value.isTextual) {
-                    throw ActionConfigInvalidException(MSG_CALL_WEBHOOK_HEADERS_VALUE_INVALID)
-                }
-                key to value.asText()
-            }
-        }
-
-        private fun requireNonBlankText(
-            node: JsonNode,
-            field: String,
-            errorMessage: String,
-        ): String {
-            val fieldNode = node.get(field)
-            if (fieldNode == null || !fieldNode.isTextual || fieldNode.asText().isBlank()) {
-                throw ActionConfigInvalidException(errorMessage)
-            }
-            return fieldNode.asText()
-        }
     }
+}
+
+private const val SCHEME_HTTP = "http"
+private const val SCHEME_HTTPS = "https"
+
+private const val FIELD_FIELD = "field"
+private const val FIELD_VALUE = "value"
+private const val FIELD_ASSIGNEE_ID = "assigneeId"
+private const val FIELD_BODY = "body"
+private const val FIELD_URL = "url"
+private const val FIELD_METHOD = "method"
+private const val FIELD_HEADERS = "headers"
+
+private const val MSG_INVALID_JSON = "action_config는 유효한 JSON 객체여야 합니다."
+private const val MSG_SET_FIELD_FIELD_REQUIRED = "SET_FIELD 액션은 비어있지 않은 field 문자열이 필요합니다."
+private const val MSG_SET_FIELD_VALUE_REQUIRED = "SET_FIELD 액션은 value 필드가 필요합니다."
+private const val MSG_ASSIGN_ASSIGNEE_ID_REQUIRED = "ASSIGN 액션은 assigneeId 필드가 필요합니다."
+private const val MSG_ASSIGN_ASSIGNEE_ID_INVALID = "ASSIGN 액션의 assigneeId는 uuid 문자열 또는 null이어야 합니다."
+private const val MSG_ADD_COMMENT_BODY_REQUIRED = "ADD_COMMENT 액션은 비어있지 않은 body 문자열이 필요합니다."
+private const val MSG_CALL_WEBHOOK_URL_REQUIRED = "CALL_WEBHOOK 액션은 비어있지 않은 url 문자열이 필요합니다."
+private const val MSG_CALL_WEBHOOK_METHOD_INVALID = "CALL_WEBHOOK 액션의 method는 비어있지 않은 문자열이어야 합니다."
+private const val MSG_CALL_WEBHOOK_HEADERS_INVALID = "CALL_WEBHOOK 액션의 headers는 JSON 객체여야 합니다."
+private const val MSG_CALL_WEBHOOK_HEADERS_VALUE_INVALID = "CALL_WEBHOOK 액션의 headers 값은 문자열이어야 합니다."
+private const val MSG_CALL_WEBHOOK_BODY_INVALID = "CALL_WEBHOOK 액션의 body는 문자열이어야 합니다."
+
+private val objectMapper = ObjectMapper()
+
+/** `configJson` 을 파싱해 JSON 객체 노드를 반환한다. 빈 문자열/파싱 불가/객체가 아니면 예외. */
+private fun parseJsonObject(configJson: String): JsonNode {
+    fun readTree(): JsonNode =
+        try {
+            objectMapper.readTree(configJson)
+        } catch (e: JsonParseException) {
+            throw ActionConfigInvalidException(MSG_INVALID_JSON, e)
+        }
+
+    if (configJson.isBlank()) {
+        throw ActionConfigInvalidException(MSG_INVALID_JSON)
+    }
+    val node = readTree()
+    if (!node.isObject) {
+        throw ActionConfigInvalidException(MSG_INVALID_JSON)
+    }
+    return node
+}
+
+/** SET_FIELD 액션 config `{field, value}` 를 파싱한다. */
+private fun parseSetField(node: JsonNode): Action.SetFieldAction {
+    val field = requireNonBlankText(node, FIELD_FIELD, MSG_SET_FIELD_FIELD_REQUIRED)
+    val value = node.get(FIELD_VALUE) ?: throw ActionConfigInvalidException(MSG_SET_FIELD_VALUE_REQUIRED)
+    return Action.SetFieldAction(field = field, value = value)
+}
+
+/** ASSIGN 액션 config `{assigneeId}` 를 파싱한다. `assigneeId` 는 uuid 문자열 또는 null. */
+private fun parseAssign(node: JsonNode): Action.AssignAction {
+    fun parseUuid(text: String): UUID =
+        try {
+            UUID.fromString(text)
+        } catch (e: IllegalArgumentException) {
+            throw ActionConfigInvalidException(MSG_ASSIGN_ASSIGNEE_ID_INVALID, e)
+        }
+
+    val assigneeNode =
+        node.get(FIELD_ASSIGNEE_ID) ?: throw ActionConfigInvalidException(MSG_ASSIGN_ASSIGNEE_ID_REQUIRED)
+    if (assigneeNode.isNull) {
+        return Action.AssignAction(assigneeId = null)
+    }
+    if (!assigneeNode.isTextual) {
+        throw ActionConfigInvalidException(MSG_ASSIGN_ASSIGNEE_ID_INVALID)
+    }
+    return Action.AssignAction(assigneeId = parseUuid(assigneeNode.asText()))
+}
+
+/** ADD_COMMENT 액션 config `{body}` 를 파싱한다. `body` 는 비어있지 않은 문자열. */
+private fun parseAddComment(node: JsonNode): Action.AddCommentAction {
+    val body = requireNonBlankText(node, FIELD_BODY, MSG_ADD_COMMENT_BODY_REQUIRED)
+    return Action.AddCommentAction(body = body)
+}
+
+/** CALL_WEBHOOK 액션 config `{url, method?, headers?, body?}` 를 파싱한다. */
+private fun parseCallWebhook(node: JsonNode): Action.CallWebhookAction {
+    val url = requireNonBlankText(node, FIELD_URL, MSG_CALL_WEBHOOK_URL_REQUIRED)
+    validateUrlScheme(url)
+    return Action.CallWebhookAction(
+        url = url,
+        method = parseOptionalMethod(node),
+        headers = parseOptionalHeaders(node),
+        body = parseOptionalBody(node),
+    )
+}
+
+private fun validateUrlScheme(url: String) {
+    val uri =
+        try {
+            URI(url)
+        } catch (e: URISyntaxException) {
+            throw ActionConfigInvalidException("url을 파싱할 수 없습니다: $url", e)
+        }
+    val scheme = uri.scheme?.lowercase()
+    if (scheme != SCHEME_HTTP && scheme != SCHEME_HTTPS) {
+        throw ActionConfigInvalidException("url은 http(s) 스킴이어야 합니다: $url")
+    }
+}
+
+private fun parseOptionalMethod(node: JsonNode): String {
+    val methodNode = node.get(FIELD_METHOD)
+    if (methodNode == null || methodNode.isNull) {
+        return Action.DEFAULT_METHOD
+    }
+    if (!methodNode.isTextual || methodNode.asText().isBlank()) {
+        throw ActionConfigInvalidException(MSG_CALL_WEBHOOK_METHOD_INVALID)
+    }
+    return methodNode.asText()
+}
+
+private fun parseOptionalBody(node: JsonNode): String {
+    val bodyNode = node.get(FIELD_BODY)
+    if (bodyNode == null || bodyNode.isNull) {
+        return Action.DEFAULT_BODY
+    }
+    if (!bodyNode.isTextual) {
+        throw ActionConfigInvalidException(MSG_CALL_WEBHOOK_BODY_INVALID)
+    }
+    return bodyNode.asText()
+}
+
+private fun parseOptionalHeaders(node: JsonNode): Map<String, String> {
+    val headersNode = node.get(FIELD_HEADERS)
+    if (headersNode == null || headersNode.isNull) {
+        return emptyMap()
+    }
+    if (!headersNode.isObject) {
+        throw ActionConfigInvalidException(MSG_CALL_WEBHOOK_HEADERS_INVALID)
+    }
+    return headersNode.fields().asSequence().associate { (key, value) ->
+        if (!value.isTextual) {
+            throw ActionConfigInvalidException(MSG_CALL_WEBHOOK_HEADERS_VALUE_INVALID)
+        }
+        key to value.asText()
+    }
+}
+
+private fun requireNonBlankText(
+    node: JsonNode,
+    field: String,
+    errorMessage: String,
+): String {
+    val fieldNode = node.get(field)
+    if (fieldNode == null || !fieldNode.isTextual || fieldNode.asText().isBlank()) {
+        throw ActionConfigInvalidException(errorMessage)
+    }
+    return fieldNode.asText()
 }
