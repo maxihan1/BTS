@@ -29,6 +29,8 @@ import java.util.UUID
     JsonSubTypes.Type(value = IssueMentioned::class, name = "issue.mentioned"),
     JsonSubTypes.Type(value = IssueDueSoon::class, name = "issue.due_soon"),
     JsonSubTypes.Type(value = IssueOverdue::class, name = "issue.overdue"),
+    JsonSubTypes.Type(value = IssueCommented::class, name = "issue.commented"),
+    JsonSubTypes.Type(value = IssueAssigned::class, name = "issue.assigned"),
 )
 sealed interface IssueDomainEvent
 
@@ -155,5 +157,49 @@ data class IssueDueSoon(
 data class IssueOverdue(
     val issueKey: String,
     val projectKey: String,
+    val occurredAt: Instant,
+) : IssueDomainEvent
+
+/**
+ * 이슈에 댓글이 작성되었을 때 발행되는 이벤트 (FR-AT-01 Task 10 — automation COMMENTED 트리거).
+ *
+ * 발행 주체: [com.bts.issue.comment.application.CommentApplicationService.create].
+ * 수신자: automation 모듈의 `AutomationEventWorker` — `q_automation_events` fan-out 큐를 폴링해
+ * COMMENTED 트리거로 등록된 [com.bts.automation.domain.AutomationRule] 을 매칭한다
+ * (ADR 2026-07-10-fr-at-01-automation-triggers D2·D3).
+ *
+ * `q_issue_events` 로도 함께 발행되어 NotificationWorker 가 이 타입을 **의도적으로 소비**한다
+ * (`NotificationEventType.ISSUE_COMMENTED` + V401 시드가 FR-NT-01 §9.1.2 매트릭스에 이미 존재 —
+ * 게이트2 옵션A로 사전 설계된 댓글 인앱 알림 경로를 완성. 작성자 자기제외·가시성 필터 적용).
+ *
+ * @property issueKey 댓글이 작성된 이슈의 키.
+ * @property projectKey 소속 프로젝트 키. 예: `ATLAS`
+ * @property commentId 작성된 댓글의 UUID.
+ * @property actorId 댓글을 작성한 행위자 ID.
+ * @property occurredAt 이벤트 발생 시각 (UTC).
+ */
+@JsonTypeName("issue.commented")
+data class IssueCommented(
+    val issueKey: IssueKey,
+    val projectKey: String,
+    val commentId: UUID,
+    val actorId: ActorId,
+    val occurredAt: Instant,
+) : IssueDomainEvent
+
+/**
+ * 이슈 담당자가 배정 또는 변경되었을 때 발행되는 이벤트 (FR-SL-02 — Slack 할당 알림).
+ *
+ * 담당자가 실제로 바뀔 때만 발행된다. 요청값이 기존 담당자와 동일한 no-op 은 발행하지 않는다
+ * (dedupKey 결정성 유지 — 임의 재발행으로 인한 중복 알림 방지).
+ *
+ * @property issueKey 담당자가 변경된 이슈의 키.
+ * @property actorId 변경을 수행한 행위자 ID. 알림 수신자 자기제외에 사용.
+ * @property occurredAt 이벤트 발생 시각 (UTC).
+ */
+@JsonTypeName("issue.assigned")
+data class IssueAssigned(
+    val issueKey: IssueKey,
+    val actorId: ActorId,
     val occurredAt: Instant,
 ) : IssueDomainEvent

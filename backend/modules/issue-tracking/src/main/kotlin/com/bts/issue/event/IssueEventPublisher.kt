@@ -32,6 +32,15 @@ class IssueEventPublisher(
      * [isWebhookPublishable] 이 `true` 인 이벤트는 [WEBHOOK_QUEUE_NAME] 큐로도 동일 payload 를
      * dual-send 한다 (FR-API-03 PR3 — 구독형 아웃바운드 Webhook 발송 트리거).
      *
+     * [isAutomationPublishable] 이 `true` 인 이벤트는 [AUTOMATION_QUEUE_NAME] 큐로도 동일 payload 를
+     * fan-out 한다 (FR-AT-01 Task 10 — automation BC 트리거 감지). `q_issue_events` 발행은 특수분기
+     * 없이 uniform 하게 유지한다 — 신규 [IssueCommented] 도 `q_issue_events` 로 실려 NotificationWorker 가
+     * **의도적으로 소비**한다. `NotificationEventType.ISSUE_COMMENTED("issue.commented")` 와 V401 시드
+     * (`issue.commented` → REPORTER/ASSIGNEE/WATCHER/MENTIONED, IN_APP)가 FR-NT-01 §9.1.2 매트릭스에
+     * 이미 존재하므로, 이 producer 배선이 **사전 설계된 댓글 인앱 알림 경로를 완성**한다(게이트2 옵션A 확정,
+     * ADR 2026-07-10-fr-at-01-automation-triggers D3). 작성자(actor) 본인은
+     * `EventRecipientResolver` 가 제외하고, 가시성 필터로 권한 없는 수신자는 걸러진다.
+     *
      * 호출 시 활성 트랜잭션이 없으면 [org.springframework.transaction.IllegalTransactionStateException] 이 발생한다.
      *
      * @param event 발행할 이슈 도메인 이벤트.
@@ -39,13 +48,34 @@ class IssueEventPublisher(
     @Transactional(propagation = Propagation.MANDATORY)
     fun publish(event: IssueDomainEvent) {
         val payload = objectMapper.writeValueAsString(event)
-        dsl.execute("SELECT pgmq.send(?, ?::jsonb)", QUEUE_NAME, payload)
-        log.info("event_published queue={} type={}", QUEUE_NAME, event::class.simpleName)
+        sendToQueue(QUEUE_NAME, payload, event)
 
         if (isWebhookPublishable(event)) {
-            dsl.execute("SELECT pgmq.send(?, ?::jsonb)", WEBHOOK_QUEUE_NAME, payload)
-            log.info("event_published queue={} type={}", WEBHOOK_QUEUE_NAME, event::class.simpleName)
+            sendToQueue(WEBHOOK_QUEUE_NAME, payload, event)
         }
+
+        if (isAutomationPublishable(event)) {
+            sendToQueue(AUTOMATION_QUEUE_NAME, payload, event)
+        }
+    }
+
+    /**
+     * [payload] 를 [queueName] pgmq 큐에 enqueue 하고 발행 로그를 남긴다.
+     *
+     * [publish] 의 3개 큐 fan-out(q_issue_events/q_webhook_events/q_automation_events)이 공유하는
+     * "SELECT pgmq.send" 실행 + 로깅 반복을 제거한 헬퍼 (REFACTOR — FR-AT-01 Task 10).
+     *
+     * @param queueName 대상 pgmq 큐 이름.
+     * @param payload 직렬화된 이벤트 JSON.
+     * @param event 로그 기록용 원본 이벤트 (타입명 추출).
+     */
+    private fun sendToQueue(
+        queueName: String,
+        payload: String,
+        event: IssueDomainEvent,
+    ) {
+        dsl.execute("SELECT pgmq.send(?, ?::jsonb)", queueName, payload)
+        log.info("event_published queue={} type={}", queueName, event::class.simpleName)
     }
 
     /**
@@ -74,6 +104,34 @@ class IssueEventPublisher(
             is IssueMentioned -> false
             is IssueDueSoon -> false
             is IssueOverdue -> false
+            is IssueCommented -> false
+            is IssueAssigned -> false
+        }
+
+    /**
+     * [event] 가 automation BC 트리거 감지 대상인지 판정한다 (FR-AT-01 Task 10).
+     *
+     * automation 대상 = `issue.created` / `issue.updated` / `issue.commented`
+     * (ADR 2026-07-10-fr-at-01-automation-triggers D2 — `ISSUE_CREATED`/`ISSUE_UPDATED`/
+     * `ISSUE_COMMENTED` 트리거 타입과 정합).
+     *
+     * `else` 분기 없는 exhaustive `when` — [isWebhookPublishable] 과 동일한 이유로, [IssueDomainEvent]
+     * 에 새 구현체가 추가되면 이 함수가 컴파일에 실패해 분류 누락(under-send)을 원천 차단한다.
+     *
+     * @param event 판정 대상 이슈 도메인 이벤트.
+     * @return `q_automation_events` 로도 발행해야 하면 `true`.
+     */
+    private fun isAutomationPublishable(event: IssueDomainEvent): Boolean =
+        when (event) {
+            is IssueCreated -> true
+            is IssueUpdated -> true
+            is IssueCommented -> true
+            is IssueTransitioned -> false
+            is IssueSoftDeleted -> false
+            is IssueMentioned -> false
+            is IssueDueSoon -> false
+            is IssueOverdue -> false
+            is IssueAssigned -> false
         }
 
     companion object {
@@ -82,5 +140,8 @@ class IssueEventPublisher(
 
         /** pgmq 큐 이름 — V034__pgmq_queue_webhook_events.sql 에서 생성된 큐와 일치해야 한다. */
         const val WEBHOOK_QUEUE_NAME = "q_webhook_events"
+
+        /** pgmq 큐 이름 — V036__pgmq_queue_automation_events.sql 에서 생성된 큐와 일치해야 한다. */
+        const val AUTOMATION_QUEUE_NAME = "q_automation_events"
     }
 }

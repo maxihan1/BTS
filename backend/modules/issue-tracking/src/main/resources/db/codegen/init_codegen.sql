@@ -794,3 +794,16 @@ CREATE TABLE comments (
 
 -- FK 인덱스 (DATA.md §7). 이슈별 활성 댓글 목록 조회용(created_at 정렬 동반) 부분 인덱스.
 CREATE INDEX idx_comments_issue_created ON comments (issue_id, created_at) WHERE deleted_at IS NULL;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V036: pgmq 큐 — q_automation_events (FR-AT-01 Task 10 automation BC 트리거 감지 fan-out 전용 큐)
+-- 원본: db/migration/issue-tracking/V036__pgmq_queue_automation_events.sql
+-- 이미지: quay.io/tembo/pg16-pgmq:latest — pgmq 사전 설치됨 (ADR 2026-05-22-pgmq-postgres-image).
+-- 컨슈머: automation AutomationEventWorker (@Scheduled 폴링, 본 미러 범위 외).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- pgmq extension 보장 (V002 에서 이미 적용됐으나 멱등 실행)
+CREATE EXTENSION IF NOT EXISTS pgmq CASCADE;
+
+-- 큐 생성 — q_automation_events
+SELECT pgmq.create('q_automation_events');

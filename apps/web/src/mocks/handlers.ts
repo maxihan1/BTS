@@ -45,6 +45,7 @@ import { resolutionHandlers } from './resolution-handlers'
 import { schemeHandlers } from './scheme-handlers'
 import { sessionHandlers } from './session-handlers'
 import { slackHandlers } from './slack-handlers'
+import { slackUserConnectionHandlers } from './slack-user-connection-handlers'
 import { statusHandlers } from './status-handlers'
 import { oooHandlers } from './ooo-handlers'
 import { trustedDevicesHandlers } from './trusted-devices-handlers'
@@ -64,6 +65,7 @@ import { searchHandlers } from './search-handlers'
 import { timelineHandlers } from './timeline-handlers'
 import { calendarHandlers } from './calendar-handlers'
 import { calendarFeedHandlers } from './calendar-feed-handlers'
+import { automationRuleHandlers } from './automation-rule-handlers'
 
 /**
  * 애플리케이션 전체 MSW 핸들러 집합.
@@ -123,6 +125,7 @@ export const handlers = [
   ...schemeHandlers,
   ...sessionHandlers,
   ...slackHandlers,
+  ...slackUserConnectionHandlers,
   ...statusHandlers,
   ...oooHandlers,
   ...trustedDevicesHandlers,
@@ -138,4 +141,5 @@ export const handlers = [
   ...workflowHandlers,
   ...calendarHandlers,
   ...calendarFeedHandlers,
+  ...automationRuleHandlers,
 ]

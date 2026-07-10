@@ -117,6 +117,40 @@ class NotificationPolicyRepositoryIntegrationTest : NotificationTestcontainersBa
         assertThat(mentionedPolicy!!.enabled).isTrue()
     }
 
+    // ── V409 시드 — issue.mentioned/issue.assigned SLACK 전역 정책 존재 ──────────
+
+    @Test
+    fun `V409 시드로 issue_mentioned MENTIONED SLACK 전역 정책이 존재한다`() {
+        val globals = repository.findAll(null)
+
+        val mentionedSlackPolicy =
+            globals.find {
+                it.eventType == NotificationEventType.ISSUE_MENTIONED &&
+                    it.recipientRole == RecipientRole.MENTIONED &&
+                    it.channel == Channel.SLACK &&
+                    it.projectKey == null
+            }
+
+        assertThat(mentionedSlackPolicy).isNotNull
+        assertThat(mentionedSlackPolicy!!.enabled).isTrue()
+    }
+
+    @Test
+    fun `V409 시드로 issue_assigned ASSIGNEE SLACK 전역 정책이 존재한다`() {
+        val globals = repository.findAll(null)
+
+        val assignedSlackPolicy =
+            globals.find {
+                it.eventType == NotificationEventType.ISSUE_ASSIGNED &&
+                    it.recipientRole == RecipientRole.ASSIGNEE &&
+                    it.channel == Channel.SLACK &&
+                    it.projectKey == null
+            }
+
+        assertThat(assignedSlackPolicy).isNotNull
+        assertThat(assignedSlackPolicy!!.enabled).isTrue()
+    }
+
     // ── findAll — 프로젝트 키 조회 ───────────────────────────────────────────────
 
     @Test

@@ -399,4 +399,179 @@ class IssueEventPublisherTest : DescribeSpec({
             }
         }
     }
+
+    // ── FR-AT-01 Task 10 — q_automation_events fan-out ──────────────────────
+    //
+    // automation 관심 이벤트(issue.created / issue.updated / issue.commented)는 q_issue_events 뿐
+    // 아니라 q_automation_events 에도 fan-out 되어야 하고, 나머지(issue.transitioned 등)는
+    // q_automation_events 로 send 되지 않아야 한다(ADR 2026-07-10-fr-at-01-automation-triggers D2).
+    // "q_automation_events" 와 IssueCommented 는 아직 프로덕션 코드에 존재하지 않으므로(GREEN 단계에서
+    // 추가) 리터럴 문자열로 검증한다 — RED 단계에서는 컴파일 실패(IssueCommented 미정의)로 실패한다.
+    describe("IssueEventPublisher.publish — automation fan-out (FR-AT-01 Task 10)") {
+
+        val mapper = buildObjectMapper()
+
+        fun mockDsl(): DSLContext {
+            val dsl = mockk<DSLContext>()
+            every { dsl.execute(any<String>(), any<String>(), any<String>()) } returns 1
+            return dsl
+        }
+
+        context("automation 대상 이벤트(issue.created / issue.updated / issue.commented)") {
+
+            it("IssueCreated 발행 시 q_automation_events 에도 send 한다") {
+                val dsl = mockDsl()
+                val publisher = IssueEventPublisher(dsl, mapper)
+
+                publisher.publish(
+                    IssueCreated(
+                        issueKey = IssueKey("ATLAS-201"),
+                        projectKey = "ATLAS",
+                        summary = "automation fan-out 테스트",
+                        reporterId = ActorId(UUID.fromString("11111111-1111-1111-1111-111111111111")),
+                        actorId = ActorId(UUID.fromString("11111111-1111-1111-1111-111111111111")),
+                        occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
+                    ),
+                )
+
+                verify(exactly = 1) {
+                    dsl.execute(any<String>(), "q_automation_events", any<String>())
+                }
+            }
+
+            it("IssueUpdated 발행 시 q_automation_events 에도 send 한다") {
+                val dsl = mockDsl()
+                val publisher = IssueEventPublisher(dsl, mapper)
+
+                publisher.publish(
+                    IssueUpdated(
+                        issueKey = IssueKey("ATLAS-202"),
+                        fields = setOf("summary"),
+                        occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
+                    ),
+                )
+
+                verify(exactly = 1) {
+                    dsl.execute(any<String>(), "q_automation_events", any<String>())
+                }
+            }
+
+            it("IssueCommented 발행 시 q_issue_events 와 q_automation_events 두 큐 모두에 send 한다") {
+                val dsl = mockDsl()
+                val publisher = IssueEventPublisher(dsl, mapper)
+
+                publisher.publish(
+                    IssueCommented(
+                        issueKey = IssueKey("ATLAS-203"),
+                        projectKey = "ATLAS",
+                        commentId = UUID.fromString("44444444-4444-4444-4444-444444444444"),
+                        actorId = ActorId(UUID.fromString("11111111-1111-1111-1111-111111111111")),
+                        occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
+                    ),
+                )
+
+                verify(exactly = 1) {
+                    dsl.execute(any<String>(), IssueEventPublisher.QUEUE_NAME, any<String>())
+                }
+                verify(exactly = 1) {
+                    dsl.execute(any<String>(), "q_automation_events", any<String>())
+                }
+                verify(exactly = 0) {
+                    dsl.execute(any<String>(), "q_webhook_events", any<String>())
+                }
+            }
+        }
+
+        context("automation 비대상 이벤트는 q_automation_events 로 send 되지 않는다") {
+
+            it("IssueTransitioned 발행 시 q_automation_events 에는 send 하지 않는다") {
+                val dsl = mockDsl()
+                val publisher = IssueEventPublisher(dsl, mapper)
+
+                publisher.publish(
+                    IssueTransitioned(
+                        issueKey = IssueKey("ATLAS-204"),
+                        fromState = "open",
+                        toState = "in_progress",
+                        actorId = ActorId(UUID.fromString("22222222-2222-2222-2222-222222222222")),
+                        occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
+                    ),
+                )
+
+                verify(exactly = 0) {
+                    dsl.execute(any<String>(), "q_automation_events", any<String>())
+                }
+            }
+
+            it("IssueSoftDeleted 발행 시 q_automation_events 에는 send 하지 않는다") {
+                val dsl = mockDsl()
+                val publisher = IssueEventPublisher(dsl, mapper)
+
+                publisher.publish(
+                    IssueSoftDeleted(
+                        issueKey = IssueKey("ATLAS-205"),
+                        occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
+                    ),
+                )
+
+                verify(exactly = 0) {
+                    dsl.execute(any<String>(), "q_automation_events", any<String>())
+                }
+            }
+
+            it("IssueMentioned 발행 시 q_automation_events 에는 send 하지 않는다") {
+                val dsl = mockDsl()
+                val publisher = IssueEventPublisher(dsl, mapper)
+
+                publisher.publish(
+                    IssueMentioned(
+                        issueKey = IssueKey("ATLAS-206"),
+                        projectKey = "ATLAS",
+                        mentionedUserIds = listOf(UUID.fromString("33333333-3333-3333-3333-333333333333")),
+                        actorId = ActorId(UUID.fromString("11111111-1111-1111-1111-111111111111")),
+                        sourceField = "description",
+                        occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
+                    ),
+                )
+
+                verify(exactly = 0) {
+                    dsl.execute(any<String>(), "q_automation_events", any<String>())
+                }
+            }
+
+            it("IssueDueSoon 발행 시 q_automation_events 에는 send 하지 않는다") {
+                val dsl = mockDsl()
+                val publisher = IssueEventPublisher(dsl, mapper)
+
+                publisher.publish(
+                    IssueDueSoon(
+                        issueKey = "ATLAS-207",
+                        projectKey = "ATLAS",
+                        occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
+                    ),
+                )
+
+                verify(exactly = 0) {
+                    dsl.execute(any<String>(), "q_automation_events", any<String>())
+                }
+            }
+
+            it("IssueOverdue 발행 시 q_automation_events 에는 send 하지 않는다") {
+                val dsl = mockDsl()
+                val publisher = IssueEventPublisher(dsl, mapper)
+
+                publisher.publish(
+                    IssueOverdue(
+                        issueKey = "ATLAS-208",
+                        projectKey = "ATLAS",
+                        occurredAt = Instant.parse("2026-01-01T00:00:00Z"),
+                    ),
+                )
+
+                verify(exactly = 0) {
+                    dsl.execute(any<String>(), "q_automation_events", any<String>())
+                }
+            }
+        }
+    }
 })

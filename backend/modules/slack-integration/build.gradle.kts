@@ -56,6 +56,9 @@ dependencies {
     implementation("org.springframework.security:spring-security-config")
     implementation("org.springframework.security:spring-security-web")
     implementation("org.springframework.security:spring-security-aspects")
+    // Jwt 타입 — me-scope 컨트롤러의 @AuthenticationPrincipal Jwt? PAT 타입 거부에 사용
+    // (notification 모듈 build.gradle.kts 선례와 동일 패턴, FR-SL-02 D6 Task 4)
+    implementation("org.springframework.security:spring-security-oauth2-jose")
 
     // Jackson (JSON 직렬화)
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
