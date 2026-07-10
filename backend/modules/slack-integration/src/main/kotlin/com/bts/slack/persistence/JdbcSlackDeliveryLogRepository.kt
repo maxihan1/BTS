@@ -38,6 +38,9 @@ class JdbcSlackDeliveryLogRepository(
         const val SQL_EXISTS = "SELECT EXISTS(SELECT 1 FROM slack_delivery_log WHERE dedup_key = :dedupKey)"
 
         /** 전송 성공 이력 멱등 기록 — 재전달/동시성에도 한 행만 남긴다. */
-        const val SQL_INSERT = "INSERT INTO slack_delivery_log (dedup_key) VALUES (:dedupKey) ON CONFLICT (dedup_key) DO NOTHING"
+        const val SQL_INSERT = """
+            INSERT INTO slack_delivery_log (dedup_key) VALUES (:dedupKey)
+            ON CONFLICT (dedup_key) DO NOTHING
+        """
     }
 }

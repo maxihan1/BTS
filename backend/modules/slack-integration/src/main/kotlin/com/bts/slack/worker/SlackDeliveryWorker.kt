@@ -53,6 +53,7 @@ import java.util.UUID
  * @param renderer 제목/이슈 링크 Block Kit 렌더.
  * @param messageClient `chat.postMessage` 클라이언트.
  */
+@Suppress("LongParameterList") // 발송 오케스트레이터 협력자 주입, 분리 불필요(WebhookDispatchWorker 동형)
 @Component
 class SlackDeliveryWorker(
     private val jdbcTemplate: JdbcTemplate,
@@ -133,7 +134,11 @@ class SlackDeliveryWorker(
     private fun dispatch(event: SlackDeliveryEvent): Ack {
         val mapping = mappingRepository.findByUserId(event.recipientUserId)
         if (mapping == null) {
-            log.info("slack_delivery_skip_unmapped recipientUserId={} dedupKey={}", event.recipientUserId, event.dedupKey)
+            log.info(
+                "slack_delivery_skip_unmapped recipientUserId={} dedupKey={}",
+                event.recipientUserId,
+                event.dedupKey,
+            )
             return Ack.DELETE
         }
         if (deliveryLogRepository.exists(event.dedupKey)) {
@@ -213,7 +218,12 @@ class SlackDeliveryWorker(
         if (readCt > MAX_RECEIVE_COUNT) {
             archiveMessage(msgId, readCt)
         } else {
-            log.warn("slack_delivery_poison_retry msgId={} readCt={} maxReceiveCount={}", msgId, readCt, MAX_RECEIVE_COUNT)
+            log.warn(
+                "slack_delivery_poison_retry msgId={} readCt={} maxReceiveCount={}",
+                msgId,
+                readCt,
+                MAX_RECEIVE_COUNT,
+            )
         }
     }
 

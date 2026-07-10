@@ -32,6 +32,8 @@ class SlackBotTokenResolver(
      * @param teamId Slack 워크스페이스 id(`T…`).
      * @return 복호화된 봇 토큰, 또는 설치 부재 시 null.
      */
-    fun resolve(teamId: String): String? =
-        installRepository.findByTeamId(teamId)?.let { secretEncryptor.decrypt(it.botTokenEncrypted) }
+    fun resolve(teamId: String): String? {
+        val install = installRepository.findByTeamId(teamId) ?: return null
+        return secretEncryptor.decrypt(install.botTokenEncrypted)
+    }
 }
