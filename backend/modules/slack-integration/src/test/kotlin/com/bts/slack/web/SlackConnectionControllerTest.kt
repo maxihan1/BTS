@@ -115,7 +115,8 @@ class SlackConnectionControllerTest {
 
     @Test
     fun `GET connection returns 200 with connected false when not linked`() {
-        every { service.getStatus(userId) } returns ConnectionStatus(connected = false, workspaceName = null, linkedAt = null)
+        every { service.getStatus(userId) } returns
+            ConnectionStatus(connected = false, workspaceName = null, linkedAt = null)
 
         mockMvc.perform(get("/api/v1/slack/me/connection").with(jwtAuth(userId)))
             .andExpect(status().isOk)

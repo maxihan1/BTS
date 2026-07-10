@@ -1,4 +1,7 @@
 // 본인 Slack 계정 연결 상태 조회/연결/해제 me-scope 응답 DTO — 표시용 비-비밀 필드만 (FR-SL-02 D6 Task 4)
+// 파일명은 복수형(Responses)으로 "응답 DTO 모음" 의미를 표현하고(SlackInstallQueryResponses.kt 선례),
+// 현재는 GET/POST/DELETE 3종이 공유하는 단수 클래스 하나뿐이라 ktlint filename 규칙을 억제한다.
+@file:Suppress("ktlint:standard:filename", "MatchingDeclarationName")
 
 package com.bts.slack.web
 

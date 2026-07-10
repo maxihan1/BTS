@@ -42,39 +42,35 @@ class SlackConnectionExceptionHandler {
     @ExceptionHandler(EmailUnavailableException::class)
     fun handleEmailUnavailable(): ResponseEntity<Map<String, String>> {
         log.info("SLACK_CONNECTION_422 email_unavailable")
-        return errorResponse(HttpStatus.UNPROCESSABLE_ENTITY, CODE_EMAIL_UNAVAILABLE, "이메일이 설정되어 있지 않아 연결할 수 없습니다.")
+        return errorResponse(HttpStatus.UNPROCESSABLE_ENTITY, SlackConnectionErrorCode.EMAIL_UNAVAILABLE)
     }
 
     /** Slack 워크스페이스 미설치(TOCTOU 삭제 레이스 포함) → 409. */
     @ExceptionHandler(WorkspaceNotInstalledException::class)
     fun handleWorkspaceNotInstalled(): ResponseEntity<Map<String, String>> {
         log.info("SLACK_CONNECTION_409 workspace_not_installed")
-        return errorResponse(HttpStatus.CONFLICT, CODE_WORKSPACE_NOT_INSTALLED, "Slack 워크스페이스가 설치되어 있지 않습니다.")
+        return errorResponse(HttpStatus.CONFLICT, SlackConnectionErrorCode.WORKSPACE_NOT_INSTALLED)
     }
 
     /** 봇 토큰에 `users:read.email` 스코프 없음(운영자가 재연결 필요) → 409. */
     @ExceptionHandler(SlackScopeMissingException::class)
     fun handleScopeMissing(): ResponseEntity<Map<String, String>> {
         log.info("SLACK_CONNECTION_409 scope_missing")
-        return errorResponse(HttpStatus.CONFLICT, CODE_SCOPE_MISSING, "Slack 워크스페이스를 다시 연결해야 합니다.")
+        return errorResponse(HttpStatus.CONFLICT, SlackConnectionErrorCode.SCOPE_MISSING)
     }
 
     /** 이메일에 매칭되는 Slack 사용자 없음 → 404. */
     @ExceptionHandler(SlackUserNotFoundException::class)
     fun handleUserNotFound(): ResponseEntity<Map<String, String>> {
         log.info("SLACK_CONNECTION_404 user_not_found")
-        return errorResponse(HttpStatus.NOT_FOUND, CODE_USER_NOT_FOUND, "일치하는 Slack 계정을 찾을 수 없습니다.")
+        return errorResponse(HttpStatus.NOT_FOUND, SlackConnectionErrorCode.USER_NOT_FOUND)
     }
 
     /** Slack 이 일시적으로 응답하지 못함(429/5xx/네트워크, 재시도 가능) → 503. */
     @ExceptionHandler(SlackTemporarilyUnavailableException::class)
     fun handleTemporarilyUnavailable(): ResponseEntity<Map<String, String>> {
         log.info("SLACK_CONNECTION_503 temporarily_unavailable")
-        return errorResponse(
-            HttpStatus.SERVICE_UNAVAILABLE,
-            CODE_TEMPORARILY_UNAVAILABLE,
-            "Slack이 일시적으로 응답하지 않습니다. 잠시 후 다시 시도해 주세요.",
-        )
+        return errorResponse(HttpStatus.SERVICE_UNAVAILABLE, SlackConnectionErrorCode.TEMPORARILY_UNAVAILABLE)
     }
 
     /** [ResponseStatusException] — `currentUserId` 의 401 등 명시 상태를 그대로 전파한다. */
@@ -82,14 +78,14 @@ class SlackConnectionExceptionHandler {
     fun handleResponseStatus(ex: ResponseStatusException): ResponseEntity<Map<String, String>> {
         val status = HttpStatus.valueOf(ex.statusCode.value())
         log.info("SLACK_CONNECTION_{} response_status", status.value())
-        return errorResponse(status, CODE_UNAUTHENTICATED, "인증이 필요합니다. 세션이 만료되었을 수 있습니다.")
+        return errorResponse(status, SlackConnectionErrorCode.UNAUTHENTICATED)
     }
 
     /** 분류되지 않은 모든 예외 → 500. */
     @ExceptionHandler(Exception::class)
     fun handleInternal(ex: Exception): ResponseEntity<Map<String, String>> {
         log.error("SLACK_CONNECTION_500 internal_error", ex)
-        return errorResponse(HttpStatus.INTERNAL_SERVER_ERROR, CODE_INTERNAL_ERROR, "서버 내부 오류가 발생했습니다.")
+        return errorResponse(HttpStatus.INTERNAL_SERVER_ERROR, SlackConnectionErrorCode.INTERNAL_ERROR)
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
@@ -97,17 +93,30 @@ class SlackConnectionExceptionHandler {
     /** `{"code":..., "message":...}` 본문을 가진 [status] 응답을 생성한다(UserProfileController 형식 일관). */
     private fun errorResponse(
         status: HttpStatus,
-        code: String,
-        message: String,
-    ): ResponseEntity<Map<String, String>> = ResponseEntity.status(status).body(mapOf("code" to code, "message" to message))
+        error: SlackConnectionErrorCode,
+    ): ResponseEntity<Map<String, String>> =
+        ResponseEntity.status(status).body(mapOf("code" to error.code, "message" to error.defaultMessage))
+}
 
-    private companion object {
-        const val CODE_EMAIL_UNAVAILABLE = "EMAIL_UNAVAILABLE"
-        const val CODE_WORKSPACE_NOT_INSTALLED = "WORKSPACE_NOT_INSTALLED"
-        const val CODE_SCOPE_MISSING = "SLACK_SCOPE_MISSING"
-        const val CODE_USER_NOT_FOUND = "SLACK_USER_NOT_FOUND"
-        const val CODE_TEMPORARILY_UNAVAILABLE = "SLACK_TEMPORARILY_UNAVAILABLE"
-        const val CODE_UNAUTHENTICATED = "SLACK_UNAUTHENTICATED"
-        const val CODE_INTERNAL_ERROR = "SLACK_INTERNAL_ERROR"
-    }
+/**
+ * `SlackConnectionController` 예외 → HTTP 응답 코드값 (FR-SL-02 D6 Task 4).
+ *
+ * [code] 는 apps/web `api/slack.ts` 가 이미 소비하는 문자열 계약이라 임의로 바꾸지 않는다(spec §API).
+ * [defaultMessage] 는 사용자 노출용 고정 일반 문구이며, 원본 예외 message·이메일·slack_user_id·봇 토큰 등
+ * 어떤 가변/비밀 값도 보간하지 않는다(§1.1.2).
+ *
+ * @property code 프론트 계약 문자열.
+ * @property defaultMessage 응답에 실리는 사용자 노출용 메시지.
+ */
+private enum class SlackConnectionErrorCode(val code: String, val defaultMessage: String) {
+    EMAIL_UNAVAILABLE("EMAIL_UNAVAILABLE", "이메일이 설정되어 있지 않아 연결할 수 없습니다."),
+    WORKSPACE_NOT_INSTALLED("WORKSPACE_NOT_INSTALLED", "Slack 워크스페이스가 설치되어 있지 않습니다."),
+    SCOPE_MISSING("SLACK_SCOPE_MISSING", "Slack 워크스페이스를 다시 연결해야 합니다."),
+    USER_NOT_FOUND("SLACK_USER_NOT_FOUND", "일치하는 Slack 계정을 찾을 수 없습니다."),
+    TEMPORARILY_UNAVAILABLE(
+        "SLACK_TEMPORARILY_UNAVAILABLE",
+        "Slack이 일시적으로 응답하지 않습니다. 잠시 후 다시 시도해 주세요.",
+    ),
+    UNAUTHENTICATED("SLACK_UNAUTHENTICATED", "인증이 필요합니다. 세션이 만료되었을 수 있습니다."),
+    INTERNAL_ERROR("SLACK_INTERNAL_ERROR", "서버 내부 오류가 발생했습니다."),
 }
