@@ -2,6 +2,7 @@
 
 package com.bts.automation
 
+import com.bts.shared.permission.AutomationPermissionResolver
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -9,7 +10,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.ApplicationContext
+import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.transaction.annotation.EnableTransactionManagement
@@ -52,9 +55,24 @@ open class AutomationTestBootApplication
     classes = [AutomationTestBootApplication::class],
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
 )
-@Import(AutomationTestcontainersBase::class)
+@Import(
+    AutomationTestcontainersBase::class,
+    ModuleBootTest.PermissionResolverStubConfig::class,
+)
 class ModuleBootTest {
+    /**
+     * `com.bts.automation` 전체 스캔 시 함께 로드되는 `AutomationRuleService`(Task 6)가 non-null 로
+     * 요구하는 [AutomationPermissionResolver] 포트를 test-boot용 stub 으로 등록한다(prod 구현은
+     * identity-access 라 automation 클래스패스에 없음 — BC 격리, consumer-owns-stub, plan-eng-review E4).
+     */
+    @TestConfiguration
+    class PermissionResolverStubConfig {
+        @Bean
+        fun automationPermissionResolver(): AutomationPermissionResolver = StubAutomationPermissionResolver()
+    }
+
     @Autowired
+    @Suppress("VarCouldBeVal")
     private lateinit var applicationContext: ApplicationContext
 
     @Test

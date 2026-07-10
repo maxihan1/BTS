@@ -4,9 +4,11 @@ package com.bts.automation.adapter
 
 import com.bts.automation.AutomationTestBootApplication
 import com.bts.automation.AutomationTestcontainersBase
+import com.bts.automation.StubAutomationPermissionResolver
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.TriggerConfig
 import com.bts.automation.domain.TriggerType
+import com.bts.shared.permission.AutomationPermissionResolver
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -14,6 +16,8 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.jdbc.core.JdbcTemplate
@@ -43,8 +47,23 @@ import java.util.UUID
     classes = [AutomationTestBootApplication::class],
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
 )
-@Import(AutomationTestcontainersBase::class)
+@Import(
+    AutomationTestcontainersBase::class,
+    AutomationRuleRepositoryTest.PermissionResolverStubConfig::class,
+)
 class AutomationRuleRepositoryTest {
+    /**
+     * `com.bts.automation` 전체 스캔 시 함께 로드되는 `AutomationRuleService`(Task 6)가 non-null 로
+     * 요구하는 [AutomationPermissionResolver] 포트를 test-boot용 stub 으로 등록한다(prod 구현은
+     * identity-access 라 automation 클래스패스에 없음 — BC 격리, consumer-owns-stub, plan-eng-review E4).
+     * 이 Repository 테스트 자체는 권한 판정을 쓰지 않지만 컨텍스트 로드를 위해 필요하다.
+     */
+    @TestConfiguration
+    class PermissionResolverStubConfig {
+        @Bean
+        fun automationPermissionResolver(): AutomationPermissionResolver = StubAutomationPermissionResolver()
+    }
+
     @Autowired
     @Suppress("VarCouldBeVal")
     private lateinit var repository: AutomationRuleRepository

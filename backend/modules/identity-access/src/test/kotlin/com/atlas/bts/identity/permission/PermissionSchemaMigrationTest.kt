@@ -64,7 +64,7 @@ class PermissionSchemaMigrationTest {
         // (V017 — FR-IS-10이 PROJECT_ADMIN에 MANAGE_CUSTOM_FIELDS 1행 추가)
         // (V018 — FR-PM-07이 PROJECT_ADMIN에 MANAGE_FIELD_PERMISSIONS 1행 추가)
         // (V024 — FR-TM-01이 PROJECT_ADMIN에 MANAGE_TEMPLATES 1행 추가)
-        // (V034 — FR-AT-01이 PROJECT_ADMIN에 MANAGE_AUTOMATION 1행 추가)
+        // (V035 — FR-AT-01이 PROJECT_ADMIN에 MANAGE_AUTOMATION 1행 추가)
         val count =
             jdbc.queryForObject(
                 """
@@ -245,7 +245,7 @@ class PermissionSchemaMigrationTest {
 
     @Test
     fun `기본 스킴 PROJECT_ADMIN이 MANAGE_AUTOMATION를 보유한다`() {
-        // V034 — FR-AT-01: 자동화 규칙 관리(MANAGE_AUTOMATION) 권한의 정본 코드 (SDD 12.3).
+        // V035 — FR-AT-01: 자동화 규칙 관리(MANAGE_AUTOMATION) 권한의 정본 코드 (SDD 12.3).
         // 기본 스킴(00000000-…-001) PROJECT_ADMIN 역할에만 1행 시드 (MEMBER 제외, 프로젝트 행정 성격).
         val adminCount =
             jdbc.queryForObject(

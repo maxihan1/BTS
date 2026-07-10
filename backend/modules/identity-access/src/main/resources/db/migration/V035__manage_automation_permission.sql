@@ -11,8 +11,9 @@
 -- 데이터 시드(INSERT)일 뿐 컬럼/스키마 변경이 아니므로 init_codegen.sql 미러 불요.
 -- identity-access 는 jOOQ 미사용(JdbcTemplate) — jOOQ 상수 생성 대상 아님.
 --
--- 주의(Flyway V번호): 작성 시점 최신은 V033, V034 가 free 였다. 동시 브랜치에서 V034 를 선점할 수
--- 있으므로 머지 직전 identity-access 마이그레이션 최신 번호를 재확인할 것.
+-- 주의(Flyway V번호): 최초 V034 로 작성했으나 origin/main 에 FR-CA-02 의 V034__user_calendar_tokens.sql
+-- 이 먼저 머지되어 충돌 → V035 로 재번호(migration-vnumber-concurrent-branch-collision). 머지 직전
+-- identity-access 마이그레이션 최신 번호를 다시 재확인할 것.
 INSERT INTO role_permissions (scheme_id, role, permission_code)
 VALUES
     ('00000000-0000-0000-0000-000000000001', 'PROJECT_ADMIN', 'MANAGE_AUTOMATION');
