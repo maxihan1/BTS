@@ -75,36 +75,46 @@ classify: type=backend, agent=backend-engineer.
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/event/IssueDomainEvent.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueAssigneeEventTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/event/IssueDomainEvent.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/event/IssueEventPublisher.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueAssigneeEventTest.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueApplicationServiceTest.kt`]
 - depends-on: []
 
 **RED**. `IssueAssigneeEventTest` — `changeAssignee`가 담당자 변경 시 `IssueAssigned(issueKey, actorId, occurredAt)`를 `eventPublisher.publish`로 발행하는지 검증(mock publisher). no-op(동일 담당자)이면 발행 0건도 단언. 실패 예상: `IssueAssigned` 클래스 없음.
 
 **GREEN**.
 - `IssueDomainEvent.kt` — `@JsonTypeName("issue.assigned")` `IssueAssigned(issueKey: IssueKey, actorId: ActorId, occurredAt: Instant)` 추가 + `JsonSubTypes.Type` 등록.
+- **`IssueEventPublisher.kt` (C2 컴파일 결합)** — `isWebhookPublishable`의 exhaustive `when(event)`(L70-76, else 없음)에 `is IssueAssigned -> false` 추가(알림 이벤트, webhook 대상 아님 — IssueUpdated/Mentioned와 동일). **미추가 시 컴파일 실패**.
 - `IssueApplicationService.changeAssignee` — `recordHistory` 이후 `eventPublisher.publish(IssueAssigned(key, actor, <occurredAt>))`. `assigneeChanged` 분기 안에서만(no-op 조기반환 뒤).
+- **`IssueApplicationServiceTest.kt` (B3 strict-mock 회귀)** — `eventPublisher = mockk()`(strict). `changeAssignee` happy-path context (a·c)의 `beforeEach`에 `every { eventPublisher.publish(any()) } just Runs` 스텁 추가. **미추가 시 미스텁 호출 → MockKException red**.
 
 **REFACTOR**. occurredAt 소스를 형제 이벤트(IssueCreated/IssueTransitioned)와 동일하게(Clock 주입/Instant.now 확인 후 일치). KDoc.
 
-**검증**. `./gradlew :backend:modules:issue-tracking:test --tests "*IssueAssigneeEventTest*"`
-**유의**. sealed class 추가 → issue-tracking 내 `when(event: IssueDomainEvent)` exhaustive 분기 전수 grep 후 처리(컴파일 깨짐 방지). notification은 JSON type 파싱이라 무영향. occurredAt dedupKey 결정성(memory Clock 주입).
+**검증**. `./gradlew :backend:modules:issue-tracking:test`(전체 — B3 회귀 확인, 특정 테스트만 X)
+**유의**. sealed class 추가 → issue-tracking 내 `when(event: IssueDomainEvent)` exhaustive 분기 전수 grep(IssueEventPublisher 확인됨, 그 외도) 후 처리. notification은 JSON type 파싱이라 무영향. occurredAt dedupKey 결정성(memory Clock 주입).
 
 ---
 
-### Task 2. SLACK notification_policies 시드 (notification)
+### Task 2. q_slack_deliveries 큐 + SLACK notification_policies 시드 (notification)
 
 **메타**.
 - agent: `db-engineer`
-- files: [`backend/modules/notification/src/main/resources/db/migration/notification/V408__seed_slack_policies.sql`, `backend/modules/notification/src/test/kotlin/.../repository/NotificationPolicyRepositoryIntegrationTest.kt`]
+- files: [`backend/modules/notification/src/main/resources/db/migration/notification/V409__slack_notification_delivery.sql`, `backend/modules/notification/src/test/kotlin/.../repository/NotificationPolicyRepositoryIntegrationTest.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/NotificationDeliveryEndToEndIntegrationTest.kt`]
 - depends-on: []
 
 **RED**. 정책 repository/카운트 테스트 — `issue.mentioned/MENTIONED/SLACK`·`issue.assigned/ASSIGNEE/SLACK` 2행 존재 기대. 실패: 행 없음.
 
-**GREEN**. V408 — `INSERT INTO notification_policies (event_type, recipient_role, channel, enabled, project_key, created_by) VALUES ('issue.mentioned','MENTIONED','SLACK',TRUE,NULL,NULL),('issue.assigned','ASSIGNEE','SLACK',TRUE,NULL,NULL)`.
+**GREEN**. **V409**(B1 — V408 이미 `dashboard_share_tokens` 점유) —
+- `CREATE EXTENSION IF NOT EXISTS pgmq CASCADE; SELECT pgmq.create('q_slack_deliveries');` (**C1 — producer-creates 관례. producer=notification의 SlackChannelSender**. 기존 8개 큐 모두 producer 모듈 생성과 정합. spec FR2와 일치.)
+- `INSERT INTO notification_policies (event_type, recipient_role, channel, enabled, project_key, created_by) VALUES ('issue.mentioned','MENTIONED','SLACK',TRUE,NULL,NULL),('issue.assigned','ASSIGNEE','SLACK',TRUE,NULL,NULL)`.
 
 **REFACTOR**. 마이그레이션 L1 주석(FR-SL-02, SDD §9.4).
 
-**검증**. `./gradlew :backend:modules:notification:test --tests "*NotificationPolicyRepositoryIntegrationTest*"`
+**★B2 회귀 (필수)**. 전역 SLACK 멘션 정책 추가 → 멘션 이벤트가 이제 **IN_APP + SLACK 2 수신자** 생성 → `NotificationDeliveryEndToEndIntegrationTest`의 멘션 단언이 깨짐. 수정.
+- L236 `COUNT(*) ... event_type='issue.mentioned'` `isEqualTo(1L)` → **2L**(또는 `channel='IN_APP'` 필터 추가로 IN_APP만 카운트 — 더 명시적, 권장).
+- L240 `fetchOne(SELECT status ...)` → 2행이 되어 `TooManyRowsException` → `channel='IN_APP'` 조건 추가로 단일 행 유지.
+- L307 `COUNT(*) ... issue_key=?` `isEqualTo(1L)` → 채널 필터 or 2L.
+- SLACK 행은 unmapped라도 생성됨(BC 격리상 notification은 매핑 모름) — SlackChannelSender가 큐 발행, 워커가 skip. 이 동작을 테스트 주석에 명시.
+
+**검증**. `./gradlew :backend:modules:notification:test`(전체 — B2 E2E 회귀 확인)
 **유의**. 기존 정책 **카운트 단언**(SchemaMigrationTest 류) 갱신 필수(memory `fr-pm-permission-seed-migration-test-coupling`, `enum-add-breaks-crossmodule-count-guard`). 전 모듈 grep으로 정책 수 하드코딩 단언 확인.
 
 ---
@@ -127,21 +137,21 @@ classify: type=backend, agent=backend-engineer.
 
 ---
 
-### Task 4. slack V701 마이그레이션 — user_slack_mapping · slack_delivery_log · q_slack_deliveries 큐 (slack-integration)
+### Task 4. slack V701 마이그레이션 — user_slack_mapping · slack_delivery_log (slack-integration)
 
 **메타**.
 - agent: `db-engineer`
 - files: [`backend/modules/slack-integration/src/main/resources/db/migration/slack-integration/V701__slack_notification_delivery.sql`, `backend/modules/slack-integration/src/test/kotlin/.../SlackMigrationSchemaTest.kt`]
 - depends-on: []
 
-**RED**. 스키마 테스트 — `user_slack_mapping`(user_id PK, slack_user_id, team_id, linked_at)·`slack_delivery_log`(dedup_key UNIQUE, sent_at)·`q_slack_deliveries` 큐 존재 기대. 실패: 미존재.
+**RED**. 스키마 테스트 — `user_slack_mapping`(user_id PK, slack_user_id, team_id, linked_at)·`slack_delivery_log`(dedup_key PK, sent_at) 존재 기대. 실패: 미존재.
 
-**GREEN**. `CREATE TABLE user_slack_mapping (user_id UUID PRIMARY KEY, slack_user_id TEXT NOT NULL, team_id TEXT NOT NULL, linked_at TIMESTAMPTZ NOT NULL DEFAULT now())` + `CREATE TABLE slack_delivery_log (dedup_key TEXT PRIMARY KEY, sent_at TIMESTAMPTZ NOT NULL DEFAULT now())` + `CREATE EXTENSION IF NOT EXISTS pgmq CASCADE; SELECT pgmq.create('q_slack_deliveries');`
+**GREEN**. `CREATE TABLE user_slack_mapping (user_id UUID PRIMARY KEY, slack_user_id TEXT NOT NULL, team_id TEXT NOT NULL, linked_at TIMESTAMPTZ NOT NULL DEFAULT now())` + `CREATE TABLE slack_delivery_log (dedup_key TEXT PRIMARY KEY, sent_at TIMESTAMPTZ NOT NULL DEFAULT now())`.
 
 **REFACTOR**. L1 주석(FR-SL-02). 인덱스(slack_user_id 조회는 PK user_id 경유라 불요).
 
 **검증**. `./gradlew :backend:modules:slack-integration:test --tests "*SlackMigrationSchemaTest*"`
-**유의**. 큐를 slack 모듈에 둬 워커 테스트 self-contained(cross-BC 테스트 마이그레이션 함정 회피, memory `bts-cross-bc-test-migration`). pgmq.create idempotent. slack은 JdbcTemplate이라 jOOQ codegen 무관.
+**유의**. **큐(q_slack_deliveries)는 T2 notification 마이그레이션이 생성**(C1 producer-creates 정합). slack 워커 통합 테스트(T7)는 큐가 자기 모듈 마이그레이션에 없으므로 **테스트 셋업에서 `pgmq.create('q_slack_deliveries')`(idempotent) 배선**해 self-contained 유지(memory `bts-cross-bc-test-migration`). V700 다음 = V701 확인됨. slack은 JdbcTemplate이라 jOOQ codegen 무관.
 
 ---
 
@@ -190,20 +200,27 @@ classify: type=backend, agent=backend-engineer.
 - files: [`backend/modules/slack-integration/src/main/kotlin/com/bts/slack/worker/SlackDeliveryWorker.kt`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/persistence/JdbcSlackDeliveryLogRepository.kt`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/application/SlackInstallService.kt`, `backend/modules/slack-integration/src/test/kotlin/.../SlackDeliveryWorkerIntegrationTest.kt`]
 - depends-on: [4, 5, 6]
 
-**RED**. 워커 테스트(MethodsClient mock + Testcontainers) —
-- 매핑 있음 → chat.postMessage 호출 + pgmq.delete + slack_delivery_log 기록.
+**RED**. 워커 테스트(MethodsClient mock + Testcontainers, 셋업에서 `pgmq.create('q_slack_deliveries')`) —
+- 매핑 있음 → chat.postMessage 호출 + slack_delivery_log 기록 + pgmq.delete.
 - 매핑 없음(EC1) → postMessage 미호출 + delete(skip).
 - install 없음(EC2) → 경고 + delete.
-- 429/5xx(EC3) → delete 안 함(재전달).
-- dedup 중복(EC5, slack_delivery_log UNIQUE 충돌) → postMessage 미호출 + delete.
+- **429/5xx(EC3, S4) → postMessage 실패 → slack_delivery_log 기록 안 됨 + delete 안 함(재전달) → 재시도 시 정상 전송**(B4 회귀 테스트 — 전송 실패가 dedup에 박제돼 영구 유실되지 않음을 단언).
+- 이미 전송됨(EC5, slack_delivery_log에 dedupKey 존재) → postMessage 미호출 + delete(재전달분 skip).
+- 4xx 영구 오류(invalid_auth/channel_not_found) → postMessage 실패 + delete(재시도 무의미) + 경고.
 - poison/parse 실패(EC4) → read_ct>MAX archive.
 
-**GREEN**. `@Scheduled` poll → `pgmq.read`(JdbcTemplate) → JSON 파싱 → resolveByUserId → 미매핑 delete → SlackInstallService에서 봇 토큰 해석(단일 install) → slack_delivery_log INSERT(멱등 게이트) → SlackBlockKitRenderer + SlackMessageClient 전송 → 결과별 delete/재전달/archive. `SlackInstallService`에 내부 `resolveBotToken()` 추가(복호화, 미노출).
+**GREEN** (★B4 — dedup 순서 수정. 전송 **성공 후** 기록).
+`@Scheduled` poll → `pgmq.read`(JdbcTemplate) → JSON 파싱 → resolveByUserId(미매핑 delete) → SlackInstallService `resolveBotToken`(단일 install, 미존재 delete) → **slack_delivery_log 사전 조회(dedupKey 존재 시 skip+delete, 재전달 중복 차단)** → SlackBlockKitRenderer + SlackMessageClient 전송 → **성공 시에만 slack_delivery_log INSERT + delete** / 429·5xx 재전달(delete·log 안 함) / 4xx delete / 예외 read_ct>MAX archive.
+`SlackInstallService`에 내부 `resolveBotToken()` 추가(복호화, 미노출).
 
-**REFACTOR**. VT/BATCH webhook 워커 참고(VT=60, BATCH=5, read timeout×BATCH<VT). KDoc(@Transactional 없음 이유, BC 격리, dead-letter).
+**REFACTOR**. VT/BATCH webhook 워커 참고(VT=60, BATCH=5, read timeout×BATCH<VT). KDoc(@Transactional 없음 이유, BC 격리, dead-letter, **B4 dedup 순서 근거 — NotificationWorker.deliver() 교훈 인용**).
 
 **검증**. `./gradlew :backend:modules:slack-integration:test --tests "*SlackDeliveryWorkerIntegrationTest*"`
-**유의**. **첫 @Scheduled → @EnableScheduling 결선**(memory `module-first-scheduled-worker-detektmain-traps`). @Transactional 금지(pgmq vt). 새 협력자 주입 → test-boot NoSuchBean/@MockBean(memory `new-crossbc-dep-openapi-mockbean-regression`). detektMain type-resolved 엄격. dedup INSERT는 전송 **전**(발송 후 크래시 시 재전달돼도 재발송 차단).
+**유의**.
+- **★B4 (dedup 순서)**. slack_delivery_log 기록은 **전송 성공 후**. "전송 전 기록"은 429 실패 시 재전달분이 UNIQUE 충돌로 영구 skip → DM 유실(NotificationWorker.deliver() KDoc L269-296 "발송 전 SENT 박제" 교훈의 정확한 재현). 사전 조회(check)는 성공한 이전 시도의 재전달 중복만 차단.
+- **★C3 (토큰 미노출)**. `resolveBotToken` 복호화 평문이 로그/예외/DTO에 미노출. SlackInstall.toString REDACTED 확인, SlackMessageClient 토큰 로그 금지.
+- **첫 @Scheduled → @EnableScheduling 결선**(memory `module-first-scheduled-worker-detektmain-traps`, notification `SchedulingConfiguration @Profile("!test")` + 테스트 config 선례).
+- @Transactional 금지(pgmq vt). 새 협력자 주입 → test-boot NoSuchBean/@MockBean(memory `new-crossbc-dep-openapi-mockbean-regression`). detektMain type-resolved 엄격.
 
 ## Plan 메타
 
@@ -214,4 +231,21 @@ classify: type=backend, agent=backend-engineer.
 - 영향 3 BC: issue-tracking(T1) · notification(T2·T3) · slack-integration(T4~T7). 모든 경계 pgmq JSON.
 - 추가 검증: ktlintCheck, detekt (type-resolved), 각 모듈 test.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-10, 독립 sub-agent, 실코드 대조)
+
+**BLOCKER 4건 — 모두 plan 수정으로 해소**.
+- **B1 (V번호 충돌)**. Task 2가 V408 신설이나 `V408__dashboard_share_tokens` 이미 점유 → **V409로 수정** (실코드 확인).
+- **B2 (전역 SLACK 시드가 E2E 회귀)**. 전역 멘션 SLACK 정책 → 멘션이 IN_APP+SLACK 2행 → `NotificationDeliveryEndToEndIntegrationTest`의 `isEqualTo(1L)`·`fetchOne` 깨짐(TooManyRowsException) → **Task 2 files에 E2E 테스트 추가 + 채널 필터/2L 단언 수정**.
+- **B3 (changeAssignee strict-mock 회귀)**. `IssueApplicationServiceTest` strict mockk가 publish 미스텁 → MockKException → **Task 1 files에 해당 테스트 추가 + `every{publish} just Runs` 스텁**.
+- **B4 (dedup 순서 결함)**. "전송 전 slack_delivery_log INSERT"는 429 실패 시 재전달분을 UNIQUE 충돌로 영구 skip → DM 유실(인용한 교훈의 정반대 적용) → **T7을 "전송 성공 후 기록 + 사전 조회로 재전달 중복만 차단"으로 재설계**.
+
+**CONCERN 3건 — 반영**.
+- **C1 (큐 위치 모순)**. plan(slack V701)이 spec(notification producer-creates)과 모순 + 기존 8큐 전부 producer 생성 → **큐를 notification T2로 이동, slack 워커 테스트는 pgmq.create로 self-contained**.
+- **C2 (IssueEventPublisher exhaustive when)**. `IssueAssigned` 추가 시 `isWebhookPublishable` 컴파일 실패 → **Task 1 files에 IssueEventPublisher.kt 추가 + `is IssueAssigned -> false`**.
+- **C3 (resolveBotToken 미노출)**. 복호화 경로 신설 → T7 유의에 토큰 로그/DTO 미노출 명시.
+
+**검증됨(PASS)**: 할당 파이프라인 dormant 사실 · changeAssignee 트랜잭션 안전 · notification 소비측 issue.assigned 완전 배선 · EC9 SLACK 무조건 통과 · 첫 @Scheduled 트랩 실재.
+
+**BLOCKER 잔여: 없음** (전부 plan 반영 완료). 게이트 1 진입 가능.

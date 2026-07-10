@@ -58,7 +58,7 @@
 ## 데이터 모델 변경
 
 - **slack-integration V701** — `user_slack_mapping` 테이블 + `slack_delivery_log` 테이블(dedup, FR7).
-- **notification V4xx** — `SELECT pgmq.create('q_slack_deliveries')` + SLACK `notification_policies` 시드 2행.
+- **notification V409** (V408 이미 점유) — `SELECT pgmq.create('q_slack_deliveries')`(producer-creates 관례) + SLACK `notification_policies` 시드 2행.
 - init_codegen.sql 미러 갱신 필요(DATA.md, jOOQ codegen — 단 slack은 JdbcTemplate이라 codegen 무관. notification은 정책 시드만, 스키마 변경 없음 → 큐 생성은 pgmq 함수 호출).
 
 ## 엣지 케이스
