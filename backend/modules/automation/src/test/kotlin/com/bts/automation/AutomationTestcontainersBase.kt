@@ -53,7 +53,9 @@ class AutomationTestcontainersBase {
      * @param dataSource Testcontainers DataSource.
      */
     @Bean
-    fun namedParameterJdbcTemplate(dataSource: DataSource): NamedParameterJdbcTemplate = NamedParameterJdbcTemplate(dataSource)
+    fun namedParameterJdbcTemplate(dataSource: DataSource): NamedParameterJdbcTemplate {
+        return NamedParameterJdbcTemplate(dataSource)
+    }
 
     /**
      * 통합 테스트가 테이블을 직접 조회/정리할 때 쓰는 [JdbcTemplate] 빈.
@@ -69,7 +71,9 @@ class AutomationTestcontainersBase {
      * @param dataSource Testcontainers DataSource.
      */
     @Bean
-    fun transactionManager(dataSource: DataSource): PlatformTransactionManager = DataSourceTransactionManager(dataSource)
+    fun transactionManager(dataSource: DataSource): PlatformTransactionManager {
+        return DataSourceTransactionManager(dataSource)
+    }
 
     companion object {
         /**

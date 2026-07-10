@@ -139,3 +139,12 @@ tasks.withType<Test> {
         jvmArgs("-DDOCKER_HOST=unix://$dockerSocketPath")
     }
 }
+
+// ── ktlintMainSourceSetCheck가 package-info.kt를 검사하지 않도록 source 재설정 ──
+// package-info.kt: Java 관례에서 가져온 파일명으로 ktlint PascalCase 파일명 규칙을 충족하지 못한다
+// (agile-planning 선례 동형). 패키지 문서 목적이므로 컴파일 소스에는 포함하되 ktlint 검사에서는 제외한다.
+afterEvaluate {
+    tasks.named<org.jlleitschuh.gradle.ktlint.tasks.BaseKtLintCheckTask>("runKtlintCheckOverMainSourceSet") {
+        setSource(fileTree("src/main/kotlin") { exclude("**/package-info.kt") })
+    }
+}
