@@ -1,4 +1,4 @@
-// AutomationExecutionWorker 통합 테스트 — q_automation_execution 폴링→룰 로드→루프가드 2단→ActionExecutor 실행→pgmq 생명주기 (FR-AT-02 Task 10)
+// AutomationExecutionWorker 통합 테스트 — q_automation_execution 폴링·루프가드 2단·ActionExecutor 실행·pgmq 생명주기 (FR-AT-02 Task 10)
 
 package com.bts.automation.worker
 
@@ -124,7 +124,9 @@ class AutomationExecutionWorkerTest {
     private fun worker(
         clock: Clock = Clock.fixed(now, ZoneOffset.UTC),
         executor: ActionExecutor = actionExecutor,
-    ): AutomationExecutionWorker = AutomationExecutionWorker(jdbcTemplate, objectMapper, ruleRepository, executor, clock)
+    ): AutomationExecutionWorker {
+        return AutomationExecutionWorker(jdbcTemplate, objectMapper, ruleRepository, executor, clock)
+    }
 
     private fun saveEnabledRule(projectKey: String = "ATLAS"): AutomationRule {
         val rule =
@@ -168,11 +170,15 @@ class AutomationExecutionWorkerTest {
         )
     }
 
-    private fun pendingCount(): Int =
-        jdbcTemplate.queryForObject("SELECT count(*) FROM pgmq.\"${pgmqTable("q")}\"", Int::class.java) ?: 0
+    private fun pendingCount(): Int {
+        val sql = "SELECT count(*) FROM pgmq.\"${pgmqTable("q")}\""
+        return jdbcTemplate.queryForObject(sql, Int::class.java) ?: 0
+    }
 
-    private fun archivedCount(): Int =
-        jdbcTemplate.queryForObject("SELECT count(*) FROM pgmq.\"${pgmqTable("a")}\"", Int::class.java) ?: 0
+    private fun archivedCount(): Int {
+        val sql = "SELECT count(*) FROM pgmq.\"${pgmqTable("a")}\""
+        return jdbcTemplate.queryForObject(sql, Int::class.java) ?: 0
+    }
 
     private fun forceReadCount(value: Int) {
         jdbcTemplate.update("UPDATE pgmq.\"${pgmqTable("q")}\" SET read_ct = ?", value)

@@ -96,7 +96,7 @@ class AutomationExecutionWorker(
         }
     }
 
-    /** 단일 메시지를 파싱→룰 로드→루프 가드→실행 순으로 처리한다(클래스 KDoc "처리 흐름" 참조). */
+    /** 단일 메시지를 파싱→룰 로드/루프 가드→실행 순으로 처리한다(클래스 KDoc "처리 흐름" 참조). */
     private fun processMessage(message: ExecutionQueueMessage) {
         val payload = parsePayload(message.messageJson, message.msgId)
         if (payload == null) {
@@ -105,10 +105,21 @@ class AutomationExecutionWorker(
             return
         }
 
-        val rule = loadActiveRule(payload, message.msgId) ?: return
-        if (isLoopGuardBlocked(payload, message.msgId)) return
+        val rule = resolveExecutableRule(payload, message.msgId) ?: return
         runExecution(message, payload, rule)
     }
+
+    /**
+     * 룰을 로드하고 루프 가드 2단(클래스 KDoc "루프 가드 2단" 참조)을 순서대로 통과했는지 확인한다.
+     * 어느 단계든 실패하면 그 단계에서 이미 archive 를 수행하고 `null` 을 반환한다(EC7 + 루프 가드 a/b).
+     */
+    private fun resolveExecutableRule(
+        payload: ExecutionPayload,
+        msgId: Long,
+    ): AutomationRule? =
+        loadActiveRule(payload, msgId)
+            ?.takeIf { !isDepthExceeded(payload, msgId) }
+            ?.takeIf { !isRecentlyExecuted(payload, msgId) }
 
     /** 룰을 로드한다. 없거나 disabled 면 스킵+archive 후 `null` 을 반환한다(EC7). */
     private fun loadActiveRule(
@@ -128,12 +139,13 @@ class AutomationExecutionWorker(
         return rule
     }
 
-    /** 루프 가드 2단(클래스 KDoc 참조)을 순서대로 검사한다. 차단되면 archive 후 `true` 를 반환한다. */
-    private fun isLoopGuardBlocked(
+    /** 루프 가드 (a) — 직접 체인 깊이가 [MAX_EXECUTION_DEPTH] 를 초과하면 archive 후 `true` 를 반환한다. */
+    private fun isDepthExceeded(
         payload: ExecutionPayload,
         msgId: Long,
     ): Boolean {
-        if (payload.executionDepth > MAX_EXECUTION_DEPTH) {
+        val exceeded = payload.executionDepth > MAX_EXECUTION_DEPTH
+        if (exceeded) {
             log.warn(
                 "automation_execution_worker_depth_exceeded msgId={} ruleId={} depth={} action=archive",
                 msgId,
@@ -141,9 +153,17 @@ class AutomationExecutionWorker(
                 payload.executionDepth,
             )
             archiveMessage(msgId)
-            return true
         }
-        if (payload.issueKey != null && isSuppressed(payload.ruleId, payload.issueKey)) {
+        return exceeded
+    }
+
+    /** 루프 가드 (b) — (ruleId, issueKey) 조합이 [SUPPRESSION_WINDOW] 이내 재실행이면 archive 후 `true` 를 반환한다. */
+    private fun isRecentlyExecuted(
+        payload: ExecutionPayload,
+        msgId: Long,
+    ): Boolean {
+        val suppressed = payload.issueKey != null && isSuppressed(payload.ruleId, payload.issueKey)
+        if (suppressed) {
             log.info(
                 "automation_execution_worker_suppressed msgId={} ruleId={} issueKey={} action=archive",
                 msgId,
@@ -151,9 +171,8 @@ class AutomationExecutionWorker(
                 payload.issueKey,
             )
             archiveMessage(msgId)
-            return true
         }
-        return false
+        return suppressed
     }
 
     /** [ActionExecutor.execute] 를 호출한다. 성공하면 억제 캐시를 갱신하고 archive, 실패는 재시도를 허용한다. */
@@ -196,22 +215,10 @@ class AutomationExecutionWorker(
         issueKey: String,
     ): Boolean {
         val now = clock.instant()
-        cleanupExpired(now)
+        cleanupExpired(recentExecutions, now)
         val last = recentExecutions[suppressionKey(ruleId, issueKey)] ?: return false
         return Duration.between(last, now) < SUPPRESSION_WINDOW
     }
-
-    /** 억제 캐시에서 [SUPPRESSION_WINDOW] 를 넘긴 엔트리를 제거한다(무한 성장 방지, 접근 시 정리). */
-    private fun cleanupExpired(now: Instant) {
-        recentExecutions.entries.removeIf { (_, lastExecutedAt) ->
-            Duration.between(lastExecutedAt, now) >= SUPPRESSION_WINDOW
-        }
-    }
-
-    private fun suppressionKey(
-        ruleId: UUID,
-        issueKey: String,
-    ): String = "$ruleId:$issueKey"
 
     /** messageJson 을 파싱해 [ExecutionPayload] 로 변환한다. 실패 시 `null`(호출자가 archive 처리). */
     @Suppress("TooGenericExceptionCaught")
@@ -232,13 +239,6 @@ class AutomationExecutionWorker(
             log.error("automation_execution_worker_payload_parse_failed msgId={} error={}", msgId, e.message)
             null
         }
-
-    /** [triggerEvent] 최상위 `issueKey` 또는 중첩 `issue.key` 에서 대상 이슈 키를 추출한다([ActionExecutor] 동형 규칙). */
-    private fun extractIssueKey(triggerEvent: JsonNode): String? {
-        val direct = triggerEvent.path(FIELD_ISSUE_KEY).asText(null)
-        if (!direct.isNullOrBlank()) return direct
-        return triggerEvent.path(FIELD_ISSUE).path(FIELD_KEY).asText(null)?.takeIf { it.isNotBlank() }
-    }
 
     /** pgmq.archive 로 메시지를 종결 처리한다(성공/스킵/dead-letter 공통 종결 신호, 클래스 KDoc 참조). */
     private fun archiveMessage(
@@ -270,15 +270,9 @@ class AutomationExecutionWorker(
         /** 폴링 주기 기본값(ms) — 프로퍼티 미설정 시 사용. */
         const val DEFAULT_POLL_INTERVAL_MS = 500
 
-        /** 루프 가드 (b) — (ruleId, issueKey) 재실행 억제 창. */
-        val SUPPRESSION_WINDOW: Duration = Duration.ofSeconds(60)
-
         const val FIELD_RULE_ID = "ruleId"
         const val FIELD_TRIGGER_EVENT = "triggerEvent"
         const val FIELD_EXECUTION_DEPTH = "executionDepth"
-        const val FIELD_ISSUE_KEY = "issueKey"
-        const val FIELD_ISSUE = "issue"
-        const val FIELD_KEY = "key"
 
         /** pgmq.read — msg_id/read_ct/message(jsonb→text 캐스팅) 조회. `?` positional 바인딩. */
         const val SQL_READ = "SELECT msg_id, read_ct, message::text AS message FROM pgmq.read(?, ?, ?)"
@@ -327,3 +321,38 @@ private data class ExecutionPayload(
     val executionDepth: Int,
     val issueKey: String?,
 )
+
+/**
+ * 루프 가드 (b) — (ruleId, issueKey) 재실행 억제 창.
+ *
+ * 최상위(top-level) 상수/함수로 둔 이유는 [AutomationExecutionWorker] 클래스의 detekt `TooManyFunctions`
+ * 임계값을 지키기 위함이다 — 인스턴스 상태(`log`/`clock`/`recentExecutions`)에 의존하지 않는 순수
+ * 헬퍼([cleanupExpired]/[suppressionKey]/[extractIssueKey])를 클래스 밖으로 분리했다.
+ */
+private const val SUPPRESSION_WINDOW_SECONDS = 60L
+private val SUPPRESSION_WINDOW: Duration = Duration.ofSeconds(SUPPRESSION_WINDOW_SECONDS)
+
+private const val FIELD_ISSUE_KEY = "issueKey"
+private const val FIELD_ISSUE = "issue"
+private const val FIELD_KEY = "key"
+
+/** 억제 캐시에서 [SUPPRESSION_WINDOW] 를 넘긴 엔트리를 제거한다(무한 성장 방지, 접근 시 정리). */
+private fun cleanupExpired(
+    cache: ConcurrentHashMap<String, Instant>,
+    now: Instant,
+) {
+    cache.entries.removeIf { (_, lastExecutedAt) -> Duration.between(lastExecutedAt, now) >= SUPPRESSION_WINDOW }
+}
+
+/** (ruleId, issueKey) 조합의 억제 캐시 키. */
+private fun suppressionKey(
+    ruleId: UUID,
+    issueKey: String,
+): String = "$ruleId:$issueKey"
+
+/** [triggerEvent] 최상위 `issueKey` 또는 중첩 `issue.key` 에서 대상 이슈 키를 추출한다([ActionExecutor] 동형 규칙). */
+private fun extractIssueKey(triggerEvent: JsonNode): String? {
+    val direct = triggerEvent.path(FIELD_ISSUE_KEY).asText(null)
+    if (!direct.isNullOrBlank()) return direct
+    return triggerEvent.path(FIELD_ISSUE).path(FIELD_KEY).asText(null)?.takeIf { it.isNotBlank() }
+}
