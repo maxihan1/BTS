@@ -80,6 +80,24 @@ class SlackUserLookupClientTest {
     }
 
     @Test
+    fun `ok false + 봇토큰_설치 무효 오류(invalid_auth·token_revoked·account_inactive·not_authed) 는 모두 MissingScope`() {
+        listOf("invalid_auth", "token_revoked", "account_inactive", "not_authed").forEach { errorCode ->
+            stubResponse(
+                UsersLookupByEmailResponse().apply {
+                    isOk = false
+                    error = errorCode
+                },
+            )
+
+            val result = client.lookupByEmail(botToken, "person@example.com")
+
+            assertThat(result)
+                .describedAs("error=%s", errorCode)
+                .isEqualTo(SlackUserLookupResult.MissingScope)
+        }
+    }
+
+    @Test
     fun `SlackApiException(429·rate_limited) 은 Transient 이고 토큰을 담지 않는다`() {
         every {
             methods.usersLookupByEmail(any<LookupConfigurator>())
