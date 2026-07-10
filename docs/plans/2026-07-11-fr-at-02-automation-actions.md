@@ -152,7 +152,7 @@ SDD 참조: 08장 (자동화 엔진). 선행: FR-AT-01(완료, PR #251/#254).
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/outbound/automation/AutomationIssueMutationAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/outbound/automation/AutomationIssueMutationAdapterTest.kt`]
 - depends-on: [2]
 
-**RED**: setField→`IssueApplicationService.updateIssue`, assign→`changeAssignee`, addComment→`CommentApplicationService.create(actor=ruleActor, authorId=ruleActor)` 위임 단언. OCC — 대상 이슈 현재 version 조회 후 적용(EC1). dryRun=true 면 미커밋·이벤트 미발행 단언.
+**RED**: setField→`IssueApplicationService.updateIssue`, assign→`changeAssignee`, addComment→`CommentApplicationService.create(actor=ruleActor, authorId=ruleActor)` 위임 단언. OCC — 대상 이슈 현재 version 조회 후 적용(EC1), **동시 충돌 시 1회 재조회 재시도 후 실패** 명시 테스트. dryRun=true 면 미커밋·이벤트 미발행 단언.
 **GREEN**: `@Profile("prod")` 어댑터(도메인 우회 금지 — 기존 application service 위임 [[patch-merge-domain-bypass]]). 현재 version fetch + 1회 충돌 재시도. dryRun 은 assertPermission+검증까지만.
 **REFACTOR**: KDoc(actor VO 신뢰·async 안전), 공통 issueKey 파싱.
 **검증**: `./gradlew :backend:modules:issue-tracking:test --tests '*AutomationIssueMutationAdapterTest'`
@@ -188,8 +188,8 @@ SDD 참조: 08장 (자동화 엔진). 선행: FR-AT-01(완료, PR #251/#254).
 - files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/worker/AutomationExecutionWorker.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/worker/AutomationExecutionWorkerTest.kt`]
 - depends-on: [6, 9]
 
-**RED**: `q_automation_execution` read→룰+액션 로드→ActionExecutor 호출→archive(pgmq 생명주기 [[pgmq-consumer-message-lifecycle-p0]]). executionDepth>10 중단, 단일 root 실행 상한, 비활성/삭제 룰 스킵(EC7), 처리 실패 시 메시지 정책 테스트.
-**GREEN**: `@Scheduled` 폴링(AutomationEventWorker 동형), depth/상한 가드, best-effort.
+**RED**: `q_automation_execution` read→룰+액션 로드→ActionExecutor 호출→archive(pgmq 생명주기 [[pgmq-consumer-message-lifecycle-p0]]). executionDepth>10 중단, **(rule,issueKey) 최근실행 억제**(같은 룰이 같은 이슈에 짧은 창 내 재실행 시 스킵 — 왕복 루프 차단), 비활성/삭제 룰 스킵(EC7), 처리 실패 시 메시지 정책 테스트.
+**GREEN**: `@Scheduled` 폴링(AutomationEventWorker 동형). 루프 가드 2단 — (1) executionDepth>10 중단(automation 직접 체인), (2) `(ruleId, issueKey)→마지막 실행 시각` 경계 in-memory 캐시로 창(기본 60s) 내 동일 룰·이슈 재실행 억제(단일 호스트 배포라 in-memory 충분, 다중 인스턴스 시 재검토 주석). best-effort.
 **REFACTOR**: 폴링 배치 크기 상수, 로깅.
 **검증**: `./gradlew :backend:modules:automation:test --tests '*AutomationExecutionWorkerTest'`
 
@@ -240,4 +240,29 @@ SDD 참조: 08장 (자동화 엔진). 선행: FR-AT-01(완료, PR #251/#254).
 - 추가 검증: ktlint, detekt(type-resolved), SchemaMigrationTest 카운트, BC ArchTest
 - **범위 확정**: 백엔드 코어 D1~D5. UI(D6 액션 빌더)·E2E(D7)는 후속 PR
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-11)
+
+**Step 0 스코프 챌린지**.
+- 코드 재사용 ✅ 강함 — IssueMutationPort(IssueTransitionPort 복제)·기존 application service 위임(병렬 mutation 경로 없음)·OutboundUrlValidator·AutomationEventWorker 미러. 재발명 최소.
+- 복잡도 체크 발동(>8 파일·>2 신규 클래스) — 기능의 환원 불가능한 표면(각 클래스 단일 책임). 스코프 creep 아님(ADR이 D1~D5 한정, UI/E2E 후속 위임). 클래스 축소는 SRP 위반.
+- Boring by default ✅ — 새 인프라 0(q_automation_execution 재사용, 템플릿=정규식 최소). innovation token 소모 없음.
+
+**아키텍처**.
+- ✅ blast radius: 최고 위험은 T7(automation→issue-tracking 신규 write 경로). 기존 application service 위임으로 권한·OCC·이벤트 상속 → 완화.
+- ✅ reversibility: enabled 플래그 + dry-run + per-rule actor로 안전/가역.
+- ⚠️→해소 **A1 (루프 가드 미명세)**: 체인 depth는 issue-tracking 왕복서 리셋됨(스펙 정직 인정). 실질 가드인 "단일 root 실행 상한"이 메커니즘 부재 → **T10을 2단 가드로 구체화**: (1) executionDepth>10(직접 체인) + (2) `(ruleId,issueKey)` 최근실행 억제 in-memory 창(60s, 단일호스트 배포 적합). A→B→A 왕복 루프 차단.
+
+**테스트**.
+- ✅ T13 보안(권한 reject·SSRF·위조·비활성 actor) 명시적.
+- ⚠️→해소 OCC 동시 충돌 재시도 경로 → **T7 RED에 1회 재시도 후 실패 테스트 추가**.
+- at-least-once 중복(EC9) = best-effort 수용, dedup은 FR-AT-05 위임(FR 범위 적정).
+
+**코드 품질**.
+- detekt type-resolved 엄격([[module-first-scheduled-worker-detektmain-traps]]) plan 반영됨.
+- DRY: TemplateRenderer는 AddComment 우선, 필요 시 CallWebhook body/SetField 문자열값에도 단일 렌더러 재사용(신규 렌더러 금지).
+
+**BLOCKER: 없음**. 발견 2건(A1 루프가드·OCC 재시도) 모두 plan 반영 완료.
+
+> 리뷰 방식: 메모리 [[bts-review-plan-autoplan-overkill]]에 따라 backend plan은 autoplan 4-phase 대신 eng 집중 리뷰. CEO/design/devex 렌즈는 이 작업(UI 없음·제품적합성 확정·사용자대면 API 계약 변경 없음)에 가치 낮아 생략.
