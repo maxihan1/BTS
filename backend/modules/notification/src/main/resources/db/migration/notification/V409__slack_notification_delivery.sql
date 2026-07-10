@@ -1,10 +1,7 @@
--- Slack 알림 전송 큐 + SLACK 채널 정책 시드 (FR-SL-02, SDD §9.4) — 멘션/할당 이벤트를 q_slack_deliveries로 발행
-
--- pgmq extension 보장 (V002 issue-tracking 에서 이미 적용됐으나 모듈별 Flyway namespace 라 멱등 재확인)
-CREATE EXTENSION IF NOT EXISTS pgmq CASCADE;
-
--- 큐 생성 — q_slack_deliveries (producer-creates 관례, NotificationWorker → SlackDeliverySender 발행 대상)
-SELECT pgmq.create('q_slack_deliveries');
+-- SLACK 채널 정책 시드 (FR-SL-02, SDD §9.4) — 멘션/할당 이벤트를 Slack DM으로 발송
+-- 주의. q_slack_deliveries 큐 생성(CREATE EXTENSION pgmq + pgmq.create)은 slack-integration V701 로 이동했다.
+--   notification 테스트 다수가 vanilla postgres:16-alpine 이미지(pgmq 미포함)를 쓰므로, 이 마이그레이션에
+--   pgmq 확장을 요구하면 해당 테스트들이 부팅 실패한다. 큐는 소비 모듈(slack)이 자기 pgmq 이미지 위에서 생성한다.
 
 -- SLACK 채널 전역 기본 정책 시드 — 멘션/할당 이벤트
 -- project_key=NULL: 전역 기본 정책 (모든 프로젝트에 적용, 프로젝트 전용 정책이 없을 때 폴백).

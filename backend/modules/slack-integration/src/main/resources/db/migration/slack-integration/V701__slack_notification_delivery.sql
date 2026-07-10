@@ -35,3 +35,11 @@ CREATE TABLE slack_delivery_log (
 COMMENT ON TABLE  slack_delivery_log           IS 'Slack 전송 멱등 dedup 로그(append-only) — 큐 재처리 중복 발송 차단(FR-SL-02)';
 COMMENT ON COLUMN slack_delivery_log.dedup_key IS '논리 발송 식별자(PK) — 재삽입 거부로 중복 Slack 발송 차단';
 COMMENT ON COLUMN slack_delivery_log.sent_at   IS '발송 기록 시각';
+
+-- q_slack_deliveries pgmq 큐 — notification BC(SlackChannelSender)가 SLACK 수신자를 이 큐로 발행하고,
+-- slack-integration SlackDeliveryWorker 가 소비해 chat.postMessage 로 전송한다(ADR 2026-07-10 D1/D2).
+-- 큐를 slack 모듈에 두는 이유. notification 테스트 다수가 vanilla postgres 이미지(pgmq 미포함)를 쓰므로
+-- notification 마이그레이션에 pgmq 확장을 요구할 수 없다. slack 은 이 워커 때문에 어차피 pgmq 이미지가 필요해
+-- 여기서 확장+큐를 생성한다(producer-creates 관례의 의도적 예외 — 테스트 인프라 비파괴 우선).
+CREATE EXTENSION IF NOT EXISTS pgmq CASCADE;
+SELECT pgmq.create('q_slack_deliveries');

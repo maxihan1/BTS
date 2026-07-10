@@ -18,8 +18,8 @@ import java.util.UUID
  * - `slack_delivery_log` — Slack 전송 멱등 dedup 로그(dedup_key PK 재삽입 거부로 중복 발송 차단).
  *
  * Testcontainers (테스트용 DB 를 도커로 자동 실행하는 라이브러리) 의 PostgreSQL 을 직접 사용하며
- * Spring 컨텍스트 없이 실행한다. slack-integration BC 마이그레이션은 pgmq 확장을 요구하지 않으므로
- * postgres:16-alpine 이미지로 충분하다([SlackInstallSchemaMigrationTest] 동일 패턴).
+ * Spring 컨텍스트 없이 실행한다. V701 이 q_slack_deliveries pgmq 큐(CREATE EXTENSION pgmq + pgmq.create)를
+ * 생성하므로 pgmq 바이너리가 포함된 `quay.io/tembo/pg16-pgmq` 이미지를 사용한다(issue-tracking·notification 선례).
  *
  * **JVM 단위 singleton container 패턴** — companion object `.apply { start() }` 로 JVM 라이프사이클에 바인딩.
  * `@Container` 라이프사이클 대신 Ryuk 의 JVM 종료 시 자동 정리에 위임해 동시 suite flaky 를 회피한다
@@ -44,7 +44,10 @@ class SlackMigrationSchemaTest {
          */
         @JvmStatic
         val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(DockerImageName.parse("postgres:16-alpine"))
+            PostgreSQLContainer(
+                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
+                    .asCompatibleSubstituteFor("postgres"),
+            )
                 .withDatabaseName("bts_slack_notify_test")
                 .withUsername("bts")
                 .withPassword("bts_test")
@@ -199,6 +202,27 @@ class SlackMigrationSchemaTest {
                 stmt.executeUpdate()
             }
         }
+    }
+
+    // 지정 pgmq 큐가 등록됐는지 조회 — V701 의 pgmq.create('q_slack_deliveries') 검증용.
+    private fun queueExists(queueName: String): Boolean =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "SELECT COUNT(*) FROM pgmq.list_queues() WHERE queue_name = ?",
+            ).use { stmt ->
+                stmt.setString(1, queueName)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getInt(1) > 0
+                }
+            }
+        }
+
+    // ── q_slack_deliveries 큐 검증 ─────────────────────────────────────────────
+
+    @Test
+    fun `V701 q_slack_deliveries pgmq 큐 생성됨`() {
+        assertThat(queueExists("q_slack_deliveries")).isTrue()
     }
 
     // ── user_slack_mapping 테이블 / 컬럼 검증 ──────────────────────────────────
