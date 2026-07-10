@@ -82,8 +82,9 @@ class SlackSignatureVerifier(
     }
 
     /** 요청 timestamp가 현재 시각 기준 ±[REPLAY_WINDOW_SECONDS]초 이내인지 확인한다(재전송 방어). */
-    private fun isWithinReplayWindow(timestamp: Long): Boolean =
-        abs(clock.instant().epochSecond - timestamp) <= REPLAY_WINDOW_SECONDS
+    private fun isWithinReplayWindow(timestamp: Long): Boolean {
+        return abs(clock.instant().epochSecond - timestamp) <= REPLAY_WINDOW_SECONDS
+    }
 
     /**
      * `v0=` + lowercase-hex(HMAC-SHA256(signing_secret, "v0:{timestamp}:{rawBody}"))를 계산한다.
