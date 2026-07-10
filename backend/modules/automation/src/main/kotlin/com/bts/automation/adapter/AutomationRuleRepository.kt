@@ -5,6 +5,7 @@ package com.bts.automation.adapter
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.TriggerType
 import org.springframework.dao.OptimisticLockingFailureException
+import org.springframework.jdbc.core.RowMapper
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Repository
@@ -48,7 +49,7 @@ class AutomationRuleRepository(
      */
     @Transactional
     fun save(rule: AutomationRule) {
-        jdbc.update(SQL_INSERT, insertParams(rule))
+        jdbc.update(SQL_INSERT, automationRuleInsertParams(rule))
     }
 
     /**
@@ -59,7 +60,7 @@ class AutomationRuleRepository(
      */
     @Transactional
     fun update(rule: AutomationRule) {
-        val affected = jdbc.update(SQL_UPDATE, updateParams(rule))
+        val affected = jdbc.update(SQL_UPDATE, automationRuleUpdateParams(rule))
         if (affected == 0) {
             throw OptimisticLockingFailureException(
                 "룰(${rule.id}) 갱신 실패 — 다른 변경이 먼저 반영되었거나 삭제되었습니다(기대 version=${rule.version - 1}).",
@@ -113,7 +114,7 @@ class AutomationRuleRepository(
      */
     @Transactional(readOnly = true)
     fun findById(id: UUID): AutomationRule? =
-        jdbc.query(SQL_FIND_BY_ID, MapSqlParameterSource("id", id)) { rs, _ -> mapRule(rs) }
+        jdbc.query(SQL_FIND_BY_ID, MapSqlParameterSource("id", id), AutomationRuleRowMapper)
             .firstOrNull()
 
     /**
@@ -124,7 +125,7 @@ class AutomationRuleRepository(
      */
     @Transactional(readOnly = true)
     fun findByProject(projectKey: String): List<AutomationRule> =
-        jdbc.query(SQL_FIND_BY_PROJECT, MapSqlParameterSource("projectKey", projectKey)) { rs, _ -> mapRule(rs) }
+        jdbc.query(SQL_FIND_BY_PROJECT, MapSqlParameterSource("projectKey", projectKey), AutomationRuleRowMapper)
 
     /**
      * 이슈 이벤트 매칭용 — [projectKey]·[triggerType] 이 일치하는 enabled·미삭제 룰을 반환한다.
@@ -143,7 +144,8 @@ class AutomationRuleRepository(
             MapSqlParameterSource()
                 .addValue("projectKey", projectKey)
                 .addValue("triggerType", triggerType.name),
-        ) { rs, _ -> mapRule(rs) }
+            AutomationRuleRowMapper,
+        )
 
     /**
      * 웹훅 인바운드용 — [tokenHash] 로 enabled·미삭제 WEBHOOK 룰을 조회한다.
@@ -153,9 +155,11 @@ class AutomationRuleRepository(
      */
     @Transactional(readOnly = true)
     fun findByWebhookTokenHash(tokenHash: String): AutomationRule? =
-        jdbc.query(SQL_FIND_BY_WEBHOOK_TOKEN_HASH, MapSqlParameterSource("tokenHash", tokenHash)) { rs, _ ->
-            mapRule(rs)
-        }.firstOrNull()
+        jdbc.query(
+            SQL_FIND_BY_WEBHOOK_TOKEN_HASH,
+            MapSqlParameterSource("tokenHash", tokenHash),
+            AutomationRuleRowMapper,
+        ).firstOrNull()
 
     /**
      * 스케줄 발화 대상 조회 — `next_fire_at <= now` 인 SCHEDULED·enabled·미삭제 룰을 반환한다.
@@ -168,50 +172,7 @@ class AutomationRuleRepository(
         jdbc.query(
             SQL_FIND_SCHEDULED_DUE,
             MapSqlParameterSource("now", now.atOffset(ZoneOffset.UTC)),
-        ) { rs, _ -> mapRule(rs) }
-
-    private fun insertParams(rule: AutomationRule): MapSqlParameterSource =
-        MapSqlParameterSource()
-            .addValue("id", rule.id)
-            .addValue("projectKey", rule.projectKey)
-            .addValue("name", rule.name)
-            .addValue("enabled", rule.enabled)
-            .addValue("triggerType", rule.triggerType.name)
-            .addValue("triggerConfig", rule.triggerConfig)
-            .addValue("webhookTokenHash", rule.webhookTokenHash)
-            .addValue("nextFireAt", rule.nextFireAt?.atOffset(ZoneOffset.UTC))
-            .addValue("createdBy", rule.createdBy)
-            .addValue("createdAt", rule.createdAt.atOffset(ZoneOffset.UTC))
-            .addValue("updatedAt", rule.updatedAt.atOffset(ZoneOffset.UTC))
-            .addValue("version", rule.version)
-
-    private fun updateParams(rule: AutomationRule): MapSqlParameterSource =
-        MapSqlParameterSource()
-            .addValue("id", rule.id)
-            .addValue("name", rule.name)
-            .addValue("enabled", rule.enabled)
-            .addValue("triggerConfig", rule.triggerConfig)
-            .addValue("webhookTokenHash", rule.webhookTokenHash)
-            .addValue("nextFireAt", rule.nextFireAt?.atOffset(ZoneOffset.UTC))
-            .addValue("updatedAt", rule.updatedAt.atOffset(ZoneOffset.UTC))
-            .addValue("version", rule.version)
-            .addValue("expectedVersion", rule.version - 1)
-
-    private fun mapRule(rs: ResultSet): AutomationRule =
-        AutomationRule(
-            id = rs.getObject("id", UUID::class.java),
-            projectKey = rs.getString("project_key"),
-            name = rs.getString("name"),
-            enabled = rs.getBoolean("enabled"),
-            triggerType = TriggerType.valueOf(rs.getString("trigger_type")),
-            triggerConfig = rs.getString("trigger_config"),
-            webhookTokenHash = rs.getString("webhook_token_hash"),
-            nextFireAt = rs.getObject("next_fire_at", OffsetDateTime::class.java)?.toInstant(),
-            createdBy = rs.getObject("created_by", UUID::class.java),
-            createdAt = rs.getObject("created_at", OffsetDateTime::class.java).toInstant(),
-            updatedAt = rs.getObject("updated_at", OffsetDateTime::class.java).toInstant(),
-            deletedAt = rs.getObject("deleted_at", OffsetDateTime::class.java)?.toInstant(),
-            version = rs.getLong("version"),
+            AutomationRuleRowMapper,
         )
 
     private companion object {
@@ -279,4 +240,65 @@ class AutomationRuleRepository(
             ORDER BY next_fire_at, id
         """
     }
+}
+
+/** 신규 [AutomationRule] 삽입 파라미터 — timestamptz 는 UTC [OffsetDateTime] 으로 바인딩한다. */
+private fun automationRuleInsertParams(rule: AutomationRule): MapSqlParameterSource =
+    MapSqlParameterSource()
+        .addValue("id", rule.id)
+        .addValue("projectKey", rule.projectKey)
+        .addValue("name", rule.name)
+        .addValue("enabled", rule.enabled)
+        .addValue("triggerType", rule.triggerType.name)
+        .addValue("triggerConfig", rule.triggerConfig)
+        .addValue("webhookTokenHash", rule.webhookTokenHash)
+        .addValue("nextFireAt", rule.nextFireAt?.atOffset(ZoneOffset.UTC))
+        .addValue("createdBy", rule.createdBy)
+        .addValue("createdAt", rule.createdAt.atOffset(ZoneOffset.UTC))
+        .addValue("updatedAt", rule.updatedAt.atOffset(ZoneOffset.UTC))
+        .addValue("version", rule.version)
+
+/**
+ * OCC 갱신 파라미터 — `version` 은 애그리거트가 이미 +1 한 새 버전, `expectedVersion` 은 DB 의
+ * 기대 버전(`version - 1`)이다.
+ */
+private fun automationRuleUpdateParams(rule: AutomationRule): MapSqlParameterSource =
+    MapSqlParameterSource()
+        .addValue("id", rule.id)
+        .addValue("name", rule.name)
+        .addValue("enabled", rule.enabled)
+        .addValue("triggerConfig", rule.triggerConfig)
+        .addValue("webhookTokenHash", rule.webhookTokenHash)
+        .addValue("nextFireAt", rule.nextFireAt?.atOffset(ZoneOffset.UTC))
+        .addValue("updatedAt", rule.updatedAt.atOffset(ZoneOffset.UTC))
+        .addValue("version", rule.version)
+        .addValue("expectedVersion", rule.version - 1)
+
+/**
+ * `automation_rules` 한 행 → [AutomationRule] 애그리거트 매핑 (slack `JdbcSlackInstallRowMapper` 선례 동형).
+ *
+ * timestamptz 컬럼은 [OffsetDateTime] 으로 읽어 [java.time.Instant] 로 정규화하고, nullable 컬럼
+ * (`next_fire_at`/`deleted_at`)은 SQL NULL 이면 `null` 로 매핑한다. `trigger_config`(jsonb)는 텍스트로
+ * 읽어 도메인의 원본 문자열 계약에 맞춘다.
+ */
+private object AutomationRuleRowMapper : RowMapper<AutomationRule> {
+    override fun mapRow(
+        rs: ResultSet,
+        rowNum: Int,
+    ): AutomationRule =
+        AutomationRule(
+            id = rs.getObject("id", UUID::class.java),
+            projectKey = rs.getString("project_key"),
+            name = rs.getString("name"),
+            enabled = rs.getBoolean("enabled"),
+            triggerType = TriggerType.valueOf(rs.getString("trigger_type")),
+            triggerConfig = rs.getString("trigger_config"),
+            webhookTokenHash = rs.getString("webhook_token_hash"),
+            nextFireAt = rs.getObject("next_fire_at", OffsetDateTime::class.java)?.toInstant(),
+            createdBy = rs.getObject("created_by", UUID::class.java),
+            createdAt = rs.getObject("created_at", OffsetDateTime::class.java).toInstant(),
+            updatedAt = rs.getObject("updated_at", OffsetDateTime::class.java).toInstant(),
+            deletedAt = rs.getObject("deleted_at", OffsetDateTime::class.java)?.toInstant(),
+            version = rs.getLong("version"),
+        )
 }

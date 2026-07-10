@@ -46,15 +46,19 @@ import java.util.UUID
 @Import(AutomationTestcontainersBase::class)
 class AutomationRuleRepositoryTest {
     @Autowired
+    @Suppress("VarCouldBeVal")
     private lateinit var repository: AutomationRuleRepository
 
     @Autowired
+    @Suppress("VarCouldBeVal")
     private lateinit var enqueuer: AutomationExecutionEnqueuer
 
     @Autowired
+    @Suppress("VarCouldBeVal")
     private lateinit var jdbcTemplate: JdbcTemplate
 
     @Autowired
+    @Suppress("VarCouldBeVal")
     private lateinit var objectMapper: ObjectMapper
 
     /** 결정적 테스트를 위한 고정 기준 시각(Clock 주입 대신 헬퍼 인자로 전달). */
@@ -69,6 +73,7 @@ class AutomationRuleRepositoryTest {
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
 
+    @Suppress("LongParameterList")
     private fun newRule(
         projectKey: String = "ATLAS",
         name: String = "자동 라벨 룰",
