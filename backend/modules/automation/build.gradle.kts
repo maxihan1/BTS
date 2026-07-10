@@ -84,6 +84,12 @@ dependencies {
     testImplementation("org.springframework.security:spring-security-test")
     // Servlet API — 테스트 환경에서 MockMvc / @WebMvcTest에 필요
     testImplementation("jakarta.servlet:jakarta.servlet-api")
+    // 임베디드 Tomcat(테스트 전용) — AutomationWebhookControllerTest 의 webEnvironment=RANDOM_PORT +
+    // TestRestTemplate 실 HTTP 검증에 필요. payload 크기 상한(G2, 413)은 애플리케이션 계층에서 직접
+    // 구현하므로 MockMvc 로도 로직 자체는 통과하지만, 서블릿 컨테이너 경계까지 포함한 end-to-end 를
+    // 실증하기 위해 실서블릿으로 검증한다([[multipart-default-limit-app-policy-false-green]] 반면교사).
+    // prod 배포조립(automation 모듈 전조립)은 이 FR 범위 밖이라 이 의존성은 test 스코프로 한정한다.
+    testImplementation("org.springframework.boot:spring-boot-starter-tomcat")
 
     // Kotest BOM (Bill of Materials — 버전 일괄 관리 패키지)
     testImplementation(platform("io.kotest:kotest-bom:5.9.1"))
