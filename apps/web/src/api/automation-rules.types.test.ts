@@ -154,3 +154,49 @@ describe('serializeTriggerConfig', () => {
     )
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// serializeTriggerConfig — baseConfigJson 병합 (편집 저장 시 백엔드 미지 키 보존, 코드리뷰 SUGGESTION 2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('serializeTriggerConfig — baseConfigJson 병합', () => {
+  it('SCHEDULED: base의 cron은 새 값으로 덮어쓰고 미지 키(extraKey)는 보존한다', () => {
+    const result = serializeTriggerConfig(
+      'SCHEDULED',
+      { cron: '0 0 9 * * *' },
+      JSON.stringify({ cron: 'old', extraKey: 'keep' }),
+    )
+    expect(JSON.parse(result)).toEqual({ cron: '0 0 9 * * *', extraKey: 'keep' })
+  })
+
+  it('ISSUE_UPDATED: base의 fields는 새 값으로 덮어쓰고 미지 키(extraKey)는 보존한다', () => {
+    const result = serializeTriggerConfig(
+      'ISSUE_UPDATED',
+      { fields: ['status'] },
+      JSON.stringify({ fields: ['old'], extraKey: 'keep' }),
+    )
+    expect(JSON.parse(result)).toEqual({ fields: ['status'], extraKey: 'keep' })
+  })
+
+  it('ISSUE_UPDATED: fields가 비어도 base의 미지 키(extraKey)는 보존한다', () => {
+    const result = serializeTriggerConfig(
+      'ISSUE_UPDATED',
+      { fields: [] },
+      JSON.stringify({ fields: ['old'], extraKey: 'keep' }),
+    )
+    expect(JSON.parse(result)).toEqual({ extraKey: 'keep' })
+  })
+
+  it('base가 잘못된 JSON이면 빈 객체로 안전하게 폴백한다', () => {
+    const result = serializeTriggerConfig('SCHEDULED', { cron: '0 0 9 * * *' }, '{not-json')
+    expect(JSON.parse(result)).toEqual({ cron: '0 0 9 * * *' })
+  })
+
+  it('base 미지정 시 기존 동작(빈 객체에서 시작)은 그대로 유지된다', () => {
+    expect(serializeTriggerConfig('SCHEDULED', { cron: '0 0 9 * * *' })).toBe(
+      JSON.stringify({ cron: '0 0 9 * * *' }),
+    )
+    expect(serializeTriggerConfig('ISSUE_UPDATED')).toBe('{}')
+    expect(serializeTriggerConfig('ISSUE_CREATED', { cron: '무시됨' })).toBe('{}')
+  })
+})

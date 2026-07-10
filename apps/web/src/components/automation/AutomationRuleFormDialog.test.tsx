@@ -264,6 +264,57 @@ describe('AutomationRuleFormDialog — 수정 모드', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 편집 저장 시 백엔드 미지 키 보존 (코드리뷰 SUGGESTION 2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AutomationRuleFormDialog — 편집 저장 시 백엔드 미지 키 보존', () => {
+  it('editingRule.triggerConfig의 미지 키(futureKey)를 PATCH triggerConfig에 보존한다', async () => {
+    const ruleWithUnknownKey: AutomationRule = {
+      ...SCHEDULED_EDIT_RULE,
+      triggerConfig: JSON.stringify({ cron: '0 0 9 * * *', futureKey: 'fromBackend' }),
+    }
+    const capturedBodies: PatchAutomationRuleInput[] = []
+    server.use(
+      http.patch('/api/v1/projects/:projectKey/automation/rules/:id', async ({ request }) => {
+        const body = (await request.json()) as PatchAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({
+          ...ruleWithUnknownKey,
+          ...body,
+          version: ruleWithUnknownKey.version + 1,
+        })
+      }),
+    )
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={vi.fn()}
+        editingRule={ruleWithUnknownKey}
+      />,
+    )
+    const user = userEvent.setup()
+    const cronInput = screen.getByTestId('automation-rule-cron-input')
+    await user.clear(cronInput)
+    await user.type(cronInput, '0 30 8 * * *')
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    const capturedBody = capturedBodies[0]
+    if (capturedBody === undefined) {
+      throw new Error('capturedBodies[0]이 캡처되지 않음')
+    }
+    if (capturedBody.triggerConfig === undefined) {
+      throw new Error('triggerConfig가 캡처되지 않음')
+    }
+    expect(JSON.parse(capturedBody.triggerConfig)).toEqual({
+      cron: '0 30 8 * * *',
+      futureKey: 'fromBackend',
+    })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // WEBHOOK 토큰 콜백
 // ─────────────────────────────────────────────────────────────────────────────
 
