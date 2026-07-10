@@ -64,7 +64,7 @@ class JdbcSlackUserMappingRepository(
         teamId: String,
     ): UUID? =
         jdbc.query(
-            "SELECT user_id FROM user_slack_mapping WHERE slack_user_id = :slackUserId AND team_id = :teamId",
+            SQL_FIND_USER_ID_BY_SLACK_USER_ID,
             mapOf("slackUserId" to slackUserId, "teamId" to teamId),
         ) { rs, _ -> rs.getObject("user_id", UUID::class.java) }
             .singleOrNull()
@@ -88,6 +88,17 @@ class JdbcSlackUserMappingRepository(
             SELECT user_id, slack_user_id, team_id, linked_at
             FROM user_slack_mapping
             WHERE user_id = :userId
+        """
+
+        /**
+         * slack_user_id/team_id → user_id 역방향 조회(FR-SL-03 unfurl viewer 해석).
+         * V702 UNIQUE 인덱스가 정상이면 최대 1행이지만, 방어적으로 매칭 전체를 가져와
+         * 호출부([findUserIdBySlackUserId])에서 [kotlin.collections.singleOrNull] 로 걸러낸다.
+         */
+        const val SQL_FIND_USER_ID_BY_SLACK_USER_ID = """
+            SELECT user_id
+            FROM user_slack_mapping
+            WHERE slack_user_id = :slackUserId AND team_id = :teamId
         """
     }
 }
