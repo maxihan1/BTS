@@ -5,6 +5,7 @@ package com.bts.automation.web
 import com.bts.automation.AutomationTestBootApplication
 import com.bts.automation.AutomationTestSecurityConfig
 import com.bts.automation.AutomationTestcontainersBase
+import com.bts.automation.StubAutomationPermissionResolver
 import com.bts.automation.adapter.AutomationRuleRepository
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.TriggerType
@@ -14,7 +15,9 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.test.web.client.TestRestTemplate
+import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
@@ -44,13 +47,32 @@ import java.util.UUID
  * - 존재하지 않는/비활성/소프트 삭제 토큰 → 404(S7/G5, 존재 숨김)
  * - payload 상한(256KB) 초과 → 413(G2) / 정확히 상한 → 202(경계값)
  * - 유효하지 않은 JSON 본문 → 400
+ *
+ * ## AutomationPermissionResolver stub
+ * [AutomationTestBootApplication] 은 `com.bts.automation` 패키지 전체를 스캔하므로 Task 6
+ * `AutomationRuleService`(non-null `AutomationPermissionResolver` 생성자 주입)도 함께 로드된다. 이
+ * 컨트롤러는 그 포트를 쓰지 않지만, 컨텍스트 부팅 자체를 위해 [StubAutomationPermissionResolver] 를
+ * 이 테스트 전용 [PermissionResolverStubConfig] 에서 `@Bean` 등록한다(`StubAutomationPermissionResolver`
+ * KDoc 이 명시하는 "각 소비 테스트가 자신의 nested `@TestConfiguration` 에서 등록" 패턴 재사용 — 이
+ * 웹훅 경로 인가와는 무관하므로 allow 등록 없이 기본 거부 상태로 둔다).
  */
 @SpringBootTest(
     classes = [AutomationTestBootApplication::class],
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
 )
-@Import(AutomationTestcontainersBase::class, AutomationTestSecurityConfig::class)
+@Import(
+    AutomationTestcontainersBase::class,
+    AutomationTestSecurityConfig::class,
+    AutomationWebhookControllerTest.PermissionResolverStubConfig::class,
+)
 class AutomationWebhookControllerTest {
+    /** [AutomationTestBootApplication] 전체 스캔이 요구하는 `AutomationPermissionResolver` 빈 공급. */
+    @TestConfiguration
+    class PermissionResolverStubConfig {
+        @Bean
+        fun automationPermissionResolver(): StubAutomationPermissionResolver = StubAutomationPermissionResolver()
+    }
+
     @Autowired
     @Suppress("VarCouldBeVal")
     private lateinit var restTemplate: TestRestTemplate

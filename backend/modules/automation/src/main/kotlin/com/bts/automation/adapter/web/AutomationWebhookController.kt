@@ -87,7 +87,7 @@ class AutomationWebhookController(
     fun receive(
         @PathVariable token: String,
         request: HttpServletRequest,
-    ): ResponseEntity<Void> {
+    ): ResponseEntity<Unit> {
         rejectIfDeclaredTooLarge(request)
         val body = readBoundedBody(request)
         val triggerEvent = parsePayload(body)
