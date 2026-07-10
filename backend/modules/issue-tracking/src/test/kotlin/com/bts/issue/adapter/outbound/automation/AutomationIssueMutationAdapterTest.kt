@@ -98,7 +98,14 @@ class AutomationIssueMutationAdapterTest {
         every { issueApplicationService.findByKey(actor, issueKey) } returns issueResponse(version = 3L)
         every { issueApplicationService.updateIssue(actor, issueKey, any()) } returns issueResponse(version = 4L)
 
-        val cmd = SetFieldCommand(actorUserId = actorUuid, issueKey = issueKey.value, field = "priority", value = "2", dryRun = false)
+        val cmd =
+            SetFieldCommand(
+                actorUserId = actorUuid,
+                issueKey = issueKey.value,
+                field = "priority",
+                value = "2",
+                dryRun = false,
+            )
         val result = adapter.setField(cmd)
 
         assertThat(result.issueKey).isEqualTo(issueKey.value)
@@ -152,8 +159,10 @@ class AutomationIssueMutationAdapterTest {
             .isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("dueDate")
 
-        verify(exactly = 0) { issueApplicationService.updateIssue(any(), any(), any()) }
-        verify(exactly = 0) { issueApplicationService.findByKey(any(), any()) }
+        // any() 는 IssueKey(value class) 시그니처 생성 시 랜덤 문자열로 REGEX init 검증을 깨뜨리므로
+        // (MockK value class 주의 — 실인스턴스 사용) 실 actor/issueKey 인스턴스로 검증한다.
+        verify(exactly = 0) { issueApplicationService.updateIssue(actor, issueKey, any()) }
+        verify(exactly = 0) { issueApplicationService.findByKey(actor, issueKey) }
     }
 
     @Test
@@ -164,7 +173,14 @@ class AutomationIssueMutationAdapterTest {
             IssueVersionConflictException(issueKey, 5L) andThen
             issueResponse(version = 6L)
 
-        val cmd = SetFieldCommand(actorUserId = actorUuid, issueKey = issueKey.value, field = "priority", value = "1", dryRun = false)
+        val cmd =
+            SetFieldCommand(
+                actorUserId = actorUuid,
+                issueKey = issueKey.value,
+                field = "priority",
+                value = "1",
+                dryRun = false,
+            )
         val result = adapter.setField(cmd)
 
         assertThat(result.applied).isTrue()
@@ -176,9 +192,17 @@ class AutomationIssueMutationAdapterTest {
     @Test
     fun `setField propagates exception when OCC conflict persists after retry`() {
         every { issueApplicationService.findByKey(actor, issueKey) } returns issueResponse(version = 3L)
-        every { issueApplicationService.updateIssue(actor, issueKey, any()) } throws IssueVersionConflictException(issueKey, 3L)
+        every { issueApplicationService.updateIssue(actor, issueKey, any()) } throws
+            IssueVersionConflictException(issueKey, 3L)
 
-        val cmd = SetFieldCommand(actorUserId = actorUuid, issueKey = issueKey.value, field = "priority", value = "1", dryRun = false)
+        val cmd =
+            SetFieldCommand(
+                actorUserId = actorUuid,
+                issueKey = issueKey.value,
+                field = "priority",
+                value = "1",
+                dryRun = false,
+            )
 
         assertThatThrownBy { adapter.setField(cmd) }.isInstanceOf(IssueVersionConflictException::class.java)
         verify(exactly = 2) { issueApplicationService.updateIssue(actor, issueKey, any()) }
@@ -189,7 +213,14 @@ class AutomationIssueMutationAdapterTest {
         every { issueApplicationService.findByKey(actor, issueKey) } returns issueResponse(version = 3L)
         every { issueApplicationService.updateIssue(actor, issueKey, any()) } returns issueResponse(version = 4L)
 
-        val cmd = SetFieldCommand(actorUserId = actorUuid, issueKey = issueKey.value, field = "priority", value = "1", dryRun = true)
+        val cmd =
+            SetFieldCommand(
+                actorUserId = actorUuid,
+                issueKey = issueKey.value,
+                field = "priority",
+                value = "1",
+                dryRun = true,
+            )
         val result = adapter.setField(cmd)
 
         assertThat(result.applied).isFalse()
@@ -205,7 +236,8 @@ class AutomationIssueMutationAdapterTest {
         every { issueApplicationService.findByKey(actor, issueKey) } returns issueResponse(version = 2L)
         every { issueApplicationService.changeAssignee(actor, issueKey, any()) } returns issueResponse(version = 3L)
 
-        val cmd = AssignCommand(actorUserId = actorUuid, issueKey = issueKey.value, assigneeId = newAssignee, dryRun = false)
+        val cmd =
+            AssignCommand(actorUserId = actorUuid, issueKey = issueKey.value, assigneeId = newAssignee, dryRun = false)
         val result = adapter.assign(cmd)
 
         assertThat(result.applied).isTrue()
@@ -241,7 +273,13 @@ class AutomationIssueMutationAdapterTest {
         every { issueApplicationService.findByKey(actor, issueKey) } returns issueResponse(version = 1L)
         every { issueApplicationService.changeAssignee(actor, issueKey, any()) } returns issueResponse(version = 2L)
 
-        val cmd = AssignCommand(actorUserId = actorUuid, issueKey = issueKey.value, assigneeId = UUID.randomUUID(), dryRun = true)
+        val cmd =
+            AssignCommand(
+                actorUserId = actorUuid,
+                issueKey = issueKey.value,
+                assigneeId = UUID.randomUUID(),
+                dryRun = true,
+            )
         val result = adapter.assign(cmd)
 
         assertThat(result.applied).isFalse()
@@ -255,7 +293,12 @@ class AutomationIssueMutationAdapterTest {
     fun `addComment delegates to create with actor as both actor and authorId`() {
         val bodySlot = slot<String>()
         every {
-            commentApplicationService.create(actor = actor, issueKey = issueKey, body = capture(bodySlot), authorId = actor)
+            commentApplicationService.create(
+                actor = actor,
+                issueKey = issueKey,
+                body = capture(bodySlot),
+                authorId = actor,
+            )
         } returns
             Comment(
                 id = UUID.randomUUID(),
@@ -277,7 +320,9 @@ class AutomationIssueMutationAdapterTest {
 
     @Test
     fun `addComment dryRun sets rollback only and returns applied false`() {
-        every { commentApplicationService.create(actor = actor, issueKey = issueKey, body = any(), authorId = actor) } returns
+        every {
+            commentApplicationService.create(actor = actor, issueKey = issueKey, body = any(), authorId = actor)
+        } returns
             Comment(
                 id = UUID.randomUUID(),
                 issueId = UUID.randomUUID(),
