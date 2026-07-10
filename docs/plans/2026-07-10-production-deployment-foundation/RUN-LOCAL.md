@@ -8,7 +8,8 @@
 | 항목 | 값 |
 |---|---|
 | 접속 주소 | **`http://localhost:18080/login`** (루트 `/`는 아직 placeholder — 아래 주의 참고) |
-| 로그인 | 아이디 `alice` / 비밀번호 `password` |
+| 로그인(관리자) | 아이디 `alice` **또는** `admin@bts.com` / 비밀번호 `password` (둘 다 SYSTEM_ADMIN) |
+| provider | 화면에서 **Local** 선택 (LDAP 버튼은 로컬에 서버가 없어 미동작) |
 | 로그인 후 | 한 번 **MFA(2단계 인증) 등록** 필요 (alice = 최고 관리자라서) |
 | 실행 방식 | Docker Compose 6서비스 (`infra/docker-compose.prod.yml`, prod 프로파일) |
 
@@ -50,10 +51,22 @@ docker compose -f infra/docker-compose.prod.yml --env-file infra/prod/.env down 
 
 > ⚠️ **루트 `/`는 개발용 placeholder("홈 (T13 가드 추가 전 placeholder)")를 보여준다.** 루트 접속 시 인증 여부에 따라 `/login`·시작페이지로 자동 이동시키는 가드("T13")가 아직 미구현이라서다. **테스트는 `http://localhost:18080/login` 으로 바로 접속**하면 된다. 이 루트 리다이렉트는 **배포 전 필수 처리 항목**(context-notes 참고) — prod에서 개발용 문자열이 노출되면 안 됨.
 
+## 테스트 계정 재시드 (`down -v` 후)
+
+관리자 계정은 postgres 볼륨에 저장된다. `down`(볼륨 유지)이면 그대로 남지만 `down -v`(볼륨 삭제)로 초기화하면 다시 시드해야 한다.
+
+- **admin@bts.com** — 아래 한 줄로 재시드(멱등, 반복 안전).
+  ```bash
+  docker exec -i bts-postgres psql -U bts -d bts < infra/local/seed-admin.sql
+  ```
+- **alice** — `data-dev.sql` 기반(identity-access). 조립 앱은 `sql.init.mode=never` 라 자동 실행 안 됨 → 필요 시 동일 방식으로 수동 시드.
+
+> LDAP은 로컬에 서버·활성 provider 설정이 없어 미동작(로그인 화면의 provider 목록엔 available:true 로 보이지만 실제 bind 대상 없음). 필요해지면 OpenLDAP 컨테이너 구동을 별도 작업으로 진행(context-notes 참고).
+
 ## 로그인 → MFA 등록 (최초 1회)
 
 1. 브라우저에서 `http://localhost:18080/login` 접속.
-2. 아이디 `alice`, 비밀번호 `password` 로 로그인.
+2. **Local** provider 선택 후 `alice` 또는 `admin@bts.com`, 비밀번호 `password` 로 로그인.
 3. alice는 최고 관리자(SYSTEM_ADMIN)라 **MFA 등록 화면**이 뜬다 (보안 설계 — 관리자는 2단계 인증 필수).
 4. 휴대폰 **인증 앱**(Google Authenticator · 1Password · Authy 등)으로 화면의 **QR 코드**를 스캔.
 5. 앱이 만든 **6자리 숫자**를 입력하면 등록 완료. 다음 로그인부터는 이 6자리만 추가로 넣으면 된다.
