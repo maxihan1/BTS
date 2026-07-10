@@ -1,4 +1,4 @@
-// V300~V303 마이그레이션 검증 — automation_rules(+actor_user_id) · automation_actions · q_automation_execution 큐 (FR-AT-01 Task 2 / FR-AT-02 Task 1)
+// V300~V303 마이그레이션 검증 — automation_rules·automation_actions·q_automation_execution 큐 (FR-AT-01/02)
 
 package com.bts.automation
 
@@ -88,7 +88,8 @@ class SchemaMigrationTest {
                 "updated_at",
                 "version",
                 "deleted_at",
-                "actor_user_id", // V303 추가 — 룰 실행 주체(actor)
+                // V303 추가 — 룰 실행 주체(actor)
+                "actor_user_id",
             )
 
         // automation_actions 가 보유해야 하는 6개 컬럼 (FR-AT-02 Task 1 / ADR D1 액션 스키마).
