@@ -75,7 +75,10 @@ class StubIssueMutationPort : IssueMutationPort {
     private fun successResult(
         issueKey: String,
         dryRun: Boolean,
-    ): MutationResult = MutationResult(issueKey = issueKey, applied = !dryRun, version = if (dryRun) null else DEFAULT_VERSION)
+    ): MutationResult {
+        val version = if (dryRun) null else DEFAULT_VERSION
+        return MutationResult(issueKey = issueKey, applied = !dryRun, version = version)
+    }
 
     private companion object {
         const val DEFAULT_VERSION = 1L
