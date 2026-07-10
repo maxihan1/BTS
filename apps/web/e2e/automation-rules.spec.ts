@@ -53,7 +53,7 @@ const labels = {
   webhookCopyButton: '복사',
   webhookCopiedLabel: '복사됨',
   webhookCloseButton: '닫기',
-  conflictMessage: '다른 곳에서 먼저 변경되었습니다. 최신 정보를 다시 불러온 뒤 시도해주세요.',
+  conflictMessage: '다른 곳에서 먼저 변경되었습니다. 최신 정보로 다시 열어 시도해주세요.',
 } as const
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -314,18 +314,24 @@ test.describe('T6 삭제 확인 → 목록 제거 (FR-AT-01)', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T7 — 409 OCC 버전 충돌 → 에러 표시(재조회 안내 문구 포함)
+// T7 — 409 OCC 버전 충돌 → 폼 자동 닫힘 + 토스트 안내 + 목록 자동 반영
+//
+// /review 발견으로 폼의 409 처리가 바뀌었다(commit 130fc06ab): 편집 폼의 stale version은
+// 재시도해도 다시 409가 반복되므로, 더 이상 인라인 에러로 폼을 유지하지 않는다 — 대신
+// 목록 쿼리를 invalidate하고 sonner 토스트로 안내한 뒤 폼을 자동으로 닫아(onOpenChange(false))
+// 사용자가 재조회된 최신 데이터로 재오픈하게 한다.
 //
 // Given   alice 로그인 + 자동화 설정 페이지 진입 + 룰 1건 생성(Given 전제)
 //         페이지 컨텍스트 안에서 raw fetch로 같은 룰을 먼저 PATCH해 서버 version을 앞서 올린다
 //         (다른 사용자가 먼저 변경한 상황을 자연스럽게 재현 — MSW 핸들러 수정 없이 실제 OCC 시맨틱만 사용)
 // When    화면에는 여전히 구버전이 캐시된 채로 "수정" → 이름 변경 → 저장
-// Then    409 버전 충돌 에러 문구(재조회 안내 포함)가 표시되고, 폼은 닫히지 않으며,
-//         취소 후 목록은 오염되지 않은 채로 남는다
+// Then    저장 시도 직후 폼이 자동으로 닫히고, sonner 토스트로 버전 충돌 안내가 표시된다.
+//         목록은 invalidate로 자동 재조회되어 외부 변경분(최신 이름)이 반영되고,
+//         실패한 로컬 편집(시도한 이름)은 어디에도 남지 않는다
 // ─────────────────────────────────────────────────────────────────────────────
 
-test.describe('T7 409 OCC 버전 충돌 → 에러 표시 (FR-AT-01)', () => {
-  test('Given 캐시가 뒤처진 룰 When 수정 저장 Then 버전 충돌 에러가 표시되고 폼이 유지된다', async ({ page }) => {
+test.describe('T7 409 OCC 버전 충돌 → 폼 자동 닫힘 + 토스트 안내 (FR-AT-01)', () => {
+  test('Given 캐시가 뒤처진 룰 When 수정 저장 Then 폼이 자동으로 닫히고 토스트 안내 + 목록이 최신으로 반영된다', async ({ page }) => {
     // Given. alice 로그인 + 페이지 진입 + 룰 1건 생성(서버/캐시 모두 version=1)
     await loginAsAlice(page)
     await page.goto(SETTINGS_URL)
@@ -335,16 +341,17 @@ test.describe('T7 409 OCC 버전 충돌 → 에러 표시 (FR-AT-01)', () => {
 
     // Given. 같은 페이지 컨텍스트에서 raw fetch로 "다른 사용자"가 먼저 변경한 상황을 만든다.
     // 화면(TanStack Query 캐시)은 이 변경을 모르는 채로 version=1을 그대로 들고 있다.
+    const externalName = 'T7 외부에서 먼저 변경됨'
     const externalPatchStatus = await page.evaluate(
-      async ({ projectKey, id }) => {
+      async ({ projectKey, id, newName }) => {
         const res = await fetch(`/api/v1/projects/${projectKey}/automation/rules/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ version: 1, name: '외부에서 먼저 변경됨' }),
+          body: JSON.stringify({ version: 1, name: newName }),
         })
         return res.status
       },
-      { projectKey: PROJECT_KEY, id: ruleId },
+      { projectKey: PROJECT_KEY, id: ruleId, newName: externalName },
     )
     expect(externalPatchStatus).toBe(200)
 
@@ -353,37 +360,41 @@ test.describe('T7 409 OCC 버전 충돌 → 에러 표시 (FR-AT-01)', () => {
     const dialog = page.getByRole('dialog')
     await expect(dialog.getByRole('heading', { name: labels.editTitle })).toBeVisible()
 
-    // When. 이름을 바꾸고 저장 — 폼이 들고 있던 stale version=1로 PATCH 전송 → 서버 현재 version=2와 불일치
-    await dialog.getByLabel(labels.nameLabel, { exact: true }).fill('충돌 시도 이름')
+    // When. 이름을 바꾸고 저장 — 폼이 들고 있던 stale version=1로 PATCH 전송 → 서버 현재 version=2와 불일치 → 409
+    const attemptedName = 'T7 충돌 시도 이름'
+    await dialog.getByLabel(labels.nameLabel, { exact: true }).fill(attemptedName)
     await dialog.getByTestId('automation-rule-save-button').click()
 
-    // Then. 409 버전 충돌 에러 문구(재조회 안내 포함) 표시 + 폼은 닫히지 않는다(onOpenChange(false)는 성공시에만 호출)
-    await expect(dialog.getByRole('alert').filter({ hasText: labels.conflictMessage })).toBeVisible()
-    await expect(dialog.getByRole('heading', { name: labels.editTitle })).toBeVisible()
-
-    // When. 취소로 폼을 닫는다(저장 실패로 캐시 invalidate가 일어나지 않았으므로 목록은 그대로)
-    await dialog.getByTestId('automation-rule-cancel-button').click()
+    // Then. 폼이 자동으로 닫힌다 — 409는 더 이상 인라인 에러로 폼을 유지하지 않는다
     await expect(dialog).not.toBeVisible()
 
-    // Then. 목록은 실패한 PATCH로 오염되지 않았다 — "충돌 시도 이름"으로 반영되지 않는다
-    await expect(page.getByText('충돌 시도 이름', { exact: true })).toHaveCount(0)
+    // Then. sonner 토스트로 버전 충돌 안내가 표시된다
+    await expect(page.getByText(labels.conflictMessage)).toBeVisible()
+
+    // Then. 목록은 자동 재조회되어 외부 변경분(최신 이름)이 반영된다 — 실패한 로컬 편집은 반영되지 않는다
+    await expect(ruleRowById(page, ruleId).getByText(externalName, { exact: true })).toBeVisible()
+    await expect(page.getByText(attemptedName, { exact: true })).toHaveCount(0)
   })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T7b — 409 OCC 버전 충돌 → 목록 자동 재조회 → 재조회된 최신 버전으로 재시도 성공
+// T7b — 409 OCC 버전 충돌 → 폼 자동 닫힘 후 재조회된 최신 버전으로 재시도 성공
+//
+// /review 발견으로 폼의 409 처리가 바뀌었다(commit 130fc06ab): 이전엔 폼이 열린 채 인라인
+// 에러였으나, 이제는 목록 invalidate + sonner 토스트 안내 + 폼 자동 닫힘으로 바뀌었다.
+// 사용자는 자동으로 닫힌 뒤 fresh 데이터로 재오픈해 재시도한다(더 이상 수동 "취소" 단계 없음).
 //
 // Given   alice 로그인 + 자동화 설정 페이지 진입 + 룰 1건 생성(Given 전제)
 //         페이지 컨텍스트 안에서 raw fetch로 같은 룰을 먼저 PATCH해 서버 version을 앞서 올린다
 //         (T7과 동일 기법 — 다른 사용자가 먼저 변경한 상황을 자연스럽게 재현)
 // When    화면에는 여전히 구버전이 캐시된 채로 "수정" → 이름 변경 → 저장 → 409
-// Then    에러 안내가 표시되고, 폼을 닫으면(코드리뷰 CONCERN 수정으로 409 시점에 이미 목록
-//         invalidate가 발생했으므로) 목록에는 외부 변경분(최신 이름 + version=2)이 자동
-//         반영되어 있다 — 그 최신 버전으로 다시 "수정" → 저장하면 이번에는 성공한다
+// Then    폼이 자동으로 닫히고 sonner 토스트로 충돌 안내가 표시된다. 목록은 invalidate로
+//         외부 변경분(최신 이름 + version=2)이 자동 반영된다 — 그 최신 버전으로 같은 룰을
+//         다시 "수정" → 저장하면 이번에는 성공한다
 // ─────────────────────────────────────────────────────────────────────────────
 
-test.describe('T7b 409 OCC 버전 충돌 → 목록 자동 재조회 후 재시도 성공 (FR-AT-01)', () => {
-  test('Given 캐시가 뒤처진 룰 When 저장 실패 후 재조회된 최신 버전으로 다시 저장 Then 재시도가 성공한다', async ({ page }) => {
+test.describe('T7b 409 OCC 버전 충돌 → 폼 자동 닫힘 후 재시도 성공 (FR-AT-01)', () => {
+  test('Given 캐시가 뒤처진 룰 When 저장 실패로 폼이 자동 닫힌 후 재조회된 최신 버전으로 다시 저장 Then 재시도가 성공한다', async ({ page }) => {
     // Given. alice 로그인 + 페이지 진입 + 룰 1건 생성(서버/캐시 모두 version=1)
     await loginAsAlice(page)
     await page.goto(SETTINGS_URL)
@@ -418,13 +429,9 @@ test.describe('T7b 409 OCC 버전 충돌 → 목록 자동 재조회 후 재시�
     await dialog.getByLabel(labels.nameLabel, { exact: true }).fill(firstAttemptName)
     await dialog.getByTestId('automation-rule-save-button').click()
 
-    // Then. 409 버전 충돌 에러 문구가 표시되고 폼은 닫히지 않는다(T7과 동일 계약)
-    await expect(dialog.getByRole('alert').filter({ hasText: labels.conflictMessage })).toBeVisible()
-    await expect(dialog.getByRole('heading', { name: labels.editTitle })).toBeVisible()
-
-    // When. 취소로 폼을 닫는다 — 409 발생 시점에 이미 목록 쿼리가 invalidate되어 재조회가 걸려 있다
-    await dialog.getByTestId('automation-rule-cancel-button').click()
+    // Then. 폼이 자동으로 닫히고(더 이상 수동 "취소" 불필요), sonner 토스트로 충돌 안내가 표시된다
     await expect(dialog).not.toBeVisible()
+    await expect(page.getByText(labels.conflictMessage)).toBeVisible()
 
     // Then. 목록이 자동 재조회되어 외부 변경분(이름 + version=2)이 반영된다 — 실패한 로컬 편집은 반영되지 않는다
     await expect(ruleRowById(page, ruleId).getByText(externalName, { exact: true })).toBeVisible()
