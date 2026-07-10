@@ -1,6 +1,6 @@
 // 자동화 룰 목록 조회 + 생성/수정/삭제 TanStack Query 훅 (FR-AT-01 D6) — mutation은 invalidate-only
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { UseQueryResult, UseMutationResult } from '@tanstack/react-query'
+import type { UseQueryResult, UseMutationResult, QueryClient } from '@tanstack/react-query'
 import {
   fetchAutomationRules,
   createAutomationRule,
@@ -60,6 +60,19 @@ export function useAutomationRules(projectKey: string): UseQueryResult<Automatio
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * 자동화 룰 목록 쿼리를 invalidate하는 공용 헬퍼.
+ *
+ * create/update/delete mutation 3종의 onSuccess가 동일 로직(목록 쿼리 invalidate)을
+ * 공유하므로 한 곳에 모아 drift를 막는다.
+ *
+ * @param queryClient invalidateQueries를 호출할 QueryClient 인스턴스
+ * @param projectKey 프로젝트 키
+ */
+function invalidateAutomationRules(queryClient: QueryClient, projectKey: string): void {
+  void queryClient.invalidateQueries({ queryKey: AUTOMATION_RULES_QUERY_KEY(projectKey) })
+}
+
+/**
  * 자동화 룰 생성 mutation 훅.
  *
  * - `POST /api/v1/projects/{projectKey}/automation/rules` → 201 `{ rule, webhookToken }`
@@ -78,7 +91,7 @@ export function useCreateAutomationRule(
   return useMutation<CreateAutomationRuleResponse, ApiError, CreateAutomationRuleInput>({
     mutationFn: (input: CreateAutomationRuleInput) => createAutomationRule(projectKey, input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: AUTOMATION_RULES_QUERY_KEY(projectKey) })
+      invalidateAutomationRules(queryClient, projectKey)
     },
   })
 }
@@ -108,7 +121,7 @@ export function useUpdateAutomationRule(
   return useMutation<AutomationRule, ApiError, UpdateAutomationRuleInput>({
     mutationFn: ({ id, body }: UpdateAutomationRuleInput) => patchAutomationRule(projectKey, id, body),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: AUTOMATION_RULES_QUERY_KEY(projectKey) })
+      invalidateAutomationRules(queryClient, projectKey)
     },
   })
 }
@@ -128,7 +141,7 @@ export function useDeleteAutomationRule(projectKey: string): UseMutationResult<v
   return useMutation<void, ApiError, string>({
     mutationFn: (id: string) => deleteAutomationRule(projectKey, id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: AUTOMATION_RULES_QUERY_KEY(projectKey) })
+      invalidateAutomationRules(queryClient, projectKey)
     },
   })
 }
