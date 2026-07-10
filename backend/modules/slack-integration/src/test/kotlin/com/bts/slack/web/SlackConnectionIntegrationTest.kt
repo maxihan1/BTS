@@ -121,8 +121,7 @@ class SlackConnectionIntegrationTest {
     @Test
     fun `POST connection - happy path면 200 connected true와 DB 매핑 행 생성`() {
         seedInstallation()
-        every { userLookupClient.lookupByEmail(any(), EMAIL) } returns
-            SlackUserLookupResult.Found(SLACK_USER_ID, TEAM_ID)
+        stubLookupFound()
 
         mockMvc
             .perform(post("/api/v1/slack/me/connection").with(jwtAuth(USER_ID)))
@@ -139,9 +138,8 @@ class SlackConnectionIntegrationTest {
     @Test
     fun `DELETE connection - 연결 해제 후 200 connected false와 행 제거`() {
         seedInstallation()
-        every { userLookupClient.lookupByEmail(any(), EMAIL) } returns
-            SlackUserLookupResult.Found(SLACK_USER_ID, TEAM_ID)
-        mockMvc.perform(post("/api/v1/slack/me/connection").with(jwtAuth(USER_ID))).andExpect(status().isOk)
+        stubLookupFound()
+        connect()
         assertThat(mappingRowCount(USER_ID)).isEqualTo(1)
 
         mockMvc
@@ -157,11 +155,10 @@ class SlackConnectionIntegrationTest {
     @Test
     fun `POST connection - 재연결해도 upsert로 행 1개를 유지한다`() {
         seedInstallation()
-        every { userLookupClient.lookupByEmail(any(), EMAIL) } returns
-            SlackUserLookupResult.Found(SLACK_USER_ID, TEAM_ID)
+        stubLookupFound()
 
-        mockMvc.perform(post("/api/v1/slack/me/connection").with(jwtAuth(USER_ID))).andExpect(status().isOk)
-        mockMvc.perform(post("/api/v1/slack/me/connection").with(jwtAuth(USER_ID))).andExpect(status().isOk)
+        connect()
+        connect()
 
         assertThat(mappingRowCount(USER_ID)).isEqualTo(1)
     }
@@ -242,8 +239,7 @@ class SlackConnectionIntegrationTest {
     @Test
     fun `연결-조회-해제 전체 흐름의 응답과 로그에 봇 토큰·이메일·slack 사용자 id가 노출되지 않는다`() {
         seedInstallation()
-        every { userLookupClient.lookupByEmail(any(), EMAIL) } returns
-            SlackUserLookupResult.Found(SLACK_USER_ID, TEAM_ID)
+        stubLookupFound()
         val appender = attachRootAppender()
         try {
             val connectBody =
@@ -281,6 +277,19 @@ class SlackConnectionIntegrationTest {
         } finally {
             detachRootAppender(appender)
         }
+    }
+
+    // ── 연결 시나리오 헬퍼 ──────────────────────────────────────────────────────────
+
+    /** mock [userLookupClient] 가 [EMAIL] 조회에 대해 항상 [SlackUserLookupResult.Found] 를 돌려주게 한다. */
+    private fun stubLookupFound() {
+        every { userLookupClient.lookupByEmail(any(), EMAIL) } returns
+            SlackUserLookupResult.Found(SLACK_USER_ID, TEAM_ID)
+    }
+
+    /** POST `/api/v1/slack/me/connection` 을 호출해 200 을 확인한다(여러 테스트가 반복하는 연결 성사 단계). */
+    private fun connect() {
+        mockMvc.perform(post("/api/v1/slack/me/connection").with(jwtAuth(USER_ID))).andExpect(status().isOk)
     }
 
     // ── DB 헬퍼 ──────────────────────────────────────────────────────────────────

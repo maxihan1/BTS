@@ -1,4 +1,4 @@
-// slack-integration 통합 테스트용 settable UserLookupPort stub — displayNames/emails에 등록된 id만 해석 (FR-SL-01 Task R2 / FR-SL-02 D6 Task 5)
+// slack-integration 통합 테스트용 settable UserLookupPort stub — displayNames/emails 등록 id만 해석
 
 package com.bts.slack
 
