@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 import com.slack.api.Slack
 import com.slack.api.methods.MethodsClient
 import com.slack.api.methods.SlackApiException
+import com.slack.api.methods.response.chat.ChatUnfurlResponse
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.io.IOException
@@ -66,12 +67,7 @@ class SlackUnfurlClient(
                         .ts(ts)
                         .rawUnfurls(rawUnfurls)
                 }
-            when {
-                response.isOk -> SlackSendResult.Sent
-                // rate_limited 는 논리 응답으로도 올 수 있어 재시도 대상으로 분류한다.
-                response.error == RATE_LIMITED -> SlackSendResult.RetryableFailure(RATE_LIMITED)
-                else -> SlackSendResult.PermanentFailure(response.error ?: "unknown")
-            }
+            classifyResponse(response)
         } catch (e: IOException) {
             // 네트워크 오류 — 재시도 가능. 토큰/카드 내용 미노출(예외 클래스명만).
             log.warn("slack_chat_unfurl_io_error channel={} error={}", channel, e.javaClass.simpleName)
@@ -82,6 +78,20 @@ class SlackUnfurlClient(
             SlackSendResult.RetryableFailure("http:${e.javaClass.simpleName}")
         }
     }
+
+    /**
+     * `chat.unfurl` 응답을 [SlackSendResult]로 분류한다. [SlackMessageClient]와 판정 기준이
+     * 동일하지만([RATE_LIMITED]는 재시도, 그 외 논리 오류는 영구실패), 응답 타입(`ChatUnfurlResponse`
+     * vs `ChatPostMessageResponse`)이 달라 클래스 간 공용 함수로 추출하면 제네릭/공통 인터페이스가
+     * 필요해 오히려 복잡해진다 — 이 클래스 내부 헬퍼로만 분리한다.
+     */
+    private fun classifyResponse(response: ChatUnfurlResponse): SlackSendResult =
+        when {
+            response.isOk -> SlackSendResult.Sent
+            // rate_limited 는 논리 응답으로도 올 수 있어 재시도 대상으로 분류한다.
+            response.error == RATE_LIMITED -> SlackSendResult.RetryableFailure(RATE_LIMITED)
+            else -> SlackSendResult.PermanentFailure(response.error ?: "unknown")
+        }
 
     private companion object {
         const val RATE_LIMITED = "rate_limited"
