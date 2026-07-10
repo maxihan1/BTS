@@ -31,7 +31,9 @@ class TriggerConfigTest : DescribeSpec({
 
     describe("TriggerConfig.validate — SCHEDULED") {
         it("cron 필드가 있고 파싱 가능하면 통과한다") {
-            TriggerConfig.validate(TriggerType.SCHEDULED, """{"cron":"0 9 * * *"}""")
+            // Spring CronExpression은 초 필드를 포함한 6필드 형식(초 분 시 일 월 요일)을 요구한다.
+            // 표준 5필드 유닉스 cron(스펙 예시의 "0 9 * * *")과 다르다 — 매일 09:00:00을 6필드로 표현.
+            TriggerConfig.validate(TriggerType.SCHEDULED, """{"cron":"0 0 9 * * *"}""")
         }
 
         it("cron 필드가 없으면 거부한다") {
