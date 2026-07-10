@@ -36,10 +36,11 @@ class AtlasIssueUrlParser(
         if (normalizedBase.isBlank()) return null
 
         val prefix = "$normalizedBase$ISSUES_PATH_SEGMENT"
-        if (!url.startsWith(prefix)) return null
-
-        val remainder = url.removePrefix(prefix)
-        return ISSUE_KEY_PREFIX_REGEX.find(remainder)?.value
+        return if (url.startsWith(prefix)) {
+            ISSUE_KEY_PREFIX_REGEX.find(url.removePrefix(prefix))?.value
+        } else {
+            null
+        }
     }
 
     /**
