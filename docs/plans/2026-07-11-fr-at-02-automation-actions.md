@@ -121,6 +121,10 @@ SDD 참조: 08장 (자동화 엔진). 선행: FR-AT-01(완료, PR #251/#254).
 **REFACTOR**: 경로 해석 헬퍼 분리, 정규식 상수화.
 **검증**: `./gradlew :backend:modules:automation:test --tests '*TemplateRendererTest'`
 
+> **T5+T6 병합 dispatch 기록** (2026-07-11): 데이터 클래스 필드 추가가 row mapper(소비자)를 즉시 깨
+> 모듈 컴파일 불가 → T5 테스트조차 독립 실행 불가. 컴파일 결합상 도메인+repo를 한 TDD 사이클로 구현
+> (커밋 `task-5-6`). [[bts-plan-wave-gradle-module-compile]] 실증.
+
 ### Task 5. AutomationRule 확장 — actions 리스트 + actorUserId
 
 **메타**.
