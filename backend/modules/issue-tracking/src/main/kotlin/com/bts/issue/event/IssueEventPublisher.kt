@@ -44,18 +44,34 @@ class IssueEventPublisher(
     @Transactional(propagation = Propagation.MANDATORY)
     fun publish(event: IssueDomainEvent) {
         val payload = objectMapper.writeValueAsString(event)
-        dsl.execute("SELECT pgmq.send(?, ?::jsonb)", QUEUE_NAME, payload)
-        log.info("event_published queue={} type={}", QUEUE_NAME, event::class.simpleName)
+        sendToQueue(QUEUE_NAME, payload, event)
 
         if (isWebhookPublishable(event)) {
-            dsl.execute("SELECT pgmq.send(?, ?::jsonb)", WEBHOOK_QUEUE_NAME, payload)
-            log.info("event_published queue={} type={}", WEBHOOK_QUEUE_NAME, event::class.simpleName)
+            sendToQueue(WEBHOOK_QUEUE_NAME, payload, event)
         }
 
         if (isAutomationPublishable(event)) {
-            dsl.execute("SELECT pgmq.send(?, ?::jsonb)", AUTOMATION_QUEUE_NAME, payload)
-            log.info("event_published queue={} type={}", AUTOMATION_QUEUE_NAME, event::class.simpleName)
+            sendToQueue(AUTOMATION_QUEUE_NAME, payload, event)
         }
+    }
+
+    /**
+     * [payload] 를 [queueName] pgmq 큐에 enqueue 하고 발행 로그를 남긴다.
+     *
+     * [publish] 의 3개 큐 fan-out(q_issue_events/q_webhook_events/q_automation_events)이 공유하는
+     * "SELECT pgmq.send" 실행 + 로깅 반복을 제거한 헬퍼 (REFACTOR — FR-AT-01 Task 10).
+     *
+     * @param queueName 대상 pgmq 큐 이름.
+     * @param payload 직렬화된 이벤트 JSON.
+     * @param event 로그 기록용 원본 이벤트 (타입명 추출).
+     */
+    private fun sendToQueue(
+        queueName: String,
+        payload: String,
+        event: IssueDomainEvent,
+    ) {
+        dsl.execute("SELECT pgmq.send(?, ?::jsonb)", queueName, payload)
+        log.info("event_published queue={} type={}", queueName, event::class.simpleName)
     }
 
     /**
