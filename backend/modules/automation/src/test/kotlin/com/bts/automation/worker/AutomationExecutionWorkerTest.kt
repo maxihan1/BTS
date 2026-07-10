@@ -115,7 +115,7 @@ class AutomationExecutionWorkerTest {
         // archive 는 purge_queue 로 안 비워지므로 별도 DELETE, SlackDeliveryWorkerIntegrationTest 동형).
         jdbcTemplate.update("DELETE FROM automation_rules")
         jdbcTemplate.execute("SELECT pgmq.purge_queue('q_automation_execution')")
-        jdbcTemplate.execute("DELETE FROM pgmq.a_q_automation_execution")
+        jdbcTemplate.update("DELETE FROM pgmq.\"${pgmqTable("a")}\"")
         issueMutationPort.reset()
     }
 
@@ -169,14 +169,29 @@ class AutomationExecutionWorkerTest {
     }
 
     private fun pendingCount(): Int =
-        jdbcTemplate.queryForObject("SELECT count(*) FROM pgmq.q_automation_execution", Int::class.java) ?: 0
+        jdbcTemplate.queryForObject("SELECT count(*) FROM pgmq.\"${pgmqTable("q")}\"", Int::class.java) ?: 0
 
     private fun archivedCount(): Int =
-        jdbcTemplate.queryForObject("SELECT count(*) FROM pgmq.a_q_automation_execution", Int::class.java) ?: 0
+        jdbcTemplate.queryForObject("SELECT count(*) FROM pgmq.\"${pgmqTable("a")}\"", Int::class.java) ?: 0
 
     private fun forceReadCount(value: Int) {
-        jdbcTemplate.update("UPDATE pgmq.q_automation_execution SET read_ct = ?", value)
+        jdbcTemplate.update("UPDATE pgmq.\"${pgmqTable("q")}\" SET read_ct = ?", value)
     }
+
+    /**
+     * pgmq 스키마에서 [prefix](`q`=큐·`a`=archive)로 시작하는 automation_execution 테이블 이름을
+     * 찾는다. pgmq 는 큐 생성 시 넘긴 이름 앞에 다시 `q_`/`a_` 를 붙여 실제 테이블을 만들기 때문에,
+     * 이미 `q_` 로 시작하는 우리 큐 이름(`q_automation_execution`)은 실제로 `pgmq.q_q_automation_execution`
+     * (이중 접두사)이 된다 — 하드코딩 대신 동적 조회로 이 비직관적 명명 규칙에서 자유로워진다
+     * ([SlackDeliveryWorkerIntegrationTest] 의 `pgmqTable` 헬퍼 동형).
+     */
+    private fun pgmqTable(prefix: String): String =
+        jdbcTemplate.queryForObject(
+            "SELECT table_name FROM information_schema.tables" +
+                " WHERE table_schema = 'pgmq' AND table_name LIKE ? ESCAPE '!'",
+            String::class.java,
+            "$prefix!_%automation_execution",
+        ) ?: error("pgmq $prefix table for automation_execution not found")
 
     private fun failingExecutor(): ActionExecutor =
         mockk<ActionExecutor>().also {
