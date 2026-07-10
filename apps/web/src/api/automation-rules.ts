@@ -33,6 +33,17 @@ function basePath(projectKey: string): string {
   return `/api/v1/projects/${projectKey}/automation/rules`
 }
 
+/**
+ * mutation 응답이 비-2xx이면 ApiError를 throw한다.
+ * create/patch/delete 3개 함수가 공유하는 에러 표면화 로직을 한 곳에 모은다.
+ */
+async function throwIfNotOk(res: Response): Promise<void> {
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // API 함수
 // ─────────────────────────────────────────────────────────────────────────────
@@ -87,10 +98,7 @@ export async function createAutomationRule(
     body: input,
     headers: { 'X-XSRF-TOKEN': readXsrfToken() },
   })
-  if (!res.ok) {
-    const errorBody: unknown = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, errorBody)
-  }
+  await throwIfNotOk(res)
   const raw: unknown = await res.json()
   return createAutomationRuleResponseSchema.parse(raw)
 }
@@ -119,10 +127,7 @@ export async function patchAutomationRule(
     body: input,
     headers: { 'X-XSRF-TOKEN': readXsrfToken() },
   })
-  if (!res.ok) {
-    const errorBody: unknown = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, errorBody)
-  }
+  await throwIfNotOk(res)
   const raw: unknown = await res.json()
   return automationRuleResponseSchema.parse(raw)
 }
@@ -143,10 +148,7 @@ export async function deleteAutomationRule(projectKey: string, id: string): Prom
     method: 'DELETE',
     headers: { 'X-XSRF-TOKEN': readXsrfToken() },
   })
-  if (!res.ok) {
-    const errorBody: unknown = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, errorBody)
-  }
+  await throwIfNotOk(res)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
