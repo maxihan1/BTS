@@ -103,7 +103,9 @@ export function serializeTriggerConfig(
     case 'SCHEDULED':
       return JSON.stringify({ cron: config.cron ?? '' })
     case 'ISSUE_UPDATED':
-      return config.fields && config.fields.length > 0 ? JSON.stringify({ fields: config.fields }) : '{}'
+      return config.fields && config.fields.length > 0
+        ? JSON.stringify({ fields: config.fields })
+        : '{}'
     case 'ISSUE_CREATED':
     case 'ISSUE_COMMENTED':
     case 'WEBHOOK':
