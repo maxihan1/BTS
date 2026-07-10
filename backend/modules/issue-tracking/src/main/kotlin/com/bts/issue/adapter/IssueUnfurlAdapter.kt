@@ -2,11 +2,13 @@
 
 package com.bts.issue.adapter
 
+import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssuePriority
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.type.domain.IssueType
 import com.bts.issue.type.repository.IssueTypeRepository
-import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.issue.IssueUnfurlPort
 import com.bts.shared.issue.IssueUnfurlView
 import com.bts.shared.permission.IssuePermission
@@ -67,14 +69,17 @@ class IssueUnfurlAdapter(
     private val issueTypeRepository: IssueTypeRepository,
     private val permissionResolver: IssuePermissionResolver,
     private val securityDirectory: IssueSecurityDirectory,
-    private val workflowStateCatalog: WorkflowStateCatalog,
-    private val userLookupPort: UserLookupPort,
+    workflowStateCatalog: WorkflowStateCatalog,
+    userLookupPort: UserLookupPort,
 ) : IssueUnfurlPort {
+    private val labelResolver = IssueUnfurlLabelResolver(workflowStateCatalog, userLookupPort)
+
     /**
      * [viewerUserId] 가 [issueKey] 를 볼 수 있으면 라벨이 해석된 unfurl 카드 스냅샷을, 없으면 `null` 을 반환한다.
      *
-     * fail-closed 계약은 클래스 KDoc 참조. 라벨 해석(상태/우선순위/담당자)은 이 메서드가 전담하며,
-     * 원시 상태키·priority Int·담당자 UUID 는 반환값([IssueUnfurlView])에 노출하지 않는다.
+     * 게이트 통과 후에는 조회·라벨 해석만 수행한다 — fail-closed 계약과 게이트 근거는 클래스 KDoc 참조.
+     * 라벨 해석(상태/우선순위/담당자)은 [IssueUnfurlLabelResolver] 가 전담하며, 원시 상태키·priority Int·
+     * 담당자 UUID 는 반환값([IssueUnfurlView])에 노출하지 않는다.
      */
     @Transactional(readOnly = true)
     override fun getVisibleIssueCard(
@@ -96,16 +101,7 @@ class IssueUnfurlAdapter(
         val issue = issueRepository.findByKey(key) ?: return null
         val issueType = issueTypeRepository.findById(issue.typeId) ?: return null
 
-        return IssueUnfurlView(
-            issueKey = key.value,
-            summary = issue.summary,
-            statusLabel = resolveStatusLabel(projectKey, issue.currentStateKey, issueType.key),
-            priorityLabel = IssuePriority.fromNumber(issue.priority).displayName,
-            assigneeDisplayName =
-                issue.assigneeId?.let { assignee ->
-                    userLookupPort.findDisplayNamesByIds(setOf(assignee.value))[assignee.value]
-                },
-        )
+        return labelResolver.toView(key, projectKey, issue, issueType)
     }
 
     /**
@@ -120,20 +116,58 @@ class IssueUnfurlAdapter(
         } catch (invalid: IllegalArgumentException) {
             null
         }
+}
+
+/**
+ * [IssueUnfurlAdapter] 가 게이트 통과 후 조회한 [Issue]/[IssueType] 을 [IssueUnfurlView] 로 변환하는
+ * 라벨 매핑 전담 클래스 (FR-SL-03 Task 6 REFACTOR — 게이트 로직과 라벨 해석 관심사 분리).
+ *
+ * 원시 상태키(`currentStateKey`)·priority `Int`·담당자 `UUID` 를 여기서 표시 라벨로 해석해,
+ * [IssueUnfurlAdapter.getVisibleIssueCard] 가 반환하는 [IssueUnfurlView] 밖으로 원시값이 새지 않게 한다.
+ *
+ * @property workflowStateCatalog 상태 키 → 표시 라벨 해석에 사용하는 cross-BC 포트(project-workflow 구현).
+ * @property userLookupPort 담당자 UUID → 표시명 해석에 사용하는 cross-BC 포트(identity-access 구현).
+ */
+private class IssueUnfurlLabelResolver(
+    private val workflowStateCatalog: WorkflowStateCatalog,
+    private val userLookupPort: UserLookupPort,
+) {
+    /** [issue]/[issueType] 을 라벨이 모두 해석된 [IssueUnfurlView] 로 변환한다. */
+    fun toView(
+        key: IssueKey,
+        projectKey: String,
+        issue: Issue,
+        issueType: IssueType,
+    ): IssueUnfurlView =
+        IssueUnfurlView(
+            issueKey = key.value,
+            summary = issue.summary,
+            statusLabel = statusLabel(projectKey, issue.currentStateKey, issueType),
+            priorityLabel = IssuePriority.fromNumber(issue.priority).displayName,
+            assigneeDisplayName = assigneeDisplayName(issue.assigneeId),
+        )
 
     /**
      * 워크플로우 상태 키를 표시 라벨로 해석한다. 매칭되는 상태가 없으면(정합성 불일치) 원본 키로 폴백한다.
      *
-     * [WorkflowStateCatalog.listStates] 가 던지는 예외는 이 함수가 catch 하지 않는다 — 클래스 KDoc 참조.
+     * [WorkflowStateCatalog.listStates] 가 던지는 예외는 이 함수가 catch 하지 않는다 — [IssueUnfurlAdapter]
+     * 클래스 KDoc "WorkflowStateCatalog 예외를 catch 하지 않는 이유" 참조.
      */
-    private fun resolveStatusLabel(
+    private fun statusLabel(
         projectKey: String,
         currentStateKey: String,
-        issueTypeKey: IssueTypeKey,
+        issueType: IssueType,
     ): String =
         workflowStateCatalog
-            .listStates(ProjectKey.of(projectKey), issueTypeKey)
+            .listStates(ProjectKey.of(projectKey), issueType.key)
             .firstOrNull { it.key == currentStateKey }
             ?.name
             ?: currentStateKey
+
+    /**
+     * 담당자 UUID 를 표시명으로 해석한다. 미배정([assigneeId]가 `null`) 또는 표시명 미해석 시 `null`
+     * (렌더 시 "미지정" 폴백은 [IssueUnfurlView.assigneeDisplayName] 소비측(Task 8 렌더러)의 책임).
+     */
+    private fun assigneeDisplayName(assigneeId: ActorId?): String? =
+        assigneeId?.let { assignee -> userLookupPort.findDisplayNamesByIds(setOf(assignee.value))[assignee.value] }
 }
