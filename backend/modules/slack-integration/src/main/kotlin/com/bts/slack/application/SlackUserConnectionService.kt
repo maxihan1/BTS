@@ -61,16 +61,11 @@ class SlackUserConnectionService(
      * @throws SlackTemporarilyUnavailableException Slack 이 일시적으로 응답하지 못한 경우(재시도 가능).
      */
     fun connect(userId: UUID): ConnectionStatus {
-        val email = userLookupPort.findEmailById(userId) ?: throw EmailUnavailableException()
-        val installation = installRepository.findCurrentInstallation() ?: throw WorkspaceNotInstalledException()
-        val botToken = botTokenResolver.resolve(installation.teamId) ?: throw WorkspaceNotInstalledException()
-
-        return when (val result = userLookupClient.lookupByEmail(botToken, email)) {
-            is SlackUserLookupResult.Found -> completeLink(userId, result, installation.teamName)
-            SlackUserLookupResult.NotFound -> throw SlackUserNotFoundException()
-            SlackUserLookupResult.MissingScope -> throw SlackScopeMissingException()
-            is SlackUserLookupResult.Transient -> throw SlackTemporarilyUnavailableException()
-        }
+        val email = requireEmail(userId)
+        val installation = requireInstallation()
+        val botToken = requireBotToken(installation.teamId)
+        val found = resolveLookupOutcome(botToken, email)
+        return completeLink(userId, found, installation.teamName)
     }
 
     /**
@@ -97,6 +92,55 @@ class SlackUserConnectionService(
     fun disconnect(userId: UUID) {
         userMappingService.unlink(userId)
     }
+
+    /** [userId] 계정 이메일을 조회한다. 이메일이 없으면 [EmailUnavailableException]. */
+    private fun requireEmail(userId: UUID): String {
+        return userLookupPort.findEmailById(userId) ?: throw EmailUnavailableException()
+    }
+
+    /** 현재 워크스페이스 설치를 조회한다. 설치가 없으면 [WorkspaceNotInstalledException]. */
+    private fun requireInstallation(): SlackInstallationView {
+        return installRepository.findCurrentInstallation() ?: throw WorkspaceNotInstalledException()
+    }
+
+    /**
+     * [teamId] 의 봇 토큰을 해석한다. null 이면(설치 조회 이후 삭제된 TOCTOU 레이스)
+     * [WorkspaceNotInstalledException].
+     */
+    private fun requireBotToken(teamId: String): String {
+        return botTokenResolver.resolve(teamId) ?: throw WorkspaceNotInstalledException()
+    }
+
+    /**
+     * Slack 사용자 lookup 을 호출해 [SlackUserLookupResult.Found] 만 통과시킨다.
+     *
+     * 실패 분류(NotFound/MissingScope/Transient)는 [lookupFailureException] 이 예외 인스턴스로 만들고,
+     * 이 함수가 단 한 곳에서만 `throw` 한다(detekt `ThrowsCount` — 분기당 throw 대신 예외를 값으로 반환받아
+     * 한 번만 던지는 패턴).
+     */
+    private fun resolveLookupOutcome(
+        botToken: String,
+        email: String,
+    ): SlackUserLookupResult.Found {
+        val result = userLookupClient.lookupByEmail(botToken, email)
+        if (result is SlackUserLookupResult.Found) return result
+        throw lookupFailureException(result)
+    }
+
+    /**
+     * lookup 실패 분류를 대응 예외 인스턴스로 매핑한다(호출부가 던진다 — 이 함수는 던지지 않는다).
+     *
+     * [SlackUserLookupResult.Found] 분기는 [resolveLookupOutcome] 이 먼저 걸러내 도달하지 않는다.
+     * `when` 이 sealed 인터페이스를 전수 커버해야 하므로 방어적으로만 남겨둔다.
+     */
+    private fun lookupFailureException(result: SlackUserLookupResult): RuntimeException =
+        when (result) {
+            SlackUserLookupResult.NotFound -> SlackUserNotFoundException()
+            SlackUserLookupResult.MissingScope -> SlackScopeMissingException()
+            is SlackUserLookupResult.Transient -> SlackTemporarilyUnavailableException()
+            is SlackUserLookupResult.Found ->
+                error("lookupFailureException 은 Found 를 다루지 않는다 — 호출부(resolveLookupOutcome)가 선행 필터링한다")
+        }
 
     /**
      * lookup 이 성공([SlackUserLookupResult.Found])했을 때만 진입 — DB 에 연결을 기록하고, 방금 기록한 값을
