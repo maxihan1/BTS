@@ -6,7 +6,23 @@ import { WebhookTokenModal } from '@/components/automation/WebhookTokenModal'
 
 const RAW_TOKEN = 'whk_1234567890abcdef1234567890abcdef'
 
+// ─────────────────────────────────────────────────────────────────────────────
+// clipboard mock — vi.stubGlobal 패턴 (ShareDashboardModal.test.tsx 동일).
+// userEvent.setup()이 navigator를 재구성하므로 스텁은 setup() 이후에 적용한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const clipboardWriteText = vi.fn()
+
+function stubClipboard(): void {
+  clipboardWriteText.mockResolvedValue(undefined)
+  vi.stubGlobal('navigator', {
+    ...navigator,
+    clipboard: { writeText: clipboardWriteText },
+  })
+}
+
 afterEach(() => {
+  vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
 
@@ -30,16 +46,14 @@ describe('WebhookTokenModal — token 있음', () => {
   })
 
   it('복사 버튼을 클릭하면 navigator.clipboard.writeText가 호출되고 "복사됨" 라벨로 바뀐다', async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined)
-    Object.assign(navigator, { clipboard: { writeText } })
-
     const user = userEvent.setup()
+    stubClipboard()
     render(<WebhookTokenModal token={RAW_TOKEN} onClose={vi.fn()} />)
 
     await user.click(screen.getByTestId('webhook-token-copy-button'))
 
     await waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith(RAW_TOKEN)
+      expect(clipboardWriteText).toHaveBeenCalledWith(RAW_TOKEN)
     })
     expect(await screen.findByText('복사됨')).toBeInTheDocument()
   })
