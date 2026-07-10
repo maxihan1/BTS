@@ -79,9 +79,12 @@ export function WebhookTokenModal({ token, onClose }: WebhookTokenModalProps): J
             {labels.title}
           </DialogPrimitive.Title>
 
-          <p role="alert" className="mt-2 text-sm text-amber-800 dark:text-amber-200">
+          <DialogPrimitive.Description
+            role="alert"
+            className="mt-2 text-sm text-amber-800 dark:text-amber-200"
+          >
             {labels.warning}
-          </p>
+          </DialogPrimitive.Description>
 
           <code className="mt-4 block break-all rounded bg-muted px-3 py-2 text-sm font-mono">
             {token}
