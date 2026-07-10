@@ -5,9 +5,11 @@ package com.bts.automation.adapter
 import com.bts.automation.AutomationTestBootApplication
 import com.bts.automation.AutomationTestcontainersBase
 import com.bts.automation.StubAutomationPermissionResolver
+import com.bts.automation.StubIssueMutationPort
 import com.bts.automation.domain.Action
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.TriggerType
+import com.bts.shared.issue.IssueMutationPort
 import com.bts.shared.permission.AutomationPermissionResolver
 import com.fasterxml.jackson.databind.node.TextNode
 import org.assertj.core.api.Assertions.assertThat
@@ -51,11 +53,17 @@ import java.util.UUID
     AutomationActionRepositoryTest.PermissionResolverStubConfig::class,
 )
 class AutomationActionRepositoryTest {
-    /** 컨텍스트 로드용 [AutomationPermissionResolver] 스텁 등록([AutomationRuleRepositoryTest] 동형). */
+    /**
+     * 컨텍스트 로드용 [AutomationPermissionResolver]/[IssueMutationPort] 스텁 등록
+     * ([AutomationRuleRepositoryTest] 동형).
+     */
     @TestConfiguration
     class PermissionResolverStubConfig {
         @Bean
         fun automationPermissionResolver(): AutomationPermissionResolver = StubAutomationPermissionResolver()
+
+        @Bean
+        fun issueMutationPort(): IssueMutationPort = StubIssueMutationPort()
     }
 
     @Autowired
