@@ -134,6 +134,18 @@ interface AutomationRuleRowProps {
   readonly onDeleteClick: (rule: AutomationRule) => void
 }
 
+/** 배지 공통 클래스 — tone에 따라 muted(중립)/primary(강조) 톤만 다르다 */
+const BADGE_BASE_CLASS = 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium'
+const BADGE_TONE_CLASS = {
+  muted: 'bg-muted text-muted-foreground',
+  primary: 'bg-primary/10 text-primary',
+} as const
+
+/** 트리거 타입/enabled 상태를 나타내는 작은 배지 — tone으로 muted/primary 톤 전환 */
+function RuleBadge({ tone, children }: { readonly tone: keyof typeof BADGE_TONE_CLASS; readonly children: string }): JSX.Element {
+  return <span className={`${BADGE_BASE_CLASS} ${BADGE_TONE_CLASS[tone]}`}>{children}</span>
+}
+
 /** 룰 단일 행 — 이름·트리거 배지·enabled 배지·(SCHEDULED만) nextFireAt + 토글/수정/삭제 액션 */
 function AutomationRuleRow({ rule, isToggling, onToggle, onEdit, onDeleteClick }: AutomationRuleRowProps): JSX.Element {
   const { formatDateTime } = useDateFormat()
@@ -143,18 +155,10 @@ function AutomationRuleRow({ rule, isToggling, onToggle, onEdit, onDeleteClick }
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="truncate text-sm font-medium">{rule.name}</span>
-          <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-            {triggerTypeLabels[rule.triggerType]}
-          </span>
-          <span
-            className={
-              rule.enabled
-                ? 'inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary'
-                : 'inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground'
-            }
-          >
+          <RuleBadge tone="muted">{triggerTypeLabels[rule.triggerType]}</RuleBadge>
+          <RuleBadge tone={rule.enabled ? 'primary' : 'muted'}>
             {rule.enabled ? labels.enabledBadge : labels.disabledBadge}
-          </span>
+          </RuleBadge>
         </div>
         {rule.triggerType === 'SCHEDULED' && rule.nextFireAt !== null && (
           <p className="text-xs text-muted-foreground">
