@@ -57,7 +57,7 @@ class WebhookActionClient(
      * @param body 요청 본문. `null` 이면 본문 없이 전송한다.
      * @return [WebhookCallResult] — 성공/실패 모두 예외 없이 결과로 반환한다.
      */
-    @Suppress("TooGenericExceptionCaught")
+    @Suppress("TooGenericExceptionCaught", "ReturnCount") // 검증→전송→응답 3단계 분기 early return 필수 (선례 동형)
     fun call(
         url: String,
         method: String,
@@ -155,7 +155,9 @@ class WebhookActionClient(
 
     /** URL 에서 호스트만 추출한다. 실패 시 "(unknown)" 반환(선례 `extractHost` 패턴). */
     private fun extractHost(url: String): String =
-        runCatching { java.net.URI(url).host ?: "(unknown)" }.getOrElse { "(unknown)" }
+        runCatching {
+            java.net.URI(url).host ?: "(unknown)"
+        }.getOrElse { "(unknown)" }
 
     companion object {
         /** SSRF 차단/형식 오류 URL 에 대한 일반 실패 사유(내부 host·차단 근거 미포함). */
