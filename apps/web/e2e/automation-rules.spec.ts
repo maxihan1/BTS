@@ -66,6 +66,15 @@ function ruleRow(page: Page, name: string): Locator {
 }
 
 /**
+ * 룰 UUID로 목록의 행(li) 컨테이너를 찾는다.
+ * "수정" 버튼의 data-testid(automation-rule-edit-{id})는 이름과 무관하게 고정이므로,
+ * 외부 변경으로 표시 이름이 바뀐 뒤에도 같은 행을 안정적으로 특정할 수 있다(T7b).
+ */
+function ruleRowById(page: Page, id: string): Locator {
+  return page.getByTestId(`automation-rule-edit-${id}`).locator('xpath=ancestor::li[1]')
+}
+
+/**
  * "룰 추가" 폼으로 ISSUE_CREATED 또는 SCHEDULED 룰 1건을 생성한다(Given 전제 데이터 생성 — 데이터 격리).
  * WEBHOOK 생성(토큰 모달 별도 처리 필요)은 T4에서 인라인으로 직접 다룬다.
  */
@@ -358,5 +367,82 @@ test.describe('T7 409 OCC 버전 충돌 → 에러 표시 (FR-AT-01)', () => {
 
     // Then. 목록은 실패한 PATCH로 오염되지 않았다 — "충돌 시도 이름"으로 반영되지 않는다
     await expect(page.getByText('충돌 시도 이름', { exact: true })).toHaveCount(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T7b — 409 OCC 버전 충돌 → 목록 자동 재조회 → 재조회된 최신 버전으로 재시도 성공
+//
+// Given   alice 로그인 + 자동화 설정 페이지 진입 + 룰 1건 생성(Given 전제)
+//         페이지 컨텍스트 안에서 raw fetch로 같은 룰을 먼저 PATCH해 서버 version을 앞서 올린다
+//         (T7과 동일 기법 — 다른 사용자가 먼저 변경한 상황을 자연스럽게 재현)
+// When    화면에는 여전히 구버전이 캐시된 채로 "수정" → 이름 변경 → 저장 → 409
+// Then    에러 안내가 표시되고, 폼을 닫으면(코드리뷰 CONCERN 수정으로 409 시점에 이미 목록
+//         invalidate가 발생했으므로) 목록에는 외부 변경분(최신 이름 + version=2)이 자동
+//         반영되어 있다 — 그 최신 버전으로 다시 "수정" → 저장하면 이번에는 성공한다
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('T7b 409 OCC 버전 충돌 → 목록 자동 재조회 후 재시도 성공 (FR-AT-01)', () => {
+  test('Given 캐시가 뒤처진 룰 When 저장 실패 후 재조회된 최신 버전으로 다시 저장 Then 재시도가 성공한다', async ({ page }) => {
+    // Given. alice 로그인 + 페이지 진입 + 룰 1건 생성(서버/캐시 모두 version=1)
+    await loginAsAlice(page)
+    await page.goto(SETTINGS_URL)
+    const name = 'T7b OCC 재시도 룰'
+    await createRuleViaUi(page, { name })
+    const ruleId = await getRuleId(page, name)
+
+    // Given. 같은 페이지 컨텍스트에서 raw fetch로 "다른 사용자"가 먼저 변경한 상황을 만든다.
+    // 서버 version은 2로 올라가고 이름도 바뀐다 — 화면(TanStack Query 캐시)은 이 변경을 모르는 채로
+    // version=1을 그대로 들고 있다.
+    const externalName = 'T7b 외부에서 먼저 변경됨'
+    const externalPatchStatus = await page.evaluate(
+      async ({ projectKey, id, newName }) => {
+        const res = await fetch(`/api/v1/projects/${projectKey}/automation/rules/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ version: 1, name: newName }),
+        })
+        return res.status
+      },
+      { projectKey: PROJECT_KEY, id: ruleId, newName: externalName },
+    )
+    expect(externalPatchStatus).toBe(200)
+
+    // When. 화면은 여전히 구버전 캐시(이름=name, version=1)를 보여주므로 그 행의 "수정"을 연다
+    await ruleRow(page, name).getByRole('button', { name: `${name} ${labels.editButton}`, exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByRole('heading', { name: labels.editTitle })).toBeVisible()
+
+    // When. 이름을 바꾸고 저장 — 폼이 들고 있던 stale version=1로 PATCH 전송 → 서버 현재 version=2와 불일치 → 409
+    const firstAttemptName = 'T7b 충돌 시도 이름'
+    await dialog.getByLabel(labels.nameLabel, { exact: true }).fill(firstAttemptName)
+    await dialog.getByTestId('automation-rule-save-button').click()
+
+    // Then. 409 버전 충돌 에러 문구가 표시되고 폼은 닫히지 않는다(T7과 동일 계약)
+    await expect(dialog.getByRole('alert').filter({ hasText: labels.conflictMessage })).toBeVisible()
+    await expect(dialog.getByRole('heading', { name: labels.editTitle })).toBeVisible()
+
+    // When. 취소로 폼을 닫는다 — 409 발생 시점에 이미 목록 쿼리가 invalidate되어 재조회가 걸려 있다
+    await dialog.getByTestId('automation-rule-cancel-button').click()
+    await expect(dialog).not.toBeVisible()
+
+    // Then. 목록이 자동 재조회되어 외부 변경분(이름 + version=2)이 반영된다 — 실패한 로컬 편집은 반영되지 않는다
+    await expect(ruleRowById(page, ruleId).getByText(externalName, { exact: true })).toBeVisible()
+    await expect(page.getByText(firstAttemptName, { exact: true })).toHaveCount(0)
+
+    // When. 재조회로 신선해진 버전(version=2)을 들고 다시 "수정"을 연다
+    await ruleRowById(page, ruleId)
+      .getByRole('button', { name: `${externalName} ${labels.editButton}`, exact: true })
+      .click()
+    await expect(dialog.getByRole('heading', { name: labels.editTitle })).toBeVisible()
+
+    // When. 새 이름으로 저장 — 이번에는 폼이 최신 version=2를 들고 있어 서버 version과 일치한다
+    const retriedName = 'T7b 재시도 성공 이름'
+    await dialog.getByLabel(labels.nameLabel, { exact: true }).fill(retriedName)
+    await dialog.getByTestId('automation-rule-save-button').click()
+
+    // Then. 저장이 성공해 폼이 닫히고(onOpenChange(false)는 성공 시에만 호출), 목록에 최종 이름이 반영된다
+    await expect(dialog).not.toBeVisible()
+    await expect(ruleRowById(page, ruleId).getByText(retriedName, { exact: true })).toBeVisible()
   })
 })
