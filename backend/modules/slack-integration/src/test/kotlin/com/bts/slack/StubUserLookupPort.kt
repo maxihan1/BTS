@@ -1,4 +1,4 @@
-// slack-integration 통합 테스트용 settable UserLookupPort stub — displayNames에 등록된 id만 표시명 해석 (FR-SL-01 Task R2)
+// slack-integration 통합 테스트용 settable UserLookupPort stub — displayNames/emails에 등록된 id만 해석 (FR-SL-01 Task R2 / FR-SL-02 D6 Task 5)
 
 package com.bts.slack
 
@@ -23,8 +23,18 @@ class StubUserLookupPort : UserLookupPort {
     /** id → display_name. 테스트가 채우고 비운다(스레드 안전). */
     val displayNames: MutableMap<UUID, String> = ConcurrentHashMap()
 
+    /**
+     * id → email. 테스트가 채우고 비운다(스레드 안전) — [com.bts.slack.application.SlackUserConnectionService]
+     * 의 이메일 자동해석 연결(FR-SL-02 D6 Task 5)이 [findEmailById] 로 조회한다. 미등록 id 는 null(이메일
+     * 없음, [com.bts.slack.application.EmailUnavailableException] 유도)이며 prod adapter 의 "미존재 시 null"
+     * 시맨틱과 동일하다.
+     */
+    val emails: MutableMap<UUID, String> = ConcurrentHashMap()
+
     override fun exists(userId: UUID): Boolean = displayNames.containsKey(userId)
 
     override fun findDisplayNamesByIds(ids: Set<UUID>): Map<UUID, String> =
         ids.mapNotNull { id -> displayNames[id]?.let { id to it } }.toMap()
+
+    override fun findEmailById(userId: UUID): String? = emails[userId]
 }

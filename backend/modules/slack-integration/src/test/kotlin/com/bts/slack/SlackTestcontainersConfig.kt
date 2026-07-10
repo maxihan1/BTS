@@ -2,9 +2,12 @@
 
 package com.bts.slack
 
+import com.bts.slack.message.SlackUserLookupClient
+import io.mockk.mockk
 import org.flywaydb.core.Flyway
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Primary
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
@@ -29,6 +32,8 @@ import javax.sql.DataSource
  * - [PlatformTransactionManager] — test-boot 앱의 `@EnableTransactionManagement` + repository/service
  *   `@Transactional` 프록시가 실제 트랜잭션을 여닫도록.
  * - [StubSystemPermissionResolver] — fail-closed 전역 관리자 판정 stub(테스트가 admin 을 명시 등록).
+ * - `@Primary` mock [SlackUserLookupClient] — 실 Slack `users.lookupByEmail` 호출을 회피(FR-SL-02 D6 Task 5,
+ *   [slackUserLookupClient] 참고).
  *
  * ## JVM 단위 singleton container (교훈 concurrent-testcontainers-suite-flaky)
  * companion 의 `.apply { start() }` 로 JVM 시작 시 한 번만 기동하고 Ryuk 의 종료 시 자동 정리에 위임한다.
@@ -97,6 +102,18 @@ class SlackTestcontainersConfig {
      */
     @Bean
     fun userLookupPort(): StubUserLookupPort = StubUserLookupPort()
+
+    /**
+     * Slack `users.lookupByEmail` 클라이언트 — 실 Slack 호출을 회피하는 mockk 대체 (FR-SL-02 D6 Task 5).
+     *
+     * 컴포넌트 스캔된 실 `SlackUserLookupClient`(외부 Slack API 호출)와 함께 이 빈도 등록되어 타입이
+     * 충돌하므로 `@Primary` 로 이 mock 이 주입 우선순위를 가진다([SlackInstallIntegrationTest.FakeOAuthConfig]
+     * 동형). 테스트가 `every { ... } returns ...` 로 [com.bts.slack.message.SlackUserLookupResult] 를
+     * 시나리오별로 주입/변경한다(연결 happy/스코프부족/미발견/일시오류).
+     */
+    @Bean
+    @Primary
+    fun slackUserLookupClient(): SlackUserLookupClient = mockk()
 
     companion object {
         /**
