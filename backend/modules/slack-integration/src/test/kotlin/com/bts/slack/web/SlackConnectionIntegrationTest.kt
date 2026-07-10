@@ -364,9 +364,9 @@ class SlackConnectionIntegrationTest {
     private companion object {
         val USER_ID: UUID = UUID.fromString("33333333-3333-4333-8333-333333333333")
         const val EMAIL = "connection-it@example.com"
-        const val TEAM_ID = "T1"
+        const val TEAM_ID = "T0SLACKTEAMPROBE1"
         const val TEAM_NAME = "Acme Workspace"
-        const val SLACK_USER_ID = "U1"
+        const val SLACK_USER_ID = "U0SLACKUSERPROBE1"
         const val PLAINTEXT_BOT_TOKEN = "xoxb-plaintext-bot-token-for-connection-it"
     }
 }
