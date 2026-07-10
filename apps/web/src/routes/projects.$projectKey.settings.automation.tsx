@@ -66,6 +66,10 @@ export function ProjectAutomationSettingsPage({
     setDialogOpen(true)
   }
 
+  function handleWebhookTokenClose(): void {
+    setWebhookToken(null)
+  }
+
   return (
     <div className="p-8 space-y-6 max-w-2xl">
       <header className="space-y-1">
@@ -89,7 +93,7 @@ export function ProjectAutomationSettingsPage({
         onWebhookToken={setWebhookToken}
       />
 
-      <WebhookTokenModal token={webhookToken} onClose={() => { setWebhookToken(null) }} />
+      <WebhookTokenModal token={webhookToken} onClose={handleWebhookTokenClose} />
     </div>
   )
 }
