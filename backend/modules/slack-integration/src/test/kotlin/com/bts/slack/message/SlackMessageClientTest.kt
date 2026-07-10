@@ -2,8 +2,8 @@
 
 package com.bts.slack.message
 
+import com.slack.api.RequestConfigurator
 import com.slack.api.methods.MethodsClient
-import com.slack.api.methods.RequestConfigurator
 import com.slack.api.methods.SlackApiException
 import com.slack.api.methods.request.chat.ChatPostMessageRequest
 import com.slack.api.methods.response.chat.ChatPostMessageResponse
@@ -44,7 +44,12 @@ class SlackMessageClientTest {
 
     @Test
     fun `ok false + rate_limited 는 RetryableFailure`() {
-        stubResponse(ChatPostMessageResponse().apply { isOk = false; error = "rate_limited" })
+        stubResponse(
+            ChatPostMessageResponse().apply {
+                isOk = false
+                error = "rate_limited"
+            },
+        )
 
         val result = client.postDirectMessage("t", "U1", message)
 
@@ -53,7 +58,12 @@ class SlackMessageClientTest {
 
     @Test
     fun `ok false + channel_not_found 는 PermanentFailure`() {
-        stubResponse(ChatPostMessageResponse().apply { isOk = false; error = "channel_not_found" })
+        stubResponse(
+            ChatPostMessageResponse().apply {
+                isOk = false
+                error = "channel_not_found"
+            },
+        )
 
         val result = client.postDirectMessage("t", "U1", message)
 
