@@ -162,6 +162,11 @@ Maxi "옵션 B로 진행" 확정 → security-engineer + TDD.
 - **배포 전 필수 처리**: index 라우트에 `beforeLoad` 추가 — 미인증→`/login`, 인증→`resolveStartPageNav`(시작페이지). 기존 `routeGuard.ts` 헬퍼(`requireAuth`/`redirectIfAuth`/`resolveStartPageNav`) 재사용 가능. TDD 주의 — `router.test.tsx:67` "/ 라우트 마운트 → 인덱스 placeholder 렌더"(`findByText(/홈/)`)가 리다이렉트 기대로 바뀌어야 함. 수정 후 dist·web 이미지 재빌드 필요. 프론트 변경이라 frontend-engineer 경유 권장.
 - Maxi 결정(2026-07-10): 지금은 `/login` 직접 접속으로 테스트, T13은 배포 전 처리로 미룸.
 
+## 2026-07-10 — nginx가 bare /login(SPA)을 백엔드로 프록시해 401 (프록시 접두사 충돌)
+
+브라우저로 `http://localhost:18080/login` 접속 시 `ERR_HTTP_RESPONSE_CODE_FAILURE 401`. 원인 = `infra/prod/nginx.conf` 프록시 정규식 `^/(api|...|login)(/|$)` 의 `login` 이 **bare `/login`**(React 로그인 화면)까지 백엔드로 보냄 → 백엔드 401. `login` 을 넣은 의도는 SSO 콜백 하위경로(`/login/oauth2/code/{id}`·`/login/saml2/sso/{id}`)뿐이었음. **수정**(커밋 19bc7511b): `login` → `login/(oauth2|saml2)` 로 좁혀 bare `/login` 은 SPA 폴백. 런타임 검증(docker cp+reload) → 이미지 재빌드로 영구화. bare `/login`=200 SPA, `/login/oauth2/code/x`=백엔드 302, `/api/v1/auth/login`=JSON 확인.
+- 교훈(메모리 `nginx-spa-route-shadowed-by-backend-proxy-prefix`): 프록시 allowlist에 백엔드 접두사 추가 시 프론트 라우트와 충돌 grep 필수. 부팅·health·API는 정상이라 실 브라우저 스모크로만 표면화.
+
 ## 다음 세션 진입점
 
 - ✅ **크리티컬 코드 블로커(workflow PermissionResolver prod 어댑터) 해소** — DelegatingPermissionResolver.
