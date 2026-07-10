@@ -231,7 +231,8 @@ class NotificationDeliveryEndToEndIntegrationTest {
             .untilAsserted {
                 val count =
                     dsl.fetchOne(
-                        "SELECT COUNT(*) FROM notifications WHERE recipient_user_id = ? AND event_type = ? AND channel = ?",
+                        "SELECT COUNT(*) FROM notifications" +
+                            " WHERE recipient_user_id = ? AND event_type = ? AND channel = ?",
                         RECIPIENT_USER_ID,
                         "issue.mentioned",
                         "IN_APP",
@@ -241,7 +242,8 @@ class NotificationDeliveryEndToEndIntegrationTest {
 
         val notificationRow =
             dsl.fetchOne(
-                "SELECT status, issue_key FROM notifications WHERE recipient_user_id = ? AND event_type = ? AND channel = ?",
+                "SELECT status, issue_key FROM notifications" +
+                    " WHERE recipient_user_id = ? AND event_type = ? AND channel = ?",
                 RECIPIENT_USER_ID,
                 "issue.mentioned",
                 "IN_APP",
