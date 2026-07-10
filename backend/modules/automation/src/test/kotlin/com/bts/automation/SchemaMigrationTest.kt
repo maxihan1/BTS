@@ -175,6 +175,20 @@ class SchemaMigrationTest {
             }
         }
 
+    private fun indexExists(indexName: String): Boolean =
+        conn().use { c ->
+            c.prepareStatement(
+                "SELECT COUNT(*) FROM pg_indexes" +
+                    " WHERE schemaname = 'public' AND tablename = 'automation_rules' AND indexname = ?",
+            ).use { stmt ->
+                stmt.setString(1, indexName)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getInt(1) > 0
+                }
+            }
+        }
+
     @Suppress("NestedBlockDepth")
     private fun pgmqQueueExists(queueName: String): Boolean =
         conn().use { c ->
@@ -200,6 +214,22 @@ class SchemaMigrationTest {
                 stmt.setString(1, "ATLAS")
                 stmt.setString(2, "자동 라벨 부여 룰")
                 stmt.setString(3, triggerType)
+                stmt.setObject(4, UUID.randomUUID())
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    // WEBHOOK 룰 한 행 INSERT — webhook_token_hash 부분 UNIQUE 검증용.
+    private fun insertWebhookRule(tokenHash: String) {
+        conn().use { c ->
+            c.prepareStatement(
+                "INSERT INTO automation_rules (project_key, name, trigger_type, webhook_token_hash, created_by)" +
+                    " VALUES (?, ?, 'WEBHOOK', ?, ?)",
+            ).use { stmt ->
+                stmt.setString(1, "ATLAS")
+                stmt.setString(2, "웹훅 인바운드 룰")
+                stmt.setString(3, tokenHash)
                 stmt.setObject(4, UUID.randomUUID())
                 stmt.executeUpdate()
             }
@@ -316,6 +346,30 @@ class SchemaMigrationTest {
     fun `V300 정의되지 않은 trigger_type 은 CHECK 제약 위반`() {
         assertThatThrownBy { insertRule("PR_MERGED") }
             .hasMessageContaining("ck_automation_rules_trigger_type")
+    }
+
+    // ── 인덱스 검증 (조회 경로별 부분 인덱스) ──────────────────────────────────
+
+    @Test
+    fun `V300 이벤트 매칭 조회용 project_trigger_enabled 부분 인덱스 존재`() {
+        assertThat(indexExists("idx_automation_rules_project_trigger_enabled")).isTrue()
+    }
+
+    @Test
+    fun `V300 웹훅 토큰 조회 겸 유일성용 webhook_token_hash 부분 UNIQUE 인덱스 존재`() {
+        assertThat(indexExists("uq_automation_rules_webhook_token_hash")).isTrue()
+    }
+
+    @Test
+    fun `V300 스케줄 발화 조회용 next_fire_at 부분 인덱스 존재`() {
+        assertThat(indexExists("idx_automation_rules_next_fire_at")).isTrue()
+    }
+
+    @Test
+    fun `V300 같은 webhook_token_hash 중복 INSERT 는 부분 UNIQUE 위반`() {
+        insertWebhookRule("a".repeat(64))
+        assertThatThrownBy { insertWebhookRule("a".repeat(64)) }
+            .hasMessageContaining("uq_automation_rules_webhook_token_hash")
     }
 
     // ── pgmq 큐 검증 (ADR D4 — automation 소유 실행 큐 / E1 — events 큐는 비소유) ─

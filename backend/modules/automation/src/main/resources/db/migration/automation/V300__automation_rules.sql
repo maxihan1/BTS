@@ -38,6 +38,28 @@ CREATE TABLE automation_rules (
     )
 );
 
+-- ── 인덱스 ────────────────────────────────────────────────────────────────────
+-- 방금 생성한 빈 테이블이므로 CONCURRENTLY 를 쓰지 않는다 — CREATE INDEX CONCURRENTLY 는 Flyway 트랜잭션
+-- 안에서 실행 불가하며, 0행 신규 테이블에는 락 회피 이점도 없다(DATA.md CONCURRENTLY 는 대형 기존 테이블 대상).
+
+-- (1) 이벤트 트리거 매칭 조회 — AutomationEventWorker.findEnabledByProjectAndTriggerType (Task 4/7).
+--     활성 룰만 조회하므로 deleted_at IS NULL 부분 인덱스로 소프트 삭제 행을 인덱스에서 배제한다.
+CREATE INDEX idx_automation_rules_project_trigger_enabled
+    ON automation_rules (project_key, trigger_type, enabled)
+    WHERE deleted_at IS NULL;
+
+-- (2) 웹훅 토큰 조회 + 유일성 — AutomationWebhookController 토큰 해시 lookup (Task 9).
+--     WEBHOOK 전용 컬럼이라 부분 UNIQUE 인덱스로 (a) 토큰 해시 충돌 거부 (b) NULL 다수(비웹훅 룰) 미인덱싱.
+CREATE UNIQUE INDEX uq_automation_rules_webhook_token_hash
+    ON automation_rules (webhook_token_hash)
+    WHERE webhook_token_hash IS NOT NULL;
+
+-- (3) 스케줄 발화 대상 조회 — AutomationScheduleWorker.findScheduledDue(now) (Task 8).
+--     SCHEDULED 전용 컬럼이라 부분 인덱스로 발화 대상만 인덱싱한다.
+CREATE INDEX idx_automation_rules_next_fire_at
+    ON automation_rules (next_fire_at)
+    WHERE trigger_type = 'SCHEDULED';
+
 COMMENT ON TABLE  automation_rules                    IS 'AutomationRule Aggregate — 트리거 전용 스키마(FR-AT-01, 조건/액션은 FR-AT-02/03)';
 COMMENT ON COLUMN automation_rules.project_key        IS '룰이 속한 프로젝트 키(cross-BC, BC 격리로 FK 아님)';
 COMMENT ON COLUMN automation_rules.name               IS '룰 표시명';
