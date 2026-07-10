@@ -149,6 +149,13 @@ Maxi "옵션 B로 진행" 확정 → security-engineer + TDD.
 
 **후속(다음 세션)**: 위 2수정 반영해 jar+이미지 재빌드→양쪽 native healthy 재확인 진행중. 그 후 P5(서버 배포, 별도 승인). 로컬 스택 정리 = `docker compose ... down`(볼륨 유지) 또는 `down -v`(볼륨 삭제).
 
+## 2026-07-10 — 로컬 실사용 검증: MFA 등록 필수 env 누락(500) 발견·수정
+
+**증상**: alice(SYSTEM_ADMIN) 로그인 후 MFA 등록 게이트 통과를 위해 `POST /api/v1/auth/mfa/totp/setup` 호출 시 **HTTP 500**. 로그 = `IllegalStateException: MFA encryption key not configured. Set BTS_MFA_ENCRYPTION_KEY/SALT`(`MfaSecretEncryptor.requireConfigured`).
+- **근본 원인**: TOTP secret은 DB에 AES-256-GCM 암호화 저장(설계) → `BTS_MFA_ENCRYPTION_KEY`/`BTS_MFA_ENCRYPTION_SALT` 필수인데 `infra/prod/.env`에 누락. 빈은 부팅 안전상 항상 등록되고 **암호화 호출 시점에야** 검증 → 부팅/health로는 안 잡히고 실제 MFA 등록을 눌러야 표면화(YAML 회귀와 동일 계열 — 조립 앱 실사용 스모크로만 적발).
+- **수정(로컬)**: `.env`에 `BTS_MFA_ENCRYPTION_KEY`(hex 48)·`BTS_MFA_ENCRYPTION_SALT`(**hex 16** — `Encryptors.stronger`가 hex 검증) 추가 후 backend 재시작. `/totp/setup` 재호출 → **200**(otpauth_uri + qr_png_data_uri 정상 발급) 확인. `.env`는 gitignored.
+- **★P5 배포 영향**: prod `.env`에도 **동일 두 변수 필수**(salt는 반드시 hex). 현재 prod `.env`의 필수 변수를 문서화한 **커밋된 템플릿 부재**(`infra/deploy/config.sh.example`은 SSH 접속 설정 전용) → **P5 후속: `infra/prod/.env.example` 작성**(placeholder로 전 필수 변수 나열: DB·JWT PEM·부트스트랩 admin·issuer·MFA 암호화·OIDC 암호화 등). 안 만들면 VM 배포에서 같은 500 재현.
+
 ## 다음 세션 진입점
 
 - ✅ **크리티컬 코드 블로커(workflow PermissionResolver prod 어댑터) 해소** — DelegatingPermissionResolver.
