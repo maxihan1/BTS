@@ -1,0 +1,315 @@
+// 프로젝트 자동화 룰 목록 — 트리거/enabled 배지·활성 토글·삭제 확인 모달·빈 상태 CTA (FR-AT-01 D6 Task 5)
+import { useState } from 'react'
+import type { JSX } from 'react'
+import { Dialog as DialogPrimitive } from 'radix-ui'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import {
+  useAutomationRules,
+  useUpdateAutomationRule,
+  useDeleteAutomationRule,
+} from '@/api/useAutomationRules'
+import { extractAutomationRuleErrorCode } from '@/api/automation-rules'
+import { useDateFormat } from '@/hooks/use-date-format'
+import type { AutomationRule, TriggerType } from '@/api/automation-rules.types'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 한국어 라벨 — BC 내 고정 (PatList.tsx/WebhookTokenModal.tsx 관례, 별도 i18n 파일 미도입)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const labels = {
+  heading: '자동화 룰',
+  addButton: '룰 추가',
+  editButton: '수정',
+  deleteButton: '삭제',
+  enableButton: '활성화',
+  disableButton: '비활성화',
+  enabledBadge: '활성',
+  disabledBadge: '비활성',
+  nextFireAtLabel: '다음 실행',
+  emptyMessage: '아직 자동화 룰이 없습니다.',
+  loadingStatus: '자동화 룰 목록 로딩 중',
+  accessDenied: '권한이 없습니다.',
+  genericError: '자동화 룰을 불러오지 못했습니다.',
+  toggleFailed: '변경에 실패했습니다.',
+  deleteFailed: '삭제에 실패했습니다.',
+  deleteConfirmTitle: '자동화 룰을 삭제하시겠습니까?',
+  deleteConfirmMessage: '삭제하면 되돌릴 수 없습니다.',
+  deleteConfirmButton: '삭제',
+  deleteCancelButton: '취소',
+} as const
+
+/** 트리거 타입 → 한국어 배지 라벨 (backend TriggerType 5종 1:1 대응) */
+const triggerTypeLabels: Record<TriggerType, string> = {
+  ISSUE_CREATED: '생성',
+  ISSUE_UPDATED: '수정',
+  ISSUE_COMMENTED: '댓글',
+  SCHEDULED: '스케줄',
+  WEBHOOK: '웹훅',
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Props
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** AutomationRuleList props */
+export interface AutomationRuleListProps {
+  /** 룰을 표시할 프로젝트 식별 키 */
+  readonly projectKey: string
+  /** "룰 추가" 클릭 시 상위에서 생성 폼을 열기 위한 콜백 (이 컴포넌트는 폼을 렌더하지 않는다) */
+  readonly onAddRule: () => void
+  /** 행 "수정" 클릭 시 상위에서 편집 폼을 열기 위한 콜백 — 클릭된 룰을 전달 */
+  readonly onEditRule: (rule: AutomationRule) => void
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DeleteConfirmDialog — radix-ui 직접 사용(components/ui에 Dialog 래퍼 부재, WebhookTokenModal.tsx 동형)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface DeleteConfirmDialogProps {
+  /** 삭제 확인 대상 룰. null이면 모달을 렌더하지 않는다 */
+  readonly rule: AutomationRule | null
+  /** 삭제 mutation 진행 중 여부 — 확인/취소 버튼을 disabled 처리한다 */
+  readonly isPending: boolean
+  readonly onConfirm: () => void
+  readonly onCancel: () => void
+}
+
+/** 삭제 확인 모달 — rule이 null이면 렌더하지 않는다 */
+function DeleteConfirmDialog({ rule, isPending, onConfirm, onCancel }: DeleteConfirmDialogProps): JSX.Element | null {
+  if (rule === null) return null
+
+  return (
+    <DialogPrimitive.Root
+      open
+      onOpenChange={(open) => {
+        if (!open) onCancel()
+      }}
+    >
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
+          <DialogPrimitive.Title className="text-lg font-semibold">
+            {labels.deleteConfirmTitle}
+          </DialogPrimitive.Title>
+          <DialogPrimitive.Description className="mt-2 text-sm text-muted-foreground">
+            {rule.name} — {labels.deleteConfirmMessage}
+          </DialogPrimitive.Description>
+
+          <div className="mt-6 flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isPending}
+              data-testid="automation-rule-delete-cancel"
+              onClick={onCancel}
+            >
+              {labels.deleteCancelButton}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={isPending}
+              data-testid={`automation-rule-delete-confirm-${rule.id}`}
+              onClick={onConfirm}
+            >
+              {labels.deleteConfirmButton}
+            </Button>
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AutomationRuleRow — 행 서브컴포넌트 (같은 파일 내부 분리 — 이 Task는 별도 파일 생성이 금지됨)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface AutomationRuleRowProps {
+  readonly rule: AutomationRule
+  readonly isToggling: boolean
+  readonly onToggle: (rule: AutomationRule) => void
+  readonly onEdit: (rule: AutomationRule) => void
+  readonly onDeleteClick: (rule: AutomationRule) => void
+}
+
+/** 룰 단일 행 — 이름·트리거 배지·enabled 배지·(SCHEDULED만) nextFireAt + 토글/수정/삭제 액션 */
+function AutomationRuleRow({ rule, isToggling, onToggle, onEdit, onDeleteClick }: AutomationRuleRowProps): JSX.Element {
+  const { formatDateTime } = useDateFormat()
+
+  return (
+    <li className="flex flex-col gap-2 rounded-md border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="truncate text-sm font-medium">{rule.name}</span>
+          <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+            {triggerTypeLabels[rule.triggerType]}
+          </span>
+          <span
+            className={
+              rule.enabled
+                ? 'inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary'
+                : 'inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground'
+            }
+          >
+            {rule.enabled ? labels.enabledBadge : labels.disabledBadge}
+          </span>
+        </div>
+        {rule.triggerType === 'SCHEDULED' && rule.nextFireAt !== null && (
+          <p className="text-xs text-muted-foreground">
+            {labels.nextFireAtLabel}: {formatDateTime(rule.nextFireAt)}
+          </p>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 shrink-0">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={isToggling}
+          aria-label={`${rule.name} ${rule.enabled ? labels.disableButton : labels.enableButton}`}
+          data-testid={`automation-rule-toggle-${rule.id}`}
+          onClick={() => {
+            onToggle(rule)
+          }}
+        >
+          {rule.enabled ? labels.disableButton : labels.enableButton}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label={`${rule.name} ${labels.editButton}`}
+          data-testid={`automation-rule-edit-${rule.id}`}
+          onClick={() => {
+            onEdit(rule)
+          }}
+        >
+          {labels.editButton}
+        </Button>
+        <Button
+          variant="destructive"
+          size="sm"
+          aria-label={`${rule.name} ${labels.deleteButton}`}
+          data-testid={`automation-rule-delete-${rule.id}`}
+          onClick={() => {
+            onDeleteClick(rule)
+          }}
+        >
+          {labels.deleteButton}
+        </Button>
+      </div>
+    </li>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AutomationRuleList
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 프로젝트 자동화 룰 목록 컴포넌트.
+ *
+ * - useAutomationRules로 목록 조회. 4분기: 로딩 → 상태 표시, 에러 → 메시지(403은 권한 없음으로
+ *   별도 분기, 그 외는 일반 메시지), 빈 → 빈 상태 문구, 목록 → AutomationRuleRow 렌더.
+ * - "룰 추가" 헤더 버튼은 목록이 비어있어도 항상 노출되어 빈 상태의 CTA를 겸한다 — onAddRule을
+ *   그대로 위임한다(dead path 없음). 룰 생성/편집 폼 자체는 이 컴포넌트가 렌더하지 않는다
+ *   (Task 6 AutomationRuleFormDialog, 조립은 Task 8이 담당).
+ * - 행 "수정" 클릭은 onEditRule(rule)을 위임한다.
+ * - 활성 토글은 useUpdateAutomationRule로 `{ version, enabled: !enabled }`를 PATCH한다(OCC).
+ *   실패(예: 버전 충돌 409) 시 toast로만 알리고 캐시는 그대로 둔다 — invalidate가 일어나지
+ *   않으므로 화면은 이전 상태를 유지한다.
+ * - 삭제는 확인 모달(DeleteConfirmDialog) → 확인 시 useDeleteAutomationRule.
+ *
+ * @param projectKey 프로젝트 식별 키
+ * @param onAddRule "룰 추가" 클릭 콜백
+ * @param onEditRule 행 "수정" 클릭 콜백 — 클릭된 룰을 인자로 전달
+ */
+export function AutomationRuleList({ projectKey, onAddRule, onEditRule }: AutomationRuleListProps): JSX.Element {
+  const { data: rules, isLoading, isError, error } = useAutomationRules(projectKey)
+  const updateRule = useUpdateAutomationRule(projectKey)
+  const deleteRule = useDeleteAutomationRule(projectKey)
+
+  const [deletingRule, setDeletingRule] = useState<AutomationRule | null>(null)
+
+  function handleToggle(rule: AutomationRule): void {
+    updateRule.mutate(
+      { id: rule.id, body: { version: rule.version, enabled: !rule.enabled } },
+      { onError: () => toast.error(labels.toggleFailed) },
+    )
+  }
+
+  function handleDeleteClick(rule: AutomationRule): void {
+    setDeletingRule(rule)
+  }
+
+  function handleDeleteConfirm(): void {
+    if (deletingRule === null) return
+    deleteRule.mutate(deletingRule.id, {
+      onSuccess: () => {
+        setDeletingRule(null)
+      },
+      onError: () => {
+        setDeletingRule(null)
+        toast.error(labels.deleteFailed)
+      },
+    })
+  }
+
+  function handleDeleteCancel(): void {
+    setDeletingRule(null)
+  }
+
+  const ruleList = rules ?? []
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-semibold">{labels.heading}</h2>
+        <Button size="sm" data-testid="automation-rule-add-button" onClick={onAddRule}>
+          {labels.addButton}
+        </Button>
+      </div>
+
+      {isLoading && (
+        <div role="status" aria-label={labels.loadingStatus} className="py-8 text-center text-sm text-muted-foreground">
+          {labels.loadingStatus}
+        </div>
+      )}
+
+      {!isLoading && isError && (
+        <p className="text-sm text-destructive">
+          {extractAutomationRuleErrorCode(error) === 'AUTOMATION_ACCESS_DENIED'
+            ? labels.accessDenied
+            : labels.genericError}
+        </p>
+      )}
+
+      {!isLoading && !isError && ruleList.length === 0 && (
+        <p className="py-8 text-center text-sm text-muted-foreground">{labels.emptyMessage}</p>
+      )}
+
+      {!isLoading && !isError && ruleList.length > 0 && (
+        <ul className="space-y-2">
+          {ruleList.map((rule) => (
+            <AutomationRuleRow
+              key={rule.id}
+              rule={rule}
+              isToggling={updateRule.isPending}
+              onToggle={handleToggle}
+              onEdit={onEditRule}
+              onDeleteClick={handleDeleteClick}
+            />
+          ))}
+        </ul>
+      )}
+
+      <DeleteConfirmDialog
+        rule={deletingRule}
+        isPending={deleteRule.isPending}
+        onConfirm={handleDeleteConfirm}
+        onCancel={handleDeleteCancel}
+      />
+    </div>
+  )
+}
