@@ -209,6 +209,15 @@ class AutomationRuleService(
             updated = updated.copy(nextFireAt = initialNextFireAt(updated.triggerConfig, now))
         }
 
+        // 무변경(no-op) PATCH — 어떤 도메인 동작(rename/updateConfig/enable/disable)도 적용되지 않으면
+        // version 이 그대로다. 이때 repository.update 를 호출하면 기대 version(version-1) 행이 없어
+        // OptimisticLockingFailureException → 잘못된 409 가 되고 재시도해도 상태가 같아 비수렴한다.
+        // 버전이 일치했으므로 변경 없이 200 으로 현재 룰을 그대로 반환한다.
+        if (updated.version == existing.version) {
+            log.info("automation_rule_patch_noop id={} projectKey={}", id, projectKey)
+            return existing
+        }
+
         try {
             repository.update(updated)
         } catch (e: OptimisticLockingFailureException) {
