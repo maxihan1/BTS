@@ -4,10 +4,12 @@ package com.bts.automation.worker
 
 import com.bts.automation.AutomationTestBootApplication
 import com.bts.automation.AutomationTestcontainersBase
+import com.bts.automation.StubAutomationPermissionResolver
 import com.bts.automation.adapter.AutomationRuleRepository
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.TriggerConfig
 import com.bts.automation.domain.TriggerType
+import com.bts.shared.permission.AutomationPermissionResolver
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
@@ -15,6 +17,8 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import java.time.Instant
@@ -30,6 +34,14 @@ import java.util.UUID
  * `@EnableScheduling` 은 이 Task 범위 밖(Task 11) 이므로 [AutomationEventWorker.pollAndProcess] 를
  * 직접 호출한다(스케줄 대기 없음, plan-eng-review E5).
  *
+ * ## AutomationPermissionResolver 스텁 (plan-eng-review E4)
+ * `com.bts.automation` 전체를 스캔하는 [AutomationTestBootApplication] 하에서는 이 워커와 무관한
+ * `AutomationRuleService`(Task 6)도 함께 로드되며, 이 서비스가 non-null 로 요구하는
+ * [AutomationPermissionResolver] 포트는 automation 클래스패스에 prod 구현이 없다(BC 격리). 이 워커
+ * 테스트는 권한 판정을 쓰지 않지만 컨텍스트 로드를 위해 [StubAutomationPermissionResolver] 를 등록한다
+ * (Task 6 `AutomationRuleControllerTest` 와 동일 stub 재사용, 이 파일의 nested `@TestConfiguration`
+ * 범위 내에서만 등록 — 파일 범위 제약상 [AutomationTestcontainersBase] 는 수정하지 않는다).
+ *
  * ## 검증 시나리오
  * - ISSUE_CREATED/ISSUE_COMMENTED 이벤트가 매칭 룰을 발화시켜 q_automation_execution 도달
  * - ISSUE_UPDATED triggerConfig `fields` 교집합 필터(있음→발화 / 없음→미발화 / 빈 설정→전체 발화)
@@ -41,8 +53,18 @@ import java.util.UUID
     classes = [AutomationTestBootApplication::class],
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
 )
-@Import(AutomationTestcontainersBase::class)
+@Import(
+    AutomationTestcontainersBase::class,
+    AutomationEventWorkerTest.TestSupportConfig::class,
+)
 class AutomationEventWorkerTest {
+    /** 컨텍스트 로드용 [AutomationPermissionResolver] 스텁 등록(클래스 KDoc 참조). */
+    @TestConfiguration
+    class TestSupportConfig {
+        @Bean
+        fun automationPermissionResolver(): AutomationPermissionResolver = StubAutomationPermissionResolver()
+    }
+
     @Autowired
     @Suppress("VarCouldBeVal")
     private lateinit var worker: AutomationEventWorker
