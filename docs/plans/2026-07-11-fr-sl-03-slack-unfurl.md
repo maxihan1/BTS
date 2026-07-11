@@ -231,3 +231,9 @@ Slack이 `link_shared` 이벤트를 백엔드로 전송 → 백엔드가 열람 
 - 후속 권고: 일정 보안등급 이상 이슈는 채널 무관 unfurl 억제(FR-SL-06 심화, `issue-scope-global-prod-hard-deny` 철학).
 
 **종합**. BLOCKER 2건(엔지니어링, plan 메타 버그)은 처방대로 수정 완료. 보안 CONCERN 5건 태스크 반영 완료. **게이트1 진행 가능.**
+
+### PR 단위 리뷰 (게이트 2, 2026-07-11)
+- **code-reviewer(절대규칙)**: ✅ PASS. BLOCKER 0.
+- **security 재검증**: ✅ PASS. BLOCKER 0. ★T6 fail-open 갭 닫힘 확정(BROWSE 멤버십 게이트 + 보안등급 게이트 직교).
+- **CONCERN 1 (이 PR에서 수정 완료, Maxi 게이트2 결정)**: V702 UNIQUE가 FR-SL-02 연결의 이중매핑을 UNIQUE 위반→catch-all 500으로 노출하던 것을, `DuplicateKeyException`→`SlackAccountAlreadyLinkedException`→**409 `SLACK_ACCOUNT_ALREADY_LINKED`** 로 교정(TDD). message 위생 유지.
+- **후속(범위 밖)**: ① 배포 전 기존 `(slack_user_id, team_id)` 중복 1회 확인(UNIQUE 생성 실패 방지). ② 프론트 `apps/web api/slack.ts`에 `SLACK_ACCOUNT_ALREADY_LINKED` 명시 UI 분기(현재 응답 message로 표시됨). ③ `/slack/events` payload 크기 상한 + prod SecurityConfig `/slack/events` permitAll 중앙 등록(ADR D6 배포 조립 후속).
