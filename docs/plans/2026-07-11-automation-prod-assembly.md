@@ -69,6 +69,75 @@ automation이 prod 컨텍스트에서 소비하는 cross-BC 포트 3개 — **�
 - 실측 항목 plan 이관: E1 pgmq 확장 순서 · E3 cross-BC FK · E5 dev postgres 인프라 · settings.gradle 등록 · prod 필수설정 유무.
 - 설계 갈림길 D1(스케줄링 방식)·D2(검증 강도)는 게이트 1 제시.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+### 사전 실측 완료 (Task 0 — 조사만, 코드 변경 없음)
+
+- ✅ `backend/settings.gradle.kts`: automation(L13)·app(L17) 등록됨. **L16 주석이 stale**("automation의 app 조립 포함은 후속 — 현재 8개 BC") → R4 정정 대상 추가.
+- ✅ pgmq(E1): V301 `CREATE EXTENSION IF NOT EXISTS pgmq CASCADE` + `pgmq.create` 자체완결·멱등 → FlywayAssemblyConfig 순서 무관.
+- ✅ cross-BC FK(E3): automation 테이블 FK는 `automation_actions→automation_rules` 내부뿐 → 순서 무관.
+- ✅ q_automation_events: issue-tracking `V036`이 생성(조립 첫 순서 실행) → `AutomationEventWorker` 소비 대상 실재.
+- ✅ @Bean 충돌(E4): automation `@Bean` 메서드 0개(유일 @Configuration=AutomationSchedulingConfig, @Bean 없음) → 이름 충돌 위험 없음.
+- ✅ app yml: automation 필수 설정 0(워커 poll-interval 인라인 기본값).
+- ✅ 부팅 계약: cross-BC 포트 3개(AutomationPermissionResolver·IssueMutationPort·OutboundUrlValidator) prod 구현 전부 조립 실재.
+
+> **검증 전제**: `BtsApplicationContextTest`는 Testcontainers 아닌 **외부 dev postgres(5433, pgmq 포함)** 필요. impl은 `docker compose -f infra/docker-compose.dev.yml up -d postgres` 선행(`[[no-backend-ci-and-assembly-merge-verification-traps]]`).
+
+### Task 1. automation 조립 배선 + prod 부팅 빈 단언 (TDD)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/app/src/test/kotlin/com/bts/app/BtsApplicationContextTest.kt`, `backend/modules/app/build.gradle.kts`, `backend/modules/app/src/main/kotlin/com/bts/app/FlywayAssemblyConfig.kt`, `backend/modules/app/src/main/kotlin/com/bts/app/BtsApplication.kt`]
+- depends-on: []
+
+**RED**:
+- 파일: `BtsApplicationContextTest.kt`
+- `@Autowired ApplicationContext` 주입 후 automation 빈 존재 단언 추가. FQN 빈 이름(FullyQualifiedAnnotationBeanNameGenerator 규약)으로 문자열 조회 → 컴파일 커플링 회피, 런타임 RED.
+  ```kotlin
+  @Test fun `automation 워커 빈이 조립 컨텍스트에 결선된다`() {
+      // FullyQualifiedAnnotationBeanNameGenerator → 빈 이름 = FQN 클래스명
+      assertThat(context.containsBean("com.bts.automation.worker.AutomationExecutionWorker")).isTrue()
+  }
+  ```
+- 실패 (예상): automation 미스캔(build 의존·Flyway 미배선) → 빈 부재로 단언 실패. (dev postgres 기동 상태에서 실행)
+- 커밋: `test:` (TDD 순서 강제 — feat 앞)
+
+**GREEN**:
+- `build.gradle.kts`: 8개 BC 의존 블록에 `implementation(project(":modules:automation"))` 추가(9번째).
+- `FlywayAssemblyConfig.kt`: `modules` 리스트에 `"automation" to "classpath:db/migration/automation"` 추가(마지막 append — 순서 무관 확인됨).
+- 커밋: `feat:`
+- 결과: `@ComponentScan("com.bts")`가 automation 스캔 → 워커/서비스 빈 결선 + Flyway automation 4건 적용 → 단언 통과.
+
+**REFACTOR** (같은 파일 내 표기 정정, 동작 무관):
+- `build.gradle.kts` L1·L41 주석 "8개 BC"→"9개 BC".
+- `FlywayAssemblyConfig.kt` KDoc "8개 BC"→"9개 BC".
+- `BtsApplication.kt` KDoc(L1·L21) "8개 BC"→"9개 BC".
+- `BtsApplicationContextTest.kt` L1 주석 "8개 BC"→"9개 BC".
+- 커밋: `refactor:` 또는 `docs:`
+
+**검증**: `docker compose -f infra/docker-compose.dev.yml up -d postgres` 후 `./gradlew :modules:app:test`. 로그에 `Flyway[automation] 마이그레이션 적용 4건` 확인. app 모듈 ktlint/detekt.
+
+### Task 2. 표기 전수 동기화 + ADR (docs, 비-TDD)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/settings.gradle.kts`, `backend/modules/automation/src/main/kotlin/com/bts/automation/AutomationSchedulingConfig.kt`, `docs/decisions/2026-07-11-fr-at-02-automation-actions.md`, `docs/decisions/2026-07-11-automation-prod-assembly.md`]
+- depends-on: [1]
+
+**작업** (RED/GREEN 없음 — 문서·주석, 동작 무관):
+- `settings.gradle.kts` L16 주석 정정: "automation app 조립 포함 완료 — app 은 9개 BC 조립".
+- `AutomationSchedulingConfig.kt` KDoc(R5) 정정: 조립 컨텍스트에선 전역 `@EnableScheduling`이 워커를 구동하므로 이 property 없이 폴링 활성(notification 동형). 코드/어노테이션 불변, KDoc만.
+- FR-AT-02 ADR C4 절 정정: "전역 조립 모듈 신설은 후속" → "기존 `:modules:app`(#253)에 automation 추가로 해소(본 작업)". stale framing 명시.
+- 신규 ADR `docs/decisions/2026-07-11-automation-prod-assembly.md`: 결정(조립 배선 방식·전역 스케줄링 위임·부팅 검증 강도·순서 무관 근거). Obsidian 미러는 머지 후 sync-obsidian(자동).
+
+**검증**: `bash scripts/verify-master-plan.sh` 123/123. automation 모듈 KDoc 변경분 ktlint(`[[ktlint-kdoc-brace-parse-failure]]` — 중괄호/백틱 평문화). `./gradlew :modules:automation:compileKotlin`(KDoc 변경 컴파일 무해 확인).
+
+## Plan 메타
+
+- task 수: 2 (Task 1 TDD 사이클 + Task 2 docs 동기화)
+- wave: 1 wave 불가 — 단일 `:modules:app`/automation 모듈 컴파일 직렬 + depends-on. 사실상 순차 실행([[bts-plan-wave-gradle-module-compile]]).
+- 예상 시간: 약 15분(dev postgres 기동·조립 컨텍스트 로드 포함)
+- TDD 강제: Task 1 yes(test:→feat: 순서), Task 2 docs 면제
+- 추가 검증: verify-master-plan, ktlint/detekt(app+automation), 조립 부팅 로그 Flyway automation 4건
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
