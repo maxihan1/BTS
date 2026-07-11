@@ -130,4 +130,15 @@ class SlackResponseUrlClientTest {
         assertThat(result).isFalse()
         assertThat(hitCount.get()).isEqualTo(0)
     }
+
+    @Test
+    fun `허용 호스트 접미사(slack_com)가 아니면 POST하지 않고 false를 반환한다`() {
+        // 기본 허용 접미사(slack.com)로 생성한 클라이언트는 loopback(127.0.0.1) 호스트로 전송하지 않는다(SSRF 심층방어, S1).
+        val pinnedClient = SlackResponseUrlClient(objectMapper, restClient)
+
+        val result = pinnedClient.post(responseUrl, blocks)
+
+        assertThat(result).isFalse()
+        assertThat(hitCount.get()).isEqualTo(0)
+    }
 }
