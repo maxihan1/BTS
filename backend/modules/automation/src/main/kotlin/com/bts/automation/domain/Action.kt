@@ -5,8 +5,6 @@ package com.bts.automation.domain
 import com.fasterxml.jackson.core.JsonParseException
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import java.net.URI
-import java.net.URISyntaxException
 import java.util.UUID
 
 /**
@@ -51,7 +49,9 @@ sealed class Action {
     /**
      * 아웃바운드 웹훅을 호출하는 액션.
      *
-     * @property url 호출할 URL. http(s) 스킴만 허용. 빈 문자열 불가
+     * @property url 호출할 URL. `{{템플릿}}` 치환을 지원한다(ADR D3b) — 형식 검증 시점(파싱/저장)은
+     *   http(s) 스킴 prefix 문자열 검사만 하고 빈 문자열을 불가로 한다. 엄격한 URI 파싱 + SSRF 검증은
+     *   템플릿이 렌더된 뒤 실행 시점 `WebhookActionClient`(`OutboundUrlValidator`)가 수행한다
      * @property method HTTP 메서드. 기본값 [DEFAULT_METHOD]
      * @property headers 요청 헤더. 기본값 빈 맵
      * @property body 요청 본문. 기본값 [DEFAULT_BODY]. SSRF 검증은 실행 시점 책임(형식 검증 범위 밖)
@@ -93,8 +93,8 @@ sealed class Action {
     }
 }
 
-private const val SCHEME_HTTP = "http"
-private const val SCHEME_HTTPS = "https"
+private const val SCHEME_PREFIX_HTTP = "http://"
+private const val SCHEME_PREFIX_HTTPS = "https://"
 
 private const val FIELD_FIELD = "field"
 private const val FIELD_VALUE = "value"
@@ -111,6 +111,7 @@ private const val MSG_ASSIGN_ASSIGNEE_ID_REQUIRED = "ASSIGN 액션은 assigneeId
 private const val MSG_ASSIGN_ASSIGNEE_ID_INVALID = "ASSIGN 액션의 assigneeId는 uuid 문자열 또는 null이어야 합니다."
 private const val MSG_ADD_COMMENT_BODY_REQUIRED = "ADD_COMMENT 액션은 비어있지 않은 body 문자열이 필요합니다."
 private const val MSG_CALL_WEBHOOK_URL_REQUIRED = "CALL_WEBHOOK 액션은 비어있지 않은 url 문자열이 필요합니다."
+private const val MSG_CALL_WEBHOOK_URL_SCHEME_INVALID = "url은 http(s):// 로 시작해야 합니다"
 private const val MSG_CALL_WEBHOOK_METHOD_INVALID = "CALL_WEBHOOK 액션의 method는 비어있지 않은 문자열이어야 합니다."
 private const val MSG_CALL_WEBHOOK_HEADERS_INVALID = "CALL_WEBHOOK 액션의 headers는 JSON 객체여야 합니다."
 private const val MSG_CALL_WEBHOOK_HEADERS_VALUE_INVALID = "CALL_WEBHOOK 액션의 headers 값은 문자열이어야 합니다."
@@ -182,16 +183,19 @@ private fun parseCallWebhook(node: JsonNode): Action.CallWebhookAction {
     )
 }
 
+/**
+ * `url` 이 http(s) 스킴으로 시작하는지만 문자열 prefix 로 검사한다.
+ *
+ * `java.net.URI` 로 엄격 파싱하지 않는다 — `url` 은 실행 시점 `{{템플릿}}` 치환을 지원하는데
+ * (ADR D3b) `{{`/`}}` 는 유효 URI 문자가 아니라 엄격 파싱하면 정상 템플릿 url 이 여기서
+ * 거부되고, 룰 로드([com.bts.automation.adapter.AutomationActionRepository.findByRuleId] →
+ * [Action.fromJson])가 실패해 해당 룰의 모든 액션이 실행 불가능해진다(poison message). 엄격한
+ * URI 파싱 + SSRF 검증은 템플릿이 렌더된 뒤 실행 시점
+ * `com.bts.automation.adapter.WebhookActionClient` 가 `OutboundUrlValidator` 로 수행한다.
+ */
 private fun validateUrlScheme(url: String) {
-    val uri =
-        try {
-            URI(url)
-        } catch (e: URISyntaxException) {
-            throw ActionConfigInvalidException("url을 파싱할 수 없습니다: $url", e)
-        }
-    val scheme = uri.scheme?.lowercase()
-    if (scheme != SCHEME_HTTP && scheme != SCHEME_HTTPS) {
-        throw ActionConfigInvalidException("url은 http(s) 스킴이어야 합니다: $url")
+    if (!url.startsWith(SCHEME_PREFIX_HTTP) && !url.startsWith(SCHEME_PREFIX_HTTPS)) {
+        throw ActionConfigInvalidException("$MSG_CALL_WEBHOOK_URL_SCHEME_INVALID: $url")
     }
 }
 
