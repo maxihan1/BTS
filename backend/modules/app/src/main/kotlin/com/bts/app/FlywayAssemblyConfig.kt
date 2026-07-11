@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Configuration
 import javax.sql.DataSource
 
 /**
- * 8개 BC 를 하나의 DB(public 스키마)로 조립할 때, identity-access(V001~V033)와 issue-tracking(V001~V035)의
+ * 9개 BC 를 하나의 DB(public 스키마)로 조립할 때, identity-access(V001~V033)와 issue-tracking(V001~V035)의
  * Flyway 버전 번호가 충돌한다(둘 다 V001 부터). 나머지 BC 는 대역 분리(V200/V400/V500/V600/V700)라 안전하다.
  *
  * Spring Boot 의 단일 Flyway auto-config(`spring.flyway.enabled: false` 로 비활성)를 대신해,
@@ -34,6 +34,7 @@ class FlywayAssemblyConfig {
             "agile" to "classpath:db/migration/agile-planning",
             "search" to "classpath:db/migration/search-export-import",
             "slack" to "classpath:db/migration/slack-integration",
+            "automation" to "classpath:db/migration/automation",
         )
 
     /**

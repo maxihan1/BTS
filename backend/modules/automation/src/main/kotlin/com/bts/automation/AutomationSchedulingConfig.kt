@@ -20,8 +20,15 @@ import org.springframework.scheduling.annotation.EnableScheduling
  * 통합 테스트는 워커 폴링 메서드를 **직접 호출**해 검증하므로(plan-eng-review E5), 테스트 컨텍스트에서
  * 스케줄러가 자동 폴링하면 셋업과 경쟁해 flaky 를 유발한다. 따라서 `bts.automation.scheduling.enabled=true`
  * 로 **명시 opt-in** 할 때만 활성화한다. 기본값(미설정)에서는 조건 미충족으로 이 설정이 등록되지 않아
- * 테스트·현재 상태 어디서도 스케줄러가 켜지지 않는다. 실제 폴링 결선은 배포 조립 시점(후속 ADR)에
- * 이 프로퍼티를 켜서 활성화한다.
+ * 단위/통합 테스트에서 스케줄러가 자동 폴링하지 않는다.
+ *
+ * ## 배포 조립(:modules:app)에서는 전역 @EnableScheduling 이 구동한다
+ * prod 조립 앱 [com.bts.app.BtsApplication] 은 전역 `@EnableScheduling` 을 보유한다(모든 BC 워커 공통 구동).
+ * 이 워커들은 순수 `@Component` 라 조립 컨텍스트에 스캔되는 순간 그 전역 스케줄러가 `@Scheduled` 를 구동한다
+ * — 즉 조립에서는 이 프로퍼티 없이도 폴링이 켜진다(notification [com.bts.notification.SchedulingConfiguration]
+ * 동형). 따라서 이 설정은 조립 컨텍스트에서 inert(조건 미충족으로 미등록)이며, prod 폴링 활성화에 이 프로퍼티는
+ * 불요하다. 이 프로퍼티는 automation 을 단독 test-assembled 로 띄울 때의 opt-in 스위치로만 남는다.
+ * (배선: automation-prod-assembly, PR #259.)
  *
  * ## ADR 참조
  * ADR 2026-07-10-fr-at-01-automation-triggers (D4 — 트리거 감지→q_automation_execution enqueue).

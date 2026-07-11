@@ -1,4 +1,4 @@
-# 배포 조립 앱 통합 설정 — 8개 BC 의 설정을 하나로 병합 (모듈 개별 application.yml 을 classpath 우선순위로 덮어씀)
+# 배포 조립 앱 통합 설정 — 9개 BC 의 설정을 하나로 병합 (모듈 개별 application.yml 을 classpath 우선순위로 덮어씀)
 # ${ENV:기본값} 형식이라 dev 는 기본값, prod 는 환경변수 주입으로 동작. prod 전용 override 는 application-prod.yml.
 
 server:

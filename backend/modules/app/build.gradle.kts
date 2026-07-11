@@ -1,4 +1,4 @@
-// 배포 조립 모듈 빌드 스크립트 — 8개 BC 를 하나의 실행 가능한 Spring Boot 앱(fat jar)으로 통합
+// 배포 조립 모듈 빌드 스크립트 — 9개 BC 를 하나의 실행 가능한 Spring Boot 앱(fat jar)으로 통합
 //
 // 각 BC 모듈은 implementation 프로젝트 의존으로 끌어온다. project 의존은 각 모듈의 일반 jar(runtimeElements)를
 // 해소하므로, 라이브러리 모듈(main 클래스 없음)이든 부팅 모듈이든 클래스가 그대로 classpath 에 들어온다.
@@ -37,8 +37,15 @@ repositories {
     }
 }
 
+// detekt — PRE_EXISTING 위반(BtsApplication)을 detekt-baseline.xml 로 동결.
+// 신규 코드는 baseline 에 포함하지 않고 코드/@Suppress 로 해소한다.
+// (identity-access / issue-tracking / project-workflow / notification 등 동일 패턴.)
+detekt {
+    baseline = file("detekt-baseline.xml")
+}
+
 dependencies {
-    // ── 8개 BC 모듈 (배포 조립 대상) ──────────────────────────────────────────────
+    // ── 9개 BC 모듈 (배포 조립 대상) ──────────────────────────────────────────────
     implementation(project(":modules:shared-kernel"))
     implementation(project(":modules:identity-access"))
     implementation(project(":modules:project-workflow"))
@@ -47,6 +54,7 @@ dependencies {
     implementation(project(":modules:agile-planning"))
     implementation(project(":modules:search-export-import"))
     implementation(project(":modules:slack-integration"))
+    implementation(project(":modules:automation"))
 
     // ── 조립 앱 자체 프레임워크 (부팅 진입점 컴파일용) ───────────────────────────
     implementation("org.springframework.boot:spring-boot-starter-web")
