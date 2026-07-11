@@ -1,4 +1,4 @@
-// 배포 조립 모듈 빌드 스크립트 — 8개 BC 를 하나의 실행 가능한 Spring Boot 앱(fat jar)으로 통합
+// 배포 조립 모듈 빌드 스크립트 — 9개 BC 를 하나의 실행 가능한 Spring Boot 앱(fat jar)으로 통합
 //
 // 각 BC 모듈은 implementation 프로젝트 의존으로 끌어온다. project 의존은 각 모듈의 일반 jar(runtimeElements)를
 // 해소하므로, 라이브러리 모듈(main 클래스 없음)이든 부팅 모듈이든 클래스가 그대로 classpath 에 들어온다.
@@ -38,7 +38,7 @@ repositories {
 }
 
 dependencies {
-    // ── 8개 BC 모듈 (배포 조립 대상) ──────────────────────────────────────────────
+    // ── 9개 BC 모듈 (배포 조립 대상) ──────────────────────────────────────────────
     implementation(project(":modules:shared-kernel"))
     implementation(project(":modules:identity-access"))
     implementation(project(":modules:project-workflow"))

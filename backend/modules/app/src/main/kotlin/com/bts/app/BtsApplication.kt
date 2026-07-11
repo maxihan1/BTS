@@ -1,4 +1,4 @@
-// BTS 배포 조립 진입점 — 8개 BC 를 하나의 ApplicationContext 로 통합 부팅하는 유일한 프로덕션 실행체
+// BTS 배포 조립 진입점 — 9개 BC 를 하나의 ApplicationContext 로 통합 부팅하는 유일한 프로덕션 실행체
 
 package com.bts.app
 
