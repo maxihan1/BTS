@@ -124,6 +124,47 @@ AddComment(및 문자열 값을 받는 SetField/CallWebhook)의 본문에 **템�
 - issue-tracking에 자동화용 setField/assign/addComment 커맨드 경로가 없으면 신설 — 기존 REST 유스케이스
   재사용 우선(도메인 우회 금지 [[patch-merge-domain-bypass]]).
 
+## 코드리뷰 반영 — CONCERNS 수정 (2026-07-11 게이트 2)
+
+게이트 2 코드리뷰에서 BLOCKER 1건(다필드 PATCH OCC 버전 산술)은 T16에서 해소했고, 남은 CONCERNS 3건을
+다음과 같이 반영한다.
+
+### C2 — 루프 가드 (a) 왕복 리셋 한계 명시
+
+가드 (a) `executionDepth` 는 automation **직접 체인**에서만 누적되며, automation → issue-tracking →
+automation **왕복** 경로에서는 돌아오는 이슈 이벤트가 깊이 정보를 갖지 않아 0 으로 리셋된다. 왕복 루프의
+실질 차단은 가드 (b) `(ruleId, issueKey)` 억제창이 담당한다. 서로 다른 룰이 번갈아 같은 이슈를 건드리는
+다중 룰 사이클·이슈 키가 바뀌는 사이클까지 견고하게 잡는 전체 실행 체인 영속 추적은 **FR-AT-04(자동화
+실행 로그/감사)** 로 위임한다. `AutomationExecutionWorker` KDoc "한계 — 가드 (a)" 절에 명시.
+
+### C3 — cross-BC 포트 실패 분류: 문자열 휴리스틱 → 타입 있는 예외
+
+이전 `ActionExecutor.classifyPortFailure` 는 포트 예외의 클래스 **이름**에 `"AccessDenied"` 등 토큰이
+있는지 문자열로 매칭해 권한 거부를 판별했다. BC 명명 관례에 취약하게 결합하므로, shared-kernel 포트 계약에
+타입 있는 `IssueMutationPermissionDeniedException` 을 도입한다. issue-tracking 어댑터가 도메인 권한 예외
+(`IssueAccessDeniedException`)를 이 타입으로 번역해 던지고, executor 는 `is` 타입 검사로 분류한다(문자열
+매칭 제거). 이는 로그/집계용 분류일 뿐 보안 강제 경로가 아니다(권한 강제는 위임 대상이 이미 수행).
+
+### C4 — prod 조립 계약 문서화 + fail-closed 확인 (조립 모듈 신설은 후속)
+
+`AutomationIssueMutationAdapter` 는 `@Profile("prod")` 로 issue-tracking 컨텍스트에 있고, `ActionExecutor`
+는 automation 컨텍스트에서 `IssueMutationPort` 를 non-null 로 요구한다. 두 반쪽을 한 Spring 컨텍스트로
+조립하는 **cross-BC 배포 조립 모듈은 BTS 전체에 아직 없다**([[no-cross-bc-deployment-assembly]],
+test-assembled 현 표준). 전 모듈을 스캔하는 `backend/app` 신설은 9개 모듈 전부 의존 → "1 PR = 1 BC" 격리
+위반 + 다수 BC의 미구현 prod 어댑터로 부팅 불가라, FR-WF-03([[fr-wf-03-done-but-prod-resolver-deferred]])과
+동일하게 **별도 후속(전역 조립 트랙)** 으로 미룬다.
+
+**prod 조립이 배선해야 할 계약** (후속 조립 모듈이 충족).
+1. `com.bts.automation` + `com.bts.issue` 컴포넌트 스캔을 한 컨텍스트에 포함.
+2. `prod` 프로파일 활성화 → `AutomationIssueMutationAdapter`(`@Profile("prod")`)가 `IssueMutationPort`
+   빈으로 등록.
+3. 그 결과 `ActionExecutor` 의 non-null 주입이 충족된다.
+
+**fail-closed 확인.** 위 조립이 없거나 어댑터가 빠지면, `IssueMutationPort` 에 default 구현이 없고
+`ActionExecutor` 가 non-null 주입을 요구하므로 컨텍스트 부팅이 `NoSuchBeanDefinitionException` 으로
+**실패한다**(silent no-op drop 없음). 이 fail-closed 계약을 회귀 가드 테스트로 잠근다
+([[crossbc-resolver-nullable-fail-open]] 회귀 방지).
+
 ## 대안 (기각)
 
 - **비동기 커맨드 이벤트 큐** (D2 참조) — dry-run·동기 결과 불가. 기각.
