@@ -72,7 +72,7 @@ class SlackConnectionExceptionHandlerTest {
     }
 
     @Test
-    fun `POST connection returns 409 with SLACK_ACCOUNT_ALREADY_LINKED when the slack account is already linked to another user`() {
+    fun `POST connection returns 409 when the slack account is already linked to another user`() {
         every { service.connect(userId) } throws SlackAccountAlreadyLinkedException()
 
         mockMvc.perform(post("/api/v1/slack/me/connection").with(jwtAuth(userId)))

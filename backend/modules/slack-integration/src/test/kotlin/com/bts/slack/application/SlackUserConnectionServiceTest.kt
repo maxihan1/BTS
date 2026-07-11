@@ -163,7 +163,7 @@ class SlackUserConnectionServiceTest {
         every { userLookupClient.lookupByEmail(BOT_TOKEN, EMAIL) } returns
             SlackUserLookupResult.Found(SLACK_USER_ID, TEAM_ID)
         every { userMappingService.link(USER_ID, SLACK_USER_ID, TEAM_ID) } throws
-            DuplicateKeyException("duplicate key value violates unique constraint \"idx_user_slack_mapping_slack_user\"")
+            DuplicateKeyException("duplicate key value violates unique constraint \"idx_user_slack_mapping\"")
 
         assertThatThrownBy { service.connect(USER_ID) }
             .isInstanceOf(SlackAccountAlreadyLinkedException::class.java)
