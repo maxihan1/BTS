@@ -1,4 +1,4 @@
-// Slack unfurl @Async 처리를 위한 경계 executor + @EnableAsync 배선 (FR-SL-03 Task 9)
+// Slack unfurl/slash 명령 @Async 처리를 위한 경계 executor + @EnableAsync 배선 (FR-SL-03 Task 9 / FR-SL-04 Task 7)
 
 package com.bts.slack.config
 
@@ -13,6 +13,11 @@ import java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy
 private const val DEFAULT_UNFURL_CORE_POOL_SIZE = 2
 private const val DEFAULT_UNFURL_MAX_POOL_SIZE = 4
 private const val DEFAULT_UNFURL_QUEUE_CAPACITY = 100
+
+/** slash 명령 전용 executor 기본값(FR-SL-04 Task 7) — unfurl과 동일 골격, 별도 프로퍼티 네임스페이스. */
+private const val DEFAULT_COMMAND_CORE_POOL_SIZE = 2
+private const val DEFAULT_COMMAND_MAX_POOL_SIZE = 4
+private const val DEFAULT_COMMAND_QUEUE_CAPACITY = 100
 
 /**
  * Slack unfurl 처리(`@Async` 카드 렌더 + `chat.unfurl` 호출)를 위한 executor 설정 (FR-SL-03 ADR D4).
@@ -41,6 +46,12 @@ class SlackAsyncConfig(
     private val unfurlMaxPoolSize: Int,
     @param:Value("\${bts.slack.unfurl-executor.queue-capacity:$DEFAULT_UNFURL_QUEUE_CAPACITY}")
     private val unfurlQueueCapacity: Int,
+    @param:Value("\${bts.slack.command-executor.core-pool-size:$DEFAULT_COMMAND_CORE_POOL_SIZE}")
+    private val commandCorePoolSize: Int,
+    @param:Value("\${bts.slack.command-executor.max-pool-size:$DEFAULT_COMMAND_MAX_POOL_SIZE}")
+    private val commandMaxPoolSize: Int,
+    @param:Value("\${bts.slack.command-executor.queue-capacity:$DEFAULT_COMMAND_QUEUE_CAPACITY}")
+    private val commandQueueCapacity: Int,
 ) {
     /**
      * Slack unfurl 처리 전용 경계 스레드풀. 다른 `@Async` 작업과 스레드 자원을 공유하지 않도록
@@ -58,10 +69,34 @@ class SlackAsyncConfig(
             initialize()
         }
 
+    /**
+     * `/atlas` slash 명령 처리(파싱→매핑 해석→핸들러 실행→`response_url` 전송) 전용 경계 스레드풀
+     * (FR-SL-04 Task 7).
+     *
+     * [slackUnfurlExecutor]와 스레드 자원을 공유하지 않는다 — 이름이 unfurl 전용이라 slash에
+     * 재사용하면 의미가 어긋나고, unfurl 트래픽 폭주가 slash 응답 지연으로 전이되는 것도 막는다.
+     * 골격(경계 pool + [CallerRunsPolicy] 배압)은 [slackUnfurlExecutor]와 동일하며, core/max/queue는
+     * `bts.slack.command-executor.*` 프로퍼티로 별도 조정 가능하다(미설정 시 안전한 기본값).
+     */
+    @Bean(SLACK_COMMAND_EXECUTOR_BEAN_NAME)
+    fun slackCommandExecutor(): ThreadPoolTaskExecutor =
+        ThreadPoolTaskExecutor().apply {
+            corePoolSize = commandCorePoolSize
+            maxPoolSize = commandMaxPoolSize
+            queueCapacity = commandQueueCapacity
+            setThreadNamePrefix(COMMAND_THREAD_NAME_PREFIX)
+            setRejectedExecutionHandler(CallerRunsPolicy())
+            initialize()
+        }
+
     companion object {
         /** `@Async("slackUnfurlExecutor")`가 참조하는 빈 이름. */
         const val SLACK_UNFURL_EXECUTOR_BEAN_NAME = "slackUnfurlExecutor"
 
+        /** `@Async("slackCommandExecutor")`가 참조하는 빈 이름(FR-SL-04 Task 7). */
+        const val SLACK_COMMAND_EXECUTOR_BEAN_NAME = "slackCommandExecutor"
+
         private const val THREAD_NAME_PREFIX = "slack-unfurl-"
+        private const val COMMAND_THREAD_NAME_PREFIX = "slack-command-"
     }
 }
