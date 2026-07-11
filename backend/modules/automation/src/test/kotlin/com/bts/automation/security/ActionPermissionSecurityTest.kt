@@ -14,6 +14,7 @@ import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.TriggerType
 import com.bts.shared.http.OutboundHttpClientConfig
 import com.bts.shared.http.OutboundUrlValidator
+import com.bts.shared.issue.IssueMutationPermissionDeniedException
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.TextNode
@@ -108,7 +109,7 @@ class ActionPermissionSecurityTest : DescribeSpec({
             every { actionRepository.findByRuleId(rule.id) } returns actions
             every { mockWebhookClient.call(any(), any(), any(), any()) } returns
                 WebhookCallResult(success = true, statusCode = 200, error = null)
-            issueMutationPort.failNextCallsWith(FakePermissionAccessDeniedException())
+            issueMutationPort.failNextCallsWith(IssueMutationPermissionDeniedException("이슈 변경 권한 없음(테스트)"))
 
             val result = executor.execute(rule, issueEvent("PROJ-1"))
 
@@ -134,7 +135,7 @@ class ActionPermissionSecurityTest : DescribeSpec({
                     Action.AddCommentAction(body = "차단"),
                 )
             every { actionRepository.findByRuleId(rule.id) } returns actions
-            issueMutationPort.failNextCallsWith(FakePermissionAccessDeniedException())
+            issueMutationPort.failNextCallsWith(IssueMutationPermissionDeniedException("이슈 변경 권한 없음(테스트)"))
 
             val result = executor.execute(rule, issueEvent("PROJ-1"))
 
@@ -235,7 +236,9 @@ class ActionPermissionSecurityTest : DescribeSpec({
             val rule = ruleWithActor(UUID.randomUUID())
             val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
             every { actionRepository.findByRuleId(rule.id) } returns actions
-            issueMutationPort.failNextCallsWith(FakeInactiveActorAccessDeniedException())
+            // 비활성/미존재 actor 는 issue-tracking 권한 검증 경로에서 access-denied 로 귀결하며, 어댑터가
+            // 포트 계약의 타입 있는 IssueMutationPermissionDeniedException 으로 번역해 던진다(FR-AT-02 C3).
+            issueMutationPort.failNextCallsWith(IssueMutationPermissionDeniedException("actor 비활성(테스트)"))
 
             val result = executor.execute(rule, issueEvent("PROJ-1"))
 
@@ -246,9 +249,3 @@ class ActionPermissionSecurityTest : DescribeSpec({
         }
     }
 })
-
-/** 권한 부족을 흉내내는 가짜 예외 — 클래스명에 `AccessDenied` 포함(BC 격리상 issue-tracking 실 예외 타입 미노출). */
-private class FakePermissionAccessDeniedException : RuntimeException("permission denied (fake)")
-
-/** rule actor 비활성/미존재를 흉내내는 가짜 예외 — 권한 검증 경로에서 access-denied 로 귀결(클래스명에 `AccessDenied`). */
-private class FakeInactiveActorAccessDeniedException : RuntimeException("actor is inactive (fake)")
