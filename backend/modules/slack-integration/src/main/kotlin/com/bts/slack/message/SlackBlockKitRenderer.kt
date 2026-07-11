@@ -39,6 +39,10 @@ import org.springframework.stereotype.Component
  * @param objectMapper Block Kit JSON 직렬화용 Jackson.
  */
 @Component
+// TooManyFunctions: render/renderUnfurlCard(FR-SL-02·03) + slash 명령 5종 렌더(FR-SL-04)가 공개 API로
+// 모두 필요하고, section/context/mrkdwn 공통 블록 헬퍼도 중복 제거를 위해 유지해야 해 임계값(11)을 넘는다.
+// 책임은 "Block Kit 렌더"로 단일 — 분리하면 오히려 호출부가 여러 클래스를 조립해야 해 응집이 깨진다.
+@Suppress("TooManyFunctions")
 class SlackBlockKitRenderer(
     @param:Value("\${bts.atlas.base-url:}") private val atlasBaseUrl: String,
     private val objectMapper: ObjectMapper,
@@ -108,13 +112,26 @@ class SlackBlockKitRenderer(
      *   수 없는 경우의 계정 연결 안내를 context 블록으로 덧붙인다(T6/T7이 미매핑 사용자 케이스에서 사용).
      * @return 사용법 안내 블록 배열.
      */
-    fun renderHelp(includeAccountLinkNotice: Boolean = false): ArrayNode =
-        objectMapper.createArrayNode().apply {
-            add(sectionBlock(mrkdwnText(helpUsageText())))
+    fun renderHelp(includeAccountLinkNotice: Boolean = false): ArrayNode {
+        val usage =
+            listOf(
+                "*Atlas 명령어*",
+                "`/atlas help` — 명령어 사용법 안내",
+                "`/atlas view <이슈키>` — 이슈 요약 카드 조회",
+                "`/atlas search <프로젝트키> <AQL>` — 이슈 검색",
+                "`/atlas create <프로젝트키> <제목>` — 이슈 생성",
+            ).joinToString("\n")
+
+        return objectMapper.createArrayNode().apply {
+            add(sectionBlock(mrkdwnText(usage)))
             if (includeAccountLinkNotice) {
-                add(contextBlock(accountLinkNoticeText()))
+                val noticeText =
+                    "Slack 계정이 Atlas 사용자와 연결되어 있지 않습니다. " +
+                        "<${atlasBaseUrl.trimEnd('/')}$ACCOUNT_LINK_PATH|여기서 연결>하세요."
+                add(contextBlock(noticeText))
             }
         }
+    }
 
     /**
      * `/atlas search <프로젝트키> <AQL>` 응답으로 검색 결과 목록을 렌더한다 (FR-SL-04 Task 5).
@@ -135,7 +152,10 @@ class SlackBlockKitRenderer(
             blocks.add(sectionBlock(mrkdwnText(NO_RESULTS_TEXT)))
             return blocks
         }
-        hits.forEach { hit -> blocks.add(sectionBlock(mrkdwnText(searchHitText(hit)))) }
+        hits.forEach { hit ->
+            val hitText = "<${issueUrl(hit.key)}|${hit.key}> ${hit.summary} — ${hit.currentStateKey}"
+            blocks.add(sectionBlock(mrkdwnText(hitText)))
+        }
         blocks.add(contextBlock("${hits.size}/$total 표시"))
         return blocks
     }
@@ -194,25 +214,6 @@ class SlackBlockKitRenderer(
             add(detailSection)
         }
     }
-
-    /** [renderHelp]의 4종 서브커맨드 사용법 mrkdwn 텍스트. */
-    private fun helpUsageText(): String =
-        listOf(
-            "*Atlas 명령어*",
-            "`/atlas help` — 명령어 사용법 안내",
-            "`/atlas view <이슈키>` — 이슈 요약 카드 조회",
-            "`/atlas search <프로젝트키> <AQL>` — 이슈 검색",
-            "`/atlas create <프로젝트키> <제목>` — 이슈 생성",
-        ).joinToString("\n")
-
-    /** [renderHelp]의 계정 연결 안내 텍스트 — `{atlasBaseUrl}/settings/slack` 링크를 포함한다. */
-    private fun accountLinkNoticeText(): String =
-        "Slack 계정이 Atlas 사용자와 연결되어 있지 않습니다. " +
-            "<${atlasBaseUrl.trimEnd('/')}$ACCOUNT_LINK_PATH|여기서 연결>하세요."
-
-    /** [renderSearchResults]의 결과 행 한 건 텍스트 — 키+제목 링크와 상태 키를 담는다. */
-    private fun searchHitText(hit: IssueSearchHit): String =
-        "<${issueUrl(hit.key)}|${hit.key}> ${hit.summary} — ${hit.currentStateKey}"
 
     /** `{atlasBaseUrl}/issues/{issueKey}` — base URL 끝 슬래시를 제거해 이중 슬래시를 막는다. */
     private fun issueUrl(issueKey: String): String = "${atlasBaseUrl.trimEnd('/')}/issues/$issueKey"
