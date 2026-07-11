@@ -6,6 +6,7 @@ import com.bts.shared.user.UserLookupPort
 import com.bts.slack.message.SlackUserLookupClient
 import com.bts.slack.message.SlackUserLookupResult
 import com.bts.slack.worker.SlackBotTokenResolver
+import org.springframework.dao.DuplicateKeyException
 import org.springframework.stereotype.Service
 import java.time.Instant
 import java.util.UUID
@@ -59,6 +60,8 @@ class SlackUserConnectionService(
      * @throws SlackScopeMissingException 봇 토큰에 필요 스코프가 없는 경우.
      * @throws SlackUserNotFoundException 이메일에 매칭되는 Slack 사용자가 없는 경우.
      * @throws SlackTemporarilyUnavailableException Slack 이 일시적으로 응답하지 못한 경우(재시도 가능).
+     * @throws SlackAccountAlreadyLinkedException 이 Slack 계정이 이미 다른 사용자에게 연결되어 있는 경우
+     * (V702 UNIQUE 위반, 코드리뷰 CONCERN-1 hot-fix).
      */
     fun connect(userId: UUID): ConnectionStatus {
         val email = requireEmail(userId)
@@ -146,13 +149,25 @@ class SlackUserConnectionService(
      * lookup 이 성공([SlackUserLookupResult.Found])했을 때만 진입 — DB 에 연결을 기록하고, 방금 기록한 값을
      * [SlackUserMappingService.resolveByUserId] 로 다시 읽어 [ConnectionStatus.linkedAt] 을 DB 저장 시각(`now()`)
      * 그대로 돌려준다(애플리케이션 서버 시계가 아닌 DB 를 진실 원천으로 삼는다).
+     *
+     * ## DuplicateKeyException → SlackAccountAlreadyLinkedException 번역 (코드리뷰 CONCERN-1 hot-fix)
+     * [SlackUserMappingService.link] 는 `user_id` 기준 `ON CONFLICT` upsert 라 같은 사용자의 재연결은
+     * 통과하지만, 이 Slack 계정(slack_user_id+team_id)이 **다른** 사용자에게 이미 연결돼 있으면 V702
+     * `idx_user_slack_mapping_slack_user` UNIQUE 위반으로 [DuplicateKeyException] 이 던져진다. 이는 의도된
+     * 거부(fail-closed)이므로 분류되지 않은 예외로 500 취급되지 않도록 여기서 [SlackAccountAlreadyLinkedException]
+     * 으로 번역해 다시 던진다. 그 외 [org.springframework.dao.DataIntegrityViolationException] 하위 타입(예:
+     * FK 위반)은 이 catch 가 좁게 [DuplicateKeyException] 만 잡으므로 그대로 전파된다.
      */
     private fun completeLink(
         userId: UUID,
         result: SlackUserLookupResult.Found,
         workspaceName: String,
     ): ConnectionStatus {
-        userMappingService.link(userId, result.slackUserId, result.teamId)
+        try {
+            userMappingService.link(userId, result.slackUserId, result.teamId)
+        } catch (ex: DuplicateKeyException) {
+            throw SlackAccountAlreadyLinkedException().apply { initCause(ex) }
+        }
         val mapping = userMappingService.resolveByUserId(userId)
         return ConnectionStatus(connected = true, workspaceName = workspaceName, linkedAt = mapping?.linkedAt)
     }
