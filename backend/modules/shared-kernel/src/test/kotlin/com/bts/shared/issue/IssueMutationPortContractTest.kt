@@ -70,6 +70,20 @@ class IssueMutationPortContractTest {
         assertThat(addCommentResult.issueKey).isEqualTo("PROJ-1")
     }
 
+    // ── 타입 있는 권한 거부 예외 (FR-AT-02 C3) ────────────────────────────────
+
+    @Test
+    fun `IssueMutationPermissionDeniedException 은 RuntimeException 이며 message 와 cause 를 보존한다`() {
+        // 소비자(automation ActionExecutor)가 클래스명 문자열 매칭 없이 타입으로 권한 거부를 분류할 수
+        // 있게 하는 포트 계약의 타입 있는 신호다. 어댑터가 원 도메인 예외를 cause 로 감싸 던진다.
+        val cause = IllegalStateException("원 도메인 예외")
+        val e = IssueMutationPermissionDeniedException("이슈 변경 권한이 없습니다", cause)
+
+        assertThat(e).isInstanceOf(RuntimeException::class.java)
+        assertThat(e.message).isEqualTo("이슈 변경 권한이 없습니다")
+        assertThat(e.cause).isSameAs(cause)
+    }
+
     // ── SetFieldCommand 필드 계약 ─────────────────────────────────────────────
 
     @Test

@@ -10,6 +10,7 @@ import com.bts.automation.domain.Action
 import com.bts.automation.domain.ActionType
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.TriggerType
+import com.bts.shared.issue.IssueMutationPermissionDeniedException
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.NullNode
 import com.fasterxml.jackson.databind.node.TextNode
@@ -250,7 +251,20 @@ class ActionExecutorTest : DescribeSpec({
     }
 
     describe("E-i 전부 실패 — 사유 분류") {
-        it("예외 클래스명이 AccessDenied 를 포함하면 PERMISSION_DENIED 로 분류하고 FAILED 를 반환한다") {
+        it("타입 있는 IssueMutationPermissionDeniedException 이면 PERMISSION_DENIED 로 분류하고 FAILED 를 반환한다") {
+            val rule = newRule()
+            val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+            issueMutationPort.failNextCallsWith(IssueMutationPermissionDeniedException("이슈 변경 권한이 없습니다(테스트)"))
+
+            val result = executor.execute(rule, issueEvent("PROJ-1"))
+
+            result.status shouldBe ActionExecutionStatus.FAILED
+            result.outcomes shouldBe
+                listOf(ActionOutcome(0, ActionType.SET_FIELD, success = false, error = "PERMISSION_DENIED"))
+        }
+
+        it("클래스명에 AccessDenied 가 들어있어도 타입이 아니면 FAILED 로 분류한다(문자열 휴리스틱 제거 회귀 방지)") {
             val rule = newRule()
             val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
             every { actionRepository.findByRuleId(rule.id) } returns actions
@@ -260,7 +274,7 @@ class ActionExecutorTest : DescribeSpec({
 
             result.status shouldBe ActionExecutionStatus.FAILED
             result.outcomes shouldBe
-                listOf(ActionOutcome(0, ActionType.SET_FIELD, success = false, error = "PERMISSION_DENIED"))
+                listOf(ActionOutcome(0, ActionType.SET_FIELD, success = false, error = "FAILED"))
         }
 
         it("그 외 예외는 FAILED 로 분류하고 전체 상태도 FAILED 를 반환한다") {
@@ -277,5 +291,9 @@ class ActionExecutorTest : DescribeSpec({
     }
 })
 
-/** [ActionExecutorTest] E-i 전용 — 클래스명에 `AccessDenied` 를 포함한 가짜 예외(실제 issue-tracking 예외를 흉내). */
+/**
+ * [ActionExecutorTest] E-i 전용 — 클래스명에 `AccessDenied` 를 포함하지만 포트 계약의 타입 있는
+ * [IssueMutationPermissionDeniedException] 이 **아닌** 가짜 예외. 문자열 휴리스틱 제거(FR-AT-02 C3)
+ * 이후 이 예외는 PERMISSION_DENIED 가 아니라 FAILED 로 분류돼야 한다(회귀 방지).
+ */
 private class FakeIssueAccessDeniedException : RuntimeException("permission denied (fake)")

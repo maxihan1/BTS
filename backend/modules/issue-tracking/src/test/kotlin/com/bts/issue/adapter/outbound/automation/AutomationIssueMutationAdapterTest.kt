@@ -8,11 +8,15 @@ import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.comment.application.CommentApplicationService
 import com.bts.issue.comment.domain.Comment
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.shared.issue.AddCommentCommand
 import com.bts.shared.issue.AssignCommand
+import com.bts.shared.issue.IssueMutationPermissionDeniedException
 import com.bts.shared.issue.SetFieldCommand
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssueScope
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
@@ -187,6 +191,27 @@ class AutomationIssueMutationAdapterTest {
         assertThat(result.version).isEqualTo(6L)
         verify(exactly = 2) { issueApplicationService.findByKey(actor, issueKey) }
         verify(exactly = 2) { issueApplicationService.updateIssue(actor, issueKey, any()) }
+    }
+
+    @Test
+    fun `setField translates IssueAccessDeniedException into IssueMutationPermissionDeniedException`() {
+        // FR-AT-02 C3 — 도메인 권한 예외를 포트 계약의 타입 있는 예외로 번역해, 소비자(automation
+        // ActionExecutor)가 클래스명 문자열 매칭 없이 권한 거부를 분류할 수 있게 한다.
+        every { issueApplicationService.findByKey(actor, issueKey) } returns issueResponse(version = 3L)
+        every { issueApplicationService.updateIssue(actor, issueKey, any()) } throws
+            IssueAccessDeniedException(actor = actor, permission = IssuePermission.UPDATE, scope = IssueScope.Global)
+
+        val cmd =
+            SetFieldCommand(
+                actorUserId = actorUuid,
+                issueKey = issueKey.value,
+                field = "priority",
+                value = "1",
+                dryRun = false,
+            )
+
+        assertThatThrownBy { adapter.setField(cmd) }
+            .isInstanceOf(IssueMutationPermissionDeniedException::class.java)
     }
 
     @Test
