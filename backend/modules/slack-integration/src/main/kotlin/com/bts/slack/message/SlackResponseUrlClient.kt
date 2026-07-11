@@ -40,12 +40,14 @@ import org.springframework.web.client.RestClientException
  * test-boot 컴포넌트 스캔이 `com.bts.slack`로 한정되어 있어 `com.bts.shared.http`의 `@Bean`이 자동
  * 등록되지 않는 환경에서도 부팅이 깨지지 않는다. 테스트는 [restClient]에 직접 생성한 인스턴스를 주입한다.
  *
- * ## SSRF 검증 미적용 (automation `WebhookActionClient`와의 차이)
+ * ## SSRF 심층방어 — 호스트 접미사 핀닝 ([allowedHostSuffix])
  * `response_url`은 사용자가 자유 입력하는 값이 아니라, 이 앱이 이미 서명 검증(FR-2)한 Slack 요청이
  * 실어 보낸 고정 도메인(`hooks.slack.com`) URL이다. 임의 URL을 받아 호출하는 automation의
- * `CallWebhook` 액션과 달리 SSRF 표면이 없어 `com.bts.shared.http.OutboundUrlValidator`를 적용하지
- * 않는다([SlackOAuthClient][com.bts.slack.oauth.SlackOAuthClient]가 `slack.com` 고정 호스트라
- * SSRF 검증을 생략한 것과 동일 근거, ADR D2 / 스펙 N5).
+ * `CallWebhook` 액션과 달리 정상 흐름에는 SSRF 표면이 없다. 다만 signing secret이 회귀·유출되면 서명된
+ * SSRF POST 프리미티브가 될 수 있어, 전송 **전에** 호스트가 [allowedHostSuffix](기본 `slack.com`)에
+ * 속하는지 확인하고 아니면 POST 없이 `false`로 거부한다(fail-closed). 근거·blast radius 축소는
+ * 코드리뷰 S1. 완전한 SSRF 검증(`OutboundUrlValidator`)이 아니라 도메인 화이트리스트 한 겹이며,
+ * Slack 웹훅 도메인 변경 시 이 접미사를 갱신해야 하는 결합을 수용한다.
  *
  * ## best-effort — 실패해도 예외 전파 없음
  * 컨트롤러는 이미 즉시 200 ack를 보낸 뒤이므로(FR-9), 이 POST가 실패해도 사용자에게 되돌릴 에러 응답
@@ -58,11 +60,15 @@ import org.springframework.web.client.RestClientException
  *
  * @param objectMapper `response_type`·`blocks`·`replace_original` 페이로드 직렬화용 Jackson.
  * @param restClient 아웃바운드 HTTP 전송용 [RestClient]([OutboundHttpClientConfig] — 리다이렉트 미추종).
+ * @param allowedHostSuffix 전송을 허용할 호스트 도메인 접미사(기본 `slack.com`). 호스트가 이 값과
+ *   같거나 `.`+이 값으로 끝나는 경우에만 POST한다(SSRF 심층방어, S1). 테스트가 loopback stub 서버로
+ *   전송을 검증할 때만 이 값을 재정의한다.
  */
 @Component
 class SlackResponseUrlClient(
     private val objectMapper: ObjectMapper,
     private val restClient: RestClient = OutboundHttpClientConfig().outboundHttpRestClient(),
+    private val allowedHostSuffix: String = SLACK_DOMAIN,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -78,6 +84,12 @@ class SlackResponseUrlClient(
         responseUrl: String,
         blocks: ArrayNode,
     ): Boolean {
+        val host = extractHost(responseUrl)
+        if (!isHostAllowed(host)) {
+            // SSRF 심층방어(S1) — 서명 검증된 요청이라도 호스트가 허용 도메인 밖이면 전송 없이 거부한다.
+            log.warn("slack_response_url_post_host_not_allowed url_host={}", host)
+            return false
+        }
         val payload = buildPayload(blocks)
         return try {
             val statusCode = executeRequest(responseUrl, payload)
@@ -143,12 +155,25 @@ class SlackResponseUrlClient(
             java.net.URI(url).host ?: UNKNOWN_HOST
         }.getOrElse { UNKNOWN_HOST }
 
+    /**
+     * 호스트가 [allowedHostSuffix]에 속하는지 판정한다(대소문자 무시). 정확히 같거나 `.`+접미사로 끝나야
+     * 허용한다 — `evilslack.com`·`slack.com.evil.com` 같은 우회를 도트 경계로 차단한다. 파싱 실패
+     * 호스트("(unknown)")는 접미사와 일치하지 않아 자연히 거부된다(fail-closed).
+     */
+    private fun isHostAllowed(host: String): Boolean {
+        val normalized = host.lowercase()
+        return normalized == allowedHostSuffix || normalized.endsWith(".$allowedHostSuffix")
+    }
+
     private companion object {
         const val RESPONSE_TYPE_FIELD = "response_type"
         const val EPHEMERAL_RESPONSE_TYPE = "ephemeral"
         const val BLOCKS_FIELD = "blocks"
         const val REPLACE_ORIGINAL_FIELD = "replace_original"
         const val UNKNOWN_HOST = "(unknown)"
+
+        /** 전송 허용 기본 도메인 접미사 — Slack slash `response_url`은 항상 `hooks.slack.com`이다. */
+        const val SLACK_DOMAIN = "slack.com"
         val SUCCESS_STATUS_RANGE = 200..299
     }
 }

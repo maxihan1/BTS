@@ -63,7 +63,10 @@ class SlackResponseUrlClientTest {
     private val responseUrl get() = "http://127.0.0.1:$stubPort/commands/T1/1234/abcd"
 
     private val restClient = OutboundHttpClientConfig().outboundHttpRestClient()
-    private val client = SlackResponseUrlClient(objectMapper, restClient)
+
+    // loopback stub 서버(127.0.0.1)로 전송을 검증하는 테스트용 — 허용 접미사를 loopback으로 재정의.
+    // 기본(slack.com) 핀은 아래 `허용 호스트 접미사…` 테스트가 별도 클라이언트로 검증한다.
+    private val client = SlackResponseUrlClient(objectMapper, restClient, allowedHostSuffix = "127.0.0.1")
 
     private val blocks =
         objectMapper.createArrayNode().apply {
