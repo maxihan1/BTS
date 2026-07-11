@@ -9,6 +9,7 @@ import com.bts.automation.domain.ActionType
 import com.bts.automation.domain.AutomationRule
 import com.bts.shared.issue.AddCommentCommand
 import com.bts.shared.issue.AssignCommand
+import com.bts.shared.issue.IssueMutationPermissionDeniedException
 import com.bts.shared.issue.IssueMutationPort
 import com.bts.shared.issue.SetFieldCommand
 import com.fasterxml.jackson.core.type.TypeReference
@@ -31,12 +32,13 @@ import java.util.UUID
  * [ActionExecutionResult.status] 로 집계된다 — 전부 성공([ActionExecutionStatus.SUCCESS]) /
  * 일부만 성공([ActionExecutionStatus.PARTIAL]) / 전부 실패([ActionExecutionStatus.FAILED]).
  *
- * ## cross-BC 예외 분류 — 클래스명 휴리스틱(BC 격리, 보안 판정 아님)
- * automation 은 issue-tracking 내부 예외 타입을 import 할 수 없다(BC 격리, [IssueMutationPort] 는
- * 계약상 `RuntimeException` 만 노출). [classifyPortFailure] 는 BTS 전 BC 가 공유하는
- * `*AccessDeniedException`/`*Forbidden*` 명명 관례에 기대어 예외 클래스 **이름**만으로
- * `PERMISSION_DENIED`/`FAILED` 를 구분한다 — 이는 로그/집계용 최선 노력(best-effort) 분류일 뿐,
- * 실제 권한 강제는 위임 대상(issue-tracking)이 이미 수행했다.
+ * ## cross-BC 예외 분류 — 타입 있는 포트 예외(BC 격리, 보안 판정 아님)
+ * automation 은 issue-tracking 내부 예외 타입을 import 할 수 없다(BC 격리). 대신 포트 계약
+ * (shared-kernel)이 노출하는 [IssueMutationPermissionDeniedException] 타입으로만 권한 거부를
+ * 구분한다([classifyPortFailure]) — 어댑터가 도메인 권한 예외를 이 타입으로 번역해 던진다
+ * (FR-AT-02 C3, 이전의 클래스명 문자열 휴리스틱 대체). 그 외 실패는 일반 예외로 전파돼
+ * `FAILED` 로 집계된다. 이는 로그/집계용 분류일 뿐, 실제 권한 강제는 위임 대상(issue-tracking)이
+ * 이미 수행했다.
  *
  * ## 템플릿 컨텍스트 구성
  * `triggerEvent` 로 `{issue, trigger, actor}` 컨텍스트를 만들어 [TemplateRenderer] 에 넘긴다.
@@ -174,15 +176,13 @@ class ActionExecutor(
         return objectMapper.writeValueAsString(value)
     }
 
-    /** 클래스 KDoc "cross-BC 예외 분류" 참조 — 이름 패턴 매칭만으로 PERMISSION_DENIED/FAILED 를 구분한다. */
-    private fun classifyPortFailure(e: RuntimeException): String {
-        val name = e.javaClass.simpleName
-        return if (PERMISSION_NAME_MARKERS.any { marker -> name.contains(marker, ignoreCase = true) }) {
+    /** 클래스 KDoc "cross-BC 예외 분류" 참조 — 포트 계약의 타입 있는 예외로만 PERMISSION_DENIED 를 구분한다. */
+    private fun classifyPortFailure(e: RuntimeException): String =
+        if (e is IssueMutationPermissionDeniedException) {
             FAILURE_PERMISSION_DENIED
         } else {
             FAILURE_GENERIC
         }
-    }
 
     /** [triggerEvent] 최상위 `issueKey` 또는 중첩 `issue.key` 에서 대상 이슈 키를 추출한다. 둘 다 없으면 `null`. */
     private fun extractIssueKey(triggerEvent: JsonNode): String? {
@@ -235,13 +235,11 @@ class ActionExecutor(
         /** 이슈가 필요한 액션인데 triggerEvent 에서 이슈 키를 찾지 못했을 때의 실패 사유. */
         const val FAILURE_ISSUE_KEY_MISSING = "ISSUE_KEY_MISSING"
 
-        /** [classifyPortFailure] 가 예외 클래스명에서 권한 거부로 분류했을 때의 실패 사유. */
+        /** [classifyPortFailure] 가 타입 있는 [IssueMutationPermissionDeniedException] 을 권한 거부로 분류했을 때의 실패 사유. */
         const val FAILURE_PERMISSION_DENIED = "PERMISSION_DENIED"
 
         /** [classifyPortFailure] 가 권한 거부로 분류하지 못한 그 외 포트 예외/웹훅 실패의 기본 사유. */
         const val FAILURE_GENERIC = "FAILED"
-
-        val PERMISSION_NAME_MARKERS = listOf("AccessDenied", "Forbidden", "PermissionDenied")
 
         val MAP_TYPE_REF: TypeReference<Map<String, Any?>> = object : TypeReference<Map<String, Any?>>() {}
     }

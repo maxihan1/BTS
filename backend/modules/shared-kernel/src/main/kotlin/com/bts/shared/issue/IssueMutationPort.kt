@@ -29,6 +29,10 @@ package com.bts.shared.issue
  * 충돌 등 실패는 예외로 던진다. [com.bts.shared.board.IssueTransitionPort.transition] 과 동일한
  * 계약이다 — consumer(automation `ActionExecutor`)가 catch 후 실행 결과(성공/부분실패)로 매핑한다.
  *
+ * 이 중 **권한 거부**는 [IssueMutationPermissionDeniedException] 타입으로 던져, consumer 가 예외
+ * 클래스명 문자열 매칭 없이 타입으로 분류할 수 있게 한다(FR-AT-02 C3). 그 외 실패(이슈 부재·OCC
+ * 충돌 등)는 일반 예외로 전파되며 consumer 는 이를 일반 실패로 처리한다.
+ *
  * ### value 타입 — String(JSON 인코딩), Jackson 비의존
  *
  * [SetFieldCommand.value] 는 `com.fasterxml.jackson.databind.JsonNode` 가 아니라 `String?`

@@ -7,10 +7,12 @@ import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.UpdateIssueRequest
 import com.bts.issue.comment.application.CommentApplicationService
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.shared.issue.AddCommentCommand
 import com.bts.shared.issue.AssignCommand
+import com.bts.shared.issue.IssueMutationPermissionDeniedException
 import com.bts.shared.issue.IssueMutationPort
 import com.bts.shared.issue.MutationResult
 import com.bts.shared.issue.SetFieldCommand
@@ -38,7 +40,9 @@ import org.springframework.transaction.support.TransactionTemplate
  * adapter 는 이를 그대로 issue-tracking 권한 검증 경로에 전달한다([IssueTransitionAdapter] 의
  * "actor 신뢰" 패턴과 동형). rule actor 의 권한 부족은 각 Application Service 의
  * `assertPermission` 이 [com.bts.issue.domain.IssueAccessDeniedException] 으로 자동 강제한다 —
- * 이 adapter 는 별도의 권한 검증을 수행하지 않는다(fail-closed 는 위임 대상이 이미 보유).
+ * 이 adapter 는 별도의 권한 검증을 수행하지 않는다(fail-closed 는 위임 대상이 이미 보유). 이
+ * 도메인 권한 예외는 [runAttempt] 에서 포트 계약의 [com.bts.shared.issue.IssueMutationPermissionDeniedException]
+ * 으로 번역해 던진다(FR-AT-02 C3 — 소비자가 클래스명 문자열 매칭 없이 타입으로 권한 거부를 분류).
  *
  * ### 트랜잭션 경계 — `@Transactional` 대신 [TransactionTemplate] (OCC 재시도 격리)
  *
@@ -176,7 +180,14 @@ class AutomationIssueMutationAdapter(
         attempt: () -> T,
     ): T =
         transactionTemplate.execute { status ->
-            val result = attempt()
+            val result =
+                try {
+                    attempt()
+                } catch (e: IssueAccessDeniedException) {
+                    // 도메인 권한 예외를 포트 계약의 타입 있는 예외로 번역한다(FR-AT-02 C3) — 소비자
+                    // (automation ActionExecutor)가 클래스명 문자열 매칭 없이 권한 거부를 타입으로 분류한다.
+                    throw IssueMutationPermissionDeniedException(e.message ?: "이슈 변경 권한이 없습니다", e)
+                }
             if (dryRun) {
                 status.setRollbackOnly()
             }
