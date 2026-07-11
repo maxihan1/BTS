@@ -18,10 +18,10 @@ import org.springframework.stereotype.Component
  * `@SpringBootTest` 컨텍스트 로드가 `NoSuchBeanDefinitionException` 으로 깨진다. 이 stub 이 그 공백을 메운다.
  *
  * ## `@Component` — 컴포넌트 스캔으로 전역 등록
- * [StubIssueImportPort] 와 동일 근거다 — [SlackIntegrationTestBootApplication] 컴포넌트 스캔에 직접 잡혀
- * [SlackTestcontainersConfig] 를 `@Import` 하지 않는 [SlackContextLoadTest] 를 포함한 모든 test-boot
- * 컨텍스트가 이 빈을 얻는다. slack 모듈에 [SlashIssueSearchPort] 구현체가 이 stub 하나뿐이라 `@Primary` 는
- * 불필요하다.
+ * [StubIssueImportPort] 와 동일 근거다 — [SlackIntegrationTestBootApplication] 의 컴포넌트 스캔
+ * (`scanBasePackages = ["com.bts.slack"]`, 테스트 소스 `@Component` 포함)에 직접 잡혀, 모든
+ * `@SpringBootTest` test-boot 컨텍스트가 이 빈을 얻는다. slack 모듈에 [SlashIssueSearchPort] 구현체가
+ * 이 stub 하나뿐이라 `@Primary` 는 불필요하다.
  *
  * ## settable — 다음 결과 시드 + 쿼리 캡처
  * [nextOutcome] 를 테스트가 성공([SlashSearchOutcome.Success], 결과 페이지 포함) 또는 문법 오류

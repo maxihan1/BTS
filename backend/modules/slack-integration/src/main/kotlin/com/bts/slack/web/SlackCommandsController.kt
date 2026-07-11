@@ -71,7 +71,7 @@ class SlackCommandsController(
         @RequestHeader(name = TIMESTAMP_HEADER, required = false) timestamp: String?,
         @RequestHeader(name = SIGNATURE_HEADER, required = false) signature: String?,
         @RequestBody rawBody: String,
-    ): ResponseEntity<Void> {
+    ): ResponseEntity<Any> {
         if (rawBody.toByteArray(StandardCharsets.UTF_8).size > MAX_BODY_BYTES) {
             log.warn("slack_command_body_too_large")
             return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).build()

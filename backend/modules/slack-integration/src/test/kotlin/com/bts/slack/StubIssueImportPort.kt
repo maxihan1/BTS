@@ -17,10 +17,11 @@ import org.springframework.stereotype.Component
  *
  * ## `@Component` — 컴포넌트 스캔으로 전역 등록 (기존 [StubIssueUnfurlPort] 와 다른 등록 경로)
  * [StubIssueUnfurlPort]/[StubUserLookupPort] 등은 [SlackTestcontainersConfig] `@Bean` 으로 등록되지만,
- * 이 stub 은 `@Component` 로 [SlackIntegrationTestBootApplication] 컴포넌트 스캔(`com.bts.slack`)에 직접
- * 잡힌다 — [SlackTestcontainersConfig] 를 `@Import` 하지 않는 [SlackContextLoadTest] 를 포함해 slack
- * 모듈의 **모든** test-boot 컨텍스트가 [IssueImportPort] 빈을 얻어야 로드가 복구되기 때문이다
- * ([SlashCommandHandlers] 는 이 두 컨텍스트 모두에서 스캔된다). slack 모듈에 [IssueImportPort] 구현체가
+ * 이 stub 은 `@Component` 로 [SlackIntegrationTestBootApplication] 컴포넌트 스캔(`scanBasePackages =
+ * ["com.bts.slack"]`, 테스트 소스의 `@Component` 까지 포함)에 직접 잡힌다. 두 등록 경로 모두 유효하며
+ * (slack 모듈의 모든 `@SpringBootTest` 가 [SlackTestcontainersConfig] 를 `@Import` 하고, 부트 클래스가
+ * 테스트 패키지를 스캔하므로), `@Component` 는 별도 `@Bean` 선언 없이 [SlashCommandHandlers] 의 non-null
+ * [IssueImportPort] 의존을 모든 test-boot 컨텍스트에서 충족한다. slack 모듈에 [IssueImportPort] 구현체가
  * 이 stub 하나뿐이라 `@Primary` 는 불필요하다.
  *
  * ## settable — 다음 결과 시드 + 커맨드 캡처
