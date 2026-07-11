@@ -50,15 +50,22 @@ import java.util.concurrent.ConcurrentHashMap
  *   인스턴스 로컬 캐시라 다중 인스턴스 배포에서는 인스턴스별로만 억제된다(단일 호스트 배포 전제).
  *   triggerEvent 에서 이슈 축을 찾지 못하면(SCHEDULED/WEBHOOK 빈 payload) 이 가드는 적용하지 않는다.
  *
- * ### 한계 — 가드 (a) 는 왕복 시 깊이가 리셋된다 (코드리뷰 C2)
+ * ### 한계 — 가드 (a) 는 현재 휴면, 왕복 시 깊이가 리셋된다 (코드리뷰 C2)
  * 가드 (a) 의 `executionDepth` 는 **automation → automation 직접 체인**(한 룰의 액션이 다른 룰을
- * 곧바로 enqueue 하는 경우)에서만 누적된다. automation → issue-tracking(액션 커밋 → 이슈 도메인
- * 이벤트 발행) → automation 재발화의 **왕복(round-trip)** 경로에서는, 돌아오는 트리거가 깊이 정보를
- * 갖지 않는 새 이슈 이벤트라 `executionDepth` 가 0 으로 리셋된다 — 따라서 왕복 루프의 실질적 차단은
- * 전적으로 가드 (b) 억제창이 담당한다. (b) 는 (ruleId, issueKey) 단위·시간창 기반이므로 서로 다른
- * 룰이 번갈아 같은 이슈를 건드리는 다중 룰 사이클이나 이슈 키가 바뀌는 사이클까지 견고하게 잡지는
- * 못한다. 전체 실행 체인을 영속 추적하는 견고한 사이클 검출은 **FR-AT-04(자동화 실행 로그/감사)**
- * 로 위임한다 — 현재 범위(FR-AT-02)에서는 (a)+(b) 조합이 실용적 상한을 제공한다.
+ * 곧바로 enqueue 하며 깊이를 실어 보내는 경우)에서만 누적되도록 설계됐다. 그러나 **현 시점(FR-AT-02)
+ * 에서는 어떤 enqueue 경로도 `executionDepth` 를 싣지 않는다** — 유일한 발행자
+ * [com.bts.automation.adapter.AutomationExecutionEnqueuer] 가 `{ruleId, triggerType, triggerEvent}`
+ * 만 발행하므로([ExecutionPayload.executionDepth] 는 payload 에 없으면 0), 모든 실행이 깊이 0 에서
+ * 시작한다. 따라서 가드 (a) 는 지금은 **사실상 전면 휴면**이며, 실질 루프 차단은 전적으로 가드 (b)
+ * 억제창이 담당한다(가드 (a) 는 훗날 깊이를 싣는 automation→automation 체이닝 FR 이 도입될 때
+ * 활성화되는 전방 호환 가드로 남겨둔다).
+ *
+ * 또한 automation → issue-tracking(액션 커밋 → 이슈 도메인 이벤트 발행) → automation 재발화의
+ * **왕복(round-trip)** 경로에서는, 돌아오는 트리거가 깊이 정보를 갖지 않는 새 이슈 이벤트라 (a) 를
+ * 활성화하더라도 `executionDepth` 가 0 으로 리셋된다. (b) 는 (ruleId, issueKey) 단위·시간창 기반이라
+ * 서로 다른 룰이 번갈아 같은 이슈를 건드리는 다중 룰 사이클이나 이슈 키가 바뀌는 사이클까지 견고하게
+ * 잡지는 못한다. 전체 실행 체인을 영속 추적하는 견고한 사이클 검출은 **FR-AT-04(자동화 실행 로그/감사)**
+ * 로 위임한다 — 현재 범위(FR-AT-02)에서는 (b) 억제창이 실용적 상한을 제공한다.
  *
  * ## `@Transactional` 없음 — 의도적 설계([AutomationEventWorker] 동형)
  * pgmq read/archive 는 트랜잭션 범위 밖에서 호출해도 pgmq 내부에서 atomic 하게 처리된다.

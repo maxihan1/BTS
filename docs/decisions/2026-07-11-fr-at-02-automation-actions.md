@@ -131,11 +131,15 @@ AddComment(및 문자열 값을 받는 SetField/CallWebhook)의 본문에 **템�
 
 ### C2 — 루프 가드 (a) 왕복 리셋 한계 명시
 
-가드 (a) `executionDepth` 는 automation **직접 체인**에서만 누적되며, automation → issue-tracking →
-automation **왕복** 경로에서는 돌아오는 이슈 이벤트가 깊이 정보를 갖지 않아 0 으로 리셋된다. 왕복 루프의
-실질 차단은 가드 (b) `(ruleId, issueKey)` 억제창이 담당한다. 서로 다른 룰이 번갈아 같은 이슈를 건드리는
-다중 룰 사이클·이슈 키가 바뀌는 사이클까지 견고하게 잡는 전체 실행 체인 영속 추적은 **FR-AT-04(자동화
-실행 로그/감사)** 로 위임한다. `AutomationExecutionWorker` KDoc "한계 — 가드 (a)" 절에 명시.
+가드 (a) `executionDepth` 는 automation **직접 체인**에서만 누적되도록 설계됐으나, **현 시점에서는 어떤
+enqueue 경로도 depth 를 싣지 않는다** — 유일한 발행자 `AutomationExecutionEnqueuer` 가
+`{ruleId, triggerType, triggerEvent}` 만 발행하므로 모든 실행이 깊이 0 에서 시작한다. 따라서 가드 (a) 는
+현재 **사실상 전면 휴면**이고, 실질 루프 차단은 전적으로 가드 (b) `(ruleId, issueKey)` 억제창이 담당한다
+(가드 (a) 는 훗날 깊이를 싣는 automation→automation 체이닝 FR 도입 시 활성화되는 전방 호환 가드로 잔존).
+게다가 automation → issue-tracking → automation **왕복** 경로에서는 돌아오는 이슈 이벤트가 깊이 정보를
+갖지 않아, (a) 를 활성화하더라도 0 으로 리셋된다. 서로 다른 룰이 번갈아 같은 이슈를 건드리는 다중 룰
+사이클·이슈 키가 바뀌는 사이클까지 견고하게 잡는 전체 실행 체인 영속 추적은 **FR-AT-04(자동화 실행
+로그/감사)** 로 위임한다. `AutomationExecutionWorker` KDoc "한계 — 가드 (a)" 절에 명시.
 
 ### C3 — cross-BC 포트 실패 분류: 문자열 휴리스틱 → 타입 있는 예외
 
