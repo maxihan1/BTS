@@ -136,6 +136,12 @@ automation이 prod 컨텍스트에서 소비하는 cross-BC 포트 3개 — **�
 
 **검증**: `bash scripts/verify-master-plan.sh` 123/123(확장 룰 포함). automation 모듈 KDoc 변경분 ktlint(`[[ktlint-kdoc-brace-parse-failure]]` — 중괄호/백틱 평문화). `./gradlew :modules:automation:compileKotlin`(KDoc 변경 컴파일 무해 확인).
 
+## 게이트 1 결정 (2026-07-11, Maxi 승인)
+
+- **D1 = A**: 스케줄링 전역 `@EnableScheduling` 위임(notification 동형, property 불요).
+- **D2 = A**: 부팅 검증 = contextLoads + automation 빈 존재 단언.
+- **D3 = scope-out**: 웹훅 인바운드 permitAll은 **이 PR 범위 밖**. identity-access `SecurityConfig` 불변. 신규 ADR에 명시적 scope-out + slack `/slack/events`와 통합할 인바운드 permitAll 후속으로 추적. 본 PR은 조립 배선+부팅 검증(Brief '미가동 3종' 해소)에 한정. → **Task 3 신설 없음. SecurityConfig 파일 미변경.**
+
 ## Plan 메타
 
 - task 수: 2 (Task 1 TDD 사이클 + Task 2 docs 동기화)
