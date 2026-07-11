@@ -47,6 +47,7 @@ dependencies {
     implementation(project(":modules:agile-planning"))
     implementation(project(":modules:search-export-import"))
     implementation(project(":modules:slack-integration"))
+    implementation(project(":modules:automation"))
 
     // ── 조립 앱 자체 프레임워크 (부팅 진입점 컴파일용) ───────────────────────────
     implementation("org.springframework.boot:spring-boot-starter-web")

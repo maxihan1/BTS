@@ -34,6 +34,7 @@ class FlywayAssemblyConfig {
             "agile" to "classpath:db/migration/agile-planning",
             "search" to "classpath:db/migration/search-export-import",
             "slack" to "classpath:db/migration/slack-integration",
+            "automation" to "classpath:db/migration/automation",
         )
 
     /**
