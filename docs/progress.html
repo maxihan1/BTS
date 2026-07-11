@@ -152,7 +152,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 <aside class="sidebar">
     <div class="sidebar-head">
       <div class="logo">🏢 BTS Dashboard</div>
-      <div class="updated">2026-07-10 갱신</div>
+      <div class="updated">2026-07-11 갱신</div>
     </div>
     <nav>
       <ul class="nav-top">
@@ -173,18 +173,18 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <svg viewBox="0 0 260 260" class="donut">
     <circle cx="130" cy="130" r="116" fill="none" stroke="#e5e7eb" stroke-width="28" />
     <circle cx="130" cy="130" r="116" fill="none" stroke="#22c55e" stroke-width="28"
-      stroke-dasharray="728.849495632832" stroke-dashoffset="58.307959650626536"
+      stroke-dasharray="728.849495632832" stroke-dashoffset="51.01946469429821"
       transform="rotate(-90 130 130)" stroke-linecap="round" />
-    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">92%</text>
+    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">93%</text>
   </svg>
       <div class="overview-numbers">
-        <div class="big-num">113 / 123</div>
+        <div class="big-num">114 / 123</div>
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
-          <div><span class="dot dot-done"></span> 완료 <b>113</b></div>
+          <div><span class="dot dot-done"></span> 완료 <b>114</b></div>
           <div><span class="dot dot-prog"></span> 진행중 <b>0</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>10</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>9</b></div>
         </div>
       </div>
     </div>
@@ -226,9 +226,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bc-card-pct">100%</div>
     </div><div class="bc-card" data-nav="bc-slack-integration">
       <div class="bc-card-head">💬 Slack 연동</div>
-      <div class="bc-card-stats">2 / 6 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:33%"></div></div>
-      <div class="bc-card-pct">33%</div>
+      <div class="bc-card-stats">3 / 6 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:50%"></div></div>
+      <div class="bc-card-pct">50%</div>
     </div><div class="bc-card" data-nav="bc-identity-access">
       <div class="bc-card-head">🔐 계정/권한</div>
       <div class="bc-card-stats">24 / 24 완료</div>
@@ -1233,14 +1233,14 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h1>💬 Slack 연동</h1>
     <p class="bc-desc">Slack 메시지를 이슈로 변환, 봇 알림 영역.</p>
     <div class="bc-detail-stats">
-      <div class="big-pct">33%</div>
-      <div>2 / 6 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:33%"></div></div>
+      <div class="big-pct">50%</div>
+      <div>3 / 6 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:50%"></div></div>
       <div class="status-grid">
-        <div>✅ 완료 2</div>
+        <div>✅ 완료 3</div>
         <div>🔄 진행중 0</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 4</div>
+        <div>⬜ 대기 3</div>
       </div>
     </div>
     <h2>세부 기능 (6개)</h2>
@@ -1258,13 +1258,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc">알림 발송 (DM + 채널)</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — SlackNotificationChannel (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) *[<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #252. deviation. 비동기 <span class="term" data-def="PostgreSQL 기반 메시지 큐 (Kafka 대체)">pgmq</span> 큐(`q_slack_deliveries`) — notification `SlackChannelSender`(producer) + slack `SlackDeliveryWorker`(consumer), <span class="term" data-def="&quot;관련 업무 부서&quot; 시스템을 &#39;로그인 부서&#39;, &#39;알림 부서&#39;처럼 책임 범위별로 깔끔하게 나눈 구역입니다.">BC</span> 격리 JSON 경계. <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">issue</span>-tracking `IssueAssigned` 이벤트 신설로 할당 알림 파이프라인 수리(<span class="term" data-def="&quot;기술 결정 일기장&quot; &quot;왜 A 대신 B 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.">ADR</span>)]*</li><li><span class="step-icon">✅</span> D2 — 명세 — DM vs 채널 라우팅. 메시지 포맷 (Block Kit) (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) *[<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #252. DM 중심(채널 라우팅은 FR-SL-06). `SlackBlockKitRenderer`(제목+<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span><span class="term" data-def="Link. 이슈 간 의존/연관 (blocks, relates to, duplicates 등)">링크</span> mrkdwn). spec/<span class="term" data-def="&quot;기술 결정 일기장&quot; &quot;왜 A 대신 B 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.">ADR</span>]*</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `user_slack_mapping(user_id, slack_user_id)` (책임. db-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) *[<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #252. V701. `user_slack_mapping` + `slack_delivery_log`(dedup, effectively-once). Jd<span class="term" data-def="&quot;관련 업무 부서&quot; 시스템을 &#39;로그인 부서&#39;, &#39;알림 부서&#39;처럼 책임 범위별로 깔끔하게 나눈 구역입니다.">bc</span>Template]*</li><li><span class="step-icon">✅</span> D4 — 백엔드 — Channel 추상 구현 (Slack). Bolt `chat.postMessage` (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) *[<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #252. deviation. Bolt→slack-api-client `chat.postMessage`(FR-SL-01 관례). <span class="term" data-def="PostgreSQL 기반 메시지 큐 (Kafka 대체)">pgmq</span> consumer 워커(vt/재시도/dead-letter), 봇토큰 3중 미노출, exists→send→record dedup 순서]*</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — <span class="term" data-def="&quot;마네킹 / 가짜 부품&quot; 테스트를 할 때 실제 결제 시스템이나 외부 서버를 연결하면 돈이 나가거나 느려지므로, 진짜처럼 행동하는 가짜 부품을 끼워놓는 것입니다.">Mock</span>ito + slack-api mock (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) *[<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #252. mockk. SlackMessageClientTest·SlackBlockKitRendererTest·SlackUserMappingServiceIntegrationTest·SlackDeliveryWorkerIntegrationTest(9, dead-letter/poison 포함). <span class="term" data-def="&quot;일회용 실험실&quot; 테스트를 할 때만 도커를 이용해 가상 데이터베이스를 뚝딱 만들었다가, 테스트가 끝나면 흔적 없이 부숴버리는 고마운 도구입니다.">Testcontainers</span> <span class="term" data-def="PostgreSQL 기반 메시지 큐 (Kafka 대체)">pgmq</span> 이미지]*</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 사용자 ↔ Slack 계정 매핑 페이지 (책임. designer → frontend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) *[deviation. 연결 UX=C 이메일 자동해석(`users.lookupByEmail`). me-scope 엔드포인트 3종(GET/POST/DELETE `/api/v1/slack/me/connection`). 봇 스코프 `users:read.email` 추가(기존 설치 재연결 필요). <span class="term" data-def="&quot;로봇용 대체 비밀번호&quot; 봇이나 스크립트가 내 아이디로 접근해야 할 때, 내 진짜 비밀번호 대신 내어주는 &#39;용도 제한형 비밀번호&#39;입니다.">PAT</span>는 `@Authentication<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">Pr</span>in<span class="term" data-def="&quot;자동화된 공장 컨베이어 벨트&quot; 코드를 수정하면 자동으로 테스트를 거쳐 이상이 없으면 실제 서비스되는 서버에 알아서 배포까지 해주는 자동화 시스템입니다.">ci</span>pal <span class="term" data-def="&quot;디지털 출입증&quot; 로그인 성공 시 발급받는 암호화된 방문증. 이거 하나면 매번 비밀번호를 안 쳐도 됩니다.">Jwt</span>?` 타입 기반 401. 매핑 영속화·서비스(link/unlink `SlackUserMappingService`, PR #252)를 재사용. 신규 마이그레이션 0. PR(이번, 미정). <span class="term" data-def="&quot;기술 결정 일기장&quot; &quot;왜 A 대신 B 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.">ADR</span>: [2026-07-10-fr-sl-02-d6-slack-user-connection.md](../../decisions/2026-07-10-fr-sl-02-d6-slack-user-connection.md)]*</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> (책임. qa-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) *[MSW 기반, happy/해제/오류 시나리오. <span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span>(이번, 미정)]*</li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-완료">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">✅</span>
         <span class="fr-id">FR-SL-03</span>
         <span class="fr-desc">Unfurl (Atlas URL 자동 카드)</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — UnfurlPayload</li><li><span class="step-icon">⬜</span> D2 — 명세 — `link_shared` 이벤트 처리</li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — (활용)</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — Bolt event handler + Block Kit 카드 생성</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — (해당 없음)</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — 가짜 Slack 이벤트</li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — UnfurlPayload (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) *[<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #257. LinkSharedCommand(입력 VO) + shared-kernel `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>UnfurlPort`/`IssueUnfurlView`(결합 fail-closed 포트, <span class="term" data-def="&quot;기술 결정 일기장&quot; &quot;왜 A 대신 B 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.">ADR</span> D1)]*</li><li><span class="step-icon">✅</span> D2 — 명세 — `link_shared` 이벤트 처리 (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) *[<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #257. `POST /slack/events`(url_verification+event_callback), X-Slack-Signature 검증 선행. spec/<span class="term" data-def="&quot;기술 결정 일기장&quot; &quot;왜 A 대신 B 기술을 썼는지&quot; 나중을 위해 결정 배경을 기록해 두는 문서입니다.">ADR</span>]*</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — (활용) (책임. db-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) *[deviation. 활용이 아닌 V702 **UNIQUE** 역방향 <span class="term" data-def="&quot;영업 중 무중단 공사&quot; 데이터가 엄청 많은 테이블을 검색하기 쉽게(인덱스 생성) 공사할 때, 사용자들의 접속을 막지 않고 백그라운드에서 몰래 작업하는 기술입니다.">인덱스</span> `(slack_user_id, team_id)` 신설 — 잘못된 viewer 과다노출 fail-open <span class="term" data-def="&quot;데이터 엑셀 양식&quot; 이름은 문자, 나이는 숫자 등 데이터베이스에 정보를 어떤 모양으로 저장할지 정해둔 도면입니다.">스키마</span> 차단]*</li><li><span class="step-icon">✅</span> D4 — 백엔드 — event handler + Block Kit 카드 생성 (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) *[deviation. Bolt 미도입→자체 `SlackEventsController`+`SlackUnfurlService`(@Async ack200). 서명검증 직접구현(SDK Verifier 부재). cross-<span class="term" data-def="&quot;관련 업무 부서&quot; 시스템을 &#39;로그인 부서&#39;, &#39;알림 부서&#39;처럼 책임 범위별로 깔끔하게 나눈 구역입니다.">BC</span> `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>UnfurlAdapter`(BROWSE 멤버십+보안등급 이중 fail-closed <span class="term" data-def="Gate. 전이에 걸린 조건 (권한/필드/검증)">게이트</span>). `SlackUnfurlClient` chat.unfurl. PR #257]*</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 (책임. backend-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) *[<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #257. 서명/파서/역매핑/어댑터/렌더/오케스트레이션/컨트롤러 단위·통합, 3모듈 green]*</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — (해당 없음) (책임. -) *[UI 없음. classify ui/frontend 오판을 명세 근거로 backend 교정]*</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — 가짜 Slack 이벤트 (책임. qa-en<span class="term" data-def="&quot;초고속 본문 검색기&quot; 게시글 본문에 적힌 수많은 단어들 속에서 내가 검색한 단어(형태소 분석 포함)를 0.1초 만에 찾아내는 데이터베이스 엔진 기술입니다.">gin</span>eer) *[<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">PR</span> #257. `SlackUnfurlEndToEndTest` happy/미매핑/무권한/challenge, 유효 서명 생성·chat.unfurl <span class="term" data-def="&quot;마네킹 / 가짜 부품&quot; 테스트를 할 때 실제 결제 시스템이나 외부 서버를 연결하면 돈이 나가거나 느려지므로, 진짜처럼 행동하는 가짜 부품을 끼워놓는 것입니다.">mock</span>]*</li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
