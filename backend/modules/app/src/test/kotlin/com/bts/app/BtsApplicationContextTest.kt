@@ -2,8 +2,11 @@
 
 package com.bts.app
 
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.context.ApplicationContext
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -25,9 +28,19 @@ import java.util.Base64
 @SpringBootTest
 @ActiveProfiles("prod")
 class BtsApplicationContextTest {
+    @Autowired
+    private lateinit var context: ApplicationContext
+
     @Test
     fun `조립 컨텍스트가 prod 프로파일로 로드된다`() {
         // contextLoads — 컨텍스트 초기화 자체가 검증. 실패 시 예외로 표면화.
+    }
+
+    @Test
+    fun `automation 워커 빈이 조립 컨텍스트에 결선된다`() {
+        // FullyQualifiedAnnotationBeanNameGenerator → 빈 이름 = FQN 클래스명.
+        // automation 이 build 의존 + 스캔에 포함돼야만 이 빈이 존재한다.
+        assertThat(context.containsBean("com.bts.automation.worker.AutomationExecutionWorker")).isTrue()
     }
 
     companion object {
