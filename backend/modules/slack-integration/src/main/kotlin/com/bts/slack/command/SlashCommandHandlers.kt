@@ -117,8 +117,9 @@ class SlashCommandHandlers(
     private fun issueUrl(issueKey: String): String = "${atlasBaseUrl.trimEnd('/')}/issues/$issueKey"
 
     /** [IssueImportResult.Failure.reasonCode]를 사람이 읽을 수 있는 한국어 메시지로 변환한다. */
-    private fun createFailureMessage(reasonCode: String): String =
-        CREATE_FAILURE_MESSAGES[reasonCode] ?: UNKNOWN_FAILURE_MESSAGE
+    private fun createFailureMessage(reasonCode: String): String {
+        return CREATE_FAILURE_MESSAGES[reasonCode] ?: UNKNOWN_FAILURE_MESSAGE
+    }
 
     private companion object {
         /** `/atlas search` 한 회 응답에 담는 최대 결과 건수(Slack ephemeral 카드 가독성 상한). */
