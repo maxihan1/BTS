@@ -3,6 +3,7 @@
 package com.bts.slack
 
 import com.bts.slack.message.SlackUserLookupClient
+import com.slack.api.methods.MethodsClient
 import io.mockk.mockk
 import org.flywaydb.core.Flyway
 import org.springframework.boot.test.context.TestConfiguration
@@ -34,6 +35,10 @@ import javax.sql.DataSource
  * - [StubSystemPermissionResolver] — fail-closed 전역 관리자 판정 stub(테스트가 admin 을 명시 등록).
  * - `@Primary` mock [SlackUserLookupClient] — 실 Slack `users.lookupByEmail` 호출을 회피(FR-SL-02 D6 Task 5,
  *   [slackUserLookupClient] 참고).
+ * - [StubIssueUnfurlPort] — cross-BC 결합 fail-closed 이슈 카드 조회 stub(FR-SL-03 Task 12, issueKey 별
+ *   시드 가능, [issueUnfurlPort] 참고).
+ * - `@Primary` mock [MethodsClient] — `chat.unfurl`/`chat.postMessage` 등 모든 Slack SDK 호출을 실
+ *   네트워크 없이 검증 가능하게 한다(FR-SL-03 Task 12, [slackMethodsClient] 참고).
  *
  * ## JVM 단위 singleton container (교훈 concurrent-testcontainers-suite-flaky)
  * companion 의 `.apply { start() }` 로 JVM 시작 시 한 번만 기동하고 Ryuk 의 종료 시 자동 정리에 위임한다.
@@ -114,6 +119,32 @@ class SlackTestcontainersConfig {
     @Bean
     @Primary
     fun slackUserLookupClient(): SlackUserLookupClient = mockk()
+
+    /**
+     * cross-BC 결합 fail-closed 이슈 카드 조회 포트 — settable [StubIssueUnfurlPort] (FR-SL-03 Task 12).
+     *
+     * [com.bts.slack.unfurl.SlackUnfurlService] 생성자가 non-null [com.bts.shared.issue.IssueUnfurlPort]
+     * 를 요구하므로, test-boot 컨텍스트 로드를 위해 등록한다(빈 부재 시 [SlackContextLoadTest] 회귀). 기본
+     * `visibleIssues` 가 비어 있어 아무 issueKey 도 가시로 판정하지 않으며, 테스트가 issueKey → 카드를
+     * 명시 등록한다.
+     */
+    @Bean
+    fun issueUnfurlPort(): StubIssueUnfurlPort = StubIssueUnfurlPort()
+
+    /**
+     * Slack 공식 SDK `MethodsClient` — mockk 대체 (FR-SL-03 Task 12).
+     *
+     * 컴포넌트 스캔된 [com.bts.slack.message.SlackUnfurlClient]/[com.bts.slack.message.SlackMessageClient]
+     * 등은 생성자 기본값 `Slack.getInstance().methods()`(자격증명 없는 실 SDK 인스턴스)로 부팅은 안전하지만,
+     * 실제로 호출하면 네트워크 오류가 난다. `@Primary` 로 이 mock 을 주입 우선순위로 등록해 컴포넌트
+     * 스캔된 클라이언트들이 모두 이 mock `MethodsClient` 를 받게 하고, 통합 테스트가 `chatUnfurl` 등
+     * 호출/미호출과 인자를 검증한다([SlackUnfurlEndToEndTest] 참고). `relaxed = true` 라 스텁하지 않은
+     * 호출도 예외 없이 기본값을 반환한다 — 이 mock 을 쓰지 않는 다른 통합 테스트(연결/설치)에서 우연히
+     * 호출돼도 컨텍스트가 깨지지 않는다.
+     */
+    @Bean
+    @Primary
+    fun slackMethodsClient(): MethodsClient = mockk(relaxed = true)
 
     companion object {
         /**

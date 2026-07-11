@@ -3,6 +3,7 @@
 package com.bts.slack.web
 
 import com.bts.slack.application.EmailUnavailableException
+import com.bts.slack.application.SlackAccountAlreadyLinkedException
 import com.bts.slack.application.SlackScopeMissingException
 import com.bts.slack.application.SlackTemporarilyUnavailableException
 import com.bts.slack.application.SlackUserNotFoundException
@@ -28,7 +29,9 @@ import org.springframework.web.server.ResponseStatusException
  * [EmailUnavailableException] 422 `EMAIL_UNAVAILABLE` · [WorkspaceNotInstalledException] 409
  * `WORKSPACE_NOT_INSTALLED` · [SlackScopeMissingException] 409 `SLACK_SCOPE_MISSING` ·
  * [SlackUserNotFoundException] 404 `SLACK_USER_NOT_FOUND` · [SlackTemporarilyUnavailableException] 503
- * `SLACK_TEMPORARILY_UNAVAILABLE`. 프론트가 이미 이 문자열을 소비하므로 코드값을 임의로 바꾸지 않는다.
+ * `SLACK_TEMPORARILY_UNAVAILABLE` · [SlackAccountAlreadyLinkedException] 409 `SLACK_ACCOUNT_ALREADY_LINKED`
+ * (코드리뷰 CONCERN-1 hot-fix — 이중 매핑은 catch-all 500 이 아닌 의도된 거부 409). 프론트가 이미 이 문자열을
+ * 소비하므로 기존 코드값을 임의로 바꾸지 않는다.
  *
  * ## 누출 차단 (§1.1.2)
  * `SlackConnectionExceptions.kt` 의 예외 message 는 이메일·slack_user_id·봇 토큰·Slack 원본 에러 문자열을
@@ -57,6 +60,13 @@ class SlackConnectionExceptionHandler {
     fun handleScopeMissing(): ResponseEntity<Map<String, String>> {
         log.info("SLACK_CONNECTION_409 scope_missing")
         return errorResponse(HttpStatus.CONFLICT, SlackConnectionErrorCode.SCOPE_MISSING)
+    }
+
+    /** 이 Slack 계정이 이미 다른 사용자에게 연결되어 있음(V702 UNIQUE 위반) → 409(코드리뷰 CONCERN-1 hot-fix). */
+    @ExceptionHandler(SlackAccountAlreadyLinkedException::class)
+    fun handleAccountAlreadyLinked(): ResponseEntity<Map<String, String>> {
+        log.info("SLACK_CONNECTION_409 account_already_linked")
+        return errorResponse(HttpStatus.CONFLICT, SlackConnectionErrorCode.ACCOUNT_ALREADY_LINKED)
     }
 
     /** 이메일에 매칭되는 Slack 사용자 없음 → 404. */
@@ -113,6 +123,10 @@ private enum class SlackConnectionErrorCode(val code: String, val defaultMessage
     WORKSPACE_NOT_INSTALLED("WORKSPACE_NOT_INSTALLED", "Slack 워크스페이스가 설치되어 있지 않습니다."),
     SCOPE_MISSING("SLACK_SCOPE_MISSING", "Slack 워크스페이스를 다시 연결해야 합니다."),
     USER_NOT_FOUND("SLACK_USER_NOT_FOUND", "일치하는 Slack 계정을 찾을 수 없습니다."),
+    ACCOUNT_ALREADY_LINKED(
+        "SLACK_ACCOUNT_ALREADY_LINKED",
+        "이 Slack 계정은 이미 다른 사용자에게 연결되어 있습니다.",
+    ),
     TEMPORARILY_UNAVAILABLE(
         "SLACK_TEMPORARILY_UNAVAILABLE",
         "Slack이 일시적으로 응답하지 않습니다. 잠시 후 다시 시도해 주세요.",

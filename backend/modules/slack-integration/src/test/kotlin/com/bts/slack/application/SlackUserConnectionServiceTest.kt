@@ -17,6 +17,7 @@ import io.mockk.verifyOrder
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.springframework.dao.DuplicateKeyException
 import java.time.Instant
 import java.util.UUID
 
@@ -32,6 +33,8 @@ import java.util.UUID
  * - 각 선행 조건 부재(이메일/설치/봇 토큰) 시 명시적 예외로 조기 반환(다음 협력자 미호출 검증).
  * - lookup 결과 3분류(NotFound/MissingScope/Transient) → 각각 다른 예외로 매핑.
  * - [SlackUserConnectionService.getStatus]/[SlackUserConnectionService.disconnect] 위임 계약.
+ * - link 가 [DuplicateKeyException](이미 다른 사용자에게 연결된 Slack 계정, V702 UNIQUE 위반) 을 던지면
+ *   [SlackAccountAlreadyLinkedException] 으로 번역되는지(CONCERN-1 hot-fix — 의도된 거부가 500 이 아닌 409 로).
  * - 예외 message 에 이메일·Slack 사용자 id·Slack 원본 에러 문자열이 담기지 않는지(§1.1.2 비밀값 미노출).
  */
 class SlackUserConnectionServiceTest {
@@ -152,6 +155,23 @@ class SlackUserConnectionServiceTest {
         verify(exactly = 0) { userMappingService.link(any(), any(), any()) }
     }
 
+    @Test
+    fun `connect - link가 DuplicateKeyException을 던지면 SlackAccountAlreadyLinkedException으로 번역한다`() {
+        every { userLookupPort.findEmailById(USER_ID) } returns EMAIL
+        every { installRepository.findCurrentInstallation() } returns installationView()
+        every { botTokenResolver.resolve(TEAM_ID) } returns BOT_TOKEN
+        every { userLookupClient.lookupByEmail(BOT_TOKEN, EMAIL) } returns
+            SlackUserLookupResult.Found(SLACK_USER_ID, TEAM_ID)
+        every { userMappingService.link(USER_ID, SLACK_USER_ID, TEAM_ID) } throws
+            DuplicateKeyException("duplicate key value violates unique constraint \"idx_user_slack_mapping\"")
+
+        assertThatThrownBy { service.connect(USER_ID) }
+            .isInstanceOf(SlackAccountAlreadyLinkedException::class.java)
+
+        // link 실패 후에는 방금 기록한 값을 재조회하지 않는다(기록 자체가 없었으므로).
+        verify(exactly = 0) { userMappingService.resolveByUserId(any()) }
+    }
+
     // ── getStatus ────────────────────────────────────────────────────────────
 
     @Test
@@ -206,7 +226,7 @@ class SlackUserConnectionServiceTest {
     // ── 예외 message 비밀값 미노출 ────────────────────────────────────────────────
 
     @Test
-    fun `연결 예외 5종의 message에는 이메일·Slack 사용자 id·Slack 원본 에러 문자열이 담기지 않는다`() {
+    fun `연결 예외 6종의 message에는 이메일·Slack 사용자 id·Slack 원본 에러 문자열이 담기지 않는다`() {
         val exceptions =
             listOf(
                 EmailUnavailableException(),
@@ -214,6 +234,7 @@ class SlackUserConnectionServiceTest {
                 SlackScopeMissingException(),
                 SlackUserNotFoundException(),
                 SlackTemporarilyUnavailableException(),
+                SlackAccountAlreadyLinkedException(),
             )
 
         exceptions.forEach { exception ->

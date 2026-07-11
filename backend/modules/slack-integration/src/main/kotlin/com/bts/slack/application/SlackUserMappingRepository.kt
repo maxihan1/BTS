@@ -33,4 +33,18 @@ interface SlackUserMappingRepository {
      * [userId] 로 매핑을 조회한다. 존재하지 않으면 null.
      */
     fun findByUserId(userId: UUID): SlackUserMapping?
+
+    /**
+     * [slackUserId]/[teamId] 로 역방향 조회해 매핑된 BTS `userId` 를 반환한다(FR-SL-03 Slack Unfurl
+     * viewer 해석 — Slack 채널에 공유된 Atlas 이슈 URL 을 펼칠 때 공유자의 열람 권한을 판정하는 데 쓰인다).
+     *
+     * 매핑이 없거나 [teamId] 가 불일치하면 null. **같은 (slackUserId, teamId) 조합으로 행이 2개 이상
+     * 매칭되면 임의로 하나를 고르지 않고 null 을 반환한다(fail-closed)** — V702 UNIQUE 인덱스가 1차
+     * 방어이지만, 인덱스가 없거나 무력화된 상태에서도 잘못된(더 높은 권한의) viewer 가 선택돼 이슈 카드가
+     * 과다노출되는 사고를 쿼리 로직 자체가 독립적으로 막기 위한 2차 방어다.
+     */
+    fun findUserIdBySlackUserId(
+        slackUserId: String,
+        teamId: String,
+    ): UUID?
 }

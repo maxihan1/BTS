@@ -51,6 +51,24 @@ class JdbcSlackUserMappingRepository(
         jdbc.query(SQL_FIND_BY_USER_ID, mapOf("userId" to userId), SlackUserMappingRowMapper)
             .firstOrNull()
 
+    /**
+     * 조회 전용 트랜잭션 — 쓰기 잠금을 잡지 않는다 (DATA.md §6 읽기 전용 규칙).
+     *
+     * **다중행 fail-closed:** `slackUserId`/`teamId` 매칭 행이 정확히 1개일 때만 값을 반환한다.
+     * [kotlin.collections.singleOrNull] 은 0개 또는 2개 이상이면 null 을 반환하므로(임의 선택 없음),
+     * V702 UNIQUE 인덱스(1차 방어)가 무력화된 상태에서도 잘못된(더 높은 권한의) viewer 를 고르지 않는다.
+     */
+    @Transactional(readOnly = true)
+    override fun findUserIdBySlackUserId(
+        slackUserId: String,
+        teamId: String,
+    ): UUID? =
+        jdbc.query(
+            SQL_FIND_USER_ID_BY_SLACK_USER_ID,
+            mapOf("slackUserId" to slackUserId, "teamId" to teamId),
+        ) { rs, _ -> rs.getObject("user_id", UUID::class.java) }
+            .singleOrNull()
+
     private companion object {
         /** 사용자↔Slack 매핑 멱등 업서트 — PK(user_id) 위반 시 최신 값으로 갱신(last-write-wins). */
         const val SQL_UPSERT = """
@@ -70,6 +88,17 @@ class JdbcSlackUserMappingRepository(
             SELECT user_id, slack_user_id, team_id, linked_at
             FROM user_slack_mapping
             WHERE user_id = :userId
+        """
+
+        /**
+         * slack_user_id/team_id → user_id 역방향 조회(FR-SL-03 unfurl viewer 해석).
+         * V702 UNIQUE 인덱스가 정상이면 최대 1행이지만, 방어적으로 매칭 전체를 가져와
+         * 호출부([findUserIdBySlackUserId])에서 [kotlin.collections.singleOrNull] 로 걸러낸다.
+         */
+        const val SQL_FIND_USER_ID_BY_SLACK_USER_ID = """
+            SELECT user_id
+            FROM user_slack_mapping
+            WHERE slack_user_id = :slackUserId AND team_id = :teamId
         """
     }
 }

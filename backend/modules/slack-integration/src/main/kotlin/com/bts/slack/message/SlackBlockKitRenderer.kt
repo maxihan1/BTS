@@ -1,21 +1,29 @@
-// 알림 제목/이슈 링크를 Slack Block Kit 으로 렌더하는 컴포넌트 (FR-SL-02 Task 6)
+// 알림 제목/이슈 링크·unfurl 카드를 Slack Block Kit 으로 렌더하는 컴포넌트 (FR-SL-02 Task 6 / FR-SL-03 Task 8)
 
 package com.bts.slack.message
 
+import com.bts.shared.issue.IssueUnfurlView
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ArrayNode
+import com.fasterxml.jackson.databind.node.ObjectNode
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 
 /**
- * 알림 제목과 이슈 키를 Slack Block Kit 메시지로 렌더한다 (FR-SL-02 Task 6).
+ * 알림 제목/이슈 키, Slack unfurl 카드를 Slack Block Kit 메시지로 렌더한다 (FR-SL-02 Task 6 / FR-SL-03 Task 8).
  *
- * 현재는 인앱 알림과 동일 수준(제목 + 이슈 링크)만 렌더한다. 이슈 summary·행위자 이름 등 rich 콘텐츠는
- * cross-BC 조회가 필요하므로 후속 범위다(스펙 FR8).
+ * [render]는 인앱 알림과 동일 수준(제목 + 이슈 링크)만 렌더한다. [renderUnfurlCard]는 Slack `link_shared`
+ * unfurl용 이슈 스냅샷 카드(키·제목·상태·우선순위·담당자)를 렌더한다 — cross-BC 조회 결과([IssueUnfurlView])를
+ * 그대로 소비한다.
  *
  * ## 이슈 링크
  * `{atlasBaseUrl}/issues/{issueKey}` 로 이슈 상세 페이지를 mrkdwn 링크로 건다. `atlasBaseUrl`은
  * `bts.atlas.base-url` 로 주입한다(미설정이어도 부팅이 깨지지 않도록 빈 문자열 기본값 — 실제 발송 시점에만
  * 의미가 있고, notification 파이프라인 발화는 D6 연결 이후이므로 운영 배포 시 값을 채운다).
+ *
+ * ## unfurl 카드 = 정보 카드만 (ADR D3)
+ * [renderUnfurlCard]는 상태 변경·댓글 같은 액션 버튼을 절대 포함하지 않는다. 버튼 상호작용은
+ * FR-SL-05(인터랙티브)의 책임이라 이 메서드가 선점하면 BC 스코프가 번진다.
  *
  * @param atlasBaseUrl BTS 웹 기준 URL(`bts.atlas.base-url`). 끝 슬래시는 정규화한다.
  * @param objectMapper Block Kit JSON 직렬화용 Jackson.
@@ -45,18 +53,7 @@ class SlackBlockKitRenderer(
 
         val blocks =
             objectMapper.createArrayNode().apply {
-                add(
-                    objectMapper.createObjectNode().apply {
-                        put("type", "section")
-                        set<com.fasterxml.jackson.databind.node.ObjectNode>(
-                            "text",
-                            objectMapper.createObjectNode().apply {
-                                put("type", "mrkdwn")
-                                put("text", mrkdwn)
-                            },
-                        )
-                    },
-                )
+                add(sectionBlock(mrkdwnText(mrkdwn)))
             }
 
         return RenderedSlackMessage(
@@ -65,6 +62,61 @@ class SlackBlockKitRenderer(
         )
     }
 
+    /**
+     * Slack unfurl용 이슈 스냅샷 카드를 렌더한다 (FR-SL-03 Task 8).
+     *
+     * 카드는 정확히 두 블록이다 — (1) 키+제목 링크 섹션, (2) 상태·우선순위·담당자 필드 섹션. 담당자가
+     * 없으면(`assigneeDisplayName == null`) "미지정"으로 폴백한다. 액션 버튼은 절대 포함하지 않는다(ADR D3).
+     *
+     * @param view cross-BC 결합 포트([com.bts.shared.issue.IssueUnfurlPort])가 확인한 열람 가능 이슈 스냅샷.
+     * @return `{"blocks": [...]}` 형태의 카드 JSON — [com.bts.slack.message.SlackUnfurlClient]가 URL 키에
+     *   매핑해 `chat.unfurl`의 `unfurls`에 싣는다.
+     */
+    fun renderUnfurlCard(view: IssueUnfurlView): ObjectNode {
+        val titleSection = sectionBlock(mrkdwnText("<${issueUrl(view.issueKey)}|${view.issueKey}> ${view.summary}"))
+
+        val assigneeLabel = view.assigneeDisplayName ?: UNASSIGNED_LABEL
+        val fields =
+            objectMapper.createArrayNode().apply {
+                add(mrkdwnText("*상태*\n${view.statusLabel}"))
+                add(mrkdwnText("*우선순위*\n${view.priorityLabel}"))
+                add(mrkdwnText("*담당자*\n$assigneeLabel"))
+            }
+        val detailSection =
+            objectMapper.createObjectNode().apply {
+                put("type", "section")
+                set<ArrayNode>("fields", fields)
+            }
+
+        val blocks =
+            objectMapper.createArrayNode().apply {
+                add(titleSection)
+                add(detailSection)
+            }
+
+        return objectMapper.createObjectNode().apply {
+            set<ArrayNode>("blocks", blocks)
+        }
+    }
+
     /** `{atlasBaseUrl}/issues/{issueKey}` — base URL 끝 슬래시를 제거해 이중 슬래시를 막는다. */
     private fun issueUrl(issueKey: String): String = "${atlasBaseUrl.trimEnd('/')}/issues/$issueKey"
+
+    /** `{"type": "section", "text": text}` — 단일 text를 담은 Block Kit section block. */
+    private fun sectionBlock(text: ObjectNode): ObjectNode =
+        objectMapper.createObjectNode().apply {
+            put("type", "section")
+            set<ObjectNode>("text", text)
+        }
+
+    /** `{"type": "mrkdwn", "text": text}` — Block Kit text object. */
+    private fun mrkdwnText(text: String): ObjectNode =
+        objectMapper.createObjectNode().apply {
+            put("type", "mrkdwn")
+            put("text", text)
+        }
+
+    private companion object {
+        const val UNASSIGNED_LABEL = "미지정"
+    }
 }

@@ -10,6 +10,7 @@ package com.bts.slack.application
 //   SlackScopeMissingException           — 봇 토큰에 users:read.email 스코프 없음(운영자 조치) → 409
 //   SlackUserNotFoundException           — 이메일에 매칭되는 Slack 사용자 없음               → 404
 //   SlackTemporarilyUnavailableException — Slack 일시 오류(429/5xx/네트워크, 재시도 가능)      → 503
+//   SlackAccountAlreadyLinkedException   — 이 Slack 계정이 이미 다른 사용자에게 연결됨(V702 UNIQUE) → 409
 //
 // 예외 메시지 위생 (DEVELOPMENT.md §1.1.2 / 교훈 fr-pm-04-guard-exception-message-http-leak).
 // 모든 메시지는 이메일·slack_user_id·봇 토큰·Slack 원본 에러 문자열을 담지 않는 고정 일반 문구다.
@@ -58,3 +59,13 @@ class SlackUserNotFoundException :
  */
 class SlackTemporarilyUnavailableException :
     RuntimeException("Slack is temporarily unavailable, please try again")
+
+/**
+ * 연결하려는 Slack 계정이 이미 다른 BTS 사용자에게 연결되어 있음을 나타낸다(코드리뷰 CONCERN-1 hot-fix).
+ *
+ * V702 `idx_user_slack_mapping_slack_user` UNIQUE(slack_user_id, team_id) 위반으로 발생한
+ * [org.springframework.dao.DuplicateKeyException] 을 [SlackUserConnectionService.completeLink] 가 이
+ * 예외로 번역한다 — 의도된 거부(fail-closed)이므로 500 이 아닌 409 로 응답해야 한다.
+ */
+class SlackAccountAlreadyLinkedException :
+    RuntimeException("This Slack account is already linked to another user")
