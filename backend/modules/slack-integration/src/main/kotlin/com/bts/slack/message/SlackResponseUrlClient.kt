@@ -16,11 +16,17 @@ import org.springframework.web.client.RestClientException
  * Slack slash 명령의 지연 응답을 `response_url`에 POST하는 클라이언트 (FR-SL-04 Task 4).
  *
  * ## response_url 인증 모델 — 봇 토큰 불요
- * `response_url`은 Slack이 slash 명령 요청에 실어 보내는 1회용 서명 웹훅 URL이다
+ * `response_url`은 Slack이 slash 명령 요청에 실어 보내는 서명된 임시 웹훅 URL이다
  * (`https://hooks.slack.com/commands/...`). URL 자체가 인증 수단이므로 [SlackMessageClient]/
- * [SlackUnfurlClient]와 달리 봇 토큰(`xoxb-...`)이 필요 없다. 유효기간은 발급 후 **30분**, 사용
- * 횟수는 **최대 5회**로 Slack이 제한한다 — 이 클라이언트는 유효성 여부를 판정하지 않고 그대로
- * POST만 시도한다(만료/소진 여부는 Slack 응답의 비-2xx로만 드러난다).
+ * [SlackUnfurlClient]와 달리 봇 토큰(`xoxb-...`)이 필요 없다. Slack 플랫폼 제약상 유효기간은 발급 후
+ * **30분**, 사용 횟수는 **최대 5회**다. 다만 이 클라이언트([post])는 slash 명령 1회 처리당 **정확히
+ * 1회만** POST한다 — 여러 서브커맨드 호출에 걸쳐 재사용하거나 실패 시 자체 재시도하지 않는다(만료/소진
+ * 여부는 이 클라이언트가 판정하지 않고, Slack 응답의 비-2xx로만 간접적으로 드러난다).
+ *
+ * ## response_type은 항상 `ephemeral` 고정
+ * [EPHEMERAL_RESPONSE_TYPE] 상수로 고정한다 — Slack이 지원하는 `in_channel`(채널 전체 공개) 옵션은
+ * 이 FR의 스펙 범위 밖이다(모든 slash 응답은 호출자에게만 보이는 ephemeral). 호출부가 가시성을 바꿀
+ * 수단을 제공하지 않는다.
  *
  * ## SDK 대신 RestClient
  * `response_url` POST는 Slack SDK의 API 메서드(`chat.*`)가 아니라 임의 URL에 대한 단순 HTTP POST이므로
@@ -133,7 +139,9 @@ class SlackResponseUrlClient(
 
     /** URL 에서 호스트만 추출한다. 실패 시 "(unknown)" 반환(automation `WebhookActionClient` 동일 관례). */
     private fun extractHost(url: String): String =
-        runCatching { java.net.URI(url).host ?: UNKNOWN_HOST }.getOrElse { UNKNOWN_HOST }
+        runCatching {
+            java.net.URI(url).host ?: UNKNOWN_HOST
+        }.getOrElse { UNKNOWN_HOST }
 
     private companion object {
         const val RESPONSE_TYPE_FIELD = "response_type"
