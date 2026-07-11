@@ -13,5 +13,5 @@ include(":modules:slack-integration")
 include(":modules:automation")
 
 // 배포 조립 모듈 — BC 들을 하나의 실행 가능한 Spring Boot 앱으로 통합 (프로덕션 배포 산출물).
-// automation BC(main 합류분)의 app 조립 포함은 후속 — 현재 app 은 8개 BC 를 조립한다.
+// app 은 9개 BC (automation 포함) 를 조립한다 (automation-prod-assembly, PR #259 에서 배선 완료).
 include(":modules:app")

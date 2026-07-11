@@ -142,6 +142,30 @@ for pf in "$PRODUCT_DIR"/*.md; do
   fi
 done
 
+# G) 조립 앱 BC 카운트 정합 (automation-prod-assembly PR #259, 리뷰 C1)
+#    :modules:app build.gradle 의 BC 모듈 의존 수 == 조립 관련 파일들의 'N개 BC' 표기.
+#    (2026-06-05 카운트 drift 사고 클래스 — 조립 서술자는 verify 사각지대였음.)
+APP_BUILD="${REPO_ROOT}/backend/modules/app/build.gradle.kts"
+if [[ -f "$APP_BUILD" ]]; then
+  BC_ACTUAL="$(grep -cE 'implementation\(project\(":modules:' "$APP_BUILD" || true)"
+  ASM_FILES=(
+    "$APP_BUILD"
+    "${REPO_ROOT}/backend/modules/app/src/main/kotlin/com/bts/app/FlywayAssemblyConfig.kt"
+    "${REPO_ROOT}/backend/modules/app/src/main/kotlin/com/bts/app/BtsApplication.kt"
+    "${REPO_ROOT}/backend/modules/app/src/test/kotlin/com/bts/app/BtsApplicationContextTest.kt"
+    "${REPO_ROOT}/backend/modules/app/src/main/resources/application.yml"
+    "${REPO_ROOT}/backend/settings.gradle.kts"
+    "${REPO_ROOT}/infra/docker-compose.prod.yml"
+  )
+  for af in "${ASM_FILES[@]}"; do
+    [[ -f "$af" ]] || continue
+    while IFS= read -r bcnum; do
+      [[ -n "$bcnum" && "$bcnum" != "$BC_ACTUAL" ]] && \
+        count_fail "$(basename "$af") '${bcnum}개 BC' ≠ 조립 BC 의존 ${BC_ACTUAL}"
+    done < <(grep -oE '[0-9]+개 BC' "$af" | grep -oE '^[0-9]+' || true)
+  done
+fi
+
 # --- 4) 최종 결과 ---
 if [[ "$EXIT_CODE" -eq 0 ]]; then
   echo ""

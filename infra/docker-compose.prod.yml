@@ -90,7 +90,7 @@ services:
       start_period: 120s
 
   bts-backend:
-    # 8개 BC 조립 앱 (com.bts.app.BtsApplication, prod 프로파일)
+    # 9개 BC 조립 앱 (com.bts.app.BtsApplication, prod 프로파일)
     build:
       context: ..
       dockerfile: infra/prod/Dockerfile.backend

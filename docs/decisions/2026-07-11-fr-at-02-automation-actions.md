@@ -169,6 +169,15 @@ test-assembled 현 표준). 전 모듈을 스캔하는 `backend/app` 신설은 9
 **실패한다**(silent no-op drop 없음). 이 fail-closed 계약을 회귀 가드 테스트로 잠근다
 ([[crossbc-resolver-nullable-fail-open]] 회귀 방지).
 
+> **정정 (2026-07-11, automation-prod-assembly PR #259).** 위 "cross-BC 배포 조립 모듈은 BTS 전체에
+> 아직 없다 / `backend/app` 신설은 부팅 불가" 프레이밍은 **stale** 이었다 — 이 FR-AT-02 worktree 가
+> #253(프로덕션 배포 기반 구축, `:modules:app`) 머지 **이전 base** 에서 작성돼 조립 앱의 존재를 몰랐다.
+> 실제로 `:modules:app` 은 #253 으로 이미 존재하며 8개 BC 를 prod 프로파일로 조립·부팅한다. 후속 작업
+> (automation-prod-assembly)은 "조립 모듈 신설"이 아니라 **기존 `:modules:app` 에 automation 의존 +
+> Flyway 배선 추가**로 이 C4 계약을 충족했다. "다수 BC 미구현 prod 어댑터로 부팅 불가" 우려도 검증에서
+> 반증됐다(automation main 빈 13개 의존 전수 추적 → 조립 prod 컨텍스트 미충족 의존 0, `BtsApplicationContextTest`
+> 로 부팅 확인). 상세는 ADR `2026-07-11-automation-prod-assembly`.
+
 ## 대안 (기각)
 
 - **비동기 커맨드 이벤트 큐** (D2 참조) — dry-run·동기 결과 불가. 기각.
