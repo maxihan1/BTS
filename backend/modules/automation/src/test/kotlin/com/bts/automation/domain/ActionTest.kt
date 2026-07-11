@@ -186,10 +186,34 @@ class ActionTest : DescribeSpec({
             }
         }
 
-        it("url 이 파싱 불가능한 문자열이면 거부한다") {
+        it("url 에 스킴이 없으면 거부한다") {
             shouldThrow<ActionConfigInvalidException> {
-                Action.fromJson(ActionType.CALL_WEBHOOK, """{"url":"https://example.com/ bad"}""")
+                Action.fromJson(ActionType.CALL_WEBHOOK, """{"url":"example.com/hook"}""")
             }
+        }
+
+        it("url 에 {{ 템플릿 }} 이 포함돼도 http(s) 로 시작하면 config 검증을 통과한다") {
+            // CallWebhookAction.url 은 실행 시점 템플릿 치환을 지원한다(ADR D3b). 템플릿 값은
+            // URI 로 파싱 불가능(`{{`/`}}` 는 유효 URI 문자가 아님)하므로 config 시점은 엄격 URI
+            // 파싱 대신 스킴 prefix 문자열 검사만 한다 — 엄격 검증(URI 파싱+SSRF)은 템플릿이 렌더된
+            // 뒤 실행 시점 OutboundUrlValidator 가 수행한다([WebhookActionClient] 참고).
+            val action =
+                Action.fromJson(ActionType.CALL_WEBHOOK, """{"url":"https://{{ issue.host }}/hook"}""")
+
+            action shouldBe
+                Action.CallWebhookAction(
+                    url = "https://{{ issue.host }}/hook",
+                    method = "POST",
+                    headers = emptyMap(),
+                    body = "",
+                )
+        }
+
+        it("url 이 파싱 불가능한 문자열이어도 http(s) 로 시작하면 config 검증을 통과한다(엄격 검증은 실행 시점)") {
+            val action =
+                Action.fromJson(ActionType.CALL_WEBHOOK, """{"url":"https://example.com/ bad"}""")
+
+            (action as Action.CallWebhookAction).url shouldBe "https://example.com/ bad"
         }
 
         it("headers 가 객체가 아니면 거부한다") {
