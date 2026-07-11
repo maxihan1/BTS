@@ -1,8 +1,10 @@
-// AutomationRuleController 응답 DTO — 표준 룰 응답(토큰 미노출) + 생성 시 1회 웹훅 토큰 동봉 응답 (FR-AT-01 Task 6)
+// AutomationRuleController 응답 DTO — 표준 룰 응답(토큰 미노출) + 생성 시 1회 웹훅 토큰 동봉 응답 (FR-AT-01 Task 6, FR-AT-02 Task 11)
 
 package com.bts.automation.adapter.web.dto
 
 import com.bts.automation.application.CreatedAutomationRule
+import com.bts.automation.domain.Action
+import com.bts.automation.domain.ActionType
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.TriggerType
 import java.time.Instant
@@ -21,6 +23,8 @@ import java.util.UUID
  * @property enabled 활성화 여부.
  * @property triggerType 트리거 타입.
  * @property triggerConfig 트리거별 설정 JSON 문자열.
+ * @property actions 발화 시 순차 실행할 액션 목록(FR-AT-02, 실행 순서 그대로).
+ * @property actorUserId 액션 실행 주체(rule actor, FR-AT-02).
  * @property hasWebhookToken WEBHOOK 트리거이고 토큰이 발급되어 있으면 true. 원문/해시는 노출하지 않는다.
  * @property nextFireAt SCHEDULED 트리거의 다음 발화 예정 시각. 그 외 타입은 null.
  * @property createdBy 룰을 생성한 사용자 id.
@@ -28,6 +32,7 @@ import java.util.UUID
  * @property updatedAt 마지막 변경 시각.
  * @property version OCC 버전.
  */
+@Suppress("LongParameterList")
 data class AutomationRuleResponse(
     val id: UUID,
     val projectKey: String,
@@ -35,6 +40,8 @@ data class AutomationRuleResponse(
     val enabled: Boolean,
     val triggerType: TriggerType,
     val triggerConfig: String,
+    val actions: List<ActionResponse>,
+    val actorUserId: UUID,
     val hasWebhookToken: Boolean,
     val nextFireAt: Instant?,
     val createdBy: UUID,
@@ -45,6 +52,10 @@ data class AutomationRuleResponse(
     companion object {
         /**
          * 도메인 [AutomationRule] 을 표준 응답 DTO 로 변환한다.
+         *
+         * [rule.actions] 는 호출자([com.bts.automation.application.AutomationRuleService])가 이미 올바르게
+         * 채운 상태여야 한다 — [com.bts.automation.adapter.AutomationRuleRepository] 의 find 계열은 actions
+         * 를 로드하지 않는다(Task 6 결정, 클래스 KDoc 참고).
          *
          * @param rule 변환할 도메인 애그리거트.
          * @return 토큰 원문/해시를 포함하지 않는 응답 DTO.
@@ -57,6 +68,8 @@ data class AutomationRuleResponse(
                 enabled = rule.enabled,
                 triggerType = rule.triggerType,
                 triggerConfig = rule.triggerConfig,
+                actions = rule.actions.map(ActionResponse::from),
+                actorUserId = rule.actorUserId,
                 hasWebhookToken = rule.webhookTokenHash != null,
                 nextFireAt = rule.nextFireAt,
                 createdBy = rule.createdBy,
@@ -66,6 +79,59 @@ data class AutomationRuleResponse(
             )
     }
 }
+
+/**
+ * 액션 1건의 응답 표현 — [com.bts.automation.adapter.web.dto.ActionRequest] 대칭 형태(FR-AT-02).
+ *
+ * [config] 는 [Action] 서브타입별 필드를 그대로 담은 맵이다(Jackson 이 중첩 객체로 직렬화 —
+ * [com.fasterxml.jackson.databind.JsonNode] 값도 그대로 직렬화된다). `type`/`config` 필드 조립 로직은
+ * [com.bts.automation.adapter.AutomationActionRepository]/[com.bts.automation.application.ActionExecutor]
+ * 의 저장·실행측 매핑과 목적이 달라(HTTP 응답 전용) 별도로 둔다(같은 모듈 내 유사 매핑 중복은 기존
+ * `ActionExecutor.actionTypeOf` 선례 동형).
+ *
+ * @property type 액션 타입.
+ * @property config 액션별 설정 값 맵.
+ */
+data class ActionResponse(
+    val type: ActionType,
+    val config: Map<String, Any?>,
+) {
+    companion object {
+        /**
+         * 도메인 [Action] 을 응답 DTO 로 변환한다.
+         *
+         * @param action 변환할 도메인 액션.
+         * @return 타입 + 설정 맵으로 구성된 응답 DTO.
+         */
+        fun from(action: Action): ActionResponse {
+            return ActionResponse(type = actionTypeOf(action), config = actionConfigOf(action))
+        }
+    }
+}
+
+/** [Action] 서브타입 → [ActionType] 매핑(HTTP 응답 전용). */
+private fun actionTypeOf(action: Action): ActionType =
+    when (action) {
+        is Action.SetFieldAction -> ActionType.SET_FIELD
+        is Action.AssignAction -> ActionType.ASSIGN
+        is Action.AddCommentAction -> ActionType.ADD_COMMENT
+        is Action.CallWebhookAction -> ActionType.CALL_WEBHOOK
+    }
+
+/** [Action] 서브타입 → 설정 맵 매핑(HTTP 응답 전용, [ActionRequest.config] 필드명과 대칭). */
+private fun actionConfigOf(action: Action): Map<String, Any?> =
+    when (action) {
+        is Action.SetFieldAction -> mapOf("field" to action.field, "value" to action.value)
+        is Action.AssignAction -> mapOf("assigneeId" to action.assigneeId)
+        is Action.AddCommentAction -> mapOf("body" to action.body)
+        is Action.CallWebhookAction ->
+            mapOf(
+                "url" to action.url,
+                "method" to action.method,
+                "headers" to action.headers,
+                "body" to action.body,
+            )
+    }
 
 /**
  * 자동화 룰 생성 응답 DTO — `POST .../rules` 전용. WEBHOOK 트리거면 [webhookToken] 에 원문을 **1회만** 담는다.

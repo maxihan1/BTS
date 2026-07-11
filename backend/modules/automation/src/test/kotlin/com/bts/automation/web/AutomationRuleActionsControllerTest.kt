@@ -300,7 +300,12 @@ class AutomationRuleActionsControllerTest {
         actions: List<Map<String, String?>> = emptyList(),
         actorUserId: String? = null,
     ): String {
-        val body = mutableMapOf<String, Any?>("name" to name, "triggerType" to triggerType, "triggerConfig" to triggerConfig)
+        val body =
+            mutableMapOf<String, Any?>(
+                "name" to name,
+                "triggerType" to triggerType,
+                "triggerConfig" to triggerConfig,
+            )
         if (actions.isNotEmpty()) body["actions"] = actions
         if (actorUserId != null) body["actorUserId"] = actorUserId
         return objectMapper.writeValueAsString(body)
