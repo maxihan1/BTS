@@ -61,8 +61,23 @@ import java.util.UUID
  * [patch] 는 [AutomationRule.changeActor] 를 경유해 actor 변경도 지원한다(FR-AT-02 Task 14, spec FR5 —
  * 변경 UI 는 D6 후속이고 이 서비스는 백엔드 지원만 완결한다). name·triggerConfig·actions 와 마찬가지로
  * [applyFieldPatch] 안에서 같은 `updated` 인스턴스에 체이닝되므로 [repository.update] 호출은 여전히
- * 단 한 번이다(버전은 실제 반영된 도메인 동작 수만큼 +1 되지만 저장은 원자적으로 1회 — sidecar 이중
- * bump 회귀([[no-bump-sidecar-version-double-bump]])와는 달리 이 메서드는 저장을 중복 호출하지 않는다).
+ * 단 한 번이다.
+ *
+ * ## 다필드 PATCH 단일 OCC 증가 collapse (코드리뷰 BLOCKER 수정, task-16)
+ * 체이닝 중 각 도메인 동작(rename/updateConfig/updateActions/changeActor/enable/disable)은 호출마다
+ * `version+1` 하므로, K 개 필드가 바뀌면 `updated.version` 은 인메모리에서 `existing.version+K` 가
+ * 된다. 그런데 [AutomationRuleRepository.update] 의 OCC 술어는 `expectedVersion = rule.version - 1`
+ * (한 번의 영속 호출 = 단일 bump 전제)이다 — K≥2 인 채로 그대로 저장하면 `expectedVersion` 이
+ * `existing.version+K-1` 이 되어 DB 의 실제 원본 버전(`existing.version`)과 어긋나 **다필드 PATCH가
+ * 항상 허위 409 로 실패**하고 재시도해도 비수렴한다(단일 필드만 테스트돼 잠복했던 사고). 저장 직전에
+ * `updated = updated.copy(version = existing.version + 1)` 로 **몇 필드가 바뀌었든 정확히 1 증가로
+ * collapse** 시켜 repository 의 `version-1` 술어(=DB 원본 = `existing.version`)와 일치시킨다. 도메인
+ * 메서드의 per-call bump 는 이 collapse 이전까지 "어떤 필드가 실제로 바뀌었는지"(no-op 판별, 아래
+ * `updated.version == existing.version` 비교)를 추적하는 인메모리 용도일 뿐이고, 영속되는 값은 이
+ * collapse 결과다. sidecar 이중 bump 회귀([[no-bump-sidecar-version-double-bump]])와는 반대
+ * 방향(sidecar 는 bump 를 아예 하지 말아야 했던 사고, 이쪽은 여러 bump 를 하나로 모아야 하는 사고)지만
+ * "한 논리적 갱신 = DB version 정확히 +1" 원칙은 동일하다.
+ *
  * actions 교체는 [AutomationRule.updateActions] 도메인 동작을 거친 뒤 [actionRepository] 로 별도
  * 영속한다 — `repository.update` 는 `automation_rules` 테이블만 갱신하고 `automation_actions` 는
  * 건드리지 않는다(Task 6 설계, [AutomationRuleRepository] 클래스 KDoc §actions 참고).
@@ -202,6 +217,9 @@ class AutomationRuleService(
      * 로 별도 영속한다(Task 6 설계 — 클래스 KDoc §액션/actor 매핑 참고). [actorUserId] 가 `null` 이 아니면
      * [AutomationRule.changeActor] 로 실행 주체를 교체한다(FR-AT-02 Task 14).
      *
+     * 몇 개 필드가 동시에 바뀌든 실제로 영속되는 OCC version 은 [expectedVersion] 대비 **정확히 +1**
+     * 이다(클래스 KDoc §다필드 PATCH 단일 OCC 증가 collapse 참고).
+     *
      * @param actorId 수정을 요청하는 행위자.
      * @param projectKey 룰이 속해야 하는 프로젝트 키(경로 스코프).
      * @param id 수정할 룰 id.
@@ -263,6 +281,13 @@ class AutomationRuleService(
             log.info("automation_rule_patch_noop id={} projectKey={}", id, projectKey)
             return existing
         }
+
+        // 다필드 단일 OCC 증가 collapse (클래스 KDoc "다필드 PATCH 단일 OCC 증가 collapse" 참조, 코드리뷰
+        // BLOCKER 수정) — 위에서 no-op 판별에 쓴 K-bump 상태(`updated.version`)는 여기서 버리고,
+        // 몇 필드가 바뀌었든 실제로 영속할 값은 existing.version(=클라이언트 기대 버전=DB 원본)에서
+        // 정확히 +1 이다. repository.update 의 expectedVersion(=rule.version-1) 이 DB 원본과 일치해야
+        // 다필드 PATCH 도 매칭된다.
+        updated = updated.copy(version = existing.version + 1)
 
         try {
             repository.update(updated)
@@ -390,8 +415,11 @@ data class AutomationActionInput(
  * 여부)에 의존해 분리하면 오히려 상태를 두 번 오가야 한다.
  *
  * 네 필드 모두 같은 `updated` 인스턴스에 순차 체이닝된다 — [AutomationRuleService.patch] 가 이 함수의
- * 반환값에 대해 `repository.update` 를 단 한 번만 호출하므로, 여러 필드가 동시에 바뀌어도 저장은
- * 원자적으로 1회다(actorUserId 를 별도로 저장하는 이중 bump 없음, 클래스 KDoc §액션/actor 매핑 참고).
+ * 반환값에 대해 `repository.update` 를 단 한 번만 호출하므로, 여러 필드가 동시에 바뀌어도 저장(영속
+ * 호출 자체)은 원자적으로 1회다. 다만 각 도메인 동작이 호출마다 `version+1` 하므로 이 함수가 반환하는
+ * `updated.version` 은 바뀐 필드 수만큼 인메모리에서 여러 번 증가한 상태다 — `patch()` 가 이를 그대로
+ * 저장하지 않고 `existing.version+1` 로 collapse 한 뒤 영속한다(클래스 KDoc §다필드 PATCH 단일 OCC
+ * 증가 collapse 참고, 코드리뷰 BLOCKER 수정).
  *
  * @throws com.bts.automation.domain.TriggerConfigInvalidException 새 triggerConfig 형식 위반 시.
  * @throws ActionConfigInvalidException [actions] 중 하나라도 형식을 위반할 때.

@@ -255,11 +255,24 @@ class AutomationExecutionWorker(
         /** pgmq 큐 이름 — `AutomationExecutionEnqueuer` 가 적재하는 큐와 일치해야 한다. */
         const val QUEUE_NAME = "q_automation_execution"
 
-        /** pgmq visibility timeout(초) — [AutomationEventWorker] 동형 예산. */
-        const val VT_SECONDS = 30
+        /**
+         * pgmq visibility timeout(초).
+         *
+         * [AutomationEventWorker] 는 HTTP 호출이 없는 순수 인메모리/DB 매칭이라 VT=30 이 충분하지만,
+         * 이 워커는 CALL_WEBHOOK 액션([WebhookActionClient])으로 아웃바운드 HTTP 를 호출한다 —
+         * [com.bts.shared.http.OutboundHttpClientConfig] 기본 타임아웃 connect=3s(`DEFAULT_CONNECT_TIMEOUT_MS`)
+         * + read=5s(`DEFAULT_READ_TIMEOUT_MS`) = 최악 8s/호출. [BATCH_SIZE] 개 메시지를 순차 처리하면
+         * (`pollAndProcess` 의 for 루프, 병렬 아님) 최악 소요 = `BATCH_SIZE × 8s`(메시지 1건당 지배적인
+         * 네트워크 호출 1회 가정, 이슈 변경 3종은 in-process DB 라 무시 가능한 수준 — 클래스 KDoc "처리
+         * 흐름" 참조) 인데, 옛 값(VT=30, BATCH=10)은 `10×8s=80s > 30s` 로 VT 안에 못 끝나 처리 중
+         * archive 전에 재전달(vt 만료)되어 같은 액션이 중복 실행될 위험이 있었다(코드리뷰 C1). VT=60,
+         * BATCH=5 로 재산정하면 `5×8s=40s < 60s`(search-export-import
+         * [com.bts.search.webhook.dispatch.WebhookDispatchWorker] 의 fanout VT=60 관례와도 값을 맞춤).
+         */
+        const val VT_SECONDS = 60
 
-        /** pgmq.read 1회 폴링 최대 메시지 수. */
-        const val BATCH_SIZE = 10
+        /** pgmq.read 1회 폴링 최대 메시지 수 — [VT_SECONDS] KDoc 계산 근거 참조. */
+        const val BATCH_SIZE = 5
 
         /** poison/실패 메시지 최대 수신 허용 횟수. 초과 시 dead-letter(archive). */
         const val MAX_RECEIVE_COUNT = 5
