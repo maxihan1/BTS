@@ -34,8 +34,7 @@ import org.springframework.stereotype.Component
 class StubSlashIssueSearchPort : SlashIssueSearchPort {
     /** [search] 가 돌려줄 결과. 테스트가 시나리오별로 시드한다(기본값 = 빈 결과 페이지). */
     @Volatile
-    var nextOutcome: SlashSearchOutcome =
-        SlashSearchOutcome.Success(IssueSearchPage.empty(DEFAULT_PAGE, DEFAULT_SIZE))
+    var nextOutcome: SlashSearchOutcome = defaultOutcome()
 
     /** [search] 에 마지막으로 넘어온 쿼리. 미호출이면 null. 테스트가 인자 정합을 검증한다. */
     @Volatile
@@ -54,7 +53,7 @@ class StubSlashIssueSearchPort : SlashIssueSearchPort {
 
     /** 테스트 간 상태 격리를 위해 시드/캡처를 기본값으로 되돌린다. */
     fun reset() {
-        nextOutcome = SlashSearchOutcome.Success(IssueSearchPage.empty(DEFAULT_PAGE, DEFAULT_SIZE))
+        nextOutcome = defaultOutcome()
         lastQuery = null
     }
 
@@ -64,5 +63,10 @@ class StubSlashIssueSearchPort : SlashIssueSearchPort {
 
         /** 기본 빈 페이지의 크기 — `SlashCommandHandlers.MAX_SEARCH_RESULTS` 와 동일한 ephemeral 상한. */
         const val DEFAULT_SIZE = 10
+
+        /** 미시드 기본 결과 — 빈 결과 페이지(실 포트 default fail-safe 와 동일 방향, init/reset 공용). */
+        fun defaultOutcome(): SlashSearchOutcome {
+            return SlashSearchOutcome.Success(IssueSearchPage.empty(DEFAULT_PAGE, DEFAULT_SIZE))
+        }
     }
 }

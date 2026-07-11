@@ -34,8 +34,7 @@ import org.springframework.stereotype.Component
 class StubIssueImportPort : IssueImportPort {
     /** [importIssue] 가 돌려줄 결과. 테스트가 시나리오별로 시드한다(기본값 = fail-closed 어댑터 부재). */
     @Volatile
-    var nextResult: IssueImportResult =
-        IssueImportResult.failure(IssueImportResult.ADAPTER_UNAVAILABLE)
+    var nextResult: IssueImportResult = defaultResult()
 
     /** [importIssue] 에 마지막으로 넘어온 커맨드. 미호출이면 null. 테스트가 인자 정합을 검증한다. */
     @Volatile
@@ -57,7 +56,12 @@ class StubIssueImportPort : IssueImportPort {
 
     /** 테스트 간 상태 격리를 위해 시드/캡처를 기본값으로 되돌린다. */
     fun reset() {
-        nextResult = IssueImportResult.failure(IssueImportResult.ADAPTER_UNAVAILABLE)
+        nextResult = defaultResult()
         lastCommand = null
+    }
+
+    private companion object {
+        /** 미시드 기본 결과 — 어댑터 부재 fail-closed 실패(실 포트 default 와 동일 방향, init/reset 공용). */
+        fun defaultResult(): IssueImportResult = IssueImportResult.failure(IssueImportResult.ADAPTER_UNAVAILABLE)
     }
 }
