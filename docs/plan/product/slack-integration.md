@@ -74,13 +74,13 @@
 
 **우선순위**. 높음 | **선행**. §2.1 | **Plan slug**. `slack/slash-command`
 
-- [ ] D1. 도메인 — SlashCommand (책임. backend-engineer)
-- [ ] D2. 명세 — `/atlas search <aql>`, `/atlas create <title>` 등 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용. Slack 사용자 → BTS 사용자 매핑) (책임. db-engineer)
-- [ ] D4. 백엔드 — Bolt command handler. 권한 가드 (책임. backend-engineer + security-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — (해당 없음) (책임. -)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 — SlashCommand (책임. backend-engineer) *[PR #258. sealed SlashCommand(Help/View/Search/Create/UsageError) + 신규 cross-BC `SlashIssueSearchPort`(shared-kernel, search BC가 AQL 파싱 소유). deviation. Bolt 미도입→자체 `SlackCommandsController`(FR-SL-03 관례)]*
+- [x] D2. 명세 — `/atlas search <aql>`, `/atlas create <title>` 등 (책임. backend-engineer) *[PR #258. 4 서브커맨드 help/view/search/create. 인라인 프로젝트 인자 필수. ephemeral 응답. spec/ADR]*
+- [x] D3. 데이터 모델 — (활용. Slack 사용자 → BTS 사용자 매핑) (책임. db-engineer) *[PR #258. 신규 마이그레이션 0 — `user_slack_mapping`(V701)·역매핑(V702) 재사용]*
+- [x] D4. 백엔드 — command handler. 권한 가드 (책임. backend-engineer + security-engineer) *[PR #258. deviation. Bolt→자체 컨트롤러. `POST /slack/commands` 서명검증 재사용(form-urlencoded raw body)·즉시 ack+@Async→response_url. 권한은 전부 포트 위임(fail-closed): view=IssueUnfurlPort·search=SlashIssueSearchPort·create=IssueImportPort. 미매핑→친절 안내]*
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) *[PR #258. 9 TDD 태스크. slack 296 tests·shared-kernel·search-export-import green]*
+- [x] D6. 프론트 UI — (해당 없음) (책임. -) *[UI 없음(Slack 내 명령)]*
+- [x] D7. E2E (책임. qa-engineer) *[PR #258. `SlackSlashCommandEndToEndTest` 9 시나리오(실 서명·4 happy·401·미매핑·문법오류·무권한·결과0)]*
 
 ### §3.3 FR-SL-05 — 인터랙티브 메시지 (버튼/메뉴)
 
