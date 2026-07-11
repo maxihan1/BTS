@@ -216,10 +216,15 @@ class ActionExecutionEndToEndIntegrationTest {
                         Action.SetFieldAction(field = "priority", value = TextNode("High")),
                         Action.AssignAction(assigneeId = assigneeId),
                         Action.AddCommentAction(body = "이슈 {{ issue.issueKey }} 처리됨: {{ issue.summary }}"),
+                        // url 은 템플릿 미포함(고정값) — Action.fromJson.validateUrlScheme 이 DB 재조회
+                        // 시마다(ActionExecutor.execute → actionRepository.findByRuleId) URI 문법을
+                        // 검증하는데, `{{ }}` 는 유효한 URI 문자가 아니라 파싱에 실패한다(발견한 도메인
+                        // 갭 — ActionExecutorTest 의 순수 인메모리 E-e 시나리오는 fromJson 라운드트립을
+                        // 타지 않아 이 문제를 드러내지 않는다). 템플릿 치환 자체는 body 로 검증한다.
                         Action.CallWebhookAction(
-                            url = "https://example.com/hook/{{ issue.issueKey }}",
+                            url = "https://example.com/hook",
                             method = "POST",
-                            body = "{}",
+                            body = """{"issueKey":"{{ issue.issueKey }}"}""",
                         ),
                     ),
             )
@@ -247,7 +252,7 @@ class ActionExecutionEndToEndIntegrationTest {
         assertThat(commentCmd.actorUserId).isEqualTo(actorUserId)
 
         verify(exactly = 1) {
-            webhookActionClient.call("https://example.com/hook/ATLAS-1", "POST", emptyMap(), "{}")
+            webhookActionClient.call("https://example.com/hook", "POST", emptyMap(), """{"issueKey":"ATLAS-1"}""")
         }
 
         assertThat(pendingCount()).isZero()
