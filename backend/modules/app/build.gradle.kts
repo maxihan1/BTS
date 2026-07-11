@@ -37,6 +37,13 @@ repositories {
     }
 }
 
+// detekt — PRE_EXISTING 위반(BtsApplication)을 detekt-baseline.xml 로 동결.
+// 신규 코드는 baseline 에 포함하지 않고 코드/@Suppress 로 해소한다.
+// (identity-access / issue-tracking / project-workflow / notification 등 동일 패턴.)
+detekt {
+    baseline = file("detekt-baseline.xml")
+}
+
 dependencies {
     // ── 9개 BC 모듈 (배포 조립 대상) ──────────────────────────────────────────────
     implementation(project(":modules:shared-kernel"))
