@@ -42,11 +42,15 @@ class SlashCommandParser {
      */
     fun parse(text: String): SlashCommand {
         val trimmed = text.trim()
-        if (trimmed.isEmpty()) return SlashCommand.Help
-        if (trimmed.length > MAX_TEXT_LENGTH) {
-            return SlashCommand.UsageError("입력이 너무 깁니다 (최대 ${MAX_TEXT_LENGTH}자).")
+        // detekt ReturnCount(최대 2) 준수 — 단일 return when 으로 분기 전체를 하나의 표현식으로 수렴.
+        return when {
+            trimmed.isEmpty() -> SlashCommand.Help
+            trimmed.length > MAX_TEXT_LENGTH -> SlashCommand.UsageError("입력이 너무 깁니다 (최대 ${MAX_TEXT_LENGTH}자).")
+            else -> parseSubcommand(trimmed)
         }
+    }
 
+    private fun parseSubcommand(trimmed: String): SlashCommand {
         val parts = trimmed.split(WHITESPACE_REGEX, limit = 2)
         val subcommand = parts[0].lowercase()
         val rest = parts.getOrNull(1)?.trim().orEmpty()
@@ -75,13 +79,11 @@ class SlashCommandParser {
         val parts = rest.split(WHITESPACE_REGEX, limit = 2)
         val projectKey = parts[0]
         val aql = parts.getOrNull(1)?.trim().orEmpty()
-        if (aql.isEmpty()) {
-            return SlashCommand.UsageError("검색 조건이 필요합니다. 사용법: /atlas search <프로젝트키> <검색조건>")
+        return when {
+            aql.isEmpty() -> SlashCommand.UsageError("검색 조건이 필요합니다. 사용법: /atlas search <프로젝트키> <검색조건>")
+            aql.length > MAX_AQL_LENGTH -> SlashCommand.UsageError("검색 조건이 너무 깁니다 (최대 ${MAX_AQL_LENGTH}자).")
+            else -> SlashCommand.Search(projectKey, aql)
         }
-        if (aql.length > MAX_AQL_LENGTH) {
-            return SlashCommand.UsageError("검색 조건이 너무 깁니다 (최대 ${MAX_AQL_LENGTH}자).")
-        }
-        return SlashCommand.Search(projectKey, aql)
     }
 
     private fun parseCreate(rest: String): SlashCommand {
@@ -91,14 +93,12 @@ class SlashCommandParser {
         val parts = rest.split(WHITESPACE_REGEX, limit = 2)
         val projectKey = parts[0]
         val rawTitle = parts.getOrNull(1)?.trim().orEmpty()
-        if (rawTitle.isEmpty()) {
-            return SlashCommand.UsageError("제목이 필요합니다. 사용법: /atlas create <프로젝트키> <제목>")
-        }
         val title = stripSurroundingQuotes(rawTitle)
-        if (title.length > MAX_TITLE_LENGTH) {
-            return SlashCommand.UsageError("제목이 너무 깁니다 (최대 ${MAX_TITLE_LENGTH}자).")
+        return when {
+            rawTitle.isEmpty() -> SlashCommand.UsageError("제목이 필요합니다. 사용법: /atlas create <프로젝트키> <제목>")
+            title.length > MAX_TITLE_LENGTH -> SlashCommand.UsageError("제목이 너무 깁니다 (최대 ${MAX_TITLE_LENGTH}자).")
+            else -> SlashCommand.Create(projectKey, title)
         }
-        return SlashCommand.Create(projectKey, title)
     }
 
     /** 양끝이 모두 쌍따옴표(`"`)로 감싸져 있으면 제거한다. 한쪽만 있거나 없으면 원문 그대로 둔다. */
