@@ -226,3 +226,21 @@ classify: type=api, agent=backend-engineer, primary_bc=slack-integration
 ### 종합
 - BLOCKER 0. 개선 2건 모두 plan에 반영 완료. security-engineer가 T8/T9 담당(서명 게이트·permitAll·fail-closed).
 - 권장: 단일 worktree **직렬 dispatch**(최근 slack PR #252/#257 관례 — git race 회피, 교훈 참조).
+
+## PR 단위 코드 리뷰 (게이트2 전)
+
+### code-reviewer 에이전트 (절대규칙19+learnings)
+- 12개 중점 항목(서명검증 선행·비밀 미노출·SSRF·빈catch·fail-closed actor·미매핑·reasonCode 마스킹·타입 실패분류·form-body·무회귀) **전부 PASS** (파일:라인 인용).
+- 🛑 **B1 (BLOCKER, 수정완료)**: `SlackCommandsController` `ResponseEntity<Void>`→detekt `ForbiddenVoid`. 선례 `SlackEventsController`(`<Any>`)와 불일치. → `<Any>`로 수정, detektMain green.
+- ⚠️ **C1 (CONCERN, 수정완료)**: stub KDoc이 "SlackContextLoadTest는 SlackTestcontainersConfig @Import 안 함"이라 주장하나 실제로는 함(거짓 근거). → 실제 메커니즘(scanBasePackages 스캔)으로 정정.
+
+### 구조/안전성 리뷰 (BTS 체크리스트)
+- Verdict **PASS**. 확인된 안전: actor 위조불가·fail-open 없음·form-body 보존·enum 완전성·예외핸들러 스코프·비밀 미노출·동시성.
+- ⚠️ **S1 (SUGGESTION)**: `SlackResponseUrlClient`가 response_url에 SSRF 호스트 핀닝 없음. SSRF 표면 0(서명검증 바디+Redirect.NEVER)이나, signing secret 유출 대비 `.slack.com` 핀닝은 선택적 심층방어. **필수 아님, Maxi 결정.**
+
+### 발견된 pre-existing (본 PR 범위 밖 — 미수정)
+- `search-export-import:detektMain`이 `ImportMappingService.kt:567,569`(FR-IM-02) `NoNameShadowing`으로 실패 — origin/main에 이미 존재. detektMain은 강제 게이트 아님(플레인 detekt가 게이트). 별도 후속.
+
+### 종합
+- BLOCKER B1 수정완료. CONCERN C1 수정완료. S1은 Maxi 결정(심층방어 추가 vs 유예).
+- 최종 검증: slack detekt+ktlint green·detektMain(내 파일) green·296 tests green·verify-master-plan 123/123·워킹트리 clean.
