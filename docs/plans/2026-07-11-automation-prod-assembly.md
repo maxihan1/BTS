@@ -53,9 +53,21 @@ automation이 prod 컨텍스트에서 소비하는 cross-BC 포트 3개 — **�
 
 - **관련 ADR**: [FR-AT-02](../decisions/2026-07-11-fr-at-02-automation-actions.md)(C4 정정 대상) + 신규 `2026-07-11-automation-prod-assembly` 후보
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙: [docs/specs/2026-07-11-automation-prod-assembly.md](../specs/2026-07-11-automation-prod-assembly.md)
+
+핵심 요구사항 요약.
+- R1 build.gradle `:modules:automation` 의존 · R2 FlywayAssemblyConfig automation 마이그레이션 · R3 부팅 테스트 automation 빈 단언
+- R4 "8개 BC"→"9개" 표기 전수 정정(4파일) · R5 스케줄링=전역 위임(inert config) · R6 ADR 정정+신규
+- 완료 기준: dev postgres 기동 후 `:modules:app:test` green + Flyway automation 4건 로그 + verify-master-plan 123/123
+
+## Brainstorming Check
+
+✅ 통과 (self sanity, 1회). Maxi 결정 필요 gap 없음.
+- 부팅 계약 안전(cross-BC 포트 3개 prod 구현 존재).
+- 실측 항목 plan 이관: E1 pgmq 확장 순서 · E3 cross-BC FK · E5 dev postgres 인프라 · settings.gradle 등록 · prod 필수설정 유무.
+- 설계 갈림길 D1(스케줄링 방식)·D2(검증 강도)는 게이트 1 제시.
 
 ## Plan (← /bts-plan 채움)
 
