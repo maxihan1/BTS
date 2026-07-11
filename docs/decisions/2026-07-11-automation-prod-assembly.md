@@ -48,6 +48,10 @@ automation main 빈 13개의 생성자 의존을 전수 추적한 결과 조립+
 - `verify-master-plan.sh`에 조립 BC 카운트 정합 가드(섹션 G) 추가 — "N개 BC" 표기 drift 차단.
 - FR 총수 123 불변(D-step 후속, 신규 제품 FR 아님).
 
+## 배포 런북 (운영 노트)
+
+- **q_automation_events 백로그 첫 배수 (리뷰 C1).** issue-tracking은 #253 조립 배포 이후 이슈 이벤트를 `q_automation_events`에 발행해왔으나 소비자(automation)가 없었다. 이 배선으로 automation 합류 시 `AutomationEventWorker`가 누적 백로그를 일괄 배수한다. **룰이 없으면 전부 무해 delete**이고 prod 미가동이면 백로그는 사실상 0이다. 다만 백로그가 크면 활성 부팅 직후 룰조회 쿼리 부하 스파이크가 가능하니, 그런 경우 automation 활성 부팅 전 `SELECT pgmq.purge_queue('q_automation_events');` 를 고려한다(무해 삭제 대상이라 안전).
+
 ## 후속 (Follow-ups, BLOCKER 아님)
 
 - 인바운드 permitAll 중앙등록(slack `/slack/events` + automation `/api/v1/automation/webhooks/{token}`) — security-engineer 트랙.
