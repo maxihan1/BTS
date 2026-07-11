@@ -327,6 +327,112 @@ class AutomationRuleActionsControllerTest {
             .andExpect(jsonPath("$.actorUserId").value(ACTOR_UUID))
     }
 
+    // ── PATCH 수정 — 다필드 동시 변경 OCC (코드리뷰 BLOCKER, task-16) ──────────────
+    //
+    // patch() 가 name→updateConfig→updateActions→changeActor 를 순차 체이닝하면 도메인 동작 호출
+    // 횟수(K)만큼 version 이 인메모리에서 여러 번 +1 된다. repository 의 OCC 술어는
+    // "expectedVersion = rule.version - 1"(단일 bump 전제)이므로, K≥2 면 expectedVersion 이 DB 원본
+    // version(클라이언트가 보낸 version)과 어긋나 항상 409 로 실패해야 정상(수정 전) — 아래 테스트들은
+    // 그 대신 "한 PATCH = version 정확히 +1"(K 무관)을 기대한다.
+
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `PATCH name+actions 동시 변경 - 200 이고 version 이 정확히 1 증가한다`() {
+        val ruleId =
+            createRule(
+                name = "다필드 대상1",
+                actions = listOf(mapOf("type" to "ADD_COMMENT", "config" to """{"body":"이전 액션"}""")),
+            )
+
+        mockMvc
+            .perform(
+                patch("/api/v1/projects/$PROJECT_KEY/automation/rules/$ruleId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """{"version":0,"name":"이름+액션 변경",""" +
+                            """"actions":[{"type":"ASSIGN","config":"{\"assigneeId\":null}"}]}""",
+                    ),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.version").value(1))
+            .andExpect(jsonPath("$.name").value("이름+액션 변경"))
+            .andExpect(jsonPath("$.actions.length()").value(1))
+            .andExpect(jsonPath("$.actions[0].type").value("ASSIGN"))
+
+        // 응답뿐 아니라 실제로 영속됐는지 재조회로 확인한다 — 재조회 version 도 1 이어야 다음 PATCH 가
+        // 정상적으로 expectedVersion=1 을 보낼 수 있다(비수렴 회귀 방지).
+        mockMvc
+            .perform(get("/api/v1/projects/$PROJECT_KEY/automation/rules/$ruleId"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.version").value(1))
+            .andExpect(jsonPath("$.name").value("이름+액션 변경"))
+    }
+
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `PATCH name+enabled 동시 변경 - 200 이고 version 이 정확히 1 증가한다`() {
+        val ruleId = createRule(name = "다필드 대상2")
+
+        mockMvc
+            .perform(
+                patch("/api/v1/projects/$PROJECT_KEY/automation/rules/$ruleId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"version":0,"name":"이름+비활성","enabled":false}"""),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.version").value(1))
+            .andExpect(jsonPath("$.name").value("이름+비활성"))
+            .andExpect(jsonPath("$.enabled").value(false))
+    }
+
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `PATCH actions+actorUserId 동시 변경 - 200 이고 version 이 정확히 1 증가한다`() {
+        val ruleId = createRule(name = "다필드 대상3")
+
+        mockMvc
+            .perform(
+                patch("/api/v1/projects/$PROJECT_KEY/automation/rules/$ruleId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """{"version":0,"actions":[{"type":"ASSIGN","config":"{\"assigneeId\":null}"}],""" +
+                            """"actorUserId":"$OTHER_ACTOR_UUID"}""",
+                    ),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.version").value(1))
+            .andExpect(jsonPath("$.actions.length()").value(1))
+            .andExpect(jsonPath("$.actorUserId").value(OTHER_ACTOR_UUID))
+    }
+
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `PATCH 3필드(name+actions+actorUserId) 동시 변경 - 200 이고 version 이 정확히 1 증가한다`() {
+        val ruleId = createRule(name = "다필드 대상4")
+
+        mockMvc
+            .perform(
+                patch("/api/v1/projects/$PROJECT_KEY/automation/rules/$ruleId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """{"version":0,"name":"3필드 변경",""" +
+                            """"actions":[{"type":"ADD_COMMENT","config":"{\"body\":\"3필드\"}"}],""" +
+                            """"actorUserId":"$OTHER_ACTOR_UUID"}""",
+                    ),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.version").value(1))
+            .andExpect(jsonPath("$.name").value("3필드 변경"))
+            .andExpect(jsonPath("$.actions.length()").value(1))
+            .andExpect(jsonPath("$.actorUserId").value(OTHER_ACTOR_UUID))
+
+        // 두 번째 PATCH — 첫 PATCH 후 version 이 정확히 1이었어야 expectedVersion=1 이 수락된다
+        // (비수렴 없이 연속 다필드 PATCH 도 항상 정확히 1씩 증가하는지 확인).
+        mockMvc
+            .perform(
+                patch("/api/v1/projects/$PROJECT_KEY/automation/rules/$ruleId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"version":1,"name":"두번째 PATCH","enabled":false}"""),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.version").value(2))
+    }
+
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────────
 
     @Suppress("LongParameterList")
