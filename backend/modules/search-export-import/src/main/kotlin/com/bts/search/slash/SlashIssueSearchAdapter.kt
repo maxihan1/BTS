@@ -90,30 +90,31 @@ class SlashIssueSearchAdapter(
                 )
             SlashSearchOutcome.Success(issueSearchPort.search(issueSearchQuery))
         } catch (e: AqlSyntaxException) {
-            logSyntaxError(query.projectKey, e.message)
-            SlashSearchOutcome.SyntaxError(e.message ?: DEFAULT_SYNTAX_ERROR_REASON)
+            toSyntaxError(query.projectKey, e.message)
         } catch (e: AqlLexException) {
-            logSyntaxError(query.projectKey, e.message)
-            SlashSearchOutcome.SyntaxError(e.message ?: DEFAULT_SYNTAX_ERROR_REASON)
+            toSyntaxError(query.projectKey, e.message)
         }
 
     /**
-     * AQL 파싱 실패를 로그로 남긴다.
+     * AQL 파싱 예외를 로그로 남기고 [SlashSearchOutcome.SyntaxError]로 변환한다.
      *
+     * [AqlSyntaxException]과 [AqlLexException] 두 예외 타입이 공유하는 변환 로직이다.
      * rawAql 원문(사용자 입력)은 로그에 남기지 않는다 — 사유(오류 메시지)만 기록한다.
      *
      * @param projectKey 검색 대상 프로젝트 키.
      * @param reason 파싱 예외가 보고한 오류 메시지(nullable).
+     * @return 사유가 채워진 [SlashSearchOutcome.SyntaxError].
      */
-    private fun logSyntaxError(
+    private fun toSyntaxError(
         projectKey: String,
         reason: String?,
-    ) {
+    ): SlashSearchOutcome.SyntaxError {
         log.info(
             "SLASH_SEARCH_SYNTAX_ERROR projectKey={} reason='{}'",
             projectKey,
             reason,
         )
+        return SlashSearchOutcome.SyntaxError(reason ?: DEFAULT_SYNTAX_ERROR_REASON)
     }
 
     companion object {
