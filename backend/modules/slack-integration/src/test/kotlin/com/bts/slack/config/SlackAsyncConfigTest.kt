@@ -58,4 +58,47 @@ class SlackAsyncConfigTest {
                 assertThat(executor.queueCapacity).isEqualTo(50)
             }
     }
+
+    @Test
+    fun `프로퍼티 미설정이어도 slackCommandExecutor 빈이 ThreadPoolTaskExecutor 로 등록된다(부팅 안전, FR-SL-04 Task 7)`() {
+        runner.run { ctx ->
+            assertThat(ctx).hasNotFailed()
+            assertThat(ctx).hasBean(SlackAsyncConfig.SLACK_COMMAND_EXECUTOR_BEAN_NAME)
+            val executor =
+                ctx.getBean(SlackAsyncConfig.SLACK_COMMAND_EXECUTOR_BEAN_NAME, ThreadPoolTaskExecutor::class.java)
+            assertThat(executor).isNotNull()
+        }
+    }
+
+    @Test
+    fun `slackCommandExecutor 는 slackUnfurlExecutor 와 별개 빈이며 core, max, queue 경계값을 갖는다(무한 스레드 방지)`() {
+        runner.run { ctx ->
+            val executor =
+                ctx.getBean(SlackAsyncConfig.SLACK_COMMAND_EXECUTOR_BEAN_NAME, ThreadPoolTaskExecutor::class.java)
+            val unfurlExecutor =
+                ctx.getBean(SlackAsyncConfig.SLACK_UNFURL_EXECUTOR_BEAN_NAME, ThreadPoolTaskExecutor::class.java)
+
+            assertThat(executor.corePoolSize).isPositive()
+            assertThat(executor.maxPoolSize).isPositive().isGreaterThanOrEqualTo(executor.corePoolSize)
+            assertThat(executor.queueCapacity).isPositive()
+            assertThat(executor).isNotSameAs(unfurlExecutor)
+        }
+    }
+
+    @Test
+    fun `bts_slack_command-executor 프로퍼티로 slackCommandExecutor 경계값을 오버라이드할 수 있다`() {
+        runner
+            .withPropertyValues(
+                "bts.slack.command-executor.core-pool-size=3",
+                "bts.slack.command-executor.max-pool-size=6",
+                "bts.slack.command-executor.queue-capacity=30",
+            ).run { ctx ->
+                val executor =
+                    ctx.getBean(SlackAsyncConfig.SLACK_COMMAND_EXECUTOR_BEAN_NAME, ThreadPoolTaskExecutor::class.java)
+
+                assertThat(executor.corePoolSize).isEqualTo(3)
+                assertThat(executor.maxPoolSize).isEqualTo(6)
+                assertThat(executor.queueCapacity).isEqualTo(30)
+            }
+    }
 }
