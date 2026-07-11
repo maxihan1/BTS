@@ -203,7 +203,7 @@ class ActionExecutor(
         return mapOf(
             FIELD_ISSUE to issueMap,
             "trigger" to mapOf("type" to rule.triggerType.name),
-            "actor" to (actorId?.let { mapOf("id" to it) } ?: emptyMap()),
+            "actor" to actorId?.let { mapOf("id" to it) }.orEmpty(),
         )
     }
 
