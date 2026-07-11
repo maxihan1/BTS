@@ -236,7 +236,7 @@ classify: type=api, agent=backend-engineer, primary_bc=slack-integration
 
 ### 구조/안전성 리뷰 (BTS 체크리스트)
 - Verdict **PASS**. 확인된 안전: actor 위조불가·fail-open 없음·form-body 보존·enum 완전성·예외핸들러 스코프·비밀 미노출·동시성.
-- ⚠️ **S1 (SUGGESTION)**: `SlackResponseUrlClient`가 response_url에 SSRF 호스트 핀닝 없음. SSRF 표면 0(서명검증 바디+Redirect.NEVER)이나, signing secret 유출 대비 `.slack.com` 핀닝은 선택적 심층방어. **필수 아님, Maxi 결정.**
+- ✅ **S1 (SUGGESTION) → 수정완료 (Maxi 게이트2 "S1 추가 후 머지").** `SlackResponseUrlClient`에 `allowedHostSuffix`(기본 `slack.com`) 호스트 핀닝 추가 — 전송 전 호스트가 `slack.com`/`.slack.com`이 아니면 POST 없이 fail-closed 거부. 도트 경계로 `evilslack.com` 우회 차단. 테스트는 접미사를 loopback으로 재정의(TDD test→feat, 6 tests green).
 
 ### 발견된 pre-existing (본 PR 범위 밖 — 미수정)
 - `search-export-import:detektMain`이 `ImportMappingService.kt:567,569`(FR-IM-02) `NoNameShadowing`으로 실패 — origin/main에 이미 존재. detektMain은 강제 게이트 아님(플레인 detekt가 게이트). 별도 후속.
