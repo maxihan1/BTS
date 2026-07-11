@@ -50,6 +50,7 @@ automation이 prod 컨텍스트에서 소비하는 cross-BC 포트 3개 — **�
 
 - **D1. 스케줄링 활성 방식** — (A, 권장) 전역 `@EnableScheduling` 위임(notification 동형), property 미설정, `AutomationSchedulingConfig` inert + KDoc 정정 / (B) `application-prod.yml`에 `bts.automation.scheduling.enabled=true` 명시(전역이 이미 구동하므로 기능상 redundant, 의도 문서화 목적).
 - **D2. 부팅 검증 강도** — (A, 권장) `contextLoads` + automation 빈 존재 단언 / (B) contextLoads만.
+- **D3. 웹훅 인바운드 permitAll (리뷰 C2)** — `AutomationWebhookController`(`/api/v1/automation/webhooks/{token}`)가 조립되나 중앙 `SecurityConfig` 화이트리스트 미포함 → prod 401(FR-AT-01 WEBHOOK 트리거 사문화). slack `/slack/events`도 동일 미등록·후속 추적 중. (A) 이 PR에서 identity-access `SecurityConfig`에 automation 웹훅 permitAll+CSRF-ignore 등록(cross-BC·보안 민감·security-engineer 검토 필요, WEBHOOK 트리거 즉시 prod 가동) / (B, 권장) slack 선례대로 명시적 scope-out + 후속 추적(본 PR=조립 배선+부팅 검증 스코프 유지, slack+automation 인바운드 permitAll 통합 후속이 자연스러운 배치). 어느 쪽이든 Brief의 "미가동 3종"(consumer·워커·IssueMutationPort)은 본 PR로 해소됨.
 
 - **관련 ADR**: [FR-AT-02](../decisions/2026-07-11-fr-at-02-automation-actions.md)(C4 정정 대상) + 신규 `2026-07-11-automation-prod-assembly` 후보
 
@@ -87,7 +88,7 @@ automation이 prod 컨텍스트에서 소비하는 cross-BC 포트 3개 — **�
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/app/src/test/kotlin/com/bts/app/BtsApplicationContextTest.kt`, `backend/modules/app/build.gradle.kts`, `backend/modules/app/src/main/kotlin/com/bts/app/FlywayAssemblyConfig.kt`, `backend/modules/app/src/main/kotlin/com/bts/app/BtsApplication.kt`]
+- files: [`backend/modules/app/src/test/kotlin/com/bts/app/BtsApplicationContextTest.kt`, `backend/modules/app/build.gradle.kts`, `backend/modules/app/src/main/kotlin/com/bts/app/FlywayAssemblyConfig.kt`, `backend/modules/app/src/main/kotlin/com/bts/app/BtsApplication.kt`, `backend/modules/app/src/main/resources/application.yml`]
 - depends-on: []
 
 **RED**:
@@ -108,29 +109,32 @@ automation이 prod 컨텍스트에서 소비하는 cross-BC 포트 3개 — **�
 - 커밋: `feat:`
 - 결과: `@ComponentScan("com.bts")`가 automation 스캔 → 워커/서비스 빈 결선 + Flyway automation 4건 적용 → 단언 통과.
 
-**REFACTOR** (같은 파일 내 표기 정정, 동작 무관):
+**REFACTOR** (app 모듈 내 표기 정정, 동작 무관 — 리뷰 C1/N3 반영):
 - `build.gradle.kts` L1·L41 주석 "8개 BC"→"9개 BC".
-- `FlywayAssemblyConfig.kt` KDoc "8개 BC"→"9개 BC".
-- `BtsApplication.kt` KDoc(L1·L21) "8개 BC"→"9개 BC".
+- `FlywayAssemblyConfig.kt` KDoc L13 "8개 BC"→"9개 BC".
+- `BtsApplication.kt` KDoc **L1만** "8개 BC"→"9개 BC" (L21엔 카운트 표기 없음).
 - `BtsApplicationContextTest.kt` L1 주석 "8개 BC"→"9개 BC".
+- `application.yml` L1 주석 "8개 BC"→"9개 BC".
 - 커밋: `refactor:` 또는 `docs:`
 
-**검증**: `docker compose -f infra/docker-compose.dev.yml up -d postgres` 후 `./gradlew :modules:app:test`. 로그에 `Flyway[automation] 마이그레이션 적용 4건` 확인. app 모듈 ktlint/detekt.
+**검증**: `docker compose -f infra/docker-compose.dev.yml up -d postgres` 후 `./gradlew :modules:app:test`. 로그에 `Flyway[automation] 마이그레이션 적용 4건` 확인. **RED 커밋 시 실패 사유가 DB 연결 실패가 아닌 빈 부재(단언 실패)임을 확인**(N2 — dev postgres 기동 상태에서 red 촬영). app 모듈 ktlint/detekt.
 
 ### Task 2. 표기 전수 동기화 + ADR (docs, 비-TDD)
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/settings.gradle.kts`, `backend/modules/automation/src/main/kotlin/com/bts/automation/AutomationSchedulingConfig.kt`, `docs/decisions/2026-07-11-fr-at-02-automation-actions.md`, `docs/decisions/2026-07-11-automation-prod-assembly.md`]
+- files: [`backend/settings.gradle.kts`, `infra/docker-compose.prod.yml`, `backend/modules/automation/src/main/kotlin/com/bts/automation/AutomationSchedulingConfig.kt`, `scripts/verify-master-plan.sh`, `docs/decisions/2026-07-11-fr-at-02-automation-actions.md`, `docs/decisions/2026-07-11-automation-prod-assembly.md`]
 - depends-on: [1]
 
-**작업** (RED/GREEN 없음 — 문서·주석, 동작 무관):
+**작업** (RED/GREEN 없음 — 문서·주석·가드, 동작 무관):
 - `settings.gradle.kts` L16 주석 정정: "automation app 조립 포함 완료 — app 은 9개 BC 조립".
+- `infra/docker-compose.prod.yml` L93 주석 "8개 BC"→"9개 BC" (C1).
 - `AutomationSchedulingConfig.kt` KDoc(R5) 정정: 조립 컨텍스트에선 전역 `@EnableScheduling`이 워커를 구동하므로 이 property 없이 폴링 활성(notification 동형). 코드/어노테이션 불변, KDoc만.
+- `scripts/verify-master-plan.sh` 확장(C1): 조립 "N개 BC" 표기 카운트 가드 룰 추가 — build.gradle 의존 개수와 주석 카운트 정합 검사(일부러 위반 넣어 fail 확인 후 원복).
 - FR-AT-02 ADR C4 절 정정: "전역 조립 모듈 신설은 후속" → "기존 `:modules:app`(#253)에 automation 추가로 해소(본 작업)". stale framing 명시.
-- 신규 ADR `docs/decisions/2026-07-11-automation-prod-assembly.md`: 결정(조립 배선 방식·전역 스케줄링 위임·부팅 검증 강도·순서 무관 근거). Obsidian 미러는 머지 후 sync-obsidian(자동).
+- 신규 ADR `docs/decisions/2026-07-11-automation-prod-assembly.md`: 결정(조립 배선 방식·전역 스케줄링 위임·부팅 검증 강도·순서 무관 근거·D3 웹훅 permitAll 결정). Obsidian 미러는 머지 후 sync-obsidian(자동).
 
-**검증**: `bash scripts/verify-master-plan.sh` 123/123. automation 모듈 KDoc 변경분 ktlint(`[[ktlint-kdoc-brace-parse-failure]]` — 중괄호/백틱 평문화). `./gradlew :modules:automation:compileKotlin`(KDoc 변경 컴파일 무해 확인).
+**검증**: `bash scripts/verify-master-plan.sh` 123/123(확장 룰 포함). automation 모듈 KDoc 변경분 ktlint(`[[ktlint-kdoc-brace-parse-failure]]` — 중괄호/백틱 평문화). `./gradlew :modules:automation:compileKotlin`(KDoc 변경 컴파일 무해 확인).
 
 ## Plan 메타
 
@@ -140,4 +144,27 @@ automation이 prod 컨텍스트에서 소비하는 cross-BC 포트 3개 — **�
 - TDD 강제: Task 1 yes(test:→feat: 순서), Task 2 docs 면제
 - 추가 검증: verify-master-plan, ktlint/detekt(app+automation), 조립 부팅 로그 Flyway automation 4건
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-11, 적대적 code-reviewer)
+
+**BLOCKER 0건.** 부팅 계약(claim 1~4) 코드 반증 실패 = plan 주장 옳음.
+- ✅ claim1 부팅 계약: automation main 빈 13개 생성자 의존 전수 추적 → 조립+prod 미충족 의존 0. 두 prod 어댑터(IdentityAccessAutomationPermissionResolver·AutomationIssueMutationAdapter)는 이미 조립돼 현 8-BC 부팅 테스트서 검증 중(소비자 없어도 non-lazy 인스턴스화). test stub은 automation/src/test에만(implementation 의존은 test 클래스 미포함) + `allow-bean-definition-overriding:true` 이중안전.
+- ✅ claim2 마이그레이션 순서 무관: V301 pgmq 자체완결·멱등, V300 pgcrypto IF NOT EXISTS, cross-BC 객체 참조 0. q_automation_events=issue V036:25.
+- ✅ claim3 전역 스케줄링: @Scheduled는 ContextRefreshedEvent 이후 시작, FlywayAssemblyConfig는 InitializingBean(refresh 이전) → 폴링 시점 큐/테이블 실재. AutomationSchedulingConfig inert.
+- ✅ claim4 TDD RED: AutomationExecutionWorker 최상위 @Component, value 미지정, @Transactional 없음 → FQN 빈이름 규약 일치, 문자열 단언 진짜 RED.
+
+**CONCERN 2건 (부팅 아님 — 완결성/drift):**
+- **C1 (표기 전수 정정 누락)**: R4 목록이 라이브 "8개 BC" 2곳 누락 — `backend/modules/app/src/main/resources/application.yml:1`, `infra/docker-compose.prod.yml:93`(실제 prod 배포 서술자). verify-master-plan은 이 형식을 못 잡아 조용히 drift(CLAUDE.md §전수 동기화 위반). → **반영: R4에 2파일 추가 + verify-master-plan에 조립 BC 카운트 룰 확장(Task 2)**.
+- **C2 (웹훅 인바운드 permitAll 침묵)**: `AutomationWebhookController`(`/api/v1/automation/webhooks/{token}`, permitAll 설계)가 조립되나 중앙 `SecurityConfig`(anyRequest().authenticated, 화이트리스트 미포함) → prod 401. FR-AT-01 WEBHOOK 트리거 사문화. **단 slack `/slack/events`도 동일하게 미등록·후속 추적 중** — 인바운드 permitAll 중앙등록은 BTS의 알려진 BC별 배포-시점 후속 패턴. → **게이트 1 결정 D3**.
+
+**NIT 3건:**
+- N1 단일스레드 스케줄러 공유(automation 폴러 3종 추가, AutomationExecutionWorker는 아웃바운드 HTTP) — 부팅 무관·기존 패턴 확장·범위 밖. 조립 차원 스케줄러 pool 후속으로 기록.
+- N2 "가짜 red" 여지: dev postgres 미기동 시 DB 연결 실패로 단언 이전 죽음. → **Task 1 검증에 "RED 실패 사유=빈 부재 확인" 추가**.
+- N3 plan 라인참조 부정확: BtsApplication "8개 BC"는 L1뿐(L21 아님). → R4 라인참조 정정(아래).
+
+### 리뷰 반영 (plan 수정)
+
+- **R4 정정 목록 확정(7곳)**: build.gradle.kts L1·L41 · FlywayAssemblyConfig KDoc L13 · BtsApplication KDoc **L1만** · BtsApplicationContextTest L1 · settings.gradle L16 · **application.yml L1(추가)** · **infra/docker-compose.prod.yml L93(추가)**.
+- **의존 인벤토리 보강(N/A 무해)**: automation은 표의 3개 포트 외에 `RestClient`(shared-kernel OutboundHttpClientConfig @Bean, notification/search 공유)·프레임워크 빈(JdbcTemplate·ObjectMapper) 소비 — 전부 조립 실재, 부팅 무해.
+- **Task 2에 verify-master-plan 확장 추가**: 조립 "N개 BC" 표기 카운트 가드 룰(일부러 위반 넣어 fail 확인).
