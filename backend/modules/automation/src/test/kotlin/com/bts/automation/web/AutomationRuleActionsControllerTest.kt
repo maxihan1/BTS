@@ -290,6 +290,43 @@ class AutomationRuleActionsControllerTest {
             .andExpect(jsonPath("$.actions[0].type").value("ADD_COMMENT"))
     }
 
+    // ── PATCH 수정 — actorUserId (FR-AT-02 Task 14) ─────────────────────────────
+
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `PATCH actorUserId 변경 - 저장 및 응답에 반영되고 재조회 시 새 actor 로 남는다`() {
+        val ruleId = createRule(name = "actor 변경 대상")
+
+        mockMvc
+            .perform(
+                patch("/api/v1/projects/$PROJECT_KEY/automation/rules/$ruleId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"version":0,"actorUserId":"$OTHER_ACTOR_UUID"}"""),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.actorUserId").value(OTHER_ACTOR_UUID))
+            .andExpect(jsonPath("$.version").value(1))
+
+        // 응답뿐 아니라 실제로 영속됐는지 재조회로 확인한다.
+        mockMvc
+            .perform(get("/api/v1/projects/$PROJECT_KEY/automation/rules/$ruleId"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.actorUserId").value(OTHER_ACTOR_UUID))
+    }
+
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `PATCH actorUserId 미지정 - 기존 actor 가 그대로 유지된다`() {
+        val ruleId = createRule(name = "actor 유지 대상")
+
+        mockMvc
+            .perform(
+                patch("/api/v1/projects/$PROJECT_KEY/automation/rules/$ruleId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"version":0,"name":"이름만 변경"}"""),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.actorUserId").value(ACTOR_UUID))
+    }
+
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────────
 
     @Suppress("LongParameterList")
