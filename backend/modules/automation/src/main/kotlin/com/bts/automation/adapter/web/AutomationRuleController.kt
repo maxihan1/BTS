@@ -43,7 +43,8 @@ import java.util.UUID
  * - `POST   /api/v1/projects/{projectKey}/automation/rules`      — 생성(201, WEBHOOK 이면 토큰 1회 동봉)
  * - `GET    /api/v1/projects/{projectKey}/automation/rules`      — 목록
  * - `GET    /api/v1/projects/{projectKey}/automation/rules/{id}` — 단건(토큰 미노출)
- * - `PATCH  /api/v1/projects/{projectKey}/automation/rules/{id}` — 부분수정(name·enabled·triggerConfig, OCC)
+ * - `PATCH  /api/v1/projects/{projectKey}/automation/rules/{id}` — 부분수정(name·enabled·triggerConfig·
+ *   actions·actorUserId, OCC)
  * - `DELETE /api/v1/projects/{projectKey}/automation/rules/{id}` — soft delete
  *
  * 모든 엔드포인트는 MANAGE_AUTOMATION 가드를 거친다. 인가 순서는 **actor 추출(401) → 권한 판정(403) →
@@ -121,7 +122,7 @@ class AutomationRuleController(
     }
 
     /**
-     * [id] 자동화 룰을 부분 수정한다(name·enabled·triggerConfig, OCC).
+     * [id] 자동화 룰을 부분 수정한다(name·enabled·triggerConfig·actions·actorUserId, OCC).
      *
      * @param projectKey 룰이 속해야 하는 프로젝트 키(경로 변수).
      * @param id 수정할 룰 id(경로 변수).
@@ -145,6 +146,7 @@ class AutomationRuleController(
                 enabled = request.enabled,
                 triggerConfig = request.triggerConfig,
                 actions = request.actions?.map(ActionRequest::toApplicationInput),
+                actorUserId = request.actorUserId,
             )
         log.info("AutomationRuleController.patch actor={} projectKey={} id={}", actorId, projectKey, id)
         return ResponseEntity.ok(AutomationRuleResponse.from(updated))

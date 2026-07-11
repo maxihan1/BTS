@@ -206,6 +206,7 @@ class AutomationRuleRepository(
                 trigger_config = CAST(:triggerConfig AS jsonb),
                 webhook_token_hash = :webhookTokenHash,
                 next_fire_at = :nextFireAt,
+                actor_user_id = :actorUserId,
                 updated_at = :updatedAt,
                 version = :version
             WHERE id = :id AND version = :expectedVersion AND deleted_at IS NULL
@@ -285,6 +286,7 @@ private fun automationRuleUpdateParams(rule: AutomationRule): MapSqlParameterSou
         .addValue("triggerConfig", rule.triggerConfig)
         .addValue("webhookTokenHash", rule.webhookTokenHash)
         .addValue("nextFireAt", rule.nextFireAt?.atOffset(ZoneOffset.UTC))
+        .addValue("actorUserId", rule.actorUserId)
         .addValue("updatedAt", rule.updatedAt.atOffset(ZoneOffset.UTC))
         .addValue("version", rule.version)
         .addValue("expectedVersion", rule.version - 1)

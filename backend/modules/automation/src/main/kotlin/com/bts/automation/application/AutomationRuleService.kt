@@ -58,12 +58,14 @@ import java.util.UUID
  * (형식 위반은 [ActionConfigInvalidException](400)). `actorUserId` 미지정 시 요청자([actorId])로
  * 폴백한다. [repository] 의 `save` 가 룰+액션을 같은 트랜잭션에서 원자적으로 영속한다(Task 6).
  *
- * [patch] 는 actor 변경을 지원하지 않는다 — spec FR5 상 actor 편집은 D6 UI 후속이고,
- * [AutomationRuleRepository.update] 갱신 SQL 이 아직 `actor_user_id` 컬럼을 갱신하지 않는다(생성
- * 전용 컬럼, [com.bts.automation.adapter.web.dto.PatchAutomationRuleRequest] KDoc 참고). actions 교체는
- * [AutomationRule.updateActions] 도메인 동작을 거친 뒤 [actionRepository] 로 별도 영속한다 —
- * `repository.update` 는 `automation_rules` 테이블만 갱신하고 `automation_actions` 는 건드리지 않는다
- * (Task 6 설계, [AutomationRuleRepository] 클래스 KDoc §actions 참고).
+ * [patch] 는 [AutomationRule.changeActor] 를 경유해 actor 변경도 지원한다(FR-AT-02 Task 14, spec FR5 —
+ * 변경 UI 는 D6 후속이고 이 서비스는 백엔드 지원만 완결한다). name·triggerConfig·actions 와 마찬가지로
+ * [applyFieldPatch] 안에서 같은 `updated` 인스턴스에 체이닝되므로 [repository.update] 호출은 여전히
+ * 단 한 번이다(버전은 실제 반영된 도메인 동작 수만큼 +1 되지만 저장은 원자적으로 1회 — sidecar 이중
+ * bump 회귀([[no-bump-sidecar-version-double-bump]])와는 달리 이 메서드는 저장을 중복 호출하지 않는다).
+ * actions 교체는 [AutomationRule.updateActions] 도메인 동작을 거친 뒤 [actionRepository] 로 별도
+ * 영속한다 — `repository.update` 는 `automation_rules` 테이블만 갱신하고 `automation_actions` 는
+ * 건드리지 않는다(Task 6 설계, [AutomationRuleRepository] 클래스 KDoc §actions 참고).
  *
  * [get]/[list] 는 [AutomationRuleRepository] 의 find 계열이 actions 를 로드하지 않으므로(Task 6 결정)
  * [actionRepository] 로 별도 로드해 채운 뒤 반환한다.
@@ -197,8 +199,8 @@ class AutomationRuleService(
      *
      * [actions] 가 `null` 이 아니면 [AutomationRule.updateActions] 로 전체 교체하고(부분 병합 아님),
      * [repository] 의 `update` 가 `automation_rules` 테이블만 갱신하므로 [actionRepository.replaceForRule]
-     * 로 별도 영속한다(Task 6 설계 — 클래스 KDoc §액션/actor 매핑 참고). actor(실행 주체) 변경은 이
-     * 메서드 범위 밖이다([com.bts.automation.adapter.web.dto.PatchAutomationRuleRequest] KDoc 참고).
+     * 로 별도 영속한다(Task 6 설계 — 클래스 KDoc §액션/actor 매핑 참고). [actorUserId] 가 `null` 이 아니면
+     * [AutomationRule.changeActor] 로 실행 주체를 교체한다(FR-AT-02 Task 14).
      *
      * @param actorId 수정을 요청하는 행위자.
      * @param projectKey 룰이 속해야 하는 프로젝트 키(경로 스코프).
@@ -208,6 +210,7 @@ class AutomationRuleService(
      * @param enabled 변경할 활성화 여부. null 이면 미변경.
      * @param triggerConfig 변경할 triggerConfig JSON 문자열. null 이면 미변경.
      * @param actions 교체할 액션 목록(요청 표현). null 이면 미변경.
+     * @param actorUserId 변경할 액션 실행 주체. null 이면 미변경.
      * @return 변경된 룰(액션 포함).
      * @throws AutomationForbiddenException 권한이 없을 때.
      * @throws AutomationRuleNotFoundException 룰이 없거나 [projectKey] 소속이 아닐 때.
@@ -215,7 +218,8 @@ class AutomationRuleService(
      *   조회와 저장 사이 다른 트랜잭션이 먼저 갱신했을 때(TOCTOU 안전망).
      * @throws com.bts.automation.domain.TriggerConfigInvalidException 새 triggerConfig 형식 위반 시.
      * @throws ActionConfigInvalidException [actions] 중 하나라도 형식을 위반할 때.
-     * @throws com.bts.automation.domain.AutomationRuleInvalidException 새 name 이 불변식을 위반할 때.
+     * @throws com.bts.automation.domain.AutomationRuleInvalidException 새 name 또는 [actorUserId] 가
+     *   불변식을 위반할 때.
      */
     @Suppress("LongParameterList")
     @Transactional
@@ -228,6 +232,7 @@ class AutomationRuleService(
         enabled: Boolean?,
         triggerConfig: String?,
         actions: List<AutomationActionInput>? = null,
+        actorUserId: UUID? = null,
     ): AutomationRule {
         assertManageAutomation(actorId, projectKey)
         val existing = withActions(findInProject(projectKey, id))
@@ -237,10 +242,10 @@ class AutomationRuleService(
 
         val now = Instant.now(clock)
         val wasDisabled = !existing.enabled
-        // name·triggerConfig·actions 적용은 patch() 자체의 순환 복잡도(CyclomaticComplexMethod)를
-        // 낮추려고 top-level 함수로 뺐다(TooManyFunctions 예산도 아낀다 — 클래스 멤버가 아니라 패키지
-        // 함수라 클래스 함수 개수 집계에서 제외된다).
-        var updated = applyFieldPatch(existing, name, triggerConfig, actions, now)
+        // name·triggerConfig·actions·actorUserId 적용은 patch() 자체의 순환 복잡도
+        // (CyclomaticComplexMethod)를 낮추려고 top-level 함수로 뺐다(TooManyFunctions 예산도 아낀다 —
+        // 클래스 멤버가 아니라 패키지 함수라 클래스 함수 개수 집계에서 제외된다).
+        var updated = applyFieldPatch(existing, name, triggerConfig, actions, actorUserId, now)
         if (enabled != null && enabled != updated.enabled) {
             updated = if (enabled) updated.enable(now) else updated.disable(now)
         }
@@ -375,7 +380,8 @@ data class AutomationActionInput(
 )
 
 /**
- * [AutomationRuleService.patch] 의 name·triggerConfig·actions 반영을 뺀 top-level 함수(FR-AT-02 Task 11).
+ * [AutomationRuleService.patch] 의 name·triggerConfig·actions·actorUserId 반영을 뺀 top-level 함수
+ * (FR-AT-02 Task 11, actorUserId 는 Task 14).
  *
  * `patch()` 자체에 인라인했을 때 순환 복잡도(detekt CyclomaticComplexMethod)와 클래스 함수 개수
  * (detekt TooManyFunctions) 예산을 함께 넘겨서 뺐다 — 클래스 멤버가 아닌 패키지 top-level 함수라 클래스
@@ -383,15 +389,22 @@ data class AutomationActionInput(
  * 선례 동형). enabled 전이는 `patch()` 에 남긴다 — nextFireAt 재계산이 enabled 전이 결과(활성화 전환
  * 여부)에 의존해 분리하면 오히려 상태를 두 번 오가야 한다.
  *
+ * 네 필드 모두 같은 `updated` 인스턴스에 순차 체이닝된다 — [AutomationRuleService.patch] 가 이 함수의
+ * 반환값에 대해 `repository.update` 를 단 한 번만 호출하므로, 여러 필드가 동시에 바뀌어도 저장은
+ * 원자적으로 1회다(actorUserId 를 별도로 저장하는 이중 bump 없음, 클래스 KDoc §액션/actor 매핑 참고).
+ *
  * @throws com.bts.automation.domain.TriggerConfigInvalidException 새 triggerConfig 형식 위반 시.
  * @throws ActionConfigInvalidException [actions] 중 하나라도 형식을 위반할 때.
- * @throws com.bts.automation.domain.AutomationRuleInvalidException 새 name 이 불변식을 위반할 때.
+ * @throws com.bts.automation.domain.AutomationRuleInvalidException 새 name 또는 [actorUserId] 가
+ *   불변식을 위반할 때.
  */
+@Suppress("LongParameterList")
 private fun applyFieldPatch(
     rule: AutomationRule,
     name: String?,
     triggerConfig: String?,
     actions: List<AutomationActionInput>?,
+    actorUserId: UUID?,
     now: Instant,
 ): AutomationRule {
     var updated = rule
@@ -403,6 +416,9 @@ private fun applyFieldPatch(
     }
     if (actions != null) {
         updated = updated.updateActions(actions.map(::toDomainAction), now)
+    }
+    if (actorUserId != null) {
+        updated = updated.changeActor(actorUserId, now)
     }
     return updated
 }
