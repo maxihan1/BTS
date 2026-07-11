@@ -1,4 +1,4 @@
-// V300/V301 마이그레이션 검증 — automation_rules 컬럼 세트 + q_automation_execution 큐 존재 확인 (FR-AT-01 Task 2)
+// V300~V303 마이그레이션 검증 — automation_rules·automation_actions·q_automation_execution 큐 (FR-AT-01/02)
 
 package com.bts.automation
 
@@ -43,6 +43,16 @@ import java.util.UUID
  * - **q_automation_events 는 automation 이 생성하지 않음**(plan-eng-review E1 — producer 인 issue-tracking 이
  *   Task 10 에서 소유·생성. automation 마이그레이션 경계 명시)
  *
+ * ## FR-AT-02 Task 1 추가 검증 (V302 automation_actions + V303 actor_user_id / ADR D1)
+ * - automation_actions 테이블 존재 + 6개 컬럼(id/rule_id/position/action_type/action_config/created_at)
+ * - id = uuid PK NOT NULL / rule_id = uuid NOT NULL / position = integer NOT NULL
+ * - action_type = character varying NOT NULL / action_config = jsonb NOT NULL
+ * - created_at = timestamptz NOT NULL(DATA.md §4.1#4 — TIMESTAMP without tz 금지)
+ * - action_type CHECK 4종(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK) — 잘못된 값 거부
+ * - rule_id FK → automation_rules(id) ON DELETE CASCADE(부모 룰 삭제 시 액션 동반 삭제)
+ * - UNIQUE(rule_id, position)(겸 조회 인덱스 uq_automation_actions_rule_position) — 중복 순서 거부
+ * - automation_rules.actor_user_id = uuid NOT NULL(V303 backfill: created_by → SET NOT NULL, 룰 실행 주체)
+ *
  * 정보 스키마(information_schema / pg_constraint / pgmq.list_queues) 조회로 단언한다.
  * SQL 문자열 결합 없이 prepared statement 파라미터 바인딩만 사용한다.
  */
@@ -62,7 +72,7 @@ class SchemaMigrationTest {
                 .withPassword("bts_test")
                 .apply { start() }
 
-        // automation_rules 가 보유해야 하는 13개 컬럼 (ADR D1 트리거 전용 스키마 정합).
+        // automation_rules 가 보유해야 하는 14개 컬럼 (V300 트리거 스키마 13 + V303 actor_user_id).
         private val AUTOMATION_RULES_COLUMNS =
             listOf(
                 "id",
@@ -78,6 +88,19 @@ class SchemaMigrationTest {
                 "updated_at",
                 "version",
                 "deleted_at",
+                // V303 추가 — 룰 실행 주체(actor)
+                "actor_user_id",
+            )
+
+        // automation_actions 가 보유해야 하는 6개 컬럼 (FR-AT-02 Task 1 / ADR D1 액션 스키마).
+        private val AUTOMATION_ACTIONS_COLUMNS =
+            listOf(
+                "id",
+                "rule_id",
+                "position",
+                "action_type",
+                "action_config",
+                "created_at",
             )
 
         @BeforeAll
@@ -175,13 +198,17 @@ class SchemaMigrationTest {
             }
         }
 
-    private fun indexExists(indexName: String): Boolean =
+    private fun indexExists(
+        indexName: String,
+        tableName: String = "automation_rules",
+    ): Boolean =
         conn().use { c ->
             c.prepareStatement(
                 "SELECT COUNT(*) FROM pg_indexes" +
-                    " WHERE schemaname = 'public' AND tablename = 'automation_rules' AND indexname = ?",
+                    " WHERE schemaname = 'public' AND tablename = ? AND indexname = ?",
             ).use { stmt ->
-                stmt.setString(1, indexName)
+                stmt.setString(1, tableName)
+                stmt.setString(2, indexName)
                 stmt.executeQuery().use { rs ->
                     rs.next()
                     rs.getInt(1) > 0
@@ -204,17 +231,19 @@ class SchemaMigrationTest {
         }
 
     // automation_rules 한 행 INSERT — NOT NULL 이면서 DEFAULT 가 없는 최소 컬럼만 채운다.
-    // (project_key / name / trigger_type / created_by. 나머지는 DEFAULT.)
+    // (project_key / name / trigger_type / created_by / actor_user_id. 나머지는 DEFAULT.)
+    // actor_user_id 는 V303 에서 NOT NULL(DEFAULT 없음)이 되므로 반드시 채운다.
     private fun insertRule(triggerType: String) {
         conn().use { c ->
             c.prepareStatement(
-                "INSERT INTO automation_rules (project_key, name, trigger_type, created_by)" +
-                    " VALUES (?, ?, ?, ?)",
+                "INSERT INTO automation_rules (project_key, name, trigger_type, created_by, actor_user_id)" +
+                    " VALUES (?, ?, ?, ?, ?)",
             ).use { stmt ->
                 stmt.setString(1, "ATLAS")
                 stmt.setString(2, "자동 라벨 부여 룰")
                 stmt.setString(3, triggerType)
                 stmt.setObject(4, UUID.randomUUID())
+                stmt.setObject(5, UUID.randomUUID())
                 stmt.executeUpdate()
             }
         }
@@ -224,13 +253,80 @@ class SchemaMigrationTest {
     private fun insertWebhookRule(tokenHash: String) {
         conn().use { c ->
             c.prepareStatement(
-                "INSERT INTO automation_rules (project_key, name, trigger_type, webhook_token_hash, created_by)" +
-                    " VALUES (?, ?, 'WEBHOOK', ?, ?)",
+                "INSERT INTO automation_rules" +
+                    " (project_key, name, trigger_type, webhook_token_hash, created_by, actor_user_id)" +
+                    " VALUES (?, ?, 'WEBHOOK', ?, ?, ?)",
             ).use { stmt ->
                 stmt.setString(1, "ATLAS")
                 stmt.setString(2, "웹훅 인바운드 룰")
                 stmt.setString(3, tokenHash)
                 stmt.setObject(4, UUID.randomUUID())
+                stmt.setObject(5, UUID.randomUUID())
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    // ── FR-AT-02 액션 테이블 검증용 헬퍼 ────────────────────────────────────────
+
+    // automation_rules 한 행 INSERT 후 생성된 id 반환 — automation_actions FK/CASCADE 검증용 부모 행.
+    @Suppress("NestedBlockDepth")
+    private fun insertRuleReturningId(): UUID =
+        conn().use { c ->
+            c.prepareStatement(
+                "INSERT INTO automation_rules (project_key, name, trigger_type, created_by, actor_user_id)" +
+                    " VALUES (?, ?, 'ISSUE_CREATED', ?, ?) RETURNING id",
+            ).use { stmt ->
+                stmt.setString(1, "ATLAS")
+                stmt.setString(2, "액션 보유 룰")
+                stmt.setObject(3, UUID.randomUUID())
+                stmt.setObject(4, UUID.randomUUID())
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getObject(1, UUID::class.java)
+                }
+            }
+        }
+
+    // automation_actions 한 행 INSERT — action_config 는 최소 '{}' jsonb.
+    private fun insertAction(
+        ruleId: UUID,
+        position: Int,
+        actionType: String,
+    ) {
+        conn().use { c ->
+            c.prepareStatement(
+                "INSERT INTO automation_actions (rule_id, position, action_type, action_config)" +
+                    " VALUES (?, ?, ?, ?::jsonb)",
+            ).use { stmt ->
+                stmt.setObject(1, ruleId)
+                stmt.setInt(2, position)
+                stmt.setString(3, actionType)
+                stmt.setString(4, "{}")
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    @Suppress("NestedBlockDepth")
+    private fun countActionsForRule(ruleId: UUID): Int =
+        conn().use { c ->
+            c.prepareStatement(
+                "SELECT COUNT(*) FROM automation_actions WHERE rule_id = ?",
+            ).use { stmt ->
+                stmt.setObject(1, ruleId)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getInt(1)
+                }
+            }
+        }
+
+    // ON DELETE CASCADE 검증용 — 부모 룰 하드 삭제(id 단건, 대상 명시).
+    private fun deleteRule(ruleId: UUID) {
+        conn().use { c ->
+            c.prepareStatement("DELETE FROM automation_rules WHERE id = ?").use { stmt ->
+                stmt.setObject(1, ruleId)
                 stmt.executeUpdate()
             }
         }
@@ -244,7 +340,7 @@ class SchemaMigrationTest {
     }
 
     @Test
-    fun `V300 automation_rules 13개 컬럼 존재`() {
+    fun `automation_rules 14개 컬럼 존재 (V300 13 + V303 actor_user_id)`() {
         assertThat(columnsOf("automation_rules"))
             .containsExactlyInAnyOrderElementsOf(AUTOMATION_RULES_COLUMNS)
     }
@@ -384,5 +480,102 @@ class SchemaMigrationTest {
         assertThat(pgmqQueueExists("q_automation_events"))
             .`as`("q_automation_events 는 producer 인 issue-tracking(Task 10)이 소유·생성한다 — automation 경계 밖")
             .isFalse()
+    }
+
+    // ── FR-AT-02 Task 1: automation_actions 테이블 검증 (V302 / ADR D1) ──────────
+
+    @Test
+    fun `V302 automation_actions 테이블 존재`() {
+        assertThat(tableExists("automation_actions")).isTrue()
+    }
+
+    @Test
+    fun `V302 automation_actions 6개 컬럼 존재`() {
+        assertThat(columnsOf("automation_actions"))
+            .containsExactlyInAnyOrderElementsOf(AUTOMATION_ACTIONS_COLUMNS)
+    }
+
+    @Test
+    fun `V302 automation_actions id 는 uuid PK NOT NULL`() {
+        assertThat(columnDataType("automation_actions", "id")).isEqualTo("uuid")
+        assertThat(columnIsNullable("automation_actions", "id")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V302 rule_id 는 uuid NOT NULL`() {
+        assertThat(columnDataType("automation_actions", "rule_id")).isEqualTo("uuid")
+        assertThat(columnIsNullable("automation_actions", "rule_id")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V302 position 은 integer NOT NULL`() {
+        assertThat(columnDataType("automation_actions", "position")).isEqualTo("integer")
+        assertThat(columnIsNullable("automation_actions", "position")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V302 action_type 은 character varying NOT NULL`() {
+        assertThat(columnDataType("automation_actions", "action_type")).isEqualTo("character varying")
+        assertThat(columnIsNullable("automation_actions", "action_type")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V302 action_config 는 jsonb NOT NULL`() {
+        assertThat(columnDataType("automation_actions", "action_config")).isEqualTo("jsonb")
+        assertThat(columnIsNullable("automation_actions", "action_config")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V302 automation_actions created_at 은 timestamptz NOT NULL`() {
+        assertThat(columnDataType("automation_actions", "created_at")).isEqualTo("timestamp with time zone")
+        assertThat(columnIsNullable("automation_actions", "created_at")).isEqualTo("NO")
+    }
+
+    // ── action_type CHECK 제약 (4종 화이트리스트) ──────────────────────────────
+
+    @Test
+    fun `V302 유효한 action_type 4종은 INSERT 허용`() {
+        val ruleId = insertRuleReturningId()
+        listOf("SET_FIELD", "ASSIGN", "ADD_COMMENT", "CALL_WEBHOOK")
+            .forEachIndexed { position, actionType -> insertAction(ruleId, position, actionType) }
+    }
+
+    @Test
+    fun `V302 정의되지 않은 action_type 은 CHECK 제약 위반`() {
+        val ruleId = insertRuleReturningId()
+        assertThatThrownBy { insertAction(ruleId, 0, "DELETE_ISSUE") }
+            .hasMessageContaining("ck_automation_actions_action_type")
+    }
+
+    // ── FK ON DELETE CASCADE + UNIQUE(rule_id, position) ────────────────────────
+
+    @Test
+    fun `V302 rule 삭제 시 automation_actions 는 ON DELETE CASCADE 로 함께 삭제`() {
+        val ruleId = insertRuleReturningId()
+        insertAction(ruleId, 0, "SET_FIELD")
+        assertThat(countActionsForRule(ruleId)).isEqualTo(1)
+        deleteRule(ruleId)
+        assertThat(countActionsForRule(ruleId)).isEqualTo(0)
+    }
+
+    @Test
+    fun `V302 같은 rule_id + position 중복 INSERT 는 UNIQUE 위반`() {
+        val ruleId = insertRuleReturningId()
+        insertAction(ruleId, 0, "SET_FIELD")
+        assertThatThrownBy { insertAction(ruleId, 0, "ASSIGN") }
+            .hasMessageContaining("uq_automation_actions_rule_position")
+    }
+
+    @Test
+    fun `V302 조회 겸 유일성용 rule_id position 인덱스 존재`() {
+        assertThat(indexExists("uq_automation_actions_rule_position", "automation_actions")).isTrue()
+    }
+
+    // ── FR-AT-02 Task 1: automation_rules.actor_user_id 검증 (V303) ─────────────
+
+    @Test
+    fun `V303 actor_user_id 는 uuid NOT NULL (실행 주체)`() {
+        assertThat(columnDataType("automation_rules", "actor_user_id")).isEqualTo("uuid")
+        assertThat(columnIsNullable("automation_rules", "actor_user_id")).isEqualTo("NO")
     }
 }

@@ -5,6 +5,7 @@ package com.bts.automation.web
 import com.bts.automation.AutomationTestBootApplication
 import com.bts.automation.AutomationTestcontainersBase
 import com.bts.automation.StubAutomationPermissionResolver
+import com.bts.automation.StubIssueMutationPort
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -470,11 +471,12 @@ class AutomationRuleControllerTest {
     }
 
     /**
-     * 테스트 전용 인가 필터체인 + [StubAutomationPermissionResolver] 빈 등록.
+     * 테스트 전용 인가 필터체인 + [StubAutomationPermissionResolver]/[StubIssueMutationPort] 빈 등록.
      *
      * `AutomationTestcontainersBase`(Task 1 산출물)는 이 Task 의 파일 범위 밖이라 여기(테스트 파일 자체)에서
      * nested `@TestConfiguration` 으로 등록한다. csrf 는 JSON API 테스트 편의상 비활성화한다(prod 정책 아님,
-     * slack `SlackTestSecurityConfig` 동형).
+     * slack `SlackTestSecurityConfig` 동형). [StubIssueMutationPort] 는 `ActionExecutor`(FR-AT-02 Task 9)가
+     * non-null 로 요구하는 [com.bts.shared.issue.IssueMutationPort] 를 컨텍스트 로드용으로 대신 등록한다.
      */
     @TestConfiguration
     class TestSupportConfig {
@@ -491,5 +493,8 @@ class AutomationRuleControllerTest {
 
         @Bean
         fun stubAutomationPermissionResolver(): StubAutomationPermissionResolver = StubAutomationPermissionResolver()
+
+        @Bean
+        fun stubIssueMutationPort(): StubIssueMutationPort = StubIssueMutationPort()
     }
 }

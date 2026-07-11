@@ -2,10 +2,12 @@
 
 package com.bts.automation.adapter.web
 
+import com.bts.automation.adapter.web.dto.ActionRequest
 import com.bts.automation.adapter.web.dto.AutomationRuleResponse
 import com.bts.automation.adapter.web.dto.CreateAutomationRuleRequest
 import com.bts.automation.adapter.web.dto.CreateAutomationRuleResponse
 import com.bts.automation.adapter.web.dto.PatchAutomationRuleRequest
+import com.bts.automation.application.AutomationActionInput
 import com.bts.automation.application.AutomationForbiddenException
 import com.bts.automation.application.AutomationRuleNotFoundException
 import com.bts.automation.application.AutomationRuleService
@@ -41,7 +43,8 @@ import java.util.UUID
  * - `POST   /api/v1/projects/{projectKey}/automation/rules`      — 생성(201, WEBHOOK 이면 토큰 1회 동봉)
  * - `GET    /api/v1/projects/{projectKey}/automation/rules`      — 목록
  * - `GET    /api/v1/projects/{projectKey}/automation/rules/{id}` — 단건(토큰 미노출)
- * - `PATCH  /api/v1/projects/{projectKey}/automation/rules/{id}` — 부분수정(name·enabled·triggerConfig, OCC)
+ * - `PATCH  /api/v1/projects/{projectKey}/automation/rules/{id}` — 부분수정(name·enabled·triggerConfig·
+ *   actions·actorUserId, OCC)
  * - `DELETE /api/v1/projects/{projectKey}/automation/rules/{id}` — soft delete
  *
  * 모든 엔드포인트는 MANAGE_AUTOMATION 가드를 거친다. 인가 순서는 **actor 추출(401) → 권한 판정(403) →
@@ -79,6 +82,8 @@ class AutomationRuleController(
                 name = request.name,
                 triggerType = request.triggerType,
                 triggerConfig = request.triggerConfig,
+                actorUserId = request.actorUserId,
+                actions = request.actions.map(ActionRequest::toApplicationInput),
             )
         log.info("AutomationRuleController.create actor={} projectKey={} id={}", actorId, projectKey, created.rule.id)
         return ResponseEntity.status(HttpStatus.CREATED).body(CreateAutomationRuleResponse.from(created))
@@ -117,7 +122,7 @@ class AutomationRuleController(
     }
 
     /**
-     * [id] 자동화 룰을 부분 수정한다(name·enabled·triggerConfig, OCC).
+     * [id] 자동화 룰을 부분 수정한다(name·enabled·triggerConfig·actions·actorUserId, OCC).
      *
      * @param projectKey 룰이 속해야 하는 프로젝트 키(경로 변수).
      * @param id 수정할 룰 id(경로 변수).
@@ -140,6 +145,8 @@ class AutomationRuleController(
                 name = request.name,
                 enabled = request.enabled,
                 triggerConfig = request.triggerConfig,
+                actions = request.actions?.map(ActionRequest::toApplicationInput),
+                actorUserId = request.actorUserId,
             )
         log.info("AutomationRuleController.patch actor={} projectKey={} id={}", actorId, projectKey, id)
         return ResponseEntity.ok(AutomationRuleResponse.from(updated))
@@ -161,6 +168,16 @@ class AutomationRuleController(
         service.delete(actorId, projectKey, id)
         log.info("AutomationRuleController.delete actor={} projectKey={} id={}", actorId, projectKey, id)
     }
+}
+
+/**
+ * [ActionRequest](웹 DTO) → [AutomationActionInput](application 커맨드) 1:1 매핑 (FR-AT-02 Task 11).
+ *
+ * 필드 그대로 옮기기만 하고 검증/도메인 변환은 하지 않는다 — 실제 형식 검증·[com.bts.automation.domain.Action]
+ * 매핑은 [AutomationRuleService] 책임이다([AutomationRuleService] 클래스 KDoc §액션/actor 매핑 참고).
+ */
+private fun ActionRequest.toApplicationInput(): AutomationActionInput {
+    return AutomationActionInput(type = type, config = config)
 }
 
 /**

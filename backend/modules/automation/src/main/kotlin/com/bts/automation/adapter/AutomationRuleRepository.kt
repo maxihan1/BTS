@@ -1,4 +1,4 @@
-// AutomationRule 영속 어댑터 — JdbcTemplate 기반 CRUD·이벤트/웹훅/스케줄 조회·OCC (FR-AT-01 Task 4)
+// AutomationRule 영속 어댑터 — JdbcTemplate 기반 CRUD·이벤트/웹훅/스케줄 조회·OCC (FR-AT-01 Task 4, FR-AT-02 Task 6)
 
 package com.bts.automation.adapter
 
@@ -36,20 +36,34 @@ import java.util.UUID
  * 않는다([[no-bump-sidecar-version-double-bump]] — 사이드카 갱신이 버전을 올리면 사용자 편집과
  * 경쟁해 OCC 이중 bump 사고가 난다).
  *
+ * ## actions 는 find 경로에서 로드하지 않는다 (FR-AT-02 Task 6)
+ * [AutomationRuleRowMapper] 는 [AutomationRule.actions] 를 항상 빈 리스트로 매핑한다. 이 리포지토리의
+ * find 계열(findById/findByProject/findEnabledByProjectAndTriggerType/findByWebhookTokenHash/
+ * findScheduledDue)은 트리거 매칭·스케줄 발화 경로에서 쓰이며 액션 내용이 필요 없다 — 매 조회마다
+ * [AutomationActionRepository] 조인을 태우면 N+1 없이도 불필요한 조회가 늘어난다. 액션이 실제로
+ * 필요한 소비자(executor·CRUD 응답)는 [AutomationActionRepository.findByRuleId] 로 별도 로드한다
+ * (jOOQ 다중 LEFT JOIN cartesian product 회귀([[cartesian-product-jooq-leftjoin-count]])와는 다른
+ * 이유지만, "필요한 곳에서만 로드"라는 동일한 원칙).
+ *
  * @param jdbc named parameter 바인딩 [NamedParameterJdbcTemplate].
+ * @param actionRepository [save] 시 룰의 액션을 함께 영속하는 [AutomationActionRepository].
  */
 @Repository
 class AutomationRuleRepository(
     private val jdbc: NamedParameterJdbcTemplate,
+    private val actionRepository: AutomationActionRepository,
 ) {
     /**
-     * 신규 [rule] 을 삽입한다. 애그리거트가 이미 확정한 id·시각·version 을 그대로 저장한다.
+     * 신규 [rule] 을 삽입한다. 애그리거트가 이미 확정한 id·시각·version 을 그대로 저장하고, 같은
+     * 트랜잭션에서 [rule] 의 액션 목록도 [AutomationActionRepository.replaceForRule] 로 영속한다
+     * (룰+액션 원자적 저장).
      *
      * @param rule 저장할 [AutomationRule] 애그리거트.
      */
     @Transactional
     fun save(rule: AutomationRule) {
         jdbc.update(SQL_INSERT, automationRuleInsertParams(rule))
+        actionRepository.replaceForRule(rule.id, rule.actions)
     }
 
     /**
@@ -179,10 +193,10 @@ class AutomationRuleRepository(
         const val SQL_INSERT = """
             INSERT INTO automation_rules
                 (id, project_key, name, enabled, trigger_type, trigger_config, webhook_token_hash,
-                 next_fire_at, created_by, created_at, updated_at, version)
+                 next_fire_at, created_by, actor_user_id, created_at, updated_at, version)
             VALUES
                 (:id, :projectKey, :name, :enabled, :triggerType, CAST(:triggerConfig AS jsonb),
-                 :webhookTokenHash, :nextFireAt, :createdBy, :createdAt, :updatedAt, :version)
+                 :webhookTokenHash, :nextFireAt, :createdBy, :actorUserId, :createdAt, :updatedAt, :version)
         """
 
         const val SQL_UPDATE = """
@@ -192,6 +206,7 @@ class AutomationRuleRepository(
                 trigger_config = CAST(:triggerConfig AS jsonb),
                 webhook_token_hash = :webhookTokenHash,
                 next_fire_at = :nextFireAt,
+                actor_user_id = :actorUserId,
                 updated_at = :updatedAt,
                 version = :version
             WHERE id = :id AND version = :expectedVersion AND deleted_at IS NULL
@@ -209,7 +224,7 @@ class AutomationRuleRepository(
 
         const val SQL_SELECT_COLUMNS = """
             SELECT id, project_key, name, enabled, trigger_type, trigger_config, webhook_token_hash,
-                   next_fire_at, created_by, created_at, updated_at, deleted_at, version
+                   next_fire_at, created_by, actor_user_id, created_at, updated_at, deleted_at, version
             FROM automation_rules
         """
 
@@ -254,6 +269,7 @@ private fun automationRuleInsertParams(rule: AutomationRule): MapSqlParameterSou
         .addValue("webhookTokenHash", rule.webhookTokenHash)
         .addValue("nextFireAt", rule.nextFireAt?.atOffset(ZoneOffset.UTC))
         .addValue("createdBy", rule.createdBy)
+        .addValue("actorUserId", rule.actorUserId)
         .addValue("createdAt", rule.createdAt.atOffset(ZoneOffset.UTC))
         .addValue("updatedAt", rule.updatedAt.atOffset(ZoneOffset.UTC))
         .addValue("version", rule.version)
@@ -270,6 +286,7 @@ private fun automationRuleUpdateParams(rule: AutomationRule): MapSqlParameterSou
         .addValue("triggerConfig", rule.triggerConfig)
         .addValue("webhookTokenHash", rule.webhookTokenHash)
         .addValue("nextFireAt", rule.nextFireAt?.atOffset(ZoneOffset.UTC))
+        .addValue("actorUserId", rule.actorUserId)
         .addValue("updatedAt", rule.updatedAt.atOffset(ZoneOffset.UTC))
         .addValue("version", rule.version)
         .addValue("expectedVersion", rule.version - 1)
@@ -280,6 +297,9 @@ private fun automationRuleUpdateParams(rule: AutomationRule): MapSqlParameterSou
  * timestamptz 컬럼은 [OffsetDateTime] 으로 읽어 [java.time.Instant] 로 정규화하고, nullable 컬럼
  * (`next_fire_at`/`deleted_at`)은 SQL NULL 이면 `null` 로 매핑한다. `trigger_config`(jsonb)는 텍스트로
  * 읽어 도메인의 원본 문자열 계약에 맞춘다.
+ *
+ * `actions` 는 이 테이블에 없는 별도 테이블(`automation_actions`)이라 항상 빈 리스트로 매핑한다 —
+ * 왜 여기서 로드하지 않는지는 [AutomationRuleRepository] 클래스 KDoc §actions 참고.
  */
 private object AutomationRuleRowMapper : RowMapper<AutomationRule> {
     override fun mapRow(
@@ -293,9 +313,11 @@ private object AutomationRuleRowMapper : RowMapper<AutomationRule> {
             enabled = rs.getBoolean("enabled"),
             triggerType = TriggerType.valueOf(rs.getString("trigger_type")),
             triggerConfig = rs.getString("trigger_config"),
+            actions = emptyList(),
             webhookTokenHash = rs.getString("webhook_token_hash"),
             nextFireAt = rs.getObject("next_fire_at", OffsetDateTime::class.java)?.toInstant(),
             createdBy = rs.getObject("created_by", UUID::class.java),
+            actorUserId = rs.getObject("actor_user_id", UUID::class.java),
             createdAt = rs.getObject("created_at", OffsetDateTime::class.java).toInstant(),
             updatedAt = rs.getObject("updated_at", OffsetDateTime::class.java).toInstant(),
             deletedAt = rs.getObject("deleted_at", OffsetDateTime::class.java)?.toInstant(),

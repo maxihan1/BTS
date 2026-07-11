@@ -2,6 +2,7 @@
 
 package com.bts.automation
 
+import com.bts.shared.issue.IssueMutationPort
 import com.bts.shared.permission.AutomationPermissionResolver
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -28,6 +29,11 @@ import org.springframework.transaction.annotation.EnableTransactionManagement
  * `com.bts.automation` 패키지 하위 전체를 스캔한다. Task 1 시점에는 main 소스가 스켈레톤뿐이라
  * 빈 컨텍스트를 로드한다.
  *
+ * `com.bts.shared.http` 도 함께 스캔한다(FR-AT-02 Task 9) — `WebhookActionClient`(Task 8)가 주입받는
+ * [com.bts.shared.http.OutboundUrlValidator]/[com.bts.shared.http.OutboundHttpClientConfig] 가
+ * shared-kernel 에 있으므로, automation 컨텍스트를 띄우는 모든 테스트가 매번 명시 등록하지 않도록
+ * 여기서 중앙 제공한다(notification `NotificationTestBootApplication` 동일 패턴).
+ *
  * ## DataSource / Flyway 자동 구성 제외
  * [DataSourceAutoConfiguration]/[FlywayAutoConfiguration]을 제외하고, [AutomationTestcontainersBase]
  * 가 Testcontainers 기반 DataSource/JdbcTemplate 빈을 직접 제공한다(plan-eng-review E6 — Task 4의
@@ -38,7 +44,7 @@ import org.springframework.transaction.annotation.EnableTransactionManagement
  * (memory: 트랜잭션 self-invocation REQUIRES_NEW — prod 코드가 올바른 구성 요건.)
  */
 @SpringBootApplication(
-    scanBasePackages = ["com.bts.automation"],
+    scanBasePackages = ["com.bts.automation", "com.bts.shared.http"],
     exclude = [
         FlywayAutoConfiguration::class,
         DataSourceAutoConfiguration::class,
@@ -64,11 +70,17 @@ class ModuleBootTest {
      * `com.bts.automation` 전체 스캔 시 함께 로드되는 `AutomationRuleService`(Task 6)가 non-null 로
      * 요구하는 [AutomationPermissionResolver] 포트를 test-boot용 stub 으로 등록한다(prod 구현은
      * identity-access 라 automation 클래스패스에 없음 — BC 격리, consumer-owns-stub, plan-eng-review E4).
+     *
+     * `ActionExecutor`(FR-AT-02 Task 9)가 non-null 로 요구하는 [IssueMutationPort] 도 동일 사유로
+     * 대신 등록한다(prod 구현은 issue-tracking `@Profile("prod")` 어댑터 — automation 클래스패스에 없음).
      */
     @TestConfiguration
     class PermissionResolverStubConfig {
         @Bean
         fun automationPermissionResolver(): AutomationPermissionResolver = StubAutomationPermissionResolver()
+
+        @Bean
+        fun issueMutationPort(): IssueMutationPort = StubIssueMutationPort()
     }
 
     @Autowired

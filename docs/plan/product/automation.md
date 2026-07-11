@@ -41,13 +41,15 @@
 
 **우선순위**. 필수 | **선행**. §2.1 | **Plan slug**. `automation/actions`
 
-- [ ] D1. 도메인 — Action 다형성 (책임. backend-engineer)
-- [ ] D2. 명세 — 4종 액션 + 권한 가드 (다른 BC 권한 위반 금지) (책임. backend-engineer + security-engineer)
-- [ ] D3. 데이터 모델 — `automation_actions(action_type, config)` (책임. db-engineer)
-- [ ] D4. 백엔드 — Action executor + dry-run 모드 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — 권한 부족 시 reject (책임. backend-engineer + security-engineer)
+- [x] D1. 도메인 — Action 다형성 (책임. backend-engineer)
+- [x] D2. 명세 — 4종 액션 + 권한 가드 (다른 BC 권한 위반 금지) (책임. backend-engineer + security-engineer)
+- [x] D3. 데이터 모델 — `automation_actions(action_type, config)` (책임. db-engineer)
+- [x] D4. 백엔드 — Action executor + dry-run 모드 (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 — 권한 부족 시 reject (책임. backend-engineer + security-engineer)
 - [ ] D6. 프론트 UI — 액션 빌더 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
+
+> **D1~D5 완료 (2026-07-11, PR #256)**. automation BC 액션 실행 엔진. FR-AT-01이 `q_automation_execution`에 적재한 매칭 룰을 `AutomationExecutionWorker`(첫 소비자, @Scheduled pgmq consumer)가 소비 → `ActionExecutor`가 룰의 액션 리스트를 position 순 best-effort 실행(SUCCESS/PARTIAL/FAILED 집계). 액션 4종 — SET_FIELD/ASSIGN/ADD_COMMENT는 신규 shared-kernel **`IssueMutationPort`**(BTS 2번째 cross-BC 쓰기 포트, IssueTransitionPort 선례·동기·fail-closed)로 issue-tracking prod 어댑터(`@Profile("prod")` 위임, 도메인 우회 금지·OCC 현재version 재조회+1회 재시도·dryRun=트랜잭션 롤백)에 위임, CALL_WEBHOOK은 기존 `OutboundUrlValidator`(SSRF) + `WebhookActionClient`(RestClient redirect NEVER). **rule actor** = 룰의 `actor_user_id`(신규 컬럼, 기본=생성자, **생성·PATCH로 선택 가능** — 지라 Actor 모델, Maxi 확정) — 액션 권한 주체 + AddComment 작성자 결정, fail-closed(차단율 100%). **템플릿 변수** `{{ issue.key }}` 단순 치환(TemplateRenderer, 미정의→빈문자열, config는 스킴-prefix만 검증하고 렌더 후 실제 url을 OutboundUrlValidator가 SSRF 전수검증). **무한루프 2단 가드** — executionDepth>10(직접 체인) + (ruleId,issueKey) 60초 억제 창(issue-tracking 왕복 리셋 대비, 견고 사이클검출은 FR-AT-04 위임). at-least-once 중복은 best-effort 수용(강한 dedup은 FR-AT-05). 신규 마이그레이션 V302(automation_actions)·V303(actor_user_id backfill). ADR [2026-07-11-fr-at-02-automation-actions](../../decisions/2026-07-11-fr-at-02-automation-actions.md). D6(액션 빌더 UI)·D7(E2E)는 후속 PR(FR-AT-01 #251→#254 분할 선례).
 
 ### §2.3 FR-AT-03 — 조건 분기 (if-else, 표현식)
 

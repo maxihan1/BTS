@@ -6,6 +6,7 @@ import com.bts.automation.AutomationTestBootApplication
 import com.bts.automation.AutomationTestSecurityConfig
 import com.bts.automation.AutomationTestcontainersBase
 import com.bts.automation.StubAutomationPermissionResolver
+import com.bts.automation.StubIssueMutationPort
 import com.bts.automation.adapter.AutomationRuleRepository
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.TriggerType
@@ -66,11 +67,19 @@ import java.util.UUID
     AutomationWebhookControllerTest.PermissionResolverStubConfig::class,
 )
 class AutomationWebhookControllerTest {
-    /** [AutomationTestBootApplication] 전체 스캔이 요구하는 `AutomationPermissionResolver` 빈 공급. */
+    /**
+     * [AutomationTestBootApplication] 전체 스캔이 요구하는 `AutomationPermissionResolver` 빈 공급.
+     *
+     * `ActionExecutor`(FR-AT-02 Task 9)가 non-null 로 요구하는 `IssueMutationPort` 도 동일 사유로
+     * [StubIssueMutationPort] 를 대신 등록한다(이 컨트롤러는 그 포트를 쓰지 않지만 컨텍스트 부팅에 필요).
+     */
     @TestConfiguration
     class PermissionResolverStubConfig {
         @Bean
         fun automationPermissionResolver(): StubAutomationPermissionResolver = StubAutomationPermissionResolver()
+
+        @Bean
+        fun stubIssueMutationPort(): StubIssueMutationPort = StubIssueMutationPort()
     }
 
     @Autowired
