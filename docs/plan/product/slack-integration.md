@@ -62,13 +62,13 @@
 
 **우선순위**. 높음 | **선행**. §2.1, issue-tracking §2.1.1 | **Plan slug**. `slack/unfurl`
 
-- [ ] D1. 도메인 — UnfurlPayload (책임. backend-engineer)
-- [ ] D2. 명세 — `link_shared` 이벤트 처리 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — Bolt event handler + Block Kit 카드 생성 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — (해당 없음) (책임. -)
-- [ ] D7. E2E — 가짜 Slack 이벤트 (책임. qa-engineer)
+- [x] D1. 도메인 — UnfurlPayload (책임. backend-engineer) *[PR #257. LinkSharedCommand(입력 VO) + shared-kernel `IssueUnfurlPort`/`IssueUnfurlView`(결합 fail-closed 포트, ADR D1)]*
+- [x] D2. 명세 — `link_shared` 이벤트 처리 (책임. backend-engineer) *[PR #257. `POST /slack/events`(url_verification+event_callback), X-Slack-Signature 검증 선행. spec/ADR]*
+- [x] D3. 데이터 모델 — (활용) (책임. db-engineer) *[deviation. 활용이 아닌 V702 **UNIQUE** 역방향 인덱스 `(slack_user_id, team_id)` 신설 — 잘못된 viewer 과다노출 fail-open 스키마 차단]*
+- [x] D4. 백엔드 — event handler + Block Kit 카드 생성 (책임. backend-engineer) *[deviation. Bolt 미도입→자체 `SlackEventsController`+`SlackUnfurlService`(@Async ack200). 서명검증 직접구현(SDK Verifier 부재). cross-BC `IssueUnfurlAdapter`(BROWSE 멤버십+보안등급 이중 fail-closed 게이트). `SlackUnfurlClient` chat.unfurl. PR #257]*
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) *[PR #257. 서명/파서/역매핑/어댑터/렌더/오케스트레이션/컨트롤러 단위·통합, 3모듈 green]*
+- [x] D6. 프론트 UI — (해당 없음) (책임. -) *[UI 없음. classify ui/frontend 오판을 명세 근거로 backend 교정]*
+- [x] D7. E2E — 가짜 Slack 이벤트 (책임. qa-engineer) *[PR #257. `SlackUnfurlEndToEndTest` happy/미매핑/무권한/challenge, 유효 서명 생성·chat.unfurl mock]*
 
 ### §3.2 FR-SL-04 — Slash 명령어 (`/atlas ...`)
 
