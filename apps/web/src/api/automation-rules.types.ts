@@ -206,6 +206,11 @@ export function serializeTriggerConfig(
 /** SET_FIELD 액션이 지원하는 6종 필드 중 값이 정수인 필드(EC9 — 숫자 강제 대상). */
 const NUMERIC_SET_FIELD_FIELDS: readonly string[] = ['priority', 'impact']
 
+/** SET_FIELD `field`가 정수 값 필드(priority/impact)인지 판별한다(EC9 숫자 강제 여부 분기). */
+function isNumericSetField(field: string): boolean {
+  return NUMERIC_SET_FIELD_FIELDS.includes(field)
+}
+
 /** CALL_WEBHOOK method 기본값 — backend `Action.DEFAULT_METHOD`와 동일. */
 const DEFAULT_WEBHOOK_METHOD = 'POST'
 
@@ -292,7 +297,7 @@ export function serializeActionConfig(actionType: ActionType, config: ActionConf
   switch (actionType) {
     case 'SET_FIELD': {
       const field = config.field ?? ''
-      const value = NUMERIC_SET_FIELD_FIELDS.includes(field) ? Number(config.value) : config.value
+      const value = isNumericSetField(field) ? Number(config.value) : config.value
       return JSON.stringify({ field, value })
     }
     case 'ASSIGN':
