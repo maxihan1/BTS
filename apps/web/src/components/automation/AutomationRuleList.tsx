@@ -1,4 +1,4 @@
-// 프로젝트 자동화 룰 목록 — 트리거/enabled 배지·활성 토글·삭제 확인 모달·빈 상태 CTA (FR-AT-01 D6 Task 5)
+// 프로젝트 자동화 룰 목록 — 트리거/enabled/액션 배지·활성 토글·삭제 확인 모달·빈 상태 CTA (FR-AT-01 D6 Task 5, 액션 배지 FR-AT-02 D6 Task 7)
 import { useState } from 'react'
 import type { JSX } from 'react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
@@ -13,7 +13,7 @@ import {
 } from '@/api/useAutomationRules'
 import { extractAutomationRuleErrorCode } from '@/api/automation-rules'
 import { useDateFormat } from '@/hooks/use-date-format'
-import type { AutomationRule, TriggerType } from '@/api/automation-rules.types'
+import type { ActionType, AutomationRule, TriggerType } from '@/api/automation-rules.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 한국어 라벨 — BC 내 고정 (PatList.tsx/WebhookTokenModal.tsx 관례, 별도 i18n 파일 미도입)
@@ -39,6 +39,7 @@ const labels = {
   deleteConfirmMessage: '삭제하면 되돌릴 수 없습니다.',
   deleteConfirmButton: '삭제',
   deleteCancelButton: '취소',
+  noActionsBadge: '액션 없음',
 } as const
 
 /** 트리거 타입 → 한국어 배지 라벨 (backend TriggerType 5종 1:1 대응) */
@@ -48,6 +49,29 @@ const triggerTypeLabels: Record<TriggerType, string> = {
   ISSUE_COMMENTED: '댓글',
   SCHEDULED: '스케줄',
   WEBHOOK: '웹훅',
+}
+
+/** 액션 타입 → 한국어 배지 라벨 (backend ActionType 4종 1:1 대응, FR-AT-02 FR11) */
+const actionTypeLabels: Record<ActionType, string> = {
+  SET_FIELD: '필드 변경',
+  ASSIGN: '담당자',
+  ADD_COMMENT: '댓글',
+  CALL_WEBHOOK: '웹훅',
+}
+
+/**
+ * 액션 배지 그룹의 접근성(aria) 라벨을 만든다.
+ *
+ * 배지들은 시각적으로는 개별 pill로 나뉘어 렌더되지만, 스크린리더 사용자에게는 "액션: 필드 변경,
+ * 담당자"처럼 하나의 요약 문장으로 전달하는 편이 낫다(NFR2). `rule.actions`는 실행 순서(position)
+ * 그대로이므로 라벨도 같은 순서를 유지한다 — 같은 타입 액션이 여러 개면 라벨도 그만큼 반복된다.
+ *
+ * @param actions 룰의 액션 목록(실행 순서).
+ * @returns 액션이 없으면 "액션 없음", 있으면 "액션: 라벨1, 라벨2" 형식의 문자열.
+ */
+function actionsGroupLabel(actions: AutomationRule['actions']): string {
+  if (actions.length === 0) return labels.noActionsBadge
+  return `액션: ${actions.map((action) => actionTypeLabels[action.type]).join(', ')}`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -148,7 +172,10 @@ function RuleBadge({ tone, children }: { readonly tone: keyof typeof BADGE_TONE_
   return <span className={`${BADGE_BASE_CLASS} ${BADGE_TONE_CLASS[tone]}`}>{children}</span>
 }
 
-/** 룰 단일 행 — 이름·트리거 배지·enabled 배지·(SCHEDULED만) nextFireAt + 토글/수정/삭제 액션 */
+/**
+ * 룰 단일 행 — 이름·트리거 배지·enabled 배지·(SCHEDULED만) nextFireAt·액션 타입 배지 그룹(FR-AT-02
+ * FR11, `rule.actions`가 비어있으면 "액션 없음") + 토글/수정/삭제 액션.
+ */
 function AutomationRuleRow({ rule, isToggling, onToggle, onEdit, onDeleteClick }: AutomationRuleRowProps): JSX.Element {
   const { formatDateTime } = useDateFormat()
 
@@ -167,6 +194,24 @@ function AutomationRuleRow({ rule, isToggling, onToggle, onEdit, onDeleteClick }
             {labels.nextFireAtLabel}: {formatDateTime(rule.nextFireAt)}
           </p>
         )}
+        {/* 액션 타입 배지 그룹 (FR-AT-02 FR11) — position 순서 그대로, 0개면 배지 대신 안내 문구.
+            role="group" + aria-label로 개별 배지를 순회하지 않고도 스크린리더가 요약을 읽게 한다(NFR2). */}
+        <div
+          role="group"
+          aria-label={actionsGroupLabel(rule.actions)}
+          className="flex flex-wrap items-center gap-1"
+        >
+          {rule.actions.length === 0 ? (
+            <span className="text-xs text-muted-foreground">{labels.noActionsBadge}</span>
+          ) : (
+            rule.actions.map((action, index) => (
+              // key: 같은 타입 액션이 여러 개일 수 있어 id가 없다 — position(index)으로 안정적 구분.
+              <RuleBadge key={`${action.type}-${index}`} tone="muted">
+                {actionTypeLabels[action.type]}
+              </RuleBadge>
+            ))
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-2 shrink-0">
@@ -227,6 +272,8 @@ function AutomationRuleRow({ rule, isToggling, onToggle, onEdit, onDeleteClick }
  *   invalidate해 refetch를 유도한다 — 그렇지 않으면 stale version으로 재시도가 반복되어
  *   무한 409에 빠진다 (스펙 §4 FR-7 · §6 E5 · §2 S4).
  * - 삭제는 확인 모달(DeleteConfirmDialog) → 확인 시 useDeleteAutomationRule.
+ * - 행마다 `rule.actions` 타입 배지 그룹을 표시한다(FR-AT-02 FR11) — SET_FIELD/ASSIGN/ADD_COMMENT/
+ *   CALL_WEBHOOK을 한국어 라벨로, 액션이 0개면 배지 대신 "액션 없음" 문구.
  *
  * @param projectKey 프로젝트 식별 키
  * @param onAddRule "룰 추가" 클릭 콜백

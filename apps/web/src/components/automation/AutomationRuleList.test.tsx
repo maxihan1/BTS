@@ -102,6 +102,32 @@ describe('AutomationRuleList', () => {
     expect(within(scheduledRow).getByText(/다음 실행/)).toBeInTheDocument()
   })
 
+  it('액션 타입 배지 — 액션이 있는 룰은 타입별 배지를 순서대로, 없는 룰은 "액션 없음"을 표시한다 (FR11)', async () => {
+    seedAutomationRules(DEFAULT_AUTOMATION_RULES)
+    const created = issueCreatedRule() // actions: []
+    const scheduled = scheduledRule() // actions: [SET_FIELD(priority), ASSIGN(해제)]
+
+    renderList()
+
+    await waitFor(() => {
+      expect(screen.getByText(created.name)).toBeInTheDocument()
+    })
+
+    const createdRow = screen.getByText(created.name).closest('li')
+    const scheduledRow = screen.getByText(scheduled.name).closest('li')
+    if (createdRow === null || scheduledRow === null) {
+      throw new Error('행 요소를 찾지 못함')
+    }
+
+    // 액션 없는 룰 — 배지 대신 "액션 없음" 텍스트
+    expect(within(createdRow).getByText('액션 없음')).toBeInTheDocument()
+
+    // 액션 있는 룰 — 타입별 한국어 배지가 순서대로(SET_FIELD→ASSIGN) 렌더, 접근성 그룹 라벨 포함
+    const actionsGroup = within(scheduledRow).getByRole('group', { name: '액션: 필드 변경, 담당자' })
+    expect(within(actionsGroup).getByText('필드 변경')).toBeInTheDocument()
+    expect(within(actionsGroup).getByText('담당자')).toBeInTheDocument()
+  })
+
   it('빈 상태 — CTA 버튼 클릭 시 onAddRule이 호출된다', async () => {
     const user = userEvent.setup()
     const onAddRule = vi.fn()

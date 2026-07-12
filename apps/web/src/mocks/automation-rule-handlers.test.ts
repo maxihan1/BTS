@@ -5,9 +5,10 @@ import {
   automationRuleResponseSchema,
   createAutomationRuleResponseSchema,
 } from '@/api/automation-rules.types'
-import type { AutomationRule, TriggerType } from '@/api/automation-rules.types'
+import type { ActionRequestInput, ActionType, AutomationRule, TriggerType } from '@/api/automation-rules.types'
 import { automationRuleHandlers } from './automation-rule-handlers'
 import {
+  DEFAULT_AUTOMATION_ACTOR_ID,
   DEFAULT_AUTOMATION_PROJECT_KEY,
   DEFAULT_AUTOMATION_RULES,
   resetAutomationRuleStore,
@@ -45,6 +46,8 @@ interface CreateRuleBody {
   name: string
   triggerType: TriggerType
   triggerConfig: string
+  actions?: ActionRequestInput[]
+  actorUserId?: string
 }
 
 /** POST 생성 요청 바디를 트리거 타입 기본값으로 채워 만든다(drift 차단 helper). */
@@ -55,6 +58,14 @@ function buildCreateBody(overrides: Partial<CreateRuleBody> = {}): CreateRuleBod
     triggerConfig: '{}',
     ...overrides,
   }
+}
+
+/**
+ * 액션 요청 1건을 만든다(FR-AT-02) — config는 요청 규약대로 JSON 문자열로 직렬화한다
+ * (응답 config=객체와 비대칭, EC1 — serializeActionConfig가 아닌 여기서는 테스트 전용 리터럴 직렬화).
+ */
+function actionRequest(type: ActionType, config: Record<string, unknown>): ActionRequestInput {
+  return { type, config: JSON.stringify(config) }
 }
 
 async function listRules(projectKey?: string): Promise<{ status: number; body: unknown }> {
@@ -191,6 +202,55 @@ describe('POST /automation/rules → 201, 후속 GET 목록 증가', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// (b-1) POST — actions·actorUserId 저장 + 응답 반영 (FR-AT-02, config 비대칭 EC1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('POST /automation/rules — actions·actorUserId (FR-AT-02)', () => {
+  it('actions 지정 시 요청(JSON 문자열) config가 응답에서 객체로 echo된다', async () => {
+    const { status, body } = await createRule({
+      actions: [actionRequest('SET_FIELD', { field: 'priority', value: 3 })],
+    })
+    expect(status).toBe(201)
+
+    const parsed = createAutomationRuleResponseSchema.parse(body)
+    expect(parsed.rule.actions).toEqual([{ type: 'SET_FIELD', config: { field: 'priority', value: 3 } }])
+  })
+
+  it('actions 미지정 시 빈 배열로 저장된다(EC5 — 트리거만 있는 룰도 유효)', async () => {
+    const { body } = await createRule({})
+    const parsed = createAutomationRuleResponseSchema.parse(body)
+    expect(parsed.rule.actions).toEqual([])
+  })
+
+  it('actorUserId를 지정하면 응답에 그대로 반영된다', async () => {
+    const explicitActor = 'c1a2b3c4-d5e6-4789-8abc-def012345678'
+    const { body } = await createRule({ actorUserId: explicitActor })
+    const parsed = createAutomationRuleResponseSchema.parse(body)
+    expect(parsed.rule.actorUserId).toBe(explicitActor)
+  })
+
+  it('actorUserId 미지정 시 생성자 기본값으로 폴백한다(FR8)', async () => {
+    const { body } = await createRule({})
+    const parsed = createAutomationRuleResponseSchema.parse(body)
+    expect(parsed.rule.actorUserId).toBe(DEFAULT_AUTOMATION_ACTOR_ID)
+  })
+
+  it('후속 단건 GET에도 actions·actorUserId가 반영된다', async () => {
+    const explicitActor = 'c1a2b3c4-d5e6-4789-8abc-def012345678'
+    const created = await createRule({
+      actions: [actionRequest('ADD_COMMENT', { body: '자동 처리됨' })],
+      actorUserId: explicitActor,
+    })
+    const rule = createAutomationRuleResponseSchema.parse(created.body).rule
+
+    const { body } = await getRule(rule.id)
+    const fetched = automationRuleResponseSchema.parse(body)
+    expect(fetched.actions).toEqual([{ type: 'ADD_COMMENT', config: { body: '자동 처리됨' } }])
+    expect(fetched.actorUserId).toBe(explicitActor)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // (c) PATCH → 200 + 필드 변경 + version 증가 + 후속 GET 반영
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -216,6 +276,67 @@ describe('PATCH /automation/rules/:id → 필드 변경 + version 증가', () =>
     const afterParsed = automationRuleResponseSchema.parse(after.body)
     expect(afterParsed.name).toBe('변경된 이름')
     expect(afterParsed.enabled).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (c-1) PATCH — actions·actorUserId (FR-AT-02, actions는 전체 교체 — 부분 병합 아님)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PATCH /automation/rules/:id — actions·actorUserId (FR-AT-02)', () => {
+  it('actions를 지정하면 기존 액션을 전체 교체한다(부분 병합 아님)', async () => {
+    const created = await createRule({
+      actions: [
+        actionRequest('SET_FIELD', { field: 'priority', value: 3 }),
+        actionRequest('ADD_COMMENT', { body: '기존 코멘트' }),
+      ],
+    })
+    const rule = createAutomationRuleResponseSchema.parse(created.body).rule
+
+    const { status, body } = await patchRule(rule.id, {
+      version: rule.version,
+      actions: [actionRequest('ASSIGN', { assigneeId: null })],
+    })
+    expect(status).toBe(200)
+
+    const updated = automationRuleResponseSchema.parse(body)
+    expect(updated.actions).toEqual([{ type: 'ASSIGN', config: { assigneeId: null } }])
+
+    // 후속 GET에 즉시 반영 (msw-mutation-stateful-refetch)
+    const after = await getRule(rule.id)
+    const afterParsed = automationRuleResponseSchema.parse(after.body)
+    expect(afterParsed.actions).toEqual([{ type: 'ASSIGN', config: { assigneeId: null } }])
+  })
+
+  it('actions를 지정하지 않으면 기존 액션이 그대로 유지된다', async () => {
+    const created = await createRule({
+      actions: [actionRequest('ADD_COMMENT', { body: '유지되어야 함' })],
+    })
+    const rule = createAutomationRuleResponseSchema.parse(created.body).rule
+
+    const { body } = await patchRule(rule.id, { version: rule.version, name: '이름만 변경' })
+    const updated = automationRuleResponseSchema.parse(body)
+    expect(updated.actions).toEqual([{ type: 'ADD_COMMENT', config: { body: '유지되어야 함' } }])
+  })
+
+  it('actorUserId를 지정하면 변경이 반영된다', async () => {
+    const created = await createRule()
+    const rule = createAutomationRuleResponseSchema.parse(created.body).rule
+    const newActor = 'e1f2a3b4-c5d6-4789-9abc-def012345679'
+
+    const { body } = await patchRule(rule.id, { version: rule.version, actorUserId: newActor })
+    const updated = automationRuleResponseSchema.parse(body)
+    expect(updated.actorUserId).toBe(newActor)
+  })
+
+  it('actorUserId를 지정하지 않으면 기존 값이 유지된다', async () => {
+    const explicitActor = 'c1a2b3c4-d5e6-4789-8abc-def012345678'
+    const created = await createRule({ actorUserId: explicitActor })
+    const rule = createAutomationRuleResponseSchema.parse(created.body).rule
+
+    const { body } = await patchRule(rule.id, { version: rule.version, name: '이름만 변경' })
+    const updated = automationRuleResponseSchema.parse(body)
+    expect(updated.actorUserId).toBe(explicitActor)
   })
 })
 

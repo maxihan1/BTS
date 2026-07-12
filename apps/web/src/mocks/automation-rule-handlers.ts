@@ -8,6 +8,8 @@
 //
 import { http, HttpResponse } from 'msw'
 import type {
+  ActionRequestInput,
+  ActionResponse,
   AutomationRule,
   CreateAutomationRuleInput,
   PatchAutomationRuleInput,
@@ -111,6 +113,40 @@ function computeNextFireAt(triggerType: TriggerType, from: Date): string | null 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 내부 헬퍼 — 액션 config 비대칭 변환 (FR-AT-02, EC1)
+//
+// 요청 ActionRequest.config는 JSON 문자열, 응답 ActionResponse.config는 객체다
+// (automation-rules.types.ts parseActionConfig/serializeActionConfig 선례와 동일 비대칭).
+// mock은 실제 백엔드 저장소를 흉내내므로 요청을 저장 시점에 파싱해 응답 객체로 echo한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 요청 액션의 config JSON 문자열을 객체로 파싱한다.
+ * 파싱 실패이거나 객체가 아니면(배열·원시값 포함) 빈 객체로 안전하게 폴백한다
+ * (§1.13 빈 catch 금지 — 최소한 콘솔 로그를 남긴다, automation-rules.types.ts parseBaseConfig 선례 동형).
+ */
+function parseActionRequestConfig(configJson: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(configJson)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return {}
+    }
+    return parsed as Record<string, unknown>
+  } catch (error) {
+    console.error('automation action config 파싱 실패 — 빈 객체로 폴백', error)
+    return {}
+  }
+}
+
+/** 요청 액션 목록(config=JSON 문자열)을 응답 액션 목록(config=객체)으로 변환한다. */
+function toActionResponses(actions: ActionRequestInput[]): ActionResponse[] {
+  return actions.map((action) => ({
+    type: action.type,
+    config: parseActionRequestConfig(action.config),
+  }))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/projects/:projectKey/automation/rules
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -139,6 +175,8 @@ const listRulesHandler = http.get('/api/v1/projects/:projectKey/automation/rules
  * 자동화 룰 생성.
  * triggerType이 WEBHOOK이면 원문 토큰을 이 응답에서만 1회 동봉하고, 그 외에는 null.
  * 생성된 룰은 항상 enabled=true, version=1로 시작한다(백엔드 고정값).
+ * actions 미지정 시 빈 배열(EC5 — 트리거만 있는 룰도 유효), actorUserId 미지정 시
+ * 생성자(DEFAULT_AUTOMATION_ACTOR_ID)로 폴백한다(FR8 — 백엔드 생성자 폴백 규약과 동형).
  * 성공 → 201 { rule: AutomationRuleResponse, webhookToken: string | null }
  */
 const createRuleHandler = http.post(
@@ -157,6 +195,8 @@ const createRuleHandler = http.post(
       enabled: true,
       triggerType: body.triggerType,
       triggerConfig: body.triggerConfig,
+      actions: body.actions !== undefined ? toActionResponses(body.actions) : [],
+      actorUserId: body.actorUserId ?? DEFAULT_AUTOMATION_ACTOR_ID,
       hasWebhookToken: isWebhook,
       nextFireAt: computeNextFireAt(body.triggerType, now),
       createdBy: DEFAULT_AUTOMATION_ACTOR_ID,
@@ -201,7 +241,7 @@ const getRuleHandler = http.get(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 자동화 룰 부분 수정 — name·enabled·triggerConfig.
+ * 자동화 룰 부분 수정 — name·enabled·triggerConfig·actions·actorUserId.
  *
  * 에러 분기 순서 (백엔드와 동일).
  * 1. 룰 미존재 또는 다른 프로젝트 소속 → 404 AUTOMATION_RULE_NOT_FOUND
@@ -209,6 +249,8 @@ const getRuleHandler = http.get(
  * 성공 → 200 AutomationRuleResponse (version +1, updatedAt 갱신)
  *
  * triggerConfig가 실제로 변경되고 트리거 타입이 SCHEDULED이면 nextFireAt을 재계산한다.
+ * actions는 지정 시 **전체 교체**(부분 병합 아님, backend PatchAutomationRuleRequest 동일 컨벤션) —
+ * 미지정이면 기존 액션을 그대로 유지한다. actorUserId도 미지정이면 기존 값을 유지한다.
  */
 const patchRuleHandler = http.patch(
   '/api/v1/projects/:projectKey/automation/rules/:id',
@@ -243,6 +285,8 @@ const patchRuleHandler = http.patch(
       name: body.name ?? stored.name,
       enabled: body.enabled ?? stored.enabled,
       triggerConfig,
+      actions: body.actions !== undefined ? toActionResponses(body.actions) : stored.actions,
+      actorUserId: body.actorUserId ?? stored.actorUserId,
       nextFireAt: triggerConfigChanged
         ? computeNextFireAt(stored.triggerType, now)
         : stored.nextFireAt,

@@ -6,6 +6,10 @@ import {
   createAutomationRuleResponseSchema,
   triggerTypeSchema,
   serializeTriggerConfig,
+  actionTypeSchema,
+  actionResponseSchema,
+  parseActionConfig,
+  serializeActionConfig,
 } from './automation-rules.types'
 import type { AutomationRule } from './automation-rules.types'
 
@@ -21,6 +25,8 @@ const scheduledRuleFixture: AutomationRule = {
   enabled: true,
   triggerType: 'SCHEDULED',
   triggerConfig: '{"cron":"0 0 9 * * *"}',
+  actions: [],
+  actorUserId: 'f0e9d8c7-b6a5-4321-8edc-ba9876543210',
   hasWebhookToken: false,
   nextFireAt: '2026-07-15T09:00:00Z',
   createdBy: 'f0e9d8c7-b6a5-4321-8edc-ba9876543210',
@@ -36,12 +42,25 @@ const issueCreatedRuleFixture: AutomationRule = {
   enabled: true,
   triggerType: 'ISSUE_CREATED',
   triggerConfig: '{}',
+  actions: [],
+  actorUserId: 'f0e9d8c7-b6a5-4321-8edc-ba9876543210',
   hasWebhookToken: false,
   nextFireAt: null,
   createdBy: 'f0e9d8c7-b6a5-4321-8edc-ba9876543210',
   createdAt: '2026-07-10T10:00:00Z',
   updatedAt: '2026-07-10T10:00:00Z',
   version: 1,
+}
+
+/** 액션 2건(FR-AT-02)이 채워진 룰 fixture — actions·actorUserId 파싱 검증용 */
+const ruleWithActionsFixture: AutomationRule = {
+  ...issueCreatedRuleFixture,
+  id: 'd4e5f6a7-b8c9-4012-8123-4567890abcde',
+  actions: [
+    { type: 'SET_FIELD', config: { field: 'priority', value: 3 } },
+    { type: 'ASSIGN', config: { assigneeId: null } },
+  ],
+  actorUserId: 'b2c3d4e5-f6a7-4890-9bcd-ef0123456789',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -72,6 +91,38 @@ describe('automationRuleResponseSchema', () => {
       Object.entries(issueCreatedRuleFixture).filter(([key]) => key !== 'id'),
     )
     expect(() => automationRuleResponseSchema.parse(withoutId)).toThrow(ZodError)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// automationRuleResponseSchema — actions·actorUserId (FR-AT-02, 백엔드 계약 1:1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('automationRuleResponseSchema — actions·actorUserId (FR-AT-02)', () => {
+  it('actions 배열(2건)과 actorUserId를 파싱한다', () => {
+    const result = automationRuleResponseSchema.parse(ruleWithActionsFixture)
+    expect(result.actions).toHaveLength(2)
+    expect(result.actions[0]).toEqual({ type: 'SET_FIELD', config: { field: 'priority', value: 3 } })
+    expect(result.actorUserId).toBe('b2c3d4e5-f6a7-4890-9bcd-ef0123456789')
+  })
+
+  it('actions가 빈 배열인 룰(EC5 — 트리거만 있는 룰)도 파싱한다', () => {
+    const result = automationRuleResponseSchema.parse(scheduledRuleFixture)
+    expect(result.actions).toEqual([])
+  })
+
+  it('actorUserId 누락 시 ZodError를 throw한다 (non-null 응답 컨벤션)', () => {
+    const withoutActor = Object.fromEntries(
+      Object.entries(scheduledRuleFixture).filter(([key]) => key !== 'actorUserId'),
+    )
+    expect(() => automationRuleResponseSchema.parse(withoutActor)).toThrow(ZodError)
+  })
+
+  it('actions 누락 시 ZodError를 throw한다', () => {
+    const withoutActions = Object.fromEntries(
+      Object.entries(scheduledRuleFixture).filter(([key]) => key !== 'actions'),
+    )
+    expect(() => automationRuleResponseSchema.parse(withoutActions)).toThrow(ZodError)
   })
 })
 
@@ -117,6 +168,52 @@ describe('triggerTypeSchema', () => {
 
   it('정의되지 않은 값은 ZodError를 throw한다', () => {
     expect(() => triggerTypeSchema.parse('ISSUE_DELETED')).toThrow(ZodError)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// actionTypeSchema — 자동화 액션 타입 4종 (FR-AT-02)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('actionTypeSchema', () => {
+  it('4종 액션 타입 모두 파싱 성공한다', () => {
+    const validTypes = ['SET_FIELD', 'ASSIGN', 'ADD_COMMENT', 'CALL_WEBHOOK']
+    for (const type of validTypes) {
+      expect(() => actionTypeSchema.parse(type)).not.toThrow()
+    }
+  })
+
+  it('정의되지 않은 값은 ZodError를 throw한다', () => {
+    expect(() => actionTypeSchema.parse('DELETE_ISSUE')).toThrow(ZodError)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// actionResponseSchema — config는 loose record(EC11, 타입별 discriminated union 아님)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('actionResponseSchema', () => {
+  it('SET_FIELD 액션(config value가 숫자)을 파싱한다', () => {
+    const result = actionResponseSchema.parse({ type: 'SET_FIELD', config: { field: 'priority', value: 3 } })
+    expect(result.type).toBe('SET_FIELD')
+    expect(result.config['value']).toBe(3)
+  })
+
+  it('ASSIGN 액션(config assigneeId=null, 담당자 해제)을 파싱한다', () => {
+    const result = actionResponseSchema.parse({ type: 'ASSIGN', config: { assigneeId: null } })
+    expect(result.config['assigneeId']).toBeNull()
+  })
+
+  it('CALL_WEBHOOK 액션(config가 중첩 headers 맵을 가짐)을 파싱한다 — 타입별 형태가 달라도 loose record면 통과', () => {
+    const result = actionResponseSchema.parse({
+      type: 'CALL_WEBHOOK',
+      config: { url: 'https://hooks.example.com/x', method: 'POST', headers: { 'X-Token': 'abc' }, body: '' },
+    })
+    expect(result.config['headers']).toEqual({ 'X-Token': 'abc' })
+  })
+
+  it('잘못된 type 값은 ZodError를 throw한다', () => {
+    expect(() => actionResponseSchema.parse({ type: 'DELETE_ISSUE', config: {} })).toThrow(ZodError)
   })
 })
 
@@ -198,5 +295,167 @@ describe('serializeTriggerConfig — baseConfigJson 병합', () => {
     )
     expect(serializeTriggerConfig('ISSUE_UPDATED')).toBe('{}')
     expect(serializeTriggerConfig('ISSUE_CREATED', { cron: '무시됨' })).toBe('{}')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// parseActionConfig / serializeActionConfig — config 비대칭(EC1) round-trip
+// 응답 config는 객체(parseActionConfig 입력) ↔ 요청 config는 JSON 문자열(serializeActionConfig 출력).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('parseActionConfig / serializeActionConfig — SET_FIELD', () => {
+  it('priority(1~5): 객체 config → formState → JSON 문자열로 round-trip한다', () => {
+    const formState = parseActionConfig('SET_FIELD', { field: 'priority', value: 3 })
+    expect(formState).toEqual({ field: 'priority', value: 3 })
+
+    const serialized = serializeActionConfig('SET_FIELD', formState)
+    expect(JSON.parse(serialized)).toEqual({ field: 'priority', value: 3 })
+  })
+
+  it('priority: HTML select의 문자열 값("3")도 Number()로 강제해 숫자로 직렬화한다 (EC9 핵심)', () => {
+    const serialized = serializeActionConfig('SET_FIELD', { field: 'priority', value: '3' })
+    const parsedBack = JSON.parse(serialized) as { value: unknown }
+    expect(parsedBack.value).toBe(3)
+    expect(typeof parsedBack.value).toBe('number')
+  })
+
+  it('impact(1~3)도 문자열 값을 숫자로 강제 직렬화한다 (EC9)', () => {
+    const serialized = serializeActionConfig('SET_FIELD', { field: 'impact', value: '2' })
+    expect(JSON.parse(serialized)).toEqual({ field: 'impact', value: 2 })
+  })
+
+  it('labels(문자열 배열)는 숫자로 강제되지 않고 배열 그대로 round-trip한다', () => {
+    const formState = parseActionConfig('SET_FIELD', { field: 'labels', value: ['a', 'b'] })
+    expect(formState).toEqual({ field: 'labels', value: ['a', 'b'] })
+
+    const serialized = serializeActionConfig('SET_FIELD', formState)
+    expect(JSON.parse(serialized)).toEqual({ field: 'labels', value: ['a', 'b'] })
+  })
+
+  it('summary(문자열)는 그대로 round-trip한다', () => {
+    const formState = parseActionConfig('SET_FIELD', { field: 'summary', value: '변경된 제목' })
+    const serialized = serializeActionConfig('SET_FIELD', formState)
+    expect(JSON.parse(serialized)).toEqual({ field: 'summary', value: '변경된 제목' })
+  })
+
+  it('6종 밖 unknown field(EC10)도 값을 텍스트로 보존해 round-trip한다', () => {
+    const formState = parseActionConfig('SET_FIELD', { field: 'customX', value: '알 수 없는 필드 값' })
+    expect(formState).toEqual({ field: 'customX', value: '알 수 없는 필드 값' })
+
+    const serialized = serializeActionConfig('SET_FIELD', formState)
+    expect(JSON.parse(serialized)).toEqual({ field: 'customX', value: '알 수 없는 필드 값' })
+  })
+})
+
+describe('parseActionConfig / serializeActionConfig — ASSIGN', () => {
+  it('assigneeId=null(담당자 해제)을 round-trip 보존한다', () => {
+    const formState = parseActionConfig('ASSIGN', { assigneeId: null })
+    expect(formState).toEqual({ assigneeId: null })
+
+    const serialized = serializeActionConfig('ASSIGN', formState)
+    expect(JSON.parse(serialized)).toEqual({ assigneeId: null })
+  })
+
+  it('assigneeId가 uuid 문자열이면 그대로 round-trip한다', () => {
+    const formState = parseActionConfig('ASSIGN', { assigneeId: 'f0e9d8c7-b6a5-4321-8edc-ba9876543210' })
+    expect(formState).toEqual({ assigneeId: 'f0e9d8c7-b6a5-4321-8edc-ba9876543210' })
+
+    const serialized = serializeActionConfig('ASSIGN', formState)
+    expect(JSON.parse(serialized)).toEqual({ assigneeId: 'f0e9d8c7-b6a5-4321-8edc-ba9876543210' })
+  })
+})
+
+describe('parseActionConfig / serializeActionConfig — ADD_COMMENT', () => {
+  it('body({{템플릿}} 포함)를 round-trip 보존한다', () => {
+    const formState = parseActionConfig('ADD_COMMENT', { body: '{{ issue.key }} 자동 처리됨' })
+    expect(formState).toEqual({ body: '{{ issue.key }} 자동 처리됨' })
+
+    const serialized = serializeActionConfig('ADD_COMMENT', formState)
+    expect(JSON.parse(serialized)).toEqual({ body: '{{ issue.key }} 자동 처리됨' })
+  })
+})
+
+describe('parseActionConfig / serializeActionConfig — CALL_WEBHOOK', () => {
+  it('url·method·body를 round-trip 보존하고, headers 응답 맵은 쌍 배열로 파싱된다', () => {
+    const responseConfig = {
+      url: 'https://hooks.example.com/x',
+      method: 'POST',
+      headers: { 'X-Token': 'abc' },
+      body: '{"issueKey":"ATLAS-1"}',
+    }
+    const formState = parseActionConfig('CALL_WEBHOOK', responseConfig)
+    expect(formState).toEqual({
+      url: 'https://hooks.example.com/x',
+      method: 'POST',
+      headers: [{ key: 'X-Token', value: 'abc' }],
+      body: '{"issueKey":"ATLAS-1"}',
+    })
+
+    const serialized = serializeActionConfig('CALL_WEBHOOK', formState)
+    expect(JSON.parse(serialized)).toEqual(responseConfig)
+  })
+
+  it('method·headers·body 미지정 시 기본값(POST·빈 배열·빈 문자열)으로 채운다', () => {
+    const formState = parseActionConfig('CALL_WEBHOOK', { url: 'https://hooks.example.com/y' })
+    expect(formState).toEqual({ url: 'https://hooks.example.com/y', method: 'POST', headers: [], body: '' })
+  })
+
+  it('응답 headers 객체가 여러 건이면 Object.entries 순서대로 쌍 배열로 변환한다', () => {
+    const formState = parseActionConfig('CALL_WEBHOOK', {
+      url: 'https://hooks.example.com/x',
+      headers: { 'X-Token': 'abc', 'X-Other': 'def' },
+    })
+    expect(formState.headers).toEqual([
+      { key: 'X-Token', value: 'abc' },
+      { key: 'X-Other', value: 'def' },
+    ])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// serializeActionConfig — CALL_WEBHOOK headers 쌍 배열 (코드리뷰 PR #260 CONCERNS C1·C2 회귀 방지)
+//
+// C1(버그) — "헤더 추가"로 만든 빈 placeholder 행의 키를 채우지 않고 저장하면, 필터 없는 구현은
+// 빈 키({"":"..."})까지 실존 헤더로 직렬화해 backend에 전송한다(계약 오염). 키가 blank(trim 후
+// 빈 문자열)인 쌍은 직렬화 시 제외해야 한다.
+// C2(엣지) — headers가 Record였을 때는 같은 키를 두 번 입력하면 map dedup으로 편집 중 행 하나가
+// 조용히 사라졌다. 쌍 배열 모델에서는 편집 중(폼 상태)에는 중복 키가 모두 보존되고, backend 계약이
+// map이라 직렬화(JSON 전송) 시에만 마지막 값으로 축약된다(불가피 — 최종 표현은 map이지만 편집 중
+// 소실과는 다른 문제).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('serializeActionConfig — CALL_WEBHOOK headers 쌍 배열 (C1·C2)', () => {
+  it('키가 빈 문자열이거나 공백만인 쌍은 직렬화 결과 headers에서 제외된다(C1)', () => {
+    const formState = {
+      url: 'https://hooks.example.com/x',
+      method: 'POST',
+      headers: [
+        { key: 'X-Token', value: 'abc' },
+        { key: '', value: 'unfilled-placeholder' },
+        { key: '   ', value: 'whitespace-only-key' },
+      ],
+      body: '',
+    }
+    const serialized = serializeActionConfig('CALL_WEBHOOK', formState)
+    const parsed = JSON.parse(serialized) as { headers: Record<string, string> }
+    expect(parsed.headers).toEqual({ 'X-Token': 'abc' })
+  })
+
+  it('중복 키 쌍은 폼 상태 배열에서는 소실 없이 모두 보존되고, 직렬화 시에만 마지막 값으로 축약된다(C2)', () => {
+    const formState = {
+      url: 'https://hooks.example.com/x',
+      method: 'POST',
+      headers: [
+        { key: 'X-Token', value: 'first' },
+        { key: 'X-Token', value: 'second' },
+      ],
+      body: '',
+    }
+    // 폼 상태(배열)는 두 쌍 모두 보존 — 편집 중 소실 없음
+    expect(formState.headers).toHaveLength(2)
+
+    const serialized = serializeActionConfig('CALL_WEBHOOK', formState)
+    const parsed = JSON.parse(serialized) as { headers: Record<string, string> }
+    expect(parsed.headers).toEqual({ 'X-Token': 'second' })
   })
 })
