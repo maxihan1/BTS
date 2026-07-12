@@ -20,6 +20,34 @@ const TEXT = {
 const DEFAULT_NEW_ACTION: ActionFormState = { type: 'SET_FIELD', config: { field: 'summary', value: '' } }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 순수 헬퍼 — 불변 업데이트(원본 배열 mutate 금지). value/id 배열 양쪽에 동형으로 적용한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * `items[index]`와 `items[index + direction]`을 맞바꾼 새 배열을 반환한다.
+ * 대상 인덱스가 배열 범위를 벗어나면(첫 행 위로/마지막 행 아래로) 원본과 동일한 얕은 복사본을 반환한다
+ * — 호출부는 UI에서 이미 버튼을 disabled 처리하지만, 방어적으로 no-op 처리한다.
+ */
+function swapAt<T>(items: readonly T[], index: number, direction: -1 | 1): T[] {
+  const targetIndex = index + direction
+  const next = [...items]
+  if (targetIndex < 0 || targetIndex >= items.length) return next
+
+  const current = next[index]
+  const target = next[targetIndex]
+  if (current === undefined || target === undefined) return next
+
+  next[index] = target
+  next[targetIndex] = current
+  return next
+}
+
+/** `items`에서 `index` 위치의 원소를 제거한 새 배열을 반환한다. */
+function removeAt<T>(items: readonly T[], index: number): T[] {
+  return items.filter((_item, itemIndex) => itemIndex !== index)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -58,31 +86,13 @@ export function ActionListEditor({ projectKey, value, onChange }: ActionListEdit
   }
 
   function handleRemove(index: number): void {
-    setIds((prev) => prev.filter((_id, idIndex) => idIndex !== index))
-    onChange(value.filter((_action, actionIndex) => actionIndex !== index))
+    setIds((prev) => removeAt(prev, index))
+    onChange(removeAt(value, index))
   }
 
   function handleMove(index: number, direction: -1 | 1): void {
-    const targetIndex = index + direction
-    if (targetIndex < 0 || targetIndex >= value.length) return
-
-    setIds((prev) => {
-      const next = [...prev]
-      const current = next[index]
-      const target = next[targetIndex]
-      if (current === undefined || target === undefined) return prev
-      next[index] = target
-      next[targetIndex] = current
-      return next
-    })
-
-    const nextValue = [...value]
-    const current = nextValue[index]
-    const target = nextValue[targetIndex]
-    if (current === undefined || target === undefined) return
-    nextValue[index] = target
-    nextValue[targetIndex] = current
-    onChange(nextValue)
+    setIds((prev) => swapAt(prev, index, direction))
+    onChange(swapAt(value, index, direction))
   }
 
   function handleRowChange(index: number, next: ActionFormState): void {
