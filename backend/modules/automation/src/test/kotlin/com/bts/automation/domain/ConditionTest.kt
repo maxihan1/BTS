@@ -284,6 +284,20 @@ class ConditionTest : DescribeSpec({
             }
         }
 
+        it("리터럴 배열 원소가 100개를 초과하면 거부한다 (101개, DoS 방지 gate-2 P2-c)") {
+            val elements = (1..101).joinToString(",") { "\"v$it\"" }
+
+            shouldThrow<InvalidConditionExpressionException> {
+                Condition.fromJson("""{"in": [{"var": "issue.labels"}, [$elements]]}""")
+            }
+        }
+
+        it("리터럴 배열 원소가 100개면 통과한다 (경계값)") {
+            val elements = (1..100).joinToString(",") { "\"v$it\"" }
+
+            Condition.fromJson("""{"in": [{"var": "issue.labels"}, [$elements]]}""")
+        }
+
         it("and/or 의 값이 배열이 아니면 거부한다") {
             shouldThrow<InvalidConditionExpressionException> {
                 Condition.fromJson("""{"and": "not-an-array"}""")
