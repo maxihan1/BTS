@@ -89,10 +89,10 @@
 - [x] D1. 도메인 — InteractiveAction (책임. backend-engineer) *[PR #261, PR1/2 분할. InteractiveAction(block_actions 버튼·view_submission 모달) 도메인 확정. cross-BC 재사용 IssueTransitionPort + 신규 결합조회 IssueCompletionOptionsPort]*
 - [x] D2. 명세 — 상태 전이, 담당자 변경 등 (책임. backend-engineer) *[PR #261, PR1/2 분할. 스펙 전체(F1~F13·S1~S7). PR1=완료 전이(resolution 모달)+상세보기+인바운드 인프라, PR2=담당자 변경(users_select)+코멘트(modal)]*
 - [x] D3. 데이터 모델 — (활용→신규) (책임. db-engineer) *[PR #261. deviation. plan은 "활용"이었으나 완료 감사에 V703 slack_interaction_log 신설(Maxi 결정, append-only). DATA.md §4.1 V700~V703]*
-- [ ] D4. 백엔드 — Bolt block_actions handler + 권한 가드 + 응답 갱신 (책임. backend-engineer + security-engineer) *[PR #261 PR1 부분완료. 인바운드 POST /slack/interactions(서명검증·크기상한·permitAll)·완료 전이·상세보기·V703 감사·타입 예외 분류. deviation. Bolt 미도입→자체 컨트롤러(FR-SL-03/04 관례). 담당자 users_select + 코멘트 modal = PR2]*
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer) *[PR #261 PR1 부분. 완료 flow 단위·통합·V703 E2E. 담당자/코멘트 = PR2]*
-- [ ] D6. 프론트 UI — (해당 없음) (책임. -)
-- [ ] D7. E2E (책임. qa-engineer) *[PR #261 PR1 부분. SlackInteractionEndToEndTest(완료 왕복·결과별 V703). 담당자/코멘트 = PR2]*
+- [x] D4. 백엔드 — block_actions handler + 권한 가드 + 응답 갱신 (책임. backend-engineer + security-engineer) *[PR1 #261 + PR2 #263. 인바운드 POST /slack/interactions(서명검증·크기상한·permitAll)·완료 전이·상세보기·V703 감사·타입 예외 분류(PR1). 담당자 변경(users_select 모달→cross-BC IssueMutationPort.assign)·코멘트(plain_text_input 모달→addComment)·ASSIGN/COMMENT 감사(PR2, 마이그레이션 0·V703 재사용·권한 전량 포트 위임). deviation. Bolt 미도입→자체 컨트롤러. 세 액션 버튼→모달→view_submission 대칭·공통 게이트 헬퍼]*
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) *[PR1 #261 완료 flow. PR2 #263 담당자/코멘트 단위(SlackInteractionServiceTest 31)·모달빌더·렌더러·StubIssueMutationPort. slack 378 tests green]*
+- [x] D6. 프론트 UI — (해당 없음) (책임. -) *[UI 없음 — Slack 내 인터랙션(FR-SL-03/04 동형)]*
+- [x] D7. E2E (책임. qa-engineer) *[PR1 #261 완료 왕복. PR2 #263 SlackInteractionEndToEndTest 담당자/코멘트 7 시나리오(버튼→모달·성공·대상미연결·무권한·actor미연결). 13 E2E green]*
 
 ## §NFR slack-integration BC 완료 게이트
 
