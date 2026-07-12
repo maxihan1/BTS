@@ -13,7 +13,7 @@ import {
 } from '@/api/useAutomationRules'
 import { extractAutomationRuleErrorCode } from '@/api/automation-rules'
 import { useDateFormat } from '@/hooks/use-date-format'
-import type { AutomationRule, TriggerType } from '@/api/automation-rules.types'
+import type { ActionType, AutomationRule, TriggerType } from '@/api/automation-rules.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 한국어 라벨 — BC 내 고정 (PatList.tsx/WebhookTokenModal.tsx 관례, 별도 i18n 파일 미도입)
@@ -39,6 +39,7 @@ const labels = {
   deleteConfirmMessage: '삭제하면 되돌릴 수 없습니다.',
   deleteConfirmButton: '삭제',
   deleteCancelButton: '취소',
+  noActionsBadge: '액션 없음',
 } as const
 
 /** 트리거 타입 → 한국어 배지 라벨 (backend TriggerType 5종 1:1 대응) */
@@ -48,6 +49,20 @@ const triggerTypeLabels: Record<TriggerType, string> = {
   ISSUE_COMMENTED: '댓글',
   SCHEDULED: '스케줄',
   WEBHOOK: '웹훅',
+}
+
+/** 액션 타입 → 한국어 배지 라벨 (backend ActionType 4종 1:1 대응, FR-AT-02 FR11) */
+const ACTION_LABELS: Record<ActionType, string> = {
+  SET_FIELD: '필드 변경',
+  ASSIGN: '담당자',
+  ADD_COMMENT: '댓글',
+  CALL_WEBHOOK: '웹훅',
+}
+
+/** 액션 배지 그룹의 접근성 라벨 — 없으면 "액션 없음", 있으면 "액션: 라벨1, 라벨2" 순서대로 나열 */
+function actionsGroupLabel(actions: AutomationRule['actions']): string {
+  if (actions.length === 0) return labels.noActionsBadge
+  return `액션: ${actions.map((action) => ACTION_LABELS[action.type]).join(', ')}`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -167,6 +182,21 @@ function AutomationRuleRow({ rule, isToggling, onToggle, onEdit, onDeleteClick }
             {labels.nextFireAtLabel}: {formatDateTime(rule.nextFireAt)}
           </p>
         )}
+        <div
+          role="group"
+          aria-label={actionsGroupLabel(rule.actions)}
+          className="flex flex-wrap items-center gap-1"
+        >
+          {rule.actions.length === 0 ? (
+            <span className="text-xs text-muted-foreground">{labels.noActionsBadge}</span>
+          ) : (
+            rule.actions.map((action, index) => (
+              <RuleBadge key={`${action.type}-${index}`} tone="muted">
+                {ACTION_LABELS[action.type]}
+              </RuleBadge>
+            ))
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-2 shrink-0">
