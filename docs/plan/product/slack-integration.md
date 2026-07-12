@@ -86,13 +86,13 @@
 
 **우선순위**. 높음 | **선행**. §3.2 | **Plan slug**. `slack/interactive`
 
-- [ ] D1. 도메인 — InteractiveAction (책임. backend-engineer)
-- [ ] D2. 명세 — 상태 전이, 담당자 변경 등 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — Bolt block_actions handler + 권한 가드 + 응답 갱신 (책임. backend-engineer + security-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D1. 도메인 — InteractiveAction (책임. backend-engineer) *[PR #261, PR1/2 분할. InteractiveAction(block_actions 버튼·view_submission 모달) 도메인 확정. cross-BC 재사용 IssueTransitionPort + 신규 결합조회 IssueCompletionOptionsPort]*
+- [x] D2. 명세 — 상태 전이, 담당자 변경 등 (책임. backend-engineer) *[PR #261, PR1/2 분할. 스펙 전체(F1~F13·S1~S7). PR1=완료 전이(resolution 모달)+상세보기+인바운드 인프라, PR2=담당자 변경(users_select)+코멘트(modal)]*
+- [x] D3. 데이터 모델 — (활용→신규) (책임. db-engineer) *[PR #261. deviation. plan은 "활용"이었으나 완료 감사에 V703 slack_interaction_log 신설(Maxi 결정, append-only). DATA.md §4.1 V700~V703]*
+- [ ] D4. 백엔드 — Bolt block_actions handler + 권한 가드 + 응답 갱신 (책임. backend-engineer + security-engineer) *[PR #261 PR1 부분완료. 인바운드 POST /slack/interactions(서명검증·크기상한·permitAll)·완료 전이·상세보기·V703 감사·타입 예외 분류. deviation. Bolt 미도입→자체 컨트롤러(FR-SL-03/04 관례). 담당자 users_select + 코멘트 modal = PR2]*
+- [ ] D5. 백엔드 테스트 (책임. backend-engineer) *[PR #261 PR1 부분. 완료 flow 단위·통합·V703 E2E. 담당자/코멘트 = PR2]*
 - [ ] D6. 프론트 UI — (해당 없음) (책임. -)
-- [ ] D7. E2E (책임. qa-engineer)
+- [ ] D7. E2E (책임. qa-engineer) *[PR #261 PR1 부분. SlackInteractionEndToEndTest(완료 왕복·결과별 V703). 담당자/코멘트 = PR2]*
 
 ## §NFR slack-integration BC 완료 게이트
 
