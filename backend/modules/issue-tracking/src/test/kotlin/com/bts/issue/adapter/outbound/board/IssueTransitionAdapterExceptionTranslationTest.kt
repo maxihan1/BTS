@@ -49,6 +49,11 @@ class IssueTransitionAdapterExceptionTranslationTest {
     private lateinit var adapter: IssueTransitionAdapter
 
     private val actorUuid: UUID = UUID.randomUUID()
+
+    // 값클래스(ActorId/IssueKey) 파라미터는 mockk `any()` 로 매칭하면 랜덤 문자열로 인스턴스를 생성해
+    // IssueKey REGEX init 검증(Invalid issue key format)이 깨진다. 어댑터가 실제로 넘기는 구체 인스턴스로
+    // stub 한다(AutomationIssueMutationAdapterTest 동일 패턴).
+    private val actor = ActorId(actorUuid)
     private val issueKey = IssueKey("PROJ-1")
 
     @BeforeEach
@@ -78,7 +83,7 @@ class IssueTransitionAdapterExceptionTranslationTest {
                 permission = IssuePermission.TRANSITION,
                 scope = IssueScope.Issue(issueKey.value),
             )
-        every { issueApplicationService.transitionIssue(any(), any(), any()) } throws domainException
+        every { issueApplicationService.transitionIssue(actor, issueKey, any()) } throws domainException
 
         assertThatThrownBy { adapter.transition(cmd()) }
             .isInstanceOf(IssueTransitionPermissionDeniedException::class.java)
@@ -90,7 +95,7 @@ class IssueTransitionAdapterExceptionTranslationTest {
     @Test
     fun `transition translates IssueVersionConflictException to IssueOptimisticLockException`() {
         val domainException = IssueVersionConflictException(issueKey, currentVersion = 5L)
-        every { issueApplicationService.transitionIssue(any(), any(), any()) } throws domainException
+        every { issueApplicationService.transitionIssue(actor, issueKey, any()) } throws domainException
 
         assertThatThrownBy { adapter.transition(cmd(expectedVersion = 1L)) }
             .isInstanceOf(IssueOptimisticLockException::class.java)
@@ -102,7 +107,7 @@ class IssueTransitionAdapterExceptionTranslationTest {
     @Test
     fun `transition propagates other exceptions verbatim without translation`() {
         val otherException = IllegalStateException("워크플로우 엔진 오류")
-        every { issueApplicationService.transitionIssue(any(), any(), any()) } throws otherException
+        every { issueApplicationService.transitionIssue(actor, issueKey, any()) } throws otherException
 
         assertThatThrownBy { adapter.transition(cmd()) }
             .isSameAs(otherException)

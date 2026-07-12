@@ -5,7 +5,6 @@ package com.bts.issue.adapter.outbound.board
 import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.domain.IssueTransitionNotAllowedException
-import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.repository.IssueRepository
@@ -13,6 +12,7 @@ import com.bts.issue.repository.IssueTestcontainersBase
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.board.BoardTransitionCommand
+import com.bts.shared.board.IssueOptimisticLockException
 import com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.engine.WorkflowDefinitionRepository
@@ -64,7 +64,7 @@ import java.util.UUID
  *
  * - S1. 정상 전이 — open → in_progress 성공, currentStateKey / version 갱신.
  * - S2. 전이 불가 — open → done(미정의 전이) → [IssueTransitionNotAllowedException] 전파.
- * - S3. 버전 충돌 — expectedVersion 불일치 → [IssueVersionConflictException] 전파.
+ * - S3. 버전 충돌 — expectedVersion 불일치 → [IssueOptimisticLockException] 번역 전파.
  * - S4. 워크플로우 미설정 — no-scheme 프로젝트 → [IssueWorkflowNotConfiguredException] 전파.
  * - S5. actor 신뢰 — `cmd.actorUserId` 를 actor 로 위임한다. SecurityContext 에 의존하지 않는다.
  *
@@ -460,17 +460,18 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
             .isInstanceOf(IssueTransitionNotAllowedException::class.java)
     }
 
-    // ── S3. 버전 충돌 — expectedVersion 불일치 → IssueVersionConflictException ────
+    // ── S3. 버전 충돌 — expectedVersion 불일치 → IssueOptimisticLockException(번역) ────
 
     /**
-     * S3. expectedVersion 이 실제 DB version 과 다르면 [IssueVersionConflictException] 이 전파된다.
+     * S3. expectedVersion 이 실제 DB version 과 다르면 shared-kernel [IssueOptimisticLockException] 으로
+     * 번역돼 전파된다(FR-SL-05 Task 2 — 내부 IssueVersionConflictException 을 cross-BC 타입으로 번역).
      *
      * Given  BDTRANS-N 이슈 (version=1)
      * When   adapter.transition(cmd(toStateKey="in_progress", expectedVersion=99))
-     * Then   IssueVersionConflictException
+     * Then   IssueOptimisticLockException
      */
     @Test
-    fun `transition propagates IssueVersionConflictException on version mismatch`() {
+    fun `transition translates version mismatch to IssueOptimisticLockException`() {
         val issueKey = insertIssue(currentStateKey = "open")
 
         val cmd =
@@ -483,7 +484,7 @@ class IssueTransitionAdapterTest : IssueTestcontainersBase() {
             )
 
         assertThatThrownBy { adapter.transition(cmd) }
-            .isInstanceOf(IssueVersionConflictException::class.java)
+            .isInstanceOf(IssueOptimisticLockException::class.java)
     }
 
     // ── S4. 워크플로우 미설정 → IssueWorkflowNotConfiguredException ──────────────
