@@ -176,6 +176,48 @@ class SlackInteractionServiceTest {
     }
 
     @Test
+    fun `atlas_complete 완료 가능 상태 없음(doneTransitions 빈 목록) — 모달 안 열고 ephemeral + V703 NOT_APPLICABLE`() {
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns btsUserId
+        every { completionOptionsPort.getCompletionOptions(issueKey, btsUserId) } returns
+            IssueCompletionOptions(version = 3, doneTransitions = emptyList(), resolutions = emptyList())
+        every { botTokenResolver.resolve(teamId) } returns botToken
+        every { modalBuilder.buildCompletionModal(any(), any(), any(), any()) } returns "{}"
+        every { messageClient.openModal(any(), any(), any()) } returns SlackSendResult.Sent
+        every { responseUrlClient.post(any(), any()) } returns true
+
+        val result = service.handle(blockActionsComplete())
+
+        // 완료 가능한 전이가 없으면(이미 완료 등) 입력 없는 무효 모달을 열지 않고 안내로 수렴한다.
+        assertThat(result).isEqualTo(InteractionResult.AckEmpty)
+        verify(exactly = 0) { botTokenResolver.resolve(any()) }
+        verify(exactly = 0) { messageClient.openModal(any(), any(), any()) }
+        verify(exactly = 1) { responseUrlClient.post(any(), any()) }
+        verify(exactly = 1) {
+            interactionLogRepository.record(teamId, slackUserId, btsUserId, "COMPLETE", "NOT_APPLICABLE", issueKey)
+        }
+    }
+
+    @Test
+    fun `atlas_complete 모달 오픈 실패(views_open 영구 실패) — ephemeral 안내 + V703 ERROR`() {
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns btsUserId
+        every { completionOptionsPort.getCompletionOptions(issueKey, btsUserId) } returns completionOptions()
+        every { botTokenResolver.resolve(teamId) } returns botToken
+        every { modalBuilder.buildCompletionModal(completionOptions(), issueKey, channel, ts) } returns "{\"view\":1}"
+        every { messageClient.openModal(botToken, "trig-1", "{\"view\":1}") } returns
+            SlackSendResult.PermanentFailure("expired_trigger_id")
+        every { responseUrlClient.post(any(), any()) } returns true
+
+        val result = service.handle(blockActionsComplete())
+
+        // 모달 오픈 실패(만료 trigger_id 등)는 침묵하지 않고 안내 + 감사한다.
+        assertThat(result).isEqualTo(InteractionResult.AckEmpty)
+        verify(exactly = 1) { responseUrlClient.post(any(), any()) }
+        verify(exactly = 1) {
+            interactionLogRepository.record(teamId, slackUserId, btsUserId, "COMPLETE", "ERROR", issueKey)
+        }
+    }
+
+    @Test
     fun `atlas_view(상세보기 url 버튼) — no-op 빈 응답, 어떤 협력자도 호출하지 않는다`() {
         val payload =
             blockActionsComplete().copy(
@@ -207,6 +249,25 @@ class SlackInteractionServiceTest {
         verify(exactly = 1) { messageClient.updateMessage(botToken, channel, ts, any()) }
         verify(exactly = 1) {
             interactionLogRepository.record(teamId, slackUserId, btsUserId, "COMPLETE", "SUCCESS", issueKey)
+        }
+    }
+
+    @Test
+    fun `모달 제출 성공 — 원본 메시지 갱신(봇토큰 복호화)이 실패해도 완료는 SUCCESS 유지(장식 실패가 성공을 뒤집지 않는다)`() {
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns btsUserId
+        every { transitionPort.transition(expectedCommand) } returns BoardTransitionResult(issueKey, toStateKey, 4)
+        // 전이는 커밋된 뒤, 장식용 chat.update 를 위한 봇토큰 복호화가 실패(손상 암호문/키 불일치 등).
+        every { botTokenResolver.resolve(teamId) } throws RuntimeException("decrypt failed")
+
+        val result = service.handle(viewSubmission())
+
+        // 전이는 이미 성공·커밋됨 → 장식용 갱신 실패가 완료를 실패로 오분류하거나 ERROR 로 오기록해선 안 된다.
+        assertThat(result).isEqualTo(InteractionResult.AckEmpty)
+        verify(exactly = 1) {
+            interactionLogRepository.record(teamId, slackUserId, btsUserId, "COMPLETE", "SUCCESS", issueKey)
+        }
+        verify(exactly = 0) {
+            interactionLogRepository.record(teamId, slackUserId, btsUserId, "COMPLETE", "ERROR", issueKey)
         }
     }
 
