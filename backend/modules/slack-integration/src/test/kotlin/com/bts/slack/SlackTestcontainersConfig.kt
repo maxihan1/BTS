@@ -39,6 +39,10 @@ import javax.sql.DataSource
  *   시드 가능, [issueUnfurlPort] 참고).
  * - `@Primary` mock [MethodsClient] — `chat.unfurl`/`chat.postMessage` 등 모든 Slack SDK 호출을 실
  *   네트워크 없이 검증 가능하게 한다(FR-SL-03 Task 12, [slackMethodsClient] 참고).
+ * - [StubIssueCompletionOptionsPort] — cross-BC 결합 fail-closed 완료 옵션 조회 stub(FR-SL-05 PR1
+ *   Task 9, issueKey 별 시드 가능, [issueCompletionOptionsPort] 참고).
+ * - [StubIssueTransitionPort] — cross-BC 완료 전이 실행 stub(FR-SL-05 PR1 Task 9, 성공 결과/실패 예외
+ *   시드 가능, [issueTransitionPort] 참고).
  *
  * ## JVM 단위 singleton container (교훈 concurrent-testcontainers-suite-flaky)
  * companion 의 `.apply { start() }` 로 JVM 시작 시 한 번만 기동하고 Ryuk 의 종료 시 자동 정리에 위임한다.
@@ -145,6 +149,29 @@ class SlackTestcontainersConfig {
     @Bean
     @Primary
     fun slackMethodsClient(): MethodsClient = mockk(relaxed = true)
+
+    /**
+     * cross-BC 결합 fail-closed 완료 옵션 조회 포트 — settable [StubIssueCompletionOptionsPort]
+     * (FR-SL-05 PR1 Task 9).
+     *
+     * [com.bts.slack.interaction.SlackInteractionService] 생성자가 non-null
+     * [com.bts.shared.issue.IssueCompletionOptionsPort] 를 요구하므로, test-boot 컨텍스트 로드를 위해
+     * 등록한다(빈 부재 시 [SlackContextLoadTest] 회귀). 기본 `completionOptionsByIssueKey` 가 비어 있어
+     * 아무 issueKey 도 완료 가능으로 판정하지 않으며, 테스트가 issueKey → 완료 옵션을 명시 등록한다.
+     */
+    @Bean
+    fun issueCompletionOptionsPort(): StubIssueCompletionOptionsPort = StubIssueCompletionOptionsPort()
+
+    /**
+     * cross-BC 완료 전이 실행 포트 — settable [StubIssueTransitionPort] (FR-SL-05 PR1 Task 9).
+     *
+     * [com.bts.slack.interaction.SlackInteractionService] 생성자가 non-null
+     * [com.bts.shared.board.IssueTransitionPort] 를 요구하므로, test-boot 컨텍스트 로드를 위해 등록한다
+     * (빈 부재 시 [SlackContextLoadTest] 회귀). 시드되지 않은 상태로 호출하면 명시 오류로 실패하므로,
+     * 테스트가 `succeedWith`/`failWith` 로 시나리오를 먼저 시드해야 한다.
+     */
+    @Bean
+    fun issueTransitionPort(): StubIssueTransitionPort = StubIssueTransitionPort()
 
     companion object {
         /**
