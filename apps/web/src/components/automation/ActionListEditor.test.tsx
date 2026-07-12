@@ -15,7 +15,7 @@ const setFieldAction: ActionFormState = { type: 'SET_FIELD', config: { field: 's
 const addCommentAction: ActionFormState = { type: 'ADD_COMMENT', config: { body: '' } }
 const webhookAction: ActionFormState = {
   type: 'CALL_WEBHOOK',
-  config: { url: '', method: 'POST', headers: {}, body: '' },
+  config: { url: '', method: 'POST', headers: [], body: '' },
 }
 const DEFAULT_NEW_ACTION: ActionFormState = { type: 'SET_FIELD', config: { field: 'summary', value: '' } }
 

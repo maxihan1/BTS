@@ -218,6 +218,22 @@ const DEFAULT_WEBHOOK_METHOD = 'POST'
 const DEFAULT_WEBHOOK_BODY = ''
 
 /**
+ * CALL_WEBHOOK 헤더 1행 — 키·값 쌍.
+ *
+ * backend/응답 계약은 `Record<string,string>`(map)이지만, 폼 편집 중에는 쌍 **배열**로 관리한다
+ * (코드리뷰 PR #260 CONCERNS C1·C2 회귀 방지).
+ * - C2(엣지) — map으로 관리하면 두 행에 같은 키를 입력할 때 dedup으로 행 하나가 조용히 사라진다.
+ *   배열이면 편집 중에는 중복 키가 모두 보존된다(최종 저장 시 map 축약은 {@link serializeActionConfig}
+ *   참고, 이건 backend 계약의 불가피한 한계이지 편집 중 소실과는 다른 문제다).
+ * - 배열 인덱스 기반 행 식별은 UI({@link ActionConfigEditor}의 헤더 행)에서 안정적인 삭제/편집을
+ *   가능하게 한다 — Record 키 기반 삭제는 키가 비었거나 중복일 때 행을 특정할 수 없었다.
+ */
+export interface WebhookHeaderEntry {
+  key: string
+  value: string
+}
+
+/**
  * 액션 타입별 구조화 폼 상태.
  *
  * `serializeTriggerConfig`의 `{cron?: string; fields?: string[]}` 선례와 동형으로, 4종 액션의
@@ -228,7 +244,7 @@ const DEFAULT_WEBHOOK_BODY = ''
  * - SET_FIELD → `field`·`value`(value는 필드 타입에 따라 string/number/string[] 등 임의 값)
  * - ASSIGN → `assigneeId`(uuid 문자열 또는 `null` = 담당자 해제)
  * - ADD_COMMENT → `body`
- * - CALL_WEBHOOK → `url`·`method`·`headers`·`body`
+ * - CALL_WEBHOOK → `url`·`method`·`headers`(쌍 배열, {@link WebhookHeaderEntry} 참고)·`body`
  */
 export interface ActionConfigFormState {
   field?: string
@@ -237,13 +253,31 @@ export interface ActionConfigFormState {
   body?: string
   url?: string
   method?: string
-  headers?: Record<string, string>
+  headers?: WebhookHeaderEntry[]
 }
 
 /** `value`가 문자열 값만 가진 순수 객체(Record<string, string>)인지 타입 가드로 확인한다. */
 function isStringRecord(value: unknown): value is Record<string, string> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   return Object.values(value).every((entry) => typeof entry === 'string')
+}
+
+/** 응답 headers 맵(Record)을 폼 상태가 쓰는 쌍 배열로 변환한다({@link parseActionConfig} 전용). */
+function headersRecordToEntries(record: Record<string, string>): WebhookHeaderEntry[] {
+  return Object.entries(record).map(([key, value]) => ({ key, value }))
+}
+
+/**
+ * 폼 상태의 헤더 쌍 배열을 요청 headers 맵(Record)으로 변환한다({@link serializeActionConfig} 전용).
+ *
+ * C1(코드리뷰 PR #260) — 키가 blank(trim 후 빈 문자열)인 쌍은 결과에서 제외한다. "헤더 추가"로
+ * 만든 빈 placeholder 행을 채우지 않고 저장해도 실존 헤더로 오인되지 않도록 한다.
+ * C2 — 중복 키가 있으면 `Object.fromEntries`가 배열 순서상 마지막 값으로 덮어쓴다(map 계약이라
+ * 불가피한 최종 표현. 편집 중에는 배열이라 소실 없이 모두 보존된다).
+ */
+function headersEntriesToRecord(entries: readonly WebhookHeaderEntry[]): Record<string, string> {
+  const filled = entries.filter((entry) => entry.key.trim() !== '')
+  return Object.fromEntries(filled.map((entry) => [entry.key, entry.value] as const))
 }
 
 /**
@@ -275,7 +309,7 @@ export function parseActionConfig(
       return {
         url: typeof config['url'] === 'string' ? config['url'] : '',
         method: typeof config['method'] === 'string' ? config['method'] : DEFAULT_WEBHOOK_METHOD,
-        headers: isStringRecord(config['headers']) ? config['headers'] : {},
+        headers: isStringRecord(config['headers']) ? headersRecordToEntries(config['headers']) : [],
         body: typeof config['body'] === 'string' ? config['body'] : DEFAULT_WEBHOOK_BODY,
       }
   }
@@ -308,7 +342,7 @@ export function serializeActionConfig(actionType: ActionType, config: ActionConf
       return JSON.stringify({
         url: config.url ?? '',
         method: config.method ?? DEFAULT_WEBHOOK_METHOD,
-        headers: config.headers ?? {},
+        headers: headersEntriesToRecord(config.headers ?? []),
         body: config.body ?? DEFAULT_WEBHOOK_BODY,
       })
   }

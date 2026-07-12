@@ -3,7 +3,7 @@ import type { ChangeEvent, JSX, KeyboardEvent } from 'react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { actionTypeSchema, parseActionConfig } from '@/api/automation-rules.types'
-import type { ActionType, ActionConfigFormState } from '@/api/automation-rules.types'
+import type { ActionType, ActionConfigFormState, WebhookHeaderEntry } from '@/api/automation-rules.types'
 import { ProjectMemberSelect } from './ProjectMemberSelect'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -142,20 +142,9 @@ function defaultValueForField(field: string, previousValue: unknown): unknown {
   }
 }
 
-/** CALL_WEBHOOK config에서 headers record를 안전하게 읽는다(다른 3종 config에는 headers가 없다) */
-function resolveHeaders(config: ActionConfigFormState): Record<string, string> {
-  return config.headers ?? {}
-}
-
-/** 기존 headers와 충돌하지 않는 새 헤더 행의 placeholder 키를 생성한다 */
-function generateHeaderKey(headers: Record<string, string>): string {
-  let index = 1
-  let candidate = `header-${index}`
-  while (candidate in headers) {
-    index += 1
-    candidate = `header-${index}`
-  }
-  return candidate
+/** CALL_WEBHOOK config에서 headers 쌍 배열을 안전하게 읽는다(다른 3종 config에는 headers가 없다) */
+function resolveHeaders(config: ActionConfigFormState): WebhookHeaderEntry[] {
+  return config.headers ?? []
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -366,8 +355,20 @@ function AddCommentField({ config, onChange, idPrefix }: TypedFieldsProps): JSX.
   )
 }
 
-/** CALL_WEBHOOK 전용 필드 — url·method(기본 POST)·헤더 행 추가/삭제·본문(FR6) */
+/**
+ * CALL_WEBHOOK 전용 필드 — url·method(기본 POST)·헤더 행 추가/삭제·본문(FR6).
+ *
+ * 헤더는 쌍 배열({@link WebhookHeaderEntry}[])로 관리한다(코드리뷰 PR #260 CONCERNS C1·C2 회귀 방지).
+ * - "헤더 추가"는 placeholder 키(과거 `header-1`) 대신 빈 키·값 행을 만든다 — 미입력 시
+ *   {@link serializeActionConfig}가 저장 단계에서 걸러낸다(C1).
+ * - 행 렌더 key는 인덱스가 아니라 행별 클라이언트 id(`headerRowIds`)를 쓴다 — `ActionListEditor`의
+ *   행 id 선례([[react-usestate-stale-key-prop]])와 동형. 인덱스 key였다면 중간 행 삭제 시 뒤 행들이
+ *   밀리며 다른 입력 DOM 노드로 상태가 새는 문제가 있었다. 배열 순서·길이가 바뀌는 추가/삭제
+ *   핸들러에서만 `headerRowIds`를 동기 갱신하고, 키/값 편집은 길이를 바꾸지 않아 그대로 둔다.
+ */
 function CallWebhookFields({ config, onChange, idPrefix }: TypedFieldsProps): JSX.Element {
+  const [headerRowIds, setHeaderRowIds] = useState<string[]>(() => resolveHeaders(config).map(() => crypto.randomUUID()))
+
   function handleUrlChange(event: ChangeEvent<HTMLInputElement>): void {
     onChange({ type: 'CALL_WEBHOOK', config: { ...config, url: event.target.value } })
   }
@@ -382,29 +383,32 @@ function CallWebhookFields({ config, onChange, idPrefix }: TypedFieldsProps): JS
 
   function handleAddHeaderRow(): void {
     const headers = resolveHeaders(config)
-    const key = generateHeaderKey(headers)
-    onChange({ type: 'CALL_WEBHOOK', config: { ...config, headers: { ...headers, [key]: '' } } })
+    setHeaderRowIds((prev) => [...prev, crypto.randomUUID()])
+    onChange({ type: 'CALL_WEBHOOK', config: { ...config, headers: [...headers, { key: '', value: '' }] } })
   }
 
   function handleHeaderKeyChange(index: number, nextKey: string): void {
-    const entries = Object.entries(resolveHeaders(config))
-    const current = entries[index]
+    const headers = resolveHeaders(config)
+    const current = headers[index]
     if (current === undefined) return
-    entries[index] = [nextKey, current[1]]
-    onChange({ type: 'CALL_WEBHOOK', config: { ...config, headers: Object.fromEntries(entries) } })
+    const next = [...headers]
+    next[index] = { ...current, key: nextKey }
+    onChange({ type: 'CALL_WEBHOOK', config: { ...config, headers: next } })
   }
 
   function handleHeaderValueChange(index: number, nextValue: string): void {
-    const entries = Object.entries(resolveHeaders(config))
-    const current = entries[index]
+    const headers = resolveHeaders(config)
+    const current = headers[index]
     if (current === undefined) return
-    entries[index] = [current[0], nextValue]
-    onChange({ type: 'CALL_WEBHOOK', config: { ...config, headers: Object.fromEntries(entries) } })
+    const next = [...headers]
+    next[index] = { ...current, value: nextValue }
+    onChange({ type: 'CALL_WEBHOOK', config: { ...config, headers: next } })
   }
 
   function handleRemoveHeader(index: number): void {
-    const entries = Object.entries(resolveHeaders(config)).filter((_entry, entryIndex) => entryIndex !== index)
-    onChange({ type: 'CALL_WEBHOOK', config: { ...config, headers: Object.fromEntries(entries) } })
+    const headers = resolveHeaders(config).filter((_entry, entryIndex) => entryIndex !== index)
+    setHeaderRowIds((prev) => prev.filter((_id, idIndex) => idIndex !== index))
+    onChange({ type: 'CALL_WEBHOOK', config: { ...config, headers } })
   }
 
   return (
@@ -445,38 +449,41 @@ function CallWebhookFields({ config, onChange, idPrefix }: TypedFieldsProps): JS
       <div>
         <span className="block text-sm font-medium mb-1">{TEXT.webhookHeadersLabel}</span>
         <ul className="space-y-2">
-          {Object.entries(resolveHeaders(config)).map(([headerKey, headerValue], index) => (
-            <li key={index} className="flex gap-2 items-center">
-              <input
-                type="text"
-                aria-label={TEXT.webhookHeaderKeyLabel}
-                value={headerKey}
-                onChange={(event) => {
-                  handleHeaderKeyChange(index, event.target.value)
-                }}
-                className="flex-1 rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-              />
-              <input
-                type="text"
-                aria-label={TEXT.webhookHeaderValueLabel}
-                value={headerValue}
-                onChange={(event) => {
-                  handleHeaderValueChange(index, event.target.value)
-                }}
-                className="flex-1 rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-              />
-              <button
-                type="button"
-                aria-label={`${index + 1}번째 헤더 삭제`}
-                onClick={() => {
-                  handleRemoveHeader(index)
-                }}
-                className="text-muted-foreground hover:text-destructive"
-              >
-                <span aria-hidden="true">×</span>
-              </button>
-            </li>
-          ))}
+          {resolveHeaders(config).map((entry, index) => {
+            const rowId = headerRowIds[index] ?? String(index)
+            return (
+              <li key={rowId} className="flex gap-2 items-center">
+                <input
+                  type="text"
+                  aria-label={TEXT.webhookHeaderKeyLabel}
+                  value={entry.key}
+                  onChange={(event) => {
+                    handleHeaderKeyChange(index, event.target.value)
+                  }}
+                  className="flex-1 rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+                />
+                <input
+                  type="text"
+                  aria-label={TEXT.webhookHeaderValueLabel}
+                  value={entry.value}
+                  onChange={(event) => {
+                    handleHeaderValueChange(index, event.target.value)
+                  }}
+                  className="flex-1 rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+                />
+                <button
+                  type="button"
+                  aria-label={`${index + 1}번째 헤더 삭제`}
+                  onClick={() => {
+                    handleRemoveHeader(index)
+                  }}
+                  className="text-muted-foreground hover:text-destructive"
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </li>
+            )
+          })}
         </ul>
         <Button type="button" variant="outline" size="sm" onClick={handleAddHeaderRow} className="mt-2">
           {TEXT.webhookAddHeaderButton}

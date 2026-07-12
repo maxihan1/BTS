@@ -1,6 +1,6 @@
 // 액션 1건 타입별 조건부 편집기 테스트 — 타입 전환/SET_FIELD 값위젯/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/EC10 (FR-AT-02 D6 Task 4)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
@@ -340,13 +340,13 @@ describe('ActionConfigEditor — CALL_WEBHOOK', () => {
       },
     }
     render(<ActionConfigEditor projectKey={PROJECT_KEY} value={twoHeaders} onChange={onChange} />)
-    const user = userEvent.setup()
 
+    // 컴포넌트는 완전한 controlled라 이 테스트(정적 props, re-render 없음)에서는 다중 키스트로크
+    // 축적이 이전 키 입력에 반영되지 않는다 — 단일 change 이벤트로 최종값을 한 번에 반영한다.
     const keyInputs = screen.getAllByLabelText('헤더 이름')
     const secondKeyInput = keyInputs[1]
     if (secondKeyInput === undefined) throw new Error('두 번째 헤더 키 입력을 찾지 못함')
-    await user.clear(secondKeyInput)
-    await user.type(secondKeyInput, 'X-Token')
+    fireEvent.change(secondKeyInput, { target: { value: 'X-Token' } })
 
     const lastCall = onChange.mock.calls.at(-1)?.[0] as ActionFormState
     expect(lastCall.config.headers).toEqual([
