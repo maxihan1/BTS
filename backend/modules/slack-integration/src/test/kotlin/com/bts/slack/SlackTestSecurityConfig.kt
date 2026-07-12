@@ -1,4 +1,4 @@
-// slack-integration 테스트용 SecurityFilterChain — callback/events/commands/interactions permitAll, 나머지 authenticated (FR-SL-01/03/04/05)
+// slack-integration 테스트용 SecurityFilterChain — callback/events/commands/interactions permitAll (FR-SL-01/03/04/05)
 
 package com.bts.slack
 

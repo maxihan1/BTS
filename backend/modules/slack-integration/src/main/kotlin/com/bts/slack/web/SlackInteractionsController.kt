@@ -1,4 +1,4 @@
-// Slack 인터랙티브(완료 버튼/완료 모달 제출) 수신 컨트롤러 — form 원문 서명검증 후 동기 처리 결과를 직렬화 (FR-SL-05 PR1 Task 10)
+// Slack 인터랙티브(완료 버튼/모달 제출) 수신 컨트롤러 — form 원문 서명검증 후 결과 동기 직렬화 (FR-SL-05 PR1 Task 10)
 
 package com.bts.slack.web
 

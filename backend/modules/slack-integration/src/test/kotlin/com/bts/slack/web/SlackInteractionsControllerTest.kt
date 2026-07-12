@@ -1,4 +1,4 @@
-// POST /slack/interactions 풀스택 E2E — permitAll 필터·크기상한·서명검증·결과 직렬화(빈 200 / 200+errors / 401 / 413) (FR-SL-05 PR1 Task 10)
+// POST /slack/interactions 풀스택 E2E — permitAll 필터·크기상한·서명검증·결과 직렬화 (FR-SL-05 PR1 Task 10)
 package com.bts.slack.web
 
 import com.bts.shared.board.BoardTransitionResult
