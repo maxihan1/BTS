@@ -568,6 +568,22 @@ class SlackInteractionServiceTest {
     }
 
     @Test
+    fun `atlas_assign_modal 제출 — 그 외 예외는 responseActionErrors + V703 ASSIGN ERROR (권한을 먼저 삼키지 않는다)`() {
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns btsUserId
+        every { userMappingRepository.findUserIdBySlackUserId(assigneeSlackUserId, teamId) } returns
+            assigneeBtsUserId
+        every { issueMutationPort.assign(any()) } throws IllegalStateException("boom")
+
+        val result = service.handle(viewSubmissionAssign())
+
+        assertThat(result).isInstanceOf(InteractionResult.ResponseActionErrors::class.java)
+        assertThat((result as InteractionResult.ResponseActionErrors).json).contains("assignee_block")
+        verify(exactly = 1) {
+            interactionLogRepository.record(teamId, slackUserId, btsUserId, "ASSIGN", "ERROR", issueKey)
+        }
+    }
+
+    @Test
     fun `atlas_assign_modal 제출 미연결 actor — responseActionErrors + V703 ASSIGN UNMAPPED`() {
         every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns null
 
@@ -611,6 +627,20 @@ class SlackInteractionServiceTest {
         assertThat(result).isInstanceOf(InteractionResult.ResponseActionErrors::class.java)
         verify(exactly = 1) {
             interactionLogRepository.record(teamId, slackUserId, btsUserId, "COMMENT", "PERMISSION_DENIED", issueKey)
+        }
+    }
+
+    @Test
+    fun `atlas_comment_modal 제출 — 그 외 예외는 responseActionErrors + V703 COMMENT ERROR (권한을 먼저 삼키지 않는다)`() {
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns btsUserId
+        every { issueMutationPort.addComment(any()) } throws IllegalStateException("boom")
+
+        val result = service.handle(viewSubmissionComment())
+
+        assertThat(result).isInstanceOf(InteractionResult.ResponseActionErrors::class.java)
+        assertThat((result as InteractionResult.ResponseActionErrors).json).contains("comment_block")
+        verify(exactly = 1) {
+            interactionLogRepository.record(teamId, slackUserId, btsUserId, "COMMENT", "ERROR", issueKey)
         }
     }
 
