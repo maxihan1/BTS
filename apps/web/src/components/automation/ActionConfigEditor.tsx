@@ -40,6 +40,10 @@ const TEXT = {
   webhookBodyLabel: '본문',
 } as const
 
+/** 입력 필드 공통 Tailwind 클래스 — text/select 위젯 전반에서 재사용 */
+const FIELD_CLASS =
+  'w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20'
+
 /** 액션 타입 4종 한국어 라벨 — backend ActionType enum 1:1 대응 */
 const ACTION_TYPE_LABELS: Record<ActionType, string> = {
   SET_FIELD: '필드 값 설정',
@@ -155,6 +159,348 @@ function generateHeaderKey(headers: Record<string, string>): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 타입별 조건부 필드 서브컴포넌트 — TriggerConfigFields 선례 동형
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface TypedFieldsProps {
+  readonly config: ActionConfigFormState
+  readonly onChange: (next: ActionFormState) => void
+  readonly idPrefix: string
+}
+
+interface SetFieldFieldsProps extends TypedFieldsProps {
+  readonly labelDraft: string
+  readonly onLabelDraftChange: (value: string) => void
+}
+
+/**
+ * SET_FIELD 전용 필드 — 필드 6종 드롭다운 + 필드 타입에 맞는 값 위젯.
+ *
+ * EC10(6종 밖 field) — 기존 룰에 저장된 unknown field는 드롭다운 맨 앞에 raw 문자열 그대로
+ * 추가 옵션으로 노출해(값 보존) 선택된 상태를 유지하고, 값 위젯은 텍스트로 fallback한다.
+ */
+function SetFieldFields({ config, onChange, idPrefix, labelDraft, onLabelDraftChange }: SetFieldFieldsProps): JSX.Element {
+  const currentField = config.field ?? DEFAULT_SET_FIELD
+  const widgetKind = resolveSetFieldWidgetKind(currentField)
+  const unknownField = isKnownSetField(currentField) ? null : currentField
+
+  function handleFieldChange(event: ChangeEvent<HTMLSelectElement>): void {
+    const nextField = event.target.value
+    onChange({ type: 'SET_FIELD', config: { field: nextField, value: defaultValueForField(nextField, config.value) } })
+  }
+
+  function handleTextValueChange(event: ChangeEvent<HTMLInputElement>): void {
+    onChange({ type: 'SET_FIELD', config: { ...config, value: event.target.value } })
+  }
+
+  function handleNumericValueChange(event: ChangeEvent<HTMLSelectElement>): void {
+    onChange({ type: 'SET_FIELD', config: { ...config, value: Number(event.target.value) } })
+  }
+
+  function handleAddLabel(): void {
+    const trimmed = labelDraft.trim()
+    if (trimmed === '') return
+    const currentLabels = isStringArray(config.value) ? config.value : []
+    if (!currentLabels.includes(trimmed)) {
+      onChange({ type: 'SET_FIELD', config: { ...config, value: [...currentLabels, trimmed] } })
+    }
+    onLabelDraftChange('')
+  }
+
+  function handleLabelDraftKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    if (event.key === 'Enter' || event.key === ',') {
+      event.preventDefault()
+      handleAddLabel()
+    }
+  }
+
+  function handleRemoveLabel(label: string): void {
+    const currentLabels = isStringArray(config.value) ? config.value : []
+    onChange({ type: 'SET_FIELD', config: { ...config, value: currentLabels.filter((item) => item !== label) } })
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label htmlFor={`${idPrefix}-set-field-field`} className="block text-sm font-medium mb-1">
+          {TEXT.setFieldFieldLabel}
+        </label>
+        <select
+          id={`${idPrefix}-set-field-field`}
+          aria-label={TEXT.setFieldFieldLabel}
+          value={currentField}
+          onChange={handleFieldChange}
+          className={FIELD_CLASS}
+        >
+          {unknownField !== null && <option value={unknownField}>{unknownField}</option>}
+          {SET_FIELD_FIELDS.map((field) => (
+            <option key={field} value={field}>
+              {SET_FIELD_LABELS[field]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {widgetKind === 'text' && (
+        <div>
+          <label htmlFor={`${idPrefix}-set-field-value`} className="block text-sm font-medium mb-1">
+            {TEXT.setFieldValueLabel}
+          </label>
+          <input
+            id={`${idPrefix}-set-field-value`}
+            type="text"
+            aria-label={TEXT.setFieldValueLabel}
+            value={typeof config.value === 'string' ? config.value : ''}
+            onChange={handleTextValueChange}
+            className={FIELD_CLASS}
+          />
+        </div>
+      )}
+
+      {(widgetKind === 'priority' || widgetKind === 'impact') && (
+        <div>
+          <label htmlFor={`${idPrefix}-set-field-value`} className="block text-sm font-medium mb-1">
+            {TEXT.setFieldValueLabel}
+          </label>
+          <select
+            id={`${idPrefix}-set-field-value`}
+            aria-label={TEXT.setFieldValueLabel}
+            value={String(typeof config.value === 'number' ? config.value : DEFAULT_NUMERIC_VALUE)}
+            onChange={handleNumericValueChange}
+            className={FIELD_CLASS}
+          >
+            {(widgetKind === 'priority' ? PRIORITY_OPTIONS : IMPACT_OPTIONS).map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {widgetKind === 'labels' && (
+        <div>
+          <label htmlFor={`${idPrefix}-set-field-value-labels`} className="block text-sm font-medium mb-1">
+            {TEXT.setFieldValueLabel}
+          </label>
+          <input
+            id={`${idPrefix}-set-field-value-labels`}
+            type="text"
+            aria-label={TEXT.setFieldValueLabel}
+            placeholder={TEXT.labelsPlaceholder}
+            value={labelDraft}
+            onChange={(event) => {
+              onLabelDraftChange(event.target.value)
+            }}
+            onKeyDown={handleLabelDraftKeyDown}
+            className={FIELD_CLASS}
+          />
+          {isStringArray(config.value) && config.value.length > 0 && (
+            <ul className="mt-2 flex flex-wrap gap-1.5" aria-label={TEXT.labelsListLabel}>
+              {config.value.map((label) => (
+                <li key={label}>
+                  <button
+                    type="button"
+                    aria-label={`${label} 제거`}
+                    onClick={() => {
+                      handleRemoveLabel(label)
+                    }}
+                    className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs"
+                  >
+                    {label}
+                    <span aria-hidden="true">×</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface AssignFieldProps extends TypedFieldsProps {
+  readonly projectKey: string
+}
+
+/** ASSIGN 전용 필드 — ProjectMemberSelect(담당자 해제 허용, EC3) */
+function AssignField({ projectKey, config, onChange, idPrefix }: AssignFieldProps): JSX.Element {
+  function handleAssigneeChange(assigneeId: string | null): void {
+    onChange({ type: 'ASSIGN', config: { assigneeId } })
+  }
+
+  return (
+    <ProjectMemberSelect
+      projectKey={projectKey}
+      value={config.assigneeId ?? null}
+      onChange={handleAssigneeChange}
+      allowUnassign
+      label={TEXT.assigneeLabel}
+      id={`${idPrefix}-assignee`}
+    />
+  )
+}
+
+/** ADD_COMMENT 전용 필드 — 본문 textarea + 템플릿 변수 힌트(FR5) */
+function AddCommentField({ config, onChange, idPrefix }: TypedFieldsProps): JSX.Element {
+  function handleBodyChange(event: ChangeEvent<HTMLTextAreaElement>): void {
+    onChange({ type: 'ADD_COMMENT', config: { ...config, body: event.target.value } })
+  }
+
+  return (
+    <div>
+      <label htmlFor={`${idPrefix}-comment-body`} className="block text-sm font-medium mb-1">
+        {TEXT.commentBodyLabel}
+      </label>
+      <textarea
+        id={`${idPrefix}-comment-body`}
+        aria-label={TEXT.commentBodyLabel}
+        value={config.body ?? ''}
+        onChange={handleBodyChange}
+        rows={3}
+        className={FIELD_CLASS}
+      />
+      <p className="text-xs text-muted-foreground mt-1">{TEXT.commentTemplateHint}</p>
+    </div>
+  )
+}
+
+/** CALL_WEBHOOK 전용 필드 — url·method(기본 POST)·헤더 행 추가/삭제·본문(FR6) */
+function CallWebhookFields({ config, onChange, idPrefix }: TypedFieldsProps): JSX.Element {
+  function handleUrlChange(event: ChangeEvent<HTMLInputElement>): void {
+    onChange({ type: 'CALL_WEBHOOK', config: { ...config, url: event.target.value } })
+  }
+
+  function handleMethodChange(event: ChangeEvent<HTMLSelectElement>): void {
+    onChange({ type: 'CALL_WEBHOOK', config: { ...config, method: event.target.value } })
+  }
+
+  function handleBodyChange(event: ChangeEvent<HTMLTextAreaElement>): void {
+    onChange({ type: 'CALL_WEBHOOK', config: { ...config, body: event.target.value } })
+  }
+
+  function handleAddHeaderRow(): void {
+    const headers = resolveHeaders(config)
+    const key = generateHeaderKey(headers)
+    onChange({ type: 'CALL_WEBHOOK', config: { ...config, headers: { ...headers, [key]: '' } } })
+  }
+
+  function handleHeaderKeyChange(index: number, nextKey: string): void {
+    const entries = Object.entries(resolveHeaders(config))
+    const current = entries[index]
+    if (current === undefined) return
+    entries[index] = [nextKey, current[1]]
+    onChange({ type: 'CALL_WEBHOOK', config: { ...config, headers: Object.fromEntries(entries) } })
+  }
+
+  function handleHeaderValueChange(index: number, nextValue: string): void {
+    const entries = Object.entries(resolveHeaders(config))
+    const current = entries[index]
+    if (current === undefined) return
+    entries[index] = [current[0], nextValue]
+    onChange({ type: 'CALL_WEBHOOK', config: { ...config, headers: Object.fromEntries(entries) } })
+  }
+
+  function handleRemoveHeader(index: number): void {
+    const entries = Object.entries(resolveHeaders(config)).filter((_entry, entryIndex) => entryIndex !== index)
+    onChange({ type: 'CALL_WEBHOOK', config: { ...config, headers: Object.fromEntries(entries) } })
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label htmlFor={`${idPrefix}-webhook-url`} className="block text-sm font-medium mb-1">
+          {TEXT.webhookUrlLabel}
+        </label>
+        <input
+          id={`${idPrefix}-webhook-url`}
+          type="text"
+          aria-label={TEXT.webhookUrlLabel}
+          value={config.url ?? ''}
+          onChange={handleUrlChange}
+          className={FIELD_CLASS}
+        />
+      </div>
+
+      <div>
+        <label htmlFor={`${idPrefix}-webhook-method`} className="block text-sm font-medium mb-1">
+          {TEXT.webhookMethodLabel}
+        </label>
+        <select
+          id={`${idPrefix}-webhook-method`}
+          aria-label={TEXT.webhookMethodLabel}
+          value={config.method ?? DEFAULT_WEBHOOK_METHOD}
+          onChange={handleMethodChange}
+          className={FIELD_CLASS}
+        >
+          {WEBHOOK_METHODS.map((method) => (
+            <option key={method} value={method}>
+              {method}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <span className="block text-sm font-medium mb-1">{TEXT.webhookHeadersLabel}</span>
+        <ul className="space-y-2">
+          {Object.entries(resolveHeaders(config)).map(([headerKey, headerValue], index) => (
+            <li key={index} className="flex gap-2 items-center">
+              <input
+                type="text"
+                aria-label={TEXT.webhookHeaderKeyLabel}
+                value={headerKey}
+                onChange={(event) => {
+                  handleHeaderKeyChange(index, event.target.value)
+                }}
+                className="flex-1 rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+              />
+              <input
+                type="text"
+                aria-label={TEXT.webhookHeaderValueLabel}
+                value={headerValue}
+                onChange={(event) => {
+                  handleHeaderValueChange(index, event.target.value)
+                }}
+                className="flex-1 rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+              />
+              <button
+                type="button"
+                aria-label={`${index + 1}번째 헤더 삭제`}
+                onClick={() => {
+                  handleRemoveHeader(index)
+                }}
+                className="text-muted-foreground hover:text-destructive"
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <Button type="button" variant="outline" size="sm" onClick={handleAddHeaderRow} className="mt-2">
+          {TEXT.webhookAddHeaderButton}
+        </Button>
+      </div>
+
+      <div>
+        <label htmlFor={`${idPrefix}-webhook-body`} className="block text-sm font-medium mb-1">
+          {TEXT.webhookBodyLabel}
+        </label>
+        <textarea
+          id={`${idPrefix}-webhook-body`}
+          aria-label={TEXT.webhookBodyLabel}
+          value={config.body ?? ''}
+          onChange={handleBodyChange}
+          rows={3}
+          className={FIELD_CLASS}
+        />
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -178,15 +524,16 @@ export interface ActionConfigEditorProps {
  * 액션 1건의 타입별 조건부 편집기.
  *
  * 상단의 액션 유형 select로 4종(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK) 중 하나를 고르면,
- * 그 아래에 타입별 필드가 조건부로 전환된다(`TriggerConfigFields` 선례 동형).
- * - SET_FIELD — 필드 6종 드롭다운 + 필드 타입에 맞는 값 위젯(텍스트/1~5·1~3 select/태그입력).
+ * 그 아래에 타입별 서브컴포넌트가 조건부로 전환된다(`TriggerConfigFields` 선례 동형).
+ * - {@link SetFieldFields} — 필드 6종 드롭다운 + 필드 타입에 맞는 값 위젯(텍스트/1~5·1~3 select/태그입력).
  *   6종 밖 field(EC10, 기존 룰에 저장된 값)는 텍스트 위젯으로 fallback해 값을 보존한다.
- * - ASSIGN — {@link ProjectMemberSelect}(담당자 해제 허용, EC3).
- * - ADD_COMMENT — 본문 textarea + 템플릿 변수 힌트(FR5).
- * - CALL_WEBHOOK — url·method(기본 POST)·헤더 행 추가/삭제·본문.
+ * - {@link AssignField} — {@link ProjectMemberSelect}(담당자 해제 허용, EC3).
+ * - {@link AddCommentField} — 본문 textarea + 템플릿 변수 힌트(FR5).
+ * - {@link CallWebhookFields} — url·method(기본 POST)·헤더 행 추가/삭제·본문.
  *
- * 완전한 controlled 컴포넌트다 — `value`/`onChange`로만 상태를 주고받고, 자체 상태는 태그/헤더
- * 입력의 임시 draft(라벨 입력창)에만 쓴다. 직렬화(JSON 문자열화)는 하지 않는다.
+ * 완전한 controlled 컴포넌트다 — `value`/`onChange`로만 상태를 주고받고, 자체 상태는 라벨 태그
+ * 입력의 임시 draft에만 쓴다. 직렬화(JSON 문자열화)는 하지 않는다(상위 AutomationRuleFormDialog가
+ * `serializeActionConfig`로 수행).
  */
 export function ActionConfigEditor({
   projectKey,
@@ -201,96 +548,6 @@ export function ActionConfigEditor({
     onChange({ type: nextType, config: defaultConfigForType(nextType) })
   }
 
-  // ── SET_FIELD ──
-  function handleSetFieldFieldChange(event: ChangeEvent<HTMLSelectElement>): void {
-    const nextField = event.target.value
-    onChange({ type: 'SET_FIELD', config: { field: nextField, value: defaultValueForField(nextField, value.config.value) } })
-  }
-
-  function handleSetFieldTextValueChange(event: ChangeEvent<HTMLInputElement>): void {
-    onChange({ type: 'SET_FIELD', config: { ...value.config, value: event.target.value } })
-  }
-
-  function handleSetFieldNumericValueChange(event: ChangeEvent<HTMLSelectElement>): void {
-    onChange({ type: 'SET_FIELD', config: { ...value.config, value: Number(event.target.value) } })
-  }
-
-  function handleAddLabel(): void {
-    const trimmed = labelDraft.trim()
-    if (trimmed === '') return
-    const currentLabels = isStringArray(value.config.value) ? value.config.value : []
-    if (!currentLabels.includes(trimmed)) {
-      onChange({ type: 'SET_FIELD', config: { ...value.config, value: [...currentLabels, trimmed] } })
-    }
-    setLabelDraft('')
-  }
-
-  function handleLabelDraftKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
-    if (event.key === 'Enter' || event.key === ',') {
-      event.preventDefault()
-      handleAddLabel()
-    }
-  }
-
-  function handleRemoveLabel(label: string): void {
-    const currentLabels = isStringArray(value.config.value) ? value.config.value : []
-    onChange({ type: 'SET_FIELD', config: { ...value.config, value: currentLabels.filter((item) => item !== label) } })
-  }
-
-  // ── ASSIGN ──
-  function handleAssigneeChange(assigneeId: string | null): void {
-    onChange({ type: 'ASSIGN', config: { assigneeId } })
-  }
-
-  // ── ADD_COMMENT ──
-  function handleCommentBodyChange(event: ChangeEvent<HTMLTextAreaElement>): void {
-    onChange({ type: 'ADD_COMMENT', config: { ...value.config, body: event.target.value } })
-  }
-
-  // ── CALL_WEBHOOK ──
-  function handleWebhookUrlChange(event: ChangeEvent<HTMLInputElement>): void {
-    onChange({ type: 'CALL_WEBHOOK', config: { ...value.config, url: event.target.value } })
-  }
-
-  function handleWebhookMethodChange(event: ChangeEvent<HTMLSelectElement>): void {
-    onChange({ type: 'CALL_WEBHOOK', config: { ...value.config, method: event.target.value } })
-  }
-
-  function handleWebhookBodyChange(event: ChangeEvent<HTMLTextAreaElement>): void {
-    onChange({ type: 'CALL_WEBHOOK', config: { ...value.config, body: event.target.value } })
-  }
-
-  function handleAddHeaderRow(): void {
-    const headers = resolveHeaders(value.config)
-    const key = generateHeaderKey(headers)
-    onChange({ type: 'CALL_WEBHOOK', config: { ...value.config, headers: { ...headers, [key]: '' } } })
-  }
-
-  function handleHeaderKeyChange(index: number, nextKey: string): void {
-    const entries = Object.entries(resolveHeaders(value.config))
-    const current = entries[index]
-    if (current === undefined) return
-    entries[index] = [nextKey, current[1]]
-    onChange({ type: 'CALL_WEBHOOK', config: { ...value.config, headers: Object.fromEntries(entries) } })
-  }
-
-  function handleHeaderValueChange(index: number, nextValue: string): void {
-    const entries = Object.entries(resolveHeaders(value.config))
-    const current = entries[index]
-    if (current === undefined) return
-    entries[index] = [current[0], nextValue]
-    onChange({ type: 'CALL_WEBHOOK', config: { ...value.config, headers: Object.fromEntries(entries) } })
-  }
-
-  function handleRemoveHeader(index: number): void {
-    const entries = Object.entries(resolveHeaders(value.config)).filter((_entry, entryIndex) => entryIndex !== index)
-    onChange({ type: 'CALL_WEBHOOK', config: { ...value.config, headers: Object.fromEntries(entries) } })
-  }
-
-  const currentSetField = value.config.field ?? DEFAULT_SET_FIELD
-  const setFieldWidgetKind = resolveSetFieldWidgetKind(currentSetField)
-  const unknownSetField = isKnownSetField(currentSetField) ? null : currentSetField
-
   return (
     <div className="space-y-3">
       <div>
@@ -302,7 +559,7 @@ export function ActionConfigEditor({
           aria-label={TEXT.actionTypeLabel}
           value={value.type}
           onChange={handleTypeChange}
-          className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+          className={FIELD_CLASS}
         >
           {actionTypeSchema.options.map((type) => (
             <option key={type} value={type}>
@@ -313,224 +570,19 @@ export function ActionConfigEditor({
       </div>
 
       {value.type === 'SET_FIELD' && (
-        <div className="space-y-3">
-          <div>
-            <label htmlFor={`${idPrefix}-set-field-field`} className="block text-sm font-medium mb-1">
-              {TEXT.setFieldFieldLabel}
-            </label>
-            <select
-              id={`${idPrefix}-set-field-field`}
-              aria-label={TEXT.setFieldFieldLabel}
-              value={currentSetField}
-              onChange={handleSetFieldFieldChange}
-              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-            >
-              {unknownSetField !== null && <option value={unknownSetField}>{unknownSetField}</option>}
-              {SET_FIELD_FIELDS.map((field) => (
-                <option key={field} value={field}>
-                  {SET_FIELD_LABELS[field]}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {setFieldWidgetKind === 'text' && (
-            <div>
-              <label htmlFor={`${idPrefix}-set-field-value`} className="block text-sm font-medium mb-1">
-                {TEXT.setFieldValueLabel}
-              </label>
-              <input
-                id={`${idPrefix}-set-field-value`}
-                type="text"
-                aria-label={TEXT.setFieldValueLabel}
-                value={typeof value.config.value === 'string' ? value.config.value : ''}
-                onChange={handleSetFieldTextValueChange}
-                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-              />
-            </div>
-          )}
-
-          {(setFieldWidgetKind === 'priority' || setFieldWidgetKind === 'impact') && (
-            <div>
-              <label htmlFor={`${idPrefix}-set-field-value`} className="block text-sm font-medium mb-1">
-                {TEXT.setFieldValueLabel}
-              </label>
-              <select
-                id={`${idPrefix}-set-field-value`}
-                aria-label={TEXT.setFieldValueLabel}
-                value={String(typeof value.config.value === 'number' ? value.config.value : DEFAULT_NUMERIC_VALUE)}
-                onChange={handleSetFieldNumericValueChange}
-                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-              >
-                {(setFieldWidgetKind === 'priority' ? PRIORITY_OPTIONS : IMPACT_OPTIONS).map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {setFieldWidgetKind === 'labels' && (
-            <div>
-              <label htmlFor={`${idPrefix}-set-field-value-labels`} className="block text-sm font-medium mb-1">
-                {TEXT.setFieldValueLabel}
-              </label>
-              <input
-                id={`${idPrefix}-set-field-value-labels`}
-                type="text"
-                aria-label={TEXT.setFieldValueLabel}
-                placeholder={TEXT.labelsPlaceholder}
-                value={labelDraft}
-                onChange={(event) => {
-                  setLabelDraft(event.target.value)
-                }}
-                onKeyDown={handleLabelDraftKeyDown}
-                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-              />
-              {isStringArray(value.config.value) && value.config.value.length > 0 && (
-                <ul className="mt-2 flex flex-wrap gap-1.5" aria-label={TEXT.labelsListLabel}>
-                  {value.config.value.map((label) => (
-                    <li key={label}>
-                      <button
-                        type="button"
-                        aria-label={`${label} 제거`}
-                        onClick={() => {
-                          handleRemoveLabel(label)
-                        }}
-                        className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs"
-                      >
-                        {label}
-                        <span aria-hidden="true">×</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {value.type === 'ASSIGN' && (
-        <ProjectMemberSelect
-          projectKey={projectKey}
-          value={value.config.assigneeId ?? null}
-          onChange={handleAssigneeChange}
-          allowUnassign
-          label={TEXT.assigneeLabel}
-          id={`${idPrefix}-assignee`}
+        <SetFieldFields
+          config={value.config}
+          onChange={onChange}
+          idPrefix={idPrefix}
+          labelDraft={labelDraft}
+          onLabelDraftChange={setLabelDraft}
         />
       )}
-
-      {value.type === 'ADD_COMMENT' && (
-        <div>
-          <label htmlFor={`${idPrefix}-comment-body`} className="block text-sm font-medium mb-1">
-            {TEXT.commentBodyLabel}
-          </label>
-          <textarea
-            id={`${idPrefix}-comment-body`}
-            aria-label={TEXT.commentBodyLabel}
-            value={value.config.body ?? ''}
-            onChange={handleCommentBodyChange}
-            rows={3}
-            className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-          />
-          <p className="text-xs text-muted-foreground mt-1">{TEXT.commentTemplateHint}</p>
-        </div>
+      {value.type === 'ASSIGN' && (
+        <AssignField projectKey={projectKey} config={value.config} onChange={onChange} idPrefix={idPrefix} />
       )}
-
-      {value.type === 'CALL_WEBHOOK' && (
-        <div className="space-y-3">
-          <div>
-            <label htmlFor={`${idPrefix}-webhook-url`} className="block text-sm font-medium mb-1">
-              {TEXT.webhookUrlLabel}
-            </label>
-            <input
-              id={`${idPrefix}-webhook-url`}
-              type="text"
-              aria-label={TEXT.webhookUrlLabel}
-              value={value.config.url ?? ''}
-              onChange={handleWebhookUrlChange}
-              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-            />
-          </div>
-
-          <div>
-            <label htmlFor={`${idPrefix}-webhook-method`} className="block text-sm font-medium mb-1">
-              {TEXT.webhookMethodLabel}
-            </label>
-            <select
-              id={`${idPrefix}-webhook-method`}
-              aria-label={TEXT.webhookMethodLabel}
-              value={value.config.method ?? DEFAULT_WEBHOOK_METHOD}
-              onChange={handleWebhookMethodChange}
-              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-            >
-              {WEBHOOK_METHODS.map((method) => (
-                <option key={method} value={method}>
-                  {method}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <span className="block text-sm font-medium mb-1">{TEXT.webhookHeadersLabel}</span>
-            <ul className="space-y-2">
-              {Object.entries(resolveHeaders(value.config)).map(([headerKey, headerValue], index) => (
-                <li key={index} className="flex gap-2 items-center">
-                  <input
-                    type="text"
-                    aria-label={TEXT.webhookHeaderKeyLabel}
-                    value={headerKey}
-                    onChange={(event) => {
-                      handleHeaderKeyChange(index, event.target.value)
-                    }}
-                    className="flex-1 rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-                  />
-                  <input
-                    type="text"
-                    aria-label={TEXT.webhookHeaderValueLabel}
-                    value={headerValue}
-                    onChange={(event) => {
-                      handleHeaderValueChange(index, event.target.value)
-                    }}
-                    className="flex-1 rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-                  />
-                  <button
-                    type="button"
-                    aria-label={`${index + 1}번째 헤더 삭제`}
-                    onClick={() => {
-                      handleRemoveHeader(index)
-                    }}
-                    className="text-muted-foreground hover:text-destructive"
-                  >
-                    <span aria-hidden="true">×</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <Button type="button" variant="outline" size="sm" onClick={handleAddHeaderRow} className="mt-2">
-              {TEXT.webhookAddHeaderButton}
-            </Button>
-          </div>
-
-          <div>
-            <label htmlFor={`${idPrefix}-webhook-body`} className="block text-sm font-medium mb-1">
-              {TEXT.webhookBodyLabel}
-            </label>
-            <textarea
-              id={`${idPrefix}-webhook-body`}
-              aria-label={TEXT.webhookBodyLabel}
-              value={value.config.body ?? ''}
-              onChange={handleWebhookBodyChange}
-              rows={3}
-              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-            />
-          </div>
-        </div>
-      )}
+      {value.type === 'ADD_COMMENT' && <AddCommentField config={value.config} onChange={onChange} idPrefix={idPrefix} />}
+      {value.type === 'CALL_WEBHOOK' && <CallWebhookFields config={value.config} onChange={onChange} idPrefix={idPrefix} />}
     </div>
   )
 }
