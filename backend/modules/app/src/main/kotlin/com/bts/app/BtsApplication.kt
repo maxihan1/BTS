@@ -48,6 +48,12 @@ import java.security.Security
             type = FilterType.REGEX,
             pattern = ["""com\.bts\.\w+\.SchedulingConfiguration"""],
         ),
+        // FIXME(task-9 RED 증빙용 임시 배제 — GREEN 커밋에서 제거) FR-AT-03 IssueSnapshotPort
+        // fail-closed 가드가 실제로 회귀를 잡는지 증명하기 위한 일시적 배제.
+        ComponentScan.Filter(
+            type = FilterType.REGEX,
+            pattern = ["""com\.bts\.issue\.adapter\.outbound\.automation\.AutomationIssueSnapshotAdapter"""],
+        ),
     ],
 )
 class BtsApplication {
