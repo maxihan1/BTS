@@ -103,11 +103,17 @@ BTS 자체 평가기가 순수 in-memory 로 평가한다 — **코드 실행 �
   SKIPPED 를 생성하지 않음).
 
 ### FR-AT-03-5. cross-BC 읽기 포트 IssueSnapshotPort (D4 의존)
-- shared-kernel `com.bts.shared.issue.IssueSnapshotPort` — `fetch(issueKey: String): IssueSnapshot?`
-  (이슈 부재 시 null). `IssueMutationPort` 방향·fail-closed·shared-kernel 배치 원칙 미러
-  (`automation ──port──▶ shared-kernel ◀──impl── issue-tracking`).
-- `IssueSnapshot`(shared-kernel VO, Jackson 비의존 순수 계약) — `key, projectKey, type, status,
-  priority(Int?), assigneeId(UUID?), reporterId(UUID?), labels(List<String>), summary`. 필드 화이트리스트와 1:1.
+- shared-kernel `com.bts.shared.issue.IssueSnapshotPort` — **`fetch(actorUserId: UUID, issueKey: String): IssueSnapshot?`**
+  (actor 미가시/이슈 부재 시 null). `IssueMutationPort` 방향·fail-closed·actor 신뢰 모델·shared-kernel 배치
+  원칙 미러 (`automation ──port──▶ shared-kernel ◀──impl── issue-tracking`).
+- **actor 가시성 강제 (게이트1 BLOCKER 해소)**: 어댑터가 룰 actor 권한으로 issue-tracking **기존 가시성 강제
+  read 경로**를 재사용한다. 보안 수준(FR-PM-06) 제한 이슈는 actor 가 그룹 멤버가 아니면 null 반환 →
+  조건 게이트 fail-safe SKIPPED. SDD §12.4 "관리자 우회 없음" 준수(무필터 읽기 금지). FR-AT-02 쓰기 경로가
+  actor 로 가시성을 강제하는 것과 대칭 — 읽기만 무게이트인 비대칭 제거.
+- `IssueSnapshot`(shared-kernel VO, Jackson 비의존 순수 계약) — `key, projectKey, type(String?, 타입 이름),
+  status(String, 워크플로우 stateKey), priority(Int?, 1-5), assigneeId(UUID?), reporterId(UUID?),
+  labels(List<String>), summary(String)`. 필드 화이트리스트와 1:1. **type=이름·status=stateKey·priority=숫자**
+  표현 확정(어댑터 매핑, D6 조건 빌더 UI 가 유효값 드롭다운 제공).
 - issue-tracking `@Profile("prod")` 어댑터가 이슈 애그리거트→스냅샷 매핑 구현. non-prod: automation
   test 가 `StubIssueSnapshotPort` 소유(consumer-owns-stub, `StubIssueMutationPort` 선례).
 - fail-closed: `ActionExecutor` 가 non-null 로 주입 요구(adapter 미결선 시 부팅 실패, silent no-op 금지,
@@ -126,8 +132,8 @@ BTS 자체 평가기가 순수 in-memory 로 평가한다 — **코드 실행 �
 ## 비기능 요구사항 (NFR)
 
 - **보안**: 조건 평가는 코드 실행 경로 부재(구조적 보장). `var` 필드 화이트리스트로 임의 데이터 접근 차단.
-  스냅샷 조회는 룰 actor 권한과 무관한 **읽기**지만, 조건은 룰 소유 프로젝트의 이슈만 대상(트리거가 이미
-  프로젝트 스코프). 스냅샷 포트는 가시성 필터 없이 필드 값을 반환(조건 평가용 내부 경로, 사용자 노출 아님).
+  스냅샷 조회는 **룰 actor 권한으로 가시성 강제**(§12.4 관리자 우회 없음 준수) — actor 가 못 보는 보안수준
+  제한 이슈는 null→SKIPPED. 조건은 룰 소유 프로젝트 이슈만 대상(트리거가 프로젝트 스코프로 이미 차단).
 - **성능**: 조건 평가는 순수 in-memory 트리 워크(<1ms). 스냅샷 조회 1회(issueKey 당). 트리거→액션 5s 예산 내.
 - **DoS**: 트리 깊이/노드 상한으로 악의적 대형 표현식 차단(저장 시점).
 - **하위호환**: 조건 없는 기존 룰 동작 불변. `ActionExecutionStatus.SKIPPED` 추가는 기존 값 비파괴.
@@ -172,7 +178,13 @@ POST/PATCH  (기존 룰 생성/수정 엔드포인트)
 - **EC9. assignee 존재** — `{"!!": {"var": "issue.assignee"}}`(담당자 있음) / `{"!": {"var": "issue.assignee"}}`(미배정).
 - **EC10. 깊이/노드 상한 초과** → 저장 400 거부.
 - **EC11. 잘못된 JSON / 미지원 연산자** → 저장 400 거부.
-- **EC12. dry-run 미리보기** → 조건 평가도 dry-run 경로에서 동일 적용(조건 불충족 시 실행될 액션 0개 표시).
+- **EC12. dry-run** → 게이트가 `execute` 내부에 있어 미래 dry-run caller(D6 미리보기)가 생기면 자동 커버.
+  **현재 production 에 `execute(dryRun=true)` caller 는 없음**(FR-AT-02 dry-run 은 포트 커맨드 레벨 플래그로만
+  존재) — 본 PR 은 `execute(dryRun=true)` 단위 테스트로만 게이트 일관성 검증.
+- **EC13. 보안수준 제한 이슈**(actor 미가시) → 스냅샷 null → fail-safe SKIPPED(§12.4 준수).
+- **EC14. 이중 이슈 뷰** → 조건은 최신 DB 스냅샷(IssueSnapshotPort) 기준으로 판정, AddComment 템플릿
+  `{{ issue.* }}`는 트리거 이벤트 payload 기준(FR-AT-02 현 한계 — status 등 공란 가능). 본 PR 은 템플릿
+  enrich 하지 않음(후속). "조건 통과했는데 댓글 status 공란" 놀람 방지 위해 KDoc 명시.
 
 ## 제약 조건
 
@@ -208,7 +220,8 @@ POST/PATCH  (기존 룰 생성/수정 엔드포인트)
 - [ ] `ConditionEvaluator` 50 케이스 전부 통과.
 - [ ] V304 마이그레이션 + `SchemaMigrationTest` 통과.
 - [ ] `ActionExecutor` 조건 게이트: 충족 실행 / 불충족 SKIPPED, dry-run 동일.
-- [ ] `IssueSnapshotPort` + issue-tracking prod 어댑터 + StubIssueSnapshotPort + fail-closed 회귀 가드.
+- [ ] `IssueSnapshotPort`(actor 시그니처) + issue-tracking prod 어댑터(가시성 강제) + StubIssueSnapshotPort + fail-closed 회귀 가드.
+- [ ] 보안수준 제한 이슈 actor 미가시→null→SKIPPED 검증(§12.4 준수) + 실이슈 관통 통합 테스트(S1 매치).
 - [ ] 룰 CRUD DTO 에 condition 필드 + 형식 검증 400.
 - [ ] automation BC ArchUnit(cross-BC import 0) 유지.
 - [ ] prod 조립(`:modules:app`) 부팅 재검증 통과.

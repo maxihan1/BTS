@@ -133,7 +133,12 @@ product doc §2.3 스코프:
 
 **RED**: shared-kernel은 순수 계약(구현 없음) — 컴파일 계약 테스트 또는 VO 필드 단언 최소 테스트(`IssueSnapshotContractTest`). 인터페이스/VO 없음으로 실패.
 
-**GREEN**: `interface IssueSnapshotPort { fun fetch(issueKey: String): IssueSnapshot? }` + `data class IssueSnapshot(key, projectKey, type, status, priority: Int?, assigneeId: UUID?, reporterId: UUID?, labels: List<String>, summary)`. Jackson 비의존 순수 계약. KDoc: 방향(`automation→shared-kernel←issue-tracking`)·fail-closed·priority 타입(Int? 1-5, 어댑터가 확정)·가시성 필터 없음(내부 경로) 명시.
+**GREEN**: `interface IssueSnapshotPort { fun fetch(actorUserId: UUID, issueKey: String): IssueSnapshot? }`
+(**actor 필수 — BLOCKER 해소**) + `data class IssueSnapshot(key, projectKey, type: String?(이름), status: String(stateKey),
+priority: Int?(1-5), assigneeId: UUID?, reporterId: UUID?, labels: List<String>, summary: String)`. Jackson 비의존
+순수 계약. KDoc: 방향(`automation→shared-kernel←issue-tracking`)·fail-closed·**actor 가시성 강제**(어댑터가 룰
+actor로 기존 가시성 강제 read 재사용, actor가 못 보는 이슈→null, §12.4 관리자 우회 없음 준수)·표현 명시
+(type=이름, status=워크플로우 stateKey, priority=Int 1-5) — IssueMutationCommands actor 신뢰 모델 선례.
 
 **REFACTOR**: KDoc에 IssueMutationPort 선례 링크.
 
@@ -176,9 +181,16 @@ product doc §2.3 스코프:
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/automation/AutomationIssueSnapshotAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/automation/AutomationIssueSnapshotAdapterTest.kt`]
 - depends-on: [3]
 
-**RED**: `AutomationIssueSnapshotAdapterTest`(Testcontainers, issue-tracking) — 실 이슈→IssueSnapshot 매핑(type/status/priority/assignee/reporter/labels/summary), 이슈 부재→null. 어댑터 없음으로 실패.
+**RED**: `AutomationIssueSnapshotAdapterTest`(Testcontainers, issue-tracking) — (a) 실 이슈→IssueSnapshot 매핑
+(type=이름·status=stateKey·priority=Int·assignee/reporter/labels/summary), (b) 이슈 부재→null, (c) **actor가
+못 보는 보안수준 제한 이슈→null**(§12.4 가시성 강제 검증), (d) **관통 통합 테스트: 실이슈→fetch→ConditionContext
+→ConditionEvaluator.evaluate가 스펙 S1(`type=="Bug" && priority>=3`) 실제 매치**(C1 해소 — 이름/키 불일치가
+green 배포되는 것 차단). 어댑터 없음으로 실패.
 
-**GREEN**: `@Profile("prod") @Component AutomationIssueSnapshotAdapter : IssueSnapshotPort` — 기존 이슈 조회 경로 재사용(도메인 우회 금지), 애그리거트→스냅샷 매핑. **priority 실제 표현(숫자 1-5 vs 이름) 확인 후 IssueSnapshot 계약대로 매핑**(Task 3 계약 확정). labels 포함.
+**GREEN**: `@Profile("prod") @Component AutomationIssueSnapshotAdapter : IssueSnapshotPort` — `fetch(actorUserId, issueKey)`
+가 issue-tracking **기존 actor 가시성 강제 read 경로 재사용**(도메인/가시성 우회 금지, `IssueRepository` 가시성
+술어 경유). actor가 못 보면 null. 매핑: typeId→**타입 이름**, currentStateKey→**status(stateKey)**, priority→Int(1-5),
+labels 포함. IssueSnapshot 계약(Task 3)대로.
 
 **REFACTOR**: 매핑 헬퍼 정리, KDoc(AutomationIssueMutationAdapter 선례 링크).
 
@@ -188,12 +200,14 @@ product doc §2.3 스코프:
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/application/ActionExecutor.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/application/ActionExecutorTest.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/testfixture/StubIssueSnapshotPort.kt`]
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/application/ActionExecutor.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/testfixture/StubIssueSnapshotPort.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/application/ActionExecutorTest.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/application/ActionPermissionSecurityTest.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/application/ActionExecutorFailClosedTest.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/AutomationTestcontainersBase.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/ModuleBootTest.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/web/AutomationRuleControllerTest.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/web/AutomationRuleActionsControllerTest.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/web/AutomationWebhookControllerTest.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/application/ActionExecutionEndToEndIntegrationTest.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/worker/AutomationExecutionWorkerTest.kt`]
 - depends-on: [1, 2, 3, 4, 5]
 
-**RED**: `ActionExecutorTest`(기존 갱신 — 생성자 신규 의존 주입) — (a) condition null → 기존대로 액션 실행, (b) condition 충족 → 액션 실행, (c) 불충족 → `SKIPPED`·액션 0건, (d) issueKey 없음/스냅샷 부재/평가예외 → fail-safe SKIPPED, (e) dry-run 경로도 게이트 동일. `StubIssueSnapshotPort`(consumer-owns-stub, 시드 가능).
+> **C2 해소**: ActionExecutor 생성자 3개 신규 의존으로 (1) 직접생성 3곳(ActionExecutorTest·ActionPermissionSecurityTest·ActionExecutorFailClosedTest) 컴파일 갱신, (2) 풀부팅 슬라이스 전수에 `StubIssueSnapshotPort` 빈 등록(위 files의 boot 테스트 + 공유 base). implementer가 `IssueMutationPort`/`StubIssueMutationPort` 등록 지점을 grep해 동일 지점마다 IssueSnapshotPort 짝 등록.
 
-**GREEN**: `ActionExecutor` 생성자에 `IssueSnapshotPort`(non-null, fail-closed) + `ConditionEvaluator` + `AutomationConditionRepository` 주입. `execute` 액션 로드 후·dispatch 전 조건 게이트: `condition = conditionRepo.findByRuleId(rule.id)`; null→통과; 있으면 issueKey→snapshot→ConditionContext→evaluate; false/예외→`ActionExecutionResult(SKIPPED, emptyList())`. `ActionExecutionStatus.SKIPPED` 추가 + 모듈 내 exhaustive `when` 전수 갱신.
+**RED**: `ActionExecutorTest`(기존 갱신) — (a) condition null → 기존대로 액션 실행, (b) 충족 → 액션 실행, (c) 불충족 → `SKIPPED`·액션 0건, (d) issueKey 없음/스냅샷 null(actor 미가시 포함)/평가예외 → fail-safe SKIPPED, (e) dry-run 경로도 게이트 동일(execute(dryRun=true) 단위 검증). `StubIssueSnapshotPort`(consumer-owns-stub, 시드 가능).
+
+**GREEN**: `ActionExecutor` 생성자에 `IssueSnapshotPort`(non-null, fail-closed) + `ConditionEvaluator` + `AutomationConditionRepository` 주입. `execute` 액션 로드 후·dispatch 전 조건 게이트: `condition = conditionRepo.findByRuleId(rule.id)`; null→통과; 있으면 issueKey 추출→`snapshotPort.fetch(rule.actorUserId, issueKey)`(**룰 actor 전달 — 가시성 강제**)→ConditionContext→evaluate; false/null/예외→`ActionExecutionResult(SKIPPED, emptyList())`. `ActionExecutionStatus.SKIPPED` 추가(모듈 내 exhaustive when 없음 확인). **C3 KDoc**: 조건은 최신 DB 스냅샷 기준, 템플릿 `{{issue.*}}`는 이벤트 payload 기준(FR-AT-02 현 한계, 본 PR은 템플릿 enrich 안 함) 명시.
 
 **REFACTOR**: 게이트 로직 private 메서드 추출, KDoc(fail-safe·dry-run 일관·SKIPPED 의미).
 
@@ -204,7 +218,7 @@ product doc §2.3 스코프:
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/application/AutomationRuleService.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/web/`(룰 controller/DTO — implementer가 정확 파일명 grep), `backend/modules/automation/src/test/kotlin/com/bts/automation/web/`(controller 통합 테스트)]
-- depends-on: [1, 4, 5]
+- depends-on: [1, 4, 5, 7]   # T7이 controller 부팅 슬라이스에 StubIssueSnapshotPort 등록(C2), T8 통합테스트가 ActionExecutor 부팅 의존
 
 **RED**: 룰 controller 통합 테스트 — (a) 생성/수정 payload에 `condition` 포함→저장·응답 반영, (b) 무효 표현식→`400 INVALID_CONDITION_EXPRESSION`, (c) MANAGE_AUTOMATION 가드 유지. condition 필드 없음으로 실패.
 
@@ -235,8 +249,8 @@ product doc §2.3 스코프:
 - 예상 wave: 약 4 (automation 단일 모듈이라 Gradle 컴파일 직렬화 [[bts-plan-wave-gradle-module-compile]] — wave 병렬은 파일 작성 단계)
   - wave 1(depends-on []): T1, T3
   - wave 2(T1/T3 후): T2, T4, T5, T6
-  - wave 3(코어 통합): T7, T8
-  - wave 4(조립): T9
+  - wave 3(게이트 통합): T7
+  - wave 4(API+조립): T8, T9
 - TDD 강제: yes (RED→GREEN→REFACTOR, test 커밋 선행)
 - 추가 검증: ktlint/detekt(automation·shared-kernel·issue-tracking·app), `:modules:app:test` 부팅
 - 병렬 dispatch: bts-impl이 depends-on + files 교집합으로 wave 재계산
@@ -260,4 +274,11 @@ product doc §2.3 스코프:
 
 **판정**: BLOCKER 1(포트 actor 계약 결정)·CONCERN 4(plan 수정 해소). 재설계 아님 — 포트 계약+어댑터 매핑 2곳 정정으로 충분. Maxi 게이트1에서 BLOCKER 해소 방식 확정 후 진행.
 
-### BLOCKER 해소 반영 (← Maxi 결정 후 갱신)
+### BLOCKER 해소 반영 (Maxi 게이트1 확정 — 2026-07-12)
+
+- **BLOCKER 해소 = 옵션 (a) 포트에 actor 탑재.** `IssueSnapshotPort.fetch(actorUserId: UUID, issueKey: String): IssueSnapshot?`.
+  어댑터가 룰 actor 권한으로 issue-tracking 기존 **가시성 강제 read 경로** 재사용 → 보안수준 제한 이슈는
+  actor가 볼 수 없으면 null → 게이트 fail-safe SKIPPED. FR-AT-02 쓰기 경로(actor 강제)와 대칭.
+  → Task 3(포트 시그니처)·Task 6(어댑터 가시성 강제)·Task 7(게이트가 `rule.actorUserId` 전달) 반영.
+- **CONCERN 4건 해소도 아래 태스크에 반영**(C1 type=이름·status=stateKey + 관통 통합테스트 / C2 stub 열거 + T8→T7 / C3 이중뷰 명시 / C4 dry-run 정정).
+- **게이트1 승인 완료** → bts-impl 진행.
