@@ -49,9 +49,28 @@
 - **관련 ADR**. 선행 [2026-07-11-fr-sl-04-slash-command.md](../decisions/2026-07-11-fr-sl-04-slash-command.md)(인바운드 패턴) · [2026-07-11-fr-sl-03-slack-unfurl.md](../decisions/2026-07-11-fr-sl-03-slack-unfurl.md)(서명검증·역매핑) · FR-AT-02(IssueMutationPort). 신규 ADR `2026-07-12-fr-sl-05-interactive.md`는 bts-spec에서 생성.
 - **grill-with-docs 축약 사유**. 도메인 언어/BC 경계가 SL-03/04로 이미 확립, 재사용 포트 전수 실재 검증 완료, 남은 것은 스코프/설계 결정(모달·감사·완료전이 버전) → bts-spec office-hours의 구체 선택지로 위임.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-12-fr-sl-05-interactive.md](../specs/2026-07-12-fr-sl-05-interactive.md)
+
+**Maxi 스코프 결정(2026-07-12)**. 풀세트(완료+담당자+상세보기+**코멘트 모달**) · 완료=**resolution 선택 모달** · **V703 감사 테이블 신설**.
+
+핵심 시나리오 요약.
+- `POST /slack/interactions` — block_actions(버튼/셀렉트) + view_submission(모달 제출) 2종. 서명검증 선행 → 역매핑 → cross-BC 쓰기 포트(권한 fail-closed) → 원본 메시지 갱신.
+- 완료로 표시 → views.open(resolution 모달, 동기 3초) → 제출 → `IssueTransitionPort.transition`.
+- 담당자 변경 → Slack `users_select`(후보 포트 우회) → 역매핑 → `IssueMutationPort.assign`.
+- 코멘트 추가 → views.open(모달) → 제출 → `IssueMutationPort.addComment`.
+
+신규. `POST /slack/interactions` 컨트롤러·payload 파서(2종)·모달 빌더(2)·`SlackMessageClient` views.open/chat.update 확장·`SlackBlockKitRenderer` actions 블록·**V703 slack_interaction_log**·**신규 읽기 포트 `IssueCompletionOptionsPort`**(version+done전이+resolution) + issue-tracking 어댑터.
+
+## Brainstorming Check
+
+✅ 통과 (포트 조사 중 sanity check 수행 — 발견 5건 스펙 반영).
+- trigger_id 3초 만료 → 모달 오픈은 동기 views.open, 그 외는 ack200+@Async (SL-04와 다른 핵심 제약).
+- 모달 제출 지연 시 OCC 충돌 → private_metadata에 expectedVersion 박제 + 충돌 시 ephemeral 재시도(form-occ-409 선례).
+- 담당자 후보: `ProjectMembershipPort`는 방향 반대 → Slack 네이티브 `users_select`로 후보 포트 회피.
+- resolution 목록 포트 부재 → 신규 `IssueCompletionOptionsPort`(version+done전이+resolution 결합 읽기, fail-closed).
+- 상세보기 url 버튼 payload는 no-op 200(dispatch 경고 방지).
 
 ## Plan (← /bts-plan 채움)
 
