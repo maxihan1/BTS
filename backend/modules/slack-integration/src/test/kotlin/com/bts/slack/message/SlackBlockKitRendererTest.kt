@@ -79,6 +79,35 @@ class SlackBlockKitRendererTest {
     }
 
     @Test
+    fun `renderAssignmentActionsMessage 는 상세보기·완료·담당자변경·코멘트 4개 액션 버튼을 렌더한다`() {
+        val rendered = renderer.renderAssignmentActionsMessage("담당자 배정됨", "PROJ-1")
+
+        val blocksNode = objectMapper.readTree(rendered.blocks)
+        val actionsBlock = blocksNode.first { it.get("type").asText() == "actions" }
+        val elements = actionsBlock.get("elements")
+
+        assertThat(elements.size()).isEqualTo(4)
+
+        // 회귀 검증 — 기존 상세보기(url 버튼)·완료로 표시(atlas_complete) 순서·필드 유지
+        assertThat(elements.get(0).get("url").asText()).isEqualTo("https://atlas.example.com/issues/PROJ-1")
+        assertThat(elements.get(0).get("text").get("text").asText()).isEqualTo("상세보기")
+
+        assertThat(elements.get(1).get("action_id").asText()).isEqualTo("atlas_complete")
+        assertThat(elements.get(1).get("value").asText()).isEqualTo("PROJ-1")
+        assertThat(elements.get(1).get("text").get("text").asText()).isEqualTo("완료로 표시")
+
+        // 신규 — 담당자 변경 버튼 (FR-SL-05 Task 1)
+        assertThat(elements.get(2).get("action_id").asText()).isEqualTo("atlas_assign")
+        assertThat(elements.get(2).get("value").asText()).isEqualTo("PROJ-1")
+        assertThat(elements.get(2).get("text").get("text").asText()).isEqualTo("담당자 변경")
+
+        // 신규 — 코멘트 버튼 (FR-SL-05 Task 1)
+        assertThat(elements.get(3).get("action_id").asText()).isEqualTo("atlas_comment")
+        assertThat(elements.get(3).get("value").asText()).isEqualTo("PROJ-1")
+        assertThat(elements.get(3).get("text").get("text").asText()).isEqualTo("코멘트")
+    }
+
+    @Test
     fun `renderIssueCard 는 키+제목·상태·우선순위·담당자 블록을 반환한다`() {
         val view =
             IssueUnfurlView(

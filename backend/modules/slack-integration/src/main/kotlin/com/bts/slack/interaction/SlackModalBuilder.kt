@@ -70,19 +70,101 @@ class SlackModalBuilder(
         return objectMapper.writeValueAsString(view)
     }
 
-    /** `{issueKey, expectedVersion, channel, ts}` — toStateKey는 절대 포함하지 않는다(KDoc 참조). */
+    /**
+     * `atlas_assign` 버튼 클릭으로 여는 담당자 변경 모달의 `view` payload JSON 문자열을 만든다.
+     *
+     * `expectedVersion`/`channel`/`ts`는 담지 않는다 — 완료 모달과 달리 OCC(낙관적 동시성 제어) 없이
+     * 담당자만 바꾸는 비종료 액션이라 원본 메시지 갱신 컨텍스트가 불필요하다(YAGNI).
+     *
+     * @param issueKey 담당자 변경 대상 이슈 키.
+     * @return `views.open`의 `view` 파라미터에 그대로 실을 수 있는 view payload JSON 문자열.
+     */
+    fun buildAssignModal(issueKey: String): String {
+        val view =
+            objectMapper.createObjectNode().apply {
+                put(TYPE_FIELD, MODAL_VIEW_TYPE)
+                put(CALLBACK_ID_FIELD, ATLAS_ASSIGN_MODAL_CALLBACK_ID)
+                set<ObjectNode>(TITLE_FIELD, plainText(ASSIGN_MODAL_TITLE))
+                set<ObjectNode>(SUBMIT_FIELD, plainText(ASSIGN_SUBMIT_BUTTON_TEXT))
+                set<ObjectNode>(CLOSE_FIELD, plainText(CLOSE_BUTTON_TEXT))
+                put(PRIVATE_METADATA_FIELD, privateMetadata(issueKey))
+                set<ArrayNode>(
+                    BLOCKS_FIELD,
+                    objectMapper.createArrayNode().apply {
+                        add(
+                            inputBlock(
+                                blockId = ASSIGNEE_BLOCK_ID,
+                                label = ASSIGNEE_LABEL,
+                                element =
+                                    objectMapper.createObjectNode().apply {
+                                        put(TYPE_FIELD, USERS_SELECT_TYPE)
+                                        put(ACTION_ID_FIELD, ASSIGNEE_ACTION_ID)
+                                    },
+                            ),
+                        )
+                    },
+                )
+            }
+
+        return objectMapper.writeValueAsString(view)
+    }
+
+    /**
+     * `atlas_comment` 버튼 클릭으로 여는 코멘트 작성 모달의 `view` payload JSON 문자열을 만든다.
+     *
+     * @param issueKey 코멘트 등록 대상 이슈 키.
+     * @return `views.open`의 `view` 파라미터에 그대로 실을 수 있는 view payload JSON 문자열.
+     */
+    fun buildCommentModal(issueKey: String): String {
+        val view =
+            objectMapper.createObjectNode().apply {
+                put(TYPE_FIELD, MODAL_VIEW_TYPE)
+                put(CALLBACK_ID_FIELD, ATLAS_COMMENT_MODAL_CALLBACK_ID)
+                set<ObjectNode>(TITLE_FIELD, plainText(COMMENT_MODAL_TITLE))
+                set<ObjectNode>(SUBMIT_FIELD, plainText(COMMENT_SUBMIT_BUTTON_TEXT))
+                set<ObjectNode>(CLOSE_FIELD, plainText(CLOSE_BUTTON_TEXT))
+                put(PRIVATE_METADATA_FIELD, privateMetadata(issueKey))
+                set<ArrayNode>(
+                    BLOCKS_FIELD,
+                    objectMapper.createArrayNode().apply {
+                        add(
+                            inputBlock(
+                                blockId = COMMENT_BLOCK_ID,
+                                label = COMMENT_LABEL,
+                                element =
+                                    objectMapper.createObjectNode().apply {
+                                        put(TYPE_FIELD, PLAIN_TEXT_INPUT_TYPE)
+                                        put(ACTION_ID_FIELD, COMMENT_ACTION_ID)
+                                        put(MULTILINE_FIELD, true)
+                                    },
+                            ),
+                        )
+                    },
+                )
+            }
+
+        return objectMapper.writeValueAsString(view)
+    }
+
+    /**
+     * `{issueKey}` — 필수. `expectedVersion`/`channel`/`ts`는 값이 있을 때만 추가한다.
+     *
+     * 완료 모달은 OCC(낙관적 동시성 제어) 버전과 원본 메시지 갱신 컨텍스트가 필요해 4개 필드를
+     * 모두 채우지만, 담당자/코멘트 모달은 OCC 없는 비종료 액션이라 issueKey만 필요하다(YAGNI).
+     * toStateKey는 절대 포함하지 않는다(클래스 KDoc 참조).
+     */
     private fun privateMetadata(
         issueKey: String,
-        expectedVersion: Long,
-        channel: String,
-        ts: String,
+        expectedVersion: Long? = null,
+        channel: String? = null,
+        ts: String? = null,
     ): String {
         val metadata =
             objectMapper.createObjectNode().apply {
                 put("issueKey", issueKey)
-                put("expectedVersion", expectedVersion)
-                put("channel", channel)
-                put("ts", ts)
+                expectedVersion?.let { put("expectedVersion", it) }
+                channel?.let { put("channel", it) }
+                ts?.let { put("ts", it) }
             }
         return objectMapper.writeValueAsString(metadata)
     }
@@ -92,8 +174,7 @@ class SlackModalBuilder(
         inputBlock(
             blockId = RESOLUTION_BLOCK_ID,
             label = RESOLUTION_LABEL,
-            actionId = RESOLUTION_ACTION_ID,
-            options = resolutions.map { it.label to it.id.toString() },
+            element = staticSelectElement(RESOLUTION_ACTION_ID, resolutions.map { it.label to it.id.toString() }),
         )
 
     /** done 전이 선택 `input` 블록 — 옵션 = [doneTransitions]. */
@@ -101,50 +182,47 @@ class SlackModalBuilder(
         inputBlock(
             blockId = DONE_TRANSITION_BLOCK_ID,
             label = DONE_TRANSITION_LABEL,
-            actionId = DONE_TRANSITION_ACTION_ID,
-            options = doneTransitions.map { it.label to it.toStateKey },
+            element = staticSelectElement(DONE_TRANSITION_ACTION_ID, doneTransitions.map { it.label to it.toStateKey }),
         )
 
-    /**
-     * `{"type": "input", "block_id": blockId, "label": plainText(label),
-     *   "element": {"type": "static_select", "action_id": actionId, "options": [...]}}`.
-     *
-     * @param options `표시 라벨 to value` 쌍 목록.
-     */
+    /** `{"type": "input", "block_id": blockId, "label": plainText(label), "element": element}`. */
     private fun inputBlock(
         blockId: String,
         label: String,
-        actionId: String,
-        options: List<Pair<String, String>>,
-    ): ObjectNode {
-        val element =
-            objectMapper.createObjectNode().apply {
-                put(TYPE_FIELD, STATIC_SELECT_TYPE)
-                put(ACTION_ID_FIELD, actionId)
-                set<ArrayNode>(
-                    OPTIONS_FIELD,
-                    objectMapper.createArrayNode().apply {
-                        options.forEach { (optionLabel, optionValue) -> add(selectOption(optionLabel, optionValue)) }
-                    },
-                )
-            }
-
-        return objectMapper.createObjectNode().apply {
+        element: ObjectNode,
+    ): ObjectNode =
+        objectMapper.createObjectNode().apply {
             put(TYPE_FIELD, INPUT_BLOCK_TYPE)
             put(BLOCK_ID_FIELD, blockId)
             set<ObjectNode>(LABEL_FIELD, plainText(label))
             set<ObjectNode>(ELEMENT_FIELD, element)
         }
-    }
 
-    /** `{"text": plainText(label), "value": value}` — static_select 옵션 하나. */
-    private fun selectOption(
-        label: String,
-        value: String,
+    /**
+     * `{"type": "static_select", "action_id": actionId, "options": [...]}`.
+     *
+     * @param options `표시 라벨 to value` 쌍 목록.
+     */
+    private fun staticSelectElement(
+        actionId: String,
+        options: List<Pair<String, String>>,
     ): ObjectNode =
         objectMapper.createObjectNode().apply {
-            set<ObjectNode>(TEXT_FIELD, plainText(label))
-            put(VALUE_FIELD, value)
+            put(TYPE_FIELD, STATIC_SELECT_TYPE)
+            put(ACTION_ID_FIELD, actionId)
+            set<ArrayNode>(
+                OPTIONS_FIELD,
+                objectMapper.createArrayNode().apply {
+                    options.forEach { (optionLabel, optionValue) ->
+                        add(
+                            objectMapper.createObjectNode().apply {
+                                set<ObjectNode>(TEXT_FIELD, plainText(optionLabel))
+                                put(VALUE_FIELD, optionValue)
+                            },
+                        )
+                    }
+                },
+            )
         }
 
     /** `{"type": "plain_text", "text": text}`. */
@@ -174,6 +252,10 @@ class SlackModalBuilder(
         const val PLAIN_TEXT_TYPE = "plain_text"
         const val STATIC_SELECT_TYPE = "static_select"
         const val INPUT_BLOCK_TYPE = "input"
+        const val USERS_SELECT_TYPE = "users_select"
+        const val PLAIN_TEXT_INPUT_TYPE = "plain_text_input"
+
+        const val MULTILINE_FIELD = "multiline"
 
         const val MODAL_TITLE = "이슈 완료"
         const val SUBMIT_BUTTON_TEXT = "완료"
@@ -186,7 +268,24 @@ class SlackModalBuilder(
         const val DONE_TRANSITION_BLOCK_ID = "done_transition_block"
         const val DONE_TRANSITION_ACTION_ID = "done_transition_select"
 
+        const val ASSIGN_MODAL_TITLE = "담당자 변경"
+        const val ASSIGN_SUBMIT_BUTTON_TEXT = "변경"
+        const val ASSIGNEE_LABEL = "담당자"
+        const val ASSIGNEE_BLOCK_ID = "assignee_block"
+        const val ASSIGNEE_ACTION_ID = "assignee_select"
+        const val COMMENT_MODAL_TITLE = "코멘트"
+        const val COMMENT_SUBMIT_BUTTON_TEXT = "등록"
+        const val COMMENT_LABEL = "코멘트"
+        const val COMMENT_BLOCK_ID = "comment_block"
+        const val COMMENT_ACTION_ID = "comment_input"
+
         /** `view.callback_id` — [com.bts.slack.interaction] 제출 핸들러(후속 Task)가 매칭한다. */
         const val ATLAS_COMPLETE_MODAL_CALLBACK_ID = "atlas_complete_modal"
+
+        /** `view.callback_id` — 담당자 변경 모달 제출 핸들러(후속 Task)가 매칭한다. */
+        const val ATLAS_ASSIGN_MODAL_CALLBACK_ID = "atlas_assign_modal"
+
+        /** `view.callback_id` — 코멘트 등록 모달 제출 핸들러(후속 Task)가 매칭한다. */
+        const val ATLAS_COMMENT_MODAL_CALLBACK_ID = "atlas_comment_modal"
     }
 }

@@ -49,6 +49,8 @@ import javax.sql.DataSource
  *   Task 9, issueKey 별 시드 가능, [issueCompletionOptionsPort] 참고).
  * - [StubIssueTransitionPort] — cross-BC 완료 전이 실행 stub(FR-SL-05 PR1 Task 9, 성공 결과/실패 예외
  *   시드 가능, [issueTransitionPort] 참고).
+ * - [StubIssueMutationPort] — cross-BC 이슈 변경(담당자 배정/댓글 추가/필드 변경) 실행 stub(FR-SL-05 PR2
+ *   Task 3, 메서드별 성공 결과/실패 예외 시드 가능, [issueMutationPort] 참고).
  *
  * ## JVM 단위 singleton container (교훈 concurrent-testcontainers-suite-flaky)
  * companion 의 `.apply { start() }` 로 JVM 시작 시 한 번만 기동하고 Ryuk 의 종료 시 자동 정리에 위임한다.
@@ -183,6 +185,18 @@ class SlackTestcontainersConfig {
      */
     @Bean
     fun issueTransitionPort(): StubIssueTransitionPort = StubIssueTransitionPort()
+
+    /**
+     * cross-BC 이슈 변경(담당자 배정/댓글 추가/필드 변경) 실행 포트 — settable [StubIssueMutationPort]
+     * (FR-SL-05 PR2 Task 3).
+     *
+     * `SlackInteractionService`(FR-SL-05 PR2 후속 Task)의 생성자가 non-null
+     * [com.bts.shared.issue.IssueMutationPort] 를 요구할 예정이므로, test-boot 컨텍스트 로드를 위해 선제
+     * 등록한다(빈 부재 시 [SlackContextLoadTest] 회귀). 시드되지 않은 상태로 호출하면 명시 오류로 실패하므로,
+     * 테스트가 `nextAssignResult`/`nextCommentResult` 등으로 시나리오를 먼저 시드해야 한다.
+     */
+    @Bean
+    fun issueMutationPort(): StubIssueMutationPort = StubIssueMutationPort()
 
     companion object {
         /**

@@ -6,6 +6,8 @@ import com.bts.shared.board.IssueOptimisticLockException
 import com.bts.shared.board.IssueTransitionPermissionDeniedException
 import com.bts.shared.issue.DoneTransition
 import com.bts.shared.issue.IssueCompletionOptions
+import com.bts.shared.issue.IssueMutationPermissionDeniedException
+import com.bts.shared.issue.MutationResult
 import com.bts.shared.issue.ResolutionOption
 import com.bts.slack.application.SlackUserMappingRepository
 import com.bts.slack.message.SlackResponseUrlClient
@@ -82,6 +84,22 @@ private const val AUDIT_SIGNING_SECRET = "slack-interaction-audit-e2e-signing-se
  * - 미연결 — 역매핑되지 않은 Slack 사용자의 완료 버튼 클릭 → ephemeral 안내 + V703 `UNMAPPED`.
  * - 서명 실패 — 빈 401, V703 미기록.
  * - 무권한(완료옵션 없음, 선택) — block_actions 단계에서 완료옵션 미시드 → 모달 미오픈 + V703 `PERMISSION_DENIED`.
+ *
+ * ## 담당자·코멘트 시나리오 (FR-SL-05 PR2 Task 5)
+ * `SlackInteractionService`(Task 4)가 이미 배선한 `IssueMutationPort` 경로를 [StubIssueMutationPort]로
+ * 검증한다 — 완료 왕복과 달리 OCC 대상이 아니고 원본 메시지 갱신도 없다.
+ * - 담당자 버튼 — block_actions `atlas_assign` → 담당자 배정 모달 오픈(`views.open`), V703 미기록.
+ * - 담당자 배정 성공 — view_submission `atlas_assign_modal` 제출(대상 역매핑 성공) → `assign` 호출 인자
+ *   정합 + V703 `ASSIGN`/`SUCCESS`.
+ * - 대상 미연결 — 배정 대상 Slack 사용자가 역매핑되지 않음 → response_action errors + V703
+ *   `ASSIGN`/`ERROR`, `assign` 미호출.
+ * - 무권한 — `assign`이 [IssueMutationPermissionDeniedException] 을 던짐 → response_action errors +
+ *   V703 `ASSIGN`/`PERMISSION_DENIED`.
+ * - 코멘트 버튼 — block_actions `atlas_comment` → 코멘트 등록 모달 오픈(`views.open`), V703 미기록.
+ * - 코멘트 등록 성공 — view_submission `atlas_comment_modal` 제출 → `addComment` 호출 인자 정합 + V703
+ *   `COMMENT`/`SUCCESS`.
+ * - actor 미연결 — 코멘트 모달 제출자 Slack 사용자가 역매핑되지 않음 → response_action errors(계정 연결
+ *   안내) + V703 `COMMENT`/`UNMAPPED`.
  */
 @SpringBootTest(
     classes = [SlackIntegrationTestBootApplication::class],
@@ -112,6 +130,9 @@ class SlackInteractionEndToEndTest {
 
     @Autowired
     private lateinit var transitionPort: StubIssueTransitionPort
+
+    @Autowired
+    private lateinit var mutationPort: StubIssueMutationPort
 
     @Autowired
     private lateinit var jdbc: JdbcTemplate
@@ -286,6 +307,149 @@ class SlackInteractionEndToEndTest {
         assertThat(row["issue_key"]).isEqualTo(ISSUE_KEY)
     }
 
+    // ── (7) 담당자 버튼 — block_actions atlas_assign → 담당자 배정 모달 오픈, V703 미기록 ─────────────
+
+    @Test
+    fun `담당자 버튼 - block_actions atlas_assign 클릭은 담당자 배정 모달을 연다`() {
+        seedMapping()
+
+        mockMvc.perform(postInteraction(blockActionsAssignPayload())).andExpect(status().isOk)
+
+        verify(exactly = 1) { methodsClient.viewsOpen(any<ViewsOpenConfigurator>()) }
+        // 버튼 클릭 성공(모달 오픈)은 record()를 거치지 않는다 — 완료 버튼과 동형(시나리오 1 상단 주석).
+        assertThat(fetchInteractionLogRows()).isEmpty()
+    }
+
+    // ── (8) 담당자 배정 성공 — view_submission atlas_assign_modal 제출 → assign 호출 + V703 ASSIGN SUCCESS ──
+
+    @Test
+    fun `담당자 배정 성공 - view_submission atlas_assign_modal 제출은 대상 BTS 사용자로 배정되고 V703 ASSIGN SUCCESS 로 기록된다`() {
+        seedMapping()
+        seedTargetMapping()
+        mutationPort.nextAssignResult = MutationResult(ISSUE_KEY, applied = true, version = 5)
+
+        mockMvc.perform(postInteraction(assignSubmissionPayload(TARGET_SLACK_USER_ID))).andExpect(status().isOk)
+
+        val command = mutationPort.lastAssignCommand
+        assertThat(command).isNotNull
+        assertThat(command?.actorUserId).isEqualTo(BTS_USER_ID)
+        assertThat(command?.issueKey).isEqualTo(ISSUE_KEY)
+        assertThat(command?.assigneeId).isEqualTo(TARGET_BTS_USER_ID)
+
+        val rows = fetchInteractionLogRows()
+        assertThat(rows).hasSize(1)
+        val row = rows.single()
+        assertThat(row["bts_user_id"]).isEqualTo(BTS_USER_ID)
+        assertThat(row["action_type"]).isEqualTo("ASSIGN")
+        assertThat(row["outcome"]).isEqualTo("SUCCESS")
+        assertThat(row["issue_key"]).isEqualTo(ISSUE_KEY)
+    }
+
+    // ── (9) 대상 미연결 — response_action errors + V703 ASSIGN ERROR, assign 미호출 ──────────────────
+
+    @Test
+    fun `대상 미연결 - 매핑되지 않은 사용자를 담당자로 선택하면 response_action errors 와 V703 ASSIGN ERROR 로 기록되고 assign 은 호출되지 않는다`() {
+        seedMapping()
+        // seedTargetMapping() 미호출 — UNMAPPED_TARGET_SLACK_USER_ID 는 역매핑되지 않은 상태.
+
+        val body =
+            mockMvc.perform(postInteraction(assignSubmissionPayload(UNMAPPED_TARGET_SLACK_USER_ID)))
+                .andExpect(status().isOk)
+                .andReturn().response.contentAsString
+        assertThat(body).contains("response_action").contains("errors")
+        assertThat(mutationPort.lastAssignCommand).isNull()
+
+        val rows = fetchInteractionLogRows()
+        assertThat(rows).hasSize(1)
+        val row = rows.single()
+        assertThat(row["bts_user_id"]).isEqualTo(BTS_USER_ID)
+        assertThat(row["action_type"]).isEqualTo("ASSIGN")
+        assertThat(row["outcome"]).isEqualTo("ERROR")
+        assertThat(row["issue_key"]).isEqualTo(ISSUE_KEY)
+    }
+
+    // ── (10) 무권한 — assign 이 권한 거부 예외 → response_action errors + V703 ASSIGN PERMISSION_DENIED ──
+
+    @Test
+    fun `무권한 - assign 이 권한 거부 예외를 던지면 response_action errors 와 V703 ASSIGN PERMISSION_DENIED 로 기록된다`() {
+        seedMapping()
+        seedTargetMapping()
+        mutationPort.nextAssignError = IssueMutationPermissionDeniedException("denied")
+
+        val body =
+            mockMvc.perform(postInteraction(assignSubmissionPayload(TARGET_SLACK_USER_ID)))
+                .andExpect(status().isOk)
+                .andReturn().response.contentAsString
+        assertThat(body).contains("response_action").contains("errors")
+
+        val rows = fetchInteractionLogRows()
+        assertThat(rows).hasSize(1)
+        val row = rows.single()
+        assertThat(row["bts_user_id"]).isEqualTo(BTS_USER_ID)
+        assertThat(row["action_type"]).isEqualTo("ASSIGN")
+        assertThat(row["outcome"]).isEqualTo("PERMISSION_DENIED")
+        assertThat(row["issue_key"]).isEqualTo(ISSUE_KEY)
+    }
+
+    // ── (11) 코멘트 버튼 — block_actions atlas_comment → 코멘트 등록 모달 오픈, V703 미기록 ───────────
+
+    @Test
+    fun `코멘트 버튼 - block_actions atlas_comment 클릭은 코멘트 등록 모달을 연다`() {
+        seedMapping()
+
+        mockMvc.perform(postInteraction(blockActionsCommentPayload())).andExpect(status().isOk)
+
+        verify(exactly = 1) { methodsClient.viewsOpen(any<ViewsOpenConfigurator>()) }
+        assertThat(fetchInteractionLogRows()).isEmpty()
+    }
+
+    // ── (12) 코멘트 등록 성공 — view_submission atlas_comment_modal 제출 → addComment 호출 + V703 COMMENT SUCCESS ──
+
+    @Test
+    fun `코멘트 등록 성공 - view_submission atlas_comment_modal 제출은 addComment 를 호출하고 V703 COMMENT SUCCESS 로 기록된다`() {
+        seedMapping()
+        mutationPort.nextCommentResult = MutationResult(ISSUE_KEY, applied = true, version = null)
+
+        mockMvc.perform(postInteraction(commentSubmissionPayload(COMMENT_BODY))).andExpect(status().isOk)
+
+        val command = mutationPort.lastAddCommentCommand
+        assertThat(command).isNotNull
+        assertThat(command?.actorUserId).isEqualTo(BTS_USER_ID)
+        assertThat(command?.issueKey).isEqualTo(ISSUE_KEY)
+        assertThat(command?.body).isEqualTo(COMMENT_BODY)
+
+        val rows = fetchInteractionLogRows()
+        assertThat(rows).hasSize(1)
+        val row = rows.single()
+        assertThat(row["bts_user_id"]).isEqualTo(BTS_USER_ID)
+        assertThat(row["action_type"]).isEqualTo("COMMENT")
+        assertThat(row["outcome"]).isEqualTo("SUCCESS")
+        assertThat(row["issue_key"]).isEqualTo(ISSUE_KEY)
+    }
+
+    // ── (13) actor 미연결 — 계정 연결 안내 + V703 COMMENT UNMAPPED, addComment 미호출 ─────────────────
+
+    @Test
+    fun `actor 미연결 - 매핑되지 않은 사용자가 코멘트 모달을 제출하면 계정 연결 안내와 V703 COMMENT UNMAPPED 로 기록된다`() {
+        // seedMapping() 미호출 — 제출자 SLACK_USER_ID·TEAM_ID 조합이 역매핑되지 않은 상태.
+
+        val body =
+            mockMvc.perform(postInteraction(commentSubmissionPayload(COMMENT_BODY)))
+                .andExpect(status().isOk)
+                .andReturn().response.contentAsString
+        assertThat(body).contains("response_action").contains("errors")
+        assertThat(mutationPort.lastAddCommentCommand).isNull()
+
+        val rows = fetchInteractionLogRows()
+        assertThat(rows).hasSize(1)
+        val row = rows.single()
+        assertThat(row["team_id"]).isEqualTo(TEAM_ID)
+        assertThat(row["slack_user_id"]).isEqualTo(SLACK_USER_ID)
+        assertThat(row["bts_user_id"]).isNull()
+        assertThat(row["action_type"]).isEqualTo("COMMENT")
+        assertThat(row["outcome"]).isEqualTo("UNMAPPED")
+    }
+
     // ── 요청 조립 헬퍼 ───────────────────────────────────────────────────────────────────────────
 
     /** `payload=<URL-encoded JSON>` form 바디를 만들어 유효/지정 서명으로 전송하는 요청 빌더를 만든다. */
@@ -350,6 +514,72 @@ class SlackInteractionEndToEndTest {
         return objectMapper.writeValueAsString(meta)
     }
 
+    // ── payload JSON 조립 — 담당자·코멘트 (FR-SL-05 PR2 Task 5, blockActionsCompletePayload/viewSubmissionPayload 동형) ──
+
+    private fun blockActionsAssignPayload(): String {
+        val root = objectMapper.createObjectNode()
+        root.put("type", "block_actions")
+        root.putObject("user").put("id", SLACK_USER_ID)
+        root.putObject("team").put("id", TEAM_ID)
+        root.put("trigger_id", TRIGGER_ID)
+        root.put("response_url", RESPONSE_URL)
+        root.putObject("channel").put("id", CHANNEL_ID)
+        root.putObject("message").put("ts", MESSAGE_TS)
+        root.putArray("actions").addObject().put("action_id", "atlas_assign").put("value", ISSUE_KEY)
+        return objectMapper.writeValueAsString(root)
+    }
+
+    private fun blockActionsCommentPayload(): String {
+        val root = objectMapper.createObjectNode()
+        root.put("type", "block_actions")
+        root.putObject("user").put("id", SLACK_USER_ID)
+        root.putObject("team").put("id", TEAM_ID)
+        root.put("trigger_id", TRIGGER_ID)
+        root.put("response_url", RESPONSE_URL)
+        root.putObject("channel").put("id", CHANNEL_ID)
+        root.putObject("message").put("ts", MESSAGE_TS)
+        root.putArray("actions").addObject().put("action_id", "atlas_comment").put("value", ISSUE_KEY)
+        return objectMapper.writeValueAsString(root)
+    }
+
+    /** `users_select` state — [targetSlackUserId]가 `selected_user`로 담긴 담당자 모달 제출 payload. */
+    private fun assignSubmissionPayload(targetSlackUserId: String): String {
+        val root = objectMapper.createObjectNode()
+        root.put("type", "view_submission")
+        root.putObject("user").put("id", SLACK_USER_ID)
+        root.putObject("team").put("id", TEAM_ID)
+        val view = root.putObject("view")
+        view.put("callback_id", "atlas_assign_modal")
+        view.put("private_metadata", issueKeyPrivateMetadata())
+        val values = view.putObject("state").putObject("values")
+        values.putObject("assignee_block").putObject("assignee_select").put("selected_user", targetSlackUserId)
+        return objectMapper.writeValueAsString(root)
+    }
+
+    /** `plain_text_input` state — [body]가 `value`로 담긴 코멘트 모달 제출 payload. */
+    private fun commentSubmissionPayload(body: String): String {
+        val root = objectMapper.createObjectNode()
+        root.put("type", "view_submission")
+        root.putObject("user").put("id", SLACK_USER_ID)
+        root.putObject("team").put("id", TEAM_ID)
+        val view = root.putObject("view")
+        view.put("callback_id", "atlas_comment_modal")
+        view.put("private_metadata", issueKeyPrivateMetadata())
+        val values = view.putObject("state").putObject("values")
+        values.putObject("comment_block").putObject("comment_input").put("value", body)
+        return objectMapper.writeValueAsString(root)
+    }
+
+    /**
+     * 담당자/코멘트 모달의 `private_metadata` —
+     * [com.bts.slack.interaction.SlackModalBuilder.buildAssignModal]/`buildCommentModal` 동형(issueKey 만).
+     */
+    private fun issueKeyPrivateMetadata(): String {
+        val meta = objectMapper.createObjectNode()
+        meta.put("issueKey", ISSUE_KEY)
+        return objectMapper.writeValueAsString(meta)
+    }
+
     // ── 서명 헬퍼 — SlackSignatureVerifier 와 동일한 v0 계산 재현 ─────────────────────────────────
 
     private fun signatureFor(
@@ -382,11 +612,15 @@ class SlackInteractionEndToEndTest {
 
     private fun seedMapping() = mappingRepository.upsert(BTS_USER_ID, SLACK_USER_ID, TEAM_ID)
 
+    /** 담당자 배정 대상(assignee) 역매핑 시드 — actor([seedMapping])와 별도 사용자([TARGET_BTS_USER_ID]). */
+    private fun seedTargetMapping() = mappingRepository.upsert(TARGET_BTS_USER_ID, TARGET_SLACK_USER_ID, TEAM_ID)
+
     private fun clearState() {
         jdbc.update("DELETE FROM user_slack_mapping")
         jdbc.update("DELETE FROM slack_interaction_log")
         completionOptionsPort.completionOptionsByIssueKey.clear()
         transitionPort.reset()
+        mutationPort.reset()
     }
 
     /**
@@ -419,6 +653,16 @@ class SlackInteractionEndToEndTest {
         const val TEAM_ID = "T0AUDITTEAM01"
         const val SLACK_USER_ID = "U0AUDITUSER01"
         const val ISSUE_KEY = "PROJ-9"
+
+        // ── 담당자 배정 대상(assignee) — actor(SLACK_USER_ID/BTS_USER_ID)와 별도 사용자 (FR-SL-05 PR2 Task 5) ──
+        const val TARGET_BTS_USER_ID_STRING = "77777777-7777-4777-7777-777777777777"
+        val TARGET_BTS_USER_ID: UUID = UUID.fromString(TARGET_BTS_USER_ID_STRING)
+        const val TARGET_SLACK_USER_ID = "U0AUDITTARGET1"
+
+        /** 어떤 시나리오에서도 [SlackUserMappingRepository]에 시드하지 않는 배정 대상 — "대상 미연결" 검증용. */
+        const val UNMAPPED_TARGET_SLACK_USER_ID = "U0AUDITNOLINK1"
+
+        const val COMMENT_BODY = "테스트 코멘트 본문입니다"
         const val CHANNEL_ID = "C0AUDITCHAN01"
         const val MESSAGE_TS = "1700000001.000100"
         const val TRIGGER_ID = "trig-audit-1"
