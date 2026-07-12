@@ -8,6 +8,11 @@
 
 ## 개요
 
+> **PR 분할 (Maxi 확정 2026-07-12).** FR-SL-05는 2 PR로 구현한다.
+> - **PR1 (이 스펙/plan)** — 인바운드 인터랙티브 인프라 전체(`POST /slack/interactions`·서명검증·payload 파서 2종·모달 열기/제출·메시지 갱신·V703 감사·신규 `IssueCompletionOptionsPort`) + **완료로 표시(resolution 모달)** + **상세보기(url)**.
+> - **PR2 (후속)** — **담당자 변경(users_select)** + **코멘트 추가(모달)**. PR1의 인프라(컨트롤러·파서·모달·메시지 클라이언트·역매핑·V703) 재사용, 액션 2종만 추가.
+> - FR 카운트 불변(FR-SL-05 1개, 2 PR에 걸쳐 구현 — FR-SL-01/02 D-phase 분할 선례). D6/D7 UI=해당없음, E2E는 각 PR이 자기 액션 커버.
+
 Slack 알림 메시지(FR-SL-02 담당자 배정 DM)에 액션 요소를 붙이고, 사용자가 Slack 안에서 버튼/메뉴/모달로 이슈를 직접 조작한다. 클릭 → Slack이 `POST /slack/interactions`로 payload 전송 → BTS가 서명검증 → Slack 사용자 역매핑 → 권한 게이트(cross-BC 쓰기 포트) → 이슈 변경 → 원본 메시지 갱신.
 
 ### 액션 세트 (Maxi 확정 — 풀세트)
