@@ -16,14 +16,22 @@ class ConditionTest : DescribeSpec({
             val condition = Condition.fromJson("""{"==": [{"var": "issue.status"}, "Done"]}""")
 
             condition shouldBe
-                Condition.Comparison(field = "issue.status", operator = ComparisonOperator.EQUALS, value = TextNode("Done"))
+                Condition.Comparison(
+                    field = "issue.status",
+                    operator = ComparisonOperator.EQUALS,
+                    value = TextNode("Done"),
+                )
         }
 
-        it("!= 를 파싱한다") {
+        it("NOT_EQUALS(!=) 를 파싱한다") {
             val condition = Condition.fromJson("""{"!=": [{"var": "issue.type"}, "Bug"]}""")
 
             condition shouldBe
-                Condition.Comparison(field = "issue.type", operator = ComparisonOperator.NOT_EQUALS, value = TextNode("Bug"))
+                Condition.Comparison(
+                    field = "issue.type",
+                    operator = ComparisonOperator.NOT_EQUALS,
+                    value = TextNode("Bug"),
+                )
         }
 
         it(">= 를 숫자 리터럴과 함께 파싱한다") {
@@ -61,19 +69,27 @@ class ConditionTest : DescribeSpec({
             val condition = Condition.fromJson("""{"in": ["urgent", {"var": "issue.labels"}]}""")
 
             condition shouldBe
-                Condition.Comparison(field = "issue.labels", operator = ComparisonOperator.IN, value = TextNode("urgent"))
+                Condition.Comparison(
+                    field = "issue.labels",
+                    operator = ComparisonOperator.IN,
+                    value = TextNode("urgent"),
+                )
         }
     }
 
     describe("Condition.fromJson — 존재 !/!!") {
-        it("! 를 var 단일 피연산자로 파싱한다") {
+        it("EMPTY(!) 를 var 단일 피연산자로 파싱한다") {
             val condition = Condition.fromJson("""{"!": {"var": "issue.assignee"}}""")
 
             condition shouldBe
-                Condition.Comparison(field = "issue.assignee", operator = ComparisonOperator.EMPTY, value = NullNode.instance)
+                Condition.Comparison(
+                    field = "issue.assignee",
+                    operator = ComparisonOperator.EMPTY,
+                    value = NullNode.instance,
+                )
         }
 
-        it("!! 를 var 단일 피연산자로 파싱한다") {
+        it("EXISTS(!!) 를 var 단일 피연산자로 파싱한다") {
             val condition = Condition.fromJson("""{"!!": {"var": "issue.assignee"}}""")
 
             (condition as Condition.Comparison).operator shouldBe ComparisonOperator.EXISTS
@@ -120,8 +136,8 @@ class ConditionTest : DescribeSpec({
         it("2단 중첩(and 안에 or)을 파싱한다") {
             val condition =
                 Condition.fromJson(
-                    """{"and": [{"or": [{"==": [{"var": "issue.status"}, "Done"]},
-                        |{"==": [{"var": "issue.status"}, "Closed"]}]}]}""".trimMargin(),
+                    """{"and": [{"or": [{"==": [{"var": "issue.status"}, "Done"]}, """ +
+                        """{"==": [{"var": "issue.status"}, "Closed"]}]}]}""",
                 )
 
             condition shouldBe
@@ -160,8 +176,8 @@ class ConditionTest : DescribeSpec({
         it("and/or/not 중첩 트리가 round-trip 된다") {
             val original =
                 Condition.fromJson(
-                    """{"and": [{"==": [{"var": "issue.type"}, "Bug"]},
-                        |{"not": {"==": [{"var": "issue.status"}, "Done"]}}]}""".trimMargin(),
+                    """{"and": [{"==": [{"var": "issue.type"}, "Bug"]}, """ +
+                        """{"not": {"==": [{"var": "issue.status"}, "Done"]}}]}""",
                 )
 
             Condition.fromJson(original.toJson()) shouldBe original
@@ -250,7 +266,7 @@ class ConditionTest : DescribeSpec({
             }
         }
 
-        it("! 연산자의 피연산자가 var 가 아니면 거부한다") {
+        it("EMPTY(!) 연산자의 피연산자가 var 가 아니면 거부한다") {
             shouldThrow<InvalidConditionExpressionException> {
                 Condition.fromJson("""{"!": "issue.assignee"}""")
             }
