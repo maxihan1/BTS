@@ -24,7 +24,7 @@ interface SlackInteractionLogRepository {
      * @param slackUserId 액션을 실행한 Slack 사용자 id(Uxxxx).
      * @param btsUserId 연결된 BTS user id — Slack 계정이 BTS 에 연결되지 않았으면(UNMAPPED) null.
      * @param actionType COMPLETE / ASSIGN / COMMENT / VIEW.
-     * @param outcome SUCCESS / UNMAPPED / PERMISSION_DENIED / CONFLICT / ERROR.
+     * @param outcome SUCCESS / UNMAPPED / PERMISSION_DENIED / CONFLICT / ERROR / NOT_APPLICABLE.
      * @param issueKey 대상 이슈 키 — 없으면 null.
      *
      * 감사 테이블 컬럼(team/slackUser/btsUser/action/outcome/issue)을 그대로 받는 flat insert이며

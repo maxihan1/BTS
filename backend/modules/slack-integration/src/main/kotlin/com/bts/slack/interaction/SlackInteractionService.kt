@@ -10,6 +10,7 @@ import com.bts.slack.application.SlackInteractionLogRepository
 import com.bts.slack.application.SlackUserMappingRepository
 import com.bts.slack.message.SlackMessageClient
 import com.bts.slack.message.SlackResponseUrlClient
+import com.bts.slack.message.SlackSendResult
 import com.bts.slack.worker.SlackBotTokenResolver
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -132,6 +133,13 @@ class SlackInteractionService(
             record(teamId, slackUserId, btsUserId, OUTCOME_PERMISSION_DENIED, issueKey)
             return InteractionResult.AckEmpty
         }
+        // 완료 가능한 DONE 전이가 없으면(이미 완료 등) 입력 블록 없는 무효 모달을 열지 않고 안내로 수렴한다
+        // (views.open 무효 거부로 인한 무피드백·무감사 침묵 차단). 오류가 아니므로 별도 outcome 으로 기록한다.
+        if (options.doneTransitions.isEmpty()) {
+            sendEphemeral(payload.responseUrl, NO_COMPLETABLE_STATE_MESSAGE)
+            record(teamId, slackUserId, btsUserId, OUTCOME_NOT_APPLICABLE, issueKey)
+            return InteractionResult.AckEmpty
+        }
 
         val botToken = botTokenResolver.resolve(teamId)
         val triggerId = payload.triggerId
@@ -142,7 +150,11 @@ class SlackInteractionService(
         }
         val modalJson =
             modalBuilder.buildCompletionModal(options, issueKey, payload.channel.orEmpty(), payload.messageTs.orEmpty())
-        messageClient.openModal(botToken, triggerId, modalJson)
+        // 모달 오픈 실패(만료 trigger_id·Slack 거부 등)는 결과를 버리지 않고 안내 + 감사한다(침묵 차단).
+        if (messageClient.openModal(botToken, triggerId, modalJson) !is SlackSendResult.Sent) {
+            sendEphemeral(payload.responseUrl, GENERIC_ERROR_MESSAGE)
+            record(teamId, slackUserId, btsUserId, OUTCOME_ERROR, issueKey)
+        }
         return InteractionResult.AckEmpty
     }
 
@@ -218,13 +230,24 @@ class SlackInteractionService(
             responseActionErrors(GENERIC_ERROR_MESSAGE)
         }
 
-    /** 전이 성공 후 원본 DM 메시지를 완료 문구로 갱신한다. 봇 미설치면 조용히 skip(전이는 이미 성공). */
+    /**
+     * 전이 성공 후 원본 DM 메시지를 완료 문구로 갱신한다(장식용). 봇 미설치면 조용히 skip(전이는 이미 성공).
+     *
+     * 전이는 이미 독립 트랜잭션으로 커밋된 뒤라, 이 갱신(봇토큰 복호화·`chat.update`)의 실패가 성공한 완료를
+     * 뒤집어선 안 된다. [executeCompletion]의 결과 분류 catch로 예외가 전파되면 SUCCESS가 ERROR로 오분류·
+     * 오기록되므로, 여기서 best-effort로 삼키고 WARN만 남긴다([record] 동형).
+     */
+    @Suppress("TooGenericExceptionCaught") // 장식용 갱신 — 실패는 WARN만, 이미 커밋된 완료를 뒤집지 않는다.
     private fun updateOriginalMessage(
         teamId: String,
         metadata: CompletionMetadata,
     ) {
-        val botToken = botTokenResolver.resolve(teamId) ?: return
-        messageClient.updateMessage(botToken, metadata.channel, metadata.ts, completedBlocksJson())
+        try {
+            val botToken = botTokenResolver.resolve(teamId) ?: return
+            messageClient.updateMessage(botToken, metadata.channel, metadata.ts, completedBlocksJson())
+        } catch (e: RuntimeException) {
+            log.warn("slack_interaction_update_original_failed errorType={}", e.javaClass.simpleName)
+        }
     }
 
     // ── private_metadata / state_values 추출 ───────────────────────────────────
@@ -379,10 +402,14 @@ class SlackInteractionService(
         const val OUTCOME_CONFLICT = "CONFLICT"
         const val OUTCOME_ERROR = "ERROR"
 
+        // 볼 수 있으나(권한 OK) 현 상태에서 완료 가능한 전이가 없음 — 오류·거부와 구분되는 감사 신호.
+        const val OUTCOME_NOT_APPLICABLE = "NOT_APPLICABLE"
+
         // ── 사용자 노출 메시지 (내부 사정 미노출 — 이슈 존재/제목 등을 드러내지 않는다) ──
         const val ACCOUNT_LINK_REQUIRED_MESSAGE =
             "Atlas 계정이 Slack에 연결되어 있지 않습니다. `/atlas help`로 연결 방법을 확인하세요."
         const val NO_PERMISSION_MESSAGE = "권한이 없거나 이슈를 볼 수 없습니다."
+        const val NO_COMPLETABLE_STATE_MESSAGE = "지금은 완료할 수 있는 상태가 아닙니다."
         const val CONFLICT_MESSAGE = "이슈가 그 사이 변경되었습니다. 다시 시도해 주세요."
         const val GENERIC_ERROR_MESSAGE = "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요."
         const val COMPLETED_MESSAGE = "✅ 완료 처리됨"

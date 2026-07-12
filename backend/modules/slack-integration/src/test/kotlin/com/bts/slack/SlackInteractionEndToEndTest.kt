@@ -140,6 +140,8 @@ class SlackInteractionEndToEndTest {
         clearMocks(botTokenResolver, responseUrlClient, methodsClient)
         every { botTokenResolver.resolve(any()) } returns BOT_TOKEN
         every { responseUrlClient.post(any(), any()) } returns true
+        // clearMocks 가 config 의 ok 스텁을 지웠으므로 재적용 — 모달 오픈/메시지 갱신 성공 경로.
+        SlackTestcontainersConfig.stubSlackModalApisOk(methodsClient)
     }
 
     @AfterEach

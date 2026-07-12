@@ -3,7 +3,13 @@
 package com.bts.slack
 
 import com.bts.slack.message.SlackUserLookupClient
+import com.slack.api.RequestConfigurator
 import com.slack.api.methods.MethodsClient
+import com.slack.api.methods.request.chat.ChatUpdateRequest
+import com.slack.api.methods.request.views.ViewsOpenRequest
+import com.slack.api.methods.response.chat.ChatUpdateResponse
+import com.slack.api.methods.response.views.ViewsOpenResponse
+import io.mockk.every
 import io.mockk.mockk
 import org.flywaydb.core.Flyway
 import org.springframework.boot.test.context.TestConfiguration
@@ -145,10 +151,15 @@ class SlackTestcontainersConfig {
      * 호출/미호출과 인자를 검증한다([SlackUnfurlEndToEndTest] 참고). `relaxed = true` 라 스텁하지 않은
      * 호출도 예외 없이 기본값을 반환한다 — 이 mock 을 쓰지 않는 다른 통합 테스트(연결/설치)에서 우연히
      * 호출돼도 컨텍스트가 깨지지 않는다.
+     *
+     * ## views.open/chat.update 는 ok 로 스텁 (모달 오픈·메시지 갱신 성공 경로)
+     * relaxed 기본값은 `isOk=false`(비-ok)라 [com.bts.slack.message.SlackMessageClient]가 실패로 분류한다.
+     * 인터랙션 test-boot 의 happy-path 는 Slack 이 호출을 수락한 성공 경로를 검증하므로 [stubSlackModalApisOk]
+     * 로 ok 를 기본 스텁한다(비-ok 실패 경로는 단위 테스트가 검증).
      */
     @Bean
     @Primary
-    fun slackMethodsClient(): MethodsClient = mockk(relaxed = true)
+    fun slackMethodsClient(): MethodsClient = mockk<MethodsClient>(relaxed = true).also { stubSlackModalApisOk(it) }
 
     /**
      * cross-BC 결합 fail-closed 완료 옵션 조회 포트 — settable [StubIssueCompletionOptionsPort]
@@ -174,6 +185,20 @@ class SlackTestcontainersConfig {
     fun issueTransitionPort(): StubIssueTransitionPort = StubIssueTransitionPort()
 
     companion object {
+        /**
+         * 완료 모달 오픈(`views.open`)/원본 메시지 갱신(`chat.update`)을 ok 응답으로 스텁한다.
+         *
+         * `mockk(relaxed=true)` 기본값은 `isOk=false`(비-ok)라 [com.bts.slack.message.SlackMessageClient]가
+         * 실패로 분류한다. 인터랙션 test-boot 의 happy-path 는 Slack 이 호출을 수락한 성공 경로를 검증하므로 ok
+         * 로 스텁한다. `clearMocks` 로 mock 을 초기화하는 테스트는 setUp 에서 이 헬퍼를 재호출한다.
+         */
+        fun stubSlackModalApisOk(methods: MethodsClient) {
+            every { methods.viewsOpen(any<RequestConfigurator<ViewsOpenRequest.ViewsOpenRequestBuilder>>()) } returns
+                ViewsOpenResponse().apply { isOk = true }
+            every { methods.chatUpdate(any<RequestConfigurator<ChatUpdateRequest.ChatUpdateRequestBuilder>>()) } returns
+                ChatUpdateResponse().apply { isOk = true }
+        }
+
         /**
          * JVM 단위 singleton PostgreSQL 16-alpine container.
          * `.apply { start() }` 로 JVM 시작 시 한 번만 기동. Ryuk 이 종료 시 자동 정리한다.
