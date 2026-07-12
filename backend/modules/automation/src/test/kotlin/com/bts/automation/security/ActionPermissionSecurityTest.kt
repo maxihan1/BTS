@@ -61,10 +61,11 @@ class ActionPermissionSecurityTest : DescribeSpec({
     val issueMutationPort = StubIssueMutationPort()
     val mockWebhookClient = mockk<WebhookActionClient>()
     val actionRepository = mockk<AutomationActionRepository>()
-    // 이 스위트는 조건 게이트(FR-AT-03) 자체를 검증하지 않는다 — 조건 없음(relaxed 기본 null)으로
-    // 게이트를 항상 통과시켜 기존 보안 시나리오(권한/actor 위조/SSRF)만 순수하게 관측한다.
+    // 이 스위트는 조건 게이트(FR-AT-03) 자체를 검증하지 않는다 — 조건 없음(beforeEach 에서 명시 고정,
+    // relaxed 미사용 — nullable 반환에 합성 프록시를 만드는 MockK 함정 회피)으로 게이트를 항상 통과시켜
+    // 기존 보안 시나리오(권한/actor 위조/SSRF)만 순수하게 관측한다.
     val issueSnapshotPort = StubIssueSnapshotPort()
-    val conditionRepository = mockk<AutomationConditionRepository>(relaxed = true)
+    val conditionRepository = mockk<AutomationConditionRepository>()
 
     // 시나리오 1·2·4 — 웹훅은 mock(네트워크 없이 best-effort 진행만 관측).
     val executor =
@@ -90,6 +91,10 @@ class ActionPermissionSecurityTest : DescribeSpec({
             issueSnapshotPort = issueSnapshotPort,
             conditionRepository = conditionRepository,
         )
+
+    beforeEach {
+        every { conditionRepository.findByRuleId(any()) } returns null
+    }
 
     afterEach {
         clearMocks(mockWebhookClient, actionRepository, conditionRepository)

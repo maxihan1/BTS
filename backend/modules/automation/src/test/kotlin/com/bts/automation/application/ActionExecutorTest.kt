@@ -57,7 +57,8 @@ class ActionExecutorTest : DescribeSpec({
     val webhookActionClient = mockk<WebhookActionClient>()
     val actionRepository = mockk<AutomationActionRepository>()
     val issueSnapshotPort = StubIssueSnapshotPort()
-    val conditionRepository = mockk<AutomationConditionRepository>(relaxed = true)
+    // relaxed 미사용 — nullable 반환(Condition?) 기본값은 beforeEach 에서 명시 고정한다(아래 주석 참조).
+    val conditionRepository = mockk<AutomationConditionRepository>()
 
     val executor =
         ActionExecutor(
@@ -68,6 +69,13 @@ class ActionExecutorTest : DescribeSpec({
             issueSnapshotPort = issueSnapshotPort,
             conditionRepository = conditionRepository,
         )
+
+    beforeEach {
+        // relaxed mockk 는 nullable 반환 타입(Condition?)에도 합성 프록시를 만들어 null 이 아닌 값을
+        // 반환할 수 있다 — 조건 게이트가 항상 활성화돼 기존 E-a~E-i 시나리오가 깨지므로, "조건 없음"을
+        // 기본값으로 명시 고정한다(조건이 필요한 E-j 케이스는 이 뒤에 더 구체적인 every 로 오버라이드).
+        every { conditionRepository.findByRuleId(any()) } returns null
+    }
 
     afterEach {
         clearMocks(webhookActionClient, actionRepository, conditionRepository)
