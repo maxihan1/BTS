@@ -1,6 +1,6 @@
-// AutomationRuleFormDialog 단위 테스트 — 트리거 조건부 필드·cron 사전검증·직렬화 전달·수정모드 로드·웹훅 토큰 콜백·key 재마운트 (FR-AT-01 D6 Task 6)
+// AutomationRuleFormDialog 단위 테스트 — 트리거 조건부 필드·cron 사전검증·직렬화 전달·수정모드 로드·웹훅 토큰 콜백·key 재마운트·액션/실행주체 배선 (FR-AT-01 D6 Task 6, FR-AT-02 D6 Task 6)
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach, afterAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { setupServer } from 'msw/node'
@@ -10,7 +10,12 @@ import type { JSX, ReactNode } from 'react'
 import { toast } from 'sonner'
 import { AutomationRuleFormDialog } from './AutomationRuleFormDialog'
 import { automationRuleHandlers } from '@/mocks/automation-rule-handlers'
-import { DEFAULT_AUTOMATION_PROJECT_KEY, resetAutomationRuleStore } from '@/mocks/automation-rule-fixtures'
+import {
+  DEFAULT_AUTOMATION_ACTOR_ID,
+  DEFAULT_AUTOMATION_PROJECT_KEY,
+  resetAutomationRuleStore,
+} from '@/mocks/automation-rule-fixtures'
+import { projectMemberHandlers } from '@/mocks/project-member-handlers'
 import { AUTOMATION_RULES_QUERY_KEY } from '@/api/useAutomationRules'
 import type {
   AutomationRule,
@@ -30,7 +35,10 @@ vi.mock('sonner', () => ({
 // (전역 handlers.ts에 automationRuleHandlers 미등록, 로컬 서버로 격리)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...automationRuleHandlers)
+// 액션/실행 주체 피커는 use-project-members(React Query)에 의존한다 — 로컬 서버에
+// projectMemberHandlers를 함께 등록해 이 파일의 모든 테스트에서 담당자 목록 GET이 항상 핸들된다
+// (핵심 함정 — ActionListEditor/ProjectMemberSelect가 폼에 상시 렌더되므로 매 테스트가 대상).
+const server = setupServer(...automationRuleHandlers, ...projectMemberHandlers)
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 beforeEach(() => {
@@ -45,6 +53,8 @@ afterEach(() => {
 afterAll(() => server.close())
 
 const PROJECT_KEY = DEFAULT_AUTOMATION_PROJECT_KEY
+/** ATLAS 프로젝트 멤버 fixture(project-member-fixtures.ts atlasInitialMembers)의 앨리스 userId */
+const ALICE_ID = DEFAULT_AUTOMATION_ACTOR_ID
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처
@@ -57,12 +67,26 @@ const SCHEDULED_EDIT_RULE: AutomationRule = {
   enabled: true,
   triggerType: 'SCHEDULED',
   triggerConfig: '{"cron":"0 0 9 * * *"}',
+  actions: [],
+  actorUserId: ALICE_ID,
   hasWebhookToken: false,
   nextFireAt: '2026-07-15T09:00:00Z',
   createdBy: 'f0e9d8c7-b6a5-4321-8edc-ba9876543210',
   createdAt: '2026-07-10T10:00:00Z',
   updatedAt: '2026-07-10T10:00:00Z',
   version: 3,
+}
+
+/** 액션 2건(SET_FIELD·ADD_COMMENT) + actor가 설정된 편집용 픽스처 — S7 로드/직렬화 round-trip 테스트 전용 */
+const ACTIONS_EDIT_RULE: AutomationRule = {
+  ...SCHEDULED_EDIT_RULE,
+  id: 'a1b2c3d4-e5f6-4890-abcd-ef1234567891',
+  name: '액션 있는 룰',
+  actions: [
+    { type: 'SET_FIELD', config: { field: 'priority', value: 3 } },
+    { type: 'ADD_COMMENT', config: { body: '자동 처리됨' } },
+  ],
+  actorUserId: ALICE_ID,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -215,6 +239,130 @@ describe('AutomationRuleFormDialog — 생성 시 triggerConfig 직렬화 전달
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 생성 시 액션·실행 주체가 POST 바디에 반영(FR1·FR8·FR9, S1·S6) — FR-AT-02 D6 Task 6
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AutomationRuleFormDialog — 생성 시 액션/실행 주체 POST 반영', () => {
+  it('액션 추가 + 실행 주체 선택 후 저장하면 POST body에 actions·actorUserId가 직렬화되어 포함된다(EC9 숫자 강제)', async () => {
+    const capturedBodies: CreateAutomationRuleInput[] = []
+    server.use(
+      http.post('/api/v1/projects/:projectKey/automation/rules', async ({ request }) => {
+        const body = (await request.json()) as CreateAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({ rule: { ...SCHEDULED_EDIT_RULE, ...body }, webhookToken: null }, { status: 201 })
+      }),
+    )
+    renderWithClient(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />,
+    )
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('이름'), '액션 있는 룰')
+
+    await user.click(screen.getByRole('button', { name: '액션 추가' }))
+    const row = screen.getAllByRole('listitem')[0]
+    if (row === undefined) {
+      throw new Error('액션 행이 렌더되지 않음')
+    }
+    await user.selectOptions(within(row).getByLabelText('필드'), 'priority')
+    await user.selectOptions(within(row).getByLabelText('값'), '3')
+
+    const actorOption = await screen.findByRole('option', { name: '앨리스' })
+    await user.selectOptions(screen.getByLabelText('실행 주체'), actorOption)
+
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    const capturedBody = capturedBodies[0]
+    if (capturedBody === undefined) {
+      throw new Error('capturedBodies[0]이 캡처되지 않음')
+    }
+    expect(capturedBody.actions).toEqual([
+      { type: 'SET_FIELD', config: JSON.stringify({ field: 'priority', value: 3 }) },
+    ])
+    expect(capturedBody.actorUserId).toBe(ALICE_ID)
+  })
+
+  it('실행 주체를 선택하지 않으면 POST body에 actorUserId가 포함되지 않는다(FR8 기본값=미설정)', async () => {
+    const capturedBodies: CreateAutomationRuleInput[] = []
+    server.use(
+      http.post('/api/v1/projects/:projectKey/automation/rules', async ({ request }) => {
+        const body = (await request.json()) as CreateAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({ rule: { ...SCHEDULED_EDIT_RULE, ...body }, webhookToken: null }, { status: 201 })
+      }),
+    )
+    renderWithClient(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />,
+    )
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('이름'), '기본 실행주체 룰')
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    const capturedBody = capturedBodies[0]
+    if (capturedBody === undefined) {
+      throw new Error('capturedBodies[0]이 캡처되지 않음')
+    }
+    expect(capturedBody.actions).toEqual([])
+    expect(capturedBody.actorUserId).toBeUndefined()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 다중 액션 순서변경이 저장 순서에 반영(S5, FR7) — FR-AT-02 D6 Task 6
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AutomationRuleFormDialog — 다중 액션 순서변경 반영', () => {
+  it('두 액션의 순서를 위로 이동한 뒤 저장하면 POST body actions 순서가 반영된다', async () => {
+    const capturedBodies: CreateAutomationRuleInput[] = []
+    server.use(
+      http.post('/api/v1/projects/:projectKey/automation/rules', async ({ request }) => {
+        const body = (await request.json()) as CreateAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({ rule: { ...SCHEDULED_EDIT_RULE, ...body }, webhookToken: null }, { status: 201 })
+      }),
+    )
+    renderWithClient(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />,
+    )
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('이름'), '순서변경 룰')
+
+    const addActionButton = () => screen.getByRole('button', { name: '액션 추가' })
+    await user.click(addActionButton())
+    await user.click(addActionButton())
+
+    const rowsBeforeEdit = screen.getAllByRole('listitem')
+    const firstRow = rowsBeforeEdit[0]
+    const secondRow = rowsBeforeEdit[1]
+    if (firstRow === undefined || secondRow === undefined) {
+      throw new Error('액션 행이 2개 렌더되지 않음')
+    }
+    await user.type(within(firstRow).getByLabelText('값'), 'first')
+    await user.type(within(secondRow).getByLabelText('값'), 'second')
+
+    const rowsAfterEdit = screen.getAllByRole('listitem')
+    const secondRowAfterEdit = rowsAfterEdit[1]
+    if (secondRowAfterEdit === undefined) {
+      throw new Error('두 번째 액션 행이 렌더되지 않음')
+    }
+    await user.click(within(secondRowAfterEdit).getByRole('button', { name: '위로' }))
+
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    const capturedBody = capturedBodies[0]
+    if (capturedBody === undefined) {
+      throw new Error('capturedBodies[0]이 캡처되지 않음')
+    }
+    expect(capturedBody.actions).toEqual([
+      { type: 'SET_FIELD', config: JSON.stringify({ field: 'summary', value: 'second' }) },
+      { type: 'SET_FIELD', config: JSON.stringify({ field: 'summary', value: 'first' }) },
+    ])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 수정 모드 — editingRule 초기값 로드 + version 동봉
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -269,6 +417,82 @@ describe('AutomationRuleFormDialog — 수정 모드', () => {
     expect(capturedBody.version).toBe(SCHEDULED_EDIT_RULE.version)
     expect(capturedBody.triggerConfig).toBe(JSON.stringify({ cron: '0 30 8 * * *' }))
     expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 편집 모드 — 액션·실행 주체 로드(S7, parseActionConfig) 및 저장 시 재직렬화(FR9) — FR-AT-02 D6 Task 6
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AutomationRuleFormDialog — 편집 모드 액션/실행 주체 로드', () => {
+  it('editingRule.actions(응답 객체 config)를 각 행 타입·값으로 로드하고 actorUserId를 실행 주체 select에 로드한다(S7)', async () => {
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={vi.fn()}
+        editingRule={ACTIONS_EDIT_RULE}
+      />,
+    )
+
+    const rows = screen.getAllByRole('listitem')
+    const firstRow = rows[0]
+    const secondRow = rows[1]
+    if (firstRow === undefined || secondRow === undefined) {
+      throw new Error('액션 행이 2개 렌더되지 않음')
+    }
+
+    expect(within(firstRow).getByLabelText('액션 유형')).toHaveValue('SET_FIELD')
+    expect(within(firstRow).getByLabelText('필드')).toHaveValue('priority')
+    expect(within(firstRow).getByLabelText('값')).toHaveValue('3')
+
+    expect(within(secondRow).getByLabelText('액션 유형')).toHaveValue('ADD_COMMENT')
+    expect(within(secondRow).getByLabelText('댓글 본문')).toHaveValue('자동 처리됨')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('실행 주체')).toHaveValue(ALICE_ID)
+    })
+  })
+
+  it('편집 저장 시 로드된 actions·actorUserId를 그대로 재직렬화해 PATCH body에 담는다(round-trip)', async () => {
+    const capturedBodies: PatchAutomationRuleInput[] = []
+    server.use(
+      http.patch('/api/v1/projects/:projectKey/automation/rules/:id', async ({ request }) => {
+        const body = (await request.json()) as PatchAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({
+          ...ACTIONS_EDIT_RULE,
+          ...body,
+          version: ACTIONS_EDIT_RULE.version + 1,
+        })
+      }),
+    )
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={vi.fn()}
+        editingRule={ACTIONS_EDIT_RULE}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('실행 주체')).toHaveValue(ALICE_ID)
+    })
+
+    const user = userEvent.setup()
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    const capturedBody = capturedBodies[0]
+    if (capturedBody === undefined) {
+      throw new Error('capturedBodies[0]이 캡처되지 않음')
+    }
+    expect(capturedBody.actions).toEqual([
+      { type: 'SET_FIELD', config: JSON.stringify({ field: 'priority', value: 3 }) },
+      { type: 'ADD_COMMENT', config: JSON.stringify({ body: '자동 처리됨' }) },
+    ])
+    expect(capturedBody.actorUserId).toBe(ALICE_ID)
   })
 })
 
@@ -407,6 +631,31 @@ describe('AutomationRuleFormDialog — key 재마운트(stale state 회피)', ()
     rerender(<AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />)
 
     expect(screen.getByLabelText('이름')).toHaveValue('')
+  })
+
+  it('open을 유지한 채 editingRule이 바뀌면 액션 목록/실행 주체도 새 editingRule 값으로 초기화된다(EC6)', async () => {
+    const { rerender } = renderWithClient(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} editingRule={null} />,
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: '액션 추가' }))
+    expect(screen.getAllByRole('listitem')).toHaveLength(1)
+
+    rerender(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={vi.fn()}
+        editingRule={ACTIONS_EDIT_RULE}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('listitem')).toHaveLength(ACTIONS_EDIT_RULE.actions.length)
+    })
+    await waitFor(() => {
+      expect(screen.getByLabelText('실행 주체')).toHaveValue(ALICE_ID)
+    })
   })
 })
 
