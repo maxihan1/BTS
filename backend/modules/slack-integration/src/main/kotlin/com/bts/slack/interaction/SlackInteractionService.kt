@@ -125,121 +125,129 @@ class SlackInteractionService(
     }
 
     /**
-     * 완료 버튼 클릭 — 역매핑/완료옵션/봇토큰을 순서대로 fail-closed 게이트하고 통과 시 완료 모달을 연다.
-     * 각 실패(미연결·무권한/미가시·봇 미설치)는 모달 대신 `response_url` ephemeral 안내 + V703으로 수렴한다.
+     * 완료 버튼 클릭 — [resolveButtonContext]로 역매핑을 통과한 뒤, 완료 고유 게이트(완료옵션 조회)를 거쳐
+     * [openButtonModal]로 완료 모달을 연다. 완료옵션 사전조회는 담당자/코멘트 버튼에는 없는 완료만의 단계다
+     * (모달 콘텐츠, 즉 해결 방법·완료 상태 선택지가 이슈 상태에서 파생되기 때문).
      */
-    @Suppress("ReturnCount") // 각 fail-closed 게이트마다 early-return이 필수(가드 절, 선례 동형).
+    @Suppress("ReturnCount") // 완료옵션 무권한/미가시·미완료가능 두 게이트의 early-return(가드 절, resolveButtonContext 동형).
     private fun handleCompleteButton(
         payload: SlackInteractionPayload.BlockActions,
         action: SlackInteractionPayload.BlockActions.Action,
     ): InteractionResult {
-        val slackUserId = payload.userId ?: return InteractionResult.AckEmpty
-        val teamId = payload.teamId ?: return InteractionResult.AckEmpty
-        val issueKey = action.value ?: return InteractionResult.AckEmpty
+        val context = resolveButtonContext(payload, action, ACTION_TYPE_COMPLETE) ?: return InteractionResult.AckEmpty
 
-        val btsUserId = userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId)
-        if (btsUserId == null) {
-            sendEphemeral(payload.responseUrl, ACCOUNT_LINK_REQUIRED_MESSAGE)
-            record(teamId, slackUserId, null, ACTION_TYPE_COMPLETE, OUTCOME_UNMAPPED, issueKey)
-            return InteractionResult.AckEmpty
-        }
-
-        val options = completionOptionsPort.getCompletionOptions(issueKey, btsUserId)
+        val options = completionOptionsPort.getCompletionOptions(context.issueKey, context.btsUserId)
         if (options == null) {
             sendEphemeral(payload.responseUrl, NO_PERMISSION_MESSAGE)
-            record(teamId, slackUserId, btsUserId, ACTION_TYPE_COMPLETE, OUTCOME_PERMISSION_DENIED, issueKey)
+            record(
+                context.teamId,
+                context.slackUserId,
+                context.btsUserId,
+                ACTION_TYPE_COMPLETE,
+                OUTCOME_PERMISSION_DENIED,
+                context.issueKey,
+            )
             return InteractionResult.AckEmpty
         }
         // 완료 가능한 DONE 전이가 없으면(이미 완료 등) 입력 블록 없는 무효 모달을 열지 않고 안내로 수렴한다
         // (views.open 무효 거부로 인한 무피드백·무감사 침묵 차단). 오류가 아니므로 별도 outcome 으로 기록한다.
         if (options.doneTransitions.isEmpty()) {
             sendEphemeral(payload.responseUrl, NO_COMPLETABLE_STATE_MESSAGE)
-            record(teamId, slackUserId, btsUserId, ACTION_TYPE_COMPLETE, OUTCOME_NOT_APPLICABLE, issueKey)
+            record(
+                context.teamId,
+                context.slackUserId,
+                context.btsUserId,
+                ACTION_TYPE_COMPLETE,
+                OUTCOME_NOT_APPLICABLE,
+                context.issueKey,
+            )
             return InteractionResult.AckEmpty
         }
 
-        val botToken = botTokenResolver.resolve(teamId)
-        val triggerId = payload.triggerId
-        if (botToken == null || triggerId == null) {
-            sendEphemeral(payload.responseUrl, GENERIC_ERROR_MESSAGE)
-            record(teamId, slackUserId, btsUserId, ACTION_TYPE_COMPLETE, OUTCOME_ERROR, issueKey)
-            return InteractionResult.AckEmpty
+        return openButtonModal(payload, context, ACTION_TYPE_COMPLETE) {
+            modalBuilder.buildCompletionModal(
+                options,
+                context.issueKey,
+                payload.channel.orEmpty(),
+                payload.messageTs.orEmpty(),
+            )
         }
-        val modalJson =
-            modalBuilder.buildCompletionModal(options, issueKey, payload.channel.orEmpty(), payload.messageTs.orEmpty())
-        // 모달 오픈 실패(만료 trigger_id·Slack 거부 등)는 결과를 버리지 않고 안내 + 감사한다(침묵 차단).
-        if (messageClient.openModal(botToken, triggerId, modalJson) !is SlackSendResult.Sent) {
-            sendEphemeral(payload.responseUrl, GENERIC_ERROR_MESSAGE)
-            record(teamId, slackUserId, btsUserId, ACTION_TYPE_COMPLETE, OUTCOME_ERROR, issueKey)
-        }
-        return InteractionResult.AckEmpty
     }
 
     /**
-     * 담당자 변경 버튼 클릭 — [handleCompleteButton]과 동일한 fail-closed 게이트(역매핑 → 봇토큰/trigger_id
-     * → 모달 오픈)이지만, 완료옵션 사전조회가 없다(담당자 모달 콘텐츠는 이슈 파생이 아니라 정적 입력 폼).
+     * 담당자 변경 버튼 클릭 — [handleCompleteButton]과 같은 공통 게이트([resolveButtonContext] →
+     * [openButtonModal])를 쓰되, 완료옵션 사전조회가 없다(담당자 모달 콘텐츠는 이슈 파생이 아니라 정적 입력 폼).
      */
-    @Suppress("ReturnCount") // 각 fail-closed 게이트마다 early-return이 필수(가드 절, handleCompleteButton 동형).
     private fun handleAssignButton(
         payload: SlackInteractionPayload.BlockActions,
         action: SlackInteractionPayload.BlockActions.Action,
     ): InteractionResult {
-        val slackUserId = payload.userId ?: return InteractionResult.AckEmpty
-        val teamId = payload.teamId ?: return InteractionResult.AckEmpty
-        val issueKey = action.value ?: return InteractionResult.AckEmpty
-
-        val btsUserId = userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId)
-        if (btsUserId == null) {
-            sendEphemeral(payload.responseUrl, ACCOUNT_LINK_REQUIRED_MESSAGE)
-            record(teamId, slackUserId, null, ACTION_TYPE_ASSIGN, OUTCOME_UNMAPPED, issueKey)
-            return InteractionResult.AckEmpty
-        }
-
-        val botToken = botTokenResolver.resolve(teamId)
-        val triggerId = payload.triggerId
-        if (botToken == null || triggerId == null) {
-            sendEphemeral(payload.responseUrl, GENERIC_ERROR_MESSAGE)
-            record(teamId, slackUserId, btsUserId, ACTION_TYPE_ASSIGN, OUTCOME_ERROR, issueKey)
-            return InteractionResult.AckEmpty
-        }
-        val modalJson = modalBuilder.buildAssignModal(issueKey)
-        if (messageClient.openModal(botToken, triggerId, modalJson) !is SlackSendResult.Sent) {
-            sendEphemeral(payload.responseUrl, GENERIC_ERROR_MESSAGE)
-            record(teamId, slackUserId, btsUserId, ACTION_TYPE_ASSIGN, OUTCOME_ERROR, issueKey)
-        }
-        return InteractionResult.AckEmpty
+        val context = resolveButtonContext(payload, action, ACTION_TYPE_ASSIGN) ?: return InteractionResult.AckEmpty
+        return openButtonModal(payload, context, ACTION_TYPE_ASSIGN) { modalBuilder.buildAssignModal(context.issueKey) }
     }
 
-    /**
-     * 코멘트 등록 버튼 클릭 — [handleAssignButton]과 동일한 fail-closed 게이트(완료옵션 사전조회 없음).
-     */
-    @Suppress("ReturnCount") // 각 fail-closed 게이트마다 early-return이 필수(가드 절, handleCompleteButton 동형).
+    /** 코멘트 등록 버튼 클릭 — [handleAssignButton]과 동일한 공통 게이트(완료옵션 사전조회 없음). */
     private fun handleCommentButton(
         payload: SlackInteractionPayload.BlockActions,
         action: SlackInteractionPayload.BlockActions.Action,
     ): InteractionResult {
-        val slackUserId = payload.userId ?: return InteractionResult.AckEmpty
-        val teamId = payload.teamId ?: return InteractionResult.AckEmpty
-        val issueKey = action.value ?: return InteractionResult.AckEmpty
+        val context = resolveButtonContext(payload, action, ACTION_TYPE_COMMENT) ?: return InteractionResult.AckEmpty
+        return openButtonModal(payload, context, ACTION_TYPE_COMMENT) {
+            modalBuilder.buildCommentModal(context.issueKey)
+        }
+    }
+
+    /**
+     * 버튼 클릭 공통 게이트 1단계 — userId/teamId/issueKey null 가드 → 역매핑. 완료/담당자/코멘트 세 버튼이
+     * 공유하는 진입 게이트다([handleCompleteButton]/[handleAssignButton]/[handleCommentButton] 동형 사유,
+     * plan-eng-review DRY 권고).
+     *
+     * id 누락은 side effect 없이(응답할 채널 자체가 불명확) `null`을 반환하고, 미연결은 ephemeral 안내 +
+     * V703 UNMAPPED를 남긴 뒤 `null`을 반환한다 — 두 경우 모두 호출자는 `?: return InteractionResult.AckEmpty`
+     * 로 수렴시킨다.
+     *
+     * @param actionType V703 감사에 남길 액션 종류(`COMPLETE`/`ASSIGN`/`COMMENT`).
+     */
+    @Suppress("ReturnCount") // userId/teamId/issueKey/역매핑 4개 fail-closed 게이트의 early-return(가드 절).
+    private fun resolveButtonContext(
+        payload: SlackInteractionPayload.BlockActions,
+        action: SlackInteractionPayload.BlockActions.Action,
+        actionType: String,
+    ): ButtonContext? {
+        val slackUserId = payload.userId ?: return null
+        val teamId = payload.teamId ?: return null
+        val issueKey = action.value ?: return null
 
         val btsUserId = userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId)
         if (btsUserId == null) {
             sendEphemeral(payload.responseUrl, ACCOUNT_LINK_REQUIRED_MESSAGE)
-            record(teamId, slackUserId, null, ACTION_TYPE_COMMENT, OUTCOME_UNMAPPED, issueKey)
-            return InteractionResult.AckEmpty
+            record(teamId, slackUserId, null, actionType, OUTCOME_UNMAPPED, issueKey)
+            return null
         }
+        return ButtonContext(teamId, slackUserId, issueKey, btsUserId)
+    }
 
-        val botToken = botTokenResolver.resolve(teamId)
+    /**
+     * 버튼 클릭 공통 게이트 2단계 — 봇토큰/`trigger_id` 확보 후 [buildModal]이 만든 모달을 연다. 실패
+     * (봇 미설치·`trigger_id` 부재·`openModal` 비-Sent)는 모두 ephemeral 안내 + V703 [actionType]/ERROR로
+     * 수렴한다(모달 오픈 실패를 침묵시키지 않는다 — 만료 trigger_id·Slack 거부 등).
+     */
+    private fun openButtonModal(
+        payload: SlackInteractionPayload.BlockActions,
+        context: ButtonContext,
+        actionType: String,
+        buildModal: () -> String,
+    ): InteractionResult {
+        val botToken = botTokenResolver.resolve(context.teamId)
         val triggerId = payload.triggerId
         if (botToken == null || triggerId == null) {
             sendEphemeral(payload.responseUrl, GENERIC_ERROR_MESSAGE)
-            record(teamId, slackUserId, btsUserId, ACTION_TYPE_COMMENT, OUTCOME_ERROR, issueKey)
+            record(context.teamId, context.slackUserId, context.btsUserId, actionType, OUTCOME_ERROR, context.issueKey)
             return InteractionResult.AckEmpty
         }
-        val modalJson = modalBuilder.buildCommentModal(issueKey)
-        if (messageClient.openModal(botToken, triggerId, modalJson) !is SlackSendResult.Sent) {
+        if (messageClient.openModal(botToken, triggerId, buildModal()) !is SlackSendResult.Sent) {
             sendEphemeral(payload.responseUrl, GENERIC_ERROR_MESSAGE)
-            record(teamId, slackUserId, btsUserId, ACTION_TYPE_COMMENT, OUTCOME_ERROR, issueKey)
+            record(context.teamId, context.slackUserId, context.btsUserId, actionType, OUTCOME_ERROR, context.issueKey)
         }
         return InteractionResult.AckEmpty
     }
@@ -276,7 +284,14 @@ class SlackInteractionService(
         val toStateKey =
             metadata?.let { selectedValue(payload.stateValues, DONE_TRANSITION_BLOCK_ID, DONE_TRANSITION_ACTION_ID) }
         if (metadata == null || toStateKey == null) {
-            record(actor.teamId, actor.slackUserId, actor.btsUserId, ACTION_TYPE_COMPLETE, OUTCOME_ERROR, metadata?.issueKey)
+            record(
+                actor.teamId,
+                actor.slackUserId,
+                actor.btsUserId,
+                ACTION_TYPE_COMPLETE,
+                OUTCOME_ERROR,
+                metadata?.issueKey,
+            )
             return responseActionErrors(DONE_TRANSITION_BLOCK_ID, GENERIC_ERROR_MESSAGE)
         }
 
@@ -377,7 +392,14 @@ class SlackInteractionService(
                 ),
             )
             updateOriginalMessage(actor.teamId, metadata)
-            record(actor.teamId, actor.slackUserId, actor.btsUserId, ACTION_TYPE_COMPLETE, OUTCOME_SUCCESS, metadata.issueKey)
+            record(
+                actor.teamId,
+                actor.slackUserId,
+                actor.btsUserId,
+                ACTION_TYPE_COMPLETE,
+                OUTCOME_SUCCESS,
+                metadata.issueKey,
+            )
             InteractionResult.AckEmpty
         } catch (e: IssueTransitionPermissionDeniedException) {
             log.warn("slack_interaction_complete_denied errorType={}", e.javaClass.simpleName)
@@ -392,11 +414,25 @@ class SlackInteractionService(
             responseActionErrors(DONE_TRANSITION_BLOCK_ID, NO_PERMISSION_MESSAGE)
         } catch (e: IssueOptimisticLockException) {
             log.warn("slack_interaction_complete_conflict errorType={}", e.javaClass.simpleName)
-            record(actor.teamId, actor.slackUserId, actor.btsUserId, ACTION_TYPE_COMPLETE, OUTCOME_CONFLICT, metadata.issueKey)
+            record(
+                actor.teamId,
+                actor.slackUserId,
+                actor.btsUserId,
+                ACTION_TYPE_COMPLETE,
+                OUTCOME_CONFLICT,
+                metadata.issueKey,
+            )
             responseActionErrors(DONE_TRANSITION_BLOCK_ID, CONFLICT_MESSAGE)
         } catch (e: RuntimeException) {
             log.warn("slack_interaction_complete_failed errorType={}", e.javaClass.simpleName)
-            record(actor.teamId, actor.slackUserId, actor.btsUserId, ACTION_TYPE_COMPLETE, OUTCOME_ERROR, metadata.issueKey)
+            record(
+                actor.teamId,
+                actor.slackUserId,
+                actor.btsUserId,
+                ACTION_TYPE_COMPLETE,
+                OUTCOME_ERROR,
+                metadata.issueKey,
+            )
             responseActionErrors(DONE_TRANSITION_BLOCK_ID, GENERIC_ERROR_MESSAGE)
         }
 
@@ -416,7 +452,14 @@ class SlackInteractionService(
             InteractionResult.AckEmpty
         } catch (e: IssueMutationPermissionDeniedException) {
             log.warn("slack_interaction_assign_denied errorType={}", e.javaClass.simpleName)
-            record(actor.teamId, actor.slackUserId, actor.btsUserId, ACTION_TYPE_ASSIGN, OUTCOME_PERMISSION_DENIED, issueKey)
+            record(
+                actor.teamId,
+                actor.slackUserId,
+                actor.btsUserId,
+                ACTION_TYPE_ASSIGN,
+                OUTCOME_PERMISSION_DENIED,
+                issueKey,
+            )
             responseActionErrors(ASSIGNEE_BLOCK_ID, NO_PERMISSION_MESSAGE)
         } catch (e: RuntimeException) {
             log.warn("slack_interaction_assign_failed errorType={}", e.javaClass.simpleName)
@@ -437,7 +480,14 @@ class SlackInteractionService(
             InteractionResult.AckEmpty
         } catch (e: IssueMutationPermissionDeniedException) {
             log.warn("slack_interaction_comment_denied errorType={}", e.javaClass.simpleName)
-            record(actor.teamId, actor.slackUserId, actor.btsUserId, ACTION_TYPE_COMMENT, OUTCOME_PERMISSION_DENIED, issueKey)
+            record(
+                actor.teamId,
+                actor.slackUserId,
+                actor.btsUserId,
+                ACTION_TYPE_COMMENT,
+                OUTCOME_PERMISSION_DENIED,
+                issueKey,
+            )
             responseActionErrors(COMMENT_BLOCK_ID, NO_PERMISSION_MESSAGE)
         } catch (e: RuntimeException) {
             log.warn("slack_interaction_comment_failed errorType={}", e.javaClass.simpleName)
@@ -630,6 +680,17 @@ class SlackInteractionService(
     private data class InteractionActor(
         val teamId: String,
         val slackUserId: String,
+        val btsUserId: UUID,
+    )
+
+    /**
+     * [resolveButtonContext]가 역매핑까지 통과시킨 버튼 클릭 컨텍스트([openButtonModal]로 이어진다).
+     * btsUserId는 매핑 확정 이후라 non-null.
+     */
+    private data class ButtonContext(
+        val teamId: String,
+        val slackUserId: String,
+        val issueKey: String,
         val btsUserId: UUID,
     )
 
