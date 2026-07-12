@@ -127,7 +127,7 @@ class AutomationRuleController(
     }
 
     /**
-     * [id] 자동화 룰을 부분 수정한다(name·enabled·triggerConfig·actions·actorUserId, OCC).
+     * [id] 자동화 룰을 부분 수정한다(name·enabled·triggerConfig·actions·actorUserId·condition, OCC).
      *
      * @param projectKey 룰이 속해야 하는 프로젝트 키(경로 변수).
      * @param id 수정할 룰 id(경로 변수).
