@@ -277,6 +277,11 @@ private fun requireLiteral(node: JsonNode): JsonNode {
     if (!isScalar && !isScalarArray) {
         throw InvalidConditionExpressionException(MSG_LITERAL_INVALID)
     }
+    // DoS 방지 — 배열 원소는 parseCondition 의 budget.nodeCount 로 세지 않으므로 별도 상한 필요
+    // (gate-2 P2-c). 트리 노드 상한과 개념적으로 동일한 예산이라 Condition.MAX_NODES 를 그대로 재사용한다.
+    if (isScalarArray && node.size() > Condition.MAX_NODES) {
+        throw InvalidConditionExpressionException(MSG_LIMIT_EXCEEDED)
+    }
     return node
 }
 
