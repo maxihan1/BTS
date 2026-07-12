@@ -101,6 +101,37 @@ describe('ProjectMemberSelect — allowUnassign', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// placeholder(미설정=null) 복귀 — 멤버를 고른 뒤에도 기본값으로 되돌릴 경로가 있어야 한다 (코드리뷰 N1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProjectMemberSelect — placeholder 복귀 (N1)', () => {
+  it('멤버가 이미 선택돼 있어도(allowUnassign 미지정) placeholder 옵션이 렌더된다', async () => {
+    renderWithClient(
+      <ProjectMemberSelect projectKey={PROJECT_KEY} value={ALICE_ID} onChange={vi.fn()} label="실행 주체" />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: '앨리스' })).toBeInTheDocument()
+    })
+    expect(screen.getByRole('option', { name: '선택 안 함' })).toBeInTheDocument()
+  })
+
+  it('placeholder 옵션 선택 시 onChange(null)을 호출한다', async () => {
+    const onChange = vi.fn()
+    renderWithClient(
+      <ProjectMemberSelect projectKey={PROJECT_KEY} value={ALICE_ID} onChange={onChange} label="실행 주체" />,
+    )
+    const user = userEvent.setup()
+
+    const placeholderOption = await screen.findByRole('option', { name: '선택 안 함' })
+    const select = screen.getByLabelText('실행 주체')
+    await user.selectOptions(select, placeholderOption)
+
+    expect(onChange).toHaveBeenCalledWith(null)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // EC4 — value가 멤버 목록에 없을 때 "알 수 없는 사용자" fallback (값 보존)
 // ─────────────────────────────────────────────────────────────────────────────
 
