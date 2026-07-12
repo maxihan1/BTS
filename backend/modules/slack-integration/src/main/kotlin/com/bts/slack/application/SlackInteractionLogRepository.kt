@@ -26,9 +26,10 @@ interface SlackInteractionLogRepository {
      * @param actionType COMPLETE / ASSIGN / COMMENT / VIEW.
      * @param outcome SUCCESS / UNMAPPED / PERMISSION_DENIED / CONFLICT / ERROR.
      * @param issueKey 대상 이슈 키 — 없으면 null.
+     *
+     * 감사 테이블 컬럼(team/slackUser/btsUser/action/outcome/issue)을 그대로 받는 flat insert이며
+     * 단일 호출처(SlackInteractionService)뿐이라 VO 번들은 불필요한 간접화다 — LongParameterList 억제.
      */
-    // 감사 테이블 컬럼(team/slackUser/btsUser/action/outcome/issue)을 그대로 받는 flat insert.
-    // 단일 호출처(SlackInteractionService)뿐이라 VO 번들은 불필요한 간접화 — @Suppress 로 명시.
     @Suppress("LongParameterList")
     fun record(
         teamId: String,

@@ -1,4 +1,4 @@
-// slack-integration 통합 테스트용 settable IssueCompletionOptionsPort stub — issueKey별 시드된 완료옵션만 fail-closed 반환 (FR-SL-05 PR1 Task 9)
+// slack test-boot용 seedable IssueCompletionOptionsPort stub — issueKey별 시드값만 반환(미시드 null) (FR-SL-05 Task 9)
 
 package com.bts.slack
 
