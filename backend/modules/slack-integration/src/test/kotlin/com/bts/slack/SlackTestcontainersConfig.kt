@@ -3,7 +3,13 @@
 package com.bts.slack
 
 import com.bts.slack.message.SlackUserLookupClient
+import com.slack.api.RequestConfigurator
 import com.slack.api.methods.MethodsClient
+import com.slack.api.methods.request.chat.ChatUpdateRequest
+import com.slack.api.methods.request.views.ViewsOpenRequest
+import com.slack.api.methods.response.chat.ChatUpdateResponse
+import com.slack.api.methods.response.views.ViewsOpenResponse
+import io.mockk.every
 import io.mockk.mockk
 import org.flywaydb.core.Flyway
 import org.springframework.boot.test.context.TestConfiguration
@@ -39,6 +45,10 @@ import javax.sql.DataSource
  *   시드 가능, [issueUnfurlPort] 참고).
  * - `@Primary` mock [MethodsClient] — `chat.unfurl`/`chat.postMessage` 등 모든 Slack SDK 호출을 실
  *   네트워크 없이 검증 가능하게 한다(FR-SL-03 Task 12, [slackMethodsClient] 참고).
+ * - [StubIssueCompletionOptionsPort] — cross-BC 결합 fail-closed 완료 옵션 조회 stub(FR-SL-05 PR1
+ *   Task 9, issueKey 별 시드 가능, [issueCompletionOptionsPort] 참고).
+ * - [StubIssueTransitionPort] — cross-BC 완료 전이 실행 stub(FR-SL-05 PR1 Task 9, 성공 결과/실패 예외
+ *   시드 가능, [issueTransitionPort] 참고).
  *
  * ## JVM 단위 singleton container (교훈 concurrent-testcontainers-suite-flaky)
  * companion 의 `.apply { start() }` 로 JVM 시작 시 한 번만 기동하고 Ryuk 의 종료 시 자동 정리에 위임한다.
@@ -141,12 +151,54 @@ class SlackTestcontainersConfig {
      * 호출/미호출과 인자를 검증한다([SlackUnfurlEndToEndTest] 참고). `relaxed = true` 라 스텁하지 않은
      * 호출도 예외 없이 기본값을 반환한다 — 이 mock 을 쓰지 않는 다른 통합 테스트(연결/설치)에서 우연히
      * 호출돼도 컨텍스트가 깨지지 않는다.
+     *
+     * ## views.open/chat.update 는 ok 로 스텁 (모달 오픈·메시지 갱신 성공 경로)
+     * relaxed 기본값은 `isOk=false`(비-ok)라 [com.bts.slack.message.SlackMessageClient]가 실패로 분류한다.
+     * 인터랙션 test-boot 의 happy-path 는 Slack 이 호출을 수락한 성공 경로를 검증하므로 [stubSlackModalApisOk]
+     * 로 ok 를 기본 스텁한다(비-ok 실패 경로는 단위 테스트가 검증).
      */
     @Bean
     @Primary
-    fun slackMethodsClient(): MethodsClient = mockk(relaxed = true)
+    fun slackMethodsClient(): MethodsClient = mockk<MethodsClient>(relaxed = true).also { stubSlackModalApisOk(it) }
+
+    /**
+     * cross-BC 결합 fail-closed 완료 옵션 조회 포트 — settable [StubIssueCompletionOptionsPort]
+     * (FR-SL-05 PR1 Task 9).
+     *
+     * [com.bts.slack.interaction.SlackInteractionService] 생성자가 non-null
+     * [com.bts.shared.issue.IssueCompletionOptionsPort] 를 요구하므로, test-boot 컨텍스트 로드를 위해
+     * 등록한다(빈 부재 시 [SlackContextLoadTest] 회귀). 기본 `completionOptionsByIssueKey` 가 비어 있어
+     * 아무 issueKey 도 완료 가능으로 판정하지 않으며, 테스트가 issueKey → 완료 옵션을 명시 등록한다.
+     */
+    @Bean
+    fun issueCompletionOptionsPort(): StubIssueCompletionOptionsPort = StubIssueCompletionOptionsPort()
+
+    /**
+     * cross-BC 완료 전이 실행 포트 — settable [StubIssueTransitionPort] (FR-SL-05 PR1 Task 9).
+     *
+     * [com.bts.slack.interaction.SlackInteractionService] 생성자가 non-null
+     * [com.bts.shared.board.IssueTransitionPort] 를 요구하므로, test-boot 컨텍스트 로드를 위해 등록한다
+     * (빈 부재 시 [SlackContextLoadTest] 회귀). 시드되지 않은 상태로 호출하면 명시 오류로 실패하므로,
+     * 테스트가 `succeedWith`/`failWith` 로 시나리오를 먼저 시드해야 한다.
+     */
+    @Bean
+    fun issueTransitionPort(): StubIssueTransitionPort = StubIssueTransitionPort()
 
     companion object {
+        /**
+         * 완료 모달 오픈(`views.open`)/원본 메시지 갱신(`chat.update`)을 ok 응답으로 스텁한다.
+         *
+         * `mockk(relaxed=true)` 기본값은 `isOk=false`(비-ok)라 [com.bts.slack.message.SlackMessageClient]가
+         * 실패로 분류한다. 인터랙션 test-boot 의 happy-path 는 Slack 이 호출을 수락한 성공 경로를 검증하므로 ok
+         * 로 스텁한다. `clearMocks` 로 mock 을 초기화하는 테스트는 setUp 에서 이 헬퍼를 재호출한다.
+         */
+        fun stubSlackModalApisOk(methods: MethodsClient) {
+            every { methods.viewsOpen(any<RequestConfigurator<ViewsOpenRequest.ViewsOpenRequestBuilder>>()) } returns
+                ViewsOpenResponse().apply { isOk = true }
+            every { methods.chatUpdate(any<RequestConfigurator<ChatUpdateRequest.ChatUpdateRequestBuilder>>()) } returns
+                ChatUpdateResponse().apply { isOk = true }
+        }
+
         /**
          * JVM 단위 singleton PostgreSQL 16-alpine container.
          * `.apply { start() }` 로 JVM 시작 시 한 번만 기동. Ryuk 이 종료 시 자동 정리한다.

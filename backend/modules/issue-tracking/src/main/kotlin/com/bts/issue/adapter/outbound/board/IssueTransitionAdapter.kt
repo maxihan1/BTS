@@ -5,9 +5,13 @@ package com.bts.issue.adapter.outbound.board
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.TransitionIssueRequest
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.shared.board.BoardTransitionCommand
 import com.bts.shared.board.BoardTransitionResult
+import com.bts.shared.board.IssueOptimisticLockException
+import com.bts.shared.board.IssueTransitionPermissionDeniedException
 import com.bts.shared.board.IssueTransitionPort
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -32,10 +36,18 @@ import org.springframework.transaction.support.TransactionTemplate
  * 반드시 [IssueApplicationService.transitionIssue] 경로를 통해야 한다
  * (PATCH 도메인 우회 금지 패턴, DEVELOPMENT.md §회귀 방지).
  *
- * ### 예외 전파
+ * ### 예외 전파 — 권한 거부·OCC 충돌만 타입 번역, 그 외는 verbatim (FR-SL-05 PR1 Task 2)
  *
- * issue-tracking 내부 예외([com.bts.issue.domain.IssueTransitionNotAllowedException] 등)를
- * agile-planning 에서 catch 할 수 있도록 그대로 전파한다. 호출자가 HTTP 매핑을 담당한다.
+ * issue-tracking 내부 예외 대부분([com.bts.issue.domain.IssueTransitionNotAllowedException],
+ * [com.bts.issue.domain.IssueWorkflowNotConfiguredException] 등)은 agile-planning 처럼 issue-tracking
+ * 과 같은 모듈 그래프에 있는 소비자가 catch 할 수 있도록 그대로 전파한다.
+ *
+ * 다만 [com.bts.issue.domain.IssueAccessDeniedException](권한 거부)과
+ * [com.bts.issue.domain.IssueVersionConflictException](OCC 버전 충돌) 두 가지는 shared-kernel 타입
+ * ([IssueTransitionPermissionDeniedException]/[IssueOptimisticLockException])으로 번역해 던진다.
+ * BC 격리로 issue-tracking 내부 클래스를 import 할 수 없는 소비 BC(slack-integration 등)가 클래스명
+ * 문자열 매칭 없이 두 실패를 구분할 수 있어야 하기 때문이다([com.bts.shared.issue.IssueMutationPermissionDeniedException]
+ * 과 동형 패턴, FR-AT-02 C3 선례). 원본 도메인 예외는 `cause` 로 보존한다(진단용).
  *
  * @param issueApplicationService 기존 이슈 CRUD + 전이 유스케이스 Application Service.
  * @param transactionTemplate 트랜잭션 경계 제공. `IssueApplicationService.transitionIssue` 가
@@ -59,9 +71,11 @@ class IssueTransitionAdapter(
      * @param cmd 전이 커맨드. actorUserId·issueKey·toStateKey·expectedVersion·resolutionId 포함.
      * @return 전이 완료 후 상태 키·버전을 담은 [BoardTransitionResult].
      * @throws com.bts.issue.domain.IssueTransitionNotAllowedException 전이 규칙 위반 또는 미정의 전이.
-     * @throws com.bts.issue.domain.IssueVersionConflictException OCC 버전 충돌.
      * @throws com.bts.issue.domain.IssueWorkflowNotConfiguredException 워크플로우 스킴 미배정.
-     * @throws com.bts.issue.domain.IssueAccessDeniedException TRANSITION 권한 없을 때.
+     * @throws IssueTransitionPermissionDeniedException TRANSITION 권한 없을 때(원래
+     *   [com.bts.issue.domain.IssueAccessDeniedException] 를 번역, FR-SL-05 PR1 Task 2).
+     * @throws IssueOptimisticLockException OCC 버전 충돌 시(원래
+     *   [com.bts.issue.domain.IssueVersionConflictException] 를 번역, FR-SL-05 PR1 Task 2).
      */
     @Suppress("TooGenericExceptionCaught")
     override fun transition(cmd: BoardTransitionCommand): BoardTransitionResult {
@@ -87,7 +101,9 @@ class IssueTransitionAdapter(
         // 이미 있으면 참여한다. TransactionTemplate 은 외부 컨텍스트에서 트랜잭션을 보장하기 위한 래퍼.
         val issueResponse =
             transactionTemplate.execute {
-                issueApplicationService.transitionIssue(actor, IssueKey(cmd.issueKey), request)
+                translatingDomainExceptions {
+                    issueApplicationService.transitionIssue(actor, IssueKey(cmd.issueKey), request)
+                }
             } ?: error("transitionIssue returned null — unexpected (transactionTemplate.execute 반환)")
 
         return BoardTransitionResult(
@@ -96,4 +112,22 @@ class IssueTransitionAdapter(
             version = issueResponse.version,
         )
     }
+
+    /**
+     * [attempt] 를 실행하고, 권한 거부·OCC 충돌 도메인 예외만 shared-kernel 타입으로 번역해 던진다.
+     *
+     * 클래스 KDoc "예외 전파" 절 참조. 두 예외 외에는 번역하지 않고 그대로 전파한다 — 문자열 매칭이
+     * 아닌 타입(catch 절) 기준으로만 분류한다(BC 격리, 클래스명 문자열 매칭 금지 원칙).
+     *
+     * @throws IssueTransitionPermissionDeniedException [IssueAccessDeniedException] 번역.
+     * @throws IssueOptimisticLockException [IssueVersionConflictException] 번역.
+     */
+    private fun <T> translatingDomainExceptions(attempt: () -> T): T =
+        try {
+            attempt()
+        } catch (e: IssueAccessDeniedException) {
+            throw IssueTransitionPermissionDeniedException(e.message ?: "이슈 전이 권한이 없습니다", e)
+        } catch (e: IssueVersionConflictException) {
+            throw IssueOptimisticLockException(e.message ?: "버전 충돌이 발생했습니다", e)
+        }
 }

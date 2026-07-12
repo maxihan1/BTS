@@ -34,7 +34,6 @@ import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
 import com.bts.workflow.seed.YamlSeedService
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.mockk
@@ -329,7 +328,6 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
                 workflowRepository = workflowRepo,
                 dsl = dsl,
                 resourceLoader = DefaultResourceLoader(),
-                yamlMapper = ObjectMapper(YAMLFactory()).registerKotlinModule(),
                 validatorFactory = validatorFactory,
                 postActionFactory = postActionFactory,
             )
