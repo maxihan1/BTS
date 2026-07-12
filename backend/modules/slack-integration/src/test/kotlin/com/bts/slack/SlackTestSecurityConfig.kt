@@ -1,4 +1,4 @@
-// slack-integration 테스트용 SecurityFilterChain — callback/events/commands permitAll, 나머지 authenticated (FR-SL-01/03/04)
+// slack-integration 테스트용 SecurityFilterChain — callback/events/commands/interactions permitAll, 나머지 authenticated (FR-SL-01/03/04/05)
 
 package com.bts.slack
 
@@ -29,6 +29,11 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint
  *   아니라 필터의 JWT 를 컨트롤러의 서명검증으로 교체하는 것이며, 서명 검증은 permitAll 과 무관하게
  *   [com.bts.slack.web.SlackCommandsController] 가 무조건 선행한다(fail-closed, [SlackSlashCommandEndToEndTest]
  *   [com.bts.slack.command.SlackSlashCommandEndToEndTest] 가 실증).
+ * - `POST /slack/interactions` — **permitAll**(FR-SL-05 PR1 Task 10, `/slack/commands` 와 동형 — 정확히 이
+ *   메서드+경로만). Slack 인터랙티브(완료 버튼/완료 모달 제출) 서버-투-서버 호출이라 사용자 JWT 가 없다.
+ *   인가는 동일하게 [com.bts.slack.security.SlackSignatureVerifier] 서명 검증으로 대체되며, 서명 검증은
+ *   permitAll 과 무관하게 [com.bts.slack.web.SlackInteractionsController] 가 무조건 선행한다(fail-closed,
+ *   [SlackInteractionsControllerTest][com.bts.slack.web.SlackInteractionsControllerTest] 가 실증).
  *
  * ### prod 중앙 배선은 배포 조립 후속 (ADR D8)
  * 이 permitAll 은 slack test-boot 컨텍스트 **한정**이다. prod 는 identity-access 중앙 `SecurityConfig` 에
@@ -59,6 +64,7 @@ class SlackTestSecurityConfig {
                 it.requestMatchers(HttpMethod.GET, "/slack/install/callback").permitAll()
                 it.requestMatchers(HttpMethod.POST, "/slack/events").permitAll()
                 it.requestMatchers(HttpMethod.POST, "/slack/commands").permitAll()
+                it.requestMatchers(HttpMethod.POST, "/slack/interactions").permitAll()
                 it.requestMatchers("/api/v1/slack/**").authenticated()
                 it.anyRequest().authenticated()
             }.exceptionHandling {
