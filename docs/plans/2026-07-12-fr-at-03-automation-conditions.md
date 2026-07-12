@@ -54,9 +54,38 @@ product doc §2.3 스코프:
 - **glossary 갱신 후보**: "조건 (Condition)" — 자동화 룰에서 트리거 발화 후 액션 실행 전 평가하는 분기 판정. (Maxi 승인 후 추가)
 - **관련 ADR**: `docs/decisions/2026-07-12-fr-at-03-automation-conditions.md` (bts-spec 단계에서 전체 설계와 함께 작성 예정)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-12-fr-at-03-automation-conditions.md](../specs/2026-07-12-fr-at-03-automation-conditions.md)
+
+핵심 3줄 요약.
+- 조건 = 구조화 데이터 트리(JSONLogic 호환 부분집합: and/or/not · ==/!=/></>=/</<= · in · !/!! · var). 코드 실행 불가.
+- `ActionExecutor.execute` 내부에 조건 게이트(액션 로드 후·dispatch 전). 불충족→SKIPPED·액션 0건. dry-run 동일.
+- 이슈 필드 값은 신규 `IssueSnapshotPort`(shared-kernel, issue-tracking prod 어댑터)로 읽음. V304 automation_conditions.
+
+## Brainstorming Check
+
+✅ 통과 (1회, 적대적 self-review). gap 8건 = 전부 구현 레벨 리스크(아래 §리뷰 결과/리스크로 이관).
+
+## 리스크 / 구현 주의 (Brainstorming 발견 8건 + prod 조립)
+
+1. **ActionExecutor 생성자 확장** — 신규 의존(IssueSnapshotPort·ConditionEvaluator·AutomationConditionRepository)
+   주입 시 기존 `ActionExecutorTest` 전수 갱신 ([[plan-files-constructor-injection-existing-tests]]).
+2. **full-boot NoSuchBean** — ActionExecutor가 IssueSnapshotPort 요구 → automation test-boot 슬라이스에
+   `StubIssueSnapshotPort` 동반(`StubIssueMutationPort` 선례) ([[new-crossbc-dep-openapi-mockbean-regression]]).
+3. **`ActionExecutionStatus.SKIPPED` 추가** — 모듈 내 exhaustive `when` 전수 grep 갱신.
+4. **V304 충돌/체크섬** — 머지 직전 최신 V번호 재확인 ([[migration-vnumber-concurrent-branch-collision]]),
+   `:modules:app:test`는 영속 5433 DB라 적용된 마이그레이션 편집 금지 ([[app-test-persistent-db-migration-checksum-trap]]).
+   `SchemaMigrationTest` V304 단언 블록 추가.
+5. **prod 조립 부팅 재검증** — issue-tracking `IssueSnapshotPort` `@Profile("prod")` 어댑터를 `:modules:app`에
+   배선 + 머지 전 rebase + `:modules:app:test` 부팅 확인 ([[prod-assembly-boot-verification-required]]).
+   fail-closed 회귀 가드(어댑터 부재→NoSuchBean) ([[crossbc-resolver-nullable-fail-open]]).
+6. **priority 타입** — 스냅샷 priority 숫자(1-5, FR-AT-02) vs 이름. `IssueSnapshot` 계약에서 D3/D4 확정.
+7. **조건 replace 트랜잭션성** — 룰 수정과 조건 upsert 동일 트랜잭션.
+8. **보안 checkpoint** — 스냅샷 포트 가시성 필터 부재. 안전 근거(PROJECT_ADMIN 생성·프로젝트 스코프 트리거·
+   admin 자기 프로젝트 이슈 열람 가능) 성립하나 codereview 시 security 관점 확인.
+9. **동형 복제 권한/cross-cutting** — Condition/repo/포트를 Action 패턴 복제 시 권한 가드·트랜잭션 전수 대조
+   ([[isomorphic-clone-permission-guard-gap]]).
 
 ## Plan (← /bts-plan 채움)
 
