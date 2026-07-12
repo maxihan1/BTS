@@ -1,4 +1,5 @@
 // 자동화 룰 생성/수정 Dialog — 트리거 5종 선택 + 트리거별 조건부 필드(cron/fields) 직렬화 (FR-AT-01 D6 Task 6)
+// + 액션 리스트(4종)·실행 주체(actor) 편집 배선, config 비대칭(EC1) 직렬화/역직렬화 (FR-AT-02 D6 Task 6)
 import type { JSX, KeyboardEvent } from 'react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -522,13 +523,21 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
 /**
  * 자동화 룰 생성/수정 겸용 Dialog.
  *
- * - `editingRule`이 있으면 수정 모드(이름·트리거설정만 PATCH, 트리거 타입은 잠금).
- *   없으면 생성 모드(이름+트리거타입+트리거설정 POST).
+ * - `editingRule`이 있으면 수정 모드(이름·트리거설정·액션·실행주체 PATCH, 트리거 타입은 잠금).
+ *   없으면 생성 모드(이름+트리거타입+트리거설정+액션+실행주체 POST).
+ * - 폼은 기본(이름)·트리거(+설정)·액션·실행 주체 4개 섹션으로 그룹핑되어 각 섹션 헤더로
+ *   시각 계층을 확립한다(design-review#1).
  * - 트리거별 조건부 필드는 {@link TriggerConfigFields}로 분리 —
  *   SCHEDULED(cron 필수 사전검증)·ISSUE_UPDATED(fields 태그, 비면 전체 필드)·나머지(없음).
+ * - 액션 리스트는 {@link ActionListEditor}(추가/삭제/순서변경)에 위임하고, 편집 초기값은
+ *   {@link parseActionsFormState}(응답 config=객체)로, 제출은 {@link serializeActionsFormState}
+ *   (config=JSON 문자열)로 변환한다 — 응답/요청 config 형태가 다른 비대칭(EC1)을 명확히 분리한다.
+ * - 실행 주체(actor)는 {@link ProjectMemberSelect}로 선택한다. 생성 모드 기본값은 미설정(null)
+ *   이며, 사용자가 명시 선택했을 때만 `actorUserId`를 body에 포함한다(생성자가 프로젝트 멤버
+ *   목록에 없을 수 있는 시스템 관리자 케이스를 회피, FR8).
  * - `open`/`editingRule.id` 조합을 key로 사용해 {@link FormBody}를 재마운트한다 —
- *   Dialog가 열린 채로 편집 대상이 바뀌어도 이전 입력이 잔존하지 않는다
- *   (react-usestate-stale-key-prop 교훈).
+ *   Dialog가 열린 채로 편집 대상이 바뀌어도 이전 입력(액션·실행주체 포함)이 잔존하지 않는다
+ *   (react-usestate-stale-key-prop 교훈, EC6).
  * - WEBHOOK 트리거 생성 성공 시 응답의 webhookToken 원문을 `onWebhookToken`으로 1회 전달한다.
  */
 export const AutomationRuleFormDialog = ({
