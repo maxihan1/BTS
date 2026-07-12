@@ -55,8 +55,8 @@ describe('ProjectMemberSelect — 멤버 목록', () => {
     )
     const user = userEvent.setup()
 
-    const select = await screen.findByLabelText('담당자')
     const aliceOption = await screen.findByRole('option', { name: '앨리스' })
+    const select = screen.getByLabelText('담당자')
     await user.selectOptions(select, aliceOption)
 
     expect(onChange).toHaveBeenCalledWith(ALICE_ID)
@@ -81,8 +81,8 @@ describe('ProjectMemberSelect — allowUnassign', () => {
     )
     const user = userEvent.setup()
 
-    const select = await screen.findByLabelText('담당자')
     const unassignOption = await screen.findByRole('option', { name: '담당자 해제' })
+    const select = screen.getByLabelText('담당자')
     await user.selectOptions(select, unassignOption)
 
     expect(onChange).toHaveBeenCalledWith(null)
@@ -111,10 +111,10 @@ describe('ProjectMemberSelect — 알 수 없는 사용자 fallback (EC4)', () =
       <ProjectMemberSelect projectKey={PROJECT_KEY} value={UNKNOWN_ID} onChange={onChange} label="실행 주체" />,
     )
 
-    const select = await screen.findByLabelText('실행 주체')
     await waitFor(() => {
       expect(screen.getByRole('option', { name: '알 수 없는 사용자' })).toBeInTheDocument()
     })
+    const select = screen.getByLabelText('실행 주체')
     expect((select as HTMLSelectElement).value).toBe(UNKNOWN_ID)
     expect(onChange).not.toHaveBeenCalled()
   })
