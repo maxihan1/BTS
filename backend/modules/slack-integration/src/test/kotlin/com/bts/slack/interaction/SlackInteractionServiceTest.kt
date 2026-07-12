@@ -74,7 +74,8 @@ class SlackInteractionServiceTest {
             responseUrl = "https://hooks.slack.com/actions/T1/1/abc",
             channel = channel,
             messageTs = ts,
-            actions = listOf(SlackInteractionPayload.BlockActions.Action(actionId = "atlas_complete", value = issueKey)),
+            actions =
+                listOf(SlackInteractionPayload.BlockActions.Action(actionId = "atlas_complete", value = issueKey)),
         )
 
     private fun completionOptions() =
@@ -178,7 +179,8 @@ class SlackInteractionServiceTest {
     fun `atlas_view(상세보기 url 버튼) — no-op 빈 응답, 어떤 협력자도 호출하지 않는다`() {
         val payload =
             blockActionsComplete().copy(
-                actions = listOf(SlackInteractionPayload.BlockActions.Action(actionId = "atlas_view", value = issueKey)),
+                actions =
+                    listOf(SlackInteractionPayload.BlockActions.Action(actionId = "atlas_view", value = issueKey)),
             )
 
         val result = service.handle(payload)
@@ -301,7 +303,8 @@ class SlackInteractionServiceTest {
     fun `알 수 없는 action_id block_actions — no-op 빈 200`() {
         val payload =
             blockActionsComplete().copy(
-                actions = listOf(SlackInteractionPayload.BlockActions.Action(actionId = "atlas_unknown", value = issueKey)),
+                actions =
+                    listOf(SlackInteractionPayload.BlockActions.Action(actionId = "atlas_unknown", value = issueKey)),
             )
 
         val result = service.handle(payload)
