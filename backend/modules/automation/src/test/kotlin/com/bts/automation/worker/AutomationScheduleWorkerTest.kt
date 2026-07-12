@@ -6,11 +6,13 @@ import com.bts.automation.AutomationTestBootApplication
 import com.bts.automation.AutomationTestcontainersBase
 import com.bts.automation.StubAutomationPermissionResolver
 import com.bts.automation.StubIssueMutationPort
+import com.bts.automation.StubIssueSnapshotPort
 import com.bts.automation.adapter.AutomationExecutionEnqueuer
 import com.bts.automation.adapter.AutomationRuleRepository
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.TriggerType
 import com.bts.shared.issue.IssueMutationPort
+import com.bts.shared.issue.IssueSnapshotPort
 import com.bts.shared.permission.AutomationPermissionResolver
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -207,6 +209,9 @@ class AutomationScheduleWorkerTest {
      *
      * `ActionExecutor`(FR-AT-02 Task 9)가 non-null 로 요구하는 [IssueMutationPort] 도 동일 사유로
      * 대신 등록한다(prod 구현은 issue-tracking `@Profile("prod")` 어댑터 — automation 클래스패스에 없음).
+     *
+     * `ActionExecutor`(FR-AT-03 Task 7)가 non-null 로 요구하는 [IssueSnapshotPort] 도 동일 사유로
+     * [StubIssueSnapshotPort] 를 대신 등록한다.
      */
     @TestConfiguration
     class TestSupportConfig {
@@ -215,5 +220,8 @@ class AutomationScheduleWorkerTest {
 
         @Bean
         fun issueMutationPort(): IssueMutationPort = StubIssueMutationPort()
+
+        @Bean
+        fun issueSnapshotPort(): IssueSnapshotPort = StubIssueSnapshotPort()
     }
 }

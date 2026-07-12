@@ -7,6 +7,7 @@ import com.bts.automation.AutomationTestSecurityConfig
 import com.bts.automation.AutomationTestcontainersBase
 import com.bts.automation.StubAutomationPermissionResolver
 import com.bts.automation.StubIssueMutationPort
+import com.bts.automation.StubIssueSnapshotPort
 import com.bts.automation.adapter.AutomationRuleRepository
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.TriggerType
@@ -72,6 +73,8 @@ class AutomationWebhookControllerTest {
      *
      * `ActionExecutor`(FR-AT-02 Task 9)가 non-null 로 요구하는 `IssueMutationPort` 도 동일 사유로
      * [StubIssueMutationPort] 를 대신 등록한다(이 컨트롤러는 그 포트를 쓰지 않지만 컨텍스트 부팅에 필요).
+     * `ActionExecutor`(FR-AT-03 Task 7)가 non-null 로 요구하는 `IssueSnapshotPort` 도 동일 사유로
+     * [StubIssueSnapshotPort] 를 대신 등록한다.
      */
     @TestConfiguration
     class PermissionResolverStubConfig {
@@ -80,6 +83,9 @@ class AutomationWebhookControllerTest {
 
         @Bean
         fun stubIssueMutationPort(): StubIssueMutationPort = StubIssueMutationPort()
+
+        @Bean
+        fun stubIssueSnapshotPort(): StubIssueSnapshotPort = StubIssueSnapshotPort()
     }
 
     @Autowired

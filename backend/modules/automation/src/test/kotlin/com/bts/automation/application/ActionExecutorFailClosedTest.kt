@@ -3,7 +3,9 @@
 package com.bts.automation.application
 
 import com.bts.automation.adapter.AutomationActionRepository
+import com.bts.automation.adapter.AutomationConditionRepository
 import com.bts.automation.adapter.WebhookActionClient
+import com.bts.shared.issue.IssueSnapshotPort
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
@@ -38,7 +40,10 @@ class ActionExecutorFailClosedTest : StringSpec({
         ctx.registerBean(WebhookActionClient::class.java, Supplier { mockk<WebhookActionClient>() })
         ctx.registerBean(AutomationActionRepository::class.java, Supplier { mockk<AutomationActionRepository>() })
         ctx.registerBean(ObjectMapper::class.java, Supplier { ObjectMapper() })
+        ctx.registerBean(IssueSnapshotPort::class.java, Supplier { mockk<IssueSnapshotPort>() })
+        ctx.registerBean(AutomationConditionRepository::class.java, Supplier { mockk<AutomationConditionRepository>() })
         ctx.registerBean(TemplateRenderer::class.java, Supplier { TemplateRenderer })
+        ctx.registerBean(ConditionEvaluator::class.java, Supplier { ConditionEvaluator })
         ctx.register(ActionExecutor::class.java)
 
         val ex = shouldThrow<UnsatisfiedDependencyException> { ctx.refresh() }

@@ -3,14 +3,19 @@
 package com.bts.automation.application
 
 import com.bts.automation.StubIssueMutationPort
+import com.bts.automation.StubIssueSnapshotPort
 import com.bts.automation.adapter.AutomationActionRepository
+import com.bts.automation.adapter.AutomationConditionRepository
 import com.bts.automation.adapter.WebhookActionClient
 import com.bts.automation.adapter.WebhookCallResult
 import com.bts.automation.domain.Action
 import com.bts.automation.domain.ActionType
 import com.bts.automation.domain.AutomationRule
+import com.bts.automation.domain.ComparisonOperator
+import com.bts.automation.domain.Condition
 import com.bts.automation.domain.TriggerType
 import com.bts.shared.issue.IssueMutationPermissionDeniedException
+import com.bts.shared.issue.IssueSnapshot
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.NullNode
 import com.fasterxml.jackson.databind.node.TextNode
@@ -41,6 +46,7 @@ import java.util.UUID
  * - E-g. 한 액션 실패(issueKey 없음) 시 나머지 액션은 계속 실행되고 상태는 PARTIAL
  * - E-h. 전부 성공 → SUCCESS
  * - E-i. 전부 실패(1건) → FAILED + 예외 클래스명 기반 PERMISSION_DENIED/FAILED 사유 분류
+ * - E-j. 조건 게이트(FR-AT-03) — 조건 없음/충족/불충족/스냅샷 조회 불가/issueKey 없음/UUID 필드 매핑
  */
 class ActionExecutorTest : DescribeSpec({
 
@@ -50,12 +56,23 @@ class ActionExecutorTest : DescribeSpec({
     val issueMutationPort = StubIssueMutationPort()
     val webhookActionClient = mockk<WebhookActionClient>()
     val actionRepository = mockk<AutomationActionRepository>()
+    val issueSnapshotPort = StubIssueSnapshotPort()
+    val conditionRepository = mockk<AutomationConditionRepository>(relaxed = true)
 
-    val executor = ActionExecutor(issueMutationPort, webhookActionClient, actionRepository, objectMapper)
+    val executor =
+        ActionExecutor(
+            issueMutationPort = issueMutationPort,
+            webhookActionClient = webhookActionClient,
+            actionRepository = actionRepository,
+            objectMapper = objectMapper,
+            issueSnapshotPort = issueSnapshotPort,
+            conditionRepository = conditionRepository,
+        )
 
     afterEach {
-        clearMocks(webhookActionClient, actionRepository)
+        clearMocks(webhookActionClient, actionRepository, conditionRepository)
         issueMutationPort.reset()
+        issueSnapshotPort.reset()
     }
 
     fun newRule(actorUserId: UUID = UUID.randomUUID()): AutomationRule =
@@ -79,6 +96,23 @@ class ActionExecutorTest : DescribeSpec({
          "occurredAt":"2026-07-11T00:00:00Z"}
         """.trimIndent(),
     )
+
+    fun issueSnapshot(
+        key: String = "PROJ-1",
+        status: String = "open",
+        assigneeId: UUID? = null,
+    ): IssueSnapshot =
+        IssueSnapshot(
+            key = key,
+            projectKey = "PROJ",
+            type = "Task",
+            status = status,
+            priority = 3,
+            assigneeId = assigneeId,
+            reporterId = UUID.randomUUID(),
+            labels = emptyList(),
+            summary = "요약",
+        )
 
     describe("E-a 빈 액션 리스트") {
         it("no-op SUCCESS 를 반환하고 포트/클라이언트를 호출하지 않는다") {
@@ -287,6 +321,117 @@ class ActionExecutorTest : DescribeSpec({
 
             result.status shouldBe ActionExecutionStatus.FAILED
             result.outcomes shouldBe listOf(ActionOutcome(0, ActionType.SET_FIELD, success = false, error = "FAILED"))
+        }
+    }
+
+    describe("E-j 조건 게이트 (FR-AT-03)") {
+        it("조건이 없으면 게이트를 통과해 기존과 동일하게 액션을 실행한다") {
+            val rule = newRule()
+            val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+            every { conditionRepository.findByRuleId(rule.id) } returns null
+
+            val result = executor.execute(rule, issueEvent("PROJ-1"))
+
+            result.status shouldBe ActionExecutionStatus.SUCCESS
+            issueMutationPort.setFieldCalls.single().field shouldBe "priority"
+        }
+
+        it("조건을 만족하면 액션이 정상 실행된다") {
+            val rule = newRule()
+            val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+            val condition = Condition.Comparison("issue.status", ComparisonOperator.EQUALS, TextNode("open"))
+            every { conditionRepository.findByRuleId(rule.id) } returns condition
+            issueSnapshotPort.seed(rule.actorUserId, "PROJ-1", issueSnapshot(status = "open"))
+
+            val result = executor.execute(rule, issueEvent("PROJ-1"))
+
+            result.status shouldBe ActionExecutionStatus.SUCCESS
+            issueMutationPort.setFieldCalls.single().field shouldBe "priority"
+        }
+
+        it("조건을 만족하지 못하면 SKIPPED 를 반환하고 액션은 전혀 실행되지 않는다") {
+            val rule = newRule()
+            val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+            val condition = Condition.Comparison("issue.status", ComparisonOperator.EQUALS, TextNode("done"))
+            every { conditionRepository.findByRuleId(rule.id) } returns condition
+            issueSnapshotPort.seed(rule.actorUserId, "PROJ-1", issueSnapshot(status = "open"))
+
+            val result = executor.execute(rule, issueEvent("PROJ-1"))
+
+            result.status shouldBe ActionExecutionStatus.SKIPPED
+            result.outcomes.shouldBeEmpty()
+            issueMutationPort.setFieldCalls.shouldBeEmpty()
+        }
+
+        it("스냅샷을 조회할 수 없으면(시드되지 않음/가시성 제한) fail-safe 로 SKIPPED 를 반환한다") {
+            val rule = newRule()
+            val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+            val condition = Condition.Comparison("issue.status", ComparisonOperator.EQUALS, TextNode("open"))
+            every { conditionRepository.findByRuleId(rule.id) } returns condition
+            // 의도적으로 시드하지 않는다 — issueSnapshotPort.fetch 가 null 을 반환하는 상황 재현.
+
+            val result = executor.execute(rule, issueEvent("PROJ-1"))
+
+            result.status shouldBe ActionExecutionStatus.SKIPPED
+            issueMutationPort.setFieldCalls.shouldBeEmpty()
+        }
+
+        it("triggerEvent 에 이슈 키가 없으면(SCHEDULED/WEBHOOK 빈 payload) 조건이 있을 때 SKIPPED 로 처리된다") {
+            val rule = newRule()
+            val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+            val condition = Condition.Comparison("issue.status", ComparisonOperator.EQUALS, TextNode("open"))
+            every { conditionRepository.findByRuleId(rule.id) } returns condition
+
+            val result = executor.execute(rule, objectMapper.readTree("{}"))
+
+            result.status shouldBe ActionExecutionStatus.SKIPPED
+            issueMutationPort.setFieldCalls.shouldBeEmpty()
+        }
+
+        it("조건 불충족이면 액션 리스트가 비어 있어도 SUCCESS 가 아니라 SKIPPED 다(빈 액션 SUCCESS 보다 조건 우선)") {
+            val rule = newRule()
+            every { actionRepository.findByRuleId(rule.id) } returns emptyList()
+            val condition = Condition.Comparison("issue.status", ComparisonOperator.EQUALS, TextNode("done"))
+            every { conditionRepository.findByRuleId(rule.id) } returns condition
+            issueSnapshotPort.seed(rule.actorUserId, "PROJ-1", issueSnapshot(status = "open"))
+
+            val result = executor.execute(rule, issueEvent("PROJ-1"))
+
+            result.status shouldBe ActionExecutionStatus.SKIPPED
+        }
+
+        it("UUID 필드(assignee)는 문자열로 매핑돼 조건 리터럴(문자열)과 비교된다") {
+            val rule = newRule()
+            val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+            val assigneeId = UUID.randomUUID()
+            val condition =
+                Condition.Comparison("issue.assignee", ComparisonOperator.EQUALS, TextNode(assigneeId.toString()))
+            every { conditionRepository.findByRuleId(rule.id) } returns condition
+            issueSnapshotPort.seed(rule.actorUserId, "PROJ-1", issueSnapshot(assigneeId = assigneeId))
+
+            val result = executor.execute(rule, issueEvent("PROJ-1"))
+
+            result.status shouldBe ActionExecutionStatus.SUCCESS
+        }
+
+        it("dryRun=true 에서도 조건 게이트가 동일하게 적용된다") {
+            val rule = newRule()
+            val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+            val condition = Condition.Comparison("issue.status", ComparisonOperator.EQUALS, TextNode("done"))
+            every { conditionRepository.findByRuleId(rule.id) } returns condition
+            issueSnapshotPort.seed(rule.actorUserId, "PROJ-1", issueSnapshot(status = "open"))
+
+            val result = executor.execute(rule, issueEvent("PROJ-1"), dryRun = true)
+
+            result.status shouldBe ActionExecutionStatus.SKIPPED
+            issueMutationPort.setFieldCalls.shouldBeEmpty()
         }
     }
 })

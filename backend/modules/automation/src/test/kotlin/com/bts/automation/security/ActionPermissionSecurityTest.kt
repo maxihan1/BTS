@@ -3,7 +3,9 @@
 package com.bts.automation.security
 
 import com.bts.automation.StubIssueMutationPort
+import com.bts.automation.StubIssueSnapshotPort
 import com.bts.automation.adapter.AutomationActionRepository
+import com.bts.automation.adapter.AutomationConditionRepository
 import com.bts.automation.adapter.WebhookActionClient
 import com.bts.automation.adapter.WebhookCallResult
 import com.bts.automation.application.ActionExecutionStatus
@@ -59,19 +61,40 @@ class ActionPermissionSecurityTest : DescribeSpec({
     val issueMutationPort = StubIssueMutationPort()
     val mockWebhookClient = mockk<WebhookActionClient>()
     val actionRepository = mockk<AutomationActionRepository>()
+    // 이 스위트는 조건 게이트(FR-AT-03) 자체를 검증하지 않는다 — 조건 없음(relaxed 기본 null)으로
+    // 게이트를 항상 통과시켜 기존 보안 시나리오(권한/actor 위조/SSRF)만 순수하게 관측한다.
+    val issueSnapshotPort = StubIssueSnapshotPort()
+    val conditionRepository = mockk<AutomationConditionRepository>(relaxed = true)
 
     // 시나리오 1·2·4 — 웹훅은 mock(네트워크 없이 best-effort 진행만 관측).
-    val executor = ActionExecutor(issueMutationPort, mockWebhookClient, actionRepository, objectMapper)
+    val executor =
+        ActionExecutor(
+            issueMutationPort = issueMutationPort,
+            webhookActionClient = mockWebhookClient,
+            actionRepository = actionRepository,
+            objectMapper = objectMapper,
+            issueSnapshotPort = issueSnapshotPort,
+            conditionRepository = conditionRepository,
+        )
 
     // 시나리오 3 — 실제 SSRF 검증기 + 실제 RestClient 로 "렌더 후 url 검증" 경로를 검증.
     // 차단 url 은 검증 단계에서 막혀 실제 HTTP 전송이 발생하지 않으므로 결정적이다.
     val realWebhookClient =
         WebhookActionClient(OutboundUrlValidator(), OutboundHttpClientConfig().outboundHttpRestClient())
-    val ssrfExecutor = ActionExecutor(issueMutationPort, realWebhookClient, actionRepository, objectMapper)
+    val ssrfExecutor =
+        ActionExecutor(
+            issueMutationPort = issueMutationPort,
+            webhookActionClient = realWebhookClient,
+            actionRepository = actionRepository,
+            objectMapper = objectMapper,
+            issueSnapshotPort = issueSnapshotPort,
+            conditionRepository = conditionRepository,
+        )
 
     afterEach {
-        clearMocks(mockWebhookClient, actionRepository)
+        clearMocks(mockWebhookClient, actionRepository, conditionRepository)
         issueMutationPort.reset()
+        issueSnapshotPort.reset()
     }
 
     fun ruleWithActor(actorUserId: UUID): AutomationRule =
