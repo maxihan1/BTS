@@ -1,4 +1,4 @@
-// 자동화 룰의 액션 리스트를 순서대로 실행하는 디스패처 — 조건 게이트 통과 시 이슈 변경 3종/웹훅 호출 위임 + best-effort 부분실패 집계 (FR-AT-02 Task 9, FR-AT-03 Task 7)
+// 자동화 룰의 액션 리스트 실행 디스패처 — 조건 게이트 통과 시 이슈 변경/웹훅 위임, best-effort 부분실패 집계 (FR-AT-02 Task 9, FR-AT-03 Task 7)
 
 package com.bts.automation.application
 
@@ -80,10 +80,10 @@ import java.util.UUID
  * @param issueSnapshotPort 조건 게이트가 최신 이슈 값을 조회하는 cross-BC 읽기 포트(fail-closed,
  *   non-null — [issueMutationPort] 와 동일 사유). test-boot 는 `StubIssueSnapshotPort` 를 대신 등록.
  * @param conditionRepository 룰의 조건 트리 조회 리포지토리(룰당 0..1). 컴포넌트 스캔 실 빈이라 stub 불필요.
- * @param templateRenderer 템플릿 치환기. 상태 없는 Kotlin object 싱글턴이라 Spring 빈이 아니며,
- *   기본값으로 싱글턴 자신을 사용한다(automation `AutomationRuleService.clock` 과 동일한 "빈 부재 시
- *   기본값으로 컴포넌트 스캔 통과" 관례).
- * @param conditionEvaluator 조건 트리 평가기. [templateRenderer] 와 동일한 이유로 object 싱글턴 기본값.
+ *
+ * [TemplateRenderer]/[ConditionEvaluator] 는 생성자 파라미터가 아니라 내부 프로퍼티로 고정한다 — 둘
+ * 다 상태 없는 Kotlin object 싱글턴이고 아무 테스트도 대체 구현을 주입하지 않으므로(생성자 파라미터
+ * 수 제약, `LongParameterList`), 값처럼 고정 참조한다.
  */
 @Component
 class ActionExecutor(
@@ -93,10 +93,14 @@ class ActionExecutor(
     private val objectMapper: ObjectMapper,
     private val issueSnapshotPort: IssueSnapshotPort,
     private val conditionRepository: AutomationConditionRepository,
-    private val templateRenderer: TemplateRenderer = TemplateRenderer,
-    private val conditionEvaluator: ConditionEvaluator = ConditionEvaluator,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+
+    /** 템플릿 치환기. 클래스 KDoc 마지막 문단 참조 — 상태 없는 object 싱글턴 고정값. */
+    private val templateRenderer: TemplateRenderer = TemplateRenderer
+
+    /** 조건 트리 평가기. 클래스 KDoc 마지막 문단 참조 — 상태 없는 object 싱글턴 고정값. */
+    private val conditionEvaluator: ConditionEvaluator = ConditionEvaluator
 
     /**
      * [rule] 의 액션 리스트를 position 순으로 실행한다.
@@ -114,24 +118,28 @@ class ActionExecutor(
     ): ActionExecutionResult {
         val actions = actionRepository.findByRuleId(rule.id)
         val issueKey = extractIssueKey(triggerEvent)
-        if (isConditionUnmet(rule, issueKey)) {
-            log.info("automation_action_executor_condition_skipped ruleId={} issueKey={}", rule.id, issueKey)
-            return ActionExecutionResult(ActionExecutionStatus.SKIPPED, emptyList())
+        return when {
+            isConditionUnmet(rule, issueKey) -> {
+                log.info("automation_action_executor_condition_skipped ruleId={} issueKey={}", rule.id, issueKey)
+                ActionExecutionResult(ActionExecutionStatus.SKIPPED, emptyList())
+            }
+            actions.isEmpty() -> {
+                log.info("automation_action_executor_noop ruleId={}", rule.id)
+                ActionExecutionResult(ActionExecutionStatus.SUCCESS, emptyList())
+            }
+            else -> {
+                val env = ExecutionEnv(rule.actorUserId, buildContext(rule, triggerEvent), dryRun)
+                val outcomes =
+                    actions.mapIndexed { position, action -> dispatchAction(position, action, issueKey, env) }
+                log.info(
+                    "automation_action_executor_completed ruleId={} total={} success={}",
+                    rule.id,
+                    outcomes.size,
+                    outcomes.count { it.success },
+                )
+                ActionExecutionResult(aggregateStatus(outcomes), outcomes)
+            }
         }
-        if (actions.isEmpty()) {
-            log.info("automation_action_executor_noop ruleId={}", rule.id)
-            return ActionExecutionResult(ActionExecutionStatus.SUCCESS, emptyList())
-        }
-
-        val env = ExecutionEnv(rule.actorUserId, buildContext(rule, triggerEvent), dryRun)
-        val outcomes = actions.mapIndexed { position, action -> dispatchAction(position, action, issueKey, env) }
-        log.info(
-            "automation_action_executor_completed ruleId={} total={} success={}",
-            rule.id,
-            outcomes.size,
-            outcomes.count { it.success },
-        )
-        return ActionExecutionResult(aggregateStatus(outcomes), outcomes)
     }
 
     /**
@@ -145,42 +153,22 @@ class ActionExecutor(
         issueKey: String?,
     ): Boolean {
         val condition = conditionRepository.findByRuleId(rule.id) ?: return false
-        val snapshot = issueKey?.let { issueSnapshotPort.fetch(rule.actorUserId, it) } ?: return true
+        val snapshot = issueKey?.let { issueSnapshotPort.fetch(rule.actorUserId, it) }
         val met =
-            runCatching { conditionEvaluator.evaluate(condition, toConditionContext(snapshot)) }
-                .onFailure { e ->
-                    log.warn(
-                        "automation_condition_evaluate_exception ruleId={} issueKey={} error={}",
-                        rule.id,
-                        issueKey,
-                        e.message,
-                        e,
-                    )
-                }.getOrDefault(false)
+            snapshot?.let { s ->
+                runCatching { conditionEvaluator.evaluate(condition, s.toConditionContext()) }
+                    .onFailure { e ->
+                        log.warn(
+                            "automation_condition_evaluate_exception ruleId={} issueKey={} error={}",
+                            rule.id,
+                            issueKey,
+                            e.message,
+                            e,
+                        )
+                    }.getOrDefault(false)
+            } ?: false
         return !met
     }
-
-    /**
-     * [snapshot] 을 [Condition.FIELD_WHITELIST] 키로 매핑해 [ConditionContext] 를 만든다.
-     *
-     * UUID 필드([IssueSnapshot.assigneeId]/[IssueSnapshot.reporterId])는 문자열로 변환한다 — 조건
-     * 리터럴은 UUID 를 문자열로 표현하므로, 타입을 맞추지 않으면 [ConditionEvaluator] 의 스칼라
-     * deep equal 이 항상 다름으로 판정한다(타입 다르면 값이 같아 보여도 다름).
-     */
-    private fun toConditionContext(snapshot: IssueSnapshot): ConditionContext =
-        ConditionContext.of(
-            mapOf(
-                "issue.key" to snapshot.key,
-                "issue.projectKey" to snapshot.projectKey,
-                "issue.type" to snapshot.type,
-                "issue.status" to snapshot.status,
-                "issue.priority" to snapshot.priority,
-                "issue.assignee" to snapshot.assigneeId?.toString(),
-                "issue.reporter" to snapshot.reporterId?.toString(),
-                "issue.labels" to snapshot.labels,
-                "issue.summary" to snapshot.summary,
-            ),
-        )
 
     /** 액션 1건을 실행하고 실패 사유를 로그로 남긴 뒤 [ActionOutcome] 으로 흡수한다. */
     private fun dispatchAction(
@@ -193,7 +181,7 @@ class ActionExecutor(
             when (action) {
                 is Action.SetFieldAction ->
                     attemptIssueMutation(issueKey) { key ->
-                        val value = encodeSetFieldValue(action.value)
+                        val value = encodeSetFieldValue(objectMapper, action.value)
                         issueMutationPort.setField(SetFieldCommand(env.actorId, key, action.field, value, env.dryRun))
                     }
                 is Action.AssignAction ->
@@ -245,12 +233,6 @@ class ActionExecutor(
         val body = templateRenderer.render(action.body, context)
         val result = webhookActionClient.call(url, action.method, action.headers, body)
         return if (result.success) null else (result.error ?: FAILURE_GENERIC)
-    }
-
-    /** [value] 가 JSON `null` 이면 필드 해제([SetFieldCommand.value] null 계약), 그 외엔 JSON 문자열로 인코딩한다. */
-    private fun encodeSetFieldValue(value: JsonNode): String? {
-        if (value.isNull) return null
-        return objectMapper.writeValueAsString(value)
     }
 
     /** 클래스 KDoc "cross-BC 예외 분류" 참조 — 포트 계약의 타입 있는 예외로만 PERMISSION_DENIED 를 구분한다. */
@@ -321,6 +303,41 @@ class ActionExecutor(
         val MAP_TYPE_REF: TypeReference<Map<String, Any?>> = object : TypeReference<Map<String, Any?>>() {}
     }
 }
+
+/**
+ * [value] 가 JSON `null` 이면 필드 해제([SetFieldCommand.value] null 계약), 그 외엔 [objectMapper] 로
+ * JSON 문자열로 인코딩한다([ActionExecutor] 클래스 함수 수 제약상 top-level 함수로 분리).
+ */
+private fun encodeSetFieldValue(
+    objectMapper: ObjectMapper,
+    value: JsonNode,
+): String? {
+    if (value.isNull) return null
+    return objectMapper.writeValueAsString(value)
+}
+
+/**
+ * [IssueSnapshot] 을 [Condition.FIELD_WHITELIST] 키로 매핑해 [ConditionContext] 를 만든다
+ * ([ActionExecutor] 조건 게이트 전용 매핑 — 클래스 함수 수 제약상 확장 함수로 분리).
+ *
+ * UUID 필드([IssueSnapshot.assigneeId]/[IssueSnapshot.reporterId])는 문자열로 변환한다 — 조건
+ * 리터럴은 UUID 를 문자열로 표현하므로, 타입을 맞추지 않으면 [ConditionEvaluator] 의 스칼라
+ * deep equal 이 항상 다름으로 판정한다(타입 다르면 값이 같아 보여도 다름).
+ */
+private fun IssueSnapshot.toConditionContext(): ConditionContext =
+    ConditionContext.of(
+        mapOf(
+            "issue.key" to key,
+            "issue.projectKey" to projectKey,
+            "issue.type" to type,
+            "issue.status" to status,
+            "issue.priority" to priority,
+            "issue.assignee" to assigneeId?.toString(),
+            "issue.reporter" to reporterId?.toString(),
+            "issue.labels" to labels,
+            "issue.summary" to summary,
+        ),
+    )
 
 /** [ActionExecutor.execute] 실행 1회에 걸쳐 모든 액션에 공통으로 전달되는 값(actor·템플릿 컨텍스트·dryRun). */
 private data class ExecutionEnv(

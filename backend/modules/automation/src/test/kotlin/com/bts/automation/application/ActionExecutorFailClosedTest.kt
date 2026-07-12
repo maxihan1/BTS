@@ -43,7 +43,8 @@ class ActionExecutorFailClosedTest : StringSpec({
         ctx.registerBean(IssueSnapshotPort::class.java, Supplier { mockk<IssueSnapshotPort>() })
         ctx.registerBean(AutomationConditionRepository::class.java, Supplier { mockk<AutomationConditionRepository>() })
         ctx.registerBean(TemplateRenderer::class.java, Supplier { TemplateRenderer })
-        ctx.registerBean(ConditionEvaluator::class.java, Supplier { ConditionEvaluator })
+        // conditionEvaluator 는 ActionExecutor 생성자 파라미터가 아니라 내부 프로퍼티(object 싱글턴
+        // 고정값)라 별도 등록이 불필요하다(리팩터 — LongParameterList 회피, [ActionExecutor] KDoc 참조).
         ctx.register(ActionExecutor::class.java)
 
         val ex = shouldThrow<UnsatisfiedDependencyException> { ctx.refresh() }
