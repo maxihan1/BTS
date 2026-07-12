@@ -63,6 +63,8 @@ export const DEFAULT_AUTOMATION_RULES: AutomationRule[] = [
     enabled: true,
     triggerType: 'ISSUE_CREATED',
     triggerConfig: '{}',
+    actions: [],
+    actorUserId: DEFAULT_AUTOMATION_ACTOR_ID,
     hasWebhookToken: false,
     nextFireAt: null,
     createdBy: DEFAULT_AUTOMATION_ACTOR_ID,
@@ -77,6 +79,12 @@ export const DEFAULT_AUTOMATION_RULES: AutomationRule[] = [
     enabled: true,
     triggerType: 'SCHEDULED',
     triggerConfig: '{"cron":"0 0 9 * * *"}',
+    // 액션 있는 픽스처(FR-AT-02) — SET_FIELD(priority=3)·ASSIGN(해제) 2건, config는 응답 규약대로 객체.
+    actions: [
+      { type: 'SET_FIELD', config: { field: 'priority', value: 3 } },
+      { type: 'ASSIGN', config: { assigneeId: null } },
+    ],
+    actorUserId: DEFAULT_AUTOMATION_ACTOR_ID,
     hasWebhookToken: false,
     nextFireAt: '2026-07-11T09:00:00Z',
     createdBy: DEFAULT_AUTOMATION_ACTOR_ID,
