@@ -16,6 +16,7 @@ import com.bts.automation.domain.Condition
 import com.bts.automation.domain.TriggerType
 import com.bts.shared.issue.IssueMutationPermissionDeniedException
 import com.bts.shared.issue.IssueSnapshot
+import com.bts.shared.issue.IssueSnapshotPort
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.NullNode
 import com.fasterxml.jackson.databind.node.TextNode
@@ -89,6 +90,21 @@ class ActionExecutorTest : DescribeSpec({
             name = "룰",
             triggerType = TriggerType.ISSUE_CREATED,
             createdBy = actorUserId,
+            actorUserId = actorUserId,
+            now = fixedNow,
+        )
+
+    // createdBy 와 actorUserId 가 서로 다른 룰(§12.4 게이트 조회 주체 검증용) — changeActor 로 actor 를
+    // 위조 교체한 상황을 재현한다. createdBy 는 위조 불가(생성 시 고정), actorUserId 는 임의 교체 가능.
+    fun ruleWithDistinctActor(
+        createdBy: UUID,
+        actorUserId: UUID,
+    ): AutomationRule =
+        AutomationRule.create(
+            projectKey = "PROJ",
+            name = "룰",
+            triggerType = TriggerType.ISSUE_CREATED,
+            createdBy = createdBy,
             actorUserId = actorUserId,
             now = fixedNow,
         )
@@ -440,6 +456,98 @@ class ActionExecutorTest : DescribeSpec({
 
             result.status shouldBe ActionExecutionStatus.SKIPPED
             issueMutationPort.setFieldCalls.shouldBeEmpty()
+        }
+    }
+
+    describe("E-k §12.4 조건 게이트는 createdBy 가시성으로 강제된다 (관리자 우회 없음)") {
+        it("actorUserId 만 이슈를 볼 수 있고 createdBy 는 못 보면 SKIPPED 다 — 게이트는 createdBy 로 조회") {
+            // §12.4 회귀 방지. actorUserId 는 changeActor 로 위조 교체 가능하므로, 조건 관측은 위조 불가한
+            // createdBy(룰 작성자) 가시성으로만 이뤄져야 한다. 스냅샷을 actorUserId 로만 시드하면(=actor 만
+            // 볼 수 있는 상태), 게이트가 createdBy 로 조회할 때 null → SKIPPED 여야 한다. 게이트가 잘못
+            // actorUserId 로 조회하면 조건이 평가돼 액션이 실행되고 이 테스트가 실패하여 회귀를 잡는다.
+            val createdBy = UUID.randomUUID()
+            val actorUserId = UUID.randomUUID()
+            val rule = ruleWithDistinctActor(createdBy = createdBy, actorUserId = actorUserId)
+            val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+            val condition = Condition.Comparison("issue.status", ComparisonOperator.EQUALS, TextNode("open"))
+            every { conditionRepository.findByRuleId(rule.id) } returns condition
+            issueSnapshotPort.seed(actorUserId, "PROJ-1", issueSnapshot(status = "open"))
+
+            val result = executor.execute(rule, issueEvent("PROJ-1"))
+
+            result.status shouldBe ActionExecutionStatus.SKIPPED
+            issueMutationPort.setFieldCalls.shouldBeEmpty()
+        }
+
+        it("createdBy 가 이슈를 볼 수 있으면 조건이 정상 평가된다 — 게이트는 createdBy 로 조회") {
+            // 위 테스트의 대칭. createdBy 로 시드하면(작성자가 볼 수 있는 상태) 조건이 평가돼 액션 실행.
+            // 게이트가 잘못 actorUserId 로 조회하면 null → SKIPPED 로 이 테스트가 실패한다.
+            val createdBy = UUID.randomUUID()
+            val actorUserId = UUID.randomUUID()
+            val rule = ruleWithDistinctActor(createdBy = createdBy, actorUserId = actorUserId)
+            val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+            val condition = Condition.Comparison("issue.status", ComparisonOperator.EQUALS, TextNode("open"))
+            every { conditionRepository.findByRuleId(rule.id) } returns condition
+            issueSnapshotPort.seed(createdBy, "PROJ-1", issueSnapshot(status = "open"))
+
+            val result = executor.execute(rule, issueEvent("PROJ-1"))
+
+            result.status shouldBe ActionExecutionStatus.SUCCESS
+            issueMutationPort.setFieldCalls.single().field shouldBe "priority"
+        }
+    }
+
+    describe("E-l 게이트 fail-safe — 조건 조회/스냅샷 조회 예외는 전파하지 않고 SKIPPED") {
+        it("conditionRepository.findByRuleId 가 예외를 던져도 SKIPPED 로 처리하고 예외를 전파하지 않는다") {
+            val rule = newRule()
+            val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+            every { conditionRepository.findByRuleId(rule.id) } throws RuntimeException("조건 DB 조회 실패")
+
+            val result = executor.execute(rule, issueEvent("PROJ-1"))
+
+            result.status shouldBe ActionExecutionStatus.SKIPPED
+            issueMutationPort.setFieldCalls.shouldBeEmpty()
+        }
+
+        it("issueSnapshotPort.fetch 가 예외(이슈 이동 등)를 던져도 SKIPPED 로 처리하고 전파하지 않는다") {
+            val rule = newRule()
+            val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+            val condition = Condition.Comparison("issue.status", ComparisonOperator.EQUALS, TextNode("open"))
+            every { conditionRepository.findByRuleId(rule.id) } returns condition
+            // StubIssueSnapshotPort 는 예외를 던지지 않으므로, 이 케이스 한정으로 예외를 던지는 포트로
+            // executor 를 별도 구성한다(어댑터가 IssueMovedException 류를 재전파하는 상황 재현).
+            val throwingSnapshotPort = mockk<IssueSnapshotPort>()
+            every { throwingSnapshotPort.fetch(any(), any()) } throws RuntimeException("이슈가 다른 프로젝트로 이동됨")
+            val throwingExecutor =
+                ActionExecutor(
+                    issueMutationPort = issueMutationPort,
+                    webhookActionClient = webhookActionClient,
+                    actionRepository = actionRepository,
+                    objectMapper = objectMapper,
+                    issueSnapshotPort = throwingSnapshotPort,
+                    conditionRepository = conditionRepository,
+                )
+
+            val result = throwingExecutor.execute(rule, issueEvent("PROJ-1"))
+
+            result.status shouldBe ActionExecutionStatus.SKIPPED
+            issueMutationPort.setFieldCalls.shouldBeEmpty()
+        }
+
+        it("조건이 미설정(null)이면 SKIPPED 가 아니라 액션이 정상 진행된다 — 예외 fail-safe 와 구분(시맨틱 보존)") {
+            val rule = newRule()
+            val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+            every { conditionRepository.findByRuleId(rule.id) } returns null
+
+            val result = executor.execute(rule, issueEvent("PROJ-1"))
+
+            result.status shouldBe ActionExecutionStatus.SUCCESS
+            issueMutationPort.setFieldCalls.single().field shouldBe "priority"
         }
     }
 })
