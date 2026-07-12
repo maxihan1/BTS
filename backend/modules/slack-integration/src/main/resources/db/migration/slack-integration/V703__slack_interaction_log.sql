@@ -6,7 +6,7 @@
 -- 무엇이었는지(outcome)를 남겨 미연결/권한거부/충돌/오류 같은 실패를 사후 추적한다.
 --   - bts_user_id — Slack 사용자가 BTS 계정에 연결되지 않았으면(UNMAPPED) null 이다. cross-BC(BC 격리)라 FK 없음.
 --   - action_type — COMPLETE / ASSIGN / COMMENT / VIEW (애플리케이션 레벨 값, enum 제약은 두지 않는다 — 로그 원문 보존).
---   - outcome     — SUCCESS / UNMAPPED / PERMISSION_DENIED / CONFLICT / ERROR / NOT_APPLICABLE.
+--   - outcome     — SUCCESS / UNMAPPED / PERMISSION_DENIED / CONFLICT / ERROR.
 --   - issue_key   — 대상 이슈 키(있으면). cross-BC 참조라 FK 없음.
 --
 -- 소프트 삭제(deleted_at) 없음 — 감사/로그 성격이라 append-only 이며 소프트 삭제 대상이 아니다
@@ -20,7 +20,7 @@ CREATE TABLE slack_interaction_log (
     slack_user_id TEXT NOT NULL,                       -- 액션을 실행한 Slack 사용자 id(Uxxxx)
     bts_user_id   UUID,                                -- 연결된 BTS user id(cross-BC, FK 아님) — 미연결이면 null
     action_type   TEXT NOT NULL,                       -- COMPLETE / ASSIGN / COMMENT / VIEW (로그 원문)
-    outcome       TEXT NOT NULL,                       -- SUCCESS / UNMAPPED / PERMISSION_DENIED / CONFLICT / ERROR / NOT_APPLICABLE
+    outcome       TEXT NOT NULL,                       -- SUCCESS / UNMAPPED / PERMISSION_DENIED / CONFLICT / ERROR
     issue_key     TEXT,                                -- 대상 이슈 키(cross-BC, FK 아님) — 없으면 null
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()   -- 상호작용 기록 시각(TIMESTAMP without tz 금지, DATA.md §4)
 );
@@ -31,7 +31,7 @@ COMMENT ON COLUMN slack_interaction_log.team_id       IS 'Slack workspace(team) 
 COMMENT ON COLUMN slack_interaction_log.slack_user_id IS '액션을 실행한 Slack 사용자 id(Uxxxx)';
 COMMENT ON COLUMN slack_interaction_log.bts_user_id   IS '연결된 BTS user id(cross-BC, BC 격리로 FK 아님) — 미연결이면 null';
 COMMENT ON COLUMN slack_interaction_log.action_type   IS 'COMPLETE / ASSIGN / COMMENT / VIEW (로그 원문, enum 제약 없음)';
-COMMENT ON COLUMN slack_interaction_log.outcome       IS 'SUCCESS / UNMAPPED / PERMISSION_DENIED / CONFLICT / ERROR / NOT_APPLICABLE';
+COMMENT ON COLUMN slack_interaction_log.outcome       IS 'SUCCESS / UNMAPPED / PERMISSION_DENIED / CONFLICT / ERROR';
 COMMENT ON COLUMN slack_interaction_log.issue_key     IS '대상 이슈 키(cross-BC, BC 격리로 FK 아님) — 없으면 null';
 COMMENT ON COLUMN slack_interaction_log.created_at    IS '상호작용 기록 시각';
 
