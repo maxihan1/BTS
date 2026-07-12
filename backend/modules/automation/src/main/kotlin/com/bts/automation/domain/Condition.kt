@@ -213,6 +213,7 @@ private fun parseConditionArray(
     return node.map { parseCondition(it, depth + 1, budget) }
 }
 
+/** `key` 의 arity(`!`/`!!` 단항 vs 나머지 이항)에 따라 [parseExistence]/[parseBinaryComparison] 으로 위임한다. */
 private fun parseComparisonNode(
     key: String,
     operand: JsonNode,
