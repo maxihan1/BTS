@@ -241,4 +241,23 @@ product doc §2.3 스코프:
 - 추가 검증: ktlint/detekt(automation·shared-kernel·issue-tracking·app), `:modules:app:test` 부팅
 - 병렬 dispatch: bts-impl이 depends-on + files 교집합으로 wave 재계산
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-12, Plan 서브에이전트 적대적 리뷰)
+
+**🔴 BLOCKER 1건 — 무필터 IssueSnapshotPort 읽기가 SDD §12.4 "관리자 우회 없음" 우회**
+- 보안 수준(FR-PM-06) 제한 이슈는 지정 그룹 비멤버면 PROJECT_ADMIN도 필드 값 열람 불가(SDD 12장 §12.4 `docs/sdd/12-permissions.md:114`). `fetch(issueKey)` actor·가시성 필터 부재 → 불변식 위반 + "도메인 우회 금지" 모순(기존 read는 actor+visibility 술어 강제 `IssueRepository:1120-1160`). 오라클 익스플로잇(조건 매치→웹훅 발사/SKIPPED 관측으로 미열람 필드 leak). FR-AT-02 쓰기는 actor 강제인데 읽기만 비대칭.
+- **해소(Maxi 게이트1 결정)**: (a) 포트에 actor 탑재 `fetch(actorUserId, issueKey)` → 어댑터가 룰 actor로 가시성 강제 read 재사용, 제한 이슈→null→fail-safe SKIPPED [권장·write 경로 대칭·도메인 우회 금지 충족] / (b) `security_level_id IS NOT NULL` 이슈 스냅샷 제외 / (c) ADR+명시 리스크 수용(§12.4 충돌, 비권장).
+
+**🟡 CONCERN 4건 (plan 수정으로 해소)**
+- C1. type/status 표현 미확정 + 어댑터 관통 통합테스트 부재 → **해소**: IssueSnapshot 계약에 표현 명시(type=이름, status=stateKey, priority=Int 1-5), Task 6에 실이슈→ConditionContext→evaluate 통합 테스트 1건 추가.
+- C2. ActionExecutor 생성자 확장 blast radius(직접생성 3곳 + 풀부팅 7~8개 StubIssueSnapshotPort 필요) 태스크 files 미반영 → **해소**: Task 7 files에 전 부팅 슬라이스 stub 등록 열거, T8 depends-on에 7 추가.
+- C3. buildContext(thin,이벤트) vs ConditionContext(rich,DB) 이중 뷰 → **해소**: 스펙/게이트 KDoc에 "조건은 최신 스냅샷, 템플릿은 이벤트 payload(FR-AT-02 현 한계)" 명시. 템플릿 enrich는 본 PR 범위 밖(후속).
+- C4. dry-run 실 caller 부재 → **해소**: 스펙 EC12를 "미래 dry-run caller가 생기면 게이트가 자동 커버(현재는 execute(dryRun=true) 단위 테스트로만 검증)"로 정정.
+- (경미) Task 7 depends-on [5] 불필요(게이트는 conditionRepo로 읽음, rule.condition 필드 미사용) → T5 의존 유지하되 무해.
+
+**✅ 건전 확인**: 게이트 위치(유일 초크포인트 `AutomationExecutionWorker:203`)·fail-closed 선례(`ActionExecutorFailClosedTest`)·V304 번호(slack V700대 무관)·SKIPPED enum(exhaustive when 0곳)·조건 replace 트랜잭션성(`AutomationRuleService` 기존 @Transactional)·하위호환.
+
+**판정**: BLOCKER 1(포트 actor 계약 결정)·CONCERN 4(plan 수정 해소). 재설계 아님 — 포트 계약+어댑터 매핑 2곳 정정으로 충분. Maxi 게이트1에서 BLOCKER 해소 방식 확정 후 진행.
+
+### BLOCKER 해소 반영 (← Maxi 결정 후 갱신)
