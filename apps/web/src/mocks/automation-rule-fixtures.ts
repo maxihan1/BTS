@@ -48,12 +48,17 @@ export const SEED_AUTOMATION_RULE_IDS = {
 } as const
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 기본 시드 룰 목록 — 응답 스키마 required 전 필드 채움(zod-schema-strengthen-inline-mock-fanout)
+// 기본 시드 룰 목록 — 응답 스키마 required 전 필드 채움(zod-schema-strengthen-inline-mock-fanout).
+// FR-AT-02(actions·actorUserId) 확장 후에도 두 필드 모두 채워 계약 drift를 막는다.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * 기본 자동화 룰 시드 — ATLAS 프로젝트, 트리거 2종(ISSUE_CREATED·SCHEDULED).
  * dev(pnpm dev)/E2E 진입 시 빈 화면 방지 + "시드된 목록" 시나리오 기본값.
+ *
+ * SCHEDULED 시드는 액션 2건(SET_FIELD·ASSIGN)을 채워 "액션 있는 룰" 계약도 커버한다
+ * (config는 응답 규약대로 객체 — 요청 config=JSON 문자열과 비대칭, EC1).
+ * ISSUE_CREATED 시드는 actions:[]로 "트리거만 있는 룰"(EC5) 계약을 커버한다.
  */
 export const DEFAULT_AUTOMATION_RULES: AutomationRule[] = [
   {
