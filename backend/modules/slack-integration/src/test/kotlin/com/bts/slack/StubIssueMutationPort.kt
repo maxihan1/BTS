@@ -1,4 +1,4 @@
-// slack-integration 통합 테스트용 settable IssueMutationPort stub — 메서드별 성공 결과/실패 예외 시드, 미시드는 fail-closed 오류 (FR-SL-05 PR2 Task 3)
+// slack-integration 통합 테스트용 settable IssueMutationPort stub (FR-SL-05 PR2 Task 3)
 
 package com.bts.slack
 
