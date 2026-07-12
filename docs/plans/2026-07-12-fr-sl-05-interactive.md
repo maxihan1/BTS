@@ -32,7 +32,22 @@
 
 **멀티세션 주의**. 동시 세션 = FR-AT-02 D6 (automation 프론트, `.worktrees/fr-at-02-d6-d7-ui`). 모듈·레이어 분리로 충돌 위험 낮으나, 머지 직전 Flyway V번호 + git 브랜치 재확인 필수.
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**. slack-integration (`com.bts.slack`). 이슈 변경은 shared-kernel cross-BC 쓰기 포트 위임(BC 격리 유지).
+- **영향 엔티티/자산**.
+  - 신규. `SlackInteractionPayload`(block_actions / view_submission 파싱 VO), `InteractiveAction`(도메인 개념 — 완료전이/담당자변경/댓글), `SlackInteractionsController`(`POST /slack/interactions`).
+  - 재사용(전수 실재 검증 — phantom 0). `SlackSignatureVerifier`(서명검증), `SlackUserMappingRepository.findUserIdBySlackUserId`(역매핑 V702), `SlackResponseUrlClient`(response_url 아웃바운드), `SlackBlockKitRenderer`(버튼 렌더 확장), `IssueMutationPort.assign/addComment`(FR-AT-02), `IssueTransitionPort.transition`(FR-BD-01 보드).
+  - 결정 대기. `SlackInteractionLog`(버튼 액션 감사 — domain 노트는 신규 엔티티 명시 / product D3는 "(활용)". 스펙에서 확정).
+- **액션↔포트 매핑** (신규 cross-BC 쓰기 포트 불필요).
+  - 완료로 표시 → `IssueTransitionPort.transition(BoardTransitionCommand)`. `expectedVersion`(OCC)·`resolutionId`(DONE 카테고리) 필요 → 현재 이슈 버전/상태 선조회 필요(스펙 결정).
+  - 담당자 변경 → `IssueMutationPort.assign(AssignCommand)`. FR-SL-05 = IssueMutationPort **2번째 소비자**.
+  - 코멘트 추가 → `IssueMutationPort.addComment(AddCommentCommand)`. 텍스트 입력은 Slack 모달(`view_submission`)로 받을지 스펙 결정.
+  - 상세보기 → URL 버튼(BTS 웹 링크). 백엔드 콜백 없음.
+- **새 용어**. 인터랙티브 액션(Interactive Action — block_actions), 모달 제출(view_submission) — 스코프 확정 후 glossary 반영 검토.
+- **기존 결정 충돌**. 없음. FR-SL-03(Events)·FR-SL-04(Slash)가 인바운드 서명검증·ack200+@Async→response_url 기반 확립 → FR-SL-05 자연 확장. FR-AT-02 IssueMutationPort 재사용(2번째 소비자).
+- **관련 ADR**. 선행 [2026-07-11-fr-sl-04-slash-command.md](../decisions/2026-07-11-fr-sl-04-slash-command.md)(인바운드 패턴) · [2026-07-11-fr-sl-03-slack-unfurl.md](../decisions/2026-07-11-fr-sl-03-slack-unfurl.md)(서명검증·역매핑) · FR-AT-02(IssueMutationPort). 신규 ADR `2026-07-12-fr-sl-05-interactive.md`는 bts-spec에서 생성.
+- **grill-with-docs 축약 사유**. 도메인 언어/BC 경계가 SL-03/04로 이미 확립, 재사용 포트 전수 실재 검증 완료, 남은 것은 스코프/설계 결정(모달·감사·완료전이 버전) → bts-spec office-hours의 구체 선택지로 위임.
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
