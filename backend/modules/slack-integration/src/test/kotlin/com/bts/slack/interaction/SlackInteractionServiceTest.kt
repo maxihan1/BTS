@@ -1,4 +1,4 @@
-// SlackInteractionService 단위 테스트 — 완료 동기 flow·타입예외 분류·V703 감사 (FR-SL-05 PR1 Task 8)
+// SlackInteractionService 단위 테스트 — 완료/담당자/코멘트 동기 flow·타입예외 분류·V703 감사 (FR-SL-05 PR1 Task 8, PR2 Task 4)
 package com.bts.slack.interaction
 
 import com.bts.shared.board.BoardTransitionCommand
@@ -6,9 +6,14 @@ import com.bts.shared.board.BoardTransitionResult
 import com.bts.shared.board.IssueOptimisticLockException
 import com.bts.shared.board.IssueTransitionPermissionDeniedException
 import com.bts.shared.board.IssueTransitionPort
+import com.bts.shared.issue.AddCommentCommand
+import com.bts.shared.issue.AssignCommand
 import com.bts.shared.issue.DoneTransition
 import com.bts.shared.issue.IssueCompletionOptions
 import com.bts.shared.issue.IssueCompletionOptionsPort
+import com.bts.shared.issue.IssueMutationPermissionDeniedException
+import com.bts.shared.issue.IssueMutationPort
+import com.bts.shared.issue.MutationResult
 import com.bts.shared.issue.ResolutionOption
 import com.bts.slack.application.SlackInteractionLogRepository
 import com.bts.slack.application.SlackUserMappingRepository
@@ -31,6 +36,10 @@ import java.util.UUID
  * shared-kernel 타입 예외([IssueTransitionPermissionDeniedException]/[IssueOptimisticLockException])로
  * 분류해 서로 다른 결과·감사 outcome으로 수렴하는지 검증한다. actor는 오직 역매핑 결과만 쓰이며
  * (위조 차단), 미연결/무권한/충돌은 모두 안전하게 거부된다.
+ *
+ * PR2(FR-SL-05 Task 4)부터는 담당자 변경(`atlas_assign`/`atlas_assign_modal`)·코멘트
+ * 등록(`atlas_comment`/`atlas_comment_modal`)도 같은 버튼→모달→view_submission 패턴으로 검증한다.
+ * [IssueMutationPort] 실패도 [IssueMutationPermissionDeniedException](권한) → generic 순으로 분류한다.
  */
 class SlackInteractionServiceTest {
     private val userMappingRepository = mockk<SlackUserMappingRepository>()
@@ -41,6 +50,7 @@ class SlackInteractionServiceTest {
     private val transitionPort = mockk<IssueTransitionPort>()
     private val botTokenResolver = mockk<SlackBotTokenResolver>()
     private val interactionLogRepository = mockk<SlackInteractionLogRepository>(relaxed = true)
+    private val issueMutationPort = mockk<IssueMutationPort>()
     private val objectMapper = ObjectMapper()
 
     private val service =
@@ -53,6 +63,7 @@ class SlackInteractionServiceTest {
             transitionPort = transitionPort,
             botTokenResolver = botTokenResolver,
             interactionLogRepository = interactionLogRepository,
+            issueMutationPort = issueMutationPort,
             objectMapper = objectMapper,
         )
 
@@ -65,6 +76,8 @@ class SlackInteractionServiceTest {
     private val ts = "111.222"
     private val toStateKey = "in-review"
     private val botToken = "xoxb-token"
+    private val assigneeSlackUserId = "U2"
+    private val assigneeBtsUserId = UUID.fromString("33333333-3333-4333-8333-333333333333")
 
     private fun blockActionsComplete() =
         SlackInteractionPayload.BlockActions(
@@ -77,6 +90,46 @@ class SlackInteractionServiceTest {
             actions =
                 listOf(SlackInteractionPayload.BlockActions.Action(actionId = "atlas_complete", value = issueKey)),
         )
+
+    /** [blockActionsComplete]와 동일한 컨텍스트에 action_id만 바꾼 block_actions payload(담당자/코멘트 버튼용). */
+    private fun blockActionsWith(actionId: String) =
+        blockActionsComplete().copy(
+            actions = listOf(SlackInteractionPayload.BlockActions.Action(actionId = actionId, value = issueKey)),
+        )
+
+    /** 담당자 변경 모달 제출 payload. [hasSelectedUser]=false 면 `selected_user` state가 누락된 방어 케이스. */
+    private fun viewSubmissionAssign(hasSelectedUser: Boolean = true): SlackInteractionPayload.ViewSubmission {
+        val stateValues =
+            if (hasSelectedUser) {
+                mapOf("assignee_block" to mapOf("assignee_select" to mapOf("selected_user" to assigneeSlackUserId)))
+            } else {
+                emptyMap()
+            }
+        return SlackInteractionPayload.ViewSubmission(
+            userId = slackUserId,
+            teamId = teamId,
+            callbackId = "atlas_assign_modal",
+            privateMetadata = """{"issueKey":"$issueKey"}""",
+            stateValues = stateValues,
+        )
+    }
+
+    /** 코멘트 등록 모달 제출 payload. [body]=null 이면 입력 state가 누락된 방어 케이스. */
+    private fun viewSubmissionComment(body: String? = "댓글 본문"): SlackInteractionPayload.ViewSubmission {
+        val stateValues =
+            if (body != null) {
+                mapOf("comment_block" to mapOf("comment_input" to mapOf("value" to body)))
+            } else {
+                emptyMap()
+            }
+        return SlackInteractionPayload.ViewSubmission(
+            userId = slackUserId,
+            teamId = teamId,
+            callbackId = "atlas_comment_modal",
+            privateMetadata = """{"issueKey":"$issueKey"}""",
+            stateValues = stateValues,
+        )
+    }
 
     private fun completionOptions() =
         IssueCompletionOptions(
@@ -233,6 +286,104 @@ class SlackInteractionServiceTest {
         verify(exactly = 0) { responseUrlClient.post(any(), any()) }
     }
 
+    // ── block_actions: atlas_assign / atlas_comment ───────────────────────────
+
+    @Test
+    fun `atlas_assign 클릭 — 완료옵션 조회 없이 담당자 모달을 연다`() {
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns btsUserId
+        every { botTokenResolver.resolve(teamId) } returns botToken
+        every { modalBuilder.buildAssignModal(issueKey) } returns "{\"view\":\"assign\"}"
+        every { messageClient.openModal(botToken, "trig-1", "{\"view\":\"assign\"}") } returns SlackSendResult.Sent
+
+        val result = service.handle(blockActionsWith("atlas_assign"))
+
+        assertThat(result).isEqualTo(InteractionResult.AckEmpty)
+        verify(exactly = 1) { messageClient.openModal(botToken, "trig-1", "{\"view\":\"assign\"}") }
+        verify(exactly = 0) { completionOptionsPort.getCompletionOptions(any(), any()) }
+        verify(exactly = 0) { responseUrlClient.post(any(), any()) }
+    }
+
+    @Test
+    fun `atlas_comment 클릭 — 완료옵션 조회 없이 코멘트 모달을 연다`() {
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns btsUserId
+        every { botTokenResolver.resolve(teamId) } returns botToken
+        every { modalBuilder.buildCommentModal(issueKey) } returns "{\"view\":\"comment\"}"
+        every { messageClient.openModal(botToken, "trig-1", "{\"view\":\"comment\"}") } returns SlackSendResult.Sent
+
+        val result = service.handle(blockActionsWith("atlas_comment"))
+
+        assertThat(result).isEqualTo(InteractionResult.AckEmpty)
+        verify(exactly = 1) { messageClient.openModal(botToken, "trig-1", "{\"view\":\"comment\"}") }
+        verify(exactly = 0) { completionOptionsPort.getCompletionOptions(any(), any()) }
+        verify(exactly = 0) { responseUrlClient.post(any(), any()) }
+    }
+
+    @Test
+    fun `atlas_assign 미연결(UNMAPPED) — 모달 대신 ephemeral 안내 + V703 ASSIGN UNMAPPED`() {
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns null
+        every { responseUrlClient.post(any(), any()) } returns true
+
+        val result = service.handle(blockActionsWith("atlas_assign"))
+
+        assertThat(result).isEqualTo(InteractionResult.AckEmpty)
+        verify(exactly = 1) { responseUrlClient.post(any(), any()) }
+        verify(exactly = 0) { modalBuilder.buildAssignModal(any()) }
+        verify(exactly = 1) {
+            interactionLogRepository.record(teamId, slackUserId, null, "ASSIGN", "UNMAPPED", issueKey)
+        }
+    }
+
+    @Test
+    fun `atlas_comment 미연결(UNMAPPED) — 모달 대신 ephemeral 안내 + V703 COMMENT UNMAPPED`() {
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns null
+        every { responseUrlClient.post(any(), any()) } returns true
+
+        val result = service.handle(blockActionsWith("atlas_comment"))
+
+        assertThat(result).isEqualTo(InteractionResult.AckEmpty)
+        verify(exactly = 1) { responseUrlClient.post(any(), any()) }
+        verify(exactly = 0) { modalBuilder.buildCommentModal(any()) }
+        verify(exactly = 1) {
+            interactionLogRepository.record(teamId, slackUserId, null, "COMMENT", "UNMAPPED", issueKey)
+        }
+    }
+
+    @Test
+    fun `atlas_assign 모달 오픈 실패(views_open 영구 실패) — ephemeral 안내 + V703 ASSIGN ERROR`() {
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns btsUserId
+        every { botTokenResolver.resolve(teamId) } returns botToken
+        every { modalBuilder.buildAssignModal(issueKey) } returns "{\"view\":\"assign\"}"
+        every { messageClient.openModal(botToken, "trig-1", "{\"view\":\"assign\"}") } returns
+            SlackSendResult.PermanentFailure("expired_trigger_id")
+        every { responseUrlClient.post(any(), any()) } returns true
+
+        val result = service.handle(blockActionsWith("atlas_assign"))
+
+        assertThat(result).isEqualTo(InteractionResult.AckEmpty)
+        verify(exactly = 1) { responseUrlClient.post(any(), any()) }
+        verify(exactly = 1) {
+            interactionLogRepository.record(teamId, slackUserId, btsUserId, "ASSIGN", "ERROR", issueKey)
+        }
+    }
+
+    @Test
+    fun `atlas_comment 모달 오픈 실패(views_open 영구 실패) — ephemeral 안내 + V703 COMMENT ERROR`() {
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns btsUserId
+        every { botTokenResolver.resolve(teamId) } returns botToken
+        every { modalBuilder.buildCommentModal(issueKey) } returns "{\"view\":\"comment\"}"
+        every { messageClient.openModal(botToken, "trig-1", "{\"view\":\"comment\"}") } returns
+            SlackSendResult.PermanentFailure("expired_trigger_id")
+        every { responseUrlClient.post(any(), any()) } returns true
+
+        val result = service.handle(blockActionsWith("atlas_comment"))
+
+        assertThat(result).isEqualTo(InteractionResult.AckEmpty)
+        verify(exactly = 1) { responseUrlClient.post(any(), any()) }
+        verify(exactly = 1) {
+            interactionLogRepository.record(teamId, slackUserId, btsUserId, "COMMENT", "ERROR", issueKey)
+        }
+    }
+
     // ── view_submission: atlas_complete_modal ─────────────────────────────────
 
     @Test
@@ -348,6 +499,145 @@ class SlackInteractionServiceTest {
         assertThat(result).isEqualTo(InteractionResult.AckEmpty)
         verify(exactly = 0) { userMappingRepository.findUserIdBySlackUserId(any(), any()) }
         verify(exactly = 0) { transitionPort.transition(any()) }
+    }
+
+    // ── view_submission: atlas_assign_modal ───────────────────────────────────
+
+    @Test
+    fun `atlas_assign_modal 제출 성공 — 담당자 배정 실행 + V703 ASSIGN SUCCESS + 빈 200`() {
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns btsUserId
+        every { userMappingRepository.findUserIdBySlackUserId(assigneeSlackUserId, teamId) } returns
+            assigneeBtsUserId
+        every {
+            issueMutationPort.assign(AssignCommand(btsUserId, issueKey, assigneeBtsUserId, dryRun = false))
+        } returns MutationResult(issueKey, applied = true, version = 5)
+
+        val result = service.handle(viewSubmissionAssign())
+
+        assertThat(result).isEqualTo(InteractionResult.AckEmpty)
+        verify(exactly = 1) {
+            issueMutationPort.assign(AssignCommand(btsUserId, issueKey, assigneeBtsUserId, dryRun = false))
+        }
+        verify(exactly = 1) {
+            interactionLogRepository.record(teamId, slackUserId, btsUserId, "ASSIGN", "SUCCESS", issueKey)
+        }
+    }
+
+    @Test
+    fun `atlas_assign_modal 제출 — 대상 사용자 미연결 → responseActionErrors(assignee_block) + V703 ASSIGN ERROR`() {
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns btsUserId
+        every { userMappingRepository.findUserIdBySlackUserId(assigneeSlackUserId, teamId) } returns null
+
+        val result = service.handle(viewSubmissionAssign())
+
+        assertThat(result).isInstanceOf(InteractionResult.ResponseActionErrors::class.java)
+        assertThat((result as InteractionResult.ResponseActionErrors).json).contains("assignee_block")
+        verify(exactly = 0) { issueMutationPort.assign(any()) }
+        verify(exactly = 1) {
+            interactionLogRepository.record(teamId, slackUserId, btsUserId, "ASSIGN", "ERROR", issueKey)
+        }
+    }
+
+    @Test
+    fun `atlas_assign_modal 제출 — selected_user state 누락 → responseActionErrors + V703 ASSIGN ERROR(assign 미호출)`() {
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns btsUserId
+
+        val result = service.handle(viewSubmissionAssign(hasSelectedUser = false))
+
+        assertThat(result).isInstanceOf(InteractionResult.ResponseActionErrors::class.java)
+        verify(exactly = 0) { issueMutationPort.assign(any()) }
+        verify(exactly = 0) { userMappingRepository.findUserIdBySlackUserId(assigneeSlackUserId, teamId) }
+        verify(exactly = 1) {
+            interactionLogRepository.record(teamId, slackUserId, btsUserId, "ASSIGN", "ERROR", issueKey)
+        }
+    }
+
+    @Test
+    fun `atlas_assign_modal 제출 — 권한 거부 예외 → responseActionErrors + V703 ASSIGN PERMISSION_DENIED`() {
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns btsUserId
+        every { userMappingRepository.findUserIdBySlackUserId(assigneeSlackUserId, teamId) } returns
+            assigneeBtsUserId
+        every { issueMutationPort.assign(any()) } throws IssueMutationPermissionDeniedException("denied")
+
+        val result = service.handle(viewSubmissionAssign())
+
+        assertThat(result).isInstanceOf(InteractionResult.ResponseActionErrors::class.java)
+        verify(exactly = 1) {
+            interactionLogRepository.record(teamId, slackUserId, btsUserId, "ASSIGN", "PERMISSION_DENIED", issueKey)
+        }
+    }
+
+    @Test
+    fun `atlas_assign_modal 제출 미연결 actor — responseActionErrors + V703 ASSIGN UNMAPPED`() {
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns null
+
+        val result = service.handle(viewSubmissionAssign())
+
+        assertThat(result).isInstanceOf(InteractionResult.ResponseActionErrors::class.java)
+        verify(exactly = 0) { issueMutationPort.assign(any()) }
+        verify(exactly = 1) {
+            interactionLogRepository.record(teamId, slackUserId, null, "ASSIGN", "UNMAPPED", null)
+        }
+    }
+
+    // ── view_submission: atlas_comment_modal ──────────────────────────────────
+
+    @Test
+    fun `atlas_comment_modal 제출 성공 — 댓글 추가 실행 + V703 COMMENT SUCCESS + 빈 200`() {
+        val body = "댓글 본문"
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns btsUserId
+        every {
+            issueMutationPort.addComment(AddCommentCommand(btsUserId, issueKey, body, dryRun = false))
+        } returns MutationResult(issueKey, applied = true, version = null)
+
+        val result = service.handle(viewSubmissionComment(body = body))
+
+        assertThat(result).isEqualTo(InteractionResult.AckEmpty)
+        verify(exactly = 1) {
+            issueMutationPort.addComment(AddCommentCommand(btsUserId, issueKey, body, dryRun = false))
+        }
+        verify(exactly = 1) {
+            interactionLogRepository.record(teamId, slackUserId, btsUserId, "COMMENT", "SUCCESS", issueKey)
+        }
+    }
+
+    @Test
+    fun `atlas_comment_modal 제출 — 권한 거부 예외 → responseActionErrors + V703 COMMENT PERMISSION_DENIED`() {
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns btsUserId
+        every { issueMutationPort.addComment(any()) } throws IssueMutationPermissionDeniedException("denied")
+
+        val result = service.handle(viewSubmissionComment())
+
+        assertThat(result).isInstanceOf(InteractionResult.ResponseActionErrors::class.java)
+        verify(exactly = 1) {
+            interactionLogRepository.record(teamId, slackUserId, btsUserId, "COMMENT", "PERMISSION_DENIED", issueKey)
+        }
+    }
+
+    @Test
+    fun `atlas_comment_modal 제출 — 본문 비어있음(state 누락) → responseActionErrors + V703 COMMENT ERROR(addComment 미호출)`() {
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns btsUserId
+
+        val result = service.handle(viewSubmissionComment(body = null))
+
+        assertThat(result).isInstanceOf(InteractionResult.ResponseActionErrors::class.java)
+        verify(exactly = 0) { issueMutationPort.addComment(any()) }
+        verify(exactly = 1) {
+            interactionLogRepository.record(teamId, slackUserId, btsUserId, "COMMENT", "ERROR", issueKey)
+        }
+    }
+
+    @Test
+    fun `atlas_comment_modal 제출 미연결 actor — responseActionErrors + V703 COMMENT UNMAPPED`() {
+        every { userMappingRepository.findUserIdBySlackUserId(slackUserId, teamId) } returns null
+
+        val result = service.handle(viewSubmissionComment())
+
+        assertThat(result).isInstanceOf(InteractionResult.ResponseActionErrors::class.java)
+        verify(exactly = 0) { issueMutationPort.addComment(any()) }
+        verify(exactly = 1) {
+            interactionLogRepository.record(teamId, slackUserId, null, "COMMENT", "UNMAPPED", null)
+        }
     }
 
     // ── Unknown / 알 수 없는 action_id ─────────────────────────────────────────
