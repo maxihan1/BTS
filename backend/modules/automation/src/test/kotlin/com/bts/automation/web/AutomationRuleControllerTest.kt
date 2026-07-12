@@ -9,6 +9,7 @@ import com.bts.automation.StubIssueMutationPort
 import com.bts.automation.StubIssueSnapshotPort
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
+import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -41,6 +42,15 @@ private const val ACTOR_UUID = "11111111-1111-1111-1111-111111111111"
 private const val PROJECT_KEY = "ATLAS"
 private const val OTHER_PROJECT_KEY = "OTHER"
 
+/** 화이트리스트 필드([com.bts.automation.domain.Condition.FIELD_WHITELIST])를 참조하는 유효 조건 표현식(FR-AT-03). */
+private const val VALID_CONDITION = """{"==":[{"var":"issue.status"},"open"]}"""
+
+/** 화이트리스트 밖 필드를 참조해 [com.bts.automation.domain.InvalidConditionExpressionException] 을 유발하는 표현식. */
+private const val INVALID_CONDITION_FIELD = """{"==":[{"var":"issue.notAllowed"},"open"]}"""
+
+/** 미지원 연산자 키를 써서 [com.bts.automation.domain.InvalidConditionExpressionException] 을 유발하는 표현식. */
+private const val UNSUPPORTED_OPERATOR_CONDITION = """{"unsupported":[{"var":"issue.status"},"open"]}"""
+
 /**
  * [com.bts.automation.adapter.web.AutomationRuleController] 풀스택 HTTP 통합 테스트 (FR-AT-01 Task 6).
  *
@@ -57,6 +67,8 @@ private const val OTHER_PROJECT_KEY = "OTHER"
  * - PATCH version 불일치 → 409(OCC).
  * - SCHEDULED/ISSUE_UPDATED triggerConfig 형식 오류 → 400.
  * - 프로젝트 경계 — 다른 프로젝트 소속 룰 id 로 조회/patch/delete 시도 시 404(존재 숨김).
+ * - condition(FR-AT-03 Task 8) — 생성/수정 payload 포함 시 저장·응답 반영(재조회로 영속 확인), 미지정
+ *   시 하위호환(null) 유지, 무효 표현식(화이트리스트 밖 필드·미지원 연산자) → 400 `INVALID_CONDITION_EXPRESSION`.
  */
 @SpringBootTest(
     classes = [AutomationTestBootApplication::class],
@@ -430,16 +442,140 @@ class AutomationRuleControllerTest {
         assertThat(deletedCount).isEqualTo(0)
     }
 
+    // ── condition (FR-AT-03 Task 8) ─────────────────────────────────────────────
+
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `POST condition 포함 - 저장 및 응답에 반영`() {
+        val response =
+            mockMvc
+                .perform(
+                    post("/api/v1/projects/$PROJECT_KEY/automation/rules")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createRequestJson(name = "조건 포함 룰", triggerType = "ISSUE_CREATED", condition = VALID_CONDITION)),
+                ).andExpect(status().isCreated)
+                .andExpect(jsonPath("$.rule.condition").value(VALID_CONDITION))
+                .andReturn()
+                .response
+                .contentAsString
+
+        val ruleId = objectMapper.readTree(response).get("rule").get("id").asText()
+
+        // 응답뿐 아니라 실제로 영속됐는지 재조회로 확인한다.
+        mockMvc
+            .perform(get("/api/v1/projects/$PROJECT_KEY/automation/rules/$ruleId"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.condition").value(VALID_CONDITION))
+    }
+
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `POST condition 없이 생성 - 응답 condition null(하위호환)`() {
+        mockMvc
+            .perform(
+                post("/api/v1/projects/$PROJECT_KEY/automation/rules")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(createRequestJson(name = "조건 없는 룰", triggerType = "ISSUE_CREATED")),
+            ).andExpect(status().isCreated)
+            .andExpect(jsonPath("$.rule.condition").value(nullValue()))
+    }
+
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `POST 무효 condition(화이트리스트 밖 필드) - 400 INVALID_CONDITION_EXPRESSION - 룰이 생성되지 않는다`() {
+        mockMvc
+            .perform(
+                post("/api/v1/projects/$PROJECT_KEY/automation/rules")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        createRequestJson(name = "무효 조건", triggerType = "ISSUE_CREATED", condition = INVALID_CONDITION_FIELD),
+                    ),
+            ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("INVALID_CONDITION_EXPRESSION"))
+
+        val count =
+            jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM automation_rules WHERE project_key = ?",
+                Int::class.java,
+                PROJECT_KEY,
+            )
+        assertThat(count).isEqualTo(0)
+    }
+
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `PATCH condition 변경 - 200 + 응답 반영 + version bump`() {
+        val ruleId = createRule(name = "조건 변경 대상")
+
+        mockMvc
+            .perform(
+                patch("/api/v1/projects/$PROJECT_KEY/automation/rules/$ruleId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(mapOf("version" to 0, "condition" to VALID_CONDITION))),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.condition").value(VALID_CONDITION))
+            .andExpect(jsonPath("$.version").value(1))
+
+        // 응답뿐 아니라 실제로 영속됐는지 재조회로 확인한다.
+        mockMvc
+            .perform(get("/api/v1/projects/$PROJECT_KEY/automation/rules/$ruleId"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.condition").value(VALID_CONDITION))
+    }
+
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `PATCH condition 미지정 - 기존 condition 이 그대로 유지된다`() {
+        val ruleId = createRule(name = "조건 유지 대상", condition = VALID_CONDITION)
+
+        mockMvc
+            .perform(
+                patch("/api/v1/projects/$PROJECT_KEY/automation/rules/$ruleId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"version":0,"name":"이름만 변경"}"""),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.condition").value(VALID_CONDITION))
+    }
+
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `PATCH 무효 condition - 400 - 기존 상태 유지`() {
+        val ruleId = createRule(name = "무효 조건 PATCH 대상")
+
+        mockMvc
+            .perform(
+                patch("/api/v1/projects/$PROJECT_KEY/automation/rules/$ruleId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        objectMapper.writeValueAsString(mapOf("version" to 0, "condition" to UNSUPPORTED_OPERATOR_CONDITION)),
+                    ),
+            ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("INVALID_CONDITION_EXPRESSION"))
+
+        mockMvc
+            .perform(get("/api/v1/projects/$PROJECT_KEY/automation/rules/$ruleId"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.version").value(0))
+            .andExpect(jsonPath("$.condition").value(nullValue()))
+    }
+
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────────
 
     private fun createRequestJson(
         name: String,
         triggerType: String,
         triggerConfig: String = "{}",
-    ): String =
-        objectMapper.writeValueAsString(
-            mapOf("name" to name, "triggerType" to triggerType, "triggerConfig" to triggerConfig),
-        )
+        condition: String? = null,
+    ): String {
+        val body =
+            mutableMapOf<String, Any?>(
+                "name" to name,
+                "triggerType" to triggerType,
+                "triggerConfig" to triggerConfig,
+            )
+        if (condition != null) body["condition"] = condition
+        return objectMapper.writeValueAsString(body)
+    }
 
     /**
      * MockMvc 로 룰을 생성하고 생성된 id 를 반환하는 테스트 헬퍼(다른 시나리오의 픽스처 준비용).
@@ -452,13 +588,14 @@ class AutomationRuleControllerTest {
         triggerType: String = "ISSUE_CREATED",
         triggerConfig: String = "{}",
         projectKey: String = PROJECT_KEY,
+        condition: String? = null,
     ): String {
         val response =
             mockMvc
                 .perform(
                     post("/api/v1/projects/$projectKey/automation/rules")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(createRequestJson(name, triggerType, triggerConfig)),
+                        .content(createRequestJson(name, triggerType, triggerConfig, condition)),
                 ).andExpect(status().isCreated)
                 .andReturn()
                 .response
