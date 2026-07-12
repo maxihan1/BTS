@@ -54,9 +54,10 @@ class SlackInteractionPayloadParserTest {
                 responseUrl = "https://hooks.slack.com/actions/T0G9/1234/abcd",
                 channel = "C0G9QF9GW",
                 messageTs = "1548261231.000200",
-                actions = listOf(
-                    SlackInteractionPayload.BlockActions.Action(actionId = "atlas_complete", value = "PROJ-123"),
-                ),
+                actions =
+                    listOf(
+                        SlackInteractionPayload.BlockActions.Action(actionId = "atlas_complete", value = "PROJ-123"),
+                    ),
             ),
         )
     }
