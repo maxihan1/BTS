@@ -147,6 +147,19 @@ function resolveHeaders(config: ActionConfigFormState): WebhookHeaderEntry[] {
   return config.headers ?? []
 }
 
+/** `index` 위치의 헤더 쌍을 `patch`로 부분 갱신한 새 배열을 반환한다. 범위 밖 index는 원본을 그대로 반환한다. */
+function updateHeaderAt(
+  headers: readonly WebhookHeaderEntry[],
+  index: number,
+  patch: Partial<WebhookHeaderEntry>,
+): WebhookHeaderEntry[] {
+  const current = headers[index]
+  if (current === undefined) return [...headers]
+  const next = [...headers]
+  next[index] = { ...current, ...patch }
+  return next
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입별 조건부 필드 서브컴포넌트 — TriggerConfigFields 선례 동형
 // ─────────────────────────────────────────────────────────────────────────────
@@ -389,20 +402,14 @@ function CallWebhookFields({ config, onChange, idPrefix }: TypedFieldsProps): JS
 
   function handleHeaderKeyChange(index: number, nextKey: string): void {
     const headers = resolveHeaders(config)
-    const current = headers[index]
-    if (current === undefined) return
-    const next = [...headers]
-    next[index] = { ...current, key: nextKey }
-    onChange({ type: 'CALL_WEBHOOK', config: { ...config, headers: next } })
+    if (headers[index] === undefined) return
+    onChange({ type: 'CALL_WEBHOOK', config: { ...config, headers: updateHeaderAt(headers, index, { key: nextKey }) } })
   }
 
   function handleHeaderValueChange(index: number, nextValue: string): void {
     const headers = resolveHeaders(config)
-    const current = headers[index]
-    if (current === undefined) return
-    const next = [...headers]
-    next[index] = { ...current, value: nextValue }
-    onChange({ type: 'CALL_WEBHOOK', config: { ...config, headers: next } })
+    if (headers[index] === undefined) return
+    onChange({ type: 'CALL_WEBHOOK', config: { ...config, headers: updateHeaderAt(headers, index, { value: nextValue }) } })
   }
 
   function handleRemoveHeader(index: number): void {
