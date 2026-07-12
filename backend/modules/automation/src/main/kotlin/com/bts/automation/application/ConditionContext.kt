@@ -17,7 +17,6 @@ package com.bts.automation.application
  * 실제 이슈 스냅샷에서 이 맵을 구성하는 `IssueSnapshot → ConditionContext` 어댑팅은 별도 Task 책임이다.
  */
 class ConditionContext private constructor(private val fields: Map<String, Any?>) {
-
     /**
      * [field] 에 대응하는 값을 반환한다.
      *

@@ -228,7 +228,8 @@ class ConditionEvaluatorTest : DescribeSpec({
             val ctx = ConditionContext.of(mapOf("issue.status" to "Done"))
             val condition =
                 Condition.fromJson(
-                    """{"or": [{"==": [{"var": "issue.status"}, "Done"]}, {"==": [{"var": "issue.status"}, "Closed"]}]}""",
+                    """{"or": [{"==": [{"var": "issue.status"}, "Done"]}, """ +
+                        """{"==": [{"var": "issue.status"}, "Closed"]}]}""",
                 )
 
             ConditionEvaluator.evaluate(condition, ctx) shouldBe true
@@ -238,7 +239,8 @@ class ConditionEvaluatorTest : DescribeSpec({
             val ctx = ConditionContext.of(mapOf("issue.status" to "Open"))
             val condition =
                 Condition.fromJson(
-                    """{"or": [{"==": [{"var": "issue.status"}, "Done"]}, {"==": [{"var": "issue.status"}, "Closed"]}]}""",
+                    """{"or": [{"==": [{"var": "issue.status"}, "Done"]}, """ +
+                        """{"==": [{"var": "issue.status"}, "Closed"]}]}""",
                 )
 
             ConditionEvaluator.evaluate(condition, ctx) shouldBe false

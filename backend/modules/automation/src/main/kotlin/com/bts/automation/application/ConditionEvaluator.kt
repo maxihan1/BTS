@@ -19,15 +19,17 @@ import com.fasterxml.jackson.databind.JsonNode
  * 상한([Condition.MAX_DEPTH]/[Condition.MAX_NODES])을 이미 강제한다.
  *
  * ## 연산자별 평가 의미
- * | 연산자 | 의미 | fail-safe 판정 |
- * |---|---|---|
- * | [ComparisonOperator.EQUALS]/[ComparisonOperator.NOT_EQUALS] | 스칼라 deep equal | 타입이 다르면 다름으로 판정(문자열 `"3"` ≠ 숫자 `3`). `null == null` 은 참, 누락 필드는 `null` 취급 |
- * | [ComparisonOperator.GREATER_THAN] 등 4종 | 서수 비교 | 양쪽 모두 숫자일 때만 비교, 아니면 `false`(예외 없음) |
- * | [ComparisonOperator.IN] | 멤버십/부분문자열 | 리터럴이 배열이면 필드 값이 원소인지, 필드 값이 리스트(라벨 등)면 리터럴이 원소인지, 필드 값이 문자열이면 리터럴이 부분문자열인지. 그 외 조합(예: 스칼라 필드 × 스칼라 haystack)은 `false` |
- * | [ComparisonOperator.EMPTY]/[ComparisonOperator.EXISTS] | falsy/truthy | `null`/빈 문자열/빈 배열/`false` 만 falsy, 그 외(빈 배열이 아닌 값·숫자 전반 포함)는 truthy |
+ * - [ComparisonOperator.EQUALS]/[ComparisonOperator.NOT_EQUALS] — 스칼라 deep equal. 타입이 다르면
+ *   다름으로 판정한다(`"3"` ≠ `3`). `null == null` 은 참, 누락 필드는 `null` 취급
+ * - [ComparisonOperator.GREATER_THAN] 등 4종 — 서수 비교. 양쪽 모두 숫자일 때만 비교하고, 아니면
+ *   `false`(예외를 던지지 않는다)
+ * - [ComparisonOperator.IN] — 멤버십/부분문자열. 리터럴이 배열이면 필드 값이 원소인지, 필드 값이
+ *   리스트(라벨 등)면 리터럴이 원소인지, 필드 값이 문자열이면 리터럴이 부분문자열인지 판정한다.
+ *   그 외 조합(예: 스칼라 필드 × 스칼라 haystack)은 `false`
+ * - [ComparisonOperator.EMPTY]/[ComparisonOperator.EXISTS] — falsy/truthy. `null`/빈 문자열/빈 배열/
+ *   `false` 만 falsy 이고, 그 외(빈 값이 아닌 문자열·리스트·숫자 전반 포함)는 truthy
  */
 object ConditionEvaluator {
-
     /**
      * [condition] 트리를 [ctx] 에 대해 평가한다.
      *
@@ -92,8 +94,9 @@ object ConditionEvaluator {
         literal: JsonNode,
         operator: ComparisonOperator,
     ): Boolean {
-        val left = (fieldValue as? Number)?.toDouble() ?: return false
-        val right = literal.takeIf { it.isNumber }?.asDouble() ?: return false
+        val left = (fieldValue as? Number)?.toDouble()
+        val right = literal.takeIf { it.isNumber }?.asDouble()
+        if (left == null || right == null) return false
         return when (operator) {
             ComparisonOperator.GREATER_THAN -> left > right
             ComparisonOperator.GREATER_THAN_OR_EQUAL -> left >= right
