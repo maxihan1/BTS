@@ -89,4 +89,156 @@ product doc §2.3 스코프:
 
 ## Plan (← /bts-plan 채움)
 
+## Plan
+
+> BC=automation(9번째 모듈, test-boot·JdbcTemplate). 파일 경로는 repo 루트 기준.
+> 도메인/평가기/repo/게이트는 automation, 포트는 shared-kernel, 어댑터는 issue-tracking(cross-BC 예외, IssueMutationPort 선례).
+
+### Task 1. Condition sealed 도메인 + fromJson/toJson + 형식 검증
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/domain/Condition.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/domain/ConditionTest.kt`]
+- depends-on: []
+
+**RED**: `ConditionTest` — (a) `Condition.fromJson` 이 JSONLogic 부분집합(and/or/not·==/!=/>/>=/</<=·in·!/!!·var)을 sealed 트리로 파싱, (b) `toJson` round-trip 동일, (c) 미지원 연산자·화이트리스트 밖 필드·깊이>10·노드>100 → `InvalidConditionExpressionException`. 클래스 없음으로 실패.
+
+**GREEN**: `Condition.kt` — `sealed class Condition { And/Or/Not/Comparison }` + `ComparisonOperator` enum + `fromJson(json: String): Condition`/`toJson(): String`(Jackson) + `validate`(연산자·필드 화이트리스트·깊이/노드 상한). 필드 화이트리스트 상수(스펙 FR-AT-03-2).
+
+**REFACTOR**: 파싱/검증 헬퍼 분리, KDoc(연산자 표·화이트리스트), 예외 메시지 일반화(민감정보 누출 금지).
+
+**검증**: `./gradlew :modules:automation:test --tests '*ConditionTest'`
+
+### Task 2. ConditionEvaluator 순수 평가기 + 50 케이스
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/application/ConditionEvaluator.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/application/ConditionContext.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/application/ConditionEvaluatorTest.kt`]
+- depends-on: [1]
+
+**RED**: `ConditionEvaluatorTest` — 스펙 §테스트 50 케이스(비교12·멤버십8·존재6·조합8·null6·타입불일치5·항등2·검증3). fixture `ConditionContext`(합성 스냅샷 맵). `evaluate` 없음으로 실패.
+
+**GREEN**: `ConditionEvaluator.evaluate(condition, ctx): Boolean` 재귀 트리 워크(IO 없음). `ConditionContext` = 화이트리스트 필드 읽기 뷰. 서수 비교 양쪽 숫자만(아니면 false), ==/!= 스칼라 deep equal, in 배열/부분문자열, !/!! truthy, 누락=null, 빈 and=참·빈 or=거짓. 평가 예외는 던지지 않고 상위(게이트)가 fail-safe 처리.
+
+**REFACTOR**: 연산자 dispatch 정리, KDoc(각 연산자 의미·fail-safe 계약).
+
+**검증**: `./gradlew :modules:automation:test --tests '*ConditionEvaluatorTest'` (50 케이스 그린)
+
+### Task 3. shared-kernel IssueSnapshotPort + IssueSnapshot VO
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/issue/IssueSnapshotPort.kt`, `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/issue/IssueSnapshot.kt`]
+- depends-on: []
+
+**RED**: shared-kernel은 순수 계약(구현 없음) — 컴파일 계약 테스트 또는 VO 필드 단언 최소 테스트(`IssueSnapshotContractTest`). 인터페이스/VO 없음으로 실패.
+
+**GREEN**: `interface IssueSnapshotPort { fun fetch(issueKey: String): IssueSnapshot? }` + `data class IssueSnapshot(key, projectKey, type, status, priority: Int?, assigneeId: UUID?, reporterId: UUID?, labels: List<String>, summary)`. Jackson 비의존 순수 계약. KDoc: 방향(`automation→shared-kernel←issue-tracking`)·fail-closed·priority 타입(Int? 1-5, 어댑터가 확정)·가시성 필터 없음(내부 경로) 명시.
+
+**REFACTOR**: KDoc에 IssueMutationPort 선례 링크.
+
+**검증**: `./gradlew :modules:shared-kernel:test`
+
+### Task 4. V304 automation_conditions + AutomationConditionRepository
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/automation/src/main/resources/db/migration/automation/V304__automation_conditions.sql`, `backend/modules/automation/src/main/kotlin/com/bts/automation/adapter/AutomationConditionRepository.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/adapter/AutomationConditionRepositoryTest.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/SchemaMigrationTest.kt`]
+- depends-on: [1]
+
+**RED**: `AutomationConditionRepositoryTest`(Testcontainers) — replace(upsert)/findByRuleId/delete(null) round-trip. `SchemaMigrationTest` V304 컬럼/제약 단언. 테이블/repo 없음으로 실패.
+
+**GREEN**: `V304__automation_conditions.sql`(rule_id PK/FK ON DELETE CASCADE·expression JSONB NOT NULL·타임스탬프). `AutomationConditionRepository`(JdbcTemplate, `findByRuleId → Condition?`·`replace(ruleId, Condition?)` upsert/delete, Condition.toJson/fromJson 사용). 머지 직전 최신 V번호 재확인 주석.
+
+**REFACTOR**: SQL 상수화, KDoc.
+
+**검증**: `./gradlew :modules:automation:test --tests '*AutomationConditionRepositoryTest' --tests '*SchemaMigrationTest'`
+
+### Task 5. AutomationRule.condition 필드 + updateCondition
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/domain/AutomationRule.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/domain/AutomationRuleTest.kt`]
+- depends-on: [1]
+
+**RED**: `AutomationRuleTest` — `create`에 condition(기본 null) 파라미터, `updateCondition(condition?)` 불변 copy(version 규칙은 액션 선례 따름). 필드 없음으로 실패.
+
+**GREEN**: `AutomationRule`에 `condition: Condition? = null` 필드 + `create` 파라미터 + `updateCondition` 동작 메서드(`updateActions` 대칭).
+
+**REFACTOR**: KDoc "conditions는 FR-AT-03에서 추가"(actions 선례 문구 동형).
+
+**검증**: `./gradlew :modules:automation:test --tests '*AutomationRuleTest'`
+
+### Task 6. issue-tracking IssueSnapshotPort prod 어댑터
+
+**메타**.
+- agent: `backend-engineer` (cross-BC 읽기, codereview 시 security 관점 확인)
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/automation/AutomationIssueSnapshotAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/automation/AutomationIssueSnapshotAdapterTest.kt`]
+- depends-on: [3]
+
+**RED**: `AutomationIssueSnapshotAdapterTest`(Testcontainers, issue-tracking) — 실 이슈→IssueSnapshot 매핑(type/status/priority/assignee/reporter/labels/summary), 이슈 부재→null. 어댑터 없음으로 실패.
+
+**GREEN**: `@Profile("prod") @Component AutomationIssueSnapshotAdapter : IssueSnapshotPort` — 기존 이슈 조회 경로 재사용(도메인 우회 금지), 애그리거트→스냅샷 매핑. **priority 실제 표현(숫자 1-5 vs 이름) 확인 후 IssueSnapshot 계약대로 매핑**(Task 3 계약 확정). labels 포함.
+
+**REFACTOR**: 매핑 헬퍼 정리, KDoc(AutomationIssueMutationAdapter 선례 링크).
+
+**검증**: `./gradlew :modules:issue-tracking:test --tests '*AutomationIssueSnapshotAdapterTest'`
+
+### Task 7. ActionExecutor 조건 게이트 + SKIPPED 상태 + StubIssueSnapshotPort
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/application/ActionExecutor.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/application/ActionExecutorTest.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/testfixture/StubIssueSnapshotPort.kt`]
+- depends-on: [1, 2, 3, 4, 5]
+
+**RED**: `ActionExecutorTest`(기존 갱신 — 생성자 신규 의존 주입) — (a) condition null → 기존대로 액션 실행, (b) condition 충족 → 액션 실행, (c) 불충족 → `SKIPPED`·액션 0건, (d) issueKey 없음/스냅샷 부재/평가예외 → fail-safe SKIPPED, (e) dry-run 경로도 게이트 동일. `StubIssueSnapshotPort`(consumer-owns-stub, 시드 가능).
+
+**GREEN**: `ActionExecutor` 생성자에 `IssueSnapshotPort`(non-null, fail-closed) + `ConditionEvaluator` + `AutomationConditionRepository` 주입. `execute` 액션 로드 후·dispatch 전 조건 게이트: `condition = conditionRepo.findByRuleId(rule.id)`; null→통과; 있으면 issueKey→snapshot→ConditionContext→evaluate; false/예외→`ActionExecutionResult(SKIPPED, emptyList())`. `ActionExecutionStatus.SKIPPED` 추가 + 모듈 내 exhaustive `when` 전수 갱신.
+
+**REFACTOR**: 게이트 로직 private 메서드 추출, KDoc(fail-safe·dry-run 일관·SKIPPED 의미).
+
+**검증**: `./gradlew :modules:automation:test --tests '*ActionExecutorTest'` + 모듈 전체 컴파일(SKIPPED when 갱신 확인)
+
+### Task 8. 룰 CRUD DTO condition 필드 + 형식 검증 400
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/application/AutomationRuleService.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/web/`(룰 controller/DTO — implementer가 정확 파일명 grep), `backend/modules/automation/src/test/kotlin/com/bts/automation/web/`(controller 통합 테스트)]
+- depends-on: [1, 4, 5]
+
+**RED**: 룰 controller 통합 테스트 — (a) 생성/수정 payload에 `condition` 포함→저장·응답 반영, (b) 무효 표현식→`400 INVALID_CONDITION_EXPRESSION`, (c) MANAGE_AUTOMATION 가드 유지. condition 필드 없음으로 실패.
+
+**GREEN**: 룰 생성/수정 요청·응답 DTO에 `condition`(nullable) 추가. `AutomationRuleService`가 룰 저장 트랜잭션 내에서 `AutomationConditionRepository.replace` 호출(조건 replace 트랜잭션성). `Condition.fromJson`/`validate` 실패→400 매핑. 형식 검증만(cross-BC 존재검증 없음).
+
+**REFACTOR**: DTO 매핑 헬퍼, KDoc.
+
+**검증**: `./gradlew :modules:automation:test --tests '*RuleController*'`
+
+### Task 9. prod 조립 :modules:app 배선 + fail-closed 부팅 재검증
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/app/`(컴포넌트 스캔/Flyway 배선 — 필요 시), `backend/modules/app/src/test/kotlin/`(BtsApplicationContextTest 또는 신규 fail-closed 가드)]
+- depends-on: [6, 7]
+
+**RED**: prod 조립 부팅 테스트 — IssueSnapshotPort 어댑터 미배선 시 `NoSuchBeanDefinitionException`(fail-closed 회귀 가드). 배선 전 실패.
+
+**GREEN**: `:modules:app` prod 컨텍스트가 `AutomationIssueSnapshotAdapter`(@Profile prod)를 IssueSnapshotPort 빈으로 등록 → ActionExecutor non-null 주입 충족. 이미 9BC 조립됨(#259) — 스캔 범위 확인, 필요 시 배선 추가. 머지 전 rebase + `:modules:app:test` 부팅 확인.
+
+**REFACTOR**: 부팅 가드 KDoc(왜 fail-closed인지 — silent no-op 금지).
+
+**검증**: `./gradlew :modules:app:test` (부팅 그린)
+
+## Plan 메타
+
+- task 수: 9
+- 예상 wave: 약 4 (automation 단일 모듈이라 Gradle 컴파일 직렬화 [[bts-plan-wave-gradle-module-compile]] — wave 병렬은 파일 작성 단계)
+  - wave 1(depends-on []): T1, T3
+  - wave 2(T1/T3 후): T2, T4, T5, T6
+  - wave 3(코어 통합): T7, T8
+  - wave 4(조립): T9
+- TDD 강제: yes (RED→GREEN→REFACTOR, test 커밋 선행)
+- 추가 검증: ktlint/detekt(automation·shared-kernel·issue-tracking·app), `:modules:app:test` 부팅
+- 병렬 dispatch: bts-impl이 depends-on + files 교집합으로 wave 재계산
+
 ## 리뷰 결과 (← /bts-review-plan 채움)
