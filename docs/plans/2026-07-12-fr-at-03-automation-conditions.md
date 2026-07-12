@@ -282,3 +282,16 @@ labels 포함. IssueSnapshot 계약(Task 3)대로.
   → Task 3(포트 시그니처)·Task 6(어댑터 가시성 강제)·Task 7(게이트가 `rule.actorUserId` 전달) 반영.
 - **CONCERN 4건 해소도 아래 태스크에 반영**(C1 type=이름·status=stateKey + 관통 통합테스트 / C2 stub 열거 + T8→T7 / C3 이중뷰 명시 / C4 dry-run 정정).
 - **게이트1 승인 완료** → bts-impl 진행.
+
+### 구현 완료 (bts-impl, 9/9 태스크 PASS — 2026-07-13)
+
+전 태스크 TDD RED→GREEN→REFACTOR + 컨트롤러 git log/테스트 직접 검증 PASS (직렬 dispatch, automation 단일 모듈 충돌 회피).
+- T1 Condition 도메인(JSONLogic 부분집합, Kotest `!`접두 skip 함정 회피) · T2 ConditionEvaluator 50케이스(skip 0) · T3 IssueSnapshotPort 계약 · T4 V304+repo(SchemaMigrationTest 카운트 미하드코딩) · T5 AutomationRule.condition(기본값 null로 row mapper 하위호환) · T6 issue-tracking 어댑터(`IssueApplicationService.findByKey(actor)` 가시성 강제 재사용 → §12.4 BLOCKER 해소 착지) · T7 ActionExecutor 조건게이트+SKIPPED(StubIssueSnapshotPort 11곳 등록, 게이트를 빈-액션 체크보다 먼저) · T8 룰 CRUD condition 필드+400 · T9 prod 조립 fail-closed 부팅가드(배선 불필요-자동스캔, 실제 배선 깨서 RED 증명).
+
+**verification-before-completion**: 4개 영향 모듈 테스트 전부 그린(automation·shared-kernel·issue-tracking·app). lint automation·shared-kernel·app 클린, issue-tracking 신규 파일 위반 0.
+
+**codereview 이관 사항**:
+- 기존 부채: `IssueCompletionOptionsAdapterTest.kt:96` detekt LongMethod(62>60) — #261(FR-SL-05) 도입, 내 PR 미변경. surgical-changes로 미수정, 게이트2 Maxi 보고.
+- 에러코드 `INVALID_CONDITION_EXPRESSION`(스펙 리터럴, AUTOMATION_ 접두 관례서 의도적 이탈) 확인.
+- PATCH condition null=미변경(명시 제거 3-state는 D6 후속).
+- 머지 전 rebase(동시 FR-SL-05 PR2 #263 머지됨) + V304 번호 재확인 + `:modules:app:test` 재부팅.
