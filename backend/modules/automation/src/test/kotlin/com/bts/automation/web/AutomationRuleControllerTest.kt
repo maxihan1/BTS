@@ -452,7 +452,13 @@ class AutomationRuleControllerTest {
                 .perform(
                     post("/api/v1/projects/$PROJECT_KEY/automation/rules")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(createRequestJson(name = "조건 포함 룰", triggerType = "ISSUE_CREATED", condition = VALID_CONDITION)),
+                        .content(
+                            createRequestJson(
+                                name = "조건 포함 룰",
+                                triggerType = "ISSUE_CREATED",
+                                condition = VALID_CONDITION,
+                            ),
+                        ),
                 ).andExpect(status().isCreated)
                 .andExpect(jsonPath("$.rule.condition").value(VALID_CONDITION))
                 .andReturn()
@@ -488,7 +494,11 @@ class AutomationRuleControllerTest {
                 post("/api/v1/projects/$PROJECT_KEY/automation/rules")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
-                        createRequestJson(name = "무효 조건", triggerType = "ISSUE_CREATED", condition = INVALID_CONDITION_FIELD),
+                        createRequestJson(
+                            name = "무효 조건",
+                            triggerType = "ISSUE_CREATED",
+                            condition = INVALID_CONDITION_FIELD,
+                        ),
                     ),
             ).andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value("INVALID_CONDITION_EXPRESSION"))
@@ -547,7 +557,9 @@ class AutomationRuleControllerTest {
                 patch("/api/v1/projects/$PROJECT_KEY/automation/rules/$ruleId")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
-                        objectMapper.writeValueAsString(mapOf("version" to 0, "condition" to UNSUPPORTED_OPERATOR_CONDITION)),
+                        objectMapper.writeValueAsString(
+                            mapOf("version" to 0, "condition" to UNSUPPORTED_OPERATOR_CONDITION),
+                        ),
                     ),
             ).andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value("INVALID_CONDITION_EXPRESSION"))

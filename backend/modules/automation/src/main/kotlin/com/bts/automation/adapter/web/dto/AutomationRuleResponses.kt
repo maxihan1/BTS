@@ -1,4 +1,4 @@
-// AutomationRuleController 응답 DTO — 표준 룰 응답(토큰 미노출) + 생성 시 1회 웹훅 토큰 동봉 응답 (FR-AT-01 Task 6, FR-AT-02 Task 11)
+// AutomationRuleController 응답 DTO — 표준 룰 응답(토큰 미노출) + 생성 1회 웹훅 토큰 응답 + 조건 게이트 (FR-AT-03 Task 8)
 
 package com.bts.automation.adapter.web.dto
 
@@ -25,6 +25,10 @@ import java.util.UUID
  * @property triggerConfig 트리거별 설정 JSON 문자열.
  * @property actions 발화 시 순차 실행할 액션 목록(FR-AT-02, 실행 순서 그대로).
  * @property actorUserId 액션 실행 주체(rule actor, FR-AT-02).
+ * @property condition 트리거 발화 후 액션 실행 여부를 가르는 조건 게이트 표현식(FR-AT-03) JSON 문자열.
+ *   [triggerConfig] 와 대칭으로 원본 JSON 텍스트를 그대로 노출한다(재귀 트리라 [ActionResponse.config]
+ *   처럼 고정 필드셋 맵으로 분해할 수 없다 — And/Or/Not/Comparison 4개 변형이 각기 다른 모양). 조건이
+ *   없으면 `null`.
  * @property hasWebhookToken WEBHOOK 트리거이고 토큰이 발급되어 있으면 true. 원문/해시는 노출하지 않는다.
  * @property nextFireAt SCHEDULED 트리거의 다음 발화 예정 시각. 그 외 타입은 null.
  * @property createdBy 룰을 생성한 사용자 id.
@@ -42,6 +46,7 @@ data class AutomationRuleResponse(
     val triggerConfig: String,
     val actions: List<ActionResponse>,
     val actorUserId: UUID,
+    val condition: String?,
     val hasWebhookToken: Boolean,
     val nextFireAt: Instant?,
     val createdBy: UUID,
@@ -55,7 +60,9 @@ data class AutomationRuleResponse(
          *
          * [rule.actions] 는 호출자([com.bts.automation.application.AutomationRuleService])가 이미 올바르게
          * 채운 상태여야 한다 — [com.bts.automation.adapter.AutomationRuleRepository] 의 find 계열은 actions
-         * 를 로드하지 않는다(Task 6 결정, 클래스 KDoc 참고).
+         * 를 로드하지 않는다(Task 6 결정, 클래스 KDoc 참고). [rule.condition] 도 마찬가지로 호출자가
+         * [com.bts.automation.adapter.AutomationConditionRepository] 로 이미 채운 상태여야 한다(FR-AT-03
+         * Task 8).
          *
          * @param rule 변환할 도메인 애그리거트.
          * @return 토큰 원문/해시를 포함하지 않는 응답 DTO.
@@ -70,6 +77,7 @@ data class AutomationRuleResponse(
                 triggerConfig = rule.triggerConfig,
                 actions = rule.actions.map(ActionResponse::from),
                 actorUserId = rule.actorUserId,
+                condition = rule.condition?.toJson(),
                 hasWebhookToken = rule.webhookTokenHash != null,
                 nextFireAt = rule.nextFireAt,
                 createdBy = rule.createdBy,

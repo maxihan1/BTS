@@ -1,4 +1,4 @@
-// AutomationRuleController 요청 DTO — 룰 생성/부분수정(PATCH) 요청 바디 + 액션 리스트 (FR-AT-01 Task 6, FR-AT-02 Task 11)
+// AutomationRuleController 요청 DTO — 룰 생성/수정 바디 + 액션 리스트 + 조건 게이트 (FR-AT-03 Task 8)
 
 package com.bts.automation.adapter.web.dto
 
@@ -22,6 +22,10 @@ import java.util.UUID
  * @property actions 발화 시 순차 실행할 액션 목록(FR-AT-02). 기본값은 빈 리스트(트리거만 있는 룰도 유효).
  * @property actorUserId 액션 실행 주체(rule actor). 기본값 `null` — 서비스가 생성 요청자(actor)로 폴백한다.
  *   actor 변경 UI 는 D6 후속(spec FR5) — 이 필드는 **생성 시점** 초기값 지정용이다.
+ * @property condition 트리거 발화 후 액션 실행 여부를 가르는 조건 게이트 표현식(FR-AT-03) JSON 문자열.
+ *   [triggerConfig]/[ActionRequest.config] 와 동일하게 원본 JSON 텍스트로 받는다(파싱은
+ *   [com.bts.automation.domain.Condition.fromJson] 이 서비스 계층에서 수행). 기본값 `null` — 조건 없이
+ *   항상 통과.
  */
 data class CreateAutomationRuleRequest(
     val name: String,
@@ -29,6 +33,7 @@ data class CreateAutomationRuleRequest(
     val triggerConfig: String = TriggerConfig.EMPTY,
     val actions: List<ActionRequest> = emptyList(),
     val actorUserId: UUID? = null,
+    val condition: String? = null,
 )
 
 /**
@@ -50,6 +55,9 @@ data class CreateAutomationRuleRequest(
  * @property triggerConfig 변경할 triggerConfig JSON 문자열. null 이면 미변경. 형식 위반 시 400.
  * @property actions 교체할 액션 목록(전체 교체, 부분 병합 아님). null 이면 미변경.
  * @property actorUserId 변경할 액션 실행 주체(rule actor). null 이면 미변경.
+ * @property condition 교체할 조건 게이트 표현식(FR-AT-03) JSON 문자열. null 이면 미변경(기존 [name]/
+ *   [triggerConfig]/[actorUserId] 와 동일한 "null=미변경" 부분 PATCH 관례). 조건을 완전히 제거하는
+ *   전용 연산은 이 태스크 범위 밖이다(필요 시 후속 3-state 설계 검토).
  */
 data class PatchAutomationRuleRequest(
     val version: Long,
@@ -58,6 +66,7 @@ data class PatchAutomationRuleRequest(
     val triggerConfig: String? = null,
     val actions: List<ActionRequest>? = null,
     val actorUserId: UUID? = null,
+    val condition: String? = null,
 )
 
 /**

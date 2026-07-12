@@ -1,13 +1,16 @@
-// AutomationRule CRUD 서비스 — MANAGE_AUTOMATION 가드 + 웹훅토큰 + SCHEDULED nextFireAt + 액션/actor 매핑 (FR-AT-02 Task 11)
+// AutomationRule CRUD 서비스 — MANAGE_AUTOMATION 가드 + 웹훅토큰 + SCHEDULED nextFireAt + 액션/actor/조건 매핑 (FR-AT-03 Task 8)
 
 package com.bts.automation.application
 
 import com.bts.automation.adapter.AutomationActionRepository
+import com.bts.automation.adapter.AutomationConditionRepository
 import com.bts.automation.adapter.AutomationRuleRepository
 import com.bts.automation.domain.Action
 import com.bts.automation.domain.ActionConfigInvalidException
 import com.bts.automation.domain.ActionType
 import com.bts.automation.domain.AutomationRule
+import com.bts.automation.domain.Condition
+import com.bts.automation.domain.InvalidConditionExpressionException
 import com.bts.automation.domain.TriggerConfig
 import com.bts.automation.domain.TriggerType
 import com.bts.shared.permission.AutomationPermissionResolver
@@ -85,8 +88,19 @@ import java.util.UUID
  * [get]/[list] 는 [AutomationRuleRepository] 의 find 계열이 actions 를 로드하지 않으므로(Task 6 결정)
  * [actionRepository] 로 별도 로드해 채운 뒤 반환한다.
  *
+ * ## 조건 게이트 매핑 (FR-AT-03 Task 8)
+ * [create]/[patch] 는 요청의 [condition](JSON 문자열, [triggerConfig]/[AutomationActionInput.config] 와
+ * 동일하게 원본 텍스트로 받는다)을 [Condition.fromJson] 으로 파싱·검증한다(형식 위반은
+ * [InvalidConditionExpressionException], 웹 레이어에서 400 `INVALID_CONDITION_EXPRESSION` 로 매핑 —
+ * cross-BC 존재 검증은 하지 않는다, 트리거/액션 선례 동형). [conditionRepository] 가 룰 저장/갱신과
+ * **같은 `@Transactional` 경계 안에서** `replace` 를 호출한다(조건 replace 트랜잭션성). [get]/[list] 는
+ * [AutomationRuleRepository] 의 find 계열이 [AutomationRule.condition] 을 로드하지 않으므로
+ * [conditionRepository.findByRuleId] 로 별도 로드해 채운다(actions 와 동일 설계, [hydrate] 참고).
+ *
  * @param repository [AutomationRule] 영속 어댑터.
  * @param actionRepository [AutomationRule.actions] 별도 로드/PATCH 시 명시적 영속을 위한 어댑터.
+ * @param conditionRepository [AutomationRule.condition] 별도 로드/PATCH 시 명시적 영속을 위한 어댑터
+ *   (FR-AT-03 Task 8).
  * @param permissionResolver MANAGE_AUTOMATION 권한 평가 cross-BC 포트(fail-closed, non-null 주입 —
  *   [[crossbc-resolver-nullable-fail-open]] 회귀 방지).
  * @param objectMapper triggerConfig JSON 에서 cron 필드를 읽기 위한 Jackson [ObjectMapper](Spring Boot
@@ -99,6 +113,7 @@ import java.util.UUID
 class AutomationRuleService(
     private val repository: AutomationRuleRepository,
     private val actionRepository: AutomationActionRepository,
+    private val conditionRepository: AutomationConditionRepository,
     private val permissionResolver: AutomationPermissionResolver,
     private val objectMapper: ObjectMapper,
     private val clock: Clock = Clock.systemUTC(),
@@ -111,7 +126,9 @@ class AutomationRuleService(
      *
      * WEBHOOK 트리거면 원문 토큰을 1회 발급하고 해시만 저장한다. SCHEDULED 트리거면 cron 으로 최초
      * nextFireAt 을 계산한다(spec G3). [actions] 는 [toDomainAction] 으로 도메인 [Action] 목록으로
-     * 매핑되고, [actorUserId] 가 `null` 이면 [actorId](요청자)로 폴백한다(FR-AT-02).
+     * 매핑되고, [actorUserId] 가 `null` 이면 [actorId](요청자)로 폴백한다(FR-AT-02). [condition] 은
+     * [Condition.fromJson] 으로 파싱·검증되어 [conditionRepository] 에 같은 트랜잭션에서 영속된다
+     * (FR-AT-03 Task 8).
      *
      * @param actorId 생성을 요청하는 행위자.
      * @param projectKey 룰이 속할 프로젝트 키.
@@ -120,12 +137,14 @@ class AutomationRuleService(
      * @param triggerConfig 트리거별 설정 JSON 문자열.
      * @param actorUserId 액션 실행 주체. `null` 이면 [actorId] 로 폴백.
      * @param actions 발화 시 실행할 액션 목록(요청 표현). 기본값 빈 리스트.
+     * @param condition 조건 게이트 표현식(요청 표현) JSON 문자열. `null` 이면 조건 없이 항상 통과.
      * @return 저장된 룰 + (WEBHOOK 이면) 발급된 원문 토큰.
      * @throws AutomationForbiddenException [actorId] 가 [projectKey] 에서 MANAGE_AUTOMATION 권한이 없을 때.
      * @throws com.bts.automation.domain.TriggerConfigInvalidException triggerConfig 가 triggerType 형식을
      *   위반할 때.
      * @throws ActionConfigInvalidException [actions] 중 하나라도 타입 형식을 위반하거나 type 문자열이
      *   알 수 없는 [ActionType] 일 때.
+     * @throws InvalidConditionExpressionException [condition] 이 형식/화이트리스트/크기 상한을 위반할 때.
      * @throws com.bts.automation.domain.AutomationRuleInvalidException projectKey·name·actorUserId 가
      *   불변식을 위반할 때.
      */
@@ -139,14 +158,16 @@ class AutomationRuleService(
         triggerConfig: String,
         actorUserId: UUID? = null,
         actions: List<AutomationActionInput> = emptyList(),
+        condition: String? = null,
     ): CreatedAutomationRule {
         assertManageAutomation(actorId, projectKey)
         // 토큰 발급/nextFireAt 계산 같은 부수 작업 이전에 형식을 먼저 검증한다 — AutomationRule.create()
         // 도 내부적으로 동일 검증을 반복하지만(순수 함수, 부작용 없음), 여기서 먼저 걸러야 잘못된 cron
-        // 문자열을 initialNextFireAt() 에 전달하는 사고를 막는다. 액션 형식 검증도 부수 작업 이전에
+        // 문자열을 initialNextFireAt() 에 전달하는 사고를 막는다. 액션/조건 형식 검증도 부수 작업 이전에
         // 끝내 잘못된 요청으로 웹훅 토큰이 낭비 발급되지 않게 한다.
         TriggerConfig.validate(triggerType, triggerConfig)
         val domainActions = actions.map(::toDomainAction)
+        val domainCondition = condition?.let(Condition::fromJson)
 
         val now = Instant.now(clock)
         val webhookToken = if (triggerType == TriggerType.WEBHOOK) mintWebhookToken() else null
@@ -163,16 +184,18 @@ class AutomationRuleService(
                 nextFireAt = nextFireAt,
                 actorUserId = actorUserId ?: actorId,
                 actions = domainActions,
+                condition = domainCondition,
                 now = now,
             )
         repository.save(rule)
+        conditionRepository.replace(rule.id, domainCondition)
         log.info("automation_rule_created id={} projectKey={} triggerType={}", rule.id, projectKey, triggerType)
         return CreatedAutomationRule(rule, webhookToken?.plaintext)
     }
 
     /**
-     * [projectKey] 의 활성 룰 목록을 반환한다. 각 룰의 [AutomationRule.actions] 는 [actionRepository] 로
-     * 별도 로드해 채운다([withActions]).
+     * [projectKey] 의 활성 룰 목록을 반환한다. 각 룰의 [AutomationRule.actions]/[AutomationRule.condition]
+     * 은 [actionRepository]/[conditionRepository] 로 별도 로드해 채운다([hydrate]).
      *
      * @param actorId 조회를 요청하는 행위자.
      * @param projectKey 조회할 프로젝트 키.
@@ -185,12 +208,12 @@ class AutomationRuleService(
         projectKey: String,
     ): List<AutomationRule> {
         assertManageAutomation(actorId, projectKey)
-        return repository.findByProject(projectKey).map(::withActions)
+        return repository.findByProject(projectKey).map(::hydrate)
     }
 
     /**
-     * [projectKey] 소속 [id] 룰을 단건 조회한다. [AutomationRule.actions] 는 [actionRepository] 로
-     * 별도 로드해 채운다([withActions]).
+     * [projectKey] 소속 [id] 룰을 단건 조회한다. [AutomationRule.actions]/[AutomationRule.condition] 은
+     * [actionRepository]/[conditionRepository] 로 별도 로드해 채운다([hydrate]).
      *
      * @param actorId 조회를 요청하는 행위자.
      * @param projectKey 룰이 속해야 하는 프로젝트 키(경로 스코프).
@@ -206,16 +229,19 @@ class AutomationRuleService(
         id: UUID,
     ): AutomationRule {
         assertManageAutomation(actorId, projectKey)
-        return withActions(findInProject(projectKey, id))
+        return hydrate(findInProject(projectKey, id))
     }
 
     /**
-     * [id] 룰을 부분 수정한다(name·enabled·triggerConfig·actions, OCC).
+     * [id] 룰을 부분 수정한다(name·enabled·triggerConfig·actions·condition, OCC).
      *
      * [actions] 가 `null` 이 아니면 [AutomationRule.updateActions] 로 전체 교체하고(부분 병합 아님),
      * [repository] 의 `update` 가 `automation_rules` 테이블만 갱신하므로 [actionRepository.replaceForRule]
      * 로 별도 영속한다(Task 6 설계 — 클래스 KDoc §액션/actor 매핑 참고). [actorUserId] 가 `null` 이 아니면
-     * [AutomationRule.changeActor] 로 실행 주체를 교체한다(FR-AT-02 Task 14).
+     * [AutomationRule.changeActor] 로 실행 주체를 교체한다(FR-AT-02 Task 14). [condition] 이 `null` 이
+     * 아니면 [Condition.fromJson] 으로 파싱·검증 후 [AutomationRule.updateCondition] 으로 교체하고
+     * [conditionRepository.replace] 로 별도 영속한다(FR-AT-03 Task 8 — actions 와 동일한 "null=미변경"
+     * 부분 PATCH 설계).
      *
      * 몇 개 필드가 동시에 바뀌든 실제로 영속되는 OCC version 은 [expectedVersion] 대비 **정확히 +1**
      * 이다(클래스 KDoc §다필드 PATCH 단일 OCC 증가 collapse 참고).
@@ -229,13 +255,15 @@ class AutomationRuleService(
      * @param triggerConfig 변경할 triggerConfig JSON 문자열. null 이면 미변경.
      * @param actions 교체할 액션 목록(요청 표현). null 이면 미변경.
      * @param actorUserId 변경할 액션 실행 주체. null 이면 미변경.
-     * @return 변경된 룰(액션 포함).
+     * @param condition 교체할 조건 게이트 표현식(요청 표현) JSON 문자열. null 이면 미변경.
+     * @return 변경된 룰(액션·조건 포함).
      * @throws AutomationForbiddenException 권한이 없을 때.
      * @throws AutomationRuleNotFoundException 룰이 없거나 [projectKey] 소속이 아닐 때.
      * @throws AutomationRuleVersionConflictException [expectedVersion] 이 서버 현재 version 과 다르거나,
      *   조회와 저장 사이 다른 트랜잭션이 먼저 갱신했을 때(TOCTOU 안전망).
      * @throws com.bts.automation.domain.TriggerConfigInvalidException 새 triggerConfig 형식 위반 시.
      * @throws ActionConfigInvalidException [actions] 중 하나라도 형식을 위반할 때.
+     * @throws InvalidConditionExpressionException [condition] 이 형식/화이트리스트/크기 상한을 위반할 때.
      * @throws com.bts.automation.domain.AutomationRuleInvalidException 새 name 또는 [actorUserId] 가
      *   불변식을 위반할 때.
      */
@@ -251,19 +279,20 @@ class AutomationRuleService(
         triggerConfig: String?,
         actions: List<AutomationActionInput>? = null,
         actorUserId: UUID? = null,
+        condition: String? = null,
     ): AutomationRule {
         assertManageAutomation(actorId, projectKey)
-        val existing = withActions(findInProject(projectKey, id))
+        val existing = hydrate(findInProject(projectKey, id))
         if (existing.version != expectedVersion) {
             throw AutomationRuleVersionConflictException(id)
         }
 
         val now = Instant.now(clock)
         val wasDisabled = !existing.enabled
-        // name·triggerConfig·actions·actorUserId 적용은 patch() 자체의 순환 복잡도
+        // name·triggerConfig·actions·actorUserId·condition 적용은 patch() 자체의 순환 복잡도
         // (CyclomaticComplexMethod)를 낮추려고 top-level 함수로 뺐다(TooManyFunctions 예산도 아낀다 —
         // 클래스 멤버가 아니라 패키지 함수라 클래스 함수 개수 집계에서 제외된다).
-        var updated = applyFieldPatch(existing, name, triggerConfig, actions, actorUserId, now)
+        var updated = applyFieldPatch(existing, name, triggerConfig, actions, actorUserId, condition, now)
         if (enabled != null && enabled != updated.enabled) {
             updated = if (enabled) updated.enable(now) else updated.disable(now)
         }
@@ -295,9 +324,13 @@ class AutomationRuleService(
             // 서비스 레벨 버전 비교(위)는 통과했으나 그 사이 다른 트랜잭션이 먼저 갱신한 TOCTOU 레이스.
             throw AutomationRuleVersionConflictException(id, e)
         }
-        // repository.update 는 automation_rules 테이블만 갱신한다 — actions 변경은 여기서 별도 영속한다.
+        // repository.update 는 automation_rules 테이블만 갱신한다 — actions/condition 변경은 여기서
+        // 별도 영속한다(같은 @Transactional 경계 안 — 조건 replace 트랜잭션성).
         if (actions != null) {
             actionRepository.replaceForRule(id, updated.actions)
+        }
+        if (condition != null) {
+            conditionRepository.replace(id, updated.condition)
         }
         log.info("automation_rule_updated id={} projectKey={}", id, projectKey)
         return updated
@@ -372,13 +405,17 @@ class AutomationRuleService(
     }
 
     /**
-     * [rule] 에 [actionRepository] 로 조회한 현재 액션 목록을 채워 반환한다.
+     * [rule] 에 [actionRepository]/[conditionRepository] 로 조회한 현재 액션·조건을 채워 반환한다.
      *
-     * [AutomationRuleRepository] 의 find 계열은 [AutomationRule.actions] 를 항상 빈 리스트로 매핑하므로
-     * (Task 6 결정), CRUD 응답이 실제 액션을 반영하려면 이 헬퍼로 별도 로드해야 한다.
+     * [AutomationRuleRepository] 의 find 계열은 [AutomationRule.actions]/[AutomationRule.condition] 을
+     * 항상 빈 리스트/`null` 로 매핑하므로(Task 6 결정, FR-AT-03 Task 8 동일 적용), CRUD 응답이 실제
+     * 액션·조건을 반영하려면 이 헬퍼로 별도 로드해야 한다.
      */
-    private fun withActions(rule: AutomationRule): AutomationRule {
-        return rule.copy(actions = actionRepository.findByRuleId(rule.id))
+    private fun hydrate(rule: AutomationRule): AutomationRule {
+        return rule.copy(
+            actions = actionRepository.findByRuleId(rule.id),
+            condition = conditionRepository.findByRuleId(rule.id),
+        )
     }
 
     private companion object {
@@ -405,8 +442,8 @@ data class AutomationActionInput(
 )
 
 /**
- * [AutomationRuleService.patch] 의 name·triggerConfig·actions·actorUserId 반영을 뺀 top-level 함수
- * (FR-AT-02 Task 11, actorUserId 는 Task 14).
+ * [AutomationRuleService.patch] 의 name·triggerConfig·actions·actorUserId·condition 반영을 뺀 top-level
+ * 함수(FR-AT-02 Task 11, actorUserId 는 Task 14, condition 은 FR-AT-03 Task 8).
  *
  * `patch()` 자체에 인라인했을 때 순환 복잡도(detekt CyclomaticComplexMethod)와 클래스 함수 개수
  * (detekt TooManyFunctions) 예산을 함께 넘겨서 뺐다 — 클래스 멤버가 아닌 패키지 top-level 함수라 클래스
@@ -414,7 +451,7 @@ data class AutomationActionInput(
  * 선례 동형). enabled 전이는 `patch()` 에 남긴다 — nextFireAt 재계산이 enabled 전이 결과(활성화 전환
  * 여부)에 의존해 분리하면 오히려 상태를 두 번 오가야 한다.
  *
- * 네 필드 모두 같은 `updated` 인스턴스에 순차 체이닝된다 — [AutomationRuleService.patch] 가 이 함수의
+ * 다섯 필드 모두 같은 `updated` 인스턴스에 순차 체이닝된다 — [AutomationRuleService.patch] 가 이 함수의
  * 반환값에 대해 `repository.update` 를 단 한 번만 호출하므로, 여러 필드가 동시에 바뀌어도 저장(영속
  * 호출 자체)은 원자적으로 1회다. 다만 각 도메인 동작이 호출마다 `version+1` 하므로 이 함수가 반환하는
  * `updated.version` 은 바뀐 필드 수만큼 인메모리에서 여러 번 증가한 상태다 — `patch()` 가 이를 그대로
@@ -423,6 +460,7 @@ data class AutomationActionInput(
  *
  * @throws com.bts.automation.domain.TriggerConfigInvalidException 새 triggerConfig 형식 위반 시.
  * @throws ActionConfigInvalidException [actions] 중 하나라도 형식을 위반할 때.
+ * @throws InvalidConditionExpressionException [condition] 이 형식/화이트리스트/크기 상한을 위반할 때.
  * @throws com.bts.automation.domain.AutomationRuleInvalidException 새 name 또는 [actorUserId] 가
  *   불변식을 위반할 때.
  */
@@ -433,6 +471,7 @@ private fun applyFieldPatch(
     triggerConfig: String?,
     actions: List<AutomationActionInput>?,
     actorUserId: UUID?,
+    condition: String?,
     now: Instant,
 ): AutomationRule {
     var updated = rule
@@ -447,6 +486,9 @@ private fun applyFieldPatch(
     }
     if (actorUserId != null) {
         updated = updated.changeActor(actorUserId, now)
+    }
+    if (condition != null) {
+        updated = updated.updateCondition(Condition.fromJson(condition), now)
     }
     return updated
 }
