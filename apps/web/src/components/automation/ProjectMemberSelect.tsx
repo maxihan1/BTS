@@ -102,8 +102,8 @@ function DisabledSelectShell({ selectId, label, optionText }: DisabledSelectShel
  * ASSIGN 액션의 담당자 피커와 자동화 룰의 실행 주체(actor) 피커가 이 컴포넌트를 공유한다.
  *
  * - `allowUnassign=true`면 "담당자 해제"(value=null) 옵션을 추가로 노출한다(EC3, ASSIGN 전용).
- *   `allowUnassign`이 없으면(actor 용도) value=null은 미설정을 뜻하며, 그 문구/기본 처리는
- *   호출부(폼)가 담당한다 — 이 컴포넌트는 placeholder 옵션만 렌더한다.
+ *   `allowUnassign`이 없으면(actor 용도) placeholder("선택 안 함") 옵션을 현재 선택값과 무관하게
+ *   항상 노출한다 — 멤버를 골랐다가도 다시 이 옵션을 선택해 기본값(null)으로 되돌릴 수 있다(코드리뷰 N1).
  * - `value`가 현재 멤버 목록에 없으면(예: 프로젝트에서 제외된 멤버) "알 수 없는 사용자"로
  *   표시하되 값은 그대로 보존한다 — 임의로 다른 값으로 정정하지 않는다(EC4).
  * - 로딩/에러 상태는 select를 비활성화하고 안내 문구를 보여준다(빈 목록으로 은폐하지 않음).
@@ -179,7 +179,7 @@ export function ProjectMemberSelect({
         onChange={handleChange}
         className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
       >
-        {value === null && !allowUnassign && <option value={PLACEHOLDER_VALUE}>{TEXT.unset}</option>}
+        {!allowUnassign && <option value={PLACEHOLDER_VALUE}>{TEXT.unset}</option>}
         {allowUnassign && <option value={UNASSIGN_VALUE}>{TEXT.unassign}</option>}
         {unknownValue !== null && <option value={unknownValue}>{TEXT.unknown}</option>}
         {memberList.map((member) => (
