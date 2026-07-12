@@ -72,10 +72,11 @@
 - resolution 목록 포트 부재 → 신규 `IssueCompletionOptionsPort`(version+done전이+resolution 결합 읽기, fail-closed).
 - 상세보기 url 버튼 payload는 no-op 200(dispatch 경고 방지).
 
-## Plan
+## Plan (v2 — 리뷰 BLOCKER 반영)
 
-> **PR1 스코프 (Maxi 2 PR 분할 확정)**. 인바운드 인터랙티브 인프라 전체 + 완료로 표시(resolution 모달) + 상세보기(url). 담당자 변경·코멘트 모달은 PR2 후속.
-> **모듈**. shared-kernel(T1) → issue-tracking(T2) + slack-integration(T3~T10). writing-plans 직접 작성(도메인/포트 깊이 — 재사용 포트·인바운드 패턴 SL-04 확립).
+> **PR1 스코프 (Maxi 2 PR 분할 확정)**. 인바운드 인터랙티브 인프라 전체 + 완료로 표시(resolution 모달, **동기**) + 상세보기(url). 담당자 변경·코멘트 모달은 PR2 후속.
+> **모듈**. shared-kernel(T1·T2) → issue-tracking(T2 어댑터·T3) + slack-integration(T4~T11).
+> **v2 변경(리뷰 2건 BLOCKER)**. ① transition 실패분류 타입 예외 신설(T2). ② 완료 제출 **동기 transition + response_action** (view_submission엔 response_url 없음). ③ test-boot 스텁 결선(T9, 형제 E2E 회귀 차단). ④ 완료 버튼 렌더 eventType 게이팅(T7). ⑤ 본문 크기 상한(T10). ⑥ toStateKey는 state_values(박제 아님).
 
 ### Task 1. IssueCompletionOptionsPort + VO (shared-kernel 신규 읽기 포트)
 
@@ -84,135 +85,166 @@
 - files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/issue/IssueCompletionOptionsPort.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/issue/IssueCompletionOptionsPortTest.kt`]
 - depends-on: []
 
-**RED**. `IssueCompletionOptionsPortTest` — VO(`IssueCompletionOptions{version:Long, doneTransitions:List<DoneTransition(toStateKey,label)>, resolutions:List<ResolutionOption(id:UUID,label)>}`) 구성 + fail-closed 계약(default 구현 없음, nullable 반환) 문서화. `SharedKernelBoundaryArchTest`가 신규 타입 원시/shared VO만 사용하는지 검증(BC 도메인 타입 누출 0).
-**GREEN**. `interface IssueCompletionOptionsPort { fun getCompletionOptions(issueKey: String, viewerUserId: UUID): IssueCompletionOptions? }` + VO data class. IssueUnfurlPort/IssueTransitionPort와 동일 fail-closed KDoc.
-**REFACTOR**. KDoc 재사용 포트 참조(IssueTransitionPort와 결합 근거 — 완료 모달 1회 조회로 version+전이+resolution).
+**RED**. `IssueCompletionOptionsPortTest` — VO(`IssueCompletionOptions{version:Long, doneTransitions:List<DoneTransition(toStateKey,label)>, resolutions:List<ResolutionOption(id:UUID,label)>}`) 구성 + fail-closed 계약(default 없음, nullable) 문서화. `SharedKernelBoundaryArchTest`가 신규 타입 원시/shared VO만 사용하는지 검증.
+**GREEN**. `interface IssueCompletionOptionsPort { fun getCompletionOptions(issueKey: String, viewerUserId: UUID): IssueCompletionOptions? }` + VO. IssueUnfurlPort 동형 fail-closed KDoc.
+**REFACTOR**. 결합 조회 근거 KDoc(완료 모달 1회 조회로 version+전이+resolution — 나누면 소비 BC가 게이트 스킵 위험).
 **검증**. `./gradlew :modules:shared-kernel:test :modules:shared-kernel:detektMain`
 
-### Task 2. issue-tracking IssueCompletionOptionsAdapter (@Component, 포트 구현)
+### Task 2. transition 실패분류 타입 예외 (shared-kernel) + IssueTransitionAdapter 번역 (리뷰 BLOCKER-1)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/board/IssueTransitionExceptions.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issuetracking/crossbc/IssueTransitionAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issuetracking/crossbc/IssueTransitionAdapterExceptionTranslationTest.kt`]
+- depends-on: []
+
+**RED**. `IssueTransitionAdapter`가 무권한 → `IssueTransitionPermissionDeniedException`, OCC 충돌 → `IssueOptimisticLockException`(shared-kernel 신규)로 **번역해 던지는지** 검증. 기존 도메인 예외 verbatim 전파 금지. (기존 agile-planning 소비자 generic catch — 하위호환 확인.)
+**GREEN**. shared-kernel에 두 예외 추가(`IssueTransitionPort` KDoc 계약 예외로 명시). 어댑터가 `IssueAccessDeniedException`/`IssueVersionConflictException` catch→번역(`IssueMutationPermissionDeniedException` 선례 동형).
+**REFACTOR**. 예외 클래스명 문자열 매칭 금지([[crossbc-failure-classification-typed-not-name]]) — 소비자가 타입으로만 분류.
+**검증**. `./gradlew :modules:shared-kernel:test :modules:issue-tracking:test --tests '*IssueTransitionAdapterExceptionTranslationTest*'`
+
+### Task 3. issue-tracking IssueCompletionOptionsAdapter (@Component, 포트 구현)
 
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issuetracking/crossbc/IssueCompletionOptionsAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issuetracking/crossbc/IssueCompletionOptionsAdapterTest.kt`]
 - depends-on: [1]
 
-**RED**. Testcontainers 통합 — 이슈 시드 후 `getCompletionOptions(key, viewer)`가 현재 version + DONE 카테고리 전이 후보(WorkflowStateCatalog) + resolution 목록 반환. viewer 미가시 → null(fail-closed). BROWSE/visibility 게이트 상속([[crossbc-issue-read-needs-browse-gate]] — 스킴 없는 프로젝트 fail-open 차단, hasPermission(BROWSE,Project) 직접).
-**GREEN**. 어댑터가 issue-tracking 내부 서비스(이슈 조회·워크플로우 카탈로그·resolution 조회)에 위임. version=이슈 OCC 버전, doneTransitions=현 상태에서 가능한 DONE 카테고리 전이, resolutions=워크플로우/프로젝트 resolution.
-**REFACTOR**. visibility 슬롯 capture로 동일 viewerUserId 증명(vacuous 회피). resolution 불요 워크플로우 → 빈 목록(E6).
+**RED**. Testcontainers — 이슈 시드 후 `getCompletionOptions(key, viewer)`가 version + DONE 카테고리 전이 후보 + resolution 목록 반환. viewer 미가시 → null. BROWSE/visibility 게이트 상속([[crossbc-issue-read-needs-browse-gate]]).
+**GREEN**. 이슈 조회·워크플로우 카탈로그·resolution 조회 위임. version=OCC 버전, doneTransitions=현 상태에서 가능한 DONE 전이, resolutions=워크플로우/프로젝트 resolution.
+**REFACTOR**. visibility 슬롯 capture(vacuous 회피). resolution 불요 워크플로우 → 빈 목록(E6).
 **검증**. `./gradlew :modules:issue-tracking:test --tests '*IssueCompletionOptionsAdapterTest*'`
 
-### Task 3. V703 slack_interaction_log 마이그레이션 + Repository
+### Task 4. V703 slack_interaction_log 마이그레이션 + Repository
 
 **메타**.
 - agent: `db-engineer`
 - files: [`backend/modules/slack-integration/src/main/resources/db/migration/slack-integration/V703__slack_interaction_log.sql`, `backend/db/init_codegen.sql`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/interaction/SlackInteractionLogRepository.kt`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/interaction/JdbcSlackInteractionLogRepository.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/interaction/JdbcSlackInteractionLogRepositoryTest.kt`]
 - depends-on: []
 
-**RED**. Testcontainers — insert(team_id, slack_user_id, bts_user_id?, action_type, issue_key?, outcome) + 조회. outcome enum(SUCCESS/UNMAPPED/PERMISSION_DENIED/CONFLICT/ERROR).
-**GREEN**. V703 DDL(스펙 §데이터 모델) + JdbcTemplate repo(record 메서드). `init_codegen.sql` 미러([[jooq-init-codegen-mirror]]).
-**REFACTOR**. created_at DESC 인덱스. best-effort record(로그 실패가 액션 안 막음 — 단 호출자가 예외 삼키지 않도록 catch 범위 최소).
+**RED**. Testcontainers — insert(team_id, slack_user_id, bts_user_id?, action_type, issue_key?, outcome) + 조회. outcome(SUCCESS/UNMAPPED/PERMISSION_DENIED/CONFLICT/ERROR).
+**GREEN**. V703 DDL(스펙 §데이터 모델) + JdbcTemplate repo. `init_codegen.sql` 미러([[jooq-init-codegen-mirror]]).
+**REFACTOR**. created_at DESC 인덱스. PERMISSION_DENIED 기록 실패 시 WARN 별도 흔적(F11 — N3 우선순위).
 **검증**. `./gradlew :modules:slack-integration:test --tests '*SlackInteractionLogRepositoryTest*'`
 **주의**. V703 번호·Flyway 경로 머지 직전 재확인([[migration-vnumber-concurrent-branch-collision]] — 동시 FR-AT-02 세션).
 
-### Task 4. SlackInteractionPayload 모델 + 파서 (block_actions + view_submission)
+### Task 5. SlackInteractionPayload 모델 + 파서 (block_actions + view_submission)
 
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/slack-integration/src/main/kotlin/com/bts/slack/interaction/SlackInteractionPayload.kt`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/interaction/SlackInteractionPayloadParser.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/interaction/SlackInteractionPayloadParserTest.kt`]
 - depends-on: []
 
-**RED**. block_actions JSON → `BlockActions(userId, teamId, triggerId, responseUrl, channel, messageTs, actions:List<Action(actionId,value)>)`. view_submission JSON → `ViewSubmission(userId, teamId, callbackId, privateMetadata, stateValues)`. 알 수 없는 type → `Unknown`.
-**GREEN**. sealed `SlackInteractionPayload` + Jackson 파서(slack 내부 ObjectMapper — shared-kernel 아님). 필드 누락 방어(nullable → 안전 기본).
-**REFACTOR**. private_metadata는 JSON 문자열(issueKey·expectedVersion·toStateKey·channel·ts 박제) — 파서는 raw 문자열만, 해석은 서비스.
+**RED**. block_actions JSON → `BlockActions(userId, teamId, triggerId, responseUrl, channel, messageTs, actions:List<Action(actionId,value)>)`. view_submission JSON → `ViewSubmission(userId, teamId, callbackId, privateMetadata, stateValues:Map)`. 알 수 없는 type → `Unknown`.
+**GREEN**. sealed `SlackInteractionPayload` + Jackson 파서(slack 내부 ObjectMapper). 필드 누락 방어.
+**REFACTOR**. private_metadata = JSON 문자열(issueKey·expectedVersion·channel·ts만 — **toStateKey 제외**, 리뷰 CONCERN). toStateKey는 stateValues에서. 파서는 raw만, 해석은 서비스.
 **검증**. `./gradlew :modules:slack-integration:test --tests '*SlackInteractionPayloadParserTest*'`
 
-### Task 5. SlackMessageClient 확장 — views.open + chat.update
+### Task 6. SlackMessageClient 확장 — views.open + chat.update
 
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/slack-integration/src/main/kotlin/com/bts/slack/message/SlackMessageClient.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/message/SlackMessageClientTest.kt`]
 - depends-on: []
 
-**RED**. `openModal(botToken, triggerId, viewJson)` → MethodsClient.viewsOpen 호출. `updateMessage(botToken, channel, ts, blocksJson)` → chatUpdate 호출. 봇 토큰 요청에만 실림·로그/예외/반환 미노출(N4, 기존 postDirectMessage 선례).
-**GREEN**. MethodsClient viewsOpen/chatUpdate 래핑. 기존 `postDirectMessage` 옆 추가.
-**REFACTOR**. 실패 결과 타입 일관(성공/실패, 토큰 미포함).
+**RED**. `openModal(botToken, triggerId, viewJson)` → viewsOpen. `updateMessage(botToken, channel, ts, blocksJson)` → chatUpdate. 봇 토큰 요청에만·로그/예외/반환 미노출(N4, postDirectMessage 선례).
+**GREEN**. MethodsClient viewsOpen/chatUpdate 래핑.
+**REFACTOR**. 실패 결과 타입 일관(토큰 미포함).
 **검증**. `./gradlew :modules:slack-integration:test --tests '*SlackMessageClientTest*'`
 
-### Task 6. SlackBlockKitRenderer 확장 — DM actions 블록 + resolution 모달 빌더
+### Task 7. SlackBlockKitRenderer/ModalBuilder 확장 + SlackDeliveryWorker 게이팅 (리뷰 CONCERN)
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/slack-integration/src/main/kotlin/com/bts/slack/message/SlackBlockKitRenderer.kt`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/interaction/SlackModalBuilder.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/message/SlackBlockKitRendererInteractiveTest.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/interaction/SlackModalBuilderTest.kt`]
+- files: [`backend/modules/slack-integration/src/main/kotlin/com/bts/slack/message/SlackBlockKitRenderer.kt`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/interaction/SlackModalBuilder.kt`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/worker/SlackDeliveryWorker.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/message/SlackBlockKitRendererInteractiveTest.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/interaction/SlackModalBuilderTest.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/worker/SlackDeliveryWorkerActionsTest.kt`]
 - depends-on: [1]
 
-**RED**. 렌더러가 FR-SL-02 담당자 배정 DM에 actions 블록 추가 — `[상세보기](url 버튼)` + `[완료로 표시](button, action_id=atlas_complete, value=issueKey)`. (담당자 select·코멘트 button은 PR2 — 이번 미포함). 모달 빌더가 `IssueCompletionOptions`로 resolution 모달 view JSON 생성(callback_id=atlas_complete_modal, resolution static_select, done 전이 선택[다중 시], private_metadata 박제). resolution 빈 목록 → 섹션 생략(E6).
-**GREEN**. Block Kit JSON 조립. 상세보기 url = BTS 웹 이슈 URL(설정 baseUrl + issueKey).
-**REFACTOR**. action_id/callback_id 상수화. 기존 unfurl 카드 렌더와 분리(회귀 0).
-**검증**. `./gradlew :modules:slack-integration:test --tests '*SlackBlockKitRendererInteractiveTest*' --tests '*SlackModalBuilderTest*'`
+**RED**. (a) 전용 렌더 메서드 `renderAssignmentActionsMessage(title, issueKey)` — 상세보기(url) + 완료(action_id=atlas_complete, value=issueKey) 버튼. (b) **SlackDeliveryWorker가 `eventType==ISSUE_ASSIGNED`일 때만** 전용 메서드 호출(그 외는 기존 `render()` — 멘션/댓글 DM에 버튼 오배치 차단, 리뷰 CONCERN). 기존 `render()`·`SlackBlockKitRendererTest` 회귀 0. (c) 모달 빌더가 `IssueCompletionOptions`로 resolution 모달 JSON(callback_id=atlas_complete_modal, resolution static_select, done 전이 static_select[다중 시], private_metadata=issueKey·expectedVersion·channel·ts). resolution 빈 → 섹션 생략(E6).
+**GREEN**. Block Kit JSON. 상세보기 url = 설정 baseUrl + issueKey.
+**REFACTOR**. action_id/callback_id 상수화. 단일 done 전이면 셀렉트 생략(toStateKey는 여전히 state_values 경로 통일).
+**검증**. `./gradlew :modules:slack-integration:test --tests '*RendererInteractiveTest*' --tests '*SlackModalBuilderTest*' --tests '*SlackDeliveryWorkerActionsTest*'`
 
-### Task 7. SlackInteractionService — 오케스트레이션 (완료 flow·라우팅·V703 로깅)
+### Task 8. SlackInteractionService — 오케스트레이션 (완료 동기 flow·타입예외 분류·V703)
 
 **메타**.
-- agent: `security-engineer`  # 권한 게이트·역매핑·fail-closed 중심 (D4)
+- agent: `security-engineer`  # 권한 게이트·역매핑·fail-closed (D4)
 - files: [`backend/modules/slack-integration/src/main/kotlin/com/bts/slack/interaction/SlackInteractionService.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/interaction/SlackInteractionServiceTest.kt`]
-- depends-on: [1, 3, 4, 5, 6]
+- depends-on: [1, 2, 4, 5, 6, 7]
 
-**RED** (mockk로 재사용 포트 mock).
-- block_actions `atlas_complete` → 역매핑 성공 → `IssueCompletionOptionsPort.getCompletionOptions` → `SlackMessageClient.openModal`(동기, trigger_id) 호출 검증. V703 기록 안 함(모달 오픈은 액션 아님) 또는 VIEW.
-- view_submission `atlas_complete_modal` → 역매핑 → `IssueTransitionPort.transition(actorUserId, issueKey, toStateKey, expectedVersion, resolutionId)` → `chat.update` → V703 SUCCESS.
-- 미연결(역매핑 null) → ephemeral 안내 + V703 UNMAPPED. 이슈 변경 0.
-- 무권한(transition이 권한 예외 throw) → ephemeral + V703 PERMISSION_DENIED. (best-effort catch에 권한예외 포함 금지 — [[best-effort-loop-permission-exception-nonprod-mask]])
-- OCC 충돌(transition OCC 예외) → ephemeral 재시도 + V703 CONFLICT.
+**RED** (mockk).
+- block_actions `atlas_complete` → 역매핑 성공 → `getCompletionOptions`. **null(무권한/미가시) → 모달 안 열고 response_url ephemeral + V703 PERMISSION_DENIED**(S5b, 리뷰 CONCERN·null 가드). non-null → `openModal`(동기, trigger_id).
+- view_submission `atlas_complete_modal` → 역매핑 → **동기** `IssueTransitionPort.transition(actor, issueKey, toStateKey=stateValues, expectedVersion=privateMetadata, resolutionId)` → 성공: `chat.update` + 빈 200 + V703 SUCCESS. **`IssueTransitionPermissionDeniedException` → response_action:{errors} + V703 PERMISSION_DENIED. `IssueOptimisticLockException` → response_action:{errors} + V703 CONFLICT. 그 외 → response_action + V703 ERROR.** (best-effort catch에 권한/OCC 예외 포함 금지 — [[best-effort-loop-permission-exception-nonprod-mask]])
+- 미연결(역매핑 null) → ephemeral + V703 UNMAPPED.
 - url `atlas_view` → no-op.
-**GREEN**. 라우팅 + 역매핑(SlackUserMappingRepository) + SlackInstall 봇토큰 조회 + 포트 위임 + private_metadata 파싱/박제. actor=역매핑 결과만(위조 차단 C3).
-**REFACTOR**. outcome→ephemeral 메시지 매핑 상수화. 실패분류는 타입 예외([[crossbc-failure-classification-typed-not-name]]).
+- 동기 핸들러 top-level try/catch → 항상 200 계열(비밀/원문 미노출 로그, 리뷰 NIT).
+**GREEN**. 라우팅 + 역매핑 + SlackInstall 봇토큰 조회 + 포트 위임 + private_metadata 파싱. actor=역매핑 결과만(위조 차단 C3). resolutionId는 신뢰 안 함 — transition 포트가 검증(리뷰 NIT).
+**REFACTOR**. outcome→메시지 매핑 상수화. **PR1엔 @Async 없음**(전부 동기 3초 내 — self-invocation 함정 회피 [[transaction-self-invocation-requires-new]] 정신).
 **검증**. `./gradlew :modules:slack-integration:test --tests '*SlackInteractionServiceTest*'`
 
-### Task 8. SlackInteractionsController — POST /slack/interactions (서명검증·form-decode·ack)
-
-**메타**.
-- agent: `security-engineer`  # 서명검증·permitAll (인증 대체)
-- files: [`backend/modules/slack-integration/src/main/kotlin/com/bts/slack/web/SlackInteractionsController.kt`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/config/SlackSecurityConfig.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/web/SlackInteractionsControllerTest.kt`]
-- depends-on: [7]
-
-**RED** (TestRestTemplate 실서블릿 — MockMvc 우회 가짜그린 방지 [[multipart-default-limit-app-policy-false-green]]).
-- 유효 서명 + form-urlencoded `payload=<json>` → 서비스 dispatch + 200. block_actions(모달 오픈)은 동기 200 ack. view_submission은 `{}`(모달 닫기).
-- 잘못된/누락 서명 → 401(빈, 미노출 N1).
-- `@RequestBody String rawBody`만(@RequestParam 병용 금지 [[fr-sl-04]]).
-**GREEN**. 서명검증(SlackSignatureVerifier) 선행 → form-decode → `payload` 추출 → 파서 → 서비스. `@Async`는 서비스 내부(전이/댓글)만, 모달 오픈은 동기.
-**REFACTOR**. SlackSecurityConfig test-boot permitAll `/slack/interactions` + CSRF-ignore(C2, SL-04 D8 동형 — 중앙 등록은 배포 조립 후속).
-**검증**. `./gradlew :modules:slack-integration:test --tests '*SlackInteractionsControllerTest*'`
-
-### Task 9. Full-boot @MockBean 결선 + prod 조립 부팅 검증
+### Task 9. slack test-boot 스텁 결선 (StubIssueCompletionOptionsPort + StubIssueTransitionPort) — 리뷰 BLOCKER-2
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/slack-integration/src/test/kotlin/com/bts/slack/` (full-boot 컨텍스트 test 설정들 — grep로 확정)]
-- depends-on: [8]
+- files: [`backend/modules/slack-integration/src/test/kotlin/com/bts/slack/config/SlackTestcontainersConfig.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/config/StubIssueCompletionOptionsPort.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/config/StubIssueTransitionPort.kt`]
+- depends-on: [1, 2, 8]
 
-**RED**. slack full-boot(@SpringBootTest) 컨텍스트가 신규 `IssueCompletionOptionsPort` 미결선 → NoSuchBeanDefinitionException([[new-crossbc-dep-openapi-mockbean-regression]]). whoami/OpenApi 등 로드 슬라이스 전수 확인([[whoami-slice-mock-skipci-masking]]).
-**GREEN**. 해당 full-boot test에 `@MockBean IssueCompletionOptionsPort` 추가.
-**REFACTOR**. `:modules:app` prod 조립이 issue-tracking `IssueCompletionOptionsAdapter`(@Component)를 스캔·결선하는지 확인 → `./gradlew :modules:app:test` 부팅 검증([[prod-assembly-boot-verification-required]] — 머지 전 rebase+:modules:app:test).
-**검증**. `./gradlew :modules:slack-integration:test :modules:app:test`
+**RED**. T8의 `SlackInteractionService`(@Component) 추가로 slack full-boot(`SlackContextLoadTest` + 기존 `SlackSlashCommandEndToEndTest`)가 `IssueCompletionOptionsPort`·`IssueTransitionPort` **양쪽** NoSuchBean 회귀([[new-crossbc-dep-openapi-mockbean-regression]]). **@MockBean으론 컨텍스트 로드 테스트 못 고침** → seedable Stub @Bean 필요(StubIssueUnfurlPort 선례).
+**GREEN**. seedable `StubIssueCompletionOptionsPort`(옵션 시드/null) + `StubIssueTransitionPort`(성공 결과 시드 / 권한·OCC 예외 주입)를 `SlackTestcontainersConfig`에 `@Bean` 등록. 미시드=fail-closed.
+**REFACTOR**. 두 스텁 outcome 재현 가능(happy/무권한/OCC) — T10/T11이 시드로 구동. 기존 형제 full-boot 테스트 green 재확인.
+**검증**. `./gradlew :modules:slack-integration:test --tests '*SlackContextLoadTest*' --tests '*SlackSlashCommandEndToEndTest*'`
 
-### Task 10. E2E — SlackInteractionEndToEndTest (완료 왕복·미연결·무권한·충돌·401)
+### Task 10. SlackInteractionsController — POST /slack/interactions (서명검증·크기상한·response_action)
+
+**메타**.
+- agent: `security-engineer`  # 서명검증·permitAll·DoS 가드
+- files: [`backend/modules/slack-integration/src/main/kotlin/com/bts/slack/web/SlackInteractionsController.kt`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/config/SlackSecurityConfig.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/web/SlackInteractionsControllerTest.kt`]
+- depends-on: [8, 9]
+
+**RED** (TestRestTemplate 실서블릿 — 크기상한/서명 servlet 레벨, MockMvc 가짜그린 방지 [[multipart-default-limit-app-policy-false-green]]).
+- **본문 크기 상한(HMAC 전, 초과 → 빈 413)** — SlackCommandsController 동형(리뷰 CONCERN·DoS).
+- 유효 서명 + `payload=<json>` → dispatch + 200. view_submission 성공 → 빈 200(닫기), 실패 → `response_action:{errors}` 바디.
+- 잘못된/누락 서명 → 빈 401(미노출 N1). `@RequestBody String rawBody`만(@RequestParam 병용 금지).
+**GREEN**. 크기검사 → 서명검증 → form-decode → `payload` → 파서 → 서비스. 서비스 반환(빈 ack / response_action)을 그대로 응답.
+**REFACTOR**. SlackSecurityConfig test-boot permitAll `/slack/interactions` + CSRF-ignore(C2, SL-04 D8 — 중앙 등록 배포조립 후속).
+**검증**. `./gradlew :modules:slack-integration:test --tests '*SlackInteractionsControllerTest*'`
+
+### Task 11. E2E + prod 조립 부팅 (완료 왕복·미연결·무권한·충돌·401·크기·조립)
 
 **메타**.
 - agent: `qa-engineer`
 - files: [`backend/modules/slack-integration/src/test/kotlin/com/bts/slack/SlackInteractionEndToEndTest.kt`]
-- depends-on: [8]
+- depends-on: [9, 10]
 
-**RED/GREEN**. 유효 서명 생성 → (1) 완료 block_actions → views.open mock 호출 확인 (2) 완료 modal view_submission → transition + chat.update mock + V703 SUCCESS (3) 미연결 → ephemeral + UNMAPPED (4) 무권한 → ephemeral + PERMISSION_DENIED (5) 서명 실패 → 401. Slack SDK(views.open/chat.update) mock. identity-access prod+RANDOM_PORT 부팅 레시피([[identity-access-prod-randomport-boot-recipe]]) 참조.
-**검증**. `./gradlew :modules:slack-integration:test --tests '*SlackInteractionEndToEndTest*'`
+**RED/GREEN**. 유효 서명 생성 → (1) 완료 block_actions → views.open mock 호출 (2) 완료 view_submission → transition + chat.update + V703 SUCCESS (3) 무권한(StubIssueTransitionPort 권한예외 시드) → response_action + V703 PERMISSION_DENIED (4) OCC(예외 시드) → response_action + V703 CONFLICT (5) 미연결 → ephemeral + UNMAPPED (6) 서명 실패 → 401 (7) 초과 본문 → 413. Slack SDK mock. identity-access prod+RANDOM_PORT 레시피([[identity-access-prod-randomport-boot-recipe]]).
+**REFACTOR**. `:modules:app` prod 조립 부팅 — issue-tracking `IssueCompletionOptionsAdapter`·`IssueTransitionAdapter`(@Component) 결선 확인([[prod-assembly-boot-verification-required]] — 머지 전 rebase+:modules:app:test).
+**검증**. `./gradlew :modules:slack-integration:test --tests '*SlackInteractionEndToEndTest*' && ./gradlew :modules:app:test`
 
 ## Plan 메타
 
-- task 수: 10 (PR1). PR2 후속(담당자 users_select + 코멘트 모달) ~5 task.
-- 모듈: shared-kernel(T1) → issue-tracking(T2) + slack(T3~T10). cross-module 컴파일 직렬화([[bts-plan-wave-gradle-module-compile]]).
-- 예상 wave: W0=T1 → W1=T2·T3·T4·T5·T6(병렬, files 무충돌) → W2=T7 → W3=T8 → W4=T9·T10.
-- TDD 강제: yes. 추가 검증: ktlint/detekt(모듈 baseline)·:modules:app 부팅.
-- 공유 파일 주의: T5(SlackMessageClient.kt)·T6(SlackBlockKitRenderer.kt)는 별 파일(무충돌). V703은 T3 단독.
+- task 수: 11 (PR1, v2 — 리뷰로 T1→11 확장). PR2 후속(담당자 users_select + 코멘트 모달) ~5 task.
+- 모듈: shared-kernel(T1·T2) → issue-tracking(T2·T3) + slack(T4~T11). cross-module 컴파일 직렬화([[bts-plan-wave-gradle-module-compile]]).
+- 예상 wave: W0=T1·T2 → W1=T3·T4·T5·T6·T7(병렬, files 무충돌) → W2=T8 → W3=T9 → W4=T10 → W5=T11.
+- TDD 강제: yes. PR1 전부 **동기**(@Async 0). 추가 검증: ktlint/detekt(모듈 baseline)·:modules:app 부팅.
+- 공유 파일 주의: T6(SlackMessageClient.kt)·T7(SlackBlockKitRenderer.kt·SlackDeliveryWorker.kt)는 별 파일. T7·T5가 `interaction/` 패키지 공유하나 서로 다른 파일(SlackModalBuilder vs Payload/Parser). V703은 T4 단독.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+### 적대적 plan 리뷰 (2 렌즈 병렬, 2026-07-12)
+
+**보안 렌즈 (general-purpose subagent)**.
+- **[BLOCKER]** 완료(transition) 실패분류 불가 — IssueTransitionPort generic RuntimeException, slack이 issue-tracking 도메인 예외 import 불가(BC 격리), transition용 shared-kernel 타입 예외 부재 → N3 감사·S5/S6 구분 구현 불가. **→ 반영. T2 신설**(IssueTransitionPermissionDeniedException/IssueOptimisticLockException + 어댑터 번역).
+- [CONCERN] getCompletionOptions==null 경로 미테스트·미감사·NPE 위험. **→ 반영. T8 RED에 null 케이스(S5b) + V703 + null 가드.**
+- [CONCERN] `/slack/interactions` 본문 크기 상한(pre-HMAC DoS 가드) 누락 — SL-04 SlackCommandsController에서 후퇴. **→ 반영. T10 크기상한 413.**
+- [CONCERN] 다중 done 전이 시 toStateKey 박제 vs state_values 불일치. **→ 반영. F4/F5·T5/T7: private_metadata에서 toStateKey 제외, state_values로.**
+- [NIT] best-effort V703이 PERMISSION_DENIED 증거 못 남길 수 있음. **→ 반영. T4 REFACTOR WARN 별도 흔적.**
+- 긍정 확인. actor 위조 차단·서명검증 위치·신규 포트 fail-closed·permitAll 스코프·봇토큰/private_metadata 비밀 무 — 이상 없음.
+
+**엔지니어링 렌즈 (general-purpose subagent)**.
+- **[BLOCKER]** view_submission엔 response_url 없음 → 모달 제출 실패 ephemeral 전달 수단 부재. **→ 반영(Option A). 완료 제출 동기 transition + response_action:{errors}**(F5/N2/T8/T10). @Async 제거로 self-invocation 함정도 동시 해소.
+- **[BLOCKER]** slack test-boot에 IssueTransitionPort·IssueCompletionOptionsPort 빈 부재 → SlackInteractionService 추가 시 형제 full-boot(SlackContextLoadTest·SlackSlashCommandEndToEndTest) NoSuchBean 회귀. @MockBean 부족. **→ 반영. T9 신설**(SlackTestcontainersConfig에 seedable Stub @Bean 2종).
+- [CONCERN] @Async self-invocation 함정. **→ 반영. PR1 전체 동기(@Async 0).**
+- [CONCERN] 완료 버튼 렌더가 SlackDeliveryWorker 단일 render() 경로 → 모든 알림 DM에 버튼 오배치. **→ 반영. T7에 SlackDeliveryWorker 추가·eventType==ISSUE_ASSIGNED 게이팅.**
+- [CONCERN] toStateKey 이중정의(보안 렌즈와 동일). **→ 반영.**
+- [NIT] 크기상한(보안 렌즈와 동일)·동기 핸들러 200 수렴. **→ 반영. T8/T10 top-level try/catch.**
+- 긍정 확인. 신규 포트 결합설계·3초 룰 분리·wave 그래프·prod 조립·T1 RED 실질성 — 이상 없음.
+
+**BLOCKER 처리**. 3건 모두 plan v2에 반영 완료(무시/보류 없음). taste 결정 없음 — 전부 엔지니어링 교정.
