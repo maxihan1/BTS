@@ -376,22 +376,86 @@ describe('parseActionConfig / serializeActionConfig — ADD_COMMENT', () => {
 })
 
 describe('parseActionConfig / serializeActionConfig — CALL_WEBHOOK', () => {
-  it('url·method·headers 맵·body를 모두 round-trip 보존한다', () => {
-    const config = {
+  it('url·method·body를 round-trip 보존하고, headers 응답 맵은 쌍 배열로 파싱된다', () => {
+    const responseConfig = {
       url: 'https://hooks.example.com/x',
       method: 'POST',
       headers: { 'X-Token': 'abc' },
       body: '{"issueKey":"ATLAS-1"}',
     }
-    const formState = parseActionConfig('CALL_WEBHOOK', config)
-    expect(formState).toEqual(config)
+    const formState = parseActionConfig('CALL_WEBHOOK', responseConfig)
+    expect(formState).toEqual({
+      url: 'https://hooks.example.com/x',
+      method: 'POST',
+      headers: [{ key: 'X-Token', value: 'abc' }],
+      body: '{"issueKey":"ATLAS-1"}',
+    })
 
     const serialized = serializeActionConfig('CALL_WEBHOOK', formState)
-    expect(JSON.parse(serialized)).toEqual(config)
+    expect(JSON.parse(serialized)).toEqual(responseConfig)
   })
 
-  it('method·headers·body 미지정 시 기본값(POST·빈 맵·빈 문자열)으로 채운다', () => {
+  it('method·headers·body 미지정 시 기본값(POST·빈 배열·빈 문자열)으로 채운다', () => {
     const formState = parseActionConfig('CALL_WEBHOOK', { url: 'https://hooks.example.com/y' })
-    expect(formState).toEqual({ url: 'https://hooks.example.com/y', method: 'POST', headers: {}, body: '' })
+    expect(formState).toEqual({ url: 'https://hooks.example.com/y', method: 'POST', headers: [], body: '' })
+  })
+
+  it('응답 headers 객체가 여러 건이면 Object.entries 순서대로 쌍 배열로 변환한다', () => {
+    const formState = parseActionConfig('CALL_WEBHOOK', {
+      url: 'https://hooks.example.com/x',
+      headers: { 'X-Token': 'abc', 'X-Other': 'def' },
+    })
+    expect(formState.headers).toEqual([
+      { key: 'X-Token', value: 'abc' },
+      { key: 'X-Other', value: 'def' },
+    ])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// serializeActionConfig — CALL_WEBHOOK headers 쌍 배열 (코드리뷰 PR #260 CONCERNS C1·C2 회귀 방지)
+//
+// C1(버그) — "헤더 추가"로 만든 빈 placeholder 행의 키를 채우지 않고 저장하면, 필터 없는 구현은
+// 빈 키({"":"..."})까지 실존 헤더로 직렬화해 backend에 전송한다(계약 오염). 키가 blank(trim 후
+// 빈 문자열)인 쌍은 직렬화 시 제외해야 한다.
+// C2(엣지) — headers가 Record였을 때는 같은 키를 두 번 입력하면 map dedup으로 편집 중 행 하나가
+// 조용히 사라졌다. 쌍 배열 모델에서는 편집 중(폼 상태)에는 중복 키가 모두 보존되고, backend 계약이
+// map이라 직렬화(JSON 전송) 시에만 마지막 값으로 축약된다(불가피 — 최종 표현은 map이지만 편집 중
+// 소실과는 다른 문제).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('serializeActionConfig — CALL_WEBHOOK headers 쌍 배열 (C1·C2)', () => {
+  it('키가 빈 문자열이거나 공백만인 쌍은 직렬화 결과 headers에서 제외된다(C1)', () => {
+    const formState = {
+      url: 'https://hooks.example.com/x',
+      method: 'POST',
+      headers: [
+        { key: 'X-Token', value: 'abc' },
+        { key: '', value: 'unfilled-placeholder' },
+        { key: '   ', value: 'whitespace-only-key' },
+      ],
+      body: '',
+    }
+    const serialized = serializeActionConfig('CALL_WEBHOOK', formState)
+    const parsed = JSON.parse(serialized) as { headers: Record<string, string> }
+    expect(parsed.headers).toEqual({ 'X-Token': 'abc' })
+  })
+
+  it('중복 키 쌍은 폼 상태 배열에서는 소실 없이 모두 보존되고, 직렬화 시에만 마지막 값으로 축약된다(C2)', () => {
+    const formState = {
+      url: 'https://hooks.example.com/x',
+      method: 'POST',
+      headers: [
+        { key: 'X-Token', value: 'first' },
+        { key: 'X-Token', value: 'second' },
+      ],
+      body: '',
+    }
+    // 폼 상태(배열)는 두 쌍 모두 보존 — 편집 중 소실 없음
+    expect(formState.headers).toHaveLength(2)
+
+    const serialized = serializeActionConfig('CALL_WEBHOOK', formState)
+    const parsed = JSON.parse(serialized) as { headers: Record<string, string> }
+    expect(parsed.headers).toEqual({ 'X-Token': 'second' })
   })
 })

@@ -76,7 +76,7 @@ describe('ActionConfigEditor — 타입 전환', () => {
 
     expect(onChange).toHaveBeenCalledWith({
       type: 'CALL_WEBHOOK',
-      config: { url: '', method: 'POST', headers: {}, body: '' },
+      config: { url: '', method: 'POST', headers: [], body: '' },
     })
   })
 })
@@ -248,7 +248,7 @@ describe('ActionConfigEditor — ADD_COMMENT', () => {
 describe('ActionConfigEditor — CALL_WEBHOOK', () => {
   const webhookDefault: ActionFormState = {
     type: 'CALL_WEBHOOK',
-    config: { url: '', method: 'POST', headers: {}, body: '' },
+    config: { url: '', method: 'POST', headers: [], body: '' },
   }
 
   it('url·method(기본 POST)·body 필드를 렌더하고 입력 시 onChange를 호출한다', async () => {
@@ -262,23 +262,23 @@ describe('ActionConfigEditor — CALL_WEBHOOK', () => {
     await user.type(screen.getByLabelText('URL'), 'h')
     expect(onChange).toHaveBeenLastCalledWith({
       type: 'CALL_WEBHOOK',
-      config: { url: 'h', method: 'POST', headers: {}, body: '' },
+      config: { url: 'h', method: 'POST', headers: [], body: '' },
     })
 
     await user.selectOptions(methodSelect, 'PUT')
     expect(onChange).toHaveBeenLastCalledWith({
       type: 'CALL_WEBHOOK',
-      config: { url: '', method: 'PUT', headers: {}, body: '' },
+      config: { url: '', method: 'PUT', headers: [], body: '' },
     })
 
     await user.type(screen.getByLabelText('본문'), 'b')
     expect(onChange).toHaveBeenLastCalledWith({
       type: 'CALL_WEBHOOK',
-      config: { url: '', method: 'POST', headers: {}, body: 'b' },
+      config: { url: '', method: 'POST', headers: [], body: 'b' },
     })
   })
 
-  it('"헤더 추가" 클릭 시 새 헤더 행이 onChange(headers)에 추가된다', async () => {
+  it('"헤더 추가" 클릭 시 빈 키·값의 새 헤더 쌍이 onChange(headers)에 추가된다(C1 — placeholder 키 미생성)', async () => {
     const onChange = vi.fn()
     render(<ActionConfigEditor projectKey={PROJECT_KEY} value={webhookDefault} onChange={onChange} />)
     const user = userEvent.setup()
@@ -287,7 +287,7 @@ describe('ActionConfigEditor — CALL_WEBHOOK', () => {
 
     expect(onChange).toHaveBeenLastCalledWith({
       type: 'CALL_WEBHOOK',
-      config: { url: '', method: 'POST', headers: { 'header-1': '' }, body: '' },
+      config: { url: '', method: 'POST', headers: [{ key: '', value: '' }], body: '' },
     })
   })
 
@@ -295,7 +295,7 @@ describe('ActionConfigEditor — CALL_WEBHOOK', () => {
     const onChange = vi.fn()
     const withHeader: ActionFormState = {
       type: 'CALL_WEBHOOK',
-      config: { url: '', method: 'POST', headers: { 'X-Token': '' }, body: '' },
+      config: { url: '', method: 'POST', headers: [{ key: 'X-Token', value: '' }], body: '' },
     }
     render(<ActionConfigEditor projectKey={PROJECT_KEY} value={withHeader} onChange={onChange} />)
     const user = userEvent.setup()
@@ -304,7 +304,7 @@ describe('ActionConfigEditor — CALL_WEBHOOK', () => {
 
     expect(onChange).toHaveBeenLastCalledWith({
       type: 'CALL_WEBHOOK',
-      config: { url: '', method: 'POST', headers: { 'X-Token': 'a' }, body: '' },
+      config: { url: '', method: 'POST', headers: [{ key: 'X-Token', value: 'a' }], body: '' },
     })
   })
 
@@ -312,7 +312,7 @@ describe('ActionConfigEditor — CALL_WEBHOOK', () => {
     const onChange = vi.fn()
     const withHeader: ActionFormState = {
       type: 'CALL_WEBHOOK',
-      config: { url: '', method: 'POST', headers: { 'X-Token': 'abc' }, body: '' },
+      config: { url: '', method: 'POST', headers: [{ key: 'X-Token', value: 'abc' }], body: '' },
     }
     render(<ActionConfigEditor projectKey={PROJECT_KEY} value={withHeader} onChange={onChange} />)
     const user = userEvent.setup()
@@ -321,7 +321,67 @@ describe('ActionConfigEditor — CALL_WEBHOOK', () => {
 
     expect(onChange).toHaveBeenCalledWith({
       type: 'CALL_WEBHOOK',
-      config: { url: '', method: 'POST', headers: {}, body: '' },
+      config: { url: '', method: 'POST', headers: [], body: '' },
+    })
+  })
+
+  it('두 헤더 행에 같은 키를 입력해도 두 행 모두 폼 상태 배열에 보존된다(C2 — map dedup 소실 방지)', async () => {
+    const onChange = vi.fn()
+    const twoHeaders: ActionFormState = {
+      type: 'CALL_WEBHOOK',
+      config: {
+        url: '',
+        method: 'POST',
+        headers: [
+          { key: 'X-Token', value: 'first' },
+          { key: 'Other', value: 'second' },
+        ],
+        body: '',
+      },
+    }
+    render(<ActionConfigEditor projectKey={PROJECT_KEY} value={twoHeaders} onChange={onChange} />)
+    const user = userEvent.setup()
+
+    const keyInputs = screen.getAllByLabelText('헤더 이름')
+    const secondKeyInput = keyInputs[1]
+    if (secondKeyInput === undefined) throw new Error('두 번째 헤더 키 입력을 찾지 못함')
+    await user.clear(secondKeyInput)
+    await user.type(secondKeyInput, 'X-Token')
+
+    const lastCall = onChange.mock.calls.at(-1)?.[0] as ActionFormState
+    expect(lastCall.config.headers).toEqual([
+      { key: 'X-Token', value: 'first' },
+      { key: 'X-Token', value: 'second' },
+    ])
+  })
+
+  it('중복 키 헤더 중 한 행만 삭제해도 나머지 행(동일 키 포함)은 유지된다', async () => {
+    const onChange = vi.fn()
+    const duplicateKeyHeaders: ActionFormState = {
+      type: 'CALL_WEBHOOK',
+      config: {
+        url: '',
+        method: 'POST',
+        headers: [
+          { key: 'X-Token', value: 'first' },
+          { key: 'X-Token', value: 'second' },
+        ],
+        body: '',
+      },
+    }
+    render(<ActionConfigEditor projectKey={PROJECT_KEY} value={duplicateKeyHeaders} onChange={onChange} />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: '1번째 헤더 삭제' }))
+
+    expect(onChange).toHaveBeenCalledWith({
+      type: 'CALL_WEBHOOK',
+      config: {
+        url: '',
+        method: 'POST',
+        headers: [{ key: 'X-Token', value: 'second' }],
+        body: '',
+      },
     })
   })
 })
