@@ -6,9 +6,9 @@ import com.bts.automation.AutomationTestBootApplication
 import com.bts.automation.AutomationTestcontainersBase
 import com.bts.automation.StubAutomationPermissionResolver
 import com.bts.automation.StubIssueMutationPort
+import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.ComparisonOperator
 import com.bts.automation.domain.Condition
-import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.TriggerType
 import com.bts.shared.issue.IssueMutationPort
 import com.bts.shared.permission.AutomationPermissionResolver

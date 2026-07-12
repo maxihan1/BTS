@@ -1,4 +1,4 @@
-// V300~V304 마이그레이션 검증 — automation_rules·automation_actions·automation_conditions·q_automation_execution 큐 (FR-AT-01/02/03)
+// V300~V304 마이그레이션 검증 — automation rules·actions·conditions + q_automation_execution 큐
 
 package com.bts.automation
 
