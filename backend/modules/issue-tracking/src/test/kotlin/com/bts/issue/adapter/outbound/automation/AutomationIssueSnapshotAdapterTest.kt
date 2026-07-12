@@ -88,14 +88,14 @@ class AutomationIssueSnapshotAdapterTest : IssueTestcontainersBase() {
      * [permissionResolver] stub 으로 제어한다. findByKey 경로가 쓰지 않는 협력자(워크플로우 전이/
      * 사용자 조회 등)는 relaxed mock 으로 대체한다.
      */
-    private fun adapterWith(permissionResolver: IssuePermissionResolver = StubViewGate()): AutomationIssueSnapshotAdapter {
+    private fun adapterWith(resolver: IssuePermissionResolver = StubViewGate()): AutomationIssueSnapshotAdapter {
         val service =
             IssueApplicationService(
                 repo = repository,
                 issueTypeRepository = mockk<IssueTypeRepository>(relaxed = true),
                 resolutionRepository = mockk(relaxed = true),
                 eventPublisher = mockk<IssueEventPublisher>(relaxed = true),
-                permissionResolver = permissionResolver,
+                permissionResolver = resolver,
                 workflowPort = mockk<WorkflowTransitionPort>(relaxed = true),
                 workflowKeyResolver = mockk<WorkflowKeyResolver>(relaxed = true),
                 userLookupPort = mockk<UserLookupPort>(relaxed = true),
