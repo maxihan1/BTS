@@ -35,6 +35,12 @@ import org.springframework.stereotype.Component
  * [renderUnfurlCard]는 상태 변경·댓글 같은 액션 버튼을 절대 포함하지 않는다. 버튼 상호작용은
  * FR-SL-05(인터랙티브)의 책임이라 이 메서드가 선점하면 BC 스코프가 번진다.
  *
+ * ## 할당 액션 메시지 렌더 (FR-SL-05 Task 7)
+ * [renderAssignmentActionsMessage]는 [render]와 달리 "상세보기"(url 버튼) + "완료로 표시"(action_id
+ * 버튼) 두 액션을 담은 `actions` 블록을 덧붙인다. [com.bts.slack.worker.SlackDeliveryWorker]가
+ * `eventType == "issue.assigned"`일 때만 호출한다 — 멘션·댓글 등 다른 알림에 완료 버튼이
+ * 오배치되는 것을 막기 위해서다(이 렌더러가 아니라 호출부가 게이팅 책임을 진다).
+ *
  * @param atlasBaseUrl BTS 웹 기준 URL(`bts.atlas.base-url`). 끝 슬래시는 정규화한다.
  * @param objectMapper Block Kit JSON 직렬화용 Jackson.
  */
@@ -68,6 +74,36 @@ class SlackBlockKitRenderer(
         val blocks =
             objectMapper.createArrayNode().apply {
                 add(sectionBlock(mrkdwnText(mrkdwn)))
+            }
+
+        return RenderedSlackMessage(
+            text = title,
+            blocks = objectMapper.writeValueAsString(blocks),
+        )
+    }
+
+    /**
+     * 이슈 할당 DM 전용 렌더 — [render]와 동일한 제목+링크 섹션에 "상세보기"/"완료로 표시" 액션
+     * 버튼을 덧붙인다 (FR-SL-05 Task 7).
+     *
+     * "상세보기"는 [issueUrl]을 여는 url 버튼(서버 왕복 없음), "완료로 표시"는
+     * `action_id="atlas_complete"`, `value=issueKey`인 인터랙션 버튼이다 — 클릭 시 발생하는
+     * `block_actions` 페이로드는 [com.bts.slack.interaction.SlackInteractionService](후속 Task)가 처리한다.
+     *
+     * @param title 알림 제목(폴백 text 겸 section 본문).
+     * @param issueKey 이슈 키(항상 필요 — 할당 알림은 이슈 없이 발생하지 않는다).
+     * @return 폴백 text + actions 블록을 포함한 blocks JSON.
+     */
+    fun renderAssignmentActionsMessage(
+        title: String,
+        issueKey: String,
+    ): RenderedSlackMessage {
+        val mrkdwn = "$title\n<${issueUrl(issueKey)}|$issueKey 보기>"
+
+        val blocks =
+            objectMapper.createArrayNode().apply {
+                add(sectionBlock(mrkdwnText(mrkdwn)))
+                add(assignmentActionsBlock(issueKey))
             }
 
         return RenderedSlackMessage(
@@ -215,6 +251,53 @@ class SlackBlockKitRenderer(
         }
     }
 
+    /**
+     * `{"type": "actions", "elements": [상세보기 url 버튼, 완료로 표시 버튼]}` —
+     * [renderAssignmentActionsMessage] 전용 액션 블록.
+     */
+    private fun assignmentActionsBlock(issueKey: String): ObjectNode =
+        objectMapper.createObjectNode().apply {
+            put(TYPE_FIELD, ACTIONS_BLOCK_TYPE)
+            set<ArrayNode>(
+                ELEMENTS_FIELD,
+                objectMapper.createArrayNode().apply {
+                    add(urlButtonElement(DETAIL_BUTTON_TEXT, issueUrl(issueKey)))
+                    add(actionButtonElement(COMPLETE_BUTTON_TEXT, ATLAS_COMPLETE_ACTION_ID, issueKey))
+                },
+            )
+        }
+
+    /** `{"type": "button", "text": plainText(text), "url": url}` — 서버 왕복 없이 링크만 여는 버튼. */
+    private fun urlButtonElement(
+        text: String,
+        url: String,
+    ): ObjectNode =
+        objectMapper.createObjectNode().apply {
+            put(TYPE_FIELD, BUTTON_ELEMENT_TYPE)
+            set<ObjectNode>(TEXT_FIELD, plainText(text))
+            put(URL_FIELD, url)
+        }
+
+    /** `{"type": "button", "text": plainText(text), "action_id": actionId, "value": value}` — 인터랙션 버튼. */
+    private fun actionButtonElement(
+        text: String,
+        actionId: String,
+        value: String,
+    ): ObjectNode =
+        objectMapper.createObjectNode().apply {
+            put(TYPE_FIELD, BUTTON_ELEMENT_TYPE)
+            set<ObjectNode>(TEXT_FIELD, plainText(text))
+            put(ACTION_ID_FIELD, actionId)
+            put(VALUE_FIELD, value)
+        }
+
+    /** `{"type": "plain_text", "text": text}` — 버튼 라벨 등에 쓰는 Block Kit plain_text object. */
+    private fun plainText(text: String): ObjectNode =
+        objectMapper.createObjectNode().apply {
+            put(TYPE_FIELD, PLAIN_TEXT_TYPE)
+            put(TEXT_FIELD, text)
+        }
+
     /** `{atlasBaseUrl}/issues/{issueKey}` — base URL 끝 슬래시를 제거해 이중 슬래시를 막는다. */
     private fun issueUrl(issueKey: String): String = "${atlasBaseUrl.trimEnd('/')}/issues/$issueKey"
 
@@ -251,5 +334,18 @@ class SlackBlockKitRenderer(
         const val SECTION_BLOCK_TYPE = "section"
         const val CONTEXT_BLOCK_TYPE = "context"
         const val MRKDWN_TEXT_TYPE = "mrkdwn"
+
+        // ── FR-SL-05 Task 7: 할당 액션 메시지 ──────────────────────────────────
+        const val ACTIONS_BLOCK_TYPE = "actions"
+        const val BUTTON_ELEMENT_TYPE = "button"
+        const val PLAIN_TEXT_TYPE = "plain_text"
+        const val URL_FIELD = "url"
+        const val ACTION_ID_FIELD = "action_id"
+        const val VALUE_FIELD = "value"
+        const val DETAIL_BUTTON_TEXT = "상세보기"
+        const val COMPLETE_BUTTON_TEXT = "완료로 표시"
+
+        /** `block_actions` 페이로드의 완료 버튼 action_id — [com.bts.slack.interaction] 핸들러(후속 Task)가 매칭한다. */
+        const val ATLAS_COMPLETE_ACTION_ID = "atlas_complete"
     }
 }

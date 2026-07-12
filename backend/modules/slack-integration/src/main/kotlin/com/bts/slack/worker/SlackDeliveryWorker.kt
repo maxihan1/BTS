@@ -4,6 +4,7 @@ package com.bts.slack.worker
 
 import com.bts.slack.application.SlackDeliveryLogRepository
 import com.bts.slack.application.SlackUserMappingRepository
+import com.bts.slack.message.RenderedSlackMessage
 import com.bts.slack.message.SlackBlockKitRenderer
 import com.bts.slack.message.SlackMessageClient
 import com.bts.slack.message.SlackSendResult
@@ -23,7 +24,8 @@ import java.util.UUID
  * 3. 수신자 매핑 조회 → 없으면 delete(skip, 발송 대상 아님)
  * 4. dedupKey 이미 전송됨 → delete(중복 발송 차단)
  * 5. 봇 토큰 해석 → 설치 없으면 delete(발송 불가)
- * 6. 렌더 + `chat.postMessage` 발송 → 결과별 큐 생명주기 결정
+ * 6. 렌더([renderMessage] — `eventType == "issue.assigned"`일 때만 완료 액션 버튼 포함, FR-SL-05 Task 7)
+ *    + `chat.postMessage` 발송 → 결과별 큐 생명주기 결정
  *    - [SlackSendResult.Sent] → dedup 기록 **후** delete
  *    - [SlackSendResult.PermanentFailure] → delete(재시도 무의미)
  *    - [SlackSendResult.RetryableFailure] → delete 안 함(vt 만료 재전달). read_ct > MAX 면 archive
@@ -158,7 +160,7 @@ class SlackDeliveryWorker(
             return
         }
 
-        val rendered = renderer.render(event.title, event.issueKey)
+        val rendered = renderMessage(event)
         when (val result = messageClient.postDirectMessage(botToken, mapping.slackUserId, rendered)) {
             is SlackSendResult.Sent -> {
                 // B4: 전송 성공 이후에만 dedup 을 박제한다(전송 실패가 dedup 되어 유실되는 것 방지).
@@ -171,6 +173,20 @@ class SlackDeliveryWorker(
                 log.warn("slack_delivery_retryable_failure dedupKey={} reason={}", event.dedupKey, result.reason)
                 throw RetryableDeliveryException(result.reason)
             }
+        }
+    }
+
+    /**
+     * `eventType == "issue.assigned"` 이고 이슈 키가 있을 때만 [SlackBlockKitRenderer.renderAssignmentActionsMessage]
+     * 를 호출해 완료 액션 버튼을 붙인다. 그 외(멘션·댓글 등)는 기존 [SlackBlockKitRenderer.render] 그대로
+     * 렌더한다 (FR-SL-05 Task 7 리뷰 CONCERN — 무조건 버튼을 붙이면 다른 알림에도 "완료로 표시"가 오배치된다).
+     */
+    private fun renderMessage(event: SlackDeliveryEvent): RenderedSlackMessage {
+        val issueKey = event.issueKey
+        return if (event.eventType == ASSIGNED_EVENT_TYPE && issueKey != null) {
+            renderer.renderAssignmentActionsMessage(event.title, issueKey)
+        } else {
+            renderer.render(event.title, event.issueKey)
         }
     }
 
@@ -279,5 +295,11 @@ class SlackDeliveryWorker(
 
         /** poison/재시도 메시지 최대 수신 허용 횟수 — 초과 시 archive(dead-letter). */
         const val MAX_RECEIVE_COUNT = 5
+
+        /**
+         * `NotificationEventType.ISSUE_ASSIGNED` 의 wireValue(`"issue.assigned"`) 문자열 값 — BC 격리로
+         * notification 모듈 enum 을 직접 import 하지 않고 문자열 상수로 고정한다(KDoc 클래스 레벨 "BC 격리" 참조).
+         */
+        const val ASSIGNED_EVENT_TYPE = "issue.assigned"
     }
 }
