@@ -6,6 +6,7 @@ package com.bts.slack.message
 import com.slack.api.Slack
 import com.slack.api.methods.MethodsClient
 import com.slack.api.methods.SlackApiException
+import com.slack.api.methods.SlackApiTextResponse
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.io.IOException
@@ -65,28 +66,13 @@ class SlackMessageClient(
         slackUserId: String,
         message: RenderedSlackMessage,
     ): SlackSendResult {
-        return try {
-            val response =
-                methods.chatPostMessage { req ->
-                    req.token(botToken)
-                        .channel(slackUserId)
-                        .text(message.text)
-                        .blocksAsString(message.blocks)
-                }
-            when {
-                response.isOk -> SlackSendResult.Sent
-                // rate_limited 는 논리 응답으로도 올 수 있어 재시도 대상으로 분류한다.
-                response.error == RATE_LIMITED -> SlackSendResult.RetryableFailure(RATE_LIMITED)
-                else -> SlackSendResult.PermanentFailure(response.error ?: "unknown")
+        return callSlack("slack_post_message", slackUserId) {
+            methods.chatPostMessage { req ->
+                req.token(botToken)
+                    .channel(slackUserId)
+                    .text(message.text)
+                    .blocksAsString(message.blocks)
             }
-        } catch (e: IOException) {
-            // 네트워크 오류 — 재시도 가능. 토큰/메시지 미노출(예외 클래스명만).
-            log.warn("slack_post_message_io_error slackUserId={} error={}", slackUserId, e.javaClass.simpleName)
-            SlackSendResult.RetryableFailure("transport:${e.javaClass.simpleName}")
-        } catch (e: SlackApiException) {
-            // HTTP 비2xx(429/5xx 등) — 재시도 가능. 토큰/메시지 미노출.
-            log.warn("slack_post_message_api_error slackUserId={} error={}", slackUserId, e.javaClass.simpleName)
-            SlackSendResult.RetryableFailure("http:${e.javaClass.simpleName}")
         }
     }
 
@@ -105,26 +91,12 @@ class SlackMessageClient(
         triggerId: String,
         viewJson: String,
     ): SlackSendResult {
-        return try {
-            val response =
-                methods.viewsOpen { req ->
-                    req.token(botToken)
-                        .triggerId(triggerId)
-                        .viewAsString(viewJson)
-                }
-            when {
-                response.isOk -> SlackSendResult.Sent
-                response.error == RATE_LIMITED -> SlackSendResult.RetryableFailure(RATE_LIMITED)
-                else -> SlackSendResult.PermanentFailure(response.error ?: "unknown")
+        return callSlack("slack_views_open") {
+            methods.viewsOpen { req ->
+                req.token(botToken)
+                    .triggerId(triggerId)
+                    .viewAsString(viewJson)
             }
-        } catch (e: IOException) {
-            // 네트워크 오류 — 재시도 가능. 토큰/view 미노출(예외 클래스명만).
-            log.warn("slack_views_open_io_error error={}", e.javaClass.simpleName)
-            SlackSendResult.RetryableFailure("transport:${e.javaClass.simpleName}")
-        } catch (e: SlackApiException) {
-            // HTTP 비2xx(429/5xx 등) — 재시도 가능. 토큰/view 미노출.
-            log.warn("slack_views_open_api_error error={}", e.javaClass.simpleName)
-            SlackSendResult.RetryableFailure("http:${e.javaClass.simpleName}")
         }
     }
 
@@ -143,27 +115,59 @@ class SlackMessageClient(
         ts: String,
         blocksJson: String,
     ): SlackSendResult {
+        return callSlack("slack_chat_update", channel) {
+            methods.chatUpdate { req ->
+                req.token(botToken)
+                    .channel(channel)
+                    .ts(ts)
+                    .blocksAsString(blocksJson)
+            }
+        }
+    }
+
+    /**
+     * Slack Web API 호출을 실행하고 응답/예외를 [SlackSendResult]로 분류하는 공통 골격.
+     *
+     * [call]은 요청 빌더에만 봇 토큰을 싣고, 반환값·예외·로그에는 절대 담지 않아야 한다(§1.1.2).
+     *
+     * @param logPrefix 실패 로그 키(호출한 Slack 메서드 식별용, 비밀값 아님).
+     * @param context 로그에 남길 비밀값 아닌 식별자(예: slackUserId·channel). 없으면 생략.
+     * @param call `MethodsClient`의 개별 API 호출.
+     */
+    private fun callSlack(
+        logPrefix: String,
+        context: String? = null,
+        call: () -> SlackApiTextResponse,
+    ): SlackSendResult {
         return try {
-            val response =
-                methods.chatUpdate { req ->
-                    req.token(botToken)
-                        .channel(channel)
-                        .ts(ts)
-                        .blocksAsString(blocksJson)
-                }
+            val response = call()
             when {
                 response.isOk -> SlackSendResult.Sent
+                // rate_limited 는 논리 응답으로도 올 수 있어 재시도 대상으로 분류한다.
                 response.error == RATE_LIMITED -> SlackSendResult.RetryableFailure(RATE_LIMITED)
                 else -> SlackSendResult.PermanentFailure(response.error ?: "unknown")
             }
         } catch (e: IOException) {
-            // 네트워크 오류 — 재시도 가능. 토큰/blocks 미노출(예외 클래스명만).
-            log.warn("slack_chat_update_io_error channel={} error={}", channel, e.javaClass.simpleName)
+            // 네트워크 오류 — 재시도 가능. 토큰/페이로드 미노출(예외 클래스명만).
+            logWarn(logPrefix, "io_error", context, e)
             SlackSendResult.RetryableFailure("transport:${e.javaClass.simpleName}")
         } catch (e: SlackApiException) {
-            // HTTP 비2xx(429/5xx 등) — 재시도 가능. 토큰/blocks 미노출.
-            log.warn("slack_chat_update_api_error channel={} error={}", channel, e.javaClass.simpleName)
+            // HTTP 비2xx(429/5xx 등) — 재시도 가능. 토큰/페이로드 미노출.
+            logWarn(logPrefix, "api_error", context, e)
             SlackSendResult.RetryableFailure("http:${e.javaClass.simpleName}")
+        }
+    }
+
+    private fun logWarn(
+        logPrefix: String,
+        kind: String,
+        context: String?,
+        e: Exception,
+    ) {
+        if (context != null) {
+            log.warn("{}_{} context={} error={}", logPrefix, kind, context, e.javaClass.simpleName)
+        } else {
+            log.warn("{}_{} error={}", logPrefix, kind, e.javaClass.simpleName)
         }
     }
 

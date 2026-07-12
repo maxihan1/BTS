@@ -116,7 +116,11 @@ class SlackMessageClientTest {
     fun `openModal ok false 는 PermanentFailure 이며 reason 에 botToken 이 노출되지 않는다`() {
         every {
             methods.viewsOpen(any<RequestConfigurator<ViewsOpenRequest.ViewsOpenRequestBuilder>>())
-        } returns ViewsOpenResponse().apply { isOk = false; error = "expired_trigger_id" }
+        } returns
+            ViewsOpenResponse().apply {
+                isOk = false
+                error = "expired_trigger_id"
+            }
 
         val result = client.openModal("xoxb-secret-token", "trigger-1", "{}")
 
@@ -158,7 +162,11 @@ class SlackMessageClientTest {
     fun `updateMessage ok false 는 PermanentFailure 이며 reason 에 botToken 이 노출되지 않는다`() {
         every {
             methods.chatUpdate(any<RequestConfigurator<ChatUpdateRequest.ChatUpdateRequestBuilder>>())
-        } returns ChatUpdateResponse().apply { isOk = false; error = "message_not_found" }
+        } returns
+            ChatUpdateResponse().apply {
+                isOk = false
+                error = "message_not_found"
+            }
 
         val result = client.updateMessage("xoxb-secret-token", "C123", "1700000000.000100", "[]")
 
