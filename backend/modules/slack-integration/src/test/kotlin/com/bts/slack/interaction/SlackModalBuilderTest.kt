@@ -92,4 +92,49 @@ class SlackModalBuilderTest {
         assertThat(metadata.get("ts").asText()).isEqualTo("9999.0001")
         assertThat(metadata.has("toStateKey")).isFalse()
     }
+
+    @Test
+    fun `buildAssignModal 은 atlas_assign_modal callback_id 와 users_select 를 렌더한다`() {
+        val view = builder.buildAssignModal("PROJ-1")
+
+        val node = objectMapper.readTree(view)
+        assertThat(node.get("type").asText()).isEqualTo("modal")
+        assertThat(node.get("callback_id").asText()).isEqualTo("atlas_assign_modal")
+        assertThat(node.get("title").get("text").asText()).isEqualTo("담당자 변경")
+        assertThat(node.get("submit").get("text").asText()).isEqualTo("변경")
+        assertThat(node.get("close").get("text").asText()).isEqualTo("취소")
+
+        val metadata = objectMapper.readTree(node.get("private_metadata").asText())
+        assertThat(metadata.get("issueKey").asText()).isEqualTo("PROJ-1")
+
+        val block = node.get("blocks").get(0)
+        assertThat(block.get("type").asText()).isEqualTo("input")
+        assertThat(block.get("block_id").asText()).isEqualTo("assignee_block")
+        val element = block.get("element")
+        assertThat(element.get("type").asText()).isEqualTo("users_select")
+        assertThat(element.get("action_id").asText()).isEqualTo("assignee_select")
+    }
+
+    @Test
+    fun `buildCommentModal 은 atlas_comment_modal callback_id 와 multiline plain_text_input 을 렌더한다`() {
+        val view = builder.buildCommentModal("PROJ-2")
+
+        val node = objectMapper.readTree(view)
+        assertThat(node.get("type").asText()).isEqualTo("modal")
+        assertThat(node.get("callback_id").asText()).isEqualTo("atlas_comment_modal")
+        assertThat(node.get("title").get("text").asText()).isEqualTo("코멘트")
+        assertThat(node.get("submit").get("text").asText()).isEqualTo("등록")
+        assertThat(node.get("close").get("text").asText()).isEqualTo("취소")
+
+        val metadata = objectMapper.readTree(node.get("private_metadata").asText())
+        assertThat(metadata.get("issueKey").asText()).isEqualTo("PROJ-2")
+
+        val block = node.get("blocks").get(0)
+        assertThat(block.get("type").asText()).isEqualTo("input")
+        assertThat(block.get("block_id").asText()).isEqualTo("comment_block")
+        val element = block.get("element")
+        assertThat(element.get("type").asText()).isEqualTo("plain_text_input")
+        assertThat(element.get("action_id").asText()).isEqualTo("comment_input")
+        assertThat(element.get("multiline").asBoolean()).isTrue()
+    }
 }
