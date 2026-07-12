@@ -11,13 +11,21 @@ import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { extractAutomationRuleErrorCode } from '@/api/automation-rules'
-import { triggerTypeSchema, serializeTriggerConfig } from '@/api/automation-rules.types'
-import type { AutomationRule, TriggerType } from '@/api/automation-rules.types'
+import {
+  triggerTypeSchema,
+  serializeTriggerConfig,
+  serializeActionConfig,
+  parseActionConfig,
+} from '@/api/automation-rules.types'
+import type { AutomationRule, TriggerType, ActionRequestInput } from '@/api/automation-rules.types'
 import {
   useCreateAutomationRule,
   useUpdateAutomationRule,
   AUTOMATION_RULES_QUERY_KEY,
 } from '@/api/useAutomationRules'
+import { ActionListEditor } from './ActionListEditor'
+import type { ActionFormState } from './ActionConfigEditor'
+import { ProjectMemberSelect } from './ProjectMemberSelect'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 문구 — BC 내 고정 한국어 (WebhookTokenModal.tsx 선례, i18n 미도입 BC 관례)
@@ -34,9 +42,17 @@ const labels = {
   fieldsLabel: '특정 필드 (선택)',
   fieldsDescription: '특정 필드 변경 시만 발화합니다. 비워두면 전체 필드 변경에 반응합니다.',
   fieldsPlaceholder: '필드 키 입력 후 Enter',
+  basicSectionLabel: '기본',
+  triggerSectionLabel: '트리거',
+  actionsSectionLabel: '액션',
+  actorSectionLabel: '실행 주체',
+  actorHint: '선택하지 않으면 룰을 만든 사용자로 자동 지정됩니다.',
   saveButton: '저장',
   cancelButton: '취소',
 } as const
+
+/** 폼 섹션 헤더 공통 클래스 — GadgetCatalogModal.tsx 섹션 라벨 선례 동형(design-review#1) */
+const SECTION_HEADING_CLASS = 'mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground'
 
 /** 트리거 타입 5종 한국어 라벨 — backend TriggerType enum 1:1 대응 */
 const TRIGGER_LABELS: Record<TriggerType, string> = {
@@ -131,6 +147,30 @@ function parseTriggerConfig(triggerConfig: string): ParsedTriggerConfig {
     console.error('automation triggerConfig 파싱 실패', error)
     return { cron: '', fields: [] }
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 액션 리스트 파싱/직렬화 헬퍼 — 수정 모드 초기값 로드(S7)/제출 직렬화(FR9) 전용
+//
+// ⚠️ config 비대칭(EC1) — editingRule.actions[].config는 응답 객체이므로 읽기는
+// parseActionConfig, 제출은 폼 상태 → serializeActionConfig(JSON 문자열)로 명확히 분리한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * editingRule.actions(응답 config=객체)를 액션 리스트 폼 상태로 역직렬화한다(S7).
+ * 생성 모드(editingRule 없음)는 빈 배열에서 시작한다(EC5 — 액션 없는 룰도 유효).
+ */
+function parseActionsFormState(rule: AutomationRule | null | undefined): ActionFormState[] {
+  if (!hasEditingRule(rule)) return []
+  return rule.actions.map((action) => ({ type: action.type, config: parseActionConfig(action.type, action.config) }))
+}
+
+/**
+ * 액션 리스트 폼 상태를 요청 `ActionRequest[]`(config=JSON 문자열)로 직렬화한다(FR9).
+ * 순서(배열 index)가 곧 저장될 position이므로 별도 변환 없이 그대로 매핑한다(S5).
+ */
+function serializeActionsFormState(actions: ActionFormState[]): ActionRequestInput[] {
+  return actions.map((action) => ({ type: action.type, config: serializeActionConfig(action.type, action.config) }))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -280,6 +320,8 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
 
   const [fields, setFields] = useState<string[]>(initialConfig.fields)
   const [fieldDraft, setFieldDraft] = useState('')
+  const [actions, setActions] = useState<ActionFormState[]>(() => parseActionsFormState(editingRule))
+  const [actorUserId, setActorUserId] = useState<string | null>(editingRule?.actorUserId ?? null)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   const queryClient = useQueryClient()
@@ -328,18 +370,32 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
     // (코드리뷰 SUGGESTION 2 — 트리거 타입은 편집 모드에서 잠겨 있어 키 집합이 일관된다).
     const baseConfigJson = hasEditingRule(editingRule) ? editingRule.triggerConfig : undefined
     const triggerConfig = serializeTriggerConfig(effectiveTriggerType, { cron: values.cron, fields }, baseConfigJson)
+    // actions는 항상 현재 폼 상태(빈 배열 포함)를 그대로 전송한다 — backend PATCH는 지정 시
+    // 전체 교체 컨벤션이라 "변경 여부"를 별도 추적할 필요가 없다(EC5, 스펙 §Plan Task 6).
+    const serializedActions = serializeActionsFormState(actions)
+    // actorUserId는 사용자가 명시 선택했을 때만(null이 아닐 때만) body에 포함한다 — 생성 모드
+    // 기본값은 미설정(백엔드 생성자 폴백), PATCH 미지정은 기존 값 유지 컨벤션이다(FR8).
+    const actorPayload = actorUserId !== null ? { actorUserId } : {}
 
     try {
       if (hasEditingRule(editingRule)) {
         await updateRule.mutateAsync({
           id: editingRule.id,
-          body: { version: editingRule.version, name: values.name, triggerConfig },
+          body: {
+            version: editingRule.version,
+            name: values.name,
+            triggerConfig,
+            actions: serializedActions,
+            ...actorPayload,
+          },
         })
       } else {
         const response = await createRule.mutateAsync({
           name: values.name,
           triggerType: values.triggerType,
           triggerConfig,
+          actions: serializedActions,
+          ...actorPayload,
         })
         if (response.webhookToken !== null) {
           onWebhookToken?.(response.webhookToken)
@@ -355,58 +411,83 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
 
   return (
     <form onSubmit={handleSubmit(onValid)} noValidate>
-      {/* 이름 */}
-      <div className="mb-4">
-        <label htmlFor="automation-rule-name" className="block text-sm font-medium mb-1">
-          {labels.nameLabel}
-        </label>
-        <input
-          id="automation-rule-name"
-          type="text"
-          aria-label={labels.nameLabel}
-          placeholder={labels.namePlaceholder}
-          autoComplete="off"
-          className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
-          {...register('name')}
-        />
-        {errors.name !== undefined && (
-          <p className="text-xs text-destructive mt-1" role="alert">
-            {errors.name.message}
-          </p>
-        )}
-      </div>
+      {/* 기본 — 이름 (design-review#1 섹션 그룹핑) */}
+      <section className="mb-6">
+        <h3 className={SECTION_HEADING_CLASS}>{labels.basicSectionLabel}</h3>
+        <div>
+          <label htmlFor="automation-rule-name" className="block text-sm font-medium mb-1">
+            {labels.nameLabel}
+          </label>
+          <input
+            id="automation-rule-name"
+            type="text"
+            aria-label={labels.nameLabel}
+            placeholder={labels.namePlaceholder}
+            autoComplete="off"
+            className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
+            {...register('name')}
+          />
+          {errors.name !== undefined && (
+            <p className="text-xs text-destructive mt-1" role="alert">
+              {errors.name.message}
+            </p>
+          )}
+        </div>
+      </section>
 
       {/* 트리거 — 수정 모드는 잠금(backend PatchAutomationRuleRequest에 triggerType 없음) */}
-      <div className="mb-4">
-        <label htmlFor="automation-rule-trigger" className="block text-sm font-medium mb-1">
-          {labels.triggerLabel}
-        </label>
-        <select
-          id="automation-rule-trigger"
-          aria-label={labels.triggerLabel}
-          data-testid="automation-rule-trigger-select"
-          disabled={isEditMode}
-          className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 disabled:opacity-50 disabled:cursor-not-allowed"
-          {...register('triggerType')}
-        >
-          {triggerTypeSchema.options.map((type) => (
-            <option key={type} value={type}>
-              {TRIGGER_LABELS[type]}
-            </option>
-          ))}
-        </select>
-      </div>
+      <section className="mb-6">
+        <h3 className={SECTION_HEADING_CLASS}>{labels.triggerSectionLabel}</h3>
+        <div className="mb-4">
+          <label htmlFor="automation-rule-trigger" className="block text-sm font-medium mb-1">
+            {labels.triggerLabel}
+          </label>
+          <select
+            id="automation-rule-trigger"
+            aria-label={labels.triggerLabel}
+            data-testid="automation-rule-trigger-select"
+            disabled={isEditMode}
+            className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            {...register('triggerType')}
+          >
+            {triggerTypeSchema.options.map((type) => (
+              <option key={type} value={type}>
+                {TRIGGER_LABELS[type]}
+              </option>
+            ))}
+          </select>
+        </div>
 
-      <TriggerConfigFields
-        triggerType={effectiveTriggerType}
-        register={register}
-        cronError={errors.cron?.message}
-        fields={fields}
-        fieldDraft={fieldDraft}
-        onFieldDraftChange={setFieldDraft}
-        onFieldDraftKeyDown={handleFieldDraftKeyDown}
-        onRemoveField={removeField}
-      />
+        <TriggerConfigFields
+          triggerType={effectiveTriggerType}
+          register={register}
+          cronError={errors.cron?.message}
+          fields={fields}
+          fieldDraft={fieldDraft}
+          onFieldDraftChange={setFieldDraft}
+          onFieldDraftKeyDown={handleFieldDraftKeyDown}
+          onRemoveField={removeField}
+        />
+      </section>
+
+      {/* 액션 — 4종(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK) 추가/삭제/순서변경(FR2·FR7) */}
+      <section className="mb-6">
+        <h3 className={SECTION_HEADING_CLASS}>{labels.actionsSectionLabel}</h3>
+        <ActionListEditor projectKey={projectKey} value={actions} onChange={setActions} />
+      </section>
+
+      {/* 실행 주체 — 생성 기본값은 미설정(백엔드 생성자 폴백), 수정은 저장된 값 로드(FR8) */}
+      <section className="mb-6">
+        <h3 className={SECTION_HEADING_CLASS}>{labels.actorSectionLabel}</h3>
+        <ProjectMemberSelect
+          projectKey={projectKey}
+          value={actorUserId}
+          onChange={setActorUserId}
+          label={labels.actorSectionLabel}
+          id="automation-rule-actor"
+        />
+        <p className="text-xs text-muted-foreground mt-1">{labels.actorHint}</p>
+      </section>
 
       {/* 서버 오류 */}
       {submitError !== null && (
