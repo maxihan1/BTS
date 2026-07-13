@@ -55,8 +55,8 @@
 - [x] D3. 데이터 모델 — `slack_channel_project_map(channel_id, project_id, event_filter)` (책임. db-engineer) *[PR #264 PR-A. V704. deviation. `project_id`→`project_key`(라우팅 시점 cross-BC 조회 회피), event_filter=`event_types text[]`. JdbcTemplate(init_codegen 없음)]*
 - [x] D4. 백엔드 — CRUD + 알림 라우팅에서 매핑 조회 (책임. backend-engineer) *[PR #264 PR-A: CRUD(`/api/v1/slack/channel-mappings`)+PROJECT_ADMIN 게이트. PR #266 PR-B: notification `SlackChannelBroadcaster`(dispatch 정책 early-return 이전 emit·best-effort)→`q_slack_channel_broadcasts`(V705)→slack `SlackChannelBroadcastWorker`(매핑조회·event_filter·보안게이트·per-channel dedup·chat.postMessage·pgmq 생명주기)·보안게이트 `IssueSecurityClassificationPort`(shared-kernel·issue-tracking @Profile prod·fail-closed)]*
 - [x] D5. 백엔드 테스트 (책임. backend-engineer) *[PR #264 PR-A: CRUD 단위/통합. PR #266 PR-B: `SlackChannelBroadcastWorkerTest`(8시나리오 Testcontainers pgmq)·`SlackChannelBroadcasterTest`·`IssueSecurityClassificationAdapterTest`·`JdbcSlackChannelBroadcastDedupRepositoryTest`·prod 조립 부팅(`BtsApplicationContextTest`)]*
-- [ ] D6. 프론트 UI — 프로젝트 설정 → Slack 채널 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 프로젝트 설정 → Slack 채널 (책임. frontend-engineer) *[PR #267. 라우트 `/projects/$projectKey/settings/slack-channels`(automation 설정 선례 미러). 채널 매핑 CRUD(생성/목록/수정/삭제)+event_filter 10종 그룹 다중선택. deviation. C1=채널 ID 직접입력(백엔드 채널목록 API 부재)+헬퍼텍스트. 에러 계약 목록 403·update/delete 404·중복 409·워크스페이스미설치 409·빈이벤트 400 전량 폼/목록 분기. `slack.ts` API+MSW 전역등록]*
+- [x] D7. E2E (책임. qa-engineer) *[PR #267. `slack-channel-mapping.spec.ts` happy(추가·수정·삭제)+이벤트미선택가드+빈상태 3 시나리오. MSW stateful]*
 
 ## §3 양방향 (FR-SL-03, FR-SL-04, FR-SL-05)
 
