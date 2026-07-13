@@ -46,9 +46,37 @@ PR-B가 채울 3덩어리:
   2. **BC 격리** — notification→slack는 도메인 타입 import 0, JSON wire 계약만. `SlackChannelEventType`(PR-A) 10종 미러가 `NotificationEventType`과 대응. producer는 wire 필드만 발행(eventType·issueKey·projectKey·title·occurredAt 등).
   3. **confidentiality oracle 회피** — 보안 게이트는 **뷰어별 가시성이 아닌 이슈의 절대 속성**(`security_level_id` non-null)으로 판정. `IssueSecurityClassificationPort.isSecurityRestricted(issueKey)`가 제한/판정불명이면 skip(fail-closed). 위조 가능 actor로 평가하지 않으므로 [[condition-eval-chosen-actor-read-oracle]] 계열 §12.4 오라클 문제 구조적 부재. issueKey 없는 이벤트는 이슈-스코프 아니라 게이트 우회(ADR D5).
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙 = **기존 FR-SL-06 정본**. [docs/specs/2026-07-13-fr-sl-06-channel-mapping.md](../specs/2026-07-13-fr-sl-06-channel-mapping.md)
+(PR-A가 PR-B까지 FR4~FR9·EC1~EC12·완료기준 전부 명세. 별도 PR-B spec 미작성 — drift 방지.)
+
+**PR-B 스코프 (이 PR이 구현하는 FR)**:
+- FR4 — notification `SlackChannelBroadcaster` 컴포넌트: `dispatch()`의 **정책 early-return 이전**에서 projectKey 있으면 `q_slack_channel_broadcasts`로 이벤트당 1회 JSON emit(수신자/정책 독립). slack import 0.
+- FR5 — slack 채널 워커: `q_slack_channel_broadcasts` 폴링(@Scheduled) → 매핑조회(`findByProjectKey`) → **보안게이트(FR9)** → 매칭 채널별(dedup확인 → 봇토큰해석 → `render(title,issueKey?)` → `chat.postMessage`) → 결과별 pgmq 생명주기(Sent=dedup기록후 delete / Permanent=delete / Retryable=retain, read_ct>MAX archive).
+- FR6 — 채널 게시 dedup: 키=(projectKey,eventType,issueKey,occurredAt,channelId), **전송 성공 후에만** 기록(FR-SL-02 B4 exists→send→record).
+- FR8 — prod 조립: 새 포트 adapter 2종(권한은 PR-A 완료, 신규=보안게이트) + 워커 @Scheduled 결선, `:modules:app:test` 부팅 검증.
+- FR9 — cross-BC 포트 `IssueSecurityClassificationPort.isSecurityRestricted(issueKey)`: prod=issue-tracking(@Profile prod, `security_level_id` non-null), non-prod stub(항상 false). true/불명→해당 이벤트 채널 게시 전부 skip(메시지는 삭제, 유출차단), issueKey null→우회.
+
+**PR-B 밖 (PR-A 완료)**: FR1(V704 테이블)·FR2(CRUD API)·FR3(eventTypes 검증)·FR7(권한 포트+어댑터).
+
+**★ plan 판단 1건 — 채널 dedup 저장소** (spec line 135이 plan으로 위임):
+- 옵션 A. 전용 로그 테이블 `slack_channel_broadcast_log(dedup_key PK, ...)` (V705에서 큐와 함께 생성). 의미 분리 명확, cleanup 독립. **권장.**
+- 옵션 B. 기존 `slack_delivery_log`(dedup_key PK) 재사용. DM키(recipientUserId 포함)와 채널키(channelId 포함) 비충돌이라 가능하나, DM/채널 로그가 한 테이블에 섞임.
+- → 게이트 1에서 Maxi 확인.
+
+**★ 구현 refinement (brainstorming 발견)**: wire payload `dedupKey`는 **이벤트 레벨**(projectKey,eventType,issueKey,occurredAt 해시) — producer는 채널을 모름. 워커가 `dedupKey + channelId`로 per-channel dedup 키 완성.
+
+**신규 마이그레이션 = slack V705**: 큐 `q_slack_channel_broadcasts` 생성(`CREATE EXTENSION pgmq` + `pgmq.create`, producer-creates 예외로 소비 모듈=slack에 배치, V701 선례) [+ 옵션 A 채택 시 dedup 테이블]. JdbcTemplate 모듈이라 init_codegen 미러 없음.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration, 집중 자기검증).
+- PR-A spec이 PR-B를 이미 comprehensive 하게 명세 — 재작성 대신 정본 참조(drift 방지).
+- **발견 1 (구현 refinement)**: wire dedupKey는 이벤트 레벨, 워커가 channelId 덧붙임 → plan 명시.
+- **발견 2 (plan 판단 위임)**: 채널 dedup 저장소(전용 vs 재사용) → 게이트 1 Maxi 확인.
+- **검증**: producer는 projectKey 있는 이벤트만 emit(없으면 미발행, criterion 3) · issueKey nullable(sprint.*)는 보안게이트 우회하되 event_filter 적용 · 새 cross-BC 포트 소비(slack 워커→IssueSecurityClassificationPort)는 full-boot @MockBean 회귀 확인 필요([[new-crossbc-dep-openapi-mockbean-regression]]).
+- 잔여 blocking gap 없음. plan 단계 진행 가능.
 
 ## Plan (← /bts-plan 채움)
 
