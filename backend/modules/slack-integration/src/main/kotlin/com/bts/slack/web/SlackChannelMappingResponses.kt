@@ -2,6 +2,7 @@
 
 package com.bts.slack.web
 
+import com.bts.slack.domain.ChannelProjectMapping
 import java.time.Instant
 import java.util.UUID
 
@@ -60,4 +61,27 @@ data class ChannelMappingResponse(
     val eventTypes: List<String>,
     val createdAt: Instant,
     val updatedAt: Instant,
-)
+) {
+    companion object {
+        /**
+         * [ChannelProjectMapping](도메인) → [ChannelMappingResponse](응답 DTO) 로 변환한다.
+         *
+         * `team_id` 는 의도적으로 옮기지 않는다 — 이 DTO 자체에 그 필드가 없어 타입 상 새어 나갈 수 없다
+         * (방어적, [SlackConnectionResponse] 동형). [eventTypes] 는 `Set` → `List` 로 정렬해 담아 응답
+         * 직렬화 순서를 결정적으로 만든다.
+         *
+         * @param mapping 변환할 도메인 매핑.
+         * @return 응답 DTO.
+         */
+        fun from(mapping: ChannelProjectMapping): ChannelMappingResponse =
+            ChannelMappingResponse(
+                id = mapping.id,
+                projectKey = mapping.projectKey,
+                channelId = mapping.channelId,
+                channelName = mapping.channelName,
+                eventTypes = mapping.eventTypes.sorted(),
+                createdAt = mapping.createdAt,
+                updatedAt = mapping.updatedAt,
+            )
+    }
+}

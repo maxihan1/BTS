@@ -3,7 +3,6 @@
 package com.bts.slack.web
 
 import com.bts.slack.application.SlackChannelMappingService
-import com.bts.slack.domain.ChannelProjectMapping
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -42,6 +41,10 @@ import java.util.UUID
  *
  * ## 예외 → HTTP 매핑
  * 예외는 [SlackChannelMappingExceptionHandler](이 컨트롤러 전용 스코프)가 상태코드로 변환한다.
+ *
+ * ## DTO↔도메인 매핑
+ * 응답 변환은 [ChannelMappingResponse.from] 이 담당한다(automation `AutomationRuleResponse.from` 동형
+ * 컨벤션) — 이 컨트롤러는 서비스 호출 결과를 그대로 넘기기만 한다.
  *
  * ## 비노출 (§1.1.2)
  * 응답([ChannelMappingResponse])은 `team_id` 를 담지 않는다 — 매핑 생성 시 내부적으로만 해석되는 값이다.
@@ -82,7 +85,7 @@ class SlackChannelMappingController(
             request.projectKey,
             created.id,
         )
-        return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(created))
+        return ResponseEntity.status(HttpStatus.CREATED).body(ChannelMappingResponse.from(created))
     }
 
     /**
@@ -98,7 +101,7 @@ class SlackChannelMappingController(
         @RequestParam projectKey: String,
     ): List<ChannelMappingResponse> {
         val actorId = currentUserId(jwt)
-        return service.list(actorId, projectKey).map(::toResponse)
+        return service.list(actorId, projectKey).map(ChannelMappingResponse::from)
     }
 
     /**
@@ -125,7 +128,7 @@ class SlackChannelMappingController(
                 eventTypes = request.eventTypes,
             )
         log.info("SLACK_CHANNEL_MAPPING_UPDATE actor={} id={}", actorId, id)
-        return toResponse(updated)
+        return ChannelMappingResponse.from(updated)
     }
 
     /**
@@ -157,16 +160,4 @@ class SlackChannelMappingController(
     private fun currentUserId(jwt: Jwt?): UUID =
         jwt?.subject?.let { runCatching { UUID.fromString(it) }.getOrNull() }
             ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
-
-    /** [ChannelProjectMapping](도메인) → [ChannelMappingResponse](응답 DTO). `team_id` 는 의도적으로 뺀다. */
-    private fun toResponse(mapping: ChannelProjectMapping): ChannelMappingResponse =
-        ChannelMappingResponse(
-            id = mapping.id,
-            projectKey = mapping.projectKey,
-            channelId = mapping.channelId,
-            channelName = mapping.channelName,
-            eventTypes = mapping.eventTypes.sorted(),
-            createdAt = mapping.createdAt,
-            updatedAt = mapping.updatedAt,
-        )
 }
