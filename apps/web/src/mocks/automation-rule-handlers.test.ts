@@ -46,6 +46,7 @@ interface CreateRuleBody {
   name: string
   triggerType: TriggerType
   triggerConfig: string
+  condition?: string
   actions?: ActionRequestInput[]
   actorUserId?: string
 }
@@ -251,6 +252,31 @@ describe('POST /automation/rules — actions·actorUserId (FR-AT-02)', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// (b-2) POST/GET — condition 저장 + echo (FR-AT-03)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('POST /automation/rules — condition (FR-AT-03)', () => {
+  it('condition을 지정하면 응답 및 후속 GET에 그대로 반영된다(msw-mutation-stateful-refetch)', async () => {
+    const condition = '{">":[{"var":"issue.priority"},3]}'
+    const { status, body } = await createRule({ condition })
+    expect(status).toBe(201)
+
+    const parsed = createAutomationRuleResponseSchema.parse(body)
+    expect(parsed.rule.condition).toBe(condition)
+
+    const after = await getRule(parsed.rule.id)
+    const afterParsed = automationRuleResponseSchema.parse(after.body)
+    expect(afterParsed.condition).toBe(condition)
+  })
+
+  it('condition을 지정하지 않으면 응답 condition은 null이다', async () => {
+    const { body } = await createRule({})
+    const parsed = createAutomationRuleResponseSchema.parse(body)
+    expect(parsed.rule.condition).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // (c) PATCH → 200 + 필드 변경 + version 증가 + 후속 GET 반영
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -337,6 +363,39 @@ describe('PATCH /automation/rules/:id — actions·actorUserId (FR-AT-02)', () =
     const { body } = await patchRule(rule.id, { version: rule.version, name: '이름만 변경' })
     const updated = automationRuleResponseSchema.parse(body)
     expect(updated.actorUserId).toBe(explicitActor)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (c-2) PATCH — condition 교체 / 미지정 시 유지 (FR-AT-03)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('PATCH /automation/rules/:id — condition (FR-AT-03)', () => {
+  it('condition을 지정하면 기존 값을 교체한다', async () => {
+    const created = await createRule({ condition: '{"==":[{"var":"issue.status"},"OPEN"]}' })
+    const rule = createAutomationRuleResponseSchema.parse(created.body).rule
+
+    const newCondition = '{">":[{"var":"issue.priority"},3]}'
+    const { status, body } = await patchRule(rule.id, { version: rule.version, condition: newCondition })
+    expect(status).toBe(200)
+
+    const updated = automationRuleResponseSchema.parse(body)
+    expect(updated.condition).toBe(newCondition)
+
+    // 후속 GET에 즉시 반영 (msw-mutation-stateful-refetch)
+    const after = await getRule(rule.id)
+    const afterParsed = automationRuleResponseSchema.parse(after.body)
+    expect(afterParsed.condition).toBe(newCondition)
+  })
+
+  it('condition을 지정하지 않으면 기존 값이 그대로 유지된다(미지정=무변경 컨벤션)', async () => {
+    const condition = '{"==":[{"var":"issue.status"},"OPEN"]}'
+    const created = await createRule({ condition })
+    const rule = createAutomationRuleResponseSchema.parse(created.body).rule
+
+    const { body } = await patchRule(rule.id, { version: rule.version, name: '이름만 변경' })
+    const updated = automationRuleResponseSchema.parse(body)
+    expect(updated.condition).toBe(condition)
   })
 })
 

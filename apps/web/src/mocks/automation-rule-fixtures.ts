@@ -53,12 +53,20 @@ export const SEED_AUTOMATION_RULE_IDS = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * 조건 있는 시드 룰(SCHEDULED)의 `condition` 와이어 JSON — `issue.priority > 3`이면 실행.
+ * automation-rules.types.ts `serializeConditionExpression`의 와이어 포맷과 1:1 대응한다.
+ * E2E가 조건 편집 시나리오(기존 조건 표시·재편집)에 그대로 재사용할 수 있게 상수로 분리한다.
+ */
+export const SEED_AUTOMATION_CONDITION_PRIORITY_GT_3 = '{"and":[{">":[{"var":"issue.priority"},3]}]}'
+
+/**
  * 기본 자동화 룰 시드 — ATLAS 프로젝트, 트리거 2종(ISSUE_CREATED·SCHEDULED).
  * dev(pnpm dev)/E2E 진입 시 빈 화면 방지 + "시드된 목록" 시나리오 기본값.
  *
- * SCHEDULED 시드는 액션 2건(SET_FIELD·ASSIGN)을 채워 "액션 있는 룰" 계약도 커버한다
+ * SCHEDULED 시드는 액션 2건(SET_FIELD·ASSIGN)을 채워 "액션 있는 룰" 계약도 커버하고,
+ * condition도 채워 "조건 있는 룰"(FR-AT-03) 계약을 커버한다
  * (config는 응답 규약대로 객체 — 요청 config=JSON 문자열과 비대칭, EC1).
- * ISSUE_CREATED 시드는 actions:[]로 "트리거만 있는 룰"(EC5) 계약을 커버한다.
+ * ISSUE_CREATED 시드는 actions:[]·condition:null로 "트리거만 있는 룰"(EC5) 계약을 커버한다.
  */
 export const DEFAULT_AUTOMATION_RULES: AutomationRule[] = [
   {
@@ -68,6 +76,7 @@ export const DEFAULT_AUTOMATION_RULES: AutomationRule[] = [
     enabled: true,
     triggerType: 'ISSUE_CREATED',
     triggerConfig: '{}',
+    condition: null,
     actions: [],
     actorUserId: DEFAULT_AUTOMATION_ACTOR_ID,
     hasWebhookToken: false,
@@ -84,6 +93,7 @@ export const DEFAULT_AUTOMATION_RULES: AutomationRule[] = [
     enabled: true,
     triggerType: 'SCHEDULED',
     triggerConfig: '{"cron":"0 0 9 * * *"}',
+    condition: SEED_AUTOMATION_CONDITION_PRIORITY_GT_3,
     // 액션 있는 픽스처(FR-AT-02) — SET_FIELD(priority=3)·ASSIGN(해제) 2건, config는 응답 규약대로 객체.
     actions: [
       { type: 'SET_FIELD', config: { field: 'priority', value: 3 } },

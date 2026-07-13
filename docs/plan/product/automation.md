@@ -62,10 +62,12 @@
 - [x] D3. 데이터 모델 — `automation_conditions(expression)` (책임. db-engineer)
 - [x] D4. 백엔드 — 표현식 평가 엔진 (Spring SpEL 또는 자체) (책임. backend-engineer)
 - [x] D5. 백엔드 테스트 — 표현식 케이스 50개 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 조건 빌더 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 조건 빌더 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 > **D1~D5 완료 (2026-07-13, PR #262)**. 조건 분기 백엔드. **구조화 조건 모델**(sealed `Condition` And/Or/Not/Comparison 데이터 트리, JSONLogic류)을 SpEL 대신 채택 — 조건이 런타임 관리자 API로 유입되므로 SpEL 샌드박스 전제(관리자 편집 소스만) 부적합. 코드 실행 경로 구조적 부재. `var` 필드 화이트리스트(issue.key/type/status/priority/assignee/reporter/labels/summary/projectKey)·`MAX_DEPTH 10`/`MAX_NODES 100` DoS 상한·리터럴 배열 100개 상한. `ConditionEvaluator` 순수 트리워크 fail-safe. `V304__automation_conditions`(rule_id PK·expression JSONB·rule ON DELETE CASCADE). 신규 cross-BC 읽기 포트 `IssueSnapshotPort`(shared-kernel, fail-closed 주입) + issue-tracking `@Profile prod` 어댑터(기존 가시성 강제 read 재사용). `ActionExecutor` 조건 게이트 → `SKIPPED`(게이트 전체 fail-safe, 조건 미설정은 통과). **게이트2 보안 수정(P1)**: 조건 평가를 `actorUserId`(changeActor로 위조 가능)가 아닌 **`createdBy`(위조 불가 작성자) 가시성**으로 강제 — §12.4 관리자 우회 없음 read 오라클 차단. 조건 빌더 UI(D6)/E2E(D7)는 별개 후속(미구현). ADR [2026-07-12-fr-at-03-automation-conditions](../../decisions/2026-07-12-fr-at-03-automation-conditions.md). → **FR-AT-03 백엔드 완료(D1~D5)**, D6/D7 UI 남아 automation BC 2/7 유지.
+
+> **D6/D7 완료 (2026-07-13, PR #265)**. 순수 프론트(apps/web·백엔드 변경0). 기존 `AutomationRuleFormDialog`에 **조건 섹션**(5번째) 추가 — And/Or/Not 그룹 + Comparison(필드 화이트리스트 9종×연산자 9종) 재귀 트리 편집기(`ConditionBuilder`+`ConditionComparisonRow`). **Maxi 확정 2건**: **[D1] 조건 제거=empty-AND**(빈 트리↔`{"and":[]}` 왕복, 백엔드 0 변경 — PATCH `condition=null`이 "미변경"이라 3-state 래퍼 대신 항등원-참으로 게이트 실질 제거) · **[D2] 값 위젯=재사용만 드롭다운**(priority 숫자select·assignee/reporter `ProjectMemberSelect`·나머지 텍스트, status/type 유효값 드롭다운은 후속). `parseConditionExpression`/`serializeConditionExpression` 왕복 — 백엔드 `Condition.kt` 와이어 shape(var 선두 이항·`in` 정규형·단항·빈그룹 prune·priority 숫자강제) **하드코딩 대조**로 계약갭 차단. **G1 플립 방지**(`resolveConditionPayload` 3분기: create 생략/patch-기존조건 clear/patch-원래null 생략) · **G2 빈-Or 항상거짓 footgun** serialize prune. Zod 계약에 `condition` 추가. 구현 중 버그 2건 자체 발견·TDD 수정(공유 객체참조 중복 React key·정적 id 중복/라벨 오포커스 C1). 단위/컴포넌트 회귀 0(automation 221)·E2E 신규 4+기존 12 회귀0·typecheck/lint 0. 코드리뷰 PASS(BLOCKER 0). ADR 재사용(백엔드 0). → **FR-AT-03 전체 완료(D1~D7)**, automation BC 3/7.
 
 ### §2.4 FR-AT-04 — 규칙 충돌 정적 분석
 

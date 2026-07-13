@@ -17,8 +17,15 @@ import {
   serializeTriggerConfig,
   serializeActionConfig,
   parseActionConfig,
+  parseConditionExpression,
+  serializeConditionExpression,
 } from '@/api/automation-rules.types'
-import type { AutomationRule, TriggerType, ActionRequestInput } from '@/api/automation-rules.types'
+import type {
+  AutomationRule,
+  TriggerType,
+  ActionRequestInput,
+  ConditionNode,
+} from '@/api/automation-rules.types'
 import {
   useCreateAutomationRule,
   useUpdateAutomationRule,
@@ -27,6 +34,7 @@ import {
 import { ActionListEditor } from './ActionListEditor'
 import type { ActionFormState } from './ActionConfigEditor'
 import { ProjectMemberSelect } from './ProjectMemberSelect'
+import { ConditionBuilder } from './ConditionBuilder'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 문구 — BC 내 고정 한국어 (WebhookTokenModal.tsx 선례, i18n 미도입 BC 관례)
@@ -46,6 +54,7 @@ const labels = {
   basicSectionLabel: '기본',
   triggerSectionLabel: '트리거',
   actionsSectionLabel: '액션',
+  conditionSectionLabel: '조건',
   actorSectionLabel: '실행 주체',
   actorHint: '선택하지 않으면 룰을 만든 사용자로 자동 지정됩니다.',
   saveButton: '저장',
@@ -73,6 +82,7 @@ const AUTOMATION_ERROR_MESSAGES: Record<string, string> = {
   AUTOMATION_RULE_NOT_FOUND: '자동화 룰을 찾을 수 없습니다.',
   AUTOMATION_UNAUTHENTICATED: '세션이 만료되었습니다. 다시 로그인해주세요.',
   AUTOMATION_INTERNAL_ERROR: '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
+  INVALID_CONDITION_EXPRESSION: '조건 표현식이 올바르지 않습니다. 필드/연산자/값을 확인해주세요.',
 }
 
 const DEFAULT_ERROR_MESSAGE = '저장에 실패했습니다. 다시 시도해주세요.'
@@ -172,6 +182,79 @@ function parseActionsFormState(rule: AutomationRule | null | undefined): ActionF
  */
 function serializeActionsFormState(actions: ActionFormState[]): ActionRequestInput[] {
   return actions.map((action) => ({ type: action.type, config: serializeActionConfig(action.type, action.config) }))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// condition 배선 헬퍼 — 수정 모드 초기값 로드(parseConditionExpression은 automation-rules.types에서
+// 바로 가져다 쓴다)/제출 조건부 전송(G1) 전용. actions(S5, 항상 전체 교체 전송)와 달리 condition은
+// "값이 있을 때만" 보내는 조건부 전송이라 별도 헬퍼로 분리한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 빈 조건 표현식의 정규형 문자열 — {@link serializeConditionExpression}이 빈 트리에 대해 반환하는 값과 동일. */
+const EMPTY_CONDITION_EXPRESSION = '{"and":[]}'
+
+/**
+ * 조건 트리를 저장 payload(`{condition?: string}`)로 변환한다(G1 — actorPayload 선례 동형이되
+ * "값이 있을 때만" 전송하는 actor와 달리 조건은 "지웠는지"까지 구분해야 한다).
+ *
+ * - 트리가 비어있지 않으면(직렬화 결과가 {@link EMPTY_CONDITION_EXPRESSION}이 아니면) 생성/수정
+ *   공통으로 항상 `{condition: 직렬화값}`을 반환한다(set).
+ * - 트리가 비어있고, 편집 대상 룰에 기존 condition이 있었다면(`null`이 아니었다면) 명시적으로
+ *   `{condition: '{"and":[]}'}`(항상 참 정규형)를 보내 실제로 지운다(S5/[D1], clear).
+ * - 트리가 비어있고(생성 모드이거나) 기존 condition이 이미 `null`이었다면 필드 자체를 생략한다 —
+ *   PATCH 미지정은 "무변경" 컨벤션이므로(FR9), 굳이 보내 null↔"{"and":[]}"" 사이를 뒤집는 부작용을
+ *   막는다(EC11).
+ */
+function resolveConditionPayload(
+  conditionTree: ConditionNode,
+  editingRule: AutomationRule | null | undefined,
+): { condition?: string } {
+  const serialized = serializeConditionExpression(conditionTree)
+  if (serialized !== EMPTY_CONDITION_EXPRESSION) return { condition: serialized }
+  if (hasEditingRule(editingRule) && editingRule.condition !== null) return { condition: EMPTY_CONDITION_EXPRESSION }
+  return {}
+}
+
+/** create/update 두 body가 공통으로 담는 필드 — 이름·트리거타입(create 전용)·version(update 전용)은 제외. */
+interface SharedSavePayload {
+  triggerConfig: string
+  actions: ActionRequestInput[]
+  actorUserId?: string
+  condition?: string
+}
+
+/**
+ * onValid에서 create/update 두 분기가 공통으로 조립하는 필드(트리거설정·액션·실행주체·조건)를
+ * 계산한다. 이름·트리거타입(create 전용)·version(update 전용)처럼 body 형태가 갈리는 필드는
+ * 호출부(onValid)에서 각각 조립한다 — 이 계산까지 onValid가 도맡으면 함수가 §1 30줄 상한을
+ * 넘기므로 분리한다.
+ */
+function buildSharedSavePayload(
+  effectiveTriggerType: TriggerType,
+  cron: string,
+  fields: string[],
+  actions: ActionFormState[],
+  conditionTree: ConditionNode,
+  actorUserId: string | null,
+  editingRule: AutomationRule | null | undefined,
+): SharedSavePayload {
+  // 편집 모드는 editingRule.triggerConfig를 병합 시작점으로 넘겨 백엔드 미지 키를 보존한다
+  // (코드리뷰 SUGGESTION 2 — 트리거 타입은 편집 모드에서 잠겨 있어 키 집합이 일관된다).
+  const baseConfigJson = hasEditingRule(editingRule) ? editingRule.triggerConfig : undefined
+  const triggerConfig = serializeTriggerConfig(effectiveTriggerType, { cron, fields }, baseConfigJson)
+  // actorUserId는 사용자가 명시 선택했을 때만(null이 아닐 때만) body에 포함한다 — 생성 모드
+  // 기본값은 미설정(백엔드 생성자 폴백), PATCH 미지정은 기존 값 유지 컨벤션이다(FR8).
+  const actorPayload = actorUserId !== null ? { actorUserId } : {}
+  // condition은 actions(항상 전송)와 달리 조건부 전송이다 — resolveConditionPayload 참고(G1).
+  const conditionPayload = resolveConditionPayload(conditionTree, editingRule)
+  return {
+    triggerConfig,
+    // actions는 항상 현재 폼 상태(빈 배열 포함)를 그대로 전송한다 — backend PATCH는 지정 시
+    // 전체 교체 컨벤션이라 "변경 여부"를 별도 추적할 필요가 없다(EC5, 스펙 §Plan Task 6).
+    actions: serializeActionsFormState(actions),
+    ...actorPayload,
+    ...conditionPayload,
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -322,6 +405,9 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
   const [fields, setFields] = useState<string[]>(initialConfig.fields)
   const [fieldDraft, setFieldDraft] = useState('')
   const [actions, setActions] = useState<ActionFormState[]>(() => parseActionsFormState(editingRule))
+  const [conditionTree, setConditionTree] = useState<ConditionNode>(() =>
+    parseConditionExpression(editingRule?.condition ?? null),
+  )
   const [actorUserId, setActorUserId] = useState<string | null>(editingRule?.actorUserId ?? null)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
@@ -367,36 +453,27 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
 
   async function onValid(values: FormValues): Promise<void> {
     setSubmitError(null)
-    // 편집 모드는 editingRule.triggerConfig를 병합 시작점으로 넘겨 백엔드 미지 키를 보존한다
-    // (코드리뷰 SUGGESTION 2 — 트리거 타입은 편집 모드에서 잠겨 있어 키 집합이 일관된다).
-    const baseConfigJson = hasEditingRule(editingRule) ? editingRule.triggerConfig : undefined
-    const triggerConfig = serializeTriggerConfig(effectiveTriggerType, { cron: values.cron, fields }, baseConfigJson)
-    // actions는 항상 현재 폼 상태(빈 배열 포함)를 그대로 전송한다 — backend PATCH는 지정 시
-    // 전체 교체 컨벤션이라 "변경 여부"를 별도 추적할 필요가 없다(EC5, 스펙 §Plan Task 6).
-    const serializedActions = serializeActionsFormState(actions)
-    // actorUserId는 사용자가 명시 선택했을 때만(null이 아닐 때만) body에 포함한다 — 생성 모드
-    // 기본값은 미설정(백엔드 생성자 폴백), PATCH 미지정은 기존 값 유지 컨벤션이다(FR8).
-    const actorPayload = actorUserId !== null ? { actorUserId } : {}
+    const sharedPayload = buildSharedSavePayload(
+      effectiveTriggerType,
+      values.cron,
+      fields,
+      actions,
+      conditionTree,
+      actorUserId,
+      editingRule,
+    )
 
     try {
       if (hasEditingRule(editingRule)) {
         await updateRule.mutateAsync({
           id: editingRule.id,
-          body: {
-            version: editingRule.version,
-            name: values.name,
-            triggerConfig,
-            actions: serializedActions,
-            ...actorPayload,
-          },
+          body: { version: editingRule.version, name: values.name, ...sharedPayload },
         })
       } else {
         const response = await createRule.mutateAsync({
           name: values.name,
           triggerType: values.triggerType,
-          triggerConfig,
-          actions: serializedActions,
-          ...actorPayload,
+          ...sharedPayload,
         })
         if (response.webhookToken !== null) {
           onWebhookToken?.(response.webhookToken)
@@ -477,6 +554,13 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
         <ActionListEditor projectKey={projectKey} value={actions} onChange={setActions} />
       </section>
 
+      {/* 조건 — 트리거가 발화해도 액션 실행 전 추가로 평가하는 필드 비교 조건(그룹/부정 포함),
+          빈 트리는 항상 참(FR-AT-03). 저장 시 조건부 전송은 resolveConditionPayload(G1) 참고. */}
+      <section className="mb-6">
+        <h3 className={SECTION_HEADING_CLASS}>{labels.conditionSectionLabel}</h3>
+        <ConditionBuilder projectKey={projectKey} value={conditionTree} onChange={setConditionTree} />
+      </section>
+
       {/* 실행 주체 — 생성 기본값은 미설정(백엔드 생성자 폴백), 수정은 저장된 값 로드(FR8) */}
       <section className="mb-6">
         <h3 className={SECTION_HEADING_CLASS}>{labels.actorSectionLabel}</h3>
@@ -523,21 +607,26 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
 /**
  * 자동화 룰 생성/수정 겸용 Dialog.
  *
- * - `editingRule`이 있으면 수정 모드(이름·트리거설정·액션·실행주체 PATCH, 트리거 타입은 잠금).
- *   없으면 생성 모드(이름+트리거타입+트리거설정+액션+실행주체 POST).
- * - 폼은 기본(이름)·트리거(+설정)·액션·실행 주체 4개 섹션으로 그룹핑되어 각 섹션 헤더로
+ * - `editingRule`이 있으면 수정 모드(이름·트리거설정·액션·조건·실행주체 PATCH, 트리거 타입은 잠금).
+ *   없으면 생성 모드(이름+트리거타입+트리거설정+액션+조건+실행주체 POST).
+ * - 폼은 기본(이름)·트리거(+설정)·액션·조건·실행 주체 5개 섹션으로 그룹핑되어 각 섹션 헤더로
  *   시각 계층을 확립한다(design-review#1).
  * - 트리거별 조건부 필드는 {@link TriggerConfigFields}로 분리 —
  *   SCHEDULED(cron 필수 사전검증)·ISSUE_UPDATED(fields 태그, 비면 전체 필드)·나머지(없음).
  * - 액션 리스트는 {@link ActionListEditor}(추가/삭제/순서변경)에 위임하고, 편집 초기값은
  *   {@link parseActionsFormState}(응답 config=객체)로, 제출은 {@link serializeActionsFormState}
  *   (config=JSON 문자열)로 변환한다 — 응답/요청 config 형태가 다른 비대칭(EC1)을 명확히 분리한다.
+ * - 조건(condition)은 {@link ConditionBuilder}에 위임한다. 편집 초기값은 {@link parseConditionExpression}
+ *   으로 로드하고, 제출은 {@link resolveConditionPayload}로 조건부 전송한다(FR-AT-03 D6/D7 Task 5,
+ *   G1) — actions와 달리 "값이 있을 때만/지웠을 때만" 보내는 조건부 전송이라 항상 보내는 actions와
+ *   구분된다. 빈 트리(항상 참)이고 편집 대상에 기존 condition도 없으면 필드 자체를 생략해 PATCH
+ *   "무변경" 컨벤션을 지킨다(EC11).
  * - 실행 주체(actor)는 {@link ProjectMemberSelect}로 선택한다. 생성 모드 기본값은 미설정(null)
  *   이며, 사용자가 명시 선택했을 때만 `actorUserId`를 body에 포함한다(생성자가 프로젝트 멤버
  *   목록에 없을 수 있는 시스템 관리자 케이스를 회피, FR8).
  * - `open`/`editingRule.id` 조합을 key로 사용해 {@link FormBody}를 재마운트한다 —
- *   Dialog가 열린 채로 편집 대상이 바뀌어도 이전 입력(액션·실행주체 포함)이 잔존하지 않는다
- *   (react-usestate-stale-key-prop 교훈, EC6).
+ *   Dialog가 열린 채로 편집 대상이 바뀌어도 이전 입력(액션·조건·실행주체 포함)이 잔존하지 않는다
+ *   (react-usestate-stale-key-prop 교훈, EC6/EC9).
  * - WEBHOOK 트리거 생성 성공 시 응답의 webhookToken 원문을 `onWebhookToken`으로 1회 전달한다.
  */
 export const AutomationRuleFormDialog = ({
