@@ -3,6 +3,7 @@
   <ManuallySuppressedIssues></ManuallySuppressedIssues>
   <CurrentIssues>
     <ID>LargeClass:IssueRepositoryTest.kt$IssueRepositoryTest : IssueTestcontainersBase</ID>
+    <ID>LongMethod:IssueCompletionOptionsAdapterTest.kt$IssueCompletionOptionsAdapterTest$@BeforeAll fun setUpAll()</ID>
     <ID>LargeClass:IssueTest.kt$IssueTest</ID>
     <ID>LongParameterList:IssueEpicControllerIntegrationTest.kt$IssueEpicControllerIntegrationTest.TestConfig$( permissionResolver: IssuePermissionResolver, securityDirectory: IssueSecurityDirectory, issueRepository: IssueRepository, issueTypeRepository: IssueTypeRepository, issueHistoryRecorder: IssueHistoryRecorder, workflowStateCatalog: WorkflowStateCatalog, )</ID>
     <ID>LongParameterList:IssueEpicServiceProgressTest.kt$IssueEpicServiceProgressTest$( id: UUID, key: IssueKey, typeId: IssueTypeId = storyTypeId, projectId: UUID = defaultProjectId, epicId: UUID? = null, currentStateKey: String = "open", )</ID>

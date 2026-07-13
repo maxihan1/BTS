@@ -4,6 +4,8 @@ package com.bts.notification.worker
 
 import com.bts.notification.application.NotificationPolicyEvaluator
 import com.bts.notification.channel.NotificationChannelSender
+import com.bts.notification.channel.NotificationTitleBuilder
+import com.bts.notification.channel.SlackChannelBroadcaster
 import com.bts.notification.domain.Channel
 import com.bts.notification.domain.Notification
 import com.bts.notification.domain.NotificationEventType
@@ -18,6 +20,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
+import org.springframework.dao.DataAccessException
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.Instant
@@ -61,6 +64,8 @@ import java.util.UUID
  * @param userSubscriptionRepository 사용자 구독 opt-out 조회 repository
  * @param channelSenders 채널 sender 목록 (Spring 자동 주입)
  * @param objectMapper JSON 파싱용 Jackson ObjectMapper
+ * @param titleBuilder 이벤트 유형별 알림 제목 생성기 ([SlackChannelBroadcaster] 와 공유, FR-SL-06 PR-B)
+ * @param slackChannelBroadcaster projectKey 있는 이벤트를 Slack 채널 브로드캐스트 큐로 발행하는 컴포넌트
  */
 @Suppress("TooManyFunctions", "LongParameterList")
 @Component
@@ -72,6 +77,8 @@ class NotificationWorker(
     private val userSubscriptionRepository: UserSubscriptionRepository,
     private val channelSenders: List<NotificationChannelSender>,
     private val objectMapper: ObjectMapper,
+    private val titleBuilder: NotificationTitleBuilder,
+    private val slackChannelBroadcaster: SlackChannelBroadcaster,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -158,7 +165,11 @@ class NotificationWorker(
     }
 
     /**
-     * 정책 평가 → 수신자 해석 → 구독 필터 → 알림 생성·발송을 순서대로 수행한다.
+     * 슬랙 채널 브로드캐스트 → 정책 평가 → 수신자 해석 → 구독 필터 → 알림 생성·발송을 순서대로 수행한다.
+     *
+     * ## 슬랙 채널 브로드캐스트 (FR-SL-06 PR-B)
+     * [broadcastToSlackChannel] 을 정책 평가보다 먼저 호출한다 — 프로젝트 활동 피드 브로드캐스트는
+     * 개인 알림 정책·수신자 해석과 독립적이라, 정책 매치가 0건(수신자 0명)이어도 이벤트당 1회 발행되어야 한다.
      *
      * ## 구독 필터 (AND 결합 하위 게이트)
      * 관리자 정책(PolicyEvaluator) 통과분 중 사용자가 opt-out 한 수신자를 추가로 제거한다.
@@ -167,6 +178,8 @@ class NotificationWorker(
      * @param event pgmq 역직렬화된 이벤트 표현
      */
     private fun dispatch(event: NotificationSourceEvent) {
+        broadcastToSlackChannel(event)
+
         val matches = policyEvaluator.evaluate(event.eventType, event.projectKey)
         if (matches.isEmpty()) {
             log.debug("notification_worker_no_policy eventType={} projectKey={}", event.eventType, event.projectKey)
@@ -177,6 +190,31 @@ class NotificationWorker(
         val filtered = filterBySubscription(event.eventType, recipients)
         for (recipient in filtered) {
             sendToRecipient(event, recipient)
+        }
+    }
+
+    /**
+     * [event] 를 [SlackChannelBroadcaster] 로 발행한다 (FR-SL-06 PR-B).
+     *
+     * ## best-effort 격리
+     * DB 접근 실패([DataAccessException])만 흡수해 로그를 남기고 나머지 dispatch(정책 평가~발송)를
+     * 계속 진행한다. 권한/도메인 예외 등 그 외 예외는 흡수하지 않고 그대로 전파해 [processMessage] 의
+     * 표준 재전달·dead-letter 경로를 타게 한다 (catch-all 이 실제 결함을 가리는 사고 방지, learnings:
+     * best-effort-loop-permission-exception-nonprod-mask 동형).
+     *
+     * @param event pgmq 역직렬화된 이벤트 표현
+     */
+    private fun broadcastToSlackChannel(event: NotificationSourceEvent) {
+        try {
+            slackChannelBroadcaster.broadcastIfApplicable(event)
+        } catch (e: DataAccessException) {
+            log.warn(
+                "notification_worker_slack_broadcast_failed eventType={} projectKey={} error={}",
+                event.eventType,
+                event.projectKey,
+                e.message,
+                e,
+            )
         }
     }
 
@@ -345,27 +383,14 @@ class NotificationWorker(
     /**
      * 이벤트 유형과 이슈 키를 기반으로 알림 제목·본문을 생성한다.
      *
-     * actor 이름 조회 없이 간단 문자열로 구성 (FR10 설계 제약).
+     * 제목 생성은 [NotificationTitleBuilder] 에 위임한다 ([SlackChannelBroadcaster] 와 공유, FR-SL-06 PR-B).
+     * 본문은 actor 이름 조회 없이 항상 null (FR10 설계 제약).
      *
      * @param event 원본 이벤트
      * @return Pair(title, body)
      */
     private fun buildTitleBody(event: NotificationSourceEvent): Pair<String, String?> {
-        val issueRef = event.issueKey ?: ""
-        val title =
-            when (event.eventType) {
-                NotificationEventType.ISSUE_MENTIONED -> "$issueRef 에서 멘션되었습니다"
-                NotificationEventType.ISSUE_CREATED -> "$issueRef 이슈가 생성되었습니다"
-                NotificationEventType.ISSUE_TRANSITIONED -> "$issueRef 상태가 변경되었습니다"
-                NotificationEventType.ISSUE_ASSIGNED -> "$issueRef 이슈가 할당되었습니다"
-                NotificationEventType.ISSUE_COMMENTED -> "$issueRef 에 댓글이 작성되었습니다"
-                NotificationEventType.ISSUE_DUE_SOON -> "$issueRef 마감이 임박했습니다"
-                NotificationEventType.ISSUE_OVERDUE -> "$issueRef 마감이 초과되었습니다"
-                NotificationEventType.SPRINT_STARTED -> "스프린트가 시작되었습니다"
-                NotificationEventType.SPRINT_ENDED -> "스프린트가 종료되었습니다"
-                NotificationEventType.AUTOMATION_FAILED -> "자동화 룰 실행에 실패했습니다"
-            }
-        return title to null
+        return titleBuilder.buildTitle(event) to null
     }
 
     /**

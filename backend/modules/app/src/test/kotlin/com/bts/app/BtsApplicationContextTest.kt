@@ -56,6 +56,32 @@ class BtsApplicationContextTest {
         ).isTrue()
     }
 
+    @Test
+    fun `IssueSecurityClassificationPort prod 어댑터가 조립 컨텍스트에 결선된다(fail-closed 회귀 가드, FR-SL-06)`() {
+        // slack SlackChannelBroadcastWorker 는 IssueSecurityClassificationPort 를 non-null 로 요구한다.
+        // issue-tracking 의 IssueSecurityClassificationAdapter(@Profile("prod"))가 빠지면 이 빈이 사라져
+        // 워커 주입이 NoSuchBeanDefinitionException 으로 컨텍스트 부팅 자체를 막아야 한다(silent no-op 금지,
+        // slack-integration 의 non-prod 스텁 AlwaysUnrestrictedIssueSecurityClassification 은
+        // @Profile("!prod") 라 이 prod 조립 컨텍스트에는 등록되지 않는다).
+        assertThat(
+            context.containsBean("com.bts.issue.adapter.IssueSecurityClassificationAdapter"),
+        ).isTrue()
+    }
+
+    @Test
+    fun `SlackChannelBroadcastWorker 가 조립 컨텍스트에 결선된다(FR-SL-06 PR-B)`() {
+        // 채널 브로드캐스트 큐(q_slack_channel_broadcasts) 폴링 워커. slack-integration 이 build 의존 +
+        // 스캔에 포함돼야만 이 빈이 존재한다.
+        assertThat(context.containsBean("com.bts.slack.worker.SlackChannelBroadcastWorker")).isTrue()
+    }
+
+    @Test
+    fun `SlackChannelBroadcaster 가 조립 컨텍스트에 결선된다(FR-SL-06 PR-B)`() {
+        // notification 이 프로젝트 활동 이벤트를 q_slack_channel_broadcasts 로 발행하는 컴포넌트.
+        // notification 이 build 의존 + 스캔에 포함돼야만 이 빈이 존재한다.
+        assertThat(context.containsBean("com.bts.notification.channel.SlackChannelBroadcaster")).isTrue()
+    }
+
     companion object {
         @JvmStatic
         @DynamicPropertySource

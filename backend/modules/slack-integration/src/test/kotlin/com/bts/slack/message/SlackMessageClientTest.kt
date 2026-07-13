@@ -187,4 +187,77 @@ class SlackMessageClientTest {
         val reason = (result as SlackSendResult.RetryableFailure).reason
         assertThat(reason).doesNotContain("xoxb-secret-token")
     }
+
+    @Test
+    fun `postChannelMessage 는 chatPostMessage 를 channelId·token·blocks 로 호출하고 ok 응답이면 Sent 반환한다`() {
+        val slot = slot<RequestConfigurator<ChatPostMessageRequest.ChatPostMessageRequestBuilder>>()
+        every { methods.chatPostMessage(capture(slot)) } returns
+            ChatPostMessageResponse().apply { isOk = true }
+
+        val result = client.postChannelMessage("xoxb-token", "C123456", message)
+
+        assertThat(result).isInstanceOf(SlackSendResult.Sent::class.java)
+        val built = ChatPostMessageRequest.builder().also { slot.captured.configure(it) }.build()
+        assertThat(built.token).isEqualTo("xoxb-token")
+        assertThat(built.channel).isEqualTo("C123456")
+        assertThat(built.blocksAsString).isEqualTo("[]")
+        assertThat(built.text).isEqualTo("PROJ-123 멘션")
+    }
+
+    @Test
+    fun `postChannelMessage ok false + rate_limited 는 RetryableFailure`() {
+        stubResponse(
+            ChatPostMessageResponse().apply {
+                isOk = false
+                error = "rate_limited"
+            },
+        )
+
+        val result = client.postChannelMessage("t", "C1", message)
+
+        assertThat(result).isInstanceOf(SlackSendResult.RetryableFailure::class.java)
+    }
+
+    @Test
+    fun `postChannelMessage SlackApiException(429·5xx HTTP) 은 RetryableFailure 이며 botToken 이 노출되지 않는다`() {
+        every {
+            methods.chatPostMessage(any<RequestConfigurator<ChatPostMessageRequest.ChatPostMessageRequestBuilder>>())
+        } throws mockk<SlackApiException>(relaxed = true)
+
+        val result = client.postChannelMessage("xoxb-secret-token", "C1", message)
+
+        assertThat(result).isInstanceOf(SlackSendResult.RetryableFailure::class.java)
+        val reason = (result as SlackSendResult.RetryableFailure).reason
+        assertThat(reason).doesNotContain("xoxb-secret-token")
+    }
+
+    @Test
+    fun `postChannelMessage ok false + channel_not_found 는 PermanentFailure`() {
+        stubResponse(
+            ChatPostMessageResponse().apply {
+                isOk = false
+                error = "channel_not_found"
+            },
+        )
+
+        val result = client.postChannelMessage("t", "C1", message)
+
+        assertThat(result).isInstanceOf(SlackSendResult.PermanentFailure::class.java)
+    }
+
+    @Test
+    fun `postChannelMessage ok false + not_in_channel 은 PermanentFailure 이며 botToken 이 노출되지 않는다`() {
+        stubResponse(
+            ChatPostMessageResponse().apply {
+                isOk = false
+                error = "not_in_channel"
+            },
+        )
+
+        val result = client.postChannelMessage("xoxb-secret-token", "C1", message)
+
+        assertThat(result).isInstanceOf(SlackSendResult.PermanentFailure::class.java)
+        val reason = (result as SlackSendResult.PermanentFailure).reason
+        assertThat(reason).doesNotContain("xoxb-secret-token")
+    }
 }

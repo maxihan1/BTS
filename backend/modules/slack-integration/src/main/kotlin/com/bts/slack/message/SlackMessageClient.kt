@@ -65,11 +65,41 @@ class SlackMessageClient(
         botToken: String,
         slackUserId: String,
         message: RenderedSlackMessage,
+    ): SlackSendResult = postMessage(botToken, slackUserId, message)
+
+    /**
+     * [channelId] 채널에 [message]를 게시한다.
+     *
+     * @param botToken 워크스페이스 봇 토큰(요청에만 사용, 미노출).
+     * @param channelId 게시 대상 채널 id(`C…`) — chat.postMessage의 channel.
+     * @param message 렌더된 폴백 text + Block Kit blocks.
+     * @return 전송 결과 분류.
+     */
+    fun postChannelMessage(
+        botToken: String,
+        channelId: String,
+        message: RenderedSlackMessage,
+    ): SlackSendResult = postMessage(botToken, channelId, message)
+
+    /**
+     * `chat.postMessage`를 [channel]로 호출하는 공통 골격([postDirectMessage]/[postChannelMessage] 공유).
+     *
+     * DM은 [channel]에 Slack 사용자 id(`U…`)를, 채널 게시는 채널 id(`C…`)를 싣는다.
+     *
+     * @param botToken 워크스페이스 봇 토큰(요청에만 사용, 미노출).
+     * @param channel chat.postMessage의 channel(사용자 id 또는 채널 id).
+     * @param message 렌더된 폴백 text + Block Kit blocks.
+     * @return 전송 결과 분류.
+     */
+    private fun postMessage(
+        botToken: String,
+        channel: String,
+        message: RenderedSlackMessage,
     ): SlackSendResult {
-        return callSlack("slack_post_message", slackUserId) {
+        return callSlack("slack_post_message", channel) {
             methods.chatPostMessage { req ->
                 req.token(botToken)
-                    .channel(slackUserId)
+                    .channel(channel)
                     .text(message.text)
                     .blocksAsString(message.blocks)
             }
