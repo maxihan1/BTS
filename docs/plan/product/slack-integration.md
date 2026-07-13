@@ -53,8 +53,8 @@
 - [x] D1. 도메인 — ChannelProjectMapping (책임. backend-engineer) *[PR #264 PR-A. 불변 VO + `SlackChannelEventType` wire 미러(notification enum import 0)]*
 - [x] D2. 명세 — 다대다 + 이벤트 종류별 필터 (책임. backend-engineer) *[PR #264 PR-A. 스펙 D1~D5 + PR-A/PR-B 분할·보안등급 이슈 제외(PR-B)]*
 - [x] D3. 데이터 모델 — `slack_channel_project_map(channel_id, project_id, event_filter)` (책임. db-engineer) *[PR #264 PR-A. V704. deviation. `project_id`→`project_key`(라우팅 시점 cross-BC 조회 회피), event_filter=`event_types text[]`. JdbcTemplate(init_codegen 없음)]*
-- [ ] D4. 백엔드 — CRUD + 알림 라우팅에서 매핑 조회 (책임. backend-engineer) *[PR #264 PR-A: CRUD(`/api/v1/slack/channel-mappings`)+PROJECT_ADMIN 게이트 완료. 라우팅 매핑 조회=PR-B]*
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer) *[PR #264 PR-A: CRUD 단위/통합 완료. 라우팅 테스트=PR-B]*
+- [x] D4. 백엔드 — CRUD + 알림 라우팅에서 매핑 조회 (책임. backend-engineer) *[PR #264 PR-A: CRUD(`/api/v1/slack/channel-mappings`)+PROJECT_ADMIN 게이트. PR #266 PR-B: notification `SlackChannelBroadcaster`(dispatch 정책 early-return 이전 emit·best-effort)→`q_slack_channel_broadcasts`(V705)→slack `SlackChannelBroadcastWorker`(매핑조회·event_filter·보안게이트·per-channel dedup·chat.postMessage·pgmq 생명주기)·보안게이트 `IssueSecurityClassificationPort`(shared-kernel·issue-tracking @Profile prod·fail-closed)]*
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) *[PR #264 PR-A: CRUD 단위/통합. PR #266 PR-B: `SlackChannelBroadcastWorkerTest`(8시나리오 Testcontainers pgmq)·`SlackChannelBroadcasterTest`·`IssueSecurityClassificationAdapterTest`·`JdbcSlackChannelBroadcastDedupRepositoryTest`·prod 조립 부팅(`BtsApplicationContextTest`)]*
 - [ ] D6. 프론트 UI — 프로젝트 설정 → Slack 채널 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
