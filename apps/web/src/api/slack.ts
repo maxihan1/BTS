@@ -167,6 +167,18 @@ export async function disconnectSlack(): Promise<SlackConnection> {
 }
 
 /**
+ * 채널 매핑 mutation 응답이 비-2xx이면 ApiError를 throw한다.
+ * updateChannelMapping/deleteChannelMapping이 공유하는 에러 표면화 로직을 한 곳에 모은다
+ * (automation-rules.ts throwIfNotOk 동형 패턴).
+ */
+async function throwIfChannelMappingError(res: Response): Promise<void> {
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+}
+
+/**
  * 프로젝트에 속한 Slack 채널↔프로젝트 매핑 목록을 조회한다 (FR-SL-06 D6).
  *
  * `GET /api/v1/slack/channel-mappings?projectKey=` → 200 {@link ChannelMappingSchema}[].
@@ -221,10 +233,7 @@ export async function updateChannelMapping(
   input: UpdateChannelMappingInput,
 ): Promise<ChannelMapping> {
   const res = await apiFetch(`/api/v1/slack/channel-mappings/${id}`, { method: 'PATCH', body: input })
-  if (!res.ok) {
-    const errorBody: unknown = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, errorBody)
-  }
+  await throwIfChannelMappingError(res)
   return ChannelMappingSchema.parse(await res.json())
 }
 
@@ -239,8 +248,5 @@ export async function updateChannelMapping(
  */
 export async function deleteChannelMapping(id: string): Promise<void> {
   const res = await apiFetch(`/api/v1/slack/channel-mappings/${id}`, { method: 'DELETE' })
-  if (!res.ok) {
-    const errorBody: unknown = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, errorBody)
-  }
+  await throwIfChannelMappingError(res)
 }
