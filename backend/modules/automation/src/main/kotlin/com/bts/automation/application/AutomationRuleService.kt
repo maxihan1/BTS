@@ -99,6 +99,14 @@ import java.util.UUID
  * [AutomationRuleRepository] 의 find 계열이 [AutomationRule.condition] 을 로드하지 않으므로
  * [conditionRepository.findByRuleId] 로 별도 로드해 채운다(actions 와 동일 설계, [hydrate] 참고).
  *
+ * ## 규칙 충돌 lint 통합 (FR-AT-04 Task 5)
+ * [create]/[patch] 는 저장이 끝난 뒤 [projectKey] 전체 규칙을 재조회·hydrate 해 [conflictAnalyzer] 로
+ * 정적 분석하고, 검출된 [RuleConflict] 목록을 응답 DTO 에 실어 보낸다([analyzeConflicts] 참고). [get]/
+ * [list] 는 이 분석을 호출하지 않는다 — GET 은 저장 이벤트가 아니라 매 호출마다 프로젝트 전체 규칙을
+ * 재분석하는 비용을 들일 이유가 없다(스펙 FR-AT-04 "저장 시점에만 리포트"). 웹 응답 DTO 레이어
+ * ([com.bts.automation.adapter.web.dto.AutomationRuleResponse])가 `conflicts` 를 `null`(GET)과
+ * 리스트(create/patch)로 구분해 노출한다.
+ *
  * @param repository [AutomationRule] 영속 어댑터.
  * @param actionRepository [AutomationRule.actions] 별도 로드/PATCH 시 명시적 영속을 위한 어댑터.
  * @param conditionRepository [AutomationRule.condition] 별도 로드/PATCH 시 명시적 영속을 위한 어댑터
@@ -112,16 +120,9 @@ import java.util.UUID
  * @param clock 시각 계산용 [Clock]. automation 모듈에는 중앙 Clock 빈이 없으므로 [Clock.systemUTC] 를
  *   기본값으로 둔다(search-export-import `ExportService` 선례 — 컴포넌트 스캔 시
  *   `NoSuchBeanDefinitionException` 방지). 테스트는 고정 인스턴스를 주입한다.
- *
- * ## 규칙 충돌 lint 통합 (FR-AT-04 Task 5)
- * [create]/[patch] 는 저장이 끝난 뒤 [projectKey] 전체 규칙을 재조회·hydrate 해 [conflictAnalyzer] 로
- * 정적 분석하고, 검출된 [RuleConflict] 목록을 응답 DTO 에 실어 보낸다([analyzeConflicts] 참고). [get]/
- * [list] 는 이 분석을 호출하지 않는다 — GET 은 저장 이벤트가 아니라 매 호출마다 프로젝트 전체 규칙을
- * 재분석하는 비용을 들일 이유가 없다(스펙 FR-AT-04 "저장 시점에만 리포트"). 웹 응답 DTO 레이어
- * ([com.bts.automation.adapter.web.dto.AutomationRuleResponse])가 `conflicts` 를 `null`(GET)과
- * 리스트(create/patch)로 구분해 노출한다.
  */
 @Service
+@Suppress("LongParameterList") // FR-AT-04 Task 5 에서 conflictAnalyzer 추가로 7개(기존 6개 + 1) — 전부 필수 협력자 주입
 class AutomationRuleService(
     private val repository: AutomationRuleRepository,
     private val actionRepository: AutomationActionRepository,
@@ -324,7 +325,8 @@ class AutomationRuleService(
         // 같아 비수렴한다. 버전이 일치했으므로 변경 없이 200 으로 현재 룰(액션 포함)을 그대로 반환한다.
         if (updated.version == existing.version) {
             log.info("automation_rule_patch_noop id={} projectKey={}", id, projectKey)
-            return PatchedAutomationRule(existing, analyzeConflicts(projectKey, repository, conflictAnalyzer, log, ::hydrate))
+            val noopConflicts = analyzeConflicts(projectKey, repository, conflictAnalyzer, log, ::hydrate)
+            return PatchedAutomationRule(existing, noopConflicts)
         }
 
         // 다필드 단일 OCC 증가 collapse (클래스 KDoc "다필드 PATCH 단일 OCC 증가 collapse" 참조, 코드리뷰
@@ -349,7 +351,8 @@ class AutomationRuleService(
             conditionRepository.replace(id, updated.condition)
         }
         log.info("automation_rule_updated id={} projectKey={}", id, projectKey)
-        return PatchedAutomationRule(updated, analyzeConflicts(projectKey, repository, conflictAnalyzer, log, ::hydrate))
+        val conflicts = analyzeConflicts(projectKey, repository, conflictAnalyzer, log, ::hydrate)
+        return PatchedAutomationRule(updated, conflicts)
     }
 
     /**
