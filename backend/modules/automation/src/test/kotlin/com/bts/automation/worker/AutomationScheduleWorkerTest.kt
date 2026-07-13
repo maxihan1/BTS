@@ -6,6 +6,7 @@ import com.bts.automation.AutomationTestBootApplication
 import com.bts.automation.AutomationTestcontainersBase
 import com.bts.automation.StubAutomationPermissionResolver
 import com.bts.automation.StubIssueMutationPort
+import com.bts.automation.StubIssuePermissionResolver
 import com.bts.automation.StubIssueSnapshotPort
 import com.bts.automation.adapter.AutomationExecutionEnqueuer
 import com.bts.automation.adapter.AutomationRuleRepository
@@ -14,6 +15,7 @@ import com.bts.automation.domain.TriggerType
 import com.bts.shared.issue.IssueMutationPort
 import com.bts.shared.issue.IssueSnapshotPort
 import com.bts.shared.permission.AutomationPermissionResolver
+import com.bts.shared.permission.IssuePermissionResolver
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
@@ -53,6 +55,8 @@ import java.util.UUID
  * `@TestConfiguration` 에서 [StubAutomationPermissionResolver] 를 등록한다(consumer-owns-stub, 파일
  * 범위 제약상 [AutomationTestcontainersBase] 는 수정 불가 — Task 8 파일 범위 밖).이 워커 테스트 자체는
  * 권한 판정 경로를 타지 않으므로(레포지토리/enqueuer 직접 호출) 스텁의 allow/deny 상태는 무관하다.
+ * `RuleConflictAnalyzer`(FR-AT-04 Task 4)가 non-null 로 요구하는 [IssuePermissionResolver] 도 동일
+ * 사유로 [StubIssuePermissionResolver] 를 대신 등록한다.
  */
 @SpringBootTest(
     classes = [AutomationTestBootApplication::class],
@@ -223,5 +227,8 @@ class AutomationScheduleWorkerTest {
 
         @Bean
         fun issueSnapshotPort(): IssueSnapshotPort = StubIssueSnapshotPort()
+
+        @Bean
+        fun issuePermissionResolver(): IssuePermissionResolver = StubIssuePermissionResolver()
     }
 }

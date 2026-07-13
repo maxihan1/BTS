@@ -6,6 +6,7 @@ import com.bts.automation.AutomationTestBootApplication
 import com.bts.automation.AutomationTestcontainersBase
 import com.bts.automation.StubAutomationPermissionResolver
 import com.bts.automation.StubIssueMutationPort
+import com.bts.automation.StubIssuePermissionResolver
 import com.bts.automation.StubIssueSnapshotPort
 import com.bts.automation.adapter.AutomationRuleRepository
 import com.bts.automation.domain.AutomationRule
@@ -14,6 +15,7 @@ import com.bts.automation.domain.TriggerType
 import com.bts.shared.issue.IssueMutationPort
 import com.bts.shared.issue.IssueSnapshotPort
 import com.bts.shared.permission.AutomationPermissionResolver
+import com.bts.shared.permission.IssuePermissionResolver
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
@@ -45,6 +47,8 @@ import java.util.UUID
  * 테스트는 권한 판정을 쓰지 않지만 컨텍스트 로드를 위해 [StubAutomationPermissionResolver] 를 등록한다
  * (Task 6 `AutomationRuleControllerTest` 와 동일 stub 재사용, 이 파일의 nested `@TestConfiguration`
  * 범위 내에서만 등록 — 파일 범위 제약상 [AutomationTestcontainersBase] 는 수정하지 않는다).
+ * `RuleConflictAnalyzer`(FR-AT-04 Task 4)가 non-null 로 요구하는 [IssuePermissionResolver] 도 동일
+ * 사유로 [StubIssuePermissionResolver] 를 대신 등록한다.
  *
  * ## 검증 시나리오
  * - ISSUE_CREATED/ISSUE_COMMENTED 이벤트가 매칭 룰을 발화시켜 q_automation_execution 도달
@@ -81,6 +85,9 @@ class AutomationEventWorkerTest {
 
         @Bean
         fun issueSnapshotPort(): IssueSnapshotPort = StubIssueSnapshotPort()
+
+        @Bean
+        fun issuePermissionResolver(): IssuePermissionResolver = StubIssuePermissionResolver()
     }
 
     @Autowired

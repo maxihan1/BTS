@@ -57,6 +57,15 @@ import java.util.UUID
  *
  * 트랜잭션 경계는 이 컨트롤러가 아니라 [AutomationRuleService] 가 담당한다(learning #91).
  *
+ * ## 규칙 충돌 lint 는 저장 트랜잭션 커밋 후 이 컨트롤러가 별도로 호출한다 (FR-AT-04 코드리뷰 BLOCKER 수정)
+ * [create]/[patch] 는 [AutomationRuleService.create]/[AutomationRuleService.patch]([@Transactional])가
+ * 정상 반환(=커밋 완료)한 **뒤에** [AutomationRuleService.analyzeProjectConflicts](`@Transactional` 아님)
+ * 를 별도로 호출해 응답에 실을 규칙 충돌 목록을 얻는다. 두 호출 모두 이 컨트롤러가 주입받은
+ * [service] 빈을 통하므로 Spring 프록시를 정상적으로 거친다 — 같은 클래스 내부 self-invocation
+ * ([[transaction-self-invocation-requires-new]])이 아니다. 왜 이렇게 분리했는지는
+ * [AutomationRuleService] 클래스 KDoc §규칙 충돌 lint 통합 참고(참여 트랜잭션 read 예외가 저장을
+ * 오염시키던 BLOCKER 수정).
+ *
  * @param service 자동화 룰 CRUD 유스케이스 서비스.
  */
 @RestController
@@ -71,7 +80,8 @@ class AutomationRuleController(
      *
      * @param projectKey 룰이 속할 프로젝트 키(경로 변수).
      * @param request 생성 요청 바디.
-     * @return 201 Created + 생성된 룰([CreateAutomationRuleResponse], WEBHOOK 이면 원문 토큰 1회 동봉).
+     * @return 201 Created + 생성된 룰([CreateAutomationRuleResponse], WEBHOOK 이면 원문 토큰 1회 동봉,
+     *   `conflicts` 는 저장 커밋 후 별도 호출한 [AutomationRuleService.analyzeProjectConflicts] 결과).
      */
     @PostMapping
     fun create(
@@ -90,8 +100,13 @@ class AutomationRuleController(
                 actions = request.actions.map(ActionRequest::toApplicationInput),
                 condition = request.condition,
             )
+        // 저장 트랜잭션이 커밋된 후 별도로 lint 를 호출한다(클래스 KDoc §규칙 충돌 lint 통합 참고,
+        // 코드리뷰 BLOCKER 수정).
+        val conflicts = service.analyzeProjectConflicts(projectKey)
         log.info("AutomationRuleController.create actor={} projectKey={} id={}", actorId, projectKey, created.rule.id)
-        return ResponseEntity.status(HttpStatus.CREATED).body(CreateAutomationRuleResponse.from(created))
+        return ResponseEntity
+            .status(HttpStatus.CREATED)
+            .body(CreateAutomationRuleResponse.from(created.copy(conflicts = conflicts)))
     }
 
     /**
@@ -132,7 +147,8 @@ class AutomationRuleController(
      * @param projectKey 룰이 속해야 하는 프로젝트 키(경로 변수).
      * @param id 수정할 룰 id(경로 변수).
      * @param request 부분 수정 요청 바디(version 필수).
-     * @return 200 OK + 변경된 룰.
+     * @return 200 OK + 변경된 룰(`conflicts` 는 저장(또는 no-op) 커밋 후 별도 호출한
+     *   [AutomationRuleService.analyzeProjectConflicts] 결과).
      */
     @PatchMapping("/{id}")
     fun patch(
@@ -154,8 +170,10 @@ class AutomationRuleController(
                 actorUserId = request.actorUserId,
                 condition = request.condition,
             )
+        // 저장(또는 no-op) 트랜잭션이 커밋된 후 별도로 lint 를 호출한다(create 와 동일 사유).
+        val conflicts = service.analyzeProjectConflicts(projectKey)
         log.info("AutomationRuleController.patch actor={} projectKey={} id={}", actorId, projectKey, id)
-        return ResponseEntity.ok(AutomationRuleResponse.from(updated))
+        return ResponseEntity.ok(AutomationRuleResponse.from(updated.copy(conflicts = conflicts)))
     }
 
     /**

@@ -6,7 +6,9 @@ import com.bts.automation.AutomationTestBootApplication
 import com.bts.automation.AutomationTestcontainersBase
 import com.bts.automation.StubAutomationPermissionResolver
 import com.bts.automation.StubIssueMutationPort
+import com.bts.automation.StubIssuePermissionResolver
 import com.bts.automation.StubIssueSnapshotPort
+import com.bts.shared.permission.IssuePermissionResolver
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
 import org.hamcrest.Matchers.nullValue
@@ -628,7 +630,9 @@ class AutomationRuleControllerTest {
      * slack `SlackTestSecurityConfig` 동형). [StubIssueMutationPort] 는 `ActionExecutor`(FR-AT-02 Task 9)가
      * non-null 로 요구하는 [com.bts.shared.issue.IssueMutationPort] 를 컨텍스트 로드용으로 대신 등록한다.
      * [StubIssueSnapshotPort] 는 `ActionExecutor`(FR-AT-03 Task 7)가 non-null 로 요구하는
-     * [com.bts.shared.issue.IssueSnapshotPort] 를 동일 사유로 대신 등록한다.
+     * [com.bts.shared.issue.IssueSnapshotPort] 를 동일 사유로 대신 등록한다. [StubIssuePermissionResolver]
+     * 는 `RuleConflictAnalyzer`(FR-AT-04 Task 4)가 non-null 로 요구하는 [IssuePermissionResolver] 를
+     * 동일 사유로 대신 등록한다.
      */
     @TestConfiguration
     class TestSupportConfig {
@@ -651,5 +655,8 @@ class AutomationRuleControllerTest {
 
         @Bean
         fun stubIssueSnapshotPort(): StubIssueSnapshotPort = StubIssueSnapshotPort()
+
+        @Bean
+        fun issuePermissionResolver(): IssuePermissionResolver = StubIssuePermissionResolver()
     }
 }

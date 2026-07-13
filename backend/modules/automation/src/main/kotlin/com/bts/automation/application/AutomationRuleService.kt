@@ -11,10 +11,12 @@ import com.bts.automation.domain.ActionType
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.Condition
 import com.bts.automation.domain.InvalidConditionExpressionException
+import com.bts.automation.domain.RuleConflict
 import com.bts.automation.domain.TriggerConfig
 import com.bts.automation.domain.TriggerType
 import com.bts.shared.permission.AutomationPermissionResolver
 import com.fasterxml.jackson.databind.ObjectMapper
+import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.scheduling.support.CronExpression
@@ -95,7 +97,29 @@ import java.util.UUID
  * cross-BC 존재 검증은 하지 않는다, 트리거/액션 선례 동형). [conditionRepository] 가 룰 저장/갱신과
  * **같은 `@Transactional` 경계 안에서** `replace` 를 호출한다(조건 replace 트랜잭션성). [get]/[list] 는
  * [AutomationRuleRepository] 의 find 계열이 [AutomationRule.condition] 을 로드하지 않으므로
- * [conditionRepository.findByRuleId] 로 별도 로드해 채운다(actions 와 동일 설계, [hydrate] 참고).
+ * [conditionRepository.findByRuleId] 로 별도 로드해 채운다(actions 와 동일 설계, [hydrateRule] 참고).
+ *
+ * ## 규칙 충돌 lint 통합 (FR-AT-04 Task 5, 저장 트랜잭션 분리 hotfix — 코드리뷰 BLOCKER 수정)
+ * [create]/[patch] 자신은 저장(및 OCC/도메인 검증)만 담당하고 `conflicts` 는 항상 빈 리스트 placeholder
+ * 를 반환한다 — 실제 규칙 충돌 분석은 [analyzeProjectConflicts] 로 완전히 분리된다.
+ * [com.bts.automation.adapter.web.AutomationRuleController] 가 [create]/[patch] 의 `@Transactional` 이
+ * **커밋된 후** 별도로 [analyzeProjectConflicts] 를 호출해 conflicts 를 채운 응답을 조립한다.
+ *
+ * 수정 전에는 [create]/[patch] 자신의 트랜잭션 경계 **안에서** lint(재조회·hydrate·analyze)를 호출했다 —
+ * [repository] 의 find 계열은 참여(REQUIRED) 전파라 같은 트랜잭션에 합류하고, 그 안에서 read 예외가 나면
+ * Spring 이 `globalRollbackOnParticipationFailure`(기본 true)로 트랜잭션을 rollback-only 로 표시한다.
+ * 이 표시는 애플리케이션 코드의 `try/catch` 로 예외를 흡수해도 지워지지 않아, 메서드가 정상 반환해
+ * 커밋을 시도하면 `UnexpectedRollbackException` 이 발생해 방금 저장한 규칙까지 롤백됐다
+ * ([[workflowstatecatalog-mandatory-rollback-poison]] 동일 패턴). [analyzeProjectConflicts] 를 저장
+ * 메서드 밖(다른 호출자가 커밋 후 별도로 호출하는 완전히 독립된 호출)으로 빼면 이 참여가 원천적으로
+ * 발생하지 않는다 — self-invocation 함정([[transaction-self-invocation-requires-new]])도 자연히
+ * 회피된다: [create]/[patch] 는 같은 클래스의 [analyzeProjectConflicts] 를 전혀 호출하지 않는다(호출자는
+ * 항상 별도 빈인 컨트롤러다).
+ *
+ * [get]/[list] 는 이 분석을 호출하지 않는다 — GET 은 저장 이벤트가 아니라 매 호출마다 프로젝트 전체
+ * 규칙을 재분석하는 비용을 들일 이유가 없다(스펙 FR-AT-04 "저장 시점에만 리포트"). 웹 응답 DTO 레이어
+ * ([com.bts.automation.adapter.web.dto.AutomationRuleResponse])가 `conflicts` 를 `null`(GET)과
+ * 리스트(create/patch)로 구분해 노출한다.
  *
  * @param repository [AutomationRule] 영속 어댑터.
  * @param actionRepository [AutomationRule.actions] 별도 로드/PATCH 시 명시적 영속을 위한 어댑터.
@@ -105,17 +129,21 @@ import java.util.UUID
  *   [[crossbc-resolver-nullable-fail-open]] 회귀 방지).
  * @param objectMapper triggerConfig JSON 에서 cron 필드를 읽기 위한 Jackson [ObjectMapper](Spring Boot
  *   기본 자동 구성 빈).
+ * @param conflictAnalyzer [analyzeProjectConflicts] 가 저장 트랜잭션 밖에서 규칙 충돌을 정적 분석하는 데
+ *   쓰는 [RuleConflictAnalyzer](FR-AT-04 Task 5, 클래스 KDoc §규칙 충돌 lint 통합 참고).
  * @param clock 시각 계산용 [Clock]. automation 모듈에는 중앙 Clock 빈이 없으므로 [Clock.systemUTC] 를
  *   기본값으로 둔다(search-export-import `ExportService` 선례 — 컴포넌트 스캔 시
  *   `NoSuchBeanDefinitionException` 방지). 테스트는 고정 인스턴스를 주입한다.
  */
 @Service
+@Suppress("LongParameterList") // FR-AT-04 Task 5 에서 conflictAnalyzer 추가로 7개(기존 6개 + 1) — 전부 필수 협력자 주입
 class AutomationRuleService(
     private val repository: AutomationRuleRepository,
     private val actionRepository: AutomationActionRepository,
     private val conditionRepository: AutomationConditionRepository,
     private val permissionResolver: AutomationPermissionResolver,
     private val objectMapper: ObjectMapper,
+    private val conflictAnalyzer: RuleConflictAnalyzer,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -138,7 +166,9 @@ class AutomationRuleService(
      * @param actorUserId 액션 실행 주체. `null` 이면 [actorId] 로 폴백.
      * @param actions 발화 시 실행할 액션 목록(요청 표현). 기본값 빈 리스트.
      * @param condition 조건 게이트 표현식(요청 표현) JSON 문자열. `null` 이면 조건 없이 항상 통과.
-     * @return 저장된 룰 + (WEBHOOK 이면) 발급된 원문 토큰.
+     * @return 저장된 룰 + (WEBHOOK 이면) 발급된 원문 토큰. `conflicts` 는 항상 빈 리스트 placeholder 다 —
+     *   실제 규칙 충돌은 저장 트랜잭션 밖에서 [analyzeProjectConflicts] 를 호출해야 채워진다(FR-AT-04
+     *   Task 5, 코드리뷰 BLOCKER 수정 — 클래스 KDoc §규칙 충돌 lint 통합 참고).
      * @throws AutomationForbiddenException [actorId] 가 [projectKey] 에서 MANAGE_AUTOMATION 권한이 없을 때.
      * @throws com.bts.automation.domain.TriggerConfigInvalidException triggerConfig 가 triggerType 형식을
      *   위반할 때.
@@ -190,12 +220,14 @@ class AutomationRuleService(
         repository.save(rule)
         conditionRepository.replace(rule.id, domainCondition)
         log.info("automation_rule_created id={} projectKey={} triggerType={}", rule.id, projectKey, triggerType)
-        return CreatedAutomationRule(rule, webhookToken?.plaintext)
+        // conflicts 는 항상 빈 리스트 placeholder — 실제 분석은 이 트랜잭션 밖에서 analyzeProjectConflicts
+        // 가 담당한다(코드리뷰 BLOCKER 수정, 클래스 KDoc §규칙 충돌 lint 통합 참고).
+        return CreatedAutomationRule(rule, webhookToken?.plaintext, conflicts = emptyList())
     }
 
     /**
      * [projectKey] 의 활성 룰 목록을 반환한다. 각 룰의 [AutomationRule.actions]/[AutomationRule.condition]
-     * 은 [actionRepository]/[conditionRepository] 로 별도 로드해 채운다([hydrate]).
+     * 은 [actionRepository]/[conditionRepository] 로 별도 로드해 채운다([hydrateRule]).
      *
      * @param actorId 조회를 요청하는 행위자.
      * @param projectKey 조회할 프로젝트 키.
@@ -208,12 +240,12 @@ class AutomationRuleService(
         projectKey: String,
     ): List<AutomationRule> {
         assertManageAutomation(actorId, projectKey)
-        return repository.findByProject(projectKey).map(::hydrate)
+        return repository.findByProject(projectKey).map { hydrateRule(actionRepository, conditionRepository, it) }
     }
 
     /**
      * [projectKey] 소속 [id] 룰을 단건 조회한다. [AutomationRule.actions]/[AutomationRule.condition] 은
-     * [actionRepository]/[conditionRepository] 로 별도 로드해 채운다([hydrate]).
+     * [actionRepository]/[conditionRepository] 로 별도 로드해 채운다([hydrateRule]).
      *
      * @param actorId 조회를 요청하는 행위자.
      * @param projectKey 룰이 속해야 하는 프로젝트 키(경로 스코프).
@@ -229,7 +261,7 @@ class AutomationRuleService(
         id: UUID,
     ): AutomationRule {
         assertManageAutomation(actorId, projectKey)
-        return hydrate(findInProject(projectKey, id))
+        return hydrateRule(actionRepository, conditionRepository, findInProject(projectKey, id))
     }
 
     /**
@@ -256,7 +288,10 @@ class AutomationRuleService(
      * @param actions 교체할 액션 목록(요청 표현). null 이면 미변경.
      * @param actorUserId 변경할 액션 실행 주체. null 이면 미변경.
      * @param condition 교체할 조건 게이트 표현식(요청 표현) JSON 문자열. null 이면 미변경.
-     * @return 변경된 룰(액션·조건 포함).
+     * @return 변경된(또는 no-op 이면 기존) 룰(액션·조건 포함). `conflicts` 는 항상 빈 리스트 placeholder
+     *   다 — 실제 규칙 충돌은 저장(또는 no-op) 트랜잭션 밖에서 [analyzeProjectConflicts] 를 호출해야
+     *   채워진다(FR-AT-04 Task 5, 코드리뷰 BLOCKER 수정 — 무변경(no-op) 응답도 동일하게 처리해 응답
+     *   형태를 일관되게 유지한다).
      * @throws AutomationForbiddenException 권한이 없을 때.
      * @throws AutomationRuleNotFoundException 룰이 없거나 [projectKey] 소속이 아닐 때.
      * @throws AutomationRuleVersionConflictException [expectedVersion] 이 서버 현재 version 과 다르거나,
@@ -280,9 +315,9 @@ class AutomationRuleService(
         actions: List<AutomationActionInput>? = null,
         actorUserId: UUID? = null,
         condition: String? = null,
-    ): AutomationRule {
+    ): PatchedAutomationRule {
         assertManageAutomation(actorId, projectKey)
-        val existing = hydrate(findInProject(projectKey, id))
+        val existing = hydrateRule(actionRepository, conditionRepository, findInProject(projectKey, id))
         if (existing.version != expectedVersion) {
             throw AutomationRuleVersionConflictException(id)
         }
@@ -308,7 +343,8 @@ class AutomationRuleService(
         // 같아 비수렴한다. 버전이 일치했으므로 변경 없이 200 으로 현재 룰(액션 포함)을 그대로 반환한다.
         if (updated.version == existing.version) {
             log.info("automation_rule_patch_noop id={} projectKey={}", id, projectKey)
-            return existing
+            // conflicts 는 항상 빈 리스트 placeholder(코드리뷰 BLOCKER 수정, create() 와 동일 사유).
+            return PatchedAutomationRule(existing, conflicts = emptyList())
         }
 
         // 다필드 단일 OCC 증가 collapse (클래스 KDoc "다필드 PATCH 단일 OCC 증가 collapse" 참조, 코드리뷰
@@ -333,8 +369,37 @@ class AutomationRuleService(
             conditionRepository.replace(id, updated.condition)
         }
         log.info("automation_rule_updated id={} projectKey={}", id, projectKey)
-        return updated
+        // conflicts 는 항상 빈 리스트 placeholder(코드리뷰 BLOCKER 수정, create() 와 동일 사유).
+        return PatchedAutomationRule(updated, conflicts = emptyList())
     }
+
+    /**
+     * [projectKey] 소속 규칙 전체를 재조회·hydrate 해 정적 분석한 규칙 충돌 목록을 반환한다(FR-AT-04
+     * Task 5, 코드리뷰 BLOCKER 수정).
+     *
+     * ## 저장 트랜잭션과 완전히 분리된 별도 호출 (클래스 KDoc §규칙 충돌 lint 통합 참고)
+     * 이 메서드는 `@Transactional` 이 **아니다** — [repository]/[actionRepository]/[conditionRepository]
+     * 의 find 계열([hydrateRule] 이 호출)은 각각 자신의 `@Transactional(readOnly = true)` 로 독립된 새
+     * 트랜잭션을 연다(참여할 상위 트랜잭션이 없으므로). 그래서 이 메서드가 [create]/[patch] **저장이
+     * 이미 커밋된 뒤**([com.bts.automation.adapter.web.AutomationRuleController] 가 별도로 호출) 실행돼도
+     * 방금 저장한 규칙이 재조회에 포함되고(read-committed), 이 안의 어떤 read 예외도 이미 끝난 저장에
+     * 영향을 줄 수 없다.
+     *
+     * [create]/[patch] 는 이 메서드를 호출하지 않는다 — 호출자는 항상 [AutomationRuleController](다른
+     * 빈)뿐이므로 self-invocation 함정([[transaction-self-invocation-requires-new]])이 애초에 발생할
+     * 여지가 없다.
+     *
+     * ## fail-safe
+     * 분석 전체(재조회·hydrate·[RuleConflictAnalyzer.analyze])를 try/catch 로 감싸 어떤 예외든 흡수하고,
+     * 빈 catch 대신 [log] 에 경고를 남긴 뒤 빈 리스트를 반환한다(빈 catch 금지 원칙 준수).
+     *
+     * @param projectKey 분석 대상 프로젝트 키.
+     * @return 검출된 [RuleConflict] 목록. 분석 실패 시 빈 리스트.
+     */
+    fun analyzeProjectConflicts(projectKey: String): List<RuleConflict> =
+        analyzeConflicts(projectKey, repository, conflictAnalyzer, log) {
+            hydrateRule(actionRepository, conditionRepository, it)
+        }
 
     /**
      * [id] 룰을 소프트 삭제한다.
@@ -402,20 +467,6 @@ class AutomationRuleService(
         val rawBytes = ByteArray(TOKEN_BYTES).also(secureRandom::nextBytes)
         val plaintext = Base64.getUrlEncoder().withoutPadding().encodeToString(rawBytes)
         return WebhookToken(plaintext, sha256Hex(plaintext))
-    }
-
-    /**
-     * [rule] 에 [actionRepository]/[conditionRepository] 로 조회한 현재 액션·조건을 채워 반환한다.
-     *
-     * [AutomationRuleRepository] 의 find 계열은 [AutomationRule.actions]/[AutomationRule.condition] 을
-     * 항상 빈 리스트/`null` 로 매핑하므로(Task 6 결정, FR-AT-03 Task 8 동일 적용), CRUD 응답이 실제
-     * 액션·조건을 반영하려면 이 헬퍼로 별도 로드해야 한다.
-     */
-    private fun hydrate(rule: AutomationRule): AutomationRule {
-        return rule.copy(
-            actions = actionRepository.findByRuleId(rule.id),
-            condition = conditionRepository.findByRuleId(rule.id),
-        )
     }
 
     private companion object {
@@ -529,14 +580,97 @@ private fun sha256Hex(plaintext: String): String {
 private data class WebhookToken(val plaintext: String, val hash: String)
 
 /**
- * [AutomationRuleService.create] 의 결과 — 저장된 룰 + (WEBHOOK 이면) 1회 노출용 원문 토큰.
+ * [rule] 에 [actionRepository]/[conditionRepository] 로 조회한 현재 액션·조건을 채워 반환한다.
+ *
+ * [AutomationRuleRepository] 의 find 계열은 [AutomationRule.actions]/[AutomationRule.condition] 을 항상
+ * 빈 리스트/`null` 로 매핑하므로(Task 6 결정, FR-AT-03 Task 8 동일 적용), CRUD 응답이 실제 액션·조건을
+ * 반영하려면 이 헬퍼로 별도 로드해야 한다.
+ *
+ * top-level 함수로 둔 이유는 [applyFieldPatch]/[toDomainAction]/[sha256Hex] 와 동일하다 — 클래스 멤버로
+ * 두면 [AutomationRuleService] 의 함수 개수([TooManyFunctions]) 예산을 넘긴다(코드리뷰 BLOCKER 수정으로
+ * [AutomationRuleService.analyzeProjectConflicts] 가 추가되며 예산 확보를 위해 이 함수를 클래스 멤버에서
+ * top-level 로 이동했다). [actionRepository]/[conditionRepository] 를 명시 파라미터로 받는다 —
+ * 이 함수가 인스턴스 필드에 암묵 접근하지 않고 [actionRepository]/[conditionRepository] 를 호출자가
+ * 매번 명시 파라미터로 넘긴다(top-level 함수라 인스턴스 필드에 접근할 수 없다).
+ */
+private fun hydrateRule(
+    actionRepository: AutomationActionRepository,
+    conditionRepository: AutomationConditionRepository,
+    rule: AutomationRule,
+): AutomationRule =
+    rule.copy(
+        actions = actionRepository.findByRuleId(rule.id),
+        condition = conditionRepository.findByRuleId(rule.id),
+    )
+
+/**
+ * [projectKey] 소속 규칙 전체를 재조회·hydrate 해 [analyzer] 로 정적 분석한다(FR-AT-04 Task 5,
+ * [AutomationRuleService.analyzeProjectConflicts] 전용 구현체, 코드리뷰 BLOCKER 수정).
+ *
+ * top-level 함수로 둔 이유는 [applyFieldPatch]/[toDomainAction]/[sha256Hex]/[hydrateRule] 와 동일하다 —
+ * 클래스 멤버로 두면 [AutomationRuleService] 의 함수 개수([TooManyFunctions]) 예산을 넘긴다. 재조회된 각
+ * 룰에 actions/condition 을 채우는 로직은 [hydrate] 파라미터로 받는다(호출자가 [hydrateRule] 을 바인딩한
+ * 람다를 넘긴다).
+ *
+ * ## fail-safe + 저장 트랜잭션과의 완전한 분리 (호출자 KDoc §규칙 충돌 lint 통합 참고, 코드리뷰 BLOCKER 수정)
+ * [AutomationRuleService.analyzeProjectConflicts] 는 `@Transactional` 이 아니므로, 이 함수가 호출하는
+ * [repository]/[hydrate] 내부의 각 `@Transactional(readOnly = true)` find 호출은 참여할 상위 트랜잭션이
+ * 없어 각자 독립된 새 트랜잭션으로 실행된다. 이전에는 [AutomationRuleService.create]/
+ * [AutomationRuleService.patch] 자신의 `@Transactional` 경계 **안에서** 이 함수가 호출됐는데, 그 경우
+ * read 예외가 나면 Spring 이 참여 트랜잭션을 rollback-only 로 표시해(`globalRollbackOnParticipationFailure`)
+ * 애플리케이션 코드의 `try/catch` 로 예외를 흡수해도 저장 커밋 시점에 `UnexpectedRollbackException` 이
+ * 나며 방금 저장한 규칙까지 롤백됐다 — 지금은 저장이 이미 커밋된 뒤(별도 호출자인
+ * [com.bts.automation.adapter.web.AutomationRuleController] 가 호출)이므로 이 함수의 read 예외가 저장에
+ * 영향을 줄 수 없다. 그럼에도 이 함수 자체는 예외를 그대로 던지지 않는다 — 분석 전체(재조회·hydrate·
+ * [RuleConflictAnalyzer.analyze])를 try/catch 로 감싸 어떤 예외든 흡수하고, 빈 catch 대신 [log] 에 경고를
+ * 남긴 뒤 빈 리스트를 반환한다(빈 catch 금지 원칙 준수, 호출자 응답을 계속 fail-safe 하게 유지).
+ *
+ * @param projectKey 분석 대상 프로젝트 키.
+ * @param repository [AutomationRule] 재조회용 리포지토리.
+ * @param analyzer 정적 분석기.
+ * @param log 실패 시 경고를 남길 호출자([AutomationRuleService]) 로거.
+ * @param hydrate 재조회된 각 룰에 actions/condition 을 채우는 함수([hydrateRule] 바인딩 람다).
+ * @return 검출된 [RuleConflict] 목록. 분석 실패 시 빈 리스트.
+ */
+@Suppress("TooGenericExceptionCaught")
+private fun analyzeConflicts(
+    projectKey: String,
+    repository: AutomationRuleRepository,
+    analyzer: RuleConflictAnalyzer,
+    log: Logger,
+    hydrate: (AutomationRule) -> AutomationRule,
+): List<RuleConflict> =
+    try {
+        analyzer.analyze(repository.findByProject(projectKey).map(hydrate))
+    } catch (e: Exception) {
+        log.warn("automation_rule_conflict_analysis_failed projectKey={} error={}", projectKey, e.message, e)
+        emptyList()
+    }
+
+/**
+ * [AutomationRuleService.create] 의 결과 — 저장된 룰 + (WEBHOOK 이면) 1회 노출용 원문 토큰 + 저장 후
+ * 검출된 규칙 충돌 목록(FR-AT-04 Task 5).
  *
  * @property rule 저장된 [AutomationRule] 애그리거트(해시만 보유, 원문 없음).
  * @property webhookToken WEBHOOK 트리거 생성 시 발급된 원문 토큰. 그 외에는 null.
+ * @property conflicts [analyzeConflicts] 로 검출된 규칙 충돌 목록. 분석 실패 시 빈 리스트(fail-safe).
  */
 data class CreatedAutomationRule(
     val rule: AutomationRule,
     val webhookToken: String?,
+    val conflicts: List<RuleConflict>,
+)
+
+/**
+ * [AutomationRuleService.patch] 의 결과 — 변경된(또는 무변경 no-op 인) 룰 + 저장 후 검출된 규칙 충돌
+ * 목록(FR-AT-04 Task 5).
+ *
+ * @property rule 변경된(또는 no-op 이면 기존) [AutomationRule] 애그리거트.
+ * @property conflicts [analyzeConflicts] 로 검출된 규칙 충돌 목록. 분석 실패 시 빈 리스트(fail-safe).
+ */
+data class PatchedAutomationRule(
+    val rule: AutomationRule,
+    val conflicts: List<RuleConflict>,
 )
 
 /**
