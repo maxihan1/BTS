@@ -36,6 +36,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.RequestPostProcessor
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.transaction.PlatformTransactionManager
 import java.time.Instant
 import java.util.UUID
 
@@ -55,6 +56,17 @@ import java.util.UUID
  * ## 인증 postprocessor — [Jwt] 는 직접 조립, `.jwt()` 미사용
  * [SlackConnectionControllerTest] 와 동일 이유 — `SecurityMockMvcRequestPostProcessors.jwt()`가
  * 요구하는 `spring-security-oauth2-resource-server` 의존성을 이 모듈이 갖지 않는다.
+ *
+ * ## [SlackChannelMappingService] 는 `@Transactional` — 원본 mock 을 [service] 에 직접 보관
+ * [com.bts.slack.SlackIntegrationTestBootApplication] 의 `@EnableTransactionManagement(proxyTargetClass
+ * = true)` 는 `@Transactional` 메서드를 가진 빈 타입이면 mock 이라도 CGLIB 트랜잭션 프록시로 감싼다. 이
+ * 프록시가 [Autowired] 필드에 주입되므로, 거기에 대고 `clearMocks`/`every` 를 호출하면 MockK 가 원본
+ * 스텁 저장소에서 프록시 객체를 찾지 못해 `MockKException("can't find stub")` 이 난다. 그래서 원본 mock
+ * 을 [service](companion 프로퍼티, `@Bean` 팩토리와 테스트 메서드가 공유)에 직접 들고 있고, `@Bean` 은
+ * 이 원본을 그대로 반환한다 — Spring 이 반환값을 감싸 컨트롤러엔 프록시가 주입되지만(정상 트랜잭션 동작),
+ * 테스트는 감싸지지 않은 원본에 대고 스텁/초기화한다(CGLIB 프록시는 호출을 원본에 위임하므로 스텁이
+ * 그대로 반영된다). [transactionManager] 는 그 프록시의 `TransactionInterceptor` 가 위임 전에 요구하는
+ * 최소 빈이다(실제 트랜잭션은 열리지 않는 relaxed mock).
  */
 @WebMvcTest(controllers = [SlackChannelMappingController::class])
 @Import(SlackTestSecurityConfig::class, SlackChannelMappingControllerTest.SecurityBeans::class)
@@ -62,14 +74,14 @@ class SlackChannelMappingControllerTest {
     @TestConfiguration
     class SecurityBeans {
         @Bean
-        fun slackChannelMappingService(): SlackChannelMappingService = mockk()
+        fun slackChannelMappingService(): SlackChannelMappingService = service
+
+        @Bean
+        fun transactionManager(): PlatformTransactionManager = mockk(relaxed = true)
     }
 
     @Autowired
     lateinit var mockMvc: MockMvc
-
-    @Autowired
-    lateinit var service: SlackChannelMappingService
 
     private val userId = UUID.fromString("11111111-1111-4111-8111-111111111111")
     private val mappingId = UUID.fromString("22222222-2222-4222-8222-222222222222")
@@ -406,6 +418,12 @@ class SlackChannelMappingControllerTest {
     }
 
     private companion object {
+        /**
+         * [SlackChannelMappingService] 원본 mock — `@Bean`/테스트 메서드가 공유한다(클래스 KDoc
+         * "원본 mock 을 service 에 직접 보관" 참고, CGLIB 트랜잭션 프록시 우회).
+         */
+        val service: SlackChannelMappingService = mockk()
+
         /** 결정적 ISO-8601 직렬화 검증용 고정 생성 시각. */
         val FIXED_CREATED_AT: Instant = Instant.parse("2026-07-13T00:00:00Z")
     }
