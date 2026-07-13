@@ -1,9 +1,6 @@
 // Comparison 조건 1행 편집 컴포넌트 — 필드/연산자 select + 필드별 값 위젯 (FR-AT-03 D6 Task 2)
 import type { ChangeEvent, JSX } from 'react'
-import {
-  COMPARISON_OPERATOR_META,
-  FIELD_WHITELIST,
-} from '@/api/automation-rules.types'
+import { COMPARISON_OPERATOR_META, FIELD_WHITELIST } from '@/api/automation-rules.types'
 import type { ComparisonOperator, ComparisonOperatorMeta, ConditionComparison } from '@/api/automation-rules.types'
 import { ProjectMemberSelect } from './ProjectMemberSelect'
 
@@ -62,6 +59,11 @@ function isComparisonOperator(raw: string): raw is ComparisonOperator {
   return raw in COMPARISON_OPERATOR_META
 }
 
+/** 필드 select 옵션 라벨을 해석한다 — {@link FIELD_LABELS}에 없으면 field 원문으로 fallback한다. */
+function resolveFieldLabel(field: string): string {
+  return FIELD_LABELS[field] ?? field
+}
+
 /**
  * 위젯 종류 전환 시 적용할 기본 값.
  *
@@ -92,6 +94,92 @@ function defaultValueForWidget(
     default:
       return typeof previousValue === 'string' ? previousValue : ''
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 값 위젯 서브컴포넌트 — ActionConfigEditor의 타입별 서브컴포넌트 선례 동형
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ConditionValueWidgetProps {
+  /** 렌더할 위젯 종류 — {@link resolveConditionValueWidgetKind} 결과 */
+  readonly widgetKind: ConditionValueWidgetKind
+  /** 현재 Comparison의 `value` — 위젯 종류에 맞지 않는 타입이면 각 위젯이 자체 기본값으로 표시한다 */
+  readonly rawValue: unknown
+  /** `member` 위젯({@link ProjectMemberSelect})에 넘길 프로젝트 식별 키 */
+  readonly projectKey: string
+  /** 값 변경 콜백 — 위젯 종류에 맞는 새 값(문자열/숫자/uuid 또는 null)을 그대로 전달한다 */
+  readonly onValueChange: (next: unknown) => void
+}
+
+/**
+ * Comparison 값 위젯 — `widgetKind`에 따라 숫자 select/{@link ProjectMemberSelect}/텍스트 input
+ * 중 하나를 렌더한다. 상위({@link ConditionComparisonRow})가 연산자 arity가 `binary`일 때만
+ * 이 컴포넌트를 렌더한다(단항 연산자는 값 자체를 쓰지 않는다).
+ */
+function ConditionValueWidget({
+  widgetKind,
+  rawValue,
+  projectKey,
+  onValueChange,
+}: ConditionValueWidgetProps): JSX.Element {
+  if (widgetKind === 'number') {
+    return (
+      <div>
+        <label htmlFor="condition-value-number" className="block text-sm font-medium mb-1">
+          {TEXT.valueLabel}
+        </label>
+        <select
+          id="condition-value-number"
+          data-testid="condition-value-input"
+          aria-label={TEXT.valueLabel}
+          value={String(typeof rawValue === 'number' ? rawValue : DEFAULT_PRIORITY_VALUE)}
+          onChange={(event) => {
+            onValueChange(Number(event.target.value))
+          }}
+          className={FIELD_CLASS}
+        >
+          {PRIORITY_OPTIONS.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </div>
+    )
+  }
+
+  if (widgetKind === 'member') {
+    return (
+      <div data-testid="condition-value-input">
+        <ProjectMemberSelect
+          projectKey={projectKey}
+          value={typeof rawValue === 'string' ? rawValue : null}
+          onChange={onValueChange}
+          label={TEXT.valueLabel}
+          id="condition-value-member"
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <label htmlFor="condition-value-text" className="block text-sm font-medium mb-1">
+        {TEXT.valueLabel}
+      </label>
+      <input
+        id="condition-value-text"
+        type="text"
+        data-testid="condition-value-input"
+        aria-label={TEXT.valueLabel}
+        value={typeof rawValue === 'string' ? rawValue : ''}
+        onChange={(event) => {
+          onValueChange(event.target.value)
+        }}
+        className={FIELD_CLASS}
+      />
+    </div>
+  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -164,16 +252,9 @@ export function ConditionComparisonRow({ value, onChange, projectKey }: Conditio
     })
   }
 
-  function handleTextValueChange(event: ChangeEvent<HTMLInputElement>): void {
-    onChange({ ...value, value: event.target.value })
-  }
-
-  function handleNumberValueChange(event: ChangeEvent<HTMLSelectElement>): void {
-    onChange({ ...value, value: Number(event.target.value) })
-  }
-
-  function handleMemberValueChange(userId: string | null): void {
-    onChange({ ...value, value: userId })
+  /** 값 위젯의 변경을 그대로 `value` 필드에 반영한다 — 세 위젯(텍스트/숫자/멤버) 공통 로직 */
+  function handleValueChange(nextValue: unknown): void {
+    onChange({ ...value, value: nextValue })
   }
 
   return (
@@ -192,7 +273,7 @@ export function ConditionComparisonRow({ value, onChange, projectKey }: Conditio
         >
           {FIELD_WHITELIST.map((field) => (
             <option key={field} value={field}>
-              {FIELD_LABELS[field] ?? field}
+              {resolveFieldLabel(field)}
             </option>
           ))}
         </select>
@@ -220,55 +301,13 @@ export function ConditionComparisonRow({ value, onChange, projectKey }: Conditio
         </select>
       </div>
 
-      {meta.arity === 'binary' && widgetKind === 'text' && (
-        <div>
-          <label htmlFor="condition-value-text" className="block text-sm font-medium mb-1">
-            {TEXT.valueLabel}
-          </label>
-          <input
-            id="condition-value-text"
-            type="text"
-            data-testid="condition-value-input"
-            aria-label={TEXT.valueLabel}
-            value={typeof value.value === 'string' ? value.value : ''}
-            onChange={handleTextValueChange}
-            className={FIELD_CLASS}
-          />
-        </div>
-      )}
-
-      {meta.arity === 'binary' && widgetKind === 'number' && (
-        <div>
-          <label htmlFor="condition-value-number" className="block text-sm font-medium mb-1">
-            {TEXT.valueLabel}
-          </label>
-          <select
-            id="condition-value-number"
-            data-testid="condition-value-input"
-            aria-label={TEXT.valueLabel}
-            value={String(typeof value.value === 'number' ? value.value : DEFAULT_PRIORITY_VALUE)}
-            onChange={handleNumberValueChange}
-            className={FIELD_CLASS}
-          >
-            {PRIORITY_OPTIONS.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {meta.arity === 'binary' && widgetKind === 'member' && (
-        <div data-testid="condition-value-input">
-          <ProjectMemberSelect
-            projectKey={projectKey}
-            value={typeof value.value === 'string' ? value.value : null}
-            onChange={handleMemberValueChange}
-            label={TEXT.valueLabel}
-            id="condition-value-member"
-          />
-        </div>
+      {meta.arity === 'binary' && (
+        <ConditionValueWidget
+          widgetKind={widgetKind}
+          rawValue={value.value}
+          projectKey={projectKey}
+          onValueChange={handleValueChange}
+        />
       )}
     </div>
   )
