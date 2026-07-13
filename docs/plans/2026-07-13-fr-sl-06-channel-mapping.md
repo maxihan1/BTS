@@ -191,11 +191,25 @@ classify: type=backend, agent=backend-engineer, slug=fr-sl-06
 ## Plan 메타
 
 - task 수: 9
-- 예상 wave: 4 (W1: T1·T2·T3 / W2: T4·T5·T8 / W3: T6 / W4: T7 → T9는 T5·T7·T8 후 최종). 파일/모듈 겹침 없어 W1 3-병렬.
+- 예상 wave: 5 (W1: T1·T2·T3 / W2: T4·T5·T8 / W3: T6 / W4: T7 / W5: T9). 파일/모듈 겹침 없어 W1 3-병렬. (리뷰 정정: T6→T7→T9 직렬로 4→5)
 - TDD 강제: yes (test→feat 커밋 순서 검증)
 - 병렬 dispatch: bts-impl이 depends-on + files 교집합으로 wave 계산
 - 추가 검증: ktlint·detekt(모듈별 baseline), :modules:app prod 부팅(rebase 후), verify-master-plan(전수 동기화)
 - BC 경계: slack↔notification enum import 0(미러 카탈로그), 권한은 shared-kernel 포트 경계
 - 후속(PR-B): 브로드캐스터·채널 워커·보안 게이트 포트·issue-tracking 어댑터
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 집중 엔지니어링 리뷰 (2026-07-13, backend 저위험 — autoplan 4-phase 대체)
+
+7개 위험 축 검증. **BLOCKER 없음**. 승인 진행 가능.
+
+- ✅ **BC 격리**. slack↔notification enum import 0(T2 미러 카탈로그 `SlackChannelEventType`, `ASSIGNED_EVENT_TYPE` 선례). 권한은 shared-kernel 포트(T3) 경계. ArchUnit `SharedKernelBoundaryArchTest`가 원시 타입 시그니처 강제.
+- ✅ **fail-closed 보안**. 권한 포트 Boolean·default 금지·non-null 주입(T3). prod 어댑터 PROJECT_ADMIN 직접 확인(T8, `ProjectSecuritySchemeService.requireProjectAdmin` 미러 — **신규 권한 코드 시드 없음** → SchemaMigrationTest 카운트 blast radius 회피). non-prod 스텁 allow-all(T5)은 dev/test 편의용이며, **거부 경로는 T6에서 resolver mock=false로 단위 검증**(스텁이 보안 구멍 아님).
+- ✅ **TDD 구조**. 9 태스크 전부 RED(실패 테스트)→GREEN(최소 구현)→REFACTOR. 각 task 검증 명령 명시.
+- ⚠️ **wave 추정 정정**. depends-on 체인 T6→T7→T9가 직렬이라 실제 ~5 wave(W1: T1·T2·T3 / W2: T4·T5·T8 / W3: T6 / W4: T7 / W5: T9). bts-impl이 메타로 재계산하므로 실행엔 영향 없음(Plan 메타 4→5 정정).
+- ✅ **마이그레이션 안전**. V704 신규(origin/main 최신 V703 확인, 충돌 없음). init_codegen.sql 미러(T1). 기적용 마이그레이션 편집 0. **머지 직전 V번호 재확인 필수**(learnings: migration-vnumber-concurrent-branch-collision).
+- ✅ **prod 조립 부팅**. 새 포트 소비(slack 서비스)의 prod 어댑터(T8)를 같은 PR에 실음 → NoSuchBean 회피. T9가 :modules:app 부팅 검증(**머지 전 rebase + :modules:app:test**, learnings: prod-assembly-boot-verification). full-load 슬라이스가 새 포트로 깨지면 non-prod 스텁이 test-boot에 빈 제공(자동), 필요 시 @MockBean 보강.
+- ⚠️ **인증 경로 확인(T7)**. `/api/v1/slack/channel-mappings`는 `/api/v1/slack/me/connection`(JWT 인증) 선례를 따름. 웹훅 permitAll은 `/slack/*` 한정이라 자동 노출 위험 없음. 구현 시 필터 체인 인증 배선 확인(권한 게이트는 서비스 위임이 1차, 필터 체인이 2차).
+
+**주의 2건(wave 추정·인증 경로 확인)은 모두 impl 단계 자동 처리 가능. Maxi 결정 필요 taste decision 없음.**
