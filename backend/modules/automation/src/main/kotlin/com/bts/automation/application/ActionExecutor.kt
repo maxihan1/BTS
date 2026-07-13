@@ -143,30 +143,44 @@ class ActionExecutor(
     }
 
     /**
-     * 클래스 KDoc "조건 게이트" 참조. [rule] 에 저장된 조건이 없으면 게이트를 통과(`false`)한다. 조건이
-     * 있으면 [issueKey] 로 [issueSnapshotPort] 에서 갓 조회한 최신 스냅샷 기준으로 평가하고, 스냅샷을
-     * 구할 수 없거나(이슈 키 없음/이슈 부재/가시성 제한) 평가 중 예외가 나면 모두 "불충족"(`true`)으로
-     * fail-safe 처리한다.
+     * 클래스 KDoc "조건 게이트" 참조. [rule] 에 저장된 조건이 없으면 게이트를 통과(`false` — 조건 없음은
+     * "불충족"이 아니다)한다. 조건이 있으면 [issueKey] 로 [issueSnapshotPort] 에서 **룰 작성자
+     * ([AutomationRule.createdBy]) 가시성**으로 갓 조회한 최신 스냅샷 기준으로 평가한다.
+     *
+     * ## 조회 주체 = createdBy (§12.4 관리자 우회 없음)
+     * 스냅샷 조회는 [AutomationRule.actorUserId] 가 아니라 [AutomationRule.createdBy] 권한으로 한다.
+     * `actorUserId` 는 `changeActor` 로 임의 사용자로 교체 가능한 위조 가능 필드라, 이를 조회 주체로 쓰면
+     * 룰 작성자가 볼 수 없는 보안 수준(FR-PM-06) 제한 이슈의 상태를 조건 참/거짓으로 관측하는 오라클이
+     * 된다(§12.4 "관리자 우회 없음" 위반). 반면 `createdBy` 는 생성 시 요청자로 고정되고 `changeActor`
+     * 로도 바뀌지 않는 위조 불가 필드다 — 조건은 "무엇을 관측하는가"이므로 작성자의 알 권리로 제한한다
+     * (작성자는 자기가 이미 볼 수 있는 데이터로만 조건을 걸 수 있다). 액션 실행 권한은 별개로 여전히
+     * `actorUserId` 를 쓴다([execute] 의 [ExecutionEnv]).
+     *
+     * ## fail-safe — 게이트 전체가 예외 안전(불명은 거부)
+     * 조건 조회([AutomationConditionRepository.findByRuleId])·스냅샷 조회([IssueSnapshotPort.fetch])·평가
+     * ([ConditionEvaluator.evaluate]) 중 **어떤 예외**(cross-BC 어댑터가 재전파하는 이슈 이동/DB 오류
+     * 포함)가 나도 게이트 밖으로 전파하지 않고 "불충족"(`true`)으로 수렴시킨다. 스냅샷을 구할 수 없거나
+     * (이슈 키 없음/이슈 부재/가시성 제한 → null) 조건 미충족도 "불충족"이다. 상위 [execute] 는 이를
+     * [ActionExecutionStatus.SKIPPED] 로 반환한다.
      */
     private fun isConditionUnmet(
         rule: AutomationRule,
         issueKey: String?,
     ): Boolean {
-        val condition = conditionRepository.findByRuleId(rule.id) ?: return false
-        val snapshot = issueKey?.let { issueSnapshotPort.fetch(rule.actorUserId, it) }
         val met =
-            snapshot?.let { s ->
-                runCatching { conditionEvaluator.evaluate(condition, s.toConditionContext()) }
-                    .onFailure { e ->
-                        log.warn(
-                            "automation_condition_evaluate_exception ruleId={} issueKey={} error={}",
-                            rule.id,
-                            issueKey,
-                            e.message,
-                            e,
-                        )
-                    }.getOrDefault(false)
-            } ?: false
+            runCatching {
+                val condition = conditionRepository.findByRuleId(rule.id) ?: return@runCatching true
+                val snapshot = issueKey?.let { issueSnapshotPort.fetch(rule.createdBy, it) } ?: return@runCatching false
+                conditionEvaluator.evaluate(condition, snapshot.toConditionContext())
+            }.onFailure { e ->
+                log.warn(
+                    "automation_condition_gate_exception ruleId={} issueKey={} error={}",
+                    rule.id,
+                    issueKey,
+                    e.message,
+                    e,
+                )
+            }.getOrDefault(false)
         return !met
     }
 
