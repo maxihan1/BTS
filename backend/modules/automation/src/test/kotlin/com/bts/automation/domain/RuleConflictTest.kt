@@ -52,8 +52,11 @@ class RuleConflictTest : DescribeSpec({
 
     describe("RuleConflict.of — ruleIds 정렬 정규화") {
         it("입력 순서와 무관하게 ruleIds 를 정렬된 순서로 보관한다") {
-            val smaller = UUID.fromString("00000000-0000-0000-0000-000000000001")
-            val larger = UUID.fromString("ffffffff-ffff-ffff-ffff-ffffffffffff")
+            // UUID 자연 순서(Comparable<UUID>)는 mostSigBits/leastSigBits 를 부호 있는 long 으로
+            // 비교한다 — 16진 문자열 사전순과 다르다(최상위 니블이 8 이상이면 음수로 취급된다).
+            // 두 UUID 모두 최상위 니블을 8 미만으로 고정해 부호 반전 없이 문자열 순서와 일치시킨다.
+            val smaller = UUID.fromString("10000000-0000-0000-0000-000000000000")
+            val larger = UUID.fromString("20000000-0000-0000-0000-000000000000")
 
             val conflict =
                 RuleConflict.of(
