@@ -93,7 +93,7 @@ describe('SlackChannelMappingList — 로딩', () => {
 
 describe('SlackChannelMappingList — 에러', () => {
   it('403 응답 시 "권한이 없거나 찾을 수 없습니다" 안내를 표시한다 (목록 GET은 비관리자에게 403 SLACK_CHANNEL_MAPPING_FORBIDDEN을 반환)', async () => {
-    vi.mocked(listChannelMappings).mockRejectedValue(new ApiError(403, { errorCode: 'SLACK_CHANNEL_MAPPING_FORBIDDEN' }))
+    vi.mocked(listChannelMappings).mockRejectedValue(new ApiError(403, { code: 'SLACK_CHANNEL_MAPPING_FORBIDDEN' }))
 
     renderList()
 
@@ -103,7 +103,7 @@ describe('SlackChannelMappingList — 에러', () => {
   })
 
   it('404 응답 시 "권한이 없거나 찾을 수 없습니다" 안내를 표시한다 (방어적 — 목록 GET에선 발생하지 않지만 update/delete와 동일 계약 유지)', async () => {
-    vi.mocked(listChannelMappings).mockRejectedValue(new ApiError(404, { errorCode: 'SLACK_CHANNEL_MAPPING_NOT_FOUND' }))
+    vi.mocked(listChannelMappings).mockRejectedValue(new ApiError(404, { code: 'SLACK_CHANNEL_MAPPING_NOT_FOUND' }))
 
     renderList()
 
@@ -113,7 +113,7 @@ describe('SlackChannelMappingList — 에러', () => {
   })
 
   it('403/404 이외 응답 시 일반 오류 메시지를 표시한다', async () => {
-    vi.mocked(listChannelMappings).mockRejectedValue(new ApiError(500, { errorCode: 'UNKNOWN' }))
+    vi.mocked(listChannelMappings).mockRejectedValue(new ApiError(500, { code: 'UNKNOWN' }))
 
     renderList()
 
