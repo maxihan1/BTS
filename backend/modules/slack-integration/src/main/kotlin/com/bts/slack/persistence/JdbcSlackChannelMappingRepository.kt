@@ -28,6 +28,7 @@ import java.util.UUID
 class JdbcSlackChannelMappingRepository(
     private val jdbcTemplate: JdbcTemplate,
 ) : SlackChannelMappingRepository {
+    @Suppress("MagicNumber") // 1-based JDBC PreparedStatement 파라미터 인덱스(SQL_INSERT 컬럼 순서 그대로)
     @Transactional
     override fun save(mapping: ChannelProjectMapping): ChannelProjectMapping {
         jdbcTemplate.update { connection ->
@@ -54,6 +55,7 @@ class JdbcSlackChannelMappingRepository(
     override fun findById(id: UUID): ChannelProjectMapping? =
         jdbcTemplate.query(SQL_FIND_BY_ID, ChannelProjectMappingRowMapper, id).firstOrNull()
 
+    @Suppress("MagicNumber") // 1-based JDBC PreparedStatement 파라미터 인덱스(SQL_UPDATE SET 순서 그대로)
     @Transactional
     override fun update(mapping: ChannelProjectMapping): ChannelProjectMapping {
         jdbcTemplate.update { connection ->

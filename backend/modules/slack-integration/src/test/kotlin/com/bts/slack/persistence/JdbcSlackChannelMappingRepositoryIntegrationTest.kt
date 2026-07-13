@@ -78,6 +78,7 @@ class JdbcSlackChannelMappingRepositoryIntegrationTest {
         repository = JdbcSlackChannelMappingRepository(jdbcTemplate)
     }
 
+    @Suppress("LongParameterList") // 테스트 fixture 빌더 — 시나리오별 필드 오버라이드 편의(분리 불필요)
     private fun newMapping(
         teamId: String = "T_WORKSPACE_A",
         projectKey: String = "PROJ",
@@ -187,7 +188,8 @@ class JdbcSlackChannelMappingRepositoryIntegrationTest {
         val mapping = newMapping()
         repository.save(mapping)
 
-        val duplicate = newMapping(teamId = mapping.teamId, projectKey = mapping.projectKey, channelId = mapping.channelId)
+        val duplicate =
+            newMapping(teamId = mapping.teamId, projectKey = mapping.projectKey, channelId = mapping.channelId)
 
         assertThatThrownBy { repository.save(duplicate) }
             .isInstanceOf(DataIntegrityViolationException::class.java)
