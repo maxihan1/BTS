@@ -71,7 +71,8 @@ class RuleConflictTest : DescribeSpec({
         it("severity 기본값은 WARNING 이다") {
             val ruleId = UUID.randomUUID()
 
-            val conflict = RuleConflict.of(type = ConflictType.FIELD_CONFLICT, ruleIds = listOf(ruleId), detail = "필드 충돌")
+            val conflict =
+                RuleConflict.of(type = ConflictType.FIELD_CONFLICT, ruleIds = listOf(ruleId), detail = "필드 충돌")
 
             conflict.severity shouldBe ConflictSeverity.WARNING
         }
