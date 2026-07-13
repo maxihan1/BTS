@@ -79,6 +79,8 @@ D1 도메인(RuleConflict) · D2 명세 · D3 데이터(활용) · D4 백엔드(
 - files: [`{main}/application/RuleConflictAnalyzer.kt`, `{test}/application/RuleConflictAnalyzerCycleTest.kt`]
 - depends-on: [1]
 
+> **DRY 노트(eng-review)**. `ActionType`↔`Action` 매핑은 기존 3곳(repo/executor/response)에 존재 — analyzer는 4번째 매핑을 만들지 말고 기존 상수/헬퍼를 재사용한다.
+
 **RED**. `RuleConflictAnalyzerCycleTest` — 규칙 리스트 입력 → `analyze()` 반환에서 CYCLE 검출 검증.
 케이스. (a) self-loop(A의 SetField(priority) + A 트리거 ISSUE_UPDATED{fields:[priority]}) → CYCLE 1건. (b) 2-cycle(A↔B). (c) 3-cycle(A→B→C→A). (d) no-cycle(직선 체인) → 0건. (e) AddComment→ISSUE_COMMENTED 엣지. (f) CallWebhook 규칙은 엣지 없음. (g) 같은 사이클 중복 dedup. 실패: analyzer 없음.
 
@@ -155,6 +157,8 @@ PRIORITY. (e) 같은 트리거 부수효과 규칙 2개(assignee·priority 서�
 
 **RED/GREEN**(통합은 실서버 경로 검증). 실 DB(Testcontainers)에 규칙 시드 → 저장 API 경로로 충돌 유발 규칙 저장 → 응답 conflicts 검증(4종 각 1 시나리오). GET 응답엔 conflicts 없음 확인. 저장은 항상 성공(soft). `IssuePermissionResolver`는 @MockBean으로 특정 actor false.
 
+**성능 스모크(eng-review 보강)**. 100개 규칙 시드 후 저장 1회 → 분석이 임계(1s 여유 상한, 예: 3s 테스트 타임아웃) 내 완료 확인 1건. 경계 초과 시 hydrate를 IN절 배치 조회로 전환(조기최적화 회피 — 측정 후 판단).
+
 **REFACTOR**. 시드 헬퍼 정리.
 
 **검증**. `./gradlew :modules:automation:test --tests '*RuleConflictAnalysisIntegrationTest'` + 모듈 전체 `./gradlew :modules:automation:test`
@@ -187,4 +191,22 @@ PRIORITY. (e) 같은 트리거 부수효과 규칙 2개(assignee·priority 서�
 - **updatedFields 필드명**. AssignAction 유발 필드명(`assignee` 가정)은 T2 GREEN 시 issue-tracking 실제 이벤트 필드로 검증(스펙 Brainstorming #2).
 - **git stash 금지**. sub-agent impl 시 git stash 사용 금지([[subagent-git-stash-worktree-shared-collision]]). 자기 파일만 `git add <file>`([[parallel-dispatch-precommit-hook-race]]).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-13, backend 집중 리뷰 — autoplan 4-phase 대체)
+
+**Architecture** ✅
+- analyzer 단일 파일 4종 검출 = right-sized. detector 클래스 분리는 단일 use case에 과설계 — private 헬퍼 분리로 복잡도 관리(boring-by-default).
+- cross-BC는 기존 `IssuePermissionResolver` 포트 재사용 = proven, innovation token 안 씀.
+- 저장 후 lint(별도 엔드포인트 없음) = blast radius 최소. 응답 `conflicts` 필드 추가는 하위호환(기존 프론트 무시 가능, reversible).
+- 분석을 fail-safe로 감쌈 = 분석 실패가 저장 훼손 안 함(3am 안전, systems-over-heroes).
+
+**Tests** ✅ — 충돌 4종별 케이스 충실(self/2/3-cycle·no-cycle·멱등·규칙내부·중복억제·메모이제이션·fail-safe·통합 end-to-end).
+
+**주의 (BLOCKER 아님, 2건 plan 반영 완료)**:
+1. ✅반영 **성능 검증**. NFR "100규칙 1s" → T6에 100규칙 성능 스모크 1건 추가.
+2. ⚠️ **hydrate N+1**. plan이 "필요시 IN절 배치"로 열어둠 = 측정 후 판단(조기최적화 회피) 적절. T6 스모크가 경계 넘으면 배치 전환.
+3. ✅반영 **ActionType 매핑 DRY**. T2에 "기존 3곳 매핑 재사용, 4번째 만들지 말 것" 노트 추가.
+4. ⚠️ **PERMISSION_MISSING 실효 범위**. non-prod stub이라 dev 무의미·prod 전용. cross-BC 부팅 결합 추가 대비 실질 가치는 Maxi가 4종으로 확정 — 진행. blast radius(조립 부팅)는 §리스크에 잡힘([[prod-assembly-boot-verification-required]]).
+
+**BLOCKER: 없음.** cross-BC 권한 근사 매핑의 정확성은 게이트 2 codereview에서 security 관점 재확인.
