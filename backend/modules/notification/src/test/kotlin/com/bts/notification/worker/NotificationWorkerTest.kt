@@ -5,6 +5,8 @@ package com.bts.notification.worker
 import com.bts.notification.application.NotificationPolicyEvaluator
 import com.bts.notification.application.PolicyMatch
 import com.bts.notification.channel.NotificationChannelSender
+import com.bts.notification.channel.NotificationTitleBuilder
+import com.bts.notification.channel.SlackChannelBroadcaster
 import com.bts.notification.domain.Channel
 import com.bts.notification.domain.Notification
 import com.bts.notification.domain.NotificationEventType
@@ -25,6 +27,7 @@ import io.mockk.slot
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.jooq.DSLContext
+import org.springframework.dao.DataAccessResourceFailureException
 import java.time.Instant
 import java.util.UUID
 
@@ -43,6 +46,8 @@ import java.util.UUID
  * - POLL-8. 빈 큐 → 아무 처리 없음
  * - POLL-9. occurredAt 누락(malformed) → 예외 → delete 미호출 (dedup 결정성 보호)
  * - POLL-10. actorId 없는 이벤트 → Notification.actorUserId == null (CONCERN-3 경계)
+ * - BR-1. 슬랙 채널 브로드캐스트 — 정책 매치 0건(수신자 0명)이어도 정책평가 early-return 이전에 호출된다 (FR-SL-06 PR-B)
+ * - BR-2. 브로드캐스터가 던진 DataAccessException 은 best-effort 로 흡수되어 dispatch 를 막지 않는다
  */
 class NotificationWorkerTest : DescribeSpec({
 
@@ -53,6 +58,8 @@ class NotificationWorkerTest : DescribeSpec({
     val userSubscriptionRepository = mockk<UserSubscriptionRepository>()
     val channelSender = mockk<NotificationChannelSender>()
     val objectMapper = ObjectMapper()
+    val titleBuilder = NotificationTitleBuilder()
+    val slackChannelBroadcaster = mockk<SlackChannelBroadcaster>(relaxed = true)
 
     val worker =
         NotificationWorker(
@@ -63,6 +70,8 @@ class NotificationWorkerTest : DescribeSpec({
             userSubscriptionRepository = userSubscriptionRepository,
             channelSenders = listOf(channelSender),
             objectMapper = objectMapper,
+            titleBuilder = titleBuilder,
+            slackChannelBroadcaster = slackChannelBroadcaster,
         )
 
     val actorId: UUID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
@@ -70,7 +79,15 @@ class NotificationWorkerTest : DescribeSpec({
     val fixedNow: Instant = Instant.parse("2026-06-12T10:00:00Z")
 
     afterEach {
-        clearMocks(dsl, policyEvaluator, recipientResolver, repository, userSubscriptionRepository, channelSender)
+        clearMocks(
+            dsl,
+            policyEvaluator,
+            recipientResolver,
+            repository,
+            userSubscriptionRepository,
+            channelSender,
+            slackChannelBroadcaster,
+        )
     }
 
     // ── POLL-8: 빈 큐 ─────────────────────────────────────────────────────────
@@ -441,6 +458,62 @@ class NotificationWorkerTest : DescribeSpec({
             verify(exactly = 0) { repository.insertIfAbsent(any()) }
             verify(exactly = 0) {
                 dsl.execute(match<String> { it.contains("pgmq.delete") }, any(), any<Long>())
+            }
+        }
+    }
+
+    // ── BR-1: 슬랙 채널 브로드캐스트 — 정책평가(early-return) 이전에 이벤트당 1회 호출 ─────
+
+    describe("BR-1 슬랙 채널 브로드캐스트는 정책 매치 0건(수신자 0명)이어도 호출된다") {
+        val msgId = 12L
+
+        beforeEach {
+            stubMentionMessage(dsl, actorId, mentionedId, msgId, fixedNow)
+            every { policyEvaluator.evaluate(any(), any()) } returns emptyList()
+            every { dsl.execute(any<String>(), NotificationWorker.QUEUE_NAME, msgId) } returns 1
+        }
+
+        it("정책 평가가 빈 목록을 반환해 early-return 하더라도 broadcaster 가 1회 호출된다") {
+            worker.pollAndProcess()
+
+            verify(exactly = 1) { slackChannelBroadcaster.broadcastIfApplicable(any()) }
+        }
+    }
+
+    // ── BR-2: 브로드캐스터 DataAccessException 은 best-effort 로 흡수되어 dispatch 를 막지 않는다 ─
+
+    describe("BR-2 슬랙 채널 브로드캐스트 DataAccessException 은 dispatch 를 막지 않는다") {
+        val msgId = 13L
+        val matches = listOf(PolicyMatch(RecipientRole.MENTIONED, Channel.IN_APP))
+        val recipient = ResolvedRecipient(userId = mentionedId, channel = Channel.IN_APP)
+
+        beforeEach {
+            stubMentionMessage(dsl, actorId, mentionedId, msgId, fixedNow)
+            every {
+                slackChannelBroadcaster.broadcastIfApplicable(any())
+            } throws DataAccessResourceFailureException("db down")
+            every { policyEvaluator.evaluate(any(), any()) } returns matches
+            every { recipientResolver.resolve(any<NotificationSourceEvent>(), any()) } returns listOf(recipient)
+            every { userSubscriptionRepository.fetchDisabled(any(), any(), any()) } returns emptySet()
+            every { repository.insertIfAbsent(any()) } returns true
+            every { channelSender.supports(Channel.IN_APP) } returns true
+            justRun { channelSender.send(any()) }
+            justRun { repository.markSent(any()) }
+            every { dsl.execute(any<String>(), NotificationWorker.QUEUE_NAME, msgId) } returns 1
+        }
+
+        it("broadcaster 예외가 발생해도 정책평가~발송이 정상 진행된다") {
+            worker.pollAndProcess()
+
+            verify(exactly = 1) { repository.insertIfAbsent(any()) }
+            verify(exactly = 1) { channelSender.send(any()) }
+        }
+
+        it("broadcaster 예외가 발생해도 메시지는 정상 delete 된다 (dispatch 미차단)") {
+            worker.pollAndProcess()
+
+            verify(exactly = 1) {
+                dsl.execute(match<String> { it.contains("pgmq.delete") }, NotificationWorker.QUEUE_NAME, msgId)
             }
         }
     }
