@@ -203,10 +203,14 @@ class RuleConflictAnalyzerCycleTest : DescribeSpec({
                     name = "C",
                     triggerType = TriggerType.ISSUE_UPDATED,
                     triggerConfig = """{"fields":["q"]}""",
+                    // 두 액션 모두 같은 값("v1")을 SET한다 — 값이 다르면(예: v1/v2) FR-AT-04 Task 3의
+                    // FIELD_CONFLICT(규칙 내부 같은 필드·다른 값)도 함께 검출돼 이 CYCLE 전용 테스트의
+                    // "conflicts.size shouldBe 1" 단언과 무관한 충돌이 섞인다. 값을 동일하게 둬 멱등
+                    // 처리(FIELD_CONFLICT 미검출)로 만들고 다중 엣지 CYCLE dedup만 순수하게 검증한다.
                     actions =
                         listOf(
                             Action.SetFieldAction(field = "p", value = TextNode("v1")),
-                            Action.SetFieldAction(field = "p", value = TextNode("v2")),
+                            Action.SetFieldAction(field = "p", value = TextNode("v1")),
                         ),
                 )
 
