@@ -27,7 +27,6 @@ import java.util.UUID
  * positive 는 허용하되 실제 사이클을 놓치지 않는다(보수적 근사).
  */
 class RuleConflictAnalyzer {
-
     /**
      * [rules] 를 정적 분석해 검출된 [RuleConflict] 목록을 반환한다(현재는 CYCLE 만).
      *
