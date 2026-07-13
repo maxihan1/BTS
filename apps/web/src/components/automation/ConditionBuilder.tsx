@@ -42,9 +42,9 @@ function removeChildAt(group: ConditionGroup, index: number): ConditionGroup {
   return { ...group, children: group.children.filter((_child, childIndex) => childIndex !== index) }
 }
 
-/** 그룹 끝에 기본 Comparison 1건을 추가한 새 그룹을 반환한다. */
+/** 그룹 끝에 기본 Comparison 1건을 추가한 새 그룹을 반환한다(호출마다 새 객체 — 공유 참조로 인한 React key 중복 방지). */
 function addComparisonChild(group: ConditionGroup): ConditionGroup {
-  return { ...group, children: [...group.children, DEFAULT_COMPARISON] }
+  return { ...group, children: [...group.children, { ...DEFAULT_COMPARISON }] }
 }
 
 /** 그룹 끝에 빈 중첩 그룹 1건을 추가한 새 그룹을 반환한다(호출마다 새 객체 — {@link createEmptyConditionTree}). */
