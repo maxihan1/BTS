@@ -135,9 +135,7 @@ class SlackChannelMappingControllerTest {
             post("/api/v1/slack/channel-mappings")
                 .with(jwtAuth(userId))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    """{"projectKey":"PROJ","channelId":"C123","channelName":"general","eventTypes":["issue.created"]}""",
-                ),
+                .content(CREATE_REQUEST_WITH_CHANNEL_NAME_JSON),
         )
             .andExpect(status().isCreated)
             .andExpect(jsonPath("$.id").value(mappingId.toString()))
@@ -250,9 +248,7 @@ class SlackChannelMappingControllerTest {
                 post("/api/v1/slack/channel-mappings")
                     .with(jwtAuth(userId))
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content(
-                        """{"projectKey":"PROJ","channelId":"C123","channelName":"general","eventTypes":["issue.created"]}""",
-                    ),
+                    .content(CREATE_REQUEST_WITH_CHANNEL_NAME_JSON),
             )
                 .andExpect(status().isCreated)
                 .andReturn()
@@ -426,5 +422,9 @@ class SlackChannelMappingControllerTest {
 
         /** 결정적 ISO-8601 직렬화 검증용 고정 생성 시각. */
         val FIXED_CREATED_AT: Instant = Instant.parse("2026-07-13T00:00:00Z")
+
+        /** `channelName` 포함 생성 요청 바디(POST 201 · team_id 비노출 테스트가 공유, [MaxLineLength] 회피). */
+        const val CREATE_REQUEST_WITH_CHANNEL_NAME_JSON =
+            """{"projectKey":"PROJ","channelId":"C123","channelName":"general","eventTypes":["issue.created"]}"""
     }
 }
