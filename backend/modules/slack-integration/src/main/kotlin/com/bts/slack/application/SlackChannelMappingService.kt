@@ -19,13 +19,19 @@ import java.util.UUID
  *
  * ## fail-closed 권한 게이트 (모든 연산 진입 시 선확인)
  * 각 연산은 저장소를 건드리기 전에 [SlackChannelMappingPermissionResolver.hasManageChannelMapping]
- * 로 행위자의 관리 권한을 먼저 확인하고, 불명/거부는 모두 [SlackChannelMappingPermissionDeniedException]
- * (403)으로 수렴시킨다(교훈 — fail-open 금지: 불명은 거부). [create]/[list] 는 인자로 받은 projectKey 로
- * 즉시 게이트한다. [update]/[delete] 는 대상 매핑의 projectKey 로 게이트해야 하므로 [requireMapping]
- * 조회가 권한 확인보다 **먼저** 온다 — 단, 대상 매핑 자체가 없으면 권한을 묻기 전에 [SlackChannelMappingNotFoundException]
- * (404)으로 끝낸다. 행위자 식별(actorId)은 이미 상위(컨트롤러 JWT 인증)에서 추출되어 넘어오므로,
- * 이 순서는 "인증(추출)은 리소스 조회보다 먼저"(교훈 auth-extraction-before-resource-lookup) 원칙과
- * 상충하지 않는다 — 여기서 선행하는 것은 인가(권한 판정)에 필요한 대상 projectKey 조회일 뿐이다.
+ * 로 행위자의 관리 권한을 먼저 확인하고, 불명/거부는 모두 거부로 수렴시킨다(교훈 — fail-open 금지: 불명은 거부).
+ *
+ * 거부 시 응답 상태는 연산 축에 따라 **비대칭**이다.
+ * - [create]/[list] — 인자로 받은 projectKey 로 즉시 게이트하고, 거부는 [SlackChannelMappingPermissionDeniedException]
+ *   (403). caller 가 준 projectKey 기반이라 숨길 리소스가 없으므로 존재 비노출이 불필요하다(대칭적 의도).
+ * - [update]/[delete] — 대상 매핑의 projectKey 로 게이트해야 하므로 [requireMapping] 조회가 권한 확인보다
+ *   **먼저** 온다. 대상 매핑이 없으면 [SlackChannelMappingNotFoundException](404)로 끝내고, 존재하더라도
+ *   권한이 없으면 [requireManageOrHideNotFound] 가 **같은 404** 로 수렴시킨다 — 인증된 비관리자가 매핑 id
+ *   존재 여부를 404 vs 403 으로 구분하지 못하게 한다(존재 비노출, GitHub private-repo 404 패턴, 하드닝 1).
+ *
+ * 행위자 식별(actorId)은 이미 상위(컨트롤러 JWT 인증)에서 추출되어 넘어오므로, 이 순서는 "인증(추출)은
+ * 리소스 조회보다 먼저"(교훈 auth-extraction-before-resource-lookup) 원칙과 상충하지 않는다 — 여기서
+ * 선행하는 것은 인가(권한 판정)에 필요한 대상 projectKey 조회일 뿐이다.
  *
  * ## team_id 해석 (단일 설치 가정)
  * [create] 는 새 매핑에 찍을 `team_id` 를 유일 워크스페이스 설치([SlackInstallRepository.findCurrentInstallation])
@@ -120,8 +126,8 @@ class SlackChannelMappingService(
      * @param channelId 새 채널 id(null 이면 기존 유지).
      * @param channelName 새 채널 표시명(null 이면 기존 유지).
      * @param eventTypes 새 이벤트 필터(null 이면 기존 유지, 제공 시 도메인 재검증).
-     * @throws SlackChannelMappingNotFoundException 대상 id 가 없는 경우(404).
-     * @throws SlackChannelMappingPermissionDeniedException 대상 프로젝트의 관리 권한이 없는 경우(403).
+     * @throws SlackChannelMappingNotFoundException 대상 id 가 없거나, 존재하더라도 행위자에게 관리 권한이
+     *   없는 경우(404, 존재 비노출 — 하드닝 1). update 는 403 을 노출하지 않는다.
      * @throws IllegalArgumentException eventTypes 가 비었거나 미지 wireValue 를 포함하는 경우(상위 400, EC1).
      * @throws SlackChannelMappingConflictException 갱신 결과가 UNIQUE 를 위반하는 경우(409, EC2).
      */
@@ -134,7 +140,7 @@ class SlackChannelMappingService(
         eventTypes: Set<String>?,
     ): ChannelProjectMapping {
         val existing = requireMapping(id)
-        requireManagePermission(actorId, existing.projectKey)
+        requireManageOrHideNotFound(actorId, existing.projectKey)
         val updated =
             existing.copy(
                 channelId = channelId ?: existing.channelId,
@@ -149,8 +155,8 @@ class SlackChannelMappingService(
      * 매핑을 삭제한다(하드 삭제 — 설정성 행). 삭제 후 해당 채널로의 이후 게시는 중단된다(과거 게시는 보존).
      *
      * @param id 삭제 대상 매핑 id.
-     * @throws SlackChannelMappingNotFoundException 대상 id 가 없는 경우(404).
-     * @throws SlackChannelMappingPermissionDeniedException 대상 프로젝트의 관리 권한이 없는 경우(403).
+     * @throws SlackChannelMappingNotFoundException 대상 id 가 없거나, 존재하더라도 행위자에게 관리 권한이
+     *   없는 경우(404, 존재 비노출 — 하드닝 1). delete 는 403 을 노출하지 않는다.
      */
     @Transactional
     fun delete(
@@ -158,16 +164,17 @@ class SlackChannelMappingService(
         id: UUID,
     ) {
         val existing = requireMapping(id)
-        requireManagePermission(actorId, existing.projectKey)
+        requireManageOrHideNotFound(actorId, existing.projectKey)
         mappingRepository.deleteById(existing.id)
     }
 
     /**
-     * 행위자가 대상 프로젝트의 채널 매핑 관리 권한을 보유하는지 확인한다(fail-closed).
+     * 행위자가 대상 프로젝트의 채널 매핑 관리 권한을 보유하는지 확인한다(fail-closed, [create]/[list] 전용).
      *
      * [SlackChannelMappingPermissionResolver.hasManageChannelMapping] 이 `false`(비관리자·미해석 키·
-     * 비멤버 포함)면 [SlackChannelMappingPermissionDeniedException] 으로 거부한다 — 네 연산이 공유하는
-     * 유일한 권한 진입점이다.
+     * 비멤버 포함)면 [SlackChannelMappingPermissionDeniedException](403)으로 거부한다. [create]/[list] 는
+     * caller 가 준 projectKey 로 게이트하므로 숨길 리소스가 없어 거부를 그대로 403 으로 노출한다.
+     * [update]/[delete] 는 존재 비노출을 위해 [requireManageOrHideNotFound] 를 대신 쓴다(하드닝 1).
      */
     private fun requireManagePermission(
         actorId: UUID,
@@ -175,6 +182,23 @@ class SlackChannelMappingService(
     ) {
         if (!permissionResolver.hasManageChannelMapping(actorId, projectKey)) {
             throw SlackChannelMappingPermissionDeniedException()
+        }
+    }
+
+    /**
+     * [update]/[delete] 전용 권한 게이트 — 거부를 [SlackChannelMappingNotFoundException](404)로 수렴시킨다.
+     *
+     * 이 두 연산은 이미 존재가 확인된 대상 매핑의 projectKey 로 게이트하므로, 거부를 403 으로 노출하면
+     * 인증된 비관리자가 매핑 id 존재 여부를 404(미존재) vs 403(존재·권한없음)으로 구분할 수 있다. 존재를
+     * 숨기기 위해 거부를 미존재와 동일한 404 로 수렴시킨다([requireManagePermission] 의 403 과 비대칭,
+     * GitHub private-repo 404 패턴, 하드닝 1).
+     */
+    private fun requireManageOrHideNotFound(
+        actorId: UUID,
+        projectKey: String,
+    ) {
+        if (!permissionResolver.hasManageChannelMapping(actorId, projectKey)) {
+            throw SlackChannelMappingNotFoundException()
         }
     }
 
