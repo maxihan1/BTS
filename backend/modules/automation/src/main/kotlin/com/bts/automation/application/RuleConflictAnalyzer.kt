@@ -75,13 +75,11 @@ class RuleConflictAnalyzer {
             is Action.CallWebhookAction -> false
         }
 
-    /** [target] 이 ISSUE_UPDATED 트리거이고 [field] 변경에 발화하면 `true`([TriggerMatcher.matchesFieldFilter] 재사용). */
+    /** [target] 이 ISSUE_UPDATED 트리거이고 [field] 변경에 발화하면 `true`([matchesField] 공유 헬퍼 재사용). */
     private fun triggersIssueUpdated(
         target: AutomationRule,
         field: String,
-    ): Boolean =
-        target.triggerType == TriggerType.ISSUE_UPDATED &&
-            TriggerMatcher.matchesFieldFilter(target.triggerConfig, setOf(field))
+    ): Boolean = target.triggerType == TriggerType.ISSUE_UPDATED && matchesField(target.triggerConfig, field)
 
     companion object {
         /**
@@ -209,9 +207,9 @@ private class FieldPriorityAnalyzer(private val rules: List<AutomationRule>) {
     /**
      * 두 ISSUE_UPDATED `triggerConfig` 의 `fields` 필터가 겹치거나 한쪽이 비어있으면 `true`.
      *
-     * 실제 겹침 판정은 [TriggerMatcher.matchesFieldFilter] 를 재사용한다(CYCLE 판정의
-     * [RuleConflictAnalyzer.triggersIssueUpdated] 가 쓰는 것과 같은 헬퍼) — "필터가 비었으면 전체
-     * 발화, 아니면 교집합" 규칙을 두 곳에서 따로 구현하지 않는다.
+     * 실제 겹침 판정은 [matchesField] 를 재사용한다(CYCLE 판정의
+     * [RuleConflictAnalyzer.triggersIssueUpdated] 가 쓰는 것과 같은 공유 헬퍼) — "필터가 비었으면
+     * 전체 발화, 아니면 교집합" 규칙을 두 곳에서 따로 구현하지 않는다.
      */
     private fun fieldsCoFire(
         configA: String,
@@ -219,10 +217,7 @@ private class FieldPriorityAnalyzer(private val rules: List<AutomationRule>) {
     ): Boolean {
         val candidates = configuredFields(configA) + configuredFields(configB)
         if (candidates.isEmpty()) return true
-        return candidates.any {
-            TriggerMatcher.matchesFieldFilter(configA, setOf(it)) &&
-                TriggerMatcher.matchesFieldFilter(configB, setOf(it))
-        }
+        return candidates.any { matchesField(configA, it) && matchesField(configB, it) }
     }
 
     /** [a]·[b] 사이의 [conflictingFieldNames] 를 각각 [ConflictType.FIELD_CONFLICT] 로 변환한다(ruleIds=[a,b]). */
@@ -234,8 +229,9 @@ private class FieldPriorityAnalyzer(private val rules: List<AutomationRule>) {
             RuleConflict.of(
                 type = ConflictType.FIELD_CONFLICT,
                 ruleIds = listOf(a.id, b.id),
-                detail = "규칙 '${a.name}'과(와) '${b.name}'가 동시에 발화할 때 " +
-                    "필드 '$field'에 서로 다른 값을 설정해 충돌합니다.",
+                detail =
+                    "규칙 '${a.name}'과(와) '${b.name}'가 동시에 발화할 때 " +
+                        "필드 '$field'에 서로 다른 값을 설정해 충돌합니다.",
             )
         }
 
@@ -276,8 +272,9 @@ private class FieldPriorityAnalyzer(private val rules: List<AutomationRule>) {
         return RuleConflict.of(
             type = ConflictType.PRIORITY_AMBIGUITY,
             ruleIds = pairIds,
-            detail = "규칙 '${a.name}'과(와) '${b.name}'가 같은 트리거에 동시에 매칭될 수 있어 " +
-                "실행 순서가 정해지지 않습니다.",
+            detail =
+                "규칙 '${a.name}'과(와) '${b.name}'가 같은 트리거에 동시에 매칭될 수 있어 " +
+                    "실행 순서가 정해지지 않습니다.",
         )
     }
 
@@ -293,14 +290,26 @@ private const val TRIGGER_CONFIG_FIELDS_KEY = "fields"
 private val triggerConfigObjectMapper = ObjectMapper()
 
 /**
+ * `triggerConfig` 의 ISSUE_UPDATED 필드 필터가 `field` 변경에 발화하면 `true`.
+ *
+ * [TriggerMatcher.matchesFieldFilter] 를 감싸는 파일 전역 공유 헬퍼다 — "필터가 비었으면 전체 발화,
+ * 아니면 교집합"이라는 단일 매칭 의미론을 [RuleConflictAnalyzer.triggersIssueUpdated](CYCLE 판정)와
+ * [FieldPriorityAnalyzer.fieldsCoFire](FIELD_CONFLICT/PRIORITY_AMBIGUITY 동시 매칭 판정) 양쪽에서
+ * 재사용해 같은 규칙을 두 번 구현하지 않는다.
+ */
+private fun matchesField(
+    triggerConfig: String,
+    field: String,
+): Boolean = TriggerMatcher.matchesFieldFilter(triggerConfig, setOf(field))
+
+/**
  * `triggerConfig` JSON(`{"fields":[...]}`) 의 `fields` 배열을 문자열 집합으로 파싱한다.
  *
- * [FieldPriorityAnalyzer.fieldsCoFire] 가 동시 매칭 후보 필드를 뽑는 용도로만 쓴다 — 실제 "필터가
- * 비었으면 전체 발화, 아니면 교집합"이라는 매칭 의미론은 이 함수가 아니라
- * [TriggerMatcher.matchesFieldFilter] 가 갖는다(단일 진실 공급원 유지, 이 함수는 후보 열거용 파싱만
- * 담당). [com.bts.automation.domain.TriggerConfig]/[TriggerMatcher] 의 동명 private 파싱 로직과
- * 형식이 겹치지만, 두 파일 모두 이 모듈의 비공개 구현이라 직접 재사용할 공개 API가 없다(모듈 내 최소
- * 중복 허용, 파일별 자기완결 파싱 관례는 기존 domain 파일들도 동형).
+ * [FieldPriorityAnalyzer.fieldsCoFire] 가 동시 매칭 후보 필드를 뽑는 용도로만 쓴다 — 실제 매칭
+ * 의미론은 이 함수가 아니라 [matchesField] 가 갖는다(단일 진실 공급원 유지, 이 함수는 후보 열거용
+ * 파싱만 담당). [com.bts.automation.domain.TriggerConfig]/[TriggerMatcher] 의 동명 private 파싱
+ * 로직과 형식이 겹치지만, 두 파일 모두 이 모듈의 비공개 구현이라 직접 재사용할 공개 API가 없다(모듈 내
+ * 최소 중복 허용, 파일별 자기완결 파싱 관례는 기존 domain 파일들도 동형).
  */
 private fun configuredFields(triggerConfig: String): Set<String> {
     val fieldsNode = triggerConfigObjectMapper.readTree(triggerConfig).path(TRIGGER_CONFIG_FIELDS_KEY)
