@@ -5,6 +5,7 @@ package com.bts.automation
 import com.bts.shared.issue.IssueMutationPort
 import com.bts.shared.issue.IssueSnapshotPort
 import com.bts.shared.permission.AutomationPermissionResolver
+import com.bts.shared.permission.IssuePermissionResolver
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -77,6 +78,9 @@ class ModuleBootTest {
      *
      * `ActionExecutor`(FR-AT-03 Task 7)가 non-null 로 요구하는 [IssueSnapshotPort] 도 동일 사유로
      * [StubIssueSnapshotPort] 를 대신 등록한다.
+     *
+     * `RuleConflictAnalyzer`(FR-AT-04 Task 4)가 non-null 로 요구하는 [IssuePermissionResolver] 도 동일
+     * 사유로 [StubIssuePermissionResolver](AlwaysAllow) 를 대신 등록한다.
      */
     @TestConfiguration
     class PermissionResolverStubConfig {
@@ -88,6 +92,9 @@ class ModuleBootTest {
 
         @Bean
         fun issueSnapshotPort(): IssueSnapshotPort = StubIssueSnapshotPort()
+
+        @Bean
+        fun issuePermissionResolver(): IssuePermissionResolver = StubIssuePermissionResolver()
     }
 
     @Autowired

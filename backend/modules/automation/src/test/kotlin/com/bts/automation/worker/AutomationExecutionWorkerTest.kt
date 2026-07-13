@@ -6,6 +6,7 @@ import com.bts.automation.AutomationTestBootApplication
 import com.bts.automation.AutomationTestcontainersBase
 import com.bts.automation.StubAutomationPermissionResolver
 import com.bts.automation.StubIssueMutationPort
+import com.bts.automation.StubIssuePermissionResolver
 import com.bts.automation.StubIssueSnapshotPort
 import com.bts.automation.adapter.AutomationRuleRepository
 import com.bts.automation.application.ActionExecutor
@@ -13,6 +14,7 @@ import com.bts.automation.domain.Action
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.TriggerType
 import com.bts.shared.permission.AutomationPermissionResolver
+import com.bts.shared.permission.IssuePermissionResolver
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.TextNode
@@ -78,7 +80,8 @@ class AutomationExecutionWorkerTest {
      * 등록해 테스트가 [issueMutationPort] 로 직접 주입받아 호출 기록을 검증할 수 있게 한다
      * ([com.bts.automation.web.AutomationRuleControllerTest] 동형). [StubIssueSnapshotPort] 는
      * `ActionExecutor`(FR-AT-03 Task 7)가 non-null 로 요구하는 [com.bts.shared.issue.IssueSnapshotPort]
-     * 를 동일 사유로 대신 등록한다.
+     * 를 동일 사유로 대신 등록한다. `RuleConflictAnalyzer`(FR-AT-04 Task 4)가 non-null 로 요구하는
+     * [IssuePermissionResolver] 도 동일 사유로 [StubIssuePermissionResolver] 를 대신 등록한다.
      */
     @TestConfiguration
     class TestSupportConfig {
@@ -90,6 +93,9 @@ class AutomationExecutionWorkerTest {
 
         @Bean
         fun stubIssueSnapshotPort(): StubIssueSnapshotPort = StubIssueSnapshotPort()
+
+        @Bean
+        fun issuePermissionResolver(): IssuePermissionResolver = StubIssuePermissionResolver()
     }
 
     @Autowired

@@ -2,6 +2,7 @@
 
 package com.bts.automation.application
 
+import com.bts.automation.StubIssuePermissionResolver
 import com.bts.automation.domain.Action
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.ConflictType
@@ -44,7 +45,10 @@ class RuleConflictAnalyzerCycleTest : DescribeSpec({
         return if (enabled) rule else rule.disable(fixedNow)
     }
 
-    val analyzer = RuleConflictAnalyzer()
+    // PERMISSION_MISSING(FR-AT-04 Task 4)은 RuleConflictAnalyzerPermissionTest 가 전담한다 — 이 파일은
+    // CYCLE 만 검증하므로 항상 허용(AlwaysAllow)하는 stub 을 주입해 PERMISSION_MISSING 이 섞여 들어오지
+    // 않게 한다(생성자 변경에 따른 갱신, 로직/단언은 그대로).
+    val analyzer = RuleConflictAnalyzer(StubIssuePermissionResolver())
 
     describe("CYCLE 검출 — self-loop") {
         it("A의 SetField(priority)가 A 자신의 ISSUE_UPDATED{fields:[priority]} 트리거를 유발하면 CYCLE 1건") {

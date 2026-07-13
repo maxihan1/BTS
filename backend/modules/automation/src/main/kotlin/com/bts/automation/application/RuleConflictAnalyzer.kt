@@ -1,4 +1,4 @@
-// 자동화 규칙 집합의 CYCLE·FIELD_CONFLICT·PRIORITY_AMBIGUITY 충돌을 정적 분석한다 (FR-AT-04 Task 2/3)
+// 자동화 규칙 집합의 CYCLE·FIELD_CONFLICT·PRIORITY_AMBIGUITY·PERMISSION_MISSING 충돌을 정적 분석한다 (FR-AT-04 Task 2/3/4)
 
 package com.bts.automation.application
 
@@ -7,15 +7,19 @@ import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.ConflictType
 import com.bts.automation.domain.RuleConflict
 import com.bts.automation.domain.TriggerType
+import com.bts.shared.permission.IssuePermission
+import com.bts.shared.permission.IssuePermissionResolver
+import com.bts.shared.permission.IssueScope
 import com.fasterxml.jackson.databind.ObjectMapper
 import java.util.UUID
+import org.springframework.stereotype.Component
 
 /**
  * 자동화 규칙 집합을 정적 분석해 [RuleConflict] 목록을 산출한다.
  *
- * [ConflictType.CYCLE]([CycleDetector])과 [ConflictType.FIELD_CONFLICT]/[ConflictType.PRIORITY_AMBIGUITY]
- * ([FieldPriorityAnalyzer])를 담당한다 — [ConflictType.PERMISSION_MISSING] 은 후속 Task 4에서 이 클래스의
- * `analyze()` 에 파트가 추가된다. 결과는 DB에 영속되지 않는 요청-응답 계산값이다(스펙 FR-1).
+ * [ConflictType.CYCLE]([CycleDetector]), [ConflictType.FIELD_CONFLICT]/[ConflictType.PRIORITY_AMBIGUITY]
+ * ([FieldPriorityAnalyzer]), [ConflictType.PERMISSION_MISSING]([PermissionAnalyzer])을 모두 담당한다.
+ * 결과는 DB에 영속되지 않는 요청-응답 계산값이다(스펙 FR-1).
  *
  * ## CYCLE 판정 (스펙 FR-3)
  * 방향 그래프를 구성한다 — 노드는 [AutomationRule.enabled] 가 `true` 인 규칙만(disabled 규칙은
@@ -26,11 +30,27 @@ import java.util.UUID
  * 조건([com.bts.automation.domain.Condition])은 무시한다 — B 의 조건이 실제로 참이 될지는 정적으로
  * 판정하지 않는다(조건 겹침 판정은 SAT 급 난제). 트리거 유발 가능성만으로 엣지를 그어 일부 false
  * positive 는 허용하되 실제 사이클을 놓치지 않는다(보수적 근사).
+ *
+ * ## PERMISSION_MISSING 판정 (스펙 FR-6) — cross-BC 신규 소비
+ * [issuePermissionResolver]([IssuePermissionResolver], shared-kernel)에 각 규칙의 실행 주체
+ * (`actorUserId`)가 액션이 요구하는 권한을 **프로젝트 레벨**(`IssueScope.Project`)에서 보유하는지
+ * 근사 판정을 위임한다 — 저장 시점엔 구체 이슈가 없어 이슈별 보안등급까지는 검증하지 못한다(false
+ * negative 는 실행 시점 fail-closed 방어에 위임, 프로젝트 레벨조차 없으면 확실히 실패하는 케이스만
+ * 잡는다). non-null 생성자 주입으로 요구해([[crossbc-resolver-nullable-fail-open]] fail-open 회귀
+ * 방지) automation 컨텍스트 부팅 시 이 포트 빈이 반드시 있어야 한다 — non-prod 는
+ * `StubIssuePermissionResolver`(AlwaysAllow, `com.bts.automation` 테스트 패키지)가, prod 조립
+ * (`:modules:app`)은 identity-access `@Profile("prod")` 어댑터가 제공한다. non-prod stub 특성상
+ * PERMISSION_MISSING 은 prod 에서만 실질 검출된다(스펙 FR-6 Brainstorming #5).
+ *
+ * @property issuePermissionResolver 이슈 권한 판정 outbound 포트(shared-kernel 공용, PERMISSION_MISSING 전용)
  */
-class RuleConflictAnalyzer {
+@Component
+class RuleConflictAnalyzer(
+    private val issuePermissionResolver: IssuePermissionResolver,
+) {
     /**
      * [rules] 를 정적 분석해 검출된 [RuleConflict] 목록을 반환한다(CYCLE + FIELD_CONFLICT +
-     * PRIORITY_AMBIGUITY, 스펙 FR-3/FR-4/FR-5).
+     * PRIORITY_AMBIGUITY + PERMISSION_MISSING, 스펙 FR-3/FR-4/FR-5/FR-6).
      *
      * @param rules 분석 대상 규칙 집합(보통 한 프로젝트의 삭제되지 않은 전체 규칙, 스펙 FR-2)
      * @return 검출된 [RuleConflict] 목록. 같은 충돌이 여러 경로로 중복 검출돼도 1건으로 dedup 된다.
@@ -42,7 +62,8 @@ class RuleConflictAnalyzer {
         val ruleNames = enabledRules.associate { it.id to it.name }
         val cycleConflicts = CycleDetector(graph, ruleNames).detect()
         val fieldPriorityConflicts = FieldPriorityAnalyzer(enabledRules).detect()
-        return (cycleConflicts + fieldPriorityConflicts).distinct()
+        val permissionConflicts = PermissionAnalyzer(enabledRules, issuePermissionResolver).detect()
+        return (cycleConflicts + fieldPriorityConflicts + permissionConflicts).distinct()
     }
 
     /** [rules] 로 인접 목록(`ruleId -> 유발 대상 ruleId 목록`)을 구성한다. 다중 엣지를 허용한다(dedup은 호출자 책임). */
@@ -284,6 +305,120 @@ private class FieldPriorityAnalyzer(private val rules: List<AutomationRule>) {
             it is Action.SetFieldAction || it is Action.AssignAction || it is Action.AddCommentAction
         }
 }
+
+/**
+ * [rules] 중 실행 주체(`actorUserId`)가 액션이 요구하는 이슈 권한을 프로젝트 레벨에서 보유하지 못하는
+ * 경우를 검출하는 헬퍼(FR-AT-04 Task 4, 스펙 FR-6). [rules] 는 이미 [AutomationRule.enabled] 로 걸러진
+ * 목록이어야 한다(disabled 규칙은 발화하지 않으므로 제외).
+ *
+ * ## 권한 매핑 (스펙 FR-6 표)
+ * [Action.SetFieldAction]/[Action.AssignAction] → [com.bts.shared.permission.IssuePermission.UPDATE].
+ * [Action.AddCommentAction] 은 `IssuePermission` 에 댓글 전용 권한이 없어 분석 대상에서 제외하고,
+ * [Action.CallWebhookAction] 은 이슈 권한과 무관한 외부 HTTP 호출이라 마찬가지로 제외한다
+ * ([requiredPermission] exhaustive `when`).
+ *
+ * ## 메모이제이션 (스펙 Brainstorming #4)
+ * `(actorId, projectKey, permission)` 키로 [cache] 에 저장해, 같은 조합을 여러 규칙·액션이 반복
+ * 요구해도 [issuePermissionResolver] 는 고유 조합 수만큼만 호출된다 — N규칙×M액션이 아니라
+ * 고유 (actor, projectKey, permission) 수에 비례(NFR 1s 안전 마진).
+ */
+private class PermissionAnalyzer(
+    private val rules: List<AutomationRule>,
+    private val issuePermissionResolver: IssuePermissionResolver,
+) {
+    private val cache = mutableMapOf<PermissionCacheKey, Boolean>()
+
+    /** [rules] 를 분석해 검출된 [RuleConflict] 목록을 반환한다(PERMISSION_MISSING 전용). */
+    fun detect(): List<RuleConflict> = rules.flatMap { rule -> missingPermissionConflicts(rule) }
+
+    /** [rule] 의 액션이 요구하는 권한 중 [rule] 의 actor 가 보유하지 못한 권한마다 [RuleConflict] 1건. */
+    private fun missingPermissionConflicts(rule: AutomationRule): List<RuleConflict> =
+        actionsByRequiredPermission(rule).mapNotNull { (permission, actions) ->
+            missingPermissionConflict(rule, permission, actions)
+        }
+
+    /** [rule] 의 액션을 [requiredPermission] 기준으로 그룹핑한다(제외 대상 액션은 결과에서 빠진다). */
+    private fun actionsByRequiredPermission(rule: AutomationRule): Map<IssuePermission, List<Action>> =
+        rule.actions
+            .mapNotNull { action -> requiredPermission(action)?.let { it to action } }
+            .groupBy({ it.first }, { it.second })
+
+    /**
+     * [rule] 의 actor 가 [permission] 을 보유하지 못하면 [RuleConflict] 를, 보유하면 `null` 을 반환한다.
+     *
+     * @param actions [permission] 을 요구한 [rule] 의 액션들(detail 메시지의 "해당 액션 종류"용, 스펙 FR-6)
+     */
+    private fun missingPermissionConflict(
+        rule: AutomationRule,
+        permission: IssuePermission,
+        actions: List<Action>,
+    ): RuleConflict? {
+        if (hasPermission(rule.actorUserId, rule.projectKey, permission)) return null
+        return permissionMissingDetail(rule, permission, actions)
+    }
+
+    /** [permissionMissingConflict] 이 검출한 위반 1건을 사람이 읽을 수 있는 한국어 [RuleConflict] 로 변환한다. */
+    private fun permissionMissingDetail(
+        rule: AutomationRule,
+        permission: IssuePermission,
+        actions: List<Action>,
+    ): RuleConflict {
+        val actionKinds = actions.map(::actionKindLabel).distinct().joinToString(", ")
+        return RuleConflict.of(
+            type = ConflictType.PERMISSION_MISSING,
+            ruleIds = listOf(rule.id),
+            detail =
+                "규칙 '${rule.name}'(id=${rule.id})의 실행 주체(actorId=${rule.actorUserId})가 " +
+                    "프로젝트 '${rule.projectKey}'에서 $permission 권한이 없어 " +
+                    "$actionKinds 액션이 실행 시점에 실패할 수 있습니다.",
+        )
+    }
+
+    /**
+     * [actorId] 가 [projectKey] 프로젝트에서 [permission] 을 보유하는지 [cache] 를 거쳐 판정한다.
+     *
+     * 같은 키가 이미 캐시에 있으면 [issuePermissionResolver] 를 다시 호출하지 않는다(메모이제이션).
+     */
+    private fun hasPermission(
+        actorId: UUID,
+        projectKey: String,
+        permission: IssuePermission,
+    ): Boolean =
+        cache.getOrPut(PermissionCacheKey(actorId, projectKey, permission)) {
+            issuePermissionResolver.hasPermission(actorId, permission, IssueScope.Project(projectKey))
+        }
+
+    /**
+     * [action] 이 요구하는 [IssuePermission](스펙 FR-6 표). `AddCommentAction`/`CallWebhookAction` 은
+     * 분석 대상이 아니므로 `null`(호출자가 [actionsByRequiredPermission] 에서 걸러낸다).
+     */
+    private fun requiredPermission(action: Action): IssuePermission? =
+        when (action) {
+            is Action.SetFieldAction -> IssuePermission.UPDATE
+            is Action.AssignAction -> IssuePermission.UPDATE
+            is Action.AddCommentAction -> null
+            is Action.CallWebhookAction -> null
+        }
+
+    /**
+     * [action] 의 한국어 표시 라벨(PERMISSION_MISSING detail 메시지 전용 —
+     * [com.bts.automation.domain.ActionType] enum과 별개의 로컬 매핑).
+     */
+    private fun actionKindLabel(action: Action): String =
+        when (action) {
+            is Action.SetFieldAction -> "필드 설정"
+            is Action.AssignAction -> "담당자 지정"
+            is Action.AddCommentAction -> "댓글 추가"
+            is Action.CallWebhookAction -> "웹훅 호출"
+        }
+}
+
+/** [PermissionAnalyzer] 권한 조회 메모이제이션 키. actor·프로젝트·권한 종류가 모두 같아야 캐시 hit. */
+private data class PermissionCacheKey(
+    val actorId: UUID,
+    val projectKey: String,
+    val permission: IssuePermission,
+)
 
 private const val TRIGGER_CONFIG_FIELDS_KEY = "fields"
 

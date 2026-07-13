@@ -12,6 +12,7 @@ import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.TriggerType
 import com.bts.automation.worker.AutomationExecutionWorker
 import com.bts.shared.permission.AutomationPermissionResolver
+import com.bts.shared.permission.IssuePermissionResolver
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.TextNode
@@ -72,7 +73,8 @@ class ActionExecutionEndToEndIntegrationTest {
      * 컨텍스트 로드용 스텁/mock 등록.
      *
      * [AutomationPermissionResolver]/[StubIssueMutationPort]/[StubIssueSnapshotPort](FR-AT-03 Task 7
-     * 추가분)는 `AutomationExecutionWorkerTest` 동형 consumer-owns-stub 패턴. `WebhookActionClient` 는
+     * 추가분)/[StubIssuePermissionResolver](FR-AT-04 Task 4 추가분)는 `AutomationExecutionWorkerTest`
+     * 동형 consumer-owns-stub 패턴. `WebhookActionClient` 는
      * `@Primary` mockk 로 컴포넌트 스캔된 실 빈
      * (`com.bts.shared.http` 의 `OutboundUrlValidator`/실 `RestClient` 를 태움)을 오버라이드해 실제
      * 네트워크 호출·SSRF 검증 경로를 타지 않게 한다(빈 이름을 실 컴포넌트와 다르게 지어 중복 빈 이름
@@ -88,6 +90,9 @@ class ActionExecutionEndToEndIntegrationTest {
 
         @Bean
         fun stubIssueSnapshotPort(): StubIssueSnapshotPort = StubIssueSnapshotPort()
+
+        @Bean
+        fun issuePermissionResolver(): IssuePermissionResolver = StubIssuePermissionResolver()
 
         @Bean
         @Primary

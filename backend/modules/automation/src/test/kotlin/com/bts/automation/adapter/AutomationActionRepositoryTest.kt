@@ -6,6 +6,7 @@ import com.bts.automation.AutomationTestBootApplication
 import com.bts.automation.AutomationTestcontainersBase
 import com.bts.automation.StubAutomationPermissionResolver
 import com.bts.automation.StubIssueMutationPort
+import com.bts.automation.StubIssuePermissionResolver
 import com.bts.automation.StubIssueSnapshotPort
 import com.bts.automation.domain.Action
 import com.bts.automation.domain.AutomationRule
@@ -13,6 +14,7 @@ import com.bts.automation.domain.TriggerType
 import com.bts.shared.issue.IssueMutationPort
 import com.bts.shared.issue.IssueSnapshotPort
 import com.bts.shared.permission.AutomationPermissionResolver
+import com.bts.shared.permission.IssuePermissionResolver
 import com.fasterxml.jackson.databind.node.TextNode
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -57,7 +59,8 @@ import java.util.UUID
 class AutomationActionRepositoryTest {
     /**
      * 컨텍스트 로드용 [AutomationPermissionResolver]/[IssueMutationPort]/[IssueSnapshotPort](FR-AT-03
-     * Task 7 추가분) 스텁 등록([AutomationRuleRepositoryTest] 동형).
+     * Task 7 추가분)/[IssuePermissionResolver](FR-AT-04 Task 4 추가분) 스텁 등록
+     * ([AutomationRuleRepositoryTest] 동형).
      */
     @TestConfiguration
     class PermissionResolverStubConfig {
@@ -69,6 +72,9 @@ class AutomationActionRepositoryTest {
 
         @Bean
         fun issueSnapshotPort(): IssueSnapshotPort = StubIssueSnapshotPort()
+
+        @Bean
+        fun issuePermissionResolver(): IssuePermissionResolver = StubIssuePermissionResolver()
     }
 
     @Autowired

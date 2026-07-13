@@ -2,6 +2,7 @@
 
 package com.bts.automation.application
 
+import com.bts.automation.StubIssuePermissionResolver
 import com.bts.automation.domain.Action
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.ConflictType
@@ -47,7 +48,10 @@ class RuleConflictAnalyzerFieldPriorityTest : DescribeSpec({
         return if (enabled) rule else rule.disable(fixedNow)
     }
 
-    val analyzer = RuleConflictAnalyzer()
+    // PERMISSION_MISSING(FR-AT-04 Task 4)은 RuleConflictAnalyzerPermissionTest 가 전담한다 — 이 파일은
+    // FIELD_CONFLICT/PRIORITY_AMBIGUITY 만 검증하므로 항상 허용(AlwaysAllow)하는 stub 을 주입해
+    // PERMISSION_MISSING 이 섞여 들어오지 않게 한다(생성자 변경에 따른 갱신, 로직/단언은 그대로).
+    val analyzer = RuleConflictAnalyzer(StubIssuePermissionResolver())
 
     describe("FIELD_CONFLICT — 같은 트리거 두 규칙이 같은 필드를 다른 값으로 SET") {
         it("A·B가 둘 다 ISSUE_CREATED이고 priority를 다른 값으로 SET하면 FIELD_CONFLICT [A,B]") {
