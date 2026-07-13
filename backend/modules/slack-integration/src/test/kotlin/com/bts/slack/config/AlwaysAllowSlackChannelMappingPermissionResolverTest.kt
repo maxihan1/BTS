@@ -44,7 +44,7 @@ class AlwaysAllowSlackChannelMappingPermissionResolverTest {
     // ── 2. @Profile("!prod") 어노테이션 보유 (리플렉션) ───────────────────────
 
     @Test
-    fun `클래스는 @Profile("!prod") 를 보유한다`() {
+    fun `클래스는 Profile !prod 를 보유한다`() {
         val profile =
             AlwaysAllowSlackChannelMappingPermissionResolver::class.java
                 .getAnnotation(Profile::class.java)
