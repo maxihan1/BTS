@@ -118,14 +118,6 @@ interface FormBodyProps {
   readonly onOpenChange: (open: boolean) => void
 }
 
-/**
- * 저장 실패를 처리한다 — submitError를 로컬 state에 담아 폼을 열어둔 채 재시도 가능하게 한다
- * (§30줄 상한 회피 목적으로 onValid에서 분리).
- */
-function handleSaveFailure(error: unknown, setSubmitError: (message: string | null) => void): void {
-  setSubmitError(resolveErrorMessage(error))
-}
-
 function FormBody({ projectKey, editingMapping, onOpenChange }: FormBodyProps): JSX.Element {
   const [eventTypes, setEventTypes] = useState<string[]>(editingMapping?.eventTypes ?? [])
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -181,7 +173,8 @@ function FormBody({ projectKey, editingMapping, onOpenChange }: FormBodyProps): 
       await queryClient.invalidateQueries({ queryKey: ['slack-channel-mappings', projectKey] })
       onOpenChange(false)
     } catch (error) {
-      handleSaveFailure(error, setSubmitError)
+      // 폼을 유지한 채 재시도 가능하도록 로컬 state에만 담는다(폼 자체 소유 — 부모 전달 없음).
+      setSubmitError(resolveErrorMessage(error))
     }
   }
 
