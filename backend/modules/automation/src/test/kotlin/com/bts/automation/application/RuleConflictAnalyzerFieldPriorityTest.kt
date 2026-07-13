@@ -271,8 +271,9 @@ class RuleConflictAnalyzerFieldPriorityTest : DescribeSpec({
                 )
 
             val conflicts = analyzer.analyze(listOf(ruleA, ruleB))
+            val ambiguousTypes = setOf(ConflictType.FIELD_CONFLICT, ConflictType.PRIORITY_AMBIGUITY)
 
-            conflicts.none { it.type == ConflictType.FIELD_CONFLICT || it.type == ConflictType.PRIORITY_AMBIGUITY } shouldBe true
+            conflicts.none { it.type in ambiguousTypes } shouldBe true
         }
     }
 

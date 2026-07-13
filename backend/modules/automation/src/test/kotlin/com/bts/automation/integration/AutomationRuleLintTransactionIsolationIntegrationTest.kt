@@ -111,7 +111,11 @@ class AutomationRuleLintTransactionIsolationIntegrationTest {
         val corruptedRuleId = createRuleWithoutActions(name = "손상될 규칙")
         corruptAction(corruptedRuleId)
 
-        val response = createRuleRaw(name = "새 규칙", actions = listOf(ActionSpec("SET_FIELD", """{"field":"priority","value":"High"}""")))
+        val response =
+            createRuleRaw(
+                name = "새 규칙",
+                actions = listOf(ActionSpec("SET_FIELD", """{"field":"priority","value":"High"}""")),
+            )
 
         assertThat(response.get("rule").get("conflicts").toList()).isEmpty()
 
@@ -192,8 +196,9 @@ class AutomationRuleLintTransactionIsolationIntegrationTest {
         .let(objectMapper::readTree)
 
     /** 액션 없는 유효한 룰을 생성하고 id 를 반환한다(픽스처 준비용). */
-    private fun createRuleWithoutActions(name: String): String =
-        createRuleRaw(name, emptyList()).get("rule").get("id").asText()
+    private fun createRuleWithoutActions(name: String): String {
+        return createRuleRaw(name, emptyList()).get("rule").get("id").asText()
+    }
 
     /**
      * [ruleId] 에 [com.bts.automation.domain.Action.fromJson] 파싱 요건을 위반하는 `SET_FIELD` 액션

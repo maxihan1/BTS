@@ -1,4 +1,4 @@
-// AutomationRuleService 저장/lint 분리 단위 테스트 — create/patch 는 analyzer 를 호출하지 않고, analyzeProjectConflicts 가 저장 트랜잭션 밖에서 fail-safe 로 분석한다 (FR-AT-04 코드리뷰 BLOCKER hotfix)
+// AutomationRuleService 저장/lint 분리 단위 테스트 (FR-AT-04 BLOCKER hotfix — create/patch 는 analyzer 미호출)
 
 package com.bts.automation.application
 
