@@ -8,9 +8,9 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
-import io.mockk.every
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.jooq.DSLContext
@@ -77,7 +77,8 @@ class SlackChannelBroadcasterTest {
 
     @Test
     fun `BC-2 발행 JSON 이 계약 필드를 모두 포함한다`() {
-        val event = buildEvent(projectKey = "ATLAS", issueKey = "ATLAS-1", eventType = NotificationEventType.ISSUE_CREATED)
+        val event =
+            buildEvent(projectKey = "ATLAS", issueKey = "ATLAS-1", eventType = NotificationEventType.ISSUE_CREATED)
         val payloadSlot = slot<String>()
         every { dsl.execute(any<String>(), SlackChannelBroadcaster.QUEUE_NAME, capture(payloadSlot)) } returns 1
 
