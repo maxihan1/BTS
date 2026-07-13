@@ -107,6 +107,8 @@ interface ConditionValueWidgetProps {
   readonly rawValue: unknown
   /** `member` 위젯({@link ProjectMemberSelect})에 넘길 프로젝트 식별 키 */
   readonly projectKey: string
+  /** 입력 id 접두사 — 한 그룹에 여러 행을 렌더할 때 고유하게 지정한다({@link ConditionComparisonRow} 참고) */
+  readonly idPrefix: string
   /** 값 변경 콜백 — 위젯 종류에 맞는 새 값(문자열/숫자/uuid 또는 null)을 그대로 전달한다 */
   readonly onValueChange: (next: unknown) => void
 }
@@ -120,16 +122,17 @@ function ConditionValueWidget({
   widgetKind,
   rawValue,
   projectKey,
+  idPrefix,
   onValueChange,
 }: ConditionValueWidgetProps): JSX.Element {
   if (widgetKind === 'number') {
     return (
       <div>
-        <label htmlFor="condition-value-number" className="block text-sm font-medium mb-1">
+        <label htmlFor={`${idPrefix}-value-number`} className="block text-sm font-medium mb-1">
           {TEXT.valueLabel}
         </label>
         <select
-          id="condition-value-number"
+          id={`${idPrefix}-value-number`}
           data-testid="condition-value-input"
           aria-label={TEXT.valueLabel}
           value={String(typeof rawValue === 'number' ? rawValue : DEFAULT_PRIORITY_VALUE)}
@@ -156,7 +159,7 @@ function ConditionValueWidget({
           value={typeof rawValue === 'string' ? rawValue : null}
           onChange={onValueChange}
           label={TEXT.valueLabel}
-          id="condition-value-member"
+          id={`${idPrefix}-value-member`}
         />
       </div>
     )
@@ -164,11 +167,11 @@ function ConditionValueWidget({
 
   return (
     <div>
-      <label htmlFor="condition-value-text" className="block text-sm font-medium mb-1">
+      <label htmlFor={`${idPrefix}-value-text`} className="block text-sm font-medium mb-1">
         {TEXT.valueLabel}
       </label>
       <input
-        id="condition-value-text"
+        id={`${idPrefix}-value-text`}
         type="text"
         data-testid="condition-value-input"
         aria-label={TEXT.valueLabel}
@@ -194,6 +197,12 @@ export interface ConditionComparisonRowProps {
   readonly onChange: (next: ConditionComparison) => void
   /** 담당자/보고자 값 위젯({@link ProjectMemberSelect})에 넘길 프로젝트 식별 키 */
   readonly projectKey: string
+  /**
+   * 입력 id 접두사 — {@link ConditionBuilder}가 한 그룹에 여러 행을 렌더할 때 행별로 고유하게
+   * 지정한다(`ActionConfigEditor`의 idPrefix 관례 동형). 미지정 시 기본값(`'condition'`)을 쓰지만,
+   * 같은 그룹에 Comparison이 2개 이상이면 반드시 고유 값을 넘겨야 DOM id 충돌을 피할 수 있다.
+   */
+  readonly idPrefix?: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -216,8 +225,17 @@ export interface ConditionComparisonRowProps {
  * 노드를 방출한다(단항 연산자는 값을 쓰지 않는다는 도메인 계약, {@link ConditionComparison} 참고).
  *
  * 완전한 controlled 컴포넌트다 — `value`/`onChange`로만 상태를 주고받는다.
+ *
+ * `idPrefix`로 필드/연산자/값 위젯의 DOM id를 행별로 고유하게 만든다({@link ConditionBuilder}가
+ * 노드별 안정 key로 전달) — 한 그룹에 Comparison이 2개 이상일 때 정적 id 중복으로 라벨 클릭이
+ * 엉뚱한 행에 포커스되는 것을 막는다(`ActionConfigEditor` idPrefix 관례 동형).
  */
-export function ConditionComparisonRow({ value, onChange, projectKey }: ConditionComparisonRowProps): JSX.Element {
+export function ConditionComparisonRow({
+  value,
+  onChange,
+  projectKey,
+  idPrefix = 'condition',
+}: ConditionComparisonRowProps): JSX.Element {
   const meta = COMPARISON_OPERATOR_META[value.operator]
   const widgetKind = resolveConditionValueWidgetKind(value.field)
 
@@ -260,11 +278,11 @@ export function ConditionComparisonRow({ value, onChange, projectKey }: Conditio
   return (
     <div className="flex flex-wrap items-start gap-2">
       <div>
-        <label htmlFor="condition-field" className="block text-sm font-medium mb-1">
+        <label htmlFor={`${idPrefix}-field`} className="block text-sm font-medium mb-1">
           {TEXT.fieldLabel}
         </label>
         <select
-          id="condition-field"
+          id={`${idPrefix}-field`}
           data-testid="condition-field-select"
           aria-label={TEXT.fieldLabel}
           value={value.field}
@@ -280,11 +298,11 @@ export function ConditionComparisonRow({ value, onChange, projectKey }: Conditio
       </div>
 
       <div>
-        <label htmlFor="condition-operator" className="block text-sm font-medium mb-1">
+        <label htmlFor={`${idPrefix}-operator`} className="block text-sm font-medium mb-1">
           {TEXT.operatorLabel}
         </label>
         <select
-          id="condition-operator"
+          id={`${idPrefix}-operator`}
           data-testid="condition-operator-select"
           aria-label={TEXT.operatorLabel}
           value={value.operator}
@@ -306,6 +324,7 @@ export function ConditionComparisonRow({ value, onChange, projectKey }: Conditio
           widgetKind={widgetKind}
           rawValue={value.value}
           projectKey={projectKey}
+          idPrefix={idPrefix}
           onValueChange={handleValueChange}
         />
       )}

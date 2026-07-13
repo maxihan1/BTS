@@ -83,9 +83,15 @@ function toggleGroupNegate(group: ConditionGroup): ConditionGroup {
  * 트리 구조에 맞게 확장). {@link WeakMap}이라 더 이상 참조되지 않는 노드는 자동으로 회수된다.
  */
 function useNodeIdCache(): (node: ConditionNode) => string {
-  const cacheRef = useRef(new WeakMap<ConditionNode, string>())
+  const cacheRef = useRef<WeakMap<ConditionNode, string> | undefined>(undefined)
+  if (cacheRef.current === undefined) {
+    cacheRef.current = new WeakMap<ConditionNode, string>()
+  }
   return function idFor(node: ConditionNode): string {
     const cache = cacheRef.current
+    if (cache === undefined) {
+      throw new Error('useNodeIdCache: cache not initialized')
+    }
     const existing = cache.get(node)
     if (existing !== undefined) return existing
     const id = crypto.randomUUID()
@@ -124,7 +130,12 @@ function ConditionNodeEditor({ node, depth, projectKey, onChange, onRemove, idFo
     return (
       <div data-testid="condition-comparison-node" className="flex items-start gap-2">
         <div className="flex-1">
-          <ConditionComparisonRow value={node} onChange={onChange} projectKey={projectKey} />
+          <ConditionComparisonRow
+            value={node}
+            onChange={onChange}
+            projectKey={projectKey}
+            idPrefix={`condition-${idFor(node)}`}
+          />
         </div>
         {onRemove && (
           <button
