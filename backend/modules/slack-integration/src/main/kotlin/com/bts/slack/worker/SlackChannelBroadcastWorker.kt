@@ -172,6 +172,8 @@ class SlackChannelBroadcastWorker(
         }
     }
 
+    // ── 채널 처리 (보안게이트 + per-channel dedup/토큰/게시) ─────────────────────
+
     /**
      * `issueKey`가 있으면 보안등급 제한 여부를 판정한다(fan-out/render 이전 — 유출 차단 P0).
      *
@@ -256,6 +258,8 @@ class SlackChannelBroadcastWorker(
             }
         }
     }
+
+    // ── pgmq 생명주기 (파싱/poison/삭제/archive) ─────────────────────────────────
 
     /** pgmq JSON wire 포맷을 [SlackChannelBroadcastEvent] 로 파싱한다. 필수 필드 부재/형식 오류 시 null(poison). */
     @Suppress("TooGenericExceptionCaught", "ReturnCount")
