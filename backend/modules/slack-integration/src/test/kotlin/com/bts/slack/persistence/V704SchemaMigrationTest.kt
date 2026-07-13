@@ -26,7 +26,8 @@ import java.util.UUID
  * Ryuk 의 JVM 종료 시 자동 정리에 위임(동시 suite flaky 회피, SlackMigrationSchemaTest 동형).
  *
  * 검증 범위 (FR-SL-06 plan Task 1 / spec §데이터 모델 변경 V704 / DATA.md §4 TIMESTAMPTZ 강제).
- * - slack_channel_project_map 테이블 + 8개 컬럼(id, team_id, project_key, channel_id, channel_name, event_types, created_at, updated_at)
+ * - slack_channel_project_map 테이블 + 8개 컬럼(id, team_id, project_key, channel_id,
+ *   channel_name, event_types, created_at, updated_at)
  * - id = uuid PK NOT NULL (애플리케이션 생성 UUID — slack_interaction_log(V703) 동형)
  * - team_id / project_key / channel_id = text NOT NULL (cross-BC 참조, BC 격리로 FK 없음)
  * - channel_name = text NULLABLE (표시용, 옵션)
