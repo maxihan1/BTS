@@ -98,8 +98,9 @@ class SlackChannelMappingServiceTest {
         every { permissionResolver.hasManageChannelMapping(ACTOR_ID, PROJECT_KEY) } returns true
         every { installRepository.findCurrentInstallation() } returns installationView()
 
+        val withUnknown = setOf(SlackChannelEventType.ISSUE_CREATED, "bogus.event")
         assertThatThrownBy {
-            service.create(ACTOR_ID, PROJECT_KEY, CHANNEL_ID, CHANNEL_NAME, setOf(SlackChannelEventType.ISSUE_CREATED, "bogus.event"))
+            service.create(ACTOR_ID, PROJECT_KEY, CHANNEL_ID, CHANNEL_NAME, withUnknown)
         }.isInstanceOf(IllegalArgumentException::class.java)
 
         verify(exactly = 0) { mappingRepository.save(any()) }
@@ -110,7 +111,7 @@ class SlackChannelMappingServiceTest {
         every { permissionResolver.hasManageChannelMapping(ACTOR_ID, PROJECT_KEY) } returns true
         every { installRepository.findCurrentInstallation() } returns installationView()
         every { mappingRepository.save(any()) } throws
-            DataIntegrityViolationException("duplicate key value violates unique constraint \"uq_slack_channel_project_map\"")
+            DataIntegrityViolationException("duplicate key value violates unique constraint")
 
         assertThatThrownBy { service.create(ACTOR_ID, PROJECT_KEY, CHANNEL_ID, CHANNEL_NAME, EVENT_TYPES) }
             .isInstanceOf(SlackChannelMappingConflictException::class.java)
@@ -199,8 +200,9 @@ class SlackChannelMappingServiceTest {
         every { mappingRepository.update(any()) } throws
             DataIntegrityViolationException("duplicate key value violates unique constraint")
 
-        assertThatThrownBy { service.update(ACTOR_ID, MAPPING_ID, channelId = "C999", channelName = null, eventTypes = null) }
-            .isInstanceOf(SlackChannelMappingConflictException::class.java)
+        assertThatThrownBy {
+            service.update(ACTOR_ID, MAPPING_ID, channelId = "C999", channelName = null, eventTypes = null)
+        }.isInstanceOf(SlackChannelMappingConflictException::class.java)
     }
 
     // ── delete ───────────────────────────────────────────────────────────────
