@@ -242,4 +242,35 @@ class RuleConflictAnalyzerCycleTest : DescribeSpec({
             conflicts.shouldBeEmpty()
         }
     }
+
+    describe("CYCLE 미검출 — AssignAction 은 phantom 엣지를 만들지 않는다 (코드리뷰 C1 hotfix)") {
+        it(
+            "A(AssignAction, ISSUE_UPDATED{status})↔B(SetField(status), ISSUE_UPDATED{assignee}) 는 " +
+                "B→A 엣지만 있고 A→B 엣지가 없어 CYCLE 이 아니다",
+        ) {
+            // 담당자 변경은 issue.assigned 별도 이벤트로 발행되고 automation TriggerMatcher 는 그 이벤트를
+            // 소비하지 않는다(issue.created/updated/commented 만 매핑) — 즉 AssignAction 이 실제로
+            // ISSUE_UPDATED{fields:[assignee]} 를 유발하는 런타임 경로는 존재하지 않는다. A→B 엣지가 그대로
+            // 있었다면 B→A(SetField(status)가 A의 ISSUE_UPDATED{status} 를 유발) 와 합쳐져 A↔B 2-cycle 로
+            // 오탐(phantom CYCLE)됐을 시나리오다.
+            val ruleA =
+                ruleOf(
+                    name = "A",
+                    triggerType = TriggerType.ISSUE_UPDATED,
+                    triggerConfig = """{"fields":["status"]}""",
+                    actions = listOf(Action.AssignAction(assigneeId = UUID.randomUUID())),
+                )
+            val ruleB =
+                ruleOf(
+                    name = "B",
+                    triggerType = TriggerType.ISSUE_UPDATED,
+                    triggerConfig = """{"fields":["assignee"]}""",
+                    actions = listOf(Action.SetFieldAction(field = "status", value = TextNode("open"))),
+                )
+
+            val conflicts = analyzer.analyze(listOf(ruleA, ruleB))
+
+            conflicts.none { it.type == ConflictType.CYCLE } shouldBe true
+        }
+    }
 })

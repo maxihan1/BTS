@@ -254,4 +254,50 @@ class RuleConflictAnalyzerFieldPriorityTest : DescribeSpec({
             conflicts.shouldBeEmpty()
         }
     }
+
+    describe("coFire 미검출 — WEBHOOK 규칙 두 개는 각자 고유 토큰 엔드포인트라 동시 발화가 불가능하다 (코드리뷰 C2 hotfix)") {
+        it("A·B가 둘 다 WEBHOOK 이고 같은 필드를 다른 값으로 SET 해도 FIELD_CONFLICT/PRIORITY_AMBIGUITY 가 검출되지 않는다") {
+            val ruleA =
+                ruleOf(
+                    name = "A",
+                    triggerType = TriggerType.WEBHOOK,
+                    actions = listOf(Action.SetFieldAction(field = "priority", value = IntNode(1))),
+                )
+            val ruleB =
+                ruleOf(
+                    name = "B",
+                    triggerType = TriggerType.WEBHOOK,
+                    actions = listOf(Action.SetFieldAction(field = "priority", value = IntNode(5))),
+                )
+
+            val conflicts = analyzer.analyze(listOf(ruleA, ruleB))
+
+            conflicts.none { it.type == ConflictType.FIELD_CONFLICT || it.type == ConflictType.PRIORITY_AMBIGUITY } shouldBe true
+        }
+    }
+
+    describe("coFire 유지 — SCHEDULED 는 cron 이 겹칠 수 있어 보수적으로 동시 매칭 취급한다") {
+        it("A·B가 둘 다 SCHEDULED 이고 같은 필드를 다른 값으로 SET 하면 FIELD_CONFLICT 가 그대로 검출된다") {
+            val ruleA =
+                ruleOf(
+                    name = "A",
+                    triggerType = TriggerType.SCHEDULED,
+                    triggerConfig = """{"cron":"0 0 9 * * *"}""",
+                    actions = listOf(Action.SetFieldAction(field = "priority", value = IntNode(1))),
+                )
+            val ruleB =
+                ruleOf(
+                    name = "B",
+                    triggerType = TriggerType.SCHEDULED,
+                    triggerConfig = """{"cron":"0 0 9 * * *"}""",
+                    actions = listOf(Action.SetFieldAction(field = "priority", value = IntNode(5))),
+                )
+
+            val fieldConflicts =
+                analyzer.analyze(listOf(ruleA, ruleB)).filter { it.type == ConflictType.FIELD_CONFLICT }
+
+            fieldConflicts.size shouldBe 1
+            fieldConflicts.single().ruleIds shouldBe listOf(ruleA.id, ruleB.id).sorted()
+        }
+    }
 })
