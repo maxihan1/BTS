@@ -13,6 +13,7 @@ import com.bts.automation.application.AutomationRuleNotFoundException
 import com.bts.automation.application.AutomationRuleService
 import com.bts.automation.application.AutomationRuleVersionConflictException
 import com.bts.automation.domain.AutomationDomainException
+import com.bts.automation.domain.InvalidConditionExpressionException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -44,8 +45,11 @@ import java.util.UUID
  * - `GET    /api/v1/projects/{projectKey}/automation/rules`      — 목록
  * - `GET    /api/v1/projects/{projectKey}/automation/rules/{id}` — 단건(토큰 미노출)
  * - `PATCH  /api/v1/projects/{projectKey}/automation/rules/{id}` — 부분수정(name·enabled·triggerConfig·
- *   actions·actorUserId, OCC)
+ *   actions·actorUserId·condition, OCC)
  * - `DELETE /api/v1/projects/{projectKey}/automation/rules/{id}` — soft delete
+ *
+ * `condition`(조건 게이트 표현식, FR-AT-03)은 신규 엔드포인트 없이 생성/수정 payload 필드로만
+ * 확장된다(spec FR-AT-03-7 — "신규 엔드포인트 없음").
  *
  * 모든 엔드포인트는 MANAGE_AUTOMATION 가드를 거친다. 인가 순서는 **actor 추출(401) → 권한 판정(403) →
  * 리소스 조회** 순서를 지킨다([[auth-extraction-before-resource-lookup]]) — actor 추출은 이 컨트롤러가,
@@ -84,6 +88,7 @@ class AutomationRuleController(
                 triggerConfig = request.triggerConfig,
                 actorUserId = request.actorUserId,
                 actions = request.actions.map(ActionRequest::toApplicationInput),
+                condition = request.condition,
             )
         log.info("AutomationRuleController.create actor={} projectKey={} id={}", actorId, projectKey, created.rule.id)
         return ResponseEntity.status(HttpStatus.CREATED).body(CreateAutomationRuleResponse.from(created))
@@ -122,7 +127,7 @@ class AutomationRuleController(
     }
 
     /**
-     * [id] 자동화 룰을 부분 수정한다(name·enabled·triggerConfig·actions·actorUserId, OCC).
+     * [id] 자동화 룰을 부분 수정한다(name·enabled·triggerConfig·actions·actorUserId·condition, OCC).
      *
      * @param projectKey 룰이 속해야 하는 프로젝트 키(경로 변수).
      * @param id 수정할 룰 id(경로 변수).
@@ -147,6 +152,7 @@ class AutomationRuleController(
                 triggerConfig = request.triggerConfig,
                 actions = request.actions?.map(ActionRequest::toApplicationInput),
                 actorUserId = request.actorUserId,
+                condition = request.condition,
             )
         log.info("AutomationRuleController.patch actor={} projectKey={} id={}", actorId, projectKey, id)
         return ResponseEntity.ok(AutomationRuleResponse.from(updated))
@@ -217,7 +223,9 @@ private object AutomationActorExtractor {
  * 전용 핸들러가 상태를 그대로 전파하고, 분류되지 않은 예외만 [handleInternal] 이 500 으로 매핑한다
  * (401 이 500 으로 변질되지 않게 한다 — [[catch-all-exceptionhandler-swallows-responsestatusexception]]).
  *
- * 에러 코드 prefix 는 `AUTOMATION_` 로 고정한다.
+ * 에러 코드 prefix 는 `AUTOMATION_` 로 고정한다 — 단 [handleInvalidCondition] 의
+ * `INVALID_CONDITION_EXPRESSION` 은 spec(FR-AT-03-6·API 인터페이스 표)이 3회 명시한 리터럴 와이어 코드를
+ * 그대로 따른 의도적 예외다(게이트1 통과 스펙 문구, prefix 관례보다 스펙 리터럴 우선).
  */
 @RestControllerAdvice(assignableTypes = [AutomationRuleController::class])
 class AutomationRuleExceptionHandler {
@@ -261,6 +269,26 @@ class AutomationRuleExceptionHandler {
             "Conflict",
             AUTOMATION_RULE_VERSION_CONFLICT,
             "다른 변경이 먼저 반영되었습니다. 최신 정보를 다시 불러온 뒤 시도해 주세요.",
+        )
+    }
+
+    /**
+     * 조건 표현식 형식/화이트리스트/크기 위반(FR-AT-03) — 400.
+     *
+     * [InvalidConditionExpressionException] 도 [AutomationDomainException] 의 하위 타입이라 아래
+     * [handleDomainInvalid] 에도 매칭되지만, spec(FR-AT-03-6·API 표)이 명시한 전용 코드
+     * `INVALID_CONDITION_EXPRESSION` 을 그대로 노출하기 위해 더 구체적인 타입의 핸들러를 별도로 둔다
+     * (Spring 이 예외 타입 계층에서 가장 구체적인 핸들러를 우선 매칭).
+     */
+    @ExceptionHandler(InvalidConditionExpressionException::class)
+    fun handleInvalidCondition(ex: InvalidConditionExpressionException): ProblemDetail {
+        log.info("AUTOMATION_400 invalid_condition_expression detail={}", ex.message)
+        return problem(
+            HttpStatus.BAD_REQUEST,
+            "automation-rule-condition-invalid",
+            "Bad Request",
+            INVALID_CONDITION_EXPRESSION,
+            ex.message ?: "조건 표현식이 올바르지 않습니다.",
         )
     }
 
@@ -344,6 +372,7 @@ class AutomationRuleExceptionHandler {
     }
 
     private companion object {
+        const val INVALID_CONDITION_EXPRESSION = "INVALID_CONDITION_EXPRESSION"
         const val AUTOMATION_ACCESS_DENIED = "AUTOMATION_ACCESS_DENIED"
         const val AUTOMATION_RULE_NOT_FOUND = "AUTOMATION_RULE_NOT_FOUND"
         const val AUTOMATION_RULE_VERSION_CONFLICT = "AUTOMATION_RULE_VERSION_CONFLICT"

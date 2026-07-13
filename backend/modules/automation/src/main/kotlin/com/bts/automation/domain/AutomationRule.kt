@@ -9,9 +9,9 @@ import java.util.UUID
  * 자동화 룰(AutomationRule) Aggregate Root.
  *
  * FR-AT-01 범위에서는 트리거만 보유했으나 FR-AT-02 에서 액션([actions])과 실행 주체([actorUserId])가
- * 추가됐다. 모든 필드는 `val` 로 선언해 한 번 생성된 이후 외부에서 직접 변경할 수 없으며, [create] 팩토리와
- * 동작 메서드([enable]/[disable]/[rename]/[updateConfig]/[updateActions]/[changeActor])를 통해서만 새
- * 인스턴스를 얻는다.
+ * 추가됐고, FR-AT-03 에서 조건 게이트([condition])가 추가됐다. 모든 필드는 `val` 로 선언해 한 번 생성된
+ * 이후 외부에서 직접 변경할 수 없으며, [create] 팩토리와 동작 메서드([enable]/[disable]/[rename]/
+ * [updateConfig]/[updateActions]/[updateCondition]/[changeActor])를 통해서만 새 인스턴스를 얻는다.
  *
  * triggerConfig 형식 검증은 [TriggerConfig.validate] 에 위임한다(대상 존재/권한 검증은 하지 않음 —
  * FR2). webhookTokenHash 발급(토큰 생성·해시)과 nextFireAt 최초 계산은 이 애그리거트 밖의
@@ -25,6 +25,8 @@ import java.util.UUID
  * @property triggerConfig 트리거별 설정 JSON 문자열([TriggerConfig.validate] 로 형식 검증됨)
  * @property actions 발화 시 순차 실행할 액션 목록(FR-AT-02). 빈 리스트 허용 — 트리거만 있고 액션이
  *   없는 룰도 유효하다(예: FR-AT-01 단계에서 생성된 기존 룰).
+ * @property condition 트리거 발화 후 액션 실행 여부를 가르는 조건 게이트(FR-AT-03). `null` 이면 조건
+ *   없이 항상 통과한다 — 조건이 없는 룰도 유효하다(예: FR-AT-01/02 단계에서 생성된 기존 룰).
  * @property webhookTokenHash WEBHOOK 트리거의 토큰 해시. WEBHOOK 이 아니면 보통 `null`
  * @property nextFireAt SCHEDULED 트리거의 다음 발화 예정 시각. SCHEDULED 가 아니면 보통 `null`
  * @property createdBy 룰을 생성한 사용자 ID
@@ -43,6 +45,7 @@ data class AutomationRule(
     val triggerType: TriggerType,
     val triggerConfig: String,
     val actions: List<Action>,
+    val condition: Condition? = null,
     val webhookTokenHash: String?,
     val nextFireAt: Instant?,
     val createdBy: UUID,
@@ -68,6 +71,8 @@ data class AutomationRule(
          * @param nextFireAt SCHEDULED 트리거의 최초 발화 예정 시각. 기본값 `null`
          * @param actorUserId 액션 실행 주체(rule actor). 기본값은 [createdBy](미지정 시 생성자로 폴백)
          * @param actions 발화 시 실행할 액션 목록. 기본값은 빈 리스트(트리거만 있는 룰도 유효)
+         * @param condition 트리거 발화 후 액션 실행 여부를 가르는 조건 게이트. 기본값 `null`(조건 없이
+         *   항상 통과)
          * @param now 생성 시각(호출자 Clock 에서 주입)
          * @return 불변식이 검증된 신규 [AutomationRule] 인스턴스(enabled=true, version=0)
          * @throws AutomationRuleInvalidException projectKey·name·actorUserId 가 불변식을 위반한 경우
@@ -84,6 +89,7 @@ data class AutomationRule(
             nextFireAt: Instant? = null,
             actorUserId: UUID = createdBy,
             actions: List<Action> = emptyList(),
+            condition: Condition? = null,
             now: Instant,
         ): AutomationRule {
             validateProjectKey(projectKey)
@@ -98,6 +104,7 @@ data class AutomationRule(
                 triggerType = triggerType,
                 triggerConfig = triggerConfig,
                 actions = actions,
+                condition = condition,
                 webhookTokenHash = webhookTokenHash,
                 nextFireAt = nextFireAt,
                 createdBy = createdBy,
@@ -196,6 +203,19 @@ data class AutomationRule(
         newActions: List<Action>,
         now: Instant,
     ): AutomationRule = copy(actions = newActions, updatedAt = now, version = version + 1)
+
+    /**
+     * 조건 게이트를 교체한 새 인스턴스를 반환한다(OCC 버전 +1).
+     *
+     * @param newCondition 교체할 조건. `null` 이면 조건 없이 항상 통과한다(액션만 있고 조건이 없는
+     *   룰도 유효)
+     * @param now 변경 시각
+     * @return `condition` 이 교체되고 `version+1` 인 새 [AutomationRule] 인스턴스
+     */
+    fun updateCondition(
+        newCondition: Condition?,
+        now: Instant,
+    ): AutomationRule = copy(condition = newCondition, updatedAt = now, version = version + 1)
 
     /**
      * 액션 실행 주체(rule actor)를 변경한 새 인스턴스를 반환한다(OCC 버전 +1).

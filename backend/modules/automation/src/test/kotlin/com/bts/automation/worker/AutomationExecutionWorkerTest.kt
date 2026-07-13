@@ -6,6 +6,7 @@ import com.bts.automation.AutomationTestBootApplication
 import com.bts.automation.AutomationTestcontainersBase
 import com.bts.automation.StubAutomationPermissionResolver
 import com.bts.automation.StubIssueMutationPort
+import com.bts.automation.StubIssueSnapshotPort
 import com.bts.automation.adapter.AutomationRuleRepository
 import com.bts.automation.application.ActionExecutor
 import com.bts.automation.domain.Action
@@ -75,7 +76,9 @@ class AutomationExecutionWorkerTest {
      * 컨텍스트 로드용 [AutomationPermissionResolver]/[StubIssueMutationPort] 스텁 등록
      * ([AutomationEventWorkerTest] 동형, 클래스 KDoc 참조). [StubIssueMutationPort] 는 구체 타입으로
      * 등록해 테스트가 [issueMutationPort] 로 직접 주입받아 호출 기록을 검증할 수 있게 한다
-     * ([com.bts.automation.web.AutomationRuleControllerTest] 동형).
+     * ([com.bts.automation.web.AutomationRuleControllerTest] 동형). [StubIssueSnapshotPort] 는
+     * `ActionExecutor`(FR-AT-03 Task 7)가 non-null 로 요구하는 [com.bts.shared.issue.IssueSnapshotPort]
+     * 를 동일 사유로 대신 등록한다.
      */
     @TestConfiguration
     class TestSupportConfig {
@@ -84,6 +87,9 @@ class AutomationExecutionWorkerTest {
 
         @Bean
         fun stubIssueMutationPort(): StubIssueMutationPort = StubIssueMutationPort()
+
+        @Bean
+        fun stubIssueSnapshotPort(): StubIssueSnapshotPort = StubIssueSnapshotPort()
     }
 
     @Autowired

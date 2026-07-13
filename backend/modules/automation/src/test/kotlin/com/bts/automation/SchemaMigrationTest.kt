@@ -1,4 +1,4 @@
-// V300~V303 마이그레이션 검증 — automation_rules·automation_actions·q_automation_execution 큐 (FR-AT-01/02)
+// V300~V304 마이그레이션 검증 — automation rules·actions·conditions + q_automation_execution 큐
 
 package com.bts.automation
 
@@ -53,6 +53,14 @@ import java.util.UUID
  * - UNIQUE(rule_id, position)(겸 조회 인덱스 uq_automation_actions_rule_position) — 중복 순서 거부
  * - automation_rules.actor_user_id = uuid NOT NULL(V303 backfill: created_by → SET NOT NULL, 룰 실행 주체)
  *
+ * ## FR-AT-03 Task 4 추가 검증 (V304 automation_conditions / 조건 분기 스키마)
+ * - automation_conditions 테이블 존재 + 4개 컬럼(rule_id/expression/created_at/updated_at)
+ * - rule_id = uuid PK NOT NULL(**룰당 0..1 행** — automation_actions 의 N행 position 과 달리 단일 행)
+ * - expression = jsonb NOT NULL(JSONLogic 부분집합 조건 트리)
+ * - created_at / updated_at = timestamptz NOT NULL(DATA.md §4.1#4 — TIMESTAMP without tz 금지)
+ * - 같은 rule_id 중복 INSERT → PK 위반(automation_conditions_pkey) — 룰당 0..1 강제
+ * - rule_id FK → automation_rules(id) ON DELETE CASCADE(부모 룰 삭제 시 조건 동반 삭제)
+ *
  * 정보 스키마(information_schema / pg_constraint / pgmq.list_queues) 조회로 단언한다.
  * SQL 문자열 결합 없이 prepared statement 파라미터 바인딩만 사용한다.
  */
@@ -101,6 +109,16 @@ class SchemaMigrationTest {
                 "action_type",
                 "action_config",
                 "created_at",
+            )
+
+        // automation_conditions 가 보유해야 하는 4개 컬럼 (FR-AT-03 Task 4 / V304 조건 스키마).
+        // rule_id 가 PK(룰당 0..1 행) — automation_actions(N행 position)와 달리 단일 행.
+        private val AUTOMATION_CONDITIONS_COLUMNS =
+            listOf(
+                "rule_id",
+                "expression",
+                "created_at",
+                "updated_at",
             )
 
         @BeforeAll
@@ -331,6 +349,38 @@ class SchemaMigrationTest {
             }
         }
     }
+
+    // ── FR-AT-03 조건 테이블 검증용 헬퍼 ──────────────────────────────────────────
+
+    // automation_conditions 한 행 INSERT — expression 은 최소 '{}' jsonb(룰당 0..1, rule_id PK).
+    private fun insertCondition(
+        ruleId: UUID,
+        expression: String,
+    ) {
+        conn().use { c ->
+            c.prepareStatement(
+                "INSERT INTO automation_conditions (rule_id, expression) VALUES (?, ?::jsonb)",
+            ).use { stmt ->
+                stmt.setObject(1, ruleId)
+                stmt.setString(2, expression)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    @Suppress("NestedBlockDepth")
+    private fun countConditionsForRule(ruleId: UUID): Int =
+        conn().use { c ->
+            c.prepareStatement(
+                "SELECT COUNT(*) FROM automation_conditions WHERE rule_id = ?",
+            ).use { stmt ->
+                stmt.setObject(1, ruleId)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getInt(1)
+                }
+            }
+        }
 
     // ── 테이블 / 컬럼 존재 검증 ────────────────────────────────────────────────
 
@@ -577,5 +627,59 @@ class SchemaMigrationTest {
     fun `V303 actor_user_id 는 uuid NOT NULL (실행 주체)`() {
         assertThat(columnDataType("automation_rules", "actor_user_id")).isEqualTo("uuid")
         assertThat(columnIsNullable("automation_rules", "actor_user_id")).isEqualTo("NO")
+    }
+
+    // ── FR-AT-03 Task 4: automation_conditions 테이블 검증 (V304) ─────────────────
+
+    @Test
+    fun `V304 automation_conditions 테이블 존재`() {
+        assertThat(tableExists("automation_conditions")).isTrue()
+    }
+
+    @Test
+    fun `V304 automation_conditions 4개 컬럼 존재`() {
+        assertThat(columnsOf("automation_conditions"))
+            .containsExactlyInAnyOrderElementsOf(AUTOMATION_CONDITIONS_COLUMNS)
+    }
+
+    @Test
+    fun `V304 rule_id 는 uuid PK NOT NULL (룰당 단일 행)`() {
+        assertThat(columnDataType("automation_conditions", "rule_id")).isEqualTo("uuid")
+        assertThat(columnIsNullable("automation_conditions", "rule_id")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V304 expression 은 jsonb NOT NULL`() {
+        assertThat(columnDataType("automation_conditions", "expression")).isEqualTo("jsonb")
+        assertThat(columnIsNullable("automation_conditions", "expression")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V304 automation_conditions created_at 은 timestamptz NOT NULL`() {
+        assertThat(columnDataType("automation_conditions", "created_at")).isEqualTo("timestamp with time zone")
+        assertThat(columnIsNullable("automation_conditions", "created_at")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V304 automation_conditions updated_at 은 timestamptz NOT NULL`() {
+        assertThat(columnDataType("automation_conditions", "updated_at")).isEqualTo("timestamp with time zone")
+        assertThat(columnIsNullable("automation_conditions", "updated_at")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V304 같은 rule_id 중복 INSERT 는 PK 위반 (룰당 단일 행)`() {
+        val ruleId = insertRuleReturningId()
+        insertCondition(ruleId, "{}")
+        assertThatThrownBy { insertCondition(ruleId, """{"and":[]}""") }
+            .hasMessageContaining("automation_conditions_pkey")
+    }
+
+    @Test
+    fun `V304 rule 삭제 시 automation_conditions 는 ON DELETE CASCADE 로 함께 삭제`() {
+        val ruleId = insertRuleReturningId()
+        insertCondition(ruleId, "{}")
+        assertThat(countConditionsForRule(ruleId)).isEqualTo(1)
+        deleteRule(ruleId)
+        assertThat(countConditionsForRule(ruleId)).isEqualTo(0)
     }
 }

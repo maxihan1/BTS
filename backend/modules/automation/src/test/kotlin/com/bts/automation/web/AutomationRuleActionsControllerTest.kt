@@ -6,6 +6,7 @@ import com.bts.automation.AutomationTestBootApplication
 import com.bts.automation.AutomationTestcontainersBase
 import com.bts.automation.StubAutomationPermissionResolver
 import com.bts.automation.StubIssueMutationPort
+import com.bts.automation.StubIssueSnapshotPort
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -477,8 +478,9 @@ class AutomationRuleActionsControllerTest {
     }
 
     /**
-     * 테스트 전용 인가 필터체인 + [StubAutomationPermissionResolver]/[StubIssueMutationPort] 빈 등록
-     * (FR-AT-01 `AutomationRuleControllerTest.TestSupportConfig` 선례 동형 — 이 테스트 파일 자체 범위 내 재선언).
+     * 테스트 전용 인가 필터체인 + [StubAutomationPermissionResolver]/[StubIssueMutationPort]/
+     * [StubIssueSnapshotPort] 빈 등록(FR-AT-01 `AutomationRuleControllerTest.TestSupportConfig` 선례
+     * 동형 — 이 테스트 파일 자체 범위 내 재선언, [StubIssueSnapshotPort] 는 FR-AT-03 Task 7 추가분).
      */
     @TestConfiguration
     class TestSupportConfig {
@@ -498,5 +500,8 @@ class AutomationRuleActionsControllerTest {
 
         @Bean
         fun stubIssueMutationPort(): StubIssueMutationPort = StubIssueMutationPort()
+
+        @Bean
+        fun stubIssueSnapshotPort(): StubIssueSnapshotPort = StubIssueSnapshotPort()
     }
 }

@@ -43,6 +43,19 @@ class BtsApplicationContextTest {
         assertThat(context.containsBean("com.bts.automation.worker.AutomationExecutionWorker")).isTrue()
     }
 
+    @Test
+    fun `IssueSnapshotPort prod 어댑터가 조립 컨텍스트에 결선된다(fail-closed 회귀 가드, FR-AT-03)`() {
+        // automation ActionExecutor 는 IssueSnapshotPort 를 non-null 로 요구한다(조건 게이트,
+        // [[crossbc-resolver-nullable-fail-open]] 회귀 방지 — shared-kernel IssueSnapshotPort KDoc 참조).
+        // issue-tracking 의 AutomationIssueSnapshotAdapter(@Profile("prod"))가 빠지면 이 빈이 사라져
+        // ActionExecutor 주입이 NoSuchBeanDefinitionException 으로 컨텍스트 부팅 자체를 막아야 한다
+        // (silent no-op 금지). 컨텍스트가 이미 로드에 성공했다는 사실 자체가 주입 충족을 증명하지만,
+        // 이 단언은 그 충족이 "우연한 다른 빈"이 아니라 의도한 prod 어댑터임을 이름으로 고정한다.
+        assertThat(
+            context.containsBean("com.bts.issue.adapter.outbound.automation.AutomationIssueSnapshotAdapter"),
+        ).isTrue()
+    }
+
     companion object {
         @JvmStatic
         @DynamicPropertySource

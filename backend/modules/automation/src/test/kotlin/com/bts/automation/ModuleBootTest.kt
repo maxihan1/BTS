@@ -3,6 +3,7 @@
 package com.bts.automation
 
 import com.bts.shared.issue.IssueMutationPort
+import com.bts.shared.issue.IssueSnapshotPort
 import com.bts.shared.permission.AutomationPermissionResolver
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -73,6 +74,9 @@ class ModuleBootTest {
      *
      * `ActionExecutor`(FR-AT-02 Task 9)가 non-null 로 요구하는 [IssueMutationPort] 도 동일 사유로
      * 대신 등록한다(prod 구현은 issue-tracking `@Profile("prod")` 어댑터 — automation 클래스패스에 없음).
+     *
+     * `ActionExecutor`(FR-AT-03 Task 7)가 non-null 로 요구하는 [IssueSnapshotPort] 도 동일 사유로
+     * [StubIssueSnapshotPort] 를 대신 등록한다.
      */
     @TestConfiguration
     class PermissionResolverStubConfig {
@@ -81,6 +85,9 @@ class ModuleBootTest {
 
         @Bean
         fun issueMutationPort(): IssueMutationPort = StubIssueMutationPort()
+
+        @Bean
+        fun issueSnapshotPort(): IssueSnapshotPort = StubIssueSnapshotPort()
     }
 
     @Autowired
