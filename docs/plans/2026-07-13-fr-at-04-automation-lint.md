@@ -38,9 +38,19 @@ D1 도메인(RuleConflict) · D2 명세 · D3 데이터(활용) · D4 백엔드(
 - **문서 drift 해소 (이 PR에서 전수 동기화)**: product §2.4(3종)·SDD 8.7(3종) → **4종**으로 정렬 (CLAUDE.md §FR/범위 변경 전수 동기화 규칙 — verify-master-plan 통과 필수)
 - **관련 ADR**: docs/decisions/2026-07-13-fr-at-04-conflict-analysis.md (spec 확정 후 생성)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-13-fr-at-04-conflict-analysis.md](../specs/2026-07-13-fr-at-04-conflict-analysis.md)
+
+핵심 요약.
+- 기존 저장 경로(POST/PATCH)가 저장 후 `RuleConflictAnalyzer`로 프로젝트 규칙을 정적 분석 → 응답에 `conflicts` 포함 (신규 엔드포인트·테이블 없음)
+- 충돌 4종. CYCLE(액션→트리거 유발 그래프 DFS) / FIELD_CONFLICT(같은 트리거 동일필드 상충 SET) / PRIORITY_AMBIGUITY(같은 트리거 복수 규칙 순서 모호) / PERMISSION_MISSING(rule actor 프로젝트 레벨 UPDATE 권한 부재)
+- 전부 soft WARNING(저장 무차단), fail-safe(분석 예외가 저장 훼손 안 함)
+- cross-BC 새 소비. `IssuePermissionResolver`(shared-kernel) — `IssueScope.Project`로 프로젝트 레벨 권한 근사
+
+## Brainstorming Check
+
+✅ 통과 (직접 adversarial 검토 1회, 5 gap 전부 스펙 내 보완 — CYCLE 조건무시·updatedFields 필드명 impl확인·FIELD⊂PRIORITY 중복억제·권한조회 메모이제이션·non-prod stub 한계). Maxi 결정 필요 항목 0.
 
 ## Plan (← /bts-plan 채움)
 
