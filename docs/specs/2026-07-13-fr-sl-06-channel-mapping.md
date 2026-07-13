@@ -8,10 +8,13 @@
 
 ## 스코프
 
-**이 PR = 백엔드 코어 (D1~D5)**. 프로젝트 관리자가 프로젝트를 Slack 채널에 매핑하고, 해당 프로젝트에서 발생한 이벤트가 이벤트 필터를 통과하면 매핑된 채널에 자동 게시된다.
+FR-SL-06 백엔드 코어(D1~D5)를 **설정/라우팅 2 PR로 분할**(Maxi 2026-07-13, FR-SL-05 PR1/PR2 관례). prod 조립이 새 cross-BC 포트 소비의 prod 어댑터를 같은 PR에 요구(NoSuchBean 부팅 차단)하므로, 각 PR이 포트+어댑터를 함께 실어 독립 prod 부팅.
 
-- **포함**. 도메인(ChannelProjectMapping) · 마이그레이션(V704) · CRUD API · cross-BC 권한 포트 · 라우팅(notification 브로드캐스트 producer + slack 채널 워커) · 단위/통합 테스트.
-- **후속 PR (범위 밖)**. D6 UI(프로젝트 설정 → Slack 채널 화면) · D7 Playwright E2E. FR-SL-01/02가 backend 코어 → D6/D7을 별 PR로 분리한 관례와 동일.
+- **PR-A (이 PR, 설정/CRUD)**. FR1·FR2·FR3·FR7 + team_id 해석 + 권한 prod 어댑터(identity-access, PROJECT_ADMIN) + non-prod 스텁 + prod 조립. → "프로젝트 관리자가 매핑을 설정할 수 있다".
+- **PR-B (후속, 라우팅)**. FR4(브로드캐스터)·FR5(채널 워커)·FR6(dedup)·FR9(보안 게이트) + 보안 prod 어댑터(issue-tracking). → "설정된 매핑이 실제로 채널에 게시된다".
+- **후속 PR (D6/D7)**. UI(프로젝트 설정 → Slack 채널) · Playwright E2E.
+
+이 스펙은 FR-SL-06 백엔드 전체 정본. 아래 FR/시나리오는 PR-A/PR-B 라벨로 구분.
 
 BTS §작업 기준: 이 PR의 백엔드는 완제품 품질(테스트·보안·에러처리 완비). "UI는 나중"은 스코프 분할일 뿐 품질 미룸이 아니다.
 
