@@ -150,7 +150,7 @@ PR-B가 채울 3덩어리:
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/notification/src/main/kotlin/com/bts/notification/channel/SlackChannelBroadcaster.kt`, `backend/modules/notification/src/main/kotlin/com/bts/notification/worker/NotificationWorker.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/channel/SlackChannelBroadcasterTest.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/worker/NotificationWorkerTest.kt`]
+- files: [`backend/modules/notification/src/main/kotlin/com/bts/notification/channel/SlackChannelBroadcaster.kt`, `backend/modules/notification/src/main/kotlin/com/bts/notification/channel/NotificationTitleBuilder.kt`, `backend/modules/notification/src/main/kotlin/com/bts/notification/worker/NotificationWorker.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/channel/SlackChannelBroadcasterTest.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/worker/NotificationWorkerTest.kt`]
 - depends-on: []
 
 **RED**: `SlackChannelBroadcasterTest` —
@@ -160,7 +160,8 @@ PR-B가 채울 3덩어리:
 ```
 + `NotificationWorkerTest` — dispatch가 정책 early-return 이전에 broadcaster 호출(수신자 0이어도 emit). 실패: 클래스/결선 없음.
 **GREEN**:
-- `@Component class SlackChannelBroadcaster(dsl, objectMapper)` — `broadcastIfApplicable(event)`: projectKey null이면 no-op, 아니면 `dsl.execute("SELECT pgmq.send('q_slack_channel_broadcasts', ?::jsonb)", json)` (SlackChannelSender.kt:45 미러). dedupKey=`sha256(projectKey|eventType|issueKey|occurredAt)`. slack 도메인 타입 import 0.
+- `@Component class SlackChannelBroadcaster(dsl, objectMapper, titleBuilder)` — `broadcastIfApplicable(event)`: projectKey null이면 no-op, 아니면 `dsl.execute("SELECT pgmq.send('q_slack_channel_broadcasts', ?::jsonb)", json)` (SlackChannelSender.kt:45 미러). dedupKey=`sha256(projectKey|eventType|issueKey|occurredAt)`. slack 도메인 타입 import 0.
+- **★ title 출처(리뷰 발견)**: `NotificationSourceEvent`에 title 필드 없음. 기존 `NotificationWorker.buildTitleBody()`(:353, 10개 eventType 커버·issueKey+eventType 기반·actor 조회 없음 FR10)를 **`NotificationTitleBuilder`(title-only) 공용 헬퍼로 추출** → NotificationWorker(수신자 경로)·SlackChannelBroadcaster(브로드캐스트 경로) 공유(DRY). files에 `NotificationTitleBuilder.kt` 추가.
 - `NotificationWorker.dispatch()` 최상단(정책 평가 이전)에서 `slackChannelBroadcaster.broadcastIfApplicable(event)` 호출. **best-effort 격리**: 좁은 catch(DataAccessException)로 로그만, 알림 dispatch 미차단(권한예외 아님 — best-effort-loop 함정 무해). 생성자에 broadcaster 주입(기존 테스트 plan files 영향 → mock 추가).
 **REFACTOR**: dedupKey 해시 유틸 추출, JSON 빌드 objectMapper.
 **검증**: `./gradlew :backend:modules:notification:test --tests '*SlackChannelBroadcasterTest' --tests '*NotificationWorkerTest'`
@@ -212,4 +213,31 @@ issueKey null sprint(보안게이트 우회·게시) / 봇 미설치(skip·delet
 - 추가 검증: ktlint, detekt(`--rerun-tasks` false-green 방지), :modules:app:test prod 조립 부팅.
 - 게이트 1 Maxi 확인 사항: (1) dedup 저장소 옵션 A(전용) vs B(재사용), (2) broadcast emit best-effort 격리 승인.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+> 병렬 dispatch한 security/eng 리뷰 에이전트가 세션 한도로 중단 → **controller가 직접 집중 리뷰**(코드 실증 포함). memory bts-review-plan-autoplan-overkill 원칙(저위험 후속=집중 리뷰).
+
+### eng-review (controller, 2026-07-13) — 코드 실증 포함
+- ✅ **PASS 핫패스 emit 위치**: `NotificationWorker.dispatch()` 최상단(policyEvaluator.evaluate 이전, :169-175 실증)이 정확. `if(matches.isEmpty()) return` 이전 emit이라 수신자 0이어도 발행(criterion 3). q_issue_events 단일 소비자(pollAndProcess) 확인.
+- ✅ **PASS pgmq 생명주기**: SlackDeliveryWorker와 동형(성공 delete / retryable retain·vt재전달 / read_ct>MAX archive / poison archive).
+- ✅ **PASS dedup**: exists→send→record 순서(FR-SL-02 B4 회귀 방어). 전용 테이블 옵션 A 타당.
+- ✅ **PASS prod 조립**: @Component 자동 스캔, @Scheduled은 기존 SlackSchedulingConfiguration(@EnableScheduling @Profile !test) 활성화(신규 config 불요), @MockBean 회귀 Task 7 커버.
+- ✅ **PASS 마이그레이션**: V705 신규만(기존 편집 금지·체크섬), 큐 생성=소비 모듈(slack) 관례.
+- ✅ **PASS task 분해**: 의존성 그래프 정확. Task 1 인터페이스 RED는 어댑터 Testcontainers 테스트로, Task 7 조립 RED는 @MockBean 회귀로 실질 RED 확보.
+- ⚠️ **CONCERN-E1 (해소)**: `title` 출처 — NotificationSourceEvent에 title 필드 없음. 기존 `buildTitleBody()`(:353) 재사용(`NotificationTitleBuilder` 추출)로 해소. Task 5 반영.
+- ⚠️ **CONCERN-E2 (수용)**: 채널별 RetryableFailure→전체 메시지 재전달→성공 채널 재시도→dedup skip. 정확하나 부분 재시도 비용. dedup이 흡수하므로 수용(NFR1 effectively-once).
+- ⚠️ **CONCERN-E3 (게이트1)**: broadcast emit best-effort(좁은 catch DataAccessException)→transient 실패 시 유실. 채널 피드 비크리티컬·알림 핫패스 미차단 우선. Maxi 승인 사항.
+- ⚠️ **CONCERN-E4 (minor 수용)**: producer가 projectKey 있는 모든 이벤트 emit(eventType 무관)→worker가 event_types 필터. 큐 노이즈. BC 격리상 producer는 매핑 못 봄 → 수용.
+
+### security-review (controller, 2026-07-13) — 코드 실증 포함
+- ✅ **PASS fail-closed 완전성**: `findByKey`는 활성만(deleted_at IS NULL, :253) → 미존재/soft-deleted → 어댑터 `securityLevelId != null` 판정서 null→**true(제한)**. non-null 주입(nullable+?:return fail-open 금지), allow-all default 없음.
+- ✅ **PASS confidentiality oracle 부재**: 게이트가 뷰어별 가시성 아닌 **이슈 절대속성**(security_level_id, Issue.kt:116)으로 판정. 위조 가능 actor 미사용 → §12.4 오라클([[condition-eval-chosen-actor-read-oracle]]) 구조적 부재.
+- ✅ **PASS 유출 차단**: 보안게이트가 fan-out·render·postMessage **이전**(Task 6 step 2). 제한 이슈는 제목·키가 Slack에 절대 안 나감(EC11).
+- ✅ **PASS issueKey null 우회**: sprint.* 이벤트는 이슈-스코프 아님(제목만). 유출 위험 없음.
+- ✅ **PASS 봇토큰 미노출**: postChannelMessage가 postDirectMessage 미러(reason=오류코드만, 3중 미노출).
+- ✅ **PASS BC 격리**: notification→slack JSON wire(import 0), 권한/보안게이트=shared-kernel 포트.
+- ⚠️ **CONCERN-S1 (수용·게이트1 인지)**: 보안게이트=소비자측(worker). 보안등급 이슈 title이 내부 `q_slack_channel_broadcasts` payload에 잠시 존재(워커가 게시 차단). **내부 DB 경계라 외부 유출 아님**(이슈 데이터와 동일 신뢰경계). 생산자측 게이트로 옮기면 notification에 보안 포트 의존 추가 → ADR D5가 소비자측 선택.
+
+### BLOCKER: 없음
+
+게이트 1 Maxi 확인 2건: (1) dedup 저장소 옵션 A(전용) vs B(재사용), (2) broadcast emit best-effort 격리(CONCERN-E3) 승인.
