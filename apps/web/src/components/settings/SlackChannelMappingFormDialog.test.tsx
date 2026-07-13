@@ -298,6 +298,23 @@ describe('SlackChannelMappingFormDialog — 에러 처리', () => {
     })
   })
 
+  it('403 SLACK_CHANNEL_MAPPING_FORBIDDEN → 권한 없음 안내를 표시한다', async () => {
+    const onOpenChange = vi.fn()
+    const { Wrapper } = createWrapper()
+    mockCreate.mockRejectedValue(
+      new ApiError(403, {
+        code: 'SLACK_CHANNEL_MAPPING_FORBIDDEN',
+        message: '이 프로젝트의 채널 매핑을 관리할 권한이 없습니다.',
+      }),
+    )
+
+    await submitCreate(onOpenChange, Wrapper)
+
+    await waitFor(() => {
+      expect(screen.getByText('이 프로젝트의 채널 매핑을 관리할 권한이 없습니다')).toBeInTheDocument()
+    })
+  })
+
   it('400 → 응답 message를 그대로 표시한다', async () => {
     const onOpenChange = vi.fn()
     const { Wrapper } = createWrapper()
