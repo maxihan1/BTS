@@ -232,6 +232,39 @@ describe('ConditionBuilder — 재마운트 안전성(안정 key)', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Comparison 추가 시 객체 참조 격리(회귀) — qa E2E 발견 버그
+//
+// addComparisonChild가 모듈 전역 단일 상수(DEFAULT_COMPARISON)를 그대로 push하면, 같은 그룹에
+// "조건 추가"를 두 번 눌러 생긴 두 Comparison 노드가 동일 객체 참조를 공유한다. ConditionBuilder의
+// idFor(WeakMap 키가 노드 참조)가 이 경우 두 자식에게 같은 React key를 부여해 편집 시 유령 노드가
+// 생기는 원인이 된다(재현: 2개 추가 후 1개 편집 시 노드 3개로 증가). createEmptyConditionTree가
+// 호출마다 새 객체를 반환하는 선례와 대칭이어야 한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ConditionBuilder — Comparison 추가 시 객체 참조 격리(회귀)', () => {
+  it('같은 그룹에 "조건 추가"를 연속 두 번 클릭하면 두 Comparison 노드가 서로 다른 객체 참조를 가진다', async () => {
+    const onChange = vi.fn()
+    const group: ConditionGroup = { kind: 'group', op: 'and', negated: false, children: [] }
+    const { rerender } = render(<ConditionBuilder value={group} onChange={onChange} projectKey={PROJECT_KEY} />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByTestId('condition-add-comparison'))
+    const afterFirst = onChange.mock.calls[0]?.[0] as ConditionGroup
+    rerender(<ConditionBuilder value={afterFirst} onChange={onChange} projectKey={PROJECT_KEY} />)
+
+    await user.click(screen.getByTestId('condition-add-comparison'))
+    const afterSecond = onChange.mock.calls[1]?.[0] as ConditionGroup
+
+    const [first, second] = afterSecond.children
+    if (first === undefined || second === undefined) {
+      throw new Error(`expected 2 children, got ${afterSecond.children.length}`)
+    }
+    expect(afterSecond.children).toHaveLength(2)
+    expect(first).not.toBe(second)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 루트가 단일 Comparison인 경우(그룹 아닌 트리 루트)
 // ─────────────────────────────────────────────────────────────────────────────
 
