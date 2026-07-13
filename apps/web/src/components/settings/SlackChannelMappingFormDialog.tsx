@@ -237,7 +237,11 @@ function FormBody({ projectKey, editingMapping, onOpenChange }: FormBodyProps): 
         <Button type="button" variant="outline" size="sm" onClick={() => { onOpenChange(false) }}>
           {labels.cancelButton}
         </Button>
-        <Button type="submit" size="sm" disabled={eventTypes.length === 0}>
+        <Button
+          type="submit"
+          size="sm"
+          disabled={eventTypes.length === 0 || createMutation.isPending || updateMutation.isPending}
+        >
           {labels.saveButton}
         </Button>
       </div>
