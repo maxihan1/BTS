@@ -3,10 +3,15 @@
 package com.bts.automation.adapter.web.dto
 
 import com.bts.automation.application.CreatedAutomationRule
+import com.bts.automation.application.PatchedAutomationRule
 import com.bts.automation.domain.Action
 import com.bts.automation.domain.ActionType
 import com.bts.automation.domain.AutomationRule
+import com.bts.automation.domain.ConflictSeverity
+import com.bts.automation.domain.ConflictType
+import com.bts.automation.domain.RuleConflict
 import com.bts.automation.domain.TriggerType
+import com.fasterxml.jackson.annotation.JsonInclude
 import java.time.Instant
 import java.util.UUID
 
@@ -35,6 +40,9 @@ import java.util.UUID
  * @property createdAt 생성 시각.
  * @property updatedAt 마지막 변경 시각.
  * @property version OCC 버전.
+ * @property conflicts 저장 직후 검출된 규칙 충돌 목록(FR-AT-04 Task 5). create/patch 응답에만 채워지고,
+ *   GET(단건/목록)은 매 조회마다 프로젝트 전체를 재분석하는 비용을 피하려고 항상 `null`이다 — `null`이면
+ *   [JsonInclude.Include.NON_NULL] 로 JSON 키 자체를 생략한다(하위호환, 기존 GET 응답 계약 불변).
  */
 @Suppress("LongParameterList")
 data class AutomationRuleResponse(
@@ -53,10 +61,14 @@ data class AutomationRuleResponse(
     val createdAt: Instant,
     val updatedAt: Instant,
     val version: Long,
+    @field:JsonInclude(JsonInclude.Include.NON_NULL)
+    val conflicts: List<RuleConflictResponse>? = null,
 ) {
     companion object {
         /**
-         * 도메인 [AutomationRule] 을 표준 응답 DTO 로 변환한다.
+         * 도메인 [AutomationRule] 을 표준 응답 DTO 로 변환한다(GET 단건/목록 전용 — `conflicts` 는 항상
+         * `null`, [RuleConflictAnalyzer][com.bts.automation.application.RuleConflictAnalyzer] 를 호출하지
+         * 않는다, 클래스 KDoc §conflicts 참고).
          *
          * [rule.actions] 는 호출자([com.bts.automation.application.AutomationRuleService])가 이미 올바르게
          * 채운 상태여야 한다 — [com.bts.automation.adapter.AutomationRuleRepository] 의 find 계열은 actions
@@ -65,9 +77,30 @@ data class AutomationRuleResponse(
          * Task 8).
          *
          * @param rule 변환할 도메인 애그리거트.
-         * @return 토큰 원문/해시를 포함하지 않는 응답 DTO.
+         * @return 토큰 원문/해시를 포함하지 않고 `conflicts` 가 `null`인 응답 DTO.
          */
-        fun from(rule: AutomationRule): AutomationRuleResponse =
+        fun from(rule: AutomationRule): AutomationRuleResponse = buildResponse(rule, conflicts = null)
+
+        /**
+         * 도메인 [AutomationRule] 을 규칙 충돌 목록과 함께 응답 DTO 로 변환한다(create/patch 전용).
+         *
+         * @param rule 변환할 도메인 애그리거트.
+         * @param conflicts 저장 직후 검출된 규칙 충돌 목록(빈 리스트 허용, `null` 은 GET 전용이라 허용하지
+         *   않는다 — create/patch 는 항상 리스트를 갖는다).
+         * @return `conflicts` 가 채워진 응답 DTO.
+         */
+        fun from(
+            rule: AutomationRule,
+            conflicts: List<RuleConflict>,
+        ): AutomationRuleResponse = buildResponse(rule, conflicts.map(RuleConflictResponse::from))
+
+        /** [PatchedAutomationRule] 을 응답 DTO 로 변환한다(PATCH 전용, 컨트롤러 호출부는 오버로드 해석으로 그대로 동작한다). */
+        fun from(patched: PatchedAutomationRule): AutomationRuleResponse = from(patched.rule, patched.conflicts)
+
+        private fun buildResponse(
+            rule: AutomationRule,
+            conflicts: List<RuleConflictResponse>?,
+        ): AutomationRuleResponse =
             AutomationRuleResponse(
                 id = rule.id,
                 projectKey = rule.projectKey,
@@ -84,6 +117,38 @@ data class AutomationRuleResponse(
                 createdAt = rule.createdAt,
                 updatedAt = rule.updatedAt,
                 version = rule.version,
+                conflicts = conflicts,
+            )
+    }
+}
+
+/**
+ * 규칙 충돌 1건의 응답 표현([com.bts.automation.domain.RuleConflict] 대칭, FR-AT-04 Task 5).
+ *
+ * @property type 충돌 종류.
+ * @property severity 충돌 심각도.
+ * @property ruleIds 충돌에 관련된 규칙 id 목록.
+ * @property detail 충돌 내용을 설명하는 사용자 노출용 한국어 메시지.
+ */
+data class RuleConflictResponse(
+    val type: ConflictType,
+    val severity: ConflictSeverity,
+    val ruleIds: List<UUID>,
+    val detail: String,
+) {
+    companion object {
+        /**
+         * 도메인 [RuleConflict] 를 응답 DTO 로 변환한다.
+         *
+         * @param conflict 변환할 도메인 값 객체.
+         * @return 대칭 필드로 구성된 응답 DTO.
+         */
+        fun from(conflict: RuleConflict): RuleConflictResponse =
+            RuleConflictResponse(
+                type = conflict.type,
+                severity = conflict.severity,
+                ruleIds = conflict.ruleIds,
+                detail = conflict.detail,
             )
     }
 }
@@ -158,12 +223,15 @@ data class CreateAutomationRuleResponse(
         /**
          * 서비스 결과 [CreatedAutomationRule] 을 생성 응답 DTO 로 변환한다.
          *
-         * @param created 생성된 룰 + (WEBHOOK 이면) 발급된 원문 토큰.
+         * [created.conflicts](FR-AT-04 Task 5)가 [rule] 응답에 함께 실린다 — [AutomationRuleResponse.from]
+         * 의 2-인자 오버로드를 거친다.
+         *
+         * @param created 생성된 룰 + (WEBHOOK 이면) 발급된 원문 토큰 + 저장 후 검출된 규칙 충돌 목록.
          * @return 원문 토큰을 1회 동봉한 생성 응답 DTO.
          */
         fun from(created: CreatedAutomationRule): CreateAutomationRuleResponse =
             CreateAutomationRuleResponse(
-                rule = AutomationRuleResponse.from(created.rule),
+                rule = AutomationRuleResponse.from(created.rule, created.conflicts),
                 webhookToken = created.webhookToken,
             )
     }

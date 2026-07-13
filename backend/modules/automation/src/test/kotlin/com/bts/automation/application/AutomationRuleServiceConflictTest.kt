@@ -24,8 +24,8 @@ import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.mockk.clearMocks
 import io.mockk.every
-import io.mockk.isNull
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
@@ -79,6 +79,13 @@ class AutomationRuleServiceConflictTest : DescribeSpec({
     val actorId = UUID.randomUUID()
     val sampleConflict =
         RuleConflict.of(type = ConflictType.CYCLE, ruleIds = listOf(UUID.randomUUID()), detail = "테스트 충돌")
+
+    // Kotest DescribeSpec 은 기본적으로 spec 인스턴스를 모든 it 블록이 공유한다 — mockk 호출 기록이
+    // 테스트 간 누적되면 verify(exactly=...) 가 이전 테스트의 호출까지 세어 오탐한다. 매 it 종료 후
+    // 초기화한다([com.bts.automation.application.ActionExecutorTest] 동형 패턴).
+    afterEach {
+        clearMocks(repository, actionRepository, conditionRepository, conflictAnalyzer)
+    }
 
     describe("create — 저장 후 lint 통합") {
         it("a. 저장 성공 후 hydrate 된 규칙으로 analyzer 를 호출해 응답 DTO 에 conflicts 를 포함한다") {
