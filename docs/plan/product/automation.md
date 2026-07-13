@@ -57,13 +57,15 @@
 
 **우선순위**. 필수 | **선행**. §2.1, §2.2 | **Plan slug**. `automation/conditions`
 
-- [ ] D1. 도메인 — Condition + Expression (책임. backend-engineer)
-- [ ] D2. 명세 — 표현식 문법 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `automation_conditions(expression)` (책임. db-engineer)
-- [ ] D4. 백엔드 — 표현식 평가 엔진 (Spring SpEL 또는 자체) (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — 표현식 케이스 50개 (책임. backend-engineer)
+- [x] D1. 도메인 — Condition + Expression (책임. backend-engineer)
+- [x] D2. 명세 — 표현식 문법 (책임. backend-engineer)
+- [x] D3. 데이터 모델 — `automation_conditions(expression)` (책임. db-engineer)
+- [x] D4. 백엔드 — 표현식 평가 엔진 (Spring SpEL 또는 자체) (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 — 표현식 케이스 50개 (책임. backend-engineer)
 - [ ] D6. 프론트 UI — 조건 빌더 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
+
+> **D1~D5 완료 (2026-07-13, PR #262)**. 조건 분기 백엔드. **구조화 조건 모델**(sealed `Condition` And/Or/Not/Comparison 데이터 트리, JSONLogic류)을 SpEL 대신 채택 — 조건이 런타임 관리자 API로 유입되므로 SpEL 샌드박스 전제(관리자 편집 소스만) 부적합. 코드 실행 경로 구조적 부재. `var` 필드 화이트리스트(issue.key/type/status/priority/assignee/reporter/labels/summary/projectKey)·`MAX_DEPTH 10`/`MAX_NODES 100` DoS 상한·리터럴 배열 100개 상한. `ConditionEvaluator` 순수 트리워크 fail-safe. `V304__automation_conditions`(rule_id PK·expression JSONB·rule ON DELETE CASCADE). 신규 cross-BC 읽기 포트 `IssueSnapshotPort`(shared-kernel, fail-closed 주입) + issue-tracking `@Profile prod` 어댑터(기존 가시성 강제 read 재사용). `ActionExecutor` 조건 게이트 → `SKIPPED`(게이트 전체 fail-safe, 조건 미설정은 통과). **게이트2 보안 수정(P1)**: 조건 평가를 `actorUserId`(changeActor로 위조 가능)가 아닌 **`createdBy`(위조 불가 작성자) 가시성**으로 강제 — §12.4 관리자 우회 없음 read 오라클 차단. 조건 빌더 UI(D6)/E2E(D7)는 별개 후속(미구현). ADR [2026-07-12-fr-at-03-automation-conditions](../../decisions/2026-07-12-fr-at-03-automation-conditions.md). → **FR-AT-03 백엔드 완료(D1~D5)**, D6/D7 UI 남아 automation BC 2/7 유지.
 
 ### §2.4 FR-AT-04 — 규칙 충돌 정적 분석
 
