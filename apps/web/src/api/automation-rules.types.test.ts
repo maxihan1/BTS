@@ -1,5 +1,5 @@
 // automation-rules Zod 스키마 + 직렬화 헬퍼 단위 테스트 — backend AutomationRuleResponse DTO 1:1 대응 검증
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { ZodError } from 'zod'
 import {
   automationRuleResponseSchema,
@@ -10,8 +10,10 @@ import {
   actionResponseSchema,
   parseActionConfig,
   serializeActionConfig,
+  parseConditionExpression,
+  serializeConditionExpression,
 } from './automation-rules.types'
-import type { AutomationRule } from './automation-rules.types'
+import type { AutomationRule, ConditionNode } from './automation-rules.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fixture — AutomationRuleResponse (backend DTO 1:1)
@@ -25,6 +27,7 @@ const scheduledRuleFixture: AutomationRule = {
   enabled: true,
   triggerType: 'SCHEDULED',
   triggerConfig: '{"cron":"0 0 9 * * *"}',
+  condition: '{"and":[]}',
   actions: [],
   actorUserId: 'f0e9d8c7-b6a5-4321-8edc-ba9876543210',
   hasWebhookToken: false,
@@ -42,6 +45,7 @@ const issueCreatedRuleFixture: AutomationRule = {
   enabled: true,
   triggerType: 'ISSUE_CREATED',
   triggerConfig: '{}',
+  condition: null,
   actions: [],
   actorUserId: 'f0e9d8c7-b6a5-4321-8edc-ba9876543210',
   hasWebhookToken: false,
@@ -457,5 +461,161 @@ describe('serializeActionConfig — CALL_WEBHOOK headers 쌍 배열 (C1·C2)', (
     const serialized = serializeActionConfig('CALL_WEBHOOK', formState)
     const parsed = JSON.parse(serialized) as { headers: Record<string, string> }
     expect(parsed.headers).toEqual({ 'X-Token': 'second' })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// automationRuleResponseSchema — condition (FR-AT-03, 조건 분기)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('automationRuleResponseSchema — condition (FR-AT-03)', () => {
+  it('condition이 조건 표현식 JSON 문자열이면 파싱된다', () => {
+    const result = automationRuleResponseSchema.parse(scheduledRuleFixture)
+    expect(result.condition).toBe('{"and":[]}')
+  })
+
+  it('condition이 null(조건 없는 룰)이어도 파싱된다', () => {
+    const result = automationRuleResponseSchema.parse(issueCreatedRuleFixture)
+    expect(result.condition).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// parseConditionExpression / serializeConditionExpression — 빈 트리 (D1, EC2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const EMPTY_TREE: ConditionNode = { kind: 'group', op: 'and', negated: false, children: [] }
+
+describe('parseConditionExpression — 빈 트리 (D1, EC2)', () => {
+  it('null이면 빈 And 그룹 트리를 반환한다', () => {
+    expect(parseConditionExpression(null)).toEqual(EMPTY_TREE)
+  })
+
+  it('{"and":[]}(빈 그룹 와이어 표현)도 동일한 빈 트리로 파싱된다(EC2 왕복)', () => {
+    expect(parseConditionExpression('{"and":[]}')).toEqual(EMPTY_TREE)
+  })
+})
+
+describe('serializeConditionExpression — 빈 트리 (D1)', () => {
+  it('빈 트리는 {"and":[]}로 직렬화된다', () => {
+    expect(serializeConditionExpression(EMPTY_TREE)).toBe('{"and":[]}')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// parseConditionExpression / serializeConditionExpression — 중첩 And/Or/Not 왕복
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('parseConditionExpression / serializeConditionExpression — 중첩 트리 왕복', () => {
+  it('And( 이항 비교, Or( in 비교, Not(단항 EXISTS 비교) ) )을 왕복한다', () => {
+    const tree: ConditionNode = {
+      kind: 'group',
+      op: 'and',
+      negated: false,
+      children: [
+        { kind: 'comparison', field: 'issue.priority', operator: 'GREATER_THAN', value: 3 },
+        {
+          kind: 'group',
+          op: 'or',
+          negated: false,
+          children: [
+            { kind: 'comparison', field: 'issue.labels', operator: 'IN', value: 'urgent' },
+            {
+              kind: 'group',
+              op: 'and',
+              negated: true,
+              children: [{ kind: 'comparison', field: 'issue.assignee', operator: 'EXISTS' }],
+            },
+          ],
+        },
+      ],
+    }
+
+    const serialized = serializeConditionExpression(tree)
+    const roundTripped = parseConditionExpression(serialized)
+    expect(roundTripped).toEqual(tree)
+  })
+
+  it('단항 EMPTY(!)도 값 없이 왕복한다', () => {
+    const tree: ConditionNode = { kind: 'comparison', field: 'issue.summary', operator: 'EMPTY' }
+    expect(parseConditionExpression(serializeConditionExpression(tree))).toEqual(tree)
+  })
+
+  it('in 연산자가 역순({"in":[리터럴,{"var":field}]})으로 와도 var 선두 정규형으로 파싱한다(EC4)', () => {
+    const reversed = '{"in":[3,{"var":"issue.priority"}]}'
+    expect(parseConditionExpression(reversed)).toEqual({
+      kind: 'comparison',
+      field: 'issue.priority',
+      operator: 'IN',
+      value: 3,
+    })
+  })
+
+  it('파싱 실패(잘못된 JSON)는 console.error를 남기고 빈 트리로 폴백한다(§1.13)', () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(parseConditionExpression('{not-json')).toEqual(EMPTY_TREE)
+    expect(consoleErrorSpy).toHaveBeenCalled()
+    consoleErrorSpy.mockRestore()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// serializeConditionExpression — 백엔드 Condition.kt 와이어 shape 하드코딩 대조 (E1, 계약갭 방지)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('serializeConditionExpression — 백엔드 와이어 shape 하드코딩 대조 (E1)', () => {
+  it('issue.priority > 3 은 var 선두 이항 배열로 직렬화된다(값은 숫자)', () => {
+    const node: ConditionNode = { kind: 'comparison', field: 'issue.priority', operator: 'GREATER_THAN', value: 3 }
+    expect(serializeConditionExpression(node)).toBe('{">":[{"var":"issue.priority"},3]}')
+  })
+
+  it('urgent in issue.labels 는 var 선두 정규형 {"in":[{"var":field},리터럴]}로 직렬화된다', () => {
+    const node: ConditionNode = { kind: 'comparison', field: 'issue.labels', operator: 'IN', value: 'urgent' }
+    expect(serializeConditionExpression(node)).toBe('{"in":[{"var":"issue.labels"},"urgent"]}')
+  })
+
+  it('issue.assignee !!(EXISTS)는 리터럴 없이 {"!!":{"var":field}}로 직렬화된다', () => {
+    const node: ConditionNode = { kind: 'comparison', field: 'issue.assignee', operator: 'EXISTS' }
+    expect(serializeConditionExpression(node)).toBe('{"!!":{"var":"issue.assignee"}}')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// serializeConditionExpression — 빈 그룹 prune (G2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('serializeConditionExpression — 빈 그룹 prune (G2)', () => {
+  it('중첩된 빈 Or 그룹은 부모의 children에서 제거된다', () => {
+    const tree: ConditionNode = {
+      kind: 'group',
+      op: 'and',
+      negated: false,
+      children: [
+        { kind: 'comparison', field: 'issue.status', operator: 'EQUALS', value: 'OPEN' },
+        { kind: 'group', op: 'or', negated: false, children: [] },
+      ],
+    }
+    expect(serializeConditionExpression(tree)).toBe('{"and":[{"==":[{"var":"issue.status"},"OPEN"]}]}')
+  })
+
+  it('최상위 그룹이 비어 있으면 {"and":[]}로 직렬화된다', () => {
+    const tree: ConditionNode = { kind: 'group', op: 'or', negated: false, children: [] }
+    expect(serializeConditionExpression(tree)).toBe('{"and":[]}')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// serializeConditionExpression — 숫자 강제 (E2, priority 배열 원소까지 적용)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('serializeConditionExpression — 숫자 강제 (E2)', () => {
+  it('issue.priority in [1,2,3]은 배열 원소를 숫자로 강제해 직렬화한다', () => {
+    const node: ConditionNode = {
+      kind: 'comparison',
+      field: 'issue.priority',
+      operator: 'IN',
+      value: ['1', 2, '3'],
+    }
+    expect(serializeConditionExpression(node)).toBe('{"in":[{"var":"issue.priority"},[1,2,3]]}')
   })
 })
