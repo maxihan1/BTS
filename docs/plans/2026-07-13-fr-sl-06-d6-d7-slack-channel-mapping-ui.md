@@ -257,3 +257,7 @@ REST 4 endpoint (`SlackChannelMappingController`, `/api/v1/slack/channel-mapping
 
 ### 종합
 - BLOCKER 0. CONCERN 3건 — 1·2는 impl prompt에 반영(코드 변경 아님), 3은 게이트1 Maxi 결정.
+
+### 게이트1 결정 (2026-07-13, Maxi 확정)
+- **C1 = 채널 ID 직접 입력 확정**. picker(백엔드 확장) 기각. T4 폼에 채널 ID 텍스트 입력 + **헬퍼 텍스트**("Slack 채널 세부정보 → 채널 ID 복사") 필수.
+- 게이트1 승인 → bts-impl 진행.
