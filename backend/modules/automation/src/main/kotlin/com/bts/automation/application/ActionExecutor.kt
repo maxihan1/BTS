@@ -59,10 +59,12 @@ import java.util.UUID
  *
  * ## 조건 게이트 (FR-AT-03)
  * 룰에 저장된 조건([AutomationConditionRepository.findByRuleId])이 있으면, 액션 디스패치 전에
- * [IssueSnapshotPort] 로 갓 조회한 최신 이슈 스냅샷 기준으로 평가한다([ConditionEvaluator],
- * [isConditionUnmet] 참조 — 스냅샷 조회 불가/평가 예외는 모두 fail-safe 하게 "불충족" 처리). 조건이
- * 없으면 게이트는 항상 통과(기존 FR-AT-02 동작 그대로)하고, 불충족이면 액션 유무·dryRun 여부와 무관하게
- * 즉시 [ActionExecutionStatus.SKIPPED] 를 반환한다.
+ * [IssueSnapshotPort] 로 **룰 작성자([AutomationRule.createdBy]) 가시성**으로 갓 조회한 최신 이슈 스냅샷
+ * 기준으로 평가한다([ConditionEvaluator], [isConditionUnmet] 참조 — 조회 주체가 위조 가능한 actor 가
+ * 아니라 위조 불가한 createdBy 인 이유는 §12.4 "관리자 우회 없음", [isConditionUnmet] KDoc 참조). 조건
+ * 조회·스냅샷 조회·평가 중 어떤 예외든, 또는 스냅샷 조회 불가는 모두 fail-safe 하게 "불충족" 처리한다.
+ * 조건이 없으면 게이트는 항상 통과(기존 FR-AT-02 동작 그대로)하고, 불충족이면 액션 유무·dryRun 여부와
+ * 무관하게 즉시 [ActionExecutionStatus.SKIPPED] 를 반환한다.
  *
  * **주의(C3, 현재 한계)** — 조건은 위처럼 최신 스냅샷 기준이지만, ADD_COMMENT 템플릿(`{{issue.*}}`)은
  * 여전히 `triggerEvent` payload 기준([buildContext])이다. 조건이 최신 상태로 통과해도 템플릿의
@@ -77,8 +79,9 @@ import java.util.UUID
  * @param actionRepository 룰의 액션 리스트를 position 순으로 조회하는 리포지토리.
  * @param objectMapper [Action.SetFieldAction.value] JSON 인코딩 + triggerEvent → Map 변환용 Jackson
  *   [ObjectMapper](Spring Boot 기본 자동 구성 빈).
- * @param issueSnapshotPort 조건 게이트가 최신 이슈 값을 조회하는 cross-BC 읽기 포트(fail-closed,
- *   non-null — [issueMutationPort] 와 동일 사유). test-boot 는 `StubIssueSnapshotPort` 를 대신 등록.
+ * @param issueSnapshotPort 조건 게이트가 최신 이슈 값을 룰 작성자([AutomationRule.createdBy]) 가시성으로
+ *   조회하는 cross-BC 읽기 포트(fail-closed, non-null — [issueMutationPort] 와 동일 사유). test-boot 는
+ *   `StubIssueSnapshotPort` 를 대신 등록.
  * @param conditionRepository 룰의 조건 트리 조회 리포지토리(룰당 0..1). 컴포넌트 스캔 실 빈이라 stub 불필요.
  *
  * [TemplateRenderer]/[ConditionEvaluator] 는 생성자 파라미터가 아니라 내부 프로퍼티로 고정한다 — 둘
