@@ -98,6 +98,33 @@ describe('SlackChannelMappingFormDialog — 신규 생성', () => {
     expect(screen.getByRole('button', { name: '저장' })).toBeEnabled()
   })
 
+  it('제출 진행중(mutation pending)이면 저장 버튼이 비활성화된다', async () => {
+    const user = userEvent.setup()
+    const { Wrapper } = createWrapper()
+    let resolveCreate: (value: ChannelMapping) => void = () => {}
+    mockCreate.mockImplementation(
+      () =>
+        new Promise<ChannelMapping>((resolve) => {
+          resolveCreate = resolve
+        }),
+    )
+
+    render(
+      <SlackChannelMappingFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} editingMapping={null} />,
+      { wrapper: Wrapper },
+    )
+
+    await user.type(screen.getByLabelText('채널 ID'), 'C0123456789')
+    await user.click(screen.getByRole('checkbox', { name: '이슈 생성' }))
+    await user.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '저장' })).toBeDisabled()
+    })
+
+    resolveCreate(EDIT_MAPPING)
+  })
+
   it('채널 ID + 이벤트 선택 후 제출하면 createChannelMapping 호출 + 성공 시 닫힘·목록 invalidate', async () => {
     const user = userEvent.setup()
     const onOpenChange = vi.fn()
