@@ -261,3 +261,11 @@ REST 4 endpoint (`SlackChannelMappingController`, `/api/v1/slack/channel-mapping
 ### 게이트1 결정 (2026-07-13, Maxi 확정)
 - **C1 = 채널 ID 직접 입력 확정**. picker(백엔드 확장) 기각. T4 폼에 채널 ID 텍스트 입력 + **헬퍼 텍스트**("Slack 채널 세부정보 → 채널 ID 복사") 필수.
 - 게이트1 승인 → bts-impl 진행.
+
+## 구현 결과 (bts-impl, 2026-07-13)
+
+7 task 전부 완료, TDD red→green(→refactor) 정순 커밋 검증. 4 wave 병렬 dispatch.
+- T1 API 클라이언트(slack.ts) · T2 이벤트 선택 · T3 목록 · T4 폼 · T5 라우트+router · T6 MSW(전역등록) · T7 E2E.
+- **controller가 잡은 계약 오류**: 목록(GET) 권한거부는 실제로 **403**(404 아님, update/delete만 404). T3/T4 DRIFT 수정으로 403 처리 추가. 스펙 에러 계약 정정.
+- 검증: 신규 unit 99 tests(5 파일) pass · 전체 unit 6814 pass(회귀 0) · E2E 3 시나리오 pass · slack/settings E2E 회귀 0 · typecheck·lint·build 클린.
+- **PRE_EXISTING(무관)**: E2E 전체 스위트에서 4건 실패(board-wip-swimlane S3·project-member-management S1/S4·saved-filters SF-1). **clean main에서도 동일 실패 확정** → 본 PR 무관, 별도 이슈. 본 PR 검증 미차단이라 hot-fix 안 함.
