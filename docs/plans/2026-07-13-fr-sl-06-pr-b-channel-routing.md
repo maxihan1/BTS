@@ -241,3 +241,8 @@ issueKey null sprint(보안게이트 우회·게시) / 봇 미설치(skip·delet
 ### BLOCKER: 없음
 
 게이트 1 Maxi 확인 2건: (1) dedup 저장소 옵션 A(전용) vs B(재사용), (2) broadcast emit best-effort 격리(CONCERN-E3) 승인.
+
+### 🛑 게이트 1 결정 (Maxi 승인, 2026-07-13)
+- ✅ **승인 → 구현 진행**.
+- ✅ **dedup 저장소 = 옵션 A (전용 테이블 `slack_channel_broadcast_log`)** — Task 3 그대로.
+- ✅ **broadcast emit best-effort 격리 승인** (CONCERN-E3) — 좁은 catch(DataAccessException) 로그, 알림 핫패스 미차단.
