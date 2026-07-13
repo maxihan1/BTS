@@ -78,6 +78,138 @@ PR-B가 채울 3덩어리:
 - **검증**: producer는 projectKey 있는 이벤트만 emit(없으면 미발행, criterion 3) · issueKey nullable(sprint.*)는 보안게이트 우회하되 event_filter 적용 · 새 cross-BC 포트 소비(slack 워커→IssueSecurityClassificationPort)는 full-boot @MockBean 회귀 확인 필요([[new-crossbc-dep-openapi-mockbean-regression]]).
 - 잔여 blocking gap 없음. plan 단계 진행 가능.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 정본 spec FR4~FR9. cross-BC 4모듈(shared-kernel·issue-tracking·slack·notification)+app 조립.
+> dedup 저장소는 **옵션 A(전용 테이블)** 로 task 구성 — 게이트 1에서 Maxi 확인(옵션 B 채택 시 Task 3 축소).
+
+### Task 1. shared-kernel 포트 + issue-tracking 보안게이트 prod 어댑터 (FR9)
+
+**메타**.
+- agent: `backend-engineer` (security-engineer 리뷰 대상)
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/issue/IssueSecurityClassificationPort.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/IssueSecurityClassificationAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/IssueSecurityClassificationAdapterTest.kt`]
+- depends-on: []
+
+**RED**: `IssueSecurityClassificationAdapterTest` (Testcontainers, issue-tracking) —
+```kotlin
+@Test fun `security_level_id non-null 이슈는 제한(true)`()
+@Test fun `security_level_id null 이슈는 비제한(false)`()
+@Test fun `존재하지 않는 issueKey는 fail-closed(true)`()
+```
+실패: `IssueSecurityClassificationPort` / `IssueSecurityClassificationAdapter` 없음.
+
+**GREEN**:
+- 포트: `interface IssueSecurityClassificationPort { fun isSecurityRestricted(issueKey: String): Boolean }` (default 금지, UUID/String 원시타입만 — SharedKernelBoundaryArchTest 준수).
+- 어댑터: `@Component @Profile("prod") class IssueSecurityClassificationAdapter(issueRepository)` — `findByKey(IssueKey(issueKey))?.securityLevelId != null` 판정, **null(미존재)→true(fail-closed)**. `security_level_id`는 issues 테이블(V014).
+
+**REFACTOR**: KDoc(포트 목적=채널 브로드캐스트 제외 게이트, IssueVisibilityPort/IssueSecurityDirectory와 목적 상이 명시).
+
+**검증**: `./gradlew :backend:modules:issue-tracking:test --tests '*IssueSecurityClassificationAdapterTest'`
+
+### Task 2. slack: 보안게이트 non-prod stub (FR9 fail-safe)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/slack-integration/src/main/kotlin/com/bts/slack/config/AlwaysUnrestrictedIssueSecurityClassification.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/config/AlwaysUnrestrictedIssueSecurityClassificationTest.kt`]
+- depends-on: [1]
+
+**RED**: stub이 항상 `false`(게시 허용) 반환 단위 테스트. 실패: 클래스 없음.
+**GREEN**: `@Component @Profile("!prod") class AlwaysUnrestrictedIssueSecurityClassification : IssueSecurityClassificationPort { override fun isSecurityRestricted(issueKey) = false }` (consumer-owns-stub 관례, `AlwaysAllowSlackChannelMappingPermissionResolver` 선례).
+**REFACTOR**: KDoc(비prod에선 보안등급 판정 불가→게시 허용, prod만 실제 제한).
+**검증**: `./gradlew :backend:modules:slack-integration:test --tests '*AlwaysUnrestricted*'`
+
+### Task 3. slack V705 마이그레이션 + 채널 dedup 저장소 (FR6·큐 생성)
+
+**메타**.
+- agent: `db-engineer` (마이그레이션) / backend-engineer 겸(repository)
+- files: [`backend/modules/slack-integration/src/main/resources/db/migration/slack-integration/V705__slack_channel_broadcast.sql`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/persistence/JdbcSlackChannelBroadcastDedupRepository.kt`, `backend/modules/slack-integration/src/main/kotlin/com/bts/slack/application/SlackChannelBroadcastDedupRepository.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/persistence/JdbcSlackChannelBroadcastDedupRepositoryTest.kt`]
+- depends-on: []
+
+**RED**: `JdbcSlackChannelBroadcastDedupRepositoryTest` (Testcontainers pgmq 이미지) — `existsPosted(dedupKey)`=false→`recordPosted(dedupKey)`→`existsPosted`=true, 중복 record 멱등. 실패: 테이블/repo 없음.
+**GREEN**:
+- V705: `CREATE EXTENSION IF NOT EXISTS pgmq; SELECT pgmq.create('q_slack_channel_broadcasts');` (V701:44-45 선례) + `CREATE TABLE slack_channel_broadcast_log(dedup_key text PRIMARY KEY, posted_at timestamptz not null default now())`. **신규 V번호만(기존 편집 금지 — app-test 영속DB 체크섬)**.
+- repository 포트 + JdbcTemplate 구현 — `INSERT ... ON CONFLICT (dedup_key) DO NOTHING` 멱등, `existsPosted` SELECT.
+**REFACTOR**: dedupKey 컬럼 주석(=event-level hash + channelId).
+**검증**: `./gradlew :backend:modules:slack-integration:test --tests '*BroadcastDedupRepositoryTest'`
+
+> **★ 옵션 B 채택 시**: V705는 큐만 생성, 기존 `slack_delivery_log` 재사용(채널키는 channelId 포함→DM키와 비충돌). dedup repository는 기존 것 확장.
+
+### Task 4. slack: SlackMessageClient.postChannelMessage (채널 게시 메서드)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/slack-integration/src/main/kotlin/com/bts/slack/message/SlackMessageClient.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/message/SlackMessageClientTest.kt`]
+- depends-on: []
+
+**RED**: `postChannelMessage(botToken, channelId, message)` — mock `MethodsClient`, channel=channelId(C…)로 chat.postMessage, `SlackSendResult` 반환(Sent/Retryable/Permanent 분류 재사용). 실패: 메서드 없음.
+**GREEN**: `postDirectMessage` 미러(channel 파라미터만 slackUserId→channelId). 봇토큰 3중 미노출 유지(reason=오류코드만).
+**REFACTOR**: 공통 게시 로직 추출(postDirectMessage/postChannelMessage 중복 제거).
+**검증**: `./gradlew :backend:modules:slack-integration:test --tests '*SlackMessageClientTest'`
+
+### Task 5. notification: SlackChannelBroadcaster + NotificationWorker 결선 (FR4)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/notification/src/main/kotlin/com/bts/notification/channel/SlackChannelBroadcaster.kt`, `backend/modules/notification/src/main/kotlin/com/bts/notification/worker/NotificationWorker.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/channel/SlackChannelBroadcasterTest.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/worker/NotificationWorkerTest.kt`]
+- depends-on: []
+
+**RED**: `SlackChannelBroadcasterTest` —
+```kotlin
+@Test fun `projectKey 있으면 q_slack_channel_broadcasts에 이벤트당 1회 emit`()  // JSON: projectKey,eventType,issueKey?,title,occurredAt,dedupKey(이벤트레벨 해시)
+@Test fun `projectKey 없으면 emit 안 함`()  // sprint 없는 이벤트 등
+```
++ `NotificationWorkerTest` — dispatch가 정책 early-return 이전에 broadcaster 호출(수신자 0이어도 emit). 실패: 클래스/결선 없음.
+**GREEN**:
+- `@Component class SlackChannelBroadcaster(dsl, objectMapper)` — `broadcastIfApplicable(event)`: projectKey null이면 no-op, 아니면 `dsl.execute("SELECT pgmq.send('q_slack_channel_broadcasts', ?::jsonb)", json)` (SlackChannelSender.kt:45 미러). dedupKey=`sha256(projectKey|eventType|issueKey|occurredAt)`. slack 도메인 타입 import 0.
+- `NotificationWorker.dispatch()` 최상단(정책 평가 이전)에서 `slackChannelBroadcaster.broadcastIfApplicable(event)` 호출. **best-effort 격리**: 좁은 catch(DataAccessException)로 로그만, 알림 dispatch 미차단(권한예외 아님 — best-effort-loop 함정 무해). 생성자에 broadcaster 주입(기존 테스트 plan files 영향 → mock 추가).
+**REFACTOR**: dedupKey 해시 유틸 추출, JSON 빌드 objectMapper.
+**검증**: `./gradlew :backend:modules:notification:test --tests '*SlackChannelBroadcasterTest' --tests '*NotificationWorkerTest'`
+
+### Task 6. slack: 채널 브로드캐스트 워커 (FR5, 핵심)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/slack-integration/src/main/kotlin/com/bts/slack/worker/SlackChannelBroadcastWorker.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/worker/SlackChannelBroadcastWorkerTest.kt`]
+- depends-on: [1, 2, 3, 4]
+
+**RED**: `SlackChannelBroadcastWorkerTest` (Testcontainers pgmq) — 8 시나리오:
+```
+happy(매핑채널 게시·dedup기록·delete) / 미매핑 프로젝트(skip·delete) /
+event_filter 불일치(skip·delete) / 보안등급 이슈(FR9 true→전채널 skip·delete·유출차단) /
+issueKey null sprint(보안게이트 우회·게시) / 봇 미설치(skip·delete) /
+429/5xx RetryableDeliveryException(retain·read_ct>MAX archive) / 다채널 팬아웃+재전달 dedup(effectively-once)
+```
+실패: 워커 없음.
+**GREEN**: `@Component class SlackChannelBroadcastWorker(jdbcTemplate, objectMapper, mappingRepository, dedupRepository, securityClassificationPort, botTokenResolver, renderer, messageClient)` — `@Scheduled(fixedDelayString="\${bts.slack.channel-broadcast.poll-interval-ms:1000}") pollAndProcess()`. SlackDeliveryWorker 구조 미러:
+  1. `pgmq.read('q_slack_channel_broadcasts', vt, batch)`
+  2. per-message: 파싱 → issueKey 있으면 `securityClassificationPort.isSecurityRestricted` (try-catch fail-closed skip) → 제한/불명이면 전채널 skip·delete
+  3. `mappingRepository.findByProjectKey(projectKey)` → `eventTypes.contains(eventType)` 필터
+  4. per-channel: dedupKey+channelId로 `existsPosted` → 있으면 skip / 봇토큰 `resolve(teamId)` null이면 skip → `renderer.render(title, issueKey)` → `messageClient.postChannelMessage` → Sent이면 `recordPosted`·PermanentFailure이면 로그 / RetryableFailure이면 throw RetryableDeliveryException(채널별 독립 실패 격리 vs 배치 재전달 균형 — NFR4)
+  5. 생명주기: 성공 delete / retryable retain·archive(read_ct>MAX) / poison archive
+  - **@Transactional 부재**(pgmq vt·self-invocation, 기존 워커 동형). @Scheduled은 기존 `SlackSchedulingConfiguration`(@EnableScheduling @Profile !test)이 활성화 — 신규 config 불요(Explore E15 확인).
+**REFACTOR**: 채널별 처리/생명주기 헬퍼 분리, SlackDeliveryWorker와 공통 pgmq 헬퍼 중복 최소화.
+**검증**: `./gradlew :backend:modules:slack-integration:test --tests '*SlackChannelBroadcastWorkerTest'`
+
+### Task 7. prod 조립 부팅 + full-boot @MockBean 회귀 (FR8)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/app/src/test/kotlin/com/bts/app/BtsApplicationContextTest.kt`, (slack full-boot 슬라이스 테스트 — new-crossbc-dep @MockBean 필요 시)]
+- depends-on: [1, 5, 6]
+
+**RED**: (a) `BtsApplicationContextTest`(@ActiveProfiles prod)에 신규 prod 빈 FQN containsBean 단언 추가 — `com.bts.issue.adapter.IssueSecurityClassificationAdapter`, `com.bts.slack.worker.SlackChannelBroadcastWorker`. (b) slack 전체 test 실행 → 새 워커가 소비하는 `IssueSecurityClassificationPort`가 없는 로드 슬라이스에서 NoSuchBean → **@MockBean 추가**([[new-crossbc-dep-openapi-mockbean-regression]]).
+**GREEN**: containsBean 단언 통과 확인(@Component 자동 스캔) + 슬라이스 @MockBean 배선.
+**REFACTOR**: 없음(검증 태스크).
+**검증**: `./gradlew :backend:modules:app:test --tests '*BtsApplicationContextTest'` (prod 프로파일·5433 postgres) + slack 전체 test green.
+
+## Plan 메타
+
+- task 수: 7
+- 의존성 그래프: T1→T2, {T1,T2,T3,T4}→T6, {T1,T5,T6}→T7. T3·T4·T5는 서로 독립.
+- wave (이론): W1={T1,T3,T4,T5} → W2={T2} → W3={T6} → W4={T7}. **단, 단일 worktree라 Gradle 모듈 컴파일 직렬화 → controller 직렬 dispatch 권장**([[bts-plan-wave-gradle-module-compile]]·최근 slack PR 전부 직렬).
+- 예상 시간: 7 task, 직렬 기준 약 25~35분(Testcontainers pgmq 통합 다수).
+- TDD 강제: yes (test 커밋이 feat 커밋보다 먼저 — bts-impl 자동 검증).
+- 추가 검증: ktlint, detekt(`--rerun-tasks` false-green 방지), :modules:app:test prod 조립 부팅.
+- 게이트 1 Maxi 확인 사항: (1) dedup 저장소 옵션 A(전용) vs B(재사용), (2) broadcast emit best-effort 격리 승인.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
