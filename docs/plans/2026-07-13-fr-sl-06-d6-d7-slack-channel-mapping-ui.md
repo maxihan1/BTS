@@ -56,9 +56,23 @@ REST 4 endpoint (`SlackChannelMappingController`, `/api/v1/slack/channel-mapping
 
 - plan 스텁 Brief의 "CRUD(생성/목록/삭제)"는 **update(PATCH) 누락**. 백엔드가 PATCH 완비 → UI도 수정 포함(완제품 기준). 스펙에서 최종 확정.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-13-fr-sl-06-d6-d7-slack-channel-mapping-ui.md](../specs/2026-07-13-fr-sl-06-d6-d7-slack-channel-mapping-ui.md)
+
+핵심 시나리오 요약.
+- 프로젝트 설정 → "Slack 채널" 탭에서 채널↔프로젝트 매핑을 CRUD(생성/목록/수정/삭제).
+- 각 매핑 = 채널 ID(+표시명) + event_filter(10종 이벤트 유형 다중선택).
+- 선례 `settings.automation.tsx` 미러(RouteAdapter+props-Page, List+FormDialog, `p-8 space-y-6 max-w-2xl`).
+- office-hours 스킵(메모리 `bts-spec-office-hours-mismatch` — 명확·완결 후속 FR). design-consultation 스킵(DESIGN.md 존재). design-shotgun 스킵(기존 설정 페이지 패턴 미러, 새 시각 발명 불필요).
+
+**게이트1 확정 필요 결정**.
+- **C1. 채널 ID 직접입력(추천) vs 채널 picker(백엔드 확장)** — 백엔드에 채널 목록 API 없음.
+- EC4 워크스페이스 미설치 사전 안내 배너 포함 여부(409 처리는 기본, 배너는 선택).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). 409 두 종류(중복·워크스페이스미설치) 폼 처리 과소명세 발견 후 보강. C1 결정만 게이트1로.
 
 ## Plan (← /bts-plan 채움)
 
