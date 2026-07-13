@@ -53,6 +53,13 @@ export const SEED_AUTOMATION_RULE_IDS = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * 조건 있는 시드 룰(SCHEDULED)의 `condition` 와이어 JSON — `issue.priority > 3`이면 실행.
+ * automation-rules.types.ts `serializeConditionExpression`의 와이어 포맷과 1:1 대응한다.
+ * E2E가 조건 편집 시나리오(기존 조건 표시·재편집)에 그대로 재사용할 수 있게 상수로 분리한다.
+ */
+export const SEED_AUTOMATION_CONDITION_PRIORITY_GT_3 = '{"and":[{">":[{"var":"issue.priority"},3]}]}'
+
+/**
  * 기본 자동화 룰 시드 — ATLAS 프로젝트, 트리거 2종(ISSUE_CREATED·SCHEDULED).
  * dev(pnpm dev)/E2E 진입 시 빈 화면 방지 + "시드된 목록" 시나리오 기본값.
  *
@@ -86,7 +93,7 @@ export const DEFAULT_AUTOMATION_RULES: AutomationRule[] = [
     enabled: true,
     triggerType: 'SCHEDULED',
     triggerConfig: '{"cron":"0 0 9 * * *"}',
-    condition: '{"and":[{">":[{"var":"issue.priority"},3]}]}',
+    condition: SEED_AUTOMATION_CONDITION_PRIORITY_GT_3,
     // 액션 있는 픽스처(FR-AT-02) — SET_FIELD(priority=3)·ASSIGN(해제) 2건, config는 응답 규약대로 객체.
     actions: [
       { type: 'SET_FIELD', config: { field: 'priority', value: 3 } },
