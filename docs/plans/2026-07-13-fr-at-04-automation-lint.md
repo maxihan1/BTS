@@ -210,3 +210,13 @@ PRIORITY. (e) 같은 트리거 부수효과 규칙 2개(assignee·priority 서�
 4. ⚠️ **PERMISSION_MISSING 실효 범위**. non-prod stub이라 dev 무의미·prod 전용. cross-BC 부팅 결합 추가 대비 실질 가치는 Maxi가 4종으로 확정 — 진행. blast radius(조립 부팅)는 §리스크에 잡힘([[prod-assembly-boot-verification-required]]).
 
 **BLOCKER: 없음.** cross-BC 권한 근사 매핑의 정확성은 게이트 2 codereview에서 security 관점 재확인.
+
+### bts-codereview (2026-07-13, PR #268 — superpowers:code-reviewer + controller 코드 검증)
+
+**PASS 확인**: 보안 read 오라클(actor 권한은 저장자 권한 범위 내, §12.4 위반 아님)·fail-open(non-null 주입)·AddComment 제외·CYCLE DFS 정합·메모이제이션·FIELD/PRIORITY·DTO 계약(NON_NULL)·cross-BC 12 test-boot 배선·절대 규칙·DRY.
+
+**🛑 BLOCKER-1 (controller 코드 검증 확정)**: 저장 후 lint fail-safe가 트랜잭션 오염으로 무력화. `create`(AutomationRuleService.kt:167 `@Transactional`)→:208 `analyzeConflicts` **커밋 전** 호출, `patch`:289→:354 동일. analyzeConflicts 내부 `findByProject`(:221 `@Transactional(readOnly=true)`)·hydrate가 참여 트랜잭션(REQUIRED). read 예외 시 `globalRollbackOnParticipationFailure`로 공유 tx rollback-only 마킹 → catch가 예외 흡수해도 커밋 시 `UnexpectedRollbackException` → **방금 저장한 규칙 롤백 + 500**. 스펙 FR-1/NFR("저장은 이미 커밋됨, 분석 예외가 저장 훼손 안 함") 정면 위반. [[workflowstatecatalog-mandatory-rollback-poison]] 동일 패턴. 테스트 미검출(analyze()만 mock, 참여 read 예외 경로 미검증).
+
+**⚠️ C1 (controller 확정)**: AssignAction phantom 엣지. 담당자 변경은 `IssueAssigned`(issue.assigned) 별도 이벤트 발행(IssueApplicationService.kt:759), automation `TriggerMatcher`는 issue.assigned 미소비. issue.updated changedFields에 "assignee" 없음 → analyzer의 `Assign→ISSUE_UPDATED{assignee}` 엣지는 런타임 부재 phantom = false positive. 안전성 OK(over-approximation)이나 스펙 Brainstorming #2 검증 미이행 + KDoc "통합테스트 범위" 오주장.
+
+**⚠️ C2 (controller 확정)**: coFire(RuleConflictAnalyzer.kt:218-226) 과대근사. 같은 triggerType + non-ISSUE_UPDATED면 무조건 동시매칭 판정 → 두 WEBHOOK 규칙(각자 고유 토큰이라 동시 발화 원천 불가)이 FIELD/PRIORITY 오탐. WEBHOOK 제외 권장(SCHEDULED는 cron 근접성 판단 어려워 최소 WEBHOOK).
