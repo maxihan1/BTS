@@ -195,6 +195,7 @@ const createRuleHandler = http.post(
       enabled: true,
       triggerType: body.triggerType,
       triggerConfig: body.triggerConfig,
+      condition: body.condition ?? null,
       actions: body.actions !== undefined ? toActionResponses(body.actions) : [],
       actorUserId: body.actorUserId ?? DEFAULT_AUTOMATION_ACTOR_ID,
       hasWebhookToken: isWebhook,
@@ -241,7 +242,7 @@ const getRuleHandler = http.get(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 자동화 룰 부분 수정 — name·enabled·triggerConfig·actions·actorUserId.
+ * 자동화 룰 부분 수정 — name·enabled·triggerConfig·condition·actions·actorUserId.
  *
  * 에러 분기 순서 (백엔드와 동일).
  * 1. 룰 미존재 또는 다른 프로젝트 소속 → 404 AUTOMATION_RULE_NOT_FOUND
@@ -251,6 +252,7 @@ const getRuleHandler = http.get(
  * triggerConfig가 실제로 변경되고 트리거 타입이 SCHEDULED이면 nextFireAt을 재계산한다.
  * actions는 지정 시 **전체 교체**(부분 병합 아님, backend PatchAutomationRuleRequest 동일 컨벤션) —
  * 미지정이면 기존 액션을 그대로 유지한다. actorUserId도 미지정이면 기존 값을 유지한다.
+ * condition(FR-AT-03)도 미지정(`undefined`)이면 기존 값을 그대로 유지한다 — 지정 시 전체 교체.
  */
 const patchRuleHandler = http.patch(
   '/api/v1/projects/:projectKey/automation/rules/:id',
@@ -285,6 +287,7 @@ const patchRuleHandler = http.patch(
       name: body.name ?? stored.name,
       enabled: body.enabled ?? stored.enabled,
       triggerConfig,
+      condition: body.condition !== undefined ? body.condition : stored.condition,
       actions: body.actions !== undefined ? toActionResponses(body.actions) : stored.actions,
       actorUserId: body.actorUserId ?? stored.actorUserId,
       nextFireAt: triggerConfigChanged
