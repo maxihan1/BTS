@@ -138,21 +138,19 @@ class AutomationRuleLintTransactionIsolationIntegrationTest {
         corruptAction(corruptedRuleId)
         val targetRuleId = createRuleWithoutActions(name = "패치 대상")
 
-        val response =
-            mockMvc
-                .perform(
-                    patch("/api/v1/projects/$PROJECT_KEY/automation/rules/$targetRuleId")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""{"version":0,"name":"패치됨"}"""),
-                ).andExpect(status().isOk)
-                .andReturn()
-                .response
-                .contentAsString
-        val patched = objectMapper.readTree(response)
-
-        assertThat(patched.get("name").asText()).isEqualTo("패치됨")
-        assertThat(patched.get("version").asLong()).isEqualTo(1)
-        assertThat(patched.get("conflicts").toList()).isEmpty()
+        // `MockHttpServletResponse.getContentAsString()`(→ Jackson readTree)는 서블릿 스펙 기본
+        // charset(ISO-8859-1)을 쓰므로 한글 필드는 jsonPath(원시 바이트를 UTF-8 로 직접 파싱)로만
+        // 검증한다([AutomationRuleControllerTest] 동형 관례) — `.conflicts.length()` 만 구조적으로
+        // 확인한다(한글이 아니라 인코딩 영향이 없다).
+        mockMvc
+            .perform(
+                patch("/api/v1/projects/$PROJECT_KEY/automation/rules/$targetRuleId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"version":0,"name":"패치됨"}"""),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.name").value("패치됨"))
+            .andExpect(jsonPath("$.version").value(1))
+            .andExpect(jsonPath("$.conflicts.length()").value(0))
 
         // 재조회로 실제 커밋 확인.
         mockMvc

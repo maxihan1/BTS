@@ -84,6 +84,16 @@ class RuleConflictAnalyzer(
      *
      * sealed [Action] 의 4개 하위 타입에 대해 exhaustive `when` 으로 분기한다 — `ActionType` enum 기반
      * 매핑을 별도로 만들지 않는다(기존 repo/executor/response 3곳 매핑과의 중복 회피, plan DRY 노트).
+     *
+     * ## AssignAction 은 CYCLE 엣지가 없다 (코드리뷰 C1 수정)
+     * 담당자 변경은 `issue.assigned`(cross-BC `IssueAssigned`) 별도 이벤트로 발행되고, automation
+     * [TriggerMatcher] 는 `issue.assigned` 를 소비하지 않는다(`issue.created`/`issue.updated`/
+     * `issue.commented` 만 매핑) — `issue.updated` 의 `changedFields` 에도 담당자 변경은 포함되지 않는다.
+     * 즉 `AssignAction → ISSUE_UPDATED{assignee}` 트리거 유발은 런타임에 존재하지 않는 경로였다
+     * (phantom edge, over-approximation false positive). [CallWebhookAction] 과 동형으로 CYCLE 엣지
+     * 없음(`false`)으로 판정한다 — 단 [hasObservableSideEffect] 같은 부수효과 판정(FIELD_CONFLICT/
+     * PRIORITY_AMBIGUITY)에는 AssignAction 을 그대로 포함한다(담당자 변경도 관측 가능한 부수효과이므로,
+     * 이 제거는 CYCLE 판정에만 한정된다).
      */
     private fun actionTriggers(
         action: Action,
@@ -91,7 +101,7 @@ class RuleConflictAnalyzer(
     ): Boolean =
         when (action) {
             is Action.SetFieldAction -> triggersIssueUpdated(target, action.field)
-            is Action.AssignAction -> triggersIssueUpdated(target, ASSIGNEE_FIELD)
+            is Action.AssignAction -> false
             is Action.AddCommentAction -> target.triggerType == TriggerType.ISSUE_COMMENTED
             is Action.CallWebhookAction -> false
         }
@@ -101,17 +111,6 @@ class RuleConflictAnalyzer(
         target: AutomationRule,
         field: String,
     ): Boolean = target.triggerType == TriggerType.ISSUE_UPDATED && matchesField(target.triggerConfig, field)
-
-    companion object {
-        /**
-         * [Action.AssignAction] 이 유발하는 `issue.updated` 이벤트의 필드명 근사값.
-         *
-         * 실제 issue-tracking 이벤트의 `updatedFields` 원소 이름은 이 BC 소관이 아니라 automation
-         * 내부 상수로 근사한다(cross-BC import 없이 정적 분석). 실제 정합 확인은 통합 테스트
-         * (FR-AT-04 Task 6) 범위다.
-         */
-        private const val ASSIGNEE_FIELD = "assignee"
-    }
 }
 
 /**
@@ -182,7 +181,9 @@ private class CycleDetector(
  * ## 동시 매칭 판정 ([coFire])
  * 두 규칙이 같은 이벤트로 동시에 발화할 수 있으면 동시 매칭이다 — `triggerType` 이 같고, ISSUE_UPDATED
  * 라면 두 규칙의 `triggerConfig` `fields` 필터가 겹치거나 한쪽이 비어있어야 한다(비어있으면 모든
- * update 에 발화, 스펙 FR4). 그 외 트리거 타입은 타입 일치만으로 동시 매칭이다.
+ * update 에 발화, 스펙 FR4). WEBHOOK 은 각자 고유 토큰 엔드포인트라 타입이 같아도 동시 매칭 불가로
+ * 판정한다(코드리뷰 C2 수정, [coFire] KDoc 참고). 그 외 트리거 타입(ISSUE_CREATED/ISSUE_COMMENTED/
+ * SCHEDULED)은 타입 일치만으로 동시 매칭이다.
  *
  * ## FIELD_CONFLICT (스펙 FR-4)
  * 동시 매칭 쌍 사이에 같은 field 를 다른 value 로 SET 하는 [Action.SetFieldAction] 조합이 있으면
@@ -214,13 +215,25 @@ private class FieldPriorityAnalyzer(private val rules: List<AutomationRule>) {
             }
         }
 
-    /** [a]·[b] 가 같은 이벤트로 동시에 발화할 수 있으면 `true`(트리거 타입 일치 + ISSUE_UPDATED 필드 겹침). */
+    /**
+     * [a]·[b] 가 같은 이벤트로 동시에 발화할 수 있으면 `true`(트리거 타입 일치 + ISSUE_UPDATED 필드 겹침).
+     *
+     * ## WEBHOOK 은 동시 매칭 불가 (코드리뷰 C2 수정)
+     * WEBHOOK 트리거 규칙은 각자 고유 토큰([com.bts.automation.application.AutomationRuleService.mintWebhookToken])
+     * 발급 인바운드 엔드포인트다 — 서로 다른 두 WEBHOOK 규칙이 같은 인바운드 호출 1건으로 동시에
+     * 발화하는 경로가 원천적으로 없다. 같은 `triggerType` 이라는 이유만으로 동시 매칭 처리하면
+     * FIELD_CONFLICT/PRIORITY_AMBIGUITY 오탐(false positive)이 나므로 WEBHOOK 은 무조건 `false`.
+     * SCHEDULED 는 서로 다른 cron 표현식이 실제로 시각이 겹치는지 정적으로 판단하기 어려워(cron 표현식
+     * 동치 판정은 이 분석 범위를 넘는 별도 난제) 보수적으로 기존과 동일하게 동시 매칭 가능(`true`)으로
+     * 유지한다 — false negative(놓친 충돌)보다 false positive(과도한 경고)가 더 안전하다는 판단.
+     */
     private fun coFire(
         a: AutomationRule,
         b: AutomationRule,
     ): Boolean =
         when {
             a.triggerType != b.triggerType -> false
+            a.triggerType == TriggerType.WEBHOOK -> false
             a.triggerType != TriggerType.ISSUE_UPDATED -> true
             else -> fieldsCoFire(a.triggerConfig, b.triggerConfig)
         }
