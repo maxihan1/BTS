@@ -67,6 +67,7 @@ const SCHEDULED_EDIT_RULE: AutomationRule = {
   enabled: true,
   triggerType: 'SCHEDULED',
   triggerConfig: '{"cron":"0 0 9 * * *"}',
+  condition: null,
   actions: [],
   actorUserId: ALICE_ID,
   hasWebhookToken: false,
@@ -75,6 +76,14 @@ const SCHEDULED_EDIT_RULE: AutomationRule = {
   createdAt: '2026-07-10T10:00:00Z',
   updatedAt: '2026-07-10T10:00:00Z',
   version: 3,
+}
+
+/** 조건(`issue.priority > 3`)이 설정된 편집용 픽스처 — S4 로드/G1 조건부 전송 테스트 전용 */
+const CONDITION_EDIT_RULE: AutomationRule = {
+  ...SCHEDULED_EDIT_RULE,
+  id: 'a1b2c3d4-e5f6-4890-abcd-ef1234567892',
+  name: '조건 있는 룰',
+  condition: '{"and":[{">":[{"var":"issue.priority"},3]}]}',
 }
 
 /** 액션 2건(SET_FIELD·ADD_COMMENT) + actor가 설정된 편집용 픽스처 — S7 로드/직렬화 round-trip 테스트 전용 */
@@ -758,6 +767,215 @@ describe('AutomationRuleFormDialog — 비-409 에러는 폼을 유지한다', (
       expect(screen.getByText('세션이 만료되었습니다. 다시 로그인해주세요.')).toBeInTheDocument()
     })
     expect(onOpenChange).not.toHaveBeenCalledWith(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 조건 편집 — 로드(S4)·조건부 전송(G1)·제거(S5/[D1])·null 유지(EC11)·오류(FR9)·409(EC8)·
+// key 재마운트(EC9) — FR-AT-03 D6/D7 Task 5
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AutomationRuleFormDialog — 조건 편집(FR-AT-03 D6/D7 Task 5)', () => {
+  it('editingRule.condition을 조건 빌더에 로드한다(S4)', () => {
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={vi.fn()}
+        editingRule={CONDITION_EDIT_RULE}
+      />,
+    )
+    expect(screen.getByTestId('condition-field-select')).toHaveValue('issue.priority')
+    expect(screen.getByTestId('condition-operator-select')).toHaveValue('GREATER_THAN')
+    expect(screen.getByLabelText('값')).toHaveValue('3')
+  })
+
+  it('생성 모드에서 조건을 만들지 않고 저장하면 POST body에 condition이 생략된다(EC11/G1-create)', async () => {
+    const capturedBodies: CreateAutomationRuleInput[] = []
+    server.use(
+      http.post('/api/v1/projects/:projectKey/automation/rules', async ({ request }) => {
+        const body = (await request.json()) as CreateAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({ rule: { ...SCHEDULED_EDIT_RULE, ...body }, webhookToken: null }, { status: 201 })
+      }),
+    )
+    renderWithClient(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />,
+    )
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('이름'), '조건 없는 룰')
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    const capturedBody = capturedBodies[0]
+    if (capturedBody === undefined) {
+      throw new Error('capturedBodies[0]이 캡처되지 않음')
+    }
+    expect(capturedBody.condition).toBeUndefined()
+  })
+
+  it('조건 추가 후 저장하면 POST body에 condition이 직렬화되어 포함된다', async () => {
+    const capturedBodies: CreateAutomationRuleInput[] = []
+    server.use(
+      http.post('/api/v1/projects/:projectKey/automation/rules', async ({ request }) => {
+        const body = (await request.json()) as CreateAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({ rule: { ...SCHEDULED_EDIT_RULE, ...body }, webhookToken: null }, { status: 201 })
+      }),
+    )
+    renderWithClient(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />,
+    )
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('이름'), '조건 있는 룰')
+    await user.click(screen.getByTestId('condition-add-comparison'))
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    const capturedBody = capturedBodies[0]
+    if (capturedBody === undefined) {
+      throw new Error('capturedBodies[0]이 캡처되지 않음')
+    }
+    expect(capturedBody.condition).toBe(JSON.stringify({ '==': [{ var: 'issue.key' }, ''] }))
+  })
+
+  it('조건이 있던 룰에서 조건을 전부 제거하고 저장하면 PATCH body에 빈 조건 정규형이 전송된다(S5/[D1]/G1-b)', async () => {
+    const capturedBodies: PatchAutomationRuleInput[] = []
+    server.use(
+      http.patch('/api/v1/projects/:projectKey/automation/rules/:id', async ({ request }) => {
+        const body = (await request.json()) as PatchAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({
+          ...CONDITION_EDIT_RULE,
+          ...body,
+          version: CONDITION_EDIT_RULE.version + 1,
+        })
+      }),
+    )
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={vi.fn()}
+        editingRule={CONDITION_EDIT_RULE}
+      />,
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: '조건 삭제' }))
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    const capturedBody = capturedBodies[0]
+    if (capturedBody === undefined) {
+      throw new Error('capturedBodies[0]이 캡처되지 않음')
+    }
+    expect(capturedBody.condition).toBe('{"and":[]}')
+  })
+
+  it('condition이 null인 룰에서 조건을 건드리지 않고 이름만 변경해 저장하면 PATCH body에 condition이 생략된다(EC11/G1-c)', async () => {
+    const capturedBodies: PatchAutomationRuleInput[] = []
+    server.use(
+      http.patch('/api/v1/projects/:projectKey/automation/rules/:id', async ({ request }) => {
+        const body = (await request.json()) as PatchAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({
+          ...SCHEDULED_EDIT_RULE,
+          ...body,
+          version: SCHEDULED_EDIT_RULE.version + 1,
+        })
+      }),
+    )
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={vi.fn()}
+        editingRule={SCHEDULED_EDIT_RULE}
+      />,
+    )
+    const user = userEvent.setup()
+    const nameInput = screen.getByLabelText('이름')
+    await user.clear(nameInput)
+    await user.type(nameInput, '이름만 변경')
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    const capturedBody = capturedBodies[0]
+    if (capturedBody === undefined) {
+      throw new Error('capturedBodies[0]이 캡처되지 않음')
+    }
+    expect(capturedBody.condition).toBeUndefined()
+  })
+
+  it('저장이 INVALID_CONDITION_EXPRESSION(400)로 실패하면 한국어 메시지가 표시되고 폼이 유지된다(FR9)', async () => {
+    server.use(
+      http.post('/api/v1/projects/:projectKey/automation/rules', () =>
+        HttpResponse.json({ errorCode: 'INVALID_CONDITION_EXPRESSION', detail: '조건 오류' }, { status: 400 }),
+      ),
+    )
+    const onOpenChange = vi.fn()
+    renderWithClient(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={onOpenChange} />,
+    )
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('이름'), '조건 오류 룰')
+    await user.click(screen.getByTestId('condition-add-comparison'))
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('조건 표현식이 올바르지 않습니다. 필드/연산자/값을 확인해주세요.'),
+      ).toBeInTheDocument()
+    })
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+  })
+
+  it('조건이 있는 룰의 수정 저장이 409로 실패해도 기존 handleSubmitFailure 흐름과 동일하게 처리된다(EC8)', async () => {
+    server.use(
+      http.patch('/api/v1/projects/:projectKey/automation/rules/:id', () =>
+        HttpResponse.json({ errorCode: 'AUTOMATION_RULE_VERSION_CONFLICT', detail: '버전 충돌' }, { status: 409 }),
+      ),
+    )
+    const onOpenChange = vi.fn()
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={onOpenChange}
+        editingRule={CONDITION_EDIT_RULE}
+      />,
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => {
+      expect(onOpenChange).toHaveBeenCalledWith(false)
+    })
+    expect(toast.error).toHaveBeenCalledWith(
+      '다른 곳에서 먼저 변경되었습니다. 최신 정보로 다시 열어 시도해주세요.',
+    )
+  })
+
+  it('open을 유지한 채 editingRule이 바뀌면 조건 상태도 새 editingRule 값으로 초기화된다(EC9)', async () => {
+    const { rerender } = renderWithClient(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} editingRule={null} />,
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByTestId('condition-add-comparison'))
+    expect(screen.getByTestId('condition-field-select')).toHaveValue('issue.key')
+
+    rerender(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={vi.fn()}
+        editingRule={CONDITION_EDIT_RULE}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('condition-field-select')).toHaveValue('issue.priority')
+    })
   })
 })
 
