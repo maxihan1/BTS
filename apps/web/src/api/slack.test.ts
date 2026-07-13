@@ -11,6 +11,11 @@ import {
   getMyConnection,
   connectSlack,
   disconnectSlack,
+  ChannelMappingSchema,
+  listChannelMappings,
+  createChannelMapping,
+  updateChannelMapping,
+  deleteChannelMapping,
 } from './slack'
 import { ApiError } from './client'
 
@@ -357,5 +362,289 @@ describe('disconnectSlack', () => {
     )
     await expect(disconnectSlack()).rejects.toBeInstanceOf(ApiError)
     await expect(disconnectSlack()).rejects.toMatchObject({ status: 401 })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fixture — ChannelMapping (백엔드 ChannelMappingResponse 응답 계약 1:1 — FR-SL-06 D6,
+// SlackChannelMappingController/SlackChannelMappingResponses.kt 확인 완료. team_id 비노출)
+// ─────────────────────────────────────────────────────────────────────────────
+const CHANNEL_MAPPING_FIXTURE = {
+  id: 'a1000000-0000-4000-8000-000000000001',
+  projectKey: 'ATLAS',
+  channelId: 'C0123456789',
+  channelName: '#general',
+  eventTypes: ['issue.assigned', 'issue.created'],
+  createdAt: '2026-07-13T00:00:00Z',
+  updatedAt: '2026-07-13T00:00:00Z',
+}
+
+const CHANNEL_MAPPING_FIXTURE_NO_NAME = {
+  ...CHANNEL_MAPPING_FIXTURE,
+  id: 'a1000000-0000-4000-8000-000000000002',
+  channelName: null,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-SL-CM-S. ChannelMappingSchema — Zod 파싱 검증 (FR-SL-06 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('ChannelMappingSchema', () => {
+  it('T-SL-CM-S-1: channelName 값이 존재하는 매핑을 파싱한다', () => {
+    const result = ChannelMappingSchema.parse(CHANNEL_MAPPING_FIXTURE)
+    expect(result.id).toBe(CHANNEL_MAPPING_FIXTURE.id)
+    expect(result.projectKey).toBe('ATLAS')
+    expect(result.channelId).toBe('C0123456789')
+    expect(result.channelName).toBe('#general')
+    expect(result.eventTypes).toEqual(['issue.assigned', 'issue.created'])
+    expect(result.createdAt).toBe('2026-07-13T00:00:00Z')
+    expect(result.updatedAt).toBe('2026-07-13T00:00:00Z')
+  })
+
+  it('T-SL-CM-S-2: channelName이 null인 매핑을 파싱한다', () => {
+    const result = ChannelMappingSchema.parse(CHANNEL_MAPPING_FIXTURE_NO_NAME)
+    expect(result.channelName).toBeNull()
+  })
+
+  it('T-SL-CM-S-3: eventTypes 필드 누락 시 throw한다', () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { eventTypes: _eventTypes, ...without } = CHANNEL_MAPPING_FIXTURE
+    expect(() => ChannelMappingSchema.parse(without)).toThrow()
+  })
+
+  it('T-SL-CM-S-4: projectKey 필드 누락 시 throw한다', () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { projectKey: _projectKey, ...without } = CHANNEL_MAPPING_FIXTURE
+    expect(() => ChannelMappingSchema.parse(without)).toThrow()
+  })
+
+  it('T-SL-CM-S-5: id가 UUID 형식이 아니면 throw한다', () => {
+    expect(() => ChannelMappingSchema.parse({ ...CHANNEL_MAPPING_FIXTURE, id: 'not-a-uuid' })).toThrow()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-SL-CM-1. listChannelMappings — GET /api/v1/slack/channel-mappings?projectKey=
+// ─────────────────────────────────────────────────────────────────────────────
+describe('listChannelMappings', () => {
+  it('T-SL-CM-1-1: projectKey 쿼리로 GET 호출해 매핑 배열을 파싱해 반환한다', async () => {
+    let capturedMethod: string | undefined
+    let capturedProjectKey: string | null = null
+    server.use(
+      http.get('/api/v1/slack/channel-mappings', ({ request }) => {
+        capturedMethod = request.method
+        capturedProjectKey = new URL(request.url).searchParams.get('projectKey')
+        return HttpResponse.json([CHANNEL_MAPPING_FIXTURE, CHANNEL_MAPPING_FIXTURE_NO_NAME])
+      }),
+    )
+    const result = await listChannelMappings('ATLAS')
+    expect(capturedMethod).toBe('GET')
+    expect(capturedProjectKey).toBe('ATLAS')
+    expect(result).toHaveLength(2)
+    expect(result[0]?.channelId).toBe('C0123456789')
+    expect(result[1]?.channelName).toBeNull()
+  })
+
+  it('T-SL-CM-1-2: 빈 배열도 파싱해 반환한다', async () => {
+    server.use(http.get('/api/v1/slack/channel-mappings', () => HttpResponse.json([])))
+    const result = await listChannelMappings('ATLAS')
+    expect(result).toEqual([])
+  })
+
+  it('T-SL-CM-1-3: projectKey를 쿼리 문자열로 URL-인코딩한다', async () => {
+    let capturedUrl = ''
+    server.use(
+      http.get('/api/v1/slack/channel-mappings', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json([])
+      }),
+    )
+    await listChannelMappings('A B')
+    expect(capturedUrl).toContain('projectKey=A%20B')
+  })
+
+  it('T-SL-CM-1-4: 403 응답(권한없음) → ApiError(403, code 노출)', async () => {
+    server.use(
+      http.get('/api/v1/slack/channel-mappings', () =>
+        HttpResponse.json(
+          { code: 'SLACK_CHANNEL_MAPPING_FORBIDDEN', message: '이 프로젝트의 채널 매핑을 관리할 권한이 없습니다.' },
+          { status: 403 },
+        ),
+      ),
+    )
+    await expect(listChannelMappings('ATLAS')).rejects.toBeInstanceOf(ApiError)
+    await expect(listChannelMappings('ATLAS')).rejects.toMatchObject({ status: 403 })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-SL-CM-2. createChannelMapping — POST /api/v1/slack/channel-mappings
+// ─────────────────────────────────────────────────────────────────────────────
+describe('createChannelMapping', () => {
+  it('T-SL-CM-2-1: POST 바디를 그대로 전송해 201 응답을 파싱해 반환한다', async () => {
+    let capturedMethod: string | undefined
+    let capturedBody: unknown
+    server.use(
+      http.post('/api/v1/slack/channel-mappings', async ({ request }) => {
+        capturedMethod = request.method
+        capturedBody = await request.json()
+        return HttpResponse.json(CHANNEL_MAPPING_FIXTURE, { status: 201 })
+      }),
+    )
+    const result = await createChannelMapping({
+      projectKey: 'ATLAS',
+      channelId: 'C0123456789',
+      channelName: '#general',
+      eventTypes: ['issue.assigned', 'issue.created'],
+    })
+    expect(capturedMethod).toBe('POST')
+    expect(capturedBody).toEqual({
+      projectKey: 'ATLAS',
+      channelId: 'C0123456789',
+      channelName: '#general',
+      eventTypes: ['issue.assigned', 'issue.created'],
+    })
+    expect(result.id).toBe(CHANNEL_MAPPING_FIXTURE.id)
+  })
+
+  it('T-SL-CM-2-2: 중복 매핑(409 SLACK_CHANNEL_MAPPING_CONFLICT) → ApiError(409, code 노출)', async () => {
+    server.use(
+      http.post('/api/v1/slack/channel-mappings', () =>
+        HttpResponse.json(
+          { code: 'SLACK_CHANNEL_MAPPING_CONFLICT', message: '이미 동일한 채널 매핑이 존재합니다.' },
+          { status: 409 },
+        ),
+      ),
+    )
+    try {
+      await createChannelMapping({ projectKey: 'ATLAS', channelId: 'C1', eventTypes: ['issue.created'] })
+      expect.fail('should have thrown ApiError')
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiError)
+      const apiError = error as ApiError
+      expect(apiError.status).toBe(409)
+      const body = apiError.body as { code?: string }
+      expect(body.code).toBe('SLACK_CHANNEL_MAPPING_CONFLICT')
+    }
+  })
+
+  it('T-SL-CM-2-3: 워크스페이스 미설치(409 WORKSPACE_NOT_INSTALLED) → ApiError(409) throw', async () => {
+    server.use(
+      http.post('/api/v1/slack/channel-mappings', () =>
+        HttpResponse.json(
+          { code: 'WORKSPACE_NOT_INSTALLED', message: 'Slack 워크스페이스가 설치되어 있지 않습니다.' },
+          { status: 409 },
+        ),
+      ),
+    )
+    await expect(
+      createChannelMapping({ projectKey: 'ATLAS', channelId: 'C1', eventTypes: ['issue.created'] }),
+    ).rejects.toMatchObject({ status: 409 })
+  })
+
+  it('T-SL-CM-2-4: 빈 eventTypes(400) → ApiError(400) throw', async () => {
+    server.use(
+      http.post('/api/v1/slack/channel-mappings', () =>
+        HttpResponse.json(
+          { code: 'SLACK_CHANNEL_MAPPING_INVALID', message: '이벤트 유형 값이 올바르지 않습니다.' },
+          { status: 400 },
+        ),
+      ),
+    )
+    await expect(
+      createChannelMapping({ projectKey: 'ATLAS', channelId: 'C1', eventTypes: [] }),
+    ).rejects.toMatchObject({ status: 400 })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-SL-CM-3. updateChannelMapping — PATCH /api/v1/slack/channel-mappings/{id}
+// ─────────────────────────────────────────────────────────────────────────────
+describe('updateChannelMapping', () => {
+  it('T-SL-CM-3-1: id 경로 + PATCH 바디를 전송해 200 응답을 파싱해 반환한다', async () => {
+    let capturedMethod: string | undefined
+    let capturedBody: unknown
+    let capturedId: string | readonly string[] | undefined
+    const updated = { ...CHANNEL_MAPPING_FIXTURE, eventTypes: ['issue.commented'] }
+    server.use(
+      http.patch('/api/v1/slack/channel-mappings/:id', async ({ request, params }) => {
+        capturedMethod = request.method
+        capturedBody = await request.json()
+        capturedId = params['id']
+        return HttpResponse.json(updated)
+      }),
+    )
+    const result = await updateChannelMapping(CHANNEL_MAPPING_FIXTURE.id, { eventTypes: ['issue.commented'] })
+    expect(capturedMethod).toBe('PATCH')
+    expect(capturedId).toBe(CHANNEL_MAPPING_FIXTURE.id)
+    expect(capturedBody).toEqual({ eventTypes: ['issue.commented'] })
+    expect(result.eventTypes).toEqual(['issue.commented'])
+  })
+
+  it('T-SL-CM-3-2: 미존재 id(404) → ApiError(404, code 노출)', async () => {
+    server.use(
+      http.patch('/api/v1/slack/channel-mappings/:id', () =>
+        HttpResponse.json(
+          { code: 'SLACK_CHANNEL_MAPPING_NOT_FOUND', message: '채널 매핑을 찾을 수 없습니다.' },
+          { status: 404 },
+        ),
+      ),
+    )
+    try {
+      await updateChannelMapping(CHANNEL_MAPPING_FIXTURE.id, { channelId: 'C2' })
+      expect.fail('should have thrown ApiError')
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiError)
+      const apiError = error as ApiError
+      expect(apiError.status).toBe(404)
+      const body = apiError.body as { code?: string }
+      expect(body.code).toBe('SLACK_CHANNEL_MAPPING_NOT_FOUND')
+    }
+  })
+
+  it('T-SL-CM-3-3: OCC 충돌 없이 채널 매핑 중복(409) → ApiError(409) throw', async () => {
+    server.use(
+      http.patch('/api/v1/slack/channel-mappings/:id', () =>
+        HttpResponse.json(
+          { code: 'SLACK_CHANNEL_MAPPING_CONFLICT', message: '이미 동일한 채널 매핑이 존재합니다.' },
+          { status: 409 },
+        ),
+      ),
+    )
+    await expect(
+      updateChannelMapping(CHANNEL_MAPPING_FIXTURE.id, { channelId: 'C2' }),
+    ).rejects.toMatchObject({ status: 409 })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-SL-CM-4. deleteChannelMapping — DELETE /api/v1/slack/channel-mappings/{id}
+// ─────────────────────────────────────────────────────────────────────────────
+describe('deleteChannelMapping', () => {
+  it('T-SL-CM-4-1: id 경로로 DELETE 호출해 204(본문 없음)를 처리한다', async () => {
+    let capturedMethod: string | undefined
+    let capturedId: string | readonly string[] | undefined
+    server.use(
+      http.delete('/api/v1/slack/channel-mappings/:id', ({ request, params }) => {
+        capturedMethod = request.method
+        capturedId = params['id']
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    await expect(deleteChannelMapping(CHANNEL_MAPPING_FIXTURE.id)).resolves.toBeUndefined()
+    expect(capturedMethod).toBe('DELETE')
+    expect(capturedId).toBe(CHANNEL_MAPPING_FIXTURE.id)
+  })
+
+  it('T-SL-CM-4-2: 미존재 id(404) → ApiError(404, code 노출)', async () => {
+    server.use(
+      http.delete('/api/v1/slack/channel-mappings/:id', () =>
+        HttpResponse.json(
+          { code: 'SLACK_CHANNEL_MAPPING_NOT_FOUND', message: '채널 매핑을 찾을 수 없습니다.' },
+          { status: 404 },
+        ),
+      ),
+    )
+    await expect(deleteChannelMapping(CHANNEL_MAPPING_FIXTURE.id)).rejects.toBeInstanceOf(ApiError)
+    await expect(deleteChannelMapping(CHANNEL_MAPPING_FIXTURE.id)).rejects.toMatchObject({ status: 404 })
   })
 })
