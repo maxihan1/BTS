@@ -185,7 +185,7 @@ async function throwIfChannelMappingError(res: Response): Promise<void> {
  *
  * @param projectKey 조회 대상 프로젝트 키
  * @returns 채널 매핑 배열 — 없으면 빈 배열
- * @throws ApiError(404, SLACK_CHANNEL_MAPPING_NOT_FOUND) 권한 없음 또는 프로젝트 미존재 시(존재 비노출)
+ * @throws ApiError(403, SLACK_CHANNEL_MAPPING_FORBIDDEN) 관리 권한 없음 시
  * @throws ApiError(401) 미인증 또는 PAT 인증 호출
  */
 export async function listChannelMappings(projectKey: string): Promise<ChannelMapping[]> {
@@ -206,7 +206,7 @@ export async function listChannelMappings(projectKey: string): Promise<ChannelMa
  * @throws ApiError(409, SLACK_CHANNEL_MAPPING_CONFLICT) 동일 채널 매핑 이미 존재 시
  * @throws ApiError(409, WORKSPACE_NOT_INSTALLED) Slack 워크스페이스 미설치 시
  * @throws ApiError(400) eventTypes가 비었거나 미지 값 포함, 또는 요청 형식 오류 시
- * @throws ApiError(404, SLACK_CHANNEL_MAPPING_NOT_FOUND) 권한 없음 시(존재 비노출)
+ * @throws ApiError(403, SLACK_CHANNEL_MAPPING_FORBIDDEN) 관리 권한 없음 시
  * @throws ApiError(401) 미인증 또는 PAT 인증 호출
  */
 export async function createChannelMapping(input: CreateChannelMappingInput): Promise<ChannelMapping> {

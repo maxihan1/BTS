@@ -462,17 +462,17 @@ describe('listChannelMappings', () => {
     expect(capturedUrl).toContain('projectKey=A%20B')
   })
 
-  it('T-SL-CM-1-4: 404 응답(권한없음/미존재) → ApiError(404, code 노출)', async () => {
+  it('T-SL-CM-1-4: 403 응답(권한없음) → ApiError(403, code 노출)', async () => {
     server.use(
       http.get('/api/v1/slack/channel-mappings', () =>
         HttpResponse.json(
-          { code: 'SLACK_CHANNEL_MAPPING_NOT_FOUND', message: '채널 매핑을 찾을 수 없습니다.' },
-          { status: 404 },
+          { code: 'SLACK_CHANNEL_MAPPING_FORBIDDEN', message: '이 프로젝트의 채널 매핑을 관리할 권한이 없습니다.' },
+          { status: 403 },
         ),
       ),
     )
     await expect(listChannelMappings('ATLAS')).rejects.toBeInstanceOf(ApiError)
-    await expect(listChannelMappings('ATLAS')).rejects.toMatchObject({ status: 404 })
+    await expect(listChannelMappings('ATLAS')).rejects.toMatchObject({ status: 403 })
   })
 })
 
