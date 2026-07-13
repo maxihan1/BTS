@@ -26,14 +26,15 @@ import java.util.UUID
  * [Clock.fixed] 로 고정해 결정적으로 검증한다(교훈 — 시각 의존 로직은 Clock 주입).
  *
  * 검증 축.
- * - 각 연산 진입 시 권한 게이트([SlackChannelMappingPermissionResolver.hasManageChannelMapping])를
- *   먼저 확인하고 거부(false)면 리소스/저장소를 건드리지 않고 [SlackChannelMappingPermissionDeniedException]
- *   으로 조기 거부(fail-closed).
+ * - create/list 는 각 연산 진입 시 권한 게이트([SlackChannelMappingPermissionResolver.hasManageChannelMapping])를
+ *   먼저 확인하고 거부(false)면 저장소를 건드리지 않고 [SlackChannelMappingPermissionDeniedException](403)로
+ *   조기 거부(fail-closed).
  * - create 는 team_id 를 유일 설치([SlackInstallRepository.findCurrentInstallation])에서 해석하고,
  *   설치 0건이면 [WorkspaceNotInstalledException].
  * - eventTypes 검증은 도메인([ChannelProjectMapping]) 생성이 담당 — 미지 wireValue 는 IllegalArgumentException.
  * - 저장소가 UNIQUE 위반([DataIntegrityViolationException])을 던지면 [SlackChannelMappingConflictException] 으로 번역.
- * - update/delete 는 대상 매핑을 먼저 조회해 projectKey 로 게이트하고, 미존재는 [SlackChannelMappingNotFoundException].
+ * - update/delete 는 대상 매핑을 먼저 조회해 projectKey 로 게이트하고, 미존재는 물론 존재하더라도 권한이
+ *   없으면 [SlackChannelMappingNotFoundException](404)로 수렴시킨다(존재 비노출, 하드닝 1).
  * - 신규 예외 3종의 message 에 projectKey·channelId·teamId 같은 가변값이 담기지 않음(§1.1.2 누출 방지).
  */
 class SlackChannelMappingServiceTest {
@@ -160,12 +161,12 @@ class SlackChannelMappingServiceTest {
     }
 
     @Test
-    fun `update - 대상 매핑의 관리 권한이 없으면 PermissionDenied를 던지고 갱신하지 않는다`() {
+    fun `update - 대상 매핑의 관리 권한이 없으면 NotFound로 존재를 숨기고 갱신하지 않는다`() {
         every { mappingRepository.findById(MAPPING_ID) } returns existingMapping()
         every { permissionResolver.hasManageChannelMapping(ACTOR_ID, PROJECT_KEY) } returns false
 
         assertThatThrownBy { service.update(ACTOR_ID, MAPPING_ID, null, null, EVENT_TYPES) }
-            .isInstanceOf(SlackChannelMappingPermissionDeniedException::class.java)
+            .isInstanceOf(SlackChannelMappingNotFoundException::class.java)
 
         verify(exactly = 0) { mappingRepository.update(any()) }
     }
@@ -219,12 +220,12 @@ class SlackChannelMappingServiceTest {
     }
 
     @Test
-    fun `delete - 대상 매핑의 관리 권한이 없으면 PermissionDenied를 던지고 삭제하지 않는다`() {
+    fun `delete - 대상 매핑의 관리 권한이 없으면 NotFound로 존재를 숨기고 삭제하지 않는다`() {
         every { mappingRepository.findById(MAPPING_ID) } returns existingMapping()
         every { permissionResolver.hasManageChannelMapping(ACTOR_ID, PROJECT_KEY) } returns false
 
         assertThatThrownBy { service.delete(ACTOR_ID, MAPPING_ID) }
-            .isInstanceOf(SlackChannelMappingPermissionDeniedException::class.java)
+            .isInstanceOf(SlackChannelMappingNotFoundException::class.java)
 
         verify(exactly = 0) { mappingRepository.deleteById(any()) }
     }

@@ -86,6 +86,9 @@ class SlackChannelMappingControllerTest {
     private val userId = UUID.fromString("11111111-1111-4111-8111-111111111111")
     private val mappingId = UUID.fromString("22222222-2222-4222-8222-222222222222")
 
+    /** 존재하지만 행위자에게 권한이 없는 매핑 id — 서비스가 존재를 숨겨 404 로 수렴시킨다(하드닝 1). */
+    private val forbiddenMappingId = UUID.fromString("33333333-3333-4333-8333-333333333333")
+
     @BeforeEach
     fun resetMock() {
         clearMocks(service)
@@ -337,19 +340,20 @@ class SlackChannelMappingControllerTest {
     }
 
     @Test
-    fun `PATCH channel-mappings returns 403 when actor lacks manage permission`() {
+    fun `PATCH channel-mappings returns 404 hiding existence when actor lacks manage permission`() {
+        // 하드닝 1 — 서비스가 권한 거부를 NotFound 로 변환해 매핑 존재 여부를 404 vs 403 으로 구분 못 하게 한다.
         every {
-            service.update(userId, mappingId, null, null, null)
-        } throws SlackChannelMappingPermissionDeniedException()
+            service.update(userId, forbiddenMappingId, null, null, null)
+        } throws SlackChannelMappingNotFoundException()
 
         mockMvc.perform(
-            patch("/api/v1/slack/channel-mappings/$mappingId")
+            patch("/api/v1/slack/channel-mappings/$forbiddenMappingId")
                 .with(jwtAuth(userId))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{}"),
         )
-            .andExpect(status().isForbidden)
-            .andExpect(jsonPath("$.code").value("SLACK_CHANNEL_MAPPING_FORBIDDEN"))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.code").value("SLACK_CHANNEL_MAPPING_NOT_FOUND"))
     }
 
     @Test
@@ -399,18 +403,55 @@ class SlackChannelMappingControllerTest {
     }
 
     @Test
-    fun `DELETE channel-mappings returns 403 when actor lacks manage permission`() {
-        every { service.delete(userId, mappingId) } throws SlackChannelMappingPermissionDeniedException()
+    fun `DELETE channel-mappings returns 404 hiding existence when actor lacks manage permission`() {
+        // 하드닝 1 — 권한 거부를 미존재와 동일한 404 로 수렴시켜 매핑 존재를 노출하지 않는다.
+        every { service.delete(userId, forbiddenMappingId) } throws SlackChannelMappingNotFoundException()
 
-        mockMvc.perform(delete("/api/v1/slack/channel-mappings/$mappingId").with(jwtAuth(userId)))
-            .andExpect(status().isForbidden)
-            .andExpect(jsonPath("$.code").value("SLACK_CHANNEL_MAPPING_FORBIDDEN"))
+        mockMvc.perform(delete("/api/v1/slack/channel-mappings/$forbiddenMappingId").with(jwtAuth(userId)))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.code").value("SLACK_CHANNEL_MAPPING_NOT_FOUND"))
     }
 
     @Test
     fun `DELETE channel-mappings returns 401 without authentication`() {
         mockMvc.perform(delete("/api/v1/slack/channel-mappings/$mappingId"))
             .andExpect(status().isUnauthorized)
+    }
+
+    // ── malformed 입력 → 400 (하드닝 2, 500 아님) ──────────────────────────────
+
+    @Test
+    fun `PATCH channel-mappings returns 400 when id path variable is not a UUID`() {
+        // 비-UUID {id} → MethodArgumentTypeMismatchException. 인증은 통과해야 바인딩 단계에 도달한다.
+        mockMvc.perform(
+            patch("/api/v1/slack/channel-mappings/not-a-uuid")
+                .with(jwtAuth(userId))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("SLACK_CHANNEL_MAPPING_BAD_REQUEST"))
+    }
+
+    @Test
+    fun `POST channel-mappings returns 400 when required body field missing`() {
+        // projectKey(비-null, 기본값 없음) 누락 → HttpMessageNotReadableException(Kotlin non-null 파라미터).
+        mockMvc.perform(
+            post("/api/v1/slack/channel-mappings")
+                .with(jwtAuth(userId))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"channelId":"C123","eventTypes":["issue.created"]}"""),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("SLACK_CHANNEL_MAPPING_BAD_REQUEST"))
+    }
+
+    @Test
+    fun `GET channel-mappings returns 400 when projectKey query param missing`() {
+        // 필수 쿼리 projectKey 누락 → MissingServletRequestParameterException.
+        mockMvc.perform(get("/api/v1/slack/channel-mappings").with(jwtAuth(userId)))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("SLACK_CHANNEL_MAPPING_BAD_REQUEST"))
     }
 
     private companion object {
