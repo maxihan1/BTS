@@ -836,7 +836,7 @@ describe('AutomationRuleFormDialog — 조건 편집(FR-AT-03 D6/D7 Task 5)', ()
     if (capturedBody === undefined) {
       throw new Error('capturedBodies[0]이 캡처되지 않음')
     }
-    expect(capturedBody.condition).toBe(JSON.stringify({ '==': [{ var: 'issue.key' }, ''] }))
+    expect(capturedBody.condition).toBe(JSON.stringify({ and: [{ '==': [{ var: 'issue.key' }, ''] }] }))
   })
 
   it('조건이 있던 룰에서 조건을 전부 제거하고 저장하면 PATCH body에 빈 조건 정규형이 전송된다(S5/[D1]/G1-b)', async () => {
