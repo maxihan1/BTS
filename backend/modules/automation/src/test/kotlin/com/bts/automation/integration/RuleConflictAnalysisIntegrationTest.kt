@@ -1,4 +1,4 @@
-// 규칙 충돌 분석 end-to-end 통합 테스트 — 실 DB 저장 경로로 CYCLE·FIELD_CONFLICT·PRIORITY_AMBIGUITY·PERMISSION_MISSING soft 저장 + GET 미노출 + 성능 스모크 (FR-AT-04 Task 6)
+// 규칙 충돌 분석 통합 테스트 — 실 DB 경로로 4종 충돌 soft 저장 + GET 미노출 + 성능 스모크 (FR-AT-04 Task 6)
 
 package com.bts.automation.integration
 
