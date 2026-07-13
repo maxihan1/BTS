@@ -75,14 +75,16 @@
 
 뷰 = `{id, projectKey, channelId, channelName: string|null, eventTypes: string[], createdAt, updatedAt}`.
 
-**에러 응답 (create/update 폼이 처리해야 할 것 — 코드 확인 완료)**:
-- **409 `SLACK_CHANNEL_MAPPING_CONFLICT`** — 같은 (team+project+channel) 매핑 중복(V704 UNIQUE). 메시지 "이미 동일한 채널 매핑이 존재합니다."
-- **409 `SLACK_CHANNEL_MAPPING_WORKSPACE_NOT_INSTALLED`** — Slack 워크스페이스 설치 0건이라 team_id 해석 불가.
-- **400** — malformed / eventTypes 빈 집합·미지값.
-- **404** — 권한 없음/미존재(수정·삭제 대상).
-- **401** — PAT 인증.
+**에러 응답 (실제 백엔드 코드 정독 확정 — 구현 중 정정)**:
+- **403 `SLACK_CHANNEL_MAPPING_FORBIDDEN`** — **create/list** 권한 거부(`requireManagePermission`). 즉 **목록(GET) 비관리자 조회는 403**(404 아님). → 목록 화면은 403을 "권한 없음"으로 처리해야 함.
+- **404 `SLACK_CHANNEL_MAPPING_NOT_FOUND`** — **update/delete** 대상 미존재 OR 권한 거부(존재 비노출로 수렴, 하드닝 1). update/delete 전용.
+- **409 `SLACK_CHANNEL_MAPPING_CONFLICT`** — 같은 (team+project+channel) 중복. "이미 동일한 채널 매핑이 존재합니다."
+- **409 `WORKSPACE_NOT_INSTALLED`** — 워크스페이스 설치 0건(prefix 없음 — FR-SL-02 connect 공유).
+- **400 `SLACK_CHANNEL_MAPPING_INVALID`**(빈/미지 eventTypes) · **400 `SLACK_CHANNEL_MAPPING_BAD_REQUEST`**(malformed).
+- **401 `SLACK_UNAUTHENTICATED`** — PAT/미인증.
 
-에러 코드는 `{code, message}` 형태(기존 slack `ApiError` 관례). 폼은 `code`로 분기해 사용자 메시지 표시.
+에러 바디 `{code, message}`. 폼/목록은 `ApiError.status`/`code`로 분기.
+> **정정 이력**: 초안은 목록 권한거부를 404로 오기재. 실제 코드는 create/list=403, update/delete=404(비대칭, 존재 비노출). 목록 UI는 **403(및 방어적 404)**을 access-denied로 처리.
 
 event_filter 허용값 10종 + 제안 한글 라벨:
 | wireValue | 라벨 | 그룹 |
