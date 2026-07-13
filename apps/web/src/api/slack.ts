@@ -35,6 +35,22 @@ export const SlackConnectionSchema = z.object({
   linkedAt: z.string().nullable(),
 })
 
+/**
+ * 채널↔프로젝트 매핑 응답 스키마 (FR-SL-06 D6) —
+ * `POST/GET/PATCH /api/v1/slack/channel-mappings` 공통 응답 DTO.
+ * 백엔드 `ChannelMappingResponse`(SlackChannelMappingController) 1:1 정합.
+ * `team_id`는 응답에 없음(단일 워크스페이스 설치, 내부 해석 전용).
+ */
+export const ChannelMappingSchema = z.object({
+  id: z.string().uuid(),
+  projectKey: z.string(),
+  channelId: z.string(),
+  channelName: z.string().nullable(),
+  eventTypes: z.array(z.string()),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+})
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 추론된 타입 (interface 중복 정의 금지) — 위 Zod 스키마 그룹과 동일 순서로 정리
 // ─────────────────────────────────────────────────────────────────────────────
@@ -49,6 +65,25 @@ export type SlackInstallUrl = z.infer<typeof SlackInstallUrlSchema>
 // FR-SL-02(본인 계정 연결)
 /** 본인 Slack 계정 연결 상태 타입 — Zod 스키마에서 추론 */
 export type SlackConnection = z.infer<typeof SlackConnectionSchema>
+
+// FR-SL-06(채널↔프로젝트 매핑)
+/** 채널↔프로젝트 매핑 타입 — Zod 스키마에서 추론 */
+export type ChannelMapping = z.infer<typeof ChannelMappingSchema>
+
+/** 채널 매핑 생성 요청 (`POST /api/v1/slack/channel-mappings` 바디) */
+export interface CreateChannelMappingInput {
+  projectKey: string
+  channelId: string
+  channelName?: string
+  eventTypes: string[]
+}
+
+/** 채널 매핑 부분 수정 요청 (`PATCH /api/v1/slack/channel-mappings/{id}` 바디) — 미지정 필드는 미변경 */
+export interface UpdateChannelMappingInput {
+  channelId?: string
+  channelName?: string
+  eventTypes?: string[]
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // API 함수
@@ -129,4 +164,83 @@ export async function disconnectSlack(): Promise<SlackConnection> {
     throw new ApiError(res.status, errorBody)
   }
   return SlackConnectionSchema.parse(await res.json())
+}
+
+/**
+ * 프로젝트에 속한 Slack 채널↔프로젝트 매핑 목록을 조회한다 (FR-SL-06 D6).
+ *
+ * `GET /api/v1/slack/channel-mappings?projectKey=` → 200 {@link ChannelMappingSchema}[].
+ *
+ * @param projectKey 조회 대상 프로젝트 키
+ * @returns 채널 매핑 배열 — 없으면 빈 배열
+ * @throws ApiError(404, SLACK_CHANNEL_MAPPING_NOT_FOUND) 권한 없음 또는 프로젝트 미존재 시(존재 비노출)
+ * @throws ApiError(401) 미인증 또는 PAT 인증 호출
+ */
+export async function listChannelMappings(projectKey: string): Promise<ChannelMapping[]> {
+  return apiGet(
+    `/api/v1/slack/channel-mappings?projectKey=${encodeURIComponent(projectKey)}`,
+    z.array(ChannelMappingSchema),
+  )
+}
+
+/**
+ * Slack 채널↔프로젝트 매핑을 생성한다 (FR-SL-06 D6).
+ *
+ * `POST /api/v1/slack/channel-mappings` → 201 {@link ChannelMappingSchema}.
+ * 권한: 대상 프로젝트 PROJECT_ADMIN(백엔드 fail-closed).
+ *
+ * @param input projectKey·channelId·channelName?·eventTypes(1개 이상)
+ * @returns 생성된 채널 매핑
+ * @throws ApiError(409, SLACK_CHANNEL_MAPPING_CONFLICT) 동일 채널 매핑 이미 존재 시
+ * @throws ApiError(409, WORKSPACE_NOT_INSTALLED) Slack 워크스페이스 미설치 시
+ * @throws ApiError(400) eventTypes가 비었거나 미지 값 포함, 또는 요청 형식 오류 시
+ * @throws ApiError(404, SLACK_CHANNEL_MAPPING_NOT_FOUND) 권한 없음 시(존재 비노출)
+ * @throws ApiError(401) 미인증 또는 PAT 인증 호출
+ */
+export async function createChannelMapping(input: CreateChannelMappingInput): Promise<ChannelMapping> {
+  return apiPost('/api/v1/slack/channel-mappings', input, ChannelMappingSchema)
+}
+
+/**
+ * Slack 채널↔프로젝트 매핑을 부분 수정한다 (FR-SL-06 D6).
+ *
+ * `PATCH /api/v1/slack/channel-mappings/{id}` → 200 {@link ChannelMappingSchema}.
+ * `null`/미지정 필드는 기존 값을 유지한다(PATCH 의미). `apiFetch`로 직접 호출 —
+ * client.ts에 PATCH 전용 헬퍼가 없어 응답을 직접 검사·파싱한다(disconnectSlack 선례와 동일 패턴).
+ *
+ * @param id 수정 대상 매핑 UUID
+ * @param input channelId?·channelName?·eventTypes?(제공 시 재검증)
+ * @returns 수정된 채널 매핑
+ * @throws ApiError(404, SLACK_CHANNEL_MAPPING_NOT_FOUND) 매핑 미존재 또는 권한 없음 시
+ * @throws ApiError(409, SLACK_CHANNEL_MAPPING_CONFLICT) 변경 결과가 다른 매핑과 중복될 시
+ * @throws ApiError(400) eventTypes가 비었거나 미지 값 포함, 또는 요청 형식 오류 시
+ * @throws ApiError(401) 미인증 또는 PAT 인증 호출
+ */
+export async function updateChannelMapping(
+  id: string,
+  input: UpdateChannelMappingInput,
+): Promise<ChannelMapping> {
+  const res = await apiFetch(`/api/v1/slack/channel-mappings/${id}`, { method: 'PATCH', body: input })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  return ChannelMappingSchema.parse(await res.json())
+}
+
+/**
+ * Slack 채널↔프로젝트 매핑을 삭제한다 (FR-SL-06 D6).
+ *
+ * `DELETE /api/v1/slack/channel-mappings/{id}` → 204 No Content(본문 없음).
+ *
+ * @param id 삭제 대상 매핑 UUID
+ * @throws ApiError(404, SLACK_CHANNEL_MAPPING_NOT_FOUND) 매핑 미존재 또는 권한 없음 시
+ * @throws ApiError(401) 미인증 또는 PAT 인증 호출
+ */
+export async function deleteChannelMapping(id: string): Promise<void> {
+  const res = await apiFetch(`/api/v1/slack/channel-mappings/${id}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
 }
