@@ -215,6 +215,48 @@ function resolveConditionPayload(
   return {}
 }
 
+/** create/update 두 body가 공통으로 담는 필드 — 이름·트리거타입(create 전용)·version(update 전용)은 제외. */
+interface SharedSavePayload {
+  triggerConfig: string
+  actions: ActionRequestInput[]
+  actorUserId?: string
+  condition?: string
+}
+
+/**
+ * onValid에서 create/update 두 분기가 공통으로 조립하는 필드(트리거설정·액션·실행주체·조건)를
+ * 계산한다. 이름·트리거타입(create 전용)·version(update 전용)처럼 body 형태가 갈리는 필드는
+ * 호출부(onValid)에서 각각 조립한다 — 이 계산까지 onValid가 도맡으면 함수가 §1 30줄 상한을
+ * 넘기므로 분리한다.
+ */
+function buildSharedSavePayload(
+  effectiveTriggerType: TriggerType,
+  cron: string,
+  fields: string[],
+  actions: ActionFormState[],
+  conditionTree: ConditionNode,
+  actorUserId: string | null,
+  editingRule: AutomationRule | null | undefined,
+): SharedSavePayload {
+  // 편집 모드는 editingRule.triggerConfig를 병합 시작점으로 넘겨 백엔드 미지 키를 보존한다
+  // (코드리뷰 SUGGESTION 2 — 트리거 타입은 편집 모드에서 잠겨 있어 키 집합이 일관된다).
+  const baseConfigJson = hasEditingRule(editingRule) ? editingRule.triggerConfig : undefined
+  const triggerConfig = serializeTriggerConfig(effectiveTriggerType, { cron, fields }, baseConfigJson)
+  // actorUserId는 사용자가 명시 선택했을 때만(null이 아닐 때만) body에 포함한다 — 생성 모드
+  // 기본값은 미설정(백엔드 생성자 폴백), PATCH 미지정은 기존 값 유지 컨벤션이다(FR8).
+  const actorPayload = actorUserId !== null ? { actorUserId } : {}
+  // condition은 actions(항상 전송)와 달리 조건부 전송이다 — resolveConditionPayload 참고(G1).
+  const conditionPayload = resolveConditionPayload(conditionTree, editingRule)
+  return {
+    triggerConfig,
+    // actions는 항상 현재 폼 상태(빈 배열 포함)를 그대로 전송한다 — backend PATCH는 지정 시
+    // 전체 교체 컨벤션이라 "변경 여부"를 별도 추적할 필요가 없다(EC5, 스펙 §Plan Task 6).
+    actions: serializeActionsFormState(actions),
+    ...actorPayload,
+    ...conditionPayload,
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 폼 스키마 — cron은 SCHEDULED 트리거일 때만 필수(프론트 사전검증)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -411,40 +453,27 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
 
   async function onValid(values: FormValues): Promise<void> {
     setSubmitError(null)
-    // 편집 모드는 editingRule.triggerConfig를 병합 시작점으로 넘겨 백엔드 미지 키를 보존한다
-    // (코드리뷰 SUGGESTION 2 — 트리거 타입은 편집 모드에서 잠겨 있어 키 집합이 일관된다).
-    const baseConfigJson = hasEditingRule(editingRule) ? editingRule.triggerConfig : undefined
-    const triggerConfig = serializeTriggerConfig(effectiveTriggerType, { cron: values.cron, fields }, baseConfigJson)
-    // actions는 항상 현재 폼 상태(빈 배열 포함)를 그대로 전송한다 — backend PATCH는 지정 시
-    // 전체 교체 컨벤션이라 "변경 여부"를 별도 추적할 필요가 없다(EC5, 스펙 §Plan Task 6).
-    const serializedActions = serializeActionsFormState(actions)
-    // actorUserId는 사용자가 명시 선택했을 때만(null이 아닐 때만) body에 포함한다 — 생성 모드
-    // 기본값은 미설정(백엔드 생성자 폴백), PATCH 미지정은 기존 값 유지 컨벤션이다(FR8).
-    const actorPayload = actorUserId !== null ? { actorUserId } : {}
-    // condition은 actions(항상 전송)와 달리 조건부 전송이다 — resolveConditionPayload 참고(G1).
-    const conditionPayload = resolveConditionPayload(conditionTree, editingRule)
+    const sharedPayload = buildSharedSavePayload(
+      effectiveTriggerType,
+      values.cron,
+      fields,
+      actions,
+      conditionTree,
+      actorUserId,
+      editingRule,
+    )
 
     try {
       if (hasEditingRule(editingRule)) {
         await updateRule.mutateAsync({
           id: editingRule.id,
-          body: {
-            version: editingRule.version,
-            name: values.name,
-            triggerConfig,
-            actions: serializedActions,
-            ...actorPayload,
-            ...conditionPayload,
-          },
+          body: { version: editingRule.version, name: values.name, ...sharedPayload },
         })
       } else {
         const response = await createRule.mutateAsync({
           name: values.name,
           triggerType: values.triggerType,
-          triggerConfig,
-          actions: serializedActions,
-          ...actorPayload,
-          ...conditionPayload,
+          ...sharedPayload,
         })
         if (response.webhookToken !== null) {
           onWebhookToken?.(response.webhookToken)
