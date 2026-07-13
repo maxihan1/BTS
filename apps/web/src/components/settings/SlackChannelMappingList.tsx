@@ -128,7 +128,6 @@ interface ChannelMappingRowProps {
 /** 매핑 단일 행 — 채널명(없으면 채널 ID)·채널 ID·선택 이벤트 라벨 그룹 + 수정/삭제 액션 */
 function ChannelMappingRow({ mapping, onEdit, onDeleteClick }: ChannelMappingRowProps): JSX.Element {
   const displayName = mapping.channelName ?? mapping.channelId
-  const eventLabels = mapping.eventTypes.map(eventLabel)
 
   return (
     <li className="flex flex-col gap-2 rounded-md border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -141,16 +140,16 @@ function ChannelMappingRow({ mapping, onEdit, onDeleteClick }: ChannelMappingRow
         </div>
         <div
           role="group"
-          aria-label={`선택 이벤트: ${eventLabels.join(', ')}`}
+          aria-label={`선택 이벤트: ${mapping.eventTypes.map(eventLabel).join(', ')}`}
           className="flex flex-wrap items-center gap-1"
         >
-          {eventLabels.map((label, index) => (
-            // key: wireValue가 중복될 일은 없지만(백엔드가 정렬된 집합을 반환) 방어적으로 index 병기
+          {/* key: wireValue — 백엔드가 정렬된 집합(중복 없음)을 반환하므로 값 자체로 충분히 안정적이다 */}
+          {mapping.eventTypes.map((wireValue) => (
             <span
-              key={`${mapping.eventTypes[index]}-${index}`}
+              key={wireValue}
               className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
             >
-              {label}
+              {eventLabel(wireValue)}
             </span>
           ))}
         </div>
