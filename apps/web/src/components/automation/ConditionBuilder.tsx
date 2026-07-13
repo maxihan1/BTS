@@ -19,8 +19,17 @@ const TEXT = {
   emptyGroupHint: '조건을 추가하세요 — 그룹이 비어있으면 저장 시 제거됩니다.',
 } as const
 
-/** "조건 추가" 클릭 시 새로 추가되는 기본 Comparison — 필드 화이트리스트 첫 값(텍스트 위젯). */
-const DEFAULT_COMPARISON: ConditionComparison = { kind: 'comparison', field: 'issue.key', operator: 'EQUALS', value: '' }
+/**
+ * "조건 추가" 클릭 시 새로 추가되는 기본 Comparison을 생성한다 — 필드 화이트리스트 첫 값(텍스트 위젯).
+ *
+ * 호출마다 새 객체를 반환한다(중복 key 방지) — 모듈 상수를 공유 참조로 재사용하면 같은 그룹에 "조건
+ * 추가"를 여러 번 눌렀을 때 서로 다른 Comparison 노드가 동일 객체 참조를 갖게 되고, {@link useNodeIdCache}의
+ * WeakMap 키(노드 참조)가 두 노드에 같은 React key를 부여해 편집 시 유령 노드가 생긴다
+ * ({@link createEmptyConditionTree}의 "호출마다 새 객체" 선례와 대칭).
+ */
+function createDefaultComparison(): ConditionComparison {
+  return { kind: 'comparison', field: 'issue.key', operator: 'EQUALS', value: '' }
+}
 
 /** 그룹 컨테이너 공통 클래스 — 카드 테두리/라운드/패딩(depth 무관 공통부, ActionListEditor 행 스타일 동형). */
 const GROUP_CONTAINER_CLASS = 'rounded-md border border-input p-3'
@@ -42,9 +51,9 @@ function removeChildAt(group: ConditionGroup, index: number): ConditionGroup {
   return { ...group, children: group.children.filter((_child, childIndex) => childIndex !== index) }
 }
 
-/** 그룹 끝에 기본 Comparison 1건을 추가한 새 그룹을 반환한다(호출마다 새 객체 — 공유 참조로 인한 React key 중복 방지). */
+/** 그룹 끝에 기본 Comparison 1건을 추가한 새 그룹을 반환한다(호출마다 새 객체 — {@link createDefaultComparison}). */
 function addComparisonChild(group: ConditionGroup): ConditionGroup {
-  return { ...group, children: [...group.children, { ...DEFAULT_COMPARISON }] }
+  return { ...group, children: [...group.children, createDefaultComparison()] }
 }
 
 /** 그룹 끝에 빈 중첩 그룹 1건을 추가한 새 그룹을 반환한다(호출마다 새 객체 — {@link createEmptyConditionTree}). */
