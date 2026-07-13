@@ -265,6 +265,31 @@ describe('ConditionBuilder — Comparison 추가 시 객체 참조 격리(회귀
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 행별 고유 id(C1 코드리뷰 회귀) — 같은 그룹에 Comparison 2개 이상이면 DOM id가 충돌하면 안 된다
+//
+// 정적 id/htmlFor(condition-field 등)를 쓰면 한 그룹에 Comparison이 2개 이상일 때 DOM id가
+// 중복되고, 라벨 클릭 시 문서상 첫 행으로 잘못 포커스된다. ActionConfigEditor의 idPrefix 관례를
+// ConditionComparisonRow에도 적용해 행별로 고유한 id를 부여해야 한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ConditionBuilder — 행별 고유 id(C1 회귀)', () => {
+  it('같은 그룹에 Comparison이 2개 이상이면 두 필드 select의 DOM id가 서로 다르다', () => {
+    const group: ConditionGroup = { kind: 'group', op: 'and', negated: false, children: [comparisonA, comparisonB] }
+    render(<ConditionBuilder value={group} onChange={vi.fn()} projectKey={PROJECT_KEY} />)
+
+    const fieldSelects = screen.getAllByTestId('condition-field-select') as HTMLSelectElement[]
+    expect(fieldSelects).toHaveLength(2)
+    const [first, second] = fieldSelects
+    if (first === undefined || second === undefined) {
+      throw new Error(`expected 2 field selects, got ${fieldSelects.length}`)
+    }
+    expect(first.id).not.toBe('')
+    expect(second.id).not.toBe('')
+    expect(first.id).not.toBe(second.id)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 루트가 단일 Comparison인 경우(그룹 아닌 트리 루트)
 // ─────────────────────────────────────────────────────────────────────────────
 
