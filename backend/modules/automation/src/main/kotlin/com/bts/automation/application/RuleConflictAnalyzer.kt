@@ -11,8 +11,8 @@ import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
 import com.fasterxml.jackson.databind.ObjectMapper
-import java.util.UUID
 import org.springframework.stereotype.Component
+import java.util.UUID
 
 /**
  * 자동화 규칙 집합을 정적 분석해 [RuleConflict] 목록을 산출한다.
@@ -354,11 +354,15 @@ private class PermissionAnalyzer(
         actions: List<Action>,
     ): RuleConflict? {
         if (hasPermission(rule.actorUserId, rule.projectKey, permission)) return null
-        return permissionMissingDetail(rule, permission, actions)
+        return buildPermissionMissingConflict(rule, permission, actions)
     }
 
-    /** [permissionMissingConflict] 이 검출한 위반 1건을 사람이 읽을 수 있는 한국어 [RuleConflict] 로 변환한다. */
-    private fun permissionMissingDetail(
+    /**
+     * [missingPermissionConflict] 이 검출한 위반 1건을 사람이 읽을 수 있는 한국어 [RuleConflict] 로
+     * 조립한다. detail 에는 ruleId·actorId·부족 권한·해당 액션 종류를 모두 담는다(스펙 FR-6 "권한 미보유
+     * 시 PERMISSION_MISSING 경고" 항목).
+     */
+    private fun buildPermissionMissingConflict(
         rule: AutomationRule,
         permission: IssuePermission,
         actions: List<Action>,

@@ -1,4 +1,4 @@
-// automation 통합 테스트용 fail-safe IssuePermissionResolver stub — 항상 허용(AlwaysAllow), non-prod에선 PERMISSION_MISSING 미검출 (FR-AT-04 Task 4)
+// automation 통합 테스트용 fail-safe IssuePermissionResolver stub — AlwaysAllow (FR-AT-04 Task 4)
 
 package com.bts.automation
 
