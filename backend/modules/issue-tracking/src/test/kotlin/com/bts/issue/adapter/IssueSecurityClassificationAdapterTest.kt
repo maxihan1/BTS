@@ -52,7 +52,7 @@ class IssueSecurityClassificationAdapterTest : IssueTestcontainersBase() {
 
     private fun adapter(): IssueSecurityClassificationAdapter = IssueSecurityClassificationAdapter(repository)
 
-    /** 테스트용 이슈 생성 helper — [com.bts.issue.adapter.outbound.automation.AutomationIssueSnapshotAdapterTest.insertIssue] 동형. */
+    /** 테스트용 이슈 생성 helper — [AutomationIssueSnapshotAdapterTest] 의 insertIssue 동형. */
     private fun insertIssue(
         seq: Long,
         securityLevelId: UUID? = null,
