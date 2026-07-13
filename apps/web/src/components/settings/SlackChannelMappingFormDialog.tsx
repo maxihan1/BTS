@@ -35,7 +35,7 @@ const labels = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * `ApiError.body.code` → 한국어 안내 메시지 매핑 (스펙 §4, 409 두 종류 우선 처리).
+ * `ApiError.body.code` → 한국어 안내 메시지 매핑 (스펙 §4, 409 두 종류 + 403 권한거부 우선 처리).
  *
  * 코드값은 백엔드 `SlackChannelMappingErrorCode`(SlackChannelMappingExceptionHandler.kt) 실제 값과
  * 1:1 — `WORKSPACE_NOT_INSTALLED`는 다른 코드와 달리 `SLACK_CHANNEL_MAPPING_` 접두어가 없다
@@ -45,6 +45,7 @@ const labels = {
 const CHANNEL_MAPPING_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   SLACK_CHANNEL_MAPPING_CONFLICT: '이미 동일한 채널 매핑이 존재합니다.',
   WORKSPACE_NOT_INSTALLED: 'Slack 워크스페이스가 먼저 연결돼야 합니다.',
+  SLACK_CHANNEL_MAPPING_FORBIDDEN: '이 프로젝트의 채널 매핑을 관리할 권한이 없습니다',
 }
 
 const DEFAULT_ERROR_MESSAGE = '저장에 실패했습니다. 다시 시도해주세요.'
