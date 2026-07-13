@@ -81,11 +81,34 @@ export function seedSlackChannelMappings(mappings: ChannelMapping[]): void {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 헬퍼 — 에러 응답 + 중복 판정
+// (SlackChannelMappingExceptionHandler 1:1 정합 — 코드/메시지 고정 문구를 호출부마다 반복하지 않고
+// 응답 종류별 헬퍼로 모아 3개 핸들러가 공유한다. automation-rule-handlers.ts problemDetail 동형 패턴)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 백엔드 `{code, message}` 에러 봉투 (SlackChannelMappingExceptionHandler.errorResponse 1:1 정합) */
-function errorBody(code: string, message: string): { code: string; message: string } {
-  return { code, message }
+/** 백엔드 `{code, message}` 에러 봉투 */
+interface ChannelMappingErrorBody {
+  code: string
+  message: string
+}
+
+/** 지정한 상태코드·코드·메시지로 에러 응답을 만든다 */
+function errorResponse(status: number, code: string, message: string): HttpResponse<ChannelMappingErrorBody> {
+  return HttpResponse.json<ChannelMappingErrorBody>({ code, message }, { status })
+}
+
+/** 대상 매핑 id 미존재 → 404 SLACK_CHANNEL_MAPPING_NOT_FOUND (patch/delete 공유) */
+function notFoundResponse(): HttpResponse<ChannelMappingErrorBody> {
+  return errorResponse(404, 'SLACK_CHANNEL_MAPPING_NOT_FOUND', '채널 매핑을 찾을 수 없습니다.')
+}
+
+/** 같은 (projectKey, channelId) 매핑 이미 존재(EC2) → 409 SLACK_CHANNEL_MAPPING_CONFLICT (create/patch 공유) */
+function conflictResponse(): HttpResponse<ChannelMappingErrorBody> {
+  return errorResponse(409, 'SLACK_CHANNEL_MAPPING_CONFLICT', '이미 동일한 채널 매핑이 존재합니다.')
+}
+
+/** eventTypes 빈 배열(EC1) → 400 SLACK_CHANNEL_MAPPING_INVALID (create/patch 공유) */
+function invalidEventTypesResponse(): HttpResponse<ChannelMappingErrorBody> {
+  return errorResponse(400, 'SLACK_CHANNEL_MAPPING_INVALID', '이벤트 유형 값이 올바르지 않습니다.')
 }
 
 /**
@@ -111,10 +134,7 @@ function findDuplicate(projectKey: string, channelId: string, excludeId?: string
 const listHandler = http.get('/api/v1/slack/channel-mappings', ({ request }) => {
   const projectKey = new URL(request.url).searchParams.get('projectKey')
   if (projectKey === null) {
-    return HttpResponse.json(
-      errorBody('SLACK_CHANNEL_MAPPING_BAD_REQUEST', '요청 형식이 올바르지 않습니다.'),
-      { status: 400 },
-    )
+    return errorResponse(400, 'SLACK_CHANNEL_MAPPING_BAD_REQUEST', '요청 형식이 올바르지 않습니다.')
   }
 
   const items = Array.from(mappingStore.values()).filter((mapping) => mapping.projectKey === projectKey)
@@ -145,24 +165,15 @@ const createHandler = http.post('/api/v1/slack/channel-mappings', async ({ reque
   const body = (await request.json()) as CreateChannelMappingRequestBody
 
   if (isWorkspaceNotInstalled()) {
-    return HttpResponse.json(
-      errorBody('WORKSPACE_NOT_INSTALLED', 'Slack 워크스페이스가 설치되어 있지 않습니다.'),
-      { status: 409 },
-    )
+    return errorResponse(409, 'WORKSPACE_NOT_INSTALLED', 'Slack 워크스페이스가 설치되어 있지 않습니다.')
   }
 
   if (body.eventTypes.length === 0) {
-    return HttpResponse.json(
-      errorBody('SLACK_CHANNEL_MAPPING_INVALID', '이벤트 유형 값이 올바르지 않습니다.'),
-      { status: 400 },
-    )
+    return invalidEventTypesResponse()
   }
 
   if (findDuplicate(body.projectKey, body.channelId) !== undefined) {
-    return HttpResponse.json(
-      errorBody('SLACK_CHANNEL_MAPPING_CONFLICT', '이미 동일한 채널 매핑이 존재합니다.'),
-      { status: 409 },
-    )
+    return conflictResponse()
   }
 
   const now = new Date().toISOString()
@@ -206,27 +217,18 @@ const patchHandler = http.patch(
     const id = params['id'] as string
     const existing = mappingStore.get(id)
     if (existing === undefined) {
-      return HttpResponse.json(
-        errorBody('SLACK_CHANNEL_MAPPING_NOT_FOUND', '채널 매핑을 찾을 수 없습니다.'),
-        { status: 404 },
-      )
+      return notFoundResponse()
     }
 
     const body = (await request.json()) as UpdateChannelMappingRequestBody
 
     if (body.eventTypes !== undefined && body.eventTypes.length === 0) {
-      return HttpResponse.json(
-        errorBody('SLACK_CHANNEL_MAPPING_INVALID', '이벤트 유형 값이 올바르지 않습니다.'),
-        { status: 400 },
-      )
+      return invalidEventTypesResponse()
     }
 
     const nextChannelId = body.channelId ?? existing.channelId
     if (findDuplicate(existing.projectKey, nextChannelId, existing.id) !== undefined) {
-      return HttpResponse.json(
-        errorBody('SLACK_CHANNEL_MAPPING_CONFLICT', '이미 동일한 채널 매핑이 존재합니다.'),
-        { status: 409 },
-      )
+      return conflictResponse()
     }
 
     const updated: ChannelMapping = {
@@ -254,10 +256,7 @@ const patchHandler = http.patch(
 const deleteHandler = http.delete('/api/v1/slack/channel-mappings/:id', ({ params }) => {
   const id = params['id'] as string
   if (!mappingStore.has(id)) {
-    return HttpResponse.json(
-      errorBody('SLACK_CHANNEL_MAPPING_NOT_FOUND', '채널 매핑을 찾을 수 없습니다.'),
-      { status: 404 },
-    )
+    return notFoundResponse()
   }
 
   mappingStore.delete(id)
