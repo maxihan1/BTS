@@ -69,15 +69,15 @@ class SlackChannelBroadcastWorkerTest {
         jdbc.execute("DELETE FROM pgmq.\"${pgmqTable("a")}\"")
     }
 
-    // ── S1: happy path ──────────────────────────────────────────────────────────
+    // ── S1: happy path ────────────────────────────────────────────────────────
 
     @Test
     fun `매핑된 채널에 게시 성공하면 postChannelMessage 호출 + dedup 기록 + 메시지 삭제`() {
-        saveMapping(projectKey = "ATLAS", teamId = "T1", channelId = "C1", eventTypes = setOf(SlackChannelEventType.ISSUE_CREATED))
+        saveMapping(channelId = "C1", eventTypes = setOf(SlackChannelEventType.ISSUE_CREATED))
         every { securityClassificationPort.isSecurityRestricted("ATLAS-1") } returns false
         every { tokenResolver.resolve("T1") } returns "xoxb-token"
         every { messageClient.postChannelMessage("xoxb-token", "C1", any()) } returns SlackSendResult.Sent
-        enqueue(projectKey = "ATLAS", eventType = SlackChannelEventType.ISSUE_CREATED, issueKey = "ATLAS-1", dedupKey = "dedup-1")
+        enqueue(eventType = SlackChannelEventType.ISSUE_CREATED, issueKey = "ATLAS-1", dedupKey = "dedup-1")
 
         worker.pollAndProcess()
 
@@ -86,12 +86,12 @@ class SlackChannelBroadcastWorkerTest {
         assertThat(undeliveredCount()).isEqualTo(0)
     }
 
-    // ── S2: 미매핑 프로젝트 ───────────────────────────────────────────────────────
+    // ── S2: 미매핑 프로젝트 ─────────────────────────────────────────────────────
 
     @Test
     fun `매핑 없는 프로젝트면 postChannelMessage 미호출 + 메시지 삭제`() {
         every { securityClassificationPort.isSecurityRestricted("ATLAS-2") } returns false
-        enqueue(projectKey = "ATLAS", eventType = SlackChannelEventType.ISSUE_CREATED, issueKey = "ATLAS-2", dedupKey = "dedup-2")
+        enqueue(eventType = SlackChannelEventType.ISSUE_CREATED, issueKey = "ATLAS-2", dedupKey = "dedup-2")
 
         worker.pollAndProcess()
 
@@ -99,13 +99,13 @@ class SlackChannelBroadcastWorkerTest {
         assertThat(undeliveredCount()).isEqualTo(0)
     }
 
-    // ── S3: event_filter 불일치 ─────────────────────────────────────────────────
+    // ── S3: event_filter 불일치 ────────────────────────────────────────────────
 
     @Test
     fun `event_filter 불일치 채널은 skip + 메시지 삭제`() {
-        saveMapping(projectKey = "ATLAS", teamId = "T1", channelId = "C1", eventTypes = setOf(SlackChannelEventType.ISSUE_ASSIGNED))
+        saveMapping(channelId = "C1", eventTypes = setOf(SlackChannelEventType.ISSUE_ASSIGNED))
         every { securityClassificationPort.isSecurityRestricted("ATLAS-3") } returns false
-        enqueue(projectKey = "ATLAS", eventType = SlackChannelEventType.ISSUE_CREATED, issueKey = "ATLAS-3", dedupKey = "dedup-3")
+        enqueue(eventType = SlackChannelEventType.ISSUE_CREATED, issueKey = "ATLAS-3", dedupKey = "dedup-3")
 
         worker.pollAndProcess()
 
@@ -113,13 +113,13 @@ class SlackChannelBroadcastWorkerTest {
         assertThat(undeliveredCount()).isEqualTo(0)
     }
 
-    // ── S4: 보안등급 이슈 — 전 채널 게시 0 ────────────────────────────────────────
+    // ── S4: 보안등급 이슈 — 전 채널 게시 0 ──────────────────────────────────────
 
     @Test
     fun `보안등급 제한 이슈면 전 채널 게시 0 + 메시지 삭제`() {
-        saveMapping(projectKey = "ATLAS", teamId = "T1", channelId = "C1", eventTypes = setOf(SlackChannelEventType.ISSUE_CREATED))
+        saveMapping(channelId = "C1", eventTypes = setOf(SlackChannelEventType.ISSUE_CREATED))
         every { securityClassificationPort.isSecurityRestricted("ATLAS-4") } returns true
-        enqueue(projectKey = "ATLAS", eventType = SlackChannelEventType.ISSUE_CREATED, issueKey = "ATLAS-4", dedupKey = "dedup-4")
+        enqueue(eventType = SlackChannelEventType.ISSUE_CREATED, issueKey = "ATLAS-4", dedupKey = "dedup-4")
 
         worker.pollAndProcess()
 
@@ -128,14 +128,14 @@ class SlackChannelBroadcastWorkerTest {
         assertThat(undeliveredCount()).isEqualTo(0)
     }
 
-    // ── S5: issueKey null — 보안게이트 우회 ──────────────────────────────────────
+    // ── S5: issueKey null — 보안게이트 우회 ─────────────────────────────────────
 
     @Test
     fun `issueKey null 이면 보안게이트 우회하고 event_filter 통과 시 게시`() {
-        saveMapping(projectKey = "ATLAS", teamId = "T1", channelId = "C1", eventTypes = setOf(SlackChannelEventType.SPRINT_STARTED))
+        saveMapping(channelId = "C1", eventTypes = setOf(SlackChannelEventType.SPRINT_STARTED))
         every { tokenResolver.resolve("T1") } returns "xoxb-token"
         every { messageClient.postChannelMessage("xoxb-token", "C1", any()) } returns SlackSendResult.Sent
-        enqueue(projectKey = "ATLAS", eventType = SlackChannelEventType.SPRINT_STARTED, issueKey = null, dedupKey = "dedup-5")
+        enqueue(eventType = SlackChannelEventType.SPRINT_STARTED, issueKey = null, dedupKey = "dedup-5")
 
         worker.pollAndProcess()
 
@@ -145,14 +145,14 @@ class SlackChannelBroadcastWorkerTest {
         assertThat(undeliveredCount()).isEqualTo(0)
     }
 
-    // ── S6: 봇 미설치 ────────────────────────────────────────────────────────────
+    // ── S6: 봇 미설치 ──────────────────────────────────────────────────────────
 
     @Test
     fun `봇 미설치 채널은 skip + 메시지 삭제`() {
-        saveMapping(projectKey = "ATLAS", teamId = "T1", channelId = "C1", eventTypes = setOf(SlackChannelEventType.ISSUE_CREATED))
+        saveMapping(channelId = "C1", eventTypes = setOf(SlackChannelEventType.ISSUE_CREATED))
         every { securityClassificationPort.isSecurityRestricted("ATLAS-6") } returns false
         every { tokenResolver.resolve("T1") } returns null
-        enqueue(projectKey = "ATLAS", eventType = SlackChannelEventType.ISSUE_CREATED, issueKey = "ATLAS-6", dedupKey = "dedup-6")
+        enqueue(eventType = SlackChannelEventType.ISSUE_CREATED, issueKey = "ATLAS-6", dedupKey = "dedup-6")
 
         worker.pollAndProcess()
 
@@ -160,40 +160,54 @@ class SlackChannelBroadcastWorkerTest {
         assertThat(undeliveredCount()).isEqualTo(0)
     }
 
-    // ── S7: 재시도 ───────────────────────────────────────────────────────────────
+    // ── S7: 재시도 ─────────────────────────────────────────────────────────────
+    // pgmq vt(visibility timeout, 60초) 로 인해 한 번 읽힌 메시지는 같은 테스트 안에서 곧바로 재폴링해도
+    // 다시 읽히지 않는다 — 두 국면(보존/archive)을 [SlackDeliveryWorkerIntegrationTest] 동형으로 별도
+    // 테스트로 분리한다(같은 시나리오의 두 하위 검증).
 
     @Test
-    fun `재시도가능 실패면 메시지 보존, readCt MAX 초과면 archive`() {
-        saveMapping(projectKey = "ATLAS", teamId = "T1", channelId = "C1", eventTypes = setOf(SlackChannelEventType.ISSUE_CREATED))
+    fun `재시도가능 실패(rate_limited)면 dedup 미기록 + 큐 보존(재전달)`() {
+        saveMapping(channelId = "C1", eventTypes = setOf(SlackChannelEventType.ISSUE_CREATED))
         every { securityClassificationPort.isSecurityRestricted("ATLAS-7") } returns false
         every { tokenResolver.resolve("T1") } returns "xoxb-token"
         every { messageClient.postChannelMessage("xoxb-token", "C1", any()) } returns
             SlackSendResult.RetryableFailure("rate_limited")
-        enqueue(projectKey = "ATLAS", eventType = SlackChannelEventType.ISSUE_CREATED, issueKey = "ATLAS-7", dedupKey = "dedup-7")
+        enqueue(eventType = SlackChannelEventType.ISSUE_CREATED, issueKey = "ATLAS-7", dedupKey = "dedup-7")
 
         worker.pollAndProcess()
 
         assertThat(dedupRepository.existsPosted("dedup-7:C1")).isFalse()
         assertThat(undeliveredCount()).isEqualTo(1) // 삭제 안 됨 → 재전달 대기
+    }
 
+    @Test
+    fun `재시도가능 실패가 readCt MAX 초과면 archive + dedup 미기록`() {
+        saveMapping(channelId = "C1", eventTypes = setOf(SlackChannelEventType.ISSUE_CREATED))
+        every { securityClassificationPort.isSecurityRestricted("ATLAS-7B") } returns false
+        every { tokenResolver.resolve("T1") } returns "xoxb-token"
+        every { messageClient.postChannelMessage("xoxb-token", "C1", any()) } returns
+            SlackSendResult.RetryableFailure("rate_limited")
+        enqueue(eventType = SlackChannelEventType.ISSUE_CREATED, issueKey = "ATLAS-7B", dedupKey = "dedup-7b")
         forceReadCount(SlackChannelBroadcastWorker.MAX_RECEIVE_COUNT)
+
         worker.pollAndProcess()
 
+        assertThat(dedupRepository.existsPosted("dedup-7b:C1")).isFalse()
         assertThat(undeliveredCount()).isEqualTo(0) // 큐에서 제거
         assertThat(archivedCount()).isEqualTo(1) // dead-letter 이동
     }
 
-    // ── S8: 다채널 + 재전달 dedup(effectively-once) ──────────────────────────────
+    // ── S8: 다채널 + 재전달 dedup(effectively-once) ─────────────────────────────
 
     @Test
     fun `다채널 매핑에서 첫 실행 둘 다 게시 성공 후 같은 메시지 재전달되면 두 채널 모두 dedup skip`() {
-        saveMapping(projectKey = "ATLAS", teamId = "T1", channelId = "C1", eventTypes = setOf(SlackChannelEventType.ISSUE_CREATED))
-        saveMapping(projectKey = "ATLAS", teamId = "T1", channelId = "C2", eventTypes = setOf(SlackChannelEventType.ISSUE_CREATED))
+        saveMapping(channelId = "C1", eventTypes = setOf(SlackChannelEventType.ISSUE_CREATED))
+        saveMapping(channelId = "C2", eventTypes = setOf(SlackChannelEventType.ISSUE_CREATED))
         every { securityClassificationPort.isSecurityRestricted("ATLAS-8") } returns false
         every { tokenResolver.resolve("T1") } returns "xoxb-token"
         every { messageClient.postChannelMessage("xoxb-token", "C1", any()) } returns SlackSendResult.Sent
         every { messageClient.postChannelMessage("xoxb-token", "C2", any()) } returns SlackSendResult.Sent
-        enqueue(projectKey = "ATLAS", eventType = SlackChannelEventType.ISSUE_CREATED, issueKey = "ATLAS-8", dedupKey = "dedup-8")
+        enqueue(eventType = SlackChannelEventType.ISSUE_CREATED, issueKey = "ATLAS-8", dedupKey = "dedup-8")
 
         worker.pollAndProcess()
 
@@ -203,7 +217,7 @@ class SlackChannelBroadcastWorkerTest {
         verify(exactly = 1) { messageClient.postChannelMessage("xoxb-token", "C2", any()) }
 
         // 같은 이벤트가 재전달(at-least-once)되어 새 메시지로 다시 큐에 들어온 상황을 시뮬레이션한다.
-        enqueue(projectKey = "ATLAS", eventType = SlackChannelEventType.ISSUE_CREATED, issueKey = "ATLAS-8", dedupKey = "dedup-8")
+        enqueue(eventType = SlackChannelEventType.ISSUE_CREATED, issueKey = "ATLAS-8", dedupKey = "dedup-8")
         worker.pollAndProcess()
 
         // effectively-once — 재전달분은 두 채널 모두 dedup skip 되어 postChannelMessage 총 호출수가 늘지 않는다.
@@ -212,13 +226,13 @@ class SlackChannelBroadcastWorkerTest {
         assertThat(undeliveredCount()).isEqualTo(0)
     }
 
-    // ── 헬퍼 ────────────────────────────────────────────────────────────────────
+    // ── 헬퍼 ───────────────────────────────────────────────────────────────────
 
     private fun saveMapping(
-        projectKey: String,
-        teamId: String,
         channelId: String,
         eventTypes: Set<String>,
+        projectKey: String = DEFAULT_PROJECT_KEY,
+        teamId: String = DEFAULT_TEAM_ID,
     ) {
         val now = Instant.now()
         mappingRepository.save(
@@ -236,10 +250,10 @@ class SlackChannelBroadcastWorkerTest {
     }
 
     private fun enqueue(
-        projectKey: String,
         eventType: String,
         issueKey: String?,
         dedupKey: String,
+        projectKey: String = DEFAULT_PROJECT_KEY,
     ) {
         val payload =
             objectMapper.writeValueAsString(
@@ -283,6 +297,9 @@ class SlackChannelBroadcastWorkerTest {
         ) ?: error("pgmq $prefix table for slack_channel_broadcasts not found")
 
     companion object {
+        private const val DEFAULT_PROJECT_KEY = "ATLAS"
+        private const val DEFAULT_TEAM_ID = "T1"
+
         @JvmStatic
         val postgres: PostgreSQLContainer<*> =
             PostgreSQLContainer(
