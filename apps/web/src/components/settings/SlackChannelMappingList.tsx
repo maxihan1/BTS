@@ -1,4 +1,4 @@
-// Slack 채널↔프로젝트 매핑 목록 — 로딩/에러(404)/빈 상태 + 행별 수정·삭제 확인 (FR-SL-06 D6 Task 3)
+// Slack 채널↔프로젝트 매핑 목록 — 로딩/에러(403/404)/빈 상태 + 행별 수정·삭제 확인 (FR-SL-06 D6 Task 3)
 import { useState } from 'react'
 import type { JSX } from 'react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
@@ -39,6 +39,20 @@ const EVENT_LABEL_LOOKUP: ReadonlyMap<string, string> = new Map(
 /** 이벤트 wireValue를 한국어 라벨로 변환한다. 카탈로그에 없는(미지) 값은 원문 그대로 반환한다(fallback). */
 function eventLabel(wireValue: string): string {
   return EVENT_LABEL_LOOKUP.get(wireValue) ?? wireValue
+}
+
+/**
+ * 목록 조회 실패가 "권한 없음/존재 비노출" 계약에 해당하는지 판정한다.
+ *
+ * 목록 GET은 백엔드가 비관리자에게 403 `SLACK_CHANNEL_MAPPING_FORBIDDEN`을 반환한다(주 경로).
+ * 404는 update/delete 전용이라 목록 조회에서는 실제로 발생하지 않지만, 같은 화면 문구를
+ * 공유하는 계약이므로 방어적으로 함께 처리한다.
+ *
+ * @param error `useQuery`의 error 값 (unknown)
+ * @returns 403 또는 404이면 true
+ */
+function isAccessDeniedError(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 403 || error.status === 404)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -192,9 +206,11 @@ function ChannelMappingRow({ mapping, onEdit, onDeleteClick }: ChannelMappingRow
  *
  * - `useQuery({ queryKey: ['slack-channel-mappings', projectKey], ... })`로 목록을 조회한다.
  *   이 리터럴 키는 Task 4 폼 다이얼로그의 mutation invalidate와 동일해야 하는 task 간 계약이다.
- * - 4분기: 로딩 → 상태 표시, 에러(404) → "권한이 없거나 찾을 수 없습니다"(권한 없음/미존재
- *   비노출 계약, {@link ApiError}.status로 판별), 그 외 에러 → 일반 메시지, 빈 → 빈 상태 문구,
- *   목록 → {@link ChannelMappingRow} 렌더.
+ * - 4분기: 로딩 → 상태 표시, 에러(403/404) → "권한이 없거나 찾을 수 없습니다"(권한 없음/미존재
+ *   비노출 계약, {@link ApiError}.status로 판별 — 목록 GET은 백엔드가 비관리자에게 403
+ *   `SLACK_CHANNEL_MAPPING_FORBIDDEN`을 반환한다. 404는 update/delete 전용이지만 같은 계약을
+ *   방어적으로 공유한다), 그 외 에러 → 일반 메시지, 빈 → 빈 상태 문구, 목록 →
+ *   {@link ChannelMappingRow} 렌더.
  * - "채널 추가" 헤더 버튼은 목록이 비어있어도 항상 노출되어 빈 상태의 CTA를 겸한다 —
  *   onAdd를 그대로 위임한다. 매핑 생성/편집 폼 자체는 이 컴포넌트가 렌더하지 않는다(Task 4).
  * - 행 "수정" 클릭은 onEdit(mapping)을 위임한다.
@@ -241,7 +257,7 @@ export function SlackChannelMappingList({ projectKey, onAdd, onEdit }: SlackChan
   }
 
   const mappingList = mappings ?? []
-  const isNotFound = error instanceof ApiError && error.status === 404
+  const isAccessDenied = isAccessDeniedError(error)
 
   return (
     <div className="space-y-4">
@@ -259,7 +275,7 @@ export function SlackChannelMappingList({ projectKey, onAdd, onEdit }: SlackChan
       )}
 
       {!isLoading && isError && (
-        <p className="text-sm text-destructive">{isNotFound ? labels.accessDenied : labels.genericError}</p>
+        <p className="text-sm text-destructive">{isAccessDenied ? labels.accessDenied : labels.genericError}</p>
       )}
 
       {!isLoading && !isError && mappingList.length === 0 && (
