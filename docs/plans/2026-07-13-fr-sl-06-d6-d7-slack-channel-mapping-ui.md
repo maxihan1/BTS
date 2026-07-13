@@ -237,4 +237,23 @@ REST 4 endpoint (`SlackChannelMappingController`, `/api/v1/slack/channel-mapping
 - 추가 검증: typecheck(tsconfig.app.json, 메모리 `ci-typecheck-tsconfig-app-vs-local`), lint, vitest, playwright, `pnpm verify`
 - 문서 동기화(머지 시): fr-index·SDD 09·product/slack-integration.md D6/D7 [x]·BC 6/6·README·CLAUDE FR 상태·verify-master-plan
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+리뷰 방식 — 저위험 UI plan(검증된 `automation.tsx` 미러·백엔드 완비·순수 소비)이라 autoplan 4-phase 대신 **eng+design 집중 리뷰**(메모리 `bts-review-plan-autoplan-overkill`).
+
+### plan-eng-review (2026-07-13)
+- ✅ 의존성 그래프 건전(순환 0). 4 wave(W1 T1·T2 / W2 T3·T4·T6 / W3 T5 / W4 T7). 파일 겹침 없음(handlers.ts·router.ts 각 단일 task).
+- ✅ TDD 구조(RED/GREEN/REFACTOR) 전 task 명시.
+- ✅ 메모리 함정 커버: 409 두 종류(T4)·Zod 계약정합(T1)·MSW 전역등록(T6).
+- ⚠️ **CONCERN-1**: T3 목록 `queryKey`와 T4 mutation invalidate가 동일 키 `['slack-channel-mappings', projectKey]` 사용해야 함(task 간 계약). → **impl 반영**: T3/T4 prompt에 공유 queryKey 명시.
+- ⚠️ **CONCERN-2**: W2 병렬(T3·T4·T6) 유지하려면 T3/T4 단위테스트는 api 함수 `vi.mock`(MSW T6 비의존). MSW는 E2E(T7) 전용. → **impl 반영**: T3/T4 depends-on에 6 미포함 유지, 테스트 격리 명시.
+- BLOCKER: 없음.
+
+### plan-design-review (2026-07-13)
+- ✅ `automation.tsx` 시각 패턴 미러(`p-8 space-y-6 max-w-2xl` 헤더·List·FormDialog) → 일관성·AI slop 회피.
+- ✅ 이벤트 10종 그룹핑(이슈/스프린트/자동화)·로딩/에러/빈 상태·삭제 확인 — 완결.
+- ⚠️ **CONCERN-3 (C1, 게이트1 결정)**: 채널 ID 자유입력은 불투명 `C…` id를 사용자가 직접 찾아야 함(UX 취약). 백엔드 채널 목록 API 부재라 picker 불가. → 진행 시 **헬퍼 텍스트**("Slack 채널 세부정보 → 채널 ID 복사") 필수. picker는 범위 확장(별도 백엔드).
+- BLOCKER: 없음.
+
+### 종합
+- BLOCKER 0. CONCERN 3건 — 1·2는 impl prompt에 반영(코드 변경 아님), 3은 게이트1 Maxi 결정.
