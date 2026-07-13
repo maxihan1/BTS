@@ -73,9 +73,11 @@ async function patchMapping(
   return { status: res.status, body: (await res.json()) as unknown }
 }
 
-async function deleteMapping(id: string): Promise<{ status: number }> {
+async function deleteMapping(id: string): Promise<{ status: number; body: unknown }> {
   const res = await fetch(`${BASE_URL}/${id}`, { method: 'DELETE' })
-  return { status: res.status }
+  // 204는 본문이 없으므로 파싱을 건너뛴다 — 404 등 에러 응답만 JSON body를 갖는다.
+  const body: unknown = res.status === 204 ? undefined : await res.json()
+  return { status: res.status, body }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
