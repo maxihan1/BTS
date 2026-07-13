@@ -435,6 +435,17 @@ function isNumericConditionField(field: string): boolean {
 }
 
 /**
+ * 조건 노드 와이어 JSON 키 상수 — backend `Condition.kt`의 private `KEY_AND`/`KEY_OR`/`KEY_NOT`/
+ * `KEY_VAR`를 프론트에도 동일하게 미러링한다. 파싱/직렬화 양쪽에서 매직 스트링 산재를 막는다.
+ */
+const CONDITION_WIRE_KEY = {
+  AND: 'and',
+  OR: 'or',
+  NOT: 'not',
+  VAR: 'var',
+} as const
+
+/**
  * 조건 그룹 노드 — And/Or 결합자 + 부정 플래그.
  * backend `Not(cond)`은 별도 노드가 아니라 이 그룹의 `negated=true`로 흡수한다(파일 상단 주석 참고).
  */
@@ -466,7 +477,7 @@ export type ConditionNode = ConditionGroup | ConditionComparison
  * @returns 자식 없는 And 그룹(호출마다 새 객체를 반환 — 공유 참조로 인한 의도치 않은 변경 방지)
  */
 export function createEmptyConditionTree(): ConditionGroup {
-  return { kind: 'group', op: 'and', negated: false, children: [] }
+  return { kind: 'group', op: CONDITION_WIRE_KEY.AND, negated: false, children: [] }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -477,12 +488,12 @@ export function createEmptyConditionTree(): ConditionGroup {
 function isVarNode(node: unknown): boolean {
   if (typeof node !== 'object' || node === null || Array.isArray(node)) return false
   const keys = Object.keys(node)
-  return keys.length === 1 && keys[0] === 'var'
+  return keys.length === 1 && keys[0] === CONDITION_WIRE_KEY.VAR
 }
 
 /** `{"var": F}`에서 `F`를 추출한다. 문자열이 아니거나 {@link FIELD_WHITELIST} 밖이면 예외를 던진다. */
 function extractVarField(node: unknown): string {
-  const field = (node as { var: unknown }).var
+  const field = (node as Record<typeof CONDITION_WIRE_KEY.VAR, unknown>)[CONDITION_WIRE_KEY.VAR]
   if (typeof field !== 'string' || field.trim() === '' || !FIELD_WHITELIST.includes(field)) {
     throw new Error('var 참조가 화이트리스트 필드가 아닙니다.')
   }
@@ -529,7 +540,7 @@ function parseNotNode(operand: unknown): ConditionNode {
   if (inner.kind === 'group') {
     return { ...inner, negated: !inner.negated }
   }
-  return { kind: 'group', op: 'and', negated: true, children: [inner] }
+  return { kind: 'group', op: CONDITION_WIRE_KEY.AND, negated: true, children: [inner] }
 }
 
 /** `and`/`or` 값(조건 배열)을 파싱한다. */
@@ -551,9 +562,13 @@ function parseConditionNode(node: unknown): ConditionNode {
     throw new Error('조건 노드는 정확히 하나의 연산자 키를 가져야 합니다.')
   }
   const [key, value] = first
-  if (key === 'and') return { kind: 'group', op: 'and', negated: false, children: parseConditionChildren(value) }
-  if (key === 'or') return { kind: 'group', op: 'or', negated: false, children: parseConditionChildren(value) }
-  if (key === 'not') return parseNotNode(value)
+  if (key === CONDITION_WIRE_KEY.AND) {
+    return { kind: 'group', op: 'and', negated: false, children: parseConditionChildren(value) }
+  }
+  if (key === CONDITION_WIRE_KEY.OR) {
+    return { kind: 'group', op: 'or', negated: false, children: parseConditionChildren(value) }
+  }
+  if (key === CONDITION_WIRE_KEY.NOT) return parseNotNode(value)
   return parseComparisonNode(key, value)
 }
 
@@ -604,7 +619,7 @@ function coerceLiteralForWire(field: string, value: unknown): unknown {
 /** 비교 leaf를 와이어 노드(JSON.stringify 대상)로 변환한다 — var 선두 정규형으로 고정한다. */
 function comparisonToWireNode(node: ConditionComparison): Record<string, unknown> {
   const meta = COMPARISON_OPERATOR_META[node.operator]
-  const varNode = { var: node.field }
+  const varNode = { [CONDITION_WIRE_KEY.VAR]: node.field }
   if (meta.arity === 'unary') {
     return { [meta.jsonKey]: varNode }
   }
@@ -615,7 +630,7 @@ function comparisonToWireNode(node: ConditionComparison): Record<string, unknown
 function toWireNode(node: ConditionNode): unknown {
   if (node.kind === 'comparison') return comparisonToWireNode(node)
   const inner = { [node.op]: node.children.map(toWireNode) }
-  return node.negated ? { not: inner } : inner
+  return node.negated ? { [CONDITION_WIRE_KEY.NOT]: inner } : inner
 }
 
 /**
