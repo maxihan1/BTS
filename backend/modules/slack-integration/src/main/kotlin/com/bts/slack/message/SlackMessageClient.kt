@@ -77,6 +77,29 @@ class SlackMessageClient(
     }
 
     /**
+     * [channelId] 채널에 [message]를 게시한다.
+     *
+     * @param botToken 워크스페이스 봇 토큰(요청에만 사용, 미노출).
+     * @param channelId 게시 대상 채널 id(`C…`) — chat.postMessage의 channel.
+     * @param message 렌더된 폴백 text + Block Kit blocks.
+     * @return 전송 결과 분류.
+     */
+    fun postChannelMessage(
+        botToken: String,
+        channelId: String,
+        message: RenderedSlackMessage,
+    ): SlackSendResult {
+        return callSlack("slack_post_message", channelId) {
+            methods.chatPostMessage { req ->
+                req.token(botToken)
+                    .channel(channelId)
+                    .text(message.text)
+                    .blocksAsString(message.blocks)
+            }
+        }
+    }
+
+    /**
      * [triggerId]로 Block Kit 모달([viewJson])을 연다(`views.open`).
      *
      * `trigger_id`는 슬래시 커맨드/버튼 클릭 등 인터랙션 응답에서 발급되며 단시간·1회용이다.
