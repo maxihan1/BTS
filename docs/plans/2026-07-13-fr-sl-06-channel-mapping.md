@@ -213,3 +213,23 @@ classify: type=backend, agent=backend-engineer, slug=fr-sl-06
 - ⚠️ **인증 경로 확인(T7)**. `/api/v1/slack/channel-mappings`는 `/api/v1/slack/me/connection`(JWT 인증) 선례를 따름. 웹훅 permitAll은 `/slack/*` 한정이라 자동 노출 위험 없음. 구현 시 필터 체인 인증 배선 확인(권한 게이트는 서비스 위임이 1차, 필터 체인이 2차).
 
 **주의 2건(wave 추정·인증 경로 확인)은 모두 impl 단계 자동 처리 가능. Maxi 결정 필요 taste decision 없음.**
+
+## 구현 결과 (/bts-impl, 2026-07-13)
+
+9 태스크 전부 TDD(red→green→refactor) 완료. controller가 각 태스크 git log로 test→feat 순서 직접 검증.
+
+| Task | 커밋(test→feat→refactor) | 검증 |
+|---|---|---|
+| T1 V704 마이그레이션 | ed5a29b29→8d19561c1→62e196078 (+detekt fix 9ae2ee98b) | 13/13, init_codegen 미생성(slack=JdbcTemplate, jOOQ 없음 — CONCERN 수용) |
+| T2 도메인 | e19072347→fbf1a7cc7→cfc87f22a | 3/3, notification enum import 0(wire 미러) |
+| T3 권한 포트 | e8c06bee0→75d4f64de | shared-kernel 297/297 |
+| T4 repo | bf88b23e9→c320ebcc5→5a6d0c136(+b90da1001) | 8/8, text[] round-trip |
+| T5 non-prod 스텁 | 1b756ff78→a11e34808→7f1fb5721 | 5/5, @Profile !prod |
+| T6 서비스 | 8f4059358→09b5975cb→2194b24d0 | 16/16, 권한 fail-closed·Clock·@Transactional |
+| T7 컨트롤러 | 8c590e1e4→b3c935b04→c6f00de91(+9c652b070) | WebMvc 전 엔드포인트·team_id 미노출·PAT 401 |
+| T8 identity-access 어댑터 | 0ffd7a78c→92124d2ed→9d2556748 | 4/4, PROJECT_ADMIN·fail-closed 3경로 |
+| T9 prod 조립 부팅 | (코드 0 — 자동 스캔 배선) | :modules:app:test 그린, NoSuchBean 없음 |
+
+- **최종 검증**. shared-kernel·slack-integration·identity-access test+ktlint+detekt + :modules:app 조립 부팅 전부 BUILD SUCCESSFUL.
+- **E2E(D7) 생략**. backend 코어 스코프. 단위/통합으로 충분. D6 UI/D7 E2E는 후속 PR.
+- **머지 전 필수**. (a) 하드삭제 ADR 작성(DATA.md §1.2, config 테이블). (b) 라우팅 팬아웃/PR분할/보안 결정 ADR. (c) rebase origin/main + :modules:app:test 재검증. (d) fr-index D단계 체크·product §2.3 동기화(전수 동기화).
