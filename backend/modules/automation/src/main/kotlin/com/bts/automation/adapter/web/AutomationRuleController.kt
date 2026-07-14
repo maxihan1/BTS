@@ -14,8 +14,11 @@ import com.bts.automation.application.AutomationRuleService
 import com.bts.automation.application.AutomationRuleVersionConflictException
 import com.bts.automation.domain.AutomationDomainException
 import com.bts.automation.domain.InvalidConditionExpressionException
+import com.bts.automation.gitops.AutomationYamlCodec
 import org.slf4j.LoggerFactory
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
@@ -47,6 +50,8 @@ import java.util.UUID
  * - `PATCH  /api/v1/projects/{projectKey}/automation/rules/{id}` — 부분수정(name·enabled·triggerConfig·
  *   actions·actorUserId·condition, OCC)
  * - `DELETE /api/v1/projects/{projectKey}/automation/rules/{id}` — soft delete
+ * - `GET    /api/v1/projects/{projectKey}/automation/rules/export` — 전 규칙(활성+비활성)을 GitOps YAML로
+ *   내보내기(FR-AT-06 Task 3, webhook 토큰/해시 미노출)
  *
  * `condition`(조건 게이트 표현식, FR-AT-03)은 신규 엔드포인트 없이 생성/수정 payload 필드로만
  * 확장된다(spec FR-AT-03-7 — "신규 엔드포인트 없음").
@@ -142,6 +147,34 @@ class AutomationRuleController(
     }
 
     /**
+     * [projectKey] 의 자동화 룰 전체(활성+비활성, 소프트삭제 제외)를 GitOps YAML로 내보낸다(FR-AT-06 Task 3).
+     *
+     * [projectKey] 는 응답의 `Content-Disposition` 파일명에 그대로 삽입되므로 [validateProjectKeyForExport]
+     * 로 화이트리스트 검증한다(헤더 인젝션 방어, search-export-import `ExportController` 선례 동형).
+     *
+     * @param projectKey 내보낼 프로젝트 키(경로 변수).
+     * @return 200 OK + `application/yaml;charset=UTF-8` + `Content-Disposition: attachment;
+     *   filename="automation-rules-{projectKey}.yaml"` + YAML 본문(webhook 토큰/해시/OCC version 미포함).
+     * @throws AutomationForbiddenException [projectKey] 에 MANAGE_AUTOMATION 권한이 없을 때.
+     * @throws AutomationProjectKeyInvalidException [projectKey] 가 화이트리스트를 벗어났을 때.
+     */
+    @GetMapping("/export")
+    fun export(
+        @PathVariable projectKey: String,
+    ): ResponseEntity<String> {
+        val actorId = AutomationActorExtractor.extract()
+        validateProjectKeyForExport(projectKey)
+        val rules = service.exportRules(actorId, projectKey)
+        val yaml = AutomationYamlCodec.toYaml(projectKey, rules)
+        log.info("AutomationRuleController.export actor={} projectKey={} count={}", actorId, projectKey, rules.size)
+        return ResponseEntity
+            .ok()
+            .contentType(MediaType.parseMediaType(MEDIA_TYPE_YAML))
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"automation-rules-$projectKey.yaml\"")
+            .body(yaml)
+    }
+
+    /**
      * [id] 자동화 룰을 부분 수정한다(name·enabled·triggerConfig·actions·actorUserId·condition, OCC).
      *
      * @param projectKey 룰이 속해야 하는 프로젝트 키(경로 변수).
@@ -234,6 +267,46 @@ private object AutomationActorExtractor {
 }
 
 /**
+ * [AutomationRuleController.export] 가 응답하는 YAML 본문의 미디어 타입(spec API 인터페이스 표 —
+ * `application/yaml`). 규칙 이름 등에 한글이 담길 수 있어 `charset=UTF-8` 을 명시한다 — 명시하지 않으면
+ * [org.springframework.http.converter.StringHttpMessageConverter] 가 기본 charset(ISO-8859-1)으로 바이트를
+ * 쓰고, 클라이언트가 응답 헤더로 UTF-8 여부를 판단할 근거가 사라진다(JSON 컨버터가 항상
+ * `charset=UTF-8` 을 명시하는 선례와 동형).
+ */
+private const val MEDIA_TYPE_YAML = "application/yaml;charset=UTF-8"
+
+/**
+ * `Content-Disposition` 파일명에 삽입 가능한 projectKey 화이트리스트(영문자·숫자·하이픈·언더스코어) —
+ * CRLF 등 헤더 인젝션 문자를 원천 차단한다(search-export-import `ExportController.PROJECT_KEY_PATTERN`
+ * 선례 동형, 언더스코어 허용은 plan Task 3 GREEN 명세).
+ */
+private val EXPORT_PROJECT_KEY_PATTERN = Regex("^[A-Za-z0-9_-]+$")
+
+/**
+ * [AutomationRuleController.export] 의 [projectKey] 가 [EXPORT_PROJECT_KEY_PATTERN] 을 벗어나지 않는지
+ * 검증한다 — `Content-Disposition` 헤더 인젝션 방어(search-export-import `ExportController` 선례 동형).
+ *
+ * @throws AutomationProjectKeyInvalidException [projectKey] 가 화이트리스트를 벗어났을 때.
+ */
+private fun validateProjectKeyForExport(projectKey: String) {
+    if (!EXPORT_PROJECT_KEY_PATTERN.matches(projectKey)) {
+        throw AutomationProjectKeyInvalidException("projectKey는 영문자·숫자·하이픈·언더스코어만 허용됩니다.")
+    }
+}
+
+/**
+ * [AutomationRuleController.export] 의 [projectKey] 가 [EXPORT_PROJECT_KEY_PATTERN] 화이트리스트를
+ * 벗어났음을 나타낸다 — `Content-Disposition` 헤더 인젝션 방어(400).
+ *
+ * `domain` 패키지 밖이라 `sealed class AutomationDomainException` 의 서브타입으로 선언할 수 없다
+ * ([com.bts.automation.gitops.AutomationYamlInvalidException] 선례 동형, Kotlin sealed 서브클래스는
+ * 동일 패키지 제약).
+ *
+ * @param message 위반 내용을 설명하는 일반 메시지.
+ */
+class AutomationProjectKeyInvalidException(message: String) : RuntimeException(message)
+
+/**
  * [AutomationRuleController] 예외를 RFC 7807 [ProblemDetail] 로 변환한다.
  *
  * [assignableTypes] 를 [AutomationRuleController] 로 한정해 다른 컨트롤러(Task 9 웹훅 인바운드 등)를
@@ -307,6 +380,24 @@ class AutomationRuleExceptionHandler {
             "Bad Request",
             INVALID_CONDITION_EXPRESSION,
             ex.message ?: "조건 표현식이 올바르지 않습니다.",
+        )
+    }
+
+    /**
+     * export 의 projectKey 가 [EXPORT_PROJECT_KEY_PATTERN] 화이트리스트를 벗어남(`Content-Disposition`
+     * 헤더 인젝션 방어, FR-AT-06 Task 3) — 400. [AutomationDomainException] 서브타입이 아니라(도메인
+     * sealed 클래스의 동일 패키지 제약, [AutomationProjectKeyInvalidException] KDoc 참고) 별도 핸들러가
+     * 필요하다.
+     */
+    @ExceptionHandler(AutomationProjectKeyInvalidException::class)
+    fun handleProjectKeyInvalid(ex: AutomationProjectKeyInvalidException): ProblemDetail {
+        log.info("AUTOMATION_400 project_key_invalid")
+        return problem(
+            HttpStatus.BAD_REQUEST,
+            "automation-rule-project-key-invalid",
+            "Bad Request",
+            AUTOMATION_RULE_INVALID,
+            ex.message ?: "projectKey 형식이 올바르지 않습니다.",
         )
     }
 

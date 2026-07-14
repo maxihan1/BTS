@@ -113,7 +113,7 @@ class AutomationRuleExportIntegrationTest {
         mockMvc
             .perform(get("/api/v1/projects/$PROJECT_KEY/automation/rules/export"))
             .andExpect(status().isOk)
-            .andExpect(content().contentType(MediaType.parseMediaType("application/yaml")))
+            .andExpect(content().contentType(MediaType.parseMediaType("application/yaml;charset=UTF-8")))
             .andExpect(
                 header().string(
                     "Content-Disposition",

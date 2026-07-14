@@ -14,6 +14,7 @@ import com.bts.automation.domain.InvalidConditionExpressionException
 import com.bts.automation.domain.RuleConflict
 import com.bts.automation.domain.TriggerConfig
 import com.bts.automation.domain.TriggerType
+import com.bts.automation.gitops.ExportRuleInput
 import com.bts.shared.permission.AutomationPermissionResolver
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.Logger
@@ -200,7 +201,7 @@ class AutomationRuleService(
         val domainCondition = condition?.let(Condition::fromJson)
 
         val now = Instant.now(clock)
-        val webhookToken = if (triggerType == TriggerType.WEBHOOK) mintWebhookToken() else null
+        val webhookToken = if (triggerType == TriggerType.WEBHOOK) mintWebhookToken(secureRandom) else null
         val nextFireAt = if (triggerType == TriggerType.SCHEDULED) initialNextFireAt(triggerConfig, now) else null
 
         val rule =
@@ -262,6 +263,38 @@ class AutomationRuleService(
     ): AutomationRule {
         assertManageAutomation(actorId, projectKey)
         return hydrateRule(actionRepository, conditionRepository, findInProject(projectKey, id))
+    }
+
+    /**
+     * [projectKey] 의 소프트삭제되지 않은 전 규칙(활성+비활성)을 GitOps YAML export 용 뷰로 반환한다
+     * (FR-AT-06 GitOps Task 3).
+     *
+     * [repository.findByProject] 는 [AutomationRule.actions]/[AutomationRule.condition] 을 로드하지
+     * 않으므로(클래스 KDoc §액션/actor 매핑·§조건 게이트 매핑 참고) 규칙별로 [hydrateRule] 을 거쳐 채운 뒤
+     * [ExportRuleInput] 으로 매핑한다. [repository.findByProject] 가 이미 `created_at, id` 순으로 반환하므로
+     * ([com.bts.automation.adapter.AutomationRuleRepository] `SQL_FIND_BY_PROJECT` 참고) GitOps git diff
+     * 안정성을 위한 결정적 순서(spec FR1)가 별도 정렬 없이 그대로 보장된다.
+     *
+     * [ExportRuleInput] 은 `webhookTokenHash`/`version`/`nextFireAt` 필드 자체를 갖지 않는다(codec 클래스
+     * KDoc 참고) — 이 매핑이 그 필드들을 다루지 않는 것 자체가 spec NFR3(비밀 미노출)의 타입 레벨 방어다.
+     *
+     * 규칙별 하이드레이션은 N+1 조회이지만, 프로젝트당 규칙 수가 소규모(수십~수백)라 허용한다(spec NFR1).
+     *
+     * @param actorId export 를 요청하는 행위자.
+     * @param projectKey export 대상 프로젝트 키.
+     * @return `created_at, id` 순 정렬된 [ExportRuleInput] 목록(활성+비활성 전부, 소프트삭제 제외).
+     * @throws AutomationForbiddenException [actorId] 가 [projectKey] 에서 MANAGE_AUTOMATION 권한이 없을 때.
+     */
+    @Transactional(readOnly = true)
+    fun exportRules(
+        actorId: UUID,
+        projectKey: String,
+    ): List<ExportRuleInput> {
+        assertManageAutomation(actorId, projectKey)
+        return repository
+            .findByProject(projectKey)
+            .map { hydrateRule(actionRepository, conditionRepository, it) }
+            .map(AutomationRule::toExportRuleInput)
     }
 
     /**
@@ -462,16 +495,8 @@ class AutomationRuleService(
         return requireNotNull(next) { "cron 표현식 '$cron' 에서 다음 발화 시각을 계산할 수 없습니다." }.toInstant()
     }
 
-    /** [SecureRandom] 256bit 원문 + SHA-256 hex 해시를 발급한다(notification `ShareTokenMinter` 패턴 미러). */
-    private fun mintWebhookToken(): WebhookToken {
-        val rawBytes = ByteArray(TOKEN_BYTES).also(secureRandom::nextBytes)
-        val plaintext = Base64.getUrlEncoder().withoutPadding().encodeToString(rawBytes)
-        return WebhookToken(plaintext, sha256Hex(plaintext))
-    }
-
     private companion object {
         const val FIELD_CRON = "cron"
-        const val TOKEN_BYTES = 32
     }
 }
 
@@ -565,6 +590,7 @@ private fun toDomainAction(input: AutomationActionInput): Action {
 }
 
 private const val SHA_256 = "SHA-256"
+private const val TOKEN_BYTES = 32
 
 /**
  * 원문을 SHA-256 hex(소문자 64자) 해시로 변환한다(FR-AT-02 Task 11 — [TooManyFunctions] 예산 때문에
@@ -574,6 +600,22 @@ private const val SHA_256 = "SHA-256"
 private fun sha256Hex(plaintext: String): String {
     val digest = MessageDigest.getInstance(SHA_256).digest(plaintext.toByteArray(Charsets.UTF_8))
     return digest.joinToString("") { "%02x".format(it) }
+}
+
+/**
+ * [SecureRandom] 256bit 원문 + SHA-256 hex 해시를 발급한다(notification `ShareTokenMinter` 패턴 미러).
+ *
+ * top-level 함수로 둔 이유는 [applyFieldPatch]/[toDomainAction]/[sha256Hex]/[hydrateRule]/
+ * [toExportRuleInput] 와 동일하다 — 클래스 멤버로 두면 [AutomationRuleService] 의 함수 개수
+ * ([TooManyFunctions]) 예산을 넘긴다(FR-AT-06 GitOps Task 3 에서 [AutomationRuleService.exportRules] 가
+ * 추가되며 예산 확보를 위해 이 함수를 클래스 멤버에서 top-level 로 이동했다). [secureRandom] 을 명시
+ * 파라미터로 받는다 — top-level 함수라 인스턴스 필드에 접근할 수 없어 호출자([AutomationRuleService.create])
+ * 가 자신의 `secureRandom` 필드를 매번 넘긴다.
+ */
+private fun mintWebhookToken(secureRandom: SecureRandom): WebhookToken {
+    val rawBytes = ByteArray(TOKEN_BYTES).also(secureRandom::nextBytes)
+    val plaintext = Base64.getUrlEncoder().withoutPadding().encodeToString(rawBytes)
+    return WebhookToken(plaintext, sha256Hex(plaintext))
 }
 
 /** [SecureRandom] 원문 + SHA-256 해시 쌍(내부 전용 — 원문은 [CreatedAutomationRule] 경계 밖으로 나가지 않는다). */
@@ -601,6 +643,27 @@ private fun hydrateRule(
     rule.copy(
         actions = actionRepository.findByRuleId(rule.id),
         condition = conditionRepository.findByRuleId(rule.id),
+    )
+
+/**
+ * [AutomationRule] → [ExportRuleInput] 매핑(FR-AT-06 GitOps Task 3, [AutomationRuleService.exportRules] 전용).
+ *
+ * top-level 함수로 둔 이유는 [applyFieldPatch]/[toDomainAction]/[sha256Hex]/[hydrateRule] 와 동일하다 —
+ * 클래스 멤버로 두면 [AutomationRuleService] 의 함수 개수([TooManyFunctions]) 예산을 넘긴다. 호출자가 이미
+ * [hydrateRule] 로 actions/condition 을 채운 [rule] 을 전달한다고 전제한다(호출 순서는
+ * [AutomationRuleService.exportRules] 참고). `webhookTokenHash`/`nextFireAt`/`version`/`createdBy`/
+ * `createdAt`/`updatedAt` 은 [ExportRuleInput] 이 애초에 필드로 갖지 않으므로 이 매핑에서 다루지 않는다.
+ */
+private fun AutomationRule.toExportRuleInput(): ExportRuleInput =
+    ExportRuleInput(
+        id = id,
+        name = name,
+        enabled = enabled,
+        actorUserId = actorUserId,
+        triggerType = triggerType,
+        triggerConfig = triggerConfig,
+        condition = condition,
+        actions = actions,
     )
 
 /**
