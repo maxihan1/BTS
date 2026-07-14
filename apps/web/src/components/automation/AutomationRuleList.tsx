@@ -26,6 +26,10 @@ const labels = {
   deleteButton: '삭제',
   enableButton: '활성화',
   disableButton: '비활성화',
+  historyButton: '이력',
+  // 버튼 표시 텍스트("이력")는 짧게, aria-label 접미사("실행 이력")는 더 명확하게 — 나머지 버튼들과
+  // 달리 시각 텍스트와 스크린리더 텍스트를 분리한 유일한 케이스(FR-AT-05 D6, 명세 §구현 명세).
+  historyAriaSuffix: '실행 이력',
   enabledBadge: '활성',
   disabledBadge: '비활성',
   nextFireAtLabel: '다음 실행',
@@ -86,6 +90,8 @@ export interface AutomationRuleListProps {
   readonly onAddRule: () => void
   /** 행 "수정" 클릭 시 상위에서 편집 폼을 열기 위한 콜백 — 클릭된 룰을 전달 */
   readonly onEditRule: (rule: AutomationRule) => void
+  /** 행 "이력" 클릭 시 상위에서 실행 이력 뷰를 열기 위한 콜백 — 클릭된 룰을 전달 (FR-AT-05 D6) */
+  readonly onViewHistory: (rule: AutomationRule) => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -157,6 +163,7 @@ interface AutomationRuleRowProps {
   readonly isToggling: boolean
   readonly onToggle: (rule: AutomationRule) => void
   readonly onEdit: (rule: AutomationRule) => void
+  readonly onViewHistory: (rule: AutomationRule) => void
   readonly onDeleteClick: (rule: AutomationRule) => void
 }
 
@@ -176,7 +183,14 @@ function RuleBadge({ tone, children }: { readonly tone: keyof typeof BADGE_TONE_
  * 룰 단일 행 — 이름·트리거 배지·enabled 배지·(SCHEDULED만) nextFireAt·액션 타입 배지 그룹(FR-AT-02
  * FR11, `rule.actions`가 비어있으면 "액션 없음") + 토글/수정/삭제 액션.
  */
-function AutomationRuleRow({ rule, isToggling, onToggle, onEdit, onDeleteClick }: AutomationRuleRowProps): JSX.Element {
+function AutomationRuleRow({
+  rule,
+  isToggling,
+  onToggle,
+  onEdit,
+  onViewHistory,
+  onDeleteClick,
+}: AutomationRuleRowProps): JSX.Element {
   const { formatDateTime } = useDateFormat()
 
   return (
@@ -239,6 +253,17 @@ function AutomationRuleRow({ rule, isToggling, onToggle, onEdit, onDeleteClick }
           {labels.editButton}
         </Button>
         <Button
+          variant="outline"
+          size="sm"
+          aria-label={`${rule.name} ${labels.historyAriaSuffix}`}
+          data-testid={`automation-rule-history-${rule.id}`}
+          onClick={() => {
+            onViewHistory(rule)
+          }}
+        >
+          {labels.historyButton}
+        </Button>
+        <Button
           variant="destructive"
           size="sm"
           aria-label={`${rule.name} ${labels.deleteButton}`}
@@ -267,6 +292,8 @@ function AutomationRuleRow({ rule, isToggling, onToggle, onEdit, onDeleteClick }
  *   그대로 위임한다(dead path 없음). 룰 생성/편집 폼 자체는 이 컴포넌트가 렌더하지 않는다
  *   (Task 6 AutomationRuleFormDialog, 조립은 Task 8이 담당).
  * - 행 "수정" 클릭은 onEditRule(rule)을 위임한다.
+ * - 행 "이력" 클릭은 onViewHistory(rule)을 위임한다(FR-AT-05 D6) — 실행 이력 뷰 자체는 이
+ *   컴포넌트가 렌더하지 않는다.
  * - 활성 토글은 useUpdateAutomationRule로 `{ version, enabled: !enabled }`를 PATCH한다(OCC).
  *   실패 시 toast로 알린다. 버전 충돌(409 AUTOMATION_RULE_VERSION_CONFLICT)이면 목록 쿼리를
  *   invalidate해 refetch를 유도한다 — 그렇지 않으면 stale version으로 재시도가 반복되어
@@ -278,8 +305,14 @@ function AutomationRuleRow({ rule, isToggling, onToggle, onEdit, onDeleteClick }
  * @param projectKey 프로젝트 식별 키
  * @param onAddRule "룰 추가" 클릭 콜백
  * @param onEditRule 행 "수정" 클릭 콜백 — 클릭된 룰을 인자로 전달
+ * @param onViewHistory 행 "이력" 클릭 콜백 — 클릭된 룰을 인자로 전달
  */
-export function AutomationRuleList({ projectKey, onAddRule, onEditRule }: AutomationRuleListProps): JSX.Element {
+export function AutomationRuleList({
+  projectKey,
+  onAddRule,
+  onEditRule,
+  onViewHistory,
+}: AutomationRuleListProps): JSX.Element {
   const { data: rules, isLoading, isError, error } = useAutomationRules(projectKey)
   const updateRule = useUpdateAutomationRule(projectKey)
   const deleteRule = useDeleteAutomationRule(projectKey)
@@ -360,6 +393,7 @@ export function AutomationRuleList({ projectKey, onAddRule, onEditRule }: Automa
               isToggling={updateRule.isPending}
               onToggle={handleToggle}
               onEdit={onEditRule}
+              onViewHistory={onViewHistory}
               onDeleteClick={handleDeleteClick}
             />
           ))}

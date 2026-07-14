@@ -6,6 +6,7 @@ import { AutomationRuleList } from '@/components/automation/AutomationRuleList'
 import { AutomationRuleFormDialog } from '@/components/automation/AutomationRuleFormDialog'
 import { WebhookTokenModal } from '@/components/automation/WebhookTokenModal'
 import { RuleConflictWarningModal } from '@/components/automation/RuleConflictWarningModal'
+import { RuleExecutionHistoryDialog } from '@/components/automation/RuleExecutionHistoryDialog'
 import { ProjectNotFoundScreen } from '@/routes/projects.$projectKey.settings.members'
 import type { AutomationRule, RuleConflict } from '@/api/automation-rules.types'
 
@@ -34,9 +35,10 @@ interface ProjectAutomationSettingsPageProps {
 /**
  * 프로젝트 자동화 설정 페이지.
  *
- * - 헤더 + AutomationRuleList + AutomationRuleFormDialog + WebhookTokenModal 조립.
+ * - 헤더 + AutomationRuleList + AutomationRuleFormDialog + WebhookTokenModal + RuleConflictWarningModal
+ *   + RuleExecutionHistoryDialog 조립.
  * - projectKey가 없거나 빈 문자열이면 ProjectNotFoundScreen을 렌더한다.
- * - 상태 4종을 이 컴포넌트가 보유한다.
+ * - 상태 5종을 이 컴포넌트가 보유한다.
  *   - `dialogOpen`/`editingRule` — AutomationRuleList의 onAddRule(신규)·onEditRule(수정)
  *     콜백이 갱신하고, AutomationRuleFormDialog에 그대로 전달한다.
  *   - `webhookToken` — FormDialog의 onWebhookToken 콜백으로 1회 전달받아 WebhookTokenModal에
@@ -45,6 +47,11 @@ interface ProjectAutomationSettingsPageProps {
  *   - `conflicts` — FormDialog의 onConflicts 콜백으로 1회 전달받아 RuleConflictWarningModal에
  *     노출한다(FR-AT-04 D6/D7). 웹훅 토큰과 충돌이 동시에 세팅되면 토큰 모달을 먼저 노출하고
  *     닫은 뒤에야 충돌 모달이 순차로 노출된다(`webhookToken===null` 가드, 토큰 우선).
+ *   - `historyRule` — AutomationRuleList의 onViewHistory 콜백이 클릭된 룰로 세팅하고,
+ *     RuleExecutionHistoryDialog에 그대로 전달한다(FR-AT-05 D6/D7). Dialog가 닫히면
+ *     (onOpenChange(false)) 즉시 null로 되돌려 다음 open 시 잔존 필터/자동펼침 상태 없이
+ *     새로 조회되게 한다(Dialog 내부는 open/ruleId 조합 key 재마운트로 이미 자체 격리하지만,
+ *     이 컴포넌트도 ruleId를 null로 되돌려 "선택된 룰 없음"을 명확히 한다).
  * - 403 등 목록 조회 에러 상태는 AutomationRuleList가 자체적으로 처리한다.
  *
  * 라우터 의존 없이 props로 projectKey를 받아 단위 테스트가 가능하다.
@@ -56,6 +63,7 @@ export function ProjectAutomationSettingsPage({
   const [editingRule, setEditingRule] = useState<AutomationRule | null>(null)
   const [webhookToken, setWebhookToken] = useState<string | null>(null)
   const [conflicts, setConflicts] = useState<RuleConflict[] | null>(null)
+  const [historyRule, setHistoryRule] = useState<AutomationRule | null>(null)
 
   if (!projectKey) {
     return <ProjectNotFoundScreen />
@@ -79,6 +87,10 @@ export function ProjectAutomationSettingsPage({
     setConflicts(null)
   }
 
+  function handleHistoryDialogOpenChange(open: boolean): void {
+    if (!open) setHistoryRule(null)
+  }
+
   return (
     <div className="p-8 space-y-6 max-w-2xl">
       <header className="space-y-1">
@@ -92,6 +104,7 @@ export function ProjectAutomationSettingsPage({
         projectKey={projectKey}
         onAddRule={handleAddRule}
         onEditRule={handleEditRule}
+        onViewHistory={setHistoryRule}
       />
 
       <AutomationRuleFormDialog
@@ -107,6 +120,13 @@ export function ProjectAutomationSettingsPage({
       <RuleConflictWarningModal
         conflicts={webhookToken === null ? conflicts : null}
         onClose={handleConflictsClose}
+      />
+      <RuleExecutionHistoryDialog
+        open={historyRule !== null}
+        onOpenChange={handleHistoryDialogOpenChange}
+        projectKey={projectKey}
+        ruleId={historyRule?.id ?? null}
+        ruleName={historyRule?.name ?? null}
       />
     </div>
   )

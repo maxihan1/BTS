@@ -1,4 +1,4 @@
-// 자동화 설정 페이지 라우트 단위 테스트 — RouteAdapter projectKey 전달·조립(List+FormDialog+WebhookTokenModal)·웹훅 토큰 1회 노출 (FR-AT-01 D6 Task 8)
+// 자동화 설정 페이지 라우트 단위 테스트 — RouteAdapter projectKey 전달·조립(List+FormDialog+WebhookTokenModal+RuleConflictWarningModal+RuleExecutionHistoryDialog)·웹훅 토큰 1회 노출 (FR-AT-01 D6 Task 8, 실행 이력 조립은 FR-AT-05 D6/D7 Task 8)
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach, afterAll } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -12,6 +12,12 @@ import {
   resetAutomationRuleStore,
   seedAutomationRules,
 } from '@/mocks/automation-rule-fixtures'
+import { automationExecutionHandlers } from '@/mocks/automation-execution-handlers'
+import {
+  DEFAULT_RULE_EXECUTIONS,
+  resetAutomationExecutionStore,
+  seedAutomationExecutions,
+} from '@/mocks/automation-execution-fixtures'
 import {
   ProjectAutomationSettingsPage,
   ProjectAutomationSettingsRouteAdapter,
@@ -31,9 +37,15 @@ vi.mock('@tanstack/react-router', () => ({
 // ─────────────────────────────────────────────────────────────────────────────
 // MSW 서버 설정 — AutomationRuleList.test.tsx / useAutomationRules.test.tsx와 동형
 // (전역 handlers.ts에 automationRuleHandlers 미등록, 로컬 서버로 격리)
+//
+// automationExecutionHandlers도 이 같은 로컬 서버 하나에 합류시킨다 — 전역 `@/test/server`(setup.ts가
+// 이미 listen 중)에 별도로 server.use()하면 두 서버가 동시에 활성화된 상태에서 한쪽이 매치하는 핸들러를
+// 찾아도 다른 한쪽이 독립적으로 "unhandled request" 에러를 던져(onUnhandledRequest:'error' 양쪽 설정)
+// 요청이 실패한다(실측 확인) — 이 파일은 이미 로컬 서버 단일 인스턴스로 격리된 상태라 그 안에 함께
+// 등록하는 편이 안전하다.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...automationRuleHandlers)
+const server = setupServer(...automationRuleHandlers, ...automationExecutionHandlers)
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 beforeEach(() => {
@@ -43,6 +55,7 @@ beforeEach(() => {
 afterEach(() => {
   server.resetHandlers()
   resetAutomationRuleStore()
+  resetAutomationExecutionStore()
   document.cookie = 'XSRF-TOKEN=; Max-Age=0'
 })
 afterAll(() => server.close())
@@ -279,5 +292,35 @@ describe('ProjectAutomationSettingsPage — 규칙 충돌 경고 모달 조립',
     await user.click(screen.getByTestId('webhook-token-close-button'))
 
     expect(await screen.findByTestId('rule-conflict-warning-modal')).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Page — 실행 이력 Dialog 조립 (FR-AT-05 D6/D7 Task 8, WebhookTokenModal/RuleConflictWarningModal
+// 조립부와 대칭 — historyRule 식별값 세팅/null 리셋 관례 동형)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProjectAutomationSettingsPage — 실행 이력 Dialog 조립', () => {
+  it('행 "이력" 클릭 시 RuleExecutionHistoryDialog가 열려 실행 이력 목록을 표시하고, 닫으면 사라진다', async () => {
+    seedAutomationRules([issueCreatedRule()])
+    seedAutomationExecutions(
+      DEFAULT_RULE_EXECUTIONS.filter((execution) => execution.ruleId === issueCreatedRule().id),
+    )
+    const { user } = renderPage()
+    await screen.findByText(issueCreatedRule().name)
+
+    await user.click(screen.getByTestId(`automation-rule-history-${issueCreatedRule().id}`))
+
+    expect(await screen.findByTestId('rule-execution-history-dialog')).toBeInTheDocument()
+    expect(screen.getByText(`${issueCreatedRule().name} 실행 이력`)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('ATLAS-201')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: '닫기' }))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('rule-execution-history-dialog')).not.toBeInTheDocument()
+    })
   })
 })

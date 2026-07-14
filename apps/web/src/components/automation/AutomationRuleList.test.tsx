@@ -57,13 +57,18 @@ function scheduledRule() {
   return rule
 }
 
-function renderList(onAddRule = vi.fn(), onEditRule = vi.fn()) {
+function renderList(onAddRule = vi.fn(), onEditRule = vi.fn(), onViewHistory = vi.fn()) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   const utils = render(
     <QueryClientProvider client={queryClient}>
-      <AutomationRuleList projectKey={PROJECT_KEY} onAddRule={onAddRule} onEditRule={onEditRule} />
+      <AutomationRuleList
+        projectKey={PROJECT_KEY}
+        onAddRule={onAddRule}
+        onEditRule={onEditRule}
+        onViewHistory={onViewHistory}
+      />
     </QueryClientProvider>,
   )
   return { ...utils, queryClient }
@@ -237,6 +242,21 @@ describe('AutomationRuleList', () => {
 
     expect(onEditRule).toHaveBeenCalledTimes(1)
     expect(onEditRule).toHaveBeenCalledWith(expect.objectContaining({ id: target.id }))
+  })
+
+  it('이력 버튼 클릭 시 onViewHistory(rule)이 호출된다', async () => {
+    seedAutomationRules(DEFAULT_AUTOMATION_RULES)
+    const target = issueCreatedRule()
+    const onViewHistory = vi.fn()
+    const user = userEvent.setup()
+
+    renderList(vi.fn(), vi.fn(), onViewHistory)
+
+    await waitFor(() => screen.getByText(target.name))
+    await user.click(screen.getByRole('button', { name: `${target.name} 실행 이력` }))
+
+    expect(onViewHistory).toHaveBeenCalledTimes(1)
+    expect(onViewHistory).toHaveBeenCalledWith(expect.objectContaining({ id: target.id }))
   })
 
   it('403 응답 시 권한 없음 메시지를 표시한다', async () => {
