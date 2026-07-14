@@ -38,7 +38,7 @@ interface ProjectAutomationSettingsPageProps {
  * - 헤더 + AutomationRuleList + AutomationRuleFormDialog + WebhookTokenModal + RuleConflictWarningModal
  *   + RuleExecutionHistoryDialog 조립.
  * - projectKey가 없거나 빈 문자열이면 ProjectNotFoundScreen을 렌더한다.
- * - 상태 4종을 이 컴포넌트가 보유한다.
+ * - 상태 5종을 이 컴포넌트가 보유한다.
  *   - `dialogOpen`/`editingRule` — AutomationRuleList의 onAddRule(신규)·onEditRule(수정)
  *     콜백이 갱신하고, AutomationRuleFormDialog에 그대로 전달한다.
  *   - `webhookToken` — FormDialog의 onWebhookToken 콜백으로 1회 전달받아 WebhookTokenModal에
