@@ -1,5 +1,5 @@
 // FR-AT-01 D6 자동화 룰 MSW fixture — 시드 데이터·공유 stateful store·시나리오 플래그 상수
-import type { AutomationRule } from '@/api/automation-rules.types'
+import type { AutomationRule, RuleConflict } from '@/api/automation-rules.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UUID v4 생성 헬퍼 (board-fixtures.ts 동형) — 신규 의존성 금지, crypto.randomUUID 표준 API 사용
@@ -29,6 +29,8 @@ export function generateUuidV4(): string {
 export const SCENARIO_KEY = {
   /** 목록 GET을 store 내용과 무관하게 빈 배열로 강제한다 — 빈 상태 CTA E2E용 */
   EMPTY_LIST: 'msw:automation-rule:empty-list',
+  /** create/patch 응답에 결정적 충돌을 실어 충돌 경고 모달을 강제 재현한다(FR-AT-04 D6/D7) */
+  WITH_CONFLICTS: 'msw:automation-rule:with-conflicts',
 } as const
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -46,6 +48,31 @@ export const SEED_AUTOMATION_RULE_IDS = {
   issueCreated: 'a1000000-0000-4000-8000-000000000001',
   scheduled: 'a1000000-0000-4000-8000-000000000002',
 } as const
+
+/**
+ * SCENARIO_KEY.WITH_CONFLICTS 플래그 on 시 create/patch 핸들러가 응답에 실을 결정적 충돌 목록.
+ * CYCLE 1건(시드된 SCHEDULED 룰과의 순환 참조) + PERMISSION_MISSING 1건, 두 항목 모두 soft
+ * WARNING(저장을 막지 않는다)이며 `ruleIds`에 대상 룰 id를 포함한다.
+ * E2E가 충돌 경고 모달을 결정적으로 재현할 수 있도록 매 호출 동일한 값을 반환한다.
+ *
+ * @param ruleId 충돌 대상 룰의 UUID
+ */
+export function buildSeededConflicts(ruleId: string): RuleConflict[] {
+  return [
+    {
+      type: 'CYCLE',
+      severity: 'WARNING',
+      ruleIds: [ruleId, SEED_AUTOMATION_RULE_IDS.scheduled],
+      detail: '이 룰과 "매일 오전 스캔" 룰이 서로를 트리거하는 순환 구조입니다.',
+    },
+    {
+      type: 'PERMISSION_MISSING',
+      severity: 'WARNING',
+      ruleIds: [ruleId],
+      detail: '이 룰의 실행자에게 프로젝트 자동화 실행 권한이 없습니다.',
+    },
+  ]
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 기본 시드 룰 목록 — 응답 스키마 required 전 필드 채움(zod-schema-strengthen-inline-mock-fanout).
