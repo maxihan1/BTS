@@ -1,10 +1,11 @@
-// 자동화 룰 실행 이력(RuleExecution) 조회 REST 컨트롤러 — 룰별 목록 + 단건 trace, MANAGE_AUTOMATION 가드 (FR-AT-05 Task 4)
+// 자동화 룰 실행 이력(RuleExecution) 조회 + replay(재실행) REST 컨트롤러 — MANAGE_AUTOMATION 가드 (FR-AT-05 Task 4/5)
 
 package com.bts.automation.adapter.web
 
 import com.bts.automation.adapter.web.dto.RuleExecutionDetailResponse
 import com.bts.automation.adapter.web.dto.RuleExecutionSummaryResponse
 import com.bts.automation.application.AutomationForbiddenException
+import com.bts.automation.application.AutomationRuleUnavailableException
 import com.bts.automation.application.RuleExecutionNotFoundException
 import com.bts.automation.application.RuleExecutionService
 import org.slf4j.LoggerFactory
@@ -17,6 +18,7 @@ import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.bind.annotation.RestControllerAdvice
@@ -27,25 +29,22 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * 자동화 룰 실행 이력(RuleExecution) 조회 REST 컨트롤러 (FR-AT-05 Task 4).
+ * 자동화 룰 실행 이력(RuleExecution) 조회 + replay(재실행) REST 컨트롤러 (FR-AT-05 Task 4/5).
  *
- * spec API 표 endpoint 2종.
+ * spec API 표 endpoint 3종.
  * - `GET /api/v1/projects/{projectKey}/automation/rules/{ruleId}/executions` — 룰별 이력 목록(최신순).
  * - `GET /api/v1/automation/executions/{id}` — 단건 trace(outcomes+triggerEvent 포함).
+ * - `POST /api/v1/automation/executions/{id}/replay` — 저장된 원본 트리거로 실제 재실행(Task 5).
  *
- * replay(POST, 재실행)는 이 컨트롤러 범위가 아니다(Task 5).
- *
- * 두 경로의 prefix 가 서로 달라(하나는 프로젝트 스코프, 하나는 전역) class-level `@RequestMapping` 을
- * 두지 않고 메서드마다 전체 경로를 명시한다([com.bts.automation.adapter.web.AutomationRuleController] 와
- * 달리 단일 리소스 prefix 로 묶이지 않는다).
+ * 세 경로의 prefix 가 서로 달라(프로젝트 스코프/전역 혼재) class-level `@RequestMapping` 없이 메서드마다
+ * 전체 경로를 명시한다(단일 리소스 prefix 로 묶이지 않는다).
  *
  * ## 자체 actor 추출기 + 스코프 예외 핸들러 ([[domain-exception-http-handler-basepackage-scope]])
- * [AutomationRuleController] 의 예외 핸들러([com.bts.automation.adapter.web.AutomationRuleExceptionHandler])는
- * `assignableTypes` 가 그 컨트롤러로 한정돼 있어 이 컨트롤러의 예외를 잡지 않는다. 마찬가지로 그 컨트롤러의
- * private actor 추출기도 재사용할 수 없어([[auth-extraction-before-resource-lookup]] — actor 추출은 서비스
- * 호출(권한 판정·리소스 조회)보다 먼저), 이 파일이 자체 [AutomationExecutionActorExtractor] +
- * [AutomationExecutionExceptionHandler] 를 둔다(동형 복제, 코드 중복이지만 파일 경계를 넘는 private 공유는
- * 불가능하다).
+ * [AutomationRuleController] 의 예외 핸들러는 `assignableTypes` 가 그 컨트롤러로 한정돼 이 컨트롤러의
+ * 예외를 잡지 않는다. private actor 추출기도 재사용 불가([[auth-extraction-before-resource-lookup]] —
+ * actor 추출은 서비스 호출(권한 판정·리소스 조회)보다 먼저)라, 이 파일이 자체
+ * [AutomationExecutionActorExtractor] + [AutomationExecutionExceptionHandler] 를 둔다(동형 복제, 파일
+ * 경계를 넘는 private 공유 불가).
  *
  * @param service 실행 이력 조회 유스케이스 서비스.
  */
@@ -108,6 +107,23 @@ class AutomationExecutionController(
         return ResponseEntity.ok(RuleExecutionDetailResponse.from(execution))
     }
 
+    /**
+     * [id] 실행 이력을 재료로 **실제 재실행**한다(FR-AT-05 Task 5, dryRun=false — 실제 이슈 변경 유발,
+     * [RuleExecutionService.replay] KDoc 참고). 권한 판정은 [get] 과 동일 정책(존재 숨김, 404).
+     *
+     * @param id 재실행 재료가 될 원본 실행 이력 id(경로 변수).
+     * @return 200 OK + 새로 생성된 실행 이력의 trace 상세.
+     */
+    @PostMapping("/api/v1/automation/executions/{id}/replay")
+    fun replay(
+        @PathVariable id: UUID,
+    ): ResponseEntity<RuleExecutionDetailResponse> {
+        val actorId = AutomationExecutionActorExtractor.extract()
+        val replayed = service.replay(actorId, id)
+        log.info("AutomationExecutionController.replay actor={} sourceId={} newId={}", actorId, id, replayed.id)
+        return ResponseEntity.ok(RuleExecutionDetailResponse.from(replayed))
+    }
+
     private companion object {
         const val DEFAULT_LIMIT = 50
         const val MIN_LIMIT = 1
@@ -116,11 +132,9 @@ class AutomationExecutionController(
 }
 
 /**
- * [SecurityContextHolder] 에서 인증된 사용자의 UUID 를 추출한다([com.bts.automation.adapter.web.AutomationRuleController]
- * 의 `AutomationActorExtractor` 동형 복제 — 클래스 KDoc "자체 actor 추출기 + 스코프 예외 핸들러" 참고).
- *
- * [AutomationExecutionController] 의 모든 핸들러가 서비스 호출(권한 판정·리소스 조회)보다 **먼저** 호출해
- * 존재 probe 를 차단한다([[auth-extraction-before-resource-lookup]]).
+ * [SecurityContextHolder] 에서 인증된 사용자의 UUID 를 추출한다(`AutomationActorExtractor` 동형 복제 —
+ * 클래스 KDoc "자체 actor 추출기 + 스코프 예외 핸들러" 참고). 모든 핸들러가 서비스 호출(권한 판정·리소스
+ * 조회)보다 **먼저** 호출해 존재 probe 를 차단한다([[auth-extraction-before-resource-lookup]]).
  */
 private object AutomationExecutionActorExtractor {
     /**
@@ -150,10 +164,8 @@ private object AutomationExecutionActorExtractor {
  * [assignableTypes] 를 [AutomationExecutionController] 로 한정해 다른 컨트롤러를 가로채지 않는다
  * ([[domain-exception-http-handler-basepackage-scope]]). [ResponseStatusException] 은 전용 핸들러가
  * 상태를 그대로 전파하고, 분류되지 않은 예외만 [handleInternal] 이 500 으로 매핑한다(401 이 500 으로
- * 변질되지 않게 한다 — [[catch-all-exceptionhandler-swallows-responsestatusexception]]).
- *
- * 에러 코드 prefix 는 `AUTOMATION_` 로 고정한다([com.bts.automation.adapter.web.AutomationRuleExceptionHandler]
- * 동일 관례).
+ * 변질되지 않게 한다 — [[catch-all-exceptionhandler-swallows-responsestatusexception]]). 에러 코드
+ * prefix 는 `AUTOMATION_` 로 고정한다(`AutomationRuleExceptionHandler` 동일 관례).
  */
 @RestControllerAdvice(assignableTypes = [AutomationExecutionController::class])
 class AutomationExecutionExceptionHandler {
@@ -184,6 +196,19 @@ class AutomationExecutionExceptionHandler {
             "Not Found",
             RuleExecutionErrorCodes.EXECUTION_NOT_FOUND,
             "실행 이력을 찾을 수 없습니다.",
+        )
+    }
+
+    /** replay 대상 룰이 소프트 삭제/부재라 재실행 재료를 찾을 수 없음([RuleExecutionService.replay] 참고) — 409. */
+    @ExceptionHandler(AutomationRuleUnavailableException::class)
+    fun handleRuleUnavailable(ex: AutomationRuleUnavailableException): ProblemDetail {
+        log.info("AUTOMATION_409 rule_unavailable ruleId={}", ex.ruleId)
+        return problem(
+            HttpStatus.CONFLICT,
+            "automation-execution-rule-unavailable",
+            "Conflict",
+            RuleExecutionErrorCodes.RULE_UNAVAILABLE,
+            "재실행 대상 자동화 룰을 더 이상 사용할 수 없습니다.",
         )
     }
 
@@ -263,13 +288,11 @@ class AutomationExecutionExceptionHandler {
     }
 }
 
-/**
- * [AutomationExecutionController] 전용 에러 코드 상수([com.bts.automation.adapter.web.AutomationRuleExceptionHandler]
- * 의 `private companion object` 동일 관례 — `AUTOMATION_` prefix 고정).
- */
+/** [AutomationExecutionController] 전용 에러 코드 상수(`AutomationRuleExceptionHandler` 동일 관례 — `AUTOMATION_` prefix 고정). */
 private object RuleExecutionErrorCodes {
     const val ACCESS_DENIED = "AUTOMATION_ACCESS_DENIED"
     const val EXECUTION_NOT_FOUND = "AUTOMATION_EXECUTION_NOT_FOUND"
+    const val RULE_UNAVAILABLE = "AUTOMATION_RULE_UNAVAILABLE"
     const val MALFORMED_REQUEST = "AUTOMATION_MALFORMED_REQUEST"
     const val UNAUTHENTICATED = "AUTOMATION_UNAUTHENTICATED"
     const val INTERNAL_ERROR = "AUTOMATION_INTERNAL_ERROR"
