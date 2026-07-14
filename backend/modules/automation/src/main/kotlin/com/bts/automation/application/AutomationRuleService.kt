@@ -14,10 +14,13 @@ import com.bts.automation.domain.InvalidConditionExpressionException
 import com.bts.automation.domain.RuleConflict
 import com.bts.automation.domain.TriggerConfig
 import com.bts.automation.domain.TriggerType
+import com.bts.automation.gitops.ExportRuleInput
+import com.bts.automation.gitops.ImportRuleCommand
 import com.bts.shared.permission.AutomationPermissionResolver
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import org.springframework.dao.DuplicateKeyException
 import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.scheduling.support.CronExpression
 import org.springframework.stereotype.Service
@@ -136,7 +139,11 @@ import java.util.UUID
  *   `NoSuchBeanDefinitionException` 방지). 테스트는 고정 인스턴스를 주입한다.
  */
 @Service
-@Suppress("LongParameterList") // FR-AT-04 Task 5 에서 conflictAnalyzer 추가로 7개(기존 6개 + 1) — 전부 필수 협력자 주입
+// LongParameterList: FR-AT-04 Task 5 에서 conflictAnalyzer 추가로 7개(기존 6개 + 1) — 전부 필수 협력자 주입.
+// TooManyFunctions: 게이트2 코드리뷰 CONCERN-2 수정으로 assertManageAutomationPermission 이 추가돼 11개
+// (임계값 11)가 됐다 — [assertManageAutomationPermission] KDoc 참고, private assertManageAutomation 에
+// 접근해야 해서 top-level 함수로 뺄 수 없다.
+@Suppress("LongParameterList", "TooManyFunctions")
 class AutomationRuleService(
     private val repository: AutomationRuleRepository,
     private val actionRepository: AutomationActionRepository,
@@ -200,8 +207,9 @@ class AutomationRuleService(
         val domainCondition = condition?.let(Condition::fromJson)
 
         val now = Instant.now(clock)
-        val webhookToken = if (triggerType == TriggerType.WEBHOOK) mintWebhookToken() else null
-        val nextFireAt = if (triggerType == TriggerType.SCHEDULED) initialNextFireAt(triggerConfig, now) else null
+        val webhookToken = if (triggerType == TriggerType.WEBHOOK) mintWebhookToken(secureRandom) else null
+        val nextFireAt =
+            if (triggerType == TriggerType.SCHEDULED) initialNextFireAt(objectMapper, triggerConfig, now) else null
 
         val rule =
             AutomationRule.create(
@@ -262,6 +270,185 @@ class AutomationRuleService(
     ): AutomationRule {
         assertManageAutomation(actorId, projectKey)
         return hydrateRule(actionRepository, conditionRepository, findInProject(projectKey, id))
+    }
+
+    /**
+     * [projectKey] 의 소프트삭제되지 않은 전 규칙(활성+비활성)을 GitOps YAML export 용 뷰로 반환한다
+     * (FR-AT-06 GitOps Task 3).
+     *
+     * [repository.findByProject] 는 [AutomationRule.actions]/[AutomationRule.condition] 을 로드하지
+     * 않으므로(클래스 KDoc §액션/actor 매핑·§조건 게이트 매핑 참고) 규칙별로 [hydrateRule] 을 거쳐 채운 뒤
+     * [ExportRuleInput] 으로 매핑한다. [repository.findByProject] 가 이미 `created_at, id` 순으로 반환하므로
+     * ([com.bts.automation.adapter.AutomationRuleRepository] `SQL_FIND_BY_PROJECT` 참고) GitOps git diff
+     * 안정성을 위한 결정적 순서(spec FR1)가 별도 정렬 없이 그대로 보장된다.
+     *
+     * [ExportRuleInput] 은 `webhookTokenHash`/`version`/`nextFireAt` 필드 자체를 갖지 않는다(codec 클래스
+     * KDoc 참고) — 이 매핑이 그 필드들을 다루지 않는 것 자체가 spec NFR3(비밀 미노출)의 타입 레벨 방어다.
+     *
+     * 규칙별 하이드레이션은 N+1 조회이지만, 프로젝트당 규칙 수가 소규모(수십~수백)라 허용한다(spec NFR1).
+     *
+     * @param actorId export 를 요청하는 행위자.
+     * @param projectKey export 대상 프로젝트 키.
+     * @return `created_at, id` 순 정렬된 [ExportRuleInput] 목록(활성+비활성 전부, 소프트삭제 제외).
+     * @throws AutomationForbiddenException [actorId] 가 [projectKey] 에서 MANAGE_AUTOMATION 권한이 없을 때.
+     */
+    @Transactional(readOnly = true)
+    fun exportRules(
+        actorId: UUID,
+        projectKey: String,
+    ): List<ExportRuleInput> {
+        assertManageAutomation(actorId, projectKey)
+        return repository
+            .findByProject(projectKey)
+            .map { hydrateRule(actionRepository, conditionRepository, it) }
+            .map(AutomationRule::toExportRuleInput)
+    }
+
+    /**
+     * [actorId] 가 [projectKey] 에서 MANAGE_AUTOMATION 권한을 가졌는지만 판정한다(게이트2 코드리뷰
+     * CONCERN-2 수정).
+     *
+     * [com.bts.automation.adapter.web.AutomationRuleController.import] 가
+     * [com.bts.automation.gitops.AutomationYamlCodec.fromYaml] 파싱·바이트/규칙수 상한 검증보다 **먼저**
+     * 이 메서드를 호출해, 미인가 사용자가 YAML을 보내 파싱
+     * 성공/실패나 규칙 수 초과 여부 같은 응답 차이(오라클)를 관찰하지 못하게 막는다 — 권한 판정이
+     * 리소스 조회보다 먼저여야 한다는 원칙([[auth-extraction-before-resource-lookup]])을 "리소스 조회"
+     * 대신 "요청 본문 파싱/검증"까지 확장한 적용이다.
+     *
+     * [importRules] 내부의 `assertManageAutomation` 호출은 이 메서드가 대체하지 않고 그대로 남는다 —
+     * 같은 `@Transactional` 저장 경계 안에서 재확인하는 defense-in-depth이자 멱등한 순수 판정이라 두 번
+     * 호출해도 부작용이 없다.
+     *
+     * 이 메서드 자체는 아무것도 쓰지 않으므로 `@Transactional(readOnly = true)` 로 둔다(DATA.md §6).
+     * [AutomationRuleController] 가 주입받은 이 서비스 빈을 통해 호출하므로 Spring 트랜잭션 프록시를
+     * 정상적으로 거친다([[transaction-self-invocation-requires-new]] 함정과 무관 — self-invocation 이 아니다).
+     *
+     * @param actorId 판정 대상 행위자.
+     * @param projectKey 판정 대상 프로젝트 키.
+     * @throws AutomationForbiddenException [actorId] 가 [projectKey] 에서 MANAGE_AUTOMATION 권한이 없을 때.
+     */
+    @Transactional(readOnly = true)
+    fun assertManageAutomationPermission(
+        actorId: UUID,
+        projectKey: String,
+    ) {
+        assertManageAutomation(actorId, projectKey)
+    }
+
+    /**
+     * GitOps YAML import — [commands] 를 id(UUID) 기준 upsert 해 [projectKey] 에 반영한다(FR-AT-06
+     * GitOps Task 4).
+     *
+     * ## 원자성(spec FR4)
+     * 이 메서드는 **단일 `@Transactional`** 이다. [commands] 중 하나라도 검증/저장에 실패하면 예외가 이
+     * 메서드 밖으로 그대로 전파되어(catch-continue 하지 않는다) Spring 이 트랜잭션 전체를 롤백한다 —
+     * 이미 처리된 앞선 커맨드의 저장도 함께 롤백된다(부분 실패 = 전량 실패, spec S4). `conflicts` 분석은
+     * 이 메서드 **안에서 호출하지 않는다** — 참여 트랜잭션 rollback-only 오염 회귀
+     * ([[workflowstatecatalog-mandatory-rollback-poison]], 클래스 KDoc §규칙 충돌 lint 통합 참고)와 동일한
+     * 이유로, 커밋 후 별도 호출자가 [analyzeProjectConflicts] 를 호출해야 한다(Task 5 scope).
+     *
+     * ## id 해석 (spec FR3 upsert 4분기)
+     * 커맨드별로 이 메서드가 루프 안에서 직접 [ImportRuleCommand.id] 를 해석한다(별도 함수로 빼지 않고
+     * 인라인한 이유는 아래 구현 참고 — detekt `TooManyFunctions` 예산). 이 프로젝트에 미삭제로
+     * 존재하면 UPDATE, 그 외(어디에도 없음 / 다른 프로젝트 소유 / 소프트삭제됨)는 모두 CREATE 를
+     * 시도한다. `AutomationRuleRepository` 에 신규 finder 를 추가하지 않고 기존 `findById`(활성 행만
+     * 조회) + `automation_rules.id` PK UNIQUE 제약의 자연스러운 INSERT 실패로 전역 존재/귀속 판정을
+     * 대체한다(Task 4 GREEN 설계 노트, [createImportedRule] KDoc §id 귀속 충돌(EC4) 검출 참고) — id 가
+     * 어디에도 없으면 CREATE 가 그대로 성공하고(id 보존), 다른 프로젝트 소유 또는 소프트삭제된 id 면
+     * INSERT 가 PK 제약을 위반해 EC4 로 수렴한다.
+     *
+     * ## 실패 커맨드 인덱스 (spec C3, Task 5 인계)
+     * OCC 충돌([AutomationRuleVersionConflictException], 기존 409 매핑 재사용)을 제외한 모든 실패는
+     * [AutomationImportCommandException] 으로 감싸 실패한 [commands] 의 0-based 인덱스를 담는다 — Task
+     * 5의 HTTP 계층이 이 인덱스로 "어느 규칙이 왜 실패했는지"를 ProblemDetail 에 노출한다.
+     *
+     * @param actorId import 를 요청하는 행위자. 모든 커맨드의 `createdBy` 로 고정된다(spec FR3,
+     *   `actorUserId` 와 별개).
+     * @param projectKey import 대상 프로젝트 키.
+     * @param commands YAML 에서 파싱된 규칙별 import 커맨드 목록(입력 순서 보존,
+     *   [com.bts.automation.gitops.AutomationYamlCodec.fromYaml] 산출물).
+     * @return 생성/갱신 카운트 + 입력 순서 규칙 id 목록 + 새로 생성된 WEBHOOK 규칙의 1회 노출 토큰 목록.
+     * @throws AutomationForbiddenException [actorId] 가 [projectKey] 에서 MANAGE_AUTOMATION 권한이 없을 때.
+     * @throws AutomationImportCommandException [commands] 중 하나라도 검증/처리에 실패했을 때(OCC 제외).
+     * @throws AutomationRuleVersionConflictException import-update 도중 다른 트랜잭션이 먼저 갱신했을 때
+     *   (spec C2).
+     */
+    @Suppress("TooGenericExceptionCaught") // OCC 를 제외한 모든 실패를 인덱스로 감싸 재던지기 위함(KDoc §실패 커맨드 인덱스)
+    @Transactional
+    fun importRules(
+        actorId: UUID,
+        projectKey: String,
+        commands: List<ImportRuleCommand>,
+    ): ImportOutcome {
+        assertManageAutomation(actorId, projectKey)
+        var createdCount = 0
+        var updatedCount = 0
+        val ruleIds = mutableListOf<UUID>()
+        val webhookTokens = mutableListOf<ImportedWebhookToken>()
+        // id 해석(existing 조회)·CREATE/UPDATE 분기·실패 인덱스 감싸기는 이 루프 안에 인라인한다 —
+        // 별도 클래스 멤버/top-level 함수로 빼면 detekt TooManyFunctions 예산(파일 11·클래스 11)을
+        // 넘긴다(KDoc §id 해석 참고, top-level 함수는 이미 [createImportedRule]/[updateImportedRule]
+        // 로 분리돼 있다).
+        commands.forEachIndexed { index, command ->
+            // id 해석 — findById 는 활성(미삭제) 행만 반환하므로, "존재 + 이 프로젝트 소속"일 때만
+            // UPDATE 로 분기하고 나머지(id 없음/전역 미존재/다른 프로젝트/소프트삭제)는 모두 CREATE 를
+            // 시도한다 — 후자 두 케이스의 EC4 판정은 createImportedRule 의 PK 제약 위반 감지로 수렴한다
+            // (KDoc §id 해석 참고).
+            val existing = command.id?.let(repository::findById)
+            val outcome =
+                try {
+                    if (existing != null && existing.projectKey == projectKey) {
+                        updateImportedRule(
+                            actorId = actorId,
+                            projectKey = projectKey,
+                            existing = existing,
+                            command = command,
+                            repository = repository,
+                            actionRepository = actionRepository,
+                            conditionRepository = conditionRepository,
+                            objectMapper = objectMapper,
+                            clock = clock,
+                            log = log,
+                        )
+                    } else {
+                        createImportedRule(
+                            actorId = actorId,
+                            projectKey = projectKey,
+                            command = command,
+                            repository = repository,
+                            conditionRepository = conditionRepository,
+                            objectMapper = objectMapper,
+                            secureRandom = secureRandom,
+                            clock = clock,
+                            log = log,
+                        )
+                    }
+                } catch (e: AutomationRuleVersionConflictException) {
+                    // OCC(spec C2)는 실패 인덱스로 감싸지 않고 그대로 재전파한다 — 기존 patch() 의 409
+                    // 예외 핸들러(Task 5)를 import 에서도 그대로 재사용하기 위함이다.
+                    throw e
+                } catch (e: RuntimeException) {
+                    // OCC 를 제외한 나머지(도메인 검증·EC3·EC4 등)는 전부 실패 커맨드 인덱스로 감싼다
+                    // (spec C3, KDoc §실패 커맨드 인덱스 참고).
+                    throw AutomationImportCommandException(index, command.id, e)
+                }
+            ruleIds += outcome.ruleId
+            if (outcome.created) createdCount++ else updatedCount++
+            outcome.webhookToken?.let(webhookTokens::add)
+        }
+        log.info(
+            "automation_rules_imported projectKey={} created={} updated={} total={}",
+            projectKey,
+            createdCount,
+            updatedCount,
+            commands.size,
+        )
+        return ImportOutcome(
+            created = createdCount,
+            updated = updatedCount,
+            ruleIds = ruleIds,
+            webhookTokens = webhookTokens,
+        )
     }
 
     /**
@@ -334,7 +521,7 @@ class AutomationRuleService(
         // spec G3 — triggerConfig(cron) 변경 또는 비활성→활성 전환 시 nextFireAt 재계산.
         val reactivated = enabled == true && wasDisabled
         if (updated.triggerType == TriggerType.SCHEDULED && (triggerConfig != null || reactivated)) {
-            updated = updated.copy(nextFireAt = initialNextFireAt(updated.triggerConfig, now))
+            updated = updated.copy(nextFireAt = initialNextFireAt(objectMapper, updated.triggerConfig, now))
         }
 
         // 무변경(no-op) PATCH — 어떤 도메인 동작(rename/updateConfig/enable/disable/updateActions)도
@@ -445,34 +632,6 @@ class AutomationRuleService(
         }
         return rule
     }
-
-    /**
-     * SCHEDULED triggerConfig 의 cron 필드로 다음 발화 시각(UTC)을 계산한다.
-     *
-     * 호출 시점에는 [TriggerConfig.validate] 또는 [AutomationRule.updateConfig] 가 이미 cron 파싱
-     * 가능성을 검증했다고 전제한다 — 그럼에도 방어적으로 null 체크를 명시한다(`!!` 금지).
-     */
-    private fun initialNextFireAt(
-        triggerConfig: String,
-        now: Instant,
-    ): Instant {
-        val cronNode = objectMapper.readTree(triggerConfig).get(FIELD_CRON)
-        val cron = requireNotNull(cronNode?.asText()?.takeIf { it.isNotBlank() }) { "cron 필드가 없습니다." }
-        val next = CronExpression.parse(cron).next(now.atZone(ZoneOffset.UTC))
-        return requireNotNull(next) { "cron 표현식 '$cron' 에서 다음 발화 시각을 계산할 수 없습니다." }.toInstant()
-    }
-
-    /** [SecureRandom] 256bit 원문 + SHA-256 hex 해시를 발급한다(notification `ShareTokenMinter` 패턴 미러). */
-    private fun mintWebhookToken(): WebhookToken {
-        val rawBytes = ByteArray(TOKEN_BYTES).also(secureRandom::nextBytes)
-        val plaintext = Base64.getUrlEncoder().withoutPadding().encodeToString(rawBytes)
-        return WebhookToken(plaintext, sha256Hex(plaintext))
-    }
-
-    private companion object {
-        const val FIELD_CRON = "cron"
-        const val TOKEN_BYTES = 32
-    }
 }
 
 /**
@@ -564,7 +723,32 @@ private fun toDomainAction(input: AutomationActionInput): Action {
     return Action.fromJson(actionType, input.config)
 }
 
+private const val FIELD_CRON = "cron"
+
+/**
+ * SCHEDULED triggerConfig 의 cron 필드로 다음 발화 시각(UTC)을 계산한다.
+ *
+ * top-level 함수로 둔 이유는 [applyFieldPatch]/[toDomainAction] 와 동일하다 — 클래스 멤버로 두면
+ * [AutomationRuleService] 의 함수 개수([TooManyFunctions]) 예산을 넘긴다(FR-AT-06 GitOps Task 4 에서
+ * [AutomationRuleService.importRules] 추가로 예산 확보를 위해 이 함수를 클래스 멤버에서 top-level 로
+ * 이동했다 — 기존 [AutomationRuleService.create]/[AutomationRuleService.patch] 호출부는 `objectMapper` 를
+ * 명시 인자로 넘기도록만 바뀌었을 뿐 동작은 그대로다). 호출 시점에는 [TriggerConfig.validate] 또는
+ * [AutomationRule.updateConfig] 가 이미 cron 파싱 가능성을 검증했다고 전제한다 — 그럼에도 방어적으로
+ * null 체크를 명시한다(`!!` 금지).
+ */
+private fun initialNextFireAt(
+    objectMapper: ObjectMapper,
+    triggerConfig: String,
+    now: Instant,
+): Instant {
+    val cronNode = objectMapper.readTree(triggerConfig).get(FIELD_CRON)
+    val cron = requireNotNull(cronNode?.asText()?.takeIf { it.isNotBlank() }) { "cron 필드가 없습니다." }
+    val next = CronExpression.parse(cron).next(now.atZone(ZoneOffset.UTC))
+    return requireNotNull(next) { "cron 표현식 '$cron' 에서 다음 발화 시각을 계산할 수 없습니다." }.toInstant()
+}
+
 private const val SHA_256 = "SHA-256"
+private const val TOKEN_BYTES = 32
 
 /**
  * 원문을 SHA-256 hex(소문자 64자) 해시로 변환한다(FR-AT-02 Task 11 — [TooManyFunctions] 예산 때문에
@@ -574,6 +758,22 @@ private const val SHA_256 = "SHA-256"
 private fun sha256Hex(plaintext: String): String {
     val digest = MessageDigest.getInstance(SHA_256).digest(plaintext.toByteArray(Charsets.UTF_8))
     return digest.joinToString("") { "%02x".format(it) }
+}
+
+/**
+ * [SecureRandom] 256bit 원문 + SHA-256 hex 해시를 발급한다(notification `ShareTokenMinter` 패턴 미러).
+ *
+ * top-level 함수로 둔 이유는 [applyFieldPatch]/[toDomainAction]/[sha256Hex]/[hydrateRule]/
+ * [toExportRuleInput] 와 동일하다 — 클래스 멤버로 두면 [AutomationRuleService] 의 함수 개수
+ * ([TooManyFunctions]) 예산을 넘긴다(FR-AT-06 GitOps Task 3 에서 [AutomationRuleService.exportRules] 가
+ * 추가되며 예산 확보를 위해 이 함수를 클래스 멤버에서 top-level 로 이동했다). [secureRandom] 을 명시
+ * 파라미터로 받는다 — top-level 함수라 인스턴스 필드에 접근할 수 없어 호출자([AutomationRuleService.create])
+ * 가 자신의 `secureRandom` 필드를 매번 넘긴다.
+ */
+private fun mintWebhookToken(secureRandom: SecureRandom): WebhookToken {
+    val rawBytes = ByteArray(TOKEN_BYTES).also(secureRandom::nextBytes)
+    val plaintext = Base64.getUrlEncoder().withoutPadding().encodeToString(rawBytes)
+    return WebhookToken(plaintext, sha256Hex(plaintext))
 }
 
 /** [SecureRandom] 원문 + SHA-256 해시 쌍(내부 전용 — 원문은 [CreatedAutomationRule] 경계 밖으로 나가지 않는다). */
@@ -602,6 +802,221 @@ private fun hydrateRule(
         actions = actionRepository.findByRuleId(rule.id),
         condition = conditionRepository.findByRuleId(rule.id),
     )
+
+/**
+ * [AutomationRule] → [ExportRuleInput] 매핑(FR-AT-06 GitOps Task 3, [AutomationRuleService.exportRules] 전용).
+ *
+ * top-level 함수로 둔 이유는 [applyFieldPatch]/[toDomainAction]/[sha256Hex]/[hydrateRule] 와 동일하다 —
+ * 클래스 멤버로 두면 [AutomationRuleService] 의 함수 개수([TooManyFunctions]) 예산을 넘긴다. 호출자가 이미
+ * [hydrateRule] 로 actions/condition 을 채운 [rule] 을 전달한다고 전제한다(호출 순서는
+ * [AutomationRuleService.exportRules] 참고). `webhookTokenHash`/`nextFireAt`/`version`/`createdBy`/
+ * `createdAt`/`updatedAt` 은 [ExportRuleInput] 이 애초에 필드로 갖지 않으므로 이 매핑에서 다루지 않는다.
+ */
+private fun AutomationRule.toExportRuleInput(): ExportRuleInput =
+    ExportRuleInput(
+        id = id,
+        name = name,
+        enabled = enabled,
+        actorUserId = actorUserId,
+        triggerType = triggerType,
+        triggerConfig = triggerConfig,
+        condition = condition,
+        actions = actions,
+    )
+
+/**
+ * [AutomationRuleService.importRules] 커맨드 1건의 CREATE/UPDATE 분기 처리 결과(FR-AT-06 GitOps Task 4).
+ *
+ * top-level 함수([createImportedRule]/[updateImportedRule])가 공유하는 반환 타입이라 같은 위치에 둔다.
+ *
+ * @property ruleId 처리된 규칙 id.
+ * @property created `true` 면 CREATE, `false` 면 UPDATE.
+ * @property webhookToken 이번 커맨드로 새로 생성된 WEBHOOK 규칙의 1회 노출 토큰. 그 외(UPDATE 전부,
+ *   WEBHOOK 이 아닌 CREATE)는 `null`(spec FR8 — 갱신은 토큰을 재mint 하지 않는다).
+ */
+private data class ImportedCommandOutcome(
+    val ruleId: UUID,
+    val created: Boolean,
+    val webhookToken: ImportedWebhookToken?,
+)
+
+/**
+ * import 커맨드로 신규 [AutomationRule] 을 생성한다(FR-AT-06 GitOps Task 4, spec FR3 "id 부재 또는 전역
+ * 미존재" 분기, [AutomationRuleService.importRules] 전용).
+ *
+ * [AutomationRuleService.create] 와 동일한 순서로 검증한다 — triggerConfig 형식 → 액션 → 조건 →
+ * (형식이 모두 유효할 때만) 웹훅 토큰 발급/nextFireAt 계산 → [AutomationRule.create]. [ImportRuleCommand.id]
+ * 가 있으면 그 id 로, 없으면 새 랜덤 UUID 로 생성한다(id 보존, spec FR3). [ImportRuleCommand.enabled] 를
+ * 그대로 반영한다(비활성 규칙 round-trip, spec 데이터 모델 변경 §).
+ *
+ * ## id 귀속 충돌(EC4) 검출 — repository 신규 finder 없이 기존 PK UNIQUE 제약으로 대체
+ * [AutomationRuleService.importRules] 는 `repository.findById`(활성 행만 조회)가 [command] 의 `id`
+ * 소유이면서 `projectKey` 가 일치하는 행을 찾지 못한 모든 경우(id 부재·전역 미존재·다른 프로젝트
+ * 소유·소프트삭제)를 전부 이 함수로 위임한다 — 세 경우를 구분하려면 "프로젝트 무관 + 소프트삭제 포함"
+ * 전역 조회 finder 가 새로 필요해 보이지만, `automation_rules.id` 가 PRIMARY KEY(V300)라는 사실을
+ * 이용해 신규 finder 없이 구분한다. id 가 어디에도 없으면 이 INSERT 는 그대로 성공한다(id 보존, spec
+ * FR3). id 가 다른 프로젝트 소유이거나 소프트삭제된 채로 이미 존재하면 이 INSERT 자체가 PK UNIQUE
+ * 제약을 위반해 Spring 이 [DuplicateKeyException] 으로 변환한다(jOOQ 미도입 모듈이라 순수
+ * [org.springframework.jdbc.core.JdbcTemplate] 기본 예외 translator 가 담당 — jOOQ 전용
+ * `JooqExceptionTranslator` 불필요, [AutomationRuleRepository] 클래스 KDoc §OCC 참고). 이 예외를 잡아
+ * [AutomationImportIdConflictException] 으로 변환하면 신규 finder 없이 동일한 EC4 응답으로 수렴한다.
+ *
+ * @throws com.bts.automation.domain.TriggerConfigInvalidException triggerConfig 형식 위반 시.
+ * @throws ActionConfigInvalidException 액션 형식 위반 시.
+ * @throws InvalidConditionExpressionException 조건 형식/화이트리스트/상한 위반 시.
+ * @throws com.bts.automation.domain.AutomationRuleInvalidException name·actorUserId 등 룰 불변식 위반 시.
+ * @throws AutomationImportIdConflictException [command] 의 `id` 가 다른 프로젝트 소유이거나
+ *   소프트삭제된 경우.
+ */
+@Suppress("LongParameterList")
+private fun createImportedRule(
+    actorId: UUID,
+    projectKey: String,
+    command: ImportRuleCommand,
+    repository: AutomationRuleRepository,
+    conditionRepository: AutomationConditionRepository,
+    objectMapper: ObjectMapper,
+    secureRandom: SecureRandom,
+    clock: Clock,
+    log: Logger,
+): ImportedCommandOutcome {
+    TriggerConfig.validate(command.triggerType, command.triggerConfig)
+    val domainActions = command.actions.map { Action.fromJson(it.type, it.config) }
+    val domainCondition = command.condition?.let(Condition::fromJson)
+
+    val ruleId = command.id ?: UUID.randomUUID()
+    val actorUserId = command.actorUserId ?: actorId
+    val now = Instant.now(clock)
+    val webhookToken = if (command.triggerType == TriggerType.WEBHOOK) mintWebhookToken(secureRandom) else null
+    val nextFireAt =
+        if (command.triggerType == TriggerType.SCHEDULED) {
+            initialNextFireAt(objectMapper, command.triggerConfig, now)
+        } else {
+            null
+        }
+
+    val rule =
+        AutomationRule.create(
+            id = ruleId,
+            enabled = command.enabled,
+            projectKey = projectKey,
+            name = command.name,
+            triggerType = command.triggerType,
+            triggerConfig = command.triggerConfig,
+            createdBy = actorId,
+            webhookTokenHash = webhookToken?.hash,
+            nextFireAt = nextFireAt,
+            actorUserId = actorUserId,
+            actions = domainActions,
+            condition = domainCondition,
+            now = now,
+        )
+    try {
+        repository.save(rule)
+    } catch (e: DuplicateKeyException) {
+        throw AutomationImportIdConflictException(ruleId, e)
+    }
+    conditionRepository.replace(rule.id, domainCondition)
+    log.info(
+        "automation_rule_imported_created id={} projectKey={} triggerType={}",
+        rule.id,
+        projectKey,
+        command.triggerType,
+    )
+    return ImportedCommandOutcome(
+        ruleId = rule.id,
+        created = true,
+        webhookToken =
+            webhookToken?.let {
+                ImportedWebhookToken(ruleId = rule.id, name = rule.name, token = it.plaintext)
+            },
+    )
+}
+
+/**
+ * import 커맨드로 기존 [existing] 규칙을 갱신한다(FR-AT-06 GitOps Task 4, spec FR3 "이 프로젝트에
+ * 미삭제로 존재" 분기, [AutomationRuleService.importRules] 전용).
+ *
+ * [existing] 은 [AutomationRuleService.importRules] 가 `repository.findById` 로 이미 로드한
+ * 활성(미삭제)·같은 프로젝트 소속 룰이다. import 는 [command] 의 name·triggerConfig·actions·actorUserId
+ * 를 **항상** 전체 반영한다(선택적 PATCH 가 아니라 선언적 upsert — spec FR2). [ImportRuleCommand.condition]
+ * 이 `null` 이면(EC6) 기존 조건을 그대로 둔다 — [conditionRepository] 의 `replace` 를 호출하지 않는다.
+ *
+ * ## triggerType 불변(EC3)
+ * [existing] 의 triggerType 과 [command] 의 triggerType 이 다르면 [AutomationImportTriggerTypeChangedException]
+ * 을 던진다(도메인 제약 — 트리거 타입 변경은 삭제 후 재생성으로 안내).
+ *
+ * ## 웹훅 토큰 보존
+ * `webhookTokenHash` 는 이 함수가 거치는 어떤 도메인 동작([AutomationRule.rename]/[AutomationRule.updateConfig]/
+ * [AutomationRule.updateActions]/[AutomationRule.updateCondition]/[AutomationRule.changeActor]/
+ * [AutomationRule.enable]/[AutomationRule.disable])도 건드리지 않는 필드다 — `copy()` 기반이라 [existing]
+ * 이 이미 갖고 있던 해시가 그대로 보존된다(재mint 없음, spec FR8).
+ *
+ * ## 다필드 단일 OCC 증가 collapse
+ * [AutomationRuleService] 클래스 KDoc §다필드 PATCH 단일 OCC 증가 collapse 와 동일 원칙을 적용한다 —
+ * import 는 name·triggerConfig·actions·actorUserId 를 항상 반영해 [applyFieldPatch] 체인이 최소 4회
+ * bump 하므로, 저장 직전 `existing.version + 1` 로 collapse 해 [AutomationRuleRepository.update] 의
+ * `expectedVersion = version - 1` 술어와 일치시킨다.
+ *
+ * @throws AutomationImportTriggerTypeChangedException triggerType 이 변경된 경우.
+ * @throws com.bts.automation.domain.TriggerConfigInvalidException triggerConfig 형식 위반 시.
+ * @throws ActionConfigInvalidException 액션 형식 위반 시.
+ * @throws InvalidConditionExpressionException 조건 형식/화이트리스트/상한 위반 시.
+ * @throws com.bts.automation.domain.AutomationRuleInvalidException name·actorUserId 등 룰 불변식 위반 시.
+ * @throws AutomationRuleVersionConflictException 조회와 저장 사이 다른 트랜잭션이 먼저 갱신한 TOCTOU
+ *   레이스(spec C2).
+ */
+@Suppress("LongParameterList")
+private fun updateImportedRule(
+    actorId: UUID,
+    projectKey: String,
+    existing: AutomationRule,
+    command: ImportRuleCommand,
+    repository: AutomationRuleRepository,
+    actionRepository: AutomationActionRepository,
+    conditionRepository: AutomationConditionRepository,
+    objectMapper: ObjectMapper,
+    clock: Clock,
+    log: Logger,
+): ImportedCommandOutcome {
+    if (existing.triggerType != command.triggerType) {
+        throw AutomationImportTriggerTypeChangedException(existing.id)
+    }
+    val now = Instant.now(clock)
+    val actorUserId = command.actorUserId ?: actorId
+    var mutated =
+        applyFieldPatch(
+            rule = existing,
+            name = command.name,
+            triggerConfig = command.triggerConfig,
+            actions = command.actions.map { AutomationActionInput(type = it.type.name, config = it.config) },
+            actorUserId = actorUserId,
+            condition = command.condition,
+            now = now,
+        )
+    if (command.enabled != mutated.enabled) {
+        mutated = if (command.enabled) mutated.enable(now) else mutated.disable(now)
+    }
+    if (mutated.triggerType == TriggerType.SCHEDULED) {
+        mutated = mutated.copy(nextFireAt = initialNextFireAt(objectMapper, mutated.triggerConfig, now))
+    }
+    // 다필드 단일 OCC 증가 collapse(KDoc §다필드 단일 OCC 증가 collapse 참고) — import 는 항상 최소
+    // 4 회(name/triggerConfig/actions/actorUserId) bump 하므로 existing.version+1 로 정확히 collapse 한다.
+    mutated = mutated.copy(version = existing.version + 1)
+
+    try {
+        repository.update(mutated)
+    } catch (e: OptimisticLockingFailureException) {
+        // 서비스 레벨 조회(위 findById)는 통과했으나 그 사이 다른 트랜잭션이 먼저 갱신한 TOCTOU 레이스.
+        throw AutomationRuleVersionConflictException(existing.id, e)
+    }
+    actionRepository.replaceForRule(existing.id, mutated.actions)
+    if (command.condition != null) {
+        conditionRepository.replace(existing.id, mutated.condition)
+    }
+    log.info("automation_rule_imported_updated id={} projectKey={}", existing.id, projectKey)
+    return ImportedCommandOutcome(ruleId = existing.id, created = false, webhookToken = null)
+}
 
 /**
  * [projectKey] 소속 규칙 전체를 재조회·hydrate 해 [analyzer] 로 정적 분석한다(FR-AT-04 Task 5,
@@ -674,6 +1089,37 @@ data class PatchedAutomationRule(
 )
 
 /**
+ * [AutomationRuleService.importRules] 의 결과 — 생성/갱신 카운트 + 입력 순서 규칙 id 목록 + (생성된
+ * WEBHOOK 규칙이 있으면) 1회 노출용 원문 토큰 목록(FR-AT-06 GitOps Task 4, spec FR8).
+ *
+ * @property created 새로 생성된 규칙 수.
+ * @property updated 갱신된 규칙 수.
+ * @property ruleIds [ImportRuleCommand] 입력 순서를 보존한 규칙 id 목록.
+ * @property webhookTokens 이번 import 로 새로 생성된 WEBHOOK 규칙의 원문 토큰 목록. 갱신된 WEBHOOK
+ *   규칙은 토큰을 재mint 하지 않으므로 포함되지 않는다(spec FR8 "갱신은 토큰 보존").
+ */
+data class ImportOutcome(
+    val created: Int,
+    val updated: Int,
+    val ruleIds: List<UUID>,
+    val webhookTokens: List<ImportedWebhookToken>,
+)
+
+/**
+ * [ImportOutcome.webhookTokens] 1건 — 생성된 WEBHOOK 규칙의 id·이름·1회 노출 원문 토큰.
+ *
+ * @property ruleId 생성된 규칙 id.
+ * @property name 생성된 규칙 이름(호출자가 어느 규칙의 토큰인지 식별하기 위한 표시용).
+ * @property token 발급된 원문 토큰(1회 노출, 이후 재조회 불가 — [CreatedAutomationRule.webhookToken] 과
+ *   동일 시맨틱).
+ */
+data class ImportedWebhookToken(
+    val ruleId: UUID,
+    val name: String,
+    val token: String,
+)
+
+/**
  * MANAGE_AUTOMATION 권한이 없는 행위자의 요청을 나타낸다.
  *
  * 왜 거부됐는지(비멤버/권한 미보유/미해석 프로젝트 키)는 담지 않는 고정 일반 메시지만 갖는다
@@ -703,3 +1149,46 @@ class AutomationRuleVersionConflictException(
     val ruleId: UUID,
     cause: Throwable? = null,
 ) : RuntimeException("자동화 룰이 다른 변경으로 이미 갱신되었습니다: $ruleId", cause)
+
+/**
+ * import 커맨드의 YAML `id` 가 다른 프로젝트에 속해 있거나 소프트삭제된 규칙을 가리킬 때를 나타낸다
+ * (spec EC4, [createImportedRule] KDoc §id 귀속 충돌(EC4) 검출 참고).
+ *
+ * `automation_rules.id` 는 PK(V300)로 전역 유일해야 하므로, 이 id 로 새 규칙을 만들 수도 없고 이
+ * 프로젝트의 기존 규칙으로 취급할 수도 없다("id 귀속 충돌"). 웹 레이어에서 400 으로 매핑된다(Task 5 scope).
+ *
+ * @property ruleId 충돌이 발생한 id.
+ * @property cause `INSERT` 가 PK UNIQUE 제약을 위반해 감지된 원인이 된
+ *   [org.springframework.dao.DuplicateKeyException]. [createImportedRule] 의 단일 catch 지점에서만
+ *   던져지므로 항상 non-null 이다.
+ */
+class AutomationImportIdConflictException(
+    val ruleId: UUID,
+    cause: Throwable? = null,
+) : RuntimeException("자동화 룰 id($ruleId)가 다른 프로젝트에 속해 있거나 이미 삭제되었습니다.", cause)
+
+/**
+ * import UPDATE 대상 규칙의 triggerType 이 YAML 커맨드의 triggerType 과 다를 때를 나타낸다(spec EC3,
+ * 트리거 타입 불변 — [updateImportedRule] KDoc §triggerType 불변(EC3) 참고).
+ *
+ * @property ruleId 대상 규칙 id.
+ */
+class AutomationImportTriggerTypeChangedException(
+    val ruleId: UUID,
+) : RuntimeException("자동화 룰($ruleId)의 트리거 타입은 변경할 수 없습니다. 삭제 후 재생성하세요.")
+
+/**
+ * [AutomationRuleService.importRules] 가 [index] 번째(0-based, 입력 순서) 커맨드 처리 중 만난 실패를
+ * 감싼다(spec C3, [AutomationRuleService.importRules] KDoc §실패 커맨드 인덱스 참고).
+ *
+ * [AutomationRuleVersionConflictException](OCC, 409)은 이 래퍼를 거치지 않고 그대로 전파된다 — 기존
+ * `patch()` 의 409 예외 핸들러를 import 에서도 그대로 재사용하기 위함이다([AutomationRuleService.importRules] 참고).
+ *
+ * @property index 실패한 커맨드의 0-based 인덱스.
+ * @property ruleId 실패한 커맨드의 YAML `id`(있으면). 신규 생성 커맨드면 `null`.
+ */
+class AutomationImportCommandException(
+    val index: Int,
+    val ruleId: UUID?,
+    cause: Throwable,
+) : RuntimeException("자동화 규칙 import ${index}번째 커맨드 처리 실패: ${cause.message}", cause)

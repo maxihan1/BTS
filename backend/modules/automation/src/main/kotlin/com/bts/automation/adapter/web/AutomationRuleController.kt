@@ -3,19 +3,25 @@
 package com.bts.automation.adapter.web
 
 import com.bts.automation.adapter.web.dto.ActionRequest
+import com.bts.automation.adapter.web.dto.AutomationImportResponse
 import com.bts.automation.adapter.web.dto.AutomationRuleResponse
 import com.bts.automation.adapter.web.dto.CreateAutomationRuleRequest
 import com.bts.automation.adapter.web.dto.CreateAutomationRuleResponse
 import com.bts.automation.adapter.web.dto.PatchAutomationRuleRequest
 import com.bts.automation.application.AutomationActionInput
 import com.bts.automation.application.AutomationForbiddenException
+import com.bts.automation.application.AutomationImportCommandException
 import com.bts.automation.application.AutomationRuleNotFoundException
 import com.bts.automation.application.AutomationRuleService
 import com.bts.automation.application.AutomationRuleVersionConflictException
 import com.bts.automation.domain.AutomationDomainException
 import com.bts.automation.domain.InvalidConditionExpressionException
+import com.bts.automation.gitops.AutomationYamlCodec
+import com.bts.automation.gitops.AutomationYamlInvalidException
 import org.slf4j.LoggerFactory
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
@@ -47,13 +53,20 @@ import java.util.UUID
  * - `PATCH  /api/v1/projects/{projectKey}/automation/rules/{id}` — 부분수정(name·enabled·triggerConfig·
  *   actions·actorUserId·condition, OCC)
  * - `DELETE /api/v1/projects/{projectKey}/automation/rules/{id}` — soft delete
+ * - `GET    /api/v1/projects/{projectKey}/automation/rules/export` — 전 규칙(활성+비활성)을 GitOps YAML로
+ *   내보내기(FR-AT-06 Task 3, webhook 토큰/해시 미노출)
+ * - `POST   /api/v1/projects/{projectKey}/automation/rules/import` — GitOps YAML을 업로드해 룰을 id(UUID)
+ *   기준으로 일괄 upsert(FR-AT-06 Task 5, 200 + [com.bts.automation.adapter.web.dto.AutomationImportResponse])
  *
  * `condition`(조건 게이트 표현식, FR-AT-03)은 신규 엔드포인트 없이 생성/수정 payload 필드로만
  * 확장된다(spec FR-AT-03-7 — "신규 엔드포인트 없음").
  *
  * 모든 엔드포인트는 MANAGE_AUTOMATION 가드를 거친다. 인가 순서는 **actor 추출(401) → 권한 판정(403) →
  * 리소스 조회** 순서를 지킨다([[auth-extraction-before-resource-lookup]]) — actor 추출은 이 컨트롤러가,
- * 권한 판정과 리소스 조회는 [AutomationRuleService] 가 담당한다.
+ * 권한 판정과 리소스 조회는 [AutomationRuleService] 가 담당한다. [import] 만은 예외적으로 이 컨트롤러가
+ * [AutomationRuleService.assertManageAutomationPermission] 을 YAML 파싱/크기 검증보다 **먼저** 직접
+ * 호출한다 — "리소스 조회"를 "요청 본문 파싱/검증"까지 확장 적용한 경우다(게이트2 코드리뷰 CONCERN-2
+ * 수정, [import] KDoc §권한을 파싱/크기검증보다 먼저 판정 참고).
  *
  * 트랜잭션 경계는 이 컨트롤러가 아니라 [AutomationRuleService] 가 담당한다(learning #91).
  *
@@ -139,6 +152,101 @@ class AutomationRuleController(
         val actorId = AutomationActorExtractor.extract()
         val rule = service.get(actorId, projectKey, id)
         return ResponseEntity.ok(AutomationRuleResponse.from(rule))
+    }
+
+    /**
+     * [projectKey] 의 자동화 룰 전체(활성+비활성, 소프트삭제 제외)를 GitOps YAML로 내보낸다(FR-AT-06 Task 3).
+     *
+     * [projectKey] 는 응답의 `Content-Disposition` 파일명에 그대로 삽입되므로 [validateProjectKeyForExport]
+     * 로 화이트리스트 검증한다(헤더 인젝션 방어, search-export-import `ExportController` 선례 동형).
+     *
+     * @param projectKey 내보낼 프로젝트 키(경로 변수).
+     * @return 200 OK + `application/yaml;charset=UTF-8` + `Content-Disposition: attachment;
+     *   filename="automation-rules-{projectKey}.yaml"` + YAML 본문(webhook 토큰/해시/OCC version 미포함).
+     * @throws AutomationForbiddenException [projectKey] 에 MANAGE_AUTOMATION 권한이 없을 때.
+     * @throws AutomationProjectKeyInvalidException [projectKey] 가 화이트리스트를 벗어났을 때.
+     */
+    @GetMapping("/export")
+    fun export(
+        @PathVariable projectKey: String,
+    ): ResponseEntity<String> {
+        val actorId = AutomationActorExtractor.extract()
+        validateProjectKeyForExport(projectKey)
+        val rules = service.exportRules(actorId, projectKey)
+        val yaml = AutomationYamlCodec.toYaml(projectKey, rules)
+        log.info("AutomationRuleController.export actor={} projectKey={} count={}", actorId, projectKey, rules.size)
+        return ResponseEntity
+            .ok()
+            .contentType(MediaType.parseMediaType(MEDIA_TYPE_YAML))
+            .header(HttpHeaders.CONTENT_DISPOSITION, buildExportContentDisposition(projectKey))
+            .body(yaml)
+    }
+
+    /**
+     * [projectKey] 에 GitOps YAML을 업로드해 규칙을 id(UUID) 기준으로 일괄 upsert 한다(FR-AT-06 GitOps
+     * Task 5, spec FR2~FR4).
+     *
+     * 처리 순서 — actor 추출(401) → [AutomationRuleService.assertManageAutomationPermission] 권한 판정
+     * (403) → [validateImportByteSize] 본문 바이트 상한 검증(spec NFR2, 413) →
+     * [AutomationYamlCodec.fromYaml] 파싱(형식/스키마버전 위반 400) → [validateImportProjectKeyMatches]
+     * projectKey 일치 검증(EC2, 400) → [validateImportRuleCount] 규칙 수 상한 검증(spec NFR2·EC8, 413) →
+     * [AutomationRuleService.importRules](단일 `@Transactional`, 원자성 spec FR4) → **커밋 후** 별도로
+     * [AutomationRuleService.analyzeProjectConflicts] 호출([export]/[create]/[patch] 와 동일하게 참여
+     * 트랜잭션 rollback-only 오염을 피한다, 클래스 KDoc §규칙 충돌 lint 통합 참고).
+     *
+     * ## 권한을 파싱/크기검증보다 먼저 판정 (게이트2 코드리뷰 CONCERN-2 수정)
+     * 다른 핸들러는 권한 판정과 리소스 조회를 모두 [AutomationRuleService] 내부에 위임하지만(클래스 KDoc
+     * §인가 순서 참고), 이 핸들러는 [AutomationRuleService.assertManageAutomationPermission] 을 **YAML
+     * 파싱/바이트·규칙수 검증보다 앞서** 직접 호출한다 — 그렇지 않으면 미인가 사용자가 보낸 요청이 400/413
+     * 으로 응답해, "이 프로젝트에 MANAGE_AUTOMATION 권한이 없어도 YAML 형식/크기 검증 결과를 알 수 있다"는
+     * 오라클이 생긴다(CONCERN-1의 바이트 상한 검증과 결합하면 미인가 사용자도 파싱 CPU를 소모시킬 수 있는
+     * DoS 표면이 된다). [AutomationRuleService.importRules] 내부의 기존 권한 재확인은 그대로 유지된다
+     * (defense-in-depth, [AutomationRuleService.assertManageAutomationPermission] KDoc 참고).
+     *
+     * @param projectKey import 대상 프로젝트 키(경로 변수). YAML `projectKey` 가 비어있지 않은데 이 값과
+     *   다르면 400(EC2) — YAML에서 생략되면 이 경로 값을 권위로 사용한다.
+     * @param rawYaml GitOps YAML 스키마(v1) 텍스트 원문(`consumes` 로 지정한 YAML/텍스트 미디어 타입만
+     *   허용).
+     * @return 200 OK + [AutomationImportResponse](created/updated/total/입력순 ruleIds, 새로 생성된 WEBHOOK
+     *   룰의 1회 노출 토큰, 커밋 후 분석한 conflicts).
+     * @throws AutomationForbiddenException [projectKey] 에 MANAGE_AUTOMATION 권한이 없을 때.
+     * @throws AutomationImportTooLargeException [rawYaml] 의 UTF-8 바이트 크기가 [MAX_IMPORT_BYTES] 를
+     *   초과하거나(spec NFR2), 파싱된 규칙 수가 [MAX_IMPORT_RULES] 를 초과할 때(spec NFR2·EC8).
+     * @throws AutomationYamlInvalidException YAML 파싱에 실패했거나 스키마 버전이 다를 때(원본 값은
+     *   메시지에 echo하지 않는다).
+     * @throws AutomationImportProjectKeyMismatchException YAML `projectKey` 가 [projectKey] 와 다를 때(EC2).
+     * @throws AutomationImportCommandException 커맨드 중 하나라도 검증/처리에 실패했을 때(OCC 제외,
+     *   실패 인덱스+사유는 [AutomationRuleExceptionHandler.handleRequestInvalid] 가 ProblemDetail에 담는다).
+     * @throws AutomationRuleVersionConflictException import-update 도중 다른 트랜잭션이 먼저 갱신했을 때
+     *   (spec C2, 기존 409 매핑 재사용).
+     */
+    @PostMapping(
+        "/import",
+        consumes = ["application/yaml", "application/x-yaml", "text/yaml", "text/plain"],
+    )
+    fun import(
+        @PathVariable projectKey: String,
+        @RequestBody rawYaml: String,
+    ): ResponseEntity<AutomationImportResponse> {
+        val actorId = AutomationActorExtractor.extract()
+        service.assertManageAutomationPermission(actorId, projectKey)
+        validateImportByteSize(rawYaml)
+        val parsed = AutomationYamlCodec.fromYaml(rawYaml)
+        validateImportProjectKeyMatches(projectKey, parsed.projectKey)
+        validateImportRuleCount(parsed.rules.size)
+        val outcome = service.importRules(actorId, projectKey, parsed.rules)
+        // 저장 트랜잭션이 커밋된 후 별도로 lint 를 호출한다(클래스 KDoc §규칙 충돌 lint 통합 참고,
+        // create/patch/export 와 동일 사유).
+        val conflicts = service.analyzeProjectConflicts(projectKey)
+        log.info(
+            "AutomationRuleController.import actor={} projectKey={} created={} updated={} total={}",
+            actorId,
+            projectKey,
+            outcome.created,
+            outcome.updated,
+            outcome.ruleIds.size,
+        )
+        return ResponseEntity.ok(AutomationImportResponse.from(outcome, conflicts))
     }
 
     /**
@@ -234,6 +342,155 @@ private object AutomationActorExtractor {
 }
 
 /**
+ * [AutomationRuleController.export] 가 응답하는 YAML 본문의 미디어 타입(spec API 인터페이스 표 —
+ * `application/yaml`). 규칙 이름 등에 한글이 담길 수 있어 `charset=UTF-8` 을 명시한다 — 명시하지 않으면
+ * [org.springframework.http.converter.StringHttpMessageConverter] 가 기본 charset(ISO-8859-1)으로 바이트를
+ * 쓰고, 클라이언트가 응답 헤더로 UTF-8 여부를 판단할 근거가 사라진다(JSON 컨버터가 항상
+ * `charset=UTF-8` 을 명시하는 선례와 동형).
+ */
+private const val MEDIA_TYPE_YAML = "application/yaml;charset=UTF-8"
+
+/**
+ * `Content-Disposition` 파일명에 삽입 가능한 projectKey 화이트리스트(영문자·숫자·하이픈·언더스코어) —
+ * CRLF 등 헤더 인젝션 문자를 원천 차단한다(search-export-import `ExportController.PROJECT_KEY_PATTERN`
+ * 선례 동형, 언더스코어 허용은 plan Task 3 GREEN 명세).
+ */
+private val EXPORT_PROJECT_KEY_PATTERN = Regex("^[A-Za-z0-9_-]+$")
+
+/**
+ * [AutomationRuleController.export] 의 [projectKey] 가 [EXPORT_PROJECT_KEY_PATTERN] 을 벗어나지 않는지
+ * 검증한다 — `Content-Disposition` 헤더 인젝션 방어(search-export-import `ExportController` 선례 동형).
+ *
+ * @throws AutomationProjectKeyInvalidException [projectKey] 가 화이트리스트를 벗어났을 때.
+ */
+private fun validateProjectKeyForExport(projectKey: String) {
+    if (!EXPORT_PROJECT_KEY_PATTERN.matches(projectKey)) {
+        throw AutomationProjectKeyInvalidException("projectKey는 영문자·숫자·하이픈·언더스코어만 허용됩니다.")
+    }
+}
+
+/**
+ * [AutomationRuleController.export] 의 `Content-Disposition` 헤더 값을 조립한다
+ * (search-export-import `ExportController.buildContentDisposition` 선례 동형).
+ *
+ * [projectKey] 는 호출 시점에 이미 [validateProjectKeyForExport] 로 검증되어 있다고 전제한다 — 이 함수
+ * 자체는 검증을 반복하지 않는다.
+ *
+ * @param projectKey [validateProjectKeyForExport] 를 통과한 화이트리스트 프로젝트 키.
+ * @return `attachment; filename="automation-rules-{projectKey}.yaml"` 헤더 값.
+ */
+private fun buildExportContentDisposition(projectKey: String): String {
+    return "attachment; filename=\"automation-rules-$projectKey.yaml\""
+}
+
+/**
+ * [AutomationRuleController.import] 가 허용하는 요청 본문 최대 바이트 수(spec NFR2, ~1MB) — DoS 방어
+ * (게이트2 코드리뷰 CONCERN-1 수정).
+ *
+ * `@RequestBody String` 파라미터는 Spring MVC 가 이 검증에 도달하기 **전에** 이미 요청 본문 전체를 문자열로
+ * 읽어 메모리에 올려둔 뒤다 — 그래서 이 앱-레벨 체크가 실제로 막는 것은 "본문을 소켓에서 읽어 버퍼링하는
+ * 비용"이 아니라 그 뒤에 이어지는 [validateImportByteSize] 호출 이후 단계(YAML 디코딩/스캐닝)의 CPU
+ * 비용이다. 요청 본문 버퍼링 자체의 진짜 상한은 이 컨트롤러 밖 배포 레이어(nginx `client_max_body_size`)
+ * 또는 서블릿 컨테이너(`server.tomcat.max-swallow-size` 등) 몫이다
+ * ([[multipart-default-limit-app-policy-false-green]] 반면교사 — 서블릿 기본값에 앱 정책을 의존하지
+ * 않는다는 원칙과는 반대로, 여기서는 앱 정책이 서블릿/배포 레이어를 대신할 수 없음을 명시한다).
+ */
+private const val MAX_IMPORT_BYTES = 1_048_576
+
+/**
+ * [AutomationRuleController.import] 의 [rawYaml] 원문이 UTF-8 바이트 기준 [MAX_IMPORT_BYTES] 를 넘지
+ * 않는지 검증한다(spec NFR2, 게이트2 코드리뷰 CONCERN-1 수정) — [AutomationYamlCodec.fromYaml] 파싱
+ * **이전**에 호출해 과대 본문이 파싱 CPU 를 소모하지 못하게 막는다.
+ *
+ * @param rawYaml 파싱 전 YAML 원문.
+ * @throws AutomationImportTooLargeException [rawYaml] 의 UTF-8 바이트 크기가 [MAX_IMPORT_BYTES] 를
+ *   초과할 때. [validateImportRuleCount] 와 같은 예외 타입(413)이지만 원인이 다르므로 detail 메시지로
+ *   구분한다.
+ */
+private fun validateImportByteSize(rawYaml: String) {
+    val byteSize = rawYaml.toByteArray(Charsets.UTF_8).size
+    if (byteSize > MAX_IMPORT_BYTES) {
+        throw AutomationImportTooLargeException(
+            "가져오기 요청 본문 크기가 상한(${MAX_IMPORT_BYTES}바이트)을 초과했습니다.",
+        )
+    }
+}
+
+/**
+ * [AutomationRuleController.import] 가 허용하는 최대 규칙 수(spec NFR2·EC8) — DoS 방어. 본문 크기 자체의
+ * 상한은 [MAX_IMPORT_BYTES]/[validateImportByteSize] 가 별도로 강제하고, 이 상수는 규칙 개수 기준
+ * 상한만 강제한다.
+ */
+private const val MAX_IMPORT_RULES = 500
+
+/**
+ * [AutomationRuleController.import] 의 YAML `projectKey` 가 경로의 [pathProjectKey] 와 일치하는지 검증한다
+ * (spec EC2). YAML `projectKey` 가 비어있으면(사람이 손으로 작성하며 생략한 경우) 경로를 권위로 사용해
+ * 통과시킨다 — [com.bts.automation.gitops.AutomationRulesYaml.projectKey] 기본값이 빈 문자열이기 때문에
+ * "생략"과 "빈 문자열 명시"를 구분하지 않는다(codec 클래스 KDoc §projectKey 참고).
+ *
+ * @param pathProjectKey 경로 변수로 받은 프로젝트 키(권위).
+ * @param yamlProjectKey YAML 문서에서 파싱된 `projectKey` 값.
+ * @throws AutomationImportProjectKeyMismatchException [yamlProjectKey] 가 비어있지 않은데 [pathProjectKey]
+ *   와 다를 때.
+ */
+private fun validateImportProjectKeyMatches(
+    pathProjectKey: String,
+    yamlProjectKey: String,
+) {
+    if (yamlProjectKey.isNotBlank() && yamlProjectKey != pathProjectKey) {
+        throw AutomationImportProjectKeyMismatchException(
+            "YAML의 projectKey가 요청 경로의 projectKey와 일치하지 않습니다.",
+        )
+    }
+}
+
+/**
+ * [AutomationRuleController.import] 의 [ruleCount](파싱된 규칙 수)가 [MAX_IMPORT_RULES] 를 넘지 않는지
+ * 검증한다(spec NFR2·EC8, DoS 방어).
+ *
+ * @param ruleCount 파싱된 YAML 문서의 규칙 수.
+ * @throws AutomationImportTooLargeException [ruleCount] 가 [MAX_IMPORT_RULES] 를 초과할 때.
+ */
+private fun validateImportRuleCount(ruleCount: Int) {
+    if (ruleCount > MAX_IMPORT_RULES) {
+        throw AutomationImportTooLargeException(
+            "가져오기 규칙 수가 상한(${MAX_IMPORT_RULES}개)을 초과했습니다.",
+        )
+    }
+}
+
+/**
+ * [AutomationRuleController.export] 의 [projectKey] 가 [EXPORT_PROJECT_KEY_PATTERN] 화이트리스트를
+ * 벗어났음을 나타낸다 — `Content-Disposition` 헤더 인젝션 방어(400).
+ *
+ * `domain` 패키지 밖이라 `sealed class AutomationDomainException` 의 서브타입으로 선언할 수 없다
+ * ([com.bts.automation.gitops.AutomationYamlInvalidException] 선례 동형, Kotlin sealed 서브클래스는
+ * 동일 패키지 제약).
+ *
+ * @param message 위반 내용을 설명하는 일반 메시지.
+ */
+class AutomationProjectKeyInvalidException(message: String) : RuntimeException(message)
+
+/**
+ * [AutomationRuleController.import] 의 YAML `projectKey` 가 경로의 projectKey 와 다름을 나타낸다(spec EC2).
+ * `domain`/`gitops` 패키지 밖이라 [AutomationDomainException]/[AutomationYamlInvalidException] 의
+ * 서브타입으로 선언할 수 없어([AutomationProjectKeyInvalidException] KDoc §동일 제약 참고) [RuntimeException]
+ * 을 직접 상속한다. 400 으로 매핑된다.
+ *
+ * @param message 위반 내용을 설명하는 일반 메시지.
+ */
+class AutomationImportProjectKeyMismatchException(message: String) : RuntimeException(message)
+
+/**
+ * [AutomationRuleController.import] 의 파싱된 규칙 수가 [MAX_IMPORT_RULES] 를 초과함을 나타낸다(spec
+ * NFR2·EC8, DoS 방어). 413 으로 매핑된다.
+ *
+ * @param message 위반 내용을 설명하는 일반 메시지.
+ */
+class AutomationImportTooLargeException(message: String) : RuntimeException(message)
+
+/**
  * [AutomationRuleController] 예외를 RFC 7807 [ProblemDetail] 로 변환한다.
  *
  * [assignableTypes] 를 [AutomationRuleController] 로 한정해 다른 컨트롤러(Task 9 웹훅 인바운드 등)를
@@ -288,6 +545,81 @@ class AutomationRuleExceptionHandler {
             AUTOMATION_RULE_VERSION_CONFLICT,
             "다른 변경이 먼저 반영되었습니다. 최신 정보를 다시 불러온 뒤 시도해 주세요.",
         )
+    }
+
+    /**
+     * GitOps YAML import 관련 실패 4종 + export `Content-Disposition` projectKey 화이트리스트 위반을
+     * 하나로 묶어 매핑한다(FR-AT-06 GitOps Task 5) — [AutomationYamlInvalidException](YAML 파싱/스키마버전
+     * 위반, EC1)·[AutomationImportProjectKeyMismatchException](import projectKey 불일치, EC2)·
+     * [AutomationImportCommandException](커맨드별 검증/처리 실패, spec C3)은 400 `AUTOMATION_IMPORT_INVALID`
+     * 로, [AutomationImportTooLargeException](본문 바이트 상한 초과 또는 규칙 수 상한 초과, spec NFR2·EC8,
+     * 게이트2 코드리뷰 CONCERN-1 로 바이트 상한 사유가 추가됐다)은 413 `AUTOMATION_IMPORT_TOO_LARGE` 로,
+     * [AutomationProjectKeyInvalidException](export projectKey 화이트리스트 위반, FR-AT-06 Task 3)은 400
+     * `AUTOMATION_RULE_INVALID` 로 매핑한다. 5종을 각각 별도 `@ExceptionHandler` 메서드로 두지 않고 하나로
+     * 묶은 이유는 detekt `TooManyFunctions`(클래스당 함수 11개 예산)에 근접했기 때문이다(plan Task 5 GREEN
+     * 노트) — [AutomationProjectKeyInvalidException] 은 Task 3 산출물로 기존에는 전용 핸들러였다.
+     *
+     * [AutomationImportCommandException] 은 실패한 커맨드의 0-based [AutomationImportCommandException.index]
+     * 와 원인([AutomationImportCommandException.cause])의 사유를 ProblemDetail 의 `failedIndex` 프로퍼티 +
+     * `detail` 에 담는다(spec C3) — `cause.message` 는 도메인 예외들이 이미 원본 입력값을 echo하지 않는
+     * 일반화된 문구다(예: [handleDomainInvalid]가 동일 메시지를 create/patch 에서도 그대로 노출하는 기존
+     * 계약과 동형).
+     */
+    @ExceptionHandler(
+        AutomationYamlInvalidException::class,
+        AutomationImportProjectKeyMismatchException::class,
+        AutomationImportTooLargeException::class,
+        AutomationImportCommandException::class,
+        AutomationProjectKeyInvalidException::class,
+    )
+    fun handleRequestInvalid(ex: Exception): ProblemDetail {
+        // 400 `AUTOMATION_IMPORT_INVALID` 두 분기([AutomationImportCommandException]/else)가 공유하는
+        // type/title 리터럴 — 새 private 함수를 추가하면 detekt `TooManyFunctions` 예산을 다시 넘기므로
+        // (클래스 KDoc 참고) 지역 상수로만 중복을 줄인다.
+        val importInvalidType = "automation-rule-import-invalid"
+        val badRequestTitle = "Bad Request"
+        return when (ex) {
+            is AutomationImportTooLargeException -> {
+                log.info("AUTOMATION_413 import_too_large")
+                problem(
+                    HttpStatus.PAYLOAD_TOO_LARGE,
+                    "automation-rule-import-too-large",
+                    "Payload Too Large",
+                    AUTOMATION_IMPORT_TOO_LARGE,
+                    ex.message ?: "가져오기 규칙 수가 상한을 초과했습니다.",
+                )
+            }
+            is AutomationImportCommandException -> {
+                log.info("AUTOMATION_400 import_command_invalid index={}", ex.index)
+                problem(
+                    HttpStatus.BAD_REQUEST,
+                    importInvalidType,
+                    badRequestTitle,
+                    AUTOMATION_IMPORT_INVALID,
+                    ex.cause?.message ?: "가져오기 항목 처리에 실패했습니다.",
+                ).apply { setProperty("failedIndex", ex.index) }
+            }
+            is AutomationProjectKeyInvalidException -> {
+                log.info("AUTOMATION_400 project_key_invalid")
+                problem(
+                    HttpStatus.BAD_REQUEST,
+                    "automation-rule-project-key-invalid",
+                    badRequestTitle,
+                    AUTOMATION_RULE_INVALID,
+                    ex.message ?: "projectKey 형식이 올바르지 않습니다.",
+                )
+            }
+            else -> {
+                log.info("AUTOMATION_400 import_invalid")
+                problem(
+                    HttpStatus.BAD_REQUEST,
+                    importInvalidType,
+                    badRequestTitle,
+                    AUTOMATION_IMPORT_INVALID,
+                    ex.message ?: "가져오기 요청이 올바르지 않습니다.",
+                )
+            }
+        }
     }
 
     /**
@@ -398,5 +730,7 @@ class AutomationRuleExceptionHandler {
         const val AUTOMATION_MALFORMED_REQUEST = "AUTOMATION_MALFORMED_REQUEST"
         const val AUTOMATION_UNAUTHENTICATED = "AUTOMATION_UNAUTHENTICATED"
         const val AUTOMATION_INTERNAL_ERROR = "AUTOMATION_INTERNAL_ERROR"
+        const val AUTOMATION_IMPORT_INVALID = "AUTOMATION_IMPORT_INVALID"
+        const val AUTOMATION_IMPORT_TOO_LARGE = "AUTOMATION_IMPORT_TOO_LARGE"
     }
 }

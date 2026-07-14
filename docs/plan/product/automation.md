@@ -103,13 +103,15 @@
 
 **우선순위**. 높음 | **선행**. §2.1~§2.4 | **Plan slug**. `automation/yaml-gitops`
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 — YAML 스키마 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — `POST /api/v1/automation/import` + `GET .../export` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — round-trip (책임. backend-engineer)
+- [x] D1. 도메인 (책임. backend-engineer)
+- [x] D2. 명세 — YAML 스키마 (책임. backend-engineer)
+- [x] D3. 데이터 모델 — (활용) (책임. db-engineer)
+- [x] D4. 백엔드 — `POST .../rules/import` + `GET .../rules/export` (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 — round-trip (책임. backend-engineer)
 - [ ] D6. 프론트 UI — YAML 업로드/다운로드 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
+
+> **D1~D5 완료 (2026-07-14, PR #272)**. 백엔드만(UI D6/D7 후속). 자동화 규칙(트리거·조건·액션)을 YAML로 내보내고 올려 upsert하는 GitOps 백엔드. **경로 deviation**: 원안 flat 경로(`/api/v1/automation/import`)에서 **프로젝트 스코프 하위**로 정렬 — `GET/POST /api/v1/projects/{projectKey}/automation/rules/export·import`(기존 automation 5 엔드포인트가 전부 프로젝트 스코프·규칙이 프로젝트 소속). export = 프로젝트의 소프트삭제 안 된 전 규칙(활성+비활성)을 `application/yaml;charset=UTF-8`(Content-Disposition attachment)로, 결정적 순서(createdAt→id)·webhook 토큰/version/nextFireAt 미포함. import = `@RequestBody` YAML 텍스트를 upsert. **식별 = UUID id 기준**(Maxi 확정): id 있고 이 프로젝트에 존재→UPDATE / id 있고 전역 미존재→**id 보존 CREATE**(멱등성 전제) / id 있고 타 프로젝트·소프트삭제 소유→400 `AUTOMATION_IMPORT_INVALID`(EC4, PK 전역 유일성) / id 부재→새 UUID CREATE. **원자성 = atomic fail-closed**(단일 `@Transactional`, 하나라도 실패 시 전량 롤백·conflict 분석은 커밋 후 별도 호출로 rollback-only 오염 회피). 검증(name≤200·cron·조건 MAX_DEPTH=10/MAX_NODES=100/FIELD_WHITELIST·url) 전부 기존 도메인 파서 재사용. 신규 마이그레이션 0(V300/V302/V304 활용). 도메인 팩토리에 id·enabled 보존 파라미터 추가(비활성 규칙 round-trip). YAML mapper는 내부 전용 `ObjectMapper(YAMLFactory())`(전역 JSON 빈 오염 금지·`YamlSeedService` 선례). 응답 `AutomationImportResponse{created, updated, total, ruleIds, webhookTokens?(생성 WEBHOOK 1회 노출), conflicts?}`. 상한 `MAX_IMPORT_RULES=500`→413. **round-trip 시맨틱**: 동일 프로젝트 멱등 재적용(GitOps apply)·migrate/restore(원본 규칙 부재 상태)는 id 보존으로 재현. 원본을 살린 채 다른 프로젝트로 **복사**하려면 YAML에서 `id:` 제거(새 규칙으로 생성) — EC4가 살아있는 타 프로젝트 id 재사용을 거부. 7 TDD 태스크(codec·도메인 팩토리·export·import 서비스·import 엔드포인트·round-trip 실서블릿·문서) 직렬 dispatch. FR 총수 123 불변(D-step). → automation BC **5/7 유지**(FR-AT-06은 D6/D7 UI 완료 후 6/7 반영, FR-AT-01~05 선례).
 
 ### §2.7 FR-AT-07 — PR 머지 연동 (Fix Version 자동 설정)
 

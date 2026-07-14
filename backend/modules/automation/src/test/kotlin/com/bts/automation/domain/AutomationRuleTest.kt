@@ -1,9 +1,11 @@
 // AutomationRule 확장 단위 테스트 — condition 필드·create 기본값·updateCondition OCC (FR-AT-03 Task 5)
+// + id·enabled 보존 팩토리 파라미터 (FR-AT-06 Task 2)
 
 package com.bts.automation.domain
 
 import com.fasterxml.jackson.databind.node.IntNode
 import com.fasterxml.jackson.databind.node.TextNode
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import java.time.Instant
@@ -80,6 +82,92 @@ class AutomationRuleTest : DescribeSpec({
 
             updated.condition shouldBe null
             updated.version shouldBe withCondition.version + 1
+        }
+    }
+
+    describe("AutomationRule.create — id·enabled 보존 (FR-AT-06 import upsert 전제)") {
+        it("명시 id·enabled=false 로 생성하면 그 id 를 보유하고 비활성 상태다") {
+            val explicitId = UUID.randomUUID()
+
+            val rule =
+                AutomationRule.create(
+                    id = explicitId,
+                    projectKey = "PROJ",
+                    name = "룰",
+                    triggerType = TriggerType.ISSUE_CREATED,
+                    createdBy = UUID.randomUUID(),
+                    enabled = false,
+                    now = fixedNow,
+                )
+
+            rule.id shouldBe explicitId
+            rule.enabled shouldBe false
+            rule.version shouldBe 0L
+        }
+
+        it("id·enabled 미지정 시 기존과 동일하게 랜덤 id·enabled=true 를 유지한다(회귀 0)") {
+            val rule = newRule()
+
+            rule.enabled shouldBe true
+            rule.version shouldBe 0L
+        }
+
+        it("명시 id 로 생성해도 name 검증(blank)은 그대로 강제한다") {
+            shouldThrow<AutomationRuleInvalidException> {
+                AutomationRule.create(
+                    id = UUID.randomUUID(),
+                    projectKey = "PROJ",
+                    name = "   ",
+                    triggerType = TriggerType.ISSUE_CREATED,
+                    createdBy = UUID.randomUUID(),
+                    enabled = false,
+                    now = fixedNow,
+                )
+            }
+        }
+
+        it("명시 id 로 생성해도 name 검증(200자 초과)은 그대로 강제한다") {
+            shouldThrow<AutomationRuleInvalidException> {
+                AutomationRule.create(
+                    id = UUID.randomUUID(),
+                    projectKey = "PROJ",
+                    name = "가".repeat(AutomationRule.MAX_NAME_LENGTH + 1),
+                    triggerType = TriggerType.ISSUE_CREATED,
+                    createdBy = UUID.randomUUID(),
+                    enabled = false,
+                    now = fixedNow,
+                )
+            }
+        }
+
+        it("명시 id 로 생성해도 actorUserId nil UUID 검증은 그대로 강제한다") {
+            shouldThrow<AutomationRuleInvalidException> {
+                AutomationRule.create(
+                    id = UUID.randomUUID(),
+                    projectKey = "PROJ",
+                    name = "룰",
+                    triggerType = TriggerType.ISSUE_CREATED,
+                    createdBy = UUID.randomUUID(),
+                    actorUserId = UUID(0L, 0L),
+                    enabled = false,
+                    now = fixedNow,
+                )
+            }
+        }
+
+        it("명시 id 로 생성해도 TriggerConfig 형식 검증은 그대로 강제한다") {
+            shouldThrow<TriggerConfigInvalidException> {
+                AutomationRule.create(
+                    id = UUID.randomUUID(),
+                    projectKey = "PROJ",
+                    name = "룰",
+                    triggerType = TriggerType.ISSUE_CREATED,
+                    triggerConfig = "",
+                    createdBy = UUID.randomUUID(),
+                    enabled = false,
+                    now = fixedNow,
+                )
+            }
         }
     }
 })

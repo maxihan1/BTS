@@ -60,6 +60,9 @@ dependencies {
     // Jackson (JSON 직렬화)
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
+    // Jackson YAML — FR-AT-06 GitOps codec 전용(내부 ObjectMapper(YAMLFactory) 격리, project-workflow
+    // YamlSeedService 선례와 동일 패턴, 버전은 Spring BOM 관리)
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
 
     // Kotlin 기본
     implementation("org.jetbrains.kotlin:kotlin-reflect")
