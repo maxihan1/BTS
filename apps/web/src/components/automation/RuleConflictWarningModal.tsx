@@ -89,19 +89,20 @@ export function RuleConflictWarningModal({
             {labels.title}
           </DialogPrimitive.Title>
 
-          <DialogPrimitive.Description
-            role="alert"
-            className="mt-2 text-sm text-amber-800 dark:text-amber-200"
-          >
-            {labels.warningHeading}
-          </DialogPrimitive.Description>
+          {/* role="alert" — 경고 소제목 + 충돌 목록을 하나의 경고 본문으로 묶어 스크린리더가
+              중복 announce하지 않도록 한다(제목/목록에 각각 role을 주지 않음). */}
+          <div role="alert">
+            <DialogPrimitive.Description className="mt-2 text-sm text-amber-800 dark:text-amber-200">
+              {labels.warningHeading}
+            </DialogPrimitive.Description>
 
-          <ul className="mt-4 flex flex-col gap-2" role="alert">
-            {conflicts.map((conflict, index) => (
-              // key: 충돌 항목에 안정적인 id가 없다 — type+position(index)으로 안정적 구분 (AutomationRuleList.tsx 선례).
-              <ConflictItem key={`${conflict.type}-${index}`} conflict={conflict} />
-            ))}
-          </ul>
+            <ul className="mt-4 flex flex-col gap-2">
+              {conflicts.map((conflict, index) => (
+                // key: 충돌 항목에 안정적인 id가 없다 — type+position(index)으로 안정적 구분 (AutomationRuleList.tsx 선례).
+                <ConflictItem key={`${conflict.type}-${index}`} conflict={conflict} />
+              ))}
+            </ul>
+          </div>
 
           <div className="mt-6 flex justify-end">
             <DialogPrimitive.Close asChild>
