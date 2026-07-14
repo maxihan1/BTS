@@ -8,15 +8,21 @@ import com.bts.automation.StubAutomationPermissionResolver
 import com.bts.automation.StubIssueMutationPort
 import com.bts.automation.StubIssuePermissionResolver
 import com.bts.automation.StubIssueSnapshotPort
+import com.bts.automation.adapter.AutomationConditionRepository
 import com.bts.automation.adapter.AutomationRuleRepository
+import com.bts.automation.adapter.RuleExecutionRepository
+import com.bts.automation.application.ActionExecutionStatus
 import com.bts.automation.application.ActionExecutor
 import com.bts.automation.domain.Action
 import com.bts.automation.domain.AutomationRule
+import com.bts.automation.domain.ComparisonOperator
+import com.bts.automation.domain.Condition
 import com.bts.automation.domain.TriggerType
 import com.bts.shared.permission.AutomationPermissionResolver
 import com.bts.shared.permission.IssuePermissionResolver
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.NullNode
 import com.fasterxml.jackson.databind.node.TextNode
 import io.mockk.every
 import io.mockk.mockk
@@ -64,6 +70,9 @@ import java.util.UUID
  * - 처리 중 예외가 반복돼도 read_ct 가 MAX_RECEIVE_COUNT 를 넘기 전까지는 큐에 남아 재시도 대기하고,
  *   넘기면 archive 로 수렴한다(무한 재시도 방지)
  * - 빈 큐는 아무 것도 처리하지 않는다
+ * - (FR-AT-05) [ActionExecutor.execute] 시도분만 `rule_executions` 에 이력이 남는다 — 정상/SKIPPED 실행은
+ *   기록되고, 억제창 스킵·룰 부재/disabled·malformed payload(모두 액션 실행 전에 archive 되는 경로)는
+ *   기록되지 않는다. 이력 저장 자체가 실패해도 archive 는 fail-safe 로 정상 진행된다.
  */
 @SpringBootTest(
     classes = [AutomationTestBootApplication::class],
@@ -108,6 +117,14 @@ class AutomationExecutionWorkerTest {
 
     @Autowired
     @Suppress("VarCouldBeVal")
+    private lateinit var ruleExecutionRepository: RuleExecutionRepository
+
+    @Autowired
+    @Suppress("VarCouldBeVal")
+    private lateinit var conditionRepository: AutomationConditionRepository
+
+    @Autowired
+    @Suppress("VarCouldBeVal")
     private lateinit var issueMutationPort: StubIssueMutationPort
 
     @Autowired
@@ -125,7 +142,10 @@ class AutomationExecutionWorkerTest {
     fun cleanUp() {
         // 테스트 격리 — 각 케이스 전에 테이블/큐/archive 를 비운다(AutomationEventWorkerTest 동형 +
         // archive 는 purge_queue 로 안 비워지므로 별도 DELETE, SlackDeliveryWorkerIntegrationTest 동형).
+        // rule_executions 는 automation_rules 와 하드 FK 가 없어(감사 독립성, NFR-4) automation_rules
+        // DELETE 로 cascade 되지 않으므로 별도 DELETE 가 필요하다(RuleExecutionRepository 클래스 KDoc 참조).
         jdbcTemplate.update("DELETE FROM automation_rules")
+        jdbcTemplate.update("DELETE FROM rule_executions")
         jdbcTemplate.execute("SELECT pgmq.purge_queue('q_automation_execution')")
         jdbcTemplate.update("DELETE FROM pgmq.\"${pgmqTable("a")}\"")
         issueMutationPort.reset()
@@ -136,8 +156,9 @@ class AutomationExecutionWorkerTest {
     private fun worker(
         clock: Clock = Clock.fixed(now, ZoneOffset.UTC),
         executor: ActionExecutor = actionExecutor,
+        executionRepository: RuleExecutionRepository = ruleExecutionRepository,
     ): AutomationExecutionWorker {
-        return AutomationExecutionWorker(jdbcTemplate, objectMapper, ruleRepository, executor, clock)
+        return AutomationExecutionWorker(jdbcTemplate, objectMapper, ruleRepository, executor, executionRepository, clock)
     }
 
     private fun saveEnabledRule(projectKey: String = "ATLAS"): AutomationRule {
@@ -214,6 +235,12 @@ class AutomationExecutionWorkerTest {
     private fun failingExecutor(): ActionExecutor =
         mockk<ActionExecutor>().also {
             every { it.execute(any(), any(), any()) } throws IllegalStateException("boom")
+        }
+
+    /** [RuleExecutionRepository.save] 가 항상 예외를 던지는 mock — 이력 저장 fail-safe(FR-AT-05) 검증용. */
+    private fun failingRuleExecutionRepository(): RuleExecutionRepository =
+        mockk<RuleExecutionRepository>().also {
+            every { it.save(any()) } throws IllegalStateException("history persist boom")
         }
 
     // ── 정상 실행 ─────────────────────────────────────────────────────────────
@@ -350,6 +377,91 @@ class AutomationExecutionWorkerTest {
 
         worker(executor = failingExecutor()).pollAndProcess()
 
+        assertThat(pendingCount()).isZero()
+        assertThat(archivedCount()).isEqualTo(1)
+    }
+
+    // ── FR-AT-05: 실행 이력 영속화 ─────────────────────────────────────────────
+
+    @Test
+    fun `정상 실행은 rule_executions 에 SUCCESS 이력을 남긴다`() {
+        val rule = saveEnabledRule()
+        enqueueExecution(rule.id, issueKey = "ATLAS-11")
+
+        worker().pollAndProcess()
+
+        val history = ruleExecutionRepository.findByRule(rule.projectKey, rule.id, issueKey = null, limit = 10, before = null)
+        val execution = history.single()
+        assertThat(execution.status).isEqualTo(ActionExecutionStatus.SUCCESS)
+        assertThat(execution.outcomes).hasSize(1)
+        assertThat(execution.outcomes.single().success).isTrue()
+        assertThat(execution.projectKey).isEqualTo(rule.projectKey)
+        assertThat(execution.triggerType).isEqualTo(TriggerType.ISSUE_CREATED)
+        assertThat(execution.issueKey).isEqualTo("ATLAS-11")
+        assertThat(execution.startedAt).isBeforeOrEqualTo(execution.finishedAt)
+    }
+
+    @Test
+    fun `조건 불충족으로 SKIPPED 되면 outcomes 가 빈 상태로 이력이 남는다`() {
+        val rule = saveEnabledRule()
+        conditionRepository.replace(
+            rule.id,
+            Condition.Comparison(field = "issue.key", operator = ComparisonOperator.EXISTS, value = NullNode.instance),
+        )
+        // triggerEvent 에 issueKey 가 없으면(SCHEDULED/WEBHOOK 류) 조건이 있을 때 게이트가 불충족으로
+        // 판정해 SKIPPED 된다(ActionExecutor 클래스 KDoc "조건 게이트" 참조).
+        enqueueExecution(rule.id, issueKey = null)
+
+        worker().pollAndProcess()
+
+        val history = ruleExecutionRepository.findByRule(rule.projectKey, rule.id, issueKey = null, limit = 10, before = null)
+        val execution = history.single()
+        assertThat(execution.status).isEqualTo(ActionExecutionStatus.SKIPPED)
+        assertThat(execution.outcomes).isEmpty()
+        assertThat(execution.issueKey).isNull()
+    }
+
+    @Test
+    fun `억제창 스킵은 이력을 남기지 않는다`() {
+        val rule = saveEnabledRule()
+        val w = worker()
+
+        enqueueExecution(rule.id, issueKey = "ATLAS-12")
+        w.pollAndProcess()
+        // 60초 이내 재발화 — 억제(스킵)돼 ActionExecutor 가 호출되지 않으므로 이력도 남지 않는다.
+        enqueueExecution(rule.id, issueKey = "ATLAS-12")
+        w.pollAndProcess()
+
+        val history = ruleExecutionRepository.findByRule(rule.projectKey, rule.id, issueKey = "ATLAS-12", limit = 10, before = null)
+        assertThat(history).hasSize(1) // 최초 실행분만 기록, 억제 스킵은 미기록
+    }
+
+    @Test
+    fun `존재하지 않는 룰·disabled 룰·malformed 메시지는 이력을 남기지 않는다`() {
+        val disabledRule = saveDisabledRule()
+        enqueueExecution(UUID.randomUUID(), issueKey = "ATLAS-13") // 존재하지 않는 룰(EC7)
+        enqueueExecution(disabledRule.id, issueKey = "ATLAS-14") // disabled 룰(EC7)
+        jdbcTemplate.queryForObject(
+            "SELECT pgmq.send(?, ?::jsonb)",
+            Long::class.java,
+            "q_automation_execution",
+            """{"triggerEvent":{}}""", // ruleId 필드 없음 → UUID.fromString 실패(malformed)
+        )
+
+        worker().pollAndProcess()
+
+        val count = jdbcTemplate.queryForObject("SELECT count(*) FROM rule_executions", Int::class.java)
+        assertThat(count).isZero()
+    }
+
+    @Test
+    fun `이력 저장이 실패해도 archive 는 정상 진행된다(fail-safe)`() {
+        val rule = saveEnabledRule()
+        enqueueExecution(rule.id, issueKey = "ATLAS-15")
+
+        worker(executionRepository = failingRuleExecutionRepository()).pollAndProcess()
+
+        assertThat(issueMutationPort.setFieldCalls).hasSize(1) // 액션 실행 자체는 정상
         assertThat(pendingCount()).isZero()
         assertThat(archivedCount()).isEqualTo(1)
     }
