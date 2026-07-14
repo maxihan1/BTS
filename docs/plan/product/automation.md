@@ -78,10 +78,12 @@
 - [x] D3. 데이터 모델 — (활용) (책임. db-engineer)
 - [x] D4. 백엔드 — 규칙 저장 후 lint (응답 conflicts 포함) (책임. backend-engineer)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 저장 전 경고 모달 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 저장 후 경고 모달 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 > **D1~D5 완료 (2026-07-13, PR #268)**. 규칙 충돌 정적 분석 백엔드. 자동화 규칙 저장 시 프로젝트의 규칙 집합을 정적 분석해 **충돌 4종**(product 3종 + SDD 8.7 3종의 합집합, Maxi 확정)을 경고로 알린다 — **CYCLE**(액션이 다른 규칙의 트리거를 유발하는 방향 그래프의 사이클, DFS·self-loop 포함) / **FIELD_CONFLICT**(같은 트리거에 동시 매칭되는 규칙들이 같은 필드를 다른 값으로 SET, 규칙 내부 액션 간 포함) / **PRIORITY_AMBIGUITY**(같은 트리거에 매칭되는 규칙이 2개 이상이고 실행 순서가 `created_at,id`로만 결정 — priority 컬럼 부재) / **PERMISSION_MISSING**(rule actor가 액션 대상의 프로젝트 레벨 이슈 UPDATE 권한 부재). 신규 `RuleConflictAnalyzer`(순수 분석, `@Component`) + `RuleConflict`/`ConflictType`/`ConflictSeverity` 값 객체. **강제성 = 전부 soft WARNING**(어떤 충돌도 저장 무차단, Maxi 확정) — 기존 `POST`/`PATCH` 저장 경로가 저장 커밋 **후** lint하고 응답 DTO에 `conflicts` 배열을 담는다(별도 엔드포인트·테이블 없음, GET은 `@JsonInclude(NON_NULL)`로 미포함). 분석은 **fail-safe**(어떤 예외도 저장 성공 훼손 안 함). 신규 cross-BC 소비 `IssuePermissionResolver`(shared-kernel, `IssueScope.Project`로 프로젝트 레벨 근사·non-prod stub·`(actor,project,permission)` 메모이제이션) — AddComment 액션은 `IssuePermission`에 댓글 권한이 없어 권한 분석 제외. FR-AT-02 `AutomationExecutionWorker` KDoc의 "견고한 사이클 검출은 FR-AT-04 위임"을 완성(런타임 루프 가드는 유지, 상보). 성능 스모크 100규칙 0.876s(NFR 1s). 모듈 test 416(회귀 0)·BC 격리 ArchTest(cross-BC import 0). ADR [2026-07-13-fr-at-04-conflict-analysis](../../decisions/2026-07-13-fr-at-04-conflict-analysis.md). 충돌 경고 모달 UI(D6)/E2E(D7)는 별개 후속(미구현). → **FR-AT-04 백엔드 완료(D1~D5)**, D6/D7 UI 남아 automation BC 3/7 유지.
+
+> **D6/D7 완료 (2026-07-14, PR #269)**. 순수 프론트(apps/web·백엔드 변경0). 규칙 저장(생성/수정) 응답의 `conflicts`(soft WARNING 4종)를 **저장 후 경고 모달**로 표시 — 저장은 이미 성공, 비차단 정보성. 신규 `RuleConflictWarningModal`(WebhookTokenModal 패턴 미러·amber·`role="alert"`·종류 한국어 배지+detail·`ruleIds`는 "관련 규칙 N개" 축약·UUID 비노출). Zod 계약에 `conflicts`(`.optional()` — GET 부재/create·patch 배열, `@JsonInclude(NON_NULL)`↔Zod 정합) + `ConflictType`/`ConflictSeverity`/`RuleConflict` 미러 추가(API 레이어 코드 무변경). `AutomationRuleFormDialog` `onConflicts` 콜백(create=`response.rule.conflicts` 중첩/patch=최상위 `conflicts`, `length>0`만 발화) + 페이지 배선. **WEBHOOK 토큰+충돌 동시=토큰 우선 순차**(Maxi 확정, `conflicts={webhookToken===null ? conflicts : null}` 가드). MSW conflicts 시나리오 토글(E2E 결정적, store 미저장 GET 계약 불변). 코드리뷰 PASS(BLOCKER 0)+SUGGESTION 적용(빈 배열 방어 가드). 유닛 회귀0(6837)·E2E 신규4+회귀8·typecheck/lint 0. FR 총수 123 불변. → **FR-AT-04 전체 완료(D1~D7)**, automation BC 4/7.
 
 ### §2.5 FR-AT-05 — 실행 이력 + 디버깅 (재실행, 단계별 추적)
 
