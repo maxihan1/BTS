@@ -1,4 +1,4 @@
-// V300~V304 마이그레이션 검증 — automation rules·actions·conditions + q_automation_execution 큐
+// V300~V305 마이그레이션 검증 — automation rules·actions·conditions·executions + q_automation_execution 큐
 
 package com.bts.automation
 
@@ -61,6 +61,18 @@ import java.util.UUID
  * - 같은 rule_id 중복 INSERT → PK 위반(automation_conditions_pkey) — 룰당 0..1 강제
  * - rule_id FK → automation_rules(id) ON DELETE CASCADE(부모 룰 삭제 시 조건 동반 삭제)
  *
+ * ## FR-AT-05 Task 1 추가 검증 (V305 rule_executions / 실행 이력·감사 스키마)
+ * - rule_executions 테이블 존재 + 12개 컬럼(id/rule_id/project_key/trigger_type/trigger_event/
+ *   issue_key/status/outcomes/replayed_from/started_at/finished_at/created_at)
+ * - id = uuid PK NOT NULL DEFAULT gen_random_uuid() / rule_id = uuid NOT NULL(**하드 FK 없음** — 감사 독립성)
+ * - project_key / trigger_type / status = text NOT NULL / issue_key = text NULL(SCHEDULED·WEBHOOK 은 NULL)
+ * - trigger_event = jsonb NOT NULL(replay 재료) / outcomes = jsonb NOT NULL DEFAULT '[]'(단계별 결과 배열)
+ * - replayed_from = uuid NULL(이 row 가 replay 면 원본 실행 id)
+ * - started_at / finished_at / created_at = timestamptz NOT NULL(DATA.md §4.1#4 — TIMESTAMP without tz 금지)
+ * - **하드 FK 없음(NFR-4 감사 독립성)** — 외래 키 제약 0개 + 존재하지 않는 rule_id INSERT 성공(룰 하드 삭제돼도 이력 보존)
+ * - 인덱스 2종 — idx_rule_executions_rule(rule_id, started_at DESC) /
+ *   idx_rule_executions_project_issue(project_key, issue_key, started_at DESC)
+ *
  * 정보 스키마(information_schema / pg_constraint / pgmq.list_queues) 조회로 단언한다.
  * SQL 문자열 결합 없이 prepared statement 파라미터 바인딩만 사용한다.
  */
@@ -119,6 +131,24 @@ class SchemaMigrationTest {
                 "expression",
                 "created_at",
                 "updated_at",
+            )
+
+        // rule_executions 가 보유해야 하는 12개 컬럼 (FR-AT-05 Task 1 / V305 실행 이력 스키마).
+        // 감사 독립성(NFR-4)을 위해 rule_id 에 하드 FK 를 걸지 않는다 — 룰이 하드 삭제돼도 이력은 보존된다.
+        private val RULE_EXECUTIONS_COLUMNS =
+            listOf(
+                "id",
+                "rule_id",
+                "project_key",
+                "trigger_type",
+                "trigger_event",
+                "issue_key",
+                "status",
+                "outcomes",
+                "replayed_from",
+                "started_at",
+                "finished_at",
+                "created_at",
             )
 
         @BeforeAll
@@ -375,6 +405,43 @@ class SchemaMigrationTest {
                 "SELECT COUNT(*) FROM automation_conditions WHERE rule_id = ?",
             ).use { stmt ->
                 stmt.setObject(1, ruleId)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getInt(1)
+                }
+            }
+        }
+
+    // ── FR-AT-05 실행 이력 테이블 검증용 헬퍼 ──────────────────────────────────────
+
+    // rule_executions 한 행 INSERT — 존재하지 않는 rule_id 로도 성공해야 한다(하드 FK 없음, NFR-4 감사 독립성).
+    // NOT NULL 이면서 DEFAULT 없는 최소 컬럼만 채운다(project_key/trigger_type/trigger_event/status + 시각 2종).
+    private fun insertExecution(ruleId: UUID) {
+        conn().use { c ->
+            c.prepareStatement(
+                "INSERT INTO rule_executions" +
+                    " (rule_id, project_key, trigger_type, trigger_event, status, started_at, finished_at)" +
+                    " VALUES (?, ?, ?, ?::jsonb, ?, now(), now())",
+            ).use { stmt ->
+                stmt.setObject(1, ruleId)
+                stmt.setString(2, "ATLAS")
+                stmt.setString(3, "ISSUE_CREATED")
+                stmt.setString(4, "{}")
+                stmt.setString(5, "SUCCESS")
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    // 외래 키 제약 개수 — rule_executions 는 감사 독립성(NFR-4)으로 0이어야 한다.
+    @Suppress("NestedBlockDepth")
+    private fun foreignKeyCount(tableName: String): Int =
+        conn().use { c ->
+            c.prepareStatement(
+                "SELECT COUNT(*) FROM information_schema.table_constraints" +
+                    " WHERE table_schema = 'public' AND table_name = ? AND constraint_type = 'FOREIGN KEY'",
+            ).use { stmt ->
+                stmt.setString(1, tableName)
                 stmt.executeQuery().use { rs ->
                     rs.next()
                     rs.getInt(1)
@@ -681,5 +748,118 @@ class SchemaMigrationTest {
         assertThat(countConditionsForRule(ruleId)).isEqualTo(1)
         deleteRule(ruleId)
         assertThat(countConditionsForRule(ruleId)).isEqualTo(0)
+    }
+
+    // ── FR-AT-05 Task 1: rule_executions 테이블 검증 (V305 실행 이력·감사) ──────────
+
+    @Test
+    fun `V305 rule_executions 테이블 존재`() {
+        assertThat(tableExists("rule_executions")).isTrue()
+    }
+
+    @Test
+    fun `V305 rule_executions 12개 컬럼 존재`() {
+        assertThat(columnsOf("rule_executions"))
+            .containsExactlyInAnyOrderElementsOf(RULE_EXECUTIONS_COLUMNS)
+    }
+
+    @Test
+    fun `V305 id 는 uuid PK NOT NULL DEFAULT gen_random_uuid`() {
+        assertThat(columnDataType("rule_executions", "id")).isEqualTo("uuid")
+        assertThat(columnIsNullable("rule_executions", "id")).isEqualTo("NO")
+        assertThat(columnDefault("rule_executions", "id")).contains("gen_random_uuid")
+    }
+
+    @Test
+    fun `V305 rule_id 는 uuid NOT NULL (하드 FK 없음)`() {
+        assertThat(columnDataType("rule_executions", "rule_id")).isEqualTo("uuid")
+        assertThat(columnIsNullable("rule_executions", "rule_id")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V305 project_key 는 text NOT NULL`() {
+        assertThat(columnDataType("rule_executions", "project_key")).isEqualTo("text")
+        assertThat(columnIsNullable("rule_executions", "project_key")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V305 trigger_type 은 text NOT NULL`() {
+        assertThat(columnDataType("rule_executions", "trigger_type")).isEqualTo("text")
+        assertThat(columnIsNullable("rule_executions", "trigger_type")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V305 trigger_event 는 jsonb NOT NULL (replay 재료)`() {
+        assertThat(columnDataType("rule_executions", "trigger_event")).isEqualTo("jsonb")
+        assertThat(columnIsNullable("rule_executions", "trigger_event")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V305 issue_key 는 text NULL (SCHEDULED WEBHOOK 은 NULL)`() {
+        assertThat(columnDataType("rule_executions", "issue_key")).isEqualTo("text")
+        assertThat(columnIsNullable("rule_executions", "issue_key")).isEqualTo("YES")
+    }
+
+    @Test
+    fun `V305 status 는 text NOT NULL`() {
+        assertThat(columnDataType("rule_executions", "status")).isEqualTo("text")
+        assertThat(columnIsNullable("rule_executions", "status")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V305 outcomes 는 jsonb NOT NULL DEFAULT 빈 배열`() {
+        assertThat(columnDataType("rule_executions", "outcomes")).isEqualTo("jsonb")
+        assertThat(columnIsNullable("rule_executions", "outcomes")).isEqualTo("NO")
+        assertThat(columnDefault("rule_executions", "outcomes")).contains("'[]'")
+    }
+
+    @Test
+    fun `V305 replayed_from 은 uuid NULL (replay 원본 실행 id)`() {
+        assertThat(columnDataType("rule_executions", "replayed_from")).isEqualTo("uuid")
+        assertThat(columnIsNullable("rule_executions", "replayed_from")).isEqualTo("YES")
+    }
+
+    // ── timestamptz 강제 (DATA.md §4 — TIMESTAMP without tz 금지) ─────────────────
+
+    @Test
+    fun `V305 started_at 은 timestamptz NOT NULL`() {
+        assertThat(columnDataType("rule_executions", "started_at")).isEqualTo("timestamp with time zone")
+        assertThat(columnIsNullable("rule_executions", "started_at")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V305 finished_at 은 timestamptz NOT NULL`() {
+        assertThat(columnDataType("rule_executions", "finished_at")).isEqualTo("timestamp with time zone")
+        assertThat(columnIsNullable("rule_executions", "finished_at")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V305 created_at 은 timestamptz NOT NULL`() {
+        assertThat(columnDataType("rule_executions", "created_at")).isEqualTo("timestamp with time zone")
+        assertThat(columnIsNullable("rule_executions", "created_at")).isEqualTo("NO")
+    }
+
+    // ── 감사 독립성 (NFR-4) — 하드 FK 없음 ────────────────────────────────────────
+
+    @Test
+    fun `V305 rule_executions 는 외래 키 제약이 없다 (감사 독립성 NFR-4)`() {
+        assertThat(foreignKeyCount("rule_executions")).isEqualTo(0)
+    }
+
+    @Test
+    fun `V305 존재하지 않는 rule_id 로도 INSERT 성공 (하드 FK 없음)`() {
+        insertExecution(UUID.randomUUID())
+    }
+
+    // ── 인덱스 검증 (조회 경로별) ─────────────────────────────────────────────────
+
+    @Test
+    fun `V305 룰별 이력 조회용 rule started_at 인덱스 존재`() {
+        assertThat(indexExists("idx_rule_executions_rule", "rule_executions")).isTrue()
+    }
+
+    @Test
+    fun `V305 프로젝트 이슈별 이력 조회용 project_issue 인덱스 존재`() {
+        assertThat(indexExists("idx_rule_executions_project_issue", "rule_executions")).isTrue()
     }
 }

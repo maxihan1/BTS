@@ -3,8 +3,12 @@
 package com.bts.automation.worker
 
 import com.bts.automation.adapter.AutomationRuleRepository
+import com.bts.automation.adapter.RuleExecutionRepository
+import com.bts.automation.application.ActionExecutionResult
 import com.bts.automation.application.ActionExecutor
+import com.bts.automation.application.RuleExecution
 import com.bts.automation.domain.AutomationRule
+import com.bts.automation.domain.TriggerType
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
@@ -36,7 +40,10 @@ import java.util.concurrent.ConcurrentHashMap
  * 3. [AutomationRuleRepository.findById] 로 룰 로드. 없거나(soft-delete 포함, `findById` 가 이미
  *    제외) disabled 면 스킵 + archive(EC7 — 발화 이후 상태가 바뀐 경우 대비).
  * 4. 루프 가드 2단(클래스 KDoc "루프 가드 2단" 참조) 통과 못하면 스킵 + archive.
- * 5. [ActionExecutor.execute] 로 액션 실행 후 archive. (ruleId, issueKey) 실행 시각을 기록한다.
+ * 5. [ActionExecutor.execute] 로 액션 실행 → [RuleExecutionRepository] 에 실행 이력 저장(FR-AT-05,
+ *    fail-safe — 저장 실패해도 archive 는 정상 진행, [runExecution] 참조) → (ruleId, issueKey)
+ *    실행 시각 기록 → archive. 이력 저장은 이 단계(액션 실행 시도)에서만 일어난다 — 3/4 단계의 스킵은
+ *    [ActionExecutor.execute] 자체를 호출하지 않으므로 이력을 남기지 않는다("기록 범위" 참조).
  * 6. 그 외 처리 중 예외(DB 순단 등 일시 장애) → archive 하지 않고 vt 만료 후 재전달(at-least-once).
  *    `read_ct` 가 [MAX_RECEIVE_COUNT] 초과면 dead-letter 로 archive(포이즌 메시지 회피).
  *
@@ -64,14 +71,24 @@ import java.util.concurrent.ConcurrentHashMap
  * **왕복(round-trip)** 경로에서는, 돌아오는 트리거가 깊이 정보를 갖지 않는 새 이슈 이벤트라 (a) 를
  * 활성화하더라도 `executionDepth` 가 0 으로 리셋된다. (b) 는 (ruleId, issueKey) 단위·시간창 기반이라
  * 서로 다른 룰이 번갈아 같은 이슈를 건드리는 다중 룰 사이클이나 이슈 키가 바뀌는 사이클까지 견고하게
- * 잡지는 못한다. 전체 실행 체인을 영속 추적하는 견고한 사이클 검출은 **FR-AT-04(자동화 실행 로그/감사)**
- * 로 위임한다 — 현재 범위(FR-AT-02)에서는 (b) 억제창이 실용적 상한을 제공한다.
+ * 잡지는 못한다. 견고한 사이클 검출은 저장 시점 정적 분석 **FR-AT-04(규칙 충돌 정적 분석 — CYCLE 검출)**
+ * 로 위임한다(실행 이력/감사 자체는 FR-AT-05다 — 아래 "실행 이력 저장" 절 참조). 런타임 범위에서는 (b)
+ * 억제창이 실용적 상한을 제공한다.
  *
  * ## `@Transactional` 없음 — 의도적 설계([AutomationEventWorker] 동형)
  * pgmq read/archive 는 트랜잭션 범위 밖에서 호출해도 pgmq 내부에서 atomic 하게 처리된다.
  * [AutomationRuleRepository.findById]/[ActionExecutor.execute] 가 위임하는 각 포트 호출은 자체
  * 트랜잭션 경계를 갖는다(self-invocation 트랜잭션 오염 회피,
  * [[transaction-self-invocation-requires-new]]).
+ *
+ * ## 실행 이력 저장 — 기록 범위·fail-safe (FR-AT-05)
+ * [ActionExecutor.execute] 를 실제로 호출한 시도만 [RuleExecutionRepository] 에 1행 저장한다
+ * ([runExecution] 내부 try/catch, [buildRuleExecution] 매핑) — 억제창 스킵(가드 (b))·룰 부재/disabled
+ * (EC7)·깊이초과(가드 (a))·malformed payload 는 액션 실행 시도 자체가 없으므로 이력을 남기지 않는다
+ * (이미 각 단계에서 archive 로 종결). 저장은 [RuleExecutionRepository] 자체 `@Transactional` 로 커밋되고,
+ * 저장 중 예외는 워커 밖으로 전파하지 않고 로그만 남긴다 — 이력 저장 실패가 액션 실행 결과의
+ * archive(at-least-once 종결)를 막으면 감사 로그 장애가 핵심 실행 파이프라인까지 마비시키므로, 이력은
+ * best-effort 부가 기능으로 취급한다.
  *
  * ## `@Scheduled` 결선
  * `@EnableScheduling` 결선은 이 Task 범위 밖(FR-AT-01 Task 11)이다. 이 Task 의 테스트는
@@ -85,6 +102,7 @@ import java.util.concurrent.ConcurrentHashMap
  * @param objectMapper pgmq 메시지 JSON 파싱용 Jackson [ObjectMapper].
  * @param ruleRepository 발화한 룰 조회(활성 여부 판정).
  * @param actionExecutor 룰 액션 리스트 실행 디스패처.
+ * @param ruleExecutionRepository 실행 이력 저장소(FR-AT-05). "실행 이력 저장" 섹션 참조.
  * @param clock 억제 캐시 시각 소스. 기본값 UTC(테스트에서 결정적 시각으로 교체).
  */
 @Component
@@ -93,6 +111,7 @@ class AutomationExecutionWorker(
     private val objectMapper: ObjectMapper,
     private val ruleRepository: AutomationRuleRepository,
     private val actionExecutor: ActionExecutor,
+    private val ruleExecutionRepository: RuleExecutionRepository,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -192,7 +211,14 @@ class AutomationExecutionWorker(
         return suppressed
     }
 
-    /** [ActionExecutor.execute] 를 호출한다. 성공하면 억제 캐시를 갱신하고 archive, 실패는 재시도를 허용한다. */
+    /**
+     * [ActionExecutor.execute] 를 호출한다. 성공하면 [buildRuleExecution] 으로 매핑한 실행 이력을
+     * [ruleExecutionRepository] 에 저장하고(fail-safe — 내부 try/catch 로 격리, 저장 실패는 warn 로그만
+     * 남기고 archive 를 막지 않는다) 억제 캐시를 갱신한 뒤 archive 한다. 실패는 재시도를 허용한다
+     * (archive 하지 않음). 이력 저장을 [runExecution] 자체 메서드로 남긴 이유는 detekt `TooManyFunctions`
+     * 대비([buildRuleExecution] KDoc "클래스 밖 최상위 함수" 참조) — 저장 호출부는 인스턴스 상태
+     * (`ruleExecutionRepository`/`log`)가 필요해 클래스 밖으로 뺄 수 없다.
+     */
     @Suppress("TooGenericExceptionCaught")
     private fun runExecution(
         message: ExecutionQueueMessage,
@@ -200,9 +226,21 @@ class AutomationExecutionWorker(
         rule: AutomationRule,
     ) {
         try {
-            actionExecutor.execute(rule, payload.triggerEvent, dryRun = false)
+            val startedAt = clock.instant()
+            val result = actionExecutor.execute(rule, payload.triggerEvent, dryRun = false)
+            val finishedAt = clock.instant()
             if (payload.issueKey != null) {
-                recentExecutions[suppressionKey(payload.ruleId, payload.issueKey)] = clock.instant()
+                recentExecutions[suppressionKey(payload.ruleId, payload.issueKey)] = finishedAt
+            }
+            try {
+                ruleExecutionRepository.save(buildRuleExecution(payload, rule, result, startedAt, finishedAt))
+            } catch (historyError: Exception) {
+                log.warn(
+                    "automation_execution_history_persist_failed ruleId={} error={}",
+                    rule.id,
+                    historyError.message,
+                    historyError,
+                )
             }
             log.info(
                 "automation_execution_worker_executed msgId={} ruleId={} issueKey={}",
@@ -248,6 +286,7 @@ class AutomationExecutionWorker(
             val triggerEvent = node.path(FIELD_TRIGGER_EVENT)
             ExecutionPayload(
                 ruleId = UUID.fromString(node.path(FIELD_RULE_ID).asText()),
+                triggerType = parseTriggerType(node.path(FIELD_TRIGGER_TYPE)),
                 triggerEvent = triggerEvent,
                 executionDepth = node.path(FIELD_EXECUTION_DEPTH).takeIf { it.isNumber }?.asInt() ?: 0,
                 issueKey = extractIssueKey(triggerEvent),
@@ -301,6 +340,7 @@ class AutomationExecutionWorker(
         const val DEFAULT_POLL_INTERVAL_MS = 500
 
         const val FIELD_RULE_ID = "ruleId"
+        const val FIELD_TRIGGER_TYPE = "triggerType"
         const val FIELD_TRIGGER_EVENT = "triggerEvent"
         const val FIELD_EXECUTION_DEPTH = "executionDepth"
 
@@ -340,6 +380,9 @@ private object ExecutionQueueMessageRowMapper : RowMapper<ExecutionQueueMessage>
  * `q_automation_execution` 메시지 payload 파싱 결과.
  *
  * @property ruleId 발화한 룰 id.
+ * @property triggerType fire-time 트리거 타입(FR-AT-05, 실행 이력 저장용). payload 에 없거나 알 수
+ *   없는 값이면 `null` — [buildRuleExecution] 이 [AutomationRule.triggerType] 으로 대체한다(구버전
+ *   enqueuer 메시지 호환).
  * @property triggerEvent 발화를 유발한 원본 이벤트(이슈 이벤트/웹훅 본문/빈 객체).
  * @property executionDepth automation 직접 체인 깊이. payload 에 없으면 0(FR-AT-01 enqueuer 는 depth
  *   미설정 = 0).
@@ -347,6 +390,7 @@ private object ExecutionQueueMessageRowMapper : RowMapper<ExecutionQueueMessage>
  */
 private data class ExecutionPayload(
     val ruleId: UUID,
+    val triggerType: TriggerType?,
     val triggerEvent: JsonNode,
     val executionDepth: Int,
     val issueKey: String?,
@@ -386,3 +430,40 @@ private fun extractIssueKey(triggerEvent: JsonNode): String? {
     if (!direct.isNullOrBlank()) return direct
     return triggerEvent.path(FIELD_ISSUE).path(FIELD_KEY).asText(null)?.takeIf { it.isNotBlank() }
 }
+
+/** payload 의 `triggerType` 필드를 파싱한다. 없거나 알 수 없는 값이면 `null`([ExecutionPayload.triggerType] 참조). */
+private fun parseTriggerType(node: JsonNode): TriggerType? {
+    val text = node.asText(null) ?: return null
+    return runCatching { TriggerType.valueOf(text) }.getOrNull()
+}
+
+/**
+ * [ActionExecutor.execute] 결과([result])를 저장용 [RuleExecution] 레코드로 매핑한다(FR-AT-05). 인스턴스
+ * 상태(`log`/`ruleExecutionRepository` 등)에 의존하지 않는 순수 변환이라, [AutomationExecutionWorker]
+ * 클래스의 detekt `TooManyFunctions` 임계값을 지키기 위해 클래스 밖 최상위 함수로 둔다("루프 가드 (b)"
+ * 섹션 KDoc과 동일한 분리 전략, [suppressionKey]/[extractIssueKey] 동형). id 는 매 저장마다 새로
+ * 발급하고([UUID.randomUUID]), 워커 경로 실행은 replay 가 아니므로 [RuleExecution.replayedFrom] 은 항상
+ * `null`이다(replay 로 생성되는 이력은 `RuleExecutionService.replay` 가 원본 실행 id 를 replayedFrom 으로
+ * 설정한다). [payload] 의 `triggerType` 이 없으면(구버전 enqueuer 메시지 호환) [rule] 의 `triggerType`
+ * 으로 대체한다.
+ */
+private fun buildRuleExecution(
+    payload: ExecutionPayload,
+    rule: AutomationRule,
+    result: ActionExecutionResult,
+    startedAt: Instant,
+    finishedAt: Instant,
+): RuleExecution =
+    RuleExecution(
+        id = UUID.randomUUID(),
+        ruleId = rule.id,
+        projectKey = rule.projectKey,
+        triggerType = payload.triggerType ?: rule.triggerType,
+        triggerEvent = payload.triggerEvent,
+        issueKey = payload.issueKey,
+        status = result.status,
+        outcomes = result.outcomes,
+        replayedFrom = null,
+        startedAt = startedAt,
+        finishedAt = finishedAt,
+    )
