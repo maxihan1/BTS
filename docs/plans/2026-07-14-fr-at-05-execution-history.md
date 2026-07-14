@@ -128,8 +128,9 @@ FR-AT-05 실행 이력 + 디버깅 (automation BC). 자동화 룰이 언제·어
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/worker/AutomationExecutionWorker.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/worker/AutomationExecutionWorkerTest.kt`]
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/worker/AutomationExecutionWorker.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/worker/AutomationExecutionWorkerTest.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/ActionExecutionEndToEndIntegrationTest.kt`]
 - depends-on: [2]
+- 참고: 워커 생성자 확장이 기존 e2e 테스트(`ActionExecutionEndToEndIntegrationTest`)의 `worker()` 헬퍼도 깬다([[plan-files-constructor-injection-existing-tests]]) → files에 포함(구현 중 발견, 정정).
 
 **RED**: `AutomationExecutionWorkerTest` 확장(생성자에 `RuleExecutionRepository` 추가 — helper `worker(...)` 갱신, [[plan-files-constructor-injection-existing-tests]]) —
 - 실행 성공 후 `rule_executions` row 1건(status=SUCCESS, outcomes 정합, trigger_type=fire-time, project_key=rule.projectKey, issue_key, started<finished).
