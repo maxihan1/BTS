@@ -355,6 +355,10 @@ class AutomationRuleService(
         // 넘긴다(KDoc §id 해석 참고, top-level 함수는 이미 [createImportedRule]/[updateImportedRule]
         // 로 분리돼 있다).
         commands.forEachIndexed { index, command ->
+            // id 해석 — findById 는 활성(미삭제) 행만 반환하므로, "존재 + 이 프로젝트 소속"일 때만
+            // UPDATE 로 분기하고 나머지(id 없음/전역 미존재/다른 프로젝트/소프트삭제)는 모두 CREATE 를
+            // 시도한다 — 후자 두 케이스의 EC4 판정은 createImportedRule 의 PK 제약 위반 감지로 수렴한다
+            // (KDoc §id 해석 참고).
             val existing = command.id?.let(repository::findById)
             val outcome =
                 try {
@@ -385,8 +389,12 @@ class AutomationRuleService(
                         )
                     }
                 } catch (e: AutomationRuleVersionConflictException) {
+                    // OCC(spec C2)는 실패 인덱스로 감싸지 않고 그대로 재전파한다 — 기존 patch() 의 409
+                    // 예외 핸들러(Task 5)를 import 에서도 그대로 재사용하기 위함이다.
                     throw e
                 } catch (e: RuntimeException) {
+                    // OCC 를 제외한 나머지(도메인 검증·EC3·EC4 등)는 전부 실패 커맨드 인덱스로 감싼다
+                    // (spec C3, KDoc §실패 커맨드 인덱스 참고).
                     throw AutomationImportCommandException(index, command.id, e)
                 }
             ruleIds += outcome.ruleId
