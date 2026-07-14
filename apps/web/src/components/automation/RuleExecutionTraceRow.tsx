@@ -67,6 +67,43 @@ function triggerTypeLabel(triggerType: string): string {
 const BADGE_BASE_CLASS = 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// RuleExecutionSummaryButton — 요약 행(항상 표시) + 펼침 토글
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface RuleExecutionSummaryButtonProps {
+  readonly execution: RuleExecutionSummary
+  readonly expanded: boolean
+  readonly onToggle: () => void
+}
+
+/**
+ * 요약 행 — status 배지(색+텍스트)·트리거 라벨·issueKey·성공/전체 카운트·재실행됨 표식.
+ * 행 전체가 펼침 토글 버튼(aria-expanded, button semantics)이다.
+ */
+function RuleExecutionSummaryButton({ execution, expanded, onToggle }: RuleExecutionSummaryButtonProps): JSX.Element {
+  const statusBadge = STATUS_BADGE[execution.status]
+
+  return (
+    <button
+      type="button"
+      aria-expanded={expanded}
+      onClick={onToggle}
+      className="flex w-full flex-wrap items-center gap-2 px-4 py-3 text-left"
+    >
+      <span className={`${BADGE_BASE_CLASS} ${statusBadge.className}`}>{statusBadge.label}</span>
+      <span className="text-xs text-muted-foreground">{triggerTypeLabel(execution.triggerType)}</span>
+      <span className="text-sm">{execution.issueKey ?? labels.noIssue}</span>
+      <span className="text-xs text-muted-foreground">
+        {execution.successCount}/{execution.actionCount} 성공
+      </span>
+      {execution.replayedFrom !== null && (
+        <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{labels.replayedBadge}</span>
+      )}
+    </button>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // RuleExecutionOutcomeRow — 액션 1건 결과 행
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -216,8 +253,6 @@ export function RuleExecutionTraceRow({
   const detailQuery = useRuleExecutionDetail(execution.id, { enabled: expanded })
   const replayMutation = useReplayRuleExecution(projectKey, ruleId)
 
-  const statusBadge = STATUS_BADGE[execution.status]
-
   function handleToggle(): void {
     setExpanded((prev) => !prev)
   }
@@ -245,24 +280,7 @@ export function RuleExecutionTraceRow({
 
   return (
     <li className="rounded-md border">
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={handleToggle}
-        className="flex w-full flex-wrap items-center gap-2 px-4 py-3 text-left"
-      >
-        <span className={`${BADGE_BASE_CLASS} ${statusBadge.className}`}>{statusBadge.label}</span>
-        <span className="text-xs text-muted-foreground">{triggerTypeLabel(execution.triggerType)}</span>
-        <span className="text-sm">{execution.issueKey ?? labels.noIssue}</span>
-        <span className="text-xs text-muted-foreground">
-          {execution.successCount}/{execution.actionCount} 성공
-        </span>
-        {execution.replayedFrom !== null && (
-          <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-            {labels.replayedBadge}
-          </span>
-        )}
-      </button>
+      <RuleExecutionSummaryButton execution={execution} expanded={expanded} onToggle={handleToggle} />
 
       {expanded && (
         <div className="space-y-3 border-t px-4 py-3">
