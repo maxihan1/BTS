@@ -180,6 +180,13 @@ FR-AT-05 실행 이력 + 디버깅 (automation BC). 자동화 룰이 언제·어
 
 **GREEN**: `RuleExecutionService.replay` + 컨트롤러 POST. `AutomationRuleUnavailableException` + 핸들러 409 매핑(`AUTOMATION_RULE_UNAVAILABLE`).
 
+> **E1(eng-review) — 트랜잭션 경계 주의**. `actionExecutor.execute`가 위임하는 `IssueMutationPort`는
+> 커맨드별 자체 tx로 **이미 커밋**한다. 따라서 `execute + save`를 하나의 `@Transactional`로 감싸
+> 롤백을 기대하지 말 것(거짓 원자성 — 이슈 변경은 롤백 안 됨). replay의 이력 record는 **응답 계약의
+> 본체**이므로, 저장 실패는 워커(T3)처럼 삼키지 말고 500으로 노출한다(이슈 변경은 이미 커밋됨 —
+> 워커의 fail-safe 삼킴과 비대칭). replay = 현재 룰 정의 + 저장된 trigger로 실행(루프가드 우회, 관리자
+> 명시 행위)임을 KDoc에 명시.
+
 **REFACTOR**: replay 저장 매핑을 service 내 private helper 로.
 
 **검증**: `./gradlew :backend:modules:automation:test --tests "*RuleExecutionServiceTest" --tests "*AutomationExecutionControllerTest" --tests "*RuleExecutionReplayIntegrationTest"`.
@@ -212,4 +219,18 @@ FR-AT-05 실행 이력 + 디버깅 (automation BC). 자동화 룰이 언제·어
 - 추가 검증: detekt/ktlint(automation 모듈), `:backend:modules:app:test`(prod 조립 — 신규 @Component 추가로 full-boot 재검증 필요, [[prod-assembly-boot-verification-required]] · [[new-crossbc-dep-openapi-mockbean-regression]])
 - 신규 cross-BC 포트/큐 없음(기존 `IssueMutationPort` 재사용) → cross-BC 조립 회귀 위험 낮음. 단 신규 `@Repository`/`@Service`/`@RestController` 3종은 automation test-boot·app 조립 스캔 대상.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (집중 리뷰, 2026-07-14)
+
+저위험 plan(단일 automation 모듈·신규 cross-BC 포트 없음·기존 IssueMutationPort 재사용)이라 autoplan 4-phase 대신 엔지니어링 집중 리뷰([[bts-review-plan-autoplan-overkill]]).
+
+- ✅ **트랜잭션 경계(§1.4)**: 워커(T3) `@Transactional` 없음 유지(기존 설계), 이력 저장 fail-safe 격리. repo 각 호출 자체 tx.
+- ✅ **fail-safe 정합**: T3 이력 저장 실패가 pgmq archive/at-least-once 훼손 안 함.
+- ⚠️ **E1 (반영됨)**: replay `execute+save`를 거짓 원자 `@Transactional`로 감싸지 말 것. replay 이력 저장 실패는 500 노출(응답 계약 본체, 워커 삼킴과 비대칭). → T5 GREEN에 명시 반영.
+- ⚠️ **E2/E3 (문서화)**: replay = 현재 룰 정의 + 저장된 trigger, 루프가드 우회(관리자 명시). downstream은 정상 파이프라인 가드가 방어. → T5 KDoc 명시.
+- ⚠️ **E4 (보안 렌즈, 게이트2)**: replay 액션은 `rule.actorUserId`로 실행, API 가드 `MANAGE_AUTOMATION`. 기존 실행 권한 모델 그대로라 신규 권한 상승 없음. 게이트2 코드리뷰에서 보안 렌즈 재확인.
+- ⚠️ **E5 (impl 확인)**: 신규 컨트롤러가 중앙 OpenApi 스캔 대상인지 확인([[new-crossbc-dep-openapi-mockbean-regression]] — 단 신규 cross-BC 포트 없어 위험 낮음). `before` 커서는 ISO Instant([[date-input-iso-instant-query-param]]). 신규 @Component 3종 prod 조립 부팅 재검증([[prod-assembly-boot-verification-required]]).
+- **BLOCKER: 없음**.
+
+**종합**: 데이터 구조가 이미 `ActionExecutor` 반환값에 존재하고 신규 계산 로직이 없어 위험 표면이 작다. E1(replay tx 비대칭)만 correctness 주의 사항으로 T5에 반영. 진행 권장.
