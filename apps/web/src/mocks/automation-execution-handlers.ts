@@ -6,10 +6,9 @@
 //   - e2e-msw-scenario-toggle-localstorage-flag: 빈 목록/replay 실패 시나리오는 localStorage 플래그로 분기
 //   - frontend-api-convention-per-bc: automation 응답은 `{data}` 봉투 없이 bare DTO 직접 반환
 //   - msw-global-handler-registration-gap: handlers.ts 전역 등록 누락 시 E2E에서만 누출 — 반드시 등록
-//   - frontend-zod-backend-dto-contract-gap: 단건/replay 응답은 `toWireDetail`로 actionCount/successCount를
-//     제거해 실제 backend DTO에 맞춘다 — `ruleExecutionDetailSchema`(automation-executions.types.ts, 이 task
-//     허용 파일 아님)가 `.extend()`로 이 두 필드를 잘못 요구하는 기존 drift, 자세한 근거는
-//     automation-execution-fixtures.ts 상단 KDoc 참고. Task 1 스키마 후속 수정 필요.
+//   - frontend-zod-backend-dto-contract-gap: `ruleExecutionDetailSchema`는 base 스키마 분리로 backend
+//     `RuleExecutionDetailResponse`(actionCount/successCount 없음·outcomes만)와 정합한다. 단건/replay 응답은
+//     store 레코드를 `toWireDetail`로 방어적 필드 프로젝션해 반환한다(summary 집계는 `toSummary`가 계산).
 //
 // ⚠️ msw@2.14.6 Node 인터셉터(vitest 유닛 테스트 전용, `setupServer`) 이중 dispatch 관찰 — 동일
 // `requestId`로 resolver 가 2회 호출되는 현상을 재현·확인했다(body를 `await request.json()`으로 읽는
@@ -90,14 +89,11 @@ const MIN_LIMIT = 1
 const MAX_LIMIT = 200
 
 /**
- * 실제 backend `RuleExecutionDetailResponse` wire 계약(`RuleExecutionResponses.kt` 1:1) — `RuleExecutionDetail`
- * 과 달리 `actionCount`/`successCount`를 포함하지 않는다(automation-execution-fixtures.ts 상단 KDoc "알려진
- * 스키마 drift" 참고).
+ * 상세/replay 응답을 store 레코드에서 방어적으로 복사해 반환한다 — backend `RuleExecutionDetailResponse`
+ * (`RuleExecutionResponses.kt`) 필드 프로젝션. `RuleExecutionDetail`이 이미 wire 계약과 1:1이라(스키마 base
+ * 분리 완료) 별도 Omit 타입은 두지 않고, 명시 필드 복사로 우발적 필드 누출만 막는다.
  */
-type WireExecutionDetail = Omit<RuleExecutionDetail, 'actionCount' | 'successCount'>
-
-/** 상세/replay 응답을 실제 backend wire 계약대로 정규화한다 — actionCount/successCount 제거. */
-function toWireDetail(detail: RuleExecutionDetail): WireExecutionDetail {
+function toWireDetail(detail: RuleExecutionDetail): RuleExecutionDetail {
   return {
     id: detail.id,
     ruleId: detail.ruleId,
@@ -120,7 +116,7 @@ function toWireDetail(detail: RuleExecutionDetail): WireExecutionDetail {
 /** 가장 최근 처리한 replay 요청의 `requestId` — 동일 id 로 재호출되면 store를 다시 mutate하지 않는다. */
 let lastReplayRequestId: string | null = null
 /** `lastReplayRequestId` 요청의 응답 본문 캐시 — 중복 dispatch 시 그대로 재반환한다. */
-let lastReplayResponseBody: WireExecutionDetail | null = null
+let lastReplayResponseBody: RuleExecutionDetail | null = null
 
 /**
  * 상세 레코드에서 목록 요약 필드만 추출한다(outcomes/triggerEvent/projectKey 제외,

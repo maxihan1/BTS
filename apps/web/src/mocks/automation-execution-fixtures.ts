@@ -1,7 +1,7 @@
 // FR-AT-05 D6/D7 자동화 룰 실행 이력 MSW fixture — 시드 데이터·공유 stateful store·시나리오 플래그 상수
 //
 // `RuleExecutionDetail`(backend `RuleExecutionDetailResponse` 1:1)은 outcomes만 담고 actionCount/successCount는
-// 담지 않는다 — 목록 요약(summary)만 그 두 집계값을 가지며, handlers.ts `toWireSummary`가 outcomes에서 계산한다
+// 담지 않는다 — 목록 요약(summary)만 그 두 집계값을 가지며, handlers.ts `toSummary`가 outcomes에서 계산한다
 // ([[frontend-zod-backend-dto-contract-gap]] — mock을 실제 DTO 계약에 맞춘다).
 import type { RuleExecutionDetail } from '@/api/automation-executions.types'
 import {
