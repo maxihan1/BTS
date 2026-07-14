@@ -3,6 +3,8 @@
 package com.bts.automation.adapter.web.dto
 
 import com.bts.automation.application.CreatedAutomationRule
+import com.bts.automation.application.ImportOutcome
+import com.bts.automation.application.ImportedWebhookToken
 import com.bts.automation.application.PatchedAutomationRule
 import com.bts.automation.domain.Action
 import com.bts.automation.domain.ActionType
@@ -234,5 +236,86 @@ data class CreateAutomationRuleResponse(
                 rule = AutomationRuleResponse.from(created.rule, created.conflicts),
                 webhookToken = created.webhookToken,
             )
+    }
+}
+
+/**
+ * GitOps YAML import 응답 DTO — `POST .../rules/import` 전용(FR-AT-06 GitOps Task 5).
+ *
+ * [webhookTokens] 는 이번 import 로 **새로 생성된** WEBHOOK 룰의 원문 토큰만 담는다(spec FR8 — 갱신된
+ * WEBHOOK 룰은 토큰을 재mint 하지 않아 여기 담기지 않는다, [CreateAutomationRuleResponse.webhookToken] 1회
+ * 노출 시맨틱 승계). 새로 생성된 WEBHOOK 룰이 하나도 없으면 `null` 로 두어([JsonInclude.Include.NON_NULL])
+ * JSON 응답에서 키 자체가 생략된다 — `[]`(빈 배열)와 `null`(해당 없음)을 구분한다.
+ *
+ * [conflicts] 는 [com.bts.automation.adapter.web.AutomationRuleController.import] 가 저장 트랜잭션
+ * **커밋 후** 별도로 호출한
+ * [com.bts.automation.application.AutomationRuleService.analyzeProjectConflicts] 결과를 그대로 담는다
+ * ([AutomationRuleResponse.conflicts] 와 달리 이 필드는 항상 결과 리스트를 받는다 — 빈 리스트여도
+ * `[]`로 노출되고, `null`이 되는 경우는 없다. `@JsonInclude(NON_NULL)`은 [AutomationRuleResponse.conflicts]
+ * 와 동일 어노테이션을 재사용한 것뿐이다).
+ *
+ * @property created 새로 생성된 규칙 수.
+ * @property updated 갱신된 규칙 수.
+ * @property total [created] + [updated](입력 커맨드 총 수와 같다).
+ * @property ruleIds [com.bts.automation.gitops.ImportRuleCommand] 입력 순서를 보존한 규칙 id 목록.
+ * @property webhookTokens 새로 생성된 WEBHOOK 룰의 1회 노출 원문 토큰 목록. 해당 없으면 `null`.
+ * @property conflicts 커밋 후 검출된 규칙 충돌 목록.
+ */
+data class AutomationImportResponse(
+    val created: Int,
+    val updated: Int,
+    val total: Int,
+    val ruleIds: List<UUID>,
+    @field:JsonInclude(JsonInclude.Include.NON_NULL)
+    val webhookTokens: List<ImportedWebhookTokenResponse>? = null,
+    @field:JsonInclude(JsonInclude.Include.NON_NULL)
+    val conflicts: List<RuleConflictResponse>? = null,
+) {
+    companion object {
+        /**
+         * 서비스 결과 [ImportOutcome] + 커밋 후 분석한 [conflicts] 를 import 응답 DTO 로 변환한다.
+         *
+         * @param outcome [com.bts.automation.application.AutomationRuleService.importRules] 결과.
+         * @param conflicts 커밋 후 [com.bts.automation.application.AutomationRuleService.analyzeProjectConflicts]
+         *   호출 결과.
+         * @return created/updated/total/ruleIds + (있으면) webhookTokens + conflicts 로 구성된 응답 DTO.
+         */
+        fun from(
+            outcome: ImportOutcome,
+            conflicts: List<RuleConflict>,
+        ): AutomationImportResponse =
+            AutomationImportResponse(
+                created = outcome.created,
+                updated = outcome.updated,
+                total = outcome.created + outcome.updated,
+                ruleIds = outcome.ruleIds,
+                webhookTokens = outcome.webhookTokens.ifEmpty { null }?.map(ImportedWebhookTokenResponse::from),
+                conflicts = conflicts.map(RuleConflictResponse::from),
+            )
+    }
+}
+
+/**
+ * [AutomationImportResponse.webhookTokens] 1건 — 새로 생성된 WEBHOOK 룰의 id·이름·1회 노출 원문 토큰
+ * ([ImportedWebhookToken] 대칭, FR-AT-06 GitOps Task 5).
+ *
+ * @property ruleId 생성된 룰 id.
+ * @property name 생성된 룰 이름(호출자가 어느 룰의 토큰인지 식별하기 위한 표시용).
+ * @property token 발급된 원문 토큰(1회 노출, 이후 재조회 불가).
+ */
+data class ImportedWebhookTokenResponse(
+    val ruleId: UUID,
+    val name: String,
+    val token: String,
+) {
+    companion object {
+        /**
+         * 도메인 [ImportedWebhookToken] 을 응답 DTO 로 변환한다.
+         *
+         * @param token 변환할 import 결과 값 객체.
+         * @return 대칭 필드로 구성된 응답 DTO.
+         */
+        fun from(token: ImportedWebhookToken): ImportedWebhookTokenResponse =
+            ImportedWebhookTokenResponse(ruleId = token.ruleId, name = token.name, token = token.token)
     }
 }

@@ -1,4 +1,4 @@
-// AutomationRuleController import 엔드포인트 통합 테스트 — YAML upsert 200 + 예외매핑(400/413) + 커밋후 conflicts (FR-AT-06 GitOps Task 5)
+// AutomationRuleController import 엔드포인트 통합 테스트 — YAML upsert 200 + 예외매핑(400/413) + 커밋후 conflicts (FR-AT-06 Task 5)
 
 package com.bts.automation.web
 
@@ -9,6 +9,7 @@ import com.bts.automation.StubIssueMutationPort
 import com.bts.automation.StubIssuePermissionResolver
 import com.bts.automation.StubIssueSnapshotPort
 import com.bts.shared.permission.IssuePermissionResolver
+import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -81,6 +82,10 @@ class AutomationRuleImportIntegrationTest {
     @Autowired
     @Suppress("VarCouldBeVal")
     private lateinit var permissionResolver: StubAutomationPermissionResolver
+
+    @Autowired
+    @Suppress("VarCouldBeVal")
+    private lateinit var objectMapper: ObjectMapper
 
     private lateinit var mockMvc: MockMvc
 
@@ -188,18 +193,25 @@ class AutomationRuleImportIntegrationTest {
         val ruleDId = UUID.randomUUID()
         val yaml = fieldConflictYaml(ruleCId, ruleDId)
 
-        mockMvc
-            .perform(
-                post("/api/v1/projects/$PROJECT_KEY/automation/rules/import")
-                    .contentType(YAML_MEDIA_TYPE)
-                    .content(yaml),
-            ).andExpect(status().isOk)
-            .andExpect(jsonPath("$.created").value(2))
-            .andExpect(jsonPath("$.conflicts[?(@.type == 'FIELD_CONFLICT')]").exists())
-            .andExpect(
-                jsonPath("$.conflicts[?(@.type == 'FIELD_CONFLICT')].ruleIds[0]")
-                    .value(org.hamcrest.Matchers.hasItems(ruleCId.toString(), ruleDId.toString())),
-            )
+        val response =
+            mockMvc
+                .perform(
+                    post("/api/v1/projects/$PROJECT_KEY/automation/rules/import")
+                        .contentType(YAML_MEDIA_TYPE)
+                        .content(yaml),
+                ).andExpect(status().isOk)
+                .andExpect(jsonPath("$.created").value(2))
+                .andReturn()
+                .response
+                .contentAsString
+
+        val conflicts = objectMapper.readTree(response).get("conflicts")
+        assertThat(conflicts).isNotNull
+        val fieldConflict =
+            conflicts.singleOrNull { it.get("type").asText() == "FIELD_CONFLICT" }
+        assertThat(fieldConflict).isNotNull
+        val conflictRuleIds = fieldConflict!!.get("ruleIds").map { it.asText() }
+        assertThat(conflictRuleIds).containsExactlyInAnyOrder(ruleCId.toString(), ruleDId.toString())
     }
 
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
