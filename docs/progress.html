@@ -182,9 +182,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
           <div><span class="dot dot-done"></span> 완료 <b>121</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>0</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>1</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>2</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>1</b></div>
         </div>
       </div>
     </div>
@@ -745,9 +745,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bar"><div class="bar-fill" style="width:71%"></div></div>
       <div class="status-grid">
         <div>✅ 완료 5</div>
-        <div>🔄 진행중 0</div>
+        <div>🔄 진행중 1</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 2</div>
+        <div>⬜ 대기 1</div>
       </div>
     </div>
     <h2>세부 기능 (7개)</h2>
@@ -786,13 +786,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc">실행 이력 + 디버깅 (재실행, 단계별 추적)</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — RuleExecution</li><li><span class="step-icon">✅</span> D2 — 명세 — trace context + 재실행</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `rule_executions(rule_id, <span class="term" data-def="&quot;방아쇠와 행동&quot; 자동화 시스템에서 &quot;이슈가 완료되면(Trigger), 슬랙으로 알림을 보낸다(Action)&quot;처럼 조건과 실행을 뜻합니다.">trigger</span>_event, result, ...)`</li><li><span class="step-icon">✅</span> D4 — 백엔드 — 실행 이력 저장 + `POST /api/v1/automation/executions/{id}/replay`</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 실행 이력 + 단계별 trace + 재실행 버튼</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-미진행">
+    </details><details class="fr-item fr-진행중">
       <summary>
-        <span class="fr-status">⬜</span>
+        <span class="fr-status">🔄</span>
         <span class="fr-id">FR-AT-06</span>
         <span class="fr-desc"><span class="term" data-def="&quot;사람과 컴퓨터의 공용어&quot; 괄호 대신 &#39;들여쓰기&#39;로 설정을 적어서, 사람도 읽기 편하고 컴퓨터도 이해하기 쉬운 문서 형식입니다.">YAML</span> 가져오기/내보내기 (<span class="term" data-def="&quot;설정 문서가 곧 시스템&quot; 클릭해서 서버를 세팅하는 게 아니라, YAML 문서에 &quot;서버 3대 켜줘&quot;라고 적어서 Git에 올리면 그대로 인프라가 자동으로 구축되는 방식입니다.">GitOps</span>)</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인</li><li><span class="step-icon">⬜</span> D2 — 명세 — <span class="term" data-def="&quot;사람과 컴퓨터의 공용어&quot; 괄호 대신 &#39;들여쓰기&#39;로 설정을 적어서, 사람도 읽기 편하고 컴퓨터도 이해하기 쉬운 문서 형식입니다.">YAML</span> <span class="term" data-def="&quot;데이터 엑셀 양식&quot; 이름은 문자, 나이는 숫자 등 데이터베이스에 정보를 어떤 모양으로 저장할지 정해둔 도면입니다.">스키마</span></li><li><span class="step-icon">⬜</span> D3 — 데이터 모델 — (활용)</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — `POST /api/v1/automation/import` + `GET .../<span class="term" data-def="AQL 검색 결과를 파일로 내보내기. `POST /api/v1/search/export`(동기, 1만 행 상한, count-first). `IssueSearchPort` 재사용으로 검색의 BROWSE 권한·visibility 보안 술어를 구조적 상속(전용 쿼리 경로 없음). 컬럼=IssueSearchHit 9필드(영문 라벨) 부분선택. formula injection 방어(`ExportCellSanitizer`). 대용량(&gt;1만) 비동기는 FR-EX-02(`/search/export-jobs`)로 분리 (FR-EX-01)">export</span>`</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트 — round-trip</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="&quot;사람과 컴퓨터의 공용어&quot; 괄호 대신 &#39;들여쓰기&#39;로 설정을 적어서, 사람도 읽기 편하고 컴퓨터도 이해하기 쉬운 문서 형식입니다.">YAML</span> 업로드/다운로드</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인</li><li><span class="step-icon">✅</span> D2 — 명세 — <span class="term" data-def="&quot;사람과 컴퓨터의 공용어&quot; 괄호 대신 &#39;들여쓰기&#39;로 설정을 적어서, 사람도 읽기 편하고 컴퓨터도 이해하기 쉬운 문서 형식입니다.">YAML</span> <span class="term" data-def="&quot;데이터 엑셀 양식&quot; 이름은 문자, 나이는 숫자 등 데이터베이스에 정보를 어떤 모양으로 저장할지 정해둔 도면입니다.">스키마</span></li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — (활용)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — `POST .../rules/import` + `GET .../rules/<span class="term" data-def="AQL 검색 결과를 파일로 내보내기. `POST /api/v1/search/export`(동기, 1만 행 상한, count-first). `IssueSearchPort` 재사용으로 검색의 BROWSE 권한·visibility 보안 술어를 구조적 상속(전용 쿼리 경로 없음). 컬럼=IssueSearchHit 9필드(영문 라벨) 부분선택. formula injection 방어(`ExportCellSanitizer`). 대용량(&gt;1만) 비동기는 FR-EX-02(`/search/export-jobs`)로 분리 (FR-EX-01)">export</span>`</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — round-trip</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — <span class="term" data-def="&quot;사람과 컴퓨터의 공용어&quot; 괄호 대신 &#39;들여쓰기&#39;로 설정을 적어서, 사람도 읽기 편하고 컴퓨터도 이해하기 쉬운 문서 형식입니다.">YAML</span> 업로드/다운로드</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
