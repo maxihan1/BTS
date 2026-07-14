@@ -213,6 +213,17 @@ describe('RuleExecutionTraceRow', () => {
     })
 
     it('detail 로딩 중에는 펼침 영역 내 로딩 표시가 나타난다', async () => {
+      // GET 응답을 수동으로 제어해(resolveDetail 호출 전까지 미해결) 로딩 구간을 결정적으로 관측한다.
+      let resolveDetail: (() => void) | undefined
+      server.use(
+        http.get('/api/v1/automation/executions/:id', async () => {
+          await new Promise<void>((resolve) => {
+            resolveDetail = resolve
+          })
+          return HttpResponse.json(DETAIL_FIXTURE)
+        }),
+      )
+
       const user = userEvent.setup()
       renderRow()
 
@@ -220,6 +231,8 @@ describe('RuleExecutionTraceRow', () => {
       await user.click(toggle)
 
       expect(screen.getByRole('status')).toBeInTheDocument()
+
+      resolveDetail?.()
 
       await waitFor(() => {
         expect(screen.queryByRole('status')).not.toBeInTheDocument()
