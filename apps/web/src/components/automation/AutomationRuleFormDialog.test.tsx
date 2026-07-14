@@ -21,6 +21,7 @@ import type {
   AutomationRule,
   CreateAutomationRuleInput,
   PatchAutomationRuleInput,
+  RuleConflict,
 } from '@/api/automation-rules.types'
 
 vi.mock('sonner', () => ({
@@ -598,6 +599,114 @@ describe('AutomationRuleFormDialog — WEBHOOK 토큰 콜백', () => {
 
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
     expect(onWebhookToken).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 규칙 충돌 콜백 — onWebhookToken과 대칭 패턴(FR-AT-04 D6/D7 Task 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AutomationRuleFormDialog — 규칙 충돌 콜백', () => {
+  it('생성 저장 성공 응답(rule.conflicts)에 1건 이상 있으면 onConflicts가 그 배열로 호출된다', async () => {
+    const conflicts: RuleConflict[] = [
+      {
+        type: 'CYCLE',
+        severity: 'WARNING',
+        ruleIds: ['a1b2c3d4-e5f6-4890-abcd-ef1234567890'],
+        detail: '순환 감지',
+      },
+    ]
+    server.use(
+      http.post('/api/v1/projects/:projectKey/automation/rules', async ({ request }) => {
+        const body = (await request.json()) as CreateAutomationRuleInput
+        return HttpResponse.json(
+          { rule: { ...SCHEDULED_EDIT_RULE, ...body, conflicts }, webhookToken: null },
+          { status: 201 },
+        )
+      }),
+    )
+    const onConflicts = vi.fn()
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={vi.fn()}
+        onConflicts={onConflicts}
+      />,
+    )
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('이름'), '충돌 있는 룰')
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => {
+      expect(onConflicts).toHaveBeenCalledWith(conflicts)
+    })
+  })
+
+  it('생성 저장 성공 응답 rule.conflicts가 빈 배열이면 onConflicts가 호출되지 않는다', async () => {
+    server.use(
+      http.post('/api/v1/projects/:projectKey/automation/rules', async ({ request }) => {
+        const body = (await request.json()) as CreateAutomationRuleInput
+        return HttpResponse.json(
+          { rule: { ...SCHEDULED_EDIT_RULE, ...body, conflicts: [] }, webhookToken: null },
+          { status: 201 },
+        )
+      }),
+    )
+    const onConflicts = vi.fn()
+    const onOpenChange = vi.fn()
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={onOpenChange}
+        onConflicts={onConflicts}
+      />,
+    )
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('이름'), '충돌 없는 룰')
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+    expect(onConflicts).not.toHaveBeenCalled()
+  })
+
+  it('수정 저장 성공 응답(최상위 conflicts)에 1건 이상 있으면 onConflicts가 그 배열로 호출된다', async () => {
+    const conflicts: RuleConflict[] = [
+      {
+        type: 'FIELD_CONFLICT',
+        severity: 'WARNING',
+        ruleIds: ['a1b2c3d4-e5f6-4890-abcd-ef1234567891'],
+        detail: '필드 충돌',
+      },
+    ]
+    server.use(
+      http.patch('/api/v1/projects/:projectKey/automation/rules/:id', async ({ request }) => {
+        const body = (await request.json()) as PatchAutomationRuleInput
+        return HttpResponse.json({
+          ...SCHEDULED_EDIT_RULE,
+          ...body,
+          version: SCHEDULED_EDIT_RULE.version + 1,
+          conflicts,
+        })
+      }),
+    )
+    const onConflicts = vi.fn()
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={vi.fn()}
+        editingRule={SCHEDULED_EDIT_RULE}
+        onConflicts={onConflicts}
+      />,
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => {
+      expect(onConflicts).toHaveBeenCalledWith(conflicts)
+    })
   })
 })
 

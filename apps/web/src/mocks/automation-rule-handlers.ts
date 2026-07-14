@@ -15,7 +15,13 @@ import type {
   PatchAutomationRuleInput,
   TriggerType,
 } from '@/api/automation-rules.types'
-import { DEFAULT_AUTOMATION_ACTOR_ID, generateUuidV4, ruleStore, SCENARIO_KEY } from './automation-rule-fixtures'
+import {
+  buildSeededConflicts,
+  DEFAULT_AUTOMATION_ACTOR_ID,
+  generateUuidV4,
+  ruleStore,
+  SCENARIO_KEY,
+} from './automation-rule-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 에러 응답 헬퍼 — RFC 7807 ProblemDetail 형태 (version-handlers.ts 동형)
@@ -98,6 +104,15 @@ function generateWebhookToken(): string {
 }
 
 /**
+ * SCENARIO_KEY.WITH_CONFLICTS 플래그가 켜져 있는지 판정한다(EMPTY_LIST 판정과 동형).
+ * true면 create/patch 핸들러가 응답에 결정적 충돌(buildSeededConflicts)을 실어
+ * 충돌 경고 모달 E2E를 재현 가능하게 만든다.
+ */
+function withConflictsFlag(): boolean {
+  return globalThis.localStorage?.getItem(SCENARIO_KEY.WITH_CONFLICTS) === 'true'
+}
+
+/**
  * SCHEDULED 트리거의 다음 발화 예정 시각을 계산한다.
  * 실제 cron 파싱은 하지 않는 모의 값 — 기준 시각(from) 24시간 뒤 ISO Instant.
  * SCHEDULED가 아니면 항상 null(백엔드 nextFireAt 정책과 동일).
@@ -177,6 +192,8 @@ const listRulesHandler = http.get('/api/v1/projects/:projectKey/automation/rules
  * 생성된 룰은 항상 enabled=true, version=1로 시작한다(백엔드 고정값).
  * actions 미지정 시 빈 배열(EC5 — 트리거만 있는 룰도 유효), actorUserId 미지정 시
  * 생성자(DEFAULT_AUTOMATION_ACTOR_ID)로 폴백한다(FR8 — 백엔드 생성자 폴백 규약과 동형).
+ * SCENARIO_KEY.WITH_CONFLICTS 플래그가 true면 `rule.conflicts`에 결정적 충돌 시드를 실어 응답하고,
+ * 아니면 빈 배열(FR-AT-04 D6/D7 — store에는 저장하지 않는다, GET 계약 불변).
  * 성공 → 201 { rule: AutomationRuleResponse, webhookToken: string | null }
  */
 const createRuleHandler = http.post(
@@ -206,11 +223,14 @@ const createRuleHandler = http.post(
       version: 1,
     }
 
+    // store에는 conflicts 없는 newRule 그대로 저장한다 — GET 응답 계약(conflicts 키 부재)을
+    // 오염시키지 않기 위함이다(msw-derived-behavior-shared-store-e2e). conflicts는 이 응답에만 붙인다.
     ruleStore.set(newRule.id, newRule)
 
     const webhookToken = isWebhook ? generateWebhookToken() : null
+    const conflicts = withConflictsFlag() ? buildSeededConflicts(newRule.id) : []
 
-    return HttpResponse.json({ rule: newRule, webhookToken }, { status: 201 })
+    return HttpResponse.json({ rule: { ...newRule, conflicts }, webhookToken }, { status: 201 })
   },
 )
 
@@ -248,6 +268,8 @@ const getRuleHandler = http.get(
  * 1. 룰 미존재 또는 다른 프로젝트 소속 → 404 AUTOMATION_RULE_NOT_FOUND
  * 2. body.version이 현재 저장된 version과 다름(OCC 충돌) → 409 AUTOMATION_RULE_VERSION_CONFLICT
  * 성공 → 200 AutomationRuleResponse (version +1, updatedAt 갱신)
+ * SCENARIO_KEY.WITH_CONFLICTS 플래그가 true면 최상위 `conflicts`에 결정적 충돌 시드를 실어
+ * 응답하고, 아니면 빈 배열(FR-AT-04 D6/D7 — store에는 저장하지 않는다, GET 계약 불변).
  *
  * triggerConfig가 실제로 변경되고 트리거 타입이 SCHEDULED이면 nextFireAt을 재계산한다.
  * actions는 지정 시 **전체 교체**(부분 병합 아님, backend PatchAutomationRuleRequest 동일 컨벤션) —
@@ -297,9 +319,13 @@ const patchRuleHandler = http.patch(
       version: stored.version + 1,
     }
 
+    // store에는 conflicts 없는 updated 그대로 저장한다 — GET 응답 계약(conflicts 키 부재)을
+    // 오염시키지 않기 위함이다(msw-derived-behavior-shared-store-e2e). conflicts는 이 응답에만 붙인다.
     ruleStore.set(id, updated)
 
-    return HttpResponse.json(updated)
+    const conflicts = withConflictsFlag() ? buildSeededConflicts(id) : []
+
+    return HttpResponse.json({ ...updated, conflicts })
   },
 )
 

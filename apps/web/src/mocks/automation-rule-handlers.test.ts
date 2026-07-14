@@ -8,6 +8,7 @@ import {
 import type { ActionRequestInput, ActionType, AutomationRule, TriggerType } from '@/api/automation-rules.types'
 import { automationRuleHandlers } from './automation-rule-handlers'
 import {
+  buildSeededConflicts,
   DEFAULT_AUTOMATION_ACTOR_ID,
   DEFAULT_AUTOMATION_PROJECT_KEY,
   DEFAULT_AUTOMATION_RULES,
@@ -458,5 +459,64 @@ describe('SCENARIO_KEY.EMPTY_LIST localStorage 플래그', () => {
 
     const { body } = await listRules()
     expect(body).toEqual([])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (g) SCENARIO_KEY.WITH_CONFLICTS 플래그 — create/patch 응답에 결정적 충돌 주입 (FR-AT-04 D6/D7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SCENARIO_KEY.WITH_CONFLICTS localStorage 플래그 (FR-AT-04 D6/D7)', () => {
+  it('플래그가 true면 POST 생성 응답 rule.conflicts에 시드 충돌이 포함된다', async () => {
+    localStorage.setItem(SCENARIO_KEY.WITH_CONFLICTS, 'true')
+
+    const { status, body } = await createRule({ name: '충돌 테스트 룰' })
+    expect(status).toBe(201)
+
+    const parsed = createAutomationRuleResponseSchema.parse(body)
+    expect(parsed.rule.conflicts).toEqual(buildSeededConflicts(parsed.rule.id))
+    expect(parsed.rule.conflicts?.length).toBeGreaterThan(0)
+  })
+
+  it('플래그가 없으면 POST 생성 응답 rule.conflicts는 빈 배열이다', async () => {
+    const { body } = await createRule({ name: '충돌 없음' })
+
+    const parsed = createAutomationRuleResponseSchema.parse(body)
+    expect(parsed.rule.conflicts).toEqual([])
+  })
+
+  it('플래그가 true면 PATCH 응답 최상위 conflicts에 시드 충돌이 포함된다', async () => {
+    const created = await createRule({ name: 'PATCH 대상' })
+    const rule = createAutomationRuleResponseSchema.parse(created.body).rule
+
+    localStorage.setItem(SCENARIO_KEY.WITH_CONFLICTS, 'true')
+    const { status, body } = await patchRule(rule.id, { version: rule.version, name: '변경된 이름' })
+    expect(status).toBe(200)
+
+    const updated = automationRuleResponseSchema.parse(body)
+    expect(updated.conflicts).toEqual(buildSeededConflicts(rule.id))
+  })
+
+  it('플래그가 없으면 PATCH 응답 최상위 conflicts는 빈 배열이다', async () => {
+    const created = await createRule({ name: 'PATCH 대상 2' })
+    const rule = createAutomationRuleResponseSchema.parse(created.body).rule
+
+    const { body } = await patchRule(rule.id, { version: rule.version, name: '변경된 이름 2' })
+    const updated = automationRuleResponseSchema.parse(body)
+    expect(updated.conflicts).toEqual([])
+  })
+
+  it('플래그가 true여도 GET 목록/단건 응답에는 conflicts 키가 없다(store 오염 없음)', async () => {
+    localStorage.setItem(SCENARIO_KEY.WITH_CONFLICTS, 'true')
+    const created = await createRule({ name: 'GET 확인용' })
+    const rule = createAutomationRuleResponseSchema.parse(created.body).rule
+
+    const single = await getRule(rule.id)
+    expect(Object.keys(single.body as object)).not.toContain('conflicts')
+
+    const list = await listRules()
+    for (const item of list.body as unknown[]) {
+      expect(Object.keys(item as object)).not.toContain('conflicts')
+    }
   })
 })

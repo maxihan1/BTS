@@ -159,6 +159,94 @@ describe('createAutomationRuleResponseSchema', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// conflicts — 규칙 충돌 정적 분석 응답 (FR-AT-04 D6/D7, backend RuleConflictResponse 1:1 대응)
+// create/patch 응답은 conflicts가 항상 존재(충돌 없으면 빈 배열), GET(목록/단건)은 키 자체가 부재.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const cycleConflictFixture = {
+  type: 'CYCLE',
+  severity: 'WARNING',
+  ruleIds: ['550e8400-e29b-41d4-a716-446655440000', '660e8400-e29b-41d4-b716-446655440001'],
+  detail: '순환 트리거 감지: 룰 A → 룰 B → 룰 A',
+} as const
+
+const fieldConflictFixture = {
+  type: 'FIELD_CONFLICT',
+  severity: 'WARNING',
+  ruleIds: ['770e8400-e29b-41d4-8716-446655440002'],
+  detail: '동일 필드에 서로 다른 값을 설정하는 룰이 있습니다.',
+} as const
+
+const priorityConflictFixture = {
+  type: 'PRIORITY_AMBIGUITY',
+  severity: 'WARNING',
+  ruleIds: ['880e8400-e29b-41d4-9716-446655440003'],
+  detail: '우선순위가 모호한 룰이 있습니다.',
+} as const
+
+const permissionConflictFixture = {
+  type: 'PERMISSION_MISSING',
+  severity: 'WARNING',
+  ruleIds: ['990e8400-e29b-41d4-a716-446655440004'],
+  detail: '실행자에게 필요한 권한이 없습니다.',
+} as const
+
+const allConflictFixtures = [
+  cycleConflictFixture,
+  fieldConflictFixture,
+  priorityConflictFixture,
+  permissionConflictFixture,
+]
+
+describe('createAutomationRuleResponseSchema — conflicts (FR-AT-04 D6/D7)', () => {
+  it('4종 충돌(CYCLE/FIELD_CONFLICT/PRIORITY_AMBIGUITY/PERMISSION_MISSING) 각 1건을 파싱한다', () => {
+    const result = createAutomationRuleResponseSchema.parse({
+      rule: { ...issueCreatedRuleFixture, conflicts: allConflictFixtures },
+      webhookToken: null,
+    })
+    expect(result.rule.conflicts).toHaveLength(4)
+    expect(result.rule.conflicts).toEqual(allConflictFixtures)
+  })
+
+  it('conflicts가 빈 배열(충돌 없음)이어도 파싱 통과하고 빈 배열이 보존된다', () => {
+    const result = createAutomationRuleResponseSchema.parse({
+      rule: { ...issueCreatedRuleFixture, conflicts: [] },
+      webhookToken: null,
+    })
+    expect(result.rule.conflicts).toEqual([])
+  })
+
+  it('conflicts의 ruleIds는 UUID 문자열 배열, detail은 문자열이다', () => {
+    const result = createAutomationRuleResponseSchema.parse({
+      rule: { ...issueCreatedRuleFixture, conflicts: [cycleConflictFixture] },
+      webhookToken: null,
+    })
+    const conflicts = result.rule.conflicts ?? []
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts.every((conflict) => conflict.ruleIds.every((id) => typeof id === 'string'))).toBe(true)
+    expect(conflicts.every((conflict) => typeof conflict.detail === 'string')).toBe(true)
+  })
+
+  it('conflicts type이 4종 밖 값이면 ZodError를 throw한다', () => {
+    const invalid = {
+      rule: {
+        ...issueCreatedRuleFixture,
+        conflicts: [{ ...cycleConflictFixture, type: 'NOT_A_CONFLICT_TYPE' }],
+      },
+      webhookToken: null,
+    }
+    expect(() => createAutomationRuleResponseSchema.parse(invalid)).toThrow(ZodError)
+  })
+})
+
+describe('automationRuleResponseSchema — conflicts 부재 (GET 단건, FR-AT-04 D6/D7)', () => {
+  it('GET 단건 응답(conflicts 키 부재)을 파싱하면 conflicts는 undefined다', () => {
+    const result = automationRuleResponseSchema.parse(issueCreatedRuleFixture)
+    expect(result.conflicts).toBeUndefined()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // triggerTypeSchema
 // ─────────────────────────────────────────────────────────────────────────────
 

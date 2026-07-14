@@ -37,8 +37,39 @@ export const actionResponseSchema = z.object({
 })
 
 /**
+ * 규칙 충돌 타입 enum — backend `ConflictType` 4종(CYCLE·FIELD_CONFLICT·PRIORITY_AMBIGUITY·
+ * PERMISSION_MISSING) 1:1 대응 (FR-AT-04 D6/D7 규칙 충돌 정적 분석).
+ */
+export const conflictTypeSchema = z.enum(['CYCLE', 'FIELD_CONFLICT', 'PRIORITY_AMBIGUITY', 'PERMISSION_MISSING'])
+
+/**
+ * 규칙 충돌 심각도 enum — backend `ConflictSeverity` 1:1 대응. 현재는 `WARNING` 단일 값뿐이다
+ * (soft 경고 — 저장 자체를 막지 않는다. 서버가 저장을 거부하는 hard 위반이 추가되면 이 enum도
+ * backend와 함께 확장한다).
+ */
+export const conflictSeveritySchema = z.enum(['WARNING'])
+
+/**
+ * 규칙 충돌 1건의 응답 Zod 스키마 — backend `RuleConflictResponse` DTO(com.bts.automation.adapter.web.dto.
+ * AutomationRuleResponses.kt) 1:1 대응 (FR-AT-04 D6/D7). `ruleIds`는 이 충돌에 연루된 상대 룰들의
+ * UUID 목록, `detail`은 사용자에게 보여줄 설명 문구(서버가 완성해 내려준다 — 프론트는 조립하지 않는다).
+ */
+export const ruleConflictResponseSchema = z.object({
+  type: conflictTypeSchema,
+  severity: conflictSeveritySchema,
+  ruleIds: z.array(z.string().uuid()),
+  detail: z.string(),
+})
+
+/**
  * 자동화 룰 표준 응답 Zod 스키마 — 목록/단건/PATCH 응답에 공통으로 쓰인다.
  * backend AutomationRuleResponse DTO 1:1 대응. 웹훅 토큰 원문/해시는 필드 자체가 없다.
+ *
+ * `conflicts`(FR-AT-04 D6/D7) — create 응답은 이 스키마가 `CreateAutomationRuleResponse.rule`로
+ * 중첩돼 쓰이므로 `rule.conflicts`, patch 응답은 최상위 `conflicts`로 같은 필드를 공유한다.
+ * create/patch는 충돌이 없어도 항상 빈 배열을 포함하지만, GET(목록/단건)은 backend가
+ * `@JsonInclude(NON_NULL)`로 직렬화해 키 자체가 응답에서 빠진다 — backend가 `null`을 명시적으로
+ * 보내는 경로는 없으므로 `.nullable()`이 아니라 `.optional()`로 이 키 부재를 표현한다.
  */
 export const automationRuleResponseSchema = z.object({
   id: z.string().uuid(),
@@ -56,6 +87,7 @@ export const automationRuleResponseSchema = z.object({
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   version: z.number().int(),
+  conflicts: z.array(ruleConflictResponseSchema).optional(),
 })
 
 /**
@@ -80,6 +112,15 @@ export type ActionType = z.infer<typeof actionTypeSchema>
 
 /** 액션 1건의 응답 타입 — config는 객체(요청 config=JSON 문자열과 비대칭, EC1) */
 export type ActionResponse = z.infer<typeof actionResponseSchema>
+
+/** 규칙 충돌 타입 (FR-AT-04 D6/D7) */
+export type ConflictType = z.infer<typeof conflictTypeSchema>
+
+/** 규칙 충돌 심각도 (FR-AT-04 D6/D7) */
+export type ConflictSeverity = z.infer<typeof conflictSeveritySchema>
+
+/** 규칙 충돌 1건의 응답 타입 (FR-AT-04 D6/D7) */
+export type RuleConflict = z.infer<typeof ruleConflictResponseSchema>
 
 /** 자동화 룰 표준 응답 타입 */
 export type AutomationRule = z.infer<typeof automationRuleResponseSchema>

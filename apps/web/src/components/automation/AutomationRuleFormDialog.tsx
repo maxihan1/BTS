@@ -25,6 +25,7 @@ import type {
   TriggerType,
   ActionRequestInput,
   ConditionNode,
+  RuleConflict,
 } from '@/api/automation-rules.types'
 import {
   useCreateAutomationRule,
@@ -118,6 +119,19 @@ function handleSubmitFailure(
     return
   }
   setSubmitError(message)
+}
+
+/**
+ * 저장 성공 응답의 conflicts를 `onConflicts` 콜백으로 1회 전달한다 — onWebhookToken 처리
+ * (`response.webhookToken !== null` 가드)와 대칭 패턴이다(FR-AT-04 D6/D7 Task 3).
+ *
+ * create 응답은 `response.rule.conflicts`(중첩), update 응답은 `updated.conflicts`(최상위)로
+ * 위치가 다르지만 이 헬퍼는 이미 꺼내진 배열만 받아 "비어있지 않을 때만 전달" 판정에 집중한다.
+ * GET(목록/단건)은 backend가 `@JsonInclude(NON_NULL)`로 키 자체를 생략하므로 `undefined`도
+ * "충돌 없음"으로 취급한다.
+ */
+function emitConflicts(conflicts: RuleConflict[] | undefined, onConflicts?: (c: RuleConflict[]) => void): void {
+  if (conflicts !== undefined && conflicts.length > 0) onConflicts?.(conflicts)
 }
 
 /**
@@ -290,6 +304,8 @@ export interface AutomationRuleFormDialogProps {
   readonly editingRule?: AutomationRule | null
   /** WEBHOOK 트리거 생성 성공 시 응답에 동봉된 원문 토큰을 1회 전달하는 콜백 */
   readonly onWebhookToken?: (token: string) => void
+  /** 저장 성공 응답에 규칙 충돌이 1건 이상 있으면 그 배열을 1회 전달하는 콜백 (FR-AT-04 D6/D7) */
+  readonly onConflicts?: (conflicts: RuleConflict[]) => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -395,9 +411,16 @@ interface FormBodyProps {
   readonly editingRule?: AutomationRule | null
   readonly onOpenChange: (open: boolean) => void
   readonly onWebhookToken?: (token: string) => void
+  readonly onConflicts?: (conflicts: RuleConflict[]) => void
 }
 
-function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: FormBodyProps): JSX.Element {
+function FormBody({
+  projectKey,
+  editingRule,
+  onOpenChange,
+  onWebhookToken,
+  onConflicts,
+}: FormBodyProps): JSX.Element {
   const initialConfig = hasEditingRule(editingRule)
     ? parseTriggerConfig(editingRule.triggerConfig)
     : { cron: '', fields: [] }
@@ -465,10 +488,11 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
 
     try {
       if (hasEditingRule(editingRule)) {
-        await updateRule.mutateAsync({
+        const updated = await updateRule.mutateAsync({
           id: editingRule.id,
           body: { version: editingRule.version, name: values.name, ...sharedPayload },
         })
+        emitConflicts(updated.conflicts, onConflicts)
       } else {
         const response = await createRule.mutateAsync({
           name: values.name,
@@ -478,6 +502,7 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
         if (response.webhookToken !== null) {
           onWebhookToken?.(response.webhookToken)
         }
+        emitConflicts(response.rule.conflicts, onConflicts)
       }
       onOpenChange(false)
     } catch (error) {
@@ -628,6 +653,8 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
  *   Dialog가 열린 채로 편집 대상이 바뀌어도 이전 입력(액션·조건·실행주체 포함)이 잔존하지 않는다
  *   (react-usestate-stale-key-prop 교훈, EC6/EC9).
  * - WEBHOOK 트리거 생성 성공 시 응답의 webhookToken 원문을 `onWebhookToken`으로 1회 전달한다.
+ * - 저장 성공 응답에 규칙 충돌(conflicts)이 1건 이상 있으면 `onConflicts`로 1회 전달한다
+ *   ({@link emitConflicts}, FR-AT-04 D6/D7 Task 3).
  */
 export const AutomationRuleFormDialog = ({
   projectKey,
@@ -635,6 +662,7 @@ export const AutomationRuleFormDialog = ({
   onOpenChange,
   editingRule,
   onWebhookToken,
+  onConflicts,
 }: AutomationRuleFormDialogProps): JSX.Element => {
   const formKey = `${open ? 'open' : 'closed'}:${editingRule?.id ?? 'new'}`
   const title = hasEditingRule(editingRule) ? labels.editTitle : labels.createTitle
@@ -657,6 +685,7 @@ export const AutomationRuleFormDialog = ({
             editingRule={editingRule}
             onOpenChange={onOpenChange}
             onWebhookToken={onWebhookToken}
+            onConflicts={onConflicts}
           />
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
