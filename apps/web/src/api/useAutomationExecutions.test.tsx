@@ -1,11 +1,11 @@
 // useAutomationExecutions 훅 테스트 — 커서 무한스크롤 목록 + 단건 trace enabled 가드 + replay 캐시 갱신 검증 (FR-AT-05 D6/D7)
-import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
+import { server } from '@/test/server'
 import {
   AUTOMATION_EXECUTIONS_QUERY_KEY,
   AUTOMATION_EXECUTION_DETAIL_QUERY_KEY,
@@ -90,56 +90,56 @@ const REPLAYED_DETAIL: RuleExecutionDetail = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MSW 서버 — automation-executions.test.ts 선례를 미러하되, 이 task의 허용 파일이 2개(.ts/.test.tsx)뿐이라
-// 별도 mocks 핸들러 파일을 신설하지 않고 이 테스트 파일 안에서 직접 인라인 정의한다.
+// MSW 핸들러 — useCalendarFeed.test.ts 선례(전역 `@/test/server` + `server.use()`)를 미러한다.
+// automation-executions.test.ts처럼 이 파일 로컬 `setupServer()`를 새로 띄우면 src/test/setup.ts가
+// 이미 listen 중인 전역 서버와 두 개의 MSW 인스턴스가 동시에 활성화되어, 요청 1건이 두 인스턴스 모두에
+// 전달돼 핸들러가 중복 호출된다(요청 횟수를 세는 이 테스트에서 실측 확인됨) — 이 task의 허용 파일이
+// 2개(.ts/.test.tsx)뿐이라 별도 mocks 핸들러 파일 신설 대신 전역 서버에 `server.use()`로 인라인 등록한다.
 // ─────────────────────────────────────────────────────────────────────────────
 
 let detailRequestCount = 0
 
-const server = setupServer(
-  http.get('/api/v1/projects/:projectKey/automation/rules/:ruleId/executions', ({ request }) => {
-    const url = new URL(request.url)
-    const issueKeyParam = url.searchParams.get('issueKey')
-    const beforeParam = url.searchParams.get('before')
-    const limitParam = url.searchParams.get('limit')
-    const limit = limitParam !== null ? Number(limitParam) : ALL_EXECUTIONS.length
+function registerExecutionHandlers(): void {
+  server.use(
+    http.get('/api/v1/projects/:projectKey/automation/rules/:ruleId/executions', ({ request }) => {
+      const url = new URL(request.url)
+      const issueKeyParam = url.searchParams.get('issueKey')
+      const beforeParam = url.searchParams.get('before')
+      const limitParam = url.searchParams.get('limit')
+      const limit = limitParam !== null ? Number(limitParam) : ALL_EXECUTIONS.length
 
-    if (issueKeyParam === FILTERED_ISSUE_KEY) {
-      return HttpResponse.json([FILTERED_EXECUTION])
-    }
+      if (issueKeyParam === FILTERED_ISSUE_KEY) {
+        return HttpResponse.json([FILTERED_EXECUTION])
+      }
 
-    if (beforeParam === null) {
-      return HttpResponse.json(ALL_EXECUTIONS.slice(0, limit))
-    }
-    const cursorIndex = ALL_EXECUTIONS.findIndex((item) => item.startedAt === beforeParam)
-    const startIndex = cursorIndex === -1 ? ALL_EXECUTIONS.length : cursorIndex + 1
-    return HttpResponse.json(ALL_EXECUTIONS.slice(startIndex, startIndex + limit))
-  }),
-  http.get('/api/v1/automation/executions/:id', ({ params }) => {
-    detailRequestCount += 1
-    if (params['id'] === DETAIL_ID) {
-      return HttpResponse.json(DETAIL_FIXTURE)
-    }
-    return HttpResponse.json({ errorCode: 'AUTOMATION_EXECUTION_NOT_FOUND' }, { status: 404 })
-  }),
-  http.post('/api/v1/automation/executions/:id/replay', ({ params }) => {
-    if (params['id'] === REPLAY_SOURCE_ID) {
-      return HttpResponse.json(REPLAYED_DETAIL)
-    }
-    return HttpResponse.json({ errorCode: 'AUTOMATION_EXECUTION_NOT_FOUND' }, { status: 404 })
-  }),
-)
+      if (beforeParam === null) {
+        return HttpResponse.json(ALL_EXECUTIONS.slice(0, limit))
+      }
+      const cursorIndex = ALL_EXECUTIONS.findIndex((item) => item.startedAt === beforeParam)
+      const startIndex = cursorIndex === -1 ? ALL_EXECUTIONS.length : cursorIndex + 1
+      return HttpResponse.json(ALL_EXECUTIONS.slice(startIndex, startIndex + limit))
+    }),
+    http.get('/api/v1/automation/executions/:id', ({ params }) => {
+      detailRequestCount += 1
+      if (params['id'] === DETAIL_ID) {
+        return HttpResponse.json(DETAIL_FIXTURE)
+      }
+      return HttpResponse.json({ errorCode: 'AUTOMATION_EXECUTION_NOT_FOUND' }, { status: 404 })
+    }),
+    http.post('/api/v1/automation/executions/:id/replay', ({ params }) => {
+      if (params['id'] === REPLAY_SOURCE_ID) {
+        return HttpResponse.json(REPLAYED_DETAIL)
+      }
+      return HttpResponse.json({ errorCode: 'AUTOMATION_EXECUTION_NOT_FOUND' }, { status: 404 })
+    }),
+  )
+}
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 beforeEach(() => {
+  registerExecutionHandlers()
   document.cookie = 'XSRF-TOKEN=test-csrf-token'
   detailRequestCount = 0
 })
-afterEach(() => {
-  server.resetHandlers()
-  document.cookie = 'XSRF-TOKEN=; Max-Age=0'
-})
-afterAll(() => server.close())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // QueryClient wrapper 헬퍼
