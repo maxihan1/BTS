@@ -185,6 +185,24 @@ describe('RuleExecutionTraceRow', () => {
       const toggle = screen.getByRole('button', { expanded: false })
       expect(toggle).toHaveAttribute('aria-expanded', 'false')
     })
+
+    it('defaultExpanded=true면 초기 렌더부터 펼쳐진 상태다 (재실행 후 자동펼침 통합용, FR-AT-05 D6/D7)', async () => {
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      })
+      render(
+        <QueryClientProvider client={queryClient}>
+          <ul>
+            <RuleExecutionTraceRow execution={buildSummary()} projectKey={PROJECT_KEY} ruleId={RULE_ID} defaultExpanded />
+          </ul>
+        </QueryClientProvider>,
+      )
+
+      expect(screen.getByRole('button', { expanded: true })).toBeInTheDocument()
+      await waitFor(() => {
+        expect(screen.getByText('SET_FIELD')).toBeInTheDocument()
+      })
+    })
   })
 
   describe('펼침 상세', () => {
