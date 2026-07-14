@@ -33,11 +33,21 @@ const summaryFixture: RuleExecutionSummary = {
   replayedFrom: null,
 }
 
+// RuleExecutionDetail은 backend RuleExecutionDetailResponse와 정합해 actionCount/successCount를
+// 갖지 않는다(그 두 필드는 summary 전용 집계값이다) — summaryFixture를 spread하지 않고 detail 필드만
+// 직접 구성한다.
 const detailFixture: RuleExecutionDetail = {
-  ...summaryFixture,
+  id: EXECUTION_ID,
+  ruleId: RULE_ID,
   projectKey: PROJECT_KEY,
+  triggerType: 'ISSUE_CREATED',
   triggerEvent: { issueKey: 'ATLAS-1', type: 'ISSUE_CREATED' },
+  issueKey: 'ATLAS-1',
+  status: 'SUCCESS',
   outcomes: [{ position: 0, actionType: 'SET_FIELD', success: true, error: null }],
+  replayedFrom: null,
+  startedAt: '2026-07-10T10:00:00Z',
+  finishedAt: '2026-07-10T10:00:01Z',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
