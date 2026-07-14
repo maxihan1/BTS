@@ -12,7 +12,10 @@
 // backend 응답을 직접 parse 하므로, 이 drift 가 고쳐지지 않으면 실제 backend 대상 호출도 동일하게 깨진다 —
 // Task 1 스키마(`ruleExecutionDetailSchema`) 후속 수정 필요.
 import type { RuleExecutionDetail } from '@/api/automation-executions.types'
-import { DEFAULT_AUTOMATION_PROJECT_KEY, SEED_AUTOMATION_RULE_IDS } from './automation-rule-fixtures'
+import {
+  DEFAULT_AUTOMATION_PROJECT_KEY,
+  SEED_AUTOMATION_RULE_IDS,
+} from './automation-rule-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 시나리오 플래그 localStorage 키 (automation-rule-fixtures.ts SCENARIO_KEY 관례 동형)

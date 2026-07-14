@@ -226,46 +226,55 @@ const getExecutionHandler = http.get('/api/v1/automation/executions/:id', ({ par
  * `requestId`가 직전 처리한 요청과 같으면 store를 다시 mutate하지 않고 캐시된 응답을 그대로 반환한다
  * (파일 상단 KDoc "⚠️ msw@2.14.6 Node 인터셉터" 참고 — vitest 유닛 테스트 환경 한정 방어).
  */
-const replayExecutionHandler = http.post('/api/v1/automation/executions/:id/replay', ({ params, requestId }) => {
-  if (requestId === lastReplayRequestId && lastReplayResponseBody !== null) {
-    return HttpResponse.json(lastReplayResponseBody)
-  }
+const replayExecutionHandler = http.post(
+  '/api/v1/automation/executions/:id/replay',
+  ({ params, requestId }) => {
+    if (requestId === lastReplayRequestId && lastReplayResponseBody !== null) {
+      return HttpResponse.json(lastReplayResponseBody)
+    }
 
-  const id = params['id'] as string
-  const original = executionStore.get(id)
-  if (original === undefined) {
-    return executionNotFound(id)
-  }
+    const id = params['id'] as string
+    const original = executionStore.get(id)
+    if (original === undefined) {
+      return executionNotFound(id)
+    }
 
-  if (globalThis.localStorage?.getItem(SCENARIO_KEY.RULE_UNAVAILABLE) === 'true') {
-    return ruleUnavailable(id)
-  }
+    if (globalThis.localStorage?.getItem(SCENARIO_KEY.RULE_UNAVAILABLE) === 'true') {
+      return ruleUnavailable(id)
+    }
 
-  const storedTimes = Array.from(executionStore.values()).map((execution) => new Date(execution.startedAt).getTime())
-  const latestMs = storedTimes.length > 0 ? Math.max(...storedTimes) : Date.now()
-  const startedAt = new Date(latestMs + 1000).toISOString()
-  const finishedAt = new Date(latestMs + 2000).toISOString()
+    const storedTimes = Array.from(executionStore.values()).map((execution) =>
+      new Date(execution.startedAt).getTime(),
+    )
+    const latestMs = storedTimes.length > 0 ? Math.max(...storedTimes) : Date.now()
+    const startedAt = new Date(latestMs + 1000).toISOString()
+    const finishedAt = new Date(latestMs + 2000).toISOString()
 
-  const replayed: RuleExecutionDetail = {
-    ...original,
-    id: generateUuidV4(),
-    replayedFrom: original.id,
-    startedAt,
-    finishedAt,
-  }
+    const replayed: RuleExecutionDetail = {
+      ...original,
+      id: generateUuidV4(),
+      replayedFrom: original.id,
+      startedAt,
+      finishedAt,
+    }
 
-  executionStore.set(replayed.id, replayed)
+    executionStore.set(replayed.id, replayed)
 
-  const wireBody = toWireDetail(replayed)
-  lastReplayRequestId = requestId
-  lastReplayResponseBody = wireBody
+    const wireBody = toWireDetail(replayed)
+    lastReplayRequestId = requestId
+    lastReplayResponseBody = wireBody
 
-  return HttpResponse.json(wireBody)
-})
+    return HttpResponse.json(wireBody)
+  },
+)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Export
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 자동화 룰 실행 이력 BC MSW 핸들러 배열 */
-export const automationExecutionHandlers = [listExecutionsHandler, getExecutionHandler, replayExecutionHandler]
+export const automationExecutionHandlers = [
+  listExecutionsHandler,
+  getExecutionHandler,
+  replayExecutionHandler,
+]

@@ -1,7 +1,11 @@
 // FR-AT-05 D6/D7 자동화 룰 실행 이력 MSW stateful 핸들러 단위 테스트 — 목록 필터/정렬 + 단건 404 + replay 복제·409 계약 검증
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { actionOutcomeSchema, ruleExecutionDetailSchema, ruleExecutionSummarySchema } from '@/api/automation-executions.types'
+import {
+  actionOutcomeSchema,
+  ruleExecutionDetailSchema,
+  ruleExecutionSummarySchema,
+} from '@/api/automation-executions.types'
 import { automationExecutionHandlers } from './automation-execution-handlers'
 import {
   DEFAULT_RULE_EXECUTIONS,
@@ -162,7 +166,9 @@ describe('GET .../executions — 프로젝트 스코프', () => {
 describe('GET .../executions — issueKey 필터', () => {
   it('issueKey를 지정하면 해당 이슈 실행만 반환한다', async () => {
     seedAutomationExecutions(DEFAULT_RULE_EXECUTIONS)
-    const { body } = await listExecutions(SEEDED_EXECUTION_RULE_IDS.scheduled, { issueKey: 'ATLAS-102' })
+    const { body } = await listExecutions(SEEDED_EXECUTION_RULE_IDS.scheduled, {
+      issueKey: 'ATLAS-102',
+    })
     const items = body as { id: string }[]
     expect(items).toHaveLength(1)
     expect(items[0]?.id).toBe(SEED_EXECUTION_IDS.scheduledPartial)
