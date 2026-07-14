@@ -28,7 +28,7 @@ const CONFLICT_TYPE_LABELS: Record<ConflictType, string> = {
 
 /** RuleConflictWarningModal props */
 export interface RuleConflictWarningModalProps {
-  /** 규칙 저장 응답에 동봉된 충돌 목록. null이면 모달을 렌더하지 않는다 */
+  /** 규칙 저장 응답에 동봉된 충돌 목록. null 또는 빈 배열이면 모달을 렌더하지 않는다 */
   readonly conflicts: RuleConflict[] | null
   /** 닫힘 콜백 — 호출부는 이 시점에 `conflicts` state를 null로 되돌린다 */
   readonly onClose: () => void
@@ -70,7 +70,10 @@ export function RuleConflictWarningModal({
   conflicts,
   onClose,
 }: RuleConflictWarningModalProps): JSX.Element | null {
-  if (conflicts === null) return null
+  // null(GET 응답) 또는 빈 배열(충돌 없는 create/patch)이면 렌더하지 않는다 — 유일 호출부
+  // emitConflicts가 length>0에서만 전달하므로 빈 배열은 도달 불가하지만, spec E1("빈 배열 →
+  // 미표시")을 모달 계층에도 이중 보장한다(방어적, code-review SUGGESTION).
+  if (conflicts === null || conflicts.length === 0) return null
 
   function handleOpenChange(open: boolean): void {
     if (!open) onClose()
