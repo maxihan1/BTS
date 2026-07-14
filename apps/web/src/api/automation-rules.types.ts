@@ -37,6 +37,26 @@ export const actionResponseSchema = z.object({
 })
 
 /**
+ * 규칙 충돌 타입 enum — backend `ConflictType` 4종 1:1 대응 (FR-AT-04 D6/D7 규칙 충돌 정적 분석).
+ */
+export const conflictTypeSchema = z.enum(['CYCLE', 'FIELD_CONFLICT', 'PRIORITY_AMBIGUITY', 'PERMISSION_MISSING'])
+
+/**
+ * 규칙 충돌 심각도 enum — backend `ConflictSeverity` 1:1 대응. 현재는 `WARNING` 단일 값(soft, 저장은 막지 않음).
+ */
+export const conflictSeveritySchema = z.enum(['WARNING'])
+
+/**
+ * 규칙 충돌 1건의 응답 Zod 스키마 — backend `RuleConflictResponse` DTO 1:1 대응 (FR-AT-04 D6/D7).
+ */
+export const ruleConflictResponseSchema = z.object({
+  type: conflictTypeSchema,
+  severity: conflictSeveritySchema,
+  ruleIds: z.array(z.string().uuid()),
+  detail: z.string(),
+})
+
+/**
  * 자동화 룰 표준 응답 Zod 스키마 — 목록/단건/PATCH 응답에 공통으로 쓰인다.
  * backend AutomationRuleResponse DTO 1:1 대응. 웹훅 토큰 원문/해시는 필드 자체가 없다.
  */
@@ -56,6 +76,10 @@ export const automationRuleResponseSchema = z.object({
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   version: z.number().int(),
+  // FR-AT-04 D6/D7 — create/patch 응답은 항상 존재(충돌 없으면 빈 배열), GET(목록/단건)은
+  // backend `@JsonInclude(NON_NULL)`로 키 자체가 부재한다(백엔드가 `null`을 보내는 경우는 없다,
+  // 그래서 `.nullable()`이 아니라 `.optional()`이다).
+  conflicts: z.array(ruleConflictResponseSchema).optional(),
 })
 
 /**
@@ -80,6 +104,15 @@ export type ActionType = z.infer<typeof actionTypeSchema>
 
 /** 액션 1건의 응답 타입 — config는 객체(요청 config=JSON 문자열과 비대칭, EC1) */
 export type ActionResponse = z.infer<typeof actionResponseSchema>
+
+/** 규칙 충돌 타입 (FR-AT-04 D6/D7) */
+export type ConflictType = z.infer<typeof conflictTypeSchema>
+
+/** 규칙 충돌 심각도 (FR-AT-04 D6/D7) */
+export type ConflictSeverity = z.infer<typeof conflictSeveritySchema>
+
+/** 규칙 충돌 1건의 응답 타입 (FR-AT-04 D6/D7) */
+export type RuleConflict = z.infer<typeof ruleConflictResponseSchema>
 
 /** 자동화 룰 표준 응답 타입 */
 export type AutomationRule = z.infer<typeof automationRuleResponseSchema>
