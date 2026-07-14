@@ -73,8 +73,12 @@ data class AutomationRule(
          * @param actions 발화 시 실행할 액션 목록. 기본값은 빈 리스트(트리거만 있는 룰도 유효)
          * @param condition 트리거 발화 후 액션 실행 여부를 가르는 조건 게이트. 기본값 `null`(조건 없이
          *   항상 통과)
+         * @param id 룰 식별자. 기본값은 랜덤 UUID(일반 생성). FR-AT-06 YAML import 가 기존 id 를
+         *   보존해 upsert(멱등 재적용)해야 할 때만 명시적으로 지정한다.
+         * @param enabled 활성화 여부. 기본값 `true`(일반 생성). FR-AT-06 YAML import 가 export 시점의
+         *   비활성 상태를 그대로 되살려야 할 때만 `false` 를 명시한다(활성으로 되살아나면 안 됨).
          * @param now 생성 시각(호출자 Clock 에서 주입)
-         * @return 불변식이 검증된 신규 [AutomationRule] 인스턴스(enabled=true, version=0)
+         * @return 불변식이 검증된 신규 [AutomationRule] 인스턴스(version=0)
          * @throws AutomationRuleInvalidException projectKey·name·actorUserId 가 불변식을 위반한 경우
          * @throws TriggerConfigInvalidException triggerConfig 가 triggerType 형식을 위반한 경우
          */
@@ -90,6 +94,8 @@ data class AutomationRule(
             actorUserId: UUID = createdBy,
             actions: List<Action> = emptyList(),
             condition: Condition? = null,
+            id: UUID = UUID.randomUUID(),
+            enabled: Boolean = true,
             now: Instant,
         ): AutomationRule {
             validateProjectKey(projectKey)
@@ -97,10 +103,10 @@ data class AutomationRule(
             validateActorUserId(actorUserId)
             TriggerConfig.validate(triggerType, triggerConfig)
             return AutomationRule(
-                id = UUID.randomUUID(),
+                id = id,
                 projectKey = projectKey,
                 name = name,
-                enabled = true,
+                enabled = enabled,
                 triggerType = triggerType,
                 triggerConfig = triggerConfig,
                 actions = actions,
