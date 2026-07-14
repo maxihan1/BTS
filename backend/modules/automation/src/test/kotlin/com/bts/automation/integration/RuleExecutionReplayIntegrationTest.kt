@@ -1,4 +1,4 @@
-// RuleExecutionService.replay 통합 테스트 — 실 HTTP POST→서비스→실 ActionExecutor(StubIssueMutationPort 관측)→실 PostgreSQL 저장 end-to-end (FR-AT-05 Task 5)
+// RuleExecutionService.replay 통합 테스트 — HTTP POST→서비스→ActionExecutor(StubIssueMutationPort 관측)→DB 저장 (FR-AT-05 Task 5)
 
 package com.bts.automation.integration
 
@@ -157,7 +157,9 @@ class RuleExecutionReplayIntegrationTest {
                 issueKey = "REPLAY-1",
                 status = ActionExecutionStatus.SUCCESS,
                 outcomes =
-                    listOf(ActionOutcome(position = 0, actionType = ActionType.SET_FIELD, success = true, error = null)),
+                    listOf(
+                        ActionOutcome(position = 0, actionType = ActionType.SET_FIELD, success = true, error = null),
+                    ),
                 replayedFrom = null,
                 startedAt = Instant.parse("2026-07-12T00:00:00Z"),
                 finishedAt = Instant.parse("2026-07-12T00:00:01Z"),

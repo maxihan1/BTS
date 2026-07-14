@@ -201,14 +201,8 @@ class RuleExecutionServiceTest : DescribeSpec({
             permissionResolver.allow(PROJECT_KEY)
             val execution = sampleExecution()
             val rule = sampleRule()
-            val result =
-                ActionExecutionResult(
-                    status = ActionExecutionStatus.SUCCESS,
-                    outcomes =
-                        listOf(
-                            ActionOutcome(position = 0, actionType = ActionType.SET_FIELD, success = true, error = null),
-                        ),
-                )
+            val outcome = ActionOutcome(position = 0, actionType = ActionType.SET_FIELD, success = true, error = null)
+            val result = ActionExecutionResult(status = ActionExecutionStatus.SUCCESS, outcomes = listOf(outcome))
             every { repository.findById(execution.id) } returns execution
             every { ruleRepository.findById(ruleId) } returns rule
             every { actionExecutor.execute(rule, execution.triggerEvent, dryRun = false) } returns result

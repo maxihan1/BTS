@@ -1,4 +1,4 @@
-// 자동화 룰 실행 이력(RuleExecution) 조회 서비스 — 룰별 목록 + 단건 trace, MANAGE_AUTOMATION 가드 (FR-AT-05 Task 4)
+// 자동화 룰 실행 이력(RuleExecution) 조회 + replay(재실행) 서비스 — 목록/단건 trace/동기 재실행, MANAGE_AUTOMATION 가드 (FR-AT-05 Task 4/5)
 
 package com.bts.automation.application
 
