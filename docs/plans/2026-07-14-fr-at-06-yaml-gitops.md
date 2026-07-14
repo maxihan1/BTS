@@ -64,6 +64,170 @@ classify: type=backend, agent=backend-engineer (classify-task가 '스키마' 키
 
 ✅ 통과 (1회 self-adversarial). gap 4건(비활성 round-trip·export 결정성·하이드레이션·id 보존) 반영. 테스트 함정 인계(크기상한 실서블릿·YAML mapper 격리·prod 조립 부팅).
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 아키텍처. **순수 YAML codec**(`com.bts.automation.gitops`·DB 무관·단위테스트) + `AutomationRuleService`에 export/import 메서드 추가(기존 private 헬퍼 `mintWebhookToken`·`initialNextFireAt`·`toDomainAction`·repository·@Transactional 재사용) + `AutomationRuleController`에 2엔드포인트 추가(기존 `@RestControllerAdvice(assignableTypes=[AutomationRuleController])` 예외핸들러 확장). 신규 마이그레이션 0.
+> 모든 경로는 repo 루트 기준. 모듈 = `backend/modules/automation`. 테스트 = `.../src/test/kotlin/com/bts/automation/...`.
+
+### Task 1. YAML codec — DTO + toYaml/fromYaml + 순수 round-trip 단위테스트
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/build.gradle.kts`, `backend/modules/automation/src/main/kotlin/com/bts/automation/gitops/AutomationYamlCodec.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/gitops/AutomationRulesYaml.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/gitops/AutomationYamlCodecTest.kt`]
+- depends-on: []
+
+**RED**.
+- `AutomationYamlCodecTest.kt`.
+  - `toYaml`이 알려진 규칙(트리거 config·조건 트리·SET_FIELD/ADD_COMMENT 액션)을 **기대 YAML 문자열**(하드코딩)로 방출. 규칙 정렬(createdAt→id), webhook 토큰/version/nextFireAt 미포함 확인.
+  - `fromYaml`이 YAML 문서를 import 커맨드 목록으로 파싱. **wire 비대칭 흡수** — `trigger.config`/`action.config`/`condition` YAML 객체가 **JSON 문자열**로 직렬화됐는지 대조(기존 `TriggerConfig.validate`/`Action.fromJson`/`Condition.fromJson` 입력 형식).
+  - **순수 round-trip** — `fromYaml(toYaml(rules))` 가 동등 커맨드 재현.
+  - malformed YAML → 예외(원본 echo 금지). `version`≠1 → 예외. `projectKey` 접근자.
+- 실패 예상: `AutomationYamlCodec` 클래스 없음.
+
+**GREEN**.
+- `build.gradle.kts`에 `implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")`(버전 생략=BOM).
+- `AutomationRulesYaml.kt` — YAML DTO data class(`AutomationRulesYaml(version, projectKey, rules)`, `YamlRule(id?, name, enabled=true, actorUserId?, trigger, condition?, actions)`, `YamlTrigger(type, config)`, `YamlAction(type, config)`). 필드 선언순=방출순(결정성).
+- `AutomationYamlCodec.kt` — 내부 전용 `ObjectMapper(YAMLFactory()).registerKotlinModule()`(전역 빈 노출 금지, `YamlSeedService` 선례). `toYaml(exported): String`·`fromYaml(raw): ParsedImportDocument`. config 객체↔JSON 문자열 변환은 별도 JSON ObjectMapper.
+
+**REFACTOR**. 상수(version=1·max nesting)·KDoc(wire 비대칭 근거·mapper 격리 이유).
+
+**검증**. `./gradlew :backend:modules:automation:test --tests '*AutomationYamlCodecTest'`
+
+### Task 2. 도메인 팩토리 확장 — id + enabled 보존
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/domain/AutomationRule.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/domain/AutomationRuleTest.kt`]
+- depends-on: []
+
+**RED**.
+- `AutomationRuleTest.kt`.
+  - 명시 `id`·`enabled=false`로 생성 → 규칙이 그 id 보유 + 비활성. version=0.
+  - 기존 `create(...)` 기본 호출은 무영향(id 랜덤·enabled=true) — 기존 테스트 회귀 0.
+  - 검증(name≤200·blank·nil actorUserId·TriggerConfig)은 그대로 강제.
+- 실패 예상: 팩토리에 id/enabled 파라미터 없음.
+
+**GREEN**. 기존 `create` 시그니처에 `id: UUID = UUID.randomUUID()`·`enabled: Boolean = true` 선택 파라미터 추가(또는 `restore(...)` 변형). 기본값으로 기존 호출부 무영향. import-create의 멱등성(S3)·비활성 round-trip 전제.
+
+**REFACTOR**. KDoc — "import(FR-AT-06) id/enabled 보존용. 일반 생성은 기본값" 명시.
+
+**검증**. `./gradlew :backend:modules:automation:test --tests '*AutomationRuleTest'`
+
+### Task 3. Export 서비스 + 엔드포인트 — 통합테스트
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/application/AutomationRuleService.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/adapter/web/AutomationRuleController.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/web/AutomationRuleExportIntegrationTest.kt`]
+- depends-on: [1]
+
+**RED**.
+- Testcontainers 통합테스트(기존 automation 통합테스트 base 재사용).
+  - 프로젝트에 규칙 3개(활성2+비활성1·조건 있는 것 1·액션 다수) 시드 → `GET /api/v1/projects/{projectKey}/automation/rules/export` → 200 `application/yaml` + `Content-Disposition: attachment; filename="automation-rules-{projectKey}.yaml"`.
+  - YAML 본문에 3규칙 전부(활성+비활성)·**결정적 순서**·webhook 토큰/해시 미포함.
+  - MANAGE_AUTOMATION 없음 → 403 `AUTOMATION_ACCESS_DENIED`.
+- 실패 예상: 엔드포인트 404.
+
+**GREEN**.
+- `AutomationRuleService.exportRules(actor, projectKey): List<ExportedRule>` — `assertManageAutomation` 최우선 → 미삭제 규칙 조회 → 규칙별 `actionRepository.findByRuleId`·`conditionRepository.findByRuleId` **하이드레이션** → createdAt→id 정렬.
+- 컨트롤러 `export` 핸들러 — 서비스 호출 → `codec.toYaml` → `ResponseEntity` produces `application/yaml` + Content-Disposition(projectKey 패턴 검증으로 헤더 인젝션 차단).
+
+**REFACTOR**. ExportedRule 뷰 타입 KDoc. 하이드레이션 N+1은 프로젝트 규칙 수 소규모라 허용(NFR1) 주석.
+
+**검증**. `./gradlew :backend:modules:automation:test --tests '*AutomationRuleExportIntegrationTest'`
+
+### Task 4. Import 서비스 — upsert 루프 + 원자성 — 통합테스트
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/application/AutomationRuleService.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/application/AutomationImportServiceIntegrationTest.kt`]
+- depends-on: [1, 2]
+
+**RED**.
+- Testcontainers 통합테스트.
+  - **id 보존 생성** — id 있는 커맨드(프로젝트에 미존재) → 그 id로 CREATE. enabled=false 커맨드 → 비활성 생성.
+  - **멱등(S3)** — 같은 커맨드 2회 importRules → 2회차 전량 UPDATE·규칙 수 불변.
+  - **원자성(S4)** — 5커맨드 중 1개 조건 MAX_DEPTH 초과 → 전량 롤백(DB 규칙 수 불변)·예외에 실패 인덱스.
+  - **triggerType 변경(EC3)** — 기존 규칙과 다른 type → 예외. **id 귀속 충돌(EC4)** — 타 프로젝트/삭제 id → 예외.
+  - **검증 재사용(FR5)** — 비화이트리스트 var·잘못된 cron·잘못된 url·name 초과 각각 예외.
+  - MANAGE_AUTOMATION 없음 → 403(루프 이전).
+- 실패 예상: `importRules` 메서드 없음.
+
+**GREEN**.
+- `AutomationRuleService.importRules(actor, projectKey, commands: List<ImportRuleCommand>): ImportOutcome` `@Transactional`.
+  - `assertManageAutomation` 1회 최우선.
+  - 커맨드별. id 해석(이 프로젝트 미삭제 존재→UPDATE / 전역 미존재→CREATE(id 보존) / 타프로젝트·삭제→예외 / id 부재→CREATE 새 UUID). actorUserId = 커맨드값 ?: actor(createdBy=actor).
+  - CREATE — 확장 팩토리(id·enabled) + `toDomainAction` + `Condition.fromJson` + WEBHOOK시 `mintWebhookToken`(생성 토큰 수집) + SCHEDULED시 `initialNextFireAt` → save + actions replace + condition replace.
+  - UPDATE — 로드 → triggerType 일치 검증(EC3) → rename/enable·disable/updateConfig/updateActions/(condition 있으면)updateCondition/changeActor → update(OCC 현재버전) + actions replace + condition replace. **토큰 재mint 안 함**(보존). condition 생략=미변경(EC6).
+  - 실패는 catch-continue 금지(예외 전파→롤백=원자성). **conflict 분석은 여기서 호출 금지**(rollback 오염, T5가 커밋 후).
+- `ImportRuleCommand`·`ImportOutcome`(created/updated 카운트·ruleIds·webhookTokens) 커맨드/결과 타입.
+
+**REFACTOR**. id 해석 로직 private 헬퍼 추출. 원자성=rollback-only 오염 회귀 방지 KDoc(`workflowstatecatalog-mandatory-rollback-poison` 링크).
+
+**검증**. `./gradlew :backend:modules:automation:test --tests '*AutomationImportServiceIntegrationTest'`
+
+### Task 5. Import 엔드포인트 + 응답 DTO + 예외매핑 + 크기상한 + 커밋후 conflicts — 통합테스트
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/adapter/web/AutomationRuleController.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/adapter/web/dto/AutomationRuleResponses.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/web/AutomationRuleImportIntegrationTest.kt`]
+- depends-on: [3, 4]
+
+**RED**.
+- Testcontainers 통합테스트(MockMvc 웹 계층).
+  - happy path — YAML 본문 POST → 200 `AutomationImportResponse`(created/updated/total·ruleIds 입력순·conflicts). 생성 WEBHOOK 규칙 → `webhookTokens` 1회 노출.
+  - malformed YAML → 400 `AUTOMATION_IMPORT_INVALID`. projectKey 불일치(EC2) → 400.
+  - 규칙 수 > `MAX_IMPORT_RULES` → 413 `AUTOMATION_IMPORT_TOO_LARGE`.
+  - import 후 conflicts 채워짐(커밋 후 `analyzeProjectConflicts`).
+- 실패 예상: 엔드포인트 404.
+
+**GREEN**.
+- 컨트롤러 `import` 핸들러 — consumes yaml/text, `@RequestBody rawYaml: String`. actor 추출(401) → `codec.fromYaml`(파싱실패→400) → projectKey 일치 검증 → 규칙 수 상한(초과→413) → `service.importRules` → **커밋 후** `service.analyzeProjectConflicts(projectKey)` → `AutomationImportResponse` 조립.
+- `AutomationImportResponse` DTO(`Responses.kt`) — created/updated/total/ruleIds/`webhookTokens`(@JsonInclude NON_NULL)/`conflicts`(NON_NULL·기존 `RuleConflictResponse` 재사용).
+- 예외핸들러 확장 — `AutomationImportException`류 → 400/413(RFC7807 ProblemDetail+errorCode).
+
+**REFACTOR**. 상한 상수. KDoc — 본문 크기 실제 강제는 코드 레벨(서블릿 우회 가짜그린 회피는 T6 실서블릿 검증).
+
+**검증**. `./gradlew :backend:modules:automation:test --tests '*AutomationRuleImportIntegrationTest'`
+
+### Task 6. round-trip + 멱등 + 크기상한 실서블릿 — 통합테스트 (D5 핵심)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/test/kotlin/com/bts/automation/web/AutomationGitOpsRoundTripTest.kt`]
+- depends-on: [3, 5]
+
+**RED**(=이 태스크의 GREEN은 상위 태스크 구현이 이미 충족, 여기선 end-to-end 계약 검증).
+- **round-trip(D5)** — 프로젝트 A에 규칙 시드 → `GET export` → YAML의 projectKey를 B로 치환 → `POST import`(B) → B 규칙이 A와 동등(id 보존·조건·액션·enabled).
+- **멱등** — 같은 YAML 2회 import → 2회차 created=0.
+- **크기상한 실서블릿** — `@SpringBootTest(RANDOM_PORT)` + `TestRestTemplate`로 과대 본문 → 413(MockMvc 서블릿 우회 가짜그린 회피 [[multipart-default-limit-app-policy-false-green]]).
+
+**GREEN**. 상위 태스크로 충족(신규 prod 코드 없으면 없음). 필요 시 미세 보정.
+
+**REFACTOR**. 테스트 헬퍼(시드·YAML projectKey 치환) 정리.
+
+**검증**. `./gradlew :backend:modules:automation:test --tests '*AutomationGitOpsRoundTripTest'`
+
+### Task 7. 문서 동기화
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`docs/plan/product/automation.md`, `docs/sdd/08-automation-engine.md`]
+- depends-on: []
+
+**RED/GREEN**(문서, TDD 예외 — 코드 아님).
+- `product/automation.md` §2.6 FR-AT-06 D1~D5 [x] + 완료 주석(경로 deviation 명시·D6/D7 UI 후속).
+- `sdd/08-automation-engine.md` §8.5 인근에 YAML import/export 스키마(v1)·엔드포인트(프로젝트 스코프)·upsert(UUID)·atomic 반영.
+- FR 총수 불변 123(D-step 완료). `bash scripts/verify-master-plan.sh` 통과 확인.
+
+**검증**. `bash scripts/verify-master-plan.sh`
+
+## Plan 메타
+
+- task 수: 7
+- 예상 시간: 직렬 기준 약 25~35분(통합테스트 Testcontainers 빌드 포함).
+- TDD 강제: yes (T7 문서 제외).
+- 병렬 dispatch: **대부분 직렬 권장**. T3/T4/T5가 `AutomationRuleService.kt`·`AutomationRuleController.kt`를 공유 → 파일 겹침 자동 직렬화 + 단일 Gradle 모듈 컴파일 직렬화([[bts-plan-wave-gradle-module-compile]]). 단일 worktree git-race([[parallel-dispatch-precommit-hook-race]]) 회피 위해 순차 커밋. 독립 가능: Wave1 = T1·T2·T7(파일 무겹침).
+- 의존 그래프: T1[]·T2[]·T7[] → T3[1] → T4[1,2] → T5[3,4] → T6[3,5].
+- 추가 검증: ktlint·detekt(`--rerun-tasks` 캐시 false-green 방지)·`:modules:app:test` prod 조립 부팅([[prod-assembly-boot-verification-required]] — 신규 컨트롤러/서비스 빈 배선).
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
