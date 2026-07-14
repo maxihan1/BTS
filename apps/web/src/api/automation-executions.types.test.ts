@@ -118,6 +118,40 @@ describe('ruleExecutionSummarySchema', () => {
 // ruleExecutionDetailSchema
 // ─────────────────────────────────────────────────────────────────────────────
 
+describe('ruleExecutionDetailSchema — backend RuleExecutionDetailResponse 정합', () => {
+  // backend RuleExecutionDetailResponse(RuleExecutionResponses.kt)는 actionCount/successCount를
+  // 갖지 않는다(그 두 필드는 RuleExecutionSummaryResponse 전용 집계값이다). detail 스키마가
+  // ruleExecutionSummarySchema.extend(...)로 정의되면 이 두 필드가 required가 되어, 실제
+  // 백엔드 응답(필드 없음)이 ZodError로 깨진다 — 이 테스트는 그 계약 정합을 고정한다.
+  const backendDetailPayload = {
+    id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
+    ruleId: 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e',
+    projectKey: 'ATLAS',
+    triggerType: 'ISSUE_CREATED',
+    triggerEvent: { issueKey: 'ATLAS-1', type: 'ISSUE_CREATED' },
+    issueKey: 'ATLAS-1',
+    status: 'SUCCESS',
+    outcomes: [outcomeFixture],
+    replayedFrom: null,
+    startedAt: '2026-07-10T10:00:00Z',
+    finishedAt: '2026-07-10T10:00:01Z',
+  }
+
+  it('actionCount/successCount 없는 실제 backend 응답 형태를 파싱한다', () => {
+    const result = ruleExecutionDetailSchema.parse(backendDetailPayload)
+    expect(result.projectKey).toBe('ATLAS')
+    expect(result.outcomes).toHaveLength(1)
+    expect('actionCount' in result).toBe(false)
+    expect('successCount' in result).toBe(false)
+  })
+
+  it.each(['projectKey', 'triggerEvent', 'outcomes'] as const)('%s가 없으면 reject한다', (field) => {
+    const payload: Record<string, unknown> = { ...backendDetailPayload }
+    delete payload[field]
+    expect(() => ruleExecutionDetailSchema.parse(payload)).toThrow(ZodError)
+  })
+})
+
 describe('ruleExecutionDetailSchema', () => {
   it('유효 fixture(outcomes 1건)를 파싱한다', () => {
     const result = ruleExecutionDetailSchema.parse(detailFixture)
