@@ -107,6 +107,16 @@ private const val MSG_BLANK_YAML = "YAML 본문이 비어 있습니다."
 private const val MSG_PARSE_FAILED = "YAML 문서를 파싱할 수 없습니다."
 private const val MSG_UNSUPPORTED_VERSION = "지원하지 않는 YAML 스키마 버전입니다."
 
+// actionConfigMap 이 방출하는 YAML 설정 맵의 키 이름 — Action 서브타입별 config 필드명과 1:1 대응
+// ([com.bts.automation.domain.Action.fromJson] 의 파싱 대상 키와 동일해야 wire 비대칭 흡수가 성립한다).
+private const val FIELD_FIELD = "field"
+private const val FIELD_VALUE = "value"
+private const val FIELD_ASSIGNEE_ID = "assigneeId"
+private const val FIELD_BODY = "body"
+private const val FIELD_URL = "url"
+private const val FIELD_METHOD = "method"
+private const val FIELD_HEADERS = "headers"
+
 /**
  * 자동화 규칙을 YAML로 직렬화/역직렬화하는 순수 codec(FR-AT-06 GitOps).
  *
@@ -269,11 +279,3 @@ object AutomationYamlCodec {
             throw AutomationYamlInvalidException(MSG_PARSE_FAILED, e)
         }
 }
-
-private const val FIELD_FIELD = "field"
-private const val FIELD_VALUE = "value"
-private const val FIELD_ASSIGNEE_ID = "assigneeId"
-private const val FIELD_BODY = "body"
-private const val FIELD_URL = "url"
-private const val FIELD_METHOD = "method"
-private const val FIELD_HEADERS = "headers"
