@@ -208,9 +208,42 @@ function seedReplayedExecutionDetail(queryClient: QueryClient, detail: RuleExecu
 }
 
 /**
- * issueKey 필터 없음 목록 쿼리의 캐시된 첫 페이지 맨 앞에 새 실행을 prepend한다.
- * 응답이 서버가 실제로 생성한 전체 RuleExecutionDetail이라 부분응답 플리커 우려 없이
- * summary로 매핑해 안전하게 얹을 수 있다. 캐시가 아직 없으면(목록을 연 적 없음) 손대지 않는다.
+ * `getQueriesData`가 반환하는 `QueryKey`(readonly unknown[])에서 issueKey 필터(4번째 요소)를
+ * 안전하게 추출한다. prefix 매치로 얻은 키는 타입이 좁혀지지 않으므로, 문자열이 아니면
+ * (필터 없음 키의 null 포함) 필터 없음으로 취급하는 타입가드로 `as` 캐스팅을 피한다.
+ */
+function extractIssueKeyFilter(queryKey: readonly unknown[]): string | null {
+  const raw = queryKey[3]
+  return typeof raw === 'string' ? raw : null
+}
+
+/**
+ * 무한쿼리 캐시(`{ pages, pageParams }`)의 첫 페이지 맨 앞에 summary를 prepend한다.
+ * 캐시가 아직 없거나(목록을 연 적 없음) 첫 페이지가 비어있으면 손대지 않고 그대로 반환한다.
+ */
+function prependToInfiniteFirstPage(
+  old: InfiniteData<RuleExecutionSummary[], string | undefined> | undefined,
+  summary: RuleExecutionSummary,
+): InfiniteData<RuleExecutionSummary[], string | undefined> | undefined {
+  if (old === undefined) {
+    return old
+  }
+  const [firstPage, ...restPages] = old.pages
+  if (firstPage === undefined) {
+    return old
+  }
+  return { ...old, pages: [[summary, ...firstPage], ...restPages] }
+}
+
+/**
+ * 새 실행을, issueKey 필터가 없는 목록 쿼리 또는 필터 issueKey가 새 실행의 issueKey와 일치하는
+ * 목록 쿼리의 캐시된 첫 페이지 맨 앞에 prepend한다. 응답이 서버가 실제로 생성한 전체
+ * RuleExecutionDetail이라 부분응답 플리커 우려 없이 summary로 매핑해 안전하게 얹을 수 있다.
+ *
+ * projectKey·ruleId 접두사로 `getQueriesData`를 호출해 활성인 모든 실행 이력 목록 쿼리(필터
+ * 없음 + issueKey별)를 순회한다 — replay된 실행은 원본 issueKey를 그대로 물려받으므로, 그
+ * issueKey로 필터링 중인 화면이 열려 있어도 반영을 놓치지 않아야 한다(CONCERN 4). 필터
+ * issueKey가 새 실행과 다른 쿼리는 skip한다.
  */
 function prependReplayedExecutionSummary(
   queryClient: QueryClient,
@@ -219,18 +252,19 @@ function prependReplayedExecutionSummary(
   detail: RuleExecutionDetail,
 ): void {
   const summary = toReplayedSummary(detail)
-  const key = AUTOMATION_EXECUTIONS_QUERY_KEY(projectKey, ruleId)
-
-  queryClient.setQueryData<InfiniteData<RuleExecutionSummary[], string | undefined>>(key, (old) => {
-    if (old === undefined) {
-      return old
-    }
-    const [firstPage, ...restPages] = old.pages
-    if (firstPage === undefined) {
-      return old
-    }
-    return { ...old, pages: [[summary, ...firstPage], ...restPages] }
+  const matches = queryClient.getQueriesData<InfiniteData<RuleExecutionSummary[], string | undefined>>({
+    queryKey: ['automation-executions', projectKey, ruleId],
   })
+
+  for (const [queryKey] of matches) {
+    const filterIssueKey = extractIssueKeyFilter(queryKey)
+    if (filterIssueKey !== null && filterIssueKey !== detail.issueKey) {
+      continue
+    }
+    queryClient.setQueryData<InfiniteData<RuleExecutionSummary[], string | undefined>>(queryKey, (old) =>
+      prependToInfiniteFirstPage(old, summary),
+    )
+  }
 }
 
 /**
@@ -238,8 +272,8 @@ function prependReplayedExecutionSummary(
  *
  * onSuccess에서 두 캐시를 함께 갱신한다.
  * 1. detail 캐시 시드 — {@link seedReplayedExecutionDetail}
- * 2. 목록 첫 페이지 prepend — {@link prependReplayedExecutionSummary} (issueKey 필터 없음 키만;
- *    필터가 걸린 쿼리키는 이 mutation 시점엔 활성이 아닐 수 있어 최소 보장 범위로 좁힌다)
+ * 2. 목록 첫 페이지 prepend — {@link prependReplayedExecutionSummary} (필터 없음 키 + 새 실행의
+ *    issueKey와 일치하는 필터 키 전부; 불일치 필터 키는 skip)
  *
  * @param projectKey 프로젝트 키
  * @param ruleId 자동화 룰 UUID
