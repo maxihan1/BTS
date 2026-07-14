@@ -5,8 +5,9 @@ import { useParams } from '@tanstack/react-router'
 import { AutomationRuleList } from '@/components/automation/AutomationRuleList'
 import { AutomationRuleFormDialog } from '@/components/automation/AutomationRuleFormDialog'
 import { WebhookTokenModal } from '@/components/automation/WebhookTokenModal'
+import { RuleConflictWarningModal } from '@/components/automation/RuleConflictWarningModal'
 import { ProjectNotFoundScreen } from '@/routes/projects.$projectKey.settings.members'
-import type { AutomationRule } from '@/api/automation-rules.types'
+import type { AutomationRule, RuleConflict } from '@/api/automation-rules.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Router adapter
@@ -51,6 +52,7 @@ export function ProjectAutomationSettingsPage({
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<AutomationRule | null>(null)
   const [webhookToken, setWebhookToken] = useState<string | null>(null)
+  const [conflicts, setConflicts] = useState<RuleConflict[] | null>(null)
 
   if (!projectKey) {
     return <ProjectNotFoundScreen />
@@ -68,6 +70,10 @@ export function ProjectAutomationSettingsPage({
 
   function handleWebhookTokenClose(): void {
     setWebhookToken(null)
+  }
+
+  function handleConflictsClose(): void {
+    setConflicts(null)
   }
 
   return (
@@ -91,9 +97,14 @@ export function ProjectAutomationSettingsPage({
         onOpenChange={setDialogOpen}
         editingRule={editingRule}
         onWebhookToken={setWebhookToken}
+        onConflicts={setConflicts}
       />
 
       <WebhookTokenModal token={webhookToken} onClose={handleWebhookTokenClose} />
+      <RuleConflictWarningModal
+        conflicts={webhookToken === null ? conflicts : null}
+        onClose={handleConflictsClose}
+      />
     </div>
   )
 }
