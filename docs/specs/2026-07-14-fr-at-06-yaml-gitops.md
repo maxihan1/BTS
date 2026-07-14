@@ -76,8 +76,9 @@ POST /api/v1/projects/{projectKey}/automation/rules/import
   consumes: application/yaml | application/x-yaml | text/yaml | text/plain
   body: <YAML 텍스트>  (@RequestBody String)
   200 application/json  AutomationImportResponse
-  400 AUTOMATION_IMPORT_INVALID   (YAML 파싱 실패 | 규칙 검증 실패 | projectKey 불일치 | id 귀속 충돌 | triggerType 변경)
+  400 AUTOMATION_IMPORT_INVALID   (YAML 파싱 실패 | 규칙 검증 실패 | projectKey 불일치 | id 귀속 충돌 | triggerType 변경) — ProblemDetail에 실패 규칙 인덱스+사유
   403 AUTOMATION_ACCESS_DENIED
+  409 AUTOMATION_RULE_VERSION_CONFLICT (import-update 중 동시성 OCC 충돌 — 기존 코드 재사용)
   413 AUTOMATION_IMPORT_TOO_LARGE (규칙 수/본문 크기 초과)
 ```
 

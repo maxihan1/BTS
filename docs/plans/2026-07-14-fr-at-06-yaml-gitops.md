@@ -80,7 +80,7 @@ classify: type=backend, agent=backend-engineer (classify-task가 '스키마' 키
 - `AutomationYamlCodecTest.kt`.
   - `toYaml`이 알려진 규칙(트리거 config·조건 트리·SET_FIELD/ADD_COMMENT 액션)을 **기대 YAML 문자열**(하드코딩)로 방출. 규칙 정렬(createdAt→id), webhook 토큰/version/nextFireAt 미포함 확인.
   - `fromYaml`이 YAML 문서를 import 커맨드 목록으로 파싱. **wire 비대칭 흡수** — `trigger.config`/`action.config`/`condition` YAML 객체가 **JSON 문자열**로 직렬화됐는지 대조(기존 `TriggerConfig.validate`/`Action.fromJson`/`Condition.fromJson` 입력 형식).
-  - **순수 round-trip** — `fromYaml(toYaml(rules))` 가 동등 커맨드 재현.
+  - **순수 round-trip** — `fromYaml(toYaml(rules))` 가 동등 커맨드 재현(주 단언). **하드코딩 전체 문자열 대조 지양**(Jackson 버전 취약·C1) — 대신 구조적 round-trip + 표적 단언(토큰 부재·규칙 순서·id 포함·config JSON 문자열 형태).
   - malformed YAML → 예외(원본 echo 금지). `version`≠1 → 예외. `projectKey` 접근자.
 - 실패 예상: `AutomationYamlCodec` 클래스 없음.
 
@@ -147,7 +147,8 @@ classify: type=backend, agent=backend-engineer (classify-task가 '스키마' 키
   - **id 보존 생성** — id 있는 커맨드(프로젝트에 미존재) → 그 id로 CREATE. enabled=false 커맨드 → 비활성 생성.
   - **멱등(S3)** — 같은 커맨드 2회 importRules → 2회차 전량 UPDATE·규칙 수 불변.
   - **원자성(S4)** — 5커맨드 중 1개 조건 MAX_DEPTH 초과 → 전량 롤백(DB 규칙 수 불변)·예외에 실패 인덱스.
-  - **triggerType 변경(EC3)** — 기존 규칙과 다른 type → 예외. **id 귀속 충돌(EC4)** — 타 프로젝트/삭제 id → 예외.
+  - **triggerType 변경(EC3)** — 기존 규칙과 다른 type → 예외. **id 귀속 충돌(EC4)** — 타 프로젝트/삭제 id → 예외(전역 존재 확인은 **프로젝트 무관 + 소프트삭제 포함** finder 필요·C4).
+  - **동시성 OCC(C2)** — import-update 중 다른 트랜잭션이 같은 규칙 버전 변경 → repository.update 0-row → OptimisticLockingFailure → 409 표면화(원자성으로 전량 롤백).
   - **검증 재사용(FR5)** — 비화이트리스트 var·잘못된 cron·잘못된 url·name 초과 각각 예외.
   - MANAGE_AUTOMATION 없음 → 403(루프 이전).
 - 실패 예상: `importRules` 메서드 없음.
@@ -175,8 +176,9 @@ classify: type=backend, agent=backend-engineer (classify-task가 '스키마' 키
 **RED**.
 - Testcontainers 통합테스트(MockMvc 웹 계층).
   - happy path — YAML 본문 POST → 200 `AutomationImportResponse`(created/updated/total·ruleIds 입력순·conflicts). 생성 WEBHOOK 규칙 → `webhookTokens` 1회 노출.
-  - malformed YAML → 400 `AUTOMATION_IMPORT_INVALID`. projectKey 불일치(EC2) → 400.
+  - malformed YAML → 400 `AUTOMATION_IMPORT_INVALID`(ProblemDetail에 **실패 규칙 인덱스+사유** 포함·C3). projectKey 불일치(EC2) → 400.
   - 규칙 수 > `MAX_IMPORT_RULES` → 413 `AUTOMATION_IMPORT_TOO_LARGE`.
+  - 동시성 OCC 충돌(C2) → 409 `AUTOMATION_RULE_VERSION_CONFLICT`(기존 코드 재사용).
   - import 후 conflicts 채워짐(커밋 후 `analyzeProjectConflicts`).
 - 실패 예상: 엔드포인트 404.
 
@@ -230,4 +232,26 @@ classify: type=backend, agent=backend-engineer (classify-task가 '스키마' 키
 - 의존 그래프: T1[]·T2[]·T7[] → T3[1] → T4[1,2] → T5[3,4] → T6[3,5].
 - 추가 검증: ktlint·detekt(`--rerun-tasks` 캐시 false-green 방지)·`:modules:app:test` prod 조립 부팅([[prod-assembly-boot-verification-required]] — 신규 컨트롤러/서비스 빈 배선).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 집중 엔지니어링 리뷰 (2026-07-14, api 타입 = eng+devex 관점)
+
+메모리 학습(`bts-review-plan autoplan overkill`)에 따라 대화형 autoplan 대신 집중 eng 리뷰.
+
+- ✅ **원자성/rollback 오염** — importRules가 create/patch(@Transactional REQUIRED)를 호출하지 않고 private 헬퍼+repository 직접 사용 → 중첩 트랜잭션 오염 회피. 실패 예외 전파=의도된 롤백(catch-continue 금지). conflict 분석은 커밋 후(T5) → rollback-only 오염([[workflowstatecatalog-mandatory-rollback-poison]]) 회피. 설계 건전.
+- ✅ **권한 게이트 배치** — export/import 모두 `assertManageAutomation` 최우선(리소스 접근 이전, [[auth-extraction-before-resource-lookup]]). actor 추출 401은 컨트롤러.
+- ✅ **비밀 미노출** — export webhook 토큰/해시 제외. id 보존이 새 특권 부여 아님(PK 유일성+귀속 검증).
+- ✅ **YAML mapper 격리** — 내부 전용 ObjectMapper(YAMLFactory), 전역 빈 노출 금지([[custom-objectmapper-bean-yaml-response-regression]] 회귀 방지).
+- ✅ **테스트 false-green** — 크기상한 실서블릿(T6·TestRestTemplate), detekt --rerun-tasks, prod 조립 부팅 모두 plan 메타 반영.
+- **BLOCKER: 없음.**
+
+반영한 concern 4건(plan 태스크에 인라인 반영).
+- C1 — codec 단위테스트 하드코딩 문자열 대조 취약 → 구조적 round-trip + 표적 단언(T1).
+- C2 — import-update 동시성 OCC 충돌 → 409 표면화(T4/T5·에러 계약).
+- C3 — import 400 ProblemDetail에 실패 규칙 인덱스+사유(T5).
+- C4 — EC4 id 전역 존재 확인 finder(프로젝트 무관+소프트삭제 포함)(T4).
+
+### devex 관점(경량)
+
+- export `application/yaml` + Content-Disposition = `curl > rules.yaml` CLI 친화. import 원문 본문 = `curl --data-binary @rules.yaml` CLI 친화. GitOps 워크플로우 적합.
+- 에러 계약 RFC 7807 + errorCode, 기존 automation 컨트롤러 일관.
