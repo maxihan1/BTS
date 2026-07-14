@@ -12,6 +12,13 @@ import {
   resetAutomationRuleStore,
   seedAutomationRules,
 } from '@/mocks/automation-rule-fixtures'
+import { automationExecutionHandlers } from '@/mocks/automation-execution-handlers'
+import {
+  DEFAULT_RULE_EXECUTIONS,
+  resetAutomationExecutionStore,
+  seedAutomationExecutions,
+} from '@/mocks/automation-execution-fixtures'
+import { server as sharedMswServer } from '@/test/server'
 import {
   ProjectAutomationSettingsPage,
   ProjectAutomationSettingsRouteAdapter,
@@ -31,6 +38,12 @@ vi.mock('@tanstack/react-router', () => ({
 // ─────────────────────────────────────────────────────────────────────────────
 // MSW 서버 설정 — AutomationRuleList.test.tsx / useAutomationRules.test.tsx와 동형
 // (전역 handlers.ts에 automationRuleHandlers 미등록, 로컬 서버로 격리)
+//
+// 실행 이력(automationExecutionHandlers)은 이 로컬 서버가 아니라 전역 `@/test/server`
+// (`sharedMswServer`, src/test/setup.ts가 listen/resetHandlers 생명주기를 이미 관리)에
+// server.use()로 등록한다 — RuleExecutionHistoryDialog.test.tsx 선례 동형. replay 엔드포인트는
+// 로컬 setupServer와 동시에 활성화되면 이중 dispatch가 발생할 수 있어(automation-execution-handlers.ts
+// 상단 KDoc) 로컬 서버에는 절대 섞지 않는다.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const server = setupServer(...automationRuleHandlers)
@@ -39,10 +52,12 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 beforeEach(() => {
   document.cookie = 'XSRF-TOKEN=test-csrf-token'
   mockUseParams.mockReturnValue({ projectKey: DEFAULT_AUTOMATION_PROJECT_KEY })
+  sharedMswServer.use(...automationExecutionHandlers)
 })
 afterEach(() => {
   server.resetHandlers()
   resetAutomationRuleStore()
+  resetAutomationExecutionStore()
   document.cookie = 'XSRF-TOKEN=; Max-Age=0'
 })
 afterAll(() => server.close())
@@ -279,5 +294,35 @@ describe('ProjectAutomationSettingsPage — 규칙 충돌 경고 모달 조립',
     await user.click(screen.getByTestId('webhook-token-close-button'))
 
     expect(await screen.findByTestId('rule-conflict-warning-modal')).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Page — 실행 이력 Dialog 조립 (FR-AT-05 D6/D7 Task 8, WebhookTokenModal/RuleConflictWarningModal
+// 조립부와 대칭 — historyRule 식별값 세팅/null 리셋 관례 동형)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProjectAutomationSettingsPage — 실행 이력 Dialog 조립', () => {
+  it('행 "이력" 클릭 시 RuleExecutionHistoryDialog가 열려 실행 이력 목록을 표시하고, 닫으면 사라진다', async () => {
+    seedAutomationRules([issueCreatedRule()])
+    seedAutomationExecutions(
+      DEFAULT_RULE_EXECUTIONS.filter((execution) => execution.ruleId === issueCreatedRule().id),
+    )
+    const { user } = renderPage()
+    await screen.findByText(issueCreatedRule().name)
+
+    await user.click(screen.getByTestId(`automation-rule-history-${issueCreatedRule().id}`))
+
+    expect(await screen.findByTestId('rule-execution-history-dialog')).toBeInTheDocument()
+    expect(screen.getByText(`${issueCreatedRule().name} 실행 이력`)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('ATLAS-201')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: '닫기' }))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('rule-execution-history-dialog')).not.toBeInTheDocument()
+    })
   })
 })
