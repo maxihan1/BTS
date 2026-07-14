@@ -521,8 +521,13 @@ class AutomationRuleExceptionHandler {
         AutomationImportCommandException::class,
         AutomationProjectKeyInvalidException::class,
     )
-    fun handleRequestInvalid(ex: Exception): ProblemDetail =
-        when (ex) {
+    fun handleRequestInvalid(ex: Exception): ProblemDetail {
+        // 400 `AUTOMATION_IMPORT_INVALID` 두 분기([AutomationImportCommandException]/else)가 공유하는
+        // type/title 리터럴 — 새 private 함수를 추가하면 detekt `TooManyFunctions` 예산을 다시 넘기므로
+        // (클래스 KDoc 참고) 지역 상수로만 중복을 줄인다.
+        val importInvalidType = "automation-rule-import-invalid"
+        val badRequestTitle = "Bad Request"
+        return when (ex) {
             is AutomationImportTooLargeException -> {
                 log.info("AUTOMATION_413 import_too_large")
                 problem(
@@ -537,8 +542,8 @@ class AutomationRuleExceptionHandler {
                 log.info("AUTOMATION_400 import_command_invalid index={}", ex.index)
                 problem(
                     HttpStatus.BAD_REQUEST,
-                    "automation-rule-import-invalid",
-                    "Bad Request",
+                    importInvalidType,
+                    badRequestTitle,
                     AUTOMATION_IMPORT_INVALID,
                     ex.cause?.message ?: "가져오기 항목 처리에 실패했습니다.",
                 ).apply { setProperty("failedIndex", ex.index) }
@@ -548,7 +553,7 @@ class AutomationRuleExceptionHandler {
                 problem(
                     HttpStatus.BAD_REQUEST,
                     "automation-rule-project-key-invalid",
-                    "Bad Request",
+                    badRequestTitle,
                     AUTOMATION_RULE_INVALID,
                     ex.message ?: "projectKey 형식이 올바르지 않습니다.",
                 )
@@ -557,13 +562,14 @@ class AutomationRuleExceptionHandler {
                 log.info("AUTOMATION_400 import_invalid")
                 problem(
                     HttpStatus.BAD_REQUEST,
-                    "automation-rule-import-invalid",
-                    "Bad Request",
+                    importInvalidType,
+                    badRequestTitle,
                     AUTOMATION_IMPORT_INVALID,
                     ex.message ?: "가져오기 요청이 올바르지 않습니다.",
                 )
             }
         }
+    }
 
     /**
      * 조건 표현식 형식/화이트리스트/크기 위반(FR-AT-03) — 400.
