@@ -204,4 +204,21 @@ FR-AT-04 D6/D7 마무리. automation 규칙 저장 응답의 `conflicts`(충돌 
 - agent: T1~T5 frontend-engineer, T6 qa-engineer
 - 추가 검증: typecheck(tsconfig.app.json [[ci-typecheck-tsconfig-app-vs-local]]), lint, vitest, playwright, pnpm verify
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-14, 집중 리뷰 — 저위험 ui)
+- ✅ 통과: TDD 구조·의존성 그래프·wave(4) 계산 정확. conflicts 위치 비대칭(create=rule.conflicts/patch=conflicts) 정확 반영. API 레이어 무변경 확인.
+- ✅ FR-5 순차 가드 타이밍 정합 확인(토큰 닫힘 재렌더 → 충돌 노출, conflicts state 지속).
+- ⚠️ 보강 1 (T1): `ConflictType` 타입도 z.infer로 export — T2 `CONFLICT_TYPE_LABELS: Record<ConflictType,string>`가 소비.
+- ⚠️ 보강 2 (T2/T6): 신규 파일 L1 한국어 주석 필수(DEVELOPMENT §6). 함수 30줄 상한·빈 catch 금지 준수.
+- ⚠️ 보강 3 (W2 병렬): T2·T3·T5 pre-commit lint-staged race — 자기 파일만 stage([[parallel-dispatch-precommit-hook-race]]).
+- BLOCKER: 없음.
+
+### plan-design-review (2026-07-14, 집중 리뷰)
+- ✅ 통과: amber 경고 톤·`role="alert"`·WebhookTokenModal 미러 일관.
+- ⚠️ 보강 4 (T2 카피): 모달 제목/문구는 **"저장은 성공했다"를 먼저 알리고** 충돌을 부가 경고로. 예 제목 "규칙이 저장되었습니다" + 경고 소제목 "다음 충돌이 감지되었습니다(저장은 유지됩니다)". 비차단 성격 명확화.
+- ⚠️ 보강 5 (T2 ruleIds): "관련 규칙 N개" 축약 표기(UUID 직접 노출 금지). 이름 조회 안 함은 스코프상 타당.
+- BLOCKER: 없음.
+
+### 게이트1 taste decision (Maxi 결정)
+- **D-A. WEBHOOK 토큰+충돌 동시 표시 순서** (S6/E3/FR-5). 기본값 = 토큰 모달 먼저(보안 1회 노출 우선), 닫으면 충돌 모달. 대안 = 동시 표시 / 충돌만.
