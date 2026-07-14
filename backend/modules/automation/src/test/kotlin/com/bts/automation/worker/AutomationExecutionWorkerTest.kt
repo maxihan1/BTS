@@ -158,7 +158,14 @@ class AutomationExecutionWorkerTest {
         executor: ActionExecutor = actionExecutor,
         executionRepository: RuleExecutionRepository = ruleExecutionRepository,
     ): AutomationExecutionWorker {
-        return AutomationExecutionWorker(jdbcTemplate, objectMapper, ruleRepository, executor, executionRepository, clock)
+        return AutomationExecutionWorker(
+            jdbcTemplate,
+            objectMapper,
+            ruleRepository,
+            executor,
+            executionRepository,
+            clock,
+        )
     }
 
     private fun saveEnabledRule(projectKey: String = "ATLAS"): AutomationRule {
@@ -390,7 +397,8 @@ class AutomationExecutionWorkerTest {
 
         worker().pollAndProcess()
 
-        val history = ruleExecutionRepository.findByRule(rule.projectKey, rule.id, issueKey = null, limit = 10, before = null)
+        val history =
+            ruleExecutionRepository.findByRule(rule.projectKey, rule.id, issueKey = null, limit = 10, before = null)
         val execution = history.single()
         assertThat(execution.status).isEqualTo(ActionExecutionStatus.SUCCESS)
         assertThat(execution.outcomes).hasSize(1)
@@ -414,7 +422,8 @@ class AutomationExecutionWorkerTest {
 
         worker().pollAndProcess()
 
-        val history = ruleExecutionRepository.findByRule(rule.projectKey, rule.id, issueKey = null, limit = 10, before = null)
+        val history =
+            ruleExecutionRepository.findByRule(rule.projectKey, rule.id, issueKey = null, limit = 10, before = null)
         val execution = history.single()
         assertThat(execution.status).isEqualTo(ActionExecutionStatus.SKIPPED)
         assertThat(execution.outcomes).isEmpty()
@@ -432,7 +441,14 @@ class AutomationExecutionWorkerTest {
         enqueueExecution(rule.id, issueKey = "ATLAS-12")
         w.pollAndProcess()
 
-        val history = ruleExecutionRepository.findByRule(rule.projectKey, rule.id, issueKey = "ATLAS-12", limit = 10, before = null)
+        val history =
+            ruleExecutionRepository.findByRule(
+                rule.projectKey,
+                rule.id,
+                issueKey = "ATLAS-12",
+                limit = 10,
+                before = null,
+            )
         assertThat(history).hasSize(1) // 최초 실행분만 기록, 억제 스킵은 미기록
     }
 
@@ -441,11 +457,12 @@ class AutomationExecutionWorkerTest {
         val disabledRule = saveDisabledRule()
         enqueueExecution(UUID.randomUUID(), issueKey = "ATLAS-13") // 존재하지 않는 룰(EC7)
         enqueueExecution(disabledRule.id, issueKey = "ATLAS-14") // disabled 룰(EC7)
+        // ruleId 필드 없음 → UUID.fromString 실패(malformed)
         jdbcTemplate.queryForObject(
             "SELECT pgmq.send(?, ?::jsonb)",
             Long::class.java,
             "q_automation_execution",
-            """{"triggerEvent":{}}""", // ruleId 필드 없음 → UUID.fromString 실패(malformed)
+            """{"triggerEvent":{}}""",
         )
 
         worker().pollAndProcess()

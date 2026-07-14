@@ -41,7 +41,7 @@ import java.util.concurrent.ConcurrentHashMap
  *    제외) disabled 면 스킵 + archive(EC7 — 발화 이후 상태가 바뀐 경우 대비).
  * 4. 루프 가드 2단(클래스 KDoc "루프 가드 2단" 참조) 통과 못하면 스킵 + archive.
  * 5. [ActionExecutor.execute] 로 액션 실행 → [RuleExecutionRepository] 에 실행 이력 저장(FR-AT-05,
- *    fail-safe — 저장 실패해도 archive 는 정상 진행, [persistExecutionHistory] 참조) → (ruleId, issueKey)
+ *    fail-safe — 저장 실패해도 archive 는 정상 진행, [runExecution] 참조) → (ruleId, issueKey)
  *    실행 시각 기록 → archive. 이력 저장은 이 단계(액션 실행 시도)에서만 일어난다 — 3/4 단계의 스킵은
  *    [ActionExecutor.execute] 자체를 호출하지 않으므로 이력을 남기지 않는다("기록 범위" 참조).
  * 6. 그 외 처리 중 예외(DB 순단 등 일시 장애) → archive 하지 않고 vt 만료 후 재전달(at-least-once).
@@ -82,11 +82,12 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * ## 실행 이력 저장 — 기록 범위·fail-safe (FR-AT-05)
  * [ActionExecutor.execute] 를 실제로 호출한 시도만 [RuleExecutionRepository] 에 1행 저장한다
- * ([persistExecutionHistory]) — 억제창 스킵(가드 (b))·룰 부재/disabled(EC7)·깊이초과(가드 (a))·malformed
- * payload 는 액션 실행 시도 자체가 없으므로 이력을 남기지 않는다(이미 각 단계에서 archive 로 종결).
- * 저장은 [RuleExecutionRepository] 자체 `@Transactional` 로 커밋되고, 저장 중 예외는 워커 밖으로
- * 전파하지 않고 로그만 남긴다 — 이력 저장 실패가 액션 실행 결과의 archive(at-least-once 종결)를 막으면
- * 감사 로그 장애가 핵심 실행 파이프라인까지 마비시키므로, 이력은 best-effort 부가 기능으로 취급한다.
+ * ([runExecution] 내부 try/catch, [buildRuleExecution] 매핑) — 억제창 스킵(가드 (b))·룰 부재/disabled
+ * (EC7)·깊이초과(가드 (a))·malformed payload 는 액션 실행 시도 자체가 없으므로 이력을 남기지 않는다
+ * (이미 각 단계에서 archive 로 종결). 저장은 [RuleExecutionRepository] 자체 `@Transactional` 로 커밋되고,
+ * 저장 중 예외는 워커 밖으로 전파하지 않고 로그만 남긴다 — 이력 저장 실패가 액션 실행 결과의
+ * archive(at-least-once 종결)를 막으면 감사 로그 장애가 핵심 실행 파이프라인까지 마비시키므로, 이력은
+ * best-effort 부가 기능으로 취급한다.
  *
  * ## `@Scheduled` 결선
  * `@EnableScheduling` 결선은 이 Task 범위 밖(FR-AT-01 Task 11)이다. 이 Task 의 테스트는
@@ -210,8 +211,12 @@ class AutomationExecutionWorker(
     }
 
     /**
-     * [ActionExecutor.execute] 를 호출한다. 성공하면 실행 이력을 저장하고([persistExecutionHistory],
-     * fail-safe) 억제 캐시를 갱신한 뒤 archive 한다. 실패는 재시도를 허용한다(archive 하지 않음).
+     * [ActionExecutor.execute] 를 호출한다. 성공하면 [buildRuleExecution] 으로 매핑한 실행 이력을
+     * [ruleExecutionRepository] 에 저장하고(fail-safe — 내부 try/catch 로 격리, 저장 실패는 warn 로그만
+     * 남기고 archive 를 막지 않는다) 억제 캐시를 갱신한 뒤 archive 한다. 실패는 재시도를 허용한다
+     * (archive 하지 않음). 이력 저장을 [runExecution] 자체 메서드로 남긴 이유는 detekt `TooManyFunctions`
+     * 대비([buildRuleExecution] KDoc "클래스 밖 최상위 함수" 참조) — 저장 호출부는 인스턴스 상태
+     * (`ruleExecutionRepository`/`log`)가 필요해 클래스 밖으로 뺄 수 없다.
      */
     @Suppress("TooGenericExceptionCaught")
     private fun runExecution(
@@ -226,7 +231,16 @@ class AutomationExecutionWorker(
             if (payload.issueKey != null) {
                 recentExecutions[suppressionKey(payload.ruleId, payload.issueKey)] = finishedAt
             }
-            persistExecutionHistory(payload, rule, result, startedAt, finishedAt)
+            try {
+                ruleExecutionRepository.save(buildRuleExecution(payload, rule, result, startedAt, finishedAt))
+            } catch (historyError: Exception) {
+                log.warn(
+                    "automation_execution_history_persist_failed ruleId={} error={}",
+                    rule.id,
+                    historyError.message,
+                    historyError,
+                )
+            }
             log.info(
                 "automation_execution_worker_executed msgId={} ruleId={} issueKey={}",
                 message.msgId,
@@ -246,39 +260,6 @@ class AutomationExecutionWorker(
                 archiveMessage(message.msgId, message.readCt)
             }
             // archive 하지 않음 — vt 만료 후 재전달(at-least-once)
-        }
-    }
-
-    /**
-     * [result] 를 [RuleExecution] 으로 매핑해 [ruleExecutionRepository] 에 저장한다(FR-AT-05). 저장 실패는
-     * archive 를 막지 않도록 로그만 남기고 삼킨다(클래스 KDoc "실행 이력 저장" fail-safe 근거 참조).
-     */
-    @Suppress("TooGenericExceptionCaught")
-    private fun persistExecutionHistory(
-        payload: ExecutionPayload,
-        rule: AutomationRule,
-        result: ActionExecutionResult,
-        startedAt: Instant,
-        finishedAt: Instant,
-    ) {
-        try {
-            ruleExecutionRepository.save(
-                RuleExecution(
-                    id = UUID.randomUUID(),
-                    ruleId = rule.id,
-                    projectKey = rule.projectKey,
-                    triggerType = payload.triggerType ?: rule.triggerType,
-                    triggerEvent = payload.triggerEvent,
-                    issueKey = payload.issueKey,
-                    status = result.status,
-                    outcomes = result.outcomes,
-                    replayedFrom = null,
-                    startedAt = startedAt,
-                    finishedAt = finishedAt,
-                ),
-            )
-        } catch (e: Exception) {
-            log.warn("automation_execution_history_persist_failed ruleId={} error={}", rule.id, e.message, e)
         }
     }
 
@@ -399,8 +380,8 @@ private object ExecutionQueueMessageRowMapper : RowMapper<ExecutionQueueMessage>
  *
  * @property ruleId 발화한 룰 id.
  * @property triggerType fire-time 트리거 타입(FR-AT-05, 실행 이력 저장용). payload 에 없거나 알 수
- *   없는 값이면 `null` — [AutomationExecutionWorker.persistExecutionHistory] 가 [AutomationRule.triggerType]
- *   으로 대체한다(구버전 enqueuer 메시지 호환).
+ *   없는 값이면 `null` — [buildRuleExecution] 이 [AutomationRule.triggerType] 으로 대체한다(구버전
+ *   enqueuer 메시지 호환).
  * @property triggerEvent 발화를 유발한 원본 이벤트(이슈 이벤트/웹훅 본문/빈 객체).
  * @property executionDepth automation 직접 체인 깊이. payload 에 없으면 0(FR-AT-01 enqueuer 는 depth
  *   미설정 = 0).
@@ -454,3 +435,33 @@ private fun parseTriggerType(node: JsonNode): TriggerType? {
     val text = node.asText(null) ?: return null
     return runCatching { TriggerType.valueOf(text) }.getOrNull()
 }
+
+/**
+ * [ActionExecutor.execute] 결과([result])를 저장용 [RuleExecution] 레코드로 매핑한다(FR-AT-05). 인스턴스
+ * 상태(`log`/`ruleExecutionRepository` 등)에 의존하지 않는 순수 변환이라, [AutomationExecutionWorker]
+ * 클래스의 detekt `TooManyFunctions` 임계값을 지키기 위해 클래스 밖 최상위 함수로 둔다("루프 가드 (b)"
+ * 섹션 KDoc과 동일한 분리 전략, [suppressionKey]/[extractIssueKey] 동형). id 는 매 저장마다 새로
+ * 발급하고([UUID.randomUUID]), 실행 시도 자체가 replay 가 아니므로 [RuleExecution.replayedFrom] 은 항상
+ * `null`(replay 는 FR-AT-05 후속 Task 범위). [payload] 의 `triggerType` 이 없으면(구버전 enqueuer 메시지
+ * 호환) [rule] 의 `triggerType` 으로 대체한다.
+ */
+private fun buildRuleExecution(
+    payload: ExecutionPayload,
+    rule: AutomationRule,
+    result: ActionExecutionResult,
+    startedAt: Instant,
+    finishedAt: Instant,
+): RuleExecution =
+    RuleExecution(
+        id = UUID.randomUUID(),
+        ruleId = rule.id,
+        projectKey = rule.projectKey,
+        triggerType = payload.triggerType ?: rule.triggerType,
+        triggerEvent = payload.triggerEvent,
+        issueKey = payload.issueKey,
+        status = result.status,
+        outcomes = result.outcomes,
+        replayedFrom = null,
+        startedAt = startedAt,
+        finishedAt = finishedAt,
+    )

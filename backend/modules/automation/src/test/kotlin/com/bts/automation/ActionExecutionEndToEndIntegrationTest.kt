@@ -149,7 +149,14 @@ class ActionExecutionEndToEndIntegrationTest {
     // ── 룰/워커/큐 헬퍼 ──────────────────────────────────────────────────────
 
     private fun worker(clock: Clock = Clock.fixed(now, ZoneOffset.UTC)): AutomationExecutionWorker =
-        AutomationExecutionWorker(jdbcTemplate, objectMapper, ruleRepository, actionExecutor, ruleExecutionRepository, clock)
+        AutomationExecutionWorker(
+            jdbcTemplate,
+            objectMapper,
+            ruleRepository,
+            actionExecutor,
+            ruleExecutionRepository,
+            clock,
+        )
 
     private fun saveRule(
         actions: List<Action>,
