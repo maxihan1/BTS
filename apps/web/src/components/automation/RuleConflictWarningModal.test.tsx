@@ -26,11 +26,19 @@ const PRIORITY_CONFLICT: RuleConflict = {
   detail: '동일 트리거에 우선순위가 모호한 규칙이 여러 개 있습니다.',
 }
 
-describe('RuleConflictWarningModal — conflicts null', () => {
+describe('RuleConflictWarningModal — 미표시 조건(null / 빈 배열)', () => {
   it('conflicts가 null이면 아무것도 렌더하지 않는다', () => {
     const onClose = vi.fn()
     const { container } = render(<RuleConflictWarningModal conflicts={null} onClose={onClose} />)
     expect(container).toBeEmptyDOMElement()
+  })
+
+  it('conflicts가 빈 배열이면 모달을 렌더하지 않는다(spec E1 — 모달 계층 이중 보장)', () => {
+    const onClose = vi.fn()
+    // Radix Dialog는 Portal로 document.body에 렌더되므로 container.toBeEmptyDOMElement로는
+    // 빈 모달 렌더를 못 잡는다 — document 전체를 조회하는 queryByTestId로 부재를 검증한다.
+    render(<RuleConflictWarningModal conflicts={[]} onClose={onClose} />)
+    expect(screen.queryByTestId('rule-conflict-warning-modal')).not.toBeInTheDocument()
   })
 })
 
