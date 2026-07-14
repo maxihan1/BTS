@@ -152,7 +152,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 <aside class="sidebar">
     <div class="sidebar-head">
       <div class="logo">🏢 BTS Dashboard</div>
-      <div class="updated">2026-07-13 갱신</div>
+      <div class="updated">2026-07-14 갱신</div>
     </div>
     <nav>
       <ul class="nav-top">
@@ -173,16 +173,16 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <svg viewBox="0 0 260 260" class="donut">
     <circle cx="130" cy="130" r="116" fill="none" stroke="#e5e7eb" stroke-width="28" />
     <circle cx="130" cy="130" r="116" fill="none" stroke="#22c55e" stroke-width="28"
-      stroke-dasharray="728.849495632832" stroke-dashoffset="21.865484868984982"
+      stroke-dasharray="728.849495632832" stroke-dashoffset="14.576989912656654"
       transform="rotate(-90 130 130)" stroke-linecap="round" />
-    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">97%</text>
+    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">98%</text>
   </svg>
       <div class="overview-numbers">
-        <div class="big-num">119 / 123</div>
+        <div class="big-num">120 / 123</div>
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
-          <div><span class="dot dot-done"></span> 완료 <b>119</b></div>
-          <div><span class="dot dot-prog"></span> 진행중 <b>1</b></div>
+          <div><span class="dot dot-done"></span> 완료 <b>120</b></div>
+          <div><span class="dot dot-prog"></span> 진행중 <b>0</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
           <div><span class="dot dot-wait"></span> 대기 <b>3</b></div>
         </div>
@@ -201,9 +201,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bc-card-pct">100%</div>
     </div><div class="bc-card" data-nav="bc-automation">
       <div class="bc-card-head">🤖 자동화 규칙</div>
-      <div class="bc-card-stats">3 / 7 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:43%"></div></div>
-      <div class="bc-card-pct">43%</div>
+      <div class="bc-card-stats">4 / 7 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:57%"></div></div>
+      <div class="bc-card-pct">57%</div>
     </div><div class="bc-card" data-nav="bc-agile-planning">
       <div class="bc-card-head">📅 스프린트/보드</div>
       <div class="bc-card-stats">14 / 14 완료</div>
@@ -740,12 +740,12 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h1>🤖 자동화 규칙</h1>
     <p class="bc-desc">특정 조건이 충족되면 자동으로 동작을 실행하는 영역.</p>
     <div class="bc-detail-stats">
-      <div class="big-pct">43%</div>
-      <div>3 / 7 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:43%"></div></div>
+      <div class="big-pct">57%</div>
+      <div>4 / 7 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:57%"></div></div>
       <div class="status-grid">
-        <div>✅ 완료 3</div>
-        <div>🔄 진행중 1</div>
+        <div>✅ 완료 4</div>
+        <div>🔄 진행중 0</div>
         <div>⛔ 차단 0</div>
         <div>⬜ 대기 3</div>
       </div>
@@ -772,13 +772,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc">조건 분기 (if-else, 표현식)</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — Condition + Ex<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>ession</li><li><span class="step-icon">✅</span> D2 — 명세 — 표현식 문법</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — `automation_conditions(ex<span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>ession)`</li><li><span class="step-icon">✅</span> D4 — 백엔드 — 표현식 평가 엔진 (<span class="term" data-def="Service Provider — IdP의 보증을 받아 로그인시키는 쪽. BTS 자신">Sp</span>ring <span class="term" data-def="&quot;문장 성분 분해 트리 / 자동 조건 판독기&quot; &quot;10만 원 이상이면 팀장 승인&quot; 같은 복잡한 조건을 컴퓨터가 이해하도록 주어/동사로 쪼개고(AST), 스스로 계산해 주는(SpEL) 기술입니다.">SpEL</span> 또는 자체)</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 표현식 케이스 50개</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 조건 빌더</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
-    </details><details class="fr-item fr-진행중">
+    </details><details class="fr-item fr-완료">
       <summary>
-        <span class="fr-status">🔄</span>
+        <span class="fr-status">✅</span>
         <span class="fr-id">FR-AT-04</span>
         <span class="fr-desc">규칙 충돌 정적 분석</span>
       </summary>
-      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — RuleConflict</li><li><span class="step-icon">✅</span> D2 — 명세 — 사이클/우선순위 모호성/필드 충돌/권한 부족 검출</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — (활용)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — 규칙 저장 후 lint (응답 conflicts 포함)</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">⬜</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 저장 전 경고 모달</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
+      <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — RuleConflict</li><li><span class="step-icon">✅</span> D2 — 명세 — 사이클/우선순위 모호성/필드 충돌/권한 부족 검출</li><li><span class="step-icon">✅</span> D3 — 데이터 모델 — (활용)</li><li><span class="step-icon">✅</span> D4 — 백엔드 — 규칙 저장 후 lint (응답 conflicts 포함)</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트</li><li><span class="step-icon">✅</span> D6 — 프론트 <span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span> — 저장 후 경고 모달</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span></li></ol>
     </details><details class="fr-item fr-미진행">
       <summary>
         <span class="fr-status">⬜</span>
