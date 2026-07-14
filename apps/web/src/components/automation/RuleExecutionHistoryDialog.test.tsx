@@ -193,6 +193,15 @@ function renderDialog(overrides: Partial<RuleExecutionHistoryDialogProps> = {}) 
   return { ...utils, rerenderWith, onOpenChange: initialProps.onOpenChange }
 }
 
+/**
+ * 상위 목록의 실행 "행" 개수만 센다. `screen.getAllByRole('listitem')`은 펼친 행 내부 outcomes의
+ * 중첩 `<li>`(RuleExecutionTraceRow 내부 액션 결과 목록)까지 함께 잡아 과다 집계된다 — 요약 행
+ * 토글 버튼(`RuleExecutionSummaryButton`)만 `aria-expanded`를 갖는 유일한 요소라 이를 기준으로 센다.
+ */
+function countExecutionRows(): number {
+  return document.querySelectorAll('[aria-expanded]').length
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트
 // ─────────────────────────────────────────────────────────────────────────────
@@ -233,6 +242,12 @@ describe('RuleExecutionHistoryDialog', () => {
 
     expect(screen.getByRole('status')).toBeInTheDocument()
 
+    // 핸들러 executor가 실제로 실행되어 resolveList가 대입될 때까지 기다린 뒤 해제한다 —
+    // 그렇지 않으면 fetch가 아직 시작 전이라 resolveList가 undefined인 채로 호출돼(no-op)
+    // 요청이 영영 pending 상태로 남는다.
+    await waitFor(() => {
+      expect(resolveList).toBeDefined()
+    })
     resolveList?.()
 
     await waitFor(() => {
@@ -326,7 +341,7 @@ describe('RuleExecutionHistoryDialog', () => {
       expect(screen.getByText('ADD_COMMENT')).toBeInTheDocument()
     })
     expect(screen.getByText('재실행됨')).toBeInTheDocument()
-    expect(screen.getAllByRole('listitem')).toHaveLength(2)
+    expect(countExecutionRows()).toBe(2)
   })
 
   it('재실행이 409(AUTOMATION_RULE_UNAVAILABLE)로 실패하면 전용 토스트를 띄우고 목록은 변하지 않는다', async () => {
@@ -353,7 +368,7 @@ describe('RuleExecutionHistoryDialog', () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('재실행 대상 자동화 룰을 더 이상 사용할 수 없습니다')
     })
-    expect(screen.getAllByRole('listitem')).toHaveLength(1)
+    expect(countExecutionRows()).toBe(1)
   })
 
   it('Dialog를 닫았다가 다시 열면 필터 입력이 초기화된다', async () => {

@@ -219,6 +219,12 @@ export interface RuleExecutionTraceRowProps {
   readonly onReplaySuccess?: (newExecution: RuleExecutionDetail) => void
   /** 재실행 실패 시 콜백 */
   readonly onReplayError?: (error: unknown) => void
+  /**
+   * 초기 펼침 여부 (기본 false). 부모(Dialog)가 재실행 직후 새로 prepend된 행에만
+   * true를 전달해 자동 펼침을 구현한다 — 마운트 시 최초 1회만 반영되는 초기값이므로,
+   * 이미 마운트된 행에는 이 prop이 바뀌어도 영향이 없다(호출부가 `key`로 재마운트해야 한다).
+   */
+  readonly defaultExpanded?: boolean
 }
 
 /**
@@ -239,6 +245,7 @@ export interface RuleExecutionTraceRowProps {
  * @param ruleId 자동화 룰 UUID
  * @param onReplaySuccess 재실행 성공 콜백
  * @param onReplayError 재실행 실패 콜백
+ * @param defaultExpanded 초기 펼침 여부(기본 false) — 재실행 직후 자동펼침 통합용
  */
 export function RuleExecutionTraceRow({
   execution,
@@ -246,8 +253,9 @@ export function RuleExecutionTraceRow({
   ruleId,
   onReplaySuccess,
   onReplayError,
+  defaultExpanded = false,
 }: RuleExecutionTraceRowProps): JSX.Element {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(defaultExpanded)
   const [confirmingReplay, setConfirmingReplay] = useState(false)
 
   const detailQuery = useRuleExecutionDetail(execution.id, { enabled: expanded })
