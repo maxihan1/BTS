@@ -36,12 +36,15 @@ interface ProjectAutomationSettingsPageProps {
  *
  * - 헤더 + AutomationRuleList + AutomationRuleFormDialog + WebhookTokenModal 조립.
  * - projectKey가 없거나 빈 문자열이면 ProjectNotFoundScreen을 렌더한다.
- * - 상태 3종을 이 컴포넌트가 보유한다.
+ * - 상태 4종을 이 컴포넌트가 보유한다.
  *   - `dialogOpen`/`editingRule` — AutomationRuleList의 onAddRule(신규)·onEditRule(수정)
  *     콜백이 갱신하고, AutomationRuleFormDialog에 그대로 전달한다.
  *   - `webhookToken` — FormDialog의 onWebhookToken 콜백으로 1회 전달받아 WebhookTokenModal에
  *     노출한다. 모달 onClose 시 즉시 null로 되돌려 raw token이 이 컴포넌트의 state에도
  *     남지 않게 한다(§1.18 — storage 저장 절대 금지, WebhookTokenModal.tsx KDoc 동일 계약).
+ *   - `conflicts` — FormDialog의 onConflicts 콜백으로 1회 전달받아 RuleConflictWarningModal에
+ *     노출한다(FR-AT-04 D6/D7). 웹훅 토큰과 충돌이 동시에 세팅되면 토큰 모달을 먼저 노출하고
+ *     닫은 뒤에야 충돌 모달이 순차로 노출된다(`webhookToken===null` 가드, 토큰 우선).
  * - 403 등 목록 조회 에러 상태는 AutomationRuleList가 자체적으로 처리한다.
  *
  * 라우터 의존 없이 props로 projectKey를 받아 단위 테스트가 가능하다.
