@@ -4,6 +4,7 @@ package com.bts.automation
 
 import com.bts.automation.adapter.AutomationExecutionEnqueuer
 import com.bts.automation.adapter.AutomationRuleRepository
+import com.bts.automation.adapter.RuleExecutionRepository
 import com.bts.automation.adapter.WebhookActionClient
 import com.bts.automation.adapter.WebhookCallResult
 import com.bts.automation.application.ActionExecutor
@@ -113,6 +114,10 @@ class ActionExecutionEndToEndIntegrationTest {
 
     @Autowired
     @Suppress("VarCouldBeVal")
+    private lateinit var ruleExecutionRepository: RuleExecutionRepository
+
+    @Autowired
+    @Suppress("VarCouldBeVal")
     private lateinit var issueMutationPort: StubIssueMutationPort
 
     @Autowired
@@ -144,7 +149,7 @@ class ActionExecutionEndToEndIntegrationTest {
     // ── 룰/워커/큐 헬퍼 ──────────────────────────────────────────────────────
 
     private fun worker(clock: Clock = Clock.fixed(now, ZoneOffset.UTC)): AutomationExecutionWorker =
-        AutomationExecutionWorker(jdbcTemplate, objectMapper, ruleRepository, actionExecutor, clock)
+        AutomationExecutionWorker(jdbcTemplate, objectMapper, ruleRepository, actionExecutor, ruleExecutionRepository, clock)
 
     private fun saveRule(
         actions: List<Action>,
