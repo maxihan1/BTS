@@ -18,7 +18,6 @@ import {
   resetAutomationExecutionStore,
   seedAutomationExecutions,
 } from '@/mocks/automation-execution-fixtures'
-import { server as sharedMswServer } from '@/test/server'
 import {
   ProjectAutomationSettingsPage,
   ProjectAutomationSettingsRouteAdapter,
@@ -39,20 +38,19 @@ vi.mock('@tanstack/react-router', () => ({
 // MSW 서버 설정 — AutomationRuleList.test.tsx / useAutomationRules.test.tsx와 동형
 // (전역 handlers.ts에 automationRuleHandlers 미등록, 로컬 서버로 격리)
 //
-// 실행 이력(automationExecutionHandlers)은 이 로컬 서버가 아니라 전역 `@/test/server`
-// (`sharedMswServer`, src/test/setup.ts가 listen/resetHandlers 생명주기를 이미 관리)에
-// server.use()로 등록한다 — RuleExecutionHistoryDialog.test.tsx 선례 동형. replay 엔드포인트는
-// 로컬 setupServer와 동시에 활성화되면 이중 dispatch가 발생할 수 있어(automation-execution-handlers.ts
-// 상단 KDoc) 로컬 서버에는 절대 섞지 않는다.
+// automationExecutionHandlers도 이 같은 로컬 서버 하나에 합류시킨다 — 전역 `@/test/server`(setup.ts가
+// 이미 listen 중)에 별도로 server.use()하면 두 서버가 동시에 활성화된 상태에서 한쪽이 매치하는 핸들러를
+// 찾아도 다른 한쪽이 독립적으로 "unhandled request" 에러를 던져(onUnhandledRequest:'error' 양쪽 설정)
+// 요청이 실패한다(실측 확인) — 이 파일은 이미 로컬 서버 단일 인스턴스로 격리된 상태라 그 안에 함께
+// 등록하는 편이 안전하다.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...automationRuleHandlers)
+const server = setupServer(...automationRuleHandlers, ...automationExecutionHandlers)
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 beforeEach(() => {
   document.cookie = 'XSRF-TOKEN=test-csrf-token'
   mockUseParams.mockReturnValue({ projectKey: DEFAULT_AUTOMATION_PROJECT_KEY })
-  sharedMswServer.use(...automationExecutionHandlers)
 })
 afterEach(() => {
   server.resetHandlers()
