@@ -1,16 +1,8 @@
 // FR-AT-05 D6/D7 자동화 룰 실행 이력 MSW fixture — 시드 데이터·공유 stateful store·시나리오 플래그 상수
 //
-// ⚠️ 알려진 스키마 drift (automation-executions.types.ts, 이 task 허용 파일 아님 — 수정 금지, 후속 확인 필요).
-// `ruleExecutionDetailSchema` 가 `ruleExecutionSummarySchema.extend()` 로 정의돼 `actionCount`/`successCount`
-// 를 상속 요구하지만, 실제 backend `RuleExecutionDetailResponse`(RuleExecutionResponses.kt)는 이 두 필드를
-// 전혀 내려주지 않는다(`AutomationExecutionControllerTest.kt` jsonPath — 목록(`$[0].actionCount`)만 검증하고
-// 단건 trace(`$.`)는 검증하지 않음, `RuleExecutionDetailResponse` 데이터 클래스에 필드 자체가 없음).
-// `RuleExecutionDetail` 타입을 그대로 쓰려면(TS 컴파일 통과) 이 두 필드가 필요해 fixture 객체에는 outcomes와
-// 일관된 값으로 채워 넣지만, 실제 wire 응답(automation-execution-handlers.ts `toWireDetail`)에서는 제거해
-// backend 계약을 우선한다([[frontend-zod-backend-dto-contract-gap]] — mock 을 스키마가 아니라 실제 DTO 에
-// 맞춘다). `automation-executions.ts` 의 `fetchRuleExecution`/`replayRuleExecution` 은 이 스키마로 실제
-// backend 응답을 직접 parse 하므로, 이 drift 가 고쳐지지 않으면 실제 backend 대상 호출도 동일하게 깨진다 —
-// Task 1 스키마(`ruleExecutionDetailSchema`) 후속 수정 필요.
+// `RuleExecutionDetail`(backend `RuleExecutionDetailResponse` 1:1)은 outcomes만 담고 actionCount/successCount는
+// 담지 않는다 — 목록 요약(summary)만 그 두 집계값을 가지며, handlers.ts `toWireSummary`가 outcomes에서 계산한다
+// ([[frontend-zod-backend-dto-contract-gap]] — mock을 실제 DTO 계약에 맞춘다).
 import type { RuleExecutionDetail } from '@/api/automation-executions.types'
 import {
   DEFAULT_AUTOMATION_PROJECT_KEY,
@@ -69,10 +61,6 @@ export const DEFAULT_RULE_EXECUTIONS: RuleExecutionDetail[] = [
     triggerEvent: { cron: '0 0 9 * * *', firedAt: '2026-07-10T09:00:00Z' },
     issueKey: 'ATLAS-101',
     status: 'SUCCESS',
-    // actionCount/successCount — outcomes와 일관된 값(TS 컴파일용, 파일 상단 KDoc "알려진 스키마 drift" 참고.
-    // 실제 wire 응답에는 handlers.ts `toWireDetail`이 이 두 필드를 제거한다).
-    actionCount: 2,
-    successCount: 2,
     outcomes: [
       { position: 0, actionType: 'SET_FIELD', success: true, error: null },
       { position: 1, actionType: 'ASSIGN', success: true, error: null },
@@ -89,8 +77,6 @@ export const DEFAULT_RULE_EXECUTIONS: RuleExecutionDetail[] = [
     triggerEvent: { cron: '0 0 9 * * *', firedAt: '2026-07-11T09:00:00Z' },
     issueKey: 'ATLAS-102',
     status: 'PARTIAL',
-    actionCount: 2,
-    successCount: 1,
     outcomes: [
       { position: 0, actionType: 'SET_FIELD', success: true, error: null },
       { position: 1, actionType: 'ASSIGN', success: false, error: 'PERMISSION_DENIED' },
@@ -107,8 +93,6 @@ export const DEFAULT_RULE_EXECUTIONS: RuleExecutionDetail[] = [
     triggerEvent: { cron: '0 0 9 * * *', firedAt: '2026-07-12T09:00:00Z' },
     issueKey: 'ATLAS-103',
     status: 'FAILED',
-    actionCount: 2,
-    successCount: 0,
     outcomes: [
       { position: 0, actionType: 'SET_FIELD', success: false, error: 'FAILED' },
       { position: 1, actionType: 'ASSIGN', success: false, error: 'FAILED' },
@@ -125,8 +109,6 @@ export const DEFAULT_RULE_EXECUTIONS: RuleExecutionDetail[] = [
     triggerEvent: { cron: '0 0 9 * * *', firedAt: '2026-07-13T09:00:00Z' },
     issueKey: null,
     status: 'SKIPPED',
-    actionCount: 0,
-    successCount: 0,
     outcomes: [],
     replayedFrom: null,
     startedAt: '2026-07-13T09:00:00Z',
@@ -140,8 +122,6 @@ export const DEFAULT_RULE_EXECUTIONS: RuleExecutionDetail[] = [
     triggerEvent: { issueKey: 'ATLAS-201' },
     issueKey: 'ATLAS-201',
     status: 'SUCCESS',
-    actionCount: 1,
-    successCount: 1,
     outcomes: [{ position: 0, actionType: 'ADD_COMMENT', success: true, error: null }],
     replayedFrom: null,
     startedAt: '2026-07-09T10:00:00Z',
