@@ -170,7 +170,7 @@ class AutomationRuleController(
         return ResponseEntity
             .ok()
             .contentType(MediaType.parseMediaType(MEDIA_TYPE_YAML))
-            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"automation-rules-$projectKey.yaml\"")
+            .header(HttpHeaders.CONTENT_DISPOSITION, buildExportContentDisposition(projectKey))
             .body(yaml)
     }
 
@@ -292,6 +292,20 @@ private fun validateProjectKeyForExport(projectKey: String) {
     if (!EXPORT_PROJECT_KEY_PATTERN.matches(projectKey)) {
         throw AutomationProjectKeyInvalidException("projectKey는 영문자·숫자·하이픈·언더스코어만 허용됩니다.")
     }
+}
+
+/**
+ * [AutomationRuleController.export] 의 `Content-Disposition` 헤더 값을 조립한다
+ * (search-export-import `ExportController.buildContentDisposition` 선례 동형).
+ *
+ * [projectKey] 는 호출 시점에 이미 [validateProjectKeyForExport] 로 검증되어 있다고 전제한다 — 이 함수
+ * 자체는 검증을 반복하지 않는다.
+ *
+ * @param projectKey [validateProjectKeyForExport] 를 통과한 화이트리스트 프로젝트 키.
+ * @return `attachment; filename="automation-rules-{projectKey}.yaml"` 헤더 값.
+ */
+private fun buildExportContentDisposition(projectKey: String): String {
+    return "attachment; filename=\"automation-rules-$projectKey.yaml\""
 }
 
 /**
