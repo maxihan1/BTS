@@ -25,36 +25,48 @@ export const actionOutcomeSchema = z.object({
 })
 
 /**
- * 룰별 실행 이력 목록 조회(`GET .../rules/{ruleId}/executions`) 응답 Zod 스키마.
- * backend `RuleExecutionSummaryResponse` DTO 1:1 대응 — outcomes/triggerEvent 원문은 미포함,
- * 집계값(`actionCount`/`successCount`)만 담는다.
+ * `RuleExecutionSummaryResponse`/`RuleExecutionDetailResponse` 공통 필드 Zod 스키마.
+ * 두 backend DTO가 함께 갖는 필드만 담는다 — `actionCount`/`successCount`(summary 전용
+ * 집계값)와 `projectKey`/`triggerEvent`/`outcomes`(detail 전용 원문)는 각자 스키마에서
+ * `.extend()`한다. summary/detail을 하나의 `.extend()` 체인으로 두면(이전 구현) detail이
+ * summary 전용 필드까지 required로 상속받아, 그 필드가 없는 실제 backend detail 응답이
+ * ZodError로 깨진다.
  *
  * `triggerType`은 backend가 `TriggerType.name`(문자열)으로 내려주므로 enum이 아니라
  * `z.string()`으로 느슨하게 받는다(향후 트리거 타입 추가에도 이 스키마가 깨지지 않도록,
  * `automation-rules.types.ts`의 `triggerTypeSchema`처럼 강하게 검증하지 않는다).
  */
-export const ruleExecutionSummarySchema = z.object({
+const ruleExecutionBaseSchema = z.object({
   id: z.string().uuid(),
   ruleId: z.string().uuid(),
   triggerType: z.string(),
   issueKey: z.string().nullable(),
   status: ruleExecutionStatusSchema,
-  actionCount: z.number().int(),
-  successCount: z.number().int(),
   startedAt: z.string().datetime(),
   finishedAt: z.string().datetime(),
   replayedFrom: z.string().uuid().nullable(),
 })
 
 /**
+ * 룰별 실행 이력 목록 조회(`GET .../rules/{ruleId}/executions`) 응답 Zod 스키마.
+ * backend `RuleExecutionSummaryResponse` DTO 1:1 대응 — outcomes/triggerEvent 원문은 미포함,
+ * 집계값(`actionCount`/`successCount`)만 담는다.
+ */
+export const ruleExecutionSummarySchema = ruleExecutionBaseSchema.extend({
+  actionCount: z.number().int(),
+  successCount: z.number().int(),
+})
+
+/**
  * 실행 이력 단건 trace 조회(`GET /api/v1/automation/executions/{id}`) 응답 Zod 스키마.
- * backend `RuleExecutionDetailResponse` DTO 1:1 대응 — {@link ruleExecutionSummarySchema}에
+ * backend `RuleExecutionDetailResponse` DTO 1:1 대응 — {@link ruleExecutionBaseSchema}에
  * replay 재료인 `triggerEvent` 원문과 액션별 결과 전체(`outcomes`)를 더한 형태다.
+ * summary 전용 집계값(`actionCount`/`successCount`)은 갖지 않는다.
  *
  * `triggerEvent`는 backend가 `JsonNode`로 그대로 직렬화하는 임의 JSON payload라
  * (BC 격리상 issue-tracking 등 다른 BC 타입을 구조화하지 않는다) `z.unknown()`으로 받는다.
  */
-export const ruleExecutionDetailSchema = ruleExecutionSummarySchema.extend({
+export const ruleExecutionDetailSchema = ruleExecutionBaseSchema.extend({
   projectKey: z.string(),
   triggerEvent: z.unknown(),
   outcomes: z.array(actionOutcomeSchema),
