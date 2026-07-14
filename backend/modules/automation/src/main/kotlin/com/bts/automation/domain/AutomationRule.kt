@@ -17,6 +17,11 @@ import java.util.UUID
  * FR2). webhookTokenHash 발급(토큰 생성·해시)과 nextFireAt 최초 계산은 이 애그리거트 밖의
  * 서비스 계층 책임이다(Task 6/8 scope).
  *
+ * [create] 는 기본적으로 새 랜덤 id·`enabled=true` 로 룰을 만들지만, FR-AT-06 YAML import 는 export
+ * 시점의 id·enabled 를 그대로 보존해 upsert(멱등 재적용)해야 하므로 [create] 가 선택 파라미터로
+ * `id`/`enabled` 를 직접 받을 수 있다 — 이 두 값을 제외한 나머지 불변식 검증(name·actorUserId·
+ * triggerConfig)은 동일하게 강제된다.
+ *
  * @property id 룰 식별자
  * @property projectKey 룰이 속한 프로젝트 키
  * @property name 룰 표시 이름 (1~[MAX_NAME_LENGTH]자)
