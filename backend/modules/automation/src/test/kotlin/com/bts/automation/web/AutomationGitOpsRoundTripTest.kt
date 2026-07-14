@@ -61,7 +61,10 @@ private const val VALID_CONDITION = """{"==":[{"var":"issue.status"},"open"]}"""
 /** ASSIGN 액션 시드용 고정 담당자 id(존재 검증은 실행 시점 책임이라 임의 UUID로 충분). */
 private val ASSIGNEE_ID: UUID = UUID.fromString("77777777-7777-7777-7777-777777777777")
 
-/** import/export 양쪽이 공유하는 YAML 미디어 타입([com.bts.automation.adapter.web.AutomationRuleController.import] `consumes` 목록 중 하나). */
+/**
+ * import/export 양쪽이 공유하는 YAML 미디어 타입([com.bts.automation.adapter.web.AutomationRuleController.import]
+ * `consumes` 목록 중 하나).
+ */
 private val YAML_MEDIA_TYPE: MediaType = MediaType.parseMediaType("application/yaml")
 
 /** [com.bts.automation.adapter.web.AutomationRuleController.import] 의 상한과 동일(spec NFR2·EC8) — 파일 범위 밖이라 재정의한다. */
@@ -77,7 +80,7 @@ private const val SIZE_LIMIT_PROJECT_KEY = "GITRTSIZE"
 private const val SIZE_LIMIT_TEST_PASSWORD = "gitops-roundtrip-test-pw"
 
 /** 요청 바디 조립용 액션 1건 표현([com.bts.automation.adapter.web.dto.ActionRequest] 와 필드 대칭). */
-private data class ActionSpec(val type: String, val config: String)
+private data class RoundTripActionSpec(val type: String, val config: String)
 
 /**
  * GitOps YAML round-trip + 멱등 end-to-end 계약 검증 (FR-AT-06 GitOps Task 6, spec 완료기준 3·4·시나리오
@@ -146,9 +149,10 @@ class AutomationGitOpsRoundTripTest {
 
     @Test
     @WithMockUser(username = ACTOR_UUID)
-    fun `round-trip - A의 규칙(활성2+비활성1, 조건+웹훅+SET_FIELD-ADD_COMMENT-ASSIGN)을 export해 projectKey만 B로 바꿔 import하면 id별로 A와 동등하다`() {
+    fun `round-trip - A(활성2+비활성1, 조건+웹훅+SET_FIELD-ADD_COMMENT-ASSIGN) export→projectKey만 B로 치환→import → id별 A와 동등`() {
         seedRoundTripRules()
         val exportedYamlA = exportYaml(PROJECT_A)
+        retireSourceProject()
         val yamlForB = replaceProjectKey(exportedYamlA, from = PROJECT_A, to = PROJECT_B)
 
         importYaml(PROJECT_B, yamlForB)
@@ -163,7 +167,9 @@ class AutomationGitOpsRoundTripTest {
     @WithMockUser(username = ACTOR_UUID)
     fun `멱등 - 같은 YAML을 B에 2회 import - 1회차 created=N-updated=0, 2회차 created=0-updated=N, 규칙 수 불변`() {
         seedRoundTripRules()
-        val yamlForB = replaceProjectKey(exportYaml(PROJECT_A), from = PROJECT_A, to = PROJECT_B)
+        val exportedYamlA = exportYaml(PROJECT_A)
+        retireSourceProject()
+        val yamlForB = replaceProjectKey(exportedYamlA, from = PROJECT_A, to = PROJECT_B)
 
         val first = objectMapper.readTree(importYaml(PROJECT_B, yamlForB))
         val ruleCount = first.get("total").asInt()
@@ -185,6 +191,20 @@ class AutomationGitOpsRoundTripTest {
 
     // ── 헬퍼 — 시드 ──────────────────────────────────────────────────────────
 
+    /**
+     * A의 행을 물리 삭제해 A가 방금 export한 id들을 "어디에도 없는" 상태로 되돌린다.
+     *
+     * [com.bts.automation.application.AutomationRuleService.importRules] 의 id 해석은 **전역**(프로젝트
+     * 무관) `findById` 로 기존 소유를 판정한다(FR3 두 번째 분기 — id가 다른 프로젝트에 **살아있는 채로**
+     * 소유돼 있으면 PK 전역 유일성 보호 차원에서 EC4 400으로 거부한다, spec FR3·EC4). S2가 그리는
+     * "PROJ에서 export한 YAML을 빈 프로젝트 PROJ2로 옮긴다"는 GitOps 백업/이전 시나리오는 원본 PROJ의
+     * 행이 그 시점엔 더 이상 살아있지 않다는 전제다 — export **직후** A를 정리해 그 전제를 재현한다
+     * (export한 YAML 텍스트 자체는 이미 캡처됐으므로 이후 단언에는 영향이 없다).
+     */
+    private fun retireSourceProject() {
+        jdbcTemplate.update("DELETE FROM automation_rules WHERE project_key = ?", PROJECT_A)
+    }
+
     /** 활성 2(조건 포함 1 + 웹훅 1) + 비활성 1, SET_FIELD/ADD_COMMENT/ASSIGN 조합으로 A를 시드한다(plan Task 6 RED). */
     private fun seedRoundTripRules() {
         createRule(
@@ -193,20 +213,20 @@ class AutomationGitOpsRoundTripTest {
             condition = VALID_CONDITION,
             actions =
                 listOf(
-                    ActionSpec("SET_FIELD", """{"field":"priority","value":"High"}"""),
-                    ActionSpec("ADD_COMMENT", """{"body":"자동 처리됨"}"""),
+                    RoundTripActionSpec("SET_FIELD", """{"field":"priority","value":"High"}"""),
+                    RoundTripActionSpec("ADD_COMMENT", """{"body":"자동 처리됨"}"""),
                 ),
         )
         createRule(
             name = "웹훅 담당자 배정",
             triggerType = "WEBHOOK",
-            actions = listOf(ActionSpec("ASSIGN", """{"assigneeId":"$ASSIGNEE_ID"}""")),
+            actions = listOf(RoundTripActionSpec("ASSIGN", """{"assigneeId":"$ASSIGNEE_ID"}""")),
         )
         val disabledId =
             createRule(
                 name = "비활성 갱신 알림",
                 triggerType = "ISSUE_UPDATED",
-                actions = listOf(ActionSpec("ADD_COMMENT", """{"body":"비활성 규칙 코멘트"}""")),
+                actions = listOf(RoundTripActionSpec("ADD_COMMENT", """{"body":"비활성 규칙 코멘트"}""")),
             )
         disableRule(disabledId)
     }
@@ -216,7 +236,7 @@ class AutomationGitOpsRoundTripTest {
         triggerType: String,
         triggerConfig: String = "{}",
         condition: String? = null,
-        actions: List<ActionSpec> = emptyList(),
+        actions: List<RoundTripActionSpec> = emptyList(),
     ): String {
         val body =
             mutableMapOf<String, Any?>(
@@ -235,7 +255,7 @@ class AutomationGitOpsRoundTripTest {
         triggerType: String,
         triggerConfig: String = "{}",
         condition: String? = null,
-        actions: List<ActionSpec> = emptyList(),
+        actions: List<RoundTripActionSpec> = emptyList(),
     ): String {
         val response =
             mockMvc
@@ -285,19 +305,22 @@ class AutomationGitOpsRoundTripTest {
             .contentAsString
 
     /**
-     * export한 YAML 텍스트의 `projectKey: {from}` 줄을 `projectKey: {to}` 로 문자열 치환한다(plan Task 6
+     * export한 YAML 텍스트의 `projectKey: "{from}"` 줄을 `projectKey: "{to}"` 로 문자열 치환한다(plan Task 6
      * "YAML의 projectKey를 B로 치환" 요구, 재직렬화 대신 최소 변경).
      *
-     * [from] 리터럴이 존재하지 않으면 즉시 실패한다 — [AutomationYamlCodec] 의 YAML 방출 형식(plain scalar,
-     * 따옴표 없음) 가정이 깨졌을 때 이후 단언에서 원인 불명한 실패로 번지지 않게 방어한다.
+     * [from] 리터럴이 존재하지 않으면 즉시 실패한다 — [AutomationYamlCodec] 의 YAML 방출 형식(문자열 스칼라를
+     * 항상 큰따옴표로 감싸는 [com.fasterxml.jackson.dataformat.yaml.YAMLFactory] 기본값) 가정이 깨졌을 때
+     * 이후 단언에서 원인 불명한 실패로 번지지 않게 방어한다.
      */
     private fun replaceProjectKey(
         yaml: String,
         from: String,
         to: String,
     ): String {
-        val fromLine = "projectKey: $from"
-        val toLine = "projectKey: $to"
+        // AutomationYamlCodec 의 yamlMapper(YAMLFactory 기본값)는 문자열 스칼라를 항상 큰따옴표로 감싼다
+        // (MINIMIZE_QUOTES 미설정) — plain scalar 를 가정하지 않고 실제 방출 형식을 그대로 치환 대상으로 쓴다.
+        val fromLine = "projectKey: \"$from\""
+        val toLine = "projectKey: \"$to\""
         require(yaml.contains(fromLine)) { "export YAML에 '$fromLine' 줄이 없습니다(직렬화 형식 가정이 깨졌습니다)." }
         return yaml.replace(fromLine, toLine)
     }
