@@ -27,6 +27,8 @@ const labels = {
   enableButton: '활성화',
   disableButton: '비활성화',
   historyButton: '이력',
+  // 버튼 표시 텍스트("이력")는 짧게, aria-label 접미사("실행 이력")는 더 명확하게 — 나머지 버튼들과
+  // 달리 시각 텍스트와 스크린리더 텍스트를 분리한 유일한 케이스(FR-AT-05 D6, 명세 §구현 명세).
   historyAriaSuffix: '실행 이력',
   enabledBadge: '활성',
   disabledBadge: '비활성',
