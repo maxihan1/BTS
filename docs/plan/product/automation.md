@@ -94,8 +94,10 @@
 - [x] D3. 데이터 모델 — `rule_executions(rule_id, trigger_event, result, ...)` (책임. db-engineer)
 - [x] D4. 백엔드 — 실행 이력 저장 + `POST /api/v1/automation/executions/{id}/replay` (책임. backend-engineer)
 - [x] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 실행 이력 + 단계별 trace + 재실행 버튼 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 실행 이력 + 단계별 trace + 재실행 버튼 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
+
+> **D6/D7 완료 (2026-07-14, PR #271)**. 순수 프론트(apps/web·백엔드 변경0). #270 백엔드(D1~D5)가 노출한 3 엔드포인트를 소비 — 룰별 실행 이력 목록(`GET .../rules/{ruleId}/executions`)·단건 trace(`GET /api/v1/automation/executions/{id}`)·동기 재실행(`POST .../executions/{id}/replay`). 프로젝트 설정 룰 목록에 **이력** 버튼(`onViewHistory`) → 신규 `RuleExecutionHistoryDialog`(Radix Dialog)가 목록 + `issueKey` 필터(Enter 적용) + 더 보기(`useInfiniteQuery`, filter-aware queryKey) 렌더. 각 행 `RuleExecutionTraceRow`는 상태 배지(SUCCESS/PARTIAL/FAILED/SKIPPED 색상)·트리거 한국어 라벨·issueKey/"이슈 없음"·성공/총 액션·"재실행됨" 마크를 요약, 펼치면 액션별 결과(`outcomes`)+trigger 원문 JSON+인라인 2단계 replay 확인을 표시. replay 성공 시 토스트 + 새 실행 자동 펼침. **Zod 계약 = base 스키마 분리**(`ruleExecutionBaseSchema` 공통 8필드 → summary는 `actionCount`/`successCount` extend·detail은 `projectKey`/`triggerEvent`(`z.unknown()`)/`outcomes` extend) — 초기 spec이 detail을 summary로 extend해 집계값을 잘못 required로 만든 drift를 코드리뷰 전 자체 발견·수정(backend `RuleExecutionResponses.kt` detail DTO엔 집계값 없음, `@JsonInclude` 미설정→명시 직렬화라 `.nullable()`). `issueKey`/`replayedFrom`/`error` `.nullable()`. replay `onSuccess`가 detail 캐시 시드 + 열려있는 모든 필터 쿼리 첫 페이지에 prepend(filter-aware, `getQueriesData` prefix + 타입가드). MSW stateful 3핸들러(전역 `@/test/server` 단일 인스턴스 — 지역 `setupServer` 동시 존재 시 더블 디스패치 함정) + 시나리오 토글 2종(`EMPTY_EXECUTIONS`/`RULE_UNAVAILABLE`, addInitScript localStorage). 게이트2 코드리뷰 CONCERNS 4건 수정(C1~C3 Zod drift/`WireExecutionDetail` Omit 제거/문서 정리·C4 filter-aware replay prepend). typecheck/lint 0·유닛 회귀0(6933, 434파일)·build OK·E2E 신규 S1~S5(25). FR 총수 123 불변. → **FR-AT-05 전체 완료(D1~D7)**, automation BC 5/7.
 
 ### §2.6 FR-AT-06 — YAML 가져오기/내보내기 (GitOps)
 
