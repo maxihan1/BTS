@@ -25,6 +25,7 @@ import type {
   TriggerType,
   ActionRequestInput,
   ConditionNode,
+  RuleConflict,
 } from '@/api/automation-rules.types'
 import {
   useCreateAutomationRule,
@@ -290,6 +291,8 @@ export interface AutomationRuleFormDialogProps {
   readonly editingRule?: AutomationRule | null
   /** WEBHOOK 트리거 생성 성공 시 응답에 동봉된 원문 토큰을 1회 전달하는 콜백 */
   readonly onWebhookToken?: (token: string) => void
+  /** 저장 성공 응답에 규칙 충돌이 1건 이상 있으면 그 배열을 1회 전달하는 콜백 (FR-AT-04 D6/D7) */
+  readonly onConflicts?: (conflicts: RuleConflict[]) => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -386,6 +389,10 @@ function TriggerConfigFields({
   return null
 }
 
+function emitConflicts(conflicts: RuleConflict[] | undefined, onConflicts?: (c: RuleConflict[]) => void): void {
+  if (conflicts !== undefined && conflicts.length > 0) onConflicts?.(conflicts)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 폼 컴포넌트 (key prop 재마운트를 위해 분리)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -395,9 +402,16 @@ interface FormBodyProps {
   readonly editingRule?: AutomationRule | null
   readonly onOpenChange: (open: boolean) => void
   readonly onWebhookToken?: (token: string) => void
+  readonly onConflicts?: (conflicts: RuleConflict[]) => void
 }
 
-function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: FormBodyProps): JSX.Element {
+function FormBody({
+  projectKey,
+  editingRule,
+  onOpenChange,
+  onWebhookToken,
+  onConflicts,
+}: FormBodyProps): JSX.Element {
   const initialConfig = hasEditingRule(editingRule)
     ? parseTriggerConfig(editingRule.triggerConfig)
     : { cron: '', fields: [] }
@@ -465,10 +479,11 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
 
     try {
       if (hasEditingRule(editingRule)) {
-        await updateRule.mutateAsync({
+        const updated = await updateRule.mutateAsync({
           id: editingRule.id,
           body: { version: editingRule.version, name: values.name, ...sharedPayload },
         })
+        emitConflicts(updated.conflicts, onConflicts)
       } else {
         const response = await createRule.mutateAsync({
           name: values.name,
@@ -478,6 +493,7 @@ function FormBody({ projectKey, editingRule, onOpenChange, onWebhookToken }: For
         if (response.webhookToken !== null) {
           onWebhookToken?.(response.webhookToken)
         }
+        emitConflicts(response.rule.conflicts, onConflicts)
       }
       onOpenChange(false)
     } catch (error) {
@@ -635,6 +651,7 @@ export const AutomationRuleFormDialog = ({
   onOpenChange,
   editingRule,
   onWebhookToken,
+  onConflicts,
 }: AutomationRuleFormDialogProps): JSX.Element => {
   const formKey = `${open ? 'open' : 'closed'}:${editingRule?.id ?? 'new'}`
   const title = hasEditingRule(editingRule) ? labels.editTitle : labels.createTitle
@@ -657,6 +674,7 @@ export const AutomationRuleFormDialog = ({
             editingRule={editingRule}
             onOpenChange={onOpenChange}
             onWebhookToken={onWebhookToken}
+            onConflicts={onConflicts}
           />
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
