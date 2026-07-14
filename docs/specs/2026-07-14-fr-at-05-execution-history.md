@@ -77,7 +77,10 @@
 ### FR-3. 조회 API — 룰별 이력 목록
 `GET /api/v1/projects/{projectKey}/automation/rules/{ruleId}/executions`
 - 쿼리: `issueKey`(옵션 필터) · `limit`(기본 50, 최대 200) · `before`(ISO Instant keyset 커서, 옵션)
-- MANAGE_AUTOMATION 가드(actor 401 → 권한 403 → 룰 존재 404). 룰이 해당 projectKey 소속인지 스코프 검증.
+- MANAGE_AUTOMATION 가드는 **path의 projectKey 기준**으로만 건다(actor 401 → 권한 403). **룰 존재(살아있음)를 요구하지 않는다** — `rule_executions`를 `rule_id = {ruleId} AND project_key = {projectKey}`로 직접 조회한다.
+  - **근거(Brainstorming 발견)**: NFR-4(감사 독립성)와 정합 — 소프트삭제된 룰의 이력도 조회 가능해야 디버깅 가치가 있다. 룰 존재를 요구하면 삭제 후 이력이 막힌다.
+  - **존재 숨김**: `ruleId`가 다른 프로젝트 소속이면 project_key 불일치로 빈 목록 반환(404 아님, 존재 누출 없음).
+- 페이지네이션 keyset은 `(started_at, id)` 복합 커서(동일 시각 충돌 방지). `before`는 `started_at` 기준, 동시각은 id로 tie-break.
 - 응답: 요약 DTO 목록(최신순) — `id·ruleId·triggerType·issueKey·status·actionCount·successCount·startedAt·finishedAt·replayedFrom`.
 
 ### FR-4. 조회 API — 실행 단건 trace
@@ -156,6 +159,19 @@ CREATE INDEX idx_rule_executions_project_issue ON rule_executions (project_key, 
 - replay는 큐를 거치지 않고 executor 직접 호출(신규 pgmq 큐 없음).
 - 신규 cross-BC 포트 없음(기존 `IssueMutationPort`/`IssueSnapshotPort` 재사용).
 - DEVELOPMENT.md 절대 규칙 준수. TDD red→green.
+
+## 범위 밖 (후속)
+
+- **retention/TTL** — `rule_executions`는 무제한 증가한다(1K 사용자 규모에서 룰당 다수 실행). 보존 정책(예: N일 경과 아카이브/삭제)은 본 PR 범위 밖. 후속 FR 또는 운영 배치로 위임. `created_at` 인덱스 후보를 남겨둔다(현재는 (project_key, issue_key, started_at) 인덱스에 started_at 포함).
+- **D6/D7 UI + E2E** — 실행 이력/trace/replay 버튼 UI는 후속 PR.
+- **trigger_event 크기 상한** — 웹훅 본문 등 큰 payload는 JSONB로 그대로 저장(pgmq 저장 크기와 동일 수준). 별도 상한은 두지 않음.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration — gap 3건 발견 후 스펙 보강).
+- **G1 (수정)** 룰 스코프 목록이 룰 존재를 요구하면 소프트삭제 룰 이력이 막혀 NFR-4(감사 독립성)와 모순 → FR-3을 projectKey 가드 + rule_id/project_key 직접 조회로 수정.
+- **G2 (수정)** keyset 커서 `started_at` 단독은 동일 시각 충돌 → `(started_at, id)` 복합 커서로 명시.
+- **G3 (범위 밖 명시)** retention/TTL 무제한 증가 → 후속 위임으로 명시.
 
 ## 측정 가능한 완료 기준
 

@@ -64,9 +64,23 @@ FR-AT-05 실행 이력 + 디버깅 (automation BC). 자동화 룰이 언제·어
   **FR-AT-05**(본 작업)다. 이 stale 참조를 본 PR 에서 정정.
 - 관련 ADR: [docs/decisions/2026-07-14-fr-at-05-execution-history.md](../decisions/2026-07-14-fr-at-05-execution-history.md) (생성됨)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-14-fr-at-05-execution-history.md](../specs/2026-07-14-fr-at-05-execution-history.md)
+
+핵심 시나리오 요약.
+- 워커가 `ActionExecutor.execute()` 반환값(status + outcomes)을 포착해 `rule_executions`(V305)에 영속화. 기록 범위 = 실행 시도분(SUCCESS/PARTIAL/FAILED/SKIPPED), 억제·malformed 미기록.
+- 조회 3종 — 룰별 이력 목록(projectKey 가드, 소프트삭제 룰도 조회, issueKey 필터, keyset) · 단건 trace · replay.
+- `POST /executions/{id}/replay` = 저장된 triggerEvent로 동기 실제 재실행(dryRun=false) → 새 row(replayed_from) + trace 즉시 반환.
+- 권한 = MANAGE_AUTOMATION(기존 룰 컨트롤러 관례). 신규 cross-BC 포트/큐 없음.
+- 워커 KDoc stale "FR-AT-04" 참조 정정.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). gap 3건 발견 후 스펙 보강.
+- G1 소프트삭제 룰 이력 접근(NFR-4 정합) → FR-3 projectKey 가드 + 직접 조회로 수정.
+- G2 keyset 커서 `(started_at, id)` 복합으로 명시.
+- G3 retention/TTL 무제한 증가 → 후속 위임 명시.
 
 ## Plan (← /bts-plan 채움)
 
