@@ -139,7 +139,11 @@ import java.util.UUID
  *   `NoSuchBeanDefinitionException` 방지). 테스트는 고정 인스턴스를 주입한다.
  */
 @Service
-@Suppress("LongParameterList") // FR-AT-04 Task 5 에서 conflictAnalyzer 추가로 7개(기존 6개 + 1) — 전부 필수 협력자 주입
+// LongParameterList: FR-AT-04 Task 5 에서 conflictAnalyzer 추가로 7개(기존 6개 + 1) — 전부 필수 협력자 주입.
+// TooManyFunctions: 게이트2 코드리뷰 CONCERN-2 수정으로 assertManageAutomationPermission 이 추가돼 11개
+// (임계값 11)가 됐다 — [assertManageAutomationPermission] KDoc 참고, private assertManageAutomation 에
+// 접근해야 해서 top-level 함수로 뺄 수 없다.
+@Suppress("LongParameterList", "TooManyFunctions")
 class AutomationRuleService(
     private val repository: AutomationRuleRepository,
     private val actionRepository: AutomationActionRepository,
