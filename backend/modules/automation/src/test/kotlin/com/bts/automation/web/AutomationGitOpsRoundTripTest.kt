@@ -70,6 +70,12 @@ private val YAML_MEDIA_TYPE: MediaType = MediaType.parseMediaType("application/y
 /** [com.bts.automation.adapter.web.AutomationRuleController.import] 의 상한과 동일(spec NFR2·EC8) — 파일 범위 밖이라 재정의한다. */
 private const val MAX_IMPORT_RULES = 500
 
+/**
+ * [com.bts.automation.adapter.web.AutomationRuleController.import] 의 본문 바이트 상한과 동일(spec NFR2,
+ * 게이트2 코드리뷰 CONCERN-1 수정) — 파일 범위 밖이라 재정의한다.
+ */
+private const val MAX_IMPORT_BYTES = 1_048_576
+
 /** 실서블릿(RANDOM_PORT) 크기상한 테스트 전용 actor — round-trip 테스트와 다른 Spring 컨텍스트라 별도 상수로 둔다. */
 private const val SIZE_LIMIT_ACTOR_UUID = "99999999-9999-9999-9999-999999999999"
 
@@ -411,10 +417,14 @@ class AutomationGitOpsRoundTripTest {
  * automation 모듈에는 identity-access의 JWT 발급 인프라가 없다(BC 격리). `@WithMockUser`는 스레드 로컬
  * `SecurityContext`라 별도 스레드(임베디드 Tomcat)로 도는 실 HTTP 요청에 전파되지 않으므로, 이 클래스
  * 전용 [TestSupportConfig] 가 `httpBasic()` + [InMemoryUserDetailsManager] 로 실 인증 경로를 재현한다.
- * [com.bts.automation.adapter.web.AutomationRuleController.import] 는 규칙 수 상한 검증
- * ([AutomationRuleController] 의 `validateImportRuleCount`)을 MANAGE_AUTOMATION 권한 판정
- * ([com.bts.automation.application.AutomationRuleService.importRules] 내부)보다 **먼저** 수행하므로, 이
- * 테스트는 인증만 되면 되고 권한 allow 등록은 필요 없다.
+ *
+ * ## 권한 — 파싱/크기검증보다 먼저 판정한다(게이트2 코드리뷰 CONCERN-2 수정)
+ * [com.bts.automation.adapter.web.AutomationRuleController.import] 는 actor 추출(401) 다음으로
+ * [com.bts.automation.application.AutomationRuleService.assertManageAutomationPermission] 을 호출해
+ * 바이트 상한/규칙 수 상한/YAML 파싱보다 **먼저** MANAGE_AUTOMATION 권한을 판정한다 — 이 클래스의
+ * [SIZE_LIMIT_ACTOR_UUID] 가 [SIZE_LIMIT_PROJECT_KEY] 에서 크기 상한(413) 응답을 실제로 받으려면
+ * [cleanUp] 이 [StubAutomationPermissionResolver] 에 권한을 명시 allow 해야 한다(과거에는 순서가
+ * 반대라 allow 가 필요 없었다).
  */
 @SpringBootTest(
     classes = [AutomationTestBootApplication::class],
@@ -433,14 +443,48 @@ class AutomationGitOpsImportSizeLimitIntegrationTest {
     @Suppress("VarCouldBeVal")
     private lateinit var jdbcTemplate: JdbcTemplate
 
+    @Autowired
+    @Suppress("VarCouldBeVal")
+    private lateinit var permissionResolver: StubAutomationPermissionResolver
+
     @BeforeEach
     fun cleanUp() {
         jdbcTemplate.update("DELETE FROM automation_rules WHERE project_key = ?", SIZE_LIMIT_PROJECT_KEY)
+        // 권한 판정이 크기 상한보다 먼저 실행되므로(클래스 KDoc §권한 참고) 이 프로젝트 키를 명시 allow
+        // 해야 아래 테스트들이 실제로 413(크기 상한)까지 도달한다.
+        permissionResolver.reset()
+        permissionResolver.allow(SIZE_LIMIT_PROJECT_KEY)
     }
 
     @Test
     fun `POST import 실서블릿 - 규칙 수가 상한을 초과하면 - 413 AUTOMATION_IMPORT_TOO_LARGE, 저장 없음`() {
         val yaml = oversizedYaml(SIZE_LIMIT_PROJECT_KEY, MAX_IMPORT_RULES + 1)
+        val entity = HttpEntity(yaml, yamlHeaders())
+
+        val response =
+            restTemplate
+                .withBasicAuth(SIZE_LIMIT_ACTOR_UUID, SIZE_LIMIT_TEST_PASSWORD)
+                .exchange(
+                    "/api/v1/projects/$SIZE_LIMIT_PROJECT_KEY/automation/rules/import",
+                    HttpMethod.POST,
+                    entity,
+                    String::class.java,
+                )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE)
+        assertThat(response.body).contains("AUTOMATION_IMPORT_TOO_LARGE")
+        val storedCount =
+            jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM automation_rules WHERE project_key = ?",
+                Int::class.java,
+                SIZE_LIMIT_PROJECT_KEY,
+            )
+        assertThat(storedCount).isEqualTo(0)
+    }
+
+    @Test
+    fun `POST import 실서블릿 - 규칙 수는 상한 이하지만 본문 바이트가 상한을 초과하면 - 413 AUTOMATION_IMPORT_TOO_LARGE, 저장 없음`() {
+        val yaml = oversizedByBytesYaml(SIZE_LIMIT_PROJECT_KEY)
         val entity = HttpEntity(yaml, yamlHeaders())
 
         val response =
@@ -488,6 +532,25 @@ class AutomationGitOpsImportSizeLimitIntegrationTest {
             |projectKey: $projectKey
             |rules:
             |$rules
+            """.trimMargin()
+    }
+
+    /**
+     * 규칙 수는 1개([MAX_IMPORT_RULES] 이하)뿐이지만 `name` 필드에 [MAX_IMPORT_BYTES] 를 넘는 패딩을 담아
+     * 원문 바이트 크기 자체를 상한 초과로 만든다(게이트2 코드리뷰 CONCERN-1 수정, 규칙 수 상한(EC8)과 별개인
+     * 본문 바이트 상한(spec NFR2)을 단독으로 재현한다). 바이트 상한 검증은 YAML 파싱 **이전**에 일어나므로
+     * 패딩이 실제로 파싱 가능한 값일 필요는 없다.
+     */
+    private fun oversizedByBytesYaml(projectKey: String): String {
+        val padding = "x".repeat(MAX_IMPORT_BYTES + 1)
+        return """
+            |version: 1
+            |projectKey: $projectKey
+            |rules:
+            |  - name: "$padding"
+            |    trigger:
+            |      type: ISSUE_CREATED
+            |      config: {}
             """.trimMargin()
     }
 

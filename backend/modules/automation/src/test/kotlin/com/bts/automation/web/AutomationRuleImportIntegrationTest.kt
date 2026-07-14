@@ -38,6 +38,13 @@ import java.util.UUID
 private const val ACTOR_UUID = "44444444-4444-4444-4444-444444444444"
 private const val PROJECT_KEY = "GITIMPWEB"
 
+/**
+ * [permissionResolver] 가 `allow` 등록을 하지 않는(=기본 거부) 프로젝트 키 — 권한 파싱前 403 시나리오
+ * 전용(게이트2 코드리뷰 CONCERN-2 수정, `setUp` 이 [PROJECT_KEY] 만 allow 하므로 이 키는 항상 거부로
+ * 수렴한다).
+ */
+private const val NO_PERMISSION_PROJECT_KEY = "GITIMPNOPERM"
+
 /** [AutomationRuleController.import] 컨트롤러 상수와 값이 같아야 한다(플랜 §NFR2·EC8) — 파일 범위 밖이라 여기 재정의한다. */
 private const val MAX_IMPORT_RULES = 500
 
@@ -61,6 +68,9 @@ private val YAML_MEDIA_TYPE: MediaType = MediaType.parseMediaType("application/y
  * 4. 규칙 수 > [MAX_IMPORT_RULES] → 413 `AUTOMATION_IMPORT_TOO_LARGE`.
  * 5. import 후 conflicts 채워짐(같은 트리거 2규칙이 같은 필드를 다른 값으로 SET → FIELD_CONFLICT,
  *    커밋 후 `analyzeProjectConflicts` 반영).
+ * 6. 권한 파싱前 403(게이트2 코드리뷰 CONCERN-2 수정) — MANAGE_AUTOMATION 권한이 없는 사용자는 malformed
+ *    YAML(시나리오 2 라면 400)에도, 규칙 수 초과 YAML(시나리오 4 라면 413)에도 항상 403을 받는다 — 권한
+ *    판정이 파싱/검증보다 먼저 실행됨을 증명한다.
  */
 @SpringBootTest(
     classes = [AutomationTestBootApplication::class],
@@ -184,6 +194,32 @@ class AutomationRuleImportIntegrationTest {
                 PROJECT_KEY,
             )
         assertThat(storedCount).isEqualTo(0)
+    }
+
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `POST import - 권한 없는 사용자의 malformed YAML - 403(400 아님, 파싱보다 권한이 먼저)`() {
+        mockMvc
+            .perform(
+                post("/api/v1/projects/$NO_PERMISSION_PROJECT_KEY/automation/rules/import")
+                    .contentType(YAML_MEDIA_TYPE)
+                    .content("not: [valid: yaml: structure"),
+            ).andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value("AUTOMATION_ACCESS_DENIED"))
+    }
+
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `POST import - 권한 없는 사용자의 규칙 수 초과 YAML - 403(413 아님, 규칙수검증보다 권한이 먼저)`() {
+        val yaml = oversizedYaml(NO_PERMISSION_PROJECT_KEY, MAX_IMPORT_RULES + 1)
+
+        mockMvc
+            .perform(
+                post("/api/v1/projects/$NO_PERMISSION_PROJECT_KEY/automation/rules/import")
+                    .contentType(YAML_MEDIA_TYPE)
+                    .content(yaml),
+            ).andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value("AUTOMATION_ACCESS_DENIED"))
     }
 
     @Test
