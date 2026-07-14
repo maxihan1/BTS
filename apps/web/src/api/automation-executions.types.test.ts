@@ -97,9 +97,9 @@ describe('ruleExecutionSummarySchema', () => {
   })
 
   it('replayedFrom uuid(replay 실행)를 허용한다', () => {
-    const fixture = { ...summaryFixture, replayedFrom: 'c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f' }
+    const fixture = { ...summaryFixture, replayedFrom: 'c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f' }
     const result = ruleExecutionSummarySchema.parse(fixture)
-    expect(result.replayedFrom).toBe('c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f')
+    expect(result.replayedFrom).toBe('c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f')
   })
 
   it('triggerType은 미지 값(향후 트리거 추가)도 허용한다(loose string)', () => {
