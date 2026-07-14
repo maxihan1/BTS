@@ -9,16 +9,20 @@ import com.bts.automation.StubAutomationPermissionResolver
 import com.bts.automation.StubIssueMutationPort
 import com.bts.automation.StubIssuePermissionResolver
 import com.bts.automation.StubIssueSnapshotPort
+import com.bts.automation.adapter.AutomationRuleRepository
 import com.bts.automation.adapter.RuleExecutionRepository
 import com.bts.automation.application.ActionExecutionStatus
 import com.bts.automation.application.ActionOutcome
 import com.bts.automation.application.RuleExecution
+import com.bts.automation.domain.Action
 import com.bts.automation.domain.ActionType
+import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.TriggerType
 import com.bts.shared.issue.IssueMutationPort
 import com.bts.shared.issue.IssueSnapshotPort
 import com.bts.shared.permission.IssuePermissionResolver
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.TextNode
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -32,6 +36,7 @@ import org.springframework.security.test.context.support.WithMockUser
 import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
@@ -52,11 +57,15 @@ private const val OTHER_PROJECT_KEY = "OTHER"
  * [AutomationTestSecurityConfig] 를 재사용해 웹훅 permitAll 외 나머지 경로(이 컨트롤러 포함)가 실제
  * authenticated 필터 체인으로 검증되게 한다.
  *
- * ## 커버 시나리오 (plan Task 4 RED)
+ * ## 커버 시나리오 (plan Task 4/5 RED)
  * - GET 목록 — 최신순 요약 반환·issueKey 필터·limit 200 초과 clamp(에러 아님)·미인증 401·권한 없음 403·
  *   before 형식 오류 400.
  * - GET 단건 — trace(outcomes+triggerEvent) 200·존재하지 않는 id 404·타 프로젝트 소속(권한 없음) 404
  *   (존재 숨김, 403 아님)·미인증 401.
+ * - POST replay(Task 5) — 200(replayedFrom 채움)·원본 룰 소프트삭제 409·존재하지 않는 실행 404·미인증
+ *   401. replay 가 실제로 무엇을 위임하는지(dryRun=false·rule_executions 신규 행)는
+ *   [com.bts.automation.integration.RuleExecutionReplayIntegrationTest] 가 집중 검증한다 — 이 클래스는
+ *   HTTP 상태 코드/에러 코드 계약만 확인한다.
  */
 @SpringBootTest(
     classes = [AutomationTestBootApplication::class],
@@ -106,6 +115,10 @@ class AutomationExecutionControllerTest {
 
     @Autowired
     @Suppress("VarCouldBeVal")
+    private lateinit var ruleRepository: AutomationRuleRepository
+
+    @Autowired
+    @Suppress("VarCouldBeVal")
     private lateinit var permissionResolver: StubAutomationPermissionResolver
 
     private lateinit var mockMvc: MockMvc
@@ -120,6 +133,7 @@ class AutomationExecutionControllerTest {
                 .apply<DefaultMockMvcBuilder>(springSecurity())
                 .build()
         jdbcTemplate.update("DELETE FROM rule_executions")
+        jdbcTemplate.update("DELETE FROM automation_rules")
         permissionResolver.reset()
         permissionResolver.allow(PROJECT_KEY)
         permissionResolver.allow(OTHER_PROJECT_KEY)
@@ -157,6 +171,22 @@ class AutomationExecutionControllerTest {
 
     private fun listUrl(targetRuleId: UUID = ruleId): String {
         return "/api/v1/projects/$PROJECT_KEY/automation/rules/$targetRuleId/executions"
+    }
+
+    /** replay 대상 실행이 참조할 활성 룰을 저장한다(replay 는 룰 정의를 실 조회하므로 목록/단건 조회와 달리 필요). */
+    private fun saveRule(id: UUID = ruleId): AutomationRule {
+        val rule =
+            AutomationRule
+                .create(
+                    projectKey = PROJECT_KEY,
+                    name = "replay 테스트 룰",
+                    triggerType = TriggerType.ISSUE_CREATED,
+                    createdBy = UUID.randomUUID(),
+                    actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High"))),
+                    now = Instant.parse("2026-07-12T00:00:00Z"),
+                ).copy(id = id)
+        ruleRepository.save(rule)
+        return rule
     }
 
     // ── GET 목록 ─────────────────────────────────────────────────────────────────
@@ -279,6 +309,51 @@ class AutomationExecutionControllerTest {
     fun `GET 단건 - 미인증 - 401`() {
         mockMvc
             .perform(get("/api/v1/automation/executions/${UUID.randomUUID()}"))
+            .andExpect(status().isUnauthorized)
+    }
+
+    // ── POST replay ─────────────────────────────────────────────────────────────
+
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `POST replay - 200 replayedFrom 이 원본 id 인 새 실행 이력을 반환한다`() {
+        saveRule()
+        val execution = saveExecution()
+
+        mockMvc
+            .perform(post("/api/v1/automation/executions/${execution.id}/replay"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.replayedFrom").value(execution.id.toString()))
+            .andExpect(jsonPath("$.ruleId").value(ruleId.toString()))
+            .andExpect(jsonPath("$.triggerType").value("ISSUE_CREATED"))
+    }
+
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `POST replay - 원본 룰이 소프트 삭제되었으면 409 AUTOMATION_RULE_UNAVAILABLE`() {
+        saveRule()
+        val execution = saveExecution()
+        ruleRepository.softDelete(ruleId, Instant.parse("2026-07-13T00:00:00Z"))
+
+        mockMvc
+            .perform(post("/api/v1/automation/executions/${execution.id}/replay"))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("AUTOMATION_RULE_UNAVAILABLE"))
+    }
+
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `POST replay - 존재하지 않는 실행 - 404 AUTOMATION_EXECUTION_NOT_FOUND`() {
+        mockMvc
+            .perform(post("/api/v1/automation/executions/${UUID.randomUUID()}/replay"))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("AUTOMATION_EXECUTION_NOT_FOUND"))
+    }
+
+    @Test
+    fun `POST replay - 미인증 - 401`() {
+        mockMvc
+            .perform(post("/api/v1/automation/executions/${UUID.randomUUID()}/replay"))
             .andExpect(status().isUnauthorized)
     }
 }
