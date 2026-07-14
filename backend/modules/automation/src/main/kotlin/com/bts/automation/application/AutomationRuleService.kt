@@ -301,6 +301,37 @@ class AutomationRuleService(
     }
 
     /**
+     * [actorId] 가 [projectKey] 에서 MANAGE_AUTOMATION 권한을 가졌는지만 판정한다(게이트2 코드리뷰
+     * CONCERN-2 수정).
+     *
+     * [com.bts.automation.adapter.web.AutomationRuleController.import] 가
+     * [com.bts.automation.gitops.AutomationYamlCodec.fromYaml] 파싱·바이트/규칙수 상한 검증보다 **먼저**
+     * 이 메서드를 호출해, 미인가 사용자가 YAML을 보내 파싱
+     * 성공/실패나 규칙 수 초과 여부 같은 응답 차이(오라클)를 관찰하지 못하게 막는다 — 권한 판정이
+     * 리소스 조회보다 먼저여야 한다는 원칙([[auth-extraction-before-resource-lookup]])을 "리소스 조회"
+     * 대신 "요청 본문 파싱/검증"까지 확장한 적용이다.
+     *
+     * [importRules] 내부의 `assertManageAutomation` 호출은 이 메서드가 대체하지 않고 그대로 남는다 —
+     * 같은 `@Transactional` 저장 경계 안에서 재확인하는 defense-in-depth이자 멱등한 순수 판정이라 두 번
+     * 호출해도 부작용이 없다.
+     *
+     * 이 메서드 자체는 아무것도 쓰지 않으므로 `@Transactional(readOnly = true)` 로 둔다(DATA.md §6).
+     * [AutomationRuleController] 가 주입받은 이 서비스 빈을 통해 호출하므로 Spring 트랜잭션 프록시를
+     * 정상적으로 거친다([[transaction-self-invocation-requires-new]] 함정과 무관 — self-invocation 이 아니다).
+     *
+     * @param actorId 판정 대상 행위자.
+     * @param projectKey 판정 대상 프로젝트 키.
+     * @throws AutomationForbiddenException [actorId] 가 [projectKey] 에서 MANAGE_AUTOMATION 권한이 없을 때.
+     */
+    @Transactional(readOnly = true)
+    fun assertManageAutomationPermission(
+        actorId: UUID,
+        projectKey: String,
+    ) {
+        assertManageAutomation(actorId, projectKey)
+    }
+
+    /**
      * GitOps YAML import — [commands] 를 id(UUID) 기준 upsert 해 [projectKey] 에 반영한다(FR-AT-06
      * GitOps Task 4).
      *
@@ -1123,9 +1154,9 @@ class AutomationRuleVersionConflictException(
  * 프로젝트의 기존 규칙으로 취급할 수도 없다("id 귀속 충돌"). 웹 레이어에서 400 으로 매핑된다(Task 5 scope).
  *
  * @property ruleId 충돌이 발생한 id.
- * @property cause `INSERT` 가 PK UNIQUE 제약을 위반해 감지된 경우 원인이 된
- *   [org.springframework.dao.DuplicateKeyException]. 활성 행이 이미 다른 프로젝트 소속이라 즉시 감지된
- *   경우는 `null`.
+ * @property cause `INSERT` 가 PK UNIQUE 제약을 위반해 감지된 원인이 된
+ *   [org.springframework.dao.DuplicateKeyException]. [createImportedRule] 의 단일 catch 지점에서만
+ *   던져지므로 항상 non-null 이다.
  */
 class AutomationImportIdConflictException(
     val ruleId: UUID,

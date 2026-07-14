@@ -63,7 +63,10 @@ import java.util.UUID
  *
  * 모든 엔드포인트는 MANAGE_AUTOMATION 가드를 거친다. 인가 순서는 **actor 추출(401) → 권한 판정(403) →
  * 리소스 조회** 순서를 지킨다([[auth-extraction-before-resource-lookup]]) — actor 추출은 이 컨트롤러가,
- * 권한 판정과 리소스 조회는 [AutomationRuleService] 가 담당한다.
+ * 권한 판정과 리소스 조회는 [AutomationRuleService] 가 담당한다. [import] 만은 예외적으로 이 컨트롤러가
+ * [AutomationRuleService.assertManageAutomationPermission] 을 YAML 파싱/크기 검증보다 **먼저** 직접
+ * 호출한다 — "리소스 조회"를 "요청 본문 파싱/검증"까지 확장 적용한 경우다(게이트2 코드리뷰 CONCERN-2
+ * 수정, [import] KDoc §권한을 파싱/크기검증보다 먼저 판정 참고).
  *
  * 트랜잭션 경계는 이 컨트롤러가 아니라 [AutomationRuleService] 가 담당한다(learning #91).
  *
@@ -183,11 +186,22 @@ class AutomationRuleController(
      * [projectKey] 에 GitOps YAML을 업로드해 규칙을 id(UUID) 기준으로 일괄 upsert 한다(FR-AT-06 GitOps
      * Task 5, spec FR2~FR4).
      *
-     * 처리 순서 — actor 추출(401) → [AutomationYamlCodec.fromYaml] 파싱(형식/스키마버전 위반 400) →
-     * [validateImportProjectKeyMatches] projectKey 일치 검증(EC2, 400) → [validateImportRuleCount] 규칙 수
-     * 상한 검증(spec NFR2·EC8, 413) → [AutomationRuleService.importRules](단일 `@Transactional`, 원자성
-     * spec FR4) → **커밋 후** 별도로 [AutomationRuleService.analyzeProjectConflicts] 호출([export]/[create]/
-     * [patch] 와 동일하게 참여 트랜잭션 rollback-only 오염을 피한다, 클래스 KDoc §규칙 충돌 lint 통합 참고).
+     * 처리 순서 — actor 추출(401) → [AutomationRuleService.assertManageAutomationPermission] 권한 판정
+     * (403) → [validateImportByteSize] 본문 바이트 상한 검증(spec NFR2, 413) →
+     * [AutomationYamlCodec.fromYaml] 파싱(형식/스키마버전 위반 400) → [validateImportProjectKeyMatches]
+     * projectKey 일치 검증(EC2, 400) → [validateImportRuleCount] 규칙 수 상한 검증(spec NFR2·EC8, 413) →
+     * [AutomationRuleService.importRules](단일 `@Transactional`, 원자성 spec FR4) → **커밋 후** 별도로
+     * [AutomationRuleService.analyzeProjectConflicts] 호출([export]/[create]/[patch] 와 동일하게 참여
+     * 트랜잭션 rollback-only 오염을 피한다, 클래스 KDoc §규칙 충돌 lint 통합 참고).
+     *
+     * ## 권한을 파싱/크기검증보다 먼저 판정 (게이트2 코드리뷰 CONCERN-2 수정)
+     * 다른 핸들러는 권한 판정과 리소스 조회를 모두 [AutomationRuleService] 내부에 위임하지만(클래스 KDoc
+     * §인가 순서 참고), 이 핸들러는 [AutomationRuleService.assertManageAutomationPermission] 을 **YAML
+     * 파싱/바이트·규칙수 검증보다 앞서** 직접 호출한다 — 그렇지 않으면 미인가 사용자가 보낸 요청이 400/413
+     * 으로 응답해, "이 프로젝트에 MANAGE_AUTOMATION 권한이 없어도 YAML 형식/크기 검증 결과를 알 수 있다"는
+     * 오라클이 생긴다(CONCERN-1의 바이트 상한 검증과 결합하면 미인가 사용자도 파싱 CPU를 소모시킬 수 있는
+     * DoS 표면이 된다). [AutomationRuleService.importRules] 내부의 기존 권한 재확인은 그대로 유지된다
+     * (defense-in-depth, [AutomationRuleService.assertManageAutomationPermission] KDoc 참고).
      *
      * @param projectKey import 대상 프로젝트 키(경로 변수). YAML `projectKey` 가 비어있지 않은데 이 값과
      *   다르면 400(EC2) — YAML에서 생략되면 이 경로 값을 권위로 사용한다.
@@ -195,11 +209,12 @@ class AutomationRuleController(
      *   허용).
      * @return 200 OK + [AutomationImportResponse](created/updated/total/입력순 ruleIds, 새로 생성된 WEBHOOK
      *   룰의 1회 노출 토큰, 커밋 후 분석한 conflicts).
+     * @throws AutomationForbiddenException [projectKey] 에 MANAGE_AUTOMATION 권한이 없을 때.
+     * @throws AutomationImportTooLargeException [rawYaml] 의 UTF-8 바이트 크기가 [MAX_IMPORT_BYTES] 를
+     *   초과하거나(spec NFR2), 파싱된 규칙 수가 [MAX_IMPORT_RULES] 를 초과할 때(spec NFR2·EC8).
      * @throws AutomationYamlInvalidException YAML 파싱에 실패했거나 스키마 버전이 다를 때(원본 값은
      *   메시지에 echo하지 않는다).
      * @throws AutomationImportProjectKeyMismatchException YAML `projectKey` 가 [projectKey] 와 다를 때(EC2).
-     * @throws AutomationImportTooLargeException 규칙 수가 [MAX_IMPORT_RULES] 를 초과할 때(spec NFR2·EC8).
-     * @throws AutomationForbiddenException [projectKey] 에 MANAGE_AUTOMATION 권한이 없을 때.
      * @throws AutomationImportCommandException 커맨드 중 하나라도 검증/처리에 실패했을 때(OCC 제외,
      *   실패 인덱스+사유는 [AutomationRuleExceptionHandler.handleRequestInvalid] 가 ProblemDetail에 담는다).
      * @throws AutomationRuleVersionConflictException import-update 도중 다른 트랜잭션이 먼저 갱신했을 때
@@ -214,6 +229,8 @@ class AutomationRuleController(
         @RequestBody rawYaml: String,
     ): ResponseEntity<AutomationImportResponse> {
         val actorId = AutomationActorExtractor.extract()
+        service.assertManageAutomationPermission(actorId, projectKey)
+        validateImportByteSize(rawYaml)
         val parsed = AutomationYamlCodec.fromYaml(rawYaml)
         validateImportProjectKeyMatches(projectKey, parsed.projectKey)
         validateImportRuleCount(parsed.rules.size)
@@ -367,9 +384,42 @@ private fun buildExportContentDisposition(projectKey: String): String {
 }
 
 /**
+ * [AutomationRuleController.import] 가 허용하는 요청 본문 최대 바이트 수(spec NFR2, ~1MB) — DoS 방어
+ * (게이트2 코드리뷰 CONCERN-1 수정).
+ *
+ * `@RequestBody String` 파라미터는 Spring MVC 가 이 검증에 도달하기 **전에** 이미 요청 본문 전체를 문자열로
+ * 읽어 메모리에 올려둔 뒤다 — 그래서 이 앱-레벨 체크가 실제로 막는 것은 "본문을 소켓에서 읽어 버퍼링하는
+ * 비용"이 아니라 그 뒤에 이어지는 [validateImportByteSize] 호출 이후 단계(YAML 디코딩/스캐닝)의 CPU
+ * 비용이다. 요청 본문 버퍼링 자체의 진짜 상한은 이 컨트롤러 밖 배포 레이어(nginx `client_max_body_size`)
+ * 또는 서블릿 컨테이너(`server.tomcat.max-swallow-size` 등) 몫이다
+ * ([[multipart-default-limit-app-policy-false-green]] 반면교사 — 서블릿 기본값에 앱 정책을 의존하지
+ * 않는다는 원칙과는 반대로, 여기서는 앱 정책이 서블릿/배포 레이어를 대신할 수 없음을 명시한다).
+ */
+private const val MAX_IMPORT_BYTES = 1_048_576
+
+/**
+ * [AutomationRuleController.import] 의 [rawYaml] 원문이 UTF-8 바이트 기준 [MAX_IMPORT_BYTES] 를 넘지
+ * 않는지 검증한다(spec NFR2, 게이트2 코드리뷰 CONCERN-1 수정) — [AutomationYamlCodec.fromYaml] 파싱
+ * **이전**에 호출해 과대 본문이 파싱 CPU 를 소모하지 못하게 막는다.
+ *
+ * @param rawYaml 파싱 전 YAML 원문.
+ * @throws AutomationImportTooLargeException [rawYaml] 의 UTF-8 바이트 크기가 [MAX_IMPORT_BYTES] 를
+ *   초과할 때. [validateImportRuleCount] 와 같은 예외 타입(413)이지만 원인이 다르므로 detail 메시지로
+ *   구분한다.
+ */
+private fun validateImportByteSize(rawYaml: String) {
+    val byteSize = rawYaml.toByteArray(Charsets.UTF_8).size
+    if (byteSize > MAX_IMPORT_BYTES) {
+        throw AutomationImportTooLargeException(
+            "가져오기 요청 본문 크기가 상한(${MAX_IMPORT_BYTES}바이트)을 초과했습니다.",
+        )
+    }
+}
+
+/**
  * [AutomationRuleController.import] 가 허용하는 최대 규칙 수(spec NFR2·EC8) — DoS 방어. 본문 크기 자체의
- * 실서블릿 상한 검증은 이 컨트롤러 밖(Task 6 scope, `[[multipart-default-limit-app-policy-false-green]]`
- * 회귀 회피)이고, 이 상수는 규칙 개수 기준 상한만 강제한다.
+ * 상한은 [MAX_IMPORT_BYTES]/[validateImportByteSize] 가 별도로 강제하고, 이 상수는 규칙 개수 기준
+ * 상한만 강제한다.
  */
 private const val MAX_IMPORT_RULES = 500
 
@@ -502,7 +552,8 @@ class AutomationRuleExceptionHandler {
      * 하나로 묶어 매핑한다(FR-AT-06 GitOps Task 5) — [AutomationYamlInvalidException](YAML 파싱/스키마버전
      * 위반, EC1)·[AutomationImportProjectKeyMismatchException](import projectKey 불일치, EC2)·
      * [AutomationImportCommandException](커맨드별 검증/처리 실패, spec C3)은 400 `AUTOMATION_IMPORT_INVALID`
-     * 로, [AutomationImportTooLargeException](규칙 수 상한 초과, EC8)은 413 `AUTOMATION_IMPORT_TOO_LARGE` 로,
+     * 로, [AutomationImportTooLargeException](본문 바이트 상한 초과 또는 규칙 수 상한 초과, spec NFR2·EC8,
+     * 게이트2 코드리뷰 CONCERN-1 로 바이트 상한 사유가 추가됐다)은 413 `AUTOMATION_IMPORT_TOO_LARGE` 로,
      * [AutomationProjectKeyInvalidException](export projectKey 화이트리스트 위반, FR-AT-06 Task 3)은 400
      * `AUTOMATION_RULE_INVALID` 로 매핑한다. 5종을 각각 별도 `@ExceptionHandler` 메서드로 두지 않고 하나로
      * 묶은 이유는 detekt `TooManyFunctions`(클래스당 함수 11개 예산)에 근접했기 때문이다(plan Task 5 GREEN
