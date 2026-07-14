@@ -7,7 +7,7 @@ import {
   ruleExecutionSummarySchema,
   ruleExecutionDetailSchema,
 } from './automation-executions.types'
-import type { RuleExecutionSummary, RuleExecutionDetail } from './automation-executions.types'
+import type { RuleExecutionSummary, RuleExecutionDetail, ActionOutcome } from './automation-executions.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fixture — RuleExecutionSummaryResponse/RuleExecutionDetailResponse (backend DTO 1:1)
@@ -27,7 +27,7 @@ const summaryFixture: RuleExecutionSummary = {
   replayedFrom: null,
 }
 
-const outcomeFixture = {
+const outcomeFixture: ActionOutcome = {
   position: 0,
   actionType: 'SET_FIELD',
   success: true,
