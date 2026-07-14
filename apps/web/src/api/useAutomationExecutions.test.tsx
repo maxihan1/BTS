@@ -89,6 +89,26 @@ const REPLAYED_DETAIL: RuleExecutionDetail = {
   finishedAt: '2026-07-10T11:00:02Z',
 }
 
+// CONCERN 4 회귀 테스트 전용 — issueKey 필터가 활성인 상태에서 replay 시 그 필터 쿼리 캐시에도
+// 반영되는지 검증한다. FILTER_MATCH_ISSUE_KEY는 replay 응답이 물려받는 issueKey와 같아 매칭되고,
+// FILTER_MISMATCH_ISSUE_KEY는 달라 skip돼야 한다.
+const FILTER_MATCH_ISSUE_KEY = 'ATLAS-2'
+const FILTER_MISMATCH_ISSUE_KEY = 'ATLAS-9'
+const REPLAY_SOURCE_ID_2 = uuidFromIndex(9300)
+const REPLAYED_DETAIL_2: RuleExecutionDetail = {
+  id: uuidFromIndex(9301),
+  ruleId: RULE_ID,
+  projectKey: PROJECT_KEY,
+  triggerType: 'ISSUE_CREATED',
+  triggerEvent: { issueKey: FILTER_MATCH_ISSUE_KEY, type: 'ISSUE_CREATED' },
+  issueKey: FILTER_MATCH_ISSUE_KEY,
+  status: 'SUCCESS',
+  outcomes: [{ position: 0, actionType: 'SET_FIELD', success: true, error: null }],
+  replayedFrom: REPLAY_SOURCE_ID_2,
+  startedAt: '2026-07-10T12:00:00Z',
+  finishedAt: '2026-07-10T12:00:01Z',
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MSW 핸들러 — useCalendarFeed.test.ts 선례(전역 `@/test/server` + `server.use()`)를 미러한다.
 // automation-executions.test.ts처럼 이 파일 로컬 `setupServer()`를 새로 띄우면 src/test/setup.ts가
@@ -111,6 +131,12 @@ function registerExecutionHandlers(): void {
       if (issueKeyParam === FILTERED_ISSUE_KEY) {
         return HttpResponse.json([FILTERED_EXECUTION])
       }
+      if (issueKeyParam !== null) {
+        // FILTERED_ISSUE_KEY 외 임의 issueKey 필터 — ALL_EXECUTIONS는 전부 'ATLAS-100'이라
+        // FILTER_MATCH_ISSUE_KEY/FILTER_MISMATCH_ISSUE_KEY 둘 다 초기엔 빈 배열을 반환한다
+        // (replay로 캐시에 직접 prepend되는지를 검증하는 것이 목적이라 서버 응답은 항상 비움).
+        return HttpResponse.json(ALL_EXECUTIONS.filter((item) => item.issueKey === issueKeyParam).slice(0, limit))
+      }
 
       if (beforeParam === null) {
         return HttpResponse.json(ALL_EXECUTIONS.slice(0, limit))
@@ -129,6 +155,9 @@ function registerExecutionHandlers(): void {
     http.post('/api/v1/automation/executions/:id/replay', ({ params }) => {
       if (params['id'] === REPLAY_SOURCE_ID) {
         return HttpResponse.json(REPLAYED_DETAIL)
+      }
+      if (params['id'] === REPLAY_SOURCE_ID_2) {
+        return HttpResponse.json(REPLAYED_DETAIL_2)
       }
       return HttpResponse.json({ errorCode: 'AUTOMATION_EXECUTION_NOT_FOUND' }, { status: 404 })
     }),
@@ -335,6 +364,34 @@ describe('useAutomationExecutions 훅 묶음', () => {
       await waitFor(() => expect(list.current.executions.length).toBe(TOTAL_EXECUTIONS + 1))
       // 두 번째 페이지의 마지막 항목이 여전히 살아있어야 한다 (prepend가 첫 페이지만 건드림)
       expect(list.current.executions[TOTAL_EXECUTIONS]?.id).toBe(ALL_EXECUTIONS[TOTAL_EXECUTIONS - 1]?.id)
+    })
+
+    it('issueKey 필터가 활성인 상태에서 재실행하면 매칭 필터 캐시엔 prepend되고, 불일치 필터엔 반영되지 않는다 (CONCERN 4)', async () => {
+      const wrapper = createWrapper(queryClient)
+      const { result: matched } = renderHook(
+        () => useRuleExecutions(PROJECT_KEY, RULE_ID, { issueKey: FILTER_MATCH_ISSUE_KEY }),
+        { wrapper },
+      )
+      const { result: mismatched } = renderHook(
+        () => useRuleExecutions(PROJECT_KEY, RULE_ID, { issueKey: FILTER_MISMATCH_ISSUE_KEY }),
+        { wrapper },
+      )
+
+      await waitFor(() => expect(matched.current.isLoading).toBe(false))
+      await waitFor(() => expect(mismatched.current.isLoading).toBe(false))
+      expect(matched.current.executions).toHaveLength(0)
+      expect(mismatched.current.executions).toHaveLength(0)
+
+      const { result: replay } = renderHook(() => useReplayRuleExecution(PROJECT_KEY, RULE_ID), { wrapper })
+      await act(async () => {
+        await replay.current.mutateAsync(REPLAY_SOURCE_ID_2)
+      })
+      await waitFor(() => expect(replay.current.isSuccess).toBe(true))
+
+      await waitFor(() => expect(matched.current.executions).toHaveLength(1))
+      expect(matched.current.executions[0]?.id).toBe(REPLAYED_DETAIL_2.id)
+      expect(matched.current.executions[0]?.issueKey).toBe(FILTER_MATCH_ISSUE_KEY)
+      expect(mismatched.current.executions).toHaveLength(0)
     })
   })
 })
