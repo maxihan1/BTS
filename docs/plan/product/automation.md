@@ -89,11 +89,11 @@
 
 **우선순위**. 필수 | **선행**. §2.1~§2.3 | **Plan slug**. `automation/execution-history`
 
-- [ ] D1. 도메인 — RuleExecution (책임. backend-engineer)
-- [ ] D2. 명세 — trace context + 재실행 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — `rule_executions(rule_id, trigger_event, result, ...)` (책임. db-engineer)
-- [ ] D4. 백แอ — 실행 이력 저장 + `POST /api/v1/automation/executions/{id}/replay` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [x] D1. 도메인 — RuleExecution (책임. backend-engineer)
+- [x] D2. 명세 — trace context + 재실행 (책임. backend-engineer)
+- [x] D3. 데이터 모델 — `rule_executions(rule_id, trigger_event, result, ...)` (책임. db-engineer)
+- [x] D4. 백엔드 — 실행 이력 저장 + `POST /api/v1/automation/executions/{id}/replay` (책임. backend-engineer)
+- [x] D5. 백엔드 테스트 (책임. backend-engineer)
 - [ ] D6. 프론트 UI — 실행 이력 + 단계별 trace + 재실행 버튼 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 

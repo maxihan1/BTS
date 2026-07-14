@@ -71,8 +71,9 @@ import java.util.concurrent.ConcurrentHashMap
  * **왕복(round-trip)** 경로에서는, 돌아오는 트리거가 깊이 정보를 갖지 않는 새 이슈 이벤트라 (a) 를
  * 활성화하더라도 `executionDepth` 가 0 으로 리셋된다. (b) 는 (ruleId, issueKey) 단위·시간창 기반이라
  * 서로 다른 룰이 번갈아 같은 이슈를 건드리는 다중 룰 사이클이나 이슈 키가 바뀌는 사이클까지 견고하게
- * 잡지는 못한다. 전체 실행 체인을 영속 추적하는 견고한 사이클 검출은 **FR-AT-04(자동화 실행 로그/감사)**
- * 로 위임한다 — 현재 범위(FR-AT-02)에서는 (b) 억제창이 실용적 상한을 제공한다.
+ * 잡지는 못한다. 견고한 사이클 검출은 저장 시점 정적 분석 **FR-AT-04(규칙 충돌 정적 분석 — CYCLE 검출)**
+ * 로 위임한다(실행 이력/감사 자체는 FR-AT-05다 — 아래 "실행 이력 저장" 절 참조). 런타임 범위에서는 (b)
+ * 억제창이 실용적 상한을 제공한다.
  *
  * ## `@Transactional` 없음 — 의도적 설계([AutomationEventWorker] 동형)
  * pgmq read/archive 는 트랜잭션 범위 밖에서 호출해도 pgmq 내부에서 atomic 하게 처리된다.
@@ -441,9 +442,10 @@ private fun parseTriggerType(node: JsonNode): TriggerType? {
  * 상태(`log`/`ruleExecutionRepository` 등)에 의존하지 않는 순수 변환이라, [AutomationExecutionWorker]
  * 클래스의 detekt `TooManyFunctions` 임계값을 지키기 위해 클래스 밖 최상위 함수로 둔다("루프 가드 (b)"
  * 섹션 KDoc과 동일한 분리 전략, [suppressionKey]/[extractIssueKey] 동형). id 는 매 저장마다 새로
- * 발급하고([UUID.randomUUID]), 실행 시도 자체가 replay 가 아니므로 [RuleExecution.replayedFrom] 은 항상
- * `null`(replay 는 FR-AT-05 후속 Task 범위). [payload] 의 `triggerType` 이 없으면(구버전 enqueuer 메시지
- * 호환) [rule] 의 `triggerType` 으로 대체한다.
+ * 발급하고([UUID.randomUUID]), 워커 경로 실행은 replay 가 아니므로 [RuleExecution.replayedFrom] 은 항상
+ * `null`이다(replay 로 생성되는 이력은 `RuleExecutionService.replay` 가 원본 실행 id 를 replayedFrom 으로
+ * 설정한다). [payload] 의 `triggerType` 이 없으면(구버전 enqueuer 메시지 호환) [rule] 의 `triggerType`
+ * 으로 대체한다.
  */
 private fun buildRuleExecution(
     payload: ExecutionPayload,

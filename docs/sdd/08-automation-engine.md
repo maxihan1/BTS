@@ -78,17 +78,19 @@ rule:
 ## 8.6 실행 이력 (디버깅용)
 
 ```
-AutomationRunLog:
-  - rule_id
-  - issue_id
-  - trigger_event
-  - condition_result (true/false + 평가 과정)
-  - actions_executed: [{action, result, error}]
+AutomationRunLog (구현 테이블. rule_executions, FR-AT-05 V305):
+  - rule_id            (하드 FK 없음 — 감사 독립성. 룰 하드삭제돼도 이력 보존)
+  - issue_key          (구 issue_id. 이슈 무관 트리거 SCHEDULED/WEBHOOK 은 NULL)
+  - project_key        (비정규화 — 스코프 목록/권한 판정, 룰 조인 회피)
+  - trigger_type       (fire-time 트리거 타입)
+  - trigger_event      (원본 payload. replay 동기 재실행 재료)
+  - actions_executed → outcomes: [{position, actionType, success, error}]
+  - replayed_from      (이 이력이 replay 로 생성됐으면 원본 실행 id, 아니면 NULL)
   - started_at, finished_at
-  - status: SUCCESS / PARTIAL / FAILED
+  - status: SUCCESS / PARTIAL / FAILED / SKIPPED   (SKIPPED = 조건 게이트 FR-AT-03 불충족)
 ```
 
-UI에서 "이 이슈에 영향을 준 자동화" 조회 가능.
+기록 범위는 실행 시도분(ActionExecutor 호출)만 — 억제창 스킵·malformed 는 미기록. UI에서 "이 이슈에 영향을 준 자동화" 조회 가능(`issue_key` 필터). `POST /api/v1/automation/executions/{id}/replay` 로 저장된 trigger_event 를 현재 룰 정의에 동기 재실행. 조건 평가 과정(`condition_result`) 상세 추적은 향후 확장(현재 status=SKIPPED 로 조건 불충족만 표시).
 
 ## 8.7 충돌 정적 분석 (FR-AT-04)
 
