@@ -122,6 +122,19 @@ function handleSubmitFailure(
 }
 
 /**
+ * 저장 성공 응답의 conflicts를 `onConflicts` 콜백으로 1회 전달한다 — onWebhookToken 처리
+ * (`response.webhookToken !== null` 가드)와 대칭 패턴이다(FR-AT-04 D6/D7 Task 3).
+ *
+ * create 응답은 `response.rule.conflicts`(중첩), update 응답은 `updated.conflicts`(최상위)로
+ * 위치가 다르지만 이 헬퍼는 이미 꺼내진 배열만 받아 "비어있지 않을 때만 전달" 판정에 집중한다.
+ * GET(목록/단건)은 backend가 `@JsonInclude(NON_NULL)`로 키 자체를 생략하므로 `undefined`도
+ * "충돌 없음"으로 취급한다.
+ */
+function emitConflicts(conflicts: RuleConflict[] | undefined, onConflicts?: (c: RuleConflict[]) => void): void {
+  if (conflicts !== undefined && conflicts.length > 0) onConflicts?.(conflicts)
+}
+
+/**
  * editingRule prop이 실제 값을 가지는지 판정하는 타입 가드.
  * `editingRule !== undefined && editingRule !== null` 반복 대신 이 함수를 조건식에 직접 호출하면
  * TypeScript가 호출 지점에서 editingRule을 `AutomationRule`로 narrowing한다.
@@ -389,10 +402,6 @@ function TriggerConfigFields({
   return null
 }
 
-function emitConflicts(conflicts: RuleConflict[] | undefined, onConflicts?: (c: RuleConflict[]) => void): void {
-  if (conflicts !== undefined && conflicts.length > 0) onConflicts?.(conflicts)
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 내부 폼 컴포넌트 (key prop 재마운트를 위해 분리)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -644,6 +653,8 @@ function FormBody({
  *   Dialog가 열린 채로 편집 대상이 바뀌어도 이전 입력(액션·조건·실행주체 포함)이 잔존하지 않는다
  *   (react-usestate-stale-key-prop 교훈, EC6/EC9).
  * - WEBHOOK 트리거 생성 성공 시 응답의 webhookToken 원문을 `onWebhookToken`으로 1회 전달한다.
+ * - 저장 성공 응답에 규칙 충돌(conflicts)이 1건 이상 있으면 `onConflicts`로 1회 전달한다
+ *   ({@link emitConflicts}, FR-AT-04 D6/D7 Task 3).
  */
 export const AutomationRuleFormDialog = ({
   projectKey,
