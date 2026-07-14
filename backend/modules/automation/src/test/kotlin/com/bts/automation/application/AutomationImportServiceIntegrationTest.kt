@@ -28,6 +28,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import java.time.Instant
+import java.time.ZoneOffset
 import java.util.UUID
 
 private const val PROJECT_KEY = "GITIMP"
@@ -179,7 +180,7 @@ class AutomationImportServiceIntegrationTest {
         service.importRules(actorId, PROJECT_KEY, listOf(basicCommand(id = presetId, name = "삭제될 규칙")))
         jdbcTemplate.update(
             "UPDATE automation_rules SET deleted_at = ? WHERE id = ?::uuid",
-            Instant.now(),
+            Instant.now().atOffset(ZoneOffset.UTC),
             presetId.toString(),
         )
 
@@ -215,10 +216,8 @@ class AutomationImportServiceIntegrationTest {
 
     @Test
     fun `CALL_WEBHOOK 액션의 url이 http-https가 아니면 예외를 던진다`() {
-        val command =
-            basicCommand(
-                actions = listOf(ImportActionCommand(type = ActionType.CALL_WEBHOOK, config = """{"url":"ftp://bad"}""")),
-            )
+        val webhookAction = ImportActionCommand(type = ActionType.CALL_WEBHOOK, config = """{"url":"ftp://bad"}""")
+        val command = basicCommand(actions = listOf(webhookAction))
 
         assertThatThrownBy { service.importRules(actorId, PROJECT_KEY, listOf(command)) }
             .isInstanceOf(AutomationImportCommandException::class.java)
@@ -280,6 +279,7 @@ class AutomationImportServiceIntegrationTest {
             projectKey,
         ) ?: 0
 
+    @Suppress("LongParameterList")
     private fun basicCommand(
         id: UUID? = null,
         name: String = "규칙",
