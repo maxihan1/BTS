@@ -75,6 +75,43 @@ rule:
       labels: ["auto-assigned"]
 ```
 
+> 위 예시는 개념 설명용(일부 액션/템플릿은 미구현). 실제 구현된 import/export 계약은 §8.5.1.
+
+### 8.5.1 YAML import/export (FR-AT-06, GitOps)
+
+자동화 규칙을 YAML로 내보내고(`GET`) 올려 upsert하는(`POST`) GitOps 백엔드. 규칙 1개 = `automation_rules` 1행 + `automation_actions` N행 + `automation_conditions` 0..1행을 YAML 문서 하나로 왕복(신규 마이그레이션 없음, V300/V302/V304 활용).
+
+```
+GET  /api/v1/projects/{projectKey}/automation/rules/export   → 200 application/yaml;charset=UTF-8
+POST /api/v1/projects/{projectKey}/automation/rules/import    (@RequestBody YAML) → 200 AutomationImportResponse
+```
+
+권한 = `MANAGE_AUTOMATION`(리소스 접근 이전 fail-closed). 경로는 프로젝트 스코프(기존 automation 엔드포인트 정렬 — SDD 원안 flat 경로에서 deviation).
+
+**YAML 스키마 v1**.
+
+```yaml
+version: 1
+projectKey: PROJ
+rules:
+  - id: 550e8400-e29b-41d4-a716-446655440000   # 선택(export는 항상 채움, 손 작성 시 생략=새 규칙)
+    name: "버그 자동 할당"
+    enabled: true
+    actorUserId: 123e4567-e89b-12d3-a456-426614174000   # 선택(생략 시 import 호출자)
+    trigger: { type: ISSUE_CREATED, config: {} }
+    condition: { and: [ {"==": [{"var": "issue.type"}, "Bug"]} ] }   # 선택(생략=조건 없음)
+    actions:
+      - { type: SET_FIELD, config: { field: priority, value: 1 } }
+```
+
+- **식별 = UUID id 기준 upsert**. id 있고 이 프로젝트 존재→UPDATE / id 있고 전역 미존재→id 보존 CREATE(멱등) / id 있고 타 프로젝트·소프트삭제 소유→400(PK 전역 유일성) / id 부재→새 UUID CREATE.
+- **원자성 = atomic fail-closed**. 단일 트랜잭션, 하나라도 실패 시 전량 롤백. 충돌 정적 분석(§8.7)은 커밋 후 별도 호출로 응답 `conflicts`에 병합(rollback-only 오염 회피).
+- **검증 재사용**. name≤200·trigger cron/fields·조건 MAX_DEPTH=10/MAX_NODES=100/FIELD_WHITELIST·action url http(s) 전부 기존 도메인 파서 통과(import가 검증 우회 없음).
+- **비밀 미노출**. export에 webhook 토큰/해시·OCC version·nextFireAt 미포함. 생성된 WEBHOOK 규칙 토큰은 응답 `webhookTokens`로 1회 노출.
+- **wire 비대칭 흡수**. trigger/action config·condition은 YAML 객체 ↔ 내부 JSON 문자열(도메인 파서 입력 형식)로 변환. YAML mapper는 내부 전용(전역 JSON ObjectMapper 오염 금지).
+- **응답** `AutomationImportResponse{created, updated, total, ruleIds, webhookTokens?, conflicts?}`. 상한 `MAX_IMPORT_RULES=500`→413.
+- **round-trip 시맨틱**. 동일 프로젝트 멱등 재적용(GitOps apply)·migrate/restore(원본 규칙 부재)는 id 보존으로 재현. 원본을 살린 채 타 프로젝트 복사는 YAML에서 `id:` 제거(새 규칙 생성).
+
 ## 8.6 실행 이력 (디버깅용)
 
 ```
