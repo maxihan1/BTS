@@ -155,8 +155,9 @@ class AutomationExecutionControllerTest {
         return execution
     }
 
-    private fun listUrl(targetRuleId: UUID = ruleId): String =
-        "/api/v1/projects/$PROJECT_KEY/automation/rules/$targetRuleId/executions"
+    private fun listUrl(targetRuleId: UUID = ruleId): String {
+        return "/api/v1/projects/$PROJECT_KEY/automation/rules/$targetRuleId/executions"
+    }
 
     // ── GET 목록 ─────────────────────────────────────────────────────────────────
 

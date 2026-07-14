@@ -52,6 +52,7 @@ class RuleExecutionService(
      * @return 최신순 실행 이력 목록.
      * @throws AutomationForbiddenException [actorId] 가 [projectKey] 에서 MANAGE_AUTOMATION 권한이 없을 때.
      */
+    @Suppress("LongParameterList") // 룰별 이력 조회 필터(actorId/projectKey/ruleId/issueKey/limit/before) 전부 필수
     @Transactional(readOnly = true)
     fun listByRule(
         actorId: UUID,
