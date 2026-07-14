@@ -53,7 +53,9 @@ export const SEED_AUTOMATION_RULE_IDS = {
  * SCENARIO_KEY.WITH_CONFLICTS 플래그 on 시 create/patch 핸들러가 응답에 실을 결정적 충돌 목록.
  * CYCLE 1건(시드된 SCHEDULED 룰과의 순환 참조) + PERMISSION_MISSING 1건, 두 항목 모두 soft
  * WARNING(저장을 막지 않는다)이며 `ruleIds`에 대상 룰 id를 포함한다.
- * E2E가 충돌 경고 모달을 결정적으로 재현할 수 있도록 매 호출 동일한 값을 반환한다.
+ * E2E가 충돌 경고 모달을 결정적으로 재현할 수 있도록 매 호출 동일한 값을 반환한다
+ * (e2e-msw-scenario-toggle-localstorage-flag — 시나리오는 localStorage 플래그로 토글,
+ * msw-derived-behavior-shared-store-e2e — 파생 응답은 정적 고정값이 아니라 시드 가능해야 한다).
  *
  * @param ruleId 충돌 대상 룰의 UUID
  */
