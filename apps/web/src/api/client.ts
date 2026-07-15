@@ -73,7 +73,8 @@ function doRefresh(): Promise<string> {
 /**
  * 기본 fetch wrapper.
  * - credentials: 'include' 고정 (refresh_token Cookie 자동 송수신)
- * - body 있으면 Content-Type: application/json 자동 설정
+ * - **객체** body면 `JSON.stringify` + Content-Type: application/json 자동 설정.
+ *   FormData/문자열 body는 직렬화·Content-Type 자동 설정을 모두 건너뛴다(호출자가 Content-Type 지정)
  * - accessToken 있으면 Authorization: Bearer 헤더 자동 추가
  * - 401 응답 시 자동으로 /refresh 호출 후 1회 retry (race lock 포함)
  */
