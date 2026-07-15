@@ -297,8 +297,11 @@ export interface AutomationYamlImportDialogProps {
  *   카운트 → conflicts(있으면) 순으로 렌더한다 — 토큰이 가장 되돌릴 수 없는 정보라 최상단(정보 계층).
  * - 실패는 errorCode 분기 없는 단일 규칙으로 표시한다({@link buildImportErrorMessage}, BLOCKER-1).
  * - 타 프로젝트 복사 안내(`copyHint`)는 에러 발생 여부와 무관하게 항상 노출한다(S8 상시 도움말).
- * - 새 WEBHOOK 룰 토큰이 있으면 Dialog를 닫으려는 4경로(X·ESC·오버레이·onOpenChange)를 전부
- *   가로채 2단계 확인을 요구한다(EC7). 토큰은 이 컴포넌트의 React state로만 보유하고 storage/URL/
+ * - 새 WEBHOOK 룰 토큰이 있거나(`hasUnackedTokens`) mutation이 in-flight(`isPending`)이면
+ *   — 합쳐 `tokenAtRisk` — Dialog를 닫으려는 4경로(X·ESC·오버레이·onOpenChange)를 전부 가로채
+ *   2단계 확인을 요구한다(EC7). in-flight 포함 이유. 서버는 응답을 다 받기 전에 이미 커밋 +
+ *   토큰 발급을 마쳤을 수 있어, `result`가 채워지길 기다리는 `hasUnackedTokens`만으로는 그 창을
+ *   못 잡는다(review-fix CRITICAL-1). 토큰은 이 컴포넌트의 React state로만 보유하고 storage/URL/
  *   로그에 남기지 않는다(NFR3, §1.18).
  * - `open`이 false→true로 재전이하면 파일·결과·에러 상태를 초기화한다(EC8) — 같은 인스턴스가 열림/
  *   닫힘을 반복하며 재사용되므로 `key` prop 재마운트 대신 `useEffect`로 직접 리셋한다
