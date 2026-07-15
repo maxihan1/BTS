@@ -690,3 +690,37 @@ export function serializeConditionExpression(node: ConditionNode): string {
   if (pruned === null) return '{"and":[]}'
   return JSON.stringify(toWireNode(pruned))
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// YAML import 응답 Zod 스키마 — backend AutomationImportResponse 1:1 대응 (FR-AT-06 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * import 로 새로 생성된 WEBHOOK 룰의 1회 노출 토큰 — backend `ImportedWebhookTokenResponse` 1:1 대응
+ * (FR-AT-06 D6). 갱신된 WEBHOOK 룰은 토큰을 재발급하지 않아 여기 담기지 않는다.
+ */
+export const importedWebhookTokenSchema = z.object({
+  ruleId: z.string().uuid(),
+  name: z.string(),
+  token: z.string(),
+})
+
+/**
+ * YAML import 응답 Zod 스키마 — backend `AutomationImportResponse` 1:1 대응 (FR-AT-06 D6).
+ *
+ * `webhookTokens` 는 새로 생성된 WEBHOOK 룰이 없으면 **키 자체가 생략**된다(백엔드가
+ * `ifEmpty { null }` + `@JsonInclude(NON_NULL)`) → `.optional()` 필수. `conflicts` 는 같은
+ * 어노테이션을 공유하지만 실제로는 항상 배열(빈 배열이어도 `[]`)이라 생략을 기대하지 않는다 —
+ * 방어적으로만 `.optional()`.
+ */
+export const automationImportResponseSchema = z.object({
+  created: z.number().int(),
+  updated: z.number().int(),
+  total: z.number().int(),
+  ruleIds: z.array(z.string().uuid()),
+  webhookTokens: z.array(importedWebhookTokenSchema).optional(),
+  conflicts: z.array(ruleConflictResponseSchema).optional(),
+})
+
+export type ImportedWebhookToken = z.infer<typeof importedWebhookTokenSchema>
+export type AutomationImportResponse = z.infer<typeof automationImportResponseSchema>

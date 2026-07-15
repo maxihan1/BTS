@@ -9,6 +9,9 @@ import {
   patchAutomationRule,
   deleteAutomationRule,
   extractAutomationRuleErrorCode,
+  extractAutomationImportFailedIndex,
+  exportAutomationRulesYaml,
+  importAutomationRulesYaml,
 } from './automation-rules'
 import { ApiError } from './client'
 import { automationRuleHandlers } from '@/mocks/automation-rule-handlers'
@@ -269,6 +272,89 @@ describe('deleteAutomationRule', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// exportAutomationRulesYaml
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('exportAutomationRulesYaml', () => {
+  it('Content-Disposition 에서 파일명을 파싱하고 blob 을 반환한다', async () => {
+    server.use(
+      http.get('*/projects/PROJ/automation/rules/export', () =>
+        new HttpResponse('version: 1\n', {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/yaml;charset=UTF-8',
+            'Content-Disposition': 'attachment; filename="automation-rules-PROJ.yaml"',
+          },
+        }),
+      ),
+    )
+    const { blob, filename } = await exportAutomationRulesYaml('PROJ')
+    expect(filename).toBe('automation-rules-PROJ.yaml')
+    expect(await blob.text()).toBe('version: 1\n')
+  })
+
+  it('Content-Disposition 이 없으면 projectKey 기반 기본 파일명을 쓴다', async () => {
+    server.use(
+      http.get('*/projects/PROJ/automation/rules/export', () =>
+        new HttpResponse('version: 1\n', { status: 200 }),
+      ),
+    )
+    const { filename } = await exportAutomationRulesYaml('PROJ')
+    expect(filename).toBe('automation-rules-PROJ.yaml')
+  })
+
+  it('403 이면 ApiError 를 throw 한다', async () => {
+    server.use(
+      http.get('*/projects/PROJ/automation/rules/export', () =>
+        HttpResponse.json({ errorCode: 'AUTOMATION_ACCESS_DENIED' }, { status: 403 }),
+      ),
+    )
+    await expect(exportAutomationRulesYaml('PROJ')).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// importAutomationRulesYaml
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('importAutomationRulesYaml', () => {
+  it('YAML 원문을 application/yaml + X-XSRF-TOKEN 으로 전송하고 응답을 파싱한다', async () => {
+    let seenBody = ''
+    let seenContentType: string | null = null
+    let seenXsrf: string | null = null
+    server.use(
+      http.post('*/projects/PROJ/automation/rules/import', async ({ request }) => {
+        seenBody = await request.text()
+        seenContentType = request.headers.get('content-type')
+        seenXsrf = request.headers.get('x-xsrf-token')
+        return HttpResponse.json({
+          created: 1,
+          updated: 0,
+          total: 1,
+          ruleIds: ['550e8400-e29b-41d4-a716-446655440000'],
+          conflicts: [],
+        })
+      }),
+    )
+    const yaml = 'version: 1\nprojectKey: PROJ\nrules: []\n'
+    const result = await importAutomationRulesYaml('PROJ', yaml)
+    expect(seenBody).toBe(yaml) // 원문 그대로 (JSON 이중 인코딩 아님)
+    expect(seenContentType).toContain('application/yaml') // multipart/json 이면 백엔드 415
+    expect(seenXsrf).not.toBeNull() // 형제 mutation 3종과 동일
+    expect(result.created).toBe(1)
+  })
+
+  it('400 이면 ApiError 를 throw 한다 (failedIndex 는 body 에 보존)', async () => {
+    server.use(
+      http.post('*/projects/PROJ/automation/rules/import', () =>
+        HttpResponse.json({ errorCode: 'AUTOMATION_IMPORT_INVALID', detail: '조건식 위반', failedIndex: 2 }, { status: 400 }),
+      ),
+    )
+    await expect(importAutomationRulesYaml('PROJ', 'version: 1\n')).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // extractAutomationRuleErrorCode
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -287,5 +373,27 @@ describe('extractAutomationRuleErrorCode', () => {
     expect(extractAutomationRuleErrorCode(new Error('network error'))).toBeNull()
     expect(extractAutomationRuleErrorCode('string error')).toBeNull()
     expect(extractAutomationRuleErrorCode(null)).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// extractAutomationImportFailedIndex
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('extractAutomationImportFailedIndex', () => {
+  it('ApiError body의 failedIndex를 number로 반환한다', () => {
+    const err = new ApiError(400, { errorCode: 'AUTOMATION_IMPORT_INVALID', failedIndex: 2 })
+    expect(extractAutomationImportFailedIndex(err)).toBe(2)
+  })
+
+  it('ApiError이지만 failedIndex가 없으면 null을 반환한다', () => {
+    const err = new ApiError(400, { errorCode: 'AUTOMATION_IMPORT_INVALID', detail: '조건식 위반' })
+    expect(extractAutomationImportFailedIndex(err)).toBeNull()
+  })
+
+  it('ApiError가 아니면 null을 반환한다', () => {
+    expect(extractAutomationImportFailedIndex(new Error('network error'))).toBeNull()
+    expect(extractAutomationImportFailedIndex('string error')).toBeNull()
+    expect(extractAutomationImportFailedIndex(null)).toBeNull()
   })
 })

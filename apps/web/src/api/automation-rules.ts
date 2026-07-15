@@ -4,9 +4,11 @@ import { apiGet, apiFetch, ApiError } from './client'
 import { readXsrfToken } from './sessions'
 import {
   automationRuleResponseSchema,
+  automationImportResponseSchema,
   createAutomationRuleResponseSchema,
 } from './automation-rules.types'
 import type {
+  AutomationImportResponse,
   AutomationRule,
   CreateAutomationRuleInput,
   CreateAutomationRuleResponse,
@@ -14,11 +16,13 @@ import type {
 } from './automation-rules.types'
 
 export type {
+  AutomationImportResponse,
   AutomationRule,
   TriggerType,
   CreateAutomationRuleInput,
   PatchAutomationRuleInput,
   CreateAutomationRuleResponse,
+  ImportedWebhookToken,
 } from './automation-rules.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -152,6 +156,71 @@ export async function deleteAutomationRule(projectKey: string, id: string): Prom
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// YAML GitOps export/import (FR-AT-06 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** exportAutomationRulesYaml 반환값 */
+export interface ExportAutomationRulesYamlResult {
+  /** YAML 본문 Blob */
+  blob: Blob
+  /** Content-Disposition 헤더에서 파싱한 파일명 */
+  filename: string
+}
+
+/**
+ * GET /api/v1/projects/{projectKey}/automation/rules/export — 전 룰(활성+비활성)을 GitOps YAML로 내보낸다.
+ *
+ * `exportIssues`(search.ts) 패턴 복제 — apiFetch → non-ok 시 ApiError throw → ok면 res.blob().
+ * STATELESS JWT라 `<a href download>` 순수 네비게이션은 401이 된다(Authorization 헤더 미첨부) —
+ * 반드시 이 함수로 blob 을 받아 `triggerBlobDownload` 에 넘긴다. CSRF/credentials/401-refresh 는
+ * apiFetch 가 처리(raw fetch 금지).
+ *
+ * @param projectKey 프로젝트 키
+ * @returns { blob, filename }
+ * @throws ApiError(403, AUTOMATION_ACCESS_DENIED) 권한 없음 시
+ */
+export async function exportAutomationRulesYaml(projectKey: string): Promise<ExportAutomationRulesYamlResult> {
+  const res = await apiFetch(`${basePath(projectKey)}/export`)
+  await throwIfNotOk(res)
+  // Content-Disposition: attachment; filename="automation-rules-PROJ.yaml"
+  const contentDisposition = res.headers.get('content-disposition') ?? ''
+  const filename = /filename="([^"]+)"/.exec(contentDisposition)?.[1] ?? `automation-rules-${projectKey}.yaml`
+  const blob = await res.blob()
+  return { blob, filename }
+}
+
+/**
+ * POST /api/v1/projects/{projectKey}/automation/rules/import — GitOps YAML을 올려 룰을 일괄 upsert 한다.
+ *
+ * 백엔드가 `@RequestBody` + `consumes = [application/yaml, application/x-yaml, text/yaml, text/plain]`
+ * 이라 **multipart 는 415** 다 — YAML 원문 문자열을 그대로 보낸다(`client.ts` 의 문자열 pass-through 경로).
+ * charset 명시는 export 대칭(미명시 시 컨버터 기본 charset 암묵 의존).
+ * 원자성은 백엔드가 보장 — 하나라도 실패하면 전량 롤백이라 부분 적용이 없다.
+ *
+ * @param projectKey 프로젝트 키
+ * @param yamlText YAML 원문(파일에서 `File.text()` 로 읽은 문자열)
+ * @returns created/updated/total/ruleIds + (있으면) webhookTokens/conflicts
+ * @throws ApiError(400, AUTOMATION_IMPORT_INVALID) YAML/스키마버전/projectKey 불일치/커맨드 검증 실패 시
+ *   (커맨드 실패면 body 에 0-based `failedIndex` 포함)
+ * @throws ApiError(413, AUTOMATION_IMPORT_TOO_LARGE) 본문 1MiB 초과 또는 룰 500개 초과 시
+ * @throws ApiError(409, AUTOMATION_RULE_VERSION_CONFLICT) 동시 수정 충돌 시
+ * @throws ApiError(403, AUTOMATION_ACCESS_DENIED) 권한 없음 시
+ */
+export async function importAutomationRulesYaml(
+  projectKey: string,
+  yamlText: string,
+): Promise<AutomationImportResponse> {
+  const res = await apiFetch(`${basePath(projectKey)}/import`, {
+    method: 'POST',
+    body: yamlText,
+    headers: { 'Content-Type': 'application/yaml;charset=UTF-8', 'X-XSRF-TOKEN': readXsrfToken() },
+  })
+  await throwIfNotOk(res)
+  const raw: unknown = await res.json()
+  return automationImportResponseSchema.parse(raw)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 에러 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -169,6 +238,25 @@ export function extractAutomationRuleErrorCode(error: unknown): string | null {
     const body = error.body as Record<string, unknown> | undefined
     const code = body?.['errorCode']
     return typeof code === 'string' ? code : null
+  }
+  return null
+}
+
+/**
+ * import 실패 에러에서 0-based `failedIndex`(실패한 룰의 위치)를 안전하게 추출한다.
+ *
+ * `AUTOMATION_IMPORT_INVALID`(400, C3 커맨드 검증 실패)일 때만 백엔드가 ProblemDetail body에
+ * `failedIndex` 를 동봉한다(FR-AT-06 D6). "N번째 룰" 표시는 이 값에 +1 해 소비한다(1-based UI
+ * 표시로 변환하는 책임은 소비 측 — 이 함수는 원문 0-based 값만 반환).
+ *
+ * @param error 발생한 에러 (unknown)
+ * @returns failedIndex number 또는 null(ApiError가 아니거나, 필드가 없거나, number가 아닐 시)
+ */
+export function extractAutomationImportFailedIndex(error: unknown): number | null {
+  if (error instanceof ApiError) {
+    const body = error.body as Record<string, unknown> | undefined
+    const failedIndex = body?.['failedIndex']
+    return typeof failedIndex === 'number' ? failedIndex : null
   }
   return null
 }

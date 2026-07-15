@@ -73,7 +73,8 @@ function doRefresh(): Promise<string> {
 /**
  * 기본 fetch wrapper.
  * - credentials: 'include' 고정 (refresh_token Cookie 자동 송수신)
- * - body 있으면 Content-Type: application/json 자동 설정
+ * - **객체** body면 `JSON.stringify` + Content-Type: application/json 자동 설정.
+ *   FormData/문자열 body는 직렬화·Content-Type 자동 설정을 모두 건너뛴다(호출자가 Content-Type 지정)
  * - accessToken 있으면 Authorization: Bearer 헤더 자동 추가
  * - 401 응답 시 자동으로 /refresh 호출 후 1회 retry (race lock 포함)
  */
@@ -83,14 +84,15 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}): Pro
   // 절대 URL이면 그대로, 아니면 base URL 앞에 붙임
   const url = path.startsWith('http://') || path.startsWith('https://') ? path : `${getBaseUrl()}${path}`
 
-  // FormData면 브라우저가 multipart/form-data; boundary=... 를 자동 설정하므로
-  // Content-Type 수동 설정을 건너뛰고 직렬화도 생략한다.
-  const isFormData = body instanceof FormData
+  // FormData면 브라우저가 multipart/form-data; boundary=... 를 자동 설정하고,
+  // 문자열(예: YAML 원문)이면 호출자가 Content-Type을 직접 지정하므로
+  // 두 경우 모두 Content-Type 자동 설정과 JSON.stringify 직렬화를 건너뛴다.
+  const isRawBody = body instanceof FormData || typeof body === 'string'
 
   const buildHeaders = (token: string | null): Headers => {
     const headers = new Headers(extraHeaders)
-    // body가 있고 FormData가 아닌 경우에만 Content-Type: application/json 자동 추가
-    if (body !== undefined && !isFormData && !headers.has('content-type')) {
+    // body가 있고 raw body(FormData/문자열)가 아닌 경우에만 Content-Type: application/json 자동 추가
+    if (body !== undefined && !isRawBody && !headers.has('content-type')) {
       headers.set('Content-Type', 'application/json')
     }
     // accessToken이 있을 때만 Authorization 헤더 추가
@@ -103,8 +105,8 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}): Pro
   const fetchOptions = {
     method,
     credentials: 'include' as const,
-    // FormData면 그대로 전달, 일반 body면 JSON.stringify
-    body: body !== undefined ? (isFormData ? body : JSON.stringify(body)) : undefined,
+    // FormData/문자열이면 그대로 전달, 객체 body면 JSON.stringify
+    body: body !== undefined ? (isRawBody ? body : JSON.stringify(body)) : undefined,
   }
 
   const res = await fetch(url, { ...fetchOptions, headers: buildHeaders(useAuthStore.getState().accessToken) })

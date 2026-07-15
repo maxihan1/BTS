@@ -5,10 +5,13 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
+import { toast } from 'sonner'
+import { triggerBlobDownload } from '@/lib/download'
 import { automationRuleHandlers } from '@/mocks/automation-rule-handlers'
 import {
   DEFAULT_AUTOMATION_PROJECT_KEY,
   DEFAULT_AUTOMATION_RULES,
+  VALID_GITOPS_YAML,
   resetAutomationRuleStore,
   seedAutomationRules,
 } from '@/mocks/automation-rule-fixtures'
@@ -32,6 +35,17 @@ const mockUseParams = vi.fn<() => { projectKey?: string }>(() => ({ projectKey: 
 
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => mockUseParams(),
+}))
+
+// sonner toast mock — 실제 DOM 없이 호출 여부로 검증 (settings.account-links.test.tsx 선례)
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}))
+
+// triggerBlobDownload mock — jsdom에 URL.createObjectURL이 없으므로 mock 처리
+// (ExportDialog.test.tsx/issues.$key.test.tsx 선례 — vi.mock + vi.mocked)
+vi.mock('@/lib/download', () => ({
+  triggerBlobDownload: vi.fn(),
 }))
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -322,5 +336,57 @@ describe('ProjectAutomationSettingsPage — 실행 이력 Dialog 조립', () => 
     await waitFor(() => {
       expect(screen.queryByTestId('rule-execution-history-dialog')).not.toBeInTheDocument()
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Page — YAML GitOps 내보내기/가져오기 조립 (FR-AT-06 D6 Task 7)
+// EC8(Dialog 재오픈 시 상태 초기화)은 AutomationYamlImportDialog.tsx(T5) 소유 — 여기서는
+// open 상태 전달만 black-box로 관측한다(plan-eng-review §7).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProjectAutomationSettingsPage — YAML GitOps 내보내기/가져오기 조립', () => {
+  it('내보내기 클릭 → blob 다운로드를 트리거하고 성공 토스트를 낸다 (S1)', async () => {
+    const { user } = renderPage('PROJ')
+    await screen.findByRole('heading', { name: '자동화' })
+
+    await user.click(screen.getByTestId('automation-yaml-export-button'))
+
+    await waitFor(() => {
+      expect(vi.mocked(triggerBlobDownload)).toHaveBeenCalledTimes(1)
+    })
+    // msw가 undici Response에서 만든 Blob은 jsdom 전역 Blob과 realm이 달라 instanceof(expect.any(Blob))
+    // 매칭이 깨진다 — 대신 파일명 + 실제 YAML 본문 내용으로 "blob 다운로드"를 검증한다.
+    const call = vi.mocked(triggerBlobDownload).mock.calls[0]
+    if (call === undefined) throw new Error('triggerBlobDownload 호출 기록이 없다')
+    const [blob, filename] = call
+    expect(filename).toBe('automation-rules-PROJ.yaml')
+    await expect(blob.text()).resolves.toBe(VALID_GITOPS_YAML)
+    expect(toast.success).toHaveBeenCalledWith('YAML을 내보냈습니다.')
+  })
+
+  it('내보내기 403 이면 권한 없음 토스트를 낸다 (S3)', async () => {
+    server.use(
+      http.get('/api/v1/projects/:projectKey/automation/rules/export', () =>
+        HttpResponse.json({ errorCode: 'AUTOMATION_ACCESS_DENIED' }, { status: 403 }),
+      ),
+    )
+    const { user } = renderPage('PROJ')
+    await screen.findByRole('heading', { name: '자동화' })
+
+    await user.click(screen.getByTestId('automation-yaml-export-button'))
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('권한이 없습니다.')
+    })
+  })
+
+  it('가져오기 클릭 → Dialog 가 열린다 (S4)', async () => {
+    const { user } = renderPage('PROJ')
+    await screen.findByRole('heading', { name: '자동화' })
+
+    await user.click(screen.getByTestId('automation-yaml-import-button'))
+
+    expect(await screen.findByTestId('automation-yaml-import-dialog')).toBeInTheDocument()
   })
 })
