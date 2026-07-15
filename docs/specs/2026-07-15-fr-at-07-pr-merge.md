@@ -145,7 +145,10 @@ T2 베이스가 bts.slack.signing-secret 을 알려진 테스트 값으로 주�
 
 - [ ] **S-A1 양성 단언** — 유효 서명 `url_verification` → **200 + challenge 에코** (필터 통과 + 서명 검증 동작 동시 증명)
 - [ ] **S-A2** — 무효 서명 → **컨트롤러가** 401 (검증 주체가 필터에서 컨트롤러로 옮겨졌음을 실증)
-- [ ] **S-A3 / EC-A3** — `POST /slack/install` 익명 **401 유지** (범위 누출 0). ★ 일부러 위반을 넣어 fail을 잡는지 확인([[archunit-vacuous-rule-silent-pass]] — 통과가 검증을 의미하지 않음)
+- [ ] **S-A3 / EC-A3** — `GET /slack/install` 익명 **401 유지** (범위 누출 0). ★ 일부러 위반을 넣어 fail을 잡는지 확인([[archunit-vacuous-rule-silent-pass]] — 통과가 검증을 의미하지 않음)
+  > **⚠️ 2026-07-15 구현 중 2건 정정 (T3).**
+  > 1. **메서드는 GET이다** — 위 원문의 `POST`는 틀렸다. 실제 매핑은 `@GetMapping("/slack/install")`(`SlackInstallController.kt:60`). POST로 검증하면 CSRF가 permitAll 여부와 **무관하게** 항상 거부해 누출을 원리적으로 못 잡는다.
+  > 2. **상태코드 단언만으로는 vacuous** — `/slack/install`을 목록에 **일부러 넣어보니** permitAll이 새어도 컨트롤러의 `SlackActorExtractor`가 401을 던져 **상태는 그대로 401**이었다. 판별자는 **응답 본문**뿐이다(필터 401=빈 본문 vs 컨트롤러=`SLACK_UNAUTHENTICATED` ProblemDetail). 본문 단언으로 교체함.
 - [ ] **slack 4경로 각각** 개별 검증 (부록 A C-9 — 단수로 뭉뚱그리면 매처 오타를 못 잡음)
 - [ ] FR-A5 prod 조립 HTTP 테스트 인프라 신규 구축 + **기존 `BtsApplicationContextTest` 상속 전환**(C-5 — prod 컨텍스트 1벌)
 - [ ] `.env.prod.example` — slack 동작 변수 + 암호화 키 3종(+PR-C에서 automation) + 생성법 주석
