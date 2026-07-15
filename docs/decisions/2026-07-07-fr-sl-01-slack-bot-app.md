@@ -36,7 +36,7 @@ Slack 공식 Java SDK(`java-slack-sdk`)는 두 층으로 나뉜다.
 
 ### D3. Bot Token 암호화 = `SecretEncryptor`(AES) 재사용, `slackSecretEncryptor` 빈
 
-`bot_token_encrypted`는 shared-kernel의 `com.bts.shared.crypto.SecretEncryptor`(대칭 AES)로 암호화 저장한다 — OIDC `client_secret`, webhook secret과 동일 패턴. BC별 키 격리를 위해 빈 이름을 `slackSecretEncryptor`로 명시하고 소비처는 `@Qualifier("slackSecretEncryptor")`로 by-name 주입한다(OIDC의 `oidcSecretEncryptor` 선례). 키/salt는 `BTS_SLACK_ENCRYPTION_KEY`/`BTS_SLACK_ENCRYPTION_SALT` 환경변수 → `bts.slack.encryption.{key,salt}` 프로퍼티 경유. **부팅 안전성**: 키 미설정이어도 빈은 항상 등록하고 검증은 encrypt/decrypt 호출 시점으로 미룬다(`profile-scoped-bean-boot-failure` 회귀 방지).
+`bot_token_encrypted`는 shared-kernel의 `com.bts.shared.crypto.SecretEncryptor`(대칭 AES)로 암호화 저장한다 — OIDC `client_secret`, webhook secret과 동일 패턴. BC별 키 격리를 위해 빈 이름을 `slackSecretEncryptor`로 명시하고 소비처는 `@Qualifier("slackSecretEncryptor")`로 by-name 주입한다(OIDC의 `oidcSecretEncryptor` 선례). 키/salt는 `BTS_SLACK_ENCRYPTION_KEY`/`BTS_SLACK_ENCRYPTION_SALT` 환경변수 → `bts.slack-encryption.{key,salt}` 프로퍼티 경유 (**2026-07-15 정정** — 원래 `bts.slack.encryption.*`(점)이라 적었으나 코드 정본은 하이픈이다. `SlackEncryptionConfig.kt:54,57` `const val PROPERTY_KEY/PROPERTY_SALT`. FR-AT-07 PR-A가 `.env.prod.example`에 이 변수를 추가하며 대조 중 발견. 환경변수명은 relaxed binding이 점·하이픈 둘 다 후보로 시도해 양쪽 다 해소되지만, 문서가 코드와 어긋나 있었다). **부팅 안전성**: 키 미설정이어도 빈은 항상 등록하고 검증은 encrypt/decrypt 호출 시점으로 미룬다(`profile-scoped-bean-boot-failure` 회귀 방지).
 
 **정정**: `Maxi_wiki/BTS/domain/slack-integration.md`와 product 문서가 "KMS 암호화"로 표기했으나, Phase 1 인프라는 KMS 없이 앱 레벨 AES(SecretEncryptor)를 쓴다(OIDC/webhook과 일관). product NFR 표의 "KMS or AES-256" 중 AES-256 채택. KMS 전환은 v0.4+ 후속.
 

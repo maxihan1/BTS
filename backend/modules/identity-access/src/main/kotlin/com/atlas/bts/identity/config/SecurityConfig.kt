@@ -21,6 +21,8 @@ import org.springframework.security.oauth2.server.resource.web.DefaultBearerToke
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher.antMatcher
+import org.springframework.security.web.util.matcher.OrRequestMatcher
 import org.springframework.security.web.util.matcher.RequestMatcher
 import org.springframework.web.cors.CorsConfigurationSource
 
@@ -46,6 +48,8 @@ import org.springframework.web.cors.CorsConfigurationSource
  * - /actuator/health        — 헬스체크 (로드밸런서, CSRF skip)
  * - /api/v1/public/dashboards/{token} — 익명 공개 대시보드 조회 (FR-DB-03, GET 메서드 고정 read-only, 단일 세그먼트 토큰)
  * - /ical/feed/{token}.ics — 익명 iCal 구독 피드 (FR-CA-02, GET 메서드 고정 read-only, 단일 세그먼트 토큰)
+ * - slack 인바운드 4경로 — Slack 서버-투-서버 호출 ([SLACK_INBOUND_PATHS], 메서드 고정 + 정확 경로,
+ *   인증은 컨트롤러의 서명 검증이 담당)
  *
  * ## CSRF Cookie 모드 (ADR docs/decisions/2026-05-20-csrf-cookie-mode.md)
  * CookieCsrfTokenRepository.withHttpOnlyFalse() — SPA가 Cookie를 읽어 X-XSRF-TOKEN 헤더로 전송.
@@ -104,11 +108,20 @@ class SecurityConfig(
         // DefaultBearerTokenResolver 가 Authorization 헤더에서 Bearer 토큰을 추출하되,
         // pat_ prefix 인 경우 null 을 반환하여 JWT 필터가 처리하지 않도록 한다.
         // PAT 요청은 PatAuthenticationFilter 가 JWT 필터보다 먼저 처리하여 SecurityContext 에 인증 정보를 설정한다.
+        //
+        // ★ slack 인바운드는 delegate 를 태우지 않는다 — form POST 의 `access_token` 조회가 Tomcat form
+        // 파싱 → 본문 스트림 소진을 일으켜 slack 컨트롤러가 빈 바디로 401. 상세·기각안은 ADR §D7.
         val delegate = DefaultBearerTokenResolver()
+        val slackInboundMatcher: RequestMatcher =
+            OrRequestMatcher(SLACK_INBOUND_PATHS.map { (method, path) -> antMatcher(method, path) })
         val patSkippingBearerTokenResolver =
             BearerTokenResolver { req: HttpServletRequest ->
-                val token = delegate.resolve(req)
-                if (token != null && token.startsWith(PersonalAccessToken.TOKEN_PREFIX)) null else token
+                if (slackInboundMatcher.matches(req)) {
+                    null
+                } else {
+                    val token = delegate.resolve(req)
+                    if (token != null && token.startsWith(PersonalAccessToken.TOKEN_PREFIX)) null else token
+                }
             }
 
         return http
@@ -133,6 +146,12 @@ class SecurityConfig(
                 csrf.ignoringRequestMatchers(
                     patBearerMatcher,
                 )
+                // FR-AT-07 PR-A: slack 인바운드 — permitAll 과 **같은** [SLACK_INBOUND_PATHS] 목록에서 구동한다(DEC-16).
+                // Slack 은 브라우저가 아니라 서버가 POST 하므로 CSRF 토큰을 가질 수 없다 — permitAll 만 열고 여기를
+                // 빠뜨리면 CsrfFilter 가 먼저 거부해 경로가 계속 죽어 있다(FR-MF-01 BLOCKER-1 과 동일 사고).
+                SLACK_INBOUND_PATHS.forEach { (method, path) ->
+                    csrf.ignoringRequestMatchers(antMatcher(method, path))
+                }
                 csrf.ignoringRequestMatchers(
                     "/api/v1/auth/login",
                     "/api/v1/auth/refresh",
@@ -182,6 +201,11 @@ class SecurityConfig(
                 // PUBLIC_DASHBOARDS_PATH 와 동일 defense-in-depth(GET 고정·단일 세그먼트). 404 수렴은 IcalFeedController.
                 // DEVELOPMENT.md §1.4 정식 예외(ADR 2026-07-09-fr-ca-02·게이트1 승인). 상세는 ICAL_FEED_PATH KDoc.
                 auth.requestMatchers(HttpMethod.GET, ICAL_FEED_PATH).permitAll()
+                // FR-AT-07 PR-A: slack 인바운드 4경로 — CSRF-ignore 와 **같은** [SLACK_INBOUND_PATHS] 목록을 순회한다(DEC-16).
+                // ★ 아래 /api/** · anyRequest() 보다 반드시 위 — Spring Security 매처는 선언 순서대로 첫 매치가 이긴다.
+                SLACK_INBOUND_PATHS.forEach { (method, path) ->
+                    auth.requestMatchers(method, path).permitAll()
+                }
                 auth.requestMatchers("/api/**").authenticated()
                 auth.anyRequest().authenticated()
             }
@@ -257,5 +281,20 @@ class SecurityConfig(
          * DEVELOPMENT.md §1.4 정식 예외(ADR 2026-07-09-fr-ca-02-ical-export·게이트1 승인).
          */
         const val ICAL_FEED_PATH = "/ical/feed/*"
+
+        /**
+         * Slack 서버가 직접 호출하는 인바운드 4경로 (FR-SL-01/03/04/05). DEVELOPMENT.md §1.4 정식 예외 —
+         * **근거 정본은 ADR `docs/decisions/2026-07-15-slack-inbound-permitall-central.md`**(게이트1 승인).
+         * permitAll 은 인증 제거가 아니라 **검증 주체 이관**이다(ADR §D2) — Slack 에는 발급할 JWT·세션·PAT 가
+         * 없어, 인증은 각 컨트롤러가 선행하는 [com.bts.slack.security.SlackSignatureVerifier] 가 맡는다.
+         * ★ **편집 전 ADR §D4-a 필독.** 이 목록이 permitAll · CSRF-ignore · bearer skip(§D7) 3곳을 구동한다.
+         */
+        val SLACK_INBOUND_PATHS =
+            listOf(
+                HttpMethod.POST to "/slack/events",
+                HttpMethod.POST to "/slack/commands",
+                HttpMethod.POST to "/slack/interactions",
+                HttpMethod.GET to "/slack/install/callback",
+            )
     }
 }
