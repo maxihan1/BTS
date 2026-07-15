@@ -57,7 +57,14 @@ function scheduledRule() {
   return rule
 }
 
-function renderList(onAddRule = vi.fn(), onEditRule = vi.fn(), onViewHistory = vi.fn()) {
+function renderList(
+  onAddRule = vi.fn(),
+  onEditRule = vi.fn(),
+  onViewHistory = vi.fn(),
+  onExportYaml = vi.fn(),
+  onImportYaml = vi.fn(),
+  isExportingYaml = false,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
@@ -68,6 +75,9 @@ function renderList(onAddRule = vi.fn(), onEditRule = vi.fn(), onViewHistory = v
         onAddRule={onAddRule}
         onEditRule={onEditRule}
         onViewHistory={onViewHistory}
+        onExportYaml={onExportYaml}
+        onImportYaml={onImportYaml}
+        isExportingYaml={isExportingYaml}
       />
     </QueryClientProvider>,
   )
@@ -285,5 +295,24 @@ describe('AutomationRuleList', () => {
     await waitFor(() => {
       expect(screen.getByText('자동화 룰을 불러오지 못했습니다.')).toBeInTheDocument()
     })
+  })
+
+  it('YAML 내보내기/가져오기 버튼을 렌더하고 클릭 시 콜백을 호출한다', async () => {
+    const onExportYaml = vi.fn()
+    const onImportYaml = vi.fn()
+    const user = userEvent.setup()
+    renderList(vi.fn(), vi.fn(), vi.fn(), onExportYaml, onImportYaml)
+
+    await user.click(screen.getByTestId('automation-yaml-export-button'))
+    await user.click(screen.getByTestId('automation-yaml-import-button'))
+    expect(onExportYaml).toHaveBeenCalledOnce()
+    expect(onImportYaml).toHaveBeenCalledOnce()
+  })
+
+  it('내보내기 진행 중이면 버튼이 disabled + "내보내는 중..." 이다 (EC6)', () => {
+    renderList(vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), true)
+    const button = screen.getByTestId('automation-yaml-export-button')
+    expect(button).toBeDisabled()
+    expect(button).toHaveTextContent('내보내는 중...')
   })
 })
