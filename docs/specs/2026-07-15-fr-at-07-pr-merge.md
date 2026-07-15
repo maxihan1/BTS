@@ -55,9 +55,9 @@ S-A4. Given 암호화 키 환경변수가 배포 매니페스트에 선언돼 �
 | **FR-A1** | 중앙 `SecurityConfig`에 인바운드 경로를 **경로 × 메서드 표대로** permitAll 등록 (A-3) |
 | **FR-A2** | **동일 경로를 CSRF ignore에도 등록**. ★ permitAll(`:151-184`)과 CSRF-ignore(`:133-146`)는 **각각 다른 블록** — FR-MF-01에서 한쪽만 등록해 실제 BLOCKER 발생 이력(KDoc `:86,139,228`) |
 | **FR-A3** | 매처는 **최소 범위**. 메서드 고정 + **단일 세그먼트/정확 경로**. `/**` 하위 와일드카드 **금지** (notification 선례 `:175-180` — GET 고정 + `/*` 2겹 방어) |
-| **FR-A4** | `infra/prod/.env.prod.example`에 암호화 키 **4종** 선언 (DEC-14) |
-| **FR-A5** | **prod 조립 HTTP 테스트 인프라** 신규 — permitAll 경로가 실제로 401이 아님을 조립 컨텍스트에서 검증 |
-| **FR-A6** | **회귀 가드** — 각 경로가 permitAll·CSRF-ignore **양쪽에** 등록됐는지 검증 |
+| **FR-A4** | `infra/prod/.env.prod.example`에 **slack 동작 변수 + 암호화 키 3종** 선언 (DEC-14 + B-1) |
+| **FR-A5** | **prod 조립 HTTP 테스트 인프라** 신규 — permitAll 경로가 조립 컨텍스트에서 실제로 필터를 통과함을 **양성 단언**으로 검증 (A-5) |
+| ~~FR-A6~~ | ~~회귀 가드~~ → **DEC-16으로 대체**. 열거식 가드는 미래 경로를 원리적으로 못 잡음 → **공유 리스트 구조로 이중등록을 컴파일 단위에서 불가능화** (A-3) |
 
 ## A-3. 경로 × 메서드 표 (FR-A1 — BLOCKER B5 해소 · **DEC-15 반영**)
 
@@ -82,7 +82,7 @@ S-A4. Given 암호화 키 환경변수가 배포 매니페스트에 선언돼 �
 
 `grep -rn "SLACK" infra/` → `nginx.conf:40` **한 줄뿐**. 암호화 키 3종도, **slack 동작 변수도 전부 없다**. [[use-time-validated-env-passes-boot-fails-on-use]]에 기록된 **실사고 그 자체**(health 통과 후 기능 첫 호출 500).
 
-> **★ B-1 (2회차 리뷰).** 1회차 §A-4는 **암호화 키 3종만** 적었다. 그러나 **`BTS_SLACK_SIGNING_SECRET`이 없으면** `SlackSignatureVerifier.kt:78-80`(`if (signingSecret.isBlank()) return false`)이 fail-closed로 전부 막아 **permitAll을 열어도 "필터의 401"이 "컨트롤러의 401"로 바뀔 뿐 기능 변화 0**이다. slack **암호화** 키(봇 토큰)는 서명 통과 **후** 하류라 순서가 뒤집혀 있었다. → **PR-A의 "FR-SL 되살아남" 주장이 거짓이 될 뻔했다.**
+> **★ B-1 (2회차 리뷰).** 1회차 §A-4는 **암호화 키 3종만** 적었다. 그러나 **`BTS_SLACK_SIGNING_SECRET`이 없으면** `SlackSignatureVerifier.kt:64-66`(`if (signingSecret.isBlank()) return false`)이 fail-closed로 전부 막아 **permitAll을 열어도 "필터의 401"이 "컨트롤러의 401"로 바뀔 뿐 기능 변화 0**이다. slack **암호화** 키(봇 토큰)는 서명 통과 **후** 하류라 순서가 뒤집혀 있었다. → **PR-A의 "FR-SL 되살아남" 주장이 거짓이 될 뻔했다.**
 
 | 환경변수 | 프로퍼티 | 없으면 |
 |---|---|---|
@@ -102,39 +102,56 @@ S-A4. Given 암호화 키 환경변수가 배포 매니페스트에 선언돼 �
 
 **기존 인프라로는 이 PR의 완료 기준을 검증할 수 없다.** 유일한 9-BC prod 조립 테스트 `BtsApplicationContextTest`는 `@SpringBootTest` **기본(MOCK) 웹환경** → 실 HTTP 불가, MockMvc autowire 안 됨, KDoc상 **"dev postgres 수동 기동"** 전제(Testcontainers 미관리).
 
-- prod + `RANDOM_PORT`는 PEM 키 등 **비자명한 셋업** 필요 ([[identity-access-prod-randomport-boot-recipe]])
-- → **별도 태스크로 분리**. 이 인프라는 PR-C가 그대로 재사용
-- 검증 방식. 각 permitAll 경로에 **의도적으로 무효한** 요청(빈 본문·서명 없음)을 보내 **401이 아닌 것**(컨트롤러 도달 = 400/401-with-body/413/404 등 컨트롤러 산출)을 단언. ★ "200이 온다"가 아니라 **"필터가 막지 않는다"** 를 검증
+- **실현 가능성 확인**(N-1). `BtsApplicationContextTest`가 **prod 프로파일로 지금 통과 중**이고 `@DynamicPropertySource props`가 주입하는 건 issuer-uri + PEM **2개뿐**(`:96-97`). **암호화 키 미설정으로 prod 부팅이 된다는 걸 이 테스트의 존재가 이미 증명**한다(= [[use-time-validated-env-passes-boot-fails-on-use]]의 요지). MOCK→`RANDOM_PORT`는 **실 Tomcat 바인딩만 추가**
+- → **별도 태스크(T2)**. 이 인프라는 PR-C가 그대로 재사용
+- **★ C-5 — 기존 `BtsApplicationContextTest`를 이 베이스 상속으로 전환한다.** 안 하면 `webEnvironment` 차이로 `MergedContextConfiguration` 키가 달라 **컨텍스트 캐시 미공유** → 같은 JVM에 9-BC prod 컨텍스트 **2벌**(부팅 2회 + `@Scheduled` 워커 2벌이 동일 5433 pgmq 큐 동시 폴링)
+
+### ★ 검증 방식 = 양성 단언 (B-2 — 1회차의 "401이 아님" 폐기)
+
+`SlackSignatureVerifier`는 **결정론적** HMAC-SHA256(`v0:{ts}:{rawBody}`)이고 secret은 프로퍼티 주입이다 → **테스트가 유효 서명을 직접 계산**할 수 있다.
+
+```
+T2 베이스가 bts.slack.signing-secret 을 알려진 테스트 값으로 주입
+  → 테스트가 v0:{ts}:{body} 로 유효 서명 계산
+  → POST /slack/events  {"type":"url_verification","challenge":"abc123"}
+  → 200 + challenge "abc123" 에코 단언   (SlackEventsController:88-91)
+```
+- **필터 통과 + 서명 검증 동작이 한 번에 양성 증명**된다. 응답 포렌식(`WWW-Authenticate` 유무 — 저장소 선례 **0건**) 불요
+- **우리 코드에만 의존** — Spring Security 내부(엔트리포인트 등록·content negotiation)에 의존하지 않음
+- → **R5(필터 401 ↔ 컨트롤러 401 구분 곤란) 소멸**
 
 ## A-6. 엣지 케이스
 
 | # | 상황 | 기대 |
 |---|---|---|
-| EC-A1 | `/slack/install` 익명 요청 | **401 유지** (범위 누출 없음) |
-| EC-A2 | `/api/v1/automation/webhooks/a/b` (2세그먼트) | 단일 세그먼트 매처 **미매칭** → 401 |
-| EC-A3 | `GET /api/v1/automation/webhooks/xxx` | 메서드 고정 → 401 (POST만 열림) |
-| EC-A4 | permitAll 등록했으나 CSRF ignore 누락 | POST가 403 → **FR-A6 회귀 가드가 잡아야 함** |
-| EC-A5 | 등록 경로에 유효 서명 없이 POST | 컨트롤러의 서명검증이 401 (**필터가 아니라 컨트롤러가** 준 401) |
+| EC-A1 | **유효 서명** `url_verification` | **200 + challenge 에코** ← 필터 통과 양성 증명 (S-A1) |
+| EC-A2 | **무효 서명** 동일 요청 | **컨트롤러가** 401 (`SlackEventsController:74-77`) — 검증 주체 이동 실증 (S-A2) |
+| EC-A3 | `POST /slack/install` 익명 | **401 유지** (범위 누출 0, admin 이중가드) (S-A3) |
+| EC-A4 | permitAll 등록했으나 CSRF ignore 누락 | POST가 403 → **DEC-16 공유 리스트로 구조적 불가능**(가드 테스트 불요) |
+| EC-A5 | `/slack/commands` · `/slack/interactions` · `/slack/install/callback` | **각각 개별 단언** (단수로 뭉뚱그리면 매처 오타를 못 잡음) |
 
 ## A-7. 제약
 
 | # | 제약 |
 |---|---|
-| **C-A1** | **BC 격리 예외** — identity-access(`SecurityConfig`)를 automation/slack 사유로 수정. plan §리스크 명시 + **security-engineer 공동 검토 필수** |
-| **C-A2** | **★ prod 신규 노출 리스크** — 이 PR은 부채 청산인 동시에 **미검증 경로 2개를 prod에 처음 여는 변경**이다. 기존 `AutomationWebhookController:97`은 임의 `{"issueKey":"OTHER-1"}`을 **무검증 enqueue**하고(부록 A C-d), actor 임의 지정도 가능(C-e). **prod에서 죽어 있어서 문제가 안 되던 것들**이다 |
-| **C-A3** | rate limit 부재 — permitAll 경로에 미인증 요청 강제 가능. 기존 부채이나 세 경로를 여는 PR이 **명시는 해야 함** → §후속 |
+| **C-A1** | **BC 격리 예외** — identity-access(`SecurityConfig`)를 slack 사유로 수정. plan §리스크 명시 + **security-engineer 공동 검토 필수**. ★ FR-SL-01 ADR **§D7이 이 후속을 예고**해 둠(*"중앙 SecurityConfig에 콜백 permitAll 추가는 **DEVELOPMENT.md §1.4 예외로 ADR/게이트 승인이 필요한 후속 작업**"*) |
+| ~~C-A2~~ | ~~prod 신규 노출 리스크~~ → **DEC-15로 해소**. automation 웹훅(무검증 `issueKey` enqueue `AutomationWebhookController:97` · actor 임의 지정)은 방어심층이 동반되는 **PR-C**로 이관. **slack은 방어 온전**(서명+replay+상수시간+fail-closed) |
+| **C-A3** | rate limit 부재 — permitAll 경로에 미인증 요청 강제 가능. **기존 부채**(신규 아님)이나 경로를 여는 PR이 **명시는 해야 함** → §후속 |
+| **C-A6** | **★ 절대 규칙 §1.4 정면 대상** — "인증 없는 엔드포인트 추가 금지". 정식 예외 절차 = **ADR + 게이트1 승인**(2026-07-15 Maxi 승인 완료). 표기는 저장소 관례 `§1.<규칙번호>` = **`§1.4`**(9파일 14곳과 일관, DEC-17) |
 | **C-A4** | 매처 문법 주의 — Spring Security의 `/*`는 단일 세그먼트, `/**`는 하위 전체. notification 선례(`:248` `PUBLIC_DASHBOARDS_PATH = "/api/v1/public/dashboards/*"`) 대조 |
 | **C-A5** | 신규 의존성 0 |
 
 ## A-8. 측정 가능한 완료 기준 (PR-A)
 
-- [ ] S-A1~S-A4 통합 테스트 통과
-- [ ] EC-A1~EC-A5 각각 테스트 존재 — 특히 **EC-A1(`/slack/install` 401 유지)**, **EC-A4(CSRF 이중등록)**
-- [ ] **5개 경로 각각** 개별 검증 (부록 A C-9 — 단수 표현으로 뭉뚱그리면 slack 매처 오타를 못 잡음)
-- [ ] FR-A5 prod 조립 HTTP 테스트 인프라 신규 구축 + 동작
-- [ ] `.env.prod.example` 키 3종(+PR-C에서 4번째) 선언 + 생성법 주석
+- [ ] **S-A1 양성 단언** — 유효 서명 `url_verification` → **200 + challenge 에코** (필터 통과 + 서명 검증 동작 동시 증명)
+- [ ] **S-A2** — 무효 서명 → **컨트롤러가** 401 (검증 주체가 필터에서 컨트롤러로 옮겨졌음을 실증)
+- [ ] **S-A3 / EC-A3** — `POST /slack/install` 익명 **401 유지** (범위 누출 0). ★ 일부러 위반을 넣어 fail을 잡는지 확인([[archunit-vacuous-rule-silent-pass]] — 통과가 검증을 의미하지 않음)
+- [ ] **slack 4경로 각각** 개별 검증 (부록 A C-9 — 단수로 뭉뚱그리면 매처 오타를 못 잡음)
+- [ ] FR-A5 prod 조립 HTTP 테스트 인프라 신규 구축 + **기존 `BtsApplicationContextTest` 상속 전환**(C-5 — prod 컨텍스트 1벌)
+- [ ] `.env.prod.example` — slack 동작 변수 + 암호화 키 3종(+PR-C에서 automation) + 생성법 주석
+- [ ] **DEC-16 구조 확인** — permitAll·CSRF-ignore가 **단일 공유 리스트**에서 구동되는가(한쪽만 등록이 컴파일 단위에서 불가능한가)
 - [ ] `:modules:app:test` 통과 (9 BC prod 조립)
-- [ ] 기존 slack·automation 테스트 회귀 0
+- [ ] 기존 slack·identity-access·automation 테스트 회귀 0
 - [ ] ktlint + detekt 0
 - [ ] `bash scripts/verify-master-plan.sh` 통과
 - [ ] **FR 카운트 불변 123** (PR-A는 FR 자체를 완료시키지 않음 — 부채 청산)

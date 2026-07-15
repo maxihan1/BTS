@@ -98,7 +98,7 @@ automation→issue-tracking은 **이미 결선**. `ActionExecutor`가 `IssueMuta
 
 ### F5. 서명 검증 — 모범 사례는 있으나 slack 전용
 
-`SlackSignatureVerifier.kt` — HmacSHA256, base string `v0:{ts}:{rawBody}`, **replay 방어 ±5분**(`:110-112`), **상수시간 비교** `MessageDigest.isEqual`(`:104-107`), `Clock` 주입, fail-closed(secret 미설정도 `false`→401).
+`SlackSignatureVerifier.kt` — HmacSHA256, base string `v0:{ts}:{rawBody}`, **replay 방어 ±5분**(`:86` + `REPLAY_WINDOW_SECONDS=300L :113`), **상수시간 비교** `MessageDigest.isEqual`(`:78-81`), `Clock` 주입, fail-closed(secret 미설정도 `false`→401).
 
 - **재사용 불가 형태**. `SlackProperties`(slack 전용 signing secret)에 직접 결합. shared-kernel에 인바운드 검증 유틸 **없음**
 - **★ raw body 함정**. `@RequestBody String`만 사용. `@RequestParam`/`@ModelAttribute` 병용 시 Spring이 form을 먼저 파싱해 스트림 소비 → `@RequestBody`가 **빈 문자열** → 서명검증 조용히 무력화. 서명 통과 후 수동 form-decode (`SlackCommandsController.kt:24-33,102-115`)
@@ -271,7 +271,7 @@ GitLab 웹훅은 원래 `X-Gitlab-Token` 평문이고 GitLab이 HMAC 서명을 �
 **내용** (TDD 비대상 — 문서).
 - **맥락**. 중앙 `SecurityConfig`가 `anyRequest().authenticated()`(`:186`)로 닫혀 있고 slack 인바운드 미등록 → **FR-SL이 prod에서 사문화**. `docs/plans/2026-07-11-automation-prod-assembly.md:53,165`의 명시적 scope-out + 후속 추적 항목
 - **결정**. slack 4경로를 **공유 리스트**(DEC-16)로 permitAll·CSRF-ignore 양쪽 등록
-- **§1.4 예외 정당화**. (a) 외부 시스템(Slack)이 호출하므로 BTS 자격증명을 가질 수 없다 (b) 인증은 **컨트롤러의 서명 검증**이 담당 — `SlackSignatureVerifier`(HMAC-SHA256 `v0:{ts}:{rawBody}` · replay 창 ±5분 `:110-112` · 상수시간 `MessageDigest.isEqual` `:104-107` · secret 미설정도 `false` fail-closed `:78-80`) (c) 필터가 막으면 **서명 검증 코드가 실행조차 안 됨** — 보안 강화가 아니라 기능 정지 (d) 폭발 반경은 메서드 고정 + 정확 경로로 봉인
+- **§1.4 예외 정당화**. (a) 외부 시스템(Slack)이 호출하므로 BTS 자격증명을 가질 수 없다 (b) 인증은 **컨트롤러의 서명 검증**이 담당 — `SlackSignatureVerifier`(HMAC-SHA256 `v0:{ts}:{rawBody}` · replay 창 ±5분 `:86`(`REPLAY_WINDOW_SECONDS=300L :113`) · 상수시간 `MessageDigest.isEqual` `:78-81` · secret 미설정도 `false` fail-closed `:64-66`) (c) 필터가 막으면 **서명 검증 코드가 실행조차 안 됨** — 보안 강화가 아니라 기능 정지 (d) 폭발 반경은 메서드 고정 + 정확 경로로 봉인
 - **★ automation 웹훅을 이번에 열지 않는 이유 명시**(DEC-15). `AutomationWebhookController:97`이 임의 `{"issueKey":"OTHER-1"}`을 무검증 enqueue → 토큰 보유자가 룰을 임의 이슈로 유도 가능(폭발반경 = 룰 actor 권한). 방어심층(FR-7)이 들어오는 PR-C와 함께 연다
 - **잔여 위험 명시**. ① slack 경로 **rate limit 부재**(기존 부채, §후속) ② `/slack/install`은 열지 않음(admin 이중가드 유지)
 - **대안 기각**. (i) 확장 포인트(`PathContributor`) 선도입 → 범위 폭증, 별도 후속 (ii) 계속 미룸 → FR-SL 사문화 지속
@@ -368,7 +368,7 @@ val SLACK_INBOUND_PATHS = listOf(
 - files: [`infra/prod/.env.prod.example`]
 - depends-on: []
 
-> **★ B-1 반영 — 이게 없으면 이 PR의 주장이 거짓이 된다.** `grep -rn "SLACK" infra/` → `nginx.conf:40` **한 줄뿐**. permitAll만 열고 signing secret이 없으면 `SlackSignatureVerifier.kt:78-80`(`if (signingSecret.isBlank()) return false`)이 fail-closed로 막아 **"필터의 401"이 "컨트롤러의 401"로 바뀔 뿐 기능 변화 0**.
+> **★ B-1 반영 — 이게 없으면 이 PR의 주장이 거짓이 된다.** `grep -rn "SLACK" infra/` → `nginx.conf:40` **한 줄뿐**. permitAll만 열고 signing secret이 없으면 `SlackSignatureVerifier.kt:64-66`(`if (signingSecret.isBlank()) return false`)이 fail-closed로 막아 **"필터의 401"이 "컨트롤러의 401"로 바뀔 뿐 기능 변화 0**.
 
 **내용** (TDD 비대상 — 배포 매니페스트).
 
@@ -430,7 +430,7 @@ val SLACK_INBOUND_PATHS = listOf(
 
 | # | 확신도 | 발견 | 처리 |
 |---|---|---|---|
-| **B-1** | **9** | **PR-A의 헤드라인 주장이 FR-SL에 대해 거짓.** `.env.prod.example`에 **`BTS_SLACK_SIGNING_SECRET`도 없다**(`grep -rn "SLACK" infra/` → `nginx.conf:40` 한 줄뿐). `SlackSignatureVerifier.kt:78-80`이 `if (signingSecret.isBlank()) return false` fail-closed → permitAll만 열면 **"필터의 401" → "컨트롤러의 401"** 로 바뀔 뿐 기능 0. slack **암호화** 키(봇 토큰)는 서명 통과 **후** 하류라 순서가 뒤집힘. ★ B4를 잡았다고 자평한 검토가 같은 결함을 한 층 위에서 놓침 | **T5에 signing secret + client id/secret/redirect-uri 추가**. spec §A-4 표 4행 → 확장 |
+| **B-1** | **9** | **PR-A의 헤드라인 주장이 FR-SL에 대해 거짓.** `.env.prod.example`에 **`BTS_SLACK_SIGNING_SECRET`도 없다**(`grep -rn "SLACK" infra/` → `nginx.conf:40` 한 줄뿐). `SlackSignatureVerifier.kt:64-66`이 `if (signingSecret.isBlank()) return false` fail-closed → permitAll만 열면 **"필터의 401" → "컨트롤러의 401"** 로 바뀔 뿐 기능 0. slack **암호화** 키(봇 토큰)는 서명 통과 **후** 하류라 순서가 뒤집힘. ★ B4를 잡았다고 자평한 검토가 같은 결함을 한 층 위에서 놓침 | **T5에 signing secret + client id/secret/redirect-uri 추가**. spec §A-4 표 4행 → 확장 |
 | **B-2** | **8** | **T3 검증 방법이 plan에서 미해결**(R5 "불가 시 판별 헬퍼")인데 **훨씬 단순한 경로를 통째로 놓침**. 응답 포렌식(`WWW-Authenticate` 유무 — 저장소 선례 **0건**) 불필요. `SlackSignatureVerifier`는 결정론적 HMAC-SHA256(`v0:{ts}:{rawBody}`)이고 secret은 프로퍼티 주입 → **T2 베이스가 `bts.slack.signing-secret`을 주입하고 테스트가 유효 서명을 계산해 `url_verification` POST → 200 + challenge 에코 단언**. (a) 필터 통과가 **양성**으로 증명 (b) S-A2 실증 (c) 판별 헬퍼 불요 (d) 우리 코드에만 의존(Spring Security 내부 미의존) | **채택. R5 삭제** |
 | **C-1** | 7 | **전략 오조준** — 방어 없이 경로를 먼저 열고 방어는 2 PR 뒤(R3). 순 효과 = **FR-SL은 여전히 죽어 있고**(B-1) **FR-AT-01은 "안전하게 죽은 상태"→"알려진 미방어 3종을 달고 살아 있는 상태"**. PR-A 선행 근거(spec:17 (2)(3))는 **테스트 인프라만** 정당화하지 경로 개방을 정당화하지 않음 | **→ DEC-15 (Maxi 확정)** |
 | **C-2** | **8** | **FR-A6 "향후 경로 추가 강제"는 테스트로 불가능**. 열거식 테스트는 자기가 아는 경로만 단언 — 미래에 한쪽만 등록된 경로는 **존재를 모르므로 영원히 못 잡음**. 게다가 `SecurityConfig.kt:209`가 `private companion object`라 `com.bts.app` 테스트가 상수 접근 불가 → **경로 리터럴을 복제**하게 되고 그 복제본이 드리프트 = 가드가 막으려는 결함을 가드가 재생산. ★ **구조로 풀면 더 단순·더 강함** — 5경로를 `List<Pair<HttpMethod,String>>` 하나로 두고 csrf·authorize를 **같은 리스트에서 구동**하면 한쪽만 등록이 **컴파일 단위에서 불가능** → 가드 테스트 자체 불요. plan은 `PathContributor` 대공사 ↔ 아무것도 안 함의 **거짓 이분법**에 갇혀 그 사이 20줄 리팩터링을 못 봄 | **→ DEC-16 (Maxi 확정)** |
