@@ -40,15 +40,19 @@
 - **When**. "YAML 가져오기" → Dialog → 파일 선택 → "적용" → 인라인 확인("적용하면 기존 규칙이 덮어쓰일 수 있습니다") → "확인".
 - **Then**. Dialog가 결과로 전환 — **생성 N · 갱신 M · 총 T**. 규칙 목록이 갱신된다(invalidate). `conflicts` 가 있으면 경고 영역이, 새 WEBHOOK 규칙이 있으면 토큰 목록이 함께 표시된다.
 
-### S5. 가져오기 — YAML 형식/스키마 버전 오류 (400 `AUTOMATION_IMPORT_INVALID`, EC1)
+### S5. 가져오기 — 400 `AUTOMATION_IMPORT_INVALID` (`failedIndex` 없음)
 
-- **When**. 깨진 YAML 또는 `version: 2` 파일을 적용.
-- **Then**. **Dialog를 유지한 채** 에러 영역에 서버 `detail` 을 표시("YAML 형식이 올바르지 않습니다" 등). 토스트가 아니라 Dialog 내 표시 — 사용자가 파일을 고쳐 곧바로 재시도하는 흐름이기 때문. 파일 선택 상태는 유지해 재선택 부담을 줄인다.
+깨진 YAML · `version: 2` · YAML `projectKey` 불일치가 **모두 이 케이스로 합류**한다.
 
-### S6. 가져오기 — 특정 규칙에서 실패 (400 + `failedIndex`)
+- **When**. 깨진 YAML, 또는 `version: 2`, 또는 다른 프로젝트의 YAML(`projectKey: OTHER`)을 적용.
+- **Then**. **Dialog를 유지한 채** 에러 영역에 **서버 `detail` 을 그대로** 표시 + "적용된 변경 없음(전량 취소)". 토스트가 아니라 Dialog 내 표시 — 사용자가 파일을 고쳐 곧바로 재시도하는 흐름이기 때문. 파일 선택 상태는 유지해 재선택 부담을 줄인다.
 
-- **When**. 3번째 규칙의 조건식이 화이트리스트를 위반한 파일을 적용.
-- **Then**. "**3번째 규칙**에서 실패했습니다. `<서버 detail>`" + "**적용된 변경이 없습니다(전량 취소)**" 를 함께 표시. `failedIndex` 는 0-based이므로 **표시할 때 +1**. atomic fail-closed라 부분 적용이 없다는 사실을 명시해야 사용자가 안심하고 재시도한다.
+> **★ 사유 3종을 UI에서 분기하지 않는다 (gap 분석 BLOCKER-1 해소).** 백엔드가 `AutomationYamlInvalidException`(EC1)·`AutomationImportProjectKeyMismatchException`(EC2)을 `AutomationRuleController.kt:612-621` 의 **같은 `else` 분기**로 처리한다 — status(400)·`errorCode`·ProblemDetail `type`·`failedIndex` 부재까지 전부 동일하고 **한국어 `detail` 문자열로만 다르다**. 프론트가 이를 구별하려면 메시지 문자열 매칭이 필요한데 이는 [[crossbc-failure-classification-typed-not-name]](실패 분류는 타입으로, 문자열 매칭 금지) 위반이다. 순수 프론트 범위라 백엔드에 판별자를 추가할 수도 없다. → **구별하지 않고 서버 `detail` 을 신뢰**한다(백엔드가 이미 사유별로 구체적인 한국어 문구를 담아 보낸다).
+
+### S6. 가져오기 — 특정 룰에서 실패 (400 + `failedIndex`)
+
+- **When**. 3번째 룰의 조건식이 화이트리스트를 위반한 파일을 적용. (또는 `id` 가 타 프로젝트/삭제된 룰에 귀속된 경우 — `AutomationImportIdConflictException` 도 `AutomationImportCommandException` 으로 래핑돼 이 경로로 온다.)
+- **Then**. "**3번째 룰**에서 실패했습니다. `<서버 detail>`" + "**적용된 변경이 없습니다(전량 취소)**" 를 함께 표시. `failedIndex` 는 0-based이므로 **표시할 때 +1**. atomic fail-closed라 부분 적용이 없다는 사실을 명시해야 사용자가 안심하고 재시도한다.
 
 ### S7. 가져오기 — 크기 상한 초과 (413 `AUTOMATION_IMPORT_TOO_LARGE`)
 
@@ -57,10 +61,13 @@
 - **When-b**. 1MiB 이하지만 규칙이 500개 초과인 파일 적용.
 - **Then-b**. 프론트는 YAML을 파싱하지 않으므로 서버 413에 의존. 응답 `detail` 을 그대로 표시.
 
-### S8. 가져오기 — projectKey 불일치 (400, EC2)
+### S8. 타 프로젝트 복사 안내 — 에러 분기가 아닌 **상시 도움말**
 
-- **When**. 다른 프로젝트에서 내보낸 YAML(`projectKey: OTHER`)을 현재 프로젝트에 적용.
-- **Then**. 에러 영역에 서버 `detail` + **안내 문구**. "다른 프로젝트의 규칙을 복사하려면 YAML에서 `id:` 줄을 제거하세요." (round-trip 시맨틱 — 살아있는 타 프로젝트 id 재사용은 백엔드가 거부).
+- **Given**. 사용자가 다른 프로젝트의 YAML을 이 프로젝트에 적용하려 한다.
+- **When**. 가져오기 Dialog를 연다(에러 발생 여부와 무관).
+- **Then**. Dialog에 **항상 보이는** 도움말 문구. "다른 프로젝트의 룰을 복사하려면 YAML에서 `id:` 줄을 제거하세요. 같은 프로젝트에 다시 적용하는 경우에는 그대로 두면 됩니다."
+
+> **★ 왜 에러 조건부가 아니라 상시인가 (gap 분석 BLOCKER-1 + CONCERN-6 동시 해소).** 타 프로젝트 YAML을 적용하는 사용자는 **에러를 두 번 연달아** 만난다. ① `projectKey: OTHER` 그대로 → S5(`failedIndex` 없음). ② `projectKey` 만 고쳐서 재시도 → `id` 가 타 프로젝트 소유라 **S6**(`failedIndex` 있음). 안내가 필요한 시점은 ②인데, ②는 S6 규칙상 "N번째 룰에서 실패"로만 렌더되어 안내가 **사라진다**. 게다가 ①은 S5의 다른 사유(깨진 YAML)와 와이어에서 구별 불가다. → 어느 에러에도 매달지 않고 **Dialog 상시 도움말**로 올린다. 구현이 단순해지고(분기 0), 사용자는 실수하기 **전에** 안내를 본다.
 
 ### S9. 가져오기 — 동시 수정 충돌 (409 `AUTOMATION_RULE_VERSION_CONFLICT`)
 
@@ -81,16 +88,18 @@
 
 | # | 요구사항 |
 |---|---|
-| FR1 | automation 설정 페이지 툴바에 "YAML 내보내기" 버튼. 클릭 → `GET .../rules/export` → blob + `Content-Disposition` 파일명 파싱 → `triggerBlobDownload` (`lib/download.ts:16` **기존 헬퍼 재사용, 신규 금지**). |
-| FR2 | 같은 툴바에 "YAML 가져오기" 버튼. 클릭 → 신규 `AutomationYamlImportDialog` (Radix Dialog). |
-| FR3 | Dialog는 `<Input type="file" accept=".yaml,.yml">` 로 파일 1개 선택(`ImportMappingWizard.tsx:374` 관례). 미선택 시 "적용" disabled. |
-| FR4 | "적용" → 인라인 2단계 확인 → `POST .../rules/import`. 파일은 `File.text()` 로 **원문 문자열**로 읽어 `Content-Type: application/yaml` 로 전송. multipart 금지(백엔드 `consumes` 미허용 → 415). |
+| FR0 | **배치 — 파일 단위 확정**(gap 분석 CONCERN-2 해소). 버튼 2개는 `AutomationRuleList.tsx:361-367` 의 **기존 헤더 행**(`flex items-center justify-between`, h2 "자동화 룰" + "룰 추가" 버튼)에 **"룰 추가" 옆으로** 추가한다 — Maxi 확정 시안이 버튼 3개 한 줄이었기 때문. route(`projects.$projectKey.settings.automation.tsx:96-101`)의 `<header>` 에는 버튼을 두지 **않는다**(그 헤더는 h1+설명문 전용). **prop threading** — `AutomationRuleList` 에 `onExportYaml: () => void` · `onImportYaml: () => void` · `isExportingYaml: boolean` prop 추가(기존 `onAddRule`/`onViewHistory` 관례 동형, #271 선례). Dialog 상태와 export mutation은 **페이지가 소유**한다. |
+| FR1 | "YAML 내보내기" 버튼 → `GET .../rules/export` → blob + `Content-Disposition` 파일명 파싱 → `triggerBlobDownload` (`lib/download.ts:16` **기존 헬퍼 재사용, 신규 금지**). |
+| FR2 | "YAML 가져오기" 버튼 → 신규 `AutomationYamlImportDialog` (Radix Dialog). |
+| FR3 | Dialog는 `<Input type="file" accept=".yaml,.yml">` 로 파일 1개 선택(`ImportMappingWizard.tsx:374` 관례). 미선택 시 "적용" disabled. Dialog에 §S8 **상시 도움말** 문구를 항상 표시. |
+| FR4 | "적용" → 인라인 2단계 확인 → `POST .../rules/import`. 파일은 `File.text()` 로 **원문 문자열**로 읽어 전송. 헤더는 `{ 'Content-Type': 'application/yaml;charset=UTF-8', 'X-XSRF-TOKEN': readXsrfToken() }` — **XSRF는 형제 mutation 3종(`automation-rules.ts:99,128,149`)과 동일하게 포함**(gap 분석 CONCERN-3). multipart 금지(백엔드 `consumes` 미허용 → 415). |
 | FR5 | 클라이언트 선제 크기 검증 — `file.size > 1_048_576` 이면 요청 없이 에러 표시(백엔드 `MAX_IMPORT_BYTES` 미러). |
 | FR6 | 성공 시 결과 표시 — 생성 `created` · 갱신 `updated` · 총 `total`. |
 | FR7 | `conflicts` 가 비어있지 않으면 결과 안에 **인라인** 경고(`type`·`severity`·`detail`). 중첩 모달 회피(기존 `RuleConflictWarningModal` 을 위에 띄우지 않음). |
-| FR8 | `webhookTokens` 가 있으면 결과 안에 토큰 목록(규칙명·토큰·복사) + 경고 배지 + **닫기 2단계 확인**. |
-| FR9 | 성공 시 규칙 목록 쿼리 invalidate → 새/갱신 규칙 즉시 반영. |
-| FR10 | 에러코드별 한국어 메시지 매핑(`extractAutomationRuleErrorCode` 관례 재사용). `failedIndex` 는 **+1** 해 "N번째 규칙" 으로 표시. 모든 실패 문구에 "적용된 변경 없음(전량 취소)" 명시. |
+| FR8 | `webhookTokens` 가 있으면 결과 안에 토큰 목록(룰 이름·토큰·복사) + 경고 + **닫기 2단계 확인**. **문구/복사 처리는 `WebhookTokenModal.tsx:12-17` 을 그대로 따른다**(gap 분석 CONCERN-4) — 경고 `'이 토큰은 지금 한 번만 표시됩니다. 창을 닫으면 다시 확인할 수 없습니다.'` · `'복사'` / `'복사됨'` / **`'복사에 실패했습니다. 직접 선택해 복사해 주세요.'`**. 컴포넌트 자체 재사용은 하지 않는다(단건 모달 vs 다건 목록). `navigator.clipboard.writeText` reject 경로 필수 처리(EC12). |
+| FR9 | 성공 시 `AUTOMATION_RULES_QUERY_KEY(projectKey)` invalidate → 새/갱신 룰 즉시 반영(gap 분석 NIT-9). |
+| FR10 | 에러코드별 한국어 메시지 매핑(`extractAutomationRuleErrorCode` 관례 재사용). `failedIndex` 는 **+1** 해 "N번째 룰" 로 표시. 모든 실패 문구에 "적용된 변경 없음(전량 취소)" 명시. |
+| FR12 | **UI 문구 용어는 "룰"** (gap 분석 NIT-12). `AutomationRuleList.tsx:22-24` 의 `labels` 정본이 `heading: '자동화 룰'` · `addButton: '룰 추가'` 다. 새 버튼이 같은 행에 놓이므로 "규칙"과 섞이면 안 된다. 버튼 라벨은 `'YAML 내보내기'` / `'YAML 가져오기'`. 문서(스펙/plan) 산문은 FR 제목을 따라 "규칙"을 써도 되지만 **화면 문자열은 전부 "룰"**. |
 | FR11 | **공유 인프라** — `api/client.ts` 가 문자열 body를 `JSON.stringify` 하지 않고 그대로 전달하도록 확장(§API 인터페이스 참조). |
 
 ## 비기능 요구사항 (NFR)
@@ -100,7 +109,7 @@
 | NFR1 | **인증 다운로드**. STATELESS JWT라 `<a href download>` 순수 네비게이션은 401. `apiFetch` → `blob()` → objectURL 경로 필수([[avatar-auth-image-cachebust]] 동형). |
 | NFR2 | **objectURL 누수 0**. `triggerBlobDownload` 의 `finally` revoke 경로를 그대로 사용(자체 구현 금지). |
 | NFR3 | **토큰 비영속**. `webhookTokens` 는 React 상태(메모리)로만 보유. localStorage/sessionStorage/URL/로그 기록 금지. Dialog 종료 시 소멸. |
-| NFR4 | **Zod 방어**. `webhookTokens`·`conflicts` 는 `@JsonInclude(NON_NULL)` 이라 키가 생략될 수 있음 → `.optional()`. 누락 시 정상 응답에서 조용히 ZodError([[frontend-zod-backend-dto-contract-gap]]). |
+| NFR4 | **Zod 방어**. `webhookTokens` 는 새 WEBHOOK 룰이 없으면 **키가 실제로 생략**된다(`AutomationImportResponse.from` 의 `ifEmpty { null }` + `@JsonInclude(NON_NULL)`) → `.optional()` **필수**. 누락 시 정상 응답에서 조용히 ZodError([[frontend-zod-backend-dto-contract-gap]]). `conflicts` 는 어노테이션은 같지만 **실제로는 항상 배열**(빈 배열이어도 `[]`, `AutomationRuleResponses.kt:293` 이 무조건 `conflicts.map(...)`) — 방어적으로 `.optional()` 을 두되 **생략을 기대하지는 않는다**(gap 분석 NIT-8, plan §도메인 정리와 동일 서술). |
 | NFR5 | **client.ts 무회귀**. 기존 145개 `apiFetch` 호출자(전부 객체 리터럴·FormData·타입 DTO 변수, 문자열 body 0건 — 전수 확인함)의 동작 불변. |
 
 ## API 인터페이스 (REST) — #272 확정, 프론트는 소비만
@@ -112,10 +121,13 @@ GET  /api/v1/projects/{projectKey}/automation/rules/export
        body: YAML 텍스트
 
 POST /api/v1/projects/{projectKey}/automation/rules/import
-     Content-Type: application/yaml   ← 화이트리스트 4종 중 택1
+     Content-Type: application/yaml;charset=UTF-8   ← 화이트리스트 4종 중 택1 + charset 명시
+     X-XSRF-TOKEN: <readXsrfToken()>                ← 형제 mutation 3종과 동일
      body: YAML 원문 텍스트 (JSON/multipart 아님)
      → 200 AutomationImportResponse
 ```
+
+> **charset 명시 이유**(gap 분석 NIT-7). export가 `;charset=UTF-8` 을 **일부러** 명시한 것과 대칭 — #272에서 charset 미명시가 `StringHttpMessageConverter` 의 ISO-8859-1 기본값을 타 한글 룰명을 깨뜨린 함정이 있었다([[fr-at-06-yaml-gitops-backend-done]]). 현재 Boot 기본값(UTF-8)에 기대면 동작은 하지만 암묵 의존이다. `consumes` 매칭은 미디어 타입 파라미터를 무시하므로 charset을 붙여도 415가 나지 않는다.
 
 ### DTO → Zod 계약 (신규 스키마는 `api/automation-rules.types.ts` 에 추가)
 
@@ -141,11 +153,15 @@ POST /api/v1/projects/{projectKey}/automation/rules/import
 
 | HTTP | errorCode | UI |
 |---|---|---|
-| 403 | `AUTOMATION_ACCESS_DENIED` | 토스트/에러영역 "권한이 없습니다." |
-| 400 | `AUTOMATION_IMPORT_INVALID` | Dialog 에러영역 + 서버 `detail`. `failedIndex` 있으면 "N번째 규칙에서 실패" (+1) |
+| 403 | `AUTOMATION_ACCESS_DENIED` | 토스트(내보내기) / Dialog 에러영역(가져오기) — "권한이 없습니다." |
+| 400 | `AUTOMATION_IMPORT_INVALID` | Dialog 에러영역 + **서버 `detail` 그대로**. `failedIndex` 있으면 "N번째 룰에서 실패" (+1) → S6. 없으면 `detail` 만 → S5. **사유별 분기 금지**(BLOCKER-1) |
 | 413 | `AUTOMATION_IMPORT_TOO_LARGE` | Dialog 에러영역 + 서버 `detail` |
-| 409 | `AUTOMATION_RULE_VERSION_CONFLICT` | "다른 사용자가 먼저 수정했습니다…" |
+| 409 | `AUTOMATION_RULE_VERSION_CONFLICT` | "다른 사용자가 먼저 수정했습니다. 최신 상태를 내보낸 뒤 다시 시도하세요." |
 | 400 | `AUTOMATION_MALFORMED_REQUEST` | 일반 실패 문구 |
+| 500 | `AUTOMATION_INTERNAL_ERROR` | 일반 실패 문구(fallback) |
+| — | 그 외 / 미매핑 | **fallback 문구 필수** — 코드별 분기에 빠진 응답도 사용자에게 무언가는 보여야 한다(gap 분석 NIT-11) |
+
+> 모든 가져오기 실패 문구에 **"적용된 변경 없음(전량 취소)"** 을 함께 표시한다(atomic fail-closed, FR10).
 
 ### client.ts 변경 (FR11 — 유일한 공유 인프라 변경)
 
@@ -181,11 +197,14 @@ body: body !== undefined ? (isRawBody ? body : JSON.stringify(body)) : undefined
 | EC4 | 규칙 500개 초과 | 서버 413 의존(프론트 파싱 안 함) |
 | EC5 | 적용 진행 중 재클릭 | `isPending` 으로 버튼 disabled |
 | EC6 | 내보내기 진행 중 재클릭 | `isPending` 으로 버튼 disabled |
-| EC7 | 토큰 노출 중 Dialog 닫기 | 2단계 확인(S10) |
+| EC7 | 토큰 노출 중 Dialog 닫기 | 2단계 확인(S10). **닫기 경로 4종 전부 가로챈다**(gap 분석 CONCERN-5) — X 버튼 · **ESC**(`onEscapeKeyDown` preventDefault) · **오버레이 클릭**(`onPointerDownOutside` preventDefault) · `onOpenChange`. 하나라도 빠지면 토큰이 **영구 분실**된다(NFR3 비영속). |
 | EC8 | 결과 표시 후 다시 가져오기 | Dialog 재오픈 시 상태 초기화(파일·결과·에러) |
 | EC9 | `.yaml` 아닌 확장자 선택 | `accept` 는 힌트일 뿐 강제 아님 → 서버 400에 위임(프론트 확장자 검증은 하지 않음, 손 작성 파일 배제 위험) |
 | EC10 | `conflicts: []`(빈 배열) | 경고 영역 렌더 안 함(`length > 0` 조건) |
 | EC11 | `webhookTokens` 키 생략 | `.optional()` → `undefined` → 토큰 영역 렌더 안 함 |
+| EC12 | **복사 실패**(`navigator.clipboard.writeText` reject — 비보안 컨텍스트/권한 거부) | `WebhookTokenModal.tsx:16` 의 `'복사에 실패했습니다. 직접 선택해 복사해 주세요.'` 표시. 토큰 텍스트는 선택 가능하게 유지(gap 분석 CONCERN-4) |
+| EC13 | **`id` 가 타 프로젝트/삭제된 룰에 귀속**(`AutomationImportIdConflictException`) | `AutomationImportCommandException` 으로 래핑돼 **S6 경로**(400 + `failedIndex`). 서버 `detail` 표시 + §S8 상시 도움말이 해결책(`id:` 제거)을 이미 노출 중(gap 분석 CONCERN-6) |
+| EC14 | **`triggerType` 변경 불가** 등 기타 커맨드 검증 실패 | S6 경로 동일 — 서버 `detail` 을 그대로 표시(프론트가 사유를 열거하지 않는다) |
 
 ## 제약 조건
 
@@ -208,4 +227,28 @@ body: body !== undefined ? (isRawBody ? body : JSON.stringify(body)) : undefined
 
 ## Brainstorming Check
 
-(← /bts-spec Phase B 채움)
+✅ **통과 (1회 gap 분석 → 전량 반영)**. 적대적 sanity check 1회로 BLOCKER 1건 · CONCERN 5건 · NIT 6건 발견. **Maxi 결정 불요 — 전부 백엔드 계약/기존 관례가 정답을 강제**했다. 스펙 자체를 수정해 해소(구현 단계로 미룬 항목 0).
+
+**사전 의심 4건은 전부 "gap 없음" 으로 확인**(스펙이 옳았음, 실물 대조).
+1. `client.ts` 문자열 pass-through 회귀 — 호출자 145건 + 테스트 전수 확인. 문자열 body 0건, `client.test.ts` 는 객체(`:81`)/FormData(`:235`)만 검증 → 깨질 테스트 없음.
+2. `Content-Disposition` 한글/RFC 5987 — 백엔드가 헤더 조립 **전에** `^[A-Za-z0-9_-]+$` 화이트리스트를 강제(`AutomationRuleController.kt:174,358`)하므로 파일명은 **항상 ASCII**, `filename*=` 미방출. `search.ts:223` 정규식 그대로 동작.
+3. 1MiB 단위 — `file.size`(바이트) vs `rawYaml.toByteArray(UTF_8).size`(바이트) 일치.
+4. 401 재시도 시 문자열 body 재전송 — `fetchOptions` 가 `client.ts:110/121` 에서 재사용되고 문자열은 불변이라 안전(`ReadableStream` 이었다면 깨졌음).
+5. (보너스) nginx 조기 413 없음 — `infra/prod/nginx.conf:16` `client_max_body_size 110m`.
+
+**해소 내역**.
+
+| 심각도 | 발견 | 해소 |
+|---|---|---|
+| **BLOCKER-1** | S5(깨진 YAML)와 S8(projectKey 불일치)이 와이어에서 구별 불가(같은 `else` 분기 → 동일 status/errorCode/type, `detail` 문자열로만 다름)인데 스펙은 다른 UI를 요구 → 문자열 매칭 강요([[crossbc-failure-classification-typed-not-name]] 위반) | **분기 제거**. S5로 합류시키고 서버 `detail` 을 신뢰. S8은 에러 분기가 아닌 **Dialog 상시 도움말**로 승격 |
+| CONCERN-2 | "상단 툴바"가 실재하지 않음(route `<header>` 는 h1+설명문뿐, 버튼 행은 `AutomationRuleList` 안) → 구현자가 파일 단위로 갈림 | **FR0 신설** — `AutomationRuleList.tsx:361-367` 헤더 행에 prop threading(`onExportYaml`/`onImportYaml`/`isExportingYaml`)으로 확정. Maxi 확정 시안(버튼 3개 한 줄)과 일치 |
+| CONCERN-3 | `X-XSRF-TOKEN` 누락 — 형제 mutation 3종과 어긋나는 유일한 mutation이 됨(기능은 무해, JWT Bearer는 CSRF skip) | FR4에 명시 |
+| CONCERN-4 | `WebhookTokenModal` 의 기존 문구/복사 실패 처리를 미언급 + 복사 실패 EC 부재 | FR8에 문구 인용 확정(재사용은 문구만, 컴포넌트는 아님) + **EC12** 신설 |
+| CONCERN-5 | "닫기 2단계 확인"의 닫기 경로 미열거 — Radix는 ESC/오버레이/X/onOpenChange 4경로. 누락 시 토큰 영구 분실 | **EC7 확장** — 4경로 전부 preventDefault 명시 |
+| CONCERN-6 | `AutomationImportIdConflictException`(id 타 프로젝트 귀속)이 스펙 부재. S8 사용자가 `projectKey` 만 고치면 **다음에 만나는 에러**인데, S6 렌더 규칙상 `id:` 안내가 사라짐 | **EC13** 신설 + S8 상시 도움말이 구조적으로 해결(BLOCKER-1과 동시 해소) |
+| NIT-7 | import Content-Type charset 미명시(export는 명시) — Boot 기본값 암묵 의존 | `;charset=UTF-8` 명시 |
+| NIT-8 | NFR4가 `conflicts` 도 "키 생략 가능"이라 부정확 서술(실제로는 항상 배열) | 서술 정정 |
+| NIT-9 | FR9의 invalidate queryKey 미명명 | `AUTOMATION_RULES_QUERY_KEY(projectKey)` 명시 |
+| NIT-11 | 에러 표에 500/미매핑 fallback 부재 | 행 추가 |
+| NIT-12 | 용어 드리프트 — UI 정본은 "룰", 스펙은 "규칙". 새 버튼이 "룰 추가" 옆에 놓이면 한 줄에 섞임 | **FR12 신설** — 화면 문자열은 전부 "룰" |
+| NIT-10 | `file.size` ≠ 전송 바이트 엣지(BOM 제거 3B 감소 / 깨진 UTF-8 → U+FFFD 팽창) | **무해 확인** — BOM은 클라가 더 엄격해지는 방향, 팽창은 서버 413이 커버(에러 표 처리) → 조치 없음 |
