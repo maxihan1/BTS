@@ -169,7 +169,12 @@ git 신규 + automation 웹훅(FR-AT-01) + slack 인바운드를 **중앙 `Secur
 
 `IssueMutationPort`에 전용 메서드를 추가한다(`setField` 확장 아님).
 
-- **근거**. 전체교체 시맨틱 · OCC(`expectedVersion`) · **복수** versionId를 타입으로 정직하게 드러냄. `setField`의 `value: String?`(JSON 인코딩 문자열)에 리스트를 숨기면 "필드 하나에 값 하나" 의미가 깨지고 OCC 파라미터가 사라짐
+> **⚠️ 2026-07-15 정정 — 아래 원래 근거의 후반부는 사실이 아니었다** (Phase B 적대적 검토가 코드로 반증, spec §B-2).
+> `SetFieldCommand`/`AssignCommand`(`IssueMutationCommands.kt:34-60`)는 **애초에 OCC 파라미터가 없다**. 어댑터가 매 시도마다 자기 트랜잭션 안에서 `findByKey().version`을 재조회해 채우고(`AutomationIssueMutationAdapter.kt:100-105,118-124`) `runWithOccRetry`(`:162-172`)가 1회 재시도한다 — **호출자는 OCC를 알 필요가 없는 설계**.
+> **결론(전용 포트 메서드)은 유지**하되 근거는 아래 "정정된 근거"로 대체. `SetFixVersionsCommand`에 `expectedVersion` 필드를 두지 않는다(항상 null인 죽은 분기 + 미래 TOCTOU 위험).
+
+- **정정된 근거**. (1) **전체교체 시맨틱** + **복수** versionId를 타입으로 정직하게 드러냄 — `value: String?`(JSON 인코딩 문자열)에 리스트를 숨기면 "필드 하나에 값 하나"라는 `setField` 의미가 깨짐 (2) fixVersions는 `updateIssue`가 아닌 **별도 서비스 메서드**(`changeFixVersions`) 경로라는 구조적 사실(§F3)
+- ~~**원래 근거(폐기)**. "…OCC 파라미터가 사라짐"~~ — 코드로 반증됨
 - **파급**. shared-kernel 계약 변경 → `IssueMutationPortContractTest`("default 없음" 리플렉션 검증) 갱신 + `StubIssueMutationPort`(consumer-owns-stub) 갱신 + issue-tracking 어댑터 구현
 - **fail-closed 유지**. 쓰기 포트라 default 구현 없음 → 어댑터 미결선 시 부팅 실패([[new-crossbc-dep-openapi-mockbean-regression]] — 신규 포트 소비는 full-boot `NoSuchBean` 유발, `@MockBean` 동반 확인)
 
@@ -203,9 +208,49 @@ git 신규 + automation 웹훅(FR-AT-01) + slack 인바운드를 **중앙 `Secur
 8. **트리거 이벤트 payload 형태**. `ActionExecutor.extractIssueKey`(`:264-268`)가 최상위 `issueKey` 또는 `issue.key`를 읽음 → PR_MERGED triggerEvent를 이 규약에 맞춰야 재사용 가능. PR이 이슈 **여러 개**를 참조하면 이슈당 1건씩 enqueue하는 구조 검토
 9. **권한**. 룰 actor(`automation_rules.actor_user_id`)가 대상 이슈 UPDATE 권한 없으면 fail-closed(기존 `IssueMutationPermissionDeniedException` 경로 승계)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 결정 사항 — 2차 (2026-07-15, Phase B 검토 후 Maxi 확정)
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+### DEC-11. **PR 3분할** — 이 PR = PR-A
+
+Phase B 적대적 검토(BLOCKER 9 / CONCERN 11)로 범위가 BC 4개 + 프론트 + 마이그레이션 4개 + 신규 포트 + enum 2종(파급 6파일 13지점) + 보안설정으로 불어남 → 직렬 3분할(병렬 PR 충돌 이력 회피).
+
+| PR | 범위 | 모듈 | 선행 |
+|---|---|---|---|
+| **PR-A (이 PR #274)** | 인바운드 permitAll 3종 + 암호화 키 4종 + prod 조립 HTTP 테스트 인프라 | identity-access · infra · app(test) | — |
+| PR-B | `setFixVersions` 포트 + 어댑터 + `SET_FIX_VERSIONS` 액션 + 프론트 계약 | shared-kernel · issue-tracking · automation · apps/web | — |
+| PR-C | `PR_MERGED` 트리거 + Git webhook + 서명검증 + 등록 API | automation · apps/web | A, B |
+
+**이 PR의 성격 변경**. FR-AT-07 자체를 완료시키지 않는 **선행 부채 청산 PR**. **FR 카운트 불변 123**, automation BC **6/7 유지**.
+
+### DEC-12. **targetBranch 필터 추가** (BLOCKER B8) — PR-C
+
+`trigger_config`에 `targetBranch`. 기존 `ISSUE_UPDATED`의 `fields` 필터와 동형(JSONB, 구조 추가 0). 미지정 = 전 브랜치.
+
+### DEC-13. **GitLab 유지 + 잔여위험 ADR 명시** (BLOCKER B3) — PR-C
+
+GitLab 웹훅은 원래 `X-Gitlab-Token` 평문이고 GitLab이 HMAC 서명을 제공하지 않아 **우리가 더 강하게 만들 수 없다**. product doc D2 준수. 단 **GITHUB과 동급으로 서술하지 않는다** — 보안등급 차이를 ADR·KDoc 명시.
+
+### DEC-14. **`.env.prod.example` 암호화 키 4종 전부** (BLOCKER B4) — PR-A
+
+기존 3종(slack·MFA·OIDC)이 **전부 누락**돼 있고 이는 [[use-time-validated-env-passes-boot-fails-on-use]]의 **실사고 재발**. surgical changes 예외 — 문서 몇 줄이라 비용 ≈ 0 + PR-A 주제("인바운드가 prod에서 실제로 도는가")와 정합.
+
+## 스펙
+
+전체 스펙. [docs/specs/2026-07-15-fr-at-07-pr-merge.md](../specs/2026-07-15-fr-at-07-pr-merge.md) — **PR-A/B/C를 관통하는 마스터 스펙**. 이 PR은 **§A**만 구현.
+
+**PR-A 핵심 3줄 요약.**
+- 중앙 `SecurityConfig`에 인바운드 웹훅 5경로를 **메서드 고정 + 최소 매처**로 permitAll·CSRF-ignore **양쪽에** 등록 → FR-AT-01·FR-SL이 prod에서 되살아남
+- `.env.prod.example`에 암호화 키 3종 선언(누락 = 실사고 재발) — automation 키는 PR-C에서 4번째로 추가
+- **prod 조립 HTTP 테스트 인프라 신규 구축** — "401이 아님"을 검증할 수단이 현재 저장소에 없음(`BtsApplicationContextTest`는 MOCK 웹환경). PR-C가 재사용
+
+## Brainstorming Check
+
+✅ **통과 (2회 iteration)**. 1회차 = BLOCKER 9 / CONCERN 11 / NIT 7 (적대적 검토 2종 병렬, 실제 코드 대조). 2회차 = 전건 반영 + PR 3분할.
+
+**1회차가 잡아낸 가장 큰 것 3가지.**
+1. **B1** — 내가 쓴 `@RequestBody String`은 크기검사 **전에** 본문을 힙에 버퍼링. nginx 110MB 허용 → 미인증 힙 적재. 인용한 FR-AT-01 선례는 **정반대**(`readNBytes`)였는데 값만 가져오고 형태는 slack의 약한 쪽을 베낌. **내가 쓴 완료 기준이 이 결함을 통과시킴**(가짜 그린)
+2. **B6** — **내 D3 근거가 코드로 반증**됨("OCC 파라미터가 사라진다" → 형제 커맨드엔 애초에 OCC 파라미터가 없음). 결론은 유지, 근거·필드는 폐기
+3. **B4** — `.env.prod.example`에 기존 키 3종 부재 = **머지해도 prod 미동작 확정**. 과거 실사고와 동일 패턴
 
 ## Plan (← /bts-plan 채움)
 

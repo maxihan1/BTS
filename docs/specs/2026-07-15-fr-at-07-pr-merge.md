@@ -1,338 +1,319 @@
-# FR-AT-07 — PR 머지 연동 (Fix Version 자동 설정) · 백엔드 D1~D5 스펙
+# FR-AT-07 — PR 머지 연동 (Fix Version 자동 설정) · 마스터 스펙
 
-> plan. [docs/plans/2026-07-15-fr-at-07-pr-merge.md](../plans/2026-07-15-fr-at-07-pr-merge.md) — 도메인 사실 F1~F9 / 결정 D1~D6
-> PR. #274 | slug. `fr-at-07-pr-merge` | BC. automation
-> **범위**. D1~D5(백엔드). D6(Webhook URL 생성 UI)·D7(E2E)는 후속 PR.
+> plan. [docs/plans/2026-07-15-fr-at-07-pr-merge.md](../plans/2026-07-15-fr-at-07-pr-merge.md) — 도메인 사실 F1~F9 / 결정 D1~D14
+> **2회차** (1회차 스펙은 Phase B 적대적 검토에서 BLOCKER 9건 → 재작성. 검토 원문은 §부록 A)
+> **이 문서는 PR-A/B/C 3개를 관통하는 마스터 스펙이다.** 각 PR은 자기 §만 구현한다.
 
-## 확정된 행위 결정 (Maxi)
+## PR 분할 (DEC-11, Maxi 확정)
 
-| # | 결정 | 기각안 |
-|---|---|---|
-| D1 | **신규 `TriggerType.PR_MERGED` + 전용 엔드포인트** — 기존 pgmq→`ActionExecutor` 파이프라인 재사용 | 기존 WEBHOOK 재사용 / 룰 엔진 우회 |
-| D2 | **인바운드 permitAll 3종 일괄 중앙등록** (git 신규 + automation FR-AT-01 + slack) | git만 / 계속 미룸 |
-| D3 | **신규 포트 메서드 `IssueMutationPort.setFixVersions`** | `setField` 화이트리스트 확장 |
-| D4 | **룰 액션에 versionId 명시 지정** | 브랜치→버전 매핑 테이블 / 최신 UNRELEASED 자동선택 |
-| D7 | **이슈 키 추출 = PR 제목 + 본문** (커밋 메시지 제외) | 커밋 메시지 포함(GitHub API 별도 호출 필요 → 범위 폭증) |
-| D8 | **Closes/Fixes 계열 키워드 필수** | 본문 어디든 이슈키 매칭(오설정 위험) |
-| D9 | **GitHub + GitLab 둘 다** (product doc D2 준수) | GitHub 먼저·GitLab 후속 |
-| D10 | **delivery ID dedup 테이블** | 미도입(멱등성 의존) |
+Phase B 검토로 범위가 BC 4개 + 프론트 + 마이그레이션 4개 + 신규 포트 + enum 2종(파급 6파일 13지점) + 보안설정으로 불어남 → **3분할**. 직렬 진행(병렬 PR 충돌 이력 회피).
 
-## 사용자 시나리오 (Given-When-Then)
+| PR | 범위 | 모듈 | 선행 | 이 문서의 § |
+|---|---|---|---|---|
+| **PR-A** | 인바운드 웹훅 permitAll 중앙등록 3종 + 암호화 키 배포 4종 + prod 조립 HTTP 테스트 인프라 | identity-access · infra · app(test) | — | **§A** |
+| **PR-B** | `IssueMutationPort.setFixVersions` + issue-tracking 어댑터 + `ActionType.SET_FIX_VERSIONS` + 프론트 계약 | shared-kernel · issue-tracking · automation · apps/web | — | §B |
+| **PR-C** | `TriggerType.PR_MERGED` + Git webhook 엔드포인트 + 서명검증 + 이슈키 추출 + 등록 API | automation · apps/web | A, B | §C |
 
-### S1. GitHub PR 머지 → Fix Version 자동 설정 (happy path)
+**PR-A를 먼저 두는 이유**. (1) 기존 부채라 FR-AT-07과 독립 — 지금 FR-AT-01·FR-SL이 **prod에서 사문화**돼 있다 (2) PR-C의 엔드포인트가 동작하려면 필수 (3) "prod에서 401이 아님"을 검증할 **테스트 인프라 자체가 없어서**(부록 A C-j) 그 인프라 구축이 PR-A의 산출물이며 PR-C가 재사용
+**PR-B가 C보다 먼저인 이유**. C의 룰이 붙일 액션이 B의 산출물. B는 단독으로도 유효(스케줄·이슈이벤트 룰로 Fix Version 설정 가능).
+
+---
+
+# §A. PR-A — 인바운드 웹훅 prod 도달 가능화 (이번 PR)
+
+## A-0. 문제 (사실)
+
+중앙 `SecurityConfig`(identity-access)가 `anyRequest().authenticated()`(`:186`)로 닫혀 있고, 인바운드 웹훅 경로가 permitAll 목록에 **없다**. POST는 CSRF 필터가 먼저 403. 각 BC는 **테스트 전용** 필터체인으로 자기 경계를 검증해 **초록불**이라 여태 안 드러남.
+
+- **알려진 부채**. `docs/plans/2026-07-11-automation-prod-assembly.md:53` — *"`AutomationWebhookController`가 조립되나 중앙 SecurityConfig 화이트리스트 미포함 → prod 401(FR-AT-01 WEBHOOK 트리거 **사문화**). slack `/slack/events`도 동일 미등록·후속 추적 중."* / `:165` — *"인바운드 permitAll 중앙등록은 BTS의 알려진 BC별 배포-시점 후속 패턴"*
+- **확장 포인트 없음**. 경로는 `SecurityConfig` companion object 리터럴 하드코딩(`:209-260`). `PathContributor` 류 grep 0건 → **이 구조가 부채의 원인**
+
+## A-1. 사용자 시나리오
+
 ```
-Given 프로젝트 PROJ에 Git 웹훅이 등록돼 있고(provider=GITHUB, secret 보유)
-  And PROJ에 활성 룰 "머지되면 1.2.0으로" 가 있다
-      (trigger=PR_MERGED, action=SET_FIX_VERSIONS{versionIds:[<1.2.0의 UUID>]})
- When GitHub이 pull_request(action=closed, merged=true) 웹훅을 보내고
-      PR 본문에 "Closes PROJ-42" 가 있다
- Then 서명 검증 통과 → 202 응답 (200ms 이내)
-  And PROJ-42의 Fix Version이 [1.2.0]으로 설정된다
-  And rule_executions에 SUCCESS 1행이 남는다
-```
+S-A1. Given prod 프로파일로 앱이 조립 부팅됐다
+      When 외부 Git/Slack 서버가 인바운드 경로로 POST 한다
+      Then 401/403이 아니라 각 컨트롤러에 도달한다 (서명 검증이 실제로 실행된다)
 
-### S2. 서명 불일치 → 거부
-```
-Given 등록된 웹훅의 secret이 S이다
- When X-Hub-Signature-256이 S로 계산한 값과 다르다
- Then 401 (빈 본문). 룰 미발화. 큐 미적재
-```
+S-A2. Given 잘못된 서명의 요청이다
+      When 인바운드 경로로 POST 한다
+      Then 컨트롤러의 서명 검증이 401을 준다 (permitAll이 인증을 없앤 게 아니라 검증 주체를 옮긴 것)
 
-### S3. 머지되지 않은 PR 이벤트 → 무시
-```
-Given 유효한 서명의 pull_request 웹훅
- When action=closed 이지만 merged=false (머지 없이 닫힘)
- Then 202. 룰 미발화 (조용히 무시)
-```
+S-A3. Given /slack/install (관리자 전용, authenticated + admin 이중가드)
+      When 익명으로 요청한다
+      Then 여전히 401 (permitAll 범위가 새지 않았다)
 
-### S4. 다중 이슈 키 → 각각 적용
-```
-Given PR 본문이 "Closes PROJ-1\nFixes PROJ-2" 이다
- When 머지 웹훅 수신
- Then PROJ-1·PROJ-2 각각에 대해 룰이 1회씩 발화 (이슈당 1 메시지 enqueue)
+S-A4. Given 암호화 키 환경변수가 배포 매니페스트에 선언돼 있다
+      When 운영자가 .env.prod.example 대로 설정한다
+      Then slack·MFA·OIDC·automation 기능이 첫 호출에서 500이 나지 않는다
 ```
 
-### S5. 키워드 없는 단순 언급 → 미발화
-```
-Given PR 본문이 "PROJ-9 관련 리팩터링" 이다 (Closes/Fixes 없음)
- When 머지 웹훅 수신
- Then 202. 룰 미발화 (D8 — 키워드 필수)
-```
-
-### S6. 재전송(replay) → 중복 미처리
-```
-Given 동일 X-GitHub-Delivery의 웹훅이 이미 처리됐다
- When 같은 payload가 재전송된다
- Then 202. 룰 미발화 (dedup). rule_executions 추가 행 없음
-```
-
-### S7. 권한 없는 룰 actor → fail-closed
-```
-Given 룰의 actor가 PROJ-42의 UPDATE 권한이 없다
- When 머지 웹훅으로 룰이 발화한다
- Then Fix Version 미변경. rule_executions에 PERMISSION_DENIED 기록
-      (기존 IssueMutationPermissionDeniedException 경로 승계)
-```
-
-### S8. GitLab MR 머지 → 동일 동작
-```
-Given provider=GITLAB 등록 (secret=T)
- When X-Gitlab-Token: T + Merge Request Hook(object_attributes.action=merge)
-  And object_attributes.description에 "Closes PROJ-7"
- Then S1과 동일하게 PROJ-7의 Fix Version 설정
-```
-
-## 기능 요구사항 (FR)
+## A-2. 기능 요구사항
 
 | ID | 요구사항 |
 |---|---|
-| FR-1 | `POST /api/v1/webhooks/git/{token}` 엔드포인트. permitAll + CSRF ignore. 성공 202 |
-| FR-2 | token(SHA-256 해시 조회)으로 등록 행 식별 → provider·projectKey·secret 확보. 미존재/삭제 균일 **404**(존재 숨김, FR-AT-01 선례) |
-| FR-3 | **서명 검증 fail-closed**. GITHUB=HMAC-SHA256(`X-Hub-Signature-256: sha256=<hex>`) / GITLAB=평문 토큰(`X-Gitlab-Token`). 둘 다 **상수시간 비교**. 불일치·헤더누락·secret 미설정 → **401**(빈 본문) |
-| FR-4 | **머지 이벤트만 처리**. GITHUB=`X-GitHub-Event: pull_request` + `action=="closed"` && `pull_request.merged==true` / GITLAB=`X-Gitlab-Event: Merge Request Hook` + `object_attributes.action=="merge"`. 그 외 → 202 무시 |
-| FR-5 | **delivery dedup**. `{provider}:{deliveryId}` PK 삽입 시도 → 중복이면 202 조기 반환(재처리 없음). deliveryId = `X-GitHub-Delivery` / `X-Gitlab-Event-UUID`, **헤더 부재 시 rawBody의 SHA-256으로 대체**(결정적 fallback) |
-| FR-6 | **이슈 키 추출**. PR **제목 + 본문**에서 `Closes/Fixes/Resolves` 계열 키워드 + 이슈키. 키워드 대소문자 무시, **이슈키는 대문자 고정**. 중복 제거 |
-| FR-7 | **프로젝트 스코프 필터**. 추출된 이슈키 중 prefix가 등록 행의 `project_key`와 **일치하는 것만** 처리. 불일치는 무시(로그) |
-| FR-8 | **룰 팬아웃**. `findEnabledByProjectAndTriggerType(projectKey, PR_MERGED)` × 이슈키 수만큼 `q_automation_execution`에 enqueue |
-| FR-9 | **triggerEvent 규약**. 최상위 `issueKey` 포함(`ActionExecutor.extractIssueKey`가 무변경 재사용됨) + PR 메타(`provider/action/title/body/number/url/targetBranch/mergedAt`) |
-| FR-10 | **신규 `TriggerType.PR_MERGED`**. `trigger_config` = `{}`(설정 없음, ISSUE_CREATED/WEBHOOK 동형) |
-| FR-11 | **신규 `ActionType.SET_FIX_VERSIONS`**. config `{versionIds: [UUID...]}`. 빈 배열 허용(= Fix Version 전체 해제) |
-| FR-12 | **신규 포트 `IssueMutationPort.setFixVersions(SetFixVersionsCommand)`**. 전체교체·OCC·dryRun. default 구현 없음(fail-closed) |
-| FR-13 | **issue-tracking 어댑터 구현**. `changeFixVersions` 유스케이스 위임(권한/검증/OCC/이력 보존). OCC 충돌 1회 재시도(기존 `runWithOccRetry` 동형) |
-| FR-14 | **중앙 SecurityConfig 등록**(D2). git 신규 + automation 웹훅(FR-AT-01) + slack 인바운드. permitAll + CSRF ignore |
-| FR-15 | **웹훅 등록 API**. `POST /api/v1/projects/{projectKey}/automation/git-webhooks`(생성, 토큰·secret **1회 노출**) / `GET`(목록, 토큰·secret 미노출) / `DELETE /{id}`(소프트 삭제). 권한 = `MANAGE_AUTOMATION`(기존 `AutomationPermissionResolver`) |
-| FR-16 | **프론트 계약 최소 동기화**. `triggerTypeSchema`·`actionTypeSchema` Zod enum에 신규 값 추가 + 라벨 맵 3곳. §제약 C4 |
+| **FR-A1** | 중앙 `SecurityConfig`에 인바운드 경로를 **경로 × 메서드 표대로** permitAll 등록 (A-3) |
+| **FR-A2** | **동일 경로를 CSRF ignore에도 등록**. ★ permitAll(`:151-184`)과 CSRF-ignore(`:133-146`)는 **각각 다른 블록** — FR-MF-01에서 한쪽만 등록해 실제 BLOCKER 발생 이력(KDoc `:86,139,228`) |
+| **FR-A3** | 매처는 **최소 범위**. 메서드 고정 + **단일 세그먼트/정확 경로**. `/**` 하위 와일드카드 **금지** (notification 선례 `:175-180` — GET 고정 + `/*` 2겹 방어) |
+| **FR-A4** | `infra/prod/.env.prod.example`에 암호화 키 **4종** 선언 (DEC-14) |
+| **FR-A5** | **prod 조립 HTTP 테스트 인프라** 신규 — permitAll 경로가 실제로 401이 아님을 조립 컨텍스트에서 검증 |
+| **FR-A6** | **회귀 가드** — 각 경로가 permitAll·CSRF-ignore **양쪽에** 등록됐는지 검증 |
 
-## 비기능 요구사항 (NFR)
+## A-3. 경로 × 메서드 표 (FR-A1 — BLOCKER B5 해소)
 
-| ID | 요구사항 | 임계 |
+> 1회차 스펙은 "slack 인바운드"라고만 적어 **실체 4개**를 열거하지 않았다. D2의 "메서드 고정(POST)" 원칙만 적용하면 `GET /slack/install/callback`이 누락돼 **slack 설치 플로우가 계속 401**이고, `/slack/**`로 열면 `/slack/install`(admin 이중가드)이 **익명 노출**된다.
+
+| 경로 | 메서드 | 매처 형태 | 출처 (test 전용 → 중앙 이관) |
+|---|---|---|---|
+| `/api/v1/automation/webhooks/*` | **POST** | 단일 세그먼트 (**`/**` 금지**) | `AutomationTestSecurityConfig.kt:49` (원본은 `/**` — 좁힘) |
+| `/slack/events` | **POST** | 정확 경로 | `SlackTestSecurityConfig.kt:65` |
+| `/slack/commands` | **POST** | 정확 경로 | `:66` |
+| `/slack/interactions` | **POST** | 정확 경로 | `:67` |
+| `/slack/install/callback` | **GET** | 정확 경로 | `:64` |
+
+**`/api/v1/webhooks/git/*` (POST)는 PR-C에서 추가.** PR-A는 기존 부채만 청산 — 없는 경로를 미리 열지 않는다.
+
+**열지 않는 것 (명시)**. `/slack/install` — `authenticated()` + admin fail-closed 이중가드 유지(`SlackTestSecurityConfig.kt:44-45`).
+
+## A-4. 암호화 키 4종 (FR-A4 — BLOCKER B4 해소)
+
+`infra/prod/.env.prod.example`에 **`BTS_SLACK_ENCRYPTION_KEY`·`BTS_MFA_ENCRYPTION_KEY`·`BTS_OIDC_ENCRYPTION_KEY`가 전부 없다.** [[use-time-validated-env-passes-boot-fails-on-use]]에 기록된 **실사고 그 자체**(health 통과 후 기능 첫 호출 500).
+
+| 환경변수 | 프로퍼티 | 상태 |
 |---|---|---|
-| NFR-1 | 웹훅 응답 지연 (수신→202) | **p95 < 200ms** (product doc §NFR) |
-| NFR-2 | payload 크기 상한 — **서명 검증 이전** 검사 | 256KB 초과 → **413** (FR-AT-01 `MAX_PAYLOAD_BYTES` 동일값) |
-| NFR-3 | secret 저장 | **평문 저장/로깅 0**. AES-256-GCM(`SecretEncryptor`) |
-| NFR-4 | 서명 비교 | **상수시간**(`MessageDigest.isEqual`) — 타이밍 공격 차단 |
-| NFR-5 | 트리거→액션 처리 지연 | p95 < 5s (기존 automation NFR 승계) |
-| NFR-6 | 권한 위반 액션 차단율 | 100% (fail-closed) |
+| `BTS_SLACK_ENCRYPTION_KEY` / `_SALT` | `bts.slack-encryption.{key,salt}` | **누락 → 추가** |
+| `BTS_MFA_ENCRYPTION_KEY` / `_SALT` | (MfaEncryptionConfig) | **누락 → 추가** |
+| `BTS_OIDC_ENCRYPTION_KEY` / `_SALT` | (OidcEncryptionConfig) | **누락 → 추가** |
+| `BTS_AUTOMATION_ENCRYPTION_KEY` / `_SALT` | `bts.automation-encryption.{key,salt}` | **PR-C에서 추가** (그 때 빈도 신설) |
 
-## API 인터페이스 (REST)
+- **salt는 hex** (C9 — `SecretEncryptor` 계약)
+- 생성 방법 주석 병기 (`openssl rand -hex 32` 등)
+- **DEC-14 — surgical changes 예외**. 본 FR 범위 밖이나 (a) 같은 종류의 사고가 이미 2번 터졌고 (b) 문서 몇 줄이라 비용 ≈ 0 (c) PR-A 자체가 "인바운드가 prod에서 실제로 도는가"를 다루는 PR이라 주제 정합. Maxi 확정
 
-### 인바운드 (외부 Git 서버 → BTS)
+## A-5. 테스트 인프라 (FR-A5 — CONCERN C-j 해소)
 
-```
-POST /api/v1/webhooks/git/{token}
-  Content-Type: application/json
-  Headers (GITHUB): X-Hub-Signature-256: sha256=<hex>, X-GitHub-Event, X-GitHub-Delivery
-  Headers (GITLAB): X-Gitlab-Token: <plain>, X-Gitlab-Event, X-Gitlab-Event-UUID
-  Body: 원문 JSON (서명 대상)
+**기존 인프라로는 이 PR의 완료 기준을 검증할 수 없다.** 유일한 9-BC prod 조립 테스트 `BtsApplicationContextTest`는 `@SpringBootTest` **기본(MOCK) 웹환경** → 실 HTTP 불가, MockMvc autowire 안 됨, KDoc상 **"dev postgres 수동 기동"** 전제(Testcontainers 미관리).
 
-  202 Accepted   — 수신 완료 (발화/무시/중복 모두 202, 구분 미노출)
-  401 Unauthorized — 서명 불일치·헤더 누락·secret 미설정 (빈 본문)
-  404 Not Found  — 토큰 미존재/삭제 (존재 숨김)
-  413 Payload Too Large — 256KB 초과
-```
+- prod + `RANDOM_PORT`는 PEM 키 등 **비자명한 셋업** 필요 ([[identity-access-prod-randomport-boot-recipe]])
+- → **별도 태스크로 분리**. 이 인프라는 PR-C가 그대로 재사용
+- 검증 방식. 각 permitAll 경로에 **의도적으로 무효한** 요청(빈 본문·서명 없음)을 보내 **401이 아닌 것**(컨트롤러 도달 = 400/401-with-body/413/404 등 컨트롤러 산출)을 단언. ★ "200이 온다"가 아니라 **"필터가 막지 않는다"** 를 검증
 
-**응답 코드 설계 근거**. 발화 여부를 202로 통일해 **외부에 룰 존재/이슈키 유효성을 노출하지 않는다**(정보 누출 차단). 404 vs 401 구분은 FR-AT-01 선례 — 토큰은 라우팅 실패(404), 서명은 인증 실패(401).
+## A-6. 엣지 케이스
 
-### 관리 (BTS UI → BTS)
-
-```
-POST   /api/v1/projects/{projectKey}/automation/git-webhooks
-       Body: { provider: "GITHUB"|"GITLAB" }
-       201 → { id, provider, webhookUrl, token, secret, createdAt }
-             ★ token·secret은 이 응답에서만 1회 노출 (FR-AT-01 webhookToken 선례)
-
-GET    /api/v1/projects/{projectKey}/automation/git-webhooks
-       200 → [{ id, provider, webhookUrl, createdAt }]   ★ token·secret 미포함
-
-DELETE /api/v1/projects/{projectKey}/automation/git-webhooks/{id}
-       204 (소프트 삭제)
-
-  권한. MANAGE_AUTOMATION (AutomationPermissionResolver) — 미보유 403
-```
-
-## 데이터 모델 변경
-
-### V306 — `automation_git_webhooks` (신규)
-
-> **★ product doc D3 "(활용. webhook secret 저장)" 전제 폐기.** 기존 `automation_rules.webhook_token_hash`는 **SHA-256 해시(비가역)** 라 HMAC 서명 재계산에 쓸 수 없다(plan §F6). 가역 암호화 저장이 필수 → 신규 테이블. product doc 문구 정정 대상.
-
-| 컬럼 | 타입 | 비고 |
+| # | 상황 | 기대 |
 |---|---|---|
-| `id` | UUID PK | `gen_random_uuid()` |
-| `project_key` | VARCHAR(50) NOT NULL | cross-BC, FK 아님 (`automation_rules` 동형) |
-| `provider` | VARCHAR(20) NOT NULL | CHECK `IN ('GITHUB','GITLAB')` — 앱 enum과 이중 방어 |
-| `token_hash` | VARCHAR(64) NOT NULL | 라우팅 토큰 SHA-256(평문 미저장). 부분 UNIQUE(`WHERE deleted_at IS NULL`) |
-| `secret_encrypted` | TEXT NOT NULL | **AES-256-GCM 암호문 hex** (`SecretEncryptor`) |
-| `created_by` | UUID NOT NULL | cross-BC, FK 아님 |
-| `created_at` / `updated_at` | TIMESTAMPTZ NOT NULL DEFAULT now() | |
-| `version` | BIGINT NOT NULL DEFAULT 0 | OCC (DATA.md §3 기본 컬럼) |
-| `deleted_at` | TIMESTAMPTZ | 소프트 삭제 (DATA.md §3) |
+| EC-A1 | `/slack/install` 익명 요청 | **401 유지** (범위 누출 없음) |
+| EC-A2 | `/api/v1/automation/webhooks/a/b` (2세그먼트) | 단일 세그먼트 매처 **미매칭** → 401 |
+| EC-A3 | `GET /api/v1/automation/webhooks/xxx` | 메서드 고정 → 401 (POST만 열림) |
+| EC-A4 | permitAll 등록했으나 CSRF ignore 누락 | POST가 403 → **FR-A6 회귀 가드가 잡아야 함** |
+| EC-A5 | 등록 경로에 유효 서명 없이 POST | 컨트롤러의 서명검증이 401 (**필터가 아니라 컨트롤러가** 준 401) |
 
-인덱스. `uq_automation_git_webhooks_token_hash` (부분 UNIQUE, `WHERE deleted_at IS NULL`) / `idx_automation_git_webhooks_project` (`project_key`, `WHERE deleted_at IS NULL`)
-
-### V306 — `automation_git_deliveries` (신규, dedup)
-
-| 컬럼 | 타입 | 비고 |
-|---|---|---|
-| `dedup_key` | VARCHAR(200) **PK** | `"{provider}:{deliveryId}"`. append-only (`slack_delivery_log` 선례) |
-| `received_at` | TIMESTAMPTZ NOT NULL DEFAULT now() | |
-
-**보존 정책**. 무한 증가 → 후속 정리 작업 필요(`slack_delivery_log`도 동일 미해소). §후속 과제.
-
-### V306 — `automation_rules.trigger_type` CHECK 갱신
-
-```sql
-ALTER TABLE automation_rules DROP CONSTRAINT ck_automation_rules_trigger_type;
-ALTER TABLE automation_rules ADD CONSTRAINT ck_automation_rules_trigger_type CHECK (
-  trigger_type IN ('ISSUE_CREATED','ISSUE_UPDATED','ISSUE_COMMENTED','SCHEDULED','WEBHOOK','PR_MERGED')
-);
-```
-**★ V300 편집 금지** — 이미 적용된 마이그레이션 수정은 체크섬 드리프트를 일으킨다(`:modules:app:test`가 5433 영속 DB 사용). 반드시 신규 파일.
-
-### V306 — `automation_actions.action_type` CHECK 갱신
-
-동일 방식으로 `'SET_FIX_VERSIONS'` 추가 (V302 편집 금지).
-
-### shared-kernel 계약 (신규)
-
-```kotlin
-// IssueMutationCommands.kt
-data class SetFixVersionsCommand(
-    val actorUserId: UUID,
-    val issueKey: String,
-    val versionIds: List<UUID>,   // 전체교체 시맨틱. 빈 리스트 = 전체 해제
-    val expectedVersion: Long?,   // OCC. null이면 어댑터가 현재값 조회 후 적용
-    val dryRun: Boolean,
-)
-
-// IssueMutationPort.kt — default 없음(fail-closed)
-fun setFixVersions(cmd: SetFixVersionsCommand): MutationResult
-```
-
-## 엣지 케이스
-
-| # | 상황 | 동작 |
-|---|---|---|
-| EC1 | 토큰 미존재 / 소프트삭제 / 타 프로젝트 | 균일 **404**(존재 숨김) |
-| EC2 | secret 미설정(암호화 키 부재) | `SecretEncryptor.decrypt`가 `IllegalStateException` → **401**(fail-open 금지). 로그에 평문/키 미포함 |
-| EC3 | `X-Hub-Signature-256` 헤더 누락 | **401** |
-| EC4 | payload가 JSON 파싱 불가 | **서명 통과 후** 파싱 → 실패 시 202(무시). 서명 전 파싱 금지 |
-| EC5 | 이슈키 0건 추출 | 202. 큐 미적재 |
-| EC6 | 추출 이슈키 prefix ≠ 등록 project_key | 해당 키만 무시(FR-7). 나머지는 정상 처리 |
-| EC7 | 이슈키가 실재하지 않음(PROJ-99999) | 웹훅은 202. 액션 실행 시 `IssueNotFound` → rule_executions FAILED |
-| EC8 | PR_MERGED 룰 0건 | 202. 큐 미적재 |
-| EC9 | 액션의 versionId가 타 프로젝트/삭제 버전 | `changeFixVersions`의 `validateVersions`가 422 → 어댑터가 예외 → FAILED 기록 |
-| EC10 | OCC 충돌(동시 편집) | 어댑터가 version 재조회 후 **1회 재시도**. 재실패 시 FAILED |
-| EC11 | 동일 delivery 재전송 | 202. dedup으로 미처리 (S6) |
-| EC12 | dedup 삽입과 처리 사이 크래시 | dedup 먼저 커밋 → **at-most-once**. (트레이드오프. 유실 < 중복설정. §제약 C5) |
-| EC13 | GitLab `X-Gitlab-Event-UUID` 부재(구버전) | rawBody SHA-256 fallback (FR-5) |
-| EC14 | 256KB 초과 | **413**. 서명 검증 이전 (NFR-2) |
-| EC15 | 룰 actor 권한 없음 | PERMISSION_DENIED 기록, 이슈 미변경 (S7) |
-| EC16 | 빈 `versionIds` 액션 | Fix Version 전체 해제(정상 동작, FR-11) |
-
-## 제약 조건
+## A-7. 제약
 
 | # | 제약 |
 |---|---|
-| C1 | **raw body 함정**. 컨트롤러는 `@RequestBody String`만 사용. `@RequestParam`/`@ModelAttribute` **병용 금지** — Spring이 form을 먼저 파싱해 스트림을 소비하면 `@RequestBody`가 빈 문자열이 되어 **서명 검증이 조용히 무력화**된다 (`SlackCommandsController.kt:24-33` 3중 경고) |
-| C2 | **BC 격리 — 정규식 값 복제**. `IssueKey.REGEX`를 import할 수 없음 → 값 복제 + 주석에 출처 명시 (`AtlasIssueUrlParser.kt:56` 선례) |
-| C3 | **BC 격리 예외 — identity-access**. D2의 SecurityConfig 등록. security-engineer 공동 검토 필수 |
-| C4 | **프론트 계약 파급 (필수)**. `automation-rules.types.ts:13` `triggerTypeSchema` z.enum 5종 / `:23` `actionTypeSchema` z.enum 4종이 **backend enum과 1:1 고정**. 백엔드만 추가하면 해당 룰 조회 시 **Zod parse 실패로 룰 목록 화면 전체가 깨진다**. 라벨 맵 3곳(`AutomationRuleFormDialog.tsx:72`·`AutomationRuleList.tsx:56`·`RuleExecutionTraceRow.tsx:56`) + 테스트 목록 2곳(`automation-rules.types.test.ts:256,273`) 동반 |
-| C5 | **dedup 시맨틱 = at-most-once**. dedup 행을 처리 전 커밋 → 크래시 시 유실 가능. "중복 Fix Version 설정" 보다 "누락"이 안전하다는 판단(수동 재발송 가능) |
-| C6 | **enum 카운트 가드 전수**. `TriggerConfigTest.kt:17,21`(`entries.size shouldBe 5`) · `ActionTest.kt:18,22`(`shouldBe 4`) · `SchemaMigrationTest.kt`(CHECK 5종) 동반 갱신 |
-| C7 | **마이그레이션 신규 파일만**. V300/V302 편집 금지(체크섬 드리프트) |
-| C8 | **prod 조립 재검증**. cross-BC 포트 추가 → 머지 전 `origin/main` rebase + `:modules:app:test` |
-| C9 | **신규 암호화 빈**. `automationSecretEncryptor`(`bts.automation-encryption.{key,salt}`) — BC별 키 격리 관례. **빈은 항상 등록**(`@ConditionalOnProperty` 금지), 사용 시점 `check(configured)`. salt는 **hex** |
-| C10 | **신규 의존성 0**. HMAC은 JDK `javax.crypto.Mac`. YAML/HTTP 클라이언트 추가 없음 |
+| **C-A1** | **BC 격리 예외** — identity-access(`SecurityConfig`)를 automation/slack 사유로 수정. plan §리스크 명시 + **security-engineer 공동 검토 필수** |
+| **C-A2** | **★ prod 신규 노출 리스크** — 이 PR은 부채 청산인 동시에 **미검증 경로 2개를 prod에 처음 여는 변경**이다. 기존 `AutomationWebhookController:97`은 임의 `{"issueKey":"OTHER-1"}`을 **무검증 enqueue**하고(부록 A C-d), actor 임의 지정도 가능(C-e). **prod에서 죽어 있어서 문제가 안 되던 것들**이다 |
+| **C-A3** | rate limit 부재 — permitAll 경로에 미인증 요청 강제 가능. 기존 부채이나 세 경로를 여는 PR이 **명시는 해야 함** → §후속 |
+| **C-A4** | 매처 문법 주의 — Spring Security의 `/*`는 단일 세그먼트, `/**`는 하위 전체. notification 선례(`:248` `PUBLIC_DASHBOARDS_PATH = "/api/v1/public/dashboards/*"`) 대조 |
+| **C-A5** | 신규 의존성 0 |
 
-## 이슈 키 추출 규칙 (상세)
+## A-8. 측정 가능한 완료 기준 (PR-A)
 
-```
-키워드. close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved  (대소문자 무시)
-이슈키. [A-Z][A-Z0-9]{1,9}-[1-9][0-9]*                                (대문자 고정)
-경계.   키워드 앞 \b, 이슈키 뒤 (?![A-Za-z0-9-])
-대상.   PR 제목 + 본문 (GITHUB: pull_request.title/body, GITLAB: object_attributes.title/description)
-중복.   추출 후 distinct
-```
-
-- **대소문자 비대칭 주의**. 키워드만 대소문자 무시. 전체에 `(?i)`를 걸면 `proj-1` 같은 소문자 키까지 매칭돼 `IssueKey.REGEX`(대문자 고정) 계약과 어긋난다 → 스코프 한정 플래그(`(?-i:...)`) 또는 명시적 문자클래스 사용
-- **앵커 주의**. `find()`는 미앵커라 텍스트 유실 사고 이력 있음(learnings — flexmark 인라인 확장). 경계 lookahead 필수
-- `body`가 `null`인 PR 허용(제목만 스캔)
-
-## 측정 가능한 완료 기준
-
-- [ ] S1~S8 전 시나리오 통합 테스트 통과 (Testcontainers + 실서블릿)
-- [ ] EC1~EC16 전 케이스 테스트 존재
-- [ ] 서명 검증 — 유효/무효/헤더누락/secret미설정 4분기 + **상수시간 비교 사용** 확인
-- [ ] 256KB 초과 → 413이 **서명 검증 이전** 발생 (실서블릿 검증. MockMvc는 서블릿 상한 우회 → 가짜 그린)
-- [ ] `TriggerType.entries.size shouldBe 6` / `ActionType.entries.size shouldBe 5` 갱신
-- [ ] `SchemaMigrationTest` CHECK 제약 6종/5종 갱신
-- [ ] shared-kernel `IssueMutationPortContractTest` — `setFixVersions` default 없음 검증
-- [ ] `StubIssueMutationPort` 갱신 (consumer-owns-stub)
-- [ ] **`:modules:app:test` 통과** (9 BC prod 조립 — 신규 포트 NoSuchBean 회귀 차단)
-- [ ] SecurityConfig 3종 등록 후 **prod 프로파일에서 인바운드 경로가 401이 아님** 검증
-- [ ] 프론트 `pnpm typecheck` + 기존 automation 단위 테스트 회귀 0 (C4)
+- [ ] S-A1~S-A4 통합 테스트 통과
+- [ ] EC-A1~EC-A5 각각 테스트 존재 — 특히 **EC-A1(`/slack/install` 401 유지)**, **EC-A4(CSRF 이중등록)**
+- [ ] **5개 경로 각각** 개별 검증 (부록 A C-9 — 단수 표현으로 뭉뚱그리면 slack 매처 오타를 못 잡음)
+- [ ] FR-A5 prod 조립 HTTP 테스트 인프라 신규 구축 + 동작
+- [ ] `.env.prod.example` 키 3종(+PR-C에서 4번째) 선언 + 생성법 주석
+- [ ] `:modules:app:test` 통과 (9 BC prod 조립)
+- [ ] 기존 slack·automation 테스트 회귀 0
 - [ ] ktlint + detekt 0
-- [ ] 전수 동기화 — SDD 8.8 정정 · product doc D2/D3 문구 정정 · fr-index · README · dashboard
+- [ ] `bash scripts/verify-master-plan.sh` 통과
+- [ ] **FR 카운트 불변 123** (PR-A는 FR 자체를 완료시키지 않음 — 부채 청산)
 
-## 후속 과제 (본 PR 범위 밖)
+## A-9. 후속 (PR-A 범위 밖)
 
-- **D6/D7** — Webhook URL 생성 UI + E2E (후속 PR)
-- `automation_git_deliveries` / `slack_delivery_log` 보존 정책(정리 배치)
-- permitAll **확장 포인트 부재**(plan §F2) — BC별 경로 등록 인터페이스 도입 검토. 이 구조가 부채 재발 원인
-- `AutomationWebhookController`의 SHA-256 해싱 중복 구현(`:224` vs `AutomationRuleService.kt:758`) 통합
-- automation main에 non-prod 스텁 부재 → 조립 앱 prod 전용(plan §F2 부수 발견)
+- **permitAll 확장 포인트 도입** — BC별 경로 등록 인터페이스. 부재가 이 부채의 **구조적 원인**(§A-0). 도입 시 조립만으로 자동 반영
+- 인바운드 경로 rate limit (C-A3)
+- `AutomationWebhookController`의 무검증 `issueKey` enqueue (C-A2) → PR-C에서 방어심층
+- actor 임의 지정 (부록 A C-e) → 별도 FR 후보
 
-## Brainstorming Check
+---
 
-❌ **미통과 — 1회차. BLOCKER 9건 / CONCERN 11건.** 적대적 검토 2종 병렬(security-engineer + backend-engineer)이 **실제 코드 대조**로 발견. 인용된 파일:줄 10여 개는 전부 실재·정확 확인됨 — 문제는 인용이 아니라 **설계**.
+# §B. PR-B — Fix Version 설정 통로 (후속 PR)
 
-> 검토 방식 deviation. 스킬 Phase B는 `superpowers:brainstorming` 호출을 지시하나, 그 스킬은 "구현 전 사용자 의도 대화 탐색" 도구로 "작성된 스펙의 gap 발견"과 목적이 다름([[bts-spec-office-hours-mismatch]]와 동종 불일치). Phase B의 **명시된 목적**("누락된 요구사항·모호한 표현·가정 누락·엣지 케이스 미커버를 찾아내")을 적대적 에이전트 검토로 달성.
+> 요약만. 착수 시 `/bts`로 별도 plan/spec 상세화.
 
-### BLOCKER — 설계 결함
+## B-1. 범위
 
-| # | 항목 | 실체 |
-|---|---|---|
-| **B1** | **C1 ↔ NFR-2 정면 충돌** | `@RequestBody String`이면 Spring이 **컨트롤러 진입 전 본문 전체를 힙에 버퍼링** → 메서드 안 크기검사는 무의미. `infra/prod/nginx.conf:16` `client_max_body_size 110m` + `mem_limit: 1536m` → **미인증 permitAll 경로로 110MB 힙 적재**. ★ 스펙이 인용한 FR-AT-01 선례는 **정반대** — `AutomationWebhookController.kt:110-116`은 `@RequestBody`를 의도적으로 안 쓰고 `HttpServletRequest.inputStream.readNBytes(MAX+1)` 사용. 스펙은 **값(256KB)만 FR-AT-01에서, 형태는 slack에서** 가져와 slack의 약한 가드를 상속. ★ **완료 기준(:267)이 이 결함을 통과시킴**(413이 HMAC보다 먼저이긴 하므로) = 가짜 그린 |
-| **B2** | **팬아웃 무제한 = 증폭 공격** | PR 제목/본문은 **secret 없는 외부 기여자**가 쓰는 입력(HMAC은 "GitHub이 보냈다"만 증명). 256KB ÷ ~12B ≈ **20,000 distinct 이슈키** × 룰 N개 동기 enqueue → NFR-1 파탄 + 워커 배수량 10msg/s(`AutomationExecutionWorker.kt:331,340`)로 **~33분 전 프로젝트 automation 정지**. 억제창 60초는 키가 전부 distinct라 무력. ★ 저장 증폭 — FR-9가 PR `body`를 통째로 싣고 `rule_executions.trigger_event JSONB`(V305)가 실행마다 영속 → **요청 1건 ≈ 5GB** |
-| **B3** | **dedup 키가 서명 밖 헤더** | GitHub HMAC은 **본문만** 서명 — `X-GitHub-Delivery`는 서명 대상 밖. 유효 (body, signature) 1쌍 캡처 후 **delivery UUID만 갈아끼워 무한 재전송** → 서명 통과 + dedup 매번 신규 → 전부 재처리. S6의 "replay 방어"는 **거짓**(실제로는 정직한 재시도에 대한 배달 dedup). ★ GITLAB은 평문 토큰이 본문과 무관 → **본문 무결성 0** → rawBody SHA fallback(EC13)도 무의미 |
-| **B4** | **암호화 키 배포 부재** | `infra/prod/.env.prod.example`에 `BTS_SLACK_ENCRYPTION_KEY`·`BTS_MFA_*`·`BTS_OIDC_*` **전부 없음** — [[use-time-validated-env-passes-boot-fails-on-use]]에 기록된 **실사고 그 자체**(MFA·OIDC가 health 통과 후 첫 호출 500). FR-AT-07이 **네 번째 키를 같은 방식으로** 추가하면서 완료기준·전수동기화에 누락 → **머지해도 prod 100% 미동작 확정**. + 키 유실이 **조용한 401**로 은폐(관측 요구 0) |
-| **B5** | **FR-14 경로 미열거** | "slack 인바운드"의 실체는 **4개**(`SlackTestSecurityConfig.kt:64-67`). D2의 "메서드 고정(POST)" 원칙이 `GET /slack/install/callback`을 커버 못 함 → **slack 설치 플로우 계속 401**. 반대로 `/slack/**`로 열면 `/slack/install`(authenticated+admin 이중가드)이 **익명 노출**. automation 테스트 config는 `/api/v1/automation/webhooks/**` **하위 와일드카드** — 중앙 이전 시 D2가 인용한 notification 선례(단일 세그먼트 `/*`) 원칙 위반. ★ permitAll(`:151-184`)과 CSRF-ignore(`:133-146`)는 **각각 다른 블록** — FR-MF-01에서 한쪽만 등록해 실제 BLOCKER 발생 이력(KDoc `:86,139,228`) |
-| **B6** | **`SetFixVersionsCommand.expectedVersion` — plan D3의 근거가 코드로 반증됨** | plan D3이 *"setField의 `value: String?`에 리스트를 숨기면 OCC 파라미터가 사라진다"*고 적었으나 **사실이 아님**. `SetFieldCommand`/`AssignCommand`(`IssueMutationCommands.kt:34-60`)는 **애초에 OCC 파라미터가 없다** — 어댑터가 매 시도마다 자기 트랜잭션 안에서 `findByKey().version`을 직접 재조회해 채우고(`AutomationIssueMutationAdapter.kt:100-105,118-124`) `runWithOccRetry`(`:162-172`)가 1회 재시도. **호출자는 OCC를 알 필요가 없는 설계**. 게다가 `ActionExecutor`는 `IssueSnapshot`(9필드, `version` 없음)에서 값을 얻으므로 **유효한 expectedVersion을 조달할 경로가 아예 없음** → 항상 null → 죽은 분기. 훗날 "값 있으니 재조회 생략" 구현 시 **진짜 TOCTOU** |
-| **B7** | **`ActionType.SET_FIX_VERSIONS` 파급 6파일 ~13지점 누락** | `Action`은 sealed class → exhaustive `when` 6파일. `Action.kt`(subclass+`fromJson`) · `AutomationActionRepository.kt:113-116,131-143` · `AutomationRuleResponses.kt:190-193,199-202` · `RuleConflictAnalyzer.kt`(`:103-106`,`:414-417`,`:426-429`) · `ActionExecutor.kt:199-213,289-292` · `AutomationYamlCodec.kt:245-248,258-265`(FR-AT-06 승계). ★ **`RuleConflictAnalyzer.hasObservableSideEffect:317-319`는 `it is X \|\| it is Y` boolean 체인 — 컴파일러가 강제 안 함** → 누락해도 컴파일 통과하고 PRIORITY_AMBIGUITY 충돌 탐지가 **조용히 SET_FIX_VERSIONS를 무시** |
-| **B8** | **타깃 브랜치 구분 부재 — 제품 의미가 깨짐** | `Condition.FIELD_WHITELIST`(issue.* 9종, PR 메타 없음) · `findEnabledByProjectAndTriggerType(projectKey, PR_MERGED)`(FR-8) 어디에도 브랜치 필터 없음 → `release/1.2→1.2.0`·`release/2.0→2.0.0` 두 룰이 있으면 **어느 브랜치로 머지되든 둘 다 발화**해 같은 이슈에 1.2.0·2.0.0 동시 설정. S1의 "머지되면 1.2.0으로" 전제가 **단일 활성 릴리스 브랜치만 가정**. D4(명시 versionId)가 성립하려면 룰이 **브랜치별로 스코프**돼야 하는데 그 경로가 없고, 한계 명시조차 없음 |
-| **B9** | **NFR-1(p95<200ms) 검증 방법 0** | 완료기준 12항목 중 NFR-1 언급 **0건**(형제 스펙 FR-AT-01은 최소 "응답 지연 검증" 존재 — `2026-07-10-fr-at-01-automation-triggers.md:136`). 그런데 동기 경로가 선례보다 **명백히 무거움** — dedup INSERT + AES-GCM 복호화 + HMAC + 룰조회 + **이슈키 N개만큼 개별 enqueue**(`AutomationExecutionEnqueuer:44-51`이 `@Transactional` 기본전파 → 호출마다 커밋 1회) |
-
-### CONCERN (11건, 요지)
-
-| # | 항목 |
+| ID | 요구사항 |
 |---|---|
-| C-a | **provider 분기 기준 미명문화** — FR-3의 GITHUB/GITLAB이 **DB 행**인지 **헤더 추론**인지 불확정. 헤더 분기로 구현하면 강등 공격(GITLAB 행에 `X-Hub-Signature-256` 붙여 평문비교 우회). 설계 자체(등록행 provider·변경 API 없음·CHECK 이중)는 **충분함**이 확인됨 — 문장만 못박으면 해소. 교차 헤더 EC 2건 추가 |
-| C-b | **404 존재숨김이 거짓** — 서명 실패 401 분기가 생기는 순간 "404=미존재 / 401=존재+서명틀림" 오라클. secret 없이 토큰 유효성 확인 가능. FR-AT-01은 **서명이 없어 401 분기 자체가 없었음** → 선례 아님. → 라우팅·서명 실패 **401 통일** 권고 |
-| C-c | **GITLAB 보안등급이 GITHUB과 다름** — 평문 토큰이 유일 인증 + 본문 무결성 0. 스펙은 둘을 동급으로 서술 |
-| C-d | **FR-7 불변식이 큐 하류에서 깨짐** — `ActionExecutor.extractIssueKey:264-268`은 `triggerEvent.issueKey`를 **무검증 신뢰**, 룰 projectKey와 대조 안 함. FR-7은 **컨트롤러 단일 지점**. ★ 기존 `AutomationWebhookController:97`도 임의 `{"issueKey":"OTHER-1"}`을 그대로 enqueue — **prod에서 죽어 있어 문제가 안 되던 경로를 FR-14가 처음 연다**. 스펙 리스크에 없음 |
-| C-e | **actor 임의 지정** — `validateActorUserId`(`AutomationRule.kt:147-150`)는 nil UUID만 거부. MANAGE_AUTOMATION 보유자가 actor를 임의 사용자로 지정 가능(`AutomationRuleService.kt:697-698`). 기존 결함이나 FR-AT-07이 **"관리자가 스스로 발화" → "외부 PR 작성자가 발화, 관리자 권한 실행"** 으로 폭발반경 변경 |
-| C-f | **dedup 커밋 후 부분 팬아웃 실패** — 이슈키 N건 각각 독립 트랜잭션. 2번째 enqueue 실패 시 1번만 처리·2·3번 **영구 유실**, dedup 때문에 재전송 복구 불가. EC12가 다루는 것보다 나쁜 케이스 |
-| C-g | **V306 관례 위반** — 모듈 V300~V305는 예외 없이 **1파일=1스키마 변경**. V306에 테이블2+CHECK2를 몰아넣음(`DATA.md §4` "큰 변경 분할"과도 충돌) → V306~V309 분할. + 스펙에 **V306이 4번 표기**(Flyway 버전 중복 시 부팅 실패) |
-| C-h | **기존 음성 테스트 확실히 깨짐** — `SchemaMigrationTest.kt:559-562`가 `insertRule("PR_MERGED")`를 **CHECK 위반 프로브 값**으로 사용 중. 완료기준 문구가 이 지점을 못 짚음 |
-| C-i | **EC9의 "422" 오해 유발** — 422는 `IssueController` 동기 REST 매핑(`IssueExceptionHandler.kt:494-495`) 전용. automation은 pgmq 워커 비동기라 HTTP 응답 없음 → FAILED만. 구현자가 불필요한 HTTP 매핑 만들 위험 |
-| C-j | **"prod 401 아님" 검증 인프라 부재** — 유일한 9-BC 조립 테스트 `BtsApplicationContextTest`는 `@SpringBootTest` **기본(MOCK) 웹환경** → 실 HTTP 불가, MockMvc autowire 안 됨, KDoc상 "dev postgres **수동** 기동" 전제. prod+RANDOM_PORT는 PEM 키 등 비자명 셋업 필요([[identity-access-prod-randomport-boot-recipe]]) → **신규 테스트 인프라 구축**이 별도 태스크 |
-| C-k | **PR_MERGED + ADD_COMMENT 조합 오작동** — `buildContext:271-284`는 triggerEvent에 중첩 `issue` 객체 없으면 **triggerEvent 전체를 issue 필드로 취급** → FR-9 규약(평탄한 PR 필드)에선 `{{issue.title}}`이 **PR 제목**으로 렌더. 트리거·액션이 결합돼 있지 않아 막을 방법 없음 |
+| FR-B1 | `IssueMutationPort.setFixVersions(SetFixVersionsCommand)` — default 없음(fail-closed) |
+| FR-B2 | issue-tracking 어댑터 구현 — `changeFixVersions` 유스케이스 위임 |
+| FR-B3 | `ActionType.SET_FIX_VERSIONS` + config `{versionIds:[UUID...]}` (빈 배열 = 전체 해제) |
+| FR-B4 | 프론트 계약 동기화 — `actionTypeSchema` z.enum + 라벨 맵 |
 
-### NIT
+## B-2. ★ `expectedVersion` 없음 (BLOCKER B6 해소)
 
-- **GitHub form-urlencoded 웹훅** — GitHub UI 정식 옵션. 서명은 통과하나 `readTree` 실패 → EC4에 따라 **202 조용히 무시** → 운영자가 "202인데 아무 일 없음"을 디버깅. `consumes = APPLICATION_JSON_VALUE`로 415 명시 거부 권고
-- **D 식별자 3중 충돌** — 스펙 결정표의 D7~D10 vs product doc 단계 D7(=E2E) vs plan 결정 D1~D6. `DEC-n`으로 분리
-- `init_codegen.sql` 미러 — automation은 JdbcTemplate이라 **면제**(jOOQ 4모듈에 automation 없음, 직접 확인). 면제 사실 명시 필요
-- FR-15가 `token`+`secret` **동시 1회 노출** — 유출 시 폭발반경 2배(둘 다 회전 필요)
-- secret 로테이션 경로 부재(DELETE+POST면 URL 변경 → GitHub 재설정)
-- 웹훅 등록/삭제 감사 기록(`deleted_by`) 부재
-- permitAll 경로 **rate limit 부재** — 기존 slack/automation도 동일해 신규 부채는 아니나, 세 경로를 한꺼번에 여는 PR이 언급조차 안 하는 건 문제
+```kotlin
+data class SetFixVersionsCommand(
+    val actorUserId: UUID,
+    val issueKey: String,
+    val versionIds: List<UUID>,   // 전체교체 시맨틱
+    val dryRun: Boolean,
+)
+```
+
+**1회차 스펙의 `expectedVersion: Long?`는 삭제.** plan D3의 근거(*"setField에 리스트를 숨기면 OCC 파라미터가 사라진다"*)가 **코드로 반증됨** — `SetFieldCommand`/`AssignCommand`(`IssueMutationCommands.kt:34-60`)는 **애초에 OCC 파라미터가 없고**, 어댑터가 매 시도마다 자기 트랜잭션 안에서 `findByKey().version`을 재조회해 채운다(`AutomationIssueMutationAdapter.kt:100-105,118-124`) + `runWithOccRetry`(`:162-172`) 1회 재시도. **호출자는 OCC를 알 필요가 없다.**
+게다가 `ActionExecutor`는 `IssueSnapshot`(9필드, `version` 없음)에서 값을 얻어 **유효한 expectedVersion을 조달할 경로가 없다** → 항상 null인 죽은 분기 → 훗날 "값 있으니 재조회 생략" 구현 시 **진짜 TOCTOU**.
+
+**D3의 결론(전용 포트 메서드)은 유지.** 정당한 근거는 **전체교체 시맨틱 + 복수 versionId를 타입으로 드러냄**(`value: String?` JSON 인코딩에 리스트를 숨기면 "필드 하나에 값 하나"가 깨짐) + fixVersions가 `updateIssue`가 아닌 **별도 서비스 메서드** 경로라는 구조적 사실(F3).
+
+## B-3. ★ `ActionType` 추가 파급 — 6파일 ~13지점 (BLOCKER B7 해소)
+
+`Action`은 **sealed class** → exhaustive `when` 전수 갱신 필요.
+
+| 파일 | 지점 |
+|---|---|
+| `Action.kt` | sealed subclass 신설 + `fromJson`의 `when(actionType)` |
+| `AutomationActionRepository.kt` | `:113-116`, `:131-143` — DB 저장/복원 매핑 2곳 |
+| `AutomationRuleResponses.kt` | `:190-193`, `:199-202` — REST 응답 DTO 매핑 2곳 |
+| `RuleConflictAnalyzer.kt` | `:103-106`(CYCLE) · `:414-417`(권한요구) · `:426-429`(라벨) · **`:317-319` `hasObservableSideEffect`** |
+| `ActionExecutor.kt` | `:199-213`(디스패치) · `:289-292`(타입 매핑) |
+| `AutomationYamlCodec.kt` | `:245-248`, `:258-265` — YAML GitOps(FR-AT-06 승계) |
+
+**★ `hasObservableSideEffect:317-319`는 `it is X || it is Y` boolean 체인 — 컴파일러가 강제하지 않는다.** 누락해도 **컴파일 통과**하고 PRIORITY_AMBIGUITY 충돌 탐지가 **조용히 SET_FIX_VERSIONS를 무시**한다 → 회귀 테스트 필수([[archunit-vacuous-rule-silent-pass]] 동종 — 통과가 검증을 의미하지 않음).
+
+## B-4. 기타 반영
+
+- 프론트 `actionTypeSchema`(`automation-rules.types.ts:24`) + 테스트 목록(`:273`) + 라벨 맵. **백엔드만 추가하면 해당 룰 조회 시 Zod parse 실패로 룰 목록 화면 전체가 깨짐**
+- `ActionTest.kt:18,22` `entries.size shouldBe 4` → 5
+- `automation_actions.action_type` CHECK 갱신 — **V302 편집 금지**(체크섬 드리프트), 신규 파일
+- EC — 타 프로젝트/삭제 버전 → `validateVersions`가 차단, **예외 타입 그대로 전파 → `rule_executions` FAILED**. ★ **"422" 언급 금지**(부록 A C-i) — 422는 `IssueController` 동기 REST 매핑 전용이고 automation은 pgmq 워커 비동기라 HTTP 응답 자체가 없음
+
+---
+
+# §C. PR-C — Git webhook + PR_MERGED 트리거 (후속 PR)
+
+> 요약만. 착수 시 `/bts`로 별도 plan/spec 상세화. **선행 = PR-A, PR-B.**
+
+## C-1. ★ 신뢰 경계 (BLOCKER B2 전제 — 이 문단이 없으면 아래 상한들이 과잉방어로 오해됨)
+
+> **PR 제목·본문은 신뢰할 수 없는 외부 입력이다.** HMAC 서명이 증명하는 것은 **"GitHub이 보냈다"** 이지 **"내용이 믿을 만하다"** 가 아니다. PR은 BTS 계정이 없는 외부 기여자도 열 수 있고, 그 사람이 제목·본문을 자유롭게 쓴다. 따라서 **추출 결과는 전부 상한·검증 대상**이다.
+
+## C-2. 핵심 요구사항
+
+| ID | 요구사항 |
+|---|---|
+| FR-C1 | `POST /api/v1/webhooks/git/{token}` — permitAll(PR-A 인프라 재사용) + CSRF ignore |
+| FR-C2 | 토큰 SHA-256 조회 → 등록행(provider·projectKey·secret) |
+| FR-C3 | **서명 검증은 등록행 `provider`로만 분기** (C-3) |
+| FR-C4 | 머지 이벤트만 처리 (GITHUB `pull_request`+`action=closed`+`merged=true` / GITLAB `Merge Request Hook`+`action=merge`) |
+| FR-C5 | **targetBranch 필터** (C-5) |
+| FR-C6 | 이슈 키 추출 — PR 제목+본문, `Closes/Fixes/Resolves` 계열 키워드 필수, 이슈키 대문자 고정 |
+| FR-C7 | 프로젝트 스코프 필터 — prefix ≠ 등록 project_key인 키 무시 |
+| FR-C8 | **팬아웃 상한** (C-4) |
+| FR-C9 | 배달 dedup — **replay 방어 아님** (C-6) |
+| FR-C10 | 등록 API `POST/GET/DELETE /api/v1/projects/{projectKey}/automation/git-webhooks`, 권한 `MANAGE_AUTOMATION` |
+| FR-C11 | `TriggerType.PR_MERGED` + 프론트 `triggerTypeSchema` 동기화 |
+| FR-C12 | `automationSecretEncryptor` 빈 + `.env.prod.example` 4번째 키 |
+
+## C-3. ★ raw body — `@RequestBody String` 금지 (BLOCKER B1 해소)
+
+**1회차 스펙의 C1(`@RequestBody String`만 사용)과 NFR-2(크기 상한이 서명 검증 이전)는 양립 불가능했다.** `@RequestBody String`이면 Spring이 **컨트롤러 진입 전 본문 전체를 힙에 버퍼링**한다 → 메서드 안 검사는 전부 버퍼링 이후. `infra/prod/nginx.conf:16` `client_max_body_size 110m` + `mem_limit: 1536m` → **미인증 permitAll 경로로 110MB 힙 적재**.
+
+**1회차가 인용한 FR-AT-01 선례는 정반대였다** — `AutomationWebhookController.kt:110-116`은 `@RequestBody`를 **의도적으로 쓰지 않고**:
+```kotlin
+private fun readBoundedBody(request: HttpServletRequest): ByteArray {
+    val bytes = request.inputStream.readNBytes(MAX_PAYLOAD_BYTES + 1)
+    if (bytes.size > MAX_PAYLOAD_BYTES) throw AutomationWebhookPayloadTooLargeException()
+    return bytes
+}
+```
+1회차는 **값(256KB)만 FR-AT-01에서, 형태는 slack에서** 가져와 slack의 약한 가드를 상속했다(slack도 같은 문제 보유 — `SlackCommandsController.kt:73-78`).
+
+**확정**.
+- `HttpServletRequest.inputStream.readNBytes(MAX+1)` → 초과 시 **413** (`AutomationWebhookController:110` 동형)
+- **HMAC은 raw 바이트에 직접** — String 왕복 없음. `@RequestBody String`은 `server.servlet.encoding.charset` 의존이고 잘못된 UTF-8 바이트의 decode→re-encode가 **손실적이라 서명이 깨짐**
+- **`@RequestParam`/`@ModelAttribute` 병용 절대 금지** (원 함정 유지 — form 파싱이 스트림 소비)
+- `consumes = APPLICATION_JSON_VALUE` — GitHub UI의 form-urlencoded 옵션을 **415로 명시 거부**(부록 A NIT). 미지정 시 `readTree` 실패 → 202 조용히 무시 → 운영자가 "202인데 아무 일 없음"을 디버깅
+- **완료 기준 재작성** — 1회차의 "413이 서명검증 이전(실서블릿)"은 `@RequestBody String`으로도 **통과하는 가짜 그린**. → **"컨트롤러가 `@RequestBody`를 쓰지 않는다"를 구조적으로 단언** + 대용량 요청 시 힙 미증가 검증
+
+## C-4. ★ 팬아웃 상한 (BLOCKER B2 해소)
+
+```
+256KB ÷ ~12B("Closes P-1 ") ≈ 20,000 distinct 이슈키 × 룰 N개
+→ 동기 enqueue 20,000·N
+→ 워커 배수량 10 msg/s (BATCH_SIZE=5 / poll 500ms) = 약 33분 전 프로젝트 automation 정지
+→ 억제창 60초는 키가 전부 distinct라 무력
+→ rule_executions.trigger_event JSONB가 실행마다 PR body 영속 = 요청 1건 ≈ 5GB
+```
+
+**확정**.
+- **추출 이슈키 distinct 상한 = 20**. 초과 시 **202 + WARN, 처리 0건**(fail-closed — 일부만 처리하면 어느 게 처리됐는지 비결정적)
+- **triggerEvent의 `title`/`body` 길이 절단** (각 2KB). 팬아웃 시 N배 복제되므로 필수
+- 룰 수 × 키 수 곱의 상한도 명시
+
+## C-5. ★ targetBranch 필터 (BLOCKER B8 해소 — DEC-12)
+
+`Condition.FIELD_WHITELIST`(issue.* 9종)에 PR 메타가 없고 `findEnabledByProjectAndTriggerType(projectKey, PR_MERGED)`에 브랜치 축이 없어, `release/1.2→1.2.0`·`release/2.0→2.0.0` 두 룰이 있으면 **어느 브랜치로 머지되든 둘 다 발화**해 같은 이슈에 두 버전이 동시에 박힌다.
+
+**확정**. `trigger_config`에 `targetBranch` 필터 추가 — **기존 `ISSUE_UPDATED`의 `fields` 필터와 동형**(`TriggerConfig.kt` 타입별 파싱이 이미 존재, `AutomationEventWorker:142-145`가 교집합 필터 선례). 구조 추가 없음(JSONB).
+- 미지정 = 전 브랜치 (하위호환)
+- 매칭은 정확 일치 (glob/정규식은 범위 밖 — 필요 시 후속)
+
+## C-6. ★ dedup은 replay 방어가 아니다 (BLOCKER B3 해소)
+
+**GitHub HMAC은 본문만 서명한다** — `X-GitHub-Delivery`는 **서명 대상 밖**. 유효 (body, signature) 1쌍을 캡처하면 **delivery UUID만 갈아끼워 무한 재전송**해도 서명은 통과하고 dedup 키는 매번 신규다. **GITLAB은 평문 토큰이 본문과 무관해 본문 무결성이 0** → rawBody SHA fallback도 무의미.
+
+**확정**.
+- S6/EC11 문구를 **"정직한 재시도에 대한 배달 dedup(at-most-once)"** 으로 정정. **"replay 방어" 주장 삭제**
+- GitHub 웹훅은 **구조적으로 replay 방어가 불가능**(서명에 timestamp 없음 — slack의 ±300초 윈도우에 대응하는 게 없음). **잔여 위험으로 ADR 명시**
+- 완화는 (a) 멱등 처리(Fix Version 전체교체) (b) **팬아웃 상한**(C-4) (c) rate limit(후속)에 의존
+- **DEC-13 — GitLab 유지 + 잔여위험 ADR 명시**. GitLab 웹훅은 원래 `X-Gitlab-Token` 평문이고 GitLab이 HMAC 서명을 제공하지 않아 **우리가 더 강하게 만들 수 없다**. product doc D2 준수. 단 **GITHUB/GITLAB을 동급으로 서술하지 않는다** — 보안등급 차이를 ADR·KDoc에 명시
+
+## C-7. 그 외 확정 (부록 A 반영)
+
+| 항목 | 확정 |
+|---|---|
+| provider 분기 (C-a) | **등록행 `provider`로만** 분기. 헤더로 추론 금지. 기대 헤더 없으면 즉시 401, **다른 provider 방식 폴백 금지**. GitHub 레거시 `X-Hub-Signature`(SHA-1) 미사용. 교차 헤더 EC 2건 추가 |
+| 404/401 (C-b) | **401로 통일**. 서명 실패 401 분기가 생기면 "404=미존재 / 401=존재+서명틀림" 오라클이 됨. FR-AT-01은 **서명이 없어 401 분기 자체가 없었으므로 선례가 아님** |
+| FR-7 하류 (C-d) | `ActionExecutor.extractIssueKey:264-268`이 `triggerEvent.issueKey`를 **무검증 신뢰** → 워커에 **방어심층** 추가(룰 projectKey ≠ 이슈키 prefix → SKIPPED) |
+| 복호화 실패 (부록 A 8) | EC 분리 — **등록 시 키 미설정 = 500** / **검증 시 복호화 실패 = 401 + ERROR 로그**(등록 id·projectKey만, 평문/키 금지) + 메트릭. **서명 불일치와 반드시 구분** — 아니면 키 유실이 조용한 401로 은폐돼 운영자가 "GitHub 설정이 틀렸나"를 몇 시간 뒤짐 |
+| 부분 팬아웃 실패 (C-f) | dedup 커밋 후 N건 중 일부 enqueue 실패 시 **영구 유실**(재전송도 dedup에 막힘). EC 명시 + 트레이드오프 기술 |
+| 마이그레이션 (C-g) | **V306~V309 분할** — 모듈 V300~V305가 예외 없이 **1파일=1스키마 변경**. `DATA.md §4`("큰 변경 분할")과도 정합. ★ 1회차는 **V306을 4번 표기**(Flyway 버전 중복 = 부팅 실패) |
+| 음성 테스트 (C-h) | `SchemaMigrationTest.kt:559-562`가 `insertRule("PR_MERGED")`를 **CHECK 위반 프로브**로 사용 중 → 프로브 값을 다른 무효값으로 교체 |
+| NFR-1 검증 (B9) | 완료 기준에 **명시 항목 추가** — 동기 경로 DB 왕복 상한 + p95 측정. 1회차는 200ms를 하드 넘버로 적고 검증 항목 **0건** |
+| buildContext (C-k) | PR_MERGED + ADD_COMMENT 조합 시 `{{issue.title}}`이 **PR 제목**으로 렌더(`:271-284`가 중첩 `issue` 없으면 triggerEvent 전체를 issue로 취급). **후속 한계로 명시** |
+| init_codegen (NIT) | automation은 JdbcTemplate → **면제**(jOOQ 4모듈에 automation 없음, 확인 완료). 면제 사실 명시 |
+| 식별자 (NIT) | 결정은 **`DEC-n`**, product doc 단계는 **`D1~D7`** 로 분리. 1회차는 D7이 두 뜻이었음 |
+
+---
+
+## 부록 A. Phase B 적대적 검토 (1회차, BLOCKER 9 / CONCERN 11)
+
+security-engineer + backend-engineer 병렬, **실제 코드 대조**. 인용 파일:줄 10여 개 전부 실재·정확 확인 — 문제는 인용이 아니라 **설계**.
+
+> 검토 방식 deviation. 스킬 Phase B는 `superpowers:brainstorming` 호출을 지시하나 그 스킬은 "구현 전 사용자 의도 대화 탐색" 도구로 "작성된 스펙의 gap 발견"과 목적이 다름([[bts-spec-office-hours-mismatch]]와 동종). Phase B의 **명시된 목적**을 적대적 에이전트 검토로 달성.
+
+| # | BLOCKER | 해소 |
+|---|---|---|
+| B1 | `@RequestBody String`이 크기검사 전 버퍼링 → 미인증 110MB 힙. 완료기준이 통과시킴(가짜 그린) | §C-3 |
+| B2 | 팬아웃 무제한 → 20k×N enqueue, ~33분 정지, ~5GB 저장 | §C-1, C-4 |
+| B3 | dedup 키가 서명 밖 헤더 → "replay 방어" 주장이 거짓 | §C-6 |
+| B4 | `.env.prod.example`에 암호화 키 3종 부재 → prod 미동작 확정(실사고 재발) | §A-4 |
+| B5 | FR-14 경로 미열거 → `/slack/**`면 admin 익명노출, POST만이면 설치 401 | §A-3 |
+| B6 | `expectedVersion` — plan D3 근거가 코드로 반증. 죽은 분기 + 미래 TOCTOU | §B-2 |
+| B7 | `SET_FIX_VERSIONS` 파급 6파일 13지점 누락, 특히 컴파일러 미강제 `hasObservableSideEffect` | §B-3 |
+| B8 | targetBranch 스코프 부재 → 다중 릴리스에서 제품의미 붕괴 | §C-5 |
+| B9 | NFR-1(200ms) 검증 방법 0 | §C-7 |
+
+**CONCERN 11 / NIT 7** — C-a~C-k는 §C-7·§A-7에 개별 반영. 상세 원문은 커밋 `490514186` 참조.
 
 ### 검토가 확인한 "맞는 부분"
 
-provider를 등록행에서 읽는 설계(혼동 공격 차단) · FR-7 프로젝트 스코프 필터의 존재 · `setFixVersions` 전용 포트 + default 없음(fail-closed) · 유스케이스 위임을 통한 actor 권한 fail-closed(`IssueApplicationService.kt:949` `assertPermission` 선행 → 코드로 확인) · `validateVersions`(`:952`)의 타 프로젝트 버전 차단(EC9 성립) · C1이 raw body 함정을 인지한 것 · EC12의 at-most-once 판단.
+provider를 등록행에서 읽는 설계(혼동 공격 차단) · FR-7 프로젝트 스코프 필터의 존재 · `setFixVersions` 전용 포트 + default 없음(fail-closed) · actor 권한 fail-closed(`IssueApplicationService.kt:949` `assertPermission` 선행 — 코드 확인) · `validateVersions`(`:952`)의 타 프로젝트 버전 차단 · raw body 함정 인지 · at-most-once 판단.
 
-### 2회차 진행 방향
+## Brainstorming Check
 
-→ **§Phase B 후속 결정**(아래)에서 Maxi 확정 후 스펙 재작성.
+✅ **통과 (2회차)** — 1회차 BLOCKER 9 / CONCERN 11 전건 반영. 주요 변경. (1) **PR 3분할**(DEC-11) (2) `@RequestBody String` → `HttpServletRequest.readNBytes`(B1) (3) 팬아웃 상한 20 + body 절단 + 신뢰경계 문단(B2) (4) "replay 방어" 주장 삭제·잔여위험 ADR(B3) (5) `.env` 키 4종(B4) (6) 경로×메서드 표(B5) (7) `expectedVersion` 삭제 + D3 근거 정정(B6) (8) 6파일 파급 명시(B7) (9) targetBranch 필터(B8) (10) NFR-1 검증 항목(B9).
