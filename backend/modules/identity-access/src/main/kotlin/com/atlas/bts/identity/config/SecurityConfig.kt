@@ -285,9 +285,14 @@ class SecurityConfig(
          *
          * ## ★ 이 단일 목록이 permitAll 과 CSRF-ignore 를 함께 구동한다 (DEC-16)
          * 두 설정은 서로 다른 블록이라 한쪽만 등록하면 POST 가 계속 거부된다(FR-MF-01 BLOCKER-1 실사고).
-         * 목록을 하나로 두고 양쪽이 같은 것을 순회하게 해 **한쪽만 등록하는 실수를 구조적으로 차단**한다.
+         * 목록을 하나로 둬 **두 블록의 경로·메서드가 서로 어긋나는 divergence 를 구조적으로 차단**한다.
+         * 다만 **어느 한쪽 forEach 를 통째로 지우는 것까지 막지는 못한다** — 그건 `SlackInboundPermitAllTest`
+         * 가 잡는다(어느 쪽이 빠져도 S-A1 이 401 로 실패). 즉 이 목록과 그 테스트는 **함께** 가드다.
          * CSRF 를 빠뜨렸을 때의 증상이 401 이라 "미등록"과 구분되지 않는다는 점도 이 구조가 필요한 이유다 —
          * 익명 요청의 CSRF 거부는 `ExceptionTranslationFilter` 가 인증 진입점으로 넘겨 403 이 아니라 401 이 된다.
+         * csrf 쪽만 [antMatcher] 를 손수 만드는 것은 취향이 아니라 **API 강제**다 — `ignoringRequestMatchers` 에는
+         * `(HttpMethod, String)` 오버로드가 **없어** 문자열 오버로드로 바꾸면 메서드 고정이 조용히 사라진다
+         * (`/slack/events` 의 PUT·DELETE 까지 CSRF-ignore 가 되며 컴파일도 테스트도 통과한다).
          *
          * ## 폭발 반경 봉인
          * [PUBLIC_DASHBOARDS_PATH]·[ICAL_FEED_PATH] 와 동일 원칙 — **메서드 고정 + 정확 경로**. slack 하위경로를
