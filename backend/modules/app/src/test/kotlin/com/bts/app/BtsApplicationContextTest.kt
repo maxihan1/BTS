@@ -5,14 +5,7 @@ package com.bts.app
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.ApplicationContext
-import org.springframework.test.context.ActiveProfiles
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
-import java.nio.file.Files
-import java.security.KeyPairGenerator
-import java.util.Base64
 
 /**
  * 전체 조립 컨텍스트가 **prod 프로파일**로 로드되는지 확인한다.
@@ -20,14 +13,15 @@ import java.util.Base64
  * 조립 앱은 prod 산출물이다 — 권한 resolver 가 `@Profile("prod")`(실제) ↔ `@Profile("!prod")`(스텁)로
  * 배타 설계라, prod 프로파일이라야 실제 구현 하나만 활성화돼 충돌이 없다.
  *
+ * [ProdAssemblyHttpTestBase]를 상속해 prod + RANDOM_PORT 셋업(issuer URI·RSA 키·slack signing secret
+ * 런타임 주입)을 공유한다 — 상속하지 않으면 `webEnvironment` 차이로 컨텍스트 캐시가 갈라져 같은 JVM 에
+ * 9-BC prod 컨텍스트가 두 벌 뜬다(베이스 KDoc "webEnvironment는 컨텍스트 캐시 키의 일부다" 참조).
+ *
  * 사전 조건: dev postgres(`docker compose -f infra/docker-compose.dev.yml up -d postgres`, 5433) 기동.
- * prod 필수 시크릿(issuer URI·RSA 키)은 [props] 가 런타임 생성/주입한다(실제 시크릿 미커밋).
  *
  * 통과 시 = 빈 충돌·설정 누락·cross-BC 미배선·보안 체인 순서 문제 없음.
  */
-@SpringBootTest
-@ActiveProfiles("prod")
-class BtsApplicationContextTest {
+class BtsApplicationContextTest : ProdAssemblyHttpTestBase() {
     @Autowired
     private lateinit var context: ApplicationContext
 
@@ -80,21 +74,5 @@ class BtsApplicationContextTest {
         // notification 이 프로젝트 활동 이벤트를 q_slack_channel_broadcasts 로 발행하는 컴포넌트.
         // notification 이 build 의존 + 스캔에 포함돼야만 이 빈이 존재한다.
         assertThat(context.containsBean("com.bts.notification.channel.SlackChannelBroadcaster")).isTrue()
-    }
-
-    companion object {
-        @JvmStatic
-        @DynamicPropertySource
-        fun props(registry: DynamicPropertyRegistry) {
-            // 로컬 검증용 RSA 테스트 키 생성 (PKCS#8 PEM, 실제 시크릿 아님) → 임시 파일 경로 주입.
-            val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
-            val base64 = Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(keyPair.private.encoded)
-            val pem = "-----BEGIN PRIVATE KEY-----\n$base64\n-----END PRIVATE KEY-----\n"
-            val pemFile = Files.createTempFile("bts-jwt-test", ".pem")
-            Files.writeString(pemFile, pem)
-
-            registry.add("bts.auth.issuer-uri") { "http://localhost:8080" }
-            registry.add("bts.auth.jwt.private-key-pem-path") { pemFile.toAbsolutePath().toString() }
-        }
     }
 }
