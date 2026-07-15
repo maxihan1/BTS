@@ -94,9 +94,34 @@ rules:
     actions: [{ type: <ActionType>, config: {...} }]
 ```
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-15-fr-at-06-d6-d7-yaml-gitops-ui.md](../specs/2026-07-15-fr-at-06-d6-d7-yaml-gitops-ui.md)
+
+**배치 결정(Maxi 확정)**. automation 설정 페이지 `AutomationRuleList` **기존 헤더 행**에 "YAML 내보내기"/"YAML 가져오기" 버튼 2개를 "룰 추가" 옆에 추가(버튼 3개 한 줄). prop threading(`onExportYaml`/`onImportYaml`/`isExportingYaml`) — `onAddRule`/`onViewHistory` 관례 동형. 가져오기는 Radix Dialog. **라우터 변경 0**.
+
+핵심 시나리오 요약.
+- "YAML 내보내기" → 즉시 다운로드(`triggerBlobDownload` 재사용). 룰 0개여도 버튼 활성(`rules: []` 는 정당한 GitOps 선언 + 손 작성 스캐폴드).
+- "YAML 가져오기" → Dialog → 파일 선택 → **인라인 2단계 확인** → 적용 → 결과(생성/갱신/총).
+- 실패 시 **Dialog 유지** + 서버 `detail` + **"적용된 변경 없음(전량 취소)"** 항상 병기(atomic fail-closed). `failedIndex` 는 **+1** 해 "N번째 룰".
+- 새 WEBHOOK 룰 토큰은 결과 안에 목록+복사, **닫기 4경로 전부 2단계 확인**(ESC/오버레이/X/onOpenChange — 누락 시 영구 분실).
+- 타 프로젝트 복사 안내(`id:` 제거)는 에러 조건부가 아닌 **Dialog 상시 도움말**.
+
+**핵심 계약 함정**.
+- **export는 `<a href download>` 불가** — STATELESS JWT라 401. `apiFetch`→`blob()`→`triggerBlobDownload` 필수([[avatar-auth-image-cachebust]]).
+- **import는 multipart 불가** — 백엔드 `consumes` 화이트리스트가 YAML/텍스트 4종만 → 415. `File.text()` 원문 + `Content-Type: application/yaml;charset=UTF-8`.
+- **`client.ts` 문자열 pass-through 필요**(FR11, 유일한 공유 인프라 변경) — 현재 FormData 아닌 body를 전부 `JSON.stringify`. 기존 호출자 145건에 문자열 body 0건 전수 확인(회귀 0).
+- **Zod** — `webhookTokens` 는 키가 **실제로 생략**됨 → `.optional()` 필수. `conflicts` 는 항상 배열(방어적 `.optional()` 만).
+- **UI 문구 용어는 "룰"**(`labels` 정본), 문서 산문만 "규칙".
+
+## Brainstorming Check
+
+✅ **통과 (1회 gap 분석 → 전량 스펙 반영)**. BLOCKER 1 · CONCERN 5 · NIT 6 발견, **Maxi 결정 불요**(백엔드 계약/기존 관례가 정답 강제), 구현 단계로 미룬 항목 0.
+
+- **BLOCKER-1**. S5(깨진 YAML)/S8(projectKey 불일치)이 **와이어에서 구별 불가**(컨트롤러 같은 `else` 분기 → status/errorCode/type 동일, `detail` 문자열로만 다름). 구별하려면 메시지 문자열 매칭 = [[crossbc-failure-classification-typed-not-name]] 위반. → **UI 분기 제거**(서버 `detail` 신뢰) + S8 안내를 **상시 도움말**로 승격(CONCERN-6 동시 해소 — 타 프로젝트 사용자는 에러를 두 번 만나는데 정작 안내가 필요한 두 번째에서 사라지는 구조였음).
+- **CONCERN-2**. "상단 툴바"가 실재하지 않아 구현자가 파일 단위로 갈릴 위험 → FR0으로 파일:라인 확정.
+- 나머지(XSRF · 토큰 문구 재사용 · Radix 닫기 4경로 · charset · queryKey · 용어)는 스펙에 한 줄씩 못박음.
+- **사전 의심 4건은 전부 gap 없음**(실물 대조) — `client.ts` 회귀 0(호출자+테스트 전수) · `Content-Disposition` 항상 ASCII(백엔드 화이트리스트가 헤더 조립 전 강제) · 1MiB 단위 일치 · 401 재시도 시 문자열 body 재전송 안전.
 
 ## Plan (← /bts-plan 채움)
 
