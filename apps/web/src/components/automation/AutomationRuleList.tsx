@@ -22,6 +22,9 @@ import type { ActionType, AutomationRule, TriggerType } from '@/api/automation-r
 const labels = {
   heading: '자동화 룰',
   addButton: '룰 추가',
+  exportYamlButton: 'YAML 내보내기',
+  exportingYamlButton: '내보내는 중...',
+  importYamlButton: 'YAML 가져오기',
   editButton: '수정',
   deleteButton: '삭제',
   enableButton: '활성화',
@@ -92,6 +95,12 @@ export interface AutomationRuleListProps {
   readonly onEditRule: (rule: AutomationRule) => void
   /** 행 "이력" 클릭 시 상위에서 실행 이력 뷰를 열기 위한 콜백 — 클릭된 룰을 전달 (FR-AT-05 D6) */
   readonly onViewHistory: (rule: AutomationRule) => void
+  /** "YAML 내보내기" 클릭 시 상위에서 export를 트리거하기 위한 콜백 (FR-AT-06 D6) */
+  readonly onExportYaml: () => void
+  /** "YAML 가져오기" 클릭 시 상위에서 가져오기 Dialog를 열기 위한 콜백 (FR-AT-06 D6) */
+  readonly onImportYaml: () => void
+  /** export 진행 중 여부 — 버튼을 disabled 처리하고 라벨을 "내보내는 중..."으로 바꾼다 (FR-AT-06 D6) */
+  readonly isExportingYaml: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -306,12 +315,18 @@ function AutomationRuleRow({
  * @param onAddRule "룰 추가" 클릭 콜백
  * @param onEditRule 행 "수정" 클릭 콜백 — 클릭된 룰을 인자로 전달
  * @param onViewHistory 행 "이력" 클릭 콜백 — 클릭된 룰을 인자로 전달
+ * @param onExportYaml "YAML 내보내기" 클릭 콜백 (FR-AT-06 D6)
+ * @param onImportYaml "YAML 가져오기" 클릭 콜백 (FR-AT-06 D6)
+ * @param isExportingYaml export 진행 중 여부 (FR-AT-06 D6)
  */
 export function AutomationRuleList({
   projectKey,
   onAddRule,
   onEditRule,
   onViewHistory,
+  onExportYaml,
+  onImportYaml,
+  isExportingYaml,
 }: AutomationRuleListProps): JSX.Element {
   const { data: rules, isLoading, isError, error } = useAutomationRules(projectKey)
   const updateRule = useUpdateAutomationRule(projectKey)
@@ -359,11 +374,30 @@ export function AutomationRuleList({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-base font-semibold">{labels.heading}</h2>
-        <Button size="sm" data-testid="automation-rule-add-button" onClick={onAddRule}>
-          {labels.addButton}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" data-testid="automation-rule-add-button" onClick={onAddRule}>
+            {labels.addButton}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            data-testid="automation-yaml-export-button"
+            disabled={isExportingYaml}
+            onClick={onExportYaml}
+          >
+            {isExportingYaml ? labels.exportingYamlButton : labels.exportYamlButton}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            data-testid="automation-yaml-import-button"
+            onClick={onImportYaml}
+          >
+            {labels.importYamlButton}
+          </Button>
+        </div>
       </div>
 
       {isLoading && (
