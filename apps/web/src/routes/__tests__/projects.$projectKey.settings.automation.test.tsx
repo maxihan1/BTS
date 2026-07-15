@@ -5,6 +5,8 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
+import { toast } from 'sonner'
+import * as downloadLib from '@/lib/download'
 import { automationRuleHandlers } from '@/mocks/automation-rule-handlers'
 import {
   DEFAULT_AUTOMATION_PROJECT_KEY,
@@ -32,6 +34,11 @@ const mockUseParams = vi.fn<() => { projectKey?: string }>(() => ({ projectKey: 
 
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => mockUseParams(),
+}))
+
+// sonner toast mock — 실제 DOM 없이 호출 여부로 검증 (settings.account-links.test.tsx 선례)
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
 }))
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -322,5 +329,51 @@ describe('ProjectAutomationSettingsPage — 실행 이력 Dialog 조립', () => 
     await waitFor(() => {
       expect(screen.queryByTestId('rule-execution-history-dialog')).not.toBeInTheDocument()
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Page — YAML GitOps 내보내기/가져오기 조립 (FR-AT-06 D6 Task 7)
+// EC8(Dialog 재오픈 시 상태 초기화)은 AutomationYamlImportDialog.tsx(T5) 소유 — 여기서는
+// open 상태 전달만 black-box로 관측한다(plan-eng-review §7).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ProjectAutomationSettingsPage — YAML GitOps 내보내기/가져오기 조립', () => {
+  it('내보내기 클릭 → blob 다운로드를 트리거하고 성공 토스트를 낸다 (S1)', async () => {
+    const downloadSpy = vi.spyOn(downloadLib, 'triggerBlobDownload').mockImplementation(() => {})
+    const { user } = renderPage('PROJ')
+    await screen.findByRole('heading', { name: '자동화' })
+
+    await user.click(screen.getByTestId('automation-yaml-export-button'))
+
+    await waitFor(() => {
+      expect(downloadSpy).toHaveBeenCalledWith(expect.any(Blob), 'automation-rules-PROJ.yaml')
+    })
+    expect(toast.success).toHaveBeenCalledWith('YAML을 내보냈습니다.')
+  })
+
+  it('내보내기 403 이면 권한 없음 토스트를 낸다 (S3)', async () => {
+    server.use(
+      http.get('/api/v1/projects/:projectKey/automation/rules/export', () =>
+        HttpResponse.json({ errorCode: 'AUTOMATION_ACCESS_DENIED' }, { status: 403 }),
+      ),
+    )
+    const { user } = renderPage('PROJ')
+    await screen.findByRole('heading', { name: '자동화' })
+
+    await user.click(screen.getByTestId('automation-yaml-export-button'))
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('권한이 없습니다.')
+    })
+  })
+
+  it('가져오기 클릭 → Dialog 가 열린다 (S4)', async () => {
+    const { user } = renderPage('PROJ')
+    await screen.findByRole('heading', { name: '자동화' })
+
+    await user.click(screen.getByTestId('automation-yaml-import-button'))
+
+    expect(await screen.findByTestId('automation-yaml-import-dialog')).toBeInTheDocument()
   })
 })
