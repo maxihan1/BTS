@@ -16,6 +16,18 @@ import { triggerBlobDownload } from '@/lib/download'
 import type { AutomationRule, RuleConflict } from '@/api/automation-rules.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 문구 — BC 내 고정 한국어 (admin.webhooks.tsx 관례 — 토스트 문구를 페이지 labels로 상수화)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const labels = {
+  export: {
+    success: 'YAML을 내보냈습니다.',
+    accessDenied: '권한이 없습니다.',
+    failure: 'YAML 내보내기에 실패했습니다.',
+  },
+} as const
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Router adapter
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -83,11 +95,11 @@ export function ProjectAutomationSettingsPage({
     mutationFn: () => exportAutomationRulesYaml(projectKey),
     onSuccess: ({ blob, filename }) => {
       triggerBlobDownload(blob, filename)
-      toast.success('YAML을 내보냈습니다.')
+      toast.success(labels.export.success)
     },
     onError: (error) => {
       const code = extractAutomationRuleErrorCode(error)
-      toast.error(code === 'AUTOMATION_ACCESS_DENIED' ? '권한이 없습니다.' : 'YAML 내보내기에 실패했습니다.')
+      toast.error(code === 'AUTOMATION_ACCESS_DENIED' ? labels.export.accessDenied : labels.export.failure)
     },
   })
 
