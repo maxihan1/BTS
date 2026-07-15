@@ -535,7 +535,13 @@ PRE_EXISTING 아님(44줄 전부 신규, 삭제 0) · detekt `--rerun-tasks` 9�
 
 ### DEC-16. **공유 리스트 구조로 이중등록 불가능화** (C-2)
 
-경로 목록을 `List<Pair<HttpMethod, String>>` **하나**로 두고 `csrf.ignoringRequestMatchers(...)`와 `auth.requestMatchers(...)`를 **같은 리스트에서 구동**한다 → 한쪽만 등록하는 것이 **컴파일 단위에서 불가능** → FR-A6 가드 테스트 자체가 불요.
+경로 목록을 `List<Pair<HttpMethod, String>>` **하나**로 두고 `csrf.ignoringRequestMatchers(...)`와 `auth.requestMatchers(...)`를 **같은 리스트에서 구동**한다.
+
+> **구현이 이 결정을 정정함 (2026-07-15).** "한쪽만 등록이 컴파일 단위에서 불가능"은 **과장**이었다 —
+> 공유 리스트가 막는 건 **경로·메서드 divergence**이고, `forEach` **블록 자체를 지우는 것은 여전히 컴파일된다**.
+> 따라서 **FR-A6 가드 테스트는 불요가 아니라 필수**다(`SlackInboundPermitAllTest`가 그 삭제를 잡는다).
+> 구조와 테스트가 함께 가드이며 어느 쪽도 단독으로 충분하지 않다. 정본은 ADR §D4. 같은 과장이
+> 코드 KDoc·ADR·본 plan 3곳에 복제돼 있었고 전부 정정했다.
 
 - **기각**. 열거식 가드 테스트 — 미래 경로를 원리적으로 못 잡고, `SecurityConfig.kt:209`가 `private companion object`라 테스트가 **경로 리터럴을 복제**해 drift(가드가 막으려는 결함을 가드가 재생산)
 - **발상 선례**. fixture가 helper를 호출해 drift를 본질 차단한 패턴(learnings 2026-05-23 "fixture 옵션 B") — 회귀 가드보다 **사람 의존 0인 본질 차단**이 우선
@@ -547,3 +553,45 @@ PRE_EXISTING 아님(44줄 전부 신규, 삭제 0) · detekt `--rerun-tasks` 9�
 
 - **기각**. `§1.1 #4` 신규 표기 — 한 파일 안에 두 표기가 나란히 서는 **세 번째 방언**
 - **기각**. 14곳 일괄 정정 — 본 FR 무관 메모 정리로 보안 PR의 리뷰 초점을 흐림 (surgical changes)
+
+## 통합 실패 → 근본 원인 확정 (2026-07-15, #275 머지 후 rebase)
+
+PR #275(선행 DoS 가드) 머지 → PR-A를 `origin/main`으로 rebase → `:modules:app:test`에서
+**form-urlencoded 2경로만 401**(`/slack/commands`·`/slack/interactions`). JSON 경로(`/slack/events`)는 통과.
+permitAll·CSRF-ignore 등록은 정상이었다.
+
+**추측 금지 원칙대로 가설을 하나씩 반증**(4개 반증 후 스택 트레이스로 확정).
+
+| # | 가설 | 결과 |
+|---|---|---|
+| 1 | `requestCache` 간섭 | **반증** — disable 해도 동일 |
+| 2 | content-type이 결정적 | **확인** — 같은 본문을 `text/plain`으로 보내니 통과 |
+| 3 | CSRF가 여전히 개입 | **반증** — csrf 블록 전체 교체 후에도 동일 (첫 시도는 무효한 실험이었음 — 기존 블록 **앞**에 `disable()`을 넣어 configurer가 재적용됨) |
+| 4 | 컨트롤러가 빈 바디를 읽는다 | **확인** — **빈 문자열**로 서명해 보내니 slash command 통과 |
+| 5 | 누가 본문을 소진하나 | **확정** — 임시 `@TestConfiguration` 필터로 `getParameter*` 호출 시 스택 트레이스 덤프 → `DefaultBearerTokenResolver` |
+
+**근본 원인.** `DefaultBearerTokenResolver.resolve()`가 POST + `application/x-www-form-urlencoded`이면
+**`allowFormEncodedBodyParameter=false`여도** `getParameterValues("access_token")`을 먼저 호출한다(플래그는
+그 뒤 `isParameterTokenEnabledForRequest`에서야 검사). → Tomcat form 파싱 → **본문 스트림 소진** → 원문
+바이트를 읽는 `readBoundedSlackBody`가 빈 바디 → HMAC 전부 실패.
+
+**#275 전에 가려져 있던 이유.** 컨트롤러가 `@RequestBody String`이라 `ServletServerHttpRequest.getBody()`의
+`isFormPost()` 분기가 `getParameterMap()`에서 본문을 **재구성**했다. #275가 DoS 가드로 원문 스트림 읽기로
+바꾸며 **잠복 결함이 표면화**된 것 — #275가 만든 버그가 아니다.
+
+**수정.** `SLACK_INBOUND_PATHS`를 `OrRequestMatcher`로 묶어 slack 인바운드면 delegate 호출 자체를 skip
+(`f2c9b920e`). slack은 Bearer를 보내지 않으므로 의미상 정확. 상세·기각안·회귀가드는 ADR §D7.
+
+### 이 과정에서 드러난 하네스 함정 (기록)
+
+- **★ zsh는 배열 인덱스가 1부터** — `cmd | tail; echo ${PIPESTATUS[0]}`은 **항상 빈 문자열**이라 실패를
+  못 잡는다. 이 세션에서 실제로 false-green을 만들었다. `set -o pipefail` + `$?`로 교체.
+- **`./gradlew`는 `backend/`에 있다** — worktree 루트에서 실행하면 "no such file"인데 파이프 뒤 `tail`이
+  exit 0을 반환해 성공처럼 보인다(위 zsh 함정과 결합해 이중 은폐).
+- **Gradle이 배치 태스크에서 테스트를 부분만 실행** — `:m:test :m:ktlintCheck :m:detekt --rerun-tasks`가
+  6클래스/49테스트만 돌고 BUILD SUCCESSFUL. 단독 `:m:test --rerun-tasks`는 56클래스/487테스트.
+  **원인 미해명** → 회귀는 **태스크를 따로 invoke**하고 **XML로 실행 수를 실측**한다.
+- **Gradle은 테스트 stdout을 콘솔에 안 뿌린다** — 진단 출력은 `build/test-results/test/TEST-*.xml`의
+  `system-out`에서 읽는다.
+- **`find -newermt`는 macOS(BSD find)에서 안 먹는다** — 빈 결과가 나와 "XML이 재생성 안 됐다"고 오판할 뻔.
+  `stat -f "%Sm %N" -t "%H:%M:%S"` 사용.
