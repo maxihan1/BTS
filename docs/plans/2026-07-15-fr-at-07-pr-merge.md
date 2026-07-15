@@ -252,6 +252,165 @@ GitLab 웹훅은 원래 `X-Gitlab-Token` 평문이고 GitLab이 HMAC 서명을 �
 2. **B6** — **내 D3 근거가 코드로 반증**됨("OCC 파라미터가 사라진다" → 형제 커맨드엔 애초에 OCC 파라미터가 없음). 결론은 유지, 근거·필드는 폐기
 3. **B4** — `.env.prod.example`에 기존 키 3종 부재 = **머지해도 prod 미동작 확정**. 과거 실사고와 동일 패턴
 
-## Plan (← /bts-plan 채움)
+## Plan (PR-A — spec §A만)
+
+> **★ 절대 규칙 #4 정식 예외 작업.** `DEVELOPMENT.md §1.1` **#4 "인증 없는 엔드포인트 추가 금지. Spring Security 필터 우회 금지."** 를 정면으로 건드린다. 선례(FR-DB-03 익명 대시보드·FR-CA-02 iCal 피드)가 밟은 절차 = **ADR + 게이트1 승인 + KDoc 예외 사유 명시**. T1이 그 ADR.
+>
+> **정확한 프레이밍**. permitAll은 인증을 **없애는** 게 아니라 **검증 주체를 필터 → 컨트롤러(서명 검증)로 옮기는** 것이다. ADR과 KDoc이 이 구분을 명시해야 한다(S-A2가 이를 검증).
+
+### Task 1. ADR — 인바운드 웹훅 permitAll 중앙등록 (절대규칙 #4 정식 예외)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`docs/decisions/2026-07-15-inbound-webhook-permitall-central.md`]
+- depends-on: []
+
+**내용** (TDD 비대상 — 문서).
+- **맥락**. 중앙 `SecurityConfig`가 `anyRequest().authenticated()`(`:186`)로 닫혀 있고 인바운드 경로 미등록 → **FR-AT-01·FR-SL이 prod에서 사문화**. `docs/plans/2026-07-11-automation-prod-assembly.md:53,143,165`의 명시적 scope-out + 후속 추적 항목
+- **결정**. 5경로를 메서드 고정 + 최소 매처로 permitAll·CSRF-ignore 양쪽 등록
+- **#4 예외 정당화**. (a) 외부 시스템(GitHub/GitLab/Slack)이 호출하므로 BTS 자격증명을 가질 수 없다 (b) 인증은 **각 컨트롤러의 서명 검증**이 담당(`SlackSignatureVerifier` — HMAC+replay창+상수시간, fail-closed) (c) 필터가 막으면 **서명 검증 코드가 실행조차 안 됨** — 보안 강화가 아니라 기능 정지 (d) 폭발 반경은 메서드 고정 + 단일세그먼트/정확경로로 봉인
+- **잔여 위험 명시**. ① rate limit 부재 ② `AutomationWebhookController:97`의 **무검증 `issueKey` enqueue**(spec §C-7 C-d) ③ actor 임의 지정(spec 부록 A C-e) — **prod에서 죽어 있어 문제가 안 되던 것들이 처음 열린다**(C-A2)
+- **대안 기각**. (i) 확장 포인트(`PathContributor`) 선도입 → 범위 폭증, 별도 후속 (ii) 계속 미룸 → FR-AT-01·FR-SL 사문화 지속 + PR-C 불가
+- **선례 링크**. `2026-07-02-fr-db-03-dashboard-share` · `2026-07-09-fr-ca-02-ical-export`
+
+**검증**. `bash scripts/verify-master-plan.sh` 통과 + ADR 링크가 T3 KDoc에서 참조됨
+
+---
+
+### Task 2. prod 조립 HTTP 테스트 베이스 신규
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`backend/modules/app/src/test/kotlin/com/bts/app/ProdAssemblyHttpTestBase.kt`]
+- depends-on: []
+
+> **왜 신규인가**(spec §A-5 / 부록 A C-j). 유일한 9-BC 조립 테스트 `BtsApplicationContextTest`는 `@SpringBootTest` **기본(MOCK) 웹환경** → **실 HTTP 요청 불가**, MockMvc autowire 안 됨. "permitAll이 실제로 필터를 통과시키는가"를 **검증할 수단이 저장소에 없다**.
+
+**RED**.
+- 파일. `ProdAssemblyHttpTestBase.kt`
+- 내용. `@SpringBootTest(webEnvironment = RANDOM_PORT)` + `@ActiveProfiles("prod")` + `TestRestTemplate` 노출
+- **기존 `BtsApplicationContextTest`의 `@DynamicPropertySource props` 레시피 재사용** — issuer URI + RSA 키 런타임 생성(`KeyPairGenerator`, 실 시크릿 미커밋). 그대로 복제 말고 **공용 베이스로 추출** 후 기존 테스트도 상속 검토(단, 기존 테스트 파일 수정은 T2 범위 — files에 없으면 BLOCKED이므로 **추출만 하고 기존 테스트는 건드리지 않음**)
+- 실패 메시지(예상). 클래스 없음
+- **★ MockMvc 금지** — 서블릿 우회로 실제 필터체인/서블릿 상한을 건너뛰어 **가짜 그린**([[multipart-default-limit-app-policy-false-green]]). `TestRestTemplate` = 실서블릿
+
+**GREEN**. 베이스 클래스 + smoke 1건(`/actuator/health` 200 — 인프라 자체 동작 확인)
+
+**REFACTOR**. KDoc — **사전 조건 명시**(`docker compose -f infra/docker-compose.dev.yml up -d postgres`, 5433 — 기존 조립 테스트와 동일 전제, Testcontainers 미관리) + prod+RANDOM_PORT 셋업 이유([[identity-access-prod-randomport-boot-recipe]])
+
+**검증**. `./gradlew :modules:app:test --tests ProdAssemblyHttpTestBase*`
+
+**★ 리스크**. prod 프로파일 부팅은 PEM 키·DataSource·암호화 키 등 비자명 셋업 의존. 이 태스크가 **가장 불확실** — 실패 시 Maxi 보고 후 대안(경로 매처 단위 테스트로 축소) 협의.
+
+---
+
+### Task 3. SecurityConfig — 인바운드 5경로 permitAll + CSRF ignore
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/config/SecurityConfig.kt`, `backend/modules/app/src/test/kotlin/com/bts/app/InboundWebhookPermitAllTest.kt`]
+- depends-on: [2]
+
+**RED**.
+- 파일. `InboundWebhookPermitAllTest.kt` (T2 베이스 상속)
+- 테스트. **5경로 각각 개별**(부록 A C-9 — 단수로 뭉뚱그리면 매처 오타를 못 잡음)
+  ```kotlin
+  @Test fun `POST automation webhook 은 필터에 막히지 않는다`() {
+      val res = rest.postForEntity("/api/v1/automation/webhooks/nonexistent-token", "{}", String::class.java)
+      assertThat(res.statusCode).isNotEqualTo(HttpStatus.UNAUTHORIZED)  // 필터 통과
+      assertThat(res.statusCode).isNotEqualTo(HttpStatus.FORBIDDEN)     // CSRF 통과
+      // 컨트롤러 도달 증거 = 404(토큰 미존재). 200 이 아니라 "필터가 막지 않음"을 단언
+  }
+  // /slack/events · /slack/commands · /slack/interactions (POST) — 서명 없음 → 401 이되
+  //   ★ 필터의 401 과 컨트롤러의 401 을 구분해야 함 → 본문/헤더로 구분하거나
+  //     WWW-Authenticate 부재 등으로 판별. 판별 불가 시 T2 베이스에 판별 헬퍼 추가
+  // /slack/install/callback (GET)
+  ```
+- 실패 메시지(예상). 401/403 (현재 부채 상태 — **이 RED가 부채의 존재 증명**)
+
+**GREEN**.
+- 파일. `SecurityConfig.kt`
+- **CSRF 블록**(`:133-146`)에 5경로 추가 — POST 4종만(GET은 CSRF 무관하나 일관성 위해 검토)
+- **authorize 블록**(`:151-184`)에 메서드 고정 등록
+  ```kotlin
+  auth.requestMatchers(HttpMethod.POST, AUTOMATION_WEBHOOK_PATH).permitAll()      // "/api/v1/automation/webhooks/*"
+  auth.requestMatchers(HttpMethod.POST, SLACK_EVENTS_PATH, SLACK_COMMANDS_PATH, SLACK_INTERACTIONS_PATH).permitAll()
+  auth.requestMatchers(HttpMethod.GET, SLACK_INSTALL_CALLBACK_PATH).permitAll()
+  ```
+- **★ 반드시 `/api/**` authenticated(`:185`)보다 위에** — 순서 의존
+- **★ `/**` 금지**. 테스트 원본(`AutomationTestSecurityConfig.kt:49`)은 `/api/v1/automation/webhooks/**` **하위 와일드카드**지만 중앙엔 **단일 세그먼트 `/*`** 로 좁힌다(notification 선례 `:175-180` 원칙)
+- **★ `/slack/install` 은 열지 않는다** (admin 이중가드 유지)
+
+**REFACTOR**.
+- companion object에 경로 상수 5개 + KDoc — **선례 형식 준수**(`PUBLIC_DASHBOARDS_PATH:248` KDoc 형태)
+- KDoc에 **"DEVELOPMENT.md §1.1 #4 정식 예외(ADR 2026-07-15-inbound-webhook-permitall-central · 게이트1 승인)"** 명시
+- **★ 기존 KDoc 2곳이 이 예외를 `§1.4`로 잘못 참조** 중(§1.4 = 외부 의존성, 익명 경로는 §1.1 #4). **본 태스크는 신규 KDoc만 정확히 쓰고 기존은 건드리지 않는다**(surgical) — 불일치는 plan §리스크에 등재, Maxi 판단
+
+**검증**. `./gradlew :modules:app:test --tests InboundWebhookPermitAllTest` + `:modules:identity-access:test` 회귀 0
+
+---
+
+### Task 4. 범위 누출 음성 가드 + CSRF 이중등록 가드
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/app/src/test/kotlin/com/bts/app/InboundWebhookPermitAllTest.kt`]
+- depends-on: [3]   # T3와 같은 테스트 파일 — files 교집합으로 자동 직렬
+
+**RED → GREEN**. (T3 GREEN이 이미 존재하므로 이 태스크는 **가드 추가**가 본체 — 위반을 일부러 넣어 fail 확인 후 되돌리는 방식으로 vacuous PASS 차단 [[archunit-vacuous-rule-silent-pass]])
+
+- **EC-A1**. `POST /slack/install` 익명 → **401 유지** (범위 누출 0)
+- **EC-A2**. `POST /api/v1/automation/webhooks/a/b` (2세그먼트) → 401 (`/*` 단일 세그먼트 미매칭)
+- **EC-A3**. `GET /api/v1/automation/webhooks/xxx` → 401 (메서드 고정)
+- **EC-A4**. **permitAll ↔ CSRF ignore 이중등록 가드** — POST 경로가 403이 아님을 단언. ★ 두 등록이 **다른 블록**이라 한쪽만 하면 조용히 403(FR-MF-01 실제 BLOCKER 이력, KDoc `:86,139,228`)
+- **FR-A6**. 회귀 가드 — 향후 경로 추가 시 양쪽 등록을 강제하는 형태로 작성
+
+**REFACTOR**. KDoc — 각 가드가 **어떤 사고를 막는지** 1줄씩 (왜 이 룰이 있는지 컨텍스트, learnings #3 §예방 4)
+
+**검증**. `./gradlew :modules:app:test --tests InboundWebhookPermitAllTest` — **가드 4건이 실제로 fail을 잡는지 일부러 위반 넣어 확인**
+
+---
+
+### Task 5. `.env.prod.example` 암호화 키 3종 선언
+
+**메타**.
+- agent: `security-engineer`
+- files: [`infra/prod/.env.prod.example`]
+- depends-on: []
+
+**내용** (TDD 비대상 — 배포 매니페스트).
+- `BTS_SLACK_ENCRYPTION_KEY` / `_SALT` · `BTS_MFA_ENCRYPTION_KEY` / `_SALT` · `BTS_OIDC_ENCRYPTION_KEY` / `_SALT` **전부 누락 상태** → 추가
+- **salt는 hex** (`SecretEncryptor` 계약) — 생성법 주석 병기 (`openssl rand -hex 32`)
+- automation 키(`BTS_AUTOMATION_ENCRYPTION_KEY`)는 **PR-C에서** (빈 신설과 함께)
+- **왜 지금** (DEC-14). [[use-time-validated-env-passes-boot-fails-on-use]]의 **실사고 재발** — health는 통과하고 기능 첫 호출에서 500. PR-A 주제("인바운드가 prod에서 실제로 도는가")와 정합하고 문서 몇 줄이라 비용 ≈ 0. **surgical changes 예외**(Maxi 확정)
+- ★ **미설정 시 조용히 fail-closed** — `@Value` 기본값 `""` + 사용 시점 `check(configured)`. `BTS_AUTH_ISSUER_URI` 처럼 fail-fast placeholder가 **아니다**
+
+**검증**. `.env.prod.example`의 키 개수 + 기존 `bts.slack-encryption` 등 프로퍼티명과 relaxed binding 정합 육안 확인
+
+---
+
+## Plan 메타
+
+- **task 수**. 5
+- **dispatch**. **전 태스크 직렬** (병렬 없음)
+  - 사유 ①. [[parallel-dispatch-precommit-hook-race]]가 **4회 재발**했고 FR-AT-06에서 *"files 교집합 0이어도 index 공유로 발생"* 확인 → 5개 소규모 태스크에 병렬 이득 < 복구 비용
+  - 사유 ②. [[bts-plan-wave-gradle-module-compile]] — wave는 Gradle 모듈 컴파일도 직렬화
+  - 자연 의존. T3←[2], T4←[3] (T4는 T3와 **files 교집합**으로 자동 직렬)
+- **예상 시간**. 약 20분 (T2가 불확실 — prod 부팅 셋업)
+- **TDD 강제**. T2·T3·T4 = yes / T1·T5 = 문서·매니페스트 (규칙 #14의 "새 기능" 아님)
+- **추가 검증**. `:modules:app:test`(9 BC 조립) · ktlint · detekt · `bash scripts/verify-master-plan.sh`
+- **FR 카운트**. **불변 123**. automation BC **6/7 유지** (부채 청산이라 FR 미완료)
+
+## 리스크
+
+| # | 리스크 | 대응 |
+|---|---|---|
+| R1 | **절대 규칙 #4 정면 위반** — "인증 없는 엔드포인트 추가 금지" | T1 ADR + **게이트1 승인**(선례 FR-DB-03·FR-CA-02와 동일 절차). 미승인 시 진행 불가 |
+| R2 | **BC 격리 예외** — automation/slack 사유로 identity-access 수정 | 선례 = PR #13 옵션 C 패턴. **security-engineer 공동 검토 필수**(T1·T3·T4가 이미 그 에이전트) |
+| R3 | **★ prod 신규 노출** — 이 PR은 부채 청산인 동시에 **미검증 경로 2개를 prod에 처음 여는 변경**. `AutomationWebhookController:97`의 무검증 `issueKey` enqueue + actor 임의 지정이 살아남 | T1 ADR에 **잔여 위험 명시**. 방어심층은 PR-C(spec §C-7 C-d). Maxi가 게이트1에서 수용 여부 판단 |
+| R4 | **T2 불확실** — prod+RANDOM_PORT 부팅 셋업이 비자명(PEM·DataSource·수동 postgres) | 실패 시 Maxi 보고 → 대안(경로 매처 단위 테스트로 축소) 협의. **추측 구현 금지** |
+| R5 | 필터의 401 ↔ 컨트롤러의 401 **구분 곤란** | T3 RED에서 판별 방법 확정. 불가 시 T2 베이스에 판별 헬퍼 |
+| R6 | 기존 KDoc 2곳의 **`§1.4` 오참조**(정답 §1.1 #4) | **본 PR은 신규만 정확히 표기, 기존 미수정**(surgical). 불일치 잔존 → Maxi 판단 (별건 정리 후보) |
+| R7 | 휴면 stash 오염 — `stash@{0}`에 타 세션 `WIP on feature/fr-pr-03-ooo` 존재 | **impl prompt에 `git stash` 금지 명시**([[subagent-git-stash-worktree-shared-collision]]) |
+| R8 | rate limit 부재 경로를 3종 여는 것 | T1 ADR 잔여 위험 + spec §A-9 후속 등재 |
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
