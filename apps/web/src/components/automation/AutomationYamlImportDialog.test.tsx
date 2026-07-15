@@ -361,6 +361,84 @@ describe('AutomationYamlImportDialog', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
+  it('in-flight 중에는 닫기 버튼이 disabled 이고 ESC 로 닫히지 않는다 (review-fix CRITICAL-1)', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.post(IMPORT_URL, async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        return HttpResponse.json({ created: 1, updated: 0, total: 1, ruleIds: [RULE_ID], conflicts: [] })
+      }),
+    )
+    const { onOpenChange } = renderDialog()
+
+    await user.upload(screen.getByLabelText('YAML 파일'), makeFile(VALID_GITOPS_YAML))
+    await user.click(screen.getByTestId('automation-yaml-import-apply-button'))
+    await user.click(await screen.findByTestId('automation-yaml-import-confirm-button'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('automation-yaml-import-close-button')).toBeDisabled()
+    })
+
+    await user.keyboard('{Escape}')
+    expect(await screen.findByText('토큰은 다시 볼 수 없습니다. 닫을까요?')).toBeInTheDocument()
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+  })
+
+  it('토큰 표시 중에는 파일 input 이 disabled 다 (review-fix CRITICAL-2)', async () => {
+    const user = userEvent.setup()
+    window.localStorage.setItem(SCENARIO_KEY.IMPORT_WEBHOOK_TOKENS, 'true')
+    renderDialog()
+
+    await applyFile(user, VALID_GITOPS_YAML)
+    await screen.findByTestId('automation-yaml-import-tokens-section')
+
+    expect(screen.getByLabelText('YAML 파일')).toBeDisabled()
+  })
+
+  it('응답이 스키마에 맞지 않으면(ZodError) 전량취소 대신 결과 불확실 문구를 표시한다 (review-fix CRITICAL-3)', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.post(IMPORT_URL, () =>
+        HttpResponse.json({
+          created: 1,
+          updated: 0,
+          total: 1,
+          ruleIds: [RULE_ID],
+          webhookTokens: [{ ruleId: 'not-a-uuid', name: '웹훅 룰', token: 'whk_x' }],
+          conflicts: [],
+        })),
+    )
+    renderDialog()
+
+    await applyFile(user, VALID_GITOPS_YAML)
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          '가져오기 결과를 확인하지 못했습니다. 일부가 적용됐을 수 있으니 룰 목록을 확인한 뒤 다시 시도하세요.',
+        ),
+      ).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/전량 취소/)).toBeNull()
+  })
+
+  it('file.text() 가 reject 하면 파일 읽기 실패 문구를 보이고 "적용 중"에 머물지 않는다 (review-fix CONCERN-4)', async () => {
+    const user = userEvent.setup()
+    const file = makeFile(VALID_GITOPS_YAML)
+    Object.defineProperty(file, 'text', { value: () => Promise.reject(new Error('read failed')) })
+    renderDialog()
+
+    await user.upload(screen.getByLabelText('YAML 파일'), file)
+    await user.click(screen.getByTestId('automation-yaml-import-apply-button'))
+    await user.click(await screen.findByTestId('automation-yaml-import-confirm-button'))
+
+    await waitFor(() => {
+      expect(screen.getByText('파일을 읽지 못했습니다. 파일을 다시 선택해 주세요.')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('적용 중...')).toBeNull()
+    expect(await screen.findByTestId('automation-yaml-import-apply-button')).toBeInTheDocument()
+  })
+
   it('open 이 false→true 로 재전이하면 파일·결과·에러 상태가 초기화된다 (EC8)', async () => {
     const user = userEvent.setup()
     server.use(
