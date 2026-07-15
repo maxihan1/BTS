@@ -12,6 +12,7 @@ import {
   serializeActionConfig,
   parseConditionExpression,
   serializeConditionExpression,
+  automationImportResponseSchema,
 } from './automation-rules.types'
 import type { AutomationRule, ConditionNode } from './automation-rules.types'
 
@@ -705,5 +706,37 @@ describe('serializeConditionExpression — 숫자 강제 (E2)', () => {
       value: ['1', 2, '3'],
     }
     expect(serializeConditionExpression(node)).toBe('{"in":[{"var":"issue.priority"},[1,2,3]]}')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// automationImportResponseSchema — YAML import 응답 (FR-AT-06 D6, backend AutomationImportResponse 1:1 대응)
+// webhookTokens는 새 WEBHOOK 룰이 없으면 키 자체가 생략(@JsonInclude(NON_NULL) + ifEmpty { null }).
+// conflicts는 ruleConflictResponseSchema(FR-AT-04 D6/D7 기존 스키마)를 재사용한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('automationImportResponseSchema', () => {
+  const base = { created: 1, updated: 2, total: 3, ruleIds: ['550e8400-e29b-41d4-a716-446655440000'] }
+
+  it('webhookTokens 키가 생략된 응답을 파싱한다 (새 WEBHOOK 룰 없음 — 백엔드가 키를 뺀다)', () => {
+    const parsed = automationImportResponseSchema.parse({ ...base, conflicts: [] })
+    expect(parsed.webhookTokens).toBeUndefined()
+  })
+
+  it('webhookTokens 를 파싱한다', () => {
+    const parsed = automationImportResponseSchema.parse({
+      ...base,
+      conflicts: [],
+      webhookTokens: [{ ruleId: '550e8400-e29b-41d4-a716-446655440000', name: '웹훅 룰', token: 'secret-token' }],
+    })
+    expect(parsed.webhookTokens?.[0]?.token).toBe('secret-token')
+  })
+
+  it('conflicts 는 기존 ruleConflictResponseSchema 를 재사용한다', () => {
+    const parsed = automationImportResponseSchema.parse({
+      ...base,
+      conflicts: [{ type: 'CYCLE', severity: 'WARNING', ruleIds: ['550e8400-e29b-41d4-a716-446655440000'], detail: '순환' }],
+    })
+    expect(parsed.conflicts?.[0]?.type).toBe('CYCLE')
   })
 })
