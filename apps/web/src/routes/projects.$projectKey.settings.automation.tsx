@@ -2,12 +2,17 @@
 import type { JSX } from 'react'
 import { useState } from 'react'
 import { useParams } from '@tanstack/react-router'
+import { useMutation } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { AutomationRuleList } from '@/components/automation/AutomationRuleList'
 import { AutomationRuleFormDialog } from '@/components/automation/AutomationRuleFormDialog'
 import { WebhookTokenModal } from '@/components/automation/WebhookTokenModal'
 import { RuleConflictWarningModal } from '@/components/automation/RuleConflictWarningModal'
 import { RuleExecutionHistoryDialog } from '@/components/automation/RuleExecutionHistoryDialog'
+import { AutomationYamlImportDialog } from '@/components/automation/AutomationYamlImportDialog'
 import { ProjectNotFoundScreen } from '@/routes/projects.$projectKey.settings.members'
+import { exportAutomationRulesYaml, extractAutomationRuleErrorCode } from '@/api/automation-rules'
+import { triggerBlobDownload } from '@/lib/download'
 import type { AutomationRule, RuleConflict } from '@/api/automation-rules.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -36,9 +41,9 @@ interface ProjectAutomationSettingsPageProps {
  * 프로젝트 자동화 설정 페이지.
  *
  * - 헤더 + AutomationRuleList + AutomationRuleFormDialog + WebhookTokenModal + RuleConflictWarningModal
- *   + RuleExecutionHistoryDialog 조립.
+ *   + RuleExecutionHistoryDialog + AutomationYamlImportDialog 조립.
  * - projectKey가 없거나 빈 문자열이면 ProjectNotFoundScreen을 렌더한다.
- * - 상태 5종을 이 컴포넌트가 보유한다.
+ * - 상태 6종을 이 컴포넌트가 보유한다.
  *   - `dialogOpen`/`editingRule` — AutomationRuleList의 onAddRule(신규)·onEditRule(수정)
  *     콜백이 갱신하고, AutomationRuleFormDialog에 그대로 전달한다.
  *   - `webhookToken` — FormDialog의 onWebhookToken 콜백으로 1회 전달받아 WebhookTokenModal에
@@ -52,6 +57,14 @@ interface ProjectAutomationSettingsPageProps {
  *     (onOpenChange(false)) 즉시 null로 되돌려 다음 open 시 잔존 필터/자동펼침 상태 없이
  *     새로 조회되게 한다(Dialog 내부는 open/ruleId 조합 key 재마운트로 이미 자체 격리하지만,
  *     이 컴포넌트도 ruleId를 null로 되돌려 "선택된 룰 없음"을 명확히 한다).
+ *   - `yamlImportOpen` — AutomationRuleList의 onImportYaml 콜백이 true로 세팅하고,
+ *     AutomationYamlImportDialog에 controlled open으로 그대로 전달한다(FR-AT-06 D6). Dialog
+ *     내부 상태(파일·결과·에러) 리셋은 Dialog 자신의 책임 — 이 컴포넌트는 open 여부만 소유한다.
+ * - "YAML 내보내기" 클릭은 이 컴포넌트가 보유한 `exportMutation`(useMutation)이 처리한다 —
+ *   성공 시 `triggerBlobDownload`로 즉시 다운로드 + 성공 토스트, 실패 시 errorCode가
+ *   AUTOMATION_ACCESS_DENIED면 권한 없음 토스트, 그 외는 일반 실패 토스트(FR-AT-06 D6 S1/S3).
+ *   가져오기(import)는 errorCode 분기 없이 Dialog가 서버 detail을 그대로 신뢰한다(spec §에러
+ *   비대칭 — AutomationYamlImportDialog.tsx KDoc 참조).
  * - 403 등 목록 조회 에러 상태는 AutomationRuleList가 자체적으로 처리한다.
  *
  * 라우터 의존 없이 props로 projectKey를 받아 단위 테스트가 가능하다.
@@ -64,6 +77,19 @@ export function ProjectAutomationSettingsPage({
   const [webhookToken, setWebhookToken] = useState<string | null>(null)
   const [conflicts, setConflicts] = useState<RuleConflict[] | null>(null)
   const [historyRule, setHistoryRule] = useState<AutomationRule | null>(null)
+  const [yamlImportOpen, setYamlImportOpen] = useState(false)
+
+  const exportMutation = useMutation({
+    mutationFn: () => exportAutomationRulesYaml(projectKey),
+    onSuccess: ({ blob, filename }) => {
+      triggerBlobDownload(blob, filename)
+      toast.success('YAML을 내보냈습니다.')
+    },
+    onError: (error) => {
+      const code = extractAutomationRuleErrorCode(error)
+      toast.error(code === 'AUTOMATION_ACCESS_DENIED' ? '권한이 없습니다.' : 'YAML 내보내기에 실패했습니다.')
+    },
+  })
 
   if (!projectKey) {
     return <ProjectNotFoundScreen />
@@ -105,6 +131,9 @@ export function ProjectAutomationSettingsPage({
         onAddRule={handleAddRule}
         onEditRule={handleEditRule}
         onViewHistory={setHistoryRule}
+        onExportYaml={() => exportMutation.mutate()}
+        isExportingYaml={exportMutation.isPending}
+        onImportYaml={() => setYamlImportOpen(true)}
       />
 
       <AutomationRuleFormDialog
@@ -127,6 +156,11 @@ export function ProjectAutomationSettingsPage({
         projectKey={projectKey}
         ruleId={historyRule?.id ?? null}
         ruleName={historyRule?.name ?? null}
+      />
+      <AutomationYamlImportDialog
+        open={yamlImportOpen}
+        onOpenChange={setYamlImportOpen}
+        projectKey={projectKey}
       />
     </div>
   )
