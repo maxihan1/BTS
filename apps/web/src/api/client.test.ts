@@ -1,5 +1,5 @@
 // apiFetch / apiPost / apiGet / ApiError 단위 테스트 — msw로 HTTP 가로채기 + FormData 분기 검증
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { apiFetch, apiPost, apiGet, ApiError } from './client'
@@ -353,4 +353,38 @@ describe('apiFetch — FormData body 분기 (Task-1)', () => {
       expect(retryRequest!.auth).toBe('Bearer fresh-token')
     },
   )
+})
+
+// ─────────────────────────────────────────────
+// Task-1: apiFetch 문자열 body pass-through (FR-AT-06 D6 FR11 · NFR5)
+// ─────────────────────────────────────────────
+
+describe('apiFetch — 문자열 body pass-through (Task-1)', () => {
+  afterEach(() => {
+    // globalThis.fetch를 직접 spy했으므로 다음 테스트가 msw로 되돌아가도록 반드시 복원한다
+    vi.restoreAllMocks()
+  })
+
+  it('문자열 body는 JSON.stringify 없이 원문 그대로 전송한다', async () => {
+    const yaml = 'version: 1\nprojectKey: PROJ\nrules: []\n'
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+    await apiFetch('/api/v1/x', { method: 'POST', body: yaml, headers: { 'Content-Type': 'application/yaml' } })
+    const init = fetchSpy.mock.calls[0]?.[1]
+    expect(init?.body).toBe(yaml) // JSON.stringify 였다면 따옴표로 감싸였을 것
+  })
+
+  it('문자열 body에 Content-Type: application/json 을 자동 부여하지 않는다', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+    await apiFetch('/api/v1/x', { method: 'POST', body: 'plain text' })
+    const headers = new Headers(fetchSpy.mock.calls[0]?.[1]?.headers)
+    expect(headers.get('content-type')).toBeNull()
+  })
+
+  it('객체 body는 기존대로 JSON.stringify + application/json 을 유지한다 (회귀 가드)', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+    await apiFetch('/api/v1/x', { method: 'POST', body: { a: 1 } })
+    const init = fetchSpy.mock.calls[0]?.[1]
+    expect(init?.body).toBe('{"a":1}')
+    expect(new Headers(init?.headers).get('content-type')).toBe('application/json')
+  })
 })
