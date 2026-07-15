@@ -241,3 +241,22 @@ export function extractAutomationRuleErrorCode(error: unknown): string | null {
   }
   return null
 }
+
+/**
+ * import 실패 에러에서 0-based `failedIndex`(실패한 룰의 위치)를 안전하게 추출한다.
+ *
+ * `AUTOMATION_IMPORT_INVALID`(400, C3 커맨드 검증 실패)일 때만 백엔드가 ProblemDetail body에
+ * `failedIndex` 를 동봉한다(FR-AT-06 D6). "N번째 룰" 표시는 이 값에 +1 해 소비한다(1-based UI
+ * 표시로 변환하는 책임은 소비 측 — 이 함수는 원문 0-based 값만 반환).
+ *
+ * @param error 발생한 에러 (unknown)
+ * @returns failedIndex number 또는 null(ApiError가 아니거나, 필드가 없거나, number가 아닐 시)
+ */
+export function extractAutomationImportFailedIndex(error: unknown): number | null {
+  if (error instanceof ApiError) {
+    const body = error.body as Record<string, unknown> | undefined
+    const failedIndex = body?.['failedIndex']
+    return typeof failedIndex === 'number' ? failedIndex : null
+  }
+  return null
+}

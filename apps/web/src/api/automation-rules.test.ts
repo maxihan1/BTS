@@ -9,6 +9,7 @@ import {
   patchAutomationRule,
   deleteAutomationRule,
   extractAutomationRuleErrorCode,
+  extractAutomationImportFailedIndex,
   exportAutomationRulesYaml,
   importAutomationRulesYaml,
 } from './automation-rules'
@@ -372,5 +373,27 @@ describe('extractAutomationRuleErrorCode', () => {
     expect(extractAutomationRuleErrorCode(new Error('network error'))).toBeNull()
     expect(extractAutomationRuleErrorCode('string error')).toBeNull()
     expect(extractAutomationRuleErrorCode(null)).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// extractAutomationImportFailedIndex
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('extractAutomationImportFailedIndex', () => {
+  it('ApiError body의 failedIndex를 number로 반환한다', () => {
+    const err = new ApiError(400, { errorCode: 'AUTOMATION_IMPORT_INVALID', failedIndex: 2 })
+    expect(extractAutomationImportFailedIndex(err)).toBe(2)
+  })
+
+  it('ApiError이지만 failedIndex가 없으면 null을 반환한다', () => {
+    const err = new ApiError(400, { errorCode: 'AUTOMATION_IMPORT_INVALID', detail: '조건식 위반' })
+    expect(extractAutomationImportFailedIndex(err)).toBeNull()
+  })
+
+  it('ApiError가 아니면 null을 반환한다', () => {
+    expect(extractAutomationImportFailedIndex(new Error('network error'))).toBeNull()
+    expect(extractAutomationImportFailedIndex('string error')).toBeNull()
+    expect(extractAutomationImportFailedIndex(null)).toBeNull()
   })
 })
