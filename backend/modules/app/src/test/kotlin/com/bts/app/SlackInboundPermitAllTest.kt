@@ -4,11 +4,18 @@ package com.bts.app
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.http.ResponseEntity
+import org.springframework.http.client.ClientHttpResponse
+import org.springframework.http.client.SimpleClientHttpRequestFactory
+import org.springframework.web.client.ResponseErrorHandler
+import org.springframework.web.client.RestTemplate
+import java.net.HttpURLConnection
 import java.time.Instant
 import java.util.HexFormat
 import javax.crypto.Mac
@@ -43,6 +50,9 @@ import javax.crypto.spec.SecretKeySpec
  * `@DynamicPropertySource` 를 자체 선언하지 않는다(베이스 KDoc "webEnvironment는 컨텍스트 캐시 키의 일부다").
  */
 class SlackInboundPermitAllTest : ProdAssemblyHttpTestBase() {
+    @LocalServerPort
+    private var port: Int = 0
+
     @Test
     fun `유효 서명 url_verification 이 필터를 통과해 challenge 를 에코한다 (S-A1)`() {
         val body = """{"type":"url_verification","challenge":"$CHALLENGE"}"""
@@ -98,7 +108,7 @@ class SlackInboundPermitAllTest : ProdAssemblyHttpTestBase() {
     @Test
     fun `slack 설치 콜백 GET 이 익명으로 필터를 통과해 결과 경로로 302 한다 (EC-A5)`() {
         // code·state 부재 → SlackInstallController 가 프론트 결과 경로로 실패 302 (서명 state 로 자체 검증).
-        val response = rest.exchange(INSTALL_CALLBACK_PATH, HttpMethod.GET, HttpEntity.EMPTY, String::class.java)
+        val response = getWithoutFollowingRedirects(INSTALL_CALLBACK_PATH)
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.FOUND)
         // Location 에 컨트롤러가 실은 실패 코드가 있어야 = 필터가 아니라 컨트롤러가 응답했다는 증거.
@@ -118,6 +128,41 @@ class SlackInboundPermitAllTest : ProdAssemblyHttpTestBase() {
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    /**
+     * 리다이렉트를 **따라가지 않는** GET — 302 자체를 관측해야 하는 콜백 검증 전용.
+     *
+     * ## 왜 베이스의 [rest] 를 쓰지 않는가 (★함정)
+     * [org.springframework.boot.test.web.client.TestRestTemplate] 은 `HttpClientOption.ENABLE_REDIRECTS`
+     * 가 없으면 리다이렉트를 끄지만, 그 설정은 **Apache HttpComponents 5 가 classpath 에 있을 때만** 적용된다.
+     * `:modules:app` 테스트에는 httpclient 4.x 만 전이돼 있어 [SimpleClientHttpRequestFactory] →
+     * `HttpURLConnection` 으로 떨어지고, 이 조합은 302 를 **자동 추종**한다. 그러면 콜백의 302 를 따라가
+     * `/admin/slack`(= `anyRequest().authenticated()`)에서 401 을 받아, permitAll 이 정상 동작하는데도
+     * **미등록일 때와 똑같은 401** 이 보인다 — 즉 이 테스트가 조용히 무의미해진다. 그래서 이 경로만
+     * `instanceFollowRedirects=false` 인 전용 클라이언트로 원 응답을 그대로 관측한다.
+     * 실 Tomcat·실 필터체인을 그대로 타므로 서블릿 우회(가짜 그린)가 아니다.
+     */
+    private fun getWithoutFollowingRedirects(path: String): ResponseEntity<String> {
+        val factory =
+            object : SimpleClientHttpRequestFactory() {
+                override fun prepareConnection(
+                    connection: HttpURLConnection,
+                    httpMethod: String,
+                ) {
+                    super.prepareConnection(connection, httpMethod)
+                    connection.instanceFollowRedirects = false
+                }
+            }
+        val template = RestTemplate(factory)
+        // 4xx/5xx 에 예외를 던지지 않게 해 실패 시 상태코드가 단언 메시지에 그대로 보이게 한다(TestRestTemplate 동형).
+        template.errorHandler =
+            object : ResponseErrorHandler {
+                override fun hasError(response: ClientHttpResponse): Boolean = false
+
+                override fun handleError(response: ClientHttpResponse) = Unit
+            }
+        return template.exchange("http://localhost:$port$path", HttpMethod.GET, HttpEntity.EMPTY, String::class.java)
+    }
 
     /** 지금 시각 기준 유효 서명 헤더(`X-Slack-Request-Timestamp` + `X-Slack-Signature`)를 붙인 요청 엔티티. */
     private fun signed(
@@ -168,8 +213,8 @@ class SlackInboundPermitAllTest : ProdAssemblyHttpTestBase() {
         /** url_verification 왕복 증거값 — 응답 본문에 그대로 에코돼야 한다. */
         const val CHALLENGE = "abc123"
 
-        /** 형식은 맞지만(`v0=`+hex) secret 을 모르는 서명 — 서명 불일치 거부 경로를 탄다. */
-        const val FORGED_SIGNATURE = "v0=" + "0".repeat(64)
+        /** 형식은 맞지만(`v0=`+hex 64자) secret 을 모르는 서명 — 서명 불일치 거부 경로를 탄다. */
+        const val FORGED_SIGNATURE = "v0=0000000000000000000000000000000000000000000000000000000000000000"
 
         /** [com.bts.slack.web.SlackInstallExceptionHandler] 가 미인증에 싣는 에러 코드(= 컨트롤러 도달 증거). */
         const val CONTROLLER_UNAUTHENTICATED_ERROR_CODE = "SLACK_UNAUTHENTICATED"

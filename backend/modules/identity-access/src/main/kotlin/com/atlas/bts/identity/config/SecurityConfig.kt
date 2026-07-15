@@ -21,6 +21,7 @@ import org.springframework.security.oauth2.server.resource.web.DefaultBearerToke
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher.antMatcher
 import org.springframework.security.web.util.matcher.RequestMatcher
 import org.springframework.web.cors.CorsConfigurationSource
 
@@ -46,6 +47,8 @@ import org.springframework.web.cors.CorsConfigurationSource
  * - /actuator/health        — 헬스체크 (로드밸런서, CSRF skip)
  * - /api/v1/public/dashboards/{token} — 익명 공개 대시보드 조회 (FR-DB-03, GET 메서드 고정 read-only, 단일 세그먼트 토큰)
  * - /ical/feed/{token}.ics — 익명 iCal 구독 피드 (FR-CA-02, GET 메서드 고정 read-only, 단일 세그먼트 토큰)
+ * - slack 인바운드 4경로 — Slack 서버-투-서버 호출 ([SLACK_INBOUND_PATHS], 메서드 고정 + 정확 경로,
+ *   인증은 컨트롤러의 서명 검증이 담당)
  *
  * ## CSRF Cookie 모드 (ADR docs/decisions/2026-05-20-csrf-cookie-mode.md)
  * CookieCsrfTokenRepository.withHttpOnlyFalse() — SPA가 Cookie를 읽어 X-XSRF-TOKEN 헤더로 전송.
@@ -133,6 +136,12 @@ class SecurityConfig(
                 csrf.ignoringRequestMatchers(
                     patBearerMatcher,
                 )
+                // FR-AT-07 PR-A: slack 인바운드 — permitAll 과 **같은** [SLACK_INBOUND_PATHS] 목록에서 구동한다(DEC-16).
+                // Slack 은 브라우저가 아니라 서버가 POST 하므로 CSRF 토큰을 가질 수 없다 — permitAll 만 열고 여기를
+                // 빠뜨리면 CsrfFilter 가 먼저 거부해 경로가 계속 죽어 있다(FR-MF-01 BLOCKER-1 과 동일 사고).
+                csrf.ignoringRequestMatchers(
+                    *SLACK_INBOUND_PATHS.map { (method, path) -> antMatcher(method, path) }.toTypedArray(),
+                )
                 csrf.ignoringRequestMatchers(
                     "/api/v1/auth/login",
                     "/api/v1/auth/refresh",
@@ -182,6 +191,11 @@ class SecurityConfig(
                 // PUBLIC_DASHBOARDS_PATH 와 동일 defense-in-depth(GET 고정·단일 세그먼트). 404 수렴은 IcalFeedController.
                 // DEVELOPMENT.md §1.4 정식 예외(ADR 2026-07-09-fr-ca-02·게이트1 승인). 상세는 ICAL_FEED_PATH KDoc.
                 auth.requestMatchers(HttpMethod.GET, ICAL_FEED_PATH).permitAll()
+                // FR-AT-07 PR-A: slack 인바운드 4경로 — CSRF-ignore 와 **같은** [SLACK_INBOUND_PATHS] 목록을 순회한다(DEC-16).
+                // ★ 아래 /api/** · anyRequest() 보다 반드시 위 — Spring Security 매처는 선언 순서대로 첫 매치가 이긴다.
+                SLACK_INBOUND_PATHS.forEach { (method, path) ->
+                    auth.requestMatchers(method, path).permitAll()
+                }
                 auth.requestMatchers("/api/**").authenticated()
                 auth.anyRequest().authenticated()
             }
@@ -257,5 +271,33 @@ class SecurityConfig(
          * DEVELOPMENT.md §1.4 정식 예외(ADR 2026-07-09-fr-ca-02-ical-export·게이트1 승인).
          */
         const val ICAL_FEED_PATH = "/ical/feed/*"
+
+        /**
+         * Slack 이 우리 서버로 직접 호출하는 인바운드 4경로 (FR-SL-01/03/04/05).
+         * DEVELOPMENT.md §1.4 정식 예외(ADR 2026-07-15-slack-inbound-permitall-central·게이트1 승인).
+         *
+         * ## permitAll 은 인증을 없애는 게 아니라 검증 주체를 옮기는 것이다
+         * Slack 서버는 BTS 사용자가 아니라 JWT·세션·PAT 를 발급할 대상이 없다. 인증은 각 컨트롤러가
+         * **무조건 선행**하는 [com.bts.slack.security.SlackSignatureVerifier] 의 서명 검증이 담당한다 —
+         * HMAC-SHA256(`v0:{timestamp}:{rawBody}`) · 상수시간 비교(`:78` `MessageDigest.isEqual`, 타이밍 공격 차단) ·
+         * 재전송 창 ±300초(`:86`, `REPLAY_WINDOW_SECONDS :113`, `Clock` 주입) · secret 미설정도 거부(`:64` fail-closed).
+         * 필터가 막으면 이 검증 코드가 **실행조차 되지 않아** 보안 강화가 아니라 기능 정지가 된다(ADR D3-c).
+         *
+         * ## ★ 이 단일 목록이 permitAll 과 CSRF-ignore 를 함께 구동한다 (DEC-16)
+         * 두 설정은 서로 다른 블록이라 한쪽만 등록하면 POST 가 계속 거부된다(FR-MF-01 BLOCKER-1 실사고).
+         * 목록을 하나로 두고 양쪽이 같은 것을 순회하게 해 **한쪽만 등록하는 실수를 구조적으로 차단**한다.
+         *
+         * ## 폭발 반경 봉인
+         * [PUBLIC_DASHBOARDS_PATH]·[ICAL_FEED_PATH] 와 동일 원칙 — **메서드 고정 + 정확 경로**. slack 하위경로를
+         * 통째로 여는 전역 와일드카드 매처는 금지다(미래에 추가될 미지의 경로까지 열린다). `/slack/install`
+         * (관리자 설치 개시)은 이 목록에 **없다** — `authenticated()` + 컨트롤러 뒤 admin fail-closed 이중 가드를 유지한다.
+         */
+        val SLACK_INBOUND_PATHS =
+            listOf(
+                HttpMethod.POST to "/slack/events",
+                HttpMethod.POST to "/slack/commands",
+                HttpMethod.POST to "/slack/interactions",
+                HttpMethod.GET to "/slack/install/callback",
+            )
     }
 }
