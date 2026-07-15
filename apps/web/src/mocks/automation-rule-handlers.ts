@@ -236,14 +236,6 @@ const createRuleHandler = http.post(
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /api/v1/projects/:projectKey/automation/rules/:id
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 자동화 룰 단건 조회. store에 없거나 다른 프로젝트 소속이면 404.
- * 성공 → 200 AutomationRuleResponse (봉투 없음)
- */
-// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/projects/:projectKey/automation/rules/export
 // POST /api/v1/projects/:projectKey/automation/rules/import
 // (FR-AT-06 D6 — 자동화 룰 YAML GitOps export/import)
@@ -323,6 +315,44 @@ function buildImportedWebhookToken(ruleIds: readonly string[]): {
   return { ruleId: ruleIds[0] ?? generateUuidV4(), name: '웹훅 룰', token: generateWebhookToken() }
 }
 
+/** import 핸들러가 강제할 수 있는 응답 시나리오 — localStorage 플래그 1:1 대응 */
+type ImportScenario = 'failedIndex' | 'tooLarge' | 'versionConflict' | 'webhookTokens' | 'ok'
+
+/**
+ * SCENARIO_KEY.IMPORT_* localStorage 플래그를 읽어 import 핸들러의 응답 분기를 결정한다.
+ * 여러 플래그가 동시에 설정되면 실패 계열(400→413→409)을 webhookTokens보다 우선한다 —
+ * "실패했는데 토큰도 노출됐다"는 모순 상태를 배제하기 위함이다. 아무 플래그도 없으면 'ok'.
+ */
+function resolveImportScenario(): ImportScenario {
+  if (globalThis.localStorage?.getItem(SCENARIO_KEY.IMPORT_FAILED_INDEX) === 'true') return 'failedIndex'
+  if (globalThis.localStorage?.getItem(SCENARIO_KEY.IMPORT_TOO_LARGE) === 'true') return 'tooLarge'
+  if (globalThis.localStorage?.getItem(SCENARIO_KEY.IMPORT_VERSION_CONFLICT) === 'true') return 'versionConflict'
+  if (globalThis.localStorage?.getItem(SCENARIO_KEY.IMPORT_WEBHOOK_TOKENS) === 'true') return 'webhookTokens'
+  return 'ok'
+}
+
+/**
+ * import 성공 응답(rules: 개수 기반 upsert 집계 + 선택적 webhookTokens)을 만든다.
+ *
+ * 반환 타입을 일부러 명시하지 않는다 — `HttpResponse<X>`로 명시하면 실패 응답 브랜치의
+ * `HttpResponse<ProblemDetail>` 과 유니온을 이뤄 `http.post` 제네릭 추론이 깨진다(msw 타입
+ * 추론 함정). 다른 핸들러(patchRuleHandler)도 같은 이유로 성공 응답은 무타입 `HttpResponse.json`
+ * 을 쓴다 — 여기서도 그 관례를 따른다.
+ */
+function buildImportSuccessResponse(yamlText: string, withWebhookTokens: boolean) {
+  const created = countTopLevelRuleEntries(yamlText)
+  const ruleIds = Array.from({ length: created }, () => generateUuidV4())
+
+  return HttpResponse.json({
+    created,
+    updated: 0,
+    total: created,
+    ruleIds,
+    conflicts: [],
+    ...(withWebhookTokens ? { webhookTokens: [buildImportedWebhookToken(ruleIds)] } : {}),
+  })
+}
+
 /**
  * 자동화 룰 전체를 GitOps YAML로 내보낸다.
  * mock은 실제 store를 직렬화하지 않고 고정 픽스처(VALID_GITOPS_YAML)를 반환한다 —
@@ -346,41 +376,39 @@ const exportRulesHandler = http.get(
 /**
  * GitOps YAML을 올려 룰을 일괄 upsert한다.
  *
- * SCENARIO_KEY.IMPORT_* 플래그로 400(failedIndex)/413/409 실패 경로를 강제할 수 있다(우선순위는
- * 이 순서). 성공 경로는 store에 실제로 반영하지 않고(정교한 upsert 시뮬레이션은 이 mock의
- * 책임 밖) 요청 본문의 `rules:` 항목 수만 세어 created=total로 응답한다(updated는 항상 0).
- * SCENARIO_KEY.IMPORT_WEBHOOK_TOKENS 플래그가 true면 새 WEBHOOK 룰 토큰 1건을 동봉한다.
- * `conflicts`는 성공 응답에 항상 빈 배열로 포함한다(백엔드가 항상 배열을 반환하는 계약과 동형).
+ * 응답 분기는 resolveImportScenario()가 결정한다 — SCENARIO_KEY.IMPORT_* 플래그로
+ * 400(failedIndex)/413/409 실패 경로 또는 webhookTokens 노출을 강제할 수 있다. 성공 경로는
+ * store에 실제로 반영하지 않고(정교한 upsert 시뮬레이션은 이 mock의 책임 밖) 요청 본문의
+ * `rules:` 항목 수만 세어 created=total로 응답한다(updated는 항상 0). `conflicts`는 성공
+ * 응답에 항상 빈 배열로 포함한다(백엔드가 항상 배열을 반환하는 계약과 동형).
  */
 const importRulesHandler = http.post(
   '/api/v1/projects/:projectKey/automation/rules/import',
   async ({ request }) => {
-    if (globalThis.localStorage?.getItem(SCENARIO_KEY.IMPORT_FAILED_INDEX) === 'true') {
+    const scenario = resolveImportScenario()
+    if (scenario === 'failedIndex') {
       return importInvalidWithFailedIndex(IMPORT_FAILED_INDEX_VALUE, '조건식이 허용되지 않는 연산자를 사용했습니다.')
     }
-    if (globalThis.localStorage?.getItem(SCENARIO_KEY.IMPORT_TOO_LARGE) === 'true') {
+    if (scenario === 'tooLarge') {
       return importTooLargeResponse()
     }
-    if (globalThis.localStorage?.getItem(SCENARIO_KEY.IMPORT_VERSION_CONFLICT) === 'true') {
+    if (scenario === 'versionConflict') {
       return importVersionConflictResponse()
     }
 
     const yamlText = await request.text()
-    const created = countTopLevelRuleEntries(yamlText)
-    const ruleIds = Array.from({ length: created }, () => generateUuidV4())
-    const withWebhookTokens = globalThis.localStorage?.getItem(SCENARIO_KEY.IMPORT_WEBHOOK_TOKENS) === 'true'
-
-    return HttpResponse.json({
-      created,
-      updated: 0,
-      total: created,
-      ruleIds,
-      conflicts: [],
-      ...(withWebhookTokens ? { webhookTokens: [buildImportedWebhookToken(ruleIds)] } : {}),
-    })
+    return buildImportSuccessResponse(yamlText, scenario === 'webhookTokens')
   },
 )
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/projects/:projectKey/automation/rules/:id
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 자동화 룰 단건 조회. store에 없거나 다른 프로젝트 소속이면 404.
+ * 성공 → 200 AutomationRuleResponse (봉투 없음)
+ */
 const getRuleHandler = http.get(
   '/api/v1/projects/:projectKey/automation/rules/:id',
   ({ params }) => {
