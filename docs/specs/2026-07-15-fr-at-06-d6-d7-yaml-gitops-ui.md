@@ -37,7 +37,7 @@
 ### S4. YAML 가져오기 (성공)
 
 - **Given**. 유효한 GitOps YAML 파일(v1)을 가지고 있다.
-- **When**. "YAML 가져오기" → Dialog → 파일 선택 → "적용" → 인라인 확인("적용하면 기존 규칙이 덮어쓰일 수 있습니다") → "확인".
+- **When**. "YAML 가져오기" → Dialog → 파일 선택 → "적용" → 인라인 확인("적용하면 기존 룰이 덮어쓰일 수 있습니다") → **"확정"**(라벨은 같은 BC의 위험 액션 확정 선례 `RuleExecutionTraceRow.tsx:26` `replayConfirmButton: '확정'` 과 통일 — plan-design-review 반영).
 - **Then**. Dialog가 결과로 전환 — **생성 N · 갱신 M · 총 T**. 규칙 목록이 갱신된다(invalidate). `conflicts` 가 있으면 경고 영역이, 새 WEBHOOK 규칙이 있으면 토큰 목록이 함께 표시된다.
 
 ### S5. 가져오기 — 400 `AUTOMATION_IMPORT_INVALID` (`failedIndex` 없음)
@@ -71,14 +71,14 @@
 
 ### S9. 가져오기 — 동시 수정 충돌 (409 `AUTOMATION_RULE_VERSION_CONFLICT`)
 
-- **When**. 적용 도중 다른 사용자가 같은 규칙을 먼저 수정.
-- **Then**. "다른 사용자가 먼저 수정했습니다. 최신 상태를 내보낸 뒤 다시 시도하세요." + 전량 취소 명시.
+- **When**. 적용 도중 다른 사용자가 같은 룰을 먼저 수정.
+- **Then**. **다른 실패와 동일한 단일 규칙** — 서버 `detail`("다른 변경이 먼저 반영되었습니다. 최신 정보를 다시 불러온 뒤 시도해 주세요.") + "적용된 변경이 없습니다(전량 취소)". 프론트 전용 문구/분기 없음(§API 인터페이스 §에러 참조).
 
 ### S10. 가져오기 — 새 WEBHOOK 규칙 토큰 1회 노출
 
 - **Given**. YAML에 `trigger.type: WEBHOOK` 인 **신규**(id 미존재) 규칙이 있다.
 - **When**. 적용 성공.
-- **Then**. 결과 Dialog에 토큰 목록(규칙명 · 토큰 · 복사 버튼)이 **경고 배지**와 함께 표시된다. Dialog를 닫으려 하면 **2단계 확인**("토큰은 다시 볼 수 없습니다. 닫을까요?"). 갱신된 WEBHOOK 규칙은 토큰을 재발급하지 않아 목록에 없다.
+- **Then**. 결과 Dialog에 토큰 목록(**룰 이름** · 토큰 · 복사 버튼)이 `role="alert"` 경고 영역과 함께 표시된다. **토큰 영역은 결과 카운트(생성/갱신/총)와 conflicts 경고보다 시각적으로 먼저 온다** — 놓치면 영구 분실이라 가장 되돌릴 수 없는 정보가 최상단이어야 한다(plan-design-review 반영). Dialog를 닫으려 하면 **2단계 확인**("토큰은 다시 볼 수 없습니다. 닫을까요?"). 갱신된 WEBHOOK 룰은 토큰을 재발급하지 않아 목록에 없다.
 
 ### S11. 가져오기 — 미인증 (401)
 
@@ -153,15 +153,26 @@ POST /api/v1/projects/{projectKey}/automation/rules/import
 
 | HTTP | errorCode | UI |
 |---|---|---|
-| 403 | `AUTOMATION_ACCESS_DENIED` | 토스트(내보내기) / Dialog 에러영역(가져오기) — "권한이 없습니다." |
-| 400 | `AUTOMATION_IMPORT_INVALID` | Dialog 에러영역 + **서버 `detail` 그대로**. `failedIndex` 있으면 "N번째 룰에서 실패" (+1) → S6. 없으면 `detail` 만 → S5. **사유별 분기 금지**(BLOCKER-1) |
-| 413 | `AUTOMATION_IMPORT_TOO_LARGE` | Dialog 에러영역 + 서버 `detail` |
-| 409 | `AUTOMATION_RULE_VERSION_CONFLICT` | "다른 사용자가 먼저 수정했습니다. 최신 상태를 내보낸 뒤 다시 시도하세요." |
-| 400 | `AUTOMATION_MALFORMED_REQUEST` | 일반 실패 문구 |
-| 500 | `AUTOMATION_INTERNAL_ERROR` | 일반 실패 문구(fallback) |
-| — | 그 외 / 미매핑 | **fallback 문구 필수** — 코드별 분기에 빠진 응답도 사용자에게 무언가는 보여야 한다(gap 분석 NIT-11) |
+**★ 가져오기 실패는 errorCode 분기 없이 단일 규칙**(plan-eng-review §8 반영).
 
-> 모든 가져오기 실패 문구에 **"적용된 변경 없음(전량 취소)"** 을 함께 표시한다(atomic fail-closed, FR10).
+```
+표시 = (failedIndex != null ? `${failedIndex + 1}번째 룰에서 실패했습니다. ` : '')
+     + (서버 detail ?? '가져오기에 실패했습니다.')      ← fallback
+     + ' 적용된 변경이 없습니다(전량 취소).'             ← 항상 병기
+```
+
+| HTTP | errorCode | 서버 `detail` (실물) | UI |
+|---|---|---|---|
+| 400 | `AUTOMATION_IMPORT_INVALID` | "YAML 형식이…" / "지원하지 않는 YAML 스키마 버전…" / projectKey 불일치 / 커맨드 사유 | 단일 규칙. `failedIndex` 있으면 접두(S6), 없으면 `detail` 만(S5). **사유별 분기 금지**(BLOCKER-1) |
+| 413 | `AUTOMATION_IMPORT_TOO_LARGE` | "가져오기 요청 본문 크기가 상한(1048576바이트)을 초과…" / "…규칙 수가 상한(500개)을…" | 단일 규칙 |
+| 409 | `AUTOMATION_RULE_VERSION_CONFLICT` | **"다른 변경이 먼저 반영되었습니다. 최신 정보를 다시 불러온 뒤 시도해 주세요."** (`AutomationRuleController.kt:546`) | 단일 규칙 — **프론트 하드코딩 금지**(아래 사유) |
+| 403 | `AUTOMATION_ACCESS_DENIED` | 권한 문구 | 단일 규칙 |
+| 400 | `AUTOMATION_MALFORMED_REQUEST` | 본문 판독 불가 | 단일 규칙 |
+| 500 | `AUTOMATION_INTERNAL_ERROR` | (있을 수도/없을 수도) | 단일 규칙 — `detail` 없으면 fallback 문구 |
+
+> **★ 409에 프론트 고정 문구를 두지 않는다** (plan-eng-review §8 해소). 초안은 409만 유일하게 서버 `detail` 대신 프론트 하드코딩 문구를 쓰게 했는데, ① 백엔드가 이미 **사용자에게 그대로 보여줄 수 있는 한국어 안내**를 준다(위 실물 인용) ② 이 예외 하나 때문에 errorCode 기반 분기가 필요해지고, 그 분기를 강제하는 테스트가 없으면 구현자가 놓쳐도 **아무 테스트도 안 깨지는 가짜 그린**이 된다 ③ S5/S8의 BLOCKER-1 해소 원칙("서버 `detail` 을 신뢰")과도 어긋난다. → **분기 자체를 제거**해 전 실패를 한 규칙으로 통일한다. errorCode는 로깅/E2E 식별용으로만 쓴다.
+
+> **내보내기(export)는 Dialog가 없어 토스트**. 403이면 "권한이 없습니다.", 그 외 실패는 "YAML 내보내기에 실패했습니다." (토스트는 짧아야 하므로 서버 `detail` 을 싣지 않는다 — 가져오기와 의도적으로 다름).
 
 ### client.ts 변경 (FR11 — 유일한 공유 인프라 변경)
 
@@ -212,7 +223,7 @@ body: body !== undefined ? (isRawBody ? body : JSON.stringify(body)) : undefined
 2. **BC 격리**. automation BC UI만. 다른 BC 컴포넌트 수정 금지. 단 `api/client.ts` 는 전 BC 공유 인프라 — FR11로 최소 변경(현재 진행 중인 다른 PR 없음을 확인, 충돌 위험 0).
 3. **권한 게이팅 범위 밖**. `projectPermissionsSchema` (`api/project-permissions.ts:21-32`)에 `MANAGE_AUTOMATION` 키가 **부재**하고, automation UI에 게이팅 선례가 **0건**이다. 사전 게이팅하려면 백엔드 권한 요약 API 확장이 선행돼야 하므로([[ui-permission-gating-needs-summary-api-exposure]]) 본 PR 범위 밖. 기존 관례대로 **런타임 403 fail-closed**. → 후속 FR 후보로 기록.
 4. **YAML 파싱 금지**. 프론트는 YAML을 파싱하지 않는다(js-yaml 등 신규 의존성 도입 금지). 원문 문자열을 그대로 전달하고 검증은 전부 백엔드 도메인 파서에 위임.
-5. **MSW 등록 2곳**. 신규 핸들러는 `mocks/handlers.ts` 의 import(≈69) + 전역 배열 스프레드(≈147) **양쪽** 추가([[msw-global-handler-registration-gap]]).
+5. **MSW — 신규 핸들러 파일을 만들지 않는다**. `mocks/handlers.ts` 가 이미 `automationRuleHandlers` 를 import(:69) + 스프레드(:147) 하고 있으므로, export/import 핸들러를 **기존 `automation-rule-handlers.ts` 에 추가**하면 등록 누락이 원천 불가능하다(실물 확인). 새 핸들러 **파일**을 만드는 경우에만 [[msw-global-handler-registration-gap]] 의 "import + 배열 양쪽 등록" 규칙이 적용된다 — 이번 작업은 해당 없음(plan-eng-review §6 반영: 초안이 일반 학습을 그대로 복붙해 plan 과 모순됐음).
 6. **MSW 단일 인스턴스**. 지역 `setupServer` 금지, `@/test/server` 사용([[msw-dual-setupserver-double-dispatch]], #271 T3 발견).
 
 ## 측정 가능한 완료 기준
