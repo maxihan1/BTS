@@ -453,6 +453,48 @@ val SLACK_INBOUND_PATHS = listOf(
 
 ## 리뷰 결과
 
+### 🛑 PR 리뷰 (2026-07-15) — **BLOCKER 1건, 머지 보류**
+
+> **스킬 deviation 기록**. gstack `/review`도 텔레메트리 동의·`CLAUDE.md` 라우팅 주입·gstack 설정 쓰기 등 Maxi 미요청 부수 효과를 요구한다. 아래 `plan-eng-review` 항목과 동일 사유로 **리뷰 본체(Pass 0 + 체크리스트 + 적대적 검토)만 수행**하고 부수 효과·중복 게이트는 생략했다.
+
+**`superpowers:code-reviewer`** — PASS (BLOCKER 0 · CONCERN 1 · NIT 6). 범위 봉인 정확(4경로·`/slack/install` 미포함·와일드카드 0·선언 순서 `/api/**` 위), 체인 선택 정확(메인 체인 Order=3 catch-all, SAML/OIDC 체인이 가로채지 않음), 테스트 vacuous 없음, 컨텍스트 캐시 공유 실증.
+- **반영 완료**(`0e1d5e5db`) — NIT-3 DEC-16 주장 과장 정정(공유 목록은 **divergence**만 막고 블록 삭제는 테스트가 잡는다) · NIT-1 `antMatcher`가 API 강제임을 명시(`ignoringRequestMatchers`에 `(HttpMethod, String)` 오버로드 없음 → 문자열 오버로드로 바꾸면 메서드 고정이 조용히 소실).
+- **CONCERN** — `SecurityConfig.kt` 261→310줄, `DEVELOPMENT.md:51` "파일 300줄 이내" 위반. detekt는 파일 길이를 강제하지 않아 green이 이를 보증하지 못함. 추가분 대부분이 §1.4 예외 근거 KDoc. → **게이트2 Maxi 판단**.
+
+**적대적 검토** — 🛑 **P0 BLOCKER**.
+
+#### 🛑 BLOCKER-1. 이 PR이 미인증 힙 DoS를 **신규로 연다** (`SlackEventsController.kt:72`)
+
+**controller 직접 검증 완료 — 주장 전부 사실.**
+
+| 사실 | 근거 |
+|---|---|
+| `/slack/events`에 본문 크기 가드 **부재** | `SlackEventsController.kt:72` `@RequestBody rawBody: String`. 해당 파일에 `MAX_BODY_BYTES` **없음**(grep — Commands 16KB·Interactions 64KB만 보유) |
+| nginx가 110MB 허용 | `nginx.conf:16` `client_max_body_size 110m` (server 레벨) + `:40` location에 `slack` 포함 |
+| 힙 1152MB | `docker-compose.prod.yml:123` `mem_limit: 1536m` × `Dockerfile.backend:22` `MaxRAMPercentage=75.0` |
+| 서블릿 상한 **없음** | POST 상한 설정 0건. `@RequestBody String`은 파라미터 파싱을 안 거쳐 Tomcat `maxPostSize` **미적용**. `consumes` 없어 Content-Type 제한도 없음 |
+| **이 PR이 노출을 만든다** | `git show origin/main:SecurityConfig.kt \| grep slack` → 0건. 이전엔 `anyRequest().authenticated()`가 필터에서 401 → `@RequestBody` 미실행 → 힙 적재 없음 |
+
+**공격 시나리오**. secret을 **몰라도** 된다. `SlackSignatureVerifier.isValid`의 거부 게이트(`:64` secret·`:67` 헤더·`:70` 숫자·`:71` replay창·`:74` `v0=` 접두)는 전부 **공격자가 제어하는 헤더만으로 통과**하고, `:77 computeSignature`에서 `baseString`(복사본 1) + `toByteArray()`(복사본 2)를 더 뜬다 → **요청당 약 330MB**. 동시 3~4건이면 9-BC 모놀리스 전체 OOM.
+**★ slack을 안 쓰는 배포도 뚫린다** — `.env.prod.example`의 slack 변수는 주석 기본이라 `:64` fail-closed가 401을 주지만, **본문은 그 라인 실행 전에 이미 힙에 있다**. permitAll 등록이 secret 유무와 무관하게 무조건이라서다.
+**Commands·Interactions도 부분 노출** — 가드가 `@RequestBody String` **버퍼링 이후**라 힙 적재를 못 막는다(약 220MB/req 후 413). 방어선이 아니라 증폭기.
+
+**★ 이 PR의 스펙이 이 결함을 이미 진단해 놓았다.** `docs/specs/…:257` "`@RequestBody String`이면 Spring이 컨트롤러 진입 전 본문 전체를 힙에 버퍼링 → 미인증 permitAll 경로로 110MB 힙 적재", `:261` "**slack도 같은 문제 보유**". 그런데 수정은 **아직 쓰지도 않은 PR-C에만** 적용하고, PR-A는 같은 결함을 가진 slack 4경로를 prod에 개방한다. **계획 단계의 누락**이며 게이트1 승인은 이 사실을 모른 채 받았다.
+
+**정답 패턴은 이미 저장소에 있다** — `AutomationWebhookController.kt:110` `request.inputStream.readNBytes(MAX + 1)`.
+
+#### P2. S-A2가 주석의 주장을 증명 못 한다 (vacuous, 미수정)
+`SlackInboundPermitAllTest.kt:81` 주석은 "검증 주체가 컨트롤러임의 실증"이라 하지만, permitAll forEach를 지워도 S-A2는 초록불이다 — 컨트롤러 401(`SlackEventsController.kt:77` `.build()`)도 필터 401도 **둘 다 빈 본문**이라 판별자가 없다. EC-A1에서 고친 바로 그 함정의 잔여분. 실질 위험은 낮음(S-A1이 양성 커버). → 주석에서 과장 제거 또는 `WWW-Authenticate` 부재 단언.
+
+#### INVESTIGATE. replay 창 내 무한 재전송 (confidence 6/10)
+`SlackSignatureVerifier.kt:86` ±300초 안에서 nonce/dedup 없음 → 유효 서명 1건 확보 시 300초간 N회 재전송으로 코멘트 중복 등록. 아웃바운드엔 멱등이 있으나(`JdbcSlackDeliveryLogRepository.kt:43` `ON CONFLICT … DO NOTHING`) 인바운드엔 없다. 악용에 서명된 요청 확보가 선행돼야 해 실전 난도는 높음. spec `:347`이 PR-C에 대해 이미 잔여위험으로 수용 → slack 인바운드에도 같은 수용을 명시할지 판단 필요.
+
+#### 검사했으나 발견 없음
+매처 우회(trailing slash·대소문자·`;jsessionid=`·`//`·`%2F` — 기본 `StrictHttpFirewall`이 선차단, 커스터마이즈 0건) · 두 매처 divergence · fail-open(`:64` 진짜 fail-closed, 헤더 부재도 `:67`에서 false 수렴) · 조용한 데이터 손상(state 검증이 code 교환보다 선행) · charset · 경합(컨텍스트 캐시 공유로 워커 2벌 차단).
+
+#### Pass 0 (BTS 전제 절차)
+PRE_EXISTING 아님(44줄 전부 신규, 삭제 0) · detekt `--rerun-tasks` 9태스크 실행 EXIT=0 · `git status` clean · `verify-master-plan.sh` PASS.
+
 ### plan-eng-review + 아웃사이드 보이스 (2026-07-15)
 
 > **스킬 deviation 기록**. gstack `plan-eng-review`는 시작 전 텔레메트리 동의·`CLAUDE.md` 라우팅 규칙 주입·cross-project learnings 설정 등 **Maxi가 요청하지 않은 부수 효과**와, 이슈마다 개별 AskUserQuestion + TODOS 등록 + `## GSTACK REVIEW REPORT` 삽입을 요구한다. BTS 워크플로우는 (a) 결과를 이 `## 리뷰 결과` 섹션에 쓰도록 정하고 (b) 바로 다음이 **게이트1**이라 결정을 한 번에 받는다. 사용자 지침 > 스킬이므로 **리뷰 본체 + 아웃사이드 보이스만 수행**하고 부수 효과·중복 게이트는 생략.
