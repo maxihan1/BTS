@@ -145,7 +145,63 @@ BTS 관례 — `SecretEncryptor`(shared-kernel, `shared/crypto/SecretEncryptor.k
 - **신규 용어 후보**. `GitWebhookEvent`(product doc D1 표기) — glossary 미등재. 채택 여부는 §결정 D1에 종속
 - **Obsidian `domain/automation.md`가 stale**. AQL 파서를 "ANTLR 4"로 기재하나 실제는 손수 파서. 본 PR 범위 밖(별건 정리 후보)
 
-## 결정 사항 (← Maxi 확정 필요)
+## 결정 사항 (2026-07-15 Maxi 확정)
+
+### D1. 수신 형태 — **신규 `PR_MERGED` 트리거 + 전용 엔드포인트**
+
+전용 엔드포인트가 서명검증·이슈키 추출을 담당하고, `TriggerType.PR_MERGED`를 추가해 **기존 pgmq → `ActionExecutor` 파이프라인을 그대로 재사용**한다.
+
+- **근거**. SDD 8.2의 트리거 목록에 이미 `pr.merged`가 있음(`08-automation-engine.md:22`) → SDD 8.8의 `webhook.received/source:github` 표기보다 8.2가 정합. 룰 모델을 타므로 조건부 제어·실행 이력(FR-AT-05)·YAML GitOps(FR-AT-06)·충돌 분석(FR-AT-04) 혜택을 전부 승계
+- **기각**. 기존 `WEBHOOK` 재사용 → 룰 편집 UI에서 Git 전용 룰 구분 불가 / 룰 우회 직결 → SDD 8.8의 룰 모델 이탈 + 위 4개 FR 혜택 상실
+- **★ 파급**. enum 추가 → DB CHECK 제약 갱신(V306) + **타 모듈 카운트 가드까지 깨짐**([[enum-add-breaks-crossmodule-count-guard]]) → 전 모듈 `grep`으로 TriggerType 카운트 단언 전수 확인 필수
+- **SDD 8.8 정정 필요**. `webhook.received/source:github` → `pr.merged` 트리거로. §전수 동기화 대상
+
+### D2. permitAll 부채 — **3종 일괄 중앙 등록**
+
+git 신규 + automation 웹훅(FR-AT-01) + slack 인바운드를 **중앙 `SecurityConfig`에 함께 등록**한다.
+
+- **근거**. `automation-prod-assembly.md:165`가 제안한 *"slack+automation 인바운드 permitAll 통합 후속"* 과 정합. 이 등록 없이는 FR-AT-07이 prod에서 동작하지 않아 **E2E로도 검증 불가**, "automation BC 완결" 선언이 무색
+- **★ BC 경계 예외**. identity-access(`SecurityConfig`)를 건드림. plan §리스크에 사유 명시 필수(선례 — PR #13 옵션 C 패턴). **security-engineer 공동 검토 필수**
+- **방어 설계**. notification 익명 공유 GET 선례(`SecurityConfig.kt:175-180`)의 2겹 방어 차용 — **메서드 고정(POST)** + **경로 매처 최소 범위**. CSRF ignore도 같은 최소 범위로 동반 등록(POST라 필수)
+- **회귀 가드**. permitAll 확장 포인트가 없어(F2) 이 부채가 재발하는 구조 → 등록 누락을 잡는 테스트를 조립 컨텍스트(`:modules:app`)에 추가 검토
+
+### D3. Fix Version 통로 — **신규 포트 메서드 `setFixVersions`**
+
+`IssueMutationPort`에 전용 메서드를 추가한다(`setField` 확장 아님).
+
+- **근거**. 전체교체 시맨틱 · OCC(`expectedVersion`) · **복수** versionId를 타입으로 정직하게 드러냄. `setField`의 `value: String?`(JSON 인코딩 문자열)에 리스트를 숨기면 "필드 하나에 값 하나" 의미가 깨지고 OCC 파라미터가 사라짐
+- **파급**. shared-kernel 계약 변경 → `IssueMutationPortContractTest`("default 없음" 리플렉션 검증) 갱신 + `StubIssueMutationPort`(consumer-owns-stub) 갱신 + issue-tracking 어댑터 구현
+- **fail-closed 유지**. 쓰기 포트라 default 구현 없음 → 어댑터 미결선 시 부팅 실패([[new-crossbc-dep-openapi-mockbean-regression]] — 신규 포트 소비는 full-boot `NoSuchBean` 유발, `@MockBean` 동반 확인)
+
+### D4. 버전 결정 — **룰 액션에 versionId 명시 지정**
+
+액션 config에 대상 `versionId`를 담는다. 브랜치→버전 매핑 테이블(신규 스키마+UI)도, 최신 UNRELEASED 자동 선택(암묵적 오설정 위험)도 채택하지 않음.
+
+- **근거**. 기존 액션 모델과 동형 · 신규 스키마 0 · 명시적(암묵 동작 없음). 릴리스마다 룰 수정이 필요하지만 **FR-AT-06 YAML GitOps로 일괄 관리 가능**
+- **SDD 8.8 정정 필요**. `value: ["{{ pr.target_branch_version }}"]`(미정의 개념) → 명시 versionId로. §전수 동기화 대상
+
+### D5. (파생) 본 PR이 건드리는 모듈 — BC 격리 예외 명시
+
+| 모듈 | 변경 | 사유 |
+|---|---|---|
+| **automation** | 주 대상 — 엔드포인트·서명검증·이슈키 추출·`PR_MERGED` 트리거·V306 | 본 FR 소속 BC |
+| **shared-kernel** | `IssueMutationPort.setFixVersions` 추가 | cross-BC 포트 관례(F4) — 인터페이스는 항상 shared-kernel |
+| **issue-tracking** | `AutomationIssueMutationAdapter`에 구현 | 포트 제공자 |
+| **identity-access** | `SecurityConfig` permitAll·CSRF 3종 등록 | **D2 결정 — BC 격리 예외**. security-engineer 공동 검토 |
+
+**cross-BC 포트 추가 PR의 필수 절차** ([[prod-assembly-boot-verification-required]]). 머지 전 `origin/main` rebase + **`:modules:app:test`(9 BC prod 조립) 재검증**.
+
+### D6. (파생) 미해소 — /bts-spec에서 확정
+
+1. **서명 검증 provider 범위**. GitHub(`X-Hub-Signature-256`, HMAC-SHA256, `sha256=` 접두) / GitLab(`X-Gitlab-Token`, 평문 비교) 둘 다인가
+2. **secret 저장**. F6대로 해시 불가 → `SecretEncryptor` 가역 암호화. 신규 빈 `automationSecretEncryptor`(`bts.automation-encryption.{key,salt}`) + 저장 위치(신규 컬럼 vs 신규 테이블). D3 "활용" 전제 폐기 → **product doc D3 문구 정정 필요**
+3. **이슈 키 추출 범위**. 커밋 메시지 / PR 제목 / PR 본문 중 어디까지. 다중 키 매칭 시 전부 처리인가 첫 건인가. `Closes/Fixes` 같은 키워드 요구 여부
+4. **정규식 값 복제**. BC 격리로 `IssueKey.REGEX` 직접 import 불가 → `AtlasIssueUrlParser.kt:56` 선례대로 값 복제 + 주석 명시. 앵커 처리 주의([[flexmark-inline-extension-anchor-text-loss]])
+5. **raw body 함정**. `@RequestBody String`만, `@RequestParam` 병용 금지(F5)
+6. **DoS 가드**. 서명검증 **이전** 크기 상한 → 413 (slack 선례)
+7. **replay 방어**. GitHub은 slack과 달리 timestamp 헤더가 없음 → `X-GitHub-Delivery`(UUID) 기반 dedup 검토
+8. **트리거 이벤트 payload 형태**. `ActionExecutor.extractIssueKey`(`:264-268`)가 최상위 `issueKey` 또는 `issue.key`를 읽음 → PR_MERGED triggerEvent를 이 규약에 맞춰야 재사용 가능. PR이 이슈 **여러 개**를 참조하면 이슈당 1건씩 enqueue하는 구조 검토
+9. **권한**. 룰 actor(`automation_rules.actor_user_id`)가 대상 이슈 UPDATE 권한 없으면 fail-closed(기존 `IssueMutationPermissionDeniedException` 경로 승계)
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
