@@ -113,6 +113,31 @@ class SlackSignatureVerifierTest {
         assertThat(verifier.isValid("not-a-number", sign(signingSecret, "not-a-number", body), body)).isFalse()
     }
 
+    // ── 원문 바이트 경로 (정본) ─────────────────────────────────────────────────
+
+    @Test
+    fun `원문 바이트에 대한 유효한 서명은 통과한다`() {
+        val ts = t0.epochSecond.toString()
+        val rawBytes = body.toByteArray(Charsets.UTF_8)
+        val verifier = verifierAt(t0, signingSecret)
+
+        assertThat(verifier.isValid(ts, sign(signingSecret, ts, body), rawBytes)).isTrue()
+    }
+
+    @Test
+    fun `유효한 UTF-8 이 아닌 원문도 바이트 경로면 통과한다 - String 왕복은 같은 서명을 거부한다`() {
+        // 0xFF 는 UTF-8 에서 절대 유효하지 않은 바이트다. Slack 서명은 수신 원문 **바이트**에 대해 계산되므로
+        // 바이트 경로는 통과해야 한다. 반면 String 왕복(디코드 → toByteArray)은 0xFF 를 U+FFFD(EF BF BD)로
+        // 치환해 HMAC 대상 바이트를 바꿔버리므로 같은 서명을 거부한다 — 컨트롤러가 바이트 경로를 써야 하는 이유.
+        val ts = t0.epochSecond.toString()
+        val rawBytes = body.toByteArray(Charsets.UTF_8) + byteArrayOf(0xFF.toByte())
+        val signature = signBytes(signingSecret, ts, rawBytes)
+        val verifier = verifierAt(t0, signingSecret)
+
+        assertThat(verifier.isValid(ts, signature, rawBytes)).isTrue()
+        assertThat(verifier.isValid(ts, signature, String(rawBytes, Charsets.UTF_8))).isFalse()
+    }
+
     @Test
     fun `signing secret 미설정이면 형식이 유효해도 거부한다`() {
         val ts = t0.epochSecond.toString()
@@ -145,11 +170,22 @@ class SlackSignatureVerifierTest {
         secret: String,
         timestamp: String,
         rawBody: String,
+    ): String = signBytes(secret, timestamp, rawBody.toByteArray(Charsets.UTF_8))
+
+    /**
+     * [sign] 의 바이트 판 — base string 을 String 으로 조립하지 않고 접두 바이트 + 원문 바이트를 그대로
+     * 흘려 넣는다(그것이 Slack 의 실제 계약이라, 유효 UTF-8 이 아닌 원문에도 참조 서명을 만들 수 있다).
+     */
+    private fun signBytes(
+        secret: String,
+        timestamp: String,
+        rawBody: ByteArray,
     ): String {
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(secret.toByteArray(Charsets.UTF_8), "HmacSHA256"))
-        val digest = mac.doFinal("v0:$timestamp:$rawBody".toByteArray(Charsets.UTF_8))
-        val hex = digest.joinToString("") { "%02x".format(it) }
+        mac.update("v0:$timestamp:".toByteArray(Charsets.UTF_8))
+        mac.update(rawBody)
+        val hex = mac.doFinal().joinToString("") { "%02x".format(it) }
         return "v0=$hex"
     }
 }

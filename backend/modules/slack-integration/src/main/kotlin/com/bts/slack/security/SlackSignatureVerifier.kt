@@ -38,6 +38,14 @@ import kotlin.math.abs
  * 수렴한다(예외를 던지지 않는다). 컨트롤러(Task 11)가 `false`를 401로 매핑한다. 반환·로그에 signing secret이나
  * rawBody를 절대 담지 않는다(§1.1.2).
  *
+ * ## ★ 서명 대상은 원문 **바이트** — String 왕복 금지
+ * Slack 서명은 수신 원문 바이트 그대로에 대해 계산된다. 따라서 정본 경로는 [ByteArray] 를 받는
+ * [isValid] 이며, HMAC 을 그 바이트에 **직접** 건다. 본문을 String 으로 받았다가 `toByteArray(UTF_8)` 로
+ * 되돌리는 왕복은 유효 UTF-8 이 아닌 바이트를 U+FFFD(EF BF BD)로 치환해 HMAC 대상 바이트를 바꿔버리므로
+ * 진짜 Slack 요청이 원인 불명 401 로 거부된다(fail-closed 라 위험하진 않지만 디버깅 불가능한 오거부다).
+ * String 을 받는 오버로드는 편의를 위해 남겨 두되 내부에서 바이트 경로로 위임한다 — 인바운드 컨트롤러는
+ * `HttpServletRequest` 에서 읽은 원문 바이트([com.bts.slack.web.readBoundedSlackBody])를 그대로 넘긴다.
+ *
  * @param slackProperties signing secret 보관처. 미설정 시 빈 문자열로 등록되며(부팅 안전) 검증 시점에 거부된다.
  * @param clock 재전송 윈도우 판정용 시계. slack 모듈에 Clock 빈이 없으므로 기본값 [Clock.systemUTC]를 둔다
  *   (컴포넌트 스캔 시 `NoSuchBeanDefinitionException` 방지). 테스트는 고정 인스턴스를 주입한다.
@@ -48,18 +56,18 @@ class SlackSignatureVerifier(
     private val clock: Clock = Clock.systemUTC(),
 ) {
     /**
-     * Slack 요청 서명을 검증한다.
+     * Slack 요청 서명을 원문 **바이트**에 대해 검증한다(정본 경로 — 클래스 KDoc "서명 대상은 원문 바이트" 참조).
      *
      * @param timestampHeader `X-Slack-Request-Timestamp` 값(epoch seconds 문자열). null/빈/비숫자면 거부.
      * @param signatureHeader `X-Slack-Signature` 값(`v0=`+hex). null/빈/접두 없음/불일치면 거부.
-     * @param rawBody 서명 대상 원문 바디(재조립 없이 수신 원문 그대로여야 함).
+     * @param rawBody 서명 대상 원문 바이트(수신한 그대로 — 디코드/재인코딩 왕복을 거치지 않아야 함).
      * @return 진짜 Slack 요청으로 검증되면 `true`, 그 외 모든 경우 `false`(fail-closed).
      */
     @Suppress("ReturnCount") // 거부 사유별 guard clause가 보안 판정을 명확히 한다(정상 경로 1 + 거부 5)
     fun isValid(
         timestampHeader: String?,
         signatureHeader: String?,
-        rawBody: String,
+        rawBody: ByteArray,
     ): Boolean {
         if (slackProperties.signingSecret.isBlank()) {
             return false
@@ -81,23 +89,46 @@ class SlackSignatureVerifier(
         )
     }
 
+    /**
+     * String 본문 편의 오버로드 — 원문 바이트 경로([isValid])로 위임한다.
+     *
+     * ★ 인바운드 컨트롤러는 이 오버로드를 쓰지 않는다. 본문이 이미 String 이라는 것은 어딘가에서 바이트를
+     * 디코드했다는 뜻이고, 그 왕복이 유효 UTF-8 이 아닌 원문의 서명을 어긋나게 만들기 때문이다
+     * (클래스 KDoc 참조). 서명 대상이 처음부터 String 인 호출자(테스트·도구)만 사용한다.
+     *
+     * @param timestampHeader `X-Slack-Request-Timestamp` 값(epoch seconds 문자열).
+     * @param signatureHeader `X-Slack-Signature` 값(`v0=`+hex).
+     * @param rawBody 서명 대상 원문 바디(UTF-8 로 인코딩해 바이트 경로에 넘긴다).
+     * @return 진짜 Slack 요청으로 검증되면 `true`, 그 외 모든 경우 `false`(fail-closed).
+     */
+    fun isValid(
+        timestampHeader: String?,
+        signatureHeader: String?,
+        rawBody: String,
+    ): Boolean = isValid(timestampHeader, signatureHeader, rawBody.toByteArray(Charsets.UTF_8))
+
     /** 요청 timestamp가 현재 시각 기준 ±[REPLAY_WINDOW_SECONDS]초 이내인지 확인한다(재전송 방어). */
     private fun isWithinReplayWindow(timestamp: Long): Boolean {
         return abs(clock.instant().epochSecond - timestamp) <= REPLAY_WINDOW_SECONDS
     }
 
     /**
-     * `v0=` + lowercase-hex(HMAC-SHA256(signing_secret, "v0:{timestamp}:{rawBody}"))를 계산한다.
+     * `v0=` + lowercase-hex(HMAC-SHA256(signing_secret, "v0:{timestamp}:" + rawBody))를 계산한다.
      * [Mac]은 스레드 안전하지 않으므로 호출마다 새 인스턴스를 만든다.
+     *
+     * base string 을 문자열로 **조립하지 않고** 접두 바이트와 원문 바이트를 [Mac.update] 로 나눠 흘려 넣는다.
+     * 조립하면 (1) 원문 String 왕복이 되살아나 유효 UTF-8 이 아닌 바디의 서명이 어긋나고, (2) 본문 크기만큼
+     * 복사본이 하나 더 생겨 미인증 요청이 힙을 증폭시킨다. HMAC 은 스트리밍 연산이라 나눠 넣어도 결과가 같다.
      */
     private fun computeSignature(
         timestamp: String,
-        rawBody: String,
+        rawBody: ByteArray,
     ): String {
-        val baseString = "$SIGNATURE_VERSION:$timestamp:$rawBody"
         val mac = Mac.getInstance(HMAC_ALGORITHM)
         mac.init(SecretKeySpec(slackProperties.signingSecret.toByteArray(Charsets.UTF_8), HMAC_ALGORITHM))
-        return SIGNATURE_PREFIX + HexFormat.of().formatHex(mac.doFinal(baseString.toByteArray(Charsets.UTF_8)))
+        mac.update("$SIGNATURE_VERSION:$timestamp:".toByteArray(Charsets.UTF_8))
+        mac.update(rawBody)
+        return SIGNATURE_PREFIX + HexFormat.of().formatHex(mac.doFinal())
     }
 
     private companion object {
