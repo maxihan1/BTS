@@ -57,7 +57,13 @@ class SlackInboundPermitAllTest : ProdAssemblyHttpTestBase() {
     fun `유효 서명 url_verification 이 필터를 통과해 challenge 를 에코한다 (S-A1)`() {
         val body = """{"type":"url_verification","challenge":"$CHALLENGE"}"""
 
-        val response = rest.exchange(EVENTS_PATH, HttpMethod.POST, signed(body, MediaType.APPLICATION_JSON), String::class.java)
+        val response =
+            rest.exchange(
+                EVENTS_PATH,
+                HttpMethod.POST,
+                signed(body, MediaType.APPLICATION_JSON),
+                String::class.java,
+            )
 
         // 200 = 필터 통과(permitAll + CSRF-ignore) + 컨트롤러 서명 검증 통과의 동시 증명.
         assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
@@ -84,7 +90,12 @@ class SlackInboundPermitAllTest : ProdAssemblyHttpTestBase() {
         val body = "command=%2Fatlas"
 
         val response =
-            rest.exchange(COMMANDS_PATH, HttpMethod.POST, signed(body, MediaType.APPLICATION_FORM_URLENCODED), String::class.java)
+            rest.exchange(
+                COMMANDS_PATH,
+                HttpMethod.POST,
+                signed(body, MediaType.APPLICATION_FORM_URLENCODED),
+                String::class.java,
+            )
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
     }
@@ -117,13 +128,16 @@ class SlackInboundPermitAllTest : ProdAssemblyHttpTestBase() {
 
     @Test
     fun `slack install 개시는 익명 요청을 필터가 계속 거부한다 (EC-A1 범위 누출 0)`() {
-        // /slack/install 은 SLACK_INBOUND_PATHS 에 없다 — authenticated() + 컨트롤러 뒤 admin fail-closed 이중가드 유지.
+        // /slack/install(관리자 설치 개시)은 SLACK_INBOUND_PATHS 에 **없다** — authenticated() + 컨트롤러 뒤
+        // admin fail-closed 이중가드 유지(ADR R2). 매처가 slack 하위경로로 새면 이 단언이 깨져야 한다.
         val response = rest.exchange(INSTALL_PATH, HttpMethod.GET, HttpEntity.EMPTY, String::class.java)
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
-        // ★ 401 만으로는 부족하다 — 실수로 permitAll 되면 SlackActorExtractor 가 던지는 401 이 SlackInstallExceptionHandler
-        // 를 거쳐 ProblemDetail 본문과 함께 돌아오므로 상태만 보는 단언은 vacuous 하게 통과한다
-        // ([[archunit-vacuous-rule-silent-pass]]). 본문에 컨트롤러 에러코드가 없어야 = 필터가 거부한 것.
+        // ★ 상태코드 단언만으로는 vacuous 하다 — 실증됨([[archunit-vacuous-rule-silent-pass]]).
+        // SLACK_INBOUND_PATHS 에 `GET /slack/install` 을 일부러 넣어 확인한 결과, permitAll 이 새도 컨트롤러의
+        // SlackActorExtractor 가 401 을 던져 **상태는 그대로 401** 이었다. 즉 상태만 보면 누출을 놓친다.
+        // 필터가 막았다는 증거는 **본문** 이다 — 컨트롤러까지 갔다면 SlackInstallExceptionHandler 의
+        // ProblemDetail(errorCode 포함)이 실려 오지만, 필터의 401 은 본문이 비어 있다.
         assertThat(response.body.orEmpty()).doesNotContain(CONTROLLER_UNAUTHENTICATED_ERROR_CODE)
     }
 

@@ -139,9 +139,9 @@ class SecurityConfig(
                 // FR-AT-07 PR-A: slack 인바운드 — permitAll 과 **같은** [SLACK_INBOUND_PATHS] 목록에서 구동한다(DEC-16).
                 // Slack 은 브라우저가 아니라 서버가 POST 하므로 CSRF 토큰을 가질 수 없다 — permitAll 만 열고 여기를
                 // 빠뜨리면 CsrfFilter 가 먼저 거부해 경로가 계속 죽어 있다(FR-MF-01 BLOCKER-1 과 동일 사고).
-                csrf.ignoringRequestMatchers(
-                    *SLACK_INBOUND_PATHS.map { (method, path) -> antMatcher(method, path) }.toTypedArray(),
-                )
+                SLACK_INBOUND_PATHS.forEach { (method, path) ->
+                    csrf.ignoringRequestMatchers(antMatcher(method, path))
+                }
                 csrf.ignoringRequestMatchers(
                     "/api/v1/auth/login",
                     "/api/v1/auth/refresh",
@@ -286,6 +286,8 @@ class SecurityConfig(
          * ## ★ 이 단일 목록이 permitAll 과 CSRF-ignore 를 함께 구동한다 (DEC-16)
          * 두 설정은 서로 다른 블록이라 한쪽만 등록하면 POST 가 계속 거부된다(FR-MF-01 BLOCKER-1 실사고).
          * 목록을 하나로 두고 양쪽이 같은 것을 순회하게 해 **한쪽만 등록하는 실수를 구조적으로 차단**한다.
+         * CSRF 를 빠뜨렸을 때의 증상이 401 이라 "미등록"과 구분되지 않는다는 점도 이 구조가 필요한 이유다 —
+         * 익명 요청의 CSRF 거부는 `ExceptionTranslationFilter` 가 인증 진입점으로 넘겨 403 이 아니라 401 이 된다.
          *
          * ## 폭발 반경 봉인
          * [PUBLIC_DASHBOARDS_PATH]·[ICAL_FEED_PATH] 와 동일 원칙 — **메서드 고정 + 정확 경로**. slack 하위경로를
