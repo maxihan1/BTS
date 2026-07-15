@@ -2,6 +2,7 @@
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import {
+  automationImportResponseSchema,
   automationRuleResponseSchema,
   createAutomationRuleResponseSchema,
 } from '@/api/automation-rules.types'
@@ -15,6 +16,7 @@ import {
   resetAutomationRuleStore,
   SCENARIO_KEY,
   seedAutomationRules,
+  VALID_GITOPS_YAML,
 } from './automation-rule-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -518,5 +520,94 @@ describe('SCENARIO_KEY.WITH_CONFLICTS localStorage 플래그 (FR-AT-04 D6/D7)', 
     for (const item of list.body as unknown[]) {
       expect(Object.keys(item as object)).not.toContain('conflicts')
     }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (h) GET /automation/rules/export — YAML GitOps 내보내기 (FR-AT-06 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GET /automation/rules/export — YAML GitOps 내보내기', () => {
+  it('application/yaml 과 Content-Disposition 을 준다', async () => {
+    const res = await fetch('/api/v1/projects/PROJ/automation/rules/export')
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('application/yaml')
+    expect(res.headers.get('content-disposition')).toContain('automation-rules-PROJ.yaml')
+    expect(await res.text()).toContain('version: 1')
+  })
+
+  it(':id 와일드카드 GET 핸들러보다 먼저 매칭된다(route order 함정 회귀 가드)', async () => {
+    // getRuleHandler가 먼저 매칭되면 "export"를 id로 취급해 404를 반환한다.
+    const res = await fetch('/api/v1/projects/PROJ/automation/rules/export')
+    expect(res.status).not.toBe(404)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (i) POST /automation/rules/import — YAML GitOps 가져오기 (FR-AT-06 D6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function importYaml(body: string, projectKey = 'PROJ'): Promise<Response> {
+  return fetch(`/api/v1/projects/${projectKey}/automation/rules/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/yaml' },
+    body,
+  })
+}
+
+describe('POST /automation/rules/import — YAML GitOps 가져오기', () => {
+  it('YAML 원문의 rules: 항목 수를 세어 created/total 을 산출한다(정교한 파싱 없이)', async () => {
+    const res = await importYaml(
+      'version: 1\nprojectKey: PROJ\nrules:\n  - name: 새 룰\n    trigger: { type: ISSUE_CREATED, config: {} }\n    actions: []\n',
+    )
+    expect(res.status).toBe(200)
+    const body = automationImportResponseSchema.parse(await res.json())
+    expect(body.created).toBe(1)
+    expect(body.total).toBe(1)
+    expect(body.ruleIds).toHaveLength(1)
+    expect(body.webhookTokens).toBeUndefined()
+    expect(body.conflicts).toEqual([])
+  })
+
+  it('VALID_GITOPS_YAML 픽스처(룰 1건)도 동일하게 created=1 로 집계한다', async () => {
+    const res = await importYaml(VALID_GITOPS_YAML)
+    const body = automationImportResponseSchema.parse(await res.json())
+    expect(body.created).toBe(1)
+    expect(body.total).toBe(1)
+  })
+
+  it('SCENARIO_KEY.IMPORT_FAILED_INDEX 플래그는 400 + failedIndex 를 준다', async () => {
+    localStorage.setItem(SCENARIO_KEY.IMPORT_FAILED_INDEX, 'true')
+    const res = await importYaml(VALID_GITOPS_YAML)
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { errorCode: string; failedIndex: number }
+    expect(body.errorCode).toBe('AUTOMATION_IMPORT_INVALID')
+    expect(body.failedIndex).toBe(2)
+  })
+
+  it('SCENARIO_KEY.IMPORT_TOO_LARGE 플래그는 413 을 준다', async () => {
+    localStorage.setItem(SCENARIO_KEY.IMPORT_TOO_LARGE, 'true')
+    const res = await importYaml(VALID_GITOPS_YAML)
+    expect(res.status).toBe(413)
+    const body = (await res.json()) as { errorCode: string }
+    expect(body.errorCode).toBe('AUTOMATION_IMPORT_TOO_LARGE')
+  })
+
+  it('SCENARIO_KEY.IMPORT_WEBHOOK_TOKENS 플래그는 200 + webhookTokens 를 준다', async () => {
+    localStorage.setItem(SCENARIO_KEY.IMPORT_WEBHOOK_TOKENS, 'true')
+    const res = await importYaml(VALID_GITOPS_YAML)
+    expect(res.status).toBe(200)
+    const body = automationImportResponseSchema.parse(await res.json())
+    expect(body.webhookTokens).toHaveLength(1)
+    expect(body.webhookTokens?.[0]?.token).toBeTruthy()
+  })
+
+  it('SCENARIO_KEY.IMPORT_VERSION_CONFLICT 플래그는 409 + 백엔드 실물 문구를 그대로 준다', async () => {
+    localStorage.setItem(SCENARIO_KEY.IMPORT_VERSION_CONFLICT, 'true')
+    const res = await importYaml(VALID_GITOPS_YAML)
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { errorCode: string; detail: string }
+    expect(body.errorCode).toBe('AUTOMATION_RULE_VERSION_CONFLICT')
+    expect(body.detail).toBe('다른 변경이 먼저 반영되었습니다. 최신 정보를 다시 불러온 뒤 시도해 주세요.')
   })
 })
