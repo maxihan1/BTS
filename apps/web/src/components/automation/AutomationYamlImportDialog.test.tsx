@@ -7,6 +7,7 @@ import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { AutomationYamlImportDialog } from './AutomationYamlImportDialog'
 import type { AutomationYamlImportDialogProps } from './AutomationYamlImportDialog'
+import { automationRuleHandlers } from '@/mocks/automation-rule-handlers'
 import {
   DEFAULT_AUTOMATION_PROJECT_KEY,
   resetAutomationRuleStore,
@@ -24,6 +25,11 @@ const RULE_ID = '550e8400-e29b-41d4-a716-446655440000'
 // ─────────────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  // @/test/server 기본 handlers.ts는 auth/refresh 하나뿐(각 테스트 파일이 필요한 핸들러를
+  // server.use()로 직접 등록하는 관례) — automation BC 실동작(시나리오 플래그 분기 포함)을
+  // 재현하려면 automationRuleHandlers를 베이스라인으로 깐다(RuleExecutionHistoryDialog.test.tsx는
+  // 손수 재구현하지만, 이 Dialog는 시나리오 플래그 의존이 많아 기존 핸들러를 그대로 재사용한다).
+  server.use(...automationRuleHandlers)
   document.cookie = 'XSRF-TOKEN=test-csrf-token'
 })
 
