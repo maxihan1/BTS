@@ -94,8 +94,25 @@ prod에서 **한 번도 호출되지 않는다**. 필터를 유지하는 것이 
 permitAll(`:151-184`)과 CSRF-ignore(`:133-146`)는 **서로 다른 블록**이다. 한쪽만 등록하면 POST가 403으로 죽는다.
 FR-MF-01에서 실제로 발생한 BLOCKER다.
 
-**4경로를 `List<Pair<HttpMethod, String>>` 하나로 두고 csrf 블록과 authorize 블록이 같은 리스트를 순회한다**
-→ 한쪽만 등록하는 것이 **컴파일 단위에서 불가능**해진다.
+**4경로를 `List<Pair<HttpMethod, String>>` 하나로 두고 csrf 블록과 authorize 블록이 같은 리스트를 순회한다.**
+
+★ **정확한 효력 범위** — 이 구조가 막는 건 **경로·메서드 divergence**다(한쪽에 경로를 추가하고 다른 쪽에
+빠뜨리는 것). **`forEach` 블록 자체를 지우는 것은 여전히 컴파일된다** — 그건 구조가 아니라
+`SlackInboundPermitAllTest`가 잡는다. 구조와 테스트가 **함께** 가드이며, 어느 한쪽도 단독으로 충분하지 않다.
+
+### D4-a. `SLACK_INBOUND_PATHS` 편집 시 지킬 것 (코드 KDoc이 이 절을 가리킨다)
+
+- **이 목록 하나가 3곳을 구동한다** — permitAll · CSRF-ignore · bearer resolver skip(§D7). 셋의 결합은
+  자명하지 않다. 특히 CSRF-ignore·bearer skip을 빠뜨리면 **증상이 "permitAll 미등록"과 구분되지 않는
+  401**이라 오진하기 쉽다(FR-MF-01 BLOCKER-1 실사고).
+- **csrf 쪽만 `antMatcher`인 건 API 강제**다. `CsrfConfigurer.ignoringRequestMatchers`에는
+  `(HttpMethod, String)` 오버로드가 **없다**(`(String...)`·`(RequestMatcher...)`뿐). 문자열 오버로드로
+  바꾸면 **메서드 고정이 조용히 사라지고 컴파일·테스트 모두 통과**한다.
+- **메서드 고정 + 정확 경로만.** 와일드카드 금지(`PUBLIC_DASHBOARDS_PATH`·`ICAL_FEED_PATH`와 동일 원칙).
+- **`/slack/install`은 이 목록에 없다** — 관리자 설치 개시 경로이며 `authenticated()` + admin fail-closed
+  이중 가드를 유지한다. 회귀 가드는 `SlackInboundPermitAllTest`의 EC-A1이되, **판별자는 상태코드가 아니라
+  응답 본문**이다(`SLACK_UNAUTHENTICATED` 부재) — permitAll이 새어도 컨트롤러가 같은 401을 주므로
+  상태코드 단언은 vacuous임이 위반 주입으로 실증됐다.
 
 **열거식 회귀 가드 테스트를 기각한 근거.**
 1. 열거식 테스트는 **자기가 아는 경로만** 단언한다. 미래에 추가될 경로는 존재를 모르므로 **원리적으로 못 잡는다**.
@@ -143,6 +160,34 @@ slack test config는 이미 정확 경로라 중앙 등록과 일치한다.
 
 - **기각.** `§1.1 #4` 신규 표기 — 한 파일 안에 두 표기가 나란히 서는 **세 번째 방언**이 된다.
 - **기각.** 14곳 일괄 정정 — 본 FR 무관 메모 정리로 보안 PR의 리뷰 초점을 흐린다(surgical changes).
+
+### D7. ★ slack 인바운드는 `DefaultBearerTokenResolver`를 태우지 않는다 — 본문 스트림 보호
+
+**증상.** PR-A를 `origin/main`(PR #275 머지 후)에 rebase 하니 form-urlencoded 2경로(`/slack/commands`,
+`/slack/interactions`)만 401. JSON 경로(`/slack/events`)는 통과. permitAll·CSRF-ignore는 정상 등록돼 있었다.
+
+**근본 원인 (스택 트레이스로 실측 확정 — 가설 4개를 먼저 반증).**
+`SecurityConfig`의 bearer resolver 람다가 `DefaultBearerTokenResolver.resolve()`를 호출 →
+`isParameterTokenSupportedForRequest()`가 `POST` + `application/x-www-form-urlencoded`이면 **true** →
+`resolveFromRequestParameters()` → `getParameterValues("access_token")` → **Tomcat이 form 본문을 파싱**해
+요청 입력 스트림을 소진. 원문 바이트를 직접 읽는 slack 컨트롤러(`readBoundedSlackBody`)는 **빈 바디**를
+받아 HMAC 서명 검증이 전부 실패한다.
+
+★ **`allowFormEncodedBodyParameter = false`는 이걸 막지 못한다.** 그 플래그는 그 **뒤**의
+`isParameterTokenEnabledForRequest()`에서야 검사된다 — 파라미터 접근이 **이미 일어난 후**다.
+
+**왜 PR #275 전에는 안 보였나.** 그때 컨트롤러는 `@RequestBody String`이었고,
+`ServletServerHttpRequest.getBody()`의 `isFormPost()` 분기가 **`getParameterMap()`에서 본문을 재구성**해
+스트림 소진을 가려줬다. #275가 DoS 가드를 위해 원문 스트림 읽기로 바꾸면서 잠복 결함이 표면화됐다.
+
+**결정.** `SLACK_INBOUND_PATHS`를 `OrRequestMatcher`로 묶어, 해당 요청이면 delegate 호출 **자체를 건너뛰고**
+`null`을 반환한다. slack은 Bearer 토큰을 보내지 않으므로 skip이 **의미상으로도 정확**하다(기능 손실 0).
+
+- **기각.** `allowFormEncodedBodyParameter=false` 명시 — 위 이유로 무효. 고쳤다는 **착각만** 준다.
+- **기각.** 컨트롤러를 `@RequestBody`로 되돌리기 — #275가 막은 미인증 힙 DoS가 그대로 부활한다.
+
+**회귀 가드.** `SlackInboundPermitAllTest`의 slash command·interactions 케이스가 실 HTTP로 200을 단언한다
+(prod 조립 + `RANDOM_PORT`). 이 skip이 사라지면 두 테스트가 401로 즉시 깨진다.
 
 ## 결과 (Consequences)
 
