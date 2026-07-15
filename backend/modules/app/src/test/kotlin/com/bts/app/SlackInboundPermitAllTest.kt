@@ -78,7 +78,11 @@ class SlackInboundPermitAllTest : ProdAssemblyHttpTestBase() {
 
         val response = rest.exchange(EVENTS_PATH, HttpMethod.POST, forged, String::class.java)
 
-        // 필터가 아니라 SlackEventsController 의 서명 검증이 준 401 — 검증 주체가 컨트롤러임의 실증.
+        // 서명이 틀리면 거부된다는 것만 단언한다.
+        // ★ 이 테스트 단독으로는 "필터가 아니라 컨트롤러가 준 401"을 증명하지 못한다 — 컨트롤러의 401
+        // (SlackEventsController:77 `.build()`)도 필터의 401 도 **둘 다 빈 본문**이라 판별자가 없다
+        // (EC-A1 은 컨트롤러가 ProblemDetail 본문을 실어 판별 가능했지만 여기는 아니다).
+        // 검증 주체가 컨트롤러라는 명제는 **S-A1(유효 서명 → 200)과 짝을 이룰 때만** 성립한다.
         assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
         // 컨트롤러는 빈 401 만 준다(비밀값·원문 미노출). challenge 가 돌아왔다면 서명 검증이 뚫린 것.
         assertThat(response.body.orEmpty()).doesNotContain(CHALLENGE)

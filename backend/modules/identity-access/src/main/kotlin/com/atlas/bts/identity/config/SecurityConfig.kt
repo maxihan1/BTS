@@ -273,31 +273,19 @@ class SecurityConfig(
         const val ICAL_FEED_PATH = "/ical/feed/*"
 
         /**
-         * Slack 이 우리 서버로 직접 호출하는 인바운드 4경로 (FR-SL-01/03/04/05).
-         * DEVELOPMENT.md §1.4 정식 예외(ADR 2026-07-15-slack-inbound-permitall-central·게이트1 승인).
+         * Slack 서버가 직접 호출하는 인바운드 4경로 (FR-SL-01/03/04/05). DEVELOPMENT.md §1.4 정식 예외 —
+         * **근거 정본은 ADR `docs/decisions/2026-07-15-slack-inbound-permitall-central.md`**(게이트1 승인).
+         * 요약. permitAll 은 인증 제거가 아니라 **검증 주체 이관**이다(ADR §D2) — Slack 에는 발급할 JWT·세션·PAT
+         * 가 없어, 인증은 각 컨트롤러가 무조건 선행하는 [com.bts.slack.security.SlackSignatureVerifier] 가 맡는다.
          *
-         * ## permitAll 은 인증을 없애는 게 아니라 검증 주체를 옮기는 것이다
-         * Slack 서버는 BTS 사용자가 아니라 JWT·세션·PAT 를 발급할 대상이 없다. 인증은 각 컨트롤러가
-         * **무조건 선행**하는 [com.bts.slack.security.SlackSignatureVerifier] 의 서명 검증이 담당한다 —
-         * HMAC-SHA256(`v0:{timestamp}:{rawBody}`) · 상수시간 비교(`:78` `MessageDigest.isEqual`, 타이밍 공격 차단) ·
-         * 재전송 창 ±300초(`:86`, `REPLAY_WINDOW_SECONDS :113`, `Clock` 주입) · secret 미설정도 거부(`:64` fail-closed).
-         * 필터가 막으면 이 검증 코드가 **실행조차 되지 않아** 보안 강화가 아니라 기능 정지가 된다(ADR D3-c).
-         *
-         * ## ★ 이 단일 목록이 permitAll 과 CSRF-ignore 를 함께 구동한다 (DEC-16)
-         * 두 설정은 서로 다른 블록이라 한쪽만 등록하면 POST 가 계속 거부된다(FR-MF-01 BLOCKER-1 실사고).
-         * 목록을 하나로 둬 **두 블록의 경로·메서드가 서로 어긋나는 divergence 를 구조적으로 차단**한다.
-         * 다만 **어느 한쪽 forEach 를 통째로 지우는 것까지 막지는 못한다** — 그건 `SlackInboundPermitAllTest`
-         * 가 잡는다(어느 쪽이 빠져도 S-A1 이 401 로 실패). 즉 이 목록과 그 테스트는 **함께** 가드다.
-         * CSRF 를 빠뜨렸을 때의 증상이 401 이라 "미등록"과 구분되지 않는다는 점도 이 구조가 필요한 이유다 —
-         * 익명 요청의 CSRF 거부는 `ExceptionTranslationFilter` 가 인증 진입점으로 넘겨 403 이 아니라 401 이 된다.
-         * csrf 쪽만 [antMatcher] 를 손수 만드는 것은 취향이 아니라 **API 강제**다 — `ignoringRequestMatchers` 에는
-         * `(HttpMethod, String)` 오버로드가 **없어** 문자열 오버로드로 바꾸면 메서드 고정이 조용히 사라진다
-         * (`/slack/events` 의 PUT·DELETE 까지 CSRF-ignore 가 되며 컴파일도 테스트도 통과한다).
-         *
-         * ## 폭발 반경 봉인
-         * [PUBLIC_DASHBOARDS_PATH]·[ICAL_FEED_PATH] 와 동일 원칙 — **메서드 고정 + 정확 경로**. slack 하위경로를
-         * 통째로 여는 전역 와일드카드 매처는 금지다(미래에 추가될 미지의 경로까지 열린다). `/slack/install`
-         * (관리자 설치 개시)은 이 목록에 **없다** — `authenticated()` + 컨트롤러 뒤 admin fail-closed 이중 가드를 유지한다.
+         * ## 편집 시 지킬 것
+         * - **이 목록 하나가 permitAll 과 CSRF-ignore 를 함께 구동한다**(DEC-16). 별개 블록이라 한쪽만 등록하면
+         *   POST 가 계속 401 인데 증상이 "미등록"과 구분되지 않는다(FR-MF-01 BLOCKER-1 실사고). 목록 공유는
+         *   경로·메서드 divergence 를 막고, forEach 삭제는 `SlackInboundPermitAllTest` 가 잡는다 — 함께 가드다.
+         * - csrf 쪽만 [antMatcher] 인 건 **API 강제**다. `ignoringRequestMatchers` 에 `(HttpMethod, String)`
+         *   오버로드가 없어, 문자열 오버로드로 바꾸면 메서드 고정이 조용히 사라진다(컴파일·테스트 모두 통과).
+         * - **메서드 고정 + 정확 경로**만, 와일드카드 금지([PUBLIC_DASHBOARDS_PATH]·[ICAL_FEED_PATH] 와 동일 원칙).
+         *   `/slack/install`(관리자 설치 개시)은 **없다** — authenticated() + admin fail-closed 이중 가드 유지.
          */
         val SLACK_INBOUND_PATHS =
             listOf(
