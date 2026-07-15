@@ -413,4 +413,29 @@ GitLab 웹훅은 원래 `X-Gitlab-Token` 평문이고 GitLab이 HMAC 서명을 �
 | R7 | 휴면 stash 오염 — `stash@{0}`에 타 세션 `WIP on feature/fr-pr-03-ooo` 존재 | **impl prompt에 `git stash` 금지 명시**([[subagent-git-stash-worktree-shared-collision]]) |
 | R8 | rate limit 부재 경로를 3종 여는 것 | T1 ADR 잔여 위험 + spec §A-9 후속 등재 |
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review + 아웃사이드 보이스 (2026-07-15)
+
+> **스킬 deviation 기록**. gstack `plan-eng-review`는 시작 전 텔레메트리 동의·`CLAUDE.md` 라우팅 규칙 주입·cross-project learnings 설정 등 **Maxi가 요청하지 않은 부수 효과**와, 이슈마다 개별 AskUserQuestion + TODOS 등록 + `## GSTACK REVIEW REPORT` 삽입을 요구한다. BTS 워크플로우는 (a) 결과를 이 `## 리뷰 결과` 섹션에 쓰도록 정하고 (b) 바로 다음이 **게이트1**이라 결정을 한 번에 받는다. 사용자 지침 > 스킬이므로 **리뷰 본체 + 아웃사이드 보이스만 수행**하고 부수 효과·중복 게이트는 생략.
+
+**BLOCKER 2 / CONCERN 5 / NIT 5.** 아웃사이드 보이스가 실제 코드를 읽고 확신도 표기 + 근거 인용으로 판정.
+
+| # | 확신도 | 발견 | 처리 |
+|---|---|---|---|
+| **B-1** | **9** | **PR-A의 헤드라인 주장이 FR-SL에 대해 거짓.** `.env.prod.example`에 **`BTS_SLACK_SIGNING_SECRET`도 없다**(`grep -rn "SLACK" infra/` → `nginx.conf:40` 한 줄뿐). `SlackSignatureVerifier.kt:78-80`이 `if (signingSecret.isBlank()) return false` fail-closed → permitAll만 열면 **"필터의 401" → "컨트롤러의 401"** 로 바뀔 뿐 기능 0. slack **암호화** 키(봇 토큰)는 서명 통과 **후** 하류라 순서가 뒤집힘. ★ B4를 잡았다고 자평한 검토가 같은 결함을 한 층 위에서 놓침 | **T5에 signing secret + client id/secret/redirect-uri 추가**. spec §A-4 표 4행 → 확장 |
+| **B-2** | **8** | **T3 검증 방법이 plan에서 미해결**(R5 "불가 시 판별 헬퍼")인데 **훨씬 단순한 경로를 통째로 놓침**. 응답 포렌식(`WWW-Authenticate` 유무 — 저장소 선례 **0건**) 불필요. `SlackSignatureVerifier`는 결정론적 HMAC-SHA256(`v0:{ts}:{rawBody}`)이고 secret은 프로퍼티 주입 → **T2 베이스가 `bts.slack.signing-secret`을 주입하고 테스트가 유효 서명을 계산해 `url_verification` POST → 200 + challenge 에코 단언**. (a) 필터 통과가 **양성**으로 증명 (b) S-A2 실증 (c) 판별 헬퍼 불요 (d) 우리 코드에만 의존(Spring Security 내부 미의존) | **채택. R5 삭제** |
+| **C-1** | 7 | **전략 오조준** — 방어 없이 경로를 먼저 열고 방어는 2 PR 뒤(R3). 순 효과 = **FR-SL은 여전히 죽어 있고**(B-1) **FR-AT-01은 "안전하게 죽은 상태"→"알려진 미방어 3종을 달고 살아 있는 상태"**. PR-A 선행 근거(spec:17 (2)(3))는 **테스트 인프라만** 정당화하지 경로 개방을 정당화하지 않음 | **→ DEC-15 (Maxi 확정)** |
+| **C-2** | **8** | **FR-A6 "향후 경로 추가 강제"는 테스트로 불가능**. 열거식 테스트는 자기가 아는 경로만 단언 — 미래에 한쪽만 등록된 경로는 **존재를 모르므로 영원히 못 잡음**. 게다가 `SecurityConfig.kt:209`가 `private companion object`라 `com.bts.app` 테스트가 상수 접근 불가 → **경로 리터럴을 복제**하게 되고 그 복제본이 드리프트 = 가드가 막으려는 결함을 가드가 재생산. ★ **구조로 풀면 더 단순·더 강함** — 5경로를 `List<Pair<HttpMethod,String>>` 하나로 두고 csrf·authorize를 **같은 리스트에서 구동**하면 한쪽만 등록이 **컴파일 단위에서 불가능** → 가드 테스트 자체 불요. plan은 `PathContributor` 대공사 ↔ 아무것도 안 함의 **거짓 이분법**에 갇혀 그 사이 20줄 리팩터링을 못 봄 | **→ DEC-16 (Maxi 확정)** |
+| **C-3** | **9** | **R6이 사실과 다름 — 2곳이 아니라 9개 파일 14곳이고, 오타가 아니라 관례.** `SecurityConfig.kt`에만 6곳(`:59,:71,:176,:183,:246,:257`). `:117`이 `// DEVELOPMENT.md §1.5 — CSRF 비활성화 금지` → 저장소는 **`§1.<규칙번호>` 방언을 일관 사용**(§1.4=규칙4, §1.5=규칙5). 내 `§1.1 #4`는 **세 번째 방언** → 한 파일 안에 두 표기가 나란히 서게 됨. "surgical"이 여기선 **혼란 추가**만 낳음 | **→ DEC-17 (Maxi 확정)** |
+| **C-4** | 6 | **test SecurityConfig `/**` ↔ 중앙 `/*` 의도적 divergence**. `AutomationTestSecurityConfig.kt:49`는 `/api/v1/automation/webhooks/**`. 머지 후 EC-A2(`/a/b`→401)가 `:modules:app:test`에선 통과하나 automation 자기 테스트에선 permitAll → **"test 초록불이 prod를 대변하지 않는다"(부채의 원인)가 새 형태로 하나 더**. ★ 두 test config를 **제거하면 안 됨**(`@TestConfiguration`이고 중앙 `SecurityConfig`는 identity-access 소속이라 automation/slack test 클래스패스에 부재) — plan의 결론(침묵)은 맞으나 divergence **명시 필요** | **plan에 명시 추가** |
+| **C-5** | 6 | **prod 조립 컨텍스트 2벌**. `BtsApplicationContextTest:28-29`는 MOCK, T2는 RANDOM_PORT → `MergedContextConfiguration` 키가 달라 **캐시 미공유** → 같은 JVM에 9-BC prod 컨텍스트 2개 = 부팅 2회 + `@Scheduled` 워커 2벌이 동일 5433 pgmq 큐 동시 폴링. ★ 원인이 **files 화이트리스트라는 기계적 규칙**("추출만 하고 기존 테스트는 안 건드림")이 아키텍처 결과를 결정한 것. "예상 20분"에 2배 부팅 미반영 | **T2 files에 `BtsApplicationContextTest.kt` 포함 → 베이스 상속으로 컨텍스트 1개** |
+| **N-1** | 8 | **T2는 실현 가능. R4("가장 불확실")가 오조준.** `BtsApplicationContextTest`가 prod로 **지금 통과 중**이고 `props`가 주입하는 건 issuer-uri + PEM 2개뿐(`:96-97`). **암호화 키 미설정으로 prod 부팅이 된다는 걸 이 테스트의 존재가 이미 증명**(그게 [[use-time-validated-env-passes-boot-fails-on-use]]의 요지). MOCK→RANDOM_PORT는 실 Tomcat 바인딩만 추가. `/actuator/health`도 이미 permitAll(`:173`). ★ **R4의 대안(경로 매처 단위 테스트로 축소)이 위험** — 필터체인 통과를 검증 못 함 = spec §A-5가 지적한 원점 회귀 = **PR이 자기 주장을 증명 못 한 채 prod 경로를 염**. 실제 T2 리스크는 부팅이 아니라 C-5 | **R4 하향 + 대안 삭제** |
+| **N-2** | 7 | **T2의 RED가 RED가 아님** — "클래스 없음"은 컴파일 에러지 실패 테스트가 아님 → `TDD 강제. T2=yes`는 거짓. + 베이스가 `abstract`면 `--tests ProdAssemblyHttpTestBase*`가 0 매칭 → **"No tests found"로 빌드 실패**. 구체 클래스면 T3 상속 시 smoke 중복 실행. plan이 미결정 | **T2를 TDD 비대상(인프라)로 정정 + abstract 명시, 검증은 T3 경유** |
+| **N-3** | 7 | **T4는 T3에 병합돼야 함** — 같은 파일·같은 에이전트·같은 테스트 클래스·바로 다음. T4 스스로 "RED 없음"이라 적어 `TDD 강제. T4=yes`와 모순. `/bts-impl`의 `test:`→`feat:` 순서 자동 검증에서 **feat 커밋 없는 태스크** 판정이 불명 | **T3+T4 병합 → 태스크 4개** |
+| **N-4** | **9** | **직렬 사유 ①이 발화 불가.** `.lintstagedrc.json`은 `apps/web/**/*.{ts,tsx,js,jsx}`만 대상인데 **PR-A는 `apps/web` 0파일**(T1=docs, T2·T3=backend/modules/app, T5=infra). 매칭 0이면 lint-staged는 stash 없이 조기 종료 → race **구조적으로 발화 불가**. 사유 ②(Gradle 컴파일)는 T2→T3에 유효. ★ 결정(직렬)은 무해하나 **작동할 수 없는 메커니즘을 근거로 인용** = 이 plan이 B6에서 스스로 규탄한 결함과 같은 종류 | **근거 정정**(사유 ① 삭제, ②만 유지) |
+| **N-5** | 6 | **T1 순서는 맞음** — 워크플로우가 `review-plan → 게이트1 → impl(T1~)`이라 **T1은 승인 후 실행**. 게이트1은 plan §리스크로 판단하지 ADR로 판단하지 않음. 단 **T1 검증이 미래를 참조**("ADR 링크가 T3 KDoc에서 참조됨" — T1 시점에 T3 미실행). + [[bts-adr-dual-folder-convention]] 관련 `docs/decisions/` 선택 근거 미명시 | **T1 검증 조건 정정 + 폴더 선택 근거 명시** |
+
+**아웃사이드 보이스가 반증한 것(문제 없음 확인)**. nginx 프록시는 `/slack/*`·`/api/v1/automation/webhooks/*` 모두 백엔드로 전달([[nginx-spa-route-shadowed-by-backend-proxy-prefix]] 재발 아님) · `.env.prod.example` 추가는 no-op 아님(compose `env_file` 전체 주입) · `/api/v1/automation/webhooks/*` 단일 세그먼트가 맞음(`@RequestMapping` + `@PostMapping("/{token}")`) · T3의 등록 순서 지적(`:185` `/api/**` authenticated 위) 정확.
+
+## 결정 사항 — 3차 (← 게이트1 직전 Maxi 확정)
