@@ -98,7 +98,7 @@
 | FR7 | `conflicts` 가 비어있지 않으면 결과 안에 **인라인** 경고(`type`·`severity`·`detail`). 중첩 모달 회피(기존 `RuleConflictWarningModal` 을 위에 띄우지 않음). |
 | FR8 | `webhookTokens` 가 있으면 결과 안에 토큰 목록(룰 이름·토큰·복사) + 경고 + **닫기 2단계 확인**. **문구/복사 처리는 `WebhookTokenModal.tsx:12-17` 을 그대로 따른다**(gap 분석 CONCERN-4) — 경고 `'이 토큰은 지금 한 번만 표시됩니다. 창을 닫으면 다시 확인할 수 없습니다.'` · `'복사'` / `'복사됨'` / **`'복사에 실패했습니다. 직접 선택해 복사해 주세요.'`**. 컴포넌트 자체 재사용은 하지 않는다(단건 모달 vs 다건 목록). `navigator.clipboard.writeText` reject 경로 필수 처리(EC12). |
 | FR9 | 성공 시 `AUTOMATION_RULES_QUERY_KEY(projectKey)` invalidate → 새/갱신 룰 즉시 반영(gap 분석 NIT-9). |
-| FR10 | 에러코드별 한국어 메시지 매핑(`extractAutomationRuleErrorCode` 관례 재사용). `failedIndex` 는 **+1** 해 "N번째 룰" 로 표시. 모든 실패 문구에 "적용된 변경 없음(전량 취소)" 명시. |
+| FR10 | **errorCode 분기 금지** — 서버가 내려준 `detail` 을 그대로 노출한다(§에러 단일 규칙). S5(깨진 YAML)와 S8(projectKey 불일치)은 status·errorCode·ProblemDetail 타입이 **와이어에서 동일**해 `detail` 문자열로만 갈리므로, UI 분기는 문자열 매칭이 되어 금지(BLOCKER-1). `failedIndex` 는 **+1** 해 "N번째 룰" 로 표시. **"적용된 변경 없음(전량 취소)" 은 `ApiError`(서버발 실패)에만 병기한다** — 백엔드 atomic fail-closed 가 보장하는 건 서버가 실패를 보고한 경우뿐이고, 응답 파싱 실패(ZodError)·수신 중 네트워크 단절은 **서버가 이미 커밋한 뒤**라 롤백 단언이 거짓이 된다. 이때 사용자가 S8 안내대로 `id:` 를 지우고 재시도하면 룰이 중복 생성된다. 클라이언트측 실패는 결과 불확실 문구 + 룰 목록 invalidate 로 처리(코드리뷰 CRITICAL-2). |
 | FR12 | **UI 문구 용어는 "룰"** (gap 분석 NIT-12). `AutomationRuleList.tsx:22-24` 의 `labels` 정본이 `heading: '자동화 룰'` · `addButton: '룰 추가'` 다. 새 버튼이 같은 행에 놓이므로 "규칙"과 섞이면 안 된다. 버튼 라벨은 `'YAML 내보내기'` / `'YAML 가져오기'`. 문서(스펙/plan) 산문은 FR 제목을 따라 "규칙"을 써도 되지만 **화면 문자열은 전부 "룰"**. |
 | FR11 | **공유 인프라** — `api/client.ts` 가 문자열 body를 `JSON.stringify` 하지 않고 그대로 전달하도록 확장(§API 인터페이스 참조). |
 
@@ -209,6 +209,8 @@ body: body !== undefined ? (isRawBody ? body : JSON.stringify(body)) : undefined
 | EC5 | 적용 진행 중 재클릭 | `isPending` 으로 버튼 disabled |
 | EC6 | 내보내기 진행 중 재클릭 | `isPending` 으로 버튼 disabled |
 | EC7 | 토큰 노출 중 Dialog 닫기 | 2단계 확인(S10). **닫기 경로 4종 전부 가로챈다**(gap 분석 CONCERN-5) — X 버튼 · **ESC**(`onEscapeKeyDown` preventDefault) · **오버레이 클릭**(`onPointerDownOutside` preventDefault) · `onOpenChange`. 하나라도 빠지면 토큰이 **영구 분실**된다(NFR3 비영속). |
+| EC7-a | **import 응답 대기(in-flight) 중 닫기** | 게이트 조건은 `hasUnackedTokens \|\| isPending`(= `tokenAtRisk`). **서버는 `result` 가 채워지기 전에 이미 커밋하고 토큰을 발급**하므로, `result` 를 기다리는 `hasUnackedTokens` 만으로 가드하면 이 구간이 통째로 무방비다(코드리뷰 CRITICAL-1). 2단계 확인 UI 는 `result` 와 **무관하게** 렌더돼야 한다 — 토큰 목록 안에 중첩하면 in-flight 때 `closeConfirming` 이 세팅돼도 렌더될 곳이 없어 **무음 실패**한다. |
+| EC7-b | **토큰 노출 중 파일 재선택** | 파일 input 을 `tokenAtRisk` 로 disabled. 재선택은 결과를 초기화하므로 토큰을 **확인 없이 파기**하는 경로가 된다(코드리뷰 CRITICAL-1 동반). input 을 막으면 "닫기가 유일한 토큰 소멸 경로" 불변식이 구조적으로 성립한다. |
 | EC8 | 결과 표시 후 다시 가져오기 | Dialog 재오픈 시 상태 초기화(파일·결과·에러) |
 | EC9 | `.yaml` 아닌 확장자 선택 | `accept` 는 힌트일 뿐 강제 아님 → 서버 400에 위임(프론트 확장자 검증은 하지 않음, 손 작성 파일 배제 위험) |
 | EC10 | `conflicts: []`(빈 배열) | 경고 영역 렌더 안 함(`length > 0` 조건) |
@@ -216,6 +218,8 @@ body: body !== undefined ? (isRawBody ? body : JSON.stringify(body)) : undefined
 | EC12 | **복사 실패**(`navigator.clipboard.writeText` reject — 비보안 컨텍스트/권한 거부) | `WebhookTokenModal.tsx:16` 의 `'복사에 실패했습니다. 직접 선택해 복사해 주세요.'` 표시. 토큰 텍스트는 선택 가능하게 유지(gap 분석 CONCERN-4) |
 | EC13 | **`id` 가 타 프로젝트/삭제된 룰에 귀속**(`AutomationImportIdConflictException`) | `AutomationImportCommandException` 으로 래핑돼 **S6 경로**(400 + `failedIndex`). 서버 `detail` 표시 + §S8 상시 도움말이 해결책(`id:` 제거)을 이미 노출 중(gap 분석 CONCERN-6) |
 | EC14 | **`triggerType` 변경 불가** 등 기타 커맨드 검증 실패 | S6 경로 동일 — 서버 `detail` 을 그대로 표시(프론트가 사유를 열거하지 않는다) |
+| EC15 | **선택한 파일을 읽지 못함**(`file.text()` reject — 선택 후 삭제/이동, 권한 거부) | `'파일을 읽지 못했습니다. 파일을 다시 선택해 주세요.'` 표시 + `confirming` 해제. 호출부가 `void handleConfirmApply()` 라 rejection 이 삼켜지므로 try/catch 없이는 에러 표시도 없이 "적용 중..." 에서 **교착**한다(코드리뷰 CONCERN-3) |
+| EC16 | **응답이 스키마와 불일치**(ZodError — 백엔드 enum 확장 등) 또는 **수신 중 네트워크 단절** | 서버는 **이미 커밋한 뒤**다. "전량 취소" 를 단언하지 않고 결과 불확실 문구 표시 + 룰 목록 invalidate(FR10 · 코드리뷰 CRITICAL-2). `useMutation` 의 `TError` 제네릭은 컴파일 타임 선언일 뿐이라 ZodError 를 막지 못한다 — 런타임 `instanceof ApiError` 로 갈라야 한다 |
 
 ## 제약 조건
 
