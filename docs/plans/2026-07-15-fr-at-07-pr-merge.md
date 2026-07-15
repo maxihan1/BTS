@@ -420,6 +420,37 @@ val SLACK_INBOUND_PATHS = listOf(
 - **permitAll 확장 포인트**(`PathContributor` 류) — 부재가 이 부채의 **구조적 원인**. DEC-16의 공유 리스트는 SecurityConfig **내부** 해결이라 BC별 등록은 여전히 수동
 - **`§1.4` 표기 ↔ 문서 절번호 충돌** — 9파일 14곳이 `§1.<규칙번호>` 방언, `DEVELOPMENT.md §1.4`는 "외부 의존성". 별건 일괄 정리 (DEC-17)
 - slack 경로 rate limit
+
+### 구현 중 새로 발견 (2026-07-15, T4)
+
+- **★ `bts.webhook-encryption.{key,salt}` 도 prod 미선언** (`WebhookEncryptionConfig.kt:51,54` — 아웃바운드 웹훅 `webhookSecretEncryptor`). DEC-14가 열거한 4종(slack·MFA·OIDC·automation) **밖의 5번째 조용한 실패**이며 당시엔 존재를 몰랐다. DEC-14의 논리(같은 사고 유형 + 비용≈0)가 그대로 적용됨 → **게이트2에서 Maxi 판단** (PR-A에 추가 / PR-C에서 automation 키와 함께 / 별건)
+- **FR-SL-01 ADR의 프로퍼티 표기 오류** — `docs/decisions/2026-07-07-fr-sl-01-slack-bot-app.md` 가 `bts.slack.encryption.{key,salt}`(점)로 적었으나 **코드 정본은 `bts.slack-encryption.{key,salt}`(하이픈)** (`SlackEncryptionConfig.kt:54,57` `const val PROPERTY_KEY`). ADR 정정 필요
+- **BC별 암호화 프로퍼티 표기 체계가 갈린다** — slack만 하이픈(`bts.slack-encryption.*`), MFA·OIDC는 점(`bts.mfa.encryption.*`·`bts.oidc.encryption.*`). 한 파일에 섞여 있으니 향후 편집 시 주의
+
+## 구현 결과 (PR-A, 2026-07-15)
+
+| Task | 상태 | 커밋 |
+|---|---|---|
+| T1 ADR | ✅ | `938b36742` |
+| T2 prod 조립 HTTP 베이스 | ✅ | `9f0ff1868` |
+| T3 SecurityConfig 공유 리스트 + slack 4경로 | ✅ TDD 준수 | `3e91f0ebc`(red) → `acb51ed15`(green) → `2c4a2eeb8`(refactor) |
+| T4 `.env.prod.example` | ✅ | `eff22ffd9` |
+
+### 구현이 plan을 정정한 것 (계획의 결함 3건)
+
+1. **★ EC-A1이 vacuous 테스트가 될 뻔했다 (T3 발견).** plan/spec은 `/slack/install` 범위 누출 가드를 **상태코드 401 단언**으로 지정했다. 실제로 `/slack/install`을 `SLACK_INBOUND_PATHS`에 **일부러 넣어보니** — permitAll이 새어도 **상태는 여전히 401**이었다(컨트롤러의 `SlackActorExtractor`가 401을 던지므로). 즉 지정대로 짰으면 **누출이 있는데도 통과**했다. 판별자는 **응답 본문**(필터 401 vs 컨트롤러 ProblemDetail)뿐이라 body 단언으로 교체했다. [[archunit-vacuous-rule-silent-pass]]의 "일부러 위반 넣어 fail 확인"이 실제로 결함을 잡아낸 사례.
+2. **EC-A1의 메서드가 틀렸다** — plan/spec은 `POST /slack/install`이라 적었으나 실제 매핑은 `@GetMapping`(`SlackInstallController.kt:60`). POST면 CSRF가 permitAll 여부와 무관하게 항상 거부해 **원리적으로 누출을 못 잡는다**(위 vacuous의 더 심한 버전). GET으로 정정.
+3. **`SlackSignatureVerifier` 줄번호 stale** (T1 발견) — plan/spec 3곳이 이전 리비전 기준. 현행 115줄 기준 `:64`/`:78`/`:86`/`:113`으로 정정 완료(`18b48ce3d`).
+
+### 구현 중 부딪힌 함정 (기록)
+
+- **`TestRestTemplate`이 302를 자동 추종** — `:modules:app`에 httpclient5가 없어 `HttpURLConnection`으로 폴백. `/slack/install/callback`의 302를 따라가 `/admin/slack`(authenticated)에서 401을 받으면 **permitAll이 정상인데도 미등록과 똑같은 401**로 보인다. 해당 경로만 `instanceFollowRedirects=false` 클라이언트로 원 응답 관측(실 Tomcat·실 필터체인 유지 — MockMvc 우회 아님). **PR-C가 이 인프라를 재사용**.
+- **KDoc에 슬래시-slack-와일드카드 리터럴 금지** — 중첩 블록 주석을 열어 KDoc의 종료 토큰을 삼키고 companion object 전체가 주석으로 사라진다(overload ambiguity 등 cascade). 기존 저장소 KDoc도 이 리터럴을 피하는 관례.
+- **익명 요청의 CSRF 거부는 403이 아니라 401** — `ExceptionTranslationFilter`가 인증 진입점으로 넘긴다. 그래서 "CSRF 미등록"과 "permitAll 미등록"이 **증상으로 구분되지 않는다** → DEC-16 공유 리스트가 필요한 또 하나의 이유.
+- **`grep -rn "SLACK" infra/` 는 0건**이었다(대문자). plan이 인용한 `nginx.conf:40`은 소문자 `slack` 프록시 location — 즉 환경변수 부재는 plan 전제보다 **더 확실**했다.
+- **relaxed binding을 실측했다** — `application.yml`의 `bts:` 블록에 slack/mfa/oidc가 **하나도 없어** 이 저장소의 명시 placeholder 관례(`${BTS_MINIO_ACCESS_KEY:minioadmin}`)를 벗어난 선례 없는 경로였다. spring-core 6.1.14 `SystemEnvironmentPropertySource` 직접 실행으로 11/11 매핑 확인(하이픈 케이스 포함 — `checkPropertyName`이 점→`_`, 하이픈→`_`, 둘 다 치환 후보를 순차 시도).
+- **`gradlew`는 `backend/gradlew`** — 워크트리 루트에 없다. 루트에서 `./gradlew`를 호출하면 "no such file"이 나는데 `| tail`을 붙이면 **파이프 종료코드가 0이라 가짜 그린**이 된다(controller가 실제로 한 번 당함). 검증 명령은 `cd backend` + `${PIPESTATUS[0]}` 확인.
+
 ## 리뷰 결과
 
 ### plan-eng-review + 아웃사이드 보이스 (2026-07-15)
