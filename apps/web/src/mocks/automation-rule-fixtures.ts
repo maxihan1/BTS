@@ -31,7 +31,33 @@ export const SCENARIO_KEY = {
   EMPTY_LIST: 'msw:automation-rule:empty-list',
   /** create/patch 응답에 결정적 충돌을 실어 충돌 경고 모달을 강제 재현한다(FR-AT-04 D6/D7) */
   WITH_CONFLICTS: 'msw:automation-rule:with-conflicts',
+  /** import 핸들러가 커맨드 검증 실패(C3)를 흉내내 400 + failedIndex 를 강제한다(FR-AT-06 D6) */
+  IMPORT_FAILED_INDEX: 'msw:automation-rule:import-failed-index',
+  /** import 핸들러가 본문/규칙수 상한 초과를 흉내내 413 을 강제한다(FR-AT-06 D6) */
+  IMPORT_TOO_LARGE: 'msw:automation-rule:import-too-large',
+  /** import 핸들러가 새 WEBHOOK 룰 토큰 노출을 흉내내 응답에 webhookTokens 를 싣는다(FR-AT-06 D6) */
+  IMPORT_WEBHOOK_TOKENS: 'msw:automation-rule:import-webhook-tokens',
+  /** import 핸들러가 OCC 버전 충돌을 흉내내 409 를 강제한다(FR-AT-06 D6) */
+  IMPORT_VERSION_CONFLICT: 'msw:automation-rule:import-version-conflict',
 } as const
+
+// ─────────────────────────────────────────────────────────────────────────────
+// YAML GitOps 픽스처 (FR-AT-06 D6) — export 핸들러 기본 응답 본문 + import 성공 경로 테스트용
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GitOps YAML 스키마 v1 유효 문서 픽스처 — 룰 1건(ISSUE_CREATED 트리거, 액션 없음).
+ * 스펙 §YAML 스키마 v1 구조 그대로. export 핸들러의 정적 응답 본문이자, import 성공 경로
+ * 단위/E2E 테스트가 공통으로 재사용하는 "유효한 최소 문서"다.
+ */
+export const VALID_GITOPS_YAML = `version: 1
+projectKey: PROJ
+rules:
+  - name: 이슈 생성 알림
+    enabled: true
+    trigger: { type: ISSUE_CREATED, config: {} }
+    actions: []
+`
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 시드 프로젝트/사용자 상수 — 다른 BC fixture와 정합(E2E 화면 이동 시 데이터 이어짐)
