@@ -6,15 +6,15 @@ import com.bts.slack.security.SlackSignatureVerifier
 import com.bts.slack.unfurl.LinkSharedCommand
 import com.bts.slack.unfurl.SlackUnfurlService
 import com.bts.slack.web.dto.SlackEventEnvelope
-import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.ObjectMapper
+import jakarta.servlet.http.HttpServletRequest
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RestController
+import java.io.IOException
 
 /**
  * Slack Events API 수신 엔드포인트 — `POST /slack/events` (FR-SL-03 Task 11, ADR D6).
@@ -25,10 +25,21 @@ import org.springframework.web.bind.annotation.RestController
  * 기반). test-boot 필터 체인의 permitAll 배선은 Task 12 소관이며, 이 컨트롤러는 배선과 무관하게
  * 서명 검증을 **무조건 선행**한다.
  *
- * ## 원문 바디 보존 (EC8)
- * Slack 서명은 수신 원문 바이트 그대로에 대해 계산된다. `@RequestBody String` 으로 받아 Spring 이
- * JSON 트리/객체로 재직렬화하며 공백·키 순서가 달라지는 것을 막는다 — 파싱은 서명 검증을 통과한
- * **이후에만** 수행한다.
+ * ## 원문 바디 보존 (EC8) — 바이트 그대로, 상한 이내로만
+ * Slack 서명은 수신 원문 바이트 그대로에 대해 계산된다. 그래서 Spring 이 JSON 트리/객체로 역직렬화하며
+ * 공백·키 순서를 바꾸지 못하게 원문을 직접 확보하고, 파싱은 서명 검증을 통과한 **이후에만** 수행한다.
+ * 확보는 [readBoundedSlackBody] 로 하며([MAX_BODY_BYTES] 상한), 서명 검증은 그 **바이트에 직접** 건다 —
+ * String 왕복(`toByteArray(UTF_8)`)은 유효 UTF-8 이 아닌 원문을 U+FFFD 로 치환해 서명을 어긋나게 만든다
+ * ([SlackSignatureVerifier] KDoc "서명 대상은 원문 바이트").
+ *
+ * ## DoS 가드 — 본문 크기 상한 [MAX_BODY_BYTES] (초과 시 빈 413)
+ * 이 엔드포인트는 permitAll 이라 **서명이 틀린 요청도 핸들러까지 도달**한다. `@RequestBody String` 으로
+ * 받으면 signing secret 을 모르는 공격자도 본문 전체(nginx 상한까지)를 힙에 적재시킬 수 있고, 서명검증
+ * fail-closed 401 은 적재 **이후**라 방어선이 되지 못한다. 그래서 [readBoundedSlackBody] 로 상한 + 1
+ * 바이트까지만 읽어 **서명검증 이전에** 거절한다(이중 방어 근거는 그 함수 KDoc 참조).
+ * SL-03 이 후속으로 미뤄 둔 부채이며(`docs/plans/2026-07-11-fr-sl-03-slack-unfurl.md` §후속 ③
+ * "`/slack/events` payload 크기 상한 + prod SecurityConfig permitAll 중앙 등록"), prod 중앙 permitAll
+ * 결선보다 **먼저** 상환해야 한다 — 결선이 필터의 `authenticated()` 방어를 걷어내기 때문이다.
  *
  * ## 응답 계약 — Slack 프로토콜 그대로 (BTS `data`/`error` 래핑 없음)
  * 이 엔드포인트는 BTS SPA 가 아니라 Slack 서버가 파싱하므로 Slack Events API 규격을 그대로 따른다.
@@ -60,17 +71,22 @@ class SlackEventsController(
      *
      * @param timestamp `X-Slack-Request-Timestamp` 헤더값(누락 시 null → 검증 실패).
      * @param signature `X-Slack-Signature` 헤더값(누락 시 null → 검증 실패).
-     * @param rawBody 서명 대상 원문 바디(그대로 보존, 파싱 전 서명 검증에 사용).
+     * @param request 원문 바디를 상한 이내로만 읽기 위한 요청(`@RequestBody` 금지 — 클래스 KDoc §DoS 가드).
      * @return `url_verification` 은 `{"challenge": …}` 200, 그 외 정상 처리·무시는 빈 200,
-     *   서명 검증 실패는 빈 401.
+     *   서명 검증 실패는 빈 401, 크기 상한 초과는 빈 413.
      */
-    @Suppress("ReturnCount") // 서명 거부·파싱 실패·타입 분기별 guard clause 가 흐름을 명확히 한다(SlackSignatureVerifier.isValid 동형)
+    @Suppress("ReturnCount") // 크기·서명 거부·파싱 실패·타입 분기별 guard clause 가 흐름을 명확히 한다(SlackSignatureVerifier.isValid 동형)
     @PostMapping(SLACK_EVENTS_PATH)
     fun receive(
         @RequestHeader(name = TIMESTAMP_HEADER, required = false) timestamp: String?,
         @RequestHeader(name = SIGNATURE_HEADER, required = false) signature: String?,
-        @RequestBody rawBody: String,
+        request: HttpServletRequest,
     ): ResponseEntity<Any> {
+        val rawBody = readBoundedSlackBody(request, MAX_BODY_BYTES)
+        if (rawBody == null) {
+            log.warn("slack_events_body_too_large")
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).build()
+        }
         if (!verifier.isValid(timestamp, signature, rawBody)) {
             log.info("slack_events_signature_rejected")
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
@@ -123,16 +139,17 @@ class SlackEventsController(
     }
 
     /**
-     * 서명 검증 통과 후 원문을 방어적으로 파싱한다.
+     * 서명 검증 통과 후 원문 바이트를 방어적으로 파싱한다(String 경유 없이 바이트에서 직접 —
+     * 원문이 유효 UTF-8 이 아니어도 여기서 파싱 실패로 수렴할 뿐 서명 판정에는 영향이 없다).
      *
      * @return 유효한 JSON 봉투. 파싱 실패(유효한 JSON 이 아님)면 `null`(무시 — 400 대신 빈 200으로
      *   수렴시켜 불필요한 Slack 재전송을 유발하지 않는다. 원문·예외 message 는 로그에 남기지 않는다).
      */
     @Suppress("SwallowedException") // 파싱 실패 원인은 무시(200 수렴)로 의도한 처리 — 예외 message 는 노출하지 않는다
-    private fun parseEnvelope(rawBody: String): SlackEventEnvelope? =
+    private fun parseEnvelope(rawBody: ByteArray): SlackEventEnvelope? =
         try {
             objectMapper.readValue(rawBody, SlackEventEnvelope::class.java)
-        } catch (e: JsonProcessingException) {
+        } catch (e: IOException) {
             log.warn("slack_events_payload_parse_failed")
             null
         }
@@ -145,5 +162,27 @@ class SlackEventsController(
         const val TYPE_EVENT_CALLBACK = "event_callback"
         const val TYPE_LINK_SHARED = "link_shared"
         const val CHALLENGE_FIELD = "challenge"
+
+        /**
+         * 원문 바디 크기 상한(DoS 방어 천장) — 64KB. 비즈니스 한도가 아니라 방어적 천장이다.
+         *
+         * ## 근거 — 이 엔드포인트가 실제로 받는 페이로드
+         * 구독 이벤트는 `link_shared` **하나**뿐이다(FR-SL-03 spec §운영 런북 ③ "Event Subscriptions
+         * Request URL = `/slack/events`, `link_shared` 이벤트 구독"). 따라서 도달하는 본문은 두 종류다.
+         * - `url_verification` — `{type, token, challenge}` 수백 바이트.
+         * - `event_callback`/`link_shared` — 봉투(team_id·event_id·authorizations 등) + `links[]`(URL 목록).
+         *   message blocks 를 포함하지 않아 `/slack/interactions` 페이로드보다 구조적으로 작다.
+         *
+         * ## 왜 64KB 인가 (그리고 왜 더 조이지 않았는가)
+         * Slack 은 이벤트 전송 본문의 **하드 상한을 공개 문서로 명시하지 않는다**. 그래서 스펙에서 정확한
+         * 경계를 도출할 수 없고, 추측으로 조이지 않는다 — 정상 트래픽에 잘못 413 을 주면 Slack 이 재전송을
+         * 반복하다 구독을 비활성화해 기능이 죽는다(오거부의 비용이 비대칭적으로 크다). 대신 상식적 최악을
+         * 산술로 덮는다. 링크가 20개이고 각 URL 이 실질 상한(약 2,000자)이라 해도 40KB + 봉투 < 64KB 다.
+         * 반대로 이 값을 16KB(`/slack/commands`)로 조여도 **보안상 이득이 없다** — 공격 표면은 "요청당
+         * 힙 적재량 × 동시성"인데 16KB 든 64KB 든 무방비(요청당 ~330MB) 대비 5,000배 이상 축소로 동일하게
+         * 수렴하기 때문이다. 그래서 이미 받아들이는 인바운드 중 가장 큰 부류인 [SlackInteractionsController]
+         * 와 같은 64KB 로 맞춰, 오거부 위험만 줄이고 상한 자체는 유지한다.
+         */
+        const val MAX_BODY_BYTES = 64 * 1024
     }
 }

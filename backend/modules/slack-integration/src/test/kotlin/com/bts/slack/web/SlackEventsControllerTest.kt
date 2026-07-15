@@ -6,6 +6,7 @@ import com.bts.slack.unfurl.LinkSharedCommand
 import com.bts.slack.unfurl.SlackUnfurlService
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import io.mockk.MockKMatcherScope
 import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just
@@ -23,6 +24,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import java.nio.charset.StandardCharsets
 
 /**
  * [SlackEventsController] MockMvc 슬라이스 테스트 (FR-SL-03 Task 11).
@@ -58,6 +60,18 @@ class SlackEventsControllerTest {
                 .build()
     }
 
+    /**
+     * verifier 에 전달될 원문 **바이트**가 [expected] 와 내용이 같은지 보는 mockk 매처.
+     *
+     * 컨트롤러는 `HttpServletRequest` 에서 읽은 원문 바이트를 그대로 [SlackSignatureVerifier] 의 [ByteArray]
+     * 오버로드에 넘긴다(String 왕복은 유효 UTF-8 이 아닌 원문의 서명을 어긋나게 만든다 —
+     * [SlackInboundBodyGuardTest]). ★ [ByteArray] 는 `equals` 가 **참조 동일성**이라
+     * `isValid(ts, sig, body.toByteArray())` 로 stub 하면 **절대 매칭되지 않는다**(mockk 가 "no answer found"
+     * 로 실패). 반드시 이렇게 내용 비교 매처를 써야 한다.
+     */
+    private fun MockKMatcherScope.rawBodyEq(expected: String): ByteArray =
+        match { it.contentEquals(expected.toByteArray(StandardCharsets.UTF_8)) }
+
     private fun postEvents(
         body: String,
         timestamp: String? = "1700000000",
@@ -74,7 +88,7 @@ class SlackEventsControllerTest {
     @Test
     fun `url_verification 페이로드 - 서명 검증 통과 시 challenge 를 그대로 반환한다`() {
         val body = """{"type":"url_verification","challenge":"abc123"}"""
-        every { verifier.isValid("1700000000", "v0=deadbeef", body) } returns true
+        every { verifier.isValid("1700000000", "v0=deadbeef", rawBodyEq(body)) } returns true
 
         mockMvc.perform(postEvents(body))
             .andExpect(status().isOk)
@@ -86,7 +100,7 @@ class SlackEventsControllerTest {
     @Test
     fun `잘못된 서명 - 401 을 반환하고 바디를 노출하지 않는다`() {
         val body = """{"type":"url_verification","challenge":"abc123"}"""
-        every { verifier.isValid("1700000000", "v0=forged", body) } returns false
+        every { verifier.isValid("1700000000", "v0=forged", rawBodyEq(body)) } returns false
 
         mockMvc.perform(postEvents(body, signature = "v0=forged"))
             .andExpect(status().isUnauthorized)
@@ -96,7 +110,7 @@ class SlackEventsControllerTest {
     @Test
     fun `헤더 누락 - 401 을 반환한다`() {
         val body = """{"type":"url_verification","challenge":"abc123"}"""
-        every { verifier.isValid(null, null, body) } returns false
+        every { verifier.isValid(null, null, rawBodyEq(body)) } returns false
 
         mockMvc.perform(postEvents(body, timestamp = null, signature = null))
             .andExpect(status().isUnauthorized)
@@ -108,7 +122,7 @@ class SlackEventsControllerTest {
         // SlackSignatureVerifier.isValid 는 secret 미설정도 서명 위조와 동일하게 false 로 수렴시킨다.
         // 컨트롤러는 그 이유를 구분하지 않고 모두 401 로만 매핑해야 한다(예외가 아니라 boolean 거부 계약).
         val body = """{"type":"event_callback","team_id":"T1","event":{"type":"link_shared"}}"""
-        every { verifier.isValid("1700000000", "v0=deadbeef", body) } returns false
+        every { verifier.isValid("1700000000", "v0=deadbeef", rawBodyEq(body)) } returns false
 
         mockMvc.perform(postEvents(body))
             .andExpect(status().isUnauthorized)
@@ -140,7 +154,7 @@ class SlackEventsControllerTest {
               }
             }
             """.trimIndent()
-        every { verifier.isValid("1700000000", "v0=deadbeef", body) } returns true
+        every { verifier.isValid("1700000000", "v0=deadbeef", rawBodyEq(body)) } returns true
         val commandSlot = slot<LinkSharedCommand>()
         every { unfurlService.handleLinkShared(capture(commandSlot)) } just Runs
 
@@ -176,7 +190,7 @@ class SlackEventsControllerTest {
               }
             }
             """.trimIndent()
-        every { verifier.isValid("1700000000", "v0=deadbeef", body) } returns true
+        every { verifier.isValid("1700000000", "v0=deadbeef", rawBodyEq(body)) } returns true
         val commandSlot = slot<LinkSharedCommand>()
         every { unfurlService.handleLinkShared(capture(commandSlot)) } just Runs
 
@@ -191,7 +205,7 @@ class SlackEventsControllerTest {
     @Test
     fun `event_callback 이지만 link_shared 가 아닌 이벤트 - 200 이지만 서비스는 호출하지 않는다`() {
         val body = """{"team_id":"T123","type":"event_callback","event":{"type":"message"}}"""
-        every { verifier.isValid("1700000000", "v0=deadbeef", body) } returns true
+        every { verifier.isValid("1700000000", "v0=deadbeef", rawBodyEq(body)) } returns true
 
         mockMvc.perform(postEvents(body))
             .andExpect(status().isOk)
@@ -202,7 +216,7 @@ class SlackEventsControllerTest {
     @Test
     fun `최상위 type 이 url_verification·event_callback 도 아니면 - 200 이지만 서비스는 호출하지 않는다`() {
         val body = """{"type":"app_rate_limited"}"""
-        every { verifier.isValid("1700000000", "v0=deadbeef", body) } returns true
+        every { verifier.isValid("1700000000", "v0=deadbeef", rawBodyEq(body)) } returns true
 
         mockMvc.perform(postEvents(body))
             .andExpect(status().isOk)

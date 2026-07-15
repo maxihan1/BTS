@@ -19,6 +19,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import java.nio.charset.StandardCharsets
 
 /**
  * [SlackCommandsController] MockMvc 슬라이스 테스트 (FR-SL-04 Task 8).
@@ -30,9 +31,16 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
  * ## ★핵심 — form-urlencoded 원문 보존 (빈 바디면 서명검증이 조용히 깨진다)
  * Slack slash 요청 바디는 `application/x-www-form-urlencoded` 이고 서명은 **수신 원문 바이트**에 대해
  * 계산된다. 컨트롤러가 `@RequestParam`/`@ModelAttribute` 를 병용하면 Spring 이 form 을 먼저 파싱해
- * 바디 스트림을 소비하고, 그 뒤 `@RequestBody String` 은 빈 문자열로 오며 서명검증이 무력화된다.
+ * 바디 스트림을 소비하고, 그 뒤 원문 읽기는 빈 바디를 보게 되며 서명검증이 무력화된다.
  * 이 테스트는 반드시 `contentType(APPLICATION_FORM_URLENCODED)` 로 실제 form 바디를 전송하고,
- * verifier 에 전달된 rawBody 인자가 **온전한 원문**(빈 문자열 아님)인지 mockk slot 으로 캡처 검증한다.
+ * verifier 에 전달된 rawBody 인자가 **온전한 원문**(빈 바디 아님)인지 mockk slot 으로 캡처 검증한다.
+ *
+ * ## verifier 인자는 원문 **바이트** ([ByteArray] 오버로드)
+ * 컨트롤러는 `HttpServletRequest` 에서 읽은 원문 바이트를 그대로 [SlackSignatureVerifier] 에 넘긴다
+ * (String 왕복은 유효 UTF-8 이 아닌 원문의 서명을 어긋나게 만든다 — [SlackInboundBodyGuardTest]).
+ * 그래서 stub/verify 는 `any<ByteArray>()` 로 [ByteArray] 오버로드를 대상으로 한다. ★ [ByteArray] 는 `equals`
+ * 가 **참조 동일성**이라 `isValid(ts, sig, body.toByteArray())` 같은 값 비교 stub 은 **절대 매칭되지 않는다** —
+ * 원문 대조는 값 비교 stub 이 아니라 slot 캡처 후 내용 비교로 한다(아래 (a)).
  *
  * ## 검증 시나리오
  * - (a) 유효 서명 → 즉시 빈 200 ack + `service.process(text,user_id,team_id,response_url)` 위임 + rawBody 온전 캡처.
@@ -76,7 +84,7 @@ class SlackCommandsControllerTest {
         val body =
             "command=%2Fatlas&text=search+PROJ&user_id=U1&team_id=T1" +
                 "&response_url=https%3A%2F%2Fhooks.slack.com%2Fx&channel_id=C1&trigger_id=x"
-        val rawSlot = slot<String>()
+        val rawSlot = slot<ByteArray>()
         every { verifier.isValid("1700000000", "v0=deadbeef", capture(rawSlot)) } returns true
         every { service.process(any(), any(), any(), any()) } just Runs
 
@@ -84,8 +92,8 @@ class SlackCommandsControllerTest {
             .andExpect(status().isOk)
             .andExpect(content().string(""))
 
-        // ★ 서명 대상 원문이 온전해야 한다(빈 문자열이면 서명검증이 조용히 깨진 것).
-        assertThat(rawSlot.captured).isEqualTo(body)
+        // ★ 서명 대상 원문이 온전해야 한다(빈 바디면 서명검증이 조용히 깨진 것).
+        assertThat(String(rawSlot.captured, StandardCharsets.UTF_8)).isEqualTo(body)
         verify(exactly = 1) {
             service.process("search PROJ", "U1", "T1", "https://hooks.slack.com/x")
         }
@@ -96,7 +104,7 @@ class SlackCommandsControllerTest {
     @Test
     fun `서명 실패 - 빈 401 이고 서비스는 호출하지 않는다`() {
         val body = "text=x&user_id=U1&team_id=T1&response_url=https%3A%2F%2Fhooks"
-        every { verifier.isValid(any(), any(), any()) } returns false
+        every { verifier.isValid(any(), any(), any<ByteArray>()) } returns false
 
         mockMvc.perform(postCommand(body, signature = "v0=forged"))
             .andExpect(status().isUnauthorized)
@@ -108,7 +116,7 @@ class SlackCommandsControllerTest {
     @Test
     fun `타임스탬프·서명 헤더 누락 - 빈 401 이고 서비스는 호출하지 않는다`() {
         val body = "text=x&user_id=U1&team_id=T1&response_url=https%3A%2F%2Fhooks"
-        every { verifier.isValid(any(), any(), any()) } returns false
+        every { verifier.isValid(any(), any(), any<ByteArray>()) } returns false
 
         mockMvc.perform(postCommand(body, timestamp = null, signature = null))
             .andExpect(status().isUnauthorized)
@@ -125,7 +133,7 @@ class SlackCommandsControllerTest {
             "command=%2Fatlas&text=search+PROJ+status%3Dopen&user_id=U1&team_id=T1" +
                 "&response_url=https%3A%2F%2Fhooks.slack.com%2Fservices%2FT1%2FB1%2Fabc" +
                 "&channel_id=C1&trigger_id=x"
-        every { verifier.isValid(any(), any(), any()) } returns true
+        every { verifier.isValid(any(), any(), any<ByteArray>()) } returns true
         every { service.process(any(), any(), any(), any()) } just Runs
 
         mockMvc.perform(postCommand(body)).andExpect(status().isOk)
@@ -145,7 +153,7 @@ class SlackCommandsControllerTest {
     @Test
     fun `필수 필드 response_url 누락 - 방어적 빈 200 이고 서비스는 호출하지 않는다`() {
         val body = "command=%2Fatlas&text=help&user_id=U1&team_id=T1&channel_id=C1"
-        every { verifier.isValid(any(), any(), any()) } returns true
+        every { verifier.isValid(any(), any(), any<ByteArray>()) } returns true
 
         mockMvc.perform(postCommand(body))
             .andExpect(status().isOk)
@@ -165,7 +173,7 @@ class SlackCommandsControllerTest {
             .andExpect(status().isPayloadTooLarge)
             .andExpect(content().string(""))
 
-        verify(exactly = 0) { verifier.isValid(any(), any(), any()) }
+        verify(exactly = 0) { verifier.isValid(any(), any(), any<ByteArray>()) }
         verify(exactly = 0) { service.process(any(), any(), any(), any()) }
     }
 

@@ -4,11 +4,11 @@ package com.bts.slack.web
 
 import com.bts.slack.command.SlashCommandService
 import com.bts.slack.security.SlackSignatureVerifier
+import jakarta.servlet.http.HttpServletRequest
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RestController
 import java.net.URLDecoder
@@ -25,11 +25,12 @@ import java.nio.charset.StandardCharsets
  * Slack slash 요청 바디는 `application/x-www-form-urlencoded` 이고, 서명(`X-Slack-Signature`)은
  * **수신 원문 바이트 그대로**에 대해 계산된다([SlackSignatureVerifier]). 따라서 form 을 파싱하기 전에
  * 원문을 확보해야 한다. `@RequestParam`/`@ModelAttribute` 를 병용하면 Spring 이 form 을 먼저 파싱하며
- * 바디 입력 스트림을 소비하고, 그 뒤 `@RequestBody String` 은 **빈 문자열**로 들어와 서명검증이 조용히
- * 무력화된다. 그래서 이 컨트롤러는 `@RequestBody String` 과 `@RequestHeader` **만** 받고, 서명검증을
- * 통과한 **이후에만** [decodeForm] 으로 수동 form-decode 한다(`@RequestParam` 절대 병용 금지).
- * `StringHttpMessageConverter` 가 form 미디어 타입도 원문 그대로 문자열로 읽어주므로 별도 스트림
- * fallback 은 필요 없다(테스트로 rawBody 온전 캡처를 증명 — [SlackCommandsControllerTest]).
+ * 바디 입력 스트림을 소비하고, 그 뒤 원문 읽기는 **빈 바디**를 보게 되어 서명검증이 조용히 무력화된다.
+ * 그래서 이 컨트롤러는 [HttpServletRequest] 와 `@RequestHeader` **만** 받아 [readBoundedSlackBody] 로
+ * 원문 바이트를 직접 확보하고, 서명검증을 통과한 **이후에만** [decodeForm] 으로 수동 form-decode 한다
+ * (`@RequestParam` 절대 병용 금지, 테스트로 rawBody 온전 캡처를 증명 — [SlackCommandsControllerTest]).
+ * 서명은 그 **바이트에 직접** 건다 — String 왕복은 유효 UTF-8 이 아닌 원문을 U+FFFD 로 치환해 서명을
+ * 어긋나게 만든다([SlackSignatureVerifier] KDoc "서명 대상은 원문 바이트").
  *
  * ## 2) 인증 — 서명 검증으로 대체 (JWT 없음, DEVELOPMENT.md §1.1.4 예외)
  * Slack 서버가 직접 호출하는 엔드포인트라 사용자 JWT 가 없다. [SlackSignatureVerifier] 로 요청 서명을
@@ -42,10 +43,13 @@ import java.nio.charset.StandardCharsets
  * 호출(=`@Async` 프록시 적용)하고, 완료를 기다리지 않고 즉시 빈 200 을 반환한다. 실제 결과는 서비스가
  * `response_url` 로 지연 전송한다([SlackEventsController] 의 `link_shared` 위임과 동일 근거).
  *
- * ## 4) DoS 가드 — 본문 크기 상한
- * 원문 바디는 HMAC 계산 대상이므로, 서명검증 이전에 [MAX_BODY_BYTES] 상한을 먼저 검사해 거대 페이로드가
- * HMAC 연산·이후 파싱을 유발하지 못하게 막는다(초과 시 빈 413). Slack slash 페이로드는 작으므로 이 상한은
- * 비즈니스 한도가 아니라 방어적 천장이다.
+ * ## 4) DoS 가드 — 본문 크기 상한 (★적재 자체를 막는다)
+ * 이 엔드포인트는 permitAll 이라 **서명이 틀린 요청도 핸들러까지 도달**한다. 따라서 상한 검사는
+ * "HMAC 연산·파싱을 막는" 것으로 부족하고, 애초에 **본문이 힙에 적재되는 것 자체**를 막아야 한다.
+ * signing secret 을 모르는 공격자도 본문 전체(nginx 상한까지)를 힙에 올릴 수 있고, 서명검증 fail-closed
+ * 401 은 적재 **이후**라 방어선이 되지 못하기 때문이다. 그래서 [readBoundedSlackBody] 로 [MAX_BODY_BYTES]
+ * + 1 바이트까지만 읽어 서명검증 이전에 거절한다(초과 시 빈 413, 이중 방어 근거는 그 함수 KDoc 참조).
+ * Slack slash 페이로드는 작으므로 이 상한은 비즈니스 한도가 아니라 방어적 천장이다.
  *
  * @param verifier 서명 검증기(미설정·위조·만료·헤더 누락 모두 `false`, fail-closed).
  * @param service slash 명령 오케스트레이터(빈 경유 호출, `@Async` 위임).
@@ -62,7 +66,8 @@ class SlackCommandsController(
      *
      * @param timestamp `X-Slack-Request-Timestamp` 헤더값(누락 시 null → 검증 실패).
      * @param signature `X-Slack-Signature` 헤더값(누락 시 null → 검증 실패).
-     * @param rawBody 서명 대상 원문 form 바디(그대로 보존, 파싱 전 서명 검증에 사용).
+     * @param request 원문 form 바디를 상한 이내로만 읽기 위한 요청(`@RequestBody`/`@RequestParam` 금지 —
+     *   클래스 KDoc §1·§4).
      * @return 정상 위임·필수 필드 누락은 빈 200, 서명 검증 실패는 빈 401, 크기 상한 초과는 빈 413.
      */
     @Suppress("ReturnCount") // 크기·서명 거부·필수필드 누락별 guard clause (SlackEventsController 동형)
@@ -70,9 +75,10 @@ class SlackCommandsController(
     fun receive(
         @RequestHeader(name = TIMESTAMP_HEADER, required = false) timestamp: String?,
         @RequestHeader(name = SIGNATURE_HEADER, required = false) signature: String?,
-        @RequestBody rawBody: String,
+        request: HttpServletRequest,
     ): ResponseEntity<Any> {
-        if (rawBody.toByteArray(StandardCharsets.UTF_8).size > MAX_BODY_BYTES) {
+        val rawBody = readBoundedSlackBody(request, MAX_BODY_BYTES)
+        if (rawBody == null) {
             log.warn("slack_command_body_too_large")
             return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).build()
         }
@@ -81,7 +87,8 @@ class SlackCommandsController(
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
         }
 
-        val fields = decodeForm(rawBody)
+        // 서명 통과 후에만 String 으로 디코드한다 — 상한 이내가 보장된 바이트이며, form-decode 는 String 연산이다.
+        val fields = decodeForm(String(rawBody, StandardCharsets.UTF_8))
         val userId = fields[FIELD_USER_ID]
         val teamId = fields[FIELD_TEAM_ID]
         val responseUrl = fields[FIELD_RESPONSE_URL]
