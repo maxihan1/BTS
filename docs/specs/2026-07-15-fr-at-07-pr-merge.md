@@ -10,7 +10,7 @@ Phase B 검토로 범위가 BC 4개 + 프론트 + 마이그레이션 4개 + 신�
 
 | PR | 범위 | 모듈 | 선행 | 이 문서의 § |
 |---|---|---|---|---|
-| **PR-A** | 인바운드 웹훅 permitAll 중앙등록 3종 + 암호화 키 배포 4종 + prod 조립 HTTP 테스트 인프라 | identity-access · infra · app(test) | — | **§A** |
+| **PR-A** | **slack** 인바운드 permitAll 중앙등록 + slack 동작 변수·암호화 키 배포 + prod 조립 HTTP 테스트 인프라 | identity-access · infra · app(test) | — | **§A** |
 | **PR-B** | `IssueMutationPort.setFixVersions` + issue-tracking 어댑터 + `ActionType.SET_FIX_VERSIONS` + 프론트 계약 | shared-kernel · issue-tracking · automation · apps/web | — | §B |
 | **PR-C** | `TriggerType.PR_MERGED` + Git webhook 엔드포인트 + 서명검증 + 이슈키 추출 + 등록 API | automation · apps/web | A, B | §C |
 
@@ -59,31 +59,39 @@ S-A4. Given 암호화 키 환경변수가 배포 매니페스트에 선언돼 �
 | **FR-A5** | **prod 조립 HTTP 테스트 인프라** 신규 — permitAll 경로가 실제로 401이 아님을 조립 컨텍스트에서 검증 |
 | **FR-A6** | **회귀 가드** — 각 경로가 permitAll·CSRF-ignore **양쪽에** 등록됐는지 검증 |
 
-## A-3. 경로 × 메서드 표 (FR-A1 — BLOCKER B5 해소)
+## A-3. 경로 × 메서드 표 (FR-A1 — BLOCKER B5 해소 · **DEC-15 반영**)
 
 > 1회차 스펙은 "slack 인바운드"라고만 적어 **실체 4개**를 열거하지 않았다. D2의 "메서드 고정(POST)" 원칙만 적용하면 `GET /slack/install/callback`이 누락돼 **slack 설치 플로우가 계속 401**이고, `/slack/**`로 열면 `/slack/install`(admin 이중가드)이 **익명 노출**된다.
+>
+> **DEC-15 — PR-A는 slack만.** automation 웹훅은 미방어 `issueKey`(`AutomationWebhookController:97`) 때문에 방어심층(FR-7)이 함께 들어오는 **PR-C**로 이관. ★ 부수 효과로 **C-4 divergence도 소멸** — slack test config는 이미 정확 경로라 중앙 등록과 일치(automation만 `/**` 와일드카드였다).
 
 | 경로 | 메서드 | 매처 형태 | 출처 (test 전용 → 중앙 이관) |
 |---|---|---|---|
-| `/api/v1/automation/webhooks/*` | **POST** | 단일 세그먼트 (**`/**` 금지**) | `AutomationTestSecurityConfig.kt:49` (원본은 `/**` — 좁힘) |
 | `/slack/events` | **POST** | 정확 경로 | `SlackTestSecurityConfig.kt:65` |
 | `/slack/commands` | **POST** | 정확 경로 | `:66` |
 | `/slack/interactions` | **POST** | 정확 경로 | `:67` |
 | `/slack/install/callback` | **GET** | 정확 경로 | `:64` |
 
-**`/api/v1/webhooks/git/*` (POST)는 PR-C에서 추가.** PR-A는 기존 부채만 청산 — 없는 경로를 미리 열지 않는다.
+**★ 공유 리스트로 등록 (DEC-16)**. 위 4행을 `List<Pair<HttpMethod, String>>` **하나**로 두고 CSRF-ignore(`:133-146`)와 authorize(`:151-184`)를 **같은 리스트에서 구동** → 한쪽만 등록이 **컴파일 단위에서 불가능**. 열거식 가드 테스트는 미래 경로를 원리적으로 못 잡고 `private companion object`(`:209`) 때문에 테스트가 경로 리터럴을 복제해 drift한다.
+
+**PR-C에서 추가**. `/api/v1/automation/webhooks/*` (POST, 단일 세그먼트 — test 원본 `/**`에서 좁힘) · `/api/v1/webhooks/git/*` (POST).
 
 **열지 않는 것 (명시)**. `/slack/install` — `authenticated()` + admin fail-closed 이중가드 유지(`SlackTestSecurityConfig.kt:44-45`).
 
-## A-4. 암호화 키 4종 (FR-A4 — BLOCKER B4 해소)
+## A-4. 배포 변수 (FR-A4 — BLOCKER B4 + **B-1** 해소)
 
-`infra/prod/.env.prod.example`에 **`BTS_SLACK_ENCRYPTION_KEY`·`BTS_MFA_ENCRYPTION_KEY`·`BTS_OIDC_ENCRYPTION_KEY`가 전부 없다.** [[use-time-validated-env-passes-boot-fails-on-use]]에 기록된 **실사고 그 자체**(health 통과 후 기능 첫 호출 500).
+`grep -rn "SLACK" infra/` → `nginx.conf:40` **한 줄뿐**. 암호화 키 3종도, **slack 동작 변수도 전부 없다**. [[use-time-validated-env-passes-boot-fails-on-use]]에 기록된 **실사고 그 자체**(health 통과 후 기능 첫 호출 500).
 
-| 환경변수 | 프로퍼티 | 상태 |
+> **★ B-1 (2회차 리뷰).** 1회차 §A-4는 **암호화 키 3종만** 적었다. 그러나 **`BTS_SLACK_SIGNING_SECRET`이 없으면** `SlackSignatureVerifier.kt:78-80`(`if (signingSecret.isBlank()) return false`)이 fail-closed로 전부 막아 **permitAll을 열어도 "필터의 401"이 "컨트롤러의 401"로 바뀔 뿐 기능 변화 0**이다. slack **암호화** 키(봇 토큰)는 서명 통과 **후** 하류라 순서가 뒤집혀 있었다. → **PR-A의 "FR-SL 되살아남" 주장이 거짓이 될 뻔했다.**
+
+| 환경변수 | 프로퍼티 | 없으면 |
 |---|---|---|
-| `BTS_SLACK_ENCRYPTION_KEY` / `_SALT` | `bts.slack-encryption.{key,salt}` | **누락 → 추가** |
-| `BTS_MFA_ENCRYPTION_KEY` / `_SALT` | (MfaEncryptionConfig) | **누락 → 추가** |
-| `BTS_OIDC_ENCRYPTION_KEY` / `_SALT` | (OidcEncryptionConfig) | **누락 → 추가** |
+| `BTS_SLACK_SIGNING_SECRET` | `bts.slack.signing-secret` | **서명 검증 전부 401** ← B-1 핵심 |
+| `BTS_SLACK_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` | `bts.slack.{client-id,client-secret,redirect-uri}` | `/slack/install/callback` 동작 불가 |
+| `BTS_SLACK_STATE_KEY` | `bts.slack.state-key` | OAuth state 서명 불가 (`SlackOAuthStateSigner.kt:58` — **impl에서 실재 확인 후 반영**) |
+| `BTS_SLACK_ENCRYPTION_KEY` / `_SALT` | `bts.slack-encryption.{key,salt}` | 봇 토큰 복호화 500 |
+| `BTS_MFA_ENCRYPTION_KEY` / `_SALT` | (MfaEncryptionConfig) | MFA 첫 호출 500 — **실사고 재발분** |
+| `BTS_OIDC_ENCRYPTION_KEY` / `_SALT` | (OidcEncryptionConfig) | OIDC 첫 호출 500 — 동일 |
 | `BTS_AUTOMATION_ENCRYPTION_KEY` / `_SALT` | `bts.automation-encryption.{key,salt}` | **PR-C에서 추가** (그 때 빈도 신설) |
 
 - **salt는 hex** (C9 — `SecretEncryptor` 계약)
