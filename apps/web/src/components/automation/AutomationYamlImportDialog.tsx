@@ -8,7 +8,12 @@ import { Input } from '@/components/ui/input'
 import { ApiError } from '@/api/client'
 import { importAutomationRulesYaml, extractAutomationImportFailedIndex } from '@/api/automation-rules'
 import { AUTOMATION_RULES_QUERY_KEY } from '@/api/useAutomationRules'
-import type { AutomationImportResponse, ImportedWebhookToken, RuleConflict } from '@/api/automation-rules.types'
+import type {
+  AutomationImportResponse,
+  ConflictType,
+  ImportedWebhookToken,
+  RuleConflict,
+} from '@/api/automation-rules.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — 백엔드 MAX_IMPORT_BYTES 미러(§API 계약). 매직 넘버 회피 + 클라이언트 선제 차단용(S7-a).
@@ -37,6 +42,9 @@ const labels = {
   genericFailure: '가져오기에 실패했습니다.',
   failedRuleSuffix: '번째 룰에서 실패했습니다. ',
   tooLarge: '파일이 너무 큽니다(최대 1MiB).',
+  fileReadFailed: '파일을 읽지 못했습니다. 파일을 다시 선택해 주세요.',
+  uncertainOutcome:
+    '가져오기 결과를 확인하지 못했습니다. 일부가 적용됐을 수 있으니 룰 목록을 확인한 뒤 다시 시도하세요.',
   tokenWarning: '이 토큰은 지금 한 번만 표시됩니다. 창을 닫으면 다시 확인할 수 없습니다.',
   copyButton: '복사',
   copiedLabel: '복사됨',
@@ -49,7 +57,7 @@ const labels = {
 } as const
 
 /** 룰 충돌 타입 4종 → 한국어 배지 라벨 — RuleConflictWarningModal.tsx 선례 동형(별도 export가 없어 로컬 재정의). */
-const CONFLICT_TYPE_LABELS: Record<string, string> = {
+const CONFLICT_TYPE_LABELS: Record<ConflictType, string> = {
   CYCLE: '순환 참조',
   FIELD_CONFLICT: '필드 충돌',
   PRIORITY_AMBIGUITY: '우선순위 모호',
@@ -79,8 +87,16 @@ function extractImportErrorDetail(error: ApiError | null): string | undefined {
  * 그대로 신뢰한다(깨진 YAML/projectKey 불일치/커맨드 검증 실패/OCC 충돌이 와이어에서 구별 불가하기
  * 때문 — BLOCKER-1). `failedIndex`가 있으면 "N번째 룰에서 실패했습니다."를 접두하고(+1, 0-based→
  * 1-based), 모든 실패에 rollbackNote(전량 취소 안내)를 병기한다(atomic fail-closed 명시, FR10).
+ *
+ * rollbackNote(전량 취소)는 **서버가 실패를 보고한 ApiError일 때만** 단언한다 — 백엔드 import는
+ * atomic fail-closed라 서버발 실패는 커밋이 없음이 보장된다. 반면 응답 파싱 실패(ZodError)나 수신 중
+ * 네트워크 단절은 서버가 이미 커밋한 뒤라, 롤백을 단언하면 거짓이 되고 사용자가 재시도해 룰을
+ * 중복 생성한다(review-fix CRITICAL-3).
  */
-function buildImportErrorMessage(error: ApiError | null): string {
+function buildImportErrorMessage(error: Error | null): string {
+  if (error !== null && !(error instanceof ApiError)) {
+    return labels.uncertainOutcome
+  }
   const failedIndex = extractAutomationImportFailedIndex(error)
   const prefix = failedIndex !== null ? `${failedIndex + 1}${labels.failedRuleSuffix}` : ''
   const detail = extractImportErrorDetail(error) ?? labels.genericFailure
@@ -130,22 +146,14 @@ function ImportedTokenRow({ token }: ImportedTokenRowProps): JSX.Element {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ImportedTokensSection — 토큰 경고 + 목록 + 닫기 2단계 확인(EC7, NFR3)
+// ImportedTokensSection — 토큰 경고 + 목록(EC7 2단계 확인은 CloseConfirmPrompt로 분리)
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface ImportedTokensSectionProps {
   readonly tokens: readonly ImportedWebhookToken[]
-  readonly closeConfirming: boolean
-  readonly onConfirmClose: () => void
-  readonly onCancelClose: () => void
 }
 
-function ImportedTokensSection({
-  tokens,
-  closeConfirming,
-  onConfirmClose,
-  onCancelClose,
-}: ImportedTokensSectionProps): JSX.Element {
+function ImportedTokensSection({ tokens }: ImportedTokensSectionProps): JSX.Element {
   return (
     <div data-testid="automation-yaml-import-tokens-section" className={AMBER_WARNING_BOX_CLASS}>
       <p role="alert" className="text-sm text-amber-900 dark:text-amber-100">{labels.tokenWarning}</p>
@@ -154,29 +162,33 @@ function ImportedTokensSection({
           <ImportedTokenRow key={token.ruleId} token={token} />
         ))}
       </ul>
-      {closeConfirming && (
-        <div className="space-y-2 rounded-md border border-destructive/20 bg-destructive/5 p-3">
-          <p className="text-sm">{labels.closeConfirm}</p>
-          <div className="flex gap-2">
-            <Button
-              variant="destructive"
-              size="sm"
-              data-testid="automation-yaml-import-close-confirm"
-              onClick={onConfirmClose}
-            >
-              {labels.confirmButton}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              data-testid="automation-yaml-import-close-cancel"
-              onClick={onCancelClose}
-            >
-              {labels.cancelButton}
-            </Button>
-          </div>
-        </div>
-      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CloseConfirmPrompt — 닫기 2단계 확인(EC7). 토큰 유무와 무관하게 렌더한다 — in-flight 구간(CRITICAL-1)은
+// `result`가 아직 null이라 토큰 목록 자체가 없으므로, ImportedTokensSection에 종속시키면 표시할 자리가
+// 없어진다(review-fix 발견: closeConfirming state는 세팅돼도 UI가 없어 무음 실패).
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface CloseConfirmPromptProps {
+  readonly onConfirm: () => void
+  readonly onCancel: () => void
+}
+
+function CloseConfirmPrompt({ onConfirm, onCancel }: CloseConfirmPromptProps): JSX.Element {
+  return (
+    <div className="mt-4 space-y-2 rounded-md border border-destructive/20 bg-destructive/5 p-3">
+      <p className="text-sm">{labels.closeConfirm}</p>
+      <div className="flex gap-2">
+        <Button variant="destructive" size="sm" data-testid="automation-yaml-import-close-confirm" onClick={onConfirm}>
+          {labels.confirmButton}
+        </Button>
+        <Button variant="outline" size="sm" data-testid="automation-yaml-import-close-cancel" onClick={onCancel}>
+          {labels.cancelButton}
+        </Button>
+      </div>
     </div>
   )
 }
@@ -202,7 +214,7 @@ function ImportConflictsWarning({ conflicts }: { readonly conflicts: readonly Ru
       <ul className="space-y-1">
         {conflicts.map((conflict, index) => (
           <li key={`${conflict.type}-${index}`} className="text-sm text-amber-900 dark:text-amber-100">
-            <span className="mr-1 font-semibold">{CONFLICT_TYPE_LABELS[conflict.type] ?? conflict.type}</span>
+            <span className="mr-1 font-semibold">{CONFLICT_TYPE_LABELS[conflict.type]}</span>
             {conflict.detail}
           </li>
         ))}
@@ -300,13 +312,17 @@ export interface AutomationYamlImportDialogProps {
 export function AutomationYamlImportDialog({ open, onOpenChange, projectKey }: AutomationYamlImportDialogProps): JSX.Element {
   const [file, setFile] = useState<File | null>(null)
   const [sizeError, setSizeError] = useState(false)
+  const [fileReadError, setFileReadError] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [closeConfirming, setCloseConfirming] = useState(false)
   const [result, setResult] = useState<AutomationImportResponse | null>(null)
-  const [importError, setImportError] = useState<ApiError | null>(null)
+  const [importError, setImportError] = useState<Error | null>(null)
 
   const queryClient = useQueryClient()
-  const importMutation = useMutation<AutomationImportResponse, ApiError, string>({
+  // TError는 Error로 선언한다 — mutationFn 내부의 automationImportResponseSchema.parse(raw)가 던지는
+  // ZodError는 ApiError가 아니라 onError에 그대로 도달한다(<ApiError> 제네릭은 이 실제 런타임 타입을
+  // 반영하지 못하는 거짓 선언이었다, review-fix CRITICAL-3).
+  const importMutation = useMutation<AutomationImportResponse, Error, string>({
     mutationFn: (yamlText: string) => importAutomationRulesYaml(projectKey, yamlText),
     onSuccess: (response) => {
       setResult(response)
@@ -317,6 +333,11 @@ export function AutomationYamlImportDialog({ open, onOpenChange, projectKey }: A
     onError: (error) => {
       setImportError(error)
       setConfirming(false)
+      // ApiError가 아니면 서버가 이미 커밋한 뒤 클라이언트측에서 실패했을 가능성이 있어(파싱 실패·
+      // 네트워크 단절) 화면을 실제 상태와 재동기화한다.
+      if (!(error instanceof ApiError)) {
+        void queryClient.invalidateQueries({ queryKey: AUTOMATION_RULES_QUERY_KEY(projectKey) })
+      }
     },
   })
 
@@ -324,6 +345,7 @@ export function AutomationYamlImportDialog({ open, onOpenChange, projectKey }: A
     if (open) {
       setFile(null)
       setSizeError(false)
+      setFileReadError(false)
       setConfirming(false)
       setCloseConfirming(false)
       setResult(null)
@@ -333,11 +355,15 @@ export function AutomationYamlImportDialog({ open, onOpenChange, projectKey }: A
   }, [open])
 
   const hasUnackedTokens = result?.webhookTokens !== undefined && result.webhookTokens.length > 0
+  // 토큰 분실 위험 구간 — 미확인 토큰이 떠 있거나, 서버가 이미 커밋했을 수 있는 in-flight 구간.
+  // in-flight 중에는 result가 아직 null이라 hasUnackedTokens로는 못 잡는다(review-fix CRITICAL-1).
+  const tokenAtRisk = hasUnackedTokens || importMutation.isPending
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>): void {
     const selected = event.target.files?.[0] ?? null
     setFile(selected)
     setSizeError(selected !== null && selected.size > MAX_IMPORT_BYTES)
+    setFileReadError(false)
     setResult(null)
     setImportError(null)
     setConfirming(false)
@@ -345,13 +371,22 @@ export function AutomationYamlImportDialog({ open, onOpenChange, projectKey }: A
 
   async function handleConfirmApply(): Promise<void> {
     if (file === null) return
-    const yamlText = await file.text()
+    let yamlText: string
+    try {
+      yamlText = await file.text()
+    } catch {
+      // 선택 후 파일이 삭제/이동됐거나 읽기 권한이 없는 경우 — 무한 대기 대신 명시적 실패로 되돌린다.
+      setFileReadError(true)
+      setConfirming(false)
+      return
+    }
+    setFileReadError(false)
     importMutation.mutate(yamlText)
   }
 
-  /** Root의 onOpenChange — 토큰 미확인 상태의 닫기 시도(X 버튼 포함)를 가로채 2단계 확인을 요구한다. */
+  /** Root의 onOpenChange — 토큰 분실 위험 구간의 닫기 시도(X 버튼 포함)를 가로채 2단계 확인을 요구한다. */
   function handleOpenChangeAttempt(next: boolean): void {
-    if (!next && hasUnackedTokens) {
+    if (!next && tokenAtRisk) {
       setCloseConfirming(true)
       return
     }
@@ -368,13 +403,13 @@ export function AutomationYamlImportDialog({ open, onOpenChange, projectKey }: A
         <DialogPrimitive.Content
           data-testid="automation-yaml-import-dialog"
           onEscapeKeyDown={(event) => {
-            if (hasUnackedTokens) {
+            if (tokenAtRisk) {
               event.preventDefault()
               setCloseConfirming(true)
             }
           }}
           onPointerDownOutside={(event) => {
-            if (hasUnackedTokens) {
+            if (tokenAtRisk) {
               event.preventDefault()
               setCloseConfirming(true)
             }
@@ -382,6 +417,13 @@ export function AutomationYamlImportDialog({ open, onOpenChange, projectKey }: A
           className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
         >
           <DialogPrimitive.Title className="text-lg font-semibold mb-1">{labels.title}</DialogPrimitive.Title>
+
+          {closeConfirming && (
+            <CloseConfirmPrompt
+              onConfirm={() => { onOpenChange(false) }}
+              onCancel={() => { setCloseConfirming(false) }}
+            />
+          )}
 
           <div className="mt-4">
             <label htmlFor="automation-yaml-import-file" className="mb-2 block text-sm font-medium">
@@ -392,6 +434,7 @@ export function AutomationYamlImportDialog({ open, onOpenChange, projectKey }: A
               type="file"
               accept=".yaml,.yml"
               aria-label={labels.fileInputLabel}
+              disabled={tokenAtRisk}
               onChange={handleFileChange}
             />
           </div>
@@ -400,15 +443,12 @@ export function AutomationYamlImportDialog({ open, onOpenChange, projectKey }: A
 
           {sizeError && <p role="alert" className="mt-3 text-sm text-destructive">{labels.tooLarge}</p>}
 
+          {fileReadError && <p role="alert" className="mt-3 text-sm text-destructive">{labels.fileReadFailed}</p>}
+
           {result !== null && (
             <div className="mt-4 space-y-3">
               {result.webhookTokens !== undefined && result.webhookTokens.length > 0 && (
-                <ImportedTokensSection
-                  tokens={result.webhookTokens}
-                  closeConfirming={closeConfirming}
-                  onConfirmClose={() => { onOpenChange(false) }}
-                  onCancelClose={() => { setCloseConfirming(false) }}
-                />
+                <ImportedTokensSection tokens={result.webhookTokens} />
               )}
               <ImportResultSummary result={result} />
               <ImportConflictsWarning conflicts={result.conflicts ?? []} />
@@ -429,8 +469,16 @@ export function AutomationYamlImportDialog({ open, onOpenChange, projectKey }: A
           />
 
           <div className="mt-4 flex justify-end">
+            {/* disabled는 isPending만 본다(hasUnackedTokens는 미포함) — 토큰 노출 후 X 클릭은
+                handleOpenChangeAttempt(tokenAtRisk)가 이미 가로채 2단계 확인으로 라우팅한다(EC7).
+                여기까지 tokenAtRisk로 넓히면 그 클릭 자체가 막혀 EC7의 "X 클릭→확인" 경로가 사라진다. */}
             <DialogPrimitive.Close asChild>
-              <Button variant="outline" size="sm" data-testid="automation-yaml-import-close-button">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={importMutation.isPending}
+                data-testid="automation-yaml-import-close-button"
+              >
                 {labels.closeButton}
               </Button>
             </DialogPrimitive.Close>

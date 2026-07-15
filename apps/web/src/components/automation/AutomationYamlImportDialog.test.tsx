@@ -365,7 +365,8 @@ describe('AutomationYamlImportDialog', () => {
     const user = userEvent.setup()
     server.use(
       http.post(IMPORT_URL, async () => {
-        await new Promise((resolve) => setTimeout(resolve, 50))
+        // EC5(50ms)보다 넉넉히 늘려 disabled 확인 + ESC 입력이 in-flight 창 안에서 안정적으로 끝나게 한다.
+        await new Promise((resolve) => setTimeout(resolve, 300))
         return HttpResponse.json({ created: 1, updated: 0, total: 1, ruleIds: [RULE_ID], conflicts: [] })
       }),
     )
