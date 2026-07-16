@@ -626,13 +626,14 @@ export interface ActionConfigEditorProps {
 /**
  * 액션 1건의 타입별 조건부 편집기.
  *
- * 상단의 액션 유형 select로 4종(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK) 중 하나를 고르면,
- * 그 아래에 타입별 서브컴포넌트가 조건부로 전환된다(`TriggerConfigFields` 선례 동형).
+ * 상단의 액션 유형 select로 5종(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/SET_FIX_VERSIONS) 중
+ * 하나를 고르면, 그 아래에 타입별 서브컴포넌트가 조건부로 전환된다(`TriggerConfigFields` 선례 동형).
  * - {@link SetFieldFields} — 필드 6종 드롭다운 + 필드 타입에 맞는 값 위젯(텍스트/1~5·1~3 select/태그입력).
  *   6종 밖 field(EC10, 기존 룰에 저장된 값)는 텍스트 위젯으로 fallback해 값을 보존한다.
  * - {@link AssignField} — {@link ProjectMemberSelect}(담당자 해제 허용, EC3).
  * - {@link AddCommentField} — 본문 textarea + 템플릿 변수 힌트(FR5).
  * - {@link CallWebhookFields} — url·method(기본 POST)·헤더 행 추가/삭제·본문.
+ * - {@link SetFixVersionsFields} — 적용 방식(교체/전체 해제) + {@link VersionMultiSelect}(FR-AT-07 PR-B).
  *
  * 완전한 controlled 컴포넌트다 — `value`/`onChange`로만 상태를 주고받고, 자체 상태는 라벨 태그
  * 입력의 임시 draft에만 쓴다. 직렬화(JSON 문자열화)는 하지 않는다(상위 AutomationRuleFormDialog가

@@ -66,12 +66,13 @@ const setFieldDefault: ActionFormState = { type: 'SET_FIELD', config: { field: '
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('ActionConfigEditor — 타입 전환', () => {
-  it('액션 유형 select에 4종 옵션을 렌더한다', () => {
+  it('액션 유형 select에 5종 옵션을 렌더한다', () => {
     render(<ActionConfigEditor projectKey={PROJECT_KEY} value={setFieldDefault} onChange={vi.fn()} />)
 
     expect(screen.getByRole('option', { name: '필드 값 설정' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '담당자 지정' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '댓글 추가' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '수정 예정 버전 설정' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '웹훅 호출' })).toBeInTheDocument()
   })
 

@@ -1,5 +1,5 @@
 // 자동화 룰 생성/수정 Dialog — 트리거 5종 선택 + 트리거별 조건부 필드(cron/fields) 직렬화 (FR-AT-01 D6 Task 6)
-// + 액션 리스트(4종)·실행 주체(actor) 편집 배선, config 비대칭(EC1) 직렬화/역직렬화 (FR-AT-02 D6 Task 6)
+// + 액션 리스트(5종, SET_FIX_VERSIONS는 FR-AT-07 PR-B)·실행 주체(actor) 편집 배선, config 비대칭(EC1) 직렬화/역직렬화 (FR-AT-02 D6 Task 6)
 import type { JSX, KeyboardEvent } from 'react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -611,7 +611,7 @@ function FormBody({
         />
       </section>
 
-      {/* 액션 — 4종(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK) 추가/삭제/순서변경(FR2·FR7) */}
+      {/* 액션 — 5종(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/SET_FIX_VERSIONS) 추가/삭제/순서변경(FR2·FR7) */}
       <section className="mb-6">
         <h3 className={SECTION_HEADING_CLASS}>{labels.actionsSectionLabel}</h3>
         <ActionListEditor projectKey={projectKey} value={actions} onChange={setActions} />
