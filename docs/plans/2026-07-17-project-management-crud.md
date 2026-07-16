@@ -117,15 +117,38 @@ Draft PR #276 `backend/fr-at-07-pr-b-fix-version`이 같은 issue-tracking BC의
 | `projects` | **필요** | `IssueApplicationService.kt:212-214` (`findProjectIdByKey ?: throw`) |
 | `project_memberships` | **필요** (우회 불가) | `IdentityAccessIssuePermissionResolver.kt:78-81` 비멤버 즉시 거부 · `:49-50` "관리자 우회 없음" |
 | 권한 스킴 매핑 | **불필요** — `is_default` fallback | `V008__permission_schemes_and_role_permissions.sql:37` "미매핑 프로젝트는 is_default = TRUE 스킴을 fallback 으로 사용한다" |
-| 워크플로우 스킴 배정 | **불필요** — auto-assign | `WorkflowKeyResolver.kt:26` "할당 없으면 software-scheme 자동 배정 후 결정 (EC-1, D10 채택)" |
-| 기본 매핑 | **불필요** — 마이그레이션이 시드 | `V201__workflow_schemes.sql` |
+| 워크플로우 스킴 배정 | **불필요** (단 R5 확인 필요) — auto-assign | `WorkflowKeyResolverImpl.kt:58-59` "EC-1 auto-assign: assignment 없는 신규 프로젝트는 software-scheme 을 자동 배정한 뒤 default mapping workflow 를 반환한다" |
+| 스킴 기본 매핑 | **프로젝트 단위 아님** — 스킴 단위(`scheme_id`)라 생성 트랜잭션의 일이 아니다. **단 전역으로 비어 있다 → R6** | `V201__workflow_schemes.sql:137-145` |
 | 보안 스킴 | **조건부** — `securityLevelId != null` 일 때만 | `IssueApplicationService.kt:221-229` |
 
-**실제로 필요한 건 2행이다** — `projects` INSERT + `project_memberships` INSERT(생성자 = PROJECT_ADMIN).
+**프로젝트 생성 트랜잭션에 필요한 건 2행이다** — `projects` INSERT + `project_memberships` INSERT(생성자 = PROJECT_ADMIN).
 
 **영향.** project-workflow BC는 이 작업 범위에서 **완전히 빠진다**. cross-BC 쓰기는 issue-tracking → identity-access 한 방향뿐이다.
 
 **단 이 2행을 쪼개면 안 된다.** `project-membership-model.md:66`이 예고한 대로, 멤버십 삽입 없이 생성 API만 머지하면 ADR이 막아온 권한 상승 창문(멤버 0명 프로젝트에 자신을 첫 PROJECT_ADMIN으로 꽂기)을 prod에 처음으로 여는 셈이 된다. FR-AT-07 C-1이 "**전략 오조준** — 방어 없이 경로를 먼저 열고 방어는 2 PR 뒤"로 감점된 바로 그 실수다. **분할선은 보안 불변식을 가로지르지 않는다.**
+
+### R5. auto-assign 이 nil actor 로 500 을 던진다는 실증 기록 (검증 필요)
+
+자동 메모리 `no-project-creation-feature-issue-needs-5-layer-seed`(2026-07-11, **실증 기반**)가 기록한다.
+
+> `project_workflow_scheme_assignments` → software-scheme. **미배정 시** 첫 이슈 생성의 `resolveStart` auto-assign 경로가 `assignToProject` 에서 ASSIGN_SCHEME 권한을 **nil actor(0000...0)로 검사**해 `WorkflowSchemeAccessDeniedException` **500**. 미리 배정해 auto-assign 회피.
+
+`WorkflowKeyResolverImpl.kt:58-59` KDoc 은 auto-assign 이 정상 동작한다고 서술하나, 메모리는 실제로 돌려본 결과다. **KDoc 과 실측이 충돌한다 — spec/impl 단계에서 실증 필수.**
+
+- 사실이면 FR-PJ-01 생성 트랜잭션이 `project_workflow_scheme_assignments` 를 **명시 배정**해야 한다(= 3행). 그러면 project-workflow BC 가 범위로 돌아온다.
+- 이 종류의 결함은 KDoc·주석으로 확인 불가하다. **실제 신규 프로젝트에 이슈를 만들어 보는 것**만이 판별한다.
+
+### R6. 스킴 기본 매핑이 새 DB 에서 전역으로 비어 있다 — 선재 결함 (FR-PJ-01 이 정면으로 만난다)
+
+`V201__workflow_schemes.sql:137-145` 는 `workflow_scheme_issue_type_mappings` default mapping 을 `INSERT ... SELECT ... JOIN workflows` 로 심는데, **새 DB 에서 항상 0행**이다. 같은 파일 `:132-134` 주석이 자인한다.
+
+> 실행 순서 의존성: workflows 테이블은 YamlSeedService(ApplicationReadyEvent) 가 채운다. Flyway migrate 는 **Spring Boot 기동 전에 실행**되므로 workflows 가 비어 있으면 **0건 삽입**. 이 경우 default mapping 은 후속 ApplicationRunner 에서 보완 (**Wave-2 범위 — EC-2 참조**).
+
+**그 Wave-2 보완은 구현되지 않았다** (직접 확인 — project-workflow 의 `ApplicationReadyEvent` 소비자는 `YamlSeedService` 하나뿐, default mapping 백필 코드 0건).
+
+결과. **새 prod DB 에서는 어떤 프로젝트를 만들어도 이슈 생성이 422 `workflow_not_configured` 로 실패한다.** `WorkflowKeyResolverImpl.kt:60` EC-2 경로다. 현재는 `infra/local/seed-project.sql:57-70` 이 로컬에서 손수 심어 가려져 있고, 그 파일 `:53` 주석이 문제를 명시한다 — "부팅 시드는 스킴/워크플로우만 만들고 이 매핑은 안 만든다(원래 워크플로우 스킴 설정 UI 의 몫)".
+
+**프로젝트 생성 기능과 별개의 선재 결함이나, FR-PJ-01 이 이걸 만나지 않고는 동작을 증명할 수 없다.** spec 단계에서 처리 방침 결정 필요 — (a) 이번 PR 에서 Wave-2 백필 구현 (b) 별도 선행 PR (c) 워크플로우 스킴 설정 UI(별도 FR) 로 이연.
 
 ### R3. 이슈 키 영구 보존과 충돌 (learnings.md 사전등록 함정)
 
