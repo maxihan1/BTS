@@ -651,9 +651,9 @@ class SchemaMigrationTest {
     // ── action_type CHECK 제약 (4종 화이트리스트) ──────────────────────────────
 
     @Test
-    fun `V302 유효한 action_type 4종은 INSERT 허용`() {
+    fun `V306 유효한 action_type 5종은 INSERT 허용`() {
         val ruleId = insertRuleReturningId()
-        listOf("SET_FIELD", "ASSIGN", "ADD_COMMENT", "CALL_WEBHOOK")
+        listOf("SET_FIELD", "ASSIGN", "ADD_COMMENT", "CALL_WEBHOOK", "SET_FIX_VERSIONS")
             .forEachIndexed { position, actionType -> insertAction(ruleId, position, actionType) }
     }
 
