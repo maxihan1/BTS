@@ -315,10 +315,478 @@ GitLab 보안등급 차이(DEC-13).
 - `domain/automation.md` — **stale 확인**. "ANTLR 4로 AQL 파서"라 기재하나 실제는 손수 파서(F9 기록).
   본 PR 범위 밖 별건 정리 후보. 핵심 엔티티에 Trigger 6종 반영은 본 PR 몫
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-17-fr-at-07-pr-c-git-webhook.md](../specs/2026-07-17-fr-at-07-pr-c-git-webhook.md)
+(마스터 `2026-07-15-fr-at-07-pr-merge.md` §C의 상세화 — §C가 확정한 FR-C1~C12·BLOCKER 9 해소책은 재논의 대상 아님)
 
-## Plan (← /bts-plan 채움)
+**핵심 3줄 요약.**
+- **PR 머지가 자동화 규칙을 발화시키는 마지막 경로를 잇는다** — PR-A(도달 가능화)·PR-B(설정 통로) 위에
+  `POST /api/v1/webhooks/git/{token}`(서명 검증) + `TriggerType.PR_MERGED`를 얹어 S1을 완성
+- **PR_MERGED는 기존 이벤트 큐를 타지 않는 제3의 경로** — 컨트롤러가 룰을 직접 조회해 동기 enqueue
+  (`q_automation_events`는 issue-tracking 소유라 Git 웹훅이 올라갈 수 없음)
+- **PR-C = 백엔드만**. D6/D7(UI·E2E)은 PR-D. FR-AT-07 완료·BC 7/7 마킹도 PR-D 몫. **FR 123 불변**
+
+**범위 밖 명시**. UI · rate limit · pgmq 아카이브 보존 배치 · 프로젝트당 룰 수 상한 · GitHub replay 방어(구조적 불가)
+
+## Brainstorming Check
+
+✅ **통과 (2회 iteration)**. 1회차 = 적대적 검토 2종 병렬(security + backend, 실코드 대조) →
+**BLOCKER 7 / CONCERN 12 / NIT 7**. 2회차 = 전건 반영 + Maxi 확정 DEC-22~24.
+
+**1회차가 잡아낸 가장 큰 것 3가지** (전부 내 오류).
+1. **B2-be** — 내가 쓴 완료 기준(§9-6)이 **죽은 코드를 만들라고 지시**했다. 위 G2가 `TriggerMatcher`
+   wire 맵 누락을 "1순위 조용한 실패"로 단정했으나 **그 경로 자체가 PR_MERGED와 무관**. 실측을 해놓고
+   해석을 틀렸고 스펙이 그대로 물려받았다 → G2 교정 + spec §3.5 신설
+2. **B3-sec** — 마스터 스펙의 "구분 대상 = **로그·메트릭**" 문맥을 잘라내 "반드시 구분"만 남겨,
+   **404를 포기하면서까지 막은 존재 오라클을 응답 errorCode로 부활**시켰다
+3. **B1** — 마스터 §C-4의 확정 3개 중 **1개만** 가져왔다(절단·곱 상한 소실). **두 검토자가 독립적으로
+   같은 지적**. 20키 상한만으론 비율만 줄고 무한성은 그대로
+
+**메타 교훈**. 스펙 §9-5가 *"'13'을 물려받지 말고 직접 재검증하라"*고 **스스로 경고하고도** G2 표 자체가
+불완전했다(라인 단위 16 + 미기재 2건). [[spec-stated-count-becomes-blindfold]] **세 번째 재현**.
+
+## Plan
+
+> **★ 절대 규칙 §1.4 정식 예외 작업.** `DEVELOPMENT.md §1.1` **규칙 4 "인증 없는 엔드포인트 추가 금지.
+> Spring Security 필터 우회 금지."** 를 정면으로 건드린다. 경로군 **2개**(git 신규 + automation 기존)를
+> 연다. 선례 절차 = **ADR + 게이트1 승인 + KDoc 예외 사유 명시**(FR-DB-03 익명 대시보드 · FR-CA-02 iCal ·
+> PR-A slack 4경로). T1이 그 ADR. **DEC-22 — 승인은 게이트1에서 Maxi가 명시적으로 준다.**
+>
+> **프레이밍 (PR-A ADR D2 승계 + 차이 명시)**. permitAll은 인증을 **없애는** 게 아니라 **검증 주체를
+> 필터 → 컨트롤러로 옮기는** 것이다. **git 경로는 HMAC이 그 자리에 선다. 그러나 automation 웹훅에는
+> 서명 검증이 없다**(불투명 토큰 소지 = 인증) → **동일 논거를 automation에 그대로 쓸 수 없다**. T1이 이
+> 차이와 잔여위험을 정직하게 기술한다.
+>
+> **writing-plans 미호출 (deviation)**. 스펙이 이미 task 수준으로 상세하고(§3.5 파이프라인 9단계 ·
+> 함정 30여 건이 파일:줄로 고정) 범용 도구는 BTS 고유 함정을 모른다. PR-A·PR-B 동형. 스킬이 요구하는
+> 메타 블록(agent/files/depends-on) 형식은 준수.
+>
+> **task 17개 — 스킬 기준(10) 초과, Maxi 확정 "한 PR"**. 분할하면 PR-B처럼 "만들었지만 안 도는" PR을
+> 하나 더 만든다. **S1이 끝까지 도는 것을 검증 가능한 최소 단위**가 이 PR.
+
+### Wave 구조 (bts-impl이 메타로 자동 계산 — 아래는 예상)
+
+```
+W1 (8-병렬): T1 ADR · T2 마이그레이션 · T3 TriggerType파급 · T5 encryptor
+             T7 서명검증기 · T8 이슈키추출 · T13 방어심층 · T16 프론트Zod
+W2 (3-병렬): T4 충돌분석(←3) · T6 도메인/Repo(←2) · T14 회귀테스트(←2,3)
+W3 (2-병렬): T9 Service(←6,7,8) · T11 등록API(←6)
+W4 (직렬)  : T10 Controller(←7,8,9)
+W5 (직렬)  : T12 SecurityConfig(←10,11)   ← BC 격리 예외, DEC-22 승인 전제
+W6 (2-병렬): T15 prod 조립 HTTP(←12) · T17 문서(←1,12)
+```
+longest path = T2 → T6 → T9 → T10 → T12 → T15 (**6 wave**).
+> ★ **wave는 Gradle 모듈 컴파일도 직렬화한다** ([[bts-plan-wave-gradle-module-compile]]) — 같은 모듈
+> 동시 수정 시 컴파일 충돌. automation 모듈 task가 많아 실제 wave는 더 좁아질 수 있음.
+> ★ **병렬 dispatch pre-commit race** ([[parallel-dispatch-precommit-hook-race]]) — 각 implementer는
+> **자기 files만 stage**. `git stash` 금지([[subagent-git-stash-worktree-shared-collision]]).
+> ★ `./gradlew ktlintFormat` **금지** — 타 task 파일까지 포맷 ([[bts-ktlintformat-docs-commit-traps]]).
+
+---
+
+### Task 1. ADR — git·automation 인바운드 permitAll (§1.4 정식 예외) + 잔여위험 3종
+
+**메타**.
+- agent: `security-engineer`
+- files: [`docs/decisions/2026-07-17-git-webhook-inbound-permitall.md`]
+- depends-on: []
+
+**내용** (TDD 비대상 — 문서).
+- **맥락**. PR-A(#274)가 slack 4경로를 열며 automation을 **일부러 제외**(DEC-15) — `AutomationWebhookController:97`이
+  무검증 `issueKey`를 enqueue하기 때문. 본 PR이 그 방어심층(FR-C13)과 함께 automation + git을 연다
+- **§1.4 예외 정당화**. (a) 외부 시스템(GitHub/GitLab)이 호출하므로 BTS 자격증명 불가 (b) git 경로는
+  **컨트롤러의 HMAC 검증**이 인증 담당 (c) 필터가 막으면 서명 검증 코드가 실행조차 안 됨 = 기능 정지
+  (d) 폭발 반경은 메서드 고정 + `/*` 단일 세그먼트로 봉인
+- **★ automation의 프레이밍 차이 별도 기술** (C5-sec) — automation 웹훅은 **서명 검증이 없다**.
+  "필터가 비키는 자리에 더 강한 검증이 선다"는 PR-A 논거가 **성립하지 않는다**. 토큰 소지가 인증이며,
+  이는 `PublicDashboardController` 직교 토큰 선례와 같은 등급
+- **★ 잔여위험 3종 정직하게 등재**.
+  1. **FR-C13은 cross-project만 막는다** — 같은 프로젝트 내 임의 이슈 조작은 **여전히 가능**
+     (`ActionExecutor.kt:176`이 조건 없는 룰을 게이트 없이 통과). PR-A DEC-15 우려가 **완전 해소되지 않음**.
+     근본 해소는 전 트리거 동작 변경이라 별도 PR
+  2. **GitHub replay 구조적 불가** — 서명에 timestamp 없음(`X-GitHub-Delivery`는 서명 대상 밖).
+     slack ±300초 윈도우 대응물 없음. dedup은 **정직한 재시도 방어일 뿐**
+  3. **GitLab 보안등급 차이** (DEC-13) — 평문 `X-Gitlab-Token`. GitLab이 HMAC을 제공하지 않아
+     **우리가 더 강하게 만들 수 없다**. **GITHUB과 동급으로 서술 금지**
+  4. rate limit 부재 — **본 PR로 등급 상승**(CPU 소모 → 디스크 고갈, §10)
+- **표기**. `§1.4` (저장소 관례 14곳과 일관 — PR-A DEC-17)
+- **폴더**. `docs/decisions/` ([[bts-adr-dual-folder-convention]])
+- **선례 링크**. `2026-07-15-slack-inbound-permitall-central` · `2026-07-02-fr-db-03-dashboard-share` ·
+  `2026-07-09-fr-ca-02-ical-export`
+
+**검증**. `bash scripts/verify-master-plan.sh`. ★ T1 자체 검증에 T15 산출물 참조 금지(T1 시점 미실행).
+
+---
+
+### Task 2. V307/V308/V309 마이그레이션
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/automation/src/main/resources/db/migration/automation/V307__git_webhooks.sql`, `backend/modules/automation/src/main/resources/db/migration/automation/V308__git_webhook_deliveries.sql`, `backend/modules/automation/src/main/resources/db/migration/automation/V309__automation_rules_pr_merged_trigger.sql`]
+- depends-on: []
+
+**내용** (TDD — T14가 스키마 테스트).
+- spec §6 그대로. **V309는 COMMENT 재발행 필수** (C4-be — `V300:67`이 "CHECK 5종" 문구,
+  `V306:21-24` 선례). **V300 원본 편집 금지**(체크섬 드리프트)
+- **V번호 실측 근거** (G1) — automation 최신 V306, V307~V399 저장소 전체 0건, 다음 대역 V400
+- ★ **머지 직전 V번호 재확인** ([[migration-vnumber-concurrent-branch-collision]])
+- ★ `:modules:app:test`는 **5433 영속 DB** ([[app-test-persistent-db-migration-checksum-trap]]) — 적용 후 편집 금지
+
+**검증**. `./gradlew :modules:automation:test --tests SchemaMigrationTest`
+
+---
+
+### Task 3. `TriggerType.PR_MERGED` + 파급 전수 + `TriggerConfig` targetBranch 검증
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/domain/TriggerType.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/domain/TriggerConfig.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/domain/TriggerConfigTest.kt`]
+- depends-on: []
+
+**RED**. `TriggerConfigTest` — PR_MERGED가 `targetBranch` 타입/공백을 거부. `entries.size shouldBe 6`.
+
+**GREEN**.
+- `TriggerType.PR_MERGED` 추가 (+ `:1` 헤더 주석 "5종"→"6종")
+- **★ `TriggerConfig.kt:43-47`에 PR_MERGED 전용 분기 신설** — `:46`의 `-> Unit` 그룹에 얹으면
+  **컴파일 통과 + 무검증** → `targetBranch: 123`·오타 키 저장 → 관대한 기본값으로 **B8 부활** (C6-sec).
+  `validateIssueUpdated`(`:82-95`) 동형 — 선택(`?: return`)·문자열·비공백
+- **★ 파급 전수 grep** ([[spec-stated-count-becomes-blindfold]]) — `grep -rn "TriggerType\."
+  backend/modules/automation/src/main`. **plan G2 표의 개수를 세지 말 것**(라인 16 + 미기재 2 전력)
+- **★ `TriggerMatcher` wire 맵에 `pr.merged` 추가 금지** (§3.5 — 죽은 코드)
+- **★ `AutomationRuleService.kt:210,890` 변경 금지** (C3-be) — `else null`이 정답
+
+**REFACTOR**. KDoc — PR_MERGED가 제3의 경로임을 명시(구현자 오해 차단).
+
+**검증**. `./gradlew :modules:automation:test --tests TriggerConfigTest`
+
+---
+
+### Task 4. `RuleConflictAnalyzer.targetBranchCoFire` (B4-be)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/application/RuleConflictAnalyzer.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/application/RuleConflictAnalyzerTest.kt`]
+- depends-on: [3]
+
+**RED**. targetBranch 다른 두 PR_MERGED 룰 → **경고 0건**. 같거나 한쪽 미지정 → 경고 발생.
+
+**GREEN**. `coFire`(`:238-247`)에 `fieldsCoFire` 동형 `targetBranchCoFire` 분기.
+> **왜 BLOCKER인가**. 현재 `a.triggerType != ISSUE_UPDATED -> true`(`:245`)라 PR_MERGED가 무조건
+> "동시 발화 가능". **S5(release/1.2 + release/2.0)가 정확히 그 시나리오**이고
+> `AutomationRuleController.kt:118,240,282`가 `conflicts`를 **REST 응답에 실어 사용자에게 노출** →
+> 이 기능이 지향하는 사용 패턴에서 **거짓 경고**.
+
+**검증**. `./gradlew :modules:automation:test --tests RuleConflictAnalyzerTest`
+
+---
+
+### Task 5. `automationSecretEncryptor` 빈 + `.env.prod.example`
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/config/AutomationEncryptionConfig.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/config/AutomationEncryptionConfigTest.kt`, `infra/prod/.env.prod.example`]
+- depends-on: []
+
+**RED**. 키 미설정 시 **빈 등록은 성공**(부팅 통과) + `encrypt` 호출 시 `IllegalStateException`.
+
+**GREEN**. **`SlackEncryptionConfig.kt:29-58` 그대로 복사** (G8 — 최신·최완성 선례).
+- `@Bean("automationSecretEncryptor")` **by-name 고정** (타입 빈 4개가 됨)
+- `@param:Value("\${$PROPERTY_KEY:}")` **빈 기본값** — `@ConditionalOnProperty` 금지(부팅 파괴)
+- 프로퍼티 키를 companion 상수로 (`bts.automation-encryption.{key,salt}`)
+- ★ `mfaSecretEncryptor`는 **다른 타입** — SecretEncryptor 타입 빈은 현재 3개(G8 정정)
+- `.env.prod.example` — **DEC-19: 선택적 연동** → 파일 끝에 **주석 처리 신규 §Git 웹훅** (slack `:67-78` 동형).
+  salt는 **hex** (`openssl rand -hex 32`)
+
+**검증**. `./gradlew :modules:automation:test --tests AutomationEncryptionConfigTest`
+
+---
+
+### Task 6. `GitWebhook` 도메인 + Repository
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/domain/GitWebhook.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/domain/GitProvider.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/adapter/GitWebhookRepository.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/adapter/GitWebhookRepositoryTest.kt`]
+- depends-on: [2]
+
+**RED**. Testcontainers — `findByTokenHash`가 `deleted_at IS NULL`만 반환. dedup INSERT 충돌 판정.
+
+**GREEN**. JdbcTemplate (automation 관례). `AutomationRuleRepository:248` 동형.
+
+**검증**. `./gradlew :modules:automation:test --tests GitWebhookRepositoryTest`
+> ★ 신규 `@Repository`가 test-boot 컨텍스트를 깰 수 있음
+> ([[new-bc-first-repository-testboot-context-regression]]) — automation은 기존 Repository가 있어 위험 낮으나 확인.
+
+---
+
+### Task 7. 서명 검증기 (GitHub HMAC / GitLab 평문)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/security/GitWebhookSignatureVerifier.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/security/GitWebhookSignatureVerifierTest.kt`]
+- depends-on: []
+
+**RED**. 유효 서명 true / 위조 false / 헤더 누락 false / **secret blank false** / **교차 헤더 false**(EC2·EC3) /
+레거시 SHA-1 false(EC4).
+
+**GREEN**. **`SlackSignatureVerifier.kt` 4계약 승계** (G7).
+- ① **미설정=거부** (`:72-74` — ★ 1회차가 인용한 `:64-66`은 **stale**, #275로 이동)
+- ② **예외 아닌 boolean 수렴** — 컨트롤러가 401 매핑
+- ③ **`MessageDigest.isEqual` 상수시간** (`:86-89`)
+- ④ **raw ByteArray, String 왕복 금지** (`:119-132` — `mac.update` 스트리밍)
+- **★ replay 윈도우 이식 불가** — GitHub 서명에 timestamp 없음. `Clock` 주입 **불요**
+- **★ provider는 등록행에서만** — 헤더 추론·폴백 금지 (C-a)
+- **KDoc에 GitLab 등급차 명시** (DEC-13)
+
+**검증**. `./gradlew :modules:automation:test --tests GitWebhookSignatureVerifierTest`
+
+---
+
+### Task 8. 이슈 키 추출기
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/application/PrIssueKeyExtractor.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/application/PrIssueKeyExtractorTest.kt`]
+- depends-on: []
+
+**RED**. `Closes PROJ-42` 추출 / 키워드 없는 `PROJ-42` **미추출** / **`Closes PROJ-42x`·`PROJ-420` 오추출 0**(EC16) /
+소문자 `proj-42` 미추출 / distinct.
+
+**GREEN**. spec §3.4 정규식. **★ 뒤 단어 경계 `(?![A-Za-z0-9-])` 필수** (C2-be — 1회차는 프로즈로만 경고).
+**★ `IssueKey.REGEX` 값 복제 + 주석 명시** (`AtlasIssueUrlParser.kt:56` 선례 — BC 격리로 import 불가).
+
+**검증**. `./gradlew :modules:automation:test --tests PrIssueKeyExtractorTest`
+
+---
+
+### Task 9. `GitWebhookService` — 파이프라인 + 3중 상한 + dedup + 단일 트랜잭션
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/application/GitWebhookService.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/application/GitWebhookServiceTest.kt`]
+- depends-on: [6, 7, 8]
+
+**RED**. S1 발화 / S3 스코프 위반 0건 / S4 머지 아님 0건 / S5 targetBranch / **EC12 20키·곱100 초과 → 0건** /
+**팬아웃 payload `pr.title`·`pr.body` ≤ 2KB** / **EC10 일부 실패 → 전량 롤백(dedup 포함)**.
+
+**GREEN**. spec §3.5 ⑤~⑨ + §3.7 + §3.10 스키마.
+- **★ 단일 `@Transactional`** (DEC-23) — `AutomationExecutionEnqueuer.kt:22-25` KDoc이
+  "호출자 트랜잭션 안에서 원자적 커밋" 보장. self-invocation 무관(컨트롤러→서비스)
+- **★ `TriggerMatcher`/`AutomationEventWorker`/`q_automation_events` 미사용** (§3.5)
+- **★ triggerEvent 최상위에 `title`/`body` 두지 말 것** (§3.10) — `buildContext:279`가 `issue` 키 부재 시
+  triggerEvent 전체를 issue로 취급 → `{{issue.title}}`이 PR 제목으로 오염. `pr` 하위로 내려 C-k 회피
+- **★ 3중 상한** — 20키 / **각 2KB 절단** / **룰×키 100** (B1 — 두 검토자 독립 지적)
+
+**검증**. `./gradlew :modules:automation:test --tests GitWebhookServiceTest`
+
+---
+
+### Task 10. `GitWebhookController`
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/adapter/web/GitWebhookController.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/adapter/web/GitWebhookControllerTest.kt`]
+- depends-on: [7, 8, 9]
+
+**RED**. 202 / **401 단일 errorCode**(EC1~EC4·EC9·EC15) / 413(EC5) / 415(EC6) / 400(EC7) /
+**핸들러 시그니처 화이트리스트**(§9-7).
+
+**GREEN**. `AutomationWebhookController:102-116` 동형.
+- **★ `@RequestBody` 금지** — `readNBytes(MAX+1)` + `contentLengthLong` 이중검사
+- **★ `@RequestParam`/`@ModelAttribute` 병용 금지**
+- **★ 401 응답 본문 단일화** (B3-sec) — `GIT_WEBHOOK_UNAUTHORIZED`. **사유 구분은 로그·메트릭만**.
+  errorCode가 갈리면 **404를 포기하며 막은 존재 오라클이 부활**
+- **★ 토큰 조회를 payload 파싱보다 먼저** (G14 — 기존 컨트롤러의 순서 결함 답습 금지)
+- `consumes = APPLICATION_JSON_VALUE` (415 명시 거부)
+- EC9 — **ERROR 로그**(id·projectKey만, 평문/키 금지) + 메트릭
+
+**검증**. `./gradlew :modules:automation:test --tests GitWebhookControllerTest`
+
+---
+
+### Task 11. 등록 API + secret 검증
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/adapter/web/GitWebhookRegistrationController.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/adapter/web/dto/GitWebhookDtos.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/application/GitWebhookRegistrationService.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/adapter/web/GitWebhookRegistrationControllerTest.kt`]
+- depends-on: [6]
+
+**RED**. 201 + **토큰 1회 노출** / GET에 token·secret **미포함** / **blank·15자 secret 거부**(B4-sec) /
+**비권한자 403** / **미인증 401**.
+
+**GREEN**. `AutomationRuleController.kt:64-67,104` 동형.
+- **★ 가드 순서** — `AutomationActorExtractor.extract()`(401) → `assertManageAutomationPermission`(403) →
+  조회 ([[auth-extraction-before-resource-lookup]])
+- **★ 동형 복제 시 가드 전수 대조** ([[isomorphic-clone-permission-guard-gap]])
+- **★ secret `@field:NotBlank` + 최소 16** (B4-sec — GITLAB 평문 비교라 빈 secret은 토큰만으로 우회)
+- 토큰 = `SecureRandom` 256bit base64url, **SHA-256 해시만 저장** (`AutomationRuleService:773-777` 동형)
+- `MANAGE_AUTOMATION` — 기존 코드 재사용, **신규 권한코드 없음**
+  ([[fr-pm-permission-seed-migration-test-coupling]] 무관)
+
+**검증**. `./gradlew :modules:automation:test --tests GitWebhookRegistrationControllerTest`
+
+---
+
+### Task 12. `SecurityConfig` — git + automation 인바운드 **3곳** 등록
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/config/SecurityConfig.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/AutomationTestSecurityConfig.kt`]
+- depends-on: [10, 11]
+
+> **★ BC 격리 예외** — identity-access를 건드림. **security-engineer 필수**. DEC-22 게이트1 승인 전제.
+
+**GREEN**.
+- **★ 3곳 전부** (G5 — `SecurityConfig.kt:290` KDoc이 경고) — bearer skip(`:115-116`) +
+  CSRF-ignore(`:152-154`) + permitAll(`:206-208`). **1회차 FR-C15는 permitAll만 언급했다**(B2-sec)
+- **★ GitHub form-urlencoded** → bearer skip 없으면 Tomcat 파싱이 본문 소진 → **빈 바디 401**
+  ([[bearer-token-resolver-drains-form-body]])
+- **★ `:209 /api/**` authenticated보다 위** (`:205` 주석이 계약 명시)
+- **★ csrf는 `antMatcher(method, path)`** — 문자열 오버로드는 메서드 고정이 조용히 사라지며 통과
+- **★ `/*` 단일 세그먼트** — `/**` 금지
+- 공유 리스트 확장 — **`SLACK_INBOUND_PATHS` 이름이 거짓이 됨** → `INBOUND_WEBHOOK_PATHS` 리네이밍
+  검토(NIT-be, 리뷰 확인)
+- **클래스 KDoc `:44-52` 동기화** (N4-sec — "permitAll 6경로" 목록)
+- **`AutomationTestSecurityConfig.kt:49` `/**` → `/*` 정합화 + git 경로 추가** (G14·NIT-be).
+  ★ `:47 csrf { it.disable() }`이라 **BC 테스트는 중앙 CSRF 누락을 원리적으로 못 잡음** → T15가 유일 관문
+
+**REFACTOR**. KDoc `§1.4 정식 예외(ADR 2026-07-17-... · 게이트1 승인)` (PR-A DEC-17 표기).
+★ 기존 `§1.4` 14곳은 건드리지 않음(surgical).
+
+**검증**. `./gradlew :modules:identity-access:test :modules:slack-integration:test :modules:automation:test`
+회귀 0. ★ detekt — `@Suppress("LongMethod")` 임계 이미 1줄 초과(`:88-90`).
+
+---
+
+### Task 13. FR-C13 방어심층 — `ActionExecutor.execute` 내부
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/application/ActionExecutor.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/application/ActionExecutorTest.kt`]
+- depends-on: []
+
+**RED**. 룰 projectKey ≠ 이슈키 prefix → **SKIPPED**. **★ 조건 없는 룰에도 걸림**. **★ replay 경로에도 걸림**.
+
+**GREEN**. **`ActionExecutor.execute` 내부** (DEC-24 — C1-sec).
+> **왜 워커가 아닌가**. `execute` 호출자는 **3곳** — `AutomationExecutionWorker.kt:230` ·
+> **`RuleExecutionService.kt:160`(동기 replay)** · 미래. `RuleExecutionService.kt:57` KDoc이
+> *"워커의 루프 가드를 거치지 않는다"* 명시 → **워커에 넣으면 replay가 무방비**. 오염된
+> `rule_executions` 행(웹훅으로 심어진 `OTHER-1` triggerEvent가 `V305:22`에 **영구 보존**)을 관리자가
+> replay하면 cross-project 변경 재발.
+- **★ 조건 유무 무관** — `:176`(`?: return@runCatching true`)이 조건 없는 룰을 게이트 없이 통과(G10)
+- **★ 이건 automation 웹훅(TriggerType.WEBHOOK) 경로에도 적용** — FR-C15의 전제
+- ★ `extractIssueKey`는 **`:271-275`** (1회차 인용 `:264-268`은 stale — N3-sec)
+
+**검증**. `./gradlew :modules:automation:test --tests ActionExecutorTest`
+
+---
+
+### Task 14. `SchemaMigrationTest` — 프로브 교체 + 유효 6종 + 신규 테이블 단언
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/test/kotlin/com/bts/automation/SchemaMigrationTest.kt`]
+- depends-on: [2, 3]
+
+> **★ `TriggerConfigTest.kt`는 T3 소유** — 이 task가 건드리지 않는다(파일 겹침 = 병렬 충돌).
+> `:15`·`:16`·`:17`·`:20`·`:21-29`(5종→6종 카운트·집합·it 문구)는 **전부 T3의 RED/GREEN에 포함**.
+
+**내용**.
+- **★ `:561` `insertRule("PR_MERGED")` 프로브를 다른 무효값(예: `"NOT_A_TRIGGER"`)으로 교체** (G4) —
+  PR_MERGED가 유효해지는 순간 **이 테스트는 반드시 실패**한다. 스펙 C-h가 예견했고 실측이 확인
+- `:553-557` 유효 **6종** 리스트 + `:551` 주석("5종 화이트리스트") + `:554` 테스트명
+- **V307/V308 신규 테이블 스키마 단언** (T2 검증) + V309 CHECK 6종 + **COMMENT 문구**(C4-be)
+- ★ 테이블 카운트 가드 부재 확인됨(G3) → 신규 테이블이 기존 테스트를 깨지 않음
+
+**검증**. `./gradlew :modules:automation:test --tests SchemaMigrationTest`
+
+---
+
+### Task 15. prod 조립 HTTP 테스트 — 양성·음성·오라클·DB쓰기0·위반주입
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`backend/modules/app/src/test/kotlin/com/bts/app/ProdAssemblyHttpTestBase.kt`, `backend/modules/app/src/test/kotlin/com/bts/app/GitWebhookInboundPermitAllTest.kt`]
+- depends-on: [12]
+
+> **★ 이 PR의 유일한 진짜 관문.** BC test config는 csrf disable이라 중앙 CSRF 누락을 못 잡는다.
+
+**RED→GREEN** (T12가 GREEN을 만듦 — RED는 T12 이전 상태 = 401).
+- **★ 베이스 상속만** (G6) — `@SpringBootTest` 재선언 시 컨텍스트 분열(9-BC 2회 부팅 +
+  `@Scheduled` 워커 2벌이 5433 pgmq 동시 폴링). **신규 프로퍼티는 베이스 `props()`(:67)에 추가**
+- **양성 (git)** — HMAC **직접 재계산** → **202** (`SlackInboundPermitAllTest:186-215` 동형).
+  3곳 + 서명 검증 동시 증명
+- **★ 양성 (automation)** (B2-sec) — FR-C15 경로도 **동일하게** 202 실증
+- **★ 음성 — 판별자는 응답 본문** ([[negative-guard-needs-body-discriminator]]).
+  `SlackInboundPermitAllTest:140-145`가 위반 주입으로 실증한 대로 **상태코드만으론 vacuous**
+- **★ 오라클 부재 실증** (B3-sec) — **EC1 본문 == S2 본문** (timestamp 제외)
+- **★ 서명 미검증 요청은 DB 쓰기 0** (C3-sec) — 서명 틀린 요청 N회 후 `git_webhook_deliveries` **행 수 불변**
+- **★ 위반 주입** ([[archunit-vacuous-rule-silent-pass]]) — permitAll 목록에서 git 경로 빼고 **fail 확인 후 되돌림**.
+  **automation 경로도 별도 수행**
+- EC5 413 실서블릿. **MockMvc 금지**
+- ★ 사전조건 — `docker compose -f infra/docker-compose.dev.yml up -d postgres` (5433)
+- ★ `--tests ProdAssemblyHttpTestBase*` **금지** (abstract → "No tests found")
+
+**검증**. `./gradlew :modules:app:test`
+
+---
+
+### Task 16. 프론트 Zod 계약 동기화
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/automation-rules.types.ts`, `apps/web/src/components/automation/AutomationRuleFormDialog.tsx`, `apps/web/src/components/automation/AutomationRuleList.tsx`, `apps/web/src/components/automation/RuleExecutionTraceRow.tsx`, `apps/web/src/api/automation-rules.types.test.ts`]
+- depends-on: []
+
+**RED**. `triggerTypeSchema`가 `PR_MERGED` 파싱. `serializeTriggerConfig`가 `targetBranch` 직렬화.
+
+**GREEN**.
+- `triggerTypeSchema:13-19` + `:11` 주석 "5종"→"6종"
+- `:230-243` switch — **컴파일러가 강제**(strict + noFallthroughCasesInSwitch)
+- `:233-237` **`omitManagedKeys`에 `targetBranch` 등록** (미등록 시 `baseConfigJson` 병합이 빈 값 보존 → `fields`와 비동형)
+- `AutomationRuleFormDialog.tsx:69` + `AutomationRuleList.tsx:53` `Record<TriggerType,string>` — **타입 에러로 강제**
+- **★ `RuleExecutionTraceRow.tsx:53-59`만 `Record<string,string>`** → **타입 에러 안 남, 조용히 "PR_MERGED"
+  영문 노출** (G2). 수동 추가 필수
+- `:273 validTypes` 배열 (테스트 하드코딩)
+- ★ 인라인 mock 파급 grep ([[zod-schema-strengthen-inline-mock-fanout]])
+- **UI 없음** — 폼 필드(targetBranch 입력)는 **PR-D**. 계약만 (PR-B 동형)
+
+**검증**. `pnpm typecheck && pnpm test`
+
+---
+
+### Task 17. 문서 동기화
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`docs/plan/product/automation.md`, `docs/sdd/08-automation-engine.md`, `DATA.md`, `backend/modules/automation/src/main/kotlin/com/bts/automation/adapter/web/AutomationWebhookController.kt`]
+- depends-on: [1, 12]
+
+**내용**.
+- `product/automation.md` §2.7 — **D1/D2/D4/D5만 `[x]`**. D6/D7·FR-AT-07 완료는 **PR-D** (DEC-18).
+  **BC 6/7 유지** (FR-AT-06 선례 동형). PR-C 완료 메모 추가
+- **SDD `08-automation-engine.md` §8.8 정정** (F8) — `webhook.received/source:github` → **`pr.merged`**
+  (8.2:22와 정합) / `pr.target_branch_version`(미정의) → **명시 versionId** (D4) /
+  `conditions: "Closes PROJ-N 패턴 매칭"` → **이슈키 추출은 웹훅 수신부 책임**(조건 모델로 표현 불가)
+- **`DATA.md:90`** — `automation (예정) | V300~V399 | —` → **`V300~V309`** (DEC-21 — automation 행만)
+- **★ `AutomationWebhookController.kt:34-37` KDoc 갱신** (G14) — *"prod SecurityConfig 결선은 후속
+  ADR 범위"*가 **거짓이 됨**. 조립은 #259 완료, **결선이 이 PR**
+- **★ 미변경** — `fr-index.md` 합계 · `README` 합계 · `CLAUDE.md 123 FR` (123 불변 + #277 충돌 회피, G12/G13)
+- **★ 유지** — `automation.md:5 소속 FR. 7개` · `:22 §2 (FR-AT, 7개)` (게이트 D/F'가 실집합 7과 대조 → 변경 시 fail)
+
+**검증**. `bash scripts/verify-master-plan.sh` + `node scripts/build-dashboard.mjs` 재생성
+
+---
+
+## Plan 메타
+
+- **task 수**. 17 (Maxi 확정 — 스킬 기준 10 초과이나 분할 시 "안 도는 PR" 추가 생성)
+- **예상 wave**. 6 (automation 모듈 집중이라 Gradle 컴파일 직렬화로 더 좁아질 수 있음)
+- **TDD 강제**. yes — 단 T1(ADR)·T2(SQL)·T17(문서)은 **TDD 비대상**. T14는 기존 테스트 교체,
+  T15는 T12가 GREEN을 만드는 구조(RED = 현재 401 부채 상태)
+- **BC 격리 예외**. identity-access(T12 SecurityConfig) · app(T15 조립 테스트) — DEC-22 게이트1 승인 전제
+- **추가 검증**. ktlintCheck · detekt · `:modules:app:test`(9BC prod 조립) · pnpm typecheck/test
+- **머지 전 필수**. `origin/main` rebase + `:modules:app:test` 재검증
+  ([[prod-assembly-boot-verification-required]]) + V번호 재확인 + `verify-master-plan.sh`
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
