@@ -79,6 +79,34 @@ class RuleConflictAnalyzerPermissionTest : DescribeSpec({
         }
     }
 
+    describe("PERMISSION_MISSING — SetFixVersionsAction, actor가 UPDATE 권한이 없음 (FR-AT-07)") {
+        // requiredPermission when 이 SET_FIX_VERSIONS 분기를 놓치고 null 을 반환해도(무방비 분기),
+        // 액션을 SetFieldAction/AssignAction 과 섞으면 그것들이 UPDATE 로 잡혀 PERMISSION_MISSING 이
+        // 여전히 1건 검출된다(vacuous) — 그래서 이 룰의 액션은 SetFixVersionsAction *하나뿐*이어야
+        // requiredPermission 의 SET_FIX_VERSIONS 분기 자체를 고정한다.
+        it("resolver가 false를 반환하면 PERMISSION_MISSING 1건, detail에 '수정 예정 버전 설정'이 포함된다") {
+            val actorId = UUID.randomUUID()
+            val resolver = mockk<IssuePermissionResolver>()
+            every {
+                resolver.hasPermission(actorId, IssuePermission.UPDATE, IssueScope.Project(projectKey))
+            } returns false
+            val analyzer = RuleConflictAnalyzer(resolver)
+            val rule =
+                ruleOf(
+                    name = "A",
+                    actorUserId = actorId,
+                    actions = listOf(Action.SetFixVersionsAction(versionIds = listOf(UUID.randomUUID()))),
+                )
+
+            val conflicts = analyzer.analyze(listOf(rule))
+
+            conflicts.size shouldBe 1
+            conflicts.single().type shouldBe ConflictType.PERMISSION_MISSING
+            conflicts.single().ruleIds shouldBe listOf(rule.id)
+            conflicts.single().detail shouldContain "수정 예정 버전 설정"
+        }
+    }
+
     describe("PERMISSION_MISSING — AssignAction, actor가 UPDATE 권한이 없음") {
         it("resolver가 false를 반환하면 PERMISSION_MISSING 1건") {
             val actorId = UUID.randomUUID()
