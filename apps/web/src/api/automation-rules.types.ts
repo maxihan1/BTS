@@ -21,7 +21,7 @@ export const triggerTypeSchema = z.enum([
 /**
  * 자동화 액션 타입 enum — backend ActionType 4종 1:1 대응 (FR-AT-02).
  */
-export const actionTypeSchema = z.enum(['SET_FIELD', 'ASSIGN', 'ADD_COMMENT', 'CALL_WEBHOOK'])
+export const actionTypeSchema = z.enum(['SET_FIELD', 'ASSIGN', 'ADD_COMMENT', 'CALL_WEBHOOK', 'SET_FIX_VERSIONS'])
 
 /**
  * 액션 1건의 응답 Zod 스키마 — backend `ActionResponse` DTO 1:1 대응 (FR-AT-02).
@@ -302,6 +302,8 @@ export interface ActionConfigFormState {
   url?: string
   method?: string
   headers?: WebhookHeaderEntry[]
+  versionIds?: string[]
+  fixVersionsMode?: 'replace' | 'clear'
 }
 
 /** `value`가 문자열 값만 가진 순수 객체(Record<string, string>)인지 타입 가드로 확인한다. */
@@ -360,6 +362,11 @@ export function parseActionConfig(
         headers: isStringRecord(config['headers']) ? headersRecordToEntries(config['headers']) : [],
         body: typeof config['body'] === 'string' ? config['body'] : DEFAULT_WEBHOOK_BODY,
       }
+    case 'SET_FIX_VERSIONS': {
+      const raw = config['versionIds']
+      const versionIds = Array.isArray(raw) ? raw.filter((v): v is string => typeof v === 'string') : []
+      return { versionIds, fixVersionsMode: versionIds.length === 0 ? 'clear' : 'replace' }
+    }
   }
 }
 
@@ -393,6 +400,10 @@ export function serializeActionConfig(actionType: ActionType, config: ActionConf
         headers: headersEntriesToRecord(config.headers ?? []),
         body: config.body ?? DEFAULT_WEBHOOK_BODY,
       })
+    case 'SET_FIX_VERSIONS':
+      return config.fixVersionsMode === 'clear'
+        ? JSON.stringify({ versionIds: [] })
+        : JSON.stringify({ versionIds: config.versionIds ?? [] })
   }
 }
 

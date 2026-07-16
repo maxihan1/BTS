@@ -64,6 +64,7 @@ const actionTypeLabels: Record<ActionType, string> = {
   ASSIGN: '담당자',
   ADD_COMMENT: '댓글',
   CALL_WEBHOOK: '웹훅',
+  SET_FIX_VERSIONS: '수정 예정 버전',
 }
 
 /**

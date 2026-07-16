@@ -50,6 +50,7 @@ const ACTION_TYPE_LABELS: Record<ActionType, string> = {
   ASSIGN: '담당자 지정',
   ADD_COMMENT: '댓글 추가',
   CALL_WEBHOOK: '웹훅 호출',
+  SET_FIX_VERSIONS: '수정 예정 버전 설정',
 }
 
 /** SET_FIELD가 지원하는 필드 6종 — backend SetFieldAction 계약(FR3, 스펙 §백엔드 계약) */
