@@ -55,6 +55,29 @@ BTS는 지금 **스페이스가 하나(ATLAS)뿐이고 그마저 손으로 심�
 | D4 | **SDD §5.3 괴리는 SDD를 코드에 맞춰 정정** | 코드는 prod 기출시. 이슈 키가 거기 매달려 있어 반대 방향 불가 |
 | D5 | **#276(FR-AT-07 PR-B)과 병렬 진행** | 별도 worktree. 단 같은 issue-tracking BC라 충돌 관리 필요 (아래 §리스크) |
 
+### /bts-domain 단계 추가 확정 (2026-07-17)
+
+| # | 결정 | 이유 |
+|---|---|---|
+| D6 | **FR 프리픽스 = 신규 `FR-PJ` 신설** (§2.2.16) | §2.2.10 제목이 "권한 관리 (FR-PM)"이고 9개 중 8개가 순수 권한. SDD §2.1 추적 매트릭스가 FR-PM을 12장(권한)에 매핑하므로 프로젝트 CRUD를 넣으면 섹션 제목과 챕터 매핑이 둘 다 거짓이 된다. `identity-access.md:272`가 예약해 둔 "프로젝트 생성 FR"과 일치. `PJ` 프리픽스 미충돌 확인(현존 33종 전수 스캔). **전례 없는 첫 프리픽스 신설** |
+| D7 | **생성 권한 = 전역 권한코드 `CREATE_PROJECT` 완전형** (그룹/사용자 부여 + 관리 화면) | Maxi 확정. SYSTEM_ADMIN 전용은 사내 1,000명 규모에서 생성이 소수 관리자에 병목. **FR-PM-08 ADR D3 위반이 아니라 그 ADR이 예고한 확장 트리거를 당기는 것** — D3 원문 "미래에 전역 권한이 세분화되면 그때 전역 매트릭스를 도입한다". `role_permissions`는 `CHECK(role IN ('PROJECT_ADMIN','MEMBER'))`(`V008:25`)이라 못 쓰고, `project_permission_scheme.project_id` PK 판정은 생성 시점에 project_id가 없어 평가 불가 → **신규 `global_permission_grants` 테이블 필요**. `user_groups`(FR-PM-09) 재사용 |
+| D8 | **아카이브 목록 = 기본 제외 + 별도 탭** (지라 관례) | Maxi 확정. Version 선례(`VersionRepository.kt:84·100·129`가 STATUS 필터 없이 DELETED_AT만 검사)와는 **의도적으로 다름**. `ProjectMembershipAdapter.kt:63-73`("내 프로젝트 목록") 술어 변경 필요 → identity-access cross-BC 영향 |
+| D9 | **아카이브 잠금 범위 = 백그라운드 포함 (전면 읽기 전용)** | Maxi 확정. **비용은 당초 우려보다 훨씬 작다** — cross-BC 쓰기 포트 2종이 **전부 `IssueApplicationService`를 통과**하므로(`AutomationIssueMutationAdapter` KDoc:30-31 "도메인 repository 를 직접 호출하지 않으므로", `IssueImportAdapter`) 초크포인트 한 곳 게이트로 API·automation·Import가 동시에 막힌다. **`ProjectLifecyclePort` 신설 불필요, BC별 어댑터 불필요.** 알림/Slack은 이슈 변경 이벤트에 반응하므로 변경이 막히면 자동으로 멈춘다. 잔여 = automation 시간 기반 트리거의 409 실패 노이즈 → automation 조기 skip으로 처리 |
+
+### FR 배치 (D6 + D7 귀결)
+
+| FR | BC | 내용 |
+|---|---|---|
+| FR-PJ-01 | issue-tracking | 프로젝트 생성 (키 검증·예약어 차단·생성자 자동 PROJECT_ADMIN 멤버십) |
+| FR-PJ-02 | issue-tracking | 프로젝트 목록/조회 (권한 필터링·아카이브 기본 제외) |
+| FR-PJ-03 | issue-tracking | 프로젝트 설정 변경 (name·lead_user_id) |
+| FR-PJ-04 | issue-tracking | 프로젝트 아카이브/해제 (읽기 전용 잠금) |
+| FR-PM-10 | identity-access | 전역 권한 부여 (`global_permission_grants` — 그룹/사용자 grant + 관리 화면) |
+
+**FR 총수 123 → 128.** D2("코어만")는 D7로 명시 확대됐다.
+
+> **전역 권한 부여를 FR-PM에 두는 이유** — D6에서 "프로젝트 CRUD는 권한이 아니니 FR-PJ"라 판단한 논리의 역이다. 전역 권한 부여는 권한 그 자체이므로 §2.2.10 권한 관리에 속한다. BC도 identity-access로 일치한다.
+
 ## 확인된 현황 — SDD vs 실제 코드 괴리 (D4 대상)
 
 `docs/sdd/05-data-model.md:52-67` §5.3 Project는 필드 12개를 설계해 뒀으나 실제와 어긋난다.
@@ -85,11 +108,24 @@ Draft PR #276 `backend/fr-at-07-pr-b-fix-version`이 같은 issue-tracking BC의
 - **Flyway V번호 충돌** — 아카이브 컬럼 마이그레이션 추가 시. 머지 직전 재확인 필수
 - **머지 순서 의존** — 먼저 머지되는 쪽에 맞춰 rebase 필요
 
-### R2. 프로젝트 생성은 단순 INSERT가 아니다 — 5계층 한 트랜잭션
+### R2. 프로젝트 생성 = 2행 한 트랜잭션 (2026-07-17 정정 — 최초 "5계층" 기술은 오류였다)
 
-이슈를 하나라도 쓰려면 프로젝트 · 권한 스킴 매핑 · 멤버십 · 워크플로우 스킴 · 기본 매핑이 함께 있어야 한다. **권한 스킴·멤버십은 identity-access BC 소유, `projects` 테이블은 issue-tracking 소유** → "한 PR = 한 BC" 규칙상 **PR 분할 설계가 spec 단계 선행 과제**.
+**정정 이력.** 이 문단은 최초에 "프로젝트 · 권한 스킴 매핑 · 멤버십 · 워크플로우 스킴 · 기본 매핑 5계층이 한 트랜잭션에 필요"라고 적었으나 **사실이 아니었다**. `data-dev.sql`이 5개를 명시적으로 심는다는 사실을 "런타임 생성에 5개가 필수"로 잘못 옮긴 것이다. /bts-domain 조사에서 반증됐고 직접 재확인했다.
 
-선례 — FR-SL-06(PR-A 설정/CRUD → PR-B 라우팅 → D6/D7 UI), FR-AT-07(PR-A/B/C).
+| 계층 | 생성 시 행이 필요한가 | 근거 |
+|---|---|---|
+| `projects` | **필요** | `IssueApplicationService.kt:212-214` (`findProjectIdByKey ?: throw`) |
+| `project_memberships` | **필요** (우회 불가) | `IdentityAccessIssuePermissionResolver.kt:78-81` 비멤버 즉시 거부 · `:49-50` "관리자 우회 없음" |
+| 권한 스킴 매핑 | **불필요** — `is_default` fallback | `V008__permission_schemes_and_role_permissions.sql:37` "미매핑 프로젝트는 is_default = TRUE 스킴을 fallback 으로 사용한다" |
+| 워크플로우 스킴 배정 | **불필요** — auto-assign | `WorkflowKeyResolver.kt:26` "할당 없으면 software-scheme 자동 배정 후 결정 (EC-1, D10 채택)" |
+| 기본 매핑 | **불필요** — 마이그레이션이 시드 | `V201__workflow_schemes.sql` |
+| 보안 스킴 | **조건부** — `securityLevelId != null` 일 때만 | `IssueApplicationService.kt:221-229` |
+
+**실제로 필요한 건 2행이다** — `projects` INSERT + `project_memberships` INSERT(생성자 = PROJECT_ADMIN).
+
+**영향.** project-workflow BC는 이 작업 범위에서 **완전히 빠진다**. cross-BC 쓰기는 issue-tracking → identity-access 한 방향뿐이다.
+
+**단 이 2행을 쪼개면 안 된다.** `project-membership-model.md:66`이 예고한 대로, 멤버십 삽입 없이 생성 API만 머지하면 ADR이 막아온 권한 상승 창문(멤버 0명 프로젝트에 자신을 첫 PROJECT_ADMIN으로 꽂기)을 prod에 처음으로 여는 셈이 된다. FR-AT-07 C-1이 "**전략 오조준** — 방어 없이 경로를 먼저 열고 방어는 2 PR 뒤"로 감점된 바로 그 실수다. **분할선은 보안 불변식을 가로지르지 않는다.**
 
 ### R3. 이슈 키 영구 보존과 충돌 (learnings.md 사전등록 함정)
 
@@ -108,7 +144,78 @@ Draft PR #276 `backend/fr-at-07-pr-b-fix-version`이 같은 issue-tracking BC의
 - **프리픽스 선택** (FR-PM 확장 vs 신규 프리픽스) — domain/spec 단계 과제
 - **전수 동기화 8종** (CLAUDE.md:29-36) + `bash scripts/verify-master-plan.sh` 통과 필수 (종료코드 4로 자동 차단)
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**: issue-tracking (주 — `projects` 소유) + identity-access (FR-PM-10 전역 권한 부여) + apps/web (UI)
+- **project-workflow는 범위 밖** (R2 정정 결과)
+- **영향 엔티티**: Project(보강) · ProjectMembership(기존) · GlobalPermissionGrant(신규)
+- **기존 결정 충돌**: 없음. FR-PM-08 ADR D3은 위반이 아니라 **예고된 확장 트리거를 당기는 것**(D7 참조) → 신규 ADR로 확장 선언 필요
+
+### 아카이브 의미론 — 2축 직교
+
+BTS에서 **보관은 삭제의 전단계가 아니라 삭제를 금지하는 상위 잠금**이다. Version ADR D4 원문(`docs/adr/2026-06-10-version-status-and-transitions.md:58-65`).
+
+```
+ARCHIVED 상태 버전은 다른 mutation을 거부한다.
+- rename / changeDescription / changeDates → 도메인이 거부, 409.
+- delete(soft delete) → ApplicationService에서 거부, 409.   ← 아카이브가 소프트삭제를 막는다
+- 단 unarchive(→UNRELEASED)는 허용.
+```
+
+| 축 | 컬럼 | 의미 |
+|---|---|---|
+| 존재 여부 | `deleted_at` (기존) | NULL=활성. **이번 범위 밖 — 손대지 않는다** |
+| 잠금 여부 | `archived_at` (신규) | NULL=활성, NOT NULL=읽기 전용 |
+
+- **`status` enum 기각** — 2값은 boolean의 enum 위장(글로벌 CLAUDE.md §2). Version의 enum은 릴리스 축(UNRELEASED/RELEASED)이 **선재했기에** 정당했고 프로젝트엔 그런 축이 없다. `archived_at` 단독 선례 실재 — `V407__notifications_inbox.sql:6`(status enum 없음)
+- **`deleted_at` 재사용 기각** — 의미가 정반대. 게다가 `projects.deleted_at` 읽기 술어 10곳이 전부 "NOT NULL = 존재하지 않음(404/제외)"을 전제하는데, 아카이브 프로젝트는 **여전히 조회돼야** 한다(이슈가 살아 있고 키가 외부 인용 중). 한 곳만 놓치면 아카이브가 곧 이슈 소실로 나타난다. `DATA.md:44`와 DDL 주석(`V001:26`)도 동시에 거짓이 된다
+- **`key`는 아카이브와 무관하게 UNIQUE를 계속 점유** (`DATA.md §1.1` 이슈키 영구 보존)
+- **cascade 없음** — 아카이브는 잠금이지 소멸이 아니다. 물리적으로도 불가에 가깝다: boards/sprints는 `project_key` **문자열**만 갖고 BC 격리로 `projects` 직접 참조가 차단돼 있다(`V500__boards.sql:6-9`, `V503__sprints.sql:7-9`)
+- **`buildActiveSecureWhere`(`IssueRepository.kt:945-959`)는 읽기 술어 — 건드리지 않는다.** 아카이브 프로젝트의 이슈는 계속 읽혀야 한다
+- **Clock 주입 필수** (Version ADR D3 선례). `Instant.now()` 직접 호출 금지
+
+### 잠금 초크포인트 (D9 근거)
+
+cross-BC 쓰기 포트가 **전부 `IssueApplicationService`를 경유**하므로 게이트 한 곳이 전 경로를 덮는다.
+
+| 포트 | prod 어댑터 | 경유 |
+|---|---|---|
+| `IssueMutationPort` (automation) | `AutomationIssueMutationAdapter` | → `IssueApplicationService` / `CommentApplicationService` (KDoc:30-31 "도메인 repository 를 직접 호출하지 않으므로") |
+| `IssueImportPort` (FR-IM-01) | `IssueImportAdapter` | → `IssueApplicationService` 외 3종 ApplicationService |
+
+### 신규 ADR (작성 필요)
+
+1. **프로젝트 생명주기 — 아카이브 2축 직교 모델** (Version ADR D1~D7 형식). `DATA.md:12`가 생명주기 정책에 ADR + Maxi 확인을 요구
+2. **전역 권한 부여 — FR-PM-08 D3 확장 선언** (`global_permission_grants` 도입 근거 + D3의 "미래 세분화" 트리거 충족 명시)
+
+### glossary 갱신 대기 (Maxi 승인 필요 — 수동 영역)
+
+| # | 용어 | 상태 |
+|---|---|---|
+| 1 | 프로젝트 (Project) | **보강** — 현재 `:14` "이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자" 한 줄뿐. 소유 BC·id 타입·생명주기 2축 추가 |
+| 2 | 프로젝트 보관 (Project Archive) | **신규** — 버전 상태(`:18`) 항목을 모델로 |
+| 3 | 소프트 삭제 (soft delete) | **신규** — 놀랍게도 없다. `데이터 무결성 키워드`(`:101-107`)에 미등재 |
+| 4 | 전역 권한 부여 (Global Permission Grant) | **신규** — FR-PM-10 |
+| 5 | 프로젝트 키 (Project Key) | **신규 후보** — 이슈 키(`:12`)는 독립 항목인데 프로젝트 키는 묻혀 있음. 예약어 정책 확정 후 등재 |
+
+### 조사 중 발견한 drift 3건
+
+| drift | 실제 | 처리 |
+|---|---|---|
+| `docs/plan/fr-index.md:5` `(122개 전수)` | **123** | **이번 PR 통합** — FR 추가로 어차피 이 숫자를 건드린다 |
+| `DATA.md:45` "jOOQ 기본 쿼리는 `deleted_at IS NULL` 필터 자동 첨부 (`SoftDeleteFilter` 래퍼)" | **허구** — `.kt` grep 히트 0. 실제로는 repository마다 수동 | **이번 PR 통합** — 아카이브 술어 설계가 이 문장을 근거로 오독되면 곧 보안 버그 |
+| `docs/plan/product/issue-tracking.md:171` `## §3 컴포넌트 / 버전 (7개)` | **8** (FR-CM-01~04 + FR-VR-01~04) | **분리** — 무관한 섹션 (글로벌 CLAUDE.md §3 surgical) |
+
+> **`verify-master-plan.sh`는 위 drift 2건을 안고도 종료 0으로 통과한다.** 통과는 카운트 정합의 충분조건이 아니다. FR 추가 시 기존 숫자를 복사하지 말고 **실측**할 것.
+
+### 구현 시 필수 주의
+
+- **`NonProdAllowSystemAdminResolver`(`issue-tracking/.../project/adapter/`)는 `@Profile("!prod")` + 항상 `true`.** KDoc이 직접 "운영 환경 사용 시 권한 우회가 발생한다"고 명시. 권한 테스트를 기본 프로파일로 짜면 **"관리자는 생성 가능" 테스트가 무의미하게 통과**한다(누구나 관리자니까). `@ActiveProfiles("prod")` + 실제 grant 시드로 검증하거나 위반을 주입해 fail을 확인할 것
+- **guard는 `@PreAuthorize hasRole`이 아니라 명시 호출.** `UserGroupController.kt:53-58` — "JWT claim 이 stale 일 수 있고 **PAT 경로에는 role claim 이 없어**, 두 인증 경로에서 일관된 전역 관리자 판정을 보장하기 위해 DB 진실원천을 직접 조회한다"
+- **`SystemPermissionResolver` 확장은 default 메서드로** (공유 인터페이스 — 기존 구현 3곳 fail-safe)
+- **신규 권한 코드 시드는 `SchemaMigrationTest` 카운트 가드를 깬다** — 전 모듈 grep 필요
+- **`init_codegen.sql` 미러 필수** (issue-tracking = jOOQ 모듈)
+- **Flyway V번호는 머지 직전 재확인** (#276 병렬, 현 최신 V028)
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
