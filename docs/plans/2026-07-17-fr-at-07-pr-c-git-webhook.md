@@ -371,7 +371,7 @@ GitLab 보안등급 차이(DEC-13).
 W1 (8-병렬): T1 ADR · T2 마이그레이션 · T3 TriggerType파급 · T5 encryptor
              T7 서명검증기 · T8 이슈키추출 · T13 방어심층 · T16 프론트Zod
 W2 (3-병렬): T4 충돌분석(←3) · T6 도메인/Repo(←2) · T14 회귀테스트(←2,3)
-W3 (2-병렬): T9 Service(←6,7,8) · T11 등록API(←6)
+W3 (3-병렬): T9 Service(←6,7,8) · T11 등록API(←6) · T18 dedup정리배치(←6)
 W4 (직렬)  : T10 Controller(←7,8,9)
 W5 (직렬)  : T12 SecurityConfig(←10,11)   ← BC 격리 예외, DEC-22 승인 전제
 W6 (2-병렬): T15 prod 조립 HTTP(←12) · T17 문서(←1,12)
@@ -485,10 +485,14 @@ longest path = T2 → T6 → T9 → T10 → T12 → T15 (**6 wave**).
 
 **메타**.
 - agent: `security-engineer`
-- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/config/AutomationEncryptionConfig.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/config/AutomationEncryptionConfigTest.kt`, `infra/prod/.env.prod.example`]
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/AutomationEncryptionConfig.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/AutomationEncryptionConfigTest.kt`, `infra/prod/.env.prod.example`]
 - depends-on: []
 
 **RED**. 키 미설정 시 **빈 등록은 성공**(부팅 통과) + `encrypt` 호출 시 `IllegalStateException`.
+
+> **★ 경로 주의 (eng-review 실측)** — automation 모듈에 **`config/` 디렉토리가 없다**.
+> `AutomationSchedulingConfig.kt`가 패키지 루트(`com/bts/automation/`)에 있는 게 이 모듈 관례.
+> `config/` 하위에 만들면 관례 이탈.
 
 **GREEN**. **`SlackEncryptionConfig.kt:29-58` 그대로 복사** (G8 — 최신·최완성 선례).
 - `@Bean("automationSecretEncryptor")` **by-name 고정** (타입 빈 4개가 됨)
@@ -727,6 +731,17 @@ longest path = T2 → T6 → T9 → T10 → T12 → T15 (**6 wave**).
 - ★ 사전조건 — `docker compose -f infra/docker-compose.dev.yml up -d postgres` (5433)
 - ★ `--tests ProdAssemblyHttpTestBase*` **금지** (abstract → "No tests found")
 
+**★ NFR-1 측정 (eng-review 이슈 2 — Maxi 확정 2A)**.
+1회차 마스터 스펙의 **BLOCKER B9가 정확히 이 실수**였다("200ms를 하드 넘버로 적고 검증 항목 0건").
+스펙 §9-21이 요구했으나 **어느 task도 자기 일로 적지 않아** 반쪽만 고친 상태였다 → **T15가 책임진다**.
+- **DB 왕복 수 단언** — 토큰조회 1 + dedup INSERT 1 + 룰조회 1 + enqueue N×M
+- **p95 실측 기록** → T17이 `product/automation.md §NFR` 측정표의 `Webhook 응답 200ms` 빈칸(`___`)을 채움
+- **★ 팬아웃 상한 100의 실측 검증 (eng-review 이슈 3 — Maxi 확정 3C)**.
+  `AutomationExecutionEnqueuer.enqueue`는 **단건 API**(`jdbcTemplate.queryForObject` 1건 + `log.info`
+  1줄/호출, batch 없음) → 룰×키 100이면 **DB 왕복 100회 + 로그 100줄**. 단일 호스트 docker라 ~50ms로
+  끝날 수도 있어 **추측하지 않고 잰다**. **200ms 초과 시 같은 PR에서 대응**(상한 하향 또는 pgmq
+  `send_batch` 도입) — 후속으로 미루지 않는다
+
 **검증**. `./gradlew :modules:app:test`
 
 ---
@@ -778,10 +793,40 @@ longest path = T2 → T6 → T9 → T10 → T12 → T15 (**6 wave**).
 
 ---
 
+### Task 18. dedup 보존 배치 — `git_webhook_deliveries` 7일 정리
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/worker/GitWebhookDeliveryCleanupWorker.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/worker/GitWebhookDeliveryCleanupWorkerTest.kt`]
+- depends-on: [6]
+
+> **eng-review 이슈 1 (Maxi 확정 1A)**. 스펙 §3.8이 "보존 7일 + 삭제 배치"를 요구했으나 **T1~T17 어디에도
+> 없었다**. T2가 정리 배치용 `ix_git_webhook_deliveries_received_at` 인덱스를 만들면서 정작 그 인덱스를 쓸
+> 배치가 없는 상태였다. **정리 없으면 무한 증식** — 공격자 없이 정직한 트래픽만으로도 누적된다.
+> (이 저장소는 pgmq 아카이브·`rule_executions` 보존 배치가 이미 0건 — 같은 부채를 하나 더 쌓지 않는다.)
+
+**RED**. 7일 경과 행 삭제 / 7일 이내 행 보존 / 삭제 0건이어도 정상 종료.
+
+**GREEN**. `@Component` + `@Scheduled` (기존 워커 동형).
+- **★ 결선 실측 완료 (eng-review)** — `AutomationSchedulingConfig.kt:26-27`이 명시. prod 조립 앱
+  `BtsApplication`이 **전역 `@EnableScheduling`**을 보유하고 워커는 순수 `@Component`라 **스캔되는 순간
+  폴링이 켜진다** → `@EnableScheduling` 신규 결선 **불요**
+  ([[module-first-scheduled-worker-detektmain-traps]]의 "모듈 첫 워커" 상황이 **아님**)
+- **★ 테스트는 `@Scheduled` 메서드를 직접 호출** — `:20-23`이 명시한 이 모듈 관례. 테스트 컨텍스트는
+  `@ConditionalOnProperty(bts.automation.scheduling.enabled)` 기본 OFF라 자동 폴링을 기대하면 안 되고,
+  기대하면 셋업과 경쟁해 **flaky**가 된다
+- `Clock` 주입 (기존 관례 — 시간 의존 테스트 결정론)
+- ★ detekt `detektMain` type-resolved 엄격 ([[module-first-scheduled-worker-detektmain-traps]])
+
+**검증**. `./gradlew :modules:automation:test --tests GitWebhookDeliveryCleanupWorkerTest`
+
+---
+
 ## Plan 메타
 
-- **task 수**. 17 (Maxi 확정 — 스킬 기준 10 초과이나 분할 시 "안 도는 PR" 추가 생성)
-- **예상 wave**. 6 (automation 모듈 집중이라 Gradle 컴파일 직렬화로 더 좁아질 수 있음)
+- **task 수**. **18** (17 + eng-review 이슈 1의 T18). Maxi 확정 — 스킬 기준 10 초과이나 분할 시
+  "안 도는 PR" 추가 생성
+- **예상 wave**. 6 불변 (T18은 `depends-on: [6]` → W3에 흡수, longest path 무영향)
 - **TDD 강제**. yes — 단 T1(ADR)·T2(SQL)·T17(문서)은 **TDD 비대상**. T14는 기존 테스트 교체,
   T15는 T12가 GREEN을 만드는 구조(RED = 현재 401 부채 상태)
 - **BC 격리 예외**. identity-access(T12 SecurityConfig) · app(T15 조립 테스트) — DEC-22 게이트1 승인 전제
