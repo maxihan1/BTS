@@ -301,4 +301,51 @@ class RuleConflictAnalyzerFieldPriorityTest : DescribeSpec({
             fieldConflicts.single().ruleIds shouldBe listOf(ruleA.id, ruleB.id).sorted()
         }
     }
+
+    describe("actionTriggers 회귀 — SET_FIX_VERSIONS 는 CYCLE 엣지가 없다 (FR-AT-07)") {
+        // changeFixVersions 는 eventPublisher.publish 를 호출하지 않아 ISSUE_UPDATED 를 유발할 런타임
+        // 경로가 없다(RuleConflictAnalyzer.actionTriggers KDoc 참고) — self-loop(트리거=자신의 액션이
+        // 지정한 필드)로 구성해, 이 판정이 잘못 triggersIssueUpdated 로 되돌아가면 A→A 자기 엣지가
+        // 생겨 CYCLE 이 검출되도록 한다(2룰 A→B 형태는 back-edge DFS 특성상 사이클이 아니라 vacuous).
+        it("SET_FIX_VERSIONS 액션은 ISSUE_UPDATED 를 유발하지 않는다 (self-loop CYCLE 미검출)") {
+            val rule =
+                ruleOf(
+                    name = "SELF",
+                    triggerType = TriggerType.ISSUE_UPDATED,
+                    triggerConfig = """{"fields":["fixVersions"]}""",
+                    actions = listOf(Action.SetFixVersionsAction(versionIds = listOf(UUID.randomUUID()))),
+                )
+
+            val conflicts = analyzer.analyze(listOf(rule))
+
+            conflicts.none { it.type == ConflictType.CYCLE } shouldBe true
+        }
+    }
+
+    describe("hasObservableSideEffect 회귀 — SET_FIX_VERSIONS 만 가진 두 룰도 부수효과로 인정된다 (FR-AT-07)") {
+        // 다른 액션(SetFieldAction 등)을 섞으면 ①같은 필드를 노리면 FIELD_CONFLICT 가 먼저 잡혀
+        // PRIORITY_AMBIGUITY 가 억제되고 ②SetFieldAction 하나만 있어도 any{} 가 먼저 true 를 반환해
+        // SetFixVersionsAction 분기 누락을 못 잡는다(vacuous) — 그래서 각 룰이 SetFixVersionsAction
+        // *만* 보유하도록 구성한다.
+        it("SET_FIX_VERSIONS 만 가진 두 룰은 PRIORITY_AMBIGUITY 로 검출된다") {
+            val ruleA =
+                ruleOf(
+                    name = "A",
+                    triggerType = TriggerType.ISSUE_CREATED,
+                    actions = listOf(Action.SetFixVersionsAction(versionIds = listOf(UUID.randomUUID()))),
+                )
+            val ruleB =
+                ruleOf(
+                    name = "B",
+                    triggerType = TriggerType.ISSUE_CREATED,
+                    actions = listOf(Action.SetFixVersionsAction(versionIds = listOf(UUID.randomUUID()))),
+                )
+
+            val priorityConflicts =
+                analyzer.analyze(listOf(ruleA, ruleB)).filter { it.type == ConflictType.PRIORITY_AMBIGUITY }
+
+            priorityConflicts.size shouldBe 1
+            priorityConflicts.single().ruleIds shouldBe listOf(ruleA.id, ruleB.id).sorted()
+        }
+    }
 })
