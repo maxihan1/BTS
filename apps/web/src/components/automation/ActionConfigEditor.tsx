@@ -570,6 +570,7 @@ function SetFixVersionsFields({ projectKey, config, onChange, idPrefix }: SetFix
               onChange={() => {
                 handleModeChange('replace')
               }}
+              className="h-4 w-4 cursor-pointer accent-primary"
             />
             {TEXT.fixVersionsReplaceLabel}
           </label>
@@ -582,6 +583,7 @@ function SetFixVersionsFields({ projectKey, config, onChange, idPrefix }: SetFix
               onChange={() => {
                 handleModeChange('clear')
               }}
+              className="h-4 w-4 cursor-pointer accent-primary"
             />
             {TEXT.fixVersionsClearLabel}
           </label>
