@@ -73,9 +73,9 @@ import java.util.UUID
  * 한계 — 이 PR 은 템플릿 컨텍스트를 스냅샷으로 enrich 하지 않는다. "조건은 통과했는데 댓글이 비어
  * 있다"는 동작은 버그가 아니라 설계상 한계다).
  *
- * @param issueMutationPort 이슈 필드 변경/담당자 배정/댓글 추가 cross-BC 포트(fail-closed, non-null
- *   주입 — [[crossbc-resolver-nullable-fail-open]] 회귀 방지). automation 자체 test-boot 컨텍스트는
- *   `StubIssueMutationPort` 를 대신 등록한다(consumer-owns-stub).
+ * @param issueMutationPort 이슈 필드 변경/담당자 배정/댓글 추가/수정 예정 버전 설정 cross-BC 포트
+ *   (fail-closed, non-null 주입 — [[crossbc-resolver-nullable-fail-open]] 회귀 방지). automation 자체
+ *   test-boot 컨텍스트는 `StubIssueMutationPort` 를 대신 등록한다(consumer-owns-stub).
  * @param webhookActionClient CALL_WEBHOOK 액션의 아웃바운드 HTTP 호출기(SSRF 검증 내장).
  * @param actionRepository 룰의 액션 리스트를 position 순으로 조회하는 리포지토리.
  * @param objectMapper [Action.SetFieldAction.value] JSON 인코딩 + triggerEvent → Map 변환용 Jackson
