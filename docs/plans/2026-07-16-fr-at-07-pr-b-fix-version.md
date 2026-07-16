@@ -497,12 +497,28 @@ set -o pipefail
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/automation/ActionConfigEditor.tsx`, `apps/web/src/components/automation/ActionConfigEditor.test.tsx`, `apps/web/src/components/automation/AutomationRuleFormDialog.tsx`]
+- files: [`apps/web/src/components/automation/ActionConfigEditor.tsx`, `apps/web/src/components/automation/ActionConfigEditor.test.tsx`, `apps/web/src/components/automation/AutomationRuleFormDialog.tsx`, `apps/web/src/components/automation/AutomationRuleFormDialog.test.tsx`]
 - depends-on: [8]
+
+> **★ files 추가 1건 — `AutomationRuleFormDialog.test.tsx`** (1회차 dispatch 후 controller가 mutation 실증으로 발견).
+> B3/B5와 **같은 계열의 4번째 결함**이었다. 1회차 plan은 S8을 *"저장이 거부된다"* 로 규정해놓고 files엔
+> **저장 경로를 렌더할 테스트 파일을 안 넣었다** → implementer는 `validateActions`를 순수 함수로 export해
+> `ActionConfigEditor.test.tsx`에서 단위 검증하는 우회를 택할 수밖에 없었다(합리적 선택, 파일범위 준수).
+> **결과는 vacuous였다** — controller가 `onValid`의 `if (validationErrors.length > 0) return` 을 지우고 돌리니
+> `src/components/automation` **197/197 전부 통과**(mutation은 되돌림). 즉 가드의 *존재*는 고정됐지만
+> *저장 경로와의 연결*은 아무도 안 잡아, 그 한 줄을 지우면 plan이 load-bearing이라 못박은 B1
+> (빈 배열이 `{"versionIds":[]}`로 나가 **기존 Fix Version 전체 삭제**)이 조용히 부활한다.
 
 **RED**. `ActionConfigEditor.test.tsx`
 - `SET_FIX_VERSIONS 를 고르면 교체 모드가 기본 선택되고 버전 목록이 뜬다` (S1)
 - **`교체 모드 + 빈 목록이면 저장이 거부된다`** (S8) ★
+- **★ 2회차 추가 — `AutomationRuleFormDialog.test.tsx` wiring 테스트(위 vacuous 해소)**.
+  다이얼로그를 실제로 렌더해 `SET_FIX_VERSIONS`+`replace`+빈 목록 상태로 **제출**하고,
+  **서버 mutation이 호출되지 않음**(`expect(mutateSpy).not.toHaveBeenCalled()`)과 에러 문구 노출을 단언.
+  대조군으로 **유효 입력이면 mutation이 호출됨**도 함께(양성 단언 — 없으면 "항상 호출 안 됨"으로도 통과).
+  ✗ `validateActions` 순수 함수 단위 테스트만으로는 **불충분**(연결을 안 잡음). 순수 함수 테스트는 유지하되 **추가**한다.
+  ★ **vacuous 검증 필수** — 작성 후 `onValid`의 `if (validationErrors.length > 0) return` 을 일부러 지워
+  **FAIL 확인 → 되돌린다**. 확인 못 하면 BLOCKED 보고. 최종 diff에 그 mutation이 남으면 안 된다.
 - `전체 해제 모드면 버전 목록이 숨겨진다`
 - `useVersions 로딩/에러면 disabled shell + 문구가 뜨고, 저장은 막지 않는다` (EC13)
 - `replace→clear→replace 왕복에도 선택이 보존된다`
@@ -577,14 +593,18 @@ set -o pipefail
 ### task 체크박스 (controller가 마킹 — `bts-impl/SKILL.md:195`)
 
 - [x] T1. 포트 `setFixVersions` + 커맨드 + 어댑터 + 구현체 3곳 — PASS (`05c394da5` test → `07619dc58` feat → `915319e80` refactor)
-- [ ] T2. V306 CHECK 5종 + 컬럼 코멘트
+- [x] T2. V306 CHECK 5종 + 컬럼 코멘트 — PASS (`2342f043c` test → `b2194242b` feat → `21ab3edd5` refactor; SchemaMigrationTest 63/63, XML 실측)
 - [ ] T3. `ActionType`/`Action` + 12지점 전수
 - [ ] T4. FR-9 백엔드 회귀 2종 ★
 - [ ] T5. S2~S5 automation 통합
-- [ ] T6. S6 양성 단언 (issue-tracking 실 DB)
+- [x] T6. S6 양성 단언 (issue-tracking 실 DB) — PASS (`8cfd23219` test → `f1f1c3a96` feat[empty, 회귀가드]; IssueVersionLinksIntegrationTest 13/13, 신규 versionId 양성단언 통과)
 - [ ] T7. S7 YAML 왕복
 - [x] T8. 프론트 계약 — PASS (`d008e49c0` test → `334604095` feat → `6d68999cf` refactor)
-- [ ] T9. 프론트 설정 UI
+- [x] T9. 프론트 설정 UI — PASS (`185a4e1c0` test → `2b3c2d25b` feat → `45162dcd9` refactor → **`c27460980` test(wiring guard, DRIFT 재작업)**)
+  - 1회차 DRIFT. S8 가드가 **vacuous**였다 — controller가 `onValid`의 차단 라인을 지우고 돌리니 **197/197 전부 통과**.
+    원인은 implementer가 아니라 **plan files 결함**(저장 경로를 렌더할 `AutomationRuleFormDialog.test.tsx` 미포함) → files 확대 후 재dispatch.
+  - 2회차 PASS. wiring 테스트(차단 단언 + **대조군 양성 단언**) 추가 후 **같은 mutation에 1 failed | 198 passed (199), EXIT=1** —
+    controller가 직접 재실증. 구현파일 diff 0(mutation 잔여 없음) · typecheck/lint EXIT=0 · stash 스택 무오염 확인.
 - [ ] T10. 전수 동기화 스윕 + 문서 + 최종 회귀
 
 ### wave (bts-impl 알고리즘 실제 결과 — `depends-on` + `files 교집합`만)
