@@ -4,7 +4,8 @@
 
 > 날짜. 2026-07-16 | PR. #276 | 상위. [마스터 스펙 §B](2026-07-15-fr-at-07-pr-merge.md) | ADR. [2026-07-16-fr-at-07-pr-b-fix-version-port](../decisions/2026-07-16-fr-at-07-pr-b-fix-version-port.md)
 >
-> **개정 2회차 (2026-07-16)** — Phase B 적대적 검토가 BLOCKER 2 / CONCERN 5 / 모호 4를 발견해 전면 개정. 변경 내역은 §10.
+> **개정 4회차 (2026-07-16)** — Phase B 적대적 검토 **3라운드**를 거쳐 개정. 라운드마다 BLOCKER가 나왔고
+> **3라운드 모두 "직전 개정이 새로 넣은 결함"을 잡았다**. 변경 내역·교훈은 §10.
 
 마스터 스펙 §B는 *"요약만. 착수 시 `/bts`로 별도 plan/spec 상세화"* 라고 명시한다. 이 문서가 그 상세화다.
 
@@ -40,13 +41,21 @@ Then  룰이 저장되고, 목록의 그 룰 행에 "수정 예정 버전" 배�
 
 ### S2. 룰이 실제로 Fix Version을 설정한다
 
+> **★ 개정 4회차 — `TriggerType.TRANSITION`은 존재하지 않는다.** 실제 값은 `ISSUE_CREATED` · `ISSUE_UPDATED` ·
+> `ISSUE_COMMENTED` · `SCHEDULED` · `WEBHOOK` **5종**뿐이다(`TriggerType.kt:15-21`). 1~3회차 스펙의
+> *"트리거 = TRANSITION to Done"* 은 **phantom** — 존재하지 않는 값을 근거로 시나리오를 썼다(learnings
+> 2026-05-20 "phantom 엔티티 가설 검증 누락"과 같은 결). "Done으로 전이되면"은 아래처럼 표현한다.
+
 ```
-Given 위 룰(트리거 = TRANSITION to Done, 액션 = SET_FIX_VERSIONS [1.2.0])이 활성이고
+Given 룰(트리거 = ISSUE_UPDATED + triggerConfig.fields=["status"],
+          조건 = status == "Done",
+          액션 = SET_FIX_VERSIONS [1.2.0])이 활성이고
   And  이슈 ALPHA-7의 Fix Version이 비어 있다
-When  ALPHA-7이 Done으로 전이되면
+When  ALPHA-7의 status가 Done으로 바뀌면
 Then  ALPHA-7의 Fix Version이 [1.2.0]이 된다
   And  rule_executions에 SUCCESS 실행 이력이 남는다
   And  이슈 히스토리에 "fixVersions" 변경이 룰 actor 명의로 기록된다
+      (`IssueChangeDetector.kt:152-154`가 before/after `fixVersionIds`를 "fixVersions" 키로 비교)
 ```
 
 ### S3. 전체교체 시맨틱 — 기존 값을 덮는다
@@ -57,6 +66,9 @@ Given 이슈 ALPHA-7의 Fix Version이 [1.0.0]이고
 When  룰이 실행되면
 Then  ALPHA-7의 Fix Version은 [1.2.0] 이다  ← [1.0.0, 1.2.0]이 아니다 (추가가 아니라 교체)
 ```
+
+> **주의 (EC14).** 이미 `[1.2.0]`인 이슈에 같은 룰이 다시 실행되면 값은 그대로지만 `version`이 bump되고
+> `updated_at`이 갱신된다 — S3 테스트가 멱등성을 주장하려면 이 사실을 알아야 한다.
 
 ### S4. 명시적 전체 해제
 
@@ -219,7 +231,7 @@ KDoc에 그 사실을 적는다 — 적지 않으면 다음 구현자가 와이�
 `options={versions ?? []}`로 때우면 —
 
 ```tsx
-// VersionMultiSelect.tsx:89-92
+// VersionMultiSelect.tsx:89-91
 const selectedVersions = value.map((id) => options.find((ver) => ver.id === id))
                               .filter((ver): ver is Version => ver !== undefined)
 ```
@@ -305,7 +317,14 @@ fun setFixVersions(cmd: SetFixVersionsCommand): MutationResult
 ALTER TABLE automation_actions DROP CONSTRAINT ck_automation_actions_action_type;
 ALTER TABLE automation_actions ADD CONSTRAINT ck_automation_actions_action_type
     CHECK (action_type IN ('SET_FIELD', 'ASSIGN', 'ADD_COMMENT', 'CALL_WEBHOOK', 'SET_FIX_VERSIONS'));
+
+-- ★ 컬럼 코멘트 재발행 필수 — V302:45가 '4종'으로 박아뒀고 이건 살아있는 DB 객체다.
+-- 재발행하지 않으면 V302 편집 금지(제약 2)와 무관하게 운영 DB에 4종 drift가 영구히 남는다.
+COMMENT ON COLUMN automation_actions.action_type IS
+    '액션 종류 — CHECK 5종(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/SET_FIX_VERSIONS)';
 ```
+
+제약명 `ck_automation_actions_action_type`은 `V302:34`와 일치함을 확인했다.
 
 - **V302 편집 금지** — 이미 적용된 마이그레이션 편집은 Flyway 체크섬 드리프트(`:modules:app:test`는 5433 영속 DB)
 - automation 예약 구간 V300~V399, 현재 최신 V305 → **V306**. 머지 직전 V번호 재확인 필수
@@ -327,7 +346,7 @@ ALTER TABLE automation_actions ADD CONSTRAINT ck_automation_actions_action_type
 | EC10 | UUID 형식이 아닌 문자열 | 파싱 실패 → 룰 저장 거부 | 같음 |
 | EC11 | **ARCHIVED 버전 지정** | **설정된다(통과).** `VersionRepository.findById:77-86`은 `DELETED_AT.isNull`만 보고 **status를 필터하지 않는다**(`IssueRepository.kt:1441` KDoc이 명시). 기존 이슈 편집 경로와 동일 — **새 정책을 만들지 않는다** | `validateVersions` (개정 2회차: 1회차의 "통과 여부를 따름"은 검증 불가 문장이라 단언으로 교체) |
 | EC12 | UI: 교체 모드 + 빈 목록 저장 시도 | **저장 거부**(S8) | 프론트 FR-6 |
-| EC13 | UI: `useVersions` 로딩/에러 | **disabled shell + 문구**(`ProjectMemberSelect:110` KDoc — *"select를 비활성화하고 안내 문구를 보여준다(빈 목록으로 은폐하지 않음)"*). 위젯이 렌더되지 않으므로 `onChange`가 발화하지 않고 `config.versionIds`는 로드값 그대로 보존된다 → C2 사고 경로가 **이 자체로 닫힌다**. **저장은 막지 않는다** — 막으면 룰 이름만 고치려는 사용자까지 차단(개정 3회차: 2회차의 "저장 가능 상태로 두지 않는다"는 선례 밖 신규 요구 + 회귀 유발이라 철회) | 프론트 FR-7 |
+| EC13 | UI: `useVersions` 로딩/에러 | **disabled shell + 문구**(`ProjectMemberSelect:109` KDoc — *"select를 비활성화하고 안내 문구를 보여준다(빈 목록으로 은폐하지 않음)"*). 위젯이 렌더되지 않으므로 `onChange`가 발화하지 않고 `config.versionIds`는 로드값 그대로 보존된다 → C2 사고 경로가 **이 자체로 닫힌다**. **저장은 막지 않는다** — 막으면 룰 이름만 고치려는 사용자까지 차단(개정 3회차: 2회차의 "저장 가능 상태로 두지 않는다"는 선례 밖 신규 요구 + 회귀 유발이라 철회) | 프론트 FR-7 |
 | EC14 | 이미 `[1.2.0]`인 이슈에 `SET_FIX_VERSIONS [1.2.0]` 재실행 | 성공. 단 **`version`이 bump되고 `updated_at`이 갱신된다**(`replaceVersionLinks:2154`가 무조건 먼저 bump — `updateIssue:517-519`의 무변경 단락이 이 경로엔 없다). 히스토리는 `IssueHistoryRecorder.kt:64-65`의 `detected.isEmpty()` 단락으로 안 남는다 | (동작 기록 — 변경 대상 아님) |
 
 > **★ "422" 표기 금지** (마스터 스펙 §B-4 / 부록 A C-i). 422는 `IssueController` 동기 REST 매핑 전용이다.
@@ -354,7 +373,7 @@ ALTER TABLE automation_actions ADD CONSTRAINT ck_automation_actions_action_type
 - [ ] `ActionType.SET_FIX_VERSIONS` + `Action.SetFixVersionsAction(versionIds: List<UUID>)` + `parseSetFixVersions`
 - [ ] **두 스텁은 패턴이 정반대다 — 각자의 기존 패턴을 따른다** ★ (개정 3회차 정정. 2회차의 "fail-closed 기존 패턴"은 automation에 대해 **거짓**이었고, 그대로 구현하면 기존 슬라이스 테스트가 깨진다)
   - `automation/StubIssueMutationPort` — **fail-safe**. KDoc `:23-26`이 *"기본 동작은 항상 성공 … 웹 계층/워커 슬라이스 테스트가 이 stub을 명시 설정하지 않아도 자동화 실행 경로가 예외 없이 통과한다"* 로 성문화. `setFixVersions`도 **기본 성공 + `failNextCallsWith` 토글**
-  - `slack-integration/StubIssueMutationPort` — **fail-closed**. KDoc `:28`이 *"미시드 기본값 = 명시 오류"*. `setFixVersions`도 **미시드 호출 시 `IllegalStateException`**. slack은 이 메서드를 쓰지 않지만 인터페이스 계약상 구현 필요(기존 `setField`가 이미 같은 처지)
+  - `slack-integration/StubIssueMutationPort` — **fail-closed**. KDoc `:27`이 *"미시드 기본값 = 명시 오류"*. `setFixVersions`도 **미시드 호출 시 `IllegalStateException`**. slack은 이 메서드를 쓰지 않지만 인터페이스 계약상 구현 필요(기존 `setField`가 이미 같은 처지)
 - [ ] V306 마이그레이션
 
 ### 8.2. ★ 12지점의 **값**을 명시한다 (컴파일러는 분기만 강제)
@@ -386,11 +405,26 @@ ALTER TABLE automation_actions ADD CONSTRAINT ck_automation_actions_action_type
 로 **public val** 보유 → `.versionId shouldBe betaVersionId` 가능), 이슈의 fixVersions가 **변경되지 않았음**을 함께 확인한다.
 (마스터 스펙 §A-5가 PR-A에 요구한 *"'401이 아님' 폐기"* 규율의 PR-B 적용.)
 
-**★ S6는 issue-tracking 모듈 테스트에 둔다** (개정 3회차 — 2회차 미규정). `IssueLinkedVersionNotFoundException`은
-issue-tracking BC 타입이므로 **NFR-2(automation은 issue-tracking을 import하지 않는다)에 의해 automation 테스트에서는
-참조 자체가 불가능**하다(ArchUnit이 차단). S2~S5는 automation 통합 테스트(`rule_executions` 관측)에 두되,
-**S6만 `AutomationIssueMutationAdapter` 테스트(issue-tracking)에 둔다** — 어댑터가 예외를 번역하지 않고 전파하는지를
-검증하는 자리이기도 하다(`runAttempt:186-190`은 `IssueAccessDeniedException`만 catch).
+**★ S6는 issue-tracking 모듈의 _실 DB_ 테스트에 둔다** (개정 4회차 정정).
+
+`IssueLinkedVersionNotFoundException`은 issue-tracking BC 타입이라 automation 테스트에서 참조할 수 없다.
+**차단 기제는 Gradle 클래스패스다** — `backend/modules/automation/build.gradle.kts:39`가 `:modules:shared-kernel`만
+의존하고 issue-tracking 의존이 없다. (3회차의 *"ArchUnit이 차단"* 은 **거짓**이었다 — `AutomationBcArchTest.kt:31`이
+`ImportOption.DoNotIncludeTests()`로 **테스트를 검사 대상에서 제외**한다. 이 오기가 무해하지 않은 이유. "ArchUnit이
+막는다"고 믿은 구현자가 `testImplementation(project(":modules:issue-tracking"))`를 추가하면 **컴파일도 되고 ArchUnit도
+통과한다** — 근거가 막으려는 바로 그 행동을 못 막는다.)
+
+**✗ `AutomationIssueMutationAdapterTest`에 두면 안 된다** (3회차의 확정을 철회). 그 테스트는 MockK 단위 테스트다
+(`:56` `private val issueApplicationService: IssueApplicationService = mockk()`). 거기서 S6를 쓰면
+`every { ... } throws IssueLinkedVersionNotFoundException(betaId)` — **자기가 심은 스텁을 자기가 단언**하는 것이라
+`validateVersions:1636-1643`가 **한 줄도 실행되지 않는다**. §8.3이 스스로 내건 기준(*"`validateVersions`를 통째로
+지워도 통과한다"*)에 **정확히 그대로 걸린다.** 검증 장치를 만들려다 vacuous 장치를 만드는 꼴이다.
+
+**✅ 정본 위치.** 실 DB로 이 동작을 검증하는 기존 자리가 이미 있다 —
+`IssueVersionLinksIntegrationTest.kt:379,412`(타 프로젝트/삭제 버전 → `IssueLinkedVersionNotFoundException`) ·
+`IssueChangeVersionsServiceTest.kt:224-225,459-460`. **S6는 이 선례 형태로 작성한다**(Testcontainers 실 DB에서
+`validateVersions`가 실제로 돌고, 이슈의 fixVersions가 변경되지 않았음을 DB에서 확인).
+S2~S5는 automation 통합 테스트(`rule_executions` 관측)에 그대로 둔다.
 
 > 실패 분류 세분화(`classifyPortFailure`에 버전 오류 타입 추가)는 **이 PR 범위 밖**(제약 6). 사용자가
 > `rule_executions`에서 EC3과 EC6을 구분하지 못하는 UX 문제는 **후속 후보**로 §9에 기록.
@@ -410,11 +444,39 @@ issue-tracking BC 타입이므로 **NFR-2(automation은 issue-tracking을 import
 - [ ] S2·S3·S4·S5 통합 테스트 (**automation 모듈**, 실 DB Testcontainers, `rule_executions` 관측)
 - [ ] **S6 양성 단언 — issue-tracking 모듈**(`AutomationIssueMutationAdapter` 테스트). NFR-2 때문에 automation에 둘 수 없다 (§8.3)
 - [ ] S7 YAML 왕복
-- [ ] S8 + EC13 프론트 단위 테스트. **S8 거부는 `AutomationRuleFormDialog`의 액션 직렬화 경계(`actionsToRequest:198`)에서** — 액션이 여러 개면 **위반한 행을 특정해** 문구를 띄운다(어느 액션이 문제인지 모르면 고칠 수 없다)
+- [ ] S8 + EC13 프론트 단위 테스트.
+  **★ 개정 4회차 — 3회차가 지정한 `actionsToRequest:198`은 존재하지 않는 함수다**(내가 지어낸 이름 — learnings
+  "Claude의 환각(잘못된 라이브러리/API)" 그대로). 실명은 **`serializeActionsFormState`**(`AutomationRuleFormDialog.tsx:197-198`).
+  - 그 함수는 `(actions) => ActionRequestInput[]` **순수 매핑이라 에러 채널이 없다** → S8 거부를 여기서 표현할 수 없다.
+  - 이 다이얼로그의 기존 검증 2갈래(react-hook-form `errors` `:445,533,567` / 서버 `submitError` `:435,603`) 중
+    **어느 쪽도 `actions`를 덮지 않는다** — `actions`는 RHF 스키마 밖의 별도 state다(`:579` `<ActionListEditor value={actions} onChange={setActions} />`).
+  - → **actions 전용 검증 기제를 신설해야 한다**(제출 직전 `validateActions(actions): {index, message}[]` 후
+    actions용 에러 state에 반영). **위반한 행 index를 특정**해 문구를 띄운다 — 액션이 여러 개일 때 어느 것이
+    문제인지 모르면 사용자가 고칠 수 없다.
+  - ★ 이 가드는 **load-bearing**이다 — 가드 없이 직렬화만 구현하면 `undefined`/`[]` 조합이 `{"versionIds":[]}`로
+    그대로 나가 §2.2가 막으려던 파괴적 저장이 재현된다.
 - [ ] **FR-9 회귀 3종** — `hasObservableSideEffect` 포함 · `actionTriggers == false` · `validTypes` 5종.
-  ★ 앞 둘은 `RuleConflictAnalyzer`의 **private 함수**라 직접 호출 불가 → **공개 API `analyze()`를 통한 간접 단언**으로 설계한다
-  (`hasObservableSideEffect`. 같은 필드를 노리는 동순위 룰 2개에 SET_FIX_VERSIONS를 넣고 **PRIORITY_AMBIGUITY가 검출되는지** /
-  `actionTriggers`. SET_FIX_VERSIONS 룰 + ISSUE_UPDATED 트리거 룰을 두고 **CYCLE이 검출되지 _않는지_**)
+  ★ 앞 둘은 `RuleConflictAnalyzer`의 **private 함수**라 직접 호출 불가 → **공개 API `analyze()` 경유 간접 단언**.
+  **★ 개정 4회차 — 3회차가 확정한 설계 2종은 둘 다 vacuous였다(버그를 넣어도 통과). 아래가 정정본이다.**
+
+  **(a) `actionTriggers` 회귀 — 반드시 self-loop 형태로.**
+  - ✗ 3회차 설계(*"SET_FIX_VERSIONS 룰 + ISSUE_UPDATED 룰 2개 → CYCLE 미검출 단언"*)는 **항상 통과한다**.
+    `CycleDetector`는 back-edge DFS라 A→B 엣지 1개는 사이클이 아니다 — 버그를 넣어도 엣지만 하나 늘 뿐 CYCLE이 안 뜬다.
+  - ✅ 정정. **SET_FIX_VERSIONS 룰 _자신_이 `triggerType = ISSUE_UPDATED` + `triggerConfig.fields ⊇ ["fixVersions"]`**
+    인 룰 **1개**를 두고 `analyze()`가 **CYCLE을 반환하지 않음**을 단언한다. `edgesFrom:76-80`이 `rules`에 자기 자신을
+    포함하고 KDoc `:28`이 *"self-loop(A → A)도 유효한 사이클로 취급한다"* 고 명시하므로 —
+    잘못된 구현(`triggersIssueUpdated(target, "fixVersions")`)이면 **A→A 자기 엣지 → CYCLE 검출 → 테스트 FAIL**,
+    올바른 구현(`false`)이면 엣지 없음 → PASS. 버그를 정확히 잡아낸다.
+
+  **(b) `hasObservableSideEffect` 회귀 — `SetFixVersionsAction`만 가진 룰 2개로.**
+  - ✗ 3회차 설계(*"같은 필드를 노리는 **동순위** 룰 2개"*)는 두 겹으로 깨진다.
+    ① **"동순위"는 존재하지 않는 개념** — `AutomationRule`에 `priority` 필드가 없다(실제 게이트는 `coFire:230-239`
+    = 같은 `triggerType` + WEBHOOK 아님). ② *"같은 필드를 노리는"* → FIELD_CONFLICT가 먼저 잡혀
+    `priorityAmbiguity:304`의 `pairIds !in conflictedPairs`가 false → **PRIORITY_AMBIGUITY가 억제**된다.
+    설령 피하더라도 `SetFieldAction`이 하나라도 있으면 `hasObservableSideEffect:317-319`의 `it is Action.SetFieldAction ||`
+    가 **먼저 true를 반환해 새 분기를 아예 안 태운다**(vacuous).
+  - ✅ 정정. **같은 non-WEBHOOK `triggerType`을 가진 룰 2개가 각각 `SetFixVersionsAction` _만_ 보유**(다른 액션 0개)
+    → `analyze()`가 **PRIORITY_AMBIGUITY를 검출함**을 단언. 누락 구현이면 `any{}`가 false → 미검출 → FAIL.
 - [ ] `ActionTest.kt` `entries.size` 4 → 5 + 목록
 - [ ] `SchemaMigrationTest` — 기존 `V302 유효한 action_type 4종은 INSERT 허용`(`:654`)은 **5종으로 갱신**(테스트명 포함, 방치하면 거짓 이름) + SET_FIX_VERSIONS INSERT 허용 + 미지의 값 거부
 
@@ -425,11 +487,28 @@ issue-tracking BC 타입이므로 **NFR-2(automation은 issue-tracking을 import
 > **★ 오탐 주의 — 건드리면 안 되는 "4종".** `automation-rules.types.ts:40`의 *"규칙 충돌 타입 enum — backend
 > `ConflictType` 4종(CYCLE·FIELD_CONFLICT·PRIORITY_AMBIGUITY·…)"* 은 **`ActionType`과 무관**하다. grep이
 > 잡아내지만 **수정 대상이 아니다**.
+>
+> **★★ 개정 4회차 — 이 목록은 3회 연속 "전수"를 자칭하며 매번 누락했다** (1회차 누락 → 2회차 "전수" + 6건 누락
+> → 3회차 "전수" + 8건 누락). **근본 원인이 드러났다. `grep "4종\|4개"` 처방은 _열거형 KDoc_ 을 원리적으로 못 잡는다** —
+> `RuleConflictAnalyzer.kt:315`의 *"부수효과 액션(SET_FIELD/ASSIGN/ADD_COMMENT)"* 처럼 **개수를 안 쓰고 이름만 나열한**
+> 주석이 그렇다. 하필 그게 §8.2가 값을 바꾸라고 지시한 바로 그 함수들의 KDoc이다.
+>
+> **→ 착수 시 grep을 2종으로 돌린다.**
+> ```bash
+> grep -rn "4종\|4개\|네 개\|3 메서드\|세 메서드\|세 쌍" backend/modules apps/web   # 개수 표기
+> grep -rn "SET_FIELD/ASSIGN\|SetFieldAction.*AssignAction\|필드 변경.*담당자" backend/modules apps/web  # 열거형
+> ```
+> 그래도 목록의 완전성을 보증하지 못한다 — **구현자는 §8.2가 손대는 모든 함수의 KDoc을 직접 읽고 판단한다.**
 
 - [ ] "3 메서드/세 메서드" 계열 — `IssueMutationPort.kt:5,28` · `IssueMutationCommands.kt:84` · `IssueMutationPortContractTest.kt:14,24,25`(`:24`는 테스트명) · `slack/StubIssueMutationPort.kt:28` · `AutomationIssueMutationAdapter.kt:29` (2회차의 `:5`는 오인용 — `:5`는 import 행)
 - [ ] "4종" → "5종" — `ActionType.kt:1` · `ActionType.kt:11-14`(KDoc 불릿 4개 → 5번째 추가) · `AutomationRuleRequests.kt:75` · `AutomationRuleService.kt:646` · `AutomationRulesYaml.kt:73` · **`RuleConflictAnalyzer.kt:85`**("sealed [Action] 의 4개 하위 타입") ← 누락분
 - [ ] 프론트 KDoc — `automation-rules.types.ts:22` · **`automation-rules.types.ts:287`**("4종 액션의 config 필드를 optional 유니온 하나에 담는다" — **FR-4/§8.4가 고치는 바로 그 `ActionConfigFormState` KDoc**, `fixVersionsMode` 예외도 여기 명시) ← 누락분 · `ActionConfigEditor.tsx:47,540` · `AutomationRuleList.tsx:61` · **`AutomationRuleFormDialog.tsx:2`**(파일 L1 주석 "액션 리스트(4종)") ← 누락분 · **`AutomationRuleFormDialog.tsx:576`**("액션 — 4종(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK)") ← 누락분 · `automation-rules.types.test.ts:268`
-- [ ] 테스트명 drift — `ActionConfigEditor.test.tsx:41` · `ActionExecutorTest.kt:288` · `AutomationActionRepositoryTest.kt:134` · `ActionExecutionEndToEndIntegrationTest.kt:229` · `ActionTest.kt:1,16,17,257` · **`automation-rules.types.test.ts:272`**("4종 액션 타입 모두 파싱 성공한다" — §8.5가 SchemaMigrationTest엔 "테스트명 포함"을 요구하면서 여긴 놓쳤음) ← 누락분 · **`SchemaMigrationTest.kt:651`**(`// ── action_type CHECK 제약 (4종 화이트리스트) ──`) ← 누락분
+- [ ] 테스트명·파일주석 drift — `ActionConfigEditor.test.tsx:41` · `ActionExecutorTest.kt:1,288` · `AutomationActionRepositoryTest.kt:43,134` · `ActionExecutionEndToEndIntegrationTest.kt:54,226,229` · `ActionTest.kt:1,16,17,257` · `automation-rules.types.test.ts:272` · `SchemaMigrationTest.kt:51,651` (**4회차 추가분** — `ActionExecutorTest:1` · `AutomationActionRepositoryTest:43` · `ActionExecutionEndToEndIntegrationTest:54,226` · `SchemaMigrationTest:51`)
+- [ ] **열거형 KDoc — grep이 못 잡는 것** ★ 4회차 신규
+  - **`RuleConflictAnalyzer.kt:315`** — *"부수효과 액션(SET_FIELD/ASSIGN/ADD_COMMENT)을 하나라도 보유하면 true"* ← §8.2가 값을 바꾸라는 `hasObservableSideEffect`의 KDoc
+  - **`RuleConflictAnalyzer.kt:328-330`** — `## 권한 매핑` 열거 ← §8.2가 값을 바꾸라는 `requiredPermission`의 KDoc
+  - **`slack/StubIssueMutationPort.kt:23`** — *"세 쌍을 각각 세터로 직접 시드한다"* ← §8.1이 4메서드로 늘리라는 바로 그 파일
+- [ ] **`V306`에 `COMMENT ON COLUMN` 재발행** ★ 4회차 신규 — `V302:45`가 `COMMENT ON COLUMN automation_actions.action_type IS '액션 종류 — CHECK 4종(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK)'`. 이건 **살아있는 DB 객체**라 V302 편집 금지(제약 2)와 무관하게 V306이 재발행하지 않으면 **운영 DB에 "4종" drift가 영구히 남는다**
 - [ ] `docs/plan/product/automation.md` §2.7 D단계 체크박스 · `bash scripts/verify-master-plan.sh` 통과
 
 ### 8.7. ★ 검증 방식 (false-green 방지 — learnings 2026-07-15)
@@ -448,6 +527,26 @@ issue-tracking BC 타입이므로 **NFR-2(automation은 issue-tracking을 import
 - FR-AT-04 UI의 status/type 드롭다운 확장 → 기존 후속 묶음
 
 ## 10. 개정 이력
+
+### 4회차 (2026-07-16) — Phase B 3회차 반영 (**검증 장치 자체가 vacuous했다**)
+
+> **★ 이 스펙의 핵심 교훈.** 3라운드 모두 **"직전 개정이 새로 넣은 결함"** 을 잡았고, 그 성격이 라운드마다 바뀌었다.
+> 1·2회차는 *핵심 로직에 구멍*, 3회차는 **그 구멍을 막겠다고 세운 검증 장치 자체가 vacuous**.
+> §8.3은 vacuous 테스트를 없애려 신설됐는데 지정한 위치가 vacuous였고(B2), FR-9는 컴파일러 사각지대를 지키려
+> 신설됐는데 테스트 설계가 버그를 넣어도 통과했으며(B1), §8.6은 drift를 막으려 신설됐는데 처방한 grep이
+> 열거형 KDoc을 원리적으로 못 잡았다(B3). **방어를 추가하는 행위 자체가 새 사각지대를 만든다.**
+
+| 지적 | 조치 |
+|---|---|
+| 🛑 **FR-9 테스트 설계 2종이 둘 다 vacuous** — CYCLE은 A→B 엣지 1개론 사이클이 아니라 버그를 넣어도 통과 / PRIORITY_AMBIGUITY는 "동순위"가 **존재하지 않는 개념**(`priority` 필드 없음)이고 `SetFieldAction`이 있으면 `any{}`가 먼저 단락 | §8.5 재작성 — **self-loop 형태**(룰 자신이 ISSUE_UPDATED+fields⊇["fixVersions"]) / **`SetFixVersionsAction`만 가진 룰 2개** |
+| 🛑 **S6를 MockK 어댑터 테스트에 배치** — 자기가 심은 스텁을 자기가 단언, `validateVersions`가 한 줄도 안 돎. §8.3 자신의 vacuity 기준에 걸림 | **실 DB 선례**(`IssueVersionLinksIntegrationTest.kt:379,412` · `IssueChangeVersionsServiceTest.kt:224-225,459-460`) 형태로 정정 |
+| 🛑 **§8.6이 3연속 "전수" 자칭 + 매번 누락**(1→6→8건). 근본 원인 = grep이 **열거형 KDoc**(`RuleConflictAnalyzer.kt:315,328-330`)을 원리적으로 못 잡음 | 누락 8건 추가 + **grep 2종**(개수형/열거형) + *"목록의 완전성을 보증하지 못한다 — §8.2가 손대는 모든 함수의 KDoc을 직접 읽어라"* 명시 |
+| ⚠️ **`TriggerType.TRANSITION`은 존재하지 않는다** — S1~S3이 phantom 값을 근거로 작성됨(learnings "phantom 엔티티"와 동종) | S2를 `ISSUE_UPDATED` + `fields=["status"]` + 조건으로 정정 |
+| ⚠️ **`actionsToRequest`는 존재하지 않는 함수** — 내가 지어낸 이름(learnings "Claude의 환각") | 실명 `serializeActionsFormState:197-198`으로 정정 + **그 함수는 순수 매핑이라 에러 채널이 없음** → actions 전용 검증 기제 신설 요구 |
+| ⚠️ **§8.3의 "ArchUnit이 차단"은 거짓** — `AutomationBcArchTest.kt:31`이 `DoNotIncludeTests()`로 테스트를 제외. 실제 차단은 **Gradle 클래스패스** | 근거 교체 + *"ArchUnit이 막는다고 믿으면 `testImplementation` 추가가 통과해버린다"* 명시 |
+| ⚠️ **V302:45 `COMMENT ON COLUMN`이 "4종"** — 살아있는 DB 객체라 V306이 재발행 안 하면 운영 DB에 drift 영구 잔존 | §5 SQL에 `COMMENT ON COLUMN` 추가 + §8.6 체크리스트 |
+| ✗ 라인 정정 | slack 스텁 KDoc `:28`→**`:27`** · `ProjectMemberSelect:110`→**`:109`** · `VersionMultiSelect:89-92`→**`:89-91`** |
+| ✅ 2회차 지적 중 닫힌 것 | `undefined ≡ replace` **6조합 전수 검증 통과**(파괴적 조합 0) · §8.1 스텁 분리 정확 · EC13↔FR-7 모순 해소 · §8.2 13행 전부 정확(`:104`/`:256-272` 정정 맞음) |
 
 ### 3회차 (2026-07-16) — Phase B 2회차 반영 (개정본 자체의 결함)
 
