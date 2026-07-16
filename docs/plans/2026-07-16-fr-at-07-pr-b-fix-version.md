@@ -142,6 +142,415 @@ learnings 2026-05-20 "phantom 엔티티 가설 검증 누락"의 재발 방지 �
 
 **핵심 설계는 3라운드 내내 불변** — ADR D1~D6은 한 번도 흔들리지 않았다. 지적은 전부 그 위의 서술/검증 설계였다.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> **작성 방식.** `superpowers:writing-plans`(범용 스캐폴드) 대신 직접 작성. 사유 — 이 작업의 task 경계는
+> **취향이 아니라 컴파일 제약이 결정**하며(아래 §분해 원칙), 그 제약은 도메인·스펙 단계의 전수 대조로 이미 확정됐다.
+> 스킬 형식(메타 블록 `agent`/`files`/`depends-on` + RED/GREEN/REFACTOR + 검증)은 그대로 준수한다.
+
+### ★ 분해 원칙 — 왜 task가 이렇게 크게 묶이는가
+
+**포트에 추상 메서드를 추가하는 순간 구현체 4곳이 동시에 컴파일이 깨진다**(ADR D5 fail-closed = default 금지의 대가).
+`Action` sealed class에 서브타입을 추가하면 exhaustive `when` 12지점이 동시에 깨진다.
+→ **이들은 TDD 단위로 쪼갤 수 없다.** 쪼개면 중간 커밋에서 저장소가 컴파일되지 않는다(ADR D4).
+
+그래서 T1·T3·T8은 "여러 파일 = 한 원자 단위"다. **task 안에서는 RED→GREEN→REFACTOR를 지키되, 원자성이
+컴파일에 의해 강제되는 지점은 한 task로 묶는다.**
+
+### ★ 모든 implementer에게 인계 (prompt 필수 포함)
+
+1. **스펙의 이름·라인을 그대로 믿지 말고 착수 시 grep으로 재확인한다.** 이 스펙은 **phantom을 2건 만들었다가
+   정정했다** — `TriggerType.TRANSITION`(실재 5종에 없음)·`actionsToRequest`(실명 `serializeActionsFormState`).
+   learnings의 *phantom 엔티티*·*환각 API* 함정에 스펙 저자가 그대로 빠졌다. 라인 번호는 ±2 오차가 있을 수 있다.
+2. **`git stash` 금지** — 타 세션의 휴면 stash를 오작동 pop할 수 있다.
+3. **`ktlintFormat` 모듈 전체 실행 금지** — 무관 파일 70여 개를 재포맷하고 Gradle 캐시를 오염시킨다. 본인 파일만 수동 수정.
+4. **검증은 태스크를 따로 invoke하고 `build/test-results/test/TEST-*.xml`로 실행 테스트 수를 실측**한다.
+   묶음 태스크 + `--rerun-tasks`가 6/56클래스만 돌고 BUILD SUCCESSFUL을 낸 전례가 있다.
+   쉘 종료 코드는 `set -o pipefail` + `$?`(zsh `${PIPESTATUS[0]}`는 항상 빈 문자열).
+5. **본인 files 밖 수정 금지.** 자동 도구가 남의 파일을 건드렸으면 `git checkout`으로 되돌리고 보고.
+
+---
+
+### Task 1. 포트 `setFixVersions` + 커맨드 + prod 어댑터 + 구현체 3곳 (원자)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/issue/IssueMutationPort.kt`, `backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/issue/IssueMutationCommands.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/issue/IssueMutationPortContractTest.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/outbound/automation/AutomationIssueMutationAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/outbound/automation/AutomationIssueMutationAdapterTest.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/StubIssueMutationPort.kt`, `backend/modules/slack-integration/src/test/kotlin/com/bts/slack/StubIssueMutationPort.kt`]
+- depends-on: []
+
+**RED**.
+- 파일. `AutomationIssueMutationAdapterTest.kt`
+- 테스트. `setFixVersions 는 changeFixVersions 에 위임하고 재조회한 version 을 expectedVersion 으로 채운다`
+  — mockk로 `issueApplicationService.findByKey(actor, key)` → `version=3` 스텁, `changeFixVersions(actor, key, AppChangeVersionsRequest(ids, 3))` 호출을 `verify`
+- 추가. `dryRun=true 면 applied=false·version=null 이고 setRollbackOnly 가 호출된다`
+- 실패 (예상). **컴파일 실패** — `IssueMutationPort`에 `setFixVersions` 없음. (포트 추가는 구현체 4곳을 동시에
+  깨므로 컴파일 실패가 이 task의 RED다.)
+
+**GREEN**.
+1. `IssueMutationCommands.kt` — `SetFixVersionsCommand(actorUserId, issueKey, versionIds: List<UUID>, dryRun)`.
+   **`expectedVersion` 없음**(ADR D2). KDoc에 전체교체·빈목록=전체해제 명시
+2. `IssueMutationPort.kt` — `fun setFixVersions(cmd: SetFixVersionsCommand): MutationResult`. **default 없음**
+3. `AutomationIssueMutationAdapter.kt` — `setField`/`assign`과 **동형**.
+   ```kotlin
+   override fun setFixVersions(cmd: SetFixVersionsCommand): MutationResult {
+       val actor = ActorId(cmd.actorUserId); val key = IssueKey(cmd.issueKey)
+       val version = runWithOccRetry(key, cmd.dryRun) {
+           val expectedVersion = issueApplicationService.findByKey(actor, key).version
+           issueApplicationService.changeFixVersions(actor, key, AppChangeVersionsRequest(cmd.versionIds, expectedVersion)).version
+       }
+       return toResult(key.value, cmd.dryRun, version)
+   }
+   ```
+4. `automation/StubIssueMutationPort.kt` — **fail-safe**(KDoc `:23-26`). 기본 성공 + command 기록 + `failNextCallsWith` 반영
+5. `slack/StubIssueMutationPort.kt` — **fail-closed**(KDoc `:27`). 미시드 호출 시 `IllegalStateException`.
+   기존 `setField`(slack 미사용인데 계약상 구현) 패턴 그대로
+6. `IssueMutationPortContractTest.kt` — 익명 객체에 `setFixVersions` 추가
+
+> **★ 두 스텁은 패턴이 정반대다.** 뭉뚱그려 둘 다 fail-closed로 만들면 **automation 슬라이스 테스트가 깨진다**.
+
+**REFACTOR**.
+- §8.6 중 이 task 소관 KDoc 동기화 — `IssueMutationPort.kt:5,28`(3 메서드→4, 열거에 "수정 예정 버전 설정" 추가) ·
+  `IssueMutationCommands.kt:84` · `IssueMutationPortContractTest.kt:14,24,25`(테스트명 포함) ·
+  `slack/StubIssueMutationPort.kt:23`("세 쌍"→"네 쌍")·`:28` · `AutomationIssueMutationAdapter.kt:29`
+
+**검증**.
+```bash
+set -o pipefail
+./gradlew :modules:shared-kernel:test :modules:issue-tracking:test --tests '*AutomationIssueMutationAdapterTest*' --tests '*IssueMutationPortContractTest*'; echo "EXIT=$?"
+./gradlew :modules:automation:compileTestKotlin :modules:slack-integration:compileTestKotlin; echo "EXIT=$?"   # 스텁 2곳 컴파일 회복 확인
+```
+
+---
+
+### Task 2. V306 — `action_type` CHECK 5종 + 컬럼 코멘트 재발행
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/automation/src/main/resources/db/migration/automation/V306__automation_actions_set_fix_versions.sql`, `backend/modules/automation/src/test/kotlin/com/bts/automation/SchemaMigrationTest.kt`]
+- depends-on: []
+
+**RED**.
+- 파일. `SchemaMigrationTest.kt`
+- 기존 `:654` `V302 유효한 action_type 4종은 INSERT 허용`을 **5종으로 갱신**(테스트명 포함 — 방치하면 거짓 이름).
+  `SET_FIX_VERSIONS` INSERT를 목록에 추가
+- 추가. `action_type CHECK 는 미지의 값을 거부한다` (음성 가드 — `'BOGUS'` INSERT → 제약 위반)
+- 실패 (예상). `SET_FIX_VERSIONS` INSERT가 `ck_automation_actions_action_type` 위반으로 거부
+
+**GREEN**. `V306__automation_actions_set_fix_versions.sql`
+```sql
+ALTER TABLE automation_actions DROP CONSTRAINT ck_automation_actions_action_type;
+ALTER TABLE automation_actions ADD CONSTRAINT ck_automation_actions_action_type
+    CHECK (action_type IN ('SET_FIELD','ASSIGN','ADD_COMMENT','CALL_WEBHOOK','SET_FIX_VERSIONS'));
+COMMENT ON COLUMN automation_actions.action_type IS
+    '액션 종류 — CHECK 5종(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/SET_FIX_VERSIONS)';
+```
+
+> **★ V302 편집 절대 금지**(체크섬 드리프트 — `:modules:app:test`는 5433 영속 DB).
+> **★ `COMMENT ON COLUMN` 재발행 필수** — `V302:45`가 "4종"으로 박아둔 **살아있는 DB 객체**다. 빠뜨리면 운영 DB에 drift 영구 잔존.
+> **★ 착수 시 V번호 재확인**(`ls backend/modules/automation/src/main/resources/db/migration/automation/`) — 현재 최신 V305.
+
+**REFACTOR**. `SchemaMigrationTest.kt:51,651` 주석 "4종"→"5종"
+
+**검증**. `./gradlew :modules:automation:test --tests '*SchemaMigrationTest*'; echo "EXIT=$?"`
+
+---
+
+### Task 3. `ActionType.SET_FIX_VERSIONS` + `Action.SetFixVersionsAction` + **12지점 전수** (원자)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/domain/ActionType.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/domain/Action.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/adapter/AutomationActionRepository.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/adapter/web/dto/AutomationRuleResponses.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/application/RuleConflictAnalyzer.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/application/ActionExecutor.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/gitops/AutomationYamlCodec.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/domain/ActionTest.kt`]
+- depends-on: [1, 2]
+
+> depends-on 사유. **[1]** `ActionExecutor.dispatchAction`이 `issueMutationPort.setFixVersions`를 호출한다(코드 의존).
+> **[2]** `AutomationActionRepository` round-trip 테스트가 DB에 `SET_FIX_VERSIONS`를 INSERT하므로 V306 CHECK가 먼저 필요하다.
+
+**RED**.
+- 파일. `ActionTest.kt`
+- `ActionType.entries.size shouldBe 5` (`:18`) + `entries.toSet()`에 `SET_FIX_VERSIONS` 추가 (`:22-28`)
+- `fromJson 은 SET_FIX_VERSIONS config 의 versionIds 를 파싱한다` + `versionIds 키가 없으면 ActionConfigInvalidException` (EC9)
+  + `UUID 형식이 아니면 실패` (EC10) + `빈 배열은 허용한다` (EC1)
+- 실패 (예상). `ActionType.SET_FIX_VERSIONS` 없음 → 컴파일 실패
+
+**GREEN**. **★ 스펙 §8.2 표의 값을 그대로 옮긴다. 컴파일러는 분기의 존재만 강제하고 값은 안 본다.**
+
+| 파일 | 함수 | 값 |
+|---|---|---|
+| `ActionType.kt` | enum | `SET_FIX_VERSIONS` 추가 |
+| `Action.kt` | sealed subclass | `data class SetFixVersionsAction(val versionIds: List<UUID>) : Action()` |
+| `Action.kt:86-91` | `fromJson` | `parseSetFixVersions(node)` — `versionIds` **필수 키**, 배열, 원소 UUID |
+| `RuleConflictAnalyzer.kt:103-106` | `actionTriggers` | **`false`** ★ |
+| `RuleConflictAnalyzer.kt:317-319` | `hasObservableSideEffect` | **`\|\| it is Action.SetFixVersionsAction` 추가** ★ boolean 체인 — **컴파일러 미강제** |
+| `RuleConflictAnalyzer.kt:414-417` | `requiredPermission` | `IssuePermission.UPDATE` |
+| `RuleConflictAnalyzer.kt:426-429` | `actionKindLabel` | `"수정 예정 버전 설정"` |
+| `ActionExecutor.kt:199-213` | `dispatchAction` | `issueMutationPort.setFixVersions(SetFixVersionsCommand(...))` |
+| `ActionExecutor.kt:289-292` | `actionTypeOf` | `ActionType.SET_FIX_VERSIONS` |
+| `AutomationActionRepository.kt:113-116` | `actionTypeOf` | `ActionType.SET_FIX_VERSIONS` |
+| `AutomationActionRepository.kt:130-152` | `actionConfigJson` | `node.putArray("versionIds")` + 각 UUID `.toString()`으로 `add` ★ **이 파일에 ArrayNode 선례 없음**. `fromJson`의 **정확한 역함수**여야 한다 — 어긋나면 그 룰의 **모든** 액션이 로드 불가(poison, KDoc `:122-124`) |
+| `AutomationRuleResponses.kt:190-193` | `actionTypeOf` | `ActionType.SET_FIX_VERSIONS` |
+| `AutomationRuleResponses.kt:197-209` | `actionConfigOf` | `mapOf("versionIds" to action.versionIds.map(UUID::toString))` |
+| `AutomationYamlCodec.kt:245-248` | `actionTypeOf` | `ActionType.SET_FIX_VERSIONS` |
+| `AutomationYamlCodec.kt:256-272` | `actionConfigMap` | `mapOf("versionIds" to ...)` |
+
+> **★ `actionTriggers = false`의 근거를 반드시 코드 주석/KDoc에 남긴다.** `changeFixVersions`(`IssueApplicationService.kt:944-969`)에
+> **`eventPublisher.publish`가 없어**(대조군 `updateIssue:544`엔 있음) ISSUE_UPDATED를 유발할 경로가 런타임에
+> 존재하지 않는다. **`triggersIssueUpdated(target, "fixVersions")`를 쓰면 안 된다** — `RuleConflictAnalyzer.kt:88-97`
+> KDoc이 성문화한 *phantom edge* 사고(AssignAction에서 이미 겪음)의 재발이다.
+
+**REFACTOR**.
+- §8.6 이 task 소관 — `ActionType.kt:1`·`:11-14`(불릿 5번째) · `AutomationRuleRequests.kt:75` ·
+  `AutomationRuleService.kt:646` · `AutomationRulesYaml.kt:73` · `RuleConflictAnalyzer.kt:85`
+- **★ grep이 못 잡는 열거형 KDoc** — `RuleConflictAnalyzer.kt:315`(*"부수효과 액션(SET_FIELD/ASSIGN/ADD_COMMENT)"*) ·
+  `:328-330`(권한 매핑 열거). **본인이 값을 바꾼 함수의 KDoc은 직접 읽고 갱신한다.**
+
+**검증**.
+```bash
+set -o pipefail
+./gradlew :modules:automation:test --tests '*ActionTest*'; echo "EXIT=$?"
+./gradlew :modules:automation:compileKotlin; echo "EXIT=$?"   # 12지점 전부 뚫렸는지
+```
+
+---
+
+### Task 4. FR-9 백엔드 회귀 2종 — 컴파일러가 못 잡는 지점
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/test/kotlin/com/bts/automation/application/RuleConflictAnalyzerFieldPriorityTest.kt`]
+- depends-on: [3]
+
+> **★ 이 task가 이 PR에서 가장 중요하다.** T3의 12지점 중 `hasObservableSideEffect`(boolean 체인)와
+> `actionTriggers`(값)는 **틀려도 컴파일·기존 테스트가 전부 통과**한다. 이 테스트가 유일한 방어선이다.
+> **설계가 2번 vacuous로 판명나 3번째에 확정됐다 — 아래 형태를 그대로 따른다.**
+
+**RED**.
+
+**(a) `actionTriggers` 회귀 — 반드시 self-loop 형태.**
+- 테스트. `SET_FIX_VERSIONS 액션은 ISSUE_UPDATED 를 유발하지 않는다 (self-loop CYCLE 미검출)`
+- 룰 **1개**. `triggerType = ISSUE_UPDATED` + `triggerConfig.fields ⊇ ["fixVersions"]` + 액션 `SetFixVersionsAction`
+- 단언. `analyze()` 결과에 **CYCLE 없음**
+- ✗ **금지 설계**. *"SET_FIX_VERSIONS 룰 + ISSUE_UPDATED 룰 2개"* → `CycleDetector`는 back-edge DFS라
+  **A→B 엣지 1개는 사이클이 아니다** → 버그를 넣어도 통과(vacuous)
+- ✅ self-loop면 잘못된 구현(`triggersIssueUpdated(target,"fixVersions")`)이 **A→A 자기 엣지 → CYCLE 검출 → FAIL**.
+  `edgesFrom:76-80`이 `rules`에 자기 자신을 포함하고 KDoc `:28`이 *"self-loop(A → A)도 유효한 사이클"* 이라 명시
+
+**(b) `hasObservableSideEffect` 회귀 — `SetFixVersionsAction`만 가진 룰 2개.**
+- 테스트. `SET_FIX_VERSIONS 만 가진 두 룰은 PRIORITY_AMBIGUITY 로 검출된다`
+- 룰 **2개**. 같은 **non-WEBHOOK** `triggerType`, 각각 **`SetFixVersionsAction` _만_ 보유**(다른 액션 0개)
+- 단언. `analyze()` 결과에 **PRIORITY_AMBIGUITY 있음**
+- ✗ **금지 설계**. *"같은 필드를 노리는 동순위 룰 2개"* → ① **"동순위"는 존재하지 않는 개념**(`AutomationRule`에
+  `priority` 필드 없음. 실제 게이트는 `coFire:230-239` = 같은 triggerType + WEBHOOK 아님) ② *"같은 필드"* 면
+  FIELD_CONFLICT가 먼저 잡혀 `priorityAmbiguity:304`의 `pairIds !in conflictedPairs`가 false → **억제됨**
+  ③ `SetFieldAction`이 하나라도 있으면 `any{}`가 **먼저 true를 반환해 새 분기를 안 태운다**(vacuous)
+
+**GREEN**. T3에서 이미 구현됨 — 이 task는 **회귀 가드만** 추가한다.
+
+**★ vacuous 검증 (§8.7 — 필수)**. 두 테스트 각각에 대해 **일부러 위반을 넣어 FAIL을 눈으로 확인**한 뒤 되돌린다.
+- (a) `actionTriggers`의 `SetFixVersionsAction -> false`를 `triggersIssueUpdated(target, "fixVersions")`로 바꿔 → **FAIL 확인** → 되돌림
+- (b) `hasObservableSideEffect`에서 `|| it is Action.SetFixVersionsAction`를 제거 → **FAIL 확인** → 되돌림
+- **확인 못 하면 BLOCKED 보고.** "통과했다"가 "검증했다"를 의미하지 않는다.
+
+**검증**. `./gradlew :modules:automation:test --tests '*RuleConflictAnalyzer*'; echo "EXIT=$?"`
+
+---
+
+### Task 5. S2·S3·S4·S5 automation 통합 테스트 (실 DB)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/test/kotlin/com/bts/automation/ActionExecutionEndToEndIntegrationTest.kt`]
+- depends-on: [3]
+
+**RED**.
+- S2. 룰 실행 → Fix Version 설정 + `rule_executions` **SUCCESS**
+  - **★ 트리거는 `ISSUE_UPDATED` + `fields=["status"]` + 조건.** `TriggerType.TRANSITION`은 **존재하지 않는다**(실재 5종 = `ISSUE_CREATED`/`ISSUE_UPDATED`/`ISSUE_COMMENTED`/`SCHEDULED`/`WEBHOOK`)
+- S3. 전체교체 — `[1.0.0]` → `[1.2.0]` (추가 아님). EC14 인지(무변경 재실행도 version bump)
+- S4. `versionIds=[]` → 전체 해제
+- S5. 권한 없는 actor → FAILED(**권한 거부로 분류**됨 — `classifyPortFailure:258`이 `IssueMutationPermissionDeniedException`만 타입 분류)
+- 실패 (예상). 액션 미배선
+
+**GREEN**. T1·T3에서 구현됨 — 통합 경로 배선만.
+
+**REFACTOR**. §8.6 — `ActionExecutionEndToEndIntegrationTest.kt:54,226,229` "4종"→"5종"
+
+**검증**. `./gradlew :modules:automation:test --tests '*ActionExecutionEndToEnd*'; echo "EXIT=$?"`
+
+---
+
+### Task 6. S6 양성 단언 — 타 프로젝트 버전 (issue-tracking 실 DB)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/integration/IssueVersionLinksIntegrationTest.kt`]
+- depends-on: [1]
+
+> **★ 왜 issue-tracking인가.** `IssueLinkedVersionNotFoundException`은 issue-tracking BC 타입이라
+> **automation 테스트에서는 Gradle 클래스패스상 참조 자체가 불가능**하다(`automation/build.gradle.kts:39`가
+> `:modules:shared-kernel`만 의존). *ArchUnit이 막는 게 아니다* — `AutomationBcArchTest.kt:31`은
+> `DoNotIncludeTests()`로 테스트를 제외하므로 `testImplementation` 추가가 통과해버린다.
+>
+> **★ 왜 `AutomationIssueMutationAdapterTest`가 아닌가.** 그건 MockK 단위 테스트(`:56`)라
+> `every { ... } throws ...`로 **자기가 심은 스텁을 자기가 단언**하게 되고 `validateVersions`가 한 줄도 안 돈다 —
+> §8.3이 비판한 vacuity에 그대로 걸린다.
+
+**RED**.
+- 테스트. `타 프로젝트 버전을 fixVersions 로 지정하면 그 versionId 를 담은 예외로 거부된다`
+- 기존 선례(`:379,412`) 형태. 실 DB에 프로젝트 2개 + 각자 버전 시드
+- **양성 단언**. `shouldThrow<IssueLinkedVersionNotFoundException> { ... }.versionId shouldBe betaVersionId`
+  (`IssueExceptions.kt:130` — `class IssueLinkedVersionNotFoundException(val versionId: UUID)`, **public val**)
+- **추가 단언**. 이슈의 `fixVersionIds`가 **변경되지 않았음**을 DB에서 확인
+- ✗ *"rule_executions에 FAILED로 기록된다"* 만 단언하면 **vacuous** — `classifyPortFailure`가 EC3·EC4·EC6·EC7을
+  전부 `"FAILED"` 한 문자열로 수렴시키므로(`:318`), **`validateVersions`를 통째로 지워도 통과한다**
+
+**GREEN**. 기존 `validateVersions`가 이미 처리 — 회귀 가드만.
+
+**검증**. `./gradlew :modules:issue-tracking:test --tests '*IssueVersionLinksIntegrationTest*'; echo "EXIT=$?"`
+
+---
+
+### Task 7. S7 YAML GitOps 왕복
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/automation/src/test/kotlin/com/bts/automation/web/AutomationGitOpsRoundTripTest.kt`]
+- depends-on: [3]
+
+**RED**. `SET_FIX_VERSIONS 액션은 export→import 왕복에서 versionIds 가 보존된다`
+**GREEN**. T3의 `AutomationYamlCodec` 갱신으로 통과
+**검증**. `./gradlew :modules:automation:test --tests '*AutomationGitOpsRoundTrip*'; echo "EXIT=$?"`
+
+---
+
+### Task 8. 프론트 계약 — z.enum + FormState + parse/serialize + 라벨맵 (원자)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/automation-rules.types.ts`, `apps/web/src/api/__tests__/automation-rules.types.test.ts`, `apps/web/src/components/automation/AutomationRuleList.tsx`]
+- depends-on: []
+
+> **원자 사유.** `actionTypeSchema` z.enum에 값을 넣는 순간 `Record<ActionType,string>` 라벨맵 2곳(TS2741)과
+> `default:` 없는 switch 2곳(TS2366)이 **동시에 컴파일이 깨진다**. 백엔드와 무관(계약 미러)이라 depends-on 없음.
+
+**RED**.
+- `automation-rules.types.test.ts`
+- `:273` `validTypes` 배열에 `'SET_FIX_VERSIONS'` 추가 ★ **컴파일러 미강제 — 빠뜨리면 새 타입이 조용히 미검증**
+- `parseActionConfig 는 versionIds 를 파싱하고 빈 배열이면 clear 모드로 복원한다`
+- `serializeActionConfig 는 clear 모드면 versionIds:[] 를, 그 외엔 선택 목록을 낸다`
+- **`fixVersionsMode 가 undefined 면 replace 로 취급한다`** ★ fail-closed
+- 실패 (예상). `SET_FIX_VERSIONS`가 `actionTypeSchema`에 없음
+
+**GREEN**.
+1. `actionTypeSchema` z.enum에 `'SET_FIX_VERSIONS'`
+2. `ActionConfigFormState`에 `versionIds?: string[]` + **`fixVersionsMode?: 'replace' | 'clear'`(UI 전용, 직렬화 안 됨)**
+3. `parseActionConfig` — 기존 관례(`typeof` 가드)대로 **배열 여부 + 원소 string 여부** 검사.
+   `versionIds` 있고 비었으면 `clear`, 있으면 `replace`로 모드 복원
+4. `serializeActionConfig` — **`undefined ≡ replace` 방향**
+   ```ts
+   case 'SET_FIX_VERSIONS':
+     return config.fixVersionsMode === 'clear'
+       ? JSON.stringify({ versionIds: [] })
+       : JSON.stringify({ versionIds: config.versionIds ?? [] })
+   ```
+5. `AutomationRuleList.tsx:62-67` `actionTypeLabels` — `SET_FIX_VERSIONS: '수정 예정 버전'`(배지용, 짧게)
+
+**REFACTOR**. §8.6 — `automation-rules.types.ts:22` · **`:287`**(`ActionConfigFormState` KDoc "4종"→"5종" +
+**`fixVersionsMode`가 와이어 대응 없는 최초 필드임을 명시** — 안 적으면 다음 사람이 config에 실어 보낸다) ·
+`AutomationRuleList.tsx:61` · `automation-rules.types.test.ts:268,272`
+**★ 오탐 주의**. `automation-rules.types.ts:40`의 "4종"은 **`ConflictType`** — 무관, 건드리지 말 것.
+
+**검증**. `pnpm vitest run src/api/__tests__/automation-rules.types.test.ts; echo "EXIT=$?"` + `pnpm typecheck`(tsconfig.app.json)
+
+---
+
+### Task 9. 프론트 설정 UI — `SetFixVersionsFields` + 모드 + S8 저장 거부
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/automation/ActionConfigEditor.tsx`, `apps/web/src/components/automation/__tests__/ActionConfigEditor.test.tsx`, `apps/web/src/components/automation/AutomationRuleFormDialog.tsx`]
+- depends-on: [8]
+
+**RED**. `ActionConfigEditor.test.tsx`
+- `SET_FIX_VERSIONS 를 고르면 교체 모드가 기본 선택되고 버전 목록이 뜬다` (S1)
+- **`교체 모드 + 빈 목록이면 저장이 거부된다`** (S8) ★
+- `전체 해제 모드면 버전 목록이 숨겨진다`
+- `useVersions 로딩/에러면 disabled shell + 문구가 뜨고, 저장은 막지 않는다` (EC13)
+- `replace→clear→replace 왕복에도 선택이 보존된다`
+
+**GREEN**.
+1. `defaultConfigForType`에 **`SET_FIX_VERSIONS` 명시 분기** — `{ fixVersionsMode: 'replace', versionIds: [] }`
+   ★ `parseActionConfig(type, {})`로 떨어뜨리면 `versionIds` 부재 → **`clear` 모드로 오판**된다
+   (`SET_FIELD`가 이미 같은 이유로 명시 분기 — KDoc `:117` *"select가 유효한 초기값을 갖도록"*)
+2. `ACTION_TYPE_LABELS`(`:48-53`) — `SET_FIX_VERSIONS: '수정 예정 버전 설정'`(드롭다운용)
+3. `SetFixVersionsFields` 신규 — 모드 라디오 2개 + `useVersions(projectKey)` + `VersionMultiSelect variant="fix"`
+   - **`VersionMultiSelect` 수정 금지**(제약 5) — `variant="fix"`가 이미 "수정 버전" 문구 제공. 고치면 `IssueMetaPanel.tsx:346-356` 회귀
+   - 로딩/에러 = `ProjectMemberSelect.tsx:17-18,109` 선례(disabled shell + `TEXT.loading`/`TEXT.error`). **새 패턴 발명 금지**
+   - `clear` 모드 → `VersionMultiSelect` **렌더 안 함**(disabled로 두면 체크한 게 조용히 버려짐). `versionIds`는 폼 상태에 보존
+4. 조건부 렌더 블록(`:586-599`)에 `{value.type === 'SET_FIX_VERSIONS' && <SetFixVersionsFields ... />}`
+5. **S8 저장 거부 기제 신설** — `AutomationRuleFormDialog`
+   - ★ **`actionsToRequest`는 존재하지 않는 함수다**(스펙이 지어낸 이름). 실명 **`serializeActionsFormState`**(`:197-198`)
+   - 그 함수는 `(actions) => ActionRequestInput[]` **순수 매핑이라 에러 채널이 없다**. RHF `errors`(`:445,533,567`)도
+     `actions`를 안 덮는다(`actions`는 RHF 스키마 밖 별도 state, `:579`)
+   - → 제출 직전 `validateActions(actions): {index, message}[]` + actions용 에러 state. **위반 행 index를 특정**해 문구
+   - ★ 이 가드는 **load-bearing**이다 — 없으면 `undefined`/`[]`가 `{"versionIds":[]}`로 나가 전체 해제(B1 재현)
+
+**REFACTOR**. §8.6 — `ActionConfigEditor.tsx:47,540` · `ActionConfigEditor.test.tsx:41` ·
+`AutomationRuleFormDialog.tsx:2,576` "4종"→"5종"
+
+**검증**. `pnpm vitest run src/components/automation; echo "EXIT=$?"` + `pnpm typecheck` + `pnpm lint`
+
+---
+
+### Task 10. 전수 동기화 스윕 + 문서 + 최종 회귀
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`docs/plan/product/automation.md`, `docs/plans/2026-07-16-fr-at-07-pr-b-fix-version.md`]
+- depends-on: [4, 5, 6, 7, 9]
+
+**작업**.
+1. **§8.6 잔여 스윕** — grep **2종**을 돌려 T1·T3·T8·T9가 놓친 게 없는지 확인
+   ```bash
+   grep -rn "4종\|4개\|네 개\|3 메서드\|세 메서드\|세 쌍" backend/modules apps/web   # 개수형
+   grep -rn "SET_FIELD/ASSIGN\|SetFieldAction.*AssignAction\|필드 변경.*담당자" backend/modules apps/web  # 열거형
+   ```
+   > **★ 이 목록의 완전성은 보증되지 않는다** — grep은 열거형 KDoc을 원리적으로 못 잡는다(스펙 §8.6이 3연속 누락한 이유).
+   > 발견 시 **소관 task 파일이면 그 task로 되돌리고**, 무주공산이면 여기서 처리.
+2. `docs/plan/product/automation.md` §2.7 — D1~D5·D7 체크박스 `[x]`(D6는 UI가 이 PR에 포함되므로 함께) + 완료 요약 단락
+3. **FR 총수 123 불변 확인** — D단계 작업이라 FR 추가 없음
+4. `bash scripts/verify-master-plan.sh` 통과
+5. **전체 회귀** — 태스크 따로 invoke + `TEST-*.xml` 실행 수 실측
+   ```bash
+   set -o pipefail
+   ./gradlew :modules:shared-kernel:test :modules:issue-tracking:test :modules:automation:test :modules:slack-integration:test; echo "EXIT=$?"
+   ./gradlew :modules:automation:ktlintCheck :modules:automation:detekt; echo "EXIT=$?"
+   pnpm typecheck && pnpm lint && pnpm test; echo "EXIT=$?"
+   ```
+6. **prod 조립 재검증** — cross-BC `@Component` 추가는 `:modules:app` 9BC 조립에서만 표면화
+   ```bash
+   ./gradlew :modules:app:test; echo "EXIT=$?"
+   ```
+   > ★ `:modules:app:test`는 **5433 영속 DB**를 쓴다 — V306이 처음 적용되는 지점.
+
+**검증**. 위 5·6의 EXIT=0 + `TEST-*.xml` 실행 수가 단독 실행과 일치
+
+---
+
+## Plan 메타
+
+- **task 수**. 10
+- **예상 wave**. 4
+  - **wave 1**. T1(shared-kernel·issue-tracking·automation-test·slack-test) · T8(apps/web)
+    → T2는 **automation 모듈 컴파일이 T1과 겹쳐** 같은 wave 금지(메모리 `bts-plan-wave-gradle-module-compile` — wave는 Gradle 모듈 컴파일도 직렬화)
+  - **wave 2**. T2(db) · T9(프론트 UI, T8 의존)
+  - **wave 3**. T3(12지점 원자)
+  - **wave 4**. T4 · T5 · T6 · T7 (전부 T3 의존, 파일 교집합 0 → 4-병렬)
+  - **wave 5**. T10 (최종 스윕)
+- **TDD 강제**. yes — 단 **T1·T3·T8은 "컴파일 실패 = RED"** (포트/sealed class/z.enum 추가는 구현체를 동시에 깨므로
+  테스트만 먼저 커밋하는 형태가 불가능. ADR D4·D5의 구조적 귀결)
+- **병렬 dispatch 주의**. **`apps/web` 파일이 있으므로 pre-commit lint-staged race가 발화 가능**하다
+  (`.lintstagedrc.json`이 `apps/web/**/*.{ts,tsx,js,jsx}`만 대상 — PR-A 때는 apps/web 0파일이라 구조적으로 불가능했음).
+  T8·T9가 다른 task와 같은 wave에 있으면 **자기 파일만 stage**하고, race 발생 시 quiescent 시점에 커밋 분리 복구
+- **추가 검증**. ktlint · detekt · typecheck(tsconfig.app.json) · vitest · **`:modules:app:test`(prod 조립)**
+- **E2E**. 이 PR 범위 밖 — 기존 automation E2E 25건은 T10에서 회귀 확인만
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
