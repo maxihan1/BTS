@@ -1,4 +1,8 @@
-// 자동화 액션 다형성 — SetField/Assign/AddComment/CallWebhook (FR-AT-02, ADR D1)
+// 자동화 액션 다형성 — SetField/Assign/AddComment/CallWebhook/SetFixVersions (FR-AT-02, ADR D1, FR-AT-07)
+// SET_FIX_VERSIONS 파싱 헬퍼(parseSetFixVersions)가 top-level private 함수로 추가되며 파일 함수 수가
+// detekt TooManyFunctions 파일 임계값을 넘어선다 — 파싱 세부를 companion object 밖 top-level 함수로
+// 분리하는 기존 설계(클래스 KDoc 참고)를 유지하기 위해 억제한다(신규 위반, baseline 아님).
+@file:Suppress("TooManyFunctions")
 
 package com.bts.automation.domain
 
