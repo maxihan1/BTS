@@ -34,6 +34,9 @@ class IssueMutationPortContractTest {
 
                 override fun addComment(cmd: AddCommentCommand): MutationResult =
                     MutationResult(issueKey = cmd.issueKey, applied = !cmd.dryRun, version = null)
+
+                override fun setFixVersions(cmd: SetFixVersionsCommand): MutationResult =
+                    MutationResult(issueKey = cmd.issueKey, applied = !cmd.dryRun, version = 1L)
             }
 
         val setFieldResult =
@@ -64,10 +67,20 @@ class IssueMutationPortContractTest {
                     dryRun = false,
                 ),
             )
+        val setFixVersionsResult =
+            port.setFixVersions(
+                SetFixVersionsCommand(
+                    actorUserId = UUID.randomUUID(),
+                    issueKey = "PROJ-1",
+                    versionIds = listOf(UUID.randomUUID()),
+                    dryRun = false,
+                ),
+            )
 
         assertThat(setFieldResult.issueKey).isEqualTo("PROJ-1")
         assertThat(assignResult.issueKey).isEqualTo("PROJ-1")
         assertThat(addCommentResult.issueKey).isEqualTo("PROJ-1")
+        assertThat(setFixVersionsResult.issueKey).isEqualTo("PROJ-1")
     }
 
     // ── 타입 있는 권한 거부 예외 (FR-AT-02 C3) ────────────────────────────────

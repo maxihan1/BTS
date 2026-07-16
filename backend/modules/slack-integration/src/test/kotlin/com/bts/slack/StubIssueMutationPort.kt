@@ -7,6 +7,7 @@ import com.bts.shared.issue.AssignCommand
 import com.bts.shared.issue.IssueMutationPort
 import com.bts.shared.issue.MutationResult
 import com.bts.shared.issue.SetFieldCommand
+import com.bts.shared.issue.SetFixVersionsCommand
 
 /**
  * 통합 테스트가 이슈 변경(담당자 배정/댓글 추가/필드 변경) 결과를 명시 시드하는 [IssueMutationPort] stub
@@ -73,6 +74,19 @@ class StubIssueMutationPort : IssueMutationPort {
     var lastAddCommentCommand: AddCommentCommand? = null
         private set
 
+    /** 다음 [setFixVersions] 호출이 반환할 결과. null 이고 [nextSetFixVersionsError] 도 null 이면 fail-closed 오류. */
+    @Volatile
+    var nextSetFixVersionsResult: MutationResult? = null
+
+    /** 다음 [setFixVersions] 호출이 던질 예외. 세팅돼 있으면 [nextSetFixVersionsResult] 보다 우선한다. */
+    @Volatile
+    var nextSetFixVersionsError: Throwable? = null
+
+    /** [setFixVersions]에 마지막으로 넘어온 커맨드. 미호출이면 null. */
+    @Volatile
+    var lastSetFixVersionsCommand: SetFixVersionsCommand? = null
+        private set
+
     override fun setField(cmd: SetFieldCommand): MutationResult {
         lastSetFieldCommand = cmd
         nextSetFieldError?.let { throw it }
@@ -94,6 +108,13 @@ class StubIssueMutationPort : IssueMutationPort {
             ?: error("StubIssueMutationPort 미설정: addComment 시나리오를 먼저 시드해야 합니다: cmd=$cmd")
     }
 
+    override fun setFixVersions(cmd: SetFixVersionsCommand): MutationResult {
+        lastSetFixVersionsCommand = cmd
+        nextSetFixVersionsError?.let { throw it }
+        return nextSetFixVersionsResult
+            ?: error("StubIssueMutationPort 미설정: setFixVersions 시나리오를 먼저 시드해야 합니다: cmd=$cmd")
+    }
+
     /** 테스트 간 상태 격리를 위해 시드/캡처를 모두 초기화한다. */
     fun reset() {
         nextSetFieldResult = null
@@ -105,5 +126,8 @@ class StubIssueMutationPort : IssueMutationPort {
         nextCommentResult = null
         nextCommentError = null
         lastAddCommentCommand = null
+        nextSetFixVersionsResult = null
+        nextSetFixVersionsError = null
+        lastSetFixVersionsCommand = null
     }
 }

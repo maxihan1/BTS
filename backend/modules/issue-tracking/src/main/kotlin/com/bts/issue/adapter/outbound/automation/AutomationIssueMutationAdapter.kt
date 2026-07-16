@@ -3,6 +3,7 @@
 package com.bts.issue.adapter.outbound.automation
 
 import com.bts.issue.application.AppChangeAssigneeRequest
+import com.bts.issue.application.AppChangeVersionsRequest
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.application.UpdateIssueRequest
 import com.bts.issue.comment.application.CommentApplicationService
@@ -16,6 +17,7 @@ import com.bts.shared.issue.IssueMutationPermissionDeniedException
 import com.bts.shared.issue.IssueMutationPort
 import com.bts.shared.issue.MutationResult
 import com.bts.shared.issue.SetFieldCommand
+import com.bts.shared.issue.SetFixVersionsCommand
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
@@ -137,6 +139,25 @@ class AutomationIssueMutationAdapter(
             commentApplicationService.create(actor = actor, issueKey = key, body = cmd.body, authorId = actor)
         }
         return MutationResult(issueKey = key.value, applied = !cmd.dryRun, version = null)
+    }
+
+    /**
+     * [cmd.versionIds] 를 [IssueApplicationService.changeFixVersions] 에 위임한다(전체 교체 —
+     * 빈 목록이면 전체 해제). OCC 충돌 시 현재 version 을 1 회 재조회해 재시도한다.
+     *
+     * @throws IssueVersionConflictException 재시도 후에도 OCC 충돌이 지속될 때.
+     */
+    override fun setFixVersions(cmd: SetFixVersionsCommand): MutationResult {
+        val actor = ActorId(cmd.actorUserId)
+        val key = IssueKey(cmd.issueKey)
+        val version =
+            runWithOccRetry(key, cmd.dryRun) {
+                val expectedVersion = issueApplicationService.findByKey(actor, key).version
+                issueApplicationService
+                    .changeFixVersions(actor, key, AppChangeVersionsRequest(cmd.versionIds, expectedVersion))
+                    .version
+            }
+        return toResult(key.value, cmd.dryRun, version)
     }
 
     // ── private helpers ───────────────────────────────────────────────────────

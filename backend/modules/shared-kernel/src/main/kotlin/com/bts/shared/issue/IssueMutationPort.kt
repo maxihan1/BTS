@@ -101,4 +101,19 @@ interface IssueMutationPort {
      *   consumer 가 catch 후 실행 결과로 매핑한다.
      */
     fun addComment(cmd: AddCommentCommand): MutationResult
+
+    /**
+     * 이슈의 수정 예정 버전(Fix Version) 목록을 전체 교체한다(FR-AT-07 PR-B).
+     *
+     * [SetFixVersionsCommand.versionIds] 는 기존 목록을 전부 대체한다 — 빈 목록이면 전체 해제를
+     * 의미한다. [SetFixVersionsCommand.dryRun] 이 true 이면 권한/검증만 수행하고 실제 커밋·이벤트
+     * 발행을 하지 않아야 한다(구현체 책임).
+     *
+     * @param cmd Fix Version 설정 커맨드. actor·이슈 키·버전 UUID 목록·dryRun 포함.
+     * @return 변경 결과. dryRun 이면 `applied=false`, `version=null`.
+     * @throws RuntimeException (issue-tracking BC 내부 예외) 권한 거부·이슈 부재·존재하지 않는
+     *   버전 참조·OCC 버전 충돌 등. consumer(automation `ActionExecutor`)가 catch 후 실행
+     *   결과로 매핑한다.
+     */
+    fun setFixVersions(cmd: SetFixVersionsCommand): MutationResult
 }
