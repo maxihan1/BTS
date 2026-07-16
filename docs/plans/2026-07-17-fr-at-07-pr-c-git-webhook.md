@@ -87,13 +87,27 @@ V307/V308 분리 검토 (모듈 관례 = 1파일 1스키마 변경, 대역 여�
 **컴파일러가 잡아주는 곳은 단 1곳** — `TriggerConfig.kt:43-47` (else 없는 exhaustive `when`).
 **나머지 13지점은 전부 `==`/`!=` if-비교 → `PR_MERGED` 추가해도 조용히 통과.**
 
-| 위험도 | 위치 | 누락 시 증상 |
-|---|---|---|
-| **1순위** | `TriggerMatcher.kt:44-46` wire→enum 맵 리터럴 3종 | **Git 웹훅 도착해도 아무 룰도 발화 안 함 + 로그도 없음** |
-| **2순위** | `TriggerMatcher.kt:73` `if (triggerType == ISSUE_UPDATED) parseFieldArray(...) else emptySet()` | targetBranch 필터가 조용히 `emptySet()` = 필터 무력화 |
-| **3순위** | `RuleConflictAnalyzer.kt:244-245` | PR_MERGED가 조용히 `true`(동시매칭 가능)로 fall-through |
-| 4순위 | `AutomationRuleService.kt:210,890` `if (triggerType == WEBHOOK) mintWebhookToken(...) else null` | PR_MERGED 토큰 발급 여부가 조용히 `null` |
-| 그 외 | `RuleConflictAnalyzer.kt:112,121,243` · `AutomationEventWorker.kt:142` · `AutomationRuleService.kt:212,523,892,1000` | 개별 판정 |
+> **★★ 2026-07-17 교정 — 아래 원래 표의 "1순위/2순위" 판정은 틀렸다** (Phase B 백엔드 적대적 검토가
+> 코드로 반증, spec §B-2). **`TriggerMatcher`·`AutomationEventWorker`는 PR_MERGED와 무관하다.**
+> `q_automation_events`는 **issue-tracking이 소유한 이슈 이벤트 전용 큐**(`AutomationEventWorker.kt:20`
+> KDoc)이고 issue-tracking은 GitHub PR 머지를 알 수 없다 → **Git 웹훅은 이 큐에 올라갈 수 없다**.
+> PR_MERGED는 컨트롤러가 룰을 직접 조회해 동기 enqueue하는 **제3의 경로**(spec §3.5).
+> → `TriggerMatcher` wire 맵에 `pr.merged`를 넣으면 **아무도 발행하지 않는 죽은 코드**가 된다.
+> 원래 표를 근거로 작성했던 완료 기준(§9-6 "wire 맵 회귀 가드")도 **폐기**.
+
+| 위험도 | 위치 | 누락 시 증상 | 교정 후 판정 |
+|---|---|---|---|
+| ~~1순위~~ | `TriggerMatcher.kt:44-46` wire→enum 맵 | ~~웹훅 도착해도 무발화~~ | **해당 없음** — PR_MERGED는 이 경로를 안 탐. **추가 금지**(죽은 코드) |
+| ~~2순위~~ | `TriggerMatcher.kt:73` `if (== ISSUE_UPDATED) ... else emptySet()` | ~~targetBranch 필터 무력화~~ | **해당 없음** — targetBranch는 컨트롤러가 인메모리 매칭 |
+| **1순위(신)** | `RuleConflictAnalyzer.kt:244-245` | PR_MERGED가 조용히 `true`(동시매칭)로 fall-through → **targetBranch 다른 두 룰에 상시 오탐 경고가 REST 응답에 노출** (S5가 정확히 그 시나리오) | **BLOCKER B4-be — `targetBranchCoFire` 추가 필요** |
+| **2순위(신)** | `AutomationRuleService.kt:210,890` `if (== WEBHOOK) mintWebhookToken(...) else null` | PR_MERGED가 `else null` | **`else null`이 정답** — git 토큰은 프로젝트 단위 `git_webhooks` 소유. **"변경 불요"를 spec에 명시**해 구현자의 오추가 방지 |
+| 그 외 | `RuleConflictAnalyzer.kt:112,121,243` · `AutomationEventWorker.kt:142` · `AutomationRuleService.kt:212,523,892,1000` | 개별 판정 | 대부분 무관 — 개별 확인 |
+| **표에 없던 것** | `AutomationRulesYaml.kt:63`(YAML DTO 기본값) · `AutomationExecutionWorker.kt:437`(`valueOf` 제네릭) | 둘 다 **무해** | 두 검토자가 각각 발견 |
+
+> **★ "13"은 틀렸다 — 세 번째 재현** ([[spec-stated-count-becomes-blindfold]]).
+> 라인 단위로 세면 **16줄**이고(맵 리터럴 3줄·when절 쌍 2줄을 각 1 site로 묶어야 13), 두 적대적 검토가
+> 각각 표에 **없는** 지점을 하나씩 더 찾았다. PR-B가 "미강제 2개 → 실제 3개"로 남긴 교훈을 인계받아
+> 적었는데도 **같은 자리에서 또 틀렸다**. → **impl·리뷰는 이 표의 개수를 세지 말고 패턴 grep으로 직접 확인**.
 
 **프론트는 반대로 타입시스템이 강제** (`tsconfig.app.json` strict + noFallthroughCasesInSwitch).
 `automation-rules.types.ts:230-243` switch(default 없음) · `AutomationRuleFormDialog.tsx:69` +
