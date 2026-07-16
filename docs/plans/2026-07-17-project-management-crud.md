@@ -277,9 +277,58 @@ cross-BC 쓰기 포트가 **전부 `IssueApplicationService`를 경유**하므�
 - **`FlywayAssemblyConfig` 실행 순서 = identity → issue → workflow → …** (`:28-38`). KDoc `:20-21` 명시 — "project-workflow(V202)가 issue-tracking 의 projects 를 FK 참조하므로 issue 를 workflow 보다 먼저 실행한다". **`projects` 는 cross-BC FK 피참조 대상**이므로 아카이브 컬럼 추가 시 이 순서 전제를 깨지 않는지 확인할 것
 - **(무해 drift, 이번 범위 밖)** `FlywayAssemblyConfig.kt:13` KDoc 이 "identity-access(V001~V033)와 issue-tracking(V001~V035)"라 적었으나 실제는 V035 / V036. 주석만의 drift라 동작 무영향 — 글로벌 CLAUDE.md §3(surgical) 따라 이번 PR 에서 건드리지 않는다
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-17-project-management-crud.md](../specs/2026-07-17-project-management-crud.md) — **마스터 스펙**. 각 PR 착수 시 `/bts` 로 상세화한다(FR-AT-07 마스터 스펙 §B 선례 동형).
+
+**핵심 시나리오 3줄 요약.**
+- `CREATE_PROJECT` 전역 권한을 가진 사용자가 프로젝트를 만들면 `projects` + `project_memberships`(생성자=PROJECT_ADMIN)가 **한 트랜잭션**에 생기고 **즉시 이슈를 만들 수 있다**(S1·S10)
+- 프로젝트를 아카이브하면 **읽기는 살고 쓰기만 죽는다** — 이슈 키가 외부 인용 중이므로 소멸이 아니라 잠금이다(S6·S8·S9)
+- 전역 권한은 SYSTEM_ADMIN 이 그룹/사용자에게 부여한다(S12 — D7 완전형)
+
+**office-hours / design-shotgun 스킵.** 사유는 스펙 헤더에 기록. 요약 — 요구사항이 D1~D12 로 확정적이라 "만들 가치가 있나"는 이미 답이 나왔고([[bts-spec-office-hours-mismatch]] · 2026-05-29 FR-IS-02 선례), UI 는 D6 이라 3번째 이후 PR 이다.
+
+**PR 6분할 (스펙 §9).**
+
+| PR | 내용 | BC | 마이그레이션 |
+|---|---|---|---|
+| PR-1 | FR-PM-10 + `ProjectMembershipWritePort` 포트·어댑터 | identity-access (1개) | identity **V036** |
+| PR-2 | R6 + R6-B + FR-PJ-01 (포트 소비만) | workflow + issue (2개 — D10 예외) | workflow **V203** (전략 (b) 시) |
+| PR-3 | FR-PJ-02/03 목록·조회·설정(`name`) | issue-tracking | 없음 |
+| PR-4 | FR-PJ-04 아카이브 + 이슈 초크포인트 + issue-tracking 스코프 쓰기 잠금 | issue-tracking | issue **V037** |
+| PR-5 | D6 프론트 UI (design-shotgun 은 여기서) | apps/web | 없음 |
+| PR-6 | FR-PM-10 관리 화면 + D7 E2E | apps/web | 없음 |
+
+**분할 불변식 4종.** I1 `projects`+`project_memberships` 원자성(단 BC 경계를 넘으므로 포트 경유) / I2 방어가 경로보다 먼저(FR-AT-07 C-1 의 정반대) / I3 R6 백필과 R6-B 방어는 같은 PR / I4 R6 는 FR-PJ-01 과 같은 PR(D10).
+
+## Brainstorming Check
+
+✅ **통과 (3회차 iteration).** 라운드마다 BLOCKER 가 나왔고 **3라운드 모두 "직전 개정이 새로 넣은 결함"** 을 잡았다. 상세는 스펙 §Brainstorming Check.
+
+**★ 이 작업의 핵심 교훈 — 실패 양식이 세 번 반복됐고 매번 한 단계 깊어졌다.**
+
+| 라운드 | 눈가리개 | 처방 |
+|---|---|---|
+| 1회차 | **plan 이 세어준 범위** (D9 "초크포인트 1곳" · R2 "2행" · D8 "술어 변경") | 실측으로 덮어쓰기 → D12 |
+| 2회차 | **내가 고른 grep 패턴** (`/api/v1/projects` 경로 prefix) | 4중 교차 열거 |
+| 3회차 | **그 처방 자체의 전제** ("컨트롤러가 있고 타입 있는 DTO 를 받는다") | **5중 교차** — HTTP 밖 축 신설 |
+
+> *"개수를 재검증"*(1) → *"개수를 만든 정의를 재검증"*(2) → **"정의가 전제한 코드 모양을 재검증"**(3).
+> **2·3회차의 결함은 전부 "BLOCKER 를 고치며 새로 넣은 것"** 이다 — 방어를 추가하는 행위 자체가 새 사각지대를 만든다.
+
+**1회차 BLOCKER 3건 (전부 plan 이 "안전하다"고 결론낸 자리).**
+- **B1** D9 초크포인트가 프로젝트 스코프 쓰기 29개(4 BC)를 안 덮음 → **D12 로 범위 한정**. D9 증거(cross-BC 포트 2종이 초크포인트 경유)는 **참**이라 automation·Import 차단은 성립, 무너진 건 비용 추정뿐
+- **B2** I1 이 BC 경계 횡단(`projects`=issue-tracking / `project_memberships`=identity-access). R2 는 2행을 정확히 셌으나 **다른 BC 라는 걸 못 봄** → `ProjectMembershipWritePort` 신설
+- **B3** D8 술어 변경이 search-export-import FR-SR-03 오염(`ProjectMembershipAdapter` = 공유 포트 구현) → **`projectKeysOf` 불변**, 아카이브 필터는 issue-tracking 이 위에 얹음
+
+**2·3회차가 잡은 "내가 넣은 결함".**
+- **N4** *"ArchUnit 이 차단"* — 룰은 실존하나 **1차 차단은 Gradle 클래스패스**(FR-AT-07 PR-B 의 동일 전례 재현)
+- **N5** *"선례 `AutomationIssueMutationAdapter`"* — **정반대 선례**. `@Transactional` 0건, `TransactionTemplate` 으로 일부러 참여 회피. 복사하면 그 어댑터가 회피한 rollback-only 오염 트랩 부활 → **cross-BC 쓰기를 호출자 tx 안에서 하는 선례는 저장소에 없음**을 명시, 롤백 실증(DoD-11) 요구
+- **C10** 그 롤백 테스트를 **표준 테스트 베이스로 짜면 거짓 red** — `IssueTestcontainersBase:112` 가 tx-aware 가 아님
+
+**phantom 0건.** citation 21 · 심볼 10 전수 실존. 지어낸 이름 없음.
+
+**plan 단계로 이월된 미확정 7건.** 전수 목록(5중 교차) / §4.2 FR-PJ-03↔`lead`·`require_2fa` 중복 / EC-7 OCC 부재 / EC-2 아카이브 멱등 / R6-B 전략 3안 / B10 `BROWSE` 재사용 / §2.4-C `updateNextFireAt`(D12 후속 범위).
 
 ## Plan (← /bts-plan 채움)
 
