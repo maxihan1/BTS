@@ -265,11 +265,11 @@ describe('triggerTypeSchema', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// actionTypeSchema — 자동화 액션 타입 4종 (FR-AT-02)
+// actionTypeSchema — 자동화 액션 타입 5종 (FR-AT-02, SET_FIX_VERSIONS는 FR-AT-07 PR-B)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('actionTypeSchema', () => {
-  it('4종 액션 타입 모두 파싱 성공한다', () => {
+  it('5종 액션 타입 모두 파싱 성공한다', () => {
     const validTypes = ['SET_FIELD', 'ASSIGN', 'ADD_COMMENT', 'CALL_WEBHOOK', 'SET_FIX_VERSIONS']
     for (const type of validTypes) {
       expect(() => actionTypeSchema.parse(type)).not.toThrow()

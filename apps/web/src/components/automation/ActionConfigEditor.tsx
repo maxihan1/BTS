@@ -44,7 +44,7 @@ const TEXT = {
 const FIELD_CLASS =
   'w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20'
 
-/** 액션 타입 4종 한국어 라벨 — backend ActionType enum 1:1 대응 */
+/** 액션 타입 5종 한국어 라벨 — backend ActionType enum 1:1 대응 (SET_FIX_VERSIONS는 FR-AT-07 PR-B) */
 const ACTION_TYPE_LABELS: Record<ActionType, string> = {
   SET_FIELD: '필드 값 설정',
   ASSIGN: '담당자 지정',

@@ -58,7 +58,7 @@ const triggerTypeLabels: Record<TriggerType, string> = {
   WEBHOOK: '웹훅',
 }
 
-/** 액션 타입 → 한국어 배지 라벨 (backend ActionType 4종 1:1 대응, FR-AT-02 FR11) */
+/** 액션 타입 → 한국어 배지 라벨 (backend ActionType 5종 1:1 대응, FR-AT-02 FR11 · SET_FIX_VERSIONS는 FR-AT-07 PR-B) */
 const actionTypeLabels: Record<ActionType, string> = {
   SET_FIELD: '필드 변경',
   ASSIGN: '담당자',
@@ -310,7 +310,7 @@ function AutomationRuleRow({
  *   무한 409에 빠진다 (스펙 §4 FR-7 · §6 E5 · §2 S4).
  * - 삭제는 확인 모달(DeleteConfirmDialog) → 확인 시 useDeleteAutomationRule.
  * - 행마다 `rule.actions` 타입 배지 그룹을 표시한다(FR-AT-02 FR11) — SET_FIELD/ASSIGN/ADD_COMMENT/
- *   CALL_WEBHOOK을 한국어 라벨로, 액션이 0개면 배지 대신 "액션 없음" 문구.
+ *   CALL_WEBHOOK/SET_FIX_VERSIONS를 한국어 라벨로, 액션이 0개면 배지 대신 "액션 없음" 문구.
  *
  * @param projectKey 프로젝트 식별 키
  * @param onAddRule "룰 추가" 클릭 콜백
