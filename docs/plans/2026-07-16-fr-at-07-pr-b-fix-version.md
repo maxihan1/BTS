@@ -227,7 +227,15 @@ set -o pipefail
 **메타**.
 - agent: `db-engineer`
 - files: [`backend/modules/automation/src/main/resources/db/migration/automation/V306__automation_actions_set_fix_versions.sql`, `backend/modules/automation/src/test/kotlin/com/bts/automation/SchemaMigrationTest.kt`]
-- depends-on: []
+- depends-on: [1]
+
+> **★ depends-on [1]은 "커밋 순서"가 아니라 실제 컴파일 의존이다** (리뷰 지적 반영).
+> T1이 `IssueMutationPort`에 추상 메서드를 추가하는 순간 **`:modules:automation` 테스트 소스셋 전체가**
+> `StubIssueMutationPort` 미구현으로 깨진다. 이 task의 검증 명령
+> (`./gradlew :modules:automation:test --tests '*SchemaMigrationTest*'`)은 그 소스셋을 컴파일하므로,
+> T1과 같은 wave에 뜨면 **자기와 무관한 컴파일 에러를 받고 BLOCKED**된다.
+> bts-impl의 wave 엣지는 `depends-on` + `files 교집합`뿐이고 **Gradle 모듈 개념이 없다**(`bts-impl/SKILL.md:39-41`)
+> — 산문 주석은 파서가 읽지 않으므로 `depends-on`으로 못박아야 효력이 있다([[bts-plan-wave-gradle-module-compile]]).
 
 **RED**.
 - 파일. `SchemaMigrationTest.kt`
@@ -259,8 +267,13 @@ COMMENT ON COLUMN automation_actions.action_type IS
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/domain/ActionType.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/domain/Action.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/adapter/AutomationActionRepository.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/adapter/web/dto/AutomationRuleResponses.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/application/RuleConflictAnalyzer.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/application/ActionExecutor.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/gitops/AutomationYamlCodec.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/domain/ActionTest.kt`]
+- files: [`backend/modules/automation/src/main/kotlin/com/bts/automation/domain/ActionType.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/domain/Action.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/adapter/AutomationActionRepository.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/adapter/web/dto/AutomationRuleResponses.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/adapter/web/dto/AutomationRuleRequests.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/application/RuleConflictAnalyzer.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/application/ActionExecutor.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/application/AutomationRuleService.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/gitops/AutomationYamlCodec.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/gitops/AutomationRulesYaml.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/domain/ActionTest.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/adapter/AutomationActionRepositoryTest.kt`, `backend/modules/automation/src/test/kotlin/com/bts/automation/application/ActionExecutorTest.kt`]
 - depends-on: [1, 2]
+
+> **★ files 추가 5건** (리뷰 지적 반영). 2회차 plan은 REFACTOR가 지시한 `AutomationRuleRequests.kt` ·
+> `AutomationRuleService.kt` · `AutomationRulesYaml.kt`를 files에서 빠뜨려, implementer가 **"REFACTOR 포기(drift 잔존)"
+> 아니면 "선언 외 파일 수정 → BLOCKED"** 둘 중 하나를 강요받는 구조였다. `AutomationActionRepositoryTest.kt` ·
+> `ActionExecutorTest.kt`는 **§8.6 무주공산**(어느 task의 files에도 없던 drift 대상)이자 아래 RED의 poison 왕복 테스트 자리다.
 
 > depends-on 사유. **[1]** `ActionExecutor.dispatchAction`이 `issueMutationPort.setFixVersions`를 호출한다(코드 의존).
 > **[2]** `AutomationActionRepository` round-trip 테스트가 DB에 `SET_FIX_VERSIONS`를 INSERT하므로 V306 CHECK가 먼저 필요하다.
@@ -270,6 +283,11 @@ COMMENT ON COLUMN automation_actions.action_type IS
 - `ActionType.entries.size shouldBe 5` (`:18`) + `entries.toSet()`에 `SET_FIX_VERSIONS` 추가 (`:22-28`)
 - `fromJson 은 SET_FIX_VERSIONS config 의 versionIds 를 파싱한다` + `versionIds 키가 없으면 ActionConfigInvalidException` (EC9)
   + `UUID 형식이 아니면 실패` (EC10) + `빈 배열은 허용한다` (EC1)
+- **★ `AutomationActionRepositoryTest.kt` — DB 왕복 테스트 (poison 방어)**.
+  `SET_FIX_VERSIONS 액션은 replaceForRule → findByRuleId 왕복에서 versionIds 가 보존된다` + **빈 배열 왕복**도.
+  > 2회차 plan은 이 테스트에 **소관 task가 없었다**. 스펙 §8.2가 *"이 파일에 ArrayNode 선례가 없다 … 어긋나면
+  > 그 룰의 **모든** 액션이 로드 불가(poison)"* 로 **가장 위험하다고 지목한 `actionConfigJson` ↔ `fromJson` DB 왕복이
+  > 커버리지 0**이었다(T7의 YAML 왕복은 `AutomationYamlCodec` — 다른 경로라 대체 불가).
 - 실패 (예상). `ActionType.SET_FIX_VERSIONS` 없음 → 컴파일 실패
 
 **GREEN**. **★ 스펙 §8.2 표의 값을 그대로 옮긴다. 컴파일러는 분기의 존재만 강제하고 값은 안 본다.**
@@ -316,8 +334,15 @@ set -o pipefail
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/automation/src/test/kotlin/com/bts/automation/application/RuleConflictAnalyzerFieldPriorityTest.kt`]
+- files: [`backend/modules/automation/src/test/kotlin/com/bts/automation/application/RuleConflictAnalyzerFieldPriorityTest.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/application/RuleConflictAnalyzer.kt`]
 - depends-on: [3]
+
+> **★ `RuleConflictAnalyzer.kt`가 files에 있는 이유 = vacuous 검증(아래 §8.7 절차)** (리뷰 지적 반영).
+> 2회차 plan은 이 파일을 T4 files에서 빼놓고 *"일부러 위반을 넣어 fail 확인"* 을 시켰다 → implementer의 선택지가
+> **① 선언 외 파일 수정 → BLOCKED / ② 검증 생략 → BLOCKED** 둘뿐인 deadlock이었다.
+> 최악은 인센티브다 — **mutation은 되돌리므로 최종 diff에 안 남아, 규칙을 지키는 implementer만 BLOCKED되고
+> 무시하는 쪽이 통과한다.** T3와 files 교집합이 생겨 자동 직렬화되므로(`depends-on: [3]`과 동일 효과) 안전하다.
+> **최종 diff에 `RuleConflictAnalyzer.kt` 변경이 남으면 안 된다** — mutation은 반드시 되돌린다.
 
 > **★ 이 task가 이 PR에서 가장 중요하다.** T3의 12지점 중 `hasObservableSideEffect`(boolean 체인)와
 > `actionTriggers`(값)는 **틀려도 컴파일·기존 테스트가 전부 통과**한다. 이 테스트가 유일한 방어선이다.
@@ -425,11 +450,17 @@ set -o pipefail
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/api/automation-rules.types.ts`, `apps/web/src/api/__tests__/automation-rules.types.test.ts`, `apps/web/src/components/automation/AutomationRuleList.tsx`]
+- files: [`apps/web/src/api/automation-rules.types.ts`, `apps/web/src/api/automation-rules.types.test.ts`, `apps/web/src/components/automation/AutomationRuleList.tsx`, `apps/web/src/components/automation/ActionConfigEditor.tsx`]
 - depends-on: []
 
 > **원자 사유.** `actionTypeSchema` z.enum에 값을 넣는 순간 `Record<ActionType,string>` 라벨맵 2곳(TS2741)과
 > `default:` 없는 switch 2곳(TS2366)이 **동시에 컴파일이 깨진다**. 백엔드와 무관(계약 미러)이라 depends-on 없음.
+>
+> **★ `ActionConfigEditor.tsx`가 files에 있는 이유** (리뷰 지적 반영). 2회차 plan은 *"라벨맵 **2곳**이 동시에 깨진다"* 고
+> 써놓고 files엔 `AutomationRuleList.tsx` 1곳만 넣었다 — 나머지 `ACTION_TYPE_LABELS`(`ActionConfigEditor.tsx:48-53`)가
+> 선언 밖이라 **T8은 자기 검증(`pnpm typecheck`)을 구조적으로 통과할 수 없었다**(T9는 다음 wave).
+> **이 task는 그 파일에서 `ACTION_TYPE_LABELS`만 건드린다** — 위젯/렌더는 T9 소관.
+> T9와 files 교집합이 생겨 자동 직렬화된다(T9의 `depends-on: [8]`과 동일 효과).
 
 **RED**.
 - `automation-rules.types.test.ts`
@@ -458,7 +489,7 @@ set -o pipefail
 `AutomationRuleList.tsx:61` · `automation-rules.types.test.ts:268,272`
 **★ 오탐 주의**. `automation-rules.types.ts:40`의 "4종"은 **`ConflictType`** — 무관, 건드리지 말 것.
 
-**검증**. `pnpm vitest run src/api/__tests__/automation-rules.types.test.ts; echo "EXIT=$?"` + `pnpm typecheck`(tsconfig.app.json)
+**검증**. `pnpm vitest run src/api/automation-rules.types.test.ts; echo "EXIT=$?"` + `pnpm typecheck`(tsconfig.app.json)
 
 ---
 
@@ -466,7 +497,7 @@ set -o pipefail
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/automation/ActionConfigEditor.tsx`, `apps/web/src/components/automation/__tests__/ActionConfigEditor.test.tsx`, `apps/web/src/components/automation/AutomationRuleFormDialog.tsx`]
+- files: [`apps/web/src/components/automation/ActionConfigEditor.tsx`, `apps/web/src/components/automation/ActionConfigEditor.test.tsx`, `apps/web/src/components/automation/AutomationRuleFormDialog.tsx`]
 - depends-on: [8]
 
 **RED**. `ActionConfigEditor.test.tsx`
@@ -480,7 +511,7 @@ set -o pipefail
 1. `defaultConfigForType`에 **`SET_FIX_VERSIONS` 명시 분기** — `{ fixVersionsMode: 'replace', versionIds: [] }`
    ★ `parseActionConfig(type, {})`로 떨어뜨리면 `versionIds` 부재 → **`clear` 모드로 오판**된다
    (`SET_FIELD`가 이미 같은 이유로 명시 분기 — KDoc `:117` *"select가 유효한 초기값을 갖도록"*)
-2. `ACTION_TYPE_LABELS`(`:48-53`) — `SET_FIX_VERSIONS: '수정 예정 버전 설정'`(드롭다운용)
+2. ~~`ACTION_TYPE_LABELS`~~ → **T8이 이미 처리**(T8 files로 이관 — T8이 typecheck를 통과하려면 필수였음). 이 task는 건드리지 않는다
 3. `SetFixVersionsFields` 신규 — 모드 라디오 2개 + `useVersions(projectKey)` + `VersionMultiSelect variant="fix"`
    - **`VersionMultiSelect` 수정 금지**(제약 5) — `variant="fix"`가 이미 "수정 버전" 문구 제공. 고치면 `IssueMetaPanel.tsx:346-356` 회귀
    - 로딩/에러 = `ProjectMemberSelect.tsx:17-18,109` 선례(disabled shell + `TEXT.loading`/`TEXT.error`). **새 패턴 발명 금지**
@@ -504,8 +535,14 @@ set -o pipefail
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`docs/plan/product/automation.md`, `docs/plans/2026-07-16-fr-at-07-pr-b-fix-version.md`]
+- files: [`docs/plan/product/automation.md`]
 - depends-on: [4, 5, 6, 7, 9]
+
+> **★ plan 파일을 files에서 제거** (리뷰 지적 반영). controller가 같은 파일에 task 체크박스를 쓰므로
+> (`bts-impl/SKILL.md:195`) 동시 write 충돌이 난다.
+> **★ 코드 파일 스윕 권한 문제 해소.** 2회차 plan의 T10은 files가 문서 2개뿐이라 *"무주공산이면 여기서 처리"* 를
+> 자처하고도 **코드를 한 줄도 못 고치는** 구조였다. 무주공산 2건(`ActionExecutorTest.kt`·`AutomationActionRepositoryTest.kt`)은
+> **T3 files로 이관 완료** → 이 task는 이제 **발견·보고만** 하고, 코드 수정이 필요하면 **소관 task 재dispatch를 controller에 요청**한다.
 
 **작업**.
 1. **§8.6 잔여 스윕** — grep **2종**을 돌려 T1·T3·T8·T9가 놓친 게 없는지 확인
@@ -537,14 +574,40 @@ set -o pipefail
 
 ## Plan 메타
 
+### task 체크박스 (controller가 마킹 — `bts-impl/SKILL.md:195`)
+
+- [ ] T1. 포트 `setFixVersions` + 커맨드 + 어댑터 + 구현체 3곳
+- [ ] T2. V306 CHECK 5종 + 컬럼 코멘트
+- [ ] T3. `ActionType`/`Action` + 12지점 전수
+- [ ] T4. FR-9 백엔드 회귀 2종 ★
+- [ ] T5. S2~S5 automation 통합
+- [ ] T6. S6 양성 단언 (issue-tracking 실 DB)
+- [ ] T7. S7 YAML 왕복
+- [ ] T8. 프론트 계약
+- [ ] T9. 프론트 설정 UI
+- [ ] T10. 전수 동기화 스윕 + 문서 + 최종 회귀
+
+### wave (bts-impl 알고리즘 실제 결과 — `depends-on` + `files 교집합`만)
+
+> **★ 2회차 plan의 wave 목록은 한 wave도 맞지 않았다** (리뷰 지적). 산문으로 적은 "T2는 T1과 같은 wave 금지"는
+> **파서가 읽지 않아 효력이 0**이었다 → T2에 `depends-on: [1]`을 명시해 기계적으로 강제했다. 아래는 정정본이다.
+
+**★ 아래는 손으로 적은 게 아니라 `bts-impl/SKILL.md:38-43` 알고리즘을 그대로 돌린 실측 결과다**
+(직전 2회는 손계산이 전부 틀렸다 — 산문 wave 목록을 신뢰하지 말 것).
+
+| wave | task | agent | 근거 |
+|---|---|---|---|
+| **1** | T1 · T8 | backend · frontend | 둘 다 `depends-on: []`, files 교집합 ∅ (backend vs apps/web) |
+| **2** | T2 · T6 · T9 | db · backend · frontend | T2←[1] / **T6←[1]** / T9←[8]. 교집합 ∅. Gradle 모듈도 분리(automation-test / issue-tracking-test / 없음) |
+| **3** | T3 | backend | ←[1,2] |
+| **4** | T4 · T5 · T7 | backend ×3 | 전부 ←[3]. files 교집합 ∅ |
+| **5** | T10 | backend | ←[4,5,6,7,9]. T8은 T9를 통해 **전이적으로 커버** |
+
+**자동 직렬화 엣지 (files 교집합 — 의도한 것)**. `T3 → T4`(`RuleConflictAnalyzer.kt` — vacuous 검증용) ·
+`T8 → T9`(`ActionConfigEditor.tsx` — 라벨맵 vs 위젯). 둘 다 이미 `depends-on`으로도 연결돼 있어 무영향.
+**cycle 없음.**
+
 - **task 수**. 10
-- **예상 wave**. 4
-  - **wave 1**. T1(shared-kernel·issue-tracking·automation-test·slack-test) · T8(apps/web)
-    → T2는 **automation 모듈 컴파일이 T1과 겹쳐** 같은 wave 금지(메모리 `bts-plan-wave-gradle-module-compile` — wave는 Gradle 모듈 컴파일도 직렬화)
-  - **wave 2**. T2(db) · T9(프론트 UI, T8 의존)
-  - **wave 3**. T3(12지점 원자)
-  - **wave 4**. T4 · T5 · T6 · T7 (전부 T3 의존, 파일 교집합 0 → 4-병렬)
-  - **wave 5**. T10 (최종 스윕)
 - **TDD 강제**. yes — 단 **T1·T3·T8은 "컴파일 실패 = RED"** (포트/sealed class/z.enum 추가는 구현체를 동시에 깨므로
   테스트만 먼저 커밋하는 형태가 불가능. ADR D4·D5의 구조적 귀결)
 - **병렬 dispatch 주의**. **`apps/web` 파일이 있으므로 pre-commit lint-staged race가 발화 가능**하다
@@ -553,4 +616,36 @@ set -o pipefail
 - **추가 검증**. ktlint · detekt · typecheck(tsconfig.app.json) · vitest · **`:modules:app:test`(prod 조립)**
 - **E2E**. 이 PR 범위 밖 — 기존 automation E2E 25건은 T10에서 회귀 확인만
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-16) — 적대적 eng 리뷰
+
+**리뷰 구성 결정.** 스킬 규칙은 `feature` + `task≥3` → `/autoplan`(CEO·design·eng·DX 4종)이나 **4종 중 3종이 공허**하다 —
+CEO("만들 가치가 있나")는 Maxi가 DEC-11로 확정했고, DX는 공개 API 변경 0, design은 새 화면 0(기존 다이얼로그 확장).
+→ **eng 집중 리뷰**([[bts-review-plan-autoplan-overkill]] 선례 동형).
+
+**🛑 BLOCKER 5건 — 전부 수정 완료.**
+
+| # | 지적 | 조치 |
+|---|---|---|
+| B1 | **프론트 files 경로 2개가 실재하지 않음** — `__tests__/` 디렉토리 없음(이 repo는 colocated). implementer가 엉뚱한 곳에 빈 파일 생성 + **`git log -- <files>` 경로 필터가 빈 결과 → `TDD_VIOLATION` → 무한 재dispatch** | 경로 정정(`api/automation-rules.types.test.ts` · `components/automation/ActionConfigEditor.test.tsx`) |
+| B2 | **T3 files가 자기 REFACTOR 대상 3파일 누락** — implementer가 "REFACTOR 포기(drift 잔존)" 아니면 "선언 외 수정 → BLOCKED" 강요 | `AutomationRuleRequests.kt`·`AutomationRuleService.kt`·`AutomationRulesYaml.kt` 추가 |
+| B3 | **T8 자기모순** — "라벨맵 2곳이 동시에 깨진다"고 써놓고 files엔 1곳. **T8이 자기 검증(`pnpm typecheck`)을 구조적으로 통과 불가** | `ActionConfigEditor.tsx` 추가(라벨맵만 소관), T9의 중복 지시 제거 |
+| B4 | **T2가 wave 1에 T1과 같이 뜸** — wave 엣지는 `depends-on`+`files 교집합`뿐이고 **모듈 개념 없음**(`bts-impl/SKILL.md:39-41`). 산문 주석은 효력 0 → T2가 T1이 깨놓은 automation 테스트 소스셋을 컴파일해 BLOCKED | T2에 **`depends-on: [1]`** 명시(실제 컴파일 의존) |
+| B5 | **T4 vacuous 검증이 deadlock** — mutation 대상 `RuleConflictAnalyzer.kt`가 T3 소관. ①선언 외 수정→BLOCKED ②검증 생략→BLOCKED. **최악의 인센티브 — 규칙 지키는 쪽만 BLOCKED되고 무시하는 쪽이 통과**(mutation은 되돌려서 diff에 안 남음) | T4 files에 `RuleConflictAnalyzer.kt` 추가 + "최종 diff에 남으면 안 됨" 명시 |
+
+**⚠️ CONCERN 4건 — 전부 수정 완료.**
+- **wave 목록이 알고리즘 결과와 한 wave도 불일치** → 위상정렬 실제 결과로 재작성 + 기계 검증(아래)
+- **§8.6 무주공산 2건**(`ActionExecutorTest.kt`·`AutomationActionRepositoryTest.kt`가 어느 files에도 없음) + **T10이 스윕을 자처하면서 코드 파일 수정 권한 0** → 무주공산을 T3 files로 이관, T10은 발견·보고만
+- **최고 위험 지점(`actionConfigJson` poison)에 테스트 소관 0** — 스펙이 "가장 위험"이라 지목한 `actionConfigJson`↔`fromJson` **DB 왕복**을 어느 task도 안 덮었음(T7은 YAML이라 다른 경로) → T3 RED에 `AutomationActionRepositoryTest` 왕복 추가
+- **task 체크박스 0개** → controller 마킹 대상 추가. T10 files에서 plan 파일 제거(동시 write 충돌)
+
+**✅ 반증된 우려 (기록).**
+- **"컴파일 실패 = RED"는 bts-impl과 충돌하지 않는다.** TDD 판정은 **커밋 순서만** 본다(`SKILL.md:166` — `test:` hash가
+  `feat:` hash보다 먼저). 빌드 게이트 없음. `.husky/pre-commit`은 `apps/web/**` eslint만이라 Kotlin은 대상 밖.
+  → **내가 경고한 위험은 헛다리였고, 진짜 위험(경로 오타)은 못 봤다.**
+- **T3은 쪼갤 축이 없다** — `Action.kt:86-91` `fromJson`이 `when (actionType)` exhaustive라 **enum만 추가해도 즉시 깨진다**.
+  enum/subclass 분리 불가. "각 task 2-5분" 위반이나 **컴파일 제약이라 정당**.
+- wave 4의 T4·T5·T6·T7 files 교집합 ∅ · 백엔드 경로 전부 실재 · 라인 번호 표본 전수 일치 · T10의 T8 누락은 전이적 커버(무해).
+
+**BLOCKER: 없음** (5건 전부 해소).
