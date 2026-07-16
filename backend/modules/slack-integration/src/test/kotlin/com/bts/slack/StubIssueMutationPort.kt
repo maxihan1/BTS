@@ -10,8 +10,8 @@ import com.bts.shared.issue.SetFieldCommand
 import com.bts.shared.issue.SetFixVersionsCommand
 
 /**
- * 통합 테스트가 이슈 변경(담당자 배정/댓글 추가/필드 변경) 결과를 명시 시드하는 [IssueMutationPort] stub
- * (FR-SL-05 PR2 Task 3).
+ * 통합 테스트가 이슈 변경(담당자 배정/댓글 추가/필드 변경/수정 예정 버전 설정) 결과를 명시 시드하는
+ * [IssueMutationPort] stub (FR-SL-05 PR2 Task 3).
  *
  * cross-BC 이슈 변경 쓰기 포트는 prod 에서 issue-tracking 어댑터가 제공하나 slack test-boot 컨텍스트에는
  * 실 구현이 없다. `SlackInteractionService`(담당자 지정/댓글 추가, FR-SL-05 PR2 후속 Task)의 생성자가

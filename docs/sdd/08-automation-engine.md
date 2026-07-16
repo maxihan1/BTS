@@ -45,6 +45,7 @@ condition: "#issue.type == 'Bug' && #issue.priority == 'Highest' && #issue.assig
 |---|---|
 | `SetField` | 필드 변경 |
 | `Assign` | 담당자 설정 |
+| `SetFixVersions` | 수정 예정 버전(Fix Version) 설정 |
 | `AddComment` | 댓글 추가 (템플릿 변수 지원) |
 | `AddLabel` | 라벨 추가 |
 | `Transition` | 상태 전이 (워크플로우 거침) |
@@ -155,11 +156,10 @@ rule:
   conditions:
     - PR 본문에 "Closes PROJ-N" 또는 "Fixes PROJ-N" 패턴 매칭
   actions:
-    - type: set-field
-      target_issue: "{{ extracted_issue_key }}"
-      field: fix_version_ids
-      value: ["{{ pr.target_branch_version }}"]
+    - { type: SET_FIX_VERSIONS, config: { versionIds: ["{{ pr.target_branch_version }}"] } }
 ```
+
+> 위 예시 중 `trigger`(webhook.received/pull_request.merged)와 `conditions`는 PR-C 범위로 아직 미구현인 개념 스케치다. 이 PR(PR-B)이 구현한 범위는 `actions`의 `SET_FIX_VERSIONS`(config 키 `versionIds`, UUID 문자열 배열, 빈 배열은 전체 해제)뿐이다.
 
 ## 8.9 다음 챕터
 
