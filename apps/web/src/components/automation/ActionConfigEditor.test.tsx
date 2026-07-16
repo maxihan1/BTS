@@ -459,6 +459,16 @@ describe('ActionConfigEditor — SET_FIX_VERSIONS', () => {
     expect(screen.queryByRole('checkbox', { name: '1.0.0' })).not.toBeInTheDocument()
   })
 
+  it('fixVersionsMode 키가 없으면(undefined) 교체 모드로 렌더한다(undefined ≡ replace, fail-closed 기본값)', () => {
+    const value: ActionFormState = {
+      type: 'SET_FIX_VERSIONS',
+      config: { versionIds: [] },
+    }
+    renderWithClient(<ActionConfigEditor projectKey={PROJECT_KEY} value={value} onChange={vi.fn()} />)
+
+    expect(screen.getByRole('radio', { name: '선택한 버전으로 교체' })).toBeChecked()
+  })
+
   it('useVersions 로딩이면 disabled shell 문구가 뜨고 모드 선택은 계속 가능하다(EC13)', () => {
     server.use(
       http.get('/api/v1/projects/:projectIdOrKey/versions', async () => {
@@ -561,5 +571,11 @@ describe('validateActions — S8 저장 거부', () => {
     const actions: ActionFormState[] = [{ type: 'SET_FIELD', config: { field: 'summary', value: '' } }]
 
     expect(validateActions(actions)).toEqual([])
+  })
+
+  it('fixVersionsMode 키가 아예 없으면 replace로 간주해 저장을 거부한다(undefined ≡ replace, fail-closed 기본값)', () => {
+    const actions: ActionFormState[] = [{ type: 'SET_FIX_VERSIONS', config: { versionIds: [] } }]
+
+    expect(validateActions(actions)).toEqual([{ index: 0, message: expect.any(String) as unknown as string }])
   })
 })
