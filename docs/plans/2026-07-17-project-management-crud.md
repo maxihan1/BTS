@@ -64,6 +64,29 @@ BTS는 지금 **스페이스가 하나(ATLAS)뿐이고 그마저 손으로 심�
 | D8 | **아카이브 목록 = 기본 제외 + 별도 탭** (지라 관례) | Maxi 확정. Version 선례(`VersionRepository.kt:84·100·129`가 STATUS 필터 없이 DELETED_AT만 검사)와는 **의도적으로 다름**. `ProjectMembershipAdapter.kt:63-73`("내 프로젝트 목록") 술어 변경 필요 → identity-access cross-BC 영향 |
 | D9 | **아카이브 잠금 범위 = 백그라운드 포함 (전면 읽기 전용)** | Maxi 확정. **비용은 당초 우려보다 훨씬 작다** — cross-BC 쓰기 포트 2종이 **전부 `IssueApplicationService`를 통과**하므로(`AutomationIssueMutationAdapter` KDoc:30-31 "도메인 repository 를 직접 호출하지 않으므로", `IssueImportAdapter`) 초크포인트 한 곳 게이트로 API·automation·Import가 동시에 막힌다. **`ProjectLifecyclePort` 신설 불필요, BC별 어댑터 불필요.** 알림/Slack은 이슈 변경 이벤트에 반응하므로 변경이 막히면 자동으로 멈춘다. 잔여 = automation 시간 기반 트리거의 409 실패 노이즈 → automation 조기 skip으로 처리 |
 
+### /context-restore 세션 확정 (2026-07-17, 저장본 §Remaining 대기 2건 해소)
+
+| # | 결정 | 이유 |
+|---|---|---|
+| D10 | **R6 = 이번 PR 통합** — FR-PJ-01 PR 안에서 R6 + R6-B를 함께 고친다. 별도 선행 PR 아님 | Maxi 확정. 추천안(별도 선행 PR)을 기각. **BC 혼재를 명시 고지한 상태에서의 선택** — R6 수정은 project-workflow BC, FR-PJ-01은 issue-tracking BC라 한 PR이 2개 BC를 담는다. `DEVELOPMENT.md §1` 절대 규칙 19개에는 BC 격리가 **없다**(보안 6 / 데이터 무결성 4 / 코드 품질 6 / 외부 의존성 3). "한 PR = 한 BC + 한 plan"은 `DEVELOPMENT.md §4 PR 규칙`의 **관례**이므로 절대 규칙 충돌이 아니다. `CLAUDE.md §컨텍스트 효율`의 "여러 BC 동시 수정은 Maxi 확인" 요건 = **본 결정으로 충족**. → PR 본문·`/bts-codereview`에 이 근거를 첨부해야 하며, 라벨 `bc:<context>`가 단수 전제라 spec 단계에서 표기 방식 결정 필요 |
+| D11 | **계속 진행 — D7 완전형 유지** | Maxi 확정. D2("코어만")의 공식 확대를 유지. 되돌리기 가장 싼 지점(코드 0줄)에서 재확인한 결과이므로 이후 범위 축소 재논의는 새 근거 없이는 하지 않는다. 범위 = FR 5개(FR-PJ-01~04 + FR-PM-10), 123 → 128 |
+
+### R6-B — R6 을 고치면 깨어나는 2차 결함 (2026-07-17 실측 확인, 신규 발견)
+
+**R6 확정.** 3중 실측.
+1. `V201__workflow_schemes.sql:132-134` 주석이 자인 — "Flyway migrate 는 Spring Boot 기동 전에 실행되므로 workflows 가 비어 있으면 0건 삽입 … 후속 ApplicationRunner 에서 보완 (Wave-2 범위)".
+2. **그 Wave-2 는 미구현.** project-workflow 의 `ApplicationReadyEvent` 소비자는 `YamlSeedService` 단 하나이고, 이 클래스는 workflows / workflow_states / workflow_transitions / workflow_validators / workflow_post_actions 만 삽입한다(`:483-533`). 스킴↔워크플로우 매핑 삽입 코드 없음. 전 모듈 `ApplicationRunner` / `CommandLineRunner` grep 결과에도 백필 러너 없음(MinIO config · `SystemAdminBootstrapRunner` 뿐).
+3. `infra/local/seed-project.sql:54-56` 주석이 증상 명시 — "없으면 resolveStart(null) 가 기본 매핑을 못 찾아 422 workflow_not_configured".
+
+**R6-B (신규).** `V201:84` — `workflow_id UUID NOT NULL REFERENCES workflows(id) ON DELETE RESTRICT`.
+`YamlSeedService.applyIfChanged`(`:289-305`)는 YAML structural 변경 감지 시 `deleteWorkflow(key)` → `insertWorkflow(dto)` 로 **통째 재적재**하는데, `deleteWorkflow`(`:467-472`)는 `DELETE FROM workflows WHERE key = ?` 평문이다. **매핑이 존재하는 순간부터 표준 워크플로우 YAML 을 구조적으로 한 번만 수정해도 FK RESTRICT 위반 → `ApplicationReadyEvent` 시드 예외 → 부팅 실패.**
+
+- **두 결함이 서로를 가리고 있다.** R6 때문에 매핑이 항상 0행이라 RESTRICT 가 발동할 일이 없다. R6 을 고치는 순간 R6-B 가 활성화된다.
+- `YamlSeedService` KDoc `:143-145` 는 "CASCADE 로 런타임 post-action 이 소실된다 — 알려진 한계"라며 CASCADE 를 전제하는데, **매핑만 RESTRICT** 라 이 전제가 틀렸다.
+- 로컬은 `seed-project.sql:57-70` 이 매핑을 심으므로 **이미 이 지뢰 위**에 있다(YAML 구조 수정 시 부팅 실패). 아직 아무도 안 밟았을 뿐.
+- 패턴 동형 — 메모리 `permitall-opens-preexisting-body-buffer-dos`("경로를 열면 선재 결함이 신규 노출"). D10 이 선행 PR 분리를 기각했으므로 **같은 PR 안에서 R6 백필과 R6-B 방어를 동시에** 넣어야 한다. 백필만 넣고 R6-B 를 남기면 부팅 실패를 심는 것이다.
+- **spec 단계 필수 설계.** 백필 러너의 재시드 생존 전략 — 후보 (a) `deleteWorkflow` 전 매핑 정리 후 재연결 (b) FK 를 CASCADE 로 바꾸고 백필 러너가 매번 보정 (c) workflows 재적재를 UPSERT 로 전환해 UUID 보존. 각각 `SchemaMigrationTest` 카운트 가드 · `init_codegen.sql` 미러 영향 확인 필요.
+
 ### FR 배치 (D6 + D7 귀결)
 
 | FR | BC | 내용 |
@@ -148,7 +171,9 @@ Draft PR #276 `backend/fr-at-07-pr-b-fix-version`이 같은 issue-tracking BC의
 
 결과. **새 prod DB 에서는 어떤 프로젝트를 만들어도 이슈 생성이 422 `workflow_not_configured` 로 실패한다.** `WorkflowKeyResolverImpl.kt:60` EC-2 경로다. 현재는 `infra/local/seed-project.sql:57-70` 이 로컬에서 손수 심어 가려져 있고, 그 파일 `:53` 주석이 문제를 명시한다 — "부팅 시드는 스킴/워크플로우만 만들고 이 매핑은 안 만든다(원래 워크플로우 스킴 설정 UI 의 몫)".
 
-**프로젝트 생성 기능과 별개의 선재 결함이나, FR-PJ-01 이 이걸 만나지 않고는 동작을 증명할 수 없다.** spec 단계에서 처리 방침 결정 필요 — (a) 이번 PR 에서 Wave-2 백필 구현 (b) 별도 선행 PR (c) 워크플로우 스킴 설정 UI(별도 FR) 로 이연.
+**프로젝트 생성 기능과 별개의 선재 결함이나, FR-PJ-01 이 이걸 만나지 않고는 동작을 증명할 수 없다.**
+
+**→ 처리 방침 확정 = D10 (이번 PR 통합).** 선택지 (b) 별도 선행 PR · (c) 별도 FR 이연은 Maxi 기각. 단 **백필만 넣으면 안 된다** — R6-B(§R6-B) 가 동시에 활성화되므로 같은 PR 에서 함께 방어한다.
 
 ### R3. 이슈 키 영구 보존과 충돌 (learnings.md 사전등록 함정)
 
