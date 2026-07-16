@@ -2,7 +2,7 @@
 package com.bts.shared.issue
 
 /**
- * 자동화 액션(필드 변경/담당자 배정/댓글 추가) cross-BC 위임 포트 — automation BC 용 (FR-AT-02 Task 2).
+ * 자동화 액션(필드 변경/담당자 배정/댓글 추가/수정 예정 버전 설정) cross-BC 위임 포트 — automation BC 용 (FR-AT-02 Task 2).
  *
  * automation BC 가 자동화 룰([com.bts.automation] 도메인, 이 모듈 밖에 위치)에서 정의된 액션을
  * 실행할 때, 이슈 상태를 실제로 바꾸기 위해 issue-tracking 기존 도메인 로직에 위임하는 포트다.
@@ -25,7 +25,7 @@ package com.bts.shared.issue
  *
  * ### 실패 전달 — 예외
  *
- * 세 메서드 모두 성공 시에만 [MutationResult] 를 반환하고, 권한 거부·이슈 부재·OCC 버전
+ * 네 메서드 모두 성공 시에만 [MutationResult] 를 반환하고, 권한 거부·이슈 부재·OCC 버전
  * 충돌 등 실패는 예외로 던진다. [com.bts.shared.board.IssueTransitionPort.transition] 과 동일한
  * 계약이다 — consumer(automation `ActionExecutor`)가 catch 후 실행 결과(성공/부분실패)로 매핑한다.
  *
@@ -56,6 +56,7 @@ package com.bts.shared.issue
  * @see SetFieldCommand
  * @see AssignCommand
  * @see AddCommentCommand
+ * @see SetFixVersionsCommand
  * @see MutationResult
  */
 interface IssueMutationPort {

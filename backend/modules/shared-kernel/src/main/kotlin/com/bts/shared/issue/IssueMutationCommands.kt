@@ -1,4 +1,4 @@
-// IssueMutationPort 커맨드/결과 값 객체 — 필드 변경·담당자 배정·댓글 추가 (FR-AT-02)
+// IssueMutationPort 커맨드/결과 값 객체 — 필드 변경·담당자 배정·댓글 추가·수정 예정 버전 설정 (FR-AT-02)
 package com.bts.shared.issue
 
 import java.util.UUID
@@ -108,8 +108,8 @@ data class SetFixVersionsCommand(
 )
 
 /**
- * [IssueMutationPort] 세 메서드([IssueMutationPort.setField]/[IssueMutationPort.assign]/
- * [IssueMutationPort.addComment]) 공통 결과 VO.
+ * [IssueMutationPort] 네 메서드([IssueMutationPort.setField]/[IssueMutationPort.assign]/
+ * [IssueMutationPort.addComment]/[IssueMutationPort.setFixVersions]) 공통 결과 VO.
  *
  * 실패(권한 거부·이슈 부재·OCC 버전 충돌 등)는 이 VO 로 표현하지 않고 예외로 던진다
  * ([IssueMutationPort] KDoc "실패 전달 — 예외" 참조). 이 VO 는 성공(또는 dryRun 미리보기

@@ -28,7 +28,7 @@ import org.springframework.transaction.support.TransactionTemplate
 /**
  * [IssueMutationPort] prod 구현체 (FR-AT-02 Task 7).
  *
- * automation BC 의 자동화 액션(필드 변경/담당자 배정/댓글 추가)을 issue-tracking 의 기존
+ * automation BC 의 자동화 액션(필드 변경/담당자 배정/댓글 추가/수정 예정 버전 설정)을 issue-tracking 의 기존
  * [IssueApplicationService]/[CommentApplicationService] 유스케이스에 위임한다. 도메인
  * repository 를 직접 호출하지 않으므로 권한 검증([IssueApplicationService.assertPermission] 계열)·
  * 필드 검증·OCC(낙관적 동시성 제어)·이벤트 발행이 모두 기존 경로 그대로 강제된다
@@ -48,7 +48,7 @@ import org.springframework.transaction.support.TransactionTemplate
  *
  * ### 트랜잭션 경계 — `@Transactional` 대신 [TransactionTemplate] (OCC 재시도 격리)
  *
- * [setField]/[assign] 은 OCC 충돌 시 현재 version 을 재조회해 최대 1 회 재시도한다. 이 재시도를
+ * [setField]/[assign]/[setFixVersions] 는 OCC 충돌 시 현재 version 을 재조회해 최대 1 회 재시도한다. 이 재시도를
  * 선언적 `@Transactional` 메서드 하나의 몸체 안에서 수행하면 Spring 의 "참여(participating) 트랜잭션
  * 실패 시 전체 rollback-only 전파" 규칙([org.springframework.transaction.support.AbstractPlatformTransactionManager]
  * 기본 동작, `isGlobalRollbackOnParticipationFailure=true`) 에 의해 첫 시도의 OCC 예외가 물리 트랜잭션
@@ -75,7 +75,12 @@ import org.springframework.transaction.support.TransactionTemplate
  *   shared-kernel [IssueMutationPort] 는 Jackson 비의존이므로 이 어댑터가 자신의 ObjectMapper 로
  *   디코딩 책임을 진다([SetFieldCommand] KDoc 참조).
  * @param transactionTemplate 시도별 독립 트랜잭션 경계. 위 "트랜잭션 경계" 절 참조.
+ *
+ * 공개 메서드 4개(setField/assign/addComment/setFixVersions) + private 헬퍼 7개 = 11개.
+ * TooManyFunctions 임계값과 정확히 맞물리나, [IssueMutationPort] 4 메서드를 한 어댑터가 위임하는
+ * 설계([VersionApplicationService] KDoc 동형 근거) 상 클래스 분리는 과도 — Suppress 처리.
  */
+@Suppress("TooManyFunctions")
 @Component
 @Profile("prod")
 class AutomationIssueMutationAdapter(

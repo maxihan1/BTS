@@ -21,12 +21,13 @@ import com.bts.shared.issue.SetFixVersionsCommand
  *
  * ## settable — 메서드별 독립된 성공 결과/실패 예외
  * [nextSetFieldResult]/[nextSetFieldError], [nextAssignResult]/[nextAssignError],
- * [nextCommentResult]/[nextCommentError] 세 쌍을 각각 세터로 직접 시드한다. 같은 메서드의 결과/예외 필드는
+ * [nextCommentResult]/[nextCommentError], [nextSetFixVersionsResult]/[nextSetFixVersionsError]
+ * 네 쌍을 각각 세터로 직접 시드한다. 같은 메서드의 결과/예외 필드는
  * 서로 배타적으로 다뤄야 한다 — 예외를 세팅했다면 결과 필드는 null 로 두는 것이 호출자 책임이다(예외가
  * 세팅돼 있으면 결과보다 우선 던진다).
  *
  * ## 미시드 기본값 = 명시 오류 (fail-closed, [IssueMutationPort] KDoc "default 구현 없음" 철학)
- * 세 메서드 모두 결과/예외를 시드하지 않고 호출하면 [IllegalStateException] 으로 즉시 실패해, 통합 테스트가
+ * 네 메서드 모두 결과/예외를 시드하지 않고 호출하면 [IllegalStateException] 으로 즉시 실패해, 통합 테스트가
  * 시나리오 세팅을 빠뜨렸음을 표면화한다(성공으로 위장하지 않는다) — silent success 는 "슬랙에서 담당자를
  * 지정했는데 실제로는 아무 일도 안 일어남" 같은 사고로 이어진다.
  *

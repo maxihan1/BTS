@@ -11,7 +11,7 @@ import java.util.UUID
  * Spring 컨텍스트 없이 순수 단위 테스트로 실행한다.
  *
  * 검증 항목.
- * - [IssueMutationPort] 는 default 구현이 없음 — 3 메서드 모두 추상(fail-closed).
+ * - [IssueMutationPort] 는 default 구현이 없음 — 4 메서드 모두 추상(fail-closed).
  * - [SetFieldCommand] 필드 계약(actorUserId/issueKey/field/value/dryRun).
  * - [AssignCommand] 필드 계약(actorUserId/issueKey/assigneeId/dryRun), assigneeId nullable.
  * - [AddCommentCommand] 필드 계약(actorUserId/issueKey/body/dryRun).
@@ -21,8 +21,8 @@ class IssueMutationPortContractTest {
     // ── IssueMutationPort fail-closed ────────────────────────────────────────
 
     @Test
-    fun `IssueMutationPort 는 default 구현 없이 3 메서드 모두 추상으로 선언된다`() {
-        // 3 메서드 모두 override 하지 않으면 익명 객체 생성이 컴파일되지 않는다.
+    fun `IssueMutationPort 는 default 구현 없이 4 메서드 모두 추상으로 선언된다`() {
+        // 4 메서드 모두 override 하지 않으면 익명 객체 생성이 컴파일되지 않는다.
         // 이 테스트는 컴파일 타임에 override 강제를 검증한다.
         val port =
             object : IssueMutationPort {
