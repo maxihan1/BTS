@@ -576,14 +576,14 @@ set -o pipefail
 
 ### task 체크박스 (controller가 마킹 — `bts-impl/SKILL.md:195`)
 
-- [ ] T1. 포트 `setFixVersions` + 커맨드 + 어댑터 + 구현체 3곳
+- [x] T1. 포트 `setFixVersions` + 커맨드 + 어댑터 + 구현체 3곳 — PASS (`05c394da5` test → `07619dc58` feat → `915319e80` refactor)
 - [ ] T2. V306 CHECK 5종 + 컬럼 코멘트
 - [ ] T3. `ActionType`/`Action` + 12지점 전수
 - [ ] T4. FR-9 백엔드 회귀 2종 ★
 - [ ] T5. S2~S5 automation 통합
 - [ ] T6. S6 양성 단언 (issue-tracking 실 DB)
 - [ ] T7. S7 YAML 왕복
-- [ ] T8. 프론트 계약
+- [x] T8. 프론트 계약 — PASS (`d008e49c0` test → `334604095` feat → `6d68999cf` refactor)
 - [ ] T9. 프론트 설정 UI
 - [ ] T10. 전수 동기화 스윕 + 문서 + 최종 회귀
 
