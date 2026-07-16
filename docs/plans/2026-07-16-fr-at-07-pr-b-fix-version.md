@@ -102,9 +102,45 @@ learnings 2026-05-20 "phantom 엔티티 가설 검증 누락"의 재발 방지 �
 
 **V번호**. automation 예약 구간 V300~V399, 현재 최신 **V305** → 신규 **V306** (V302 편집 금지, 체크섬 드리프트)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-16-fr-at-07-pr-b-fix-version.md](../specs/2026-07-16-fr-at-07-pr-b-fix-version.md) **(개정 4회차)**
+상위. [마스터 스펙 §B](../specs/2026-07-15-fr-at-07-pr-merge.md)
+
+**핵심 3줄 요약.**
+- `IssueMutationPort`에 4번째 메서드 `setFixVersions`를 뚫고(default 없음 = fail-closed), 어댑터가 기존
+  `changeFixVersions` 유스케이스에 위임한다 — 권한·검증·OCC·히스토리가 전부 기존 경로 그대로 강제된다
+- automation에 `SET_FIX_VERSIONS` 액션을 추가한다 — sealed class exhaustive `when` 12지점은 컴파일러가 강제하지만
+  **값의 정합성은 강제하지 않으므로** 스펙 §8.2가 12지점의 값을 전부 명시한다
+- 프론트는 계약 동기화 + **설정 UI**까지 한다(Maxi 확정) — 드롭다운이 `actionTypeSchema.options` 자동 파생이라
+  계약만 넣으면 사용자가 고른 뒤 입력 영역이 비고, 그 상태로 저장하면 **기존 Fix Version이 전부 지워진다**
+
+**Maxi 확정 3건.**
+1. **FR-5 설정 UI 포함** — "계약만"은 반쪽 제품(§2.1)
+2. **FR-6 명시적 의도 선택** — "선택한 버전으로 교체" / "전체 해제" 2모드, 교체+빈목록은 저장 거부.
+   `fixVersionsMode` **`undefined ≡ replace`**(fail-closed) — 6조합 전수 검증 통과
+3. **게이트 진행** — Phase B 3라운드 후 `/bts-plan`으로
+
+## Brainstorming Check
+
+⚠️ **3회 iteration 전부 BLOCKER 발견 후 개정 완료** (스킬 상한 소진 → Maxi 확정으로 plan 진행)
+
+| 라운드 | 발견 | 성격 |
+|---|---|---|
+| 1 | 🛑 §2.1 인과 역전 · `actionTriggers` 값 미규정 | **핵심 로직** |
+| 2 | 🛑 개정이 넣은 fail-open 가드(`fixVersionsMode` undefined) · §8.6 6건 누락 · §8.1 fail-closed 오기 · EC13 자기모순 | **개정이 만든 구멍** |
+| 3 | 🛑 FR-9 테스트 설계 2종 vacuous · S6 MockK 배치 vacuous · §8.6 8건 또 누락 | **검증 장치 자체가 vacuous** |
+
+**★ 이 스펙에서 얻은 교훈 (impl/codereview로 인계).**
+1. **3라운드 모두 "직전 개정이 새로 넣은 결함"을 잡았다.** 방어를 추가하는 행위 자체가 새 사각지대를 만든다.
+2. **내가 phantom을 2건 만들었다** — `TriggerType.TRANSITION`(실제 5종에 없음) · `actionsToRequest`(실명
+   `serializeActionsFormState`). 둘 다 learnings에 이미 있는 함정(phantom 엔티티 · 환각 API)이다.
+   → **구현자는 스펙의 이름·라인을 그대로 믿지 말고 착수 시 grep으로 재확인한다.**
+3. **컴파일러가 강제하는 건 분기의 존재지 값의 정합성이 아니다** — §8.2가 12지점의 값을 명시하는 이유.
+4. **§8.6의 완전성은 보증되지 않는다** — grep이 열거형 KDoc을 원리적으로 못 잡는다(3연속 누락).
+   §8.2가 손대는 모든 함수의 KDoc을 직접 읽어야 한다.
+
+**핵심 설계는 3라운드 내내 불변** — ADR D1~D6은 한 번도 흔들리지 않았다. 지적은 전부 그 위의 서술/검증 설계였다.
 
 ## Plan (← /bts-plan 채움)
 
