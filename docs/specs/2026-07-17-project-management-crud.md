@@ -227,7 +227,7 @@ placeholder 는 여기서 "감사 정확도" 문제가 아니라 **기능 자체
 | PJ4-3 | 아카이브 프로젝트는 **이번 범위의 쓰기를 거부**(409)하되 **읽기는 허용**한다 (S6). 범위는 D12 |
 | PJ4-4 | **이슈 쓰기** 잠금은 `IssueApplicationService` **초크포인트 1곳**에 건다 — automation·Import·이슈 REST 가 전부 경유한다 (D9 확증) |
 | PJ4-7 | **issue-tracking 자체 프로젝트 스코프 쓰기 17곳**에 각각 잠금을 건다 — `Version`(5) · `Component`(4) · `CustomField`(3) · `IssueTemplate`(3) · `ProjectLead`(1) · `ProjectRequire2fa`(1). 이들은 `IssueApplicationService` 를 **경유하지 않는다**(참조 0건 실측) |
-| PJ4-8 | **cross-BC 쓰기는 이번 범위 밖** (D12 — 후속 FR). 경로 기준 12곳(identity-access `ProjectMember` 3 · `ProjectSecurityScheme` 2 · `FieldPermission` 2 / automation `AutomationRule` 4 / project-workflow `ProjectWorkflowScheme` 1) **+ 경로 밖 ~18곳**(agile-planning `Board`·`Sprint`·`BoardQuickFilter` / slack `ChannelMapping` / automation `replay`) = **30곳 안팎**. **이 목록은 완전하지 않다**(§2.4-B) — 후속 FR 이 4중 교차 열거로 다시 만든다. **PR 본문·KDoc 에 "미잠금"과 "목록 불완전"을 함께 명시**한다 |
+| PJ4-8 | **cross-BC 쓰기는 이번 범위 밖** (D12 — 후속 FR). 경로 기준 12곳(identity-access `ProjectMember` 3 · `ProjectSecurityScheme` 2 · `FieldPermission` 2 / automation `AutomationRule` 4 / project-workflow `ProjectWorkflowScheme` 1) **+ 경로 밖 ~18곳**(agile-planning `Board`·`Sprint`·`BoardQuickFilter` / slack `ChannelMapping` / automation `replay`) = **30곳 안팎**. **이 목록은 완전하지 않다**(§2.4-B·§2.4-C) — 후속 FR 이 **5중 교차** 열거로 다시 만든다. **PR 본문·KDoc 에 "미잠금"과 "목록 불완전"을 함께 명시**한다 |
 | PJ4-5 | `Clock` 주입 필수. `Instant.now()` 직접 호출 금지 (Version ADR D3 선례) |
 | PJ4-6 | `buildActiveSecureWhere`(`IssueRepository.kt:945-959`) 는 **읽기 술어 — 건드리지 않는다** |
 
@@ -497,7 +497,7 @@ interface ProjectMembershipWritePort {
 | EC-1 | 소프트 삭제된 프로젝트의 key 로 생성 | 409 — key 는 영구 점유 (DATA.md §1.1) |
 | EC-2 | 아카이브된 프로젝트를 다시 아카이브 | 멱등 200 (또는 409 — plan 확정) |
 | EC-3 | 아카이브 프로젝트의 이슈 **읽기** | 200 — 반드시 살아야 한다 |
-| EC-4 | 아카이브 프로젝트에 automation 시간 트리거 발화 | 조기 skip. 409 실패 노이즈 금지 (D9 잔여) |
+| EC-4 | 아카이브 프로젝트에 automation 시간 트리거 발화 | 조기 skip. 409 실패 노이즈 금지 (D9 잔여). **automation 은 cross-BC → D12 후속 FR 범위.** `next_fire_at` 전진 여부는 §2.4-C UNKNOWN — 후속에서 확정 |
 | EC-5 | `lead_user_id` 가 가리키는 사용자 삭제 후 아카이브 | 아카이브는 성공 (lead 는 nullable) |
 | EC-6 | 동시에 같은 key 로 2건 생성 | 1건 201 + 1건 409. DB UNIQUE 가 진실원천 ([[jooq-exception-translator-409-dependency]]) |
 | EC-7 | 같은 프로젝트를 두 사람이 동시에 설정 변경 | **`version` 컬럼 부재 — plan 확정 필요.** OCC 도입 vs last-write-wins |
@@ -520,6 +520,7 @@ interface ProjectMembershipWritePort {
 | C7 | prod 조립 부팅 재검증 필수 — 머지 전 rebase + `:modules:app:test` ([[prod-assembly-boot-verification-required]]) |
 | C8 | 같은 모듈 안에서는 Flyway V번호 동시 브랜치 충돌이 여전 — 머지 직전 재확인 ([[migration-vnumber-concurrent-branch-collision]]) |
 | C9 | 백엔드 CI 부재 — main 머지 전 로컬 검증 필수 ([[no-backend-ci-and-assembly-merge-verification-traps]]) |
+| **C10** | 🛑 **I1 롤백 테스트를 issue-tracking 표준 테스트 베이스 위에 얹으면 거짓으로 실패한다 (3회차 신설).** `IssueTestcontainersBase.kt:112` 가 `DSL.using(dataSource, SQLDialect.POSTGRES)` — **tx-aware 가 아니다**. 동형 10곳 이상(`CycleTimeIntegrationTest:223` · `BulkOperationIntegrationTest:138` · `CustomFieldIntegrationTest:143` …). tx-aware 로 감싼 것은 **`IssueImportAdapterTest.kt:135` 단 1곳**이고, `:126-130` 이 함정을 자인한다 — *"createIssue 의 INSERT 가 즉시 커밋돼버려 이후 `setRollbackOnly()` 가 무력화된다 … **다른 기존 통합 테스트는 실패 지점이 항상 insert 이전(validate)이라 이 gap 을 드러낸 적이 없었다**"*. → **DoD-11 컨텍스트를 `DSL.using(TransactionAwareDataSourceProxy(dataSource), ...)` 로 명시 고정**한다(선례 `IssueImportAdapterTest.kt:135` · `AgilePlanningTestcontainersConfig.kt:121`). 안 하면 `projects` INSERT 가 tx 밖에서 자동 커밋돼 *"멤버십만 롤백, projects 잔존"* 이라는 **거짓 red** 가 뜨고, plan 이 원인을 포트 설계로 오진한다. ([[transaction-aware-dslcontext-rollback-test-gap]] — **main 코드는 무관**하다. `DSL.using` main 히트 **0건**으로 전부 주입된 tx-aware 빈이다) |
 
 ---
 
@@ -536,7 +537,8 @@ interface ProjectMembershipWritePort {
 | DoD-7 | `bash scripts/verify-master-plan.sh` 통과 | 전수 동기화 |
 | DoD-8 | FR 카운트 **실측** 128 (기존 숫자 복사 금지) | §10 drift |
 | **DoD-9** | **`CREATE_PROJECT` grant 를 가진 비-SYSTEM_ADMIN 이 프로젝트를 만들 수 있다** (`@ActiveProfiles("prod")`) | **B8 — 이게 없으면 prod 어댑터 override 누락이 초록불로 통과하고 D7 이 조용히 뒤집힌다** |
-| **DoD-10** | 아카이브된 프로젝트에서 **issue-tracking 프로젝트 스코프 쓰기 각각**이 409 를 낸다 | D12 범위. **개수(17)를 물려받지 말고 §2.4-B 4중 교차 열거로 직접 만든 목록**에 대해 개별 테스트. 경로 grep 하나로 세면 (b)본문 projectKey·(c)파생 스코프를 놓친다 |
+| **DoD-10** | 아카이브된 프로젝트에서 **issue-tracking 프로젝트 스코프 쓰기 각각**이 409 를 낸다 | D12 범위. **개수(17)를 물려받지 말고 §2.4-B 5중 교차 열거로 직접 만든 목록**에 대해 개별 테스트 |
+| **DoD-11** | **프로젝트 생성 도중 예외 주입 시 `projects` · `project_memberships` 가 둘 다 롤백된다** | I1 원자성 실증 (§4.4). cross-BC 쓰기가 호출자 tx 에 참여함을 증명하는 유일한 방법 — 선례가 없으므로(§4.4 N5) 반드시 실증한다. **C10 필수** — tx-aware 컨텍스트로 고정하지 않으면 거짓 red |
 
 > **DoD-5 의 "0" 은 스펙이 세어준 숫자가 아니다.** [[spec-stated-count-becomes-blindfold]] — 개수는 패턴 grep 으로 직접 재검증한다.
 
@@ -585,13 +587,13 @@ PR-1 에 두면 PR-2 는 **소비만** 하므로 PR-2 의 BC 수가 **2개로 �
 | BC | 알려진 쓰기 | 스코프 획득 |
 |---|---|---|
 | identity-access | `ProjectMember` 3 · `ProjectSecurityScheme` 2 · `FieldPermission` 2 | (a) 경로 |
-| automation | `AutomationRule` 4 · **`AutomationExecution.replay` 1** | (a) 경로 / **클래스 레벨 `@RequestMapping` 없음** |
+| automation | `AutomationRule` 4 · **`AutomationExecution.replay` 1** · **`AutomationScheduleWorker.updateNextFireAt`** · **`AutomationEventWorker` → `rule_executions`** | (a) 경로 / **클래스 레벨 `@RequestMapping` 없음** / **(5) HTTP 밖 `@Scheduled`·pgmq — 초크포인트도 미경유** |
 | project-workflow | `ProjectWorkflowScheme` 1 | (a) 경로 |
 | **agile-planning** | `Board` 4 · `Sprint` 7 · `BoardQuickFilter` 3 | **(b) 본문 `projectKey` / (c) 파생** |
 | **slack-integration** | `SlackChannelMapping` 3 | **(b) 본문 `projectKey`** |
 
 > 🛑 **이 표는 완전하지 않다 — 그게 이 절의 요점이다.** 개정 전 §9.3 은 *"12곳"* 이라 적었고 그 숫자는 **경로 grep 이 볼 수 있는 것만** 센 값이었다(2회차 N3).
-> 위 표는 4중 교차(§2.4-B) 중 일부만 돌린 **중간 결과**이며 **~30곳** 규모다. **후속 FR 은 이 표를 물려받지 말고 §2.4-B 4중 교차를 처음부터 다시 돌린다.**
+> 위 표는 §2.4-B 교차 중 일부만 돌린 **중간 결과**이며 **~30곳** 규모다. **후속 FR 은 이 표를 물려받지 말고 §2.4-B 5중 교차를 처음부터 다시 돌린다.**
 > 숫자를 물려받는 순간 그 숫자가 눈가리개가 된다 — 이 스펙이 그 실수를 **두 번** 했다(1회차 B1, 2회차 N3).
 
 > **FR ID 를 지금 부여하지 않는 이유** — 전수 동기화 8종(`CLAUDE.md:29-36`)이 이번 PR 로 딸려온다. 착수 시점에 `/bts` 로 신설한다. **이번 작업 FR 총수 128 유지.**
@@ -610,7 +612,7 @@ PR-1 에 두면 PR-2 는 **소비만** 하므로 PR-2 의 BC 수가 **2개로 �
 | 4 | FR-PJ-03 = *"설정 변경 (name·lead_user_id)"* | `lead_user_id` 는 이미 `PATCH /lead`(FR-CM-04) 담당. `require_2fa`(V020) 누락 | **§4.2 — plan 결정 필요** |
 | 5 | (미기술) | `projects` 에 `version`(OCC) 컬럼 **없음** | **EC-7 — plan 결정 필요** |
 | 6 | (미기술) | **R6-B** — R6 수정이 FK RESTRICT 부팅 실패를 활성화 | §2.5-B |
-| 7 | D9 *"비용 거의 없음 · 초크포인트 1곳 · `ProjectLifecyclePort` 불필요"* | 프로젝트 스코프 쓰기 **29개 / 5 BC**, `IssueApplicationService` 참조 0건 | **D12 로 범위 한정** (Phase B B1) |
+| 7 | D9 *"비용 거의 없음 · 초크포인트 1곳 · `ProjectLifecyclePort` 불필요"* | 경로 기준 쓰기 **29개 / 4 BC**, `IssueApplicationService` 참조 0건. **경로 밖 ~18곳 추가** | **D12 로 범위 한정** (B1) + **§2.4-B 5중 교차 열거** (N3·N-1) |
 | 8 | R2 *"생성 = 2행 한 트랜잭션"* | 2행이 **서로 다른 BC** (`projects`=issue-tracking / `project_memberships`=identity-access) | **§4.4 신규 포트** (Phase B B2) |
 | 9 | D8 *"술어 변경 → identity-access cross-BC 영향"* | 그 어댑터는 **공유 포트 구현**, 실소비자는 **search-export-import**(FR-SR-03) | **`projectKeysOf` 불변** (Phase B B3) |
 
@@ -627,6 +629,42 @@ PR-1 에 두면 PR-2 는 **소비만** 하므로 PR-2 의 BC 수가 **2개로 �
 ---
 
 ## Brainstorming Check
+
+✅ **3라운드 종료 (2026-07-17).** 라운드마다 BLOCKER 가 나왔고 **3라운드 모두 "직전 개정이 새로 넣은 결함"** 을 잡았다.
+`/bts-spec` 은 A↔B 를 최대 3회로 제한한다. **4회차에 갈 게 아니라 남은 미확정을 plan 단계 입력으로 넘긴다** — 아래 §미확정 이월.
+
+### 3회차 (2026-07-17) — 2회차 개정본 적대적 검토. **반박 성공 1 · 반박 실패 3 · 신규 사각지대 1**
+
+> **★ 실패 양식이 세 번째로 반복됐다. 이번엔 한 단계 더 깊다.**
+> 1회차 — *plan 이 세어준 범위*가 눈가리개.
+> 2회차 — *내가 고른 grep 패턴*이 눈가리개. 처방 = **4중 교차 열거**.
+> 3회차 — **그 처방 자체가 "컨트롤러가 있고 타입 있는 DTO 를 받는다"를 전제**했다. 진단은 맞았는데 **처방이 진단을 못 따라잡았다.**
+> → *"개수를 재검증"*(1회차) → *"개수를 만든 정의를 재검증"*(2회차) → **"정의가 전제한 코드 모양을 재검증"**(3회차).
+
+| # | 지적 | 조치 |
+|---|---|---|
+| 🛑 **N-1** | **`@Scheduled` 워커를 4중 교차가 구조적으로 못 본다.** `AutomationScheduleWorker.kt:83-84·101-102` `@Scheduled` → `repository.updateNextFireAt(rule.id, next)` 는 `project_key` 스코프 테이블 쓰기인데 (1)경로 ✗ (2)DTO ✗ (3)`IssueScope` ✗ (4)파생 ✗ **초크포인트도 미경유** ✗. 동형 `AutomationEventWorker.kt:68-69`(pgmq) → `:140` → `rule_executions`. **결정적 증거 — §6 EC-4 가 이 대상을 이미 요구하는데 스펙의 열거 방법론이 산출하지 못했다** | **§2.4-C 신설 + 5번째 축**("HTTP 밖 — `@Scheduled`·pgmq consumer·raw-body"). §9.3 automation 행에 워커 2종 추가 |
+| 🛑 **N-2** | **request DTO 가 구조적으로 존재할 수 없는 쓰기.** `SlackCommandsController.kt:74-80` — KDoc `:24` *"원문 바디 보존 — 서명 대상이므로 `@RequestParam` 병용 금지"*. `projectKey` 는 `:101` 수동 form-decode 문자열. (완화 — `IssueImportPort` → 초크포인트라 **열거 구멍이지 NFR-3 구멍은 아니다**) | 5번째 축에 포함 |
+| 🛑 **N-3** | **(3) 이 `IssueScope.Project` 만 봐서 권한 타입 8종을 놓친다.** `shared-kernel/permission/` 의 프로젝트 스코프 포트 8종은 어느 것도 `IssueScope` 를 안 쓴다 — `AutomationPermissionResolver:62 hasManageAutomation(actorId, projectKey)` 등. `Version`·`Component`·`CustomField` 는 **우연히** (1) 경로가 구제했을 뿐 | §2.4-B (3) 을 **8종 포트 전수 grep** 으로 확장 |
+| ⚠️ **신규 사각지대** | **§4.4 가 요구한 롤백 테스트를 표준 테스트 베이스로 짜면 거짓 red 가 뜬다.** `IssueTestcontainersBase.kt:112` `DSL.using(dataSource, ...)` — tx-aware 아님(동형 10곳+). tx-aware 는 `IssueImportAdapterTest.kt:135` **단 1곳**이고 `:126-130` 이 자인 — *"다른 기존 통합 테스트는 실패 지점이 항상 insert 이전(validate)이라 **이 gap 을 드러낸 적이 없었다**"* | **C10 신설** + DoD-11 에 C10 필수 명시 |
+
+**반박 실패 — 주장 유지 3건.**
+- 🟢 **§4.4 트랜잭션 규칙 성립.** identity-access = `NamedParameterJdbcTemplate`(`JdbcProjectMembershipRepository.kt:150-155`, jOOQ 의존 없음) / issue-tracking = jOOQ `DSLContext`. **서로 다르지만 같은 커넥션에 바인딩된다** — main 코드 `DSL.using` **0건**(전부 주입 = `JooqAutoConfiguration` 의 `TransactionAwareDataSourceProxy` 빈), `fun dataSource`/`DataSource(` **0건**(Boot 오토컨피그 단일 빈), `NamedParameterJdbcTemplate` → `DataSourceUtils.getConnection()`. **I1 성립.** `@Transactional` 선례는 **클래스 레벨**(`IssueApplicationService.kt:125-127`) — Version·Component·ProjectLead·Require2fa 전부 동형
+- 🟢 **§9.3 카운트 5/5 정확** — `Board` 4 · `Sprint` 7 · `BoardQuickFilter` 3 · `SlackChannelMapping` 3 · `replay` 1
+- 🟢 **shared-kernel `project` 의존 0건 확증** — `build.gradle.kts:45-87` 전문에 `project(":modules:...")` 없음. N4 정정("1차 차단 = Gradle 클래스패스")은 참
+- 🟢 **`WorkflowSchemeScope` 는 반례 아님** — `WorkflowSchemeController` 쓰기 5건은 전부 `WorkflowSchemeScope.Global`. §9.3 `ProjectWorkflowScheme 1` 배정 정확
+
+### 미확정 이월 (plan 단계 입력 — 4회차 대신)
+
+| # | 미확정 | 성격 |
+|---|---|---|
+| 1 | **프로젝트 스코프 쓰기 전수 목록** | 스펙이 확정하지 못함을 **산출물로 명시**(§2.4-B). plan 이 5중 교차로 직접 열거 |
+| 2 | **§4.2** — FR-PJ-03 이 `lead`(FR-CM-04) · `require_2fa` 와 겹침 | 3안 제시, (a) 권장 |
+| 3 | **EC-7** — `projects` 에 OCC `version` 컬럼 부재 | OCC 도입 vs last-write-wins |
+| 4 | **EC-2** — 아카이브 멱등 200 vs 409 | |
+| 5 | **R6-B 재시드 생존 전략 3안** | (a) 권장 (§2.5-B) |
+| 6 | **B10** — `BROWSE` 의미 재사용 | `IssueScope.Project` 경유 제약 |
+| 7 | **§2.4-C UNKNOWN** — `updateNextFireAt` 이 아카이브 시 막혀야 하나 | **D12 후속 FR 범위** |
 
 ### 2회차 (2026-07-17) — 1회차 개정본 적대적 검토. **N1~N5 · 반박 실패 3건**
 
@@ -699,15 +737,41 @@ D9 원문 — *"cross-BC 쓰기 포트 2종이 전부 `IssueApplicationService` 
 > 2회차에서는 **내가 고른 grep 패턴 자체**가 눈가리개였다. 개수를 재검증하라는 교훈만으로는 부족하다 — **개수를 만든 정의를 재검증**해야 한다.
 
 **→ 이 스펙은 프로젝트 스코프 쓰기의 전수 목록을 확정하지 못한다. 확정하지 못한다는 사실 자체를 산출물로 넘긴다.**
-plan 단계는 **숫자를 물려받지 말고** 아래 **4중 교차 열거**로 직접 만든다.
+plan 단계는 **숫자를 물려받지 말고** 아래 **5중 교차 열거**로 직접 만든다.
 
-1. 경로 — `RequestMapping`/메서드 매핑에 `/api/v1/projects` (=29)
+1. 경로 — `RequestMapping`/메서드 매핑에 `/api/v1/projects` (=29). **메서드 레벨 전체 경로 명시 컨트롤러 포함** (`AutomationExecutionController:39` — 클래스 레벨 `@RequestMapping` 없음)
 2. 본문 — 쓰기 매핑 함수의 request DTO 에 `projectKey`/`projectId` 필드
-3. 권한 — `IssueScope.Project(...)` 를 **컨트롤러와 서비스 양쪽**에서
+3. 권한 — **`IssueScope.Project(...)` 만으로는 부족하다.** `shared-kernel/permission/` 의 **프로젝트 스코프 권한 포트 8종 전부**를 grep 한다 — `AutomationPermissionResolver`(`:62` `hasManageAutomation(actorId, projectKey)`) · `SlackChannelMappingPermissionResolver:67` · `VersionPermissionResolver:47` · `ComponentPermissionResolver:46` · `CustomFieldPermissionResolver:50` · `TemplatePermissionResolver:50` · `FieldPermissionResolver:74·91` · `WorkflowSchemePermissionResolver:54`. **컨트롤러와 서비스 양쪽**에서 (`SprintController:68` 은 판정이 service 내부)
 4. 파생 — 부모 리소스(board/sprint 등)를 통해 프로젝트에 귀속되는 쓰기
+5. **HTTP 밖 (3회차 N-1·N-2 신설)** — `@Scheduled` 워커 · pgmq consumer · **서명 검증형 raw-body 엔드포인트**. 컨트롤러도 DTO 도 없어 1~4 가 **구조적으로** 못 본다
+
+#### 2.4-C. ★ 5번째 축의 근거 — 열거 방법론이 스펙 자신의 요구를 산출하지 못했다 (3회차 N-1)
+
+**§6 EC-4 는 *"아카이브 프로젝트에 automation 시간 트리거 발화 → 조기 skip"* 을 이미 요구한다.** 그런데 4중 교차는 그 대상을 **산출하지 못했다**.
+
+`automation/worker/AutomationScheduleWorker.kt:83-84·101-102`
+```kotlin
+@Scheduled(fixedDelayString = "...")
+fun pollAndFire() {
+    enqueuer.enqueue(rule.id, rule.triggerType, ...)
+    repository.updateNextFireAt(rule.id, next)   // ← automation_rules 는 project_key 로 스코프된 테이블
+}
+```
+(1)경로 ✗ HTTP 없음 / (2)DTO ✗ 없음 / (3)`IssueScope` ✗ 없음 / (4)파생 ✗ 리소스 자체가 없음 / **초크포인트 ✗ 경유 안 함**.
+동형 — `AutomationEventWorker.kt:68-69`(pgmq consumer) → `:140` `findEnabledByProjectAndTriggerType(matched.projectKey, ...)` → `rule_executions` 행 생성.
+
+`slack/web/SlackCommandsController.kt:74-80` 은 **DTO 가 구조적으로 존재할 수 없다**. KDoc `:24` — *"원문 바디 보존 — 서명 대상이므로 `@RequestParam` 병용 금지 (★핵심 함정)"*. `projectKey` 는 `:101` 수동 form-decode 문자열에서 나온다. (완화 — `IssueImportPort` → 초크포인트를 타므로 이슈 생성은 S7 이 덮는다. **열거 방법론의 구멍이지 NFR-3 구멍은 아니다.** 반면 워커는 완화가 없다.)
+
+> **교훈 — 2회차의 실패 양식이 3회차에도 반복됐다.** 2회차는 *"경로 grep 이 눈가리개"* 라 진단하고 4중 교차를 처방했는데,
+> **그 처방이 "컨트롤러가 있고 타입 있는 DTO 를 받는다"를 전제**했다. 진단은 맞았고 처방이 진단을 못 따라잡았다.
+> **"개수를 만든 정의를 재검증"(2회차)의 다음 단계는 "정의가 전제한 코드 모양을 재검증"** 이다.
+
+> **UNKNOWN — plan/후속 FR 결정 사항.** `updateNextFireAt` 이 아카이브 시 막혀야 하는가? 룰 발화 자체는 EC-4 가 skip 을 요구하나,
+> `next_fire_at` 전진은 **스케줄러 부기**라 막으면 워커가 같은 룰을 계속 재조회한다. **"룰 실행은 skip 하되 `next_fire_at` 은 전진"** 이 유력하나 코드로 결정 불가.
+> **automation 은 cross-BC 라 D12 가 후속 FR 로 미룬 버킷**이므로 이번 범위 결정이 아니다 — 후속 FR 착수 시 확정한다.
 
 **D12 의 결정 구조는 이 정정으로 흔들리지 않는다** — (b)(c) 로 새로 드러난 것들(agile-planning `Board`+`Sprint` 11 · `BoardQuickFilter` 3 · slack `ChannelMapping` 3 · automation `replay` 1)은 **전부 cross-BC** 라 D12 가 후속으로 미룬 버킷에 들어간다.
-**흔들리는 것은 §9.3 후속 FR 의 크기다** — "12곳"이 아니라 **30곳 안팎**이며, 그 목록은 위 4중 교차로 다시 만들어야 한다.
+**흔들리는 것은 §9.3 후속 FR 의 크기다** — "12곳"이 아니라 **30곳 안팎**이며, 그 목록은 위 **5중 교차**로 다시 만들어야 한다.
 
 #### 🛑 B2 — I1(`projects` + `project_memberships` 같은 트랜잭션)이 BC 경계를 횡단한다
 
