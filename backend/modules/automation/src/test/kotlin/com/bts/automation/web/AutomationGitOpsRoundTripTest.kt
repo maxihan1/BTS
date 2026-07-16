@@ -195,6 +195,65 @@ class AutomationGitOpsRoundTripTest {
         assertThat(storedCount).isEqualTo(ruleCount)
     }
 
+    /**
+     * FR-AT-07 PR-B plan Task 7 회귀 가드 — `AutomationYamlCodec` 의 `actionConfigMap`/`fromJson` 이
+     * `versionIds` 배열(UUID 목록)의 **정확한 역함수**여야 한다는 계약을 지킨다.
+     *
+     * 값이 있는 교체(replace) 케이스와 **빈 배열**(전체 해제 시맨틱, [com.bts.automation.domain.Action.SetFixVersionsAction]
+     * KDoc) 케이스를 함께 검증한다 — 빈 배열이 왕복 중 사라지거나(필드 부재) `null` 로 바뀌면 "전체 해제"라는
+     * 의미가 조용히 뒤집힌다(plan Task 7 RED 명시 요구).
+     */
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `SET_FIX_VERSIONS 액션은 export→import 왕복에서 versionIds 가 보존된다`() {
+        val versionIdA = UUID.randomUUID()
+        val versionIdB = UUID.randomUUID()
+        createRule(
+            name = "수정 예정 버전 설정 - 교체",
+            triggerType = "ISSUE_CREATED",
+            actions =
+                listOf(
+                    RoundTripActionSpec("SET_FIX_VERSIONS", """{"versionIds":["$versionIdA","$versionIdB"]}"""),
+                ),
+        )
+        createRule(
+            name = "수정 예정 버전 설정 - 전체 해제",
+            triggerType = "ISSUE_CREATED",
+            actions = listOf(RoundTripActionSpec("SET_FIX_VERSIONS", """{"versionIds":[]}""")),
+        )
+
+        val exportedYamlA = exportYaml(PROJECT_A)
+        retireSourceProject()
+        val yamlForB = replaceProjectKey(exportedYamlA, from = PROJECT_A, to = PROJECT_B)
+
+        importYaml(PROJECT_B, yamlForB)
+
+        val exportedYamlB = exportYaml(PROJECT_B)
+        val rulesA = AutomationYamlCodec.fromYaml(exportedYamlA).rules
+        val rulesB = AutomationYamlCodec.fromYaml(exportedYamlB).rules
+        assertEquivalentRules(expected = rulesA, actual = rulesB)
+
+        assertThat(versionIdsOf(rulesB, "수정 예정 버전 설정 - 교체"))
+            .containsExactly(versionIdA.toString(), versionIdB.toString())
+        assertThat(versionIdsOf(rulesB, "수정 예정 버전 설정 - 전체 해제")).isEmpty()
+    }
+
+    /**
+     * [rules] 중 [ruleName] 룰의 유일한 액션 config 에서 `versionIds` 배열을 문자열 목록으로 추출한다. 필드
+     * 자체가 없으면(round-trip 이 배열을 통째로 유실했다는 뜻) `requireNotNull` 로 즉시 실패시킨다 — 빈
+     * 리스트(`emptyList()`)와 필드 부재(`null`)를 구분해야 "빈 배열=전체 해제" 시맨틱을 정확히 검증한다.
+     */
+    private fun versionIdsOf(
+        rules: List<ImportRuleCommand>,
+        ruleName: String,
+    ): List<String> {
+        val rule = rules.single { it.name == ruleName }
+        val config = jsonNodeOf(rule.actions.single().config)
+        val versionIdsNode =
+            requireNotNull(config.get("versionIds")) { "versionIds 필드가 없습니다(rule=$ruleName)." }
+        return versionIdsNode.map { it.asText() }
+    }
+
     // ── 헬퍼 — 시드 ──────────────────────────────────────────────────────────
 
     /**

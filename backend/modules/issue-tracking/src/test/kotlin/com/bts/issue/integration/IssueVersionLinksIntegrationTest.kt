@@ -1,9 +1,13 @@
-// PATCH /api/v1/issues/{key}/affects-versions 및 /fix-versions 전 구간 통합 테스트 — S1~S12 + EC7
+// PATCH /api/v1/issues/{key}/affects-versions 및 /fix-versions 전 구간 통합 테스트 — S1~S12 + EC7 + S6b
 
 package com.bts.issue.integration
 
 import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.TestConfig
+import com.bts.issue.application.AppChangeVersionsRequest
 import com.bts.issue.application.IssueApplicationService
+import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.IssueKey
+import com.bts.issue.domain.IssueLinkedVersionNotFoundException
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueRepository
@@ -19,6 +23,8 @@ import com.bts.workflow.scheme.adapter.inbound.WorkflowKeyResolverImpl
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.shouldBe
 import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.junit.jupiter.api.AfterEach
@@ -67,6 +73,7 @@ import java.util.UUID
  * - S4. 빈 목록 전체 해제 — 200 + affectsVersionIds 빈 배열
  * - S5. ARCHIVED 버전 연결 허용 — 200 (API 허용 정책)
  * - S6. 타 프로젝트 버전 → 422 ISSUE_LINKED_VERSION_NOT_FOUND (CONCERN-2 실증)
+ * - S6b. 타 프로젝트 버전 서비스 직접 호출 — validateVersions 양성 단언 회귀 가드(FR-AT-07 PR-B T6)
  * - S7. 소프트 삭제된 버전 → 422 ISSUE_LINKED_VERSION_NOT_FOUND
  * - S8. 낙관락 충돌 → 409 VERSION_CONFLICT (CONCERN-2 실증)
  * - S9. 없는 이슈 → 404 ISSUE_NOT_FOUND
@@ -144,6 +151,10 @@ class IssueVersionLinksIntegrationTest {
 
     @Autowired
     lateinit var webApplicationContext: WebApplicationContext
+
+    /** S6b — validateVersions 를 서비스 계층에서 직접 호출해 예외 필드까지 단언하기 위한 빈 (양성 단언). */
+    @Autowired
+    lateinit var issueApplicationService: IssueApplicationService
 
     private lateinit var mockMvc: MockMvc
 
@@ -401,6 +412,41 @@ class IssueVersionLinksIntegrationTest {
 
         val rowCount = countFixVersionRows(key)
         assert(rowCount == 0) { "422 응답 시 변경 없어야 하지만 $rowCount 행이 있습니다." }
+    }
+
+    // ── S6b. 타 프로젝트 버전 — 서비스 직접 호출 양성 단언 (FR-AT-07 PR-B T6 회귀 가드) ──
+
+    /**
+     * S6b 타 프로젝트 버전을 fixVersions 로 지정하면 그 versionId 를 담은 예외로 거부된다.
+     *
+     * S6(HTTP 계층)과 달리 컨트롤러를 우회해 [IssueApplicationService.changeFixVersions] 를 직접 호출하고
+     * 예외의 [IssueLinkedVersionNotFoundException.versionId] 필드까지 단언한다.
+     * "실패했다"만 단언하면 vacuous — validateVersions 를 통째로 지워도 이슈 부재/OCC 등 다른 사유로
+     * 실패하기만 하면 통과해버린다. "어느 versionId 때문에 실패했는가"를 못박아야 이 가드가 진짜로
+     * validateVersions 를 지킨다.
+     *
+     * Given  VROTHER 프로젝트 소속 versionOtherProject, VRTEST 소속 이슈(version=1)
+     * When   issueApplicationService.changeFixVersions(actor, key, AppChangeVersionsRequest([versionOtherProject], 1))
+     * Then   IssueLinkedVersionNotFoundException 발생 + ex.versionId == versionOtherProject
+     * Also   이슈의 fixVersionIds 는 변경되지 않음 (DB 재조회로 확인)
+     */
+    @Test
+    fun `타 프로젝트 버전을 fixVersions 로 지정하면 그 versionId 를 담은 예외로 거부된다`() {
+        val key = insertIssue("S6b 서비스 직접 호출 이슈")
+        val actor = ActorId(UUID.fromString("11111111-1111-4111-8111-111111111111"))
+
+        val ex =
+            shouldThrow<IssueLinkedVersionNotFoundException> {
+                issueApplicationService.changeFixVersions(
+                    actor,
+                    IssueKey(key),
+                    AppChangeVersionsRequest(listOf(versionOtherProject), 1L),
+                )
+            }
+        ex.versionId shouldBe versionOtherProject
+
+        val rowCount = countFixVersionRows(key)
+        assert(rowCount == 0) { "예외 발생 시 issue_fix_versions 행이 0이어야 하지만 $rowCount 입니다." }
     }
 
     // ── S7. 소프트 삭제된 버전 → 422 ─────────────────────────────────────────

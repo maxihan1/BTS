@@ -1089,6 +1089,112 @@ describe('AutomationRuleFormDialog — 조건 편집(FR-AT-03 D6/D7 Task 5)', ()
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SET_FIX_VERSIONS — S8 저장 거부 게이트가 실제 제출 경로에 배선됐는지 검증(wiring, FR-AT-07 PR-B Task 9)
+//
+// validateActions 자체는 ActionConfigEditor.test.tsx에서 순수 함수로 이미 단위 검증됐다. 그것만으로는
+// onValid가 그 결과를 실제로 "제출 차단"에 쓰는지 보증하지 못한다 — Dialog를 실제로 렌더해 저장 버튼
+// 클릭까지 재현해야 mutation 호출 여부를 확인할 수 있다. 대조군(양성 단언)을 반드시 함께 둔다 —
+// 그렇지 않으면 "항상 호출 안 됨"인 구현으로도 통과해버려 또 vacuous가 된다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AutomationRuleFormDialog — SET_FIX_VERSIONS 저장 거부(S8 wiring)', () => {
+  const FIX_VERSION_ID = '30000000-0000-4000-8000-000000000001'
+  const FIX_VERSION_PROJECT_ID = '40000000-0000-4000-8000-000000000001'
+
+  /** GET /versions에 버전 1건(1.0.0)을 응답하는 핸들러를 등록한다 — SetFixVersionsFields가 마운트되는 즉시 호출된다 */
+  function registerVersionsHandler(): void {
+    server.use(
+      http.get('/api/v1/projects/:projectIdOrKey/versions', () =>
+        HttpResponse.json({
+          data: [
+            {
+              id: FIX_VERSION_ID,
+              projectId: FIX_VERSION_PROJECT_ID,
+              name: '1.0.0',
+              description: null,
+              startDate: null,
+              releaseDate: null,
+              status: 'UNRELEASED',
+            },
+          ],
+        }),
+      ),
+    )
+  }
+
+  it('교체 모드 + 빈 목록으로 저장하면 mutation이 호출되지 않고 에러 문구가 뜬다(S8, load-bearing)', async () => {
+    registerVersionsHandler()
+    const capturedBodies: CreateAutomationRuleInput[] = []
+    server.use(
+      http.post('/api/v1/projects/:projectKey/automation/rules', async ({ request }) => {
+        const body = (await request.json()) as CreateAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({ rule: { ...SCHEDULED_EDIT_RULE, ...body }, webhookToken: null }, { status: 201 })
+      }),
+    )
+    const onOpenChange = vi.fn()
+    renderWithClient(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={onOpenChange} />,
+    )
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('이름'), '수정버전 룰')
+
+    await user.click(screen.getByRole('button', { name: '액션 추가' }))
+    const row = screen.getAllByRole('listitem')[0]
+    if (row === undefined) {
+      throw new Error('액션 행이 렌더되지 않음')
+    }
+    await user.selectOptions(within(row).getByLabelText('액션 유형'), '수정 예정 버전 설정')
+
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => {
+      expect(screen.getByText(/교체할 버전을 하나 이상 선택하거나/)).toBeInTheDocument()
+    })
+    expect(capturedBodies).toHaveLength(0)
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+  })
+
+  it('★ 대조군(양성 단언) — 버전을 1개 선택하고 저장하면 mutation이 호출되고 POST body에 반영된다', async () => {
+    registerVersionsHandler()
+    const capturedBodies: CreateAutomationRuleInput[] = []
+    server.use(
+      http.post('/api/v1/projects/:projectKey/automation/rules', async ({ request }) => {
+        const body = (await request.json()) as CreateAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({ rule: { ...SCHEDULED_EDIT_RULE, ...body }, webhookToken: null }, { status: 201 })
+      }),
+    )
+    renderWithClient(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />,
+    )
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('이름'), '수정버전 룰(선택)')
+
+    await user.click(screen.getByRole('button', { name: '액션 추가' }))
+    const row = screen.getAllByRole('listitem')[0]
+    if (row === undefined) {
+      throw new Error('액션 행이 렌더되지 않음')
+    }
+    await user.selectOptions(within(row).getByLabelText('액션 유형'), '수정 예정 버전 설정')
+
+    const checkbox = await within(row).findByRole('checkbox', { name: '1.0.0' })
+    await user.click(checkbox)
+
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    const capturedBody = capturedBodies[0]
+    if (capturedBody === undefined) {
+      throw new Error('capturedBodies[0]이 캡처되지 않음')
+    }
+    expect(capturedBody.actions).toEqual([
+      { type: 'SET_FIX_VERSIONS', config: JSON.stringify({ versionIds: [FIX_VERSION_ID] }) },
+    ])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 취소
 // ─────────────────────────────────────────────────────────────────────────────
 

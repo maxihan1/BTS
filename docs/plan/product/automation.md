@@ -127,6 +127,24 @@
 - [ ] D6. 프론트 UI — Webhook URL 생성 페이지 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
+> **PR-B 완료 (2026-07-17, PR #276)**. DEC-11(Maxi 확정)에 따라 FR-AT-07은 **PR-A**(인바운드 웹훅 prod
+> 도달 가능화 + 암호화 키 배포, #274/#275 완료) → **PR-B**(Fix Version 설정 통로, 본 PR) → **PR-C**(PR_MERGED
+> 트리거 + Git webhook, 미착수) 3분할로 진행한다. **PR-B는 PR-C가 완성할 "PR 머지 시 Fix Version 자동
+> 설정"의 설정 통로만 만든다 — 트리거 연결은 없다.** shared-kernel `IssueMutationPort`에 4번째 메서드
+> `setFixVersions`(default 없음, fail-closed) 신설 + issue-tracking prod 어댑터(기존 `changeFixVersions`
+> 유스케이스 위임, 자기 트랜잭션에서 OCC 버전 재조회) + automation `ActionType.SET_FIX_VERSIONS`/
+> `Action.SetFixVersionsAction`(sealed class exhaustive `when` 12지점 전수 반영, 컴파일러 미강제 2지점은
+> 회귀 테스트로 방어) + `V306` CHECK 제약 4종→5종 확장(V302 원본 편집 없이 재발행) + 프론트 Zod 계약
+> 동기화 + **설정 UI**(`SetFixVersionsFields` — 교체/전체 해제 2모드, 교체+빈 목록은 저장 거부 가드).
+> 자동화 규칙 화면에서 `SET_FIX_VERSIONS` 액션을 수동으로 구성해 실행할 수 있으나, **PR 머지로 자동
+> 발화하는 경로는 아직 없다**(PR_MERGED 트리거 부재). 기존 automation/issue-tracking/slack-integration
+> 회귀 전량 통과 + `:modules:app:test` 9BC prod 조립 재검증 완료.
+>
+> **D1(GitWebhookEvent)·D2(Git Webhook 처리)·D4(`POST /api/v1/webhooks/git`)·D6(Webhook URL 생성 페이지)와
+> 그 테스트(D5/D7)는 전부 PR-C 몫으로 미착수** — 위 체크박스는 그 실체(Git 웹훅 수신·서명 검증·URL
+> 발급 화면)가 실제로 구현되는 **PR-C 완료 시점에 마킹**한다. FR-AT-07 자체는 **미완료**로 유지.
+> → automation BC **6/7 유지**(FR-AT-06 선례 동형 — D단계 일부 완료는 BC 카운트를 올리지 않음).
+
 ## §NFR automation BC 완료 게이트
 
 ### 측정값 기록표

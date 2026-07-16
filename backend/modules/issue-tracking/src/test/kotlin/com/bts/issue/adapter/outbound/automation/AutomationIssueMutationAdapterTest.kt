@@ -4,6 +4,7 @@ package com.bts.issue.adapter.outbound.automation
 
 import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.application.AppChangeAssigneeRequest
+import com.bts.issue.application.AppChangeVersionsRequest
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.comment.application.CommentApplicationService
 import com.bts.issue.comment.domain.Comment
@@ -15,6 +16,7 @@ import com.bts.shared.issue.AddCommentCommand
 import com.bts.shared.issue.AssignCommand
 import com.bts.shared.issue.IssueMutationPermissionDeniedException
 import com.bts.shared.issue.SetFieldCommand
+import com.bts.shared.issue.SetFixVersionsCommand
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssueScope
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -359,6 +361,55 @@ class AutomationIssueMutationAdapterTest {
 
         val cmd = AddCommentCommand(actorUserId = actorUuid, issueKey = issueKey.value, body = "미리보기", dryRun = true)
         val result = adapter.addComment(cmd)
+
+        assertThat(result.applied).isFalse()
+        assertThat(result.version).isNull()
+        verify { status.setRollbackOnly() }
+    }
+
+    // ── setFixVersions ──────────────────────────────────────────────────────
+
+    @Test
+    fun `setFixVersions delegates to changeFixVersions with refetched version as expectedVersion`() {
+        val versionIds = listOf(UUID.randomUUID(), UUID.randomUUID())
+        every { issueApplicationService.findByKey(actor, issueKey) } returns issueResponse(version = 3L)
+        every { issueApplicationService.changeFixVersions(actor, issueKey, any()) } returns issueResponse(version = 4L)
+
+        val cmd =
+            SetFixVersionsCommand(
+                actorUserId = actorUuid,
+                issueKey = issueKey.value,
+                versionIds = versionIds,
+                dryRun = false,
+            )
+        val result = adapter.setFixVersions(cmd)
+
+        assertThat(result.issueKey).isEqualTo(issueKey.value)
+        assertThat(result.applied).isTrue()
+        assertThat(result.version).isEqualTo(4L)
+        verify {
+            issueApplicationService.changeFixVersions(
+                actor,
+                issueKey,
+                AppChangeVersionsRequest(versionIds = versionIds, expectedVersion = 3L),
+            )
+        }
+    }
+
+    @Test
+    fun `setFixVersions dryRun sets rollback only and returns applied false version null`() {
+        val versionIds = listOf(UUID.randomUUID())
+        every { issueApplicationService.findByKey(actor, issueKey) } returns issueResponse(version = 3L)
+        every { issueApplicationService.changeFixVersions(actor, issueKey, any()) } returns issueResponse(version = 4L)
+
+        val cmd =
+            SetFixVersionsCommand(
+                actorUserId = actorUuid,
+                issueKey = issueKey.value,
+                versionIds = versionIds,
+                dryRun = true,
+            )
+        val result = adapter.setFixVersions(cmd)
 
         assertThat(result.applied).isFalse()
         assertThat(result.version).isNull()

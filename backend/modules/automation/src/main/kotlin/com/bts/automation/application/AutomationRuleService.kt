@@ -643,7 +643,7 @@ class AutomationRuleService(
  * 이미 웹 DTO 대신 원시 타입/도메인 타입만 받는 것과 동일한 원칙). 컨트롤러가 `ActionRequest` →
  * [AutomationActionInput] 1:1 매핑을 수행한다.
  *
- * @property type 액션 타입 이름 문자열([com.bts.automation.domain.ActionType] 4종 중 하나).
+ * @property type 액션 타입 이름 문자열([com.bts.automation.domain.ActionType] 5종 중 하나).
  * @property config 액션별 설정 JSON 문자열.
  */
 data class AutomationActionInput(

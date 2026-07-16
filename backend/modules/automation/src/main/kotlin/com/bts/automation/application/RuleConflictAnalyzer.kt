@@ -82,7 +82,7 @@ class RuleConflictAnalyzer(
     /**
      * [action] 이 [target] 의 트리거를 유발할 수 있으면 `true`(스펙 FR-3 매핑 표).
      *
-     * sealed [Action] 의 4개 하위 타입에 대해 exhaustive `when` 으로 분기한다 — `ActionType` enum 기반
+     * sealed [Action] 의 5개 하위 타입에 대해 exhaustive `when` 으로 분기한다 — `ActionType` enum 기반
      * 매핑을 별도로 만들지 않는다(기존 repo/executor/response 3곳 매핑과의 중복 회피, plan DRY 노트).
      *
      * ## AssignAction 은 CYCLE 엣지가 없다 (코드리뷰 C1 수정)
@@ -94,6 +94,13 @@ class RuleConflictAnalyzer(
      * 없음(`false`)으로 판정한다 — 단 [hasObservableSideEffect] 같은 부수효과 판정(FIELD_CONFLICT/
      * PRIORITY_AMBIGUITY)에는 AssignAction 을 그대로 포함한다(담당자 변경도 관측 가능한 부수효과이므로,
      * 이 제거는 CYCLE 판정에만 한정된다).
+     *
+     * ## SetFixVersionsAction 도 CYCLE 엣지가 없다 (FR-AT-07, AssignAction 과 동일 근거)
+     * `changeFixVersions`(`IssueApplicationService`)는 `eventPublisher.publish` 를 호출하지 않는다
+     * (대조군 `updateIssue` 는 호출한다) — 즉 `ISSUE_UPDATED` 를 유발할 경로가 런타임에 전혀 존재하지
+     * 않는다. `triggersIssueUpdated(target, "fixVersions")` 로 엣지를 그으면 위 AssignAction 과 동일한
+     * phantom edge 사고가 재발한다. 따라서 무조건 `false` 로 판정한다 — 단 AssignAction 과 마찬가지로
+     * [hasObservableSideEffect] 판정(FIELD_CONFLICT/PRIORITY_AMBIGUITY)에는 그대로 포함한다.
      */
     private fun actionTriggers(
         action: Action,
@@ -104,6 +111,7 @@ class RuleConflictAnalyzer(
             is Action.AssignAction -> false
             is Action.AddCommentAction -> target.triggerType == TriggerType.ISSUE_COMMENTED
             is Action.CallWebhookAction -> false
+            is Action.SetFixVersionsAction -> false
         }
 
     /** [target] 이 ISSUE_UPDATED 트리거이고 [field] 변경에 발화하면 `true`([matchesField] 공유 헬퍼 재사용). */
@@ -312,10 +320,19 @@ private class FieldPriorityAnalyzer(private val rules: List<AutomationRule>) {
         )
     }
 
-    /** [rule] 이 사용자가 관측 가능한 부수효과 액션(SET_FIELD/ASSIGN/ADD_COMMENT)을 하나라도 보유하면 `true`. */
+    /**
+     * [rule] 이 사용자가 관측 가능한 부수효과 액션(SET_FIELD/ASSIGN/ADD_COMMENT/SET_FIX_VERSIONS)을
+     * 하나라도 보유하면 `true`.
+     *
+     * `||` 불리언 체인이라 컴파일러가 exhaustive 를 강제하지 않는다 — 신규 [Action] 서브타입을 추가할 때
+     * 이 판정을 빠뜨려도 컴파일과 기존 테스트가 그대로 통과하니 주의(FR-AT-07 인계 노트).
+     */
     private fun hasObservableSideEffect(rule: AutomationRule): Boolean =
         rule.actions.any {
-            it is Action.SetFieldAction || it is Action.AssignAction || it is Action.AddCommentAction
+            it is Action.SetFieldAction ||
+                it is Action.AssignAction ||
+                it is Action.AddCommentAction ||
+                it is Action.SetFixVersionsAction
         }
 }
 
@@ -324,11 +341,11 @@ private class FieldPriorityAnalyzer(private val rules: List<AutomationRule>) {
  * 경우를 검출하는 헬퍼(FR-AT-04 Task 4, 스펙 FR-6). [rules] 는 이미 [AutomationRule.enabled] 로 걸러진
  * 목록이어야 한다(disabled 규칙은 발화하지 않으므로 제외).
  *
- * ## 권한 매핑 (스펙 FR-6 표)
- * [Action.SetFieldAction]/[Action.AssignAction] → [com.bts.shared.permission.IssuePermission.UPDATE].
- * [Action.AddCommentAction] 은 `IssuePermission` 에 댓글 전용 권한이 없어 분석 대상에서 제외하고,
- * [Action.CallWebhookAction] 은 이슈 권한과 무관한 외부 HTTP 호출이라 마찬가지로 제외한다
- * ([requiredPermission] exhaustive `when`).
+ * ## 권한 매핑 (스펙 FR-6 표, FR-AT-07 확장)
+ * [Action.SetFieldAction]/[Action.AssignAction]/[Action.SetFixVersionsAction] →
+ * [com.bts.shared.permission.IssuePermission.UPDATE]. [Action.AddCommentAction] 은 `IssuePermission` 에
+ * 댓글 전용 권한이 없어 분석 대상에서 제외하고, [Action.CallWebhookAction] 은 이슈 권한과 무관한 외부
+ * HTTP 호출이라 마찬가지로 제외한다([requiredPermission] exhaustive `when`).
  *
  * ## 메모이제이션 (스펙 Brainstorming #4)
  * `(actorId, projectKey, permission)` 키로 [cache] 에 저장해, 같은 조합을 여러 규칙·액션이 반복
@@ -415,6 +432,7 @@ private class PermissionAnalyzer(
             is Action.AssignAction -> IssuePermission.UPDATE
             is Action.AddCommentAction -> null
             is Action.CallWebhookAction -> null
+            is Action.SetFixVersionsAction -> IssuePermission.UPDATE
         }
 
     /**
@@ -427,6 +445,7 @@ private class PermissionAnalyzer(
             is Action.AssignAction -> "담당자 지정"
             is Action.AddCommentAction -> "댓글 추가"
             is Action.CallWebhookAction -> "웹훅 호출"
+            is Action.SetFixVersionsAction -> "수정 예정 버전 설정"
         }
 }
 

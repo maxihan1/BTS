@@ -265,12 +265,12 @@ describe('triggerTypeSchema', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// actionTypeSchema — 자동화 액션 타입 4종 (FR-AT-02)
+// actionTypeSchema — 자동화 액션 타입 5종 (FR-AT-02, SET_FIX_VERSIONS는 FR-AT-07 PR-B)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('actionTypeSchema', () => {
-  it('4종 액션 타입 모두 파싱 성공한다', () => {
-    const validTypes = ['SET_FIELD', 'ASSIGN', 'ADD_COMMENT', 'CALL_WEBHOOK']
+  it('5종 액션 타입 모두 파싱 성공한다', () => {
+    const validTypes = ['SET_FIELD', 'ASSIGN', 'ADD_COMMENT', 'CALL_WEBHOOK', 'SET_FIX_VERSIONS']
     for (const type of validTypes) {
       expect(() => actionTypeSchema.parse(type)).not.toThrow()
     }
@@ -550,6 +550,56 @@ describe('serializeActionConfig — CALL_WEBHOOK headers 쌍 배열 (C1·C2)', (
     const serialized = serializeActionConfig('CALL_WEBHOOK', formState)
     const parsed = JSON.parse(serialized) as { headers: Record<string, string> }
     expect(parsed.headers).toEqual({ 'X-Token': 'second' })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// parseActionConfig / serializeActionConfig — SET_FIX_VERSIONS (FR-AT-07 PR-B)
+//
+// fail-closed 핵심 — `versionIds: []`는 backend에서 "Fix Version 전체 해제"를 의미한다.
+// `fixVersionsMode`는 UI 전용 상태(와이어에 실리지 않음)이며, undefined(모드 미지정)는
+// 항상 replace로 취급해야 한다 — clear가 명시적으로 적혀 있을 때만 파괴적 동작이 성립한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('parseActionConfig / serializeActionConfig — SET_FIX_VERSIONS', () => {
+  it('parseActionConfig 는 SET_FIX_VERSIONS 의 versionIds 를 파싱한다', () => {
+    const formState = parseActionConfig('SET_FIX_VERSIONS', {
+      versionIds: ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'],
+    })
+    expect(formState.versionIds).toEqual([
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+    ])
+  })
+
+  it('parseActionConfig 는 versionIds 가 비어 있으면 clear 모드로 복원한다', () => {
+    const formState = parseActionConfig('SET_FIX_VERSIONS', { versionIds: [] })
+    expect(formState).toEqual({ versionIds: [], fixVersionsMode: 'clear' })
+  })
+
+  it('parseActionConfig 는 versionIds 가 있으면 replace 모드로 복원한다', () => {
+    const formState = parseActionConfig('SET_FIX_VERSIONS', {
+      versionIds: ['11111111-1111-4111-8111-111111111111'],
+    })
+    expect(formState).toEqual({
+      versionIds: ['11111111-1111-4111-8111-111111111111'],
+      fixVersionsMode: 'replace',
+    })
+  })
+
+  it('serializeActionConfig 는 clear 모드면 versionIds 를 빈 배열로 낸다', () => {
+    const serialized = serializeActionConfig('SET_FIX_VERSIONS', {
+      versionIds: ['11111111-1111-4111-8111-111111111111'],
+      fixVersionsMode: 'clear',
+    })
+    expect(JSON.parse(serialized)).toEqual({ versionIds: [] })
+  })
+
+  it('serializeActionConfig 는 fixVersionsMode 가 undefined 면 replace 로 취급한다', () => {
+    const serialized = serializeActionConfig('SET_FIX_VERSIONS', {
+      versionIds: ['11111111-1111-4111-8111-111111111111'],
+    })
+    expect(JSON.parse(serialized)).toEqual({ versionIds: ['11111111-1111-4111-8111-111111111111'] })
   })
 })
 

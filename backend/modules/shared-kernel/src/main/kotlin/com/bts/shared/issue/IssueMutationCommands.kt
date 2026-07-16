@@ -1,4 +1,4 @@
-// IssueMutationPort 커맨드/결과 값 객체 — 필드 변경·담당자 배정·댓글 추가 (FR-AT-02)
+// IssueMutationPort 커맨드/결과 값 객체 — 필드 변경·담당자 배정·댓글 추가·수정 예정 버전 설정 (FR-AT-02)
 package com.bts.shared.issue
 
 import java.util.UUID
@@ -81,8 +81,35 @@ data class AddCommentCommand(
 )
 
 /**
- * [IssueMutationPort] 세 메서드([IssueMutationPort.setField]/[IssueMutationPort.assign]/
- * [IssueMutationPort.addComment]) 공통 결과 VO.
+ * 이슈 수정 예정 버전(Fix Version) 설정 커맨드 VO.
+ *
+ * automation BC 의 액션 실행기가 [IssueMutationPort.setFixVersions] 호출 시 전달하는 커맨드다.
+ * [actorUserId] 의 async 안전·위조 차단 설계 근거는 [SetFieldCommand] KDoc 참조.
+ *
+ * ### versionIds — 전체교체 시맨틱, expectedVersion 없음
+ *
+ * [versionIds] 는 이슈의 현재 Fix Version 목록을 **전체 교체**한다(추가/제거가 아니다). 빈 목록을
+ * 전달하면 Fix Version 전체 해제를 의미한다 — 별도 "해제" 플래그가 없다. 다른 커맨드([SetFieldCommand],
+ * [AssignCommand])와 달리 OCC(낙관적 동시성 제어) `expectedVersion` 을 커맨드에 담지 않는다 — 구현체가
+ * 자신의 트랜잭션 안에서 현재 version 을 재조회해 채운다(호출자는 OCC 재시도를 알 필요가 없다).
+ *
+ * @property actorUserId 실행 주체 UUID. 자동화 룰의 actor(룰 소유자 또는 지정된 실행 주체).
+ * @property issueKey Fix Version 을 변경할 이슈 키. 예: `"PROJ-1"`.
+ * @property versionIds 교체할 버전 UUID 목록. 빈 목록이면 전체 해제.
+ * @property dryRun true 이면 구현체가 권한/검증만 수행하고 실제 커밋·이벤트 발행을 하지 않는다.
+ * @see IssueMutationPort.setFixVersions
+ * @see MutationResult
+ */
+data class SetFixVersionsCommand(
+    val actorUserId: UUID,
+    val issueKey: String,
+    val versionIds: List<UUID>,
+    val dryRun: Boolean,
+)
+
+/**
+ * [IssueMutationPort] 네 메서드([IssueMutationPort.setField]/[IssueMutationPort.assign]/
+ * [IssueMutationPort.addComment]/[IssueMutationPort.setFixVersions]) 공통 결과 VO.
  *
  * 실패(권한 거부·이슈 부재·OCC 버전 충돌 등)는 이 VO 로 표현하지 않고 예외로 던진다
  * ([IssueMutationPort] KDoc "실패 전달 — 예외" 참조). 이 VO 는 성공(또는 dryRun 미리보기

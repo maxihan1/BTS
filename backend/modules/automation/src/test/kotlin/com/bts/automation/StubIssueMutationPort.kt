@@ -7,6 +7,7 @@ import com.bts.shared.issue.AssignCommand
 import com.bts.shared.issue.IssueMutationPort
 import com.bts.shared.issue.MutationResult
 import com.bts.shared.issue.SetFieldCommand
+import com.bts.shared.issue.SetFixVersionsCommand
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -39,6 +40,9 @@ class StubIssueMutationPort : IssueMutationPort {
     /** [addComment] 호출 기록(테스트 검증용, 호출 순서 보존). */
     val addCommentCalls: MutableList<AddCommentCommand> = CopyOnWriteArrayList()
 
+    /** [setFixVersions] 호출 기록(테스트 검증용, 호출 순서 보존). */
+    val setFixVersionsCalls: MutableList<SetFixVersionsCommand> = CopyOnWriteArrayList()
+
     private var failure: RuntimeException? = null
 
     override fun setField(cmd: SetFieldCommand): MutationResult {
@@ -59,6 +63,12 @@ class StubIssueMutationPort : IssueMutationPort {
         return MutationResult(issueKey = cmd.issueKey, applied = !cmd.dryRun, version = null)
     }
 
+    override fun setFixVersions(cmd: SetFixVersionsCommand): MutationResult {
+        setFixVersionsCalls += cmd
+        failure?.let { throw it }
+        return successResult(cmd.issueKey, cmd.dryRun)
+    }
+
     /** 이후 모든 호출이 [exception] 을 던지도록 설정한다(호출 기록은 예외 발생 전에 여전히 남는다). */
     fun failNextCallsWith(exception: RuntimeException) {
         failure = exception
@@ -70,6 +80,7 @@ class StubIssueMutationPort : IssueMutationPort {
         setFieldCalls.clear()
         assignCalls.clear()
         addCommentCalls.clear()
+        setFixVersionsCalls.clear()
     }
 
     private fun successResult(

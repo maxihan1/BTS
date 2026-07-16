@@ -1,9 +1,11 @@
-// 액션 1건의 타입별 조건부 편집기 — SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK (FR-AT-02 D6 Task 4)
+// 액션 1건의 타입별 조건부 편집기 — SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/SET_FIX_VERSIONS (FR-AT-02 D6 Task 4, SET_FIX_VERSIONS는 FR-AT-07 PR-B)
 import type { ChangeEvent, JSX, KeyboardEvent } from 'react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { actionTypeSchema, parseActionConfig } from '@/api/automation-rules.types'
 import type { ActionType, ActionConfigFormState, WebhookHeaderEntry } from '@/api/automation-rules.types'
+import { useVersions } from '@/hooks/use-versions'
+import { VersionMultiSelect } from '@/components/issue/VersionMultiSelect'
 import { ProjectMemberSelect } from './ProjectMemberSelect'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,18 +40,24 @@ const TEXT = {
   webhookHeaderValueLabel: '헤더 값',
   webhookAddHeaderButton: '헤더 추가',
   webhookBodyLabel: '본문',
+  fixVersionsModeLabel: '적용 방식',
+  fixVersionsReplaceLabel: '선택한 버전으로 교체',
+  fixVersionsClearLabel: '전체 해제',
+  fixVersionsLoading: '버전 목록을 불러오는 중...',
+  fixVersionsError: '버전 목록을 불러오지 못했습니다.',
 } as const
 
 /** 입력 필드 공통 Tailwind 클래스 — text/select 위젯 전반에서 재사용 */
 const FIELD_CLASS =
   'w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20'
 
-/** 액션 타입 4종 한국어 라벨 — backend ActionType enum 1:1 대응 */
+/** 액션 타입 5종 한국어 라벨 — backend ActionType enum 1:1 대응 (SET_FIX_VERSIONS는 FR-AT-07 PR-B) */
 const ACTION_TYPE_LABELS: Record<ActionType, string> = {
   SET_FIELD: '필드 값 설정',
   ASSIGN: '담당자 지정',
   ADD_COMMENT: '댓글 추가',
   CALL_WEBHOOK: '웹훅 호출',
+  SET_FIX_VERSIONS: '수정 예정 버전 설정',
 }
 
 /** SET_FIELD가 지원하는 필드 6종 — backend SetFieldAction 계약(FR3, 스펙 §백엔드 계약) */
@@ -114,11 +122,17 @@ function toActionType(raw: string): ActionType {
 /**
  * 액션 타입 전환 시 적용할 기본 config 폼 상태.
  * ASSIGN/ADD_COMMENT/CALL_WEBHOOK은 {@link parseActionConfig}(빈 객체)의 기본값을 재사용하고,
- * SET_FIELD만 select 첫 옵션에 대응하는 field를 명시해 select가 유효한 초기값을 갖도록 한다.
+ * SET_FIELD/SET_FIX_VERSIONS는 명시 분기를 둔다 — select가 유효한 초기값을 갖도록 한다.
+ * SET_FIX_VERSIONS를 {@link parseActionConfig}(빈 객체)로 떨어뜨리면 `versionIds` 부재를
+ * 빈 배열로 채우고 그 빈 배열을 근거로 `clear` 모드로 오판한다(fail-closed 위반) — 반드시
+ * `replace` 모드를 명시해야 한다(Maxi 확정 FR-6, undefined ≡ replace).
  */
 function defaultConfigForType(type: ActionType): ActionConfigFormState {
   if (type === 'SET_FIELD') {
     return { field: DEFAULT_SET_FIELD, value: '' }
+  }
+  if (type === 'SET_FIX_VERSIONS') {
+    return { fixVersionsMode: 'replace', versionIds: [] }
   }
   return parseActionConfig(type, {})
 }
@@ -514,6 +528,83 @@ function CallWebhookFields({ config, onChange, idPrefix }: TypedFieldsProps): JS
   )
 }
 
+interface SetFixVersionsFieldsProps extends TypedFieldsProps {
+  readonly projectKey: string
+}
+
+/**
+ * SET_FIX_VERSIONS 전용 필드 — 적용 방식 라디오(교체/전체 해제) + {@link VersionMultiSelect}(variant="fix").
+ *
+ * - '교체' 모드일 때만 버전 목록을 렌더한다. '전체 해제' 모드는 목록을 숨기되 `versionIds`는
+ *   폼 상태에 그대로 보존한다 — 사용자가 다시 '교체'로 돌아오면 이전 선택이 그대로 복원된다
+ *   (목록을 disabled로 남겨두면 체크된 값이 조용히 버려지는 문제가 있어 렌더 자체를 하지 않는다).
+ * - 로딩/에러는 {@link ProjectMemberSelect} 선례(disabled shell + 안내 문구) 동형이다 — 빈 목록으로
+ *   은폐하지 않고, 로딩/에러 중에는 {@link VersionMultiSelect}를 렌더하지 않는다. 적용 방식 라디오는
+ *   로딩/에러와 무관하게 항상 조작 가능하다(버전 목록이 실패해도 '전체 해제'로 전환할 수 있어야 한다).
+ */
+function SetFixVersionsFields({ projectKey, config, onChange, idPrefix }: SetFixVersionsFieldsProps): JSX.Element {
+  const { data: versions, isLoading, isError } = useVersions(projectKey)
+  const mode = config.fixVersionsMode ?? 'replace'
+  const versionIds = config.versionIds ?? []
+  const radioGroupName = `${idPrefix}-fix-versions-mode`
+
+  function handleModeChange(nextMode: 'replace' | 'clear'): void {
+    onChange({ type: 'SET_FIX_VERSIONS', config: { ...config, fixVersionsMode: nextMode } })
+  }
+
+  function handleVersionsChange(ids: string[]): void {
+    onChange({ type: 'SET_FIX_VERSIONS', config: { ...config, versionIds: ids } })
+  }
+
+  return (
+    <div className="space-y-3">
+      <fieldset>
+        <legend className="block text-sm font-medium mb-1">{TEXT.fixVersionsModeLabel}</legend>
+        <div className="flex flex-col gap-1.5">
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name={radioGroupName}
+              value="replace"
+              checked={mode === 'replace'}
+              onChange={() => {
+                handleModeChange('replace')
+              }}
+              className="h-4 w-4 cursor-pointer accent-primary"
+            />
+            {TEXT.fixVersionsReplaceLabel}
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name={radioGroupName}
+              value="clear"
+              checked={mode === 'clear'}
+              onChange={() => {
+                handleModeChange('clear')
+              }}
+              className="h-4 w-4 cursor-pointer accent-primary"
+            />
+            {TEXT.fixVersionsClearLabel}
+          </label>
+        </div>
+      </fieldset>
+
+      {mode === 'replace' && isLoading && (
+        <p className="text-sm text-muted-foreground">{TEXT.fixVersionsLoading}</p>
+      )}
+      {mode === 'replace' && isError && (
+        <p className="text-sm text-destructive" role="alert">
+          {TEXT.fixVersionsError}
+        </p>
+      )}
+      {mode === 'replace' && !isLoading && !isError && (
+        <VersionMultiSelect variant="fix" value={versionIds} options={versions ?? []} onChange={handleVersionsChange} />
+      )}
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
@@ -537,13 +628,14 @@ export interface ActionConfigEditorProps {
 /**
  * 액션 1건의 타입별 조건부 편집기.
  *
- * 상단의 액션 유형 select로 4종(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK) 중 하나를 고르면,
- * 그 아래에 타입별 서브컴포넌트가 조건부로 전환된다(`TriggerConfigFields` 선례 동형).
+ * 상단의 액션 유형 select로 5종(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/SET_FIX_VERSIONS) 중
+ * 하나를 고르면, 그 아래에 타입별 서브컴포넌트가 조건부로 전환된다(`TriggerConfigFields` 선례 동형).
  * - {@link SetFieldFields} — 필드 6종 드롭다운 + 필드 타입에 맞는 값 위젯(텍스트/1~5·1~3 select/태그입력).
  *   6종 밖 field(EC10, 기존 룰에 저장된 값)는 텍스트 위젯으로 fallback해 값을 보존한다.
  * - {@link AssignField} — {@link ProjectMemberSelect}(담당자 해제 허용, EC3).
  * - {@link AddCommentField} — 본문 textarea + 템플릿 변수 힌트(FR5).
  * - {@link CallWebhookFields} — url·method(기본 POST)·헤더 행 추가/삭제·본문.
+ * - {@link SetFixVersionsFields} — 적용 방식(교체/전체 해제) + {@link VersionMultiSelect}(FR-AT-07 PR-B).
  *
  * 완전한 controlled 컴포넌트다 — `value`/`onChange`로만 상태를 주고받고, 자체 상태는 라벨 태그
  * 입력의 임시 draft에만 쓴다. 직렬화(JSON 문자열화)는 하지 않는다(상위 AutomationRuleFormDialog가
@@ -597,6 +689,9 @@ export function ActionConfigEditor({
       )}
       {value.type === 'ADD_COMMENT' && <AddCommentField config={value.config} onChange={onChange} idPrefix={idPrefix} />}
       {value.type === 'CALL_WEBHOOK' && <CallWebhookFields config={value.config} onChange={onChange} idPrefix={idPrefix} />}
+      {value.type === 'SET_FIX_VERSIONS' && (
+        <SetFixVersionsFields projectKey={projectKey} config={value.config} onChange={onChange} idPrefix={idPrefix} />
+      )}
     </div>
   )
 }

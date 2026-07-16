@@ -1,14 +1,17 @@
-// 액션 1건 타입별 조건부 편집기 테스트 — 타입 전환/SET_FIELD 값위젯/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/EC10 (FR-AT-02 D6 Task 4)
+// 액션 1건 타입별 조건부 편집기 테스트 — 타입 전환/SET_FIELD 값위젯/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/EC10 (FR-AT-02 D6 Task 4) + SET_FIX_VERSIONS 모드·S8 저장거부 (FR-AT-07 PR-B Task 9)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { http, HttpResponse } from 'msw'
 import { createElement } from 'react'
 import type { JSX, ReactNode } from 'react'
 import { server } from '@/test/server'
 import { projectMemberHandlers } from '@/mocks/project-member-handlers'
+import type { Version } from '@/api/versions.types'
 import { ActionConfigEditor } from './ActionConfigEditor'
 import type { ActionFormState } from './ActionConfigEditor'
+import { validateActions } from './AutomationRuleFormDialog'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 공통 헬퍼
@@ -16,6 +19,31 @@ import type { ActionFormState } from './ActionConfigEditor'
 
 const PROJECT_KEY = 'ATLAS'
 const ALICE_ID = '00000000-0000-4000-8000-000000000001'
+const FIX_VERSION_ID_1 = '30000000-0000-4000-8000-000000000001'
+const FIX_VERSION_ID_2 = '30000000-0000-4000-8000-000000000002'
+const VERSION_PROJECT_ID = '40000000-0000-4000-8000-000000000001'
+
+/** SET_FIX_VERSIONS 테스트 공용 버전 목록 픽스처 — GET /versions 응답으로 사용한다 */
+const versionsFixture: Version[] = [
+  {
+    id: FIX_VERSION_ID_1,
+    projectId: VERSION_PROJECT_ID,
+    name: '1.0.0',
+    description: null,
+    startDate: null,
+    releaseDate: null,
+    status: 'UNRELEASED',
+  },
+  {
+    id: FIX_VERSION_ID_2,
+    projectId: VERSION_PROJECT_ID,
+    name: '1.2.0',
+    description: null,
+    startDate: null,
+    releaseDate: null,
+    status: 'UNRELEASED',
+  },
+]
 
 function renderWithClient(ui: JSX.Element) {
   const queryClient = new QueryClient({
@@ -38,12 +66,13 @@ const setFieldDefault: ActionFormState = { type: 'SET_FIELD', config: { field: '
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('ActionConfigEditor — 타입 전환', () => {
-  it('액션 유형 select에 4종 옵션을 렌더한다', () => {
+  it('액션 유형 select에 5종 옵션을 렌더한다', () => {
     render(<ActionConfigEditor projectKey={PROJECT_KEY} value={setFieldDefault} onChange={vi.fn()} />)
 
     expect(screen.getByRole('option', { name: '필드 값 설정' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '담당자 지정' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '댓글 추가' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '수정 예정 버전 설정' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '웹훅 호출' })).toBeInTheDocument()
   })
 
@@ -383,5 +412,170 @@ describe('ActionConfigEditor — CALL_WEBHOOK', () => {
         body: '',
       },
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SET_FIX_VERSIONS — 모드(교체/전체 해제) + VersionMultiSelect(variant=fix) (FR-AT-07 PR-B Task 9)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ActionConfigEditor — SET_FIX_VERSIONS', () => {
+  beforeEach(() => {
+    server.use(
+      http.get('/api/v1/projects/:projectIdOrKey/versions', () => HttpResponse.json({ data: versionsFixture })),
+    )
+  })
+
+  it('SET_FIX_VERSIONS 를 고르면 교체 모드가 기본 선택되고 버전 목록이 뜬다 (S1)', async () => {
+    const onChange = vi.fn()
+    const { rerender } = renderWithClient(
+      <ActionConfigEditor projectKey={PROJECT_KEY} value={setFieldDefault} onChange={onChange} />,
+    )
+    const user = userEvent.setup()
+
+    await user.selectOptions(screen.getByLabelText('액션 유형'), '수정 예정 버전 설정')
+
+    expect(onChange).toHaveBeenCalledWith({
+      type: 'SET_FIX_VERSIONS',
+      config: { fixVersionsMode: 'replace', versionIds: [] },
+    })
+
+    const nextValue = onChange.mock.calls[0]?.[0] as ActionFormState
+    rerender(<ActionConfigEditor projectKey={PROJECT_KEY} value={nextValue} onChange={onChange} />)
+
+    expect(screen.getByRole('radio', { name: '선택한 버전으로 교체' })).toBeChecked()
+    expect(await screen.findByRole('checkbox', { name: '1.0.0' })).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: '1.2.0' })).toBeInTheDocument()
+  })
+
+  it('전체 해제 모드면 버전 목록이 숨겨진다', () => {
+    const value: ActionFormState = {
+      type: 'SET_FIX_VERSIONS',
+      config: { fixVersionsMode: 'clear', versionIds: [] },
+    }
+    renderWithClient(<ActionConfigEditor projectKey={PROJECT_KEY} value={value} onChange={vi.fn()} />)
+
+    expect(screen.getByRole('radio', { name: '전체 해제' })).toBeChecked()
+    expect(screen.queryByRole('checkbox', { name: '1.0.0' })).not.toBeInTheDocument()
+  })
+
+  it('fixVersionsMode 키가 없으면(undefined) 교체 모드로 렌더한다(undefined ≡ replace, fail-closed 기본값)', () => {
+    const value: ActionFormState = {
+      type: 'SET_FIX_VERSIONS',
+      config: { versionIds: [] },
+    }
+    renderWithClient(<ActionConfigEditor projectKey={PROJECT_KEY} value={value} onChange={vi.fn()} />)
+
+    expect(screen.getByRole('radio', { name: '선택한 버전으로 교체' })).toBeChecked()
+  })
+
+  it('useVersions 로딩이면 disabled shell 문구가 뜨고 모드 선택은 계속 가능하다(EC13)', () => {
+    server.use(
+      http.get('/api/v1/projects/:projectIdOrKey/versions', async () => {
+        await new Promise((resolve) => setTimeout(resolve, 200))
+        return HttpResponse.json({ data: versionsFixture })
+      }),
+    )
+    const value: ActionFormState = {
+      type: 'SET_FIX_VERSIONS',
+      config: { fixVersionsMode: 'replace', versionIds: [] },
+    }
+    renderWithClient(<ActionConfigEditor projectKey={PROJECT_KEY} value={value} onChange={vi.fn()} />)
+
+    expect(screen.getByText('버전 목록을 불러오는 중...')).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: '선택한 버전으로 교체' })).toBeInTheDocument()
+  })
+
+  it('useVersions 에러면 disabled shell + 에러 문구가 뜬다(EC13)', async () => {
+    server.use(
+      http.get('/api/v1/projects/:projectIdOrKey/versions', () =>
+        HttpResponse.json(
+          { type: 'about:blank', title: 'Internal Server Error', status: 500, detail: 'boom' },
+          { status: 500 },
+        ),
+      ),
+    )
+    const value: ActionFormState = {
+      type: 'SET_FIX_VERSIONS',
+      config: { fixVersionsMode: 'replace', versionIds: [] },
+    }
+    renderWithClient(<ActionConfigEditor projectKey={PROJECT_KEY} value={value} onChange={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('버전 목록을 불러오지 못했습니다.')).toBeInTheDocument()
+    })
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+  })
+
+  it('replace→clear→replace 왕복에도 선택이 보존된다', async () => {
+    const onChange = vi.fn()
+    const initial: ActionFormState = {
+      type: 'SET_FIX_VERSIONS',
+      config: { fixVersionsMode: 'replace', versionIds: [FIX_VERSION_ID_1] },
+    }
+    const { rerender } = renderWithClient(
+      <ActionConfigEditor projectKey={PROJECT_KEY} value={initial} onChange={onChange} />,
+    )
+    const user = userEvent.setup()
+    await screen.findByRole('checkbox', { name: '1.0.0' })
+
+    await user.click(screen.getByRole('radio', { name: '전체 해제' }))
+    const afterClear = onChange.mock.calls.at(-1)?.[0] as ActionFormState
+    expect(afterClear.config.versionIds).toEqual([FIX_VERSION_ID_1])
+    rerender(<ActionConfigEditor projectKey={PROJECT_KEY} value={afterClear} onChange={onChange} />)
+    expect(screen.queryByRole('checkbox', { name: '1.0.0' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('radio', { name: '선택한 버전으로 교체' }))
+    const afterReplace = onChange.mock.calls.at(-1)?.[0] as ActionFormState
+    expect(afterReplace.config.versionIds).toEqual([FIX_VERSION_ID_1])
+    rerender(<ActionConfigEditor projectKey={PROJECT_KEY} value={afterReplace} onChange={onChange} />)
+    expect(await screen.findByRole('checkbox', { name: '1.0.0' })).toBeChecked()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S8 — validateActions 저장 거부 (AutomationRuleFormDialog 소유 순수 함수, load-bearing)
+//
+// 저장 거부 기제는 AutomationRuleFormDialog(제출 직전 게이트)가 소유하지만, 그 판정 로직인
+// validateActions는 폼 상태만 받는 순수 함수라 Dialog 전체를 렌더하지 않고 여기서 단위 검증한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('validateActions — S8 저장 거부', () => {
+  it('교체 모드 + 빈 목록이면 저장이 거부된다', () => {
+    const actions: ActionFormState[] = [
+      { type: 'SET_FIX_VERSIONS', config: { fixVersionsMode: 'replace', versionIds: [] } },
+    ]
+
+    expect(validateActions(actions)).toEqual([{ index: 0, message: expect.any(String) as unknown as string }])
+  })
+
+  it('전체 해제 모드면 빈 목록이어도 저장을 거부하지 않는다', () => {
+    const actions: ActionFormState[] = [
+      { type: 'SET_FIX_VERSIONS', config: { fixVersionsMode: 'clear', versionIds: [] } },
+    ]
+
+    expect(validateActions(actions)).toEqual([])
+  })
+
+  it('교체 모드 + 버전 1개 이상 선택이면 저장을 거부하지 않는다', () => {
+    const actions: ActionFormState[] = [
+      { type: 'SET_FIX_VERSIONS', config: { fixVersionsMode: 'replace', versionIds: [FIX_VERSION_ID_1] } },
+    ]
+
+    expect(validateActions(actions)).toEqual([])
+  })
+
+  it('SET_FIX_VERSIONS 가 아닌 액션은 검사하지 않는다', () => {
+    const actions: ActionFormState[] = [{ type: 'SET_FIELD', config: { field: 'summary', value: '' } }]
+
+    expect(validateActions(actions)).toEqual([])
+  })
+
+  it('fixVersionsMode 키가 아예 없으면 replace로 간주해 저장을 거부한다(undefined ≡ replace, fail-closed 기본값)', () => {
+    const actions: ActionFormState[] = [{ type: 'SET_FIX_VERSIONS', config: { versionIds: [] } }]
+
+    expect(validateActions(actions)).toEqual([{ index: 0, message: expect.any(String) as unknown as string }])
   })
 })

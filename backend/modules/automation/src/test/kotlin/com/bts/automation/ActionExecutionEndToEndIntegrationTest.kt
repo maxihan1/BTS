@@ -2,16 +2,23 @@
 
 package com.bts.automation
 
+import com.bts.automation.adapter.AutomationConditionRepository
 import com.bts.automation.adapter.AutomationExecutionEnqueuer
 import com.bts.automation.adapter.AutomationRuleRepository
 import com.bts.automation.adapter.RuleExecutionRepository
 import com.bts.automation.adapter.WebhookActionClient
 import com.bts.automation.adapter.WebhookCallResult
+import com.bts.automation.application.ActionExecutionStatus
 import com.bts.automation.application.ActionExecutor
 import com.bts.automation.domain.Action
 import com.bts.automation.domain.AutomationRule
+import com.bts.automation.domain.ComparisonOperator
+import com.bts.automation.domain.Condition
+import com.bts.automation.domain.TriggerConfig
 import com.bts.automation.domain.TriggerType
 import com.bts.automation.worker.AutomationExecutionWorker
+import com.bts.shared.issue.IssueMutationPermissionDeniedException
+import com.bts.shared.issue.IssueSnapshot
 import com.bts.shared.permission.AutomationPermissionResolver
 import com.bts.shared.permission.IssuePermissionResolver
 import com.fasterxml.jackson.databind.JsonNode
@@ -60,6 +67,12 @@ import java.util.UUID
  *   별도 워커 인스턴스(예: 재시작/다중 인스턴스 배포)가 동일 메시지를 재처리하면 부작용이 중복될 수
  *   있음을 관측한다(강한 dedup 은 FR-AT-05 위임 — [AutomationExecutionWorker] 클래스 KDoc "루프 가드
  *   (b)" 참조).
+ * - (FR-AT-07 PR-B) [Action.SetFixVersionsAction] — `ISSUE_UPDATED`+`fields=["status"]`+조건으로 발화하는
+ *   룰이 [StubIssueMutationPort.setFixVersions] 를 호출하고 `rule_executions` 에 SUCCESS 로 기록됨(S2),
+ *   설정된 목록으로 전체 교체하며 무변경 재실행도 매번 재실행됨(S3, EC14 인지), 빈 배열이면 전체
+ *   해제됨(S4), 권한 거부는 [classifyPortFailure] 가 타입 있는
+ *   [com.bts.shared.issue.IssueMutationPermissionDeniedException] 으로 분류해 FAILED+PERMISSION_DENIED
+ *   로 기록됨(S5)을 검증한다.
  */
 @SpringBootTest(
     classes = [AutomationTestBootApplication::class],
@@ -118,7 +131,15 @@ class ActionExecutionEndToEndIntegrationTest {
 
     @Autowired
     @Suppress("VarCouldBeVal")
+    private lateinit var conditionRepository: AutomationConditionRepository
+
+    @Autowired
+    @Suppress("VarCouldBeVal")
     private lateinit var issueMutationPort: StubIssueMutationPort
+
+    @Autowired
+    @Suppress("VarCouldBeVal")
+    private lateinit var issueSnapshotPort: StubIssueSnapshotPort
 
     @Autowired
     @Suppress("VarCouldBeVal")
@@ -143,6 +164,7 @@ class ActionExecutionEndToEndIntegrationTest {
         jdbcTemplate.execute("SELECT pgmq.purge_queue('q_automation_execution')")
         jdbcTemplate.update("DELETE FROM pgmq.\"${pgmqTable("a")}\"")
         issueMutationPort.reset()
+        issueSnapshotPort.reset()
         clearMocks(webhookActionClient)
     }
 
@@ -162,12 +184,15 @@ class ActionExecutionEndToEndIntegrationTest {
         actions: List<Action>,
         actorUserId: UUID = UUID.randomUUID(),
         projectKey: String = "ATLAS",
+        triggerType: TriggerType = TriggerType.ISSUE_CREATED,
+        triggerConfig: String = TriggerConfig.EMPTY,
     ): AutomationRule {
         val rule =
             AutomationRule.create(
                 projectKey = projectKey,
                 name = "E2E 룰",
-                triggerType = TriggerType.ISSUE_CREATED,
+                triggerType = triggerType,
+                triggerConfig = triggerConfig,
                 createdBy = UUID.randomUUID(),
                 actorUserId = actorUserId,
                 actions = actions,
@@ -332,5 +357,158 @@ class ActionExecutionEndToEndIntegrationTest {
         // 부작용 중복 관측 — 워커 로컬 억제 캐시는 같은 인스턴스·60초 이내에서만 유효한 best-effort 이며,
         // 강한 멱등성(정확히 한 번 실행)은 보장하지 않는다(강한 dedup 은 FR-AT-05 위임).
         assertThat(issueMutationPort.addCommentCalls).hasSize(2)
+    }
+
+    // ── SET_FIX_VERSIONS end-to-end (FR-AT-07 PR-B, S2~S5) ───────────────────
+
+    @Test
+    fun `S2 SET_FIX_VERSIONS 룰이 ISSUE_UPDATED+조건 발화 시 Fix Version 이 설정되고 SUCCESS 로 기록된다`() {
+        // TriggerType.TRANSITION 은 존재하지 않는다(실재 5종. TriggerType.kt 참조) — "status 가 Done 으로
+        // 전이되면"은 ISSUE_UPDATED 트리거 + triggerConfig.fields=["status"] + 조건(issue.status==Done)
+        // 으로 표현한다(스펙 §S2, 개정 4회차).
+        val actorUserId = UUID.randomUUID()
+        val versionId = UUID.randomUUID()
+        val rule =
+            saveRule(
+                actorUserId = actorUserId,
+                actions = listOf(Action.SetFixVersionsAction(versionIds = listOf(versionId))),
+                triggerType = TriggerType.ISSUE_UPDATED,
+                triggerConfig = """{"fields":["status"]}""",
+            )
+        conditionRepository.replace(
+            rule.id,
+            Condition.Comparison(
+                field = "issue.status",
+                operator = ComparisonOperator.EQUALS,
+                value = TextNode("Done"),
+            ),
+        )
+        issueSnapshotPort.seed(
+            rule.createdBy,
+            "ATLAS-20",
+            IssueSnapshot(
+                key = "ATLAS-20",
+                projectKey = "ATLAS",
+                type = "Story",
+                status = "Done",
+                priority = null,
+                assigneeId = null,
+                reporterId = null,
+                labels = emptyList(),
+                summary = "머지 준비 완료",
+            ),
+        )
+
+        val triggerEvent = objectMapper.readTree("""{"issueKey":"ATLAS-20"}""")
+        automationExecutionEnqueuer.enqueue(rule.id, rule.triggerType, triggerEvent)
+
+        worker().pollAndProcess()
+
+        val setFixVersionsCmd = issueMutationPort.setFixVersionsCalls.single()
+        assertThat(setFixVersionsCmd.issueKey).isEqualTo("ATLAS-20")
+        assertThat(setFixVersionsCmd.versionIds).containsExactly(versionId)
+        assertThat(setFixVersionsCmd.actorUserId).isEqualTo(actorUserId)
+
+        val history =
+            ruleExecutionRepository.findByRule(rule.projectKey, rule.id, issueKey = null, limit = 10, before = null)
+        assertThat(history.single().status).isEqualTo(ActionExecutionStatus.SUCCESS)
+
+        assertThat(pendingCount()).isZero()
+        assertThat(archivedCount()).isEqualTo(1)
+    }
+
+    @Test
+    fun `S3 SET_FIX_VERSIONS 액션은 설정된 목록으로 전체 교체하며 무변경 재실행도 매번 다시 실행된다`() {
+        val actorUserId = UUID.randomUUID()
+        // 이슈에 이미 걸려 있다고 가정하는 기존 버전("1.0.0") — automation 계층은 이 값을 전혀 모른다.
+        // 전체 교체 시맨틱 자체(기존 값을 지우고 설정값만 남기는 동작)는 issue-tracking
+        // IssueApplicationService.changeFixVersions → Issue.assignFixVersions 가 강제한다
+        // (Task 1 AutomationIssueMutationAdapterTest·Task 6 IssueVersionLinksIntegrationTest 참조).
+        // 이 테스트는 automation 계층이 그 값을 덧붙이지 않고 config 그대로("1.2.0"만)를 통째로 넘긴다는
+        // 것만 확인한다.
+        val oldVersionId = UUID.randomUUID()
+        val newVersionId = UUID.randomUUID()
+        val rule =
+            saveRule(
+                actorUserId = actorUserId,
+                actions = listOf(Action.SetFixVersionsAction(versionIds = listOf(newVersionId))),
+            )
+        val triggerEvent = objectMapper.readTree("""{"issueKey":"ATLAS-21"}""")
+
+        automationExecutionEnqueuer.enqueue(rule.id, rule.triggerType, triggerEvent)
+        worker().pollAndProcess()
+
+        val firstCmd = issueMutationPort.setFixVersionsCalls.single()
+        assertThat(firstCmd.versionIds).containsExactly(newVersionId)
+        assertThat(firstCmd.versionIds).doesNotContain(oldVersionId)
+
+        // EC14 인지 — 이미 같은 값이 설정된 이슈에 룰이 다시 실행돼도(무변경) 실 issue-tracking 어댑터는
+        // replaceVersionLinks 가 무조건 먼저 bump 해 version 을 올린다(무변경 단락 없음, 스펙 EC14).
+        // automation 의 StubIssueMutationPort 는 고정 버전만 반환해 그 bump 자체는 관측할 수 없으므로,
+        // 여기서는 "무변경 재실행이 억제되지 않고 매번 포트를 다시 호출하고 매번 rule_executions 에 새
+        // SUCCESS 이력을 남긴다"는 사실만 확인한다(별도 워커 인스턴스로 60초 억제 우회 — EC9 케이스 동형).
+        automationExecutionEnqueuer.enqueue(rule.id, rule.triggerType, triggerEvent)
+        worker().pollAndProcess()
+
+        assertThat(issueMutationPort.setFixVersionsCalls).hasSize(2)
+        assertThat(issueMutationPort.setFixVersionsCalls.last().versionIds).containsExactly(newVersionId)
+
+        val history =
+            ruleExecutionRepository.findByRule(rule.projectKey, rule.id, issueKey = null, limit = 10, before = null)
+        assertThat(history).hasSize(2)
+        assertThat(history).allMatch { it.status == ActionExecutionStatus.SUCCESS }
+    }
+
+    @Test
+    fun `S4 SET_FIX_VERSIONS 액션의 versionIds 가 빈 배열이면 Fix Version 이 전체 해제된다`() {
+        val actorUserId = UUID.randomUUID()
+        val rule =
+            saveRule(
+                actorUserId = actorUserId,
+                actions = listOf(Action.SetFixVersionsAction(versionIds = emptyList())),
+            )
+
+        val triggerEvent = objectMapper.readTree("""{"issueKey":"ATLAS-22"}""")
+        automationExecutionEnqueuer.enqueue(rule.id, rule.triggerType, triggerEvent)
+
+        worker().pollAndProcess()
+
+        val cmd = issueMutationPort.setFixVersionsCalls.single()
+        assertThat(cmd.versionIds).isEmpty()
+        assertThat(cmd.issueKey).isEqualTo("ATLAS-22")
+        assertThat(cmd.actorUserId).isEqualTo(actorUserId)
+
+        val history =
+            ruleExecutionRepository.findByRule(rule.projectKey, rule.id, issueKey = null, limit = 10, before = null)
+        assertThat(history.single().status).isEqualTo(ActionExecutionStatus.SUCCESS)
+
+        assertThat(pendingCount()).isZero()
+        assertThat(archivedCount()).isEqualTo(1)
+    }
+
+    @Test
+    fun `S5 권한 없는 actor 의 SET_FIX_VERSIONS 액션은 rule_executions 에 FAILED-PERMISSION_DENIED 로 기록된다`() {
+        val rule =
+            saveRule(actions = listOf(Action.SetFixVersionsAction(versionIds = listOf(UUID.randomUUID()))))
+        // classifyPortFailure(ActionExecutor.kt) 는 클래스명 문자열 매칭이 아니라 타입
+        // (IssueMutationPermissionDeniedException) 으로만 권한 거부를 분류한다(FR-AT-02 C3,
+        // [[crossbc-failure-classification-typed-not-name]]) — 여기서 그 타입을 그대로 주입한다.
+        issueMutationPort.failNextCallsWith(IssueMutationPermissionDeniedException("이슈 변경 권한이 없습니다(테스트)"))
+
+        val triggerEvent = objectMapper.readTree("""{"issueKey":"ATLAS-23"}""")
+        automationExecutionEnqueuer.enqueue(rule.id, rule.triggerType, triggerEvent)
+
+        worker().pollAndProcess()
+
+        val history =
+            ruleExecutionRepository.findByRule(rule.projectKey, rule.id, issueKey = null, limit = 10, before = null)
+        val execution = history.single()
+        assertThat(execution.status).isEqualTo(ActionExecutionStatus.FAILED)
+        val outcome = execution.outcomes.single()
+        assertThat(outcome.success).isFalse()
+        assertThat(outcome.error).isEqualTo("PERMISSION_DENIED")
+
+        assertThat(pendingCount()).isZero()
+        assertThat(archivedCount()).isEqualTo(1)
     }
 }

@@ -70,7 +70,7 @@ data class YamlTrigger(
  * [config]는 사람이 읽는 YAML 객체로 방출/입력되고, 도메인의 action_config JSON 문자열과 상호
  * 변환된다 — wire 비대칭 흡수는 [AutomationYamlCodec] 이 담당한다.
  *
- * @property type 액션 타입 4종([ActionType]).
+ * @property type 액션 타입 5종([ActionType]).
  * @property config 액션별 설정. 빈 객체(`{}`) 허용.
  */
 data class YamlAction(

@@ -172,6 +172,31 @@ class AutomationActionRepositoryTest {
         assertThat(actionRepository.findByRuleId(rule.id)).isEmpty()
     }
 
+    @Test
+    fun `replaceForRule — SET_FIX_VERSIONS 액션은 findByRuleId 왕복에서 versionIds 가 보존된다`() {
+        // actionConfigJson(직렬화)이 fromJson(역직렬화)의 정확한 역함수여야 한다 — 어긋나면 이 룰의
+        // 모든 액션이 로드 불가능해진다(poison message, [AutomationActionRepository] KDoc 참고).
+        val rule = savedRule()
+        val versionIds = listOf(UUID.randomUUID(), UUID.randomUUID())
+        val actions = listOf(Action.SetFixVersionsAction(versionIds = versionIds))
+
+        actionRepository.replaceForRule(rule.id, actions)
+        val found = actionRepository.findByRuleId(rule.id)
+
+        assertThat(found).containsExactly(Action.SetFixVersionsAction(versionIds = versionIds))
+    }
+
+    @Test
+    fun `replaceForRule — SET_FIX_VERSIONS 빈 배열도 findByRuleId 왕복에서 보존된다`() {
+        val rule = savedRule()
+        val actions = listOf(Action.SetFixVersionsAction(versionIds = emptyList()))
+
+        actionRepository.replaceForRule(rule.id, actions)
+        val found = actionRepository.findByRuleId(rule.id)
+
+        assertThat(found).containsExactly(Action.SetFixVersionsAction(versionIds = emptyList()))
+    }
+
     // ── AutomationRuleRepository.save 연동 ────────────────────────────────────────
 
     @Test
