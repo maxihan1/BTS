@@ -207,8 +207,13 @@ placeholder 는 여기서 "감사 정확도" 문제가 아니라 **기능 자체
 | PJ2-3 | `GET /api/v1/projects/{projectIdOrKey}` 신설 — 단건. 아카이브 프로젝트도 **조회된다** |
 | PJ2-4 | 접근 불가 프로젝트는 목록에서 제외된다 (존재를 누설하지 않는다) |
 
-> **D8 은 Version 선례와 의도적으로 다르다.** `VersionRepository.kt:84·100·129` 는 STATUS 필터 없이 `DELETED_AT` 만 검사한다.
-> 프로젝트는 지라 관례를 따라 아카이브를 기본 제외한다. → `ProjectMembershipAdapter.kt:63-73`("내 프로젝트 목록") 술어 변경 필요 = **identity-access cross-BC 영향**.
+> **D8 은 Version 선례와 의도적으로 다르다.** `VersionRepository.kt:84·100·129` 는 STATUS 필터 없이 `DELETED_AT` 만 검사한다(실측 확인).
+> 프로젝트는 지라 관례를 따라 아카이브를 기본 제외한다.
+>
+> **⚠️ 정정 (Phase B B3).** plan 은 *"`ProjectMembershipAdapter.kt:63-73` 술어 변경 → identity-access cross-BC 영향"* 이라 적었으나 **두 가지가 틀렸다**.
+> (1) 실제 심볼명은 `projectKeysOf(userId)`(`:54`) 이고 술어 SQL 은 `:67-73` 이다 — `"내 프로젝트 목록"` 이라는 문자열은 파일에 없다.
+> (2) **영향이 identity-access 에서 끝나지 않는다.** 그 어댑터는 `ProjectMembershipPort` 구현이고 **실소비자는 search-export-import**(FR-SR-03 필터 공유 가시성)다.
+> → **`projectKeysOf` 를 바꾸면 안 된다.** 아카이브 필터는 `projects` 소유 BC(issue-tracking)가 포트 결과 **위에** 얹는다.
 
 ### 2.4. FR-PJ-03 — 설정 변경 / FR-PJ-04 — 아카이브
 
@@ -259,7 +264,7 @@ placeholder 는 여기서 "감사 정확도" 문제가 아니라 **기능 자체
 
 - **두 결함이 서로를 가려왔다.** R6 때문에 매핑이 항상 0행이라 RESTRICT 가 발동할 일이 없었다
 - `YamlSeedService` KDoc `:143-145` 는 *"CASCADE 로 런타임 post-action 이 소실된다 — 알려진 한계"* 라며 CASCADE 를 전제하는데, **매핑만 RESTRICT** 라 이 전제가 틀렸다
-- **로컬은 이미 이 지뢰 위에 있다** — `seed-project.sql:57-70` 이 매핑을 심으므로, YAML 구조 수정 시 부팅 실패. 아직 아무도 안 밟았을 뿐
+- **로컬은 이미 이 지뢰 위에 있다** — `seed-project.sql:58-67` 이 매핑을 심으므로, YAML 구조 수정 시 부팅 실패. 아직 아무도 안 밟았을 뿐
 - 패턴 동형 — [[permitall-opens-preexisting-body-buffer-dos]]("경로를 열면 선재 결함이 신규 노출")
 
 **재시드 생존 전략 — 3안 (plan 단계에서 1안 확정 필요).**
@@ -270,7 +275,7 @@ placeholder 는 여기서 "감사 정확도" 문제가 아니라 **기능 자체
 | (b) FK 를 CASCADE 전환 | `V203` 으로 RESTRICT → CASCADE, 백필 러너가 매번 보정 | 재적재 시 매핑이 **조용히 소멸** — 백필이 반드시 뒤따라야 함. 실패 시 무증상 422 |
 | (c) workflows 재적재를 UPSERT 로 | `deleteWorkflow` 자체를 없애고 UUID 보존 | 폭발 반경 최대 — `YamlSeedService` 핵심 로직 재설계. states/transitions cascade 도 재검토 |
 
-> **(b) 는 무증상 실패로 되돌아간다는 점에서 위험하다** — R6 의 재발이다. **(a) 권장**, 단 plan 단계에서 `SchemaMigrationTest` 카운트 가드 · `init_codegen.sql` 미러 영향과 함께 확정한다.
+> **(b) 는 무증상 실패로 되돌아간다는 점에서 위험하다** — R6 의 재발이다. **(a) 권장**, 단 plan 단계에서 카운트 가드 · `init_codegen.sql` 미러 영향과 함께 확정한다.
 
 ### 2.6. FR-PM-10 — 전역 권한 부여
 
@@ -280,7 +285,7 @@ placeholder 는 여기서 "감사 정확도" 문제가 아니라 **기능 자체
 | PM10-2 | `grantee_type ∈ {USER, GROUP}`. GROUP 은 `user_groups`(V015, FR-PM-09) 재사용 |
 | PM10-3 | `SystemPermissionResolver` 를 **default 메서드**로 확장 — `hasGlobalPermission(actorId, permission): Boolean` |
 | PM10-4 | 부여/회수 API — 권한 = **SYSTEM_ADMIN**, 명시 호출 게이트 |
-| PM10-5 | 권한 코드 시드는 `SchemaMigrationTest` 카운트 가드를 깬다 — **전 모듈 grep 필수** |
+| PM10-5 | 권한 코드 시드가 카운트 가드를 깨는지 **실측 확인**한다. 실명은 `SchemaMigrationTest` 가 아니라 **`PermissionSchemaMigrationTest.kt:79`** (`role_permissions` 행 수 17 하드코딩). 단 `CREATE_PROJECT` 는 `global_permission_grants` 로 가므로 **깨지는지 UNKNOWN** — 전 모듈 grep 으로 판정 (Phase B B4) |
 | PM10-6 | 판정은 fail-closed — grant 가 없으면 `false` |
 
 #### 2.7. PM10-3 이 default 메서드여야 하는 이유 — 구현체는 3곳이 아니라 6곳이다 ★
@@ -419,9 +424,10 @@ interface SystemPermissionResolver {
 | 존재 여부 | `deleted_at` (기존) | NULL=활성. **범위 밖 — 손대지 않는다** |
 | 잠금 여부 | `archived_at` (신규) | NULL=활성, NOT NULL=읽기 전용 |
 
-- **`status` enum 기각** — 2값은 boolean 의 enum 위장. Version 의 enum 은 릴리스 축(UNRELEASED/RELEASED)이 **선재했기에** 정당했고 프로젝트엔 그런 축이 없다. `archived_at` 단독 선례 실재 — `V407__notifications_inbox.sql:6`
+- **`status` enum 기각** — 2값은 boolean 의 enum 위장. Version 의 enum 은 릴리스 축(UNRELEASED/RELEASED)이 **선재했기에** 정당했고 프로젝트엔 그런 축이 없다. **아카이브 축을 timestamp 단독으로 모델링한 선례 실재** — `V407__notifications_inbox.sql:6` (`ALTER TABLE notifications ADD COLUMN archived_at TIMESTAMPTZ`)
+  > **정정(Phase B B5).** `notifications` 테이블에 `status` 컬럼은 **실재한다**(`V402:17`, TEXT NOT NULL, PENDING/SENT/FAILED). 다만 그것은 **발송 축**이지 아카이브 축이 아니다. 선례의 요점은 "이 테이블에 status 가 없다"가 아니라 **"아카이브를 status 에 얹지 않고 별도 timestamp 로 뽑았다"** 이다
 - **`deleted_at` 재사용 기각** — 의미가 정반대. `projects.deleted_at` 읽기 술어 10곳이 전부 "NOT NULL = 존재하지 않음(404/제외)"을 전제하는데, 아카이브 프로젝트는 **여전히 조회돼야** 한다. 한 곳만 놓치면 아카이브가 곧 **이슈 소실**로 나타난다
-- **cascade 없음** — 아카이브는 잠금이지 소멸이 아니다. 물리적으로도 불가에 가깝다: boards/sprints 는 `project_key` **문자열**만 갖고 BC 격리로 `projects` 직접 참조가 차단돼 있다(`V500:6-9`, `V503:7-9`)
+- **cascade 없음** — 아카이브는 잠금이지 소멸이 아니다. 물리적으로도 불가에 가깝다: boards/sprints 는 `project_key` **문자열**만 갖고 BC 격리로 `projects` 직접 참조가 차단돼 있다(`V500__boards.sql:11`, `V503__sprints.sql:11` — 둘 다 `project_key VARCHAR(64) NOT NULL, -- BC 격리: FK 아님`)
 - **`key` 는 아카이브와 무관하게 UNIQUE 를 계속 점유** (DATA.md §1.1)
 
 ---
@@ -450,7 +456,7 @@ interface SystemPermissionResolver {
 | C1 | **`NonProdAllowSystemAdminResolver` 는 `@Profile("!prod")` + 항상 `true`.** KDoc 이 직접 *"운영 환경 사용 시 권한 우회가 발생한다"* 고 명시. 권한 테스트를 기본 프로파일로 짜면 **"권한 있는 사용자는 생성 가능" 테스트가 무의미하게 통과**한다(누구나 관리자니까). **`@ActiveProfiles("prod")` + 실제 grant 시드** 필수 |
 | C2 | **음성 가드는 본문 판별자가 필요하다.** "여전히 403"은 vacuous 하다 — 컨트롤러가 없어도 403 이다. **위반을 주입해 fail 을 확인**할 것 ([[negative-guard-needs-body-discriminator]]) |
 | C3 | `init_codegen.sql` 미러 필수 (issue-tracking = jOOQ 모듈) ([[jooq-init-codegen-mirror]]) |
-| C4 | 신규 권한 코드 시드는 `SchemaMigrationTest` 카운트 가드를 깬다 — **전 모듈 grep** ([[fr-pm-permission-seed-migration-test-coupling]]) |
+| C4 | 권한 시드 카운트 가드의 실명은 **`PermissionSchemaMigrationTest.kt:79`** — `SchemaMigrationTest` 는 automation 모듈의 다른 테스트다(Phase B B4 오기 정정). `role_permissions` 를 참조하는 테스트는 `PermissionSchemaMigrationTest` · `IssueVisibilityAdapterIntegrationTest` 2개. **전 모듈 grep 으로 실측** ([[fr-pm-permission-seed-migration-test-coupling]] — 이 메모리의 표현도 부정확) |
 | C5 | `SystemPermissionResolver` 확장은 **default 메서드** (§2.7 — 구현체 6곳) |
 | C6 | 새 cross-BC 의존을 소비하면 **OpenApi 테스트에 `@MockBean` 동반** 필요 ([[new-crossbc-dep-openapi-mockbean-regression]]) |
 | C7 | prod 조립 부팅 재검증 필수 — 머지 전 rebase + `:modules:app:test` ([[prod-assembly-boot-verification-required]]) |
@@ -504,8 +510,11 @@ interface SystemPermissionResolver {
 **PR-2 만 BC 2개다.** D10 이 명시 고지 후 확정한 유일한 예외이므로 PR 본문·`/bts-codereview` 에 D10 근거를 첨부한다.
 `bc:<context>` 라벨이 단수 전제라 표기 방식은 plan 단계에서 정한다.
 
-> **PR-4 를 PR-3 에서 분리한 이유** — 아카이브는 폭발 반경이 가장 크다. D8 이 `ProjectMembershipAdapter.kt:63-73` 술어 변경(identity-access cross-BC)을,
-> D9 가 `IssueApplicationService` 초크포인트 게이트를 요구한다. 목록/설정과 섞으면 리뷰 단위가 무너진다.
+> **PR-4 를 PR-3 에서 분리한 이유** — 아카이브는 폭발 반경이 가장 크다. 목록/설정과 섞으면 리뷰 단위가 무너진다.
+
+> 🛑 **§9 는 Phase B B1/B2 로 확정 불가 상태다.** 아래 두 가지가 미해결이다.
+> - **PR-2 는 B2 로 재설계 필요** — `project_memberships` 가 identity-access 소유라 신규 cross-BC 쓰기 포트가 선행돼야 한다. 그 포트를 PR-1(identity-access)에 넣으면 PR-2 의 BC 가 2개 → 유지, 별도 PR 로 빼면 5→7 PR
+> - **PR-4 의 비용 추정이 B1 로 무너졌다** — D9 의 *"비용 거의 없음"* 이 근거였으나 실측 29개 쓰기 / 5 BC. **아카이브 잠금 범위가 Maxi 결정 사항**이며, 그 결정 없이는 PR-4 가 1개인지 3개인지 정할 수 없다
 
 **각 PR 은 자기 plan 파일을 갖는다** (`DEVELOPMENT.md §4`). 이 문서는 **마스터 스펙**이고, 각 PR 착수 시 `/bts` 로 상세화한다 (FR-AT-07 마스터 스펙 §B 선례 동형).
 
@@ -536,4 +545,81 @@ interface SystemPermissionResolver {
 
 ## Brainstorming Check
 
-(← Phase B 채움)
+### 1회차 (2026-07-17) — 적대적 검토. **BLOCKER 3건 · 정정 4건 · 주의 3건**
+
+> **교훈. 이 스펙의 BLOCKER 3건은 전부 "plan 이 이미 조사해서 안전하다고 결론낸 지점"에서 나왔다.**
+> D9 는 *"비용 거의 없음 — 초크포인트 한 곳"*, R2 는 *"2행 한 트랜잭션"*, D8 은 *"술어 변경"* 이라 적었고
+> 나는 그 결론을 spec 으로 옮겨 적었다. **셋 다 증거는 참인데 결론이 과일반화였다.**
+> [[spec-stated-count-becomes-blindfold]] 의 재현 — 앞 단계가 "세어준" 범위를 물려받으면 그 밖을 안 센다.
+
+#### 🛑 B1 — D9 의 "초크포인트 한 곳" 이 프로젝트 스코프 쓰기 29개를 안 덮는다 (**Maxi 결정 필요**)
+
+D9 원문 — *"cross-BC 쓰기 포트 2종이 전부 `IssueApplicationService` 를 통과하므로 초크포인트 한 곳 게이트로 **API·automation·Import 가 동시에 막힌다**"*.
+
+**증거는 참이다.** `IssueMutationPort` · `IssueImportPort` 는 실제로 `IssueApplicationService` 소비자다 → **S7(automation·Import 차단)은 그대로 성립**.
+**결론이 과일반화다.** "API" 는 **이슈 API 에만** 참이다.
+
+`/api/v1/projects/{...}` 하위 쓰기 엔드포인트 **29개 / 5 BC** 실측 — **`IssueApplicationService` 참조 0건**.
+
+| BC | 컨트롤러 | 쓰기 수 |
+|---|---|---|
+| issue-tracking | `Version`(5) · `Component`(4) · `CustomField`(3) · `IssueTemplate`(3) · `ProjectLead`(1) · `ProjectRequire2fa`(1) | **17** |
+| identity-access | `ProjectMember`(3) · `ProjectSecurityScheme`(2) · `FieldPermission`(2) | **7** |
+| automation | `AutomationRule`(4) | **4** |
+| project-workflow | `ProjectWorkflowScheme`(1) | **1** |
+
+→ **NFR-3("미강제 지점 0")은 초크포인트 1곳으로 달성 불가.**
+→ D9 의 ***"`ProjectLifecyclePort` 신설 불필요, BC별 어댑터 불필요"* 는 반증됐다** — identity-access · automation · project-workflow 가 "이 프로젝트가 아카이브인가"를 물을 창구가 없다.
+→ **§9 PR-4 의 비용 추정이 무너진다.** D9 의 *"비용 거의 없음"* 이 이 추정의 근거였다.
+
+#### 🛑 B2 — I1(`projects` + `project_memberships` 같은 트랜잭션)이 BC 경계를 횡단한다
+
+| 테이블 | 소유 BC | 근거 |
+|---|---|---|
+| `projects` | **issue-tracking** | `V001__issues_initial.sql:10` |
+| `project_memberships` | **identity-access** | `V007__project_memberships.sql` — 코드 접근도 identity-access 단독 |
+
+plan R2 는 *"생성 = 2행 한 트랜잭션"* 이라 정확히 세었으나 **그 2행이 서로 다른 BC 에 산다는 것을 놓쳤다.**
+I1 을 그대로 구현하면 issue-tracking 이 identity-access 테이블에 직접 쓴다 = **BC 격리 위반**(`CLAUDE.md §핵심 패턴`).
+
+**기존 포트로는 안 된다.** `shared-kernel/membership/ProjectMembershipPort.kt` 는 **읽기 전용**이다 — `projectKeysOf(userId): Set<String>` 하나뿐.
+KDoc 이 *"**default 구현 금지 (fail-closed)**"* · *"이 포트 외부에서 별도의 프로젝트 멤버십 조회 경로를 만드는 것을 금지한다"* 로 설계 의도를 못 박았다.
+
+→ **신규 cross-BC 쓰기 포트 필요** (issue-tracking → identity-access). 선례는 `IssueMutationPort`(automation → issue-tracking, 포트+어댑터로 남의 BC 에 쓰기).
+→ **default 메서드 금지** — 이 포트는 fail-closed 를 명시 설계했다. abstract 로 추가하고 구현체(identity-access 1곳 + test stub)를 갱신한다.
+  ([[interface-extension-default-method]] 의 "공유 인터페이스는 default" 원칙과 **충돌** — 이 포트는 명시적 예외다)
+
+#### 🛑 B3 — D8 의 술어 변경이 search-export-import FR-SR-03 을 오염시킨다
+
+D8 은 *"`ProjectMembershipAdapter.kt` 술어 변경 → identity-access cross-BC 영향"* 이라 적었다. **영향 범위가 identity-access 에서 끝나지 않는다.**
+
+그 어댑터는 `ProjectMembershipPort.projectKeysOf` 의 구현이고, **이 포트의 실소비자는 search-export-import**(FR-SR-03 필터 공유 가시성)다.
+`projectKeysOf` 에 아카이브 제외를 넣으면 **프로젝트를 아카이브하는 순간 그 프로젝트의 공유 필터가 조용히 사라진다** — 아카이브는 **잠금이지 소멸이 아니다**(§5.3)는 이 스펙의 기본 전제와 정면 충돌.
+
+→ **FR-PJ-02 의 아카이브 필터는 `projectKeysOf` 를 바꾸지 않고 그 위에 얹어야 한다.** 포트는 "멤버인 프로젝트"만 답하고, 아카이브 축은 `projects` 소유 BC(issue-tracking)가 건다.
+
+### 정정 4건 (실측 검증)
+
+| # | spec 기술 | 실측 | 조치 |
+|---|---|---|---|
+| B4 | C4 *"`SchemaMigrationTest` 카운트 가드"* | **오기.** `SchemaMigrationTest.kt` 는 **automation 모듈 1개뿐**이고 그 count 는 룰 액션/조건용이다. 권한 시드 가드의 실명은 **`PermissionSchemaMigrationTest.kt:79`** (`assertThat(count).isEqualTo(17)` — `role_permissions` 행 수) | C4 이름 정정. **단 `CREATE_PROJECT` 는 P3 CHECK 상 `role_permissions` 에 못 들어가고 `global_permission_grants` 로 가므로, 이 가드가 실제로 깨지는지는 UNKNOWN** — plan 단계에서 실측 |
+| B5 | *"`V407:6` = `archived_at` 단독 선례 (status enum 없음)"* | **`notifications.status` 는 실재**한다 (`V402:17` TEXT NOT NULL, PENDING/SENT/FAILED) | 논지(아카이브 축을 timestamp 단독으로 모델링한 선례)는 **생존**. "status enum 없음" 표현만 거짓 → §5.3 문구 정정 |
+| B6 | `seed-project.sql:57-70` | 실제 **58-67** (파일 EOF=67). `:57` 은 주석 | 라인 정정 |
+| B7 | `V500:6-9` / `V503:7-9` | `project_key` 컬럼은 **양쪽 다 `:11`**. 인용 범위가 주석+`CREATE TABLE (` 만 덮고 컬럼을 놓침 | 라인 정정 |
+
+### 주의 4건 (BLOCKER 아님, plan 단계 입력)
+
+| # | 내용 |
+|---|---|
+| B8 | **`hasGlobalPermission` default = `isSystemAdmin` 은 prod 어댑터가 override 를 잊으면 D7 을 조용히 뒤집는다.** `CREATE_PROJECT` 가 SYSTEM_ADMIN 전용으로 되돌아간다 — **Maxi 가 기각한 바로 그 안**이다. fail-closed 라 사고는 안 나지만 **아무도 모르게 기능이 사라진다.** → DoD 필수. *"`CREATE_PROJECT` grant 를 가진 **비-SYSTEM_ADMIN** 이 프로젝트를 만들 수 있다"* (`@ActiveProfiles("prod")`) |
+| B9 | **`ProjectLookup` 은 `archived_at` 을 보지 않는다** (`ProjectLookupRepository.kt:34-42`·`:51-59` 는 `DELETED_AT.isNull` 만). PJ2-3("아카이브도 조회된다")과는 정합하나, **S6/S9 잠금을 `ProjectLookup` 이 해줄 거라 가정하면 안 된다** — 호출자가 건다 |
+| B10 | **`BROWSE` 는 의미 재사용이다.** `IssuePermission.BROWSE` → `"BROWSE_PROJECT"` 매핑(`IdentityAccessIssuePermissionResolver:174`)이나 계약 KDoc 은 **이슈 목록**용이다. §4.1 이 `GET /projects/{k}` 에 쓰려면 `IssueScope.Project` 경유 제약이 따라온다. enum 8종 = `BROWSE`·`VIEW`·`CREATE`·`UPDATE`·`TRANSITION`·`SOFT_DELETE`·`SET_SECURITY`·`HARD_DELETE` |
+| B11 | **`project_permission_scheme` 는 시드 행이 0개** — 현재 모든 프로젝트가 `is_default` fallback 경로로만 판정된다(`JdbcPermissionSchemeRepository.kt:65-80` `COALESCE`). FR-PJ-01 이 스킴을 배정하지 않아도 되는 근거가 코드로 확인됨 |
+
+### 확증된 것 (반증 시도 후 살아남음)
+
+- **phantom 0건.** spec 이 인용한 21개 citation · 10개 심볼 전부 실존. 지어낸 이름 없음
+- **R6-B 논지 코드 확증.** `workflows(id)` 를 참조하는 FK 전수 — **RESTRICT 는 `V201:84` 매핑 하나뿐**, `V200:22`·`:45`(states/transitions)는 CASCADE. 즉 `YamlSeedService` KDoc 의 CASCADE 전제는 states/transitions 엔 참이고 **매핑에만 거짓** — §2.5-B 그대로
+- **P1 확증.** `IdentityAccessIssuePermissionResolver:77-81` 이 비멤버를 `return false` 로 즉시 거부. `SystemPermissionResolver` 가 **생성자에 주입조차 안 돼 있어** 우회 분기를 만들 수단이 없다 (KDoc 보다 강한 구조적 근거). **단 `@Profile("prod")` 한정** — non-prod 는 `AlwaysAllowIssuePermissionResolver` → **C1 이 필수인 이유가 이중으로 확인됨**
+- **P3/P4 확증.** `V008:25` `CHECK (role IN ('PROJECT_ADMIN', 'MEMBER'))` 라인까지 정확. `project_permission_scheme.project_id` PK 확인 → "생성 시점 평가 불가" 성립
+- **D7 근거 확증.** `CREATE_PROJECT` 는 Kotlin·SQL 통틀어 **0건** (문서에만 존재) — 신설 충돌 없음
