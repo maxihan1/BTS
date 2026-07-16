@@ -1,4 +1,4 @@
-// 액션 1건 타입별 조건부 편집기 테스트 — 타입 전환/SET_FIELD 값위젯/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/EC10 (FR-AT-02 D6 Task 4)
+// 액션 1건 타입별 조건부 편집기 테스트 — 타입 전환/SET_FIELD 값위젯/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/EC10 (FR-AT-02 D6 Task 4) + SET_FIX_VERSIONS 모드·S8 저장거부 (FR-AT-07 PR-B Task 9)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'

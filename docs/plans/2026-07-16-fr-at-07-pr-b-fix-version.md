@@ -692,7 +692,18 @@ set -o pipefail
   (`.lintstagedrc.json`이 `apps/web/**/*.{ts,tsx,js,jsx}`만 대상 — PR-A 때는 apps/web 0파일이라 구조적으로 불가능했음).
   T8·T9가 다른 task와 같은 wave에 있으면 **자기 파일만 stage**하고, race 발생 시 quiescent 시점에 커밋 분리 복구
 - **추가 검증**. ktlint · detekt · typecheck(tsconfig.app.json) · vitest · **`:modules:app:test`(prod 조립)**
-- **E2E**. 이 PR 범위 밖 — 기존 automation E2E 25건은 T10에서 회귀 확인만
+- **E2E**. 신규 E2E는 이 PR 범위 밖(게이트 1 승인 시점 결정). **기존 automation E2E 회귀 확인 = controller가 직접 수행 → 29/29 통과**
+  (`automation-actions` 4 · `automation-rules` 8 · `automation-conflict-warning` 4 · `automation-conditions` 4 ·
+  `automation-execution-history` 5 · `automation-yaml-gitops` 4, 40.0s, EXIT=0). plan은 "25건"이라 적었으나 실측 **29건**.
+  > **★ T10은 이 회귀를 수행하지 않았다** — plan이 T10 소관으로 지정했으나 실행 전 종료. controller가 이어받아 채웠다.
+  > **★ 왜 굳이 돌렸나**([[ui-pr-defer-e2e-regression-latent]]). T9이 `AutomationRuleFormDialog`에 **에러 표시 블록**을 신설했고,
+  > `automation-actions.spec.ts:13-14`가 *"태그칩도 `<li>`로 렌더되어 `getByRole('listitem')` 인덱싱이 흐트러진다"* 는
+  > **동종 사고를 이미 겪은 기록**을 남겨뒀다 — DOM 한 줄이 기존 E2E를 깨는 파일이다.
+  > 정적 분석으로는 안전했다(`actionsErrors.length > 0 &&` 조건부 렌더라 에러 0건이면 DOM 추가 없음 ·
+  > `validateActions`는 `if (action.type !== 'SET_FIX_VERSIONS') return` 으로 타 액션 즉시 통과). **실행으로 확정.**
+  - ⚠️ **게이트 2 판단 필요**. `SET_FIX_VERSIONS` **설정 UI 자체의 신규 E2E는 없다**. 컴포넌트 레벨은 두텁다
+    (`ActionConfigEditor.test.tsx` 30 + `AutomationRuleFormDialog.test.tsx` 37, wiring 가드 mutation 검증 포함).
+    실브라우저 확신을 더 원하면 qa-engineer dispatch — **Maxi 결정 사항**.
 
 ## 리뷰 결과
 

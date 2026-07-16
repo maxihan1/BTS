@@ -1,4 +1,4 @@
-// 액션 1건의 타입별 조건부 편집기 — SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK (FR-AT-02 D6 Task 4)
+// 액션 1건의 타입별 조건부 편집기 — SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/SET_FIX_VERSIONS (FR-AT-02 D6 Task 4, SET_FIX_VERSIONS는 FR-AT-07 PR-B)
 import type { ChangeEvent, JSX, KeyboardEvent } from 'react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
