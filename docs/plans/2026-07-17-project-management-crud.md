@@ -194,9 +194,9 @@ Draft PR #276 `backend/fr-at-07-pr-b-fix-version`이 같은 issue-tracking BC의
 
 ## 도메인 정리
 
-- **BC**: issue-tracking (주 — `projects` 소유) + identity-access (FR-PM-10 전역 권한 부여) + apps/web (UI)
-- **project-workflow는 범위 밖** (R2 정정 결과)
-- **영향 엔티티**: Project(보강) · ProjectMembership(기존) · GlobalPermissionGrant(신규)
+- **BC**: issue-tracking (주 — `projects` 소유) + identity-access (FR-PM-10 전역 권한 부여) + **project-workflow (R6/R6-B — D10 으로 범위 복귀)** + apps/web (UI)
+- ~~**project-workflow는 범위 밖** (R2 정정 결과)~~ → **2026-07-17 D10 으로 뒤집힘.** R2 정정("생성 트랜잭션은 2행, 스킴 배정 없음")은 여전히 유효하나, **R6/R6-B 수정이 project-workflow BC 를 이 PR 로 끌어들인다.** 따라서 이 PR 은 3개 BC 를 담는다 — 근거와 관례 판정은 D10 참조
+- **영향 엔티티**: Project(보강) · ProjectMembership(기존) · GlobalPermissionGrant(신규) · **WorkflowSchemeIssueTypeMapping(R6 백필) · Workflow(R6-B 재적재 전략)**
 - **기존 결정 충돌**: 없음. FR-PM-08 ADR D3은 위반이 아니라 **예고된 확장 트리거를 당기는 것**(D7 참조) → 신규 ADR로 확장 선언 필요
 
 ### 아카이브 의미론 — 2축 직교
@@ -263,7 +263,9 @@ cross-BC 쓰기 포트가 **전부 `IssueApplicationService`를 경유**하므�
 - **`SystemPermissionResolver` 확장은 default 메서드로** (공유 인터페이스 — 기존 구현 3곳 fail-safe)
 - **신규 권한 코드 시드는 `SchemaMigrationTest` 카운트 가드를 깬다** — 전 모듈 grep 필요
 - **`init_codegen.sql` 미러 필수** (issue-tracking = jOOQ 모듈)
-- **Flyway V번호는 머지 직전 재확인** (#276 병렬, 현 최신 V028)
+- **Flyway V번호는 BC 별 독립 네임스페이스다** (2026-07-17 실측 정정 — 이전 기술 "현 최신 V028"은 오류). `FlywayAssemblyConfig.kt:23-68` 이 BC 마다 별도 이력 테이블(`flyway_history_<bc>`)에 자기 location 만 마이그레이션하므로 **identity-access 와 issue-tracking 이 V030~V035 를 중복 보유해도 충돌하지 않는다**. 모듈별 다음 번호 — **issue-tracking V037** (최신 V036) · **identity-access V036** (최신 V035) · **project-workflow V203** (최신 V202). 단 **같은 모듈** 안에서는 동시 브랜치 충돌이 여전하므로 머지 직전 재확인([[migration-vnumber-concurrent-branch-collision]])
+- **`FlywayAssemblyConfig` 실행 순서 = identity → issue → workflow → …** (`:28-38`). KDoc `:20-21` 명시 — "project-workflow(V202)가 issue-tracking 의 projects 를 FK 참조하므로 issue 를 workflow 보다 먼저 실행한다". **`projects` 는 cross-BC FK 피참조 대상**이므로 아카이브 컬럼 추가 시 이 순서 전제를 깨지 않는지 확인할 것
+- **(무해 drift, 이번 범위 밖)** `FlywayAssemblyConfig.kt:13` KDoc 이 "identity-access(V001~V033)와 issue-tracking(V001~V035)"라 적었으나 실제는 V035 / V036. 주석만의 drift라 동작 무영향 — 글로벌 CLAUDE.md §3(surgical) 따라 이번 PR 에서 건드리지 않는다
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
