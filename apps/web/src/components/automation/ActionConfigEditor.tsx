@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { actionTypeSchema, parseActionConfig } from '@/api/automation-rules.types'
 import type { ActionType, ActionConfigFormState, WebhookHeaderEntry } from '@/api/automation-rules.types'
+import { useVersions } from '@/hooks/use-versions'
+import { VersionMultiSelect } from '@/components/issue/VersionMultiSelect'
 import { ProjectMemberSelect } from './ProjectMemberSelect'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,6 +40,11 @@ const TEXT = {
   webhookHeaderValueLabel: '헤더 값',
   webhookAddHeaderButton: '헤더 추가',
   webhookBodyLabel: '본문',
+  fixVersionsModeLabel: '적용 방식',
+  fixVersionsReplaceLabel: '선택한 버전으로 교체',
+  fixVersionsClearLabel: '전체 해제',
+  fixVersionsLoading: '버전 목록을 불러오는 중...',
+  fixVersionsError: '버전 목록을 불러오지 못했습니다.',
 } as const
 
 /** 입력 필드 공통 Tailwind 클래스 — text/select 위젯 전반에서 재사용 */
@@ -115,11 +122,17 @@ function toActionType(raw: string): ActionType {
 /**
  * 액션 타입 전환 시 적용할 기본 config 폼 상태.
  * ASSIGN/ADD_COMMENT/CALL_WEBHOOK은 {@link parseActionConfig}(빈 객체)의 기본값을 재사용하고,
- * SET_FIELD만 select 첫 옵션에 대응하는 field를 명시해 select가 유효한 초기값을 갖도록 한다.
+ * SET_FIELD/SET_FIX_VERSIONS는 명시 분기를 둔다 — select가 유효한 초기값을 갖도록 한다.
+ * SET_FIX_VERSIONS를 {@link parseActionConfig}(빈 객체)로 떨어뜨리면 `versionIds` 부재를
+ * 빈 배열로 채우고 그 빈 배열을 근거로 `clear` 모드로 오판한다(fail-closed 위반) — 반드시
+ * `replace` 모드를 명시해야 한다(Maxi 확정 FR-6, undefined ≡ replace).
  */
 function defaultConfigForType(type: ActionType): ActionConfigFormState {
   if (type === 'SET_FIELD') {
     return { field: DEFAULT_SET_FIELD, value: '' }
+  }
+  if (type === 'SET_FIX_VERSIONS') {
+    return { fixVersionsMode: 'replace', versionIds: [] }
   }
   return parseActionConfig(type, {})
 }
@@ -515,6 +528,81 @@ function CallWebhookFields({ config, onChange, idPrefix }: TypedFieldsProps): JS
   )
 }
 
+interface SetFixVersionsFieldsProps extends TypedFieldsProps {
+  readonly projectKey: string
+}
+
+/**
+ * SET_FIX_VERSIONS 전용 필드 — 적용 방식 라디오(교체/전체 해제) + {@link VersionMultiSelect}(variant="fix").
+ *
+ * - '교체' 모드일 때만 버전 목록을 렌더한다. '전체 해제' 모드는 목록을 숨기되 `versionIds`는
+ *   폼 상태에 그대로 보존한다 — 사용자가 다시 '교체'로 돌아오면 이전 선택이 그대로 복원된다
+ *   (목록을 disabled로 남겨두면 체크된 값이 조용히 버려지는 문제가 있어 렌더 자체를 하지 않는다).
+ * - 로딩/에러는 {@link ProjectMemberSelect} 선례(disabled shell + 안내 문구) 동형이다 — 빈 목록으로
+ *   은폐하지 않고, 로딩/에러 중에는 {@link VersionMultiSelect}를 렌더하지 않는다. 적용 방식 라디오는
+ *   로딩/에러와 무관하게 항상 조작 가능하다(버전 목록이 실패해도 '전체 해제'로 전환할 수 있어야 한다).
+ */
+function SetFixVersionsFields({ projectKey, config, onChange, idPrefix }: SetFixVersionsFieldsProps): JSX.Element {
+  const { data: versions, isLoading, isError } = useVersions(projectKey)
+  const mode = config.fixVersionsMode ?? 'replace'
+  const versionIds = config.versionIds ?? []
+  const radioGroupName = `${idPrefix}-fix-versions-mode`
+
+  function handleModeChange(nextMode: 'replace' | 'clear'): void {
+    onChange({ type: 'SET_FIX_VERSIONS', config: { ...config, fixVersionsMode: nextMode } })
+  }
+
+  function handleVersionsChange(ids: string[]): void {
+    onChange({ type: 'SET_FIX_VERSIONS', config: { ...config, versionIds: ids } })
+  }
+
+  return (
+    <div className="space-y-3">
+      <fieldset>
+        <legend className="block text-sm font-medium mb-1">{TEXT.fixVersionsModeLabel}</legend>
+        <div className="flex flex-col gap-1.5">
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name={radioGroupName}
+              value="replace"
+              checked={mode === 'replace'}
+              onChange={() => {
+                handleModeChange('replace')
+              }}
+            />
+            {TEXT.fixVersionsReplaceLabel}
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name={radioGroupName}
+              value="clear"
+              checked={mode === 'clear'}
+              onChange={() => {
+                handleModeChange('clear')
+              }}
+            />
+            {TEXT.fixVersionsClearLabel}
+          </label>
+        </div>
+      </fieldset>
+
+      {mode === 'replace' && isLoading && (
+        <p className="text-sm text-muted-foreground">{TEXT.fixVersionsLoading}</p>
+      )}
+      {mode === 'replace' && isError && (
+        <p className="text-sm text-destructive" role="alert">
+          {TEXT.fixVersionsError}
+        </p>
+      )}
+      {mode === 'replace' && !isLoading && !isError && (
+        <VersionMultiSelect variant="fix" value={versionIds} options={versions ?? []} onChange={handleVersionsChange} />
+      )}
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
@@ -598,6 +686,9 @@ export function ActionConfigEditor({
       )}
       {value.type === 'ADD_COMMENT' && <AddCommentField config={value.config} onChange={onChange} idPrefix={idPrefix} />}
       {value.type === 'CALL_WEBHOOK' && <CallWebhookFields config={value.config} onChange={onChange} idPrefix={idPrefix} />}
+      {value.type === 'SET_FIX_VERSIONS' && (
+        <SetFixVersionsFields projectKey={projectKey} config={value.config} onChange={onChange} idPrefix={idPrefix} />
+      )}
     </div>
   )
 }

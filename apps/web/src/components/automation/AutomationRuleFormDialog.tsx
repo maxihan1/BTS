@@ -198,6 +198,38 @@ function serializeActionsFormState(actions: ActionFormState[]): ActionRequestInp
   return actions.map((action) => ({ type: action.type, config: serializeActionConfig(action.type, action.config) }))
 }
 
+/** 액션 목록 저장 전 검증에서 발견된 위반 1건 — 위반 행 index + 사용자 노출 메시지 */
+export interface ActionValidationError {
+  readonly index: number
+  readonly message: string
+}
+
+/**
+ * 제출 직전 액션 목록을 검증한다(S8, load-bearing).
+ *
+ * {@link serializeActionsFormState}는 순수 매핑이라 에러 채널이 없고, RHF(react-hook-form)
+ * `errors`도 `actions`를 덮지 않는다(`actions`는 RHF 스키마 밖 별도 state). SET_FIX_VERSIONS가
+ * '교체' 모드인데 `versionIds`가 비어 있으면 {@link serializeActionConfig}가
+ * `{"versionIds":[]}`를 그대로 내보내 기존 Fix Version을 전부 해제해버린다(FR-B1 재현) — 이
+ * 조합만 저장을 거부한다. '전체 해제' 모드는 빈 목록이 곧 의도이므로 거부하지 않는다.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- S8 단위 검증용 순수 함수 공개 (ShareFilterDialog.tsx mergeShares 선례 동형, 파일 분리는 files 범위 밖)
+export function validateActions(actions: ActionFormState[]): ActionValidationError[] {
+  const errors: ActionValidationError[] = []
+  actions.forEach((action, index) => {
+    if (action.type !== 'SET_FIX_VERSIONS') return
+    const mode = action.config.fixVersionsMode ?? 'replace'
+    const versionIds = action.config.versionIds ?? []
+    if (mode === 'replace' && versionIds.length === 0) {
+      errors.push({
+        index,
+        message: `${index + 1}번째 액션 — 교체할 버전을 하나 이상 선택하거나 "전체 해제"를 선택해주세요.`,
+      })
+    }
+  })
+  return errors
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // condition 배선 헬퍼 — 수정 모드 초기값 로드(parseConditionExpression은 automation-rules.types에서
 // 바로 가져다 쓴다)/제출 조건부 전송(G1) 전용. actions(S5, 항상 전체 교체 전송)와 달리 condition은
@@ -433,6 +465,7 @@ function FormBody({
   )
   const [actorUserId, setActorUserId] = useState<string | null>(editingRule?.actorUserId ?? null)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [actionsErrors, setActionsErrors] = useState<ActionValidationError[]>([])
 
   const queryClient = useQueryClient()
   const createRule = useCreateAutomationRule(projectKey)
@@ -476,6 +509,11 @@ function FormBody({
 
   async function onValid(values: FormValues): Promise<void> {
     setSubmitError(null)
+    // S8 — 저장 직전 게이트(load-bearing). validateActions 참고 — 위반 시 서버 호출 자체를 막는다.
+    const validationErrors = validateActions(actions)
+    setActionsErrors(validationErrors)
+    if (validationErrors.length > 0) return
+
     const sharedPayload = buildSharedSavePayload(
       effectiveTriggerType,
       values.cron,
@@ -577,6 +615,15 @@ function FormBody({
       <section className="mb-6">
         <h3 className={SECTION_HEADING_CLASS}>{labels.actionsSectionLabel}</h3>
         <ActionListEditor projectKey={projectKey} value={actions} onChange={setActions} />
+        {actionsErrors.length > 0 && (
+          <ul className="mt-2 space-y-1">
+            {actionsErrors.map((error) => (
+              <li key={error.index} className="text-xs text-destructive" role="alert">
+                {error.message}
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       {/* 조건 — 트리거가 발화해도 액션 실행 전 추가로 평가하는 필드 비교 조건(그룹/부정 포함),
