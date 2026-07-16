@@ -738,3 +738,44 @@ CEO("만들 가치가 있나")는 Maxi가 DEC-11로 확정했고, DX는 공개 A
 - wave 4의 T4·T5·T6·T7 files 교집합 ∅ · 백엔드 경로 전부 실재 · 라인 번호 표본 전수 일치 · T10의 T8 누락은 전이적 커버(무해).
 
 **BLOCKER: 없음** (5건 전부 해소).
+
+### bts-codereview (2026-07-17) — PR #276 단위 리뷰
+
+두 리뷰를 병행했고 **결론이 갈렸는데 둘 다 옳았다**. code-reviewer는 *로직이 옳은가*를 물었고 통과했다.
+`/review` specialist는 *그 로직이 깨져도 알 수 있는가*를 물었고 실패했다. 발견된 CRITICAL 2건은
+**동작 버그가 아니라 테스트 갭**이다 — 코드 값은 맞는데 그 값을 지키는 테스트가 없었다.
+
+**superpowers:code-reviewer — ✅ PASS.** 절대 규칙 19개 0건 · 데이터 무결성 5원칙 0건 · 교훈 회귀 0건.
+ADR의 load-bearing 사실을 독립 grep으로 전수 대조 — 반증된 문서 주장 없음. 어댑터 OCC는 TOCTOU 아님
+(재조회 version이 OCC 술어로만 쓰여 동시 커밋 시 술어 실패 → fail-closed). 빈 배열=전체 해제의 5개 도달 경로
+전수 확인 — 조용한 삭제 경로 없음. CONCERNS 2건은 ADR 후속 절 등재 대상(머지 차단 아님).
+
+**`/review` (gstack) + specialist 7종 — ⚠️ CONCERNS 2건 → 전부 수정.**
+
+| # | 발견 | 조치 |
+|---|---|---|
+| C1 | **`requiredPermission:435` 무방비** — 스펙이 컴파일러 미강제 지점을 **2개라 했으나 실은 3개**였다. `actionTriggers`·`hasObservableSideEffect`는 진짜 mutation을 잡지만 세 번째를 아무도 안 봤다. `-> null` 생존 → 권한 없는 SET_FIX_VERSIONS 룰이 경고 없이 저장(호출부 `:373` `mapNotNull`이 조용히 건너뜀) | `49c588a10` — SetFixVersions **단독** 룰로 가드(다른 액션 섞으면 vacuous). mutation 단독 FAIL 확인 |
+| C2 | **`fixVersionsMode` fallback 무방비** — 스펙이 load-bearing이라 부른 `undefined ≡ replace`를 실행하는 테스트 0건. 기존 8곳이 전부 모드를 명시적으로 넘겨 fallback 분기에 도달 안 함. `?? 'clear'`로 뒤집어도 270/270 통과 | `f12f692fb` — 모드 키를 **생략한** config로 2건. mutation 2종 각각 단독 FAIL |
+| C3 | **SDD 미동기화 = CLAUDE.md §전수 동기화 2번 위반** — §8.8이 `set-field`+`fix_version_ids`(snake_case)를 규정하나 구현은 `SET_FIX_VERSIONS`+`versionIds`(camelCase). §8.4 카탈로그엔 새 액션 없음. `verify-master-plan.sh`는 FR 카운트만 봐서 이 drift를 **구조적으로 못 잡는다** | `c6349cf23` — §8.4+§8.8 동기화(트리거는 PR-C라 스케치 유지 + disclaimer) + slack 스텁 KDoc |
+| C4 | 새 라디오 2개 `accent-primary` 누락 → DESIGN.md §2 팔레트 밖 UA 기본색 | `2223ee5c2` — 같은 BC 선례 `ConditionBuilder.tsx:207` 형태 |
+
+**격하 판정 1건.** design specialist가 "버전 0개 프로젝트 = 막다른 길"을 CRITICAL로 올렸으나 **과장**이다 —
+검증 메시지가 탈출구를 직접 안내하고(`…또는 "전체 해제"를 선택해주세요`), 해제 라디오는 목록 로딩과 무관하게
+항상 렌더된다(`mode === 'replace' && …` 가드 바깥). 갇히지 않는다. 빈 상태 안내 부재는 사실이나 INFORMATIONAL.
+
+**후속 이슈(이 PR 범위 밖).** `hasObservableSideEffect`를 exhaustive `when`으로(컴파일러 강제화) ·
+`actionTypeOf` 4중복 → sealed class `abstract val type` · 용어 "수정 예정 버전" vs 정본 "수정 버전" ·
+a11y `aria-invalid`/`aria-describedby` 배선 · 버전 0개 빈 상태 · enum 확장 롤백 one-way door ·
+code-reviewer CONCERNS 2건(`actionTriggers`의 미강제 cross-BC 불변식 · `Action.kt` 298/300줄 + file-level Suppress).
+
+**★ 리뷰 하네스 자체의 버그 (별도 후속).** `gstack-diff-scope`가 **Kotlin을 모른다** — backend 패턴에 `*.kt`가
+없고(`:80`), 마이그레이션 패턴이 복수형 `*/migrations/*`인데 BTS는 단수 `db/migration/`(`:69`). `.kt` 24개 +
+마이그레이션 1개가 있는데 `SCOPE_BACKEND=false / SCOPE_MIGRATIONS=false`로 나왔다. specialist 통계의
+`security 0/7 · data-migration 0/7 dispatched`가 그 흔적 — **이 저장소의 지난 리뷰 7회 전부 보안·마이그레이션
+전문 리뷰를 건너뛴 채 돌았다.** 이번엔 실측으로 덮어써 정상 dispatch했다.
+
+**교훈.** 스펙이 "미강제 지점 2개"라고 **개수를 적었고**, 구현·검증·1차 리뷰가 그 개수를 그대로 물려받았다.
+같은 파일 안에 같은 모양(`when`이 값을 반환)이 하나 더 있었는데 아무도 세지 않았다. 개수를 적은 스펙은
+**그 개수를 재검증하지 않으면 상한선이 아니라 눈가리개가 된다.**
+
+**BLOCKER: 없음.**
