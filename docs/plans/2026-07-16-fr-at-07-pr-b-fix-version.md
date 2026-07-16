@@ -603,10 +603,30 @@ set -o pipefail
     `ActionExecutor.kt:76` `@param`에 "수정 예정 버전 설정" 누락). `7ee679a13`로 해소. **plan이 3연속 경고한 "grep이 못 잡는 열거형 KDoc" 유형이 실제로 재발**했다.
   - 오탐 판별 기록. `ActionExecutor.kt:30` "이슈 변경 4종"은 **정확**(포트 경유 4개 열거, 웹훅은 별도) · `V302` "4종"은 역사적 기록(편집 금지, V306이 COMMENT 재발행) ·
     `ActionType.kt:8` "V302 4종 + V306 확장" 정확 · 테스트명의 "4종 액션"은 실제 4개 쓰는 특정 테스트라 정확
-- [ ] T4. FR-9 백엔드 회귀 2종 ★
-- [ ] T5. S2~S5 automation 통합
+- [x] T4. FR-9 백엔드 회귀 2종 ★ — PASS (`a15dbcdb9` test → `2d1ea102e` feat[empty, 회귀가드])
+  - **★ controller가 mutation 2종을 독립 재현함** (implementer 보고를 재현으로 확인). 기준선 EXIT=0 · 29/29(Cycle 9 + FieldPriority 13 + Permission 7).
+    - (a) `actionTriggers`를 `triggersIssueUpdated(target,"fixVersions")`로 → **EXIT=1**, `SET_FIX_VERSIONS 액션은 ISSUE_UPDATED 를 유발하지 않는다` **단독 FAIL**(FieldPriority failures=1, 나머지 0)
+    - (b) `hasObservableSideEffect`에서 `it is Action.SetFixVersionsAction` 제거 → **EXIT=1**, `SET_FIX_VERSIONS 만 가진 두 룰은 PRIORITY_AMBIGUITY 로 검출된다` **단독 FAIL**
+    - 각 mutation당 **정확히 1개**만 실패 = 가드가 그 지점만 조준. mutation 잔존 0 · diff 비어 있음 확인.
+  - ★ **controller 검증 도구 자체가 먼저 고장났던 기록**. 1회차 스크립트가 `--tests *RuleConflictAnalyzer*`를 따옴표 없이 변수에 넣어
+    zsh glob이 명령을 죽였고(기준선까지 EXIT=1), 출력만 보면 *"mutation 둘 다 EXIT=1 = 성공"* 으로 오독될 뻔했다.
+    → **교훈. mutation 판정 전에 기준선(EXIT=0 + 실제 테스트 수)을 반드시 먼저 확인한다.** T9에게 요구한 "대조군 양성 단언"과 같은 논리다.
+- [x] T5. S2~S5 automation 통합 — PASS (`658aa6d4a` test → `1117919ac` feat[empty, T1·T3이 이미 구현])
+  - S2·S3(전체교체+EC14)·S4(빈배열 전체해제)·S5(권한거부 FAILED-PERMISSION_DENIED) 4건 신규. XML 실측 8/8(기존 4 + 신규 4).
+  - **phantom 미사용 확정** — `TriggerType.TRANSITION` 코드상 0건(주석으로 "존재하지 않는다"고 기록만). 실재 `ISSUE_UPDATED` 사용.
+  - S5 근거 확인. `classifyPortFailure`가 `e is IssueMutationPermissionDeniedException` **타입 검사**(클래스명 문자열 매칭 아님).
+  - **★ plan 지시를 implementer가 반박했고 그게 옳다.** plan T5 REFACTOR는 `:54,226,229` "4종"→"5종"을 지시했으나, 세 곳 모두
+    **실제로 액션 4개(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK)만 쓰는 특정 테스트**를 정확히 서술하는 문장이었다 — "5종"으로 바꾸면
+    거짓 서술이 된다. controller 대조 결과 implementer 판단이 맞아 **미변경 채택**. 대신 S2~S5 설명 불릿을 KDoc에 신규 추가.
+    → **plan 결함 5번째**(files 목록 4건에 이은 REFACTOR 오지시 1건).
 - [x] T6. S6 양성 단언 (issue-tracking 실 DB) — PASS (`8cfd23219` test → `f1f1c3a96` feat[empty, 회귀가드]; IssueVersionLinksIntegrationTest 13/13, 신규 versionId 양성단언 통과)
-- [ ] T7. S7 YAML 왕복
+- [x] T7. S7 YAML 왕복 — PASS (`9641c961d`, 단일 test 커밋 — 프로덕션 변경 0이라 feat 커밋 자체가 없음)
+  - 교체(UUID 2개, `containsExactly`) + **빈 배열**(`isEmpty`) 왕복 둘 다. XML 실측 3/3.
+  - **`requireNotNull(config.get("versionIds"))` 가드가 핵심** — 빈 배열이 *필드 부재(null)* 로 뒤바뀌는 회귀를 잡는다.
+    빈 배열 = "전체 해제" 의미라, 필드가 사라지면 의미가 뒤집힌다. 값 자체를 단언하므로 구조적으로 vacuous가 되기 어렵다.
+  - ⚠️ **커밋 메시지 규약 이탈**. `test(automation): ...` 형식으로, 이 PR 규약 `test: fr-at-07-pr-b task-7 red`가 아니다.
+    기능 무해(TDD 게이트는 커밋 **순서**만 보고, 이 task는 feat 커밋이 없어 판정 대상이 아님). 다만 slug 기반 추적성이 끊긴다.
+    **amend 하지 않음** — 발견 시점에 T4·T5가 동시 커밋 중이라 브랜치 끝 재작성이 그들 작업을 날릴 수 있었다. 잔여 부채로 기록.
 - [x] T8. 프론트 계약 — PASS (`d008e49c0` test → `334604095` feat → `6d68999cf` refactor)
 - [x] T9. 프론트 설정 UI — PASS (`185a4e1c0` test → `2b3c2d25b` feat → `45162dcd9` refactor → **`c27460980` test(wiring guard, DRIFT 재작업)**)
   - 1회차 DRIFT. S8 가드가 **vacuous**였다 — controller가 `onValid`의 차단 라인을 지우고 돌리니 **197/197 전부 통과**.
