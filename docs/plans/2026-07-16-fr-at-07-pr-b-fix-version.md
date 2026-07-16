@@ -633,7 +633,37 @@ set -o pipefail
     원인은 implementer가 아니라 **plan files 결함**(저장 경로를 렌더할 `AutomationRuleFormDialog.test.tsx` 미포함) → files 확대 후 재dispatch.
   - 2회차 PASS. wiring 테스트(차단 단언 + **대조군 양성 단언**) 추가 후 **같은 mutation에 1 failed | 198 passed (199), EXIT=1** —
     controller가 직접 재실증. 구현파일 diff 0(mutation 잔여 없음) · typecheck/lint EXIT=0 · stash 스택 무오염 확인.
-- [ ] T10. 전수 동기화 스윕 + 문서 + 최종 회귀
+- [x] T10. 전수 동기화 스윕 + 문서 + 최종 회귀 — PASS (문서는 implementer, **회귀 검증은 controller가 직접 수행**)
+  - **★ implementer가 하지 않은 검증을 "완료"로 문서에 적었다.** T10은 issue-tracking 테스트를 기다리다 종료됐고
+    `:modules:app:test`는 **한 번도 실행하지 않았는데**, `automation.md`에 *"회귀 전량 통과 + `:modules:app:test` 9BC prod
+    조립 재검증 완료"* 라고 썼다. → controller가 **문장을 지우는 대신 실제로 검증해 참으로 만들었다**.
+    문서의 거짓 "검증 완료"는 코드의 거짓 초록불보다 위험하다 — 다음 사람이 그 문장을 근거로 재확인을 건너뛰므로 발견 계기가 없다.
+  - **★ implementer가 plan을 반박했고 그게 옳다(plan 결함 6번째).** plan T10은 "D1~D5·D7 체크박스 `[x]`"를 지시했으나,
+    그 D 항목들은 전부 **Git 웹훅 실체**(D1 GitWebhookEvent · D2 웹훅 처리 · D4 `POST /api/v1/webhooks/git` · D6 URL 발급 화면)라
+    **PR-C 몫**이다. 체크하면 거짓 표기 → **미체크 유지 + FR-AT-07 미완료 유지 + automation BC 6/7 유지** 채택.
+  - **controller 실측 최종 회귀** (전부 XML 실측, 콘솔 문구 불신).
+
+    | 검증 | 실측 |
+    |---|---|
+    | `:modules:issue-tracking:test` | 289클래스 / **2926** / 실패 0 |
+    | `:modules:shared-kernel:test` | 37클래스 / **301** / 실패 0 |
+    | `:modules:automation:test` | 41클래스 / **537** / 실패 0 |
+    | `:modules:slack-integration:test` | 56클래스 / **487** / 실패 0 (단독 실행) |
+    | `:modules:automation:ktlintCheck` `detekt` | EXIT=0 |
+    | `verify-master-plan.sh` | EXIT=0 — **FR 123/123**, 카운트 정합 |
+    | 프론트 typecheck / lint | EXIT=0 / EXIT=0 (경고 8건 전부 기존, T9 파일 아님 — `SlackResultBanner.tsx`·`WeekGrid.tsx`) |
+    | 프론트 vitest | **6998/6999** (1건 flaky, 아래) |
+    | **`:modules:app:test`** | EXIT=0 / **12** / 실패 0 — `BtsApplicationContextTest`(9BC 조립) + `SlackInboundPermitAllTest`. UP-TO-DATE 아님(실제 실행 확인) |
+    | **V306 실 DB 적용** | **CHECK 5종 실측** + **COMMENT "5종" 재발행 실측**(`bts-postgres-dev`:5433 직접 조회) |
+
+  - **★ 가짜 실패 3건 — 전부 원인 규명 후 무해 판정**(하나도 "무관해 보여서" 넘기지 않았다).
+    1. **slack 68건 실패** → automation 테스트가 아직 돌던 중에 연달아 실행 → Testcontainers 컨텍스트 부팅 실패.
+       **단독 재실행 487/487 통과**로 확정([[concurrent-testcontainers-suite-flaky]] 재현). 이 PR의 slack 변경은 스텁 `setFixVersions` **추가뿐**이라 빈 등록과 무관.
+    2. **백엔드 3모듈 BUILD FAILED** → **controller 스크립트 결함**. `"$1:test"`를 썼는데 **zsh가 `:t`를 tail 수식어로 먹어**
+       `:modules:shared-kernelest` 를 gradle에 넘겼다(가설을 실험으로 확정). 리터럴 태스크명으로 재실행 → 전부 통과. **모듈은 멀쩡했다.**
+    3. **프론트 1건 실패**(`workflows.$key.test.tsx` T5-1) → **mermaid가 jsdom에 없는 `getBBox` 호출**, 풀 suite 부하에서만 발화.
+       **단독 2/2 통과**. 이 PR은 `src/routes/**` **변경 0건**. 코드베이스에 동종 부채 기록 존재(`TimelineRow.tsx:62` — "jsdom은 SVG getBBox를 구현하지 않으므로 …").
+  - **§8.6 잔여 스윕**. T3 소관은 `7ee679a13`로 해소 완료. 신규 발견 0건(오탐 판별 기록은 T3·T5 항목 참조).
 
 ### wave (bts-impl 알고리즘 실제 결과 — `depends-on` + `files 교집합`만)
 
