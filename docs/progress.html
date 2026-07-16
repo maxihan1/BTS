@@ -152,7 +152,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 <aside class="sidebar">
     <div class="sidebar-head">
       <div class="logo">🏢 BTS Dashboard</div>
-      <div class="updated">2026-07-15 갱신</div>
+      <div class="updated">2026-07-16 갱신</div>
     </div>
     <nav>
       <ul class="nav-top">
@@ -1676,6 +1676,14 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="term-name">링크</div>
       <div class="term-cat">도메인 — 관계 / 연결</div>
       <div class="term-def">Link. 이슈 간 의존/연관 (blocks, relates to, duplicates 등)</div>
+    </div><div class="term-item" data-cat="도메인 — 관계 / 연결" data-search="수정 예정 버전 fix version. &quot;이 이슈가 어느 릴리스에서 고쳐지는가&quot; — 이슈↔[[버전]] 관계(0~n개). 같은 프로젝트의 버전만 지정 가능(타 프로젝트 버전은 검증에서 차단). 전체교체 시맨틱 — 목록을 통째로 바꾸며 빈 목록은 전체 해제. `patch /issues/{key}/fix-versions` (fr-is 계열), 자동화 액션 `setfixversions`로도 설정 (fr-at-07)">
+      <div class="term-name">수정 예정 버전</div>
+      <div class="term-cat">도메인 — 관계 / 연결</div>
+      <div class="term-def">Fix Version. &quot;이 이슈가 어느 릴리스에서 고쳐지는가&quot; — 이슈↔[[버전]] 관계(0~N개). 같은 프로젝트의 버전만 지정 가능(타 프로젝트 버전은 검증에서 차단). 전체교체 시맨틱 — 목록을 통째로 바꾸며 빈 목록은 전체 해제. `PATCH /issues/{key}/fix-versions` (FR-IS 계열), 자동화 액션 `SETFIXVERSIONS`로도 설정 (FR-AT-07)</div>
+    </div><div class="term-item" data-cat="도메인 — 관계 / 연결" data-search="영향 버전 affects version. &quot;이 이슈(버그)가 어느 릴리스에서 발견됐는가&quot; — 이슈↔[[버전]] 관계(0~n개). fix version과 별개 축">
+      <div class="term-name">영향 버전</div>
+      <div class="term-cat">도메인 — 관계 / 연결</div>
+      <div class="term-def">Affects Version. &quot;이 이슈(버그)가 어느 릴리스에서 발견됐는가&quot; — 이슈↔[[버전]] 관계(0~N개). Fix Version과 별개 축</div>
     </div><div class="term-item" data-cat="도메인 — 관계 / 연결" data-search="보고자 reporter. 이슈를 생성한 사용자(1명). 생성 시 고정 (fr-is-03)">
       <div class="term-name">보고자</div>
       <div class="term-cat">도메인 — 관계 / 연결</div>
