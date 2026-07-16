@@ -594,7 +594,15 @@ set -o pipefail
 
 - [x] T1. 포트 `setFixVersions` + 커맨드 + 어댑터 + 구현체 3곳 — PASS (`05c394da5` test → `07619dc58` feat → `915319e80` refactor)
 - [x] T2. V306 CHECK 5종 + 컬럼 코멘트 — PASS (`2342f043c` test → `b2194242b` feat → `21ab3edd5` refactor; SchemaMigrationTest 63/63, XML 실측)
-- [ ] T3. `ActionType`/`Action` + 12지점 전수
+- [x] T3. `ActionType`/`Action` + 12지점 전수 — PASS (`aa542a3cd` test → `f4dd4b463` feat → `02be5e880` refactor → `7ee679a13` refactor[kdoc drift])
+  - **12지점 값 controller 전수 대조** ✅. 컴파일러 미강제 2곳이 정확 — `actionTriggers -> false`(+phantom edge 근거 KDoc 성문화) ·
+    `hasObservableSideEffect` boolean 체인에 `it is Action.SetFixVersionsAction` 포함. `requiredPermission`=UPDATE ·
+    `actionKindLabel`="수정 예정 버전 설정" · `actionConfigJson`=putArray 역함수.
+  - 모듈 전체 530/530 · ActionTest 38 · AutomationActionRepositoryTest 10 (TEST-*.xml 실측, 41 XML/40 클래스 — 배치 false-green 없음)
+  - **DRIFT 1회** — §8.6 열거형 KDoc 2건(`AutomationActionRepository.kt:123` 파서 열거에 `parseSetFixVersions` 누락[poison 경고 KDoc] ·
+    `ActionExecutor.kt:76` `@param`에 "수정 예정 버전 설정" 누락). `7ee679a13`로 해소. **plan이 3연속 경고한 "grep이 못 잡는 열거형 KDoc" 유형이 실제로 재발**했다.
+  - 오탐 판별 기록. `ActionExecutor.kt:30` "이슈 변경 4종"은 **정확**(포트 경유 4개 열거, 웹훅은 별도) · `V302` "4종"은 역사적 기록(편집 금지, V306이 COMMENT 재발행) ·
+    `ActionType.kt:8` "V302 4종 + V306 확장" 정확 · 테스트명의 "4종 액션"은 실제 4개 쓰는 특정 테스트라 정확
 - [ ] T4. FR-9 백엔드 회귀 2종 ★
 - [ ] T5. S2~S5 automation 통합
 - [x] T6. S6 양성 단언 (issue-tracking 실 DB) — PASS (`8cfd23219` test → `f1f1c3a96` feat[empty, 회귀가드]; IssueVersionLinksIntegrationTest 13/13, 신규 versionId 양성단언 통과)
