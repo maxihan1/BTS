@@ -1,4 +1,4 @@
-// ActionType 4종 + Action.fromJson/ActionConfig.validate 형식 검증 단위 테스트
+// ActionType 5종 + Action.fromJson/ActionConfig.validate 형식 검증 단위 테스트
 
 package com.bts.automation.domain
 
@@ -13,18 +13,19 @@ import java.util.UUID
 
 class ActionTest : DescribeSpec({
 
-    describe("ActionType — enum 4종") {
-        it("4종 모두 정의된다") {
-            ActionType.entries.size shouldBe 4
+    describe("ActionType — enum 5종") {
+        it("5종 모두 정의된다") {
+            ActionType.entries.size shouldBe 5
         }
 
-        it("SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK 을 포함한다") {
+        it("SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/SET_FIX_VERSIONS 을 포함한다") {
             ActionType.entries.toSet() shouldBe
                 setOf(
                     ActionType.SET_FIELD,
                     ActionType.ASSIGN,
                     ActionType.ADD_COMMENT,
                     ActionType.CALL_WEBHOOK,
+                    ActionType.SET_FIX_VERSIONS,
                 )
         }
     }
@@ -235,6 +236,47 @@ class ActionTest : DescribeSpec({
         }
     }
 
+    describe("Action.fromJson — SET_FIX_VERSIONS") {
+        it("versionIds 가 유효한 uuid 배열이면 파싱된다") {
+            val id1 = UUID.randomUUID()
+            val id2 = UUID.randomUUID()
+
+            val action = Action.fromJson(ActionType.SET_FIX_VERSIONS, """{"versionIds":["$id1","$id2"]}""")
+
+            action shouldBe Action.SetFixVersionsAction(versionIds = listOf(id1, id2))
+        }
+
+        it("빈 배열은 허용한다") {
+            val action = Action.fromJson(ActionType.SET_FIX_VERSIONS, """{"versionIds":[]}""")
+
+            action shouldBe Action.SetFixVersionsAction(versionIds = emptyList())
+        }
+
+        it("versionIds 키가 없으면 거부한다") {
+            shouldThrow<ActionConfigInvalidException> {
+                Action.fromJson(ActionType.SET_FIX_VERSIONS, "{}")
+            }
+        }
+
+        it("versionIds 가 배열이 아니면 거부한다") {
+            shouldThrow<ActionConfigInvalidException> {
+                Action.fromJson(ActionType.SET_FIX_VERSIONS, """{"versionIds":"not-an-array"}""")
+            }
+        }
+
+        it("versionIds 원소가 uuid 형식이 아니면 거부한다") {
+            shouldThrow<ActionConfigInvalidException> {
+                Action.fromJson(ActionType.SET_FIX_VERSIONS, """{"versionIds":["not-a-uuid"]}""")
+            }
+        }
+
+        it("versionIds 원소가 문자열이 아니면 거부한다") {
+            shouldThrow<ActionConfigInvalidException> {
+                Action.fromJson(ActionType.SET_FIX_VERSIONS, """{"versionIds":[123]}""")
+            }
+        }
+    }
+
     describe("ActionConfig.validate — 공통 형식 오류") {
         it("빈 문자열은 모든 타입에서 거부한다") {
             shouldThrow<ActionConfigInvalidException> {
@@ -254,11 +296,12 @@ class ActionTest : DescribeSpec({
             }
         }
 
-        it("4종 모두 유효한 config 로 검증을 통과한다") {
+        it("5종 모두 유효한 config 로 검증을 통과한다") {
             ActionConfig.validate(ActionType.SET_FIELD, """{"field":"priority","value":"High"}""")
             ActionConfig.validate(ActionType.ASSIGN, """{"assigneeId":null}""")
             ActionConfig.validate(ActionType.ADD_COMMENT, """{"body":"완료"}""")
             ActionConfig.validate(ActionType.CALL_WEBHOOK, """{"url":"https://example.com/hook"}""")
+            ActionConfig.validate(ActionType.SET_FIX_VERSIONS, """{"versionIds":[]}""")
         }
     }
 })
