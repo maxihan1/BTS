@@ -114,6 +114,7 @@ private fun actionTypeOf(action: Action): ActionType =
         is Action.AssignAction -> ActionType.ASSIGN
         is Action.AddCommentAction -> ActionType.ADD_COMMENT
         is Action.CallWebhookAction -> ActionType.CALL_WEBHOOK
+        is Action.SetFixVersionsAction -> ActionType.SET_FIX_VERSIONS
     }
 
 /**
@@ -147,6 +148,10 @@ private fun actionConfigJson(
             val headersNode = objectMapper.createObjectNode()
             action.headers.forEach { (key, value) -> headersNode.put(key, value) }
             node.set<JsonNode>("headers", headersNode)
+        }
+        is Action.SetFixVersionsAction -> {
+            val versionIdsNode = node.putArray("versionIds")
+            action.versionIds.forEach { versionIdsNode.add(it.toString()) }
         }
     }
     return objectMapper.writeValueAsString(node)

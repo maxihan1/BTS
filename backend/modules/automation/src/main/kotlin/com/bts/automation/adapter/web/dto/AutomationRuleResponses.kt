@@ -191,6 +191,7 @@ private fun actionTypeOf(action: Action): ActionType =
         is Action.AssignAction -> ActionType.ASSIGN
         is Action.AddCommentAction -> ActionType.ADD_COMMENT
         is Action.CallWebhookAction -> ActionType.CALL_WEBHOOK
+        is Action.SetFixVersionsAction -> ActionType.SET_FIX_VERSIONS
     }
 
 /** [Action] 서브타입 → 설정 맵 매핑(HTTP 응답 전용, [ActionRequest.config] 필드명과 대칭). */
@@ -206,6 +207,7 @@ private fun actionConfigOf(action: Action): Map<String, Any?> =
                 "headers" to action.headers,
                 "body" to action.body,
             )
+        is Action.SetFixVersionsAction -> mapOf("versionIds" to action.versionIds.map(UUID::toString))
     }
 
 /**

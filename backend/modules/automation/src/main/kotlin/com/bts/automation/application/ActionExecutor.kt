@@ -16,6 +16,7 @@ import com.bts.shared.issue.IssueMutationPort
 import com.bts.shared.issue.IssueSnapshot
 import com.bts.shared.issue.IssueSnapshotPort
 import com.bts.shared.issue.SetFieldCommand
+import com.bts.shared.issue.SetFixVersionsCommand
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -26,10 +27,10 @@ import java.util.UUID
 /**
  * 자동화 룰([AutomationRule])의 액션 리스트를 position 순으로 실행하는 디스패처 (FR-AT-02 Task 9).
  *
- * 이슈 변경 3종([Action.SetFieldAction]/[Action.AssignAction]/[Action.AddCommentAction])은
- * [IssueMutationPort] 로, 아웃바운드 웹훅([Action.CallWebhookAction])은 [WebhookActionClient] 로
- * 위임한다. 룰 actor([AutomationRule.actorUserId]) 권한으로 실행되며(각 커맨드의 `actorUserId`),
- * best-effort 로 동작한다 — 한 액션의 실패가 나머지 액션 실행을 막지 않는다.
+ * 이슈 변경 4종([Action.SetFieldAction]/[Action.AssignAction]/[Action.AddCommentAction]/
+ * [Action.SetFixVersionsAction])은 [IssueMutationPort] 로, 아웃바운드 웹훅([Action.CallWebhookAction])은
+ * [WebhookActionClient] 로 위임한다. 룰 actor([AutomationRule.actorUserId]) 권한으로 실행되며(각 커맨드의
+ * `actorUserId`), best-effort 로 동작한다 — 한 액션의 실패가 나머지 액션 실행을 막지 않는다.
  *
  * ## best-effort 부분 실패 집계
  * 액션 1건의 실패는 예외로 전파하지 않고 [ActionOutcome] 으로 흡수한다. 전체 결과는
@@ -211,6 +212,12 @@ class ActionExecutor(
                         issueMutationPort.addComment(AddCommentCommand(env.actorId, key, body, env.dryRun))
                     }
                 is Action.CallWebhookAction -> attemptWebhook(action, env.context)
+                is Action.SetFixVersionsAction ->
+                    attemptIssueMutation(issueKey) { key ->
+                        issueMutationPort.setFixVersions(
+                            SetFixVersionsCommand(env.actorId, key, action.versionIds, env.dryRun),
+                        )
+                    }
             }
         if (error != null) {
             log.warn("automation_action_failed position={} type={} reason={}", position, actionTypeOf(action), error)
@@ -290,6 +297,7 @@ class ActionExecutor(
             is Action.AssignAction -> ActionType.ASSIGN
             is Action.AddCommentAction -> ActionType.ADD_COMMENT
             is Action.CallWebhookAction -> ActionType.CALL_WEBHOOK
+            is Action.SetFixVersionsAction -> ActionType.SET_FIX_VERSIONS
         }
 
     /** 성공 0건이면 FAILED, 전부 성공이면 SUCCESS, 그 외엔 PARTIAL. */

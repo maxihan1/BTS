@@ -116,6 +116,7 @@ private const val FIELD_BODY = "body"
 private const val FIELD_URL = "url"
 private const val FIELD_METHOD = "method"
 private const val FIELD_HEADERS = "headers"
+private const val FIELD_VERSION_IDS = "versionIds"
 
 /**
  * 자동화 규칙을 YAML로 직렬화/역직렬화하는 순수 codec(FR-AT-06 GitOps).
@@ -246,6 +247,7 @@ object AutomationYamlCodec {
             is Action.AssignAction -> ActionType.ASSIGN
             is Action.AddCommentAction -> ActionType.ADD_COMMENT
             is Action.CallWebhookAction -> ActionType.CALL_WEBHOOK
+            is Action.SetFixVersionsAction -> ActionType.SET_FIX_VERSIONS
         }
 
     /**
@@ -269,6 +271,7 @@ object AutomationYamlCodec {
                     FIELD_HEADERS to action.headers,
                     FIELD_BODY to action.body,
                 )
+            is Action.SetFixVersionsAction -> mapOf(FIELD_VERSION_IDS to action.versionIds.map(UUID::toString))
         }
 
     /** JSON 문자열을 YAML 객체로 방출하기 위한 제네릭 맵으로 변환한다. */

@@ -21,6 +21,7 @@ import java.util.UUID
  * - [AssignAction] — 담당자 지정/해제
  * - [AddCommentAction] — 댓글 추가
  * - [CallWebhookAction] — 아웃바운드 웹훅 호출
+ * - [SetFixVersionsAction] — 이슈 수정 예정 버전(Fix Version) 설정
  */
 sealed class Action {
     /**
@@ -63,6 +64,15 @@ sealed class Action {
         val body: String = DEFAULT_BODY,
     ) : Action()
 
+    /**
+     * 이슈의 수정 예정 버전(Fix Version) 목록을 설정하는 액션 (FR-AT-07).
+     *
+     * @property versionIds 설정할 버전 UUID 목록. 기존 목록을 전체 교체하며([com.bts.shared.issue.SetFixVersionsCommand]
+     *   시맨틱과 동일), 빈 리스트면 전체 해제를 의미한다. 대상 버전이 실제 프로젝트에 존재하는지는 검증하지
+     *   않는다(형식 검증만 — 클래스 KDoc 참고, 실행 시점 issue-tracking 위임)
+     */
+    data class SetFixVersionsAction(val versionIds: List<UUID>) : Action()
+
     companion object {
         /** [CallWebhookAction.method] 기본값. */
         const val DEFAULT_METHOD: String = "POST"
@@ -88,6 +98,7 @@ sealed class Action {
                 ActionType.ASSIGN -> parseAssign(node)
                 ActionType.ADD_COMMENT -> parseAddComment(node)
                 ActionType.CALL_WEBHOOK -> parseCallWebhook(node)
+                ActionType.SET_FIX_VERSIONS -> parseSetFixVersions(node)
             }
         }
     }
@@ -103,6 +114,7 @@ private const val FIELD_BODY = "body"
 private const val FIELD_URL = "url"
 private const val FIELD_METHOD = "method"
 private const val FIELD_HEADERS = "headers"
+private const val FIELD_VERSION_IDS = "versionIds"
 
 private const val MSG_INVALID_JSON = "action_config는 유효한 JSON 객체여야 합니다."
 private const val MSG_SET_FIELD_FIELD_REQUIRED = "SET_FIELD 액션은 비어있지 않은 field 문자열이 필요합니다."
@@ -116,6 +128,12 @@ private const val MSG_CALL_WEBHOOK_METHOD_INVALID = "CALL_WEBHOOK 액션의 meth
 private const val MSG_CALL_WEBHOOK_HEADERS_INVALID = "CALL_WEBHOOK 액션의 headers는 JSON 객체여야 합니다."
 private const val MSG_CALL_WEBHOOK_HEADERS_VALUE_INVALID = "CALL_WEBHOOK 액션의 headers 값은 문자열이어야 합니다."
 private const val MSG_CALL_WEBHOOK_BODY_INVALID = "CALL_WEBHOOK 액션의 body는 문자열이어야 합니다."
+private const val MSG_SET_FIX_VERSIONS_VERSION_IDS_REQUIRED =
+    "SET_FIX_VERSIONS 액션은 versionIds 필드가 필요합니다."
+private const val MSG_SET_FIX_VERSIONS_VERSION_IDS_INVALID =
+    "SET_FIX_VERSIONS 액션의 versionIds는 배열이어야 합니다."
+private const val MSG_SET_FIX_VERSIONS_VERSION_ID_INVALID =
+    "SET_FIX_VERSIONS 액션의 versionIds 각 원소는 uuid 문자열이어야 합니다."
 
 private val objectMapper = ObjectMapper()
 
@@ -235,6 +253,32 @@ private fun parseOptionalHeaders(node: JsonNode): Map<String, String> {
         }
         key to value.asText()
     }
+}
+
+/**
+ * SET_FIX_VERSIONS 액션 config `{versionIds}` 를 파싱한다.
+ *
+ * `versionIds` 는 uuid 문자열 배열이어야 한다(빈 배열 허용 — 전체 해제 시맨틱,
+ * [Action.SetFixVersionsAction] KDoc 참고).
+ */
+private fun parseSetFixVersions(node: JsonNode): Action.SetFixVersionsAction {
+    fun parseVersionId(element: JsonNode): UUID {
+        if (!element.isTextual) {
+            throw ActionConfigInvalidException(MSG_SET_FIX_VERSIONS_VERSION_ID_INVALID)
+        }
+        return try {
+            UUID.fromString(element.asText())
+        } catch (e: IllegalArgumentException) {
+            throw ActionConfigInvalidException(MSG_SET_FIX_VERSIONS_VERSION_ID_INVALID, e)
+        }
+    }
+
+    val versionIdsNode =
+        node.get(FIELD_VERSION_IDS) ?: throw ActionConfigInvalidException(MSG_SET_FIX_VERSIONS_VERSION_IDS_REQUIRED)
+    if (!versionIdsNode.isArray) {
+        throw ActionConfigInvalidException(MSG_SET_FIX_VERSIONS_VERSION_IDS_INVALID)
+    }
+    return Action.SetFixVersionsAction(versionIds = versionIdsNode.map(::parseVersionId))
 }
 
 private fun requireNonBlankText(
