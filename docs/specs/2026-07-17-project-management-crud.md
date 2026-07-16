@@ -45,6 +45,7 @@ And    actor 는 즉시 그 프로젝트에서 이슈를 만들 수 있다
 > **`project_memberships` 는 선택이 아니라 필수다.** `IdentityAccessIssuePermissionResolver` 는 비멤버를 즉시 거부하고
 > **SYSTEM_ADMIN 자동 우회가 없다**(FR-PM-08 ADR §결정5). 멤버십 없이 생성하면 **생성자조차 못 들어가는 프로젝트**가 된다.
 > → 두 행은 **같은 트랜잭션**. 이 경계는 PR 분할선이 가로지를 수 없다(§9 불변식 I1).
+> **단 두 행은 서로 다른 BC 에 산다** — `projects`=issue-tracking, `project_memberships`=identity-access. `ProjectMembershipWritePort` 경유(§4.4).
 
 ### S2. 권한 없는 actor 의 생성 시도
 
@@ -223,8 +224,10 @@ placeholder 는 여기서 "감사 정확도" 문제가 아니라 **기능 자체
 | PJ3-2 | 아카이브된 프로젝트의 설정 변경은 **409** (S9) |
 | PJ4-1 | `POST /api/v1/projects/{projectIdOrKey}/archive` → `archived_at = now()`. 권한 = PROJECT_ADMIN |
 | PJ4-2 | `POST /api/v1/projects/{projectIdOrKey}/unarchive` → `archived_at = NULL` |
-| PJ4-3 | 아카이브 프로젝트는 **모든 쓰기를 거부**(409)하되 **읽기는 허용**한다 (S6) |
-| PJ4-4 | 잠금은 `IssueApplicationService` **초크포인트 1곳**에 건다 — automation·Import·REST 가 전부 경유한다 (D9) |
+| PJ4-3 | 아카이브 프로젝트는 **이번 범위의 쓰기를 거부**(409)하되 **읽기는 허용**한다 (S6). 범위는 D12 |
+| PJ4-4 | **이슈 쓰기** 잠금은 `IssueApplicationService` **초크포인트 1곳**에 건다 — automation·Import·이슈 REST 가 전부 경유한다 (D9 확증) |
+| PJ4-7 | **issue-tracking 자체 프로젝트 스코프 쓰기 17곳**에 각각 잠금을 건다 — `Version`(5) · `Component`(4) · `CustomField`(3) · `IssueTemplate`(3) · `ProjectLead`(1) · `ProjectRequire2fa`(1). 이들은 `IssueApplicationService` 를 **경유하지 않는다**(참조 0건 실측) |
+| PJ4-8 | **cross-BC 12곳은 이번 범위 밖** (D12 — 후속 FR). identity-access(`ProjectMember` 3 · `ProjectSecurityScheme` 2 · `FieldPermission` 2) · automation(`AutomationRule` 4) · project-workflow(`ProjectWorkflowScheme` 1). **PR 본문·KDoc 에 "미잠금"을 명시**해 후속이 이 구멍을 잊지 않게 한다 |
 | PJ4-5 | `Clock` 주입 필수. `Instant.now()` 직접 호출 금지 (Version ADR D3 선례) |
 | PJ4-6 | `buildActiveSecureWhere`(`IssueRepository.kt:945-959`) 는 **읽기 술어 — 건드리지 않는다** |
 
@@ -332,7 +335,7 @@ D6 은 *"프로젝트 CRUD 는 권한이 아니니 FR-PJ"* 라 판단했다. 전
 |---|---|
 | NFR-1 | 권한 테스트는 **`@ActiveProfiles("prod")`** 로 작성한다 (§7 C1) |
 | NFR-2 | 생성 트랜잭션은 부분 성공을 남기지 않는다 — `projects` 만 있고 멤버십 없는 상태 금지 |
-| NFR-3 | 아카이브 잠금 게이트는 **모든** 쓰기 경로를 덮는다. 미강제 지점 0 |
+| NFR-3 | 아카이브 잠금 게이트는 **D12 범위(이슈 쓰기 + issue-tracking 17곳)의** 쓰기 경로를 덮는다. 그 범위 안에서 미강제 지점 **0**. **범위 밖 12곳은 "아직 안 막힘"이 의도된 상태**이며 §2.4 PJ4-8 이 명시한다 — 이 구분을 흐리면 후속 FR 이 구멍을 못 찾는다 |
 | NFR-4 | R6 백필은 부팅 시간을 유의미하게 늘리지 않는다 (표준 4 워크플로우 한정) |
 | NFR-5 | 신규 엔드포인트는 인증 없이 접근 불가 (`DEVELOPMENT.md §1` 절대규칙 4) |
 
@@ -390,6 +393,48 @@ interface SystemPermissionResolver {
 > **default 본문이 `isSystemAdmin` 위임인 것은 의도적이다** — 기존 구현체(특히 test stub)가 새 메서드를 물려받아도
 > "SYSTEM_ADMIN 이면 모든 전역 권한 보유"라는 안전한 상위집합 의미를 갖는다. prod 어댑터는 이를 **override** 해 grant 를 조회한다.
 > **단 `NonProdAllowSystemAdminResolver`(항상 `true`) 가 이 default 를 물려받으면 non-prod 에서 CREATE_PROJECT 가 항상 통과**한다 — 의도된 동작이나 NFR-1 이 반드시 필요한 이유다.
+>
+> 🛑 **Phase B B8 — 이 default 는 D7 을 조용히 뒤집을 수 있다.** prod 어댑터가 override 를 **잊으면** `hasGlobalPermission` = `isSystemAdmin` 이 되어
+> `CREATE_PROJECT` 가 **SYSTEM_ADMIN 전용**으로 되돌아간다 — **Maxi 가 D7 에서 기각한 바로 그 안**이다. fail-closed 라 사고는 안 나지만 **아무도 모르게 기능이 사라진다.**
+> → **DoD-9 필수** — *"`CREATE_PROJECT` grant 를 가진 **비-SYSTEM_ADMIN** 이 프로젝트를 만들 수 있다"* (`@ActiveProfiles("prod")`).
+> 이 테스트가 없으면 override 누락이 **초록불로 통과**한다.
+
+### 4.4. 포트 — cross-BC 멤버십 쓰기 (**신규 · Phase B B2**)
+
+**I1(생성 트랜잭션 2행)이 BC 경계를 넘는다.** `projects` = issue-tracking(`V001:10`), `project_memberships` = identity-access(`V007`).
+issue-tracking 이 identity-access 테이블에 직접 쓰면 BC 격리 위반이다(`CLAUDE.md §핵심 패턴`).
+
+**기존 포트로는 안 된다.** `shared-kernel/membership/ProjectMembershipPort.kt` 는 `projectKeysOf(userId): Set<String>` **하나뿐인 읽기 포트**다.
+
+→ **신규 포트 필요.** 선례는 `IssueMutationPort`(automation → issue-tracking) — 포트를 shared-kernel 에 두고 소유 BC 가 어댑터를 제공해 남의 BC 에 쓴다.
+
+```kotlin
+// shared-kernel/membership — 신규 인터페이스
+interface ProjectMembershipWritePort {
+    /**
+     * 프로젝트 생성 시 생성자를 멤버로 등록한다. 호출자 트랜잭션에 참여한다.
+     *
+     * @param role 'PROJECT_ADMIN' 또는 'MEMBER'. 원시 String — 아래 §BC 경계 참조.
+     */
+    fun addMember(projectId: UUID, userId: UUID, role: String)
+}
+```
+
+| 설계 결정 | 내용 |
+|---|---|
+| **별도 포트 (기존 확장 아님)** | 기존 `ProjectMembershipPort` 에 쓰기를 얹으면 **읽기 전용 소비자(search-export-import)가 쓰기 메서드를 물려받는다**. 읽기/쓰기 분리가 그 포트의 fail-closed 설계와 정합 |
+| **신규 인터페이스이므로 default/abstract 논쟁이 없다** | [[interface-extension-default-method]] 는 **기존 공유 인터페이스에 메서드를 추가할 때** fail-safe default 를 요구하는 규칙이다. **여기엔 적용되지 않는다** — 신규 인터페이스라 깨질 기존 구현체가 0개다. 구현은 identity-access 어댑터 1개를 새로 쓴다 |
+| **Bean 미등록 = 부팅 실패 (의도)** | `ProjectMembershipPort` KDoc 의 *"default 구현 금지 (fail-closed) — Bean 이 등록되지 않으면 부팅 자체가 실패하도록 설계된 안전망"* 정신을 신규 포트도 따른다. issue-tracking 이 이 포트를 주입받는 순간 **prod 조립에서 어댑터 부재가 즉시 드러난다** ([[new-crossbc-dep-openapi-mockbean-regression]] — 소비 BC 의 full-boot 테스트에 `@MockBean` 동반 필요) |
+| **`role: String` 은 취향이 아니라 강제** | `ProjectRole` enum 은 **identity-access 도메인 타입**(`com.atlas.bts.identity.project.ProjectRole`)이다. shared-kernel 포트 시그니처에 쓰면 **`SharedKernelBoundaryArchTest` 가 빌드를 차단**한다(기존 `ProjectMembershipPort` KDoc §BC 경계 규칙). → 어댑터가 String 을 `ProjectRole` 로 변환하며 검증하고, DB `CHECK (role IN ('PROJECT_ADMIN','MEMBER'))`(`V007:7`)가 최종 방어선 |
+| **트랜잭션** | 9 BC 가 **단일 DataSource** 로 조립되므로(`FlywayAssemblyConfig` — 공유 public 스키마) 어댑터 호출이 **호출자 트랜잭션에 참여**한다. I1(원자성) 성립. 선례 — `AutomationIssueMutationAdapter` |
+| **PR 배치** | 포트+어댑터는 **identity-access 산출물**이므로 **PR-1**(FR-PM-10)에 넣는다 → PR-2 는 소비만 한다 (§9) |
+
+> **기존 설계가 이미 cross-BC 를 인정하고 있다.** `V007:5` 주석 — *"`project_id` UUID NOT NULL, **cross-BC(issue-tracking projects) 참조, FK 없음** (ADR D2)"*.
+> 즉 `project_memberships` 는 처음부터 남의 BC 프로젝트를 문자열 아닌 UUID 로 느슨하게 가리키도록 설계됐다. 이 포트는 그 설계와 정합하며, **B2 는 "설계 위반"이 아니라 "plan 이 경계의 존재를 못 본 것"** 이다.
+> 부수 확인 — `project_memberships` 는 **hard delete 정책**(`V007` 테이블 주석, ADR D6)이라 `deleted_at` 이 없다. 아카이브가 멤버십에 미치는 영향은 없다.
+
+> **⚠️ 이 포트는 새 쓰기 경로다.** `ProjectMembershipPort` KDoc 의 *"이 포트 외부에서 별도의 프로젝트 멤버십 **조회** 경로를 만드는 것을 금지한다"* 는 **읽기** 규칙이라 위반이 아니다.
+> 다만 같은 정신에서 **쓰기도 이 포트로만** 한다는 규칙을 신규 포트 KDoc 에 명시한다.
 
 ---
 
@@ -477,6 +522,8 @@ interface SystemPermissionResolver {
 | DoD-6 | `./gradlew :modules:app:test` 통과 (9 BC prod 조립) | C7 |
 | DoD-7 | `bash scripts/verify-master-plan.sh` 통과 | 전수 동기화 |
 | DoD-8 | FR 카운트 **실측** 128 (기존 숫자 복사 금지) | §10 drift |
+| **DoD-9** | **`CREATE_PROJECT` grant 를 가진 비-SYSTEM_ADMIN 이 프로젝트를 만들 수 있다** (`@ActiveProfiles("prod")`) | **B8 — 이게 없으면 prod 어댑터 override 누락이 초록불로 통과하고 D7 이 조용히 뒤집힌다** |
+| **DoD-10** | 아카이브된 프로젝트에서 **issue-tracking 17곳 각각**이 409 를 낸다 | D12 범위. 17건 개별 테스트 — 개수는 패턴 grep 으로 재검증 |
 
 > **DoD-5 의 "0" 은 스펙이 세어준 숫자가 아니다.** [[spec-stated-count-becomes-blindfold]] — 개수는 패턴 grep 으로 직접 재검증한다.
 
@@ -488,33 +535,42 @@ interface SystemPermissionResolver {
 
 | # | 불변식 | 근거 |
 |---|---|---|
-| **I1** | `projects` 삽입과 `project_memberships` 삽입은 **같은 트랜잭션 · 같은 PR** | 분리하면 생성자조차 못 들어가는 프로젝트 (§2.2) |
+| **I1** | `projects` 삽입과 `project_memberships` 삽입은 **같은 트랜잭션 · 같은 PR**. 단 **BC 경계를 넘으므로 `ProjectMembershipWritePort` 경유**(§4.4 — Phase B B2) | 분리하면 생성자조차 못 들어가는 프로젝트 (§2.2). 직접 쓰면 BC 격리 위반 |
 | **I2** | **방어가 경로보다 먼저다** — `CREATE_PROJECT` 게이트 없이 `POST /projects` 를 열지 않는다 | FR-AT-07 C-1 이 *"전략 오조준 — 방어 없이 경로를 먼저 열고 방어는 2 PR 뒤"* 로 감점된 실수 |
 | **I3** | R6 백필과 R6-B 방어는 **같은 PR** | 백필만 넣으면 부팅 실패를 심는 것 (§2.5-B) |
 | **I4** | R6 는 FR-PJ-01 과 같은 PR (D10 — Maxi 확정) | 별도 선행 PR 기각 |
 
-### 9.2. 제안 분할
+### 9.2. 제안 분할 (**Phase B 개정** — D12 + B2 반영)
 
 | PR | 내용 | BC | 마이그레이션 |
 |---|---|---|---|
-| **PR-1** | **FR-PM-10 백엔드** — `global_permission_grants` + `CREATE_PROJECT` 코드 + `SystemPermissionResolver` default 확장 + grant/revoke API | identity-access **(1개)** | V036 |
-| **PR-2** | **R6 + R6-B + FR-PJ-01 백엔드** — 백필 러너 + 재시드 생존 + 프로젝트 생성 | project-workflow + issue-tracking **(2개 — D10)** | V203, V037 |
-| **PR-3** | **FR-PJ-02/03 백엔드** — 목록·조회·설정 변경 | issue-tracking | — |
-| **PR-4** | **FR-PJ-04 백엔드** — 아카이브 + 잠금 초크포인트 + cross-BC 술어 | issue-tracking (+ identity-access 술어) | V038 |
-| **PR-5** | **D6 프론트 UI** — 생성·목록·설정·아카이브 화면 (design-shotgun 은 여기서) | apps/web | — |
-| **PR-6** | **FR-PM-10 관리 화면 + D7 E2E** | apps/web | — |
+| **PR-1** | **FR-PM-10 백엔드 + 멤버십 쓰기 포트** — `global_permission_grants` + `CREATE_PROJECT` 코드 + `SystemPermissionResolver` default 확장(§4.3) + grant/revoke API + **`ProjectMembershipWritePort` 포트·어댑터(§4.4)** | identity-access **(1개)** | identity **V036** |
+| **PR-2** | **R6 + R6-B + FR-PJ-01 백엔드** — 백필 러너 + 재시드 생존 + 프로젝트 생성(PR-1 의 포트를 **소비만**) | project-workflow + issue-tracking **(2개 — D10 예외)** | workflow **V203** (전략 (b) 선택 시) |
+| **PR-3** | **FR-PJ-02/03 백엔드** — 목록·조회·설정(`name`) | issue-tracking | 없음 |
+| **PR-4** | **FR-PJ-04 백엔드** — `archived_at` + 이슈 초크포인트 + **issue-tracking 17곳 잠금**(D12) | issue-tracking | issue **V037** |
+| **PR-5** | **D6 프론트 UI** — 생성·목록·설정·아카이브 화면 (design-shotgun 은 여기서) | apps/web | 없음 |
+| **PR-6** | **FR-PM-10 관리 화면 + D7 E2E** | apps/web | 없음 |
 
 **I2 가 PR-1 을 앞에 세운다.** FR-PM-10 을 먼저 넣으면 **방어만 들어가고 경로는 아직 안 열린다** — C-1 실수의 정반대다.
 그리고 PR-1 은 **BC 1개**라 `DEVELOPMENT.md §4`("한 PR = 한 BC + 한 plan") 관례도 지킨다.
 
+**B2 가 포트를 PR-1 로 밀어 넣는다.** `ProjectMembershipWritePort` 의 **어댑터는 identity-access 산출물**이다(그 BC 가 `project_memberships` 를 소유).
+PR-1 에 두면 PR-2 는 **소비만** 하므로 PR-2 의 BC 수가 **2개로 유지**된다(D10 예외 범위 안). 포트를 PR-2 에 두면 **3 BC** 가 되어 D10 이 고지한 범위를 넘는다.
+
 **PR-2 만 BC 2개다.** D10 이 명시 고지 후 확정한 유일한 예외이므로 PR 본문·`/bts-codereview` 에 D10 근거를 첨부한다.
 `bc:<context>` 라벨이 단수 전제라 표기 방식은 plan 단계에서 정한다.
 
-> **PR-4 를 PR-3 에서 분리한 이유** — 아카이브는 폭발 반경이 가장 크다. 목록/설정과 섞으면 리뷰 단위가 무너진다.
+**마이그레이션 배치 정정 (Phase B).** 개정 전 §9 는 PR-2 에 `V037`, PR-4 에 `V038` 을 적었으나 **둘 다 틀렸다**.
+`projects` 는 이미 존재하므로 **FR-PJ-01 에는 issue-tracking 마이그레이션이 필요 없고**, `archived_at` 은 FR-PJ-04(PR-4) 것이므로 **issue-tracking 첫 마이그레이션은 PR-4 의 V037** 이다. §5.2 와 이제 일치한다.
 
-> 🛑 **§9 는 Phase B B1/B2 로 확정 불가 상태다.** 아래 두 가지가 미해결이다.
-> - **PR-2 는 B2 로 재설계 필요** — `project_memberships` 가 identity-access 소유라 신규 cross-BC 쓰기 포트가 선행돼야 한다. 그 포트를 PR-1(identity-access)에 넣으면 PR-2 의 BC 가 2개 → 유지, 별도 PR 로 빼면 5→7 PR
-> - **PR-4 의 비용 추정이 B1 로 무너졌다** — D9 의 *"비용 거의 없음"* 이 근거였으나 실측 29개 쓰기 / 5 BC. **아카이브 잠금 범위가 Maxi 결정 사항**이며, 그 결정 없이는 PR-4 가 1개인지 3개인지 정할 수 없다
+> **PR-4 를 PR-3 에서 분리한 이유** — 아카이브는 D12 범위 안에서도 **18곳**(이슈 초크포인트 1 + issue-tracking 17)을 건드린다. 목록/설정과 섞으면 리뷰 단위가 무너진다.
+
+### 9.3. 이번 범위 밖 (후속 FR — ID 미부여)
+
+**아카이브 잠금 cross-BC 확장** (D12). `ProjectLifecyclePort` 신설 + 어댑터 4종 —
+identity-access(`ProjectMember` 3 · `ProjectSecurityScheme` 2 · `FieldPermission` 2) · automation(`AutomationRule` 4) · project-workflow(`ProjectWorkflowScheme` 1) = **12곳**.
+
+> **FR ID 를 지금 부여하지 않는 이유** — 전수 동기화 8종(`CLAUDE.md:29-36`)이 이번 PR 로 딸려온다. 착수 시점에 `/bts` 로 신설한다. **이번 작업 FR 총수 128 유지.**
 
 **각 PR 은 자기 plan 파일을 갖는다** (`DEVELOPMENT.md §4`). 이 문서는 **마스터 스펙**이고, 각 PR 착수 시 `/bts` 로 상세화한다 (FR-AT-07 마스터 스펙 §B 선례 동형).
 
@@ -530,6 +586,9 @@ interface SystemPermissionResolver {
 | 4 | FR-PJ-03 = *"설정 변경 (name·lead_user_id)"* | `lead_user_id` 는 이미 `PATCH /lead`(FR-CM-04) 담당. `require_2fa`(V020) 누락 | **§4.2 — plan 결정 필요** |
 | 5 | (미기술) | `projects` 에 `version`(OCC) 컬럼 **없음** | **EC-7 — plan 결정 필요** |
 | 6 | (미기술) | **R6-B** — R6 수정이 FK RESTRICT 부팅 실패를 활성화 | §2.5-B |
+| 7 | D9 *"비용 거의 없음 · 초크포인트 1곳 · `ProjectLifecyclePort` 불필요"* | 프로젝트 스코프 쓰기 **29개 / 5 BC**, `IssueApplicationService` 참조 0건 | **D12 로 범위 한정** (Phase B B1) |
+| 8 | R2 *"생성 = 2행 한 트랜잭션"* | 2행이 **서로 다른 BC** (`projects`=issue-tracking / `project_memberships`=identity-access) | **§4.4 신규 포트** (Phase B B2) |
+| 9 | D8 *"술어 변경 → identity-access cross-BC 영향"* | 그 어댑터는 **공유 포트 구현**, 실소비자는 **search-export-import**(FR-SR-03) | **`projectKeysOf` 불변** (Phase B B3) |
 
 ### 함께 고칠 drift 3건 (plan §도메인 정리)
 

@@ -71,6 +71,16 @@ BTS는 지금 **스페이스가 하나(ATLAS)뿐이고 그마저 손으로 심�
 | D10 | **R6 = 이번 PR 통합** — FR-PJ-01 PR 안에서 R6 + R6-B를 함께 고친다. 별도 선행 PR 아님 | Maxi 확정. 추천안(별도 선행 PR)을 기각. **BC 혼재를 명시 고지한 상태에서의 선택** — R6 수정은 project-workflow BC, FR-PJ-01은 issue-tracking BC라 한 PR이 2개 BC를 담는다. `DEVELOPMENT.md §1` 절대 규칙 19개에는 BC 격리가 **없다**(보안 6 / 데이터 무결성 4 / 코드 품질 6 / 외부 의존성 3). "한 PR = 한 BC + 한 plan"은 `DEVELOPMENT.md §4 PR 규칙`의 **관례**이므로 절대 규칙 충돌이 아니다. `CLAUDE.md §컨텍스트 효율`의 "여러 BC 동시 수정은 Maxi 확인" 요건 = **본 결정으로 충족**. → PR 본문·`/bts-codereview`에 이 근거를 첨부해야 하며, 라벨 `bc:<context>`가 단수 전제라 spec 단계에서 표기 방식 결정 필요 |
 | D11 | **계속 진행 — D7 완전형 유지** | Maxi 확정. D2("코어만")의 공식 확대를 유지. 되돌리기 가장 싼 지점(코드 0줄)에서 재확인한 결과이므로 이후 범위 축소 재논의는 새 근거 없이는 하지 않는다. 범위 = FR 5개(FR-PJ-01~04 + FR-PM-10), 123 → 128 |
 
+### /bts-spec Phase B 확정 (2026-07-17, D9 전제 반증에 따른 재결정)
+
+| # | 결정 | 이유 |
+|---|---|---|
+| D12 | **아카이브 잠금 = 단계적.** 이번 범위 = 이슈 쓰기(초크포인트 1곳) + **issue-tracking 자체 17곳**. cross-BC 12곳(identity-access 7 · automation 4 · project-workflow 1)과 `ProjectLifecyclePort` 는 **후속 FR** | Maxi 확정. **D9 의 근거였던 *"비용 거의 없음"* 이 Phase B B1 로 반증됨** — `/api/v1/projects/{...}` 하위 쓰기 실측 **29개 / 5 BC**, 전부 `IssueApplicationService` 참조 0건. D9 의 증거(cross-BC 쓰기 포트 2종이 초크포인트 경유)는 **참**이므로 automation·Import 차단(S7)은 성립하나, *"API 가 막힌다"* 는 **이슈 API 에만** 참이었다. → **D9 를 폐기하지 않고 범위를 명시**한다. 29곳 중 **17곳이 issue-tracking(=`projects` 소유 BC) 안**이라 이번 범위에서는 **D9 의 "`ProjectLifecyclePort` 신설 불필요"가 그대로 성립**한다. cross-BC 12곳에서만 포트가 필요하며 그건 후속 FR 로 분리 |
+
+> **D9 의 지위.** 폐기가 아니라 **범위 한정**이다. "백그라운드 포함(automation·Import)" 이라는 D9 의 핵심 주장은 실측으로 확증됐다(S7). 무너진 것은 *"초크포인트 한 곳이면 전면 읽기 전용이 된다"* 는 **비용 추정**뿐이다.
+
+> **후속 FR 후보 (이번에 ID 부여 안 함).** "아카이브 잠금 cross-BC 확장" — `ProjectLifecyclePort` 신설 + identity-access(`ProjectMember` 3 · `ProjectSecurityScheme` 2 · `FieldPermission` 2) · automation(`AutomationRule` 4) · project-workflow(`ProjectWorkflowScheme` 1) 어댑터. **FR ID 를 지금 부여하면 전수 동기화 8종(CLAUDE.md:29-36)이 이번 PR 로 딸려오므로**, 착수 시점에 `/bts` 로 신설한다. FR 총수는 이번 작업에서 **128 유지**.
+
 ### R6-B — R6 을 고치면 깨어나는 2차 결함 (2026-07-17 실측 확인, 신규 발견)
 
 **R6 확정.** 3중 실측.
