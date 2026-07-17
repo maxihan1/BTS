@@ -388,11 +388,16 @@ class WorkflowSchemeApplicationService(
         schemeKey: WorkflowSchemeKey,
     ): ProjectWorkflowSchemeAssignment {
         val actorUuid = actor.toUuid()
-        permissionResolver.requirePermission(
-            actorUuid,
-            WorkflowSchemePermission.ASSIGN_SCHEME,
-            WorkflowSchemeScope.Project(projectKey),
-        )
+        // EC-1 D10 auto-assign 우회 — SYSTEM_ACTOR(nil UUID sentinel)만 권한 검사를 건너뛴다.
+        // 사용자 명시 배정(실 actor UUID)은 아래 requirePermission 을 그대로 통과해야 한다.
+        // 우회가 안전한 이유·범위는 아래 KDoc "## EC-1 D10 auto-assign 권한 우회" 참조.
+        if (actorUuid != SYSTEM_ACTOR_UUID) {
+            permissionResolver.requirePermission(
+                actorUuid,
+                WorkflowSchemePermission.ASSIGN_SCHEME,
+                WorkflowSchemeScope.Project(projectKey),
+            )
+        }
         val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)
         val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }
 
