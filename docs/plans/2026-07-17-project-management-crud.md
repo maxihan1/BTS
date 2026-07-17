@@ -1251,6 +1251,59 @@ depends-on: T1[] T2[1] T3[] T4[2] T5[3,4] T6[4] T7[] T8[5,7] T9[1..8]
 > 두 task 가 같은 모듈을 건드리면 실제로는 순차 실행된다. T1·T3·T7 은 각각 docs / shared-kernel /
 > (shared-kernel + identity-access) 라 T3↔T7 이 shared-kernel 에서 겹친다. **실측 wave 는 `/bts-impl` 이 확정한다.**
 
+## 구현 진행 (/bts-impl, 2026-07-17)
+
+### wave 1 ✅ 졸업 (3/9) — controller 가 git log 직접 수집해 검증
+
+| task | TDD 커밋 (실측 순서) | 판정 |
+|---|---|---|
+| **T1** ADR | `1cd02d407 docs:` — 문서 전용, TDD 사이클 불요 | ✅ PASS |
+| **T3** shared-kernel default | `a4122bfd4 test:` → `7fec9f176 feat:` → `ce6d95362 refactor:` | ✅ PASS |
+| **T7** 포트+어댑터 | `6b14e0c3f test:` → `6953cf8fe feat:` → `8f1c71ab5 refactor:` | ✅ PASS |
+
+**선언 외 파일 0건.** 브랜치 전체 변경 6파일 = T1(1) + T3(2) + T7(3).
+
+**T3 가 §2.7 의 "구현체 6곳"을 확증했다** — 무변경 컴파일 성공. prod 2(`IdentityAccessSystemPermissionResolver` · `NonProdAllowSystemAdminResolver`) + test 4(search `WebhookIntegrationConfig` · notification `TestPermissionConfig` · issue `Require2faTestPermissionConfig` · slack `StubSystemPermissionResolver`).
+
+**T7 이 §C10-2(P0 수정)가 실제로 작동함을 실증했다.**
+```
+① 기준선(무애노테이션)     → 2/2 PASS
+② REQUIRES_NEW 임시 주입   → 롤백 테스트만 FAIL (expected: 0 but was: 1)
+③ 되돌림                   → diff --stat 빈 출력, 재실행 2/2 PASS
+```
+`NOT_SUPPORTED` 가 없었으면 ①도 fail 이라 ②가 vacuous 했을 것이다. 코드 실측 — 어댑터에 `@Transactional`/`TransactionTemplate` **import 0건**(매칭은 KDoc 산문뿐), 테스트 `:60` 에 `@Transactional(propagation = Propagation.NOT_SUPPORTED)` 실재.
+
+### ★ wave 2~6 이 물려받을 실측 사실 (다시 발견하지 말 것)
+
+| # | 사실 | 출처 |
+|---|---|---|
+| 1 | **Gradle wrapper 는 `backend/gradlew`** 다. 저장소 루트에 없다 — 루트에서 `./gradlew` 하면 `no such file or directory`. 전 검증 명령을 `cd backend && ./gradlew` 로 정정 완료 | T3 |
+| 2 | **`@JdbcTest` 슬라이스에 `TransactionAutoConfiguration` 이 포함**된다(`AutoConfigureJdbc.imports` 실측). `@EnableTransactionManagement` 가 활성이라 mutation 의 `REQUIRES_NEW` 가 AOP 로 실제 적용된다 — 이게 없었으면 애노테이션이 무음 무시돼 ②가 "fail 안 남"으로 나왔다. `TransactionTemplate` 빈 주입도 가능 | T7 |
+| 3 | **`@JdbcTest` 는 `@Transactional` 메타** — jar 바이트코드 독립 재확인(`Lorg/springframework/transaction/annotation/Transactional;`) | T7 |
+| 4 | **`@JdbcTest` 는 `@Component` 를 스캔하지 않는다** → 어댑터 테스트에 `@Import(ProjectMembershipWriteAdapter::class)` 필요 | T7 |
+| 5 | **T8 이 고정할 빈 이름 = `com.atlas.bts.identity.project.ProjectMembershipWriteAdapter`** (확정) | T7 |
+| 6 | **detekt `UseCheckOrError`** — 테스트에서 `throw IllegalStateException(...)` 대신 `error(...)`. ktlint `Class body should not start with blank line` — 형제 파일들은 baseline 동결이라 통과 중이나 신규 파일은 걸린다 | T7 |
+| 7 | **`BUILD SUCCESSFUL` 을 믿지 말 것** — 결과 XML(`build/test-results/test/*.xml`)에서 `tests="N"` 을 직접 확인해 0개 실행 가짜 그린을 배제한다. wave 1 두 에이전트 모두 이걸 했다 ([[gradle-batched-task-partial-test-run]]) | T3·T7 |
+| 8 | 🛑 **zsh 는 unquoted 변수를 단어분할하지 않는다.** controller 의 2-D 수집에서 `git log -- $FILES` 가 여러 경로를 한 덩어리로 넘겨 **빈 출력**을 냈다 — 그대로 믿었으면 TDD_VIOLATION 오판이었다. **배열 `"${ARR[@]}"` 을 쓸 것** ([[zsh-pipestatus-1-based-false-green]] 과 같은 zsh 함정 계열) | controller |
+
+### ★ wave 2~6 에 인계된 주의 (서브에이전트 보고)
+
+- **T5 (mockk).** `hasGlobalPermission` default 는 기존 mockk 구현체를 안 깬다(기존 소비자가 호출 안 함). 다만 **T5·T6 이 이 포트를 소비하는 컨트롤러를 늘리면** identity-access 의 기존 `SystemPermissionResolver` mockk 4곳(Whoami/UserGroup/IssueSecurityScheme 테스트 등)에 스텁이 필요해질 수 있다. `mockk()`(non-relaxed)은 default 메서드도 인터셉트한다 — **T5 착수 시 전 모듈 grep 으로 확인**.
+- **T2 (db-engineer).** V036 SQL 주석의 "고아 행" 문구는 **ADR D-4 문안과 일치해야 한다**(`140cf17fe` 로 plan 정정 완료 — GROUP 은 CASCADE 로 탈락 / USER 는 영구 잔존). ADR 을 Read 해서 대조할 것.
+- **T9 (문서 동기화) 판단 대상 2건.** (a) `DATA.md §3` 하드삭제 허용 목록에 `global_permission_grants` 추가가 필요해 보인다 — 다만 hard delete ADR 이 있는 `project_memberships` 도 그 목록에 없어 목록이 exhaustive 가 아닐 수 있다. (b) **무관 drift, 고치지 않는다** — `DATA.md:87` §4.1 표가 identity-access 를 `사용 중 V001~V006` 이라 적었으나 실제는 V035 (글로벌 CLAUDE.md §3 surgical).
+- **T1 산출물 형식 결정 2건.** (a) revoke hard delete 정당화를 D-6 독립이 아니라 **D-5 안에 부여/회수 비대칭으로 편입**했다 — plan 이 지정한 D-1~D-5 번호를 T2 SQL·T5 KDoc 이 인용하므로 번호를 깨지 않기 위함. (b) **변경이력 절을 넣지 않았다** — `docs/decisions/` 106개 · `docs/adr/` 전체에 변경이력 절이 **0건**이라 실제 관례를 따랐다.
+
+### 남은 wave (재개 지점)
+
+```
+wave 2  T2 (db-engineer)        V036 마이그레이션 + 스키마 가드      ← 여기서 재개
+wave 3  T4 (security-engineer)  GlobalPermissionGrantRepository
+wave 4  T5 · T6 (security)      prod override · 컨트롤러
+wave 5  T8 (security)           :modules:app 조립 가드   ※ dev postgres(5433) 기동 전제
+wave 6  T9 (backend-engineer)   전수 동기화 8종 + FR 5개 등록
+그 후    qa-engineer E2E (타입 auth) → verification-before-completion → /bts-codereview
+```
+
 ## PR-2~6 로 이월 (이 plan 의 범위 밖)
 
 **스펙 §Brainstorming Check 미확정 7건 중 6건은 PR-1 소관이 아니다.** 각 PR 의 자기 plan 이 받는다.
