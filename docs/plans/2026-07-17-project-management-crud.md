@@ -342,8 +342,16 @@ cross-BC 쓰기 포트가 **전부 `IssueApplicationService`를 경유**하므�
 |---|---|---|
 | **D13** | **FR-PJ-03 = `name` 변경만.** `lead_user_id` 는 기존 `PATCH /lead`(FR-CM-04), `require_2fa` 는 기존 `PATCH /require-2fa` 가 계속 담당 | Maxi 확정 (스펙 §4.2 3안 중 (a)). **두 엔드포인트 실존 확인** — `ProjectLeadController.kt:75` · `ProjectRequire2faController.kt:53`, 둘 다 클래스 레벨 `@RequestMapping("/api/v1/projects/{projectIdOrKey}")`. 기존 "설정 하나당 수직 슬라이스" 관례 유지 + FR-CM-04 회귀 위험 0 (글로벌 CLAUDE.md §3 surgical). **UI(PR-5)는 엔드포인트 3개를 호출한다.** → 스펙 §10 정정 4번 해소. FR-PJ-03 FR 문안을 "설정 변경(name)"으로 확정 |
 | **D14** | **prod `hasGlobalPermission` = `grant OR isSystemAdmin`.** SYSTEM_ADMIN 은 grant 없이도 모든 전역 권한 보유 | Maxi 확정. 3중 근거 — (1) **기존 ADR 연속성**. `2026-06-04-system-admin-role.md` D3 원문이 *"전역 판정 = SYSTEM_ADMIN 보유 여부"* 로 **현재 모델 자체가 그것**이고, FR-PM-10 은 D3 이 예고한 *"세분화되면 그때 전역 매트릭스"* 를 **확장**하는 것이지 대체하는 게 아니다. (2) **부트스트랩**. grant-only 면 빈 DB 에서 CREATE_PROJECT 보유자가 0명이고, grant API 자체가 SYSTEM_ADMIN 게이트라 수동 자기부여 1회가 강제된다. (3) **스펙 §4.3 자체 정합**. §4.3 은 default(`= isSystemAdmin`)를 *"안전한 상위집합"* 이라 부르는데, prod 가 grant-only 면 default ⊅ prod (grant 보유 비-admin 이 prod 통과·default 탈락) 라 그 표현이 성립하지 않는다. `grant OR isSystemAdmin` 이라야 **prod ⊇ default** 가 되어 fail-safe 방향이 맞는다 |
-| **D15** | **FR 5개를 PR-1 이 한 번에 등록** (123 → 128). D단계 체크박스는 PR 별로 틱 | **PR-1 이 이미 마스터 spec·plan 문서를 싣고 있다.** 그 문서들이 `FR-PJ-01~04` 를 본문 전반에서 참조하므로, `fr-index.md` 가 그 ID 를 모르는 채 머지되면 **CLAUDE.md §전수 동기화가 금지한 바로 그 drift**("일부만 고쳐 문서 간 drift 를 남기지 않는다")가 된다. BTS 관례상 FR 은 **기획 시점에 등록되고 D 체크박스로 진척을 추적**한다(현 123 FR 이 그렇게 산다). D11 도 범위를 *"FR 5개, 123 → 128"* 단일 결정으로 잠갔다 |
+| **D15** | **FR 5개를 PR-1 이 한 번에 등록** (123 → 128). D단계 체크박스는 PR 별로 틱 | **PR-1 이 이미 마스터 spec·plan 문서를 싣고 있다.** 그 문서들이 `FR-PJ-01~04` 를 본문 전반에서 참조하므로, `fr-index.md` 가 그 ID 를 모르는 채 머지되면 **CLAUDE.md §전수 동기화가 금지한 바로 그 drift**("일부만 고쳐 문서 간 drift 를 남기지 않는다")가 된다. BTS 관례상 FR 은 **기획 시점에 등록되고 D 체크박스로 진척을 추적**한다(현 123 FR 이 그렇게 산다). D11 도 범위를 *"FR 5개, 123 → 128"* 단일 결정으로 잠갔다. **★ spec §9.3(후속 FR 은 ID 미부여)과의 구분선** (plan-eng-review P3 — 초안이 미명시) — 둘 다 미착수 미래 작업인데 정반대 논리다. 기준은 **"참조하는 정본 문서가 같은 PR 에 들어가는가"** — FR-PJ 는 spec/plan 이 이번 PR 에 실려 그 ID 를 본문 전반에서 참조하므로 등록, §9.3 후속 FR 은 참조 문서가 아직 없으므로 착수 시 신설 |
 | **D16** | **DoD-9 · DoD-11 은 PR-1 판과 PR-2 판으로 쪼갠다** | 스펙 DoD-9(*"CREATE_PROJECT grant 보유 비-SYSTEM_ADMIN 이 **프로젝트를 만들 수 있다**"*)·DoD-11(*"생성 도중 예외 → 2행 롤백"*)은 **`POST /projects` 를 전제**하는데 그건 PR-2 다. PR-1 은 같은 결함을 **판정기·어댑터 층에서** 잡는 등가 테스트를 갖는다(T5-RED · T7-RED). PR-2 가 end-to-end 판을 추가한다 |
+
+### /bts-review-plan 확정 (2026-07-17, plan-eng-review)
+
+| # | 결정 | 이유 |
+|---|---|---|
+| **D17** | **전역 권한코드는 DB CHECK + 서비스 400 이중 검증** | Maxi 확정(D3). `global_permission_grants` 는 BTS 에서 **처음으로 권한코드를 사용자 입력(REST 바디)으로 받는다** — `role_permissions` 의 무제약 관례(`V008:26`)는 그 테이블이 **마이그레이션만 시드**하기에 성립했다. 오타는 fail-closed 라 사고는 안 나지만 아무도 원인을 모르는 쓰레기 grant 를 남긴다 |
+| **D18** | **SYSTEM_ADMIN 게이트 = 명시 호출 (PAT 지원)** | Maxi 확정(D4). **근거를 정정한다** — spec §2.4 와 초안은 *"명시 호출이 옳다"* 를 **보편 규칙**처럼 적었으나, 실측 결과 BTS 엔 **두 패턴이 공존**한다. `UserGroupController`(명시 호출) vs `AuthAuditLogAdminController:65`(`@PreAuthorize("hasRole('SYSTEM_ADMIN')")`, 그 테스트 `:113-115` 가 `ROLE_PAT` 403 을 **명시 테스트** — 버그가 아니라 의도). 실제 규칙은 **"PAT 를 지원할 것인가"** 다(`PatAuthenticationFilter.kt:48` 이 `ROLE_PAT` 만 부여). → 지원한다. **그러므로 PAT 양성 테스트가 필수**다(T6) — 없으면 결정의 근거 자체가 미검증이다 |
+| **D19** | **DRY 부채는 복사 + 후속 TODO** | Maxi 확정(D5). `FORBIDDEN_RESPONSE`/`UNAUTHORIZED_RESPONSE` **13파일** · `resolveActorId` 6파일 · `requireSystemAdmin` 4파일 복제는 **선재 부채**다. 공통화하면 PR-1 이 13파일 리팩토링이 되어 글로벌 CLAUDE.md §3(surgical)과 충돌하고 권한 PR 의 리뷰 단위가 무너진다. T9 가 `TODOS.md` 에 기록 |
 
 ### ★ 스펙이 PR-1 에 대해 틀린 것 (실측 정정 4건)
 
@@ -352,12 +360,52 @@ cross-BC 쓰기 포트가 **전부 `IssueApplicationService`를 경유**하므�
 | # | 스펙 기술 | PR-1 실측 | 근거 |
 |---|---|---|---|
 | 1 | **C3** *"`init_codegen.sql` 미러 필수"* | **PR-1 무관.** identity-access 엔 `init_codegen.sql` 이 **없다** | 이 파일은 jOOQ 모듈 4곳에만 존재(`issue-tracking`·`search-export-import`·`notification`·`agile-planning`). identity-access 는 jOOQ 미사용 — `DSL.using` 히트 **0건**. V035 주석도 자인 — *"identity-access 는 jOOQ 미사용(JdbcTemplate) — jOOQ 상수 생성 대상 아님"*. **C3 은 PR-4 것**(`projects` 가 `init_codegen.sql:21` 에 있다) |
-| 2 | **C10** *"롤백 테스트가 `DSL.using` 때문에 거짓 red"* | **PR-1 무관.** identity-access 에 `DSL.using`·`TransactionAwareDataSourceProxy` **둘 다 0건** | 주입된 `NamedParameterJdbcTemplate` 은 `DataSourceUtils.getConnection()` 경유라 자동 tx-aware. **C10 은 PR-2/PR-4 것** |
+| 2 | **C10** *"롤백 테스트가 `DSL.using` 때문에 거짓 red"* | 🛑 **이 정정이 틀렸다 (plan-eng-review 가 반증).** jOOQ 기전은 실제로 없으나 **C10 의 기전은 둘**이고 2번째가 PR-1 에 정통으로 적용된다 | 아래 §C10-2 |
 | 3 | **C1/NFR-1** *"권한 테스트는 `@ActiveProfiles("prod")` 필수"* | **PR-1 은 불필요** (달아도 무해하나 부팅 비용만) | C1 의 근거인 **항상-`true` 스텁 `NonProdAllowSystemAdminResolver` 는 issue-tracking 소속**이라 identity-access 스캔 경로에 없다. 그리고 **`IdentityAccessSystemPermissionResolver` 는 `@Profile` 이 아예 없어** 모든 프로파일에서 실제 판정한다(KDoc *"AlwaysAllow stub 을 두지 않는다"*, ADR D4). **C1 은 PR-2 것** |
 | 4 | **PM10-5** *"카운트 가드가 깨지는지 **UNKNOWN**"* | **안 깨진다 (확정)** | `PermissionSchemaMigrationTest.kt:79` 는 `role_permissions JOIN permission_schemes WHERE is_default=TRUE` **행 수**를 센다. `CREATE_PROJECT` 는 신규 테이블 `global_permission_grants` 로만 가고 `role_permissions` 엔 **들어갈 수 없다**(`V008:25` `CHECK(role IN ('PROJECT_ADMIN','MEMBER'))` — 전역 축 없음). **단 T2 가 실제로 돌려 확인한다** — "안 깨진다"는 전제가 아니라 검증 대상이다 |
 
-> **정정 1·2·3 의 공통 원인 — 스펙 제약이 전체 작업 기준으로 쓰였는데 PR-1 은 identity-access 단일 BC 다.**
-> C1·C3·C10 은 전부 **jOOQ 또는 issue-tracking 을 전제**한다. 그대로 물려받으면 PR-1 에 없는 함정을 막느라 실제 함정(§T7 트랜잭션 비대칭)을 놓친다.
+> **정정 1·3 의 공통 원인 — 스펙 제약이 전체 작업 기준으로 쓰였는데 PR-1 은 identity-access 단일 BC 다.**
+> C1·C3 은 **jOOQ 또는 issue-tracking 을 전제**한다. 그대로 물려받으면 PR-1 에 없는 함정을 막게 된다.
+> **단 정정 2 는 그 논리를 한 칸 더 밀었다가 틀렸다 — 아래.**
+
+#### 🛑 C10-2. 거짓 red 의 두 번째 기전 — 테스트 클래스 자신의 트랜잭션 (plan-eng-review 신설)
+
+**정정 2 는 참인 근거로 거짓 결론에 도달했다.** *"identity-access 에 `DSL.using` 0건"* 은 **사실**이다(실측). 그러나 그것은
+C10 의 **기전 하나**(tx-aware 가 아닌 손수 배선 `DSLContext`)만 덮는다. 거짓 red 로 가는 길은 둘이다.
+
+| # | 기전 | PR-1 |
+|---|---|---|
+| 1 | 손수 배선 `DSLContext` 가 tx 를 우회 → tx **밖**에서 자동 커밋 | **없음** (`DSL.using` 0건) — 정정 2 의 주장은 여기까지 참 |
+| 2 | **테스트 클래스 자체가 `@Transactional`** → 검증 SELECT 가 **같은 tx** 안에서 미커밋 INSERT 를 그대로 읽음 | 🛑 **정통으로 적용** |
+
+**3중 실측.**
+1. `@JdbcTest` 는 **`@Transactional` 메타 애노테이션**이다 — `spring-boot-test-autoconfigure-3.3.4.jar` 의 `JdbcTest.class` 바이트코드에 `Lorg/springframework/transaction/annotation/Transactional;` 실재(추측 아님, jar 직접 확인).
+2. **identity-access 테스트 41개가 `@JdbcTest`** 다. T4 가 복제하라고 지목한 `ProjectMembershipRepositoryIntegrationTest.kt:44` 가 바로 그것이다.
+3. 탈출구 **선례 실재** — `RefreshTokenRepositoryTest.kt:230` `@Transactional(propagation = Propagation.NOT_SUPPORTED)`, KDoc `:225` *"`@Transactional(NOT_SUPPORTED)` — @JdbcTest 기본 테스트 트랜잭션을 비활성화한다"*.
+
+**왜 P0 인가 — 이 테스트는 판별력이 0 이고, 그 사실을 mutation 확인이 가려준다.**
+
+```
+@JdbcTest (= @Transactional) 안에서 txTemplate.execute { addCreatorAsAdmin(); throw } 를 돌리면
+
+  올바른 어댑터 (무애노테이션)          잘못된 어댑터 (REQUIRES_NEW)
+  → 테스트 tx 에 참여                   → 별도 tx 로 진짜 커밋
+  → throw 시 rollback-only 마킹만       → READ COMMITTED 로 조회 가능
+  → 실제 롤백은 테스트 종료 시점
+  → countMemberships 가 같은 tx 를
+     읽어 미커밋 INSERT 를 본다  → 1        → 1
+                          isZero() FAIL      isZero() FAIL
+                                    ↑ 두 경우가 똑같이 fail = 판별력 0
+```
+
+- **I1(2행 원자성)은 이 plan 의 1번 불변식**이고 T7 이 유일한 실증이다.
+- 구현자는 거짓 red 를 보고 어댑터를 "고치려" 든다. 가장 그럴듯한 수정이 `REQUIRES_NEW`/`TransactionTemplate` — **I1 을 정확히 파괴하는 방향**이고 spec §4.4 N5 가 경고한 그 함정이다.
+- 그리고 *"REQUIRES_NEW 를 달면 fail 해야 한다"* 는 mutation 확인이 **vacuous 하게 통과**한다 — 이미 fail 이니까. 깨진 테스트에 초록불을 준다([[negative-guard-needs-body-discriminator]]).
+
+> **★ 이게 눈가리개의 4층이다.** spec Phase B 는 *개수 → 정의 → 정의가 전제한 코드 모양* 으로 3층을 벗겼다.
+> 이 정정표는 그 교훈을 적용해 만든 **개정본인데, 개정본이 새 결함을 넣었다** — 나는 개수도 정의도 코드 모양도 재검증했지만
+> **"이 함정에 경로가 하나뿐인가"** 를 묻지 않았다. [[spec-stated-count-becomes-blindfold]] 의 *"개정본을 원본보다 의심하라"* 가
+> 이번엔 **내 정정표**를 겨눴다. → **5층 질문. "내가 반증한 것이 그 제약의 유일한 기전인가?"**
 
 ### ★ 권한 코드 신설의 실제 파급 — 스펙이 명명하지 않은 정본 1곳
 
@@ -390,8 +438,14 @@ cross-BC 쓰기 포트가 **전부 `IssueApplicationService`를 경유**하므�
 - **D-1. 신규 테이블 `global_permission_grants`.** 기존 2개로 안 되는 이유를 실측 근거와 함께 — `role_permissions` 는 `V008:25` `CHECK (role IN ('PROJECT_ADMIN','MEMBER'))` 라 전역 축이 없고, `project_permission_scheme` 은 `project_id` 가 PK 라 **생성 시점엔 project_id 가 없어 평가 자체가 불가능**.
 - **D-2. 판정 = `grant OR isSystemAdmin`** (plan D14). 위 D14 행의 3중 근거를 그대로 옮긴다.
 - **D-3. 포트 확장은 default 메서드** — 구현체 6곳 fail-safe (스펙 §2.7).
-- **D-4. `grantee_id` 에 FK 없음.** `USER`→`users` / `GROUP`→`user_groups` 다형 참조라 PostgreSQL 이 단일 FK 로 표현 불가. `project_memberships.project_id` 가 이미 같은 선례(`V007:5` 주석 *"cross-BC 참조, FK 없음 (ADR D2)"*). **대신 서비스 층이 존재 검증**하고 고아 행은 판정에서 자연 탈락(fail-closed).
-- **잔여 위험**. `users`/`user_groups` 삭제 시 grant 고아 행 잔존 → 판정엔 무해(JOIN 탈락)하나 목록 API 에 노출. 후속 정리 대상으로 명시.
+- **D-4. `grantee_id` 에 FK 없음.** `USER`→`users` / `GROUP`→`user_groups` 다형 참조라 PostgreSQL 이 단일 FK 로 표현 불가. `project_memberships.project_id` 가 이미 같은 선례(`V007:5` 주석 *"cross-BC 참조, FK 없음 (ADR D2)"*). **대신 서비스 층이 존재 검증한다** — `UserRepository`(USER) / `UserGroupRepository`(GROUP) 조회, 미존재 시 404.
+  > 🛑 **"고아 행은 판정에서 자연 탈락한다"고 쓰지 말 것 — USER 경로에서 거짓이다 (plan-eng-review P3).**
+  > `hasGrant` SQL 의 GROUP 가지는 `group_memberships` 를 JOIN 하고 `V015` 가 양 FK 를 `ON DELETE CASCADE` 로 걸어서 그룹 삭제 시 **실제로 탈락**한다.
+  > 그러나 **USER 가지는 `users` JOIN 이 아예 없다**(`g.grantee_type = 'USER' AND g.grantee_id = :actorId`) — 사용자 삭제 시 grant 행은 **영구 잔존**한다.
+  > 실제 피해는 제한적이다(UUID 재사용이 없어 권한 상승은 안 나고, 삭제된 사용자는 인증 자체가 불가). **문제는 ADR 이 앞으로 인용될 정본이라는 점**이다 —
+  > 거짓 안전 성질을 FK 생략의 근거로 박으면 다음 사람이 그걸 믿는다. **정확히 쓴다** — *"GROUP 은 CASCADE 로 탈락. USER 는 탈락 기전이 없어 고아 행이 잔존하며, 서비스 층 존재 검증과 목록 API 노출이 유일한 방어"*.
+- **D-5. `granted_by` 로 감사 흔적을 남긴다** (plan-eng-review P2). 권한 부여 시스템에 *"누가 줬나"* 가 없으면 사후 추적이 불가능하다. GROUP grant 는 **그룹 멤버십 변경만으로 권한이 전파**되므로 부여 체인 전체가 무기록이 된다. 지금은 컬럼 1개지만 나중에 붙이면 **기존 행이 전부 NULL** 이라 초기 grant(가장 민감한 것)의 출처가 영구 소실된다. FK 는 D-4 정신대로 생략.
+- **잔여 위험**. (1) `users`/`user_groups` 삭제 시 USER grant 고아 행 잔존 (위 D-4) — 후속 정리 대상. (2) `revoke` 는 hard DELETE 라 **회수 이력이 남지 않는다** — `revoked_at`/`revoked_by` soft delete 는 후속. 이번엔 `granted_by` 로 부여 측만 덮는다.
 
 **검증**. `bash scripts/verify-master-plan.sh` (ADR 링크 정합).
 
@@ -442,21 +496,24 @@ class GlobalPermissionGrantSchemaMigrationTest {
     }
 
     @Test
-    fun `기존 role_permissions 카운트 가드는 영향받지 않는다`() {
-        // PM10-5 — "안 깨진다"를 전제가 아니라 검증으로 확정한다 (스펙 §2.6 UNKNOWN 해소).
-        val count = jdbc.queryForObject(
-            """
-            SELECT count(*) FROM role_permissions rp
-            JOIN permission_schemes ps ON rp.scheme_id = ps.id
-            WHERE ps.is_default = TRUE
-            """,
-            mapOf<String, Any>(),
-            Int::class.java,
-        )
-        assertThat(count).isEqualTo(17)
+    fun `permission 은 CREATE_PROJECT 만 허용한다`() {
+        // D3 — 이 테이블은 권한코드를 사용자 입력으로 받는 유일한 곳이다. 오타를 DB 가 막는다.
+        assertThatThrownBy {
+            jdbc.update(
+                "INSERT INTO global_permission_grants (permission, grantee_type, grantee_id, granted_by) " +
+                    "VALUES ('CREATE_PROJET', 'USER', :id, :by)",
+                mapOf("id" to UUID.randomUUID(), "by" to UUID.randomUUID()),
+            )
+        }.isInstanceOf(DataIntegrityViolationException::class.java)
     }
 }
 ```
+
+> 🛑 **`assertThat(count).isEqualTo(17)` 을 여기에 복제하지 않는다 (plan-eng-review P3).**
+> `PermissionSchemaMigrationTest.kt:79` 가 **글자 그대로 같은 단언**을 이미 갖는다. 복제하면 (1) V036 을 아무것도 검증하지 않으면서
+> V008~V035 의 성질만 재단언하고, (2) **하드코딩 카운트 가드가 2곳**이 되어 다음 권한코드 추가 때 `GlobalPermissionGrant*` 라는
+> 무관한 이름 뒤에 숨는다 — [[enum-add-breaks-crossmodule-count-guard]] 가 경고한 함정을 이 PR 이 **새로 심는** 꼴이다.
+> **PM10-5 확정은 아래 검증절의 회귀 실행이 이미 달성한다.**
 
 **실패 메시지 (예상)**. `relation "global_permission_grants" does not exist`.
 
@@ -480,20 +537,34 @@ class GlobalPermissionGrantSchemaMigrationTest {
 -- (V035 가 같은 사고로 V034->V035 재번호된 이력).
 CREATE TABLE global_permission_grants (
     id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    permission   VARCHAR(64) NOT NULL,
+    permission   VARCHAR(64) NOT NULL CHECK (permission IN ('CREATE_PROJECT')),
     grantee_type VARCHAR(16) NOT NULL CHECK (grantee_type IN ('USER','GROUP')),
     grantee_id   UUID        NOT NULL,
+    granted_by   UUID        NOT NULL,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (permission, grantee_type, grantee_id)
 );
 
-CREATE INDEX ix_global_permission_grants_lookup ON global_permission_grants(permission, grantee_type, grantee_id);
+-- 인덱스 추가 없음 (plan-eng-review P2).
+-- 위 UNIQUE(permission, grantee_type, grantee_id) 가 정확히 같은 3컬럼·같은 순서의 btree 를 이미 만든다.
+-- hasGrant 술어가 그 인덱스를 그대로 탄다. 별도 인덱스는 100% 중복이라 쓰기 증폭만 낳는다.
+-- V015__user_groups.sql:19 가 세운 기준("복합 PK 선두라 인덱스 자동 생성 — 별도 불요")을 따른다.
+-- group_memberships(user_id) 조회는 ix_group_memberships_user(V015:20)가 이미 커버한다.
 
 COMMENT ON TABLE  global_permission_grants              IS '전역 권한 부여 — 사용자/그룹에게 프로젝트와 무관한 전역 권한코드를 부여한다 (FR-PM-10)';
-COMMENT ON COLUMN global_permission_grants.permission   IS '전역 권한코드. SDD 12(12-permissions.md) 정본. 현재 CREATE_PROJECT 1종';
+COMMENT ON COLUMN global_permission_grants.permission   IS '전역 권한코드. SDD 12(12-permissions.md) 정본. 현재 CREATE_PROJECT 1종. 코드 추가 시 이 CHECK 도 확장';
 COMMENT ON COLUMN global_permission_grants.grantee_type IS '부여 대상 종류. USER(users.id) 또는 GROUP(user_groups.id)';
 COMMENT ON COLUMN global_permission_grants.grantee_id   IS 'grantee_type 에 따라 users.id 또는 user_groups.id. 다형 참조라 DB FK 없음 (ADR D-4)';
+COMMENT ON COLUMN global_permission_grants.granted_by   IS '이 grant 를 부여한 SYSTEM_ADMIN 의 users.id. 감사 흔적 (ADR D-5)';
 ```
+
+> **`permission` CHECK 은 D3 (plan-eng-review).** 이 테이블은 BTS 에서 **처음으로 권한코드를 사용자 입력(REST 바디)으로 받는다** —
+> `role_permissions` 의 무제약 관례는 그 테이블이 마이그레이션만 시드하기에 성립했다. 오타(`CREATE_PROJET`)는 fail-closed 라
+> 사고는 안 나지만 **아무도 원인을 모르는** 쓰레기 grant 를 남긴다. DB CHECK + 서비스 400 **두 겹**으로 막는다.
+>
+> **`granted_by` 는 D7 (plan-eng-review).** 지금은 컬럼 1개지만 나중에 붙이면 **기존 행이 전부 NULL** 이라
+> 초기 grant(가장 민감한 것)의 출처가 영구 소실된다. GROUP grant 는 그룹 멤버십 변경만으로 권한이 전파되므로
+> 부여 체인 전체가 무기록이 된다.
 
 > **세 컬럼 모두 `NOT NULL` 인 것이 UNIQUE 멱등성의 전제다.** PostgreSQL UNIQUE 는 기본 `NULLS DISTINCT` 라
 > nullable 컬럼이 섞이면 같은 값이 중복 삽입된다 ([[pg-null-distinct-on-conflict-idempotency]]). 여기선 NULL 이 없어 안전.
@@ -622,9 +693,29 @@ fun `다른 권한코드의 grant 는 전파되지 않는다`() {
 fun `그룹에서 탈퇴하면 grant 가 사라진다`() {
     val userId = seedUser(); val groupId = seedGroup()
     seedGroupMembership(groupId, userId)
-    repo.grant("CREATE_PROJECT", GranteeType.GROUP, groupId)
+    repo.grant("CREATE_PROJECT", GranteeType.GROUP, groupId, grantedBy = adminId)
     removeGroupMembership(groupId, userId)
     assertThat(repo.hasGrant(userId, "CREATE_PROJECT")).isFalse()
+}
+
+// ↓ D6 신설 2건 (plan-eng-review) — 회수는 보안 기능이다. 조용히 안 되면 뗐다고 믿은 권한이 살아있다.
+@Test
+fun `revoke 하면 hasGrant 가 false 로 돌아가고 true 를 반환한다`() {
+    val userId = seedUser()
+    val grant = repo.grant("CREATE_PROJECT", GranteeType.USER, userId, grantedBy = adminId)
+    assertThat(repo.revoke(grant.id)).isTrue()
+    assertThat(repo.hasGrant(userId, "CREATE_PROJECT")).isFalse()
+    assertThat(repo.revoke(grant.id)).isFalse()   // 없는 id → false (서비스가 404)
+}
+
+@Test
+fun `list 는 부여한 grant 를 granted_by 와 함께 반환한다`() {
+    val userId = seedUser()
+    repo.grant("CREATE_PROJECT", GranteeType.USER, userId, grantedBy = adminId)
+    assertThat(repo.list()).singleElement().satisfies({
+        assertThat(it.granteeId).isEqualTo(userId)
+        assertThat(it.grantedBy).isEqualTo(adminId)   // ADR D-5 감사 흔적이 실제로 읽힌다
+    })
 }
 ```
 
@@ -641,6 +732,7 @@ data class GlobalPermissionGrant(
     val permission: String,
     val granteeType: GranteeType,
     val granteeId: UUID,
+    val grantedBy: UUID,      // 감사 — ADR D-5
     val createdAt: Instant,
 )
 ```
@@ -661,11 +753,15 @@ SELECT EXISTS (
 )
 ```
 
-메서드 4종 — `grant(permission, granteeType, granteeId): GlobalPermissionGrant` (`ON CONFLICT DO NOTHING` 아님 — 중복은 409 로 올린다) / `revoke(id): Boolean` / `list(): List<GlobalPermissionGrant>` / `hasGrant(actorId, permission): Boolean`.
+메서드 4종.
+- `grant(permission, granteeType, granteeId, grantedBy): GlobalPermissionGrant` — `ON CONFLICT DO NOTHING` **아님**. 중복은 `DuplicateKeyException` 으로 올라가 서비스가 409 로 매핑한다(멱등 200 이 아니라 409 인 이유 — 관리자가 "이미 있다"를 알아야 한다)
+- `revoke(id): Boolean` — hard DELETE. 삭제 행 수 > 0 이면 true (없으면 404)
+- `list(): List<GlobalPermissionGrant>`
+- `hasGrant(actorId, permission): Boolean`
 
 **REFACTOR**. SQL 상수를 `private companion object` 로 추출 + KDoc (`ProjectMembershipAdapter.kt:57-70` 동형).
 
-**검증**. `./gradlew :modules:identity-access:test --tests '*GlobalPermissionGrantRepositoryIntegrationTest*'` → 5/5 PASS.
+**검증**. `./gradlew :modules:identity-access:test --tests '*GlobalPermissionGrantRepositoryIntegrationTest*'` → **7/7 PASS** (D6 로 `revoke()` · `list()` 2건 추가).
 
 ---
 
@@ -673,8 +769,14 @@ SELECT EXISTS (
 
 **메타**.
 - agent: `security-engineer`
-- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/permission/IdentityAccessSystemPermissionResolver.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/permission/IdentityAccessSystemPermissionResolverGlobalPermissionTest.kt`]
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/permission/IdentityAccessSystemPermissionResolver.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/permission/IdentityAccessSystemPermissionResolverGlobalPermissionTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/permission/IdentityAccessSystemPermissionResolverTest.kt`]
 - depends-on: [3, 4]
+
+> 🛑 **3번째 파일은 이 task 가 **깨뜨리는** 기존 테스트다 (plan-eng-review P1 — 초안이 누락).**
+> `IdentityAccessSystemPermissionResolverTest.kt:26` — `private val resolver = IdentityAccessSystemPermissionResolver(repo = repo)`.
+> **명명 인자**라 `grantRepo` 파라미터를 추가하는 순간 `No value passed for parameter 'grantRepo'` 로 **컴파일이 깨진다**.
+> 고치는 법 — `grantRepo = mockk()` 추가. 기존 2개 테스트는 `isSystemAdmin` 만 호출하므로 스텁 불요.
+> ([[plan-files-constructor-injection-existing-tests]] — *"생성자 주입은 기존 mock 테스트도 plan files"*. 이 메모리가 기록한 사고를 초안이 그대로 재현했다.)
 
 **★ 이 task 가 스펙 B8 을 막는다.** override 를 잊으면 default(`= isSystemAdmin`)가 남아 `CREATE_PROJECT` 가 **SYSTEM_ADMIN 전용**으로 되돌아간다 — **Maxi 가 D7 에서 기각한 바로 그 안**이다. fail-closed 라 사고는 안 나지만 **아무도 모르게 기능이 사라진다**.
 
@@ -753,12 +855,20 @@ fun `GROUP grant 보유 비-SYSTEM_ADMIN 이 전역권한을 획득한다`() {
 
 **메타**.
 - agent: `security-engineer`
-- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/permission/GlobalPermissionGrantService.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/GlobalPermissionGrantController.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/web/GlobalPermissionGrantControllerTest.kt`]
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/permission/GlobalPermissionGrantService.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/permission/GlobalPermissionGrantException.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/GlobalPermissionGrantController.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/web/GlobalPermissionGrantControllerTest.kt`]
 - depends-on: [4]
 
 **선례를 그대로 따른다 — `UserGroupController`** (같은 모듈·같은 SYSTEM_ADMIN 게이트·같은 PAT 대응).
 
-**RED**. `GlobalPermissionGrantControllerTest` (`@WebMvcTest` + `SystemPermissionResolver` mock).
+> **grantee 존재 검증의 협력자를 명시한다 (plan-eng-review P2 — 초안이 누락).** ADR D-4 가 *"서비스 층이 존재 검증"* 을
+> **FK 생략의 근거**로 삼았으므로 이 검증은 선택이 아니다. `GlobalPermissionGrantService` 는 `granteeType` 에 따라
+> **`UserRepository`(USER) 와 `UserGroupRepository`(GROUP) 두 곳을 조회**한다 — 선례 `UserGroupController.kt:186`
+> (`userRepository.findByIds(...)`) · `:286-287`(404 매핑). 예외는 `GlobalPermissionGrantException` sealed 아래
+> `GranteeNotFoundException` · `DuplicateGrantException` · `UnknownPermissionException` 3종.
+> 이걸 안 적으면 구현자가 (a) 임의로 리포지토리를 주입해 [[plan-files-constructor-injection-existing-tests]] 를 밟거나
+> (b) 검증을 생략해 **ADR D-4 를 거짓으로 만든다**.
+
+**RED**. `GlobalPermissionGrantControllerTest` (`@WebMvcTest` + `SystemPermissionResolver` mock. 선례 `UserGroupControllerTest.kt:59`).
 
 ```kotlin
 @Test fun `SYSTEM_ADMIN 이 grant 를 부여하면 201`()
@@ -768,7 +878,18 @@ fun `GROUP grant 보유 비-SYSTEM_ADMIN 이 전역권한을 획득한다`() {
 @Test fun `존재하지 않는 grantee 부여는 404`()
 @Test fun `중복 부여는 409`()
 @Test fun `revoke 는 204`()
+
+// ↓ D6 신설 3건 (plan-eng-review)
+@Test fun `PAT 로 인증한 SYSTEM_ADMIN 이 grant 를 부여하면 201`()   // ★ D4 의 근거 자체를 잠근다
+@Test fun `미인증 요청은 401`()                                      // resolveActorId 실패 경로
+@Test fun `미지 permission 부여는 400`()                             // D3 — 서비스 겹
 ```
+
+> ★ **PAT 양성 테스트가 이 task 에서 가장 중요하다.** D4 는 *"PAT 를 지원하려고 명시 호출을 쓴다"* 로 패턴을 정했다.
+> 그런데 JWT 테스트만 있으면 **누군가 `@PreAuthorize("hasRole('SYSTEM_ADMIN')")` 로 바꿔도 전부 초록**이다 —
+> `PatAuthenticationFilter.kt:48` 이 `ROLE_PAT` 만 주므로 PAT 는 그때부터 403 인데 아무도 모른다.
+> 즉 **결정의 근거가 미검증으로 남는다.** 선례 — `AuthAuditLogAdminControllerTest.kt:113-115` 가
+> `ROLE_PAT` authority 로 정확히 이 축을 테스트한다(그쪽은 403 을 기대하는 음성 테스트, 여기는 201 을 기대하는 양성).
 
 **GREEN**. `UserGroupController.kt` 의 5요소를 동형 이식한다 (**복사가 아니라 동형** — 실측한 선례 구조).
 
@@ -802,38 +923,54 @@ fun `GROUP grant 보유 비-SYSTEM_ADMIN 이 전역권한을 획득한다`() {
 
 **RED**. **트랜잭션 참여를 직접 증명한다** (DoD-11 의 PR-1 판 — D16).
 
+> 🛑 **테스트 클래스를 반드시 비트랜잭션으로 고정한다 (§C10-2 — plan-eng-review P0).**
+> `@JdbcTest` 는 `@Transactional` 메타라 기본값대로 두면 **올바른 구현에서도 fail** 하고 두 경우가 구분되지 않는다.
+> 선례 `RefreshTokenRepositoryTest.kt:230`.
+
 ```kotlin
 // ProjectMembershipWritePort 어댑터 — 호출자 트랜잭션 참여 실증 (스펙 §4.4 · DoD-11 PR-1 판)
 
-@Test
-fun `호출자 트랜잭션이 롤백되면 addMember 도 롤백된다`() {
-    val userId = seedUser()
-    val projectId = UUID.randomUUID()   // project_id 는 FK 가 없다 (V007:5 cross-BC) — 실 projects 행 불요
+@JdbcTest
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Testcontainers
+@Transactional(propagation = Propagation.NOT_SUPPORTED)   // ★ §C10-2 필수. 없으면 판별력 0
+class ProjectMembershipWriteAdapterTest {
+    // companion object = ProjectMembershipRepositoryIntegrationTest.kt:44-60 동형
 
-    assertThatThrownBy {
-        txTemplate.execute {
-            adapter.addMember(projectId, userId, "PROJECT_ADMIN")
-            throw IllegalStateException("의도적 실패 — 롤백 유발")
-        }
-    }.isInstanceOf(IllegalStateException::class.java)
+    @AfterEach                                             // ★ 테스트 tx 가 없으니 수동 정리
+    fun cleanup() = jdbc.update("DELETE FROM project_memberships WHERE project_id = :p", mapOf("p" to projectId))
 
-    // ★ 어댑터가 자기 트랜잭션을 열었다면(REQUIRES_NEW / TransactionTemplate) 이 행이 살아남아 red 가 된다.
-    assertThat(countMemberships(projectId, userId)).isZero()
-}
+    @Test
+    fun `호출자 트랜잭션이 롤백되면 addCreatorAsAdmin 도 롤백된다`() {
+        val userId = seedUser()
+        val projectId = UUID.randomUUID()   // project_id 는 FK 가 없다 (V007:5 cross-BC) — 실 projects 행 불요
 
-@Test
-fun `호출자 트랜잭션이 커밋되면 addMember 가 영속된다`() {
-    val userId = seedUser()
-    val projectId = UUID.randomUUID()
-    txTemplate.execute { adapter.addMember(projectId, userId, "PROJECT_ADMIN") }
-    assertThat(countMemberships(projectId, userId)).isOne()
+        assertThatThrownBy {
+            txTemplate.execute {
+                adapter.addCreatorAsAdmin(projectId, userId)
+                throw IllegalStateException("의도적 실패 — 롤백 유발")
+            }
+        }.isInstanceOf(IllegalStateException::class.java)
+
+        // 어댑터가 자기 트랜잭션을 열었다면(REQUIRES_NEW / TransactionTemplate) 이 행이 커밋돼 살아남는다.
+        // NOT_SUPPORTED 라 이 SELECT 는 tx 밖에서 실행되므로 "미커밋을 내가 읽는" 오염이 없다.
+        assertThat(countMemberships(projectId, userId)).isZero()
+    }
+
+    @Test
+    fun `호출자 트랜잭션이 커밋되면 addCreatorAsAdmin 이 영속된다`() {
+        val userId = seedUser()
+        val projectId = UUID.randomUUID()
+        txTemplate.execute { adapter.addCreatorAsAdmin(projectId, userId) }
+        assertThat(countMemberships(projectId, userId)).isOne()   // ★ 진짜 커밋을 확인한다
+    }
 }
 ```
 
-> **왜 이 red 가 진짜인가.** identity-access 는 jOOQ 를 안 쓴다(`DSL.using` **0건**). 주입된
-> `NamedParameterJdbcTemplate` 은 `DataSourceUtils.getConnection()` 을 타므로 자동으로 tx-aware 다.
-> **C10 의 거짓 red 함정은 여기 없다** (위 §스펙 정정 2). 반대로 issue-tracking 에서 같은 테스트를 짜면
-> `IssueTestcontainersBase.kt:112` 때문에 거짓 red 가 뜬다 — **PR-2 는 C10 을 반드시 적용한다**.
+**★ mutation 순서를 뒤집지 말 것 ([[verify-logic-vs-verify-guard]] — 기준선 EXIT=0 선확인).**
+1. **먼저** 무애노테이션 어댑터로 **2/2 PASS** 를 확인한다. ← 이게 기준선. 여기가 red 면 테스트가 틀린 것이지 어댑터가 틀린 게 아니다
+2. **그 다음** 어댑터에 `@Transactional(propagation = Propagation.REQUIRES_NEW)` 를 임시로 달아 1번이 **fail** 하는지 본다
+3. 1번을 건너뛰고 2번만 하면 §C10-2 의 vacuous 통과를 그대로 재현한다
 
 **GREEN**. 포트 (shared-kernel).
 
@@ -859,9 +996,9 @@ import java.util.UUID
  * 프로젝트 멤버십 쓰기는 이 포트로만 한다.
  *
  * ### BC 경계 규칙
- * 파라미터는 원시 타입(UUID/String)만 쓴다. role 을 identity-access 의 ProjectRole enum 으로 받으면
- * 두 단계로 막힌다 — 1차는 Gradle 클래스패스(shared-kernel 에 modules 의존이 0건이라 unresolved
- * reference 로 컴파일이 먼저 죽는다), 2차는 SharedKernelBoundaryArchTest.
+ * 파라미터는 원시 타입(UUID)만 쓴다. identity-access 도메인 타입(ProjectRole 등)을 쓰면 두 단계로
+ * 막힌다 — 1차는 Gradle 클래스패스(shared-kernel 에 modules 의존이 0건이라 unresolved reference 로
+ * 컴파일이 먼저 죽는다), 2차는 SharedKernelBoundaryArchTest.
  *
  * ### 트랜잭션 계약
  * 구현체는 트랜잭션 경계를 **선언하지 않는다**. 호출자 트랜잭션에 참여하는 것이 이 포트의 존재 이유다.
@@ -870,15 +1007,19 @@ import java.util.UUID
  */
 interface ProjectMembershipWritePort {
     /**
-     * [projectId] 프로젝트에 [userId] 를 [role] 로 등록한다. 호출자 트랜잭션에 참여한다.
+     * 프로젝트 생성자를 그 프로젝트의 PROJECT_ADMIN 으로 등록한다. 호출자 트랜잭션에 참여한다.
      *
-     * @param role 'PROJECT_ADMIN' 또는 'MEMBER' (project_memberships CHECK 제약과 동일)
-     * @throws IllegalArgumentException role 이 두 값이 아닐 때
+     * 역할은 파라미터가 아니다 — 이 포트의 유일한 용도가 FR-PJ-01 의 생성자 등록이고 역할은 항상
+     * PROJECT_ADMIN 이다. 일반 멤버 관리는 identity-access 내부(ProjectMemberController)에 있고
+     * 이 포트를 타지 않는다. 역할을 열어두면 "임의 사용자를 임의 프로젝트의 관리자로" 만드는
+     * 무가드 프리미티브의 표면만 넓어진다.
+     *
+     * 멱등이 아니다 — project_memberships 의 UNIQUE(project_id, user_id) 로 2회 호출은 실패한다.
+     * 신규 프로젝트에서만 호출되므로 충돌이 성립하지 않는다.
      */
-    fun addMember(
+    fun addCreatorAsAdmin(
         projectId: UUID,
         userId: UUID,
-        role: String,
     )
 }
 ```
@@ -944,9 +1085,7 @@ fun `ProjectMembershipWritePort prod 어댑터가 조립 컨텍스트에 결선�
 
 @Test
 fun `SystemPermissionResolver prod 구현이 조립 컨텍스트에 결선된다(FR-PM-10)`() {
-    // 이 조립에 사는 판정기가 IdentityAccessSystemPermissionResolver 임을 이름으로 고정한다.
-    // issue-tracking 의 항상-true 스텁 NonProdAllowSystemAdminResolver 는 @Profile("!prod") 라
-    // 이 prod 컨텍스트에 등록되지 않는다.
+    // ⚠️ 이 단언은 PR-1 코드 0줄에서도 이미 초록이다 — RED 아님(아래 참조). 이름 고정 회귀 가드일 뿐.
     assertThat(
         context.containsBean("com.atlas.bts.identity.permission.IdentityAccessSystemPermissionResolver"),
     ).isTrue()
@@ -958,7 +1097,15 @@ fun `SystemPermissionResolver prod 구현이 조립 컨텍스트에 결선된다
 > **T5** 가 *"그 클래스가 override 를 갖는가"* 를 행위로 증명하고, **T8** 이 *"그 클래스가 prod 조립에 있는가"* 를
 > 이름으로 고정한다. 둘을 합치면 B8 이 덮인다.
 
-**실패 메시지 (예상)**. `expected: true but was: false` (빈 미등록).
+> 🛑 **T8-2 는 RED 가 될 수 없다 — TDD 라 주장하지 말 것 (plan-eng-review P3, 초안이 거짓 실패를 예고했다).**
+> `IdentityAccessSystemPermissionResolver.kt:30-31` 은 `@Component` 이고 **`@Profile` 이 없다**(KDoc `:20-25` 가 그 사실을 명시).
+> `BtsApplicationContextTest.kt:24` 는 `ProdAssemblyHttpTestBase` 상속으로 **지금도** prod 조립을 띄운다. → 이 빈은 **main 에서 이미 존재**한다.
+> `/bts-impl` 이 `test:` → `feat:` 순서를 git log 로 강제하므로 이 테스트의 RED 커밋은 **형식만 남고 실질이 없다**.
+> 가치는 인정한다(다음 사람이 `@Profile("prod")` 를 붙이면 이 가드가 잡는다) — 다만 **"RED 를 봤다"고 보고하지 않는다**.
+
+**실패 메시지 (예상)**.
+- **T8-1** (`ProjectMembershipWriteAdapter`) — `expected: true but was: false` (빈 미등록). **진짜 RED.**
+- **T8-2** (`IdentityAccessSystemPermissionResolver`) — **RED 없음.** 처음부터 초록이다(위 참조).
 
 **GREEN**. T7 의 `@Component` 어댑터가 identity-access 스캔에 잡히면 통과. **안 잡히면 중앙 스캔 확인** ([[shared-kernel-component-extraction-scan-regression]]).
 
@@ -1005,13 +1152,34 @@ grep -oE '^\| FR-[A-Z]+-[0-9]+ ' docs/plan/fr-index.md | sort -u | wc -l   # 현
 2. `docs/sdd/02-requirements.md` — **§2.2.16 `프로젝트 관리 (FR-PJ)` 신설** (`:260` FR-CA-02 뒤 ~ `:262` §2.3 NFR 앞. **전례 없는 첫 프리픽스 신설**) + §2.2.10 에 FR-PM-10 행
 3. **`docs/sdd/12-permissions.md` — `CREATE_PROJECT` 권한 코드 등재 (★ 스펙 미명명 정본).** `MANAGE_AUTOMATION`·`MANAGE_WORKFLOW` 선례 형식
 4. `docs/plan/product/identity-access.md` — FR-PM-10 § 본문 · D 체크박스(**D1~D5 틱, D6·D7 미틱** — PR-6) · §N 헤더 `(FR-PM, N개)` · L1 주석 · `소속 FR. N개` · BC 완료 게이트
-5. `docs/plan/product/issue-tracking.md` — FR-PJ § 신설 · D 체크박스 **전부 미틱**(PR-2~5) · 같은 5개 카운트 표기
+5. `docs/plan/product/issue-tracking.md` — FR-PJ § 신설 · D 체크박스 **전부 미틱**(PR-2~5) · 같은 5개 카운트 표기 · **★ BC 완료 게이트 `:495`** (아래)
 6. `docs/plan/README.md` — §1 BC 테이블 행 · 합계
-7. `CLAUDE.md` — `123 FR` → `128 FR` (**worktree 판과 main 판 둘 다**)
+7. `CLAUDE.md` — `123 FR` → `128 FR`. **워크트리 판만** (아래)
 8. `DATA.md:45` **drift 정정** — *"jOOQ 기본 쿼리는 `deleted_at IS NULL` 필터 자동 첨부 (`SoftDeleteFilter` 래퍼)"* 는 **허구**(`.kt` grep 히트 0). 실제는 repository 마다 수동. **아카이브 술어(PR-4)가 이 문장을 근거로 오독하면 곧 보안 버그**라 지금 고친다
 9. `docs/progress.html` — `node scripts/build-dashboard.mjs` 재생성
 
+> 🛑 **`CLAUDE.md` 는 워크트리 판만 고친다 (plan-eng-review P2 — 초안이 *"main 판도"* 라 적었다).**
+> `verify-master-plan.sh:18` `REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"` + `:82` `CLAUDE_MD="${REPO_ROOT}/CLAUDE.md"`
+> → 워크트리에서 실행하면 **워크트리 판만** 검사한다. main 판 편집은 **무효과**이고, `CLAUDE.md §핵심 패턴`
+> (*"`.worktrees/<slug>` 안에서만 Edit/Write. **main 트리 오염 차단**"*)을 **이 plan 이 스스로 위반**하는 것이다.
+> main 판은 머지가 가져간다. #276 이 병렬 중이라 실제 위험이다([[multisession-git-branch-checkout-hijack]]·[[worktree-lint-staged-shared-git-stash-collision]]).
+
+> 🛑 **issue-tracking BC 완료 게이트 + verify 룰 확장 (plan-eng-review P2 — 초안이 누락).**
+> 실측 `docs/plan/product/issue-tracking.md:495` — `- [ ] §2~§6 (30 FR) 모두 [x] 마킹`.
+> **FR-PJ 는 §7 이 되어 이 범위 밖**이다 → 고치지 않으면 issue-tracking BC 가 **FR-PJ-01~04 미구현 상태로 "완료" 선언 가능**해진다.
+> → `§2~§7 (35 FR)` 로 갱신. (참고 — `:495` 의 `30` 은 이미 stale 이다. 같은 파일 `:5` 는 `소속 FR. 31개`.)
+>
+> **그리고 `verify-master-plan.sh` 가 이걸 구조적으로 못 잡는다.** 룰 D 정규식은 `\(FR-[A-Z]+,? *[0-9]+개\)` 인데
+> 이 줄은 `(30 FR)` 형식이라 **매칭 0 → 종료 0 으로 통과**한다. `CLAUDE.md §전수 동기화` 가 못박은 대로
+> **verify 도 같은 PR 에서 확장**한다 — 정규식을 `\((?:FR-[A-Z]+,? *)?[0-9]+ ?(?:개|FR)\)` 로 넓히고
+> **일부러 위반을 넣어 fail 을 확인**한다([[archunit-vacuous-rule-silent-pass]] — 룰은 오타 하나로 vacuous PASS 가 된다).
+> 초안이 *"통과는 충분조건이 아니다"* 라 적어놓고 정작 그 사각지대의 실례를 놓쳤다.
+
 > **범위 밖 (건드리지 않는다).** `docs/plan/product/issue-tracking.md:171` `(7개)` → 실제 8 drift 는 **무관한 섹션**이라 분리한다 (글로벌 CLAUDE.md §3 surgical). `FlywayAssemblyConfig.kt:13` KDoc V번호 drift 도 동일.
+
+> **후속 TODO (D5 — 이번 PR 범위 밖, 기록만).** identity-access 컨트롤러의 `resolveActorId`(6파일) ·
+> `requireSystemAdmin`(4파일) · `FORBIDDEN_RESPONSE`/`UNAUTHORIZED_RESPONSE`(**13파일**) 복제. PR-1 이 14번째 사본을 만든다.
+> 공통화는 13파일 리팩토링이라 권한 PR 에 섞으면 둘 다 제대로 못 본다 — 별도 작업으로 분리한다. `TODOS.md` 에 기록.
 >
 > **Obsidian 미러 (`Maxi_wiki/BTS/`)** 는 Maxi 승인 수동 영역 — glossary 5건(§plan 참조)은 **보고만** 하고 손대지 않는다.
 
@@ -1092,4 +1260,84 @@ depends-on: T1[] T2[1] T3[] T4[2] T5[3,4] T6[4] T7[] T8[5,7] T9[1..8]
 - **DoD-9/DoD-11 end-to-end 판** (D16) — `POST /projects` 가 생긴 뒤라야 가능
 - **C3** — `init_codegen.sql` 미러는 **PR-4**(issue-tracking V037 `archived_at`. `projects` 가 `init_codegen.sql:21` 에 있다)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-17) — PR-1 (T1~T9). 타입 auth → BLOCKER 무시 옵션 없음
+
+**Step 0 범위 도전.** 복잡도 트리거 발동(26파일 / 신규클래스 6 · 기준 8/2) → Maxi 확정 **그대로 진행**.
+분해하면 **문서 동기화 9**(CLAUDE.md §전수동기화 강제) + **테스트 6**(TDD) + **코드 9** + ADR 1 + app 테스트 1.
+가장 의심한 **T7(소비자 없는 포트)** 은 git 이력으로 검증한 결과 **선례 동형**이다 — PR **#75**
+*"FR-PM-08 — 전역 시스템 관리자 역할 + 전역 권한 인프라 (**FR-PM-04 선행**)"* 가 shared-kernel 포트 +
+identity-access 어댑터만 싣고 소비자를 뺐고, `--reverse` 순서상 소비자 PR(#73)보다 **먼저** 머지됐다.
+
+| 섹션 | 결과 |
+|---|---|
+| 1. 아키텍처 | ⚠️ 2건 — 권한코드 무검증(D17) · 게이트 패턴 근거 오류(D18) |
+| 2. 코드 품질 | 🛑 1건 — T5 `files` 누락(컴파일 파손) · ⚠️ DRY 13파일 복제(D19) |
+| 3. 테스트 | ⚠️ 커버리지 67% (14/21) · 갭 7건 → **6건 추가, 1건 소멸**(role 제거) |
+| 4. 성능 | ⚠️ 1건 — 중복 인덱스. N+1 없음, grant 테이블 수십 행 규모 |
+| Outside voice | 🛑 **P0 1건** + P2 4건 + P3 4건. codex 미설치 → Claude 서브에이전트 |
+
+**🛑 BLOCKER 1건 (Outside voice 발견, 반영 완료) — §C10-2.**
+T7 롤백 테스트를 `@JdbcTest`(= `@Transactional` 메타) 위에 얹으면 **올바른 구현에서도 fail** 하고
+잘못된 구현과 **구분되지 않는다**(테스트 tx 가 미커밋 INSERT 를 그대로 읽음). I1(2행 원자성)의 유일한 실증이
+구현자를 **I1 파괴 방향(REQUIRES_NEW)으로 유도**하고, 필수 지정한 mutation 확인이 그 사실을 **가려준다**.
+→ `@Transactional(propagation = NOT_SUPPORTED)` + `@AfterEach` 수동 정리 + **기준선 PASS 선확인**. 선례 `RefreshTokenRepositoryTest.kt:230`.
+
+**★ 이 리뷰의 핵심 — 눈가리개의 4층.**
+
+| 라운드 | 눈가리개 | 처방 |
+|---|---|---|
+| spec 1~3회차 | 개수 → 정의 → **정의가 전제한 코드 모양** | 5중 교차 열거 |
+| **plan-eng-review** | **내가 반증한 것이 그 제약의 유일한 기전이라는 전제** | **"경로가 하나뿐인가"를 묻는다** |
+
+plan 의 §스펙 정정표는 spec 의 교훈을 적용해 만든 **개정본인데, 그 개정본이 새 결함을 넣었다**.
+정정 2 는 *"identity-access 에 `DSL.using` 0건"* 이라는 **참인 근거**로 C10 전체를 기각했다 —
+그러나 거짓 red 의 기전은 **둘**이고 2번째(테스트 클래스 자체 `@Transactional`, 41파일)를 안 봤다.
+[[spec-stated-count-becomes-blindfold]] 의 *"개정본을 원본보다 의심하라"* 가 이번엔 **내 정정표**를 겨눴다.
+
+**정정된 것 (초안이 틀렸던 지점 6).**
+1. §스펙 정정 2 — C10 기각은 **오류**. §C10-2 신설
+2. T5 `files` — `IdentityAccessSystemPermissionResolverTest.kt:26` 누락 → 명명 인자라 컴파일 파손 ([[plan-files-constructor-injection-existing-tests]] 재현)
+3. T9 — *"main 판 CLAUDE.md 도"* → `verify-master-plan.sh:18·82` 가 워크트리 판만 검사. **CLAUDE.md §핵심 패턴을 plan 이 스스로 위반**
+4. T9 — issue-tracking BC 완료 게이트 `:495` `§2~§6 (30 FR)` 누락 → FR-PJ(§7) 4개가 게이트 밖. verify 룰 D 도 못 잡아 **종료 0 통과** → 룰 확장 동반
+5. T8-2 — *"실패 메시지 예상: 빈 미등록"* 은 **거짓**. `@Profile` 없어 main 에서 이미 초록 → RED 아님 명기
+6. T6 — grantee 존재 검증(ADR D-4 의 FK 생략 근거) 협력자가 `files`·`depends-on` 어디에도 없었음
+
+**설계 개선 3건 (Maxi 확정).** 포트 `role: String` 제거 → `addCreatorAsAdmin` (MEMBER 는 영원히 죽은 값 · 무가드 프리미티브 표면 축소 · 테스트 1건 소멸) / `granted_by` 감사 컬럼 (지금은 컬럼 1개, 나중엔 기존 행 전부 NULL) / V036 중복 인덱스 삭제 (`UNIQUE` 가 같은 3컬럼 btree 를 이미 생성 — `V015:19` 가 세운 기준).
+
+**확증된 것 (반증 시도 후 살아남음).**
+- 🟢 `AuthAuditLogAdminController` 의 PAT 403 은 **버그 아님** — `AuthAuditLogAdminControllerTest:113-115` 가 `ROLE_PAT` 케이스를 명시 테스트. 확인 게이트가 내 오탐을 잡았다
+- 🟢 T9 의 "SecurityConfig 무변경" — `SecurityConfig.kt:209` `auth.requestMatchers("/api/**").authenticated()` 실재
+- 🟢 §스펙 정정 1·3·4 (C3 무관 · C1 무관 · PM10-5 안 깨짐) — 전부 재검증 통과
+- 🟢 T7 을 PR-1 에 두는 것 — PR #75 선례 동형
+
+**Prior learnings applied.** [[plan-files-constructor-injection-existing-tests]](9/10) · [[spec-stated-count-becomes-blindfold]](10/10) · [[negative-guard-needs-body-discriminator]](9/10) · [[verify-logic-vs-verify-guard]](9/10) · [[enum-add-breaks-crossmodule-count-guard]](8/10) · [[archunit-vacuous-rule-silent-pass]](8/10).
+
+**BLOCKER 잔여. 없음** (P0 반영 완료).
+
+### plan-ceo-review — 스킵
+
+`/bts-review-plan` 표는 auth → eng → ceo 를 지정하나, ceo 리뷰의 질문(*"이걸 만들 가치가 있나 · 범위가 맞나"*)은
+**D7·D11·D15 로 이미 잠겼다**. D11 은 되돌리기 가장 싼 지점(코드 0줄)에서 재확인한 결과이고
+*"이후 범위 축소 재논의는 새 근거 없이는 하지 않는다"* 를 명시했다. 새 근거는 나오지 않았다 —
+오히려 Step 0 이 범위를 독립 도전했고 Maxi 가 **그대로 진행**으로 확정했다.
+([[bts-spec-office-hours-mismatch]] 동형 — 확정된 결정을 다시 흔드는 단계는 부적합.)
+
+## GSTACK REVIEW REPORT
+
+| Run | Status | Findings |
+|---|---|---|
+| Step 0 scope challenge | ✅ 통과 | 트리거 발동(26파일/6클래스) → Maxi "그대로 진행". T7 은 PR #75 선례 동형으로 검증 |
+| 1. Architecture | ⚠️ 2 findings | P1 권한코드 무검증 → D17 · P2 게이트 근거 오류 → D18 |
+| 2. Code quality | 🛑 1 blocker-class + 1 | P1 T5 files 누락(적용) · P3 DRY 13파일 → D19(복사+TODO) |
+| 3. Tests | ⚠️ 7 gaps | 67% → 6건 추가 + 1건 소멸. PAT 양성이 D18 근거를 잠금 |
+| 4. Performance | ⚠️ 1 finding | 중복 인덱스 삭제(적용). N+1 없음 |
+| Outside voice (Claude subagent) | 🛑 P0 + 8 | codex 미설치. **4/4 실측 검증 통과**, 오탐 0 |
+| Cross-model tension | ✅ 해소 | C10 적용 여부 — outside voice 가 옳음. 내 논거는 참이나 기전 하나만 덮음 |
+
+**적용 완료.** P0(§C10-2 · T7 테스트 베이스) · P1×2(T5 files · 권한코드 CHECK) · P2×4(게이트 근거 · main CLAUDE.md · BC 게이트+verify 룰 · T6 협력자) · P3×3(중복 인덱스 · T2 복제 가드 · T8-2 red 아님) · 설계 3(role 제거 · granted_by · ADR D-4 문안).
+
+**VERDICT: APPROVED WITH CHANGES — 전부 반영 완료.** BLOCKER 잔여 0. task 9 · 메타 9/9/9 무결. auth 타입 BLOCKER 무시 옵션은 사용하지 않았다.
+
+NO UNRESOLVED DECISIONS
