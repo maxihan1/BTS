@@ -56,7 +56,7 @@ data class YamlRule(
  * [config]는 사람이 읽는 YAML 객체로 방출/입력되고, 도메인의 `triggerConfig: String`(JSON 문자열)과
  * 상호 변환된다 — wire 비대칭 흡수는 [AutomationYamlCodec] 이 담당한다.
  *
- * @property type 트리거 타입 5종([TriggerType]).
+ * @property type 트리거 타입 6종([TriggerType]).
  * @property config 트리거별 설정. 빈 객체(`{}`) 허용.
  */
 data class YamlTrigger(

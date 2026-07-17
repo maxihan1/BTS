@@ -119,11 +119,11 @@
 
 **우선순위**. 높음 | **선행**. §2.1 (WEBHOOK 트리거), §2.2 (액션) | **Plan slug**. `automation/pr-merge`
 
-- [ ] D1. 도메인 — GitWebhookEvent (책임. backend-engineer)
-- [ ] D2. 명세 — GitHub/GitLab Webhook 처리. 커밋 메시지에서 이슈 키 추출 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — (활용. webhook secret 저장) (책임. db-engineer)
-- [ ] D4. 백엔드 — `POST /api/v1/webhooks/git` + 서명 검증 (책임. backend-engineer + security-engineer)
-- [ ] D5. 백엔드 테스트 — 가짜 페이로드 (책임. backend-engineer)
+- [x] D1. 도메인 — GitWebhookEvent (책임. backend-engineer)
+- [x] D2. 명세 — GitHub/GitLab Webhook 처리. 커밋 메시지에서 이슈 키 추출 (책임. backend-engineer)
+- [x] D3. 데이터 모델 — (활용. webhook secret 저장) (책임. db-engineer)
+- [x] D4. 백엔드 — `POST /api/v1/webhooks/git` + 서명 검증 (책임. backend-engineer + security-engineer)
+- [x] D5. 백엔드 테스트 — 가짜 페이로드 (책임. backend-engineer)
 - [ ] D6. 프론트 UI — Webhook URL 생성 페이지 (책임. designer → frontend-engineer)
 - [ ] D7. E2E (책임. qa-engineer)
 
@@ -144,6 +144,41 @@
 > 그 테스트(D5/D7)는 전부 PR-C 몫으로 미착수** — 위 체크박스는 그 실체(Git 웹훅 수신·서명 검증·URL
 > 발급 화면)가 실제로 구현되는 **PR-C 완료 시점에 마킹**한다. FR-AT-07 자체는 **미완료**로 유지.
 > → automation BC **6/7 유지**(FR-AT-06 선례 동형 — D단계 일부 완료는 BC 카운트를 올리지 않음).
+
+> **PR-C 완료 (2026-07-17, PR #278) — 백엔드 전용**. DEC-18(Maxi 확정)에 따라 PR-C는 **백엔드만**이며
+> **D6/D7·FR-AT-07 완료 마킹·BC 7/7은 PR-D 몫**이다(automation 선례 6/6 준수). **D1~D5 마킹** — D3는
+> 최초 열거에서 누락됐으나(`(활용. webhook secret 저장)` 문구가 기존 스키마 재사용을 전제했음) PR-C가
+> **`V307 git_webhooks.secret_encrypted` 신규 테이블**을 만들었으므로 실물 기준으로 함께 마킹한다.
+> **핵심 설계 — PR_MERGED는 제3의 경로**. `q_automation_events`(issue-tracking 소유)를 타지 않고
+> 컨트롤러가 룰을 직접 조회해 동기 enqueue 한다. 따라서 `TriggerMatcher` wire 맵에 `pr.merged` 추가는
+> **죽은 코드**이고, `AutomationRuleService` 의 PR_MERGED `else null` 이 정답이다(git 토큰은 프로젝트
+> 단위 `git_webhooks` 소유). **401 응답 본문 단일화** — EC1~EC4·EC9·EC15 전부 같은 errorCode, 사유
+> 구분은 구조화 로그만(응답이 토큰 존재 오라클이 되지 않게). **팬아웃 3중 상한** — 20키 / title·body
+> 2KB 절단 / 룰×키 100. 마이그레이션 **V307**(git_webhooks)·**V308**(deliveries)·**V309**(CHECK 5→6).
+> **dedup은 서명 검증 후** + 단일 트랜잭션(DEC-23) — 미인증 요청은 `git_webhook_deliveries` 에 흔적 0.
+>
+> **★ 평문 토큰 누출 2건 — 통로가 서로 다르다**. ① `AutomationWebhookController` 가 `ProblemDetail.instance`
+> 를 비워 둬 Spring 이 **원문 토큰이 든 요청 URI 로 자동 채움** → 404·413·400 전 응답에 평문 토큰이
+> 실려 나갔다(T12가 중앙 permitAll 을 열어 prod 노출). `INSTANCE_PATH` 고정으로 차단 + 회귀 테스트(RED
+> 확인). ② **`BasicErrorController` 의 `path` 필드** — `@ExceptionHandler` 가 잡지 않는 415·405 는
+> `sendError` → `/error` ERROR 디스패치로 가고, `/error` 가 permitAll 이면 기본 에러 본문의 `path` 에
+> 원문 토큰이 실린다(①의 `instance` 수정으로는 **안 닫히는 별개 통로**). 현재는 `/error` 가
+> `anyRequest().authenticated()` 에 걸려 도달 불가라 누출 0이지만, **그 안전은 컨트롤러 설계가 아니라
+> "/error 가 인증 대상"이라는 간접 조건에 얹혀 있다** — `/error` permitAll 은 Spring Boot 의 흔한 관행이고
+> 웹훅과 표면적 연관이 없으며, 뒤집으면 **공개 대시보드 공유 토큰·iCal 피드 토큰·웹훅 토큰이 동시에**
+> 샌다(셋 다 경로 세그먼트에 토큰). Maxi 확정 — **능동 하드닝(ErrorAttributes 에서 path 제거) 대신
+> 회귀 가드 + SecurityConfig 경고 주석**(T15-6 이 뒤집으면 fail).
+>
+> **T15 prod 조립 HTTP 검증이 이 PR의 유일한 진짜 관문**(`GitWebhookInboundPermitAllTest`). BC test-boot 의
+> `AutomationTestSecurityConfig` 는 `@TestConfiguration` 이라 prod 조립에 없어 중앙과의 divergence 를
+> 원리적으로 못 잡는다. HMAC 직접 재계산 → git·automation **양쪽 202**(필터 통과 + 서명 검증 통과 동시
+> 증명), 음성 판별자는 **응답 본문**(상태코드만은 vacuous — permitAll 이 새도 컨트롤러가 401 을 던져 상태는
+> 그대로다), EC1 본문 == S2 본문(오라클 부재), 서명 오류 N회 후 deliveries 행 수 불변(DB 쓰기 0).
+> `INBOUND_WEBHOOK_PATHS` 뮤테이션 → **7 tests 2 failed** 확인 후 원복(T15-1·T15-3 이 permitAll 가드).
+> **★ T15-4·T15-5 는 뮤테이션에서 안 깨진다** — permitAll 이 죽으면 둘 다 필터 401 로 수렴해 vacuous 하게
+> 통과하므로 **permitAll 근거로 인용 금지**(각자 다른 축을 지킨다). `:modules:app:test` **19 tests 0 failures**.
+> FR 총수 **123 불변** — `fr-index.md`·`README.md`·`CLAUDE.md` 미변경(#277 동시 PR 의 카운트 충돌 회피).
+> → FR-AT-07 **미완료 유지**, automation BC **6/7 유지**. 남은 것은 **PR-D**(D6/D7).
 
 ## §NFR automation BC 완료 게이트
 

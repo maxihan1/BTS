@@ -220,6 +220,20 @@ class SecurityConfig(
                     auth.requestMatchers(method, path).permitAll()
                 }
                 auth.requestMatchers("/api/**").authenticated()
+                // ★★ /error 를 permitAll 로 열지 말 것 — 위 permitAll 3경로군의 토큰이 동시에 샌다 (FR-AT-07 PR-C T15)
+                // 서블릿은 컨트롤러 @ExceptionHandler 가 잡지 않는 에러(415·405 등)를 sendError → **/error 로 ERROR
+                // 디스패치**한다. /error 가 이 anyRequest() 에 걸려 authenticated 인 덕분에 BasicErrorController 가
+                // 실행되지 못하고 필터가 빈 401 을 준다 — 즉 **지금의 안전은 이 한 줄에 얹혀 있다**.
+                // permitAll 로 바꾸면 BasicErrorController 가 살아나고, Spring Boot 기본 에러 본문의 `path` 필드는
+                // **요청 URI 원문**을 담는다(opt-in 인 message/trace 와 달리 path 는 항상 포함). 위 permitAll 경로군은
+                // 셋 다 **경로 세그먼트에 비밀 토큰**을 싣는다 — 공개 대시보드 공유 토큰·iCal 피드 토큰·웹훅 토큰.
+                // 그 순간 세 종류가 한꺼번에 에러 응답으로 나가고, 응답 로그·프록시 캐시·GitHub 웹훅 delivery 기록에
+                // 적재되면 그것이 곧 평문 토큰 저장이다(DEVELOPMENT.md §1.1-1·§1.1-2).
+                // 실측(T15): /error 를 permitAll 로 뒤집으면 form-urlencoded 요청의 415 본문에
+                // `"path":"/api/v1/webhooks/git/<원문토큰>"` 이 그대로 실렸다. GitWebhookInboundPermitAllTest 의
+                // T15-6 이 이 회귀를 잡는다(뒤집으면 fail).
+                // ★ 익명 경로가 제대로 된 에러 JSON 을 못 받는다는 이유로 열고 싶다면, **먼저 ErrorAttributes 에서
+                //   path 를 제거**하고 나서 열 것. 순서를 바꾸면 그 사이에 토큰이 샌다.
                 auth.anyRequest().authenticated()
             }
             // PAT Bearer 필터: JWT 필터보다 먼저 실행하여 pat_ prefix 토큰을 SecurityContext 에 설정

@@ -150,16 +150,28 @@ AutomationRunLog (구현 테이블. rule_executions, FR-AT-05 V305):
 rule:
   id: fix-version-on-pr-merge
   trigger:
-    type: webhook.received
-    source: github
-    event: pull_request.merged
-  conditions:
-    - PR 본문에 "Closes PROJ-N" 또는 "Fixes PROJ-N" 패턴 매칭
+    type: pr.merged            # TriggerType.PR_MERGED
+    config:
+      targetBranch: main       # 선택 — 미지정 시 전체 브랜치에서 발화
   actions:
-    - { type: SET_FIX_VERSIONS, config: { versionIds: ["{{ pr.target_branch_version }}"] } }
+    - { type: SET_FIX_VERSIONS, config: { versionIds: ["6f1c2b8e-...-uuid"] } }
 ```
 
-> 위 예시 중 `trigger`(webhook.received/pull_request.merged)와 `conditions`는 PR-C 범위로 아직 미구현인 개념 스케치다. 이 PR(PR-B)이 구현한 범위는 `actions`의 `SET_FIX_VERSIONS`(config 키 `versionIds`, UUID 문자열 배열, 빈 배열은 전체 해제)뿐이다.
+> **PR-C(#278) 구현 완료 기준으로 정정됐다.** 이전 스케치는 `webhook.received` + `conditions` +
+> `{{ pr.target_branch_version }}` 를 썼으나 셋 다 실물과 다르다.
+>
+> - **트리거는 `pr.merged`**(`TriggerType.PR_MERGED`) — `webhook.received`(`TriggerType.WEBHOOK`)와는
+>   별개 타입이다(위 §트리거 표 참조). config 는 `targetBranch` 하나가 선택이다.
+> - **이슈 키 매칭은 rule `conditions` 가 아니라 수신부 책임**이다. `PrIssueKeyExtractor` 가 PR 제목·본문에서
+>   `Closes/Fixes/Resolves PROJ-42` 형태를 추출한다(키워드 3계열 + 활용형, 키워드 없이 이슈 키만 있으면
+>   **추출하지 않는다**). 규칙 작성자가 조건으로 기술하는 대상이 아니다.
+> - **`versionIds` 는 템플릿 보간을 지원하지 않는다** — UUID 문자열 배열만 받는다(빈 배열은 전체 해제).
+>   `{{ }}` 치환은 COMMENT `body` 와 WEBHOOK `url` 전용이므로(ADR D3b), "PR 대상 브랜치의 버전"을 동적으로
+>   해석하는 기능은 존재하지 않는다. 버전 UUID 를 명시해야 한다.
+>
+> **★ PR_MERGED 는 제3의 경로다.** 다른 트리거와 달리 `q_automation_events`(issue-tracking 소유)를 타지
+> 않는다. `GitWebhookController` 가 서명 검증 후 룰을 **직접 조회해 동기 enqueue** 한다. 따라서
+> `TriggerMatcher` 의 wire 맵에 `pr.merged` 를 추가하면 **죽은 코드**가 된다.
 
 ## 8.9 다음 챕터
 

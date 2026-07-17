@@ -28,13 +28,18 @@ import java.time.Instant
  * 엔드포인트.
  * - `POST /api/v1/automation/webhooks/{token}` — 외부 시스템이 임의 JSON payload 로 호출 → 202.
  *
- * ## 인증 정책 — permitAll(토큰이 인증 수단)
+ * ## ★ 이 컨트롤러가 인증 주체다 — permitAll(토큰이 인증 수단)
  * 이 컨트롤러는 [org.springframework.security.core.context.SecurityContextHolder] 를 일절 참조하지
  * 않는다. 접근 제어는 오직 경로의 불투명 웹훅 토큰 소지로만 이뤄진다(`PublicDashboardController`
- * 직교 토큰 선례 동형). 자동화 모듈은 아직 배포 조립·중앙 SecurityConfig 결선이 없으므로
- * (`no-cross-bc-deployment-assembly`) 이 컨트롤러 자체는 인증 불요로 설계됐고, permitAll 도달성은
- * test-boot 전용 `AutomationTestSecurityConfig`(slack-integration `SlackTestSecurityConfig` 동형)로
- * 검증한다. prod SecurityConfig 결선은 후속 ADR(모듈 전조립 시점) 범위다.
+ * 직교 토큰 선례 동형). 이 경로는 중앙 `SecurityConfig` 의 `INBOUND_WEBHOOK_PATHS` 에 등록돼
+ * **prod 필터체인에서 permitAll** 이다(FR-AT-07 PR-C Task 12, ADR
+ * `2026-07-17-git-webhook-inbound-permitall`). 따라서 **토큰이 틀린 요청도 이 핸들러까지 도달**하며,
+ * 필터가 걸러줄 것이라는 가정은 성립하지 않는다.
+ *
+ * permitAll 도달성은 두 겹으로 검증한다. BC test-boot 의 `AutomationTestSecurityConfig` 는 인가 경계를
+ * 재현할 뿐 `@TestConfiguration` 이라 prod 조립에 존재하지 않으므로, 그것만으로는 중앙과의 divergence 를
+ * 원리적으로 잡지 못한다 — **prod 조립 HTTP 테스트**(`GitWebhookInboundPermitAllTest` 의 T15-2)가
+ * 중앙 필터체인 통과를 실 HTTP 로 못 박는 유일한 관문이다.
  *
  * ## 토큰 조회 — 평문 미저장 (DEVELOPMENT.md §1.1)
  * 경로 토큰 원문은 저장·로그 출력하지 않는다. [sha256Hex] 로 해싱한 값으로만
