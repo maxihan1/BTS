@@ -921,6 +921,23 @@ fun `GROUP grant 보유 비-SYSTEM_ADMIN 이 전역권한을 획득한다`() {
 
 **★ 이 저장소에 선례가 없는 유일한 설계다.** 스펙 §4.4 N5 — *"cross-BC 쓰기를 호출자 트랜잭션 안에서 하는 선례는 이 저장소에 없다"*. 그래서 **실증이 필수**다.
 
+> 🛑 **무애노테이션이 절대 규칙 9 위반이 아닌 근거 (bts-impl 선행읽기에서 실측 · `/bts-codereview` 인계).**
+> `DEVELOPMENT.md §1.2` 규칙 9(*"트랜잭션 경계 명시. `@Transactional` 누락 시 코드리뷰 BLOCKER"*)와
+> 도메인 노트 `identity-access.md:39`(*"`TransactionalServiceArchTest` ArchUnit 룰이 자동 검증"*)를 보면
+> 이 어댑터가 걸릴 것 같지만, **룰의 방향이 반대다**.
+>
+> - `TransactionalServiceArchTest.kt` 룰 원문 — *"`@Transactional` 이 붙은 메서드를 1개 이상 보유한 클래스는
+>   `@Service`/`@Component`/`@Repository`/`@Configuration` 중 하나로 선언되어야 한다"*.
+>   즉 **`@Transactional` → 빈이어야 함**이지 **빈 → `@Transactional` 이어야 함이 아니다**.
+>   PR #6 의 `LocalCredentialService` 사고(빈 아닌 클래스의 `@Transactional` 이 무음 무력화)를 막는 룰이다.
+>   **`@Transactional` 없는 `@Component` 는 이 룰이 발화조차 하지 않는다.**
+> - `DATA.md §6` 이 예고한 예외 애노테이션 **`@TransactionalAware` 는 미구현**(전 모듈 히트 0). 쓰지 말 것.
+> - `DATA.md §6` 의 *"Detekt 커스텀 룰로 빌드 차단"* 도 **미구현**("(Phase 1)" 예고).
+>
+> **규칙 9 의 정신도 위반이 아니다** — 이 어댑터는 경계의 **소유자가 아니라 참여자**이고, 경계 명시는
+> 호출자(PR-2 의 프로젝트 생성 서비스)가 한다. 경계를 여기서 또 선언하면 I1 이 깨진다.
+> **이 근거를 어댑터 KDoc 에 남긴다** — 안 남기면 `/bts-codereview` 가 규칙 9 를 문자 그대로 읽고 BLOCKER 를 낸다.
+
 **RED**. **트랜잭션 참여를 직접 증명한다** (DoD-11 의 PR-1 판 — D16).
 
 > 🛑 **테스트 클래스를 반드시 비트랜잭션으로 고정한다 (§C10-2 — plan-eng-review P0).**
