@@ -48,6 +48,8 @@ import java.util.UUID
  * - E-h. 전부 성공 → SUCCESS
  * - E-i. 전부 실패(1건) → FAILED + 예외 클래스명 기반 PERMISSION_DENIED/FAILED 사유 분류
  * - E-j. 조건 게이트(FR-AT-03) — 조건 없음/충족/불충족/스냅샷 조회 불가/issueKey 없음/UUID 필드 매핑
+ * - E-m. 프로젝트 경계 게이트(FR-AT-07 PR-C) — 타 프로젝트 이슈 키 SKIPPED/접두 하이픈/이슈 키 없음
+ *   통과(SCHEDULED 보호)/조건 없는 룰/replay 경로
  */
 class ActionExecutorTest : DescribeSpec({
 
@@ -548,6 +550,101 @@ class ActionExecutorTest : DescribeSpec({
 
             result.status shouldBe ActionExecutionStatus.SUCCESS
             issueMutationPort.setFieldCalls.single().field shouldBe "priority"
+        }
+    }
+
+    describe("E-m 프로젝트 경계 게이트 — triggerEvent 이슈 키는 룰 projectKey 소속이어야 한다 (FR-AT-07 PR-C)") {
+        // triggerEvent 는 인바운드 웹훅(permitAll 경로)으로 외부에서 주입될 수 있는 신뢰 불가 입력이다.
+        // 게이트가 없으면 공격자가 issueKey 를 임의 프로젝트로 지정해 룰 actor 권한으로 cross-project
+        // 변경을 일으킬 수 있다(폭발 반경 = 룰 actor 권한). issueEvent() 픽스처의 payload 는 자기
+        // 자신을 `"projectKey":"PROJ"` 라고 주장하지만, 그 자기 신고 값은 신뢰 대상이 아니다 —
+        // 판정은 rule.projectKey(서버 보유 값) 대 추출된 issueKey 의 접두 비교로만 이뤄져야 한다.
+
+        it("조건이 없는 룰이어도 다른 프로젝트 이슈 키(OTHER-1)면 SKIPPED 다") {
+            // 조건 게이트는 조건 미설정 룰을 그대로 통과시키므로(isConditionUnmet 의 조건 null 분기),
+            // 이 시나리오에서 SKIPPED 를 만들 수 있는 주체는 프로젝트 경계 게이트뿐이다.
+            val rule = newRule() // projectKey = "PROJ"
+            val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+            every { conditionRepository.findByRuleId(rule.id) } returns null
+
+            val result = executor.execute(rule, issueEvent("OTHER-1"))
+
+            result.status shouldBe ActionExecutionStatus.SKIPPED
+            result.outcomes.shouldBeEmpty()
+            issueMutationPort.setFieldCalls.shouldBeEmpty()
+        }
+
+        it("조건이 충족되는 상황에서도 다른 프로젝트 이슈 키면 SKIPPED 다 — 조건 게이트와 독립") {
+            val rule = newRule()
+            val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+            val condition = Condition.Comparison("issue.status", ComparisonOperator.EQUALS, TextNode("open"))
+            every { conditionRepository.findByRuleId(rule.id) } returns condition
+            // 조건이 통과하도록 스냅샷을 시드한다 — 게이트가 없으면 SUCCESS 가 되어 이 테스트가 실패한다.
+            issueSnapshotPort.seed(rule.createdBy, "OTHER-1", issueSnapshot(key = "OTHER-1", status = "open"))
+
+            val result = executor.execute(rule, issueEvent("OTHER-1"))
+
+            result.status shouldBe ActionExecutionStatus.SKIPPED
+            issueMutationPort.setFieldCalls.shouldBeEmpty()
+        }
+
+        it("같은 프로젝트 이슈 키(PROJ-42)는 게이트를 통과해 정상 실행된다") {
+            val rule = newRule()
+            val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+
+            val result = executor.execute(rule, issueEvent("PROJ-42"))
+
+            result.status shouldBe ActionExecutionStatus.SUCCESS
+            issueMutationPort.setFieldCalls.single().issueKey shouldBe "PROJ-42"
+        }
+
+        it("PROJ2-1 은 PROJ 룰에서 SKIPPED 다 — 접두 비교에 하이픈이 빠지면 통과해버린다") {
+            // 이슈 키 접두 정규식(^[A-Z][A-Z0-9]{1,9}$)은 PROJ 와 PROJ2 를 둘 다 허용하므로 실재
+            // 가능한 조합이다. startsWith(rule.projectKey) 만으로 비교하면 PROJ2-1 이 PROJ 룰을 통과한다.
+            val rule = newRule()
+            val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+
+            val result = executor.execute(rule, issueEvent("PROJ2-1"))
+
+            result.status shouldBe ActionExecutionStatus.SKIPPED
+            issueMutationPort.setFieldCalls.shouldBeEmpty()
+        }
+
+        it("이슈 키 없는 빈 payload({})는 게이트를 통과한다 — SCHEDULED/이슈 없는 WEBHOOK 룰 보호") {
+            // AutomationScheduleWorker 는 빈 {} 를 발행하므로 이슈 키가 null 이다. null 을 SKIPPED 로
+            // 처리하면 모든 SCHEDULED 룰과 이슈를 쓰지 않는 CALL_WEBHOOK 룰이 정지한다(FR-AT-01 사문화).
+            // 이슈 키가 필요한 액션은 기존대로 ISSUE_KEY_MISSING 으로 처리된다(E-g).
+            val rule = newRule()
+            val actions = listOf(Action.CallWebhookAction(url = "https://example.com/hook", body = "{}"))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+            every { webhookActionClient.call(any(), any(), any(), any()) } returns
+                WebhookCallResult(success = true, statusCode = 200, error = null)
+
+            val result = executor.execute(rule, objectMapper.readTree("{}"))
+
+            result.status shouldBe ActionExecutionStatus.SUCCESS
+            result.outcomes shouldBe listOf(ActionOutcome(0, ActionType.CALL_WEBHOOK, success = true, error = null))
+        }
+
+        it("replay 경로(RuleExecutionService.replay 동형 호출)에도 게이트가 걸린다") {
+            // RuleExecutionService.replay 는 저장된 rule_executions.trigger_event 를 그대로
+            // executor.execute(rule, record.triggerEvent, dryRun = false) 로 재실행하며, 워커의 루프
+            // 가드를 거치지 않는다. 웹훅으로 심어진 오염 triggerEvent 는 이력에 영구 보존되므로,
+            // 게이트가 워커에만 있으면 관리자의 replay 로 cross-project 변경이 재발한다. 게이트를
+            // execute 내부에 두어 워커/replay/미래 경로가 같은 choke point 를 지나게 한다.
+            val rule = newRule()
+            val actions = listOf(Action.SetFieldAction(field = "priority", value = TextNode("High")))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+            val persistedPoisonedTriggerEvent = issueEvent("OTHER-1")
+
+            val result = executor.execute(rule, persistedPoisonedTriggerEvent, dryRun = false)
+
+            result.status shouldBe ActionExecutionStatus.SKIPPED
+            issueMutationPort.setFieldCalls.shouldBeEmpty()
         }
     }
 })

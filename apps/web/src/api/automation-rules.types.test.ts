@@ -252,8 +252,8 @@ describe('automationRuleResponseSchema — conflicts 부재 (GET 단건, FR-AT-0
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('triggerTypeSchema', () => {
-  it('5종 트리거 타입 모두 파싱 성공한다', () => {
-    const validTypes = ['ISSUE_CREATED', 'ISSUE_UPDATED', 'ISSUE_COMMENTED', 'SCHEDULED', 'WEBHOOK']
+  it('6종 트리거 타입 모두 파싱 성공한다', () => {
+    const validTypes = ['ISSUE_CREATED', 'ISSUE_UPDATED', 'ISSUE_COMMENTED', 'SCHEDULED', 'WEBHOOK', 'PR_MERGED']
     for (const type of validTypes) {
       expect(() => triggerTypeSchema.parse(type)).not.toThrow()
     }
@@ -343,6 +343,12 @@ describe('serializeTriggerConfig', () => {
       JSON.stringify({ cron: '0 0 9 * * *' }),
     )
   })
+
+  // targetBranch 입력은 PR-D 몫이라 폼이 그 값을 넘기지 않는다 — 직렬화도 관여하지 않는다
+  // (serializeTriggerConfig KDoc ★ 참조). 생성 모드는 base 가 없으므로 빈 객체다.
+  it('PR_MERGED는 폼 입력에 관여하지 않고 빈 객체를 반환한다(미지정=전체 브랜치)', () => {
+    expect(serializeTriggerConfig('PR_MERGED')).toBe('{}')
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -375,6 +381,26 @@ describe('serializeTriggerConfig — baseConfigJson 병합', () => {
       JSON.stringify({ fields: ['old'], extraKey: 'keep' }),
     )
     expect(JSON.parse(result)).toEqual({ extraKey: 'keep' })
+  })
+
+  // ★ targetBranch 는 폼이 관리하지 않는다 — 입력 UI 자체가 PR-D 몫이라 호출부
+  // (AutomationRuleFormDialog:291)는 `{ cron, fields }` 만 넘긴다. 따라서 managed key 로
+  // 제거하면 "아무도 채우지 않는 값을 지우는" 코드가 되어, YAML GitOps(AT-06)로 만든
+  // 브랜치 한정 룰을 폼에서 이름만 고쳐 저장해도 targetBranch 가 유실된다
+  // (= 브랜치 한정 룰이 전 브랜치 발화로 조용히 승격). ISSUE_CREATED/WEBHOOK 과 동일하게
+  // base 를 그대로 보존한다. omit 로직은 PR-D 가 입력 UI 와 함께 도입한다.
+  it('PR_MERGED: 폼이 관리하지 않는 targetBranch 는 편집해도 유실되지 않는다', () => {
+    const result = serializeTriggerConfig(
+      'PR_MERGED',
+      {},
+      JSON.stringify({ targetBranch: 'develop', extraKey: 'keep' }),
+    )
+    expect(JSON.parse(result)).toEqual({ targetBranch: 'develop', extraKey: 'keep' })
+  })
+
+  it('PR_MERGED: base 가 없으면 빈 객체를 낸다', () => {
+    const result = serializeTriggerConfig('PR_MERGED', {})
+    expect(JSON.parse(result)).toEqual({})
   })
 
   it('base가 잘못된 JSON이면 빈 객체로 안전하게 폴백한다', () => {

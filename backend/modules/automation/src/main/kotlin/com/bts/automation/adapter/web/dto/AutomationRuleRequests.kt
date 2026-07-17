@@ -17,7 +17,7 @@ import java.util.UUID
  * 어노테이션은 무동작이다(notification `FavoriteDtos` 선례 — 도메인 검증이 1차이자 유일한 방어선).
  *
  * @property name 룰 표시 이름.
- * @property triggerType 트리거 타입 5종 중 하나.
+ * @property triggerType 트리거 타입 6종 중 하나.
  * @property triggerConfig 트리거별 설정 JSON 문자열. 기본값은 빈 객체([TriggerConfig.EMPTY]).
  * @property actions 발화 시 순차 실행할 액션 목록(FR-AT-02). 기본값은 빈 리스트(트리거만 있는 룰도 유효).
  * @property actorUserId 액션 실행 주체(rule actor). 기본값 `null` — 서비스가 생성 요청자(actor)로 폴백한다.

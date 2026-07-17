@@ -363,7 +363,7 @@ class ActionExecutionEndToEndIntegrationTest {
 
     @Test
     fun `S2 SET_FIX_VERSIONS 룰이 ISSUE_UPDATED+조건 발화 시 Fix Version 이 설정되고 SUCCESS 로 기록된다`() {
-        // TriggerType.TRANSITION 은 존재하지 않는다(실재 5종. TriggerType.kt 참조) — "status 가 Done 으로
+        // TriggerType.TRANSITION 은 존재하지 않는다(실재 6종. TriggerType.kt 참조) — "status 가 Done 으로
         // 전이되면"은 ISSUE_UPDATED 트리거 + triggerConfig.fields=["status"] + 조건(issue.status==Done)
         // 으로 표현한다(스펙 §S2, 개정 4회차).
         val actorUserId = UUID.randomUUID()

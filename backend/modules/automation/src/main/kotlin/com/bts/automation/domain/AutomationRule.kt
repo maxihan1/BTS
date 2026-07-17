@@ -26,7 +26,7 @@ import java.util.UUID
  * @property projectKey 룰이 속한 프로젝트 키
  * @property name 룰 표시 이름 (1~[MAX_NAME_LENGTH]자)
  * @property enabled 활성화 여부. `false` 면 모든 트리거 감지 경로에서 매칭 대상 제외(EC7)
- * @property triggerType 트리거 타입 5종([TriggerType]) 중 하나
+ * @property triggerType 트리거 타입 6종([TriggerType]) 중 하나
  * @property triggerConfig 트리거별 설정 JSON 문자열([TriggerConfig.validate] 로 형식 검증됨)
  * @property actions 발화 시 순차 실행할 액션 목록(FR-AT-02). 빈 리스트 허용 — 트리거만 있고 액션이
  *   없는 룰도 유효하다(예: FR-AT-01 단계에서 생성된 기존 룰).

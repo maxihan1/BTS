@@ -1,4 +1,4 @@
-// V300~V306 마이그레이션 검증 — automation rules·actions·conditions·executions + q_automation_execution 큐
+// V300~V310 마이그레이션 검증 — automation rules·actions·conditions·executions·git_webhooks + q_automation_execution 큐
 
 package com.bts.automation
 
@@ -38,7 +38,7 @@ import java.util.UUID
  * - created_at / updated_at = timestamptz NOT NULL(DATA.md §4.1#4 — TIMESTAMP without tz 금지)
  * - version = bigint NOT NULL DEFAULT 0(OCC 낙관적 잠금)
  * - deleted_at = timestamptz NULL(소프트 삭제)
- * - trigger_type CHECK 제약(5종 화이트리스트) — 잘못된 값 거부
+ * - trigger_type CHECK 제약(V309 이후 6종 화이트리스트, PR_MERGED 포함) — 잘못된 값 거부
  * - q_automation_execution 큐 존재(automation 소유, FR-AT-02 액션 executor 가 소비)
  * - **q_automation_events 는 automation 이 생성하지 않음**(plan-eng-review E1 — producer 인 issue-tracking 이
  *   Task 10 에서 소유·생성. automation 마이그레이션 경계 명시)
@@ -74,9 +74,25 @@ import java.util.UUID
  * - 인덱스 2종 — idx_rule_executions_rule(rule_id, started_at DESC) /
  *   idx_rule_executions_project_issue(project_key, issue_key, started_at DESC)
  *
+ * ## FR-AT-07 PR-C 추가 검증 (V307 git_webhooks + V308 git_webhook_deliveries + V309 trigger_type 6종)
+ * - git_webhooks 테이블 존재 + 8개 컬럼(id/project_key/provider/token_hash/secret_encrypted/
+ *   created_at/created_by/deleted_at)
+ * - id = uuid PK NOT NULL / project_key·provider·token_hash = character varying NOT NULL
+ * - secret_encrypted = text NOT NULL(AES-256-GCM 암호문, 평문 비저장) / created_by = uuid NOT NULL(cross-BC)
+ * - created_at = timestamptz NOT NULL / deleted_at = timestamptz NULL(소프트 삭제)
+ * - provider CHECK 2종(GITHUB/GITLAB) — BITBUCKET 등 미정의 값 거부
+ * - 부분 UNIQUE uq_git_webhooks_token_hash(WHERE deleted_at IS NULL) — 활성 중복 거부 +
+ *   소프트 삭제 후 같은 token_hash 재사용 허용
+ * - git_webhook_deliveries 테이블 존재 + 3개 컬럼(webhook_id/delivery_id/received_at)
+ * - 복합 PK (webhook_id, delivery_id) — 같은 배달 재전송 거부(멱등성)
+ * - webhook_id FK → git_webhooks(id) ON DELETE CASCADE(부모 웹훅 삭제 시 배달 이력 동반 삭제)
+ * - 인덱스 ix_git_webhook_deliveries_received_at 존재(보존 정책 정리 배치 T18 기준)
+ * - trigger_type CHECK 6종(V300 의 5종 + PR_MERGED) — COMMENT 도 "CHECK 6종"으로 재발행 확인
+ *
  * 정보 스키마(information_schema / pg_constraint / pgmq.list_queues) 조회로 단언한다.
  * SQL 문자열 결합 없이 prepared statement 파라미터 바인딩만 사용한다.
  */
+@Suppress("LargeClass") // V300~V309 전 마이그레이션의 스키마 단언을 단일 클래스로 커버 — 분리 시 companion 헬퍼 중복비용 증가
 class SchemaMigrationTest {
     companion object {
         // quay.io/tembo/pg16-pgmq:latest — V301 pgmq.create 가 pgmq 확장을 요구하므로 postgres:16-alpine 사용 불가.
@@ -150,6 +166,27 @@ class SchemaMigrationTest {
                 "started_at",
                 "finished_at",
                 "created_at",
+            )
+
+        // git_webhooks 가 보유해야 하는 8개 컬럼 (FR-AT-07 PR-C / V307 Git 인바운드 웹훅 등록 스키마).
+        private val GIT_WEBHOOKS_COLUMNS =
+            listOf(
+                "id",
+                "project_key",
+                "provider",
+                "token_hash",
+                "secret_encrypted",
+                "created_at",
+                "created_by",
+                "deleted_at",
+            )
+
+        // git_webhook_deliveries 가 보유해야 하는 3개 컬럼 (FR-AT-07 PR-C / V308 재전송 멱등성 스키마).
+        private val GIT_WEBHOOK_DELIVERIES_COLUMNS =
+            listOf(
+                "webhook_id",
+                "delivery_id",
+                "received_at",
             )
 
         @BeforeAll
@@ -243,6 +280,25 @@ class SchemaMigrationTest {
             ).use { stmt ->
                 stmt.setString(1, tableName)
                 stmt.setString(2, columnName)
+                stmt.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
+            }
+        }
+
+    // 컬럼 COMMENT 조회 — col_description(regclass, attnum). 이 스키마는 DROP COLUMN 이력이 없어
+    // information_schema.columns.ordinal_position 이 pg_attribute.attnum 과 일치한다(V309 COMMENT 재발행 검증용).
+    @Suppress("NestedBlockDepth")
+    private fun columnComment(
+        tableName: String,
+        columnName: String,
+    ): String? =
+        conn().use { c ->
+            c.prepareStatement(
+                "SELECT col_description(?::regclass, ordinal_position) FROM information_schema.columns" +
+                    " WHERE table_schema = 'public' AND table_name = ? AND column_name = ?",
+            ).use { stmt ->
+                stmt.setString(1, tableName)
+                stmt.setString(2, tableName)
+                stmt.setString(3, columnName)
                 stmt.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
             }
         }
@@ -450,6 +506,82 @@ class SchemaMigrationTest {
             }
         }
 
+    // ── FR-AT-07 PR-C git_webhooks / git_webhook_deliveries 검증용 헬퍼 ──────────
+
+    // git_webhooks 한 행 INSERT — NOT NULL 이면서 DEFAULT 없는 최소 컬럼만 채운다. id 반환(FK/CASCADE 검증용).
+    private fun insertGitWebhook(
+        tokenHash: String,
+        provider: String = "GITHUB",
+    ): UUID {
+        val id = UUID.randomUUID()
+        conn().use { c ->
+            c.prepareStatement(
+                "INSERT INTO git_webhooks" +
+                    " (id, project_key, provider, token_hash, secret_encrypted, created_at, created_by)" +
+                    " VALUES (?, ?, ?, ?, ?, now(), ?)",
+            ).use { stmt ->
+                stmt.setObject(1, id)
+                stmt.setString(2, "ATLAS")
+                stmt.setString(3, provider)
+                stmt.setString(4, tokenHash)
+                stmt.setString(5, "encrypted-secret")
+                stmt.setObject(6, UUID.randomUUID())
+                stmt.executeUpdate()
+            }
+        }
+        return id
+    }
+
+    // 소프트 삭제 — deleted_at 을 now() 로 설정(부분 UNIQUE 재사용 허용 검증용).
+    private fun softDeleteGitWebhook(id: UUID) {
+        conn().use { c ->
+            c.prepareStatement("UPDATE git_webhooks SET deleted_at = now() WHERE id = ?").use { stmt ->
+                stmt.setObject(1, id)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    // 하드 삭제 — ON DELETE CASCADE 검증용(부모 웹훅 삭제).
+    private fun deleteGitWebhook(id: UUID) {
+        conn().use { c ->
+            c.prepareStatement("DELETE FROM git_webhooks WHERE id = ?").use { stmt ->
+                stmt.setObject(1, id)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    // git_webhook_deliveries 한 행 INSERT — 복합 PK(webhook_id, delivery_id) 재전송 거부 검증용.
+    private fun insertDelivery(
+        webhookId: UUID,
+        deliveryId: String,
+    ) {
+        conn().use { c ->
+            c.prepareStatement(
+                "INSERT INTO git_webhook_deliveries (webhook_id, delivery_id, received_at) VALUES (?, ?, now())",
+            ).use { stmt ->
+                stmt.setObject(1, webhookId)
+                stmt.setString(2, deliveryId)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    @Suppress("NestedBlockDepth")
+    private fun countDeliveriesForWebhook(webhookId: UUID): Int =
+        conn().use { c ->
+            c.prepareStatement(
+                "SELECT COUNT(*) FROM git_webhook_deliveries WHERE webhook_id = ?",
+            ).use { stmt ->
+                stmt.setObject(1, webhookId)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getInt(1)
+                }
+            }
+        }
+
     // ── 테이블 / 컬럼 존재 검증 ────────────────────────────────────────────────
 
     @Test
@@ -548,17 +680,17 @@ class SchemaMigrationTest {
         assertThat(columnIsNullable("automation_rules", "deleted_at")).isEqualTo("YES")
     }
 
-    // ── trigger_type CHECK 제약 검증 (5종 화이트리스트) ─────────────────────────
+    // ── trigger_type CHECK 제약 검증 (V309 이후 6종 화이트리스트) ────────────────
 
     @Test
-    fun `V300 유효한 trigger_type 5종은 INSERT 허용`() {
-        listOf("ISSUE_CREATED", "ISSUE_UPDATED", "ISSUE_COMMENTED", "SCHEDULED", "WEBHOOK")
+    fun `V309 유효한 trigger_type 6종은 INSERT 허용`() {
+        listOf("ISSUE_CREATED", "ISSUE_UPDATED", "ISSUE_COMMENTED", "SCHEDULED", "WEBHOOK", "PR_MERGED")
             .forEach { insertRule(it) }
     }
 
     @Test
     fun `V300 정의되지 않은 trigger_type 은 CHECK 제약 위반`() {
-        assertThatThrownBy { insertRule("PR_MERGED") }
+        assertThatThrownBy { insertRule("NOT_A_TRIGGER") }
             .hasMessageContaining("ck_automation_rules_trigger_type")
     }
 
@@ -862,5 +994,156 @@ class SchemaMigrationTest {
     @Test
     fun `V305 프로젝트 이슈별 이력 조회용 project_issue 인덱스 존재`() {
         assertThat(indexExists("idx_rule_executions_project_issue", "rule_executions")).isTrue()
+    }
+
+    // ── FR-AT-07 PR-C: git_webhooks 테이블 검증 (V307 Git 인바운드 웹훅 등록) ────────
+
+    @Test
+    fun `V307 git_webhooks 테이블 존재`() {
+        assertThat(tableExists("git_webhooks")).isTrue()
+    }
+
+    @Test
+    fun `V307 git_webhooks 8개 컬럼 존재`() {
+        assertThat(columnsOf("git_webhooks"))
+            .containsExactlyInAnyOrderElementsOf(GIT_WEBHOOKS_COLUMNS)
+    }
+
+    @Test
+    fun `V307 id 는 uuid PK NOT NULL`() {
+        assertThat(columnDataType("git_webhooks", "id")).isEqualTo("uuid")
+        assertThat(columnIsNullable("git_webhooks", "id")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V307 project_key 는 character varying NOT NULL`() {
+        assertThat(columnDataType("git_webhooks", "project_key")).isEqualTo("character varying")
+        assertThat(columnIsNullable("git_webhooks", "project_key")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V307 provider 는 character varying NOT NULL`() {
+        assertThat(columnDataType("git_webhooks", "provider")).isEqualTo("character varying")
+        assertThat(columnIsNullable("git_webhooks", "provider")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V307 token_hash 는 character varying NOT NULL`() {
+        assertThat(columnDataType("git_webhooks", "token_hash")).isEqualTo("character varying")
+        assertThat(columnIsNullable("git_webhooks", "token_hash")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V307 secret_encrypted 는 text NOT NULL (암호문, 평문 비저장)`() {
+        assertThat(columnDataType("git_webhooks", "secret_encrypted")).isEqualTo("text")
+        assertThat(columnIsNullable("git_webhooks", "secret_encrypted")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V307 created_by 는 uuid NOT NULL`() {
+        assertThat(columnDataType("git_webhooks", "created_by")).isEqualTo("uuid")
+        assertThat(columnIsNullable("git_webhooks", "created_by")).isEqualTo("NO")
+    }
+
+    // ── timestamptz 강제 검증 (DATA.md §4 — TIMESTAMP without tz 금지) ──────────
+
+    @Test
+    fun `V307 created_at 은 timestamptz NOT NULL`() {
+        assertThat(columnDataType("git_webhooks", "created_at")).isEqualTo("timestamp with time zone")
+        assertThat(columnIsNullable("git_webhooks", "created_at")).isEqualTo("NO")
+    }
+
+    @Test
+    fun `V307 deleted_at 은 timestamptz NULL (소프트 삭제)`() {
+        assertThat(columnDataType("git_webhooks", "deleted_at")).isEqualTo("timestamp with time zone")
+        assertThat(columnIsNullable("git_webhooks", "deleted_at")).isEqualTo("YES")
+    }
+
+    // ── provider CHECK 제약 검증 (2종 화이트리스트) ─────────────────────────────
+
+    @Test
+    fun `V307 유효한 provider 2종은 INSERT 허용`() {
+        listOf("GITHUB", "GITLAB").forEach { provider ->
+            insertGitWebhook(tokenHash = UUID.randomUUID().toString(), provider = provider)
+        }
+    }
+
+    @Test
+    fun `V307 정의되지 않은 provider 는 CHECK 제약 위반`() {
+        assertThatThrownBy { insertGitWebhook(tokenHash = UUID.randomUUID().toString(), provider = "BITBUCKET") }
+            .hasMessageContaining("ck_git_webhooks_provider")
+    }
+
+    // ── 부분 UNIQUE 검증 (deleted_at IS NULL — 활성 토큰만 유일성 판정) ────────────
+
+    @Test
+    fun `V307 활성 상태에서 같은 token_hash 중복 INSERT 는 부분 UNIQUE 위반`() {
+        val tokenHash = "b".repeat(64)
+        insertGitWebhook(tokenHash = tokenHash)
+        assertThatThrownBy { insertGitWebhook(tokenHash = tokenHash) }
+            .hasMessageContaining("uq_git_webhooks_token_hash")
+    }
+
+    @Test
+    fun `V307 소프트 삭제된 웹훅의 token_hash 는 재사용 허용`() {
+        val tokenHash = "c".repeat(64)
+        val id = insertGitWebhook(tokenHash = tokenHash)
+        softDeleteGitWebhook(id)
+        insertGitWebhook(tokenHash = tokenHash)
+    }
+
+    // ── FR-AT-07 PR-C: git_webhook_deliveries 테이블 검증 (V308 재전송 멱등성) ─────
+
+    @Test
+    fun `V308 git_webhook_deliveries 테이블 존재`() {
+        assertThat(tableExists("git_webhook_deliveries")).isTrue()
+    }
+
+    @Test
+    fun `V308 git_webhook_deliveries 3개 컬럼 존재`() {
+        assertThat(columnsOf("git_webhook_deliveries"))
+            .containsExactlyInAnyOrderElementsOf(GIT_WEBHOOK_DELIVERIES_COLUMNS)
+    }
+
+    @Test
+    fun `V308 같은 webhook_id 와 delivery_id 재전송은 복합 PK 위반`() {
+        val webhookId = insertGitWebhook(tokenHash = UUID.randomUUID().toString())
+        insertDelivery(webhookId, "delivery-1")
+        assertThatThrownBy { insertDelivery(webhookId, "delivery-1") }
+            .hasMessageContaining("git_webhook_deliveries_pkey")
+    }
+
+    @Test
+    fun `V308 webhook 삭제 시 git_webhook_deliveries 는 ON DELETE CASCADE 로 함께 삭제`() {
+        val webhookId = insertGitWebhook(tokenHash = UUID.randomUUID().toString())
+        insertDelivery(webhookId, "delivery-2")
+        assertThat(countDeliveriesForWebhook(webhookId)).isEqualTo(1)
+        deleteGitWebhook(webhookId)
+        assertThat(countDeliveriesForWebhook(webhookId)).isEqualTo(0)
+    }
+
+    @Test
+    fun `V308 보존 정책 정리 배치용 received_at 인덱스 존재`() {
+        assertThat(indexExists("ix_git_webhook_deliveries_received_at", "git_webhook_deliveries")).isTrue()
+    }
+
+    // ── FR-AT-07 PR-C: V309 trigger_type CHECK 6종 확장 COMMENT 재발행 검증 ───────
+
+    @Test
+    fun `V309 trigger_type 컬럼 COMMENT 는 CHECK 6종으로 재발행되었다`() {
+        assertThat(columnComment("automation_rules", "trigger_type")).contains("CHECK 6종")
+    }
+
+    /**
+     * V310 — `rule_executions.trigger_type` COMMENT 도 PR_MERGED 를 포함해야 한다.
+     *
+     * V305 의 COMMENT 는 트리거를 5종만 열거했는데 **PR_MERGED 실행이 이 컬럼에 실제로 적재된다**
+     * (GitWebhookService → 실행 워커 → RuleExecutionRepository). V309 는 `automation_rules` 쪽 동형
+     * 문제만 고치고 이 컬럼을 빠뜨렸다 — 살아있는 DB 객체에 남는 drift 라 운영 진단이 코멘트를 믿으면
+     * PR_MERGED 실행 이력을 "있을 수 없는 값"으로 오판한다.
+     */
+    @Test
+    fun `V310 rule_executions trigger_type 컬럼 COMMENT 에 PR_MERGED 가 포함된다`() {
+        assertThat(columnComment("rule_executions", "trigger_type")).contains("PR_MERGED")
     }
 }

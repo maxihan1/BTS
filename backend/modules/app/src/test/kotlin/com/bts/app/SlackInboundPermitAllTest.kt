@@ -132,13 +132,14 @@ class SlackInboundPermitAllTest : ProdAssemblyHttpTestBase() {
 
     @Test
     fun `slack install 개시는 익명 요청을 필터가 계속 거부한다 (EC-A1 범위 누출 0)`() {
-        // /slack/install(관리자 설치 개시)은 SLACK_INBOUND_PATHS 에 **없다** — authenticated() + 컨트롤러 뒤
+        // /slack/install(관리자 설치 개시)은 INBOUND_WEBHOOK_PATHS 에 **없다** — authenticated() + 컨트롤러 뒤
         // admin fail-closed 이중가드 유지(ADR R2). 매처가 slack 하위경로로 새면 이 단언이 깨져야 한다.
         val response = rest.exchange(INSTALL_PATH, HttpMethod.GET, HttpEntity.EMPTY, String::class.java)
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
         // ★ 상태코드 단언만으로는 vacuous 하다 — 실증됨([[archunit-vacuous-rule-silent-pass]]).
-        // SLACK_INBOUND_PATHS 에 `GET /slack/install` 을 일부러 넣어 확인한 결과, permitAll 이 새도 컨트롤러의
+        // INBOUND_WEBHOOK_PATHS(PR-A 당시 이름은 SLACK_INBOUND_PATHS) 에 `GET /slack/install` 을 일부러 넣어
+        // 확인한 결과, permitAll 이 새도 컨트롤러의
         // SlackActorExtractor 가 401 을 던져 **상태는 그대로 401** 이었다. 즉 상태만 보면 누출을 놓친다.
         // 필터가 막았다는 증거는 **본문** 이다 — 컨트롤러까지 갔다면 SlackInstallExceptionHandler 의
         // ProblemDetail(errorCode 포함)이 실려 오지만, 필터의 401 은 본문이 비어 있다.

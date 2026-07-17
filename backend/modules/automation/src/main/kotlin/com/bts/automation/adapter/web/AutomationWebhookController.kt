@@ -28,13 +28,18 @@ import java.time.Instant
  * 엔드포인트.
  * - `POST /api/v1/automation/webhooks/{token}` — 외부 시스템이 임의 JSON payload 로 호출 → 202.
  *
- * ## 인증 정책 — permitAll(토큰이 인증 수단)
+ * ## ★ 이 컨트롤러가 인증 주체다 — permitAll(토큰이 인증 수단)
  * 이 컨트롤러는 [org.springframework.security.core.context.SecurityContextHolder] 를 일절 참조하지
  * 않는다. 접근 제어는 오직 경로의 불투명 웹훅 토큰 소지로만 이뤄진다(`PublicDashboardController`
- * 직교 토큰 선례 동형). 자동화 모듈은 아직 배포 조립·중앙 SecurityConfig 결선이 없으므로
- * (`no-cross-bc-deployment-assembly`) 이 컨트롤러 자체는 인증 불요로 설계됐고, permitAll 도달성은
- * test-boot 전용 `AutomationTestSecurityConfig`(slack-integration `SlackTestSecurityConfig` 동형)로
- * 검증한다. prod SecurityConfig 결선은 후속 ADR(모듈 전조립 시점) 범위다.
+ * 직교 토큰 선례 동형). 이 경로는 중앙 `SecurityConfig` 의 `INBOUND_WEBHOOK_PATHS` 에 등록돼
+ * **prod 필터체인에서 permitAll** 이다(FR-AT-07 PR-C Task 12, ADR
+ * `2026-07-17-git-webhook-inbound-permitall`). 따라서 **토큰이 틀린 요청도 이 핸들러까지 도달**하며,
+ * 필터가 걸러줄 것이라는 가정은 성립하지 않는다.
+ *
+ * permitAll 도달성은 두 겹으로 검증한다. BC test-boot 의 `AutomationTestSecurityConfig` 는 인가 경계를
+ * 재현할 뿐 `@TestConfiguration` 이라 prod 조립에 존재하지 않으므로, 그것만으로는 중앙과의 divergence 를
+ * 원리적으로 잡지 못한다 — **prod 조립 HTTP 테스트**(`GitWebhookInboundPermitAllTest` 의 T15-2)가
+ * 중앙 필터체인 통과를 실 HTTP 로 못 박는 유일한 관문이다.
  *
  * ## 토큰 조회 — 평문 미저장 (DEVELOPMENT.md §1.1)
  * 경로 토큰 원문은 저장·로그 출력하지 않는다. [sha256Hex] 로 해싱한 값으로만
@@ -179,11 +184,21 @@ class AutomationWebhookController(
     /**
      * [ProblemDetail](RFC 7807) 인스턴스를 생성하는 헬퍼(`AttachmentExceptionHandler` 동형).
      *
+     * ## ★ `instance` 를 반드시 명시한다 — 비우면 Spring 이 **원문 토큰**을 응답에 싣는다
+     * `RequestResponseBodyMethodProcessor` 는 반환된 [ProblemDetail] 의 `instance` 가 `null` 이면 요청
+     * URI 로 자동 채운다. 이 엔드포인트의 요청 URI 에는 **경로 세그먼트에 원문 토큰**이 들어 있으므로,
+     * 비워 두면 404·413·400 **모든** 에러 응답 본문에 평문 토큰이 실려 나간다 — 보낸 사람이야 이미
+     * 아는 값이지만, 그 본문이 응답 로그·프록시 캐시·에러 트래커에 적재되는 순간 그것이 **평문 토큰
+     * 저장/로깅**이다(DEVELOPMENT.md §1.1-1·§1.1-2). 위 클래스 KDoc "토큰 조회 — 평문 미저장" 의
+     * 불변식은 조회 경로만으로는 성립하지 않고 **이 한 줄이 있어야** 완성된다.
+     * [GitWebhookController] 가 같은 기전에 대해 세운 원칙의 동형 적용이며,
+     * `AutomationWebhookControllerTest` 가 세 에러 경로 전부를 실 HTTP 로 못 박는다.
+     *
      * @param status HTTP 응답 상태 코드.
      * @param type type suffix.
      * @param title 문제 유형 요약.
      * @param errorCode BTS 에러 코드(`AUTOMATION_` prefix).
-     * @param detail 상세 설명.
+     * @param detail 상세 설명(요청 값·내부 사정을 싣지 않는 고정 문구).
      */
     private fun problem(
         status: HttpStatus,
@@ -194,6 +209,7 @@ class AutomationWebhookController(
     ): ProblemDetail {
         val pd = ProblemDetail.forStatus(status)
         pd.type = URI.create("https://bts.example.com/problems/$type")
+        pd.instance = URI.create(INSTANCE_PATH)
         pd.title = title
         pd.detail = detail
         pd.setProperty("errorCode", errorCode)
@@ -207,6 +223,12 @@ class AutomationWebhookController(
 
         /** 상한 안내 메시지의 KB 환산 상수. */
         const val BYTES_PER_KB = 1024
+
+        /**
+         * ProblemDetail `instance` 고정값 — **토큰 세그먼트를 뺀** 엔드포인트 경로.
+         * 비워 두면 Spring 이 원문 토큰이 든 요청 URI 로 채운다([problem] KDoc ★ 참조).
+         */
+        const val INSTANCE_PATH = "/api/v1/automation/webhooks"
     }
 }
 

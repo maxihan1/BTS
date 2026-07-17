@@ -254,6 +254,45 @@ class AutomationWebhookControllerTest {
         assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
     }
 
+    // ── ★ 원문 토큰 누출 차단 (DEVELOPMENT.md §1.1-1·§1.1-2) ────────────────────
+
+    /**
+     * ★ 원문 토큰이 에러 응답 본문으로 되돌아 나오지 않는다 (DEVELOPMENT.md §1.1-1·§1.1-2).
+     *
+     * Spring 의 `RequestResponseBodyMethodProcessor` 는 [org.springframework.http.ProblemDetail] 의
+     * `instance` 가 `null` 이면 **요청 URI 로 자동으로 채운다**. 이 엔드포인트는 경로 세그먼트에 원문
+     * 토큰을 담으므로([com.bts.automation.adapter.web.AutomationWebhookController] 의 토큰 PathVariable),
+     * 컨트롤러가 `instance` 를 명시하지 않으면 404·413·400 **모든** 에러 응답에 평문 토큰이 실려 나간다.
+     * 보낸 사람이야 이미 아는 값이지만, 그 본문이 응답 로그·프록시 캐시·에러 트래커에 적재되는 순간
+     * 그것이 곧 **평문 토큰 저장/로깅**이다.
+     *
+     * FR-AT-07 PR-C Task 12 가 이 경로를 중앙 permitAll 에 등록해 prod 에 노출시켰으므로 회귀 테스트로
+     * 못 박는다([com.bts.automation.adapter.web.GitWebhookController] 의 `problem()` KDoc 이 같은 기전을
+     * 서술하며, 그쪽은 `INSTANCE_PATH` 고정값으로 이미 덮어쓰고 있다 — 동형 수정).
+     *
+     * 각 응답 본문은 **자신의 요청 URI 에 실렸던 토큰**과 대조한다(케이스별 pair).
+     */
+    @Test
+    fun `모든 에러 응답 본문에 원문 토큰이 실리지 않는다 (ProblemDetail instance 자동 채움 차단)`() {
+        val rawToken = "webhook-token-leak-probe"
+        repository.save(webhookRule(sha256Hex(rawToken)))
+        val oversized = jsonPayloadOfSize(MAX_PAYLOAD_BYTES + 1).toByteArray(Charsets.UTF_8)
+
+        // 404 · 413 · 400 — 세 에러 핸들러 모두 problem() 을 거치므로 전부 검사한다.
+        val cases =
+            listOf(
+                "webhook-token-leak-probe-unregistered" to "{}".toByteArray(Charsets.UTF_8),
+                rawToken to oversized,
+                rawToken to "not-json-at-all{{{".toByteArray(Charsets.UTF_8),
+            )
+
+        val bodiesByToken = cases.map { (token, body) -> token to postWebhook(token, body).body.orEmpty() }
+
+        assertThat(bodiesByToken)
+            .describedAs("ProblemDetail.instance 를 비워 두면 Spring 이 원문 토큰이 든 요청 URI 로 채운다")
+            .noneMatch { (token, responseBody) -> responseBody.contains(token) }
+    }
+
     private companion object {
         /** [com.bts.automation.adapter.web.AutomationWebhookController] 의 상한과 동일(G2). */
         const val MAX_PAYLOAD_BYTES = 256 * 1024

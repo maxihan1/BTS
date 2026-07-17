@@ -190,8 +190,10 @@ private class CycleDetector(
  * 두 규칙이 같은 이벤트로 동시에 발화할 수 있으면 동시 매칭이다 — `triggerType` 이 같고, ISSUE_UPDATED
  * 라면 두 규칙의 `triggerConfig` `fields` 필터가 겹치거나 한쪽이 비어있어야 한다(비어있으면 모든
  * update 에 발화, 스펙 FR4). WEBHOOK 은 각자 고유 토큰 엔드포인트라 타입이 같아도 동시 매칭 불가로
- * 판정한다(코드리뷰 C2 수정, [coFire] KDoc 참고). 그 외 트리거 타입(ISSUE_CREATED/ISSUE_COMMENTED/
- * SCHEDULED)은 타입 일치만으로 동시 매칭이다.
+ * 판정한다(코드리뷰 C2 수정, [coFire] KDoc 참고). PR_MERGED 는 두 규칙의 `triggerConfig`
+ * `targetBranch` 가 겹치거나 한쪽이 비어있어야 동시 매칭이다(FR-AT-07 PR-C Task 4, DEC-27 — [coFire]
+ * KDoc 참고). 그 외 트리거 타입(ISSUE_CREATED/ISSUE_COMMENTED/SCHEDULED)은 타입 일치만으로 동시
+ * 매칭이다.
  *
  * ## FIELD_CONFLICT (스펙 FR-4)
  * 동시 매칭 쌍 사이에 같은 field 를 다른 value 로 SET 하는 [Action.SetFieldAction] 조합이 있으면
@@ -234,6 +236,15 @@ private class FieldPriorityAnalyzer(private val rules: List<AutomationRule>) {
      * SCHEDULED 는 서로 다른 cron 표현식이 실제로 시각이 겹치는지 정적으로 판단하기 어려워(cron 표현식
      * 동치 판정은 이 분석 범위를 넘는 별도 난제) 보수적으로 기존과 동일하게 동시 매칭 가능(`true`)으로
      * 유지한다 — false negative(놓친 충돌)보다 false positive(과도한 경고)가 더 안전하다는 판단.
+     *
+     * ## PR_MERGED 는 예외 — `targetBranch` 정밀 판정 (FR-AT-07 PR-C Task 4, DEC-27)
+     * SCHEDULED 의 cron 겹침과 달리 PR_MERGED 의 `targetBranch` 는 **정확 문자열 비교**로 실제 겹침
+     * 여부를 확실히 판정할 수 있다 — 즉 위 SCHEDULED 보수 정책의 근거("정적으로 판단하기 어려움")가
+     * 여기엔 적용되지 않는다. 서로 다른 브랜치를 대상으로 한 두 PR_MERGED 규칙은 같은 PR 머지 이벤트로
+     * 동시 발화할 수 없으므로 [targetBranchCoFire] 로 위임한다(초기 구현이 SCHEDULED 와 동일하게 무조건
+     * `true` 로 판정해 release/1.2·release/2.0 처럼 서로 다른 브랜치를 겨냥한 룰 쌍에도 거짓 경고가
+     * 뜨는 문제가 있었다 — REST 응답으로 사용자에게 직접 노출되는 경고이므로 정밀 판정이 가능한 이 경우엔
+     * 보수적 근사를 적용하지 않는다).
      */
     private fun coFire(
         a: AutomationRule,
@@ -242,6 +253,7 @@ private class FieldPriorityAnalyzer(private val rules: List<AutomationRule>) {
         when {
             a.triggerType != b.triggerType -> false
             a.triggerType == TriggerType.WEBHOOK -> false
+            a.triggerType == TriggerType.PR_MERGED -> targetBranchCoFire(a.triggerConfig, b.triggerConfig)
             a.triggerType != TriggerType.ISSUE_UPDATED -> true
             else -> fieldsCoFire(a.triggerConfig, b.triggerConfig)
         }
@@ -260,6 +272,23 @@ private class FieldPriorityAnalyzer(private val rules: List<AutomationRule>) {
         val candidates = configuredFields(configA) + configuredFields(configB)
         if (candidates.isEmpty()) return true
         return candidates.any { matchesField(configA, it) && matchesField(configB, it) }
+    }
+
+    /**
+     * 두 PR_MERGED `triggerConfig` 의 `targetBranch` 가 동시 발화 가능하면 `true`(FR-AT-07 PR-C
+     * Task 4, DEC-27).
+     *
+     * 양쪽 다 `targetBranch` 가 지정됐고 서로 다르면 같은 PR 머지 이벤트로 절대 동시 발화할 수 없다
+     * ([false]). 한쪽이라도 미지정이면 미지정 쪽은 전체 브랜치에 발화하므로 겹칠 수 있다([true]).
+     */
+    private fun targetBranchCoFire(
+        configA: String,
+        configB: String,
+    ): Boolean {
+        val branchA = targetBranchOf(configA)
+        val branchB = targetBranchOf(configB)
+        if (branchA == null || branchB == null) return true
+        return branchA == branchB
     }
 
     /** [a]·[b] 사이의 [conflictingFieldNames] 를 각각 [ConflictType.FIELD_CONFLICT] 로 변환한다(ruleIds=[a,b]). */
@@ -457,6 +486,7 @@ private data class PermissionCacheKey(
 )
 
 private const val TRIGGER_CONFIG_FIELDS_KEY = "fields"
+private const val TRIGGER_CONFIG_TARGET_BRANCH_KEY = "targetBranch"
 
 private val triggerConfigObjectMapper = ObjectMapper()
 
@@ -486,4 +516,17 @@ private fun configuredFields(triggerConfig: String): Set<String> {
     val fieldsNode = triggerConfigObjectMapper.readTree(triggerConfig).path(TRIGGER_CONFIG_FIELDS_KEY)
     if (!fieldsNode.isArray) return emptySet()
     return fieldsNode.mapNotNull { it.asText(null)?.takeIf(String::isNotBlank) }.toSet()
+}
+
+/**
+ * `triggerConfig` JSON(`{"targetBranch":"..."}`) 의 `targetBranch` 문자열을 파싱한다. 미지정이거나
+ * 빈 문자열이면 `null`([FieldPriorityAnalyzer.targetBranchCoFire] 이 "전체 브랜치 발화"로 취급하는
+ * 신호, FR-AT-07 PR-C Task 4).
+ *
+ * [configuredFields] 와 마찬가지로 [com.bts.automation.domain.TriggerConfig] 의 동명 private 파싱
+ * 로직과 형식이 겹치지만, 두 파일 모두 이 모듈의 비공개 구현이라 직접 재사용할 공개 API가 없다.
+ */
+private fun targetBranchOf(triggerConfig: String): String? {
+    val branchNode = triggerConfigObjectMapper.readTree(triggerConfig).path(TRIGGER_CONFIG_TARGET_BRANCH_KEY)
+    return branchNode.asText(null)?.takeIf(String::isNotBlank)
 }

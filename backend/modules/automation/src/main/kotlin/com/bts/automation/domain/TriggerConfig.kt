@@ -15,6 +15,8 @@ import org.springframework.scheduling.support.CronExpression
  *
  * - [TriggerType.SCHEDULED] — `cron` 필드 필수 + Spring [CronExpression] 으로 파싱 가능해야 함.
  * - [TriggerType.ISSUE_UPDATED] — `fields` 필드는 선택. 있으면 비어있지 않은 문자열의 배열이어야 함.
+ * - [TriggerType.PR_MERGED] — `targetBranch` 필드는 선택(미지정 시 전체 브랜치 발화). 있으면
+ *   비어있지 않은 문자열이어야 함.
  * - [TriggerType.ISSUE_CREATED]/[TriggerType.ISSUE_COMMENTED]/[TriggerType.WEBHOOK] — 빈
  *   config(`{}`) 허용, 추가 형식 검증 없음.
  */
@@ -24,6 +26,7 @@ object TriggerConfig {
 
     private const val FIELD_CRON = "cron"
     private const val FIELD_FIELDS = "fields"
+    private const val FIELD_TARGET_BRANCH = "targetBranch"
     private const val MSG_INVALID_JSON = "triggerConfig는 유효한 JSON 객체여야 합니다."
 
     private val objectMapper = ObjectMapper()
@@ -43,6 +46,7 @@ object TriggerConfig {
         when (triggerType) {
             TriggerType.SCHEDULED -> validateScheduled(node)
             TriggerType.ISSUE_UPDATED -> validateIssueUpdated(node)
+            TriggerType.PR_MERGED -> validatePrMerged(node)
             TriggerType.ISSUE_CREATED, TriggerType.ISSUE_COMMENTED, TriggerType.WEBHOOK -> Unit
         }
     }
@@ -91,6 +95,16 @@ object TriggerConfig {
                     "ISSUE_UPDATED 트리거의 fields 항목은 빈 문자열이 아닌 문자열이어야 합니다.",
                 )
             }
+        }
+    }
+
+    private fun validatePrMerged(node: JsonNode) {
+        val targetBranchNode = node.get(FIELD_TARGET_BRANCH) ?: return
+        if (targetBranchNode.isNull) return
+        if (!targetBranchNode.isTextual || targetBranchNode.asText().isBlank()) {
+            throw TriggerConfigInvalidException(
+                "PR_MERGED 트리거의 targetBranch는 빈 문자열이 아닌 문자열이어야 합니다.",
+            )
         }
     }
 }
