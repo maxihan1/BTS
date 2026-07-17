@@ -16,8 +16,12 @@ const CLOSE_CONFIRM_TEXT = 'URL은 다시 볼 수 없습니다. 닫을까요?'
 
 const clipboardWriteText = vi.fn()
 
-function stubClipboard(): void {
-  clipboardWriteText.mockResolvedValue(undefined)
+function stubClipboard(options: { reject?: boolean } = {}): void {
+  if (options.reject === true) {
+    clipboardWriteText.mockRejectedValueOnce(new Error('clipboard denied'))
+  } else {
+    clipboardWriteText.mockResolvedValue(undefined)
+  }
   vi.stubGlobal('navigator', {
     ...navigator,
     clipboard: { writeText: clipboardWriteText },
@@ -56,8 +60,7 @@ describe('GitWebhookUrlModal — webhookUrl 있음', () => {
 
   it('clipboard reject 시 실패 문구를 role="alert" 로 낸다', async () => {
     const user = userEvent.setup()
-    clipboardWriteText.mockRejectedValueOnce(new Error('clipboard denied'))
-    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: clipboardWriteText } })
+    stubClipboard({ reject: true })
     render(<GitWebhookUrlModal webhookUrl={WEBHOOK_PATH} onClose={vi.fn()} />)
 
     await user.click(screen.getByTestId('git-webhook-url-copy-button'))
