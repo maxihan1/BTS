@@ -1598,9 +1598,34 @@ wave 4  T5 · T6 (security)      prod override · 컨트롤러             ✅ �
 wave 5  T8 (security)           :modules:app 조립 가드               ✅ 졸업
 wave 6  T9 (backend-engineer)   전수 동기화 8종 + FR 5개 등록        ✅ 졸업
 
-★ 9/9 전 task 완료. 남은 것 —
-그 후    qa-engineer E2E (타입 auth) → verification-before-completion → /bts-codereview  ← 여기서 재개
+★ 9/9 전 task 완료.
+E2E     ⛔ 대상 없음 (실측 결정 — 아래 §E2E 판단)
+검증     ✅ verification-before-completion 통과 (아래 §최종 검증)
+다음     /bts-codereview [7/8] → 🛑 게이트 2 (Maxi) → /bts-merge [8/8]   ← 여기서 재개
 ```
+
+### E2E 판단 — ⛔ 대상 없음 (실측 결정)
+
+plan 은 *"그 후 qa-engineer E2E (타입 auth)"* 를 예고했으나 **PR-1 에 E2E 대상이 없다**. E2E(Playwright — 실제 브라우저로 화면을 구동하는 테스트)는 UI 표면이 있어야 성립한다.
+
+**실측** — `git diff --name-only origin/main...HEAD -- apps/web` = **빈 출력**. PR-1 변경 33파일은 **backend(identity-access 10 · app 1) + docs/스크립트뿐**이다. UI 는 스펙 §9.2 의 **PR-5(UI) · PR-6(관리 화면)** 몫이다.
+
+**대신 API 계약을 커버하는 것** — `GlobalPermissionGrantControllerTest` 13건이 `@WebMvcTest` 로 실제 HTTP 표면(201/400/401/403/404/409/204 · PAT 경로 · 본문 누출 0)을 검증한다. **UI 가 붙는 PR-5·PR-6 이 E2E 를 진다.**
+
+> **"타입 auth 라서 E2E" 는 조건이 아니라 기본값이었다** — [[ui-pr-defer-e2e-regression-latent]] 가 경고하는 것은 *"UI PR 이 E2E 를 미루면 회귀가 잠복한다"* 이지, UI 가 없는 PR 에 E2E 를 만들라는 게 아니다. **PR-5·PR-6 이 이 경고의 실제 대상이다.**
+
+### 최종 검증 (verification-before-completion) — controller 직접 실행
+
+| 검증 | 결과 |
+|---|---|
+| `:modules:identity-access:test` **모듈 전체** | **259 클래스 · `tests=2409 failures=0 errors=0`** (6분 31초) |
+| `:modules:app:test` (9 BC prod 조립) | `tests="8" failures="0"` |
+| `ktlintCheck` + `detekt --rerun-tasks` (identity-access + app) | BUILD SUCCESSFUL · **`16 executed`**(up-to-date 0 = 진짜 재실행, 캐시 false-green 아님) |
+| `bash scripts/verify-master-plan.sh` | **EXIT=0** · `PASS. FR ID 128/128` |
+| FR 재계수 | **128** |
+| main 트리 오염 | **0** (`/Users/maxi.moff/Projects/BTS/CLAUDE.md` = `123 FR` 그대로) |
+
+**PR-1 신규 테스트 42건** = 스키마 3 + 리포지토리 8 + 서비스 10 + 컨트롤러 13 + 판정기 4 + 포트 2(T7) + 조립 가드 2.
 
 ## PR-2~6 로 이월 (이 plan 의 범위 밖)
 
