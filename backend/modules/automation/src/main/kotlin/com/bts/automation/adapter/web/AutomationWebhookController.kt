@@ -179,11 +179,21 @@ class AutomationWebhookController(
     /**
      * [ProblemDetail](RFC 7807) 인스턴스를 생성하는 헬퍼(`AttachmentExceptionHandler` 동형).
      *
+     * ## ★ `instance` 를 반드시 명시한다 — 비우면 Spring 이 **원문 토큰**을 응답에 싣는다
+     * `RequestResponseBodyMethodProcessor` 는 반환된 [ProblemDetail] 의 `instance` 가 `null` 이면 요청
+     * URI 로 자동 채운다. 이 엔드포인트의 요청 URI 에는 **경로 세그먼트에 원문 토큰**이 들어 있으므로,
+     * 비워 두면 404·413·400 **모든** 에러 응답 본문에 평문 토큰이 실려 나간다 — 보낸 사람이야 이미
+     * 아는 값이지만, 그 본문이 응답 로그·프록시 캐시·에러 트래커에 적재되는 순간 그것이 **평문 토큰
+     * 저장/로깅**이다(DEVELOPMENT.md §1.1-1·§1.1-2). 위 클래스 KDoc "토큰 조회 — 평문 미저장" 의
+     * 불변식은 조회 경로만으로는 성립하지 않고 **이 한 줄이 있어야** 완성된다.
+     * [GitWebhookController] 가 같은 기전에 대해 세운 원칙의 동형 적용이며,
+     * `AutomationWebhookControllerTest` 가 세 에러 경로 전부를 실 HTTP 로 못 박는다.
+     *
      * @param status HTTP 응답 상태 코드.
      * @param type type suffix.
      * @param title 문제 유형 요약.
      * @param errorCode BTS 에러 코드(`AUTOMATION_` prefix).
-     * @param detail 상세 설명.
+     * @param detail 상세 설명(요청 값·내부 사정을 싣지 않는 고정 문구).
      */
     private fun problem(
         status: HttpStatus,
@@ -194,6 +204,7 @@ class AutomationWebhookController(
     ): ProblemDetail {
         val pd = ProblemDetail.forStatus(status)
         pd.type = URI.create("https://bts.example.com/problems/$type")
+        pd.instance = URI.create(INSTANCE_PATH)
         pd.title = title
         pd.detail = detail
         pd.setProperty("errorCode", errorCode)
@@ -207,6 +218,12 @@ class AutomationWebhookController(
 
         /** 상한 안내 메시지의 KB 환산 상수. */
         const val BYTES_PER_KB = 1024
+
+        /**
+         * ProblemDetail `instance` 고정값 — **토큰 세그먼트를 뺀** 엔드포인트 경로.
+         * 비워 두면 Spring 이 원문 토큰이 든 요청 URI 로 채운다([problem] KDoc ★ 참조).
+         */
+        const val INSTANCE_PATH = "/api/v1/automation/webhooks"
     }
 }
 
