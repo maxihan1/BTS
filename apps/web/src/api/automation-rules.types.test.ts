@@ -402,6 +402,15 @@ describe('serializeTriggerConfig — baseConfigJson 병합', () => {
     expect(JSON.parse(result)).toEqual({})
   })
 
+  // Task 8 후속 fix — truthy 분기의 술어는 trim() 하는데 저장 값은 원문 그대로였다.
+  // 앞뒤 공백이 섞인 targetBranch 가 그대로 저장되면 backend 는 isBlank() 만 보므로 통과하지만,
+  // 발화 시 GitWebhookService 의 정확 문자열 비교(configured == actualBranch)가 깨져
+  // 조용히 0건 발화한다(에러 없음). 값도 trim 해 저장해야 한다.
+  it('PR_MERGED: targetBranch 의 앞뒤 공백을 제거하고 저장한다(정확 매칭 위해)', () => {
+    const result = serializeTriggerConfig('PR_MERGED', { targetBranch: '  develop  ' }, undefined)
+    expect(JSON.parse(result)).toEqual({ targetBranch: 'develop' })
+  })
+
   it('base가 잘못된 JSON이면 빈 객체로 안전하게 폴백한다', () => {
     const result = serializeTriggerConfig('SCHEDULED', { cron: '0 0 9 * * *' }, '{not-json')
     expect(JSON.parse(result)).toEqual({ cron: '0 0 9 * * *' })
