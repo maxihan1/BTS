@@ -70,7 +70,11 @@ class GitWebhookRepository(
      */
     @Transactional(readOnly = true)
     fun findByTokenHash(tokenHash: String): GitWebhook? =
-        jdbc.query(SQL_FIND_BY_TOKEN_HASH, GitWebhookRowMapper, tokenHash).firstOrNull()
+        jdbc.query(
+            SQL_FIND_BY_TOKEN_HASH,
+            GitWebhookRowMapper,
+            tokenHash,
+        ).firstOrNull()
 
     /**
      * [projectKey] 프로젝트의 활성(미삭제) 웹훅 목록을 반환한다.
@@ -80,7 +84,11 @@ class GitWebhookRepository(
      */
     @Transactional(readOnly = true)
     fun findByProjectKey(projectKey: String): List<GitWebhook> =
-        jdbc.query(SQL_FIND_BY_PROJECT_KEY, GitWebhookRowMapper, projectKey)
+        jdbc.query(
+            SQL_FIND_BY_PROJECT_KEY,
+            GitWebhookRowMapper,
+            projectKey,
+        )
 
     /**
      * [id] 웹훅을 소프트 삭제한다(`deleted_at` 설정). 이미 삭제된 웹훅에는 영향이 없다(멱등).
