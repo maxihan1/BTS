@@ -344,9 +344,10 @@ describe('serializeTriggerConfig', () => {
     )
   })
 
-  // targetBranch 입력은 PR-D 몫이라 폼이 그 값을 넘기지 않는다 — 직렬화도 관여하지 않는다
-  // (serializeTriggerConfig KDoc ★ 참조). 생성 모드는 base 가 없으므로 빈 객체다.
-  it('PR_MERGED는 폼 입력에 관여하지 않고 빈 객체를 반환한다(미지정=전체 브랜치)', () => {
+  // targetBranch 를 지정하지 않으면(config 자체를 생략) 빈 객체를 반환한다(미지정=전체 브랜치).
+  // 생성 모드는 base 도 없으므로 빈 객체다 — targetBranch 가 실제로 채워져 직렬화에 관여하는
+  // 경로(PR-D 입력 UI 도입 이후 managed key 전환)는 아래 'baseConfigJson 병합' describe 참조.
+  it('PR_MERGED: targetBranch 를 지정하지 않으면 빈 객체를 반환한다(미지정=전체 브랜치)', () => {
     expect(serializeTriggerConfig('PR_MERGED')).toBe('{}')
   })
 })
