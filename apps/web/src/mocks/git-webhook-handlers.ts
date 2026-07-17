@@ -205,10 +205,10 @@ const deleteGitWebhookHandler = http.delete(
 /**
  * Git 웹훅 등록 BC MSW 핸들러 배열(FR-AT-07 PR-D).
  *
- * ★ 순서 주의 — `DELETE .../git-webhooks/:id`가 `GET .../git-webhooks`(목록)를 가리지 않도록
- * 구체 경로(`listGitWebhooksHandler`)를 `:id` 와일드카드 경로보다 먼저 등록한다
- * (automation-rule-handlers.ts export/import vs :id 배치 관례와 동형 — msw는 배열 순서대로
- * 첫 매칭 핸들러를 채택한다). GET과 DELETE는 서로 다른 HTTP 메서드라 실질적으로 경로가
- * 충돌하지는 않지만, 향후 GET 단건(`:id`) 핸들러가 추가될 가능성을 고려해 목록 GET을 앞에 둔다.
+ * ★ 순서 관례 — automation-rule-handlers.ts(구체 경로를 `:id` 와일드카드보다 먼저 등록하는 배치
+ * 관례)를 따라 목록 GET(`listGitWebhooksHandler`)을 배열 맨 앞에 둔다. msw는 배열 순서대로 첫
+ * 매칭 핸들러를 채택하므로, `DELETE .../git-webhooks/:id`가 `GET .../git-webhooks`(목록)를 가릴
+ * 여지를 원천 차단한다. 현재는 GET·DELETE가 서로 다른 HTTP 메서드라 실질적 충돌은 없지만, 향후
+ * `GET .../git-webhooks/:id`(단건 조회) 핸들러가 추가돼도 이 순서 그대로 안전하다.
  */
-export const gitWebhookHandlers = [createGitWebhookHandler, listGitWebhooksHandler, deleteGitWebhookHandler]
+export const gitWebhookHandlers = [listGitWebhooksHandler, createGitWebhookHandler, deleteGitWebhookHandler]
