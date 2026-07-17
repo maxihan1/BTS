@@ -49,13 +49,14 @@ const labels = {
   noActionsBadge: '액션 없음',
 } as const
 
-/** 트리거 타입 → 한국어 배지 라벨 (backend TriggerType 5종 1:1 대응) */
+/** 트리거 타입 → 한국어 배지 라벨 (backend TriggerType 6종 1:1 대응, PR_MERGED는 FR-AT-07 PR-C) */
 const triggerTypeLabels: Record<TriggerType, string> = {
   ISSUE_CREATED: '생성',
   ISSUE_UPDATED: '수정',
   ISSUE_COMMENTED: '댓글',
   SCHEDULED: '스케줄',
   WEBHOOK: '웹훅',
+  PR_MERGED: 'PR 병합',
 }
 
 /** 액션 타입 → 한국어 배지 라벨 (backend ActionType 5종 1:1 대응, FR-AT-02 FR11 · SET_FIX_VERSIONS는 FR-AT-07 PR-B) */

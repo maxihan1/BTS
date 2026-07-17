@@ -8,7 +8,7 @@ import { z } from 'zod'
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 자동화 트리거 타입 enum — backend TriggerType 5종 1:1 대응.
+ * 자동화 트리거 타입 enum — backend TriggerType 6종 1:1 대응 (PR_MERGED는 FR-AT-07 PR-C).
  */
 export const triggerTypeSchema = z.enum([
   'ISSUE_CREATED',
@@ -16,6 +16,7 @@ export const triggerTypeSchema = z.enum([
   'ISSUE_COMMENTED',
   'SCHEDULED',
   'WEBHOOK',
+  'PR_MERGED',
 ])
 
 /**
@@ -210,6 +211,9 @@ function omitManagedKeys(base: Record<string, unknown>, keys: readonly string[])
  *   비어있으면 base에서 `fields` 키만 제거한 나머지(base 없으면 `"{}"`).
  * - SCHEDULED — `{"cron":"..."}` 로 직렬화한다(base 병합). cron 형식 자체의 유효성(파싱 가능
  *   여부)은 검증하지 않는다 — 프론트 사전검증은 폼 컴포넌트에서 별도로 수행한다.
+ * - PR_MERGED — `targetBranch`가 지정되면 `{"targetBranch":"..."}`(base 병합), 미지정이면
+ *   base에서 `targetBranch` 키만 제거한 나머지(base 없으면 `"{}"`) — 미지정은 전체 브랜치를
+ *   뜻한다(FR-AT-07 PR-C, targetBranch 입력 UI 자체는 PR-D).
  *
  * `baseConfigJson`(편집 모드에서 백엔드가 내려준 기존 triggerConfig)을 주면 그 JSON을 병합
  * 시작점으로 삼아, 폼이 인지하지 못하는 키(백엔드가 향후 config에 추가할 수 있는 필드)를
@@ -223,7 +227,7 @@ function omitManagedKeys(base: Record<string, unknown>, keys: readonly string[])
  */
 export function serializeTriggerConfig(
   triggerType: TriggerType,
-  config: { cron?: string; fields?: string[] } = {},
+  config: { cron?: string; fields?: string[]; targetBranch?: string } = {},
   baseConfigJson?: string,
 ): string {
   const base = parseBaseConfig(baseConfigJson)
@@ -234,6 +238,12 @@ export function serializeTriggerConfig(
       const rest = omitManagedKeys(base, ['fields'])
       return config.fields && config.fields.length > 0
         ? JSON.stringify({ ...rest, fields: config.fields })
+        : JSON.stringify(rest)
+    }
+    case 'PR_MERGED': {
+      const rest = omitManagedKeys(base, ['targetBranch'])
+      return config.targetBranch && config.targetBranch.trim() !== ''
+        ? JSON.stringify({ ...rest, targetBranch: config.targetBranch })
         : JSON.stringify(rest)
     }
     case 'ISSUE_CREATED':

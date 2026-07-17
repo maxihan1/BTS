@@ -56,6 +56,7 @@ const TRIGGER_TYPE_LABELS: Record<string, string> = {
   ISSUE_COMMENTED: '댓글',
   SCHEDULED: '스케줄',
   WEBHOOK: '웹훅',
+  PR_MERGED: 'PR 병합',
 }
 
 /** 트리거 타입 라벨 조회 — 미지 값은 원문 그대로 fallback */

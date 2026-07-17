@@ -1,4 +1,4 @@
-// 자동화 룰 생성/수정 Dialog — 트리거 5종 선택 + 트리거별 조건부 필드(cron/fields) 직렬화 (FR-AT-01 D6 Task 6)
+// 자동화 룰 생성/수정 Dialog — 트리거 6종 선택 + 트리거별 조건부 필드(cron/fields) 직렬화 (FR-AT-01 D6 Task 6, PR_MERGED는 FR-AT-07 PR-C)
 // + 액션 리스트(5종, SET_FIX_VERSIONS는 FR-AT-07 PR-B)·실행 주체(actor) 편집 배선, config 비대칭(EC1) 직렬화/역직렬화 (FR-AT-02 D6 Task 6)
 import type { JSX, KeyboardEvent } from 'react'
 import { useState } from 'react'
@@ -65,13 +65,14 @@ const labels = {
 /** 폼 섹션 헤더 공통 클래스 — GadgetCatalogModal.tsx 섹션 라벨 선례 동형(design-review#1) */
 const SECTION_HEADING_CLASS = 'mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground'
 
-/** 트리거 타입 5종 한국어 라벨 — backend TriggerType enum 1:1 대응 */
+/** 트리거 타입 6종 한국어 라벨 — backend TriggerType enum 1:1 대응 (PR_MERGED는 FR-AT-07 PR-C) */
 const TRIGGER_LABELS: Record<TriggerType, string> = {
   ISSUE_CREATED: '이슈 생성',
   ISSUE_UPDATED: '이슈 수정',
   ISSUE_COMMENTED: '이슈 댓글 작성',
   SCHEDULED: '예약 실행 (cron)',
   WEBHOOK: '웹훅 호출',
+  PR_MERGED: 'PR 병합',
 }
 
 /** automation BC errorCode → 한국어 메시지 매핑 (스펙 §4 FR-7, 401/500은 /review F2 추가) */
