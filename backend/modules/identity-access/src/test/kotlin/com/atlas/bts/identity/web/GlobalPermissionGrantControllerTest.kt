@@ -16,11 +16,13 @@ import com.atlas.bts.identity.permission.GranteeType
 import com.atlas.bts.identity.permission.UnknownPermissionException
 import com.atlas.bts.identity.session.SessionService
 import com.bts.shared.permission.SystemPermissionResolver
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
 import io.mockk.verify
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration
@@ -154,6 +156,16 @@ class GlobalPermissionGrantControllerTest {
 
     @Autowired
     lateinit var personalAccessTokenService: PersonalAccessTokenService
+
+    /**
+     * mock @Bean 은 Spring 컨텍스트 캐싱 때문에 **테스트 메서드 간 공유**되며 호출 기록이 누적된다.
+     * 초기화하지 않으면 `verify(exactly = 0)` 이 다른 테스트의 호출을 보고 실패하고, 반대로
+     * `verify(exactly = 1)` 이 누적 호출로 통과해 **판별력을 잃는다**. 선례 `PersonalAccessTokenControllerTest:106`.
+     */
+    @BeforeEach
+    fun resetMocks() {
+        clearMocks(grantService, systemPermissionResolver, personalAccessTokenService)
+    }
 
     private fun grantAdmin(actorId: UUID = ADMIN_ID) {
         every { systemPermissionResolver.isSystemAdmin(actorId) } returns true
