@@ -143,11 +143,15 @@ targetBranch가 다른 두 PR_MERGED 룰(= **S5가 정확히 그 시나리오**)
 
 > **★ 1회차는 마스터 §C-4의 확정 3개 중 1개만 가져왔다.** 두 검토자가 독립적으로 같은 지적.
 
-| # | 상한 | 초과 시 |
-|---|---|---|
-| ① | distinct 이슈키 **≤ 20** | 202 + WARN, **처리 0건**(fail-closed — 일부 처리는 비결정적) |
-| ② | **triggerEvent `pr.title`/`pr.body` 각 2KB 절단** | 절단 후 진행 |
-| ③ | **룰 수 × distinct 키 수 ≤ 100** | 202 + WARN, **처리 0건** |
+| # | 상한 | 판정 위치 | 초과 시 |
+|---|---|---|---|
+| ① | distinct 이슈키 **≤ 20** | ⑥ (추출 직후) | 202 + WARN, **처리 0건**(fail-closed — 일부 처리는 비결정적) |
+| ② | **`pr.title`/`pr.body` 각 2KB 절단**(문자 수) | ⑥ | 절단 후 진행 |
+| ③ | **룰 수 × distinct 키 수 ≤ 100** | **⑧ 이후, 트랜잭션 내부** | 202 + WARN, **처리 0건** |
+
+> **★ ③의 판정 위치 정정 (T9 impl)**. 2회차는 3중 상한을 전부 ⑥에 뒀으나, **룰×키 곱은 룰 수를 알아야
+> 계산 가능**하므로 자연히 **⑧(룰조회) 이후**다. ⑥에서 판정하려면 **별도 카운트 쿼리**가 필요해
+> **NFR-1의 DB 왕복 예산(토큰조회1 + dedup1 + 룰조회1 + enqueue N×M)이 깨진다.** 구현이 스펙보다 정확.
 
 **②③이 왜 필수인가**. `AutomationRuleRepository.kt:152-162`가 프로젝트당 룰 수에 **상한을 걸지 않고**
 (`MAX_RULES` grep 0건) 전부 반환한다. 그리고 저장 경로가 **영구**다.
@@ -181,7 +185,18 @@ targetBranch가 다른 두 PR_MERGED 룰(= **S5가 정확히 그 시나리오**)
 > 프록시 로그로 새는 값이다(**그게 secret이 따로 존재하는 이유**). `secret_encrypted TEXT NOT NULL`은
 > **빈 문자열의 암호문**을 막지 못한다.
 
-- **등록 시**. `@field:NotBlank` + **최소 길이 16** + 최대 길이 상한
+- **등록 시**. **서비스 명시 검증** — blank/공백만/**최소 16자**/최대 상한 거부.
+  > **★★ 4회차 정정 (T11 impl 실측) — 2회차의 `@field:NotBlank` 처방은 이 모듈에서 무동작이다.**
+  > `:modules:automation:dependencies --configuration testRuntimeClasspath` 실측 → **`jakarta.validation-api`만
+  > 있고 `hibernate-validator` 없음 = Bean Validation provider 부재**. `AutomationRuleRequests.kt` KDoc이
+  > **이미 그 사실을 기록**하고 있었다 — *"automation 모듈은 Bean Validation provider가 없으므로
+  > `@field:NotBlank` 류 어노테이션은 무동작이다"*.
+  > → 그대로 붙였으면 **"검증이 있다"는 착시만 남고 B4-sec(적대적 검토 BLOCKER)가 통째로 뚫린 채
+  > 테스트도 통과**했을 것이다. **가짜 가드.** provider 추가는 `build.gradle.kts` 변경 = §1.17 신규 의존성.
+  > → 모듈 기존 관례(**"도메인/서비스 검증이 유일한 방어선"**)대로 서비스에서 명시 검증.
+  > **부수 효과로 순서가 오히려 정합** — `@Valid`는 핸들러 진입 전(인자 해석)에 돌아 **권한보다 앞서지만**,
+  > 서비스 검증은 권한 뒤라 `AutomationRuleController.import`가 확립한 **"권한 → 본문 검증"** 과 일치한다.
+  > **[[spec-stated-count-becomes-blindfold]] 5번째 사례** — "정의가 전제한 코드 모양"을 확인 안 함.
 - **★ 검증 시에도**. 복호화 결과가 blank면 **fail-closed 401**
   (`SlackSignatureVerifier.kt:72-74` `if (signingSecret.isBlank()) return false` 선례 — **1회차가 인용한
   `:64-66`은 stale**, #275의 ByteArray 경로 추가로 이동)
@@ -207,6 +222,12 @@ targetBranch가 다른 두 PR_MERGED 룰(= **S5가 정확히 그 시나리오**)
 }
 ```
 - **이슈키 1개당 1 이벤트** — 팬아웃은 이벤트를 복제(각 `issueKey`만 다름)
+- **★ payload 필드 경로 (T9 impl 확정 — 2회차 스펙 미명시분)**. GITHUB `pull_request.{number,title,body,
+  merged_at,html_url}` + `pull_request.base.ref` / GITLAB `object_attributes.{iid,title,description,url,
+  updated_at}` + `object_attributes.target_branch`. **GitLab은 canonical merge timestamp 필드가 없어
+  `updated_at` 근사**(KDoc 명시).
+- **★ 2KB는 문자 수 기준** (T9 impl 확정 — 2회차 스펙이 바이트/문자를 명시 안 함). `.take(2048)` —
+  서로게이트 쌍 경계에서 UTF-8 바이트와 어긋날 수 있으나 **저장 상한 목적엔 근사로 충분**(KDoc 명시).
 - **`actorId` 없음** — GitHub 사용자는 BTS user가 아니다. `buildContext:287`이 `actorId` 부재 시
   `actor`를 빈 맵으로 → `{{actor.id}}`는 빈 값. **위조된 actor를 신뢰하지 않는다**
 - **★ 최상위에 `title`/`body`를 두지 않는 것이 의도적** — `buildContext:279`가
