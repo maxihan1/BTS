@@ -819,11 +819,17 @@ SELECT EXISTS (
 
 **RED**. **판별자는 "비-SYSTEM_ADMIN + grant"** 다 — 이것만이 override 유무를 가른다 (C2 — 판별력 없는 단언 금지).
 
+> 🛑 **정정 (T5 실측) — 결함 B 계열이 여기서도 반복됐다 (3번째).**
+> 아래 테스트 1·4 의 초안은 `grantRepo.grant("CREATE_PROJECT", GranteeType.USER, userId)` 로 **`grantedBy` 를 빠뜨렸다**.
+> T4 가 확정한 실제 시그니처는 `grant(permission, granteeType, granteeId, grantedBy)` 4-파라미터이고 **기본값이 없다**
+> (ADR D-5 감사 흔적을 조용히 위조하지 않기 위한 의도된 설계) — 그대로 쓰면 **컴파일이 깨진다**.
+> **기본값을 추가하지 않고** 테스트가 `adminId` 를 명시로 넘긴다 (T2·T4 와 동일한 처리).
+
 ```kotlin
 @Test
 fun `grant 보유 비-SYSTEM_ADMIN 이 전역권한을 획득한다 (B8 회귀 가드 · DoD-9 PR-1 판)`() {
     val userId = seedUser()
-    grantRepo.grant("CREATE_PROJECT", GranteeType.USER, userId)
+    grantRepo.grant("CREATE_PROJECT", GranteeType.USER, userId, grantedBy = adminId)
 
     // ★ 판별자 — 이 사람이 SYSTEM_ADMIN 이 아님을 먼저 못박는다.
     //   override 가 없으면 default 가 isSystemAdmin 에 위임해 false 가 되고 이 테스트가 red 로 잡는다.
@@ -832,10 +838,10 @@ fun `grant 보유 비-SYSTEM_ADMIN 이 전역권한을 획득한다 (B8 회귀 �
 }
 
 @Test
-fun `SYSTEM_ADMIN 은 grant 없이도 전역권한을 보유한다 (D14)`() {
-    val adminId = seedUser()
-    seedSystemAdmin(adminId)
-    assertThat(resolver.hasGlobalPermission(adminId, "CREATE_PROJECT")).isTrue()
+fun `SYSTEM_ADMIN 은 grant 없이도 전역권한을 보유한다`() {
+    val adminUserId = seedUser()
+    seedSystemAdmin(adminUserId)
+    assertThat(resolver.hasGlobalPermission(adminUserId, "CREATE_PROJECT")).isTrue()
 }
 
 @Test
@@ -847,11 +853,16 @@ fun `grant 도 SYSTEM_ADMIN 도 아니면 false (PM10-6 fail-closed)`() {
 fun `GROUP grant 보유 비-SYSTEM_ADMIN 이 전역권한을 획득한다`() {
     val userId = seedUser(); val groupId = seedGroup()
     seedGroupMembership(groupId, userId)
-    grantRepo.grant("CREATE_PROJECT", GranteeType.GROUP, groupId)
+    grantRepo.grant("CREATE_PROJECT", GranteeType.GROUP, groupId, grantedBy = adminId)
     assertThat(resolver.isSystemAdmin(userId)).isFalse()
     assertThat(resolver.hasGlobalPermission(userId, "CREATE_PROJECT")).isTrue()
 }
 ```
+
+**부팅 방식 (T5 실측).** `@JdbcTest` + Testcontainers (T4 패턴 복제). `@JdbcTest` 는 `@Component`/`@Repository` 를
+스캔하지 않으므로(인계 사실 #3) **판정기 + 협력자 2종을 명시 `@Import`** 한다 —
+`@Import(IdentityAccessSystemPermissionResolver::class, GlobalPermissionGrantRepository::class, JdbcSystemRoleAssignmentRepository::class)`.
+`seedSystemAdmin` 은 `system_role_assignments`(V012) 직접 INSERT 이며, 같은 테이블의 `user_id` FK 때문에 실 users 행이 필요하다.
 
 > **`@ActiveProfiles("prod")` 를 달지 않는다.** C1 의 근거인 항상-`true` 스텁(`NonProdAllowSystemAdminResolver`)은
 > **issue-tracking 소속**이라 identity-access 스캔 경로에 없고, `IdentityAccessSystemPermissionResolver` 는
@@ -862,18 +873,23 @@ fun `GROUP grant 보유 비-SYSTEM_ADMIN 이 전역권한을 획득한다`() {
 
 **GREEN**. override 추가. **생성자에 `GlobalPermissionGrantRepository` 주입** — 기존 `repo: SystemRoleAssignmentRepository` 는 유지.
 
+> **ADR 번호 정정 (T5).** 판정식의 정본은 **ADR D-2** 다. 산문의 "D14"·"D7" 은 plan/review 번호이지 ADR 번호가
+> **아니다** (인계 사실 #12 — T2 가 같은 계열을 이미 정정했다). 아래 KDoc 은 정정된 번호를 반영한 최종본이다.
+
 ```kotlin
     /**
      * 전역 권한 [permission] 보유 여부 (FR-PM-10, ADR D-2).
      *
-     * 판정 = grant 보유 **또는** SYSTEM_ADMIN (plan D14). SYSTEM_ADMIN 은 전역 권한의 상위집합이므로
+     * 판정 = grant 보유 **또는** SYSTEM_ADMIN. SYSTEM_ADMIN 은 전역 권한의 상위집합이므로
      * 별도 grant 없이 통과한다 — FR-PM-08 ADR D3 "전역 판정 = SYSTEM_ADMIN 보유 여부" 와의 연속성이며,
      * 빈 DB 에서 CREATE_PROJECT 보유자가 0명이 되는 부트스트랩 공백을 막는다.
      *
      * ## 이 override 를 지우면 안 된다
      * 지우면 인터페이스 default 가 살아나 판정이 isSystemAdmin 과 같아지고, FR-PM-10 이
-     * 조용히 SYSTEM_ADMIN 전용으로 되돌아간다(D7 에서 기각된 안). 회귀 가드는
-     * IdentityAccessSystemPermissionResolverGlobalPermissionTest 의 "grant 보유 비-SYSTEM_ADMIN" 케이스다.
+     * 조용히 SYSTEM_ADMIN 전용으로 되돌아간다(기각된 안). fail-closed 라 장애로 드러나지도 않는다.
+     * 회귀 가드는 IdentityAccessSystemPermissionResolverGlobalPermissionTest 의
+     * "grant 보유 비-SYSTEM_ADMIN" 케이스이며, 그 테스트의 판별자는 행위자가 SYSTEM_ADMIN 이
+     * 아님을 먼저 못박는 선단언이다.
      */
     override fun hasGlobalPermission(
         actorId: UUID,
@@ -1361,6 +1377,35 @@ ADR 이 `granted_by NOT NULL` 을 명시하고 plan 의 테스트 3 은 이미 �
 - **mutation 1 이 `그룹 탈퇴` 도 죽인 건 T4 가 넣은 탈퇴 전 선단언(`isTrue()`) 덕이다.** 없었으면 "원래부터 false"여도 통과하는 vacuous 가드였다.
 - **mutation 3 은 예측을 관측으로 바꿨다** — 실패 메시지가 `IllegalArgumentException: INSERT ... RETURNING 이 행을 반환하지 않았습니다`. 즉 `ON CONFLICT` 를 붙이면 409 가 아니라 **500 으로 변질**된다. 주장이 아니라 실측이다.
 
+### wave 4 ✅ (6/9) — T5 prod 판정기 override
+
+| task | TDD 커밋 (실측 순서) | 판정 |
+|---|---|---|
+| **T5** override | `5d2ac497a test:` → `da4e7d082 feat:` → `abe5c86d1 refactor:` | ✅ PASS |
+
+**선언 외 파일 0건.** files 3개(신규 테스트 · 판정기 · 기존 테스트 복구) + plan 정정.
+
+**XML 실측.** 대상 `IdentityAccessSystemPermissionResolverGlobalPermissionTest` = `tests="4" failures="0"`,
+기존 `IdentityAccessSystemPermissionResolverTest` = `tests="2" failures="0"`.
+**모듈 전체 = 257 클래스 · `tests=2386 failures=0 errors=0`** (#15 회귀 전수 확인 — 8분 18초).
+`ktlintCheck`+`detekt --rerun-tasks` = BUILD SUCCESSFUL, `8 executed`(up-to-date 0).
+
+**🛑 T5 가 처리한 plan 결함 1건 — 결함 B 계열 3번째 재발.**
+RED 테스트 1·4 가 `grantedBy` 를 누락했다(T2·T4 와 같은 계열). T4 가 확정한 시그니처는 4-파라미터·기본값 없음
+(ADR D-5)이라 **컴파일이 깨진다**. 기본값을 추가하지 않고 테스트가 `adminId` 를 명시로 넘겼다. plan 본문도 정정.
+**같은 결함이 3개 task 에 연속 재발했다 — 남은 task(T6·T8·T9)의 `grant(...)` 호출도 착수 시 시그니처를 먼저 대조할 것.**
+
+**mutation 판별력 실증** (기준선 4/4 PASS **선확인** → 주입 → 복원 `git diff --stat`·`git status --porcelain` 둘 다 빈 출력).
+
+| 주입 | 결과 |
+|---|---|
+| `hasGlobalPermission` override 주석 처리 | `failures="2"` — `grant 보유 비-SYSTEM_ADMIN`(USER) + `GROUP grant 보유 비-SYSTEM_ADMIN` **정확히 2건** |
+
+- **살아남은 2건이 정상이다.** `SYSTEM_ADMIN 은 grant 없이도` · `fail-closed` 는 override 유무와 무관하게 통과한다
+  (default 가 `= isSystemAdmin` 이므로 두 경로의 답이 같다). **override 를 가르는 것은 "비-SYSTEM_ADMIN + grant" 뿐**이라는
+  ADR D-2 말미의 주장이 관측으로 확인됐다 — 그 2건만으로 구성했다면 가드가 **vacuous** 였다.
+- RED 실패 메시지 실측 = `Expecting value to be true but was false` (default 위임 생존). 예측과 일치.
+
 ### ★ wave 2~6 이 물려받을 실측 사실 (다시 발견하지 말 것)
 
 | # | 사실 | 출처 |
@@ -1379,14 +1424,15 @@ ADR 이 `granted_by NOT NULL` 을 명시하고 plan 의 테스트 3 은 이미 �
 | 12 | **plan 산문의 "D3"·"D7" 은 plan-eng-review 번호**이지 ADR 번호가 아니다. ADR 실번호 = D-1 신규테이블 / D-2 판정식(`grant OR isSystemAdmin`) / D-3 default메서드 / D-4 FK없음·다형참조 / D-5 granted_by·회수 hard delete. **T5 KDoc 이 ADR 을 인용할 때 이 표를 볼 것** | T2·controller |
 | 13 | **`GlobalPermissionGrantRepository` 는 인터페이스 없는 concrete `@Repository`** 다. T5 는 `grantRepo = mockk()` 로 그대로 목킹하면 된다(mockk 는 final 클래스 인터셉트). 모듈에 두 관례가 공존하나(`ProjectMembershipRepository`=인터페이스+impl / `CalendarFeedTokenRepository`=concrete 단독) plan 이 파일 1개만 선언해 후자를 따랐다 | T4 |
 | 14 | **T8 이 고정할 빈 이름 2번째 = `com.atlas.bts.identity.permission.GlobalPermissionGrantRepository`** (T7 의 사실 #5 와 같은 계열) | T4 |
-| 15 | 🛑 **T5 주의** — `IdentityAccessSystemPermissionResolver`(`@Component`)에 `grantRepo` 를 넣으면 **그 리졸버를 스캔하는 슬라이스/컨텍스트가 새 `@Repository` 빈을 요구**한다. full-boot 는 같은 모듈 스캔이라 자동 해결되나 `@WebMvcTest` 류는 `@MockBean` 동반이 필요할 수 있다 ([[new-crossbc-dep-openapi-mockbean-regression]] 계열) | T4 |
+| 15 | ✅ **해소됨 (T5 실측)** — `grantRepo` 주입으로 깨진 곳은 **`IdentityAccessSystemPermissionResolverTest:26` 단 1곳**(생성자 명명인자)이고 `grantRepo = mockk()` 로 복구했다. **`@WebMvcTest` 4곳은 무영향** — 슬라이스가 `SystemPermissionResolver` **인터페이스**를 mockk `@Bean` 으로 공급하고 concrete 판정기를 스캔하지 않는다. full-boot(`SystemAdminInfraIntegrationTest` 등)는 같은 모듈 스캔 + `NamedParameterJdbcTemplate` 자동설정으로 자동 해결. **모듈 전체 2386 tests / 0 failures 로 확증** | T4→T5 |
+| 15b | **`IdentityAccessSystemPermissionResolver` 직접 참조 전수 결과 (T5 grep)** — 코드 참조는 `IdentityAccessSystemPermissionResolverTest`(생성자) + `SystemAdminInfraIntegrationTest`(`isInstanceOf` 단언, full-boot prod) **2곳뿐**이고, 나머지 7곳은 **KDoc 산문 언급**이다. **판정기에 협력자를 더 추가해도 컴파일이 깨지는 곳은 이 2곳뿐**이다 | T5 |
 | 16 | **`@JdbcTest` 롤백만으로 격리 충분** — `@BeforeEach` DELETE 불요. `list()` 의 `singleElement()` 가 롤백에 기대지만 격리가 깨지면 **fail 하는 방향**이라 안전하다. 픽스처는 매번 랜덤 UUID | T4 |
 | 17 | **`granted_by`·`grantee_id` 엔 FK 가 없어 users 행 없이도 INSERT 된다**(ADR D-4). 단 `group_memberships.user_id` 엔 V015 FK 가 있어 **GROUP 시나리오엔 실 users 행이 필수** | T4 |
 | 18 | **detekt/ktlint 커스텀 설정 없음** — 루트 `.editorconfig` 도 detekt.yml 도 없다(기본값). 신규 파일은 라인 ≤120 으로 쓰면 안전 | T4 |
 
 ### ★ wave 2~6 에 인계된 주의 (서브에이전트 보고)
 
-- **T5 (mockk).** `hasGlobalPermission` default 는 기존 mockk 구현체를 안 깬다(기존 소비자가 호출 안 함). 다만 **T5·T6 이 이 포트를 소비하는 컨트롤러를 늘리면** identity-access 의 기존 `SystemPermissionResolver` mockk 4곳(Whoami/UserGroup/IssueSecurityScheme 테스트 등)에 스텁이 필요해질 수 있다. `mockk()`(non-relaxed)은 default 메서드도 인터셉트한다 — **T5 착수 시 전 모듈 grep 으로 확인**.
+- **T5 (mockk) → ✅ 확인 완료, T6 에 이월.** T5 의 전 모듈 grep 결과 기존 `SystemPermissionResolver` mockk 4곳(Whoami/UserGroup/IssueSecurityScheme/WhoamiOoo)은 **스텁 추가 없이 통과**했다 — T5 는 판정기만 바꾸고 컨트롤러를 늘리지 않아 그 슬라이스들의 호출 경로가 변하지 않았기 때문이다(모듈 전체 2386 tests / 0 failures 로 확증). **경고 자체는 T6 에 유효하다** — T6 이 `hasGlobalPermission` 을 호출하는 컨트롤러를 추가하면 `mockk()`(non-relaxed)이 default 메서드도 인터셉트하므로 그 4곳에 스텁이 필요해질 수 있다. **T6 은 자기 컨트롤러 슬라이스뿐 아니라 이 4곳도 함께 돌릴 것**(모듈 전체 실행이 확실하다).
 - **T2 (db-engineer).** V036 SQL 주석의 "고아 행" 문구는 **ADR D-4 문안과 일치해야 한다**(`140cf17fe` 로 plan 정정 완료 — GROUP 은 CASCADE 로 탈락 / USER 는 영구 잔존). ADR 을 Read 해서 대조할 것.
 - **T9 (문서 동기화) 판단 대상 2건.** (a) `DATA.md §3` 하드삭제 허용 목록에 `global_permission_grants` 추가가 필요해 보인다 — 다만 hard delete ADR 이 있는 `project_memberships` 도 그 목록에 없어 목록이 exhaustive 가 아닐 수 있다. (b) **무관 drift, 고치지 않는다** — `DATA.md:87` §4.1 표가 identity-access 를 `사용 중 V001~V006` 이라 적었으나 실제는 V035 (글로벌 CLAUDE.md §3 surgical).
 - **T1 산출물 형식 결정 2건.** (a) revoke hard delete 정당화를 D-6 독립이 아니라 **D-5 안에 부여/회수 비대칭으로 편입**했다 — plan 이 지정한 D-1~D-5 번호를 T2 SQL·T5 KDoc 이 인용하므로 번호를 깨지 않기 위함. (b) **변경이력 절을 넣지 않았다** — `docs/decisions/` 106개 · `docs/adr/` 전체에 변경이력 절이 **0건**이라 실제 관례를 따랐다.
