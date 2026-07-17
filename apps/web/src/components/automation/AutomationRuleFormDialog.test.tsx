@@ -17,6 +17,9 @@ import {
 } from '@/mocks/automation-rule-fixtures'
 import { projectMemberHandlers } from '@/mocks/project-member-handlers'
 import { AUTOMATION_RULES_QUERY_KEY } from '@/api/useAutomationRules'
+import { GIT_WEBHOOKS_QUERY_KEY } from '@/api/useGitWebhooks'
+import { gitWebhookHandlers } from '@/mocks/git-webhook-handlers'
+import { DEFAULT_GIT_WEBHOOKS, resetGitWebhookStore, seedGitWebhooks } from '@/mocks/git-webhook-fixtures'
 import type {
   AutomationRule,
   CreateAutomationRuleInput,
@@ -39,7 +42,10 @@ vi.mock('sonner', () => ({
 // 액션/실행 주체 피커는 use-project-members(React Query)에 의존한다 — 로컬 서버에
 // projectMemberHandlers를 함께 등록해 이 파일의 모든 테스트에서 담당자 목록 GET이 항상 핸들된다
 // (핵심 함정 — ActionListEditor/ProjectMemberSelect가 폼에 상시 렌더되므로 매 테스트가 대상).
-const server = setupServer(...automationRuleHandlers, ...projectMemberHandlers)
+//
+// gitWebhookHandlers도 함께 합류한다(FR-AT-07 PR-D Task 9) — 폼이 열리면 useGitWebhooks(FR15
+// 무음 실패 경고 판정용)가 항상 마운트되므로 이 파일의 모든 테스트가 대상이다.
+const server = setupServer(...automationRuleHandlers, ...projectMemberHandlers, ...gitWebhookHandlers)
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 beforeEach(() => {
@@ -48,6 +54,7 @@ beforeEach(() => {
 afterEach(() => {
   server.resetHandlers()
   resetAutomationRuleStore()
+  resetGitWebhookStore()
   vi.clearAllMocks()
   document.cookie = 'XSRF-TOKEN=; Max-Age=0'
 })
@@ -111,6 +118,24 @@ function renderWithClient(ui: JSX.Element) {
     wrapper: ({ children }: { readonly children: ReactNode }) =>
       createElement(QueryClientProvider, { client: queryClient }, children),
   })
+}
+
+/**
+ * {@link renderWithClient}과 동일하되 QueryClient를 함께 반환한다 — FR15 음성 단언(웹훅 1건/403)이
+ * `getQueryState`로 useGitWebhooks 쿼리가 실제로 settle(success/error)했는지 확인한 뒤에야 경고
+ * 부재를 단언하기 위함이다. settle을 기다리지 않고 `queryByText(...).not.toBeInTheDocument()`만
+ * 쓰면 쿼리가 아직 pending인 시점에도 항상 참이 되어 아무것도 증명하지 못하는 공허한(vacuous)
+ * 음성 단언이 된다.
+ */
+function renderWithClientAndQuery(ui: JSX.Element) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  const utils = render(ui, {
+    wrapper: ({ children }: { readonly children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: queryClient }, children),
+  })
+  return { queryClient, ...utils }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -703,6 +728,76 @@ describe('AutomationRuleFormDialog — PR_MERGED targetBranch (FR-AT-07 PR-D Tas
       <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />,
     )
     expect(screen.queryByTestId('automation-rule-target-branch-input')).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR15 — PR_MERGED + Git 웹훅 0건 무음 실패 경고 (Maxi D4, FR-AT-07 PR-D Task 9)
+//
+// 웹훅이 0건이면 이 트리거는 영원히 발화하지 않는데 실행 이력도 비어 원인 파악이 어렵다 — 저장은
+// 막지 않는 정보성 경고만 표시한다. 판정 = `data?.length === 0`. isLoading/isError일 때는 "못
+// 읽음"을 "0건"으로 오판하지 않도록 경고를 내지 않는다(EC21).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AutomationRuleFormDialog — FR15 PR_MERGED 웹훅 0건 경고', () => {
+  const NO_WEBHOOKS_WARNING_TEXT = '이 프로젝트에 Git 웹훅이 없어 이 룰은 발화하지 않습니다.'
+
+  it('웹훅 0건 + PR_MERGED 선택 → "이 프로젝트에 Git 웹훅이 없어 이 룰은 발화하지 않습니다." 를 렌더한다', async () => {
+    renderWithClient(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />,
+    )
+    const user = userEvent.setup()
+    await user.selectOptions(screen.getByTestId('automation-rule-trigger-select'), 'PR_MERGED')
+
+    expect(await screen.findByText(NO_WEBHOOKS_WARNING_TEXT)).toBeInTheDocument()
+  })
+
+  it('웹훅 1건 + PR_MERGED → 경고 부재(음성 단언)', async () => {
+    seedGitWebhooks(DEFAULT_GIT_WEBHOOKS)
+    const { queryClient } = renderWithClientAndQuery(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />,
+    )
+    const user = userEvent.setup()
+    await user.selectOptions(screen.getByTestId('automation-rule-trigger-select'), 'PR_MERGED')
+
+    // 쿼리가 실제로 success로 settle된 뒤에야 경고 부재를 단언한다(공허한 음성 단언 방지).
+    await waitFor(() => {
+      expect(queryClient.getQueryState(GIT_WEBHOOKS_QUERY_KEY(PROJECT_KEY))?.status).toBe('success')
+    })
+    expect(screen.queryByText(NO_WEBHOOKS_WARNING_TEXT)).not.toBeInTheDocument()
+  })
+
+  it('목록 isError(403) + PR_MERGED → 경고 부재(EC21 — "못 읽음" ≠ "0건")', async () => {
+    server.use(
+      http.get('/api/v1/projects/:projectKey/automation/git-webhooks', () =>
+        HttpResponse.json({ errorCode: 'AUTOMATION_ACCESS_DENIED' }, { status: 403 }),
+      ),
+    )
+    const { queryClient } = renderWithClientAndQuery(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />,
+    )
+    const user = userEvent.setup()
+    await user.selectOptions(screen.getByTestId('automation-rule-trigger-select'), 'PR_MERGED')
+
+    await waitFor(() => {
+      expect(queryClient.getQueryState(GIT_WEBHOOKS_QUERY_KEY(PROJECT_KEY))?.status).toBe('error')
+    })
+    expect(screen.queryByText(NO_WEBHOOKS_WARNING_TEXT)).not.toBeInTheDocument()
+  })
+
+  it('웹훅 0건이어도 저장은 막지 않는다(정보성, 차단 금지)', async () => {
+    const onOpenChange = vi.fn()
+    renderWithClient(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={onOpenChange} />,
+    )
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('이름'), 'PR 병합 룰')
+    await user.selectOptions(screen.getByTestId('automation-rule-trigger-select'), 'PR_MERGED')
+    await screen.findByText(NO_WEBHOOKS_WARNING_TEXT)
+
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
   })
 })
 

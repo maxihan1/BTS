@@ -1,5 +1,6 @@
 // 자동화 룰 생성/수정 Dialog — 트리거 6종 선택 + 트리거별 조건부 필드(cron/fields/targetBranch) 직렬화 (FR-AT-01 D6 Task 6, PR_MERGED targetBranch 입력은 FR-AT-07 PR-D)
 // + 액션 리스트(5종, SET_FIX_VERSIONS는 FR-AT-07 PR-B)·실행 주체(actor) 편집 배선, config 비대칭(EC1) 직렬화/역직렬화 (FR-AT-02 D6 Task 6)
+// + PR_MERGED 선택 + Git 웹훅 0건 시 무음 실패 경고(FR15, 저장 차단 없음, FR-AT-07 PR-D Task 9)
 import type { JSX, KeyboardEvent } from 'react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -32,6 +33,7 @@ import {
   useUpdateAutomationRule,
   AUTOMATION_RULES_QUERY_KEY,
 } from '@/api/useAutomationRules'
+import { useGitWebhooks } from '@/api/useGitWebhooks'
 import { ActionListEditor } from './ActionListEditor'
 import type { ActionFormState } from './ActionConfigEditor'
 import { ProjectMemberSelect } from './ProjectMemberSelect'
@@ -54,6 +56,8 @@ const labels = {
   fieldsPlaceholder: '필드 키 입력 후 Enter',
   targetBranchLabel: '대상 브랜치 (선택)',
   targetBranchDescription: '지정한 브랜치로 병합될 때만 발화합니다. 비워두면 모든 브랜치에 반응합니다.',
+  noGitWebhooksWarning: '이 프로젝트에 Git 웹훅이 없어 이 룰은 발화하지 않습니다.',
+  noGitWebhooksWarningHint: '아래 "Git 웹훅" 섹션에서 웹훅을 등록해야 이 트리거가 정상 동작합니다.',
   basicSectionLabel: '기본',
   triggerSectionLabel: '트리거',
   actionsSectionLabel: '액션',
@@ -363,6 +367,20 @@ export interface AutomationRuleFormDialogProps {
 // 트리거별 조건부 필드 서브컴포넌트 — SCHEDULED(cron) / ISSUE_UPDATED(fields) / 나머지(없음)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * PR_MERGED 트리거에서 이 프로젝트에 등록된 Git 웹훅이 0건인지 판정한다(FR15 — Maxi D4).
+ *
+ * 웹훅이 0건이면 이 룰은 영원히 발화하지 않는데 실행 이력도 비어있어 원인 파악이 어렵다 —
+ * 그래서 저장은 막지 않고 경고만 표시한다. `isLoading`/`isError`일 때는 "못 읽음"을 "0건"으로
+ * 오판하지 않도록 경고를 내지 않는다(EC21 — 403으로 목록을 못 읽은 사용자에게 "웹훅이 없다"고
+ * 단정하면 거짓이다).
+ */
+function hasNoGitWebhooks(triggerType: TriggerType, webhooksQuery: ReturnType<typeof useGitWebhooks>): boolean {
+  if (triggerType !== 'PR_MERGED') return false
+  if (webhooksQuery.isLoading || webhooksQuery.isError) return false
+  return webhooksQuery.data?.length === 0
+}
+
 interface TriggerConfigFieldsProps {
   readonly triggerType: TriggerType
   readonly register: UseFormRegister<FormValues>
@@ -372,6 +390,8 @@ interface TriggerConfigFieldsProps {
   readonly onFieldDraftChange: (value: string) => void
   readonly onFieldDraftKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void
   readonly onRemoveField: (field: string) => void
+  /** PR_MERGED + 웹훅 0건일 때만 true(FR15) — {@link hasNoGitWebhooks} 판정 결과 */
+  readonly showNoGitWebhooksWarning: boolean
 }
 
 function TriggerConfigFields({
@@ -383,6 +403,7 @@ function TriggerConfigFields({
   onFieldDraftChange,
   onFieldDraftKeyDown,
   onRemoveField,
+  showNoGitWebhooksWarning,
 }: TriggerConfigFieldsProps): JSX.Element | null {
   if (triggerType === 'SCHEDULED') {
     return (
@@ -466,6 +487,7 @@ function TriggerConfigFields({
           {...register('targetBranch')}
         />
         <p className="text-xs text-muted-foreground mt-1">{labels.targetBranchDescription}</p>
+        {/* RED 단계 임시 — 구독분만(showNoGitWebhooksWarning 계산은 이미 배선, 렌더는 GREEN에서 켠다) */}
       </div>
     )
   }
@@ -509,6 +531,9 @@ function FormBody({
   const queryClient = useQueryClient()
   const createRule = useCreateAutomationRule(projectKey)
   const updateRule = useUpdateAutomationRule(projectKey)
+  // PR_MERGED FR15 무음 실패 경고(Maxi D4) — 같은 페이지에 이미 마운트된 GIT_WEBHOOKS_QUERY_KEY를
+  // 구독만 한다(신규 엔드포인트 0). 판정은 hasNoGitWebhooks 참고.
+  const gitWebhooksQuery = useGitWebhooks(projectKey)
 
   const {
     register,
@@ -528,6 +553,7 @@ function FormBody({
   const watchedTriggerType = watch('triggerType')
   const effectiveTriggerType = hasEditingRule(editingRule) ? editingRule.triggerType : watchedTriggerType
   const isEditMode = hasEditingRule(editingRule)
+  const showNoGitWebhooksWarning = hasNoGitWebhooks(effectiveTriggerType, gitWebhooksQuery)
 
   function addField(): void {
     const trimmed = fieldDraft.trim()
@@ -647,6 +673,7 @@ function FormBody({
           onFieldDraftChange={setFieldDraft}
           onFieldDraftKeyDown={handleFieldDraftKeyDown}
           onRemoveField={removeField}
+          showNoGitWebhooksWarning={showNoGitWebhooksWarning}
         />
       </section>
 
@@ -725,6 +752,9 @@ function FormBody({
  * - 트리거별 조건부 필드는 {@link TriggerConfigFields}로 분리 —
  *   SCHEDULED(cron 필수 사전검증)·ISSUE_UPDATED(fields 태그, 비면 전체 필드)·
  *   PR_MERGED(targetBranch, 비면 전체 브랜치, FR-AT-07 PR-D)·나머지(없음).
+ * - PR_MERGED 선택 + 이 프로젝트에 등록된 Git 웹훅이 0건이면 {@link hasNoGitWebhooks} 판정에 따라
+ *   무음 실패 경고를 표시한다(FR15, Maxi D4) — 저장은 막지 않는 정보성 경고다. `useGitWebhooks`로
+ *   같은 페이지에 이미 마운트된 웹훅 목록 쿼리를 구독만 하며 신규 엔드포인트는 없다.
  * - 액션 리스트는 {@link ActionListEditor}(추가/삭제/순서변경)에 위임하고, 편집 초기값은
  *   {@link parseActionsFormState}(응답 config=객체)로, 제출은 {@link serializeActionsFormState}
  *   (config=JSON 문자열)로 변환한다 — 응답/요청 config 형태가 다른 비대칭(EC1)을 명확히 분리한다.

@@ -21,6 +21,7 @@ import {
   resetAutomationExecutionStore,
   seedAutomationExecutions,
 } from '@/mocks/automation-execution-fixtures'
+import { gitWebhookHandlers } from '@/mocks/git-webhook-handlers'
 import {
   ProjectAutomationSettingsPage,
   ProjectAutomationSettingsRouteAdapter,
@@ -59,7 +60,7 @@ vi.mock('@/lib/download', () => ({
 // 등록하는 편이 안전하다.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const server = setupServer(...automationRuleHandlers, ...automationExecutionHandlers)
+const server = setupServer(...automationRuleHandlers, ...automationExecutionHandlers, ...gitWebhookHandlers)
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 beforeEach(() => {
