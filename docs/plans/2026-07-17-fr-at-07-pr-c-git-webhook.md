@@ -586,6 +586,37 @@ longest path = T2 → T6 → T9 → T10 → T12 → T15 (**6 wave**).
 
 **검증**. `./gradlew :modules:automation:test --tests GitWebhookSignatureVerifierTest`
 
+> **★ impl 결과 (T7 완료 — CONCERN 3건, codereview 인계)**
+>
+> **① `provider` 타입이 `String` — 이 plan의 `depends-on: []`가 틀렸다.**
+> `GitProvider` enum은 **T6 소유**인데 T7을 `depends-on: []`로 잡아 W3(T6보다 앞)에 배치했다 → T7이
+> enum을 만들 수도 쓸 수도 없었다. implementer가 `String` + `PROVIDER_GITHUB`/`PROVIDER_GITLAB` 상수
+> 비교 + **미상 값 fail-closed 거부**로 처리(안전하나 타입 안전성 손해). T9가 `webhook.provider.name`을
+> 넘기는 구조. **T6의 enum 이름이 이 상수 문자열과 정확히 일치해야 하고, 불일치 시 전 서명이 fail-closed로
+> 거부된다** → T6 prompt에 대조 지시 전달함. 올바른 메타는 `depends-on: [6]`이었다.
+>
+> **② 상수시간 비교는 테스트가 원리적으로 못 지킨다** (뮤테이션 `isEqual`→`==` = **0건 실패**).
+> 타이밍은 *결과*가 아니라 *소요 시간* 계약이라 기능 테스트로 잡히지 않는다. 누가 "같은 결과인데
+> 장황하다"고 `==`로 바꾸면 **아무 테스트도 안 깨지면서 타이밍 공격이 열린다** → **KDoc 경고가 유일한
+> 방어**(리뷰가 지키는 지점). [[verify-logic-vs-verify-guard]] 계열.
+>
+> **③ `sha256=` 접두검사는 중복 방어**였다 (뮤테이션 제거 = **0건 실패**). SHA-1 거부를 실제 강제하는 건
+> **전체 문자열 비교**(기대값이 항상 `sha256=`로 시작). 접두검사는 **미인증 경로 빠른 거부**(형식 틀린
+> 헤더에 본문 전체 HMAC 미계산 = CPU 소모 차단)로 존치 + KDoc 정정. **spec EC4는 행위("SHA-1→401")를
+> 명세하므로 계약 자체는 정확**하고 테스트도 그 행위를 진짜로 검증한다.
+>
+> **뮤테이션 실증 (기준선 green 선확인)** — blank 가드 제거 **6건 실패** · unknown provider→GitLab 폴백
+> **4건** · GITHUB→GitLab 폴백(EC2 혼동공격) **1건 정확 적중**. 테스트가 vacuous 아님이 증명됨.
+>
+> **외부 오라클 고정** — GitHub 공식 문서 테스트 벡터(`secret="It's a Secret to Everybody"`,
+> `payload="Hello, World!"` → `757107ea...`)를 openssl로 독립 재현. **자체계산끼리 비교하는
+> "둘 다 틀려도 통과"를 배제**.
+>
+> **테스트 결함 수정** — `githubSignature("", body)`가 JCE `IllegalArgumentException: Empty key`.
+> 빈 문자열은 HMAC 키로 성립하지 않아 **공격자도 서명을 계산할 수 없다** → GITHUB 판별자를 **계산 가능한
+> 공백(`"   "`) secret**으로 교체(GITLAB 평문 비교와 동일 판별력). 빈 문자열 케이스는 별도 유지 —
+> blank 가드가 먼저 끊지 않으면 그 예외가 **500으로 새어 401 계약이 깨진다**.
+
 ---
 
 ### Task 8. 이슈 키 추출기
