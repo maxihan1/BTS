@@ -4,6 +4,7 @@ package com.bts.workflow.scheme.application
 
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeRef
+import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.shared.permission.WorkflowSchemeScope
@@ -456,6 +457,68 @@ class WorkflowSchemeApplicationServiceTest {
         assertThatThrownBy {
             svcWithDeny.assignToProject(actor, UUID.randomUUID(), "PROJ", WorkflowSchemeKey("software-scheme"))
         }.hasMessageContaining("WORKFLOW_PERMISSION_DENIED")
+    }
+
+    // ── task-13 hot-fix — auto-assign SYSTEM_ACTOR 권한 우회 (prod 판정기 하) ─────────
+
+    @Test
+    fun `assignment 없는 프로젝트에 auto-assign 시 SYSTEM_ACTOR 가 권한거부 없이 software-scheme 배정`() {
+        // prod 판정기(IdentityAccessWorkflowSchemePermissionResolver) 동형 stub —
+        // SYSTEM_ACTOR(nil UUID)는 users 에 없는 합성 sentinel 이라 어떤 프로젝트 멤버도 될 수 없어
+        // Project 범위 배정 권한을 항상 거부한다(멤버십 게이트 탈락 → WorkflowSchemeAccessDeniedException).
+        val prodLikeResolver = mockk<WorkflowSchemePermissionResolver>()
+        every {
+            prodLikeResolver.requirePermission(
+                WorkflowSchemeApplicationService.SYSTEM_ACTOR_UUID,
+                WorkflowSchemePermission.ASSIGN_SCHEME,
+                any<WorkflowSchemeScope.Project>(),
+            )
+        } throws
+            WorkflowSchemeAccessDeniedException(
+                WorkflowSchemeApplicationService.SYSTEM_ACTOR_UUID,
+                WorkflowSchemePermission.ASSIGN_SCHEME,
+                WorkflowSchemeScope.Project("NEW"),
+            )
+
+        val svcWithProdResolver =
+            WorkflowSchemeApplicationService(
+                schemeRepo,
+                assignmentRepo,
+                mappingRepo,
+                eventPublisher,
+                prodLikeResolver,
+                workflowRepo,
+                issueTypeLookupPort,
+            )
+
+        val softwareSchemeKey = WorkflowSchemeApplicationService.SOFTWARE_SCHEME_KEY
+        val schemeId = WorkflowSchemeId(1L)
+        val projectId = UUID.fromString("00000000-0000-0000-0000-000000000099")
+        val projectKey = "NEW"
+        val scheme = buildScheme(softwareSchemeKey, id = schemeId)
+
+        every { assignmentRepo.findByProjectId(projectId) } returns null
+        every { schemeRepo.findByKey(softwareSchemeKey) } returns scheme
+        justRun { assignmentRepo.saveAssignment(any()) }
+        justRun { eventPublisher.publish(any<WorkflowSchemeAssignedEvent>()) }
+        every { schemeRepo.findById(schemeId) } returns scheme
+
+        // GREEN: auto-assign 은 SYSTEM_ACTOR 에 대해 권한 검사를 우회하므로 500 없이 배정에 성공한다.
+        // 판별자(mutation): 우회를 제거하면 prod 판정기가 WorkflowSchemeAccessDeniedException 을 던져
+        // findAssignedScheme 이 실패한다(현재 프로덕션 버그 재현).
+        val result = svcWithProdResolver.findAssignedScheme(projectId, projectKey)
+
+        assertThat(result.key).isEqualTo(softwareSchemeKey)
+        verify(exactly = 1) { assignmentRepo.saveAssignment(any()) }
+        verify(exactly = 1) { eventPublisher.publish(any<WorkflowSchemeAssignedEvent>()) }
+        // 우회 검증 — SYSTEM_ACTOR 경로는 requirePermission 을 절대 호출하지 않는다.
+        verify(exactly = 0) {
+            prodLikeResolver.requirePermission(
+                WorkflowSchemeApplicationService.SYSTEM_ACTOR_UUID,
+                any(),
+                any(),
+            )
+        }
     }
 
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
