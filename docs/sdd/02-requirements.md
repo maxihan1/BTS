@@ -209,6 +209,7 @@
 | FR-UX-03 | 개인 알림 보관함 (Inbox) | 필수 |
 | FR-UX-04 | Slash 명령어 | 높음 |
 | FR-UX-05 | 키보드 단축키 | 높음 |
+| FR-UX-06 | UI/UX 전면 개편 (Jira Cloud 방식 — 2025 통합 사이드바 + ADS v2 토큰 + pathless shell) | 높음 |
 
 ### 2.2.12 인증 (FR-AU, v0.4 신규)
 

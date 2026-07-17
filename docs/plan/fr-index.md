@@ -1,11 +1,11 @@
-<!-- 128개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
+<!-- 129개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
 
 # FR 역인덱스 + Open Questions
 
-## §A.1 FR 역인덱스 (128개 전수)
+## §A.1 FR 역인덱스 (129개 전수)
 
 > 출처. SDD `docs/sdd/02-requirements.md` §2.2 "기능 요구사항 (FR) 상세".
-> 검증. `scripts/verify-master-plan.sh` — 128개 모두 product/*.md에 등장해야 함.
+> 검증. `scripts/verify-master-plan.sh` — 129개 모두 product/*.md에 등장해야 함.
 
 ### 이슈 관리 (FR-IS, 10개)
 
@@ -165,7 +165,7 @@
 | FR-PM-09 | 사용자 그룹 (전역 그룹 + 멤버십 인프라, FR-PM-06 선행) | 필수 | identity-access | §4.9 |
 | FR-PM-10 | 전역 권한 부여 (`global_permission_grants` — 그룹/사용자 grant + 관리 화면) | 필수 | identity-access | §4.10 |
 
-### 사용성 (FR-UX, 5개)
+### 사용성 (FR-UX, 6개)
 
 | FR ID | 한 줄 | 우선순위 | BC | 본문 위치 |
 |---|---|---|---|---|
@@ -174,6 +174,7 @@
 | FR-UX-03 | 개인 알림 보관함 (Inbox) | 필수 | notification-dashboard | §5.2 |
 | FR-UX-04 | Slash 명령어 | 높음 | personalization | §4.2 |
 | FR-UX-05 | 키보드 단축키 | 높음 | personalization | §4.3 |
+| FR-UX-06 | UI/UX 전면 개편 (Jira Cloud 방식 — 통합 사이드바 + ADS v2 토큰) | 높음 | personalization | §4.4 |
 
 ### 인증 (FR-AU, 10개)
 
@@ -236,9 +237,9 @@
 | automation | 7 | AT(7) |
 | notification-dashboard | 14 | NT(5) + DB(3) + RP(4) + UX-02,03(2) |
 | slack-integration | 6 | SL(6) |
-| personalization | 12 | PR(4) + PF(3) + CA(2) + UX-01,04,05(3) |
+| personalization | 13 | PR(4) + PF(3) + CA(2) + UX-01,04,05,06(4) |
 | search-export-import | 12 | SR(4) + EX(2) + IM(2) + API(4) |
-| **합계** | **128** | |
+| **합계** | **129** | |
 
 ## §A.3 미해결 결정 (Open Questions)
 
