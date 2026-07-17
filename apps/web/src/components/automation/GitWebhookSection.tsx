@@ -292,6 +292,10 @@ export function GitWebhookSection({ projectKey }: GitWebhookSectionProps): JSX.E
 
       <GitWebhookUrlModal
         webhookUrl={registerMutation.data?.webhookUrl ?? null}
+        // ★ FR7 load-bearing — reset()이 유일한 닫기 기전이다. 이 한 줄을 지우면
+        // "URL 모달에서 닫기→확인 하면 모달이 사라진다" / "모달을 닫은 뒤 다시 등록하면 새 URL이
+        // 뜬다" 테스트 2건이 즉시 red로 전환됨을 mutation 검증으로 확인했다(task-6 REFACTOR).
+        // 별도 `urlPayload` state로 되돌리지 말 것 — 파일 상단 GitWebhookSection JSDoc 참고.
         onClose={() => {
           registerMutation.reset()
         }}
