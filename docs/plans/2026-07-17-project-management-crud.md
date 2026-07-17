@@ -1439,13 +1439,15 @@ ADR 이 `granted_by NOT NULL` 을 명시하고 plan 의 테스트 3 은 이미 �
 - **mutation 1 이 `그룹 탈퇴` 도 죽인 건 T4 가 넣은 탈퇴 전 선단언(`isTrue()`) 덕이다.** 없었으면 "원래부터 false"여도 통과하는 vacuous 가드였다.
 - **mutation 3 은 예측을 관측으로 바꿨다** — 실패 메시지가 `IllegalArgumentException: INSERT ... RETURNING 이 행을 반환하지 않았습니다`. 즉 `ON CONFLICT` 를 붙이면 409 가 아니라 **500 으로 변질**된다. 주장이 아니라 실측이다.
 
-### wave 4 — 진행 중 (6/9). **T5 ✅ 졸업 / T6 남음**
-
-> ⚠️ `d33b63a9a` 커밋 메시지가 "wave 4 졸업" 이라 적었으나 **과한 표현이다** — wave 4 는 T5·T6 두 개이고 T6 는 미착수다. 아래 절은 **T5 만** 다룬다.
+### wave 4 ✅ 졸업 (7/9) — T5 prod 판정기 override · T6 API 표면
 
 | task | TDD 커밋 (실측 순서) | 판정 |
 |---|---|---|
 | **T5** override | `5d2ac497a test:` → `da4e7d082 feat:` → `abe5c86d1 refactor:` | ✅ PASS |
+| **T6** API | `591e14ef4 test:` → `37dddde0a feat:` → `54b86fa2b refactor:` (선행 `741bd11f1 docs:`) | ✅ PASS |
+
+> T5·T6 은 같은 wave 이나 **controller 가 순차 dispatch** 했다 — 같은 worktree·같은 Gradle 모듈이라 동시 실행 시
+> build 디렉토리와 git index 가 경합한다 ([[parallel-dispatch-precommit-hook-race]]). 아래는 T5 절, 그 다음이 T6 절.
 
 **선언 외 파일 0건.** files 3개(신규 테스트 · 판정기 · 기존 테스트 복구) + plan 정정.
 
@@ -1470,6 +1472,28 @@ RED 테스트 1·4 가 `grantedBy` 를 누락했다(T2·T4 와 같은 계열). T
   ADR D-2 말미의 주장이 관측으로 확인됐다 — 그 2건만으로 구성했다면 가드가 **vacuous** 였다.
 - RED 실패 메시지 실측 = `Expecting value to be true but was false` (default 위임 생존). 예측과 일치.
 
+#### T6 — API 표면 (controller 재검증 완료)
+
+**선언 외 파일 0건.** 6 files, 1188 insertions = **files 5**(아래 D 로 확장) + plan.
+
+**controller 재검증 실측.** `GlobalPermissionGrantControllerTest` = `tests="13" failures="0"` · `GlobalPermissionGrantServiceTest` = `tests="10" failures="0"`. T4 회귀 동반 확인(스키마 3 · 리포지토리 8) — **PR-1 신규 4클래스 합계 34건 전량 PASS**. `hasRole` grep = **실제 게이트 0건**(KDoc 경고문에만 등장 — PAT 경로 보존 확인). **모듈 전체 = 259 클래스 · `tests=2409 failures=0`** (T5 의 2386 + 신규 23 = 정확히 일치).
+
+**🛑 T6 이 처리한 결함 4건** (controller 지시 2 + T6 자체 발견 2).
+
+- **A 개수 자기모순** (controller 선발견) — 목록은 7 + "D6 신설 3건" = **10** 인데 검증 줄이 `7/7` 이었다. **그런데 10 도 최소치가 아니었다** — T6 이 개수를 버리고 **계약을 전수 열거하니 13(컨트롤러) + 10(서비스) = 23**. [[spec-stated-count-becomes-blindfold]] 가 또 맞았다.
+- **B `grant(...)` 시그니처** (controller 선발견) — 4연속 재발 계열. 착수 시 실측해 `grantedBy = actorId` 명시 전달. 기본값 추가 안 함.
+- **🛑 C 무가드 계약 신설** (T6 발견) — **ADR D-5 가 *"삭제 행 0 이면 404 — 조용히 성공으로 만들지 않는다"* 를 못박았고 T4 리포지토리는 그 목적 하나로 `Boolean` 을 반환하는데, 10건 중 `revoke 는 204` 만 있어 반환값을 버려도 전부 초록이었다.** 게다가 지정된 예외 3종으로는 이 상태를 **표현할 수조차 없었다**(`GranteeNotFoundException` 은 grantee 축이지 grant 행 축이 아니다) → `GrantNotFoundException` 신설, sealed **4종**.
+- **🛑 D files 확장 1건** (T6 발견, 보고 필수 사항) — **컨트롤러 슬라이스는 서비스를 mock 한다**(선례 `UserGroupControllerTest:138`). 즉 예외를 mock 이 던져 **서비스 로직이 한 줄도 안 돈다** — **ADR D-4 의 grantee 존재 검증(= FK 생략의 근거 그 자체)** · D-1 permission 선검증 · DuplicateKey→409 변환이 **전부 무가드**였다. 존재 검증을 통째로 지워도 13건 전부 초록. 모듈 관례가 답을 정해 뒀다(`UserGroupService`/`ServiceTest`/`ControllerTest` 3종 세트) → `GlobalPermissionGrantServiceTest.kt` 신설, files 5개로 정정.
+
+**mutation 실증** (기준선 13/13 PASS 선확인 → 복원 `git diff --stat` 빈 출력).
+
+| 주입 | 결과 |
+|---|---|
+| `@PreAuthorize("hasRole('SYSTEM_ADMIN')")` 로 교체 | `failures="12"` — PAT 양성 `201→403` 포함 |
+| `resolveActorId` 의 PAT 가지 제거 | **`failures="1"` — PAT 양성 단독 사망(`201→401`)** |
+
+> **⚠️ plan 941-945행의 근거 서술이 부정확했다.** *"JWT 테스트만 있으면 전부 초록"* 은 **JWT 테스트가 `ROLE_SYSTEM_ADMIN` authority 를 달고 있을 때만** 참이다(`AuthAuditLogAdminControllerTest:107-108` 이 그 형태). T6 의 JWT 테스트는 authority 없는 맨 `jwt()` 라 같이 죽는다. 그래서 **mutation 2 로 격리**해, PAT 양성이 **유일하게** 잠그는 축(`SecurityContextHolder` principal(String) 가지 = 실 `PatAuthenticationFilter` 경로)을 `failures="1"` 로 실증했다. **D4 의 근거는 주장이 아니라 관측이 됐다.**
+
 ### ★ wave 2~6 이 물려받을 실측 사실 (다시 발견하지 말 것)
 
 | # | 사실 | 출처 |
@@ -1493,11 +1517,18 @@ RED 테스트 1·4 가 `grantedBy` 를 누락했다(T2·T4 와 같은 계열). T
 | 16 | **`@JdbcTest` 롤백만으로 격리 충분** — `@BeforeEach` DELETE 불요. `list()` 의 `singleElement()` 가 롤백에 기대지만 격리가 깨지면 **fail 하는 방향**이라 안전하다. 픽스처는 매번 랜덤 UUID | T4 |
 | 17 | **`granted_by`·`grantee_id` 엔 FK 가 없어 users 행 없이도 INSERT 된다**(ADR D-4). 단 `group_memberships.user_id` 엔 V015 FK 가 있어 **GROUP 시나리오엔 실 users 행이 필수** | T4 |
 | 18 | **detekt/ktlint 커스텀 설정 없음** — 루트 `.editorconfig` 도 detekt.yml 도 없다(기본값). 신규 파일은 라인 ≤120 으로 쓰면 안전 | T4 |
+| 19 | 🛑 **슬라이스 mock `@Bean` 은 테스트 메서드 간 공유돼 호출 기록이 누적된다.** `@BeforeEach clearMocks` 없이는 `verify(exactly=0)` 이 **타 테스트 호출로 실패**하고, 더 위험하게 `verify(exactly=1)` 이 **누적 호출로 가짜 통과**해 판별력을 잃는다. T6 의 GREEN 1차가 정확히 이걸로 2건 실패했다(선례 `PersonalAccessTokenControllerTest:106`). `UserGroupControllerTest` 엔 이게 없어 `verify` 를 못 쓴다 | T6 |
+| 20 | **PAT 양성 테스트의 정본 형태** — `jwt().authorities(ROLE_PAT)`(`AuthAuditLogAdminControllerTest:112`)는 principal 이 `Jwt` 라 **PAT 가지를 안 탄다**. 실 경로는 `personalAccessTokenService.verify(RAW_PAT)` mock + `Authorization: Bearer pat_...` 헤더(`UserGroupControllerTest:605` 형태). **부수 효과** — `Bearer pat_` 는 `patBearerMatcher` 로 **CSRF-ignore** 라 POST 에도 `csrf()` 불요 | T6 |
+| 21 | ⚠️ **모듈 전체 suite 는 flaky** — `MfaBackupCodeLoginIntegrationTest` 3건이 `UnknownContentTypeException(application/octet-stream)` 로 실패했으나 **단독 3/3 PASS + 풀 suite 재실행 BUILD SUCCESSFUL** 로 비결정성 확정([[concurrent-testcontainers-suite-flaky]]). T6 변경과 무관. **1회 실패로 BLOCKED 판단하지 말 것 — 단독 재실행으로 확정** | T6 |
+| 22 | **ktlint 는 KDoc 뒤 standalone `//` 를 거부**한다("an EOL comment may not be preceded by a KDoc"). `@Suppress` 사유는 KDoc 본문 + annotation EOL 요약으로 | T6 |
+| 23 | **권한코드 추가 시 3곳 동시 갱신** — SDD 12 · V036 CHECK · `GlobalPermissionGrantService.ALLOWED_GLOBAL_PERMISSIONS`(ADR 잔여 위험 4). 서비스 KDoc 에 명시됨 | T6 |
+| 24 | **PR-2 인계** — `POST /projects` 의 `CREATE_PROJECT` 판정은 **`SystemPermissionResolver.hasGlobalPermission` 으로만** 하라. `GlobalPermissionGrantRepository.hasGrant` 직접 호출은 **SYSTEM_ADMIN 이 탈락**한다(ADR D-2 뒷항 소실) | T6 |
 
 ### ★ wave 2~6 에 인계된 주의 (서브에이전트 보고)
 
 - **T5 (mockk) → ✅ 확인 완료, T6 에 이월.** T5 의 전 모듈 grep 결과 기존 `SystemPermissionResolver` mockk 4곳(Whoami/UserGroup/IssueSecurityScheme/WhoamiOoo)은 **스텁 추가 없이 통과**했다 — T5 는 판정기만 바꾸고 컨트롤러를 늘리지 않아 그 슬라이스들의 호출 경로가 변하지 않았기 때문이다(모듈 전체 2386 tests / 0 failures 로 확증). **경고 자체는 T6 에 유효하다** — T6 이 `hasGlobalPermission` 을 호출하는 컨트롤러를 추가하면 `mockk()`(non-relaxed)이 default 메서드도 인터셉트하므로 그 4곳에 스텁이 필요해질 수 있다. **T6 은 자기 컨트롤러 슬라이스뿐 아니라 이 4곳도 함께 돌릴 것**(모듈 전체 실행이 확실하다).
 - **T2 (db-engineer).** V036 SQL 주석의 "고아 행" 문구는 **ADR D-4 문안과 일치해야 한다**(`140cf17fe` 로 plan 정정 완료 — GROUP 은 CASCADE 로 탈락 / USER 는 영구 잔존). ADR 을 Read 해서 대조할 것.
+- **🛑 T9 — `TODOS.md` DRY 부채 기록은 T9 몫이다 (T6 이 실측 인계).** T6 프롬프트가 `TODOS.md` 기록을 지시했으나 T6 은 **기록하지 않았고 그 판단이 옳다** — plan 354행이 `T9 가 TODOS.md 에 기록` 으로 명시하고, 파일이 아직 없으며 T6 files 에도 없다(선언 외 파일 생성 회피). 대신 **실측을 남겼다** — D19 의 13/6/4 는 **pre-T6 기준으로 정확했고**, T6 의 복사 3건으로 각각 **`FORBIDDEN|UNAUTHORIZED_RESPONSE` 14파일 · `resolveActorId` 7 · `requireSystemAdmin` 5** 가 됐다. **T9 는 이 숫자로 기록하라.**
 - **T9 (문서 동기화) 판단 대상 2건.** (a) `DATA.md §3` 하드삭제 허용 목록에 `global_permission_grants` 추가가 필요해 보인다 — 다만 hard delete ADR 이 있는 `project_memberships` 도 그 목록에 없어 목록이 exhaustive 가 아닐 수 있다. (b) **무관 drift, 고치지 않는다** — `DATA.md:87` §4.1 표가 identity-access 를 `사용 중 V001~V006` 이라 적었으나 실제는 V035 (글로벌 CLAUDE.md §3 surgical).
 - **T1 산출물 형식 결정 2건.** (a) revoke hard delete 정당화를 D-6 독립이 아니라 **D-5 안에 부여/회수 비대칭으로 편입**했다 — plan 이 지정한 D-1~D-5 번호를 T2 SQL·T5 KDoc 이 인용하므로 번호를 깨지 않기 위함. (b) **변경이력 절을 넣지 않았다** — `docs/decisions/` 106개 · `docs/adr/` 전체에 변경이력 절이 **0건**이라 실제 관례를 따랐다.
 
@@ -1506,10 +1537,11 @@ RED 테스트 1·4 가 `grantedBy` 를 누락했다(T2·T4 와 같은 계열). T
 ```
 wave 2  T2 (db-engineer)        V036 마이그레이션 + 스키마 가드      ✅ 졸업
 wave 3  T4 (security-engineer)  GlobalPermissionGrantRepository      ✅ 졸업
-wave 4  T5 · T6 (security)      prod override · 컨트롤러             ← 여기서 재개
-        ※ 같은 worktree·같은 Gradle 모듈이라 controller 가 T5→T6 순차 dispatch 한다
-          (동시 실행 시 build 디렉토리/ git index 경합 — [[parallel-dispatch-precommit-hook-race]])
-wave 5  T8 (security)           :modules:app 조립 가드   ※ dev postgres(5433) 기동 전제
+wave 4  T5 · T6 (security)      prod override · 컨트롤러             ✅ 졸업 (순차 dispatch)
+wave 5  T8 (security)           :modules:app 조립 가드   ← 여기서 재개
+        ※ dev postgres(5433) 기동 전제 —
+          docker compose -f infra/docker-compose.dev.yml up -d postgres
+        ※ T8 이 고정할 빈 이름 2개 = 인계 사실 #5(ProjectMembershipWriteAdapter) · #14(GlobalPermissionGrantRepository)
 wave 6  T9 (backend-engineer)   전수 동기화 8종 + FR 5개 등록
 그 후    qa-engineer E2E (타입 auth) → verification-before-completion → /bts-codereview
 ```
