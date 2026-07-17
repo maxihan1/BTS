@@ -48,9 +48,12 @@ import java.util.UUID
 /**
  * GlobalPermissionGrantController 슬라이스 테스트 (FR-PM-10 Task 6).
  *
- * 검증 범위 (13).
+ * 검증 범위 (14).
  * - 3 엔드포인트 HTTP 상태 (201/200/204)
- * - SYSTEM_ADMIN 가드 — isSystemAdmin=false → 403 forbidden (부여·목록 양쪽)
+ * - SYSTEM_ADMIN 가드 — isSystemAdmin=false → 403 forbidden (**부여·목록·회수 3 엔드포인트 전부**)
+ *   ※ 초판은 부여·목록만 덮어 회수 가드가 판별력 0 이었다(가드를 지워도 13건 전량 초록).
+ *     codereview 가 mutation 으로 적발 — 가드×핸들러 행렬을 전수 열거하지 않으면 또 뚫린다.
+ * - **응답 6개 필드 전량 고정** — createdAt 포함(ISO-8601 wire format, PR-5/6 Zod 계약)
  * - **403 본문 내부구조 0** — 권한 Guard 예외 message 누출 회귀 방지
  * - **PAT actor 양성 경로** — 아래 §PAT 참조
  * - 미인증 401(필터 체인) / 비-UUID subject 401(resolveActorId 실패 경로)
@@ -194,6 +197,10 @@ class GlobalPermissionGrantControllerTest {
             .andExpect(jsonPath("$.granteeType").value("USER"))
             .andExpect(jsonPath("$.granteeId").value(GRANTEE_ID.toString()))
             .andExpect(jsonPath("$.grantedBy").value(ADMIN_ID.toString()))
+            // 6개 응답 필드 중 createdAt 만 wire format 이 안 잠겨 있었다 (codereview).
+            // ISO-8601 문자열이지 epoch 숫자·배열이 아님을 고정한다 — 같은 BC 선례
+            // TrustedDeviceControllerTest:128 동형. PR-5/6 이 이 형식에 Zod 를 쓴다.
+            .andExpect(jsonPath("$.createdAt").value("2026-07-17T10:00:00Z"))
 
         verify(exactly = 1) { grantService.grant(CREATE_PROJECT, GranteeType.USER, GRANTEE_ID, ADMIN_ID) }
     }
@@ -344,6 +351,24 @@ class GlobalPermissionGrantControllerTest {
         )
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.error").value("grant_not_found"))
+    }
+
+    @Test
+    fun `DELETE grant 비-SYSTEM_ADMIN 403 forbidden`() {
+        // 🛑 세 엔드포인트 중 이것만 가드 테스트가 없었다 (codereview 3중 확인 · mutation 2회 실증).
+        //   위 두 DELETE 테스트는 grantAdmin() 을 깔고 시작해 isSystemAdmin=true 전제이므로,
+        //   컨트롤러의 requireSystemAdmin 을 통째로 지워도 13건이 전부 초록이었다 — 판별력 0.
+        //   셋 중 가장 파괴적인 것이 회수다(hard delete · 복구 불가 · ADR D-5).
+        every { systemPermissionResolver.isSystemAdmin(PLAIN_USER_ID) } returns false
+
+        mockMvc.perform(
+            delete("$BASE/$GRANT_ID").with(jwt().jwt { it.subject(PLAIN_USER_ID.toString()) }),
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.error").value("forbidden"))
+
+        // 판별자 — 가드가 서비스 도달 전에 끊는다. 이 단언이 없으면 가드 제거 시에도 통과한다.
+        verify(exactly = 0) { grantService.revoke(any()) }
     }
 
     // ── ★ PAT actor 양성 경로 (D4 의 근거를 잠근다) ──────────────────────────
