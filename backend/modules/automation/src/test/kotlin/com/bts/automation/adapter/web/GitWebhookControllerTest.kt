@@ -172,8 +172,10 @@ class GitWebhookControllerTest {
         stubGithubWebhook(secret = SECRET)
 
         // 컨트롤러가 레거시 헤더를 아예 읽지 않아야 검증기에 null 이 도달해 거부된다.
+        val legacySignature = sha1Signature(SECRET, GITHUB_BODY)
+
         mockMvc
-            .perform(jsonRequest(GITHUB_BODY).header(HEADER_GITHUB_LEGACY_SIGNATURE, sha1Signature(SECRET, GITHUB_BODY)))
+            .perform(jsonRequest(GITHUB_BODY).header(HEADER_GITHUB_LEGACY_SIGNATURE, legacySignature))
             .andExpect(status().isUnauthorized)
             .andExpect(jsonPath("$.errorCode").value(UNAUTHORIZED_CODE))
 
@@ -227,6 +229,35 @@ class GitWebhookControllerTest {
                 "미존재 토큰 401 과 서명 불일치 401 의 응답 본문이 다르면, 그 차이가 곧 토큰 존재 오라클이다 " +
                     "— 사유 구분은 로그에서만 한다(GitWebhookSignatureVerifier 의 git_webhook_* 이벤트명).",
             ).isEqualTo(withoutTimestamp(badSignatureBody))
+    }
+
+    /**
+     * ★ 원문 토큰이 응답 본문으로 되돌아 나오지 않는다 (DEVELOPMENT.md §1.1-1·§1.1-2).
+     *
+     * Spring 의 `RequestResponseBodyMethodProcessor` 는 [org.springframework.http.ProblemDetail] 의
+     * `instance` 가 `null` 이면 **요청 URI 로 자동으로 채운다**. 이 엔드포인트는 경로 세그먼트에 원문
+     * 토큰을 담으므로, 컨트롤러가 `instance` 를 명시하지 않으면 모든 에러 응답에 평문 토큰이 실린다.
+     * 보낸 사람이야 이미 알지만 그 본문이 응답 로그·프록시 캐시·에러 트래커에 적재되는 순간
+     * **평문 토큰 로깅**이 된다.
+     */
+    @Test
+    fun `모든 에러 응답 본문에 원문 토큰이 실리지 않는다 (ProblemDetail instance 자동 채움 차단)`() {
+        stubGithubWebhook(secret = SECRET)
+        val brokenJson = "{".toByteArray(Charsets.UTF_8)
+
+        val bodies =
+            listOf(
+                // 401 · 413 · 400 — 세 에러 핸들러 모두 problem() 을 거치므로 전부 검사한다.
+                performBody(githubRequest(signature = "sha256=bad")),
+                performBody(jsonRequest(oversizedBody()).header(HEADER_GITHUB_SIGNATURE, "sha256=bad")),
+                performBody(
+                    jsonRequest(brokenJson).header(HEADER_GITHUB_SIGNATURE, githubSignature(SECRET, brokenJson)),
+                ),
+            )
+
+        assertThat(bodies)
+            .describedAs("ProblemDetail.instance 를 비워 두면 Spring 이 원문 토큰이 든 요청 URI 로 채운다")
+            .noneMatch { it.contains(RAW_TOKEN) }
     }
 
     // ── 축 3. 크기·미디어타입·파싱 ─────────────────────────────────────────────────
@@ -344,6 +375,14 @@ class GitWebhookControllerTest {
     private fun verifyNoDbWrite() {
         verify(exactly = 0) { service.handleInboundEvent(any(), any(), any(), any()) }
         verify(exactly = 0) { repository.insertDelivery(any(), any(), any()) }
+    }
+
+    /**
+     * 상태코드를 따지지 않고 응답 본문만 꺼낸다(토큰 누출 검사 — 에러 종류별로 본문을 모을 때 쓴다).
+     * 블록 body 로 둔다 — 표현식 body 로 만들면 ktlint(같은 줄 요구)와 MaxLineLength 가 충돌한다.
+     */
+    private fun performBody(builder: MockHttpServletRequestBuilder): String {
+        return mockMvc.perform(builder).andReturn().response.contentAsString
     }
 
     private fun performUnauthorized(signature: String): String =
