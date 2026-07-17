@@ -280,14 +280,26 @@ SKIPPED**가 되어 **FR-AT-01이 사문화**된다. 그런데 automation BC는 
 ### 5-1. 인바운드 (permitAll)
 ```
 POST /api/v1/webhooks/git/{token}
-  consumes: application/json          ← form-urlencoded 는 415 명시 거부 (§C-3)
+  Content-Type: application/json      ← form-urlencoded 는 415 명시 거부 (§C-3)
   GITHUB → X-Hub-Signature-256: sha256=<hex>, X-GitHub-Event, X-GitHub-Delivery
   GITLAB → X-Gitlab-Token: <plain>,           X-Gitlab-Event,  X-Gitlab-Event-UUID
   → 202 (정상·무시 모두) | 401 | 413 | 415 | 400
 ```
 
+**★ 415 는 `consumes` 로 구현하지 않는다 (PR #278 리뷰 반영).** `consumes` 조건 불일치는 **핸들러 매핑
+단계**에서 예외가 나므로 컨트롤러 `@ExceptionHandler` 가 후보에조차 오르지 않는다(handlerMethod=null).
+결국 `sendError(415)` → ERROR 디스패치(`/error`) → `/error` 는 `anyRequest().authenticated()` → 필터가
+**빈 401 로 덮어쓴다**. 즉 `consumes` 를 쓰면 **prod 응답은 415 가 아니라 401** 이고, 그 401 은 이
+엔드포인트에서 "secret 이 틀렸다"로 읽혀 운영자가 secret 을 돌리며 헤맨다 — 415 를 넣은 목적(진단성)이
+정확히 무너진다. 실측으로 확인했고(`consumes` 를 둔 채 415 핸들러를 추가해도 응답은 401), 그래서
+**미디어타입 판정을 핸들러 메서드 안**(`rejectIfNotJson`)으로 옮겨 컨트롤러가 415 ProblemDetail 을 직접
+응답한다. 판정 술어는 `MediaType.includes` 로 `ConsumesRequestCondition` 과 동일하게 유지한다
+(Content-Type 부재 → 415 포함). 부수효과로 415 가 `/error` 를 타지 않아 토큰 누출 통로가 한 겹 줄어든다.
+
 **★ 401 응답 본문 단일화 (B3-sec 해소).** EC1~EC4·EC9·EC15 **전부 동일 errorCode**
-`GIT_WEBHOOK_UNAUTHORIZED`. 사유 구분은 **로그·메트릭에서만**.
+`AUTOMATION_GIT_WEBHOOK_UNAUTHORIZED`. 사유 구분은 **로그·메트릭에서만**.
+> errorCode 는 automation BC 공통 관례인 `AUTOMATION_` prefix 를 따른다(PR #278 리뷰 — 형제
+> `AutomationWebhookController`·`GitWebhookRegistrationController` 와 동일 규칙).
 > 1회차는 §9-3이 `GIT_WEBHOOK_INVALID_SIGNATURE`를 판별자로 쓰면서 EC9는 "서명 불일치와 반드시 구분"을
 > 요구해 **정면 충돌**했다. 마스터 C-7 원문(`:310`)의 "구분" 대상은 **로그·메트릭**인데 1회차가 그 문맥을
 > 잘라냈다. errorCode가 사유별로 갈리면 **404를 포기하면서까지 막은 존재 오라클이 응답 본문으로 부활**한다.
@@ -357,12 +369,12 @@ CREATE INDEX ix_git_webhook_deliveries_received_at ON git_webhook_deliveries(rec
 
 | ID | 상황 | 기대 |
 |---|---|---|
-| EC1 | 토큰 미존재/소프트삭제 | **401** (`GIT_WEBHOOK_UNAUTHORIZED`) |
+| EC1 | 토큰 미존재/소프트삭제 | **401** (`AUTOMATION_GIT_WEBHOOK_UNAUTHORIZED`) |
 | EC2 | GITHUB 등록인데 `X-Gitlab-Token` 만 | **401**. 폴백 금지 |
 | EC3 | GITLAB 등록인데 `X-Hub-Signature-256` 만 | **401**. 폴백 금지 |
 | EC4 | GitHub 레거시 `X-Hub-Signature`(SHA-1) | **401** (SHA-1 미지원) |
 | EC5 | 본문 > 256KB | **413**, 서명 검증 **이전**, `readNBytes` |
-| EC6 | `Content-Type: x-www-form-urlencoded` | **415** |
+| EC6 | `Content-Type: x-www-form-urlencoded`(또는 Content-Type 부재) | **415** (`AUTOMATION_GIT_WEBHOOK_UNSUPPORTED_MEDIA_TYPE`). ★ `consumes` 금지 — prod 에서 401 로 변질된다(§5-1). 컨트롤러 핸들러가 직접 응답하며, **prod 진실은 T15-8**(실 HTTP)이 못 박는다. MockMvc 는 415 를 보여줘도 prod 를 증명하지 못한다 |
 | EC7 | JSON 파싱 실패 | **400** |
 | EC8 | **등록 시** 암호화 키 미설정 | **500** (운영자 즉시 인지) |
 | EC9 | **검증 시** 복호화 실패 | **401 (동일 errorCode)** + **구분 가능한 ERROR 로그**(id·projectKey만). ★ **메트릭 요구 삭제** — 저장소에 메트릭 인프라가 **없다**(micrometer/MeterRegistry grep 0건, gradle 의존성 0). BTS 관측성은 **구조화 로그 단일 수단**(`SlackEventsController:87,91,153` — `slack_events_signature_rejected` 식 snake_case 이벤트명). 도입은 §1.17 신규 의존성 = 별건. → `git_webhook_decrypt_failed` vs `git_webhook_signature_rejected`로 **로그 이벤트명을 갈라** 운영자 구분 목적 달성 (CEO 리뷰 2A) |
@@ -440,7 +452,11 @@ CREATE INDEX ix_git_webhook_deliveries_received_at ON git_webhook_deliveries(rec
 13. **★ 위반 주입으로 가드 실증** ([[archunit-vacuous-rule-silent-pass]]) — permitAll 목록에서 git 경로를
     빼고 fail 확인 후 되돌림. **automation 경로에 대해서도 별도 수행**
 14. **secret 검증** — 등록 시 blank/15자 거부 + 검증 시 복호화 blank → 401
-15. **EC5 413 실서블릿** (`TestRestTemplate`)
+15. **EC5 413 실서블릿** — T15-9(Content-Length 선언) + **T15-10(chunked)**. ★ **chunked 가 핵심**이다 —
+    `readBoundedBody` 는 ①Content-Length 사전검사 ②`readNBytes` 상한읽기의 이중 방어인데, MockMvc 는 본문에서
+    Content-Length 를 **파생**시켜 항상 ①만 태운다. 즉 MockMvc 413 테스트를 아무리 늘려도 ②는 실행되지 않는다
+    (`readNBytes`→`readAllBytes` 뮤테이션이 전 스위트 초록이던 이유 — 실측). ②는 헤더 위조·누락 시의 **유일한
+    방어선**이므로 `Content-Length` 없는 chunked 전송(`BodyPublishers.ofInputStream`)이 유일한 판별자다 (PR #278 리뷰)
 
 **회귀**
 

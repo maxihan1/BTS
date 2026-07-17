@@ -1,21 +1,31 @@
-// GitHub PR 제목/본문에서 "Closes PROJ-42" 형태의 이슈 키 참조를 추출하는 순수 함수 (FR-AT-07 PR-C)
+// Git PR/MR 제목·본문에서 "Closes PROJ-42" 형태의 이슈 키 참조를 추출하는 순수 함수 (FR-AT-07 PR-C)
 
 package com.bts.automation.application
 
 /**
- * GitHub PR 제목/본문 텍스트에서 "Closes/Fixes/Resolves PROJ-42" 형태로 언급된 이슈 키를 추출한다
+ * Git PR/MR 제목·본문 텍스트에서 "Closes/Fixes/Resolves PROJ-42" 형태로 언급된 이슈 키를 추출한다
  * (FR-AT-07 PR-C, Git webhook `PR_MERGED` 트리거 준비 단계).
  *
- * ## 신뢰 경계
- * PR 제목·본문은 신뢰할 수 없는 외부 입력이다. GitHub 웹훅 서명(HMAC)이 증명하는 건 "GitHub이
- * 보냈다"이지 "내용이 믿을 만하다"가 아니다 — BTS 계정이 없는 외부 기여자도 PR을 열고 제목·본문을
+ * ## ★ provider 중립 — GITHUB 전용이 아니다
+ * [GitWebhookService] 의 호출부는 provider 분기 **밖**이라 **GITLAB(Merge Request) 본문도 이 경로를
+ * 그대로 탄다**. GitHub 전용으로 읽고 GitLab 쪽 신뢰도를 높게 가정하면 안 된다(아래 신뢰 경계 참조).
+ *
+ * ## 신뢰 경계 — 입력은 어느 provider 든 신뢰할 수 없다
+ * PR/MR 제목·본문은 신뢰할 수 없는 외부 입력이다. BTS 계정이 없는 외부 기여자도 PR 을 열고 제목·본문을
  * 자유롭게 쓸 수 있다. 따라서 이 객체가 추출한 이슈 키는 **원문 자유 텍스트에서 정규식으로 뽑아낸
- * 값**일 뿐 존재/권한 검증이 끝난 값이 아니다. 프로젝트 스코프(추출된 prefix가 실제 대상
- * projectKey와 일치하는지) 필터링은 이 객체의 책임이 아니라 호출자(후속 Task) 몫이다.
+ * 값**일 뿐 존재/권한 검증이 끝난 값이 아니다. 프로젝트 스코프(추출된 prefix 가 실제 대상
+ * projectKey 와 일치하는지) 필터링은 이 객체의 책임이 아니라 호출자([GitWebhookService]) 몫이다.
+ *
+ * provider 별로 **신뢰도 자체가 다르다** — 같은 값으로 취급하지 말 것
+ * ([com.bts.automation.security.GitWebhookSignatureVerifier] KDoc "GITLAB 은 GITHUB 과 보안 등급이 다르다").
+ * - GITHUB — HMAC 서명이 **본문 무결성**을 보장한다. 즉 "GitHub 이 보낸 그 본문 그대로"까지는 증명된다
+ *   (내용이 참이라는 뜻은 아니다).
+ * - GITLAB — 평문 `X-Gitlab-Token` 만 오고 **본문 무결성 보장이 전혀 없다**. 토큰만 맞으면 본문은
+ *   무엇이든 통과하므로, 여기 들어오는 텍스트의 신뢰도는 GITHUB 보다 **더 낮다**.
  *
  * ## 대상 범위 — 제목 + 본문만 (커밋 메시지 제외)
- * 커밋 메시지까지 스캔하려면 GitHub API로 머지 커밋 목록을 별도 조회해야 한다. 이는 웹훅 동기 처리
- * 예산(NFR-1, 200ms)을 깨므로, 웹훅 payload에 이미 담겨 오는 PR 제목·본문만 스캔한다.
+ * 커밋 메시지까지 스캔하려면 provider API 로 머지 커밋 목록을 별도 조회해야 한다. 이는 웹훅 동기 처리
+ * 예산(NFR-1, 200ms)을 깨므로, 웹훅 payload 에 이미 담겨 오는 PR/MR 제목·본문만 스캔한다.
  *
  * ## 정규식 설계
  * - 키워드(`Close`/`Closes`/`Closed`, `Fix`/`Fixes`/`Fixed`, `Resolve`/`Resolves`/`Resolved`)가
@@ -48,8 +58,8 @@ object PrIssueKeyExtractor {
      * 제목과 본문 양쪽을 스캔하고, 같은 키가 여러 번 언급돼도 중복 없이(첫 등장 순서로) 반환한다.
      * `title`/`body` 는 각각 `null` 이거나 빈 문자열이어도 안전하다(매치 없음으로 수렴).
      *
-     * @param title PR 제목(GitHub webhook payload `pull_request.title`).
-     * @param body PR 본문(`pull_request.body`).
+     * @param title PR/MR 제목(GITHUB `pull_request.title` · GITLAB `object_attributes.title`).
+     * @param body PR/MR 본문(GITHUB `pull_request.body` · GITLAB `object_attributes.description`).
      * @return 추출된 이슈 키 목록(중복 제거). 매치가 없으면 빈 목록.
      */
     fun extract(

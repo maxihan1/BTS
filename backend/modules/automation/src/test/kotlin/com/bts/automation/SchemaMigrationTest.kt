@@ -1,4 +1,4 @@
-// V300~V309 마이그레이션 검증 — automation rules·actions·conditions·executions·git_webhooks + q_automation_execution 큐
+// V300~V310 마이그레이션 검증 — automation rules·actions·conditions·executions·git_webhooks + q_automation_execution 큐
 
 package com.bts.automation
 
@@ -1132,5 +1132,18 @@ class SchemaMigrationTest {
     @Test
     fun `V309 trigger_type 컬럼 COMMENT 는 CHECK 6종으로 재발행되었다`() {
         assertThat(columnComment("automation_rules", "trigger_type")).contains("CHECK 6종")
+    }
+
+    /**
+     * V310 — `rule_executions.trigger_type` COMMENT 도 PR_MERGED 를 포함해야 한다.
+     *
+     * V305 의 COMMENT 는 트리거를 5종만 열거했는데 **PR_MERGED 실행이 이 컬럼에 실제로 적재된다**
+     * (GitWebhookService → 실행 워커 → RuleExecutionRepository). V309 는 `automation_rules` 쪽 동형
+     * 문제만 고치고 이 컬럼을 빠뜨렸다 — 살아있는 DB 객체에 남는 drift 라 운영 진단이 코멘트를 믿으면
+     * PR_MERGED 실행 이력을 "있을 수 없는 값"으로 오판한다.
+     */
+    @Test
+    fun `V310 rule_executions trigger_type 컬럼 COMMENT 에 PR_MERGED 가 포함된다`() {
+        assertThat(columnComment("rule_executions", "trigger_type")).contains("PR_MERGED")
     }
 }

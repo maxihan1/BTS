@@ -677,10 +677,12 @@ longest path = T2 → T6 → T9 → T10 → T12 → T15 (**6 wave**).
 **GREEN**. `AutomationWebhookController:102-116` 동형.
 - **★ `@RequestBody` 금지** — `readNBytes(MAX+1)` + `contentLengthLong` 이중검사
 - **★ `@RequestParam`/`@ModelAttribute` 병용 금지**
-- **★ 401 응답 본문 단일화** (B3-sec) — `GIT_WEBHOOK_UNAUTHORIZED`. **사유 구분은 로그·메트릭만**.
-  errorCode가 갈리면 **404를 포기하며 막은 존재 오라클이 부활**
+- **★ 401 응답 본문 단일화** (B3-sec) — `AUTOMATION_GIT_WEBHOOK_UNAUTHORIZED`. **사유 구분은 로그·메트릭만**.
+  errorCode가 갈리면 **404를 포기하며 막은 존재 오라클이 부활**. prefix 는 BC 공통 관례(PR #278 리뷰)
 - **★ 토큰 조회를 payload 파싱보다 먼저** (G14 — 기존 컨트롤러의 순서 결함 답습 금지)
-- `consumes = APPLICATION_JSON_VALUE` (415 명시 거부)
+- ~~`consumes = APPLICATION_JSON_VALUE`~~ → **핸들러 안에서 Content-Type 검사**(`rejectIfNotJson`).
+  `consumes` 의 415 는 매핑 단계 예외라 컨트롤러 `@ExceptionHandler` 를 못 타고 `/error` 로 가
+  **prod 에서 401 로 변질된다**(실측 — PR #278 리뷰, spec §5-1)
 - EC9 — **ERROR 로그**(id·projectKey만, 평문/키 금지) + 메트릭
 
 **검증**. `./gradlew :modules:automation:test --tests GitWebhookControllerTest`
