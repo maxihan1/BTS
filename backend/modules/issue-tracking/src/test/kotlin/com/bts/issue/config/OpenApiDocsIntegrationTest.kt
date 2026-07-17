@@ -2,13 +2,8 @@
 
 package com.bts.issue.config
 
+import com.bts.issue.CrossBcPortTestConfig
 import com.bts.issue.IssueTrackingApplication
-import com.bts.shared.membership.ProjectMembershipWritePort
-import com.bts.shared.user.UserLookupPort
-import com.bts.shared.workflow.WorkflowKeyResolver
-import com.bts.shared.workflow.WorkflowStateCatalog
-import com.bts.shared.workflow.WorkflowTransitionPort
-import com.bts.workflow.scheme.application.port.IssueTypeUsagePort
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.assertj.core.api.Assertions.assertThat
@@ -16,7 +11,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.test.mock.mockito.MockBean
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
@@ -47,34 +41,16 @@ import org.testcontainers.utility.DockerImageName
  * 이 모듈은 spring-boot-starter-web(내장 Tomcat)을 포함하지 않으므로 RANDOM_PORT 부팅이 불가하다.
  * [ProjectRequire2faControllerIntegrationTest] 등 기존 통합 테스트와 동일한 MOCK + MockMvc 패턴을 사용한다.
  *
- * ## MockBean 이유
+ * ## 왜 [CrossBcPortTestConfig] 가 필요한가
  * 다른 BC (project-workflow, identity-access) 의 port 구현체가 issue-tracking 단독 부팅 시 부재.
  * [com.bts.issue.IssueTrackingApplicationContextTest] 와 동일한 stub 패턴 사용.
  */
 @SpringBootTest(
-    classes = [IssueTrackingApplication::class],
+    classes = [IssueTrackingApplication::class, CrossBcPortTestConfig::class],
     webEnvironment = SpringBootTest.WebEnvironment.MOCK,
 )
 @ActiveProfiles("test")
 class OpenApiDocsIntegrationTest {
-    @MockBean
-    lateinit var workflowTransitionPort: WorkflowTransitionPort
-
-    @MockBean
-    lateinit var workflowKeyResolver: WorkflowKeyResolver
-
-    @MockBean
-    lateinit var workflowStateCatalog: WorkflowStateCatalog
-
-    @MockBean
-    lateinit var userLookupPort: UserLookupPort
-
-    @MockBean
-    lateinit var issueTypeUsagePort: IssueTypeUsagePort
-
-    @MockBean
-    lateinit var membershipWritePort: ProjectMembershipWritePort
-
     @Autowired
     private lateinit var webApplicationContext: WebApplicationContext
 

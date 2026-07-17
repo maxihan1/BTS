@@ -2,13 +2,8 @@
 
 package com.bts.issue.project.web
 
+import com.bts.issue.CrossBcPortTestConfig
 import com.bts.issue.IssueTrackingApplication
-import com.bts.shared.membership.ProjectMembershipWritePort
-import com.bts.shared.user.UserLookupPort
-import com.bts.shared.workflow.WorkflowKeyResolver
-import com.bts.shared.workflow.WorkflowStateCatalog
-import com.bts.shared.workflow.WorkflowTransitionPort
-import com.bts.workflow.scheme.application.port.IssueTypeUsagePort
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.assertj.core.api.Assertions.assertThat
@@ -18,7 +13,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.test.mock.mockito.MockBean
 import org.springframework.http.MediaType
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
@@ -65,30 +59,13 @@ import java.util.UUID
     classes = [
         IssueTrackingApplication::class,
         Require2faTestPermissionConfig::class,
+        CrossBcPortTestConfig::class,
     ],
     webEnvironment = SpringBootTest.WebEnvironment.MOCK,
 )
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ProjectRequire2faControllerIntegrationTest {
-    @MockBean
-    lateinit var workflowTransitionPort: WorkflowTransitionPort
-
-    @MockBean
-    lateinit var workflowKeyResolver: WorkflowKeyResolver
-
-    @MockBean
-    lateinit var workflowStateCatalog: WorkflowStateCatalog
-
-    @MockBean
-    lateinit var userLookupPort: UserLookupPort
-
-    @MockBean
-    lateinit var issueTypeUsagePort: IssueTypeUsagePort
-
-    @MockBean
-    lateinit var membershipWritePort: ProjectMembershipWritePort
-
     @Autowired
     lateinit var webApplicationContext: WebApplicationContext
 
