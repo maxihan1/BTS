@@ -252,8 +252,8 @@ describe('automationRuleResponseSchema — conflicts 부재 (GET 단건, FR-AT-0
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('triggerTypeSchema', () => {
-  it('5종 트리거 타입 모두 파싱 성공한다', () => {
-    const validTypes = ['ISSUE_CREATED', 'ISSUE_UPDATED', 'ISSUE_COMMENTED', 'SCHEDULED', 'WEBHOOK']
+  it('6종 트리거 타입 모두 파싱 성공한다', () => {
+    const validTypes = ['ISSUE_CREATED', 'ISSUE_UPDATED', 'ISSUE_COMMENTED', 'SCHEDULED', 'WEBHOOK', 'PR_MERGED']
     for (const type of validTypes) {
       expect(() => triggerTypeSchema.parse(type)).not.toThrow()
     }
@@ -343,6 +343,16 @@ describe('serializeTriggerConfig', () => {
       JSON.stringify({ cron: '0 0 9 * * *' }),
     )
   })
+
+  it('PR_MERGED는 targetBranch가 있으면 {"targetBranch":"..."}로 직렬화한다', () => {
+    expect(serializeTriggerConfig('PR_MERGED', { targetBranch: 'main' })).toBe(
+      JSON.stringify({ targetBranch: 'main' }),
+    )
+  })
+
+  it('PR_MERGED는 targetBranch가 없으면 빈 객체를 반환한다(미지정=전체 브랜치)', () => {
+    expect(serializeTriggerConfig('PR_MERGED')).toBe('{}')
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -373,6 +383,24 @@ describe('serializeTriggerConfig — baseConfigJson 병합', () => {
       'ISSUE_UPDATED',
       { fields: [] },
       JSON.stringify({ fields: ['old'], extraKey: 'keep' }),
+    )
+    expect(JSON.parse(result)).toEqual({ extraKey: 'keep' })
+  })
+
+  it('PR_MERGED: base의 targetBranch는 새 값으로 덮어쓰고 미지 키(extraKey)는 보존한다', () => {
+    const result = serializeTriggerConfig(
+      'PR_MERGED',
+      { targetBranch: 'main' },
+      JSON.stringify({ targetBranch: 'develop', extraKey: 'keep' }),
+    )
+    expect(JSON.parse(result)).toEqual({ targetBranch: 'main', extraKey: 'keep' })
+  })
+
+  it('PR_MERGED: targetBranch가 없어도 base의 미지 키(extraKey)는 보존한다', () => {
+    const result = serializeTriggerConfig(
+      'PR_MERGED',
+      {},
+      JSON.stringify({ targetBranch: 'develop', extraKey: 'keep' }),
     )
     expect(JSON.parse(result)).toEqual({ extraKey: 'keep' })
   })
