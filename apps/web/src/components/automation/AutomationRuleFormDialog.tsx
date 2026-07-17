@@ -487,7 +487,16 @@ function TriggerConfigFields({
           {...register('targetBranch')}
         />
         <p className="text-xs text-muted-foreground mt-1">{labels.targetBranchDescription}</p>
-        {/* RED 단계 임시 — 구독분만(showNoGitWebhooksWarning 계산은 이미 배선, 렌더는 GREEN에서 켠다) */}
+        {showNoGitWebhooksWarning && (
+          <div
+            role="alert"
+            data-testid="automation-rule-no-git-webhooks-warning"
+            className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950"
+          >
+            <p className="text-xs text-amber-900 dark:text-amber-100">{labels.noGitWebhooksWarning}</p>
+            <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{labels.noGitWebhooksWarningHint}</p>
+          </div>
+        )}
       </div>
     )
   }
