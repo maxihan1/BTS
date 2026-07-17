@@ -293,15 +293,31 @@ class GitWebhookSignatureVerifierTest : DescribeSpec({
             ) shouldBe false
         }
 
-        it("GITHUB — secret 이 빈 문자열이면 빈 키로 계산한 정상 서명도 false") {
-            // 빈 문자열도 HMAC 키로 성립한다. blank 가드가 없으면 secret 이 비었다는 사실만 알면
-            // 누구나 유효한 서명을 만들 수 있다.
+        it("GITHUB — secret 이 공백뿐이면 그 공백 키로 계산한 정상 서명도 false") {
+            // ★ 이것이 GITHUB 쪽 판별자다. 공백 문자열은 HMAC 키로 성립하므로(빈 문자열과 달리 JCE 가
+            // 거부하지 않는다) 공격자가 secret 이 공백임을 알면 유효한 서명을 계산할 수 있다.
+            // blank 가드가 없으면 이 요청은 그대로 통과한다.
+            verifierWithSecret("   ").isValid(
+                webhookId = webhookId,
+                projectKey = projectKey,
+                provider = "GITHUB",
+                secretEncrypted = ciphertext,
+                githubSignatureHeader = githubSignature("   ", body),
+                gitlabTokenHeader = null,
+                rawBody = body,
+            ) shouldBe false
+        }
+
+        it("GITHUB — secret 이 빈 문자열이면 어떤 서명이 와도 false") {
+            // 빈 문자열은 JCE 가 HMAC 키로 거부(IllegalArgumentException: Empty key)하므로 공격자도
+            // 서명을 계산할 수 없다. 그래도 blank 가드가 먼저 끊어 HMAC 계산 자체에 도달하지 않아야 한다
+            // — 도달하면 그 예외가 500 으로 새어 401 계약이 깨진다.
             verifierWithSecret("").isValid(
                 webhookId = webhookId,
                 projectKey = projectKey,
                 provider = "GITHUB",
                 secretEncrypted = ciphertext,
-                githubSignatureHeader = githubSignature("", body),
+                githubSignatureHeader = githubSignature(secret, body),
                 gitlabTokenHeader = null,
                 rawBody = body,
             ) shouldBe false
