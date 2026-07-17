@@ -2,6 +2,7 @@
 
 package com.bts.app
 
+import com.bts.shared.permission.GlobalPermissionCodes
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -82,12 +83,17 @@ class ProjectCreatePermissionProdBootTest : ProdAssemblyHttpTestBase() {
     @BeforeEach
     fun cleanupAndSeed() {
         cleanup()
+        // 비-admin + CREATE_PROJECT grant — 판정식 앞항(hasGrant) 통로.
         seedUser(USER_GRANT_ID, USERNAME_GRANT)
         seedPat(USER_GRANT_ID, RAW_TOKEN_GRANT)
+        seedGrant(USER_GRANT_ID)
+        // 비-admin + grant 없음 — 403 케이스.
         seedUser(USER_NOGRANT_ID, USERNAME_NOGRANT)
         seedPat(USER_NOGRANT_ID, RAW_TOKEN_NOGRANT)
+        // SYSTEM_ADMIN + grant 없음 — 판정식 뒷항(isSystemAdmin) 통로.
         seedUser(USER_ADMIN_ID, USERNAME_ADMIN)
         seedPat(USER_ADMIN_ID, RAW_TOKEN_ADMIN)
+        seedSystemAdmin(USER_ADMIN_ID)
     }
 
     @AfterEach
@@ -179,6 +185,22 @@ class ProjectCreatePermissionProdBootTest : ProdAssemblyHttpTestBase() {
         )
     }
 
+    /** [userId] 에게 CREATE_PROJECT 전역권한을 직접 부여한다 — grant 0건이라 DoD-9 가 필수로 시드한다(S-6). */
+    private fun seedGrant(userId: UUID) {
+        jdbc.update(
+            "INSERT INTO global_permission_grants (permission, grantee_type, grantee_id, granted_by) " +
+                "VALUES (?, 'USER', ?, ?)",
+            GlobalPermissionCodes.CREATE_PROJECT,
+            userId,
+            GRANTED_BY_ID,
+        )
+    }
+
+    /** [userId] 를 SYSTEM_ADMIN 으로 부여한다 — IdentityAccessSystemPermissionResolver.isSystemAdmin 판정 축. */
+    private fun seedSystemAdmin(userId: UUID) {
+        jdbc.update("INSERT INTO system_role_assignments (user_id, role) VALUES (?, 'SYSTEM_ADMIN')", userId)
+    }
+
     /**
      * 이 테스트가 심은 데이터만 지운다. users 삭제가 PAT·system_role_assignments·project_memberships 를
      * ON DELETE CASCADE 로 함께 지운다(각 V006/V012/V007). grant 는 FK 가 없어(다형 참조) 명시 삭제한다.
@@ -228,6 +250,9 @@ class ProjectCreatePermissionProdBootTest : ProdAssemblyHttpTestBase() {
 
         /** SYSTEM_ADMIN(grant 없이 201). */
         val USER_ADMIN_ID: UUID = UUID.fromString("33333333-3333-4333-8333-333333333333")
+
+        /** grant 부여자(감사 흔적) — global_permission_grants.granted_by NOT NULL, FK 없음이라 임의 UUID 가능. */
+        val GRANTED_BY_ID: UUID = UUID.fromString("99999999-9999-4999-8999-999999999999")
 
         const val USERNAME_GRANT = "pjpr2-dod9-nonadmin-grant"
         const val USERNAME_NOGRANT = "pjpr2-dod9-nonadmin-nogrant"
