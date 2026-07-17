@@ -42,7 +42,7 @@ AIG의 "자금 손실 5원칙"과 동일 패턴. 위반 시 즉시 PR BLOCKER.
 ### 적용 대상
 
 - `issues`, `comments`, `projects`, `users` — 모두 `deleted_at TIMESTAMPTZ NULL`
-- jOOQ 기본 쿼리는 `deleted_at IS NULL` 필터 자동 첨부 (`SoftDeleteFilter` 래퍼)
+- **자동 필터 없음** — `deleted_at IS NULL` 조건은 repository마다 쿼리에 수동으로 붙인다(공통 `SoftDeleteFilter` 래퍼는 존재하지 않음, `.kt` grep 히트 0). 새 쿼리/술어를 작성할 때 빠뜨리면 삭제된 행이 그대로 노출된다 — 아카이브·소프트삭제 술어를 설계할 때 이 문장을 "자동 처리됨"으로 오독하지 말 것
 
 ### 하드 삭제 허용 영역 (예외)
 
@@ -54,6 +54,7 @@ AIG의 "자금 손실 5원칙"과 동일 패턴. 위반 시 즉시 PR BLOCKER.
 - **저장된 필터** (`saved_filters`) — 필터 삭제 시 행 즉시 제거. 외부 영구 인용 약함(이슈 키와 다름). `deleted_at` 컬럼 없음. ADR `2026-06-26-fr-sr-03-saved-filters` (FR-SR-03, Maxi 확정)
 - **대시보드 공유 토큰** (`dashboard_share_tokens`) — 공유 링크 취소(revoke) 시 행 즉시 제거. 세션/refresh_token/PAT와 동일한 임시 자격증명(ephemeral credential)이며 복구는 재발급으로 대체. `deleted_at` 컬럼 없음. ADR `2026-07-02-fr-db-03-dashboard-share` (FR-DB-03, Maxi 확정)
 - **단축키 커스터마이즈** (`user_keymap`) — 기본값 복원 시 override 행 즉시 제거(replace-all PATCH의 `DELETE ... WHERE user_id`). 개인 설정 토글로 복구 가치 낮음(favorites와 동일 성격), 프론트 기본 키맵으로 언제든 재구성. `deleted_at` 컬럼 없음. ADR `2026-07-08-fr-pf-03-keymap-customize` (FR-PF-03, Maxi 확정)
+- **전역 권한 부여** (`global_permission_grants`) — 회수(revoke) 시 행 즉시 제거. 외부 영구 인용 없음(이슈 키와 다름 — Slack·이메일·외부 문서가 grant `id`를 참조하지 않는다), 재부여는 새 행으로 충분. 소프트 삭제로 남기면 `UNIQUE (permission, grantee_type, grantee_id)`에 부분 인덱스 조건이 붙어 멱등성 근거가 복잡해진다. 삭제 행 수 0이면 404로 거부한다(조용한 성공 금지). `deleted_at` 컬럼 없음. ADR `2026-07-17-global-permission-grants` (FR-PM-10, Maxi 확정)
 
 ### 영구 삭제 (GDPR 등 법적 요청)
 

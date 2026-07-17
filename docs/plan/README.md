@@ -103,8 +103,8 @@ identity-access  ─┐
 
 | BC | 파일 | FR 수 | 기술 검증 (PoC) | 진척 |
 |---|---|---|---|---|
-| identity-access | [product/identity-access.md](product/identity-access.md) | 24 (AU 10 + MF 5 + PM 9) | AuthN Provider + Keycloak | ☐ |
-| issue-tracking | [product/issue-tracking.md](product/issue-tracking.md) | 31 (IS 10 + CM 4 + VR 4 + AC 2 + MN 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2) | (없음 — pgmq 이벤트 의존) | ☐ |
+| identity-access | [product/identity-access.md](product/identity-access.md) | 25 (AU 10 + MF 5 + PM 10) | AuthN Provider + Keycloak | ☐ |
+| issue-tracking | [product/issue-tracking.md](product/issue-tracking.md) | 35 (IS 10 + CM 4 + VR 4 + AC 2 + MN 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2 + PJ 4) | (없음 — pgmq 이벤트 의존) | ☐ |
 | project-workflow | [product/project-workflow.md](product/project-workflow.md) | 3 (WF 3) | 워크플로우 FSM + pgmq 트랜잭션 | ☐ |
 | agile-planning | [product/agile-planning.md](product/agile-planning.md) | 14 (BD 3 + BL 2 + EP 2 + TL 3 + TT 2 + PL 2) | LexoRank + @dnd-kit 1K + Gantt 비교 | ☐ |
 | automation | [product/automation.md](product/automation.md) | 7 (AT 7) | (없음) | ☐ |
@@ -114,11 +114,11 @@ identity-access  ─┐
 | search-export-import | [product/search-export-import.md](product/search-export-import.md) | 12 (SR 4 + EX 2 + IM 2 + API 4) | AQL 파서 + ANTLR 4 | ☐ |
 | (메타) | (이 README §0~§6) | — | CLAUDE.md/Skills/검토 사이클 — Maxi 관찰 | 진행중 |
 
-**합계**. 123 FR.
+**합계**. 128 FR.
 
 ## §A. 부록
 
-→ [fr-index.md](fr-index.md) — 123 FR 역인덱스 (FR ID → BC → §x.y) + Open Questions.
+→ [fr-index.md](fr-index.md) — 128 FR 역인덱스 (FR ID → BC → §x.y) + Open Questions.
 
 ## §6. NFR 검증 3중 게이트
 
@@ -158,3 +158,4 @@ SDD `02-requirements.md §2.3` 임계를 강제. 3중 게이트로 PR 단위 회
 
 - 2026-05-20. **재편성**. SDD 17장의 Phase 0~4 분할 대신 9개 BC 단위 완제품 계획으로 전환. 기존 `phase-0-poc.md`, `phase-1-mvp.md` 폐기. `product/` 디렉토리 신설.
 - 2026-05-20. **초안**. `docs/plan/` 디렉토리 신설. 117개 FR 전수 매핑. NFR 3중 게이트 정의. `scripts/verify-master-plan.sh` 작성. `CLAUDE.md` 진입 트리 1행 추가.
+- 2026-07-17. **FR-PJ-01~04(issue-tracking) · FR-PM-10(identity-access) 신설**(D15, PR-1 일괄 등록). §1 BC 테이블 두 행 갱신(identity-access 24→25, issue-tracking 31→35). 합계 123→128.

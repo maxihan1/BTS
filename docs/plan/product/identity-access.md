@@ -1,8 +1,8 @@
-<!-- identity-access BC — 인증/2FA/권한 24 FR + AuthN Provider PoC -->
+<!-- identity-access BC — 인증/2FA/권한 25 FR + AuthN Provider PoC -->
 
 # identity-access BC
 
-**소속 FR**. 24개 (AU 10 + MF 5 + PM 9).
+**소속 FR**. 25개 (AU 10 + MF 5 + PM 10).
 **책임**. 사용자/조직/그룹/역할/권한/인증/세션 전체.
 **SDD 참조**. 19장 (인증), 12장 (권한).
 **다른 BC와의 경계**. 모든 BC의 권한 게이트. 사용자 식별·인증·인가의 단일 진실 원천. 다른 BC는 `SecurityContext` 인터페이스로만 접근.
@@ -253,7 +253,7 @@
 
 > **FR-MF-05 D6 프론트/D7 E2E 완료 (2026-06-13, PR #134)**. 신뢰 디바이스 프론트 UI + E2E. 설정 `/settings/mfa`에 신뢰 디바이스 섹션(목록·단건/전체 취소·빈 상태, `WebauthnSection` 동형 **항상 노출**) + 로그인 MFA verify "이 디바이스 신뢰(30일)" **공통 체크박스**(TOTP·백업코드·보안키 **모든 수단**, 부모 `LoginMfaStep` 보관으로 mode 토글 시 보존). `verifyMfa`/`verifyWebauthn` `trustDevice` 인자(하위호환·기본 false), `api/trusted-devices.ts`(sessions.ts 동형 목록/취소·X-XSRF-TOKEN·JWT 전용), MSW cross-handler(verify 신뢰→다음 login `mfa_required` 생략 재현). **eng-review BLOCKER 2 사전적발** — 보안키 verify body는 오케스트레이터(`authenticateWithSecurityKey`)가 아니라 `verifyWebauthn`에 있어 거기 trustDevice 미배선 시 미전송 가짜그린(실경로 body capture 테스트로 차단)·verify raw fetch refreshCallCount=0(auth-pre-session-401-raw-fetch). **E2E가 MSW fixture drift 적발**(expiresAt 누락→Zod parse 실패)→옵션 B(api 타입 import로 drift 원천 차단)+cross-handler 단위 보강. code-review CONCERN 2(중복 테스트 파일 제거·i18n `issueDetailStrings`→`mfaStrings` 통일) 머지 전 정리. 검증 typecheck 0·lint clean·vitest 2613·E2E S1~S6 6/6+회귀 27. **→ FR-MF-05 전체 종료, identity-access(계정 권한) BC 완료.** FR 122/122 무변경(D6/D7 완료가 카운트 불변).
 
-## §4 권한 관리 (FR-PM, 9개)
+## §4 권한 관리 (FR-PM, 10개)
 
 ### §4.1 FR-PM-01 — 프로젝트 행정 (관리자/멤버 관리)
 
@@ -387,6 +387,21 @@
 
 > **FR-PM-09 완료 (2026-06-05, PR #88)**. 전역 사용자 그룹 인프라 — `user_groups`(V015, name 전역 UNIQUE) + `group_memberships`(복합 PK, 두 FK ON DELETE CASCADE) + 불변 도메인 `UserGroup.create`(identity-access 첫 도메인 팩토리, trim/길이 require) + `UserGroupRepository`(raw SQL NamedParameterJdbcTemplate, memberCount 스칼라 서브쿼리, addMember/removeMember 멱등=ON CONFLICT DO NOTHING·RETURNING 회피) + `UserGroupService`(@Transactional, 도메인 우회 금지) + 관리 API 8종(`/api/v1/groups`). **권한 = 기존 `SystemPermissionResolver.isSystemAdmin` 재사용(신규 포트/권한코드 0, role_permissions 시드 무변경 → PermissionSchemaMigrationTest 카운트 비영향)**. 이중 가드(@PreAuthorize isAuthenticated + 핸들러 내 DB isSystemAdmin, @PreAuthorize hasRole 비사용=claim stale/PAT 일관). 미인가 403/미인증 401, prod 통합테스트가 거부 ground-truth(non-prod 마스킹 없음). 검증 — 모듈 전체 test(83 신규)+ktlint+detekt --rerun-tasks 그린, 회귀 0. ADR [2026-06-05-user-groups](../../decisions/2026-06-05-user-groups.md). **범위 밖**: 관리 UI/E2E(D6/D7) 후속, LDAP 그룹 동기화(SDD 19.8.1) 별도 FR, 소비처 결선(FR-PM-06 보안수준 멤버·권한스킴 grants·멘션)은 각 소비 FR. FR-PM-06(이슈 보안 수준)은 이 인프라 위에서 재개 가능.
 
+### §4.10 FR-PM-10 — 전역 권한 부여 (`global_permission_grants`)
+
+**우선순위**. 필수 | **선행**. §4.8 FR-PM-08(SYSTEM_ADMIN) · §4.9 FR-PM-09(사용자 그룹) | **Plan slug**. `identity/global-permission-grants` | **PR**. #277 (PR-1)
+**범위**. 백엔드 인프라만(D1~D5). 관리 화면(D6/D7)은 PR-6.
+
+전역 권한 부여 인프라 — `global_permission_grants`가 SYSTEM_ADMIN 이 아닌 사용자/그룹에 개별 전역 권한(`CREATE_PROJECT`)을 부여한다. issue-tracking BC 의 `POST /projects`(FR-PJ-01)가 이 인프라를 소비한다. FR-PM-08 의 SYSTEM_ADMIN 단일 전역 축을 grant 테이블로 확장. ADR [2026-07-17-global-permission-grants](../../decisions/2026-07-17-global-permission-grants.md).
+
+- [x] D1. 도메인 — `GlobalPermissionGrant`(권한코드 × grantee 다형: GROUP/USER), `SystemPermissionResolver.hasGlobalPermission` default 메서드(= `isSystemAdmin`, 확장 지점 — shared-kernel, ADR D-3) (책임. security-engineer)
+- [x] D2. 명세 — grant/revoke/list API 계약, 판정식(grant OR isSystemAdmin, ADR D-2), `CREATE_PROJECT` 권한코드 DB CHECK + 서비스 400 이중 검증(D17) (책임. security-engineer)
+- [x] D3. 데이터 모델 — `global_permission_grants`(V036, `permission` CHECK IN ('CREATE_PROJECT') · `grantee_type` CHECK GROUP/USER · UNIQUE(permission, grantee_type, grantee_id) · FK 없음(ADR D-4, 다형 참조) · `granted_by` NOT NULL(ADR D-5, 감사 흔적)) (책임. db-engineer)
+- [x] D4. 백엔드 — `GlobalPermissionGrantRepository`(concrete `@Repository`, GROUP 전파 조회) + `IdentityAccessSystemPermissionResolver.hasGlobalPermission` override(grant OR isSystemAdmin) + `GlobalPermissionGrantController`/`Service`(grant/revoke/list, PAT 지원 — D18, sealed 예외 4종) + `ProjectMembershipWritePort`(shared-kernel 포트, FR-PJ-01 소비 예정) (책임. security-engineer)
+- [x] D5. 백엔드 테스트 — 스키마 가드 3건 · Repository 8건(GROUP 전파/그룹탈퇴·중복부여 409) · resolver override 4건(mutation 실증) · 컨트롤러 13건+서비스 10건(PAT 양성 포함) · 조립 가드 2건(:modules:app) — 신규 34건 전량 PASS (책임. security-engineer)
+- [ ] D6. 프론트 UI — 전역 권한 부여/회수 관리 화면 (책임. designer → frontend-engineer) — PR-6 예정
+- [ ] D7. E2E (책임. qa-engineer) — PR-6 예정
+
 ## §NFR identity-access BC 완료 게이트
 
 ### 측정값 기록표
@@ -406,7 +421,7 @@
 
 - [ ] §2 (FR-AU 10개) 모두 `[x]` 마킹
 - [ ] §3 (FR-MF 5개) 모두 `[x]` 마킹
-- [ ] §4 (FR-PM 9개) 모두 `[x]` 마킹
+- [ ] §4 (FR-PM 10개) 모두 `[x]` 마킹
 - [ ] §NFR 측정표 모든 항목 임계 통과
 - [ ] OWASP Top 10 자가 점검 (`docs/adr/<date>-identity-owasp-audit.md`)
 - [ ] CHANGELOG.md 정리 (BC 단위 변경 요약)
