@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.jdbc.core.JdbcTemplate
+import java.io.ByteArrayInputStream
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -152,6 +153,10 @@ class GitWebhookInboundPermitAllTest : ProdAssemblyHttpTestBase() {
 
         assertThat(unknownToken.statusCode()).isEqualTo(HTTP_UNAUTHORIZED)
         assertThat(badSignature.statusCode()).isEqualTo(HTTP_UNAUTHORIZED)
+        // ★ 동치 비교 **전에** 피비교값이 실체임을 확정한다 — 두 본문이 **둘 다 빈 문자열**이어도(= 필터가
+        // 잘라 컨트롤러에 닿지도 못한 경우) 아래 isEqualTo 는 참이 되어 이 테스트가 공허해진다. 형제
+        // 테스트(T15-3)의 존속에 기대지 않고 이 축 안에서 자립적으로 못 박는다.
+        assertThat(unknownToken.body()).contains(ERROR_CODE_UNAUTHORIZED)
         // EC1(미존재 토큰) 과 S2(서명 불일치) 의 본문이 timestamp 를 빼면 **완전히 같아야** 한다.
         // 조금이라도 다르면(errorCode·detail·type·instance 중 하나라도) 그 차이가 곧 "이 토큰이 실재하는가"를
         // 알려주는 오라클이다 — 404 대신 401 을 쓰면서까지 막은 것이 응답 본문으로 부활한다.
@@ -165,6 +170,10 @@ class GitWebhookInboundPermitAllTest : ProdAssemblyHttpTestBase() {
         repeat(UNAUTHENTICATED_ATTEMPTS) {
             val response = post(gitUrl(GIT_RAW_TOKEN), body, jsonHeaders(FORGED_SIGNATURE))
             assertThat(response.statusCode()).isEqualTo(HTTP_UNAUTHORIZED)
+            // ★ 이 단언이 없으면 축이 공허하다 — 필터가 401 로 잘라 **컨트롤러에 닿지도 못하면** 배달행이
+            // 0 인 건 당연하고, "서명 검증 전에는 서비스를 호출하지 않는다"는 계약은 관측조차 되지 않는다.
+            // 컨트롤러가 실제로 서명을 검증하고 거부했음을 본문으로 확정한 뒤에야 아래 0 건이 의미를 갖는다.
+            assertThat(response.body()).contains(ERROR_CODE_UNAUTHORIZED)
         }
 
         // 미인증 요청은 DB 쓰기 0 — 컨트롤러가 서명 검증을 통과하기 **전에는** GitWebhookService 를
@@ -195,14 +204,75 @@ class GitWebhookInboundPermitAllTest : ProdAssemblyHttpTestBase() {
         val response = get(gitUrl(GIT_RAW_TOKEN))
 
         assertThat(response.statusCode()).isEqualTo(HTTP_UNAUTHORIZED)
-        // 필터가 REQUEST 디스패치에서 잘랐다는 증거 — 컨트롤러 ProblemDetail 이 없어야 한다.
         // (permitAll 이 메서드를 고정하지 않고 경로만 열면 GET 이 DispatcherServlet 까지 도달해 405 를 내고,
         // 그 405 는 /error 를 타며 위 T15-6 과 같은 토큰 누출 통로에 올라탄다.)
         assertThat(response.body()).doesNotContain(ERROR_CODE_UNAUTHORIZED)
         assertThat(response.body()).doesNotContain(GIT_RAW_TOKEN)
+        // ★ 위 세 단언만으로는 **공허하다** — 뮤테이션으로 실증했다. 경로만 permitAll 로 열어(메서드 미고정)
+        // GET 이 DispatcherServlet 에 도달하게 만들어도 셋 다 그대로 참이다. 405 역시 /error ERROR 디스패치를
+        // 타는데 /error 는 authenticated 라 필터가 **빈 401** 로 덮어써, 상태코드·본문 어느 쪽도 필터 401 과
+        // 구분되지 않기 때문이다. (`WWW-Authenticate: Bearer` 도 판별자가 못 된다 — 실측 결과 **양쪽 모두**에
+        // 붙는다. /error 디스패치도 같은 BearerTokenAuthenticationEntryPoint 를 타기 때문이다.)
+        //
+        // 유일한 판별자는 `Allow` 응답 헤더다. 405 는 `DefaultHandlerExceptionResolver` 가 sendError 직전에
+        // `Allow: POST` 를 세팅하고, 그 헤더는 ERROR 디스패치의 401 응답에도 **살아남는다**(실측). 즉 이
+        // 헤더의 존재는 "요청이 DispatcherServlet 까지 갔다" = "메서드 고정이 풀렸다"의 증거다.
+        // 필터가 REQUEST 디스패치에서 잘랐다면 매핑 자체가 조회되지 않으므로 이 헤더가 붙을 수 없다.
+        assertThat(response.headers().firstValue(HEADER_ALLOW)).isEmpty
+    }
+
+    @Test
+    fun `form-urlencoded 오설정은 401 이 아니라 415 로 진단 가능하게 거부된다 (T15-8)`() {
+        val response = post(gitUrl(GIT_RAW_TOKEN), "action=closed", mapOf(HEADER_CONTENT_TYPE to CONTENT_TYPE_FORM))
+
+        // ★ prod 진실 — 이 축은 T15-6(토큰 누출)과 **다른 것**을 지킨다. MockMvc 는 415 를 그대로 보여주지만
+        // (`GitWebhookControllerTest` EC6), 실 서블릿에서는 415 가 컨트롤러 @ExceptionHandler 밖이라
+        // sendError → /error ERROR 디스패치로 넘어가고, /error 는 authenticated 라 필터가 **빈 401** 로
+        // 덮어썼다(실측). 이 엔드포인트에서 401 은 "secret 이 틀렸다"로 읽히므로, content type 을 잘못 고른
+        // 운영자가 secret 을 돌리며 헤맨다 — consumes 를 넣은 목적(진단성) 자체가 무너진다.
+        // 컨트롤러가 415 를 **자기 핸들러 안에서** 응답해야만 이 단언이 선다.
+        assertThat(response.statusCode()).isEqualTo(HTTP_UNSUPPORTED_MEDIA_TYPE)
+        assertThat(response.body()).contains(ERROR_CODE_UNSUPPORTED_MEDIA_TYPE)
+        // 415 가 /error 를 아예 타지 않는다는 부수 증명 — Spring Boot 기본 에러 본문의 `path` 필드(요청 URI
+        // 원문 = 토큰 포함)가 나올 통로 자체가 사라진다.
+        assertThat(response.body()).doesNotContain(GIT_RAW_TOKEN)
+        verifyNoDbWrite()
+    }
+
+    @Test
+    fun `Content-Length 를 선언한 초과 본문은 413 으로 거절된다 (T15-9)`() {
+        val response = post(gitUrl(GIT_RAW_TOKEN), oversizedBody(), jsonHeaders(FORGED_SIGNATURE))
+
+        assertThat(response.statusCode()).isEqualTo(HTTP_PAYLOAD_TOO_LARGE)
+        assertThat(response.body()).contains(ERROR_CODE_PAYLOAD_TOO_LARGE)
+        verifyNoDbWrite()
+    }
+
+    @Test
+    fun `Content-Length 없는 chunked 초과 본문도 413 으로 거절된다 (T15-10 · readNBytes 분기)`() {
+        // ★ 이 테스트만이 `readBoundedBody` 의 **두 번째 방어선**을 실행한다.
+        // 1번 분기(Content-Length 사전검사)는 헤더 위조·누락(-1)에 무력하고, 2번 분기(readNBytes 상한읽기)가
+        // 그때의 유일한 방어선이다. 그런데 413 테스트 전량이 MockMvc 였다 — MockMvc 는 본문 바이트에서
+        // Content-Length 를 **파생시켜** 항상 1번 분기만 태우므로, 2번 분기는 여태 한 번도 실행된 적이 없다.
+        // JDK HttpClient 의 ofInputStream 퍼블리셔는 contentLength 를 -1 로 보고해 `Transfer-Encoding: chunked`
+        // 로 전송되므로(Content-Length 헤더 자체가 없음) 서버의 contentLengthLong 이 -1 이 되어 1번 분기를
+        // 통과하고 2번 분기가 실제로 판정한다.
+        val response = chunkedPost(gitUrl(GIT_RAW_TOKEN), oversizedBody(), jsonHeaders(FORGED_SIGNATURE))
+
+        assertThat(response.statusCode()).isEqualTo(HTTP_PAYLOAD_TOO_LARGE)
+        assertThat(response.body()).contains(ERROR_CODE_PAYLOAD_TOO_LARGE)
+        verifyNoDbWrite()
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    /** 미인증·거부 경로가 배달 이력에 흔적을 남기지 않았음을 확인한다(spec §3-8). */
+    private fun verifyNoDbWrite() {
+        assertThat(deliveryCount()).isZero()
+    }
+
+    /** 상한(256KB)을 넘는 본문 — 내용은 JSON 이 아니어도 된다(크기 판정이 파싱보다 먼저다). */
+    private fun oversizedBody(): String = "x".repeat(MAX_PAYLOAD_BYTES + OVERSIZE_MARGIN_BYTES)
 
     /** `git_webhook_deliveries` 중 이 테스트 등록행의 배달 수 — 미인증 요청의 DB 쓰기 0 판정용. */
     private fun deliveryCount(): Int =
@@ -253,6 +323,21 @@ class GitWebhookInboundPermitAllTest : ProdAssemblyHttpTestBase() {
         body: String,
         headers: Map<String, String>,
     ): HttpResponse<String> = exchange(url, headers) { it.POST(HttpRequest.BodyPublishers.ofString(body)) }
+
+    /**
+     * `Content-Length` **없이**(`Transfer-Encoding: chunked`) 본문을 보낸다 — [readBoundedBody] 2번 분기
+     * 전용. [HttpRequest.BodyPublishers.ofInputStream] 은 길이를 미리 알 수 없어 `contentLength()` 를
+     * -1 로 보고하고, 그러면 JDK HttpClient 가 chunked 로 전송한다([HttpRequest.BodyPublishers.ofString]
+     * 은 바이트 길이를 알기 때문에 항상 Content-Length 를 붙여 1번 분기로 흡수된다).
+     */
+    private fun chunkedPost(
+        url: String,
+        body: String,
+        headers: Map<String, String>,
+    ): HttpResponse<String> =
+        exchange(url, headers) {
+            it.POST(HttpRequest.BodyPublishers.ofInputStream { ByteArrayInputStream(body.toByteArray(Charsets.UTF_8)) })
+        }
 
     private fun get(url: String): HttpResponse<String> = exchange(url, emptyMap()) { it.GET() }
 
@@ -312,6 +397,12 @@ class GitWebhookInboundPermitAllTest : ProdAssemblyHttpTestBase() {
         const val HEADER_CONTENT_TYPE = "Content-Type"
         const val CONTENT_TYPE_JSON = "application/json"
         const val CONTENT_TYPE_FORM = "application/x-www-form-urlencoded"
+
+        /**
+         * 405 판별자(T15-7) — `DefaultHandlerExceptionResolver` 가 405 응답에 세팅하는 헤더.
+         * 이 헤더가 붙었다 = 요청이 DispatcherServlet 의 매핑 조회까지 도달했다 = permitAll 메서드 고정이 풀렸다.
+         */
+        const val HEADER_ALLOW = "Allow"
         const val HEADER_GITHUB_SIGNATURE = "X-Hub-Signature-256"
         const val HEADER_GITHUB_EVENT = "X-GitHub-Event"
         const val HEADER_GITHUB_DELIVERY = "X-GitHub-Delivery"
@@ -320,10 +411,28 @@ class GitWebhookInboundPermitAllTest : ProdAssemblyHttpTestBase() {
         const val HMAC_ALGORITHM = "HmacSHA256"
 
         /** `GitWebhookController` 가 EC1~EC4·EC9·EC15 에 **공통**으로 싣는 단일 errorCode(= 컨트롤러 도달 증거). */
-        const val ERROR_CODE_UNAUTHORIZED = "GIT_WEBHOOK_UNAUTHORIZED"
+        const val ERROR_CODE_UNAUTHORIZED = "AUTOMATION_GIT_WEBHOOK_UNAUTHORIZED"
+
+        /** 415(EC6) errorCode — 컨트롤러가 /error 로 넘기지 않고 **직접** 응답했다는 증거. */
+        const val ERROR_CODE_UNSUPPORTED_MEDIA_TYPE = "AUTOMATION_GIT_WEBHOOK_UNSUPPORTED_MEDIA_TYPE"
+
+        /** 413(EC5) errorCode. */
+        const val ERROR_CODE_PAYLOAD_TOO_LARGE = "AUTOMATION_GIT_WEBHOOK_PAYLOAD_TOO_LARGE"
+
+        /** 컨트롤러의 동명 상수와 같은 값 — 초과 본문 생성 기준. */
+        const val MAX_PAYLOAD_BYTES = 256 * 1024
+
+        /**
+         * 상한 초과분. Tomcat 의 `maxSwallowSize`(기본 2MB) 이내여야 한다 — 서버가 본문을 다 읽지 않고
+         * 413 으로 응답할 때 남은 본문을 삼켜(swallow) 커넥션을 살려 두는데, 이 한도를 넘으면 커넥션을
+         * 끊어 클라이언트가 응답 대신 IOException 을 받는다.
+         */
+        const val OVERSIZE_MARGIN_BYTES = 1024
 
         const val HTTP_ACCEPTED = 202
         const val HTTP_UNAUTHORIZED = 401
+        const val HTTP_PAYLOAD_TOO_LARGE = 413
+        const val HTTP_UNSUPPORTED_MEDIA_TYPE = 415
 
         /** 미인증 반복 시도 횟수 — 1회면 "우연히 안 썼다"와 구분이 약하다. */
         const val UNAUTHENTICATED_ATTEMPTS = 3
