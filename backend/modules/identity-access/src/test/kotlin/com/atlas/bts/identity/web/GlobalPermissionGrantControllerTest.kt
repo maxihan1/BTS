@@ -92,7 +92,9 @@ class GlobalPermissionGrantControllerTest {
 
         private val ALLOWED_ORIGINS = listOf("http://localhost:5173")
 
-        private const val GRANT_BODY = """{"permission":"CREATE_PROJECT","granteeType":"USER","granteeId":"22222222-2222-4222-8222-222222222222"}"""
+        /** 표준 부여 요청 바디 — 상수를 보간해 [GRANTEE_ID] 와 갈라지지 않게 한다. */
+        private val GRANT_BODY =
+            """{"permission":"$CREATE_PROJECT","granteeType":"USER","granteeId":"$GRANTEE_ID"}"""
 
         private fun grant(
             granteeType: GranteeType = GranteeType.USER,

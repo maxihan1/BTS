@@ -77,8 +77,12 @@ class GlobalPermissionGrantController(
      *
      * `grantedBy` 는 요청 바디가 아니라 **인증된 actor** 에서 취한다 (ADR D-5).
      *
+     * ReturnCount 억제 — 가드 2겹(403/401)은 각각 즉시 반환해야 한다. 조기 반환을 하나로 접으면 권한
+     * 판정 결과를 변수로 들고 다니다 분기를 놓치는 fail-open 통로가 된다. 거부는 즉시 종료가 안전하다.
+     *
      * @return 201 [GlobalPermissionGrantResponse] 또는 에러 응답(400/401/403/404/409).
      */
+    @Suppress("ReturnCount") // 가드 2겹(403/401) 즉시 반환 — 상세는 KDoc
     @PostMapping
     fun grantPermission(
         @AuthenticationPrincipal jwt: Jwt?,
