@@ -344,13 +344,9 @@ describe('serializeTriggerConfig', () => {
     )
   })
 
-  it('PR_MERGED는 targetBranch가 있으면 {"targetBranch":"..."}로 직렬화한다', () => {
-    expect(serializeTriggerConfig('PR_MERGED', { targetBranch: 'main' })).toBe(
-      JSON.stringify({ targetBranch: 'main' }),
-    )
-  })
-
-  it('PR_MERGED는 targetBranch가 없으면 빈 객체를 반환한다(미지정=전체 브랜치)', () => {
+  // targetBranch 입력은 PR-D 몫이라 폼이 그 값을 넘기지 않는다 — 직렬화도 관여하지 않는다
+  // (serializeTriggerConfig KDoc ★ 참조). 생성 모드는 base 가 없으므로 빈 객체다.
+  it('PR_MERGED는 폼 입력에 관여하지 않고 빈 객체를 반환한다(미지정=전체 브랜치)', () => {
     expect(serializeTriggerConfig('PR_MERGED')).toBe('{}')
   })
 })
@@ -387,22 +383,24 @@ describe('serializeTriggerConfig — baseConfigJson 병합', () => {
     expect(JSON.parse(result)).toEqual({ extraKey: 'keep' })
   })
 
-  it('PR_MERGED: base의 targetBranch는 새 값으로 덮어쓰고 미지 키(extraKey)는 보존한다', () => {
-    const result = serializeTriggerConfig(
-      'PR_MERGED',
-      { targetBranch: 'main' },
-      JSON.stringify({ targetBranch: 'develop', extraKey: 'keep' }),
-    )
-    expect(JSON.parse(result)).toEqual({ targetBranch: 'main', extraKey: 'keep' })
-  })
-
-  it('PR_MERGED: targetBranch가 없어도 base의 미지 키(extraKey)는 보존한다', () => {
+  // ★ targetBranch 는 폼이 관리하지 않는다 — 입력 UI 자체가 PR-D 몫이라 호출부
+  // (AutomationRuleFormDialog:291)는 `{ cron, fields }` 만 넘긴다. 따라서 managed key 로
+  // 제거하면 "아무도 채우지 않는 값을 지우는" 코드가 되어, YAML GitOps(AT-06)로 만든
+  // 브랜치 한정 룰을 폼에서 이름만 고쳐 저장해도 targetBranch 가 유실된다
+  // (= 브랜치 한정 룰이 전 브랜치 발화로 조용히 승격). ISSUE_CREATED/WEBHOOK 과 동일하게
+  // base 를 그대로 보존한다. omit 로직은 PR-D 가 입력 UI 와 함께 도입한다.
+  it('PR_MERGED: 폼이 관리하지 않는 targetBranch 는 편집해도 유실되지 않는다', () => {
     const result = serializeTriggerConfig(
       'PR_MERGED',
       {},
       JSON.stringify({ targetBranch: 'develop', extraKey: 'keep' }),
     )
-    expect(JSON.parse(result)).toEqual({ extraKey: 'keep' })
+    expect(JSON.parse(result)).toEqual({ targetBranch: 'develop', extraKey: 'keep' })
+  })
+
+  it('PR_MERGED: base 가 없으면 빈 객체를 낸다', () => {
+    const result = serializeTriggerConfig('PR_MERGED', {})
+    expect(JSON.parse(result)).toEqual({})
   })
 
   it('base가 잘못된 JSON이면 빈 객체로 안전하게 폴백한다', () => {
