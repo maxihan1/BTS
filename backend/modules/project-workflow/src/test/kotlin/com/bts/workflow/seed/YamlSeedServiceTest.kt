@@ -150,6 +150,12 @@ class YamlSeedServiceTest {
      *
      * `@Order(-1)` 로 기존 `@Order(1)`(첫 YAML 적재 시나리오)보다 앞서 실행되도록 배치해
      * "seedAll() 최초 실행" 조건을 실제로 만족시킨다.
+     *
+     * ### GREEN — 판별자(C2) mutation 실증 결과
+     * `YamlSeedService.seedAll()` 말미의 `mappingRepository.repairDefaultMappings()` 호출을
+     * 프로덕션에서 임시 제거하고 재실행한 결과, 이 테스트는 `default 매핑이 4건이 아님(0)` 으로
+     * 실제 실패했다 (아래 R6-3 도 동일하게 실패). 호출을 복원하면 다시 통과한다 —
+     * 이 테스트가 vacuous(허수) 하지 않고 실제로 그 한 줄에 의존함을 입증한다.
      */
     @Test
     @Order(-1)
@@ -210,6 +216,9 @@ class YamlSeedServiceTest {
      * default 매핑이 4건으로 유지되는지 확인한다. 멱등성의 근거는
      * [SchemeIssueTypeMappingRepository.insertMissingDefaultMapping] 의 `WHERE NOT EXISTS` 분기(T1) —
      * 이미 존재하는 스킴에는 재삽입하지 않는다.
+     *
+     * R6-1 KDoc 의 GREEN — 판별자(C2) mutation 실증 결과 참조 — 같은 mutation 으로 이 테스트도
+     * (백필 자체가 안 되어) `default 매핑이 4건이 아님(0)` 으로 실패함을 확인했다.
      */
     @Test
     @Order(0)
