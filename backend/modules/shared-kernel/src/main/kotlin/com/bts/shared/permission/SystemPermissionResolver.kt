@@ -7,9 +7,12 @@ import java.util.UUID
 /**
  * 전역(시스템) 권한 평가 outbound port — 전 BC 공용.
  *
- * 행위자가 시스템 전역 관리자(SYSTEM_ADMIN)인지 여부만 판정한다.
+ * 행위자가 시스템 전역 관리자(SYSTEM_ADMIN)인지 여부를 판정한다.
  * identity-access BC 가 [com.atlas.bts.identity.permission.IdentityAccessSystemPermissionResolver]
  * 로 adapter 를 제공한다 (FR-PM-08).
+ *
+ * FR-PM-10 에서 [hasGlobalPermission] 이 default 메서드로 확장되어, SYSTEM_ADMIN 여부에 더해
+ * 개별 전역 권한(예 CREATE_PROJECT) 부여까지 판정한다.
  *
  * ## 소비처
  * FR-PM-04(전역 관리자 전용 기능)가 이 포트를 소비하여 시스템 수준 작업 권한을 게이트한다.
