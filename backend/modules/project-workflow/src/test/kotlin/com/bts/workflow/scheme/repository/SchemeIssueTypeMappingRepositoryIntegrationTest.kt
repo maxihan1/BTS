@@ -1,4 +1,4 @@
-// SchemeIssueTypeMappingRepository 통합 테스트 — addMapping / findBySchemeId / findDefaultMapping / findByIssueType / deleteMapping / repairDefaultMappings + partial UNIQUE INDEX 검증
+// SchemeIssueTypeMappingRepository 통합 테스트 — CRUD + repairDefaultMappings(R6/R6-B) + partial UNIQUE INDEX 검증
 
 package com.bts.workflow.scheme.repository
 
@@ -662,9 +662,15 @@ class SchemeIssueTypeMappingRepositoryIntegrationTest {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.prepareStatement("SELECT id FROM workflows WHERE key = ?").use { stmt ->
                 stmt.setString(1, workflowKey)
-                stmt.executeQuery().use { rs -> if (rs.next()) rs.getObject(1) as UUID else null }
+                stmt.executeQuery().use { rs -> extractOptionalUuid(rs) }
             }
         }
+
+    /** ResultSet 의 첫 컬럼을 UUID 로 읽는다. 행이 없으면 null. */
+    private fun extractOptionalUuid(rs: java.sql.ResultSet): UUID? {
+        if (!rs.next()) return null
+        return rs.getObject(1) as UUID
+    }
 
     /** 스킴의 default mapping(issue_type_id IS NULL) 이 존재하면 삭제해 테스트 시작 상태를 초기화한다. */
     private fun clearDefaultMapping(schemeId: Long) {

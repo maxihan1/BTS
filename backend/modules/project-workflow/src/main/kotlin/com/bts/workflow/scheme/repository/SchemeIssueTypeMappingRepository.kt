@@ -35,8 +35,33 @@ import java.util.UUID
  * @property dsl jOOQ DSLContext (SQL을 코드로 안전하게 작성하는 라이브러리의 핵심 진입점).
  */
 @Repository
-@Suppress("PropertyName", "VariableNaming") // jOOQ 필드 상수 — SQL 컬럼명 매칭 (UPPER_SNAKE_CASE). codegen 도입 시 typed table 로 교체 예정.
+@Suppress("PropertyName", "VariableNaming", "TooManyFunctions") // jOOQ 상수명 + repairDefaultMappings 헬퍼 분리로 함수 수 초과.
 class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
+    companion object {
+        /**
+         * 표준 스킴 key → 표준 워크플로우 key 매핑 (V201:126-130 seed 의 CASE 문과 정합).
+         *
+         * [repairDefaultMappings] 이 이 맵을 기준으로 두 가지를 처리한다.
+         * - R6 백필 — default mapping 이 아예 없는 스킴에 이 매핑대로 신규 생성.
+         * - R6-B dangling 수리 — YAML 재시드로 workflow 가 delete/reinsert 되어 UUID 가 바뀐 뒤
+         *   더 이상 존재하지 않는 workflow_id 를 가리키는 default mapping 을 이 매핑의 현재 UUID 로 갱신.
+         *
+         * admin 이 REST 로 설정한 **유효한** default mapping 은 건드리지 않는다(D11 — mapping 은 admin 이
+         * 자유롭게 변경 가능). 즉 무조건 `INSERT ... ON CONFLICT DO UPDATE` 형태의 UPSERT 는 금지 —
+         * 그렇게 하면 admin 이 바꾼 매핑이 매 부팅마다 여기 적힌 시스템 기본값으로 되돌아간다.
+         *
+         * `infra/local/seed-project.sql:57` 관례 — "workflow_id 는 재시드 시 UUID 가 바뀌므로 key 로 조회"
+         * — 를 따른다.
+         */
+        private val DEFAULT_WORKFLOW_KEY_BY_SCHEME_KEY: Map<String, String> =
+            mapOf(
+                "software-scheme" to "software-default",
+                "bug-tracking-scheme" to "bug-tracking",
+                "simple-scheme" to "simple",
+                "kanban-scheme" to "kanban-basic",
+            )
+    }
+
     private val log = LoggerFactory.getLogger(javaClass)
 
     // V004 테이블은 jOOQ codegen 범위(V001 only) 밖 — DSL.table()/DSL.field() 동적 참조 사용.
@@ -55,15 +80,6 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
     private val SCHEME_TABLE = DSL.table("workflow_schemes")
     private val SCHEME_ID = DSL.field("workflow_schemes.id", Long::class.java)
     private val SCHEME_KEY = DSL.field("workflow_schemes.key", String::class.java)
-
-    // 표준 스킴 key → 표준 워크플로우 key 매핑 (V201:126-130 seed CASE 문과 동일).
-    private val defaultWorkflowKeyBySchemeKey =
-        mapOf(
-            "software-scheme" to "software-default",
-            "bug-tracking-scheme" to "bug-tracking",
-            "simple-scheme" to "simple",
-            "kanban-scheme" to "kanban-basic",
-        )
 
     /**
      * 매핑을 저장하고 DB 에서 할당된 id 를 포함한 [SchemeIssueTypeMapping] 을 반환한다.
@@ -309,7 +325,7 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
      */
     @Transactional
     fun repairDefaultMappings() {
-        defaultWorkflowKeyBySchemeKey.forEach { (schemeKey, workflowKey) ->
+        DEFAULT_WORKFLOW_KEY_BY_SCHEME_KEY.forEach { (schemeKey, workflowKey) ->
             val schemeId = findSchemeIdByKey(schemeKey) ?: return@forEach
             val workflowId = findWorkflowIdByKey(workflowKey) ?: return@forEach
 
