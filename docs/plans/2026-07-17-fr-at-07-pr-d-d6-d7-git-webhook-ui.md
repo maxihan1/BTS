@@ -217,9 +217,68 @@ BC 노트는 **수동 영역**(`/bts-domain` §Step 3 — "자동 갱신 안 함
 
 → **게이트 1 안건.** 이 PR에서 glossary를 고칠지, 별도 문서 PR로 뺄지 Maxi 결정.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-17-fr-at-07-pr-d-d6-d7-git-webhook-ui.md](../specs/2026-07-17-fr-at-07-pr-d-d6-d7-git-webhook-ui.md) — **471줄, 3차 개정, 적대적 검증 통과**
+
+**office-hours 대체.** `/bts-spec` §A-3 는 `office-hours` 호출을 지시하나 **스킵**했다 — 메모리
+[[bts-spec-office-hours-mismatch]] 에 근거가 있고, **2026-05-29 Maxi 가 이미 "직접 기술 스펙 작성"으로 결정**했다.
+office-hours 는 YC 아이디어 검증 도구라 "이미 D1~D7 로 정의된 FR"엔 프레임이 안 맞는다. 선례 spec 형식으로 직접 작성.
+`design-consultation` 도 스킵(DESIGN.md 실재). `design-shotgun` 도 스킵 — 토큰 1회 표시 모달의 선례
+(`WebhookTokenModal`)가 이미 있어 변형 4종을 새로 뽑는 건 확립된 패턴에서 이탈한다.
+
+### 핵심 3줄 요약
+
+- **D6.** `/projects/$key/settings/automation` 에 `GitWebhookSection` 을 `AutomationRuleList` 의 **형제 섹션**으로 추가 —
+  등록(provider+secret, Dialog) → **원문 토큰 1회 표시**(origin prepend한 완전 URL·복사·"다시 못 봅니다") → 목록 → 삭제.
+  **재발급 버튼 없음**(백엔드 엔드포인트 0건, 토큰 SHA-256 해시라 복원 불가) — 회전 = 삭제 후 재등록.
+- **별건.** `AutomationRuleFormDialog` 에 `targetBranch` 입력 UI + omit 로직을 **원자 4종**으로 함께 도입.
+- **D7.** E2E + FR-AT-07 완료마킹(automation BC 7/7).
+
+### 스펙이 봉인한 것 (적대적 검증 3라운드)
+
+| # | 항목 | 왜 load-bearing 인가 |
+|---|---|---|
+| **BLOCKER-0** | **`secret` 에 `trim()` 절대 금지** | 백엔드 KDoc(`GitWebhookRegistrationService.kt:180-181`)이 명시 금지 — HMAC 이 바이트열 원본을 쓴다. trim 하면 등록 201 성공·목록 정상인데 **모든 인바운드 서명 영구 실패**, MSW 미검증·E2E 실서명 미태움이라 **prod 에서만** 드러나고 secret 이 응답에 없어 **진단·복구 불가**. **1차 초안 자신이 오염원**이었다(targetBranch 에 trim 5회, secret 엔 침묵) |
+| **B1** | FR1 h2 중복 회귀 | 룰 h2 가 이미 있는데 "도입"을 지시 → Playwright substring 매칭 → **strict mode 위반 → E2E 11단언 즉사** |
+| **B2** | MSW 로컬 `setupServer` 2곳 | 그 2파일은 전역 handlers 를 안 쓰고 `onUnhandledRequest:'error'` → GET unhandled → **통째로 red** |
+| **거짓사실** | "추가 API 호출 0" | `staleTime` 미설정(0)+`refetchOnMount` → **배경 refetch 1회 나감**. 정직하게 정정 |
+| **원자 4종** | `parseTriggerConfig` 포함 | parse 빠지면 나머지 3종이 사고를 **막는 게 아니라 새로 만든다** — 현상유지보다 나쁨 |
+
+### Maxi 확정 (게이트 1 이전)
+
+| ID | 결정 | 근거 |
+|---|---|---|
+| **D1** | BC 게이트 = **선례 답습 + 전사갭 1건만 수정** (옵션 C) | 9개 BC 중 이 게이트 통과한 BC **0개**. slack 6/6 도 미집행 |
+| **D2** | 배치 = **형제 섹션** (신규 라우트 0) | D6 정본은 "페이지"라 하나 선례 3건 전부 in-page + "라우터 변경 0"이 성과. 사이드바 부재라 신규 페이지는 **도달 경로 0** |
+| **D3** | 중복 등록 = **프론트 경고 + 백엔드 가드 후속** | 순수 프론트 원칙 유지하며 최악(살아있는 연동 오삭제, 복구 불가) 차단 |
+| **D4** | PR_MERGED 무음실패 = **경고 표시** | 웹훅 0건이면 룰이 영원히 발화 안 하는데 이력도 비어 원인 도달 불가. 두 요소를 한 화면에 모으는 유일한 PR |
+
+## Brainstorming Check
+
+✅ **통과 (3회 iteration — /bts-spec §B-1 상한 내)**
+
+- **1차** — 초안 298줄 → 적대적 3렌즈(contract-fidelity / completeness / security-ux) → **BLOCKER 4 · CONCERN 5 · SUGGESTION 4**.
+  최중요(secret trim)는 **두 렌즈가 독립 발견**.
+- **2차** — 434줄 → 재검증 3렌즈 → 10항목 SEALED, 그러나 **새 BLOCKER 2 + 거짓사실 1**(전부 **오케스트레이터 지시가 원인**).
+- **3차** — 471줄 → 봉인 확인 2렌즈 → **회귀 0 · 범위 침범 0 · READY**. 잔여 4건은 메인 루프에서 직접 수정.
+
+### ★ 이 단계의 단일 교훈 — 오케스트레이터 지시가 8번 틀렸고 전부 에이전트가 반증했다
+
+| 내 지시 | 실측 |
+|---|---|
+| "targetBranch 3종 원자적으로" | **4종**. 3종만 하면 버그를 **새로 만듦** |
+| "테스트 4개가 초록이면 ③ 누락" | 테스트는 3개, ③ 누락 시 T2 가 빨개짐 → **판별자 자체가 무효** |
+| "handlers.ts 에 등록하면 됨" | 그 지시가 **아무 효력 없는** 테스트 2파일 존재 → 통째로 red |
+| "추가 API 호출 없이 판정" **요구** | `staleTime` 0 이라 **거짓**. 내 요구를 충실히 따른 결과로 **거짓이 스펙에 박힘** |
+| "DESIGN.md 의 amber 토큰" | amber **0건**. DESIGN.md 는 반대를 지시하고 **stale**(PR #11 로그인 폼 범위·다크모드 미지원 선언인데 실제 모달은 `dark:` 사용) |
+| "선례 5블록이 123" | **6곳**. **스펙이 나보다 정확했다** |
+| "모달 복제 4벌" | **33벌**. "자기 눈에 들어온 4벌"이었다 |
+| "PR-C = 인바운드 수신" | 관리 CRUD API 도 함께 실었음 |
+
+**패턴 — 내가 개수를 말할 때마다 틀렸다.** 메모리 [[spec-stated-count-becomes-blindfold]] 가 5연속 재발로 적혀 있는데
+그걸 읽고도 6번째를 만들었다. **유일하게 작동한 방어는 에이전트 프롬프트의 "개수를 믿지 말고 전수 열거하라"** 였다.
+→ 후속 세션 처방. 지시에 숫자를 쓰지 말고 **"전수 열거하라"만** 쓸 것.
 
 ## Plan (← /bts-plan 채움)
 
