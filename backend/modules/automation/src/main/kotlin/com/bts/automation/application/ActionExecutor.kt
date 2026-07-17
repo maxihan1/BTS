@@ -58,6 +58,26 @@ import java.util.UUID
  * 이슈가 필요한 액션인데 이슈 키를 찾을 수 없으면(예: SCHEDULED/WEBHOOK 빈 payload) 포트를 호출하지
  * 않고 즉시 [FAILURE_ISSUE_KEY_MISSING] 실패로 기록한다.
  *
+ * ## 프로젝트 경계 게이트 (FR-AT-07 PR-C) — 조건 게이트보다 먼저
+ * `triggerEvent` 는 인바운드 웹훅(인증 없는 permitAll 경로)으로 외부에서 주입될 수 있는 **신뢰 불가
+ * 입력**이고, 거기서 뽑은 이슈 키가 그대로 [AutomationRule.actorUserId] 권한으로 [IssueMutationPort] 에
+ * 흘러간다. 검증이 없으면 공격자가 `issueKey` 를 임의 프로젝트로 지정해 룰 actor 권한으로 타 프로젝트
+ * 이슈를 변경할 수 있다(폭발 반경 = 룰 actor 권한). 그래서 액션 디스패치 전에 이슈 키가 룰의
+ * [AutomationRule.projectKey] 소속인지 검사하고([isCrossProjectIssueKey]), 아니면
+ * [ActionExecutionStatus.SKIPPED] 로 차단한다. payload 가 자기 자신을 어느 프로젝트라고 신고하든
+ * (`triggerEvent.projectKey`) 그 값은 판정에 쓰지 않는다 — 서버가 보유한 `rule.projectKey` 만 쓴다.
+ *
+ * 이 게이트는 조건 게이트([isConditionUnmet])보다 **먼저** 평가한다. 조건 게이트는 조건이 설정된 룰만
+ * 검사하므로(조건 미설정 룰은 그대로 통과) 경계 검사를 대신할 수 없고, 순서를 뒤집으면 검증되지 않은
+ * 타 프로젝트 키로 [issueSnapshotPort] 를 먼저 호출하게 된다.
+ *
+ * 위치가 [execute] **내부**인 것도 계약이다 — 호출자는 워커
+ * ([com.bts.automation.worker.AutomationExecutionWorker])뿐 아니라 동기 replay
+ * ([com.bts.automation.application.RuleExecutionService.replay])도 있고, replay 는 워커의 루프 가드를
+ * 거치지 않은 채 **저장된** `rule_executions.trigger_event` 를 그대로 재실행한다. 웹훅으로 심어진 오염
+ * triggerEvent 는 이력에 영구 보존되므로, 게이트가 워커에만 있으면 관리자의 replay 로 cross-project
+ * 변경이 재발한다. 세 경로(워커·replay·미래 경로)가 모두 지나는 단일 choke point 여야 한다.
+ *
  * ## 조건 게이트 (FR-AT-03)
  * 룰에 저장된 조건([AutomationConditionRepository.findByRuleId])이 있으면, 액션 디스패치 전에
  * [IssueSnapshotPort] 로 **룰 작성자([AutomationRule.createdBy]) 가시성**으로 갓 조회한 최신 이슈 스냅샷
@@ -112,8 +132,8 @@ class ActionExecutor(
      * @param rule 실행할 자동화 룰(actor·triggerType 포함).
      * @param triggerEvent 발화를 유발한 원본 이벤트 payload(이슈 이벤트/웹훅 본문/빈 객체).
      * @param dryRun true 이면 모든 이슈 변경 커맨드에 dryRun 을 전파한다(실제 커밋·이벤트 발행 없음).
-     * @return 액션별 실행 결과와 집계 상태. 조건 게이트에 막히면 [ActionExecutionStatus.SKIPPED] +
-     *   빈 outcomes(클래스 KDoc "조건 게이트" 참조).
+     * @return 액션별 실행 결과와 집계 상태. 프로젝트 경계 게이트나 조건 게이트에 막히면
+     *   [ActionExecutionStatus.SKIPPED] + 빈 outcomes(클래스 KDoc "프로젝트 경계 게이트"/"조건 게이트" 참조).
      */
     fun execute(
         rule: AutomationRule,
@@ -123,6 +143,10 @@ class ActionExecutor(
         val actions = actionRepository.findByRuleId(rule.id)
         val issueKey = extractIssueKey(triggerEvent)
         return when {
+            isCrossProjectIssueKey(rule.projectKey, issueKey) -> {
+                log.warn(LOG_CROSS_PROJECT_BLOCKED, rule.id, rule.projectKey, issueKey)
+                ActionExecutionResult(ActionExecutionStatus.SKIPPED, emptyList())
+            }
             isConditionUnmet(rule, issueKey) -> {
                 log.info("automation_action_executor_condition_skipped ruleId={} issueKey={}", rule.id, issueKey)
                 ActionExecutionResult(ActionExecutionStatus.SKIPPED, emptyList())
@@ -316,6 +340,14 @@ class ActionExecutor(
         const val FIELD_KEY = "key"
         const val FIELD_ACTOR_ID = "actorId"
 
+        /**
+         * 프로젝트 경계 게이트가 외부 주입 이슈 키를 차단했을 때의 WARN 로그 포맷(클래스 KDoc "프로젝트
+         * 경계 게이트" 참조). 조건 게이트의 통상 skip(INFO)과 달리 신뢰 불가 입력이 룰의 프로젝트 경계를
+         * 넘으려 한 보안 신호이므로 WARN 이다.
+         */
+        const val LOG_CROSS_PROJECT_BLOCKED =
+            "automation_action_executor_cross_project_blocked ruleId={} projectKey={} issueKey={}"
+
         /** 이슈가 필요한 액션인데 triggerEvent 에서 이슈 키를 찾지 못했을 때의 실패 사유. */
         const val FAILURE_ISSUE_KEY_MISSING = "ISSUE_KEY_MISSING"
 
@@ -328,6 +360,36 @@ class ActionExecutor(
         val MAP_TYPE_REF: TypeReference<Map<String, Any?>> = object : TypeReference<Map<String, Any?>>() {}
     }
 }
+
+/**
+ * 이슈 키의 `프로젝트키-번호` 구분자. [isCrossProjectIssueKey] 의 접두 비교가 이 구분자까지 포함해야
+ * `PROJ2-1` 이 `PROJ` 룰을 통과하지 않는다(해당 KDoc 참조).
+ */
+private const val ISSUE_KEY_SEPARATOR = "-"
+
+/**
+ * [issueKey] 가 [projectKey] 프로젝트 소속이 아니면 `true`(경계 위반) — [ActionExecutor] 프로젝트 경계
+ * 게이트의 판정부(클래스 KDoc "프로젝트 경계 게이트" 참조. [ActionExecutor] 클래스 함수 수 제약상
+ * top-level 함수로 분리 — [encodeSetFieldValue] 동형). 판정은 서버가 보유한 [projectKey] 로만 하고,
+ * triggerEvent 가 자기 자신을 어느 프로젝트라고 신고하든 그 값은 쓰지 않는다.
+ *
+ * ## 이슈 키 없음(null)은 위반이 아니다 — 통과시킨다
+ * [com.bts.automation.worker.AutomationScheduleWorker] 는 SCHEDULED 룰을 빈 `{}` payload 로 발행하므로
+ * 이슈 키가 `null` 이고, 이슈를 쓰지 않는 CALL_WEBHOOK 룰도 마찬가지다. `null` 을 위반으로 처리하면 모든
+ * SCHEDULED 룰과 이슈 없는 웹훅 룰이 정지한다(FR-AT-01 사문화). `null` 은 애초에 어떤 프로젝트 경계도
+ * 넘지 않으며, 이슈가 **필요한** 액션은 하류에서 `ISSUE_KEY_MISSING` 으로 이미 실패 처리된다.
+ *
+ * ## 접두 비교에 [ISSUE_KEY_SEPARATOR] 를 포함해야 한다
+ * `issueKey.startsWith(projectKey)` 로 비교하면 `PROJ2-1` 이 `PROJ` 룰을 통과한다 — 이슈 키 접두
+ * 정규식(`^[A-Z][A-Z0-9]{1,9}$`, ADR `2026-05-22-issue-key-prefix-policy`)이 `PROJ` 와 `PROJ2` 를 둘 다
+ * 허용하므로 실재 가능한 조합이다. 구분자까지 포함해 `"PROJ-"` 로 비교해야 정확하다.
+ *
+ * 대소문자는 구분한다 — 불일치는 통과가 아니라 차단으로 수렴하므로 fail-closed 방향이다.
+ */
+private fun isCrossProjectIssueKey(
+    projectKey: String,
+    issueKey: String?,
+): Boolean = issueKey != null && !issueKey.startsWith(projectKey + ISSUE_KEY_SEPARATOR)
 
 /**
  * [value] 가 JSON `null` 이면 필드 해제([SetFieldCommand.value] null 계약), 그 외엔 [objectMapper] 로
