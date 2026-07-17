@@ -62,6 +62,26 @@ abstract class ProdAssemblyHttpTestBase {
          */
         const val TEST_SLACK_SIGNING_SECRET = "test-slack-signing-secret-not-a-real-secret"
 
+        /**
+         * automation BC 암호화 키 — 실 키가 아니다. `AutomationEncryptionConfig` 가
+         * `bts.automation-encryption.key` 로 바인딩해 `automationSecretEncryptor` 빈을 구성한다.
+         *
+         * ## 왜 이 프로퍼티가 있어야 Git 웹훅 202 가 나는가
+         * 키 미설정이어도 빈은 등록되고 **부팅은 통과**한다(그 클래스 KDoc "부팅 안전성"). 대신 실제
+         * 복호화 **호출 시점**에 `IllegalStateException` 이 나고, `GitWebhookSignatureVerifier` 가 그것을
+         * `false` 로 수렴시켜 **모든 요청이 401** 이 된다. 즉 이 프로퍼티가 없으면 유효 서명 202 를
+         * 관측할 수 없고, 하위 클래스의 양성 단언이 통째로 성립하지 않는다
+         * ([[use-time-validated-env-passes-boot-fails-on-use]] 와 같은 기전).
+         */
+        const val TEST_AUTOMATION_ENCRYPTION_KEY = "test-automation-encryption-key-not-a-real-key"
+
+        /**
+         * automation BC 암호화 salt — **반드시 hex 문자열**이어야 한다.
+         * `SecretEncryptor` 가 `Encryptors.stronger(password, hexSalt)` 로 위임하며 그쪽이 hex 디코드를
+         * 하므로, hex 가 아닌 값을 넣으면 부팅이 아니라 첫 복호화에서 터진다(위 키와 동일 기전).
+         */
+        const val TEST_AUTOMATION_ENCRYPTION_SALT = "0123456789abcdef"
+
         @JvmStatic
         @DynamicPropertySource
         fun props(registry: DynamicPropertyRegistry) {
@@ -75,6 +95,8 @@ abstract class ProdAssemblyHttpTestBase {
             registry.add("bts.auth.issuer-uri") { "http://localhost:8080" }
             registry.add("bts.auth.jwt.private-key-pem-path") { pemFile.toAbsolutePath().toString() }
             registry.add("bts.slack.signing-secret") { TEST_SLACK_SIGNING_SECRET }
+            registry.add("bts.automation-encryption.key") { TEST_AUTOMATION_ENCRYPTION_KEY }
+            registry.add("bts.automation-encryption.salt") { TEST_AUTOMATION_ENCRYPTION_SALT }
         }
     }
 }
