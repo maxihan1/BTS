@@ -211,21 +211,26 @@ function omitManagedKeys(base: Record<string, unknown>, keys: readonly string[])
  *   비어있으면 base에서 `fields` 키만 제거한 나머지(base 없으면 `"{}"`).
  * - SCHEDULED — `{"cron":"..."}` 로 직렬화한다(base 병합). cron 형식 자체의 유효성(파싱 가능
  *   여부)은 검증하지 않는다 — 프론트 사전검증은 폼 컴포넌트에서 별도로 수행한다.
- * - PR_MERGED — 폼 입력 무시, base 그대로. **`targetBranch`를 managed key로 제거하지 않는다**
- *   (아래 ★ 참조).
+ * - PR_MERGED — `targetBranch`가 trim 후 비어있지 않으면 `{"targetBranch":"..."}`(base 병합),
+ *   없거나 공백뿐이면 base에서 `targetBranch` 키만 제거한 나머지(base 없으면 `"{}"`) —
+ *   ISSUE_UPDATED `fields`와 동일한 관례(FR-AT-07 PR-D — 입력 UI 도입과 함께 managed key로
+ *   전환, 아래 ★ 참조).
  *
  * `baseConfigJson`(편집 모드에서 백엔드가 내려준 기존 triggerConfig)을 주면 그 JSON을 병합
  * 시작점으로 삼아, 폼이 인지하지 못하는 키(백엔드가 향후 config에 추가할 수 있는 필드)를
- * 보존한다 — 폼이 관리하는 키(cron·fields)만 새 값으로 덮어쓴다. 생성 모드처럼 base를
- * 지정하지 않으면 기존 동작(빈 객체에서 시작) 그대로다.
+ * 보존한다 — 폼이 관리하는 키(cron·fields·targetBranch)만 새 값으로 덮어쓴다. 생성 모드처럼
+ * base를 지정하지 않으면 기존 동작(빈 객체에서 시작) 그대로다.
  *
- * ## ★ PR_MERGED의 `targetBranch`는 managed key가 아니다 (FR-AT-07 PR-C 리뷰)
- * managed key로 제거하려면 폼이 그 값을 **다시 채워 넣어야** 성립하는데, `targetBranch` 입력 UI는
- * PR-D 몫이라 호출부([AutomationRuleFormDialog])는 `{ cron, fields }`만 넘긴다. 그 상태에서 제거만
- * 하면 "아무도 채우지 않는 값을 지우는" 코드가 된다 — YAML GitOps(FR-AT-06)로 만든 브랜치 한정 룰을
- * 폼에서 이름만 고쳐 저장해도 `targetBranch`가 유실돼, **브랜치 한정 룰이 전 브랜치 발화로 조용히
- * 승격**된다(SET_FIX_VERSIONS 룰이면 릴리즈 브랜치만 겨냥한 의도가 전 PR에 적용된다).
- * 따라서 입력 UI가 생기는 PR-D에서 omit 로직과 `targetBranch` 인자를 **함께** 도입한다.
+ * ## ★ PR_MERGED의 `targetBranch` managed key 전환 (FR-AT-07 PR-D)
+ * PR-C 리뷰 당시엔 `targetBranch` 입력 UI가 없어(호출부가 `{cron, fields}`만 넘김) managed key로
+ * 제거하면 "아무도 채우지 않는 값을 지우는" 코드가 되는 문제가 있었다 — 그래서 PR-C는 base를
+ * 그대로 보존하는 fallthrough로 남겨뒀다. PR-D가 입력 UI(`AutomationRuleFormDialog`의
+ * `TriggerConfigFields`)를 도입하면서 폼이 그 값을 채워 넣을 수 있게 됐으므로, 이제
+ * `targetBranch`도 ISSUE_UPDATED `fields`와 동일하게 managed key로 전환한다 — 그래야 사용자가
+ * 입력을 지워 "전 브랜치로 되돌리기"를 할 수 있다. `trim()`은 공백뿐인 값을 그대로 실어 보내면
+ * 백엔드 `TriggerConfig.kt`가 `asText().isBlank()`로 400을 내기 때문에 필요하다(targetBranch
+ * 전용 — 다른 필드에는 trim을 적용하지 않는다. Git 웹훅 `secret`처럼 원본 바이트열을 보존해야
+ * 하는 필드와는 정반대이니 혼동 금지).
  *
  * @param triggerType 직렬화 기준이 되는 트리거 타입.
  * @param config 트리거 타입에 대응하는 구조화 입력. 해당 타입에 쓰이지 않는 필드는 무시된다.
@@ -234,7 +239,7 @@ function omitManagedKeys(base: Record<string, unknown>, keys: readonly string[])
  */
 export function serializeTriggerConfig(
   triggerType: TriggerType,
-  config: { cron?: string; fields?: string[] } = {},
+  config: { cron?: string; fields?: string[]; targetBranch?: string } = {},
   baseConfigJson?: string,
 ): string {
   const base = parseBaseConfig(baseConfigJson)
@@ -247,10 +252,15 @@ export function serializeTriggerConfig(
         ? JSON.stringify({ ...rest, fields: config.fields })
         : JSON.stringify(rest)
     }
+    case 'PR_MERGED': {
+      const rest = omitManagedKeys(base, ['targetBranch'])
+      return config.targetBranch !== undefined && config.targetBranch.trim() !== ''
+        ? JSON.stringify({ ...rest, targetBranch: config.targetBranch })
+        : JSON.stringify(rest)
+    }
     case 'ISSUE_CREATED':
     case 'ISSUE_COMMENTED':
     case 'WEBHOOK':
-    case 'PR_MERGED':
       return JSON.stringify(base)
   }
 }

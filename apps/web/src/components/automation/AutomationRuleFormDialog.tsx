@@ -1,4 +1,4 @@
-// 자동화 룰 생성/수정 Dialog — 트리거 6종 선택 + 트리거별 조건부 필드(cron/fields) 직렬화 (FR-AT-01 D6 Task 6, PR_MERGED는 FR-AT-07 PR-C)
+// 자동화 룰 생성/수정 Dialog — 트리거 6종 선택 + 트리거별 조건부 필드(cron/fields/targetBranch) 직렬화 (FR-AT-01 D6 Task 6, PR_MERGED targetBranch 입력은 FR-AT-07 PR-D)
 // + 액션 리스트(5종, SET_FIX_VERSIONS는 FR-AT-07 PR-B)·실행 주체(actor) 편집 배선, config 비대칭(EC1) 직렬화/역직렬화 (FR-AT-02 D6 Task 6)
 import type { JSX, KeyboardEvent } from 'react'
 import { useState } from 'react'
@@ -52,6 +52,8 @@ const labels = {
   fieldsLabel: '특정 필드 (선택)',
   fieldsDescription: '특정 필드 변경 시만 발화합니다. 비워두면 전체 필드 변경에 반응합니다.',
   fieldsPlaceholder: '필드 키 입력 후 Enter',
+  targetBranchLabel: '대상 브랜치 (선택)',
+  targetBranchDescription: '지정한 브랜치로 병합될 때만 발화합니다. 비워두면 모든 브랜치에 반응합니다.',
   basicSectionLabel: '기본',
   triggerSectionLabel: '트리거',
   actionsSectionLabel: '액션',
@@ -151,27 +153,29 @@ function hasEditingRule(rule: AutomationRule | null | undefined): rule is Automa
 interface ParsedTriggerConfig {
   cron: string
   fields: string[]
+  targetBranch: string
 }
 
 /**
- * 저장된 triggerConfig JSON 문자열을 폼 초기값(cron/fields)으로 역직렬화한다.
+ * 저장된 triggerConfig JSON 문자열을 폼 초기값(cron/fields/targetBranch)으로 역직렬화한다.
  * 파싱 실패 시 콘솔에 에러를 남기고 빈 값으로 폴백한다 — 화면이 깨지지 않도록 한다.
  */
 function parseTriggerConfig(triggerConfig: string): ParsedTriggerConfig {
   try {
     const parsed: unknown = JSON.parse(triggerConfig)
     if (typeof parsed !== 'object' || parsed === null) {
-      return { cron: '', fields: [] }
+      return { cron: '', fields: [], targetBranch: '' }
     }
     const obj = parsed as Record<string, unknown>
     const cron = typeof obj['cron'] === 'string' ? obj['cron'] : ''
     const fields = Array.isArray(obj['fields'])
       ? obj['fields'].filter((field): field is string => typeof field === 'string')
       : []
-    return { cron, fields }
+    const targetBranch = typeof obj['targetBranch'] === 'string' ? obj['targetBranch'] : ''
+    return { cron, fields, targetBranch }
   } catch (error) {
     console.error('automation triggerConfig 파싱 실패', error)
-    return { cron: '', fields: [] }
+    return { cron: '', fields: [], targetBranch: '' }
   }
 }
 
@@ -271,6 +275,18 @@ interface SharedSavePayload {
 }
 
 /**
+ * onValid가 폼에서 읽어 {@link buildSharedSavePayload}로 넘기는 트리거 설정 입력 —
+ * {@link serializeTriggerConfig}의 `config` 인자와 동형이다. cron·targetBranch가 둘 다 string이라
+ * 위치 인자로 넘기면 순서를 바꿔도 타입 에러가 나지 않으므로(eslint `max-params` 룰 없음)
+ * 객체 1개로 묶어 위치 혼동을 원천 차단한다(FR-AT-07 PR-D).
+ */
+interface TriggerFormValues {
+  cron: string
+  fields: string[]
+  targetBranch: string
+}
+
+/**
  * onValid에서 create/update 두 분기가 공통으로 조립하는 필드(트리거설정·액션·실행주체·조건)를
  * 계산한다. 이름·트리거타입(create 전용)·version(update 전용)처럼 body 형태가 갈리는 필드는
  * 호출부(onValid)에서 각각 조립한다 — 이 계산까지 onValid가 도맡으면 함수가 §1 30줄 상한을
@@ -278,8 +294,7 @@ interface SharedSavePayload {
  */
 function buildSharedSavePayload(
   effectiveTriggerType: TriggerType,
-  cron: string,
-  fields: string[],
+  triggerFormValues: TriggerFormValues,
   actions: ActionFormState[],
   conditionTree: ConditionNode,
   actorUserId: string | null,
@@ -288,7 +303,7 @@ function buildSharedSavePayload(
   // 편집 모드는 editingRule.triggerConfig를 병합 시작점으로 넘겨 백엔드 미지 키를 보존한다
   // (코드리뷰 SUGGESTION 2 — 트리거 타입은 편집 모드에서 잠겨 있어 키 집합이 일관된다).
   const baseConfigJson = hasEditingRule(editingRule) ? editingRule.triggerConfig : undefined
-  const triggerConfig = serializeTriggerConfig(effectiveTriggerType, { cron, fields }, baseConfigJson)
+  const triggerConfig = serializeTriggerConfig(effectiveTriggerType, triggerFormValues, baseConfigJson)
   // actorUserId는 사용자가 명시 선택했을 때만(null이 아닐 때만) body에 포함한다 — 생성 모드
   // 기본값은 미설정(백엔드 생성자 폴백), PATCH 미지정은 기존 값 유지 컨벤션이다(FR8).
   const actorPayload = actorUserId !== null ? { actorUserId } : {}
@@ -313,6 +328,9 @@ const formSchema = z
     name: z.string().min(1, '이름을 입력해주세요.'),
     triggerType: triggerTypeSchema,
     cron: z.string(),
+    // 빈 값이 "전 브랜치 발화"라는 정당한 의미를 가지므로 cron 필수 검증(.refine)을 복제하지
+    // 않는다 — 검증 없는 단순 string 통과만 필요하다(FR-AT-07 PR-D).
+    targetBranch: z.string(),
   })
   .refine((values) => values.triggerType !== 'SCHEDULED' || values.cron.trim().length > 0, {
     message: 'cron 표현식을 입력해주세요.',
@@ -432,6 +450,26 @@ function TriggerConfigFields({
     )
   }
 
+  if (triggerType === 'PR_MERGED') {
+    return (
+      <div className="mb-4">
+        <label htmlFor="automation-rule-target-branch" className="block text-sm font-medium mb-1">
+          {labels.targetBranchLabel}
+        </label>
+        <input
+          id="automation-rule-target-branch"
+          type="text"
+          aria-label={labels.targetBranchLabel}
+          data-testid="automation-rule-target-branch-input"
+          autoComplete="off"
+          className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+          {...register('targetBranch')}
+        />
+        <p className="text-xs text-muted-foreground mt-1">{labels.targetBranchDescription}</p>
+      </div>
+    )
+  }
+
   return null
 }
 
@@ -456,7 +494,7 @@ function FormBody({
 }: FormBodyProps): JSX.Element {
   const initialConfig = hasEditingRule(editingRule)
     ? parseTriggerConfig(editingRule.triggerConfig)
-    : { cron: '', fields: [] }
+    : { cron: '', fields: [], targetBranch: '' }
 
   const [fields, setFields] = useState<string[]>(initialConfig.fields)
   const [fieldDraft, setFieldDraft] = useState('')
@@ -483,6 +521,7 @@ function FormBody({
       name: editingRule?.name ?? '',
       triggerType: editingRule?.triggerType ?? 'ISSUE_CREATED',
       cron: initialConfig.cron,
+      targetBranch: initialConfig.targetBranch,
     },
   })
 
@@ -517,8 +556,7 @@ function FormBody({
 
     const sharedPayload = buildSharedSavePayload(
       effectiveTriggerType,
-      values.cron,
-      fields,
+      { cron: values.cron, fields, targetBranch: values.targetBranch },
       actions,
       conditionTree,
       actorUserId,
@@ -685,7 +723,8 @@ function FormBody({
  * - 폼은 기본(이름)·트리거(+설정)·액션·조건·실행 주체 5개 섹션으로 그룹핑되어 각 섹션 헤더로
  *   시각 계층을 확립한다(design-review#1).
  * - 트리거별 조건부 필드는 {@link TriggerConfigFields}로 분리 —
- *   SCHEDULED(cron 필수 사전검증)·ISSUE_UPDATED(fields 태그, 비면 전체 필드)·나머지(없음).
+ *   SCHEDULED(cron 필수 사전검증)·ISSUE_UPDATED(fields 태그, 비면 전체 필드)·
+ *   PR_MERGED(targetBranch, 비면 전체 브랜치, FR-AT-07 PR-D)·나머지(없음).
  * - 액션 리스트는 {@link ActionListEditor}(추가/삭제/순서변경)에 위임하고, 편집 초기값은
  *   {@link parseActionsFormState}(응답 config=객체)로, 제출은 {@link serializeActionsFormState}
  *   (config=JSON 문자열)로 변환한다 — 응답/요청 config 형태가 다른 비대칭(EC1)을 명확히 분리한다.
