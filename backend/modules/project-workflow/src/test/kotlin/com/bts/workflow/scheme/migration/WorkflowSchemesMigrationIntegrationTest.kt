@@ -160,26 +160,11 @@ class WorkflowSchemesMigrationIntegrationTest {
                         """.trimIndent(),
                     )
                 }
-
-                // 4 default mapping seed — V004 migrate 시점에 workflows 가 비어 있어 0건.
-                // workflow seed 삽입 후 동일 로직으로 mapping 을 채운다.
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        """
-                        INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id)
-                        SELECT s.id, NULL, w.id
-                        FROM workflow_schemes s
-                        JOIN workflows w ON w.key = CASE s.key
-                            WHEN 'software-scheme'     THEN 'software-default'
-                            WHEN 'bug-tracking-scheme' THEN 'bug-tracking'
-                            WHEN 'simple-scheme'       THEN 'simple'
-                            WHEN 'kanban-scheme'       THEN 'kanban-basic'
-                        END
-                        ON CONFLICT ON CONSTRAINT uq_scheme_issue_type DO NOTHING
-                        """.trimIndent(),
-                    )
-                }
             }
+
+            // RED (task-4): default mapping 백필을 아직 호출하지 않는다 — V004 migrate 시점의
+            // JOIN INSERT 는 workflows 가 비어 있어 0건이었으므로, workflow seed 만으로는
+            // workflow_scheme_issue_type_mappings 가 여전히 0행이다. 판별자.
         }
     }
 
@@ -327,7 +312,7 @@ class WorkflowSchemesMigrationIntegrationTest {
     // ── workflow_scheme_issue_type_mappings default mapping 4건 검증 ──────────
 
     @Test
-    fun `V004 workflow_scheme_issue_type_mappings 에 정확히 4 row 존재`() {
+    fun `Flyway + 백필 후 기본 매핑 4행이 실재한다 (R6 — 손수 심지 않음)`() {
         assertThat(countRows("workflow_scheme_issue_type_mappings")).isEqualTo(4)
     }
 
