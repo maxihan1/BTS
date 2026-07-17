@@ -3,6 +3,7 @@
 package com.bts.workflow.scheme.repository
 
 import com.bts.shared.issue.IssueTypeId
+import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
 import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import com.bts.workflow.scheme.exception.MappingDefaultDuplicateException
@@ -48,6 +49,21 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
 
     // TIMESTAMPTZ → jOOQ 는 OffsetDateTime 으로 읽음. toInstant() 변환은 toMapping() 에서 처리.
     private val COL_CREATED_AT = DSL.field("created_at", OffsetDateTime::class.java)
+
+    // workflow_schemes 테이블도 workflow_scheme_issue_type_mappings 와 마찬가지로 jOOQ codegen 범위 밖 —
+    // repairDefaultMappings 에서 스킴 key → id 조회용으로만 사용한다 (untyped 참조).
+    private val SCHEME_TABLE = DSL.table("workflow_schemes")
+    private val SCHEME_ID = DSL.field("workflow_schemes.id", Long::class.java)
+    private val SCHEME_KEY = DSL.field("workflow_schemes.key", String::class.java)
+
+    // 표준 스킴 key → 표준 워크플로우 key 매핑 (V201:126-130 seed CASE 문과 동일).
+    private val defaultWorkflowKeyBySchemeKey =
+        mapOf(
+            "software-scheme" to "software-default",
+            "bug-tracking-scheme" to "bug-tracking",
+            "simple-scheme" to "simple",
+            "kanban-scheme" to "kanban-basic",
+        )
 
     /**
      * 매핑을 저장하고 DB 에서 할당된 id 를 포함한 [SchemeIssueTypeMapping] 을 반환한다.
@@ -278,6 +294,83 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
             .deleteFrom(TABLE)
             .where(COL_ID.eq(id))
             .execute()
+    }
+
+    /**
+     * 표준 4 스킴의 default mapping(issue_type_id IS NULL) 을 복구한다.
+     *
+     * R6(빈 DB 백필)와 R6-B(YAML 재시드로 workflow UUID 가 바뀐 뒤 dangling 매핑 수리) 를 공통 처리한다.
+     * 두 부분으로 구성된다.
+     * 1. dangling 수리 — workflow_id 가 더 이상 workflows 에 존재하지 않는(옛 UUID) default mapping 을
+     *    현재 유효한 workflow id 로 갱신한다.
+     * 2. 없는 것만 insert — 아직 default mapping 이 없는 스킴에 한해 신규 생성한다.
+     *
+     * admin 이 REST 로 변경한 유효한 default mapping 은 두 조건 모두 해당하지 않으므로 그대로 보존된다.
+     */
+    @Transactional
+    fun repairDefaultMappings() {
+        defaultWorkflowKeyBySchemeKey.forEach { (schemeKey, workflowKey) ->
+            val schemeId = findSchemeIdByKey(schemeKey) ?: return@forEach
+            val workflowId = findWorkflowIdByKey(workflowKey) ?: return@forEach
+
+            repairDanglingDefaultMapping(schemeId, workflowId)
+            insertMissingDefaultMapping(schemeId, workflowId)
+        }
+    }
+
+    private fun findSchemeIdByKey(schemeKey: String): Long? =
+        dsl
+            .select(SCHEME_ID)
+            .from(SCHEME_TABLE)
+            .where(SCHEME_KEY.eq(schemeKey))
+            .fetchOne(SCHEME_ID)
+
+    private fun findWorkflowIdByKey(workflowKey: String): UUID? =
+        dsl
+            .select(WORKFLOWS.ID)
+            .from(WORKFLOWS)
+            .where(WORKFLOWS.KEY.eq(workflowKey))
+            .fetchOne(WORKFLOWS.ID)
+
+    /** workflow_id 가 더 이상 workflows 에 존재하지 않는(dangling) default mapping 을 유효한 workflowId 로 갱신한다. */
+    private fun repairDanglingDefaultMapping(
+        schemeId: Long,
+        workflowId: UUID,
+    ) {
+        val updated =
+            dsl
+                .update(TABLE)
+                .set(COL_WORKFLOW_ID, workflowId)
+                .where(COL_SCHEME_ID.eq(schemeId))
+                .and(COL_ISSUE_TYPE_ID.isNull)
+                .and(COL_WORKFLOW_ID.notIn(DSL.select(WORKFLOWS.ID).from(WORKFLOWS)))
+                .execute()
+        if (updated > 0) {
+            log.info("repairDefaultMappings dangling 매핑 수리 — scheme_id={} workflow_id={}", schemeId, workflowId)
+        }
+    }
+
+    /** 스킴에 default mapping 이 없는 경우에만 신규 생성한다. 이미 있으면(admin 설정 포함) 무변경. */
+    private fun insertMissingDefaultMapping(
+        schemeId: Long,
+        workflowId: UUID,
+    ) {
+        val alreadyExists =
+            dsl.fetchExists(
+                DSL
+                    .selectOne()
+                    .from(TABLE)
+                    .where(COL_SCHEME_ID.eq(schemeId))
+                    .and(COL_ISSUE_TYPE_ID.isNull),
+            )
+        if (alreadyExists) return
+
+        dsl
+            .insertInto(TABLE)
+            .columns(COL_SCHEME_ID, COL_ISSUE_TYPE_ID, COL_WORKFLOW_ID)
+            .values(schemeId, null, workflowId)
+            .execute()
+        log.info("repairDefaultMappings default 매핑 백필 — scheme_id={} workflow_id={}", schemeId, workflowId)
     }
 
     // ── 내부 변환 ───────────────────────────────────────────────────────────────
