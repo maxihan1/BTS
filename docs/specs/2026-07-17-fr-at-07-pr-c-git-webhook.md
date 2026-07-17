@@ -336,7 +336,7 @@ CREATE INDEX ix_git_webhook_deliveries_received_at ON git_webhook_deliveries(rec
 | EC6 | `Content-Type: x-www-form-urlencoded` | **415** |
 | EC7 | JSON 파싱 실패 | **400** |
 | EC8 | **등록 시** 암호화 키 미설정 | **500** (운영자 즉시 인지) |
-| EC9 | **검증 시** 복호화 실패 | **401 (동일 errorCode)** + **ERROR 로그**(id·projectKey만) + 메트릭. 구분은 로그에서만 |
+| EC9 | **검증 시** 복호화 실패 | **401 (동일 errorCode)** + **구분 가능한 ERROR 로그**(id·projectKey만). ★ **메트릭 요구 삭제** — 저장소에 메트릭 인프라가 **없다**(micrometer/MeterRegistry grep 0건, gradle 의존성 0). BTS 관측성은 **구조화 로그 단일 수단**(`SlackEventsController:87,91,153` — `slack_events_signature_rejected` 식 snake_case 이벤트명). 도입은 §1.17 신규 의존성 = 별건. → `git_webhook_decrypt_failed` vs `git_webhook_signature_rejected`로 **로그 이벤트명을 갈라** 운영자 구분 목적 달성 (CEO 리뷰 2A) |
 | EC10 | 팬아웃 중 일부 enqueue 실패 | **전량 롤백** (dedup 포함) → 재전송이 정상 복구. **1회차의 "영구 유실"은 폐기** (DEC-23) |
 | EC11 | delivery 헤더 부재 | dedup 불가 → 처리 진행 + WARN |
 | EC12 | distinct 키 > 20 **또는** 룰×키 > 100 | **202 + WARN, 처리 0건** |

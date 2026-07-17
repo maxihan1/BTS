@@ -410,6 +410,25 @@ longest path = T2 → T6 → T9 → T10 → T12 → T15 (**6 wave**).
   3. **GitLab 보안등급 차이** (DEC-13) — 평문 `X-Gitlab-Token`. GitLab이 HMAC을 제공하지 않아
      **우리가 더 강하게 만들 수 없다**. **GITHUB과 동급으로 서술 금지**
   4. rate limit 부재 — **본 PR로 등급 상승**(CPU 소모 → 디스크 고갈, §10)
+- **★ 잔여위험 5 — 롤백 안전성 (CEO 리뷰 3A, Section 9)**.
+  **코드를 롤백하면 automation 화면이 통째로 500이 된다.**
+  ```
+  V309(CHECK 6종)는 Flyway 자동 롤백이 없어 DB에 남음
+    └─▶ PR_MERGED 룰이 1건이라도 존재 + 코드만 롤백
+          └─▶ AutomationRuleRepository.kt:314   TriggerType.valueOf(...) ← runCatching 없음
+              RuleExecutionRepository.kt:183    동일
+                └─▶ IllegalArgumentException → 룰 목록·실행 이력 조회 500
+  ```
+  (`AutomationExecutionWorker.kt:437`만 `runCatching{}.getOrNull()`로 방어됨 — 읽기 경로 2곳은 무방비.)
+  **★ 코드로 막을 수 없다** — 지금 그 두 줄을 고쳐도 롤백이 그 수정을 함께 되돌린다. **절차가 유일한 방어**.
+  **롤백 런북 (ADR에 명시)**.
+  1. 코드 롤백 **전에** `UPDATE automation_rules SET enabled=false WHERE trigger_type='PR_MERGED'`
+     (또는 소프트 삭제) — **먼저 하지 않으면 롤백 직후 automation 화면 전체 사망**
+  2. 그 다음 코드 롤백
+  3. V307~V309는 남겨도 무해(신규 테이블 + CHECK 확대는 옛 코드와 호환) — **되돌리지 말 것**
+     (V309를 되돌리면 남은 PR_MERGED 행이 CHECK를 위반해 오히려 깨짐)
+  → **후속 후보**: 읽기 경로 2곳을 `runCatching`으로 방어해 **다음번** enum 추가 PR의 롤백을 안전하게
+  (이번 롤백은 못 구하지만 구조적 개선. §10)
 - **표기**. `§1.4` (저장소 관례 14곳과 일관 — PR-A DEC-17)
 - **폴더**. `docs/decisions/` ([[bts-adr-dual-folder-convention]])
 - **선례 링크**. `2026-07-15-slack-inbound-permitall-central` · `2026-07-02-fr-db-03-dashboard-share` ·
@@ -540,7 +559,21 @@ longest path = T2 → T6 → T9 → T10 → T12 → T15 (**6 wave**).
 - depends-on: []
 
 **RED**. 유효 서명 true / 위조 false / 헤더 누락 false / **secret blank false** / **교차 헤더 false**(EC2·EC3) /
-레거시 SHA-1 false(EC4).
+레거시 SHA-1 false(EC4) / **★ 복호화 실패(손상 암호문·키 미설정) → false + `git_webhook_decrypt_failed` 로그**.
+
+> **★ CEO 리뷰 1A — 검증기가 복호화까지 책임진다 (boolean 수렴).**
+> `SecretEncryptor.decrypt`(`:75-78`)는 키 미설정 시 `IllegalStateException`(`:76 requireConfigured`),
+> 암호문 손상·키 변경 시 Hex 디코더/crypto 예외를 **던진다**. 2회차 스펙은 EC9가 "복호화 실패 → 401"을
+> 요구하면서 **그 예외를 401로 바꾸는 지점을 어느 task에도 두지 않았다** → 그대로 구현하면 **500**.
+> **검증기가 복호화를 try/catch로 감싸 `false`로 수렴**시키면 컨트롤러는 false→401 매핑만 하면 되고,
+> **예외→상태코드 변질 경로 자체가 생기지 않는다** (메모리 3종 함정 회피 —
+> [[catch-all-exceptionhandler-swallows-responsestatusexception]] ·
+> [[domain-exception-http-handler-basepackage-scope]] · [[duplicate-exception-name-cross-package-status]]).
+> slack 선례도 secret 조회를 검증기가 직접 한다(`SlackSignatureVerifier`가 `SlackProperties` 보유).
+>
+> **★ 로그 이벤트명을 갈라 운영자 구분** (CEO 리뷰 2A) — `git_webhook_decrypt_failed` vs
+> `git_webhook_signature_rejected`. **메트릭은 쓰지 않는다**(저장소에 인프라 0건, §1.17 별건).
+> 응답 errorCode는 **단일**(B3-sec 오라클 방지) — 구분은 **로그에서만**.
 
 **GREEN**. **`SlackSignatureVerifier.kt` 4계약 승계** (G7).
 - ① **미설정=거부** (`:72-74` — ★ 1회차가 인용한 `:64-66`은 **stale**, #275로 이동)
@@ -929,26 +962,74 @@ longest path = T2 → T6 → T9 → T10 → T12 → T15 (**6 wave**).
 (18 task 중 15개가 automation 단일 모듈 → worktree 분리는 Gradle 충돌만 유발, `/bts-impl` wave가 적합)
 — 전부 리뷰 대화에 기록.
 
-### plan-ceo-review
+### plan-ceo-review (2026-07-17) — HOLD SCOPE
 
-**미실행 — 해당 없음.** 이 PR은 신규 사용자 기능·제품 방향 변경이 아니라 **이미 확정된 FR-AT-07의
-마지막 배선**이고, 범위 결정(3분할·UI 분리·17→18 task)은 이미 Maxi 확정. 스킬 자체 기준
-("Recommend it for big product/business changes… Skip for bug fixes, refactors, infra")에도 부합.
+> **★ 왜 실행했나 (2회차 정정).** 1회차는 "배선 PR이라 해당 없음"으로 스킵했는데, **`DATA.md §1.5`가
+> *"인증/CSRF 우회 불가 — Spring Security 필터 체인 변경은 plan-eng-review + **plan-ceo-review 필수**"*
+> 를 요구한다** (BTS 데이터 무결성 5원칙, "위반 시 즉시 PR BLOCKER"). T12가 정확히 필터 체인을 바꾼다.
+> **gstack 스킬의 일반 기준("제품 변경엔 추천, 인프라는 스킵")을 따르다 프로젝트 헌법을 놓쳤다** —
+> 프로젝트 규칙이 도구 기본값을 이긴다.
+
+**시스템 감사**. 이 브랜치 = 문서 2개(1486줄), 코드 0. 동시 PR #277(문서 1개). ⚠️ **`stash@{0}`에 타
+브랜치(`feature/fr-pr-03-ooo`) 휴면 stash** — [[subagent-git-stash-worktree-shared-collision]] 그대로.
+plan §Wave가 이미 `git stash` 금지를 박아둠(방어됨).
+
+**Step 0**. 전제 도전 = FR-AT-07은 SDD 8.2 등재 확정 FR, 안 하면 BC 6/7 + FR-AT-01 사문화 지속.
+**0C-bis 구현 대안 3종** → **Maxi 확정 A (중앙 공유 리스트 확장)**. B(git만)는 FR-AT-01 사문화 지속 +
+2회 확정 번복, **C(PathContributor)는 보안 설정을 9개 BC에 분산시켜 "인증 우회 지점이 한 파일에서 전부
+보인다"는 감사 성질을 잃음** → 기각. **모드 = HOLD SCOPE** (범위 2회 확정 완료, §1.5 목적은 D1에서 해소).
+
+| 섹션 | 결과 |
+|---|---|
+| 1 (Arch) | eng-review에서 완료 |
+| **2 (Errors)** | **1건** → 이슈1 |
+| 3 (Security) | **0건** — 감사로그는 automation이 `RuleExecution`을 audit trail로 쓰고 `audit_logs` 미사용이 **기존 관례**(grep 확인). git webhook만 다르게 하면 비일관 |
+| 4 (Data/UX) | **0건** — 4경로가 §3.5 + EC1~EC16에 매핑, DEC-26이 null 경로를 메움 |
+| 5 (Quality) | eng-review에서 완료 |
+| 6 (Tests) | eng-review 커버리지 다이어그램 34/36 |
+| 7 (Perf) | eng-review 이슈3(팬아웃 실측) |
+| **8 (Observ)** | **1건** → 이슈2 |
+| **9 (Deploy)** | **1건** → 이슈3 ★ 이 리뷰 최대 발견 |
+| 10 (Future) | **0건** — 되돌림 **2/5**(마이그레이션 3 + enum, 롤백 절차 의존). 부채는 §10에 기재 완료 |
+| 11 (Design) | **SKIP** (UI = PR-D) |
+
+**Maxi 확정 3건**.
+- **1A (Section 2)** — **T7이 복호화까지 책임, boolean 수렴**. 2회차 EC9가 "복호화 실패 → 401"을
+  요구하면서 **그 예외를 401로 바꾸는 지점을 어느 task에도 두지 않았다**(`SecretEncryptor.decrypt:75-78`이
+  `IllegalStateException`/crypto 예외를 던짐) → 그대로면 **500**. 검증기가 감싸면 **예외→상태코드 변질
+  경로 자체가 안 생긴다**
+- **2A (Section 8)** — **EC9의 "메트릭" 요구 삭제**. **저장소에 메트릭 인프라가 없다**(micrometer·
+  MeterRegistry grep **0건**, gradle 의존성 0). BTS 관측성 = **구조화 로그 단일 수단**. 마스터 C-7 문구를
+  검증 없이 옮긴 것 → `git_webhook_decrypt_failed` vs `git_webhook_signature_rejected`로 **로그 이벤트명을
+  갈라** 목적 달성. 도입은 §1.17 신규 의존성 = 별건
+- **3A (Section 9)** — **T1 ADR에 롤백 런북 + 잔여위험 5 등재**. **코드 롤백 시 automation 화면이 통째로
+  500**(`AutomationRuleRepository:314`·`RuleExecutionRepository:183`이 `TriggerType.valueOf`를
+  **runCatching 없이** 호출, Flyway 자동 롤백 없어 V309는 DB에 잔존). **★ 코드로 막을 수 없다** — 지금
+  고쳐도 롤백이 그 수정을 함께 되돌린다. **절차가 유일한 방어** → "코드 롤백 **전에** PR_MERGED 룰
+  비활성화" 순서 명시
+
+**Outside voice**. 같은 plan에 대해 eng-review에서 이미 실행(6건 반영, `codex-plan-review` 로그 존재).
+이후 변경은 그 결과의 반영분이라 4번째 독립 검증은 수확 체감 → **기존 결과 승계**.
+
+**메타 (3회 연속 같은 패턴)**. 이슈1·2 모두 **"스펙이 요구하지만 그 전제가 저장소에 없거나 task가 없는"**
+경우다 — outside voice의 §9-1(관측 수단 부재)과 **동일 계열**. 개수 → 정의 → **정의가 전제한 코드 모양**
+순으로 눈가리개가 깊어진다([[spec-stated-count-becomes-blindfold]]).
 
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | 해당 없음 (배선 PR) |
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | **CLEAR** | mode: HOLD_SCOPE, 3 issues, 0 critical gaps |
 | Codex Review | `/codex review` | Independent 2nd opinion | 0 | not_installed | Claude subagent로 대체 |
 | Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | **CLEAR** | 3 issues, 0 critical gaps |
 | Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | UI 없음 (PR-D) |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | 해당 없음 |
 
-**CROSS-MODEL:** outside voice가 6건 발견 — 2건은 BLOCKER급(§9-1 실현불가·FR-C13이 SCHEDULED 사멸)으로
-DEC-25/26 신설, 1건은 **기존 BLOCKER 판정을 반박**해 P2로 하향(DEC-27), 3건은 인용·files·범위 지적.
-tension 1건(B4-be 등급)은 Maxi가 "T4 유지 + KDoc 갱신"으로 해소.
+**CROSS-MODEL:** outside voice 6건 — 2건 BLOCKER급(§9-1 실현불가 · FR-C13이 SCHEDULED 사멸)으로
+DEC-25/26 신설, 1건은 **기존 BLOCKER 판정을 반박**해 P2 하향(DEC-27), 3건은 인용·files·범위.
+tension 1건(B4-be 등급)은 "T4 유지 + KDoc 갱신"으로 해소. CEO 리뷰가 3건을 더 추가(1A/2A/3A).
 
-**VERDICT:** ENG CLEARED — 게이트 1 진입 가능. 18 task / 6 wave / DEC-18~27.
+**VERDICT:** CEO + ENG CLEARED — `DATA.md §1.5`(필터 체인 변경 = 양 리뷰 필수) 충족. 게이트 1 승인 완료
+(§1.4 정식 예외 포함). 18 task / 6 wave / DEC-18~27 + CEO 1A·2A·3A.
 
 NO UNRESOLVED DECISIONS
