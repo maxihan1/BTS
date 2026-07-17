@@ -389,6 +389,77 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
         log.info("repairDefaultMappings default 매핑 백필 — scheme_id={} workflow_id={}", schemeId, workflowId)
     }
 
+    // ── R6-B 재적재 매핑 기록→재연결 (★★ 수정판 — default + admin 특정타입 전부 보존) ──────
+
+    /**
+     * [workflowId] 를 가리키는 매핑 전체를 (scheme_id, issue_type_id) 튜플로 조회한 뒤 그 자리에서 삭제한다.
+     *
+     * YAML structural 변경(state/transition 추가·삭제) 으로 인한 workflow 재적재
+     * (`YamlSeedService.applyIfChanged`) 직전에 호출한다. `workflow_scheme_issue_type_mappings.workflow_id`
+     * 는 FK `ON DELETE RESTRICT` (V201:84) 이므로, workflows 행을 삭제하려면 먼저 이 매핑들을
+     * 제거해야 한다. default 매핑(issue_type_id NULL) 뿐 아니라 admin 이 REST 로 건 특정 타입
+     * 매핑(issue_type_id NOT NULL) 도 함께 기록·삭제한다 — 특정타입 매핑만 남기면 FK RESTRICT 로
+     * workflows 삭제 자체가 실패한다.
+     *
+     * 기록한 튜플은 [reinsertMappings] 로 새 workflow UUID 에 재연결해야 한다.
+     *
+     * @param workflowId 재적재 대상 옛 workflow UUID.
+     * @return (scheme_id, issue_type_id) 튜플 목록. issue_type_id=null 은 default mapping. 매핑이 없으면 빈 목록.
+     */
+    @Transactional
+    fun findMappingTuplesByWorkflowId(workflowId: UUID): List<Pair<Long, IssueTypeId?>> {
+        val tuples =
+            dsl
+                .select(COL_SCHEME_ID, COL_ISSUE_TYPE_ID)
+                .from(TABLE)
+                .where(COL_WORKFLOW_ID.eq(workflowId))
+                .fetch()
+                .map { record ->
+                    val schemeId =
+                        record.get(COL_SCHEME_ID) ?: error("scheme_id is null — DB NOT NULL 제약 위반")
+                    val issueTypeId = record.get(COL_ISSUE_TYPE_ID)?.let { IssueTypeId(it) }
+                    schemeId to issueTypeId
+                }
+
+        if (tuples.isNotEmpty()) {
+            dsl.deleteFrom(TABLE).where(COL_WORKFLOW_ID.eq(workflowId)).execute()
+            log.debug(
+                "findMappingTuplesByWorkflowId — {}건 기록 후 삭제 (workflow_id={})",
+                tuples.size,
+                workflowId,
+            )
+        }
+
+        return tuples
+    }
+
+    /**
+     * [findMappingTuplesByWorkflowId] 로 기록한 튜플들을 새 workflow UUID 로 재INSERT 한다.
+     *
+     * YAML 재적재로 workflow 가 delete/reinsert 되어 UUID 가 바뀐 뒤, 기록→재연결 흐름을 완성한다.
+     * 원자성은 호출자(`YamlSeedService.seedAll`) 의 `@Transactional` 경계에 위임한다 — 실패 시
+     * delete/insert 전체가 롤백된다.
+     *
+     * @param tuples 재연결할 (scheme_id, issue_type_id) 튜플 목록.
+     * @param newWorkflowId INSERT 시 사용할 새 workflow UUID.
+     */
+    @Transactional
+    fun reinsertMappings(
+        tuples: List<Pair<Long, IssueTypeId?>>,
+        newWorkflowId: UUID,
+    ) {
+        tuples.forEach { (schemeId, issueTypeId) ->
+            dsl
+                .insertInto(TABLE)
+                .columns(COL_SCHEME_ID, COL_ISSUE_TYPE_ID, COL_WORKFLOW_ID)
+                .values(schemeId, issueTypeId?.value, newWorkflowId)
+                .execute()
+        }
+        if (tuples.isNotEmpty()) {
+            log.debug("reinsertMappings — {}건 재연결 완료 (new workflow_id={})", tuples.size, newWorkflowId)
+        }
+    }
+
     // ── 내부 변환 ───────────────────────────────────────────────────────────────
 
     /**
