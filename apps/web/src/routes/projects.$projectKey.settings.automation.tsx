@@ -5,6 +5,7 @@ import { useParams } from '@tanstack/react-router'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { AutomationRuleList } from '@/components/automation/AutomationRuleList'
+import { GitWebhookSection } from '@/components/automation/GitWebhookSection'
 import { AutomationRuleFormDialog } from '@/components/automation/AutomationRuleFormDialog'
 import { WebhookTokenModal } from '@/components/automation/WebhookTokenModal'
 import { RuleConflictWarningModal } from '@/components/automation/RuleConflictWarningModal'
@@ -134,7 +135,8 @@ export function ProjectAutomationSettingsPage({
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold">자동화</h1>
         <p className="text-muted-foreground text-sm">
-          이슈 이벤트나 예약 일정에 따라 자동으로 실행될 트리거 규칙을 관리합니다.
+          이슈 이벤트·예약 일정·PR 머지에 따라 자동으로 실행될 규칙과, 규칙을 발화시키는 웹훅 연동을
+          관리합니다.
         </p>
       </header>
 
@@ -147,6 +149,8 @@ export function ProjectAutomationSettingsPage({
         isExportingYaml={exportMutation.isPending}
         onImportYaml={() => setYamlImportOpen(true)}
       />
+
+      <GitWebhookSection projectKey={projectKey} />
 
       <AutomationRuleFormDialog
         projectKey={projectKey}
