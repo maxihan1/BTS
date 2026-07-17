@@ -110,15 +110,15 @@ identity-access  ─┐
 | automation | [product/automation.md](product/automation.md) | 7 (AT 7) | (없음) | ☐ |
 | notification-dashboard | [product/notification-dashboard.md](product/notification-dashboard.md) | 14 (NT 5 + DB 3 + RP 4 + UX-02,03 2) | STOMP WebSocket | ☐ |
 | slack-integration | [product/slack-integration.md](product/slack-integration.md) | 6 (SL 6) | (없음) | ☐ |
-| personalization | [product/personalization.md](product/personalization.md) | 12 (PR 4 + PF 3 + CA 2 + UX-01,04,05 3) | (없음) | ☐ |
+| personalization | [product/personalization.md](product/personalization.md) | 13 (PR 4 + PF 3 + CA 2 + UX-01,04,05,06 4) | (없음) | ☐ |
 | search-export-import | [product/search-export-import.md](product/search-export-import.md) | 12 (SR 4 + EX 2 + IM 2 + API 4) | AQL 파서 + ANTLR 4 | ☐ |
 | (메타) | (이 README §0~§6) | — | CLAUDE.md/Skills/검토 사이클 — Maxi 관찰 | 진행중 |
 
-**합계**. 128 FR.
+**합계**. 129 FR.
 
 ## §A. 부록
 
-→ [fr-index.md](fr-index.md) — 128 FR 역인덱스 (FR ID → BC → §x.y) + Open Questions.
+→ [fr-index.md](fr-index.md) — 129 FR 역인덱스 (FR ID → BC → §x.y) + Open Questions.
 
 ## §6. NFR 검증 3중 게이트
 

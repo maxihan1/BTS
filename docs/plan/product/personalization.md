@@ -1,8 +1,8 @@
-<!-- personalization BC — 프로필/설정/캘린더/퀵필터/Slash/단축키 12 FR -->
+<!-- personalization BC — 프로필/설정/캘린더/퀵필터/Slash/단축키/UI개편 13 FR -->
 
 # personalization BC
 
-**소속 FR**. 12개 (PR 4 + PF 3 + CA 2 + UX-01,04,05 3).
+**소속 FR**. 13개 (PR 4 + PF 3 + CA 2 + UX-01,04,05,06 4).
 **책임**. 사용자 프로필 / 환경 설정 / 캘린더 / UX 편의 (퀵 필터, Slash, 단축키).
 **SDD 참조**. 20장 (개인화).
 **다른 BC와의 경계**. identity-access의 user 식별 사용. issue-tracking의 할당/마감일 조회 (캘린더). agile-planning의 보드 필터 (퀵 필터). **import 금지 — 이벤트/API만**.
@@ -107,7 +107,7 @@
 - [x] D6. 프론트 UI — SHORTCUTS action ID 정규화 + resolveKeydown 병합 + 부트 GET + `/settings/keymap` 재배치·실시간충돌·기본복원 (책임. frontend-engineer)
 - [x] D7. E2E — 재배치→발화·충돌거부·기본복원(dead-leader·서버409 MSW토글) (책임. qa-engineer)
 
-## §4 UX 편의 (FR-UX-01, 04, 05)
+## §4 UX 편의 (FR-UX-01, 04, 05, 06)
 
 ### §4.1 FR-UX-01 — 퀵 필터 (보드 상단 즉시 필터)
 
@@ -148,6 +148,32 @@
 - [x] D5. 백엔드 테스트 — 해당 없음 (프론트 전용) (책임. -)
 - [x] D6. 프론트 UI — 커스텀 훅(`useKeyboardShortcuts`) + radix Dialog 도움말 모달(`?`) (책임. designer → frontend-engineer)
 - [x] D7. E2E (책임. qa-engineer)
+
+### §4.4 FR-UX-06 — UI/UX 전면 개편 (Jira Cloud 방식)
+
+**우선순위**. 높음 | **선행**. 없음 (Phase 0 독립) | **Plan slug**. `fr-ux-06-jira-redesign`
+
+**아키텍처**. ADR [decisions/2026-07-17-fr-ux-06-jira-redesign.md](../../decisions/2026-07-17-fr-ux-06-jira-redesign.md) · plan [plans/2026-07-17-fr-ux-06-jira-redesign/](../../plans/2026-07-17-fr-ux-06-jira-redesign/plan.md) · 디자인 스펙 [design/fr-ux-06-jira-redesign.md](../../design/fr-ux-06-jira-redesign.md).
+
+> **★ 논리 ≠ 물리 (ADR D5).** 논리 소속은 **personalization** 이나 물리 구현은 `apps/web` + identity-access 다. FR-UX-05 D4 의 선례를 승계한다 — personalization 은 **이미 논리 BC 이고 물리가 identity-access** 라, 프로젝트 목록 API 를 identity-access 에 둬도 일관된다.
+
+**범위 = 개편 전체** (Maxi 확정 — 담당자 권고 *"전역 네비만 FR"* 기각). **FR 로 신설한 것도 Maxi 확정** — 담당자는 *"FR 없이 ADR 로만"* 을 권고했으나 **진척 가시성을 우선**해 기각했다.
+
+**핵심 결정 8종 (ADR D1~D8).** ADS **v2** 팔레트 `#0C66E4`(널리 알려진 `#0052CC` 는 **구세대 v1** 이라 기각 — 2023 토큰 리프레시로 램프가 재편됐고, 신형 네비를 택했으니 세대를 맞춘다) · Jira Cloud **2025 신형 통합 사이드바** · pathless `_shell`(**파일 기반 라우팅 전환은 영구 제외**) · **라우트 이동 = `nav`+`Link` / 패널 전환 = Radix Tabs** · 논리≠물리 · **댓글은 별도 FR** · `--chart-1~5` 는 **실소비 PR 에서** 정의(소비자 0인 토큰 선채움 금지) · 동시 PR #277 과 Phase 0 선행 / Phase 4 양보.
+
+**20 PR 체인.** Phase0 기반(PR1 문서·PR2 프리미티브 15종·PR3 ADS 토큰·PR9 1줄 prep — 4개 독립·병렬) → Phase1 정착(PR4 하드코딩 색 141건) → Phase2 Dialog(PR5→PR6∥PR7→PR8+ESLint 락) → Phase3 Shell(PR9→PR10 `_shell`→PR11 사이드바→PR12→PR13) → Phase5 화면(PR17…PR22). **임계 경로** = PR2 → PR10 → PR11 → PR13 → PR17.
+
+> 🛑 **PR3 의 팔레트는 시안이 정본이 아니다.** `atlassian.design` 이 JS 렌더링이라 전수 검증에 실패했고 `#E9F2FF`/`#082145`/`#172B4D` 3점만 독립 확인됐다. **PR3 에서 `atlassian.design/components/tokens/all-tokens` 전수 대조를 D단계 작업으로 수행**한다.
+>
+> 🛑 **진짜 위험은 라우터가 아니라 `aria-label` 4종이다** ([[frontend-nav-aria-label-e2e-contract]]). `getByRole('navigation')` 18건의 유일한 계약이다 — `검색` 은 Header 단일 5spec · **관리 메뉴 기본 펼침 필수**(접으면 3spec 클릭 실패) · **뷰 전환을 Tabs 로 바꾸면 `role=navigation` 이 소멸해 10건 즉사**. pathless 재부모화 자체는 저위험(`fullPath` 불변, route-id 결합 1곳).
+
+- [ ] D1. 도메인 — 프론트 전용. 디자인 토큰 + `ui/*` 프리미티브 15종 레지스트리 (책임. designer → frontend-engineer)
+- [x] D2. 명세 — 디자인 스펙 14섹션 (`docs/design/fr-ux-06-jira-redesign.md`) + ADR D1~D8 + plan 3종 — **#279 에서 완료** (책임. designer)
+- [ ] D3. 데이터 모델 — 없음 (프론트 전용. 프로젝트 목록 API 는 #277 PR-2~3 소관) (책임. -)
+- [ ] D4. 백엔드 — 없음 (ADR D5 — 물리 `apps/web`. identity-access 는 #277 이 담당) (책임. -)
+- [ ] D5. 백엔드 테스트 — 해당 없음 (프론트 전용) (책임. -)
+- [ ] D6. 프론트 UI — 20 PR 체인 (프리미티브 → ADS 토큰 → Dialog 흡수 → `_shell`/사이드바 → 화면 6종) (책임. frontend-engineer)
+- [ ] D7. E2E — `aria-label` 4종 계약 보존 + 뷰 전환 `role=navigation` 회귀 가드 (책임. qa-engineer)
 
 ## §5 캘린더 (FR-CA, 2개)
 
@@ -192,7 +218,7 @@
 
 ### BC 완료 조건
 
-- [ ] §2~§5 (12 FR) 모두 `[x]` 마킹
+- [ ] §2~§5 (13 FR) 모두 `[x]` 마킹
 - [ ] §NFR 측정표 모든 항목 임계 통과
 - [ ] CHANGELOG.md 정리
 - [ ] README.md §7 변경 이력에 "personalization BC 완료 — YYYY-MM-DD" 추가
