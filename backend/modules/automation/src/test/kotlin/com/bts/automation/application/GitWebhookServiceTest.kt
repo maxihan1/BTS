@@ -8,6 +8,7 @@ import com.bts.automation.adapter.GitWebhookRepository
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.GitProvider
 import com.bts.automation.domain.GitWebhook
+import com.bts.automation.domain.TriggerConfig
 import com.bts.automation.domain.TriggerType
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -18,7 +19,7 @@ import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
-import io.mockk.Runs
+import io.mockk.runs
 import io.mockk.slot
 import io.mockk.verify
 import java.time.Clock
@@ -68,7 +69,7 @@ class GitWebhookServiceTest : DescribeSpec({
     beforeEach {
         // 기본값 — 배달 신규(dedup 통과), enqueue 성공. 개별 it 이 필요 시 오버라이드.
         every { gitWebhookRepository.insertDelivery(any(), any(), any()) } returns true
-        every { executionEnqueuer.enqueue(any(), any(), any()) } just Runs
+        every { executionEnqueuer.enqueue(any(), any(), any()) } just runs
     }
 
     afterEach {
@@ -354,7 +355,7 @@ class GitWebhookServiceTest : DescribeSpec({
             every {
                 automationRuleRepository.findEnabledByProjectAndTriggerType(PROJECT_KEY, TriggerType.PR_MERGED)
             } returns listOf(ruleA, ruleB)
-            every { executionEnqueuer.enqueue(ruleA.id, TriggerType.PR_MERGED, any()) } just Runs
+            every { executionEnqueuer.enqueue(ruleA.id, TriggerType.PR_MERGED, any()) } just runs
             every {
                 executionEnqueuer.enqueue(ruleB.id, TriggerType.PR_MERGED, any())
             } throws IllegalStateException("pgmq 장애")
