@@ -558,6 +558,155 @@ describe('AutomationRuleFormDialog — 편집 저장 시 백엔드 미지 키 �
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PR_MERGED targetBranch 입력 UI + 라운드트립 (FR-AT-07 PR-D Task 8)
+//
+// serialize 단위 테스트(automation-rules.types.test.ts)는 호출부를 못 보므로 원리적으로 못 잡는
+// 누락이 있다 — 여기서는 Dialog를 실제로 렌더해 로드→저장까지 재현한다. A4가 이 PR의 핵심 가드다
+// (omitManagedKeys 호출 자체를 지워도 A1~A3는 값 있는 경로만 밟아 초록이 나기 때문).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AutomationRuleFormDialog — PR_MERGED targetBranch (FR-AT-07 PR-D Task 8)', () => {
+  const PR_MERGED_EDIT_RULE: AutomationRule = {
+    ...SCHEDULED_EDIT_RULE,
+    id: 'a1b2c3d4-e5f6-4890-abcd-ef1234567893',
+    name: 'PR 병합 룰',
+    triggerType: 'PR_MERGED',
+    triggerConfig: JSON.stringify({ targetBranch: 'develop', futureKey: 'x' }),
+  }
+
+  it('A1: editingRule.triggerConfig 의 targetBranch 를 입력에 로드한다', () => {
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={vi.fn()}
+        editingRule={PR_MERGED_EDIT_RULE}
+      />,
+    )
+    expect(screen.getByTestId('automation-rule-target-branch-input')).toHaveValue('develop')
+  })
+
+  it('A2: 이름만 고쳐 저장해도 targetBranch·futureKey 가 PATCH body 에 유실 없이 보존된다(핵심 회귀 가드)', async () => {
+    const capturedBodies: PatchAutomationRuleInput[] = []
+    server.use(
+      http.patch('/api/v1/projects/:projectKey/automation/rules/:id', async ({ request }) => {
+        const body = (await request.json()) as PatchAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({
+          ...PR_MERGED_EDIT_RULE,
+          ...body,
+          version: PR_MERGED_EDIT_RULE.version + 1,
+        })
+      }),
+    )
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={vi.fn()}
+        editingRule={PR_MERGED_EDIT_RULE}
+      />,
+    )
+    const user = userEvent.setup()
+    const nameInput = screen.getByLabelText('이름')
+    await user.clear(nameInput)
+    await user.type(nameInput, '이름만 변경')
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    const capturedBody = capturedBodies[0]
+    if (capturedBody === undefined) {
+      throw new Error('capturedBodies[0]이 캡처되지 않음')
+    }
+    if (capturedBody.triggerConfig === undefined) {
+      throw new Error('triggerConfig가 캡처되지 않음')
+    }
+    expect(JSON.parse(capturedBody.triggerConfig)).toEqual({ targetBranch: 'develop', futureKey: 'x' })
+  })
+
+  it('A3: 입력을 release/1.2 로 바꿔 저장하면 PATCH body targetBranch 가 새 값으로 갱신된다(양성 대조군)', async () => {
+    const capturedBodies: PatchAutomationRuleInput[] = []
+    server.use(
+      http.patch('/api/v1/projects/:projectKey/automation/rules/:id', async ({ request }) => {
+        const body = (await request.json()) as PatchAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({
+          ...PR_MERGED_EDIT_RULE,
+          ...body,
+          version: PR_MERGED_EDIT_RULE.version + 1,
+        })
+      }),
+    )
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={vi.fn()}
+        editingRule={PR_MERGED_EDIT_RULE}
+      />,
+    )
+    const user = userEvent.setup()
+    const targetBranchInput = screen.getByTestId('automation-rule-target-branch-input')
+    await user.clear(targetBranchInput)
+    await user.type(targetBranchInput, 'release/1.2')
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    const capturedBody = capturedBodies[0]
+    if (capturedBody === undefined) {
+      throw new Error('capturedBodies[0]이 캡처되지 않음')
+    }
+    if (capturedBody.triggerConfig === undefined) {
+      throw new Error('triggerConfig가 캡처되지 않음')
+    }
+    expect(JSON.parse(capturedBody.triggerConfig)).toEqual({ targetBranch: 'release/1.2', futureKey: 'x' })
+  })
+
+  it('A4: 입력을 비우고 저장하면 targetBranch 키 자체가 PATCH body 에서 부재한다(FR17 omit 단독 가드)', async () => {
+    const capturedBodies: PatchAutomationRuleInput[] = []
+    server.use(
+      http.patch('/api/v1/projects/:projectKey/automation/rules/:id', async ({ request }) => {
+        const body = (await request.json()) as PatchAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({
+          ...PR_MERGED_EDIT_RULE,
+          ...body,
+          version: PR_MERGED_EDIT_RULE.version + 1,
+        })
+      }),
+    )
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={vi.fn()}
+        editingRule={PR_MERGED_EDIT_RULE}
+      />,
+    )
+    const user = userEvent.setup()
+    await user.clear(screen.getByTestId('automation-rule-target-branch-input'))
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    const capturedBody = capturedBodies[0]
+    if (capturedBody === undefined) {
+      throw new Error('capturedBodies[0]이 캡처되지 않음')
+    }
+    if (capturedBody.triggerConfig === undefined) {
+      throw new Error('triggerConfig가 캡처되지 않음')
+    }
+    expect(JSON.parse(capturedBody.triggerConfig)).toEqual({ futureKey: 'x' })
+  })
+
+  it('A5: ISSUE_CREATED 트리거(기본값)에서는 targetBranch 입력이 없다(과도발화 방지)', () => {
+    renderWithClient(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />,
+    )
+    expect(screen.queryByTestId('automation-rule-target-branch-input')).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // WEBHOOK 토큰 콜백
 // ─────────────────────────────────────────────────────────────────────────────
 
