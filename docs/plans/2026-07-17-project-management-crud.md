@@ -1627,6 +1627,61 @@ plan 은 *"그 후 qa-engineer E2E (타입 auth)"* 를 예고했으나 **PR-1 �
 
 **PR-1 신규 테스트 42건** = 스키마 3 + 리포지토리 8 + 서비스 10 + 컨트롤러 13 + 판정기 4 + 포트 2(T7) + 조립 가드 2.
 
+## [7/8] /bts-codereview 결과 + 🛑 게이트 2 (Maxi 승인 2026-07-17)
+
+**리뷰 5종 병행** — `superpowers:code-reviewer`(절대규칙 19개+DATA 5원칙) + `/review` 전문가 4종(security · data-migration · api-contract · testing/maintainability).
+
+> 🛑 **`/review` 의 scope 자동판정이 4/5 를 틀렸다** ([[gstack-diff-scope-blind-to-kotlin]] 재확인). BACKEND=false(실제 Kotlin 10파일) · MIGRATIONS=false(실제 V036) · API=false(실제 신규 REST 컨트롤러) · FRONTEND=true(실제 apps/web 무변경). AUTH 만 맞았다. **실측으로 덮어쓰지 않았으면 security·data-migration 전문가를 통째로 건너뛰었다.**
+
+**결론 — CONCERNS, BLOCKER 0.** prod 코드에 살아 있는 보안 구멍 없음. 절대 규칙 19개 위반 0 · 데이터 무결성 5원칙 충족 · learnings.md 회귀 0 · plan D1~D19 위반 0 · 8개 축 중 6 PASS.
+
+### 🛑 발견 1 (3중 확인 · mutation 2회 실증) — DELETE 가드가 테스트로 안 잠겼다 → **수정 완료** `20f704c76`
+
+security(9/10) · 절대규칙 · testing(10/10) **셋이 독립적으로** 찾았고 **둘이 각자 mutation 으로 실증**했다.
+
+**가드 자체는 3/3 핸들러에 실재**한다(`grantPermission:91` · `listGrants:115` · `revokeGrant:134`) — prod 무결점. 문제는 **테스트가 그 가드를 구분하지 못한 것**이다. `revokeGrant` 의 가드 한 줄을 지우고 돌리면 **`tests=13 failures=0` 전량 초록**이었다. 그 엔드포인트를 치는 테스트 파일이 이것 하나뿐이라 다른 커버리지도 없었다.
+
+원인 — 403 음성 테스트가 POST·GET 만 있었다. **테스트 KDoc `:53` 이 스스로 `(부여·목록 양쪽)` 이라 적어 누락을 문서화**하고 있었다. DELETE 2건(`관리자 204` · `404`)은 **둘 다 `grantAdmin()` 전제**라 판별력 0. `confirmVerified` 가 없어 미사용 스텁을 mockk 가 실패시키지도 않아 **커버리지 착시**만 만들었다.
+
+> **이 PR 자신의 잣대가 적용되지 않은 자리다.** 같은 파일 `:61-63` 이 *"JWT 테스트만 있으면 누군가 hasRole 로 바꿔도 전부 초록 — 결정의 근거 자체가 미검증으로 남는다"* 라고 적고 PAT 양성을 넣었고, T5 KDoc 은 *"판별자를 지우면 vacuous"* 라 못박았다. **DELETE 에만 그 논리를 안 썼다.** 셋 중 가장 파괴적인 것이 회수인데도(hard delete · 복구 불가).
+> **"13건"이 또 눈가리개였다** — **가드×핸들러 행렬**을 전수 열거하지 않아 POST✓ GET✓ DELETE✗ 가 숨었다([[spec-stated-count-becomes-blindfold]] 5연속 재발).
+
+**controller 수정 + 실증** (prod 코드 무변경, 테스트만).
+
+| 단계 | 결과 |
+|---|---|
+| 신규 기준선 **선확인** | `tests="14" failures="0"` |
+| 가드 제거 mutation | **`failures="1"` — 새 테스트 단독 사망** (이전엔 같은 mutation 이 13/0 통과) |
+| 복원 | `tests="14" failures="0"` · 가드 3/3 · `MUTATION-TEMP` grep 0 |
+
+### 발견 2 (2중 확인) — 하드 삭제 거버넌스 → **🛑 게이트 2 Maxi 승인 후 수정 완료**
+
+data-migration(7/10) · 절대규칙이 각각 찾았다. **`DATA.md §1` 2번이 *"하드 삭제는 ADR + Maxi 확인 필수"*** 인데 —
+- ADR D-5 가 그 규칙을 **`§1 7번`** 이라 인용했다(§1 은 **5원칙**이라 7번이 없다)
+- **`ADR 필수` 로 축약해 "Maxi 확인"을 떨어뜨렸다** — 하필 그 지운 부분이 당시 실제로 기록 없던 항목
+- D-1(`Maxi 확정 — plan D7`) · D-2(`plan D14`)는 마커를 달았으나 **D-5 만 없었다**
+- `DATA.md §3` 하드삭제 허용 목록에 `global_permission_grants` **미등재**
+
+> **T9 가 등재를 건너뛴 근거를 data-migration 이 실측으로 무너뜨렸다.** plan 은 *"`project_memberships` 도 목록에 없으니 exhaustive 가 아닐 수 있다"* 를 방어로 삼았으나, **날짜순으로 보면 그 방어는 가장 오래된 선례 하나에만 기댄다** — `project_memberships`(2026-06-01)만 미등재이고 **이후 하드삭제 ADR 5건은 전부 등재**돼 있다(issue_attachments 06-15 · favorites 06-24 · saved_filters 06-26 · dashboard_share_tokens 07-02 · user_keymap 07-08). 목록이 non-exhaustive 한 게 아니라 **2026-06-15 부로 등재가 관례로 굳었고** `project_memberships` 가 그 이전 건이다. V036(07-17)은 관례 확립 이후이며 등재 형식도 5건이 일치한다.
+
+**🛑 controller 는 이걸 대신 승인할 수 없었다** — 규칙이 "Maxi 확인 필수"라 못박은 항목이다. **게이트 2 에서 Maxi 승인 (2026-07-17)** → ADR D-5 에 확정 마커 + 인용 정정(§1 2번 · "Maxi 확인" 복원), `DATA.md §3` 등재(선례 5건과 동형).
+
+### 발견 3 (api-contract 6/10) — `createdAt` wire format 미고정 → **수정 완료** `20f704c76`
+
+응답 6필드 중 `createdAt` 만 어떤 테스트도 형식을 안 잠갔다. 실측 — identity-access 엔 커스텀 `ObjectMapper` 빈도 `@EnableWebMvc` 도 없어 Boot 기본(ISO-8601 문자열)이 적용되고, 같은 BC 선례 `TrustedDeviceControllerTest:128` 이 그 형식을 verbatim 고정한다. **PR-5/6 이 이 응답에 Zod 를 쓴다** — DTO 는 nullable 0개라 FR-AU-10 의 `.nullish()` 패턴을 복사하면 **필드 소실 회귀를 조용히 통과**시킨다.
+
+### 발견 4 (testing 8/10) — ADR D-1 이중방어 정합 무가드 → **🛑 게이트 2 결정. 후속으로 미룸**
+
+앱 겹(`ALLOWED_GLOBAL_PERMISSIONS`)과 DB 겹(V036 CHECK)이 **같은 집합이어야** 하는데 두 값을 함께 읽는 테스트가 0건이다. **ADR 이 이미 잔여 위험 4 로 의식적 수용**했고 두 집합이 현재 일치하므로 **잠복 부채이지 현행 결함이 아니다**. 가드에 리플렉션/`internal` 승격(prod 변경)이 필요해 권한 PR 리뷰 단위를 흐린다 → **`TODOS.md` 기록 후속**.
+
+### 범위 밖 (건드리지 않음)
+
+`FlywayAssemblyConfig.kt:13` KDoc `V001~V033`(실제 V036) · `DATA.md:87 §4.1` 표 `V001~V006` — **선재 drift**. V035 를 넣은 선행 PR 도 안 고쳤다. 글로벌 CLAUDE.md §3 surgical.
+
+### 리뷰가 확인한 깨끗한 축 (실측, 가정 아님)
+
+`clearMocks` 실재(`:167-170`)라 mock 누적 함정 해당 없음 · `resolveActorId`/`requireSystemAdmin` 신규 사본은 선례와 **바이트 동일** · 스키마 테스트의 넓은 `DataIntegrityViolationException` 은 **vacuous 아님**(각 setup 이 겨냥한 제약 **하나만** 위반) · `ProjectMembershipWriteAdapterTest` 의 `NOT_SUPPORTED` 정확 · 빈 catch 0건 · `!!` 0건 · `println` 0건 · cross-BC 직접 import 0건 · `init_codegen.sql` 부재 주장 사실(jOOQ 의존 0) · V036 번호 free 재확인 · 고아행 분석 정확(V015:12-13 CASCADE verbatim) · 인덱스 주장 성립 · CHECK 3곳 정확(4번째 없음).
+
 ## PR-2~6 로 이월 (이 plan 의 범위 밖)
 
 **스펙 §Brainstorming Check 미확정 7건 중 6건은 PR-1 소관이 아니다.** 각 PR 의 자기 plan 이 받는다.
