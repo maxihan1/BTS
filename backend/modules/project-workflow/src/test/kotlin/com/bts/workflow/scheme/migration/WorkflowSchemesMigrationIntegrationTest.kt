@@ -97,10 +97,13 @@ class WorkflowSchemesMigrationIntegrationTest {
                 .load()
                 .migrate()
 
-            // YamlSeedService 는 Spring ApplicationReadyEvent 에서 workflows 테이블을 채운다.
-            // 통합 테스트는 Spring 컨텍스트 없이 실행되므로 4 표준 workflow seed 를 직접 INSERT.
-            // V004 의 default mapping seed (JOIN workflows) 는 Flyway migrate 시점에 workflows 가
-            // 비어 있어 0건 삽입됨. seed INSERT 후 mapping 을 수동으로 삽입해 검증한다.
+            // YamlSeedService 는 Spring ApplicationReadyEvent 에서 workflows 테이블을 채운 뒤
+            // seedAll() 말미에 SchemeIssueTypeMappingRepository.repairDefaultMappings() 를 호출해
+            // default mapping 을 백필한다(R6). V004 의 default mapping seed(JOIN workflows) 는
+            // Flyway migrate 시점에 workflows 가 비어 있어 0건 삽입되므로, 이 백필이 없으면
+            // mapping 은 0행으로 남는다. 통합 테스트는 Spring 컨텍스트 없이 실행되므로 4 표준
+            // workflow seed 는 직접 INSERT 로 대체하되, mapping 은 손수 심지 않고 프로덕션과
+            // 동일한 백필 경로(repairDefaultMappings)를 그대로 호출해 채운다.
             seedWorkflowsAndMappings()
         }
 
