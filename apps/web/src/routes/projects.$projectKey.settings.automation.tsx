@@ -5,6 +5,7 @@ import { useParams } from '@tanstack/react-router'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { AutomationRuleList } from '@/components/automation/AutomationRuleList'
+import { GitWebhookSection } from '@/components/automation/GitWebhookSection'
 import { AutomationRuleFormDialog } from '@/components/automation/AutomationRuleFormDialog'
 import { WebhookTokenModal } from '@/components/automation/WebhookTokenModal'
 import { RuleConflictWarningModal } from '@/components/automation/RuleConflictWarningModal'
@@ -53,7 +54,9 @@ interface ProjectAutomationSettingsPageProps {
  * 프로젝트 자동화 설정 페이지.
  *
  * - 헤더 + AutomationRuleList + AutomationRuleFormDialog + WebhookTokenModal + RuleConflictWarningModal
- *   + RuleExecutionHistoryDialog + AutomationYamlImportDialog 조립.
+ *   + RuleExecutionHistoryDialog + AutomationYamlImportDialog + GitWebhookSection 조립. GitWebhookSection은
+ *   AutomationRuleList의 형제 섹션으로, 등록 Dialog·URL 노출 모달·삭제 확인 등 자신의 상태는 스스로
+ *   소유한다(FR-AT-07 PR-D — 이 컴포넌트는 상태를 추가로 늘리지 않는다).
  * - projectKey가 없거나 빈 문자열이면 ProjectNotFoundScreen을 렌더한다.
  * - 상태 6종을 이 컴포넌트가 보유한다.
  *   - `dialogOpen`/`editingRule` — AutomationRuleList의 onAddRule(신규)·onEditRule(수정)
@@ -134,7 +137,8 @@ export function ProjectAutomationSettingsPage({
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold">자동화</h1>
         <p className="text-muted-foreground text-sm">
-          이슈 이벤트나 예약 일정에 따라 자동으로 실행될 트리거 규칙을 관리합니다.
+          이슈 이벤트·예약 일정·PR 머지에 따라 자동으로 실행될 규칙과, 규칙을 발화시키는 웹훅 연동을
+          관리합니다.
         </p>
       </header>
 
@@ -147,6 +151,8 @@ export function ProjectAutomationSettingsPage({
         isExportingYaml={exportMutation.isPending}
         onImportYaml={() => setYamlImportOpen(true)}
       />
+
+      <GitWebhookSection projectKey={projectKey} />
 
       <AutomationRuleFormDialog
         projectKey={projectKey}

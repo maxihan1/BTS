@@ -344,9 +344,10 @@ describe('serializeTriggerConfig', () => {
     )
   })
 
-  // targetBranch 입력은 PR-D 몫이라 폼이 그 값을 넘기지 않는다 — 직렬화도 관여하지 않는다
-  // (serializeTriggerConfig KDoc ★ 참조). 생성 모드는 base 가 없으므로 빈 객체다.
-  it('PR_MERGED는 폼 입력에 관여하지 않고 빈 객체를 반환한다(미지정=전체 브랜치)', () => {
+  // targetBranch 를 지정하지 않으면(config 자체를 생략) 빈 객체를 반환한다(미지정=전체 브랜치).
+  // 생성 모드는 base 도 없으므로 빈 객체다 — targetBranch 가 실제로 채워져 직렬화에 관여하는
+  // 경로(PR-D 입력 UI 도입 이후 managed key 전환)는 아래 'baseConfigJson 병합' describe 참조.
+  it('PR_MERGED: targetBranch 를 지정하지 않으면 빈 객체를 반환한다(미지정=전체 브랜치)', () => {
     expect(serializeTriggerConfig('PR_MERGED')).toBe('{}')
   })
 })
@@ -383,24 +384,32 @@ describe('serializeTriggerConfig — baseConfigJson 병합', () => {
     expect(JSON.parse(result)).toEqual({ extraKey: 'keep' })
   })
 
-  // ★ targetBranch 는 폼이 관리하지 않는다 — 입력 UI 자체가 PR-D 몫이라 호출부
-  // (AutomationRuleFormDialog:291)는 `{ cron, fields }` 만 넘긴다. 따라서 managed key 로
-  // 제거하면 "아무도 채우지 않는 값을 지우는" 코드가 되어, YAML GitOps(AT-06)로 만든
-  // 브랜치 한정 룰을 폼에서 이름만 고쳐 저장해도 targetBranch 가 유실된다
-  // (= 브랜치 한정 룰이 전 브랜치 발화로 조용히 승격). ISSUE_CREATED/WEBHOOK 과 동일하게
-  // base 를 그대로 보존한다. omit 로직은 PR-D 가 입력 UI 와 함께 도입한다.
-  it('PR_MERGED: 폼이 관리하지 않는 targetBranch 는 편집해도 유실되지 않는다', () => {
+  // ★ targetBranch 는 PR-D(입력 UI 도입)부터 managed key 다 — 호출부(AutomationRuleFormDialog)가
+  // 이제 `{ cron, fields, targetBranch }` 를 넘긴다. config 에 targetBranch 를 지정하지 않으면
+  // ISSUE_UPDATED `fields`와 동일한 관례로 base 의 targetBranch 키도 제거한다 — 그래야 사용자가
+  // 입력을 비워 "전 브랜치로 되돌리기"를 할 수 있다(PR-C 리뷰 당시엔 입력 UI가 없어 이 제거가
+  // "아무도 채우지 않는 값을 지우는" 코드였지만, PR-D가 입력 UI를 도입하며 그 전제가 사라졌다).
+  it('PR_MERGED: config 에 targetBranch 를 지정하지 않으면 base 의 targetBranch 도 제거된다(managed key 전환)', () => {
     const result = serializeTriggerConfig(
       'PR_MERGED',
       {},
       JSON.stringify({ targetBranch: 'develop', extraKey: 'keep' }),
     )
-    expect(JSON.parse(result)).toEqual({ targetBranch: 'develop', extraKey: 'keep' })
+    expect(JSON.parse(result)).toEqual({ extraKey: 'keep' })
   })
 
   it('PR_MERGED: base 가 없으면 빈 객체를 낸다', () => {
     const result = serializeTriggerConfig('PR_MERGED', {})
     expect(JSON.parse(result)).toEqual({})
+  })
+
+  // Task 8 후속 fix — truthy 분기의 술어는 trim() 하는데 저장 값은 원문 그대로였다.
+  // 앞뒤 공백이 섞인 targetBranch 가 그대로 저장되면 backend 는 isBlank() 만 보므로 통과하지만,
+  // 발화 시 GitWebhookService 의 정확 문자열 비교(configured == actualBranch)가 깨져
+  // 조용히 0건 발화한다(에러 없음). 값도 trim 해 저장해야 한다.
+  it('PR_MERGED: targetBranch 의 앞뒤 공백을 제거하고 저장한다(정확 매칭 위해)', () => {
+    const result = serializeTriggerConfig('PR_MERGED', { targetBranch: '  develop  ' }, undefined)
+    expect(JSON.parse(result)).toEqual({ targetBranch: 'develop' })
   })
 
   it('base가 잘못된 JSON이면 빈 객체로 안전하게 폴백한다', () => {

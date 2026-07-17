@@ -17,6 +17,9 @@ import {
 } from '@/mocks/automation-rule-fixtures'
 import { projectMemberHandlers } from '@/mocks/project-member-handlers'
 import { AUTOMATION_RULES_QUERY_KEY } from '@/api/useAutomationRules'
+import { GIT_WEBHOOKS_QUERY_KEY } from '@/api/useGitWebhooks'
+import { gitWebhookHandlers } from '@/mocks/git-webhook-handlers'
+import { DEFAULT_GIT_WEBHOOKS, resetGitWebhookStore, seedGitWebhooks } from '@/mocks/git-webhook-fixtures'
 import type {
   AutomationRule,
   CreateAutomationRuleInput,
@@ -39,7 +42,10 @@ vi.mock('sonner', () => ({
 // 액션/실행 주체 피커는 use-project-members(React Query)에 의존한다 — 로컬 서버에
 // projectMemberHandlers를 함께 등록해 이 파일의 모든 테스트에서 담당자 목록 GET이 항상 핸들된다
 // (핵심 함정 — ActionListEditor/ProjectMemberSelect가 폼에 상시 렌더되므로 매 테스트가 대상).
-const server = setupServer(...automationRuleHandlers, ...projectMemberHandlers)
+//
+// gitWebhookHandlers도 함께 합류한다(FR-AT-07 PR-D Task 9) — 폼이 열리면 useGitWebhooks(FR15
+// 무음 실패 경고 판정용)가 항상 마운트되므로 이 파일의 모든 테스트가 대상이다.
+const server = setupServer(...automationRuleHandlers, ...projectMemberHandlers, ...gitWebhookHandlers)
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 beforeEach(() => {
@@ -48,6 +54,7 @@ beforeEach(() => {
 afterEach(() => {
   server.resetHandlers()
   resetAutomationRuleStore()
+  resetGitWebhookStore()
   vi.clearAllMocks()
   document.cookie = 'XSRF-TOKEN=; Max-Age=0'
 })
@@ -111,6 +118,24 @@ function renderWithClient(ui: JSX.Element) {
     wrapper: ({ children }: { readonly children: ReactNode }) =>
       createElement(QueryClientProvider, { client: queryClient }, children),
   })
+}
+
+/**
+ * {@link renderWithClient}과 동일하되 QueryClient를 함께 반환한다 — FR15 음성 단언(웹훅 1건/403)이
+ * `getQueryState`로 useGitWebhooks 쿼리가 실제로 settle(success/error)했는지 확인한 뒤에야 경고
+ * 부재를 단언하기 위함이다. settle을 기다리지 않고 `queryByText(...).not.toBeInTheDocument()`만
+ * 쓰면 쿼리가 아직 pending인 시점에도 항상 참이 되어 아무것도 증명하지 못하는 공허한(vacuous)
+ * 음성 단언이 된다.
+ */
+function renderWithClientAndQuery(ui: JSX.Element) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  const utils = render(ui, {
+    wrapper: ({ children }: { readonly children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: queryClient }, children),
+  })
+  return { queryClient, ...utils }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -554,6 +579,225 @@ describe('AutomationRuleFormDialog — 편집 저장 시 백엔드 미지 키 �
       cron: '0 30 8 * * *',
       futureKey: 'fromBackend',
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PR_MERGED targetBranch 입력 UI + 라운드트립 (FR-AT-07 PR-D Task 8)
+//
+// serialize 단위 테스트(automation-rules.types.test.ts)는 호출부를 못 보므로 원리적으로 못 잡는
+// 누락이 있다 — 여기서는 Dialog를 실제로 렌더해 로드→저장까지 재현한다. A4가 이 PR의 핵심 가드다
+// (omitManagedKeys 호출 자체를 지워도 A1~A3는 값 있는 경로만 밟아 초록이 나기 때문).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AutomationRuleFormDialog — PR_MERGED targetBranch (FR-AT-07 PR-D Task 8)', () => {
+  const PR_MERGED_EDIT_RULE: AutomationRule = {
+    ...SCHEDULED_EDIT_RULE,
+    id: 'a1b2c3d4-e5f6-4890-abcd-ef1234567893',
+    name: 'PR 병합 룰',
+    triggerType: 'PR_MERGED',
+    triggerConfig: JSON.stringify({ targetBranch: 'develop', futureKey: 'x' }),
+  }
+
+  it('A1: editingRule.triggerConfig 의 targetBranch 를 입력에 로드한다', () => {
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={vi.fn()}
+        editingRule={PR_MERGED_EDIT_RULE}
+      />,
+    )
+    expect(screen.getByTestId('automation-rule-target-branch-input')).toHaveValue('develop')
+  })
+
+  it('A2: 이름만 고쳐 저장해도 targetBranch·futureKey 가 PATCH body 에 유실 없이 보존된다(핵심 회귀 가드)', async () => {
+    const capturedBodies: PatchAutomationRuleInput[] = []
+    server.use(
+      http.patch('/api/v1/projects/:projectKey/automation/rules/:id', async ({ request }) => {
+        const body = (await request.json()) as PatchAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({
+          ...PR_MERGED_EDIT_RULE,
+          ...body,
+          version: PR_MERGED_EDIT_RULE.version + 1,
+        })
+      }),
+    )
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={vi.fn()}
+        editingRule={PR_MERGED_EDIT_RULE}
+      />,
+    )
+    const user = userEvent.setup()
+    const nameInput = screen.getByLabelText('이름')
+    await user.clear(nameInput)
+    await user.type(nameInput, '이름만 변경')
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    const capturedBody = capturedBodies[0]
+    if (capturedBody === undefined) {
+      throw new Error('capturedBodies[0]이 캡처되지 않음')
+    }
+    if (capturedBody.triggerConfig === undefined) {
+      throw new Error('triggerConfig가 캡처되지 않음')
+    }
+    expect(JSON.parse(capturedBody.triggerConfig)).toEqual({ targetBranch: 'develop', futureKey: 'x' })
+  })
+
+  it('A3: 입력을 release/1.2 로 바꿔 저장하면 PATCH body targetBranch 가 새 값으로 갱신된다(양성 대조군)', async () => {
+    const capturedBodies: PatchAutomationRuleInput[] = []
+    server.use(
+      http.patch('/api/v1/projects/:projectKey/automation/rules/:id', async ({ request }) => {
+        const body = (await request.json()) as PatchAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({
+          ...PR_MERGED_EDIT_RULE,
+          ...body,
+          version: PR_MERGED_EDIT_RULE.version + 1,
+        })
+      }),
+    )
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={vi.fn()}
+        editingRule={PR_MERGED_EDIT_RULE}
+      />,
+    )
+    const user = userEvent.setup()
+    const targetBranchInput = screen.getByTestId('automation-rule-target-branch-input')
+    await user.clear(targetBranchInput)
+    await user.type(targetBranchInput, 'release/1.2')
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    const capturedBody = capturedBodies[0]
+    if (capturedBody === undefined) {
+      throw new Error('capturedBodies[0]이 캡처되지 않음')
+    }
+    if (capturedBody.triggerConfig === undefined) {
+      throw new Error('triggerConfig가 캡처되지 않음')
+    }
+    expect(JSON.parse(capturedBody.triggerConfig)).toEqual({ targetBranch: 'release/1.2', futureKey: 'x' })
+  })
+
+  it('A4: 입력을 비우고 저장하면 targetBranch 키 자체가 PATCH body 에서 부재한다(FR17 omit 단독 가드)', async () => {
+    const capturedBodies: PatchAutomationRuleInput[] = []
+    server.use(
+      http.patch('/api/v1/projects/:projectKey/automation/rules/:id', async ({ request }) => {
+        const body = (await request.json()) as PatchAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({
+          ...PR_MERGED_EDIT_RULE,
+          ...body,
+          version: PR_MERGED_EDIT_RULE.version + 1,
+        })
+      }),
+    )
+    renderWithClient(
+      <AutomationRuleFormDialog
+        projectKey={PROJECT_KEY}
+        open
+        onOpenChange={vi.fn()}
+        editingRule={PR_MERGED_EDIT_RULE}
+      />,
+    )
+    const user = userEvent.setup()
+    await user.clear(screen.getByTestId('automation-rule-target-branch-input'))
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    const capturedBody = capturedBodies[0]
+    if (capturedBody === undefined) {
+      throw new Error('capturedBodies[0]이 캡처되지 않음')
+    }
+    if (capturedBody.triggerConfig === undefined) {
+      throw new Error('triggerConfig가 캡처되지 않음')
+    }
+    expect(JSON.parse(capturedBody.triggerConfig)).toEqual({ futureKey: 'x' })
+  })
+
+  it('A5: ISSUE_CREATED 트리거(기본값)에서는 targetBranch 입력이 없다(과도발화 방지)', () => {
+    renderWithClient(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />,
+    )
+    expect(screen.queryByTestId('automation-rule-target-branch-input')).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FR15 — PR_MERGED + Git 웹훅 0건 무음 실패 경고 (Maxi D4, FR-AT-07 PR-D Task 9)
+//
+// 웹훅이 0건이면 이 트리거는 영원히 발화하지 않는데 실행 이력도 비어 원인 파악이 어렵다 — 저장은
+// 막지 않는 정보성 경고만 표시한다. 판정 = `data?.length === 0`. isLoading/isError일 때는 "못
+// 읽음"을 "0건"으로 오판하지 않도록 경고를 내지 않는다(EC21).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('AutomationRuleFormDialog — FR15 PR_MERGED 웹훅 0건 경고', () => {
+  const NO_WEBHOOKS_WARNING_TEXT = '이 프로젝트에 Git 웹훅이 없어 이 룰은 발화하지 않습니다.'
+
+  it('웹훅 0건 + PR_MERGED 선택 → "이 프로젝트에 Git 웹훅이 없어 이 룰은 발화하지 않습니다." 를 렌더한다', async () => {
+    renderWithClient(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />,
+    )
+    const user = userEvent.setup()
+    await user.selectOptions(screen.getByTestId('automation-rule-trigger-select'), 'PR_MERGED')
+
+    expect(await screen.findByText(NO_WEBHOOKS_WARNING_TEXT)).toBeInTheDocument()
+  })
+
+  it('웹훅 1건 + PR_MERGED → 경고 부재(음성 단언)', async () => {
+    seedGitWebhooks(DEFAULT_GIT_WEBHOOKS)
+    const { queryClient } = renderWithClientAndQuery(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />,
+    )
+    const user = userEvent.setup()
+    await user.selectOptions(screen.getByTestId('automation-rule-trigger-select'), 'PR_MERGED')
+
+    // 쿼리가 실제로 success로 settle된 뒤에야 경고 부재를 단언한다(공허한 음성 단언 방지).
+    await waitFor(() => {
+      expect(queryClient.getQueryState(GIT_WEBHOOKS_QUERY_KEY(PROJECT_KEY))?.status).toBe('success')
+    })
+    expect(screen.queryByText(NO_WEBHOOKS_WARNING_TEXT)).not.toBeInTheDocument()
+  })
+
+  it('목록 isError(403) + PR_MERGED → 경고 부재(EC21 — "못 읽음" ≠ "0건")', async () => {
+    server.use(
+      http.get('/api/v1/projects/:projectKey/automation/git-webhooks', () =>
+        HttpResponse.json({ errorCode: 'AUTOMATION_ACCESS_DENIED' }, { status: 403 }),
+      ),
+    )
+    const { queryClient } = renderWithClientAndQuery(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />,
+    )
+    const user = userEvent.setup()
+    await user.selectOptions(screen.getByTestId('automation-rule-trigger-select'), 'PR_MERGED')
+
+    await waitFor(() => {
+      expect(queryClient.getQueryState(GIT_WEBHOOKS_QUERY_KEY(PROJECT_KEY))?.status).toBe('error')
+    })
+    expect(screen.queryByText(NO_WEBHOOKS_WARNING_TEXT)).not.toBeInTheDocument()
+  })
+
+  it('웹훅 0건이어도 저장은 막지 않는다(정보성, 차단 금지)', async () => {
+    const onOpenChange = vi.fn()
+    renderWithClient(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={onOpenChange} />,
+    )
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('이름'), 'PR 병합 룰')
+    await user.selectOptions(screen.getByTestId('automation-rule-trigger-select'), 'PR_MERGED')
+    await screen.findByText(NO_WEBHOOKS_WARNING_TEXT)
+
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
   })
 })
 

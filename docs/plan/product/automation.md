@@ -124,8 +124,8 @@
 - [x] D3. 데이터 모델 — (활용. webhook secret 저장) (책임. db-engineer)
 - [x] D4. 백엔드 — `POST /api/v1/webhooks/git` + 서명 검증 (책임. backend-engineer + security-engineer)
 - [x] D5. 백엔드 테스트 — 가짜 페이로드 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — Webhook URL 생성 페이지 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — Webhook URL 생성 페이지 (책임. designer → frontend-engineer)
+- [x] D7. E2E (책임. qa-engineer)
 
 > **PR-B 완료 (2026-07-17, PR #276)**. DEC-11(Maxi 확정)에 따라 FR-AT-07은 **PR-A**(인바운드 웹훅 prod
 > 도달 가능화 + 암호화 키 배포, #274/#275 완료) → **PR-B**(Fix Version 설정 통로, 본 PR) → **PR-C**(PR_MERGED
@@ -180,6 +180,47 @@
 > FR 총수 **123 불변** — `fr-index.md`·`README.md`·`CLAUDE.md` 미변경(#277 동시 PR 의 카운트 충돌 회피).
 > → FR-AT-07 **미완료 유지**, automation BC **6/7 유지**. 남은 것은 **PR-D**(D6/D7).
 
+> **D6/D7 완료 (2026-07-18, PR #N) — 순수 프론트**(`apps/web`·백엔드/DB/마이그레이션/ADR 0). PR-C(#278)가
+> 완비한 관리 CRUD REST 3매핑(`POST`/`GET`/`DELETE .../automation/git-webhooks`)을 소비만 한다. D6 Git 웹훅
+> 등록 UI + PR_MERGED `targetBranch` 입력 + D7 E2E 로 FR-AT-07 을 닫는다.
+> **★ 배치 = 형제 섹션(옵션 A, Maxi D2 확정)** — D6 정본 문구는 "페이지"(`:127`)이나 **신규 라우트 0**으로
+> 기존 설정 페이지(`/projects/$key/settings/automation`)에 `GitWebhookSection` 을 `AutomationRuleList` 의
+> 형제로 마운트했다. 사유 — automation D6/D7 선례 3건 전부 in-page 이고 "라우터 변경 0"이 성과이며, **전역
+> 사이드바가 아직 없어**(FR-UX-06 개편 관심사) 신규 페이지는 도달 경로가 0이다. 정본 "페이지" 문구를 조용히
+> 고치면 결정 근거가 소실되므로 문구는 두고 이 블록에 사유를 남긴다.
+> **★★ secret 은 어떤 경로로도 `trim()`/`normalize()` 하지 않는다(BLOCKER-0)** — provider HMAC 서명이 secret
+> 바이트열 원본을 쓰므로(`GitWebhookRegistrationService.kt` KDoc 명시 금지), 손대면 등록 201·목록 정상인데
+> **모든 인바운드 서명 영구 실패**하고 MSW·E2E 미탐지·수정 엔드포인트 0건이라 **prod 에서만 드러나고 복구
+> 불가**하다. 클라 검증 술어는 서버 비대칭을 복제 — blank 는 trim 기준(읽기 전용), **길이는 원문 `secret.length`**
+> (untrimmed). 반대로 `targetBranch` 는 trim 이 **필요**하다(공백만 든 값은 백엔드 `isBlank()`가 400, 앞뒤
+> 공백 낀 값은 정확 매칭에서 조용히 0건 발화) — 두 규칙이 정반대이며 이 혼동이 1차 초안 오염원이었다. secret
+> 단위 뮤테이션 검증(trim 끼우면 EC2 red) 통과.
+> **★ URL 1회 노출 = `registerMutation.data` 파생**(별도 state 아님) — `reset()`이 유일한 닫기 기전이라
+> 구조적 load-bearing(지우면 모달이 안 닫혀 2단언 red, 뮤테이션 검증 통과). `reset()`이 `data`(URL·token)뿐
+> 아니라 `variables`(secret 원문)까지 비워 mutation 캐시 잔존을 막는다(NFR1). 닫기 3경로(X·ESC·오버레이)
+> 전부 2단계 확인. 재발급 버튼 없음(토큰 SHA-256 해시·엔드포인트 0건 → 회전 = 삭제 후 재등록).
+> **★ `targetBranch` 원자 4종**(parse ④ + serialize omit ② + 호출부 ③ + 입력 UI) 한 커밋 — parse 없이 omit
+> 만 하면 편집 시 브랜치 한정 룰이 전 브랜치 발화로 조용히 승격(현상유지보다 나쁨). A4(비우고 저장→키 부재)가
+> 유일한 omit 가드(뮤테이션 검증 통과). **FR15** — PR_MERGED + 웹훅 0건이면 무음 실패 경고(Maxi D4, 저장
+> 비차단), `isLoading`/`isError` 는 배제(EC21 — "못 읽음" ≠ "0건").
+> **★ 후속 등재** — ① `(project_key, provider)` 중복 등록 백엔드 가드 + 목록 행 name/label 식별자 ② FR15
+> `isError` 배제의 단독 load-bearing 테스트("성공(빈 목록) 후 refetch 403" 시나리오) ③ git-webhook 시드
+> 스키마 계약 자동 가드 ④ `PublicDashboardController` 평문 토큰 누출(P0급, PRE_EXISTING) ⑤ §NFR 잔여 4행
+> 측정(트리거→액션 지연·replay·YAML import·권한 차단율) ⑥ 죽은 BC 완료 게이트(9 BC 전부) ⑦ `domain/automation.md`
+> 3오류·glossary 웹훅 용어 5종(Maxi 확인).
+> **11 TDD 태스크 / 7 wave**(W1 `{1,4,8}` → … → W7 `{11}`, 순환 0). W3 API 태스크가 API 오류로 GREEN 중단→
+> 재개 세션이 무손실 복구. 착수 중 main 이 #281(FR **128→129**)로 전진해 rebase(충돌 0). 유닛 기준선
+> **7004**(스펙의 6933·`:116`의 6979 는 스테일 — #278 이 프론트 5파일을 함께 배포하고 유닛 수를 안 남김) →
+> 신규 후 **7092**(442파일, +88) 전량 통과·typecheck/lint/build 0. E2E 신규 4(S1 등록+URL·S6 목록·S5 삭제·S12 targetBranch
+> 라운드트립) + 기존 automation E2E 6건 29 동시 통과(strict mode 위반 0). **E2E 는 CI 미탑재**(playwright 0건)
+> 라 로컬 실측이 유일 증거. §NFR 「규칙 충돌 정적 분석」 전사갭 `___`→`0.876s`(#268 산문 옮겨적기) 해소.
+> **★ FR 총수 129 불변**(D-step — 완료마킹은 체크박스 [x]만, `fr-index`/`README`/`CLAUDE`/SDD 미해당).
+> **선례 6블록의 옛 카운트는 각 PR 시점 값이라 불변**(#277 이 128 로, #281 이 129 로 올림 — 과거 기록 편집
+> 금지). **★ BC 7/7 ≠ BC 완료** — `automation BC 7/7`은 FR 체크박스 7개 [x](선례 정합)이고, `§NFR BC 완료
+> 게이트 5조건`(`:209-213`)은 미집행 유지(9 BC 중 이 게이트 통과 BC 0개·slack 6/6 동형). `README.md:110`
+> `☐` 는 뒤집지 않는다(§NFR 4행 `___` 잔존·CHANGELOG·README §7·Maxi 선언은 별건). 코드리뷰 게이트 2 대기.
+> → **FR-AT-07 전체 완료(D1~D7)**, automation BC **7/7**.
+
 ## §NFR automation BC 완료 게이트
 
 ### 측정값 기록표
@@ -187,7 +228,7 @@
 | 항목 | 임계 | 실측 (p95) | 비고 |
 |---|---|---|---|
 | 트리거 → 액션 처리 지연 | 5s | ___ | pgmq consumer + Action |
-| 규칙 충돌 정적 분석 | 1s | ___ | 100개 규칙 |
+| 규칙 충돌 정적 분석 | 1s | **0.876s** | 100개 규칙 — FR-AT-04(#268) D1~D5 스모크 실측(전사갭 해소, PR-D #N) |
 | 실행 이력 재실행 | 1s | ___ | 단일 규칙 |
 | YAML import (100 규칙) | 10s | ___ | (대량 케이스) |
 | Webhook 응답 | 200ms | **148ms** | Git PR 머지 — PR-C(#278) T15 실측. 아래 ★ |

@@ -73,6 +73,8 @@ export const DEFAULT_AUTOMATION_ACTOR_ID = '00000000-0000-4000-8000-000000000001
 export const SEED_AUTOMATION_RULE_IDS = {
   issueCreated: 'a1000000-0000-4000-8000-000000000001',
   scheduled: 'a1000000-0000-4000-8000-000000000002',
+  /** PR_MERGED targetBranch D7 라운드트립 E2E용 시드(FR-AT-07 PR-D Task 10, EC16) */
+  prMerged: 'a1000000-0000-4000-8000-000000000003',
 } as const
 
 /**
@@ -160,6 +162,30 @@ export const DEFAULT_AUTOMATION_RULES: AutomationRule[] = [
     createdBy: DEFAULT_AUTOMATION_ACTOR_ID,
     createdAt: '2026-07-01T09:05:00Z',
     updatedAt: '2026-07-01T09:05:00Z',
+    version: 1,
+  },
+  // ★ 아래로는 append만 허용 — 앞의 두 항목([0]=ISSUE_CREATED enabled, [1]=SCHEDULED)의 인덱스
+  // 위치는 AutomationRuleList.test.tsx/automation-rules.test.ts/useAutomationRules.test.tsx/
+  // routes/__tests__/projects.$projectKey.settings.automation.test.tsx가 계약으로 전제한다
+  // (spec-stated-count-becomes-blindfold 교훈 — 개수가 아니라 "위치"가 계약이다). 앞/중간 삽입 금지.
+  {
+    // PR_MERGED targetBranch D7 라운드트립 E2E 선행조건(EC16) — 등록 UI 없이 targetBranch가 있는
+    // 시드가 0건이면 편집→저장 핵심 경로(targetBranch 보존)를 화면으로 밟을 수 없어 버그가
+    // 눈검사를 통과한다(FR-AT-07 PR-D Task 10).
+    id: SEED_AUTOMATION_RULE_IDS.prMerged,
+    projectKey: DEFAULT_AUTOMATION_PROJECT_KEY,
+    name: 'PR 병합 릴리즈 룰',
+    enabled: true,
+    triggerType: 'PR_MERGED',
+    triggerConfig: JSON.stringify({ targetBranch: 'release/1.2' }),
+    condition: null,
+    actions: [],
+    actorUserId: DEFAULT_AUTOMATION_ACTOR_ID,
+    hasWebhookToken: false,
+    nextFireAt: null,
+    createdBy: DEFAULT_AUTOMATION_ACTOR_ID,
+    createdAt: '2026-07-01T09:10:00Z',
+    updatedAt: '2026-07-01T09:10:00Z',
     version: 1,
   },
 ]
