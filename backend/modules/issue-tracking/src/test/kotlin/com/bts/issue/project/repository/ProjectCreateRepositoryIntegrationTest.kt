@@ -101,7 +101,9 @@ class ProjectCreateRepositoryIntegrationTest {
 
     @Test
     fun `key 정규식 위반은 DB CHECK 로 거부한다 (PJ1-6)`() {
-        assertThatThrownBy { repository.insert(key = "invalid-key", name = "Bad Key Project") }
+        // "invalid1" — 소문자로 시작(정규식 위반). VARCHAR(10) 길이 제한(8자)은 만족시켜
+        // CHECK 위반(23514)만 단독으로 검증한다(길이 초과 데이터 예외와 혼동 방지).
+        assertThatThrownBy { repository.insert(key = "invalid1", name = "Bad Key Project") }
             .isInstanceOf(IntegrityConstraintViolationException::class.java)
             .isNotInstanceOf(ProjectKeyAlreadyExistsException::class.java)
     }
