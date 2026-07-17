@@ -62,6 +62,8 @@ class ProjectCreateRepository(
             translateUniqueViolation(ex, key)
         }
 
+    // ── private helpers ───────────────────────────────────────────────────────
+
     private fun insertRow(
         key: String,
         name: String,
