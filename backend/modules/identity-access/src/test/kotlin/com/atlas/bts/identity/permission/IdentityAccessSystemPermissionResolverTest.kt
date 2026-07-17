@@ -23,7 +23,17 @@ import java.util.UUID
 class IdentityAccessSystemPermissionResolverTest {
     private val repo: SystemRoleAssignmentRepository = mockk()
 
-    private val resolver = IdentityAccessSystemPermissionResolver(repo = repo)
+    /**
+     * FR-PM-10 이 추가한 생성자 협력자. 본 테스트는 [IdentityAccessSystemPermissionResolver.isSystemAdmin]
+     * 만 호출하고 그 경로는 grant 축을 타지 않으므로 스텁하지 않는다 — 만약 이 목이 호출되면
+     * non-relaxed mockk 가 예외로 알려준다(조용한 통과 없음).
+     *
+     * `hasGlobalPermission` 판정식(grant OR isSystemAdmin)의 검증은 실 DB 가 필요하므로
+     * [IdentityAccessSystemPermissionResolverGlobalPermissionTest] 가 담당한다.
+     */
+    private val grantRepo: GlobalPermissionGrantRepository = mockk()
+
+    private val resolver = IdentityAccessSystemPermissionResolver(repo = repo, grantRepo = grantRepo)
 
     private val adminUser: UUID = UUID.fromString("00000000-0000-4000-8000-000000000001")
     private val plainUser: UUID = UUID.fromString("00000000-0000-4000-8000-000000000002")
