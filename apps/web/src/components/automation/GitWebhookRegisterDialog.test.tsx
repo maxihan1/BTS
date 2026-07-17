@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode, ReactElement } from 'react'
-import { GitWebhookRegisterDialog } from '../GitWebhookRegisterDialog'
+import { GitWebhookRegisterDialog } from '@/components/automation/GitWebhookRegisterDialog'
 import type { GitProvider } from '@/api/automation-git-webhooks.types'
 
 // ─────────────────────────────────────────────────────────────────────────────
