@@ -1334,6 +1334,33 @@ ADR 이 `granted_by NOT NULL` 을 명시하고 plan 의 테스트 3 은 이미 �
 - 부수 — plan 의 `V015:19/:20` 은 off-by-one(실제 18-19 / 19). ADR 표기가 맞아 그쪽을 따랐다. `V008:25/26/39`·`V007:5` 는 실측 정확
 - `init_codegen.sql` 미러 불요 **실측 확인** — identity-access 는 `build.gradle.kts` 에 jOOQ 없고 해당 파일도 없다(issue-tracking·notification·agile-planning·search-export-import 4개 모듈에만 존재)
 
+### wave 3 ✅ 졸업 (5/9) — controller 가 재실행·XML 로 직접 검증
+
+| task | TDD 커밋 (실측 순서) | 판정 |
+|---|---|---|
+| **T4** Repository | `291e31add test:` → `389bebf9e feat:` → `b6c220658 refactor:` (선행 `d24592c4f docs:` = plan 정정) | ✅ PASS |
+
+**선언 외 파일 0건.** 4 files, 538 insertions = files 3 + plan 정정.
+
+**controller 재검증 실측.** XML `tests="8" failures="0"`, testcase 이름 8개 실재. `ktlintCheck`+`detekt --rerun-tasks` = `8 executed`(up-to-date 0).
+> **콘솔은 11 이라고 나온다** — 인계 사실 #9 (ArchUnit 2종 동반실행). XML 이 판단 근거다.
+
+**🛑 T4 가 처리한 plan 결함 3건.**
+1. **결함 A — 테스트 4 가 깨진다** (controller 선발견). plan 이 `repo.grant("SOME_OTHER_PERMISSION", ...)` 로 시드하나 V036 의 `CHECK (permission IN ('CREATE_PROJECT'))`(D17 확정 설계)가 **INSERT 자체를 막는다** → `false` 가 아니라 예외. **CHECK 를 풀지 않고 방향을 뒤집어** 의도를 살렸다 — `CREATE_PROJECT` 부여 후 `hasGrant(userId, "SOME_OTHER_PERMISSION")` 이 false 인지 본다(조회 인자는 읽기 경로라 CHECK 대상 아님). mutation 2 로 판별력 실증.
+2. **결함 B — 테스트 1~4 가 `grantedBy` 누락** (controller 선발견, plan 자기모순 — 5~7 은 넘긴다). **기본값을 주지 않았다** — ADR D-5 감사 흔적을 조용히 위조하는 통로가 된다. 테스트가 `adminId` 를 명시로 넘긴다.
+3. **🛑 무가드 계약 1건 → 8건으로 신설** (T4 자체 발견). plan 764행이 `grant` 는 **`ON CONFLICT DO NOTHING` 아님**(중복 → 409)을 계약으로 못박았으나 **7건 중 어느 것도 이를 가드하지 않았다**. 중복부여 → `DuplicateKeyException` 단언 신설. **"7건"이라는 개수가 눈가리개였다** ([[spec-stated-count-becomes-blindfold]]).
+
+**mutation 판별력 실증** (기준선 8/8 PASS 선확인 → 주입 → 복원 `git diff --stat` 빈 출력).
+
+| 주입 | 결과 |
+|---|---|
+| `hasGrant` GROUP 가지 제거 | `failures="2"` — `GROUP 전파` + `그룹 탈퇴` 정확히 2건 |
+| permission 필터 무력화(`:permission IS NOT NULL`) | `failures="1"` — 재설계한 `다른 권한코드` 1건 |
+| `ON CONFLICT DO NOTHING` 주입 | `failures="1"` — 신설한 중복부여 가드 1건 |
+
+- **mutation 1 이 `그룹 탈퇴` 도 죽인 건 T4 가 넣은 탈퇴 전 선단언(`isTrue()`) 덕이다.** 없었으면 "원래부터 false"여도 통과하는 vacuous 가드였다.
+- **mutation 3 은 예측을 관측으로 바꿨다** — 실패 메시지가 `IllegalArgumentException: INSERT ... RETURNING 이 행을 반환하지 않았습니다`. 즉 `ON CONFLICT` 를 붙이면 409 가 아니라 **500 으로 변질**된다. 주장이 아니라 실측이다.
+
 ### ★ wave 2~6 이 물려받을 실측 사실 (다시 발견하지 말 것)
 
 | # | 사실 | 출처 |
@@ -1350,6 +1377,12 @@ ADR 이 `granted_by NOT NULL` 을 명시하고 plan 의 테스트 3 은 이미 �
 | 10 | **Flyway `locations: classpath:db/migration`**(`application.yml:25`)이 하위 `identity-access/` 를 재귀 스캔한다. 테스트용 별도 flyway 설정 없이 `@DynamicPropertySource` 로 `spring.flyway.enabled=true` 만 켜면 V001~V036 전량 적용된다 | T2 |
 | 11 | **pre-commit 훅을 `-c core.hooksPath=/dev/null` 로 우회하는 것이 wave 표준** — worktree 공유 + lint-staged 가 내부적으로 `git stash` 를 써서 타 세션/병렬 task 산출물을 흡수할 위험이 있다([[worktree-lint-staged-shared-git-stash-collision]]). **대신 `ktlintCheck`/`detekt --rerun-tasks` 를 명시 실행해 검증을 유지**할 것 | T2 |
 | 12 | **plan 산문의 "D3"·"D7" 은 plan-eng-review 번호**이지 ADR 번호가 아니다. ADR 실번호 = D-1 신규테이블 / D-2 판정식(`grant OR isSystemAdmin`) / D-3 default메서드 / D-4 FK없음·다형참조 / D-5 granted_by·회수 hard delete. **T5 KDoc 이 ADR 을 인용할 때 이 표를 볼 것** | T2·controller |
+| 13 | **`GlobalPermissionGrantRepository` 는 인터페이스 없는 concrete `@Repository`** 다. T5 는 `grantRepo = mockk()` 로 그대로 목킹하면 된다(mockk 는 final 클래스 인터셉트). 모듈에 두 관례가 공존하나(`ProjectMembershipRepository`=인터페이스+impl / `CalendarFeedTokenRepository`=concrete 단독) plan 이 파일 1개만 선언해 후자를 따랐다 | T4 |
+| 14 | **T8 이 고정할 빈 이름 2번째 = `com.atlas.bts.identity.permission.GlobalPermissionGrantRepository`** (T7 의 사실 #5 와 같은 계열) | T4 |
+| 15 | 🛑 **T5 주의** — `IdentityAccessSystemPermissionResolver`(`@Component`)에 `grantRepo` 를 넣으면 **그 리졸버를 스캔하는 슬라이스/컨텍스트가 새 `@Repository` 빈을 요구**한다. full-boot 는 같은 모듈 스캔이라 자동 해결되나 `@WebMvcTest` 류는 `@MockBean` 동반이 필요할 수 있다 ([[new-crossbc-dep-openapi-mockbean-regression]] 계열) | T4 |
+| 16 | **`@JdbcTest` 롤백만으로 격리 충분** — `@BeforeEach` DELETE 불요. `list()` 의 `singleElement()` 가 롤백에 기대지만 격리가 깨지면 **fail 하는 방향**이라 안전하다. 픽스처는 매번 랜덤 UUID | T4 |
+| 17 | **`granted_by`·`grantee_id` 엔 FK 가 없어 users 행 없이도 INSERT 된다**(ADR D-4). 단 `group_memberships.user_id` 엔 V015 FK 가 있어 **GROUP 시나리오엔 실 users 행이 필수** | T4 |
+| 18 | **detekt/ktlint 커스텀 설정 없음** — 루트 `.editorconfig` 도 detekt.yml 도 없다(기본값). 신규 파일은 라인 ≤120 으로 쓰면 안전 | T4 |
 
 ### ★ wave 2~6 에 인계된 주의 (서브에이전트 보고)
 
@@ -1362,8 +1395,10 @@ ADR 이 `granted_by NOT NULL` 을 명시하고 plan 의 테스트 3 은 이미 �
 
 ```
 wave 2  T2 (db-engineer)        V036 마이그레이션 + 스키마 가드      ✅ 졸업
-wave 3  T4 (security-engineer)  GlobalPermissionGrantRepository      ← 여기서 재개
-wave 4  T5 · T6 (security)      prod override · 컨트롤러
+wave 3  T4 (security-engineer)  GlobalPermissionGrantRepository      ✅ 졸업
+wave 4  T5 · T6 (security)      prod override · 컨트롤러             ← 여기서 재개
+        ※ 같은 worktree·같은 Gradle 모듈이라 controller 가 T5→T6 순차 dispatch 한다
+          (동시 실행 시 build 디렉토리/ git index 경합 — [[parallel-dispatch-precommit-hook-race]])
 wave 5  T8 (security)           :modules:app 조립 가드   ※ dev postgres(5433) 기동 전제
 wave 6  T9 (backend-engineer)   전수 동기화 8종 + FR 5개 등록
 그 후    qa-engineer E2E (타입 auth) → verification-before-completion → /bts-codereview
