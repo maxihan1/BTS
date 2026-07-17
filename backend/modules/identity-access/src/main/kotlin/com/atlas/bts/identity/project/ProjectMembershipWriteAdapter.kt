@@ -58,11 +58,24 @@ class ProjectMembershipWriteAdapter(
         userId: UUID,
     ) {
         jdbc.update(
-            """
+            SQL_INSERT_ADMIN_MEMBERSHIP,
+            mapOf("projectId" to projectId, "userId" to userId, "role" to ROLE_PROJECT_ADMIN),
+        )
+    }
+
+    // ── SQL 상수 ─────────────────────────────────────────────────────────────
+
+    private companion object {
+        /**
+         * 생성자 멤버십 INSERT — id / created_at / updated_at 은 DB DEFAULT 를 사용한다.
+         * 반환값을 쓰지 않으므로 RETURNING 을 두지 않는다 (ProjectMembershipRepository 의 SQL_INSERT 와 다른 점).
+         */
+        const val SQL_INSERT_ADMIN_MEMBERSHIP = """
             INSERT INTO project_memberships (project_id, user_id, role)
             VALUES (:projectId, :userId, :role)
-            """,
-            mapOf("projectId" to projectId, "userId" to userId, "role" to "PROJECT_ADMIN"),
-        )
+        """
+
+        /** project_memberships.role CHECK 제약이 허용하는 값 (V007) — 이 포트는 항상 관리자로만 등록한다. */
+        const val ROLE_PROJECT_ADMIN = "PROJECT_ADMIN"
     }
 }

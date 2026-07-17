@@ -59,7 +59,6 @@ import java.util.UUID
 @Testcontainers
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class ProjectMembershipWriteAdapterTest {
-
     companion object {
         @Container
         @JvmStatic
@@ -118,7 +117,8 @@ class ProjectMembershipWriteAdapterTest {
         assertThatThrownBy {
             txTemplate.executeWithoutResult {
                 adapter.addCreatorAsAdmin(projectId, userId)
-                throw IllegalStateException("의도적 실패 — 롤백 유발")
+                // error() 는 IllegalStateException 을 던진다 — detekt UseCheckOrError 준수.
+                error("의도적 실패 — 롤백 유발")
             }
         }.isInstanceOf(IllegalStateException::class.java)
 
