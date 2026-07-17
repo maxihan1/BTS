@@ -473,13 +473,17 @@ class GlobalPermissionGrantSchemaMigrationTest {
 
     @Autowired private lateinit var jdbc: NamedParameterJdbcTemplate
 
+    // 🛑 T2 정정 — 세 INSERT 모두 granted_by 를 채운다. granted_by 는 NOT NULL(ADR D-5)이라
+    // 생략하면 CHECK 위반이 아니라 NOT NULL 위반이 나서, 테스트 2 는 setup 에서 터지고
+    // 테스트 1 은 grantee_type CHECK 를 지워도 통과하는 vacuous 가드가 된다.
+    // 각 INSERT 가 겨냥한 제약 하나만 위반시키는 것이 판별자다.
     @Test
     fun `grantee_type 은 USER 와 GROUP 만 허용한다`() {
         assertThatThrownBy {
             jdbc.update(
-                "INSERT INTO global_permission_grants (permission, grantee_type, grantee_id) " +
-                    "VALUES ('CREATE_PROJECT', 'ROLE', :id)",
-                mapOf("id" to UUID.randomUUID()),
+                "INSERT INTO global_permission_grants (permission, grantee_type, grantee_id, granted_by) " +
+                    "VALUES ('CREATE_PROJECT', 'ROLE', :id, :by)",
+                mapOf("id" to UUID.randomUUID(), "by" to UUID.randomUUID()),
             )
         }.isInstanceOf(DataIntegrityViolationException::class.java)
     }
@@ -487,17 +491,19 @@ class GlobalPermissionGrantSchemaMigrationTest {
     @Test
     fun `같은 (permission, grantee) 중복 부여는 UNIQUE 로 차단된다`() {
         val granteeId = UUID.randomUUID()
-        val sql = "INSERT INTO global_permission_grants (permission, grantee_type, grantee_id) " +
-            "VALUES ('CREATE_PROJECT', 'USER', :id)"
-        jdbc.update(sql, mapOf("id" to granteeId))
+        val sql = "INSERT INTO global_permission_grants (permission, grantee_type, grantee_id, granted_by) " +
+            "VALUES ('CREATE_PROJECT', 'USER', :id, :by)"
+        jdbc.update(sql, mapOf("id" to granteeId, "by" to UUID.randomUUID()))
 
-        assertThatThrownBy { jdbc.update(sql, mapOf("id" to granteeId)) }
+        // 두 번째는 granted_by 만 다르다 — UNIQUE 가 3컬럼이라는 게 판별자다.
+        assertThatThrownBy { jdbc.update(sql, mapOf("id" to granteeId, "by" to UUID.randomUUID())) }
             .isInstanceOf(DuplicateKeyException::class.java)
     }
 
     @Test
     fun `permission 은 CREATE_PROJECT 만 허용한다`() {
-        // D3 — 이 테이블은 권한코드를 사용자 입력으로 받는 유일한 곳이다. 오타를 DB 가 막는다.
+        // ADR D-1 — 이 테이블은 권한코드를 사용자 입력으로 받는 유일한 곳이다. 오타를 DB 가 막는다.
+        // ※ 아래 "D3" 은 plan-eng-review 번호다. ADR 실번호는 D-1 (인계 사실 #12 표 참조).
         assertThatThrownBy {
             jdbc.update(
                 "INSERT INTO global_permission_grants (permission, grantee_type, grantee_id, granted_by) " +
@@ -1273,6 +1279,32 @@ depends-on: T1[] T2[1] T3[] T4[2] T5[3,4] T6[4] T7[] T8[5,7] T9[1..8]
 ```
 `NOT_SUPPORTED` 가 없었으면 ①도 fail 이라 ②가 vacuous 했을 것이다. 코드 실측 — 어댑터에 `@Transactional`/`TransactionTemplate` **import 0건**(매칭은 KDoc 산문뿐), 테스트 `:60` 에 `@Transactional(propagation = Propagation.NOT_SUPPORTED)` 실재.
 
+### wave 2 ✅ 졸업 (4/9) — controller 가 재실행·XML 로 직접 검증
+
+| task | TDD 커밋 (실측 순서) | 판정 |
+|---|---|---|
+| **T2** V036 | `18e8b1c32 test:` → `2ab46ee30 feat:` (refactor 없음 — plan 대로 생략) | ✅ PASS |
+
+**선언 외 파일 0건.** `git diff --stat` = 2 files, 152 insertions (V036 SQL 47 + 테스트 105).
+
+**controller 재검증 실측** (에이전트 보고를 믿지 않고 직접 실행 — [[subagent-ktlint-false-green-controller-verify]]).
+- `GlobalPermissionGrantSchemaMigrationTest` XML = `tests="3" failures="0"`, testcase 이름 3개 실재
+- 회귀 `PermissionSchemaMigrationTest` XML = `tests="10" failures="0"` → **PM10-5 확정**(§리스크 4행의 UNKNOWN 해소). V036 은 새 테이블만 만들어 `role_permissions` 를 안 건드리므로 `:79` 의 `isEqualTo(17)` 가드와 접점이 없다 — **전제가 아니라 실행으로 확정됐다**
+- `ktlintCheck` + `detekt --rerun-tasks` = BUILD SUCCESSFUL, `8 executed`(up-to-date 0 = 진짜 재실행)
+
+**🛑 T2 가 잡은 plan 결함 1건 (에이전트가 고쳐서 진행, controller 승인).**
+plan 의 RED 테스트 1·2 가 `granted_by` 를 INSERT 에서 누락했다. 스키마는 `granted_by NOT NULL`(ADR D-5)이라 —
+- 테스트 2 는 **깨진다** (setup INSERT 가 NOT NULL 로 터져 `DuplicateKeyException` 단언에 도달 못 함)
+- 테스트 1 은 **틀린 이유로 통과한다** — NOT NULL 위반도 `DataIntegrityViolationException` 이라 `grantee_type` CHECK 를 통째로 지워도 초록. **vacuous 가드**
+
+ADR 이 `granted_by NOT NULL` 을 명시하고 plan 의 테스트 3 은 이미 넘기고 있어 해석이 하나로 결정된다(설계 판단 아님) → 세 INSERT 모두 `granted_by` 를 채워 **각 INSERT 가 겨냥한 제약 하나만** 위반하게 했다. **mutation 으로 판별력 실증** — 기준선 PASS 선확인 → 두 CHECK + UNIQUE 제거 → 3/3 fail → 복원 → 3/3 PASS ([[verify-logic-vs-verify-guard]]). 테스트 2 의 두 번째 INSERT 는 `granted_by` 만 다르다 — UNIQUE 가 3컬럼이라는 게 판별자다.
+
+**ADR 대조 결과 (T2 에 명시 인계된 필수 작업).**
+- **고아 행 문구 — 의미 일치**, 정정 불요. ADR 표(GROUP=CASCADE 탈락 / USER=영구 잔존)를 정본으로 SQL 주석에 반영. `V015:12-13` CASCADE 실측 확인
+- **🛑 D 번호 인용 정정** — plan 500행이 `permission` CHECK 근거를 `// D3` 로 인용하나 그건 **plan-eng-review 번호**다. **ADR 실제 D-3 은 default 메서드 포트(Task 3)** 이고 permission CHECK 근거는 **ADR D-1** 안에 있다 (controller 가 ADR 헤더 실측으로 확인 — D-1 신규테이블 / D-2 판정식 / D-3 default메서드 / D-4 FK없음 / D-5 granted_by). 테스트 주석을 `ADR D-1` 로 정정했다. **plan 산문의 "D3"·"D7" 은 plan-eng-review 번호이므로 ADR 번호로 읽지 말 것**
+- 부수 — plan 의 `V015:19/:20` 은 off-by-one(실제 18-19 / 19). ADR 표기가 맞아 그쪽을 따랐다. `V008:25/26/39`·`V007:5` 는 실측 정확
+- `init_codegen.sql` 미러 불요 **실측 확인** — identity-access 는 `build.gradle.kts` 에 jOOQ 없고 해당 파일도 없다(issue-tracking·notification·agile-planning·search-export-import 4개 모듈에만 존재)
+
 ### ★ wave 2~6 이 물려받을 실측 사실 (다시 발견하지 말 것)
 
 | # | 사실 | 출처 |
@@ -1285,6 +1317,10 @@ depends-on: T1[] T2[1] T3[] T4[2] T5[3,4] T6[4] T7[] T8[5,7] T9[1..8]
 | 6 | **detekt `UseCheckOrError`** — 테스트에서 `throw IllegalStateException(...)` 대신 `error(...)`. ktlint `Class body should not start with blank line` — 형제 파일들은 baseline 동결이라 통과 중이나 신규 파일은 걸린다 | T7 |
 | 7 | **`BUILD SUCCESSFUL` 을 믿지 말 것** — 결과 XML(`build/test-results/test/*.xml`)에서 `tests="N"` 을 직접 확인해 0개 실행 가짜 그린을 배제한다. wave 1 두 에이전트 모두 이걸 했다 ([[gradle-batched-task-partial-test-run]]) | T3·T7 |
 | 8 | 🛑 **zsh 는 unquoted 변수를 단어분할하지 않는다.** controller 의 2-D 수집에서 `git log -- $FILES` 가 여러 경로를 한 덩어리로 넘겨 **빈 출력**을 냈다 — 그대로 믿었으면 TDD_VIOLATION 오판이었다. **배열 `"${ARR[@]}"` 을 쓸 것** ([[zsh-pipestatus-1-based-false-green]] 과 같은 zsh 함정 계열) | controller |
+| 9 | 🛑 **`--tests` 필터를 걸어도 ArchUnit 2종이 항상 같이 돈다** — `SpiBoundaryArchTest`(2) + `TransactionalServiceArchTest`(1). 그래서 콘솔의 `6 tests completed` 는 내 클래스 3 + 이 3 이다. **콘솔 합계로 판단하면 오독**하니 클래스별 XML 을 볼 것 | T2 |
+| 10 | **Flyway `locations: classpath:db/migration`**(`application.yml:25`)이 하위 `identity-access/` 를 재귀 스캔한다. 테스트용 별도 flyway 설정 없이 `@DynamicPropertySource` 로 `spring.flyway.enabled=true` 만 켜면 V001~V036 전량 적용된다 | T2 |
+| 11 | **pre-commit 훅을 `-c core.hooksPath=/dev/null` 로 우회하는 것이 wave 표준** — worktree 공유 + lint-staged 가 내부적으로 `git stash` 를 써서 타 세션/병렬 task 산출물을 흡수할 위험이 있다([[worktree-lint-staged-shared-git-stash-collision]]). **대신 `ktlintCheck`/`detekt --rerun-tasks` 를 명시 실행해 검증을 유지**할 것 | T2 |
+| 12 | **plan 산문의 "D3"·"D7" 은 plan-eng-review 번호**이지 ADR 번호가 아니다. ADR 실번호 = D-1 신규테이블 / D-2 판정식(`grant OR isSystemAdmin`) / D-3 default메서드 / D-4 FK없음·다형참조 / D-5 granted_by·회수 hard delete. **T5 KDoc 이 ADR 을 인용할 때 이 표를 볼 것** | T2·controller |
 
 ### ★ wave 2~6 에 인계된 주의 (서브에이전트 보고)
 
@@ -1296,8 +1332,8 @@ depends-on: T1[] T2[1] T3[] T4[2] T5[3,4] T6[4] T7[] T8[5,7] T9[1..8]
 ### 남은 wave (재개 지점)
 
 ```
-wave 2  T2 (db-engineer)        V036 마이그레이션 + 스키마 가드      ← 여기서 재개
-wave 3  T4 (security-engineer)  GlobalPermissionGrantRepository
+wave 2  T2 (db-engineer)        V036 마이그레이션 + 스키마 가드      ✅ 졸업
+wave 3  T4 (security-engineer)  GlobalPermissionGrantRepository      ← 여기서 재개
 wave 4  T5 · T6 (security)      prod override · 컨트롤러
 wave 5  T8 (security)           :modules:app 조립 가드   ※ dev postgres(5433) 기동 전제
 wave 6  T9 (backend-engineer)   전수 동기화 8종 + FR 5개 등록
