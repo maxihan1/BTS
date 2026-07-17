@@ -62,7 +62,7 @@ Given 프로젝트 PROJ에 GITHUB git webhook 등록 (secret 설정 완료)
 | **FR-C10** | 등록 API + **secret 검증**(§3.9), 권한 `MANAGE_AUTOMATION` | |
 | **FR-C11** | `TriggerType.PR_MERGED` + **파급 전수 grep** + 프론트 `triggerTypeSchema` 동기화 | ★ G2 교정본 |
 | **FR-C12** | `automationSecretEncryptor` 빈 + `.env.prod.example` (선택적 연동 배치) | G8·G9·DEC-19 |
-| **FR-C13** | **`ActionExecutor.execute` 내부** 방어심층 — 룰 projectKey ≠ 이슈키 prefix → SKIPPED. **조건 유무 무관** | ★ G10·DEC-24 |
+| **FR-C13** | **`ActionExecutor.execute` 내부** 방어심층 (§3.11) — **조건 유무 무관** | ★ G10·DEC-24·DEC-26 |
 | **FR-C14** | ADR — §1.4 정식 예외 + replay 잔여위험 + GitLab 등급차 + **automation 프레이밍 차이** | DEC-13·DEC-22 |
 | **FR-C15** | automation 웹훅 permitAll 중앙등록 — **3곳 전부** + 잔여위험 ADR | DEC-22 |
 
@@ -217,6 +217,26 @@ targetBranch가 다른 두 PR_MERGED 룰(= **S5가 정확히 그 시나리오**)
 - **템플릿 오염 잔존분**. `{{issue.pr.title}}`·`{{issue.pr.body}}`는 여전히 외부 입력(§1 신뢰 경계).
   ADD_COMMENT 액션과 조합 시 PR 본문이 코멘트에 렌더됨 — **의도된 동작**이나 ADR에 명시
 
+### 3.11. ★★ FR-C13 방어심층 — null과 비교 방식 (DEC-26, outside voice 발견)
+
+> **2회차는 "룰 projectKey ≠ 이슈키 prefix → SKIPPED"만 적었다. 그대로 구현하면 SCHEDULED가 죽는다.**
+
+**① null issueKey는 게이트를 통과시킨다 (기존 동작 보존).**
+`AutomationScheduleWorker.kt:101`이 `enqueuer.enqueue(rule.id, rule.triggerType, objectMapper.createObjectNode())`
+— **빈 `{}`** 를 발행한다 → `extractIssueKey`(`ActionExecutor.kt:271-275`)가 **null**. null은 prefix가 없다.
+"prefix가 projectKey와 같아야 한다"를 자연스럽게 구현하면 **모든 SCHEDULED 룰 + issue-less WEBHOOK 룰이
+SKIPPED**가 되어 **FR-AT-01이 사문화**된다. 그런데 automation BC는 7/7 완료로 선언된다.
+- **null은 오늘 합법이다** — `attemptWebhook`(`ActionExecutor.kt:252-260`)이 issueKey를 쓰지 않아
+  CALL_WEBHOOK 룰이 정상 동작 중. issueKey가 **필요한** 액션은 `FAILURE_ISSUE_KEY_MISSING`(`:234`)로 이미 처리됨
+- **확정**. 게이트는 **issueKey가 non-null일 때만** 판정. null → 기존 하류 로직에 위임(**동작 변경 0**)
+
+**② 비교는 `"${rule.projectKey}-"` 접두여야 한다.**
+`issueKey.startsWith(rule.projectKey)`면 **`PROJ2-1`이 `PROJ` 룰을 통과**한다 — prefix 정규식
+`^[A-Z][A-Z0-9]{1,9}$`(ADR `2026-05-22-issue-key-prefix-policy`)가 `PROJ`와 `PROJ2`를 **둘 다 허용**하므로
+실재 가능한 조합이다. **하이픈까지 포함**해야 정확.
+> 2회차가 **추출** 정규식의 뒤 경계(C2-be)엔 CONCERN을 쓰고, 정작 **FR-C7·FR-C13이 둘 다 의존하는 비교**는
+> 명세하지 않았다.
+
 ## 4. 비기능 요구사항
 
 | ID | 요구사항 | 검증 (★ B9 — 1회차 마스터는 검증 항목 0건이었다) |
@@ -352,8 +372,23 @@ CREATE INDEX ix_git_webhook_deliveries_received_at ON git_webhook_deliveries(rec
 > ★ 1회차는 14개 중 **핵심 기능(S1/S5) 검증 0건**이었고 **FR-C15 검증 0건**이었다.
 
 **기능 (B3-be 해소 — 1회차 전무)**
-1. **S1 happy path 통합** — HMAC 실계산 요청 → `q_automation_execution` 도달 → 워커 소비 →
-   `setFixVersions` 호출 → **이슈 fixVersions 실제 변경** 확인
+
+> **★★ 3회차 정정 (outside voice) — 2회차의 §9-1은 실현 불가능했다.**
+> 2회차는 "이슈 fixVersions **실제 변경** 확인"을 요구했으나 **관측할 수단이 저장소에 없다**.
+> ① automation test-boot은 **stub을 쓴다** — prod 어댑터(issue-tracking `AutomationIssueMutationAdapter`)가
+> **automation의 컴파일/테스트 클래스패스에 존재하지 않는다**(`StubIssueMutationPort.kt:14-22`가 그 사실을
+> 명시). ② 조립 앱은 **dev seed 비활성**(`application.yml:29` — "모듈마다 존재해 classpath 충돌 → 조립
+> 앱에선 비활성. 필요 시 별도 seed 전략") → 9-BC prod 조립에 프로젝트·유저·이슈·버전이 **없다**.
+> **게다가 18 task 중 아무도 §9-1을 자기 일로 적지 않았다.** B3-be("핵심 기능 검증 0건")를 고친다면서
+> **완료기준 문장만 쓰고 task 배정도 실현가능성 확인도 안 한** — 같은 실패의 한 층 위 반복.
+> → **Maxi 확정 DEC-25 (아래 A)**.
+
+1. **S1 happy path 통합 (T9 단위 + T15 조립)** — HMAC 실계산 요청 → `q_automation_execution` 도달 →
+   워커 소비 → **`IssueMutationPort.setFixVersions(issueKey, versionIds)` 호출까지** 검증
+   (`StubIssueMutationPort`가 command 기록 → issueKey·versionIds 단언).
+   **★ 책임 분리 (DEC-25)** — 그 너머 "**포트 호출 → 실제 이슈 변경**"은 **PR-B(#276)가 이미 검증했다**
+   (issue-tracking `AutomationIssueMutationAdapter` 테스트 — OCC 재조회 + `runWithOccRetry`).
+   **두 PR이 이어지면 S1 전구간이 덮인다.** 이 경계를 KDoc·plan에 명시해 "안 쟀다"와 구분한다
 2. **S5 targetBranch 선택 발화 통합** — release/1.2 룰만 발화, release/2.0 룰 skip
 3. **④ 충돌 분석** — targetBranch 다른 두 PR_MERGED 룰에 **경고가 뜨지 않음** (B4-be)
 4. **① 검증 분기** — PR_MERGED가 `TriggerConfig.validate`에 **전용 분기**를 갖고 targetBranch 타입/공백 거부 (C6-sec)
@@ -420,6 +455,9 @@ CREATE INDEX ix_git_webhook_deliveries_received_at ON git_webhook_deliveries(rec
 | **DEC-22** | **FR-C15 포함 + 잔여위험 ADR 명시.** §1.4 예외는 **게이트1 승인이 성립 요건** — ADR 작성은 산출물이지 승인이 아님 (C5-sec) |
 | **DEC-23** | dedup은 **서명 검증 후** + ⑥~⑨ **단일 트랜잭션**. EC10 "영구 유실" 폐기 |
 | **DEC-24** | FR-C13은 **`ActionExecutor.execute` 내부** (3경로 단일 choke point) |
+| **DEC-25** | **§9-1은 `setFixVersions` 포트 호출까지** 검증(stub command 관측). "포트 호출 → 실제 이슈 변경"은 **PR-B가 이미 검증** — 책임 분리 명시. automation은 prod 어댑터가 클래스패스에 없고 조립 앱은 seed 비활성이라 **관측 수단이 없다** (outside voice 발견) |
+| **DEC-26** | FR-C13 게이트는 **issueKey non-null일 때만** 판정(null → 기존 위임, SCHEDULED 보호) + 비교는 **`"${projectKey}-"` 접두**(`PROJ2-1`이 `PROJ` 룰 통과 방지) |
+| **DEC-27** | **B4-be 등급 하향 BLOCKER→P2.** `RuleConflictAnalyzer:230-237` KDoc이 "FP > FN 보수 정책"을 **문서화된 의도**로 명시 → PR_MERGED가 `:245`로 떨어지는 건 설계대로 동작. **T4는 유지**(targetBranch는 cron과 달리 정확 문자열 비교라 정밀) 하되 **KDoc도 함께 갱신**(안 하면 문서가 코드와 모순) |
 
 ### ★ DEC-22 상세 — automation permitAll의 정직한 프레이밍 (C2-sec·C5-sec)
 

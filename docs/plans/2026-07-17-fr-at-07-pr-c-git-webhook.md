@@ -472,10 +472,19 @@ longest path = T2 → T6 → T9 → T10 → T12 → T15 (**6 wave**).
 **RED**. targetBranch 다른 두 PR_MERGED 룰 → **경고 0건**. 같거나 한쪽 미지정 → 경고 발생.
 
 **GREEN**. `coFire`(`:238-247`)에 `fieldsCoFire` 동형 `targetBranchCoFire` 분기.
-> **왜 BLOCKER인가**. 현재 `a.triggerType != ISSUE_UPDATED -> true`(`:245`)라 PR_MERGED가 무조건
-> "동시 발화 가능". **S5(release/1.2 + release/2.0)가 정확히 그 시나리오**이고
-> `AutomationRuleController.kt:118,240,282`가 `conflicts`를 **REST 응답에 실어 사용자에게 노출** →
-> 이 기능이 지향하는 사용 패턴에서 **거짓 경고**.
+
+> **★ 등급 P2 (DEC-27 — 교차 검증 충돌 해소).** backend 검토는 BLOCKER로 올렸으나 outside voice가
+> `RuleConflictAnalyzer.kt:230-237` KDoc을 인용해 반박했다 — *"SCHEDULED 는 … 보수적으로 기존과 동일하게
+> 동시 매칭 가능(`true`)으로 유지한다 — false negative(놓친 충돌)보다 false positive(과도한 경고)가 더
+> 안전하다는 판단."* 즉 PR_MERGED가 `:245`로 떨어지는 건 **문서화된 정책이 설계대로 동작**하는 것이지
+> 결함이 아니다. **개선은 유지**(targetBranch는 cron과 달리 **정확 문자열 비교**라 정밀 판정이 가능 —
+> 보수 정책의 근거가 여기선 약하다) 하되 **BLOCKER가 아니라 P2**.
+>
+> **★ KDoc도 함께 갱신** — 안 하면 `:230-237`의 "보수 정책" 서술이 **코드와 모순**된다(자기가 세운
+> 근거를 코드가 위반하는 상태). PR_MERGED 예외 사유를 그 자리에 명시.
+
+**왜 고치는가**. `AutomationRuleController.kt:118,240,282`가 `conflicts`를 **REST 응답에 실어 사용자에게
+노출**하고, **S5(release/1.2 + release/2.0)가 이 기능의 대표 사용 패턴**이다 — 거기서 거짓 경고가 뜬다.
 
 **검증**. `./gradlew :modules:automation:test --tests RuleConflictAnalyzerTest`
 
@@ -572,6 +581,12 @@ longest path = T2 → T6 → T9 → T10 → T12 → T15 (**6 wave**).
 
 **RED**. S1 발화 / S3 스코프 위반 0건 / S4 머지 아님 0건 / S5 targetBranch / **EC12 20키·곱100 초과 → 0건** /
 **팬아웃 payload `pr.title`·`pr.body` ≤ 2KB** / **EC10 일부 실패 → 전량 롤백(dedup 포함)**.
+
+> **★ S1 검증 경계 (DEC-25 — outside voice 발견)**. `StubIssueMutationPort`가 기록한 command로
+> **`setFixVersions(issueKey, versionIds)` 호출까지** 단언한다. **"실제 이슈 fixVersions 변경"은 관측
+> 불가** — prod 어댑터가 automation 클래스패스에 없다(`StubIssueMutationPort.kt:14-22`가 명시).
+> 그 구간은 **PR-B(#276)가 이미 검증**(issue-tracking 어댑터 테스트). **KDoc에 이 경계를 명시**해
+> "안 쟀다"와 구분할 것.
 
 **GREEN**. spec §3.5 ⑤~⑨ + §3.7 + §3.10 스키마.
 - **★ 단일 `@Transactional`** (DEC-23) — `AutomationExecutionEnqueuer.kt:22-25` KDoc이
@@ -670,8 +685,18 @@ longest path = T2 → T6 → T9 → T10 → T12 → T15 (**6 wave**).
 - depends-on: []
 
 **RED**. 룰 projectKey ≠ 이슈키 prefix → **SKIPPED**. **★ 조건 없는 룰에도 걸림**. **★ replay 경로에도 걸림**.
+**★ 빈 `{}` payload(= issueKey null)는 SKIPPED 되지 **않고** 기존대로 실행됨** (DEC-26 ①).
+**★ `PROJ2-1`은 `PROJ` 룰에서 SKIPPED** (DEC-26 ② — `startsWith(projectKey)`면 통과해버림).
 
 **GREEN**. **`ActionExecutor.execute` 내부** (DEC-24 — C1-sec).
+
+> **★★ DEC-26 (outside voice) — 이 두 줄이 없으면 SCHEDULED가 전부 죽는다.**
+> ① **게이트는 issueKey non-null일 때만 판정.** `AutomationScheduleWorker.kt:101`이 빈 `{}`를 enqueue →
+> `extractIssueKey` **null** → prefix 없음. null을 SKIPPED로 처리하면 **모든 SCHEDULED 룰 +
+> issue-less WEBHOOK 룰 정지 = FR-AT-01 사문화**인데 BC는 7/7로 선언된다. null은 오늘 합법
+> (`attemptWebhook:252-260`이 issueKey 미사용 → CALL_WEBHOOK 정상 동작 중).
+> ② **비교는 `"${rule.projectKey}-"` 접두.** `startsWith(projectKey)`면 **`PROJ2-1`이 `PROJ` 룰을 통과**
+> (prefix 정규식이 `PROJ`·`PROJ2` 둘 다 허용 — ADR `2026-05-22-issue-key-prefix-policy`).
 > **왜 워커가 아닌가**. `execute` 호출자는 **3곳** — `AutomationExecutionWorker.kt:230` ·
 > **`RuleExecutionService.kt:160`(동기 replay)** · 미래. `RuleExecutionService.kt:57` KDoc이
 > *"워커의 루프 가드를 거치지 않는다"* 명시 → **워커에 넣으면 replay가 무방비**. 오염된
@@ -714,6 +739,11 @@ longest path = T2 → T6 → T9 → T10 → T12 → T15 (**6 wave**).
 - depends-on: [12]
 
 > **★ 이 PR의 유일한 진짜 관문.** BC test config는 csrf disable이라 중앙 CSRF 누락을 못 잡는다.
+>
+> **★ S1 조립 검증도 stub 경계까지 (DEC-25)**. 조립 앱은 **dev seed 비활성**(`application.yml:29` —
+> "모듈마다 존재해 classpath 충돌 → 조립 앱에선 비활성. 필요 시 별도 seed 전략") → 9-BC prod 조립에
+> **프로젝트·유저·이슈·버전이 없다**. 따라서 T15의 S1은 **HMAC → 202 → 큐 도달**까지. 워커 소비 이후
+> 포트 호출 단언은 **T9(automation 모듈, stub 보유)** 몫. **실제 이슈 변경은 PR-B가 검증 완료**.
 
 **RED→GREEN** (T12가 GREEN을 만듦 — RED는 T12 이전 상태 = 401).
 - **★ 베이스 상속만** (G6) — `@SpringBootTest` 재선언 시 컨텍스트 분열(9-BC 2회 부팅 +
@@ -750,7 +780,7 @@ longest path = T2 → T6 → T9 → T10 → T12 → T15 (**6 wave**).
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/api/automation-rules.types.ts`, `apps/web/src/components/automation/AutomationRuleFormDialog.tsx`, `apps/web/src/components/automation/AutomationRuleList.tsx`, `apps/web/src/components/automation/RuleExecutionTraceRow.tsx`, `apps/web/src/api/automation-rules.types.test.ts`]
+- files: [`apps/web/src/api/automation-rules.types.ts`, `apps/web/src/components/automation/AutomationRuleFormDialog.tsx`, `apps/web/src/components/automation/AutomationRuleList.tsx`, `apps/web/src/components/automation/RuleExecutionTraceRow.tsx`, `apps/web/src/api/automation-rules.types.test.ts`, `apps/web/src/mocks/automation-rule-handlers.ts`]
 - depends-on: []
 
 **RED**. `triggerTypeSchema`가 `PR_MERGED` 파싱. `serializeTriggerConfig`가 `targetBranch` 직렬화.
@@ -762,7 +792,15 @@ longest path = T2 → T6 → T9 → T10 → T12 → T15 (**6 wave**).
 - `AutomationRuleFormDialog.tsx:69` + `AutomationRuleList.tsx:53` `Record<TriggerType,string>` — **타입 에러로 강제**
 - **★ `RuleExecutionTraceRow.tsx:53-59`만 `Record<string,string>`** → **타입 에러 안 남, 조용히 "PR_MERGED"
   영문 노출** (G2). 수동 추가 필수
-- `:273 validTypes` 배열 (테스트 하드코딩)
+- **★ 인용 정정 (outside voice — stale 4번째 재발, 이번엔 이 plan이 새로 만들었다)**.
+  2회차는 "`:273 validTypes` 배열"이라 적었으나 **`automation-rules.types.ts`에 `validTypes`는 없다**.
+  실제 트리거 배열은 **`automation-rules.types.test.ts:256`**. 그리고 그 파일의 **`:273`은 `ActionType`
+  배열**(PR-B 것, 무관) — 인용대로 따르면 **엉뚱한 배열을 고치고 트리거 배열은 5종으로 남는다**.
+  → **impl은 줄번호를 재확인**할 것(스펙 부록 A N1-sec이 경고한 바로 그 패턴).
+- **★ files에 `mocks/automation-rule-handlers.ts` 추가** — `:124`가 `TriggerType`을 참조하는데 2회차
+  files에 없었다. "인라인 mock 파급 grep"을 지시하면서 정작 그 파일이 files 밖이라
+  **"자기 files만 stage"(§Wave 구조) 규칙과 정면 충돌**했다. (이 건 자체는 저위험 — 해당 mock은
+  type-loose라 PR_MERGED로 안 깨진다. 문제는 메커니즘)
 - ★ 인라인 mock 파급 grep ([[zod-schema-strengthen-inline-mock-fanout]])
 - **UI 없음** — 폼 필드(targetBranch 입력)는 **PR-D**. 계약만 (PR-B 동형)
 
@@ -834,4 +872,83 @@ longest path = T2 → T6 → T9 → T10 → T12 → T15 (**6 wave**).
 - **머지 전 필수**. `origin/main` rebase + `:modules:app:test` 재검증
   ([[prod-assembly-boot-verification-required]]) + V번호 재확인 + `verify-master-plan.sh`
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-17) — 4섹션 + outside voice
+
+**Step 0 (Scope Challenge)**. 복잡도 체크 **트리거됨**(44 파일 / 기준 8, 신규 클래스 2+). 단 범위 축소는
+**이미 2회 질의·확정**(UI→PR-D / 17 task 한 PR)이라 재론하지 않고 **새 축소 기회만 실측** → 3개 검토 후
+전건 기각(T4=이 기능 대표 패턴의 거짓경고 / T13=FR-C15 전제 / T16=미루면 룰 목록 조회가 Zod 파싱 실패로
+깨짐). **신규 의존성 0, 혁신 토큰 0** — 전부 기존 선례 재사용.
+
+| 섹션 | 결과 |
+|---|---|
+| 1. 아키텍처 | **1건** → 이슈1 |
+| 2. 코드 품질 | **0건** (sha256Hex 중복은 §10 후속 기재됨 / readBoundedBody 계약은 T10이 이미 못박음) |
+| 3. 테스트 | 커버리지 다이어그램 34/36(94%), ★★★:25 ★★:9 ★:0 → **GAP 2** (T18·NFR-1) |
+| 4. 성능 | **1건** → 이슈3 (N+1 없음, 캐싱 불요) |
+
+**Maxi 확정 3건**.
+- **1A** — **T18 신설**(dedup 보존 배치). 스펙 §3.8이 요구했으나 T1~T17에 **없었다**. T2가 정리용
+  `received_at` 인덱스를 만들면서 정작 그 인덱스를 쓸 배치가 부재. 결선은 실측 확인 —
+  `AutomationSchedulingConfig:26-27`이 prod 전역 `@EnableScheduling`을 명시 → 신규 결선 불요,
+  테스트는 메서드 직접 호출(`:20-23` 관례, 자동 폴링 기대 시 flaky)
+- **2A** — **NFR-1 측정을 T15에 배정**. 1회차 마스터 BLOCKER B9가 정확히 이 실수였는데
+  (200ms 하드넘버 + 검증 0건), 스펙 §9-21에만 넣고 task 부여를 빼먹어 **반쪽만 고친 상태**였다
+- **3C** — **팬아웃 상한 100 유지 + T15 실측 후 판단**. `AutomationExecutionEnqueuer`가 **단건 API**라
+  룰×키 100이면 왕복 100회 + 로그 100줄인데 NFR-1은 200ms. 단일호스트 docker면 ~50ms일 수도 있어
+  **추측 대신 실측**. 초과 시 **같은 PR에서** 대응(상한 하향 또는 `send_batch`)
+
+**자체 발견**. T5 `files`가 `automation/config/`를 가리켰으나 **그 디렉토리는 없다** — 이 모듈은 config를
+패키지 루트에 둔다(`AutomationSchedulingConfig.kt` 선례).
+
+### Outside voice (Claude subagent — codex 미설치)
+
+**★ 두 적대적 검토와 4섹션 리뷰가 모두 놓친 것을 잡았다.**
+
+| # | 발견 | 처리 |
+|---|---|---|
+| **1** | **§9-1이 실현 불가능 + 어느 task도 미소유.** "이슈 fixVersions 실제 변경 확인"은 관측 수단이 없다 — automation test-boot은 stub(`StubIssueMutationPort.kt:14-22`, prod 어댑터가 클래스패스 부재) · 조립 앱은 dev seed 비활성(`application.yml:29`). **게다가 plan이 "S1이 끝까지 도는 걸 검증 가능한 최소 단위"라며 18-task 단일 PR을 정당화했는데 그 하나를 아무도 안 한다** | **DEC-25** — stub 관측(포트 호출)까지로 낮추고 **책임 분리 명시**(그 너머는 PR-B가 검증 완료) |
+| **2** | **FR-C13이 SCHEDULED를 전부 죽인다.** `AutomationScheduleWorker:101`이 빈 `{}` → `extractIssueKey` null → prefix 없음 → SKIPPED. **FR-AT-01 사문화인데 BC 7/7 선언**. 비교도 미명세(`startsWith`면 `PROJ2-1`이 `PROJ` 룰 통과) | **DEC-26** — null은 게이트 통과(기존 위임) + **`"${projectKey}-"` 접두** 비교. T13 RED에 두 케이스 추가 |
+| **3** | FR-C15가 번들 화물이고 정당화가 **스펙 안에서 자기모순**(spec이 "FR-C13은 우려를 없애지 않는다"고 인정하면서 PR-A 전제가 미충족인 채로 염) | **Maxi 확정 — 포함 유지**. 잔여위험은 T1 ADR에 정직하게 등재 |
+| **4** | **stale 인용 4번째 재발 — 이번엔 이 plan이 새로 만들었다.** T16 "`:273 validTypes`"가 그 파일에 없음. 실제 `types.test.ts:256`, `:273`은 무관한 ActionType 배열 | T16 본문에 정정 + impl 재확인 지시 |
+| **5** | T16 `files`가 자기 본문이 시키는 파일(`mocks/automation-rule-handlers.ts:124`)을 누락 → "자기 files만 stage" 규칙과 충돌 | files 추가 |
+| **6** | **교차 검증 충돌** — B4-be를 BLOCKER로 올렸으나 `RuleConflictAnalyzer:230-237` KDoc이 "FP > FN 보수 정책"을 **문서화된 의도**로 명시 | **DEC-27** — **P2로 하향**, T4 유지 + **KDoc 동반 갱신**(안 하면 문서가 코드와 모순) |
+
+**outside voice가 확인해준 것** (교차 검증 통과). §3.5 파이프라인 실제 동작 가능(`AutomationExecutionEnqueuer:49`
+`@Transactional` REQUIRED + KDoc `:21-25`가 호출자 트랜잭션 참여 명시 → DEC-23 건전 / `findEnabledByProjectAndTriggerType`
+실재 / `V300:45-49` 인덱스가 ⑦ 쿼리 커버) · **`IssueKeyRedirect`가 FR-C13을 무력화하지 않음**(`findByKey`가
+`IssueMovedException`을 던져 체인 미추적, 이동은 키를 새 프로젝트로 재발급) · `git_webhooks` 프로젝트 스코프가
+옳은 형태(per-rule 토큰이면 룰 N개당 GitHub 등록 N회).
+
+**메타 교훈 (3회 연속 같은 실패)**. 발견 1·2는 **완료기준이 산문으로만 존재하고 뒤에 task도 테스트도 없는**
+경우다 — 적대적 검토 2회가 소집된 이유가 정확히 그것인데 **둘 다 통과했다**. 개수([[spec-stated-count-becomes-blindfold]])
+→ 정의 → **정의가 전제한 코드 모양** 순으로 눈가리개가 깊어진다. **개정본을 원본보다 의심할 것.**
+
+**NOT in scope** / **What already exists** / **Failure modes**(critical gap **0**) / **Parallelization**
+(18 task 중 15개가 automation 단일 모듈 → worktree 분리는 Gradle 충돌만 유발, `/bts-impl` wave가 적합)
+— 전부 리뷰 대화에 기록.
+
+### plan-ceo-review
+
+**미실행 — 해당 없음.** 이 PR은 신규 사용자 기능·제품 방향 변경이 아니라 **이미 확정된 FR-AT-07의
+마지막 배선**이고, 범위 결정(3분할·UI 분리·17→18 task)은 이미 Maxi 확정. 스킬 자체 기준
+("Recommend it for big product/business changes… Skip for bug fixes, refactors, infra")에도 부합.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | 해당 없음 (배선 PR) |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | not_installed | Claude subagent로 대체 |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | **CLEAR** | 3 issues, 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | UI 없음 (PR-D) |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | 해당 없음 |
+
+**CROSS-MODEL:** outside voice가 6건 발견 — 2건은 BLOCKER급(§9-1 실현불가·FR-C13이 SCHEDULED 사멸)으로
+DEC-25/26 신설, 1건은 **기존 BLOCKER 판정을 반박**해 P2로 하향(DEC-27), 3건은 인용·files·범위 지적.
+tension 1건(B4-be 등급)은 Maxi가 "T4 유지 + KDoc 갱신"으로 해소.
+
+**VERDICT:** ENG CLEARED — 게이트 1 진입 가능. 18 task / 6 wave / DEC-18~27.
+
+NO UNRESOLVED DECISIONS
