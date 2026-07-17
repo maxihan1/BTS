@@ -173,6 +173,25 @@ describe('ProjectAutomationSettingsPage — 조립 렌더', () => {
     })
     expect(screen.getByRole('heading', { name: '자동화' })).toBeInTheDocument()
   })
+
+  it('페이지가 자동화 룰 섹션과 Git 웹훅 섹션을 형제로 조립한다', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '자동화 룰' })).toBeInTheDocument()
+    })
+    expect(screen.getByRole('heading', { name: 'Git 웹훅' })).toBeInTheDocument()
+  })
+
+  // FR1 — 문구 교체 판별자
+  it('h1 설명문이 룰 전용 문구가 아니라 두 섹션을 포괄한다', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '자동화' })).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/트리거 규칙을 관리/)).not.toBeInTheDocument()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
