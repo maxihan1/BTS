@@ -17,6 +17,10 @@ import java.util.UUID
  *
  * 이 포트는 FR-PM-04(전역 관리자 전용 기능)가 소비한다.
  *
+ * FR-PM-10 에서 [hasGlobalPermission] 이 확장되어, SYSTEM_ADMIN 여부에 더해 개별 전역 권한
+ * 부여([GlobalPermissionGrantRepository])까지 합성해 판정한다 — `grant 보유 OR isSystemAdmin`
+ * (ADR `docs/decisions/2026-07-17-global-permission-grants.md` **D-2**).
+ *
  * ## @Profile 분리 없음 (ADR D4 정정)
  * [IdentityAccessIssuePermissionResolver] 는 `@Profile("prod")` + 개발용 AlwaysAllow stub
  * 으로 분리되지만, 본 판정기는 그 패턴을 따르지 않는다. scope → projectId 해석 같은
@@ -24,8 +28,9 @@ import java.util.UUID
  * 모든 프로파일에서 동일한 실제 판정을 적용하는 것이 안전하고 명확하다.
  * AlwaysAllow stub 을 두지 않는다.
  *
- * @see SystemPermissionResolver
- * @see SystemRoleAssignmentRepository
+ * @see SystemPermissionResolver 포트 정의 — [hasGlobalPermission] 의 fail-safe default (ADR D-3)
+ * @see SystemRoleAssignmentRepository SYSTEM_ADMIN 축
+ * @see GlobalPermissionGrantRepository grant 축 (FR-PM-10)
  */
 @Component
 class IdentityAccessSystemPermissionResolver(
