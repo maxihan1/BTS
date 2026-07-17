@@ -2,10 +2,14 @@
 
 package com.bts.workflow.scheme.migration
 
+import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
+import org.jooq.SQLDialect
+import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
+import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
@@ -162,9 +166,12 @@ class WorkflowSchemesMigrationIntegrationTest {
                 }
             }
 
-            // RED (task-4): default mapping 백필을 아직 호출하지 않는다 — V004 migrate 시점의
-            // JOIN INSERT 는 workflows 가 비어 있어 0건이었으므로, workflow seed 만으로는
-            // workflow_scheme_issue_type_mappings 가 여전히 0행이다. 판별자.
+            // default mapping 백필 — SchemeIssueTypeMappingRepository.repairDefaultMappings() (R6).
+            // mapping 행을 손수 INSERT 하지 않는다 — 백필이 실제로 채우는지가 이 테스트의 검증
+            // 대상이다 (S-3 은폐 차단). YamlSeedService.seedAll() 이 프로덕션에서 호출하는 것과
+            // 동일한 백필 경로를 직접 호출한다.
+            val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+            SchemeIssueTypeMappingRepository(DSL.using(dataSource, SQLDialect.POSTGRES)).repairDefaultMappings()
         }
     }
 
