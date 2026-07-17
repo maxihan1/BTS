@@ -149,7 +149,73 @@
 
 ---
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+**BC.** `automation` (9번째 모듈 `com.bts.automation`, JdbcTemplate, V300~V310)
+
+**영향 엔티티 (전부 기존 — 신규 0).**
+| 엔티티 | 소유 | PR-D 관계 |
+|---|---|---|
+| `GitWebhook` | automation (PR-C 도입, `V307`) | D6 화면이 등록/목록/삭제 |
+| `GitProvider` | automation (PR-C 도입) | 등록 폼의 provider 선택 (`GITHUB`/`GITLAB` — `V307` CHECK) |
+| `TriggerConfig` | automation (기존) | `targetBranch` 키가 사는 곳 (`automation_rules.trigger_config` JSONB) |
+| `AutomationRule` | automation (기존) | `AutomationRuleFormDialog`가 편집 |
+
+**신규 엔티티 / 관계.** 없음. **순수 프론트** — PR-C가 만든 REST 3매핑을 소비할 뿐 도메인 모델 무변경.
+
+**기존 결정 충돌.** 없음. PR-C의 결정을 그대로 따름.
+
+**관련 ADR.**
+- `docs/decisions/2026-07-17-git-webhook-inbound-permitall.md` (PR-C, 20KB) — 이 PR의 직계 선행
+- `docs/decisions/2026-07-16-fr-at-07-pr-b-fix-version-port.md` (PR-B)
+- automation ADR 7건 전체가 배경
+
+**신규 ADR.** 불요 (신규 결정 없음 — 순수 프론트, 선례 답습). Maxi D1 확정(옵션 C)은 plan에 기록.
+
+### ★ grill-with-docs 대체 사유 (명시)
+
+`/bts-domain` §Step 2는 `grill-with-docs` 호출을 지시하나, 이 PR은 **신규 엔티티·관계·결정이 0건**(PR-C가 도메인을
+확정했고 PR-D는 그 REST를 소비만 함)이라 grill 대상이 없다. 대신 그 단계의 **목적**("새 용어/엔티티/관계가 필요한지,
+glossary·domain 노트와 일치하는지 확인")을 **인터뷰 대신 실측**으로 수행했고, 그 결과 **실제 drift 2건을 발견**했다(아래).
+
+### ★ 발견 1 — `Maxi_wiki/BTS/domain/automation.md` 가 3건 틀렸다 (Maxi 확인 필요)
+
+노트 최종수정 **2026-05-19** — automation BC 전 작업(#254~#278) 내내 미갱신. BC 분할 **이전의 구상**에 멈춰 있다.
+
+| 노트 주장 | 실측 반증 |
+|---|---|
+| "AQL 파싱 → PostgreSQL 쿼리 변환" + "ANTLR 4로 AQL 파서" | AQL 파일 = **search-export-import 62** · shared-kernel 12 · **automation 0**. ANTLR 의존성 **0건**(실제는 손수 파서) |
+| "Export/Import (CSV, JSON, Jira XML)" | **search-export-import** BC 소유 (`.../export`, `.../import`) |
+| 핵심 엔티티 = `AutomationRule` 하나 | 실제 domain/ 13개 — `GitWebhook`·`GitProvider`·`RuleConflict`·`ConflictType`·`ConflictSeverity`·`TriggerConfig`·`ActionConfig` 등 누락 |
+
+BC 노트는 **수동 영역**(`/bts-domain` §Step 3 — "자동 갱신 안 함 → Maxi에게 확인")이라 이 PR에서 임의 수정하지 않음.
+→ **게이트 1 안건.**
+
+### ★ 발견 2 — glossary 에 '웹훅' 용어가 0건인데 코드에선 5가지를 가리킨다 (Maxi 확인 필요)
+
+`glossary.md` 114줄에 **웹훅 항목 없음**(`트리거`·`액션`만 있음). 그런데 실측상 'webhook'이 **최소 5개**를 가리킨다.
+
+| # | 무엇 | BC | 경로 |
+|---|---|---|---|
+| ① | 아웃바운드 Webhook 구독/발송이력 + admin UI | **search-export-import** | `/api/v1/webhooks` |
+| ② | 아웃바운드 **디스패처** (REST 미노출) | notification | — |
+| ③ | automation **WEBHOOK 트리거** 토큰 | automation | `/api/v1/automation/webhooks/{token}` |
+| ④ | Git **인바운드 수신** | automation | `/api/v1/webhooks/git/{token}` |
+| ⑤ | Git **등록 API** ← PR-D가 소비 | automation | `/api/v1/projects/{key}/automation/git-webhooks` |
+
+**①과 ④가 `/api/v1/webhooks` 접두사를 공유하는데 서로 다른 BC다.** 이건 DDD 유비쿼터스 언어의 교과서적 실패 —
+같은 낱말이 5개 개념을 가리키고 glossary가 침묵. 프론트에서도 이미 `webhook-handlers.ts`·`webhook.spec.ts`·
+`admin.webhooks*`(전부 ① 소속) / `WebhookTokenModal.tsx`(③ 소속)로 네임스페이스가 선점돼 있어, PR-D가
+`gitWebhook*` 접두사를 **엄격히** 지키지 않으면 오인·충돌한다.
+
+**용어 후보 (Maxi 승인 시 glossary 등재).**
+- **인바운드 웹훅** — 외부(GitHub/GitLab)가 BTS를 호출. 인증은 서명 검증. 예 ③④
+- **아웃바운드 웹훅** — BTS가 외부를 호출. 예 ①②
+- **Git 웹훅** — ④⑤의 짝. 프로젝트 단위로 등록(`git_webhooks`), 토큰은 URL 경로 세그먼트, secret은 HMAC 서명용
+- **웹훅 시크릿** — provider가 HMAC 서명에 쓰는 사용자 공급 공유비밀. BTS는 AES-256-GCM 암호화 저장(복호 조회 API 없음)
+- **웹훅 토큰** — 인바운드 URL의 식별자. SHA-256 해시로만 저장 → **발급 시 1회 노출, 이후 복원 불가**
+
+→ **게이트 1 안건.** 이 PR에서 glossary를 고칠지, 별도 문서 PR로 뺄지 Maxi 결정.
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
