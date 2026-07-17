@@ -42,7 +42,7 @@ AIG의 "자금 손실 5원칙"과 동일 패턴. 위반 시 즉시 PR BLOCKER.
 ### 적용 대상
 
 - `issues`, `comments`, `projects`, `users` — 모두 `deleted_at TIMESTAMPTZ NULL`
-- jOOQ 기본 쿼리는 `deleted_at IS NULL` 필터 자동 첨부 (`SoftDeleteFilter` 래퍼)
+- **자동 필터 없음** — `deleted_at IS NULL` 조건은 repository마다 쿼리에 수동으로 붙인다(공통 `SoftDeleteFilter` 래퍼는 존재하지 않음, `.kt` grep 히트 0). 새 쿼리/술어를 작성할 때 빠뜨리면 삭제된 행이 그대로 노출된다 — 아카이브·소프트삭제 술어를 설계할 때 이 문장을 "자동 처리됨"으로 오독하지 말 것
 
 ### 하드 삭제 허용 영역 (예외)
 

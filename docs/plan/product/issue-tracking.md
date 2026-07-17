@@ -1,8 +1,8 @@
-<!-- issue-tracking BC — 이슈 코어 31 FR (CRUD/타입/담당자/본문/Resolution/PDF/커스텀필드 + 컴포넌트/버전 + 첨부/멘션/Watcher + 링크/히스토리/템플릿 + 이동) -->
+<!-- issue-tracking BC — 이슈 코어 35 FR (CRUD/타입/담당자/본문/Resolution/PDF/커스텀필드 + 컴포넌트/버전 + 첨부/멘션/Watcher + 링크/히스토리/템플릿 + 이동 + 프로젝트 관리) -->
 
 # issue-tracking BC
 
-**소속 FR**. 31개 (IS 10 + CM 4 + VR 4 + AC 2 + MN 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2).
+**소속 FR**. 35개 (IS 10 + CM 4 + VR 4 + AC 2 + MN 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2 + PJ 4).
 **책임**. 이슈/댓글/첨부/관계/이력/템플릿/이동.
 **SDD 참조**. 05장 (데이터 모델), 11장 (API).
 **다른 BC와의 경계**. project-workflow의 상태 전이 호출, identity-access의 권한 가드 사용, notification-dashboard 이벤트 발행. **다른 BC import 금지 — 이벤트는 pgmq**.
@@ -470,6 +470,64 @@
 - [x] D6. 프론트 UI — 이동 후 페이지 자동 갱신 (책임. frontend-engineer) — PR #157 (FR-MV-01 새 키 navigate 기존 + changelog "프로젝트 이동" 라벨)
 - [x] D7. E2E (책임. qa-engineer) — PR #157 (이동 마법사 흐름 + changelog 합성 렌더 단언, 옛 키 redirect는 단위+백엔드통합 대체)
 
+## §7 프로젝트 관리 (FR-PJ, 4개)
+
+### §7.1 FR-PJ-01 — 프로젝트 생성
+
+**우선순위**. 필수 | **선행**. identity-access §4.10 FR-PM-10(`CREATE_PROJECT` 전역 권한) | **Plan slug**. `issue/project-create`
+
+프로젝트 생성 — 키 검증(형식·유일성) + 생성자 자동 `PROJECT_ADMIN` 멤버십 부여. `CREATE_PROJECT` 전역 권한(FR-PM-10, `global_permission_grants` 또는 SYSTEM_ADMIN) 보유자만 호출 가능. `POST /api/v1/projects`.
+
+- [ ] D1. 도메인 (책임. backend-engineer)
+- [ ] D2. 명세 (책임. backend-engineer + Maxi)
+- [ ] D3. 데이터 모델 — (활용. `projects`, `project_memberships` 기존 테이블) (책임. db-engineer)
+- [ ] D4. 백엔드 — `POST /api/v1/projects` (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [ ] D6. 프론트 UI — 프로젝트 생성 폼 (책임. designer → frontend-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
+
+### §7.2 FR-PJ-02 — 프로젝트 목록/조회
+
+**우선순위**. 필수 | **선행**. §7.1 | **Plan slug**. `issue/project-list`
+
+프로젝트 목록/조회 — 멤버십 기반 권한 필터링, 아카이브 프로젝트 기본 제외. `GET /api/v1/projects`(목록), `GET /api/v1/projects/{projectIdOrKey}`(단건, BROWSE).
+
+- [ ] D1. 도메인 (책임. backend-engineer)
+- [ ] D2. 명세 (책임. backend-engineer + Maxi)
+- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
+- [ ] D4. 백엔드 — `GET /api/v1/projects` + `GET /api/v1/projects/{projectIdOrKey}` (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [ ] D6. 프론트 UI — 프로젝트 목록/상세 화면 (책임. designer → frontend-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
+
+### §7.3 FR-PJ-03 — 프로젝트 설정 변경 (`name`)
+
+**우선순위**. 필수 | **선행**. §7.1 | **Plan slug**. `issue/project-settings`
+
+프로젝트 설정 변경 — `name`만. `lead_user_id`는 기존 `PATCH /api/v1/projects/{projectIdOrKey}/lead`(FR-CM-04)가, `require_2fa`는 기존 별도 엔드포인트가 담당(D13, 중복 통로 방지 — spec §4.2 확정). `PATCH /api/v1/projects/{projectIdOrKey}`(PROJECT_ADMIN).
+
+- [ ] D1. 도메인 (책임. backend-engineer)
+- [ ] D2. 명세 (책임. backend-engineer + Maxi)
+- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
+- [ ] D4. 백엔드 — `PATCH /api/v1/projects/{projectIdOrKey}` (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [ ] D6. 프론트 UI — 프로젝트 설정 폼 (책임. designer → frontend-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
+
+### §7.4 FR-PJ-04 — 프로젝트 아카이브/해제
+
+**우선순위**. 필수 | **선행**. §7.1 | **Plan slug**. `issue/project-archive`
+
+프로젝트 아카이브/해제 — 아카이브된 프로젝트는 읽기 전용 잠금(쓰기 경로 차단). `POST /api/v1/projects/{projectIdOrKey}/archive`, `POST /api/v1/projects/{projectIdOrKey}/unarchive`(PROJECT_ADMIN).
+
+- [ ] D1. 도메인 (책임. backend-engineer)
+- [ ] D2. 명세 (책임. backend-engineer + Maxi)
+- [ ] D3. 데이터 모델 — `projects.archived_at`(신규 컬럼) (책임. db-engineer)
+- [ ] D4. 백엔드 — `POST .../archive` + `POST .../unarchive` + 쓰기 경로 잠금 (책임. backend-engineer)
+- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
+- [ ] D6. 프론트 UI — 아카이브 토글 (책임. designer → frontend-engineer)
+- [ ] D7. E2E (책임. qa-engineer)
+
 ## §NFR issue-tracking BC 완료 게이트
 
 ### 측정값 기록표
@@ -492,7 +550,7 @@
 
 ### BC 완료 조건
 
-- [ ] §2~§6 (30 FR) 모두 `[x]` 마킹
+- [ ] §2~§7 (35 FR) 모두 `[x]` 마킹
 - [ ] §NFR 측정표 모든 항목 임계 통과
 - [ ] DATA.md §이슈키 영속성 자가 점검
 - [ ] CHANGELOG.md 정리

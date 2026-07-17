@@ -64,6 +64,7 @@ scheme:
 - `MANAGE_PROVIDERS` - 인증 Provider 관리
 - `VIEW_AUDIT_LOG` - 감사 로그
 - `ADMIN_SYSTEM` - 시스템 관리
+- `CREATE_PROJECT` - 프로젝트 생성 (FR-PJ-01, 전역 권한 — `global_permission_grants`(FR-PM-10) 그룹/사용자 grant 또는 SYSTEM_ADMIN)
 
 ## 12.4 이슈 보안 수준 (FR-PM-06)
 

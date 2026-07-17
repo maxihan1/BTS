@@ -1,11 +1,11 @@
-<!-- 123개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
+<!-- 128개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
 
 # FR 역인덱스 + Open Questions
 
-## §A.1 FR 역인덱스 (122개 전수)
+## §A.1 FR 역인덱스 (128개 전수)
 
 > 출처. SDD `docs/sdd/02-requirements.md` §2.2 "기능 요구사항 (FR) 상세".
-> 검증. `scripts/verify-master-plan.sh` — 123개 모두 product/*.md에 등장해야 함.
+> 검증. `scripts/verify-master-plan.sh` — 128개 모두 product/*.md에 등장해야 함.
 
 ### 이슈 관리 (FR-IS, 10개)
 
@@ -21,6 +21,15 @@
 | FR-IS-08 | 이슈 인쇄 + PDF 출력 | 중간 | issue-tracking | §2.3.2 |
 | FR-IS-09 | 라벨 자동완성 | 높음 | issue-tracking | §2.2.2 |
 | FR-IS-10 | 커스텀 필드 인프라 (프로젝트별 정의 + JSONB 값 저장) | 높음 | issue-tracking | §2.4 |
+
+### 프로젝트 관리 (FR-PJ, 4개)
+
+| FR ID | 한 줄 | 우선순위 | BC | 본문 위치 |
+|---|---|---|---|---|
+| FR-PJ-01 | 프로젝트 생성 (키 검증 · 생성자 자동 PROJECT_ADMIN 멤버십) | 필수 | issue-tracking | §2.2.16 |
+| FR-PJ-02 | 프로젝트 목록/조회 (권한 필터링 · 아카이브 기본 제외) | 필수 | issue-tracking | §2.2.16 |
+| FR-PJ-03 | 프로젝트 설정 변경 (`name`) | 필수 | issue-tracking | §2.2.16 |
+| FR-PJ-04 | 프로젝트 아카이브/해제 (읽기 전용 잠금) | 필수 | issue-tracking | §2.2.16 |
 
 ### 컴포넌트 / 버전 (FR-CM, FR-VR, 8개)
 
@@ -141,7 +150,7 @@
 | FR-RP-03 | CFD (Cumulative Flow Diagram) | 필수 | notification-dashboard | §4.3 |
 | FR-RP-04 | Cycle Time / Lead Time 분포 | 높음 | notification-dashboard | §4.4 |
 
-### 권한 관리 (FR-PM, 9개)
+### 권한 관리 (FR-PM, 10개)
 
 | FR ID | 한 줄 | 우선순위 | BC | 본문 위치 |
 |---|---|---|---|---|
@@ -154,6 +163,7 @@
 | FR-PM-07 | 필드 수준 권한 | 높음 | identity-access | §4.7 |
 | FR-PM-08 | 전역 시스템 관리자 역할/권한 인프라 (FR-PM-04·FR-AU-05 선행) | 필수 | identity-access | §4.8 |
 | FR-PM-09 | 사용자 그룹 (전역 그룹 + 멤버십 인프라, FR-PM-06 선행) | 필수 | identity-access | §4.9 |
+| FR-PM-10 | 전역 권한 부여 (`global_permission_grants` — 그룹/사용자 grant + 관리 화면) | 필수 | identity-access | §4.10 |
 
 ### 사용성 (FR-UX, 5개)
 
@@ -219,8 +229,8 @@
 
 | BC | FR 카운트 | 주요 그룹 |
 |---|---|---|
-| identity-access | 24 | AU(10) + MF(5) + PM(9) |
-| issue-tracking | 31 | IS(10) + CM(4) + VR(4) + AC(2) + MN(2) + WT(1) + LK(2) + HS(2) + TM(2) + MV(2) |
+| identity-access | 25 | AU(10) + MF(5) + PM(10) |
+| issue-tracking | 35 | IS(10) + CM(4) + VR(4) + AC(2) + MN(2) + WT(1) + LK(2) + HS(2) + TM(2) + MV(2) + PJ(4) |
 | project-workflow | 3 | WF(3) |
 | agile-planning | 14 | BD(3) + BL(2) + EP(2) + TL(3) + TT(2) + PL(2) |
 | automation | 7 | AT(7) |
@@ -228,7 +238,7 @@
 | slack-integration | 6 | SL(6) |
 | personalization | 12 | PR(4) + PF(3) + CA(2) + UX-01,04,05(3) |
 | search-export-import | 12 | SR(4) + EX(2) + IM(2) + API(4) |
-| **합계** | **123** | |
+| **합계** | **128** | |
 
 ## §A.3 미해결 결정 (Open Questions)
 
@@ -251,3 +261,4 @@
 - 2026-05-20. 초안. SDD `02-requirements.md`에서 117개 FR ID 전수 추출. Open Questions 8건 등재.
 - 2026-06-08. **FR-IS-10 신설**. 커스텀 필드 인프라 (issue-tracking). 합계 121→122.
 - 2026-06-14. **FR-NT-05 신설**. Webhook 알림 채널 (notification-dashboard, FR-NT-02에서 분리). 합계 122→123. FR-NT-02 "Webhook" 표기 정정(이메일/인앱만).
+- 2026-07-17. **FR-PJ-01~04(issue-tracking) · FR-PM-10(identity-access) 신설**(D15, PR-1 일괄 등록). 프로젝트 생성/목록·조회/설정변경/아카이브 + 전역 권한 부여(`global_permission_grants`). 합계 123→128. §A.1 상단 표기 drift 정정(122→128).

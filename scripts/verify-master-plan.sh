@@ -107,18 +107,30 @@ if [[ -f "$README" ]]; then
 fi
 
 # D) (FR-XX, N개) 헤더 — product/*.md + fr-index 의 파일 내 실제 FR-XX 카운트와 대조
+#    + BC 완료 게이트 "(N FR)" 전체합계 헤더(접두사 없음, 예: "§2~§7 (35 FR)") — fr-index §A.1 해당 BC 행 수와 대조
+#    (2026-07-17 확장 — 기존 정규식은 "(30 FR)" 형식을 못 잡아 매칭 0 → 종료 0 으로 통과시켰음. CLAUDE.md §전수 동기화 강제)
 while IFS= read -r hline; do
   [[ -z "$hline" ]] && continue
   hfile="${hline%%:*}"
   hrest="${hline#*:}"
-  hprefix="$(printf '%s' "$hrest" | grep -oE 'FR-[A-Z]+' | head -1)"
-  hdecl="$(printf '%s' "$hrest" | grep -oE '[0-9]+개' | grep -oE '[0-9]+' | head -1)"
-  [[ -z "$hprefix" || -z "$hdecl" ]] && continue
-  hactual="$(grep -hoE "${hprefix}-[0-9]+" "$hfile" | sort -u | wc -l | tr -d ' ')"
-  if [[ "$hdecl" != "$hactual" ]]; then
-    count_fail "$(basename "$hfile") 헤더 '${hprefix} ${hdecl}개' (실제 ${hactual})"
+  hprefix="$(printf '%s' "$hrest" | grep -oE 'FR-[A-Z]+' | head -1 || true)"
+  if [[ -n "$hprefix" ]]; then
+    hdecl="$(printf '%s' "$hrest" | grep -oE '[0-9]+개' | grep -oE '[0-9]+' | head -1)"
+    [[ -z "$hdecl" ]] && continue
+    hactual="$(grep -hoE "${hprefix}-[0-9]+" "$hfile" | sort -u | wc -l | tr -d ' ')"
+    if [[ "$hdecl" != "$hactual" ]]; then
+      count_fail "$(basename "$hfile") 헤더 '${hprefix} ${hdecl}개' (실제 ${hactual})"
+    fi
+  else
+    hdecl="$(printf '%s' "$hrest" | grep -oE '[0-9]+ FR' | grep -oE '[0-9]+' | head -1)"
+    [[ -z "$hdecl" ]] && continue
+    hbc="$(basename "$hfile" .md)"
+    hactual="$(grep -cE "^\| FR-[A-Z]+-[0-9]+ \|.*\| ${hbc} \|" "$FR_INDEX" || true)"
+    if [[ "$hdecl" != "$hactual" ]]; then
+      count_fail "$(basename "$hfile") BC 완료 게이트 '${hdecl} FR' (fr-index §A.1 '${hbc}' 실측 ${hactual})"
+    fi
   fi
-done < <(grep -rnE '\(FR-[A-Z]+,? *[0-9]+개\)' "$PRODUCT_DIR" "$FR_INDEX" || true)
+done < <(grep -rnE '\(FR-[A-Z]+,? *[0-9]+개\)|\([0-9]+ FR\)' "$PRODUCT_DIR" "$FR_INDEX" || true)
 
 # E) CLAUDE.md 'N FR' 표기 (2자리+ 수만 — 'PR #54' 등 오탐 방지)
 if [[ -f "$CLAUDE_MD" ]]; then
