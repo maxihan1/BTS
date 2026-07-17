@@ -280,6 +280,622 @@ office-hours 는 YC 아이디어 검증 도구라 "이미 D1~D7 로 정의된 FR
 그걸 읽고도 6번째를 만들었다. **유일하게 작동한 방어는 에이전트 프롬프트의 "개수를 믿지 말고 전수 열거하라"** 였다.
 → 후속 세션 처방. 지시에 숫자를 쓰지 말고 **"전수 열거하라"만** 쓸 것.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> **11 TDD task / 7 wave.** 스펙(471줄) FR0~22 · EC1~21 · NFR1~6 · 완료기준 ★A~★F 전량 매핑.
+> **★ task 11개 = 10 초과** → Maxi 에게 PR 분할 문의 대상(§Plan 메타 §5).
+
+### ★ 이 절을 쓰기 전 실측 재대조한 것 (스펙 인용 전수 검증)
+
+스펙이 못박은 file:line 을 **직접 열어 대조**했다. **반증 0건 — 스펙이 실측과 전부 일치한다.**
+
+| 스펙 주장 | 실측 결과 |
+|---|---|
+| `AutomationRuleFormDialog.tsx` — `:375` `<input` · `:377` `type="text"` · `:379` `automation-rule-cron-input` · `:380` `autoComplete="off"` | **4곳 전부 정확** |
+| 같은 파일 `:279` `function buildSharedSavePayload(` · `:291` `serializeTriggerConfig(effectiveTriggerType, { cron, fields }, baseConfigJson)` | **정확** |
+| 같은 파일 `:151-154` `ParsedTriggerConfig {cron, fields}` · `:164`/`:171`/`:174` return 3곳 · `:459` initialConfig 폴백 | **정확** |
+| `automation-rules.types.test.ts` — `it('PR_MERGED` 3건(`:349`·`:392`·`:401`) · 선행주석 `:386-391` · `:387` 에 `호출부(AutomationRuleFormDialog:291)` | **정확 (4건 아니라 3건)** |
+| E2E `getByRole('heading', {name: '자동화 룰'})` **11 단언 / 6 스펙** | **정확** — rules `:131`·`:155`·`:182`·`:211`(4) / conditions `:94`·`:223`(2) / conflict-warning `:85`·`:115`(2) / actions `:102`(1) / yaml-gitops `:86`(1) / execution-history `:114`(1) = **11**. `automation-rules.spec.ts:226` 은 `labels.createTitle`(Dialog 제목)이라 **대상 아님** — 스펙의 제외가 옳다 |
+| `automation.md` `grep -n "123"` **6곳** (`:38`·`:86`·`:100`·`:114`·`:116`·`:180`) | **정확 (5곳 아님)** |
+| `automation.md:127-128` D6/D7 체크박스 · `:190` 「규칙 충돌 정적 분석」 `___` · `:84` 산문 `성능 스모크 100규칙 0.876s(NFR 1s)` · `:207-213` BC 완료 5조건 | **정확** |
+| `CLAUDE.md:10` = `(128 FR, …)` · `README.md:110` = `| automation | … | 7 (AT 7) | (없음) | ☐ |` | **정확 (129 아님)** |
+| 로컬 `setupServer` 합류 대상 2곳 — route test `:62`, FormDialog test `:42`(둘 다 `onUnhandledRequest:'error'`) | **정확.** `grep -rn "setupServer" apps/web/src` 전수 재실행 → `AutomationRuleList.test.tsx:31` 도 로컬 서버지만 **형제 구조라 비대상**(스펙 ★F 판단 옳음) |
+| `AutomationYamlImportDialog.tsx:142` 에 `select-all` 있음 / `WebhookTokenModal.tsx:89` 에 **없음** | **정확** |
+| route `:55-56` 조립 열거 · `:58` `상태 6종` · `:87-92` 실제 6개 · `:133` `<div className="p-8 space-y-6 max-w-2xl">` · `:136-138` h1 설명문 · `:162` 토큰 우선 가드 | **정확** |
+
+**추가 실측 1건 (스펙 미기재, FR1 을 보강함).** route `:135` 의 **h1 텍스트는 `'자동화'`**(`'자동화 룰'` 아님)이다.
+Playwright 의 `name` 은 **부분문자열 매칭**이라 `'자동화'` 는 `'자동화 룰'` 을 **포함하지 않으므로** 11 단언에 안 걸린다.
+→ FR1 이 h1 을 **건드리지 않고 `<p>` 만 교체**하는 것이 옳다는 근거가 하나 더 생겼다(Task 7).
+
+---
+
+### Task 1. Git 웹훅 Zod 계약 신설 (`automation-git-webhooks.types.ts`)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/automation-git-webhooks.types.ts`, `apps/web/src/api/automation-git-webhooks.types.test.ts`]
+- depends-on: []
+
+**RED**.
+- 파일: `apps/web/src/api/automation-git-webhooks.types.test.ts`
+- 테스트:
+  ```ts
+  // NFR4 판별자 — origin 없는 절대경로가 통과해야 한다. .url() 을 붙이면 red.
+  it('webhookUrl 은 origin 없는 절대경로를 통과시킨다', () => {
+    const parsed = createGitWebhookResponseSchema.parse({
+      id: '11111111-1111-4111-8111-111111111111',
+      provider: 'GITHUB',
+      webhookUrl: '/api/v1/webhooks/git/abc123',
+      token: 'abc123',
+    })
+    expect(parsed.webhookUrl).toBe('/api/v1/webhooks/git/abc123')
+  })
+  // FR3 판별자 — 정확히 2값. 소문자·BITBUCKET 거부(대문자 원문 전송 계약, GitProvider.kt:16-17)
+  it('gitProviderSchema 는 GITHUB/GITLAB 만 받는다', () => {
+    expect(gitProviderSchema.parse('GITHUB')).toBe('GITHUB')
+    expect(gitProviderSchema.parse('GITLAB')).toBe('GITLAB')
+    expect(() => gitProviderSchema.parse('github')).toThrow()
+    expect(() => gitProviderSchema.parse('BITBUCKET')).toThrow()
+  })
+  // NFR5 — Instant = ISO 문자열(epoch 배열 아님)
+  it('gitWebhookSummarySchema 는 4필드를 파싱한다', () => { /* id·provider·createdAt·createdBy */ })
+  ```
+- 실패 메시지 (예상). `Failed to resolve import "./automation-git-webhooks.types"` (모듈 부재)
+
+**GREEN**.
+- 파일: `apps/web/src/api/automation-git-webhooks.types.ts`
+- 최소 구현. L1 한국어 주석 + `gitProviderSchema = z.enum(['GITHUB','GITLAB'])` · `createGitWebhookResponseSchema`(`id` uuid / `provider` / `webhookUrl` **`z.string()` — `.url()` 금지 NFR4** / `token`) · `gitWebhookSummarySchema`(`id` uuid / `provider` / `createdAt` `z.string().datetime()` / `createdBy` uuid) · `createGitWebhookInput = { provider, secret }` 타입. `z.infer` PascalCase 파생 타입 export.
+- **없는 필드를 추가하지 않는다**(`GitWebhookDtos.kt:84-88` — `name`·`enabled`·`updatedAt`·`version`·`token`(summary) 전부 금지).
+
+**REFACTOR**.
+- KDoc 에 **NFR4 사유**(`.url()` 붙이면 백엔드 절대경로가 못 통과) 를 박아 후속 세션의 "친절한 강화"를 차단.
+
+**검증**. `cd apps/web && node_modules/.bin/vitest run src/api/automation-git-webhooks.types.test.ts`
+
+---
+
+### Task 2. MSW git 웹훅 픽스처 + 핸들러 + **전역 등록**(★F-a)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/mocks/git-webhook-fixtures.ts`, `apps/web/src/mocks/git-webhook-handlers.ts`, `apps/web/src/mocks/git-webhook-handlers.test.ts`, `apps/web/src/mocks/handlers.ts`]
+- depends-on: [1]
+
+**RED**.
+- 파일: `apps/web/src/mocks/git-webhook-handlers.test.ts`
+- 테스트: `automation-rule-handlers.test.ts:26-36` 구조 복제 — 자체 `setupServer(...gitWebhookHandlers)` + `resetGitWebhookStore()` + SCENARIO_KEY 전 키 삭제.
+  ```ts
+  it('POST → 201 이 webhookUrl·token 을 담고, 그 뒤 GET 목록에 1건이 잡힌다', ...)   // EC19 stateful
+  it('DELETE → 204 후 GET 목록에서 사라진다', ...)
+  it('secret 15자 이하면 400 AUTOMATION_GIT_WEBHOOK_SECRET_INVALID + 서버 고정 detail', ...)
+  it('SCENARIO_KEY.FORBIDDEN 플래그 on 이면 GET 이 403 AUTOMATION_ACCESS_DENIED', ...)  // FR12 error 분기 재현용
+  ```
+- 실패 메시지 (예상). `Failed to resolve import "./git-webhook-handlers"`
+
+**GREEN**.
+- 파일: `git-webhook-fixtures.ts`(store 소유 — **§제약 6**: `let` + 재할당식 `resetGitWebhookStore()`, `clear()` 아님. `import.meta.env.MODE !== 'test'` 일 때만 자동 시드) · `git-webhook-handlers.ts`(3 핸들러 + `problemDetail()` 헬퍼 **복제** — `automation-rule-handlers.ts:32-59`. **`message` 필드 절대 금지, `detail` 사용**) · `mocks/handlers.ts` 에 `gitWebhookHandlers` import + spread.
+- **명명 = `gitWebhookHandlers`**(FR20) — `webhookHandlers` 는 `webhook-handlers.ts:266` 이 선점(search-export-import BC).
+- 시나리오 플래그 `msw:automation-git-webhook:*` + `globalThis.localStorage?.` optional chaining 필수.
+- 시드 UUID 는 **RFC4122 v4 형식**([[zod-v4-uuid-fixture-strictness]]).
+
+**REFACTOR**.
+- 경로 순서 함정 회피 — `DELETE .../git-webhooks/:id` 가 `GET .../git-webhooks` 를 가리지 않도록 `automation-rule-handlers.ts` 의 배치 관례(구체 경로 먼저)를 따른다.
+
+**검증**. `cd apps/web && node_modules/.bin/vitest run src/mocks/git-webhook-handlers.test.ts src/mocks/handlers.test.ts src/mocks/__tests__/handlers.integration.test.ts`
+(뒤 2개는 전역 배열 소비 회귀 — §제약 7-c. 둘 다 핸들러 **개수 단언 0건**이라 통과해야 정상)
+
+**⚠️ 등록 race**. `handlers.ts` 는 공유 파일이다 — 이 task 만 건드린다(files 에 명시). implementer 는 **자기 files 만 `git add`**(`git add -A` 금지) 하고 **`git stash` 금지**.
+
+---
+
+### Task 3. API 함수 + 쿼리/뮤테이션 훅 (`GIT_WEBHOOKS_QUERY_KEY`)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/automation-git-webhooks.ts`, `apps/web/src/api/automation-git-webhooks.test.ts`, `apps/web/src/api/useGitWebhooks.ts`, `apps/web/src/api/useGitWebhooks.test.tsx`]
+- depends-on: [1, 2]
+
+**RED**.
+- 파일: `apps/web/src/api/automation-git-webhooks.test.ts`(`automation-rules.test.ts:29` 동형 — `setupServer(...gitWebhookHandlers)`) + `apps/web/src/api/useGitWebhooks.test.tsx`(`useAutomationRules.test.tsx:28` 동형)
+- 테스트:
+  ```ts
+  // ★B2 1층 — API 함수가 secret 을 손대지 않는다(BLOCKER-0). trim 이 끼면 red.
+  it('createGitWebhook 은 secret 원문을 바이트 그대로 싣는다', async () => {
+    let body: unknown
+    server.use(http.post('*/git-webhooks', async ({ request }) => { body = await request.json(); return HttpResponse.json(RESP, { status: 201 }) }))
+    await createGitWebhook('ATLAS', { provider: 'GITHUB', secret: '  abcdefghijklmnop  ' })
+    expect((body as { secret: string }).secret).toBe('  abcdefghijklmnop  ')
+  })
+  it('createGitWebhook 은 X-XSRF-TOKEN 헤더를 싣는다', ...)          // FR6
+  it('deleteGitWebhook 은 204 를 파싱 없이 통과시킨다', ...)          // FR14 (automation-rules.ts:150-156 동형)
+  it('403 이면 ApiError 를 던지고 extractAutomationRuleErrorCode 가 AUTOMATION_ACCESS_DENIED 를 뽑는다', ...)
+  // FR21 — 함수 헬퍼 형태(useAutomationRules.ts:32-35 동형)
+  it('GIT_WEBHOOKS_QUERY_KEY 는 ["automation-git-webhooks", projectKey] 를 낸다', ...)
+  ```
+- 실패 메시지 (예상). `Failed to resolve import "./automation-git-webhooks"` / `"./useGitWebhooks"`
+
+**GREEN**.
+- `automation-git-webhooks.ts` — `apiFetch` + `throwIfNotOk` + 수동 `.parse` 관례(`automation-rules.ts:44-49,100-107`). **`apiPost` 금지.** 타입만 배럴 재수출(`automation-rules.ts:18-26` 동형), **스키마(값)는 재수출 안 함**.
+- `useGitWebhooks.ts` — `GIT_WEBHOOKS_QUERY_KEY(projectKey): [string, string]` + `useGitWebhooks` / `useCreateGitWebhook` / `useDeleteGitWebhook`. **onSuccess 는 invalidate 만**(NFR2 — `CreateGitWebhookResponse` 에 `createdAt`·`createdBy` 가 없어 `setQueryData` 는 Zod 계약 위반. `useAutomationRules.ts:52-56` 의 `invalidate…` 공용 헬퍼 형태 복제).
+- **`extractAutomationRuleErrorCode` 재사용**(`automation-rules.ts:236`) — BC 공용, 신규 작성 금지.
+
+**REFACTOR**.
+- NFR2 사유(두 DTO 필드 집합 비교)를 KDoc 에 박는다 — `setQueryData` 유혹 차단.
+- **NFR3** — `version` 필드가 없으므로 409 분기를 만들지 않는다(있으면 dead path).
+
+**검증**. `cd apps/web && node_modules/.bin/vitest run src/api/automation-git-webhooks.test.ts src/api/useGitWebhooks.test.tsx`
+
+---
+
+### Task 4. `GitWebhookUrlModal` — URL 1회 노출 + origin prepend + 복사 폴백
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/automation/GitWebhookUrlModal.tsx`, `apps/web/src/components/automation/GitWebhookUrlModal.test.tsx`]
+- depends-on: []
+
+> **왜 deps 가 비었나.** props 만 받는 순수 표시 컴포넌트다(`webhookUrl: string | null`, `onClose`). API·쿼리 의존 0 → **wave 1 후보**. mutation 소유는 Task 6(Section).
+
+**RED**.
+- 파일: `apps/web/src/components/automation/GitWebhookUrlModal.test.tsx`
+- 테스트:
+  ```ts
+  // ★C EC8 판별자 — origin prepend 누락 시 red (FR9)
+  it('표시 문자열이 window.location.origin 을 포함한 완전 URL 이다', () => {
+    render(<GitWebhookUrlModal webhookUrl="/api/v1/webhooks/git/tok" onClose={vi.fn()} />)
+    expect(screen.getByText(`${window.location.origin}/api/v1/webhooks/git/tok`)).toBeInTheDocument()
+  })
+  it('복사 버튼이 완전 URL 을 클립보드에 쓴다', ...)      // FR9 — bare token 아님
+  it('clipboard reject 시 실패 문구를 role="alert" 로 낸다', ...)   // FR10-a · EC9
+  it('URL <code> 에 select-all 클래스가 있다', ...)                  // ★ FR10-b — 복제 원본(WebhookTokenModal.tsx:89)엔 없다. 승계 금지
+  it('X / ESC / 오버레이 / onOpenChange 4경로 전부 2단계 확인을 거쳐 onClose 로 수렴한다', ...)  // FR8 · EC6
+  it('webhookUrl 이 null 이면 렌더하지 않는다', ...)
+  ```
+- 실패 메시지 (예상). `Failed to resolve import "./GitWebhookUrlModal"`
+
+**GREEN**.
+- `WebhookTokenModal.tsx` **구조 복제**(재사용 금지 — §제약 3, **34번째 복제가 정답**. `components/ui` 에 Dialog 래퍼 부재).
+- **복제하되 승계할 검증된 세부 3종** — ① null narrowing 미전파 → `const rawUrl = webhookUrl` 별도 캡처(`:54-55`) ② `catch { setCopyError(labels.copyFailed); setCopied(false) }`(`:62-65`) ③ 문구 `'복사에 실패했습니다. 직접 선택해 복사해 주세요.'` 재사용(`:16`).
+- **승계하면 안 되는 결함 1종** — `<code>` 에 **`select-all` 을 넣는다**(`AutomationYamlImportDialog.tsx:142` 쪽을 따른다).
+- **testid 전면 분리**(FR20) — `git-webhook-url-copy-button` / `git-webhook-url-close-button`. `webhook-token-*`(`WebhookTokenModal.tsx:101`·`:107`)와 **같은 라우트 페이지에 동시 마운트**되므로 동일 testid 면 Playwright strict mode 즉사.
+- NFR6 — `role="alert"` 는 **경고 영역을 묶어서**(`RuleConflictWarningModal.tsx:95-96` 방식), Content 에 `data-testid` 부여(`:88` 방식).
+- 4경로 전부 **단일 `handleClose`** 로 수렴(Task 6 이 여기에 `mutation.reset()` 을 건다 — FR7).
+
+**REFACTOR**.
+- 테스트 clipboard 스텁은 **`userEvent.setup()` 이후**에 적용(`WebhookTokenModal.test.tsx:10-22` 박제된 순서 함정).
+
+**검증**. `cd apps/web && node_modules/.bin/vitest run src/components/automation/GitWebhookUrlModal.test.tsx`
+
+---
+
+### Task 5. `GitWebhookRegisterDialog` — provider/secret 입력 + **BLOCKER-0 봉인**
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/automation/GitWebhookRegisterDialog.tsx`, `apps/web/src/components/automation/GitWebhookRegisterDialog.test.tsx`]
+- depends-on: [1]
+
+> **왜 API deps 가 없나.** controlled 표시 컴포넌트다 — props `open`·`onOpenChange`·`onSubmit(input)`·`isPending`·`submitError`·`existingProviders: GitProvider[]`·`listUnavailable: boolean`. mutation 은 Task 6 이 소유(FR2 — Dialog open 상태도 `GitWebhookSection` 소유 → **route 상태 6종 불변**, FR22-a).
+
+**RED**.
+- 파일: `apps/web/src/components/automation/GitWebhookRegisterDialog.test.tsx`
+- 테스트:
+  ```ts
+  // ★★ BLOCKER-0 1층 판별자 — 폼이 secret 을 손대지 않는다 (EC2)
+  it('secret 앞뒤 공백을 그대로 onSubmit 에 넘긴다', async () => {
+    const onSubmit = vi.fn()
+    render(<GitWebhookRegisterDialog open onSubmit={onSubmit} ... />)
+    await user.type(screen.getByLabelText('Secret'), '  abcdefghijklmnop  ')   // delay:null (vitest-usertype-long-string-timeout)
+    await user.click(screen.getByTestId('git-webhook-register-submit'))
+    expect(onSubmit).toHaveBeenCalledWith({ provider: 'GITHUB', secret: '  abcdefghijklmnop  ' })
+  })
+  // ★ EC3 — 비대칭 술어. 서버는 blank=trim 기준(:185) / 길이=원문 기준(:188). 클라가 trim().length 로 재면 red.
+  it('공백 15자 + 문자 1자(원문 16자)는 클라 검증을 통과해 onSubmit 이 호출된다', ...)
+  it('15자 이하는 요청 없이 인라인 에러 — 서버 고정 문구를 미러', ...)   // EC1 · S3
+  it('4096자 초과는 원문 길이 기준으로 차단한다', ...)                    // EC4
+  // ★ FR5 판별자
+  it('secret 입력의 type 이 password 이고 autoComplete 가 off 다', ...)
+  it('secret 입력에 <label> 이 연결돼 있다', ...)                          // NFR6
+  it('provider Select 는 GITHUB/GITLAB 2옵션뿐이다', ...)                  // FR3
+  // FR13 — 비차단 경고
+  it('existingProviders 에 선택 provider 가 있으면 경고를 렌더하되 등록 버튼을 막지 않는다', ...)
+  it('listUnavailable 이면 중복 경고를 내지 않는다', ...)                  // FR13 · EC21 동형 — 못 읽은 것 ≠ 0건
+  it('isPending 이면 등록 버튼이 disabled 다', ...)                        // EC5
+  ```
+- 실패 메시지 (예상). `Failed to resolve import "./GitWebhookRegisterDialog"`
+
+**GREEN**.
+- **★★ `secret` 에 `trim()`·`normalize()`·공백제거 전부 금지**(BLOCKER-0 · FR4-a). 전송값 = 사용자 입력 **원문 그대로**. 사유 — provider HMAC 이 secret **바이트열 그대로**를 쓴다(`GitWebhookRegistrationService.kt:180-181` KDoc). trim 하면 **등록 201·목록 정상인데 모든 인바운드 서명 영구 실패**, MSW/E2E 미탐지, 수정 엔드포인트 0건이라 **복구 불가**.
+- **검증 술어는 서버 비대칭을 정확히 복제**(FR4-b) — blank 판정 `secret.trim() === ''` / **길이 판정 `secret.length`**(untrimmed). **`secret.trim().length` 금지.**
+- **(FR4-c)** 판정의 trim 은 **읽기 전용**이다 — 폼 state 나 요청 본문에 trim 결과를 **write-back 하면 (a) 위반**.
+- secret 필드 — `type="password"`(선례 `WebhookForm.tsx:224`, 라벨 `:16` `'서명 Secret'`) + **`autoComplete="off"`**(선례 `AutomationRuleFormDialog.tsx:380`·`:407`·`:568`). autoComplete 없으면 **Chrome 이 BTS 로그인 비밀번호를 autofill** → 그 값이 GitHub 설정에도 평문으로 들어간다.
+- 도움말 — `'provider 웹훅 설정에 입력할 값과 동일해야 합니다. 서명 검증에 쓰입니다. 앞뒤 공백도 값의 일부로 저장됩니다.'`
+- testid `git-webhook-*` 접두(FR20).
+
+**REFACTOR**.
+- **★ 판별력 검증(mutation)** — 구현에 `secret.trim()` 을 **일부러 끼워 넣어** EC2 테스트가 red 가 되는지 확인한 뒤 되돌린다(기준선 전체 초록 선확인). **MSW 도 E2E 도 이 사고를 못 잡으므로**(EC15) 이 단위 테스트가 **유일한 가드**다([[verify-logic-vs-verify-guard]]).
+
+**검증**. `cd apps/web && node_modules/.bin/vitest run src/components/automation/GitWebhookRegisterDialog.test.tsx`
+
+---
+
+### Task 6. `GitWebhookSection` — 목록 4상태 + 등록 순차 + 삭제 + `mutation.reset()`
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/automation/GitWebhookSection.tsx`, `apps/web/src/components/automation/GitWebhookSection.test.tsx`]
+- depends-on: [3, 4, 5]
+
+> **★ 이 task 가 가장 크다** — FR2·FR7·FR8(수렴)·FR11·FR12·FR14·FR21 + ★B2 전층 판별자. 3분할(목록/등록/삭제)하면 **같은 파일이라 자동 직렬화 → +2 wave** 라 묶었다. §Plan 메타 §5 의 PR 분할 문의 대상.
+
+**RED**.
+- 파일: `apps/web/src/components/automation/GitWebhookSection.test.tsx`
+- 테스트:
+  ```ts
+  // ★★ BLOCKER-0 2층 — 전층(Dialog→Section→api→MSW) 요청 본문 바이트 단언 (EC2 · ★B2)
+  it('등록 요청 본문의 secret 이 입력과 바이트 단위로 동일하다', async () => {
+    let body: unknown
+    server.use(http.post('*/git-webhooks', async ({ request }) => { body = await request.json(); ... }))
+    // ... 등록 Dialog 열고 '  abcdefghijklmnop  ' 입력 후 제출
+    expect((body as { secret: string }).secret).toBe('  abcdefghijklmnop  ')
+  })
+  // ★ FR12 판별자 — 4상태 전부 (AutomationRuleList.tsx:405-427 동형)
+  it('loading — role="status" + aria-label 을 낸다', ...)                               // :405-409
+  it('error 403 — accessDenied 문구를 렌더한다(백지 아님)', ...)                        // :411-417 ★ 이게 없으면 섹션이 백지 → "웹훅 0개" 오해
+  it('error 그 외 — genericError 문구를 렌더한다', ...)
+  it('empty — "등록된 Git 웹훅이 없습니다." + 등록 CTA', ...)                          // :419-421
+  it('list — provider·createdAt 으로 식별해 렌더한다', ...)                             // S6
+  it('createdBy UUID 를 화면에 표시하지 않는다', ...)                                    // ★ EC18 음성 단언 (RuleConflictWarningModal.tsx:42-43 선례)
+  // FR2 — 모달 겹침 금지
+  it('201 직후 등록 Dialog 가 먼저 닫히고 그 다음 URL 모달이 열린다', ...)
+  // ★ FR7 판별자 — reset() 없으면 mutation.data(URL·token) / variables(secret) 가 gcTime 5분 잔존
+  it('URL 모달을 닫으면 registerMutation.data 가 undefined 다', ...)
+  // FR14 — 삭제
+  it('삭제 확인 모달이 "연동이 끊기고 복구할 수 없습니다" + "provider 설정의 URL 도 함께 교체" 두 가지를 말한다', ...)
+  it('204 후 목록을 invalidate 해 행이 사라진다', ...)                                   // EC19
+  it('삭제 404 는 토스트 없이 invalidate 로 조용히 사라진다', ...)                       // EC10 멱등적 귀결
+  it('삭제 403 은 에러 토스트 + 목록 유지(낙관적 제거 없음)', ...)                       // EC11
+  it('isPending 이면 삭제 확인/취소가 disabled 다', ...)                                 // EC12
+  // FR11 — 상시(에러 조건부 아님)
+  it('재발급 부재 도움말이 목록 상태와 무관하게 항상 렌더된다', ...)
+  ```
+- 실패 메시지 (예상). `Failed to resolve import "./GitWebhookSection"`
+
+**GREEN**.
+- h2 **`'Git 웹훅'`**(FR1-b) — 소유자는 이 컴포넌트(룰 섹션이 자기 h2 를 소유하는 것과 대칭). **`'자동화 룰'` 과 부분문자열로도 겹치지 않는다** → §제약 11 의 11 단언 안전.
+- 4상태는 `AutomationRuleList.tsx:405-427` **동형** — 403 분기 `extractAutomationRuleErrorCode(error) === 'AUTOMATION_ACCESS_DENIED' ? labels.accessDenied : labels.genericError`.
+- 등록 Dialog **open 상태를 이 컴포넌트가 소유**(FR2) → **route 상태 6종 불변**.
+- 순차 가드 — 201 핸들러에서 `setFormOpen(false)` → `setUrlPayload(...)` 순서 보장(선례 `route:162` `conflicts={webhookToken === null ? conflicts : null}` 의 "토큰 우선" 패턴 동형).
+- **`handleClose` 1곳에서 state `null` + `registerMutation.reset()` 동시 수행**(FR7 · NFR1). 4경로가 여기로 수렴하므로 호출 지점은 1곳.
+- 삭제 확인 모달 = file-local `DeleteConfirmDialog` **구조 복제**(`AutomationRuleList.tsx:109-166` — props 4개 · `if (x === null) return null` · 취소 `variant="outline"` / 확인 `variant="destructive"` · 둘 다 `disabled={isPending}`).
+- FR13 배선 — 목록 쿼리 데이터를 Dialog 에 `existingProviders` / `listUnavailable={isLoading || isError}` 로 내린다(**신규 엔드포인트 0**).
+- **NFR1** — `webhookUrl` 은 **경로에 원문 토큰이 박혀 있어 URL 자체가 비밀**이다. localStorage/sessionStorage/URL 쿼리/로그 기록 **금지**(§1.18).
+
+**REFACTOR**.
+- FR11 도움말 문구가 **왜 재발급이 없는지 + 대안(삭제 후 재등록 + provider 설정 갱신)** 을 말하는지 확인(S8 — #273 상시 도움말 승격 선례 동형).
+- `<h2>` · `<p>` 문구 상수를 파일 상단 `labels` 로 모은다(`AutomationRuleList.tsx:23-` 관례).
+
+**검증**. `cd apps/web && node_modules/.bin/vitest run src/components/automation/GitWebhookSection.test.tsx`
+
+---
+
+### Task 7. route 조립 — 형제 섹션 마운트 + h1 설명문 교체 + KDoc + **route test MSW 합류**(★F-b①)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/projects.$projectKey.settings.automation.tsx`, `apps/web/src/routes/__tests__/projects.$projectKey.settings.automation.test.tsx`]
+- depends-on: [6]
+
+> **왜 한 task 인가.** FR0(마운트) · FR1(설명문) · FR22(KDoc) · ★F-b①(테스트 합류)이 **같은 2파일**을 건드린다 → 쪼개도 자동 직렬화라 wave 만 늘고 이득 0.
+
+**RED**.
+- 파일: `apps/web/src/routes/__tests__/projects.$projectKey.settings.automation.test.tsx`
+- **★ 이 task 의 RED 는 2단계다.**
+  1. **합류 전 red 를 실제로 본다**(★F 판별자). `GitWebhookSection` 마운트분만 넣고 테스트 실행 → `:62` 로컬 `setupServer` 에 `gitWebhookHandlers` 가 없어 `GET .../git-webhooks` 가 **unhandled** → `onUnhandledRequest: 'error'`(`:64`)로 **파일 전체 red**. **red 가 안 나면 섹션이 실제로 마운트되지 않은 것**(FR0 미구현 신호).
+  2. 그 뒤 `:62` 를 `setupServer(...automationRuleHandlers, ...automationExecutionHandlers, ...gitWebhookHandlers)` 로 합류시키고, 아래 단언을 추가한다.
+  ```ts
+  it('페이지가 자동화 룰 섹션과 Git 웹훅 섹션을 형제로 조립한다', () => {
+    expect(screen.getByRole('heading', { name: '자동화 룰' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Git 웹훅' })).toBeInTheDocument()
+  })
+  // FR1 — 문구 교체 판별자
+  it('h1 설명문이 룰 전용 문구가 아니라 두 섹션을 포괄한다', () => {
+    expect(screen.queryByText(/트리거 규칙을 관리/)).not.toBeInTheDocument()
+  })
+  ```
+- 실패 메시지 (예상). 1단계 — `Error: intercepted a request without a matching request handler: GET /api/v1/projects/ATLAS/automation/git-webhooks`. 2단계 — `Unable to find an accessible element with the role "heading" and name "Git 웹훅"`.
+
+**GREEN**.
+- **FR0** — `route:133` `<div className="p-8 space-y-6 max-w-2xl">` 안, `AutomationRuleList` 의 **형제**로 `<GitWebhookSection projectKey={projectKey} />` 추가. **신규 라우트 0 · `router.ts` 무변경**(Maxi D2 확정).
+- **FR1 — 변경 대상은 `route:136-138` 의 `<p>` 한 덩어리뿐.** 교체 후 문자열(**확정 — 구현자가 발명하지 말 것**).
+  `이슈 이벤트·예약 일정·PR 머지에 따라 자동으로 실행될 규칙과, 규칙을 발화시키는 웹훅 연동을 관리합니다.`
+  - **`'Git 웹훅'`·`'자동화 룰'` 을 이 문구에 넣지 않는다** — `getByText` 중복 매치 표면을 애초에 안 만든다(`웹훅 연동` 으로 우회).
+  - **판별자** — `grep -c '트리거 규칙을 관리' apps/web/src/routes/projects.$projectKey.settings.automation.tsx` = **0**.
+- **★ (a) route 에 `'자동화 룰'` h2 를 절대 추가하지 않는다.** 룰 h2 는 `AutomationRuleList.tsx:380` 에 **이미 있다**. route 에 같은 텍스트 h2 를 도입하면 Playwright `getByRole('heading',{name})` 의 **부분문자열 매칭**이 2개를 잡아 **strict mode 위반 → E2E 11 단언 / 6 스펙 전부 red**(§제약 11). **이는 PR-D 가 만드는 회귀이지 기존 결함이 아니다.** `AutomationRuleList.tsx` 는 이 task 의 변경 대상이 **아니다**.
+  - **실측 보강** — h1(`:135`)은 `'자동화'` 라 `'자동화 룰'` 을 부분문자열로 **포함하지 않는다** → h1 무변경이면 안전.
+- **FR22-(b) 조립 열거 갱신 필수** — `route:55-56` 이 조립 컴포넌트를 **전수 열거**한다. `GitWebhookSection` · `GitWebhookUrlModal` 을 추가하지 않으면 그 열거가 **거짓**이 된다. 열거형 drift 는 `verify-master-plan.sh` 가 **안 본다**.
+- **FR22-(a) `route:58` 의 `상태 6종` 숫자는 변경하지 않는다** — FR2 가 Dialog 소유를 Section 에 뒀으므로 route 상태(`:87-92`)는 6개 그대로다. **route 에 상태를 추가하게 되면 그건 FR2 위반** — 그때는 숫자도 함께 고친다.
+
+**REFACTOR**.
+- **★ 회귀 전수 재확인** — `grep -rn "setupServer" apps/web/src` 로 합류 누락이 없는지 재실측. `AutomationRuleList.test.tsx:31` 은 **비대상**(`GitWebhookSection` 은 형제라 단독 렌더 시 웹훅 쿼리 미발화).
+
+**검증**. `cd apps/web && node_modules/.bin/vitest run 'src/routes/__tests__/projects.$projectKey.settings.automation.test.tsx' src/components/automation/AutomationRuleList.test.tsx`
+
+---
+
+### Task 8. ★ **targetBranch 원자 4종** — parse ④ + serialize omit ② + 호출부 ③ + 입력 UI
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/automation-rules.types.ts`, `apps/web/src/api/automation-rules.types.test.ts`, `apps/web/src/components/automation/AutomationRuleFormDialog.tsx`, `apps/web/src/components/automation/AutomationRuleFormDialog.test.tsx`]
+- depends-on: []
+
+> **★★ 절대 쪼개지 마라 (스펙 ★A).** FR16(parse) 없이 FR17(omit)만 하면 **현상유지보다 나쁘다** — 지금은 `JSON.stringify(base)`(`automation-rules.types.ts:253`)로 통째 보존이라 유실이 **0** 인데, omit 만 넣으면 편집할 때마다 targetBranch 가 **유실**된다(브랜치 한정 룰이 **전 브랜치 발화로 조용히 승격**). **중간 상태가 버그를 새로 만든다.**
+
+**RED**.
+- 파일: `apps/web/src/api/automation-rules.types.test.ts` + `apps/web/src/components/automation/AutomationRuleFormDialog.test.tsx`
+- **(1) ★ 기존 테스트 1개를 의도적으로 깬다 — 회귀가 아니라 계약 전환이다.**
+  `automation-rules.types.test.ts:392-399` `it('PR_MERGED: 폼이 관리하지 않는 targetBranch 는 편집해도 유실되지 않는다')` 를 **재작성**한다.
+  - 기대값 `{targetBranch:'develop', extraKey:'keep'}` → **`{extraKey:'keep'}`**(omit)
+  - **제목 + 선행주석(`:386-391`) 도 함께 갱신** — `:387` 의 `호출부(AutomationRuleFormDialog:291)는 { cron, fields } 만 넘긴다` 가 이 task 로 **거짓이 된다**.
+  - **판별자** — 이 테스트가 **갱신 없이 초록이면 ②(omit)가 누락된 것**이다.
+  - `:349`·`:401` 2개는 base 가 없어 omit 이 무동작 → **원래 판별력 0(vacuous)**. 그대로 둔다.
+- **(2) ★B 다이얼로그 레벨 라운드트립 5단언 신설** — `AutomationRuleFormDialog.test.tsx` 에 PR_MERGED describe 추가.
+  **현재 이 파일에 `PR_MERGED` 는 0건이다 — ③④를 잡을 테스트가 코드베이스에 아예 없다.** serialize 단위 테스트는 호출부를 못 보므로 **원리적으로 못 잡는다.**
+
+  | 단언 | 시나리오 | 기대 | 잡는 누락 |
+  |---|---|---|---|
+  | **A1** | `editingRule.triggerConfig = '{"targetBranch":"develop","futureKey":"x"}'` 로 렌더 | 입력에 `'develop'` **로드됨** | **FR16(④)** — parse 미구현이면 빈 값 → red |
+  | **A2** | A1 에서 **이름만** 고쳐 저장 | `JSON.parse(capturedBody.triggerConfig)` = `{targetBranch:'develop', futureKey:'x'}` | **FR16+FR18(④+③)** — **핵심 회귀 가드** |
+  | **A3** | 입력을 `'release/1.2'` 로 바꿔 저장 | `{targetBranch:'release/1.2', futureKey:'x'}` | **FR18(③) 양성 대조군** — A2 만 있으면 "base 통째 보존"으로도 초록이 난다 |
+  | **A4** | 입력을 **비우고** 저장 | `{futureKey:'x'}` (**targetBranch 키 부재**) | **★ FR17(②) 단독 — 이 PR 의 핵심 가드.** 없으면 `omitManagedKeys` 를 통째로 지워도 전 스위트가 초록이다(A1~A3 는 값 있는 경로만 밟아 omit 을 **한 번도 실행하지 않는다** — [[guard-handler-matrix-blindfold]]) |
+  | **A5** | `triggerType='ISSUE_CREATED'` 로 렌더 | targetBranch 입력 **부재**(음성 단언) | **FR19 과도발화** — `:121` 음성 단언 스타일 확장 |
+- 실패 메시지 (예상). A1 — `expected '' to be 'develop'`. A4 — `expected { futureKey: 'x', targetBranch: 'develop' } to deeply equal { futureKey: 'x' }`. types.test — `expected { extraKey:'keep', targetBranch:'develop' } to deeply equal { extraKey: 'keep' }`.
+
+**GREEN** — **4종을 한 커밋에**.
+- **④ FR16 `parseTriggerConfig`**(`AutomationRuleFormDialog.tsx:151-176`). `ParsedTriggerConfig` 에 `targetBranch: string` 추가 + `obj['targetBranch']` 읽기 + **return 3곳 전부** — `:164` 폴백(비객체) · `:171` 성공 경로 · `:174` catch 폴백 — + `initialConfig` 폴백(`:459`) + 폼 `defaultValues`(`:482-486`).
+- **② FR17 `serializeTriggerConfig`**(`automation-rules.types.ts`). 시그니처 `config` 에 `targetBranch?: string` 추가 + **PR_MERGED 를 fallthrough 그룹(`:249-253`)에서 떼어내 독립 case 로**. 선례 = **같은 함수의 `ISSUE_UPDATED` 분기**(`:243-248`) — `omitManagedKeys(base, ['targetBranch'])` 후 값 있으면 병합, 없으면 rest 만.
+  - **여기서 `trim()` 은 targetBranch 에만 해당한다. ⚠️ secret 은 정반대이며 trim 을 절대 하지 않는다**(FR4 · BLOCKER-0). targetBranch 에 trim 이 필요한 이유 = 배열 `length > 0` 에 대응하는 문자열 술어가 `trim() !== ''` 이고, 공백만 든 입력을 실어보내면 백엔드 `asText().isBlank()` 가 **400** 을 낸다(`TriggerConfig.kt:104`).
+  - **KDoc `:214-228` 재작성 필수** — 현재 `PR-D 에서 함께 도입한다` **미래형**이다. 안 고치면 **코드와 모순되는 주석**이 남는다.
+- **③ FR18 호출부 3홉** — `onValid`(`:511-526`) → `buildSharedSavePayload`(`:279-291`) → `serializeTriggerConfig`(`:291`). 헬퍼가 이미 **7 위치인자**이고 `cron`·`targetBranch` 가 **둘 다 string** 이라 순서를 바꿔도 타입 에러가 안 난다(eslint `max-params` 룰 없음) → **`{cron, fields, targetBranch}` 객체 1개로 묶어 전달**(serialize `config` 인자와 동형, 위치 혼동 불가).
+- **FR19 입력 UI** — `TriggerConfigFields`(`:348-436`)의 `return null`(`:435`) **앞에** `if (triggerType === 'PR_MERGED')` 분기 추가. 템플릿 = **cron 분기(`:369-392`)** — RHF `register` 기반 단일 텍스트 입력.
+  - **에러 표시 블록만 제거**(refine 없음 → 에러 채널 불필요). `type="text"`(`:377`)·`autoComplete="off"`(`:380`)·`font-mono` **유지**. **targetBranch 는 비밀값이 아니므로 `text` 가 맞다**(⚠️ 이 템플릿을 secret 에 복제할 때만 `password` — Task 5).
+  - 폼 스키마는 `targetBranch: z.string()` **한 줄만**(`formSchema` `:311-321`) — **`.refine` 금지**. 빈 값이 **정당한 의미(전 브랜치)** 를 가지므로 cron 필수 검증을 복제하면 **틀린다**.
+  - testid `automation-rule-target-branch-input`(`:379` 동형). **`git-webhook-*` 접두는 여기 적용 안 됨** — targetBranch 는 automation-rule 폼 소속(FR20).
+  - **설명문에 와일드카드를 암시하면 안 된다**(EC17) — 매칭은 **정확 문자열 비교**다(`GitWebhookService.kt:339-346`). `release/*` 를 넣으면 **조용히 0건 발화**. 문구는 `fieldsDescription`(`:53`) 문형을 따라
+    `'지정한 브랜치로 병합될 때만 발화합니다. 비워두면 모든 브랜치에 반응합니다.'`
+
+**REFACTOR**.
+- **★ 판별력 검증 — mutation 필수.** 기준선 전체 초록을 **선확인**한 뒤 `omitManagedKeys(base, ['targetBranch'])` 호출을 **일부러 지워** A4 가 red 가 되는지 확인하고 되돌린다. **초록이면 A4 가 vacuous** 다([[verify-logic-vs-verify-guard]]).
+- **EC14 — MSW 는 이 계약을 검증할 수 없다.** MSW 핸들러가 `triggerConfig` 를 검증 없이 통과시켜(`automation-rule-handlers.ts:214`) `{"targetBranch":""}` 를 보내도 **MSW 초록 / 실서버 400**([[date-input-iso-instant-query-param]] 동일 기전). → **단위 테스트가 유일한 가드**다.
+
+**검증**. `cd apps/web && node_modules/.bin/vitest run src/api/automation-rules.types.test.ts src/components/automation/AutomationRuleFormDialog.test.tsx`
+
+---
+
+### Task 9. FR15 PR_MERGED 무음 실패 경고 + **FormDialog MSW 합류**(★F-b②)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/automation/AutomationRuleFormDialog.tsx`, `apps/web/src/components/automation/AutomationRuleFormDialog.test.tsx`]
+- depends-on: [3]
+
+> **files 가 Task 8 과 2개 겹친다 → bts-impl 이 자동 직렬화한다.** 순서는 어느 쪽이든 무해하다(단언 독립). Task 8 은 폼 로직, 이 task 는 폼 안 쿼리 구독 — 관심사가 갈린다.
+> **★ Maxi D4 확정** — 웹훅 0건이면 PR_MERGED 룰이 **영원히 발화 안 하는데 이력도 비어 원인 도달 불가**. 두 요소를 한 화면에 모으는 유일한 PR 이다.
+
+**RED**.
+- 파일: `apps/web/src/components/automation/AutomationRuleFormDialog.test.tsx`
+- **★ 2단계 RED**(★F 판별자). 폼에 `useQuery` 구독분만 넣고 실행 → `:42` 로컬 `setupServer(...automationRuleHandlers, ...projectMemberHandlers)` 에 핸들러가 없어 **unhandled → 파일 전체 red**(`:44` `onUnhandledRequest:'error'`). **red 가 안 나면 쿼리가 실제로 마운트되지 않은 것**(FR15 미구현 신호). 그 뒤 `...gitWebhookHandlers` 를 합류.
+- 테스트:
+  ```ts
+  // ★ FR15 판별자 3종 (양성 1 + 음성 2)
+  it('웹훅 0건 + PR_MERGED 선택 → "이 프로젝트에 Git 웹훅이 없어 이 룰은 발화하지 않습니다." 를 렌더한다', ...)
+  it('웹훅 1건 + PR_MERGED → 경고 부재', ...)                          // 음성 단언
+  it('목록 isError(403) + PR_MERGED → 경고 부재', ...)                 // ★ EC21 — "못 읽음" ≠ "0건". 403 사용자에게 "웹훅이 없다"고 단정하면 거짓
+  it('웹훅 0건이어도 저장은 막지 않는다(정보성)', ...)                 // FR15 — 차단 금지
+  ```
+- 실패 메시지 (예상). 1단계 — `intercepted a request without a matching request handler: GET .../git-webhooks`. 2단계 — `Unable to find an element with the text: 이 프로젝트에 Git 웹훅이 없어…`.
+
+**GREEN**.
+- **신규 엔드포인트 0** — 같은 페이지에 이미 마운트된 `GIT_WEBHOOKS_QUERY_KEY(projectKey)` 를 `useQuery` 로 **구독만** 한다. 판정 = **`data?.length === 0`**.
+- `isLoading` / `isError` 일 때는 **경고를 내지 않는다**(EC21).
+- 경고 + **등록 섹션으로 유도하는 문구**. **저장 차단 금지.**
+- **⚠️ "추가 API 호출 0" 이라고 쓰지 마라 (실측 반증).** ① `main.tsx:17-22` QueryClient = `{queries:{retry:false}, mutations:{retry:false}}` 뿐 → **`staleTime` 미설정 = 0** ② `grep -n "staleTime" apps/web/src/api/useAutomationRules.ts` → **0건**. **staleTime 0 + `refetchOnMount` 기본 true** 라 새 observer 마운트 시 **배경 refetch 가 1회 나간다**. 캐시 공유로 실제 얻는 것은 **① 중복 인플라이트 dedupe ② 캐시 즉시 표시**이지 '호출 0' 이 아니다. 렌더 블로킹·UX 영향은 없고 판정식은 그대로 유효하다. **KDoc 에 '호출 0' 이라고 적으면 스펙이 못 지킬 약속을 하는 것**(NFR1 의 `mutation.reset()` 과 같은 규율).
+
+**REFACTOR**.
+- 경고 문구 상수를 파일 상단 `labels`(`:23-`)에 합류.
+
+**검증**. `cd apps/web && node_modules/.bin/vitest run src/components/automation/AutomationRuleFormDialog.test.tsx`
+
+---
+
+### Task 10. D7 — MSW PR_MERGED 픽스처(EC16) + E2E 신규 스펙
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/mocks/automation-rule-fixtures.ts`, `apps/web/e2e/automation-git-webhook.spec.ts`]
+- depends-on: [7, 8, 9]
+
+**RED**.
+- 파일: `apps/web/e2e/automation-git-webhook.spec.ts`
+- **선행조건 = EC16 픽스처.** MSW 픽스처에 **PR_MERGED 가 0건**이다(`automation-rule-fixtures.ts:132,149` = ISSUE_CREATED · SCHEDULED 뿐). → **④의 핵심 경로를 화면으로 밟을 수 없어 버그가 D7 눈검사를 통과한다.** `triggerConfig: JSON.stringify({targetBranch:'release/1.2'})` 를 가진 PR_MERGED 룰을 `DEFAULT_AUTOMATION_RULES` 에 추가하고 `SEED_AUTOMATION_RULE_IDS`(`:72-76`)를 확장한다 — **RFC4122 v4 형식 필수**([[zod-v4-uuid-fixture-strictness]], `:72` 주석이 박제).
+- 테스트: `automation-yaml-gitops.spec.ts:35-36,83-87` 관례 — **URL 직접 `goto`**(사이드바 자체가 없다, §제약 5).
+  ```ts
+  // S1 — 등록 + URL 1회 노출
+  test('등록하면 origin 이 붙은 완전 URL 이 1회 노출되고 복사할 수 있다', ...)
+  // S6 — 목록
+  test('등록 후 목록에 provider·등록일시로 표시된다', ...)
+  // S5 — 삭제
+  test('삭제 확인 모달이 복구 불가를 명시하고, 확인하면 목록에서 사라진다', ...)
+  // S12 — targetBranch 라운드트립 (④의 핵심 경로)
+  test('PR_MERGED 룰을 편집해 이름만 고쳐 저장해도 targetBranch 가 유지된다', ...)
+  ```
+- 실패 메시지 (예상). `Error: expect(locator).toBeVisible() failed — locator resolved to 0 elements` (신규 섹션/픽스처 부재)
+
+**GREEN**.
+- 픽스처 추가 + E2E 스펙 작성. 시나리오 토글은 `addInitScript` + localStorage 플래그([[e2e-msw-scenario-toggle-localstorage-flag]]).
+
+**REFACTOR**.
+- **★ 기존 automation E2E 6건 동시 통과 확인**(★D) — `automation-{actions,conditions,conflict-warning,execution-history,rules,yaml-gitops}.spec.ts`. **같은 페이지를 건드리므로 회귀 확인 필수**([[ui-pr-defer-e2e-regression-latent]]).
+  - **이 실행이 §제약 11 의 판별자를 겸한다** — h2 를 잘못 도입했으면 Playwright 가 `strict mode violation: ... resolved to 2 elements` 로 **11 단언이 즉사**한다.
+- **E2E 는 CI 에서 안 돈다**(`.github/workflows/frontend-ci.yml` 잡 3개 = lint `:45` · typecheck `:65` · test `:87`, `playwright` 문자열 **0건**). → **자동 게이트가 없다.** 통과 증거를 **보고서/PR 본문에 첨부**하는 규율에 전적으로 의존한다.
+- **E2E 전 `lsof -ti tcp:5173`** 으로 orphan vite 확인([[e2e-orphan-vite-after-worktree-remove]]).
+
+**검증**.
+```
+cd apps/web && node_modules/.bin/playwright test e2e/automation-git-webhook.spec.ts > /tmp/e2e-new.txt 2>&1; echo "EXIT=$?"
+cd apps/web && node_modules/.bin/playwright test e2e/automation-actions.spec.ts e2e/automation-conditions.spec.ts e2e/automation-conflict-warning.spec.ts e2e/automation-execution-history.spec.ts e2e/automation-rules.spec.ts e2e/automation-yaml-gitops.spec.ts > /tmp/e2e-reg.txt 2>&1; echo "EXIT=$?"
+```
+
+---
+
+### Task 11. 완료마킹 — `automation.md` D6/D7 + 전사갭 1행 + 대시보드 재생성 (★E)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`docs/plan/product/automation.md`, `docs/progress.html`]
+- depends-on: [10]
+
+> **왜 deps 가 [10] 인가.** 커밋 순서 의존이 아니라 **데이터 의존**이다 — 완료 블록이 인용할 **유닛 수 · E2E 결과 · PR 번호**가 Task 10 이 끝나야 존재한다. 선례 6블록 전부 실측치를 담고 있다.
+
+**RED**.
+- 파일: 없음(문서 task — 테스트 대신 **판별자 grep**).
+- 판별자:
+  ```
+  grep -c '^- \[ \] D6\.' docs/plan/product/automation.md          → 0 이어야 함
+  grep -c '^- \[ \] D7\.' docs/plan/product/automation.md          → 0
+  grep -c '123' docs/plan/product/automation.md                     → 6 (기존 6곳 불변 — 새 블록에 7번째가 생기면 실패)
+  grep -n '| 규칙 충돌 정적 분석 | 1s | ___' docs/plan/product/automation.md → 0건
+  bash scripts/verify-master-plan.sh                                → EXIT=0
+  ```
+
+**GREEN**.
+- **D6·D7 두 줄만** `[x]`(`:127-128`). D1~D5 는 #278 이 이미 `[x]`.
+- **★ D6 정본 문구("페이지")는 고치지 않는다.** `:127` `D6. 프론트 UI — Webhook URL 생성 **페이지**` / `:143` `D6(Webhook URL 생성 페이지)`. 옵션 A 는 "섹션"이라 글자상 어긋나지만 **정본을 조용히 고치면 "왜 페이지가 아니게 됐는가"라는 결정 근거가 소실**된다 → **배치 사유를 완료 블록에 적어 해소**한다.
+- **D6/D7 완료 블록 append — 선례는 3개가 아니라 6개다**(실측 `:38`·`:54`·`:70`·`:86`·`:100`·`:116`). **`:38` 만 `automation BC N/7` 접미가 없고**(`→ **FR-AT-01 전체 완료(D1~D7)**.` 로 종료) 그 접미는 **#260 부터 생긴 관례** → **#260 이후 형식**을 따른다.
+  - 형식 — `> **D6/D7 완료 (2026-07-17, PR #N)**. ` … `→ **FR-AT-07 전체 완료(D1~D7)**, automation BC **7/7**.` (#273 수준 2000~2600자)
+  - **반드시 포함 4종** — ① **배치 사유**(옵션 A 형제 섹션 · 라우터 변경 0 · D6 정본 "페이지"와 어긋나는 이유) ② **secret trim 금지**(BLOCKER-0) ③ 중복 가드 · 목록 식별자 **후속 등재** ④ **`BC 7/7 ≠ BC 완료` 분리**
+- **★★ FR 총수는 `128 불변`(D-step).** `CLAUDE.md:10` **재실측 완료** — `(128 FR, …)`, HEAD `802b495ef` 기준(#279 는 아직 128→129 로 안 올렸다). **착수 시 재실측 필수.**
+  - **선례 문구를 복붙하면 7번째 "123"이 박힌다.** `grep -n "123" automation.md` → **6곳** 전부 `123 불변`. `:180` 이 자백하듯 **#278 이 123 을 유지한 건 #277 동시 PR 카운트 충돌 회피용 의도적 미변경이지 현재값이 아니다** — #277 이 FR-PJ-01~04 + FR-PM-10 으로 **123→128** 을 올렸다.
+  - **`verify-master-plan.sh` 는 `CLAUDE`/`fr-index`/`README`/product 헤더만 보므로 `automation.md` 산문의 123 은 자동 차단에 안 걸린다.**
+- **★ §NFR 측정표 — 전사갭 1행만 채운다**(Maxi D1 확정 = 옵션 C). `:190` 「규칙 충돌 정적 분석」 실측 셀 `___` → **`0.876s`**.
+  - **★ 새로 측정하는 게 아니라 옮겨 적는 것이다.** 출처 = **`:84` 산문**(#268 D1~D5 블록) `성능 스모크 100규칙 0.876s(NFR 1s)`. 이미 측정돼 산문에만 있는 **전사 누락**. 임계 1s 대비 통과.
+  - **나머지 4행은 건드리지 않는다**(`:189` 트리거 지연 · `:191` 실행 이력 재실행 · `:192` YAML import · `:194` 권한 차단율) — 백엔드 측정이라 순수 프론트 PR 로 불가 → **후속 등재**.
+- **★ `docs/plan/README.md:110` 의 `☐` 는 뒤집지 않는다.** `automation BC 7/7`(FR 카운트) ≠ `automation BC 완료`(게이트). BC 완료 5조건(`:207-213`) 중 PR-D 가 채우는 건 **`:209` 첫 줄뿐**이다 — `:210` §NFR 표는 1행 채워도 **4행이 `___` 로 남고**, `:211`~`:213`(CHANGELOG · README §7 · Maxi 선언)은 **Maxi 몫**. **선례 #273 은 6/7 이라 이 칸을 마주한 적이 없다** — automation 에서 PR-D 가 처음 마주친다. 두 표현을 섞어 쓰면 **"완료했다"는 거짓 보고**가 된다(§제약 10).
+  - → `README.md` 는 **이 task 의 files 에 없다**(변경 0).
+- **`docs/progress.html` 재생성** — `node scripts/build-dashboard.mjs`(`OUTPUT_PATH` 가 거기다). §제약 1 이 이 파일을 이 PR 의 변경 대상으로 **명시 열거**한다.
+
+**REFACTOR**.
+- **[[dashboard-regen-after-fr-marking]]** — post-merge 훅 **상시 고장**(#278 로 **6회 연속** — 재생성·stage 까지 하고 커밋에서 죽는다). **수동 `--no-verify` 가 정규 절차**다.
+
+**검증**.
+```
+node scripts/build-dashboard.mjs > /tmp/dash.txt 2>&1; echo "EXIT=$?"
+bash scripts/verify-master-plan.sh > /tmp/vmp.txt 2>&1; echo "EXIT=$?"
+```
+
+---
+
+## Plan 메타
+
+### 1. Task 목록 (11개)
+
+| # | 제목 | agent |
+|---|---|---|
+| 1 | Git 웹훅 Zod 계약 신설 (`automation-git-webhooks.types.ts`) | frontend-engineer |
+| 2 | MSW git 웹훅 픽스처 + 핸들러 + 전역 등록 (★F-a) | frontend-engineer |
+| 3 | API 함수 + 쿼리/뮤테이션 훅 (`GIT_WEBHOOKS_QUERY_KEY`) | frontend-engineer |
+| 4 | `GitWebhookUrlModal` — URL 1회 노출 + origin prepend + 복사 폴백 | frontend-engineer |
+| 5 | `GitWebhookRegisterDialog` — provider/secret 입력 + BLOCKER-0 봉인 | frontend-engineer |
+| 6 | `GitWebhookSection` — 목록 4상태 + 등록 순차 + 삭제 + `mutation.reset()` | frontend-engineer |
+| 7 | route 조립 — 형제 섹션 + h1 설명문 교체 + KDoc + route test MSW 합류 (★F-b①) | frontend-engineer |
+| 8 | ★ targetBranch 원자 4종 (parse ④ + omit ② + 호출부 ③ + 입력 UI) | frontend-engineer |
+| 9 | FR15 PR_MERGED 무음 실패 경고 + FormDialog MSW 합류 (★F-b②) | frontend-engineer |
+| 10 | D7 — MSW PR_MERGED 픽스처(EC16) + E2E 신규 스펙 | frontend-engineer |
+| 11 | 완료마킹 — `automation.md` D6/D7 + 전사갭 1행 + 대시보드 재생성 (★E) | frontend-engineer |
+
+### 2. Wave 계산 (depends-on + files 교집합)
+
+| wave | task | 근거 |
+|---|---|---|
+| **W1** | **1 · 4 · 8** | deps `[]` · files 교집합 0 (types / UrlModal / rules.types+FormDialog) |
+| **W2** | **2 · 5** | 2 deps [1] ✓ · 5 deps [1] ✓ · 교집합 0 |
+| **W3** | **3** | deps [1,2] ✓ |
+| **W4** | **6 · 9** | 6 deps [3,4,5] ✓ · 9 deps [3] ✓ · 교집합 0. 9 는 files 가 8(W1 완료)과 겹치므로 지금 안전 |
+| **W5** | **7** | deps [6] ✓ |
+| **W6** | **10** | deps [7,8,9] ✓ |
+| **W7** | **11** | deps [10] ✓ |
+
+**longest path** = 1 → 2 → 3 → 6 → 7 → 10 → 11 = **7 wave**.
+**직렬화 쌍 1건** — Task 8 ↔ Task 9 (files 2개 교집합: `AutomationRuleFormDialog.tsx` · `.test.tsx`). W1/W4 로 자연 분리돼 **추가 wave 비용 0**.
+**순환 0** — 확인함.
+
+### 3. 줄수
+
+plan 파일 총 **898줄**(`wc -l` 실측). 신설분 — `## Plan`(`:283`)~`## 리뷰 결과`(`:898`) = **615줄**(§Plan 본문 516 + §Plan 메타 99).
+
+> **★ 이 줄수를 처음엔 `674` 로 적었다가 `wc -l` 실측으로 정정했다.** 내가 센 게 아니라 짐작한 값이었다 —
+> [[spec-stated-count-becomes-blindfold]] 가 경고하는 바로 그 형태다. **개수는 세지 말고 명령어로 뽑아라.**
+
+### 4. ★ 오케스트레이터 지시 중 실측과 달랐던 것
+
+**이번엔 반증 0건이다.** 지시 6항목을 전부 실측 대조했고 **전부 맞았다**.
+
+| 지시 | 실측 |
+|---|---|
+| "스펙 471줄" | **471줄 정확**(`wc -l`) |
+| "PR-D = 순수 프론트, 백엔드 REST 3매핑은 PR-C 완비, 백엔드 변경 0" | **정확** |
+| "D1~D4 Maxi 확정 4건" | plan §Maxi 확정 표와 일치 |
+| "등록 폼 = Dialog, 소유는 route 가 아니라 GitWebhookSection" | **정확하고 load-bearing** — 이게 route 상태 **6종 불변**(FR22-a)을 성립시켜 `route:58` KDoc 숫자를 안 건드려도 되게 만든다 |
+| "targetBranch 원자 4종을 하나의 task 로" | **정확** — Task 8 로 묶음 |
+| "MSW 로컬 setupServer 2곳 합류(★F)도 task" | **정확**. `grep -rn "setupServer" apps/web/src` 전수 재실행 → 합류 대상은 **정확히 2곳**(route test `:62` · FormDialog test `:42`). `AutomationRuleList.test.tsx:31` 은 로컬 서버지만 **형제 구조라 비대상**(스펙 판단 옳음) |
+
+**★ 다만 "내 지시가 8번 틀렸다"는 자기평가 자체가 이번엔 과잉교정 위험이다.** 스펙(3차 개정)이 이미 그 8건을 **전부 흡수해 정정**했고, 나는 스펙 인용 **14항목을 실측 재대조해 반증 0건**을 확인했다(§실측 재대조 표). → **이제 의심 대상은 지시가 아니라 "스펙이 안 말한 것"이다.** 그래서 §실측 재대조 표에 **스펙 미기재 1건**(route `:135` h1 = `'자동화'` — `'자동화 룰'` 부분문자열 미포함이라 11 단언 안전)을 추가로 실측해 FR1 근거를 보강했다.
+
+### 5. ★★ task 11개 = 10 초과 → **Maxi 에게 PR 분할 문의 필요**
+
+**#273(automation 직전 PR)이 9 task 였고 이건 11 task / 7 wave 다.** 사유는 이 PR 이 **독립 덩어리 3개**를 한 PR 에 담고 있기 때문이다(plan §정찰 결과 3 — `UI 덩어리가 2개다`).
+
+| 덩어리 | task | 독립성 |
+|---|---|---|
+| **A. D6 Git 웹훅 UI** | 1·2·3·4·5·6·7 | `git_webhooks` 리소스. 신규 파일 위주 |
+| **B. targetBranch 원자 4종** | 8 (+9 는 A·B 교차) | `automation_rules.trigger_config` JSONB. **다른 화면·다른 테이블** |
+| **C. D7 + 완료마킹** | 10·11 | A·B 둘 다 필요 |
+
+**분할 가능성 판정(실측).**
+- **B 는 A 없이 단독 머지 가능하다** — Task 8 의 deps 는 `[]` 이고 files 4개가 A 와 **교집합 0**이다. ★A 의 원자성은 **task 8 내부**에서 이미 보장되므로 분할이 그걸 깨지 않는다.
+- **단 Task 9(FR15)는 A·B 를 교차한다** — 폼(B 영역 파일)이 웹훅 목록 쿼리(A 산출물)를 구독한다. → **B 를 먼저 빼면 9 는 A 쪽 PR 로 따라간다**(files 겹침은 순차 머지라 무해).
+- **C 는 쪼갤 수 없다** — ★E 의 `automation BC 7/7` 마킹이 D6·D7 **둘 다** 완료를 전제한다.
+
+**옵션 3안 (Maxi 판단 — 각 trade-off 1줄).**
+1. **현행 유지 (1 PR / 11 task / 7 wave)** — 리뷰 폭이 크고 게이트 2 부하가 높지만 `automation BC 7/7` 을 **한 번에** 닫는다.
+2. **2 PR 분할 — [B: targetBranch 4종] → [A+C: 웹훅 UI + D7 + 마킹]** — B 는 4파일/1 task 라 리뷰가 가볍고 ★A 원자성도 유지되지만, **PR 2개 = 게이트 2회**이고 B 단독 PR 은 사용자 가치가 안 보인다(입력 UI 만 생기고 발화 경로 확인 불가).
+3. **2 PR 분할 — [A: 웹훅 UI(1~7)] → [B+C: targetBranch + D7 + 마킹]** — A 가 신규 파일 위주라 리뷰가 깔끔하고 D6 를 먼저 닫지만, **★F-b② FormDialog MSW 합류가 A 에 있고 FR15 는 B 에 있어** 두 PR 이 같은 파일을 순차로 건드린다(#278 [[migration-vnumber-concurrent-branch-collision]] 류 충돌은 아니나 rebase 필요).
+
+> **오케스트레이터 권고 없음 — 이건 Maxi 결정 사항이다.** 다만 실측상 **2안이 기술적으로 가장 깨끗**하다(교집합 0 · deps [] · 원자성 보존).
+
+### 6. 전 task 공통 규율 (implementer 프롬프트에 반드시 실을 것)
+
+- **`pnpm install` 절대 금지 · `pnpm exec` / `pnpm --filter` 금지.** worktree 의 `node_modules` 는 main 심볼릭 링크다 — 여기서 install 하면 main `.modules.yaml` 을 **재오염**시킨다(이번 세션에 3일치 손상을 복구했다). 검증은 **`node_modules/.bin/*` 직접 호출**.
+- **병렬 dispatch pre-commit race** — implementer 는 **자기 `files` 만 `git add`**. **`git add -A` 금지**([[parallel-dispatch-precommit-hook-race]] — files 교집합 0 이어도 **index 공유**로 발생, #273 에서 4회차 재발).
+- **`git stash` 금지** — worktree 가 stash 를 **공유**해 형제 task 산출물을 삼킨다([[subagent-git-stash-worktree-shared-collision]]).
+- **`eslint --fix` 도 자기 파일만.** `ktlintFormat` 은 **무관**(순수 프론트).
+- **`rm`/`mv` 는 Bash deny** → 임시파일 정리는 `git clean -f <path>`.
+- **파이프 금지** — `cmd | head; echo $?` 는 head 의 0 을 뱉는다. `> /tmp/x 2>&1; echo "EXIT=$?"`([[zsh-pipestatus-1-based-false-green]]).
+- **[[parallel-review-mutation-contaminates-peers]]** — 동시 dispatch 중 남의 뮤테이션을 자기 결함으로 오탐하지 마라. `git show HEAD:<path>` 대조가 유일 탐지 수단.
+- **Vitest `userEvent.type` 은 긴 문자열에서 timeout** → `{ delay: null }`([[vitest-usertype-long-string-timeout]]). Task 5·6 의 20자 secret 입력이 대상.
+- **`getByRole` 은 Playwright/RTL 모두 strict** — 신규 testid 는 `git-webhook-*` 접두 강제(FR20).
+
+### 7. 최종 검증 (전 wave 완료 후, 메인 루프)
+
+```
+cd apps/web && node_modules/.bin/eslint src > /tmp/lint.txt 2>&1; echo "EXIT=$?"
+cd apps/web && node_modules/.bin/tsc -p tsconfig.app.json --noEmit > /tmp/tsc.txt 2>&1; echo "EXIT=$?"
+cd apps/web && node_modules/.bin/vitest run > /tmp/unit.txt 2>&1; echo "EXIT=$?"
+cd apps/web && node_modules/.bin/vite build > /tmp/build.txt 2>&1; echo "EXIT=$?"
+bash scripts/verify-master-plan.sh > /tmp/vmp.txt 2>&1; echo "EXIT=$?"
+```
+- **★ 유닛 기준선은 착수 시 실측한다.** #273 spec 의 `6933`(#271 기준)도 `automation.md:116` 의 `유닛 6979`(#273 실적)도 **스테일**이다 — PR-C(#278)가 백엔드 PR 이면서 프론트 5파일을 함께 배포하고 **완료 블록에 프론트 유닛 수를 남기지 않았다**. **W1 dispatch 전에 `vitest run` 1회로 기준선을 찍어라.**
+- **CI typecheck 는 `tsconfig.app.json`** — 로컬 기본과 다르다([[ci-typecheck-tsconfig-app-vs-local.md]]).
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
