@@ -12,12 +12,12 @@ class TriggerConfigTest : DescribeSpec({
 
     val fixedNow = Instant.parse("2026-07-10T00:00:00Z")
 
-    describe("TriggerType — enum 5종") {
-        it("5종 모두 정의된다") {
-            TriggerType.entries.size shouldBe 5
+    describe("TriggerType — enum 6종") {
+        it("6종 모두 정의된다") {
+            TriggerType.entries.size shouldBe 6
         }
 
-        it("이슈 이벤트 3종 + SCHEDULED + WEBHOOK 을 포함한다") {
+        it("이슈 이벤트 3종 + SCHEDULED + WEBHOOK + PR_MERGED 를 포함한다") {
             TriggerType.entries.toSet() shouldBe
                 setOf(
                     TriggerType.ISSUE_CREATED,
@@ -25,6 +25,7 @@ class TriggerConfigTest : DescribeSpec({
                     TriggerType.ISSUE_COMMENTED,
                     TriggerType.SCHEDULED,
                     TriggerType.WEBHOOK,
+                    TriggerType.PR_MERGED,
                 )
         }
     }
@@ -89,6 +90,28 @@ class TriggerConfigTest : DescribeSpec({
         it("fields 항목 중 문자열이 아닌 값이 있으면 거부한다") {
             shouldThrow<TriggerConfigInvalidException> {
                 TriggerConfig.validate(TriggerType.ISSUE_UPDATED, """{"fields":[1,2]}""")
+            }
+        }
+    }
+
+    describe("TriggerConfig.validate — PR_MERGED") {
+        it("targetBranch 가 없으면(전체 브랜치 발화 의미) 통과한다") {
+            TriggerConfig.validate(TriggerType.PR_MERGED, "{}")
+        }
+
+        it("targetBranch 가 문자열이면 통과한다") {
+            TriggerConfig.validate(TriggerType.PR_MERGED, """{"targetBranch":"release/1.2"}""")
+        }
+
+        it("targetBranch 가 숫자면 거부한다") {
+            shouldThrow<TriggerConfigInvalidException> {
+                TriggerConfig.validate(TriggerType.PR_MERGED, """{"targetBranch":123}""")
+            }
+        }
+
+        it("targetBranch 가 빈 문자열이면 거부한다") {
+            shouldThrow<TriggerConfigInvalidException> {
+                TriggerConfig.validate(TriggerType.PR_MERGED, """{"targetBranch":""}""")
             }
         }
     }
