@@ -668,11 +668,23 @@ cd backend && ./gradlew :modules:identity-access:compileKotlin :modules:issue-tr
 
 **RED**. `GlobalPermissionGrantRepositoryIntegrationTest` — `ProjectMembershipRepositoryIntegrationTest` 패턴 복제.
 
+> 🛑 **T4 가 잡은 plan 초안 결함 2건 — 아래 코드는 정정본이다** (controller 가 착수 전 지적, T4 가 처리).
+> - **결함 A.** 초안의 테스트 4 는 `repo.grant("SOME_OTHER_PERMISSION", ...)` 로 시드했으나 V036 은
+>   `CHECK (permission IN ('CREATE_PROJECT'))` (T2 커밋 `2ab46ee30`, D17 로 의도된 설계)라 **INSERT 자체가 불가능**하다 —
+>   `false` 가 아니라 `DataIntegrityViolationException` 을 만나 단언에 도달하지 못한다. CHECK 를 푸는 대신
+>   **방향을 뒤집어** 같은 술어(`g.permission = :permission`)를 겨냥했다 — `CREATE_PROJECT` 를 부여한 뒤
+>   **다른 코드로 조회**해 false 를 본다. 조회 인자는 CHECK 대상이 아니라(읽기 경로) 불법 INSERT 없이 성립한다.
+> - **결함 B.** 초안의 테스트 1~4 가 `grantedBy` 를 빠뜨렸다(테스트 5~7 은 넘긴다 — 초안 자기모순).
+>   `grant()` 는 4-파라미터이며 **`grantedBy` 에 기본값을 두지 않는다** — 기본값은 ADR D-5 의 감사 흔적을
+>   조용히 위조하는 통로다. 테스트가 `adminId` 를 명시로 넘기게 정정했다. (T2 가 RED 에서 잡은 `granted_by` 누락과 같은 계열)
+> - **테스트 1건 신설 (7 → 8).** 초안의 7건 중 어느 것도 아래 `grant` 계약(`ON CONFLICT DO NOTHING` **아님**)을
+>   가드하지 않는다 — `ON CONFLICT DO NOTHING` 을 붙여도 7건이 전부 통과한다. 중복 부여 → `DuplicateKeyException` 단언을 추가했다.
+
 ```kotlin
 @Test
 fun `USER grant 를 부여하면 hasGrant 가 true 를 반환한다`() {
     val userId = seedUser()
-    repo.grant("CREATE_PROJECT", GranteeType.USER, userId)
+    repo.grant("CREATE_PROJECT", GranteeType.USER, userId, grantedBy = adminId)
     assertThat(repo.hasGrant(userId, "CREATE_PROJECT")).isTrue()
 }
 
@@ -681,20 +693,22 @@ fun `GROUP grant 는 그룹 멤버에게 전파된다`() {
     val userId = seedUser()
     val groupId = seedGroup()
     seedGroupMembership(groupId, userId)
-    repo.grant("CREATE_PROJECT", GranteeType.GROUP, groupId)
+    repo.grant("CREATE_PROJECT", GranteeType.GROUP, groupId, grantedBy = adminId)
     assertThat(repo.hasGrant(userId, "CREATE_PROJECT")).isTrue()
 }
 
 @Test
-fun `grant 가 없으면 false (fail-closed, PM10-6)`() {
+fun `grant 가 없으면 false 를 반환한다 (fail-closed, PM10-6)`() {
     assertThat(repo.hasGrant(seedUser(), "CREATE_PROJECT")).isFalse()
 }
 
+// 결함 A 정정 — 부여는 CHECK 가 허용하는 CREATE_PROJECT 로, 조회를 다른 코드로 뒤집는다.
+// 판별자. hasGrant 에서 `g.permission = :permission` 을 지우면 이 조회가 true 가 되어 fail 한다.
 @Test
-fun `다른 권한코드의 grant 는 전파되지 않는다`() {
+fun `다른 권한코드로 조회하면 false 를 반환한다`() {
     val userId = seedUser()
-    repo.grant("SOME_OTHER_PERMISSION", GranteeType.USER, userId)
-    assertThat(repo.hasGrant(userId, "CREATE_PROJECT")).isFalse()
+    repo.grant("CREATE_PROJECT", GranteeType.USER, userId, grantedBy = adminId)
+    assertThat(repo.hasGrant(userId, "SOME_OTHER_PERMISSION")).isFalse()
 }
 
 @Test
@@ -702,6 +716,8 @@ fun `그룹에서 탈퇴하면 grant 가 사라진다`() {
     val userId = seedUser(); val groupId = seedGroup()
     seedGroupMembership(groupId, userId)
     repo.grant("CREATE_PROJECT", GranteeType.GROUP, groupId, grantedBy = adminId)
+    // 탈퇴 전 선단언 — 없으면 아래 isFalse 가 "원래부터 false" 여도 통과하는 vacuous 가드가 된다
+    assertThat(repo.hasGrant(userId, "CREATE_PROJECT")).isTrue()
     removeGroupMembership(groupId, userId)
     assertThat(repo.hasGrant(userId, "CREATE_PROJECT")).isFalse()
 }
@@ -724,6 +740,19 @@ fun `list 는 부여한 grant 를 granted_by 와 함께 반환한다`() {
         assertThat(it.granteeId).isEqualTo(userId)
         assertThat(it.grantedBy).isEqualTo(adminId)   // ADR D-5 감사 흔적이 실제로 읽힌다
     })
+}
+
+// ↓ T4 신설 (8번째) — 아래 grant 계약("ON CONFLICT DO NOTHING 아님")의 유일한 가드.
+// 없으면 ON CONFLICT DO NOTHING 을 붙여도 위 7건이 전부 초록이다(RETURNING 0행 → 500 으로 변질).
+// 스키마 UNIQUE 단언(GlobalPermissionGrantSchemaMigrationTest)과 별개의 성질 —
+// 그쪽은 "DB 가 막는다", 이쪽은 "리포지토리가 그 예외를 삼키지 않는다".
+@Test
+fun `같은 grantee 에 중복 부여하면 DuplicateKeyException 이 전파된다`() {
+    val userId = seedUser()
+    repo.grant("CREATE_PROJECT", GranteeType.USER, userId, grantedBy = adminId)
+    assertThatThrownBy {
+        repo.grant("CREATE_PROJECT", GranteeType.USER, userId, grantedBy = seedUser())
+    }.isInstanceOf(DuplicateKeyException::class.java)
 }
 ```
 
@@ -761,15 +790,15 @@ SELECT EXISTS (
 )
 ```
 
-메서드 4종.
-- `grant(permission, granteeType, granteeId, grantedBy): GlobalPermissionGrant` — `ON CONFLICT DO NOTHING` **아님**. 중복은 `DuplicateKeyException` 으로 올라가 서비스가 409 로 매핑한다(멱등 200 이 아니라 409 인 이유 — 관리자가 "이미 있다"를 알아야 한다)
+메서드 4종. **`grantedBy` 에 기본값을 두지 않는다** — 기본값은 ADR D-5 감사 흔적을 조용히 위조하는 통로다(결함 B).
+- `grant(permission, granteeType, granteeId, grantedBy): GlobalPermissionGrant` — `ON CONFLICT DO NOTHING` **아님**. 중복은 `DuplicateKeyException` 으로 올라가 서비스가 409 로 매핑한다(멱등 200 이 아니라 409 인 이유 — 관리자가 "이미 있다"를 알아야 한다). 가드는 위 8번째 테스트
 - `revoke(id): Boolean` — hard DELETE. 삭제 행 수 > 0 이면 true (없으면 404)
 - `list(): List<GlobalPermissionGrant>`
 - `hasGrant(actorId, permission): Boolean`
 
 **REFACTOR**. SQL 상수를 `private companion object` 로 추출 + KDoc (`ProjectMembershipAdapter.kt:57-70` 동형).
 
-**검증**. `cd backend && ./gradlew :modules:identity-access:test --tests '*GlobalPermissionGrantRepositoryIntegrationTest*'` → **7/7 PASS** (D6 로 `revoke()` · `list()` 2건 추가).
+**검증**. `cd backend && ./gradlew :modules:identity-access:test --tests '*GlobalPermissionGrantRepositoryIntegrationTest*'` → **8/8 PASS** (D6 로 `revoke()` · `list()` 2건 추가 + T4 가 중복부여 가드 1건 신설). **콘솔 합계가 아니라 `build/test-results/test/*.xml` 의 `tests="8"` 로 확인할 것** — `--tests` 필터를 걸어도 ArchUnit 2종(3건)이 같이 돈다(인계 사실 9).
 
 ---
 
