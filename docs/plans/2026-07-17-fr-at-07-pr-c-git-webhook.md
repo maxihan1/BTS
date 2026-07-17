@@ -888,6 +888,20 @@ longest path = T2 → T6 → T9 → T10 → T12 → T15 (**6 wave**).
 - **`DATA.md:90`** — `automation (예정) | V300~V399 | —` → **`V300~V309`** (DEC-21 — automation 행만)
 - **★ `AutomationWebhookController.kt:34-37` KDoc 갱신** (G14) — *"prod SecurityConfig 결선은 후속
   ADR 범위"*가 **거짓이 됨**. 조립은 #259 완료, **결선이 이 PR**
+- **★★ 보안 — `AutomationWebhookController`의 평문 토큰 누출 차단 (T10 발견, Maxi 확정 A)**.
+  Spring `RequestResponseBodyMethodProcessor`는 `ProblemDetail.instance`가 `null`이면 **요청 URI로 자동
+  채운다**. 이 컨트롤러는 `@PostMapping("/{token}")`(`:86`)이라 **URI 세그먼트에 원문 토큰**이 있고,
+  `problem()` 헬퍼(`:134,151,167`)가 `instance`를 설정하지 않는다 → **모든 에러 응답 본문에 평문 토큰이
+  실린다**(`"instance":"/api/v1/automation/webhooks/<원문토큰>"`). 응답 로그·프록시 캐시·에러 트래커
+  적재 = **§1.1-1(평문 토큰 저장 금지)·§1.1-2(로그 토큰 출력 금지) 위반**.
+  - **지금은 노출 0** — prod에서 `SecurityConfig` 미등록으로 401이라 도달 불가
+  - **★ T12가 permitAll을 여는 순간 도달 가능 → prod 노출.** 정확히
+    [[permitall-opens-preexisting-body-buffer-dos]]의 재현("permitAll이 기존 결함을 신규 노출")
+  - → **`problem()`에 `instance` 고정**(토큰 세그먼트 제거) + **회귀 테스트**(위반 주입해 fail 확인 —
+    vacuous 방지). **T10이 `GitWebhookController.kt:310 pd.instance = URI.create(INSTANCE_PATH)`로
+    같은 수정을 이미 했으므로 동형 복제**
+  - 선례는 **선행 PR 분리**(#275가 slack 본문상한을 그렇게 처리)였으나, T17이 이미 이 파일을 files에
+    갖고 있고 **머지 시점엔 T12와 함께 들어가므로** 같은 PR에서 처리 (Maxi 확정)
 - **★ `AutomationRulesYaml.kt:59` KDoc "트리거 타입 5종" → 6종** (T3 implementer 발견 — 파급 grep 중
   files 밖이라 보고만 함). 코드 동작 무영향이나 **enum 카운트 표기 drift**.
   두 적대적 검토와 outside voice가 `:63`(YAML DTO 기본값)만 보고 이 **주석은 못 봤다** —
