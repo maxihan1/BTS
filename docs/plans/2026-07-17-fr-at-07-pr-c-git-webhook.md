@@ -845,7 +845,7 @@ longest path = T2 → T6 → T9 → T10 → T12 → T15 (**6 wave**).
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`docs/plan/product/automation.md`, `docs/sdd/08-automation-engine.md`, `DATA.md`, `backend/modules/automation/src/main/kotlin/com/bts/automation/adapter/web/AutomationWebhookController.kt`]
+- files: [`docs/plan/product/automation.md`, `docs/sdd/08-automation-engine.md`, `DATA.md`, `backend/modules/automation/src/main/kotlin/com/bts/automation/adapter/web/AutomationWebhookController.kt`, `backend/modules/automation/src/main/kotlin/com/bts/automation/application/AutomationRulesYaml.kt`]
 - depends-on: [1, 12]
 
 **내용**.
@@ -857,6 +857,10 @@ longest path = T2 → T6 → T9 → T10 → T12 → T15 (**6 wave**).
 - **`DATA.md:90`** — `automation (예정) | V300~V399 | —` → **`V300~V309`** (DEC-21 — automation 행만)
 - **★ `AutomationWebhookController.kt:34-37` KDoc 갱신** (G14) — *"prod SecurityConfig 결선은 후속
   ADR 범위"*가 **거짓이 됨**. 조립은 #259 완료, **결선이 이 PR**
+- **★ `AutomationRulesYaml.kt:59` KDoc "트리거 타입 5종" → 6종** (T3 implementer 발견 — 파급 grep 중
+  files 밖이라 보고만 함). 코드 동작 무영향이나 **enum 카운트 표기 drift**.
+  두 적대적 검토와 outside voice가 `:63`(YAML DTO 기본값)만 보고 이 **주석은 못 봤다** —
+  `verify-master-plan.sh`도 KDoc은 안 잡는다. [[spec-stated-count-becomes-blindfold]] 4번째 사례
 - **★ 미변경** — `fr-index.md` 합계 · `README` 합계 · `CLAUDE.md 123 FR` (123 불변 + #277 충돌 회피, G12/G13)
 - **★ 유지** — `automation.md:5 소속 FR. 7개` · `:22 §2 (FR-AT, 7개)` (게이트 D/F'가 실집합 7과 대조 → 변경 시 fail)
 
