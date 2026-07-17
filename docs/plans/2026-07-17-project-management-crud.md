@@ -418,7 +418,7 @@ C10 의 **기전 하나**(tx-aware 가 아닌 손수 배선 `DSLContext`)만 덮
 1. **`git stash` 금지.** 타 세션 휴면 stash 를 오작동 pop 한다 ([[subagent-git-stash-worktree-shared-collision]]).
 2. **`ktlintFormat` 금지.** `ktlintCheck` 로 확인하고 손으로 고친다 ([[bts-ktlintformat-docs-commit-traps]]).
 3. **자기 task 의 `files` 만 `git add`.** 병렬 dispatch pre-commit race ([[parallel-dispatch-precommit-hook-race]]).
-4. **lint 통과 보고를 믿지 않는다** — controller 가 `./gradlew :modules:identity-access:ktlintCheck detekt --rerun-tasks` 로 직접 검증한다 ([[subagent-ktlint-false-green-controller-verify]]·[[backend-detekt-lint-debt-unmasked]]).
+4. **lint 통과 보고를 믿지 않는다** — controller 가 `cd backend && ./gradlew :modules:identity-access:ktlintCheck detekt --rerun-tasks` 로 직접 검증한다 ([[subagent-ktlint-false-green-controller-verify]]·[[backend-detekt-lint-debt-unmasked]]).
 5. **KDoc 에 중괄호/백틱 금지** — ktlint parse 실패 ([[ktlint-kdoc-brace-parse-failure]]).
 6. **머지 직전 identity-access 최신 V번호 재확인** — 동시 브랜치 충돌 ([[migration-vnumber-concurrent-branch-collision]]). V035 자신이 그 사고 기록을 주석에 남겼다.
 
@@ -531,7 +531,9 @@ class GlobalPermissionGrantSchemaMigrationTest {
 -- init_codegen.sql 미러 불요 — identity-access 는 jOOQ 미사용(JdbcTemplate), 해당 파일 자체가 없다.
 --
 -- grantee_id 에 FK 없음: USER->users / GROUP->user_groups 다형 참조라 단일 FK 로 표현 불가.
--- project_memberships.project_id 와 같은 선례. 고아 행은 판정 JOIN 에서 탈락한다(fail-closed).
+-- project_memberships.project_id 와 같은 선례 (ADR D-4).
+-- 고아 행: GROUP 은 group_memberships 양 FK CASCADE(V015)로 탈락하나, USER 는 술어에 users JOIN 이
+-- 없어 영구 잔존한다. 서비스 층 존재 검증과 목록 API 노출이 유일한 방어다.
 --
 -- 주의(Flyway V번호): 머지 직전 identity-access 최신 번호를 재확인할 것
 -- (V035 가 같은 사고로 V034->V035 재번호된 이력).
@@ -571,8 +573,8 @@ COMMENT ON COLUMN global_permission_grants.granted_by   IS '이 grant 를 부여
 
 **REFACTOR**. 없음 (SQL + COMMENT 는 GREEN 에 포함).
 
-**검증**. `./gradlew :modules:identity-access:test --tests '*GlobalPermissionGrantSchemaMigrationTest*'` → 3/3 PASS.
-이어서 **회귀** `./gradlew :modules:identity-access:test --tests '*PermissionSchemaMigrationTest*'` → PASS (PM10-5 확정).
+**검증**. `cd backend && ./gradlew :modules:identity-access:test --tests '*GlobalPermissionGrantSchemaMigrationTest*'` → 3/3 PASS.
+이어서 **회귀** `cd backend && ./gradlew :modules:identity-access:test --tests '*PermissionSchemaMigrationTest*'` → PASS (PM10-5 확정).
 
 ---
 
@@ -642,9 +644,9 @@ class SystemPermissionResolverDefaultTest {
 
 **검증**.
 ```bash
-./gradlew :modules:shared-kernel:test --tests '*SystemPermissionResolverDefaultTest*'
+cd backend && ./gradlew :modules:shared-kernel:test --tests '*SystemPermissionResolverDefaultTest*'
 # ★ 6개 구현체 무변경 컴파일 확인 — 이게 이 task 의 본 목적
-./gradlew :modules:identity-access:compileKotlin :modules:issue-tracking:compileKotlin \
+cd backend && ./gradlew :modules:identity-access:compileKotlin :modules:issue-tracking:compileKotlin \
           :modules:search-export-import:compileTestKotlin :modules:notification:compileTestKotlin \
           :modules:issue-tracking:compileTestKotlin :modules:slack-integration:compileTestKotlin
 ```
@@ -761,7 +763,7 @@ SELECT EXISTS (
 
 **REFACTOR**. SQL 상수를 `private companion object` 로 추출 + KDoc (`ProjectMembershipAdapter.kt:57-70` 동형).
 
-**검증**. `./gradlew :modules:identity-access:test --tests '*GlobalPermissionGrantRepositoryIntegrationTest*'` → **7/7 PASS** (D6 로 `revoke()` · `list()` 2건 추가).
+**검증**. `cd backend && ./gradlew :modules:identity-access:test --tests '*GlobalPermissionGrantRepositoryIntegrationTest*'` → **7/7 PASS** (D6 로 `revoke()` · `list()` 2건 추가).
 
 ---
 
@@ -846,7 +848,7 @@ fun `GROUP grant 보유 비-SYSTEM_ADMIN 이 전역권한을 획득한다`() {
 
 **REFACTOR**. 클래스 KDoc 에 FR-PM-10 확장 1줄 + `@see` 추가.
 
-**검증**. `./gradlew :modules:identity-access:test --tests '*IdentityAccessSystemPermissionResolverGlobalPermissionTest*'` → 4/4 PASS.
+**검증**. `cd backend && ./gradlew :modules:identity-access:test --tests '*IdentityAccessSystemPermissionResolverGlobalPermissionTest*'` → 4/4 PASS.
 **★ mutation 확인 (필수)** — override 를 주석 처리하면 1·4번이 **fail** 해야 한다. 안 하면 vacuous ([[verify-logic-vs-verify-guard]]·[[archunit-vacuous-rule-silent-pass]]).
 
 ---
@@ -908,7 +910,7 @@ fun `GROUP grant 보유 비-SYSTEM_ADMIN 이 전역권한을 획득한다`() {
 
 **REFACTOR**. `@Suppress("TooManyFunctions")` 필요 시 사유 주석 동반 (선례 `UserGroupController:79`).
 
-**검증**. `./gradlew :modules:identity-access:test --tests '*GlobalPermissionGrantControllerTest*'` → 7/7 PASS.
+**검증**. `cd backend && ./gradlew :modules:identity-access:test --tests '*GlobalPermissionGrantControllerTest*'` → 7/7 PASS.
 
 ---
 
@@ -1067,7 +1069,7 @@ class ProjectMembershipWriteAdapter(
 
 **REFACTOR**. SQL 상수를 `private companion object` 로 추출.
 
-**검증**. `./gradlew :modules:identity-access:test --tests '*ProjectMembershipWriteAdapterTest*'` → 2/2 PASS.
+**검증**. `cd backend && ./gradlew :modules:identity-access:test --tests '*ProjectMembershipWriteAdapterTest*'` → 2/2 PASS.
 **★ mutation 확인 (필수)** — 어댑터에 `@Transactional(propagation = Propagation.REQUIRES_NEW)` 를 임시로 달면
 롤백 테스트가 **fail** 해야 한다. 통과하면 그 테스트는 vacuous 다.
 
@@ -1131,7 +1133,7 @@ fun `SystemPermissionResolver prod 구현이 조립 컨텍스트에 결선된다
 **검증**.
 ```bash
 docker compose -f infra/docker-compose.dev.yml up -d postgres   # 5433 — app 테스트 전제
-./gradlew :modules:app:test
+cd backend && ./gradlew :modules:app:test
 ```
 
 > **`:modules:app:test` 는 5433 영속 DB 를 쓴다** ([[app-test-persistent-db-migration-checksum-trap]]).
