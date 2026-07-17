@@ -908,8 +908,17 @@ fun `GROUP grant 보유 비-SYSTEM_ADMIN 이 전역권한을 획득한다`() {
 
 **메타**.
 - agent: `security-engineer`
-- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/permission/GlobalPermissionGrantService.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/permission/GlobalPermissionGrantException.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/GlobalPermissionGrantController.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/web/GlobalPermissionGrantControllerTest.kt`]
+- files: [`backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/permission/GlobalPermissionGrantService.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/permission/GlobalPermissionGrantException.kt`, `backend/modules/identity-access/src/main/kotlin/com/atlas/bts/identity/web/GlobalPermissionGrantController.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/web/GlobalPermissionGrantControllerTest.kt`, `backend/modules/identity-access/src/test/kotlin/com/atlas/bts/identity/permission/GlobalPermissionGrantServiceTest.kt`]
 - depends-on: [4]
+
+> **🛑 files 확장 1건 — `GlobalPermissionGrantServiceTest.kt` (T6 발견 · 결함 D).** 초안은 테스트 파일을
+> `GlobalPermissionGrantControllerTest` 하나만 뒀는데, 그 테스트는 **슬라이스라 서비스를 mock 한다**
+> (선례 `UserGroupControllerTest.kt:138` = `mockk()`). 즉 예외는 mock 이 던지고 **서비스의 실제 로직은
+> 한 줄도 실행되지 않는다** — grantee 존재 검증(ADR D-4 = FK 생략의 근거) · permission 선검증(ADR D-1
+> 이중 방어의 앱 겹) · `DuplicateKeyException`→409 변환이 **전부 무가드**가 된다. 존재 검증을 통째로
+> 지워도 컨트롤러 테스트는 전부 초록이다. 모듈 관례가 이미 답을 정해 뒀다 —
+> `UserGroupService`/`UserGroupServiceTest`(순수 mockk)/`UserGroupControllerTest`(슬라이스) **3종 세트**.
+> 같은 형태로 서비스 단위 테스트를 신설한다. 설계 판단이 아니라 선례 적용이다.
 
 **선례를 그대로 따른다 — `UserGroupController`** (같은 모듈·같은 SYSTEM_ADMIN 게이트·같은 PAT 대응).
 
@@ -921,10 +930,17 @@ fun `GROUP grant 보유 비-SYSTEM_ADMIN 이 전역권한을 획득한다`() {
 > 이걸 안 적으면 구현자가 (a) 임의로 리포지토리를 주입해 [[plan-files-constructor-injection-existing-tests]] 를 밟거나
 > (b) 검증을 생략해 **ADR D-4 를 거짓으로 만든다**.
 
-**RED**. `GlobalPermissionGrantControllerTest` (`@WebMvcTest` + `SystemPermissionResolver` mock. 선례 `UserGroupControllerTest.kt:59`).
+**RED**. `GlobalPermissionGrantControllerTest` (`@WebMvcTest` + `SystemPermissionResolver` mock. 선례 `UserGroupControllerTest.kt:59`)
+**+ `GlobalPermissionGrantServiceTest`** (순수 mockk. 선례 `UserGroupServiceTest.kt:44`).
+
+> **🛑 결함 A — 개수 자기모순 (controller 선발견).** 아래 목록은 기존 7 + D6 신설 3 = **10** 인데 검증 줄이
+> `7/7` 에 멈춰 있었다. **"7" 은 눈가리개다** — T4 가 정확히 같은 함정에서 무가드 계약 1건을 찾아냈다
+> ([[spec-stated-count-becomes-blindfold]]). 개수를 목표로 삼지 않고 **계약을 전수 열거**한 결과가 아래이며,
+> 최종 실측은 **컨트롤러 13 + 서비스 10 = 23** 이다.
 
 ```kotlin
-@Test fun `SYSTEM_ADMIN 이 grant 를 부여하면 201`()
+// ── GlobalPermissionGrantControllerTest (13) ──
+@Test fun `SYSTEM_ADMIN 이 grant 를 부여하면 201`()                  // + grantedBy = 인증 actorId 인자 고정
 @Test fun `비-SYSTEM_ADMIN 의 grant 부여는 403`()
 @Test fun `비-SYSTEM_ADMIN 의 목록 조회는 403`()
 @Test fun `403 응답 본문에 권한 내부 구조가 없다`()   // PJ1-8 · [[fr-pm-04-guard-exception-message-http-leak]]
@@ -934,8 +950,35 @@ fun `GROUP grant 보유 비-SYSTEM_ADMIN 이 전역권한을 획득한다`() {
 
 // ↓ D6 신설 3건 (plan-eng-review)
 @Test fun `PAT 로 인증한 SYSTEM_ADMIN 이 grant 를 부여하면 201`()   // ★ D4 의 근거 자체를 잠근다
-@Test fun `미인증 요청은 401`()                                      // resolveActorId 실패 경로
+@Test fun `미인증 요청은 401`()                                      // 필터 체인 (/api/** authenticated)
 @Test fun `미지 permission 부여는 400`()                             // D3 — 서비스 겹
+
+// ↓ T6 신설 3건 — 무가드 계약 전수 점검 결과
+@Test fun `존재하지 않는 grant 회수는 404`()          // 🛑 결함 C. ADR D-5 + 리포지토리 Boolean 계약
+@Test fun `비-UUID subject 는 401`()                  // resolveActorId 실패 경로 (미인증 401 과 다른 코드 경로)
+@Test fun `SYSTEM_ADMIN 의 목록 조회는 200`()         // list 양성 — 403 만 있으면 GET 이 깨져도 초록
+```
+
+> **🛑 결함 C — `revoke 0행 → 404` 가 무가드였다 (T6 발견).** ADR **D-5** 가 *"삭제 행 수가 0 이면 404 로
+> 거부한다 — 지웠다고 믿었는데 대상이 없었다를 조용히 성공으로 만들지 않는다"* 를 못박았고 T4 리포지토리는
+> 그 목적 하나로 `Boolean` 을 반환한다(`GlobalPermissionGrantRepository.kt:87` KDoc *"호출 측이 404 로
+> 거부한다"*). 그런데 10건 중 `revoke 는 204` 만 있어 **반환값을 버려도 전부 초록**이다. 게다가 초안의
+> **예외 3종으로는 이 상태를 표현할 수조차 없다**(`GranteeNotFoundException` 은 grantee 축이지 grant 행 축이
+> 아니다) → sealed 하위를 **4종**으로 늘린다: `GranteeNotFoundException`·`DuplicateGrantException`·
+> `UnknownPermissionException`·**`GrantNotFoundException`**.
+
+```kotlin
+// ── GlobalPermissionGrantServiceTest (10) — 결함 D 로 신설 ──
+@Test fun `USER 부여는 users 존재검증 후 위임하고 grantedBy 를 그대로 넘긴다`()
+@Test fun `존재하지 않는 USER grantee 는 GranteeNotFoundException — 부여 미호출`()   // ★ ADR D-4 의 가드
+@Test fun `GROUP 부여는 user_groups 존재검증 후 위임한다`()
+@Test fun `존재하지 않는 GROUP grantee 는 GranteeNotFoundException — 부여 미호출`()  // ★ ADR D-4 의 가드
+@Test fun `미지 permission 은 UnknownPermissionException — 리포지토리 도달 전 차단`() // ADR D-1 앱 겹
+@Test fun `중복 부여 DuplicateKeyException 은 DuplicateGrantException 으로 변환`()
+@Test fun `존재하지 않는 grant 회수는 GrantNotFoundException`()
+@Test fun `grant 회수 성공은 예외 없음`()
+@Test fun `list 는 리포지토리 결과를 그대로 위임`()
+@Test fun `Annotation 회귀 가드 — Service + Transactional`()                          // 절대 규칙 9
 ```
 
 > ★ **PAT 양성 테스트가 이 task 에서 가장 중요하다.** D4 는 *"PAT 를 지원하려고 명시 호출을 쓴다"* 로 패턴을 정했다.
@@ -945,6 +988,13 @@ fun `GROUP grant 보유 비-SYSTEM_ADMIN 이 전역권한을 획득한다`() {
 > `ROLE_PAT` authority 로 정확히 이 축을 테스트한다(그쪽은 403 을 기대하는 음성 테스트, 여기는 201 을 기대하는 양성).
 
 **GREEN**. `UserGroupController.kt` 의 5요소를 동형 이식한다 (**복사가 아니라 동형** — 실측한 선례 구조).
+
+> **🛑 결함 B — `grant(...)` 시그니처 (T2·T4·T5 에 이어 4연속 재발 계열).** 실제 시그니처는
+> **`grant(permission, granteeType, granteeId, grantedBy)` 4-파라미터·기본값 없음**이다
+> (`GlobalPermissionGrantRepository.kt:62-67` 실측). ADR **D-5** 가 *"기본값을 두지 않는다 — 기본값은 감사
+> 흔적을 조용히 위조하는 통로"* 라고 의도를 명시했으므로 **기본값을 추가하지 않고**, 서비스가
+> `grantedBy = 인증된 actorId` 를 **명시로** 넘긴다. 컨트롤러 테스트 1번이 mock 인자를 `ADMIN_ID` 로
+> 고정해 이 배선을 잠근다(느슨한 `any()` 를 쓰면 grantee_id 를 넘겨도 초록이 된다).
 
 - 클래스 레벨 `@RestController @RequestMapping("/api/v1/admin/global-permissions") @PreAuthorize("isAuthenticated()")`
 - 핸들러마다 `requireSystemAdmin(jwt)?.let { return it }` — **이중 가드** (DEVELOPMENT.md §1.1 #4)
@@ -961,7 +1011,19 @@ fun `GROUP grant 보유 비-SYSTEM_ADMIN 이 전역권한을 획득한다`() {
 
 **REFACTOR**. `@Suppress("TooManyFunctions")` 필요 시 사유 주석 동반 (선례 `UserGroupController:79`).
 
-**검증**. `cd backend && ./gradlew :modules:identity-access:test --tests '*GlobalPermissionGrantControllerTest*'` → 7/7 PASS.
+**검증** (**결함 A 정정 — `7/7` 은 D6 3건 추가 시 안 고친 자기모순이었다**).
+```bash
+cd backend
+./gradlew :modules:identity-access:test --tests '*GlobalPermissionGrantControllerTest*'   # 13/13
+./gradlew :modules:identity-access:test --tests '*GlobalPermissionGrantServiceTest*'      # 10/10
+./gradlew :modules:identity-access:test          # 모듈 전체 — 슬라이스 회귀 전수 (약 8분)
+./gradlew :modules:identity-access:ktlintCheck :modules:identity-access:detekt --rerun-tasks
+```
+XML `tests="N"` 을 직접 확인한다 — `--tests` 필터에도 ArchUnit 2종이 동반 실행돼 콘솔 합계가 부풀려진다(인계 사실 #8).
+
+**★ mutation 확인 (필수)** — `@PreAuthorize("hasRole('SYSTEM_ADMIN')")` 로 게이트를 바꾸면 **PAT 양성 테스트가
+fail** 해야 한다. `PatAuthenticationFilter.kt:48` 이 `ROLE_PAT` 만 주므로 PAT 는 그 순간 403 이 된다 — 이게
+D4 의 근거(*"PAT 지원 때문에 명시 호출"*)를 실증으로 바꾸는 유일한 가드다. 기준선 PASS 를 **먼저** 확인할 것.
 
 ---
 
