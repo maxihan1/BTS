@@ -3,10 +3,14 @@
 package com.bts.workflow.seed
 
 import com.bts.workflow.repository.WorkflowRepository
+import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
+import com.bts.workflow.scheme.domain.WorkflowSchemeId
+import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
+import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
@@ -27,6 +31,7 @@ import org.testcontainers.utility.DockerImageName
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.sql.DriverManager
+import java.time.Instant
 
 /**
  * YamlSeedService 통합 테스트.
@@ -411,6 +416,135 @@ class YamlSeedServiceTest {
             .withFailMessage("공존 B 실패 — 재시드로 런타임 post-action 이 소실됨 (countBefore=%d, countAfter=%d)", countBefore, countAfter)
             .isGreaterThanOrEqualTo(countBefore)
     }
+
+    // ── 시나리오 8. R6-B — 매핑이 있어도 structural dirty 재적재가 FK RESTRICT 로 죽지 않는다 ────
+
+    /**
+     * 매핑 기록→재연결(★★ 수정판) 검증.
+     *
+     * `workflow_scheme_issue_type_mappings.workflow_id` 는 FK `ON DELETE RESTRICT` (V201:84) 다.
+     * 매핑이 이 workflow 를 가리키는 상태에서 `deleteWorkflow`(DELETE FROM workflows) 를 그대로
+     * 호출하면 FK 위반으로 예외가 발생한다. `applyIfChanged` 가 delete 직전에 매핑을 기록→삭제하고
+     * insert 직후 새 UUID 로 재연결해야 예외 없이 성공하고, default 매핑이 dangling 되지 않는다.
+     */
+    @Test
+    @Order(8)
+    fun `매핑이 존재해도 YAML 구조 변경 재적재가 FK RESTRICT 로 죽지 않는다 (R6-B_S11)`() {
+        val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+        val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
+        val mappingRepository = SchemeIssueTypeMappingRepository(dsl)
+        val workflowRepo = WorkflowRepository(dsl)
+
+        // 표준 4 스킴 default mapping 백필 — software-scheme → software-default 매핑을 확보한다.
+        // 이미 존재하면 no-op (repairDefaultMappings 는 admin 설정을 덮어쓰지 않는다).
+        mappingRepository.repairDefaultMappings()
+
+        val schemeId = fetchSchemeIdByKey(dsl, "software-scheme")
+        val mappingBefore =
+            mappingRepository.findDefaultMapping(WorkflowSchemeId(schemeId))
+                ?: error("software-scheme default mapping 없음 — repairDefaultMappings 선행 실패")
+
+        // software-default YAML 에 state(blocked) 를 추가한 structural dirty 버전으로 재시드.
+        val serviceWithStructuralChange =
+            YamlSeedService(
+                workflowRepo,
+                dsl,
+                StructurallyChangedSoftwareDefaultResourceLoaderV1(),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mappingRepository = mappingRepository,
+            )
+
+        // FK RESTRICT 로 죽지 않고 성공해야 한다 — 실패하면 기록→재연결 로직 누락.
+        serviceWithStructuralChange.seedAll()
+
+        val newWorkflowId =
+            workflowRepo.findIdByKey("software-default")
+                ?: error("재시드 후 software-default 워크플로우 없음")
+
+        val mappingAfter = mappingRepository.findDefaultMapping(WorkflowSchemeId(schemeId))
+        assertThat(mappingAfter).isNotNull
+        assertThat(mappingAfter!!.workflowId).isEqualTo(newWorkflowId)
+        assertThat(mappingAfter.workflowId).isNotEqualTo(mappingBefore.workflowId)
+
+        log.info("시나리오 8 통과 — 매핑 보유 상태 재적재가 FK RESTRICT 없이 새 UUID 로 재연결됨")
+    }
+
+    // ── 시나리오 9. admin 특정타입 매핑 보존 (verifier 발견 회귀 가드) ────────────────
+
+    /**
+     * "default 만 복구" 구현을 fail 시키는 가드.
+     *
+     * admin 이 REST 로 건 특정 타입(issue_type_id NOT NULL) 매핑은 재적재 시 default 매핑과
+     * 함께 기록→재연결 되어야 한다. default 매핑만 처리하는 구현은 이 매핑을 소실시키거나,
+     * 삭제되지 않은 채 남아 FK RESTRICT 로 재적재 자체를 실패시킨다.
+     */
+    @Test
+    @Order(9)
+    fun `admin 이 건 특정타입 매핑도 재적재 후 소실 없이 새 workflow UUID 로 재연결된다`() {
+        val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+        val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
+        val mappingRepository = SchemeIssueTypeMappingRepository(dsl)
+        val workflowRepo = WorkflowRepository(dsl)
+
+        val schemeId = fetchSchemeIdByKey(dsl, "software-scheme")
+        val bugIssueTypeId =
+            mappingRepository.findIssueTypeIdByKey("bug")
+                ?: error("issue_types 'bug' 없음 — 테스트 fixture 확인 필요")
+
+        // Order(8) 재시드 이후의 현재 유효한 software-default UUID 를 가리키도록 admin 매핑을 심는다.
+        val workflowIdBeforeReseed =
+            workflowRepo.findIdByKey("software-default")
+                ?: error("Order(8) 이후 software-default 워크플로우 없음")
+
+        mappingRepository.addMapping(
+            SchemeIssueTypeMapping(
+                id = null,
+                schemeId = WorkflowSchemeId(schemeId),
+                issueTypeId = bugIssueTypeId,
+                workflowId = workflowIdBeforeReseed,
+                createdAt = Instant.now(),
+            ),
+        )
+
+        // Order(8) 과 다른 structural dirty(on_hold state) 로 다시 재시드.
+        val serviceWithSecondStructuralChange =
+            YamlSeedService(
+                workflowRepo,
+                dsl,
+                StructurallyChangedSoftwareDefaultResourceLoaderV2(),
+                mockk(relaxed = true),
+                mockk(relaxed = true),
+                mappingRepository = mappingRepository,
+            )
+
+        serviceWithSecondStructuralChange.seedAll()
+
+        val newWorkflowId =
+            workflowRepo.findIdByKey("software-default")
+                ?: error("재시드 후 software-default 워크플로우 없음")
+        assertThat(newWorkflowId).isNotEqualTo(workflowIdBeforeReseed)
+
+        val adminMapping = mappingRepository.findByIssueType(WorkflowSchemeId(schemeId), bugIssueTypeId)
+        assertThat(adminMapping)
+            .withFailMessage("admin 특정타입 매핑(bug) 이 재적재 후 소실됨 — 기록→재연결 로직 확인 필요")
+            .isNotNull
+        assertThat(adminMapping!!.workflowId).isEqualTo(newWorkflowId)
+
+        val defaultMapping = mappingRepository.findDefaultMapping(WorkflowSchemeId(schemeId))
+        assertThat(defaultMapping).isNotNull
+        assertThat(defaultMapping!!.workflowId).isEqualTo(newWorkflowId)
+
+        log.info("시나리오 9 통과 — admin 특정타입 매핑 보존 확인")
+    }
+
+    // ── 시나리오 8/9 fixture 헬퍼 ────────────────────────────────────────────────
+
+    /** workflow_schemes.key 로 id 를 조회한다. V201 seed 로 4 표준 스킴은 항상 존재한다. */
+    private fun fetchSchemeIdByKey(
+        dsl: DSLContext,
+        schemeKey: String,
+    ): Long = dsl.fetchValue("SELECT id FROM workflow_schemes WHERE key = ?", schemeKey) as Long
 }
 
 // ── 테스트 헬퍼 ResourceLoader ──────────────────────────────────────────────────
@@ -498,6 +632,122 @@ private class DuplicateTransitionResourceLoader : ResourceLoader {
     override fun getResource(location: String): Resource =
         if (location.endsWith("software-default.yaml")) {
             InMemoryResource(duplicateTransitionYaml, "software-default.yaml")
+        } else {
+            delegate.getResource(location)
+        }
+
+    override fun getClassLoader() = delegate.classLoader
+}
+
+/**
+ * "software-default" 워크플로우에 새 상태(blocked)를 추가한 구조 변경(structural dirty) 버전을 반환하는
+ * ResourceLoader. 시나리오 8 (R6-B 매핑 기록→재연결) 검증에 사용한다.
+ */
+private class StructurallyChangedSoftwareDefaultResourceLoaderV1 : ResourceLoader {
+    private val delegate = DefaultResourceLoader()
+
+    /** 원본 5 states + 신규 blocked state 추가 (states 집합 변경 → isDirty=true). transitions 은 원본 유지. */
+    private val modifiedYaml =
+        """
+        key: software-default
+        name: 소프트웨어 개발 기본 워크플로우
+        description: "Open → In Progress → In Review → Done → Closed 흐름의 표준 소프트웨어 개발 워크플로우"
+        states:
+          - { key: open, name: Open, category: TODO, displayOrder: 1 }
+          - { key: in_progress, name: In Progress, category: IN_PROGRESS, displayOrder: 2 }
+          - { key: in_review, name: In Review, category: IN_PROGRESS, displayOrder: 3 }
+          - { key: done, name: Done, category: DONE, displayOrder: 4 }
+          - { key: closed, name: Closed, category: DONE, displayOrder: 5 }
+          - { key: blocked, name: Blocked, category: TODO, displayOrder: 6 }
+        transitions:
+          - { from: open, to: in_progress, name: Start Work }
+          - { from: in_progress, to: in_review, name: Submit for Review }
+          - from: in_review
+            to: done
+            name: Approve
+            validators:
+              - type: RequiredField
+                config:
+                  field: resolution
+          - { from: in_review, to: in_progress, name: Request Changes }
+          - from: done
+            to: closed
+            name: Close
+            validators:
+              - type: RequiredField
+                config:
+                  field: resolution
+          - from: open
+            to: closed
+            name: Cancel
+            validators:
+              - type: RequiredField
+                config:
+                  field: resolution
+        """.trimIndent().toByteArray()
+
+    override fun getResource(location: String): Resource =
+        if (location.endsWith("software-default.yaml")) {
+            InMemoryResource(modifiedYaml, "software-default.yaml")
+        } else {
+            delegate.getResource(location)
+        }
+
+    override fun getClassLoader() = delegate.classLoader
+}
+
+/**
+ * "software-default" 워크플로우에 [StructurallyChangedSoftwareDefaultResourceLoaderV1] 과는 다른
+ * 신규 상태(on_hold)를 추가한 두 번째 structural dirty 버전을 반환하는 ResourceLoader.
+ * 시나리오 9 (admin 특정타입 매핑 보존) 검증에서, 시나리오 8 재적재 이후 상태(blocked 포함)와
+ * 다시 dirty 를 유발해 두 번째 재적재를 트리거한다.
+ */
+private class StructurallyChangedSoftwareDefaultResourceLoaderV2 : ResourceLoader {
+    private val delegate = DefaultResourceLoader()
+
+    /** 원본 5 states + 신규 on_hold state 추가 (blocked 는 미포함 — 시나리오 8 결과와 집합이 달라 dirty 유발). */
+    private val modifiedYaml =
+        """
+        key: software-default
+        name: 소프트웨어 개발 기본 워크플로우
+        description: "Open → In Progress → In Review → Done → Closed 흐름의 표준 소프트웨어 개발 워크플로우"
+        states:
+          - { key: open, name: Open, category: TODO, displayOrder: 1 }
+          - { key: in_progress, name: In Progress, category: IN_PROGRESS, displayOrder: 2 }
+          - { key: in_review, name: In Review, category: IN_PROGRESS, displayOrder: 3 }
+          - { key: done, name: Done, category: DONE, displayOrder: 4 }
+          - { key: closed, name: Closed, category: DONE, displayOrder: 5 }
+          - { key: on_hold, name: On Hold, category: TODO, displayOrder: 6 }
+        transitions:
+          - { from: open, to: in_progress, name: Start Work }
+          - { from: in_progress, to: in_review, name: Submit for Review }
+          - from: in_review
+            to: done
+            name: Approve
+            validators:
+              - type: RequiredField
+                config:
+                  field: resolution
+          - { from: in_review, to: in_progress, name: Request Changes }
+          - from: done
+            to: closed
+            name: Close
+            validators:
+              - type: RequiredField
+                config:
+                  field: resolution
+          - from: open
+            to: closed
+            name: Cancel
+            validators:
+              - type: RequiredField
+                config:
+                  field: resolution
+        """.trimIndent().toByteArray()
+
+    override fun getResource(location: String): Resource =
+        if (location.endsWith("software-default.yaml")) {
+            InMemoryResource(modifiedYaml, "software-default.yaml")
         } else {
             delegate.getResource(location)
         }
