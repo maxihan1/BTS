@@ -1494,6 +1494,33 @@ RED 테스트 1·4 가 `grantedBy` 를 누락했다(T2·T4 와 같은 계열). T
 
 > **⚠️ plan 941-945행의 근거 서술이 부정확했다.** *"JWT 테스트만 있으면 전부 초록"* 은 **JWT 테스트가 `ROLE_SYSTEM_ADMIN` authority 를 달고 있을 때만** 참이다(`AuthAuditLogAdminControllerTest:107-108` 이 그 형태). T6 의 JWT 테스트는 authority 없는 맨 `jwt()` 라 같이 죽는다. 그래서 **mutation 2 로 격리**해, PAT 양성이 **유일하게** 잠그는 축(`SecurityContextHolder` principal(String) 가지 = 실 `PatAuthenticationFilter` 경로)을 `failures="1"` 로 실증했다. **D4 의 근거는 주장이 아니라 관측이 됐다.**
 
+### wave 5 ✅ 졸업 (8/9) — T8 prod 조립 빈 결선 가드
+
+| task | 커밋 | 판정 |
+|---|---|---|
+| **T8** 조립 가드 | `366152435 test:` — **`feat:` 커밋 없음이 정상**(GREEN 은 T7 어댑터가 이미 제공. plan 명시) | ✅ PASS |
+
+**선언 외 파일 0건.** 1 file(`BtsApplicationContextTest.kt`), 가드 2건 추가.
+**XML 실측** — `BtsApplicationContextTest` = `tests="8" failures="0"` (기존 6 + 신규 2). `:modules:app:ktlintCheck`+`detekt --rerun-tasks` = `8 executed`.
+
+> ⚠️ **T8 서브에이전트가 세션 한도로 중단됐다** — 가드 2건을 작성한 시점에서 끊겼고, **미커밋 변경은 테스트 파일 1개뿐**(prod 코드 무변경, 뮤테이션 잔재 0건)이었다. controller 가 검증·판단·커밋을 직접 마무리했다.
+
+**🛑 plan 결함 1건 — 쌍둥이를 놓쳤다 (controller 실측 발견).**
+plan 1232-1236행은 **T8-2 가 RED 가 될 수 없다**고 정확히 경고했다. 그런데 **T8-1 도 똑같이 RED 가 불가능하다** — `depends-on: [5,7]` 이 T8 을 T7(wave 1) **뒤에** 놓으므로, 어댑터 `@Component` 는 T8 작성 시점에 **이미 존재**한다. 그럼에도 plan 1239행은 T8-1 을 *"`expected: true but was: false` (빈 미등록). **진짜 RED**"* 라 예고했다 — **plan 자기모순**이다(1242행은 *"T7 의 `@Component` 어댑터가 잡히면 통과"* 라고 옳게 적었다).
+**실측 — 기준선 `:modules:app:test` 는 처음부터 `tests="8" failures="0"`.** 두 가드 모두 green-on-arrival 이다.
+> **한 인스턴스를 잡고 쌍둥이를 놓치는 것이 눈가리개의 전형이다** ([[spec-stated-count-becomes-blindfold]]). "T8-2 는 RED 아님"을 특칭으로 적은 순간 T8-1 은 검토 대상에서 빠졌다. → **RED 가 없으므로 판별력은 mutation 으로만 증명된다.**
+
+**mutation 판별력 실증** (기준선 8/8 PASS 선확인 → 주입 → 복원 `git status` 확인 + `MUTATION-TEMP` 전수 grep 0건).
+
+| 주입 | 결과 | 해석 |
+|---|---|---|
+| 어댑터 `@Component` 제거 | **`failures="1"`** — `ProjectMembershipWritePort` 가드 **단독 사망**. 메시지 = `Expecting value to be true but was false` | **부팅은 성공했다**(나머지 7건 통과). 소비자가 PR-2 라 아직 없어, **이 가드가 유일한 탐지기**임이 관측됐다 |
+| 리포지토리 `@Repository` 제거 | **`failures="8"`** — 전량 사망. `NoSuchBeanDefinitionException: No qualifying bean of type 'GlobalPermissionGrantRepository'` | **부팅 자체가 실패**한다 |
+
+**★ 3번째 가드 판단 = 불필요 (실측 결정).**
+인계 사실 #14 가 `GlobalPermissionGrantRepository` 도 T8 이 고정할 빈이라 제안했으나, **위 mutation 2 가 전이성을 증명했다** — 그 빈이 없으면 `IdentityAccessSystemPermissionResolver` 생성자 주입이 터져 **부팅 실패**로 8건이 전량 죽는다. **부팅 실패가 이미 더 큰 탐지기**이므로 이름 고정을 하나 더 두면 중복 가드가 되어 유지비만 늘고 [[enum-add-breaks-crossmodule-count-guard]] 계열 부채가 된다.
+**두 빈이 갈리는 지점이 정확히 "소비자가 있는가"다** — 어댑터는 소비자(PR-2)가 없어 부팅이 안 깨지므로 이름 고정이 유일한 탐지기, 리포지토리는 소비자(판정기)가 있어 부팅이 깨진다. **이 근거를 테스트 주석에 남겼다** — 안 남기면 다음 사람이 #14 를 읽고 중복 가드를 추가한다.
+
 ### ★ wave 2~6 이 물려받을 실측 사실 (다시 발견하지 말 것)
 
 | # | 사실 | 출처 |
@@ -1538,11 +1565,8 @@ RED 테스트 1·4 가 `grantedBy` 를 누락했다(T2·T4 와 같은 계열). T
 wave 2  T2 (db-engineer)        V036 마이그레이션 + 스키마 가드      ✅ 졸업
 wave 3  T4 (security-engineer)  GlobalPermissionGrantRepository      ✅ 졸업
 wave 4  T5 · T6 (security)      prod override · 컨트롤러             ✅ 졸업 (순차 dispatch)
-wave 5  T8 (security)           :modules:app 조립 가드   ← 여기서 재개
-        ※ dev postgres(5433) 기동 전제 —
-          docker compose -f infra/docker-compose.dev.yml up -d postgres
-        ※ T8 이 고정할 빈 이름 2개 = 인계 사실 #5(ProjectMembershipWriteAdapter) · #14(GlobalPermissionGrantRepository)
-wave 6  T9 (backend-engineer)   전수 동기화 8종 + FR 5개 등록
+wave 5  T8 (security)           :modules:app 조립 가드               ✅ 졸업
+wave 6  T9 (backend-engineer)   전수 동기화 8종 + FR 5개 등록        ← 여기서 재개
 그 후    qa-engineer E2E (타입 auth) → verification-before-completion → /bts-codereview
 ```
 
