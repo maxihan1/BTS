@@ -1377,7 +1377,9 @@ ADR 이 `granted_by NOT NULL` 을 명시하고 plan 의 테스트 3 은 이미 �
 - **mutation 1 이 `그룹 탈퇴` 도 죽인 건 T4 가 넣은 탈퇴 전 선단언(`isTrue()`) 덕이다.** 없었으면 "원래부터 false"여도 통과하는 vacuous 가드였다.
 - **mutation 3 은 예측을 관측으로 바꿨다** — 실패 메시지가 `IllegalArgumentException: INSERT ... RETURNING 이 행을 반환하지 않았습니다`. 즉 `ON CONFLICT` 를 붙이면 409 가 아니라 **500 으로 변질**된다. 주장이 아니라 실측이다.
 
-### wave 4 ✅ (6/9) — T5 prod 판정기 override
+### wave 4 — 진행 중 (6/9). **T5 ✅ 졸업 / T6 남음**
+
+> ⚠️ `d33b63a9a` 커밋 메시지가 "wave 4 졸업" 이라 적었으나 **과한 표현이다** — wave 4 는 T5·T6 두 개이고 T6 는 미착수다. 아래 절은 **T5 만** 다룬다.
 
 | task | TDD 커밋 (실측 순서) | 판정 |
 |---|---|---|
