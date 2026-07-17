@@ -4,6 +4,7 @@ package com.bts.issue.component
 
 import com.bts.issue.IssueTrackingApplication
 import com.bts.issue.component.adapter.AlwaysAllowComponentPermissionResolver
+import com.bts.shared.membership.ProjectMembershipWritePort
 import com.bts.shared.permission.ComponentPermissionResolver
 import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.WorkflowKeyResolver
@@ -66,6 +67,9 @@ class ComponentPermissionResolverBootTest {
 
     @MockBean
     lateinit var issueTypeUsagePort: IssueTypeUsagePort
+
+    @MockBean
+    lateinit var membershipWritePort: ProjectMembershipWritePort
 
     @Autowired
     lateinit var context: ApplicationContext

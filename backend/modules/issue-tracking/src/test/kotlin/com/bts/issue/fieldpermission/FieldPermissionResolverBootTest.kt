@@ -4,6 +4,7 @@ package com.bts.issue.fieldpermission
 
 import com.bts.issue.IssueTrackingApplication
 import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
+import com.bts.shared.membership.ProjectMembershipWritePort
 import com.bts.shared.permission.FieldKind
 import com.bts.shared.permission.FieldPermissionResolver
 import com.bts.shared.permission.FieldRef
@@ -60,6 +61,9 @@ class FieldPermissionResolverBootTest {
 
     @MockBean
     lateinit var issueTypeUsagePort: IssueTypeUsagePort
+
+    @MockBean
+    lateinit var membershipWritePort: ProjectMembershipWritePort
 
     @Autowired
     lateinit var context: ApplicationContext

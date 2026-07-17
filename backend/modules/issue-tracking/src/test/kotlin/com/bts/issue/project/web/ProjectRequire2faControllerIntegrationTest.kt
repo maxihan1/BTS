@@ -3,6 +3,7 @@
 package com.bts.issue.project.web
 
 import com.bts.issue.IssueTrackingApplication
+import com.bts.shared.membership.ProjectMembershipWritePort
 import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowStateCatalog
@@ -84,6 +85,9 @@ class ProjectRequire2faControllerIntegrationTest {
 
     @MockBean
     lateinit var issueTypeUsagePort: IssueTypeUsagePort
+
+    @MockBean
+    lateinit var membershipWritePort: ProjectMembershipWritePort
 
     @Autowired
     lateinit var webApplicationContext: WebApplicationContext

@@ -4,6 +4,7 @@ package com.bts.issue.version
 
 import com.bts.issue.IssueTrackingApplication
 import com.bts.issue.version.adapter.AlwaysAllowVersionPermissionResolver
+import com.bts.shared.membership.ProjectMembershipWritePort
 import com.bts.shared.permission.VersionPermissionResolver
 import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.WorkflowKeyResolver
@@ -63,6 +64,9 @@ class VersionPermissionResolverBootTest {
 
     @MockBean
     lateinit var issueTypeUsagePort: IssueTypeUsagePort
+
+    @MockBean
+    lateinit var membershipWritePort: ProjectMembershipWritePort
 
     @Autowired
     lateinit var context: ApplicationContext

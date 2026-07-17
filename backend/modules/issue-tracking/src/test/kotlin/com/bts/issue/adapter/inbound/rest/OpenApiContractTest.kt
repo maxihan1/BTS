@@ -3,6 +3,7 @@
 package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.IssueTrackingApplication
+import com.bts.shared.membership.ProjectMembershipWritePort
 import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowStateCatalog
@@ -78,6 +79,9 @@ class OpenApiContractTest {
 
     @MockBean
     lateinit var issueTypeUsagePort: IssueTypeUsagePort
+
+    @MockBean
+    lateinit var membershipWritePort: ProjectMembershipWritePort
 
     @Autowired
     private lateinit var webApplicationContext: WebApplicationContext
