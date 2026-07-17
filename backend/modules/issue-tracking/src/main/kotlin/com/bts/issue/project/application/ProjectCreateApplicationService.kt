@@ -13,24 +13,28 @@ import java.util.UUID
 /**
  * 프로젝트 생성 ApplicationService (FR-PJ-01).
  *
- * **흐름 — insert → addCreatorAsAdmin (같은 트랜잭션).**
+ * ### 흐름 — insert → addCreatorAsAdmin (같은 트랜잭션)
  * 1. [ProjectCreateRepository.insert] 로 `projects` 테이블에 신규 행을 만든다(issue-tracking BC 소유).
  * 2. 반환된 [Project.id] 를 [ProjectMembershipWritePort.addCreatorAsAdmin] 에 전달해 생성자를
  *    PROJECT_ADMIN 으로 등록한다(identity-access BC 소유 테이블 — cross-BC 포트 위임).
  *
- * **원자성(I1) — 이 클래스가 보장하는 범위.**
+ * ### 원자성(I1) — 이 클래스가 보장하는 범위
  * 클래스 레벨 `@Transactional` 로 두 호출이 같은 트랜잭션에 참여한다. [ProjectMembershipWritePort]
  * 구현체는 자체 트랜잭션 경계를 선언하지 않으므로(포트 KDoc 계약) 호출자 tx 에 참여하고,
  * insert 실패 시 addCreatorAsAdmin 호출 자체가 일어나지 않아(코드 순서상 단락) 부분 커밋이 없다.
  *
- * **이 클래스가 증명하지 않는 것.** 이 클래스 자체의 단위 테스트([ProjectCreateApplicationServiceTest])는
- * 두 협력자를 MockK 로 대체하므로 "실제 DB 트랜잭션이 롤백되는지"는 검증 범위 밖이다 — 그건
- * 조립 부팅(:modules:app) Testcontainers 통합 테스트가 실증한다(원 plan T12). 여기 단위 테스트는
- * "insert 다음에 addCreatorAsAdmin 을 호출하는가 / insert 예외 시 addCreatorAsAdmin 을 안 부르는가"
- * 라는 협력 계약만 확인한다.
+ * ### 이 클래스가 증명하지 않는 것
+ * 이 클래스 자체의 단위 테스트([ProjectCreateApplicationServiceTest])는 두 협력자를 MockK 로
+ * 대체하므로 "실제 DB 트랜잭션이 롤백되는지"는 검증 범위 밖이다 — 그건 조립 부팅(:modules:app)
+ * Testcontainers 통합 테스트가 실증한다(원 plan T12). 여기 단위 테스트는 "insert 다음에
+ * addCreatorAsAdmin 을 호출하는가 / insert 예외 시 addCreatorAsAdmin 을 안 부르는가" 라는
+ * 협력 계약만 확인한다.
  *
+ * ### 트랜잭션 계약
  * DEVELOPMENT.md §1 — public service 메서드 전체 @Transactional 명시 원칙에 따라 클래스 레벨로 커버한다
  * ([com.bts.issue.project.application.ProjectLeadApplicationService] 동형 선례).
+ *
+ * @see ProjectMembershipWritePort 트랜잭션 계약(호출자 tx 참여)의 상대편 문서
  */
 @Service
 @Transactional
