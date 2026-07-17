@@ -75,4 +75,46 @@ class BtsApplicationContextTest : ProdAssemblyHttpTestBase() {
         // notification 이 build 의존 + 스캔에 포함돼야만 이 빈이 존재한다.
         assertThat(context.containsBean("com.bts.notification.channel.SlackChannelBroadcaster")).isTrue()
     }
+
+    @Test
+    fun `ProjectMembershipWritePort prod 어댑터가 조립 컨텍스트에 결선된다(fail-closed 회귀 가드, FR-PM-10)`() {
+        // ★ 위 두 포트 가드와 성격이 다르다 — 이 단언은 "이름 고정"이 아니라 유일한 탐지기다.
+        // IssueSnapshotPort/IssueSecurityClassificationPort 는 소비자(ActionExecutor·브로드캐스트 워커)가
+        // 이미 non-null 로 주입받아, 어댑터가 사라지면 컨텍스트 부팅이 먼저 깨진다 — 그 단언들은 충족 주체가
+        // "우연한 다른 빈"이 아님을 덧붙여 고정할 뿐이다. 반면 ProjectMembershipWritePort 의 소비자
+        // (issue-tracking 프로젝트 생성)는 PR-2 라 아직 없다(실측 — 참조는 어댑터 자신과 그 테스트뿐).
+        // 즉 지금 이 어댑터가 스캔에서 빠져도 부팅은 멀쩡히 성공하고, 이 단언만이 그것을 잡는다.
+        // PR-2 가 포트를 주입받는 순간 부팅 실패가 1차 탐지기로 합류하지만, 그때까지의 공백을 이 가드가 메운다.
+        assertThat(
+            context.containsBean("com.atlas.bts.identity.project.ProjectMembershipWriteAdapter"),
+        ).isTrue()
+    }
+
+    @Test
+    fun `SystemPermissionResolver prod 구현이 조립 컨텍스트에 결선된다(FR-PM-10)`() {
+        // FR-PM-10 판정식(grant OR isSystemAdmin — ADR D-2)을 담은 prod 구현을 이름으로 고정한다.
+        // 이 판정기 자체는 @Profile 이 없어(클래스 KDoc "@Profile 분리 없음") 전 프로파일에서 활성이다.
+        //
+        // 왜 "부팅이 곧 증명"으로 충분하지 않은가 — SystemPermissionResolver 는 **인터페이스**이고 구현이
+        // 6개다(prod 2 + 테스트 스텁 4). 특히 issue-tracking 의 NonProdAllowSystemAdminResolver 는
+        // @Component @Profile("!prod") 인 **AlwaysAllow 스텁**이다(isSystemAdmin 이 항상 true — 그 클래스
+        // KDoc 이 "운영 환경 사용 시 권한 우회가 발생한다. @Profile(\"!prod\") 로 운영 차단이 보장된다" 라고
+        // 명시). 그 프로파일이 뒤집히고 이 판정기가 스캔에서 빠지면, 주입은 스텁으로 **조용히 충족돼 부팅이
+        // 성공**하고 hasGlobalPermission 이 전원 true 로 열린다 — CREATE_PROJECT 가 전 사용자에게 개방되는
+        // fail-open 이다. 부팅 성공은 그 상태를 구분하지 못하고, 이 이름 고정만이 구분한다.
+        //
+        // ※ 이 판정기가 override 를 "갖고 있는가"는 T5(IdentityAccessSystemPermissionResolverGlobalPermissionTest)가
+        //   행위로 증명한다. 여기서 리플렉션으로 declaringClass 를 보면 CGLIB 프록시에 헛fail 한다.
+        //
+        // ※ 협력자 GlobalPermissionGrantRepository 는 **일부러 따로 고정하지 않는다** — 실측으로 결정했다.
+        //   @Repository 를 제거하면 이 판정기의 생성자 주입이
+        //   "NoSuchBeanDefinitionException: No qualifying bean of type 'GlobalPermissionGrantRepository'" 로
+        //   터져 **조립 컨텍스트 부팅 자체가 실패**한다(이 클래스 8건 전량 fail 로 관측). 부팅 실패가 이미
+        //   더 큰 탐지기이므로 이름 고정을 하나 더 두면 중복 가드가 되어 유지비만 늘어난다.
+        //   위 ProjectMembershipWriteAdapter 와 갈리는 지점이 바로 이것이다 — 그쪽은 소비자가 아직 없어
+        //   빠져도 부팅이 성공하므로 이름 고정이 유일한 탐지기다.
+        assertThat(
+            context.containsBean("com.atlas.bts.identity.permission.IdentityAccessSystemPermissionResolver"),
+        ).isTrue()
+    }
 }
