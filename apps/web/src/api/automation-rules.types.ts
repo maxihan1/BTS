@@ -255,7 +255,7 @@ export function serializeTriggerConfig(
     case 'PR_MERGED': {
       const rest = omitManagedKeys(base, ['targetBranch'])
       return config.targetBranch !== undefined && config.targetBranch.trim() !== ''
-        ? JSON.stringify({ ...rest, targetBranch: config.targetBranch })
+        ? JSON.stringify({ ...rest, targetBranch: config.targetBranch.trim() })
         : JSON.stringify(rest)
     }
     case 'ISSUE_CREATED':
