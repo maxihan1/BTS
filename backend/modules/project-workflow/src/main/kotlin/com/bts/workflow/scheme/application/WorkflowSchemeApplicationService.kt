@@ -362,19 +362,38 @@ class WorkflowSchemeApplicationService(
      * 프로젝트에 워크플로우 스킴을 배정(UPSERT)하고 배정 결과를 반환한다.
      *
      * ## 권한
-     * [WorkflowSchemePermission.ASSIGN_SCHEME] — [WorkflowSchemeScope.Project] 범위 검증.
-     * 프로젝트 어드민 레벨 권한이 필요하다.
+     * 사용자 명시 배정(실 actor UUID)은 [WorkflowSchemePermission.ASSIGN_SCHEME] —
+     * [WorkflowSchemeScope.Project] 범위 검증을 통과해야 한다(프로젝트 어드민 레벨 권한).
+     * 단, [SYSTEM_ACTOR](nil UUID sentinel)로 호출된 EC-1 D10 auto-assign 은 권한 검사를 우회한다
+     * (아래 "## EC-1 D10 auto-assign 권한 우회" 참조).
      *
      * ## 트랜잭션
      * `@Transactional` 클래스 어노테이션 상속. [assignmentRepo.saveAssignment] 와
      * [eventPublisher.publish] 가 동일 트랜잭션 안에서 실행된다 (outbox 패턴).
      * [eventPublisher] 는 [Propagation.MANDATORY] 이므로 별도 처리 불필요.
      *
-     * ## EC-1 D10 auto-assign
-     * [findAssignedScheme] 이 assignment 없는 프로젝트를 감지했을 때 SYSTEM_ACTOR 로 이 메서드를 호출한다.
-     * `assigned_by = SYSTEM_ACTOR.raw` (UUID sentinel: 00000000-0000-0000-0000-000000000000).
+     * ## EC-1 D10 auto-assign 권한 우회 (SYSTEM_ACTOR 한정)
+     * [findAssignedScheme] · [com.bts.workflow.scheme.adapter.inbound.WorkflowResolverImpl.resolveFor] 이
+     * assignment 없는 신규 프로젝트를 감지하면 [SYSTEM_ACTOR] 로 이 메서드를 호출한다
+     * (`assigned_by = 00000000-0000-0000-0000-000000000000`).
      *
-     * @param actor 작업 수행 행위자. ASSIGN_SCHEME 권한이 필요하다. SYSTEM_ACTOR 도 허용.
+     * **왜 우회하는가.** prod 판정기
+     * [com.atlas.bts.identity.permission.IdentityAccessWorkflowSchemePermissionResolver] 의 Project 범위
+     * 판정은 `membershipRepo.findByProjectAndUser` 로 actor 의 **프로젝트 멤버십**을 먼저 요구한다.
+     * SYSTEM_ACTOR 는 `users` 에 존재하지 않는 합성 sentinel 이라 어떤 프로젝트의 멤버도 될 수 없으므로,
+     * 우회하지 않으면 EC-1 D10 auto-assign 이 prod 에서 **항상** [WorkflowSchemeAccessDeniedException](500)
+     * 으로 실패한다(FR-PJ-01 T12 S10 이 실측으로 드러낸 선재 결함, `infra/local/seed-project.sql:10-12` 문서화).
+     *
+     * **왜 안전한가 (악용 표면 없음).**
+     * - 외부 요청은 nil UUID 를 actor 로 실을 수 없다 — issue-tracking `CurrentActor`/`ActorId` 가
+     *   nil UUID 를 require/401 로 거부한다. SYSTEM_ACTOR 는 이 companion 상수로 **내부에서만** 생성된다.
+     * - 우회는 actor 신원(nil UUID sentinel)에만 걸린다. 실 actor UUID(RFC 4122 V4)는 nil 과 절대
+     *   충돌하지 않으므로 사용자 배정 경로는 권한 검사를 그대로 유지한다.
+     * - 내부 호출부는 표준 스킴(`software-scheme`)만 배정한다 — 커스텀 스킴을 SYSTEM_ACTOR 로 배정하는
+     *   경로는 존재하지 않는다.
+     *
+     * @param actor 작업 수행 행위자. 실 actor 는 ASSIGN_SCHEME 권한이 필요하다.
+     *   [SYSTEM_ACTOR](EC-1 D10 auto-assign)는 권한 검사를 우회한다.
      * @param projectId 스킴을 배정할 프로젝트 UUID (projects.id UUID — V202 에서 BIGINT → UUID 정정).
      * @param projectKey 권한 범위 결정에 사용할 프로젝트 키 (예. "ATLAS").
      * @param schemeKey 배정할 스킴 키.
