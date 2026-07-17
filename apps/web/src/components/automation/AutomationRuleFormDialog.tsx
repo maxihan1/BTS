@@ -374,6 +374,13 @@ export interface AutomationRuleFormDialogProps {
  * 그래서 저장은 막지 않고 경고만 표시한다. `isLoading`/`isError`일 때는 "못 읽음"을 "0건"으로
  * 오판하지 않도록 경고를 내지 않는다(EC21 — 403으로 목록을 못 읽은 사용자에게 "웹훅이 없다"고
  * 단정하면 거짓이다).
+ *
+ * ★ blast radius — `AutomationRuleFormDialog`를 실제 JSX로 마운트하는 곳은 이 파일의
+ * 테스트(`AutomationRuleFormDialog.test.tsx`)와 `routes/projects.$projectKey.settings.automation.tsx:151`
+ * (조건 없이 상시 마운트) 단 2곳뿐이다(`grep -rn "<AutomationRuleFormDialog" apps/web/src` 실측,
+ * 다른 매치는 전부 주석/KDoc 언급이지 실제 마운트가 아니다). 두 호출부의 테스트 파일 모두 로컬
+ * `setupServer`에 `gitWebhookHandlers`를 합류시켰다 — 이 폼이 열릴 때마다 `useGitWebhooks`가
+ * 항상 발화하기 때문이다.
  */
 function hasNoGitWebhooks(triggerType: TriggerType, webhooksQuery: ReturnType<typeof useGitWebhooks>): boolean {
   if (triggerType !== 'PR_MERGED') return false
