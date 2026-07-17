@@ -1521,6 +1521,36 @@ plan 1232-1236행은 **T8-2 가 RED 가 될 수 없다**고 정확히 경고했�
 인계 사실 #14 가 `GlobalPermissionGrantRepository` 도 T8 이 고정할 빈이라 제안했으나, **위 mutation 2 가 전이성을 증명했다** — 그 빈이 없으면 `IdentityAccessSystemPermissionResolver` 생성자 주입이 터져 **부팅 실패**로 8건이 전량 죽는다. **부팅 실패가 이미 더 큰 탐지기**이므로 이름 고정을 하나 더 두면 중복 가드가 되어 유지비만 늘고 [[enum-add-breaks-crossmodule-count-guard]] 계열 부채가 된다.
 **두 빈이 갈리는 지점이 정확히 "소비자가 있는가"다** — 어댑터는 소비자(PR-2)가 없어 부팅이 안 깨지므로 이름 고정이 유일한 탐지기, 리포지토리는 소비자(판정기)가 있어 부팅이 깨진다. **이 근거를 테스트 주석에 남겼다** — 안 남기면 다음 사람이 #14 를 읽고 중복 가드를 추가한다.
 
+### wave 6 ✅ 졸업 (9/9) — T9 전수 동기화 + FR 5개 등록 · **PR-1 전 task 완료**
+
+| task | 커밋 | 판정 |
+|---|---|---|
+| **T9** 동기화 | `7c2fdc45d docs:` — 문서 전용이라 TDD 사이클 없음(T1 `1cd02d407` 선례 동형) | ✅ PASS |
+
+**11 files** = 선언 9 + `scripts/verify-master-plan.sh`(plan 이 확장 명시) + `TODOS.md`(plan 354행이 T9 몫으로 지정). **선언 외 0건.**
+
+**controller 재검증 실측.**
+- `bash scripts/verify-master-plan.sh` → **EXIT=0**, `PASS. FR ID 128/128 매핑 완료. 체크박스 마커 정상. 카운트 정합(fr-index/README/헤더/CLAUDE)`
+- 재계수 `grep -oE '^\| FR-[A-Z]+-[0-9]+ ' docs/plan/fr-index.md | sort -u | wc -l` → **128**. BC 증분 실측 일치 — identity-access 24→25(PM 9→10) · issue-tracking 31→35(+PJ 4)
+- **main 트리 오염 0** — `/Users/maxi.moff/Projects/BTS/CLAUDE.md` 는 `123 FR` 그대로(머지가 가져간다), 워크트리 판만 `128 FR`. 함정 1 준수 확인
+- dashboard 재생성 완료 — `전체 122/128 완료 (95%)`. `[skip ci]` 미포함
+
+**★ verify 룰 D 확장 — controller 가 직접 mutation 으로 비-vacuous 확인** (에이전트 보고를 믿지 않는다. 룰은 오타 하나로 vacuous PASS 가 된다 — [[archunit-vacuous-rule-silent-pass]]).
+
+| 단계 | 결과 |
+|---|---|
+| 기준선 **선확인** | `EXIT=0` (이걸 안 하면 아래가 vacuous) |
+| mutation A — BC 게이트 `35 FR`→`34 FR` (**새 룰의 대상**) | `FAIL. 카운트 drift — issue-tracking.md BC 완료 게이트 '34 FR' (fr-index §A.1 실측 35)` · **EXIT=4** |
+| mutation B — `(FR-PM, 10개)`→`11개` (**기존 분기 회귀**) | `FAIL. 카운트 drift — identity-access.md 헤더 'FR-PM 11개' (실제 10)` · **EXIT=4** |
+| 복원 | `EXIT=0` · `git status` 빈 출력 |
+
+**🛑 T9 가 잡은 것 3건.**
+1. **issue-tracking BC 완료 게이트를 실제로 막았다** — `:495` 원문 `§2~§6 (30 FR)`(이미 stale — 31 이 맞았다) → **`§2~§7 (35 FR)`**. 안 고쳤으면 issue-tracking BC 가 **FR-PJ-01~04 미구현 상태로 "완료" 선언 가능**했다.
+2. **`verify-master-plan.sh` 의 진짜 버그 발견·해소** (plan 에 없던 것) — `hprefix` 추출 파이프라인이 `set -e`+`pipefail` 조합에서, 접두사 없는 매치 라인을 만나면 `grep -oE 'FR-[A-Z]+'` 가 0건 매치 → exit 1 → **스크립트 전체가 FAIL 메시지 없이 조용히 abort**(EXIT=1)했다. `|| true` 가드 2곳으로 해소. **"통과"가 아니라 "중단"이었을 뻔했다** — [[zsh-pipestatus-1-based-false-green]] 계열의 거짓 그린.
+3. **🛑 인계 숫자를 grep 으로 재확인해 하나를 뒤집었다** — `requireSystemAdmin` 은 인계받은 **5 가 아니라 실측 3**(`GlobalPermissionGrantController`·`IssueSecuritySchemeController`·`UserGroupController`). plan-eng-review 원안의 pre-T6 "4파일"부터 이미 과다 계상이었다. **추측으로 5 를 정정하지 않고 실측 3 을 캐비엇과 함께 기록**했다. `FORBIDDEN|UNAUTHORIZED_RESPONSE` 14 · `resolveActorId` 7 은 일치.
+
+**Obsidian** — `Maxi_wiki/BTS/` 미변경 확인(이 worktree 에 존재하지 않는다). glossary 5건(프로젝트 보강 / 프로젝트 보관 · 소프트 삭제 · 전역 권한 부여 · 프로젝트 키 신규)은 **Maxi 승인 수동 영역이라 보고만** 한다.
+
 ### ★ wave 2~6 이 물려받을 실측 사실 (다시 발견하지 말 것)
 
 | # | 사실 | 출처 |
@@ -1566,8 +1596,10 @@ wave 2  T2 (db-engineer)        V036 마이그레이션 + 스키마 가드      
 wave 3  T4 (security-engineer)  GlobalPermissionGrantRepository      ✅ 졸업
 wave 4  T5 · T6 (security)      prod override · 컨트롤러             ✅ 졸업 (순차 dispatch)
 wave 5  T8 (security)           :modules:app 조립 가드               ✅ 졸업
-wave 6  T9 (backend-engineer)   전수 동기화 8종 + FR 5개 등록        ← 여기서 재개
-그 후    qa-engineer E2E (타입 auth) → verification-before-completion → /bts-codereview
+wave 6  T9 (backend-engineer)   전수 동기화 8종 + FR 5개 등록        ✅ 졸업
+
+★ 9/9 전 task 완료. 남은 것 —
+그 후    qa-engineer E2E (타입 auth) → verification-before-completion → /bts-codereview  ← 여기서 재개
 ```
 
 ## PR-2~6 로 이월 (이 plan 의 범위 밖)
