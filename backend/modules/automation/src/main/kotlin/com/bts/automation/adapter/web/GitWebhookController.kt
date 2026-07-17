@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import jakarta.servlet.http.HttpServletRequest
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
+import org.springframework.http.InvalidMediaTypeException
 import org.springframework.http.MediaType
 import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
@@ -58,8 +59,9 @@ import java.time.Instant
  * 요청당 상한은 256KB 로 동일하고, 미존재 토큰에 대한 추가 비용은 인덱스 조회 1회가 아니라 그 반대다.
  *
  * ## ★★ 토큰 조회는 payload 파싱보다 먼저 (G14 — 선례의 순서 결함을 답습하지 않는다)
- * [AutomationWebhookController] 는 `:93` 파싱 → `:95` 조회 순서라 **유효 토큰 없이도 256KB Jackson 파싱
+ * [AutomationWebhookController.receive] 는 파싱 → 조회 순서라 **유효 토큰 없이도 256KB Jackson 파싱
  * CPU** 를 소모시킬 수 있다. 여기서는 조회·서명 검증을 모두 통과한 뒤에만 파싱한다.
+ * (라인 번호로 가리키지 않는다 — 그 파일이 한 줄만 밀려도 주석이 조용히 거짓이 된다.)
  *
  * ## ★ `@RequestBody` 금지 (NFR-2)
  * `@RequestBody` 는 Spring 이 **핸들러 진입 전** 본문 전체를 힙에 역직렬화하므로, 메서드 안의 어떤 크기
@@ -91,6 +93,7 @@ import java.time.Instant
  */
 @RestController
 @RequestMapping("/api/v1/webhooks/git")
+@Suppress("TooManyFunctions") // 파이프라인 5단계(§처리 순서) + 예외→HTTP 매핑 5개 + 헬퍼 — 책임은 단일(인바운드 웹훅 방어선)
 class GitWebhookController(
     private val gitWebhookRepository: GitWebhookRepository,
     private val signatureVerifier: GitWebhookSignatureVerifier,
@@ -103,23 +106,25 @@ class GitWebhookController(
      * 인바운드 Git 웹훅 배달 1건을 수신한다. 정상 처리와 "머지 이벤트가 아니라 무시"를 구분하지 않고
      * 모두 202 로 응답한다(처리 여부는 구조화 로그로만 구분 — spec §5-1).
      *
-     * `consumes` 를 JSON 으로 못 박아 GitHub UI 의 form-urlencoded 옵션을 **415 로 명시 거부**한다(§7 EC6).
-     * 미지정 시 form 본문이 파싱 실패로 흘러 202 조용한 무시가 되고, 운영자가 "202 인데 아무 일도 없음"을
+     * GitHub UI 의 form-urlencoded 옵션은 **415 로 명시 거부**한다(§7 EC6) — [rejectIfNotJson].
+     * 허용하면 form 본문이 파싱 실패로 흘러 202 조용한 무시가 되고, 운영자가 "202 인데 아무 일도 없음"을
      * 디버깅하게 된다.
      *
      * @param token 경로 세그먼트의 원문 토큰(해시로만 조회하며 저장·로그 출력하지 않는다).
-     * @param request 크기 검증·원문 바이트 읽기·provider 헤더 조회용 [HttpServletRequest].
+     * @param request 미디어타입·크기 검증·원문 바이트 읽기·provider 헤더 조회용 [HttpServletRequest].
      *   **`@RequestBody` 로 대체 금지** — 클래스 KDoc 참조.
      * @return 202 Accepted(본문 없음).
+     * @throws GitWebhookUnsupportedMediaTypeException Content-Type 이 JSON 이 아님(EC6, 415).
      * @throws GitWebhookPayloadTooLargeException 본문이 [MAX_PAYLOAD_BYTES] 초과(EC5, 413).
      * @throws GitWebhookUnauthorizedException 토큰 미존재·삭제 또는 서명 검증 실패(EC1~EC4·EC9·EC15, 401).
      * @throws GitWebhookInvalidPayloadException 본문이 유효한 JSON 이 아님(EC7, 400).
      */
-    @PostMapping("/{token}", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PostMapping("/{token}")
     fun receive(
         @PathVariable token: String,
         request: HttpServletRequest,
     ): ResponseEntity<Unit> {
+        rejectIfNotJson(request)
         val body = readBoundedBody(request)
         val webhook = findWebhookOrReject(token)
         verifySignatureOrReject(webhook, request, body)
@@ -136,6 +141,51 @@ class GitWebhookController(
     }
 
     /**
+     * Content-Type 이 JSON 이 아니면 415 로 거부한다(EC6).
+     *
+     * ## ★ 왜 `consumes` 가 아니라 손수 검사인가 — `consumes` 의 415 는 prod 에서 **401 로 변질된다**
+     * `consumes` 조건 불일치는 Spring 이 **핸들러 매핑 단계**(`RequestMappingInfoHandlerMapping.handleNoMatch`)
+     * 에서 예외를 던진다. 그 시점엔 핸들러 메서드가 아직 바인딩되지 않아
+     * (`ExceptionHandlerExceptionResolver` 가 handlerMethod=null 로 호출됨) **이 컨트롤러의
+     * `@ExceptionHandler` 는 후보에조차 오르지 않는다**(셀렉터가 붙은 `@ControllerAdvice` 도 마찬가지 —
+     * 무선택자 전역 advice 만 도달한다). 결국 `DefaultHandlerExceptionResolver` 가 sendError(415) 로
+     * 처리하고, 서블릿이 error 경로로 **ERROR 디스패치**하는데 그 경로는 중앙 `SecurityConfig` 에서
+     * `anyRequest().authenticated()` 라 필터가 **빈 401** 을 덮어쓴다(실측 — `consumes` 를 둔 채
+     * 415 핸들러를 추가해도 응답은 그대로 401 이었다).
+     *
+     * 이 엔드포인트에서 401 은 "secret 이 틀렸다"로 읽힌다. content type 을 잘못 고른 운영자가 secret 을
+     * 돌리며 헤매게 되므로, `consumes` 를 넣은 목적(진단성)이 정확히 무너진다. 그래서 미디어타입 판정을
+     * **핸들러 메서드 안**으로 들여와 컨트롤러 로컬 핸들러가 415 ProblemDetail 을 직접 응답하게 한다.
+     * 부수효과로 415 가 error 경로를 **아예 타지 않으므로**, Spring Boot 기본 에러 본문의 `path` 필드(요청
+     * URI 원문 = **경로 토큰 포함**)가 나갈 통로가 한 겹 사라진다(T15-6 이 지키던 간접 조건이 직접 조건이 된다).
+     *
+     * ## 판정 기준은 `consumes` 와 **정확히 동일**하게 유지한다
+     * [MediaType.includes] 는 `ConsumesRequestCondition` 이 쓰는 바로 그 술어다. 따라서 동작이 그대로다.
+     * - `application/json`, `application/json;charset=utf-8` → 통과
+     * - Content-Type 부재 → 415(`consumes` 는 부재를 `application/octet-stream` 으로 간주해 거부했다)
+     * - 파싱 불가능한 Content-Type → 415
+     *
+     * 이 검사는 **토큰과 무관**하므로 맨 앞에 둬도 존재 오라클이 되지 않는다(클래스 KDoc ★ 참조).
+     * `@RequestParam`/`@ModelAttribute` 를 쓰지 않으므로 form 본문이라도 서블릿 파라미터 파싱이 트리거되지
+     * 않는다 — 여기서 415 로 끊기므로 스트림은 애초에 읽히지도 않는다.
+     */
+    private fun rejectIfNotJson(request: HttpServletRequest) {
+        // 파싱 불가능한 Content-Type 은 null 로 수렴시켜 아래 단일 지점에서 거부한다(`consumes` 와 동일 결과).
+        val parsed =
+            request.contentType?.let { declared ->
+                try {
+                    MediaType.parseMediaType(declared)
+                } catch (ex: InvalidMediaTypeException) {
+                    log.info("git_webhook_unparsable_content_type", ex)
+                    null
+                }
+            }
+        if (parsed == null || !MediaType.APPLICATION_JSON.includes(parsed)) {
+            throw GitWebhookUnsupportedMediaTypeException()
+        }
+    }
+
+    /**
      * 본문을 [MAX_PAYLOAD_BYTES] 이내로만 읽는다(EC5). 크기 판정은 **토큰 존재 여부에 의존하지 않는다**
      * (클래스 KDoc ★ 참조 — 의존하면 413/401 이 존재 오라클이 된다).
      *
@@ -143,8 +193,13 @@ class GitWebhookController(
      * 1. `Content-Length` 사전검사 — 바이트를 읽기 전에 빠르게 거절한다. 헤더 위조·누락(-1) 시 무력하다.
      * 2. [java.io.InputStream.readNBytes] — 상한 + 1 바이트까지만 실제로 읽어 초과를 판정한다. 청크 전송
      *    (`Transfer-Encoding: chunked`)처럼 `Content-Length` 가 없는 요청에도 유효한 방어선이다.
-     *    MockMvc 는 본문에서 `Content-Length` 를 파생시켜 이 두 번째 분기를 재현할 수 없으므로, 실서블릿
-     *    검증은 Task 15 의 `TestRestTemplate` 조립 테스트가 맡는다(§9-15).
+     *
+     * ## ★ 2번 분기는 MockMvc 로 검증할 수 없다 — 실서블릿 테스트가 유일한 관문
+     * MockMvc 는 본문 바이트에서 `Content-Length` 를 **파생시켜** 항상 1번 분기로 흡수되므로, 2번 분기는
+     * MockMvc 테스트를 아무리 늘려도 실행되지 않는다(`readNBytes` 를 `readAllBytes` 로 바꿔도 전 스위트가
+     * 초록이던 이유 — 실측). 2번 분기를 실제로 태우는 것은 조립 테스트 `GitWebhookInboundPermitAllTest` 의
+     * **T15-10** 뿐이다(chunked 전송으로 `Content-Length` 자체를 없앤다). 이 클래스의 크기 상한을 손대면
+     * 그 테스트를 함께 확인할 것.
      */
     private fun readBoundedBody(request: HttpServletRequest): ByteArray {
         if (request.contentLengthLong > MAX_PAYLOAD_BYTES) {
@@ -281,6 +336,57 @@ class GitWebhookController(
     }
 
     /**
+     * Content-Type 이 JSON 이 아님 — 415(EC6). 상세 근거는 [rejectIfNotJson] KDoc ★ 참조.
+     *
+     * @return [ERROR_CODE_UNSUPPORTED_MEDIA_TYPE] [ProblemDetail].
+     */
+    @ExceptionHandler(GitWebhookUnsupportedMediaTypeException::class)
+    fun handleUnsupportedMediaType(): ProblemDetail {
+        log.info("git_webhook_unsupported_media_type")
+        return problem(
+            status = HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+            type = "git-webhook-unsupported-media-type",
+            title = "Unsupported Media Type",
+            errorCode = ERROR_CODE_UNSUPPORTED_MEDIA_TYPE,
+            detail = "Content-Type 은 application/json 이어야 합니다.",
+        )
+    }
+
+    /**
+     * 분류되지 않은 모든 예외 — 500([GitWebhookRegistrationController] 의 동명 핸들러와 동형).
+     *
+     * ## ★ 없으면 500 이 error 경로로 새고, **그 요청 URI 에는 원문 토큰이 있다**
+     * 이 핸들러가 없으면 미포착 [RuntimeException](예: [GitWebhookRepository] 의 `GitProvider.valueOf`
+     * 가 손상된 DB 행을 만났을 때·DB 장애)이 sendError(500) → error 경로 **ERROR 디스패치**로 넘어간다.
+     * 지금은 그 경로가 authenticated 라 빈 401 로 덮이지만, 그 안전은 중앙 `SecurityConfig` 의 한 줄에
+     * 얹혀 있는 **간접 조건**이다(T15-6 참조). 컨트롤러가 자기 예외를 자기가 응답하면 그 통로 자체가 없다.
+     *
+     * ## ★ 더 구체적인 핸들러가 항상 먼저 이긴다 — 401/413/400 을 500 으로 변질시키지 않는다
+     * Spring 의 `ExceptionHandlerMethodResolver` 는 `ExceptionDepthComparator` 로 **예외 계층상 가장
+     * 가까운** 핸들러를 고른다. 위 4개 핸들러는 각자의 예외 타입을 정확히(depth 0) 매치하므로 이
+     * catch-all 보다 항상 우선한다. 과거 catch-all 이 `ResponseStatusException` 을 삼켜 401 을 500 으로
+     * 바꾼 사고가 있었으므로([[catch-all-exceptionhandler-swallows-responsestatusexception]]),
+     * 401·413·400·415 가 그대로 나오는지는 `GitWebhookControllerTest` 가 전 경로로 못 박는다.
+     *
+     * detail 은 고정 문구이고 스택트레이스는 서버 로그 전용이다 — 내부 사정이 응답으로 새면 그것이 곧
+     * 정찰 정보다. 401 단일화의 취지와 같다.
+     *
+     * @param ex 미포착 예외(로그 전용 — 응답에 싣지 않는다).
+     * @return [ERROR_CODE_INTERNAL_ERROR] [ProblemDetail].
+     */
+    @ExceptionHandler(Exception::class)
+    fun handleInternal(ex: Exception): ProblemDetail {
+        log.error("git_webhook_internal_error", ex)
+        return problem(
+            status = HttpStatus.INTERNAL_SERVER_ERROR,
+            type = "git-webhook-internal-error",
+            title = "Internal Server Error",
+            errorCode = ERROR_CODE_INTERNAL_ERROR,
+            detail = "서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+        )
+    }
+
+    /**
      * [ProblemDetail](RFC 7807) 인스턴스를 생성하는 헬퍼([AutomationWebhookController] 의 동명 private
      * 헬퍼와 형식이 같지만, 그쪽은 파일 비공개라 재사용할 공개 API 가 없다 — 값만 복제).
      *
@@ -328,10 +434,19 @@ class GitWebhookController(
          */
         const val INSTANCE_PATH = "/api/v1/webhooks/git"
 
-        /** ★ EC1~EC4·EC9·EC15 공용 — 사유별로 가르지 말 것(클래스 KDoc §401 단일화). */
-        const val ERROR_CODE_UNAUTHORIZED = "GIT_WEBHOOK_UNAUTHORIZED"
-        const val ERROR_CODE_PAYLOAD_TOO_LARGE = "GIT_WEBHOOK_PAYLOAD_TOO_LARGE"
-        const val ERROR_CODE_INVALID_PAYLOAD = "GIT_WEBHOOK_INVALID_PAYLOAD"
+        /**
+         * ★ EC1~EC4·EC9·EC15 공용 — 사유별로 가르지 말 것(클래스 KDoc §401 단일화).
+         *
+         * `AUTOMATION_` prefix 는 모듈 공통 관례다([GitWebhookRegistrationController] 의 에러코드 상수
+         * 오브젝트 KDoc·[AutomationWebhookController] 의 `AUTOMATION_WEBHOOK_` 계열과 동일 규칙).
+         */
+        const val ERROR_CODE_UNAUTHORIZED = "AUTOMATION_GIT_WEBHOOK_UNAUTHORIZED"
+        const val ERROR_CODE_PAYLOAD_TOO_LARGE = "AUTOMATION_GIT_WEBHOOK_PAYLOAD_TOO_LARGE"
+        const val ERROR_CODE_INVALID_PAYLOAD = "AUTOMATION_GIT_WEBHOOK_INVALID_PAYLOAD"
+        const val ERROR_CODE_UNSUPPORTED_MEDIA_TYPE = "AUTOMATION_GIT_WEBHOOK_UNSUPPORTED_MEDIA_TYPE"
+
+        /** 미분류 예외 — 엔드포인트 고유가 아닌 일반 실패라 형제 컨트롤러와 같은 일반 코드를 쓴다. */
+        const val ERROR_CODE_INTERNAL_ERROR = "AUTOMATION_INTERNAL_ERROR"
 
         /** GitHub 서명 헤더. 레거시 `X-Hub-Signature`(SHA-1)는 의도적으로 읽지 않는다(EC4). */
         const val HEADER_GITHUB_SIGNATURE = "X-Hub-Signature-256"
@@ -356,7 +471,8 @@ class GitWebhookController(
  *
  * [AutomationWebhookController] 의 동명 함수를 **의도적으로 복제**했다 — 그쪽은 `private` top-level 이라
  * 파일 밖에서 재사용할 수 없고, automation 은 BC 격리로 identity-access 의
- * `PersonalAccessTokenService` 를 import 할 수 없다(그 파일 `:218-219` KDoc 과 동일 근거).
+ * `PersonalAccessTokenService` 를 import 할 수 없다(`AutomationWebhookController.kt` 의 동명 top-level
+ * `sha256Hex` KDoc 과 동일 근거 — 라인 번호로 가리키면 그 파일이 밀릴 때 조용히 거짓이 된다).
  *
  * **알고리즘이 같아야 한다** — Task 11 (`GitWebhookRegistrationService`)이 발급 시 저장하는
  * `git_webhooks.token_hash` 와 동일한 "원문의 SHA-256 hex" 여야 이 조회가 매칭된다.
@@ -383,3 +499,6 @@ private class GitWebhookPayloadTooLargeException : RuntimeException()
 
 /** payload 가 유효한 JSON 이 아님(EC7). */
 private class GitWebhookInvalidPayloadException(cause: Throwable) : RuntimeException(cause)
+
+/** Content-Type 이 JSON 이 아님(EC6). `consumes` 를 쓰지 않는 이유는 [GitWebhookController] KDoc 참조. */
+private class GitWebhookUnsupportedMediaTypeException : RuntimeException()

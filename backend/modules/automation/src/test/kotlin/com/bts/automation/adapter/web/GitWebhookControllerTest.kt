@@ -300,9 +300,17 @@ class GitWebhookControllerTest {
             .andExpect(status().isUnauthorized)
     }
 
+    /**
+     * ★ 이 415 는 **MockMvc 로는 prod 진실을 말하지 못한다**.
+     * `consumes` 로 거부하면 MockMvc 는 415 를 그대로 보여주지만, 실 서블릿에서는 매핑 단계 예외라
+     * 컨트롤러 `@ExceptionHandler` 를 못 타고 /error 로 넘어가 필터가 **빈 401** 로 덮어쓴다(실측).
+     * 그래서 컨트롤러가 415 를 **자기 핸들러 안에서** 응답하도록 바꿨고, prod 진실은
+     * `GitWebhookInboundPermitAllTest` 의 **T15-8** 이 실 HTTP 로 못 박는다.
+     * 여기서는 errorCode 계약과 DB 쓰기 0 만 확인한다.
+     */
     @Test
     fun `EC6 - form-urlencoded 는 415 로 명시 거부한다`() {
-        // consumes 미지정이면 readTree 가 실패해 400/202 로 조용히 흘러가 운영자가 원인을 못 찾는다.
+        // 허용하면 readTree 가 실패해 400/202 로 조용히 흘러가 운영자가 원인을 못 찾는다.
         mockMvc
             .perform(
                 post(PATH, RAW_TOKEN)
@@ -310,8 +318,99 @@ class GitWebhookControllerTest {
                     .content("action=closed")
                     .header(HEADER_GITHUB_EVENT, "pull_request"),
             ).andExpect(status().isUnsupportedMediaType)
+            .andExpect(jsonPath("$.errorCode").value(UNSUPPORTED_MEDIA_TYPE_CODE))
 
         verifyNoDbWrite()
+    }
+
+    /**
+     * `consumes` 를 손수 검사로 옮기면서 **동작이 바뀌지 않았음**을 못 박는다 — `ConsumesRequestCondition` 은
+     * Content-Type 부재를 `application/octet-stream` 으로 간주해 415 로 거부했다. 순진한 구현
+     * (`contentType == null` 이면 통과)은 이 케이스를 조용히 200/400 으로 흘려보낸다.
+     */
+    @Test
+    fun `EC6 - Content-Type 이 없으면 415 로 거부한다 (consumes 동작 보존)`() {
+        mockMvc
+            .perform(post(PATH, RAW_TOKEN).content(GITHUB_BODY))
+            .andExpect(status().isUnsupportedMediaType)
+            .andExpect(jsonPath("$.errorCode").value(UNSUPPORTED_MEDIA_TYPE_CODE))
+
+        verifyNoDbWrite()
+    }
+
+    /** charset 파라미터가 붙어도 JSON 은 JSON 이다(`MediaType.includes` 술어 = consumes 와 동일). */
+    @Test
+    fun `EC6 - charset 이 붙은 application-json 은 통과한다 (consumes 동작 보존)`() {
+        stubGithubWebhook(secret = SECRET)
+
+        // 401(서명 불일치) = 미디어타입 게이트를 통과해 서명 검증까지 진행했다는 뜻. 415 면 게이트가 과잉 거부다.
+        mockMvc
+            .perform(
+                post(PATH, RAW_TOKEN)
+                    .contentType("application/json;charset=UTF-8")
+                    .content(GITHUB_BODY)
+                    .header(HEADER_GITHUB_SIGNATURE, "sha256=irrelevant"),
+            ).andExpect(status().isUnauthorized)
+    }
+
+    /**
+     * ★ 미포착 예외가 error 경로로 **새지 않는다**(catch-all `@ExceptionHandler`).
+     * 없으면 sendError(500) → error 경로 ERROR 디스패치인데, **그 요청 URI 에 원문 토큰이 있다**.
+     * 형제 [GitWebhookRegistrationController] 는 이미 같은 핸들러를 갖고 있었다(비대칭 해소).
+     */
+    @Test
+    fun `미분류 예외는 500 ProblemDetail 로 응답하고 토큰·내부 사정을 싣지 않는다`() {
+        // 손상된 DB 행(GitProvider.valueOf 실패)·DB 장애 등 — 리포지토리가 던지는 임의 RuntimeException.
+        every { repository.findByTokenHash(any()) } throws IllegalStateException("boom: $RAW_TOKEN")
+
+        val response =
+            mockMvc
+                .perform(githubRequest(signature = githubSignature(SECRET, GITHUB_BODY)))
+                .andExpect(status().isInternalServerError)
+                .andExpect(jsonPath("$.errorCode").value(INTERNAL_ERROR_CODE))
+                .andReturn()
+                .response
+
+        // 예외 메시지에 토큰이 들어 있어도 응답에는 나가지 않아야 한다(고정 detail + instance 고정).
+        assertThat(response.contentAsString).doesNotContain(RAW_TOKEN)
+        verifyNoDbWrite()
+    }
+
+    /**
+     * ★ catch-all 이 **더 구체적인 핸들러를 삼키지 않는다** — 401/413/400/415 가 500 으로 변질되면
+     * 401 단일화(존재 오라클 부재)도 무너진다(과거 사고: catch-all 이 `ResponseStatusException` 을 삼켜
+     * 401 을 500 으로 바꿨다). 위 개별 테스트들이 각 상태코드를 이미 못 박지만, **catch-all 추가로 인한
+     * 회귀**를 한 곳에서 명시적으로 잡는다.
+     */
+    @Test
+    fun `catch-all 추가 후에도 401·413·400·415 는 500 으로 변질되지 않는다`() {
+        every { repository.findByTokenHash(any()) } returns null
+
+        // 401 — 미존재 토큰
+        mockMvc
+            .perform(githubRequest(signature = githubSignature(SECRET, GITHUB_BODY)))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(UNAUTHORIZED_CODE))
+
+        // 413 — 상한 초과
+        mockMvc
+            .perform(jsonRequest(oversizedBody()).header(HEADER_GITHUB_SIGNATURE, "sha256=irrelevant"))
+            .andExpect(status().isPayloadTooLarge)
+            .andExpect(jsonPath("$.errorCode").value(PAYLOAD_TOO_LARGE_CODE))
+
+        // 415 — form-urlencoded
+        mockMvc
+            .perform(post(PATH, RAW_TOKEN).contentType(MediaType.APPLICATION_FORM_URLENCODED).content("a=b"))
+            .andExpect(status().isUnsupportedMediaType)
+            .andExpect(jsonPath("$.errorCode").value(UNSUPPORTED_MEDIA_TYPE_CODE))
+
+        // 400 — 서명은 유효하지만 JSON 이 아님
+        val brokenJson = "{\"action\":".toByteArray(Charsets.UTF_8)
+        stubGithubWebhook(secret = SECRET)
+        mockMvc
+            .perform(jsonRequest(brokenJson).header(HEADER_GITHUB_SIGNATURE, githubSignature(SECRET, brokenJson)))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(INVALID_PAYLOAD_CODE))
     }
 
     @Test
@@ -470,7 +569,19 @@ class GitWebhookControllerTest {
         const val CIPHERTEXT = "0badc0de"
 
         /** 401 단일 errorCode — EC1~EC4·EC9·EC15 전부 이 값이어야 한다(spec §5-1). */
-        const val UNAUTHORIZED_CODE = "GIT_WEBHOOK_UNAUTHORIZED"
+        const val UNAUTHORIZED_CODE = "AUTOMATION_GIT_WEBHOOK_UNAUTHORIZED"
+
+        /** 415 errorCode(EC6). */
+        const val UNSUPPORTED_MEDIA_TYPE_CODE = "AUTOMATION_GIT_WEBHOOK_UNSUPPORTED_MEDIA_TYPE"
+
+        /** 413 errorCode(EC5). */
+        const val PAYLOAD_TOO_LARGE_CODE = "AUTOMATION_GIT_WEBHOOK_PAYLOAD_TOO_LARGE"
+
+        /** 400 errorCode(EC7). */
+        const val INVALID_PAYLOAD_CODE = "AUTOMATION_GIT_WEBHOOK_INVALID_PAYLOAD"
+
+        /** 미분류 예외 500 errorCode — 형제 컨트롤러와 같은 일반 코드. */
+        const val INTERNAL_ERROR_CODE = "AUTOMATION_INTERNAL_ERROR"
 
         /** [GitWebhookController] 의 상한과 동일해야 한다(테스트 미러 — automation 웹훅 테스트 동형 관례). */
         const val MAX_PAYLOAD_BYTES = 256 * 1024

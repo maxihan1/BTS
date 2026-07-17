@@ -41,11 +41,16 @@ import javax.crypto.spec.SecretKeySpec
  *
  * ## ★ 상태코드만 보면 vacuous — 판별자는 응답 **본문**이다
  * 이 엔드포인트의 401 은 두 출처가 있고 **상태코드가 같다**.
- * - 필터 401 — 본문이 **비어 있고** `WWW-Authenticate: Bearer` 가 붙는다(실측).
+ * - 필터 401 — 본문이 **비어 있다**(실측).
  * - 컨트롤러 401 — `application/problem+json` 본문에 [ERROR_CODE_UNAUTHORIZED] 가 실린다(실측).
  *
  * 따라서 "401 이다"만 단언하면 permitAll 이 죽어도 통과한다(slack 쪽에서 실제로 확인된 함정 —
  * [SlackInboundPermitAllTest] 의 `EC-A1` 주석). 본문으로만 검증 주체를 가른다.
+ *
+ * ## ★ `WWW-Authenticate: Bearer` 는 판별자가 **아니다** (실측)
+ * 필터 401 에만 붙을 것 같지만, 서블릿이 sendError 로 넘긴 ERROR 디스패치(/error)의 401 **에도 붙는다** —
+ * /error 역시 같은 필터체인·같은 `BearerTokenAuthenticationEntryPoint` 를 타기 때문이다. 즉 이 헤더로
+ * "필터가 잘랐다"를 증명하려는 시도는 조용히 공허해진다. 405 경로의 판별자는 `Allow` 헤더다(T15-7 참조).
  *
  * ## ★ [java.net.http.HttpClient] 를 쓰는 이유 (베이스의 `rest` 를 쓰지 않는다)
  * `TestRestTemplate` 은 `:modules:app` 에 Apache HttpComponents 5 가 없어
@@ -189,13 +194,14 @@ class GitWebhookInboundPermitAllTest : ProdAssemblyHttpTestBase() {
         val response = post(gitUrl(GIT_RAW_TOKEN), "action=closed", mapOf(HEADER_CONTENT_TYPE to CONTENT_TYPE_FORM))
 
         // ★ 이 단언은 vacuous 하지 않다 — 뮤테이션으로 실증했다.
-        // 컨트롤러는 consumes=JSON 이라 form 요청을 415 로 거부하는데, 415 는 컨트롤러의 @ExceptionHandler 가
-        // 잡지 않아 서블릿 ERROR 디스패치(/error)로 넘어간다. /error 는 중앙 SecurityConfig 에서
-        // anyRequest().authenticated() 에 걸리므로 **BasicErrorController 가 실행되지 못하고** 필터가 빈 401 을
-        // 준다 — 그래서 지금은 누출이 없다. 그러나 /error 를 permitAll 에 넣어 보면(실측) 응답이
-        // 415 + `{"path":"/api/v1/webhooks/git/<원문토큰>"}` 로 바뀌어 **이 단언이 실제로 깨진다**.
-        // 즉 현재의 안전은 컨트롤러 설계가 아니라 "/error 가 인증 대상"이라는 **간접 조건**에 의존한다.
-        // 이 테스트가 그 조건을 못 박는 회귀 가드다(ProblemDetail 의 instance 고정만으로는 닫히지 않는 별개 통로).
+        // 이제 컨트롤러가 미디어타입을 **자기 핸들러 안에서** 검사해 415 ProblemDetail(instance 고정)을 직접
+        // 응답하므로, form 요청은 서블릿 ERROR 디스패치(/error)를 **아예 타지 않는다**(T15-8 이 415 를 못 박는다).
+        // 즉 토큰 비노출은 이제 컨트롤러 설계의 **직접** 결과다.
+        // 그러나 이 가드는 여전히 필요하다 — 405 등 컨트롤러가 못 잡는 다른 에러는 계속 /error 로 가고,
+        // /error 를 permitAll 에 넣으면 BasicErrorController 가 살아나 Spring Boot 기본 에러 본문의 `path`
+        // 필드(= 요청 URI 원문 = **경로 토큰 포함**)가 그대로 나간다(실측 — 예전 consumes 구현에서 /error 를
+        // permitAll 로 뒤집자 415 + `{"path":"/api/v1/webhooks/git/<원문토큰>"}` 가 관측됐다).
+        // ProblemDetail 의 instance 고정만으로는 닫히지 않는 별개 통로이므로 이 축을 유지한다.
         assertThat(response.body()).doesNotContain(GIT_RAW_TOKEN)
     }
 
