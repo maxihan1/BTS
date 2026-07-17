@@ -41,15 +41,19 @@ import org.springframework.web.cors.CorsConfigurationSource
  * 미등록 상태로 404 를 반환하므로 공격 표면이 없다.
  * 사용자 로그인은 /api/v1/auth/login (Custom) 만 제공한다.
  *
- * ## permitAll 6경로 (FR-09-30 · FR-DB-03 · FR-CA-02)
+ * ## permitAll 경로 (FR-09-30 · FR-DB-03 · FR-CA-02 · FR-SL · FR-AT-07)
+ * 아래는 **대표 경로**이며 정본은 [securityFilterChain] 의 authorizeHttpRequests 블록이다
+ * (refresh·SAML/OIDC 목록·MFA verify 등은 아래에 적지 않았다).
+ * 총 개수는 표기하지 않는다 — 목록이 부분집합이라 개수를 적으면 곧 stale 이 되어 오히려 오독을 부른다.
  * - /api/v1/auth/login      — 로그인 요청 (credentials 수신, CSRF skip)
  * - /api/v1/auth/providers  — 활성 Provider 목록 조회 (인증 전 필요)
  * - /.well-known/jwks.json  — 공개키 제공 (외부 검증용, CSRF skip)
  * - /actuator/health        — 헬스체크 (로드밸런서, CSRF skip)
  * - /api/v1/public/dashboards/{token} — 익명 공개 대시보드 조회 (FR-DB-03, GET 메서드 고정 read-only, 단일 세그먼트 토큰)
  * - /ical/feed/{token}.ics — 익명 iCal 구독 피드 (FR-CA-02, GET 메서드 고정 read-only, 단일 세그먼트 토큰)
- * - slack 인바운드 4경로 — Slack 서버-투-서버 호출 ([SLACK_INBOUND_PATHS], 메서드 고정 + 정확 경로,
- *   인증은 컨트롤러의 서명 검증이 담당)
+ * - 인바운드 웹훅 6경로 — 외부 서버-투-서버 호출 ([INBOUND_WEBHOOK_PATHS], 메서드 고정 + 정확 경로/단일 세그먼트).
+ *   slack 4 · git 1 은 컨트롤러의 서명 검증이, automation 1 은 불투명 토큰 소지가 인증을 담당한다
+ *   (★ 셋의 방어 등급이 균일하지 않다 — [INBOUND_WEBHOOK_PATHS] KDoc 참조)
  *
  * ## CSRF Cookie 모드 (ADR docs/decisions/2026-05-20-csrf-cookie-mode.md)
  * CookieCsrfTokenRepository.withHttpOnlyFalse() — SPA가 Cookie를 읽어 X-XSRF-TOKEN 헤더로 전송.
@@ -109,14 +113,17 @@ class SecurityConfig(
         // pat_ prefix 인 경우 null 을 반환하여 JWT 필터가 처리하지 않도록 한다.
         // PAT 요청은 PatAuthenticationFilter 가 JWT 필터보다 먼저 처리하여 SecurityContext 에 인증 정보를 설정한다.
         //
-        // ★ slack 인바운드는 delegate 를 태우지 않는다 — form POST 의 `access_token` 조회가 Tomcat form
-        // 파싱 → 본문 스트림 소진을 일으켜 slack 컨트롤러가 빈 바디로 401. 상세·기각안은 ADR §D7.
+        // ★ 인바운드 웹훅은 delegate 를 태우지 않는다 — form POST 의 `access_token` 조회가 Tomcat form
+        // 파싱 → 본문 스트림 소진을 일으켜 컨트롤러가 빈 바디로 401. 상세·기각안은 slack ADR §D7.
+        // ★ git 도 동일 노출이다 — GitHub 웹훅은 설정에서 application/x-www-form-urlencoded 를 고를 수 있다
+        // (FR-AT-07 PR-C ADR §D1). allowFormEncodedBodyParameter=false 로는 막지 못한다 — 파라미터 접근이
+        // 이미 일어난 뒤에 플래그를 검사하므로 그 시점엔 본문이 소진돼 있다.
         val delegate = DefaultBearerTokenResolver()
-        val slackInboundMatcher: RequestMatcher =
-            OrRequestMatcher(SLACK_INBOUND_PATHS.map { (method, path) -> antMatcher(method, path) })
+        val inboundWebhookMatcher: RequestMatcher =
+            OrRequestMatcher(INBOUND_WEBHOOK_PATHS.map { (method, path) -> antMatcher(method, path) })
         val patSkippingBearerTokenResolver =
             BearerTokenResolver { req: HttpServletRequest ->
-                if (slackInboundMatcher.matches(req)) {
+                if (inboundWebhookMatcher.matches(req)) {
                     null
                 } else {
                     val token = delegate.resolve(req)
@@ -146,10 +153,13 @@ class SecurityConfig(
                 csrf.ignoringRequestMatchers(
                     patBearerMatcher,
                 )
-                // FR-AT-07 PR-A: slack 인바운드 — permitAll 과 **같은** [SLACK_INBOUND_PATHS] 목록에서 구동한다(DEC-16).
-                // Slack 은 브라우저가 아니라 서버가 POST 하므로 CSRF 토큰을 가질 수 없다 — permitAll 만 열고 여기를
-                // 빠뜨리면 CsrfFilter 가 먼저 거부해 경로가 계속 죽어 있다(FR-MF-01 BLOCKER-1 과 동일 사고).
-                SLACK_INBOUND_PATHS.forEach { (method, path) ->
+                // FR-AT-07: 인바운드 웹훅 — permitAll·bearer skip 과 **같은** [INBOUND_WEBHOOK_PATHS] 목록에서
+                // 구동한다(PR-A DEC-16 · PR-C ADR §D4). 외부 시스템은 브라우저가 아니라 서버가 POST 하므로 CSRF
+                // 토큰을 가질 수 없다 — permitAll 만 열고 여기를 빠뜨리면 CsrfFilter 가 먼저 거부해 경로가 계속
+                // 죽어 있다(FR-MF-01 BLOCKER-1 과 동일 사고).
+                // ★ antMatcher(method, path) 필수 — ignoringRequestMatchers 에는 (HttpMethod, String) 오버로드가
+                // 없다. 문자열 오버로드를 쓰면 메서드 고정이 조용히 사라지고 컴파일·테스트 모두 통과한다(PR-C ADR §D4).
+                INBOUND_WEBHOOK_PATHS.forEach { (method, path) ->
                     csrf.ignoringRequestMatchers(antMatcher(method, path))
                 }
                 csrf.ignoringRequestMatchers(
@@ -201,9 +211,12 @@ class SecurityConfig(
                 // PUBLIC_DASHBOARDS_PATH 와 동일 defense-in-depth(GET 고정·단일 세그먼트). 404 수렴은 IcalFeedController.
                 // DEVELOPMENT.md §1.4 정식 예외(ADR 2026-07-09-fr-ca-02·게이트1 승인). 상세는 ICAL_FEED_PATH KDoc.
                 auth.requestMatchers(HttpMethod.GET, ICAL_FEED_PATH).permitAll()
-                // FR-AT-07 PR-A: slack 인바운드 4경로 — CSRF-ignore 와 **같은** [SLACK_INBOUND_PATHS] 목록을 순회한다(DEC-16).
+                // FR-AT-07: 인바운드 웹훅 6경로 — CSRF-ignore·bearer skip 과 **같은** [INBOUND_WEBHOOK_PATHS]
+                // 목록을 순회한다(PR-A DEC-16 · PR-C ADR §D4).
                 // ★ 아래 /api/** · anyRequest() 보다 반드시 위 — Spring Security 매처는 선언 순서대로 첫 매치가 이긴다.
-                SLACK_INBOUND_PATHS.forEach { (method, path) ->
+                //   git(/api/v1/webhooks/git/*) · automation(/api/v1/automation/webhooks/*) 두 경로군은 /api/**
+                //   하위라 이 순서가 곧 계약이다 — 아래로 내리면 즉시 401 로 죽는다(PR-C ADR §D1).
+                INBOUND_WEBHOOK_PATHS.forEach { (method, path) ->
                     auth.requestMatchers(method, path).permitAll()
                 }
                 auth.requestMatchers("/api/**").authenticated()
@@ -283,18 +296,49 @@ class SecurityConfig(
         const val ICAL_FEED_PATH = "/ical/feed/*"
 
         /**
-         * Slack 서버가 직접 호출하는 인바운드 4경로 (FR-SL-01/03/04/05). DEVELOPMENT.md §1.4 정식 예외 —
-         * **근거 정본은 ADR `docs/decisions/2026-07-15-slack-inbound-permitall-central.md`**(게이트1 승인).
-         * permitAll 은 인증 제거가 아니라 **검증 주체 이관**이다(ADR §D2) — Slack 에는 발급할 JWT·세션·PAT 가
-         * 없어, 인증은 각 컨트롤러가 선행하는 [com.bts.slack.security.SlackSignatureVerifier] 가 맡는다.
-         * ★ **편집 전 ADR §D4-a 필독.** 이 목록이 permitAll · CSRF-ignore · bearer skip(§D7) 3곳을 구동한다.
+         * 외부 시스템이 자격증명 없이 직접 호출하는 인바운드 웹훅 6경로 — slack 4 (FR-SL-01/03/04/05) ·
+         * git 1 (FR-AT-07 PR-C) · automation 1 (FR-AT-01).
+         *
+         * DEVELOPMENT.md §1.4 정식 예외 — **근거 정본은 두 ADR**이다.
+         * - slack 4 — `docs/decisions/2026-07-15-slack-inbound-permitall-central.md` (게이트1 승인)
+         * - git 1 · automation 1 — `docs/decisions/2026-07-17-git-webhook-inbound-permitall.md`
+         *   (**2026-07-17 Maxi 게이트1 승인**, `DATA.md §1.5` 요구대로 plan-eng-review·plan-ceo-review 양쪽 CLEAR)
+         *
+         * ★ **편집 전 PR-C ADR §D4-a 필독. 이 목록이 permitAll · CSRF-ignore · bearer skip(§D7) 3곳을 구동한다.**
+         * 하나만 빠뜨려도 증상이 전부 401/403 이라 어느 곳이 빠졌는지 구분되지 않는다. 이 단일 목록 구조가 막는 것은
+         * **경로·메서드 divergence**(한쪽에만 추가)이지 `forEach` 블록 삭제가 아니다 — 그건 app 모듈 prod 조립
+         * HTTP 테스트가 잡는다. **구조와 테스트가 함께 가드이며 어느 한쪽도 단독으로 충분하지 않다.**
+         *
+         * ## 검증 주체 이관 — 다만 등급이 균일하지 않다
+         * permitAll 은 인증 제거가 아니라 **검증 주체 이관**이다(slack ADR §D2) — 외부 시스템에는 발급할
+         * JWT·세션·PAT 가 없다. 그러나 필터가 비킨 자리를 대신하는 검증의 등급이 경로군마다 다르다.
+         * - **slack 4** — [com.bts.slack.security.SlackSignatureVerifier] HMAC 서명 검증 + replay 윈도우.
+         * - **git 1** — `GitWebhookSignatureVerifier` HMAC 서명 검증(GITHUB) / 평문 토큰 비교(GITLAB —
+         *   GitLab 이 HMAC 을 제공하지 않아 **GITHUB 과 동급이 아니다**, PR-C ADR §잔여위험 R3).
+         * - **automation 1** — **서명 검증이 없다.** 불투명 토큰 소지 자체가 인증이다. 따라서 slack ADR 의
+         *   *"필터가 비키는 자리에 더 강한 검증이 선다"* 논거는 **이 경로에 성립하지 않는다**(PR-C ADR §D3).
+         *   부수효과를 내는 POST 라 토큰이 새면 룰 actor 권한으로 이슈가 변경된다(§잔여위험 R1).
+         *
+         * ## 매처 형태 — 메서드 고정 + 단일 세그먼트 2겹
+         * 전역 하위경로 와일드카드가 아니라 토큰 1개 path 만 노출한다 — [PUBLIC_DASHBOARDS_PATH]·[ICAL_FEED_PATH]
+         * 와 동일 원칙이며, 같은 prefix 에 매핑이 추가돼도 폭발 반경이 넓어지지 않는다.
+         * git·automation 은 `/api` 하위 경로이므로 permitAll 등록이 아래 API 전역 `authenticated()` 매처
+         * **보다 위**여야 한다(선언 순서 = 계약).
+         *
+         * (KDoc 본문에 매처 리터럴을 그대로 적지 않는다 — Kotlin 은 블록 주석이 중첩되므로 슬래시+별표가
+         * 나타나면 주석이 조기 종료되지 않고 아래 선언까지 삼킨다. 실제 매처는 아래 목록이 정본이다.)
          */
-        val SLACK_INBOUND_PATHS =
+        val INBOUND_WEBHOOK_PATHS =
             listOf(
+                // slack (FR-SL-01/03/04/05) — 정확 경로
                 HttpMethod.POST to "/slack/events",
                 HttpMethod.POST to "/slack/commands",
                 HttpMethod.POST to "/slack/interactions",
                 HttpMethod.GET to "/slack/install/callback",
+                // git (FR-AT-07 PR-C) — /api/v1/webhooks/git/{token} 단일 세그먼트
+                HttpMethod.POST to "/api/v1/webhooks/git/*",
+                // automation (FR-AT-01) — /api/v1/automation/webhooks/{token} 단일 세그먼트
+                HttpMethod.POST to "/api/v1/automation/webhooks/*",
             )
     }
 }
