@@ -138,6 +138,101 @@ class YamlSeedServiceTest {
         }
     }
 
+    // ── 시나리오 0-A. R6-1 — 빈 DB 최초 부팅이 4 스킴 default 매핑을 백필한다 ─────────
+
+    /**
+     * R6-1 (빈 DB 백필) 검증.
+     *
+     * Flyway 마이그레이션 직후(=이 클래스 안에서 `seedAll()` 을 처음 호출하는 지점) `workflows` 와
+     * `workflow_scheme_issue_type_mappings` 는 비어 있다. V201 §6 의 default mapping seed 는
+     * `INSERT ... SELECT ... JOIN workflows` 형태라 workflows 가 비어 있으면 0건만 삽입된다
+     * (V201:132-134 주석 참조) — 따라서 이 시점의 매핑 0건이 "빈 DB" 전제를 보장한다.
+     *
+     * `@Order(-1)` 로 기존 `@Order(1)`(첫 YAML 적재 시나리오)보다 앞서 실행되도록 배치해
+     * "seedAll() 최초 실행" 조건을 실제로 만족시킨다.
+     */
+    @Test
+    @Order(-1)
+    fun `빈 DB 부팅(seedAll 최초 실행)이 4 스킴 기본 매핑을 만든다 (R6-1)`() {
+        val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+        val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
+        val mappingRepository = SchemeIssueTypeMappingRepository(dsl)
+
+        val workflowCountBefore = dsl.fetchValue("SELECT COUNT(*) FROM workflows") as Long
+        val mappingCountBefore = dsl.fetchValue("SELECT COUNT(*) FROM workflow_scheme_issue_type_mappings") as Long
+        assertThat(workflowCountBefore)
+            .withFailMessage(
+                "사전조건 위반 — workflows 가 비어 있지 않음(%d) — Order(-1) 이 최초 호출이 아님",
+                workflowCountBefore,
+            ).isZero()
+        assertThat(mappingCountBefore)
+            .withFailMessage("사전조건 위반 — 매핑이 비어 있지 않음(%d)", mappingCountBefore)
+            .isZero()
+
+        service.seedAll()
+
+        val defaultMappingCount =
+            dsl.fetchValue(
+                "SELECT COUNT(*) FROM workflow_scheme_issue_type_mappings WHERE issue_type_id IS NULL",
+            ) as Long
+        assertThat(defaultMappingCount)
+            .withFailMessage("R6-1 실패 — 빈 DB 최초 부팅 후 default 매핑이 4건이 아님(%d)", defaultMappingCount)
+            .isEqualTo(4L)
+
+        val schemeToWorkflowKey =
+            mapOf(
+                "software-scheme" to "software-default",
+                "bug-tracking-scheme" to "bug-tracking",
+                "simple-scheme" to "simple",
+                "kanban-scheme" to "kanban-basic",
+            )
+        schemeToWorkflowKey.forEach { (schemeKey, workflowKey) ->
+            val schemeId = fetchSchemeIdByKey(dsl, schemeKey)
+            val mapping = mappingRepository.findDefaultMapping(WorkflowSchemeId(schemeId))
+            assertThat(mapping)
+                .withFailMessage("R6-1 실패 — 스킴 '%s' default 매핑 없음", schemeKey)
+                .isNotNull
+            val expectedWorkflowId =
+                repository.findIdByKey(workflowKey)
+                    ?: error("워크플로우 '$workflowKey' 없음 — seedAll() 이 먼저 4 YAML 을 적재해야 함")
+            assertThat(mapping!!.workflowId).isEqualTo(expectedWorkflowId)
+        }
+
+        log.info("R6-1 통과 — 빈 DB 최초 부팅이 4 스킴 default 매핑을 백필함")
+    }
+
+    // ── 시나리오 0-B. R6-3 — seedAll 재실행은 멱등 (4행 유지, 중복 없음) ────────────
+
+    /**
+     * R6-3 (멱등성) 검증.
+     *
+     * `Order(-1)` 에서 이미 4건 백필이 완료된 상태에서 `seedAll()` 을 두 번 더 호출해도
+     * default 매핑이 4건으로 유지되는지 확인한다. 멱등성의 근거는
+     * [SchemeIssueTypeMappingRepository.insertMissingDefaultMapping] 의 `WHERE NOT EXISTS` 분기(T1) —
+     * 이미 존재하는 스킴에는 재삽입하지 않는다.
+     */
+    @Test
+    @Order(0)
+    fun `seedAll 재실행은 멱등 — 4행 유지 (R6-3)`() {
+        val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+        val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
+
+        service.seedAll()
+        service.seedAll()
+
+        val defaultMappingCount =
+            dsl.fetchValue(
+                "SELECT COUNT(*) FROM workflow_scheme_issue_type_mappings WHERE issue_type_id IS NULL",
+            ) as Long
+        assertThat(defaultMappingCount)
+            .withFailMessage(
+                "R6-3 실패 — seedAll 재실행 후 default 매핑이 4건이 아님(%d) — 중복 또는 누락 의심",
+                defaultMappingCount,
+            ).isEqualTo(4L)
+
+        log.info("R6-3 통과 — seedAll 재실행 후에도 default 매핑 4건 유지 (멱등)")
+    }
+
     // ── 시나리오 1. 부팅 시 4 YAML 적재 → workflows 4건 + states/transitions 정합 ──
 
     @Test
