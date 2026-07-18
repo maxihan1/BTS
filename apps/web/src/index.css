@@ -185,6 +185,29 @@
   --sidebar-border: oklch(0.922 0 0);
 
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* FR-UX-06 §7 상태 토큰 — alias, PR3서 ADS 값 부여 */
+  --bg-neutral: var(--muted);                 /* PR3서 ADS Neutral100로 교체 */
+
+  --bg-neutral-hover: var(--accent);          /* PR3서 ADS Neutral200로 교체 */
+
+  --bg-neutral-press: var(--accent);          /* PR3서 ADS Neutral300로 교체 */
+
+  --bg-selected: var(--accent);               /* PR3서 ADS Blue100로 교체 */
+
+  --text-selected: var(--primary);            /* PR3서 ADS Blue700로 교체 */
+
+  --text-subtle: var(--muted-foreground);     /* PR3서 ADS Neutral700로 교체 */
+
+  --text-subtlest: var(--muted-foreground);   /* PR3서 ADS Neutral500로 교체 */
+
+  --text-disabled: var(--muted-foreground);   /* PR3서 ADS Neutral400로 교체 */
+
+  --border-focus: var(--ring);                /* PR3서 ADS Blue700로 교체 */
+
+  --brand-hover: var(--primary);              /* PR3서 ADS Blue800/Blue300로 교체 */
+
+  --brand-text: var(--primary);               /* PR3서 ADS Blue700로 교체 */
 }
 
 .dark {
@@ -261,6 +284,29 @@
   --sidebar-border: oklch(1 0 0 / 10%);
 
   --sidebar-ring: oklch(0.556 0 0);
+
+  /* FR-UX-06 §7 상태 토큰 — alias, PR3서 ADS 값 부여 */
+  --bg-neutral: var(--muted);                 /* PR3서 ADS Neutral100로 교체 */
+
+  --bg-neutral-hover: var(--accent);          /* PR3서 ADS Neutral200로 교체 */
+
+  --bg-neutral-press: var(--accent);          /* PR3서 ADS Neutral300로 교체 */
+
+  --bg-selected: var(--accent);               /* PR3서 ADS Blue100로 교체 */
+
+  --text-selected: var(--primary);            /* PR3서 ADS Blue700로 교체 */
+
+  --text-subtle: var(--muted-foreground);     /* PR3서 ADS Neutral700로 교체 */
+
+  --text-subtlest: var(--muted-foreground);   /* PR3서 ADS Neutral500로 교체 */
+
+  --text-disabled: var(--muted-foreground);   /* PR3서 ADS Neutral400로 교체 */
+
+  --border-focus: var(--ring);                /* PR3서 ADS Blue700로 교체 */
+
+  --brand-hover: var(--primary);              /* PR3서 ADS Blue800/Blue300로 교체 */
+
+  --brand-text: var(--primary);               /* PR3서 ADS Blue700로 교체 */
 }
 
 @layer base {
