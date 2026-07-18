@@ -3,6 +3,7 @@
 package com.bts.issue.project.query
 
 import com.bts.issue.project.domain.Project
+import com.bts.issue.project.repository.ProjectQueryRepository
 import com.bts.shared.membership.ProjectMembershipPort
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service

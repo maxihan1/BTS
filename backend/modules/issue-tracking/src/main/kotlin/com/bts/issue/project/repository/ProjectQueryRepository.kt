@@ -1,6 +1,6 @@
 // 프로젝트 목록/설정 조회 전담 읽기 전용 jOOQ Repository (FR-PJ PR-3 Task 1)
 
-package com.bts.issue.project.query
+package com.bts.issue.project.repository
 
 import com.bts.issue.jooq.tables.records.ProjectsRecord
 import com.bts.issue.jooq.tables.references.PROJECTS

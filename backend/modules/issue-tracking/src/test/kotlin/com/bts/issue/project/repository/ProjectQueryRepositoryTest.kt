@@ -1,6 +1,6 @@
 // ProjectQueryRepository 통합 테스트 — key 집합 조회(name 오름차순·소프트삭제 제외)·id 단건 조회 (FR-PJ PR-3 Task 1)
 
-package com.bts.issue.project.query
+package com.bts.issue.project.repository
 
 import com.bts.issue.repository.IssueTestcontainersBase
 import org.assertj.core.api.Assertions.assertThat

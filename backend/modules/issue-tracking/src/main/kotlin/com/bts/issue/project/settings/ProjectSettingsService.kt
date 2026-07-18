@@ -3,6 +3,7 @@
 package com.bts.issue.project.settings
 
 import com.bts.issue.project.ProjectLookup
+import com.bts.issue.project.repository.ProjectSettingsRepository
 import com.bts.shared.permission.ComponentPermission
 import com.bts.shared.permission.ComponentPermissionResolver
 import org.slf4j.LoggerFactory
