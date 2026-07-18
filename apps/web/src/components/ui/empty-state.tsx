@@ -1,18 +1,31 @@
 // 빈 상태(empty state) 프리미티브 — 아이콘/타이틀/설명/액션 슬롯을 중앙 정렬로 배치
 import * as React from "react"
 
-interface EmptyStateProps {
+import { cn } from "@/lib/utils"
+
+interface EmptyStateProps extends React.ComponentProps<"div"> {
   icon?: React.ReactNode
   title: string
   description?: string
   action?: React.ReactNode
 }
 
-function EmptyState({ icon, title, description, action }: EmptyStateProps) {
+function EmptyState({
+  icon,
+  title,
+  description,
+  action,
+  className,
+  ...props
+}: EmptyStateProps) {
   return (
     <div
       data-slot="empty-state"
-      className="flex flex-col items-center justify-center gap-2 px-4 py-12 text-center"
+      className={cn(
+        "flex flex-col items-center justify-center gap-2 px-4 py-12 text-center",
+        className
+      )}
+      {...props}
     >
       {icon ? (
         <div data-slot="empty-state-icon" className="mb-2 text-(--text-subtle)">

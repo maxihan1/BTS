@@ -26,15 +26,15 @@ function TooltipProvider({
   )
 }
 
-/** Tooltip Root — 별도 Provider 래핑 없이도 단독으로 동작하도록 내부에서 자체 감싼다. */
+/**
+ * Tooltip Root. 표준 shadcn 관례대로 Provider를 self-wrap하지 않는다 —
+ * 소비처가 앱 1회 `TooltipProvider`로 감싸 전역 delayDuration을 설정하며,
+ * self-wrap하면 그 전역 설정이 각 Tooltip 내부 default(0)로 조용히 덮인다 (C6).
+ */
 function Tooltip({
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Root>) {
-  return (
-    <TooltipProvider>
-      <TooltipPrimitive.Root data-slot="tooltip" {...props} />
-    </TooltipProvider>
-  )
+  return <TooltipPrimitive.Root data-slot="tooltip" {...props} />
 }
 
 function TooltipTrigger({
