@@ -1,8 +1,10 @@
-// ProjectQueryController MockMvc 슬라이스 테스트 — GET /projects 200/401 + fail-closed 빈 목록 (FR-PJ PR-3 Task 3)
+// ProjectQueryController MockMvc 슬라이스 테스트 — GET /projects, /projects/{id} 200/401/403/404 (FR-PJ PR-3 Task 3/4)
 
 package com.bts.issue.project.web
 
 import com.bts.issue.project.domain.Project
+import com.bts.issue.project.query.ProjectBrowseForbiddenException
+import com.bts.issue.project.query.ProjectQueryNotFoundException
 import com.bts.issue.project.query.ProjectQueryService
 import io.mockk.clearMocks
 import io.mockk.every
@@ -31,7 +33,7 @@ import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import java.util.UUID
 
 /**
- * ProjectQueryController MockMvc 슬라이스 테스트 (FR-PJ PR-3 Task 3).
+ * ProjectQueryController MockMvc 슬라이스 테스트 (FR-PJ PR-3 Task 3/4).
  *
  * `@SpringBootApplication` 없이 `@ContextConfiguration` 으로 최소 컨텍스트를 직접 구성한다
  * ([ProjectCreateControllerTest] 선례). Spring Security 필터 체인은 로드하지 않으므로 인증은
@@ -43,6 +45,9 @@ import java.util.UUID
  * - S1. 인증 actor → 접근가능 목록 200 + `$.data[0].key`
  * - S2. 미인증 → 401 이고 서비스 미도달 (음성 테스트 비-vacuous 판별자 — `verify(exactly = 0)`)
  * - S3. projectKeysOf 가 빈 Set 인 상황(서비스가 빈 목록 반환) → `$.data` 빈 배열(존재 누설 0)
+ * - S4. 단건 조회 — BROWSE 통과 → 200 + `$.data.key` (Task 4)
+ * - S5. 단건 조회 — 프로젝트 미존재 → 404 + `$.errorCode` (Task 4)
+ * - S6. 단건 조회 — 실재 프로젝트에 BROWSE 거부 → 403 + 서비스 도달 확인(비-vacuous, Task 4)
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [ProjectQueryControllerTest.TestMvcConfig::class])
@@ -52,7 +57,7 @@ class ProjectQueryControllerTest {
      * 테스트 전용 Spring MVC 최소 컨텍스트.
      *
      * [ProjectQueryController], [ProjectQueryExceptionHandler] 와 MockK stub 협력자를 등록한다.
-     * 서비스를 MockK 로 대체하므로 [com.bts.issue.project.query.ProjectQueryRepository] /
+     * 서비스를 MockK 로 대체하므로 [com.bts.issue.project.repository.ProjectQueryRepository] /
      * [com.bts.shared.membership.ProjectMembershipPort] 빈은 필요하지 않다.
      */
     @Configuration
@@ -141,6 +146,56 @@ class ProjectQueryControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data").isArray)
             .andExpect(jsonPath("$.data.length()").value(0))
+    }
+
+    // ── S4. 단건 조회 — BROWSE 통과 → 200 (Task 4) ────────────────────────────────
+
+    @Test
+    fun `GET projects id — BROWSE 통과하면 200 + 단건 반환`() {
+        authenticateAs(memberActorId)
+        every {
+            projectQueryService.getOne(memberActorId, visibleProjectKey)
+        } returns Project(id = visibleProjectId, key = visibleProjectKey, name = visibleProjectName)
+
+        mockMvc.perform(get("/api/v1/projects/{projectIdOrKey}", visibleProjectKey))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.id").value(visibleProjectId.toString()))
+            .andExpect(jsonPath("$.data.key").value(visibleProjectKey))
+            .andExpect(jsonPath("$.data.name").value(visibleProjectName))
+
+        // 추출된 actorId 가 서비스로 전달됨(CurrentActor → 서비스 결선) 검증
+        verify(exactly = 1) { projectQueryService.getOne(memberActorId, visibleProjectKey) }
+    }
+
+    // ── S5. 단건 조회 — 프로젝트 미존재 → 404 (Task 4) ─────────────────────────────
+
+    @Test
+    fun `GET projects id — 프로젝트가 존재하지 않으면 404`() {
+        authenticateAs(memberActorId)
+        every {
+            projectQueryService.getOne(memberActorId, "MISSING")
+        } throws ProjectQueryNotFoundException("MISSING")
+
+        mockMvc.perform(get("/api/v1/projects/{projectIdOrKey}", "MISSING"))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_PROJECT_NOT_FOUND"))
+    }
+
+    // ── S6. 단건 조회 — 실재 프로젝트에 BROWSE 거부 → 403 (Task 4) ─────────────────
+
+    @Test
+    fun `GET projects id — BROWSE 권한이 없으면 403 이고 서비스에는 도달한다`() {
+        authenticateAs(memberActorId)
+        every {
+            projectQueryService.getOne(memberActorId, visibleProjectKey)
+        } throws ProjectBrowseForbiddenException(memberActorId, visibleProjectKey)
+
+        mockMvc.perform(get("/api/v1/projects/{projectIdOrKey}", visibleProjectKey))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_PROJECT_FORBIDDEN"))
+
+        // vacuous 401 이 아님을 증명 — actor 추출 이후 서비스에 실제로 도달했다.
+        verify(exactly = 1) { projectQueryService.getOne(memberActorId, visibleProjectKey) }
     }
 
     // ── private helpers ─────────────────────────────────────────────────────────
