@@ -2,6 +2,7 @@
 
 package com.bts.issue
 
+import com.bts.shared.membership.ProjectMembershipPort
 import com.bts.shared.membership.ProjectMembershipWritePort
 import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.WorkflowKeyResolver
@@ -31,6 +32,14 @@ import org.springframework.context.annotation.Bean
  * [com.bts.issue.project.application.ProjectCreateApplicationService] 가 새로 소비하는
  * cross-BC 포트(identity-access BC 구현). 아무 테스트도 이 mock 들의 호출을 검증(verify)하거나
  * 동작을 stub(`when`) 하지 않으므로, `@MockBean` 대신 평범한 `@Bean mock()` 팩토리로 충분하다.
+ *
+ * ## ProjectMembershipPort — FR-PJ PR-3 신규 (issue-tracking 단독 부팅 회귀 수리)
+ * [com.bts.issue.project.query.ProjectQueryService] 가 새로 소비하는 cross-BC 읽기 포트
+ * (identity-access BC 구현 — [com.bts.issue.project.query.ProjectQueryService.listAccessible] 가
+ * 사용자의 프로젝트 멤버십 key 집합을 조회한다). 8개 `@SpringBootTest` 클래스 중 어느 것도 프로젝트
+ * 목록 조회 엔드포인트를 호출하지 않으므로, Mockito 기본 stub(호출 시 빈 `Set` 반환 — fail-closed
+ * 방향과 일치)으로 컨텍스트 로드만 충족하면 된다. 실제 멤버십 데이터가 필요한 시나리오 검증은
+ * [com.bts.issue.project.web.ProjectQueryControllerTest] (`@WebMvcTest` 슬라이스)가 담당한다.
  */
 @TestConfiguration
 class CrossBcPortTestConfig {
@@ -51,4 +60,7 @@ class CrossBcPortTestConfig {
 
     @Bean
     fun projectMembershipWritePort(): ProjectMembershipWritePort = mock(ProjectMembershipWritePort::class.java)
+
+    @Bean
+    fun projectMembershipPort(): ProjectMembershipPort = mock(ProjectMembershipPort::class.java)
 }
