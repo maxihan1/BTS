@@ -12,6 +12,7 @@ import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
 /**
@@ -49,18 +50,24 @@ class ProjectQueryController(
     /**
      * 로그인 사용자가 접근 가능한 프로젝트 목록을 반환한다.
      *
+     * `archived` 쿼리 파라미터를 생략하면 아카이브 프로젝트를 기본 제외하고, `?archived=true` 면
+     * 아카이브 프로젝트만 반환한다(D8 지라 관례, FR-PJ-04 PR-4 Task 6, PJ2-2).
+     *
+     * @param archived 아카이브 필터. 생략 시 `false`(활성만).
      * @return 200 OK + `{ "data": [ ... ] }` (name 오름차순, fail-closed — 멤버십 없으면 빈 배열).
      * @throws org.springframework.web.server.ResponseStatusException 미인증 → 401 (CurrentActor).
      */
     @GetMapping
-    fun list(): ResponseEntity<DataResponse<List<ProjectResponse>>> {
+    fun list(
+        @RequestParam(required = false, defaultValue = "false") archived: Boolean,
+    ): ResponseEntity<DataResponse<List<ProjectResponse>>> {
         // 1. actor 추출 — 리소스 조회보다 먼저 (미인증 401)
         val actor = CurrentActor.current()
 
-        log.debug("ProjectQueryController.list actor={}", actor.value)
+        log.debug("ProjectQueryController.list actor={} archived={}", actor.value, archived)
 
         // 2. 접근 가능한 프로젝트 목록 조회
-        val projects = projectQueryService.listAccessible(actor.value).map(ProjectResponse::from)
+        val projects = projectQueryService.listAccessible(actor.value, archived).map(ProjectResponse::from)
         return ResponseEntity.ok(DataResponse(projects))
     }
 
