@@ -13,6 +13,20 @@ import java.util.UUID
  *
  * `Require2faTestPermissionConfig`(SystemPermissionResolver 판) 동형이다.
  *
+ * ## 왜 prod 프로파일이 아니라 test 프로파일 + fake 인가 (D-TESTPROFILE)
+ * PR-4 아카이브 게이트의 PROJECT_ADMIN 판정은 [ComponentPermissionResolver] 명시 호출로 이뤄지는데,
+ * 이 포트의 실 구현체(`IdentityAccessComponentPermissionResolver`)는 **identity-access BC 소유**라
+ * issue-tracking 단독 테스트 클래스패스에 존재하지 않는다. 따라서 스펙 C1/DoD-4 의
+ * `@ActiveProfiles("prod")` 를 문자 그대로 적용하면 issue-tracking 에서 부팅 불가(빈 미해소)이거나 vacuous 하다.
+ *
+ * non-prod stub [com.bts.issue.component.adapter.AlwaysAllowComponentPermissionResolver]
+ * (`@Profile("!prod")`) 는 항상 `true` 를 반환하므로, 이를 그대로 쓰면 "비관리자 → 403" 테스트가
+ * 무조건 통과해 아무것도 검증하지 못한다(C1 vacuous). 그래서 admin actor 집합을 제어 가능한
+ * ground-truth fake 를 `@ActiveProfiles("test")` 에서 주입해, Task 5/7/9 의 비관리자 거부 테스트가
+ * 실제 판정을 관통하도록 한다.
+ * (memory: crossbc-resolver-nullable-fail-open — 빈 부재 시 fail-open 방지.)
+ * (memory: profile-scoped-bean-boot-failure — test 프로파일 빈 미해소 부팅 실패 방지.)
+ *
  * @see ControllableComponentPermissionResolver
  */
 @TestConfiguration
@@ -32,7 +46,8 @@ class ArchiveTestPermissionConfig {
      * @return 제어형 fake resolver
      */
     @Bean
-    fun archiveComponentPermissionResolver(): ControllableComponentPermissionResolver = ControllableComponentPermissionResolver(setOf(ADMIN_ACTOR_ID))
+    fun archiveComponentPermissionResolver(): ControllableComponentPermissionResolver =
+        ControllableComponentPermissionResolver(setOf(ADMIN_ACTOR_ID))
 }
 
 /**
