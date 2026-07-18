@@ -2,16 +2,10 @@
 
 package com.bts.issue
 
-import com.bts.shared.user.UserLookupPort
-import com.bts.shared.workflow.WorkflowKeyResolver
-import com.bts.shared.workflow.WorkflowStateCatalog
-import com.bts.shared.workflow.WorkflowTransitionPort
-import com.bts.workflow.scheme.application.port.IssueTypeUsagePort
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.test.mock.mockito.MockBean
 import org.springframework.context.ApplicationContext
 import org.springframework.scheduling.TaskScheduler
 import org.springframework.test.context.ActiveProfiles
@@ -33,35 +27,19 @@ import org.testcontainers.utility.DockerImageName
  * [com.bts.issue.repository.IssueTestcontainersBase] 와 동일한 quay.io/tembo/pg16-pgmq:latest 이미지로
  * 격리된 테스트 컨테이너를 기동한다.
  *
- * ## 왜 MockBean 이 네 개 필요한가
- * [com.bts.issue.application.IssueApplicationService] 가 [WorkflowTransitionPort], [WorkflowKeyResolver],
- * [UserLookupPort] 를 주입받고, [com.bts.issue.type.application.IssueTypeApplicationService] 가
- * [IssueTypeUsagePort] 를 주입받는다. 이 빈들은 모두 issue-tracking BC 밖
- * (project-workflow BC / identity-access BC) 에서 구현 빈이 제공되는 outbound port 이므로
- * issue-tracking 단독 부팅 시에는 존재하지 않는다. MockBean 으로 자리채우기(stub)를 제공한다.
+ * ## 왜 [CrossBcPortTestConfig] 가 필요한가
+ * [com.bts.issue.application.IssueApplicationService], [com.bts.issue.type.application.IssueTypeApplicationService],
+ * [com.bts.issue.project.application.ProjectCreateApplicationService](FR-PJ-01) 가 issue-tracking BC 밖
+ * (project-workflow BC / identity-access BC) 에서 구현 빈이 제공되는 outbound port 를 주입받는데,
+ * issue-tracking 단독 부팅 시에는 그 빈들이 존재하지 않는다. [CrossBcPortTestConfig] 가 Mockito stub 으로
+ * 자리채우기한다.
  *
  * ## ADR 참조
  * ADR 2026-06-02-bulk-operation-async-architecture — FR-IS-05 비동기 워커 토대
  */
-@SpringBootTest(classes = [IssueTrackingApplication::class])
+@SpringBootTest(classes = [IssueTrackingApplication::class, CrossBcPortTestConfig::class])
 @ActiveProfiles("test")
 class IssueTrackingApplicationContextTest {
-    // 다른 BC 가 구현 빈을 제공하는 outbound port — issue-tracking 단독 부팅 시 Mockito stub 으로 채움
-    @MockBean
-    lateinit var workflowTransitionPort: WorkflowTransitionPort
-
-    @MockBean
-    lateinit var workflowKeyResolver: WorkflowKeyResolver
-
-    @MockBean
-    lateinit var workflowStateCatalog: WorkflowStateCatalog
-
-    @MockBean
-    lateinit var userLookupPort: UserLookupPort
-
-    @MockBean
-    lateinit var issueTypeUsagePort: IssueTypeUsagePort
-
     @Autowired
     lateinit var applicationContext: ApplicationContext
 

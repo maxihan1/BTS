@@ -2,10 +2,14 @@
 
 package com.bts.workflow.scheme.migration
 
+import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
+import org.jooq.SQLDialect
+import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
+import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
@@ -93,10 +97,13 @@ class WorkflowSchemesMigrationIntegrationTest {
                 .load()
                 .migrate()
 
-            // YamlSeedService 는 Spring ApplicationReadyEvent 에서 workflows 테이블을 채운다.
-            // 통합 테스트는 Spring 컨텍스트 없이 실행되므로 4 표준 workflow seed 를 직접 INSERT.
-            // V004 의 default mapping seed (JOIN workflows) 는 Flyway migrate 시점에 workflows 가
-            // 비어 있어 0건 삽입됨. seed INSERT 후 mapping 을 수동으로 삽입해 검증한다.
+            // YamlSeedService 는 Spring ApplicationReadyEvent 에서 workflows 테이블을 채운 뒤
+            // seedAll() 말미에 SchemeIssueTypeMappingRepository.repairDefaultMappings() 를 호출해
+            // default mapping 을 백필한다(R6). V004 의 default mapping seed(JOIN workflows) 는
+            // Flyway migrate 시점에 workflows 가 비어 있어 0건 삽입되므로, 이 백필이 없으면
+            // mapping 은 0행으로 남는다. 통합 테스트는 Spring 컨텍스트 없이 실행되므로 4 표준
+            // workflow seed 는 직접 INSERT 로 대체하되, mapping 은 손수 심지 않고 프로덕션과
+            // 동일한 백필 경로(repairDefaultMappings)를 그대로 호출해 채운다.
             seedWorkflowsAndMappings()
         }
 
@@ -160,26 +167,14 @@ class WorkflowSchemesMigrationIntegrationTest {
                         """.trimIndent(),
                     )
                 }
-
-                // 4 default mapping seed — V004 migrate 시점에 workflows 가 비어 있어 0건.
-                // workflow seed 삽입 후 동일 로직으로 mapping 을 채운다.
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        """
-                        INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id)
-                        SELECT s.id, NULL, w.id
-                        FROM workflow_schemes s
-                        JOIN workflows w ON w.key = CASE s.key
-                            WHEN 'software-scheme'     THEN 'software-default'
-                            WHEN 'bug-tracking-scheme' THEN 'bug-tracking'
-                            WHEN 'simple-scheme'       THEN 'simple'
-                            WHEN 'kanban-scheme'       THEN 'kanban-basic'
-                        END
-                        ON CONFLICT ON CONSTRAINT uq_scheme_issue_type DO NOTHING
-                        """.trimIndent(),
-                    )
-                }
             }
+
+            // default mapping 백필 — SchemeIssueTypeMappingRepository.repairDefaultMappings() (R6).
+            // mapping 행을 손수 INSERT 하지 않는다 — 백필이 실제로 채우는지가 이 테스트의 검증
+            // 대상이다 (S-3 은폐 차단). YamlSeedService.seedAll() 이 프로덕션에서 호출하는 것과
+            // 동일한 백필 경로를 직접 호출한다.
+            val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+            SchemeIssueTypeMappingRepository(DSL.using(dataSource, SQLDialect.POSTGRES)).repairDefaultMappings()
         }
     }
 
@@ -327,7 +322,7 @@ class WorkflowSchemesMigrationIntegrationTest {
     // ── workflow_scheme_issue_type_mappings default mapping 4건 검증 ──────────
 
     @Test
-    fun `V004 workflow_scheme_issue_type_mappings 에 정확히 4 row 존재`() {
+    fun `Flyway + 백필 후 기본 매핑 4행이 실재한다 (R6 — 손수 심지 않음)`() {
         assertThat(countRows("workflow_scheme_issue_type_mappings")).isEqualTo(4)
     }
 

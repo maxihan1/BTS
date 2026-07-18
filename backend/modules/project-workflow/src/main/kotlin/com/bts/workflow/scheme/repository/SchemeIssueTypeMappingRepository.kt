@@ -3,6 +3,7 @@
 package com.bts.workflow.scheme.repository
 
 import com.bts.shared.issue.IssueTypeId
+import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
 import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import com.bts.workflow.scheme.exception.MappingDefaultDuplicateException
@@ -34,8 +35,41 @@ import java.util.UUID
  * @property dsl jOOQ DSLContext (SQL을 코드로 안전하게 작성하는 라이브러리의 핵심 진입점).
  */
 @Repository
-@Suppress("PropertyName", "VariableNaming") // jOOQ 필드 상수 — SQL 컬럼명 매칭 (UPPER_SNAKE_CASE). codegen 도입 시 typed table 로 교체 예정.
+@Suppress("PropertyName", "VariableNaming", "TooManyFunctions") // jOOQ 상수명 + repairDefaultMappings 헬퍼 분리로 함수 수 초과.
 class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
+    companion object {
+        /**
+         * 표준 스킴 key → 표준 워크플로우 key 매핑 (V201:140-145 seed 의 CASE 문과 정합).
+         *
+         * [repairDefaultMappings] 이 이 맵을 기준으로 두 가지를 처리한다.
+         * - R6 백필 — default mapping 이 아예 없는 스킴에 이 매핑대로 신규 생성.
+         * - R6-B dangling 수리 — YAML 재시드로 workflow 가 delete/reinsert 되어 UUID 가 바뀐 뒤
+         *   더 이상 존재하지 않는 workflow_id 를 가리키는 default mapping 을 이 매핑의 현재 UUID 로 갱신.
+         *
+         * admin 이 REST 로 설정한 **유효한** default mapping 은 건드리지 않는다(D11 — mapping 은 admin 이
+         * 자유롭게 변경 가능). 즉 무조건 `INSERT ... ON CONFLICT DO UPDATE` 형태의 UPSERT 는 금지 —
+         * 그렇게 하면 admin 이 바꾼 매핑이 매 부팅마다 여기 적힌 시스템 기본값으로 되돌아간다.
+         *
+         * `infra/local/seed-project.sql:49,60` 관례 — "workflow_id 는 재시드 시 UUID 가 바뀌므로 key 로 조회"
+         * — 를 따른다(단, seed-project.sql 은 로컬 dev 시드 1건(software-scheme)만 다뤄 4쌍 전부는 아니다).
+         *
+         * ### SSOT 경고 — 이 맵은 아래 두 곳과 값이 중복되며 SQL↔Kotlin 은 컴파일타임 정합 강제가 불가하다.
+         * 1. `V201__workflow_schemes.sql` §6 CASE 문 — Flyway seed.
+         * 2. `infra/local/seed-project.sql` — 로컬 dev 시드(software-scheme 1쌍만, 부분 중복).
+         * 이 맵 또는 V201 CASE 문 변경 시 반드시 서로 동기화할 것 — 정합은
+         * `SchemeIssueTypeMappingRepositoryIntegrationTest`(Kotlin↔DB 정합 assertion, Testcontainers)가
+         * fail-fast 로 검증한다. 테스트 코드에서 직접 참조할 수 있도록 `internal` 로 노출한다
+         * (private 이면 테스트가 이 맵을 재선언해야 해 DRY drift 를 오히려 재생산한다).
+         */
+        internal val DEFAULT_WORKFLOW_KEY_BY_SCHEME_KEY: Map<String, String> =
+            mapOf(
+                "software-scheme" to "software-default",
+                "bug-tracking-scheme" to "bug-tracking",
+                "simple-scheme" to "simple",
+                "kanban-scheme" to "kanban-basic",
+            )
+    }
+
     private val log = LoggerFactory.getLogger(javaClass)
 
     // V004 테이블은 jOOQ codegen 범위(V001 only) 밖 — DSL.table()/DSL.field() 동적 참조 사용.
@@ -48,6 +82,12 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
 
     // TIMESTAMPTZ → jOOQ 는 OffsetDateTime 으로 읽음. toInstant() 변환은 toMapping() 에서 처리.
     private val COL_CREATED_AT = DSL.field("created_at", OffsetDateTime::class.java)
+
+    // workflow_schemes 테이블도 workflow_scheme_issue_type_mappings 와 마찬가지로 jOOQ codegen 범위 밖 —
+    // repairDefaultMappings 에서 스킴 key → id 조회용으로만 사용한다 (untyped 참조).
+    private val SCHEME_TABLE = DSL.table("workflow_schemes")
+    private val SCHEME_ID = DSL.field("workflow_schemes.id", Long::class.java)
+    private val SCHEME_KEY = DSL.field("workflow_schemes.key", String::class.java)
 
     /**
      * 매핑을 저장하고 DB 에서 할당된 id 를 포함한 [SchemeIssueTypeMapping] 을 반환한다.
@@ -278,6 +318,157 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
             .deleteFrom(TABLE)
             .where(COL_ID.eq(id))
             .execute()
+    }
+
+    /**
+     * 표준 4 스킴의 default mapping(issue_type_id IS NULL) 을 복구한다.
+     *
+     * R6(빈 DB 백필)와 R6-B(YAML 재시드로 workflow UUID 가 바뀐 뒤 dangling 매핑 수리) 를 공통 처리한다.
+     * 두 부분으로 구성된다.
+     * 1. dangling 수리 — workflow_id 가 더 이상 workflows 에 존재하지 않는(옛 UUID) default mapping 을
+     *    현재 유효한 workflow id 로 갱신한다.
+     * 2. 없는 것만 insert — 아직 default mapping 이 없는 스킴에 한해 신규 생성한다.
+     *
+     * admin 이 REST 로 변경한 유효한 default mapping 은 두 조건 모두 해당하지 않으므로 그대로 보존된다.
+     */
+    @Transactional
+    fun repairDefaultMappings() {
+        DEFAULT_WORKFLOW_KEY_BY_SCHEME_KEY.forEach { (schemeKey, workflowKey) ->
+            val schemeId = findSchemeIdByKey(schemeKey) ?: return@forEach
+            val workflowId = findWorkflowIdByKey(workflowKey) ?: return@forEach
+
+            repairDanglingDefaultMapping(schemeId, workflowId)
+            insertMissingDefaultMapping(schemeId, workflowId)
+        }
+    }
+
+    private fun findSchemeIdByKey(schemeKey: String): Long? =
+        dsl
+            .select(SCHEME_ID)
+            .from(SCHEME_TABLE)
+            .where(SCHEME_KEY.eq(schemeKey))
+            .fetchOne(SCHEME_ID)
+
+    private fun findWorkflowIdByKey(workflowKey: String): UUID? =
+        dsl
+            .select(WORKFLOWS.ID)
+            .from(WORKFLOWS)
+            .where(WORKFLOWS.KEY.eq(workflowKey))
+            .fetchOne(WORKFLOWS.ID)
+
+    /** workflow_id 가 더 이상 workflows 에 존재하지 않는(dangling) default mapping 을 유효한 workflowId 로 갱신한다. */
+    private fun repairDanglingDefaultMapping(
+        schemeId: Long,
+        workflowId: UUID,
+    ) {
+        val updated =
+            dsl
+                .update(TABLE)
+                .set(COL_WORKFLOW_ID, workflowId)
+                .where(COL_SCHEME_ID.eq(schemeId))
+                .and(COL_ISSUE_TYPE_ID.isNull)
+                .and(COL_WORKFLOW_ID.notIn(DSL.select(WORKFLOWS.ID).from(WORKFLOWS)))
+                .execute()
+        if (updated > 0) {
+            log.info("repairDefaultMappings dangling 매핑 수리 — scheme_id={} workflow_id={}", schemeId, workflowId)
+        }
+    }
+
+    /** 스킴에 default mapping 이 없는 경우에만 신규 생성한다. 이미 있으면(admin 설정 포함) 무변경. */
+    private fun insertMissingDefaultMapping(
+        schemeId: Long,
+        workflowId: UUID,
+    ) {
+        val alreadyExists =
+            dsl.fetchExists(
+                DSL
+                    .selectOne()
+                    .from(TABLE)
+                    .where(COL_SCHEME_ID.eq(schemeId))
+                    .and(COL_ISSUE_TYPE_ID.isNull),
+            )
+        if (alreadyExists) return
+
+        dsl
+            .insertInto(TABLE)
+            .columns(COL_SCHEME_ID, COL_ISSUE_TYPE_ID, COL_WORKFLOW_ID)
+            .values(schemeId, null, workflowId)
+            .execute()
+        log.info("repairDefaultMappings default 매핑 백필 — scheme_id={} workflow_id={}", schemeId, workflowId)
+    }
+
+    // ── R6-B 재적재 매핑 기록→재연결 (★★ 수정판 — default + admin 특정타입 전부 보존) ──────
+
+    /**
+     * [workflowId] 를 가리키는 매핑 전체를 (scheme_id, issue_type_id) 튜플로 조회한 뒤 그 자리에서 삭제(detach)한다.
+     *
+     * 조회+삭제를 한 원자 연산으로 묶은 명령형(command) 메서드다 — 이름에 순수 조회(find)로 오인될
+     * 여지를 없애기 위해 `detach` 를 사용한다 (CQS: Command-Query Separation 위반 방지).
+     *
+     * YAML structural 변경(state/transition 추가·삭제) 으로 인한 workflow 재적재
+     * (`YamlSeedService.applyIfChanged`) 직전에 호출한다. `workflow_scheme_issue_type_mappings.workflow_id`
+     * 는 FK `ON DELETE RESTRICT` (V201:84) 이므로, workflows 행을 삭제하려면 먼저 이 매핑들을
+     * 제거해야 한다. default 매핑(issue_type_id NULL) 뿐 아니라 admin 이 REST 로 건 특정 타입
+     * 매핑(issue_type_id NOT NULL) 도 함께 기록·삭제한다 — 특정타입 매핑만 남기면 FK RESTRICT 로
+     * workflows 삭제 자체가 실패한다.
+     *
+     * 기록한 튜플은 [reinsertMappings] 로 새 workflow UUID 에 재연결해야 한다.
+     *
+     * @param workflowId 재적재 대상 옛 workflow UUID.
+     * @return (scheme_id, issue_type_id) 튜플 목록. issue_type_id=null 은 default mapping. 매핑이 없으면 빈 목록.
+     */
+    @Transactional
+    fun detachMappingsByWorkflowId(workflowId: UUID): List<Pair<Long, IssueTypeId?>> {
+        val tuples =
+            dsl
+                .select(COL_SCHEME_ID, COL_ISSUE_TYPE_ID)
+                .from(TABLE)
+                .where(COL_WORKFLOW_ID.eq(workflowId))
+                .fetch()
+                .map { record ->
+                    val schemeId =
+                        record.get(COL_SCHEME_ID) ?: error("scheme_id is null — DB NOT NULL 제약 위반")
+                    val issueTypeId = record.get(COL_ISSUE_TYPE_ID)?.let { IssueTypeId(it) }
+                    schemeId to issueTypeId
+                }
+
+        if (tuples.isNotEmpty()) {
+            dsl.deleteFrom(TABLE).where(COL_WORKFLOW_ID.eq(workflowId)).execute()
+            log.debug(
+                "detachMappingsByWorkflowId — {}건 기록 후 삭제 (workflow_id={})",
+                tuples.size,
+                workflowId,
+            )
+        }
+
+        return tuples
+    }
+
+    /**
+     * [detachMappingsByWorkflowId] 로 기록한 튜플들을 새 workflow UUID 로 재INSERT 한다.
+     *
+     * YAML 재적재로 workflow 가 delete/reinsert 되어 UUID 가 바뀐 뒤, 기록→재연결 흐름을 완성한다.
+     * 원자성은 호출자(`YamlSeedService.seedAll`) 의 `@Transactional` 경계에 위임한다 — 실패 시
+     * delete/insert 전체가 롤백된다.
+     *
+     * @param tuples 재연결할 (scheme_id, issue_type_id) 튜플 목록.
+     * @param newWorkflowId INSERT 시 사용할 새 workflow UUID.
+     */
+    @Transactional
+    fun reinsertMappings(
+        tuples: List<Pair<Long, IssueTypeId?>>,
+        newWorkflowId: UUID,
+    ) {
+        tuples.forEach { (schemeId, issueTypeId) ->
+            dsl
+                .insertInto(TABLE)
+                .columns(COL_SCHEME_ID, COL_ISSUE_TYPE_ID, COL_WORKFLOW_ID)
+                .values(schemeId, issueTypeId?.value, newWorkflowId)
+                .execute()
+        }
+        if (tuples.isNotEmpty()) {
+            log.debug("reinsertMappings — {}건 재연결 완료 (new workflow_id={})", tuples.size, newWorkflowId)
+        }
     }
 
     // ── 내부 변환 ───────────────────────────────────────────────────────────────

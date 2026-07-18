@@ -2,19 +2,18 @@
 
 package com.bts.issue.version
 
+import com.bts.issue.CrossBcPortTestConfig
 import com.bts.issue.IssueTrackingApplication
 import com.bts.issue.version.adapter.AlwaysAllowVersionPermissionResolver
 import com.bts.shared.permission.VersionPermissionResolver
 import com.bts.shared.user.UserLookupPort
 import com.bts.shared.workflow.WorkflowKeyResolver
-import com.bts.shared.workflow.WorkflowStateCatalog
 import com.bts.shared.workflow.WorkflowTransitionPort
 import com.bts.workflow.scheme.application.port.IssueTypeUsagePort
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.test.mock.mockito.MockBean
 import org.springframework.context.ApplicationContext
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
@@ -44,26 +43,11 @@ import org.testcontainers.utility.DockerImageName
  * ## 인프라 (ComponentPermissionResolverBootTest 동형)
  * issue-tracking 단독 부팅 시 다른 BC 가 제공하는 outbound port([WorkflowTransitionPort],
  * [WorkflowKeyResolver], [UserLookupPort], [IssueTypeUsagePort])는 존재하지 않으므로
- * MockBean 으로 자리채우기한다. jOOQ/Flyway/DataSource 빈 때문에 Testcontainers PostgreSQL 이 필요하다.
+ * [CrossBcPortTestConfig] 로 자리채우기한다. jOOQ/Flyway/DataSource 빈 때문에 Testcontainers PostgreSQL 이 필요하다.
  */
-@SpringBootTest(classes = [IssueTrackingApplication::class])
+@SpringBootTest(classes = [IssueTrackingApplication::class, CrossBcPortTestConfig::class])
 @ActiveProfiles("test")
 class VersionPermissionResolverBootTest {
-    @MockBean
-    lateinit var workflowTransitionPort: WorkflowTransitionPort
-
-    @MockBean
-    lateinit var workflowKeyResolver: WorkflowKeyResolver
-
-    @MockBean
-    lateinit var workflowStateCatalog: WorkflowStateCatalog
-
-    @MockBean
-    lateinit var userLookupPort: UserLookupPort
-
-    @MockBean
-    lateinit var issueTypeUsagePort: IssueTypeUsagePort
-
     @Autowired
     lateinit var context: ApplicationContext
 

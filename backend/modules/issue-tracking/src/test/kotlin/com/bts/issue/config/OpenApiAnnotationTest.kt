@@ -2,12 +2,8 @@
 
 package com.bts.issue.config
 
+import com.bts.issue.CrossBcPortTestConfig
 import com.bts.issue.IssueTrackingApplication
-import com.bts.shared.user.UserLookupPort
-import com.bts.shared.workflow.WorkflowKeyResolver
-import com.bts.shared.workflow.WorkflowStateCatalog
-import com.bts.shared.workflow.WorkflowTransitionPort
-import com.bts.workflow.scheme.application.port.IssueTypeUsagePort
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -16,7 +12,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.test.mock.mockito.MockBean
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
@@ -42,29 +37,14 @@ import org.testcontainers.utility.DockerImageName
  *
  * ## 부팅 패턴
  * [OpenApiDocsIntegrationTest] 와 동일한 MOCK + MockMvc 패턴 사용.
- * 다른 BC port 구현체가 issue-tracking 단독 부팅 시 부재하므로 @MockBean stub 처리.
+ * 다른 BC port 구현체가 issue-tracking 단독 부팅 시 부재하므로 [CrossBcPortTestConfig] stub 처리.
  */
 @SpringBootTest(
-    classes = [IssueTrackingApplication::class],
+    classes = [IssueTrackingApplication::class, CrossBcPortTestConfig::class],
     webEnvironment = SpringBootTest.WebEnvironment.MOCK,
 )
 @ActiveProfiles("test")
 class OpenApiAnnotationTest {
-    @MockBean
-    lateinit var workflowTransitionPort: WorkflowTransitionPort
-
-    @MockBean
-    lateinit var workflowKeyResolver: WorkflowKeyResolver
-
-    @MockBean
-    lateinit var workflowStateCatalog: WorkflowStateCatalog
-
-    @MockBean
-    lateinit var userLookupPort: UserLookupPort
-
-    @MockBean
-    lateinit var issueTypeUsagePort: IssueTypeUsagePort
-
     @Autowired
     private lateinit var webApplicationContext: WebApplicationContext
 

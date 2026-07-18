@@ -13,6 +13,7 @@ import com.bts.workflow.expression.SpelEvaluator
 import com.bts.workflow.port.outbound.PermissionResolver
 import com.bts.workflow.repository.DefaultWorkflowDefinitionRepository
 import com.bts.workflow.repository.WorkflowRepository
+import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.bts.workflow.seed.PostActionYamlDto
 import com.bts.workflow.seed.StateYamlDto
 import com.bts.workflow.seed.TransitionYamlDto
@@ -166,6 +167,7 @@ class WorkflowEngineWiringIntegrationTest {
                     DefaultResourceLoader(),
                     validatorFactory,
                     postActionFactory,
+                    SchemeIssueTypeMappingRepository(dsl),
                 )
 
             // 테스트용 워크플로우 시드

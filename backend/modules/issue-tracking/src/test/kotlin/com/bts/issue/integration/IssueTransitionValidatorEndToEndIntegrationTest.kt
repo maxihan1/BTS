@@ -323,6 +323,7 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
             dsl: DSLContext,
             validatorFactory: DefaultWorkflowValidatorFactory,
             postActionFactory: DefaultWorkflowPostActionFactory,
+            mappingRepo: SchemeIssueTypeMappingRepository,
         ): YamlSeedService =
             YamlSeedService(
                 workflowRepository = workflowRepo,
@@ -330,6 +331,7 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
                 resourceLoader = DefaultResourceLoader(),
                 validatorFactory = validatorFactory,
                 postActionFactory = postActionFactory,
+                mappingRepository = mappingRepo,
             )
 
         // ── Application Service + Controller ──────────────────────────────────

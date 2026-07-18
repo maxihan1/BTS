@@ -11,6 +11,7 @@ import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANS
 import com.bts.workflow.jooq.tables.WorkflowValidators.Companion.WORKFLOW_VALIDATORS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
 import com.bts.workflow.repository.WorkflowRepository
+import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -142,7 +143,18 @@ val workflowYamlValidation: Validation<WorkflowYamlDto> =
  * 따라서 평상시(YAML 무변경) 재시드 시 런타임 post-action 이 보존된다.
  * 단, YAML structural 변경(state 추가/삭제 등) 으로 deleteWorkflow→reinsert 가 발생하면
  * CASCADE 로 런타임 post-action 이 소실된다 — 알려진 한계. YAML 변경 시 운영팀이 post-action 을
- * 재설정해야 한다.
+ * 재설정해야 한다. 단, 이 CASCADE 는 workflows→workflow_transitions→workflow_post_actions 체인에
+ * 한정된다. 스킴 매핑이 그 workflow 를 가리키는 상태라면 아래 §재적재 매핑 기록→재연결 로 그 매핑을
+ * 먼저 제거하지 않는 한 `workflow_scheme_issue_type_mappings` 의 FK `ON DELETE RESTRICT` 로
+ * deleteWorkflow 자체가 실패해 CASCADE 에 도달하지 못한다 (post-action 소실이 아니라 재적재 실패).
+ *
+ * ### 재적재 매핑 기록→재연결 (R6-B, ★★ 수정판)
+ * `workflow_scheme_issue_type_mappings.workflow_id` 는 FK `ON DELETE RESTRICT` 다. structural
+ * 변경으로 [applyIfChanged] 가 deleteWorkflow→insertWorkflow 를 수행하기 전, 그 workflow 를
+ * 가리키는 매핑 전체(default + admin 이 건 특정타입)를 [SchemeIssueTypeMappingRepository]로
+ * 기록→삭제하고, 새 UUID 발급 후 같은 튜플로 재INSERT 한다. `seedAll` 의 `@Transactional` 경계
+ * 안이므로 실패 시 전체 롤백된다. 빈 DB 최초 부팅용 default 매핑 백필은 별도로 `seedAll` 말미에
+ * [SchemeIssueTypeMappingRepository.repairDefaultMappings] 를 호출해 처리한다.
  *
  * @param workflowRepository 워크플로우 aggregate 조회/저장 리포지토리.
  * @param dsl jOOQ DSLContext. 전이/상태/validator/postAction 직접 INSERT 에 사용한다.
@@ -150,6 +162,9 @@ val workflowYamlValidation: Validation<WorkflowYamlDto> =
  * @param yamlMapper YAML 파일 역직렬화용 Jackson ObjectMapper (YAMLFactory 기반).
  * @param validatorFactory validator type dry-run 검증용 팩토리. 미지원 type 에 [IllegalArgumentException] 을 던진다.
  * @param postActionFactory postAction type dry-run 검증용 팩토리. 미지원 type 에 [IllegalArgumentException] 을 던진다.
+ * @param mappingRepository 스킴-이슈타입 매핑 기록→재연결 및 R6 default 매핑 백필용 리포지토리.
+ *   Spring 컨텍스트에서는 등록된 Bean 이 주입된다. 손수 생성한 인스턴스는 `@Repository` 프록시 밖이라
+ *   향후 `@Transactional` 우회를 잠복시킬 수 있어 기본값을 두지 않고 필수 주입으로 강제한다.
  */
 @Service
 class YamlSeedService(
@@ -158,6 +173,7 @@ class YamlSeedService(
     private val resourceLoader: ResourceLoader,
     private val validatorFactory: WorkflowValidatorFactory,
     private val postActionFactory: WorkflowPostActionFactory,
+    private val mappingRepository: SchemeIssueTypeMappingRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -207,6 +223,11 @@ class YamlSeedService(
             val dto = parseAndValidate(key, content)
             applyIfChanged(dto)
         }
+
+        // R6 백필 — 빈 DB 최초 부팅 시 표준 4 스킴 default 매핑을 보강한다. 위치가 load-bearing이다:
+        // applyIfChanged 는 !isDirty 면 skip 하므로 루프 안에 두면 기존 DB(EC-9)에서 안 돈다.
+        // 루프 밖(4 워크플로우 처리 완료 후) 1회 호출해 매 seedAll() 마다 dangling/누락을 보정한다.
+        mappingRepository.repairDefaultMappings()
 
         log.info("YamlSeedService 완료 — 표준 4 워크플로우 시드 점검 끝")
     }
@@ -284,7 +305,9 @@ class YamlSeedService(
      * - transitions from/to/name 변경 여부
      * - 전이별 validators/post_actions type 목록 변경 여부
      *
-     * 변경 감지 시 CASCADE DELETE 후 전체 재삽입 한다.
+     * 변경 감지 시 매핑을 기록→삭제(FK RESTRICT 회피) 한 뒤 CASCADE DELETE·전체 재삽입하고,
+     * 새 workflow UUID 로 기록해 둔 매핑을 재연결한다 (R6-B, ★★ 수정판 — default + admin
+     * 특정타입 매핑 전부 보존).
      */
     private fun applyIfChanged(dto: WorkflowYamlDto) {
         val existing = workflowRepository.findByKey(dto.key)
@@ -296,12 +319,17 @@ class YamlSeedService(
 
         if (existing != null) {
             log.info("워크플로우 '{}' — 변경 감지, 재적재 시작", dto.key)
+            val oldWorkflowId =
+                workflowRepository.findIdByKey(dto.key)
+                    ?: error("워크플로우 '${dto.key}' UUID 조회 실패 — findByKey 는 성공했으나 findIdByKey 가 실패")
+            val mappingTuples = mappingRepository.detachMappingsByWorkflowId(oldWorkflowId)
             deleteWorkflow(dto.key)
+            val newWorkflowId = insertWorkflow(dto)
+            mappingRepository.reinsertMappings(mappingTuples, newWorkflowId)
         } else {
             log.info("워크플로우 '{}' — 신규 적재", dto.key)
+            insertWorkflow(dto)
         }
-
-        insertWorkflow(dto)
     }
 
     /** 같은 워크플로우 안에 (from, to) 쌍이 중복 정의된 전이가 있으면 [IllegalStateException] 을 던진다. */
@@ -463,6 +491,10 @@ class YamlSeedService(
      * workflows 테이블에서 key 로 워크플로우를 삭제한다.
      *
      * workflow_states / workflow_transitions 는 ON DELETE CASCADE 이므로 자동 삭제된다.
+     * `workflow_scheme_issue_type_mappings.workflow_id` 는 FK `ON DELETE RESTRICT` (V201:84) 이므로,
+     * 이 workflow 를 가리키는 매핑이 남아 있으면 이 DELETE 자체가 FK 위반으로 실패한다.
+     * 호출자([applyIfChanged])가 이 메서드 호출 전에 [SchemeIssueTypeMappingRepository.detachMappingsByWorkflowId]
+     * 로 매핑을 기록→삭제(detach)해 RESTRICT 를 회피한다.
      */
     private fun deleteWorkflow(key: String) {
         dsl.deleteFrom(WORKFLOWS)
@@ -479,8 +511,11 @@ class YamlSeedService(
      * 1. workflows 행 삽입 → workflow UUID 획득
      * 2. workflow_states 행 삽입 → state key → UUID 매핑 구성
      * 3. workflow_transitions 행 삽입 → transition UUID 획득 후 validators/post_actions 삽입
+     *
+     * @return 새로 발급된 workflows.id (UUID). 호출자([applyIfChanged])가 재적재 시
+     *   [SchemeIssueTypeMappingRepository.reinsertMappings] 로 매핑을 재연결하는 데 사용한다.
      */
-    private fun insertWorkflow(dto: WorkflowYamlDto) {
+    private fun insertWorkflow(dto: WorkflowYamlDto): java.util.UUID {
         // 1. workflows 삽입
         val workflowId =
             dsl.insertInto(WORKFLOWS)
@@ -541,6 +576,8 @@ class YamlSeedService(
             dto.transitions.sumOf { it.validators.size },
             dto.transitions.sumOf { it.postActions.size },
         )
+
+        return workflowId
     }
 
     /**

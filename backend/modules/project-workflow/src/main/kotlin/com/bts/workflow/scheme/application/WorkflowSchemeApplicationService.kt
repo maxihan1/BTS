@@ -362,19 +362,45 @@ class WorkflowSchemeApplicationService(
      * 프로젝트에 워크플로우 스킴을 배정(UPSERT)하고 배정 결과를 반환한다.
      *
      * ## 권한
-     * [WorkflowSchemePermission.ASSIGN_SCHEME] — [WorkflowSchemeScope.Project] 범위 검증.
-     * 프로젝트 어드민 레벨 권한이 필요하다.
+     * 사용자 명시 배정(실 actor UUID)은 [WorkflowSchemePermission.ASSIGN_SCHEME] —
+     * [WorkflowSchemeScope.Project] 범위 검증을 통과해야 한다(프로젝트 어드민 레벨 권한).
+     * 단, [SYSTEM_ACTOR](nil UUID sentinel)로 호출된 EC-1 D10 auto-assign 은 권한 검사를 우회한다
+     * (아래 "## EC-1 D10 auto-assign 권한 우회" 참조).
      *
      * ## 트랜잭션
      * `@Transactional` 클래스 어노테이션 상속. [assignmentRepo.saveAssignment] 와
      * [eventPublisher.publish] 가 동일 트랜잭션 안에서 실행된다 (outbox 패턴).
      * [eventPublisher] 는 [Propagation.MANDATORY] 이므로 별도 처리 불필요.
      *
-     * ## EC-1 D10 auto-assign
-     * [findAssignedScheme] 이 assignment 없는 프로젝트를 감지했을 때 SYSTEM_ACTOR 로 이 메서드를 호출한다.
-     * `assigned_by = SYSTEM_ACTOR.raw` (UUID sentinel: 00000000-0000-0000-0000-000000000000).
+     * ## EC-1 D10 auto-assign 권한 우회 (SYSTEM_ACTOR 한정)
+     * [findAssignedScheme] · [com.bts.workflow.scheme.adapter.inbound.WorkflowResolverImpl.resolveFor] 이
+     * assignment 없는 신규 프로젝트를 감지하면 [SYSTEM_ACTOR] 로 이 메서드를 호출한다
+     * (`assigned_by = 00000000-0000-0000-0000-000000000000`).
      *
-     * @param actor 작업 수행 행위자. ASSIGN_SCHEME 권한이 필요하다. SYSTEM_ACTOR 도 허용.
+     * **왜 우회하는가.** prod 판정기
+     * [com.atlas.bts.identity.permission.IdentityAccessWorkflowSchemePermissionResolver] 의 Project 범위
+     * 판정은 `membershipRepo.findByProjectAndUser` 로 actor 의 **프로젝트 멤버십**을 먼저 요구한다.
+     * SYSTEM_ACTOR 는 `users` 에 존재하지 않는 합성 sentinel 이라 어떤 프로젝트의 멤버도 될 수 없으므로,
+     * 우회하지 않으면 EC-1 D10 auto-assign 이 prod 에서 **항상** [WorkflowSchemeAccessDeniedException](500)
+     * 으로 실패한다(FR-PJ-01 T12 S10 이 실측으로 드러낸 선재 결함, `infra/local/seed-project.sql:10-12` 문서화).
+     *
+     * **왜 안전한가 (악용 표면 없음). load-bearing 방어는 아래 3가지다 — 이 함수의 외부 도달 경로는
+     * project-workflow 의 [ProjectWorkflowSchemeController] 이지 issue-tracking 이 아님에 주의.**
+     * - **외부 진입점이 우회 전에 무조건 권한을 검사한다.** 유일한 외부 도달 경로
+     *   [ProjectWorkflowSchemeController.assignScheme] 은 이 서비스를 호출하기 **전에** 실 actor 로
+     *   `permissionResolver.requirePermission(ASSIGN_SCHEME, Project)` 를 수행한다. 이 우회는 그 컨트롤러
+     *   게이트를 건드리지 않는다 — 설령 nil actor 가 컨트롤러에 도달해도 서비스 우회 전에 컨트롤러가 막는다.
+     *   (⚠️ project-workflow `ActorId`([port/outbound/PermissionResolver.kt])는 nil UUID 를 거부하지 않는다 —
+     *   UUID 정규식만 검사한다. issue-tracking `ActorId` 와 달리 nil 방어가 없으므로, 컨트롤러 선게이트를
+     *   "중복"으로 제거하면 이 우회 근거가 무너진다. 컨트롤러 `requirePermission` 은 load-bearing 이다.)
+     * - **nil sentinel 은 실제 주체가 아니다.** prod 판정기가 비멤버를 거부하므로(위 "왜 우회하는가"), nil 은
+     *   설령 검사에 도달해도 어차피 거부된다. 우회는 그 거부를 "auto-assign 만" 통과시키는 것이지 실 사용자에게
+     *   권한을 부여하지 않는다. 실 actor UUID(RFC 4122 V4)는 nil sentinel 과 충돌 불가라 사용자 배정 경로는 그대로 권한 검사.
+     * - **내부 호출부는 표준 스킴(`software-scheme`)만 배정한다** — 커스텀 스킴을 SYSTEM_ACTOR 로 배정하는
+     *   경로는 존재하지 않는다. 호출부는 [findAssignedScheme]·[WorkflowResolverImpl.resolveFor] 둘뿐, 둘 다 하드코딩.
+     *
+     * @param actor 작업 수행 행위자. 실 actor 는 ASSIGN_SCHEME 권한이 필요하다.
+     *   [SYSTEM_ACTOR](EC-1 D10 auto-assign)는 권한 검사를 우회한다.
      * @param projectId 스킴을 배정할 프로젝트 UUID (projects.id UUID — V202 에서 BIGINT → UUID 정정).
      * @param projectKey 권한 범위 결정에 사용할 프로젝트 키 (예. "ATLAS").
      * @param schemeKey 배정할 스킴 키.
@@ -388,11 +414,16 @@ class WorkflowSchemeApplicationService(
         schemeKey: WorkflowSchemeKey,
     ): ProjectWorkflowSchemeAssignment {
         val actorUuid = actor.toUuid()
-        permissionResolver.requirePermission(
-            actorUuid,
-            WorkflowSchemePermission.ASSIGN_SCHEME,
-            WorkflowSchemeScope.Project(projectKey),
-        )
+        // EC-1 D10 auto-assign 우회 — SYSTEM_ACTOR(nil UUID sentinel)만 권한 검사를 건너뛴다.
+        // 사용자 명시 배정(실 actor UUID)은 아래 requirePermission 을 그대로 통과해야 한다.
+        // 우회가 안전한 이유·범위는 아래 KDoc "## EC-1 D10 auto-assign 권한 우회" 참조.
+        if (actorUuid != SYSTEM_ACTOR_UUID) {
+            permissionResolver.requirePermission(
+                actorUuid,
+                WorkflowSchemePermission.ASSIGN_SCHEME,
+                WorkflowSchemeScope.Project(projectKey),
+            )
+        }
         val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)
         val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }
 

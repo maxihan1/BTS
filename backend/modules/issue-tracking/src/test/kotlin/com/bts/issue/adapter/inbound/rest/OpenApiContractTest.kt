@@ -2,12 +2,8 @@
 
 package com.bts.issue.adapter.inbound.rest
 
+import com.bts.issue.CrossBcPortTestConfig
 import com.bts.issue.IssueTrackingApplication
-import com.bts.shared.user.UserLookupPort
-import com.bts.shared.workflow.WorkflowKeyResolver
-import com.bts.shared.workflow.WorkflowStateCatalog
-import com.bts.shared.workflow.WorkflowTransitionPort
-import com.bts.workflow.scheme.application.port.IssueTypeUsagePort
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.assertj.core.api.Assertions.assertThat
@@ -17,7 +13,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.test.mock.mockito.MockBean
 import org.springframework.http.MediaType
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
 import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers
@@ -49,7 +44,7 @@ import javax.sql.DataSource
  *
  * ## 부팅 패턴
  * [com.bts.issue.config.OpenApiDocsIntegrationTest] 와 동일한 MOCK + MockMvc 패턴.
- * 다른 BC port 구현체 부재를 @MockBean 으로 처리. AlwaysAllow* stub 이 @Profile("!prod") 로 자동 활성.
+ * 다른 BC port 구현체 부재를 [CrossBcPortTestConfig] 로 처리. AlwaysAllow* stub 이 @Profile("!prod") 로 자동 활성.
  *
  * ## TDD CONCERN — cursor 타임존 일관성
  * T4/T5 는 CursorCodec (Instant→OffsetDateTime UTC 인코딩) ↔ repo seek (OffsetDateTime keyset)
@@ -57,28 +52,13 @@ import javax.sql.DataSource
  * 단위 테스트가 잡지 못하는 production 버그(누락·중복·순환)가 드러나면 BLOCKED 보고.
  */
 @SpringBootTest(
-    classes = [IssueTrackingApplication::class],
+    classes = [IssueTrackingApplication::class, CrossBcPortTestConfig::class],
     webEnvironment = SpringBootTest.WebEnvironment.MOCK,
 )
 @ActiveProfiles("test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @Suppress("TooManyFunctions")
 class OpenApiContractTest {
-    @MockBean
-    lateinit var workflowTransitionPort: WorkflowTransitionPort
-
-    @MockBean
-    lateinit var workflowKeyResolver: WorkflowKeyResolver
-
-    @MockBean
-    lateinit var workflowStateCatalog: WorkflowStateCatalog
-
-    @MockBean
-    lateinit var userLookupPort: UserLookupPort
-
-    @MockBean
-    lateinit var issueTypeUsagePort: IssueTypeUsagePort
-
     @Autowired
     private lateinit var webApplicationContext: WebApplicationContext
 
