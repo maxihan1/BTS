@@ -4,6 +4,13 @@ import { Tabs as TabsPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * 탭 프리미티브 루트 — Radix `Tabs.Root` 래퍼.
+ *
+ * 같은 라우트 안에서 패널(콘텐츠)을 전환하는 용도로만 사용한다. 라우트(화면) 자체를
+ * 이동하는 네비게이션에는 쓰지 말 것 — 그 경우 nav + `Link`를 사용한다(정본 plan §163,
+ * PR19 이슈 상세 활동 탭이 이 프리미티브의 정당한 소비처).
+ */
 function Tabs({
   className,
   ...props
