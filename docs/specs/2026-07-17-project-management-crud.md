@@ -598,6 +598,8 @@ PR-1 에 두면 PR-2 는 **소비만** 하므로 PR-2 의 BC 수가 **2개로 �
 > 위 표는 §2.4-B 교차 중 일부만 돌린 **중간 결과**이며 **~30곳** 규모다. **후속 FR 은 이 표를 물려받지 말고 §2.4-B 5중 교차를 처음부터 다시 돌린다.**
 > 숫자를 물려받는 순간 그 숫자가 눈가리개가 된다 — 이 스펙이 그 실수를 **두 번** 했다(1회차 B1, 2회차 N3).
 
+**전역(non-project-scoped) issue-tracking 쓰기도 이번 범위 밖** (PR-4 DoD-5 전수 열거에서 발견, Maxi 확정 이연). `IssueTypeApplicationService.delete(reassignTo)` → `IssueTypeRepository.reassignIssues(from, to)` 는 `UPDATE issues SET type_id=? WHERE type_id=?` 를 **프로젝트 필터 없이** 실행해 여러 프로젝트(아카이브 포함)의 이슈를 동시에 건드린다. 전역 이슈타입 삭제라는 **관리 작업**이라 단일 `projectId`/`issueKey` 게이트 지점이 없어 `ProjectArchiveGuard.check`/`checkByIssue` 패턴이 부적합하다. 아카이브 freeze(S6)를 전역 op 에 어떻게 적용할지는 cross-BC 확장과 같은 후속 FR 결정 사항(옵션: 아카이브 이슈 포함 시 삭제 차단 vs 아카이브 이슈 스킵). PR-4 는 프로젝트 스코프 쓰기만 잠근다.
+
 > **FR ID 를 지금 부여하지 않는 이유** — 전수 동기화 8종(`CLAUDE.md:29-36`)이 이번 PR 로 딸려온다. 착수 시점에 `/bts` 로 신설한다. **이번 작업 FR 총수 128 유지.**
 
 **각 PR 은 자기 plan 파일을 갖는다** (`DEVELOPMENT.md §4`). 이 문서는 **마스터 스펙**이고, 각 PR 착수 시 `/bts` 로 상세화한다 (FR-AT-07 마스터 스펙 §B 선례 동형).
