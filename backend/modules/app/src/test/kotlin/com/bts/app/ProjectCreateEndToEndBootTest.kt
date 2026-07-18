@@ -47,6 +47,12 @@ import java.util.UUID
  * [ProjectCreateRepository](jOOQ) 가 같은 tx-aware DataSource 위에서 정말로 하나의 트랜잭션을 공유하는지
  * 실증한다(DATA.md §6 I1).
  *
+ * ## codereview #3 — create() 자체의 @Transactional 경계 실증 (세 번째 테스트)
+ * 위 DoD-11 은 [TransactionTemplate] 로 테스트가 직접 연 트랜잭션 안에서 실패를 재현하므로 "어댑터+DB
+ * 가 롤백 가능"은 증명하지만 [ProjectCreateApplicationService.create] 자신이 그 경계(클래스 레벨
+ * `@Transactional`)를 선언했는지는 증명하지 않는다. 세 번째 테스트가 `create()` 를 직접 호출해 그
+ * 간극을 메운다 — 해당 테스트 KDoc 참조.
+ *
  * 사전 조건 — dev postgres 기동(`docker compose -f infra/docker-compose.dev.yml up -d postgres`, 5433).
  * [ProdAssemblyHttpTestBase] 를 상속만 하고 자체 `@SpringBootTest`/`@DynamicPropertySource` 를 추가
  * 선언하지 않아 다른 조립 테스트와 컨텍스트를 공유한다(베이스 KDoc).
@@ -70,8 +76,9 @@ class ProjectCreateEndToEndBootTest : ProdAssemblyHttpTestBase() {
     /** 매 테스트 전후로 이 테스트가 심은 데이터만 지운다 — 공유 dev postgres(5433)에 잔여물을 남기지 않는다. */
     @BeforeEach
     fun cleanup() {
-        jdbc.update("DELETE FROM projects WHERE key IN (?, ?)", KEY_S1, KEY_ROLLBACK)
+        jdbc.update("DELETE FROM projects WHERE key IN (?, ?, ?)", KEY_S1, KEY_ROLLBACK, KEY_TX_BOUNDARY)
         // users 삭제가 project_memberships 를 ON DELETE CASCADE 로 함께 지운다(V007).
+        // UNSEEDED_CREATOR_ID 는 아래 새 테스트가 의도적으로 users 에 심지 않는 값이라 대상에서 제외한다.
         jdbc.update("DELETE FROM users WHERE id = ?", CREATOR_ID)
     }
 
@@ -118,6 +125,50 @@ class ProjectCreateEndToEndBootTest : ProdAssemblyHttpTestBase() {
         assertThat(countMembershipsForUser(CREATOR_ID)).isZero()
     }
 
+    /**
+     * codereview #3(DoD-11 추가) — [ProjectCreateApplicationService.create] 를 **직접 호출**해
+     * 그 **클래스 레벨 `@Transactional`** 이 `insert`→`addCreatorAsAdmin` 을 한 트랜잭션으로 묶는지
+     * 실증한다.
+     *
+     * ## 위 DoD-11(TransactionTemplate) 테스트와 중복이 아닌 이유
+     * 위 테스트는 [TransactionTemplate] 로 **이 테스트가 직접 연** 트랜잭션 안에서 `insert`→
+     * `addCreatorAsAdmin`×2 를 호출한다 — "실 어댑터 + 실 DB 가 한 트랜잭션 안에서 롤백 가능한가"는
+     * 증명하지만, **`create()` 자신이 그 트랜잭션 경계를 선언했는지는 증명하지 않는다**(TransactionTemplate
+     * 이 대신 경계를 열었으므로). 이 테스트는 `create()` 를 그대로 호출해 그 클래스 레벨
+     * `@Transactional` 자체가 경계를 여는지를 본다 — 상보적이며 어느 한쪽이 다른 쪽을 대체하지 않는다.
+     *
+     * ## 왜 시드하지 않는가 — mock 대신 자연 발생 실패 트리거
+     * [ProjectMembershipWritePort.addCreatorAsAdmin] 을 인위로 실패시키려면 보통 mock 이 필요해
+     * 보이지만, `project_memberships.user_id` 는 `REFERENCES users(id)`(V007) — creatorId 를 `users`
+     * 에 **의도적으로 시드하지 않으면** `addCreatorAsAdmin` 내부 INSERT 가 FK 위반으로 자연 실패한다.
+     * `projects` INSERT([ProjectCreateRepository.insert])는 creatorId 를 참조하지 않으므로 먼저
+     * 성공한다 — 즉 mock 없이 "insert 성공 후 addCreatorAsAdmin 실패"라는 정확한 순서를 실제 어댑터로
+     * 재현할 수 있다. mock([io.mockk.mockk] 등)을 썼다면 [ProjectMembershipWritePort] 빈을 교체해야
+     * 해 [ProdAssemblyHttpTestBase] 의 9-BC prod 컨텍스트와 다른 `MergedContextConfiguration` 이
+     * 되고(그 베이스 KDoc "★ webEnvironment는 컨텍스트 캐시 키의 일부다"), 같은 JVM 안에 9-BC 컨텍스트가
+     * 중복 부팅되어 `@Scheduled` 워커가 같은 5433 dev postgres 를 동시 폴링하는 위험을 새로 들인다.
+     * 이 자연 발생 트리거는 실제 프로덕션 컴포넌트만으로 같은 실패를 재현하므로 그 위험이 없다.
+     *
+     * ## mutation 판별자 (수동 실증, 커밋 대상 아님)
+     * `create()` 의 클래스 레벨 `@Transactional` 을 제거하면 [ProjectCreateRepository.insert] 자신의
+     * `@Transactional`(REQUIRED, 앙비언트 트랜잭션 없음)이 독립적으로 새 트랜잭션을 열고 즉시
+     * 커밋한다 — `addCreatorAsAdmin` 은 그 뒤 트랜잭션 밖에서 실패하므로 이미 커밋된 `projects` 행은
+     * 되감기지 않고 남는다. 이 테스트의 마지막 단언(`isZero()`)이 그 경우 `1`을 보고 fail 해야 한다.
+     */
+    @Test
+    fun `create() 도중 addCreatorAsAdmin 실패 시 projects 행이 롤백된다 (서비스 @Transactional 경계 실증)`() {
+        // 사전 상태 — 0건(클래스 KDoc "예외 주입 경로"와 동형).
+        assertThat(countProjectByKey(KEY_TX_BOUNDARY)).isZero()
+
+        assertThatThrownBy {
+            projectCreateService.create(UNSEEDED_CREATOR_ID, KEY_TX_BOUNDARY, "서비스 tx 경계 실증")
+        }.isInstanceOf(DataIntegrityViolationException::class.java)
+
+        // insert() 자체는 성공했었다(자체 @Transactional 만으로도 커밋될 수 있는 대상) — 그런데도
+        // 0건이면 create() 클래스 레벨 @Transactional 이 그 커밋을 감싸 롤백시켰다는 뜻이다.
+        assertThat(countProjectByKey(KEY_TX_BOUNDARY)).isZero()
+    }
+
     // ── 시드/조회 ───────────────────────────────────────────────────────────────
 
     private fun seedCreator() {
@@ -154,8 +205,16 @@ class ProjectCreateEndToEndBootTest : ProdAssemblyHttpTestBase() {
         val CREATOR_ID: UUID = UUID.fromString("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
         const val USERNAME_CREATOR = "task12-dod11-creator"
 
+        /**
+         * codereview #3 전용 — **의도적으로 `users` 에 시드하지 않는** creatorId. `project_memberships
+         * .user_id` FK(V007)를 자연 위반시켜 mock 없이 `addCreatorAsAdmin` 실패를 재현한다(위 테스트
+         * KDoc "왜 시드하지 않는가"). 다른 조립 테스트의 고정 UUID 와 겹치지 않게 분리.
+         */
+        val UNSEEDED_CREATOR_ID: UUID = UUID.fromString("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+
         /** 테스트 전용 프로젝트 key(2~10자, `^[A-Z][A-Z0-9]{1,9}$`) — 다른 조립 테스트와 섞이지 않게 좁힌다. */
         const val KEY_S1 = "PJTB"
         const val KEY_ROLLBACK = "PJTC"
+        const val KEY_TX_BOUNDARY = "PJTD"
     }
 }
