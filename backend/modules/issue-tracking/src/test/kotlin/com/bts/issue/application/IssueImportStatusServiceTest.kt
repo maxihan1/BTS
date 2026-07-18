@@ -7,6 +7,8 @@ import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueVersionConflictException
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.domain.IssueType
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -33,6 +35,7 @@ class IssueImportStatusServiceTest : DescribeSpec({
     val issueTypeRepository = mockk<IssueTypeRepository>()
     val workflowStateCatalog = mockk<WorkflowStateCatalog>()
     val permissionResolver = mockk<IssuePermissionResolver>()
+    val archiveGuard = mockk<ProjectArchiveGuard>(relaxUnitFun = true)
 
     val sut =
         IssueImportStatusService(
@@ -40,10 +43,11 @@ class IssueImportStatusServiceTest : DescribeSpec({
             workflowStateCatalog = workflowStateCatalog,
             permissionResolver = permissionResolver,
             issueTypeRepository = issueTypeRepository,
+            archiveGuard = archiveGuard,
         )
 
     beforeEach {
-        clearMocks(issueRepository, issueTypeRepository, workflowStateCatalog, permissionResolver)
+        clearMocks(issueRepository, issueTypeRepository, workflowStateCatalog, permissionResolver, archiveGuard)
     }
 
     // ── 공통 픽스처 ───────────────────────────────────────────────────────────
@@ -176,6 +180,34 @@ class IssueImportStatusServiceTest : DescribeSpec({
                 shouldThrow<IssueVersionConflictException> {
                     sut.applyImportedStatus(actor, issueKey, "완료", 1L)
                 }
+            }
+        }
+    }
+
+    describe("아카이브 잠금 (FR-PJ-04 PR-4 Task 9c)") {
+        context("applyImportedStatus — 아카이브된 프로젝트") {
+            it("TRANSITION 권한 통과 후 archiveGuard.checkByIssue 가 ProjectArchivedException 을 던지면 그대로 전파된다") {
+                stubPermission(allowed = true)
+                every { archiveGuard.checkByIssue(issueKey) } throws ProjectArchivedException(issueKey.value)
+
+                shouldThrow<ProjectArchivedException> {
+                    sut.applyImportedStatus(actor, issueKey, "완료", 1L)
+                }
+                verify(exactly = 0) { issueRepository.findByKey(issueKey) }
+            }
+        }
+
+        context("applyImportedStatus — 활성 프로젝트 (판별자 baseline)") {
+            it("archiveGuard.checkByIssue 가 호출되고 정상 반영된다") {
+                stubLookup(currentStateKey = "open")
+                stubPermission(allowed = true)
+                every { workflowStateCatalog.listStates(projectKey, issueType.key) } returns states
+                every { issueRepository.applyTransition(issueKey, "done", 1L, null) } returns 1
+
+                val result = sut.applyImportedStatus(actor, issueKey, "완료", 1L)
+
+                result shouldBe ImportStatusOutcome.Applied(2L)
+                verify(exactly = 1) { archiveGuard.checkByIssue(issueKey) }
             }
         }
     }
