@@ -24,7 +24,8 @@ class ArchiveTestPermissionConfigTest {
     private val projectId: UUID = UUID.fromString("11111111-1111-1111-1111-111111111111")
     private val stranger: UUID = UUID.fromString("22222222-2222-2222-2222-222222222222")
 
-    private fun resolver(): ControllableComponentPermissionResolver = ArchiveTestPermissionConfig().archiveComponentPermissionResolver()
+    private fun resolver(): ControllableComponentPermissionResolver =
+        ArchiveTestPermissionConfig().archiveComponentPermissionResolver()
 
     @Test
     fun `등록된 admin actor 는 true`() {
