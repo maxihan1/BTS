@@ -30,13 +30,13 @@ class ProjectArchiveStateRepository(
     private val dsl: DSLContext,
 ) {
     /**
-     * 아카이브 판정 술어.
+     * 아카이브 판정 술어 — **`archived_at IS NOT NULL` 단독**.
      *
-     * RED(판별자 입증): `deleted_at` 을 함께 참조하는 잘못된 술어를 주입한다 — 소프트 삭제된
-     * 프로젝트를 아카이브로 오판하게 만들어, `ProjectArchiveGuardTest` 의 "삭제된 프로젝트를 아카이브로
-     * 오판하지 않음" 판별자가 실제로 fail 하는지 확인한다. GREEN 에서 `archived_at` 단독으로 정정한다.
+     * `deleted_at`(소프트 삭제)이나 읽기 보안 술어(`buildActiveSecureWhere`)를 절대 결합하지 않는다.
+     * deleted_at 을 함께 참조하면 소프트 삭제된 프로젝트를 아카이브로 오판해 쓰기가 잠기고(→ 이슈 소실),
+     * `ProjectArchiveGuardTest` 의 C2 판별자("삭제된 프로젝트를 아카이브로 오판하지 않음")가 fail 한다.
      */
-    private fun archivedCondition(): Condition = PROJECTS.ARCHIVED_AT.isNotNull.or(PROJECTS.DELETED_AT.isNotNull)
+    private fun archivedCondition(): Condition = PROJECTS.ARCHIVED_AT.isNotNull
 
     /**
      * projectId(UUID)로 아카이브 여부를 판정한다.
