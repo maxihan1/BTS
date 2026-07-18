@@ -157,7 +157,7 @@
 
 게이트 2(코드리뷰) 통과 후 리뷰어가 지적한 이슈 C1~C3을 fix-1 커밋(`68695f277`)에서 해소했다.
 
-**C1 — 다크 상태배경 알파 전환(7값).** 확정 절 발행 당시 다크 `--secondary`/`--muted`/`--accent`/`--bg-neutral`/`--bg-neutral-hover`/`--bg-neutral-press`는 솔리드 hex였는데, 그중 일부가 다른 표면 토큰과 완전히 같은 값이었다(예. `--muted` 다크 `#1D2125` = `--card` 다크 `#1D2125`, `--secondary`/`--accent` 다크 `#22272B` = `--popover` 다크 `#22272B`) — 즉 상태-표면 충돌로 대비비 1.00:1(경계 자체가 안 보임)이 발생했다. ADS v2 정본은 이 스텝을 애초에 알파(`#RRGGBBAA`)로 정의한다 — 어떤 표면 위에 얹혀도 항상 한 스텝 어두워지도록 설계됐기 때문이다. 이를 그대로 채택해 7값을 알파로 전환했다.
+**C1 — 다크 상태배경 알파 전환(6값).** 확정 절 발행 당시 다크 `--secondary`/`--muted`/`--accent`/`--bg-neutral`/`--bg-neutral-hover`/`--bg-neutral-press`는 솔리드 hex였는데, 그중 일부가 다른 표면 토큰과 완전히 같은 값이었다(예. `--muted` 다크 `#1D2125` = `--card` 다크 `#1D2125`, `--secondary`/`--accent` 다크 `#22272B` = `--popover` 다크 `#22272B`) — 즉 상태-표면 충돌로 대비비 1.00:1(경계 자체가 안 보임)이 발생했다. ADS v2 정본은 이 스텝을 애초에 알파(`#RRGGBBAA`)로 정의한다 — 어떤 표면 위에 얹혀도 표면과 항상 한 스텝 구분되도록(다크 뉴트럴 알파는 밝은 색을 얹으므로 합성 결과가 표면보다 밝아진다) 설계됐기 때문이다. 이를 그대로 채택해 6값을 알파로 전환했다.
 - `--secondary`/`--accent`: `#22272B` → `#A1BDD914`(DarkNeutral200A)
 - `--muted`/`--bg-neutral`: `#1D2125`/`#1D2125` → `#BCD6F00A`(DarkNeutral100A)
 - `--bg-neutral-hover`: `#22272B` → `#A1BDD914`(DarkNeutral200A)
