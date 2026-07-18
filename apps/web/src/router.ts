@@ -28,6 +28,7 @@ import { ProjectLeadSettingsRouteAdapter } from './routes/projects.$projectKey.s
 import { ProjectImportSettingsRouteAdapter } from './routes/projects.$projectKey.settings.import'
 import { AdminUsersNewRouteAdapter } from './routes/admin.users.new'
 import { AdminAuditLogsRouteAdapter } from './routes/admin.audit-logs'
+import { AdminGlobalPermissionsRouteAdapter } from './routes/admin.global-permissions'
 import { AdminNotificationPoliciesRouteAdapter } from './routes/admin.notification-policies'
 import { SessionsSettingsRouteAdapter } from './routes/settings.sessions'
 import { PasswordSettingsRouteAdapter } from './routes/settings.password'
@@ -374,6 +375,16 @@ const adminAuditLogsRoute = createRoute({
   beforeLoad: composeGuards(requireAuth, requireSystemAdmin, requirePasswordChanged, requireMfaEnrolled),
 })
 
+/** 전역 권한 부여/회수 관리자 라우트 — /admin/global-permissions, requireAuth + requireSystemAdmin + requirePasswordChanged (FR-PM-10 D6 Task 6) */
+const adminGlobalPermissionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin/global-permissions',
+  component: AdminGlobalPermissionsRouteAdapter,
+  staticData: { requireAuth: true },
+  // requirePasswordChanged + requireMfaEnrolled 포함 — adminAuditLogsRoute 와 완전 1:1 (강제변경 미완료 관리자 우회 차단). (FR-MF-04)
+  beforeLoad: composeGuards(requireAuth, requireSystemAdmin, requirePasswordChanged, requireMfaEnrolled),
+})
+
 /** 알림 정책 관리자 조회 라우트 — /admin/notification-policies, requireAuth + requireSystemAdmin + requirePasswordChanged */
 const adminNotificationPoliciesRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -682,6 +693,8 @@ export const routeTree = rootRoute.addChildren([
   adminWorkflowSchemesDetailRoute,
   // identity-access BC — 감사 로그 관리자 조회
   adminAuditLogsRoute,
+  // identity-access BC — 전역 권한 부여/회수 관리자 (FR-PM-10 D6 Task 6)
+  adminGlobalPermissionsRoute,
   // notification BC — 알림 정책 관리자 조회 (FR-NT-01)
   adminNotificationPoliciesRoute,
   // identity-access BC — 사용자 생성 (/admin/users/new)
