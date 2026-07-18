@@ -61,7 +61,7 @@ FR-UX-06 개편의 Phase 0 기반 작업. `apps/web/src/components/ui/`에 프�
 
 > **공통 규칙 (전 task).** ① 프리미티브는 `radix-ui` 통합 패키지에서 named import (`import { Dialog as DialogPrimitive } from "radix-ui"`). 개별 `@radix-ui/react-*` 설치·import 금지. ② 파일 L1에 한국어 역할 주석 (기존 `avatar.test.tsx` 선례). ③ `data-slot` 속성 관례 유지. ④ `cn()` from `@/lib/utils`. ⑤ 테스트는 `@testing-library/react` + vitest `describe/it/expect`, `screen.getByRole`. ⑥ 상태 클래스는 §7 토큰 소비 (위 표). ⑦ **소비자 0 유지** — 기존 화면/라우트 파일 수정 절대 금지, `components/ui/` 신규 파일 + `index.css`만.
 
-### Task 1. §7 상태 토큰 11종 신설 (index.css)
+### Task 1. §7 상태 토큰 11종 신설 (index.css) [x]
 
 **메타**.
 - agent: `frontend-engineer`
@@ -88,7 +88,7 @@ FR-UX-06 개편의 Phase 0 기반 작업. `apps/web/src/components/ui/`에 프�
 
 **검증**: `cd apps/web && pnpm test -- state-tokens`
 
-### Task 2. dialog 프리미티브 (role="dialog" 계약 핵심)
+### Task 2. dialog 프리미티브 (role="dialog" 계약 핵심) [x]
 
 **메타**.
 - agent: `frontend-engineer`
@@ -111,7 +111,7 @@ FR-UX-06 개편의 Phase 0 기반 작업. `apps/web/src/components/ui/`에 프�
 
 **검증**: `cd apps/web && pnpm test -- dialog`
 
-### Task 3. 순수 프리미티브 5종 (table · badge · skeleton · textarea · empty-state)
+### Task 3. 순수 프리미티브 5종 (table · badge · skeleton · textarea · empty-state) [x]
 
 **메타**.
 - agent: `frontend-engineer`
@@ -135,7 +135,7 @@ FR-UX-06 개편의 Phase 0 기반 작업. `apps/web/src/components/ui/`에 프�
 
 **검증**: `cd apps/web && pnpm test -- table badge empty-state`
 
-### Task 4. Radix 오버레이 3종 (tooltip · popover · scroll-area)
+### Task 4. Radix 오버레이 3종 (tooltip · popover · scroll-area) [x]
 
 **메타**.
 - agent: `frontend-engineer`
@@ -157,7 +157,7 @@ FR-UX-06 개편의 Phase 0 기반 작업. `apps/web/src/components/ui/`에 프�
 
 **검증**: `cd apps/web && pnpm test -- tooltip popover`
 
-### Task 5. Radix 폼 컨트롤 3종 (checkbox · switch · radio-group)
+### Task 5. Radix 폼 컨트롤 3종 (checkbox · switch · radio-group) [x]
 
 **메타**.
 - agent: `frontend-engineer`
@@ -178,7 +178,7 @@ FR-UX-06 개편의 Phase 0 기반 작업. `apps/web/src/components/ui/`에 프�
 
 **검증**: `cd apps/web && pnpm test -- checkbox switch radio-group`
 
-### Task 6. Radix 구조 2종 (tabs · separator)
+### Task 6. Radix 구조 2종 (tabs · separator) [x]
 
 **메타**.
 - agent: `frontend-engineer`
@@ -197,7 +197,7 @@ FR-UX-06 개편의 Phase 0 기반 작업. `apps/web/src/components/ui/`에 프�
 
 **검증**: `cd apps/web && pnpm test -- tabs separator`
 
-### Task 7. command 프리미티브 (cmdk core-only)
+### Task 7. command 프리미티브 (cmdk core-only) [x]
 
 **메타**.
 - agent: `frontend-engineer`
