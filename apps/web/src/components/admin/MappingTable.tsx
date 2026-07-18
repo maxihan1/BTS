@@ -341,7 +341,7 @@ export function MappingTable({ schemeKey, mappings }: MappingTableProps): JSX.El
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="flex-1 overflow-auto">
         <table className="w-full border-collapse text-left">
-          <thead className="sticky top-0 z-10 border-b border-border bg-muted/80 backdrop-blur-sm">
+          <thead className="sticky top-0 z-10 border-b border-border bg-(--bg-neutral-solid)/80 backdrop-blur-sm">
             <tr>
               <th className="px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {workflowSchemeLabels.mapping.issueTypeColumn}

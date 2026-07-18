@@ -55,14 +55,14 @@
 ## Phase 0 — 기반 (4개 독립·병렬. #277과 무관하므로 먼저 머지)
 
 - [ ] **PR2** `ui/*` 프리미티브 15종 추가 — **소비자 0, 순수 추가라 위험 0**
-- [ ] **PR3** `index.css` ADS 팔레트 + 시맨틱 토큰 4쌍 (`--warning`/`--success`/`--danger`/`--info`)
-  - [ ] `atlassian.design/components/tokens/all-tokens` **전수 대조** (시안 값은 정본 아님)
-  - [ ] oklch → hex (공식 문서 대조 가능하게)
-  - [ ] `--radius` calc 파생 폐기 → 2/3/4/8/12px 명시
-  - [ ] **라이트·다크 both** (다크가 이미 동작 중 — 안 하면 대비 붕괴)
-  - [ ] `--chart-1~5`는 **건드리지 않음** (PR22로)
-  - [ ] `--syntax-*` 5종 **건드리지 않음** · `.mention` 대비 재확인
-  - [ ] `DESIGN.md` 재작성 (화석 상태 — §10~12가 로그인 폼 기준)
+- [x] **PR3** `index.css` ADS 팔레트 + 시맨틱 토큰 4쌍 (`--warning`/`--success`/`--danger`/`--info`)
+  - [x] `atlassian.design/components/tokens/all-tokens` **전수 대조** (시안 값은 정본 아님) — 브랜드 리프레시 세대라 대신 `@atlaskit/tokens@1.4.2` npm 패키지(tokens-raw)로 전수 대조
+  - [x] oklch → hex (공식 문서 대조 가능하게)
+  - [x] `--radius` calc 파생 폐기 → 2/3/4/8/12px 명시
+  - [x] **라이트·다크 both** (다크가 이미 동작 중 — 안 하면 대비 붕괴)
+  - [x] `--chart-1~5`는 **건드리지 않음** (PR22로)
+  - [x] `--syntax-*` 5종 **건드리지 않음** · `.mention` 대비 재확인
+  - [x] `DESIGN.md` 재작성 (화석 상태 — §10~12가 로그인 폼 기준)
 - [ ] **PR9** `settings.account-links.tsx:411` → `useSearch({ strict: false })` (1줄)
 - [ ] **머지 후 #277에 디자인 스펙 공유** — PR-5가 새 시스템 위에 짓도록
 

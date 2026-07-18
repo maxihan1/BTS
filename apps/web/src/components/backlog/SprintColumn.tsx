@@ -92,7 +92,7 @@ function SprintColumnInner({
       aria-label={backlogLabels.columnAriaLabel(sprint.name, issueCount)}
     >
       {/* 헤더 — 스프린트 이름 + 상태 배지 + 카드 수 + 액션 버튼 */}
-      <div className="sticky top-0 z-10 flex flex-col gap-1 rounded-t-lg bg-muted px-3 py-2">
+      <div className="sticky top-0 z-10 flex flex-col gap-1 rounded-t-lg bg-(--bg-neutral-solid) px-3 py-2">
         <div className="flex items-center gap-2">
           <span className="flex-1 text-sm font-semibold text-foreground">{sprint.name}</span>
           <span

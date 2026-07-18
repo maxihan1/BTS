@@ -1,4 +1,4 @@
-/* 전역 스타일 — Tailwind v4 CSS-first 설정 + shadcn/ui 디자인 토큰 */
+/* 전역 스타일 — Tailwind v4 CSS-first 설정 + ADS v2 팔레트 (FR-UX-06 PR3) */
 @import 'tailwindcss';
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -60,6 +60,22 @@
 
   --color-ring: var(--ring);
 
+  --color-warning: var(--warning);
+
+  --color-success: var(--success);
+
+  --color-danger: var(--danger);
+
+  --color-info: var(--info);
+
+  --color-warning-foreground: var(--warning-foreground);
+
+  --color-success-foreground: var(--success-foreground);
+
+  --color-danger-foreground: var(--danger-foreground);
+
+  --color-info-foreground: var(--info-foreground);
+
   --color-input: var(--input);
 
   --color-border: var(--border);
@@ -94,58 +110,54 @@
 
   --color-background: var(--background);
 
-  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-xs: 2px;
 
-  --radius-md: calc(var(--radius) * 0.8);
+  --radius-sm: 3px;
 
-  --radius-lg: var(--radius);
+  --radius-md: 4px;
 
-  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-lg: 8px;
 
-  --radius-2xl: calc(var(--radius) * 1.8);
-
-  --radius-3xl: calc(var(--radius) * 2.2);
-
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-xl: 12px;
 }
 
 :root {
 
-  --background: oklch(1 0 0);
+  --background: #FFFFFF;
 
-  --foreground: oklch(0.145 0 0);
+  --foreground: #172B4D;
 
-  --card: oklch(1 0 0);
+  --card: #FFFFFF;
 
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: #172B4D;
 
-  --popover: oklch(1 0 0);
+  --popover: #FFFFFF;
 
-  --popover-foreground: oklch(0.145 0 0);
+  --popover-foreground: #172B4D;
 
-  --primary: oklch(0.205 0 0);
+  --primary: #0C66E4;
 
-  --primary-foreground: oklch(0.985 0 0);
+  --primary-foreground: #FFFFFF;
 
-  --secondary: oklch(0.97 0 0);
+  --secondary: #F1F2F4;
 
-  --secondary-foreground: oklch(0.205 0 0);
+  --secondary-foreground: #172B4D;
 
-  --muted: oklch(0.97 0 0);
+  --muted: #F7F8F9;
 
-  --muted-foreground: oklch(0.556 0 0);
+  --muted-foreground: #626F86;
 
-  --accent: oklch(0.97 0 0);
+  --accent: #F1F2F4;
 
-  --accent-foreground: oklch(0.205 0 0);
+  --accent-foreground: #172B4D;
 
-  --destructive: oklch(0.577 0.245 27.325);
+  --destructive: #CA3521;
 
-  --border: oklch(0.922 0 0);
+  --border: #DCDFE4;
 
-  --input: oklch(0.922 0 0);
+  --input: #DCDFE4;
 
-  --ring: oklch(0.708 0 0);
+  --ring: #388BFF;
 
   --chart-1: oklch(0.87 0 0);
 
@@ -168,8 +180,6 @@
 
   --syntax-number: oklch(0.44 0.17 25);
 
-  --radius: 0.625rem;
-
   --sidebar: oklch(0.985 0 0);
 
   --sidebar-foreground: oklch(0.145 0 0);
@@ -186,67 +196,88 @@
 
   --sidebar-ring: oklch(0.708 0 0);
 
-  /* FR-UX-06 §7 상태 토큰 — alias, PR3서 ADS 값 부여 */
-  --bg-neutral: var(--muted);                 /* PR3서 ADS Neutral100로 교체 */
+  /* FR-UX-06 §7 상태 토큰 — ADS v2 실제값 (PR2 alias → PR3 확정) */
+  --bg-neutral: #F7F8F9;
 
-  --bg-neutral-hover: var(--accent);          /* PR3서 ADS Neutral200로 교체 */
+  --bg-neutral-hover: #F1F2F4;
 
-  --bg-neutral-press: var(--accent);          /* PR3서 ADS Neutral300로 교체 */
+  --bg-neutral-press: #DCDFE4;
 
-  --bg-selected: var(--accent);               /* PR3서 ADS Blue100로 교체 */
+  /* 가림(occlusion)용 불투명 뉴트럴 — sticky 헤더 등. 알파 --bg-neutral의 기본 표면 합성값과 동일 */
+  --bg-neutral-solid: #F7F8F9;
 
-  --text-selected: var(--primary);            /* PR3서 ADS Blue700로 교체 */
+  --bg-selected: #E9F2FF;
 
-  --text-subtle: var(--muted-foreground);     /* PR3서 ADS Neutral700로 교체 */
+  --text-selected: #0C66E4;
 
-  --text-subtlest: var(--muted-foreground);   /* PR3서 ADS Neutral500로 교체 */
+  --text-subtle: #44546F;
 
-  --text-disabled: var(--muted-foreground);   /* PR3서 ADS Neutral400로 교체 */
+  --text-subtlest: #626F86;
 
-  --border-focus: var(--ring);                /* PR3서 ADS Blue700로 교체 */
+  --text-disabled: #B3B9C4;
 
-  --brand-hover: var(--primary);              /* PR3서 ADS Blue800/Blue300로 교체 */
+  --border-focus: #388BFF;
 
-  --brand-text: var(--primary);               /* PR3서 ADS Blue700로 교체 */
+  --brand-hover: #0055CC;
+
+  --brand-text: #0C66E4;
+
+  /* FR-UX-06 시맨틱 상태색 — ADS color.background.<status>.bold */
+  --warning: #B65C02;
+
+  --success: #1F845A;
+
+  --danger: #CA3521;
+
+  --info: #0C66E4;
+
+  /* bold 배경 위 텍스트 — 라이트=흰글자, 다크=어두운글자 (ADS 관례) */
+  --warning-foreground: #FFFFFF;
+
+  --success-foreground: #FFFFFF;
+
+  --danger-foreground: #FFFFFF;
+
+  --info-foreground: #FFFFFF;
 }
 
 .dark {
 
-  --background: oklch(0.145 0 0);
+  --background: #161A1D;
 
-  --foreground: oklch(0.985 0 0);
+  --foreground: #C7D1DB;
 
-  --card: oklch(0.205 0 0);
+  --card: #1D2125;
 
-  --card-foreground: oklch(0.985 0 0);
+  --card-foreground: #C7D1DB;
 
-  --popover: oklch(0.205 0 0);
+  --popover: #22272B;
 
-  --popover-foreground: oklch(0.985 0 0);
+  --popover-foreground: #C7D1DB;
 
-  --primary: oklch(0.922 0 0);
+  --primary: #0C66E4;           /* Maxi 결정 3 — 다크도 Blue700 + 흰 글자 (ADS Blue400 기각) */
 
-  --primary-foreground: oklch(0.205 0 0);
+  --primary-foreground: #FFFFFF;
 
-  --secondary: oklch(0.269 0 0);
+  --secondary: #A1BDD914;
 
-  --secondary-foreground: oklch(0.985 0 0);
+  --secondary-foreground: #C7D1DB;
 
-  --muted: oklch(0.269 0 0);
+  --muted: #BCD6F00A;
 
-  --muted-foreground: oklch(0.708 0 0);
+  --muted-foreground: #8696A7;
 
-  --accent: oklch(0.269 0 0);
+  --accent: #A1BDD914;
 
-  --accent-foreground: oklch(0.985 0 0);
+  --accent-foreground: #C7D1DB;
 
-  --destructive: oklch(0.704 0.191 22.216);
+  --destructive: #F87462;
 
-  --border: oklch(1 0 0 / 10%);
+  --border: #2C333A;
 
-  --input: oklch(1 0 0 / 15%);
+  --input: #2C333A;
 
-  --ring: oklch(0.556 0 0);
+  --ring: #85B8FF;
 
   --chart-1: oklch(0.87 0 0);
 
@@ -285,28 +316,49 @@
 
   --sidebar-ring: oklch(0.556 0 0);
 
-  /* FR-UX-06 §7 상태 토큰 — alias, PR3서 ADS 값 부여 */
-  --bg-neutral: var(--muted);                 /* PR3서 ADS Neutral100로 교체 */
+  /* FR-UX-06 §7 상태 토큰 — ADS v2 실제값 (PR2 alias → PR3 확정) */
+  --bg-neutral: #BCD6F00A;
 
-  --bg-neutral-hover: var(--accent);          /* PR3서 ADS Neutral200로 교체 */
+  --bg-neutral-hover: #A1BDD914;
 
-  --bg-neutral-press: var(--accent);          /* PR3서 ADS Neutral300로 교체 */
+  --bg-neutral-press: #A6C5E229;
 
-  --bg-selected: var(--accent);               /* PR3서 ADS Blue100로 교체 */
+  /* 가림(occlusion)용 불투명 뉴트럴 — sticky 헤더 등. 알파 --bg-neutral의 기본 표면 합성값과 동일 */
+  --bg-neutral-solid: #1D2125;
 
-  --text-selected: var(--primary);            /* PR3서 ADS Blue700로 교체 */
+  --bg-selected: #082145;
 
-  --text-subtle: var(--muted-foreground);     /* PR3서 ADS Neutral700로 교체 */
+  --text-selected: #579DFF;
 
-  --text-subtlest: var(--muted-foreground);   /* PR3서 ADS Neutral500로 교체 */
+  --text-subtle: #9FADBC;
 
-  --text-disabled: var(--muted-foreground);   /* PR3서 ADS Neutral400로 교체 */
+  --text-subtlest: #8696A7;
 
-  --border-focus: var(--ring);                /* PR3서 ADS Blue700로 교체 */
+  --text-disabled: #454F59;
 
-  --brand-hover: var(--primary);              /* PR3서 ADS Blue800/Blue300로 교체 */
+  --border-focus: #85B8FF;
 
-  --brand-text: var(--primary);               /* PR3서 ADS Blue700로 교체 */
+  --brand-hover: #0055CC;
+
+  --brand-text: #579DFF;
+
+  /* FR-UX-06 시맨틱 상태색 — ADS color.background.<status>.bold */
+  --warning: #E2B203;
+
+  --success: #4BCE97;
+
+  --danger: #F87462;
+
+  --info: #579DFF;
+
+  /* bold 배경 위 텍스트 — 라이트=흰글자, 다크=어두운글자 (ADS 관례) */
+  --warning-foreground: #161A1D;
+
+  --success-foreground: #161A1D;
+
+  --danger-foreground: #161A1D;
+
+  --info-foreground: #161A1D;
 }
 
 @layer base {
@@ -323,8 +375,8 @@
 
 /* FR-MN-01: 멘션(@username) 강조 — prose 인라인 흐름 유지(CONCERN-D1), 링크 오인 방지(EC11) */
 .mention {
-  color: var(--primary);           /* 진한 텍스트 + weight 500으로 대비 확보 (CONCERN-D2) */
-  background-color: var(--accent); /* 약한 배경 — oklch 변수, 다크모드 자동 반영 */
+  color: var(--brand-text);        /* 브랜드색 텍스트 토큰 — 다크에서 Blue400으로 AA 확보 (PR3 대비 계산: 라이트 4.64:1·다크 5.51:1) */
+  background-color: var(--accent); /* 약한 배경 — ADS 뉴트럴, 다크모드 자동 반영 */
   font-weight: 500;
   padding: 1px 3px;                /* 수직 1px: 인라인 줄간격 보존 (CONCERN-D1) */
   border-radius: 0.25rem;
