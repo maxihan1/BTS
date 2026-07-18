@@ -392,7 +392,10 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
     // ── R6-B 재적재 매핑 기록→재연결 (★★ 수정판 — default + admin 특정타입 전부 보존) ──────
 
     /**
-     * [workflowId] 를 가리키는 매핑 전체를 (scheme_id, issue_type_id) 튜플로 조회한 뒤 그 자리에서 삭제한다.
+     * [workflowId] 를 가리키는 매핑 전체를 (scheme_id, issue_type_id) 튜플로 조회한 뒤 그 자리에서 삭제(detach)한다.
+     *
+     * 조회+삭제를 한 원자 연산으로 묶은 명령형(command) 메서드다 — 이름에 순수 조회(find)로 오인될
+     * 여지를 없애기 위해 `detach` 를 사용한다 (CQS: Command-Query Separation 위반 방지).
      *
      * YAML structural 변경(state/transition 추가·삭제) 으로 인한 workflow 재적재
      * (`YamlSeedService.applyIfChanged`) 직전에 호출한다. `workflow_scheme_issue_type_mappings.workflow_id`
@@ -407,7 +410,7 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
      * @return (scheme_id, issue_type_id) 튜플 목록. issue_type_id=null 은 default mapping. 매핑이 없으면 빈 목록.
      */
     @Transactional
-    fun findMappingTuplesByWorkflowId(workflowId: UUID): List<Pair<Long, IssueTypeId?>> {
+    fun detachMappingsByWorkflowId(workflowId: UUID): List<Pair<Long, IssueTypeId?>> {
         val tuples =
             dsl
                 .select(COL_SCHEME_ID, COL_ISSUE_TYPE_ID)
@@ -424,7 +427,7 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
         if (tuples.isNotEmpty()) {
             dsl.deleteFrom(TABLE).where(COL_WORKFLOW_ID.eq(workflowId)).execute()
             log.debug(
-                "findMappingTuplesByWorkflowId — {}건 기록 후 삭제 (workflow_id={})",
+                "detachMappingsByWorkflowId — {}건 기록 후 삭제 (workflow_id={})",
                 tuples.size,
                 workflowId,
             )
@@ -434,7 +437,7 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
     }
 
     /**
-     * [findMappingTuplesByWorkflowId] 로 기록한 튜플들을 새 workflow UUID 로 재INSERT 한다.
+     * [detachMappingsByWorkflowId] 로 기록한 튜플들을 새 workflow UUID 로 재INSERT 한다.
      *
      * YAML 재적재로 workflow 가 delete/reinsert 되어 UUID 가 바뀐 뒤, 기록→재연결 흐름을 완성한다.
      * 원자성은 호출자(`YamlSeedService.seedAll`) 의 `@Transactional` 경계에 위임한다 — 실패 시

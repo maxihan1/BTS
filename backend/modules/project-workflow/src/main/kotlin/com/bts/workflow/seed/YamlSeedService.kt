@@ -321,7 +321,7 @@ class YamlSeedService(
             val oldWorkflowId =
                 workflowRepository.findIdByKey(dto.key)
                     ?: error("워크플로우 '${dto.key}' UUID 조회 실패 — findByKey 는 성공했으나 findIdByKey 가 실패")
-            val mappingTuples = mappingRepository.findMappingTuplesByWorkflowId(oldWorkflowId)
+            val mappingTuples = mappingRepository.detachMappingsByWorkflowId(oldWorkflowId)
             deleteWorkflow(dto.key)
             val newWorkflowId = insertWorkflow(dto)
             mappingRepository.reinsertMappings(mappingTuples, newWorkflowId)
@@ -492,8 +492,8 @@ class YamlSeedService(
      * workflow_states / workflow_transitions 는 ON DELETE CASCADE 이므로 자동 삭제된다.
      * `workflow_scheme_issue_type_mappings.workflow_id` 는 FK `ON DELETE RESTRICT` (V201:84) 이므로,
      * 이 workflow 를 가리키는 매핑이 남아 있으면 이 DELETE 자체가 FK 위반으로 실패한다.
-     * 호출자([applyIfChanged])가 이 메서드 호출 전에 [SchemeIssueTypeMappingRepository.findMappingTuplesByWorkflowId]
-     * 로 매핑을 기록→삭제해 RESTRICT 를 회피한다.
+     * 호출자([applyIfChanged])가 이 메서드 호출 전에 [SchemeIssueTypeMappingRepository.detachMappingsByWorkflowId]
+     * 로 매핑을 기록→삭제(detach)해 RESTRICT 를 회피한다.
      */
     private fun deleteWorkflow(key: String) {
         dsl.deleteFrom(WORKFLOWS)
