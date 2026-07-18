@@ -40,6 +40,7 @@ function GlobalPermissionEmptyState(): JSX.Element {
 // 로딩/에러 상태 (FR-8, 방어적)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** grant/사용자/그룹 셋 중 하나라도 최초 로딩 중일 때 노출되는 로딩 표시. */
 function GlobalPermissionListLoading(): JSX.Element {
   return (
     <div role="status" aria-label="전역 권한 목록 로딩 중" className="py-8 text-center text-sm text-muted-foreground">
@@ -48,6 +49,11 @@ function GlobalPermissionListLoading(): JSX.Element {
   )
 }
 
+/**
+ * 목록 조회(grant/사용자/그룹) 중 하나라도 실패했을 때 노출되는 방어적 에러 메시지(FR-8).
+ * 현재 조합 훅({@link useGlobalPermissionRows})이 refetch를 노출하지 않아
+ * 별도 재시도 버튼 없이 새로고침을 안내한다.
+ */
 function GlobalPermissionListError(): JSX.Element {
   return (
     <div role="alert" className="py-8 text-center text-sm text-destructive">
@@ -66,6 +72,10 @@ interface GlobalPermissionTableProps {
   readonly isRevoking: boolean
 }
 
+/**
+ * 전역 권한 부여 표시행을 시맨틱 `<table>`로 렌더한다.
+ * `<th scope="col">`로 열 제목을 명시한다(스크린리더 접근성).
+ */
 function GlobalPermissionTable({
   rows,
   onRevoke,
@@ -128,6 +138,14 @@ export function GlobalPermissionList(): JSX.Element {
     revokeMutation.mutate(id)
   }
 
+  function openGrantDialog(): void {
+    setDialogOpen(true)
+  }
+
+  function closeGrantDialog(): void {
+    setDialogOpen(false)
+  }
+
   function renderBody(): JSX.Element {
     if (isLoading) return <GlobalPermissionListLoading />
     if (isError) return <GlobalPermissionListError />
@@ -145,14 +163,14 @@ export function GlobalPermissionList(): JSX.Element {
     <div>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold">전역 권한 관리</h1>
-        <Button size="sm" onClick={() => { setDialogOpen(true) }}>
+        <Button size="sm" onClick={openGrantDialog}>
           권한 부여
         </Button>
       </div>
 
       {renderBody()}
 
-      <GlobalPermissionFormDialog isOpen={dialogOpen} onClose={() => { setDialogOpen(false) }} />
+      <GlobalPermissionFormDialog isOpen={dialogOpen} onClose={closeGrantDialog} />
     </div>
   )
 }
