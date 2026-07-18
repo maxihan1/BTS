@@ -27,7 +27,8 @@ CREATE TABLE projects (
     require_2fa   BOOLEAN      NOT NULL DEFAULT false,
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    deleted_at    TIMESTAMPTZ  NULL
+    deleted_at    TIMESTAMPTZ  NULL,
+    archived_at   TIMESTAMPTZ  NULL
 );
 COMMENT ON TABLE  projects                IS '이슈 컨테이너. key 는 영구 보존 (DATA.md §1.1).';
 COMMENT ON COLUMN projects.key            IS '프로젝트 접두사 — 대문자로 시작, 대문자+숫자 2~10자 (예: BTS, ATLAS1). 이슈 키 생성의 기반.';
