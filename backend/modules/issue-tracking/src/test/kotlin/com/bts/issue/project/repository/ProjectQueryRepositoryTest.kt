@@ -15,9 +15,9 @@ import java.util.UUID
  * `IssueTestcontainersBase` 상속으로 Testcontainers PostgreSQL(tembo pg16) + Flyway 마이그레이션을
  * JVM singleton 라이프사이클로 기동한다 ([com.bts.issue.project.ProjectLookupTest] 동형 패턴).
  *
- * 테스트마다 `projects` 에 활성 "AAA"/"BBB" + 소프트 삭제 "CCC" 를 idempotent 하게 시딩한다
- * (`ON CONFLICT (key) DO UPDATE` — 다른 테스트 클래스와 JVM singleton 컨테이너를 공유해도 안전).
- * 단일 테이블 조회라 다중 LEFT JOIN 카티전 곱 문제와는 무관하다.
+ * 테스트마다 `projects` 에 활성 "AAA"/"BBB" + 소프트 삭제 "CCC" + 아카이브 "DDD" 를 idempotent 하게
+ * 시딩한다 (`ON CONFLICT (key) DO UPDATE` — 다른 테스트 클래스와 JVM singleton 컨테이너를 공유해도
+ * 안전). 단일 테이블 조회라 다중 LEFT JOIN 카티전 곱 문제와는 무관하다.
  */
 class ProjectQueryRepositoryTest : IssueTestcontainersBase() {
     private lateinit var projectQueryRepository: ProjectQueryRepository
@@ -30,12 +30,15 @@ class ProjectQueryRepositoryTest : IssueTestcontainersBase() {
             conn.prepareStatement(
                 """
                 INSERT INTO projects (key, name)
-                VALUES ('AAA', 'AAA'), ('BBB', 'BBB'), ('CCC', 'CCC')
-                ON CONFLICT (key) DO UPDATE SET deleted_at = NULL
+                VALUES ('AAA', 'AAA'), ('BBB', 'BBB'), ('CCC', 'CCC'), ('DDD', 'DDD')
+                ON CONFLICT (key) DO UPDATE SET deleted_at = NULL, archived_at = NULL
                 """.trimIndent(),
             ).use { it.executeUpdate() }
             conn.prepareStatement(
                 "UPDATE projects SET deleted_at = NOW() WHERE key = 'CCC'",
+            ).use { it.executeUpdate() }
+            conn.prepareStatement(
+                "UPDATE projects SET archived_at = NOW() WHERE key = 'DDD'",
             ).use { it.executeUpdate() }
         }
     }
@@ -94,5 +97,42 @@ class ProjectQueryRepositoryTest : IssueTestcontainersBase() {
         val result = projectQueryRepository.findByIdOrKey(UUID.randomUUID())
 
         assertThat(result).isNull()
+    }
+
+    // ── archivedAt 매핑 (FR-PJ-04 PR-4 Task 2) ─────────────────────────────────
+
+    @Test
+    fun `findByIdOrKey 는 아카이브 프로젝트도 반환한다 (읽기 불변식, EC-3·PJ4-6)`() {
+        val archivedId = projectIdByKey("DDD")
+
+        val result = projectQueryRepository.findByIdOrKey(archivedId)
+
+        assertThat(result?.key).isEqualTo("DDD")
+    }
+
+    @Test
+    fun `findByIdOrKey 는 아카이브된 프로젝트의 archivedAt 을 non-null 로 매핑한다`() {
+        val archivedId = projectIdByKey("DDD")
+
+        val result = projectQueryRepository.findByIdOrKey(archivedId)
+
+        assertThat(result?.archivedAt).isNotNull()
+    }
+
+    @Test
+    fun `findByIdOrKey 는 활성 프로젝트의 archivedAt 을 null 로 매핑한다`() {
+        val activeId = projectIdByKey("AAA")
+
+        val result = projectQueryRepository.findByIdOrKey(activeId)
+
+        assertThat(result?.archivedAt).isNull()
+    }
+
+    @Test
+    fun `findAccessibleByKeys 는 아카이브된 프로젝트의 archivedAt 을 non-null 로 매핑한다`() {
+        val result = projectQueryRepository.findAccessibleByKeys(setOf("DDD"))
+
+        assertThat(result).hasSize(1)
+        assertThat(result.first().archivedAt).isNotNull()
     }
 }
