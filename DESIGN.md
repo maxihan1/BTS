@@ -28,6 +28,8 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 
 `apps/web/src/index.css`의 `:root`(라이트) / `.dark`(다크) 블록. 값은 모두 **hex**(sRGB)다 — OKLCH가 아니다(이전 shadcn init 산출물은 OKLCH였으나 ADS v2 이식 과정에서 hex로 전량 교체됐다).
 
+다크 상태배경은 알파(`#RRGGBBAA`)다 — 게이트 2 리뷰에서 솔리드 등가의 상태-표면 충돌(C1)이 발견되어 ADS 정본 알파로 전환했다.
+
 정본 소스는 npm 패키지 **`@atlaskit/tokens@1.4.2`**(Apache-2.0, 재현·재검증 가능)다. 이 세대를 고른 이유는 BTS가 독립 확인한 5개 앵커 값(Blue100 `#E9F2FF`, Blue1000 `#082145`, 본문 텍스트 `#172B4D`, Blue700 `#0C66E4`, 그리고 구세대 v1 Blue400 `#0052CC`의 부재)과 완전히 일치하는 유일한 세대이기 때문이다. `#0052CC`는 구세대 v1 값이라 기각됐다 — v5.0.0 이상은 앵커값이 어긋나고, v8/v13/v16의 `palette.js`는 브랜드 리프레시로 Blue700이 `#1868DB`로 바뀌어 있다. 상세 도출 과정. `docs/plans/2026-07-19-fr-ux-06-pr3-ads-palette-values.md`.
 
 ### §A. shadcn 베이스 토큰 18종 (`--color-*` Tailwind 유틸로 완전 배선됨)
@@ -44,18 +46,18 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 | `--popover-foreground` | `#172B4D` | `#C7D1DB` | 팝오버 텍스트 |
 | `--primary` | `#0C66E4` | `#0C66E4` | 브랜드 블루(ADS Blue700) — 핵심 CTA 배경. 다크에서도 동일 값 유지(Maxi 결정, §다크 모드 예외 참조) |
 | `--primary-foreground` | `#FFFFFF` | `#FFFFFF` | CTA 위 흰 텍스트 |
-| `--secondary` | `#F1F2F4` | `#22272B` | 보조 액션 배경(Neutral200 / DarkNeutral200) |
+| `--secondary` | `#F1F2F4` | `#A1BDD914` | 보조 액션 배경(Neutral200 / DarkNeutral200A — 다크는 알파 토큰. ADS 알파 뉴트럴은 어떤 표면 위에서도 한 스텝 구분되도록 설계됐다 — 게이트 2 리뷰 C1 해소) |
 | `--secondary-foreground` | `#172B4D` | `#C7D1DB` | 보조 액션 텍스트 |
-| `--muted` | `#F7F8F9` | `#1D2125` | 비활성 영역 배경(Neutral100 / DarkNeutral100) |
+| `--muted` | `#F7F8F9` | `#BCD6F00A` | 비활성 영역 배경(Neutral100 / DarkNeutral100A — 다크는 알파 토큰) |
 | `--muted-foreground` | `#626F86` | `#8696A7` | 보조 텍스트(Neutral700 / DarkNeutral700) |
-| `--accent` | `#F1F2F4` | `#22272B` | 강조/hover 영역 배경(Neutral200 / DarkNeutral200 — `--bg-neutral-hover`와 동일 스텝) |
+| `--accent` | `#F1F2F4` | `#A1BDD914` | 강조/hover 영역 배경(Neutral200 / DarkNeutral200A — `--bg-neutral-hover`와 동일 스텝, 다크는 알파 토큰) |
 | `--accent-foreground` | `#172B4D` | `#C7D1DB` | 강조 영역 텍스트 |
 | `--destructive` | `#CA3521` | `#F87462` | 위험 액션·에러(Red700 / Red400) |
 | `--border` | `#DCDFE4` | `#2C333A` | 경계선(Neutral300 / DarkNeutral300) |
 | `--input` | `#DCDFE4` | `#2C333A` | 입력 필드 테두리(Neutral300 / DarkNeutral300) |
 | `--ring` | `#388BFF` | `#85B8FF` | 포커스 링(Blue500 / Blue300) |
 
-> **`--accent` ≈ `--bg-neutral-hover`.** 라이트 `#F1F2F4`, 다크 `#22272B`로 두 토큰의 값이 완전히 같다(같은 팔레트 스텝 Neutral200/DarkNeutral200을 가리킨다). DropdownMenu/Select/Command는 `focus:bg-accent`를, Tabs/Dialog는 `hover:bg-(--bg-neutral-hover)`를 쓴다 — 값은 같지만 배선 경로(§A vs §7)가 다르다는 점에 유의. 신규 컴포넌트 작성 시 어느 쪽을 쓸지는 "shadcn 표준 hover/focus 패턴이면 `--accent`, ADS §7 상태 토큰 문맥이면 `--bg-*`"로 판단한다.
+> **`--accent` ≈ `--bg-neutral-hover`.** 라이트 `#F1F2F4`, 다크 `#A1BDD914`로 두 토큰의 값이 완전히 같다(같은 팔레트 스텝 Neutral200/DarkNeutral200A를 가리킨다). DropdownMenu/Select는 `focus:bg-accent`를, Tabs/Dialog는 `hover:bg-(--bg-neutral-hover)`를 쓴다 — 값은 같지만 배선 경로(§A vs §7)가 다르다는 점에 유의(Command는 `focus:bg-accent`를 쓰지 않는다 — §4 표 참조). 신규 컴포넌트 작성 시 어느 쪽을 쓸지는 "shadcn 표준 hover/focus 패턴이면 `--accent`, ADS §7 상태 토큰 문맥이면 `--bg-*`"로 판단한다.
 
 ### §7. 상태 토큰 11종 (Tailwind 유틸 미배선 — 임의값 문법으로 소비)
 
@@ -63,21 +65,21 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 
 | CSS 변수 | 라이트 | 다크 | 한국어 역할 | Tailwind 사용 예 |
 |---|---|---|---|---|
-| `--bg-neutral` | `#F7F8F9` | `#1D2125` | 뉴트럴 배경(테이블 hover/footer, 스켈레톤) | `bg-(--bg-neutral)` |
-| `--bg-neutral-hover` | `#F1F2F4` | `#22272B` | 뉴트럴 hover 배경 | `hover:bg-(--bg-neutral-hover)` |
-| `--bg-neutral-press` | `#DCDFE4` | `#2C333A` | 뉴트럴 press(active) 배경 | `active:bg-(--bg-neutral-press)` |
+| `--bg-neutral` | `#F7F8F9` | `#BCD6F00A` | 뉴트럴 배경(테이블 hover/footer, 스켈레톤. 다크는 DarkNeutral100A 알파 토큰) | `bg-(--bg-neutral)` |
+| `--bg-neutral-hover` | `#F1F2F4` | `#A1BDD914` | 뉴트럴 hover 배경(다크는 DarkNeutral200A 알파 토큰) | `hover:bg-(--bg-neutral-hover)` |
+| `--bg-neutral-press` | `#DCDFE4` | `#A6C5E229` | 뉴트럴 press(active) 배경(다크는 DarkNeutral300A 알파 토큰) | `active:bg-(--bg-neutral-press)` |
 | `--bg-selected` | `#E9F2FF` | `#082145` | 선택 상태 배경(Blue100 / Blue1000) | `data-[state=selected]:bg-(--bg-selected)` |
 | `--text-selected` | `#0C66E4` | `#579DFF` | 선택 상태 텍스트(Blue700 / Blue400) | `data-[state=active]:text-(--text-selected)` |
 | `--text-subtle` | `#44546F` | `#9FADBC` | 보조 텍스트(Neutral800 / DarkNeutral800, `muted-foreground`보다 한 단계 진함) | `text-(--text-subtle)` |
 | `--text-subtlest` | `#626F86` | `#8696A7` | 최약 텍스트(`--muted-foreground`와 동일 값) | `text-(--text-subtlest)` |
 | `--text-disabled` | `#B3B9C4` | `#454F59` | 비활성 텍스트 | `disabled:text-(--text-disabled)` |
 | `--border-focus` | `#388BFF` | `#85B8FF` | 포커스 아웃라인(`--ring`과 동일 값 — 색 통일) | `focus-visible:outline-(--border-focus)` |
-| `--brand-hover` | `#0055CC` | `#85B8FF` | 브랜드 hover/체크 상태 배경(Blue800 / Blue300) | `data-[state=checked]:bg-(--brand-hover)` |
+| `--brand-hover` | `#0055CC` | `#0055CC` | 브랜드 hover/체크 상태 배경(Blue800 — 라이트/다크 동일값. ADS 다크 Blue300은 흰 글리프 대비 2.04:1로 미달해 기각, 결정 3과 대칭으로 라이트값을 다크에도 유지) | `data-[state=checked]:bg-(--brand-hover)` |
 | `--brand-text` | `#0C66E4` | `#579DFF` | 브랜드 텍스트(멘션 등) | `.mention { color: var(--brand-text) }` |
 
 > **`--border-focus` = `--ring`.** 라이트 `#388BFF`(Blue500), 다크 `#85B8FF`(Blue300)로 완전히 동일한 값이다 — 포커스 시각 신호를 팔레트 전역에서 하나로 통일하기 위한 의도적 설계다.
 
-### §C. 시맨틱 상태색 4종 (Tailwind 유틸로 완전 배선됨)
+### §C. 시맨틱 상태색 4종 + foreground 4종 (Tailwind 유틸로 완전 배선됨)
 
 `color.background.<status>.bold`(고강조 배경) 스텝을 채택했다. `--color-*`로 배선되어 `bg-warning`, `text-danger` 등 표준 유틸로 쓸 수 있다.
 
@@ -87,10 +89,14 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 | `--success` | `#1F845A` | `#4BCE97` | Green700 / Green400 |
 | `--danger` | `#CA3521` | `#F87462` | Red700 / Red400(=`--destructive`와 동일 값) |
 | `--info` | `#0C66E4` | `#579DFF` | Blue700 / Blue400(=`--primary` 라이트값과 동일) |
+| `--warning-foreground` | `#FFFFFF` | `#161A1D` | 흰색 / DarkNeutral0(`--warning` bold 배경 위 텍스트) |
+| `--success-foreground` | `#FFFFFF` | `#161A1D` | 흰색 / DarkNeutral0(`--success` bold 배경 위 텍스트) |
+| `--danger-foreground` | `#FFFFFF` | `#161A1D` | 흰색 / DarkNeutral0(`--danger` bold 배경 위 텍스트) |
+| `--info-foreground` | `#FFFFFF` | `#161A1D` | 흰색 / DarkNeutral0(`--info` bold 배경 위 텍스트) |
 
-**텍스트 페어링 관례.** 라이트 bold 배경(진한 오렌지/빨강/초록)에는 **흰 글자**, 다크 bold 배경(밝은 노랑/파랑/빨강)에는 **어두운 글자(`#161A1D`)**. warning이 대표 사례 — 라이트는 진오렌지+흰 글자, 다크는 밝은 노랑+검은 글자로 페어링이 뒤집힌다(§10 대비표 참조).
+**텍스트 페어링.** `--warning-foreground`/`--success-foreground`/`--danger-foreground`/`--info-foreground` 4종이 토큰으로 제공된다(`text-warning-foreground` 등 Tailwind 유틸로 바로 쓸 수 있다) — 라이트는 흰 글자, 다크는 어두운 글자(`#161A1D`)로 고정된다. warning이 대표 사례 — 라이트는 진오렌지+흰 글자, 다크는 밝은 노랑+검은 글자로 페어링이 뒤집힌다(§10 대비표 참조).
 
-**현재 소비처.** §C 4종은 `apps/web/src/components/ui/`(프리미티브)에서는 아직 직접 소비되지 않는다 — feature 레벨 컴포넌트(`components/workflow/WorkflowDiagram.tsx`, `components/backlog/BacklogBoard.tsx`, `components/automation/RuleConflictWarningModal.tsx`, `components/automation/AutomationRuleFormDialog.tsx` 등)에서 상태 배지·경고 UI에 쓰인다.
+**현재 소비처.** §C 4종은 `apps/web/src/components/ui/`(프리미티브)에서는 아직 직접 소비되지 않는다 — 실제로 §C 토큰을 CSS 클래스로 소비하는 곳은 `components/backlog/BacklogBoard.tsx`(백로그 절단 경고 배너, `border-warning bg-warning/10`) 1건뿐이다. `components/workflow/WorkflowDiagram.tsx`는 완료 상태를 하드코딩 `oklch()` 값으로 그리고 있어 §C 토큰으로 이관할 후보이고, `components/automation/RuleConflictWarningModal.tsx`·`components/automation/AutomationRuleFormDialog.tsx`는 변수/라벨 이름에 "warning" 문자열만 있을 뿐 §C 토큰을 실제로 소비하지 않는다.
 
 ### 🔒 동결 토큰 — 이 문서에서 다루지 않음
 
@@ -108,7 +114,7 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 - **primary** — 페이지당 한 개의 핵심 CTA에만 쓴다.
 - **destructive / danger** — 되돌릴 수 없는 위험 액션 또는 에러 메시지. `--destructive`(§A)와 `--danger`(§C)는 라이트/다크 값이 동일하다 — 폼 검증 에러는 `--destructive`(shadcn 관례 유지), 상태 배지·알림 배너는 `--danger`(§C, 다른 시맨틱 3종과 대칭)를 쓴다.
 - **muted / muted-foreground / text-subtle / text-subtlest** — 부가 정보, placeholder, 힌트. 본문 가독성이 요구되는 곳에는 쓰지 않는다.
-- **임의 색상 추가 금지** — 위 33개 토큰 외 색이 필요하면 이 문서에 신규 토큰을 먼저 등록한 뒤 사용한다.
+- **임의 색상 추가 금지** — 위 37개 토큰(§A 18 + §7 11 + §C 8) 외 색이 필요하면 이 문서에 신규 토큰을 먼저 등록한 뒤 사용한다.
 
 ---
 
@@ -154,7 +160,7 @@ AQL(BTS의 이슈 검색 쿼리 언어) 쿼리 입력창의 syntax highlight용 
 
 `apps/web/src/components/ui/`. shadcn/ui는 소스를 프로젝트에 직접 복사하는 "vendoring" 방식이다 — 이 디렉토리의 파일을 직접 수정할 수 있다. 단, 수정 범위를 최소화하고(스타일 조정은 Tailwind 유틸리티 prop으로 먼저 시도), 수정 이유를 파일 상단 주석에 남긴다. shadcn 래퍼가 없는 컴포넌트(RadioGroup, Switch, Checkbox, Tabs 등)는 `radix-ui` 패키지를 직접 import해 BTS 토큰을 입힌 것이다 — 표의 "shadcn 매핑" 열에 "radix-ui 직접"으로 표기.
 
-### 전수 목록 (24개, 테스트 파일 8개 제외)
+### 전수 목록 (24개, 테스트 파일 14개 제외)
 
 `.test.tsx`가 붙은 파일(`avatar.test.tsx`, `badge.test.tsx`, `checkbox.test.tsx`, `command.test.tsx`, `dialog.test.tsx`, `empty-state.test.tsx`, `popover.test.tsx`, `radio-group.test.tsx`, `separator.test.tsx`, `sonner.test.tsx`, `switch.test.tsx`, `table.test.tsx`, `tabs.test.tsx`, `tooltip.test.tsx`)는 프리미티브 자체가 아니므로 제외했다.
 
@@ -379,6 +385,16 @@ WCAG AA 기준. 본문 텍스트 4.5:1 이상, UI 컴포넌트/큰 텍스트(18p
 | `ring`/`border-focus` on `background` | 3.33:1 | 8.58:1 | AA ✅(UI 3:1 기준) | 포커스 링은 텍스트가 아니라 UI 컴포넌트라 3:1 기준 적용 |
 | `.mention`(`color: var(--brand-text)`) | 4.64:1 | 5.51:1 | AA ✅ | |
 | `text-disabled` on `background` | 1.97:1 | 2.10:1 | 면제 | WCAG는 `disabled` 상태 텍스트에 대비 기준을 요구하지 않음 |
+
+**다크 상태배경(알파) 텍스트 대비 — 합성 실효색 기준(최악 표면 popover).** 게이트 2 리뷰 C1로 다크 `--secondary`/`--muted`/`--accent`/`--bg-neutral*`가 솔리드에서 알파(`#RRGGBBAA`)로 바뀌면서, 텍스트 대비는 알파를 실제로 겹칠 표면(카드 `#1D2125` / 팝오버 `#22272B`) 위에 합성한 실효색으로 계산해야 한다. 두 표면 중 팝오버가 항상 더 어두운 합성 결과를 내는 최악 케이스라 아래 값은 전부 팝오버 합성 기준이다(카드 합성은 더 밝아 대비가 더 여유롭다).
+
+| 토큰 조합 | 라이트 대비 | 다크 대비(팝오버 합성 실효색) | 판정 | 비고 |
+|---|---|---|---|---|
+| `muted-foreground` on `muted` | 4.77:1 | 4.54:1 | AA ✅ | 다크 `muted`=DarkNeutral100A(`#BCD6F00A`), 팝오버 위 합성 실효색 `#282E33` |
+| `accent-foreground`/`secondary-foreground` on `accent`/`secondary` | 12.59:1 | 8.30:1 | AA ✅ | 다크 `accent`/`secondary`=DarkNeutral200A(`#A1BDD914`), 팝오버 위 합성 실효색 `#2C3339` |
+| `foreground` on `bg-neutral-press` | 10.55:1 | 6.78:1 | AA ✅ | 다크 `bg-neutral-press`=DarkNeutral300A(`#A6C5E229`), 팝오버 위 합성 실효색 `#374048` |
+| `text-selected` on `bg-neutral-hover`(알파 표면 위에 놓이는 최악 케이스) | 4.65:1 | 4.69:1 | AA ✅ | 다크 `bg-neutral-hover`=DarkNeutral200A, 팝오버 위 합성 실효색 `#2C3339`(위 accent-foreground 행과 동일 합성면) |
+| 체크박스 글리프(흰색) on `brand-hover`(checked 상태) | 6.62:1 | 6.62:1 | AA ✅(UI 3:1 기준) | 라이트/다크 동일값(`#0055CC`) — 게이트 2 리뷰 C2, ADS 다크 Blue300(`#85B8FF`)은 2.04:1로 미달해 기각 |
 
 ### Syntax Highlight 토큰 대비 검증 (§3, WCAG AA 4.5:1 기준)
 

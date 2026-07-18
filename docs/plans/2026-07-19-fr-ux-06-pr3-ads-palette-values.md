@@ -17,6 +17,8 @@
 
 ## A. shadcn 토큰 → ADS 매핑 (라이트+다크)
 
+> ⚠️ 아래 표의 일부 값은 초안 — 최종 확정값은 문서 말미 §확정·§게이트 2 리뷰 수정과 state-tokens.test.ts 행렬이 정본이다.
+
 | shadcn 토큰 | 라이트 hex | 다크 hex | ADS 토큰(→ 팔레트 스텝) | 출처 URL |
 |---|---|---|---|---|
 | `--background` | `#FFFFFF` | `#161A1D` | elevation.surface (→ Neutral0 / DarkNeutral0) | atlassian-{light,dark}/elevation/surface.js |
@@ -148,3 +150,23 @@
 이 4결정으로 §A·§B·§C에 남아있던 ⚠️ 미결 지점이 전부 해소됐다. 최종 33토큰(§A 18 + §B 11 + §C 4)은 `apps/web/src/index.css`의 `:root`/`.dark` 및 `DESIGN.md` §2 컬러 토큰 표와 1:1 대응한다.
 
 **`.mention` 대비 처방.** 다크 모드에서 `.mention`의 `color`가 `--primary`(Blue700 `#0C66E4`, 결정 3에 따라 라이트값 유지)를 직참조하면 멘션 배경(`--accent`, 다크 `#22272B`) 위 대비가 2.90:1로 WCAG AA(4.5:1) 미달이었다. 이를 `--brand-text` 참조로 교체해 해소했다 — `--brand-text`는 라이트/다크 모두 ADS 실측 브랜드 텍스트 색(라이트 `#0C66E4`/다크 `#579DFF`)이라 다크에서도 밝은 파랑이 나와, 라이트 4.64:1·다크 5.51:1로 AA를 만족한다.
+
+---
+
+### 게이트 2 리뷰 수정 (2026-07-19)
+
+게이트 2(코드리뷰) 통과 후 리뷰어가 지적한 이슈 C1~C3을 fix-1 커밋(`68695f277`)에서 해소했다.
+
+**C1 — 다크 상태배경 알파 전환(7값).** 확정 절 발행 당시 다크 `--secondary`/`--muted`/`--accent`/`--bg-neutral`/`--bg-neutral-hover`/`--bg-neutral-press`는 솔리드 hex였는데, 그중 일부가 다른 표면 토큰과 완전히 같은 값이었다(예. `--muted` 다크 `#1D2125` = `--card` 다크 `#1D2125`, `--secondary`/`--accent` 다크 `#22272B` = `--popover` 다크 `#22272B`) — 즉 상태-표면 충돌로 대비비 1.00:1(경계 자체가 안 보임)이 발생했다. ADS v2 정본은 이 스텝을 애초에 알파(`#RRGGBBAA`)로 정의한다 — 어떤 표면 위에 얹혀도 항상 한 스텝 어두워지도록 설계됐기 때문이다. 이를 그대로 채택해 7값을 알파로 전환했다.
+- `--secondary`/`--accent`: `#22272B` → `#A1BDD914`(DarkNeutral200A)
+- `--muted`/`--bg-neutral`: `#1D2125`/`#1D2125` → `#BCD6F00A`(DarkNeutral100A)
+- `--bg-neutral-hover`: `#22272B` → `#A1BDD914`(DarkNeutral200A)
+- `--bg-neutral-press`: `#2C333A` → `#A6C5E229`(DarkNeutral300A)
+
+전환 후 카드/팝오버 표면 위에 합성한 실효색은 카드 `#1D2125`/팝오버 `#22272B`와 각각 대비비 1.08~1.44:1로 구분된다(상태-표면 충돌 해소). 합성 실효색 위 텍스트 대비도 전부 AA를 만족한다(muted-fg 4.54:1, accent-fg 8.30:1, press 위 foreground 6.78:1, text-selected 4.69:1 — 전부 팝오버 합성 기준, 카드 합성은 더 여유롭다). 상세 계산은 `DESIGN.md` §10 참조.
+
+**C2 — brand-hover 다크 `#0055CC`.** 확정 절 당시 다크 `--brand-hover`는 ADS 실측 Blue300(`#85B8FF`)이었다. 그런데 Checkbox/Switch의 `data-[state=checked]:bg-(--brand-hover)` 위에는 흰색 체크 글리프가 얹히는데, 흰 글리프 on Blue300 대비는 2.04:1로 UI 컴포넌트 기준(3:1)에도 미달했다. 다크 primary를 ADS 정본 대신 shadcn 관례로 유지한 결정 3과 대칭으로, `--brand-hover`도 라이트와 동일한 `#0055CC`(Blue800)를 다크에도 채택했다 — 흰 글리프 대비 6.62:1로 AA(UI 3:1)를 여유 있게 만족한다.
+
+**C3 — foreground 4쌍 신설 + BacklogBoard phantom 제거.** `--warning`/`--success`/`--danger`/`--info` bold 배경 위에 얹을 텍스트 색을 각각 `--warning-foreground`/`--success-foreground`/`--danger-foreground`/`--info-foreground` 토큰으로 신설했다(라이트 `#FFFFFF` / 다크 `#161A1D`, `@theme inline`에 `--color-*-foreground`로 배선). 이와 함께 `BacklogBoard.tsx`의 절단 경고 배너에 남아 있던 `text-warning-foreground` 클래스를 제거했다 — 이 클래스는 Tailwind 유틸로 배선되지 않은 상태에서 쓰이고 있어 실제로는 아무 효과가 없는 phantom 클래스였다(대비 문제를 감추는 거짓 그린).
+
+이 3건 반영 후 §2 전체 컬러 토큰 수는 §A 18 + §7 11 + §C 8(시맨틱 4 + foreground 4) = **37종**이다.
