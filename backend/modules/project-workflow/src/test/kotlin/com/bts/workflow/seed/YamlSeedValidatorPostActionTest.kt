@@ -9,6 +9,7 @@ import com.bts.workflow.engine.DefaultWorkflowValidatorFactory
 import com.bts.workflow.expression.SpelEvaluator
 import com.bts.workflow.repository.DefaultWorkflowDefinitionRepository
 import com.bts.workflow.repository.WorkflowRepository
+import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -146,6 +147,7 @@ class YamlSeedValidatorPostActionTest {
                     DefaultResourceLoader(),
                     validatorFactory,
                     postActionFactory,
+                    SchemeIssueTypeMappingRepository(dsl),
                 )
         }
     }
@@ -329,6 +331,7 @@ class YamlSeedValidatorPostActionTest {
                     spelEvaluator = SpelEvaluator(executor = spelExecutor, timeoutMillis = 5000L),
                 ),
                 DefaultWorkflowPostActionFactory(),
+                SchemeIssueTypeMappingRepository(dsl),
             )
 
         // 단건 시드 — parseAndValidate + applyIfChanged 경로
@@ -389,6 +392,7 @@ class YamlSeedValidatorPostActionTest {
                     spelEvaluator = SpelEvaluator(executor = spelExecutor, timeoutMillis = 5000L),
                 ),
                 DefaultWorkflowPostActionFactory(),
+                SchemeIssueTypeMappingRepository(dsl),
             )
 
         val dto = yamlMapper.readValue(bogusValidatorYaml, WorkflowYamlDto::class.java)
@@ -421,6 +425,7 @@ class YamlSeedValidatorPostActionTest {
                 DefaultResourceLoader(),
                 validatorFactory,
                 postActionFactory,
+                SchemeIssueTypeMappingRepository(dsl),
             )
         svc.seedSingle(dto)
     }

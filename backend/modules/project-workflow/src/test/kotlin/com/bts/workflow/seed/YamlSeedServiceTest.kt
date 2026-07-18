@@ -126,7 +126,9 @@ class YamlSeedServiceTest {
             val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
 
             repository = WorkflowRepository(dsl)
-            // 표준 4 워크플로우는 validator/postAction 이 없어 factory 미호출 → relaxed mock 으로 충분
+            // 표준 4 워크플로우는 validator/postAction 이 없어 factory 미호출 → relaxed mock 으로 충분.
+            // mappingRepository 는 R6-1/R6-3 시나리오(repairDefaultMappings 실호출)가 실제 DB 상태를
+            // 검증하므로 실제 인스턴스가 필요하다.
             service =
                 YamlSeedService(
                     repository,
@@ -134,6 +136,7 @@ class YamlSeedServiceTest {
                     DefaultResourceLoader(),
                     mockk(relaxed = true),
                     mockk(relaxed = true),
+                    SchemeIssueTypeMappingRepository(dsl),
                 )
         }
     }
@@ -325,6 +328,7 @@ class YamlSeedServiceTest {
                 modifiedResourceLoader,
                 mockk(relaxed = true),
                 mockk(relaxed = true),
+                SchemeIssueTypeMappingRepository(dsl),
             )
 
         serviceWithModified.seedAll()
@@ -359,6 +363,7 @@ class YamlSeedServiceTest {
                 invalidResourceLoader,
                 mockk(relaxed = true),
                 mockk(relaxed = true),
+                SchemeIssueTypeMappingRepository(dsl),
             )
 
         assertThatThrownBy { serviceWithInvalid.seedAll() }
@@ -389,6 +394,7 @@ class YamlSeedServiceTest {
                 duplicateTransitionResourceLoader,
                 mockk(relaxed = true),
                 mockk(relaxed = true),
+                SchemeIssueTypeMappingRepository(dsl),
             )
 
         assertThatThrownBy { serviceWithDuplicate.seedAll() }
@@ -507,6 +513,7 @@ class YamlSeedServiceTest {
                 ModifiedSimpleWorkflowResourceLoader(),
                 mockk(relaxed = true),
                 mockk(relaxed = true),
+                SchemeIssueTypeMappingRepository(dsl),
             )
         serviceToReseed.seedAll()
 

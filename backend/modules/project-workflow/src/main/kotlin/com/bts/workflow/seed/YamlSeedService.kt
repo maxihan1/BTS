@@ -163,7 +163,8 @@ val workflowYamlValidation: Validation<WorkflowYamlDto> =
  * @param validatorFactory validator type dry-run 검증용 팩토리. 미지원 type 에 [IllegalArgumentException] 을 던진다.
  * @param postActionFactory postAction type dry-run 검증용 팩토리. 미지원 type 에 [IllegalArgumentException] 을 던진다.
  * @param mappingRepository 스킴-이슈타입 매핑 기록→재연결 및 R6 default 매핑 백필용 리포지토리.
- *   기본값은 같은 [dsl] 로 생성한 실제 인스턴스 — Spring 컨텍스트에서는 등록된 Bean 이 우선 주입된다.
+ *   Spring 컨텍스트에서는 등록된 Bean 이 주입된다. 손수 생성한 인스턴스는 `@Repository` 프록시 밖이라
+ *   향후 `@Transactional` 우회를 잠복시킬 수 있어 기본값을 두지 않고 필수 주입으로 강제한다.
  */
 @Service
 class YamlSeedService(
@@ -172,7 +173,7 @@ class YamlSeedService(
     private val resourceLoader: ResourceLoader,
     private val validatorFactory: WorkflowValidatorFactory,
     private val postActionFactory: WorkflowPostActionFactory,
-    private val mappingRepository: SchemeIssueTypeMappingRepository = SchemeIssueTypeMappingRepository(dsl),
+    private val mappingRepository: SchemeIssueTypeMappingRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 

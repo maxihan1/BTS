@@ -15,6 +15,7 @@ import com.bts.workflow.engine.WorkflowEngine
 import com.bts.workflow.expression.SpelEvaluator
 import com.bts.workflow.repository.DefaultWorkflowDefinitionRepository
 import com.bts.workflow.repository.WorkflowRepository
+import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
@@ -162,6 +163,7 @@ class DoneResolutionValidatorSeedTest {
                     DefaultResourceLoader(),
                     validatorFactory,
                     postActionFactory,
+                    SchemeIssueTypeMappingRepository(dsl),
                 )
 
             // 표준 4 워크플로우 시드
