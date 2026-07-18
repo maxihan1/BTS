@@ -123,9 +123,16 @@ class BacklogRankService(
      * lock 후 findRanksForRebalance 를 재조회하여 TOCTOU 를 차단한다.
      * rank=NULL 인 이슈(옵션 B, lazy 미부여)도 NULLS LAST 정렬로 포함하여 전체에 rank 를 부여한다.
      *
+     * ## 아카이브 잠금 이중 방어 (FR-PJ-04 PR-4 Task 9c)
+     * public 메서드라 [rerank](이미 `archiveGuard.checkByIssue` 로 가드됨) 를 거치지 않고
+     * 직접 호출될 잠재 경로가 있으므로, 이 메서드 자신도 최상단에서 [ProjectArchiveGuard.check]
+     * 로 아카이브 프로젝트 쓰기를 차단한다(advisory lock 획득보다 먼저 — 불필요한 lock 방지).
+     *
      * @param projectId 재배포 대상 프로젝트 UUID.
+     * @throws com.bts.issue.project.archive.ProjectArchivedException 대상 프로젝트가 아카이브 상태일 때.
      */
     fun rebalance(projectId: UUID) {
+        archiveGuard.check(projectId)
         // pg_advisory_xact_lock 취득 — 동시 rebalance 직렬화 (트랜잭션 종료 시 자동 해제).
         // void 반환이라 execute 로 호출 (DATA.md §5 정식 예외).
         log.debug("acquiring rebalance lock for projectId={}", projectId)
