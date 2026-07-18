@@ -1,14 +1,12 @@
-// 프로젝트 Aggregate Root — 최소 필드(id·key·name) + 생성 BC 도메인 예외 (FR-PJ-01)
+// 프로젝트 Aggregate Root — 최소 필드(id·key·name) + archivedAt(FR-PJ-04) + 생성 BC 도메인 예외
 
 package com.bts.issue.project.domain
 
+import java.time.Instant
 import java.util.UUID
 
 /**
  * 프로젝트 Aggregate Root.
- *
- * 이 PR(FR-PJ-01 프로젝트 생성) 범위는 최소 필드(id, key, name) 만 다룬다.
- * `archived_at` 등 나머지 프로젝트 필드는 이 PR 범위 밖(PR-4 후속).
  *
  * key 형식(대문자로 시작, 대문자+숫자 2~10자)은 DB CHECK 제약(`projects_key_check`)이
  * 강제한다 — 이 도메인 객체는 별도 정규식 검증을 하지 않는다(insert 시 DB CHECK 로 거부, PJ1-6).
@@ -16,11 +14,15 @@ import java.util.UUID
  * @property id DB PK. 신규 생성 전(DB 저장 전)에는 null 이다.
  * @property key 프로젝트 식별 접두사 (예: "BTS").
  * @property name 프로젝트 이름.
+ * @property archivedAt null 이면 활성, 값이 있으면 아카이브됨(FR-PJ-04). `deleted_at`(소프트 삭제)과
+ *   직교하는 별도 라이프사이클 축이며, 읽기 조회는 아카이브 프로젝트도 그대로 반환한다(PJ4-6).
+ *   기본값 null 은 프로젝트 생성 직후(create) 등 기존 소비처와의 호환을 위함이다.
  */
 data class Project(
     val id: UUID?,
     val key: String,
     val name: String,
+    val archivedAt: Instant? = null,
 )
 
 /**

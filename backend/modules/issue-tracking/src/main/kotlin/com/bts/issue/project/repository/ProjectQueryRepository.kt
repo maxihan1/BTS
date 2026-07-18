@@ -75,5 +75,6 @@ class ProjectQueryRepository(
             id = id ?: error("projects.id must not be null after DB fetch"),
             key = key,
             name = name,
+            archivedAt = archivedAt?.toInstant(),
         )
 }
