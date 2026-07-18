@@ -14,6 +14,7 @@ import com.bts.issue.epic.domain.EpicChildSelfReferenceException
 import com.bts.issue.epic.domain.EpicProgress
 import com.bts.issue.epic.domain.EpicTargetNotEpicException
 import com.bts.issue.history.IssueHistoryRecorder
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeKey
@@ -69,6 +70,7 @@ class IssueEpicService(
     private val issueTypeRepository: IssueTypeRepository,
     private val historyRecorder: IssueHistoryRecorder,
     private val workflowStateCatalog: WorkflowStateCatalog,
+    private val archiveGuard: ProjectArchiveGuard,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -96,6 +98,9 @@ class IssueEpicService(
     ) {
         // 1. UPDATE(child) 권한 선행 — 이슈 존재 probe 방지
         checkUpdatePermission(actor, childKey)
+        // 아카이브 잠금 — child/epic 은 cross-project 금지(불변식 7)이므로 동일 프로젝트, 방어적으로 둘 다 확인.
+        // TASK9-RED-PENDING archiveGuard.checkByIssue(childKey)
+        // TASK9-RED-PENDING archiveGuard.checkByIssue(epicKey)
 
         // 2~8. 불변식 검증 — 별도 헬퍼로 위임 (LongMethod 억제)
         val (child, epic) = validateConnectInvariants(epicKey, childKey)
@@ -141,6 +146,9 @@ class IssueEpicService(
     ) {
         // UPDATE(child) 권한 선행
         checkUpdatePermission(actor, childKey)
+        // 아카이브 잠금 — connect 와 동형(둘 다 확인).
+        // TASK9-RED-PENDING archiveGuard.checkByIssue(childKey)
+        // TASK9-RED-PENDING archiveGuard.checkByIssue(epicKey)
 
         // child 조회
         val child =

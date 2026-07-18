@@ -7,6 +7,8 @@ import com.bts.issue.component.adapter.AlwaysAllowComponentPermissionResolver
 import com.bts.issue.component.application.ComponentApplicationService
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.project.ProjectLookup
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.project.repository.ProjectLookupRepository
 import com.bts.shared.permission.ComponentPermissionResolver
 import com.bts.shared.user.UserLookupPort
@@ -149,18 +151,25 @@ class ComponentControllerIntegrationTest {
         @Profile("test")
         open fun componentPermissionResolver(): ComponentPermissionResolver = AlwaysAllowComponentPermissionResolver()
 
+        /** FR-PJ-04 PR-4 Task 9 — 실 ProjectArchiveGuard(공유 dsl 위). */
+        @Bean
+        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard =
+            ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+
         @Bean
         open fun componentApplicationService(
             permissionResolver: ComponentPermissionResolver,
             projectLookup: ProjectLookup,
             userLookupPort: UserLookupPort,
             repo: ComponentRepository,
+            archiveGuard: ProjectArchiveGuard,
         ): ComponentApplicationService =
             ComponentApplicationService(
                 permissionResolver = permissionResolver,
                 projectLookup = projectLookup,
                 userLookupPort = userLookupPort,
                 repo = repo,
+                archiveGuard = archiveGuard,
             )
 
         @Bean

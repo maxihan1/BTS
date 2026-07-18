@@ -10,6 +10,8 @@ import com.bts.issue.component.domain.ComponentProjectNotFoundException
 import com.bts.issue.component.domain.DuplicateComponentNameException
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.project.ProjectLookup
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.shared.permission.ComponentPermission
 import com.bts.shared.permission.ComponentPermissionResolver
 import com.bts.shared.user.UserLookupPort
@@ -45,6 +47,7 @@ class ComponentApplicationServiceTest : DescribeSpec({
     val projectLookup = mockk<ProjectLookup>()
     val userLookupPort = mockk<UserLookupPort>()
     val repo = mockk<ComponentRepository>()
+    val archiveGuard = mockk<ProjectArchiveGuard>(relaxUnitFun = true)
 
     val sut =
         ComponentApplicationService(
@@ -52,6 +55,7 @@ class ComponentApplicationServiceTest : DescribeSpec({
             projectLookup = projectLookup,
             userLookupPort = userLookupPort,
             repo = repo,
+            archiveGuard = archiveGuard,
         )
 
     val actorId = UUID.randomUUID()
@@ -69,7 +73,7 @@ class ComponentApplicationServiceTest : DescribeSpec({
             deletedAt = null,
         )
 
-    afterEach { clearMocks(permissionResolver, projectLookup, userLookupPort, repo) }
+    afterEach { clearMocks(permissionResolver, projectLookup, userLookupPort, repo, archiveGuard) }
 
     // ── create ────────────────────────────────────────────────────────────────
 
@@ -345,6 +349,89 @@ class ComponentApplicationServiceTest : DescribeSpec({
                     sut.delete(actorId, projectIdOrKey, componentId)
                 }
                 verify(exactly = 0) { repo.softDelete(any(), any()) }
+            }
+        }
+    }
+
+    // ── 아카이브 잠금 (FR-PJ-04 PR-4 Task 9) ─────────────────────────────────────
+
+    /** 쓰기 4종(create/update/changeLead/delete)의 아카이브 잠금 판별자. VersionApplicationServiceTest 동형. */
+    data class ArchiveWriteCase(
+        val label: String,
+        val stubHappyPath: () -> Unit,
+        val invoke: () -> Unit,
+    )
+
+    val archiveWriteCases =
+        listOf(
+            ArchiveWriteCase(
+                label = "create",
+                stubHappyPath = {
+                    every {
+                        permissionResolver.hasPermission(actorId, ComponentPermission.CREATE, projectId)
+                    } returns true
+                    every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                    every { repo.insert(any()) } returns activeComponent.copy(id = UUID.randomUUID())
+                },
+                invoke = { sut.create(actorId, projectIdOrKey, "Backend", null, null) },
+            ),
+            ArchiveWriteCase(
+                label = "update",
+                stubHappyPath = {
+                    every {
+                        permissionResolver.hasPermission(actorId, ComponentPermission.UPDATE, projectId)
+                    } returns true
+                    every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                    every { repo.findById(componentId, projectId) } returns activeComponent
+                    every { repo.update(any()) } returns activeComponent
+                },
+                invoke = { sut.update(actorId, projectIdOrKey, componentId, "Frontend", null) },
+            ),
+            ArchiveWriteCase(
+                label = "changeLead",
+                stubHappyPath = {
+                    every {
+                        permissionResolver.hasPermission(actorId, ComponentPermission.UPDATE, projectId)
+                    } returns true
+                    every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                    every { repo.findById(componentId, projectId) } returns activeComponent
+                    every { repo.update(any()) } returns activeComponent
+                },
+                invoke = { sut.changeLead(actorId, projectIdOrKey, componentId, null) },
+            ),
+            ArchiveWriteCase(
+                label = "delete",
+                stubHappyPath = {
+                    every {
+                        permissionResolver.hasPermission(actorId, ComponentPermission.DELETE, projectId)
+                    } returns true
+                    every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                    every { repo.findById(componentId, projectId) } returns activeComponent
+                    every { repo.softDelete(componentId, projectId) } returns Unit
+                },
+                invoke = { sut.delete(actorId, projectIdOrKey, componentId) },
+            ),
+        )
+
+    describe("아카이브 잠금 (FR-PJ-04 PR-4 Task 9)") {
+        archiveWriteCases.forEach { case ->
+            context("${case.label} — 아카이브된 프로젝트") {
+                it("permission 통과 후 archiveGuard.check 가 ProjectArchivedException 을 던지면 그대로 전파된다") {
+                    case.stubHappyPath()
+                    every { archiveGuard.check(projectId) } throws ProjectArchivedException(projectId.toString())
+
+                    shouldThrow<ProjectArchivedException> { case.invoke() }
+                }
+            }
+
+            context("${case.label} — 활성 프로젝트 (판별자 baseline)") {
+                it("archiveGuard.check 가 실제로 호출된다 (2xx 통과 + 판별자)") {
+                    case.stubHappyPath()
+
+                    case.invoke()
+
+                    verify(exactly = 1) { archiveGuard.check(projectId) }
+                }
             }
         }
     }

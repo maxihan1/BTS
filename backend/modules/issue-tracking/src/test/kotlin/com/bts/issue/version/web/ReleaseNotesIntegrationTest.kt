@@ -4,6 +4,8 @@
 package com.bts.issue.version.web
 
 import com.bts.issue.project.ProjectLookup
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.project.repository.ProjectLookupRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
@@ -163,17 +165,24 @@ class ReleaseNotesIntegrationTest {
         @Bean
         open fun clock(): Clock = FIXED_CLOCK
 
+        /** FR-PJ-04 PR-4 Task 9 — 실 ProjectArchiveGuard(공유 dsl 위). */
+        @Bean
+        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard =
+            ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+
         @Bean
         open fun versionApplicationService(
             permissionResolver: VersionPermissionResolver,
             projectLookup: ProjectLookup,
             repo: VersionRepository,
+            archiveGuard: ProjectArchiveGuard,
             clock: Clock,
         ): VersionApplicationService =
             VersionApplicationService(
                 permissionResolver = permissionResolver,
                 projectLookup = projectLookup,
                 repo = repo,
+                archiveGuard = archiveGuard,
                 clock = clock,
             )
 

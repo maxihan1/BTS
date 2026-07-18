@@ -23,6 +23,8 @@ import com.bts.issue.history.IssueChangeHistoryRepository
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.history.JdbcIssueChangeHistoryRepository
 import com.bts.issue.project.ProjectLookup
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.project.repository.ProjectLookupRepository
 import com.bts.issue.repository.IssueRepository
@@ -180,18 +182,25 @@ class IssueImportAdapterTest {
         open fun importVersionPermissionResolver(): VersionPermissionResolver =
             SelectiveAllowVersionPermissionResolver(allowed = setOf(AUTO_CREATE_ALLOWED_REQUESTER_ID))
 
+        /** FR-PJ-04 PR-4 Task 9 — 실 ProjectArchiveGuard(공유 dsl 위). Import 대상 프로젝트는 archived_at NULL 이므로 no-op. */
+        @Bean
+        open fun importProjectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard =
+            ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+
         @Bean
         open fun importComponentApplicationService(
             permissionResolver: ComponentPermissionResolver,
             projectLookup: ProjectLookup,
             userLookupPort: UserLookupPort,
             repo: ComponentRepository,
+            archiveGuard: ProjectArchiveGuard,
         ): ComponentApplicationService =
             ComponentApplicationService(
                 permissionResolver = permissionResolver,
                 projectLookup = projectLookup,
                 userLookupPort = userLookupPort,
                 repo = repo,
+                archiveGuard = archiveGuard,
             )
 
         @Bean
@@ -199,12 +208,14 @@ class IssueImportAdapterTest {
             permissionResolver: VersionPermissionResolver,
             projectLookup: ProjectLookup,
             repo: VersionRepository,
+            archiveGuard: ProjectArchiveGuard,
             clock: Clock,
         ): VersionApplicationService =
             VersionApplicationService(
                 permissionResolver = permissionResolver,
                 projectLookup = projectLookup,
                 repo = repo,
+                archiveGuard = archiveGuard,
                 clock = clock,
             )
 
@@ -280,6 +291,7 @@ class IssueImportAdapterTest {
             issueRepository: IssueRepository,
             permissionResolver: IssuePermissionResolver,
             eventPublisher: IssueEventPublisher,
+            archiveGuard: ProjectArchiveGuard,
             clock: Clock,
         ): CommentApplicationService =
             CommentApplicationService(
@@ -287,6 +299,7 @@ class IssueImportAdapterTest {
                 issueRepository = issueRepository,
                 permissionResolver = permissionResolver,
                 eventPublisher = eventPublisher,
+                archiveGuard = archiveGuard,
                 clock = clock,
             )
 
@@ -300,12 +313,14 @@ class IssueImportAdapterTest {
             worklogRepository: WorklogRepository,
             issueRepository: IssueRepository,
             permissionResolver: IssuePermissionResolver,
+            archiveGuard: ProjectArchiveGuard,
         ): WorklogService =
             FaultInjectingWorklogService(
                 worklogRepository = worklogRepository,
                 issueRepository = issueRepository,
                 permissionResolver = permissionResolver,
                 historyRecorder = mockk(relaxed = true),
+                archiveGuard = archiveGuard,
             )
 
         // ── Task 9(PR4) — 첨부/이력 동반 생성 보조 빈 ────────────────────────────────
@@ -338,6 +353,7 @@ class IssueImportAdapterTest {
             permissionResolver: IssuePermissionResolver,
             issueRepository: IssueRepository,
             scanPort: VirusScanPort,
+            archiveGuard: ProjectArchiveGuard,
             clock: Clock,
         ): IssueAttachmentService =
             IssueAttachmentService(
@@ -346,6 +362,7 @@ class IssueImportAdapterTest {
                 permissionResolver = permissionResolver,
                 issueRepository = issueRepository,
                 scanPort = scanPort,
+                archiveGuard = archiveGuard,
                 clock = clock,
             )
 
@@ -488,7 +505,8 @@ class IssueImportAdapterTest {
         issueRepository: IssueRepository,
         permissionResolver: IssuePermissionResolver,
         historyRecorder: IssueHistoryRecorder,
-    ) : WorklogService(worklogRepository, issueRepository, permissionResolver, historyRecorder) {
+        archiveGuard: ProjectArchiveGuard,
+    ) : WorklogService(worklogRepository, issueRepository, permissionResolver, historyRecorder, archiveGuard) {
         override fun createImported(
             actor: ActorId,
             issueKey: IssueKey,

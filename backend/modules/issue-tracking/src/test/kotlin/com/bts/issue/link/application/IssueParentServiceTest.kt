@@ -9,6 +9,8 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.link.domain.LinkedIssueNotFoundException
 import com.bts.issue.link.domain.ParentCycleException
 import com.bts.issue.link.domain.ParentSelfReferenceException
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.issue.IssueTypeId
 import io.kotest.assertions.throwables.shouldThrow
@@ -23,7 +25,8 @@ import java.util.UUID
 class IssueParentServiceTest : DescribeSpec({
 
     val repo = mockk<IssueRepository>()
-    val sut = IssueParentService(repo)
+    val archiveGuard = mockk<ProjectArchiveGuard>(relaxUnitFun = true)
+    val sut = IssueParentService(repo, archiveGuard)
 
     // 공통 픽스처
     val childId = UUID.fromString("00000000-0000-4000-8000-000000000001")
@@ -53,7 +56,7 @@ class IssueParentServiceTest : DescribeSpec({
     )
 
     beforeEach {
-        clearMocks(repo, answers = false)
+        clearMocks(repo, archiveGuard, answers = false)
     }
 
     // ── setParent ──────────────────────────────────────────────────────────────
@@ -253,6 +256,66 @@ class IssueParentServiceTest : DescribeSpec({
             it("repo.updateParent(childId, null) 가 1회 호출된다") {
                 sut.clearParent(childKey)
                 verify(exactly = 1) { repo.updateParent(childId, null) }
+            }
+        }
+    }
+
+    // ── 아카이브 잠금 (FR-PJ-04 PR-4 Task 9) ─────────────────────────────────────
+
+    describe("아카이브 잠금 (FR-PJ-04 PR-4 Task 9)") {
+        // 이 파일은 SingleInstance 격리(clearMocks answers=false) — archiveGuard throws stub 이 뒤 테스트로
+        // 누출되지 않도록 이 describe 전용 afterEach 로 명시 초기화한다(answers 기본 true).
+        afterEach { clearMocks(archiveGuard) }
+
+        context("setParent — child 프로젝트가 아카이브된 경우") {
+            it("ProjectArchivedException 을 던지고 repo.updateParent 미호출") {
+                every { archiveGuard.checkByIssue(childKey) } throws ProjectArchivedException(childKey.value)
+
+                shouldThrow<ProjectArchivedException> { sut.setParent(childKey, parentKey) }
+                verify(exactly = 0) { repo.updateParent(any(), any()) }
+            }
+        }
+
+        context("setParent — parent 프로젝트가 아카이브된 경우") {
+            it("ProjectArchivedException 을 던지고 repo.updateParent 미호출") {
+                every { archiveGuard.checkByIssue(parentKey) } throws ProjectArchivedException(parentKey.value)
+
+                shouldThrow<ProjectArchivedException> { sut.setParent(childKey, parentKey) }
+                verify(exactly = 0) { repo.updateParent(any(), any()) }
+            }
+        }
+
+        context("setParent — 활성 프로젝트 (판별자 baseline)") {
+            it("child/parent archiveGuard.checkByIssue 가 모두 호출되고 정상 설정된다") {
+                every { repo.findByKey(childKey) } returns makeIssue(childId, childKey)
+                every { repo.findByKey(parentKey) } returns makeIssue(parentId, parentKey)
+                every { repo.collectAncestors(parentId) } returns emptyList()
+                every { repo.updateParent(childId, parentId) } returns Unit
+
+                sut.setParent(childKey, parentKey)
+
+                verify(exactly = 1) { archiveGuard.checkByIssue(childKey) }
+                verify(exactly = 1) { archiveGuard.checkByIssue(parentKey) }
+            }
+        }
+
+        context("clearParent — 아카이브된 프로젝트") {
+            it("ProjectArchivedException 을 던지고 repo.updateParent 미호출") {
+                every { archiveGuard.checkByIssue(childKey) } throws ProjectArchivedException(childKey.value)
+
+                shouldThrow<ProjectArchivedException> { sut.clearParent(childKey) }
+                verify(exactly = 0) { repo.updateParent(any(), any()) }
+            }
+        }
+
+        context("clearParent — 활성 프로젝트 (판별자 baseline)") {
+            it("archiveGuard.checkByIssue 가 호출되고 정상 해제된다") {
+                every { repo.findByKey(childKey) } returns makeIssue(childId, childKey, pid = parentId)
+                every { repo.updateParent(childId, null) } returns Unit
+
+                sut.clearParent(childKey)
+
+                verify(exactly = 1) { archiveGuard.checkByIssue(childKey) }
             }
         }
     }

@@ -11,6 +11,9 @@ import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.event.IssueCommented
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
+import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.repository.IssueTestcontainersBase
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssuePermission
@@ -56,6 +59,7 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
     private lateinit var commentRepository: CommentRepository
     private lateinit var resolver: RecordingPermissionResolver
     private lateinit var eventPublisher: IssueEventPublisher
+    private lateinit var archiveGuard: ProjectArchiveGuard
     private lateinit var service: CommentApplicationService
 
     private val actorUuid: UUID = UUID.fromString("11111111-1111-4111-8111-111111111111")
@@ -69,7 +73,8 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
         commentRepository = CommentRepository(dsl)
         resolver = RecordingPermissionResolver()
         eventPublisher = mockk(relaxed = true)
-        service = CommentApplicationService(commentRepository, repository, resolver, eventPublisher)
+        archiveGuard = ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+        service = CommentApplicationService(commentRepository, repository, resolver, eventPublisher, archiveGuard)
         if (taskTypeId == null) {
             taskTypeId = loadTaskTypeId()
         }
@@ -112,6 +117,38 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
                 currentStateKey = "open",
             ),
         )
+
+    /**
+     * 아카이브된 프로젝트("CARCH") + 그 소속 이슈 1건을 삽입한다 (FR-PJ-04 PR-4 Task 9 전용).
+     *
+     * @return 삽입된 이슈.
+     */
+    private fun insertIssueInArchivedProject(seqNum: Long): Issue {
+        val archivedProjectId =
+            withJdbcConnection { conn ->
+                conn.prepareStatement(
+                    "INSERT INTO projects (key, name, archived_at) VALUES ('CARCH', 'Comment Archived', NOW()) " +
+                        "ON CONFLICT (key) DO UPDATE SET archived_at = NOW()",
+                ).use { it.executeUpdate() }
+                conn.prepareStatement("SELECT id FROM projects WHERE key = 'CARCH'").use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getObject(1) as UUID
+                    }
+                }
+            }
+        return repository.insert(
+            Issue.create(
+                id = IssueId(UUID.randomUUID()),
+                key = IssueKey.of("CARCH", seqNum),
+                projectId = archivedProjectId,
+                typeId = requireTaskTypeId(),
+                summary = "아카이브 잠금 테스트 이슈 $seqNum",
+                reporterId = actor,
+                currentStateKey = "open",
+            ),
+        )
+    }
 
     // ── T3-A. create — UPDATE 권한 게이트 ─────────────────────────────────────
 
@@ -255,7 +292,7 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
         val fixedInstant = Instant.parse("2024-06-15T10:30:00Z")
         val fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC)
         val fixedClockService =
-            CommentApplicationService(commentRepository, repository, resolver, eventPublisher, fixedClock)
+            CommentApplicationService(commentRepository, repository, resolver, eventPublisher, archiveGuard, fixedClock)
 
         val comment = fixedClockService.create(actor, issue.key, "본문", ActorId(authorUuid))
 
@@ -278,7 +315,7 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
         val fixedInstant = Instant.parse("2024-06-15T10:30:00Z")
         val fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC)
         val fixedClockService =
-            CommentApplicationService(commentRepository, repository, resolver, eventPublisher, fixedClock)
+            CommentApplicationService(commentRepository, repository, resolver, eventPublisher, archiveGuard, fixedClock)
 
         val comment = fixedClockService.create(actor, issue.key, "본문", ActorId(authorUuid))
 
@@ -294,6 +331,38 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
                 },
             )
         }
+    }
+
+    // ── 아카이브 잠금 (FR-PJ-04 PR-4 Task 9) ─────────────────────────────────
+
+    /**
+     * Given  UPDATE 권한 보유 actor, 이슈가 아카이브된 프로젝트("CARCH") 소속
+     * When   create 호출
+     * Then   ProjectArchivedException(409) — checkPermission 통과 후 archiveGuard.checkByIssue 가 던진다.
+     */
+    @Test
+    @Order(9)
+    fun `아카이브 잠금 - create 는 아카이브된 프로젝트 이슈에 409(ProjectArchivedException)`() {
+        val issue = insertIssueInArchivedProject(9L)
+
+        assertThatThrownBy {
+            service.create(actor, issue.key, "본문", ActorId(authorUuid))
+        }.isInstanceOf(ProjectArchivedException::class.java)
+    }
+
+    /**
+     * Given  UPDATE 권한 보유 actor, 이슈가 활성 프로젝트("TPRJ") 소속
+     * When   create 호출
+     * Then   2xx 통과 — 판별자 baseline.
+     */
+    @Test
+    @Order(10)
+    fun `아카이브 잠금 - create 는 활성 프로젝트 이슈에 2xx (판별자 baseline)`() {
+        val issue = insertIssue(10L)
+
+        val comment = service.create(actor, issue.key, "본문", ActorId(authorUuid))
+
+        assertThat(comment.body).isEqualTo("본문")
     }
 
     /** 댓글 도메인 객체 생성 헬퍼 (직접 insert 용 — createdAt 제어 목적). */

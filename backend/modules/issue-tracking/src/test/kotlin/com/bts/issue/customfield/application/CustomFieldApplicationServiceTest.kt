@@ -13,6 +13,8 @@ import com.bts.issue.customfield.domain.ImmutableFieldTypeChangeException
 import com.bts.issue.customfield.domain.InvalidFieldDefinitionException
 import com.bts.issue.customfield.repository.CustomFieldDefinitionRepository
 import com.bts.issue.project.ProjectLookup
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.shared.permission.CustomFieldPermission
 import com.bts.shared.permission.CustomFieldPermissionResolver
 import io.kotest.assertions.throwables.shouldThrow
@@ -40,12 +42,14 @@ class CustomFieldApplicationServiceTest : DescribeSpec({
     val permissionResolver = mockk<CustomFieldPermissionResolver>()
     val projectLookup = mockk<ProjectLookup>()
     val repo = mockk<CustomFieldDefinitionRepository>()
+    val archiveGuard = mockk<ProjectArchiveGuard>(relaxUnitFun = true)
 
     val sut =
         CustomFieldApplicationService(
             permissionResolver = permissionResolver,
             projectLookup = projectLookup,
             repo = repo,
+            archiveGuard = archiveGuard,
         )
 
     val actorId = UUID.randomUUID()
@@ -66,7 +70,7 @@ class CustomFieldApplicationServiceTest : DescribeSpec({
             options = emptyList(),
         )
 
-    afterEach { clearMocks(permissionResolver, projectLookup, repo) }
+    afterEach { clearMocks(permissionResolver, projectLookup, repo, archiveGuard) }
 
     // ── create ────────────────────────────────────────────────────────────────
 
@@ -386,6 +390,87 @@ class CustomFieldApplicationServiceTest : DescribeSpec({
 
                 shouldThrow<CustomFieldProjectNotFoundException> {
                     sut.softDelete(actorId, projectIdOrKey, fieldId)
+                }
+            }
+        }
+    }
+
+    // ── 아카이브 잠금 (FR-PJ-04 PR-4 Task 9) ─────────────────────────────────────
+
+    /** 쓰기 3종(create/update/softDelete)의 아카이브 잠금 판별자. VersionApplicationServiceTest 동형. */
+    data class ArchiveWriteCase(
+        val label: String,
+        val stubHappyPath: () -> Unit,
+        val invoke: () -> Unit,
+    )
+
+    val archiveWriteCases =
+        listOf(
+            ArchiveWriteCase(
+                label = "create",
+                stubHappyPath = {
+                    every {
+                        permissionResolver.hasPermission(actorId, CustomFieldPermission.CREATE, projectId)
+                    } returns true
+                    every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                    every { repo.save(any()) } returns existingField.copy(id = UUID.randomUUID())
+                },
+                invoke = {
+                    sut.create(
+                        actorId, projectIdOrKey, "salary_impact", "급여 영향도",
+                        FieldType.SHORT_TEXT, false, 0, emptyList(),
+                    )
+                },
+            ),
+            ArchiveWriteCase(
+                label = "update",
+                stubHappyPath = {
+                    every {
+                        permissionResolver.hasPermission(actorId, CustomFieldPermission.UPDATE, projectId)
+                    } returns true
+                    every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                    every { repo.findById(fieldId, projectId) } returns existingField
+                    every { repo.update(any()) } returns existingField
+                },
+                invoke = {
+                    sut.update(
+                        actorId, projectIdOrKey, fieldId,
+                        "급여 영향", null, FieldType.SHORT_TEXT, "salary_impact", null, null, null,
+                    )
+                },
+            ),
+            ArchiveWriteCase(
+                label = "softDelete",
+                stubHappyPath = {
+                    every {
+                        permissionResolver.hasPermission(actorId, CustomFieldPermission.DELETE, projectId)
+                    } returns true
+                    every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                    every { repo.findById(fieldId, projectId) } returns existingField
+                    every { repo.softDelete(fieldId, projectId) } returns Unit
+                },
+                invoke = { sut.softDelete(actorId, projectIdOrKey, fieldId) },
+            ),
+        )
+
+    describe("아카이브 잠금 (FR-PJ-04 PR-4 Task 9)") {
+        archiveWriteCases.forEach { case ->
+            context("${case.label} — 아카이브된 프로젝트") {
+                it("permission 통과 후 archiveGuard.check 가 ProjectArchivedException 을 던지면 그대로 전파된다") {
+                    case.stubHappyPath()
+                    every { archiveGuard.check(projectId) } throws ProjectArchivedException(projectId.toString())
+
+                    shouldThrow<ProjectArchivedException> { case.invoke() }
+                }
+            }
+
+            context("${case.label} — 활성 프로젝트 (판별자 baseline)") {
+                it("archiveGuard.check 가 실제로 호출된다 (2xx 통과 + 판별자)") {
+                    case.stubHappyPath()
+
+                    case.invoke()
+
+                    verify(exactly = 1) { archiveGuard.check(projectId) }
                 }
             }
         }

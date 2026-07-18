@@ -9,6 +9,7 @@ import com.bts.issue.domain.IncompleteSubtaskMappingException
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.history.IssueHistoryRecorder
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueKeyRedirectRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.version.repository.VersionRepository
@@ -57,6 +58,7 @@ class IssueMoveServiceToctouTest {
     private val componentRepository = mockk<ComponentRepository>()
     private val versionRepository = mockk<VersionRepository>()
     private val customFieldDefinitionRepository = mockk<CustomFieldDefinitionRepository>()
+    private val archiveGuard = mockk<ProjectArchiveGuard>(relaxUnitFun = true)
 
     private val actor = ActorId(UUID.fromString("11111111-1111-4111-8111-111111111111"))
 
@@ -87,6 +89,7 @@ class IssueMoveServiceToctouTest {
                 componentRepository = componentRepository,
                 versionRepository = versionRepository,
                 customFieldDefinitionRepository = customFieldDefinitionRepository,
+                archiveGuard = archiveGuard,
             )
 
         // 권한 허용

@@ -5,6 +5,8 @@ package com.bts.issue.epic.web
 
 import com.bts.issue.epic.application.IssueEpicService
 import com.bts.issue.history.IssueHistoryRecorder
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.permission.IssuePermission
@@ -283,6 +285,11 @@ class IssueEpicProgressControllerIntegrationTest {
         open fun workflowStateCatalogImpl(workflowResolver: WorkflowResolverImpl): WorkflowStateCatalogImpl =
             WorkflowStateCatalogImpl(workflowResolver)
 
+        /** FR-PJ-04 PR-4 Task 9 — 실 ProjectArchiveGuard(공유 dsl 위). */
+        @Bean
+        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard =
+            ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+
         @Bean
         @Suppress("LongParameterList") // 실 WorkflowStateCatalogImpl 조립에 필요한 의존 6종 — 테스트 컨텍스트 설정 보일러플레이트
         open fun issueEpicService(
@@ -292,6 +299,7 @@ class IssueEpicProgressControllerIntegrationTest {
             issueTypeRepository: IssueTypeRepository,
             issueHistoryRecorder: IssueHistoryRecorder,
             workflowStateCatalog: WorkflowStateCatalogImpl,
+            archiveGuard: ProjectArchiveGuard,
         ): IssueEpicService =
             IssueEpicService(
                 permissionResolver = permissionResolver,
@@ -300,6 +308,7 @@ class IssueEpicProgressControllerIntegrationTest {
                 issueTypeRepository = issueTypeRepository,
                 historyRecorder = issueHistoryRecorder,
                 workflowStateCatalog = workflowStateCatalog,
+                archiveGuard = archiveGuard,
             )
 
         @Bean

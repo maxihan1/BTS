@@ -3,6 +3,8 @@
 package com.bts.issue.version.application
 
 import com.bts.issue.project.ProjectLookup
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.version.domain.DuplicateVersionNameException
 import com.bts.issue.version.domain.Version
 import com.bts.issue.version.domain.VersionAccessDeniedException
@@ -50,6 +52,9 @@ class VersionApplicationServiceTest : DescribeSpec({
     val permissionResolver = mockk<VersionPermissionResolver>()
     val projectLookup = mockk<ProjectLookup>()
     val repo = mockk<VersionRepository>()
+    // FR-PJ-04 PR-4 Task 9 — Unit 함수(archiveGuard.check 는 Unit 반환)만 relax. 기존 happy-path 테스트는
+    // 이 mock 을 stub 하지 않으므로 그대로 no-op 통과하고, 아카이브 판별자 테스트만 throws 로 override 한다.
+    val archiveGuard = mockk<ProjectArchiveGuard>(relaxUnitFun = true)
 
     /** 결정론적 Clock — 2026-06-10T12:00:00Z 고정. */
     val fixedInstant = Instant.parse("2026-06-10T12:00:00Z")
@@ -60,6 +65,7 @@ class VersionApplicationServiceTest : DescribeSpec({
             permissionResolver = permissionResolver,
             projectLookup = projectLookup,
             repo = repo,
+            archiveGuard = archiveGuard,
             clock = fixedClock,
         )
 
@@ -79,7 +85,7 @@ class VersionApplicationServiceTest : DescribeSpec({
             deletedAt = null,
         )
 
-    afterEach { clearMocks(permissionResolver, projectLookup, repo) }
+    afterEach { clearMocks(permissionResolver, projectLookup, repo, archiveGuard) }
 
     // ── create ────────────────────────────────────────────────────────────────
 
@@ -553,6 +559,109 @@ class VersionApplicationServiceTest : DescribeSpec({
 
                 shouldThrow<VersionAccessDeniedException> {
                     sut.changeStatus(actorId, projectIdOrKey, versionId, VersionStatus.RELEASED)
+                }
+            }
+        }
+    }
+
+    // ── 아카이브 잠금 (FR-PJ-04 PR-4 Task 9) ─────────────────────────────────────
+
+    /**
+     * 프로젝트 스코프 쓰기 5종(create/update/changeDates/delete/changeStatus)의 아카이브 잠금 판별자.
+     *
+     * 각 케이스마다 (아카이브 → ProjectArchivedException 전파) + (활성 → archiveGuard.check 호출 확인,
+     * 판별자 [[guard-handler-matrix-blindfold]]) 를 짝지어 검증한다. D-ORDER: assertPermission 통과 후
+     * archiveGuard.check 호출 — stubHappyPath 가 permission/project/repo 를 모두 통과시킨 상태에서
+     * archiveGuard 만 토글한다.
+     */
+    data class ArchiveWriteCase(
+        val label: String,
+        val stubHappyPath: () -> Unit,
+        val invoke: () -> Unit,
+    )
+
+    val archiveWriteCases =
+        listOf(
+            ArchiveWriteCase(
+                label = "create",
+                stubHappyPath = {
+                    every {
+                        permissionResolver.hasPermission(actorId, VersionPermission.CREATE, projectId)
+                    } returns true
+                    every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                    every { repo.insert(any()) } returns activeVersion.copy(id = UUID.randomUUID())
+                },
+                invoke = { sut.create(actorId, projectIdOrKey, "v1.0.0", null, null, null) },
+            ),
+            ArchiveWriteCase(
+                label = "update",
+                stubHappyPath = {
+                    every {
+                        permissionResolver.hasPermission(actorId, VersionPermission.UPDATE, projectId)
+                    } returns true
+                    every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                    every { repo.findById(versionId, projectId) } returns activeVersion
+                    every { repo.update(any()) } returns activeVersion
+                },
+                invoke = { sut.update(actorId, projectIdOrKey, versionId, "v2.0.0", null) },
+            ),
+            ArchiveWriteCase(
+                label = "changeDates",
+                stubHappyPath = {
+                    every {
+                        permissionResolver.hasPermission(actorId, VersionPermission.UPDATE, projectId)
+                    } returns true
+                    every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                    every { repo.findById(versionId, projectId) } returns activeVersion
+                    every { repo.update(any()) } returns activeVersion
+                },
+                invoke = { sut.changeDates(actorId, projectIdOrKey, versionId, null, null) },
+            ),
+            ArchiveWriteCase(
+                label = "delete",
+                stubHappyPath = {
+                    every {
+                        permissionResolver.hasPermission(actorId, VersionPermission.DELETE, projectId)
+                    } returns true
+                    every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                    every { repo.findById(versionId, projectId) } returns activeVersion
+                    every { repo.softDelete(versionId, projectId) } returns Unit
+                },
+                invoke = { sut.delete(actorId, projectIdOrKey, versionId) },
+            ),
+            ArchiveWriteCase(
+                label = "changeStatus",
+                stubHappyPath = {
+                    every {
+                        permissionResolver.hasPermission(actorId, VersionPermission.UPDATE, projectId)
+                    } returns true
+                    every { projectLookup.resolve(projectIdOrKey) } returns projectId
+                    every { repo.findById(versionId, projectId) } returns
+                        activeVersion.copy(status = VersionStatus.UNRELEASED)
+                    every { repo.update(any()) } returns activeVersion
+                },
+                invoke = { sut.changeStatus(actorId, projectIdOrKey, versionId, VersionStatus.RELEASED) },
+            ),
+        )
+
+    describe("아카이브 잠금 (FR-PJ-04 PR-4 Task 9)") {
+        archiveWriteCases.forEach { case ->
+            context("${case.label} — 아카이브된 프로젝트") {
+                it("permission 통과 후 archiveGuard.check 가 ProjectArchivedException 을 던지면 그대로 전파된다") {
+                    case.stubHappyPath()
+                    every { archiveGuard.check(projectId) } throws ProjectArchivedException(projectId.toString())
+
+                    shouldThrow<ProjectArchivedException> { case.invoke() }
+                }
+            }
+
+            context("${case.label} — 활성 프로젝트 (판별자 baseline)") {
+                it("archiveGuard.check 가 실제로 호출된다 (2xx 통과 + 판별자)") {
+                    case.stubHappyPath()
+
+                    case.invoke()
+
+                    verify(exactly = 1) { archiveGuard.check(projectId) }
                 }
             }
         }

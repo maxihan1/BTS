@@ -14,6 +14,8 @@ import com.bts.issue.customfield.repository.CustomFieldDefinitionRepository
 import com.bts.issue.customfield.web.CustomFieldController
 import com.bts.issue.customfield.web.CustomFieldExceptionHandler
 import com.bts.issue.project.ProjectLookup
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.project.repository.ProjectLookupRepository
 import com.bts.shared.permission.ComponentPermissionResolver
 import com.bts.shared.permission.CustomFieldPermission
@@ -175,16 +177,23 @@ class CustomFieldIntegrationTest {
                 actorId == ADMIN_ACTOR_UUID
             }
 
+        /** FR-PJ-04 PR-4 Task 9 — 실 ProjectArchiveGuard(공유 dsl 위). */
+        @Bean
+        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard =
+            ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+
         @Bean
         open fun customFieldApplicationService(
             permissionResolver: CustomFieldPermissionResolver,
             projectLookup: ProjectLookup,
             repo: CustomFieldDefinitionRepository,
+            archiveGuard: ProjectArchiveGuard,
         ): CustomFieldApplicationService =
             CustomFieldApplicationService(
                 permissionResolver = permissionResolver,
                 projectLookup = projectLookup,
                 repo = repo,
+                archiveGuard = archiveGuard,
             )
 
         @Bean
@@ -214,12 +223,14 @@ class CustomFieldIntegrationTest {
             projectLookup: ProjectLookup,
             userLookupPort: UserLookupPort,
             repo: ComponentRepository,
+            archiveGuard: ProjectArchiveGuard,
         ): ComponentApplicationService =
             ComponentApplicationService(
                 permissionResolver = permissionResolver,
                 projectLookup = projectLookup,
                 userLookupPort = userLookupPort,
                 repo = repo,
+                archiveGuard = archiveGuard,
             )
     }
 

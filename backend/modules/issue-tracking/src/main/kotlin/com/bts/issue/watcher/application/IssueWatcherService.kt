@@ -6,6 +6,7 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.watcher.repository.IssueWatcherRepository
 import com.bts.shared.permission.IssuePermission
@@ -73,6 +74,7 @@ class IssueWatcherService(
     private val permissionResolver: IssuePermissionResolver,
     private val userLookupPort: UserLookupPort,
     private val issueRepository: IssueRepository,
+    private val archiveGuard: ProjectArchiveGuard,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -101,6 +103,7 @@ class IssueWatcherService(
         val watcherId = targetUserId ?: actor.value
         val isSelf = watcherId == actor.value
         checkPermission(actor, issueKey, isSelf)
+        // TASK9-RED-PENDING archiveGuard.checkByIssue(issueKey)
 
         if (!isSelf) {
             if (!userLookupPort.exists(watcherId)) {
@@ -137,6 +140,7 @@ class IssueWatcherService(
     ) {
         val isSelf = targetUserId == actor.value
         checkPermission(actor, issueKey, isSelf)
+        // TASK9-RED-PENDING archiveGuard.checkByIssue(issueKey)
 
         val issueId = resolveIssueId(issueKey)
         log.debug("unwatch issueKey={} userId={}", issueKey.value, targetUserId)

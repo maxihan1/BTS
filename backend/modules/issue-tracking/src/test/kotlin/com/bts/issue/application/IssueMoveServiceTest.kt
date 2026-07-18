@@ -14,6 +14,9 @@ import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.domain.RequiredFieldMissingException
 import com.bts.issue.domain.SubtaskHasOwnSubtasksException
 import com.bts.issue.history.IssueHistoryRecorder
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
+import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.repository.IssueKeyRedirectRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.version.repository.VersionRepository
@@ -27,6 +30,8 @@ import com.bts.shared.workflow.WorkflowStateCatalog
 import com.bts.shared.workflow.WorkflowStateView
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.spyk
+import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
@@ -77,6 +82,9 @@ class IssueMoveServiceTest {
 
         private const val SRC_PROJECT = "MSRC"
         private const val DST_PROJECT = "MDST"
+
+        /** FR-PJ-04 PR-4 Task 9 — 아카이브 잠금 판별자 전용 프로젝트(source/target 겸용). */
+        private const val ARCHIVED_PROJECT = "MARCH"
         private const val STATE_OPEN = "open"
     }
 
@@ -94,6 +102,7 @@ class IssueMoveServiceTest {
     private lateinit var componentRepository: ComponentRepository
     private lateinit var versionRepository: VersionRepository
     private lateinit var customFieldDefinitionRepository: CustomFieldDefinitionRepository
+    private lateinit var archiveGuard: ProjectArchiveGuard
 
     private val actor = ActorId(UUID.fromString("11111111-1111-4111-8111-111111111111"))
 
@@ -101,6 +110,7 @@ class IssueMoveServiceTest {
 
     private var srcProjectId = UUID.randomUUID()
     private var dstProjectId = UUID.randomUUID()
+    private var archivedProjectId = UUID.randomUUID()
 
     private var bootstrapped = false
 
@@ -124,6 +134,7 @@ class IssueMoveServiceTest {
         componentRepository = ComponentRepository(dsl)
         versionRepository = VersionRepository(dsl)
         customFieldDefinitionRepository = CustomFieldDefinitionRepository(dsl)
+        archiveGuard = ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
 
         // SRC / DST 프로젝트 삽입
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
@@ -136,6 +147,11 @@ class IssueMoveServiceTest {
                     "INSERT INTO projects (key, name) VALUES ('$DST_PROJECT', 'Move Dest') " +
                         "ON CONFLICT (key) DO NOTHING",
                 )
+                // FR-PJ-04 PR-4 Task 9 — 아카이브된 프로젝트(archived_at NOT NULL).
+                stmt.execute(
+                    "INSERT INTO projects (key, name, archived_at) VALUES ('$ARCHIVED_PROJECT', 'Move Archived', NOW()) " +
+                        "ON CONFLICT (key) DO UPDATE SET archived_at = NOW()",
+                )
             }
             conn.prepareStatement("SELECT id FROM projects WHERE key = '$SRC_PROJECT'").use { ps ->
                 ps.executeQuery().use { rs ->
@@ -147,6 +163,12 @@ class IssueMoveServiceTest {
                 ps.executeQuery().use { rs ->
                     rs.next()
                     dstProjectId = rs.getObject(1) as UUID
+                }
+            }
+            conn.prepareStatement("SELECT id FROM projects WHERE key = '$ARCHIVED_PROJECT'").use { ps ->
+                ps.executeQuery().use { rs ->
+                    rs.next()
+                    archivedProjectId = rs.getObject(1) as UUID
                 }
             }
         }
@@ -189,14 +211,19 @@ class IssueMoveServiceTest {
                 componentRepository = componentRepository,
                 versionRepository = versionRepository,
                 customFieldDefinitionRepository = customFieldDefinitionRepository,
+                archiveGuard = archiveGuard,
             )
 
         // 테이블 초기화
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.createStatement().use { stmt ->
                 stmt.execute("DELETE FROM issue_key_redirects")
-                stmt.execute("DELETE FROM issues WHERE project_id IN ('$srcProjectId', '$dstProjectId')")
-                stmt.execute("UPDATE projects SET key_sequence = 0 WHERE key IN ('$SRC_PROJECT', '$DST_PROJECT')")
+                stmt.execute(
+                    "DELETE FROM issues WHERE project_id IN ('$srcProjectId', '$dstProjectId', '$archivedProjectId')",
+                )
+                stmt.execute(
+                    "UPDATE projects SET key_sequence = 0 WHERE key IN ('$SRC_PROJECT', '$DST_PROJECT', '$ARCHIVED_PROJECT')",
+                )
             }
         }
     }
@@ -439,6 +466,111 @@ class IssueMoveServiceTest {
         val movedIssue = issueRepository.findByKey(dstKey)
         assertThat(movedIssue).isNotNull
         assertThat(movedIssue!!.resolutionId).isNull()
+    }
+
+    // ── 아카이브 잠금 (FR-PJ-04 PR-4 Task 9) ─────────────────────────────────
+
+    /**
+     * source 아카이브 — 이동하려는 이슈가 이미 아카이브된 프로젝트에 속해 있으면
+     * [archiveGuard.checkByIssue][ProjectArchiveGuard.checkByIssue] 가 permission 통과 직후 409 를 던진다
+     * (하지만 checkByIssue 는 workflow 검증보다 먼저이므로 DST_PROJECT 워크플로우 stub 없이도 도달).
+     */
+    @Test
+    fun `아카이브 잠금 — source 프로젝트가 아카이브면 ProjectArchivedException(409)`() {
+        insertIssue(ARCHIVED_PROJECT, archivedProjectId, STATE_OPEN)
+        val archivedKey = IssueKey.of(ARCHIVED_PROJECT, 1)
+
+        val request =
+            IssueMoveRequest(
+                targetProjectKey = DST_PROJECT,
+                expectedVersion = 1L,
+                targetStateKey = null,
+                targetStateIsDone = false,
+                componentMapping = emptyMap(),
+                affectsVersionMapping = emptyMap(),
+                fixVersionMapping = emptyMap(),
+                additionalCustomFields = emptyMap(),
+            )
+
+        assertThrows<ProjectArchivedException> {
+            txTemplate.execute { sut.move(actor, archivedKey, request) }
+        }
+    }
+
+    /**
+     * target 아카이브 — 이동 대상 프로젝트가 아카이브 상태면 target 리졸브 직후 409 를 던진다.
+     * 워크플로우 stub 을 [ARCHIVED_PROJECT] 전용으로 별도 등록해 archiveGuard 단계까지 도달시킨다.
+     */
+    @Test
+    fun `아카이브 잠금 — target 프로젝트가 아카이브면 ProjectArchivedException(409)`() {
+        every {
+            workflowKeyResolver.resolveExisting(ProjectKey.of(ARCHIVED_PROJECT), null)
+        } returns WorkflowStartState(workflowKey = "default-workflow", startStateKey = STATE_OPEN)
+        every {
+            workflowStateCatalog.listStates(ProjectKey.of(ARCHIVED_PROJECT), null)
+        } returns listOf(WorkflowStateView(key = STATE_OPEN, name = "열림"))
+
+        insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN)
+        val srcKey = IssueKey.of(SRC_PROJECT, 1)
+
+        val request =
+            IssueMoveRequest(
+                targetProjectKey = ARCHIVED_PROJECT,
+                expectedVersion = 1L,
+                targetStateKey = null,
+                targetStateIsDone = false,
+                componentMapping = emptyMap(),
+                affectsVersionMapping = emptyMap(),
+                fixVersionMapping = emptyMap(),
+                additionalCustomFields = emptyMap(),
+            )
+
+        assertThrows<ProjectArchivedException> {
+            txTemplate.execute { sut.move(actor, srcKey, request) }
+        }
+    }
+
+    /**
+     * 활성 프로젝트 (판별자 baseline) — S1 이 이미 "SRC(활성) → DST(활성)" 2xx 를 증명하므로
+     * 여기서는 archiveGuard 가 실제로 호출됐음을 명시적으로 재확인한다(C2 판별자,
+     * [[guard-handler-matrix-blindfold]] — "여전히 통과"만으론 guard 미결선과 구분 불가).
+     */
+    @Test
+    fun `아카이브 잠금 — 활성 프로젝트 이동은 2xx 이고 archiveGuard 가 실제 호출된다`() {
+        insertIssue(SRC_PROJECT, srcProjectId, STATE_OPEN)
+        val srcKey = IssueKey.of(SRC_PROJECT, 1)
+        val activeArchiveGuard = spyk(archiveGuard)
+        val sutWithSpy =
+            IssueMoveService(
+                issueRepository = issueRepository,
+                redirectRepository = redirectRepository,
+                permissionResolver = permissionResolver,
+                workflowKeyResolver = workflowKeyResolver,
+                workflowStateCatalog = workflowStateCatalog,
+                historyRecorder = historyRecorder,
+                componentRepository = componentRepository,
+                versionRepository = versionRepository,
+                customFieldDefinitionRepository = customFieldDefinitionRepository,
+                archiveGuard = activeArchiveGuard,
+            )
+
+        val request =
+            IssueMoveRequest(
+                targetProjectKey = DST_PROJECT,
+                expectedVersion = 1L,
+                targetStateKey = null,
+                targetStateIsDone = false,
+                componentMapping = emptyMap(),
+                affectsVersionMapping = emptyMap(),
+                fixVersionMapping = emptyMap(),
+                additionalCustomFields = emptyMap(),
+            )
+
+        val result = txTemplate.execute { sutWithSpy.move(actor, srcKey, request) }
+
+        assertThat(result).isNotNull
+        verify(exactly = 1) { activeArchiveGuard.checkByIssue(srcKey) }
+        verify(exactly = 1) { activeArchiveGuard.check(dstProjectId) }
     }
 
     // ── EC8. 타 프로젝트 소속 컴포넌트 매핑 거부 (회귀) ─────────────────────────

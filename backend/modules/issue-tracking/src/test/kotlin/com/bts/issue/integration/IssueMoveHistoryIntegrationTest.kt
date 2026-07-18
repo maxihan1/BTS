@@ -14,6 +14,8 @@ import com.bts.issue.history.IssueChangeLabelResolver
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.history.JdbcIssueChangeHistoryRepository
 import com.bts.issue.integration.IssueMoveIntegrationTest.SwitchablePermissionResolver
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueKeyRedirectRepository
 import com.bts.issue.repository.IssueRepository
@@ -181,6 +183,11 @@ class IssueMoveHistoryIntegrationTest {
 
         // ── IssueMoveService (실 recorder 주입) ─────────────────────────────────
 
+        /** FR-PJ-04 PR-4 Task 9 — 실 ProjectArchiveGuard(공유 dsl 위). */
+        @Bean
+        open fun historyProjectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard =
+            ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+
         @Bean
         open fun historyIssueMoveService(
             issueRepository: IssueRepository,
@@ -192,6 +199,7 @@ class IssueMoveHistoryIntegrationTest {
             componentRepository: ComponentRepository,
             versionRepository: VersionRepository,
             customFieldDefinitionRepository: CustomFieldDefinitionRepository,
+            archiveGuard: ProjectArchiveGuard,
         ): IssueMoveService =
             IssueMoveService(
                 issueRepository = issueRepository,
@@ -203,6 +211,7 @@ class IssueMoveHistoryIntegrationTest {
                 componentRepository = componentRepository,
                 versionRepository = versionRepository,
                 customFieldDefinitionRepository = customFieldDefinitionRepository,
+                archiveGuard = archiveGuard,
             )
 
         @Bean

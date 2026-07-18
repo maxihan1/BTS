@@ -15,6 +15,8 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
@@ -57,6 +59,7 @@ class IssueAttachmentServiceTest : DescribeSpec({
     val permissionResolver = mockk<IssuePermissionResolver>()
     val issueRepository = mockk<IssueRepository>()
     val scanPort = mockk<VirusScanPort>()
+    val archiveGuard = mockk<ProjectArchiveGuard>(relaxUnitFun = true)
 
     val sut =
         IssueAttachmentService(
@@ -65,6 +68,7 @@ class IssueAttachmentServiceTest : DescribeSpec({
             permissionResolver = permissionResolver,
             issueRepository = issueRepository,
             scanPort = scanPort,
+            archiveGuard = archiveGuard,
         )
 
     val actor = ActorId(UUID.randomUUID())
@@ -102,7 +106,9 @@ class IssueAttachmentServiceTest : DescribeSpec({
             createdAt = Instant.now(),
         )
 
-    afterEach { clearMocks(storagePort, attachmentRepository, permissionResolver, issueRepository, scanPort) }
+    afterEach {
+        clearMocks(storagePort, attachmentRepository, permissionResolver, issueRepository, scanPort, archiveGuard)
+    }
 
     // ── upload ──────────────────────────────────────────────────────────────
 
@@ -454,6 +460,80 @@ class IssueAttachmentServiceTest : DescribeSpec({
             sut.delete(actor = actor, issueKey = issueKey, attachmentId = attachment.id)
 
             verify(exactly = 1) { attachmentRepository.deleteById(attachment.id) }
+        }
+    }
+
+    // ── 아카이브 잠금 (FR-PJ-04 PR-4 Task 9) ─────────────────────────────────────
+
+    describe("아카이브 잠금 (FR-PJ-04 PR-4 Task 9)") {
+        context("upload — 아카이브된 프로젝트") {
+            it("checkPermission 통과 후 archiveGuard.checkByIssue 가 ProjectArchivedException 을 던지면 그대로 전파된다") {
+                stubIssueExists()
+                stubPermission(IssuePermission.UPDATE, true)
+                every { archiveGuard.checkByIssue(issueKey) } throws ProjectArchivedException(issueKey.value)
+
+                shouldThrow<ProjectArchivedException> {
+                    sut.upload(
+                        actor = actor,
+                        issueKey = issueKey,
+                        filename = "report.pdf",
+                        contentType = "application/pdf",
+                        sizeBytes = 2048L,
+                        input = ByteArrayInputStream(ByteArray(0)),
+                    )
+                }
+                verify(exactly = 0) { storagePort.put(any(), any(), any(), any()) }
+            }
+        }
+
+        context("upload — 활성 프로젝트 (판별자 baseline)") {
+            it("archiveGuard.checkByIssue 가 호출되고 정상 업로드된다") {
+                stubIssueExists()
+                stubPermission(IssuePermission.UPDATE, true)
+                every { scanPort.scan(any()) } returns ScanVerdict.CLEAN
+                justRun { storagePort.put(any(), any(), any(), any()) }
+                justRun { attachmentRepository.insert(any()) }
+
+                sut.upload(
+                    actor = actor,
+                    issueKey = issueKey,
+                    filename = "report.pdf",
+                    contentType = "application/pdf",
+                    sizeBytes = 2048L,
+                    input = ByteArrayInputStream(ByteArray(0)),
+                )
+
+                verify(exactly = 1) { archiveGuard.checkByIssue(issueKey) }
+            }
+        }
+
+        context("delete — 아카이브된 프로젝트") {
+            it("checkPermission 통과 후 archiveGuard.checkByIssue 가 ProjectArchivedException 을 던지면 그대로 전파된다") {
+                stubIssueExists()
+                stubPermission(IssuePermission.UPDATE, true)
+                every { archiveGuard.checkByIssue(issueKey) } throws ProjectArchivedException(issueKey.value)
+
+                shouldThrow<ProjectArchivedException> {
+                    sut.delete(actor = actor, issueKey = issueKey, attachmentId = UUID.randomUUID())
+                }
+                verify(exactly = 0) { storagePort.remove(any()) }
+                verify(exactly = 0) { attachmentRepository.deleteById(any()) }
+            }
+        }
+
+        context("delete — 활성 프로젝트 (판별자 baseline)") {
+            it("archiveGuard.checkByIssue 가 호출되고 정상 삭제된다") {
+                stubIssueExists()
+                stubPermission(IssuePermission.UPDATE, true)
+                val attachment = makeAttachment()
+                every { attachmentRepository.findById(attachment.id) } returns attachment
+                justRun { storagePort.remove(attachment.storageKey) }
+                every { attachmentRepository.deleteById(attachment.id) } returns true
+
+                sut.delete(actor = actor, issueKey = issueKey, attachmentId = attachment.id)
+
+                verify(exactly = 1) { archiveGuard.checkByIssue(issueKey) }
+            }
         }
     }
 })

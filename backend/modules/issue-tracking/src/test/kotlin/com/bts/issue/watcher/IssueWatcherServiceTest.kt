@@ -7,6 +7,8 @@ import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.watcher.application.IssueWatcherService
 import com.bts.issue.watcher.application.WatcherEntry
@@ -52,6 +54,7 @@ class IssueWatcherServiceTest : DescribeSpec({
     val permissionResolver = mockk<IssuePermissionResolver>()
     val userLookupPort = mockk<UserLookupPort>()
     val issueRepository = mockk<IssueRepository>()
+    val archiveGuard = mockk<ProjectArchiveGuard>(relaxUnitFun = true)
 
     val sut =
         IssueWatcherService(
@@ -59,6 +62,7 @@ class IssueWatcherServiceTest : DescribeSpec({
             permissionResolver = permissionResolver,
             userLookupPort = userLookupPort,
             issueRepository = issueRepository,
+            archiveGuard = archiveGuard,
         )
 
     val actorId = ActorId(UUID.randomUUID())
@@ -85,7 +89,7 @@ class IssueWatcherServiceTest : DescribeSpec({
         } returns allowed
     }
 
-    beforeEach { clearMocks(watcherRepository, permissionResolver, userLookupPort, issueRepository) }
+    beforeEach { clearMocks(watcherRepository, permissionResolver, userLookupPort, issueRepository, archiveGuard) }
 
     // ── watch (본인) ───────────────────────────────────────────────────────────
 
@@ -349,6 +353,58 @@ class IssueWatcherServiceTest : DescribeSpec({
             verifyOrder {
                 permissionResolver.hasPermission(actorId.value, IssuePermission.VIEW, scope)
                 issueRepository.findByKey(issueKey)
+            }
+        }
+    }
+
+    // ── 아카이브 잠금 (FR-PJ-04 PR-4 Task 9) ─────────────────────────────────────
+
+    describe("아카이브 잠금 (FR-PJ-04 PR-4 Task 9)") {
+        context("watch — 아카이브된 프로젝트") {
+            it("checkPermission 통과 후 archiveGuard.checkByIssue 가 ProjectArchivedException 을 던지면 그대로 전파된다") {
+                stubPermission(IssuePermission.VIEW, true)
+                every { archiveGuard.checkByIssue(issueKey) } throws ProjectArchivedException(issueKey.value)
+
+                shouldThrow<ProjectArchivedException> {
+                    sut.watch(issueKey, actorId, targetUserId = null)
+                }
+                verify(exactly = 0) { watcherRepository.add(any(), any()) }
+            }
+        }
+
+        context("watch — 활성 프로젝트 (판별자 baseline)") {
+            it("archiveGuard.checkByIssue 가 호출되고 정상 등록된다") {
+                stubPermission(IssuePermission.VIEW, true)
+                stubIssueExists()
+                every { watcherRepository.add(issueId, actorId.value) } returns Unit
+
+                sut.watch(issueKey, actorId, targetUserId = null)
+
+                verify(exactly = 1) { archiveGuard.checkByIssue(issueKey) }
+            }
+        }
+
+        context("unwatch — 아카이브된 프로젝트") {
+            it("checkPermission 통과 후 archiveGuard.checkByIssue 가 ProjectArchivedException 을 던지면 그대로 전파된다") {
+                stubPermission(IssuePermission.VIEW, true)
+                every { archiveGuard.checkByIssue(issueKey) } throws ProjectArchivedException(issueKey.value)
+
+                shouldThrow<ProjectArchivedException> {
+                    sut.unwatch(issueKey, actorId, targetUserId = actorId.value)
+                }
+                verify(exactly = 0) { watcherRepository.remove(any(), any()) }
+            }
+        }
+
+        context("unwatch — 활성 프로젝트 (판별자 baseline)") {
+            it("archiveGuard.checkByIssue 가 호출되고 정상 해제된다") {
+                stubPermission(IssuePermission.VIEW, true)
+                stubIssueExists()
+                every { watcherRepository.remove(issueId, actorId.value) } returns true
+
+                sut.unwatch(issueKey, actorId, targetUserId = actorId.value)
+
+                verify(exactly = 1) { archiveGuard.checkByIssue(issueKey) }
             }
         }
     }

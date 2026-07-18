@@ -5,6 +5,8 @@ package com.bts.issue.epic.web
 
 import com.bts.issue.epic.application.IssueEpicService
 import com.bts.issue.history.IssueHistoryRecorder
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.permission.IssuePermission
@@ -190,6 +192,11 @@ class IssueEpicControllerIntegrationTest {
         @Bean
         open fun workflowStateCatalog(): WorkflowStateCatalog = mockk(relaxed = true)
 
+        /** FR-PJ-04 PR-4 Task 9 — 실 ProjectArchiveGuard(공유 dsl 위). */
+        @Bean
+        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard =
+            ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+
         @Bean
         open fun issueEpicService(
             permissionResolver: IssuePermissionResolver,
@@ -198,6 +205,7 @@ class IssueEpicControllerIntegrationTest {
             issueTypeRepository: IssueTypeRepository,
             issueHistoryRecorder: IssueHistoryRecorder,
             workflowStateCatalog: WorkflowStateCatalog,
+            archiveGuard: ProjectArchiveGuard,
         ): IssueEpicService =
             IssueEpicService(
                 permissionResolver,
@@ -206,6 +214,7 @@ class IssueEpicControllerIntegrationTest {
                 issueTypeRepository,
                 issueHistoryRecorder,
                 workflowStateCatalog,
+                archiveGuard,
             )
 
         @Bean
