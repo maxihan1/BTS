@@ -5,6 +5,7 @@ package com.bts.issue.application
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueVersionConflictException
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
@@ -45,6 +46,8 @@ import org.springframework.transaction.annotation.Transactional
  * @property workflowStateCatalog 프로젝트/이슈유형별 워크플로우 상태 목록(name↔key) 조회.
  * @property permissionResolver TRANSITION 권한 사전 체크.
  * @property issueTypeRepository 이슈 유형 id→key 재조회(per-type 워크플로우 대비).
+ * @property archiveGuard 프로젝트 아카이브 잠금(FR-PJ-04 PR-4 Task 9c) — [IssueMoveService] 와 동형으로
+ *   FSM 우회 direct-set 이므로 [ProjectArchiveGuard.checkByIssue] 로 아카이브 프로젝트 쓰기를 차단한다.
  */
 @Service
 class IssueImportStatusService(
@@ -52,16 +55,19 @@ class IssueImportStatusService(
     private val workflowStateCatalog: WorkflowStateCatalog,
     private val permissionResolver: IssuePermissionResolver,
     private val issueTypeRepository: IssueTypeRepository,
+    private val archiveGuard: ProjectArchiveGuard,
 ) {
     /**
      * 소스 상태 이름([statusName])을 대상 워크플로우 상태로 매칭해 이슈 상태를 직접 set 한다.
      *
      * 흐름.
      * 1. TRANSITION 권한 사전 체크 — 없으면 [ImportStatusOutcome.NoPermission](예외 없음).
-     * 2. 이슈 조회로 현재 상태·유형 확보, 유형 id→key 재조회.
-     * 3. [statusName] 을 대상 워크플로우 상태 name 과 대소문자 무시 매칭 — 없으면 [ImportStatusOutcome.NoMatch].
-     * 4. 매칭 상태 == 현재 상태면 [ImportStatusOutcome.NoOp].
-     * 5. else [IssueRepository.applyTransition] 으로 direct-set(resolutionId=null) → [ImportStatusOutcome.Applied].
+     * 2. [ProjectArchiveGuard.checkByIssue] — 소속 프로젝트가 아카이브 상태면 [ProjectArchivedException]
+     *    (D-ORDER: 권한 다음, 이슈 조회 앞).
+     * 3. 이슈 조회로 현재 상태·유형 확보, 유형 id→key 재조회.
+     * 4. [statusName] 을 대상 워크플로우 상태 name 과 대소문자 무시 매칭 — 없으면 [ImportStatusOutcome.NoMatch].
+     * 5. 매칭 상태 == 현재 상태면 [ImportStatusOutcome.NoOp].
+     * 6. else [IssueRepository.applyTransition] 으로 direct-set(resolutionId=null) → [ImportStatusOutcome.Applied].
      *
      * @param actor 상태를 변경하는 행위자(=import 실행자).
      * @param key 대상 이슈 키.
@@ -69,6 +75,7 @@ class IssueImportStatusService(
      * @param expectedVersion 직전 단계까지의 OCC 버전.
      * @return 처리 결과 [ImportStatusOutcome].
      * @throws IssueVersionConflictException direct-set 시 영향 행 0(동시 수정으로 버전 불일치).
+     * @throws com.bts.issue.project.archive.ProjectArchivedException 대상 이슈의 소속 프로젝트가 아카이브 상태일 때.
      */
     @Suppress("ReturnCount") // guard-clause early return 4개(NoPermission·NoMatch·NoOp·Applied) — DEVELOPMENT.md §2.3
     @Transactional
@@ -83,6 +90,7 @@ class IssueImportStatusService(
         if (!hasTransition) {
             return ImportStatusOutcome.NoPermission
         }
+        archiveGuard.checkByIssue(key)
         val issue =
             issueRepository.findByKey(key)
                 ?: error("import status target issue not found: ${key.value}")

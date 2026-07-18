@@ -241,12 +241,14 @@ class IssueImportAdapterTest {
             workflowStateCatalog: WorkflowStateCatalog,
             permissionResolver: IssuePermissionResolver,
             issueTypeRepository: IssueTypeRepository,
+            archiveGuard: ProjectArchiveGuard,
         ): IssueImportStatusService =
             IssueImportStatusService(
                 issueRepository = issueRepository,
                 workflowStateCatalog = workflowStateCatalog,
                 permissionResolver = permissionResolver,
                 issueTypeRepository = issueTypeRepository,
+                archiveGuard = archiveGuard,
             )
 
         @Bean
