@@ -65,7 +65,7 @@ function extractBlock(css: string, selector: string): string {
  */
 function declarationOf(block: string, token: string): string | null {
   const match = block.match(new RegExp(`(?:^|[^-a-zA-Z])${token}\\s*:\\s*([^;]+);`))
-  return match ? match[1].trim() : null
+  return match?.[1]?.trim() ?? null
 }
 
 describe('FR-UX-06 PR3 ADS 팔레트 — index.css', () => {
