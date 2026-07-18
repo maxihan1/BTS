@@ -15,8 +15,9 @@ import java.util.UUID
  * 프로젝트 목록/설정 조회 전담 읽기 전용(read) Repository.
  *
  * jOOQ generated 코드 접촉은 repository 레이어로 한정한다(ArchUnit 룰 2, hexagonal 경계).
- * 반환 타입은 기존 도메인 [Project](id, key, name) 를 재사용한다 — 게이트1 확정으로 별도
- * `ProjectView` 신설을 취소했다(FR-PJ PR-3 plan).
+ * 반환 타입은 기존 도메인 [Project] 를 재사용한다 — 게이트1 확정으로 별도 `ProjectView` 신설을
+ * 취소했다(FR-PJ PR-3 plan). `Project.archivedAt` 매핑(FR-PJ-04)은 [toProject] 단일 지점에서
+ * 담당 — `findAccessibleByKeys`·`findByIdOrKey` 두 조회 메서드가 공유한다(매핑 중복 없음).
  *
  * 단일 테이블(`projects`) 조회만 다루므로 다중 LEFT JOIN + count 카티전 곱 문제와는 무관하다.
  * 활성 기준은 `deleted_at IS NULL`.
