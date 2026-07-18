@@ -69,6 +69,7 @@ import { calendarFeedHandlers } from './calendar-feed-handlers'
 import { automationRuleHandlers } from './automation-rule-handlers'
 import { automationExecutionHandlers } from './automation-execution-handlers'
 import { gitWebhookHandlers } from './git-webhook-handlers'
+import { globalPermissionHandlers } from './global-permission-handlers'
 
 /**
  * 애플리케이션 전체 MSW 핸들러 집합.
@@ -148,4 +149,5 @@ export const handlers = [
   ...automationRuleHandlers,
   ...automationExecutionHandlers,
   ...gitWebhookHandlers,
+  ...globalPermissionHandlers,
 ]
