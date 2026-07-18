@@ -130,3 +130,21 @@
 5. v1 B400 `#0052CC` **부재** ✓ (v1.4.2에는 이 값 없음. 근접한 Blue800은 `#0055CC`로 구별됨 → v1 소스가 아님을 역으로 확인)
 
 **미확보.** 없음. §A(18)·§B(11)·§C(4) = **33/33 토큰 라이트+다크 모두 확보.** 다만 값 자체가 아니라 *매핑 판단*이 필요한 지점 ⚠️ 표시(주로 §A primary 다크 페어링, 알파 vs 솔리드, §B text-subtle/subtlest/disabled·border-focus의 태스크 vs ADS 스텝 차이, §C warning의 Orange vs Yellow) — 값은 다 확보됐고 Maxi가 스텝만 택하면 됨.
+
+---
+
+## 확정 (2026-07-19 — Maxi 4결정 + tokens-raw 실측 반영, PR3 구현 완료)
+
+위 §A·§B·§C에 남아있던 ⚠️ 매핑 판단 지점을 Maxi가 4가지로 결정했다.
+
+1. **warning = ADS Orange 램프.** 태스크가 언급한 Yellow 계열이 아니라 ADS v2 실제 시맨틱(`color.background.warning.bold`)을 그대로 채택한다. 라이트는 Orange700(`#B65C02`), 다크는 Yellow400(`#E2B203`) — ADS 정본이 라이트·다크에서 색상 계열 자체를 오렌지→노랑으로 바꾸는 관례를 그대로 따른다.
+2. **text-subtle / text-subtlest / text-disabled = ADS 실측 스텝.** §B 초안에서 태스크 지정 스텝(Neutral700/500/400 솔리드)과 ADS 실제 매핑이 어긋난다고 표시했던 지점을, `tokens-raw/atlassian-{light,dark}.js` 실측값으로 확정한다.
+   - `text-subtle` = `color.text.subtle` 실측 → 라이트 Neutral800 `#44546F` / 다크 DarkNeutral800 `#9FADBC`
+   - `text-subtlest` = `color.text.subtlest` 실측 → 라이트 Neutral700 `#626F86` / 다크 DarkNeutral700 `#8696A7`
+   - `text-disabled` = `color.text.disabled` 실측(알파 Neutral400A를 솔리드로 등가 치환) → 라이트 Neutral400 `#B3B9C4` / 다크 DarkNeutral400 `#454F59`
+3. **다크 primary = shadcn 관례 유지.** ADS 정본이 제안하는 다크 브랜드색(Blue400 `#579DFF` + 어두운 글자)은 기각하고, 라이트와 동일하게 `#0C66E4`(Blue700) + 흰 글자(`#FFFFFF`)를 다크에서도 유지한다.
+4. **ring = border-focus로 통일.** §A의 `--ring`과 §B의 `--border-focus`가 서로 다른 스텝을 가리키던 초안 어긋남을 해소하고, 둘 다 ADS `color.border.focused` 실측값(라이트 Blue500 `#388BFF` / 다크 Blue300 `#85B8FF`)으로 통일한다.
+
+이 4결정으로 §A·§B·§C에 남아있던 ⚠️ 미결 지점이 전부 해소됐다. 최종 33토큰(§A 18 + §B 11 + §C 4)은 `apps/web/src/index.css`의 `:root`/`.dark` 및 `DESIGN.md` §2 컬러 토큰 표와 1:1 대응한다.
+
+**`.mention` 대비 처방.** 다크 모드에서 `.mention`의 `color`가 `--primary`(Blue700 `#0C66E4`, 결정 3에 따라 라이트값 유지)를 직참조하면 어두운 배경(`--background` `#161A1D`) 위 대비가 2.90:1로 WCAG AA(4.5:1) 미달이었다. 이를 `--brand-text` 참조로 교체해 해소했다 — `--brand-text`는 라이트/다크 모두 ADS 실측 브랜드 텍스트 색(라이트 `#0C66E4`/다크 `#579DFF`)이라 다크에서도 밝은 파랑이 나와, 라이트 4.64:1·다크 5.51:1로 AA를 만족한다.
