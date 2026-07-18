@@ -129,10 +129,33 @@ class ProjectQueryRepositoryTest : IssueTestcontainersBase() {
     }
 
     @Test
-    fun `findAccessibleByKeys 는 아카이브된 프로젝트의 archivedAt 을 non-null 로 매핑한다`() {
-        val result = projectQueryRepository.findAccessibleByKeys(setOf("DDD"))
+    fun `findAccessibleByKeys 는 archived=true 로 조회한 아카이브 프로젝트의 archivedAt 을 non-null 로 매핑한다`() {
+        val result = projectQueryRepository.findAccessibleByKeys(setOf("DDD"), archived = true)
 
         assertThat(result).hasSize(1)
         assertThat(result.first().archivedAt).isNotNull()
+    }
+
+    // ── archived 필터 축 (FR-PJ-04 PR-4 Task 6, PJ2-2) ─────────────────────────
+
+    @Test
+    fun `findAccessibleByKeys 는 archived 생략 시 아카이브 프로젝트를 기본 제외한다`() {
+        val result = projectQueryRepository.findAccessibleByKeys(setOf("AAA", "BBB", "DDD"))
+
+        assertThat(result.map { it.key }).containsExactly("AAA", "BBB")
+    }
+
+    @Test
+    fun `findAccessibleByKeys 는 archived=false 명시 시에도 아카이브 프로젝트를 제외한다`() {
+        val result = projectQueryRepository.findAccessibleByKeys(setOf("AAA", "DDD"), archived = false)
+
+        assertThat(result.map { it.key }).containsExactly("AAA")
+    }
+
+    @Test
+    fun `findAccessibleByKeys 는 archived=true 면 아카이브 프로젝트만 반환한다`() {
+        val result = projectQueryRepository.findAccessibleByKeys(setOf("AAA", "BBB", "DDD"), archived = true)
+
+        assertThat(result.map { it.key }).containsExactly("DDD")
     }
 }

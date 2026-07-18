@@ -48,6 +48,8 @@ import java.util.UUID
  * - S4. 단건 조회 — BROWSE 통과 → 200 + `$.data.key` (Task 4)
  * - S5. 단건 조회 — 프로젝트 미존재 → 404 + `$.errorCode` (Task 4)
  * - S6. 단건 조회 — 실재 프로젝트에 BROWSE 거부 → 403 + 서비스 도달 확인(비-vacuous, Task 4)
+ * - S7. `?archived` 쿼리 파라미터 생략 → 서비스에 `archived=false` 로 위임(Task 6, PJ2-2)
+ * - S8. `?archived=true` → 서비스에 `archived=true` 로 위임(Task 6, PJ2-2)
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [ProjectQueryControllerTest.TestMvcConfig::class])
@@ -196,6 +198,37 @@ class ProjectQueryControllerTest {
 
         // vacuous 401 이 아님을 증명 — actor 추출 이후 서비스에 실제로 도달했다.
         verify(exactly = 1) { projectQueryService.getOne(memberActorId, visibleProjectKey) }
+    }
+
+    // ── S7. archived 생략 → archived=false 위임 (Task 6, PJ2-2) ────────────────────
+
+    @Test
+    fun `GET projects — archived 쿼리 파라미터를 생략하면 서비스에 archived=false 로 위임한다`() {
+        authenticateAs(memberActorId)
+        every { projectQueryService.listAccessible(memberActorId, false) } returns emptyList()
+
+        mockMvc.perform(get("/api/v1/projects"))
+            .andExpect(status().isOk)
+
+        verify(exactly = 1) { projectQueryService.listAccessible(memberActorId, false) }
+    }
+
+    // ── S8. archived=true → archived=true 위임 (Task 6, PJ2-2) ─────────────────────
+
+    @Test
+    fun `GET projects — archived=true 를 전달하면 서비스에 archived=true 로 위임한다`() {
+        authenticateAs(memberActorId)
+        every {
+            projectQueryService.listAccessible(memberActorId, true)
+        } returns listOf(Project(id = visibleProjectId, key = visibleProjectKey, name = visibleProjectName))
+
+        mockMvc.perform(get("/api/v1/projects").param("archived", "true"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data[0].key").value(visibleProjectKey))
+
+        verify(exactly = 1) { projectQueryService.listAccessible(memberActorId, true) }
+        // archived=true 위임 시 archived=false 오버로드로는 도달하지 않는다(비-vacuous 판별자).
+        verify(exactly = 0) { projectQueryService.listAccessible(memberActorId, false) }
     }
 
     // ── private helpers ─────────────────────────────────────────────────────────
