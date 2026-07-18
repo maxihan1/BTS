@@ -389,8 +389,8 @@
 
 ### §4.10 FR-PM-10 — 전역 권한 부여 (`global_permission_grants`)
 
-**우선순위**. 필수 | **선행**. §4.8 FR-PM-08(SYSTEM_ADMIN) · §4.9 FR-PM-09(사용자 그룹) | **Plan slug**. `identity/global-permission-grants` | **PR**. #277 (PR-1)
-**범위**. 백엔드 인프라만(D1~D5). 관리 화면(D6/D7)은 PR-6.
+**우선순위**. 필수 | **선행**. §4.8 FR-PM-08(SYSTEM_ADMIN) · §4.9 FR-PM-09(사용자 그룹) | **Plan slug**. `identity/global-permission-grants` | **PR**. #277 (PR-1, D1~D5) · #284 (D6/D7)
+**범위**. 백엔드 인프라(D1~D5, #277) + 관리 화면·E2E(D6/D7, #284). **전 단계 완료.**
 
 전역 권한 부여 인프라 — `global_permission_grants`가 SYSTEM_ADMIN 이 아닌 사용자/그룹에 개별 전역 권한(`CREATE_PROJECT`)을 부여한다. issue-tracking BC 의 `POST /projects`(FR-PJ-01)가 이 인프라를 소비한다. FR-PM-08 의 SYSTEM_ADMIN 단일 전역 축을 grant 테이블로 확장. ADR [2026-07-17-global-permission-grants](../../decisions/2026-07-17-global-permission-grants.md).
 
@@ -399,8 +399,8 @@
 - [x] D3. 데이터 모델 — `global_permission_grants`(V036, `permission` CHECK IN ('CREATE_PROJECT') · `grantee_type` CHECK GROUP/USER · UNIQUE(permission, grantee_type, grantee_id) · FK 없음(ADR D-4, 다형 참조) · `granted_by` NOT NULL(ADR D-5, 감사 흔적)) (책임. db-engineer)
 - [x] D4. 백엔드 — `GlobalPermissionGrantRepository`(concrete `@Repository`, GROUP 전파 조회) + `IdentityAccessSystemPermissionResolver.hasGlobalPermission` override(grant OR isSystemAdmin) + `GlobalPermissionGrantController`/`Service`(grant/revoke/list, PAT 지원 — D18, sealed 예외 4종) + `ProjectMembershipWritePort`(shared-kernel 포트, FR-PJ-01 소비 예정) (책임. security-engineer)
 - [x] D5. 백엔드 테스트 — 스키마 가드 3건 · Repository 8건(GROUP 전파/그룹탈퇴·중복부여 409) · resolver override 4건(mutation 실증) · 컨트롤러 13건+서비스 10건(PAT 양성 포함) · 조립 가드 2건(:modules:app) — 신규 34건 전량 PASS (책임. security-engineer)
-- [ ] D6. 프론트 UI — 전역 권한 부여/회수 관리 화면 (책임. designer → frontend-engineer) — PR-6 예정
-- [ ] D7. E2E (책임. qa-engineer) — PR-6 예정
+- [x] D6. 프론트 UI — 전역 권한 부여/회수 관리 화면 (`/admin/global-permissions`, SYSTEM_ADMIN 가드, 부여 폼·목록·인라인 회수·orphan 표시) (책임. frontend-engineer) — #284
+- [x] D7. E2E — Playwright S1~S5(목록·그룹부여·사용자검색부여·회수·중복409) (책임. qa-engineer) — #284
 
 ## §NFR identity-access BC 완료 게이트
 
