@@ -68,6 +68,14 @@
 
   --color-info: var(--info);
 
+  --color-warning-foreground: var(--warning-foreground);
+
+  --color-success-foreground: var(--success-foreground);
+
+  --color-danger-foreground: var(--danger-foreground);
+
+  --color-info-foreground: var(--info-foreground);
+
   --color-input: var(--input);
 
   --color-border: var(--border);
@@ -219,6 +227,15 @@
   --danger: #CA3521;
 
   --info: #0C66E4;
+
+  /* bold 배경 위 텍스트 — 라이트=흰글자, 다크=어두운글자 (ADS 관례) */
+  --warning-foreground: #FFFFFF;
+
+  --success-foreground: #FFFFFF;
+
+  --danger-foreground: #FFFFFF;
+
+  --info-foreground: #FFFFFF;
 }
 
 .dark {
@@ -239,15 +256,15 @@
 
   --primary-foreground: #FFFFFF;
 
-  --secondary: #22272B;
+  --secondary: #A1BDD914;
 
   --secondary-foreground: #C7D1DB;
 
-  --muted: #1D2125;
+  --muted: #BCD6F00A;
 
   --muted-foreground: #8696A7;
 
-  --accent: #22272B;
+  --accent: #A1BDD914;
 
   --accent-foreground: #C7D1DB;
 
@@ -297,11 +314,11 @@
   --sidebar-ring: oklch(0.556 0 0);
 
   /* FR-UX-06 §7 상태 토큰 — ADS v2 실제값 (PR2 alias → PR3 확정) */
-  --bg-neutral: #1D2125;
+  --bg-neutral: #BCD6F00A;
 
-  --bg-neutral-hover: #22272B;
+  --bg-neutral-hover: #A1BDD914;
 
-  --bg-neutral-press: #2C333A;
+  --bg-neutral-press: #A6C5E229;
 
   --bg-selected: #082145;
 
@@ -315,7 +332,7 @@
 
   --border-focus: #85B8FF;
 
-  --brand-hover: #85B8FF;
+  --brand-hover: #0055CC;
 
   --brand-text: #579DFF;
 
@@ -327,6 +344,15 @@
   --danger: #F87462;
 
   --info: #579DFF;
+
+  /* bold 배경 위 텍스트 — 라이트=흰글자, 다크=어두운글자 (ADS 관례) */
+  --warning-foreground: #161A1D;
+
+  --success-foreground: #161A1D;
+
+  --danger-foreground: #161A1D;
+
+  --info-foreground: #161A1D;
 }
 
 @layer base {
