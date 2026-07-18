@@ -7,6 +7,8 @@ import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
@@ -38,6 +40,8 @@ import java.util.UUID
  * - 정상 rerank → updateRank 호출 + historyRecorder 미호출
  * - 고갈 → rebalance + 재조회 → updateRank (C3)
  * - rebalance: lock 후 findRanksForRebalance 재조회 + 균등 updateRank 반복
+ * - 아카이브 잠금(FR-PJ-04 PR-4 Task 9b): 아카이브된 프로젝트 rerank → ProjectArchivedException,
+ *   활성 프로젝트 rerank → 정상(판별자 baseline)
  */
 class BacklogRankServiceTest : DescribeSpec({
 
@@ -46,12 +50,14 @@ class BacklogRankServiceTest : DescribeSpec({
     val repo = mockk<IssueRepository>(relaxed = true)
     val permissionResolver = mockk<IssuePermissionResolver>()
     val dsl = mockk<DSLContext>(relaxed = true)
+    val archiveGuard = mockk<ProjectArchiveGuard>(relaxUnitFun = true)
 
     val sut =
         BacklogRankService(
             repo = repo,
             permissionResolver = permissionResolver,
             dsl = dsl,
+            archiveGuard = archiveGuard,
         )
 
     val actor = ActorId(UUID.randomUUID())
@@ -78,7 +84,7 @@ class BacklogRankServiceTest : DescribeSpec({
     }
 
     beforeEach {
-        clearMocks(repo, permissionResolver, dsl)
+        clearMocks(repo, permissionResolver, dsl, archiveGuard)
     }
 
     // ── 권한 검증 ─────────────────────────────────────────────────────────────
@@ -316,6 +322,34 @@ class BacklogRankServiceTest : DescribeSpec({
             verify { repo.findRankByKey(nextKey) }
             // updateRank 는 relaxed mock 자동 기록.
             // findRanksForRebalance + findRankByKey 호출이 확인되면 rebalance→C3 흐름 검증 완료.
+        }
+    }
+
+    // ── 아카이브 잠금 (FR-PJ-04 PR-4 Task 9b) ─────────────────────────────────────
+
+    describe("아카이브 잠금 (FR-PJ-04 PR-4 Task 9b)") {
+        context("rerank — 아카이브된 프로젝트") {
+            it("assertPermission 통과 후 archiveGuard.checkByIssue 가 ProjectArchivedException 을 던지면 그대로 전파된다") {
+                stubUpdatePermission(true)
+                every { archiveGuard.checkByIssue(targetKey) } throws ProjectArchivedException(targetKey.value)
+
+                shouldThrow<ProjectArchivedException> {
+                    sut.rerank(actor, targetKey, IssueKey("PROJ-1"), null)
+                }
+                verify(exactly = 0) { repo.findByKey(any()) }
+            }
+        }
+
+        context("rerank — 활성 프로젝트 (판별자 baseline)") {
+            it("archiveGuard.checkByIssue 가 호출되고 정상 rerank 된다") {
+                stubUpdatePermission(true)
+                every { repo.findByKey(targetKey) } returns makeIssue(targetKey, "b")
+                every { repo.findByKey(IssueKey("PROJ-9")) } returns makeIssue(IssueKey("PROJ-9"), "z")
+
+                sut.rerank(actor, targetKey, IssueKey("PROJ-9"), null)
+
+                verify(exactly = 1) { archiveGuard.checkByIssue(targetKey) }
+            }
         }
     }
 })
