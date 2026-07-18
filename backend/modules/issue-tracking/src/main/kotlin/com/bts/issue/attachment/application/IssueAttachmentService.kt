@@ -114,7 +114,7 @@ class IssueAttachmentService(
         uploadedBy: UUID? = null,
     ): Attachment {
         checkPermission(actor, IssuePermission.UPDATE, issueKey)
-        // TASK9-RED-PENDING archiveGuard.checkByIssue(issueKey)
+        archiveGuard.checkByIssue(issueKey)
         // 허용 타입 검증 — 권한 확인 직후, MinIO put·DB insert 이전(고아 객체·불필요 I/O 방지).
         if (!AttachmentTypePolicy.isAllowed(contentType, filename)) {
             throw UnsupportedAttachmentTypeException(contentType, filename)
@@ -224,7 +224,7 @@ class IssueAttachmentService(
         attachmentId: UUID,
     ) {
         checkPermission(actor, IssuePermission.UPDATE, issueKey)
-        // TASK9-RED-PENDING archiveGuard.checkByIssue(issueKey)
+        archiveGuard.checkByIssue(issueKey)
         val issueId = resolveIssueId(issueKey)
         val attachment = findAttachmentForIssue(attachmentId, issueId, issueKey)
 

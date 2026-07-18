@@ -81,7 +81,7 @@ class IssueTemplateApplicationService(
         content: String,
     ): IssueTemplate {
         assertPermission(actorId, TemplatePermission.CREATE, projectId)
-        // TASK9-RED-PENDING archiveGuard.check(projectId)
+        archiveGuard.check(projectId)
         assertIssueTypeExists(issueTypeId)
 
         val domain =
@@ -124,7 +124,7 @@ class IssueTemplateApplicationService(
         content: String?,
     ): IssueTemplate {
         assertPermission(actorId, TemplatePermission.UPDATE, projectId)
-        // TASK9-RED-PENDING archiveGuard.check(projectId)
+        archiveGuard.check(projectId)
         val existing = findActiveTemplate(templateId)
         val updated = existing.withChanges(name = name, content = content)
         repo.update(templateId, updated.name, updated.content)
@@ -152,7 +152,7 @@ class IssueTemplateApplicationService(
         templateId: UUID,
     ) {
         assertPermission(actorId, TemplatePermission.DELETE, projectId)
-        // TASK9-RED-PENDING archiveGuard.check(projectId)
+        archiveGuard.check(projectId)
         findActiveTemplate(templateId)
         repo.softDelete(templateId)
         log.info("issue_template_deleted id={} projectId={} actor={}", templateId, projectId, actorId)

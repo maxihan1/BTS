@@ -88,7 +88,7 @@ class VersionApplicationService(
     ): Version {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, VersionPermission.CREATE, projectId)
-        // TASK9-RED-PENDING archiveGuard.check(projectId)
+        archiveGuard.check(projectId)
 
         val domain =
             Version.create(
@@ -134,7 +134,7 @@ class VersionApplicationService(
     ): Version {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, VersionPermission.UPDATE, projectId)
-        // TASK9-RED-PENDING archiveGuard.check(projectId)
+        archiveGuard.check(projectId)
         val existing = findActiveVersion(versionId, projectId)
 
         val updated = applyNameAndDescription(existing, name, description)
@@ -174,7 +174,7 @@ class VersionApplicationService(
     ): Version {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, VersionPermission.UPDATE, projectId)
-        // TASK9-RED-PENDING archiveGuard.check(projectId)
+        archiveGuard.check(projectId)
         val existing = findActiveVersion(versionId, projectId)
 
         val updated = existing.changeDates(startDate, releaseDate)
@@ -205,7 +205,7 @@ class VersionApplicationService(
     ) {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, VersionPermission.DELETE, projectId)
-        // TASK9-RED-PENDING archiveGuard.check(projectId)
+        archiveGuard.check(projectId)
         val existing = findActiveVersion(versionId, projectId)
         assertNotArchivedForDelete(existing)
         repo.softDelete(versionId, projectId)
@@ -249,7 +249,7 @@ class VersionApplicationService(
     ): Version {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, VersionPermission.UPDATE, projectId)
-        // TASK9-RED-PENDING archiveGuard.check(projectId)
+        archiveGuard.check(projectId)
         val existing = findActiveVersion(versionId, projectId)
         val updated = applyTransition(existing, target)
         log.info(

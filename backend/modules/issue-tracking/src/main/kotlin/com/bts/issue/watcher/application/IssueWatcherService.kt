@@ -103,7 +103,7 @@ class IssueWatcherService(
         val watcherId = targetUserId ?: actor.value
         val isSelf = watcherId == actor.value
         checkPermission(actor, issueKey, isSelf)
-        // TASK9-RED-PENDING archiveGuard.checkByIssue(issueKey)
+        archiveGuard.checkByIssue(issueKey)
 
         if (!isSelf) {
             if (!userLookupPort.exists(watcherId)) {
@@ -140,7 +140,7 @@ class IssueWatcherService(
     ) {
         val isSelf = targetUserId == actor.value
         checkPermission(actor, issueKey, isSelf)
-        // TASK9-RED-PENDING archiveGuard.checkByIssue(issueKey)
+        archiveGuard.checkByIssue(issueKey)
 
         val issueId = resolveIssueId(issueKey)
         log.debug("unwatch issueKey={} userId={}", issueKey.value, targetUserId)

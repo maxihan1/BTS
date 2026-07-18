@@ -54,8 +54,8 @@ class IssueParentService(
         parentKey: IssueKey,
     ) {
         // 아카이브 잠금 — child/parent 어느 한쪽이라도 아카이브된 프로젝트 소속이면 409.
-        // TASK9-RED-PENDING archiveGuard.checkByIssue(childKey)
-        // TASK9-RED-PENDING archiveGuard.checkByIssue(parentKey)
+        archiveGuard.checkByIssue(childKey)
+        archiveGuard.checkByIssue(parentKey)
 
         val child =
             issueRepository.findByKey(childKey)
@@ -102,7 +102,7 @@ class IssueParentService(
      */
     @Transactional
     fun clearParent(childKey: IssueKey) {
-        // TASK9-RED-PENDING archiveGuard.checkByIssue(childKey)
+        archiveGuard.checkByIssue(childKey)
 
         val child =
             issueRepository.findByKey(childKey)

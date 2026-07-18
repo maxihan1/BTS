@@ -83,7 +83,7 @@ class CommentApplicationService(
         createdAt: Instant? = null,
     ): Comment {
         checkPermission(actor, issueKey, IssuePermission.UPDATE)
-        // TASK9-RED-PENDING archiveGuard.checkByIssue(issueKey)
+        archiveGuard.checkByIssue(issueKey)
 
         val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
 

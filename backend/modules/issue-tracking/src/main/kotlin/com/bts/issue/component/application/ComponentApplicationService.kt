@@ -83,7 +83,7 @@ class ComponentApplicationService(
     ): Component {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, ComponentPermission.CREATE, projectId)
-        // TASK9-RED-PENDING archiveGuard.check(projectId)
+        archiveGuard.check(projectId)
         validateLead(leadUserId)
 
         val domain =
@@ -128,7 +128,7 @@ class ComponentApplicationService(
     ): Component {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, ComponentPermission.UPDATE, projectId)
-        // TASK9-RED-PENDING archiveGuard.check(projectId)
+        archiveGuard.check(projectId)
         val existing = findActiveComponent(componentId, projectId)
 
         val updated = applyNameAndDescription(existing, name, description)
@@ -168,7 +168,7 @@ class ComponentApplicationService(
     ): Component {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, ComponentPermission.UPDATE, projectId)
-        // TASK9-RED-PENDING archiveGuard.check(projectId)
+        archiveGuard.check(projectId)
         val existing = findActiveComponent(componentId, projectId)
         validateLead(leadUserId)
 
@@ -206,7 +206,7 @@ class ComponentApplicationService(
     ) {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, ComponentPermission.DELETE, projectId)
-        // TASK9-RED-PENDING archiveGuard.check(projectId)
+        archiveGuard.check(projectId)
         findActiveComponent(componentId, projectId)
         repo.softDelete(componentId, projectId)
         log.info("component_deleted id={} projectId={} actor={}", componentId, projectId, actorId)

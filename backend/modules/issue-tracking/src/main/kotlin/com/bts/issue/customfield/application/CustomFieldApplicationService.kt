@@ -84,7 +84,7 @@ class CustomFieldApplicationService(
     ): CustomFieldDefinition {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, CustomFieldPermission.CREATE, projectId)
-        // TASK9-RED-PENDING archiveGuard.check(projectId)
+        archiveGuard.check(projectId)
 
         val domain =
             CustomFieldDefinition.create(
@@ -143,7 +143,7 @@ class CustomFieldApplicationService(
     ): CustomFieldDefinition {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, CustomFieldPermission.UPDATE, projectId)
-        // TASK9-RED-PENDING archiveGuard.check(projectId)
+        archiveGuard.check(projectId)
 
         val existing = findActiveField(fieldId, projectId)
 
@@ -189,7 +189,7 @@ class CustomFieldApplicationService(
     ) {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, CustomFieldPermission.DELETE, projectId)
-        // TASK9-RED-PENDING archiveGuard.check(projectId)
+        archiveGuard.check(projectId)
         findActiveField(fieldId, projectId)
         repo.softDelete(fieldId, projectId)
         log.info("custom_field_deleted id={} projectId={} actor={}", fieldId, projectId, actorId)

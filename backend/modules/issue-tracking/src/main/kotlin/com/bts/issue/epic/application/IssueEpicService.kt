@@ -99,8 +99,8 @@ class IssueEpicService(
         // 1. UPDATE(child) 권한 선행 — 이슈 존재 probe 방지
         checkUpdatePermission(actor, childKey)
         // 아카이브 잠금 — child/epic 은 cross-project 금지(불변식 7)이므로 동일 프로젝트, 방어적으로 둘 다 확인.
-        // TASK9-RED-PENDING archiveGuard.checkByIssue(childKey)
-        // TASK9-RED-PENDING archiveGuard.checkByIssue(epicKey)
+        archiveGuard.checkByIssue(childKey)
+        archiveGuard.checkByIssue(epicKey)
 
         // 2~8. 불변식 검증 — 별도 헬퍼로 위임 (LongMethod 억제)
         val (child, epic) = validateConnectInvariants(epicKey, childKey)
@@ -147,8 +147,8 @@ class IssueEpicService(
         // UPDATE(child) 권한 선행
         checkUpdatePermission(actor, childKey)
         // 아카이브 잠금 — connect 와 동형(둘 다 확인).
-        // TASK9-RED-PENDING archiveGuard.checkByIssue(childKey)
-        // TASK9-RED-PENDING archiveGuard.checkByIssue(epicKey)
+        archiveGuard.checkByIssue(childKey)
+        archiveGuard.checkByIssue(epicKey)
 
         // child 조회
         val child =

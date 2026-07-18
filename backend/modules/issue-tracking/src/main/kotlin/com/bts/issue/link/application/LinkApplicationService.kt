@@ -124,8 +124,8 @@ class LinkApplicationService(
             linkTypeCode,
         )
         // 아카이브 잠금 — source/target 어느 한쪽이라도 아카이브된 프로젝트 소속이면 409 (양방향 관계 쓰기).
-        // TASK9-RED-PENDING archiveGuard.checkByIssue(sourceKey)
-        // TASK9-RED-PENDING archiveGuard.checkByIssue(targetKey)
+        archiveGuard.checkByIssue(sourceKey)
+        archiveGuard.checkByIssue(targetKey)
         val linkType = LinkType.fromCode(linkTypeCode)
         val link = resolveAndValidateLink(sourceKey, targetKey, linkType)
         val saved = linkRepository.insert(link)
@@ -231,7 +231,7 @@ class LinkApplicationService(
         linkId: Long,
     ) {
         log.debug("deleteLink key={} linkId={}", key.value, linkId)
-        // TASK9-RED-PENDING archiveGuard.checkByIssue(key)
+        archiveGuard.checkByIssue(key)
 
         issueRepository.findByKey(key)
             ?: throw LinkedIssueNotFoundException(key)

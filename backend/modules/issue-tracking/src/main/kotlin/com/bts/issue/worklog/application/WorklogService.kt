@@ -109,7 +109,7 @@ class WorklogService(
         newRemainingEstimateSeconds: Int?,
     ): Worklog {
         checkPermission(actor, issueKey, IssuePermission.UPDATE)
-        // TASK9-RED-PENDING archiveGuard.checkByIssue(issueKey)
+        archiveGuard.checkByIssue(issueKey)
 
         val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
         val before = issue
@@ -181,7 +181,7 @@ class WorklogService(
         comment: String?,
     ): Worklog {
         checkPermission(actor, issueKey, IssuePermission.UPDATE)
-        // TASK9-RED-PENDING archiveGuard.checkByIssue(issueKey)
+        archiveGuard.checkByIssue(issueKey)
 
         val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
 
@@ -239,7 +239,7 @@ class WorklogService(
         comment: String?,
     ): Worklog {
         checkPermission(actor, issueKey, IssuePermission.UPDATE)
-        // TASK9-RED-PENDING archiveGuard.checkByIssue(issueKey)
+        archiveGuard.checkByIssue(issueKey)
 
         val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
 
@@ -313,7 +313,7 @@ class WorklogService(
         worklogId: UUID,
     ) {
         checkPermission(actor, issueKey, IssuePermission.UPDATE)
-        // TASK9-RED-PENDING archiveGuard.checkByIssue(issueKey)
+        archiveGuard.checkByIssue(issueKey)
 
         val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
 
