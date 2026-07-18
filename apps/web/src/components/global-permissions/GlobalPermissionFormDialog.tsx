@@ -152,15 +152,33 @@ function GroupGranteeSelector({ selectedGroupId, onSelect }: GroupGranteeSelecto
 // 에러 코드 → 한글 메시지 (FR-8)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 알려지지 않은 에러 코드/네트워크 에러에 표시할 기본 메시지 */
 const DEFAULT_ERROR_MESSAGE = '권한 부여에 실패했습니다'
 
+/**
+ * 백엔드 `{ error: code }`(snake_case) 코드 → 한글 메시지 매핑.
+ * 목록에 없는 코드는 {@link resolveErrorMessage}가 {@link DEFAULT_ERROR_MESSAGE}로 폴백한다.
+ */
+const ERROR_MESSAGE_BY_CODE: Record<string, string> = {
+  grant_already_exists: '이미 부여된 권한입니다',
+  grantee_not_found: '대상을 찾을 수 없습니다',
+  unknown_permission: '알 수 없는 권한입니다',
+}
+
+/**
+ * mutation 에러를 폼에 표시할 한글 메시지로 변환한다.
+ *
+ * {@link extractGlobalPermissionErrorCode}로 `error` 코드를 추출한 뒤
+ * {@link ERROR_MESSAGE_BY_CODE}에서 찾는다. 코드가 없거나(네트워크 에러 등) 매핑에
+ * 없는 코드면 {@link DEFAULT_ERROR_MESSAGE}로 폴백한다.
+ *
+ * @param error useGrantGlobalPermission mutation에서 던져진 에러 (unknown)
+ * @returns 표시할 한글 에러 메시지
+ */
 function resolveErrorMessage(error: unknown): string {
   const code = extractGlobalPermissionErrorCode(error)
   if (code === null) return DEFAULT_ERROR_MESSAGE
-  if (code === 'grant_already_exists') return '이미 부여된 권한입니다'
-  if (code === 'grantee_not_found') return '대상을 찾을 수 없습니다'
-  if (code === 'unknown_permission') return '알 수 없는 권한입니다'
-  return DEFAULT_ERROR_MESSAGE
+  return ERROR_MESSAGE_BY_CODE[code] ?? DEFAULT_ERROR_MESSAGE
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -180,11 +198,26 @@ function FormBody({ onClose }: FormBodyProps): JSX.Element {
 
   const grantMutation = useGrantGlobalPermission()
 
+  /**
+   * 대상 종류(USER/GROUP) 토글 변경 핸들러.
+   *
+   * **B-3 (correctness, 반드시 유지)** — granteeId는 USER 선택기와 GROUP 선택기가
+   * 공유하는 단일 state다. 종류를 바꿀 때 granteeId를 리셋하지 않으면, 예를 들어
+   * GROUP에서 그룹 id를 고른 채로 USER로 전환해도 그 id가 그대로 남아
+   * `POST { granteeType: 'USER', granteeId: <그룹 id> }` 같은 잘못된 요청이
+   * (사용자가 다시 고르지 않아도) 그대로 제출 가능해진다.
+   * 그래서 종류가 바뀌면 항상 대상을 다시 고르도록 granteeId를 null로 리셋하고,
+   * 제출 버튼은 `granteeId === null`일 때 disabled로 막는다.
+   *
+   * 참고 — UserGranteeSelector/GroupGranteeSelector는 `granteeType`에 따라
+   * 조건부로 마운트/언마운트되므로 검색어(query) 같은 내부 state는 자동으로
+   * 사라진다. 여기서 명시적으로 리셋해야 하는 건 두 선택기가 함께 쓰는 상위 state,
+   * 즉 granteeId뿐이다.
+   *
+   * @param next 새로 선택된 대상 종류
+   */
   function handleGranteeTypeChange(next: GranteeType): void {
     setGranteeType(next)
-    // B-3: 대상 종류를 바꾸면 이전에 고른 granteeId를 반드시 리셋한다.
-    // 리셋하지 않으면 예를 들어 그룹 id를 골라둔 채로 USER로 전환해도 granteeId가
-    // 남아 있어 "사용자에게 그룹 id를 부여"하는 잘못된 요청이 만들어질 수 있다.
     setGranteeId(null)
     setErrorMessage(null)
   }
