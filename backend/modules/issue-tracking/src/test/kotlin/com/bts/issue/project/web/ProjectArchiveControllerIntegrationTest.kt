@@ -303,7 +303,5 @@ class PrimaryArchiveComponentPermissionResolverConfig {
      */
     @Bean
     @Primary
-    fun primaryComponentPermissionResolver(
-        delegate: ControllableComponentPermissionResolver,
-    ): ComponentPermissionResolver = delegate
+    fun primaryResolver(delegate: ControllableComponentPermissionResolver): ComponentPermissionResolver = delegate
 }
