@@ -225,7 +225,7 @@ placeholder 는 여기서 "감사 정확도" 문제가 아니라 **기능 자체
 | PJ4-1 | `POST /api/v1/projects/{projectIdOrKey}/archive` → `archived_at = now()`. 권한 = PROJECT_ADMIN |
 | PJ4-2 | `POST /api/v1/projects/{projectIdOrKey}/unarchive` → `archived_at = NULL` |
 | PJ4-3 | 아카이브 프로젝트는 **이번 범위의 쓰기를 거부**(409)하되 **읽기는 허용**한다 (S6). 범위는 D12 |
-| PJ4-4 | **이슈 쓰기** 잠금은 `IssueApplicationService` **초크포인트 1곳**에 건다 — automation·Import·이슈 REST 가 전부 경유한다 (D9 확증) |
+| PJ4-4 | **이슈 쓰기(생성·수정·전이)** 잠금은 `IssueApplicationService` **초크포인트 1곳**에 건다 — automation·Import·이슈 REST 가 전부 경유한다 (D9 확증). **단 이슈 하위리소스 쓰기 8종**(Attachment·Worklog·Link·Parent·Epic·Watcher·Move·Comment)**은 이 초크포인트를 경유하지 않는다**(PR-4 리뷰 실측 BLOCKER-1 — `IssueAttachmentService`·`WorklogService`·`LinkApplicationService`·`IssueParentService`·`IssueEpicService`·`IssueWatcherService`·`IssueMoveService`·`CommentApplicationService` 모두 `IssueApplicationService` 참조 0건). issue-tracking **자기 소유**라 D12 cross-BC 이연 근거가 성립하지 않아, PR-4 에서 각 서비스 진입점에 `ProjectArchiveGuard.checkByIssue` 를 **개별** 적용해 잠갔다(범위 확대, D-SUBRESOURCE) |
 | PJ4-7 | **issue-tracking 자체 프로젝트 스코프 쓰기 17곳**에 각각 잠금을 건다 — `Version`(5) · `Component`(4) · `CustomField`(3) · `IssueTemplate`(3) · `ProjectLead`(1) · `ProjectRequire2fa`(1). 이들은 `IssueApplicationService` 를 **경유하지 않는다**(참조 0건 실측) |
 | PJ4-8 | **cross-BC 쓰기는 이번 범위 밖** (D12 — 후속 FR). 경로 기준 12곳(identity-access `ProjectMember` 3 · `ProjectSecurityScheme` 2 · `FieldPermission` 2 / automation `AutomationRule` 4 / project-workflow `ProjectWorkflowScheme` 1) **+ 경로 밖 ~18곳**(agile-planning `Board`·`Sprint`·`BoardQuickFilter` / slack `ChannelMapping` / automation `replay`) = **30곳 안팎**. **이 목록은 완전하지 않다**(§2.4-B·§2.4-C) — 후속 FR 이 **5중 교차** 열거로 다시 만든다. **PR 본문·KDoc 에 "미잠금"과 "목록 불완전"을 함께 명시**한다 |
 | PJ4-5 | `Clock` 주입 필수. `Instant.now()` 직접 호출 금지 (Version ADR D3 선례) |
@@ -335,7 +335,7 @@ D6 은 *"프로젝트 CRUD 는 권한이 아니니 FR-PJ"* 라 판단했다. 전
 |---|---|
 | NFR-1 | 권한 테스트는 **`@ActiveProfiles("prod")`** 로 작성한다 (§7 C1) |
 | NFR-2 | 생성 트랜잭션은 부분 성공을 남기지 않는다 — `projects` 만 있고 멤버십 없는 상태 금지 |
-| NFR-3 | 아카이브 잠금 게이트는 **D12 범위(이슈 쓰기 + issue-tracking 17곳)의** 쓰기 경로를 덮는다. 그 범위 안에서 미강제 지점 **0**. **범위 밖 12곳은 "아직 안 막힘"이 의도된 상태**이며 §2.4 PJ4-8 이 명시한다 — 이 구분을 흐리면 후속 FR 이 구멍을 못 찾는다 |
+| NFR-3 | 아카이브 잠금 게이트는 **D12 범위(이슈 쓰기 + issue-tracking 17곳 + 이슈 하위리소스 쓰기 8종)의** 쓰기 경로를 덮는다. 그 범위 안에서 미강제 지점 **0**. **범위 밖 12곳은 "아직 안 막힘"이 의도된 상태**이며 §2.4 PJ4-8 이 명시한다 — 이 구분을 흐리면 후속 FR 이 구멍을 못 찾는다 |
 | NFR-4 | R6 백필은 부팅 시간을 유의미하게 늘리지 않는다 (표준 4 워크플로우 한정) |
 | NFR-5 | 신규 엔드포인트는 인증 없이 접근 불가 (`DEVELOPMENT.md §1` 절대규칙 4) |
 
@@ -541,6 +541,8 @@ interface ProjectMembershipWritePort {
 | **DoD-11** | **프로젝트 생성 도중 예외 주입 시 `projects` · `project_memberships` 가 둘 다 롤백된다** | I1 원자성 실증 (§4.4). cross-BC 쓰기가 호출자 tx 에 참여함을 증명하는 유일한 방법 — 선례가 없으므로(§4.4 N5) 반드시 실증한다. **C10 필수** — tx-aware 컨텍스트로 고정하지 않으면 거짓 red |
 
 > **DoD-5 의 "0" 은 스펙이 세어준 숫자가 아니다.** [[spec-stated-count-becomes-blindfold]] — 개수는 패턴 grep 으로 직접 재검증한다.
+>
+> **DoD-4 deviation (PR-4, D-TESTPROFILE, CONCERN-1 Maxi 확정).** `@ActiveProfiles("prod")` 원칙은 `CREATE_PROJECT`/`SystemPermission` 경로(PR-1/2)에는 그대로 적용된다. 그러나 PR-4 의 PROJECT_ADMIN 게이트(`ComponentPermissionResolver`)는 실 구현체가 identity-access 소유라 issue-tracking 테스트 클래스패스에 prod 실 grant 가 없어 `@ActiveProfiles("prod")` 가 부팅 실패 또는 vacuous 통과로 이어진다 — 선례 `Require2faTestPermissionConfig` 동형으로 `@ActiveProfiles("test")` + 제어형 fake `ComponentPermissionResolver`(`ArchiveTestPermissionConfig`)로 대체했다.
 
 ---
 
