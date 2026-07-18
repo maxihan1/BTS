@@ -3,7 +3,6 @@
 package com.bts.issue.project.settings
 
 import com.bts.issue.project.ProjectLookup
-import com.bts.issue.project.repository.ProjectSettingsRepository
 import com.bts.shared.permission.ComponentPermission
 import com.bts.shared.permission.ComponentPermissionResolver
 import org.slf4j.LoggerFactory
@@ -41,7 +40,9 @@ class ProjectNotFoundException(projectIdOrKey: String) :
 class ProjectSettingsForbiddenException(
     actorId: UUID,
     projectId: UUID,
-) : RuntimeException("Access denied: actor=$actorId, permission=${ComponentPermission.UPDATE.name}, projectId=$projectId")
+) : RuntimeException(
+        "Access denied: actor=$actorId, permission=${ComponentPermission.UPDATE.name}, projectId=$projectId",
+    )
 
 /**
  * 프로젝트 설정(name) 변경 ApplicationService.

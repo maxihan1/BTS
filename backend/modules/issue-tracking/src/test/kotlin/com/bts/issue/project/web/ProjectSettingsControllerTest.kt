@@ -74,8 +74,9 @@ class ProjectSettingsControllerTest {
         open fun projectSettingsService(): ProjectSettingsService = mockk(relaxed = true)
 
         @Bean
-        open fun projectSettingsController(service: ProjectSettingsService): ProjectSettingsController =
-            ProjectSettingsController(service)
+        open fun projectSettingsController(service: ProjectSettingsService): ProjectSettingsController {
+            return ProjectSettingsController(service)
+        }
 
         @Bean
         open fun projectSettingsExceptionHandler(): ProjectSettingsExceptionHandler = ProjectSettingsExceptionHandler()

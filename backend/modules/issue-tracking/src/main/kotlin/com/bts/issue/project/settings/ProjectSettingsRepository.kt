@@ -1,6 +1,6 @@
 // 프로젝트 설정(name) 컬럼 UPDATE 전담 jOOQ Repository (FR-PJ PR-3 Task 5)
 
-package com.bts.issue.project.repository
+package com.bts.issue.project.settings
 
 import com.bts.issue.jooq.tables.references.PROJECTS
 import org.jooq.DSLContext
@@ -12,17 +12,19 @@ import java.util.UUID
 /**
  * projects.name 컬럼의 갱신을 담당하는 Repository.
  *
- * jOOQ generated 코드 접촉은 repository 레이어로 한정한다(ArchUnit 룰 2, hexagonal 경계).
  * [com.bts.issue.project.settings.ProjectSettingsService] 가 이 Repository 를 통해 DB 에
  * 접근하며, jOOQ 를 직접 import 하지 않는다.
  *
- * ## 패키지 배치 — `com.bts.issue.project.repository` (파일 위치와 다름)
- * 이 파일은 `project/settings/` 디렉터리에 위치하지만, ArchUnit 룰 2
- * (`IssueBcArchTest.jooqGeneratedMustOnlyBeUsedInRepositoryLayer`)가 jOOQ 접촉을
- * `..repository..` 패키지 세그먼트로만 한정하므로, 기존 형제 리포지토리
- * ([com.bts.issue.project.repository.ProjectRequire2faRepository] 등)와 동일한
- * `com.bts.issue.project.repository` 패키지를 그대로 재사용한다. Kotlin 은 디렉터리와 패키지 선언의
- * 일치를 강제하지 않으므로 컴파일에는 영향이 없다.
+ * ## ArchUnit 룰 2(`IssueBcArchTest.jooqGeneratedMustOnlyBeUsedInRepositoryLayer`) 기지 위반 — 확대 아님
+ * 이 룰은 jOOQ 접촉을 `..repository..` 패키지 세그먼트로만 한정한다. 이 파일이 위치한
+ * `com.bts.issue.project.settings` 는 그 패턴에 해당하지 않아 이 룰을 위반하지만, detekt
+ * `InvalidPackageDeclaration`(패키지 선언 = 파일 위치 강제)과 상충해 두 검증을 동시에 만족할 수
+ * 없다 — 패키지를 `com.bts.issue.project.repository` 로 바꾸면 detekt 가, 파일을 그 디렉터리로
+ * 옮기면 이 태스크의 선언 파일 경로를 벗어난다. 같은 PR 의 Task 1
+ * ([com.bts.issue.project.query.ProjectQueryRepository], `com.bts.issue.project.query` 패키지)이
+ * 이미 동일한 사유로 이 룰을 위반한 상태이므로(선행 회귀, 이 클래스가 최초 원인이 아님) 이 클래스는
+ * 그 위반을 새 유형으로 확대하지 않고 동일 사유에 합류한다. 근본 해결(룰 2 패턴에 `..query..`/
+ * `..settings..` 추가 또는 리포지토리 재배치)은 이 태스크 범위 밖 — PR 리뷰/후속 태스크로 보고한다.
  *
  * **deleted_at IS NULL 필터** — [com.bts.issue.project.repository.ProjectRequire2faRepository.updateRequire2fa]
  * 선례와 통일한다.
