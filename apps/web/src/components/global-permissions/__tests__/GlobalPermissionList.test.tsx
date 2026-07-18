@@ -18,9 +18,6 @@ import { GlobalPermissionList } from '@/components/global-permissions/GlobalPerm
 
 const GRANT_PATH = '/api/v1/admin/global-permissions'
 
-/** group-handlers.ts DEFAULT_GROUPS[0] 고정 id — '개발팀' */
-const DEV_TEAM_GROUP_ID = '11111111-0000-4000-8000-000000000001'
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
