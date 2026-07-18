@@ -118,21 +118,51 @@ class ProjectQueryService(
         actorId: UUID,
         projectIdOrKey: String,
     ): Project {
-        val projectId =
-            projectLookup.resolve(projectIdOrKey)
-                ?: throw ProjectQueryNotFoundException(projectIdOrKey)
-
-        val projectKey =
-            projectLookupRepository.findProjectKeyById(projectId)
-                ?: throw ProjectQueryNotFoundException(projectIdOrKey)
-
-        if (!permissionResolver.hasPermission(actorId, IssuePermission.BROWSE, IssueScope.Project(projectKey))) {
-            throw ProjectBrowseForbiddenException(actorId, projectKey)
-        }
+        val projectId = resolveProjectId(projectIdOrKey)
+        val projectKey = resolveProjectKey(projectId, projectIdOrKey)
+        requireBrowsePermission(actorId, projectKey)
 
         log.debug("ProjectQueryService.getOne actorId={} projectId={}", actorId, projectId)
 
         return projectQueryRepository.findByIdOrKey(projectId)
             ?: throw ProjectQueryNotFoundException(projectIdOrKey)
+    }
+
+    // ── private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * projectIdOrKey 를 활성 프로젝트 UUID 로 해석한다. 미존재 시 [ProjectQueryNotFoundException].
+     *
+     * [getOne] 의 ThrowsCount 를 낮추기 위해 단일 throw 지점으로 분리한다
+     * ([com.bts.agileplanning.application.SprintBurndownService] 동형 선례).
+     */
+    private fun resolveProjectId(projectIdOrKey: String): UUID =
+        projectLookup.resolve(projectIdOrKey)
+            ?: throw ProjectQueryNotFoundException(projectIdOrKey)
+
+    /**
+     * 프로젝트 UUID 로 BROWSE 판정용 정규 projectKey 를 조회한다.
+     *
+     * null 이면 [resolveProjectId] 성공 이후 경합으로 소프트삭제된 것으로 보고
+     * [ProjectQueryNotFoundException] 을 던진다.
+     */
+    private fun resolveProjectKey(
+        projectId: UUID,
+        projectIdOrKey: String,
+    ): String =
+        projectLookupRepository.findProjectKeyById(projectId)
+            ?: throw ProjectQueryNotFoundException(projectIdOrKey)
+
+    /**
+     * [actorId] 의 [projectKey] 에 대한 [IssuePermission.BROWSE] 권한을 판정하고 미충족 시
+     * [ProjectBrowseForbiddenException] 을 던진다.
+     */
+    private fun requireBrowsePermission(
+        actorId: UUID,
+        projectKey: String,
+    ) {
+        if (!permissionResolver.hasPermission(actorId, IssuePermission.BROWSE, IssueScope.Project(projectKey))) {
+            throw ProjectBrowseForbiddenException(actorId, projectKey)
+        }
     }
 }
