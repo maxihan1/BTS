@@ -203,6 +203,9 @@
 
   --bg-neutral-press: #DCDFE4;
 
+  /* 가림(occlusion)용 불투명 뉴트럴 — sticky 헤더 등. 알파 --bg-neutral의 기본 표면 합성값과 동일 */
+  --bg-neutral-solid: #F7F8F9;
+
   --bg-selected: #E9F2FF;
 
   --text-selected: #0C66E4;
@@ -319,6 +322,9 @@
   --bg-neutral-hover: #A1BDD914;
 
   --bg-neutral-press: #A6C5E229;
+
+  /* 가림(occlusion)용 불투명 뉴트럴 — sticky 헤더 등. 알파 --bg-neutral의 기본 표면 합성값과 동일 */
+  --bg-neutral-solid: #1D2125;
 
   --bg-selected: #082145;
 

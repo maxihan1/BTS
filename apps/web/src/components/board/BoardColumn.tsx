@@ -109,7 +109,7 @@ function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField
       aria-label={boardLabels.column.ariaLabel(column.name, cardCount)}
     >
       {/* sticky 헤더 — 이름 + 카테고리 배지 + 카드 수(WIP 포함) */}
-      <div className="sticky top-0 z-10 flex items-center gap-2 rounded-t-lg bg-muted px-3 py-2">
+      <div className="sticky top-0 z-10 flex items-center gap-2 rounded-t-lg bg-(--bg-neutral-solid) px-3 py-2">
         <span className="flex-1 text-sm font-semibold text-foreground">{column.name}</span>
         <span
           className="rounded-sm bg-background px-1.5 py-0.5 text-xs text-muted-foreground"

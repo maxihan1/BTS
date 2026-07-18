@@ -51,7 +51,7 @@ function BacklogColumnInner({ issues, assigneeNames, isOver = false }: BacklogCo
       aria-label={backlogLabels.columnAriaLabel(backlogLabels.backlogTitle, issueCount)}
     >
       {/* 헤더 — 제목 + 카드 수 */}
-      <div className="sticky top-0 z-10 flex items-center gap-2 rounded-t-lg bg-muted px-3 py-2">
+      <div className="sticky top-0 z-10 flex items-center gap-2 rounded-t-lg bg-(--bg-neutral-solid) px-3 py-2">
         <span className="flex-1 text-sm font-semibold text-foreground">
           {backlogLabels.backlogTitle}
         </span>
