@@ -40,6 +40,8 @@ import java.util.UUID
  * - repairDefaultMappings: 매핑 없는 스킴에 default 매핑 백필 (R6)
  * - repairDefaultMappings: dangling(옛 UUID) 매핑을 유효한 workflow 로 수리 (R6-B)
  * - repairDefaultMappings: admin 이 바꾼 유효한 default 매핑은 보존 (무조건 UPSERT 금지 가드)
+ * - DEFAULT_WORKFLOW_KEY_BY_SCHEME_KEY: Kotlin 맵과 DB workflow_schemes(is_default=TRUE) 정합
+ *   (SQL↔Kotlin DRY drift fail-fast — V201 CASE 문과 값이 중복되어 컴파일타임 강제가 불가하다)
  *
  * Cross-BC FK 대응 패턴 (T7 WorkflowSchemesMigrationIntegrationTest 동일).
  * - Flyway target="1" → issue_types 스텁 생성 → LATEST migrate.
@@ -638,6 +640,55 @@ class SchemeIssueTypeMappingRepositoryIntegrationTest {
         assertThat(mapping).isNotNull
         // 무조건 UPSERT 라면 시스템 기본값(software-default) 로 되돌아갔을 것 — admin 설정(bug-tracking) 이 유지돼야 한다.
         assertThat(mapping!!.workflowId).isEqualTo(adminChosenWorkflowId)
+    }
+
+    // ── SSOT 정합 — Kotlin DEFAULT_WORKFLOW_KEY_BY_SCHEME_KEY ↔ DB workflow_schemes (DRY drift) ──
+    //
+    // 표준 스킴 key → 표준 워크플로우 key 4쌍은 SchemeIssueTypeMappingRepository.
+    // DEFAULT_WORKFLOW_KEY_BY_SCHEME_KEY(Kotlin) 와 V201__workflow_schemes.sql §6 CASE 문(SQL) 에
+    // 중복 정의된다. SQL↔Kotlin 은 컴파일타임 정합 강제가 불가하므로 Flyway migrate 후 실제 DB 상태와
+    // Kotlin 맵을 비교해 drift 를 fail-fast 로 잡는다.
+
+    @Test
+    fun `DEFAULT_WORKFLOW_KEY_BY_SCHEME_KEY 는 DB workflow_schemes 표준 4스킴과 정합한다`() {
+        val kotlinMap = SchemeIssueTypeMappingRepository.DEFAULT_WORKFLOW_KEY_BY_SCHEME_KEY
+
+        // 빈 맵이면 아래 전수비교(containsExactlyInAnyOrderElementsOf)가 무의미하게 통과할 수 있어 선단언.
+        assertThat(kotlinMap).isNotEmpty()
+
+        val dbDefaultSchemeKeys = fetchDefaultSchemeKeys()
+        assertThat(kotlinMap.keys)
+            .withFailMessage(
+                "Kotlin DEFAULT_WORKFLOW_KEY_BY_SCHEME_KEY 의 스킴 key(%s) 가 DB workflow_schemes" +
+                    "(is_default=TRUE, %s) 와 불일치 — SSOT drift 의심 (V201 CASE 문과 Kotlin 맵을 대조할 것)",
+                kotlinMap.keys,
+                dbDefaultSchemeKeys,
+            ).containsExactlyInAnyOrderElementsOf(dbDefaultSchemeKeys)
+
+        kotlinMap.forEach { (schemeKey, workflowKey) ->
+            val workflowId = fetchWorkflowIdByKey(workflowKey)
+            assertThat(workflowId)
+                .withFailMessage(
+                    "스킴 '%s' 이 가리키는 워크플로우 key '%s' 가 workflows 테이블에 없음 — DRY drift 의심",
+                    schemeKey,
+                    workflowKey,
+                ).isNotNull
+        }
+    }
+
+    /** workflow_schemes 중 is_default=TRUE (표준 4 스킴)의 key 목록을 반환한다. */
+    private fun fetchDefaultSchemeKeys(): List<String> =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement("SELECT key FROM workflow_schemes WHERE is_default = TRUE").use { stmt ->
+                stmt.executeQuery().use { rs -> extractKeys(rs) }
+            }
+        }
+
+    /** ResultSet 의 첫 컬럼(문자열)을 전부 읽어 목록으로 반환한다. */
+    private fun extractKeys(rs: java.sql.ResultSet): List<String> {
+        val keys = mutableListOf<String>()
+        while (rs.next()) keys.add(rs.getString(1))
+        return keys
     }
 
     // ── repairDefaultMappings 검증용 fixture 헬퍼 ──────────────────────────────

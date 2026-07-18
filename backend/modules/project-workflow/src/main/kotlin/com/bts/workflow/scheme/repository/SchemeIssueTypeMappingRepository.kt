@@ -39,7 +39,7 @@ import java.util.UUID
 class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
     companion object {
         /**
-         * 표준 스킴 key → 표준 워크플로우 key 매핑 (V201:126-130 seed 의 CASE 문과 정합).
+         * 표준 스킴 key → 표준 워크플로우 key 매핑 (V201:140-145 seed 의 CASE 문과 정합).
          *
          * [repairDefaultMappings] 이 이 맵을 기준으로 두 가지를 처리한다.
          * - R6 백필 — default mapping 이 아예 없는 스킴에 이 매핑대로 신규 생성.
@@ -50,10 +50,18 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
          * 자유롭게 변경 가능). 즉 무조건 `INSERT ... ON CONFLICT DO UPDATE` 형태의 UPSERT 는 금지 —
          * 그렇게 하면 admin 이 바꾼 매핑이 매 부팅마다 여기 적힌 시스템 기본값으로 되돌아간다.
          *
-         * `infra/local/seed-project.sql:57` 관례 — "workflow_id 는 재시드 시 UUID 가 바뀌므로 key 로 조회"
-         * — 를 따른다.
+         * `infra/local/seed-project.sql:49,60` 관례 — "workflow_id 는 재시드 시 UUID 가 바뀌므로 key 로 조회"
+         * — 를 따른다(단, seed-project.sql 은 로컬 dev 시드 1건(software-scheme)만 다뤄 4쌍 전부는 아니다).
+         *
+         * ### SSOT 경고 — 이 맵은 아래 두 곳과 값이 중복되며 SQL↔Kotlin 은 컴파일타임 정합 강제가 불가하다.
+         * 1. `V201__workflow_schemes.sql` §6 CASE 문 — Flyway seed.
+         * 2. `infra/local/seed-project.sql` — 로컬 dev 시드(software-scheme 1쌍만, 부분 중복).
+         * 이 맵 또는 V201 CASE 문 변경 시 반드시 서로 동기화할 것 — 정합은
+         * `SchemeIssueTypeMappingRepositoryIntegrationTest`(Kotlin↔DB 정합 assertion, Testcontainers)가
+         * fail-fast 로 검증한다. 테스트 코드에서 직접 참조할 수 있도록 `internal` 로 노출한다
+         * (private 이면 테스트가 이 맵을 재선언해야 해 DRY drift 를 오히려 재생산한다).
          */
-        private val DEFAULT_WORKFLOW_KEY_BY_SCHEME_KEY: Map<String, String> =
+        internal val DEFAULT_WORKFLOW_KEY_BY_SCHEME_KEY: Map<String, String> =
             mapOf(
                 "software-scheme" to "software-default",
                 "bug-tracking-scheme" to "bug-tracking",
