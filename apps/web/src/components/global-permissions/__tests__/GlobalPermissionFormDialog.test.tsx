@@ -5,8 +5,9 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
-import { resetGlobalPermissionStore } from '@/mocks/global-permission-handlers'
-import { resetGroupStore } from '@/mocks/group-handlers'
+import { globalPermissionHandlers, resetGlobalPermissionStore } from '@/mocks/global-permission-handlers'
+import { groupHandlers, resetGroupStore } from '@/mocks/group-handlers'
+import { userHandlers } from '@/mocks/user-handlers'
 import { useAuthStore } from '@/auth/authStore'
 import { GlobalPermissionFormDialog } from '@/components/global-permissions/GlobalPermissionFormDialog'
 
@@ -56,6 +57,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   resetGlobalPermissionStore()
   resetGroupStore()
+  // 이 worktree 환경에서 setupServer 초기 핸들러 등록이 파일 단독 실행 시 유실되는 경우가 있어
+  // (FieldPermissionList.test.tsx 선례와 동일하게) 각 테스트 전에 명시적으로 재등록한다.
+  server.use(...groupHandlers, ...userHandlers, ...globalPermissionHandlers)
   useAuthStore.setState({
     accessToken: 'mock-access-token-alice',
     user: {
@@ -183,7 +187,7 @@ describe('GlobalPermissionFormDialog — 제출', () => {
         capturedBody = await request.json()
         return HttpResponse.json(
           {
-            id: 'grant-1',
+            id: '33333333-0000-4000-8000-000000000099',
             permission: 'CREATE_PROJECT',
             granteeType: 'GROUP',
             granteeId: DEV_TEAM_GROUP_ID,
