@@ -33,7 +33,13 @@ apps/web의 하드코딩 Tailwind 색 리터럴(text-amber-800 등)을 PR3가 �
 - contrast-matrix-state-vs-surface-blindfold: codereview에서 상태배경↔표면 2축 대비 adversarial 검증.
 - WorkflowSchemeSidebar arbitrary bg-[oklch(0.94_0_0)] → 뉴트럴(--accent/--bg-neutral-hover) 매핑.
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- BC: personalization (논리) / apps/web 프론트 (물리). FR-UX-06.
+- 영향 엔티티: 없음 (순수 프레젠테이션 레이어 — CSS 클래스 문자열 교체).
+- 새 용어: 0건. "시맨틱 토큰"(--warning 등)은 디자인 시스템 구현 개념으로 DESIGN.md에 이미 정의됨. glossary의 "토큰"은 공유/캘린더 자격증명 토큰이라 무관.
+- 기존 결정 충돌: 없음. 본 PR은 ADR `2026-07-17-fr-ux-06-jira-redesign`(D1~D8)의 순수 적용.
+- 관련 ADR: [docs/decisions/2026-07-17-fr-ux-06-jira-redesign.md](../decisions/2026-07-17-fr-ux-06-jira-redesign.md) (D2 색=ADS v2, DESIGN.md §C 페어링 규칙). 신규 ADR 0건.
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
