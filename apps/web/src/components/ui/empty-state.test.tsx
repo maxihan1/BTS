@@ -29,4 +29,15 @@ describe('EmptyState', () => {
     expect(screen.getByTestId('empty-icon')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '이슈 생성' })).toBeInTheDocument()
   })
+
+  // 소비처(FilteredEmptyState 흡수 예정)가 레이아웃 클래스를 주입할 수 있도록
+  // 나머지 14종 프리미티브와 동일하게 className/...props를 forward해야 한다 (C5).
+  it('className과 임의 div props를 루트에 forward한다', () => {
+    render(<EmptyState title="빈 상태" className="my-empty" data-testid="empty-root" />)
+
+    const root = screen.getByTestId('empty-root')
+    expect(root).toHaveClass('my-empty')
+    // 기존 기본 레이아웃 클래스도 유지된다 (cn 병합)
+    expect(root).toHaveClass('flex')
+  })
 })
