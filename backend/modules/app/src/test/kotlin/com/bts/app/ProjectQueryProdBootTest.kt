@@ -94,9 +94,10 @@ class ProjectQueryProdBootTest : ProdAssemblyHttpTestBase() {
         // 존재 누설 검증용 — USER_ADMIN/USER_MEMBER 둘 다 이 프로젝트의 멤버가 아니다.
         seedProject(KEY_OTHER, "다른 팀 프로젝트")
 
-        // RED — 멤버십 시드는 아직 없다([ProjectCreatePermissionProdBootTest] T8 선례와 동형 델타).
-        // USER_ADMIN/USER_MEMBER 가 KEY_MAIN 의 멤버가 아니므로 시나리오 1(목록)·2(BROWSE)·3(PATCH 성공)
-        // 은 이 상태로 실패해야 정상이다 — GREEN 에서 두 seedMembership 호출을 추가해 뒤집는다.
+        // GREEN — RED 는 이 두 멤버십 시드가 없어 목록/BROWSE/PATCH 성공 3개 시나리오가 실패했다
+        // ([ProjectCreatePermissionProdBootTest] T8 선례와 동형 델타).
+        seedMembership(mainProjectId, USER_ADMIN_ID, ROLE_PROJECT_ADMIN)
+        seedMembership(mainProjectId, USER_MEMBER_ID, ROLE_MEMBER)
     }
 
     @AfterEach
