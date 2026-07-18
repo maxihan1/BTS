@@ -114,6 +114,10 @@ data class CursorPage<T>(
  * - 워크플로우 키 결정: [WorkflowKeyResolver] (shared-kernel SPI — project-workflow BC 내부 직접 import 금지)
  * - 이슈 이동 리다이렉트: [IssueKeyRedirectRepository.findCurrentKey] — 옛 키 조회 시 redirect 체인 순회 후
  *   [IssueMovedException] 발행 → 308 Permanent Redirect 응답 (FR-MV-01, DATA.md §2)
+ * - 프로젝트 아카이브 잠금: [ProjectArchiveGuard] (FR-PJ-04 PR-4 Task 8) — 쓰기 9종(create/clone/update/
+ *   transition/softDelete/changeAssignee/changeComponents/changeAffectsVersions/changeFixVersions)
+ *   에서만 `assertPermission` 직후 호출한다. listIssues/listIssuesByCursor 를 비롯한 읽기 경로는
+ *   guard 를 참조하지 않는다(EC-3, 상세 배치 원칙은 생성자의 [projectArchiveGuard] 필드 KDoc 참조).
  *
  * 모든 public 메서드는 @Transactional 을 명시한다 (DEVELOPMENT.md §절대규칙).
  *
