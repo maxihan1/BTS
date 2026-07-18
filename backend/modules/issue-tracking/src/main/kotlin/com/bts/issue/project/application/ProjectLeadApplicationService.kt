@@ -3,6 +3,7 @@
 package com.bts.issue.project.application
 
 import com.bts.issue.project.ProjectLookup
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.domain.ProjectLeadAccessDeniedException
 import com.bts.issue.project.domain.ProjectLeadNotFoundException
 import com.bts.issue.project.domain.ProjectLeadProjectNotFoundException
@@ -58,6 +59,7 @@ class ProjectLeadApplicationService(
     private val projectLookup: ProjectLookup,
     private val userLookupPort: UserLookupPort,
     private val permissionResolver: ComponentPermissionResolver,
+    private val archiveGuard: ProjectArchiveGuard,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -112,6 +114,7 @@ class ProjectLeadApplicationService(
                 ?: throw ProjectLeadProjectNotFoundException(projectIdOrKey)
 
         assertPermission(actorId, projectId)
+        archiveGuard.check(projectId)
 
         validateLead(leadUserId)
 

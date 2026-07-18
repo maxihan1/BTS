@@ -3,6 +3,7 @@
 package com.bts.issue.project.application
 
 import com.bts.issue.project.ProjectLookup
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.domain.Require2faForbiddenException
 import com.bts.issue.project.domain.Require2faProjectNotFoundException
 import com.bts.issue.project.repository.ProjectRequire2faRepository
@@ -50,6 +51,7 @@ class ProjectRequire2faApplicationService(
     private val repository: ProjectRequire2faRepository,
     private val projectLookup: ProjectLookup,
     private val systemPermissionResolver: SystemPermissionResolver,
+    private val archiveGuard: ProjectArchiveGuard,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -83,6 +85,7 @@ class ProjectRequire2faApplicationService(
         if (!systemPermissionResolver.isSystemAdmin(actorId)) {
             throw Require2faForbiddenException(actorId)
         }
+        archiveGuard.check(projectId)
 
         repository.updateRequire2fa(projectId, requireTwoFactor)
 

@@ -15,6 +15,7 @@ import com.bts.issue.repository.IssueTestcontainersBase
 import com.bts.shared.permission.ComponentPermission
 import com.bts.shared.permission.ComponentPermissionResolver
 import com.bts.shared.user.UserLookupPort
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
@@ -133,7 +134,9 @@ class ProjectLeadApplicationServiceTest {
     fun resetLead() {
         // 기본 allow — 권한 거부 테스트에서만 false 로 오버라이드한다(회귀 0).
         every { permissionResolver.hasPermission(any(), any(), any()) } returns true
-        // 기본 활성(no-op) — 아카이브 판별자 테스트에서만 throws 로 오버라이드한다(회귀 0).
+        // archiveGuard 는 verify(exactly = 1) 판별자가 클래스 전체 공유 mock 의 누적 호출 기록에
+        // 영향받지 않도록 stub + 호출기록을 모두 초기화한 뒤 기본 활성(no-op) 으로 재설정한다.
+        clearMocks(archiveGuard)
         every { archiveGuard.check(any<UUID>()) } returns Unit
 
         val postgres = IssueTestcontainersBase.postgres

@@ -3,6 +3,7 @@
 package com.bts.issue.project.settings
 
 import com.bts.issue.project.ProjectLookup
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.repository.ProjectSettingsRepository
 import com.bts.shared.permission.ComponentPermission
 import com.bts.shared.permission.ComponentPermissionResolver
@@ -76,6 +77,7 @@ class ProjectSettingsService(
     private val projectLookup: ProjectLookup,
     private val componentPermissionResolver: ComponentPermissionResolver,
     private val repository: ProjectSettingsRepository,
+    private val archiveGuard: ProjectArchiveGuard,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -104,6 +106,7 @@ class ProjectSettingsService(
                 ?: throw ProjectNotFoundException(projectIdOrKey)
 
         assertProjectAdmin(actorId, projectId)
+        archiveGuard.check(projectId)
 
         val updated = repository.updateName(projectId, name)
         if (updated == 0) {
