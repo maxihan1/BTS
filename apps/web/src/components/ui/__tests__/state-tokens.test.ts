@@ -13,6 +13,7 @@ const STATE_TOKENS: ReadonlyArray<readonly [token: string, light: string, dark: 
   ['--bg-neutral', '#F7F8F9', '#BCD6F00A'],
   ['--bg-neutral-hover', '#F1F2F4', '#A1BDD914'],
   ['--bg-neutral-press', '#DCDFE4', '#A6C5E229'],
+  ['--bg-neutral-solid', '#F7F8F9', '#1D2125'],
   ['--bg-selected', '#E9F2FF', '#082145'],
   ['--text-selected', '#0C66E4', '#579DFF'],
   ['--text-subtle', '#44546F', '#9FADBC'],
