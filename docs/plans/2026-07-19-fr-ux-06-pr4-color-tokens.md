@@ -41,9 +41,19 @@ apps/web의 하드코딩 Tailwind 색 리터럴(text-amber-800 등)을 PR3가 �
 - 기존 결정 충돌: 없음. 본 PR은 ADR `2026-07-17-fr-ux-06-jira-redesign`(D1~D8)의 순수 적용.
 - 관련 ADR: [docs/decisions/2026-07-17-fr-ux-06-jira-redesign.md](../decisions/2026-07-17-fr-ux-06-jira-redesign.md) (D2 색=ADS v2, DESIGN.md §C 페어링 규칙). 신규 ADR 0건.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-19-fr-ux-06-pr4-color-tokens.md](../specs/2026-07-19-fr-ux-06-pr4-color-tokens.md)
+
+핵심 요약.
+- IN-SCOPE **95건 / 31파일** 상태 팔레트 리터럴 → 시맨틱 토큰(warning 64·success 16·danger 10·info 3·accent/card 2).
+- **★ status-text 토큰 4종 신설**(index.css): tint 위 색 텍스트는 bold 토큰(AA 미달)이 아니라 `text-{status}-text`(라이트 -800/다크 -300, AA 실측 통과). 원본 `text-{c}-800` 근사 = no-op.
+- 범주색(~25, 차트 포함)·캘린더 coordinated(3)·스크림(~44)·mermaid(3) = DEFER/OUT.
+- 손수 짠 `dark:` 색 페어 삭제(순 LOC 감소).
+
+## Brainstorming Check
+
+✅ 통과 — 울트라코드 4렌즈 adversarial 검증. BLOCKER 1(tint 텍스트 라이트 AA 4.1<4.5 → status-text 토큰 신설로 해소, Maxi Option A)·CONCERN 2(tint-on-tint 중첩 배지 붕괴 → 내부 배지 bold)·완결성 갭 3(recharts 차트·오버레이 스크림·mermaid .ts를 DEFER/OUT에 편입)·매핑 오배정 0.
 
 ## Plan (← /bts-plan 채움)
 
