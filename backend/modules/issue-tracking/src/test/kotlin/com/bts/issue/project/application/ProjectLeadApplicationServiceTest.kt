@@ -4,6 +4,8 @@
 package com.bts.issue.project.application
 
 import com.bts.issue.project.ProjectLookup
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.project.domain.ProjectLeadAccessDeniedException
 import com.bts.issue.project.domain.ProjectLeadNotFoundException
 import com.bts.issue.project.domain.ProjectLeadProjectNotFoundException
@@ -58,6 +60,12 @@ class ProjectLeadApplicationServiceTest {
      */
     private val permissionResolver: ComponentPermissionResolver = mockk()
 
+    /**
+     * 아카이브 잠금 판정 mock(FR-PJ-04 PR-4 Task 7) — relaxUnitFun 이라 기본 no-op(활성 취급) 통과.
+     * 아카이브 판별자 테스트에서만 throws 로 오버라이드한다.
+     */
+    private val archiveGuard: ProjectArchiveGuard = mockk(relaxUnitFun = true)
+
     /** Testcontainers 에 삽입한 테스트용 활성 프로젝트 UUID. */
     private lateinit var activeProjectId: UUID
 
@@ -89,6 +97,7 @@ class ProjectLeadApplicationServiceTest {
                 projectLookup = projectLookup,
                 userLookupPort = userLookupPort,
                 permissionResolver = permissionResolver,
+                archiveGuard = archiveGuard,
             )
 
         // 테스트용 활성 프로젝트 삽입
@@ -124,6 +133,8 @@ class ProjectLeadApplicationServiceTest {
     fun resetLead() {
         // 기본 allow — 권한 거부 테스트에서만 false 로 오버라이드한다(회귀 0).
         every { permissionResolver.hasPermission(any(), any(), any()) } returns true
+        // 기본 활성(no-op) — 아카이브 판별자 테스트에서만 throws 로 오버라이드한다(회귀 0).
+        every { archiveGuard.check(any<UUID>()) } returns Unit
 
         val postgres = IssueTestcontainersBase.postgres
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
@@ -323,5 +334,39 @@ class ProjectLeadApplicationServiceTest {
         assertThatThrownBy {
             sut.getLead(nonExistentId)
         }.isInstanceOf(ProjectLeadProjectNotFoundException::class.java)
+    }
+
+    // ── 아카이브 잠금 (FR-PJ-04 PR-4 Task 7 — PJ3-2) ─────────────────────────────
+    //
+    // changeLead 의 아카이브 잠금 D-ORDER(permission → archiveGuard.check) 판별자.
+    // VersionApplicationServiceTest 의 "아카이브 잠금" 섹션과 동형 패턴 — 각 케이스마다
+    // (아카이브 → ProjectArchivedException 전파) + (활성 → archiveGuard.check 실제 호출 확인,
+    // 판별자 [[guard-handler-matrix-blindfold]]) 를 짝지어 검증한다. leadUserId=null 로 호출해
+    // UserLookupPort.exists 검증을 우회한다(아카이브 잠금과 무관한 협력자).
+
+    @Test
+    @Order(13)
+    fun `아카이브된 프로젝트에서 changeLead 호출 시 permission 통과 후 ProjectArchivedException 이 전파된다`() {
+        every { archiveGuard.check(activeProjectId) } throws ProjectArchivedException(activeProjectId.toString())
+
+        assertThatThrownBy {
+            sut.changeLead(
+                actorId = UUID.randomUUID(),
+                projectIdOrKey = activeProjectId.toString(),
+                leadUserId = null,
+            )
+        }.isInstanceOf(ProjectArchivedException::class.java)
+    }
+
+    @Test
+    @Order(14)
+    fun `활성 프로젝트에서 changeLead 호출 시 archiveGuard check 가 실제로 호출된다`() {
+        sut.changeLead(
+            actorId = UUID.randomUUID(),
+            projectIdOrKey = activeProjectId.toString(),
+            leadUserId = null,
+        )
+
+        io.mockk.verify(exactly = 1) { archiveGuard.check(activeProjectId) }
     }
 }
