@@ -1,4 +1,4 @@
-// FR-UX-06 §7 상태 토큰 11종 + 시맨틱 토큰 4종이 index.css에 ADS v2 정본 hex로 정의됐는지 검증하는 테스트
+// FR-UX-06 §7 상태 토큰 12종 + 시맨틱 토큰 4종이 index.css에 ADS v2 정본 hex로 정의됐는지 검증하는 테스트
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
@@ -119,7 +119,7 @@ describe('FR-UX-06 PR3 ADS 팔레트 — index.css', () => {
   const darkBlock = extractBlock(css, '.dark')
   const themeInline = extractBlock(css, '@theme inline')
 
-  describe('§7 상태 토큰 11종 — ADS 정본 hex', () => {
+  describe('§7 상태 토큰 12종 — ADS 정본 hex', () => {
     it.each(STATE_TOKENS)('%s — :root=%s', (token, light) => {
       expect(declarationOf(rootBlock, token)).toBe(light)
     })

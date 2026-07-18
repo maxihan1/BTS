@@ -169,4 +169,6 @@
 
 **C3 — foreground 4쌍 신설 + BacklogBoard phantom 제거.** `--warning`/`--success`/`--danger`/`--info` bold 배경 위에 얹을 텍스트 색을 각각 `--warning-foreground`/`--success-foreground`/`--danger-foreground`/`--info-foreground` 토큰으로 신설했다(라이트 `#FFFFFF` / 다크 `#161A1D`, `@theme inline`에 `--color-*-foreground`로 배선). 이와 함께 `BacklogBoard.tsx`의 절단 경고 배너에 남아 있던 `text-warning-foreground` 클래스를 제거했다 — 이 클래스는 Tailwind 유틸로 배선되지 않은 상태에서 쓰이고 있어 실제로는 아무 효과가 없는 phantom 클래스였다(대비 문제를 감추는 거짓 그린).
 
-이 3건 반영 후 §2 전체 컬러 토큰 수는 §A 18 + §7 11 + §C 8(시맨틱 4 + foreground 4) = **37종**이다.
+**후속(fix-3) — bg-neutral-solid 신설.** C1에서 다크 `--muted`가 솔리드에서 알파(`#BCD6F00A`, 3.9%)로 전환되면서, `bg-muted`의 불투명성에 기대어 스크롤 콘텐츠를 가리던 sticky 헤더(`BoardColumn`/`BacklogColumn`/`SprintColumn`/`MappingTable`)가 다크에서 투명해져 아래 카드 텍스트가 비쳐 보이는 파생 회귀가 드러났다. 가림(occlusion) 전용의 불투명 뉴트럴 토큰 `--bg-neutral-solid`(라이트 `#F7F8F9` / 다크 `#1D2125` — 기존 다크 솔리드값과 동일 hex라 시각 변화 0)를 §7에 신설하고, 위 4개 컴포넌트의 sticky 헤더 배경만 `bg-muted` → `bg-(--bg-neutral-solid)`로 이관해 해소했다(sticky가 아닌 일반 `bg-muted` 소비처는 알파가 의도된 동작이므로 그대로 둠).
+
+이 4건 반영 후 §2 전체 컬러 토큰 수는 §A 18 + §7 12 + §C 8(시맨틱 4 + foreground 4) = **38종**이다.

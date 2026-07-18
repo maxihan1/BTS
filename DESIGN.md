@@ -59,15 +59,16 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 
 > **`--accent` ≈ `--bg-neutral-hover`.** 라이트 `#F1F2F4`, 다크 `#A1BDD914`로 두 토큰의 값이 완전히 같다(같은 팔레트 스텝 Neutral200/DarkNeutral200A를 가리킨다). DropdownMenu/Select는 `focus:bg-accent`를, Tabs/Dialog는 `hover:bg-(--bg-neutral-hover)`를 쓴다 — 값은 같지만 배선 경로(§A vs §7)가 다르다는 점에 유의(Command는 `focus:bg-accent`를 쓰지 않는다 — §4 표 참조). 신규 컴포넌트 작성 시 어느 쪽을 쓸지는 "shadcn 표준 hover/focus 패턴이면 `--accent`, ADS §7 상태 토큰 문맥이면 `--bg-*`"로 판단한다.
 
-### §7. 상태 토큰 11종 (Tailwind 유틸 미배선 — 임의값 문법으로 소비)
+### §7. 상태 토큰 12종 (Tailwind 유틸 미배선 — 임의값 문법으로 소비)
 
-이 11종은 `@theme inline`에 `--color-*`로 별칭되지 **않는다**. `bg-bg-neutral` 같은 유틸리티 클래스는 존재하지 않는다. 대신 Tailwind v4의 CSS 변수 임의값 문법 `(--var-name)`으로 직접 참조한다 — 예. `bg-(--bg-neutral)`, `text-(--text-subtle)`, `outline-(--border-focus)`. `apps/web/src/components/ui/` 전 프리미티브가 이 패턴을 쓴다(§4 표 참조).
+이 12종은 `@theme inline`에 `--color-*`로 별칭되지 **않는다**. `bg-bg-neutral` 같은 유틸리티 클래스는 존재하지 않는다. 대신 Tailwind v4의 CSS 변수 임의값 문법 `(--var-name)`으로 직접 참조한다 — 예. `bg-(--bg-neutral)`, `text-(--text-subtle)`, `outline-(--border-focus)`. `apps/web/src/components/ui/` 전 프리미티브가 이 패턴을 쓴다(§4 표 참조).
 
 | CSS 변수 | 라이트 | 다크 | 한국어 역할 | Tailwind 사용 예 |
 |---|---|---|---|---|
 | `--bg-neutral` | `#F7F8F9` | `#BCD6F00A` | 뉴트럴 배경(테이블 hover/footer, 스켈레톤. 다크는 DarkNeutral100A 알파 토큰) | `bg-(--bg-neutral)` |
 | `--bg-neutral-hover` | `#F1F2F4` | `#A1BDD914` | 뉴트럴 hover 배경(다크는 DarkNeutral200A 알파 토큰) | `hover:bg-(--bg-neutral-hover)` |
 | `--bg-neutral-press` | `#DCDFE4` | `#A6C5E229` | 뉴트럴 press(active) 배경(다크는 DarkNeutral300A 알파 토큰) | `active:bg-(--bg-neutral-press)` |
+| `--bg-neutral-solid` | `#F7F8F9` | `#1D2125` | **가림(occlusion)용 불투명 뉴트럴** — sticky 헤더 등 스크롤 콘텐츠를 가려야 하는 곳 전용. `--bg-neutral`과 달리 다크에서도 알파가 아닌 솔리드값(다크 `--card`와 동일 hex) | `sticky` 요소의 `bg-(--bg-neutral-solid)` |
 | `--bg-selected` | `#E9F2FF` | `#082145` | 선택 상태 배경(Blue100 / Blue1000) | `data-[state=selected]:bg-(--bg-selected)` |
 | `--text-selected` | `#0C66E4` | `#579DFF` | 선택 상태 텍스트(Blue700 / Blue400) | `data-[state=active]:text-(--text-selected)` |
 | `--text-subtle` | `#44546F` | `#9FADBC` | 보조 텍스트(Neutral800 / DarkNeutral800, `muted-foreground`보다 한 단계 진함) | `text-(--text-subtle)` |
@@ -395,6 +396,8 @@ WCAG AA 기준. 본문 텍스트 4.5:1 이상, UI 컴포넌트/큰 텍스트(18p
 | `foreground` on `bg-neutral-press` | 10.55:1 | 6.78:1 | AA ✅ | 다크 `bg-neutral-press`=DarkNeutral300A(`#A6C5E229`), 팝오버 위 합성 실효색 `#374048` |
 | `text-selected` on `bg-neutral-hover`(알파 표면 위에 놓이는 최악 케이스) | 4.65:1 | 4.69:1 | AA ✅ | 다크 `bg-neutral-hover`=DarkNeutral200A, 팝오버 위 합성 실효색 `#2C3339`(위 accent-foreground 행과 동일 합성면) |
 | 체크박스 글리프(흰색) on `brand-hover`(checked 상태) | 6.62:1 | 6.62:1 | AA ✅(UI 3:1 기준) | 라이트/다크 동일값(`#0055CC`) — 게이트 2 리뷰 C2, ADS 다크 Blue300(`#85B8FF`)은 2.04:1로 미달해 기각 |
+
+다크 checked fill(`#0055CC`)과 카드 배경(`#1D2125`)의 경계 자체 대비는 2.45:1로 UI 컴포넌트 3:1 기준에 못 미치지만, checked 상태는 fill 경계가 아니라 흰 글리프 대비 6.62:1(위 행)로 전달되므로 간과가 아닌 의도적 수용이다.
 
 ### Syntax Highlight 토큰 대비 검증 (§3, WCAG AA 4.5:1 기준)
 
