@@ -1,4 +1,4 @@
-/* 전역 스타일 — Tailwind v4 CSS-first 설정 + shadcn/ui 디자인 토큰 */
+/* 전역 스타일 — Tailwind v4 CSS-first 설정 + ADS v2 팔레트 (FR-UX-06 PR3) */
 @import 'tailwindcss';
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
