@@ -384,13 +384,20 @@ class WorkflowSchemeApplicationService(
      * 우회하지 않으면 EC-1 D10 auto-assign 이 prod 에서 **항상** [WorkflowSchemeAccessDeniedException](500)
      * 으로 실패한다(FR-PJ-01 T12 S10 이 실측으로 드러낸 선재 결함, `infra/local/seed-project.sql:10-12` 문서화).
      *
-     * **왜 안전한가 (악용 표면 없음).**
-     * - 외부 요청은 nil UUID 를 actor 로 실을 수 없다 — issue-tracking `CurrentActor`/`ActorId` 가
-     *   nil UUID 를 require/401 로 거부한다. SYSTEM_ACTOR 는 이 companion 상수로 **내부에서만** 생성된다.
-     * - 우회는 actor 신원(nil UUID sentinel)에만 걸린다. 실 actor UUID(RFC 4122 V4)는 nil 과 절대
-     *   충돌하지 않으므로 사용자 배정 경로는 권한 검사를 그대로 유지한다.
-     * - 내부 호출부는 표준 스킴(`software-scheme`)만 배정한다 — 커스텀 스킴을 SYSTEM_ACTOR 로 배정하는
-     *   경로는 존재하지 않는다.
+     * **왜 안전한가 (악용 표면 없음). load-bearing 방어는 아래 3가지다 — 이 함수의 외부 도달 경로는
+     * project-workflow 의 [ProjectWorkflowSchemeController] 이지 issue-tracking 이 아님에 주의.**
+     * - **외부 진입점이 우회 전에 무조건 권한을 검사한다.** 유일한 외부 도달 경로
+     *   [ProjectWorkflowSchemeController.assignScheme] 은 이 서비스를 호출하기 **전에** 실 actor 로
+     *   `permissionResolver.requirePermission(ASSIGN_SCHEME, Project)` 를 수행한다. 이 우회는 그 컨트롤러
+     *   게이트를 건드리지 않는다 — 설령 nil actor 가 컨트롤러에 도달해도 서비스 우회 전에 컨트롤러가 막는다.
+     *   (⚠️ project-workflow `ActorId`([port/outbound/PermissionResolver.kt])는 nil UUID 를 거부하지 않는다 —
+     *   UUID 정규식만 검사한다. issue-tracking `ActorId` 와 달리 nil 방어가 없으므로, 컨트롤러 선게이트를
+     *   "중복"으로 제거하면 이 우회 근거가 무너진다. 컨트롤러 `requirePermission` 은 load-bearing 이다.)
+     * - **nil sentinel 은 실제 주체가 아니다.** prod 판정기가 비멤버를 거부하므로(위 "왜 우회하는가"), nil 은
+     *   설령 검사에 도달해도 어차피 거부된다. 우회는 그 거부를 "auto-assign 만" 통과시키는 것이지 실 사용자에게
+     *   권한을 부여하지 않는다. 실 actor UUID(RFC 4122 V4)는 nil sentinel 과 충돌 불가라 사용자 배정 경로는 그대로 권한 검사.
+     * - **내부 호출부는 표준 스킴(`software-scheme`)만 배정한다** — 커스텀 스킴을 SYSTEM_ACTOR 로 배정하는
+     *   경로는 존재하지 않는다. 호출부는 [findAssignedScheme]·[WorkflowResolverImpl.resolveFor] 둘뿐, 둘 다 하드코딩.
      *
      * @param actor 작업 수행 행위자. 실 actor 는 ASSIGN_SCHEME 권한이 필요하다.
      *   [SYSTEM_ACTOR](EC-1 D10 auto-assign)는 권한 검사를 우회한다.

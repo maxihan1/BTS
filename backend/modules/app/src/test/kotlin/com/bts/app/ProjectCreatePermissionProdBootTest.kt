@@ -281,7 +281,7 @@ class ProjectCreatePermissionProdBootTest : ProdAssemblyHttpTestBase() {
          * ProjectCreateExceptionHandler(ProjectCreateErrorCodes.FORBIDDEN)가 403 ProblemDetail 에 싣는 errorCode.
          * 그 상수는 issue-tracking `internal` 이라 여기서 값을 직접 미러링한다(변경 시 동기화 대상).
          */
-        const val ERROR_CODE_FORBIDDEN = "ISSUE_CREATE_PROJECT_FORBIDDEN"
+        const val ERROR_CODE_FORBIDDEN = "ISSUE_PROJECT_FORBIDDEN"
 
         const val HEADER_AUTHORIZATION = "Authorization"
         const val HEADER_CONTENT_TYPE = "Content-Type"

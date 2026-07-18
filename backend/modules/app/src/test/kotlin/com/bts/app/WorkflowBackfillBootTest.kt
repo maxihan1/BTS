@@ -52,32 +52,33 @@ import java.util.UUID
  * [com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository.repairDefaultMappings] 백필만으로
  * 채워진 결과여야 한다.
  *
- * ## ★ S10 이 실측으로 드러낸 것 — EC-1 D10 auto-assign 이 prod 에서 항상 500 (진짜 프로덕션 버그, 정직 보고)
+ * ## ★ S10 이 드러낸 선재 결함과 그 수정 — EC-1 D10 auto-assign 500 (T13 이 고침, 이제 GREEN 증거)
  * 이 테스트는 **매핑 백필(R6) 자체는 정상**임을 실측으로 확인했다(부팅 로그 — `repairDefaultMappings`
- * 백필 정상 수행, [S11]에서 매핑 존재를 별도로 재확인). 그러나 이슈 생성은 500(`WorkflowSchemeAccessDeniedException`)
- * 으로 실패한다 — R6 이 고친 "매핑 부재로 인한 422"가 아니라 **다른, 이전에 발견되지 않은 버그**다.
+ * 백필 정상 수행, [S11]에서 매핑 존재를 별도로 재확인). **처음 작성됐을 때(T12) 이슈 생성이 500
+ * (`WorkflowSchemeAccessDeniedException`)으로 실패**했다 — R6 이 고친 "매핑 부재로 인한 422"가 아니라
+ * **다른, 이전에 발견되지 않은 선재 결함**이었다. 그 결함을 이 PR 의 T13 이 고쳐서 이제 이슈 생성이 201 이다.
  *
- * 근본 원인 — `assignment` 가 없는 신규 프로젝트의 EC-1 D10 auto-assign
- * ([WorkflowResolverImpl.kt:93-98][com.bts.workflow.scheme.adapter.inbound.WorkflowResolverImpl],
- * [WorkflowSchemeApplicationService.kt:445][com.bts.workflow.scheme.application.WorkflowSchemeApplicationService])
+ * 근본 원인(고쳐지기 전) — `assignment` 가 없는 신규 프로젝트의 EC-1 D10 auto-assign
+ * ([WorkflowResolverImpl][com.bts.workflow.scheme.adapter.inbound.WorkflowResolverImpl],
+ * [WorkflowSchemeApplicationService][com.bts.workflow.scheme.application.WorkflowSchemeApplicationService])
  * 이 `actor = WorkflowSchemeApplicationService.SYSTEM_ACTOR`(nil UUID sentinel)로
  * `assignToProject`를 호출하고, 그 메서드는 `WorkflowSchemePermission.ASSIGN_SCHEME` 권한을
  * `WorkflowSchemeScope.Project` 범위로 요구한다. prod 구현체
  * [com.atlas.bts.identity.permission.IdentityAccessWorkflowSchemePermissionResolver.hasProjectPermission]
  * 은 `membershipRepo.findByProjectAndUser(projectId, actorId)` 로 **actor 의 프로젝트 멤버십**을 먼저
  * 요구하는데, SYSTEM_ACTOR(`00000000-0000-0000-0000-000000000000`)는 `users` 테이블에 존재하지 않는
- * 합성 sentinel 이라 **어떤 프로젝트의 멤버도 될 수 없다** — 결과적으로 EC-1 D10 auto-assign 은 prod 에서
- * **항상** `WorkflowSchemeAccessDeniedException` → 500 으로 실패한다.
+ * 합성 sentinel 이라 **어떤 프로젝트의 멤버도 될 수 없어**, auto-assign 이 prod 에서 항상 500 이었다.
  *
- * 왜 지금까지 발견되지 않았는가 — 기존 조립 테스트([ProjectCreatePermissionProdBootTest] 등)는 프로젝트
+ * 왜 그때까지 발견되지 않았는가 — 기존 조립 테스트([ProjectCreatePermissionProdBootTest] 등)는 프로젝트
  * 생성까지만 검증하고 그 프로젝트에 이슈를 생성하지 않는다. dev postgres(5433)의 기존 프로젝트들은
- * `infra/local/seed-project.sql` 로 스킴 배정이 수동 시드돼 있어 auto-assign 경로 자체를 타지 않는다.
- * "새 프로젝트 생성 직후 그 프로젝트에 이슈를 생성"하는 조합은 이 S10 이 유일하다.
+ * `infra/local/seed-project.sql` 로 스킴 배정이 수동 시드돼 있어(그 파일 `:10-12` 가 이 500 을 문서화하며
+ * 우회) auto-assign 경로 자체를 타지 않는다. "새 프로젝트 생성 직후 그 프로젝트에 이슈를 생성"하는
+ * 조합은 이 S10 이 유일하다 — FR-PJ-01 이 프로젝트 생성을 REST 로 열면서 이 선재 결함이 신규 노출됐다.
  *
- * **결론 — 이 발견은 qa 역할 범위 밖의 프로덕션 수정이 필요하다.** 이 파일은 test-only 이므로
- * `IdentityAccessWorkflowSchemePermissionResolver`/`WorkflowSchemeApplicationService` 등 `src/main/`
- * 수정을 하지 않는다(구현은 절대 만지지 않는다). S10 은 이 버그가 고쳐질 때까지 RED 로 정직하게 남는다 —
- * 우회 시드로 이 실패를 가리는 것은 S-3 은폐와 동종의 거짓 그린이다.
+ * **수정 — T13 (같은 PR).** `WorkflowSchemeApplicationService.assignToProject` 가 SYSTEM_ACTOR(nil UUID)만
+ * `requirePermission` 을 건너뛰도록 분기했다(software-scheme auto-assign 한정, 사용자 명시 배정은 권한 유지).
+ * 그 결과 이 S10 은 **auto-assign 수정이 prod 조립 부팅에서 실제로 동작함을 증명하는 GREEN 테스트**다.
+ * 매핑을 손수 심지 않고 백필+auto-assign 전 경로에 의존하므로, R6 은폐(S-3)도 auto-assign 회귀도 이 테스트가 잡는다.
  *
  * ## S11 — 재현 범위와 그 한계 (정직한 보고)
  * classpath YAML 은 빌드 시점에 고정되므로 조립 부팅 테스트 안에서 "YAML 구조 변경"을 실제로 재현할 수는

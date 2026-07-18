@@ -185,7 +185,7 @@ class ProjectCreateControllerTest {
         )
             .andExpect(status().isForbidden)
             // 본문판별자 — 권한 거부임을 errorCode 로 식별(vacuous 401 아님).
-            .andExpect(jsonPath("$.errorCode").value("ISSUE_CREATE_PROJECT_FORBIDDEN"))
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_PROJECT_FORBIDDEN"))
             // 내부구조(actorId/권한코드) 미노출 — 일반 메시지만.
             .andExpect(jsonPath("$.detail").value("프로젝트를 생성할 권한이 없습니다."))
 
@@ -229,6 +229,31 @@ class ProjectCreateControllerTest {
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value("ISSUE_PROJECT_VALIDATION_FAILED"))
+
+        verify(exactly = 0) { projectCreateApplicationService.create(any(), any(), any()) }
+    }
+
+    /**
+     * key 필드 누락(Kotlin non-null 역직렬화 실패 → HttpMessageNotReadableException) → 400.
+     *
+     * 판별자 — 이 엔드포인트의 400 계약을 [ProjectCreateExceptionHandler] 가 온전히 소유해야 한다.
+     * 핸들러가 없으면 같은 패키지 ProjectLeadExceptionHandler(basePackages 스코프)가 잡아
+     * `project-lead-*` 에러 코드를 반환한다. errorCode 가 이 컨트롤러 소유(ISSUE_PROJECT_VALIDATION_FAILED)인지 단언.
+     */
+    @Test
+    fun `POST projects — 필드 누락(역직렬화 실패)이면 400 이고 이 컨트롤러 소유 에러코드`() {
+        authenticateAs(adminActorId)
+        every { systemPermissionResolver.hasGlobalPermission(any(), any()) } returns true
+
+        mockMvc.perform(
+            post("/api/v1/projects")
+                .contentType(MediaType.APPLICATION_JSON)
+                // key 필드 누락 → Kotlin non-null 역직렬화 실패(HttpMessageNotReadableException)
+                .content(mapper.writeValueAsString(mapOf("name" to "No Key Project"))),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_PROJECT_VALIDATION_FAILED"))
+            .andExpect(jsonPath("$.type").value("https://bts.example.com/problems/project-create-validation-failed"))
 
         verify(exactly = 0) { projectCreateApplicationService.create(any(), any(), any()) }
     }

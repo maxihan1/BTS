@@ -8,6 +8,7 @@ import org.springframework.core.Ordered
 import org.springframework.core.annotation.Order
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
+import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
@@ -37,8 +38,8 @@ internal object ProjectCreateErrorCodes {
     /** Bean Validation 실패(key 정규식/blank) — 400. */
     const val VALIDATION_FAILED = "ISSUE_PROJECT_VALIDATION_FAILED"
 
-    /** CREATE_PROJECT 권한 없음 — 403. */
-    const val FORBIDDEN = "ISSUE_CREATE_PROJECT_FORBIDDEN"
+    /** CREATE_PROJECT 권한 없음 — 403. noun-first(ISSUE_PROJECT_*) 로 형제 코드와 정합. */
+    const val FORBIDDEN = "ISSUE_PROJECT_FORBIDDEN"
 
     /** key 중복 — 409. */
     const val KEY_ALREADY_EXISTS = "ISSUE_PROJECT_KEY_ALREADY_EXISTS"
@@ -55,7 +56,8 @@ internal object ProjectCreateErrorCodes {
  *
  * ## 매핑 규칙
  * - [ResponseStatusException] → 원 상태 코드 (미인증 401 등) 그대로 통과
- * - [MethodArgumentNotValidException] → 400 + [ProjectCreateErrorCodes.VALIDATION_FAILED]
+ * - [MethodArgumentNotValidException] → 400 + [ProjectCreateErrorCodes.VALIDATION_FAILED] (Bean Validation)
+ * - [HttpMessageNotReadableException] → 400 + [ProjectCreateErrorCodes.VALIDATION_FAILED] (필드 누락·malformed JSON)
  * - [ProjectCreateForbiddenException] → 403 + [ProjectCreateErrorCodes.FORBIDDEN] (내부구조 미노출)
  * - [ProjectKeyAlreadyExistsException] → 409 + [ProjectCreateErrorCodes.KEY_ALREADY_EXISTS]
  */
@@ -102,6 +104,29 @@ class ProjectCreateExceptionHandler {
             title = "Validation Failed",
             errorCode = ProjectCreateErrorCodes.VALIDATION_FAILED,
             detail = "프로젝트 생성 요청 값 검증에 실패했습니다.",
+        )
+    }
+
+    /**
+     * [HttpMessageNotReadableException] — 요청 본문 역직렬화 실패 — 400.
+     *
+     * `CreateProjectRequest.key`/`name` 이 Kotlin non-null 이라 **필드 누락·null·malformed JSON** 은
+     * Bean Validation([MethodArgumentNotValidException]) 이전에 Jackson 역직렬화 단계에서
+     * [HttpMessageNotReadableException] 으로 실패한다(흔한 나쁜 입력 경로). 이 핸들러가 없으면 같은
+     * 패키지 [ProjectLeadExceptionHandler]([basePackages] 스코프)가 잡아 이 엔드포인트가 `project-lead-*`
+     * 에러 코드를 반환하게 된다 — 400 계약을 이 컨트롤러가 온전히 소유하도록 여기서 처리한다.
+     *
+     * @param ex 본문 역직렬화 실패 예외 (원인은 로그 전용).
+     */
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun handleMessageNotReadable(ex: HttpMessageNotReadableException): ProblemDetail {
+        log.info("PROJECT_CREATE_400 message_not_readable message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "project-create-validation-failed",
+            title = "Validation Failed",
+            errorCode = ProjectCreateErrorCodes.VALIDATION_FAILED,
+            detail = "프로젝트 생성 요청 본문을 읽을 수 없습니다.",
         )
     }
 
