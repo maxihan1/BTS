@@ -14,8 +14,8 @@ import com.bts.issue.history.IssueChangeLabelResolver
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.history.JdbcIssueChangeHistoryRepository
 import com.bts.issue.project.archive.ProjectArchiveGuard
-import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.project.archive.ProjectArchivedException
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -140,10 +140,12 @@ class WorklogServiceIntegrationTest {
 
         /** FR-PJ-04 PR-4 Task 9 — 실 ProjectArchiveGuard(공유 dsl 위). archived_at IS NOT NULL 판정만 함. */
         @Bean
-        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard =
-            ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard {
+            return ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+        }
 
         @Bean
+        @Suppress("LongParameterList") // archiveGuard(Task 9) 추가로 6개 — 테스트 조립 함수라 분리 실익 없음
         open fun worklogService(
             worklogRepository: WorklogRepository,
             issueRepository: IssueRepository,

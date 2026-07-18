@@ -417,8 +417,14 @@ class CustomFieldApplicationServiceTest : DescribeSpec({
                 },
                 invoke = {
                     sut.create(
-                        actorId, projectIdOrKey, "salary_impact", "급여 영향도",
-                        FieldType.SHORT_TEXT, false, 0, emptyList(),
+                        actorId,
+                        projectIdOrKey,
+                        "salary_impact",
+                        "급여 영향도",
+                        FieldType.SHORT_TEXT,
+                        false,
+                        0,
+                        emptyList(),
                     )
                 },
             ),

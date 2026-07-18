@@ -15,8 +15,8 @@ import com.bts.issue.domain.RequiredFieldMissingException
 import com.bts.issue.domain.SubtaskHasOwnSubtasksException
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.project.archive.ProjectArchiveGuard
-import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.project.archive.ProjectArchivedException
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueKeyRedirectRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.version.repository.VersionRepository
@@ -149,7 +149,8 @@ class IssueMoveServiceTest {
                 )
                 // FR-PJ-04 PR-4 Task 9 — 아카이브된 프로젝트(archived_at NOT NULL).
                 stmt.execute(
-                    "INSERT INTO projects (key, name, archived_at) VALUES ('$ARCHIVED_PROJECT', 'Move Archived', NOW()) " +
+                    "INSERT INTO projects (key, name, archived_at) " +
+                        "VALUES ('$ARCHIVED_PROJECT', 'Move Archived', NOW()) " +
                         "ON CONFLICT (key) DO UPDATE SET archived_at = NOW()",
                 )
             }
@@ -222,7 +223,8 @@ class IssueMoveServiceTest {
                     "DELETE FROM issues WHERE project_id IN ('$srcProjectId', '$dstProjectId', '$archivedProjectId')",
                 )
                 stmt.execute(
-                    "UPDATE projects SET key_sequence = 0 WHERE key IN ('$SRC_PROJECT', '$DST_PROJECT', '$ARCHIVED_PROJECT')",
+                    "UPDATE projects SET key_sequence = 0 " +
+                        "WHERE key IN ('$SRC_PROJECT', '$DST_PROJECT', '$ARCHIVED_PROJECT')",
                 )
             }
         }

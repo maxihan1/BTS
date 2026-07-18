@@ -335,7 +335,9 @@ class IssueTemplateApplicationServiceTest : DescribeSpec({
                         permissionResolver.hasPermission(actorId, TemplatePermission.UPDATE, projectId)
                     } returns true
                     every { repo.findById(templateId) } returns existingTemplate
-                    every { repo.update(templateId, existingTemplate.name, existingTemplate.content.trim()) } returns Unit
+                    every {
+                        repo.update(templateId, existingTemplate.name, existingTemplate.content.trim())
+                    } returns Unit
                 },
                 invoke = { sut.update(actorId, projectId, templateId, null, null) },
             ),

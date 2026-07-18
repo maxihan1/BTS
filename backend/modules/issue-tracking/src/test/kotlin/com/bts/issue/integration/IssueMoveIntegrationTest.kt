@@ -239,8 +239,9 @@ class IssueMoveIntegrationTest {
 
         /** FR-PJ-04 PR-4 Task 9 — 실 ProjectArchiveGuard(공유 dsl 위). */
         @Bean
-        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard =
-            ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard {
+            return ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+        }
 
         @Bean
         @Suppress("LongParameterList")

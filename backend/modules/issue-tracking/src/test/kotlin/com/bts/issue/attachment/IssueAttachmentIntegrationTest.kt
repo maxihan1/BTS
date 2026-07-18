@@ -164,8 +164,9 @@ class IssueAttachmentIntegrationTest {
 
         /** FR-PJ-04 PR-4 Task 9 — 실 ProjectArchiveGuard(공유 dsl 위). */
         @Bean
-        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard =
-            ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard {
+            return ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+        }
 
         /** [IssueAttachmentService] — upload/list/download/delete 유스케이스 서비스. */
         @Bean

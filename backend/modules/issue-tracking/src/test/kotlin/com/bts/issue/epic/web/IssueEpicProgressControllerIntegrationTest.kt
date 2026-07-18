@@ -287,8 +287,9 @@ class IssueEpicProgressControllerIntegrationTest {
 
         /** FR-PJ-04 PR-4 Task 9 — 실 ProjectArchiveGuard(공유 dsl 위). */
         @Bean
-        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard =
-            ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard {
+            return ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+        }
 
         @Bean
         @Suppress("LongParameterList") // 실 WorkflowStateCatalogImpl 조립에 필요한 의존 6종 — 테스트 컨텍스트 설정 보일러플레이트

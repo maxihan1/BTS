@@ -194,10 +194,12 @@ class IssueEpicControllerIntegrationTest {
 
         /** FR-PJ-04 PR-4 Task 9 — 실 ProjectArchiveGuard(공유 dsl 위). */
         @Bean
-        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard =
-            ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard {
+            return ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+        }
 
         @Bean
+        @Suppress("LongParameterList") // archiveGuard(Task 9) 추가로 7개 — 테스트 조립 함수라 분리 실익 없음
         open fun issueEpicService(
             permissionResolver: IssuePermissionResolver,
             securityDirectory: IssueSecurityDirectory,

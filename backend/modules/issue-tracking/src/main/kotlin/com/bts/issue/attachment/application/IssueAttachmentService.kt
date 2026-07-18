@@ -55,7 +55,8 @@ import java.util.UUID
  */
 @Service
 // 보상 삭제/best-effort 정리에서 모든 예외를 잡아 로그/전파하기 위해 generic catch 사용(기존 관례 동일).
-@Suppress("TooGenericExceptionCaught")
+// LongParameterList — archiveGuard(Task 9) 추가로 7개, 협력자 각각 단일 책임이라 분리 실익 없음.
+@Suppress("TooGenericExceptionCaught", "LongParameterList")
 class IssueAttachmentService(
     private val storagePort: AttachmentStoragePort,
     private val attachmentRepository: AttachmentRepository,

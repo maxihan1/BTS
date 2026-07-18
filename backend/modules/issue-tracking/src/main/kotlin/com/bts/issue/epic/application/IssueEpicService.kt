@@ -63,6 +63,8 @@ private const val CHILD_HIERARCHY_LEVEL = 0
  */
 @Service
 @Transactional
+// LongParameterList — archiveGuard(Task 9) 추가로 7개, 협력자 각각 단일 책임이라 분리 실익 없음.
+@Suppress("LongParameterList")
 class IssueEpicService(
     private val permissionResolver: IssuePermissionResolver,
     private val securityDirectory: IssueSecurityDirectory,
