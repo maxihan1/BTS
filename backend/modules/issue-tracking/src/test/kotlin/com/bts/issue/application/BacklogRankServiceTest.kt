@@ -353,4 +353,34 @@ class BacklogRankServiceTest : DescribeSpec({
             }
         }
     }
+
+    // ── 아카이브 잠금 — rebalance 직접 호출 방어 (FR-PJ-04 PR-4 Task 9c) ──────────────
+    //
+    // rebalance(projectId) 는 public 메서드다(rerank 내부 rebalanceAndRetry 경유 호출이
+    // 현재의 유일한 프로덕션 호출부이지만, 컴파일러 접근제어로 강제되지 않는 한 향후 다른
+    // 호출부가 rerank 의 guard 를 우회해 이 메서드를 직접 부를 수 있다). 그래서 rebalance
+    // 자신도 최상단에서 archiveGuard.check(projectId) 를 직접 수행해 이중 방어한다.
+
+    describe("아카이브 잠금 — rebalance 직접 호출 (FR-PJ-04 PR-4 Task 9c)") {
+        context("rebalance — 아카이브된 프로젝트 (rerank 우회 직접 호출)") {
+            it("archiveGuard.check 가 ProjectArchivedException 을 던지면 그대로 전파되고 advisory lock 을 잡지 않는다") {
+                every { archiveGuard.check(projectId) } throws ProjectArchivedException(projectId.toString())
+
+                shouldThrow<ProjectArchivedException> {
+                    sut.rebalance(projectId)
+                }
+                verify(exactly = 0) { repo.findRanksForRebalance(any()) }
+            }
+        }
+
+        context("rebalance — 활성 프로젝트 (판별자 baseline)") {
+            it("archiveGuard.check 가 호출되고 정상 rebalance 된다") {
+                every { repo.findRanksForRebalance(projectId) } returns emptyList()
+
+                sut.rebalance(projectId)
+
+                verify(exactly = 1) { archiveGuard.check(projectId) }
+            }
+        }
+    }
 })
