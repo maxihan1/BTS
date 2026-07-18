@@ -49,12 +49,20 @@ import java.util.UUID
  * - T5-3. 권한 없음(MEMBER 등) → 403 + errorCode 본문판별자 + 내부구조 미노출
  * - T5-4. 미존재 프로젝트 → 404
  * - T5-5. 빈 name → 400 (Jakarta Validation). 서비스 미도달 검증
+ * - C2. malformed JSON 바디 → 400 + settings 전용 errorCode(자기 핸들러 소유, 형제 핸들러 폴백 아님)
  *
  * ### 403 음성 테스트 비-vacuous 대조
  * T5-1(권한 있는 actor → 204) 과 T5-3(권한 없는 actor → 403) 은 같은 엔드포인트를 인증 상태는
  * 동일(둘 다 인증됨)하게 유지한 채 서비스 결과만 바꿔 대조한다. T5-3 의 actor 는 **인증된** actor 이므로
  * 이 403 은 401 이 아니라 [ProjectSettingsExceptionHandler] 가 [ProjectSettingsForbiddenException] 을
  * 변환한 결과임을 errorCode 로 단언한다(vacuous 401 아님).
+ *
+ * ### C2 — 형제 핸들러 폴백 재현을 위한 [ProjectLeadExceptionHandler] 동시 등록
+ * [TestMvcConfig] 는 실서비스 조립(component-scan)이 하는 것처럼 [ProjectLeadExceptionHandler]
+ * (`basePackages = ["com.bts.issue.project.web"]`)도 빈으로 등록한다. 이 핸들러가 없으면 이 슬라이스
+ * 컨텍스트에는 malformed JSON 을 처리할 advice 가 하나도 없어 errorCode 본문판별자 없이도 그냥 400 이
+ * 나와 회귀를 못 잡는다(vacuous). 형제 핸들러를 실제로 등록해야 "자기 핸들러가 없으면 형제 핸들러가
+ * `VALIDATION_FAILED`(무접두) 를 반환한다"는 실제 버그가 이 테스트에서도 재현된다.
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [ProjectSettingsControllerTest.TestMvcConfig::class])
@@ -80,6 +88,10 @@ class ProjectSettingsControllerTest {
 
         @Bean
         open fun projectSettingsExceptionHandler(): ProjectSettingsExceptionHandler = ProjectSettingsExceptionHandler()
+
+        // 실서비스 조립(component-scan)에서 함께 뜨는 형제 advice — C2 폴백 재현용(클래스 KDoc 참고).
+        @Bean
+        open fun projectLeadExceptionHandler(): ProjectLeadExceptionHandler = ProjectLeadExceptionHandler()
     }
 
     @Autowired
@@ -194,6 +206,31 @@ class ProjectSettingsControllerTest {
             patch("/api/v1/projects/$projectIdOrKey")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody("")),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("ISSUE_PROJECT_SETTINGS_VALIDATION_FAILED"))
+
+        verify(exactly = 0) { projectSettingsService.changeName(any(), any(), any()) }
+    }
+
+    // ── C2. malformed JSON → 400 + settings 전용 errorCode(자기 핸들러 소유) ──────
+
+    /**
+     * malformed JSON 바디(Jackson 역직렬화 실패 → [org.springframework.http.converter.HttpMessageNotReadableException]) → 400.
+     *
+     * 판별자 — 이 엔드포인트의 400 계약을 [ProjectSettingsExceptionHandler] 가 온전히 소유해야 한다.
+     * 자기 핸들러에 없으면 같은 패키지 [ProjectLeadExceptionHandler](`basePackages` 스코프)가 잡아
+     * 무접두 `VALIDATION_FAILED` 를 반환한다 — errorCode 가 이 컨트롤러 소유
+     * (`ISSUE_PROJECT_SETTINGS_VALIDATION_FAILED`)인지 단언한다(단순 400 만 보면 vacuous).
+     */
+    @Test
+    fun `PATCH projects id — malformed JSON이면 400이고 settings 전용 errorCode를 반환한다`() {
+        authenticateAs(adminActorId)
+
+        mockMvc.perform(
+            patch("/api/v1/projects/$projectIdOrKey")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{"),
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value("ISSUE_PROJECT_SETTINGS_VALIDATION_FAILED"))
