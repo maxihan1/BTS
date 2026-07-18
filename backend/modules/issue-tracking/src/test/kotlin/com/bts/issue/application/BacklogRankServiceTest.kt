@@ -336,7 +336,8 @@ class BacklogRankServiceTest : DescribeSpec({
                 shouldThrow<ProjectArchivedException> {
                     sut.rerank(actor, targetKey, IssueKey("PROJ-1"), null)
                 }
-                verify(exactly = 0) { repo.findByKey(any()) }
+                // any() 는 IssueKey inline value class 자동 시그니처 생성 실패로 사용 불가(파일 상단 주석 참조) — 구체 키로 검증.
+                verify(exactly = 0) { repo.findByKey(targetKey) }
             }
         }
 

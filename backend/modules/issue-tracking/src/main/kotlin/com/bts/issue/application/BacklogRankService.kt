@@ -6,6 +6,7 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.lexorank.Rank
 import com.bts.shared.lexorank.RankSpaceExhaustedException
@@ -72,6 +73,7 @@ class BacklogRankService(
     private val repo: IssueRepository,
     private val permissionResolver: IssuePermissionResolver,
     private val dsl: DSLContext,
+    private val archiveGuard: ProjectArchiveGuard,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -80,17 +82,19 @@ class BacklogRankService(
      *
      * 흐름.
      * 1. UPDATE 권한 검증 (Issue 범위).
-     * 2. 대상 이슈 조회 — 미존재/소프트삭제 시 IssueNotFoundException.
-     * 3. 이웃 검증 — [validateNeighbors] 참조.
-     * 4. Rank.between(prevRank, nextRank) 계산.
+     * 2. ProjectArchiveGuard.checkByIssue — 아카이브 프로젝트면 ProjectArchivedException (D-ORDER: 권한 다음).
+     * 3. 대상 이슈 조회 — 미존재/소프트삭제 시 IssueNotFoundException.
+     * 4. 이웃 검증 — [validateNeighbors] 참조.
+     * 5. Rank.between(prevRank, nextRank) 계산.
      *    RankSpaceExhaustedException → rebalance 후 재조회(C3) → 재계산.
-     * 5. repo.updateRank (no-bump, history 미기록).
+     * 6. repo.updateRank (no-bump, history 미기록).
      *
      * @param actor 행위자.
      * @param key 대상 이슈 키.
      * @param previousIssueKey 앞 이웃 이슈 키. null 이면 맨 앞으로 이동.
      * @param nextIssueKey 뒤 이웃 이슈 키. null 이면 맨 뒤로 이동.
      * @throws IssueAccessDeniedException UPDATE 권한 미보유.
+     * @throws com.bts.issue.project.archive.ProjectArchivedException 대상 이슈의 소속 프로젝트가 아카이브 상태.
      * @throws IssueNotFoundException 대상 또는 이웃 이슈 미존재/소프트삭제.
      * @throws InvalidRankNeighborException 이웃 검증 실패 (역전/둘다null/동일이웃/타프로젝트).
      */
@@ -102,6 +106,7 @@ class BacklogRankService(
         nextIssueKey: IssueKey?,
     ) {
         assertPermission(actor, key)
+        archiveGuard.checkByIssue(key)
 
         val target = repo.findByKey(key) ?: throw IssueNotFoundException(key)
         val (prevRank, nextRank) = resolveNeighborRanks(key, target.projectId, previousIssueKey, nextIssueKey)
