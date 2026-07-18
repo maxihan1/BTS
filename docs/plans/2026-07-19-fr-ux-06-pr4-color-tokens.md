@@ -154,4 +154,23 @@ apps/web의 하드코딩 Tailwind 색 리터럴(text-amber-800 등)을 PR3가 �
 - 잔여 검증 스코프: **IN-SCOPE 30파일 + numbered 상태팔레트만**(bare `bg-black`/raw hex grep 금지 — 정당 잔존 스크림·차트 오탐).
 - 추가 검증: typecheck, lint, vitest 전체, (E2E 색 결합 셀렉터 없음 사전확인).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+**리뷰 방식**. spec 단계에서 이미 울트라코드 5-에이전트 adversarial(완결성2·매핑정확성·대비·vacuous) 완료 → plan은 구조 검증 중심(autoplan-overkill 회피).
+
+**plan 구조 검증(controller, 기계적)**.
+- ✅ IN-SCOPE 30파일 ↔ Task 2~7 files 메타 **집합 완전 일치**(30/30), 파일 중복 0.
+- ✅ DEFER/OUT 파일(차트·스크림·범주·mermaid·`ui/dialog.tsx`) files 메타 미포함.
+- ✅ 의존성: Task1(토큰)→Task2~7 전부 [1] 의존, 상호 무의존(파일 무겹침) → wave 2회.
+- ✅ TDD: Task1(test→feat)·Task2·6(test→refactor) 정합, Task3·4·5·7 refactor(동작보존).
+- ✅ 토큰 소비: status-text 4토큰을 Task2~7이 실소비(소비자0 아님).
+
+**설계 검증(spec adversarial 승계)**.
+- BLOCKER(tint 텍스트 라이트 AA 4.1<4.5) → status-text 토큰 Option A로 해소(Maxi 승인). -800/-300 실측 AA 통과.
+- CONCERN 2(중첩 배지 붕괴) → 내부 배지 bold(Task2 MappingTable·Task3 RuleConflict).
+- 완결성 갭 3(차트·스크림~44·mermaid) → DEFER/OUT 명시 편입(PR4 미이관).
+
+**게이트1 판단 대기 항목**(Maxi).
+1. status-text 토큰 신설(index.css/DESIGN.md/state-tokens.test) — PR3 토큰층 확장, full-sync 대상.
+2. 범주색·차트·스크림·캘린더 = PR22/후속 이연(변경 금지).
+3. no-op 재정의: 이관 95건은 시각 등가, 단 SprintColumn bold버튼 hover 방향·BackupCodes 다크 카드감은 미세 변화(수용).
