@@ -9,6 +9,7 @@ import org.springframework.core.Ordered
 import org.springframework.core.annotation.Order
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
+import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
@@ -46,6 +47,7 @@ internal object ProjectSettingsErrorCodes {
  * - [ProjectNotFoundException] → 404 + [ProjectSettingsErrorCodes.PROJECT_NOT_FOUND]
  * - [ProjectSettingsForbiddenException] → 403 + [ProjectSettingsErrorCodes.FORBIDDEN] (내부구조 미노출)
  * - [MethodArgumentNotValidException] → 400 + [ProjectSettingsErrorCodes.VALIDATION_FAILED]
+ * - [HttpMessageNotReadableException] → 400 + [ProjectSettingsErrorCodes.VALIDATION_FAILED] (malformed JSON)
  */
 @RestControllerAdvice(assignableTypes = [ProjectSettingsController::class])
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -132,6 +134,27 @@ class ProjectSettingsExceptionHandler {
             title = "Validation Failed",
             errorCode = ProjectSettingsErrorCodes.VALIDATION_FAILED,
             detail = "프로젝트 설정 변경 요청 값 검증에 실패했습니다.",
+        )
+    }
+
+    /**
+     * [HttpMessageNotReadableException] — 요청 본문 역직렬화 실패(malformed JSON) — 400.
+     *
+     * 이 핸들러가 없으면 같은 패키지 [ProjectLeadExceptionHandler]([basePackages] 스코프)가 잡아 이
+     * 엔드포인트가 무접두 `VALIDATION_FAILED` 를 반환하게 된다 — 400 계약을 이 컨트롤러가 온전히
+     * 소유하도록 여기서 처리한다([ProjectCreateExceptionHandler.handleMessageNotReadable] 선례).
+     *
+     * @param ex 본문 역직렬화 실패 예외 (원인은 로그 전용).
+     */
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun handleMessageNotReadable(ex: HttpMessageNotReadableException): ProblemDetail {
+        log.info("PROJECT_SETTINGS_400 message_not_readable message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "project-settings-validation-failed",
+            title = "Validation Failed",
+            errorCode = ProjectSettingsErrorCodes.VALIDATION_FAILED,
+            detail = "프로젝트 설정 변경 요청 본문을 읽을 수 없습니다.",
         )
     }
 
