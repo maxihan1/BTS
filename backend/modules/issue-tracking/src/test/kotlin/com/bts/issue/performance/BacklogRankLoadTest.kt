@@ -4,6 +4,8 @@ package com.bts.issue.performance
 
 import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.application.BacklogRankService
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueTestcontainersBase
 import com.bts.shared.lexorank.Rank
 import com.bts.shared.lexorank.RankSpaceExhaustedException
@@ -55,7 +57,13 @@ class BacklogRankLoadTest : IssueTestcontainersBase() {
      */
     @BeforeAll
     fun setUpService() {
-        backlogRankService = BacklogRankService(repository, AlwaysAllowIssuePermissionResolver(), dsl)
+        backlogRankService =
+            BacklogRankService(
+                repository,
+                AlwaysAllowIssuePermissionResolver(),
+                dsl,
+                ProjectArchiveGuard(ProjectArchiveStateRepository(dsl)),
+            )
     }
 
     // ── NFR1: 순수 알고리즘 부하 (DB 없음) ─────────────────────────────────────

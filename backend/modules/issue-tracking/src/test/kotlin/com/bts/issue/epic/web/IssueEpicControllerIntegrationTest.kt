@@ -5,6 +5,8 @@ package com.bts.issue.epic.web
 
 import com.bts.issue.epic.application.IssueEpicService
 import com.bts.issue.history.IssueHistoryRecorder
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.permission.IssuePermission
@@ -190,7 +192,14 @@ class IssueEpicControllerIntegrationTest {
         @Bean
         open fun workflowStateCatalog(): WorkflowStateCatalog = mockk(relaxed = true)
 
+        /** FR-PJ-04 PR-4 Task 9 — 실 ProjectArchiveGuard(공유 dsl 위). */
         @Bean
+        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard {
+            return ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+        }
+
+        @Bean
+        @Suppress("LongParameterList") // archiveGuard(Task 9) 추가로 7개 — 테스트 조립 함수라 분리 실익 없음
         open fun issueEpicService(
             permissionResolver: IssuePermissionResolver,
             securityDirectory: IssueSecurityDirectory,
@@ -198,6 +207,7 @@ class IssueEpicControllerIntegrationTest {
             issueTypeRepository: IssueTypeRepository,
             issueHistoryRecorder: IssueHistoryRecorder,
             workflowStateCatalog: WorkflowStateCatalog,
+            archiveGuard: ProjectArchiveGuard,
         ): IssueEpicService =
             IssueEpicService(
                 permissionResolver,
@@ -206,6 +216,7 @@ class IssueEpicControllerIntegrationTest {
                 issueTypeRepository,
                 issueHistoryRecorder,
                 workflowStateCatalog,
+                archiveGuard,
             )
 
         @Bean

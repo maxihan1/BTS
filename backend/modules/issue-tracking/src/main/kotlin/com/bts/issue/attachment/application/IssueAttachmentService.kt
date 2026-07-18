@@ -8,6 +8,7 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
@@ -54,13 +55,15 @@ import java.util.UUID
  */
 @Service
 // 보상 삭제/best-effort 정리에서 모든 예외를 잡아 로그/전파하기 위해 generic catch 사용(기존 관례 동일).
-@Suppress("TooGenericExceptionCaught")
+// LongParameterList — archiveGuard(Task 9) 추가로 7개, 협력자 각각 단일 책임이라 분리 실익 없음.
+@Suppress("TooGenericExceptionCaught", "LongParameterList")
 class IssueAttachmentService(
     private val storagePort: AttachmentStoragePort,
     private val attachmentRepository: AttachmentRepository,
     private val permissionResolver: IssuePermissionResolver,
     private val issueRepository: IssueRepository,
     private val scanPort: VirusScanPort,
+    private val archiveGuard: ProjectArchiveGuard,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -112,6 +115,7 @@ class IssueAttachmentService(
         uploadedBy: UUID? = null,
     ): Attachment {
         checkPermission(actor, IssuePermission.UPDATE, issueKey)
+        archiveGuard.checkByIssue(issueKey)
         // 허용 타입 검증 — 권한 확인 직후, MinIO put·DB insert 이전(고아 객체·불필요 I/O 방지).
         if (!AttachmentTypePolicy.isAllowed(contentType, filename)) {
             throw UnsupportedAttachmentTypeException(contentType, filename)
@@ -221,6 +225,7 @@ class IssueAttachmentService(
         attachmentId: UUID,
     ) {
         checkPermission(actor, IssuePermission.UPDATE, issueKey)
+        archiveGuard.checkByIssue(issueKey)
         val issueId = resolveIssueId(issueKey)
         val attachment = findAttachmentForIssue(attachmentId, issueId, issueKey)
 

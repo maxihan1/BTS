@@ -15,6 +15,7 @@ import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.history.IssueHistoryRecorder
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueKeyRedirectRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.version.repository.VersionRepository
@@ -137,6 +138,7 @@ class IssueMoveService(
     private val componentRepository: ComponentRepository,
     private val versionRepository: VersionRepository,
     private val customFieldDefinitionRepository: CustomFieldDefinitionRepository,
+    private val archiveGuard: ProjectArchiveGuard,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -186,6 +188,8 @@ class IssueMoveService(
         // 3. 권한 검증 — 리소스 조회보다 먼저 (존재 probe 방지)
         assertPermission(actor, IssuePermission.UPDATE, IssueScope.Project(issueKey.projectPrefix))
         assertPermission(actor, IssuePermission.CREATE, IssueScope.Project(targetProjectKey))
+        // 아카이브 잠금 — source(이동 대상 이슈가 현재 속한 프로젝트)가 아카이브 상태면 409.
+        archiveGuard.checkByIssue(issueKey)
 
         // 4. 대상 워크플로우 미설정 검증
         // WorkflowSchemeNoDefaultException 은 project-workflow BC 내부 예외이므로 직접 import 불가.
@@ -204,6 +208,8 @@ class IssueMoveService(
         val targetProjectId =
             issueRepository.findProjectIdByKey(targetProjectKey)
                 ?: throw IssueProjectNotFoundException(targetProjectKey)
+        // 아카이브 잠금 — target(이동 대상 프로젝트)가 아카이브 상태면 409(새 이슈 데이터를 아카이브 프로젝트에 쓰는 것 방지).
+        archiveGuard.check(targetProjectId)
 
         // 대상 프로젝트의 실제 컴포넌트/버전/필수필드 집합 — EC8/EC9 서버측 검증 (단건/동반 공유)
         val targetProjectComponentIds =

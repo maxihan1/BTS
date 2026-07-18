@@ -8,6 +8,7 @@ import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.history.IssueHistoryRecorder
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.repository.RollupResult
 import com.bts.issue.worklog.domain.Worklog
@@ -70,6 +71,7 @@ class WorklogService(
     private val issueRepository: IssueRepository,
     private val permissionResolver: IssuePermissionResolver,
     private val historyRecorder: IssueHistoryRecorder,
+    private val archiveGuard: ProjectArchiveGuard,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -107,6 +109,7 @@ class WorklogService(
         newRemainingEstimateSeconds: Int?,
     ): Worklog {
         checkPermission(actor, issueKey, IssuePermission.UPDATE)
+        archiveGuard.checkByIssue(issueKey)
 
         val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
         val before = issue
@@ -178,6 +181,7 @@ class WorklogService(
         comment: String?,
     ): Worklog {
         checkPermission(actor, issueKey, IssuePermission.UPDATE)
+        archiveGuard.checkByIssue(issueKey)
 
         val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
 
@@ -235,6 +239,7 @@ class WorklogService(
         comment: String?,
     ): Worklog {
         checkPermission(actor, issueKey, IssuePermission.UPDATE)
+        archiveGuard.checkByIssue(issueKey)
 
         val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
 
@@ -308,6 +313,7 @@ class WorklogService(
         worklogId: UUID,
     ) {
         checkPermission(actor, issueKey, IssuePermission.UPDATE)
+        archiveGuard.checkByIssue(issueKey)
 
         val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
 

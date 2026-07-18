@@ -2,6 +2,7 @@
 
 package com.bts.issue.template.application
 
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.template.domain.DuplicateIssueTemplateException
 import com.bts.issue.template.domain.IssueTemplate
 import com.bts.issue.template.domain.IssueTemplateAccessDeniedException
@@ -49,6 +50,7 @@ class IssueTemplateApplicationService(
     private val permissionResolver: TemplatePermissionResolver,
     private val repo: IssueTemplateRepository,
     private val issueTypeRepository: IssueTypeRepository,
+    private val archiveGuard: ProjectArchiveGuard,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -79,6 +81,7 @@ class IssueTemplateApplicationService(
         content: String,
     ): IssueTemplate {
         assertPermission(actorId, TemplatePermission.CREATE, projectId)
+        archiveGuard.check(projectId)
         assertIssueTypeExists(issueTypeId)
 
         val domain =
@@ -121,6 +124,7 @@ class IssueTemplateApplicationService(
         content: String?,
     ): IssueTemplate {
         assertPermission(actorId, TemplatePermission.UPDATE, projectId)
+        archiveGuard.check(projectId)
         val existing = findActiveTemplate(templateId)
         val updated = existing.withChanges(name = name, content = content)
         repo.update(templateId, updated.name, updated.content)
@@ -148,6 +152,7 @@ class IssueTemplateApplicationService(
         templateId: UUID,
     ) {
         assertPermission(actorId, TemplatePermission.DELETE, projectId)
+        archiveGuard.check(projectId)
         findActiveTemplate(templateId)
         repo.softDelete(templateId)
         log.info("issue_template_deleted id={} projectId={} actor={}", templateId, projectId, actorId)

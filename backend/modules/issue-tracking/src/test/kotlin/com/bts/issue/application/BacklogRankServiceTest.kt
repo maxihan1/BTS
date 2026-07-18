@@ -7,6 +7,8 @@ import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
@@ -38,6 +40,8 @@ import java.util.UUID
  * - 정상 rerank → updateRank 호출 + historyRecorder 미호출
  * - 고갈 → rebalance + 재조회 → updateRank (C3)
  * - rebalance: lock 후 findRanksForRebalance 재조회 + 균등 updateRank 반복
+ * - 아카이브 잠금(FR-PJ-04 PR-4 Task 9b): 아카이브된 프로젝트 rerank → ProjectArchivedException,
+ *   활성 프로젝트 rerank → 정상(판별자 baseline)
  */
 class BacklogRankServiceTest : DescribeSpec({
 
@@ -46,12 +50,14 @@ class BacklogRankServiceTest : DescribeSpec({
     val repo = mockk<IssueRepository>(relaxed = true)
     val permissionResolver = mockk<IssuePermissionResolver>()
     val dsl = mockk<DSLContext>(relaxed = true)
+    val archiveGuard = mockk<ProjectArchiveGuard>(relaxUnitFun = true)
 
     val sut =
         BacklogRankService(
             repo = repo,
             permissionResolver = permissionResolver,
             dsl = dsl,
+            archiveGuard = archiveGuard,
         )
 
     val actor = ActorId(UUID.randomUUID())
@@ -78,7 +84,7 @@ class BacklogRankServiceTest : DescribeSpec({
     }
 
     beforeEach {
-        clearMocks(repo, permissionResolver, dsl)
+        clearMocks(repo, permissionResolver, dsl, archiveGuard)
     }
 
     // ── 권한 검증 ─────────────────────────────────────────────────────────────
@@ -316,6 +322,65 @@ class BacklogRankServiceTest : DescribeSpec({
             verify { repo.findRankByKey(nextKey) }
             // updateRank 는 relaxed mock 자동 기록.
             // findRanksForRebalance + findRankByKey 호출이 확인되면 rebalance→C3 흐름 검증 완료.
+        }
+    }
+
+    // ── 아카이브 잠금 (FR-PJ-04 PR-4 Task 9b) ─────────────────────────────────────
+
+    describe("아카이브 잠금 (FR-PJ-04 PR-4 Task 9b)") {
+        context("rerank — 아카이브된 프로젝트") {
+            it("assertPermission 통과 후 archiveGuard.checkByIssue 가 ProjectArchivedException 을 던지면 그대로 전파된다") {
+                stubUpdatePermission(true)
+                every { archiveGuard.checkByIssue(targetKey) } throws ProjectArchivedException(targetKey.value)
+
+                shouldThrow<ProjectArchivedException> {
+                    sut.rerank(actor, targetKey, IssueKey("PROJ-1"), null)
+                }
+                // any() 는 IssueKey inline value class 자동 시그니처 생성 실패로 사용 불가(파일 상단 주석 참조) — 구체 키로 검증.
+                verify(exactly = 0) { repo.findByKey(targetKey) }
+            }
+        }
+
+        context("rerank — 활성 프로젝트 (판별자 baseline)") {
+            it("archiveGuard.checkByIssue 가 호출되고 정상 rerank 된다") {
+                stubUpdatePermission(true)
+                every { repo.findByKey(targetKey) } returns makeIssue(targetKey, "b")
+                every { repo.findByKey(IssueKey("PROJ-9")) } returns makeIssue(IssueKey("PROJ-9"), "z")
+
+                sut.rerank(actor, targetKey, IssueKey("PROJ-9"), null)
+
+                verify(exactly = 1) { archiveGuard.checkByIssue(targetKey) }
+            }
+        }
+    }
+
+    // ── 아카이브 잠금 — rebalance 직접 호출 방어 (FR-PJ-04 PR-4 Task 9c) ──────────────
+    //
+    // rebalance(projectId) 는 public 메서드다(rerank 내부 rebalanceAndRetry 경유 호출이
+    // 현재의 유일한 프로덕션 호출부이지만, 컴파일러 접근제어로 강제되지 않는 한 향후 다른
+    // 호출부가 rerank 의 guard 를 우회해 이 메서드를 직접 부를 수 있다). 그래서 rebalance
+    // 자신도 최상단에서 archiveGuard.check(projectId) 를 직접 수행해 이중 방어한다.
+
+    describe("아카이브 잠금 — rebalance 직접 호출 (FR-PJ-04 PR-4 Task 9c)") {
+        context("rebalance — 아카이브된 프로젝트 (rerank 우회 직접 호출)") {
+            it("archiveGuard.check 가 ProjectArchivedException 을 던지면 그대로 전파되고 advisory lock 을 잡지 않는다") {
+                every { archiveGuard.check(projectId) } throws ProjectArchivedException(projectId.toString())
+
+                shouldThrow<ProjectArchivedException> {
+                    sut.rebalance(projectId)
+                }
+                verify(exactly = 0) { repo.findRanksForRebalance(any()) }
+            }
+        }
+
+        context("rebalance — 활성 프로젝트 (판별자 baseline)") {
+            it("archiveGuard.check 가 호출되고 정상 rebalance 된다") {
+                every { repo.findRanksForRebalance(projectId) } returns emptyList()
+
+                sut.rebalance(projectId)
+
+                verify(exactly = 1) { archiveGuard.check(projectId) }
+            }
         }
     }
 })

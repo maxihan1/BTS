@@ -11,6 +11,7 @@ import com.bts.issue.link.domain.LinkType
 import com.bts.issue.link.domain.LinkedIssueNotFoundException
 import com.bts.issue.link.repository.IssueLinkRepository
 import com.bts.issue.link.repository.LinkedIssueRow
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -86,6 +87,7 @@ data class LinkListResult(
 class LinkApplicationService(
     private val issueRepository: IssueRepository,
     private val linkRepository: IssueLinkRepository,
+    private val archiveGuard: ProjectArchiveGuard,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -121,6 +123,9 @@ class LinkApplicationService(
             targetKey.value,
             linkTypeCode,
         )
+        // 아카이브 잠금 — source/target 어느 한쪽이라도 아카이브된 프로젝트 소속이면 409 (양방향 관계 쓰기).
+        archiveGuard.checkByIssue(sourceKey)
+        archiveGuard.checkByIssue(targetKey)
         val linkType = LinkType.fromCode(linkTypeCode)
         val link = resolveAndValidateLink(sourceKey, targetKey, linkType)
         val saved = linkRepository.insert(link)
@@ -226,6 +231,7 @@ class LinkApplicationService(
         linkId: Long,
     ) {
         log.debug("deleteLink key={} linkId={}", key.value, linkId)
+        archiveGuard.checkByIssue(key)
 
         issueRepository.findByKey(key)
             ?: throw LinkedIssueNotFoundException(key)

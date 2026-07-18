@@ -15,6 +15,8 @@ import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.link.domain.IssueLink
 import com.bts.issue.link.domain.LinkType
 import com.bts.issue.link.repository.IssueLinkRepository
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueKeyRedirectRepository
 import com.bts.issue.repository.IssueRepository
@@ -235,7 +237,14 @@ class IssueMoveIntegrationTest {
         @Bean
         open fun issueMoveHistoryRecorder(): IssueHistoryRecorder = mockk(relaxed = true)
 
+        /** FR-PJ-04 PR-4 Task 9 — 실 ProjectArchiveGuard(공유 dsl 위). */
         @Bean
+        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard {
+            return ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+        }
+
+        @Bean
+        @Suppress("LongParameterList")
         open fun issueMoveService(
             repo: IssueRepository,
             keyRedirectRepository: IssueKeyRedirectRepository,
@@ -246,6 +255,7 @@ class IssueMoveIntegrationTest {
             componentRepository: ComponentRepository,
             versionRepository: VersionRepository,
             customFieldDefinitionRepository: CustomFieldDefinitionRepository,
+            archiveGuard: ProjectArchiveGuard,
         ): IssueMoveService =
             IssueMoveService(
                 issueRepository = repo,
@@ -257,6 +267,7 @@ class IssueMoveIntegrationTest {
                 componentRepository = componentRepository,
                 versionRepository = versionRepository,
                 customFieldDefinitionRepository = customFieldDefinitionRepository,
+                archiveGuard = archiveGuard,
             )
 
         @Bean

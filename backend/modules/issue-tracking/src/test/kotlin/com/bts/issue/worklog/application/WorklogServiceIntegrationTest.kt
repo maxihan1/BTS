@@ -13,6 +13,9 @@ import com.bts.issue.history.IssueChangeHistoryRepository
 import com.bts.issue.history.IssueChangeLabelResolver
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.history.JdbcIssueChangeHistoryRepository
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.ProjectArchivedException
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -135,12 +138,20 @@ class WorklogServiceIntegrationTest {
             repository: IssueChangeHistoryRepository,
         ): IssueHistoryRecorder = IssueHistoryRecorder(detector, resolver, repository)
 
+        /** FR-PJ-04 PR-4 Task 9 — 실 ProjectArchiveGuard(공유 dsl 위). archived_at IS NOT NULL 판정만 함. */
         @Bean
+        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard {
+            return ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+        }
+
+        @Bean
+        @Suppress("LongParameterList") // archiveGuard(Task 9) 추가로 6개 — 테스트 조립 함수라 분리 실익 없음
         open fun worklogService(
             worklogRepository: WorklogRepository,
             issueRepository: IssueRepository,
             permissionResolver: IssuePermissionResolver,
             historyRecorder: IssueHistoryRecorder,
+            archiveGuard: ProjectArchiveGuard,
             clock: Clock,
         ): WorklogService =
             WorklogService(
@@ -148,6 +159,7 @@ class WorklogServiceIntegrationTest {
                 issueRepository = issueRepository,
                 permissionResolver = permissionResolver,
                 historyRecorder = historyRecorder,
+                archiveGuard = archiveGuard,
                 clock = clock,
             )
 
@@ -183,6 +195,9 @@ class WorklogServiceIntegrationTest {
 
     companion object {
         private const val PROJECT_KEY = "WLSVC"
+
+        /** FR-PJ-04 PR-4 Task 9 — 아카이브 잠금 판별자 전용 프로젝트. */
+        private const val ARCHIVED_PROJECT_KEY = "WLARCH"
 
         val ACTOR_UUID: UUID = UUID.fromString("11111111-1111-4111-8111-111111111111")
         val OTHER_ACTOR_UUID: UUID = UUID.fromString("22222222-2222-4222-8222-222222222222")
@@ -228,6 +243,9 @@ class WorklogServiceIntegrationTest {
                 stmt.execute("DELETE FROM worklogs")
                 stmt.execute("DELETE FROM issues WHERE key LIKE '$PROJECT_KEY-%'")
                 stmt.execute("UPDATE projects SET key_sequence = 0 WHERE key = '$PROJECT_KEY'")
+                // FR-PJ-04 PR-4 Task 9 — 아카이브 프로젝트 이슈도 매 테스트 초기화.
+                stmt.execute("DELETE FROM issues WHERE key LIKE '$ARCHIVED_PROJECT_KEY-%'")
+                stmt.execute("UPDATE projects SET key_sequence = 0 WHERE key = '$ARCHIVED_PROJECT_KEY'")
             }
         }
     }
@@ -667,6 +685,155 @@ class WorklogServiceIntegrationTest {
         assertThat(list.remainingEstimateSeconds).isEqualTo(H4)
     }
 
+    // ── 아카이브 잠금 (FR-PJ-04 PR-4 Task 9) ────────────────────────────────────────
+
+    /**
+     * 쓰기 4종(create/createImported/update/delete)의 아카이브 잠금 판별자.
+     *
+     * 각 메서드마다 (아카이브된 프로젝트 이슈 → [ProjectArchivedException]) + (활성 프로젝트 이슈 → 2xx,
+     * C2 판별자 baseline)을 짝짓는다. `WLARCH` 는 [seedProject] 가 `archived_at NOT NULL` 로 시딩한다.
+     */
+    @Test
+    fun `아카이브 잠금 — create 는 아카이브된 프로젝트 이슈에 409(ProjectArchivedException)`() {
+        val archivedIssueKey = insertIssueInArchivedProject()
+
+        assertThatThrownBy {
+            worklogService.create(
+                actor = ACTOR,
+                issueKey = IssueKey(archivedIssueKey),
+                timeSpentSeconds = H2,
+                startedAt = Instant.now(),
+                comment = "잠금 확인",
+                newRemainingEstimateSeconds = null,
+            )
+        }.isInstanceOf(ProjectArchivedException::class.java)
+    }
+
+    @Test
+    fun `아카이브 잠금 — create 는 활성 프로젝트 이슈에 2xx (판별자 baseline)`() {
+        val activeIssueKey = insertIssue(remainingSeconds = H8)
+
+        val worklog =
+            worklogService.create(
+                actor = ACTOR,
+                issueKey = IssueKey(activeIssueKey),
+                timeSpentSeconds = H2,
+                startedAt = Instant.now(),
+                comment = "잠금 확인",
+                newRemainingEstimateSeconds = null,
+            )
+
+        assertThat(worklog.timeSpentSeconds).isEqualTo(H2)
+    }
+
+    @Test
+    fun `아카이브 잠금 — createImported 는 아카이브된 프로젝트 이슈에 409(ProjectArchivedException)`() {
+        val archivedIssueKey = insertIssueInArchivedProject()
+
+        assertThatThrownBy {
+            worklogService.createImported(
+                actor = ACTOR,
+                issueKey = IssueKey(archivedIssueKey),
+                authorId = OTHER_ACTOR,
+                timeSpentSeconds = H2,
+                startedAt = Instant.now(),
+                comment = "import 잠금 확인",
+            )
+        }.isInstanceOf(ProjectArchivedException::class.java)
+    }
+
+    @Test
+    fun `아카이브 잠금 — createImported 는 활성 프로젝트 이슈에 2xx (판별자 baseline)`() {
+        val activeIssueKey = insertIssue(remainingSeconds = H8)
+
+        val worklog =
+            worklogService.createImported(
+                actor = ACTOR,
+                issueKey = IssueKey(activeIssueKey),
+                authorId = OTHER_ACTOR,
+                timeSpentSeconds = H2,
+                startedAt = Instant.now(),
+                comment = "import 잠금 확인",
+            )
+
+        assertThat(worklog.authorId).isEqualTo(OTHER_ACTOR_UUID)
+    }
+
+    @Test
+    fun `아카이브 잠금 — update 는 아카이브된 프로젝트 이슈에 409(ProjectArchivedException)`() {
+        val archivedIssueKey = insertIssueInArchivedProject()
+        // update 대상 worklog 확보 — checkPermission/archiveGuard 가 먼저 걸리므로 실제로는 worklog 미존재라도
+        // ProjectArchivedException 이 findById 이전에 던져진다(D-ORDER).
+        assertThatThrownBy {
+            worklogService.update(
+                actor = ACTOR,
+                issueKey = IssueKey(archivedIssueKey),
+                worklogId = UUID.randomUUID(),
+                timeSpentSeconds = H2,
+                startedAt = null,
+                comment = null,
+            )
+        }.isInstanceOf(ProjectArchivedException::class.java)
+    }
+
+    @Test
+    fun `아카이브 잠금 — update 는 활성 프로젝트 이슈에 2xx (판별자 baseline)`() {
+        val activeIssueKey = insertIssue(remainingSeconds = H8)
+        val worklog =
+            worklogService.create(
+                actor = ACTOR,
+                issueKey = IssueKey(activeIssueKey),
+                timeSpentSeconds = H2,
+                startedAt = Instant.now(),
+                comment = "원본",
+                newRemainingEstimateSeconds = null,
+            )
+
+        val updated =
+            worklogService.update(
+                actor = ACTOR,
+                issueKey = IssueKey(activeIssueKey),
+                worklogId = worklog.id,
+                timeSpentSeconds = H4,
+                startedAt = null,
+                comment = null,
+            )
+
+        assertThat(updated.timeSpentSeconds).isEqualTo(H4)
+    }
+
+    @Test
+    fun `아카이브 잠금 — delete 는 아카이브된 프로젝트 이슈에 409(ProjectArchivedException)`() {
+        val archivedIssueKey = insertIssueInArchivedProject()
+
+        assertThatThrownBy {
+            worklogService.delete(
+                actor = ACTOR,
+                issueKey = IssueKey(archivedIssueKey),
+                worklogId = UUID.randomUUID(),
+            )
+        }.isInstanceOf(ProjectArchivedException::class.java)
+    }
+
+    @Test
+    fun `아카이브 잠금 — delete 는 활성 프로젝트 이슈에 2xx (판별자 baseline)`() {
+        val activeIssueKey = insertIssue(remainingSeconds = H8)
+        val worklog =
+            worklogService.create(
+                actor = ACTOR,
+                issueKey = IssueKey(activeIssueKey),
+                timeSpentSeconds = H2,
+                startedAt = Instant.now(),
+                comment = "삭제 대상",
+                newRemainingEstimateSeconds = null,
+            )
+
+        worklogService.delete(actor = ACTOR, issueKey = IssueKey(activeIssueKey), worklogId = worklog.id)
+
+        val list = worklogService.listForIssue(ACTOR, IssueKey(activeIssueKey))
+        assertThat(list.worklogs).isEmpty()
+    }
+
     // ── private helpers ───────────────────────────────────────────────────────────
 
     private fun applyMigrations() {
@@ -694,8 +861,74 @@ class WorklogServiceIntegrationTest {
                 stmt.setString(2, "Worklog Service Test Project")
                 stmt.executeUpdate()
             }
+            // FR-PJ-04 PR-4 Task 9 — 아카이브된 프로젝트 (archived_at NOT NULL) 시딩.
+            c.prepareStatement(
+                "INSERT INTO projects (key, name, archived_at) VALUES (?, ?, NOW()) " +
+                    "ON CONFLICT (key) DO UPDATE SET archived_at = NOW()",
+            ).use { stmt ->
+                stmt.setString(1, ARCHIVED_PROJECT_KEY)
+                stmt.setString(2, "Worklog Service Archived Test Project")
+                stmt.executeUpdate()
+            }
         }
     }
+
+    /**
+     * [ARCHIVED_PROJECT_KEY] 소속 이슈를 1건 삽입하고 이슈 키를 반환한다 (FR-PJ-04 PR-4 Task 9 전용).
+     *
+     * [insertIssue] 와 동형이나 project 를 [ARCHIVED_PROJECT_KEY] 로 고정한다.
+     */
+    private fun insertIssueInArchivedProject(): String =
+        conn().use { c ->
+            c.autoCommit = false
+
+            val seq =
+                c.prepareStatement(
+                    "UPDATE projects SET key_sequence = key_sequence + 1 WHERE key = ? RETURNING key_sequence",
+                ).use { stmt ->
+                    stmt.setString(1, ARCHIVED_PROJECT_KEY)
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getLong(1)
+                    }
+                }
+
+            val issueKey = "$ARCHIVED_PROJECT_KEY-$seq"
+            val projectId =
+                c.prepareStatement("SELECT id FROM projects WHERE key = ?").use { stmt ->
+                    stmt.setString(1, ARCHIVED_PROJECT_KEY)
+                    stmt.executeQuery().use { rs ->
+                        rs.next()
+                        rs.getObject(1) as UUID
+                    }
+                }
+            val taskTypeId =
+                c.prepareStatement(
+                    "SELECT id FROM issue_types WHERE key = 'task' AND deleted_at IS NULL LIMIT 1",
+                ).use { stmt ->
+                    stmt.executeQuery().use { rs ->
+                        check(rs.next()) { "task 타입 없음 — V003 마이그레이션 확인 필요." }
+                        rs.getLong(1)
+                    }
+                }
+
+            c.prepareStatement(
+                "INSERT INTO issues " +
+                    "(key, project_id, summary, reporter_id, current_state_key, version, type_id, " +
+                    "remaining_estimate_seconds) VALUES (?, ?, ?, ?, 'open', 1, ?, ?)",
+            ).use { stmt ->
+                stmt.setString(1, issueKey)
+                stmt.setObject(2, projectId)
+                stmt.setString(3, "아카이브 잠금 테스트 이슈")
+                stmt.setObject(4, ACTOR_UUID)
+                stmt.setLong(5, taskTypeId)
+                stmt.setInt(6, H8)
+                stmt.executeUpdate()
+            }
+
+            c.commit()
+            issueKey
+        }
 
     /**
      * 이슈를 직접 삽입하고 이슈 키를 반환한다.

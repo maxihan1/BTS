@@ -6,6 +6,7 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.link.domain.LinkedIssueNotFoundException
 import com.bts.issue.link.domain.ParentCycleException
 import com.bts.issue.link.domain.ParentSelfReferenceException
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -33,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 class IssueParentService(
     private val issueRepository: IssueRepository,
+    private val archiveGuard: ProjectArchiveGuard,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -51,6 +53,10 @@ class IssueParentService(
         childKey: IssueKey,
         parentKey: IssueKey,
     ) {
+        // 아카이브 잠금 — child/parent 어느 한쪽이라도 아카이브된 프로젝트 소속이면 409.
+        archiveGuard.checkByIssue(childKey)
+        archiveGuard.checkByIssue(parentKey)
+
         val child =
             issueRepository.findByKey(childKey)
                 ?: run {
@@ -96,6 +102,8 @@ class IssueParentService(
      */
     @Transactional
     fun clearParent(childKey: IssueKey) {
+        archiveGuard.checkByIssue(childKey)
+
         val child =
             issueRepository.findByKey(childKey)
                 ?: run {

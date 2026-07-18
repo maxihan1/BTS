@@ -10,6 +10,7 @@ import com.bts.issue.component.domain.ComponentProjectNotFoundException
 import com.bts.issue.component.domain.DuplicateComponentNameException
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.project.ProjectLookup
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.shared.permission.ComponentPermission
 import com.bts.shared.permission.ComponentPermissionResolver
 import com.bts.shared.user.UserLookupPort
@@ -47,6 +48,7 @@ class ComponentApplicationService(
     private val projectLookup: ProjectLookup,
     private val userLookupPort: UserLookupPort,
     private val repo: ComponentRepository,
+    private val archiveGuard: ProjectArchiveGuard,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -81,6 +83,7 @@ class ComponentApplicationService(
     ): Component {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, ComponentPermission.CREATE, projectId)
+        archiveGuard.check(projectId)
         validateLead(leadUserId)
 
         val domain =
@@ -125,6 +128,7 @@ class ComponentApplicationService(
     ): Component {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, ComponentPermission.UPDATE, projectId)
+        archiveGuard.check(projectId)
         val existing = findActiveComponent(componentId, projectId)
 
         val updated = applyNameAndDescription(existing, name, description)
@@ -164,6 +168,7 @@ class ComponentApplicationService(
     ): Component {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, ComponentPermission.UPDATE, projectId)
+        archiveGuard.check(projectId)
         val existing = findActiveComponent(componentId, projectId)
         validateLead(leadUserId)
 
@@ -201,6 +206,7 @@ class ComponentApplicationService(
     ) {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, ComponentPermission.DELETE, projectId)
+        archiveGuard.check(projectId)
         findActiveComponent(componentId, projectId)
         repo.softDelete(componentId, projectId)
         log.info("component_deleted id={} projectId={} actor={}", componentId, projectId, actorId)

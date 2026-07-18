@@ -3,6 +3,7 @@
 package com.bts.issue.project.application
 
 import com.bts.issue.project.ProjectLookup
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.domain.ProjectLeadAccessDeniedException
 import com.bts.issue.project.domain.ProjectLeadNotFoundException
 import com.bts.issue.project.domain.ProjectLeadProjectNotFoundException
@@ -50,6 +51,10 @@ data class ProjectLeadResult(
  * 클래스 레벨 @Transactional 이 기본(읽기/쓰기 모두). changeLead 는 write 이므로
  * 추가 선언 불요. DEVELOPMENT.md §1 — public service 메서드 전체 @Transactional 명시 원칙에 따라
  * 클래스 레벨로 커버한다.
+ *
+ * **아카이브 잠금(FR-PJ-04 PR-4 Task 7 — PJ3-2).** [ProjectArchiveGuard.check] 를
+ * [assertPermission] 직후, leadUserId 검증·repository 갱신 이전에 호출한다(D-ORDER). 미인가
+ * actor 가 409 로 아카이브 상태를 알아내지 못하도록 permission 검증을 항상 먼저 통과시킨다.
  */
 @Service
 @Transactional
@@ -58,6 +63,7 @@ class ProjectLeadApplicationService(
     private val projectLookup: ProjectLookup,
     private val userLookupPort: UserLookupPort,
     private val permissionResolver: ComponentPermissionResolver,
+    private val archiveGuard: ProjectArchiveGuard,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -112,6 +118,7 @@ class ProjectLeadApplicationService(
                 ?: throw ProjectLeadProjectNotFoundException(projectIdOrKey)
 
         assertPermission(actorId, projectId)
+        archiveGuard.check(projectId)
 
         validateLead(leadUserId)
 

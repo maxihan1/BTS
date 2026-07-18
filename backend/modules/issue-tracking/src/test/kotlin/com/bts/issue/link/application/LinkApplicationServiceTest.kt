@@ -15,6 +15,8 @@ import com.bts.issue.link.domain.LinkType
 import com.bts.issue.link.domain.LinkedIssueNotFoundException
 import com.bts.issue.link.repository.IssueLinkRepository
 import com.bts.issue.link.repository.LinkedIssueRow
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.issue.IssueTypeId
 import io.kotest.assertions.throwables.shouldThrow
@@ -36,11 +38,13 @@ class LinkApplicationServiceTest : DescribeSpec({
 
     val issueRepository = mockk<IssueRepository>()
     val linkRepository = mockk<IssueLinkRepository>()
+    val archiveGuard = mockk<ProjectArchiveGuard>(relaxUnitFun = true)
 
     val sut =
         LinkApplicationService(
             issueRepository = issueRepository,
             linkRepository = linkRepository,
+            archiveGuard = archiveGuard,
         )
 
     // ── 공통 픽스처 ─────────────────────────────────────────────────────────────
@@ -68,7 +72,7 @@ class LinkApplicationServiceTest : DescribeSpec({
     val sourceIssue = makeIssue(sourceId, sourceKey)
     val targetIssue = makeIssue(targetId, targetKey)
 
-    afterEach { clearMocks(issueRepository, linkRepository) }
+    afterEach { clearMocks(issueRepository, linkRepository, archiveGuard) }
 
     // ── createLink ─────────────────────────────────────────────────────────────
 
@@ -271,6 +275,70 @@ class LinkApplicationServiceTest : DescribeSpec({
                 sut.deleteLink(sourceKey, 1L)
 
                 verify(exactly = 1) { linkRepository.deleteById(1L) }
+            }
+        }
+    }
+
+    // ── 아카이브 잠금 (FR-PJ-04 PR-4 Task 9) ─────────────────────────────────────
+
+    describe("아카이브 잠금 (FR-PJ-04 PR-4 Task 9)") {
+        context("createLink — source 프로젝트가 아카이브된 경우") {
+            it("ProjectArchivedException 을 던지고 linkRepository.insert 미호출") {
+                every { archiveGuard.checkByIssue(sourceKey) } throws ProjectArchivedException(sourceKey.value)
+
+                shouldThrow<ProjectArchivedException> {
+                    sut.createLink(sourceKey, targetKey, linkTypeCode)
+                }
+                verify(exactly = 0) { linkRepository.insert(any()) }
+            }
+        }
+
+        context("createLink — target 프로젝트가 아카이브된 경우") {
+            it("ProjectArchivedException 을 던지고 linkRepository.insert 미호출") {
+                every { archiveGuard.checkByIssue(targetKey) } throws ProjectArchivedException(targetKey.value)
+
+                shouldThrow<ProjectArchivedException> {
+                    sut.createLink(sourceKey, targetKey, linkTypeCode)
+                }
+                verify(exactly = 0) { linkRepository.insert(any()) }
+            }
+        }
+
+        context("createLink — 활성 프로젝트 (판별자 baseline)") {
+            it("source/target archiveGuard.checkByIssue 가 모두 호출되고 정상 생성된다") {
+                every { issueRepository.findByKey(sourceKey) } returns sourceIssue
+                every { issueRepository.findByKey(targetKey) } returns targetIssue
+                every { linkRepository.existsLink(sourceId, targetId, LinkType.BLOCKS) } returns false
+                every { linkRepository.existsBlocksPath(targetId, sourceId) } returns false
+                every { linkRepository.insert(any()) } returns
+                    IssueLink(id = 1L, sourceId = sourceId, targetId = targetId, linkType = LinkType.BLOCKS)
+
+                sut.createLink(sourceKey, targetKey, linkTypeCode)
+
+                verify(exactly = 1) { archiveGuard.checkByIssue(sourceKey) }
+                verify(exactly = 1) { archiveGuard.checkByIssue(targetKey) }
+            }
+        }
+
+        context("deleteLink — 아카이브된 프로젝트") {
+            it("ProjectArchivedException 을 던지고 linkRepository.deleteById 미호출") {
+                every { archiveGuard.checkByIssue(sourceKey) } throws ProjectArchivedException(sourceKey.value)
+
+                shouldThrow<ProjectArchivedException> {
+                    sut.deleteLink(sourceKey, 1L)
+                }
+                verify(exactly = 0) { linkRepository.deleteById(any()) }
+            }
+        }
+
+        context("deleteLink — 활성 프로젝트 (판별자 baseline)") {
+            it("archiveGuard.checkByIssue 가 호출되고 정상 삭제된다") {
+                every { issueRepository.findByKey(sourceKey) } returns sourceIssue
+                every { linkRepository.deleteById(1L) } returns true
+
+                sut.deleteLink(sourceKey, 1L)
+
+                verify(exactly = 1) { archiveGuard.checkByIssue(sourceKey) }
             }
         }
     }

@@ -8,6 +8,8 @@ import com.bts.issue.link.application.IssueParentService
 import com.bts.issue.link.application.LinkApplicationService
 import com.bts.issue.link.repository.IssueGraphRepository
 import com.bts.issue.link.repository.IssueLinkRepository
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
@@ -114,14 +116,24 @@ class IssueGraphControllerIntegrationTest {
         @Bean
         open fun issueRepository(dsl: DSLContext): IssueRepository = IssueRepository(dsl)
 
+        /** FR-PJ-04 PR-4 Task 9 — 실 ProjectArchiveGuard(공유 dsl 위). */
+        @Bean
+        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard {
+            return ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+        }
+
         @Bean
         open fun linkApplicationService(
             issueRepository: IssueRepository,
             issueLinkRepository: IssueLinkRepository,
-        ): LinkApplicationService = LinkApplicationService(issueRepository, issueLinkRepository)
+            archiveGuard: ProjectArchiveGuard,
+        ): LinkApplicationService = LinkApplicationService(issueRepository, issueLinkRepository, archiveGuard)
 
         @Bean
-        open fun issueParentService(issueRepository: IssueRepository): IssueParentService = IssueParentService(issueRepository)
+        open fun issueParentService(
+            issueRepository: IssueRepository,
+            archiveGuard: ProjectArchiveGuard,
+        ): IssueParentService = IssueParentService(issueRepository, archiveGuard)
 
         @Bean
         open fun issueGraphService(

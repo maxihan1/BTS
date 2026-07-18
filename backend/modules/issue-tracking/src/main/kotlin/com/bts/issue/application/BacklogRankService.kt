@@ -6,6 +6,7 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.lexorank.Rank
 import com.bts.shared.lexorank.RankSpaceExhaustedException
@@ -72,6 +73,7 @@ class BacklogRankService(
     private val repo: IssueRepository,
     private val permissionResolver: IssuePermissionResolver,
     private val dsl: DSLContext,
+    private val archiveGuard: ProjectArchiveGuard,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -80,17 +82,19 @@ class BacklogRankService(
      *
      * 흐름.
      * 1. UPDATE 권한 검증 (Issue 범위).
-     * 2. 대상 이슈 조회 — 미존재/소프트삭제 시 IssueNotFoundException.
-     * 3. 이웃 검증 — [validateNeighbors] 참조.
-     * 4. Rank.between(prevRank, nextRank) 계산.
+     * 2. ProjectArchiveGuard.checkByIssue — 아카이브 프로젝트면 ProjectArchivedException (D-ORDER: 권한 다음).
+     * 3. 대상 이슈 조회 — 미존재/소프트삭제 시 IssueNotFoundException.
+     * 4. 이웃 검증 — [validateNeighbors] 참조.
+     * 5. Rank.between(prevRank, nextRank) 계산.
      *    RankSpaceExhaustedException → rebalance 후 재조회(C3) → 재계산.
-     * 5. repo.updateRank (no-bump, history 미기록).
+     * 6. repo.updateRank (no-bump, history 미기록).
      *
      * @param actor 행위자.
      * @param key 대상 이슈 키.
      * @param previousIssueKey 앞 이웃 이슈 키. null 이면 맨 앞으로 이동.
      * @param nextIssueKey 뒤 이웃 이슈 키. null 이면 맨 뒤로 이동.
      * @throws IssueAccessDeniedException UPDATE 권한 미보유.
+     * @throws com.bts.issue.project.archive.ProjectArchivedException 대상 이슈의 소속 프로젝트가 아카이브 상태.
      * @throws IssueNotFoundException 대상 또는 이웃 이슈 미존재/소프트삭제.
      * @throws InvalidRankNeighborException 이웃 검증 실패 (역전/둘다null/동일이웃/타프로젝트).
      */
@@ -102,6 +106,7 @@ class BacklogRankService(
         nextIssueKey: IssueKey?,
     ) {
         assertPermission(actor, key)
+        archiveGuard.checkByIssue(key)
 
         val target = repo.findByKey(key) ?: throw IssueNotFoundException(key)
         val (prevRank, nextRank) = resolveNeighborRanks(key, target.projectId, previousIssueKey, nextIssueKey)
@@ -118,9 +123,16 @@ class BacklogRankService(
      * lock 후 findRanksForRebalance 를 재조회하여 TOCTOU 를 차단한다.
      * rank=NULL 인 이슈(옵션 B, lazy 미부여)도 NULLS LAST 정렬로 포함하여 전체에 rank 를 부여한다.
      *
+     * ## 아카이브 잠금 이중 방어 (FR-PJ-04 PR-4 Task 9c)
+     * public 메서드라 [rerank](이미 `archiveGuard.checkByIssue` 로 가드됨) 를 거치지 않고
+     * 직접 호출될 잠재 경로가 있으므로, 이 메서드 자신도 최상단에서 [ProjectArchiveGuard.check]
+     * 로 아카이브 프로젝트 쓰기를 차단한다(advisory lock 획득보다 먼저 — 불필요한 lock 방지).
+     *
      * @param projectId 재배포 대상 프로젝트 UUID.
+     * @throws com.bts.issue.project.archive.ProjectArchivedException 대상 프로젝트가 아카이브 상태일 때.
      */
     fun rebalance(projectId: UUID) {
+        archiveGuard.check(projectId)
         // pg_advisory_xact_lock 취득 — 동시 rebalance 직렬화 (트랜잭션 종료 시 자동 해제).
         // void 반환이라 execute 로 호출 (DATA.md §5 정식 예외).
         log.debug("acquiring rebalance lock for projectId={}", projectId)

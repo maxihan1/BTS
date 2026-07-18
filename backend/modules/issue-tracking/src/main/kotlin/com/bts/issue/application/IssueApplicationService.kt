@@ -40,6 +40,7 @@ import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.markdown.MarkdownRenderer
 import com.bts.issue.mention.MentionParser
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueFieldPatch
 import com.bts.issue.repository.IssueRepository
@@ -113,6 +114,10 @@ data class CursorPage<T>(
  * - 워크플로우 키 결정: [WorkflowKeyResolver] (shared-kernel SPI — project-workflow BC 내부 직접 import 금지)
  * - 이슈 이동 리다이렉트: [IssueKeyRedirectRepository.findCurrentKey] — 옛 키 조회 시 redirect 체인 순회 후
  *   [IssueMovedException] 발행 → 308 Permanent Redirect 응답 (FR-MV-01, DATA.md §2)
+ * - 프로젝트 아카이브 잠금: [ProjectArchiveGuard] (FR-PJ-04 PR-4 Task 8) — 쓰기 9종(create/clone/update/
+ *   transition/softDelete/changeAssignee/changeComponents/changeAffectsVersions/changeFixVersions)
+ *   에서만 `assertPermission` 직후 호출한다. listIssues/listIssuesByCursor 를 비롯한 읽기 경로는
+ *   guard 를 참조하지 않는다(EC-3, 상세 배치 원칙은 생성자의 [projectArchiveGuard] 필드 KDoc 참조).
  *
  * 모든 public 메서드는 @Transactional 을 명시한다 (DEVELOPMENT.md §절대규칙).
  *
@@ -166,6 +171,18 @@ class IssueApplicationService(
     // (기존 단위 테스트 호환용 fallback — watcherRepository 패턴 동형).
     // Spring 컨텍스트에서는 IssueKeyRedirectRepository Bean 이 주입된다.
     private val keyRedirectRepository: com.bts.issue.repository.IssueKeyRedirectRepository? = null,
+    // 프로젝트 아카이브 잠금 가드 (FR-PJ-04 PR-4 Task 8). null 이면 아카이브 검사를 skip 한다
+    // (기존 단위 테스트 호환용 fallback — keyRedirectRepository 패턴 동형).
+    // Spring 컨텍스트에서는 ProjectArchiveGuard(@Component) Bean 이 주입된다.
+    //
+    // ## 배치 원칙 (★쓰기 초크포인트, PJ4-4) — [assertPermission] 미참조
+    // 쓰기 9종(createIssue/cloneIssue/updateIssue/transitionIssue/softDeleteIssue/changeAssignee/
+    // changeComponents/changeAffectsVersions/changeFixVersions) 각각의 진입부에서 `assertPermission`
+    // 직후에만 호출한다(D-ORDER — 미인가 actor 가 409 로 아카이브 상태를 알아내지 못하도록).
+    // listIssues/listIssuesByCursor(BROWSE, `assertPermission` 공유 지점) 를 비롯한 읽기 경로에는
+    // **절대 배치하지 않는다** — 그 공유 helper 안에 넣으면 목록조회까지 409 가 되어 EC-3(읽기 생존)이
+    // 파괴된다(guard-handler-matrix-blindfold 회귀 방지, IssueApplicationServiceArchiveGuardTest 참조).
+    private val projectArchiveGuard: ProjectArchiveGuard? = null,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -206,6 +223,7 @@ class IssueApplicationService(
         request: CreateIssueRequest,
     ): Issue {
         assertPermission(actor, IssuePermission.CREATE, IssueScope.Project(request.projectKey))
+        projectArchiveGuard?.check(request.projectKey) // FR-PJ-04 Task 8 — 쓰기 초크포인트(D-ORDER)
 
         val seq = repo.incrementKeySequence(request.projectKey)
         val key = IssueKey.of(request.projectKey, seq)
@@ -321,6 +339,7 @@ class IssueApplicationService(
         val projectKey = sourceKey.projectPrefix
         assertViewIssueOrNotFound(actor, sourceKey)
         assertPermission(actor, IssuePermission.CREATE, IssueScope.Project(projectKey))
+        projectArchiveGuard?.check(projectKey) // FR-PJ-04 Task 8 — 쓰기 초크포인트(D-ORDER)
 
         val source = repo.findByKey(sourceKey) ?: throw IssueNotFoundException(sourceKey)
 
@@ -498,6 +517,7 @@ class IssueApplicationService(
         request: UpdateIssueRequest,
     ): IssueResponse {
         assertPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(key.value))
+        projectArchiveGuard?.checkByIssue(key) // FR-PJ-04 Task 8 — 쓰기 초크포인트(D-ORDER)
         val existing = repo.findByKey(key) ?: throw IssueNotFoundException(key)
 
         // 보안 등급 변경(FR-PM-06) — Unchanged 외에는 SET_SECURITY 가드 + (Assign 시) 스킴 소속 422 를
@@ -648,6 +668,7 @@ class IssueApplicationService(
         request: TransitionIssueRequest,
     ): IssueResponse {
         assertPermission(actor, IssuePermission.TRANSITION, IssueScope.Issue(key.value))
+        projectArchiveGuard?.checkByIssue(key) // FR-PJ-04 Task 8 — 쓰기 초크포인트(D-ORDER)
 
         // [Q3] resolutionId 존재성 검증 — plan() 호출 전에 수행하여 영속 전에 거부한다.
         // non-null 인 경우에만 조회하며, 없으면 ResolutionNotFoundException (404).
@@ -730,6 +751,7 @@ class IssueApplicationService(
         key: IssueKey,
     ) {
         assertPermission(actor, IssuePermission.SOFT_DELETE, IssueScope.Issue(key.value))
+        projectArchiveGuard?.checkByIssue(key) // FR-PJ-04 Task 8 — 쓰기 초크포인트(D-ORDER)
         // 이력 기록을 위해 삭제 전 이슈 상태를 미리 조회한다.
         val existing = repo.findByKey(key)
         val deletedRows = repo.softDelete(key)
@@ -776,6 +798,7 @@ class IssueApplicationService(
         request: AppChangeAssigneeRequest,
     ): IssueResponse {
         assertPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(key.value))
+        projectArchiveGuard?.checkByIssue(key) // FR-PJ-04 Task 8 — 쓰기 초크포인트(D-ORDER)
         val existing = repo.findByKey(key) ?: throw IssueNotFoundException(key)
 
         val assigneeId = request.assigneeId
@@ -846,6 +869,7 @@ class IssueApplicationService(
         request: AppChangeComponentsRequest,
     ): IssueResponse {
         assertPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(key.value))
+        projectArchiveGuard?.checkByIssue(key) // FR-PJ-04 Task 8 — 쓰기 초크포인트(D-ORDER)
         val existing = repo.findByKey(key) ?: throw IssueNotFoundException(key)
         val normalized = existing.assignComponents(request.componentIds)
         validateComponents(normalized.componentIds, existing.projectId)
@@ -905,6 +929,7 @@ class IssueApplicationService(
         request: AppChangeVersionsRequest,
     ): IssueResponse {
         assertPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(key.value))
+        projectArchiveGuard?.checkByIssue(key) // FR-PJ-04 Task 8 — 쓰기 초크포인트(D-ORDER)
         val existing = repo.findByKey(key) ?: throw IssueNotFoundException(key)
         val normalized = existing.assignAffectsVersions(request.versionIds)
         validateVersions(normalized.affectsVersionIds, existing.projectId)
@@ -947,6 +972,7 @@ class IssueApplicationService(
         request: AppChangeVersionsRequest,
     ): IssueResponse {
         assertPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(key.value))
+        projectArchiveGuard?.checkByIssue(key) // FR-PJ-04 Task 8 — 쓰기 초크포인트(D-ORDER)
         val existing = repo.findByKey(key) ?: throw IssueNotFoundException(key)
         val normalized = existing.assignFixVersions(request.versionIds)
         validateVersions(normalized.fixVersionIds, existing.projectId)

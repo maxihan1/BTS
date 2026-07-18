@@ -12,6 +12,8 @@ import com.bts.issue.attachment.application.VirusScanPort
 import com.bts.issue.attachment.repository.AttachmentRepository
 import com.bts.issue.attachment.web.AttachmentExceptionHandler
 import com.bts.issue.attachment.web.IssueAttachmentController
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
@@ -160,15 +162,22 @@ class IssueAttachmentIntegrationTest {
                 override fun scan(input: java.io.InputStream): ScanVerdict = ScanVerdict.CLEAN
             }
 
+        /** FR-PJ-04 PR-4 Task 9 — 실 ProjectArchiveGuard(공유 dsl 위). */
+        @Bean
+        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard {
+            return ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+        }
+
         /** [IssueAttachmentService] — upload/list/download/delete 유스케이스 서비스. */
         @Bean
-        @Suppress("LongParameterList") // scanPort 추가로 6개 — 테스트 조립 함수라 분리 불요
+        @Suppress("LongParameterList") // scanPort/archiveGuard 추가로 7개 — 테스트 조립 함수라 분리 불요
         open fun issueAttachmentService(
             storagePort: MinioStorageAdapter,
             attachmentRepository: AttachmentRepository,
             permissionResolver: IssuePermissionResolver,
             issueRepository: IssueRepository,
             virusScanPort: VirusScanPort,
+            archiveGuard: ProjectArchiveGuard,
             clock: Clock,
         ): IssueAttachmentService =
             IssueAttachmentService(
@@ -177,6 +186,7 @@ class IssueAttachmentIntegrationTest {
                 permissionResolver = permissionResolver,
                 issueRepository = issueRepository,
                 scanPort = virusScanPort,
+                archiveGuard = archiveGuard,
                 clock = clock,
             )
 

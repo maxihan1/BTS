@@ -14,6 +14,8 @@ import com.bts.issue.epic.domain.EpicChildNotFoundException
 import com.bts.issue.epic.domain.EpicChildSelfReferenceException
 import com.bts.issue.epic.domain.EpicTargetNotEpicException
 import com.bts.issue.history.IssueHistoryRecorder
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.domain.IssueType
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -43,6 +45,7 @@ class IssueEpicServiceTest : DescribeSpec({
     val issueTypeRepository = mockk<IssueTypeRepository>()
     val historyRecorder = mockk<IssueHistoryRecorder>(relaxed = true)
     val workflowStateCatalog = mockk<WorkflowStateCatalog>(relaxed = true)
+    val archiveGuard = mockk<ProjectArchiveGuard>(relaxUnitFun = true)
 
     val sut =
         IssueEpicService(
@@ -52,6 +55,7 @@ class IssueEpicServiceTest : DescribeSpec({
             issueTypeRepository = issueTypeRepository,
             historyRecorder = historyRecorder,
             workflowStateCatalog = workflowStateCatalog,
+            archiveGuard = archiveGuard,
         )
 
     // ── 공통 픽스처 ───────────────────────────────────────────────────────────
@@ -174,6 +178,7 @@ class IssueEpicServiceTest : DescribeSpec({
             issueRepository,
             issueTypeRepository,
             historyRecorder,
+            archiveGuard,
             answers = false,
         )
     }
@@ -467,6 +472,84 @@ class IssueEpicServiceTest : DescribeSpec({
                         projectId = defaultProjectId,
                     )
                 }
+            }
+        }
+    }
+
+    // ── 아카이브 잠금 (FR-PJ-04 PR-4 Task 9) ─────────────────────────────────────
+
+    describe("아카이브 잠금 (FR-PJ-04 PR-4 Task 9)") {
+        // archiveGuard throws stub 이 뒤 테스트로 누출되지 않도록 이 describe 전용 afterEach 로 초기화.
+        afterEach { clearMocks(archiveGuard) }
+
+        context("connect — child 프로젝트가 아카이브된 경우") {
+            beforeEach { allowUpdate(childKey) }
+
+            it("ProjectArchivedException 을 던지고 linkEpic 미호출") {
+                every { archiveGuard.checkByIssue(childKey) } throws ProjectArchivedException(childKey.value)
+
+                shouldThrow<ProjectArchivedException> { sut.connect(epicKey, childKey, actorId) }
+                verify(exactly = 0) { issueRepository.linkEpic(any(), any()) }
+            }
+        }
+
+        context("connect — epic 프로젝트가 아카이브된 경우") {
+            beforeEach { allowUpdate(childKey) }
+
+            it("ProjectArchivedException 을 던지고 linkEpic 미호출") {
+                every { archiveGuard.checkByIssue(epicKey) } throws ProjectArchivedException(epicKey.value)
+
+                shouldThrow<ProjectArchivedException> { sut.connect(epicKey, childKey, actorId) }
+                verify(exactly = 0) { issueRepository.linkEpic(any(), any()) }
+            }
+        }
+
+        context("connect — 활성 프로젝트 (판별자 baseline)") {
+            val childBefore = makeIssue(childUuid, childKey, typeId = storyTypeId, epicId = null)
+
+            beforeEach {
+                allowUpdate(childKey)
+                every { issueRepository.findByKey(childKey) } returns childBefore
+                every { issueRepository.findByKey(epicKey) } returns makeIssue(epicUuid, epicKey, typeId = epicTypeId)
+                every { issueTypeRepository.findById(storyTypeId) } returns storyType
+                every { issueTypeRepository.findById(epicTypeId) } returns epicType
+                every { issueRepository.linkEpic(childUuid, epicUuid) } returns 1
+            }
+
+            it("child/epic archiveGuard.checkByIssue 가 모두 호출된다") {
+                sut.connect(epicKey, childKey, actorId)
+
+                verify(exactly = 1) { archiveGuard.checkByIssue(childKey) }
+                verify(exactly = 1) { archiveGuard.checkByIssue(epicKey) }
+            }
+        }
+
+        context("disconnect — child 프로젝트가 아카이브된 경우") {
+            beforeEach { allowUpdate(childKey) }
+
+            it("ProjectArchivedException 을 던지고 updateEpic 미호출") {
+                every { archiveGuard.checkByIssue(childKey) } throws ProjectArchivedException(childKey.value)
+
+                shouldThrow<ProjectArchivedException> { sut.disconnect(epicKey, childKey, actorId) }
+                verify(exactly = 0) { issueRepository.updateEpic(any(), any()) }
+            }
+        }
+
+        context("disconnect — 활성 프로젝트 (판별자 baseline)") {
+            val childBefore = makeIssue(childUuid, childKey, typeId = storyTypeId, epicId = epicUuid)
+
+            beforeEach {
+                allowUpdate(childKey)
+                every { issueRepository.findByKey(childKey) } returns childBefore
+                every { issueRepository.findByKey(epicKey) } returns makeIssue(epicUuid, epicKey, typeId = epicTypeId)
+                every { issueRepository.updateEpic(childUuid, null) } returns Unit
+            }
+
+            it("child/epic archiveGuard.checkByIssue 가 모두 호출된다") {
+                sut.disconnect(epicKey, childKey, actorId)
+
+                verify(exactly = 1) { archiveGuard.checkByIssue(childKey) }
+                verify(exactly = 1) { archiveGuard.checkByIssue(epicKey) }
             }
         }
     }

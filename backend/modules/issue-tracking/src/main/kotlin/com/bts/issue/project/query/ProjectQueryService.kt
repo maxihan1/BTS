@@ -81,15 +81,28 @@ class ProjectQueryService(
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
-     * [actorId] 가 접근 가능한 활성 프로젝트 목록을 name 오름차순으로 반환한다.
+     * [actorId] 가 접근 가능한 프로젝트 목록을 name 오름차순으로 반환한다.
+     *
+     * `archived` 축은 [projectMembershipPort] 가 반환한 key 집합 위에 그대로 얹는 필터다 —
+     * 포트 자체의 술어는 손대지 않는다(FR-PJ-04 PR-4 Task 6, PJ2-2 — §B3 `projectKeysOf` 불변).
      *
      * @param actorId 조회 주체 사용자 UUID.
-     * @return 접근 가능한 프로젝트 목록. 멤버십이 없으면 빈 목록(fail-closed).
+     * @param archived `false`(기본) 이면 활성 프로젝트만, `true`이면 아카이브 프로젝트만 반환한다
+     *   (D8 지라 관례).
+     * @return 조건에 맞는 프로젝트 목록. 멤버십이 없으면 빈 목록(fail-closed).
      */
-    fun listAccessible(actorId: UUID): List<Project> {
+    fun listAccessible(
+        actorId: UUID,
+        archived: Boolean = false,
+    ): List<Project> {
         val keys = projectMembershipPort.projectKeysOf(actorId)
-        log.debug("ProjectQueryService.listAccessible actorId={} keyCount={}", actorId, keys.size)
-        return projectQueryRepository.findAccessibleByKeys(keys)
+        log.debug(
+            "ProjectQueryService.listAccessible actorId={} keyCount={} archived={}",
+            actorId,
+            keys.size,
+            archived,
+        )
+        return projectQueryRepository.findAccessibleByKeys(keys, archived)
     }
 
     /**

@@ -27,7 +27,8 @@ CREATE TABLE projects (
     require_2fa   BOOLEAN      NOT NULL DEFAULT false,
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    deleted_at    TIMESTAMPTZ  NULL
+    deleted_at    TIMESTAMPTZ  NULL,
+    archived_at   TIMESTAMPTZ  NULL
 );
 COMMENT ON TABLE  projects                IS '이슈 컨테이너. key 는 영구 보존 (DATA.md §1.1).';
 COMMENT ON COLUMN projects.key            IS '프로젝트 접두사 — 대문자로 시작, 대문자+숫자 2~10자 (예: BTS, ATLAS1). 이슈 키 생성의 기반.';
@@ -35,6 +36,7 @@ COMMENT ON COLUMN projects.key_sequence   IS '다음 이슈에 부여할 일련�
 COMMENT ON COLUMN projects.lead_user_id   IS 'identity-access BC users.id 대응 프로젝트 리드. BC 격리로 FK 미적용 — ApplicationService 가 존재 guard.';
 COMMENT ON COLUMN projects.require_2fa     IS '민감 프로젝트 여부 — true 면 멤버는 MFA(2FA) 강제 대상 (FR-MF-04). SYSTEM_ADMIN 만 토글.';
 COMMENT ON COLUMN projects.deleted_at     IS 'NULL=활성, NOT NULL=삭제됨. 소프트 삭제 (DATA.md §3).';
+COMMENT ON COLUMN projects.archived_at    IS 'NULL=활성, NOT NULL=아카이브됨. 아카이브 시 프로젝트 스코프 쓰기 잠금 (FR-PJ-04). deleted_at 과 직교.';
 
 -- 3. issues 테이블
 CREATE TABLE issues (

@@ -2,6 +2,8 @@
 
 package com.bts.issue.template.application
 
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.template.domain.DuplicateIssueTemplateException
 import com.bts.issue.template.domain.InvalidIssueTemplateException
 import com.bts.issue.template.domain.IssueTemplate
@@ -37,12 +39,14 @@ class IssueTemplateApplicationServiceTest : DescribeSpec({
     val permissionResolver = mockk<TemplatePermissionResolver>()
     val repo = mockk<IssueTemplateRepository>()
     val issueTypeRepo = mockk<IssueTypeRepository>()
+    val archiveGuard = mockk<ProjectArchiveGuard>(relaxUnitFun = true)
 
     val sut =
         IssueTemplateApplicationService(
             permissionResolver = permissionResolver,
             repo = repo,
             issueTypeRepository = issueTypeRepo,
+            archiveGuard = archiveGuard,
         )
 
     val actorId = UUID.randomUUID()
@@ -62,7 +66,7 @@ class IssueTemplateApplicationServiceTest : DescribeSpec({
             deletedAt = null,
         )
 
-    afterEach { clearMocks(permissionResolver, repo, issueTypeRepo) }
+    afterEach { clearMocks(permissionResolver, repo, issueTypeRepo, archiveGuard) }
 
     // ── create ────────────────────────────────────────────────────────────────
 
@@ -298,6 +302,77 @@ class IssueTemplateApplicationServiceTest : DescribeSpec({
                     sut.delete(actorId, projectId, templateId)
                 }
                 verify(exactly = 0) { repo.softDelete(any()) }
+            }
+        }
+    }
+
+    // ── 아카이브 잠금 (FR-PJ-04 PR-4 Task 9) ─────────────────────────────────────
+
+    /** 쓰기 3종(create/update/delete)의 아카이브 잠금 판별자. VersionApplicationServiceTest 동형. */
+    data class ArchiveWriteCase(
+        val label: String,
+        val stubHappyPath: () -> Unit,
+        val invoke: () -> Unit,
+    )
+
+    val archiveWriteCases =
+        listOf(
+            ArchiveWriteCase(
+                label = "create",
+                stubHappyPath = {
+                    every {
+                        permissionResolver.hasPermission(actorId, TemplatePermission.CREATE, projectId)
+                    } returns true
+                    every { issueTypeRepo.findById(IssueTypeId(issueTypeId)) } returns mockk()
+                    every { repo.insert(any()) } returns existingTemplate
+                },
+                invoke = { sut.create(actorId, projectId, issueTypeId, "버그 리포트", "## 증상\n\n## 재현 방법\n") },
+            ),
+            ArchiveWriteCase(
+                label = "update",
+                stubHappyPath = {
+                    every {
+                        permissionResolver.hasPermission(actorId, TemplatePermission.UPDATE, projectId)
+                    } returns true
+                    every { repo.findById(templateId) } returns existingTemplate
+                    every {
+                        repo.update(templateId, existingTemplate.name, existingTemplate.content.trim())
+                    } returns Unit
+                },
+                invoke = { sut.update(actorId, projectId, templateId, null, null) },
+            ),
+            ArchiveWriteCase(
+                label = "delete",
+                stubHappyPath = {
+                    every {
+                        permissionResolver.hasPermission(actorId, TemplatePermission.DELETE, projectId)
+                    } returns true
+                    every { repo.findById(templateId) } returns existingTemplate
+                    every { repo.softDelete(templateId) } returns Unit
+                },
+                invoke = { sut.delete(actorId, projectId, templateId) },
+            ),
+        )
+
+    describe("아카이브 잠금 (FR-PJ-04 PR-4 Task 9)") {
+        archiveWriteCases.forEach { case ->
+            context("${case.label} — 아카이브된 프로젝트") {
+                it("permission 통과 후 archiveGuard.check 가 ProjectArchivedException 을 던지면 그대로 전파된다") {
+                    case.stubHappyPath()
+                    every { archiveGuard.check(projectId) } throws ProjectArchivedException(projectId.toString())
+
+                    shouldThrow<ProjectArchivedException> { case.invoke() }
+                }
+            }
+
+            context("${case.label} — 활성 프로젝트 (판별자 baseline)") {
+                it("archiveGuard.check 가 실제로 호출된다 (2xx 통과 + 판별자)") {
+                    case.stubHappyPath()
+
+                    case.invoke()
+
+                    verify(exactly = 1) { archiveGuard.check(projectId) }
+                }
             }
         }
     }

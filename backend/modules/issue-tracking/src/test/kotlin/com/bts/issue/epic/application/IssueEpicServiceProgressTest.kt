@@ -10,6 +10,7 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.epic.domain.EpicChildNotFoundException
 import com.bts.issue.epic.domain.EpicProgress
 import com.bts.issue.history.IssueHistoryRecorder
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.domain.IssueType
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -42,6 +43,7 @@ class IssueEpicServiceProgressTest : DescribeSpec({
     val issueTypeRepository = mockk<IssueTypeRepository>()
     val historyRecorder = mockk<IssueHistoryRecorder>(relaxed = true)
     val workflowStateCatalog = mockk<WorkflowStateCatalog>()
+    val archiveGuard = mockk<ProjectArchiveGuard>(relaxUnitFun = true)
 
     val sut =
         IssueEpicService(
@@ -51,6 +53,7 @@ class IssueEpicServiceProgressTest : DescribeSpec({
             issueTypeRepository = issueTypeRepository,
             historyRecorder = historyRecorder,
             workflowStateCatalog = workflowStateCatalog,
+            archiveGuard = archiveGuard,
         )
 
     // ── 공통 픽스처 ───────────────────────────────────────────────────────────

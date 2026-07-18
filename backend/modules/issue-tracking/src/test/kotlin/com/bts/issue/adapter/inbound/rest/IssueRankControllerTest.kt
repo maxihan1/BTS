@@ -69,6 +69,7 @@ class IssueRankControllerTest {
         repo = mockk(relaxed = true),
         permissionResolver = mockk(relaxed = true),
         dsl = mockk(relaxed = true),
+        archiveGuard = mockk(relaxed = true),
     ) {
         var rerankAction: () -> Unit = {}
         var rerankResultStub: RerankResult = RerankResult(rank = null, version = 1L)

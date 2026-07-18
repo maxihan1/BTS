@@ -11,6 +11,7 @@ import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.event.IssueCommented
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.markdown.MarkdownRenderer
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
@@ -45,6 +46,7 @@ class CommentApplicationService(
     private val issueRepository: IssueRepository,
     private val permissionResolver: IssuePermissionResolver,
     private val eventPublisher: IssueEventPublisher,
+    private val archiveGuard: ProjectArchiveGuard,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -81,6 +83,7 @@ class CommentApplicationService(
         createdAt: Instant? = null,
     ): Comment {
         checkPermission(actor, issueKey, IssuePermission.UPDATE)
+        archiveGuard.checkByIssue(issueKey)
 
         val issue = issueRepository.findByKey(issueKey) ?: throw IssueNotFoundException(issueKey)
 

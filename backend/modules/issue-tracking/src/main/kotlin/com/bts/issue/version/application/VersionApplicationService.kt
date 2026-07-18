@@ -3,6 +3,7 @@
 package com.bts.issue.version.application
 
 import com.bts.issue.project.ProjectLookup
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.version.domain.DuplicateVersionNameException
 import com.bts.issue.version.domain.Version
 import com.bts.issue.version.domain.VersionAccessDeniedException
@@ -49,6 +50,7 @@ class VersionApplicationService(
     private val permissionResolver: VersionPermissionResolver,
     private val projectLookup: ProjectLookup,
     private val repo: VersionRepository,
+    private val archiveGuard: ProjectArchiveGuard,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -86,6 +88,7 @@ class VersionApplicationService(
     ): Version {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, VersionPermission.CREATE, projectId)
+        archiveGuard.check(projectId)
 
         val domain =
             Version.create(
@@ -131,6 +134,7 @@ class VersionApplicationService(
     ): Version {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, VersionPermission.UPDATE, projectId)
+        archiveGuard.check(projectId)
         val existing = findActiveVersion(versionId, projectId)
 
         val updated = applyNameAndDescription(existing, name, description)
@@ -170,6 +174,7 @@ class VersionApplicationService(
     ): Version {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, VersionPermission.UPDATE, projectId)
+        archiveGuard.check(projectId)
         val existing = findActiveVersion(versionId, projectId)
 
         val updated = existing.changeDates(startDate, releaseDate)
@@ -200,6 +205,7 @@ class VersionApplicationService(
     ) {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, VersionPermission.DELETE, projectId)
+        archiveGuard.check(projectId)
         val existing = findActiveVersion(versionId, projectId)
         assertNotArchivedForDelete(existing)
         repo.softDelete(versionId, projectId)
@@ -243,6 +249,7 @@ class VersionApplicationService(
     ): Version {
         val projectId = resolveProject(projectIdOrKey)
         assertPermission(actorId, VersionPermission.UPDATE, projectId)
+        archiveGuard.check(projectId)
         val existing = findActiveVersion(versionId, projectId)
         val updated = applyTransition(existing, target)
         log.info(

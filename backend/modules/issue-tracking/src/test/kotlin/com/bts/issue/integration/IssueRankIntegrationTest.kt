@@ -10,6 +10,8 @@ import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.pdf.IssuePdfRenderer
 import com.bts.issue.pdf.IssuePdfTemplate
+import com.bts.issue.project.archive.ProjectArchiveGuard
+import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -328,12 +330,25 @@ class IssueRankIntegrationTest {
                 historyRecorder = mockk(relaxed = true),
             )
 
+        /** FR-PJ-04 PR-4 Task 9b — 실 ProjectArchiveGuard(공유 dsl 위). archived_at IS NOT NULL 판정만 함. */
+        @Bean
+        open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard {
+            return ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
+        }
+
         @Bean
         open fun backlogRankService(
             repo: IssueRepository,
             permissionResolver: AlwaysAllowIssuePermissionResolver,
             dsl: DSLContext,
-        ): BacklogRankService = BacklogRankService(repo = repo, permissionResolver = permissionResolver, dsl = dsl)
+            archiveGuard: ProjectArchiveGuard,
+        ): BacklogRankService =
+            BacklogRankService(
+                repo = repo,
+                permissionResolver = permissionResolver,
+                dsl = dsl,
+                archiveGuard = archiveGuard,
+            )
 
         @Bean
         open fun issuePdfTemplate(): IssuePdfTemplate = IssuePdfTemplate()

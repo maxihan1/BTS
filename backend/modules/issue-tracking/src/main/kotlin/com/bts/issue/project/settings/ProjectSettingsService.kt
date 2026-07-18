@@ -3,6 +3,7 @@
 package com.bts.issue.project.settings
 
 import com.bts.issue.project.ProjectLookup
+import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.repository.ProjectSettingsRepository
 import com.bts.shared.permission.ComponentPermission
 import com.bts.shared.permission.ComponentPermissionResolver
@@ -69,6 +70,10 @@ class ProjectSettingsForbiddenException(
  * **트랜잭션.**
  * 클래스 레벨 @Transactional 이 기본. DEVELOPMENT.md §1 — public service 메서드 전체 @Transactional
  * 명시 원칙에 따라 클래스 레벨로 커버한다.
+ *
+ * **아카이브 잠금(FR-PJ-04 PR-4 Task 7 — PJ3-2).** [ProjectArchiveGuard.check] 를
+ * [assertProjectAdmin] 직후, repository 갱신 이전에 호출한다(D-ORDER). 미인가 actor 가 409
+ * 로 아카이브 상태를 알아내지 못하도록 permission 검증을 항상 먼저 통과시킨다.
  */
 @Service
 @Transactional
@@ -76,6 +81,7 @@ class ProjectSettingsService(
     private val projectLookup: ProjectLookup,
     private val componentPermissionResolver: ComponentPermissionResolver,
     private val repository: ProjectSettingsRepository,
+    private val archiveGuard: ProjectArchiveGuard,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -104,6 +110,7 @@ class ProjectSettingsService(
                 ?: throw ProjectNotFoundException(projectIdOrKey)
 
         assertProjectAdmin(actorId, projectId)
+        archiveGuard.check(projectId)
 
         val updated = repository.updateName(projectId, name)
         if (updated == 0) {
