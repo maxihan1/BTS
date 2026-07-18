@@ -228,7 +228,7 @@ class IssueApplicationServiceArchiveGuardTest : DescribeSpec({
 
                 shouldThrow<IssueAccessDeniedException> { sut.updateIssue(actor, issueKey, request) }
 
-                verify(exactly = 0) { projectArchiveGuard.checkByIssue(any()) }
+                verify(exactly = 0) { projectArchiveGuard.checkByIssue(issueKey) }
             }
         }
 
@@ -269,7 +269,7 @@ class IssueApplicationServiceArchiveGuardTest : DescribeSpec({
 
                 shouldThrow<IssueAccessDeniedException> { sut.transitionIssue(actor, issueKey, request) }
 
-                verify(exactly = 0) { projectArchiveGuard.checkByIssue(any()) }
+                verify(exactly = 0) { projectArchiveGuard.checkByIssue(issueKey) }
             }
         }
 
@@ -309,7 +309,7 @@ class IssueApplicationServiceArchiveGuardTest : DescribeSpec({
 
                 shouldThrow<IssueAccessDeniedException> { sut.softDeleteIssue(actor, issueKey) }
 
-                verify(exactly = 0) { projectArchiveGuard.checkByIssue(any()) }
+                verify(exactly = 0) { projectArchiveGuard.checkByIssue(issueKey) }
             }
         }
 
@@ -350,7 +350,7 @@ class IssueApplicationServiceArchiveGuardTest : DescribeSpec({
 
                 shouldThrow<IssueAccessDeniedException> { sut.changeAssignee(actor, issueKey, request) }
 
-                verify(exactly = 0) { projectArchiveGuard.checkByIssue(any()) }
+                verify(exactly = 0) { projectArchiveGuard.checkByIssue(issueKey) }
             }
         }
 
@@ -391,7 +391,7 @@ class IssueApplicationServiceArchiveGuardTest : DescribeSpec({
 
                 shouldThrow<IssueAccessDeniedException> { sut.changeComponents(actor, issueKey, request) }
 
-                verify(exactly = 0) { projectArchiveGuard.checkByIssue(any()) }
+                verify(exactly = 0) { projectArchiveGuard.checkByIssue(issueKey) }
             }
         }
 
@@ -432,7 +432,7 @@ class IssueApplicationServiceArchiveGuardTest : DescribeSpec({
 
                 shouldThrow<IssueAccessDeniedException> { sut.changeAffectsVersions(actor, issueKey, request) }
 
-                verify(exactly = 0) { projectArchiveGuard.checkByIssue(any()) }
+                verify(exactly = 0) { projectArchiveGuard.checkByIssue(issueKey) }
             }
         }
 
@@ -473,7 +473,7 @@ class IssueApplicationServiceArchiveGuardTest : DescribeSpec({
 
                 shouldThrow<IssueAccessDeniedException> { sut.changeFixVersions(actor, issueKey, request) }
 
-                verify(exactly = 0) { projectArchiveGuard.checkByIssue(any()) }
+                verify(exactly = 0) { projectArchiveGuard.checkByIssue(issueKey) }
             }
         }
     }
@@ -482,16 +482,20 @@ class IssueApplicationServiceArchiveGuardTest : DescribeSpec({
 
     describe("읽기·목록 경로 — ProjectArchiveGuard 미참조 (아카이브 프로젝트도 200 유지)") {
 
+        // IssueKey 는 inline value class 라 MockK any() 매처가 시그니처 생성에 실패한다
+        // (JvmSignatureValueGenerator). 이 파일 전체에서 유일하게 쓰이는 issueKey 를 그대로
+        // 넘겨 exact 매칭한다 — checkByIssue 가 호출되는 대상은 항상 issueKey 하나뿐이므로
+        // "미호출" 판정 정확도는 동일하다(코드베이스 관례, 예: IssueEpicServiceTest).
         fun stubGuardAlwaysThrows() {
             every { projectArchiveGuard.check(any<String>()) } throws ProjectArchivedException("항상실패")
             every { projectArchiveGuard.check(any<UUID>()) } throws ProjectArchivedException("항상실패")
-            every { projectArchiveGuard.checkByIssue(any()) } throws ProjectArchivedException("항상실패")
+            every { projectArchiveGuard.checkByIssue(issueKey) } throws ProjectArchivedException("항상실패")
         }
 
         fun verifyGuardNeverCalled() {
             verify(exactly = 0) { projectArchiveGuard.check(any<String>()) }
             verify(exactly = 0) { projectArchiveGuard.check(any<UUID>()) }
-            verify(exactly = 0) { projectArchiveGuard.checkByIssue(any()) }
+            verify(exactly = 0) { projectArchiveGuard.checkByIssue(issueKey) }
         }
 
         context("listIssues") {
