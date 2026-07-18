@@ -62,8 +62,9 @@ class ProjectQueryControllerTest {
         open fun projectQueryService(): ProjectQueryService = mockk(relaxed = true)
 
         @Bean
-        open fun projectQueryController(service: ProjectQueryService): ProjectQueryController =
-            ProjectQueryController(service)
+        open fun projectQueryController(service: ProjectQueryService): ProjectQueryController {
+            return ProjectQueryController(service)
+        }
 
         @Bean
         open fun projectQueryExceptionHandler(): ProjectQueryExceptionHandler = ProjectQueryExceptionHandler()
