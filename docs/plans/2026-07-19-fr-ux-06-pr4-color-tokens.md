@@ -55,6 +55,103 @@ apps/web의 하드코딩 Tailwind 색 리터럴(text-amber-800 등)을 PR3가 �
 
 ✅ 통과 — 울트라코드 4렌즈 adversarial 검증. BLOCKER 1(tint 텍스트 라이트 AA 4.1<4.5 → status-text 토큰 신설로 해소, Maxi Option A)·CONCERN 2(tint-on-tint 중첩 배지 붕괴 → 내부 배지 bold)·완결성 갭 3(recharts 차트·오버레이 스크림·mermaid .ts를 DEFER/OUT에 편입)·매핑 오배정 0.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 규칙셋·매핑·DEFER/OUT은 스펙 참조. IN-SCOPE 95건/30파일(WorkflowDiagram L82는 OUT). 커밋 타입:
+> Task 1 = `test:`→`feat:`(토큰 신설). 색텍스트 어서션 있는 파일 = `test:`(어서션 갱신, RED)→`refactor:`(이관, GREEN).
+> 나머지 className 스왑 = `refactor:`(동작 보존). DEFER/OUT 파일은 절대 수정 금지.
+
+### Task 1. status-text 토큰 4종 신설 + 배선 (FOUNDATION)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/ui/__tests__/state-tokens.test.ts`, `apps/web/src/index.css`, `DESIGN.md`]
+- depends-on: []
+
+**RED**: `state-tokens.test.ts`에 어서션 추가 — `:root` 4값(`--success-text:#216E4E`·`--warning-text:#7F5F01`·`--danger-text:#AE2A19`·`--info-text:#0055CC`), `.dark` 4값(`#7EE2B8`·`#F5CD47`·`#FF9C8F`·`#85B8FF`), `@theme inline` 4배선(`--color-success-text:var(--success-text)` 등), 중복선언 throw. 실패(토큰 부재).
+
+**GREEN**: `index.css` `:root`·`.dark`에 4토큰씩 + `@theme inline`에 `--color-*-text` 4배선. 기존 §C 토큰 인접 배치.
+
+**REFACTOR**: `DESIGN.md` §C 표에 status-text 4행 추가 + "텍스트 페어링" 절에 "tint 위 색 텍스트 = `text-{status}-text`(bold `-foreground` 아님, 라이트 -800/다크 -300, AA≥4.9), bold 배경 = `text-{status}-foreground`" 명시. §10 대비표에 status-text/tint AA 행 추가.
+
+**검증**: `pnpm --filter web test -- state-tokens` GREEN. 이 4토큰은 Task 2~7이 실소비(소비자0 아님).
+
+### Task 2. admin/ 이관 (7파일, 색텍스트 테스트 포함)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/admin/MappingTable.tsx`, `apps/web/src/components/admin/NotificationPolicyTable.tsx`, `apps/web/src/components/admin/SchemeMetaPanel.tsx`, `apps/web/src/components/admin/WebhookTable.tsx`, `apps/web/src/components/admin/WorkflowSchemeSidebar.tsx`, `apps/web/src/components/admin/WebhookDeliveryTable.tsx`, `apps/web/src/components/admin/__tests__/WebhookDeliveryTable.test.tsx`]
+- depends-on: [1]
+
+**RED**: `WebhookDeliveryTable.test.tsx` — 양성 어서션 `bg-green-100`→`bg-success/10`·`bg-red-100`→`bg-danger/10`, **부정 어서션 L81/82도** `not.toContain('bg-success/10')`·`('bg-danger/10')`로 갱신(vacuous 방지). 구 impl에 대해 실패.
+
+**GREEN/REFACTOR**: 각 파일 이관 — tint 배지 `bg-{status}/10 text-{status}-text`, bold=`text-{status}-foreground`. 특수: **MappingTable L41 `DEFAULT_BADGE_CLASS`는 bold**(`bg-warning text-warning-foreground`, L34 row 위 중첩 붕괴 회피), L34 row→`bg-warning/10`, L37 text→`text-warning-text`. WorkflowSchemeSidebar L102 `bg-[oklch(0.94_0_0)]`→`hover:bg-accent`. dark 페어 삭제.
+
+**검증**: `pnpm --filter web test -- WebhookDeliveryTable` GREEN + admin 파일 잔여 상태팔레트 grep 0.
+
+### Task 3. automation/ 이관 (7파일)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/automation/RuleConflictWarningModal.tsx`, `apps/web/src/components/automation/RuleExecutionTraceRow.tsx`, `apps/web/src/components/automation/AutomationRuleFormDialog.tsx`, `apps/web/src/components/automation/AutomationYamlImportDialog.tsx`, `apps/web/src/components/automation/GitWebhookRegisterDialog.tsx`, `apps/web/src/components/automation/GitWebhookUrlModal.tsx`, `apps/web/src/components/automation/WebhookTokenModal.tsx`]
+- depends-on: [1]
+
+**RED/GREEN/REFACTOR**(refactor): tint→`bg-{status}/10 text-{status}-text`, 배너 border→`border-{status}`. 특수: **RuleConflictWarningModal L48 배지는 bold**(`bg-warning text-warning-foreground`, L47 배너 위 중첩). RuleExecutionTraceRow danger 유지(L124 destructive 불변). AutomationYamlImportDialog `AMBER_WARNING_BOX_CLASS`(L71) 상수 1곳 수정. **`bg-black/40` 스크림은 OUT — 건드리지 말 것**. dark 페어 삭제.
+
+**검증**: automation 파일 잔여 상태팔레트 grep 0(스크림 `bg-black/40` 제외) + 기존 automation 테스트 GREEN.
+
+### Task 4. settings/ + auth/ 이관 (4파일)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/settings/PatCreateForm.tsx`, `apps/web/src/components/settings/PatTokenModal.tsx`, `apps/web/src/components/settings/CalendarFeedCard.tsx`, `apps/web/src/components/auth/BackupCodesSection.tsx`]
+- depends-on: [1]
+
+**refactor**: amber 경고→`bg-warning/10 text-warning-text border-warning`. 특수: **BackupCodesSection L89 `bg-white dark:bg-neutral-900`→`bg-card`**(다크 카드감), L292 amber alert→`text-warning-text`. PatTokenModal `bg-black/40`=OUT. dark 페어 삭제.
+
+**검증**: settings/auth 잔여 상태팔레트 grep 0 + 기존 테스트 GREEN.
+
+### Task 5. backlog/ + board/ + issues/ 이관 (5파일)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/backlog/SprintColumn.tsx`, `apps/web/src/components/board/WipCountBadge.tsx`, `apps/web/src/components/issues/BulkOperationResultDialog.tsx`, `apps/web/src/components/issues/BulkTransitionDialog.tsx`, `apps/web/src/components/issues/NodeMappingSection.tsx`]
+- depends-on: [1]
+
+**refactor**: SprintColumn L54/59 상태배지→tint, **L130 bold 버튼 `bg-green-600 text-white hover:bg-green-700`→`bg-success text-success-foreground hover:bg-success/90`**. WipCountBadge amber→warning tint. Bulk* 다이얼로그 상태색→토큰(`bg-black/40`=OUT). dark 페어 삭제.
+
+**검증**: 잔여 상태팔레트 grep 0 + 기존 테스트 GREEN.
+
+### Task 6. ui/badge 프리미티브 이관 (2파일, 계약 테스트)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/ui/badge.tsx`, `apps/web/src/components/ui/badge.test.tsx`]
+- depends-on: [1]
+
+**RED**: `badge.test.tsx` 어서션 — `bg-green-100`/`text-green-800`→`bg-success/10`/`text-success-text`, red→danger, (yellow→warning, blue→info 있으면). 구 impl 대해 실패.
+
+**GREEN**: `badge.tsx` variant 내부색 교체(이름 API 유지): green→`bg-success/10 text-success-text`·red→danger·yellow→warning·blue→info. dark 페어 삭제.
+
+**검증**: `pnpm --filter web test -- badge` GREEN.
+
+### Task 7. dashboard/ + routes 이관 (5파일)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/dashboard/ShareDashboardModal.tsx`, `apps/web/src/routes/dashboards.$dashboardId.tsx`, `apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/routes/projects.$projectKey.timeline.tsx`, `apps/web/src/routes/projects.$projectKey.settings.workflow-scheme.tsx`]
+- depends-on: [1]
+
+**refactor**: 상태색→토큰. 특수: **workflow-scheme L168 `border-amber-500/40`→`border-warning/40`**(알파 보존). ShareDashboardModal `bg-black/40`=OUT. board/timeline route의 이슈타입/범주색이 섞여 있으면 상태색만 이관(범주=DEFER). dark 페어 삭제.
+
+**검증**: 잔여 상태팔레트 grep 0(스크림/범주 제외) + 기존 route 테스트 GREEN.
+
+## Plan 메타
+
+- task 수: 7 (Task 1 FOUNDATION → Task 2~7 병렬 wave)
+- 예상 wave: 2 (Task 1 단독 → Task 2~7 6-병렬, 파일 무겹침)
+- TDD 강제: Task 1·2·6 = test→구현. Task 3·4·5·7 = refactor(동작 보존 className 스왑).
+- 잔여 검증 스코프: **IN-SCOPE 30파일 + numbered 상태팔레트만**(bare `bg-black`/raw hex grep 금지 — 정당 잔존 스크림·차트 오탐).
+- 추가 검증: typecheck, lint, vitest 전체, (E2E 색 결합 셀렉터 없음 사전확인).
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
