@@ -166,6 +166,59 @@
 **REFACTOR**: **확정 목록을 §부록에 기록**(개수 아닌 목록).
 **검증**: `--tests '*Version*' '*Component*' '*CustomField*' '*Template*' '*Attachment*' '*Worklog*' '*Link*' '*Epic*' '*Watcher*' '*Move*' '*Comment*'` + **DoD-5 grep 재검증(미강제 지점 0)**.
 
+#### §부록 — Task 9 5중 교차 확정 목록 (실측, 2026-07-18)
+
+스펙의 "17"을 물려받지 않고 issue-tracking BC로 직접 grep 재열거한 결과. 개수가 아니라 **경로/서비스/메서드 단위 목록**이다.
+
+**축 1 — `/api/v1/projects/{k}` 쓰기 매핑(class-level @RequestMapping 기준 4개 컨트롤러, 전부 config 계열)**
+- `VersionController` (`/api/v1/projects/{projectIdOrKey}/versions`) — POST/PATCH/DELETE 등
+- `ComponentController` (`/api/v1/projects/{projectIdOrKey}/components`)
+- `CustomFieldController` (`/api/v1/projects/{projectIdOrKey}/custom-fields`)
+- `IssueTemplateController` (`/api/v1/projects/{projectIdOrKey}/issue-templates`)
+- (제외 확인) `ReleaseNotesController`·`CycleTimeController`·`CfdController` — `@GetMapping` 뿐, 쓰기 없음
+- (Task 7/5 소관, Task 9 제외) `ProjectSettingsController`·`ProjectLeadController`·`ProjectRequire2faController`·`ProjectCreateController`·`ProjectQueryController`
+
+**축 2 — DTO `projectKey`/`projectId` 필드**: 위 4개 컨트롤러의 각 write 메서드 시그니처(`projectIdOrKey` path variable) — DTO 자체엔 없고 경로변수로 전달. 별도 신규 필드 없음(축 1과 동일 표면).
+
+**축 3 — 프로젝트 스코프 권한 resolver 4종 소비처(컨트롤러+서비스)**
+- `VersionPermissionResolver` → `VersionApplicationService`(서비스), `VersionController`(컨트롤러 경유 없이 서비스가 직접 소비)
+- `ComponentPermissionResolver` → `ComponentApplicationService` + (Task 7 소관) `ProjectSettingsService`/`ProjectLeadApplicationService` (제외 — Task 7)
+- `CustomFieldPermissionResolver` → `CustomFieldApplicationService`
+- `TemplatePermissionResolver` → `IssueTemplateApplicationService`
+
+**축 4 — ★이슈 하위리소스 쓰기(경로 `/api/v1/issues/{key}/...`, issueKey 기반, IssueApplicationService 미경유 확인)**
+- `IssueAttachmentController` → `IssueAttachmentService.upload`/`.delete` (list/download 는 읽기)
+- `WorklogController` → `WorklogService.create`/`.createImported`/`.update`/`.delete` (`createImported` 는 REST 미노출·Import 어댑터 전용이나 동일 서비스 경유이므로 함께 잠금, `listForIssue` 는 읽기)
+- `IssueLinkController` → `LinkApplicationService.createLink`/`.deleteLink` (`listLinks` 는 읽기), `IssueParentService.setParent`/`.clearParent`
+- `IssueEpicController` → `IssueEpicService.connect`/`.disconnect` (`listChildren`/`progress` 는 읽기, `IssueEpicProgressController` 경유도 동일 서비스)
+- `IssueWatcherController` → `IssueWatcherService.watch`/`.unwatch` (`listWatchers` 는 읽기)
+- `IssueMoveController` → `IssueMoveService.move` (source archiveGuard.checkByIssue + target archiveGuard.check 이중 판정)
+- `CommentController` — GET만 노출(REST 쓰기 미노출, [[comment-backend-is-import-byproduct-read-only]]). `CommentApplicationService.create` 는 `AutomationIssueMutationAdapter`(자동화 룰 댓글 액션)·`IssueImportAdapter`(Import 동반 댓글) 2개 어댑터가 직접 호출 — 두 어댑터 모두 이 서비스 빈을 그대로 재사용하므로 서비스 레벨 1곳 잠금으로 양쪽 다 커버됨(개별 어댑터 잠금 불필요)
+- (제외 확인) `IssueGraphController`(`/graph`)·`CommentController`(`GET`) — 읽기 전용
+
+**축 5 — HTTP 밖 @Scheduled/pgmq 워커(issue-tracking 자체 3종 실측)**
+- `BulkOperationWorker`/`BulkOperationCleanupWorker`(pgmq `q_bulk_operations` 폴링) — 이슈 쓰기는 `BulkItemApplier`→`IssueApplicationService.updateIssue`/`.transitionIssue` 경유(Task 8 초크포인트 관할, Task 9 대상 아님). bulk_operations 테이블 자체 갱신은 프로젝트 스코프 쓰기가 아님(작업 메타데이터)
+- `IssueDueDateScanWorker`(cron) — `IssueRepository` 읽기 + 알림 이벤트 발행뿐, DB 쓰기 없음(잠금 불필요)
+- → **Task 9 추가 조치 불필요**(둘 다 Task 8 관할이거나 쓰기 자체가 없음)
+
+**확정 잠금 목록 (12 서비스, 20 write 진입점)**
+| 서비스 | write 메서드 | guard 호출 |
+|---|---|---|
+| VersionApplicationService | create, update, changeDates, delete, changeStatus | `check(projectId)` |
+| ComponentApplicationService | create, update, changeLead, delete | `check(projectId)` |
+| CustomFieldApplicationService | create, update, softDelete | `check(projectId)` |
+| IssueTemplateApplicationService | create, update, delete | `check(projectId)` |
+| IssueAttachmentService | upload, delete | `checkByIssue(issueKey)` |
+| WorklogService | create, createImported, update, delete | `checkByIssue(issueKey)` |
+| LinkApplicationService | createLink(source+target 2회), deleteLink | `checkByIssue(issueKey)` |
+| IssueParentService | setParent(child+parent 2회), clearParent | `checkByIssue(issueKey)` |
+| IssueEpicService | connect(child+epic 2회), disconnect(child+epic 2회) | `checkByIssue(issueKey)` |
+| IssueWatcherService | watch, unwatch | `checkByIssue(issueKey)` |
+| IssueMoveService | move(source `checkByIssue`+target `check` 각 1회) | 혼합 |
+| CommentApplicationService | create | `checkByIssue(issueKey)` |
+
+**중복 배제 확인**: ProjectLead/Require2fa(Task 7 관할, `ComponentPermissionResolver` 공유하나 Task 9 미포함)·IssueApplicationService 쓰기 9종(Task 8 관할)과 겹치지 않음 — 소유 서비스가 서로 다르므로 물리적 중복 없음.
+
 ### Task 10. 통합 검증 + 전수 동기화 + PR 본문
 
 **메타.**
