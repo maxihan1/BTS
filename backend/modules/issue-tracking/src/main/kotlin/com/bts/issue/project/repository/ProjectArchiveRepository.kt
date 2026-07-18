@@ -29,7 +29,7 @@ data class ProjectArchiveRow(
  * [com.bts.issue.project.archive.ProjectArchiveService] 가 이 Repository 를 통해 DB 에 접근하며,
  * jOOQ 를 직접 import 하지 않는다(ArchUnit 룰 2, hexagonal 경계).
  *
- * **deleted_at IS NULL 필터** — [com.bts.issue.project.repository.ProjectSettingsRepository.updateName]
+ * **deleted_at IS NULL 필터** — [ProjectSettingsRepository.updateName]
  * 선례와 통일한다. 소프트삭제된 프로젝트는 아카이브/아카이브 해제 대상에서 제외한다.
  *
  * **archived_at 단독 판정과의 관계** — 이 Repository 는 archived_at 을 **쓰는** 쪽이고,

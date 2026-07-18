@@ -30,7 +30,7 @@ import java.util.UUID
  * 프로젝트 아카이브(archive)/아카이브 해제(unarchive) REST API 컨트롤러 (FR-PJ-04 PR-4 Task 5).
  *
  * 엔드포인트 — POST /api/v1/projects/{projectIdOrKey}/archive · /unarchive. 둘 다 PROJECT_ADMIN
- * 전용(컴포넌트 UPDATE 권한 재사용, [com.bts.issue.project.web.ProjectSettingsController] PR-3 선례).
+ * 전용(컴포넌트 UPDATE 권한 재사용, [ProjectSettingsController] PR-3 선례).
  *
  * ### 왜 명시 게이트인가 (`@PreAuthorize hasRole` 아님) — PAT 경로 대응
  * 클래스 레벨 `@PreAuthorize("isAuthenticated()")` 는 "인증됨"만 확인한다. PROJECT_ADMIN 여부(컴포넌트
@@ -158,7 +158,7 @@ internal object ProjectArchiveErrorCodes {
  * 않는다. `@Order(Ordered.HIGHEST_PRECEDENCE)` — 같은 패키지 [ProjectLeadExceptionHandler] 의
  * `basePackages = ["com.bts.issue.project.web"]` 전역 스코프 + catch-all `Exception::class` fallback
  * 이 이 컨트롤러의 401/403/404 를 500 으로 삼키는 것을 방지한다
- * ([com.bts.issue.project.web.ProjectSettingsExceptionHandler] 선례,
+ * ([ProjectSettingsExceptionHandler] 선례,
  * memory: catch-all-exceptionhandler-swallows-responsestatusexception).
  *
  * ## 매핑 규칙

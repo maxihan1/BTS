@@ -18,7 +18,7 @@ import java.util.UUID
  *
  * 두 경로에서 던진다.
  * 1. [ProjectLookup.resolve] 가 null 을 반환한 경우(사전 미존재).
- * 2. [com.bts.issue.project.repository.ProjectArchiveRepository] 의 archive/unarchive 갱신이 0 행을
+ * 2. [ProjectArchiveRepository] 의 archive/unarchive 갱신이 0 행을
  *    반환한 경우(조회~갱신 사이 경합으로 소프트삭제된 경우 — TOCTOU 대비 후행 확인,
  *    [com.bts.issue.project.settings.ProjectSettingsService] 동형 패턴).
  *
