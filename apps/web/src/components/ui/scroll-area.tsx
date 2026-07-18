@@ -4,6 +4,7 @@ import { ScrollArea as ScrollAreaPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 
+/** ScrollArea Root — Viewport 안에 children을 렌더하고 세로 스크롤바 + 코너를 함께 구성한다. */
 function ScrollArea({
   className,
   children,
@@ -27,6 +28,7 @@ function ScrollArea({
   )
 }
 
+/** 커스텀 스크롤바 — Thumb 배경은 `bg-border` 토큰을 사용한다. */
 function ScrollBar({
   className,
   orientation = "vertical",
