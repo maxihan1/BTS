@@ -231,6 +231,19 @@ class ProjectQueryControllerTest {
         verify(exactly = 0) { projectQueryService.listAccessible(memberActorId, false) }
     }
 
+    // ── archived 파라미터 검증 — Boolean 바인딩 실패 시 400 (Task 6 REFACTOR) ──────────
+
+    @Test
+    fun `GET projects — archived 값이 boolean 이 아니면 400 이고 서비스에 도달하지 않는다`() {
+        authenticateAs(memberActorId)
+
+        mockMvc.perform(get("/api/v1/projects").param("archived", "maybe"))
+            .andExpect(status().isBadRequest)
+
+        // true/false 외 값을 조용히 기본값(false)으로 흡수하지 않는다(fail-closed 판별자).
+        verify(exactly = 0) { projectQueryService.listAccessible(any(), any()) }
+    }
+
     // ── private helpers ─────────────────────────────────────────────────────────
 
     private fun authenticateAs(actorId: UUID) {

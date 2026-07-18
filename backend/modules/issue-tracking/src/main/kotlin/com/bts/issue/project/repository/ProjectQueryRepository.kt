@@ -21,7 +21,9 @@ import java.util.UUID
  * 담당 — `findAccessibleByKeys`·`findByIdOrKey` 두 조회 메서드가 공유한다(매핑 중복 없음).
  *
  * 단일 테이블(`projects`) 조회만 다루므로 다중 LEFT JOIN + count 카티전 곱 문제와는 무관하다.
- * 활성 기준은 `deleted_at IS NULL`.
+ * 활성 기준은 `deleted_at IS NULL`. [findAccessibleByKeys] 의 `archived` 파라미터(FR-PJ-04 PR-4
+ * Task 6)는 이 소프트 삭제 기준과 **직교하는** 별도 필터 축이다 — `deleted_at`/`archived_at` 를
+ * 결합하지 않고 각자 자기 조건으로만 필터링한다.
  *
  * @param dsl jOOQ DSLContext.
  */

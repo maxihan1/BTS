@@ -53,6 +53,10 @@ class ProjectQueryController(
      * `archived` 쿼리 파라미터를 생략하면 아카이브 프로젝트를 기본 제외하고, `?archived=true` 면
      * 아카이브 프로젝트만 반환한다(D8 지라 관례, FR-PJ-04 PR-4 Task 6, PJ2-2).
      *
+     * `Boolean` 으로 바인딩할 수 없는 값(예: `?archived=maybe`)은 이 컨트롤러가 별도로 검증하지
+     * 않는다 — Spring 의 기본 타입 변환 실패 처리(`MethodArgumentTypeMismatchException` → 400)에
+     * 맡긴다. `true`/`false` 외 값을 조용히 기본값으로 흡수하지 않는다(fail-closed).
+     *
      * @param archived 아카이브 필터. 생략 시 `false`(활성만).
      * @return 200 OK + `{ "data": [ ... ] }` (name 오름차순, fail-closed — 멤버십 없으면 빈 배열).
      * @throws org.springframework.web.server.ResponseStatusException 미인증 → 401 (CurrentActor).
