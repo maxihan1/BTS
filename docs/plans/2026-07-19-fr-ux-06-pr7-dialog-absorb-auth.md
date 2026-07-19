@@ -209,3 +209,26 @@ PR6 선례(정본 재사용 PR = controller self-review)대로 **실행 리스�
 ### 게이트 1 (2026-07-19) — Maxi 승인 ✅
 - 승인 → 구현 진행.
 - **agent 배정 확정**: 7파일 전부 `frontend-engineer` 구현. auth 3파일(AddAccount·Reauth·AddMember)은 `/bts-codereview`에서 security-engineer 검토(인증 상호작용 무변경).
+
+## 구현 결과 (2026-07-19)
+
+**7-병렬 edit-only dispatch + controller 배리어 커밋** (PR6 선례). 커밋 `6f12e2e1e`.
+
+| Task | 파일 | 결과 |
+|---|---|---|
+| 1 | admin/AddMemberDialog | ✅ Trigger→DialogTrigger 유지, 거짓 주석 1줄 정정 |
+| 2 | auth/AddAccountDialog | ✅ guide→DialogDescription, RadioGroup import 분리, 인증 로직 불변 |
+| 3 | auth/ReauthDialog | ✅ max-w-sm 보존, modalGuide→DialogDescription, LOCAL/LDAP/SSO 분기 불변 |
+| 4 | field-permissions/… | ✅ Cancel plain 유지(함정2), max-w-lg 스크롤 보존, key 재마운트 |
+| 5 | global-permissions/… | ✅ isOpen/onClose 매핑, Cancel plain(함정2) |
+| 6 | ooo/OooModal | ✅ 함정1 sm:justify-between, footer를 DialogFooter 형제로 |
+| 7 | settings/PatTokenModal | ✅ bare open + null 가드 유지, 토큰 유출 통로 없음 |
+
+**controller 직접 검증** (sub-agent 보고 불신 원칙, [[subagent-ktlint-false-green-controller-verify]]).
+- 변경 파일 정확히 7개 .tsx (오염 0), `DialogPrimitive` 잔재 0, 7파일 `ui/dialog` import
+- **7파일 전부 `git diff -w` 로직 diff-0** (실물 대조 — render 껍데기만 변경)
+- typecheck(tsconfig.app) 0 · eslint 0 · **전체 유닛 462파일 7349 green** (baseline 동일, 회귀 0)
+- Field/PatToken e2e 셀렉터 role/text 기반 견고 → 회귀 없음 (원본의 명시 role="dialog"/aria-modal은 래퍼 primitive가 자동 제공)
+- **AddAccountDialog 특별 검증**: agent 이중 보고 충돌 → git diff -w 실물이 정확(max-w-md, guide→Description). 어느 보고도 신뢰 안 하고 실물 확인
+
+**refactor-under-green**: 새 테스트 없이 기존 62 유닛 + 전체 7349 유닛이 흡수 후에도 green. TDD test:/feat: 커밋 순서 대신 diff-0가 회귀 가드.
