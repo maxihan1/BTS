@@ -181,7 +181,7 @@ function FormBody({
           </SelectContent>
         </Select>
         {showExistingProviderWarning && (
-          <p className="text-xs text-amber-800 dark:text-amber-200">{labels.existingProviderWarning}</p>
+          <p className="text-xs text-warning-text">{labels.existingProviderWarning}</p>
         )}
       </div>
 

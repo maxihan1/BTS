@@ -34,9 +34,9 @@ const labels = {
  * 색상을 상태 구분의 유일한 단서로 쓰지 않도록(NFR1) 텍스트 라벨을 항상 함께 렌더한다.
  */
 const STATUS_BADGE: Record<RuleExecutionStatus, { readonly label: string; readonly className: string }> = {
-  SUCCESS: { label: '성공', className: 'bg-green-100 text-green-800' },
-  PARTIAL: { label: '부분 성공', className: 'bg-amber-100 text-amber-800' },
-  FAILED: { label: '실패', className: 'bg-red-100 text-red-800' },
+  SUCCESS: { label: '성공', className: 'bg-success/10 text-success-text' },
+  PARTIAL: { label: '부분 성공', className: 'bg-warning/10 text-warning-text' },
+  FAILED: { label: '실패', className: 'bg-danger/10 text-danger-text' },
   SKIPPED: { label: '조건 불충족', className: 'bg-muted text-muted-foreground' },
 }
 
@@ -116,7 +116,7 @@ interface RuleExecutionOutcomeRowProps {
 function RuleExecutionOutcomeRow({ outcome }: RuleExecutionOutcomeRowProps): JSX.Element {
   return (
     <li className="flex items-center gap-2 text-xs">
-      <span className={outcome.success ? 'text-green-700' : 'text-red-700'} aria-hidden="true">
+      <span className={outcome.success ? 'text-success-text' : 'text-danger-text'} aria-hidden="true">
         {outcome.success ? '✓' : '✗'}
       </span>
       <span className="sr-only">{outcome.success ? labels.actionSuccess : labels.actionFailure}</span>
