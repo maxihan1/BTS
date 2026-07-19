@@ -77,8 +77,8 @@ function CodesRevealBox({ codes, onClose }: CodesRevealBoxProps): JSX.Element {
   }
 
   return (
-    <div className="space-y-4 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
-      <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+    <div className="space-y-4 rounded-lg border border-warning bg-warning/10 p-4">
+      <p className="text-sm font-medium text-warning-text">
         {mfaStrings.backupSaveWarning}
       </p>
 
@@ -86,7 +86,7 @@ function CodesRevealBox({ codes, onClose }: CodesRevealBoxProps): JSX.Element {
       <ul className="grid grid-cols-2 gap-1" aria-label={mfaStrings.backupCodesListLabel}>
         {codes.map((code) => (
           <li key={code}>
-            <code className="block rounded bg-white px-2 py-1 text-sm font-mono dark:bg-neutral-900">
+            <code className="block rounded bg-card px-2 py-1 text-sm font-mono">
               {code}
             </code>
           </li>
@@ -289,7 +289,7 @@ export function BackupCodesSection(): JSX.Element {
           {remaining > 0 && remaining <= 3 && (
             <div
               role="alert"
-              className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+              className="rounded-lg bg-warning/10 p-3 text-sm text-warning-text"
             >
               {mfaStrings.backupLowWarning}
             </div>

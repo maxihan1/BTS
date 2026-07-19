@@ -80,7 +80,7 @@ export function PatTokenModal({ issued, onClose }: PatTokenModalProps): JSX.Elem
             {labels.title}
           </DialogPrimitive.Title>
 
-          <p role="alert" className="mt-2 text-sm text-amber-800 dark:text-amber-200">
+          <p role="alert" className="mt-2 text-sm text-warning-text">
             {labels.warning}
           </p>
 
