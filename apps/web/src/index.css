@@ -188,20 +188,28 @@
 
   --syntax-number: oklch(0.44 0.17 25);
 
+  /* FR-UX-06 PR11 (D7) — 사이드바 배경 = --surface-sunken 값 (§3.1) */
   --sidebar: #F7F8F9;
 
+  /* 사이드바 기본 텍스트 = --text 값 ≡ --foreground */
   --sidebar-foreground: #172B4D;
 
+  /* 사이드바 활성 항목 배경 = --bg-selected 값 (§5.3 "사이드바 활성") */
   --sidebar-primary: #E9F2FF;
 
+  /* 사이드바 활성 항목 텍스트 = --text-selected 값 */
   --sidebar-primary-foreground: #0C66E4;
 
+  /* 사이드바 hover 배경 = --bg-neutral-hover 값 */
   --sidebar-accent: #F1F2F4;
 
+  /* 사이드바 hover 텍스트 = --text 값 ≡ --foreground */
   --sidebar-accent-foreground: #172B4D;
 
+  /* 사이드바 우측 테두리 = --border 값 (§3.1 "border-right: 1px --border") */
   --sidebar-border: #DCDFE4;
 
+  /* 사이드바 포커스 링 = --ring 값 (앱 전역 포커스 링과 통일) */
   --sidebar-ring: #388BFF;
 
   /* FR-UX-06 §7 상태 토큰 — ADS v2 실제값 (PR2 alias → PR3 확정) */
@@ -317,6 +325,7 @@
 
   --syntax-number: oklch(0.75 0.16 25);
 
+  /* FR-UX-06 PR11 (D7) — --sidebar-* 8종 역할은 :root 주석 참조. 값만 다크 대응 */
   --sidebar: #161A1D;
 
   --sidebar-foreground: #C7D1DB;
