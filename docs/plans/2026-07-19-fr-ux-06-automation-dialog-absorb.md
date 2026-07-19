@@ -37,7 +37,14 @@
 - **함정 6종 실측**(FR-UX-06 선례) — ①sm:justify-between ②Cancel onClick 이중닫힘 ③prop명 매핑 ④test 경로 flat vs __tests__/ ⑤DialogDescription aria ⑥DialogTrigger 유지.
 - **CI에 e2e(playwright) 잡 없음** — 머지 전 로컬 e2e 필수.
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- BC: 없음 (apps/web 프론트엔드 presentation-layer 리팩터. 백엔드 도메인 모델 무관).
+- 영향 엔티티: 없음. 신규 용어/유비쿼터스 언어: 없음.
+- 성격: 순수 render-shell 흡수 — radix Dialog primitive → 공용 `ui/dialog` compound 래퍼. 동작·데이터·API 불변.
+- 기존 결정 충돌: 없음.
+- 관련 ADR: [docs/decisions/2026-07-17-fr-ux-06-jira-redesign.md](../decisions/2026-07-17-fr-ux-06-jira-redesign.md) — **부모 승인 결정**(FR-UX-06 개편 Phase 2 Dialog 흡수). 본 작업은 그 하위 실행 단계이며 신규 결정 아님.
+- grill-with-docs: 도메인 무영향 리팩터라 no-op 처리(PR5/6/7 동일 선례). 대화형 grill 생략.
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
