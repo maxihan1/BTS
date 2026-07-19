@@ -20,8 +20,10 @@ export const LoginPage = () => {
     void navigate(resolvePostLoginNav(rawReturnTo, user?.startPage, user?.userId))
   }
 
+  // 로그인 라우트는 `_shell`(ShellLayout) 밖 rootRoute 직속이라 ShellLayout의 <main>을
+  // 물려받지 못한다 — main 랜드마크를 이 컴포넌트가 직접 소유해야 한다(C3, D-D).
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    <main className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-sm sm:max-w-md">
         <CardHeader>
           <CardTitle>
@@ -32,6 +34,6 @@ export const LoginPage = () => {
           <LoginForm onSuccess={handleSuccess} />
         </CardContent>
       </Card>
-    </div>
+    </main>
   )
 }

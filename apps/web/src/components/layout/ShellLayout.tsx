@@ -12,13 +12,15 @@ import { Sidebar } from './Sidebar'
  * 구성된 레이아웃을 렌더한다(FR1). 크롬은 PR10까지 `RootLayout`이 `<Header/>`로 소유했으나
  * PR11부터 이 컴포넌트로 이관됐다(FR6) — `RootLayout`은 더 이상 `<Header/>`를 렌더하지 않는다.
  *
- * `isAuthenticated === false`이면 크롬을 완전히 억제한 bare `Outlet`만 렌더한다 — 공개 공유
- * 대시보드(`dashboards.shared.$token`)처럼 `_shell` 하위에 있으나 미인증으로 접근 가능한
- * 라우트에서 사이드바가 새어나오지 않는다(E1, S-4).
+ * `isAuthenticated === false`이면 크롬을 억제하되 `<main>`으로 감싼 `Outlet`을 렌더한다(D-D) —
+ * 공개 공유 대시보드(`dashboards.shared.$token`)처럼 `_shell` 하위에 있으나 미인증으로 접근
+ * 가능한 라우트에서 사이드바가 새어나오지 않으면서도(E1, S-4) main 랜드마크는 보장한다.
  *
- * `<main>` 랜드마크는 `RootLayout`(`__root.tsx`)이 이미 `Outlet` 전체를 감싸 소유하므로,
- * 여기서는 콘텐츠 영역을 `<div>`로 감싼다(E7 — main 중복 방지, 최소 변경). 콘텐츠 영역은
- * `overflow-y-auto`로 독립 스크롤한다(NFR2 — 좁은 폭에서도 body가 아닌 컨테이너가 스크롤).
+ * `<main>` 랜드마크는 PR12부터 `RootLayout`(`__root.tsx`)이 아니라 이 컴포넌트가 소유한다(C3).
+ * 인증 분기의 콘텐츠 영역(`min-w-0 flex-1 overflow-y-auto`)을 `<main>`으로 승격해 `TopBar`의
+ * `<header>`(banner)·`Sidebar`의 `<aside>`(complementary)와 형제로 배치한다 — 이렇게 하면
+ * header/aside가 main 밖에 위치해 landmark가 오염되지 않는다. 콘텐츠 영역은 `overflow-y-auto`로
+ * 독립 스크롤한다(NFR2 — 좁은 폭에서도 body가 아닌 컨테이너가 스크롤).
  *
  * ★ 도움말 버튼(TopBar `onHelpClick`)은 전달하지 않는다 — `ShortcutsHelpDialog`와 그 열림
  * 상태는 여전히 `RootLayout`이 소유하며(FR6, G1), `ShellLayout`은 `Outlet`을 통해 렌더되는
@@ -30,7 +32,11 @@ export function ShellLayout(): JSX.Element {
   const isAuthenticated = useIsAuthenticated()
 
   if (!isAuthenticated) {
-    return <Outlet />
+    return (
+      <main>
+        <Outlet />
+      </main>
+    )
   }
 
   return (
@@ -38,9 +44,9 @@ export function ShellLayout(): JSX.Element {
       <TopBar />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
-        <div className="min-w-0 flex-1 overflow-y-auto">
+        <main className="min-w-0 flex-1 overflow-y-auto">
           <Outlet />
-        </div>
+        </main>
       </div>
     </div>
   )
