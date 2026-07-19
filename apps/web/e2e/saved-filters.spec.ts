@@ -245,13 +245,6 @@ async function fillAndSearch(
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe('FR-SR-03 저장 필터 (SF-1 저장/목록/불러오기 · SF-2 공유 · SF-3 별표 · SF-4 게이팅 · SF-5 OCC충돌 · SF-6 삭제)', () => {
-  // SF 시나리오는 전부 login+seed+search+상호작용의 무거운 흐름이라 4-worker 병렬 부하에서 기본 30s
-  // 예산이 빠듯하다(딥링크 네비·재조회 대기에서 간헐 타임아웃, 격리 실행은 ~2s). 그룹 전체에 test.slow()로
-  // 예산 3배(30s→90s)를 준다.
-  test.beforeEach(() => {
-    test.slow()
-  })
-
   // ──────────────────────────────────────────────────────────────────────────
   // SF-1. 저장·목록·불러오기
   //
@@ -313,9 +306,10 @@ test.describe('FR-SR-03 저장 필터 (SF-1 저장/목록/불러오기 · SF-2 �
     const filterLink = menuContent.getByRole('link', { name: TEST_FILTER_NAME, exact: true })
     await expect(filterLink).toBeVisible()
 
-    // When. Link 클릭 → /search?filterId= URL로 이동 (Radix 드롭다운은 자동 닫힘 없음)
+    // When. Link 클릭 → filterId 딥링크 이동 (Radix 드롭다운은 자동 닫힘 없음).
+    // 중간 `?filterId=` URL은 SearchRouteAdapter가 즉시 `?q=`로 replace하는 transient 상태라 이를
+    // waitForURL로 관측하면 레이스(부하 시 중간 상태를 놓쳐 hang)가 된다 → 최종 `?q=`(아래)로만 검증.
     await filterLink.click()
-    await page.waitForURL(`**/search?filterId=${preSeededId}**`)
 
     // Radix DropdownMenu는 Link 클릭 시 자동으로 닫히지 않는다.
     // 드롭다운이 열려 있으면 Radix가 배경에 aria-hidden을 적용해
@@ -451,7 +445,8 @@ test.describe('FR-SR-03 저장 필터 (SF-1 저장/목록/불러오기 · SF-2 �
     const filterMenuItem = favMenuContent.getByRole('menuitem', { name: TEST_FILTER_NAME, exact: true })
     await expect(filterMenuItem).toBeVisible()
     await filterMenuItem.click()
-    await page.waitForURL(`**/search?filterId=${favTargetId}**`)
+    // 중간 `?filterId=`(즉시 `?q=`로 replace되는 transient 상태)는 관측 레이스라 최종 `?q=`로 검증한다.
+    await page.waitForURL(/\/search\?q=/, { timeout: 10_000 })
   })
 
   // ──────────────────────────────────────────────────────────────────────────
