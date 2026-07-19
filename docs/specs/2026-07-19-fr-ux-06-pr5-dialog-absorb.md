@@ -99,16 +99,17 @@ DialogHeader · DialogFooter · DialogTitle · DialogDescription`). PR5가 확�
 
 ## 엣지 케이스 / 리스크 (self-adversarial 발견 4건)
 
-- **R1 (★래퍼 애니메이션 문법 검증 필수).** 래퍼 `DialogContent`/`DialogOverlay`가 `data-open:` /
-  `data-closed:` variant를 쓰는데 `index.css`에 이 `@custom-variant`가 **정의돼 있지 않다**(정의된 건
-  `dark`뿐). Radix는 `data-state="open"`을 렌더하므로 래퍼 애니메이션이 **실제로 안 먹을 수 있다**.
-  → 구현 첫 단계에서 실브라우저/스토리로 확인. 안 먹으면 **래퍼를 `data-[state=open]:`으로 수정**
-  (별도 커밋, 래퍼 API 확정의 일부). 흡수 대상 파일 로직과 무관하니 래퍼만 고침.
+- **R1 (해소됨 — 리뷰 실측으로 진단 정정).** 래퍼 `data-open:`/`data-closed:` variant는 **이미 정상 동작**한다.
+  `index.css:4`의 `@import "shadcn/tailwind.css"`가 `@custom-variant data-open { &:where([data-state="open"]) ... }`를
+  정의하고(tailwind v4 엔진 컴파일 확인), dropdown-menu·popover·select·tooltip 4종이 이미 프로덕션에서 소비 중.
+  최초 진단(index.css에 미정의)은 `@import` 체인을 안 본 실수. → **래퍼 수정 no-op**(`data-[state=open]:` 치환 금지,
+  4종과 표기 불일치). T1은 계약 회귀 가드 테스트 확장 + 실브라우저 애니메이션 육안 확인만.
 - **R2 (onClose 인터페이스 변형).** `VersionFormDialog`는 `onClose` prop. §API계약 1의 어댑팅으로
   외부 시그니처 보존.
-- **R3 (Description/aria-describedby).** 7파일은 `aria-describedby` 미처리(Radix 콘솔 경고 잠재),
-  5파일은 `={undefined}` 명시. 래퍼 `DialogContent`는 Description 강제 안 함 → 설명 없는 Dialog는
-  `<DialogContent aria-describedby={undefined}>`로 경고 억제(현행 5파일과 동일 처리)를 **12파일에 통일**.
+- **R3 (Description/aria-describedby, 카운트 정정).** 실측 분포 = `={undefined}` 명시 5파일 +
+  미기재 6파일 + **명시 id 연결 1파일**(ResolutionModal, 이미 올바르게 배선). 래퍼 `DialogContent`는
+  Description 강제 안 함 → 설명 있는 2파일(ResolutionModal·ReleaseNotes)은 `<DialogDescription>` 승격,
+  나머지는 `<DialogContent aria-describedby={undefined}>`로 통일.
 - **R4 (시각 회귀 가시성).** 12파일 시각 동시 변화라 "흡수 탓 회귀"와 "시각 통일 탓 변화"가 섞인다.
   완화: 각 파일 흡수는 **로직 diff 0(구조만 교체)**임을 커밋 단위로 보장 → 시각 외 변화가 diff에
   나오면 곧 버그. 스크린샷 QA는 게이트2 또는 후속.

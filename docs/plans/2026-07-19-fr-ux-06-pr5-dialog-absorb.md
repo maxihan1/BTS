@@ -84,50 +84,51 @@ issue-tracking BC의 화면들이 각자 Radix Dialog를 직접 import하고 Ove
 ## Plan
 
 > writing-plans 대신 실측 기반 직접 분해(반복 흡수 12x + 파일별 특이사항 정밀 반영). 형식(메타·RED/GREEN/REFACTOR) 준수.
-> **wave**: wave1 = T1(래퍼 확정) → wave2 = T2~T13(12파일 병렬, 전부 depends-on[1], files 겹침 0).
-> **★병렬 흡수 규칙(PR4 교훈 [[worktree-lint-staged-shared-git-stash-collision]]·[[parallel-dispatch-precommit-hook-race]])**: 각 sub-agent는 **edit-only**(커밋 금지), controller가 **자기 파일만 stage 후 순차 커밋**해 index.lock/공유stash 레이스 회피. 리뷰 뮤테이션 오염 방지 위해 대조는 `git show HEAD:` ([[parallel-review-mutation-contaminates-peers]]).
+> **wave**: wave1 = T1(래퍼 확정) → wave2 = T2~T13(12파일 병렬, 전부 depends-on[1], files 겹침 0) → wave3 = T14.
+> **★병렬 흡수 규칙(리뷰 C2 반영, PR4 교훈 [[worktree-lint-staged-shared-git-stash-collision]]·[[parallel-dispatch-precommit-hook-race]])**:
+> 1. 각 sub-agent는 **edit-only**(커밋 절대 금지).
+> 2. **커밋 배리어** — controller는 **12개 편집이 전부 반환된 뒤에만** 첫 커밋 시작. 편집 진행 중 커밋하면 lint-staged 부분 stash가 진행 중 파일을 소실시킴.
+> 3. controller가 **자기 파일만 stage 후 순차 커밋**(index.lock 회피).
+> 4. **검증 병렬도 제한** — `pnpm --filter web test <file>` 를 12 동시 실행 금지, **3~4개 배치**(vitest 워커 폭증·orphan vite [[e2e-orphan-vite-after-worktree-remove]] 회피).
+> 5. 리뷰 대조는 `git show HEAD:` ([[parallel-review-mutation-contaminates-peers]]).
 
 ### 흡수 공통 절차 (T2~T13 전부 이 템플릿 따름)
 
-- **RED**. 해당 `*.test.tsx`에 흡수 계약 어서션 추가 → 현재 radix 직접 import라 실패.
+- **RED**. 해당 `*.test.tsx`에 흡수 계약 어서션 **추가**(수정 금지, 리뷰 C1) → 현재 radix 직접 import라 실패.
   1. `from 'radix-ui'` Dialog import 부재(흡수 완료 신호) — 소스 문자열/구조 검증.
   2. `role="dialog"` 존속(getByRole('dialog')).
-  3. 시각 어서션이 기존에 있으면(`bg-black/40`·X버튼 부재 등) **신규 Jira값으로 갱신**(스크림 /50·X버튼 존재).
+  - ★ **기존 행위 어서션은 절대 수정하지 않는다** — 12파일 test에 시각 어서션(bg-black/40·X부재·rounded-xl)이 **0건**임이 리뷰로 확인됨. 기존 테스트를 통과시키려 손대야 한다면 그건 곧 로직/계약 변화 신호 → 멈추고 controller 보고.
 - **GREEN**. `radix-ui` Dialog 직접 구조 → `@/components/ui/dialog` compound 교체.
   - `Root/Portal/Overlay/Content` → `<Dialog open onOpenChange><DialogContent className="{기존 max-w/max-h}">`.
   - `<Title>` → `<DialogHeader><DialogTitle>`. 설명 `<p>` 있으면 `<DialogDescription>` 승격, 없으면 `<DialogContent aria-describedby={undefined}>`로 통일(R3).
-  - footer `flex justify-end` → `<DialogFooter>`. `<Close asChild><Button>` 유지.
-  - **비시각 로직(폼·폴링·blob·복사·상태초기화)은 diff 0 — 구조만 교체**(R4 회귀 가시성).
+  - footer `flex justify-end` → `<DialogFooter>`. `justify-between` 변형은 **`className="sm:justify-between"`**(bare `justify-between`은 래퍼 `sm:justify-end`를 못 이김, 리뷰 B2). `<Close asChild><Button>` 유지.
+  - ★ **grid gap-4 재간격 정리(리뷰 C1)** — 래퍼 `DialogContent`=`grid gap-4`, `DialogHeader`=`flex gap-2`다. 기존의 Title `mb-4`·본문 `mb-*`·footer `mt-6` 같은 **개별 margin을 제거**해 이중 간격을 없앤다. 이건 "구조 교체에 수반되는 정당한 편집"이며 로직 변화가 아니다.
+  - **비시각 로직(폼·폴링·blob·복사·상태초기화·핸들러·effect)은 diff 0 — render() 반환부만 교체**(R4). 리뷰는 `git show HEAD:`로 핸들러/effect 라인 byte-identical 확인.
 - **REFACTOR**. 남은 인라인 클래스 상수·불필요 import 제거.
-- **검증**. `pnpm --filter web test <file>.test.tsx` + 흡수 후 `grep "radix-ui" <file>` = 0.
+- **검증**. `pnpm --filter web test <file>.test.tsx`(3~4개 배치) + 흡수 후 `grep "radix-ui" <file>` = 0.
 
 ---
 
-### Task 1. 래퍼 확정 — 애니메이션 문법(R1) 검증·수정 + 계약 테스트
+### Task 1. 래퍼 계약 테스트 확장 + 애니메이션 문법(R1) 실브라우저 확인
+
+> ★ 리뷰로 정정됨: 래퍼 애니메이션은 **이미 동작한다**(shadcn/tailwind.css의 `@custom-variant data-open`이 `[data-state="open"]`로 컴파일, dropdown/popover/select/tooltip 4종이 이미 소비). **래퍼 코드 수정 없음(no-op)** — `data-[state=open]:`으로 치환 금지(4종과 표기 불일치). `ui/dialog.test.tsx`는 **이미 존재**(117줄) → "확장".
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/ui/dialog.tsx`, `apps/web/src/components/ui/dialog.test.tsx`]
+- files: [`apps/web/src/components/ui/dialog.test.tsx`] (dialog.tsx는 무수정 — 문법 이미 정상)
 - depends-on: []
 
-**RED**: `ui/dialog.test.tsx` 신규.
-- `<Dialog open><DialogContent>본문</DialogContent></Dialog>` 렌더 후:
-  - `getByRole('dialog')` 존재.
-  - 우상단 X = `getByRole('button', { name: 'Close' })`(sr-only) 존재.
-  - **애니메이션 문법 정합** — `DialogContent`/`DialogOverlay` className이 Radix 실렌더 속성과 맞는
-    `data-[state=open]:` / `data-[state=closed]:` 문법 포함. 현재 `data-open:`/`data-closed:`라 **실패(RED)**.
-- 실패 근거: `index.css`에 `data-open` `@custom-variant` 미정의 + Radix는 `data-state="open"` 렌더 →
-  현 문법은 매칭 안 돼 열림/닫힘 애니메이션 소실.
+**RED(확장)**: 기존 `ui/dialog.test.tsx`(TC-1~3)에 어서션 추가.
+- `DialogContent`/`DialogOverlay` className이 `data-open:` / `data-closed:` variant를 **보유**(현 정상 문법)함을 어서션 — 회귀 가드. (기존 X버튼 `name:/close/i` 어서션은 그대로.)
+- 주의: jsdom은 애니메이션을 실행하지 않아 "애니메이션이 실제 먹는지"는 유닛으로 못 잡음. 유닛은 클래스 문자열 존속만.
 
-**GREEN**: `ui/dialog.tsx`의 `data-open:` → `data-[state=open]:`, `data-closed:` → `data-[state=closed]:` 치환
-(`DialogOverlay` L40, `DialogContent` L59, `fade`/`zoom` 파생 포함). 실브라우저로 열림/닫힘 트랜지션 육안 확인.
+**GREEN**: 래퍼 코드 변경 없음. **실브라우저**(pnpm dev)로 Dialog 열림/닫힘 트랜지션이 실제 재생되는지 육안 1회 확인 → R1 종결.
 
-**REFACTOR**: 없음(치환만). 스크림/애니메이션 상수 추출은 과함 → 스킵.
+**REFACTOR**: 없음.
 
-**검증**: `pnpm --filter web test dialog.test.tsx` + `pnpm --filter web typecheck`.
+**검증**: `pnpm --filter web test dialog.test.tsx` + `pnpm --filter web typecheck` + 실브라우저 애니메이션 확인.
 
-> ⚠️ 만약 실브라우저 검증 결과 `data-open:`이 tailwind v4에서 실제 동작하면(예상 밖) GREEN을 no-op으로
-> 두고 테스트만 실제 문법에 맞춤. **추측 금지 — 구현 첫 액션이 실동작 확인**([[read-errors-dont-guess]] 정신).
+> T1이 wave1 선행인 이유는 이제 "래퍼 수정"이 아니라 **래퍼 계약 회귀 가드를 12파일 착수 전에 확립**(compound API 계약 고정)이다. depends-on[1]은 유효.
 
 ---
 
@@ -139,7 +140,7 @@ issue-tracking BC의 화면들이 각자 Radix Dialog를 직접 import하고 Ove
 ### Task 3. issue/ResolutionModal 흡수
 
 **메타**. files: [`apps/web/src/components/issue/ResolutionModal.tsx`, `apps/web/src/components/issue/__tests__/ResolutionModal.test.tsx`] · depends-on: [1]
-**특이사항**: test 경로가 `__tests__/`. "취소" 버튼(`name:'취소'`) 닫기 테스트 존속. 공통 절차.
+**특이사항**: test 경로가 `__tests__/`. onCancel/handleOpenChange 패턴(VersionForm과 동형 — 로컬 handleOpenChange를 `onOpenChange`로 전달). **이미 `aria-describedby={MODAL_DESCRIPTION_ID}` + `<p id>` 올바르게 배선**(미처리 아님) → 설명 `<p>`를 `<DialogDescription>`로 승격(2개 승격 대상 중 하나, 나머지는 ReleaseNotes). "취소" 버튼(`name:'취소'`) 닫기 테스트 존속. 공통 절차.
 
 ### Task 4. issues/CloneIssueDialog 흡수
 
@@ -153,8 +154,8 @@ issue-tracking BC의 화면들이 각자 Radix Dialog를 직접 import하고 Ove
 
 ### Task 6. issues/BulkOperationResultDialog 흡수
 
-**메타**. files: [`apps/web/src/components/issues/BulkOperationResultDialog.tsx`] (+ 있으면 test) · depends-on: [1]
-**특이사항**: `max-w-lg`. 폴링 로직·aria-live 무변화. footer 닫기가 raw `<Close className=...>`(Button 아님) → `<DialogClose asChild><Button variant="outline">`로 정규화(시각 통일 취지). aria-describedby 없음 → undefined 통일.
+**메타**. files: [`apps/web/src/components/issues/BulkOperationResultDialog.tsx`, `apps/web/src/components/issues/BulkOperationResultDialog.test.tsx`] · depends-on: [1]
+**특이사항**: `max-w-lg`. 폴링 로직·aria-live 무변화. footer 닫기가 raw `<Close className=...>`(Button 아님) → `<DialogClose asChild><Button variant="outline">`로 정규화(시각 통일 취지). aria-describedby 없음 → undefined 통일. test에 `aria-labelledby||aria-label` 존재 검사 있음 → DialogTitle이 aria-labelledby 유지하므로 통과.
 
 ### Task 7. issues/MoveIssueDialog 흡수
 
@@ -179,20 +180,20 @@ issue-tracking BC의 화면들이 각자 Radix Dialog를 직접 import하고 Ove
 
 ### Task 11. version/ReleaseNotesDialog 흡수
 
-**메타**. files: [`apps/web/src/components/version/ReleaseNotesDialog.tsx`] (+ 있으면 test) · depends-on: [1]
+**메타**. files: [`apps/web/src/components/version/ReleaseNotesDialog.tsx`, `apps/web/src/components/version/ReleaseNotesDialog.test.tsx`] · depends-on: [1]
 **특이사항**: `max-w-2xl max-h-[80vh] flex flex-col`(스크롤). 설명 `<p>` → `<DialogDescription>` 승격.
-footer `justify-between`(메타+버튼) → `DialogFooter className="justify-between"`. 클립보드 복사 로직 무변화.
+footer `justify-between`(메타+버튼) → **`DialogFooter className="sm:justify-between"`**(bare `justify-between`은 래퍼 `sm:justify-end`를 못 이김, 리뷰 B2). 클립보드 복사 로직 무변화.
 `OVERLAY_CLASS`/`CONTENT_CLASS` 상수 제거(래퍼가 담당).
 
 ### Task 12. custom-fields/CustomFieldFormDialog 흡수
 
-**메타**. files: [`apps/web/src/components/custom-fields/CustomFieldFormDialog.tsx`, `apps/web/src/components/custom-fields/CustomFieldFormDialog.test.tsx`] · depends-on: [1]
-**특이사항**: 415줄(최대). JSONB 커스텀필드 폼 로직 무변화. 공통 절차 신중 적용.
+**메타**. files: [`apps/web/src/components/custom-fields/CustomFieldFormDialog.tsx`, `apps/web/src/components/custom-fields/__tests__/CustomFieldFormDialog.test.tsx`] · depends-on: [1]
+**특이사항**: 415줄(최대). test 경로 `__tests__/`. JSONB 커스텀필드 폼 로직 무변화. 공통 절차 신중 적용.
 
 ### Task 13. issue-templates/IssueTemplateFormDialog 흡수
 
-**메타**. files: [`apps/web/src/components/issue-templates/IssueTemplateFormDialog.tsx`, `apps/web/src/components/issue-templates/IssueTemplateFormDialog.test.tsx`] · depends-on: [1]
-**특이사항**: 423줄, footer 2개소. 템플릿 폼 로직 무변화.
+**메타**. files: [`apps/web/src/components/issue-templates/IssueTemplateFormDialog.tsx`, `apps/web/src/components/issue-templates/__tests__/IssueTemplateFormDialog.test.tsx`] · depends-on: [1]
+**특이사항**: 423줄, footer 2개소, test 경로 `__tests__/`. 템플릿 폼 로직 무변화.
 
 ---
 
@@ -204,6 +205,7 @@ footer `justify-between`(메타+버튼) → `DialogFooter className="justify-bet
 - `pnpm --filter web typecheck && lint && test` 전체 green.
 - 관련 E2E(이슈 상세/일괄/버전/컴포넌트) green — `role="dialog"` 147 계약 무손상.
 - 시각 통일 육안 확인(스크림 /50·X버튼·rounded-lg·bg-popover) — 실브라우저 대표 3화면 스크린샷.
+- **내부 간격(gap) 회귀 확인(리뷰 C1)** — grid gap-4 도입 후 잔존 margin 이중간격 없는지, 헤더/본문/footer 세로 리듬이 흡수 전과 어색하지 않은지 육안. 특히 큰 폼(Move·CustomField·IssueTemplate).
 
 ## Plan 메타
 
@@ -214,4 +216,27 @@ footer `justify-between`(메타+버튼) → `DialogFooter className="justify-bet
 - 병렬 dispatch: wave2 12병렬은 **edit-only + controller 순차 커밋** 필수(index.lock 레이스 회피).
 - 추가 검증: typecheck · lint · vitest · playwright(qa-engineer, T14)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 엔지니어링 초점 경량 리뷰 (2026-07-19, sub-agent 2종 병렬, 실측 기반)
+
+리뷰 방식 = Maxi 선택(디자인 목업 대신 실행 리스크 어드버서리얼). frontend-engineer + code-reviewer 병렬, 코드 무수정.
+
+**BLOCKER 3건 (전부 plan 수정으로 해소 — 아래 반영 완료).**
+- **B1. R1 진단 오류.** 래퍼 `data-open:`/`data-closed:` variant는 **이미 정상 동작**. `apps/web/src/index.css:4`의 `@import "shadcn/tailwind.css"`가 `@custom-variant data-open { &:where([data-state="open"]) ... }`를 정의(실제 tailwind v4 엔진 컴파일 확인). dropdown-menu·popover·select·tooltip 4종이 이미 프로덕션에서 이 컨벤션 소비. 내 spec R1(index.css에 미정의) 진단은 `@import` 체인 미확인 실수. → **T1은 래퍼 수정 no-op, 테스트 확장만.** `data-[state=open]:`으로 치환하면 4종과 표기 불일치 생기니 **치환 금지**.
+- **B2. ReleaseNotes footer.** Task 11의 `className="justify-between"`은 래퍼 `DialogFooter` 기본 `sm:justify-end`와 tailwind-merge상 충돌 그룹이 안 묶여 **둘 다 생존 → 데스크톱(sm+)서 justify-end가 이김**(space-between 의도 무효). `twMerge` 직접 실행 검증. → **`sm:justify-between` 지정**으로 정정.
+- **B3. files 경로 선언 오류.** Task 12·13 test는 실제 `__tests__/` 하위인데 flat로 선언. Task 6·11 test는 실재하는데 미선언("있으면"). wave 규약(files 선언 파일만 수정) 저해. → 4개 Task files 정정.
+
+**CONCERN 4건 (반영 완료).**
+- **C1. grid gap-4 재간격(가장 실질).** 래퍼 `DialogContent`=`grid gap-4`, `DialogHeader`=`flex gap-2`인데 기존 12파일은 block 흐름 + 개별 margin(Title `mb-4`·footer `mt-6` 등). gap과 잔존 margin이 **이중 간격**. 흡수는 margin 정리라는 구조 편집을 동반 → 흡수 공통 절차·T14 QA·spec 시각 델타에 명시. **강제 기전**: 기존 행위 어서션 **수정 금지(추가만)** + 리뷰는 `git show HEAD:`로 render()부 한정 확인.
+- **C2. 병렬 커밋 배리어.** edit-only+순차커밋은 index.lock은 막으나 lint-staged 부분 stash 레이스([[worktree-lint-staged-shared-git-stash-collision]])는 못 막음. → **"12편집 전부 완료(배리어) 후에만 첫 커밋 시작"** 명문화. 검증은 **3~4개 배치**(12 동시 vitest 워커 폭증·orphan vite 위험).
+- **C3. Task 1은 "확장".** `ui/dialog.test.tsx` **이미 존재**(117줄, TC-1~3, X를 `name:/close/i`로 이미 의존). 신규분은 애니메이션 문법 어서션뿐. R1은 jsdom이 애니메이션 미실행이라 테스트로 못 잡음 → **실브라우저 확인**.
+- **C4. Task 3 ResolutionModal.** onCancel/handleOpenChange 패턴(VersionForm과 동형) 특이사항 누락. 또 이미 `aria-describedby={MODAL_DESCRIPTION_ID}` 올바르게 배선(미처리 아님). spec R3 카운트 정정(5 undefined + 6 미기재 + 1 명시연결).
+
+**OK (문제없음).**
+- 시각 변화로 깨질 기존 테스트 **0건**(12파일 test 전수 grep — bg-black/40·rounded-xl·X부재·overlay 클래스 어서션 없음, 전부 role/label/text 기반). plan 무회귀 주장 성립.
+- role="dialog" E2E 안전(실측 164회). X버튼 영어 `Close` vs 닫기 한국어 `취소`/`닫기` → strict mode 무충돌. 대상 dialog 내 이름없는 `getByRole('button')`·버튼개수 어서션 0.
+- 놓친 파일 0(issue-tracking 12 + board 2 전수 확인). compound API 커버리지 완전(onEscapeKeyDown 등 특수요구 0).
+- board/2 제외 = BC 격리상 타당. **이월 주의**: resolution 다이얼로그 2개(issue/ResolutionModal + board/ResolutionPickerModal) → PR6/7에 ResolutionPickerModal 흡수 명시.
+
+**BLOCKER 처리**: 전부 근본 설계 결함이 아니라 문구·경로·클래스명 오류 → plan 수정으로 해소, 재리뷰 불요. 게이트1 진입.
