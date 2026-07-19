@@ -10,11 +10,6 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => vi.fn(),
 }))
 
-// Header mock — Header 내부 의존성(라우터/쿼리) 격리
-vi.mock('@/components/Header', () => ({
-  Header: () => null,
-}))
-
 // CommandPalette mock — 내부에서 useNavigate(TanStack Router)를 쓰므로 Outlet-only mock과 충돌 방지
 vi.mock('@/components/command-palette/CommandPalette', () => ({
   CommandPalette: () => null,

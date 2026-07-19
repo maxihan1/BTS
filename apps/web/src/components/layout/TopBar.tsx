@@ -21,8 +21,13 @@ export interface TopBarProps {
  * 설정(기존 서브라우트 `/settings/account-links` — `/settings` 인덱스 라우트 부재라 죽은 링크 금지) ·
  * 계정 드롭다운(`AccountMenu`).
  *
- * 컴포넌트만 생성 — 트리 배선은 T7(ShellLayout 확장)이 담당한다. 검색·InboxBell·계정 드롭다운
- * 로직은 `Header.tsx`(축소 예정)를 재현한다 — Header 삭제 시 발생하는 일시 중복은 의도됨.
+ * `ShellLayout`(T7)이 트리에 배선한다. 검색·InboxBell·계정 드롭다운 로직은 옛 `Header.tsx`를
+ * 재현한다 — Header는 T7에서 삭제됐으므로 더 이상 중복이 아니다.
+ *
+ * 도움말 버튼은 `onHelpClick`이 전달됐을 때만 렌더한다 — `ShortcutsHelpDialog` 열림 상태는
+ * `RootLayout`이 소유하는데 `ShellLayout`은 그 자손(Outlet 경유)이라 prop으로 전달받을 수
+ * 없다. `ShellLayout`은 현재 `onHelpClick`을 전달하지 않으므로(PR11 이연) 이 버튼은 조립된
+ * 화면에 나타나지 않는다 — 클릭해도 아무 동작을 하지 않는 죽은 버튼을 방지한다.
  */
 export function TopBar({ onHelpClick }: TopBarProps) {
   const navigate = useNavigate()
@@ -68,14 +73,16 @@ export function TopBar({ onHelpClick }: TopBarProps) {
 
       <InboxBell />
 
-      <button
-        type="button"
-        className="rounded-md p-1.5 hover:bg-accent"
-        aria-label="도움말"
-        onClick={onHelpClick}
-      >
-        <HelpCircle className="size-4" />
-      </button>
+      {onHelpClick !== undefined && (
+        <button
+          type="button"
+          className="rounded-md p-1.5 hover:bg-accent"
+          aria-label="도움말"
+          onClick={onHelpClick}
+        >
+          <HelpCircle className="size-4" />
+        </button>
+      )}
 
       {/* 🔴 /settings 인덱스 라우트 부재 — 죽은 링크 방지를 위해 실재 서브라우트로 랜딩(PR13서 전용 인덱스 도입 예정) */}
       <Link to="/settings/account-links" className="rounded-md p-1.5 hover:bg-accent" aria-label="설정">
