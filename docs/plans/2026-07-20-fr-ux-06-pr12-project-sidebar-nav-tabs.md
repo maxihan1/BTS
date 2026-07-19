@@ -201,6 +201,8 @@ FR 총수 불변 129 (마킹은 #277 PR-5 몫).
 - `ProjectTree.tsx` — `useProjects()` + `useParams({strict:false})`. 2단 그룹 아코디언. 활성 자동펼침=
   파생 상태(현재 key), 수동 펼침=ephemeral useState. 접힘 레일(useSidebarCollapsed)=아이콘/이니셜 sr-only.
   리포트/설정 서브그룹 링크는 실 라우트 상수 배열(리포트 4·설정 11). 아이콘 `aria-hidden`.
+  **디자인 가이드(R1·R2·R4)**: `--sidebar-*` 토큰 클래스 재사용(PR11 `NAV_LINK_CLASS` 관례·색 하드코딩 0),
+  디스클로저=lucide `ChevronRight`/`ChevronDown`, 활성=`aria-current="page"`+`[&.active]` 시각, 로딩=skeleton.
 - `nav-labels.ts` — `projectNav: '프로젝트'` 추가 + **S3 주석(:9) 갱신**(내작업·최근·필터에서 프로젝트 제거,
   "프로젝트는 PR12에서 추가됨" 명기). 리포트/설정 서브라벨은 ProjectTree 로컬 상수(nav-labels 최소 증분).
 
@@ -316,4 +318,24 @@ src/routes/login.test.tsx` + `navigation-contract.test.tsx` green(랜드마크 �
 - 추가 검증: typecheck(tsconfig.app [[ci-typecheck-tsconfig-app-vs-local]]), lint, vitest 전수(≥7391),
   playwright 전수(530+신규). FR 129 불변 → verify-master-plan 통과.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-design-review — 자가 디자인-렌즈 (2026-07-20)
+
+> 대화형 스킬 대신 자가 리뷰 — 디자인은 FR-UX-06 스펙 §3.1 + 프로토타입으로 기확정.
+> `--sidebar-*` 8종(라이트/다크)·lucide Chevron 확보 실측.
+
+- ✅ **디자인 스펙 §3.1 섹션2 부합** — 2단 그룹 트리가 스펙의 "프로젝트(트리, 확장 시 …)" 부합.
+  요약 생략은 S3(라우트 부재)로 정당, 스펙 대비 유일 deviation·비차단.
+- ⚠️ **권장 R1 (T2 반영)** — ProjectTree는 PR11 Sidebar의 `--sidebar-*` 토큰 클래스 재사용
+  (`bg-sidebar`·`text-sidebar-foreground/80`·`hover:bg-sidebar-accent`·`[&.active]:bg-sidebar-accent`).
+  신규 색 하드코딩 금지(PR4 토큰화 정신·[[contrast-matrix-state-vs-surface-blindfold]]).
+- ⚠️ **권장 R2 (T2 반영)** — 디스클로저 아이콘=lucide `ChevronRight`(접힘)/`ChevronDown`(펼침),
+  `aria-hidden`(기존 select/dropdown 관례). 프로젝트/그룹 2단 모두 동일.
+- ⚠️ **권장 R3** — 3단 중첩(프로젝트→서브링크→리포트/설정 그룹 항목)의 들여쓰기를 264px에서 단계적
+  시각 구분(pl 증가). 접힘 레일(64px) 트리는 아이콘/이니셜로 축약 = 의도된 degrade(비차단).
+- ⚠️ **권장 R4 (T2 반영)** — 활성 프로젝트 강조는 `aria-current="page"` + `[&.active]` 시각 토큰 동시.
+  로딩=PR2 skeleton 프리미티브 재사용.
+- **BLOCKER: 없음.** GAP-1(설정그룹 노출)은 디자인 아닌 권한 판단 → 게이트1 Maxi.
+
+R1·R2·R4는 T2 구현 가이드로 흡수(아래 반영). R3는 구현 재량.
