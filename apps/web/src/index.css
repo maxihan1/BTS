@@ -188,21 +188,21 @@
 
   --syntax-number: oklch(0.44 0.17 25);
 
-  --sidebar: oklch(0.985 0 0);
+  --sidebar: #F7F8F9;
 
-  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-foreground: #172B4D;
 
-  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary: #E9F2FF;
 
-  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary-foreground: #0C66E4;
 
-  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent: #F1F2F4;
 
-  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-accent-foreground: #172B4D;
 
-  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-border: #DCDFE4;
 
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: #388BFF;
 
   /* FR-UX-06 §7 상태 토큰 — ADS v2 실제값 (PR2 alias → PR3 확정) */
   --bg-neutral: #F7F8F9;
@@ -317,21 +317,21 @@
 
   --syntax-number: oklch(0.75 0.16 25);
 
-  --sidebar: oklch(0.205 0 0);
+  --sidebar: #161A1D;
 
-  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-foreground: #C7D1DB;
 
-  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary: #082145;
 
-  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary-foreground: #579DFF;
 
-  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent: #A1BDD914;
 
-  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-accent-foreground: #C7D1DB;
 
-  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-border: #2C333A;
 
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-ring: #85B8FF;
 
   /* FR-UX-06 §7 상태 토큰 — ADS v2 실제값 (PR2 alias → PR3 확정) */
   --bg-neutral: #BCD6F00A;
