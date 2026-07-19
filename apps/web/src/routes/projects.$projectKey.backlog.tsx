@@ -2,9 +2,22 @@
 import type { JSX } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { BacklogBoard } from '@/components/backlog/BacklogBoard'
-import { ProjectNavTabs } from '@/components/project/ProjectNavTabs'
+import { ProjectNavTabs, type ProjectNavTabLink } from '@/components/project/ProjectNavTabs'
 import { useProjectPermissions } from '@/hooks/use-project-permissions'
 import { backlogLabels } from '@/i18n/backlog-labels'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 뷰 전환 nav 링크 — ProjectNavTabs에 전달(회귀-무해 원칙: 기존 인라인 nav 링크 집합 그대로)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 백로그 페이지 뷰 전환 링크 — 보드·타임라인·벨로시티·CFD·사이클/리드 타임 (backlog.tsx 인라인 nav 원본과 동일 순서) */
+const BACKLOG_VIEW_NAV_LINKS: readonly ProjectNavTabLink[] = [
+  { to: '/projects/$projectKey/board', label: backlogLabels.page.boardLink },
+  { to: '/projects/$projectKey/timeline', label: backlogLabels.page.timelineLink },
+  { to: '/projects/$projectKey/reports/velocity', label: backlogLabels.page.velocityLink },
+  { to: '/projects/$projectKey/reports/cfd', label: backlogLabels.page.cfdLink },
+  { to: '/projects/$projectKey/reports/cycle-time', label: backlogLabels.page.cycleTimeLink },
+]
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BacklogRouteAdapter
@@ -57,16 +70,7 @@ export function BacklogPage({ projectKey }: BacklogPageProps): JSX.Element {
       {/* 헤더 행 — 제목 + 보드 링크 */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{backlogLabels.page.title}</h1>
-        <ProjectNavTabs
-          projectKey={projectKey}
-          links={[
-            { to: '/projects/$projectKey/board', label: backlogLabels.page.boardLink },
-            { to: '/projects/$projectKey/timeline', label: backlogLabels.page.timelineLink },
-            { to: '/projects/$projectKey/reports/velocity', label: backlogLabels.page.velocityLink },
-            { to: '/projects/$projectKey/reports/cfd', label: backlogLabels.page.cfdLink },
-            { to: '/projects/$projectKey/reports/cycle-time', label: backlogLabels.page.cycleTimeLink },
-          ]}
-        />
+        <ProjectNavTabs projectKey={projectKey} links={BACKLOG_VIEW_NAV_LINKS} />
       </div>
 
       <BacklogBoard

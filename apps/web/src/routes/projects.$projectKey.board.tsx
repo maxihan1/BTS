@@ -32,7 +32,17 @@ import {
 } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { FavoriteButton } from '@/components/favorite/FavoriteButton'
-import { ProjectNavTabs } from '@/components/project/ProjectNavTabs'
+import { ProjectNavTabs, type ProjectNavTabLink } from '@/components/project/ProjectNavTabs'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 뷰 전환 nav 링크 — ProjectNavTabs에 전달(회귀-무해 원칙: 기존 인라인 nav 링크 집합 그대로)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 보드 페이지 뷰 전환 링크 — 백로그·타임라인 (board.tsx 인라인 nav 원본과 동일 순서) */
+const BOARD_VIEW_NAV_LINKS: readonly ProjectNavTabLink[] = [
+  { to: '/projects/$projectKey/backlog', label: boardLabels.page.backlogLink },
+  { to: '/projects/$projectKey/timeline', label: boardLabels.page.timelineLink },
+]
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 스켈레톤 헬퍼 — shadcn Skeleton 미설치이므로 인라인 구현
@@ -475,13 +485,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
       </div>
 
       {/* 뷰 전환 nav — 백로그·타임라인 (ProjectNavTabs 공유 컴포넌트, FR-UX-06 PR12 Task 4) */}
-      <ProjectNavTabs
-        projectKey={projectKey}
-        links={[
-          { to: '/projects/$projectKey/backlog', label: boardLabels.page.backlogLink },
-          { to: '/projects/$projectKey/timeline', label: boardLabels.page.timelineLink },
-        ]}
-      />
+      <ProjectNavTabs projectKey={projectKey} links={BOARD_VIEW_NAV_LINKS} />
 
       {/* 헤더 행 — 보드 선택 드롭다운 + 스윔레인 셀렉터 */}
       {(boards !== undefined && boards.length >= 2) || (boardDetail !== undefined && canCreate) ? (
