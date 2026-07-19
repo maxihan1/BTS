@@ -46,18 +46,19 @@ PR10에서 도입한 pathless `_shell`(현재 passthrough)의 컴포넌트 `Shel
 ## 기능 요구사항 (FR)
 
 - **FR1. ShellLayout 크롬 렌더.** `ShellLayout`(`_shell` 컴포넌트)이 `isAuthenticated === true`일 때 상단바 + 사이드바 + 콘텐츠(`<Outlet/>`)를 렌더한다. `false`일 때는 bare `<Outlet/>`(크롬 억제, S-4).
-- **FR2. 상단바(TopBar).** 좌→우: 사이드바 토글 · 로고(Atlas) · 검색(Header 잔류, `aria-label="검색"` 단일) · 만들기 버튼(→ `/issues/new`) · 알림(`InboxBell` 잔류) · 설정(→ `/settings`) · 계정 아바타 드롭다운(잔류, 로그아웃 포함). 높이 48px.
-- **FR3. 사이드바 메인 nav.** `<nav aria-label="메인 메뉴">`에 실 라우트 항목만: 이슈(`/issues`) · 대시보드(`/dashboards`) · 캘린더(`/calendar`) · 즐겨찾기(FavoritesMenu 이관/재사용). 활성 라우트 시각 강조. 264px.
+- **FR2. 상단바(TopBar).** 좌→우: 사이드바 토글 · 로고(Atlas, 클릭 → 홈 `/dashboards`) · 검색(Header 잔류, `aria-label="검색"` 단일) · 만들기 버튼(→ `/issues/new`, 기존 이슈 생성 진입점 재사용·확인) · 알림(`InboxBell` 잔류) · 도움말(→ 기존 `ShortcutsHelpDialog` 오픈, FR-UX-05 재사용) · 설정(gear) · 계정 아바타 드롭다운(잔류, 로그아웃 포함). 높이 48px.
+  - 🔴 **설정 기어 대상 주의(Phase B 갭).** `/settings`·`/admin` **인덱스 라우트가 없다**(서브라우트만 존재 — settings.account-links/calendar/keymap). 전용 인덱스 페이지는 PR13(PageLayout) 몫. PR11 설정 기어는 **죽은 `/settings`로 보내지 말 것** → 기존 settings 서브라우트 랜딩(예 `/settings/account-links`)으로 이동하거나 계정 드롭다운의 설정 항목으로 흡수. frontend-engineer가 실측 진입점 결정.
+- **FR3. 사이드바 메인 nav.** `<nav aria-label="메인 메뉴">`에 실 라우트 항목만: 이슈(`/issues`) · 대시보드(`/dashboards`) · 캘린더(`/calendar`) · 즐겨찾기. 활성 라우트 시각 강조. 264px. **즐겨찾기 = 기존 `FavoritesMenu`(드롭다운, FR-UX-02) 재사용** — 사이드바 내 트리거로 재배치, 재빌드 금지(타입별 그룹·SPA Link 로직 보존).
 - **FR4. 사이드바 관리 nav.** `isSystemAdmin === true`일 때만 `<nav aria-label="관리 메뉴">`를 **기본 펼침**으로 렌더. 링크 6종(`ADMIN_LINKS` 정본 그대로: 워크플로우 스킴·감사 로그·전역 권한·알림 정책·Webhook·Slack 연결). 게이팅 술어 `user?.isSystemAdmin === true`.
-- **FR5. 사이드바 접기.** 상단바 토글로 접기/펼치기. 상태를 localStorage(`bts.sidebar.collapsed` 등)에 저장, 부트 시 복원. 접기 단축키 제공(WCAG). 토글 버튼 `aria-label`은 상태별(`사이드바 접기`/`사이드바 펼치기`).
-- **FR6. Header 축소.** `Header.tsx`에서 `메인 메뉴`·`관리 메뉴` nav를 제거(사이드바로 이관). 남는 상단바 요소는 TopBar로 재구성. `RootLayout`은 `<Header/>` 직접 렌더를 중단(크롬은 `_shell`이 소유).
+- **FR5. 사이드바 접기.** 상단바 토글로 접기/펼치기. 상태를 localStorage(`bts.sidebar.collapsed` 등)에 저장, 부트 시 복원. 토글 버튼이 키보드 포커스 가능 = WCAG 키보드 접근 충족. **전용 접기 단축키는 선택적**(넣는다면 하드코딩 단순키) — **FR-PF-03 keymap 커스터마이즈 시스템에 통합하지 말 것**(스코프 크립·keymap 화이트리스트 변경 회귀). 토글 버튼 `aria-label`은 상태별(`사이드바 접기`/`사이드바 펼치기`).
+- **FR6. Header 축소 + RootLayout 이관.** `Header.tsx`에서 `메인 메뉴`·`관리 메뉴` nav를 제거(사이드바로 이관). 남는 상단바 요소는 TopBar로 재구성. `RootLayout`(`__root.tsx`)은 `<Header/>` 직접 렌더를 중단(크롬은 `_shell`이 소유). **★ `RootLayout`의 전역 오버레이·훅은 그대로 유지**(Phase B 갭): `CommandPalette`·`ShortcutsHelpDialog`·`useNotificationStream`·`useKeyboardShortcuts(isAuthenticated)`는 크롬이 아니라 앱 전역 관심사라 RootLayout에 잔류(이동 시 login 배제·테스트 폭발 반경 → 최소 변경 원칙). 단 도움말 트리거(FR2)가 `ShortcutsHelpDialog`를 여는 배선은 유지.
 - **FR7. i18n nav-labels 신설.** `i18n/nav-labels.ts`에 `navLabels` 상수(디자인 스펙 §11). 🔒 e2e 계약 문자열(`메인 메뉴`·`관리 메뉴`·`프로젝트 뷰 전환`·`검색`)은 글자 변경 금지.
 - **FR8. `--sidebar-*` 토큰 실값화(ADR D7).** `index.css`의 `--sidebar-*` 8종(현재 무채색 oklch, 소비자 0)을 사이드바가 실제 소비하는 ADS 값(라이트/다크 both)으로 덮어쓴다. 사이드바 배경은 디자인 스펙 §3.1대로 sunken 계열.
 
 ## 비기능 요구사항 (NFR)
 
 - **NFR1. E2E 계약 무위반.** `getByRole('navigation')` 18건, `role="dialog"` 147건, `<h1>` 34건이 무수정 통과. aria-label 4종·검색 단일·관리 기본펼침·h1 사이드바 금지.
-- **NFR2. 접근성(WCAG 2.1 AA).** 대화형 요소 `focus-visible` 링. Tab 순서 = 시각 순서. 아이콘 전용 버튼 `aria-label`. `prefers-reduced-motion` 존중. body 가로 스크롤 금지.
+- **NFR2. 접근성(WCAG 2.1 AA).** 대화형 요소 `focus-visible` 링. Tab 순서 = 시각 순서. 아이콘 전용 버튼 `aria-label`. `prefers-reduced-motion` 존중. **body 가로 스크롤 금지 — 전 폭.** <1024px에서도 사이드바 264px 유지(수동 접기로 대응)·auto-sheet 없음(S1); 콘텐츠·테이블·보드는 자기 컨테이너가 `overflow-x:auto`를 소유해 body가 아닌 컨테이너가 스크롤(Phase B 갭 — 좁은 폭에서 사이드바가 콘텐츠를 밀어 body h-scroll 나지 않게).
 - **NFR3. 라이트/다크 both.** 다크 모드 완전 동작 중 → 모든 신규 토큰·컴포넌트 both 값.
 - **NFR4. 시각 회귀 최소.** 인증 라우트의 콘텐츠 영역 렌더는 사이드바 추가 외 변화 없음(PR10의 "픽셀 동일" 위에 사이드바만 얹음).
 
@@ -68,7 +69,7 @@ components/layout/
   ShellLayout.tsx      # (기존, 확장) _shell 컴포넌트 — isAuthenticated 게이팅 + TopBar+Sidebar+content
   TopBar.tsx           # (신규) 상단바 48px
   Sidebar.tsx          # (신규) 사이드바 264px, 메인/관리 nav, 접기
-  __tests__/navigation-contract.test.tsx  # (신규, 先작성) aria-label 4종 + 관리 게이팅 어서션
+  __tests__/navigation-contract.test.tsx  # (신규, 先작성) aria-label 4종 + 관리 게이팅 — 인증 셸 합성을 렌더(Header/Sidebar 무관)해 이관 전 green→이관 후 green, 라벨 깨지면 red
 components/Header.tsx   # (축소) 메인/관리 nav 제거
 routes/__root.tsx       # (수정) <Header/> 렌더 중단
 i18n/nav-labels.ts       # (신규) navLabels
@@ -121,3 +122,18 @@ index.css                # (수정) --sidebar-* 8종 실값
 - <900px sheet 오버레이 반응형 → 후속(S1).
 - 내 작업·최근·필터 인덱스 → 각 기능 FR(S3).
 - DESIGN.md 패치 → PR3 몫(이미 완료).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). 적대적 gap 헌팅으로 6개 갭 발견 → 전부 자체 해소(Maxi 결정 불필요, 실측 기반).
+
+| # | 갭 | 해소 |
+|---|---|---|
+| G1 | RootLayout의 CommandPalette·ShortcutsHelpDialog·useNotificationStream·useKeyboardShortcuts 거취 미명시 | FR6 — RootLayout 잔류(크롬 아닌 전역 관심사, 최소 변경) |
+| G2 | 설정 기어가 `/settings`로 가면 404(인덱스 라우트 부재 실측) | FR2 — 기존 서브라우트 랜딩/계정 드롭다운 흡수, 전용 인덱스는 PR13 |
+| G3 | 디자인 §3.1 상단바 도움말을 스펙이 누락 | FR2 — 도움말 버튼 → 기존 ShortcutsHelpDialog(FR-UX-05) |
+| G4 | navigation-contract 테스트가 Header→Sidebar 이관에 살아남는지 모호 | 컴포넌트 — 인증 셸 합성 렌더(Header/Sidebar 무관)로 마이그레이션 무관성 확보 |
+| G5 | 접기 단축키가 keymap 시스템(FR-PF-03) 침범 위험 | FR5 — 토글 버튼이 WCAG 충족, 전용 단축키 선택·keymap 미통합 |
+| G6 | 좁은 폭(<1024px) 사이드바 거동 미정(S1 데스크탑 우선) | NFR2 — 사이드바 유지·auto-sheet 없음·컨테이너 자체 overflow(body h-scroll 금지) |
+
+부수 확정: 로고→홈(/dashboards)·만들기→/issues/new·즐겨찾기=FavoritesMenu 드롭다운 재배치.

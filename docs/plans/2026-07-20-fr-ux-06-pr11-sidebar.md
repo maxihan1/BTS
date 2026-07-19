@@ -78,9 +78,22 @@ E2E의 진짜 계약은 DOM 구조가 아니라 **`aria-label` 문자열 4종**.
 
 `검색`(Header 버튼)·즐겨찾기·알림·계정 드롭다운은 상단바에 잔류.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-20-fr-ux-06-pr11-sidebar.md](../specs/2026-07-20-fr-ux-06-pr11-sidebar.md)
+
+핵심 3줄 요약.
+- `ShellLayout`(_shell)이 `isAuthenticated` 게이팅으로 상단바(축소 Header)+사이드바(264px)+콘텐츠를 렌더. 공개 공유(dashboards.shared)는 bare Outlet.
+- 사이드바 = `메인 메뉴` nav(이슈·대시보드·캘린더·즐겨찾기 — 실 라우트만) + `관리 메뉴` nav(isSystemAdmin 게이팅·기본펼침·6링크). 프로젝트 트리는 PR12.
+- 접기 상태 localStorage 지속. aria-label 4종·검색 단일·관리 기본펼침·h1 금지 계약 무위반. navigation-contract.test 先작성.
+
+Maxi 확정 3결정: S1 데스크탑 우선(반응형)·S2 localStorage(접기)·S3 실재 항목만(백킹 없는 항목 미포함).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). 적대적 gap 헌팅 6건 발견 → 전부 자체 해소(실측 기반, Maxi 결정 불필요). G1 RootLayout 오버레이 잔류·G2 설정 기어 404 회피·G3 도움말 버튼·G4 테스트 마이그레이션 무관성·G5 접기 단축키 keymap 미통합·G6 좁은 폭 body h-scroll 금지. 상세는 스펙 §Brainstorming Check.
+
+office-hours/design-shotgun는 스킵 — 디자인 잠김(ADR 확정 6결정·디자인 스펙 §3.1·프로토타입)·FR 정의 완료라 직접 기술 스펙 작성이 적합([[bts-spec-office-hours-mismatch]] 선례, Maxi 기존 선택).
 
 ## Plan (← /bts-plan 채움)
 
