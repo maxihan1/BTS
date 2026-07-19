@@ -205,3 +205,7 @@ PR6 선례(정본 재사용 PR = controller self-review)대로 **실행 리스�
 **BLOCKER**: 없음.
 
 **게이트 이월 결정 1건**. auth 3파일(AddAccount·Reauth·AddMember) agent 배정.
+
+### 게이트 1 (2026-07-19) — Maxi 승인 ✅
+- 승인 → 구현 진행.
+- **agent 배정 확정**: 7파일 전부 `frontend-engineer` 구현. auth 3파일(AddAccount·Reauth·AddMember)은 `/bts-codereview`에서 security-engineer 검토(인증 상호작용 무변경).
