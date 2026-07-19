@@ -33,7 +33,7 @@ describe('projectSchema', () => {
   })
 
   it('key가 누락되면 reject한다', () => {
-    const { key: _key, ...withoutKey } = projectFixture
+    const withoutKey = { id: projectFixture.id, name: projectFixture.name }
     expect(() => projectSchema.parse(withoutKey)).toThrow()
   })
 })

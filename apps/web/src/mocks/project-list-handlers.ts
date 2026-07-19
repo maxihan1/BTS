@@ -16,7 +16,7 @@ interface ProjectListFixture {
 export const projectListFixtures: ProjectListFixture[] = [
   { id: 'b2c3d4e5-f6a7-4901-bcde-f12345678901', key: 'ZETA', name: 'Zeta 프로젝트' },
   { id: 'a1b2c3d4-e5f6-4890-abcd-ef1234567890', key: 'ATLAS', name: 'Atlas 프로젝트' },
-  { id: 'c3d4e5f6-a7b8-4012-cdef-123456789012', key: 'MIDDLE', name: 'Middle 프로젝트' },
+  { id: 'c3d4e5f6-a7b8-4012-9def-123456789012', key: 'MIDDLE', name: 'Middle 프로젝트' },
 ]
 
 /**
