@@ -1,10 +1,16 @@
-// 이슈 템플릿 생성/수정 겸용 Dialog — radix Dialog 직접 import, RHF+Zod, key prop 재마운트
+// 이슈 템플릿 생성/수정 겸용 Dialog — ui/dialog 흡수, RHF+Zod, key prop 재마운트
 import type { JSX } from 'react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import type { IssueTemplate } from '@/api/issue-templates.types'
 import {
@@ -248,7 +254,7 @@ function FormBody({
         )}
 
         {/* 액션 버튼 */}
-        <div className="flex justify-end gap-2 mt-6">
+        <DialogFooter>
           <Button
             type="button"
             variant="outline"
@@ -260,7 +266,7 @@ function FormBody({
           <Button type="submit" size="sm" disabled={isPending}>
             {labels.submitButton}
           </Button>
-        </div>
+        </DialogFooter>
       </form>
     )
   }
@@ -335,7 +341,7 @@ function FormBody({
       )}
 
       {/* 액션 버튼 */}
-      <div className="flex justify-end gap-2 mt-6">
+      <DialogFooter>
         <Button
           type="button"
           variant="outline"
@@ -347,7 +353,7 @@ function FormBody({
         <Button type="submit" size="sm" disabled={isPending}>
           {labels.submitButton}
         </Button>
-      </div>
+      </DialogFooter>
     </form>
   )
 }
@@ -359,7 +365,8 @@ function FormBody({
 /**
  * 이슈 템플릿 생성/수정 겸용 Dialog.
  *
- * - radix-ui Dialog 직접 import — shadcn 래퍼 부재(FR-AU-08 D6/D7 선례).
+ * - ui/dialog 래퍼(Dialog/DialogContent/DialogHeader/DialogTitle/DialogFooter) 사용
+ *   (FR-UX-06 PR5 흡수 — CustomFieldFormDialog 선례).
  * - create 모드: 이슈 타입 select + 이름 + 본문 입력 → useCreateIssueTemplate 뮤테이션.
  * - edit 모드: 이슈 타입 disabled(issueTypeId 불변) + 이름/본문 프리필 → useUpdateIssueTemplate 뮤테이션.
  * - 본문 영역은 TemplateContentField로 분리되어 create/edit 모드가 공유한다.
@@ -393,31 +400,23 @@ export const IssueTemplateFormDialog = ({
   const effectiveSubmitError = externalSubmitError ?? internalSubmitError
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg overflow-y-auto max-h-[90vh]" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
 
-        <DialogPrimitive.Content
-          role="dialog"
-          aria-modal="true"
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 overflow-y-auto max-h-[90vh]"
-        >
-          <DialogPrimitive.Title className="text-lg font-semibold mb-4">
-            {title}
-          </DialogPrimitive.Title>
-
-          <FormBody
-            key={formKey}
-            mode={mode}
-            projectKey={projectKey}
-            initial={initial}
-            onSubmitSuccess={onSubmitSuccess}
-            onOpenChange={onOpenChange}
-            submitError={effectiveSubmitError}
-            onServerError={setInternalSubmitError}
-          />
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        <FormBody
+          key={formKey}
+          mode={mode}
+          projectKey={projectKey}
+          initial={initial}
+          onSubmitSuccess={onSubmitSuccess}
+          onOpenChange={onOpenChange}
+          submitError={effectiveSubmitError}
+          onServerError={setInternalSubmitError}
+        />
+      </DialogContent>
+    </Dialog>
   )
 }

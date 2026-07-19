@@ -67,6 +67,13 @@ describe('CloneIssueDialog', () => {
     )
   })
 
+  it('흡수 후 우상단 X 닫기 버튼(Jira 시각 통일)이 렌더된다', () => {
+    renderDialog({ open: true })
+
+    // ui/dialog 래퍼로 흡수되면 DialogContent가 우상단 X(sr-only "Close")를 강제 렌더한다.
+    expect(screen.getByRole('button', { name: /close/i })).toBeTruthy()
+  })
+
   it('open=true일 때 Dialog 제목과 체크박스, 텍스트 입력이 렌더된다', () => {
     renderDialog({ open: true })
 

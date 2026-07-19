@@ -1,7 +1,14 @@
 // 첨부 파일 미리보기 모달 — image/pdf/video 렌더러 + blob URL 생명주기 관리
 import type { JSX } from 'react'
 import { useState, useEffect } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import type { AttachmentResponse } from '@/api/attachments'
 import { downloadAttachment } from '@/api/attachments'
@@ -141,31 +148,24 @@ export function AttachmentPreviewModal({
   }
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={handleOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-4xl" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{attachmentLabels.previewTitle(attachment.filename)}</DialogTitle>
+        </DialogHeader>
 
-        <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-4xl -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-          aria-describedby={undefined}
-        >
-          <DialogPrimitive.Title className="text-lg font-semibold mb-4">
-            {attachmentLabels.previewTitle(attachment.filename)}
-          </DialogPrimitive.Title>
+        <div className="flex items-center justify-center min-h-32">
+          {renderPreview()}
+        </div>
 
-          <div className="flex items-center justify-center min-h-32">
-            {renderPreview()}
-          </div>
-
-          <div className="flex justify-end mt-4">
-            <DialogPrimitive.Close asChild>
-              <Button variant="outline" size="sm">
-                {attachmentLabels.previewClose}
-              </Button>
-            </DialogPrimitive.Close>
-          </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline" size="sm">
+              {attachmentLabels.previewClose}
+            </Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

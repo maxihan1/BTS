@@ -159,6 +159,27 @@ describe('ReleaseNotesDialog — 닫힘 상태', () => {
   })
 })
 
+describe('ReleaseNotesDialog — 흡수 후 X 닫기 버튼', () => {
+  it('흡수 후 우상단 X 닫기 버튼(Jira 시각 통일)이 렌더된다', () => {
+    seedVersion()
+
+    const Wrapper = createWrapper()
+    render(
+      <ReleaseNotesDialog
+        versionId={VERSION_ID}
+        versionName={VERSION_NAME}
+        projectKey={PROJECT_KEY}
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    // ui/dialog 래퍼로 흡수되면 DialogContent가 우상단 X(sr-only "Close")를 강제 렌더한다.
+    expect(screen.getByRole('button', { name: /close/i })).toBeTruthy()
+  })
+})
+
 describe('ReleaseNotesDialog — 로딩 상태', () => {
   it('open=true이면 로딩 스피너/상태를 표시한다', async () => {
     // 응답을 지연시켜 로딩 상태를 관찰한다

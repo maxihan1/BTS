@@ -257,6 +257,13 @@ describe('T4-1: Step1 대상 키 입력 → preview 호출', () => {
     expect(screen.getByLabelText(/대상 프로젝트 키/i)).toBeInTheDocument()
   })
 
+  it('흡수 후 우상단 X 닫기 버튼(Jira 시각 통일)이 렌더된다', () => {
+    renderDialog()
+
+    // ui/dialog 래퍼로 흡수되면 DialogContent가 우상단 X(sr-only "Close")를 강제 렌더한다.
+    expect(screen.getByRole('button', { name: /close/i })).toBeTruthy()
+  })
+
   it('대상 키 입력 후 "다음" 클릭 시 preview를 호출하고 Step 2로 이동한다', async () => {
     renderDialog()
     const user = userEvent.setup()

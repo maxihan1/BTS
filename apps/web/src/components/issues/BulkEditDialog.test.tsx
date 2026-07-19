@@ -66,6 +66,13 @@ describe('BulkEditDialog', () => {
     mockMutateAsync.mockReset()
   })
 
+  it('흡수 후 우상단 X 닫기 버튼(Jira 시각 통일)이 렌더된다', () => {
+    renderDialog()
+
+    // ui/dialog 래퍼로 흡수되면 DialogContent가 우상단 X(sr-only "Close")를 강제 렌더한다.
+    expect(screen.getByRole('button', { name: /close/i })).toBeTruthy()
+  })
+
   // (a) priority select(1~5), impact select(1~3) 노출
   it('(a) priority 선택(1~5)과 impact 선택(1~3)이 렌더된다', () => {
     renderDialog()

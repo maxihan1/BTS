@@ -374,6 +374,22 @@ describe('BulkTransitionDialog', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
+  // X 닫기 버튼(shadcn DialogContent 기본 제공) 클릭 시 onOpenChange(false) 호출
+  it('X 닫기 버튼 클릭 시 onOpenChange(false)가 호출된다', async () => {
+    mockFetchBulkAvailableTransitions.mockResolvedValue({
+      transitions: [],
+      unresolvedIssueKeys: [],
+    })
+
+    const { onOpenChange } = renderDialog()
+
+    const user = userEvent.setup()
+    const closeButton = await screen.findByRole('button', { name: /close/i })
+    await user.click(closeButton)
+
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
   // ─── B14: DONE 전이 시 resolution 드롭다운 ────────────────────────────────
 
   // (g) toCategory=DONE 전이 선택 시 resolution 드롭다운 표시 + 미선택 시 적용 비활성

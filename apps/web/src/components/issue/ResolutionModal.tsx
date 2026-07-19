@@ -1,7 +1,14 @@
 // 종료 전이 시 결의안 선택 모달 (FR-IS-07 Task B9)
 import type { JSX } from 'react'
 import { useState, useEffect } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -11,13 +18,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useResolutions } from '@/hooks/use-resolutions'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 상수
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** 모달 설명 요소 ID — aria-describedby 연결용 */
-const MODAL_DESCRIPTION_ID = 'resolution-modal-description'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -108,74 +108,64 @@ export function ResolutionModal({
   }
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={handleOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-
-        <DialogPrimitive.Content
-          role="dialog"
-          aria-describedby={MODAL_DESCRIPTION_ID}
-          aria-label="종료 결의안 선택"
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-        >
-          <DialogPrimitive.Title className="text-lg font-semibold mb-2">
-            종료 결의안 선택
-          </DialogPrimitive.Title>
-
-          <p id={MODAL_DESCRIPTION_ID} className="text-sm text-muted-foreground mb-4">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>종료 결의안 선택</DialogTitle>
+          <DialogDescription>
             이슈를 종료하려면 결의안을 선택해 주세요.
-          </p>
+          </DialogDescription>
+        </DialogHeader>
 
-          {/* 결의안 드롭다운 */}
-          <div>
-            <label htmlFor="resolution-select" className="text-sm font-medium mb-1 block">
-              결의안
-            </label>
-            {isLoading ? (
-              <p className="text-sm text-muted-foreground py-2" aria-live="polite">
-                결의안 목록을 불러오는 중...
-              </p>
-            ) : (
-              <Select value={selectedId} onValueChange={setSelectedId}>
-                <SelectTrigger
-                  id="resolution-select"
-                  className="w-full"
-                  aria-label="결의안 선택"
-                >
-                  <SelectValue placeholder="결의안을 선택하세요" />
-                </SelectTrigger>
-                <SelectContent>
-                  {resolutions.map((resolution) => (
-                    <SelectItem key={resolution.id} value={resolution.id}>
-                      {resolution.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
+        {/* 결의안 드롭다운 */}
+        <div>
+          <label htmlFor="resolution-select" className="text-sm font-medium mb-1 block">
+            결의안
+          </label>
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground py-2" aria-live="polite">
+              결의안 목록을 불러오는 중...
+            </p>
+          ) : (
+            <Select value={selectedId} onValueChange={setSelectedId}>
+              <SelectTrigger
+                id="resolution-select"
+                className="w-full"
+                aria-label="결의안 선택"
+              >
+                <SelectValue placeholder="결의안을 선택하세요" />
+              </SelectTrigger>
+              <SelectContent>
+                {resolutions.map((resolution) => (
+                  <SelectItem key={resolution.id} value={resolution.id}>
+                    {resolution.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
 
-          {/* 액션 버튼 */}
-          <div className="flex justify-end gap-2 mt-6">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onCancel}
-              aria-label="취소"
-            >
-              취소
-            </Button>
-            <Button
-              size="sm"
-              disabled={!canConfirm}
-              onClick={handleConfirm}
-              aria-label="확인"
-            >
-              확인
-            </Button>
-          </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        {/* 액션 버튼 */}
+        <DialogFooter>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onCancel}
+            aria-label="취소"
+          >
+            취소
+          </Button>
+          <Button
+            size="sm"
+            disabled={!canConfirm}
+            onClick={handleConfirm}
+            aria-label="확인"
+          >
+            확인
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

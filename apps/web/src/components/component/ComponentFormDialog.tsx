@@ -4,7 +4,13 @@ import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useUsers, useUsersByIds } from '@/hooks/use-users'
 import type { Component, CreateComponentInput } from '@/api/components.types'
@@ -166,7 +172,7 @@ function FormBody({ initial, onSubmit, onOpenChange, submitError }: FormBodyProp
       )}
 
       {/* 액션 버튼 */}
-      <div className="flex justify-end gap-2 mt-6">
+      <DialogFooter>
         <Button
           type="button"
           variant="outline"
@@ -178,7 +184,7 @@ function FormBody({ initial, onSubmit, onOpenChange, submitError }: FormBodyProp
         <Button type="submit" size="sm">
           {actions.saveButton}
         </Button>
-      </div>
+      </DialogFooter>
     </form>
   )
 }
@@ -208,28 +214,20 @@ export const ComponentFormDialog = ({
   const formKey = initial?.id ?? 'new'
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
 
-        <DialogPrimitive.Content
-          role="dialog"
-          aria-modal="true"
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-        >
-          <DialogPrimitive.Title className="text-lg font-semibold mb-4">
-            {title}
-          </DialogPrimitive.Title>
-
-          <FormBody
-            key={formKey}
-            initial={initial}
-            onSubmit={onSubmit}
-            onOpenChange={onOpenChange}
-            submitError={submitError}
-          />
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        <FormBody
+          key={formKey}
+          initial={initial}
+          onSubmit={onSubmit}
+          onOpenChange={onOpenChange}
+          submitError={submitError}
+        />
+      </DialogContent>
+    </Dialog>
   )
 }

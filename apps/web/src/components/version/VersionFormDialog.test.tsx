@@ -656,4 +656,23 @@ describe('VersionFormDialog — 취소', () => {
 
     expect(mockClose).toHaveBeenCalled()
   })
+
+  it('X 닫기 버튼 클릭 시 onClose가 호출된다', async () => {
+    const mockClose = vi.fn()
+    const Wrapper = createWrapper()
+    render(
+      <VersionFormDialog
+        open={true}
+        mode="create"
+        projectKey={PROJECT_KEY}
+        onClose={mockClose}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+
+    expect(mockClose).toHaveBeenCalled()
+  })
 })

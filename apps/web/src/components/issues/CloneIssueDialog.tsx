@@ -1,7 +1,14 @@
 // 이슈 클론 옵션 Dialog — includeAssignee 체크박스 + summaryOverride 입력 + 클론 실행
 import type { JSX } from 'react'
 import { useState, useEffect } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useCloneIssue } from '@/api/useCloneIssue'
@@ -75,74 +82,67 @@ export function CloneIssueDialog({
   }
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={handleOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{issueDetailStrings.cloneDialogTitle}</DialogTitle>
+        </DialogHeader>
 
-        <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-          aria-describedby={undefined}
-        >
-          <DialogPrimitive.Title className="text-lg font-semibold mb-4">
-            {issueDetailStrings.cloneDialogTitle}
-          </DialogPrimitive.Title>
-
-          <div className="space-y-4">
-            {/* 담당자 포함 체크박스 */}
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="clone-include-assignee"
-                aria-label={issueDetailStrings.cloneIncludeAssigneeLabel}
-                checked={includeAssignee}
-                onChange={(e) => setIncludeAssignee(e.target.checked)}
-                className="size-4 rounded border-input accent-primary"
-              />
-              <label
-                htmlFor="clone-include-assignee"
-                className="text-sm font-medium select-none cursor-pointer"
-              >
-                {issueDetailStrings.cloneIncludeAssigneeLabel}
-              </label>
-            </div>
-
-            {/* 제목 재정의 입력 */}
-            <div>
-              <label
-                htmlFor="clone-summary-override"
-                className="text-sm font-medium mb-1 block"
-              >
-                {issueDetailStrings.cloneSummaryOverrideLabel}
-              </label>
-              <Input
-                id="clone-summary-override"
-                aria-label={issueDetailStrings.cloneSummaryOverrideLabel}
-                value={summaryOverride}
-                onChange={(e) => setSummaryOverride(e.target.value)}
-                maxLength={255}
-                placeholder={issueDetailStrings.cloneSummaryOverridePlaceholder}
-                className="w-full"
-              />
-            </div>
-          </div>
-
-          {/* 액션 버튼 */}
-          <div className="flex justify-end gap-2 mt-6">
-            <DialogPrimitive.Close asChild>
-              <Button variant="outline" size="sm">
-                {issueDetailStrings.cloneCancelButton}
-              </Button>
-            </DialogPrimitive.Close>
-            <Button
-              size="sm"
-              disabled={cloneMutation.isPending}
-              onClick={() => { void handleSubmit() }}
+        <div className="space-y-4">
+          {/* 담당자 포함 체크박스 */}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="clone-include-assignee"
+              aria-label={issueDetailStrings.cloneIncludeAssigneeLabel}
+              checked={includeAssignee}
+              onChange={(e) => setIncludeAssignee(e.target.checked)}
+              className="size-4 rounded border-input accent-primary"
+            />
+            <label
+              htmlFor="clone-include-assignee"
+              className="text-sm font-medium select-none cursor-pointer"
             >
-              {issueDetailStrings.cloneSubmitButton}
-            </Button>
+              {issueDetailStrings.cloneIncludeAssigneeLabel}
+            </label>
           </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+
+          {/* 제목 재정의 입력 */}
+          <div>
+            <label
+              htmlFor="clone-summary-override"
+              className="text-sm font-medium mb-1 block"
+            >
+              {issueDetailStrings.cloneSummaryOverrideLabel}
+            </label>
+            <Input
+              id="clone-summary-override"
+              aria-label={issueDetailStrings.cloneSummaryOverrideLabel}
+              value={summaryOverride}
+              onChange={(e) => setSummaryOverride(e.target.value)}
+              maxLength={255}
+              placeholder={issueDetailStrings.cloneSummaryOverridePlaceholder}
+              className="w-full"
+            />
+          </div>
+        </div>
+
+        {/* 액션 버튼 */}
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline" size="sm">
+              {issueDetailStrings.cloneCancelButton}
+            </Button>
+          </DialogClose>
+          <Button
+            size="sm"
+            disabled={cloneMutation.isPending}
+            onClick={() => { void handleSubmit() }}
+          >
+            {issueDetailStrings.cloneSubmitButton}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
