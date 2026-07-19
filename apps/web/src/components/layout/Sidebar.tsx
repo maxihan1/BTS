@@ -17,6 +17,7 @@ import { useAuthUser } from '@/auth/authStore'
 import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
 import { FavoritesMenu } from '@/components/favorite/FavoritesMenu'
 import { navLabels } from '@/i18n/nav-labels'
+import { ProjectTree } from './ProjectTree'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -84,6 +85,8 @@ export function Sidebar(): JSX.Element {
     <aside
       className={`flex h-full flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar text-sidebar-foreground ${widthClass}`}
     >
+      <ProjectTree />
+
       <nav aria-label={navLabels.mainNav} className="flex flex-col gap-1 p-2">
         {MAIN_NAV_LINKS.map(({ to, label, Icon }) => (
           <Link key={to} to={to} className={NAV_LINK_CLASS}>
