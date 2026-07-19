@@ -46,4 +46,15 @@ describe('useSidebarCollapsed', () => {
 
     expect(result.current.collapsed).toBe(false)
   })
+
+  it('T-SC-5: 서로 다른 훅 인스턴스(예: Sidebar·TopBar)가 collapsed 상태를 공유한다', () => {
+    const { result: instanceA } = renderHook(() => useSidebarCollapsed())
+    const { result: instanceB } = renderHook(() => useSidebarCollapsed())
+
+    act(() => {
+      instanceA.current.toggle()
+    })
+
+    expect(instanceB.current.collapsed).toBe(true)
+  })
 })
