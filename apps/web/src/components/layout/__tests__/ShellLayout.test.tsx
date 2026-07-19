@@ -17,6 +17,10 @@ const mockNavigate = vi.fn()
 vi.mock('@tanstack/react-router', () => ({
   Outlet: () => <div data-testid="outlet-content">content</div>,
   useNavigate: () => mockNavigate,
+  // Sidebar가 배선하는 ProjectTree(FR-UX-06 PR12)가 useParams({strict:false})를 호출하므로
+  // 라우터 컨텍스트 없는 isolation 렌더에서도 크래시하지 않도록 빈 파라미터로 모킹한다
+  // (Sidebar.test.tsx 동일 패턴, 셸 랜드마크 계약과 무관).
+  useParams: () => ({}),
   Link: ({
     to,
     children,
