@@ -129,8 +129,10 @@ test.describe('FR-BD-03 WIP 초과 경고 + 스윔레인 그룹 + 권한 게이�
     await expect(todoColumn.getByText('SWIM-1')).toBeVisible()
     await expect(todoColumn.getByText('SWIM-2')).toBeVisible()
 
-    // Given. 초기 swimlaneField=NONE — 서브그룹 헤더 없음 확인
-    await expect(page.getByText('김앨리스').first()).not.toBeVisible()
+    // Given. 초기 swimlaneField=NONE — 담당자 서브그룹(role="group") 없음 확인.
+    // getByText('김앨리스')는 Header 계정 트리거(FR-PR-01 로그인 표시명)와 카드 담당자명에도 걸리므로
+    // 스윔레인 서브그룹과 동일한 role="group" 로케이터로 스코핑한다(ASSIGNEE 선택 후 어서션과 대칭).
+    await expect(page.getByRole('group', { name: '김앨리스', exact: true })).toHaveCount(0)
 
     // Given. 스윔레인 셀렉터 로딩 대기
     // boardLabels.swimlane.selectorLabel = '스윔레인'
