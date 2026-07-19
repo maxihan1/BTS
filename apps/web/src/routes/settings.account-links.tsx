@@ -408,7 +408,7 @@ export function AccountLinksSettingsPage({
  * ```
  */
 export function AccountLinksSettingsRouteAdapter(): JSX.Element {
-  const search = useSearch({ from: '/settings/account-links' }) as AccountLinksSearch
+  const search = useSearch({ strict: false }) as AccountLinksSearch
   const navigate = useNavigate()
 
   function handleClearCallbackSearch(): void {
