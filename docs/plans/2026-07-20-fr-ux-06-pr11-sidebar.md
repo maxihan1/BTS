@@ -95,6 +95,133 @@ Maxi 확정 3결정: S1 데스크탑 우선(반응형)·S2 localStorage(접기)�
 
 office-hours/design-shotgun는 스킵 — 디자인 잠김(ADR 확정 6결정·디자인 스펙 §3.1·프로토타입)·FR 정의 완료라 직접 기술 스펙 작성이 적합([[bts-spec-office-hours-mismatch]] 선례, Maxi 기존 선택).
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 전 task agent = `frontend-engineer`. 경로는 repo 루트 기준(worktree 내부). TDD red→green→refactor 강제.
+> **★ 크롬 스왑 원자성**: Sidebar(T5)·TopBar(T6)는 컴포넌트만 생성(트리 미배선). T7이 ShellLayout 배선 + Header 축소를 **한 커밋에** 처리 → 이중 nav strict-mode 충돌 방지.
+> **★ navigation-contract(T1)**: 앱 라우터 트리를 렌더하는 마이그레이션 무관 가드. W1서 현 Header 기준 green → T7 후 Sidebar 기준 green. 라벨 깨지면 red. **반드시 첫 test 커밋.**
+
+### Task 1. navigation-contract 계약 가드 (先작성·회귀 가드)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/layout/__tests__/navigation-contract.test.tsx`]
+- depends-on: []
+
+**RED/GREEN(특수 — 회귀 가드)**: 이 테스트는 **기존 계약을 잠그는 characterization 가드**라 작성 즉시 green(현 Header가 라벨을 이미 소유). `router.test.tsx` 방식으로 `createMemoryHistory` + `routeTree`를 인증 사용자 mock으로 렌더하고 어서션:
+- `getByRole('navigation', { name: '메인 메뉴' })` 존재 + 그 안에 `대시보드`·`캘린더` 링크(계약: `dashboard.spec:440`·`calendar.spec:88`).
+- `isSystemAdmin=true` mock → `getByRole('navigation', { name: '관리 메뉴' })` 존재 + 6링크. `isSystemAdmin=false` → 관리 nav 부재.
+- `검색`(`aria-label`)은 정확히 1개(strict 단일).
+- 사이드바 영역에 `<h1>` 없음(현재 trivially true).
+
+**REFACTOR**: mock 헬퍼(인증/admin 사용자) 추출.
+
+**검증**: `(cd apps/web && node_modules/.bin/vitest run src/components/layout/__tests__/navigation-contract.test.tsx)` → green.
+
+### Task 2. i18n/nav-labels.ts — nav 라벨 상수
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/i18n/nav-labels.ts`, `apps/web/src/i18n/__tests__/nav-labels.test.ts`]
+- depends-on: []
+
+**RED**: `nav-labels.test.ts` — `navLabels`가 🔒 e2e 계약 문자열(`메인 메뉴`·`관리 메뉴`·`프로젝트 뷰 전환`·`검색`) 정확 일치 + 사이드바 라벨(myWork 제외 — S3, `이슈`/`대시보드`/`캘린더`/`즐겨찾기`/`만들기`/`관리`/`사이드바 접기`/`사이드바 펼치기`)을 가진다. 실패: 파일 없음.
+
+**GREEN**: `nav-labels.ts` 상수 생성(디자인 스펙 §11 기준, 단 백킹 없는 myWork/recent/filters/projects 제외 — S3).
+
+**REFACTOR**: `as const` + 타입 export.
+
+**검증**: `(cd apps/web && node_modules/.bin/vitest run src/i18n/__tests__/nav-labels.test.ts)`.
+
+### Task 3. hooks/use-sidebar-collapsed.ts — localStorage 접기 상태
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/hooks/use-sidebar-collapsed.ts`, `apps/web/src/hooks/__tests__/use-sidebar-collapsed.test.ts`]
+- depends-on: []
+
+**RED**: hook 테스트(`renderHook`) — 기본 펼침(localStorage 없음), toggle→localStorage `bts.sidebar.collapsed` 저장, mount 시 복원, JSON 파싱 실패 시 펼침(fail-safe, E4). 실패: 파일 없음.
+
+**GREEN**: `use-sidebar-collapsed.ts` — `useState` + `localStorage` get/set, try/catch fail-safe.
+
+**REFACTOR**: 스토리지 키 상수화, SSR-safe(`typeof window`).
+
+**검증**: `(cd apps/web && node_modules/.bin/vitest run src/hooks/__tests__/use-sidebar-collapsed.test.ts)`.
+
+### Task 4. --sidebar-* 토큰 ADS화 + state-tokens 동결 계약 갱신
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/index.css`, `apps/web/src/components/ui/__tests__/state-tokens.test.ts`]
+- depends-on: []
+
+**RED**: `state-tokens.test.ts` **동결 리스트(L202-205)에서 `--sidebar-*` 8종 제거** + 사이드바 토큰이 ADS 값(라이트/다크 both, hex 또는 ADS surface 별칭)임을 어서션하는 케이스 추가. 현재 index.css는 oklch라 RED.
+- ★ 주의: `--chart-*`·`--syntax-*`는 동결 유지(건드리지 않음).
+
+**GREEN**: `index.css`의 `--sidebar-*` 8종(`:root`+`.dark`)을 ADS 값으로 교체. **설계 결정(frontend-engineer)**: 디자인 스펙 §3.1이 사이드바 배경을 `--surface-sunken`으로 규정하므로, `--sidebar` 계열을 ADS surface/border/brand 토큰에 **별칭**(`var(--surface-sunken)` 등)하거나 동등 hex로. D7 "소비되는 PR에서 정의" 준수 — 죽은 값 금지.
+
+**REFACTOR**: 주석으로 별칭 근거 명시.
+
+**검증**: `(cd apps/web && node_modules/.bin/vitest run src/components/ui/__tests__/state-tokens.test.ts)`.
+
+### Task 5. Sidebar.tsx — 사이드바 컴포넌트 (트리 미배선)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/layout/Sidebar.tsx`, `apps/web/src/components/layout/__tests__/Sidebar.test.tsx`]
+- depends-on: [2, 3]
+
+**RED**: `Sidebar.test.tsx` — 렌더 시 `<nav aria-label="메인 메뉴">`에 이슈/대시보드/캘린더 링크 + 즐겨찾기(FavoritesMenu 트리거); `isSystemAdmin=true`면 `<nav aria-label="관리 메뉴">` **기본 펼침** + 6링크(ADMIN_LINKS 정본), `false`면 관리 nav 부재; 사이드바에 `<h1>` 없음; `검색` 항목 없음(Header 단일); 접힘 상태 반영(use-sidebar-collapsed 소비). 실패: 파일 없음.
+
+**GREEN**: `Sidebar.tsx` — 264px, `--surface-sunken` 배경(§3.1), 메인/관리 nav, `user?.isSystemAdmin === true` 게이팅, `FavoritesMenu` 재사용(import·미수정), `useSidebarCollapsed` 소비. h1 금지. **이 task는 컴포넌트만 생성 — 어디에도 렌더 안 함**(T7이 배선).
+
+**REFACTOR**: 링크 배열 상수화, 활성 스타일 공통화.
+
+**검증**: `(cd apps/web && node_modules/.bin/vitest run src/components/layout/__tests__/Sidebar.test.tsx)`.
+
+### Task 6. TopBar.tsx — 상단바 컴포넌트 (트리 미배선)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/layout/TopBar.tsx`, `apps/web/src/components/layout/__tests__/TopBar.test.tsx`]
+- depends-on: [2, 3]
+
+**RED**: `TopBar.test.tsx` — 사이드바 토글(`aria-label` 상태별) + 로고(→`/dashboards`) + 검색(`aria-label="검색"` 정확 1개) + 만들기(→`/issues/new`) + 알림(InboxBell) + 도움말(트리거) + 설정(기존 서브라우트/계정, `/settings` 죽은링크 금지) + 계정 드롭다운. 실패: 파일 없음.
+
+**GREEN**: `TopBar.tsx` — 48px, 기존 Header의 검색·InboxBell·계정 드롭다운 로직 재사용, 사이드바 토글(useSidebarCollapsed), 도움말→ShortcutsHelpDialog 오픈 콜백 prop. **컴포넌트만 생성 — T7이 배선.**
+
+**REFACTOR**: 아이콘 버튼 공통화.
+
+**검증**: `(cd apps/web && node_modules/.bin/vitest run src/components/layout/__tests__/TopBar.test.tsx)`.
+
+### Task 7. 크롬 스왑 — ShellLayout 확장 + Header 축소 + __root 이관 (원자적)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/layout/ShellLayout.tsx`, `apps/web/src/components/layout/__tests__/ShellLayout.test.tsx`, `apps/web/src/components/Header.tsx`, `apps/web/src/components/Header.test.tsx`, `apps/web/src/routes/__root.tsx`, `apps/web/src/routes/__tests__/__root.test.tsx`]
+- depends-on: [5, 6]
+
+**RED**: `ShellLayout.test.tsx` — `isAuthenticated=true` → TopBar + Sidebar + 콘텐츠 Outlet 렌더; `false` → bare Outlet(사이드바 부재, E1 공개공유). `Header.test.tsx` 갱신 — 축소 후 Header에 `메인 메뉴`/`관리 메뉴` nav 부재(어서션을 Sidebar/contract로 이관). 실패: ShellLayout 미확장·Header 여전히 nav 보유.
+
+**GREEN(원자)**: 한 커밋에 —
+- `ShellLayout.tsx`: `useIsAuthenticated` 게이팅 → true면 `<TopBar/>`+`<Sidebar/>`+`<main><Outlet/></main>`, false면 `<Outlet/>`. 도움말 오픈 상태를 TopBar↔ShortcutsHelpDialog로 연결(또는 RootLayout 유지 배선).
+- `Header.tsx`: `메인 메뉴`·`관리 메뉴` nav 제거(TopBar/Sidebar가 흡수). ★ 남는 로직 중복 제거 후 Header가 빈 껍데기면 파일 삭제까지 고려(단 import 정리).
+- `__root.tsx`: `<Header/>` 렌더 중단. CommandPalette·ShortcutsHelpDialog·useNotificationStream·useKeyboardShortcuts는 **잔류**(G1). `<main>` 중복 방지(ShellLayout이 main 소유 시 __root는 wrapper만).
+- `__root.test.tsx`·`Header.test.tsx`: 이관 반영.
+
+**REFACTOR**: 중복 import 정리, 데드코드 제거(내 변경이 만든 것만).
+
+**검증**: `(cd apps/web && node_modules/.bin/vitest run)` 전량 green + `navigation-contract`(T1) green 유지 + `pnpm --dir apps/web typecheck && pnpm --dir apps/web lint`.
+
+## Plan 메타
+
+- task 수: 7
+- wave 예상: W1[T1·T2·T3·T4 병렬] → W2[T5·T6 병렬] → W3[T7] = **3 wave**
+- 예상 시간: 직렬 ~30분 / 3-wave 병렬 ~12분
+- TDD 강제: yes (T1은 회귀 가드 특수 — green baseline, 첫 test 커밋)
+- 추가 검증(qa-engineer): Playwright 전수 — 특히 calendar·dashboard·notification-policies·webhook·audit-logs·board·backlog·already-authed·dashboards.shared. CI에 e2e 잡 없음([[frontend-ci-10min-timeout-nonrequired]]) → 로컬 전수 필수.
+- 🔴 hard-won 커플링: (a) T4가 state-tokens 동결 리스트 갱신 안 하면 test 깨짐, (b) T7 원자성 — Sidebar/TopBar 배선과 Header 축소 동시(이중 nav 방지), (c) navigation-contract 마이그레이션 무관 렌더.
+
+## 리뷰 결과 (← /bts-review-plan 채움)
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
