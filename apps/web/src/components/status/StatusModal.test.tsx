@@ -39,6 +39,13 @@ describe('StatusModal', () => {
     expect(screen.queryByText(statusLabels.title)).toBeNull()
   })
 
+  it('흡수 후 우상단 X 닫기 버튼(Jira 시각 통일)이 렌더된다', () => {
+    render(<StatusModal open onOpenChange={vi.fn()} />)
+
+    // ui/dialog 래퍼로 흡수되면 DialogContent가 우상단 X(sr-only "Close")를 강제 렌더한다.
+    expect(screen.getByRole('button', { name: /close/i })).toBeTruthy()
+  })
+
   it('open=true면 이모지/텍스트/프리셋/저장 버튼을 렌더한다', () => {
     render(<StatusModal open onOpenChange={vi.fn()} />)
     expect(screen.getByText(statusLabels.title)).toBeInTheDocument()

@@ -2,7 +2,7 @@
 import type { JSX } from 'react'
 import { useState, useEffect } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { exportIssues, submitExportJob, downloadExportJobResult } from '@/api/search'
 import { triggerBlobDownload } from '@/lib/download'
@@ -501,29 +501,20 @@ export const ExportDialog = ({
   query,
 }: ExportDialogProps): JSX.Element => {
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>내보내기</DialogTitle>
+        </DialogHeader>
 
-        <DialogPrimitive.Content
-          role="dialog"
-          aria-modal="true"
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-          aria-describedby={undefined}
-        >
-          <DialogPrimitive.Title className="mb-4 text-base font-semibold">
-            내보내기
-          </DialogPrimitive.Title>
-
-          <ExportForm
-            projectKey={projectKey}
-            query={query}
-            onClose={() => {
-              onOpenChange(false)
-            }}
-          />
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        <ExportForm
+          projectKey={projectKey}
+          query={query}
+          onClose={() => {
+            onOpenChange(false)
+          }}
+        />
+      </DialogContent>
+    </Dialog>
   )
 }

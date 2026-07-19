@@ -1,6 +1,6 @@
 // 단축키 도움말 모달 — SHORTCUTS 단일 진실 출처를 렌더 (FR-UX-05)
 import type { JSX } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { PALETTE_HELP_ITEM, SHORTCUTS } from './shortcuts'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -59,39 +59,32 @@ export function ShortcutsHelpDialog({
   onOpenChange,
 }: ShortcutsHelpDialogProps): JSX.Element {
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>키보드 단축키</DialogTitle>
+        </DialogHeader>
 
-        <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-          aria-describedby={undefined}
-        >
-          <DialogPrimitive.Title className="text-base font-semibold mb-4">
-            키보드 단축키
-          </DialogPrimitive.Title>
-
-          <dl className="space-y-2">
-            {SHORTCUTS.map((shortcut) => (
-              <div
-                key={shortcut.description}
-                className="flex items-center justify-between gap-4"
-              >
-                <dt className="text-sm text-muted-foreground">{shortcut.description}</dt>
-                <dd>
-                  <ShortcutKeys keys={shortcut.keys} />
-                </dd>
-              </div>
-            ))}
-            <div className="flex items-center justify-between gap-4">
-              <dt className="text-sm text-muted-foreground">{PALETTE_HELP_ITEM.description}</dt>
+        <dl className="space-y-2">
+          {SHORTCUTS.map((shortcut) => (
+            <div
+              key={shortcut.description}
+              className="flex items-center justify-between gap-4"
+            >
+              <dt className="text-sm text-muted-foreground">{shortcut.description}</dt>
               <dd>
-                <ShortcutKeys keys={PALETTE_HELP_ITEM.keys} />
+                <ShortcutKeys keys={shortcut.keys} />
               </dd>
             </div>
-          </dl>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+          ))}
+          <div className="flex items-center justify-between gap-4">
+            <dt className="text-sm text-muted-foreground">{PALETTE_HELP_ITEM.description}</dt>
+            <dd>
+              <ShortcutKeys keys={PALETTE_HELP_ITEM.keys} />
+            </dd>
+          </div>
+        </dl>
+      </DialogContent>
+    </Dialog>
   )
 }

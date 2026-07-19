@@ -1,7 +1,13 @@
 // 상태 설정 모달 — 이모지/텍스트/만료 프리셋 입력 + 저장(replace)/해제 (FR-PR-02 Task 8)
 import type { JSX } from 'react'
 import { useEffect, useState } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { useStatusQuery, useUpdateStatusMutation } from '@/api/useStatus'
 import { refreshWhoami } from '@/api/useProfile'
 import { resolveExpiry, EXPIRY_PRESETS } from '@/lib/status-expiry'
@@ -71,64 +77,61 @@ export function StatusModal({ open, onOpenChange }: StatusModalProps): JSX.Eleme
   }
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
-          <DialogPrimitive.Title className="mb-4 text-lg font-semibold">
-            {statusLabels.title}
-          </DialogPrimitive.Title>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{statusLabels.title}</DialogTitle>
+        </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="status-emoji">{statusLabels.emojiLabel}</Label>
-              <Input
-                id="status-emoji" value={emoji} placeholder={statusLabels.emojiPlaceholder}
-                maxLength={EMOJI_MAX_LENGTH}
-                disabled={mutation.isPending} onChange={(e) => { setEmoji(e.target.value) }}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="status-text">{statusLabels.textLabel}</Label>
-              <Input
-                id="status-text" value={text} placeholder={statusLabels.textPlaceholder}
-                maxLength={TEXT_MAX_LENGTH}
-                disabled={mutation.isPending} onChange={(e) => { setText(e.target.value) }}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="status-expiry">{statusLabels.expiryLabel}</Label>
-              <select
-                id="status-expiry" value={preset} disabled={mutation.isPending}
-                onChange={(e) => { setPreset(e.target.value as ExpiryPreset) }}
-                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm"
-              >
-                {EXPIRY_PRESETS.map((p) => (
-                  <option key={p} value={p}>{statusLabels.presets[p]}</option>
-                ))}
-              </select>
-            </div>
-
-            {mutation.isError && (
-              <p role="alert" className="text-sm text-destructive">
-                {statusLabels.errorMessage}
-              </p>
-            )}
-
-            <div className="flex justify-between gap-2 pt-2">
-              <Button
-                type="button" variant="outline" size="sm"
-                disabled={mutation.isPending} onClick={handleClear}
-              >
-                {statusLabels.clearButton}
-              </Button>
-              <Button type="button" size="sm" disabled={mutation.isPending} onClick={handleSave}>
-                {mutation.isPending ? statusLabels.savingButton : statusLabels.saveButton}
-              </Button>
-            </div>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="status-emoji">{statusLabels.emojiLabel}</Label>
+            <Input
+              id="status-emoji" value={emoji} placeholder={statusLabels.emojiPlaceholder}
+              maxLength={EMOJI_MAX_LENGTH}
+              disabled={mutation.isPending} onChange={(e) => { setEmoji(e.target.value) }}
+            />
           </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+          <div className="space-y-1.5">
+            <Label htmlFor="status-text">{statusLabels.textLabel}</Label>
+            <Input
+              id="status-text" value={text} placeholder={statusLabels.textPlaceholder}
+              maxLength={TEXT_MAX_LENGTH}
+              disabled={mutation.isPending} onChange={(e) => { setText(e.target.value) }}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="status-expiry">{statusLabels.expiryLabel}</Label>
+            <select
+              id="status-expiry" value={preset} disabled={mutation.isPending}
+              onChange={(e) => { setPreset(e.target.value as ExpiryPreset) }}
+              className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm"
+            >
+              {EXPIRY_PRESETS.map((p) => (
+                <option key={p} value={p}>{statusLabels.presets[p]}</option>
+              ))}
+            </select>
+          </div>
+
+          {mutation.isError && (
+            <p role="alert" className="text-sm text-destructive">
+              {statusLabels.errorMessage}
+            </p>
+          )}
+        </div>
+
+        <DialogFooter className="sm:justify-between">
+          <Button
+            type="button" variant="outline" size="sm"
+            disabled={mutation.isPending} onClick={handleClear}
+          >
+            {statusLabels.clearButton}
+          </Button>
+          <Button type="button" size="sm" disabled={mutation.isPending} onClick={handleSave}>
+            {mutation.isPending ? statusLabels.savingButton : statusLabels.saveButton}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -2,7 +2,13 @@
 import type { JSX } from 'react'
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import {
   updateFilter,
@@ -136,67 +142,60 @@ export function ShareFilterDialog({ open, filter, onClose }: ShareFilterDialogPr
   }
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={handleOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-sm" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{savedFilterLabels.shareLabel}</DialogTitle>
+        </DialogHeader>
 
-        <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-          aria-describedby={undefined}
-        >
-          <DialogPrimitive.Title className="text-base font-semibold mb-4">
-            {savedFilterLabels.shareLabel}
-          </DialogPrimitive.Title>
+        <div className="space-y-3">
+          {/* PROJECT 토글 — 이 프로젝트 멤버 */}
+          <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
+            <input
+              type="checkbox"
+              className="h-4 w-4 cursor-pointer"
+              checked={projectEnabled}
+              onChange={(e) => setProjectEnabled(e.target.checked)}
+            />
+            {savedFilterLabels.shareWithProjectMembers(filter.projectKey)}
+          </label>
 
-          <div className="space-y-3">
-            {/* PROJECT 토글 — 이 프로젝트 멤버 */}
-            <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
-              <input
-                type="checkbox"
-                className="h-4 w-4 cursor-pointer"
-                checked={projectEnabled}
-                onChange={(e) => setProjectEnabled(e.target.checked)}
-              />
-              {savedFilterLabels.shareWithProjectMembers(filter.projectKey)}
-            </label>
+          {/* AUTHENTICATED 토글 — 모든 로그인 사용자 */}
+          <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
+            <input
+              type="checkbox"
+              className="h-4 w-4 cursor-pointer"
+              checked={authEnabled}
+              onChange={(e) => setAuthEnabled(e.target.checked)}
+            />
+            {savedFilterLabels.shareWithAuthenticated}
+          </label>
+        </div>
 
-            {/* AUTHENTICATED 토글 — 모든 로그인 사용자 */}
-            <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
-              <input
-                type="checkbox"
-                className="h-4 w-4 cursor-pointer"
-                checked={authEnabled}
-                onChange={(e) => setAuthEnabled(e.target.checked)}
-              />
-              {savedFilterLabels.shareWithAuthenticated}
-            </label>
-          </div>
+        {mutation.isError && (
+          <p className="text-sm text-destructive" role="alert">
+            {savedFilterLabels.saveError}
+          </p>
+        )}
 
-          {mutation.isError && (
-            <p className="text-sm text-destructive mt-3" role="alert">
-              {savedFilterLabels.saveError}
-            </p>
-          )}
-
-          <div className="flex justify-end gap-2 mt-6">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onClose}
-              disabled={mutation.isPending}
-            >
-              {savedFilterLabels.cancelButton}
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleSave}
-              disabled={mutation.isPending}
-            >
-              {savedFilterLabels.saveButton}
-            </Button>
-          </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onClose}
+            disabled={mutation.isPending}
+          >
+            {savedFilterLabels.cancelButton}
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={mutation.isPending}
+          >
+            {savedFilterLabels.saveButton}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

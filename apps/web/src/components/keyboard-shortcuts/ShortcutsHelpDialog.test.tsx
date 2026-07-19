@@ -53,4 +53,12 @@ describe('ShortcutsHelpDialog', () => {
     rerender(<ShortcutsHelpDialog open onOpenChange={vi.fn()} />)
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
+
+  it('X 닫기 버튼 클릭 시 onOpenChange가 false로 호출된다', async () => {
+    const user = userEvent.setup()
+    const onOpenChange = vi.fn()
+    render(<ShortcutsHelpDialog open onOpenChange={onOpenChange} />)
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
 })

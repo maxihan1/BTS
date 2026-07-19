@@ -76,6 +76,28 @@ afterEach(() => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// (f) ui/dialog 흡수 — 우상단 X 닫기 버튼(Jira 시각 통일)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SaveFilterDialog — ui/dialog 흡수(f)', () => {
+  it('흡수 후 우상단 X 닫기 버튼(Jira 시각 통일)이 렌더된다', () => {
+    render(
+      <SaveFilterDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        mode="create"
+        aqlQuery="status = open"
+        projectKey="PROJ"
+      />,
+      { wrapper: createWrapper() },
+    )
+
+    // ui/dialog 래퍼로 흡수되면 DialogContent가 우상단 X(sr-only "Close")를 강제 렌더한다.
+    expect(screen.getByRole('button', { name: /close/i })).toBeTruthy()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // (a) 생성 모드 — createFilter 호출
 // ─────────────────────────────────────────────────────────────────────────────
 
