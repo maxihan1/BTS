@@ -1,7 +1,7 @@
 // 칸반 보드 라우트 — BoardRouteAdapter + BoardPage (FR-BD-01 Task 7 + FR-BD-02 Task 6 + FR-BD-03 Task 6 + FR-UX-01 Task 9)
 import type { JSX } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams, useSearch, useNavigate, Link } from '@tanstack/react-router'
+import { useParams, useSearch, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
 import { toast } from 'sonner'
@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { FavoriteButton } from '@/components/favorite/FavoriteButton'
+import { ProjectNavTabs } from '@/components/project/ProjectNavTabs'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 스켈레톤 헬퍼 — shadcn Skeleton 미설치이므로 인라인 구현
@@ -473,23 +474,14 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
         <FavoriteButton targetType="PROJECT" targetId={projectKey} />
       </div>
 
-      {/* 뷰 전환 nav — 백로그·타임라인 */}
-      <nav aria-label="프로젝트 뷰 전환" className="flex items-center gap-3">
-        <Link
-          to="/projects/$projectKey/backlog"
-          params={{ projectKey }}
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
-          {boardLabels.page.backlogLink}
-        </Link>
-        <Link
-          to="/projects/$projectKey/timeline"
-          params={{ projectKey }}
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
-          {boardLabels.page.timelineLink}
-        </Link>
-      </nav>
+      {/* 뷰 전환 nav — 백로그·타임라인 (ProjectNavTabs 공유 컴포넌트, FR-UX-06 PR12 Task 4) */}
+      <ProjectNavTabs
+        projectKey={projectKey}
+        links={[
+          { to: '/projects/$projectKey/backlog', label: boardLabels.page.backlogLink },
+          { to: '/projects/$projectKey/timeline', label: boardLabels.page.timelineLink },
+        ]}
+      />
 
       {/* 헤더 행 — 보드 선택 드롭다운 + 스윔레인 셀렉터 */}
       {(boards !== undefined && boards.length >= 2) || (boardDetail !== undefined && canCreate) ? (
