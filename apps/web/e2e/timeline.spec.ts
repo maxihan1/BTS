@@ -489,19 +489,80 @@ test.describe('FR-TL-02 타임라인 의존 라인 오버레이 (D6/D7 실렌더
   //        BTS-1 blocks BTS-4 엣지 — 수평 폭이 있는 케이스
   //        startX (BTS-1 dueDate=2026-09-30 우끝) ≠ endX (BTS-4 startDate=2026-07-15 좌끝)
   //        elbow 경로: M startX,BTS1_y H midX V BTS4_y H endX
-  //        bounding box 중심 (midX, (BTS1_y+BTS4_y)/2) 이 수직 세그먼트 위에 위치
   //        S-DEPS-2/3 는 BTS-2→BTS-3(수직선, startX≈endX)을 dispatchEvent로 커버 —
   //        해당 케이스는 수직선으로 bounding box 폭이 0에 가까워 Playwright 실클릭 곤란.
   //        BTS-1→BTS-4 는 수평 폭이 크므로 Playwright 실클릭으로 hit-path 경로 검증 가능.
-  // When   BTS-1→BTS-4 hit-path를 Playwright .click() 실행 (force 없음, dispatchEvent 없음)
+  // When   BTS-1→BTS-4 hit-path 를 Playwright `.click({ position })` 실행
+  //        (force 없음, dispatchEvent 없음).
   //        SVG child pointer-events:all 이 부모 SVG/g pointer-events:none 불구 hit-test 통과.
-  //        midX = (startX+endX)/2 가 bounding box center_x — 수직 세그먼트 위라
-  //        elementFromPoint(midX, center_y) 가 BTS-1→BTS-4 hit-path를 반환.
-  //        BTS-2→BTS-3 midX ≈ 2026-08-01 위치 vs BTS-1→BTS-4 midX ≈ 2026-08-22 위치 — 겹침 없음.
+  //        ★ FR-UX-06 PR11 사이드바(264px) 회귀 fix — bbox 기하 중심(기존 방식)은
+  //        L자 elbow 라인의 넓은 bounding box(가로 1600px+) 중심이라 콘텐츠 영역이
+  //        좁아지면 화면 밖으로 밀려난다(1280px 뷰포트 기준). 실제 stroke 경로
+  //        (getPointAtLength)를 따라 표본을 뽑아 뷰포트 안(여백 포함)에 있는
+  //        지점 하나를 선택해 클릭 — 사이드바 유무/폭 변화에 무관하게 견고하다.
   // Then   BTS-1→BTS-4 visible path에 data-selected="true"
   //        BTS-2→BTS-3 visible path에 data-dimmed="true"
   //        (라인 선택 hit-path 실클릭성 검증 — pointer-events 메커니즘 실 브라우저 경로 확인)
   // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * SVG path 요소의 실제 stroke 경로 위에서, 현재 브라우저 뷰포트 안(여백 포함)에
+   * 놓인 지점 하나를 찾아 `Locator.click({ position })` 인자로 반환한다.
+   *
+   * 넓은 bounding box를 가진 라인(예: L자 elbow 의존 라인)은 Playwright 기본 클릭
+   * 지점(bbox 기하 중심)이 콘텐츠 영역 폭에 따라 뷰포트 밖으로 밀려날 수 있다
+   * (FR-UX-06 PR11 사이드바 도입 회귀 — memory: e2e-flaky-timeout-masks-transient-url-race
+   * 류의 "겉보기엔 앱 버그, 실은 테스트 좌표 가정" 패턴).
+   * `getPointAtLength`로 실제 stroke를 따라 표본을 뽑으면 레이아웃별 매직넘버 없이
+   * 뷰포트 폭 변화(사이드바 접힘/펼침 등)에 무관하게 항상 유효한 클릭 지점을 구할 수 있다.
+   *
+   * @param path 대상 SVG path 요소를 가리키는 Locator (예: 의존 라인 투명 hit-path)
+   * @param marginPx 뷰포트 가장자리로부터 확보할 최소 여백(px)
+   * @returns `Locator.click({ position })` 에 전달할, 요소 bounding box 좌상단 기준 상대 좌표
+   */
+  async function findOnscreenPathClickPosition(
+    path: import('@playwright/test').Locator,
+    marginPx = 24,
+  ): Promise<{ x: number; y: number }> {
+    const box = await path.boundingBox()
+    if (!box) {
+      throw new Error('대상 path 의 bounding box 를 가져올 수 없음 (DOM 미부착)')
+    }
+
+    const screenPoint = await path.evaluate(
+      (el: SVGPathElement, margin: number) => {
+        const ctm = el.getScreenCTM()
+        if (!ctm) return null
+        const total = el.getTotalLength()
+        const samples = 100
+        for (let i = 0; i <= samples; i += 1) {
+          const local = el.getPointAtLength((total * i) / samples)
+          const screen = local.matrixTransform(ctm)
+          if (
+            screen.x > margin &&
+            screen.x < window.innerWidth - margin &&
+            screen.y > margin &&
+            screen.y < window.innerHeight - margin
+          ) {
+            return { x: screen.x, y: screen.y }
+          }
+        }
+        return null
+      },
+      marginPx,
+    )
+
+    if (!screenPoint) {
+      // 화면 안에 stroke 지점이 전혀 없음 — 좌표 가정 문제가 아니라 실제 렌더링 회귀 가능성
+      throw new Error(
+        '의존 라인 stroke 위에서 뷰포트 안 지점을 찾지 못함 — 앱 렌더링 회귀 의심 (테스트 좌표 문제 아님)',
+      )
+    }
+
+    // Locator.click({ position }) 은 요소 bounding box 좌상단 기준 상대 좌표를 받는다.
+    return { x: screenPoint.x - box.x, y: screenPoint.y - box.y }
+  }
+
   test('S-DEPS-REALCLICK 수평 엣지 hit-path 실클릭 — BTS-1→BTS-4 .click() → data-selected', async ({ page }) => {
     // Given. alice 로그인 + BTS 타임라인 SPA 이동
     await loginAndNavigateToTimeline(page)
@@ -517,14 +578,15 @@ test.describe('FR-TL-02 타임라인 의존 라인 오버레이 (D6/D7 실렌더
     await expect(edge2).toBeAttached()
     await expect(edge2).not.toHaveAttribute('data-selected', 'true')
 
-    // When. BTS-1→BTS-4 hit-path 실클릭 (force 없음)
+    // When. BTS-1→BTS-4 hit-path 실클릭 (force 없음) — 뷰포트 안 stroke 지점 클릭
     // DependencyOverlay.tsx: visible path 와 같은 <g> 안에 <path stroke="transparent" pointerEvents="all">
     // CSS :has() 셀렉터로 aria-label 기준 부모 <g> 를 특정 후 투명 hit-path 에 접근 (strict mode 안전)
     const edge2HitPath = gantt.locator(
       `g:has([aria-label="${DEPS_EDGE_2_ARIA}"]) path[stroke="transparent"]`,
     )
     await expect(edge2HitPath).toBeAttached()
-    await edge2HitPath.click()
+    const clickPosition = await findOnscreenPathClickPosition(edge2HitPath)
+    await edge2HitPath.click({ position: clickPosition })
 
     // Then. BTS-1→BTS-4 엣지 선택 강조 (selectedKey = "BTS-1__BTS-4")
     await expect(edge2).toHaveAttribute('data-selected', 'true')
