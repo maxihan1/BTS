@@ -1,7 +1,15 @@
 // step-up 재인증 모달 — LOCAL/LDAP 폼 또는 SSO 버튼으로 수단 자동 결정 (FR-AU-08/08b)
 import type { JSX, FormEvent } from 'react'
 import { useState } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -284,81 +292,72 @@ export function ReauthDialog({
   }
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={handleOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{accountLinkLabels.reauth.modalTitle}</DialogTitle>
+          <DialogDescription>{accountLinkLabels.reauth.modalGuide}</DialogDescription>
+        </DialogHeader>
 
-        <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-        >
-          <DialogPrimitive.Title className="text-lg font-semibold mb-1">
-            {accountLinkLabels.reauth.modalTitle}
-          </DialogPrimitive.Title>
-
-          <p className="text-sm text-muted-foreground mb-4">
-            {accountLinkLabels.reauth.modalGuide}
-          </p>
-
-          {/* 에러 메시지 영역 */}
-          {errorMessage !== null && (
-            <div
-              role="alert"
-              aria-live="polite"
-              className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive"
-            >
-              {errorMessage}
-            </div>
-          )}
-
-          {/* 수단별 폼 */}
-          {mode === 'LOCAL' && (
-            <LocalForm
-              isPending={isPending}
-              onSubmit={handleLocalSubmit}
-              passwordRef={{ value: password, onChange: setPassword }}
-            />
-          )}
-
-          {mode === 'LDAP' && (
-            <LdapForm
-              isPending={isPending}
-              username={ldapUser}
-              password={ldapPass}
-              onUsernameChange={setLdapUser}
-              onPasswordChange={setLdapPass}
-              onSubmit={handleLdapSubmit}
-            />
-          )}
-
-          {/* 액션 버튼 */}
-          <div className="flex justify-end gap-2 mt-6">
-            <DialogPrimitive.Close asChild>
-              <Button variant="outline" size="sm" disabled={isPending}>
-                취소
-              </Button>
-            </DialogPrimitive.Close>
-
-            {mode === 'SSO' ? (
-              <Button
-                size="sm"
-                disabled={isPending}
-                onClick={handleSsoClick}
-              >
-                {accountLinkLabels.reauth.ssoButton}
-              </Button>
-            ) : (
-              <Button
-                type="submit"
-                form="reauth-form"
-                size="sm"
-                disabled={isPending}
-              >
-                {accountLinkLabels.reauth.submitButton}
-              </Button>
-            )}
+        {/* 에러 메시지 영역 */}
+        {errorMessage !== null && (
+          <div
+            role="alert"
+            aria-live="polite"
+            className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive"
+          >
+            {errorMessage}
           </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        )}
+
+        {/* 수단별 폼 */}
+        {mode === 'LOCAL' && (
+          <LocalForm
+            isPending={isPending}
+            onSubmit={handleLocalSubmit}
+            passwordRef={{ value: password, onChange: setPassword }}
+          />
+        )}
+
+        {mode === 'LDAP' && (
+          <LdapForm
+            isPending={isPending}
+            username={ldapUser}
+            password={ldapPass}
+            onUsernameChange={setLdapUser}
+            onPasswordChange={setLdapPass}
+            onSubmit={handleLdapSubmit}
+          />
+        )}
+
+        {/* 액션 버튼 */}
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline" size="sm" disabled={isPending}>
+              취소
+            </Button>
+          </DialogClose>
+
+          {mode === 'SSO' ? (
+            <Button
+              size="sm"
+              disabled={isPending}
+              onClick={handleSsoClick}
+            >
+              {accountLinkLabels.reauth.ssoButton}
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              form="reauth-form"
+              size="sm"
+              disabled={isPending}
+            >
+              {accountLinkLabels.reauth.submitButton}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -1,7 +1,14 @@
 // 발급된 PAT raw token 1회 노출 모달 — 복사 버튼 + 재확인 불가 안내 (FR-API-04 Task 7)
 import type { JSX } from 'react'
 import { useState } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import type { PatIssued } from '@/api/pats'
 
@@ -71,37 +78,33 @@ export function PatTokenModal({ issued, onClose }: PatTokenModalProps): JSX.Elem
   }
 
   return (
-    <DialogPrimitive.Root open onOpenChange={handleOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <Dialog open onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{labels.title}</DialogTitle>
+        </DialogHeader>
 
-        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
-          <DialogPrimitive.Title className="text-lg font-semibold mb-1">
-            {labels.title}
-          </DialogPrimitive.Title>
+        <p role="alert" className="mt-2 text-sm text-warning-text">
+          {labels.warning}
+        </p>
 
-          <p role="alert" className="mt-2 text-sm text-warning-text">
-            {labels.warning}
-          </p>
+        <code className="mt-4 block break-all rounded bg-muted px-3 py-2 text-sm font-mono">
+          {issued.token}
+        </code>
 
-          <code className="mt-4 block break-all rounded bg-muted px-3 py-2 text-sm font-mono">
-            {issued.token}
-          </code>
+        {copyError !== null && (
+          <p role="alert" className="mt-2 text-xs text-destructive">{copyError}</p>
+        )}
 
-          {copyError !== null && (
-            <p role="alert" className="mt-2 text-xs text-destructive">{copyError}</p>
-          )}
-
-          <div className="mt-6 flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => { void handleCopy() }}>
-              {copied ? labels.copiedLabel : labels.copyButton}
-            </Button>
-            <DialogPrimitive.Close asChild>
-              <Button size="sm">{labels.close}</Button>
-            </DialogPrimitive.Close>
-          </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => { void handleCopy() }}>
+            {copied ? labels.copiedLabel : labels.copyButton}
+          </Button>
+          <DialogClose asChild>
+            <Button size="sm">{labels.close}</Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

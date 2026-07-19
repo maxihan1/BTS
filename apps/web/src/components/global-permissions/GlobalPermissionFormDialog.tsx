@@ -1,7 +1,7 @@
 // 전역 권한 부여 다이얼로그 — 권한 select + 대상 종류 토글 + USER 검색/GROUP 드롭다운 (FR-PM-10 D6)
 import type { FormEvent, JSX } from 'react'
 import { useState } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useUserSearch } from '@/hooks/use-user-directory'
 import { useGroups } from '@/hooks/use-groups'
@@ -287,14 +287,14 @@ function FormBody({ onClose }: FormBodyProps): JSX.Element {
       )}
 
       {/* 액션 버튼 */}
-      <div className="flex justify-end gap-2 mt-6">
+      <DialogFooter>
         <Button type="button" variant="outline" size="sm" onClick={onClose}>
           취소
         </Button>
         <Button type="submit" size="sm" disabled={granteeId === null || grantMutation.isPending}>
           부여
         </Button>
-      </div>
+      </DialogFooter>
     </form>
   )
 }
@@ -326,25 +326,17 @@ export const GlobalPermissionFormDialog = ({
   onClose,
 }: GlobalPermissionFormDialogProps): JSX.Element => {
   return (
-    <DialogPrimitive.Root
+    <Dialog
       open={isOpen}
       onOpenChange={(next) => { if (!next) onClose() }}
     >
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+      <DialogContent className="max-w-lg overflow-y-auto max-h-[90vh]" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>전역 권한 부여</DialogTitle>
+        </DialogHeader>
 
-        <DialogPrimitive.Content
-          role="dialog"
-          aria-modal="true"
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 overflow-y-auto max-h-[90vh]"
-        >
-          <DialogPrimitive.Title className="text-lg font-semibold mb-4">
-            전역 권한 부여
-          </DialogPrimitive.Title>
-
-          <FormBody key={isOpen ? 'open' : 'closed'} onClose={onClose} />
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        <FormBody key={isOpen ? 'open' : 'closed'} onClose={onClose} />
+      </DialogContent>
+    </Dialog>
   )
 }
