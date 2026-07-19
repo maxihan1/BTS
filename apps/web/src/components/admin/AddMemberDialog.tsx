@@ -1,7 +1,15 @@
 // 프로젝트 멤버 추가 다이얼로그 — typeahead 검색 + 역할 선택 + addMember mutation (FR-PM-01)
 import type { JSX } from 'react'
 import { useState } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogClose,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -111,7 +119,7 @@ interface AddMemberDialogProps {
  * 4. 역할 선택 (기본: MEMBER).
  * 5. 추가 버튼 → useAddMember.mutate → 성공 시 Dialog 닫힘.
  *
- * Dialog는 shadcn에 없으므로 radix-ui Dialog를 직접 사용한다.
+ * Dialog는 `@/components/ui/dialog` compound 래퍼를 사용한다.
  *
  * @param projectKey 멤버를 추가할 프로젝트 키
  */
@@ -158,99 +166,93 @@ export function AddMemberDialog({ projectKey }: AddMemberDialogProps): JSX.Eleme
   }
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={handleOpenChange}>
-      <DialogPrimitive.Trigger asChild>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
         <Button size="sm">
           {projectMemberLabels.addDialog.triggerButton}
         </Button>
-      </DialogPrimitive.Trigger>
+      </DialogTrigger>
 
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{projectMemberLabels.addDialog.title}</DialogTitle>
+        </DialogHeader>
 
-        <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-        >
-          <DialogPrimitive.Title className="text-lg font-semibold mb-4">
-            {projectMemberLabels.addDialog.title}
-          </DialogPrimitive.Title>
-
-          {/* 사용자 검색 */}
-          <div className="space-y-3">
-            <div>
-              <label htmlFor="member-search" className="text-sm font-medium mb-1 block">
-                사용자 검색
-              </label>
-              <input
-                id="member-search"
-                type="text"
-                value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value) }}
-                placeholder={projectMemberLabels.addDialog.searchPlaceholder}
-                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
-                autoComplete="off"
-              />
-              <SearchResultList
-                query={searchQuery}
-                selectedUser={selectedUser}
-                onSelect={handleSelectUser}
-              />
-            </div>
-
-            {/* 선택된 사용자 표시 */}
-            {selectedUser !== null && (
-              <p className="text-sm text-muted-foreground">
-                선택됨.{' '}
-                <span className="font-medium text-foreground">
-                  {resolveUserLabel(selectedUser)}
-                </span>
-              </p>
-            )}
-
-            {/* 역할 선택 */}
-            <div>
-              <label className="text-sm font-medium mb-1 block">
-                역할
-              </label>
-              <Select
-                value={selectedRole}
-                onValueChange={handleRoleChange}
-              >
-                <SelectTrigger
-                  className="w-full"
-                  aria-label={projectMemberLabels.addDialog.roleSelectAriaLabel}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="PROJECT_ADMIN">
-                    {projectMemberLabels.addDialog.roleAdminOption}
-                  </SelectItem>
-                  <SelectItem value="MEMBER">
-                    {projectMemberLabels.addDialog.roleMemberOption}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+        {/* 사용자 검색 */}
+        <div className="space-y-3">
+          <div>
+            <label htmlFor="member-search" className="text-sm font-medium mb-1 block">
+              사용자 검색
+            </label>
+            <input
+              id="member-search"
+              type="text"
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value) }}
+              placeholder={projectMemberLabels.addDialog.searchPlaceholder}
+              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
+              autoComplete="off"
+            />
+            <SearchResultList
+              query={searchQuery}
+              selectedUser={selectedUser}
+              onSelect={handleSelectUser}
+            />
           </div>
 
-          {/* 액션 버튼 */}
-          <div className="flex justify-end gap-2 mt-6">
-            <DialogPrimitive.Close asChild>
-              <Button variant="outline" size="sm">
-                {projectMemberLabels.addDialog.cancelButton}
-              </Button>
-            </DialogPrimitive.Close>
-            <Button
-              size="sm"
-              disabled={selectedUser === null || addMember.isPending}
-              onClick={handleConfirm}
+          {/* 선택된 사용자 표시 */}
+          {selectedUser !== null && (
+            <p className="text-sm text-muted-foreground">
+              선택됨.{' '}
+              <span className="font-medium text-foreground">
+                {resolveUserLabel(selectedUser)}
+              </span>
+            </p>
+          )}
+
+          {/* 역할 선택 */}
+          <div>
+            <label className="text-sm font-medium mb-1 block">
+              역할
+            </label>
+            <Select
+              value={selectedRole}
+              onValueChange={handleRoleChange}
             >
-              {projectMemberLabels.addDialog.confirmButton}
-            </Button>
+              <SelectTrigger
+                className="w-full"
+                aria-label={projectMemberLabels.addDialog.roleSelectAriaLabel}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="PROJECT_ADMIN">
+                  {projectMemberLabels.addDialog.roleAdminOption}
+                </SelectItem>
+                <SelectItem value="MEMBER">
+                  {projectMemberLabels.addDialog.roleMemberOption}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        </div>
+
+        {/* 액션 버튼 */}
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline" size="sm">
+              {projectMemberLabels.addDialog.cancelButton}
+            </Button>
+          </DialogClose>
+          <Button
+            size="sm"
+            disabled={selectedUser === null || addMember.isPending}
+            onClick={handleConfirm}
+          >
+            {projectMemberLabels.addDialog.confirmButton}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -1,7 +1,7 @@
 // 부재중(Out of Office) 설정 모달 — 기간 + 대리자 검색 선택 + 안내 메시지 저장(replace)/해제 (FR-PR-03 Task 7)
 import type { JSX } from 'react'
 import { useEffect, useState } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { useOooQuery, useUpdateOooMutation, useClearOooMutation } from '@/hooks/use-ooo'
 import { refreshWhoami } from '@/api/useProfile'
 import { useUserSearch } from '@/hooks/use-user-directory'
@@ -185,87 +185,84 @@ export function OooModal({ open, onOpenChange }: OooModalProps): JSX.Element {
   }
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
-          <DialogPrimitive.Title className="mb-4 text-lg font-semibold">
-            {oooLabels.title}
-          </DialogPrimitive.Title>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{oooLabels.title}</DialogTitle>
+        </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="ooo-starts-at">{oooLabels.startsAtLabel}</Label>
-                <Input
-                  id="ooo-starts-at" type="datetime-local" value={startsAt}
-                  disabled={isPending} onChange={(e) => { setStartsAt(e.target.value) }}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="ooo-ends-at">{oooLabels.endsAtLabel}</Label>
-                <Input
-                  id="ooo-ends-at" type="datetime-local" value={endsAt}
-                  disabled={isPending} onChange={(e) => { setEndsAt(e.target.value) }}
-                />
-              </div>
-            </div>
-
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="ooo-delegate-search">{oooLabels.delegateLabel}</Label>
-              <input
-                id="ooo-delegate-search" type="text" value={delegateQuery}
-                placeholder={oooLabels.delegateSearchPlaceholder}
-                disabled={isPending} autoComplete="off"
-                onChange={(e) => { setDelegateQuery(e.target.value) }}
-                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
-              />
-              <DelegateResultList query={delegateQuery} onSelect={handleSelectDelegate} />
-              {delegateUserId !== null && (
-                <p className="text-sm text-muted-foreground">
-                  {oooLabels.delegateSelected}.{' '}
-                  <span className="font-medium text-foreground">
-                    {selectedDelegateLabel ?? delegateUserId}
-                  </span>{' '}
-                  <button
-                    type="button"
-                    aria-label="대리자 선택 해제"
-                    className="text-xs text-muted-foreground underline"
-                    onClick={handleClearDelegate}
-                  >
-                    ×
-                  </button>
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="ooo-message">{oooLabels.messageLabel}</Label>
-              <textarea
-                id="ooo-message" value={message} placeholder={oooLabels.messagePlaceholder}
-                maxLength={MESSAGE_MAX_LENGTH} rows={3} disabled={isPending}
-                onChange={(e) => { setMessage(e.target.value) }}
-                className="w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
+              <Label htmlFor="ooo-starts-at">{oooLabels.startsAtLabel}</Label>
+              <Input
+                id="ooo-starts-at" type="datetime-local" value={startsAt}
+                disabled={isPending} onChange={(e) => { setStartsAt(e.target.value) }}
               />
             </div>
-
-            {errorMessage !== null && (
-              <p role="alert" className="text-sm text-destructive">
-                {errorMessage}
-              </p>
-            )}
-
-            <div className="flex justify-between gap-2 pt-2">
-              <Button type="button" variant="outline" size="sm" disabled={isPending} onClick={handleClear}>
-                {oooLabels.clearButton}
-              </Button>
-              <Button type="button" size="sm" disabled={isPending} onClick={handleSave}>
-                {updateMutation.isPending ? oooLabels.savingButton : oooLabels.saveButton}
-              </Button>
+            <div className="space-y-1.5">
+              <Label htmlFor="ooo-ends-at">{oooLabels.endsAtLabel}</Label>
+              <Input
+                id="ooo-ends-at" type="datetime-local" value={endsAt}
+                disabled={isPending} onChange={(e) => { setEndsAt(e.target.value) }}
+              />
             </div>
           </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="ooo-delegate-search">{oooLabels.delegateLabel}</Label>
+            <input
+              id="ooo-delegate-search" type="text" value={delegateQuery}
+              placeholder={oooLabels.delegateSearchPlaceholder}
+              disabled={isPending} autoComplete="off"
+              onChange={(e) => { setDelegateQuery(e.target.value) }}
+              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
+            />
+            <DelegateResultList query={delegateQuery} onSelect={handleSelectDelegate} />
+            {delegateUserId !== null && (
+              <p className="text-sm text-muted-foreground">
+                {oooLabels.delegateSelected}.{' '}
+                <span className="font-medium text-foreground">
+                  {selectedDelegateLabel ?? delegateUserId}
+                </span>{' '}
+                <button
+                  type="button"
+                  aria-label="대리자 선택 해제"
+                  className="text-xs text-muted-foreground underline"
+                  onClick={handleClearDelegate}
+                >
+                  ×
+                </button>
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="ooo-message">{oooLabels.messageLabel}</Label>
+            <textarea
+              id="ooo-message" value={message} placeholder={oooLabels.messagePlaceholder}
+              maxLength={MESSAGE_MAX_LENGTH} rows={3} disabled={isPending}
+              onChange={(e) => { setMessage(e.target.value) }}
+              className="w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
+            />
+          </div>
+
+          {errorMessage !== null && (
+            <p role="alert" className="text-sm text-destructive">
+              {errorMessage}
+            </p>
+          )}
+        </div>
+
+        <DialogFooter className="sm:justify-between">
+          <Button type="button" variant="outline" size="sm" disabled={isPending} onClick={handleClear}>
+            {oooLabels.clearButton}
+          </Button>
+          <Button type="button" size="sm" disabled={isPending} onClick={handleSave}>
+            {updateMutation.isPending ? oooLabels.savingButton : oooLabels.saveButton}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

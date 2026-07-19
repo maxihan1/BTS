@@ -3,7 +3,7 @@ import type { JSX } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useCustomFields } from '@/hooks/use-custom-fields'
 import { useGroups } from '@/hooks/use-groups'
@@ -233,7 +233,7 @@ function FormBody({
       )}
 
       {/* 액션 버튼 */}
-      <div className="flex justify-end gap-2 mt-6">
+      <DialogFooter>
         <Button
           type="button"
           variant="outline"
@@ -245,7 +245,7 @@ function FormBody({
         <Button type="submit" size="sm">
           저장
         </Button>
-      </div>
+      </DialogFooter>
     </form>
   )
 }
@@ -273,28 +273,20 @@ export const FieldPermissionFormDialog = ({
   projectKey,
 }: FieldPermissionFormDialogProps): JSX.Element => {
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg overflow-y-auto max-h-[90vh]" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>필드 권한 규칙 추가</DialogTitle>
+        </DialogHeader>
 
-        <DialogPrimitive.Content
-          role="dialog"
-          aria-modal="true"
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 overflow-y-auto max-h-[90vh]"
-        >
-          <DialogPrimitive.Title className="text-lg font-semibold mb-4">
-            필드 권한 규칙 추가
-          </DialogPrimitive.Title>
-
-          <FormBody
-            key={open ? 'open' : 'closed'}
-            onSubmit={onSubmit}
-            onOpenChange={onOpenChange}
-            submitError={submitError}
-            projectKey={projectKey}
-          />
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        <FormBody
+          key={open ? 'open' : 'closed'}
+          onSubmit={onSubmit}
+          onOpenChange={onOpenChange}
+          submitError={submitError}
+          projectKey={projectKey}
+        />
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -1,7 +1,16 @@
 // 계정 추가 다이얼로그 — linkable provider 피커 + LDAP 인라인 폼 + SSO 리다이렉트 위임 (FR-AU-08/08b D6)
 import type { JSX, FormEvent } from 'react'
 import { useState } from 'react'
-import { RadioGroup as RadioGroupPrimitive, Dialog as DialogPrimitive } from 'radix-ui'
+import { RadioGroup as RadioGroupPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -255,83 +264,76 @@ export function AddAccountDialog({
     (selected.kind !== 'LDAP' || (ldapUsername !== '' && ldapPassword !== ''))
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={handleOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-
-        <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-        >
-          <DialogPrimitive.Title className="text-lg font-semibold mb-1">
-            {accountLinkLabels.add.addButton}
-          </DialogPrimitive.Title>
-
-          <p className="text-sm text-muted-foreground mb-4">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{accountLinkLabels.add.addButton}</DialogTitle>
+          <DialogDescription>
             {accountLinkLabels.add.providerSelectGuide}
-          </p>
+          </DialogDescription>
+        </DialogHeader>
 
-          <form id="add-account-form" onSubmit={handleSubmit} noValidate>
-            {/* 공급자 목록 — linkable 0건 안내 */}
-            {providers !== undefined && providers.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-2">
-                {accountLinkLabels.add.noLinkableProviders}
-              </p>
-            ) : (
-              <RadioGroupPrimitive.Root
-                value={selectedValue ?? ''}
-                onValueChange={(v) => { setSelectedValue(v) }}
-                disabled={isSubmitting}
-                className="space-y-2"
-                aria-label="인증 방식 선택"
-              >
-                {(providers ?? []).map((provider) => (
-                  <ProviderItem
-                    key={providerRadioValue(provider)}
-                    provider={provider}
-                    disabled={isSubmitting}
-                  />
-                ))}
-              </RadioGroupPrimitive.Root>
-            )}
-
-            {/* LDAP 선택 시 인라인 폼 */}
-            {isLdapSelected && (
-              <LdapInlineForm
-                disabled={isSubmitting}
-                username={ldapUsername}
-                password={ldapPassword}
-                onUsernameChange={setLdapUsername}
-                onPasswordChange={setLdapPassword}
-              />
-            )}
-
-            {/* SSO 선택 시 안내 문구 */}
-            {selected !== null && !isLdapSelected && (
-              <p className="mt-3 text-sm text-muted-foreground">
-                {accountLinkLabels.add.ssoGuide}
-              </p>
-            )}
-          </form>
-
-          {/* 액션 버튼 */}
-          <div className="flex justify-end gap-2 mt-6">
-            <DialogPrimitive.Close asChild>
-              <Button variant="outline" size="sm" disabled={isSubmitting}>
-                취소
-              </Button>
-            </DialogPrimitive.Close>
-
-            <Button
-              type="submit"
-              form="add-account-form"
-              size="sm"
-              disabled={!canSubmit}
+        <form id="add-account-form" onSubmit={handleSubmit} noValidate>
+          {/* 공급자 목록 — linkable 0건 안내 */}
+          {providers !== undefined && providers.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-2">
+              {accountLinkLabels.add.noLinkableProviders}
+            </p>
+          ) : (
+            <RadioGroupPrimitive.Root
+              value={selectedValue ?? ''}
+              onValueChange={(v) => { setSelectedValue(v) }}
+              disabled={isSubmitting}
+              className="space-y-2"
+              aria-label="인증 방식 선택"
             >
-              {accountLinkLabels.add.ldapForm.submitButton}
+              {(providers ?? []).map((provider) => (
+                <ProviderItem
+                  key={providerRadioValue(provider)}
+                  provider={provider}
+                  disabled={isSubmitting}
+                />
+              ))}
+            </RadioGroupPrimitive.Root>
+          )}
+
+          {/* LDAP 선택 시 인라인 폼 */}
+          {isLdapSelected && (
+            <LdapInlineForm
+              disabled={isSubmitting}
+              username={ldapUsername}
+              password={ldapPassword}
+              onUsernameChange={setLdapUsername}
+              onPasswordChange={setLdapPassword}
+            />
+          )}
+
+          {/* SSO 선택 시 안내 문구 */}
+          {selected !== null && !isLdapSelected && (
+            <p className="mt-3 text-sm text-muted-foreground">
+              {accountLinkLabels.add.ssoGuide}
+            </p>
+          )}
+        </form>
+
+        {/* 액션 버튼 */}
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline" size="sm" disabled={isSubmitting}>
+              취소
             </Button>
-          </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+          </DialogClose>
+
+          <Button
+            type="submit"
+            form="add-account-form"
+            size="sm"
+            disabled={!canSubmit}
+          >
+            {accountLinkLabels.add.ldapForm.submitButton}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
