@@ -35,10 +35,6 @@ describe('navLabels', () => {
       expect(navLabels.calendar).toBeTruthy()
     })
 
-    it('starred 라벨이 존재한다', () => {
-      expect(navLabels.starred).toBeTruthy()
-    })
-
     it('create 라벨이 존재한다', () => {
       expect(navLabels.create).toBeTruthy()
     })

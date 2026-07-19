@@ -31,9 +31,6 @@ export const navLabels = {
   /** 사이드바 캘린더 링크 라벨 */
   calendar: '캘린더',
 
-  /** 사이드바 즐겨찾기 트리거 라벨 */
-  starred: '즐겨찾기',
-
   /** 상단바 만들기 버튼 라벨 */
   create: '만들기',
 
