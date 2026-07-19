@@ -5,6 +5,7 @@ import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled
 /** 대부분의 보호 라우트에 적용하는 기본 가드 체인 — 미인증 차단 + 비밀번호 변경 강제 + MFA 등록 강제 (FR-MF-04) */
 const requireAuthAndPasswordChanged = composeGuards(requireAuth, requirePasswordChanged, requireMfaEnrolled)
 import { RootLayout } from './routes/__root'
+import { ShellLayout } from './components/layout/ShellLayout'
 import { IndexPage } from './routes/index'
 import { LoginPage } from './routes/login'
 import { DashboardPage } from './routes/dashboard'
@@ -63,8 +64,16 @@ const rootRoute = createRootRoute({
   component: RootLayout,
 })
 
-const indexRoute = createRoute({
+// _shell — pathless 레이아웃 라우트. id가 `_`로 시작해 URL 세그먼트에 기여하지 않는다.
+// loginRoute를 제외한 인증 앱 라우트를 이 아래로 재부모화해 전역 셸(PR11 사이드바)의 앵커로 삼는다.
+const shellRoute = createRoute({
   getParentRoute: () => rootRoute,
+  id: '_shell',
+  component: ShellLayout,
+})
+
+const indexRoute = createRoute({
+  getParentRoute: () => shellRoute,
   path: '/',
   // T13 라우트 가드에서 dashboard / login 으로 리다이렉트 예정
   component: IndexPage,
@@ -79,7 +88,7 @@ const loginRoute = createRoute({
 })
 
 const dashboardRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/dashboard',
   component: DashboardPage,
   staticData: { requireAuth: true },
@@ -87,7 +96,7 @@ const dashboardRoute = createRoute({
 })
 
 const workflowsKeyRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/workflows/$key',
   component: WorkflowDetailRouteAdapter,
 })
@@ -99,7 +108,7 @@ const workflowsKeyRoute = createRoute({
  * N4: page 기존 타입 보존, 타 search 콜백과 충돌 없음.
  */
 const issuesIndexRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/issues',
   component: IssueListRouteAdapter,
   staticData: { requireAuth: true },
@@ -141,7 +150,7 @@ const issuesIndexRoute = createRoute({
  * `/issues/new?summary=...`로 이동할 때 제목 프리필에 쓰인다.
  */
 const issuesNewRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/issues/new',
   component: IssueCreateRouteAdapter,
   staticData: { requireAuth: true },
@@ -153,7 +162,7 @@ const issuesNewRoute = createRoute({
 
 /** 이슈 상세 라우트 — /issues/$key, requireAuth */
 const issuesKeyRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/issues/$key',
   component: IssueDetailRouteAdapter,
   staticData: { requireAuth: true },
@@ -162,7 +171,7 @@ const issuesKeyRoute = createRoute({
 
 /** 워크플로우 스킴 목록 라우트 — /admin/workflow-schemes, requireAuth */
 const adminWorkflowSchemesRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/admin/workflow-schemes',
   component: AdminWorkflowSchemesRouteAdapter,
   staticData: { requireAuth: true },
@@ -171,7 +180,7 @@ const adminWorkflowSchemesRoute = createRoute({
 
 /** 워크플로우 스킴 생성 라우트 — /admin/workflow-schemes/new, requireAuth */
 const adminWorkflowSchemesNewRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/admin/workflow-schemes/new',
   component: WorkflowSchemeNewRouteAdapter,
   staticData: { requireAuth: true },
@@ -180,7 +189,7 @@ const adminWorkflowSchemesNewRoute = createRoute({
 
 /** 워크플로우 스킴 상세 라우트 — /admin/workflow-schemes/$schemeKey, requireAuth */
 const adminWorkflowSchemesDetailRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/admin/workflow-schemes/$schemeKey',
   component: WorkflowSchemeDetailRouteAdapter,
   staticData: { requireAuth: true },
@@ -189,7 +198,7 @@ const adminWorkflowSchemesDetailRoute = createRoute({
 
 /** 프로젝트 백로그·스프린트 라우트 — /projects/$projectKey/backlog, requireAuth (FR-BL-01/02) */
 const projectBacklogRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/backlog',
   component: BacklogRouteAdapter,
   staticData: { requireAuth: true },
@@ -198,7 +207,7 @@ const projectBacklogRoute = createRoute({
 
 /** 프로젝트 타임라인(Gantt) 라우트 — /projects/$projectKey/timeline, requireAuth (FR-TL-01) */
 const projectTimelineRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/timeline',
   component: TimelineRouteAdapter,
   staticData: { requireAuth: true },
@@ -211,7 +220,7 @@ const projectTimelineRoute = createRoute({
  * 단일 문자열·배열 양쪽 허용 — 런타임 정규화는 searchToFilter가 담당.
  */
 const projectBoardRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/board',
   component: BoardRouteAdapter,
   staticData: { requireAuth: true },
@@ -247,7 +256,7 @@ const projectBoardRoute = createRoute({
  * 미지정·잘못된 값은 'burndown'으로 폴백한다.
  */
 const projectSprintBurndownRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/sprints/$sprintId/burndown',
   component: SprintBurndownRouteAdapter,
   staticData: { requireAuth: true },
@@ -259,7 +268,7 @@ const projectSprintBurndownRoute = createRoute({
 
 /** 프로젝트 워크플로우 스킴 할당 라우트 — /projects/$projectKey/settings/workflow-scheme, requireAuth */
 const projectWorkflowSchemeSettingsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/settings/workflow-scheme',
   component: ProjectWorkflowSchemeSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -268,7 +277,7 @@ const projectWorkflowSchemeSettingsRoute = createRoute({
 
 /** 프로젝트 멤버 설정 라우트 — /projects/$projectKey/settings/members, requireAuth */
 const projectMembersSettingsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/settings/members',
   component: ProjectMembersSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -277,7 +286,7 @@ const projectMembersSettingsRoute = createRoute({
 
 /** 프로젝트 컴포넌트 설정 라우트 — /projects/$projectKey/settings/components, requireAuth */
 const projectComponentsSettingsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/settings/components',
   component: ProjectComponentsSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -286,7 +295,7 @@ const projectComponentsSettingsRoute = createRoute({
 
 /** 프로젝트 커스텀 필드 설정 라우트 — /projects/$projectKey/settings/custom-fields, requireAuth */
 const projectCustomFieldsSettingsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/settings/custom-fields',
   component: ProjectCustomFieldsSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -295,7 +304,7 @@ const projectCustomFieldsSettingsRoute = createRoute({
 
 /** 프로젝트 이슈 템플릿 설정 라우트 — /projects/$projectKey/settings/issue-templates, requireAuth */
 const projectIssueTemplatesSettingsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/settings/issue-templates',
   component: ProjectIssueTemplatesSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -304,7 +313,7 @@ const projectIssueTemplatesSettingsRoute = createRoute({
 
 /** 프로젝트 필드 권한 규칙 설정 라우트 — /projects/$projectKey/settings/field-permissions, requireAuth */
 const projectFieldPermissionsSettingsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/settings/field-permissions',
   component: ProjectFieldPermissionsSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -313,7 +322,7 @@ const projectFieldPermissionsSettingsRoute = createRoute({
 
 /** 프로젝트 자동화 설정 라우트 — /projects/$projectKey/settings/automation, requireAuthAndPasswordChanged (FR-AT-01 D6 Task 8) */
 const projectAutomationSettingsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/settings/automation',
   component: ProjectAutomationSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -322,7 +331,7 @@ const projectAutomationSettingsRoute = createRoute({
 
 /** 프로젝트 Slack 채널 매핑 설정 라우트 — /projects/$projectKey/settings/slack-channels, requireAuthAndPasswordChanged (projectAutomationSettingsRoute와 동일 가드) (FR-SL-06 D6 Task 5) */
 const projectSlackChannelsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/settings/slack-channels',
   component: ProjectSlackChannelSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -331,7 +340,7 @@ const projectSlackChannelsRoute = createRoute({
 
 /** 프로젝트 버전 설정 라우트 — /projects/$projectKey/settings/versions, requireAuth */
 const projectVersionsSettingsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/settings/versions',
   component: ProjectVersionsSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -340,7 +349,7 @@ const projectVersionsSettingsRoute = createRoute({
 
 /** 프로젝트 리드 설정 라우트 — /projects/$projectKey/settings/project-lead, requireAuth */
 const projectLeadSettingsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/settings/project-lead',
   component: ProjectLeadSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -349,7 +358,7 @@ const projectLeadSettingsRoute = createRoute({
 
 /** 프로젝트 Import(CSV/JSON) 설정 라우트 — /projects/$projectKey/settings/import, requireAuth (FR-IM-01 D6/D7) */
 const projectImportSettingsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/settings/import',
   component: ProjectImportSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -358,7 +367,7 @@ const projectImportSettingsRoute = createRoute({
 
 /** 내 활성 세션 관리 라우트 — /settings/sessions, requireAuth */
 const settingsSessionsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/settings/sessions',
   component: SessionsSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -367,7 +376,7 @@ const settingsSessionsRoute = createRoute({
 
 /** 감사 로그 관리자 조회 라우트 — /admin/audit-logs, requireAuth + requireSystemAdmin + requirePasswordChanged */
 const adminAuditLogsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/admin/audit-logs',
   component: AdminAuditLogsRouteAdapter,
   staticData: { requireAuth: true },
@@ -377,7 +386,7 @@ const adminAuditLogsRoute = createRoute({
 
 /** 전역 권한 부여/회수 관리자 라우트 — /admin/global-permissions, requireAuth + requireSystemAdmin + requirePasswordChanged (FR-PM-10 D6 Task 6) */
 const adminGlobalPermissionsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/admin/global-permissions',
   component: AdminGlobalPermissionsRouteAdapter,
   staticData: { requireAuth: true },
@@ -387,7 +396,7 @@ const adminGlobalPermissionsRoute = createRoute({
 
 /** 알림 정책 관리자 조회 라우트 — /admin/notification-policies, requireAuth + requireSystemAdmin + requirePasswordChanged */
 const adminNotificationPoliciesRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/admin/notification-policies',
   component: AdminNotificationPoliciesRouteAdapter,
   staticData: { requireAuth: true },
@@ -397,7 +406,7 @@ const adminNotificationPoliciesRoute = createRoute({
 
 /** 사용자 생성 라우트 — /admin/users/new, requireAuth + requireSystemAdmin + requirePasswordChanged */
 const adminUsersNewRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/admin/users/new',
   component: AdminUsersNewRouteAdapter,
   staticData: { requireAuth: true },
@@ -407,7 +416,7 @@ const adminUsersNewRoute = createRoute({
 
 /** 비밀번호 변경 라우트 — /settings/password, requireAuth */
 const settingsPasswordRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/settings/password',
   component: PasswordSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -416,7 +425,7 @@ const settingsPasswordRoute = createRoute({
 
 /** 2단계 인증 설정 라우트 — /settings/mfa, requireAuth (password 라우트와 동일 가드 체인) */
 const settingsMfaRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/settings/mfa',
   component: MfaSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -425,7 +434,7 @@ const settingsMfaRoute = createRoute({
 
 /** 알림 구독 설정 라우트 — /settings/notifications, requireAuth (FR-NT-04) */
 const settingsNotificationsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/settings/notifications',
   component: NotificationSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -434,7 +443,7 @@ const settingsNotificationsRoute = createRoute({
 
 /** 워크로그 집계 보고 라우트 — /projects/$projectKey/reports/worklog, requireAuth (FR-TT-02) */
 const projectWorklogReportRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/reports/worklog',
   component: ProjectWorklogReportRouteAdapter,
   staticData: { requireAuth: true },
@@ -443,7 +452,7 @@ const projectWorklogReportRoute = createRoute({
 
 /** 벨로시티 차트 보고 라우트 — /projects/$projectKey/reports/velocity, requireAuth (FR-RP-02 D6/D7) */
 const projectVelocityRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/reports/velocity',
   component: ProjectVelocityReportRouteAdapter,
   staticData: { requireAuth: true },
@@ -452,7 +461,7 @@ const projectVelocityRoute = createRoute({
 
 /** 누적 흐름도(CFD) 보고 라우트 — /projects/$projectKey/reports/cfd, requireAuth (FR-RP-03 D6/D7) */
 const projectCfdRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/reports/cfd',
   component: ProjectCfdReportRouteAdapter,
   staticData: { requireAuth: true },
@@ -461,7 +470,7 @@ const projectCfdRoute = createRoute({
 
 /** Cycle Time / Lead Time 분포 보고 라우트 — /projects/$projectKey/reports/cycle-time, requireAuth (FR-RP-04 D6/D7) */
 const projectCycleTimeRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/reports/cycle-time',
   component: ProjectCycleTimeReportRouteAdapter,
   staticData: { requireAuth: true },
@@ -473,7 +482,7 @@ const projectCycleTimeRoute = createRoute({
  * `filterId` 파라미터: 저장 필터 딥링크용 UUID. adapter가 1회 해소 후 제거한다 (FR-SR-03 Task-6).
  */
 const searchRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/search',
   component: SearchRouteAdapter,
   staticData: { requireAuth: true },
@@ -493,7 +502,7 @@ const searchRoute = createRoute({
 
 /** 알림 보관함 라우트 — /inbox, requireAuth (FR-UX-03) */
 const inboxRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/inbox',
   component: InboxRouteAdapter,
   staticData: { requireAuth: true },
@@ -502,7 +511,7 @@ const inboxRoute = createRoute({
 
 /** 대시보드 목록 라우트 — /dashboards, requireAuth (FR-DB-01) */
 const dashboardsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/dashboards',
   component: DashboardsRouteAdapter,
   staticData: { requireAuth: true },
@@ -511,7 +520,7 @@ const dashboardsRoute = createRoute({
 
 /** 대시보드 상세 라우트 — /dashboards/$dashboardId, requireAuth (FR-DB-01) */
 const dashboardDetailRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/dashboards/$dashboardId',
   component: DashboardDetailRouteAdapter,
   staticData: { requireAuth: true },
@@ -528,7 +537,7 @@ const dashboardDetailRoute = createRoute({
  * 인정해야 실제 URL(ShareDashboardModal이 생성하는 iframe 스니펫 `?embed=1`)에서도 동작한다.
  */
 const dashboardsSharedTokenRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/dashboards/shared/$token',
   component: SharedDashboardRouteAdapter,
   staticData: { requireAuth: false },
@@ -542,7 +551,7 @@ const dashboardsSharedTokenRoute = createRoute({
 
 /** 아웃바운드 Webhook 구독 관리 라우트 — /admin/webhooks, requireAuth + requireSystemAdmin + requirePasswordChanged (FR-API-03 PR4) */
 const adminWebhooksRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/admin/webhooks',
   component: AdminWebhooksRouteAdapter,
   staticData: { requireAuth: true },
@@ -552,7 +561,7 @@ const adminWebhooksRoute = createRoute({
 
 /** 아웃바운드 Webhook 구독 발송 이력 라우트 — /admin/webhooks/$id/deliveries, requireAuth + requireSystemAdmin + requirePasswordChanged (FR-API-03 PR4) */
 const adminWebhooksDeliveriesRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/admin/webhooks/$id/deliveries',
   component: WebhookDeliveriesRouteAdapter,
   staticData: { requireAuth: true },
@@ -565,7 +574,7 @@ const adminWebhooksDeliveriesRoute = createRoute({
  * navigate로 제거한다(새로고침 재표시 방지).
  */
 const adminSlackRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/admin/slack',
   component: SlackConnectionSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -578,7 +587,7 @@ const adminSlackRoute = createRoute({
 
 /** 계정 연결 설정 라우트 — /settings/account-links, requireAuth + mustChangePassword 차단 */
 const settingsAccountLinksRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/settings/account-links',
   component: AccountLinksSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -593,7 +602,7 @@ const settingsAccountLinksRoute = createRoute({
 
 /** Personal Access Token 셀프서비스 관리 라우트 — /settings/pats, requireAuth (settings.sessions/notifications/account-links 동급 가드) (FR-API-04) */
 const settingsPatsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/settings/pats',
   component: SettingsPatsRouteAdapter,
   staticData: { requireAuth: true },
@@ -602,7 +611,7 @@ const settingsPatsRoute = createRoute({
 
 /** 사용자 프로필 설정 라우트 — /settings/profile, requireAuth (settings.password/mfa와 동일 단독 가드) (FR-PR-01 D6) */
 const settingsProfileRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/settings/profile',
   component: ProfileSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -611,7 +620,7 @@ const settingsProfileRoute = createRoute({
 
 /** 사용자 환경설정(테마/언어/날짜포맷) 라우트 — /settings/preferences, requireAuth (settings.profile과 동일 단독 가드) (FR-PF-01 Task 7) */
 const settingsPreferencesRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/settings/preferences',
   component: PreferencesSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -620,7 +629,7 @@ const settingsPreferencesRoute = createRoute({
 
 /** 단축키 커스터마이즈 설정 라우트 — /settings/keymap, requireAuthAndPasswordChanged (settings.sessions/notifications/pats와 동일 가드) (FR-PF-03 Task 9) */
 const settingsKeymapRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/settings/keymap',
   component: KeymapSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -629,7 +638,7 @@ const settingsKeymapRoute = createRoute({
 
 /** 캘린더 iCal 구독(Export) 설정 라우트 — /settings/calendar, requireAuthAndPasswordChanged (settings.keymap과 동일 가드) (FR-CA-02 Task 9) */
 const settingsCalendarRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/settings/calendar',
   component: CalendarFeedSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -638,7 +647,7 @@ const settingsCalendarRoute = createRoute({
 
 /** 본인 Slack 계정 연결 설정 라우트 — /settings/slack, requireAuthAndPasswordChanged (settings.calendar와 동일 가드) (FR-SL-02 D6 Task 8) */
 const settingsSlackRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/settings/slack',
   component: SlackSettingsRouteAdapter,
   staticData: { requireAuth: true },
@@ -647,7 +656,7 @@ const settingsSlackRoute = createRoute({
 
 /** 개인 캘린더 월/주 뷰 라우트 — /calendar, requireAuth (identity-access BC, FR-CA-01 Task 7) */
 const calendarRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => shellRoute,
   path: '/calendar',
   component: CalendarRouteAdapter,
   staticData: { requireAuth: true },
@@ -679,104 +688,108 @@ const calendarRoute = createRoute({
  * requireAuth 라우트: /dashboard · /inbox · /dashboards · /dashboards/* · /search · /issues · /issues/* · /admin/* · /projects/* · /settings/* · /calendar
  */
 export const routeTree = rootRoute.addChildren([
-  // 공통 — 인증/진입점
-  indexRoute,
+  // loginRoute만 rootRoute 직속 유지 — redirectIfAuth 가드 + 셸(PR11 사이드바) 밖 (already-authed.spec 계약).
   loginRoute,
-  dashboardRoute,
-  // issue-tracking BC
-  issuesIndexRoute,
-  issuesNewRoute,
-  issuesKeyRoute,
-  // project-workflow BC — 관리자 스킴 관리 (/admin/workflow-schemes/new은 /:schemeKey보다 먼저 등록)
-  adminWorkflowSchemesRoute,
-  adminWorkflowSchemesNewRoute,
-  adminWorkflowSchemesDetailRoute,
-  // identity-access BC — 감사 로그 관리자 조회
-  adminAuditLogsRoute,
-  // identity-access BC — 전역 권한 부여/회수 관리자 (FR-PM-10 D6 Task 6)
-  adminGlobalPermissionsRoute,
-  // notification BC — 알림 정책 관리자 조회 (FR-NT-01)
-  adminNotificationPoliciesRoute,
-  // identity-access BC — 사용자 생성 (/admin/users/new)
-  adminUsersNewRoute,
-  // search-export-import BC — 아웃바운드 Webhook 구독 관리 + 발송 이력 (FR-API-03 PR4)
-  adminWebhooksRoute,
-  adminWebhooksDeliveriesRoute,
-  // slack-integration BC — Slack 연결 관리 (FR-SL-01 D6/D7 Task 7)
-  adminSlackRoute,
-  // search-export-import BC — AQL 검색 (FR-SR-02)
-  searchRoute,
-  // notification BC — 알림 보관함 (FR-UX-03)
-  inboxRoute,
-  // notification BC — 대시보드 목록/상세 (FR-DB-01, /dashboards/$dashboardId는 /dashboards보다 뒤에 등록해 충돌 없음)
-  dashboardsRoute,
-  dashboardDetailRoute,
-  // notification BC — 익명 대시보드 공유 뷰, 공개 라우트 (FR-DB-03 D6/D7 Task 9)
-  dashboardsSharedTokenRoute,
-  // agile-planning BC — 프로젝트 백로그·스프린트 (FR-BL-01/02)
-  projectBacklogRoute,
-  // agile-planning BC — 프로젝트 칸반 보드 (FR-BD-01)
-  projectBoardRoute,
-  // agile-planning BC — 프로젝트 타임라인(Gantt) (FR-TL-01)
-  projectTimelineRoute,
-  // agile-planning BC — 스프린트 번다운/번업 차트 (FR-RP-01 D6/D7)
-  projectSprintBurndownRoute,
-  // project-workflow BC — 프로젝트별 스킴 할당
-  projectWorkflowSchemeSettingsRoute,
-  // project-membership BC — 프로젝트 멤버 관리
-  projectMembersSettingsRoute,
-  // component-management BC — 프로젝트 컴포넌트 관리
-  projectComponentsSettingsRoute,
-  // version-release BC — 프로젝트 버전 관리
-  projectVersionsSettingsRoute,
-  // issue-tracking BC — 커스텀 필드 관리
-  projectCustomFieldsSettingsRoute,
-  // issue-tracking BC — 이슈 템플릿 관리 (FR-TM-01)
-  projectIssueTemplatesSettingsRoute,
-  // project-workflow BC — 필드 권한 규칙 관리
-  projectFieldPermissionsSettingsRoute,
-  // automation BC — 프로젝트 자동화 트리거 규칙 관리 (FR-AT-01 D6 Task 8)
-  projectAutomationSettingsRoute,
-  // slack-integration BC — 프로젝트 Slack 채널 매핑 관리 (FR-SL-06 D6 Task 5)
-  projectSlackChannelsRoute,
-  // issue-tracking BC — 프로젝트 리드 설정 (project 서브도메인, 권한만 MANAGE_COMPONENTS 재사용)
-  projectLeadSettingsRoute,
-  // search-export-import BC — 프로젝트 Import(CSV/JSON) 설정 (FR-IM-01 D6/D7)
-  projectImportSettingsRoute,
-  // issue-tracking BC — 워크로그 집계 보고 (FR-TT-02)
-  projectWorklogReportRoute,
-  // agile-planning BC — 벨로시티 차트 보고 (FR-RP-02 D6/D7)
-  projectVelocityRoute,
-  // agile-planning BC — 누적 흐름도(CFD) 보고 (FR-RP-03 D6/D7)
-  projectCfdRoute,
-  // agile-planning BC — Cycle Time / Lead Time 분포 보고 (FR-RP-04 D6/D7)
-  projectCycleTimeRoute,
-  // identity-access BC — 내 활성 세션 관리
-  settingsSessionsRoute,
-  // identity-access BC — 비밀번호 변경
-  settingsPasswordRoute,
-  // identity-access BC — 계정 연결 관리 (FR-AU-08/08b)
-  settingsAccountLinksRoute,
-  // identity-access BC — 2단계 인증 설정 (FR-MF-01)
-  settingsMfaRoute,
-  // notification BC — 사용자 알림 구독 설정 (FR-NT-04)
-  settingsNotificationsRoute,
-  // identity-access BC — Personal Access Token 셀프서비스 관리 (FR-API-04)
-  settingsPatsRoute,
-  // identity-access BC — 사용자 프로필(이름/아바타/타임존/부서) 편집 (FR-PR-01 D6)
-  settingsProfileRoute,
-  // identity-access BC — 사용자 환경설정(테마/언어/날짜포맷) (FR-PF-01 Task 7)
-  settingsPreferencesRoute,
-  // identity-access BC — 단축키 커스터마이즈 설정 (FR-PF-03 Task 9)
-  settingsKeymapRoute,
-  // identity-access BC — 캘린더 iCal 구독(Export) 설정 (FR-CA-02 Task 9)
-  settingsCalendarRoute,
-  // slack-integration BC — 본인 Slack 계정 연결 설정 (FR-SL-02 D6 Task 8)
-  settingsSlackRoute,
-  // identity-access BC — 개인 캘린더 월/주 뷰 (FR-CA-01 Task 7)
-  calendarRoute,
-  // workflows (레거시 workflow 상세 — 향후 마이그레이션 예정)
-  workflowsKeyRoute,
+  // 나머지는 _shell(pathless) 아래로 재부모화 — URL·렌더 불변, PR11 사이드바 앵커. 순서 보존.
+  shellRoute.addChildren([
+    // 공통 — 인증/진입점
+    indexRoute,
+    dashboardRoute,
+    // issue-tracking BC
+    issuesIndexRoute,
+    issuesNewRoute,
+    issuesKeyRoute,
+    // project-workflow BC — 관리자 스킴 관리 (/admin/workflow-schemes/new은 /:schemeKey보다 먼저 등록)
+    adminWorkflowSchemesRoute,
+    adminWorkflowSchemesNewRoute,
+    adminWorkflowSchemesDetailRoute,
+    // identity-access BC — 감사 로그 관리자 조회
+    adminAuditLogsRoute,
+    // identity-access BC — 전역 권한 부여/회수 관리자 (FR-PM-10 D6 Task 6)
+    adminGlobalPermissionsRoute,
+    // notification BC — 알림 정책 관리자 조회 (FR-NT-01)
+    adminNotificationPoliciesRoute,
+    // identity-access BC — 사용자 생성 (/admin/users/new)
+    adminUsersNewRoute,
+    // search-export-import BC — 아웃바운드 Webhook 구독 관리 + 발송 이력 (FR-API-03 PR4)
+    adminWebhooksRoute,
+    adminWebhooksDeliveriesRoute,
+    // slack-integration BC — Slack 연결 관리 (FR-SL-01 D6/D7 Task 7)
+    adminSlackRoute,
+    // search-export-import BC — AQL 검색 (FR-SR-02)
+    searchRoute,
+    // notification BC — 알림 보관함 (FR-UX-03)
+    inboxRoute,
+    // notification BC — 대시보드 목록/상세 (FR-DB-01, /dashboards/$dashboardId는 /dashboards보다 뒤에 등록해 충돌 없음)
+    dashboardsRoute,
+    dashboardDetailRoute,
+    // notification BC — 익명 대시보드 공유 뷰, 공개 라우트 (FR-DB-03 D6/D7 Task 9)
+    dashboardsSharedTokenRoute,
+    // agile-planning BC — 프로젝트 백로그·스프린트 (FR-BL-01/02)
+    projectBacklogRoute,
+    // agile-planning BC — 프로젝트 칸반 보드 (FR-BD-01)
+    projectBoardRoute,
+    // agile-planning BC — 프로젝트 타임라인(Gantt) (FR-TL-01)
+    projectTimelineRoute,
+    // agile-planning BC — 스프린트 번다운/번업 차트 (FR-RP-01 D6/D7)
+    projectSprintBurndownRoute,
+    // project-workflow BC — 프로젝트별 스킴 할당
+    projectWorkflowSchemeSettingsRoute,
+    // project-membership BC — 프로젝트 멤버 관리
+    projectMembersSettingsRoute,
+    // component-management BC — 프로젝트 컴포넌트 관리
+    projectComponentsSettingsRoute,
+    // version-release BC — 프로젝트 버전 관리
+    projectVersionsSettingsRoute,
+    // issue-tracking BC — 커스텀 필드 관리
+    projectCustomFieldsSettingsRoute,
+    // issue-tracking BC — 이슈 템플릿 관리 (FR-TM-01)
+    projectIssueTemplatesSettingsRoute,
+    // project-workflow BC — 필드 권한 규칙 관리
+    projectFieldPermissionsSettingsRoute,
+    // automation BC — 프로젝트 자동화 트리거 규칙 관리 (FR-AT-01 D6 Task 8)
+    projectAutomationSettingsRoute,
+    // slack-integration BC — 프로젝트 Slack 채널 매핑 관리 (FR-SL-06 D6 Task 5)
+    projectSlackChannelsRoute,
+    // issue-tracking BC — 프로젝트 리드 설정 (project 서브도메인, 권한만 MANAGE_COMPONENTS 재사용)
+    projectLeadSettingsRoute,
+    // search-export-import BC — 프로젝트 Import(CSV/JSON) 설정 (FR-IM-01 D6/D7)
+    projectImportSettingsRoute,
+    // issue-tracking BC — 워크로그 집계 보고 (FR-TT-02)
+    projectWorklogReportRoute,
+    // agile-planning BC — 벨로시티 차트 보고 (FR-RP-02 D6/D7)
+    projectVelocityRoute,
+    // agile-planning BC — 누적 흐름도(CFD) 보고 (FR-RP-03 D6/D7)
+    projectCfdRoute,
+    // agile-planning BC — Cycle Time / Lead Time 분포 보고 (FR-RP-04 D6/D7)
+    projectCycleTimeRoute,
+    // identity-access BC — 내 활성 세션 관리
+    settingsSessionsRoute,
+    // identity-access BC — 비밀번호 변경
+    settingsPasswordRoute,
+    // identity-access BC — 계정 연결 관리 (FR-AU-08/08b)
+    settingsAccountLinksRoute,
+    // identity-access BC — 2단계 인증 설정 (FR-MF-01)
+    settingsMfaRoute,
+    // notification BC — 사용자 알림 구독 설정 (FR-NT-04)
+    settingsNotificationsRoute,
+    // identity-access BC — Personal Access Token 셀프서비스 관리 (FR-API-04)
+    settingsPatsRoute,
+    // identity-access BC — 사용자 프로필(이름/아바타/타임존/부서) 편집 (FR-PR-01 D6)
+    settingsProfileRoute,
+    // identity-access BC — 사용자 환경설정(테마/언어/날짜포맷) (FR-PF-01 Task 7)
+    settingsPreferencesRoute,
+    // identity-access BC — 단축키 커스터마이즈 설정 (FR-PF-03 Task 9)
+    settingsKeymapRoute,
+    // identity-access BC — 캘린더 iCal 구독(Export) 설정 (FR-CA-02 Task 9)
+    settingsCalendarRoute,
+    // slack-integration BC — 본인 Slack 계정 연결 설정 (FR-SL-02 D6 Task 8)
+    settingsSlackRoute,
+    // identity-access BC — 개인 캘린더 월/주 뷰 (FR-CA-01 Task 7)
+    calendarRoute,
+    // workflows (레거시 workflow 상세 — 향후 마이그레이션 예정)
+    workflowsKeyRoute,
+  ]),
 ])
 
 /** 앱 전역 라우터 인스턴스 — Register 모듈 증강으로 전체 타입 안전 navigate 보장 */
