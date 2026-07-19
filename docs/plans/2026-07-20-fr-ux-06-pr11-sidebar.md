@@ -223,6 +223,43 @@ office-hours/design-shotgun는 스킵 — 디자인 잠김(ADR 확정 6결정·�
 - 추가 검증(qa-engineer): Playwright 전수 — 특히 calendar·dashboard·notification-policies·webhook·audit-logs·board·backlog·already-authed·dashboards.shared. CI에 e2e 잡 없음([[frontend-ci-10min-timeout-nonrequired]]) → 로컬 전수 필수.
 - 🔴 hard-won 커플링: (a) T4가 state-tokens 동결 리스트 갱신 안 하면 test 깨짐, (b) T7 원자성 — Sidebar/TopBar 배선과 Header 축소 동시(이중 nav 방지), (c) navigation-contract 마이그레이션 무관 렌더.
 
+## 구현 결과 (bts-impl, 2026-07-20)
+
+전 8 task 완료 (계획 7 + T8 fix). frontend-engineer sub-agent wave dispatch, TDD red→green 강제, controller가 각 wave git log + 전량 테스트 실물 검증.
+
+| task | 커밋 (test→feat/fix) | 결과 |
+|---|---|---|
+| T1 navigation-contract 가드 | 6b1004d5e(test, characterization green baseline) | 5 테스트 |
+| T2 nav-labels | ced506bfc→4dd5299e3 | 16 |
+| T3 use-sidebar-collapsed | 2e521b9eb→dc947745d | (T8서 스토어 전환) |
+| T4 --sidebar 토큰+동결 | d1e7828c4→78223e3fd→f6e66c203 | 동결 해제·ADS hex·129 어서션 |
+| T5 Sidebar | 174d73e7f→01d7309a0 | 7 |
+| T6 TopBar(+AccountMenu) | 1b951b80c→fb3a89520 | 9 |
+| T7 크롬 스왑 | 0e0023f9a→48e6bc817 | ShellLayout 배선·Header 삭제 |
+| **T8 fix 공유 스토어** | 82dc53f30→b2a8e685d | 접기 상태 버그 수정 |
+
+### ★ T7이 발견한 통합 버그 → T8 fix
+
+T5(Sidebar)·T6(TopBar)를 격리 빌드 후 T7이 처음 형제로 합성하자, `useSidebarCollapsed`가 컴포넌트-로컬 `useState`라 **두 인스턴스가 상태 미공유** → TopBar 토글이 Sidebar를 안 접는 FR5 기능 결함이 드러났다. T7 agent가 정확히 적발하고 스코프 밖이라 미수정 보고(옳은 판단). **T8**에서 `useSidebarCollapsed`를 zustand 공유 스토어(authStore 동형)로 전환, RED(T-SC-5 크로스 인스턴스 미공유 재현)→GREEN. Sidebar/TopBar는 API(`{collapsed,toggle}`) 불변이라 무수정. **교훈: 격리 빌드 컴포넌트의 공유 상태 결함은 합성 시점에만 드러남 — 통합 검증 필수.**
+
+### ★ 공유 worktree 병렬 커밋 레이스 (W2)
+
+T5·T6 병렬 dispatch서 `--no-verify`로 lint-staged 공유stash는 피했으나, 같은 git 인덱스 커밋 레이스로 T6 green이 orphan 커밋에 섞임. **두 agent 보고가 충돌** → controller가 `git show`/`git log` 실물 대조로 진상 규명(T6 green이 미커밋 staged 잔류) → pathspec 정리 커밋(fb3a89520). 데이터 손실 0. ([[parallel-review-mutation-contaminates-peers]]·[[worktree-lint-staged-shared-git-stash-collision]])
+
+### 설계 결정 (구현 중)
+
+- **T4 토큰**: `--surface-*` ADS 별칭 var가 실제로 없어(PR3가 shadcn명 `--background`/`--card`/`--muted`로 구현) `--sidebar-*` 8종을 **ADS hex 리터럴**로(§5.3 매핑, 기존 파일 관례). state-tokens 동결 리스트서 --sidebar 제거·`--chart/--syntax` 동결 유지.
+- **T7 도움말**: ShortcutsHelpDialog가 __root 소유라 ShellLayout서 접근 불가 → TopBar 도움말 버튼을 `onHelpClick` 있을 때만 조건부 렌더, 미전달로 **버튼 미노출**(dead 버튼 방지). `?` 단축키 도움말은 __root useKeyboardShortcuts로 무회귀. 버튼 배선은 후속(help 상태 lift 필요).
+- **T7 main 단일**: __root `<main>` 유지, ShellLayout 콘텐츠는 `<div>`(E7 이중 main 방지, login 랜드마크 회귀 방지).
+- **T7 router.test**: Sidebar 이슈 nav 신설로 `/issues` 링크 1→2(스펙 E2 예견), 둘 다 href 검증으로 갱신(비약화 아님).
+
+### 검증 (controller 실측)
+
+- 전량 vitest: **468 파일 / 7379 테스트 green** (baseline 7353 → +26 순증). TDD 순서 전 task 정합.
+- typecheck: EXIT 0. eslint src: **0 errors**(warning 8건은 사전존재 SlackResultBanner/WeekGrid, 무관).
+- e2e 계약-크리티컬 8 spec: **39 passed/1 skipped** — 메인 메뉴(calendar·dashboard)·관리 메뉴+게이팅(notification-policies·webhook·audit-logs)·login/shell(already-authed·login-happy)·공개공유 bare shell(dashboard-share) 전부 green. aria-label 이관 무위반 실증.
+- e2e 전수 124 spec: (실행 중 — gate2 전 확정).
+
 ## 리뷰 결과
 
 ### plan 리뷰 (design+eng 렌즈, 2026-07-20)
