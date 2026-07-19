@@ -90,4 +90,17 @@ PR10(재부모화)과 PR11(사이드바)을 반드시 분리해야 원인 추적
 
 ## 리뷰 결과 (← /bts-review-plan)
 
-**SKIP 예정(신규 기능 아님)**. 게이트2의 code-reviewer + /review가 검증.
+**SKIP(신규 기능 아님)**. 게이트2의 code-reviewer + /review가 검증.
+
+## 검증 결과 (bts-impl)
+
+- 변경: `router.ts`(+_shell 정의·52 재부모화·addChildren 중첩·4-space 정규화, `git diff -w` 66/53) · 신규 `components/layout/ShellLayout.tsx`(passthrough) · 신규 `router.shell.test.tsx`(구조 가드 4). 커밋 `ab0cabc26`.
+- **grep 구조 검증**: `() => shellRoute` 52 · `() => rootRoute` 2(login+shellRoute) · `id: '_shell'` 1 · shell 블록 52항목 · 조립부 균형.
+- **typecheck** EXIT=0 · **lint** EXIT=0(lint-staged `--max-warnings 0` 3파일 통과=내 파일 경고 0).
+- **unit** 463파일 **7353 green**(기존 462/7349 + 구조가드 4). `router.test.tsx`·`routeGuard.test.tsx` **무수정 통과** = 재부모화 렌더 동일 + 가드 보존.
+- **e2e 크리티컬 19 green**: already-authed(로그인 가드 센티넬)·smoke·issue-crud-happy·dashboard(네비·/dashboard 렌더·링크 이동)·profile(Header 계정 트리거·아바타).
+- **e2e 전수 533**: **528 passed · 2 failed · 3 skipped**(7.2분). **실패 2건은 PR10 회귀 아님(baseline 대조 확정)**:
+  - `board-wip-swimlane:122` — **origin/main에서도 실패**(사전 존재, '김앨리스' Header 계정명 visible 충돌, PR7 hot-fix 계열).
+  - `saved-filters:265` — **PR10·main 둘 다 격리 실행에선 통과**(부하 의존 flaky, /search 딥링크 네비 정상). 전수 4-worker 부하에서만 30s 타임아웃.
+- 두 실패는 사전/flaky라 **PR10 범위 밖(surgical) — 미수정, 기록만**.
+- e2e 러너 [[e2e-playwright-filter-arg-drop]] 바이너리 직접호출. 백그라운드 리다이렉트는 별도 로그파일로 감(task output엔 echo만).
