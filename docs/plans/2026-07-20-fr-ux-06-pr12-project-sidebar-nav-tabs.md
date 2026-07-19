@@ -122,9 +122,28 @@ FR 총수 불변 129 (마킹은 #277 PR-5 몫).
 
 - 관련 ADR: [docs/decisions/2026-07-17-fr-ux-06-jira-redesign.md](../decisions/2026-07-17-fr-ux-06-jira-redesign.md) (D1~D8, 충돌 없음·이 PR이 구현)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-20-fr-ux-06-pr12-project-sidebar-nav-tabs.md](../specs/2026-07-20-fr-ux-06-pr12-project-sidebar-nav-tabs.md)
+
+핵심 3 deliverable + 결정 요약.
+- **① 사이드바 프로젝트 트리** — `<nav aria-label="프로젝트">`(메인 메뉴 위), `GET /api/v1/projects` 첫 소비.
+  2단 그룹 아코디언(직접링크 보드·백로그·타임라인 + 리포트▸4 + 설정▸11, 요약 생략=라우트 부재). 프로젝트명
+  클릭=보드 이동. 활성=$projectKey 자동펼침+aria-current. 밖=목록만·전부 접힘. 접힘레일=아이콘/이니셜.
+- **② ProjectNavTabs 추출** — board:477·backlog:59 인라인 `프로젝트 뷰 전환` nav를 공유 컴포넌트로. nav+Link
+  (Tabs 금지), 라벨 보존. 통합 링크 집합은 회귀 대조 후 plan에서 확정(GAP-2).
+- **③ C3 랜드마크** — `__root` `<main>` 제거 → ShellLayout 양분기 + login.tsx 자체 main. banner/main/complementary
+  각 1. login은 _shell 밖(rootRoute 직속)이라 자체 main 필수(실측 확인).
+
+착수 전 필독. [[frontend-nav-aria-label-e2e-contract]] · [[playwright-getbyrole-exact-strict-mode]]
+(신규 '프로젝트' 라벨이 '프로젝트 뷰 전환' substring → 테스트 full label+exact).
+
+## Brainstorming Check
+
+✅ 통과 (자가 gap 점검, Blocker 0).
+- GAP-1 설정그룹 비관리자 노출 → 기본=전 인증자 표시(백엔드 fail-closed·신규유출0), 게이트1 Maxi 확인.
+- GAP-2 ProjectNavTabs 링크 집합 → plan 이연(회귀 diff 대조).
+- GAP-3 섹션 순서 미세차 → 비차단.
 
 ## Plan (← /bts-plan 채움)
 
