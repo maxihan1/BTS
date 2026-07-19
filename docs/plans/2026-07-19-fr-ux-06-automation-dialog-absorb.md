@@ -60,6 +60,142 @@
 
 ✅ 통과 (1회 iteration). Tier B overlay testid 유실 + 보안 가로채기 gap → 스코프 결정(9파일)으로 해소.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> **리팩터 TDD 규약**. 순수 render-shell 흡수라 신규 로직·신규 테스트 없음. **RED/GREEN 오라클 = 기존 유닛 테스트**(흡수 전 green → 흡수 후 green 유지). Tier A는 `test:` 커밋 없음(edit-only refactor 커밋) — bts-impl TDD 게이트는 이 refactor 예외를 적용(PR6/7 선례: "edit-only + controller 배리어 커밋"). Tier B만 overlay-click 테스트 재작성으로 `.test.tsx` 편집 포함.
+> **실행 패턴**. 각 task = 1파일 흡수(edit-only sub-agent 병렬). files 교집합 0 → bts-impl이 1 wave로 병렬. controller가 배리어 커밋 전 각 파일 `git diff -w` 실물 검증(비시각 로직 diff-0 or 의도된 최소 변경만). sub-agent 이중보고 불신 — controller 실물 대조가 유일 방어([[subagent-ktlint-false-green-controller-verify]]).
+
+### Task 1. AutomationRuleFormDialog 흡수 (Tier A)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/automation/AutomationRuleFormDialog.tsx`]
+- depends-on: []
+
+**RED**: 기존 `AutomationRuleFormDialog.test.tsx` green 확인(baseline).
+**GREEN**: `radix-ui` Dialog import 제거 → `@/components/ui/dialog` 래퍼. `DialogPrimitive.Root`→`Dialog`, Portal+Overlay+Content→`DialogContent className="max-w-*"`, Title→`DialogHeader>DialogTitle`, footer→`DialogFooter`/`DialogClose`. controlled open/onOpenChange·onSubmit 로직 verbatim.
+**REFACTOR**: 함정 6종 실측(sm:justify-between·Cancel 이중닫힘·prop명·DialogDescription/aria·Trigger).
+**검증**: `pnpm --filter web test AutomationRuleFormDialog` green + `git diff -w` 비시각 로직 diff-0.
+
+### Task 2. AutomationRuleList 흡수 (Tier A — file-local DeleteConfirmDialog)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/automation/AutomationRuleList.tsx`]
+- depends-on: []
+
+**RED**: 기존 `AutomationRuleList.test.tsx` green 확인.
+**GREEN**: file-local `DeleteConfirmDialog`의 radix→래퍼 교체(Task 1 표준 변환). 목록 로직·라벨 verbatim.
+**REFACTOR**: 함정 6종 실측.
+**검증**: `pnpm --filter web test AutomationRuleList` green + `git diff -w` diff-0.
+
+### Task 3. GitWebhookRegisterDialog 흡수 (Tier A)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/automation/GitWebhookRegisterDialog.tsx`]
+- depends-on: []
+
+**RED**: 기존 `GitWebhookRegisterDialog.test.tsx` green 확인.
+**GREEN**: 표준 변환. controlled open/onOpenChange·onSubmit·Select 필드 verbatim. export API 불변(GitWebhookSection이 소비).
+**REFACTOR**: 함정 6종 실측.
+**검증**: `pnpm --filter web test GitWebhookRegisterDialog` green + `git diff -w` diff-0.
+
+### Task 4. GitWebhookSection 흡수 (Tier A — file-local DeleteConfirmDialog)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/automation/GitWebhookSection.tsx`]
+- depends-on: []
+
+**RED**: 기존 `GitWebhookSection.test.tsx` green 확인.
+**GREEN**: file-local `DeleteConfirmDialog`의 radix→래퍼. 자식(Register/Url) import·조립 로직 verbatim(자식은 Task 3/8이 각자 흡수, API 불변이라 무영향).
+**REFACTOR**: 함정 6종 실측.
+**검증**: `pnpm --filter web test GitWebhookSection` green + `git diff -w` diff-0.
+
+### Task 5. RuleConflictWarningModal 흡수 (Tier A)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/automation/RuleConflictWarningModal.tsx`]
+- depends-on: []
+
+**RED**: 기존 `RuleConflictWarningModal.test.tsx` green 확인.
+**GREEN**: 표준 변환. `handleOpenChange` verbatim(preventDefault 없음 확인됨). 경고문 role="alert" 유지 + aria-describedby={undefined}.
+**REFACTOR**: 함정 6종 실측.
+**검증**: `pnpm --filter web test RuleConflictWarningModal` green + `git diff -w` diff-0.
+
+### Task 6. RuleExecutionHistoryDialog 흡수 (Tier A)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/automation/RuleExecutionHistoryDialog.tsx`]
+- depends-on: []
+
+**RED**: 기존 `RuleExecutionHistoryDialog.test.tsx` green 확인.
+**GREEN**: 표준 변환. controlled open/onOpenChange·필터·무한스크롤·재실행 로직 verbatim. 내부 Body 컴포넌트 구조 유지.
+**REFACTOR**: 함정 6종 실측.
+**검증**: `pnpm --filter web test RuleExecutionHistoryDialog` green + `git diff -w` diff-0.
+
+### Task 7. WebhookTokenModal 흡수 (Tier A — token-at-risk, PatTokenModal 정본)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/automation/WebhookTokenModal.tsx`]
+- depends-on: []
+
+**RED**: 기존 `WebhookTokenModal.test.tsx` green 확인.
+**GREEN**: `settings/PatTokenModal.tsx` 변환과 **동일**. `handleOpenChange={if(!open)onClose()}` verbatim(preventDefault 없음). 경고문 `<p role="alert">` + aria-describedby={undefined}. 복사버튼 plain Button, 닫기 `DialogClose asChild`. code testid 보존.
+**REFACTOR**: 함정 6종 실측.
+**검증**: `pnpm --filter web test WebhookTokenModal` green + `git diff -w` 비시각 로직 diff-0.
+
+### Task 8. GitWebhookUrlModal 흡수 (Tier B — 보안 크리티컬 + 테스트 재작성)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/automation/GitWebhookUrlModal.tsx`, `apps/web/src/components/automation/GitWebhookUrlModal.test.tsx`]
+- depends-on: []
+
+**RED**: 기존 `GitWebhookUrlModal.test.tsx` green 확인(닫기 3경로·2단계 확인 EC 커버 확인).
+**GREEN**:
+- 표준 변환하되 **`onEscapeKeyDown`/`onPointerDownOutside`(각 `preventDefault()`+`setCloseConfirming(true)`)를 `DialogContent`에 prop 전달**(래퍼 `{...props}` forward). `handleOpenChangeAttempt` verbatim(X 버튼도 이 깔때기로 수렴). `data-testid="git-webhook-url-dialog"`는 `DialogContent`에 prop 전달. `CloseConfirmPrompt` file-local 그대로.
+- overlay testid 유실: 유닛 테스트 `getByTestId('git-webhook-url-overlay')`(테스트 103줄) → 래퍼 오버레이 `[data-slot="dialog-overlay"]` 선택자로 재작성.
+**REFACTOR**: 함정 6종 + preventDefault 3경로 보존 확인.
+**검증**: `pnpm --filter web test GitWebhookUrlModal` green(재작성 포함). 닫기 시도 3경로가 전부 2단계 확인으로 라우팅되는지 테스트 유지.
+
+### Task 9. AutomationYamlImportDialog 흡수 (Tier B — 보안 크리티컬 + 테스트 재작성)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/automation/AutomationYamlImportDialog.tsx`, `apps/web/src/components/automation/AutomationYamlImportDialog.test.tsx`]
+- depends-on: []
+
+**RED**: 기존 `AutomationYamlImportDialog.test.tsx` green 확인(tokenAtRisk 4경로 EC7 커버 확인).
+**GREEN**:
+- 표준 변환하되 **`onEscapeKeyDown`/`onPointerDownOutside`의 조건부 `if(tokenAtRisk)preventDefault()`를 `DialogContent`에 prop 전달**. `handleOpenChangeAttempt`(`if(!next&&tokenAtRisk)`) verbatim. X 버튼 관련 EC7 주석 로직(footer Close는 tokenAtRisk로 넓히지 않음) 보존. `data-testid` Content용은 prop 전달.
+- overlay testid 유실: `getByTestId('automation-yaml-import-overlay')`(테스트 349줄) → `[data-slot="dialog-overlay"]` 재작성.
+**REFACTOR**: 함정 6종 + tokenAtRisk 4경로 보존 확인.
+**검증**: `pnpm --filter web test AutomationYamlImportDialog` green(재작성 포함).
+
+### Task 10. 통합 검증 (전체 유닛 + typecheck + 로컬 e2e)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: []
+- depends-on: [1,2,3,4,5,6,7,8,9]
+
+**검증**:
+- `pnpm --filter web test` 전체 green(개수 대조 — 리팩터라 test 수 불변, Tier B 재작성분만 내용 변경).
+- `pnpm --filter web typecheck`(tsconfig.app) green.
+- 잔여 `radix-ui` Dialog import 0 확인: `grep -rl "Dialog as DialogPrimitive" apps/web/src/components/automation --include="*.tsx" | grep -v test` → 0건.
+- 로컬 e2e: `cd apps/web && pnpm exec playwright test automation-git-webhook automation-yaml-gitops automation-conflict-warning automation-execution-history automation-rules pat` green. 후 `lsof -ti:5173 | xargs kill`.
+
+## Plan 메타
+
+- task 수: 10 (흡수 9 + 통합검증 1)
+- 예상 wave: 2 (Task 1~9 병렬 1 wave — files 교집합 0 → 동시 dispatch, Task 10 배리어 1 wave)
+- TDD 강제: refactor 예외(기존 테스트가 오라클, Tier A test: 커밋 없음 / Tier B overlay 테스트 재작성)
+- 병렬 dispatch: files 교집합 0이라 1~9 전부 1 wave 후보. Tier B 2파일은 신중 검증(보안).
+- 추가 검증: typecheck(tsconfig.app), vitest 전체, 로컬 playwright(CI에 e2e 잡 없음).
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
