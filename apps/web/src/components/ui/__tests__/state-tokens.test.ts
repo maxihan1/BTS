@@ -1,4 +1,4 @@
-// FR-UX-06 §7 상태 토큰 12종 + 시맨틱 토큰 4종이 index.css에 ADS v2 정본 hex로 정의됐는지 검증하는 테스트
+// FR-UX-06 §7 상태 토큰 12종 + 시맨틱 토큰 4종 + 사이드바 토큰 8종(PR11)이 index.css에 ADS v2 정본 hex로 정의됐는지 검증하는 테스트
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
@@ -77,6 +77,26 @@ const SEMANTIC_TEXT: ReadonlyArray<readonly [token: string, light: string, dark:
   ['--success-text', '#216E4E', '#7EE2B8'],
   ['--danger-text', '#AE2A19', '#FF9C8F'],
   ['--info-text', '#0055CC', '#85B8FF'],
+] as const
+
+/**
+ * FR-UX-06 PR11 신설 — `--sidebar-*` 8종(shadcn init 산출물, 이전엔 소비자 0이라 동결).
+ * ADR D7 "소비되는 PR에서 정의" — 사이드바 PR(PR11)이 소비자이므로 여기서 ADS 값으로 덮어쓴다.
+ * 값은 디자인 스펙(docs/design/fr-ux-06-jira-redesign.md) §5.3 시맨틱 토큰 표에서 그대로 가져온다 —
+ * `--sidebar`=배경(§3.1 "사이드바"=`--surface-sunken`), `--sidebar-primary`/`-primary-foreground`=활성 항목
+ * (`--bg-selected`/`--text-selected`, 표에 "사이드바 활성" 명기), `--sidebar-accent`=hover(`--bg-neutral-hover`),
+ * `--sidebar-foreground`/`-accent-foreground`=텍스트(`--text`≡`--foreground`), `--sidebar-border`=테두리
+ * (§3.1 "border-right: 1px --border"), `--sidebar-ring`=포커스 링(`--ring`, 앱 전역과 통일).
+ */
+const SIDEBAR_TOKENS: ReadonlyArray<readonly [token: string, light: string, dark: string]> = [
+  ['--sidebar', '#F7F8F9', '#161A1D'],
+  ['--sidebar-foreground', '#172B4D', '#C7D1DB'],
+  ['--sidebar-primary', '#E9F2FF', '#082145'],
+  ['--sidebar-primary-foreground', '#0C66E4', '#579DFF'],
+  ['--sidebar-accent', '#F1F2F4', '#A1BDD914'],
+  ['--sidebar-accent-foreground', '#172B4D', '#C7D1DB'],
+  ['--sidebar-border', '#DCDFE4', '#2C333A'],
+  ['--sidebar-ring', '#388BFF', '#85B8FF'],
 ] as const
 
 /** calc 파생 폐기 후 명시 나열된 radius 스케일 (ADS 기본 3px 포함) */
@@ -200,12 +220,19 @@ describe('FR-UX-06 PR3 ADS 팔레트 — index.css', () => {
 
   describe('🔒 동결 계약 — PR3가 건드리면 안 되는 토큰', () => {
     const frozen = ['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--chart-5',
-      '--syntax-keyword', '--syntax-field', '--syntax-operator', '--syntax-string', '--syntax-number',
-      '--sidebar', '--sidebar-foreground', '--sidebar-primary', '--sidebar-primary-foreground',
-      '--sidebar-accent', '--sidebar-accent-foreground', '--sidebar-border', '--sidebar-ring']
+      '--syntax-keyword', '--syntax-field', '--syntax-operator', '--syntax-string', '--syntax-number']
     it.each(frozen)('%s — :root/.dark 모두 oklch 원값 유지', (token) => {
       expect(declarationOf(rootBlock, token)).toMatch(/^oklch\(/)
       expect(declarationOf(darkBlock, token)).toMatch(/^oklch\(/)
+    })
+  })
+
+  describe('사이드바 토큰 8종 (PR11, D7) — ADS 정본 hex, 이전 동결 해제', () => {
+    it.each(SIDEBAR_TOKENS)('%s — :root=%s', (token, light) => {
+      expect(declarationOf(rootBlock, token)).toBe(light)
+    })
+    it.each(SIDEBAR_TOKENS)('%s — .dark 확정값 일치', (token, _light, dark) => {
+      expect(declarationOf(darkBlock, token)).toBe(dark)
     })
   })
 
