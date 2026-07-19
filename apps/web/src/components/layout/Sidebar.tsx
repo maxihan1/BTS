@@ -66,14 +66,16 @@ const ADMIN_NAV_LINKS: ReadonlyArray<{ to: string; label: string; Icon: LucideIc
 /**
  * 전역 좌측 사이드바 — 264px 고정, 독립 스크롤(`overflow-y-auto`).
  *
- * `메인 메뉴` nav(이슈·대시보드·캘린더·즐겨찾기)는 항상 렌더되고, `관리 메뉴` nav는
- * `user.isSystemAdmin === true`일 때만 **기본 펼침** 상태로 렌더된다(FR3/FR4). 접힘 상태는
- * {@link useSidebarCollapsed}로 소비하며, 각 nav 링크는 lucide 아이콘(`aria-hidden`) + 텍스트
- * 라벨로 구성된다 — 펼침 시 아이콘·텍스트 둘 다 보이고, 접힘(64px) 시 텍스트는 `sr-only`로
- * 시각적으로만 숨겨 진짜 아이콘 레일이 되며(잘린 텍스트 노출 방지), DOM에는 남아 있어
- * `getByRole('link', { name })` 계약(e2e)이 유지된다(FR5).
+ * 렌더 순서는 디자인 스펙 §3.1 사이드바 섹션 순서를 그대로 따른다 — {@link ProjectTree}
+ * (섹션2, `프로젝트`)가 `메인 메뉴` nav(섹션3, 이슈·대시보드·캘린더) **위**에 온다
+ * (FR-UX-06 PR12 Task 3). `관리 메뉴` nav(섹션4)는 가장 아래다.
  *
- * 🔴 이 컴포넌트는 아직 어떤 트리에도 배선되지 않는다 — `ShellLayout`(T7)이 배선한다.
+ * `메인 메뉴` nav는 항상 렌더되고, `관리 메뉴` nav는 `user.isSystemAdmin === true`일 때만
+ * **기본 펼침** 상태로 렌더된다(FR3/FR4). 접힘 상태는 {@link useSidebarCollapsed}로 소비하며,
+ * 각 nav 링크는 lucide 아이콘(`aria-hidden`) + 텍스트 라벨로 구성된다 — 펼침 시 아이콘·텍스트
+ * 둘 다 보이고, 접힘(64px) 시 텍스트는 `sr-only`로 시각적으로만 숨겨 진짜 아이콘 레일이 되며
+ * (잘린 텍스트 노출 방지), DOM에는 남아 있어 `getByRole('link', { name })` 계약(e2e)이
+ * 유지된다(FR5). {@link ProjectTree}도 접힘 시 동일한 아이콘 레일 원칙을 따른다(자체 FR6).
  */
 export function Sidebar(): JSX.Element {
   const user = useAuthUser()
