@@ -148,8 +148,8 @@ FR-UX-06 UI/UX 개편의 Dialog 흡수 4분할 중 PR7. auth/identity-access 계
 - depends-on: []
 
 **RED(baseline)**: `pnpm test OooModal` green 확인.
-**GREEN**: controlled 흡수(Header 소유 선례). `<Dialog open={open} onOpenChange={onOpenChange}>` + Content/Header/Title/Footer. **저장 성공 닫힘(`handleSaved`→`onOpenChange(false)`) 로직 불변**. Cancel 버튼 기전은 impl 시 전체 정독 후 원본 보존(함정2 여부 실측 — 이미 onClick 닫기면 plain 유지).
-**REFACTOR**: 마진 정리.
+**GREEN**: controlled 흡수(Header 소유 선례). `<Dialog open={open} onOpenChange={onOpenChange}>` + Content/Header/Title. **실측 확정** — footer는 Cancel 없음, `초기화(handleClear)`+`저장(handleSave)` 두 액션 버튼이 `flex justify-between`(L256). 닫기는 X/Esc/바깥클릭만 → **함정2 해당 없음**. **함정1 적용** — `<DialogFooter className="sm:justify-between">`(bare `justify-between`이 래퍼 기본 `sm:justify-end`를 못 이김). 저장 성공 닫힘(`handleSaved`→`onOpenChange(false)`) 로직 불변.
+**REFACTOR**: 마진 정리(`pt-2` 등, 래퍼 gap 반영).
 **검증**: `pnpm test OooModal` green + `git diff -w` diff-0.
 
 ### Task 7. settings/PatTokenModal 흡수 (유닛 없음 + bare open)
@@ -174,3 +174,34 @@ FR-UX-06 UI/UX 개편의 Dialog 흡수 4분할 중 PR7. auth/identity-access 계
 - ★유닛 없는 2파일(Field·PatToken)은 e2e + `git diff -w` diff-0 이중 guard 필수([[ui-pr-defer-e2e-regression-latent]])
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
+
+## 리뷰 결과
+
+### controller 경량 어드버서리얼 self-review (2026-07-19, type=ui)
+
+type=ui이나 시각 계약은 PR5에서 확정된 옵션 B 재사용 → 새 디자인 결정 0.
+PR6 선례(정본 재사용 PR = controller self-review)대로 **실행 리스크 어드버서리얼**.
+
+**발견 → 해소 2건**.
+- **R1 (OooModal Cancel 미확정)**. Task 6이 Cancel 기전을 impl로 미뤘음 → 실측 결과
+  footer에 Cancel 없음(초기화+저장 2버튼, `justify-between`). **함정2 아님, 함정1 적용**
+  (`sm:justify-between`). Task 6 정정 완료.
+- **R2 (테스트 취약 셀렉터 우려)**. 5개 유닛 테스트가 흡수로 제거되는 구조 클래스를
+  assert하면 깨질 위험 → 실측 결과 **전부 `getByRole('dialog')` 등 role/text 기반(견고)**.
+  `role="dialog"` 보존되므로 **테스트 재작성 불필요**. refactor-under-green 가정 검증됨.
+
+**검증된 강점**.
+- ✅ `DialogTrigger` export 확인(AddMember Trigger 보존)
+- ✅ 함정2(Cancel 이중호출) 대상 정확 — Field(L241)·Global(L291) plain 유지, 나머지 무해
+- ✅ prop명 매핑(Global `isOpen`/`onClose`) 명시
+- ✅ 7파일 독립 → 1-wave, files 교집합 ∅
+- ✅ typecheck는 tsconfig.app 기준([[ci-typecheck-tsconfig-app-vs-local]])
+
+**주의(BLOCKER 아님)**.
+- ⚠️ 유닛 없는 2파일(Field·PatToken) — `git diff -w` diff-0가 1차 guard(로직 불변→동작 불변),
+  e2e(`field-permissions.spec.ts`·`pat.spec.ts`)는 2차. impl에서 e2e 실제 실행/미스킵 확인 필수.
+- ⚠️ "role=dialog e2e 147건"은 앱 전체 수(ADR) — PR7 기준은 **무회귀**(수치 자체는 다른 PR로 변동 가능).
+
+**BLOCKER**: 없음.
+
+**게이트 이월 결정 1건**. auth 3파일(AddAccount·Reauth·AddMember) agent 배정.
