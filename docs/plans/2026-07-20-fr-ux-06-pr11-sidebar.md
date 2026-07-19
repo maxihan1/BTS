@@ -108,7 +108,7 @@ office-hours/design-shotgun는 스킵 — 디자인 잠김(ADR 확정 6결정·�
 - files: [`apps/web/src/components/layout/__tests__/navigation-contract.test.tsx`]
 - depends-on: []
 
-**RED/GREEN(특수 — 회귀 가드)**: 이 테스트는 **기존 계약을 잠그는 characterization 가드**라 작성 즉시 green(현 Header가 라벨을 이미 소유). `router.test.tsx` 방식으로 `createMemoryHistory` + `routeTree`를 인증 사용자 mock으로 렌더하고 어서션:
+**RED/GREEN(특수 — 회귀 가드)**: 이 테스트는 **기존 계약을 잠그는 characterization 가드**라 작성 즉시 green(현 Header가 라벨을 이미 소유). **★셋업(리뷰 refinement)**: 인증 상태는 `authStore` mock(`useIsAuthenticated`→true) + `isSystemAdmin` 사용자 mock 필요. `router.test.tsx`의 기존 하네스(`createMemoryHistory`+`routeTree`+QueryClientProvider mock) 패턴 재사용. 전 앱 렌더가 무겁다면 크롬을 렌더하는 최상위 레이아웃 합성만 렌더하되 **Header 직접 렌더는 피함**(마이그레이션 무관성 유지 — 라우터/레이아웃 합성 레벨). 어서션:
 - `getByRole('navigation', { name: '메인 메뉴' })` 존재 + 그 안에 `대시보드`·`캘린더` 링크(계약: `dashboard.spec:440`·`calendar.spec:88`).
 - `isSystemAdmin=true` mock → `getByRole('navigation', { name: '관리 메뉴' })` 존재 + 6링크. `isSystemAdmin=false` → 관리 nav 부재.
 - `검색`(`aria-label`)은 정확히 1개(strict 단일).
@@ -157,6 +157,7 @@ office-hours/design-shotgun는 스킵 — 디자인 잠김(ADR 확정 6결정·�
 
 **RED**: `state-tokens.test.ts` **동결 리스트(L202-205)에서 `--sidebar-*` 8종 제거** + 사이드바 토큰이 ADS 값(라이트/다크 both, hex 또는 ADS surface 별칭)임을 어서션하는 케이스 추가. 현재 index.css는 oklch라 RED.
 - ★ 주의: `--chart-*`·`--syntax-*`는 동결 유지(건드리지 않음).
+- 🔴 **non-vacuous 어서션(리뷰 refinement, [[archunit-vacuous-rule-silent-pass]])**: 새 사이드바 어서션은 공허하면 안 됨 — 별칭이면 `declarationOf(--sidebar)`가 특정 surface var를 참조함을, hex면 정확 hex를 라이트/다크 각각 어서션. 룰 추가 후 일부러 위반(oklch 잔존) 넣어 red 확인 → 값 넣어 green.
 
 **GREEN**: `index.css`의 `--sidebar-*` 8종(`:root`+`.dark`)을 ADS 값으로 교체. **설계 결정(frontend-engineer)**: 디자인 스펙 §3.1이 사이드바 배경을 `--surface-sunken`으로 규정하므로, `--sidebar` 계열을 ADS surface/border/brand 토큰에 **별칭**(`var(--surface-sunken)` 등)하거나 동등 hex로. D7 "소비되는 PR에서 정의" 준수 — 죽은 값 금지.
 
@@ -205,7 +206,7 @@ office-hours/design-shotgun는 스킵 — 디자인 잠김(ADR 확정 6결정·�
 
 **GREEN(원자)**: 한 커밋에 —
 - `ShellLayout.tsx`: `useIsAuthenticated` 게이팅 → true면 `<TopBar/>`+`<Sidebar/>`+`<main><Outlet/></main>`, false면 `<Outlet/>`. 도움말 오픈 상태를 TopBar↔ShortcutsHelpDialog로 연결(또는 RootLayout 유지 배선).
-- `Header.tsx`: `메인 메뉴`·`관리 메뉴` nav 제거(TopBar/Sidebar가 흡수). ★ 남는 로직 중복 제거 후 Header가 빈 껍데기면 파일 삭제까지 고려(단 import 정리).
+- `Header.tsx`: `메인 메뉴`·`관리 메뉴` nav 제거. **★죽은 Header 방지(리뷰 refinement)**: TopBar(T6)가 검색·InboxBell·계정 드롭다운·계정라벨 로직을 완전 흡수하므로, 축소 후 Header가 top-bar 요소를 이중 소유하지 않게 한다 — Header 소비처는 `__root.tsx` **단일**이라 TopBar로 치환 후 `Header.tsx`+`Header.test.tsx` 삭제가 깔끔(또는 Header=TopBar로 리네임/재작성). 축소 잔재·TopBar와의 중복 금지.
 - `__root.tsx`: `<Header/>` 렌더 중단. CommandPalette·ShortcutsHelpDialog·useNotificationStream·useKeyboardShortcuts는 **잔류**(G1). `<main>` 중복 방지(ShellLayout이 main 소유 시 __root는 wrapper만).
 - `__root.test.tsx`·`Header.test.tsx`: 이관 반영.
 
@@ -222,6 +223,19 @@ office-hours/design-shotgun는 스킵 — 디자인 잠김(ADR 확정 6결정·�
 - 추가 검증(qa-engineer): Playwright 전수 — 특히 calendar·dashboard·notification-policies·webhook·audit-logs·board·backlog·already-authed·dashboards.shared. CI에 e2e 잡 없음([[frontend-ci-10min-timeout-nonrequired]]) → 로컬 전수 필수.
 - 🔴 hard-won 커플링: (a) T4가 state-tokens 동결 리스트 갱신 안 하면 test 깨짐, (b) T7 원자성 — Sidebar/TopBar 배선과 Header 축소 동시(이중 nav 방지), (c) navigation-contract 마이그레이션 무관 렌더.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+### plan 리뷰 (design+eng 렌즈, 2026-07-20)
+
+TYPE=ui → 라우팅상 plan-design-review이나 **디자인이 잠겨(ADR 확정 6결정·디자인 스펙 §3.1·프로토타입 시안)** 진짜 리스크가 엔지니어링 계약이라, 대화형 design-review 대신 plan에 대한 **적대적 리뷰(design 충실도 + eng 리스크)**로 통합. 디자인 충실도(264px·4섹션·토큰·라이트/다크)는 §3.1 정본을 T2/T4/T5/T6가 그대로 반영 — deviation 0.
+
+- ✅ **통과**: E2E 계약(aria-label 4종·검색단일·관리기본펼침·h1금지)을 T1 회귀가드 + T5/T7 어서션이 다층 방어. `메인 메뉴` 내용 계약(대시보드·캘린더 링크)·`관리` 게이팅 실측 반영.
+- ✅ **통과**: T7 크롬 스왑 원자성(이중 nav strict-mode 충돌 방지) 설계 확인. Sidebar/TopBar는 컴포넌트만 선생성(트리 미배선).
+- ⚠️ **refinement 4건 반영(BLOCKER 아님)**:
+  1. T1 셋업 — authStore/isSystemAdmin mock + router.test 하네스 재사용 명시.
+  2. T4 — 동결 제거 후 새 어서션 non-vacuous 강제([[archunit-vacuous-rule-silent-pass]]).
+  3. T7 — TopBar가 Header top-bar 완전 흡수, 소비처 __root 단일이라 Header 삭제/치환(죽은 축소 잔재·중복 금지).
+  4. wave — layout/__tests__/ 동일 디렉토리지만 파일별 직렬화라 무충돌, 자기 파일만 stage([[parallel-dispatch-precommit-hook-race]]).
+- **BLOCKER: 없음.**
+
+ceo(제품 가치)는 ADR 확정 결정 3(FR-UX-06 신설)·4(개편 전체)에서 이미 결정 — 재리뷰 불요. devex(API)는 REST 변경 0이라 해당 없음.
