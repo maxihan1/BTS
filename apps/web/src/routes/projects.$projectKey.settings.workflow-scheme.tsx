@@ -165,9 +165,9 @@ export function ProjectWorkflowSchemeSettingsPage({
  */
 export function UnassignedSchemeCard(): JSX.Element {
   return (
-    <Card className="border-amber-500/40 bg-amber-50/30 dark:bg-amber-950/20">
+    <Card className="border-warning/40 bg-warning/10">
       <CardHeader>
-        <CardTitle className="text-amber-700 dark:text-amber-400">{workflowSchemeLabels.assignment.unassignedTitle}</CardTitle>
+        <CardTitle className="text-warning-text">{workflowSchemeLabels.assignment.unassignedTitle}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 text-sm text-muted-foreground">
         <p>이 프로젝트는 아직 워크플로우 스킴이 할당되지 않았습니다.</p>

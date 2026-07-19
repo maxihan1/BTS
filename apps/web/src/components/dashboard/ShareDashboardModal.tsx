@@ -145,7 +145,7 @@ export interface ShareDashboardModalProps {
  * 3영역.
  * 1. 링크 생성 — "링크 생성" 클릭 시 발급 mutation을 호출하고, 원문 token을 컴포넌트
  *    state로 보관해 공개 URL을 조립·표시한다(재조회 불가 — DB에는 해시만 저장).
- *    visibility !== 'ORG'이면 amber caution 배너로 접근 범위 경고를 표시한다.
+ *    visibility !== 'ORG'이면 warning caution 배너로 접근 범위 경고를 표시한다.
  * 2. 임베드 코드 — 방금 발급한 토큰으로 same-origin iframe 스니펫을 조립해 표시한다.
  * 3. 발급된 링크 목록 — 메타(id/createdAt/expiresAt)만 표시하고 복사/임베드는 없다.
  *    취소는 인라인 확인 후 실행한다(즉시 하드삭제 — 실수 방지).
@@ -240,11 +240,11 @@ export function ShareDashboardModal({
           </button>
         </div>
 
-        {/* PRIVATE/TEAM 경고 배너 — amber caution, destructive 금지 */}
+        {/* PRIVATE/TEAM 경고 배너 — warning caution, destructive 금지 */}
         {visibility !== 'ORG' && (
           <div
             role="note"
-            className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-600 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400"
+            className="flex items-start gap-2 rounded-md border border-warning bg-warning/10 p-3 text-sm text-warning-text"
           >
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
             <span>{dashboardLabels.share.visibilityWarning}</span>

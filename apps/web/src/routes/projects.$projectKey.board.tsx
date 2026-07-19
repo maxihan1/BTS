@@ -546,7 +546,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
       {boardDetail?.truncated === true && (
         <div
           role="alert"
-          className="rounded-md bg-amber-50 border border-amber-200 px-4 py-2 text-sm text-amber-800"
+          className="rounded-md bg-warning/10 border border-warning px-4 py-2 text-sm text-warning-text"
         >
           표시되지 않은 이슈가 있습니다. 필터를 사용하거나 이슈 목록에서 전체를 확인하세요.
         </div>
@@ -556,7 +556,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
       {boardDetail !== undefined && boardDetail.unplacedCount > 0 && (
         <div
           role="alert"
-          className="rounded-md bg-amber-50 border border-amber-200 px-4 py-2 text-sm text-amber-800"
+          className="rounded-md bg-warning/10 border border-warning px-4 py-2 text-sm text-warning-text"
         >
           {boardDetail.unplacedCount}개 이슈가 컬럼에 매핑되지 않아 표시되지 않았습니다.
           프로젝트 워크플로우 스킴을 확인해 주세요.
