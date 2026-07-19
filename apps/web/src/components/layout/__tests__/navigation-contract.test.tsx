@@ -1,11 +1,14 @@
 // aria-label 네비게이션 계약 회귀 가드 — Header→Sidebar 이관(PR11) 전후로 라벨/게이팅/검색단일/h1금지가 깨지지 않는지 고정한다
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import { RouterProvider, createRouter, createMemoryHistory } from '@tanstack/react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { routeTree } from '@/router'
 import { useAuthStore } from '@/auth/authStore'
 import type { WhoamiResponse } from '@/api/schemas'
+import { server } from '@/test/server'
+import { projectListHandlers } from '@/mocks/project-list-handlers'
+import { navLabels } from '@/i18n/nav-labels'
 
 /**
  * 이 테스트는 characterization(회귀) 가드다 — 현재 `Header.tsx`가 `메인 메뉴`/`관리 메뉴` nav와
@@ -55,6 +58,14 @@ function renderAuthenticatedShell(isSystemAdmin: boolean) {
 }
 
 describe('navigation-contract (aria-label 4종 회귀 가드)', () => {
+  beforeEach(() => {
+    // Sidebar가 배선하는 ProjectTree(useProjects, FR-UX-06 PR12 Task 3)가 조회하는 엔드포인트 —
+    // mocks/handlers.ts 전역 등록에 더해 명시 등록한다(use-projects.test.tsx·ProjectTree.test.tsx와
+    // 동일 관례). 핸들러가 없으면 ProjectTree가 쿼리 에러로 null을 반환해 신규 '프로젝트' nav
+    // 어서션이 실패한다.
+    server.use(...projectListHandlers)
+  })
+
   afterEach(() => {
     useAuthStore.getState().clearSession()
   })
@@ -85,6 +96,16 @@ describe('navigation-contract (aria-label 4종 회귀 가드)', () => {
     // 메인 메뉴가 그려질 때까지 기다려 라우터 마운트 완료를 보장한 뒤 관리 nav 부재를 확인한다
     await screen.findByRole('navigation', { name: '메인 메뉴' })
     expect(screen.queryByRole('navigation', { name: '관리 메뉴' })).not.toBeInTheDocument()
+  })
+
+  it('프로젝트 — aria-label="프로젝트" nav가 존재한다 (FR-UX-06 PR12 FR1 계약, ProjectTree)', async () => {
+    renderAuthenticatedShell(false)
+
+    // Testing Library `getByRole`의 `name` 매칭은 기본이 완전일치이므로, '프로젝트 뷰 전환'
+    // (projectViewNav)과 substring 충돌 없이 이 nav만 조회된다(exact 옵션이 별도로 없는 이유는
+    // navLabels.projectNav의 JSDoc 참고).
+    const projectNav = await screen.findByRole('navigation', { name: navLabels.projectNav })
+    expect(projectNav).toBeInTheDocument()
   })
 
   it('검색 — aria-label="검색" 버튼은 정확히 1개다 (strict 단일, 사이드바 내 검색 항목 추가 금지)', async () => {
