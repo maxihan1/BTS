@@ -319,7 +319,7 @@ export function DashboardDetailPage({
           <FavoriteButton targetType="DASHBOARD" targetId={dashboardId} />
           {dirty && editable && (
             <span
-              className="text-xs text-amber-600 font-medium shrink-0"
+              className="text-xs text-warning-text font-medium shrink-0"
               role="status"
               aria-live="polite"
             >

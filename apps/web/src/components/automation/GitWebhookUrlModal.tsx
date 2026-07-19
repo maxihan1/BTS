@@ -138,7 +138,7 @@ export function GitWebhookUrlModal({ webhookUrl, onClose }: GitWebhookUrlModalPr
 
           <DialogPrimitive.Description
             role="alert"
-            className="mt-2 text-sm text-amber-800 dark:text-amber-200"
+            className="mt-2 text-sm text-warning-text"
           >
             {labels.warning}
           </DialogPrimitive.Description>

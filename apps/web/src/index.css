@@ -76,6 +76,14 @@
 
   --color-info-foreground: var(--info-foreground);
 
+  --color-warning-text: var(--warning-text);
+
+  --color-success-text: var(--success-text);
+
+  --color-danger-text: var(--danger-text);
+
+  --color-info-text: var(--info-text);
+
   --color-input: var(--input);
 
   --color-border: var(--border);
@@ -239,6 +247,15 @@
   --danger-foreground: #FFFFFF;
 
   --info-foreground: #FFFFFF;
+
+  /* tint(옅은 배경) 위 색 텍스트 — ADS color.text.<status> 라이트 -800 (bold 토큰은 tint 위 AA 미달) */
+  --warning-text: #7F5F01;
+
+  --success-text: #216E4E;
+
+  --danger-text: #AE2A19;
+
+  --info-text: #0055CC;
 }
 
 .dark {
@@ -359,6 +376,15 @@
   --danger-foreground: #161A1D;
 
   --info-foreground: #161A1D;
+
+  /* tint 위 색 텍스트 — ADS color.text.<status> 다크 -300 (다크 tint 위 AA≥6.8) */
+  --warning-text: #F5CD47;
+
+  --success-text: #7EE2B8;
+
+  --danger-text: #FF9C8F;
+
+  --info-text: #85B8FF;
 }
 
 @layer base {

@@ -44,12 +44,12 @@ export interface RuleConflictWarningModalProps {
  */
 function ConflictItem({ conflict }: { conflict: RuleConflict }): JSX.Element {
   return (
-    <li className="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950">
-      <span className="inline-block rounded bg-amber-200 px-2 py-0.5 text-xs font-semibold text-amber-900 dark:bg-amber-800 dark:text-amber-100">
+    <li className="rounded-md border border-warning bg-warning/10 p-3">
+      <span className="inline-block rounded bg-warning px-2 py-0.5 text-xs font-semibold text-warning-foreground">
         {CONFLICT_TYPE_LABELS[conflict.type]}
       </span>
-      <p className="mt-1 text-sm text-amber-900 dark:text-amber-100">{conflict.detail}</p>
-      <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">관련 규칙 {conflict.ruleIds.length}개</p>
+      <p className="mt-1 text-sm text-warning-text">{conflict.detail}</p>
+      <p className="mt-1 text-xs text-warning-text">관련 규칙 {conflict.ruleIds.length}개</p>
     </li>
   )
 }
@@ -95,7 +95,7 @@ export function RuleConflictWarningModal({
           {/* role="alert" — 경고 소제목 + 충돌 목록을 하나의 경고 본문으로 묶어 스크린리더가
               중복 announce하지 않도록 한다(제목/목록에 각각 role을 주지 않음). */}
           <div role="alert">
-            <DialogPrimitive.Description className="mt-2 text-sm text-amber-800 dark:text-amber-200">
+            <DialogPrimitive.Description className="mt-2 text-sm text-warning-text">
               {labels.warningHeading}
             </DialogPrimitive.Description>
 

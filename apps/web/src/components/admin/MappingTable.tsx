@@ -31,14 +31,14 @@ const WORKFLOW_KEYS = {
 }
 
 /** default 매핑 row 강조 CSS 클래스 */
-const DEFAULT_ROW_CLASS = 'bg-amber-50/50 dark:bg-amber-950/10'
+const DEFAULT_ROW_CLASS = 'bg-warning/10'
 
 /** default 매핑 텍스트 강조 CSS 클래스 */
-const DEFAULT_TEXT_CLASS = 'font-medium text-amber-700 dark:text-amber-400'
+const DEFAULT_TEXT_CLASS = 'font-medium text-warning-text'
 
 /** default 매핑 badge CSS 클래스 */
 const DEFAULT_BADGE_CLASS =
-  'inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
+  'inline-flex items-center rounded-full bg-warning px-2 py-0.5 text-[11px] font-medium text-warning-foreground'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props 인터페이스

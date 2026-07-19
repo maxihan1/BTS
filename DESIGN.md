@@ -80,7 +80,7 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 
 > **`--border-focus` = `--ring`.** 라이트 `#388BFF`(Blue500), 다크 `#85B8FF`(Blue300)로 완전히 동일한 값이다 — 포커스 시각 신호를 팔레트 전역에서 하나로 통일하기 위한 의도적 설계다.
 
-### §C. 시맨틱 상태색 4종 + foreground 4종 (Tailwind 유틸로 완전 배선됨)
+### §C. 시맨틱 상태색 4종 + foreground 4종 + text 4종 (Tailwind 유틸로 완전 배선됨)
 
 `color.background.<status>.bold`(고강조 배경) 스텝을 채택했다. `--color-*`로 배선되어 `bg-warning`, `text-danger` 등 표준 유틸로 쓸 수 있다.
 
@@ -94,10 +94,16 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 | `--success-foreground` | `#FFFFFF` | `#161A1D` | 흰색 / DarkNeutral0(`--success` bold 배경 위 텍스트) |
 | `--danger-foreground` | `#FFFFFF` | `#161A1D` | 흰색 / DarkNeutral0(`--danger` bold 배경 위 텍스트) |
 | `--info-foreground` | `#FFFFFF` | `#161A1D` | 흰색 / DarkNeutral0(`--info` bold 배경 위 텍스트) |
+| `--warning-text` | `#7F5F01` | `#F5CD47` | Yellow800 / Yellow300(tint 위 텍스트) |
+| `--success-text` | `#216E4E` | `#7EE2B8` | Green800 / Green300(tint 위 텍스트) |
+| `--danger-text` | `#AE2A19` | `#FF9C8F` | Red800 / Red300(tint 위 텍스트) |
+| `--info-text` | `#0055CC` | `#85B8FF` | Blue800 / Blue300(tint 위 텍스트) |
 
-**텍스트 페어링.** `--warning-foreground`/`--success-foreground`/`--danger-foreground`/`--info-foreground` 4종이 토큰으로 제공된다(`text-warning-foreground` 등 Tailwind 유틸로 바로 쓸 수 있다) — 라이트는 흰 글자, 다크는 어두운 글자(`#161A1D`)로 고정된다. warning이 대표 사례 — 라이트는 진오렌지+흰 글자, 다크는 밝은 노랑+검은 글자로 페어링이 뒤집힌다(§10 대비표 참조).
+**텍스트 페어링 (★ bold vs tint 구분).**
+- **bold 배경 위** (`bg-warning` 등 고강조 배경): `text-{status}-foreground`. 라이트 흰 글자, 다크 어두운 글자(`#161A1D`). warning 대표 — 라이트 진오렌지+흰 글자, 다크 밝은 노랑+검은 글자로 페어링이 뒤집힌다.
+- **tint 배경 위 / 색 텍스트** (`bg-warning/10` 배너·상태 배지·색 텍스트): `text-{status}-text` (bold 토큰 아님). `--warning`(중간명도 bold)을 tint 위 글자로 쓰면 라이트 AA 미달(4.1:1)이라, ADS `color.text.<status>`(라이트 -800 어두움 / 다크 -300 밝음)를 별도 토큰으로 신설했다. 전 tint 표면(흰·muted·bg·card) AA≥4.9 실측(§10). **배지가 같은 색 tint 배너 위에 중첩되면** 둘 다 `/10`으로 붕괴하므로 내부 배지는 bold(`bg-warning text-warning-foreground`)로 대비를 살린다.
 
-**현재 소비처.** §C 4종은 `apps/web/src/components/ui/`(프리미티브)에서는 아직 직접 소비되지 않는다 — 실제로 §C 토큰을 CSS 클래스로 소비하는 곳은 `components/backlog/BacklogBoard.tsx`(백로그 절단 경고 배너, `border-warning bg-warning/10`) 1건뿐이다. `components/workflow/WorkflowDiagram.tsx`는 완료 상태를 하드코딩 `oklch()` 값으로 그리고 있어 §C 토큰으로 이관할 후보이고, `components/automation/RuleConflictWarningModal.tsx`·`components/automation/AutomationRuleFormDialog.tsx`는 변수/라벨 이름에 "warning" 문자열만 있을 뿐 §C 토큰을 실제로 소비하지 않는다.
+**현재 소비처.** PR4(FR-UX-06)가 하드코딩 Tailwind 색 리터럴을 §C 토큰으로 전면 이관하면서, §C는 이제 프리미티브와 화면 전반에서 소비된다. 프리미티브 `components/ui/badge.tsx`의 색 variant(blue→info·green→success·red→danger·yellow→warning)가 tint 패턴 `bg-{status}/10 text-{status}-text`로 소비하고, 상태 배너·배지 약 29개 파일(`components/automation/RuleConflictWarningModal.tsx`·`AutomationYamlImportDialog.tsx`, `components/admin/WebhookDeliveryTable.tsx`, `components/backlog/SprintColumn.tsx`, `components/auth/BackupCodesSection.tsx` 등)이 동일 패턴 또는 bold(`bg-{status} text-{status}-foreground`)로 소비한다. `components/backlog/BacklogBoard.tsx`(백로그 절단 경고 배너, `border-warning bg-warning/10`)는 PR3가 먼저 이관한 선례다. **여전히 §C 미소비**로 남은 것은 DEFER/OUT 대상 — `components/workflow/WorkflowDiagram.tsx`(mermaid flowchart가 `var()` 미지원이라 하드코딩 유지)와 범주색(이슈타입·차트, PR22 `--chart-*` 소관).
 
 ### 🔒 동결 토큰 — 이 문서에서 다루지 않음
 
@@ -383,6 +389,10 @@ WCAG AA 기준. 본문 텍스트 4.5:1 이상, UI 컴포넌트/큰 텍스트(18p
 | success bold 위 텍스트 | 4.66:1 | 8.81:1 | AA ✅ | |
 | danger bold 위 텍스트 | 5.19:1 | 6.39:1 | AA ✅ | |
 | info bold 위 텍스트 | 5.20:1 | 6.40:1 | AA ✅ | |
+| `success-text` on `bg-success/10`(tint, PR4) | 5.10:1 | 8.59:1 | AA ✅ | tint 위 색 텍스트. bold `--success`(4.11:1 미달) 대신 ADS 어두운 텍스트 토큰(-800/-300). 최악 표면(라이트 muted·다크 card) 기준 |
+| `warning-text` on `bg-warning/10`(tint, PR4) | 4.90:1 | 8.69:1 | AA ✅ | 라이트 Yellow800·다크 Yellow300 |
+| `danger-text` on `bg-danger/10`(tint, PR4) | 5.45:1 | 6.97:1 | AA ✅ | 라이트 Red800·다크 Red300 |
+| `info-text` on `bg-info/10`(tint, PR4) | 5.41:1 | 6.82:1 | AA ✅ | 라이트 Blue800·다크 Blue300 |
 | `ring`/`border-focus` on `background` | 3.33:1 | 8.58:1 | AA ✅(UI 3:1 기준) | 포커스 링은 텍스트가 아니라 UI 컴포넌트라 3:1 기준 적용 |
 | `.mention`(`color: var(--brand-text)`) | 4.64:1 | 5.51:1 | AA ✅ | |
 | `text-disabled` on `background` | 1.97:1 | 2.10:1 | 면제 | WCAG는 `disabled` 상태 텍스트에 대비 기준을 요구하지 않음 |

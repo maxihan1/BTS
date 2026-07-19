@@ -498,10 +498,10 @@ function TriggerConfigFields({
           <div
             role="alert"
             data-testid="automation-rule-no-git-webhooks-warning"
-            className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950"
+            className="mt-2 rounded-md border border-warning bg-warning/10 p-3"
           >
-            <p className="text-xs text-amber-900 dark:text-amber-100">{labels.noGitWebhooksWarning}</p>
-            <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{labels.noGitWebhooksWarningHint}</p>
+            <p className="text-xs text-warning-text">{labels.noGitWebhooksWarning}</p>
+            <p className="mt-1 text-xs text-warning-text">{labels.noGitWebhooksWarningHint}</p>
           </div>
         )}
       </div>

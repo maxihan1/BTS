@@ -70,7 +70,7 @@ function ProgressPanel({ data }: ProgressPanelProps): JSX.Element {
       {/* 종단 상태 카운트 요약 */}
       {isTerminal && (
         <div className="flex gap-4 text-sm">
-          <span className="text-emerald-600">
+          <span className="text-success-text">
             성공 {succeededCount}
           </span>
           <span className="text-destructive">

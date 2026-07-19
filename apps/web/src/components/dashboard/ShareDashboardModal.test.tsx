@@ -149,7 +149,7 @@ describe('ShareDashboardModal — 공개 범위 경고 배너', () => {
     renderModal({ visibility: 'PRIVATE' })
     const banner = screen.getByRole('note')
     expect(banner.className).not.toMatch(/destructive/)
-    expect(banner.className).toMatch(/amber/)
+    expect(banner.className).toMatch(/warning/)
   })
 })
 

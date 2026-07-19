@@ -121,7 +121,7 @@ export function CalendarFeedCard(): JSX.Element {
           <CardTitle>{labels.revealTitle}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p role="alert" className="text-sm text-amber-800 dark:text-amber-200">
+          <p role="alert" className="text-sm text-warning-text">
             {labels.revealWarning}
           </p>
           <code className="block break-all rounded bg-muted px-3 py-2 text-sm font-mono">

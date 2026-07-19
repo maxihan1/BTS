@@ -65,10 +65,10 @@ const CONFLICT_TYPE_LABELS: Record<ConflictType, string> = {
 }
 
 /**
- * 경고 박스(amber) 공통 클래스 — 토큰 노출 영역과 conflicts 경고 영역이 동일한 시각 언어를
+ * 경고 박스(warning) 공통 클래스 — 토큰 노출 영역과 conflicts 경고 영역이 동일한 시각 언어를
  * 공유한다(AutomationRuleList.tsx `BADGE_BASE_CLASS` DRY 관례 동형).
  */
-const AMBER_WARNING_BOX_CLASS = 'space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950'
+const AMBER_WARNING_BOX_CLASS = 'space-y-2 rounded-md border border-warning bg-warning/10 p-3'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 에러 메시지 조립 — 단일 규칙(errorCode 분기 없음, spec §에러 · BLOCKER-1 해소)
@@ -156,7 +156,7 @@ interface ImportedTokensSectionProps {
 function ImportedTokensSection({ tokens }: ImportedTokensSectionProps): JSX.Element {
   return (
     <div data-testid="automation-yaml-import-tokens-section" className={AMBER_WARNING_BOX_CLASS}>
-      <p role="alert" className="text-sm text-amber-900 dark:text-amber-100">{labels.tokenWarning}</p>
+      <p role="alert" className="text-sm text-warning-text">{labels.tokenWarning}</p>
       <ul className="space-y-2">
         {tokens.map((token) => (
           <ImportedTokenRow key={token.ruleId} token={token} />
@@ -210,10 +210,10 @@ function ImportConflictsWarning({ conflicts }: { readonly conflicts: readonly Ru
   if (conflicts.length === 0) return null
   return (
     <div role="alert" data-testid="automation-yaml-import-conflicts" className={AMBER_WARNING_BOX_CLASS}>
-      <p className="text-sm font-medium text-amber-900 dark:text-amber-100">{labels.conflictsHeading}</p>
+      <p className="text-sm font-medium text-warning-text">{labels.conflictsHeading}</p>
       <ul className="space-y-1">
         {conflicts.map((conflict, index) => (
-          <li key={`${conflict.type}-${index}`} className="text-sm text-amber-900 dark:text-amber-100">
+          <li key={`${conflict.type}-${index}`} className="text-sm text-warning-text">
             <span className="mr-1 font-semibold">{CONFLICT_TYPE_LABELS[conflict.type]}</span>
             {conflict.detail}
           </li>

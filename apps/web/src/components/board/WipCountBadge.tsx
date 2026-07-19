@@ -10,9 +10,9 @@ import { boardLabels } from '@/i18n/board-labels'
 const BADGE_NEUTRAL =
   'rounded-full bg-primary px-1.5 py-0.5 text-xs font-medium text-primary-foreground'
 
-/** WIP 초과 배지 — amber 주의 톤 (경고는 정보, 차단 아님) */
+/** WIP 초과 배지 — warning 주의 톤 (경고는 정보, 차단 아님) */
 const BADGE_EXCEEDED =
-  'rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800 border border-amber-300'
+  'rounded-full bg-warning/10 px-1.5 py-0.5 text-xs font-medium text-warning-text border border-warning'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -43,7 +43,7 @@ export interface WipCountBadgeProps {
  *
  * - wipLimit=null → 단순 카드 수만 표시 (기존 동작 보존).
  * - wipLimit 있음·미초과 → "{count}/{limit}" 중립 배지.
- * - wipLimit 있음·초과·isFilterActive=false → "{count}/{limit}" amber 경고 배지 + aria-label.
+ * - wipLimit 있음·초과·isFilterActive=false → "{count}/{limit}" warning 경고 배지 + aria-label.
  * - wipLimit 있음·초과·isFilterActive=true → 경고색 제거 + "(필터됨)" 라벨 (필터로 전체 수 알 수 없음 고지).
  */
 export function WipCountBadge({ count, wipLimit, wipExceeded, isFilterActive = false }: WipCountBadgeProps) {

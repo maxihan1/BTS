@@ -66,6 +66,19 @@ const SEMANTIC_TOKENS: ReadonlyArray<readonly [token: string, light: string, dar
   ['--info', '#0C66E4', '#579DFF'],
 ] as const
 
+/**
+ * FR-UX-06 PR4 신설 status-text — tint(옅은 배경) 위 색 텍스트용.
+ * bold 상태색(--warning 등)은 중간명도라 tint 위 글자로 쓰면 라이트 AA 미달(4.1:1) →
+ * ADS color.text.<status>(라이트 -800 어두움 / 다크 -300 밝음)를 텍스트 토큰으로 신설.
+ * 전 tint 표면(흰·muted·bg·card) AA≥4.9 실측(docs/specs/2026-07-19-fr-ux-06-pr4-color-tokens.md).
+ */
+const SEMANTIC_TEXT: ReadonlyArray<readonly [token: string, light: string, dark: string]> = [
+  ['--warning-text', '#7F5F01', '#F5CD47'],
+  ['--success-text', '#216E4E', '#7EE2B8'],
+  ['--danger-text', '#AE2A19', '#FF9C8F'],
+  ['--info-text', '#0055CC', '#85B8FF'],
+] as const
+
 /** calc 파생 폐기 후 명시 나열된 radius 스케일 (ADS 기본 3px 포함) */
 const RADIUS_TOKENS: ReadonlyArray<readonly [token: string, value: string]> = [
   ['--radius-xs', '2px'],
@@ -158,6 +171,19 @@ describe('FR-UX-06 PR3 ADS 팔레트 — index.css', () => {
       expect(declarationOf(darkBlock, token)).toBe(dark)
     })
     it.each(SEMANTIC_FOREGROUND)('%s — @theme inline에 --color-* 배선', (token) => {
+      const colorToken = token.replace('--', '--color-')
+      expect(declarationOf(themeInline, colorToken)).toBe(`var(${token})`)
+    })
+  })
+
+  describe('status-text 4종 (PR4) — tint 위 색 텍스트, ADS color.text.<status>', () => {
+    it.each(SEMANTIC_TEXT)('%s — :root=%s', (token, light) => {
+      expect(declarationOf(rootBlock, token)).toBe(light)
+    })
+    it.each(SEMANTIC_TEXT)('%s — .dark 확정값 일치', (token, _light, dark) => {
+      expect(declarationOf(darkBlock, token)).toBe(dark)
+    })
+    it.each(SEMANTIC_TEXT)('%s — @theme inline에 --color-* 배선', (token) => {
       const colorToken = token.replace('--', '--color-')
       expect(declarationOf(themeInline, colorToken)).toBe(`var(${token})`)
     })

@@ -65,21 +65,21 @@ describe('WebhookDeliveryTable', () => {
   it('status=SUCCEEDED이면 초록 배지와 "성공" 텍스트를 표시한다', () => {
     render(<WebhookDeliveryTable deliveries={[succeededDelivery]} isLoading={false} />)
     const badge = screen.getByText('성공')
-    expect(badge.className).toContain('bg-green-100')
+    expect(badge.className).toContain('bg-success/10')
   })
 
   it('status=FAILED이면 빨강 배지와 "실패" 텍스트를 표시한다', () => {
     render(<WebhookDeliveryTable deliveries={[failedDelivery]} isLoading={false} />)
     const badge = screen.getByText('실패')
-    expect(badge.className).toContain('bg-red-100')
+    expect(badge.className).toContain('bg-danger/10')
   })
 
   it('status가 미지 값이면 중립 배지와 원문을 표시한다 (전방호환)', () => {
     render(<WebhookDeliveryTable deliveries={[unknownStatusDelivery]} isLoading={false} />)
     const badge = screen.getByText('PENDING')
     expect(badge.className).toContain('bg-muted')
-    expect(badge.className).not.toContain('bg-green-100')
-    expect(badge.className).not.toContain('bg-red-100')
+    expect(badge.className).not.toContain('bg-success/10')
+    expect(badge.className).not.toContain('bg-danger/10')
   })
 
   it('responseCode=null이면 "—"를 표시한다', () => {

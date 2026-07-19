@@ -91,7 +91,7 @@ export function PatCreateForm({ onSubmit, submitError, isSubmitting }: PatCreate
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-4">
       {/* scope 미강제 경고 배너 — 상시 노출 */}
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+      <div className="rounded-lg border border-warning bg-warning/10 p-3 text-sm text-warning-text">
         {labels.warning}
       </div>
 

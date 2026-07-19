@@ -12,8 +12,8 @@ import { useDateFormat } from '@/hooks/use-date-format'
 
 /** status wireValue → 배지 색상 Tailwind 클래스 (SUCCEEDED/FAILED 2종만 등록) */
 const STATUS_BADGE_CLASS: Record<string, string> = {
-  SUCCEEDED: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  FAILED: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+  SUCCEEDED: 'bg-success/10 text-success-text',
+  FAILED: 'bg-danger/10 text-danger-text',
 }
 
 /** 미지 status 값에 적용하는 중립 배지 색상 — 색 없이도 라벨 텍스트로 구분 가능 */

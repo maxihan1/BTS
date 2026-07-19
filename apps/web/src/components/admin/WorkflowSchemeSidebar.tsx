@@ -99,7 +99,7 @@ function SchemeRow({ scheme, isSelected, onSelect }: SchemeRowProps): JSX.Elemen
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         isSelected
           ? 'bg-card border border-border font-medium shadow-sm'
-          : 'hover:bg-[oklch(0.94_0_0)] text-foreground',
+          : 'hover:bg-accent text-foreground',
       ].join(' ')}
       onClick={() => onSelect(scheme.schemeKey)}
       onKeyDown={handleKeyDown}
