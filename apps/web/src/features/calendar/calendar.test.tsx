@@ -5,10 +5,8 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
-import { useAuthStore } from '@/auth/authStore'
 import type { CalendarResponse } from '@/api/calendar'
 import { calendarLabels } from '@/i18n/calendar-labels'
-import { Header } from '@/components/Header'
 import { CalendarView } from './CalendarView'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -42,13 +40,6 @@ vi.mock('@tanstack/react-router', () => ({
     )
   },
 }))
-
-// Header가 렌더에 필요로 하는 협력자 중 이 테스트 범위 밖인 것들 — Header.test.tsx 동일 패턴
-vi.mock('@/components/ui/avatar', () => ({
-  Avatar: () => <div data-testid="header-avatar-mock" />,
-}))
-vi.mock('@/components/status/StatusModal', () => ({ StatusModal: () => null }))
-vi.mock('@/components/ooo/OooModal', () => ({ OooModal: () => null }))
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 렌더 헬퍼
@@ -402,42 +393,5 @@ describe('CalendarView — S7 Worklog 마스킹(issueSummary=null)', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S8 (★C3). 전역 nav 캘린더 진입점 — Header.tsx
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('Header — S8 캘린더 전역 nav 진입점 (C3)', () => {
-  function renderHeader() {
-    return render(<Header />, { wrapper: createWrapper() })
-  }
-
-  beforeEach(() => {
-    useAuthStore.setState({
-      accessToken: 'test-token',
-      user: {
-        username: 'alice',
-        email: 'alice@bts.local',
-        authMethod: 'local',
-        userId: 'u1',
-        mustChangePassword: false,
-        isSystemAdmin: false,
-        mfaEnrollmentRequired: false,
-      },
-    })
-    server.use(
-      http.get('/api/v1/users/me/inbox/unread-count', () => HttpResponse.json({ data: { count: 0 } })),
-    )
-  })
-
-  afterEach(() => {
-    useAuthStore.setState({ accessToken: null, user: null })
-  })
-
-  it('S8a: 메인 네비게이션에 캘린더 링크(to=/calendar)가 노출된다', () => {
-    renderHeader()
-
-    const link = screen.getByRole('link', { name: calendarLabels.page.title })
-    expect(link).toBeInTheDocument()
-    expect(link).toHaveAttribute('href', '/calendar')
-  })
-})
+// S8(★C3, 전역 nav 캘린더 진입점)은 Header 삭제(FR-UX-06 PR11 Task 7)로 Sidebar가 흡수했다 —
+// 커버리지는 Sidebar.test.tsx(FR3)·navigation-contract.test.tsx로 이관됐다(중복 제거, 최소 변경).

@@ -1,7 +1,6 @@
 // 최상위 레이아웃 라우트 — Outlet으로 자식 라우트를 렌더하는 공통 껍데기
 import { Outlet } from '@tanstack/react-router'
 import { useIsAuthenticated } from '@/auth/authStore'
-import { Header } from '@/components/Header'
 import { useNotificationStream } from '@/notifications/useNotificationStream'
 import { useCommandPalette } from '@/components/command-palette/useCommandPalette'
 import { CommandPalette } from '@/components/command-palette/CommandPalette'
@@ -20,7 +19,7 @@ export const RootLayout = () => {
 
   return (
     <div>
-      {isAuthenticated && <Header />}
+      {/* 크롬(Header)은 PR11부터 `_shell`(ShellLayout)이 소유 — RootLayout은 전역 오버레이/훅만 유지(FR6, G1) */}
       {isAuthenticated && <CommandPalette open={isCommandPaletteOpen} onOpenChange={setCommandPaletteOpen} />}
       {isAuthenticated && <ShortcutsHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />}
       <main>

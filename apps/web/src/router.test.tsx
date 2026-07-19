@@ -104,16 +104,20 @@ describe('Router', () => {
     expect(await screen.findByText(/이슈 상세/)).toBeInTheDocument()
   })
 
-  it('dashboard에 /issues 네비 링크 1개 존재', async () => {
+  it('dashboard에 /issues 네비 링크이 존재한다 (사이드바 메인 nav + 페이지 자체 링크, FR-UX-06 PR11부터 2개)', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'test-access-token',
       user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
     })
     renderWithRoute('/dashboard')
     await screen.findByText(/환영합니다/)
+    // PR11부터 사이드바(Sidebar) 메인 nav가 `이슈` 링크(FR3)를 신설해 페이지 자체 링크와
+    // 함께 2개가 된다 — 둘 다 동일한 /issues로 연결되므로 의도된 중복(회귀 아님)이다.
     const issueLinks = screen.getAllByRole('link', { name: /이슈/ })
-    expect(issueLinks).toHaveLength(1)
-    expect(issueLinks[0]).toHaveAttribute('href', '/issues')
+    expect(issueLinks).toHaveLength(2)
+    for (const link of issueLinks) {
+      expect(link).toHaveAttribute('href', '/issues')
+    }
   })
 
   // ─── Task 3: MFA 등록 강제 게이트 라우터 합성 ────────────────────────────────
