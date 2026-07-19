@@ -292,3 +292,11 @@ ceo(제품 가치)는 ADR 확정 결정 3(FR-UX-06 신설)·4(개편 전체)에�
 - **/review (gstack): 통합.** 스코프 CLEAN(크립 0)·Header dangling import 0. 백엔드 지향 army/codex(SQL·migration·race·LLM)는 순수 프론트라 N/A → 두 리뷰로 대체. 신규 구조 이슈 0.
 
 **종합: BLOCKER 0.** C1(커버리지)·C2(아이콘/UX)·C3(a11y)·starred(데드) = 완제품 품질 개선 4건.
+
+### 게이트2 concerns 수정 (Maxi "C1·C2·starred 수정 후 머지", C3는 PR12 이연)
+
+- **C1** `AccountMenu.test.tsx` 신설(11 케이스) — 라벨 폴백·avatar cacheBust·상태/부재중 배지·Status/Ooo 모달·로그아웃 성공/500 navigate. 커버리지 복구(26f5c5f5f).
+- **C2** Sidebar lucide 아이콘 — 이슈`CircleDot`·대시보드`LayoutDashboard`·캘린더`Calendar` + 관리 6종. **접힘=아이콘+`sr-only` 텍스트**(잘린 텍스트 해소, 접근가능 이름 보존). JSDoc 정정. ★부수: zustand 싱글턴 테스트 격리 누출 발견→`beforeEach` 리셋(01fdcd7de).
+- **starred** `navLabels.starred` 죽은 상수 제거(소비처 0 실측, c126bed78).
+- **C3**(랜드마크 banner) → PR12 이연(main을 ShellLayout으로 이관, 리뷰어 제안).
+- 검증: 전량 vitest **7391 passed**(+12) · typecheck 0 · eslint 0 · navigation-contract 5/5 · 계약-크리티컬 e2e 33 passed(아이콘+sr-only 후 aria-label 계약 무회귀).
