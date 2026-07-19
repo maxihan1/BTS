@@ -43,7 +43,40 @@ E2E의 진짜 계약은 DOM 구조가 아니라 **`aria-label` 문자열 4종**.
 - [[no-project-list-api-blocks-sidebar]] — DEFAULT_PROJECT_KEY='ATLAS'는 프로젝트 목록 API 부재의 결과
 - [[avatar-auth-image-cachebust]] — 아바타 인증 이미지
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**: personalization (논리) / `apps/web` + issue-tracking API 소비 (물리). FR-UX-06 ADR D5 "논리 ≠ 물리" 승계.
+- **영향 엔티티**: 없음(신규 도메인 엔티티 0). 사이드바·앱 셸·전역 네비는 **UI/IA 어휘**라 glossary(DDD 유비쿼터스 언어) 대상 아님.
+- **새 용어**: 없음.
+- **기존 결정 충돌**: 없음. PR11은 FR-UX-06 ADR을 **구현**한다 — D2(사이드바 IA)·D3(_shell)·D4(nav vs Tabs + aria-label 계약)·D7(`--sidebar-*` 8종을 이 PR에서 덮어씀).
+- **관련 ADR**: `docs/decisions/2026-07-17-fr-ux-06-jira-redesign.md` (D1~D8). 신규 ADR 불필요.
+
+### 스코프 확정 (허브 plan PR11/12/13 슬라이싱 실측)
+
+| PR | 범위 | 파일 |
+|---|---|---|
+| **PR11 (본 작업)** | 전역 사이드바 신설 + `Header` 축소 | +4파일 ≈450, 🔴 실질 최대 |
+| PR12 | **프로젝트 사이드바 확장 + `ProjectNavTabs` 통합** — 프로젝트 트리(섹션 2)가 여기서 `GET /api/v1/projects` 소비 | +2파일 |
+| PR13 | `PageLayout`/`PageHeader`/`Breadcrumb` + `/settings`·`/admin` 인덱스 | +3파일 |
+
+**★ 프로젝트 트리(디자인 스펙 §3.1 섹션 2)는 PR11이 아니라 PR12.** 따라서 **PR11은 프로젝트 목록 API를 소비하지 않는다.** PR11 사이드바 = 상단바 축소 + 섹션 1(내 작업/최근/즐겨찾기)·섹션 3(이슈/대시보드/캘린더/필터)·섹션 4(관리, isSystemAdmin 게이팅+기본펼침).
+
+### 실측으로 갱신된 사실 (메모리 스냅샷과 상이)
+
+1. **`GET /api/v1/projects` 이제 존재·fail-closed 안전** ([[no-project-list-api-blocks-sidebar]] 백엔드 차단 주장은 이제 stale). `ProjectQueryController.kt:64`(issue-tracking, #277 PR-3 산출) — `@PreAuthorize("isAuthenticated()")` + `listAccessible(actor, archived)`가 **멤버십 없으면 빈 배열**(fail-closed). 메모리가 경고한 cross-project fail-open 위험은 백엔드에서 해소됨. **단 이건 PR12 소비 대상이고 PR11 무관.**
+2. **관리 nav 링크 6개**(디자인 스펙 §3.1은 5개만 나열 — `전역 권한`(/admin/global-permissions) 누락, FR-PM-10 #284로 추가됨). `Header.tsx ADMIN_LINKS` 정본 = 워크플로우 스킴·감사 로그·**전역 권한**·알림 정책·Webhook·Slack 연결. **6개 전부 보존.**
+3. **관리 게이팅 술어** = `user?.isSystemAdmin === true` (명시 `=== true` 비교, `routeGuard.requireSystemAdmin` 일관). navigation-contract 테스트가 이 술어로 어서션.
+
+### 현 Header aria-label 소유자 (PR11이 사이드바로 이관하며 보존)
+
+| aria-label | 현재 위치 | PR11 처리 |
+|---|---|---|
+| `메인 메뉴` | `Header.tsx` nav (대시보드·캘린더 2링크) | 사이드바로 이관, 라벨 보존 |
+| `관리 메뉴` | `Header.tsx` nav (isAdmin 게이팅, 6링크) | 사이드바로 이관, 라벨+게이팅+기본펼침 보존 |
+| `프로젝트 뷰 전환` | `board.tsx:477`·`backlog.tsx:59` | **PR11 미접촉**(PR12 ProjectNavTabs 몫) → 그대로 존재 |
+| workflow-scheme `sidebar.nav` | `i18n/workflow-scheme-labels.ts` | 미접촉 |
+
+`검색`(Header 버튼)·즐겨찾기·알림·계정 드롭다운은 상단바에 잔류.
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
