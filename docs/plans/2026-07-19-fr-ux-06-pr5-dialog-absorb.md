@@ -60,9 +60,26 @@ issue-tracking BC의 화면들이 각자 Radix Dialog를 직접 import하고 Ove
 
 ### /bts-domain 채움
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-19-fr-ux-06-pr5-dialog-absorb.md](../specs/2026-07-19-fr-ux-06-pr5-dialog-absorb.md)
+
+**핵심 3줄.**
+- issue-tracking 12파일이 radix Dialog 직접 import를 버리고 `ui/dialog` compound 래퍼 소비.
+- **시각 = Jira 통일(Maxi 결정 옵션 B)** — 스크림 /50·우상단 X·rounded-lg·bg-popover·ring 동시 적용.
+- max-width는 `DialogContent className`으로 override(prop 신설 불필요). 비시각 로직 100% 무변화.
+
+**확정 래퍼 API 계약.** controlled(`open`/`onOpenChange`, Trigger 미사용) + className override(max-w/max-h) + `DialogHeader/Title/(Description)` + X닫기 기본 on + `DialogFooter`/`DialogClose`.
+
+**결정.**
+- 🔴 시각 계약 = **옵션 B Jira 통일**(Maxi 2026-07-19). PR6~8 템플릿.
+- board/2파일(ResolutionPickerModal·SaveQuickFilterDialog) = **PR5 제외**(디렉토리 응집성, 게이트1 검토).
+
+**리스크 4.** R1 래퍼 애니메이션 문법(`data-open:`) 미정의 → 구현 첫 단계 검증(안 먹으면 래퍼 수정) · R2 VersionFormDialog onClose 어댑팅 · R3 aria-describedby 12파일 통일 · R4 시각 회귀 가시성(로직 diff 0 보장).
+
+## Brainstorming Check
+
+✅ self-adversarial 통과 — gap 4건(R1~R4)을 스펙 리스크로 반영. AlertDialog 혼입 0·board 경계·max-width 파라미터화는 실측으로 해소. office-hours/design-shotgun은 리팩터 성격상 스킵(근거 도메인 정리 참조).
 
 ## Plan (← /bts-plan 채움)
 
