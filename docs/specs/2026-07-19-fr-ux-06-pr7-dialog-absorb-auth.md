@@ -85,3 +85,11 @@ PR5가 shadcn compound 래퍼의 첫 소비자로 API를 확정했고, PR7은 au
 - [ ] `role="dialog"` e2e 147건 green (DOM 계약 불변 검증)
 - [ ] `pnpm lint` + `pnpm typecheck`(tsconfig.app) green
 - [ ] auth 3파일(AddAccount·Reauth + AddMember) security-engineer 관점 검토 — 인증 상호작용 무변경 확인
+
+## Brainstorming Check
+
+✅ 통과 (1회, 실측 기반 sanity check). 발견/해소.
+- DialogTrigger export 확인 — 래퍼가 `DialogTrigger` export(dialog.tsx:14·128) → AddMember Trigger 보존 가능(구조적 갭 해소).
+- OooModal `onOpenChange(false)`는 저장 성공 닫힘(`handleSaved`), Cancel 이중호출 함정 아님.
+- 7파일 전부 독립(다른 파일·공유 상태 0) → 1-wave 병렬 최선 케이스.
+- **plan 게이트 이월 결정**: auth 파일 agent 배정(security 구현 vs frontend 구현+security 검토).
