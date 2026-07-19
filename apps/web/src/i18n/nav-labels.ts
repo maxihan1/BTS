@@ -6,8 +6,9 @@
  * 🔒 e2e 계약 문자열(`mainNav`·`adminNav`·`projectViewNav`·`search`)은
  * Playwright/유닛 테스트가 `aria-label`로 직접 참조하므로 글자 변경 금지.
  *
- * S3(2026-07-20 Maxi 확정) — 백킹 라우트·기능이 없는 항목(내 작업·최근·필터·
- * 프로젝트)은 포함하지 않는다. 각 항목은 해당 기능 FR에서 추가한다.
+ * S3(2026-07-20 Maxi 확정) — 백킹 라우트·기능이 없는 항목(내 작업·최근·필터)은
+ * 포함하지 않는다. 각 항목은 해당 기능 FR에서 추가한다. **프로젝트는 PR12에서
+ * `GET /api/v1/projects` 백킹이 확인되어 추가됨**(ProjectTree, FR-UX-06 PR12 Task 2).
  */
 export const navLabels = {
   /** 사이드바 메인 nav aria-label (🔒 e2e 계약) */
@@ -15,6 +16,15 @@ export const navLabels = {
 
   /** 사이드바 관리 nav aria-label (🔒 e2e 계약) */
   adminNav: '관리 메뉴',
+
+  /**
+   * 사이드바 프로젝트 트리 nav aria-label (🔒 e2e 계약, FR-UX-06 PR12 FR1).
+   *
+   * ⚠️ '프로젝트'는 '프로젝트 뷰 전환'({@link projectViewNav})의 substring이다.
+   * 테스트에서 이 값으로 role 조회 시 항상 `exact: true`(또는 정확 매칭)를 사용할 것 —
+   * bare substring 조회는 두 nav를 동시에 매칭시킬 수 있다(playwright-getbyrole-exact-strict-mode).
+   */
+  projectNav: '프로젝트',
 
   /** board/backlog 뷰 전환 nav aria-label (🔒 e2e 계약, PR11 미접촉) */
   projectViewNav: '프로젝트 뷰 전환',
