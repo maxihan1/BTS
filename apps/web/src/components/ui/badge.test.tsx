@@ -10,16 +10,16 @@ describe('Badge', () => {
     render(<Badge variant="green">진행중</Badge>)
 
     const badge = screen.getByText('진행중')
-    expect(badge).toHaveClass('bg-green-100')
-    expect(badge).toHaveClass('text-green-800')
+    expect(badge).toHaveClass('bg-success/10')
+    expect(badge).toHaveClass('text-success-text')
   })
 
   it('variant="red"이면 red 색상 클래스를 포함한다', () => {
     render(<Badge variant="red">차단됨</Badge>)
 
     const badge = screen.getByText('차단됨')
-    expect(badge).toHaveClass('bg-red-100')
-    expect(badge).toHaveClass('text-red-800')
+    expect(badge).toHaveClass('bg-danger/10')
+    expect(badge).toHaveClass('text-danger-text')
   })
 
   it('variant 미지정 시 default variant를 렌더한다', () => {
