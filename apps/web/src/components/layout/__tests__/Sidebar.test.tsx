@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { useAuthStore } from '@/auth/authStore'
+import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
 import type { WhoamiResponse } from '@/api/schemas'
 import { favoriteLabels } from '@/i18n/favorite-labels'
 import { navLabels } from '@/i18n/nav-labels'
@@ -63,6 +64,9 @@ function renderSidebar() {
 beforeEach(() => {
   window.localStorage.clear()
   useAuthStore.setState({ accessToken: 'test-token', user: BASE_USER })
+  // useSidebarCollapsed는 모듈 전역 zustand 싱글톤 — 이전 테스트의 toggle()이 남긴 상태가
+  // 누출되지 않도록 매 테스트 펼침(기본값)으로 리셋한다(테스트 간 격리)
+  useSidebarCollapsed.setState({ collapsed: false })
   // FavoritesMenu(useFavorites)가 조회하는 엔드포인트 — 빈 목록으로 응답
   server.use(
     http.get('/api/v1/favorites', () => HttpResponse.json({ data: { items: [] } })),
@@ -149,5 +153,34 @@ describe('Sidebar', () => {
     expect(within(mainNav).getByRole('link', { name: navLabels.dashboards })).toBeInTheDocument()
     expect(within(mainNav).getByRole('link', { name: navLabels.calendar })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: navLabels.expandSidebar })).toBeInTheDocument()
+  })
+
+  it('메인 nav 각 링크가 aria-hidden 아이콘(svg)을 렌더한다 (접힘=진짜 아이콘 레일, FR5)', () => {
+    renderSidebar()
+
+    const mainNav = screen.getByRole('navigation', { name: navLabels.mainNav })
+    expect(
+      within(mainNav).getByRole('link', { name: navLabels.issues }).querySelector('svg[aria-hidden="true"]'),
+    ).not.toBeNull()
+    expect(
+      within(mainNav)
+        .getByRole('link', { name: navLabels.dashboards })
+        .querySelector('svg[aria-hidden="true"]'),
+    ).not.toBeNull()
+    expect(
+      within(mainNav).getByRole('link', { name: navLabels.calendar }).querySelector('svg[aria-hidden="true"]'),
+    ).not.toBeNull()
+  })
+
+  it('사이드바 접힘 시 nav 링크의 텍스트 라벨이 시각적으로만 숨겨진다(sr-only) — 아이콘은 그대로 보인다', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.click(screen.getByRole('button', { name: navLabels.collapseSidebar }))
+
+    const mainNav = screen.getByRole('navigation', { name: navLabels.mainNav })
+    const issuesLink = within(mainNav).getByRole('link', { name: navLabels.issues })
+    expect(issuesLink.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
+    expect(issuesLink.querySelector('span')?.className).toContain('sr-only')
   })
 })
