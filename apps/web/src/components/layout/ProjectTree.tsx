@@ -135,13 +135,7 @@ interface ProjectSubLinkGroupProps {
 }
 
 /** 리포트·설정 그룹 공용 중첩 디스클로저. 그룹 헤더 텍스트 자체가 버튼 접근가능 이름이다 */
-function ProjectSubLinkGroup({
-  projectKey,
-  label,
-  links,
-  expanded,
-  onToggle,
-}: ProjectSubLinkGroupProps): JSX.Element {
+function ProjectSubLinkGroup({ projectKey, label, links, expanded, onToggle }: ProjectSubLinkGroupProps): JSX.Element {
   return (
     <li>
       <button
@@ -212,10 +206,83 @@ function ProjectTreeCollapsedRow({
   )
 }
 
-/** 프로젝트 1건 — 디스클로저 버튼 + 프로젝트명 링크 + 펼침 시 2단 서브그룹 (FR3~FR6) */
-function ProjectTreeRow({ project, isActive, expanded, collapsed, onToggle }: ProjectTreeRowProps): JSX.Element {
+interface ProjectTreeExpandedContentProps {
+  readonly projectKey: string
+  readonly reportsExpanded: boolean
+  readonly onToggleReports: () => void
+  readonly settingsExpanded: boolean
+  readonly onToggleSettings: () => void
+}
+
+/** 펼친 프로젝트 행의 하위 콘텐츠 — 직접 링크 3 + 리포트/설정 중첩그룹 2 (FR4) */
+function ProjectTreeExpandedContent({
+  projectKey,
+  reportsExpanded,
+  onToggleReports,
+  settingsExpanded,
+  onToggleSettings,
+}: ProjectTreeExpandedContentProps): JSX.Element {
+  return (
+    <ul className="ml-4 flex flex-col gap-0.5 border-l border-sidebar-border pl-2">
+      {DIRECT_LINKS.map((link) => (
+        <li key={link.to}>
+          <Link to={link.to} params={{ projectKey }} className={SUB_LINK_CLASS}>
+            {link.label}
+          </Link>
+        </li>
+      ))}
+      <ProjectSubLinkGroup
+        projectKey={projectKey}
+        label={REPORTS_GROUP_LABEL}
+        links={REPORT_LINKS}
+        expanded={reportsExpanded}
+        onToggle={onToggleReports}
+      />
+      <ProjectSubLinkGroup
+        projectKey={projectKey}
+        label={SETTINGS_GROUP_LABEL}
+        links={SETTINGS_LINKS}
+        expanded={settingsExpanded}
+        onToggle={onToggleSettings}
+      />
+    </ul>
+  )
+}
+
+/** 프로젝트 행 헤더 — 디스클로저 버튼 + 프로젝트명 링크(→ board) */
+function ProjectTreeRowHeader({ project, isActive, expanded, onToggle }: ProjectTreeRowProps): JSX.Element {
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-label={`${project.name} 하위 메뉴`}
+        onClick={onToggle}
+        className={DISCLOSURE_BUTTON_CLASS}
+      >
+        {expanded ? (
+          <ChevronDown aria-hidden="true" className={TREE_ICON_CLASS} />
+        ) : (
+          <ChevronRight aria-hidden="true" className={TREE_ICON_CLASS} />
+        )}
+      </button>
+      <Link
+        to={PROJECT_BOARD_PATH}
+        params={{ projectKey: project.key }}
+        aria-current={isActive ? 'page' : undefined}
+        className={projectLinkClassName(isActive)}
+      >
+        {project.name}
+      </Link>
+    </div>
+  )
+}
+
+/** 프로젝트 1건 — 헤더(디스클로저+링크) + 펼침 시 2단 서브그룹, 접힘 레일이면 아이콘 행 (FR3~FR6) */
+function ProjectTreeRow(props: ProjectTreeRowProps): JSX.Element {
   const [reportsExpanded, setReportsExpanded] = useState(false)
   const [settingsExpanded, setSettingsExpanded] = useState(false)
+  const { project, isActive, expanded, collapsed } = props
 
   if (collapsed) {
     return <ProjectTreeCollapsedRow project={project} isActive={isActive} />
@@ -223,54 +290,15 @@ function ProjectTreeRow({ project, isActive, expanded, collapsed, onToggle }: Pr
 
   return (
     <li>
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          aria-expanded={expanded}
-          aria-label={`${project.name} 하위 메뉴`}
-          onClick={onToggle}
-          className={DISCLOSURE_BUTTON_CLASS}
-        >
-          {expanded ? (
-            <ChevronDown aria-hidden="true" className={TREE_ICON_CLASS} />
-          ) : (
-            <ChevronRight aria-hidden="true" className={TREE_ICON_CLASS} />
-          )}
-        </button>
-        <Link
-          to={PROJECT_BOARD_PATH}
-          params={{ projectKey: project.key }}
-          aria-current={isActive ? 'page' : undefined}
-          className={projectLinkClassName(isActive)}
-        >
-          {project.name}
-        </Link>
-      </div>
-
+      <ProjectTreeRowHeader {...props} />
       {expanded && (
-        <ul className="ml-4 flex flex-col gap-0.5 border-l border-sidebar-border pl-2">
-          {DIRECT_LINKS.map((link) => (
-            <li key={link.to}>
-              <Link to={link.to} params={{ projectKey: project.key }} className={SUB_LINK_CLASS}>
-                {link.label}
-              </Link>
-            </li>
-          ))}
-          <ProjectSubLinkGroup
-            projectKey={project.key}
-            label={REPORTS_GROUP_LABEL}
-            links={REPORT_LINKS}
-            expanded={reportsExpanded}
-            onToggle={() => setReportsExpanded((prev) => !prev)}
-          />
-          <ProjectSubLinkGroup
-            projectKey={project.key}
-            label={SETTINGS_GROUP_LABEL}
-            links={SETTINGS_LINKS}
-            expanded={settingsExpanded}
-            onToggle={() => setSettingsExpanded((prev) => !prev)}
-          />
-        </ul>
+        <ProjectTreeExpandedContent
+          projectKey={project.key}
+          reportsExpanded={reportsExpanded}
+          onToggleReports={() => setReportsExpanded((prev) => !prev)}
+          settingsExpanded={settingsExpanded}
+          onToggleSettings={() => setSettingsExpanded((prev) => !prev)}
+        />
       )}
     </li>
   )
@@ -284,7 +312,8 @@ function ProjectTreeRow({ project, isActive, expanded, collapsed, onToggle }: Pr
  * 사이드바 프로젝트 트리 — `GET /api/v1/projects` 첫 소비자(useProjects), 2단 그룹 아코디언.
  *
  * - `<nav aria-label={navLabels.projectNav}>`("프로젝트", 🔒 e2e 계약. '프로젝트 뷰 전환'의
- *   substring이므로 소비 측 role 조회는 항상 `exact: true` 사용).
+ *   substring이므로 Playwright role 조회는 항상 `exact: true` 사용 — 자세한 내용은
+ *   {@link navLabels}.projectNav JSDoc 참고).
  * - 각 프로젝트 행 = 디스클로저 버튼(`aria-expanded`) + 프로젝트명 링크(→ `/projects/{key}/board`).
  * - 펼침 시 직접 링크 3(보드·백로그·타임라인) + `리포트` 중첩그룹(4) + `프로젝트 설정` 중첩그룹(11).
  *   모든 서브링크는 실재 라우트만 사용한다(요약은 라우트 부재로 미포함, S3).
