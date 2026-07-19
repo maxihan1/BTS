@@ -1,5 +1,5 @@
-// 사이드바 접기 상태 localStorage 영속 훅 (FR-UX-06 PR11 Task 3)
-import { useState, useCallback } from 'react'
+// 사이드바 접기 상태 localStorage 영속 훅 — zustand 공유 스토어 (FR-UX-06 PR11 Task 3/8)
+import { create } from 'zustand'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -74,28 +74,26 @@ export interface SidebarCollapsedResult {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 훅
+// 훅 — zustand 공유 스토어
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 사이드바 접힘 상태를 localStorage에 영속하는 훅.
+ * 사이드바 접힘 상태를 localStorage에 영속하는 zustand 스토어.
  *
- * - 초기값: localStorage {@link SIDEBAR_COLLAPSED_STORAGE_KEY} 파싱
+ * Sidebar·TopBar 등 여러 컴포넌트가 각자 이 훅을 호출해도 zustand 스토어는
+ * 모듈 전역 단일 인스턴스라 상태가 공유된다(컴포넌트-로컬 `useState`였을 때는
+ * 인스턴스가 서로 격리돼 토글이 다른 컴포넌트에 반영되지 않았다).
+ *
+ * - 초기값: 모듈 로드 시 localStorage {@link SIDEBAR_COLLAPSED_STORAGE_KEY} 1회 파싱
  *   (미설정·파싱 실패·SSR 환경 → 펼침(false))
- * - `toggle()`: 접힘 상태 반전 + localStorage 동시 갱신
- *
- * @returns { collapsed, toggle }
+ * - `toggle()`: 접힘 상태 반전 + localStorage 동시 갱신(fail-safe)
  */
-export function useSidebarCollapsed(): SidebarCollapsedResult {
-  const [collapsed, setCollapsed] = useState<boolean>(() => readStoredCollapsed())
-
-  const toggle = useCallback((): void => {
-    setCollapsed((prev) => {
-      const next = !prev
+export const useSidebarCollapsed = create<SidebarCollapsedResult>((set) => ({
+  collapsed: readStoredCollapsed(),
+  toggle: (): void =>
+    set((state) => {
+      const next = !state.collapsed
       writeStoredCollapsed(next)
-      return next
-    })
-  }, [])
-
-  return { collapsed, toggle }
-}
+      return { collapsed: next }
+    }),
+}))
