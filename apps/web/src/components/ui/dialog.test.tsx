@@ -114,3 +114,46 @@ describe('TC-3: DialogClose 클릭 시 닫힘', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TC-4: 애니메이션 variant 문법 회귀 가드 (FR-UX-06 PR5 R1)
+//   래퍼는 `data-open:`/`data-closed:` variant를 쓴다. 이는 shadcn/tailwind.css의
+//   `@custom-variant data-open { &:where([data-state="open"]) ... }`가 Radix의
+//   `data-state="open/closed"`로 컴파일해주기 때문에 정상 동작한다(dropdown/popover/
+//   select/tooltip 4종이 이미 공유하는 컨벤션). 누가 `data-[state=open]:`으로 바꾸면
+//   4종과 표기가 갈리므로, 이 가드로 원 문법 유지를 강제한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('TC-4: 애니메이션 variant 문법 회귀 가드', () => {
+  it('DialogContent가 data-open/data-closed 애니메이션 variant를 유지한다', () => {
+    render(
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>제목텍스트</DialogTitle>
+          <DialogDescription>설명</DialogDescription>
+        </DialogContent>
+      </Dialog>,
+    )
+
+    const content = document.querySelector('[data-slot="dialog-content"]')
+    expect(content).not.toBeNull()
+    expect(content?.className).toContain('data-open:animate-in')
+    expect(content?.className).toContain('data-closed:animate-out')
+  })
+
+  it('DialogOverlay가 data-open/data-closed 애니메이션 variant를 유지한다', () => {
+    render(
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>제목텍스트</DialogTitle>
+          <DialogDescription>설명</DialogDescription>
+        </DialogContent>
+      </Dialog>,
+    )
+
+    const overlay = document.querySelector('[data-slot="dialog-overlay"]')
+    expect(overlay).not.toBeNull()
+    expect(overlay?.className).toContain('data-open:animate-in')
+    expect(overlay?.className).toContain('data-closed:animate-out')
+  })
+})
