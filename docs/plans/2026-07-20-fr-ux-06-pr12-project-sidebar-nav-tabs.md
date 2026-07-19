@@ -339,3 +339,9 @@ src/routes/login.test.tsx` + `navigation-contract.test.tsx` green(랜드마크 �
 - **BLOCKER: 없음.** GAP-1(설정그룹 노출)은 디자인 아닌 권한 판단 → 게이트1 Maxi.
 
 R1·R2·R4는 T2 구현 가이드로 흡수(아래 반영). R3는 구현 재량.
+
+### 🛑 게이트 1 — Maxi 승인 (2026-07-20)
+- **승인 → 구현 진입.**
+- **GAP-1 확정 = 전 인증자 표시**. 설정 그룹 11링크를 모든 인증 사용자에게 표시(isSystemAdmin 게이팅 없음).
+  근거 재확인: 설정 라우트 requireAuth로 URL 직접 도달 가능·백엔드 fail-closed, 신규 유출 0, 디자인 스펙 §3.1 일치.
+  → T2 구현 시 설정 그룹에 별도 권한 게이팅 걸지 말 것(관리 nav의 isSystemAdmin 게이팅과 혼동 금지).
