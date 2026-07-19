@@ -54,7 +54,7 @@
 
 ## Phase 0 — 기반 (4개 독립·병렬. #277과 무관하므로 먼저 머지)
 
-- [ ] **PR2** `ui/*` 프리미티브 15종 추가 — **소비자 0, 순수 추가라 위험 0**
+- [x] **PR2** `ui/*` 프리미티브 15종 추가 — **소비자 0, 순수 추가라 위험 0** (#286)
 - [x] **PR3** `index.css` ADS 팔레트 + 시맨틱 토큰 4쌍 (`--warning`/`--success`/`--danger`/`--info`)
   - [x] `atlassian.design/components/tokens/all-tokens` **전수 대조** (시안 값은 정본 아님) — 브랜드 리프레시 세대라 대신 `@atlaskit/tokens@1.4.2` npm 패키지(tokens-raw)로 전수 대조
   - [x] oklch → hex (공식 문서 대조 가능하게)
@@ -68,7 +68,7 @@
 
 ## Phase 1 — 토큰 정착
 
-- [ ] **PR4** 하드코딩 색 141건/29파일 → 시맨틱 토큰 (amber ~70건이 `--warning` 하나로 붕괴, 손수 짠 `dark:` 페어 삭제로 순 LOC 감소)
+- [x] **PR4** 하드코딩 색 → 시맨틱 토큰 (#288) — 실측 IN-SCOPE 95 논리발생/30파일(추정 141/29는 과소). **status-text 토큰 4종 신설**(bold 토큰이 tint 위 텍스트로 라이트 AA 미달이던 BLOCKER 해소). 범주색·차트·스크림 ~44·mermaid는 DEFER/OUT. `dark:` 페어 삭제로 순 LOC 감소.
 
 ## Phase 2 — Dialog 흡수 (BC별 4분할)
 
