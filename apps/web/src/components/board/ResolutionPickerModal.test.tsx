@@ -185,6 +185,11 @@ describe('ResolutionPickerModal — S1 열림 상태 렌더', () => {
     renderModal({ open: false })
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
+
+  it('S1d: X 닫기 버튼이 렌더된다', () => {
+    renderModal({ open: true })
+    expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

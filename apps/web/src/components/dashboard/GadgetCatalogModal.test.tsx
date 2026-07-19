@@ -65,6 +65,16 @@ describe('GadgetCatalogModal', () => {
   })
 
   /**
+   * C0. 흡수 후 우상단 X 닫기 버튼(Jira 시각 통일)이 렌더된다.
+   *
+   * ui/dialog 래퍼로 흡수되면 DialogContent가 우상단 X(sr-only "Close")를 강제 렌더한다.
+   */
+  it('C0: 흡수 후 우상단 X 닫기 버튼이 렌더된다', async () => {
+    await renderModal()
+    expect(await screen.findByRole('button', { name: /close/i })).toBeInTheDocument()
+  })
+
+  /**
    * C1. 모달이 열리면 카탈로그를 조회하고 12종 가젯 레이블이 화면에 표시된다.
    */
   it('C1: 모달이 열리면 12종 가젯 레이블이 표시된다', async () => {

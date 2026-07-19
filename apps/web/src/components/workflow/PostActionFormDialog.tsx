@@ -1,7 +1,13 @@
 // 워크플로우 전이 CALL_WEBHOOK post-action 추가/수정 다이얼로그
 import type { JSX } from 'react'
 import { useState, useId } from 'react'
-import { Dialog } from 'radix-ui'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { postActionLabels } from '@/i18n/post-action-labels'
 
@@ -88,7 +94,7 @@ function validateForm(values: PostActionFormValues): FormErrors {
  * - method 검증: 빈값 거부
  * - 검증 실패 시 인라인 에러(role=alert), onSubmit 미호출
  * - submitting=true 시 저장 버튼 disabled
- * - Radix Dialog.Root + Dialog.Portal — aria-labelledby 자동 연결
+ * - ui/dialog 래퍼(Dialog/DialogContent/DialogTitle) — aria-labelledby 자동 연결
  */
 export function PostActionFormDialog({
   open,
@@ -100,7 +106,6 @@ export function PostActionFormDialog({
 }: PostActionFormDialogProps): JSX.Element {
   const urlId = useId()
   const methodId = useId()
-  const titleId = useId()
 
   const [url, setUrl] = useState(initialValues?.url ?? '')
   const [method, setMethod] = useState(initialValues?.method ?? '')
@@ -136,136 +141,112 @@ export function PostActionFormDialog({
   const firstErrorMessage = errors.url ?? errors.method
 
   return (
-    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay
-          className={cn(
-            'fixed inset-0 z-50 bg-black/50',
-            'data-[state=open]:animate-in data-[state=closed]:animate-out',
-            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-          )}
-        />
-        {/*
-          aria-describedby={undefined} — Radix Dialog.Description 불필요 경고 억제.
-          이 폼은 제목(Dialog.Title)만으로 맥락이 충분하며, 폼 필드 자체가 설명 역할을 한다.
-          Radix 공식 권고: https://radix-ui.com/primitives/docs/components/dialog
-        */}
-        <Dialog.Content
-          aria-labelledby={titleId}
-          aria-describedby={undefined}
-          className={cn(
-            'fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2',
-            'rounded-xl border border-border bg-background p-6 shadow-lg',
-            'data-[state=open]:animate-in data-[state=closed]:animate-out',
-            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-            'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
-          )}
-        >
-          {/* 제목 */}
-          <Dialog.Title
-            id={titleId}
-            className="text-base font-semibold text-foreground"
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      {/*
+        aria-describedby={undefined} — Radix Dialog.Description 불필요 경고 억제.
+        이 폼은 제목(DialogTitle)만으로 맥락이 충분하며, 폼 필드 자체가 설명 역할을 한다.
+        Radix 공식 권고: https://radix-ui.com/primitives/docs/components/dialog
+      */}
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+
+        {/* 인라인 에러 알림 (검증 실패 시) */}
+        {hasError && (
+          <div
+            role="alert"
+            className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive"
           >
-            {title}
-          </Dialog.Title>
-
-          {/* 인라인 에러 알림 (검증 실패 시) */}
-          {hasError && (
-            <div
-              role="alert"
-              className="mt-3 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-            >
-              {firstErrorMessage}
-            </div>
-          )}
-
-          {/* 폼 */}
-          <div className="mt-4 space-y-4">
-            {/* URL 입력 */}
-            <div className="space-y-1.5">
-              <label
-                htmlFor={urlId}
-                className="text-sm font-medium text-foreground"
-              >
-                {postActionLabels.form.urlLabel}
-              </label>
-              <input
-                id={urlId}
-                type="url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder={postActionLabels.form.urlPlaceholder}
-                aria-invalid={errors.url !== undefined}
-                disabled={submitting}
-                className={cn(
-                  'w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none',
-                  'placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
-                  'disabled:cursor-not-allowed disabled:opacity-50',
-                  errors.url && 'border-destructive focus-visible:border-destructive',
-                )}
-              />
-            </div>
-
-            {/* 메서드 선택 */}
-            <div className="space-y-1.5">
-              <label
-                htmlFor={methodId}
-                className="text-sm font-medium text-foreground"
-              >
-                {postActionLabels.form.methodLabel}
-              </label>
-              <select
-                id={methodId}
-                value={method}
-                onChange={(e) => setMethod(e.target.value)}
-                aria-invalid={errors.method !== undefined}
-                disabled={submitting}
-                className={cn(
-                  'w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none',
-                  'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
-                  'disabled:cursor-not-allowed disabled:opacity-50',
-                  errors.method && 'border-destructive focus-visible:border-destructive',
-                )}
-              >
-                <option value="">-- 선택 --</option>
-                {HTTP_METHODS.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {firstErrorMessage}
           </div>
+        )}
 
-          {/* 액션 버튼 */}
-          <div className="mt-6 flex justify-end gap-2">
-            <Dialog.Close asChild>
-              <button
-                type="button"
-                onClick={onCancel}
-                disabled={submitting}
-                className={cn(
-                  'rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground',
-                  'hover:bg-muted transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-                )}
-              >
-                {postActionLabels.dialog.cancelButton}
-              </button>
-            </Dialog.Close>
-            <button
-              type="button"
-              onClick={handleSubmit}
+        {/* 폼 */}
+        <div className="space-y-4">
+          {/* URL 입력 */}
+          <div className="space-y-1.5">
+            <label
+              htmlFor={urlId}
+              className="text-sm font-medium text-foreground"
+            >
+              {postActionLabels.form.urlLabel}
+            </label>
+            <input
+              id={urlId}
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder={postActionLabels.form.urlPlaceholder}
+              aria-invalid={errors.url !== undefined}
               disabled={submitting}
               className={cn(
-                'rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground',
-                'hover:bg-primary/90 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                'w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none',
+                'placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
+                'disabled:cursor-not-allowed disabled:opacity-50',
+                errors.url && 'border-destructive focus-visible:border-destructive',
+              )}
+            />
+          </div>
+
+          {/* 메서드 선택 */}
+          <div className="space-y-1.5">
+            <label
+              htmlFor={methodId}
+              className="text-sm font-medium text-foreground"
+            >
+              {postActionLabels.form.methodLabel}
+            </label>
+            <select
+              id={methodId}
+              value={method}
+              onChange={(e) => setMethod(e.target.value)}
+              aria-invalid={errors.method !== undefined}
+              disabled={submitting}
+              className={cn(
+                'w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none',
+                'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
+                'disabled:cursor-not-allowed disabled:opacity-50',
+                errors.method && 'border-destructive focus-visible:border-destructive',
               )}
             >
-              {submitLabel}
-            </button>
+              <option value="">-- 선택 --</option>
+              {HTTP_METHODS.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
           </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        </div>
+
+        {/* 액션 버튼 */}
+        <DialogFooter>
+          {/* onClick이 onCancel을 직접 호출하므로 DialogClose로 미포장 (이중 호출 방지) */}
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={submitting}
+            className={cn(
+              'rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground',
+              'hover:bg-muted transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+            )}
+          >
+            {postActionLabels.dialog.cancelButton}
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={submitting}
+            className={cn(
+              'rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground',
+              'hover:bg-primary/90 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+            )}
+          >
+            {submitLabel}
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

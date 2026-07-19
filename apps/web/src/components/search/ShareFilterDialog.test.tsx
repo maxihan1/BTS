@@ -65,6 +65,13 @@ beforeEach(() => {
 // ──────────────────────────────────────────────────────────────────────────────
 
 describe('ShareFilterDialog — 초기 토글 상태(a)', () => {
+  it('흡수 후 우상단 X 닫기 버튼(Jira 시각 통일)이 렌더된다', () => {
+    renderDialog(makeFilter())
+
+    // ui/dialog 래퍼로 흡수되면 DialogContent가 우상단 X(sr-only "Close")를 강제 렌더한다.
+    expect(screen.getByRole('button', { name: /close/i })).toBeTruthy()
+  })
+
   it('filter.shares에 AUTHENTICATED가 있으면 "모든 로그인 사용자에게" 체크박스가 초기에 체크된다', () => {
     const filter = makeFilter({
       shares: [{ shareType: 'AUTHENTICATED', targetId: null }],

@@ -43,6 +43,15 @@ describe('PostActionFormDialog — 렌더', () => {
     expect(screen.getByLabelText(/URL/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/메서드|Method/i)).toBeInTheDocument()
   })
+
+  /**
+   * PAFD-15. 흡수 후 우상단 X 닫기 버튼(Jira 시각 통일)이 렌더된다.
+   */
+  it('PAFD-15: 흡수 후 우상단 X 닫기 버튼이 렌더된다', () => {
+    render(<PostActionFormDialog {...defaultProps} />)
+    // ui/dialog 래퍼로 흡수되면 DialogContent가 우상단 X(sr-only "Close")를 강제 렌더한다.
+    expect(screen.getByRole('button', { name: /close/i })).toBeTruthy()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

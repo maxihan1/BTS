@@ -1,7 +1,13 @@
 // 칸반 DONE 컬럼 이동 시 결의안(Resolution) 선택 모달 (FR-BD-01)
 import type { JSX } from 'react'
 import { useState } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -66,61 +72,54 @@ export function ResolutionPickerModal({
   }
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={handleOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-sm" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>해결 방안 선택</DialogTitle>
+        </DialogHeader>
 
-        <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-          aria-describedby={undefined}
-        >
-          <DialogPrimitive.Title className="text-base font-semibold mb-4">
-            해결 방안 선택
-          </DialogPrimitive.Title>
-
-          <div className="space-y-3">
-            {hasResolutions ? (
-              <div>
-                <label
-                  htmlFor="resolution-picker-select"
-                  className="text-sm font-medium mb-1 block"
+        <div className="space-y-3">
+          {hasResolutions ? (
+            <div>
+              <label
+                htmlFor="resolution-picker-select"
+                className="text-sm font-medium mb-1 block"
+              >
+                결의안
+              </label>
+              <Select value={selectedId} onValueChange={setSelectedId}>
+                <SelectTrigger
+                  id="resolution-picker-select"
+                  className="w-full"
+                  aria-label="결의안"
                 >
-                  결의안
-                </label>
-                <Select value={selectedId} onValueChange={setSelectedId}>
-                  <SelectTrigger
-                    id="resolution-picker-select"
-                    className="w-full"
-                    aria-label="결의안"
-                  >
-                    <SelectValue placeholder="결의안을 선택하세요" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {resolutions.map((resolution) => (
-                      <SelectItem key={resolution.id} value={resolution.id}>
-                        {resolution.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                설정된 해결 방안이 없습니다
-              </p>
-            )}
-          </div>
+                  <SelectValue placeholder="결의안을 선택하세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  {resolutions.map((resolution) => (
+                    <SelectItem key={resolution.id} value={resolution.id}>
+                      {resolution.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              설정된 해결 방안이 없습니다
+            </p>
+          )}
+        </div>
 
-          <div className="flex justify-end gap-2 mt-6">
-            <Button variant="outline" size="sm" onClick={onCancel}>
-              취소
-            </Button>
-            <Button size="sm" disabled={!canConfirm} onClick={handleConfirm}>
-              확인
-            </Button>
-          </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onCancel}>
+            취소
+          </Button>
+          <Button size="sm" disabled={!canConfirm} onClick={handleConfirm}>
+            확인
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

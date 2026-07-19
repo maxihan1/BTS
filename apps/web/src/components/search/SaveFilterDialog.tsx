@@ -5,7 +5,13 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation } from '@tanstack/react-query'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import {
   createFilter,
@@ -139,9 +145,9 @@ function SaveFilterForm({
   }
 
   return (
-    <form onSubmit={form.handleSubmit(onValid)} noValidate>
+    <form onSubmit={form.handleSubmit(onValid)} noValidate className="space-y-4">
       {/* 이름 입력 */}
-      <div className="mb-4">
+      <div>
         <label
           htmlFor="save-filter-name"
           className="block text-sm font-medium mb-1"
@@ -164,21 +170,21 @@ function SaveFilterForm({
       {submitError !== null && (
         <p
           role="alert"
-          className="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
         >
           {submitError}
         </p>
       )}
 
       {/* 액션 버튼 */}
-      <div className="flex justify-end gap-2 mt-2">
+      <DialogFooter>
         <Button type="button" variant="outline" size="sm" onClick={onClose}>
           {savedFilterLabels.cancelButton}
         </Button>
         <Button type="submit" size="sm" disabled={!canSubmit}>
           {savedFilterLabels.saveButton}
         </Button>
-      </div>
+      </DialogFooter>
     </form>
   )
 }
@@ -246,32 +252,23 @@ export const SaveFilterDialog = ({
   const formKey = filter?.id ?? 'new'
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
 
-        <DialogPrimitive.Content
-          role="dialog"
-          aria-modal="true"
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-          aria-describedby={undefined}
-        >
-          <DialogPrimitive.Title className="text-base font-semibold mb-4">
-            {title}
-          </DialogPrimitive.Title>
-
-          <SaveFilterForm
-            key={formKey}
-            mode={mode}
-            filter={filter}
-            aqlQuery={aqlQuery}
-            projectKey={projectKey}
-            onSaved={onSaved}
-            onConflict={onConflict}
-            onClose={() => { onOpenChange(false) }}
-          />
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        <SaveFilterForm
+          key={formKey}
+          mode={mode}
+          filter={filter}
+          aqlQuery={aqlQuery}
+          projectKey={projectKey}
+          onSaved={onSaved}
+          onConflict={onConflict}
+          onClose={() => { onOpenChange(false) }}
+        />
+      </DialogContent>
+    </Dialog>
   )
 }
