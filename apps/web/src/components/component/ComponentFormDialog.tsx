@@ -109,69 +109,67 @@ function FormBody({ initial, onSubmit, onOpenChange, submitError }: FormBodyProp
   }
 
   return (
-    <form onSubmit={handleSubmit(onValid)} noValidate className="grid gap-4">
-      <div className="space-y-4">
-        {/* 이름 */}
-        <div>
-          <label
-            htmlFor="component-name"
-            className="block text-sm font-medium mb-1"
-          >
-            {labels.nameLabel}
-          </label>
-          <input
-            id="component-name"
-            type="text"
-            aria-label={labels.nameLabel}
-            placeholder={labels.namePlaceholder}
-            className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
-            autoComplete="off"
-            {...register('name')}
-          />
-          {errors.name !== undefined && (
-            <p className="text-xs text-destructive mt-1" role="alert">
-              {errors.name.message}
-            </p>
-          )}
-        </div>
-
-        {/* 설명 */}
-        <div>
-          <label
-            htmlFor="component-description"
-            className="block text-sm font-medium mb-1"
-          >
-            {labels.descriptionLabel}
-          </label>
-          <input
-            id="component-description"
-            type="text"
-            aria-label={labels.descriptionLabel}
-            placeholder={labels.descriptionPlaceholder}
-            className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
-            autoComplete="off"
-            {...register('description')}
-          />
-        </div>
-
-        {/* 리드 */}
-        <div>
-          <p className="text-sm font-medium mb-1">{labels.leadLabel}</p>
-          <ComponentLeadSelect
-            users={searchUsers}
-            currentLead={currentLead}
-            onSearch={setSearchQuery}
-            onChange={setLeadUserId}
-          />
-        </div>
-
-        {/* 서버 오류 */}
-        {submitError !== undefined && submitError !== null && (
-          <p className="text-sm text-destructive" role="alert">
-            {submitError}
+    <form onSubmit={handleSubmit(onValid)} noValidate>
+      {/* 이름 */}
+      <div className="mb-4">
+        <label
+          htmlFor="component-name"
+          className="block text-sm font-medium mb-1"
+        >
+          {labels.nameLabel}
+        </label>
+        <input
+          id="component-name"
+          type="text"
+          aria-label={labels.nameLabel}
+          placeholder={labels.namePlaceholder}
+          className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
+          autoComplete="off"
+          {...register('name')}
+        />
+        {errors.name !== undefined && (
+          <p className="text-xs text-destructive mt-1" role="alert">
+            {errors.name.message}
           </p>
         )}
       </div>
+
+      {/* 설명 */}
+      <div className="mb-4">
+        <label
+          htmlFor="component-description"
+          className="block text-sm font-medium mb-1"
+        >
+          {labels.descriptionLabel}
+        </label>
+        <input
+          id="component-description"
+          type="text"
+          aria-label={labels.descriptionLabel}
+          placeholder={labels.descriptionPlaceholder}
+          className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground"
+          autoComplete="off"
+          {...register('description')}
+        />
+      </div>
+
+      {/* 리드 */}
+      <div className="mb-4">
+        <p className="text-sm font-medium mb-1">{labels.leadLabel}</p>
+        <ComponentLeadSelect
+          users={searchUsers}
+          currentLead={currentLead}
+          onSearch={setSearchQuery}
+          onChange={setLeadUserId}
+        />
+      </div>
+
+      {/* 서버 오류 */}
+      {submitError !== undefined && submitError !== null && (
+        <p className="text-sm text-destructive mb-4" role="alert">
+          {submitError}
+        </p>
+      )}
 
       {/* 액션 버튼 */}
       <DialogFooter>
