@@ -46,9 +46,19 @@
 - 관련 ADR: [docs/decisions/2026-07-17-fr-ux-06-jira-redesign.md](../decisions/2026-07-17-fr-ux-06-jira-redesign.md) — **부모 승인 결정**(FR-UX-06 개편 Phase 2 Dialog 흡수). 본 작업은 그 하위 실행 단계이며 신규 결정 아님.
 - grill-with-docs: 도메인 무영향 리팩터라 no-op 처리(PR5/6/7 동일 선례). 대화형 grill 생략.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-19-fr-ux-06-automation-dialog-absorb.md](../specs/2026-07-19-fr-ux-06-automation-dialog-absorb.md)
+
+핵심 요약.
+- 9파일 흡수 확정(Maxi 2026-07-19). **Tier A 7파일**(직관적, 사실상 diff-0) + **Tier B 2파일**(GitWebhookUrlModal·AutomationYamlImportDialog — 보안 크리티컬 닫기 가로채기 + overlay 테스트 재작성).
+- 정본 = CloneIssueDialog(일반) + PatTokenModal(token-at-risk). WebhookTokenModal은 PatTokenModal 동형.
+- Tier B: `onEscapeKeyDown`/`onPointerDownOutside`/testid를 `DialogContent`에 prop 전달({...props} forward), overlay testid 유실분은 `[data-slot="dialog-overlay"]` 선택자로 유닛 테스트 재작성.
+- 머지 전 로컬 e2e 필수(CI에 playwright 잡 없음).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). Tier B overlay testid 유실 + 보안 가로채기 gap → 스코프 결정(9파일)으로 해소.
 
 ## Plan (← /bts-plan 채움)
 

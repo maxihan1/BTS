@@ -59,8 +59,10 @@ preventDefault 가로채기 없음 · overlay testid 없음.
 - `pnpm --filter web typecheck`(tsconfig.app) green.
 - 로컬 e2e green(위 automation 스펙 + pat).
 
-## ⚠ Open Decision (Phase B 발견 — Maxi 결정 필요)
+## 스코프 결정 (Phase B — Maxi 확정 2026-07-19)
 
-Tier B 2파일(GitWebhookUrlModal·AutomationYamlImportDialog)을 이번 PR에 포함할지. 세 옵션: (1) 9파일 전부 (2) 7파일만 + Tier B 별도 PR (3) 7파일 + Tier B는 PR8 락 직전. → AskUserQuestion으로 확정 후 이 섹션 갱신.
+**9파일 전부 흡수**(Tier A 7 + Tier B 2). 근거: (a) Tier B도 흡수 가능(가로채기 prop forward + overlay 테스트 재작성) (b) PR8 ESLint 락은 automation 전 파일 흡수 후에만 켜지므로 Tier B는 어차피 선행 필요 (c) 완성도. Tier B는 per-file 신중 task + 필수 로컬 e2e(닫기 3~4경로)로 보안 회귀 방어.
 
-## Brainstorming Check (← Phase B 채움)
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). Phase B 발견 = Tier B overlay testid 유실 + 보안 크리티컬 가로채기 → 스코프 결정(9파일 전부)으로 해소. office-hours/design-shotgun은 순수 render 리팩터라 미적용(DESIGN.md 기존). 잔여 gap 없음.
