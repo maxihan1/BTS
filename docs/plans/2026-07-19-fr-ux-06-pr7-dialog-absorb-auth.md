@@ -232,3 +232,23 @@ PR6 선례(정본 재사용 PR = controller self-review)대로 **실행 리스�
 - **AddAccountDialog 특별 검증**: agent 이중 보고 충돌 → git diff -w 실물이 정확(max-w-md, guide→Description). 어느 보고도 신뢰 안 하고 실물 확인
 
 **refactor-under-green**: 새 테스트 없이 기존 62 유닛 + 전체 7349 유닛이 흡수 후에도 green. TDD test:/feat: 커밋 순서 대신 diff-0가 회귀 가드.
+
+## 리뷰 결과 (PR 단위, 게이트2)
+
+### security-engineer (auth 3파일) — ✅ PASS
+git diff -w 독립 검증. AddAccount·Reauth·AddMember 인증 로직 diff-0. 자격증명/토큰 유출
+통로 신설 없음, 재인증(step-up) 우회 없음, 포커스 트랩 래퍼 제공, DialogDescription로 a11y 향상.
+
+### superpowers:code-reviewer (7파일) — ✅ PASS
+7파일 git diff -w diff-0 재확인. 함정2(Field/Global Cancel plain 유지) OK. role="dialog"
+계약 보존(래퍼 primitive 자동 제공). 절대규칙 준수(L1 주석·하드코딩 색 0·TS strict).
+learnings 회귀 0(key 재마운트·submitError 경로 보존). 참고 4건 전부 의도된 시각 통일 산물.
+
+### e2e (관련 6스펙, CI에 e2e 잡 없어 로컬 실행) — ✅ 내 변경분 무회귀
+- field-permissions·global-permissions·ooo·pat·account-links 및 project-member-management 대부분 = **34 passed**
+- **2 failed = PRE_EXISTING 확정**. project-member-management S1(목록)·S4(제거)의 `getByText('앨리스')`가
+  로그인 사용자 "김앨리스"(계정 메뉴) + 멤버 "앨리스" 둘 다 매칭 → strict mode 위반.
+  **origin/main(8f4c088f2, 내 변경 revert)에서 동일 실패 실증** → 내 PR7 무관. 느슨한 셀렉터 버그.
+  내 변경(AddMemberDialog=멤버 추가)은 S1/S4(목록/제거) 렌더 경로에 없음. CI에 e2e 없어 main에 방치됨.
+
+**BLOCKER: 없음.** PR7 자체는 clean. PRE_EXISTING 셀렉터 버그 처리(hot-fix vs 별도)는 게이트2 결정.
