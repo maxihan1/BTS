@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { ApiError } from '@/api/client'
 import type { QuickFilter } from '@/api/board-quick-filters'
@@ -190,14 +190,14 @@ function SaveQuickFilterForm({
       )}
 
       {/* 액션 버튼 */}
-      <div className="flex justify-end gap-2 mt-2">
+      <DialogFooter className="mt-2">
         <Button type="button" variant="outline" size="sm" onClick={onClose}>
           {quickFilterLabels.form.cancelButton}
         </Button>
         <Button type="submit" size="sm" disabled={!canSubmit}>
           {quickFilterLabels.form.saveButton}
         </Button>
-      </div>
+      </DialogFooter>
     </form>
   )
 }
