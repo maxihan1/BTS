@@ -280,3 +280,15 @@ TYPE=ui → 라우팅상 plan-design-review이나 **디자인이 잠겨(ADR 확�
 - **BLOCKER: 없음.**
 
 ceo(제품 가치)는 ADR 확정 결정 3(FR-UX-06 신설)·4(개편 전체)에서 이미 결정 — 재리뷰 불요. devex(API)는 REST 변경 0이라 해당 없음.
+
+### PR 단위 리뷰 (bts-codereview, 2026-07-20)
+
+- **security-engineer: PASS.** 인증 로직 diff-0 — 로그아웃 byte-identical(AccountMenu↔삭제된 Header)·`isSystemAdmin===true` 게이팅 보존·PII/토큰 누출 0·localStorage boolean만(§1.18 준수)·공개공유 크롬 억제. PRE_EXISTING(PR11 무관): `/admin/workflow-schemes`가 requireSystemAdmin 미적용(router.ts diff-0, 백엔드 @PreAuthorize authoritative) → 별건.
+- **code-reviewer: CONCERNS (BLOCKER 0).** T7 원자 스왑 완전·관리 6링크 정합·--sidebar 토큰 정합·navigation-contract non-vacuous·zustand 정확 확인. 권장 수정 3:
+  - **C1 AccountMenu 무테스트** (양 리뷰어 공통) — Header.test 439줄 삭제로 계정 로직(로그아웃 성공/500 navigate·avatar cacheBust·상태/OOO 배지 FR-PR-02/03) 유닛 커버 소실. 동작 byte-identical·e2e(start-page) 로그아웃 커버라 BLOCKER 아니나 안전망 축소.
+  - **C2 접힘=잘린 텍스트** — Sidebar 아이콘 미렌더(실측 확증), JSDoc은 "아이콘 레일"로 서술=불일치. 접힘 시 "이"/"워..." UX. 기능 정상(접근가능 이름 보존).
+  - **C3 랜드마크 회귀** — `<main>`이 TopBar/Sidebar까지 포괄 → banner role 소실·main 과포괄. 테스트 의존 0(a11y 품질).
+  - SUGGESTION: `navLabels.starred` 죽은 상수(소비처 0 실측).
+- **/review (gstack): 통합.** 스코프 CLEAN(크립 0)·Header dangling import 0. 백엔드 지향 army/codex(SQL·migration·race·LLM)는 순수 프론트라 N/A → 두 리뷰로 대체. 신규 구조 이슈 0.
+
+**종합: BLOCKER 0.** C1(커버리지)·C2(아이콘/UX)·C3(a11y)·starred(데드) = 완제품 품질 개선 4건.
