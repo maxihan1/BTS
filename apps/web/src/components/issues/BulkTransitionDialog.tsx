@@ -181,7 +181,7 @@ export function BulkTransitionDialog({
               <>
                 {/* 일부 조회 실패 경고 */}
                 {hasPartialFailure && (
-                  <p className="text-sm text-amber-600 bg-amber-50 rounded-md px-3 py-2">
+                  <p className="text-sm text-warning-text bg-warning/10 rounded-md px-3 py-2">
                     일부 이슈의 전이 정보를 불러오지 못했습니다. 조회에 성공한 이슈 기준으로 공통 전이를 표시합니다.
                   </p>
                 )}

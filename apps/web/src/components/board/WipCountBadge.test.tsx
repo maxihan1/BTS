@@ -20,13 +20,13 @@ describe('WipCountBadge — S1 기본 동작 (isFilterActive=false)', () => {
     expect(screen.queryByLabelText('WIP 초과')).not.toBeInTheDocument()
   })
 
-  it('S1c: wipLimit 있음·초과이면 amber 경고 배지 + "WIP 초과" aria-label이 표시된다', () => {
+  it('S1c: wipLimit 있음·초과이면 warning 경고 배지 + "WIP 초과" aria-label이 표시된다', () => {
     render(<WipCountBadge count={3} wipLimit={2} wipExceeded={true} />)
     expect(screen.getByText('3/2')).toBeInTheDocument()
     expect(screen.getByLabelText('WIP 초과')).toBeInTheDocument()
-    // amber 클래스가 있어야 한다
+    // warning 클래스가 있어야 한다
     const badge = screen.getByLabelText('WIP 초과')
-    expect(badge.className).toMatch(/amber/)
+    expect(badge.className).toMatch(/warning/)
   })
 })
 
@@ -35,15 +35,15 @@ describe('WipCountBadge — S1 기본 동작 (isFilterActive=false)', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('WipCountBadge — S2 isFilterActive=true 방어', () => {
-  it('S2a: wipExceeded=true·isFilterActive=true → 경고색(amber) 없음', () => {
+  it('S2a: wipExceeded=true·isFilterActive=true → 경고색(warning) 없음', () => {
     render(
       <WipCountBadge count={2} wipLimit={3} wipExceeded={true} isFilterActive={true} />,
     )
     // "WIP 초과" aria-label이 없어야 한다 — 경고 의미 약화
     expect(screen.queryByLabelText('WIP 초과')).not.toBeInTheDocument()
-    // amber 클래스가 없어야 한다
+    // warning 클래스가 없어야 한다
     const badge = screen.getByText(/2\/3/)
-    expect(badge.className).not.toMatch(/amber/)
+    expect(badge.className).not.toMatch(/warning/)
   })
 
   it('S2b: wipExceeded=true·isFilterActive=true → "(필터됨)" 텍스트가 표시된다', () => {
@@ -84,13 +84,13 @@ describe('WipCountBadge — S2 isFilterActive=true 방어', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('WipCountBadge — S3 회귀 (isFilterActive=false 명시)', () => {
-  it('S3a: wipExceeded=true·isFilterActive=false → amber 경고 그대로', () => {
+  it('S3a: wipExceeded=true·isFilterActive=false → warning 경고 그대로', () => {
     render(
       <WipCountBadge count={5} wipLimit={3} wipExceeded={true} isFilterActive={false} />,
     )
     expect(screen.getByLabelText('WIP 초과')).toBeInTheDocument()
     const badge = screen.getByLabelText('WIP 초과')
-    expect(badge.className).toMatch(/amber/)
+    expect(badge.className).toMatch(/warning/)
     expect(screen.queryByText('(필터됨)')).not.toBeInTheDocument()
   })
 })

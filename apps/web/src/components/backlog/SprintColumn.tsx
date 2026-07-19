@@ -51,12 +51,12 @@ const ACTION_BASE_CLASS = 'self-start rounded px-2 py-1 text-xs font-medium tran
 function statusBadgeClass(status: string): string {
   switch (status) {
     case 'ACTIVE':
-      return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+      return 'bg-success/10 text-success-text'
     case 'COMPLETED':
       return 'bg-muted text-muted-foreground'
     default:
       // PLANNED
-      return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+      return 'bg-info/10 text-info-text'
   }
 }
 
@@ -127,7 +127,7 @@ function SprintColumnInner({
           <button
             type="button"
             onClick={onComplete}
-            className={cn(ACTION_BASE_CLASS, 'bg-green-600 text-white hover:bg-green-700')}
+            className={cn(ACTION_BASE_CLASS, 'bg-success text-success-foreground hover:bg-success/90')}
             aria-label={backlogLabels.completeSprint}
           >
             {backlogLabels.completeSprint}

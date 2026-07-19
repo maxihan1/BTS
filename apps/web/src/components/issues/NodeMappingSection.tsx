@@ -190,7 +190,7 @@ export function NodeMappingSection({
       {/* 워크플로우 상태 선택 */}
       {!compatible && (
         <div>
-          <p className="text-xs text-amber-600 mb-2">{s.workflowIncompatible}</p>
+          <p className="text-xs text-warning-text mb-2">{s.workflowIncompatible}</p>
           <label
             htmlFor={`state-select-${nodeId}`}
             className="text-sm font-medium block mb-1"
