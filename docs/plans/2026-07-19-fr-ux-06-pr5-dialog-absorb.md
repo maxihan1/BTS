@@ -24,7 +24,41 @@ issue-tracking BC의 화면들이 각자 Radix Dialog를 직접 import하고 Ove
 - 관련 메모리: [[fr-ux-06-jira-redesign-plan]] · [[frontend-nav-aria-label-e2e-contract]] ·
   [[frontend-zod-backend-dto-contract-gap]]
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**: issue-tracking (프론트 계층). 순수 UI 리팩터 — 백엔드 코드·도메인 모델 변경 0.
+- **새 용어**: 없음. **기존 결정 충돌**: 없음. **관련 ADR**: FR-UX-06 상위 ADR `docs/decisions/2026-07-17-fr-ux-06-jira-redesign.md`(D1~D8)에 종속, 신규 ADR 불필요.
+- grill-with-docs 스킵 — 도메인 신규성 0(엔티티/용어/관계 무변경). domain 실질 = "래퍼 API 형태 + BC 경계"이며 실측으로 확정.
+
+### 실측 (2026-07-19, worktree HEAD = main 62129317d)
+
+**① 흡수 목표 = `components/ui/dialog.tsx` (PR2 #286 산출).**
+- shadcn식 **compound components** API. props 단일체가 아니라 개별 export 10종:
+  `Dialog · DialogTrigger · DialogPortal · DialogOverlay · DialogContent · DialogClose · DialogHeader · DialogFooter · DialogTitle · DialogDescription`.
+- `DialogContent`가 `DialogPortal + DialogOverlay(bg-black/40 스크림) + DialogPrimitive.Content(우상단 X 닫기 포함)`를 캡슐화. Overlay 클래스·닫기 버튼 복붙이 사라지는 지점.
+- **role="dialog" 계약 보존** — 래퍼가 `DialogPrimitive.Content`를 그대로 감쌈(파일 L1 주석 명시). E2E 147건 안전.
+
+**② 현재 소비처 = 0개.** PR2가 만들었지만 아무 화면도 이 래퍼를 안 씀 → **PR5가 첫 소비자 = "API 확정 PR"의 실제 의미**(compound API가 실사용을 충분히 커버하는지 첫 검증·확정).
+
+**③ 전체 Radix Dialog 직접 import = 42파일** (여러 BC). PR5는 issue-tracking BC만, 나머지는 PR6/7/8.
+
+**④ PR5 IN-SCOPE 후보 = issue-tracking BC 12파일** (전부 파일 실재 + Radix 직접 참조 확인).
+
+| 디렉토리 | 파일 |
+|---|---|
+| `issue/` (2) | AttachmentPreviewModal · ResolutionModal |
+| `issues/` (5) | CloneIssueDialog · BulkEditDialog · BulkOperationResultDialog · MoveIssueDialog · BulkTransitionDialog |
+| `component/` (1) | ComponentFormDialog |
+| `version/` (2) | VersionFormDialog · ReleaseNotesDialog |
+| `custom-fields/` (1) | CustomFieldFormDialog |
+| `issue-templates/` (1) | IssueTemplateFormDialog |
+
+- plan.md 원안 "≈10파일"과 정합(±2). 정확한 줄 수·props 패턴은 spec에서 파일별 실측.
+
+**⑤ 경계 케이스 = `board/` 2파일** (ResolutionPickerModal · SaveQuickFilterDialog).
+- board는 agile-planning일 수 있으나 resolution은 issue-tracking 개념 → **spec에서 BC 판정**(포함 시 PR5, 아니면 PR6로 이연). 자의 판정 금지.
+
+### /bts-domain 채움
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
