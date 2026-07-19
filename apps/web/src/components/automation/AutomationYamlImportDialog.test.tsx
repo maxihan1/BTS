@@ -345,8 +345,11 @@ describe('AutomationYamlImportDialog', () => {
     expect(onOpenChange).not.toHaveBeenCalledWith(false)
     await user.click(screen.getByTestId('automation-yaml-import-close-cancel'))
 
-    // 오버레이 클릭
-    await user.click(screen.getByTestId('automation-yaml-import-overlay'))
+    // 오버레이 클릭 — 래퍼 흡수 후 오버레이는 자체 testid가 없어 래퍼가 부여하는 data-slot 으로
+    // 타깃한다(ui/dialog.test.tsx 선례 동형). onPointerDownOutside 가로채기 동작 자체는 불변.
+    const yamlOverlay = document.querySelector('[data-slot="dialog-overlay"]')
+    expect(yamlOverlay).not.toBeNull()
+    await user.click(yamlOverlay as HTMLElement)
     expect(await screen.findByText('토큰은 다시 볼 수 없습니다. 닫을까요?')).toBeInTheDocument()
     expect(onOpenChange).not.toHaveBeenCalledWith(false)
     await user.click(screen.getByTestId('automation-yaml-import-close-cancel'))

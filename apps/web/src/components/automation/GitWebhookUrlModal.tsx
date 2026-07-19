@@ -1,7 +1,14 @@
 // Git 웹훅 등록 직후 원문 URL 을 1회만 노출하는 모달 — 닫기 3경로 모두 2단계 확인 (FR-AT-07 PR-D Task 4)
 import type { JSX } from 'react'
 import { useState } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -113,68 +120,59 @@ export function GitWebhookUrlModal({ webhookUrl, onClose }: GitWebhookUrlModalPr
   }
 
   return (
-    <DialogPrimitive.Root open onOpenChange={handleOpenChangeAttempt}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay
-          data-testid="git-webhook-url-overlay"
-          className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
-        />
+    <Dialog open onOpenChange={handleOpenChangeAttempt}>
+      <DialogContent
+        className="max-w-md"
+        data-testid="git-webhook-url-dialog"
+        aria-describedby={undefined}
+        onEscapeKeyDown={(event) => {
+          event.preventDefault()
+          setCloseConfirming(true)
+        }}
+        onPointerDownOutside={(event) => {
+          event.preventDefault()
+          setCloseConfirming(true)
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>{labels.title}</DialogTitle>
+        </DialogHeader>
 
-        <DialogPrimitive.Content
-          data-testid="git-webhook-url-dialog"
-          onEscapeKeyDown={(event) => {
-            event.preventDefault()
-            setCloseConfirming(true)
-          }}
-          onPointerDownOutside={(event) => {
-            event.preventDefault()
-            setCloseConfirming(true)
-          }}
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-        >
-          <DialogPrimitive.Title className="text-lg font-semibold mb-1">
-            {labels.title}
-          </DialogPrimitive.Title>
+        <p role="alert" className="mt-2 text-sm text-warning-text">
+          {labels.warning}
+        </p>
 
-          <DialogPrimitive.Description
-            role="alert"
-            className="mt-2 text-sm text-warning-text"
+        <code className="mt-4 block break-all rounded bg-muted px-3 py-2 text-sm font-mono select-all">
+          {fullUrl}
+        </code>
+
+        {copyError !== null && (
+          <p role="alert" className="mt-2 text-xs text-destructive">{copyError}</p>
+        )}
+
+        {closeConfirming && (
+          <CloseConfirmPrompt
+            onConfirm={onClose}
+            onCancel={() => { setCloseConfirming(false) }}
+          />
+        )}
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="git-webhook-url-copy-button"
+            onClick={() => { void handleCopy() }}
           >
-            {labels.warning}
-          </DialogPrimitive.Description>
-
-          <code className="mt-4 block break-all rounded bg-muted px-3 py-2 text-sm font-mono select-all">
-            {fullUrl}
-          </code>
-
-          {copyError !== null && (
-            <p role="alert" className="mt-2 text-xs text-destructive">{copyError}</p>
-          )}
-
-          {closeConfirming && (
-            <CloseConfirmPrompt
-              onConfirm={onClose}
-              onCancel={() => { setCloseConfirming(false) }}
-            />
-          )}
-
-          <div className="mt-6 flex justify-end gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              data-testid="git-webhook-url-copy-button"
-              onClick={() => { void handleCopy() }}
-            >
-              {copied ? labels.copiedLabel : labels.copyButton}
+            {copied ? labels.copiedLabel : labels.copyButton}
+          </Button>
+          <DialogClose asChild>
+            <Button size="sm" data-testid="git-webhook-url-close-button">
+              {labels.close}
             </Button>
-            <DialogPrimitive.Close asChild>
-              <Button size="sm" data-testid="git-webhook-url-close-button">
-                {labels.close}
-              </Button>
-            </DialogPrimitive.Close>
-          </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

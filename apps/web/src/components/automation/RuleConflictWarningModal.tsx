@@ -1,6 +1,13 @@
 // 자동화 규칙 저장 후 검출된 충돌을 표시하는 1회성 경고 모달 (FR-AT-04 D6)
 import type { JSX } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import type { ConflictType, RuleConflict } from '@/api/automation-rules.types'
 
@@ -80,42 +87,40 @@ export function RuleConflictWarningModal({
   }
 
   return (
-    <DialogPrimitive.Root open onOpenChange={handleOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <Dialog open onOpenChange={handleOpenChange}>
+      <DialogContent
+        data-testid="rule-conflict-warning-modal"
+        className="max-w-md"
+        aria-describedby={undefined}
+      >
+        <DialogHeader>
+          <DialogTitle>{labels.title}</DialogTitle>
+        </DialogHeader>
 
-        <DialogPrimitive.Content
-          data-testid="rule-conflict-warning-modal"
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-        >
-          <DialogPrimitive.Title className="text-lg font-semibold mb-1">
-            {labels.title}
-          </DialogPrimitive.Title>
+        {/* role="alert" — 경고 소제목 + 충돌 목록을 하나의 경고 본문으로 묶어 스크린리더가
+            중복 announce하지 않도록 한다(제목/목록에 각각 role을 주지 않음). Description 대신
+            plain <p>로 두어 role 중복을 피하고, 설명 부재는 aria-describedby={undefined}로 억제한다. */}
+        <div role="alert">
+          <p className="mt-2 text-sm text-warning-text">
+            {labels.warningHeading}
+          </p>
 
-          {/* role="alert" — 경고 소제목 + 충돌 목록을 하나의 경고 본문으로 묶어 스크린리더가
-              중복 announce하지 않도록 한다(제목/목록에 각각 role을 주지 않음). */}
-          <div role="alert">
-            <DialogPrimitive.Description className="mt-2 text-sm text-warning-text">
-              {labels.warningHeading}
-            </DialogPrimitive.Description>
+          <ul className="mt-4 flex flex-col gap-2">
+            {conflicts.map((conflict, index) => (
+              // key: 충돌 항목에 안정적인 id가 없다 — type+position(index)으로 안정적 구분 (AutomationRuleList.tsx 선례).
+              <ConflictItem key={`${conflict.type}-${index}`} conflict={conflict} />
+            ))}
+          </ul>
+        </div>
 
-            <ul className="mt-4 flex flex-col gap-2">
-              {conflicts.map((conflict, index) => (
-                // key: 충돌 항목에 안정적인 id가 없다 — type+position(index)으로 안정적 구분 (AutomationRuleList.tsx 선례).
-                <ConflictItem key={`${conflict.type}-${index}`} conflict={conflict} />
-              ))}
-            </ul>
-          </div>
-
-          <div className="mt-6 flex justify-end">
-            <DialogPrimitive.Close asChild>
-              <Button size="sm" data-testid="rule-conflict-close-button">
-                {labels.close}
-              </Button>
-            </DialogPrimitive.Close>
-          </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button size="sm" data-testid="rule-conflict-close-button">
+              {labels.close}
+            </Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

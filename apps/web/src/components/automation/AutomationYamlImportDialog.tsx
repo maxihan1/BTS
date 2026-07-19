@@ -1,7 +1,14 @@
 // 자동화 룰 GitOps YAML 업로드 Dialog — 파일 선택 → 2단계 확인 → 결과/에러/토큰 1회 노출 (FR-AT-06 D6)
 import { useEffect, useState } from 'react'
 import type { ChangeEvent, JSX } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -397,97 +404,94 @@ export function AutomationYamlImportDialog({ open, onOpenChange, projectKey }: A
   }
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={handleOpenChangeAttempt}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay
-          data-testid="automation-yaml-import-overlay"
-          className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
-        />
-        <DialogPrimitive.Content
-          data-testid="automation-yaml-import-dialog"
-          onEscapeKeyDown={(event) => {
-            if (tokenAtRisk) {
-              event.preventDefault()
-              setCloseConfirming(true)
-            }
-          }}
-          onPointerDownOutside={(event) => {
-            if (tokenAtRisk) {
-              event.preventDefault()
-              setCloseConfirming(true)
-            }
-          }}
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-        >
-          <DialogPrimitive.Title className="text-lg font-semibold mb-1">{labels.title}</DialogPrimitive.Title>
+    <Dialog open={open} onOpenChange={handleOpenChangeAttempt}>
+      <DialogContent
+        className="max-w-md"
+        data-testid="automation-yaml-import-dialog"
+        aria-describedby={undefined}
+        onEscapeKeyDown={(event) => {
+          if (tokenAtRisk) {
+            event.preventDefault()
+            setCloseConfirming(true)
+          }
+        }}
+        onPointerDownOutside={(event) => {
+          if (tokenAtRisk) {
+            event.preventDefault()
+            setCloseConfirming(true)
+          }
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>{labels.title}</DialogTitle>
+        </DialogHeader>
 
-          {closeConfirming && (
-            <CloseConfirmPrompt
-              onConfirm={() => { onOpenChange(false) }}
-              onCancel={() => { setCloseConfirming(false) }}
-            />
-          )}
-
-          <div className="mt-4">
-            <label htmlFor="automation-yaml-import-file" className="mb-2 block text-sm font-medium">
-              {labels.fileInputLabel}
-            </label>
-            <Input
-              id="automation-yaml-import-file"
-              type="file"
-              accept=".yaml,.yml"
-              aria-label={labels.fileInputLabel}
-              disabled={tokenAtRisk}
-              onChange={handleFileChange}
-            />
-          </div>
-
-          <p className="mt-3 text-xs text-muted-foreground">{labels.copyHint}</p>
-
-          {sizeError && <p role="alert" className="mt-3 text-sm text-destructive">{labels.tooLarge}</p>}
-
-          {fileReadError && <p role="alert" className="mt-3 text-sm text-destructive">{labels.fileReadFailed}</p>}
-
-          {result !== null && (
-            <div className="mt-4 space-y-3">
-              {result.webhookTokens !== undefined && result.webhookTokens.length > 0 && (
-                <ImportedTokensSection tokens={result.webhookTokens} />
-              )}
-              <ImportResultSummary result={result} />
-              <ImportConflictsWarning conflicts={result.conflicts ?? []} />
-            </div>
-          )}
-
-          {importError !== null && (
-            <p role="alert" className="mt-3 text-sm text-destructive">{buildImportErrorMessage(importError)}</p>
-          )}
-
-          <ApplySection
-            confirming={confirming}
-            isPending={importMutation.isPending}
-            canApply={file !== null && !sizeError}
-            onApplyClick={() => { setConfirming(true) }}
-            onConfirm={() => { void handleConfirmApply() }}
-            onCancel={() => { setConfirming(false) }}
+        {closeConfirming && (
+          <CloseConfirmPrompt
+            onConfirm={() => { onOpenChange(false) }}
+            onCancel={() => { setCloseConfirming(false) }}
           />
+        )}
 
-          <div className="mt-4 flex justify-end">
-            {/* disabled는 isPending만 본다(hasUnackedTokens는 미포함) — 토큰 노출 후 X 클릭은
-                handleOpenChangeAttempt(tokenAtRisk)가 이미 가로채 2단계 확인으로 라우팅한다(EC7).
-                여기까지 tokenAtRisk로 넓히면 그 클릭 자체가 막혀 EC7의 "X 클릭→확인" 경로가 사라진다. */}
-            <DialogPrimitive.Close asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={importMutation.isPending}
-                data-testid="automation-yaml-import-close-button"
-              >
-                {labels.closeButton}
-              </Button>
-            </DialogPrimitive.Close>
+        <div className="mt-4">
+          <label htmlFor="automation-yaml-import-file" className="mb-2 block text-sm font-medium">
+            {labels.fileInputLabel}
+          </label>
+          <Input
+            id="automation-yaml-import-file"
+            type="file"
+            accept=".yaml,.yml"
+            aria-label={labels.fileInputLabel}
+            disabled={tokenAtRisk}
+            onChange={handleFileChange}
+          />
+        </div>
+
+        <p className="mt-3 text-xs text-muted-foreground">{labels.copyHint}</p>
+
+        {sizeError && <p role="alert" className="mt-3 text-sm text-destructive">{labels.tooLarge}</p>}
+
+        {fileReadError && <p role="alert" className="mt-3 text-sm text-destructive">{labels.fileReadFailed}</p>}
+
+        {result !== null && (
+          <div className="mt-4 space-y-3">
+            {result.webhookTokens !== undefined && result.webhookTokens.length > 0 && (
+              <ImportedTokensSection tokens={result.webhookTokens} />
+            )}
+            <ImportResultSummary result={result} />
+            <ImportConflictsWarning conflicts={result.conflicts ?? []} />
           </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        )}
+
+        {importError !== null && (
+          <p role="alert" className="mt-3 text-sm text-destructive">{buildImportErrorMessage(importError)}</p>
+        )}
+
+        <ApplySection
+          confirming={confirming}
+          isPending={importMutation.isPending}
+          canApply={file !== null && !sizeError}
+          onApplyClick={() => { setConfirming(true) }}
+          onConfirm={() => { void handleConfirmApply() }}
+          onCancel={() => { setConfirming(false) }}
+        />
+
+        <DialogFooter>
+          {/* disabled는 isPending만 본다(hasUnackedTokens는 미포함) — 토큰 노출 후 X 클릭은
+              handleOpenChangeAttempt(tokenAtRisk)가 이미 가로채 2단계 확인으로 라우팅한다(EC7).
+              여기까지 tokenAtRisk로 넓히면 그 클릭 자체가 막혀 EC7의 "X 클릭→확인" 경로가 사라진다. */}
+          <DialogClose asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={importMutation.isPending}
+              data-testid="automation-yaml-import-close-button"
+            >
+              {labels.closeButton}
+            </Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

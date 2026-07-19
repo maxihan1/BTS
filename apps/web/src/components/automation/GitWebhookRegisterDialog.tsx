@@ -1,7 +1,7 @@
 // Git 웹훅 등록 폼 — provider 선택 + secret 입력(원문 보존, mutation은 GitWebhookSection 소유)
 import type { JSX, FormEvent } from 'react'
 import { useState } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -96,28 +96,22 @@ export const GitWebhookRegisterDialog = ({
   listUnavailable,
 }: GitWebhookRegisterDialogProps): JSX.Element => {
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <DialogPrimitive.Content
-          role="dialog"
-          aria-modal="true"
-          data-testid="git-webhook-register-dialog"
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-        >
-          <DialogPrimitive.Title className="text-lg font-semibold mb-4">{labels.title}</DialogPrimitive.Title>
-          <FormBody
-            key={open ? 'open' : 'closed'}
-            onOpenChange={onOpenChange}
-            onSubmit={onSubmit}
-            isPending={isPending}
-            submitError={submitError}
-            existingProviders={existingProviders}
-            listUnavailable={listUnavailable}
-          />
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" data-testid="git-webhook-register-dialog" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{labels.title}</DialogTitle>
+        </DialogHeader>
+        <FormBody
+          key={open ? 'open' : 'closed'}
+          onOpenChange={onOpenChange}
+          onSubmit={onSubmit}
+          isPending={isPending}
+          submitError={submitError}
+          existingProviders={existingProviders}
+          listUnavailable={listUnavailable}
+        />
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -209,7 +203,7 @@ function FormBody({
         </div>
       )}
 
-      <div className="flex justify-end gap-2">
+      <DialogFooter>
         <Button
           type="button"
           variant="outline"
@@ -222,7 +216,7 @@ function FormBody({
         <Button type="submit" size="sm" data-testid="git-webhook-register-submit" disabled={isPending}>
           {labels.submit}
         </Button>
-      </div>
+      </DialogFooter>
     </form>
   )
 }

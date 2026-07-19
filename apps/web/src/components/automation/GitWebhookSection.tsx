@@ -1,7 +1,14 @@
 // Git 웹훅 섹션 — 등록 Dialog·URL 1회 노출 모달·목록·삭제 확인을 조립하는 컨테이너 (FR-AT-07 PR-D Task 6)
 import { useState } from 'react'
 import type { JSX } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -43,8 +50,8 @@ const providerLabels: Record<GitProvider, string> = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DeleteConfirmDialog — file-local 복제(AutomationRuleList.tsx DeleteConfirmDialog 구조 동형,
-// radix-ui 직접 사용 — components/ui에 Dialog 래퍼 부재)
+// DeleteConfirmDialog — 공용 Dialog 래퍼(components/ui/dialog) 흡수 (FR-UX-06,
+// AutomationRuleList.tsx DeleteConfirmDialog 흡수 선례 동형)
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface DeleteConfirmDialogProps {
@@ -61,45 +68,40 @@ function DeleteConfirmDialog({ webhook, isPending, onConfirm, onCancel }: Delete
   if (webhook === null) return null
 
   return (
-    <DialogPrimitive.Root
+    <Dialog
       open
       onOpenChange={(open) => {
         if (!open) onCancel()
       }}
     >
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
-          <DialogPrimitive.Title className="text-lg font-semibold">
-            {labels.deleteConfirmTitle}
-          </DialogPrimitive.Title>
-          <DialogPrimitive.Description className="mt-2 text-sm text-muted-foreground">
-            {labels.deleteConfirmMessage}
-          </DialogPrimitive.Description>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{labels.deleteConfirmTitle}</DialogTitle>
+          <DialogDescription>{labels.deleteConfirmMessage}</DialogDescription>
+        </DialogHeader>
 
-          <div className="mt-6 flex justify-end gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={isPending}
-              data-testid="git-webhook-delete-cancel"
-              onClick={onCancel}
-            >
-              {labels.deleteCancelButton}
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              disabled={isPending}
-              data-testid={`git-webhook-delete-confirm-${webhook.id}`}
-              onClick={onConfirm}
-            >
-              {labels.deleteConfirmButton}
-            </Button>
-          </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isPending}
+            data-testid="git-webhook-delete-cancel"
+            onClick={onCancel}
+          >
+            {labels.deleteCancelButton}
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={isPending}
+            data-testid={`git-webhook-delete-confirm-${webhook.id}`}
+            onClick={onConfirm}
+          >
+            {labels.deleteConfirmButton}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
