@@ -245,6 +245,13 @@ async function fillAndSearch(
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe('FR-SR-03 저장 필터 (SF-1 저장/목록/불러오기 · SF-2 공유 · SF-3 별표 · SF-4 게이팅 · SF-5 OCC충돌 · SF-6 삭제)', () => {
+  // SF 시나리오는 전부 login+seed+search+상호작용의 무거운 흐름이라 4-worker 병렬 부하에서 기본 30s
+  // 예산이 빠듯하다(딥링크 네비·재조회 대기에서 간헐 타임아웃, 격리 실행은 ~2s). 그룹 전체에 test.slow()로
+  // 예산 3배(30s→90s)를 준다.
+  test.beforeEach(() => {
+    test.slow()
+  })
+
   // ──────────────────────────────────────────────────────────────────────────
   // SF-1. 저장·목록·불러오기
   //
@@ -263,9 +270,6 @@ test.describe('FR-SR-03 저장 필터 (SF-1 저장/목록/불러오기 · SF-2 �
   //   따라서 create UI 검증(dialog 닫힘)과 display 검증(사전 시드 기반)을 분리한다.
   // ──────────────────────────────────────────────────────────────────────────
   test('SF-1 저장·목록·불러오기 — create UI 검증 + 사전 시드 기반 display + filterId 딥링크', async ({ page }) => {
-    // 무거운 시나리오(login+seed+search+save+menu+딥링크 해소) — 4-worker 병렬 부하에서 기본 30s 예산이
-    // 빠듯해 filterId 네비게이션 대기에서 간헐 타임아웃. test.slow()로 예산 3배(격리 실행은 ~2s).
-    test.slow()
     // Given. /login 에서 alice 소유 필터 시드 (Header 마운트 전 — 첫 query가 seeded data 읽음)
     const preSeededId = 'aaaaaaaa-0000-4000-8000-000000000010'
     await loginAsAliceWithSeed(page, async () => {
