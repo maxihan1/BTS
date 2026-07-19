@@ -258,7 +258,11 @@ T5·T6 병렬 dispatch서 `--no-verify`로 lint-staged 공유stash는 피했으�
 - 전량 vitest: **468 파일 / 7379 테스트 green** (baseline 7353 → +26 순증). TDD 순서 전 task 정합.
 - typecheck: EXIT 0. eslint src: **0 errors**(warning 8건은 사전존재 SlackResultBanner/WeekGrid, 무관).
 - e2e 계약-크리티컬 8 spec: **39 passed/1 skipped** — 메인 메뉴(calendar·dashboard)·관리 메뉴+게이팅(notification-policies·webhook·audit-logs)·login/shell(already-authed·login-happy)·공개공유 bare shell(dashboard-share) 전부 green. aria-label 이관 무위반 실증.
-- e2e 전수 124 spec: (실행 중 — gate2 전 확정).
+- e2e 전수 124 spec/530 테스트: 529 passed + **1 회귀 발견·수정**(아래) → **530 passed**.
+
+### ★ 전수 e2e가 잡은 회귀 → 타임라인 클릭 e2e 견고화 (fca4d3d13, test-only)
+
+전수 e2e에서 `timeline.spec:505 S-DEPS-REALCLICK`(FR-TL-02 의존 라인 실클릭) 1건 실패. **flaky로 단정 않고 baseline 대조**([[e2e-flaky-timeout-masks-transient-url-race]]): main 통과(1.4s)↔PR11 실패(30s) = **PR11 회귀 확정**. 원인 격리(z-index·overflow-y-auto·h-screen 아님 → `<Sidebar/>` 제거 시 통과). **DOM 정밀 진단**: 의존 라인 hit-path가 폭 1608px, bbox 중심 x=1580이 사이드바로 좁아진 뷰포트(Desktop Chrome 1280) **밖** → `elementFromPoint`=null, force-click도 실패. **스크린샷 확인: 라인 시각적으로 정상 연결 = 앱 정렬 버그 아님**. 즉 **넓은 라인의 기하 중심을 클릭하는 e2e가 좁아진 뷰포트에 취약**한 것(사용자는 보이는 라인 클릭 가능). **fix = e2e test-only**: qa-engineer가 `getPointAtLength`/`getScreenCTM`로 stroke 위 **화면 안 지점**을 런타임 계산해 `click({position})`(하드코딩 아님), 어서션(data-selected/data-dimmed) 유지=**비약화**. 화면 안 지점 클릭이 실제 선택됨을 확인=**앱 정상 확증**. 인접 6클릭 안전 점검. timeline.spec 10 passed ×3 안정. **교훈: 격리 통과 e2e도 전수서 레이아웃 회귀를 잡는다 — 좌표-정밀 SVG 클릭 테스트는 뷰포트 폭에 취약, getScreenCTM 런타임 계산이 견고.**
 
 ## 리뷰 결과
 
