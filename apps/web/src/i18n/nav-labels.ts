@@ -21,8 +21,9 @@ export const navLabels = {
    * 사이드바 프로젝트 트리 nav aria-label (🔒 e2e 계약, FR-UX-06 PR12 FR1).
    *
    * ⚠️ '프로젝트'는 '프로젝트 뷰 전환'({@link projectViewNav})의 substring이다.
-   * 테스트에서 이 값으로 role 조회 시 항상 `exact: true`(또는 정확 매칭)를 사용할 것 —
-   * bare substring 조회는 두 nav를 동시에 매칭시킬 수 있다(playwright-getbyrole-exact-strict-mode).
+   * Playwright `getByRole`은 기본이 substring 매칭이므로 e2e에서는 항상 `exact: true`를
+   * 명시할 것(playwright-getbyrole-exact-strict-mode). Testing Library `getByRole`의 `name`은
+   * 기본이 이미 완전일치라 유닛 테스트에서는 별도 옵션 없이도 두 nav가 섞이지 않는다.
    */
   projectNav: '프로젝트',
 

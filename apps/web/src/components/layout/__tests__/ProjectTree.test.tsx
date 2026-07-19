@@ -12,7 +12,7 @@ import {
 } from '@tanstack/react-router'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
-import { projectListFixtures } from '@/mocks/project-list-handlers'
+import { projectListHandlers, projectListFixtures } from '@/mocks/project-list-handlers'
 import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
 import { navLabels } from '@/i18n/nav-labels'
 import { ProjectTree } from '../ProjectTree'
@@ -90,13 +90,17 @@ function renderProjectTree(initialPath = '/dashboards') {
   )
 }
 
+// Testing Library `getByRole` name 매칭은 (Playwright와 달리) 기본이 이미 완전일치이므로
+// `exact` 옵션 자체가 없다(ByRoleOptions에 미정의) — '프로젝트 뷰 전환'과 substring 충돌 없음.
 async function findProjectNav() {
-  return screen.findByRole('navigation', { name: navLabels.projectNav, exact: true })
+  return screen.findByRole('navigation', { name: navLabels.projectNav })
 }
 
 beforeEach(() => {
   // useSidebarCollapsed는 모듈 전역 zustand 싱글톤 — 이전 테스트의 상태가 누출되지 않도록 리셋
   useSidebarCollapsed.setState({ collapsed: false })
+  // mocks/handlers.ts 전역 등록에 더해 명시 등록(use-projects.test.tsx와 동일 관례)
+  server.use(...projectListHandlers)
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -221,7 +225,7 @@ describe('ProjectTree', () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByRole('navigation', { name: navLabels.projectNav, exact: true }),
+        screen.queryByRole('navigation', { name: navLabels.projectNav }),
       ).not.toBeInTheDocument()
     })
   })
