@@ -1,7 +1,14 @@
 // 자동화 룰 실행 이력 조회 Dialog — issueKey 필터·커서 무한스크롤(더 보기)·재실행 결과 토스트+자동펼침 통합 (FR-AT-05 D6/D7)
 import type { FormEvent, JSX } from 'react'
 import { useState } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -100,9 +107,11 @@ function RuleExecutionHistoryDialogBody({ projectKey, ruleId, ruleName }: RuleEx
 
   return (
     <>
-      <DialogPrimitive.Title className="text-lg font-semibold mb-1">
-        {(ruleName ?? labels.fallbackRuleName) + labels.titleSuffix}
-      </DialogPrimitive.Title>
+      <DialogHeader>
+        <DialogTitle>
+          {(ruleName ?? labels.fallbackRuleName) + labels.titleSuffix}
+        </DialogTitle>
+      </DialogHeader>
 
       <form onSubmit={handleFilterSubmit} className="mt-4 flex gap-2">
         <Input
@@ -163,13 +172,13 @@ function RuleExecutionHistoryDialogBody({ projectKey, ruleId, ruleName }: RuleEx
         )}
       </div>
 
-      <div className="mt-6 flex justify-end">
-        <DialogPrimitive.Close asChild>
+      <DialogFooter>
+        <DialogClose asChild>
           <Button variant="outline" size="sm">
             {labels.close}
           </Button>
-        </DialogPrimitive.Close>
-      </div>
+        </DialogClose>
+      </DialogFooter>
     </>
   )
 }
@@ -213,17 +222,14 @@ export function RuleExecutionHistoryDialog({
   const bodyKey = `${open ? 'open' : 'closed'}:${ruleId}`
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-
-        <DialogPrimitive.Content
-          data-testid="rule-execution-history-dialog"
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-        >
-          <RuleExecutionHistoryDialogBody key={bodyKey} projectKey={projectKey} ruleId={ruleId} ruleName={ruleName} />
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        data-testid="rule-execution-history-dialog"
+        className="max-w-2xl"
+        aria-describedby={undefined}
+      >
+        <RuleExecutionHistoryDialogBody key={bodyKey} projectKey={projectKey} ruleId={ruleId} ruleName={ruleName} />
+      </DialogContent>
+    </Dialog>
   )
 }

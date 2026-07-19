@@ -100,7 +100,11 @@ describe('GitWebhookUrlModal — 닫기 3경로 2단계 확인 (FR8/EC6)', () =>
     const user = userEvent.setup()
     render(<GitWebhookUrlModal webhookUrl={WEBHOOK_PATH} onClose={onClose} />)
 
-    await user.click(screen.getByTestId('git-webhook-url-overlay'))
+    // 래퍼 흡수 후 오버레이는 자체 testid가 없어 래퍼가 부여하는 data-slot 으로 타깃한다
+    // (ui/dialog.test.tsx 선례 동형). onPointerDownOutside 가로채기 동작 자체는 불변.
+    const overlay = document.querySelector('[data-slot="dialog-overlay"]')
+    expect(overlay).not.toBeNull()
+    await user.click(overlay as HTMLElement)
 
     expect(onClose).not.toHaveBeenCalled()
     expect(await screen.findByText(CLOSE_CONFIRM_TEXT)).toBeInTheDocument()
