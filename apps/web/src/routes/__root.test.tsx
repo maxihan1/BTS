@@ -99,4 +99,13 @@ describe('RootLayout', () => {
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
+
+  it('<main>을 직접 렌더하지 않는다 — main 랜드마크는 ShellLayout·login이 각자 소유한다(C3, 이중 main 방지)', () => {
+    useAuthStore.setState({ accessToken: null, user: null })
+
+    const { container } = render(<RootLayout />)
+
+    expect(container.querySelector('main')).not.toBeInTheDocument()
+    expect(screen.queryByRole('main')).not.toBeInTheDocument()
+  })
 })

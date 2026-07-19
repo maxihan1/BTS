@@ -1,5 +1,5 @@
 // ShellLayout(_shell) 컴포넌트 단위 테스트 — isAuthenticated 게이팅에 따른 크롬(TopBar+Sidebar) 렌더/억제 (FR-UX-06 PR11 Task 7)
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
@@ -129,5 +129,33 @@ describe('ShellLayout', () => {
     renderShell()
 
     expect(screen.getByRole('navigation', { name: navLabels.adminNav })).toBeInTheDocument()
+  })
+
+  it('isAuthenticated=true — banner(header)·main·complementary(aside) 랜드마크가 각 1개다 (C3)', () => {
+    useAuthStore.setState({ accessToken: 'test-token', user: BASE_USER })
+    renderShell()
+
+    expect(screen.getAllByRole('banner')).toHaveLength(1)
+    expect(screen.getAllByRole('main')).toHaveLength(1)
+    expect(screen.getAllByRole('complementary')).toHaveLength(1)
+  })
+
+  it('isAuthenticated=true — header/aside가 main 밖의 형제다(main 안에 중첩되지 않는다) (C3)', () => {
+    useAuthStore.setState({ accessToken: 'test-token', user: BASE_USER })
+    renderShell()
+
+    const main = screen.getByRole('main')
+    expect(within(main).queryByRole('banner')).not.toBeInTheDocument()
+    expect(within(main).queryByRole('complementary')).not.toBeInTheDocument()
+    // 콘텐츠(Outlet)는 main 안에 있어야 한다
+    expect(within(main).getByTestId('outlet-content')).toBeInTheDocument()
+  })
+
+  it('isAuthenticated=false — main 랜드마크가 1개다(bare Outlet 아님, D-D) (C3)', () => {
+    useAuthStore.setState({ accessToken: null, user: null })
+    renderShell()
+
+    expect(screen.getAllByRole('main')).toHaveLength(1)
+    expect(within(screen.getByRole('main')).getByTestId('outlet-content')).toBeInTheDocument()
   })
 })

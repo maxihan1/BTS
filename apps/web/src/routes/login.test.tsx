@@ -45,6 +45,14 @@ async function triggerSuccess() {
   await user.click(screen.getByRole('button', { name: '성공 트리거' }))
 }
 
+describe('LoginPage — main 랜드마크 (C3, _shell 밖이라 자체 main 필요)', () => {
+  it('main 랜드마크가 정확히 1개 존재한다', () => {
+    render(<LoginPage />)
+
+    expect(screen.getAllByRole('main')).toHaveLength(1)
+  })
+})
+
 describe('LoginPage handleSuccess — 로그인 후 라우팅 우선순위', () => {
   it('returnTo가 있고 안전한 내부 경로이면 returnTo로 navigate한다', async () => {
     setLocationSearch('?returnTo=/issues/PROJ-5')
