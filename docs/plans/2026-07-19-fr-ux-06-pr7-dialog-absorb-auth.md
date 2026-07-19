@@ -46,7 +46,15 @@ FR-UX-06 UI/UX 개편의 Dialog 흡수 4분할 중 PR7. auth/identity-access 계
 포함 → security-engineer 가이드 필요. render 껍데기 교체가 인증 플로우
 (재인증·계정 연결·MFA)의 상호작용/폼 제출 로직을 건드리지 않는지 검증.
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**: identity-access (파일 물리 위치만. 백엔드 도메인 모델·엔티티 변경 0)
+- **영향 엔티티**: 없음 — 프론트 컴포넌트 `render()` 껍데기 교체만. 도메인 로직/API/DTO 무변경
+- **새 용어**: 없음 — Dialog / compound 래퍼는 UI 어휘, DDD 유비쿼터스 언어(glossary) 대상 아님 (glossary grep 0건 확인)
+- **기존 결정 충돌**: 없음. FR-UX-06 개편 ADR([docs/decisions/2026-07-17-fr-ux-06-jira-redesign.md](../decisions/2026-07-17-fr-ux-06-jira-redesign.md))의 "Dialog 복붙 35~37파일 → ui/dialog 흡수" 로드맵에 정합
+- **★계약 (impl 필수 준수)**: ADR §동반 계약 — `role="dialog"` **e2e 147건**이 Radix `DialogPrimitive.Content`의 role에 의존. compound 래퍼가 **같은 primitive를 감싸므로 DOM 계약 불변** → 흡수 안전. 단, 흡수 시 `DialogContent`가 primitive role을 그대로 유지하는지(래퍼가 role 제거/override 안 함) 확인
+- **관련 ADR**: [docs/decisions/2026-07-17-fr-ux-06-jira-redesign.md](../decisions/2026-07-17-fr-ux-06-jira-redesign.md) (기존, 이 PR로 변경 없음)
+- **grill-with-docs**: 생략 — 도메인 모델 변경 0(순수 UI 리팩터). PR5/PR6 동일 흡수에서 도메인 영향 없음 확인됨. CLAUDE.md §2 단순성 원칙
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
