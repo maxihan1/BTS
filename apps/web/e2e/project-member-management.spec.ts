@@ -60,7 +60,7 @@ test.describe('프로젝트 멤버 관리 (FR-PM-01)', () => {
     await expect(page.getByText('프로젝트 멤버', { exact: true })).toBeVisible()
 
     // 앨리스 행 — 이름 + 관리자 배지
-    await expect(page.getByText('앨리스')).toBeVisible()
+    await expect(page.getByText('앨리스', { exact: true })).toBeVisible()
     await expect(page.getByText('관리자').first()).toBeVisible()
 
     // 밥 행 — 이름 + 멤버 배지
@@ -158,7 +158,7 @@ test.describe('프로젝트 멤버 관리 (FR-PM-01)', () => {
     await expect(page.getByText('밥')).toHaveCount(0)
 
     // 앨리스는 여전히 표시
-    await expect(page.getByText('앨리스')).toBeVisible()
+    await expect(page.getByText('앨리스', { exact: true })).toBeVisible()
   })
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -171,7 +171,7 @@ test.describe('프로젝트 멤버 관리 (FR-PM-01)', () => {
   // ─────────────────────────────────────────────────────────────────────────────
   test('S5 마지막 관리자 보호 — 앨리스 강등 시도 → 에러 토스트 + 목록 불변', async ({ page }) => {
     // 앨리스 행 컨테이너 한정
-    const aliceRow = page.getByText('앨리스').locator('xpath=ancestor::li[1]')
+    const aliceRow = page.getByText('앨리스', { exact: true }).locator('xpath=ancestor::li[1]')
 
     // 앨리스 역할 Select를 "멤버"로 변경 시도
     const roleSelectTrigger = aliceRow.getByRole('combobox', { name: '역할 변경' })
