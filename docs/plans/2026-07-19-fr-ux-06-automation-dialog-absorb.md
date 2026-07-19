@@ -198,4 +198,18 @@
 - 병렬 dispatch: files 교집합 0이라 1~9 전부 1 wave 후보. Tier B 2파일은 신중 검증(보안).
 - 추가 검증: typecheck(tsconfig.app), vitest 전체, 로컬 playwright(CI에 e2e 잡 없음).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-19) — 초점 리뷰
+
+순수 render-shell 리팩터(강한 선례 PR5/6/7)라 full 4섹션 인터랙티브 + codex는 overkill([[bts-review-plan-autoplan-overkill]]). 관련 9파일 + 래퍼 + 정본 실측 후 초점 엔지니어링 리뷰 수행.
+
+- ✅ **Tier B 가로채기 prop 전달 정확** — 래퍼 `DialogContent`가 `{...props}`를 `DialogPrimitive.Content`로 spread(`ui/dialog.tsx:62`). `onEscapeKeyDown`/`onPointerDownOutside`/`data-testid` 통과 보장.
+- ✅ **래퍼 내장 X가 보안 가드 우회 안 함** — X→`onOpenChange(false)`→`handleOpenChangeAttempt`→2단계 확인 라우팅. 실제 닫힘 없음(URL/token 소멸 없음). 원본 설계와 일치.
+- ✅ **blast radius 작음 / boring** — 기존 래퍼 재사용, 신규 추상화·인프라 0, 백엔드·cross-BC 무영향. 9 프론트 + 2 테스트.
+- ⚠️ **CONCERN (BLOCKER 아님)** — cross-file 테스트 의존: `GitWebhookSection`(T4)이 자식 `GitWebhookRegisterDialog`(T3)·`GitWebhookUrlModal`(T8)을 렌더 시, 자식 흡수가 Section 테스트 DOM 단언을 흔들 가능성. → impl에서 T4/T3/T8 상호 확인 + T10 전체 테스트로 방어.
+- ⚠️ **주의** — 시각 변화 1건: 래퍼가 흡수 대상에 우상단 X 닫기 버튼 추가(모든 흡수 PR 공통 표준화). token/URL-at-risk 파일도 X→2단계 확인이라 보안 보존. 게이트1에서 Maxi 확인 항목.
+- **BLOCKER: 없음.**
+
+### plan-design-review — 생략 사유
+type=ui지만 순수 로직 보존 리팩터(새 비주얼 없음). 유일한 시각 델타(표준 X 버튼)는 위 주의로 게이트1 위임. design-shotgun/design-consultation 미적용(DESIGN.md 기존).
