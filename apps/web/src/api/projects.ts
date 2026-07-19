@@ -29,6 +29,9 @@ export type Project = z.infer<typeof projectSchema>
 // API 함수
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 프로젝트 목록 bare 엔드포인트 — 하위리소스(`/api/v1/projects/{projectIdOrKey}/...`)와 구분되는 정확 경로 */
+const PROJECTS_BASE_PATH = '/api/v1/projects'
+
 /**
  * 로그인 사용자가 접근 가능한 프로젝트 목록을 조회한다.
  *
@@ -41,6 +44,9 @@ export type Project = z.infer<typeof projectSchema>
  * @throws ApiError(401) 미인증 시
  */
 export async function listProjects(archived = false): Promise<Project[]> {
-  const wrapped = await apiGet(`/api/v1/projects?archived=${archived}`, projectListResponseSchema)
+  const wrapped = await apiGet(
+    `${PROJECTS_BASE_PATH}?archived=${archived}`,
+    projectListResponseSchema,
+  )
   return wrapped.data
 }
