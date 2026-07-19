@@ -43,7 +43,7 @@ function StatusBadge({ active, activeLabel, inactiveLabel }: StatusBadgeProps): 
     <span
       className={
         active
-          ? 'text-sm font-medium text-green-700 dark:text-green-400'
+          ? 'text-sm font-medium text-success-text'
           : 'text-sm text-muted-foreground'
       }
     >
