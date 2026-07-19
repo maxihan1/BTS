@@ -1,9 +1,16 @@
 // Slack 채널↔프로젝트 매핑 목록 — 로딩/에러(403/404)/빈 상태 + 행별 수정·삭제 확인 (FR-SL-06 D6 Task 3)
 import { useState } from 'react'
 import type { JSX } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
 import { toast } from 'sonner'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { listChannelMappings, deleteChannelMapping } from '@/api/slack'
 import type { ChannelMapping } from '@/api/slack'
@@ -70,7 +77,7 @@ export interface SlackChannelMappingListProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DeleteConfirmDialog — radix-ui 직접 사용(components/ui에 Dialog 래퍼 부재, AutomationRuleList 동형)
+// DeleteConfirmDialog — 공용 Dialog 래퍼(components/ui/dialog) 흡수 (FR-UX-06, AutomationRuleList 흡수 선례 동형)
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface DeleteConfirmDialogProps {
@@ -87,45 +94,42 @@ function DeleteConfirmDialog({ mapping, isPending, onConfirm, onCancel }: Delete
   if (mapping === null) return null
 
   return (
-    <DialogPrimitive.Root
+    <Dialog
       open
       onOpenChange={(open) => {
         if (!open) onCancel()
       }}
     >
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
-          <DialogPrimitive.Title className="text-lg font-semibold">
-            {labels.deleteConfirmTitle}
-          </DialogPrimitive.Title>
-          <DialogPrimitive.Description className="mt-2 text-sm text-muted-foreground">
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{labels.deleteConfirmTitle}</DialogTitle>
+          <DialogDescription>
             {mapping.channelName ?? mapping.channelId} — {labels.deleteConfirmMessage}
-          </DialogPrimitive.Description>
+          </DialogDescription>
+        </DialogHeader>
 
-          <div className="mt-6 flex justify-end gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={isPending}
-              data-testid="slack-channel-mapping-delete-cancel"
-              onClick={onCancel}
-            >
-              {labels.deleteCancelButton}
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              disabled={isPending}
-              data-testid={`slack-channel-mapping-delete-confirm-${mapping.id}`}
-              onClick={onConfirm}
-            >
-              {labels.deleteConfirmButton}
-            </Button>
-          </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isPending}
+            data-testid="slack-channel-mapping-delete-cancel"
+            onClick={onCancel}
+          >
+            {labels.deleteCancelButton}
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={isPending}
+            data-testid={`slack-channel-mapping-delete-confirm-${mapping.id}`}
+            onClick={onConfirm}
+          >
+            {labels.deleteConfirmButton}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
