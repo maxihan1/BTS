@@ -1,7 +1,14 @@
 // 일괄 편집 Dialog — priority(1~5)/impact(1~3) merge-patch 변경 (FR-IS-05)
 import type { JSX } from 'react'
 import { useState } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useSubmitBulkOperation } from '@/hooks/use-bulk-operation'
 
@@ -102,79 +109,72 @@ export function BulkEditDialog({
   }
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={handleOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>일괄 편집</DialogTitle>
+        </DialogHeader>
 
-        <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-          aria-describedby={undefined}
-        >
-          <DialogPrimitive.Title className="text-lg font-semibold mb-4">
-            일괄 편집
-          </DialogPrimitive.Title>
-
-          <div className="space-y-4">
-            {/* Priority 선택 */}
-            <div>
-              <label htmlFor="bulk-edit-priority" className="text-sm font-medium mb-1 block">
-                Priority
-              </label>
-              <select
-                id="bulk-edit-priority"
-                aria-label="priority"
-                value={priority !== null ? String(priority) : ''}
-                onChange={handlePriorityChange}
-                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-              >
-                <option value="">무변경</option>
-                {PRIORITY_LABELS.map(({ value, label }) => (
-                  <option key={value} value={String(value)}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Impact 선택 */}
-            <div>
-              <label htmlFor="bulk-edit-impact" className="text-sm font-medium mb-1 block">
-                Impact
-              </label>
-              <select
-                id="bulk-edit-impact"
-                aria-label="impact"
-                value={impact !== null ? String(impact) : ''}
-                onChange={handleImpactChange}
-                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
-              >
-                <option value="">무변경</option>
-                {IMPACT_LABELS.map(({ value, label }) => (
-                  <option key={value} value={String(value)}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* 액션 버튼 */}
-          <div className="flex justify-end gap-2 mt-6">
-            <DialogPrimitive.Close asChild>
-              <Button variant="outline" size="sm">
-                취소
-              </Button>
-            </DialogPrimitive.Close>
-            <Button
-              size="sm"
-              disabled={!canSubmit || submitBulkOperation.isPending}
-              onClick={() => { void handleApply() }}
+        <div className="space-y-4">
+          {/* Priority 선택 */}
+          <div>
+            <label htmlFor="bulk-edit-priority" className="text-sm font-medium mb-1 block">
+              Priority
+            </label>
+            <select
+              id="bulk-edit-priority"
+              aria-label="priority"
+              value={priority !== null ? String(priority) : ''}
+              onChange={handlePriorityChange}
+              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
             >
-              적용
-            </Button>
+              <option value="">무변경</option>
+              {PRIORITY_LABELS.map(({ value, label }) => (
+                <option key={value} value={String(value)}>
+                  {label}
+                </option>
+              ))}
+            </select>
           </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+
+          {/* Impact 선택 */}
+          <div>
+            <label htmlFor="bulk-edit-impact" className="text-sm font-medium mb-1 block">
+              Impact
+            </label>
+            <select
+              id="bulk-edit-impact"
+              aria-label="impact"
+              value={impact !== null ? String(impact) : ''}
+              onChange={handleImpactChange}
+              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+            >
+              <option value="">무변경</option>
+              {IMPACT_LABELS.map(({ value, label }) => (
+                <option key={value} value={String(value)}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* 액션 버튼 */}
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline" size="sm">
+              취소
+            </Button>
+          </DialogClose>
+          <Button
+            size="sm"
+            disabled={!canSubmit || submitBulkOperation.isPending}
+            onClick={() => { void handleApply() }}
+          >
+            적용
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

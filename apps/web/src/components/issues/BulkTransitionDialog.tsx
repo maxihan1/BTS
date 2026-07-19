@@ -1,7 +1,14 @@
 // 일괄 상태 전이 Dialog — 선택 이슈 가용 전이 교집합 노출 + BULK_TRANSITION 접수 (FR-IS-05, B14)
 import type { JSX } from 'react'
 import { useState, useEffect } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -159,109 +166,102 @@ export function BulkTransitionDialog({
   }
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={handleOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>일괄 상태 전이</DialogTitle>
+        </DialogHeader>
 
-        <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-          aria-describedby={undefined}
-        >
-          <DialogPrimitive.Title className="text-lg font-semibold mb-4">
-            일괄 상태 전이
-          </DialogPrimitive.Title>
+        <div className="space-y-4">
+          {/* 전량 조회 실패 에러 — Select 숨김 + 적용 비활성 */}
+          {hasTotalFailure ? (
+            <p className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">
+              전이 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
+            </p>
+          ) : (
+            <>
+              {/* 일부 조회 실패 경고 */}
+              {hasPartialFailure && (
+                <p className="text-sm text-warning-text bg-warning/10 rounded-md px-3 py-2">
+                  일부 이슈의 전이 정보를 불러오지 못했습니다. 조회에 성공한 이슈 기준으로 공통 전이를 표시합니다.
+                </p>
+              )}
 
-          <div className="space-y-4">
-            {/* 전량 조회 실패 에러 — Select 숨김 + 적용 비활성 */}
-            {hasTotalFailure ? (
-              <p className="text-sm text-destructive bg-destructive/10 rounded-md px-3 py-2">
-                전이 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
-              </p>
-            ) : (
-              <>
-                {/* 일부 조회 실패 경고 */}
-                {hasPartialFailure && (
-                  <p className="text-sm text-warning-text bg-warning/10 rounded-md px-3 py-2">
-                    일부 이슈의 전이 정보를 불러오지 못했습니다. 조회에 성공한 이슈 기준으로 공통 전이를 표시합니다.
-                  </p>
-                )}
+              {/* 교집합 0건 안내 */}
+              {hasNoCommonTransitions ? (
+                <p className="text-sm text-muted-foreground">
+                  선택한 이슈들이 공통으로 이동할 수 있는 상태가 없습니다.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label htmlFor="bulk-transition-state" className="text-sm font-medium mb-1 block">
+                      전이 상태
+                    </label>
+                    <Select value={selectedStateKey} onValueChange={handleTransitionChange}>
+                      <SelectTrigger
+                        id="bulk-transition-state"
+                        className="w-full"
+                        aria-label="전이 상태"
+                      >
+                        <SelectValue placeholder="상태를 선택하세요" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {transitions.map((transition) => (
+                          <SelectItem key={transition.toStateKey} value={transition.toStateKey}>
+                            {transition.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                {/* 교집합 0건 안내 */}
-                {hasNoCommonTransitions ? (
-                  <p className="text-sm text-muted-foreground">
-                    선택한 이슈들이 공통으로 이동할 수 있는 상태가 없습니다.
-                  </p>
-                ) : (
-                  <div className="space-y-3">
+                  {/* DONE 전이 선택 시 resolution 드롭다운 (B14) */}
+                  {isDoneTransition && (
                     <div>
-                      <label htmlFor="bulk-transition-state" className="text-sm font-medium mb-1 block">
-                        전이 상태
+                      <label htmlFor="bulk-transition-resolution" className="text-sm font-medium mb-1 block">
+                        결의안
                       </label>
-                      <Select value={selectedStateKey} onValueChange={handleTransitionChange}>
+                      <Select value={selectedResolutionId} onValueChange={setSelectedResolutionId}>
                         <SelectTrigger
-                          id="bulk-transition-state"
+                          id="bulk-transition-resolution"
                           className="w-full"
-                          aria-label="전이 상태"
+                          aria-label="결의안"
                         >
-                          <SelectValue placeholder="상태를 선택하세요" />
+                          <SelectValue placeholder="결의안을 선택하세요" />
                         </SelectTrigger>
                         <SelectContent>
-                          {transitions.map((transition) => (
-                            <SelectItem key={transition.toStateKey} value={transition.toStateKey}>
-                              {transition.name}
+                          {resolutions.map((resolution) => (
+                            <SelectItem key={resolution.id} value={resolution.id}>
+                              {resolution.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
 
-                    {/* DONE 전이 선택 시 resolution 드롭다운 (B14) */}
-                    {isDoneTransition && (
-                      <div>
-                        <label htmlFor="bulk-transition-resolution" className="text-sm font-medium mb-1 block">
-                          결의안
-                        </label>
-                        <Select value={selectedResolutionId} onValueChange={setSelectedResolutionId}>
-                          <SelectTrigger
-                            id="bulk-transition-resolution"
-                            className="w-full"
-                            aria-label="결의안"
-                          >
-                            <SelectValue placeholder="결의안을 선택하세요" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {resolutions.map((resolution) => (
-                              <SelectItem key={resolution.id} value={resolution.id}>
-                                {resolution.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* 액션 버튼 */}
-          <div className="flex justify-end gap-2 mt-6">
-            <DialogPrimitive.Close asChild>
-              <Button variant="outline" size="sm">
-                취소
-              </Button>
-            </DialogPrimitive.Close>
-            <Button
-              size="sm"
-              disabled={!canSubmit || submitBulkOperation.isPending}
-              onClick={() => { void handleApply() }}
-            >
-              적용
+        {/* 액션 버튼 */}
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline" size="sm">
+              취소
             </Button>
-          </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+          </DialogClose>
+          <Button
+            size="sm"
+            disabled={!canSubmit || submitBulkOperation.isPending}
+            onClick={() => { void handleApply() }}
+          >
+            적용
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

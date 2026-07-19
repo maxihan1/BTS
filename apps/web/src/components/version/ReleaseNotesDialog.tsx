@@ -1,7 +1,15 @@
 // 버전 릴리즈 노트 미리보기 + 클립보드 복사 다이얼로그 (FR-VR-04 Task 6)
 import { useState, useCallback } from 'react'
 import type { JSX } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useReleaseNotes } from '@/hooks/use-versions'
 import { versionLabels } from '@/i18n/version-labels'
@@ -27,16 +35,6 @@ interface ReleaseNotesDialogProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 내부 상수 — Tailwind 클래스
-// ─────────────────────────────────────────────────────────────────────────────
-
-const OVERLAY_CLASS =
-  'fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0'
-
-const CONTENT_CLASS =
-  'fixed left-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 flex flex-col max-h-[80vh]'
-
-// ─────────────────────────────────────────────────────────────────────────────
 // ReleaseNotesDialog
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -49,7 +47,7 @@ const CONTENT_CLASS =
  * - 성공 시: markdown을 pre 태그로 렌더 + 클립보드 복사 버튼.
  * - 클립보드 실패(secure-context 아님 등): graceful — 에러 throw 없이 사용자에게 안내.
  * - projectKey는 부모(VersionRow)에서 props로 전달받는다 — router context 의존 없음.
- * - radix Dialog 직접 import (shadcn Dialog 래퍼 부재 패턴 — AddAccountDialog.tsx 동형).
+ * - shadcn Dialog 래퍼(`@/components/ui/dialog`) 위에 build (CloneIssueDialog.tsx 동형).
  *
  * @param versionId 릴리즈 노트를 조회할 버전 UUID
  * @param versionName dialog 제목에 표시할 버전 이름
@@ -100,88 +98,82 @@ export function ReleaseNotesDialog({
   }
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={handleOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className={OVERLAY_CLASS} />
-
-        <DialogPrimitive.Content className={CONTENT_CLASS}>
-          {/* 제목 */}
-          <DialogPrimitive.Title className="text-lg font-semibold mb-1 shrink-0">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>
             {versionName} {labels.dialogTitleSuffix}
-          </DialogPrimitive.Title>
+          </DialogTitle>
+          <DialogDescription>{labels.dialogDescription}</DialogDescription>
+        </DialogHeader>
 
-          <p className="text-sm text-muted-foreground mb-4 shrink-0">
-            {labels.dialogDescription}
-          </p>
-
-          {/* 콘텐츠 영역 */}
-          <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-            {isLoading && (
-              <div
-                role="status"
-                aria-label={labels.loadingAriaLabel}
-                className="flex items-center justify-center py-8"
-              >
-                <span className="text-sm text-muted-foreground animate-pulse">
-                  {labels.loadingText}
-                </span>
-              </div>
-            )}
-
-            {isError && (
-              <div
-                role="alert"
-                className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-              >
-                {labels.errorMessage}
-              </div>
-            )}
-
-            {releaseNotes !== undefined && !isLoading && !isError && (
-              <div
-                role="region"
-                aria-label={labels.contentAriaLabel}
-                className="flex-1 overflow-auto rounded-md border bg-muted/30 p-4 min-h-0"
-              >
-                <pre className="text-sm font-mono whitespace-pre-wrap break-words">
-                  {releaseNotes.markdown}
-                </pre>
-              </div>
-            )}
-          </div>
-
-          {/* 액션 버튼 */}
-          <div className="flex items-center justify-between mt-4 shrink-0">
-            {/* 이슈 수 메타정보 */}
-            {releaseNotes !== undefined ? (
-              <span className="text-xs text-muted-foreground">
-                {labels.issueCountLabel(releaseNotes.issueCount)}
+        {/* 콘텐츠 영역 */}
+        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+          {isLoading && (
+            <div
+              role="status"
+              aria-label={labels.loadingAriaLabel}
+              className="flex items-center justify-center py-8"
+            >
+              <span className="text-sm text-muted-foreground animate-pulse">
+                {labels.loadingText}
               </span>
-            ) : (
-              <span />
+            </div>
+          )}
+
+          {isError && (
+            <div
+              role="alert"
+              className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            >
+              {labels.errorMessage}
+            </div>
+          )}
+
+          {releaseNotes !== undefined && !isLoading && !isError && (
+            <div
+              role="region"
+              aria-label={labels.contentAriaLabel}
+              className="flex-1 overflow-auto rounded-md border bg-muted/30 p-4 min-h-0"
+            >
+              <pre className="text-sm font-mono whitespace-pre-wrap break-words">
+                {releaseNotes.markdown}
+              </pre>
+            </div>
+          )}
+        </div>
+
+        {/* 액션 버튼 */}
+        <DialogFooter className="sm:justify-between items-center">
+          {/* 이슈 수 메타정보 */}
+          {releaseNotes !== undefined ? (
+            <span className="text-xs text-muted-foreground">
+              {labels.issueCountLabel(releaseNotes.issueCount)}
+            </span>
+          ) : (
+            <span />
+          )}
+
+          <div className="flex gap-2">
+            {releaseNotes !== undefined && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { void handleCopy() }}
+                aria-label={labels.copyButtonAriaLabel}
+              >
+                {copyButtonLabel()}
+              </Button>
             )}
 
-            <div className="flex gap-2">
-              {releaseNotes !== undefined && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => { void handleCopy() }}
-                  aria-label={labels.copyButtonAriaLabel}
-                >
-                  {copyButtonLabel()}
-                </Button>
-              )}
-
-              <DialogPrimitive.Close asChild>
-                <Button variant="outline" size="sm">
-                  {labels.closeButton}
-                </Button>
-              </DialogPrimitive.Close>
-            </div>
+            <DialogClose asChild>
+              <Button variant="outline" size="sm">
+                {labels.closeButton}
+              </Button>
+            </DialogClose>
           </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

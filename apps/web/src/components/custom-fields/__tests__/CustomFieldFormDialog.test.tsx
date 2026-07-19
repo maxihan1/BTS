@@ -71,6 +71,12 @@ describe('CustomFieldFormDialog — S1 create 모드 렌더', () => {
     expect(screen.getByText('커스텀 필드 추가')).toBeInTheDocument()
   })
 
+  it('흡수 후 우상단 X 닫기 버튼(Jira 시각 통일)이 렌더된다', () => {
+    renderCreateDialog()
+    // ui/dialog 래퍼로 흡수되면 DialogContent가 우상단 X(sr-only "Close")를 강제 렌더한다.
+    expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument()
+  })
+
   it('create 모드에서 키 입력 필드가 활성화 상태이다', () => {
     renderCreateDialog()
     const keyInput = screen.getByLabelText('키')

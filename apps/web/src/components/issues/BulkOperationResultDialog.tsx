@@ -1,6 +1,14 @@
 // 일괄 작업 결과 패널 Dialog — 폴링·진행률·성공/실패 결과 표시
 import type { JSX } from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 import { useBulkOperationPolling } from '@/hooks/use-bulk-operation'
 import { failureReasonLabels, statusLabels, getFailureReasonLabel } from '@/i18n/bulk-operation-labels'
 import type { BulkOperationResponse } from '@/api/bulk-operations'
@@ -157,57 +165,51 @@ export function BulkOperationResultDialog({
   const { data, isError } = useBulkOperationPolling(bulkOperationId, open)
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>일괄 작업 결과</DialogTitle>
+        </DialogHeader>
 
-        <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-        >
-          <DialogPrimitive.Title className="text-lg font-semibold mb-4">
-            일괄 작업 결과
-          </DialogPrimitive.Title>
-
-          {/* 폴링 에러 */}
-          {isError && (
-            <div
-              role="alert"
-              className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-            >
-              작업 상태를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
-            </div>
-          )}
-
-          {/* 진행률 + 결과 */}
-          {data !== undefined && !isError && (
-            <>
-              <ProgressPanel data={data} />
-              <FailureList items={data.items} />
-            </>
-          )}
-
-          {/* 초기 로딩(데이터 없고 에러도 없음) */}
-          {data === undefined && !isError && (
-            <div
-              role="status"
-              aria-live="polite"
-              aria-label="작업 상태 로딩 중"
-              className="text-sm text-muted-foreground"
-            >
-              작업 상태를 불러오는 중...
-            </div>
-          )}
-
-          {/* 닫기 버튼 */}
-          <div className="flex justify-end mt-6">
-            <DialogPrimitive.Close
-              className="rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent transition-colors"
-            >
-              닫기
-            </DialogPrimitive.Close>
+        {/* 폴링 에러 */}
+        {isError && (
+          <div
+            role="alert"
+            className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+          >
+            작업 상태를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
           </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        )}
+
+        {/* 진행률 + 결과 */}
+        {data !== undefined && !isError && (
+          <>
+            <ProgressPanel data={data} />
+            <FailureList items={data.items} />
+          </>
+        )}
+
+        {/* 초기 로딩(데이터 없고 에러도 없음) */}
+        {data === undefined && !isError && (
+          <div
+            role="status"
+            aria-live="polite"
+            aria-label="작업 상태 로딩 중"
+            className="text-sm text-muted-foreground"
+          >
+            작업 상태를 불러오는 중...
+          </div>
+        )}
+
+        {/* 닫기 버튼 */}
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline" size="sm">
+              닫기
+            </Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

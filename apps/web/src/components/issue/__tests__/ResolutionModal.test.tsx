@@ -140,6 +140,13 @@ describe('ResolutionModal (FR-IS-07 B9)', () => {
     expect(screen.getByText('종료 결의안 선택')).toBeInTheDocument()
   })
 
+  it('흡수 후 우상단 X 닫기 버튼(Jira 시각 통일)이 렌더된다', () => {
+    renderModal({ open: true })
+
+    // ui/dialog 래퍼로 흡수되면 DialogContent가 우상단 X(sr-only "Close")를 강제 렌더한다.
+    expect(screen.getByRole('button', { name: /close/i })).toBeTruthy()
+  })
+
   it('B9-T2: open=false → 모달이 표시되지 않아야 한다', () => {
     renderModal({ open: false })
 

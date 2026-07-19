@@ -2,8 +2,15 @@
 import type { JSX } from 'react'
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { Dialog as DialogPrimitive } from 'radix-ui'
 import { toast } from 'sonner'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { previewMove, useMoveIssue, extractMoveErrorCode, MOVE_ERROR_CODES } from '@/api/issue-move'
@@ -45,8 +52,7 @@ interface MoveIssueDialogProps {
  *   - 필수 커스텀필드 입력
  * Step 3(실행): move 호출 → 성공 시 새 키로 navigate + toast.
  *
- * Dialog는 radix-ui Dialog 직접 사용 (AddMemberDialog 선례).
- * 의존성 추가 없음 (절대규칙 #17).
+ * Dialog는 ui/dialog 흡수 래퍼(shadcn) 사용 — 우상단 X 닫기 버튼 공통 제공.
  */
 export function MoveIssueDialog({
   issueKey,
@@ -225,145 +231,141 @@ export function MoveIssueDialog({
 
   // ── 렌더 ──────────────────────────────────────────────────────────────
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={handleOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent
+        className="max-w-lg max-h-[90vh] overflow-y-auto"
+        aria-describedby={undefined}
+      >
+        <DialogHeader>
+          <DialogTitle>{s.dialogTitle}</DialogTitle>
+        </DialogHeader>
 
-        <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background p-6 shadow-xl data-[state=open]:animate-in data-[state=closed]:animate-out max-h-[90vh] overflow-y-auto"
-          aria-describedby={undefined}
-        >
-          <DialogPrimitive.Title className="text-lg font-semibold mb-4">
-            {s.dialogTitle}
-          </DialogPrimitive.Title>
-
-          {/* ── Step 1 — 대상 프로젝트 키 입력 ── */}
-          {step === 1 && (
-            <div className="space-y-4">
-              <h2 className="text-sm font-medium text-muted-foreground">{s.step1Title}</h2>
-              <div>
-                <label
-                  htmlFor="move-target-project-key"
-                  className="text-sm font-medium block mb-1"
-                >
-                  {s.targetProjectKeyLabel}
-                </label>
-                <Input
-                  id="move-target-project-key"
-                  aria-label={s.targetProjectKeyLabel}
-                  value={targetProjectKey}
-                  onChange={(e) => setTargetProjectKey(e.target.value)}
-                  placeholder={s.targetProjectKeyPlaceholder}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && targetProjectKey.trim() !== '') {
-                      void handleNext()
-                    }
-                  }}
-                />
-              </div>
-
-              {previewError !== null && (
-                <p className="text-sm text-destructive" role="alert">
-                  {previewError}
-                </p>
-              )}
-
-              {isPreviewLoading && (
-                <p className="text-sm text-muted-foreground">{s.previewLoading}</p>
-              )}
-
-              <div className="flex justify-end gap-2 mt-4">
-                <DialogPrimitive.Close asChild>
-                  <Button variant="outline" size="sm">
-                    {s.cancelButton}
-                  </Button>
-                </DialogPrimitive.Close>
-                <Button
-                  size="sm"
-                  disabled={targetProjectKey.trim() === '' || isPreviewLoading}
-                  onClick={() => { void handleNext() }}
-                >
-                  {s.nextButton}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* ── Step 2 — 매핑 확인 ── */}
-          {step === 2 && preview !== null && rootMapping !== null && (
-            <div className="space-y-4">
-              <h2 className="text-sm font-medium text-muted-foreground">{s.step2Title}</h2>
-
-              {/* 루트 이슈 섹션 */}
-              <NodeMappingSection
-                nodeId="root"
-                label={s.rootIssueSectionHeader}
-                targetStates={preview.workflow.targetStates}
-                compatible={preview.workflow.compatible}
-                currentComponents={preview.components.current}
-                targetComponents={preview.components.target}
-                currentAffectsVersions={preview.affectsVersions.current}
-                targetAffectsVersions={preview.affectsVersions.target}
-                currentFixVersions={preview.fixVersions.current}
-                targetFixVersions={preview.fixVersions.target}
-                removedFields={preview.customFields.removed}
-                requiredMissingFields={preview.customFields.requiredMissing}
-                mappingState={rootMapping}
-                onChange={setRootMapping}
+        {/* ── Step 1 — 대상 프로젝트 키 입력 ── */}
+        {step === 1 && (
+          <div className="space-y-4">
+            <h2 className="text-sm font-medium text-muted-foreground">{s.step1Title}</h2>
+            <div>
+              <label
+                htmlFor="move-target-project-key"
+                className="text-sm font-medium block mb-1"
+              >
+                {s.targetProjectKeyLabel}
+              </label>
+              <Input
+                id="move-target-project-key"
+                aria-label={s.targetProjectKeyLabel}
+                value={targetProjectKey}
+                onChange={(e) => setTargetProjectKey(e.target.value)}
+                placeholder={s.targetProjectKeyPlaceholder}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && targetProjectKey.trim() !== '') {
+                    void handleNext()
+                  }
+                }}
               />
-
-              {/* 서브태스크 섹션 */}
-              {preview.subtasks.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium mb-2">{s.subtaskSectionHeader}</p>
-                  {preview.subtasks.map((child: SubtaskPreviewNode) => {
-                    const childState = subtaskMappings[child.issueKey]
-                    if (childState === undefined) return null
-                    return (
-                      <NodeMappingSection
-                        key={child.issueKey}
-                        nodeId={child.issueKey}
-                        label={child.issueKey}
-                        targetStates={child.workflow.targetStates}
-                        compatible={child.workflow.compatible}
-                        currentComponents={child.components.current}
-                        targetComponents={child.components.target}
-                        currentAffectsVersions={child.affectsVersions.current}
-                        targetAffectsVersions={child.affectsVersions.target}
-                        currentFixVersions={child.fixVersions.current}
-                        targetFixVersions={child.fixVersions.target}
-                        removedFields={child.customFields.removed}
-                        requiredMissingFields={child.customFields.requiredMissing}
-                        mappingState={childState}
-                        onChange={(next) =>
-                          setSubtaskMappings((prev) => ({ ...prev, [child.issueKey]: next }))
-                        }
-                      />
-                    )
-                  })}
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2 mt-4">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setStep(1)}
-                >
-                  {s.backButton}
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={!isMoveEnabled() || moveMutation.isPending}
-                  onClick={handleMove}
-                >
-                  {s.moveButton}
-                </Button>
-              </div>
             </div>
-          )}
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+
+            {previewError !== null && (
+              <p className="text-sm text-destructive" role="alert">
+                {previewError}
+              </p>
+            )}
+
+            {isPreviewLoading && (
+              <p className="text-sm text-muted-foreground">{s.previewLoading}</p>
+            )}
+
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline" size="sm">
+                  {s.cancelButton}
+                </Button>
+              </DialogClose>
+              <Button
+                size="sm"
+                disabled={targetProjectKey.trim() === '' || isPreviewLoading}
+                onClick={() => { void handleNext() }}
+              >
+                {s.nextButton}
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+
+        {/* ── Step 2 — 매핑 확인 ── */}
+        {step === 2 && preview !== null && rootMapping !== null && (
+          <div className="space-y-4">
+            <h2 className="text-sm font-medium text-muted-foreground">{s.step2Title}</h2>
+
+            {/* 루트 이슈 섹션 */}
+            <NodeMappingSection
+              nodeId="root"
+              label={s.rootIssueSectionHeader}
+              targetStates={preview.workflow.targetStates}
+              compatible={preview.workflow.compatible}
+              currentComponents={preview.components.current}
+              targetComponents={preview.components.target}
+              currentAffectsVersions={preview.affectsVersions.current}
+              targetAffectsVersions={preview.affectsVersions.target}
+              currentFixVersions={preview.fixVersions.current}
+              targetFixVersions={preview.fixVersions.target}
+              removedFields={preview.customFields.removed}
+              requiredMissingFields={preview.customFields.requiredMissing}
+              mappingState={rootMapping}
+              onChange={setRootMapping}
+            />
+
+            {/* 서브태스크 섹션 */}
+            {preview.subtasks.length > 0 && (
+              <div>
+                <p className="text-xs font-medium mb-2">{s.subtaskSectionHeader}</p>
+                {preview.subtasks.map((child: SubtaskPreviewNode) => {
+                  const childState = subtaskMappings[child.issueKey]
+                  if (childState === undefined) return null
+                  return (
+                    <NodeMappingSection
+                      key={child.issueKey}
+                      nodeId={child.issueKey}
+                      label={child.issueKey}
+                      targetStates={child.workflow.targetStates}
+                      compatible={child.workflow.compatible}
+                      currentComponents={child.components.current}
+                      targetComponents={child.components.target}
+                      currentAffectsVersions={child.affectsVersions.current}
+                      targetAffectsVersions={child.affectsVersions.target}
+                      currentFixVersions={child.fixVersions.current}
+                      targetFixVersions={child.fixVersions.target}
+                      removedFields={child.customFields.removed}
+                      requiredMissingFields={child.customFields.requiredMissing}
+                      mappingState={childState}
+                      onChange={(next) =>
+                        setSubtaskMappings((prev) => ({ ...prev, [child.issueKey]: next }))
+                      }
+                    />
+                  )
+                })}
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setStep(1)}
+              >
+                {s.backButton}
+              </Button>
+              <Button
+                size="sm"
+                disabled={!isMoveEnabled() || moveMutation.isPending}
+                onClick={handleMove}
+              >
+                {s.moveButton}
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }

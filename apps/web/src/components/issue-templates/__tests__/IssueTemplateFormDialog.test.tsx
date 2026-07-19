@@ -140,6 +140,11 @@ describe('IssueTemplateFormDialog — S1 create 모드 렌더', () => {
     renderCreateDialog()
     expect(screen.getByLabelText('본문 (Markdown)')).toBeInTheDocument()
   })
+
+  it('우상단 X 닫기 버튼이 렌더된다 (ui/dialog 래퍼 흡수 계약)', () => {
+    renderCreateDialog()
+    expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

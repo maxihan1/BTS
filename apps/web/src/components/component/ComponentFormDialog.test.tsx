@@ -66,6 +66,21 @@ describe('ComponentFormDialog — 생성 모드', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
+  it('우상단 X 닫기 버튼이 렌더된다 (ui/dialog 래퍼 흡수 계약)', () => {
+    const Wrapper = createWrapper()
+    render(
+      <ComponentFormDialog
+        open={true}
+        mode="create"
+        onSubmit={vi.fn()}
+        onOpenChange={vi.fn()}
+      />,
+      { wrapper: Wrapper },
+    )
+
+    expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument()
+  })
+
   it('생성 모드에서 이름 필드가 빈 상태로 렌더된다', () => {
     const Wrapper = createWrapper()
     render(

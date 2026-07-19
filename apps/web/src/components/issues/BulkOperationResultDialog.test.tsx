@@ -282,4 +282,21 @@ describe('BulkOperationResultDialog', () => {
       dialog.hasAttribute('aria-labelledby') || dialog.hasAttribute('aria-label'),
     ).toBe(true)
   })
+
+  // BORD-11: 푸터에 닫기 버튼이 표시된다
+  it('BORD-11: 푸터에 "닫기" 버튼이 표시된다', async () => {
+    server.use(
+      http.get(`/api/v1/bulk-operations/${BULK_ID}`, () =>
+        HttpResponse.json(PENDING_RESPONSE),
+      ),
+    )
+
+    renderDialog()
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    expect(screen.getByRole('button', { name: '닫기' })).toBeInTheDocument()
+  })
 })
