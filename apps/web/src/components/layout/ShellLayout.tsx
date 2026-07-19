@@ -22,6 +22,14 @@ import { Sidebar } from './Sidebar'
  * header/aside가 main 밖에 위치해 landmark가 오염되지 않는다. 콘텐츠 영역은 `overflow-y-auto`로
  * 독립 스크롤한다(NFR2 — 좁은 폭에서도 body가 아닌 컨테이너가 스크롤).
  *
+ * 랜드마크 소유 맵(PR12 이후, 페이지당 각 1개).
+ * - `banner` — `TopBar`의 `<header>` (인증 분기만, `_shell` 크롬 최상단)
+ * - `main` — 이 컴포넌트(`ShellLayout`)가 양 분기 모두 직접 소유. `login.tsx`는 `_shell` 밖
+ *   (rootRoute 직속)이라 ShellLayout의 main을 물려받지 못하므로 별도로 자체 `<main>`을 렌더한다.
+ * - `complementary` — `Sidebar`의 `<aside>` (인증 분기만)
+ * `RootLayout`(`__root.tsx`)은 더 이상 `<main>`을 렌더하지 않는다 — 렌더하면 이 셋이 모두 그
+ * `<main>` 안에 중첩돼 header/aside의 landmark role이 오염된다(이중 main 방지 목적도 겸함).
+ *
  * ★ 도움말 버튼(TopBar `onHelpClick`)은 전달하지 않는다 — `ShortcutsHelpDialog`와 그 열림
  * 상태는 여전히 `RootLayout`이 소유하며(FR6, G1), `ShellLayout`은 `Outlet`을 통해 렌더되는
  * 자손이라 그 상태에 prop으로 접근할 수 없다. `TopBar`는 `onHelpClick` 미전달 시 도움말
