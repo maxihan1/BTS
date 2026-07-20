@@ -174,4 +174,30 @@
 - **한 PR=한 BC deviation**: issue-tracking(T1)+identity-access(T2)+apps/web. 게이트1 근거 명시. cross-BC import 0(각 모듈 내). :modules:app 조립 부팅 검증([[prod-assembly-boot-verification-required]]).
 - 추가 검증: typecheck·lint·vitest 전수·playwright·:modules:app:test·verify-master-plan.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 집중 리뷰 (eng+design+security 렌즈, 2026-07-20)
+
+**right-size 근거**: type=ui라 라우팅은 plan-design-review이나, 디자인=기존 ADS v2 적용(Maxi D1 확정·신규 시각시스템 0)이라 design-review 가치 낮음. 진짜 리스크(아키텍처·보안·네비)에 집중 렌즈 적용([[bts-review-plan-autoplan-overkill]]). PR11~13(동일 ADS 적용) 선례 동형. **BLOCKER: 없음.**
+
+**엔지니어링/아키텍처**
+- ✅ DTO invent 방지 순서 정합 — T3(프론트 Zod) depends-on [T1,T2]. BE 계약 먼저, MSW mock이 실응답과 일치.
+- ✅ RouteAdapter/Page 분리로 router.ts 단일소유(T7)·화면 T4~6 shared-file 미충돌([[parallel-fr-overlapping-frontend-infra-collision]] 방어). Page는 props 기반 단위테스트(members 선례).
+- ✅ 의존 그래프 비순환. T7 depends-on [4,5,6](컴포넌트 실재 후 import), T8 depends-on [7](라우트 배선 후 E2E).
+- ⚠️ **W1 (게이트1 확인)** 한 PR=한 BC deviation — issue-tracking(T1)+identity-access(T2)+apps/web. 정당(UI가 cross-BC 읽기노출 필요·PR-2 D10 선례) but 조립부팅 재검증 필수([[prod-assembly-boot-verification-required]], DoD-6). cross-BC import 0.
+- ⚠️ **W2** i18n 라벨 shared-file — T4/5/6 병렬 시 공용 라벨 파일 동시편집 충돌 가능. **처방**: 각 화면 자체 라벨 상수 or T3/T7 중앙화. impl wave 배정 시 files 교집합 확인.
+
+**보안 (BE-2 whoami.canCreateProject)**
+- ✅ `hasGlobalPermission` 위임(hasGrant 직접호출 금지·ADR D-2)·self-only(whoami 인증자 본인)·fail-closed(예외→false). 타인 권한 노출 아님.
+- ✅ 프론트 게이팅은 UX 편의뿐 — 백엔드 POST가 최종 방어(fail-closed). canCreateProject 조작/staleness가 우회로 안 됨.
+- ⚠️ **W3** whoami mock fanout — 프론트 스키마 `canCreateProject` optional(부재=false 버튼숨김·안전). prod는 항상 전송이라 실사용 정상(비대칭 무해).
+
+**디자인 (ADS v2 적용)**
+- ✅ PageLayout/PageHeader/Breadcrumb·ui/ 프리미티브만. **Breadcrumb 첫 실소비처**(PR13 산출 활성화 — "소비처 부재" 해소).
+- ⚠️ **W4** 아카이브 확인 UX — 파괴적이나 가역(unarchive 존재). AlertDialog 래퍼 미신설(별도 스코프)이라 확인이 필요하면 `ui/dialog`(기존) 사용 or 인라인 danger zone 버튼. impl서 결정.
+- ✅ empty-state·badge·table·switch 전부 기존 프리미티브.
+
+**네비 (스펙 §Brainstorming)**
+- ⚠️ **G2/G3 게이트1 확인** — G2(/projects 진입점=사이드바 "모든 프로젝트")·G3(아카이브 행→settings/details). aria-label exact 매칭 계약 준수(T7 navigation-contract.test).
+
+**요약**: BLOCKER 0. WARN 4(W1~4) + 게이트1 확인 3(W1·G2·G3). W2는 impl wave 배정 시, W3/W4는 impl 시 처리.
