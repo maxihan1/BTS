@@ -25,6 +25,7 @@ const detailsLabels = {
     fallbackHeading: '프로젝트 설정',
     description: '프로젝트 이름을 변경하고 아카이브 상태를 관리합니다.',
     loading: '로딩 중...',
+    loadError: '프로젝트를 불러오지 못했습니다.',
   },
   form: {
     nameLabel: '프로젝트 이름',
@@ -94,6 +95,18 @@ export function ProjectDetailsSettingsPage({
 
   if (isNotFoundLike) {
     return <ProjectNotFoundScreen />
+  }
+
+  // 404/403 외 에러(500·네트워크·세션만료·스키마 드리프트 등) — 조기 return하지 않으면
+  // project가 계속 undefined라 아래 isLoading 삼항이 영구 로딩으로 낙하한다.
+  if (isError) {
+    return (
+      <PageLayout maxWidth="2xl">
+        <div role="alert" className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+          {detailsLabels.page.loadError}
+        </div>
+      </PageLayout>
+    )
   }
 
   return (
