@@ -190,6 +190,17 @@ describe('ProjectDetailsSettingsPage', () => {
     expect(screen.getAllByText(/접근 권한이 없습니다/).length).toBeGreaterThanOrEqual(1)
   })
 
+  it('T6-2c: 500(제네릭) 에러이면 role="alert" 에러 배너가 표시된다(로딩 무한 아님)', () => {
+    mockProject(undefined, {
+      isError: true,
+      error: new ApiError(500, { errorCode: 'INTERNAL_SERVER_ERROR' }),
+    })
+    renderPage()
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.queryByText(/로딩 중/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/접근 권한이 없습니다/)).not.toBeInTheDocument()
+  })
+
   it('T6-3: 정상 로드 시 프로젝트 이름이 h1로 표시된다', () => {
     mockProject(activeProject)
     renderPage()
