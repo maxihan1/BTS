@@ -156,14 +156,10 @@ describe('TopBar', () => {
     expect(onHelpClick).toHaveBeenCalledTimes(1)
   })
 
-  it('설정 링크가 존재하고 죽은 인덱스 라우트(/settings)가 아닌 실재 서브라우트로 연결된다', () => {
+  it('설정 링크가 /settings 인덱스 라우트로 연결된다', () => {
     renderTopBar()
 
-    const settingsLink = screen.getByRole('link', { name: '설정' })
-    const href = settingsLink.getAttribute('href')
-    expect(href).not.toBeNull()
-    expect(href).not.toBe('/settings')
-    expect(href?.startsWith('/settings/')).toBe(true)
+    expect(screen.getByRole('link', { name: '설정' })).toHaveAttribute('href', '/settings')
   })
 
   it('계정 드롭다운 트리거가 존재한다', () => {
