@@ -1,6 +1,8 @@
 // FR-WF-02 D7 E2E-3 — 표준 스킴 보호 (삭제 disabled + tooltip + name/description disabled + key readonly)
+// FR-UX-06 PR13 Task 9 회귀 수정 — /admin/workflow-schemes에 SYSTEM_ADMIN 가드 추가(Task 8)로
+// 비-admin alice는 /dashboard로 redirect된다. loginAsSystemAdmin으로 갱신.
 import { test, expect } from '@playwright/test'
-import { loginAsAlice, navigateToSchemeDetail, i18nLabels } from './fixtures/workflow-scheme-fixtures'
+import { loginAsSystemAdmin, navigateToSchemeDetail, i18nLabels } from './fixtures/workflow-scheme-fixtures'
 
 const labels = i18nLabels.workflowScheme
 
@@ -24,8 +26,8 @@ const STANDARD_SCHEME_KEY = 'software-default-scheme'
 
 test.describe('E2E-3 표준 스킴 보호', () => {
   test.beforeEach(async ({ page }) => {
-    // Given. alice 로그인 + 표준 스킴 상세 진입
-    await loginAsAlice(page)
+    // Given. SYSTEM_ADMIN alice 로그인(Task 8 가드) + 표준 스킴 상세 진입
+    await loginAsSystemAdmin(page)
     await navigateToSchemeDetail(page, STANDARD_SCHEME_KEY)
   })
 
