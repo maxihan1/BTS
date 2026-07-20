@@ -122,7 +122,7 @@ describe('useUpdateProjectName', () => {
   })
 
   it('수정 성공 시 단건(useProject) 쿼리가 invalidate되어 새 이름이 반영된다', async () => {
-    const { wrapper } = createWrapper()
+    const { client, wrapper } = createWrapper()
 
     const detailHook = renderHook(() => useProject('ATLAS'), { wrapper })
     await waitFor(() => expect(detailHook.result.current.isSuccess).toBe(true))
@@ -133,7 +133,12 @@ describe('useUpdateProjectName', () => {
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    await waitFor(() => expect(detailHook.result.current.data?.name).toBe('아틀라스 개명'))
+
+    // invalidate 후 refetch — 캐시에 새 이름이 반영돼야 한다
+    await waitFor(() => {
+      const cached = client.getQueryData<Project>(['project', 'ATLAS'])
+      expect(cached?.name).toBe('아틀라스 개명')
+    })
   })
 })
 
@@ -148,7 +153,7 @@ describe('useArchiveProject', () => {
   })
 
   it('아카이브 성공 시 단건(useProject) 쿼리가 invalidate되어 archived:true가 반영된다', async () => {
-    const { wrapper } = createWrapper()
+    const { client, wrapper } = createWrapper()
 
     const detailHook = renderHook(() => useProject('ATLAS'), { wrapper })
     await waitFor(() => expect(detailHook.result.current.isSuccess).toBe(true))
@@ -160,7 +165,12 @@ describe('useArchiveProject', () => {
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    await waitFor(() => expect(detailHook.result.current.data?.archived).toBe(true))
+
+    // invalidate 후 refetch — 캐시에 archived:true가 반영돼야 한다
+    await waitFor(() => {
+      const cached = client.getQueryData<Project>(['project', 'ATLAS'])
+      expect(cached?.archived).toBe(true)
+    })
   })
 })
 
@@ -171,7 +181,7 @@ describe('useUnarchiveProject', () => {
   })
 
   it('아카이브 해제 성공 시 단건(useProject) 쿼리가 invalidate되어 archived:false가 반영된다', async () => {
-    const { wrapper } = createWrapper()
+    const { client, wrapper } = createWrapper()
 
     // NOVA는 project-handlers.ts 시드에서 archived:true로 초기화된다
     const detailHook = renderHook(() => useProject('NOVA'), { wrapper })
@@ -184,6 +194,11 @@ describe('useUnarchiveProject', () => {
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    await waitFor(() => expect(detailHook.result.current.data?.archived).toBe(false))
+
+    // invalidate 후 refetch — 캐시에 archived:false가 반영돼야 한다
+    await waitFor(() => {
+      const cached = client.getQueryData<Project>(['project', 'NOVA'])
+      expect(cached?.archived).toBe(false)
+    })
   })
 })
