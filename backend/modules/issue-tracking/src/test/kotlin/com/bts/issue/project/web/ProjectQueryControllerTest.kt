@@ -120,6 +120,7 @@ class ProjectQueryControllerTest {
             .andExpect(jsonPath("$.data[0].id").value(visibleProjectId.toString()))
             .andExpect(jsonPath("$.data[0].key").value(visibleProjectKey))
             .andExpect(jsonPath("$.data[0].name").value(visibleProjectName))
+            .andExpect(jsonPath("$.data[0].archived").value(false))
 
         // 추출된 actorId 가 서비스로 전달됨(CurrentActor → 서비스 결선) 검증
         verify(exactly = 1) { projectQueryService.listAccessible(memberActorId) }
@@ -164,6 +165,7 @@ class ProjectQueryControllerTest {
             .andExpect(jsonPath("$.data.id").value(visibleProjectId.toString()))
             .andExpect(jsonPath("$.data.key").value(visibleProjectKey))
             .andExpect(jsonPath("$.data.name").value(visibleProjectName))
+            .andExpect(jsonPath("$.data.archived").value(false))
 
         // 추출된 actorId 가 서비스로 전달됨(CurrentActor → 서비스 결선) 검증
         verify(exactly = 1) { projectQueryService.getOne(memberActorId, visibleProjectKey) }
