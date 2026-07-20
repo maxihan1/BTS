@@ -56,11 +56,6 @@ import {
 } from '@/routes/projects.$projectKey.settings.details'
 import { useProject } from '@/hooks/use-project'
 import { useProjectPermissions } from '@/hooks/use-project-permissions'
-import {
-  useUpdateProjectName,
-  useArchiveProject,
-  useUnarchiveProject,
-} from '@/hooks/use-project-mutations'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
@@ -183,7 +178,7 @@ describe('ProjectDetailsSettingsPage', () => {
       error: new ApiError(404, { errorCode: 'ISSUE_PROJECT_NOT_FOUND' }),
     })
     renderPage()
-    expect(screen.getByText(/접근 권한이 없습니다/)).toBeInTheDocument()
+    expect(screen.getAllByText(/접근 권한이 없습니다/).length).toBeGreaterThanOrEqual(1)
   })
 
   it('T6-2b: 403(ISSUE_PROJECT_FORBIDDEN, 비멤버) 에러이면 ProjectNotFoundScreen을 렌더한다', () => {
@@ -192,7 +187,7 @@ describe('ProjectDetailsSettingsPage', () => {
       error: new ApiError(403, { errorCode: 'ISSUE_PROJECT_FORBIDDEN' }),
     })
     renderPage()
-    expect(screen.getByText(/접근 권한이 없습니다/)).toBeInTheDocument()
+    expect(screen.getAllByText(/접근 권한이 없습니다/).length).toBeGreaterThanOrEqual(1)
   })
 
   it('T6-3: 정상 로드 시 프로젝트 이름이 h1로 표시된다', () => {
