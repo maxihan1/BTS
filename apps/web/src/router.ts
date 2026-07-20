@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 52개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 11 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + 프로젝트 CFD 1 + 프로젝트 Cycle/Lead Time 1 + settings 11 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 + Slack 연결 1 + 캘린더 1 | FR-IM-01 D6/D7: projectImportSettingsRoute /projects/$projectKey/settings/import 추가 | FR-RP-04 D6/D7: projectCycleTimeRoute /projects/$projectKey/reports/cycle-time 추가 | FR-PR-01 D6: settingsProfileRoute /settings/profile 추가 | FR-PF-01 Task 7: settingsPreferencesRoute /settings/preferences 추가 | FR-SL-01 D6/D7 Task 7: adminSlackRoute /admin/slack 추가 | FR-PF-03 Task 9: settingsKeymapRoute /settings/keymap 추가 | FR-CA-01 Task 7: calendarRoute /calendar 추가 | FR-CA-02 Task 9: settingsCalendarRoute /settings/calendar 추가 | FR-AT-01 D6 Task 8: projectAutomationSettingsRoute /projects/$projectKey/settings/automation 추가 | FR-SL-02 D6 Task 8: settingsSlackRoute /settings/slack 추가 | FR-SL-06 D6 Task 5: projectSlackChannelsRoute /projects/$projectKey/settings/slack-channels 추가)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 53개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 11 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + 프로젝트 CFD 1 + 프로젝트 Cycle/Lead Time 1 + settings 12 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 + Slack 연결 1 + 캘린더 1 | FR-IM-01 D6/D7: projectImportSettingsRoute /projects/$projectKey/settings/import 추가 | FR-RP-04 D6/D7: projectCycleTimeRoute /projects/$projectKey/reports/cycle-time 추가 | FR-PR-01 D6: settingsProfileRoute /settings/profile 추가 | FR-PF-01 Task 7: settingsPreferencesRoute /settings/preferences 추가 | FR-SL-01 D6/D7 Task 7: adminSlackRoute /admin/slack 추가 | FR-PF-03 Task 9: settingsKeymapRoute /settings/keymap 추가 | FR-CA-01 Task 7: calendarRoute /calendar 추가 | FR-CA-02 Task 9: settingsCalendarRoute /settings/calendar 추가 | FR-AT-01 D6 Task 8: projectAutomationSettingsRoute /projects/$projectKey/settings/automation 추가 | FR-SL-02 D6 Task 8: settingsSlackRoute /settings/slack 추가 | FR-SL-06 D6 Task 5: projectSlackChannelsRoute /projects/$projectKey/settings/slack-channels 추가 | FR-UX-06 PR13 Task 4: settingsIndexRoute /settings 추가)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -37,6 +37,7 @@ import { AccountLinksSettingsRouteAdapter } from './routes/settings.account-link
 import { MfaSettingsRouteAdapter } from './routes/settings.mfa'
 import { NotificationSettingsRouteAdapter } from './routes/settings.notifications'
 import { SettingsPatsRouteAdapter } from './routes/settings.pats'
+import { SettingsIndexRouteAdapter } from './routes/settings.index'
 import { ProfileSettingsRouteAdapter } from './routes/settings.profile'
 import { PreferencesSettingsRouteAdapter } from './routes/settings.preferences'
 import { KeymapSettingsRouteAdapter } from './routes/settings.keymap'
@@ -609,6 +610,15 @@ const settingsPatsRoute = createRoute({
   beforeLoad: requireAuthAndPasswordChanged,
 })
 
+/** 개인 설정 허브 인덱스 라우트 — /settings, requireAuthAndPasswordChanged (settings.sessions/notifications/pats와 동일 가드). 정확매칭이라 /settings/* 하위 11개 라우트와 충돌 없음(FR-UX-06 PR13 Task 4, PL-4) */
+const settingsIndexRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings',
+  component: SettingsIndexRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
 /** 사용자 프로필 설정 라우트 — /settings/profile, requireAuth (settings.password/mfa와 동일 단독 가드) (FR-PR-01 D6) */
 const settingsProfileRoute = createRoute({
   getParentRoute: () => shellRoute,
@@ -665,7 +675,7 @@ const calendarRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 51개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 52개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
  *   · /admin/webhooks · /admin/webhooks/:id/deliveries · /admin/slack
@@ -682,7 +692,7 @@ const calendarRoute = createRoute({
  *   · /projects/:projectKey/reports/worklog · /projects/:projectKey/reports/velocity · /projects/:projectKey/reports/cfd
  *   · /projects/:projectKey/reports/cycle-time
  *   · /settings/sessions · /settings/password · /settings/account-links · /settings/mfa
- *   · /settings/notifications · /settings/pats · /settings/profile · /settings/preferences · /settings/keymap
+ *   · /settings/notifications · /settings/pats · /settings · /settings/profile · /settings/preferences · /settings/keymap
  *   · /settings/calendar · /settings/slack
  *   · /calendar
  * requireAuth 라우트: /dashboard · /inbox · /dashboards · /dashboards/* · /search · /issues · /issues/* · /admin/* · /projects/* · /settings/* · /calendar
@@ -775,6 +785,8 @@ export const routeTree = rootRoute.addChildren([
     settingsNotificationsRoute,
     // identity-access BC — Personal Access Token 셀프서비스 관리 (FR-API-04)
     settingsPatsRoute,
+    // identity-access BC — 개인 설정 허브 인덱스 (FR-UX-06 PR13 Task 4, PL-4)
+    settingsIndexRoute,
     // identity-access BC — 사용자 프로필(이름/아바타/타임존/부서) 편집 (FR-PR-01 D6)
     settingsProfileRoute,
     // identity-access BC — 사용자 환경설정(테마/언어/날짜포맷) (FR-PF-01 Task 7)
