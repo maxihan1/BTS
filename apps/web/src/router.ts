@@ -4,6 +4,8 @@ import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled
 
 /** 대부분의 보호 라우트에 적용하는 기본 가드 체인 — 미인증 차단 + 비밀번호 변경 강제 + MFA 등록 강제 (FR-MF-04) */
 const requireAuthAndPasswordChanged = composeGuards(requireAuth, requirePasswordChanged, requireMfaEnrolled)
+/** 관리자 전용 라우트 4-가드 체인 — 미인증 차단 + SYSTEM_ADMIN 강제 + 비밀번호 변경 강제 + MFA 등록 강제. 다른 admin 라우트(audit-logs·global-permissions 등)의 인라인 composeGuards와 정확 동일 순서 (FR-UX-06 PR13 Task 8, PL-8) */
+const requireSystemAdminFull = composeGuards(requireAuth, requireSystemAdmin, requirePasswordChanged, requireMfaEnrolled)
 import { RootLayout } from './routes/__root'
 import { ShellLayout } from './components/layout/ShellLayout'
 import { IndexPage } from './routes/index'
@@ -171,31 +173,31 @@ const issuesKeyRoute = createRoute({
   beforeLoad: requireAuthAndPasswordChanged,
 })
 
-/** 워크플로우 스킴 목록 라우트 — /admin/workflow-schemes, requireAuth */
+/** 워크플로우 스킴 목록 라우트 — /admin/workflow-schemes, requireAuth + requireSystemAdmin + requirePasswordChanged + requireMfaEnrolled (다른 admin 라우트와 동일 4-가드, FR-UX-06 PR13 Task 8, PL-8) */
 const adminWorkflowSchemesRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/admin/workflow-schemes',
   component: AdminWorkflowSchemesRouteAdapter,
   staticData: { requireAuth: true },
-  beforeLoad: requireAuthAndPasswordChanged,
+  beforeLoad: requireSystemAdminFull,
 })
 
-/** 워크플로우 스킴 생성 라우트 — /admin/workflow-schemes/new, requireAuth */
+/** 워크플로우 스킴 생성 라우트 — /admin/workflow-schemes/new, requireAuth + requireSystemAdmin + requirePasswordChanged + requireMfaEnrolled (다른 admin 라우트와 동일 4-가드, FR-UX-06 PR13 Task 8, PL-8) */
 const adminWorkflowSchemesNewRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/admin/workflow-schemes/new',
   component: WorkflowSchemeNewRouteAdapter,
   staticData: { requireAuth: true },
-  beforeLoad: requireAuthAndPasswordChanged,
+  beforeLoad: requireSystemAdminFull,
 })
 
-/** 워크플로우 스킴 상세 라우트 — /admin/workflow-schemes/$schemeKey, requireAuth */
+/** 워크플로우 스킴 상세 라우트 — /admin/workflow-schemes/$schemeKey, requireAuth + requireSystemAdmin + requirePasswordChanged + requireMfaEnrolled (다른 admin 라우트와 동일 4-가드, FR-UX-06 PR13 Task 8, PL-8) */
 const adminWorkflowSchemesDetailRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/admin/workflow-schemes/$schemeKey',
   component: WorkflowSchemeDetailRouteAdapter,
   staticData: { requireAuth: true },
-  beforeLoad: requireAuthAndPasswordChanged,
+  beforeLoad: requireSystemAdminFull,
 })
 
 /** 프로젝트 백로그·스프린트 라우트 — /projects/$projectKey/backlog, requireAuth (FR-BL-01/02) */
