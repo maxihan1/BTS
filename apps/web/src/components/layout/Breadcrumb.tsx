@@ -32,8 +32,14 @@ interface BreadcrumbProps {
 /** 항목 사이 구분자 아이콘 스타일 — 장식(aria-hidden), 정보 전달 없음 */
 const SEPARATOR_ICON_CLASS = 'size-3.5 shrink-0 text-muted-foreground'
 
-/** 링크 항목(현재 페이지 이전) 스타일 */
+/** 링크 항목(현재 페이지 이전, `to` 있음) 스타일 — 상호작용 힌트(hover 밑줄) 포함 */
 const ITEM_LINK_CLASS = 'text-muted-foreground hover:text-foreground hover:underline'
+
+/**
+ * 링크 없는 중간 항목(`to` 미지정, 현재 페이지 아님) 스타일.
+ * 비상호작용 요소이므로 hover 밑줄을 빼 클릭 가능 오인을 막는다.
+ */
+const ITEM_PLAIN_CLASS = 'text-muted-foreground'
 
 /** 현재 페이지 항목 스타일 — 링크가 아니므로 hover 상태 없음 */
 const CURRENT_ITEM_CLASS = 'font-medium text-foreground'
@@ -77,7 +83,7 @@ export function Breadcrumb({ items }: BreadcrumbProps): JSX.Element | null {
                   {item.label}
                 </Link>
               ) : (
-                <span className={ITEM_LINK_CLASS}>{item.label}</span>
+                <span className={ITEM_PLAIN_CLASS}>{item.label}</span>
               )}
             </li>
           )

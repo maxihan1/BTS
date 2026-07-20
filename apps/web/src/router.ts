@@ -595,8 +595,8 @@ const adminIndexRoute = createRoute({
   path: '/admin',
   component: AdminIndexRouteAdapter,
   staticData: { requireAuth: true },
-  // requirePasswordChanged + requireMfaEnrolled 포함 — adminAuditLogsRoute와 완전 1:1 (강제변경 미완료 관리자 우회 차단). (FR-MF-04)
-  beforeLoad: composeGuards(requireAuth, requireSystemAdmin, requirePasswordChanged, requireMfaEnrolled),
+  // adminAuditLogsRoute 등 다른 admin 라우트와 동일 4-가드 (강제변경 미완료 관리자 우회 차단, FR-MF-04). workflow-schemes와 공유하는 requireSystemAdminFull 재사용.
+  beforeLoad: requireSystemAdminFull,
 })
 
 /** 계정 연결 설정 라우트 — /settings/account-links, requireAuth + mustChangePassword 차단 */
@@ -688,7 +688,7 @@ const calendarRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 53개 라우트: / · /login · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 54개 라우트(파일 상단 헤더 분해 기준): / · /login · /settings · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
  *   · /admin/webhooks · /admin/webhooks/:id/deliveries · /admin/slack · /admin
