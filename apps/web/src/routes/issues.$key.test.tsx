@@ -1037,21 +1037,24 @@ describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mut
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
     )
 
-    // 본문 편집 버튼은 <main> 안에 있으므로 within(main)으로 범위 좁힘
-    const main = container.querySelector('main')
-    expect(main).not.toBeNull()
-    if (main === null) return
+    // 문서 <main>은 ShellLayout이 단독 소유 — 컴포넌트 단독 렌더 시 0개여야 함(PL-7 landmark 강등)
+    expect(container.querySelector('main')).toBeNull()
+
+    // 본문 편집 버튼은 <section aria-label="이슈 상세"> 안에 있으므로 within(section)으로 범위 좁힘
+    const section = container.querySelector<HTMLElement>('section[aria-label="이슈 상세"]')
+    expect(section).not.toBeNull()
+    if (section === null) return
 
     // 본문 편집 버튼 클릭
-    await user.click(within(main).getByRole('button', { name: issueDetailStrings.descriptionEditButton }))
+    await user.click(within(section).getByRole('button', { name: issueDetailStrings.descriptionEditButton }))
 
     // textarea에 내용 입력
-    const textarea = within(main).getByRole('textbox', { name: issueDetailStrings.descriptionEditButton })
+    const textarea = within(section).getByRole('textbox', { name: issueDetailStrings.descriptionEditButton })
     await user.clear(textarea)
     await user.type(textarea, '새 본문 내용')
 
-    // 저장 — 편집 모드에서의 저장 버튼은 main 안에 있음
-    await user.click(within(main).getByRole('button', { name: issueDetailStrings.descriptionSaveButton }))
+    // 저장 — 편집 모드에서의 저장 버튼은 section 안에 있음
+    await user.click(within(section).getByRole('button', { name: issueDetailStrings.descriptionSaveButton }))
 
     await waitFor(() => {
       expect(patchBodies.length).toBeGreaterThan(0)
@@ -1207,15 +1210,18 @@ describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mut
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
     )
 
-    // 본문 영역은 <main> 안에 있으므로 within(main)으로 범위 좁힘
-    const main = container.querySelector('main')
-    expect(main).not.toBeNull()
-    if (main === null) return
+    // 문서 <main>은 ShellLayout이 단독 소유 — 컴포넌트 단독 렌더 시 0개여야 함(PL-7 landmark 강등)
+    expect(container.querySelector('main')).toBeNull()
 
-    await user.click(within(main).getByRole('button', { name: issueDetailStrings.descriptionEditButton }))
-    const textarea = within(main).getByRole('textbox', { name: issueDetailStrings.descriptionEditButton })
+    // 본문 영역은 <section aria-label="이슈 상세"> 안에 있으므로 within(section)으로 범위 좁힘
+    const section = container.querySelector<HTMLElement>('section[aria-label="이슈 상세"]')
+    expect(section).not.toBeNull()
+    if (section === null) return
+
+    await user.click(within(section).getByRole('button', { name: issueDetailStrings.descriptionEditButton }))
+    const textarea = within(section).getByRole('textbox', { name: issueDetailStrings.descriptionEditButton })
     await user.type(textarea, '충돌 테스트')
-    await user.click(within(main).getByRole('button', { name: issueDetailStrings.descriptionSaveButton }))
+    await user.click(within(section).getByRole('button', { name: issueDetailStrings.descriptionSaveButton }))
 
     await waitFor(() => {
       expect(vi.mocked(toast.error)).toHaveBeenCalledWith(

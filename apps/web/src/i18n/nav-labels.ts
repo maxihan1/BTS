@@ -53,6 +53,15 @@ export const navLabels = {
 
   /** 사이드바 펼치기 토글 aria-label (접힘 상태) */
   expandSidebar: '사이드바 펼치기',
+
+  /**
+   * 페이지 상단 탐색 경로(breadcrumb) nav aria-label (🔒 e2e 계약, FR-UX-06 PR13 PL-3 신규).
+   *
+   * 신규 추가 — 기존 계약 문자열(`mainNav`·`adminNav`·`projectNav`·`projectViewNav`·`search`)
+   * 어느 것과도 substring 관계가 아니므로 Playwright `getByRole` 조회 시 다른 nav와
+   * 혼선 없이 단독 식별된다(PL-9, nav-labels.test.ts 전수 검증).
+   */
+  breadcrumb: '탐색 경로',
 } as const
 
 /** navLabels const 추론 타입 */

@@ -109,13 +109,13 @@ export function WorkflowSchemeDetailPage({
       />
 
       {/* 중앙 매핑 테이블 */}
-      <main className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         {isPending && <SchemeDetailSkeleton />}
         {isError && <SchemeNotFoundCard schemeKey={schemeKey} />}
         {detail !== undefined && (
           <MappingTable schemeKey={schemeKey} mappings={detail.mappings} />
         )}
-      </main>
+      </div>
 
       {/* 우 메타 패널 */}
       {detail !== undefined && (

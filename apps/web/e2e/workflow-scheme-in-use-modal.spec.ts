@@ -1,6 +1,8 @@
 // FR-WF-02 D7 E2E-4 — 사용 중 스킴 삭제 차단 모달 (409 SCHEME_IN_USE → SchemeInUseModal 노출)
+// FR-UX-06 PR13 Task 9 회귀 수정 — /admin/workflow-schemes에 SYSTEM_ADMIN 가드 추가(Task 8)로
+// 비-admin alice는 /dashboard로 redirect된다. loginAsSystemAdmin으로 갱신.
 import { test, expect } from '@playwright/test'
-import { loginAsAlice, navigateToSchemeDetail, i18nLabels } from './fixtures/workflow-scheme-fixtures'
+import { loginAsSystemAdmin, navigateToSchemeDetail, i18nLabels } from './fixtures/workflow-scheme-fixtures'
 
 const labels = i18nLabels.workflowScheme
 
@@ -21,7 +23,8 @@ test.describe('E2E-4 사용 중 스킴 삭제 차단 — SchemeInUseModal', () =
   const IN_USE_SCHEME_PROJECTS_COUNT = 2
 
   test.beforeEach(async ({ page }) => {
-    await loginAsAlice(page)
+    // SYSTEM_ADMIN alice 로그인(Task 8 가드) — workflow-schemes는 admin 전용
+    await loginAsSystemAdmin(page)
     await navigateToSchemeDetail(page, IN_USE_SCHEME_KEY)
   })
 

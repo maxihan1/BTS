@@ -43,7 +43,7 @@ export function AdminWorkflowSchemesPage(): JSX.Element {
         onSelect={handleSelect}
         onAddNew={handleAddNew}
       />
-      <main className="flex flex-1 items-center justify-center p-8">
+      <div className="flex flex-1 items-center justify-center p-8">
         {selectedSchemeKey === undefined ? (
           <EmptyStatePlaceholder onAddNew={handleAddNew} />
         ) : (
@@ -52,7 +52,7 @@ export function AdminWorkflowSchemesPage(): JSX.Element {
             {selectedSchemeKey} 상세 (T11 구현 예정)
           </div>
         )}
-      </main>
+      </div>
     </div>
   )
 }

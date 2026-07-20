@@ -1,6 +1,8 @@
 // FR-WF-02 D7 E2E-2 — 매핑 편집 (추가 + 삭제 + default mapping)
+// FR-UX-06 PR13 Task 9 회귀 수정 — /admin/workflow-schemes에 SYSTEM_ADMIN 가드 추가(Task 8)로
+// 비-admin alice는 /dashboard로 redirect된다. loginAsSystemAdmin으로 갱신.
 import { test, expect } from '@playwright/test'
-import { loginAsAlice, navigateToSchemeDetail, i18nLabels } from './fixtures/workflow-scheme-fixtures'
+import { loginAsSystemAdmin, navigateToSchemeDetail, i18nLabels } from './fixtures/workflow-scheme-fixtures'
 
 /**
  * 테스트 대상 스킴: custom-scheme-alpha
@@ -32,7 +34,7 @@ test('S4 — 매핑 추가: story 이슈 타입 + 워크플로우 선택 → 추
    *        응답 status 201 + body.data.issueTypeKey === 'story'
    */
 
-  await loginAsAlice(page)
+  await loginAsSystemAdmin(page)
   await navigateToSchemeDetail(page, SCHEME_KEY)
 
   // 추가 행 이슈 타입 select 노출 확인
@@ -87,7 +89,7 @@ test('S5 — 매핑 삭제: bug 매핑 행 "삭제" → 확인 모달 → 확인
    *        E2E 는 서버 응답(204)과 DELETE 요청 발생 자체를 assert.
    */
 
-  await loginAsAlice(page)
+  await loginAsSystemAdmin(page)
   await navigateToSchemeDetail(page, SCHEME_KEY)
 
   // bug 매핑 삭제 버튼 — aria-label "매핑 삭제 (★ 기본값...)" 또는 "매핑 삭제 (버그)" 형태
@@ -134,7 +136,7 @@ test('S6 — default mapping: hasDefaultMapping=true → "기본값" 옵션 sele
    *        (MappingTable AddMappingRow: !hasDefaultMapping 조건으로 조건부 렌더)
    */
 
-  await loginAsAlice(page)
+  await loginAsSystemAdmin(page)
   await navigateToSchemeDetail(page, SCHEME_KEY)
 
   // 이슈 타입 select 가시 확인
@@ -160,7 +162,7 @@ test('S6 보완 — default 매핑 행 강조: ★ prefix + "기본" badge 노�
    *        "기본" badge 노출
    */
 
-  await loginAsAlice(page)
+  await loginAsSystemAdmin(page)
   await navigateToSchemeDetail(page, SCHEME_KEY)
 
   // default 매핑 행 — ★ prefix 포함 텍스트

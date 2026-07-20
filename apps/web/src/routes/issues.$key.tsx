@@ -582,7 +582,7 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
       {/* 2-컬럼 그리드 — 좌 본문 / 우 메타패널 */}
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_280px] lg:items-start">
         {/* 좌측 본문 */}
-        <main>
+        <section aria-label="이슈 상세">
           {/* 제목 영역 */}
           {isEditingTitle ? (
             <div className="flex flex-col gap-2">
@@ -642,7 +642,7 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
 
           {/* 첨부 파일 섹션 — IssueDescription 하단 (FR-AC-01 D6) */}
           <AttachmentSection issueKey={issue.key} canUpdate={canEdit} />
-        </main>
+        </section>
 
         {/* 우측 메타패널 + 삭제 확인 UI */}
         {confirmDelete ? (

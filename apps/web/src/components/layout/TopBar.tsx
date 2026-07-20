@@ -18,7 +18,7 @@ export interface TopBarProps {
 /**
  * 상단바(48px 고정) — 좌→우: 사이드바 토글 · 로고(Atlas, →`/dashboards`) · 검색
  * (`aria-label="검색"`, 상단바 단일) · 만들기(→`/issues/new`) · 알림(`InboxBell`) · 도움말 ·
- * 설정(기존 서브라우트 `/settings/account-links` — `/settings` 인덱스 라우트 부재라 죽은 링크 금지) ·
+ * 설정(→`/settings` 인덱스) ·
  * 계정 드롭다운(`AccountMenu`).
  *
  * `ShellLayout`(T7)이 트리에 배선한다. 검색·InboxBell·계정 드롭다운 로직은 옛 `Header.tsx`를
@@ -84,8 +84,7 @@ export function TopBar({ onHelpClick }: TopBarProps) {
         </button>
       )}
 
-      {/* 🔴 /settings 인덱스 라우트 부재 — 죽은 링크 방지를 위해 실재 서브라우트로 랜딩(PR13서 전용 인덱스 도입 예정) */}
-      <Link to="/settings/account-links" className="rounded-md p-1.5 hover:bg-accent" aria-label="설정">
+      <Link to="/settings" className="rounded-md p-1.5 hover:bg-accent" aria-label="설정">
         <Settings className="size-4" />
       </Link>
 

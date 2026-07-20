@@ -1,7 +1,9 @@
 // FR-WF-02 D7 E2E-1 — 스킴 CRUD happy path (목록 → 생성 → 상세 → 수정 → 카운트 갱신)
+// FR-UX-06 PR13 Task 9 회귀 수정 — /admin/workflow-schemes에 SYSTEM_ADMIN 가드 추가(Task 8)로
+// 비-admin alice는 /dashboard로 redirect된다. loginAsSystemAdmin으로 갱신.
 import { test, expect } from '@playwright/test'
 import {
-  loginAsAlice,
+  loginAsSystemAdmin,
   navigateToSchemeList,
   navigateToSchemeDetail,
   i18nLabels,
@@ -19,8 +21,8 @@ const CUSTOM_COUNT = 2
 const labels = i18nLabels.workflowScheme
 
 test('E2E-1 스킴 CRUD — 목록 → 생성 → 상세 → 수정 → 카운트 갱신', async ({ page }) => {
-  // ── Given. alice 로그인 ──────────────────────────────────────────────────────
-  await loginAsAlice(page)
+  // ── Given. SYSTEM_ADMIN alice 로그인 (workflow-schemes는 admin 전용, Task 8 가드) ──
+  await loginAsSystemAdmin(page)
 
   // ── When 1 + Then 1 (S1 목록). 사이드바 + 표준/커스텀 카운트 ──────────────────
   await navigateToSchemeList(page)
