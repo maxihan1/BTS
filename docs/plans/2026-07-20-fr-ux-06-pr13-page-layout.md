@@ -257,3 +257,27 @@ FR-UX-06 Jira 재개편 Phase 3(Shell)의 PR13. 전역 사이드바(PR11·PR12 �
 - ✅ PL-9 '탐색 경로' — 계약 5문자열 어느 것의 substring도 아님(비충돌 확인).
 
 **BLOCKER: 없음.** WARN 3건(W1 백엔드 enforce 확인·W2 기존 main 선택자 회귀·W3 카드 반응형/아이콘)은 impl/codereview에서 소화.
+
+## 구현 결과 (bts-impl, 2026-07-20)
+
+9 task 전부 TDD(test→feat) 완료, controller가 각 task git log/diff 실물 검증. 직렬 dispatch(공유 worktree 레이스 회피).
+
+| task | 산출 | 검증 |
+|---|---|---|
+| T1 | Breadcrumb + navLabels.breadcrumb('탐색 경로') | 17 유닛 |
+| T2 | PageLayout(`<div>`, main 미렌더 가드) | 7 유닛 |
+| T3 | PageHeader(h1 소유·Breadcrumb 위임) | 7 유닛 |
+| T4 | /settings 허브(requireAuth, 11카드 반응형) | 40 유닛(router.test 무수정) |
+| T5 | /admin 허브(SYSTEM_ADMIN, mutation 검증) | 38 유닛 |
+| T6 | TopBar 설정→/settings 재랜딩 | 9 유닛 |
+| T7 | landmark 강등 3파일(main→section/div) | 67 유닛·grep main=0 |
+| T8 | workflow-schemes 3라우트 SYSTEM_ADMIN 가드(mutation 검증) | 67 유닛 |
+| T9 | E2E 허브·랜드마크 + 회귀 수정 | 23 e2e |
+
+**★T8 회귀 발견(controller 실측)**: T8 가드 추가로 기존 workflow-scheme e2e 4개(crud·mappings·standard-protect·in-use-modal)가 비-admin alice 접근으로 깨짐(그동안 갭 덕에 통과). T9가 `loginAsSystemAdmin` 헬퍼로 admin 로그인 회귀 수정(14 e2e). = 갭의 정당한 blast radius, admin-전용 posture 회복.
+
+**breadcrumb 소비처 부재**: PageHeader `breadcrumbs` prop 소비 페이지 아직 없음 → e2e breadcrumb 시나리오 정직 생략(향후 소비 화면 PR). PageHeader/Breadcrumb 계약·유닛은 완비.
+
+**W1 잔여(스코프 밖)**: PL-8은 프론트 defense-in-depth. 백엔드 workflow-scheme 관리 API의 SYSTEM_ADMIN enforce 여부는 별도 확인 권장(진짜 보안 경계).
+
+**전체 검증**: typecheck 0(tsconfig.app) · lint 0 error(8 warning 사전존재 SlackResultBanner·WeekGrid 무관) · vitest **7489**(480 파일, PR12 7426 +63) · e2e 전수 실행 중. FR 불변 129 · 백엔드/DB 0변경.
