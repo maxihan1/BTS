@@ -151,7 +151,7 @@ describe('ProjectTree', () => {
     }
   })
 
-  it('디스클로저 클릭 시 직접링크 3 + 리포트(4)·설정(11) 그룹이 펼쳐진다 — 죽은 링크 0 (FR4)', async () => {
+  it('디스클로저 클릭 시 직접링크 3 + 리포트(4)·설정(12) 그룹이 펼쳐진다 — 죽은 링크 0 (FR4)', async () => {
     const user = userEvent.setup()
     renderProjectTree()
 
