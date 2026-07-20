@@ -1,4 +1,4 @@
-// 프로젝트 조회/수정 공용 REST 응답 DTO — id·key·name 3필드만 (게이트1 확정, YAGNI)
+// 프로젝트 조회/수정 공용 REST 응답 DTO — id·key·name·archived 4필드 (게이트1 확정, YAGNI)
 
 package com.bts.issue.project.web.dto
 
@@ -6,7 +6,7 @@ import com.bts.issue.project.domain.Project
 import java.util.UUID
 
 /**
- * 프로젝트 REST 응답 DTO (게이트1 확정 — id·key·name 3필드만).
+ * 프로젝트 REST 응답 DTO (게이트1 확정 — id·key·name 3필드 + archived).
  *
  * leadUserId·createdAt 등은 이 PR 범위 밖의 speculative 필드라 포함하지 않는다.
  * PR-5 에서 실제로 필요해지면 그때 추가한다(YAGNI).
@@ -14,11 +14,13 @@ import java.util.UUID
  * @property id 프로젝트 UUID.
  * @property key 프로젝트 key.
  * @property name 프로젝트 이름.
+ * @property archived 아카이브 상태(FR-PJ-04). [Project.archivedAt] 이 null 이 아니면 true 인 파생 값.
  */
 data class ProjectResponse(
     val id: UUID,
     val key: String,
     val name: String,
+    val archived: Boolean,
 ) {
     companion object {
         /**
@@ -32,6 +34,7 @@ data class ProjectResponse(
                 id = requireNotNull(project.id) { "project.id 는 null 일 수 없다" },
                 key = project.key,
                 name = project.name,
+                archived = project.archivedAt != null,
             )
     }
 }

@@ -314,6 +314,47 @@ describe('WhoamiResponseSchema', () => {
     expect(result.oooActive).toBeUndefined()
     expect(result.oooUntil).toBeUndefined()
   })
+
+  it('canCreateProject 값이 있으면 parse 성공하고 값을 그대로 노출한다 (FR-PJ-01/FR-PM-10)', () => {
+    const result = WhoamiResponseSchema.parse({
+      username: 'alice',
+      email: 'alice@example.com',
+      authMethod: 'jwt',
+      userId: 'usr-0001',
+      mustChangePassword: false,
+      isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
+      canCreateProject: true,
+    })
+    expect(result.canCreateProject).toBe(true)
+  })
+
+  it('canCreateProject:false 값도 parse 성공한다', () => {
+    const result = WhoamiResponseSchema.parse({
+      username: 'alice',
+      email: 'alice@example.com',
+      authMethod: 'jwt',
+      userId: 'usr-0001',
+      mustChangePassword: false,
+      isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
+      canCreateProject: false,
+    })
+    expect(result.canCreateProject).toBe(false)
+  })
+
+  it('canCreateProject 키가 없어도 parse 성공한다 (하위호환 — 기존 인라인 whoami mock, mock fanout 방어)', () => {
+    const result = WhoamiResponseSchema.parse({
+      username: 'alice',
+      email: 'alice@example.com',
+      authMethod: 'jwt',
+      userId: 'usr-0001',
+      mustChangePassword: false,
+      isSystemAdmin: false,
+      mfaEnrollmentRequired: false,
+    })
+    expect(result.canCreateProject).toBeUndefined()
+  })
 })
 
 describe('WhoamiResponseSchema — theme/locale/dateFormat 확장 (FR-PF-01)', () => {

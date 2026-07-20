@@ -38,8 +38,8 @@ import { passwordHandlers } from './password-handlers'
 import { patHandlers } from './pat-handlers'
 import { preferencesHandlers } from './preferences-handlers'
 import { profileHandlers } from './profile-handlers'
+import { projectHandlers } from './project-handlers'
 import { projectLeadHandlers } from './project-lead-handlers'
-import { projectListHandlers } from './project-list-handlers'
 import { projectMemberHandlers } from './project-member-handlers'
 import { projectPermissionHandlers } from './project-permission-handlers'
 import { resolutionHandlers } from './resolution-handlers'
@@ -119,8 +119,8 @@ export const handlers = [
   ...patHandlers,
   ...preferencesHandlers,
   ...profileHandlers,
+  ...projectHandlers,
   ...projectLeadHandlers,
-  ...projectListHandlers,
   ...projectMemberHandlers,
   ...projectPermissionHandlers,
   ...resolutionHandlers,

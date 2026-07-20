@@ -100,6 +100,16 @@ export const WhoamiResponseSchema = z.object({
    * 실 백엔드는 항상 키를 포함해 응답한다.
    */
   startPage: z.string().optional(),
+  /**
+   * 프로젝트 생성 권한 보유 여부 — FR-PJ-01/FR-PM-10 `SystemPermissionResolver.hasGlobalPermission
+   * (userId, CREATE_PROJECT)` 판정 결과 노출(백엔드 WhoamiController.kt 참고). PAT 분기는 조회 없이
+   * false 고정. `.optional()`인 이유 — 키 부재도 허용해야 하기 때문. authMethod:를 참조하는 인라인
+   * whoami mock이 ~40개 파일에 산재돼 있어 required로 강화하면 전부 z.parse 실패로 깨진다
+   * (zod-schema-strengthen-inline-mock-fanout 사고 재발 방지, FR-PF-01/02/03 선례와 동일한 패턴).
+   * 부재(undefined) 시 소비측은 false로 취급한다(생성 버튼 숨김, 안전한 기본값).
+   * 실 백엔드는 항상 키를 포함해 응답한다.
+   */
+  canCreateProject: z.boolean().optional(),
 })
 
 /**

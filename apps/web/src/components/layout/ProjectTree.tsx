@@ -1,4 +1,4 @@
-// 사이드바 프로젝트 트리 — GET /api/v1/projects 소비, 2단 그룹 아코디언(직접링크 3 + 리포트/설정 중첩그룹) — FR-UX-06 PR12 Task 2 (아직 Sidebar에 미배선, T3이 배선)
+// 사이드바 프로젝트 트리 — GET /api/v1/projects 소비, 2단 그룹 아코디언(직접링크 3 + 리포트/설정 중첩그룹) — FR-UX-06 PR12 Task 2 (아직 Sidebar에 미배선, T3이 배선). "모든 프로젝트" 진입 링크(G2) + 설정 그룹 "일반" 링크(FE-4)는 FR-PJ PR-5 Task 7
 import { useState, useEffect, type JSX } from 'react'
 import { Link, useParams } from '@tanstack/react-router'
 import { ChevronRight, ChevronDown } from 'lucide-react'
@@ -38,6 +38,15 @@ const TREE_LINK_BASE_CLASS =
 /** 활성 프로젝트 강조 — `--sidebar-*` 토큰 재사용(색 하드코딩 없음, R1) */
 const TREE_LINK_ACTIVE_CLASS = 'bg-sidebar-accent text-sidebar-accent-foreground font-semibold'
 
+/**
+ * "모든 프로젝트" 진입 링크 스타일 — 트리 상단, `/projects` 목록으로 이동(G2).
+ * `TREE_LINK_BASE_CLASS`와 동형(`--sidebar-*` 토큰 재사용)이되 `flex-1` 없이 단독 배치한다.
+ */
+const ALL_PROJECTS_LINK_CLASS =
+  'flex items-center gap-2 truncate rounded-md px-2 py-1.5 text-sm font-medium ' +
+  'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ' +
+  '[&.active]:bg-sidebar-accent [&.active]:text-sidebar-accent-foreground [&.active]:font-semibold'
+
 /** 하위 링크(직접링크/리포트/설정 항목) 스타일 — 실제 라우트 활성 시 `[&.active]`로 강조 */
 const SUB_LINK_CLASS =
   'block truncate rounded-md px-2 py-1 text-sm text-sidebar-foreground/70 ' +
@@ -59,6 +68,12 @@ const GROUP_DISCLOSURE_BUTTON_CLASS = `${DISCLOSURE_BUTTON_CLASS} w-full justify
 /** 프로젝트 기본 뷰(보드) 라우트 경로 — 프로젝트명 링크·접힘레일 링크 공통 */
 const PROJECT_BOARD_PATH = '/projects/$projectKey/board'
 
+/** 프로젝트 목록 라우트 경로 — "모든 프로젝트" 진입 링크(G2) */
+const ALL_PROJECTS_PATH = '/projects'
+
+/** "모든 프로젝트" 진입 링크 라벨 (G2) */
+const ALL_PROJECTS_LABEL = '모든 프로젝트'
+
 /** 직접 링크 3종 — 보드·백로그·타임라인 (FR4) */
 const DIRECT_LINKS: ReadonlyArray<ProjectSubLink> = [
   { to: PROJECT_BOARD_PATH, label: '보드' },
@@ -74,8 +89,9 @@ const REPORT_LINKS: ReadonlyArray<ProjectSubLink> = [
   { to: '/projects/$projectKey/reports/worklog', label: '작업 로그' },
 ]
 
-/** 프로젝트 설정 그룹 서브링크 11종 (FR4, GAP-1 전 인증자 표시 — 게이팅 없음) */
+/** 프로젝트 설정 그룹 서브링크 12종 (FR4, GAP-1 전 인증자 표시 — 게이팅 없음). "일반"은 FR-PJ PR-5 FE-4(11→12) */
 const SETTINGS_LINKS: ReadonlyArray<ProjectSubLink> = [
+  { to: '/projects/$projectKey/settings/details', label: '일반' },
   { to: '/projects/$projectKey/settings/workflow-scheme', label: '워크플로우 스킴' },
   { to: '/projects/$projectKey/settings/members', label: '멤버' },
   { to: '/projects/$projectKey/settings/components', label: '컴포넌트' },
@@ -314,20 +330,25 @@ function ProjectTreeRow(props: ProjectTreeRowProps): JSX.Element {
  * - `<nav aria-label={navLabels.projectNav}>`("프로젝트", 🔒 e2e 계약. '프로젝트 뷰 전환'의
  *   substring이므로 Playwright role 조회는 항상 `exact: true` 사용 — 자세한 내용은
  *   {@link navLabels}.projectNav JSDoc 참고).
+ * - nav 최상단에는 "모든 프로젝트" 링크(→ `/projects`, `/projects` 목록 진입점)를 항상 렌더한다
+ *   (G2, FR-PJ PR-5 Task 7). "모든 프로젝트"는 nav aria-label "프로젝트"의 substring이 아니므로
+ *   `getByRole('link', { name })` exact 매칭과 충돌하지 않는다.
  * - 각 프로젝트 행 = 디스클로저 버튼(`aria-expanded`) + 프로젝트명 링크(→ `/projects/{key}/board`).
- * - 펼침 시 직접 링크 3(보드·백로그·타임라인) + `리포트` 중첩그룹(4) + `프로젝트 설정` 중첩그룹(11).
- *   모든 서브링크는 실재 라우트만 사용한다(요약은 라우트 부재로 미포함, S3).
+ * - 펼침 시 직접 링크 3(보드·백로그·타임라인) + `리포트` 중첩그룹(4) + `프로젝트 설정` 중첩그룹(12,
+ *   "일반"이 최상단 — FE-4). 모든 서브링크는 실재 라우트만 사용한다(요약은 라우트 부재로 미포함, S3).
  * - 활성 프로젝트는 `useParams({ strict: false }).projectKey`와 프로젝트 key가 일치할 때
  *   결정되며, 자동 펼침 + `aria-current="page"`가 부여된다. 프로젝트 컨텍스트 밖(파라미터
  *   없음)이면 전부 접힌다. 라우트가 바뀌면 이 자동펼침 집합을 다시 계산해 이전 수동 펼침을
  *   덮어쓴다(FR5) — `expandedKeys`는 `activeProjectKey`가 바뀔 때마다 `useEffect`로 재설정된다.
  * - 수동 펼침(디스클로저 클릭)은 ephemeral `useState`이며 영속하지 않는다.
  * - 사이드바 접힘(64px 레일, {@link useSidebarCollapsed})이면 각 프로젝트는 아이콘(이니셜)만
- *   노출하고 텍스트는 `sr-only`로 감추며, 그룹 펼침은 비활성화된다(FR6).
- * - GAP-1(게이트1 확정) — 설정 그룹 11링크는 모든 인증 사용자에게 표시한다.
+ *   노출하고 텍스트는 `sr-only`로 감추며, 그룹 펼침은 비활성화된다(FR6). "모든 프로젝트" 링크는
+ *   접힘 여부와 무관하게 항상 전체 텍스트로 노출한다(전용 아이콘 부재, 디자이너 미확인 — G2 최소구현).
+ * - GAP-1(게이트1 확정) — 설정 그룹 12링크는 모든 인증 사용자에게 표시한다.
  *   `isSystemAdmin` 게이팅을 걸지 않는다(관리 nav와 다른 정책, 백엔드 fail-closed 신뢰).
  * - 로딩=스켈레톤, 빈 배열=빈 상태 문구, 에러=`null` 반환으로 트리 자체를 렌더하지 않는다
- *   (조용한 fail-safe — 사이드바 전체를 차단하지 않는다).
+ *   (조용한 fail-safe — 사이드바 전체를 차단하지 않는다). "모든 프로젝트" 링크도 에러 시 함께
+ *   숨는다(nav 전체가 null이므로).
  */
 export function ProjectTree(): JSX.Element | null {
   const { projectKey: activeProjectKey } = useParams({ strict: false })
@@ -361,6 +382,9 @@ export function ProjectTree(): JSX.Element | null {
 
   return (
     <nav aria-label={navLabels.projectNav} className="flex flex-col gap-1 p-2">
+      <Link to={ALL_PROJECTS_PATH} className={ALL_PROJECTS_LINK_CLASS}>
+        {ALL_PROJECTS_LABEL}
+      </Link>
       {isLoading ? (
         <ProjectTreeSkeleton />
       ) : projects === undefined || projects.length === 0 ? (

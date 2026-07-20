@@ -478,13 +478,13 @@
 
 프로젝트 생성 — 키 검증(형식·유일성) + 생성자 자동 `PROJECT_ADMIN` 멤버십 부여. `CREATE_PROJECT` 전역 권한(FR-PM-10, `global_permission_grants` 또는 SYSTEM_ADMIN) 보유자만 호출 가능. `POST /api/v1/projects`.
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 (책임. backend-engineer + Maxi)
-- [ ] D3. 데이터 모델 — (활용. `projects`, `project_memberships` 기존 테이블) (책임. db-engineer)
-- [ ] D4. 백엔드 — `POST /api/v1/projects` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 프로젝트 생성 폼 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. backend-engineer) — PR #282
+- [x] D2. 명세 (책임. backend-engineer + Maxi) — PR #282
+- [x] D3. 데이터 모델 — (활용. `projects`, `project_memberships` 기존 테이블) (책임. db-engineer) — PR #282
+- [x] D4. 백엔드 — `POST /api/v1/projects` (책임. backend-engineer) — PR #282
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #282
+- [x] D6. 프론트 UI — 프로젝트 생성 폼 (책임. designer → frontend-engineer) — PR #300
+- [x] D7. E2E (책임. qa-engineer) — PR #300
 
 ### §7.2 FR-PJ-02 — 프로젝트 목록/조회
 
@@ -492,13 +492,13 @@
 
 프로젝트 목록/조회 — 멤버십 기반 권한 필터링, 아카이브 프로젝트 기본 제외. `GET /api/v1/projects`(목록), `GET /api/v1/projects/{projectIdOrKey}`(단건, BROWSE).
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 (책임. backend-engineer + Maxi)
-- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — `GET /api/v1/projects` + `GET /api/v1/projects/{projectIdOrKey}` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 프로젝트 목록/상세 화면 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. backend-engineer) — PR #283
+- [x] D2. 명세 (책임. backend-engineer + Maxi) — PR #283
+- [x] D3. 데이터 모델 — (활용) (책임. db-engineer) — PR #283
+- [x] D4. 백엔드 — `GET /api/v1/projects` + `GET /api/v1/projects/{projectIdOrKey}` (책임. backend-engineer) — PR #283
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #283
+- [x] D6. 프론트 UI — 프로젝트 목록/상세 화면 (책임. designer → frontend-engineer) — PR #300
+- [x] D7. E2E (책임. qa-engineer) — PR #300
 
 ### §7.3 FR-PJ-03 — 프로젝트 설정 변경 (`name`)
 
@@ -506,13 +506,13 @@
 
 프로젝트 설정 변경 — `name`만. `lead_user_id`는 기존 `PATCH /api/v1/projects/{projectIdOrKey}/lead`(FR-CM-04)가, `require_2fa`는 기존 별도 엔드포인트가 담당(D13, 중복 통로 방지 — spec §4.2 확정). `PATCH /api/v1/projects/{projectIdOrKey}`(PROJECT_ADMIN).
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 (책임. backend-engineer + Maxi)
-- [ ] D3. 데이터 모델 — (활용) (책임. db-engineer)
-- [ ] D4. 백엔드 — `PATCH /api/v1/projects/{projectIdOrKey}` (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 프로젝트 설정 폼 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. backend-engineer) — PR #283
+- [x] D2. 명세 (책임. backend-engineer + Maxi) — PR #283
+- [x] D3. 데이터 모델 — (활용) (책임. db-engineer) — PR #283
+- [x] D4. 백엔드 — `PATCH /api/v1/projects/{projectIdOrKey}` (책임. backend-engineer) — PR #283
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #283
+- [x] D6. 프론트 UI — 프로젝트 설정 폼 (책임. designer → frontend-engineer) — PR #300
+- [x] D7. E2E (책임. qa-engineer) — PR #300
 
 ### §7.4 FR-PJ-04 — 프로젝트 아카이브/해제
 
@@ -520,13 +520,13 @@
 
 프로젝트 아카이브/해제 — 아카이브된 프로젝트는 읽기 전용 잠금(쓰기 경로 차단). `POST /api/v1/projects/{projectIdOrKey}/archive`, `POST /api/v1/projects/{projectIdOrKey}/unarchive`(PROJECT_ADMIN).
 
-- [ ] D1. 도메인 (책임. backend-engineer)
-- [ ] D2. 명세 (책임. backend-engineer + Maxi)
-- [ ] D3. 데이터 모델 — `projects.archived_at`(신규 컬럼) (책임. db-engineer)
-- [ ] D4. 백엔드 — `POST .../archive` + `POST .../unarchive` + 쓰기 경로 잠금 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 아카이브 토글 (책임. designer → frontend-engineer)
-- [ ] D7. E2E (책임. qa-engineer)
+- [x] D1. 도메인 (책임. backend-engineer) — PR #285
+- [x] D2. 명세 (책임. backend-engineer + Maxi) — PR #285
+- [x] D3. 데이터 모델 — `projects.archived_at`(신규 컬럼) (책임. db-engineer) — PR #285
+- [x] D4. 백엔드 — `POST .../archive` + `POST .../unarchive` + 쓰기 경로 잠금 (책임. backend-engineer) — PR #285
+- [x] D5. 백엔드 테스트 (책임. backend-engineer) — PR #285
+- [x] D6. 프론트 UI — 아카이브 토글 (책임. designer → frontend-engineer) — PR #300
+- [x] D7. E2E (책임. qa-engineer) — PR #300
 
 ## §NFR issue-tracking BC 완료 게이트
 

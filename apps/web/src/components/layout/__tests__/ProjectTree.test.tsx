@@ -1,4 +1,4 @@
-// ProjectTree 컴포넌트 테스트 — 2단 그룹 아코디언, 활성 자동펼침, 접힘레일, 빈/에러 상태 (FR-UX-06 PR12 Task 2)
+// ProjectTree 컴포넌트 테스트 — 2단 그룹 아코디언, 활성 자동펼침, 접힘레일, 빈/에러 상태 (FR-UX-06 PR12 Task 2). "모든 프로젝트"·"일반" 링크는 FR-PJ PR-5 Task 7
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -35,6 +35,7 @@ const REPORT_LINK_CONTRACT: ReadonlyArray<readonly [string, string]> = [
 ]
 
 const SETTINGS_LINK_CONTRACT: ReadonlyArray<readonly [string, string]> = [
+  ['일반', '/projects/ATLAS/settings/details'],
   ['워크플로우 스킴', '/projects/ATLAS/settings/workflow-scheme'],
   ['멤버', '/projects/ATLAS/settings/members'],
   ['컴포넌트', '/projects/ATLAS/settings/components'],
@@ -119,11 +120,23 @@ describe('ProjectTree', () => {
     renderProjectTree()
 
     const nav = await findProjectNav()
+    // 프로젝트 목록 <ul>로 스코핑 — "모든 프로젝트" 링크(nav 최상단, G2)는 리스트 밖이라 미포함.
+    const list = await within(nav).findByRole('list')
     await waitFor(() => {
-      expect(within(nav).getAllByRole('link')).toHaveLength(sortedFixtures.length)
+      expect(within(list).getAllByRole('link')).toHaveLength(sortedFixtures.length)
     })
-    const links = within(nav).getAllByRole('link')
+    const links = within(list).getAllByRole('link')
     expect(links.map((link) => link.textContent)).toEqual(sortedFixtures.map((f) => f.name))
+  })
+
+  it('nav 최상단에 "모든 프로젝트" 링크(→ /projects)가 존재한다 (G2, FR-PJ PR-5 Task 7)', async () => {
+    renderProjectTree()
+
+    const nav = await findProjectNav()
+    // exact 매칭 — "모든 프로젝트"는 nav aria-label "프로젝트"의 substring이 아니므로
+    // getByRole 조회가 다른 요소와 혼선 없이 단독 식별된다.
+    const link = await within(nav).findByRole('link', { name: '모든 프로젝트' })
+    expect(link).toHaveAttribute('href', '/projects')
   })
 
   it('각 행은 디스클로저 버튼(aria-expanded)과 프로젝트명 링크(→ board)로 구성된다 (FR3)', async () => {
@@ -138,7 +151,7 @@ describe('ProjectTree', () => {
     }
   })
 
-  it('디스클로저 클릭 시 직접링크 3 + 리포트(4)·설정(11) 그룹이 펼쳐진다 — 죽은 링크 0 (FR4)', async () => {
+  it('디스클로저 클릭 시 직접링크 3 + 리포트(4)·설정(12) 그룹이 펼쳐진다 — 죽은 링크 0 (FR4)', async () => {
     const user = userEvent.setup()
     renderProjectTree()
 

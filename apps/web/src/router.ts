@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 54개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 11 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + 프로젝트 CFD 1 + 프로젝트 Cycle/Lead Time 1 + settings 12 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 + Slack 연결 1 + 캘린더 1 + 관리 허브 인덱스 1 | FR-IM-01 D6/D7: projectImportSettingsRoute /projects/$projectKey/settings/import 추가 | FR-RP-04 D6/D7: projectCycleTimeRoute /projects/$projectKey/reports/cycle-time 추가 | FR-PR-01 D6: settingsProfileRoute /settings/profile 추가 | FR-PF-01 Task 7: settingsPreferencesRoute /settings/preferences 추가 | FR-SL-01 D6/D7 Task 7: adminSlackRoute /admin/slack 추가 | FR-PF-03 Task 9: settingsKeymapRoute /settings/keymap 추가 | FR-CA-01 Task 7: calendarRoute /calendar 추가 | FR-CA-02 Task 9: settingsCalendarRoute /settings/calendar 추가 | FR-AT-01 D6 Task 8: projectAutomationSettingsRoute /projects/$projectKey/settings/automation 추가 | FR-SL-02 D6 Task 8: settingsSlackRoute /settings/slack 추가 | FR-SL-06 D6 Task 5: projectSlackChannelsRoute /projects/$projectKey/settings/slack-channels 추가 | FR-UX-06 PR13 Task 4: settingsIndexRoute /settings 추가 | FR-UX-06 PR13 Task 5: adminIndexRoute /admin 추가)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 57개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 프로젝트 설정 11 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + 프로젝트 CFD 1 + 프로젝트 Cycle/Lead Time 1 + settings 12 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 + Slack 연결 1 + 캘린더 1 + 관리 허브 인덱스 1 + 프로젝트 목록·생성·일반 설정 3 | FR-IM-01 D6/D7: projectImportSettingsRoute /projects/$projectKey/settings/import 추가 | FR-RP-04 D6/D7: projectCycleTimeRoute /projects/$projectKey/reports/cycle-time 추가 | FR-PR-01 D6: settingsProfileRoute /settings/profile 추가 | FR-PF-01 Task 7: settingsPreferencesRoute /settings/preferences 추가 | FR-SL-01 D6/D7 Task 7: adminSlackRoute /admin/slack 추가 | FR-PF-03 Task 9: settingsKeymapRoute /settings/keymap 추가 | FR-CA-01 Task 7: calendarRoute /calendar 추가 | FR-CA-02 Task 9: settingsCalendarRoute /settings/calendar 추가 | FR-AT-01 D6 Task 8: projectAutomationSettingsRoute /projects/$projectKey/settings/automation 추가 | FR-SL-02 D6 Task 8: settingsSlackRoute /settings/slack 추가 | FR-SL-06 D6 Task 5: projectSlackChannelsRoute /projects/$projectKey/settings/slack-channels 추가 | FR-UX-06 PR13 Task 4: settingsIndexRoute /settings 추가 | FR-UX-06 PR13 Task 5: adminIndexRoute /admin 추가 | FR-PJ PR-5 Task 7: projectsIndexRoute /projects, projectsNewRoute /projects/new, projectDetailsSettingsRoute /projects/$projectKey/settings/details 추가)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
 
@@ -18,6 +18,9 @@ import { IssueDetailRouteAdapter } from './routes/issues.$key'
 import { AdminWorkflowSchemesRouteAdapter } from './routes/admin.workflow-schemes'
 import { WorkflowSchemeNewRouteAdapter } from './routes/admin.workflow-schemes.new'
 import { WorkflowSchemeDetailRouteAdapter } from './routes/admin.workflow-schemes.$schemeKey'
+import { ProjectListRouteAdapter } from './routes/projects.index'
+import { ProjectCreateRouteAdapter } from './routes/projects.new'
+import { ProjectDetailsSettingsRouteAdapter } from './routes/projects.$projectKey.settings.details'
 import { ProjectWorkflowSchemeSettingsRouteAdapter } from './routes/projects.$projectKey.settings.workflow-scheme'
 import { ProjectMembersSettingsRouteAdapter } from './routes/projects.$projectKey.settings.members'
 import { ProjectComponentsSettingsRouteAdapter } from './routes/projects.$projectKey.settings.components'
@@ -268,6 +271,37 @@ const projectSprintBurndownRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): { view?: 'burndown' | 'burnup' } => ({
     view: search['view'] === 'burnup' ? 'burnup' : 'burndown',
   }),
+})
+
+/** 프로젝트 목록 라우트 — /projects, requireAuth (FR-PJ PR-5 Task 7, FE-1) */
+const projectsIndexRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/projects',
+  component: ProjectListRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
+/**
+ * 프로젝트 생성 라우트 — /projects/new, requireAuth (FR-PJ PR-5 Task 7, FE-2).
+ * 정적 세그먼트(`new`)가 `/projects/$projectKey`류 동적 라우트보다 우선 매칭된다
+ * (issues.new/issues.$key 선례와 동형 — TanStack code-based가 자동 처리, router.shell.test.tsx로 실측 확인).
+ */
+const projectsNewRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/projects/new',
+  component: ProjectCreateRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
+/** 프로젝트 일반 설정(details) 라우트 — /projects/$projectKey/settings/details, requireAuth (FR-PJ PR-5 Task 7, FE-3) */
+const projectDetailsSettingsRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/projects/$projectKey/settings/details',
+  component: ProjectDetailsSettingsRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
 })
 
 /** 프로젝트 워크플로우 스킴 할당 라우트 — /projects/$projectKey/settings/workflow-scheme, requireAuth */
@@ -688,11 +722,12 @@ const calendarRoute = createRoute({
 
 /**
  * 전체 라우트 트리.
- * 54개 라우트(파일 상단 헤더 분해 기준): / · /login · /settings · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
+ * 57개 라우트(파일 상단 헤더 분해 기준): / · /login · /settings · /dashboard · /workflows/:key · /issues · /issues/new · /issues/:key
  *   · /admin/workflow-schemes · /admin/workflow-schemes/new · /admin/workflow-schemes/:schemeKey
  *   · /admin/users/new · /admin/audit-logs · /admin/notification-policies
  *   · /admin/webhooks · /admin/webhooks/:id/deliveries · /admin/slack · /admin
  *   · /inbox · /dashboards · /dashboards/:dashboardId · /dashboards/shared/:token · /search
+ *   · /projects · /projects/new · /projects/:projectKey/settings/details (FR-PJ PR-5 Task 7)
  *   · /projects/:projectKey/backlog · /projects/:projectKey/board · /projects/:projectKey/timeline
  *   · /projects/:projectKey/sprints/:sprintId/burndown
  *   · /projects/:projectKey/settings/workflow-scheme · /projects/:projectKey/settings/members
@@ -758,6 +793,10 @@ export const routeTree = rootRoute.addChildren([
     projectTimelineRoute,
     // agile-planning BC — 스프린트 번다운/번업 차트 (FR-RP-01 D6/D7)
     projectSprintBurndownRoute,
+    // issue-tracking BC — 프로젝트 목록·생성·일반 설정(details) (FR-PJ PR-5 Task 7)
+    projectsIndexRoute,
+    projectsNewRoute,
+    projectDetailsSettingsRoute,
     // project-workflow BC — 프로젝트별 스킴 할당
     projectWorkflowSchemeSettingsRoute,
     // project-membership BC — 프로젝트 멤버 관리
