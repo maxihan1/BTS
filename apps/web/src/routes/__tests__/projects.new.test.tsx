@@ -25,10 +25,16 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }))
 
+// authStore의 useAuthStore(accessToken)는 실 client.ts(apiFetch)가 그대로 소비하므로 보존하고,
+// useAuthUser만 오버라이드한다(전체 교체 시 useAuthStore undefined로 apiFetch가 즉시 throw).
 const mockUseAuthUser = vi.fn()
-vi.mock('@/auth/authStore', () => ({
-  useAuthUser: () => mockUseAuthUser(),
-}))
+vi.mock('@/auth/authStore', async () => {
+  const actual = await vi.importActual<typeof import('@/auth/authStore')>('@/auth/authStore')
+  return {
+    ...actual,
+    useAuthUser: () => mockUseAuthUser(),
+  }
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼

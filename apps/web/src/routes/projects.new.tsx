@@ -1,0 +1,227 @@
+// 프로젝트 생성 폼 페이지 — ProjectCreatePage(라우터 비의존) + ProjectCreateRouteAdapter(useNavigate 연결) — FR-PJ PR-5 Task 5 (FE-2)
+import type { JSX } from 'react'
+import { useState } from 'react'
+import { z } from 'zod'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useNavigate } from '@tanstack/react-router'
+import { PageLayout } from '@/components/layout/PageLayout'
+import { PageHeader } from '@/components/layout/PageHeader'
+import {
+  Form,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormControl,
+  FormMessage,
+} from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { useCreateProject } from '@/hooks/use-project-mutations'
+import { extractProjectErrorCode, ProjectErrorCodes } from '@/api/projects'
+import { useAuthUser } from '@/auth/authStore'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 라벨 — 로컬 상수 (공유 i18n 미접촉, 스펙 §라벨 지시)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const projectCreateLabels = {
+  pageTitle: '새 프로젝트',
+  breadcrumbProjects: '프로젝트',
+  keyLabel: '프로젝트 키',
+  keyPlaceholder: '예: ATLAS',
+  keyRequired: '프로젝트 키를 입력하세요.',
+  keyInvalid: '프로젝트 키는 대문자로 시작하는 대문자+숫자 2~10자여야 합니다.',
+  nameLabel: '프로젝트 이름',
+  nameRequired: '프로젝트 이름을 입력하세요.',
+  submitButton: '프로젝트 생성',
+  errorKeyDuplicate: '이미 사용 중인 키입니다.',
+  errorValidation: '입력값을 확인해주세요.',
+  errorForbidden: '프로젝트를 생성할 권한이 없습니다.',
+  errorDefault: '프로젝트 생성에 실패했습니다.',
+  permissionDeniedNotice: '새 프로젝트를 생성할 권한이 없습니다. 관리자에게 문의하세요.',
+} as const
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Zod 폼 스키마 — backend CreateProjectRequest(PROJECT_KEY_REGEX) 1:1 대응
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 프로젝트 key 형식 정규식 — backend `PROJECT_KEY_REGEX`(대문자로 시작, 대문자+숫자 2~10자)와
+ * 동일. DB CHECK(`projects_key_check`)와도 정합한다(dual 검증, 프론트는 UX 편의).
+ */
+const PROJECT_KEY_PATTERN = /^[A-Z][A-Z0-9]{1,9}$/
+
+/**
+ * 프로젝트 생성 폼 입력 Zod 스키마.
+ *
+ * key는 `.refine`으로 "빈 값이면 형식 검증을 건너뛴다"를 명시해 빈 문자열 제출 시
+ * required 메시지 하나만 노출되도록 한다(min+regex 동시 실패로 메시지가 흔들리는 것 방지).
+ */
+const projectCreateSchema = z.object({
+  key: z
+    .string()
+    .min(1, projectCreateLabels.keyRequired)
+    .refine((val) => val.length === 0 || PROJECT_KEY_PATTERN.test(val), {
+      message: projectCreateLabels.keyInvalid,
+    }),
+  name: z.string().min(1, projectCreateLabels.nameRequired),
+})
+
+/** Zod 스키마에서 추론한 폼 값 타입 */
+type ProjectCreateFormValues = z.infer<typeof projectCreateSchema>
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 에러 코드 → 사용자 메시지 매핑 — 공유 util(extractProjectErrorCode) 경유
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * mutation 에러에서 프로젝트 BC errorCode를 추출해 사용자 노출 메시지로 변환한다.
+ *
+ * @param err mutation onError로 전달된 임의 에러
+ * @returns 사용자 노출 한국어 에러 메시지
+ */
+function resolveCreateErrorMessage(err: unknown): string {
+  const code = extractProjectErrorCode(err)
+  if (code === ProjectErrorCodes.KEY_ALREADY_EXISTS) return projectCreateLabels.errorKeyDuplicate
+  if (code === ProjectErrorCodes.VALIDATION_FAILED) return projectCreateLabels.errorValidation
+  if (code === ProjectErrorCodes.FORBIDDEN) return projectCreateLabels.errorForbidden
+  return projectCreateLabels.errorDefault
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 컴포넌트
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ProjectCreatePageProps {
+  /** 프로젝트 생성 성공 후 호출되는 콜백 — 생성된 프로젝트 key를 전달 */
+  onSuccess?: (key: string) => void
+}
+
+/**
+ * 프로젝트 생성 페이지 (`/projects/new`, 스펙 FE-2).
+ *
+ * - PageLayout + PageHeader(h1 "새 프로젝트" · Breadcrumb "프로젝트 > 새 프로젝트").
+ * - `whoami.canCreateProject`가 true가 아니면(EC-5·EC-6, 키 부재도 false 취급) 폼 대신
+ *   권한 안내를 노출한다. 최종 방어는 백엔드 POST(fail-closed) — 이 게이팅은 UX 편의다.
+ * - 폼: key(영문 대문자+숫자 2~10자)·name(required) — 클라이언트 Zod 검증.
+ * - 제출 성공 시 onSuccess(key) 콜백 호출. 409(중복 key)·400(형식 위반)·403(권한 없음)을
+ *   role="alert"로 표면한다.
+ *
+ * 라우터 의존 없이 props로 onSuccess를 받아 단위 테스트가 가능하다.
+ */
+export function ProjectCreatePage({ onSuccess }: ProjectCreatePageProps = {}): JSX.Element {
+  const [serverError, setServerError] = useState<string | null>(null)
+  const user = useAuthUser()
+  const canCreateProject = user?.canCreateProject === true
+
+  const form = useForm<ProjectCreateFormValues>({
+    resolver: zodResolver(projectCreateSchema),
+    defaultValues: { key: '', name: '' },
+  })
+
+  const mutation = useCreateProject()
+
+  function handleSubmit(values: ProjectCreateFormValues): void {
+    setServerError(null)
+    mutation.mutate(values, {
+      onSuccess: (project) => {
+        onSuccess?.(project.key)
+      },
+      onError: (err: unknown) => {
+        setServerError(resolveCreateErrorMessage(err))
+      },
+    })
+  }
+
+  return (
+    <PageLayout maxWidth="2xl">
+      <PageHeader
+        title={projectCreateLabels.pageTitle}
+        breadcrumbs={[
+          { label: projectCreateLabels.breadcrumbProjects, to: '/projects' },
+          { label: projectCreateLabels.pageTitle },
+        ]}
+      />
+
+      {!canCreateProject && (
+        <p role="alert" className="text-sm text-destructive">
+          {projectCreateLabels.permissionDeniedNotice}
+        </p>
+      )}
+
+      {canCreateProject && (
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(handleSubmit)} noValidate className="space-y-4">
+            {serverError !== null && (
+              <p role="alert" className="text-sm text-destructive">
+                {serverError}
+              </p>
+            )}
+
+            <FormField
+              control={form.control}
+              name="key"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{projectCreateLabels.keyLabel}</FormLabel>
+                  <FormControl>
+                    {/* aria-label — FormLabel.htmlFor 가 wrapper div 를 가리키므로 input 자체에 aria-label 로 WCAG AA 보장 */}
+                    <Input
+                      placeholder={projectCreateLabels.keyPlaceholder}
+                      aria-label={projectCreateLabels.keyLabel}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{projectCreateLabels.nameLabel}</FormLabel>
+                  <FormControl>
+                    <Input aria-label={projectCreateLabels.nameLabel} {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <Button type="submit" disabled={mutation.isPending} className="w-full sm:w-auto">
+              {projectCreateLabels.submitButton}
+            </Button>
+          </form>
+        </Form>
+      )}
+    </PageLayout>
+  )
+}
+
+/**
+ * router.ts 에 등록되는 라우트 어댑터 컴포넌트 (T7에서 `/projects/new`로 등록 예정).
+ * useNavigate로 생성 성공 후 새 프로젝트의 보드 페이지로 이동한다(스펙 S3·EC-4).
+ *
+ * 등록 방법 (code-based 패턴 — issues.new.tsx 컨벤션):
+ * ```ts
+ * import { ProjectCreateRouteAdapter } from './routes/projects.new'
+ * const projectNewRoute = createRoute({
+ *   getParentRoute: () => shellRoute,
+ *   path: '/projects/new',
+ *   component: ProjectCreateRouteAdapter,
+ * })
+ * ```
+ */
+export function ProjectCreateRouteAdapter(): JSX.Element {
+  const navigate = useNavigate()
+
+  function handleSuccess(key: string): void {
+    void navigate({ to: '/projects/$projectKey/board', params: { projectKey: key } })
+  }
+
+  return <ProjectCreatePage onSuccess={handleSuccess} />
+}
