@@ -93,6 +93,18 @@ function resolveCreateErrorMessage(err: unknown): string {
 // 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * `role="alert"` 스타일 문단 — 권한 안내/서버 에러 메시지 표면에 공용으로 쓰는 로컬 헬퍼.
+ * 두 지점(권한 없음 안내·mutation 실패 메시지)에서 동일한 마크업이 중복되던 것을 추출했다.
+ */
+function FormAlert({ message }: { message: string }): JSX.Element {
+  return (
+    <p role="alert" className="text-sm text-destructive">
+      {message}
+    </p>
+  )
+}
+
 interface ProjectCreatePageProps {
   /** 프로젝트 생성 성공 후 호출되는 콜백 — 생성된 프로젝트 key를 전달 */
   onSuccess?: (key: string) => void
@@ -144,20 +156,12 @@ export function ProjectCreatePage({ onSuccess }: ProjectCreatePageProps = {}): J
         ]}
       />
 
-      {!canCreateProject && (
-        <p role="alert" className="text-sm text-destructive">
-          {projectCreateLabels.permissionDeniedNotice}
-        </p>
-      )}
+      {!canCreateProject && <FormAlert message={projectCreateLabels.permissionDeniedNotice} />}
 
       {canCreateProject && (
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} noValidate className="space-y-4">
-            {serverError !== null && (
-              <p role="alert" className="text-sm text-destructive">
-                {serverError}
-              </p>
-            )}
+            {serverError !== null && <FormAlert message={serverError} />}
 
             <FormField
               control={form.control}
