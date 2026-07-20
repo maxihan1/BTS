@@ -123,4 +123,45 @@ describe('navigation-contract (aria-label 4종 회귀 가드)', () => {
     expect(within(mainNav).queryByRole('heading', { level: 1 })).not.toBeInTheDocument()
     expect(within(adminNav).queryByRole('heading', { level: 1 })).not.toBeInTheDocument()
   })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 신규 "모든 프로젝트"(G2, FR-PJ PR-5 Task 7) — 기존 aria-label 4종 계약 무위반 회귀 가드.
+  //
+  // "일반"(SETTINGS_LINKS 신규 항목, FE-4)은 프로젝트 행의 설정 서브그룹을 펼쳐야만 노출되므로
+  // (기본 렌더 `/dashboard`에서는 어떤 프로젝트도 자동 펼침되지 않는다) 이 파일의 기본 셸 렌더로는
+  // 도달하지 않는다 — exact 매칭/죽은 링크 검증은 ProjectTree.test.tsx가 전담한다. 여기서는 신규
+  // "모든 프로젝트" 라벨이 기존 4종 계약(메인 메뉴·관리 메뉴·프로젝트 뷰 전환·검색 단일)을
+  // 깨지 않는지만 확인한다.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  it('프로젝트 — "모든 프로젝트" 링크가 exact 매칭으로 정확히 1개 존재한다 (nav aria-label "프로젝트" substring 함정 방지)', async () => {
+    renderAuthenticatedShell(false)
+
+    const projectNav = await screen.findByRole('navigation', { name: navLabels.projectNav })
+    // getByRole name 매칭은 Testing Library 기본이 완전일치이므로, '모든 프로젝트'가
+    // '프로젝트' nav aria-label과 substring 충돌 없이 exact 단독 식별된다(playwright-getbyrole-exact-strict-mode
+    // 회귀는 Playwright e2e의 substring 매칭 기본값 때문이며, 이 유닛 테스트는 그 계약을 별도로 고정한다).
+    const links = within(projectNav).getAllByRole('link', { name: '모든 프로젝트' })
+    expect(links).toHaveLength(1)
+    expect(links[0]).toHaveAttribute('href', '/projects')
+  })
+
+  it('"모든 프로젝트" 추가 후에도 기존 aria-label 4종(메인 메뉴·관리 메뉴·프로젝트·검색)이 무위반이다', async () => {
+    renderAuthenticatedShell(true)
+
+    // 메인 메뉴 — 대시보드·캘린더 링크 유지
+    const mainNav = await screen.findByRole('navigation', { name: '메인 메뉴' })
+    expect(within(mainNav).getByRole('link', { name: '대시보드' })).toBeInTheDocument()
+
+    // 관리 메뉴 — 기본 펼침 + 6링크 유지
+    const adminNav = await screen.findByRole('navigation', { name: '관리 메뉴' })
+    expect(within(adminNav).getByRole('link', { name: '워크플로우 스킴' })).toBeInTheDocument()
+
+    // 프로젝트 nav — "모든 프로젝트" 링크가 새로 추가됐지만 nav 자체는 여전히 exact 매칭 단독 식별
+    const projectNav = await screen.findByRole('navigation', { name: navLabels.projectNav })
+    expect(projectNav).toBeInTheDocument()
+
+    // 검색 — 여전히 단일
+    expect(screen.getAllByRole('button', { name: '검색' })).toHaveLength(1)
+  })
 })
