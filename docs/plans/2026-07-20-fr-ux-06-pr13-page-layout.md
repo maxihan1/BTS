@@ -230,4 +230,30 @@ FR-UX-06 Jira 재개편 Phase 3(Shell)의 PR13. 전역 사이드바(PR11·PR12 �
 - 추가 검증: typecheck(tsconfig.app) · lint · vitest 전체 · playwright(로컬, CI e2e 잡 없음).
 - FR 총수 불변 129 · 백엔드/DB 0변경 → fr-index/verify-master-plan 대상 아님.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 집중 리뷰 (design·eng·security 3렌즈, 2026-07-20)
+
+> ui 매핑 체인 plan-design-review 대신, 결정 확정·ADS 프리미티브 재사용 상황이라 3렌즈 집중 리뷰 수행([[bts-review-plan-autoplan-overkill]] 회피). 6 리뷰 포인트 검증.
+
+**design 렌즈**
+- ✅ PageHeader `<h1 text-xl font-semibold>` = 기존 설정/관리 페이지 관용구와 일치(reconnaissance 실측). 시각 회귀 없음.
+- ✅ 허브 = Card 프리미티브(`components/ui/card.tsx`) 재사용. Jira 표준 랜딩 패턴. 사이드바 nav와 공존 정상(중복 아님).
+- ⚠️ W3: 카드 그리드 반응형(`grid-cols-1 sm:2 lg:3`)·아이콘 lucide 통일은 DESIGN.md 준수로 구현자 위임. 명시 권장.
+
+**eng 렌즈**
+- ✅ router.ts 3-task 겹침(T4·T5·T8) = 파일겹침 자동 직렬화 + depends-on 명시. wave 안전.
+- ✅ 라우트 정확매칭(E4) 등록 후 실측 단계 명시. Breadcrumb per-page props = PR9 route-id 탈결합 학습 계승([[tanstack-pathless-layout-router-test-blind]]).
+- ✅ 중첩 main 재발 = PageLayout 구조 가드(E3, querySelector('main') null)로 봉인.
+- ⚠️ W2: 기존 landmark e2e(PR12 2건)·유닛이 3페이지 `main` 선택자 참조하는지 T7 RED에서 확인 후 강등(회귀 격리). PR12 e2e는 clean /dashboards만 검증했으므로 충돌 가능성 낮으나 확인 필수.
+
+**security 렌즈 (PL-8)**
+- ✅ 가드 교체 = 다른 admin 라우트 4-가드 조합과 동일. security-engineer 지정 적합.
+- ✅ 음성 mutation 가드(기준선: 교체 전 비-admin 통과=갭 실재 확인 → 교체 후 redirect → 가드 제거 시 fail). vacuous 아님([[verify-logic-vs-verify-guard]]·[[negative-guard-needs-body-discriminator]]).
+- ⚠️ W1: PL-8은 **프론트 방어(defense-in-depth)**. 백엔드 워크플로우스킴 관리 API의 SYSTEM_ADMIN enforce 여부는 이 PR(프론트) 스코프 밖 → 별도 확인 권장(진짜 보안 경계는 백엔드). 프론트 갭 봉합은 이 PR에서 정당.
+
+**FR/카운트**
+- ✅ FR 총수 불변 129(FR-UX-06 완료 마킹은 후속 소비 화면 PR). 백엔드/DB 0변경 → fr-index/verify-master-plan 대상 아님.
+- ✅ PL-9 '탐색 경로' — 계약 5문자열 어느 것의 substring도 아님(비충돌 확인).
+
+**BLOCKER: 없음.** WARN 3건(W1 백엔드 enforce 확인·W2 기존 main 선택자 회귀·W3 카드 반응형/아이콘)은 impl/codereview에서 소화.
