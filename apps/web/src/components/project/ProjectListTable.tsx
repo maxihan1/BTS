@@ -13,6 +13,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
+import { resolveProjectPath, NEW_PROJECT_PATH } from '@/components/project/project-list-paths'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — 로컬 라벨 (공유 i18n 파일 미변경, 병렬 충돌 방어)
@@ -30,25 +31,6 @@ const LABELS = {
 
 /** 테이블 컬럼 헤더 라벨 — 헤더 행 렌더와 셀 순서의 단일 출처(순서 drift 방지) */
 const TABLE_COLUMNS = ['키', '이름', '상태'] as const
-
-/** 프로젝트 생성 라우트 경로 — ProjectListPage 헤더 버튼과 빈 상태 CTA가 공유하는 단일 출처 */
-export const NEW_PROJECT_PATH = '/projects/new'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 경로 헬퍼 — 활성 프로젝트는 보드, 아카이브 프로젝트는 설정(해제 경로, G3)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 프로젝트 행이 가리켜야 하는 경로를 결정한다.
- *
- * 아카이브된 프로젝트는 보드/백로그 등 활성 뷰가 없으므로(G3), 아카이브 해제
- * 버튼을 보유한 설정 화면(danger zone)으로 보낸다. 활성 프로젝트는 보드로 이동한다.
- */
-export function resolveProjectPath(project: Project): string {
-  return project.archived === true
-    ? `/projects/${project.key}/settings/details`
-    : `/projects/${project.key}/board`
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 컴포넌트

@@ -3,7 +3,8 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Project } from '@/api/projects'
-import { ProjectListTable, resolveProjectPath } from '../ProjectListTable'
+import { ProjectListTable } from '../ProjectListTable'
+import { resolveProjectPath } from '../project-list-paths'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // fixture

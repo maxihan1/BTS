@@ -10,7 +10,8 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
-import { ProjectListTable, resolveProjectPath, NEW_PROJECT_PATH } from '@/components/project/ProjectListTable'
+import { ProjectListTable } from '@/components/project/ProjectListTable'
+import { resolveProjectPath, NEW_PROJECT_PATH } from '@/components/project/project-list-paths'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — 로컬 라벨 (공유 i18n 파일 미변경, 병렬 충돌 방어)
@@ -49,7 +50,7 @@ export interface ProjectListPageProps {
  *   (뷰 전환이 아니라 필터이므로, [[frontend-nav-aria-label-e2e-contract]] nav role
  *   파손 방지와 무관하지만 관례를 따른다).
  * - 실제 행 클릭 경로 분기(활성→board, 아카이브→settings/details, G3)는
- *   {@link resolveProjectPath}(ProjectListTable 소유) + RouteAdapter의 navigate 호출이 담당한다.
+ *   {@link resolveProjectPath}(project-list-paths 소유) + RouteAdapter의 navigate 호출이 담당한다.
  */
 export function ProjectListPage({ onNavigateToProject }: ProjectListPageProps): JSX.Element {
   const [archived, setArchived] = useState(false)
