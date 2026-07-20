@@ -61,6 +61,173 @@ FR-UX-06 Jira 재개편 Phase 3(Shell)의 PR13. 전역 사이드바(PR11·PR12 �
 
 ✅ 통과 (결정 확정 후 자체 sanity, gap 5건 모두 스펙에 반영: 중첩 main 재발 가드 E3·라우트 충돌 E4·authz vacuous 방지 PL-8·카드 drift E5·aria substring 비충돌 PL-9).
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 전역 규칙. 각 task RED→GREEN→REFACTOR. 컴포넌트/라우트 테스트 co-located(layout은 `__tests__/`). ADS 토큰만·하드코딩 색 금지. **router.ts는 T4·T5·T8이 공유 → 파일겹침 자동 직렬화**(같은 wave 금지). PR11/PR12 선례대로 controller가 각 task git diff 실물 검증.
+
+### Task 1. Breadcrumb 컴포넌트 + navLabels.breadcrumb (PL-3·PL-9)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/i18n/nav-labels.ts`, `apps/web/src/i18n/nav-labels.test.ts`, `apps/web/src/components/layout/Breadcrumb.tsx`, `apps/web/src/components/layout/__tests__/Breadcrumb.test.tsx`]
+- depends-on: []
+
+**RED**:
+- `nav-labels.test.ts`: `navLabels.breadcrumb === '탐색 경로'` + 계약 4종('메인 메뉴'·'관리 메뉴'·'프로젝트 뷰 전환'·'검색')·'프로젝트' 어느 것의 substring도 아님 단언.
+- `Breadcrumb.test.tsx`: items 3개 → `nav[aria-label='탐색 경로']` 1개·`<ol>`·마지막 `aria-current="page"` 비링크·앞 2개 `<a href>`. items 1개 → 링크 0. items 빈배열 → nav 미렌더.
+- 실패(예상): `Breadcrumb`·`navLabels.breadcrumb` 없음.
+
+**GREEN**:
+- `nav-labels.ts`에 `breadcrumb: '탐색 경로'` 추가(주석: 신규, 계약 substring 비충돌).
+- `Breadcrumb.tsx`: `{ items: BreadcrumbItem[] }` → `<nav aria-label={navLabels.breadcrumb}><ol>` + `<Link to params>` / 마지막 `<span aria-current="page">` + 구분자 `aria-hidden`.
+
+**REFACTOR**: `BreadcrumbItem` 타입 export, KDoc(ARIA authoring practices 근거).
+
+**검증**: `node_modules/.bin/vitest run src/components/layout/__tests__/Breadcrumb.test.tsx src/i18n/nav-labels.test.ts`
+
+### Task 2. PageLayout 컴포넌트 (PL-1)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/layout/PageLayout.tsx`, `apps/web/src/components/layout/__tests__/PageLayout.test.tsx`]
+- depends-on: []
+
+**RED**:
+- children 렌더·`maxWidth` 기본 '4xl'/'2xl'/'7xl' 클래스 매핑·`className` 병합.
+- ★구조 회귀 가드: `container.querySelector('main')` **null**(PageLayout은 `<div>`만, ShellLayout이 문서 main 소유 — 중첩 main 재발 봉인 E3).
+- 실패(예상): `PageLayout` 없음.
+
+**GREEN**: `PageLayout.tsx` = `<div className={cn('mx-auto w-full px-4 py-8', maxWidthClass, className)}>{children}</div>`. main 태그 금지.
+
+**REFACTOR**: maxWidth 매핑 상수 추출, props 타입 export.
+
+**검증**: `node_modules/.bin/vitest run src/components/layout/__tests__/PageLayout.test.tsx`
+
+### Task 3. PageHeader 컴포넌트 (PL-2)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/layout/PageHeader.tsx`, `apps/web/src/components/layout/__tests__/PageHeader.test.tsx`]
+- depends-on: [1]
+
+**RED**:
+- `title` → `<h1 text-xl font-semibold>` 정확 1개. `description` → `<p text-muted-foreground>`. `breadcrumbs` prop → Breadcrumb(nav) 렌더, 없으면 nav 0. `actions` → 우측 슬롯 렌더.
+- 실패(예상): `PageHeader` 없음.
+
+**GREEN**: `PageHeader.tsx` — breadcrumbs 있으면 `<Breadcrumb items>` → `<h1>` + description + actions(flex 우측).
+
+**REFACTOR**: props 타입 export, KDoc(page당 h1 1개 계약).
+
+**검증**: `node_modules/.bin/vitest run src/components/layout/__tests__/PageHeader.test.tsx`
+
+### Task 4. /settings 인덱스 허브 라우트 (PL-4)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/settings.index.tsx`, `apps/web/src/routes/settings.index.test.tsx`, `apps/web/src/router.ts`]
+- depends-on: [2, 3]
+
+**RED**:
+- `settings.index.test.tsx`: 페이지 컴포넌트 렌더 → PageHeader title '설정' 1개 + 개인설정 하위 링크 카드 N개(각 `Card` + `<Link to>`), 각 `to`가 실재 하위 라우트(profile·preferences·keymap·calendar·slack·mfa·pats·notifications·sessions·password·account-links).
+- 실패(예상): 라우트/페이지 없음.
+
+**GREEN**:
+- `settings.index.tsx`: PageLayout + PageHeader('설정','개인 설정을 관리합니다') + Card 그리드. 링크 목록은 단일 출처 상수(E5).
+- `router.ts`: `settingsIndexRoute`(path `/settings`, beforeLoad `requireAuthAndPasswordChanged`, staticData requireAuth:true) 등록 + routeTree 추가. **정확매칭 확인**(`/settings`≠`/settings/*`, E4).
+
+**REFACTOR**: 카드 링크 배열 상수 파일 분리(재사용), 아이콘 lucide.
+
+**검증**: `node_modules/.bin/vitest run src/routes/settings.index.test.tsx` + `node_modules/.bin/tsc -p tsconfig.app.json --noEmit`
+
+### Task 5. /admin 인덱스 허브 라우트 (PL-5)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/admin.index.tsx`, `apps/web/src/routes/admin.index.test.tsx`, `apps/web/src/router.ts`]
+- depends-on: [2, 3, 4]   # router.ts 겹침으로 T4 뒤 직렬
+
+**RED**:
+- `admin.index.test.tsx`: 페이지 렌더 → PageHeader title '관리' + 관리 하위 링크 카드(workflow-schemes·audit-logs·global-permissions·notification-policies·webhooks·slack·users/new).
+- 실패(예상): 없음.
+
+**GREEN**:
+- `admin.index.tsx`: PageLayout + PageHeader('관리') + Card 그리드.
+- `router.ts`: `adminIndexRoute`(path `/admin`, beforeLoad = `composeGuards(requireAuth, requireSystemAdmin, requirePasswordChanged, requireMfaEnrolled)` — 다른 admin 라우트 동일) 등록 + routeTree.
+
+**REFACTOR**: 관리 링크 상수 분리.
+
+**검증**: `node_modules/.bin/vitest run src/routes/admin.index.test.tsx` + typecheck.
+
+### Task 6. TopBar 설정아이콘 /settings 재랜딩 (PL-6)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/layout/TopBar.tsx`, `apps/web/src/components/layout/__tests__/TopBar.test.tsx`]
+- depends-on: [4]   # /settings 라우트 존재해야 typed link 통과
+
+**RED**: TopBar 테스트 — 설정 링크 `to === '/settings'`(현재 `/settings/account-links`).
+
+**GREEN**: TopBar.tsx 설정 `Link to` 변경 + 87행 임시 주석 제거.
+
+**REFACTOR**: 없음(최소 변경).
+
+**검증**: `node_modules/.bin/vitest run src/components/layout/__tests__/TopBar.test.tsx`
+
+### Task 7. landmark 강등 3파일 (PL-7)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/issues.$key.tsx`, `apps/web/src/routes/admin.workflow-schemes.tsx`, `apps/web/src/routes/admin.workflow-schemes.$schemeKey.tsx`, (기존 관련 테스트 갱신)]
+- depends-on: []
+
+**RED**: 각 페이지 컴포넌트 렌더 시 `container.querySelector('main')` **null**(자체 main 제거, ShellLayout이 문서 main 소유). 기존 페이지 테스트에 구조 단언 추가 or 신규 구조 테스트.
+
+**GREEN**: issues.$key.tsx:585 `<main>`→`<section aria-label="이슈 상세">`(좌 컬럼). admin.workflow-schemes.tsx:46·.$schemeKey.tsx:112 `<main>`→`<section>`/`<div>`. **커스텀 레이아웃 보존**(PageLayout 강제 안 함).
+
+**REFACTOR**: 없음.
+
+**검증**: `node_modules/.bin/vitest run src/routes/issues.$key.test.tsx` (+ workflow-schemes 관련) · typecheck.
+
+### Task 8. authz hot-fix — /admin/workflow-schemes SYSTEM_ADMIN 가드 (PL-8)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`apps/web/src/router.ts`, `apps/web/src/router.admin-guards.test.tsx`]
+- depends-on: [4, 5]   # router.ts 겹침으로 T4·T5 뒤 직렬
+
+**RED (음성 가드 — mutation 검증 필수)**:
+- `router.admin-guards.test.tsx`: 비-admin(`isSystemAdmin:false`) actor로 `adminWorkflowSchemesRoute`·`New`·`Detail`의 beforeLoad 실행 → `/dashboard` redirect throw. admin actor는 통과.
+- ★기준선 확인: 가드 교체 **전** 이 테스트가 비-admin에서 **통과(=갭 실재)** 확인 → 교체 후 redirect. 가드 제거하면 테스트 fail(vacuous 아님, [[verify-logic-vs-verify-guard]]·[[negative-guard-needs-body-discriminator]]).
+
+**GREEN**: router.ts:178·187·196 3라우트 beforeLoad `requireAuthAndPasswordChanged` → `composeGuards(requireAuth, requireSystemAdmin, requirePasswordChanged, requireMfaEnrolled)`.
+
+**REFACTOR**: 4-가드 조합을 지역 상수 `requireSystemAdminFull`로 추출(다른 admin 라우트도 참조 검토 — 스코프 넘으면 보류).
+
+**검증**: `node_modules/.bin/vitest run src/router.admin-guards.test.tsx` + typecheck.
+
+### Task 9. E2E — 허브·리다이렉트·랜드마크·탐색경로 (PL-4~8 통합)
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/settings-admin-hub.spec.ts`, (기존 landmark spec 있으면 확장)]
+- depends-on: [4, 5, 6, 7, 8]
+
+**시나리오**(happy + 가드):
+- 설정 허브: `/settings` 로드 → 카드 목록 보임 → 카드 클릭 시 하위 라우트 이동(`exact:true` 조회).
+- 관리 허브: admin 세션 `/admin` → 카드 보임. **비-admin `/admin`·`/admin/workflow-schemes` 직접 → /dashboard 리다이렉트**(S6·E1).
+- TopBar 설정아이콘 클릭 → `/settings` 랜딩.
+- 랜드마크: `issues.$key`·`admin.workflow-schemes` 페이지에서 `main` 정확히 1개(`page.locator('main')` count 1).
+- 탐색경로: breadcrumb 넘긴 페이지에서 `nav[aria-label="탐색 경로"]` 표기·링크 이동.
+
+**검증**: `node_modules/.bin/playwright test e2e/settings-admin-hub.spec.ts`(바이너리 직접호출 — [[e2e-playwright-filter-arg-drop]]).
+
+## Plan 메타
+
+- task 수: 9 (PL-1~9 매핑, E2E 포함)
+- 예상 wave: ~6 (router.ts 공유로 T4→T5→T8 직렬 강제). Wave1: T1·T2·T7(독립 병렬 가능하나 공유 worktree 안전상 controller 판단으로 직렬화 가능) / Wave2: T3 / Wave3: T4 / Wave4: T5 / Wave5: T6·T8 / Wave6: T9.
+- ★안전: PR11/PR12 병렬 커밋 레이스 선례 → **직렬 dispatch 우선**, controller가 각 task git diff 실물 검증(sub-agent 보고 불신).
+- TDD 강제: yes. PL-8 음성 mutation 가드 필수.
+- 추가 검증: typecheck(tsconfig.app) · lint · vitest 전체 · playwright(로컬, CI e2e 잡 없음).
+- FR 총수 불변 129 · 백엔드/DB 0변경 → fr-index/verify-master-plan 대상 아님.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
