@@ -139,4 +139,13 @@ FR-PJ-01~04 를 완료로 마킹. **FR 총수 129 불변**(FR-PJ 는 이미 카�
 5. FR-PJ-01~04 완료마킹 전수 동기화 + `verify-master-plan.sh` PASS(129/129).
 6. typecheck 0 · lint 0 error · 전체 vitest green · 백엔드 :modules:app 조립 부팅(2 BC 변경이라 [[prod-assembly-boot-verification-required]]).
 
-## Brainstorming Check (← Phase B 채움)
+## Brainstorming Check
+
+적대적 자체 검토(2026-07-20). 실질 갭 3건 발견·해소. **G2·G3은 네비 설계 결정 — 게이트1 Maxi 검토 대상(권장안으로 선반영, veto 가능).**
+
+- **G1 (구현 디테일·해소)** — 라우팅은 파일기반 자동생성이 아니라 **수동 `router.ts`**(`createRoute` + PR10 `_shell` pathless 레이아웃). 신규 3라우트(`/projects`·`/projects/new`·`/projects/{key}/settings/details`)를 **전부 `shellRoute` 밑에 등록**해야 크롬(사이드바)이 붙는다. login 제외 인증 라우트는 전부 `_shell` 자식(PR10 계약). router.ts 라우트카운트 주석 정합도 갱신([[tanstack-pathless-layout-router-test-blind]]).
+- **G2 (진입점·권장 해소)** — `/projects` 목록으로 가는 nav 링크가 현재 없음(ProjectTree는 프로젝트명→`/board`만). **권장**: 사이드바 ProjectTree "프로젝트" 섹션에 "**모든 프로젝트**" 진입 링크 추가(또는 섹션 헤더를 `/projects` 링크로). **★신규 "프로젝트" 라벨 substring 함정**([[playwright-getbyrole-exact-strict-mode]]·[[frontend-nav-aria-label-e2e-contract]]) — exact 매칭·기존 ProjectTree "프로젝트" 라벨과 충돌 회피. 라우트 이동이므로 nav+Link(Tabs 금지).
+- **G3 (해제 경로·권장 해소)** — 사이드바는 활성 프로젝트만(useProjects archived=false) → 아카이브 프로젝트의 settings/details(해제 버튼)가 사이드바로 도달 불가. **권장**: `/projects?archived=true` 목록에서 **아카이브 행 클릭 → `/projects/{key}/settings/details`**(활성 행은 `/board`). "목록은 보기만"(D3·인라인 버튼 없음)과 양립 — 행 클릭은 네비지 액션 아님. 해제는 settings danger zone에서 수행.
+- **검증된 비-갭** — 생성 라우트 `new` vs `$projectKey` 정적세그먼트 우선(issues.new 선례 동형)·PATCH 204 후 invalidate(setQueryData 금지 [[mutation-setquerydata-partial-response-flicker]])·프로젝트 key 불변(설정=name만)·ProjectNotFoundScreen 재사용.
+
+✅ Phase B 통과 (자체 적대검토 1회, 갭 3건 해소·G2/G3 게이트1 확인 플래그).

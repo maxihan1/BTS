@@ -35,9 +35,17 @@
 - **관련 ADR**: 없음 (순수 프론트 소비 — 신규 ADR 불요). 도메인 모델링은 마스터 스펙 `docs/specs/2026-07-17-project-management-crud.md` §2 완료.
 - **domain 단계 right-size**: 완전히 스펙된 도메인 소비 PR이라 대화형 grill-with-docs 생략(신규 용어 0·ADR 0). FR-UX-06 프론트 PR 선례 동형.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙: [docs/specs/2026-07-20-fr-pj-pr-5-project-crud-ui.md](../specs/2026-07-20-fr-pj-pr-5-project-crud-ui.md)
+
+**Maxi 결정 4건**: ①디자인=기존 ADS v2 적용(shotgun 없음) ②생성=전용 라우트 `/projects/new` ③설정 danger zone(name+archive)·목록 보기전용 ④백엔드 노출 2건(`ProjectResponse.archived` + `whoami.canCreateProject`).
+
+**산출물**: 백엔드 2(BE-1 archived/issue-tracking·BE-2 canCreateProject/identity-access) + 프론트 3화면(목록·생성·설정) + 사이드바 연동 + FR-PJ-01~04 완료마킹. **한 PR=한 BC deviation**(2 백엔드 BC+apps/web) — 게이트1 근거 명시.
+
+## Brainstorming Check
+
+✅ 통과 (자체 적대검토 1회). 갭 3건 해소 — G1(router.ts 수동등록·_shell 자식·구현디테일)·**G2(‌/projects 진입점=사이드바 "모든 프로젝트" 링크·게이트1 확인)**·**G3(아카이브 행→settings/details 네비·게이트1 확인)**. 상세는 스펙 §Brainstorming Check.
 
 ## Plan (← /bts-plan 채움)
 
