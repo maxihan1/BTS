@@ -19,6 +19,7 @@ data class ProjectResponse(
     val id: UUID,
     val key: String,
     val name: String,
+    val archived: Boolean,
 ) {
     companion object {
         /**
@@ -32,6 +33,7 @@ data class ProjectResponse(
                 id = requireNotNull(project.id) { "project.id 는 null 일 수 없다" },
                 key = project.key,
                 name = project.name,
+                archived = project.archivedAt != null,
             )
     }
 }
