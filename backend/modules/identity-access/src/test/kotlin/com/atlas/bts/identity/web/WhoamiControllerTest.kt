@@ -843,6 +843,123 @@ class WhoamiControllerTest {
             .andExpect(jsonPath("$.startPage").value("dashboards"))
     }
 
+    // ── FR-PJ-01 / FR-PM-10: canCreateProject (프로젝트 생성 권한 게이팅 힌트) ──────
+
+    @Test
+    fun `whoami JWT grant 보유 비-admin 사용자는 canCreateProject true`() {
+        val userId = UUID.fromString("00000000-0000-0000-0000-0000000000e1")
+        val now = Instant.parse("2026-07-06T10:00:00Z")
+        every { userRepository.findById(userId) } returns
+            User(
+                id = userId,
+                username = "kim",
+                email = "kim@bts.local",
+                displayName = "Kim Grant",
+                createdAt = now,
+                updatedAt = now,
+            )
+        every { storedPasswordCredentialRepository.findByUserId(userId) } returns credential(userId, mustChange = false)
+        // 판별자: 이 사용자는 SYSTEM_ADMIN 이 아니다 — grant 축만으로 통과함을 못박는다(회귀 시 이 선언이 진짜 판정을 강제).
+        every { systemPermissionResolver.isSystemAdmin(userId) } returns false
+        every { systemPermissionResolver.hasGlobalPermission(userId, "CREATE_PROJECT") } returns true
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami").with(
+                jwt().jwt { builder -> builder.subject(userId.toString()) },
+            ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.canCreateProject").value(true))
+
+        // 위임 봉인: hasGrant 직접호출이 아니라 hasGlobalPermission(=grant OR isSystemAdmin) 포트로 위임했는지 검증.
+        verify(exactly = 1) { systemPermissionResolver.hasGlobalPermission(userId, "CREATE_PROJECT") }
+    }
+
+    @Test
+    fun `whoami JWT SYSTEM_ADMIN 사용자는 grant 없어도 canCreateProject true`() {
+        val adminId = UUID.fromString("00000000-0000-0000-0000-0000000000e2")
+        val now = Instant.parse("2026-07-06T10:00:00Z")
+        every { userRepository.findById(adminId) } returns
+            User(
+                id = adminId,
+                username = "sysadmin",
+                email = "sysadmin@bts.local",
+                displayName = "Sys Admin",
+                createdAt = now,
+                updatedAt = now,
+            )
+        every { storedPasswordCredentialRepository.findByUserId(adminId) } returns credential(adminId, mustChange = false)
+        every { systemPermissionResolver.isSystemAdmin(adminId) } returns true
+        // 포트 계약: SYSTEM_ADMIN 은 개별 grant 없이도 hasGlobalPermission 이 true(grant OR isSystemAdmin).
+        every { systemPermissionResolver.hasGlobalPermission(adminId, "CREATE_PROJECT") } returns true
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami").with(
+                jwt().jwt { builder -> builder.subject(adminId.toString()) },
+            ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.canCreateProject").value(true))
+    }
+
+    @Test
+    fun `whoami JWT 무권한 사용자는 canCreateProject false`() {
+        val userId = UUID.fromString("00000000-0000-0000-0000-0000000000e3")
+        val now = Instant.parse("2026-07-06T10:00:00Z")
+        every { userRepository.findById(userId) } returns
+            User(
+                id = userId,
+                username = "nobody",
+                email = "nobody@bts.local",
+                displayName = "No Body",
+                createdAt = now,
+                updatedAt = now,
+            )
+        every { storedPasswordCredentialRepository.findByUserId(userId) } returns credential(userId, mustChange = false)
+        every { systemPermissionResolver.isSystemAdmin(userId) } returns false
+        // grant 없음 + SYSTEM_ADMIN 아님 → hasGlobalPermission false → canCreateProject false (deny-by-default).
+        every { systemPermissionResolver.hasGlobalPermission(userId, "CREATE_PROJECT") } returns false
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami").with(
+                jwt().jwt { builder -> builder.subject(userId.toString()) },
+            ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.canCreateProject").value(false))
+    }
+
+    @Test
+    fun `whoami PAT 인증은 canCreateProject false 고정 (봇 컨텍스트, resolver 미조회)`() {
+        val activePat =
+            PersonalAccessToken(
+                id = PAT_ID,
+                userId = PAT_USER_ID,
+                name = "ci-token",
+                tokenHash = "irrelevant-hash",
+                scopes = listOf("*"),
+                expiresAt = null,
+                lastUsedAt = null,
+                revokedAt = null,
+                createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+            )
+        every { personalAccessTokenService.verify(RAW_PAT) } returns Result.success(activePat)
+        // PAT 사용자가 실제로 CREATE_PROJECT 보유자여도 PAT 분기는 resolver 를 조회하지 않고 false 로 고정한다.
+        every { systemPermissionResolver.hasGlobalPermission(PAT_USER_ID, "CREATE_PROJECT") } returns true
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami")
+                .header("Authorization", "Bearer $RAW_PAT"),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.authMethod").value("pat"))
+            // 봇 컨텍스트(PAT)는 프로젝트 생성 UI 를 쓰지 않으므로 canCreateProject 는 조회 없이 false 고정.
+            .andExpect(jsonPath("$.canCreateProject").value(false))
+
+        // 봉인: PAT 분기는 프로젝트 생성 권한 resolver 를 아예 호출하지 않는다.
+        verify(exactly = 0) { systemPermissionResolver.hasGlobalPermission(any(), any()) }
+    }
+
     /** local_credentials 행 픽스처 — mustChangePassword 플래그만 변주 */
     private fun credential(
         userId: UUID,
