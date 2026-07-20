@@ -108,6 +108,14 @@ export async function getProject(idOrKey: string): Promise<Project> {
   return wrapped.data
 }
 
+/** 비-2xx 응답이면 body를 읽어 ApiError를 throw하는 공용 가드 — 프로젝트 BC mutation 4종 공유 */
+async function throwIfNotOk(res: Response): Promise<void> {
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+}
+
 /**
  * 새 프로젝트를 생성한다.
  *
@@ -127,10 +135,7 @@ export async function createProject(key: string, name: string): Promise<Project>
     body: { key, name },
     headers: { 'X-XSRF-TOKEN': readXsrfToken() },
   })
-  if (!res.ok) {
-    const errorBody: unknown = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, errorBody)
-  }
+  await throwIfNotOk(res)
   const raw: unknown = await res.json()
   const wrapped = projectDataSchema.parse(raw)
   return wrapped.data
@@ -155,65 +160,89 @@ export async function updateProjectName(idOrKey: string, name: string): Promise<
     body: { name },
     headers: { 'X-XSRF-TOKEN': readXsrfToken() },
   })
-  if (!res.ok) {
-    const errorBody: unknown = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, errorBody)
-  }
+  await throwIfNotOk(res)
+}
+
+/**
+ * archive/unarchive 공용 POST 요청 헬퍼 — 바디 없음, CSRF 헤더 포함, 응답 언래핑까지 처리한다.
+ *
+ * @param idOrKey 프로젝트 UUID 또는 key
+ * @param action 'archive' | 'unarchive' — 하위 경로 세그먼트
+ * @returns ProjectArchiveResult
+ * @throws ApiError(404, ISSUE_PROJECT_ARCHIVE_NOT_FOUND) 프로젝트 미존재 시
+ * @throws ApiError(403, ISSUE_PROJECT_ARCHIVE_FORBIDDEN) PROJECT_ADMIN 아닌 경우
+ */
+async function postArchiveAction(
+  idOrKey: string,
+  action: 'archive' | 'unarchive',
+): Promise<ProjectArchiveResult> {
+  const res = await apiFetch(`${projectPath(idOrKey)}/${action}`, {
+    method: 'POST',
+    headers: { 'X-XSRF-TOKEN': readXsrfToken() },
+  })
+  await throwIfNotOk(res)
+  const raw: unknown = await res.json()
+  const wrapped = projectArchiveDataSchema.parse(raw)
+  return wrapped.data
 }
 
 /**
  * 프로젝트를 아카이브한다.
  *
  * POST /api/v1/projects/{idOrKey}/archive → 200 `{ data: {...} }` 언래핑 후 반환(archivedAt non-null).
- * CSRF 방어를 위해 X-XSRF-TOKEN 헤더를 포함한다. 이미 아카이브된 프로젝트도 멱등하게 200을 반환한다.
+ * 이미 아카이브된 프로젝트도 멱등하게 200을 반환한다.
  *
  * @param idOrKey 프로젝트 UUID 또는 key
  * @returns ProjectArchiveResult
- * @throws ApiError(404, ISSUE_PROJECT_ARCHIVE_NOT_FOUND) 프로젝트 미존재 시
- * @throws ApiError(403, ISSUE_PROJECT_ARCHIVE_FORBIDDEN) PROJECT_ADMIN 아닌 경우
  */
-export async function archiveProject(idOrKey: string): Promise<ProjectArchiveResult> {
-  const res = await apiFetch(`${projectPath(idOrKey)}/archive`, {
-    method: 'POST',
-    headers: { 'X-XSRF-TOKEN': readXsrfToken() },
-  })
-  if (!res.ok) {
-    const errorBody: unknown = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, errorBody)
-  }
-  const raw: unknown = await res.json()
-  const wrapped = projectArchiveDataSchema.parse(raw)
-  return wrapped.data
+export function archiveProject(idOrKey: string): Promise<ProjectArchiveResult> {
+  return postArchiveAction(idOrKey, 'archive')
 }
 
 /**
  * 프로젝트의 아카이브를 해제한다.
  *
  * POST /api/v1/projects/{idOrKey}/unarchive → 200 `{ data: {...} }` 언래핑 후 반환(archivedAt null).
- * CSRF 방어를 위해 X-XSRF-TOKEN 헤더를 포함한다. 이미 활성 상태인 프로젝트도 멱등하게 200을 반환한다.
+ * 이미 활성 상태인 프로젝트도 멱등하게 200을 반환한다.
  *
  * @param idOrKey 프로젝트 UUID 또는 key
  * @returns ProjectArchiveResult
- * @throws ApiError(404, ISSUE_PROJECT_ARCHIVE_NOT_FOUND) 프로젝트 미존재 시
- * @throws ApiError(403, ISSUE_PROJECT_ARCHIVE_FORBIDDEN) PROJECT_ADMIN 아닌 경우
  */
-export async function unarchiveProject(idOrKey: string): Promise<ProjectArchiveResult> {
-  const res = await apiFetch(`${projectPath(idOrKey)}/unarchive`, {
-    method: 'POST',
-    headers: { 'X-XSRF-TOKEN': readXsrfToken() },
-  })
-  if (!res.ok) {
-    const errorBody: unknown = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, errorBody)
-  }
-  const raw: unknown = await res.json()
-  const wrapped = projectArchiveDataSchema.parse(raw)
-  return wrapped.data
+export function unarchiveProject(idOrKey: string): Promise<ProjectArchiveResult> {
+  return postArchiveAction(idOrKey, 'unarchive')
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 에러 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 프로젝트 BC 에러 코드 상수 — REST 응답의 errorCode 값과 1:1 대응.
+ * 각 컨트롤러(ProjectCreate/Query/Settings/Archive)의 ExceptionHandler grep 실측 근거.
+ */
+export const ProjectErrorCodes = {
+  /** POST /projects — key 중복 (409) */
+  KEY_ALREADY_EXISTS: 'ISSUE_PROJECT_KEY_ALREADY_EXISTS',
+  /** POST /projects — key/name 형식 위반 (400) */
+  VALIDATION_FAILED: 'ISSUE_PROJECT_VALIDATION_FAILED',
+  /** GET /projects, GET /projects/{idOrKey}, POST /projects — 권한 없음 (403) */
+  FORBIDDEN: 'ISSUE_PROJECT_FORBIDDEN',
+  /** GET /projects/{idOrKey} — 프로젝트 미존재 (404) */
+  NOT_FOUND: 'ISSUE_PROJECT_NOT_FOUND',
+  /** PATCH /projects/{idOrKey} — 프로젝트 미존재 (404) */
+  SETTINGS_NOT_FOUND: 'ISSUE_PROJECT_SETTINGS_NOT_FOUND',
+  /** PATCH /projects/{idOrKey} — PROJECT_ADMIN 아님 (403) */
+  SETTINGS_FORBIDDEN: 'ISSUE_PROJECT_SETTINGS_FORBIDDEN',
+  /** PATCH /projects/{idOrKey} — name 형식 위반 (400) */
+  SETTINGS_VALIDATION_FAILED: 'ISSUE_PROJECT_SETTINGS_VALIDATION_FAILED',
+  /** POST /projects/{idOrKey}/archive|unarchive — 프로젝트 미존재 (404) */
+  ARCHIVE_NOT_FOUND: 'ISSUE_PROJECT_ARCHIVE_NOT_FOUND',
+  /** POST /projects/{idOrKey}/archive|unarchive — PROJECT_ADMIN 아님 (403) */
+  ARCHIVE_FORBIDDEN: 'ISSUE_PROJECT_ARCHIVE_FORBIDDEN',
+} as const satisfies Record<string, string>
+
+/** 프로젝트 BC 에러 코드 유니온 타입 */
+export type ProjectErrorCode = (typeof ProjectErrorCodes)[keyof typeof ProjectErrorCodes]
 
 /**
  * 에러에서 프로젝트 BC errorCode를 추출한다.

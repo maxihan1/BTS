@@ -7,6 +7,7 @@ import {
   unarchiveProject,
 } from '@/api/projects'
 import type { Project, ProjectArchiveResult } from '@/api/projects'
+import { PROJECT_KEYS } from '@/hooks/use-project'
 
 /** 프로젝트 생성 mutation 입력 타입 */
 export interface CreateProjectMutationInput {
@@ -21,14 +22,14 @@ export interface UpdateProjectNameMutationInput {
 }
 
 /**
- * 목록(['projects'])·단건(['project', idOrKey]) 쿼리를 무효화한다.
+ * 목록(PROJECT_KEYS.list())·단건(PROJECT_KEYS.detail(idOrKey)) 쿼리를 무효화한다.
  * setQueryData로 캐시를 부분 응답으로 덮지 않는다(mutation-setquerydata-partial-response-flicker 재발
  * 방지 — PATCH는 204라 바디가 아예 없다).
  */
 async function invalidateProjectQueries(queryClient: QueryClient, idOrKey?: string): Promise<void> {
-  await queryClient.invalidateQueries({ queryKey: ['projects'] })
+  await queryClient.invalidateQueries({ queryKey: PROJECT_KEYS.list() })
   if (idOrKey !== undefined) {
-    await queryClient.invalidateQueries({ queryKey: ['project', idOrKey] })
+    await queryClient.invalidateQueries({ queryKey: PROJECT_KEYS.detail(idOrKey) })
   }
 }
 
