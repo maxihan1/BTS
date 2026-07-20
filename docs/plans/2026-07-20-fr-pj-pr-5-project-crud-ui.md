@@ -23,7 +23,17 @@
 
 **분류 정정**: classifier가 design/designer 오판 → ui/frontend-engineer 실측 정정(`.bts-cache/classify.json` note 참조).
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **소비 BC**: issue-tracking(projects CRUD·archive) + project-workflow. **apps/web 단일 SPA** (한 PR=한 BC 규칙은 백엔드 대상, 프론트는 cross-BC 소비 정상).
+- **영향 엔티티(읽기/소비만)**: Project(key=영문대문자+숫자·name·archivedAt), ProjectMembership(생성 시 생성자 자동 admin), GlobalPermissionGrant(CREATE_PROJECT).
+- **새 용어**: 없음. 프로젝트(Project)·프로젝트 행정 권한(Project Admin)·아카이브(archivedAt) 모두 glossary 기존 확립. "프로젝트 아카이브"는 glossary 명시 항목 부재 → 후보로 기록하되 Maxi 승인 영역(수동).
+- **기존 결정 충돌**: 없음. 소비 ADR 4종 모두 백엔드 결정, 프론트는 계약 준수:
+  - `2026-07-17-global-permission-grants.md` — FR-PM-10 · CREATE_PROJECT 판정(`hasGlobalPermission`, SYSTEM_ADMIN 포함)
+  - `2026-07-18-auto-assign-system-actor-permission-bypass.md` — PR-2 생성 hot-fix
+  - `2026-06-01-project-membership-model.md` · `2026-06-01-project-member-projectidorkey.md`
+- **관련 ADR**: 없음 (순수 프론트 소비 — 신규 ADR 불요). 도메인 모델링은 마스터 스펙 `docs/specs/2026-07-17-project-management-crud.md` §2 완료.
+- **domain 단계 right-size**: 완전히 스펙된 도메인 소비 PR이라 대화형 grill-with-docs 생략(신규 용어 0·ADR 0). FR-UX-06 프론트 PR 선례 동형.
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
