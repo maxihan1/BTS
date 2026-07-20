@@ -20,11 +20,12 @@ export const RootLayout = () => {
   return (
     <div>
       {/* 크롬(Header)은 PR11부터 `_shell`(ShellLayout)이 소유 — RootLayout은 전역 오버레이/훅만 유지(FR6, G1) */}
+      {/* `<main>` 랜드마크는 PR12부터 RootLayout이 소유하지 않는다 — ShellLayout(_shell)·login이 각자
+          소유한다(C3, FR-UX-06 PR12 Task 5). RootLayout이 Outlet 전체를 <main>으로 감싸면 header(banner)·
+          aside(complementary)가 main 안에 중첩돼 landmark가 오염되므로 여기서는 <main> 없이 Outlet만 렌더한다. */}
       {isAuthenticated && <CommandPalette open={isCommandPaletteOpen} onOpenChange={setCommandPaletteOpen} />}
       {isAuthenticated && <ShortcutsHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />}
-      <main>
-        <Outlet />
-      </main>
+      <Outlet />
     </div>
   )
 }

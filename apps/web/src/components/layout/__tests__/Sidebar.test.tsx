@@ -9,11 +9,14 @@ import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
 import type { WhoamiResponse } from '@/api/schemas'
 import { favoriteLabels } from '@/i18n/favorite-labels'
 import { navLabels } from '@/i18n/nav-labels'
+import { projectListHandlers } from '@/mocks/project-list-handlers'
 import { Sidebar } from '../Sidebar'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TanStack Router Link 모킹 — 라우터 컨텍스트 없이 컴포넌트 isolation 렌더 (Header.test.tsx·
-// FavoritesMenu.test.tsx 동일 패턴)
+// TanStack Router Link/useParams 모킹 — 라우터 컨텍스트 없이 컴포넌트 isolation 렌더 (Header.test.tsx·
+// FavoritesMenu.test.tsx 동일 패턴). `useParams`는 Sidebar가 배선하는 `ProjectTree`(FR-UX-06 PR12
+// Task 2)가 활성 프로젝트 판별에 사용하므로 함께 모킹한다 — 항상 빈 객체를 반환해 "프로젝트 컨텍스트
+// 밖"으로 취급된다(이 파일의 계약과 무관, ProjectTree 자체 활성 펼침 검증은 ProjectTree.test.tsx 소관).
 // ─────────────────────────────────────────────────────────────────────────────
 
 vi.mock('@tanstack/react-router', () => ({
@@ -22,6 +25,7 @@ vi.mock('@tanstack/react-router', () => ({
       {children}
     </a>
   ),
+  useParams: () => ({}),
 }))
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -71,6 +75,9 @@ beforeEach(() => {
   server.use(
     http.get('/api/v1/favorites', () => HttpResponse.json({ data: { items: [] } })),
   )
+  // ProjectTree(useProjects)가 조회하는 엔드포인트 — mocks/handlers.ts 전역 등록에 더해 명시
+  // 등록한다(use-projects.test.tsx·ProjectTree.test.tsx와 동일 관례)
+  server.use(...projectListHandlers)
 })
 
 afterEach(() => {
@@ -170,6 +177,19 @@ describe('Sidebar', () => {
     expect(
       within(mainNav).getByRole('link', { name: navLabels.calendar }).querySelector('svg[aria-hidden="true"]'),
     ).not.toBeNull()
+  })
+
+  it('프로젝트 nav(ProjectTree)가 렌더되고 메인 메뉴 nav보다 DOM 순서상 앞에 위치한다 (FR-UX-06 PR12 Task 3)', async () => {
+    renderSidebar()
+
+    const projectNav = await screen.findByRole('navigation', { name: navLabels.projectNav })
+    const mainNav = screen.getByRole('navigation', { name: navLabels.mainNav })
+
+    // projectNav → mainNav 순서면, mainNav 기준 projectNav는 "이전 형제"다.
+    // compareDocumentPosition의 DOCUMENT_POSITION_PRECEDING(2)는 "인자가 기준 노드보다 앞선다"를 뜻한다.
+    expect(
+      mainNav.compareDocumentPosition(projectNav) & Node.DOCUMENT_POSITION_PRECEDING,
+    ).toBeTruthy()
   })
 
   it('사이드바 접힘 시 nav 링크의 텍스트 라벨이 시각적으로만 숨겨진다(sr-only) — 아이콘은 그대로 보인다', async () => {
