@@ -19,9 +19,6 @@ import { EmptyState } from '@/components/ui/empty-state'
 // ─────────────────────────────────────────────────────────────────────────────
 
 const LABELS = {
-  columnKey: '키',
-  columnName: '이름',
-  columnStatus: '상태',
   archivedBadge: '아카이브',
   loading: '로딩 중...',
   loadError: '프로젝트 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
@@ -30,6 +27,12 @@ const LABELS = {
   emptyTitleArchived: '아카이브된 프로젝트가 없습니다',
   newProjectCta: '새 프로젝트 만들기',
 } as const
+
+/** 테이블 컬럼 헤더 라벨 — 헤더 행 렌더와 셀 순서의 단일 출처(순서 drift 방지) */
+const TABLE_COLUMNS = ['키', '이름', '상태'] as const
+
+/** 프로젝트 생성 라우트 경로 — ProjectListPage 헤더 버튼과 빈 상태 CTA가 공유하는 단일 출처 */
+export const NEW_PROJECT_PATH = '/projects/new'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 경로 헬퍼 — 활성 프로젝트는 보드, 아카이브 프로젝트는 설정(해제 경로, G3)
@@ -114,7 +117,7 @@ export function ProjectListTable({
         action={
           showCreateCta ? (
             <Button asChild>
-              <a href="/projects/new">{LABELS.newProjectCta}</a>
+              <a href={NEW_PROJECT_PATH}>{LABELS.newProjectCta}</a>
             </Button>
           ) : undefined
         }
@@ -126,9 +129,9 @@ export function ProjectListTable({
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>{LABELS.columnKey}</TableHead>
-          <TableHead>{LABELS.columnName}</TableHead>
-          <TableHead>{LABELS.columnStatus}</TableHead>
+          {TABLE_COLUMNS.map((column) => (
+            <TableHead key={column}>{column}</TableHead>
+          ))}
         </TableRow>
       </TableHeader>
       <TableBody>

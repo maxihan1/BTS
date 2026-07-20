@@ -10,7 +10,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
-import { ProjectListTable, resolveProjectPath } from '@/components/project/ProjectListTable'
+import { ProjectListTable, resolveProjectPath, NEW_PROJECT_PATH } from '@/components/project/ProjectListTable'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — 로컬 라벨 (공유 i18n 파일 미변경, 병렬 충돌 방어)
@@ -65,7 +65,7 @@ export function ProjectListPage({ onNavigateToProject }: ProjectListPageProps): 
         actions={
           canCreateProject ? (
             <Button asChild>
-              <a href="/projects/new">{LABELS.newProjectButton}</a>
+              <a href={NEW_PROJECT_PATH}>{LABELS.newProjectButton}</a>
             </Button>
           ) : undefined
         }
