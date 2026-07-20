@@ -83,6 +83,11 @@ class WhoamiController(
     private val userPreferencesService: UserPreferencesService,
     private val clock: Clock = Clock.systemUTC(),
 ) {
+    companion object {
+        // 전역 권한코드 — GlobalPermissionGrantService.ALLOWED_GLOBAL_PERMISSIONS / V036 CHECK / SDD 12 와 동일 문자열.
+        private const val PERMISSION_CREATE_PROJECT = "CREATE_PROJECT"
+    }
+
     /**
      * `GET /api/v1/users/me/whoami` — 현재 인증된 사용자 정보 반환.
      *
@@ -132,6 +137,9 @@ class WhoamiController(
                 userId = user.id,
                 mustChangePassword = mustChangePassword,
                 isSystemAdmin = systemPermissionResolver.isSystemAdmin(userId),
+                // FR-PJ-01/FR-PM-10: 프로젝트 생성 권한 힌트. hasGlobalPermission(=grant OR isSystemAdmin)에 위임 —
+                // hasGrant 직접호출 금지(SYSTEM_ADMIN 이 grant 없이도 통과해야 하므로). 미부여/판정 불가는 false(fail-closed).
+                canCreateProject = systemPermissionResolver.hasGlobalPermission(userId, PERMISSION_CREATE_PROJECT),
                 mfaEnrollmentRequired = mfaEnrollmentRequired,
                 displayName = user.displayName,
                 avatarUrl = avatarUrlFor(userId),
@@ -186,6 +194,8 @@ class WhoamiController(
             userId = pat.userId,
             mustChangePassword = false,
             isSystemAdmin = false,
+            // FR-PJ-01/FR-PM-10: 봇 컨텍스트(PAT)는 프로젝트 생성 UI 를 쓰지 않으므로 조회 없이 false 고정.
+            canCreateProject = false,
             mfaEnrollmentRequired = false,
             // 프로필 view-layer(displayName/avatarUrl)도 봇 컨텍스트(PAT)와 무관하므로 null 고정.
             displayName = null,

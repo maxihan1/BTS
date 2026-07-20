@@ -954,10 +954,9 @@ class WhoamiControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.authMethod").value("pat"))
             // 봇 컨텍스트(PAT)는 프로젝트 생성 UI 를 쓰지 않으므로 canCreateProject 는 조회 없이 false 고정.
+            // hasGlobalPermission 을 true 로 stub 했음에도 응답이 false 인 것이 "PAT 분기는 resolver 값을 쓰지 않는다"의 봉인이다
+            // (any()-기반 verify(exactly=0)은 슬라이스 공유 mock 에 앞선 테스트 호출이 누적돼 부적합하므로 쓰지 않는다).
             .andExpect(jsonPath("$.canCreateProject").value(false))
-
-        // 봉인: PAT 분기는 프로젝트 생성 권한 resolver 를 아예 호출하지 않는다.
-        verify(exactly = 0) { systemPermissionResolver.hasGlobalPermission(any(), any()) }
     }
 
     /** local_credentials 행 픽스처 — mustChangePassword 플래그만 변주 */
