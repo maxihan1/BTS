@@ -186,4 +186,13 @@ describe('WorkflowSchemeDetailPage', () => {
       expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
     )
   })
+
+  /**
+   * PL7-2 (FR-UX-06 PR13 Task 7). 컴포넌트는 자체 <main>을 렌더하지 않는다.
+   * 문서 <main>은 ShellLayout이 단독 소유(WCAG 1.3.1 — 문서당 main 1개).
+   */
+  it('PL7-2: 컴포넌트는 자체 <main>을 렌더하지 않는다', () => {
+    const { container } = renderDetailPage()
+    expect(container.querySelector('main')).toBeNull()
+  })
 })
