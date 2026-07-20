@@ -1041,7 +1041,7 @@ describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mut
     expect(container.querySelector('main')).toBeNull()
 
     // 본문 편집 버튼은 <section aria-label="이슈 상세"> 안에 있으므로 within(section)으로 범위 좁힘
-    const section = container.querySelector('section[aria-label="이슈 상세"]')
+    const section = container.querySelector<HTMLElement>('section[aria-label="이슈 상세"]')
     expect(section).not.toBeNull()
     if (section === null) return
 
@@ -1214,7 +1214,7 @@ describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mut
     expect(container.querySelector('main')).toBeNull()
 
     // 본문 영역은 <section aria-label="이슈 상세"> 안에 있으므로 within(section)으로 범위 좁힘
-    const section = container.querySelector('section[aria-label="이슈 상세"]')
+    const section = container.querySelector<HTMLElement>('section[aria-label="이슈 상세"]')
     expect(section).not.toBeNull()
     if (section === null) return
 
