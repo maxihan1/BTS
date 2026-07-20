@@ -345,3 +345,15 @@ R1·R2·R4는 T2 구현 가이드로 흡수(아래 반영). R3는 구현 재량.
 - **GAP-1 확정 = 전 인증자 표시**. 설정 그룹 11링크를 모든 인증 사용자에게 표시(isSystemAdmin 게이팅 없음).
   근거 재확인: 설정 라우트 requireAuth로 URL 직접 도달 가능·백엔드 fail-closed, 신규 유출 0, 디자인 스펙 §3.1 일치.
   → T2 구현 시 설정 그룹에 별도 권한 게이팅 걸지 말 것(관리 nav의 isSystemAdmin 게이팅과 혼동 금지).
+
+## 구현 결과 (/bts-impl)
+
+- **6 태스크 전원 PASS** (직렬 dispatch + controller 직접 git log/diff 검증). T1 데이터슬라이스·T2 ProjectTree·
+  T3 Sidebar배선·T4 ProjectNavTabs추출·T5 C3랜드마크·T6 E2E. TDD red→green→refactor 순서 전 태스크 확인.
+- **cross-task 회귀 1건 해소**: T3(ProjectTree 배선→useParams 호출)이 ShellLayout.test 모킹(useParams
+  미export) 6건 크래시 → controller가 `useParams: () => ({})` mock 1줄 추가로 해소(`3ecd5a628`).
+- **검증**: vitest **7426**(473파일, baseline 7391+35)·e2e **537**(530+신규 7: project-tree 5 + landmark 2)·
+  typecheck 0·lint 0(PR12 파일; 잔여 8 warning은 사전존재 SlackResultBanner·WeekGrid, 무관).
+- **계약 무위반**: aria-label 4종 불변·navigation-contract green(+프로젝트 nav 고정)·Radix Tabs 0·
+  사이드바 h1 0·검색 TopBar 단일. GAP-1 설정그룹 게이팅 없음(전 인증자). 순수 프론트·FR 129 불변.
+- **회귀-무해 추출 실증**: ProjectNavTabs 추출로 board/backlog 테스트 파일 무수정·뷰전환 e2e green.
