@@ -120,6 +120,8 @@ describe('ProjectListPage — "새 프로젝트" 버튼 게이팅 (S4)', () => {
 
     await screen.findAllByRole('heading', { level: 1, name: '프로젝트' })
     expect(screen.getByRole('link', { name: '새 프로젝트' })).toHaveAttribute('href', '/projects/new')
+    // 목록 조회까지 완전히 정착시켜 act() 경고 없이 테스트를 종료한다.
+    await screen.findByText('Atlas 프로젝트')
   })
 
   it('canCreateProject=false면 "새 프로젝트" 버튼이 표시되지 않는다', async () => {
@@ -128,6 +130,7 @@ describe('ProjectListPage — "새 프로젝트" 버튼 게이팅 (S4)', () => {
 
     await screen.findAllByRole('heading', { level: 1, name: '프로젝트' })
     expect(screen.queryByRole('link', { name: '새 프로젝트' })).not.toBeInTheDocument()
+    await screen.findByText('Atlas 프로젝트')
   })
 
   it('canCreateProject 키 부재(undefined, EC-6 하위호환)면 "새 프로젝트" 버튼이 표시되지 않는다', async () => {
@@ -136,6 +139,7 @@ describe('ProjectListPage — "새 프로젝트" 버튼 게이팅 (S4)', () => {
 
     await screen.findAllByRole('heading', { level: 1, name: '프로젝트' })
     expect(screen.queryByRole('link', { name: '새 프로젝트' })).not.toBeInTheDocument()
+    await screen.findByText('Atlas 프로젝트')
   })
 
   it('로그인하지 않은 상태(user:null)면 "새 프로젝트" 버튼이 표시되지 않는다', async () => {
@@ -143,6 +147,7 @@ describe('ProjectListPage — "새 프로젝트" 버튼 게이팅 (S4)', () => {
 
     await screen.findAllByRole('heading', { level: 1, name: '프로젝트' })
     expect(screen.queryByRole('link', { name: '새 프로젝트' })).not.toBeInTheDocument()
+    await screen.findByText('Atlas 프로젝트')
   })
 })
 
