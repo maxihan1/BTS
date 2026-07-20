@@ -36,10 +36,22 @@ function generateUuidV4(): string {
 // 모듈 상태 — resetProjectStore()로 테스트 격리 (component-handlers.ts 동형 패턴)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 시드 프로젝트 2건 — ATLAS(활성) · NOVA(아카이브됨, unarchive 흐름 테스트용) */
+/**
+ * 시드 프로젝트 4건 — ATLAS·MIDDLE·ZETA(활성, 트리 다중활성 시나리오) · NOVA(아카이브됨, unarchive
+ * 흐름 테스트용). ATLAS/MIDDLE/ZETA의 id·key·name은 구 `project-list-handlers.ts` fixture와 동일하게
+ * 유지한다 — 이 파일이 `GET /api/v1/projects`의 유일 정본 핸들러로 통합되며, 그 파일은 이 시드를
+ * 재노출하는 shim이 됐다(project MSW 핸들러 단일 정본 통합, project-tree e2e shadow 회귀 수정).
+ */
 const SEED_PROJECTS: StoredProject[] = [
   { id: 'a1b2c3d4-e5f6-4890-abcd-ef1234567890', key: 'ATLAS', name: 'Atlas 프로젝트', archivedAt: null },
-  { id: 'b2c3d4e5-f6a7-4901-bcde-f12345678901', key: 'NOVA', name: 'Nova 프로젝트', archivedAt: '2026-01-01T00:00:00Z' },
+  { id: 'c3d4e5f6-a7b8-4012-9def-123456789012', key: 'MIDDLE', name: 'Middle 프로젝트', archivedAt: null },
+  { id: 'b2c3d4e5-f6a7-4901-bcde-f12345678901', key: 'ZETA', name: 'Zeta 프로젝트', archivedAt: null },
+  {
+    id: 'd4e5f6a7-b8c9-4123-9012-345678901234',
+    key: 'NOVA',
+    name: 'Nova 프로젝트',
+    archivedAt: '2026-01-01T00:00:00Z',
+  },
 ]
 
 function cloneSeed(): Map<string, StoredProject> {
@@ -144,8 +156,11 @@ function toArchiveResult(stored: StoredProject): ProjectArchiveResult {
 /**
  * 프로젝트 목록 조회 — `archived` 쿼리 파라미터로 필터링, name 오름차순 정렬.
  * 생략 시 archived=false(활성만), `?archived=true`면 아카이브만 반환한다(백엔드 D8 지라 관례 재현).
+ *
+ * `GET /api/v1/projects`의 유일 정본 핸들러 — `mocks/project-list-handlers.ts`가 이 핸들러를
+ * 재노출하는 shim이므로 export한다(project MSW 핸들러 단일 정본 통합).
  */
-const listProjectsHandler = http.get('/api/v1/projects', ({ request }) => {
+export const listProjectsHandler = http.get('/api/v1/projects', ({ request }) => {
   const url = new URL(request.url)
   const archived = url.searchParams.get('archived') === 'true'
   const items = Array.from(projectStore.values())

@@ -11,10 +11,16 @@
 //   - fixture는 src/mocks/project-list-handlers.ts의 projectListFixtures를 직접 import한다
 //     (동일 원천, drift 방지). 이 파일은 import.meta.env를 참조하지 않아 Playwright Node
 //     런타임에서 안전하다(board-fixtures.ts/dashboard-fixtures.ts와 달리 인라인 동기화 불필요).
+//     project-list-handlers.ts는 project-handlers.ts(GET /api/v1/projects 정본, stateful)의
+//     활성 시드(ATLAS·MIDDLE·ZETA)를 재노출하는 shim이다 — 정본 시드에는 아카이브 NOVA도 있지만
+//     기본(archived 생략) 응답은 활성만 반환하므로 이 fixture 3건과 일치한다.
 //   - 서브링크 실경로 계약(DIRECT/REPORT/SETTINGS)은 ProjectTree.tsx 내부 상수가 export되지
 //     않으므로 ProjectTree.test.tsx(단위 테스트)와 동일하게 인라인 하드코딩한다.
 //   - '프로젝트'는 '프로젝트 뷰 전환'(ProjectNavTabs)의 substring이므로 getByRole 조회는
 //     항상 { exact: true }를 명시한다(playwright-getbyrole-exact-strict-mode).
+//   - S1의 링크 개수 검증은 nav 최상단 "모든 프로젝트" 링크(G2, FR-PJ PR-5 Task 7)를 포함하지
+//     않도록 `<ul>` 프로젝트 목록으로 스코핑한다(ProjectTree.test.tsx 동일 관례) — "모든 프로젝트"는
+//     nav 직계 자식이고 `<ul>` 밖이므로 이 스코핑으로 자연히 제외된다.
 //   - reload 금지(store 리셋 = 가짜그린). SPA goto/click으로만 페이지 전환.
 //   - serviceWorkers:'block' 금지(e2e-msw-serviceworker-block) — 기본 설정 그대로 사용.
 import { test, expect } from '@playwright/test'
@@ -68,7 +74,9 @@ test.describe('FR-UX-06 PR12 사이드바 프로젝트 트리', () => {
     await expect(nav).toBeVisible()
 
     // 로딩 스켈레톤 → 실 목록 전환을 기다린 뒤(개수 고정) 순서를 검증한다.
-    const projectLinks = nav.getByRole('link')
+    // <ul> 프로젝트 목록으로 스코핑 — nav 최상단 "모든 프로젝트" 링크(G2)는 <ul> 밖이라 미포함.
+    const projectList = nav.getByRole('list')
+    const projectLinks = projectList.getByRole('link')
     await expect(projectLinks).toHaveCount(sortedProjects.length)
     for (const [index, project] of sortedProjects.entries()) {
       await expect(projectLinks.nth(index)).toHaveText(project.name)

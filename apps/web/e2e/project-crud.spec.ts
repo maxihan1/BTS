@@ -1,7 +1,7 @@
 // FR-PJ PR-5 D7 E2E — 프로젝트 CRUD happy-path (Task 8, 스펙 S1·S3·S5·S6)
 //
 // 시나리오 개요.
-//   S1  목록 표시         — /projects 진입 → 활성 프로젝트(ATLAS)만 테이블 표시, 아카이브(NOVA)는 숨김
+//   S1  목록 표시         — /projects 진입 → 활성 프로젝트(ATLAS·MIDDLE·ZETA)만 테이블 표시, 아카이브(NOVA)는 숨김
 //   S2  생성 성공         — "새 프로젝트" → /projects/new → key·name 입력 → 제출 → /projects/{key}/board 이동
 //   S3  아카이브 토글     — "아카이브된 프로젝트 표시" 토글 → 아카이브 프로젝트(NOVA)만 표시로 전환
 //   S4  설정 name 변경    — 프로젝트 설정 details에서 이름 수정 → 저장 → 재조회로 반영 확정
@@ -23,10 +23,10 @@
 //   - archive/설정(danger zone) 액션은 loginAsSystemAdmin 헬퍼로 로그인한다
 //     (fixtures/workflow-scheme-fixtures.ts, __bts_e2e_is_system_admin 플래그 — settings-admin-hub.spec.ts
 //     ·audit-logs.spec.ts 선례와 동형). 이 spec 전체에서 일관되게 사용한다.
-//   - GET /api/v1/projects 는 project-handlers.ts(stateful, archived 쿼리 지원)가 실제 응답을
-//     만든다 — src/mocks/handlers.ts 배열에서 project-list-handlers.ts(구형 정적 fixture,
-//     archived 파라미터 무시)보다 먼저 등록되어 우선 매치된다(MSW는 배열 순서상 첫 매치 핸들러
-//     사용). 시드. ATLAS(활성) + NOVA(아카이브, 2026-01-01T00:00:00Z).
+//   - GET /api/v1/projects 는 project-handlers.ts(stateful, archived 쿼리 지원)가 유일 정본으로
+//     응답한다 — project-list-handlers.ts는 이 핸들러를 재노출하는 shim(하위호환용, vitest 4파일
+//     전용)이라 src/mocks/handlers.ts에는 project-handlers.ts만 등록된다(중복 등록 없음). 시드.
+//     ATLAS·MIDDLE·ZETA(활성) + NOVA(아카이브, 2026-01-01T00:00:00Z).
 //   - 매 test는 독립 브라우저 context(=독립 페이지 모듈 인스턴스)로 시작해 격리된다(reset
 //     헬퍼 호출 불필요). 단, 같은 페이지 안에서도 새 전체 네비게이션(page.goto)은 MSW
 //     handler 모듈의 인메모리 state(projectStore 등)를 초기 시드로 되돌린다(SPA client-side
@@ -81,7 +81,7 @@ async function overlayCanCreateProject(page: Page): Promise<void> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe('S1 프로젝트 목록 표시 (FR-PJ PR-5 Task 8)', () => {
-  test('Given SYSTEM_ADMIN 로그인 When /projects 진입 Then 활성 프로젝트(ATLAS)만 테이블 표시', async ({
+  test('Given SYSTEM_ADMIN 로그인 When /projects 진입 Then 활성 프로젝트(ATLAS·MIDDLE·ZETA)만 테이블 표시', async ({
     page,
   }) => {
     // Given. SYSTEM_ADMIN alice 로그인
@@ -93,12 +93,21 @@ test.describe('S1 프로젝트 목록 표시 (FR-PJ PR-5 Task 8)', () => {
     // Then. PageHeader 제목 '프로젝트'
     await expect(page.getByRole('heading', { name: '프로젝트', exact: true })).toBeVisible()
 
-    // Then. 활성 시드 ATLAS 행이 표시된다
+    // Then. 활성 시드 ATLAS·MIDDLE·ZETA 행이 모두 표시된다
     const table = page.getByRole('table')
     await expect(table).toBeVisible()
+
     const atlasRow = table.getByRole('row', { name: /ATLAS/ })
     await expect(atlasRow).toBeVisible()
     await expect(atlasRow).toContainText('Atlas 프로젝트')
+
+    const middleRow = table.getByRole('row', { name: /MIDDLE/ })
+    await expect(middleRow).toBeVisible()
+    await expect(middleRow).toContainText('Middle 프로젝트')
+
+    const zetaRow = table.getByRole('row', { name: /ZETA/ })
+    await expect(zetaRow).toBeVisible()
+    await expect(zetaRow).toContainText('Zeta 프로젝트')
 
     // Then. 아카이브 시드 NOVA는 기본(활성) 뷰에 표시되지 않는다
     await expect(page.getByRole('link', { name: 'NOVA', exact: true })).toHaveCount(0)
