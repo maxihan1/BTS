@@ -28,12 +28,12 @@ function resolveInsertIndex(
   nextIssueKey: string | undefined,
 ): number {
   if (previousIssueKey !== undefined) {
-    const idx = cards.findIndex((c) => c.issueKey === previousIssueKey)
-    return idx === -1 ? cards.length : idx + 1
+    const previousIndex = cards.findIndex((c) => c.issueKey === previousIssueKey)
+    return previousIndex === -1 ? cards.length : previousIndex + 1
   }
   if (nextIssueKey !== undefined) {
-    const idx = cards.findIndex((c) => c.issueKey === nextIssueKey)
-    return idx === -1 ? 0 : idx
+    const nextIndex = cards.findIndex((c) => c.issueKey === nextIssueKey)
+    return nextIndex === -1 ? 0 : nextIndex
   }
   return 0
 }
