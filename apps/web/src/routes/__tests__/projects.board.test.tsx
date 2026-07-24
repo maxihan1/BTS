@@ -234,11 +234,11 @@ const BOARD_DETAIL_WITH_ASSIGNEES: BoardDetail = {
       wipExceeded: false,
       cards: [
         // case 1: assigneeId=null → unassigned
-        { issueKey: 'ATLAS-1', summary: '미배정 이슈', assigneeId: null, version: 1, priority: 1, epicKey: null },
+        { issueKey: 'ATLAS-1', summary: '미배정 이슈', assigneeId: null, version: 1, priority: 1, epicKey: null, rank: null },
         // case 2: assigneeId=ALICE_ID, userMap에 있음 → named
-        { issueKey: 'ATLAS-2', summary: '앨리스 이슈', assigneeId: ALICE_ID, version: 2, priority: 1, epicKey: null },
+        { issueKey: 'ATLAS-2', summary: '앨리스 이슈', assigneeId: ALICE_ID, version: 2, priority: 1, epicKey: null, rank: null },
         // case 3: assigneeId=UNKNOWN_USER_ID, userMap에 없음 → unknown
-        { issueKey: 'ATLAS-3', summary: '미해석 이슈', assigneeId: UNKNOWN_USER_ID, version: 3, priority: 1, epicKey: null },
+        { issueKey: 'ATLAS-3', summary: '미해석 이슈', assigneeId: UNKNOWN_USER_ID, version: 3, priority: 1, epicKey: null, rank: null },
       ],
     },
   ],

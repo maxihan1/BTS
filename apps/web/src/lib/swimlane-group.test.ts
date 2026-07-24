@@ -15,6 +15,7 @@ const makeCard = (issueKey: string, priority: number, assigneeId: string | null 
   version: 1,
   priority,
   epicKey: null,
+  rank: null,
 })
 
 const assigneeNames: Map<string, CardAssigneeDisplay> = new Map([

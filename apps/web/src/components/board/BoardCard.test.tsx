@@ -45,6 +45,7 @@ const baseCard: BoardCardType = {
   version: 3,
   priority: 1,
   epicKey: null,
+  rank: null,
 }
 
 const COLUMN_ID = 'col-uuid-0001'
