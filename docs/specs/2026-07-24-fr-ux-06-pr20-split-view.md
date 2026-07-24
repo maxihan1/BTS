@@ -72,9 +72,9 @@
 
 - **PR20-F1**: `/issues` 라우트 `validateSearch`에 `selected?: string` 추가. 기존 필터/정렬/page 파라미터와 공존, 정규화가 `selected`를 삼키지 않음.
 - **PR20-F2**: `IssueListRouteAdapter`가 `selected`를 읽어 (와이드) `<IssueDetailPage variant="pane" .../>`를 우측에 렌더. `selected` 없으면 목록 전체폭.
-- **PR20-F3**: 반응형 레이아웃 — `≥lg` split 2컬럼(목록 축소 + 상세 페인), `<lg` 목록 단일 컬럼. Tailwind 브레이크포인트로 CSS 처리(JS 폭 감지 최소화).
-- **PR20-F4**: 행 클릭 콜백(`onNavigate`)을 화면 폭 컨텍스트에 맞게 분기 — 와이드: `?selected=KEY` 설정(nav navigate, D4 준수), 좁은폭: `/issues/$key`로 이동. **DOM/testid/aria-label 무변경**(콜백 목적지만 교체).
-- **PR20-F5**: `IssueDetailPage`에 `variant?: 'page' | 'pane'` prop 추가 (기본 `'page'` = 현행 동작 무변경). `'pane'`일 때: ①제목 `<h1>`→`<h2>` 강등 ②닫기 버튼 노출(`?selected` 제거) ③리다이렉트/삭제 후 이동을 콜백(`onIssueRedirect(newKey)`·`onIssueClosed()`)으로 위임 — 기본값은 현행 fullscreen navigate.
+- **PR20-F3**: 반응형 레이아웃 — `≥lg` split 2컬럼(목록 축소 + 상세 페인), `<lg` 목록 단일 컬럼. **레이아웃 자체는 Tailwind 브레이크포인트(CSS)로 처리.** 목록 페인과 상세 페인은 **각자 독립 스크롤 컨테이너**(`overflow-y-auto`) — 긴 상세를 스크롤해도 목록 헤더/스크롤이 따로 논다.
+- **PR20-F4**: 행 클릭 콜백(`onNavigate`)을 화면 폭 컨텍스트에 맞게 분기 — 와이드: `?selected=KEY` 설정(nav navigate, D4 준수), 좁은폭: `/issues/$key`로 이동. **레이아웃은 CSS지만 클릭 목적지 분기는 폭 값을 알아야 하므로 `matchMedia` 기반 `useMediaQuery` 훅으로 판정**(레이아웃 CSS·클릭 JS 이원 처리). **DOM/testid/aria-label 무변경**(콜백 목적지만 교체 — 네비는 IssueTable의 `onNavigate` 콜백 단일 경로, 별도 `<Link>` 앵커 없음을 실측 확인).
+- **PR20-F5**: `IssueDetailPage`에 `variant?: 'page' | 'pane'` prop 추가 (기본 `'page'` = 현행 동작 무변경). `'pane'`일 때: ①제목 `<h1>`→`<h2>` 강등 ②닫기 버튼 노출(`?selected` 제거) ③리다이렉트/삭제 후 이동을 콜백(`onIssueRedirect(newKey)`·`onIssueClosed()`)으로 위임 — 기본값은 현행 fullscreen navigate ④**페인 등장 시 포커스를 페인 제목(또는 닫기 버튼)으로 이동 + `Escape` 키로 닫기**(a11y·SR 사용자에게 상세 등장 인지).
 - **PR20-F6**: 선택된 행 시각 강조(ADS `--bg-selected`/`--text-selected` 토큰·`aria-current` 등 접근성 표식).
 
 ## 비기능 요구사항 (NFR)
@@ -83,6 +83,7 @@
 - **NFR-2**: split 전환·선택은 **브라우저 뒤로가기/앞으로가기로 되돌아감** (URL 상태라 History 자동 처리).
 - **NFR-3**: 상세 페인 데이터는 `selected` 키 기준 독립 fetch — 목록 필터와 무관(필터에서 제외된 이슈도 선택 시 표시).
 - **NFR-4**: 상세 페인 로딩 중 목록은 상호작용 가능(페인 로딩이 목록을 블로킹하지 않음).
+- **NFR-5 (a11y)**: 페인 등장 시 포커스가 상세 영역으로 이동하고 `Escape`로 닫힌다. 선택 행은 `aria-current`로 표식. 문서 h1 단일(HC-3).
 
 ## 데이터 모델 변경
 
@@ -115,4 +116,11 @@
 6. typecheck 0 · eslint 0(`eslint src`) · 관련 유닛 green · 프론트 build 0.
 7. FR 총수 129 불변 (verify-master-plan 통과, D단계 마킹 변경 없어 dashboard regen 불요).
 
-## Brainstorming Check (← Phase B 채움)
+## Brainstorming Check
+
+✅ 통과 (1회 sanity check). 발견·보강한 gap 4건.
+- **G1 (a11y)**: 페인 등장 시 포커스 이동 + `Escape` 닫기 + `aria-current` 선택표식 → F5·NFR-5 추가.
+- **G2 (폭 판정)**: 레이아웃은 CSS 반응형이나 "클릭 목적지(와이드 `?selected` vs 좁은폭 전체화면)" 분기는 폭 값을 알아야 함 → `useMediaQuery`(matchMedia) 훅 명시(F4).
+- **G3 (네비 경로)**: 목록 행 네비가 별도 `<Link>` 앵커가 아니라 `onNavigate` 콜백 단일 경로임을 실측 확인 → 콜백 교체만으로 e2e 안전(F4).
+- **G4 (스크롤)**: 목록·상세 페인 독립 스크롤 컨테이너 → F3 추가.
+- Maxi 결정(D1~D3)으로 라우트 구조·페인 등장·반응형의 핵심 갈림길은 이미 봉인됨(재-loop 불요).

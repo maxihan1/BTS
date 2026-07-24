@@ -41,9 +41,25 @@
 - **기존 전체화면 상세(`issues.$key`) 유지 여부** — split view가 기본이 되면 전체화면 상세 라우트를 남길지/리다이렉트할지.
 - **반응형** — 좁은 폭(<900px)에서 2분할 붕괴 처리(PR11 사이드바 반응형 관례 참조).
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-24-fr-ux-06-pr20-split-view.md](../specs/2026-07-24-fr-ux-06-pr20-split-view.md)
+
+**Maxi 확정 결정 3 (미해결 질문 봉인)**.
+- D1 = `/issues?selected=KEY` 검색 파라미터 (목록 라우트 유지·우측에 기존 IssueDetailPage 인라인)
+- D2 = 상세 페인은 **이슈 선택 시에만** 등장 (미선택 목록 전체폭 → 선택 시 축소·페인 등장 → 해제 복귀)
+- D3 = 좁은 화면(<lg) = 목록만 + 행 클릭 시 기존 `/issues/$key` 전체화면 이동
+
+핵심 시나리오 3줄 요약.
+- 와이드에서 이슈 행 클릭 → `?selected=KEY`로 URL 동기화·우측 상세 페인 등장·선택 행 강조 (닫기 → 전체폭 복귀)
+- 필터/정렬/page 변경 시 `?selected` 보존, 상세 페인은 selected 키 기준 독립 fetch
+- `<lg` 좁은폭은 목록만·행 클릭 시 전체화면 이동 / `IssueDetailPage variant='page'` 미지정 렌더는 기존 무변경(무회귀 증거)
+
+**하드 제약**. `/issues/$key` 전체화면 유지(딥링크)·상세 페인 h1→h2(문서 h1 단일)·기존 IssueDetailPage 재사용·nav/dialog e2e 무접촉. FR 129 불변.
+
+## Brainstorming Check
+
+✅ 통과 (1회 sanity check). gap 4건 보강 — G1 a11y(포커스/Escape/aria-current)·G2 클릭목적지 useMediaQuery 판정·G3 네비 onNavigate 콜백 단일경로 실측·G4 페인 독립 스크롤. 핵심 갈림길은 Maxi D1~D3로 선봉인.
 
 ## Plan (← /bts-plan 채움)
 
