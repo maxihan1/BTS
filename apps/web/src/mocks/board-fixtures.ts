@@ -5,6 +5,14 @@ import type {
   BoardCreated,
 } from '@/api/boards'
 import type { QuickFilter } from '@/api/board-quick-filters'
+// FR-UX-06 PR21 Task 8 — 셀 내 순서변경(useReorderCard) E2E 지원.
+// PATCH /api/v1/issues/:key/rank(backlog-handlers.ts rerankIssueHandler)는 issueKey를
+// backlogStore(issue-tracking BC 백로그 mock) 전체에서 탐색해 없으면 404(ISSUE_NOT_FOUND)를
+// 반환한다 — 즉 보드 카드가 reorder되려면 같은 issueKey가 backlogStore에도 있어야 한다
+// (board-fixtures.ts 자체 시드만으로는 rerank가 항상 404로 실패해 낙관적 업데이트가 롤백된다).
+// seedBacklog는 backlog-fixtures.ts의 공개 API이므로 그 파일을 수정하지 않고 호출만 한다.
+import { seedBacklog } from './backlog-fixtures'
+import type { StoredBacklogProject } from './backlog-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FILTER_BOARD 담당자 UUID 상수 — user-fixtures.ts와 동기화
@@ -704,9 +712,10 @@ export const EPIC_SWIMLANE_BOARD: StoredBoardDetail = {
  * 추가하면 board-kanban.spec.ts/board-wip-swimlane.spec.ts 등 기존 26개 E2E 스펙의
  * 카드 수·그룹 구성 전제가 흔들릴 위험이 있다.
  *
- * RT-1/RT-2/RT-3은 backlog-fixtures.ts DEFAULT_BACKLOG에 대응 이슈가 없으므로
- * (board-handlers.ts resolveLiveRank의 backlogStore 오버레이 대상 아님) 새로고침 후
- * 순서 유지 검증은 이 보드가 아닌 DEFAULT_BOARD(ATLAS-1/ATLAS-4)로 수행한다.
+ * RT-1/RT-2/RT-3은 이 파일 하단의 REORDER_BACKLOG로 backlogStore에도 짝을 맞춰 시드된다 —
+ * rerankIssueHandler(backlog-handlers.ts)가 issueKey를 backlogStore에서 탐색하므로, 이 시드가
+ * 없으면 PATCH /api/v1/issues/:key/rank가 항상 404(ISSUE_NOT_FOUND)로 실패해 낙관적 순서변경이
+ * 롤백된다(E2E로 실측 확인 — board-reorder.spec.ts 작성 중 발견한 실제 갭).
  *
  * UUID는 RFC4122 v4 형식 — Zod v4 z.string().uuid() 통과 보장.
  */
@@ -786,6 +795,53 @@ export const REORDER_SWIMLANE_BOARD: StoredBoardDetail = {
   quickFilters: [],
 }
 
+/**
+ * REORDER_SWIMLANE_BOARD(RT-1/RT-2/RT-3)와 짝을 이루는 backlogStore 시드 (FR-UX-06 PR21 Task 8).
+ *
+ * rerankIssueHandler(backlog-handlers.ts)가 issueKey를 backlogStore에서 탐색하므로,
+ * 이 시드가 없으면 useReorderCard의 PATCH /api/v1/issues/:key/rank 호출이 항상
+ * 404(ISSUE_NOT_FOUND)로 실패해 낙관적 순서변경이 롤백된다(E2E로 실측 확인).
+ * rank 값은 REORDER_SWIMLANE_BOARD 카드와 동일 문자열로 맞춰 두 store의 초기 순서가
+ * 일치하도록 한다(board-handlers.ts resolveLiveRank 오버레이와 정합).
+ */
+const REORDER_BACKLOG: StoredBacklogProject = {
+  projectKey: 'REORDERTEST',
+  backlog: [
+    {
+      key: 'RT-1',
+      summary: '순서변경 테스트 이슈 1 — alice 담당(같은 셀)',
+      currentStateKey: 'open',
+      assigneeId: ALICE_USER_ID,
+      priority: 1,
+      rank: '0|hzzzzz:',
+      version: 0,
+      epicKey: null,
+    },
+    {
+      key: 'RT-2',
+      summary: '순서변경 테스트 이슈 2 — alice 담당(같은 셀)',
+      currentStateKey: 'open',
+      assigneeId: ALICE_USER_ID,
+      priority: 2,
+      rank: '0|i00007:',
+      version: 0,
+      epicKey: null,
+    },
+    {
+      key: 'RT-3',
+      summary: '순서변경 테스트 이슈 3 — bob 담당(다른 셀)',
+      currentStateKey: 'open',
+      assigneeId: BOB_USER_ID,
+      priority: 3,
+      rank: '0|i00010:',
+      version: 0,
+      epicKey: null,
+    },
+  ],
+  sprints: [],
+  truncated: false,
+}
+
 // 모듈 로드 시 기본 보드와 필터 보드를 자동 시드한다 — notification-policy-handlers buildSeedStore() 패턴 동일.
 // dev(pnpm dev) · E2E 진입 시 boardStore가 비어 있어 생성 폼이 노출되는 결함 방지.
 // Vitest 단위 테스트 환경(MODE='test')에서는 건너뜀 — 각 테스트가 beforeEach/reset으로 직접 제어.
@@ -796,4 +852,5 @@ if (import.meta.env.MODE !== 'test') {
   seedBoardWithMeta(SWIMLANE_BOARD)
   seedBoardWithMeta(EPIC_SWIMLANE_BOARD)
   seedBoardWithMeta(REORDER_SWIMLANE_BOARD)
+  seedBacklog(REORDER_BACKLOG)
 }
