@@ -17,7 +17,7 @@
 
 ## 결정 1 — 보드 조회 view layer가 issue-tracking rank를 미러 노출
 
-`BoardCardResponse`에 `rank: String?`를 추가하고, 보드 카드 조회를 `rank ASC NULLS LAST → key ASC`로 정렬한다(백로그 `BacklogResponses.kt`·`BacklogApplicationService`와 동일 패턴).
+`BoardCardResponse`에 `rank: String?`를 추가하고, 보드 카드 조회를 `rank ASC NULLS LAST → priority ASC → key ASC`로 정렬한다(백로그 `BacklogResponses.kt`·`BacklogApplicationService`의 rank 규칙에 보드 기존 priority tiebreaker를 유지 결합 — rank 미부여 시 기존 priority 정렬 무회귀). 구현은 `BoardCardPlacement.CARD_COMPARATOR`.
 
 **근거**.
 - rank 소유권은 issue-tracking(`issues.rank`)에 그대로 둔다. 보드는 조회 시 rank를 **미러 노출**만 한다(백로그 view가 이미 하는 것과 동일). 새 rank 저장 경로를 만들지 않는다.

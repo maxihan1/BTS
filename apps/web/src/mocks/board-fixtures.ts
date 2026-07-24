@@ -703,9 +703,10 @@ export const EPIC_SWIMLANE_BOARD: StoredBoardDetail = {
 /**
  * 셀 내 순서변경(useReorderCard) 검증용 보드 픽스처 (FR-UX-06 PR21 Task 8 E2E).
  *
- * TODO 컬럼에 alice 담당 2건(같은 셀) + bob 담당 1건(다른 셀)을 배치해
- * ASSIGNEE 스윔레인 활성 시 "같은 셀 내 순서변경"(D4)과 "셀 경계를 넘는 드래그 → noop"(D5)을
- * 하나의 컬럼에서 함께 검증할 수 있게 한다.
+ * TODO 컬럼에 alice 담당 2건 + bob 담당 1건을 배치한다. **픽스처 자체의 swimlaneField는 'NONE'**
+ * 이고, 카드 summary의 "(같은 셀)/(다른 셀)" 라벨은 **E2E가 UI에서 ASSIGNEE 스윔레인으로 토글한
+ * 뒤에만** 성립하는 뷰 의존 속성이다(담당자별 서브그룹 = 셀). 그렇게 ASSIGNEE 스윔레인 활성 시
+ * "같은 셀 내 순서변경"(D4)과 "셀 경계를 넘는 드래그 → noop"(D5)을 한 컬럼에서 함께 검증한다.
  *
  * DEFAULT_BOARD/SWIMLANE_BOARD를 재사용하지 않는 이유 — quick-filter.spec.ts의
  * QUICK_FILTER_PERM_SEED와 동일한 격리 원칙(전역 fixture 공유 금지). 기존 보드에 카드를

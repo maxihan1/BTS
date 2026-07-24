@@ -27,9 +27,10 @@
 //     순서가 사라짐 — msw-mutation-stateful-refetch와 동일 계열). 이 작업에서 board-handlers.ts에
 //     읽기전용 오버레이(resolveLiveRank)를 추가해 backlogStore에 같은 issueKey가 있으면 그 최신
 //     rank를 우선 사용하도록 stateful 연결했다(파일 범위: board-handlers.ts/board-fixtures.ts만
-//     수정, backlog-handlers.ts는 원본 그대로). DEFAULT_BOARD(ATLAS)는 backlog-fixtures.ts
-//     DEFAULT_BACKLOG과 issueKey가 겹쳐 오버레이 대상이지만, REORDER_SWIMLANE_BOARD(RT-*)는
-//     겹치지 않아 오버레이 대상이 아니다 — S4/S5는 그래서 optimistic 동작만 검증한다.
+//     수정, backlog-handlers.ts는 원본 그대로). DEFAULT_BOARD(ATLAS)·REORDER_SWIMLANE_BOARD(RT-*)
+//     둘 다 board-fixtures.ts의 seedBacklog로 backlogStore에 짝 항목을 시드하므로 오버레이 대상이다
+//     (rerankIssueHandler가 backlogStore에서 issueKey를 찾아야 404가 안 남). 시드 rank를 보드
+//     초기 순서와 동일 문자열로 맞춰 오버레이가 순서 중립이라, S4/S5는 optimistic 동작을 검증한다.
 //   - 컨테이너 한정 셀렉터(playwright-getbyrole-exact-strict-mode 교훈) — strict-mode 위반 방지.
 //   - MSW serviceWorkers:'block' 금지(e2e-msw-serviceworker-block 교훈).
 //   - board-fixtures.ts 직접 import 금지 — import.meta.env.MODE 참조가 Node.js 런타임 오류 유발.
