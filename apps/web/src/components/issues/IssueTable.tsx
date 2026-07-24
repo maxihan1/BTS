@@ -69,7 +69,7 @@ function SortableHeaderCell({ column, sortField, sort, onSort }: SortableHeaderC
   const ariaSort = isActive ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'
 
   return (
-    <TableHead key={column.key} className={column.className} aria-sort={ariaSort}>
+    <TableHead className={column.className} aria-sort={ariaSort}>
       <button
         type="button"
         onClick={() => onSort(sortField)}
@@ -91,6 +91,118 @@ function SortableHeaderCell({ column, sortField, sort, onSort }: SortableHeaderC
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 헤더 행 — 전체 선택 체크박스 + 컬럼 헤더(정렬 가능/불가 분기)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface IssueTableHeaderRowProps {
+  columns: readonly IssueColumnDef[]
+  sort: IssueTableSortState | null
+  onSort: (field: IssueSortField) => void
+  selectAllChecked: boolean
+  onSelectAllPage: () => void
+}
+
+/**
+ * 테이블 헤더 행 — 전체 선택 체크박스(★e2e 계약 보존: `select-all-page`) +
+ * 표시 중인 컬럼 헤더를 렌더한다. 정렬 가능 컬럼은 {@link SortableHeaderCell},
+ * 그 외는 일반 `<TableHead>`로 분기한다.
+ */
+function IssueTableHeaderRow({
+  columns,
+  sort,
+  onSort,
+  selectAllChecked,
+  onSelectAllPage,
+}: IssueTableHeaderRowProps): JSX.Element {
+  return (
+    <TableRow>
+      <TableHead className="w-10">
+        <input
+          type="checkbox"
+          aria-label="현재 페이지 전체 선택"
+          data-testid="select-all-page"
+          checked={selectAllChecked}
+          onChange={onSelectAllPage}
+          className="h-4 w-4 cursor-pointer accent-primary"
+        />
+      </TableHead>
+      {columns.map((column) => {
+        const sortField = getSortField(column)
+        if (sortField === undefined) {
+          return (
+            <TableHead key={column.key} className={column.className}>
+              {column.header}
+            </TableHead>
+          )
+        }
+        return (
+          <SortableHeaderCell key={column.key} column={column} sortField={sortField} sort={sort} onSort={onSort} />
+        )
+      })}
+    </TableRow>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 데이터 행 — 선택 체크박스 + 컬럼 셀
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface IssueTableDataRowProps {
+  issue: IssueResponse
+  columns: readonly IssueColumnDef[]
+  selection: IssueTableSelectionProps
+  onNavigate: (key: string) => void
+  assigneeNameMap: Map<string, string>
+  formatDate: (iso: string | null) => string
+}
+
+/**
+ * 이슈 단건 데이터 행.
+ *
+ * ★e2e 셀렉터 verbatim 보존 — 체크박스(`select-{key}`/`aria-label="이슈 선택"`)는
+ * 기존 IssueCard(routes/issues.index.tsx)와 동일 계약이다. 나머지 컬럼 셀 마크업은
+ * {@link IssueColumnDef.render}(issue-columns.ts)에 위임한다.
+ *
+ * 행(tr) 클릭 → onNavigate. 체크박스 클릭은 onClick에서 stopPropagation해
+ * 행 이동으로 이어지지 않게 한다(onChange의 토글 로직은 그대로 동작).
+ */
+function IssueTableDataRow({
+  issue,
+  columns,
+  selection,
+  onNavigate,
+  assigneeNameMap,
+  formatDate,
+}: IssueTableDataRowProps): JSX.Element {
+  const handleRowNavigate = (): void => onNavigate(issue.key)
+
+  return (
+    <TableRow onClick={handleRowNavigate} className="cursor-pointer">
+      <TableCell className="w-10">
+        <input
+          type="checkbox"
+          aria-label="이슈 선택"
+          data-testid={`select-${issue.key}`}
+          checked={selection.isSelected(issue.key)}
+          onChange={() => selection.onToggle(issue.key)}
+          onClick={(event) => event.stopPropagation()}
+          className="h-4 w-4 cursor-pointer accent-primary"
+        />
+      </TableCell>
+      {columns.map((column) => (
+        <TableCell key={column.key} className={column.className}>
+          {column.render(issue, {
+            assigneeName: issue.assigneeId !== null ? assigneeNameMap.get(issue.assigneeId) : undefined,
+            formatDate,
+            onNavigate: handleRowNavigate,
+          })}
+        </TableCell>
+      ))}
+    </TableRow>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // IssueTable
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -104,7 +216,8 @@ function SortableHeaderCell({ column, sortField, sort, onSort }: SortableHeaderC
  *   상태 배지(`role="status"`)는 기존 IssueCard(routes/issues.index.tsx)와 동일하게
  *   유지한다. 전체 선택 체크박스(`data-testid=select-all-page`)도 기존 IssueListContent와
  *   동일 계약을 유지해 기존 일괄 작업 e2e(issue-bulk-operations.spec.ts)를 보호한다.
- * - 행 클릭 시 onNavigate를 호출하고, 체크박스 클릭은 stopPropagation으로 행 이동을 막는다.
+ * - 표시 컬럼 필터링(`visibleColumnKeys`)은 required 컬럼을 무조건 포함시켜
+ *   숨김 불가 계약(GAP-2)을 강제한다.
  */
 export function IssueTable({
   issues,
@@ -122,61 +235,26 @@ export function IssueTable({
   return (
     <Table aria-label="이슈 목록">
       <TableHeader>
-        <TableRow>
-          <TableHead className="w-10">
-            <input
-              type="checkbox"
-              aria-label="현재 페이지 전체 선택"
-              data-testid="select-all-page"
-              checked={selection.isAllPageSelected}
-              onChange={selection.onSelectAllPage}
-              className="h-4 w-4 cursor-pointer accent-primary"
-            />
-          </TableHead>
-          {columns.map((column) => {
-            const sortField = getSortField(column)
-            if (sortField === undefined) {
-              return (
-                <TableHead key={column.key} className={column.className}>
-                  {column.header}
-                </TableHead>
-              )
-            }
-            return (
-              <SortableHeaderCell key={column.key} column={column} sortField={sortField} sort={sort} onSort={onSort} />
-            )
-          })}
-        </TableRow>
+        <IssueTableHeaderRow
+          columns={columns}
+          sort={sort}
+          onSort={onSort}
+          selectAllChecked={selection.isAllPageSelected}
+          onSelectAllPage={selection.onSelectAllPage}
+        />
       </TableHeader>
       <TableBody>
-        {issues.map((issue) => {
-          const handleRowNavigate = (): void => onNavigate(issue.key)
-          return (
-            <TableRow key={issue.key} onClick={handleRowNavigate} className="cursor-pointer">
-              <TableCell className="w-10">
-                <input
-                  type="checkbox"
-                  aria-label="이슈 선택"
-                  data-testid={`select-${issue.key}`}
-                  checked={selection.isSelected(issue.key)}
-                  onChange={() => selection.onToggle(issue.key)}
-                  onClick={(event) => event.stopPropagation()}
-                  className="h-4 w-4 cursor-pointer accent-primary"
-                />
-              </TableCell>
-              {columns.map((column) => (
-                <TableCell key={column.key} className={column.className}>
-                  {column.render(issue, {
-                    assigneeName:
-                      issue.assigneeId !== null ? assigneeNameMap.get(issue.assigneeId) : undefined,
-                    formatDate,
-                    onNavigate: handleRowNavigate,
-                  })}
-                </TableCell>
-              ))}
-            </TableRow>
-          )
-        })}
+        {issues.map((issue) => (
+          <IssueTableDataRow
+            key={issue.key}
+            issue={issue}
+            columns={columns}
+            selection={selection}
+            onNavigate={onNavigate}
+            assigneeNameMap={assigneeNameMap}
+            formatDate={formatDate}
+          />
+        ))}
       </TableBody>
     </Table>
   )

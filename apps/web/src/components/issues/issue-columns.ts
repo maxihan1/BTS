@@ -48,6 +48,16 @@ export interface IssueColumnDef {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 공통 스타일 상수 — 셀 렌더 함수 간 className 중복 제거
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 보조 정보 텍스트(GAP-4) — 키·상태·수정일 등 시각 위계상 subtle한 컬럼 */
+const SUBTLE_TEXT_CLASS = 'text-(--text-subtle)'
+
+/** 기본 본문 텍스트 — 담당자·우선순위 등 일반 정보 컬럼 */
+const DEFAULT_TEXT_CLASS = 'text-(--text-default)'
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 셀 렌더 함수
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -65,8 +75,7 @@ function renderKeyCell(issue: IssueResponse, ctx: IssueColumnRenderContext): Rea
     {
       href: `/issues/${issue.key}`,
       'aria-label': issue.key,
-      className:
-        'font-mono text-xs font-medium text-(--text-subtle) hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded',
+      className: `font-mono text-xs font-medium ${SUBTLE_TEXT_CLASS} hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded`,
       onClick: (event: ReactMouseEvent<HTMLAnchorElement>) => {
         event.preventDefault()
         event.stopPropagation()
@@ -84,7 +93,7 @@ function renderSummaryCell(issue: IssueResponse): ReactNode {
     {
       'data-testid': `issue-summary-${issue.key}`,
       title: issue.summary,
-      className: 'block truncate font-medium text-(--text-default)',
+      className: `block truncate font-medium ${DEFAULT_TEXT_CLASS}`,
     },
     issue.summary,
   )
@@ -96,8 +105,7 @@ function renderStatusCell(issue: IssueResponse): ReactNode {
     'span',
     {
       role: 'status',
-      className:
-        'inline-block shrink-0 rounded-full bg-(--bg-neutral) px-2 py-0.5 text-xs font-medium text-(--text-subtle)',
+      className: `inline-block shrink-0 rounded-full bg-(--bg-neutral) px-2 py-0.5 text-xs font-medium ${SUBTLE_TEXT_CLASS}`,
     },
     issue.currentStateKey,
   )
@@ -105,17 +113,17 @@ function renderStatusCell(issue: IssueResponse): ReactNode {
 
 /** 담당자 셀 렌더 — assigneeNameMap 해석 결과. 미배정/해석 실패 시 "미배정" */
 function renderAssigneeCell(_issue: IssueResponse, ctx: IssueColumnRenderContext): ReactNode {
-  return createElement('span', { className: 'text-(--text-default)' }, ctx.assigneeName ?? '미배정')
+  return createElement('span', { className: DEFAULT_TEXT_CLASS }, ctx.assigneeName ?? '미배정')
 }
 
 /** 우선순위 셀 렌더 — priorityName 텍스트 그대로 */
 function renderPriorityCell(issue: IssueResponse): ReactNode {
-  return createElement('span', { className: 'text-(--text-default)' }, issue.priorityName)
+  return createElement('span', { className: DEFAULT_TEXT_CLASS }, issue.priorityName)
 }
 
-/** 수정일 셀 렌더 — 사용자 dateFormat 프리셋 기준(GAP-4, 보조 정보라 --text-subtle) */
+/** 수정일 셀 렌더 — 사용자 dateFormat 프리셋 기준(GAP-4, 보조 정보라 subtle) */
 function renderUpdatedAtCell(issue: IssueResponse, ctx: IssueColumnRenderContext): ReactNode {
-  return createElement('span', { className: 'text-(--text-subtle)' }, ctx.formatDate(issue.updatedAt))
+  return createElement('span', { className: SUBTLE_TEXT_CLASS }, ctx.formatDate(issue.updatedAt))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
