@@ -192,4 +192,22 @@
 - ★load-bearing 가드: T1 무지정 정렬 무회귀(mutation 필수)·T4 e2e 셀렉터 verbatim 보존
 - BC 격리: 백엔드 변경은 issue-tracking 같은 BC 뷰 계층(sort)만·다른 BC 무접촉
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### 엔지니어링 self-review (2026-07-24, plan-design-review 축소 — 디자인은 design spec 잠금)
+
+**축소 사유**. type=ui지만 이슈 테이블 레이아웃·인터랙션(행클릭=상세·체크박스 전파차단·overflow-x auto)이 `docs/design/fr-ux-06-jira-redesign.md`에 이미 확정. 시각 방향 잠금 상태라 plan-design-review 저효익. 실제 위험 = 백엔드 정렬 보안/무회귀 + e2e 셀렉터 보존 → 엔지니어링 관점 self-review. 디자인 QA는 구현 후 codereview/design-review 위임.
+
+**PASS 항목**.
+- ✅ 정렬 보안(N4) — whitelist = `Map<String, jOOQ Field>` 조회(원시 SQL 문자열 보간 없음). 미지 필드 → fallback. SQL injection·의도외 컬럼 노출 차단.
+- ✅ 무회귀(N2) — T1 RED에 "무지정 정렬 → created_at desc 유지" mutation 가드 포함(load-bearing, [[verify-logic-vs-verify-guard]] 준수).
+- ✅ e2e 셀렉터 보존(G2) — T4 RED가 select-{key}·issue-summary-{key}·aria-label={key}·role=status verbatim 어서션.
+- ✅ 캐시 정합 — T5 queryKey에 sort 포함(정렬별 캐시 분기, stale 방지).
+- ✅ BC 격리 — 백엔드 변경은 issue-tracking 같은 BC 뷰 계층(sort)만. 다른 BC 무접촉.
+- ✅ wave — 파일 겹침 0, T5 depends [2,3,4]. 백엔드 T1 단일이라 Gradle 모듈 병렬 컴파일 충돌 없음([[bts-plan-wave-gradle-module-compile]] 미해당).
+
+**⚠️ 주의 2건 (BLOCKER 아님, impl 반영 권장)**.
+- W1 **테이블 접근성 이름** — `<table>`에 접근 가능한 이름(aria-label 또는 caption) 부여 권장. T4 GREEN에 반영.
+- W2 **key 정렬 사전순 함정** — 이슈 키(`PROJ-1`·`PROJ-10`·`PROJ-2`) 문자열 정렬은 숫자순과 불일치. impl에서 (a) key를 정렬 허용목록에서 제외하거나 (b) 시퀀스 숫자 컬럼으로 정렬. 기본 정렬은 created_at이라 실사용 영향 작음. T1 impl 시 결정.
+
+**BLOCKER: 없음.**
