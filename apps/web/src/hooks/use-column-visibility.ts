@@ -19,6 +19,46 @@ export interface ColumnVisibilityResult {
   toggle: (key: string) => void
 }
 
+/**
+ * localStorage에서 읽은 값이 유효한 컬럼 키 배열인지 검사한다.
+ *
+ * 배열이 아니거나, 원소 중 문자열이 아니거나 `allColumnKeys`에 없는
+ * 미지의 컬럼 키가 하나라도 섞여 있으면 무효로 판정한다(EC2 — 부분 필터링이
+ * 아닌 전체 무효 처리로, 스키마가 바뀐 오래된 저장값을 안전하게 걸러낸다).
+ *
+ * @param parsed `JSON.parse` 결과(타입 미확정)
+ * @param allColumnKeys 유효한 컬럼 키 전체 목록
+ */
+function isValidStoredVisible(parsed: unknown, allColumnKeys: string[]): parsed is string[] {
+  return (
+    Array.isArray(parsed) &&
+    parsed.every((item) => typeof item === 'string' && allColumnKeys.includes(item))
+  )
+}
+
+/**
+ * 표시 목록에 필수 컬럼 키를 항상 포함시킨다(중복 제거).
+ *
+ * 저장값이 필수 컬럼을 빠뜨린 채 있어도(예: 오래된 저장값·손상 복구 전 필터링)
+ * 이 함수를 거치면 필수 컬럼은 항상 표시 목록에 존재하게 된다.
+ *
+ * @param keys 기준이 되는 표시 컬럼 키 배열
+ * @param requiredKeys 항상 포함돼야 하는 필수 컬럼 키 배열
+ */
+function ensureRequiredVisible(keys: string[], requiredKeys: string[]): string[] {
+  return Array.from(new Set([...keys, ...requiredKeys]))
+}
+
+/**
+ * localStorage에서 컬럼 표시 목록을 안전하게 읽는다.
+ *
+ * SSR 환경(`window` 부재)·JSON 파싱 실패·미지의 컬럼 키 포함 등 손상된 저장값은
+ * 모두 `defaultVisible`로 폴백한다(fail-safe, EC2).
+ *
+ * @param storageKey localStorage 키
+ * @param allColumnKeys 유효성 검사에 사용할 전체 컬럼 키 목록
+ * @param defaultVisible 미설정·손상 시 반환할 기본 표시 컬럼 목록
+ */
 function readStoredVisible(
   storageKey: string,
   allColumnKeys: string[],
@@ -30,16 +70,22 @@ function readStoredVisible(
     const raw = window.localStorage.getItem(storageKey)
     if (raw === null) return defaultVisible
     const parsed: unknown = JSON.parse(raw)
-    const isValid =
-      Array.isArray(parsed) &&
-      parsed.every((item) => typeof item === 'string' && allColumnKeys.includes(item))
-    return isValid ? (parsed as string[]) : defaultVisible
+    return isValidStoredVisible(parsed, allColumnKeys) ? parsed : defaultVisible
   } catch {
     // JSON 파싱 실패 또는 스토리지 접근 불가 — 기본값으로 안전 복구(EC2)
     return defaultVisible
   }
 }
 
+/**
+ * localStorage에 컬럼 표시 목록을 안전하게 쓴다.
+ *
+ * SSR 환경·QuotaExceededError·SecurityError 등 예외가 발생해도 무시하며,
+ * 메모리 상의 React 상태는 정상 유지된다.
+ *
+ * @param storageKey localStorage 키
+ * @param visible 저장할 표시 컬럼 키 배열
+ */
 function writeStoredVisible(storageKey: string, visible: string[]): void {
   if (typeof window === 'undefined') return
 
@@ -66,7 +112,7 @@ export function useColumnVisibility(
 ): ColumnVisibilityResult {
   const [visibleSet, setVisibleSet] = useState<Set<string>>(() => {
     const stored = readStoredVisible(storageKey, allColumnKeys, defaultVisible)
-    return new Set([...stored, ...requiredKeys])
+    return new Set(ensureRequiredVisible(stored, requiredKeys))
   })
 
   const toggle = useCallback(
@@ -74,17 +120,15 @@ export function useColumnVisibility(
       if (requiredKeys.includes(key)) return
 
       setVisibleSet((prev) => {
-        const next = new Set(prev)
-        if (next.has(key)) {
-          next.delete(key)
+        const toggled = new Set(prev)
+        if (toggled.has(key)) {
+          toggled.delete(key)
         } else {
-          next.add(key)
+          toggled.add(key)
         }
-        for (const requiredKey of requiredKeys) {
-          next.add(requiredKey)
-        }
-        writeStoredVisible(storageKey, Array.from(next))
-        return next
+        const next = ensureRequiredVisible(Array.from(toggled), requiredKeys)
+        writeStoredVisible(storageKey, next)
+        return new Set(next)
       })
     },
     [storageKey, requiredKeys],
