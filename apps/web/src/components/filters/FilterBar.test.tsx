@@ -449,6 +449,33 @@ describe('FilterBar — S6 초기화 버튼', () => {
       componentIds: [],
     })
   })
+
+  it('S6c: onReset prop이 있으면 "초기화" 클릭 시 onReset만 호출되고 기본 공통-clear onChange는 호출되지 않는다', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const onReset = vi.fn()
+    const value: BoardCardFilterParams = {
+      assigneeIds: ['user-uuid-0001'],
+      includeUnassigned: true,
+      labels: ['bug'],
+      componentIds: ['comp-uuid-0001'],
+    }
+    render(
+      <FilterBar
+        projectKey="ATLAS"
+        value={value}
+        onChange={onChange}
+        idPrefix="test-filter"
+        onReset={onReset}
+      />,
+      { wrapper: makeWrapper() },
+    )
+
+    await user.click(screen.getByRole('button', { name: filterBarLabels.filter.reset }))
+
+    expect(onReset).toHaveBeenCalledTimes(1)
+    expect(onChange).not.toHaveBeenCalled()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
