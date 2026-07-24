@@ -49,4 +49,62 @@ split view(목록+상세 2분할)도 이 PR과 함께 검토 (PR18에서 의도�
 
 ## Plan (← /bts-plan 채움)
 
+## Plan
+
+> 파일 겹침 규칙: Task 2·3은 같은 `IssueMetaPanel.tsx`를 편집 → 직렬(2 depends-on 없음이어도 자동 직렬, 명시). Task 1은 route+신규파일(분해와 파일 무겹침) → 병렬. Task 4(e2e)는 Task 1 탭 구현 후.
+
+### Task 1. 활동 3탭 Radix Tabs화 + 그리드 340px
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/issue/IssueActivityTabs.tsx`, `apps/web/src/components/issue/__tests__/IssueActivityTabs.test.tsx`, `apps/web/src/routes/issues.$key.tsx`, `apps/web/src/routes/__tests__/issues.$key.test.tsx`, `apps/web/src/i18n/ko.ts`]
+- depends-on: []
+
+**RED**: `IssueActivityTabs.test.tsx` — (a) `role="tablist"` + 탭 3개(작업로그/연결/이력) 렌더, (b) 기본 활성=작업로그(`WorklogSection` 콘텐츠 보임), (c) 연결 탭 클릭 시 `IssueLinksPanel`·`LinkGraph` 보이고 작업로그 숨음, (d) 이력 탭 클릭 시 `IssueChangelog` 보임, (e) 에픽 타입일 때만 연결 탭에 `EpicChildrenSection`. 실패(컴포넌트 없음).
+**GREEN**: `IssueActivityTabs` 신설 — `ui/tabs`(controlled `value`/`onValueChange`, `defaultValue="worklog"`) 소비. 3 `TabsContent`(worklog/links/history), 비활성 패널 기본 언마운트(G3 lazy). props로 `issueKey·canUpdate·issue`(에픽/부모/epic·showEpicSection 판정) 전달. route: 그리드 아래 5개 적층 섹션(`WorklogSection`·`IssueLinksPanel`·`EpicChildrenSection`·`LinkGraph`·`IssueChangelog`)을 `<IssueActivityTabs.../>` 1개로 대체. 그리드 `lg:grid-cols-[1fr_280px]`→`[1fr_340px]`. i18n 탭 라벨 3종.
+**REFACTOR**: 탭 value 상수화(`ACTIVITY_TABS`), props 타입 정리, L1 한글 헤더 주석.
+**검증**: `cd apps/web && node_modules/.bin/vitest run IssueActivityTabs issues.\$key`
+
+### Task 2. IssueMetaPanel 분해 A — 필드 셀렉터/에디터 추출
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/issue/IssueMetaPanel.tsx`, `apps/web/src/components/issue/meta/IssuePrioritySelect.tsx`, `apps/web/src/components/issue/meta/IssueImpactSelect.tsx`, `apps/web/src/components/issue/meta/IssueTypeSelect.tsx`, `apps/web/src/components/issue/meta/IssueEnvironmentEdit.tsx`, `apps/web/src/components/issue/meta/IssueLabelsEdit.tsx`, `apps/web/src/components/issue/meta/IssueCustomFieldsEdit.tsx`, `apps/web/src/components/issue/meta/__tests__/*.test.tsx`]
+- depends-on: []
+
+**RED**: 추출 대상별 신규 단위테스트(meta/__tests__): 각 컴포넌트가 독립 마운트로 현 동작 재현(우선순위 5택 select·영향도 3택·유형 아이콘·환경 편집 저장·라벨 칩 추가/삭제·커스텀필드 저장). 실패(파일 없음).
+**GREEN**: `IssueMetaPanel.tsx`의 인라인 정의(`IssuePrioritySelect`449·`IssueImpactSelect`492·`IssueTypeSelect`732·`IssueEnvironmentEdit`542·`IssueLabelsEdit`+`LabelChip`606·`IssueCustomFieldsEdit`+`isRequiredFieldEmpty`1041)를 `meta/` 파일로 이동·`export`. `IssueMetaPanel`은 이 컴포넌트들을 import해 **동일 위치·동일 props·동일 data-testid로 렌더**(조합 diff 0).
+**REFACTOR**: 각 파일 L1 한글 주석, 공유 헬퍼(`isFieldHidden`/`isFieldDisabled`) 노출 경로 정리.
+**검증**: 기존 `IssueMetaPanel.test.tsx`·`__tests__/IssueMetaPanel.test.tsx`·`.fieldperm.test.tsx` **green 유지**(회귀 가드) + 신규 meta 테스트 green. `node_modules/.bin/vitest run IssueMetaPanel meta/`
+
+### Task 3. IssueMetaPanel 분해 B — 담당자·전이 추출 + 조합 확정
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/issue/IssueMetaPanel.tsx`, `apps/web/src/components/issue/meta/IssueAssigneeSelect.tsx`, `apps/web/src/components/issue/meta/AssigneeUserList.tsx`, `apps/web/src/components/issue/meta/IssueStateTransition.tsx`, `apps/web/src/components/issue/meta/__tests__/*.test.tsx`]
+- depends-on: [2]   # 같은 IssueMetaPanel.tsx 편집 → 직렬
+
+**RED**: `IssueAssigneeSelect`(검색·선택·해제)·`AssigneeUserList`·`IssueStateTransition`(전이 select·disabled·unavailableReason terminal/no-workflow) 신규 단위테스트. 실패(파일 없음).
+**GREEN**: 인라인 정의(`IssueAssigneeSelect`784·`AssigneeUserList`880·`IssueStateTransition`920) `meta/` 이동·`export`, `IssueMetaPanel`에서 import. 남은 main 파일=순수 조합 + 헬퍼.
+**REFACTOR**: L1 주석. `IssueMetaPanel.tsx` 라인수 유의미 감소 확인(1204 → ~700 목표, −500 LOC급).
+**검증**: 기존 3 테스트파일 green 유지 + 신규 green. `node_modules/.bin/vitest run IssueMetaPanel meta/` + `IssueMetaPanel.tsx` wc -l 대조.
+
+### Task 4. E2E 탭화 봉합 (회귀 방지)
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/worklog.spec.ts`, `apps/web/e2e/issue-links.spec.ts`, `apps/web/e2e/issue-ui-regression.spec.ts`, `apps/web/e2e/*.spec.ts (탭 뒤 콘텐츠 의존 spec 실측 후)`]
+- depends-on: [1]   # 탭 구현 후에만 의미
+
+**RED/식별**: 전수 e2e 실행 → 탭화로 숨은 작업로그/연결/이력 콘텐츠에 의존하던 실패 spec 식별(`e2e-playwright-filter-arg-drop` 바이너리 직접호출·baseline 대조로 PR 회귀 vs 사전존재 구분).
+**GREEN**: 실패 spec에 활동 탭 활성 클릭(`getByRole('tab', { name: '연결'|'이력', exact: true }).click()`) 선행 추가. 셀렉터 verbatim 보존. `playwright-getbyrole-exact-strict-mode` 준수(exact).
+**검증**: 이슈 상세 관련 e2e 전수 green(로컬, CI e2e 잡 없음 → 필수).
+
+## Plan 메타
+
+- task 수: 4
+- 예상 wave: 2 (wave1: T1∥T2 / wave2: T3(←2)∥T4(←1))
+- TDD 강제: yes (분해 T2·T3은 "기존 테스트 green 유지 + 신규 서브컴포넌트 테스트"가 RED→GREEN 가드)
+- 추가 검증: typecheck·eslint·vitest 전수·playwright(qa) · FR 129 불변 · IssueMetaPanel.tsx wc 대조
+
 ## 리뷰 결과 (← /bts-review-plan 채움)
