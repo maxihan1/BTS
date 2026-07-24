@@ -24,9 +24,11 @@ import java.util.UUID
  * issue-tracking · project-workflow · identity-access 내부 패키지를 직접 import 하지 않는다.
  */
 object BoardCardPlacement {
-    /** 컬럼 내 카드 정렬: priority ASC → issueKey ASC 보조. */
+    /** 컬럼 내 카드 정렬: rank ASC NULLS LAST → priority ASC → issueKey ASC 보조. */
     private val CARD_COMPARATOR: Comparator<BoardIssueView> =
-        compareBy<BoardIssueView> { it.priority }.thenBy { it.key }
+        compareBy<BoardIssueView, String?>(nullsLast()) { it.rank }
+            .thenBy { it.priority }
+            .thenBy { it.key }
 
     /**
      * 워크플로우 상태 목록을 보드 컬럼으로 시드한다.
