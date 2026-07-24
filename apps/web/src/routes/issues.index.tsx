@@ -681,6 +681,20 @@ export function IssueListPage({
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * URL의 selected 파라미터를 정규화한다 — 빈 문자열/공백만 있는 값은 "미선택"으로 취급한다(EC-1).
+ * `/issues?selected=`처럼 값이 빈 문자열로 남아있으면 상세 페인이 `issueKey=''`로 열려
+ * 404 렌더가 뜨는 것을 방지한다.
+ *
+ * @param raw URL search의 selected 원문 문자열
+ * @returns 정규화된 이슈 키. 미지정/빈값/공백이면 undefined.
+ */
+function normalizeSelectedKey(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined
+  const trimmed = raw.trim()
+  return trimmed === '' ? undefined : trimmed
+}
+
+/**
  * router.ts에 등록되는 라우트 어댑터 컴포넌트.
  *
  * useSearch로 URL의 page + status/assignee/label/component 필터 + sort + selected 파라미터를
@@ -708,7 +722,7 @@ export function IssueListRouteAdapter(): JSX.Element {
   const isWide = useMediaQuery('(min-width: 1024px)')
   const page = typeof search.page === 'number' ? search.page : 0
   const sort = useMemo(() => parseSortParam(search.sort), [search.sort])
-  const selected = search.selected
+  const selected = normalizeSelectedKey(search.selected)
 
   // searchToIssueFilter는 매 렌더마다 새 객체를 반환하므로
   // 실제 search 값이 바뀔 때만 재계산한다 (BoardRouteAdapter 패턴 미러).
@@ -765,14 +779,17 @@ export function IssueListRouteAdapter(): JSX.Element {
 
   /**
    * 필터 변경 핸들러 — issueFilterToSearch로 URL search params 갱신.
-   * page=0 리셋은 IssueListPage.handleFilterChange가 onPageChange(0)로 처리한다.
+   * page=0 리셋은 IssueListPage.handleFilterChange가 onPageChange(0)로도 처리한다.
    * 빈 필터 필드는 issueFilterToSearch가 키 자체를 생략해 URL을 깔끔하게 유지한다.
+   *
+   * CONCERNS-1(NFR-3) — 상세 페인은 selected 키 기준 독립 fetch로, 목록 필터와 무관하게
+   * 유지돼야 한다. search를 통째 nextSearch로 교체하지 않고 prev.selected를 보존한다.
    */
   function handleFilterChange(nextFilter: IssueFilterParams): void {
     const nextSearch = issueFilterToSearch(nextFilter)
     void navigate({
       to: '/issues',
-      search: () => ({ ...nextSearch, page: 0 }),
+      search: (prev) => ({ ...nextSearch, page: 0, selected: prev.selected }),
     })
   }
 
@@ -809,7 +826,11 @@ export function IssueListRouteAdapter(): JSX.Element {
       <IssueListSplitView
         list={listPage}
         detail={
+          // CONCERNS-3 — key={selected}로 이슈 전환 시 인스턴스를 강제 재마운트한다.
+          // key 없이 인스턴스가 재사용되면 confirmDelete/isEditingTitle 등 잔여 state가
+          // 다음 이슈로 이월돼 잘못된 이슈가 삭제되는 위험이 있다([[react-usestate-stale-key-prop]]).
           <IssueDetailPage
+            key={selected}
             issueKey={selected}
             variant="pane"
             onClose={clearSelected}

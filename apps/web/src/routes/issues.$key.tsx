@@ -76,6 +76,11 @@ function usePaneEscapeClose(variant: 'page' | 'pane', onClose: (() => void) | un
   useEffect(() => {
     if (variant !== 'pane') return
     function handleKeyDown(e: KeyboardEvent): void {
+      // CONCERNS-2 — Radix DismissableLayer(다이얼로그/드롭다운)는 capture 단계에서
+      // Escape를 dismiss 처리하며 preventDefault()한다(stopPropagation은 하지 않음).
+      // 이 리스너는 bubble 단계라 뒤늦게 도달하므로, 이미 처리된 Escape는 건너뛰어
+      // 다이얼로그/드롭다운과 페인이 동시에 닫히는 이중 발화를 막는다.
+      if (e.defaultPrevented) return
       if (e.key === 'Escape') {
         onClose?.()
       }
