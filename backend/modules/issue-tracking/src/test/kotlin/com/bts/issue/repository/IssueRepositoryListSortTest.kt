@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestMethodOrder
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
+import java.nio.ByteBuffer
 import java.sql.DriverManager
 import java.sql.Timestamp
 import java.time.OffsetDateTime
@@ -123,6 +124,34 @@ class IssueRepositoryListSortTest : IssueTestcontainersBase() {
         }
         return id
     }
+
+    /**
+     * PostgreSQL 의 `uuid` 컬럼 정렬 순서(16바이트 부호없는 바이트열 비교)를 재현하는 comparator.
+     *
+     * **함정**: `java.util.UUID.compareTo()` 는 mostSignificantBits/leastSignificantBits 를
+     * **부호 있는(signed)** long 으로 비교한다. 반면 PostgreSQL 은 uuid 값을 16바이트 부호 없는
+     * 바이트열로 비교한다. 첫 바이트가 `0x80` 이상인 UUID 가 섞이면 두 비교 결과가 어긋난다
+     * (예: `"a783..."` 는 PG 기준 최댓값이지만, Java `compareTo()` 기준으로는 최솟값이다 —
+     * mostSignificantBits 의 부호 비트가 켜져 음수로 취급되기 때문).
+     * [IssueRepository]의 `ORDER BY id DESC` 결과를 검증하는 테스트 오라클은 반드시 이 비교자를
+     * 사용해야 한다 — `sortedDescending()`(Java `compareTo()` 기반) 사용 시 거짓 실패가 난다.
+     */
+    private fun pgUuidComparator(): Comparator<UUID> =
+        Comparator { a, b ->
+            val aBytes = uuidToBytes(a)
+            val bBytes = uuidToBytes(b)
+            aBytes.indices.firstNotNullOfOrNull { i ->
+                val diff = (aBytes[i].toInt() and 0xFF) - (bBytes[i].toInt() and 0xFF)
+                if (diff != 0) diff else null
+            } ?: 0
+        }
+
+    /** [UUID] 를 16바이트 배열(most/least significant bits, big-endian)로 변환한다. */
+    private fun uuidToBytes(uuid: UUID): ByteArray =
+        ByteBuffer.allocate(16)
+            .putLong(uuid.mostSignificantBits)
+            .putLong(uuid.leastSignificantBits)
+            .array()
 
     // ── S1. priority,desc 정렬 — 허용 필드 적용 ─────────────────────────────
 
@@ -234,7 +263,7 @@ class IssueRepositoryListSortTest : IssueTestcontainersBase() {
                 repository.insert(buildIssue(seq = 2, priority = 3)),
                 repository.insert(buildIssue(seq = 3, priority = 3)),
             )
-        val expectedIds = inserted.map { it.id.value }.sortedDescending()
+        val expectedIds = inserted.map { it.id.value }.sortedWith(pgUuidComparator().reversed())
 
         val sort = Sort.by(Sort.Direction.DESC, "priority")
         val page =

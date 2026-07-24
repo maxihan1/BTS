@@ -1031,8 +1031,12 @@ class IssueRepository(
      * 예외를 던지지 않고 기본 정렬(`created_at DESC`)로 대체한다.
      * 정렬을 지정하지 않은 경우(`Sort.isUnsorted`)에도 동일하게 기본 정렬을 반환한다(무회귀).
      *
+     * `ISSUES.ID.desc()` 를 항상 마지막 tiebreaker(전순서 보장을 위한 동률 결정 기준)로 append 한다
+     * (코드리뷰 C1) — 허용 필드(예: `priority`) 값이 동률인 행이 여러 건이면 tiebreaker 없이는
+     * DB 가 순서를 보장하지 않아 페이지네이션 시 행 중복/누락이 생길 수 있다.
+     *
      * @param sort 클라이언트 요청 정렬 기준(`Pageable.sort`).
-     * @return jOOQ ORDER BY 필드 목록. 허용 필드가 하나도 없으면 fallback 1건을 반환한다.
+     * @return jOOQ ORDER BY 필드 목록. 항상 마지막 원소는 `ISSUES.ID.desc()` tiebreaker.
      */
     private fun buildListOrderBy(sort: org.springframework.data.domain.Sort): List<org.jooq.SortField<*>> {
         val orders =
@@ -1040,7 +1044,11 @@ class IssueRepository(
                 val field = SORTABLE_COLUMNS[order.property] ?: return@mapNotNull null
                 if (order.isAscending) field.asc() else field.desc()
             }
-        return orders.ifEmpty { listOf(ISSUES.CREATED_AT.desc()) }
+        return if (orders.isEmpty()) {
+            listOf(ISSUES.CREATED_AT.desc(), ISSUES.ID.desc())
+        } else {
+            orders + ISSUES.ID.desc()
+        }
     }
 
     /**
