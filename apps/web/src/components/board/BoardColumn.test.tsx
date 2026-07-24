@@ -1,9 +1,25 @@
-// BoardColumn 컴포넌트 단위 테스트 — 헤더·카드 목록·빈 컬럼 placeholder·드롭 영역·스윔레인 그룹
-import { describe, it, expect } from 'vitest'
+// BoardColumn 컴포넌트 단위 테스트 — 헤더·카드 목록·빈 컬럼 placeholder·드롭 영역·스윔레인 그룹·셀 단위 SortableContext
+import { describe, it, expect, vi } from 'vitest'
 import type { ReactNode } from 'react'
 import { render, screen, within } from '@testing-library/react'
 import { DndContext } from '@dnd-kit/core'
+import * as sortableModule from '@dnd-kit/sortable'
 import type { BoardColumn as BoardColumnType, SwimlaneField } from '@/api/boards'
+
+// @dnd-kit/sortable — SortableContext는 items 검증용 DOM 마커로 대체하고,
+// useSortable은 실제 구현을 감싼 spy로 id/data 배선을 검증한다.
+vi.mock('@dnd-kit/sortable', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@dnd-kit/sortable')>()
+  return {
+    ...actual,
+    useSortable: vi.fn(actual.useSortable),
+    SortableContext: ({ items, children }: { items: (string | number)[]; children: ReactNode }) => (
+      <div data-testid="sortable-context" data-items={JSON.stringify(items)}>
+        {children}
+      </div>
+    ),
+  }
+})
 
 // TanStack Router Link mock
 vi.mock('@tanstack/react-router', () => ({
@@ -458,5 +474,56 @@ describe('BoardColumn — S7 스윔레인 PRIORITY 그룹', () => {
     // 컬럼(1) + 우선순위 그룹(2) = 3개
     const groups = screen.getAllByRole('group')
     expect(groups.length).toBeGreaterThanOrEqual(3)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S10. 셀(컬럼 × 스윔레인 그룹) 단위 SortableContext
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BoardColumn — S10 셀 단위 SortableContext', () => {
+  it('S10a: swimlaneField=NONE이면 컬럼 카드 전체를 하나의 SortableContext(items=issueKey 배열)로 감싼다', () => {
+    renderColumn(columnWithCards, assigneeNames, false, 'NONE')
+    const contexts = screen.getAllByTestId('sortable-context')
+    expect(contexts).toHaveLength(1)
+    expect(JSON.parse(contexts[0]?.dataset['items'] ?? '[]')).toEqual(['ATLAS-1', 'ATLAS-2', 'ATLAS-3'])
+  })
+
+  it('S10b: swimlaneField=ASSIGNEE이면 그룹(셀)별로 별도 SortableContext를 사용하고 items가 그룹 내 카드로 한정된다', () => {
+    renderColumn(columnWithCards, assigneeNames, false, 'ASSIGNEE')
+    // columnWithCards + assigneeNames → named(박지현)/unknown/unassigned 3개 그룹
+    const contexts = screen.getAllByTestId('sortable-context')
+    expect(contexts).toHaveLength(3)
+    const itemSets = contexts.map((el) => JSON.parse(el.dataset['items'] ?? '[]'))
+    expect(itemSets).toContainEqual(['ATLAS-1'])
+    expect(itemSets).toContainEqual(['ATLAS-2'])
+    expect(itemSets).toContainEqual(['ATLAS-3'])
+  })
+
+  it('S10c: swimlaneField=NONE이면 각 카드가 swimlaneGroupKey="none"으로 useSortable에 전달된다', () => {
+    vi.mocked(sortableModule.useSortable).mockClear()
+    renderColumn(columnWithCards, assigneeNames, false, 'NONE')
+    const calls = vi.mocked(sortableModule.useSortable).mock.calls
+    expect(calls.length).toBeGreaterThan(0)
+    for (const [args] of calls) {
+      expect(args.data).toEqual(expect.objectContaining({ swimlaneGroupKey: 'none' }))
+    }
+  })
+
+  it('S10d: swimlaneField=ASSIGNEE이면 각 카드가 소속 그룹의 key를 swimlaneGroupKey로 useSortable에 전달한다', () => {
+    vi.mocked(sortableModule.useSortable).mockClear()
+    renderColumn(columnWithCards, assigneeNames, false, 'ASSIGNEE')
+    const calls = vi.mocked(sortableModule.useSortable).mock.calls
+    const groupKeyByIssueKey = new Map(
+      calls.map(([args]) => [String(args.id), args.data?.['swimlaneGroupKey'] as string | undefined]),
+    )
+    expect(groupKeyByIssueKey.get('ATLAS-1')).toBe('assignee-named-박지현')
+    expect(groupKeyByIssueKey.get('ATLAS-2')).toBe('assignee-unassigned')
+    expect(groupKeyByIssueKey.get('ATLAS-3')).toBe('assignee-unknown')
+  })
+
+  it('S10e: 빈 컬럼은 SortableContext를 렌더하지 않는다 — 회귀 방지', () => {
+    renderColumn(emptyColumn, new Map())
+    expect(screen.queryByTestId('sortable-context')).not.toBeInTheDocument()
   })
 })

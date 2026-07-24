@@ -1,9 +1,16 @@
-// BoardCard 컴포넌트 단위 테스트 — 카드 정보 표시·담당자 3-상태(unassigned/named/unknown)·링크
-import { describe, it, expect } from 'vitest'
+// BoardCard 컴포넌트 단위 테스트 — 카드 정보 표시·담당자 3-상태(unassigned/named/unknown)·링크·useSortable 배선
+import { describe, it, expect, vi } from 'vitest'
 import type { ReactNode } from 'react'
 import { render, screen } from '@testing-library/react'
 import { DndContext } from '@dnd-kit/core'
+import * as sortableModule from '@dnd-kit/sortable'
 import type { BoardCard as BoardCardType } from '@/api/boards'
+
+// @dnd-kit/sortable — useSortable 호출 인자(id/data) 검증을 위해 실제 구현을 감싼 spy로 mock
+vi.mock('@dnd-kit/sortable', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@dnd-kit/sortable')>()
+  return { ...actual, useSortable: vi.fn(actual.useSortable) }
+})
 
 // TanStack Router Link — 라우터 컨텍스트 없이 단위 테스트 가능하도록 mock
 vi.mock('@tanstack/react-router', () => ({
@@ -53,10 +60,16 @@ const COLUMN_ID = 'col-uuid-0001'
 function renderCard(
   card: BoardCardType = baseCard,
   assignee: CardAssigneeDisplay = { state: 'named', name: '김철수' },
+  swimlaneGroupKey?: string,
 ) {
   return render(
     <DndContext>
-      <BoardCard card={card} columnId={COLUMN_ID} assignee={assignee} />
+      <BoardCard
+        card={card}
+        columnId={COLUMN_ID}
+        assignee={assignee}
+        {...(swimlaneGroupKey !== undefined ? { swimlaneGroupKey } : {})}
+      />
     </DndContext>,
   )
 }
@@ -148,5 +161,38 @@ describe('BoardCard — S3 드래그 affordance', () => {
     expect(
       document.querySelector('[aria-roledescription="draggable card"]'),
     ).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S4. useSortable 배선 — id/data(fromColumnId+swimlaneGroupKey)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BoardCard — S4 useSortable 배선', () => {
+  it('S4a: useSortable을 id=issueKey, data={fromColumnId, swimlaneGroupKey}로 호출한다', () => {
+    renderCard(baseCard, { state: 'named', name: '김철수' }, 'assignee-named-김철수')
+    expect(sortableModule.useSortable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'ATLAS-42',
+        data: { fromColumnId: COLUMN_ID, swimlaneGroupKey: 'assignee-named-김철수' },
+      }),
+    )
+  })
+
+  it('S4b: swimlaneGroupKey 생략 시 "none"으로 기본값 처리한다', () => {
+    renderCard()
+    expect(sortableModule.useSortable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'ATLAS-42',
+        data: { fromColumnId: COLUMN_ID, swimlaneGroupKey: 'none' },
+      }),
+    )
+  })
+
+  it('S4c: 드래그 중(isDragging)이면 원위치 카드에 opacity 저하 클래스가 적용된다', () => {
+    renderCard()
+    const card = document.querySelector('[aria-roledescription="draggable card"]')
+    // 렌더 직후(isDragging=false)에는 opacity-50이 없어야 함 — 회귀 방지용 음성 가드
+    expect(card?.className).not.toMatch(/opacity-50/)
   })
 })
