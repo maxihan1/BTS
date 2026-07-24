@@ -107,6 +107,14 @@ split view(목록+상세 2분할)도 이 PR과 함께 검토 (PR18에서 의도�
 - TDD 강제: yes (분해 T2·T3은 "기존 테스트 green 유지 + 신규 서브컴포넌트 테스트"가 RED→GREEN 가드)
 - 추가 검증: typecheck·eslint·vitest 전수·playwright(qa) · FR 129 불변 · IssueMetaPanel.tsx wc 대조
 
+## 구현 결과 (bts-impl 2026-07-24)
+
+- **4 태스크 완료** (wave1 T1∥T2 병렬 · wave2 T3→T4 직렬). 커밋: T1 `fddfb9684`(green)`9a3dca5a2`(refactor) · T2 `d6fc3585f`(red)`2ecd44de2`(green)`4ec09b40c`(refactor) · T3 `7bdd7adee`(red)`7d4fe4836`(green)`dfd2d5829`(refactor) · T4 `24155a07b`(e2e).
+- **TDD 순서**: 각 태스크 test커밋이 feat커밋보다 선행(실질 충족). ★wave1 병렬에서 husky lint-staged 공유 stash 레이스로 T1의 RED 파일(`IssueActivityTabs.test.tsx`+`ko.ts`)이 `d6fc3585f`(task-2 red 라벨)에 흡수됨 — **squash 머지로 소멸, TDD 실질 무해**. → wave2를 직렬로 돌려 재발 방지. 교훈: [[worktree-lint-staged-shared-git-stash-collision]].
+- **분해**: `IssueMetaPanel.tsx` 1204→**450**(−754 LOC). 서브컴포넌트 9종 → `meta/` + 신규 단위테스트 9종. 기존 IssueMetaPanel 3 회귀가드 테스트 무수정 green.
+- **검증**: typecheck 0 · lint 0(프로젝트 `eslint src`, 경고 8=사전존재 무관) · 관련 유닛 191 green · e2e 탭화 봉합 36 green(worklog·issue-links·issue-link-graph·epic-children·epic-progress 5 spec, baseline 대조 사전존재 0).
+- **유닛 전수**: 7460 pass / 5 flaky — 5개(useRevokeSessionMutation·use-timeline-zoom·settings.index·BulkEditDialog·workflows.$key)는 **이 PR 무접촉 영역**이고 격리 재실행 45/45 green → 부하 flaky 확정([[concurrent-testcontainers-suite-flaky]]). FR 129 불변.
+
 ## 리뷰 결과
 
 ### plan-design-review + eng self-review (2026-07-24, right-size·목업 스킵)
