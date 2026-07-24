@@ -110,8 +110,10 @@ const workflowsKeyRoute = createRoute({
 
 /**
  * 이슈 목록 라우트 — /issues, requireAuth.
- * validateSearch로 page + status/assignee/label/component 필터 쿼리 파라미터 타입 선언.
+ * validateSearch로 page + status/assignee/label/component 필터 + sort 쿼리 파라미터 타입 선언.
  * 단일 문자열·배열 양쪽 허용 — 런타임 정규화는 searchToIssueFilter가 담당 (projectBoardRoute 패턴 미러).
+ * sort는 `<field>,<dir>` 원문 문자열을 그대로 보존 — 파싱/검증은 issues.index.tsx parseSortParam이 담당
+ * (FR-UX-06 Phase 5 PR18 Task 5 — 새로고침·공유 시 정렬 상태 URL 보존).
  * N4: page 기존 타입 보존, 타 search 콜백과 충돌 없음.
  */
 const issuesIndexRoute = createRoute({
@@ -126,6 +128,7 @@ const issuesIndexRoute = createRoute({
     assignee?: string | string[]
     label?: string | string[]
     component?: string | string[]
+    sort?: string
   } => ({
     page: typeof search['page'] === 'number' ? search['page'] : undefined,
     status: Array.isArray(search['status'])
@@ -148,6 +151,7 @@ const issuesIndexRoute = createRoute({
       : typeof search['component'] === 'string'
         ? search['component']
         : undefined,
+    sort: typeof search['sort'] === 'string' ? search['sort'] : undefined,
   }),
 })
 

@@ -1,18 +1,24 @@
-// 이슈 목록 페이지 — IssueListPage(props 기반) + IssueCard + IssueListRouteAdapter(라우터 연결)
+// 이슈 목록 페이지 — IssueListPage(props 기반) + IssueListRouteAdapter(라우터 연결). 테이블·정렬·컬럼 선택 결선(Task 5)
 import type { JSX } from 'react'
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchIssues } from '@/api/issues'
-import type { IssueResponse, IssuePage, IssueFilterParams } from '@/api/issues'
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
+import { fetchIssues, ISSUE_SORT_FIELDS } from '@/api/issues'
+import type { IssuePage, IssueFilterParams, IssueSortField } from '@/api/issues'
 import { Button } from '@/components/ui/button'
 import { useIssueSelection } from '@/hooks/use-issue-selection'
+import { useColumnVisibility } from '@/hooks/use-column-visibility'
+import { useUsersByIds } from '@/hooks/use-users'
 import { IssueBulkActionBar } from '@/components/issues/IssueBulkActionBar'
 import { BulkEditDialog } from '@/components/issues/BulkEditDialog'
 import { BulkTransitionDialog } from '@/components/issues/BulkTransitionDialog'
 import { BulkOperationResultDialog } from '@/components/issues/BulkOperationResultDialog'
 import { useProjectPermissions } from '@/hooks/use-project-permissions'
 import { IssueFilterBar } from '@/components/issues/IssueFilterBar'
+import { IssueTable } from '@/components/issues/IssueTable'
+import type { IssueTableSortState } from '@/components/issues/IssueTable'
+import { ColumnSelector } from '@/components/issues/ColumnSelector'
+import { ISSUE_COLUMNS } from '@/components/issues/issue-columns'
 import { normalizeIssueFilter, isEmptyIssueFilter, searchToIssueFilter, issueFilterToSearch } from '@/lib/issue-filter'
 import type { IssueFilterSearch } from '@/lib/issue-filter'
 
@@ -27,7 +33,7 @@ import type { IssueFilterSearch } from '@/lib/issue-filter'
 //     component: IssueListRouteAdapter,
 //   })
 //
-// IssueListRouteAdapter는 useSearch/useNavigate로 page 상태를 추출해
+// IssueListRouteAdapter는 useSearch/useNavigate로 page + sort 상태를 추출해
 // IssueListPage에 전달한다. 라우터 등록은 Task8(router.ts) 담당.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -47,80 +53,68 @@ const EMPTY_FILTER: IssueFilterParams = {
   componentIds: [],
 }
 
+/** useColumnVisibility localStorage 키 — 기기별 컬럼 표시 상태 persist (S4) */
+const ISSUE_TABLE_COLUMNS_STORAGE_KEY = 'issue-table-columns'
+
+/** 컬럼 선택기에 노출할 전체 컬럼 키 목록 (issue-columns.ts ISSUE_COLUMNS 기준) */
+const ISSUE_COLUMN_KEYS = ISSUE_COLUMNS.map((column) => column.key)
+
+/** 항상 표시되는 필수 컬럼 키 목록(키·요약) — issue-columns.ts required 플래그 기준 */
+const ISSUE_COLUMN_REQUIRED_KEYS = ISSUE_COLUMNS.filter((column) => column.required).map((column) => column.key)
+
+/** 컬럼 표시 기본값 — 최초 방문 시 전체 컬럼을 표시한다 */
+const ISSUE_COLUMN_DEFAULT_VISIBLE = ISSUE_COLUMN_KEYS
+
 // ─────────────────────────────────────────────────────────────────────────────
-// IssueCard — 이슈 목록 단일 항목 컴포넌트 (행 재구조화: 체크박스 + 링크 형제)
+// 정렬 URL 직렬화 헬퍼 (T1↔T2↔T4↔T5 공유 "정렬 필드 계약" 5종 기준)
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface IssueCardProps {
-  /** 렌더할 이슈 단건 데이터 */
-  issue: IssueResponse
-  /** 항목 클릭 시 호출되는 콜백 (key 전달) */
-  onNavigate: (key: string) => void
-  /** 현재 이슈가 선택됐는지 여부 */
-  checked: boolean
-  /** 체크박스 클릭 시 선택 토글 콜백 */
-  onToggle: (key: string) => void
+/**
+ * 문자열이 "정렬 필드 계약"(ISSUE_SORT_FIELDS) 5종에 속하는지 좁히는 타입 가드.
+ * URL에서 읽은 임의 문자열을 안전하게 {@link IssueSortField}로 좁힐 때 사용한다
+ * (issue-columns.ts의 동형 가드와 별개 — 이쪽은 IssueColumnKey가 아닌 순수 문자열 대상).
+ */
+function isIssueSortField(field: string): field is IssueSortField {
+  return (ISSUE_SORT_FIELDS as readonly string[]).includes(field)
 }
 
 /**
- * 이슈 목록의 단일 항목을 렌더하는 카드 컴포넌트.
+ * URL 쿼리 파라미터 `sort=<field>,<dir>` 문자열을 정렬 상태 객체로 파싱한다.
+ * 구분자가 없거나 필드/방향이 허용 값이 아니면 안전하게 null(정렬 미적용)로 폴백한다.
  *
- * B1 BLOCKER 대응 — 체크박스를 `<a>` 내부에 중첩하지 않고 형제 요소로 구성한다.
- * - `<li>` 안에 체크박스(`<input type="checkbox">`)와 링크(`<a>`) 를 형제로 배치.
- * - 체크박스 aria-label에 이슈 키를 포함하지 않아 E2E `getByLabel(key)` strict mode를 지킨다.
- * - `data-testid={`select-${key}`}` 로 체크박스를 테스트에서 특정한다.
- *
- * @param issue 렌더할 이슈 데이터
- * @param onNavigate 항목 링크 클릭 시 호출되는 네비게이션 콜백
- * @param checked 체크박스 선택 여부
- * @param onToggle 체크박스 토글 콜백
+ * @param raw URL search의 sort 원문 문자열. undefined면 정렬 미적용.
  */
-export function IssueCard({ issue, onNavigate, checked, onToggle }: IssueCardProps): JSX.Element {
-  return (
-    <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-3 text-sm hover:bg-muted/50 transition-colors">
-      {/* 체크박스 — <a> 외부 형제 요소. aria-label에 이슈 키 미포함 (E2E strict mode 보호) */}
-      <input
-        type="checkbox"
-        aria-label="이슈 선택"
-        data-testid={`select-${issue.key}`}
-        checked={checked}
-        onChange={() => onToggle(issue.key)}
-        className="h-4 w-4 shrink-0 cursor-pointer accent-primary"
-      />
+function parseSortParam(raw: string | undefined): IssueTableSortState | null {
+  if (raw === undefined) return null
+  const [field, dir] = raw.split(',')
+  if (field === undefined || dir === undefined) return null
+  if (!isIssueSortField(field)) return null
+  if (dir !== 'asc' && dir !== 'desc') return null
+  return { field, dir }
+}
 
-      {/* 링크 — aria-label에 이슈 키만 사용해 getByLabel(key)가 링크 1개만 매칭되도록 보장 */}
-      <a
-        href={`/issues/${issue.key}`}
-        aria-label={issue.key}
-        onClick={(e) => {
-          e.preventDefault()
-          onNavigate(issue.key)
-        }}
-        className="flex flex-1 items-center gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-      >
-        {/* 이슈 키 — 고정 너비로 정렬 */}
-        <span className="shrink-0 font-mono text-xs font-medium text-muted-foreground w-20">
-          {issue.key}
-        </span>
+/**
+ * 정렬 상태를 URL 쿼리 파라미터 문자열로 직렬화한다.
+ * null(정렬 해제)이면 undefined를 반환해 상위(어댑터)가 sort 키 자체를 URL에서 생략하게 한다.
+ *
+ * @param sort 직렬화할 정렬 상태
+ */
+function serializeSortParam(sort: IssueTableSortState | null): string | undefined {
+  return sort === null ? undefined : `${sort.field},${sort.dir}`
+}
 
-        {/* 요약 — 긴 텍스트 말줄임 처리 (overflow: hidden + text-overflow: ellipsis) */}
-        <span
-          data-testid={`issue-summary-${issue.key}`}
-          className="flex-1 truncate text-foreground"
-        >
-          {issue.summary}
-        </span>
-
-        {/* 현재 상태 배지 */}
-        <span
-          role="status"
-          className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
-        >
-          {issue.currentStateKey}
-        </span>
-      </a>
-    </div>
-  )
+/**
+ * 정렬 헤더 클릭 시 다음 정렬 상태를 계산한다 — asc → desc → 해제(null) 3-state 순환(F2, S2).
+ * 현재 정렬 중인 필드와 다른 필드를 클릭하면 그 필드의 asc로 즉시 초기화한다.
+ *
+ * @param current 현재 정렬 상태
+ * @param field 클릭된 정렬 가능 컬럼의 필드
+ */
+function nextSortState(current: IssueTableSortState | null, field: IssueSortField): IssueTableSortState | null {
+  if (current === null || current.field !== field) {
+    return { field, dir: 'asc' }
+  }
+  return current.dir === 'asc' ? { field, dir: 'desc' } : null
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -227,7 +221,7 @@ function IssuePagination({ page, totalPages, isFirst, isLast, onPageChange }: Is
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// IssueListContent — 성공 상태 렌더 컴포넌트 (목록 + 페이지네이션)
+// IssueListContent — 성공 상태 렌더 컴포넌트 (툴바 + 테이블 + 페이지네이션)
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface IssueListContentProps {
@@ -247,11 +241,26 @@ interface IssueListContentProps {
   onSelectAllPage: () => void
   /** 현재 페이지 전체 선택 여부 */
   isAllPageSelected: boolean
+  /** 현재 정렬 상태 — IssueTable 헤더의 aria-sort/방향 아이콘에 반영 */
+  sort: IssueTableSortState | null
+  /** 정렬 헤더 클릭 콜백 */
+  onSort: (field: IssueSortField) => void
+  /** 재조회 진행 여부(GAP-5) — true면 표 영역을 dim 처리해 전환 중임을 알린다 */
+  isFetching: boolean
 }
 
 /**
  * 이슈 목록 성공 상태 렌더 컴포넌트.
- * 빈 목록이면 IssueEmptyState, 아니면 IssueCard 목록 + IssuePagination을 렌더한다.
+ *
+ * 빈 목록이면 IssueEmptyState, 아니면 컬럼 선택 툴바(GAP-2) + IssueTable(F1) +
+ * IssuePagination을 렌더한다.
+ *
+ * - 담당자 이름 해석(F5) — 현재 페이지에 등장하는 assigneeId만 useUsersByIds로 조회한다
+ *   (FilterBar.tsx assigneeNameMap 관례 미러).
+ * - 컬럼 표시 상태(F4)는 useColumnVisibility로 localStorage에 영속한다.
+ * - GAP-5 — isFetching(재조회 중)이면 표 영역에 opacity-60 pointer-events-none을 적용해
+ *   레이아웃 시프트 없이 전환 중임을 알린다. IssueListPage의 keepPreviousData 덕분에
+ *   이전 데이터가 유지된 채 dim된다.
  */
 function IssueListContent({
   data,
@@ -262,38 +271,58 @@ function IssueListContent({
   onToggle,
   onSelectAllPage,
   isAllPageSelected,
+  sort,
+  onSort,
+  isFetching,
 }: IssueListContentProps): JSX.Element {
+  // ── 담당자 이름 해석 — 현재 페이지 assigneeId만 조회 ───────────────────────
+  const assigneeIds = useMemo(
+    () =>
+      Array.from(
+        new Set(data.content.map((issue) => issue.assigneeId).filter((id): id is string => id !== null)),
+      ),
+    [data.content],
+  )
+  const { data: assignees = [] } = useUsersByIds(assigneeIds)
+  const assigneeNameMap = useMemo<Map<string, string>>(() => {
+    const map = new Map<string, string>()
+    for (const user of assignees) {
+      map.set(user.id, user.displayName ?? user.username)
+    }
+    return map
+  }, [assignees])
+
+  // ── 컬럼 표시 상태 — localStorage persist(F4) ──────────────────────────────
+  const { visible, isVisible, toggle } = useColumnVisibility(
+    ISSUE_TABLE_COLUMNS_STORAGE_KEY,
+    ISSUE_COLUMN_KEYS,
+    ISSUE_COLUMN_REQUIRED_KEYS,
+    ISSUE_COLUMN_DEFAULT_VISIBLE,
+  )
+
   if (data.empty) {
     return <IssueEmptyState />
   }
 
   return (
-    <>
-      {/* 전체 선택 행 */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-border">
-        <input
-          type="checkbox"
-          aria-label="현재 페이지 전체 선택"
-          data-testid="select-all-page"
-          checked={isAllPageSelected}
-          onChange={onSelectAllPage}
-          className="h-4 w-4 cursor-pointer accent-primary"
-        />
-        <span className="text-xs text-muted-foreground">전체 선택</span>
+    <div
+      data-testid="issue-table-region"
+      className={isFetching ? 'opacity-60 pointer-events-none' : undefined}
+    >
+      {/* GAP-2 — 컬럼 선택 툴바(테이블 상단 우측) */}
+      <div className="flex justify-end pb-2">
+        <ColumnSelector allColumns={ISSUE_COLUMNS} isVisible={isVisible} onToggle={toggle} />
       </div>
 
-      <ul className="space-y-2" aria-label="이슈 목록">
-        {data.content.map((issue) => (
-          <li key={issue.key}>
-            <IssueCard
-              issue={issue}
-              onNavigate={onNavigate}
-              checked={isSelected(issue.key)}
-              onToggle={onToggle}
-            />
-          </li>
-        ))}
-      </ul>
+      <IssueTable
+        issues={data.content}
+        visibleColumnKeys={visible}
+        sort={sort}
+        onSort={onSort}
+        selection={{ isSelected, onToggle, onSelectAllPage, isAllPageSelected }}
+        onNavigate={onNavigate}
+        assigneeNameMap={assigneeNameMap}
+      />
 
       <IssuePagination
         page={page}
@@ -302,7 +331,7 @@ function IssueListContent({
         isLast={data.last}
         onPageChange={onPageChange}
       />
-    </>
+    </div>
   )
 }
 
@@ -329,6 +358,14 @@ interface IssueListPageProps {
    * IssueFilterBar onChange → 새 필터 전달 + page=0 리셋.
    */
   onFilterChange?: (filter: IssueFilterParams) => void
+  /**
+   * 현재 정렬 상태(Task 5, F2). undefined/null이면 정렬 미적용(서버 기본 정렬 created_at desc 유지).
+   */
+  sort?: IssueTableSortState | null
+  /**
+   * 정렬 변경 콜백(Task 5). IssueListRouteAdapter가 URL sort 쿼리를 갱신한다.
+   */
+  onSortChange?: (sort: IssueTableSortState | null) => void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -380,13 +417,16 @@ function NewIssueButton({ canCreate }: NewIssueButtonProps): JSX.Element {
 /**
  * 이슈 목록 페이지 컴포넌트.
  *
- * - useQuery로 fetchIssues를 호출한다.
+ * - useQuery로 fetchIssues를 호출한다. queryKey에 sort를 포함해 정렬별 캐시를 분기한다.
+ * - placeholderData: keepPreviousData로 page/sort/filter 전환 중에도 이전 데이터를 유지한다
+ *   (GAP-5 — IssueListContent가 isFetching으로 dim 처리).
  * - 3 상태 분기: 로딩("로딩 중...") → 에러(role="alert") → 성공(IssueListContent).
  * - 에러 시 role="alert"로 스크린 리더 접근성 보장 (WCAG AA).
  * - "새 이슈" 진입점: CREATE 권한 기반 게이트. fail-closed(로딩/에러/undefined → 비활성).
  * - useIssueSelection으로 페이지 교차 누적 선택 상태를 관리한다.
  * - IssueBulkActionBar, BulkEditDialog, BulkTransitionDialog, BulkOperationResultDialog를 결선한다.
  * - IssueFilterBar 결선 (FR-SR-01 D6): filter prop → queryKey filter-aware + filter 실변경 시 clearAll.
+ * - 정렬 헤더 클릭(Task 5, F2) → nextSortState로 3-state 계산 → onSortChange + page=0 리셋(EC3).
  *
  * 라우터 의존 없이 props로 동작해 단위 테스트가 가능하다.
  */
@@ -397,6 +437,8 @@ export function IssueListPage({
   onNavigate,
   filter = EMPTY_FILTER,
   onFilterChange,
+  sort = null,
+  onSortChange,
 }: IssueListPageProps): JSX.Element {
   const queryClient = useQueryClient()
 
@@ -405,9 +447,19 @@ export function IssueListPage({
   // (use-boards.ts normalizeFilter 미러 — PR #168 선례)
   const normalizedFilter = useMemo(() => normalizeIssueFilter(filter), [filter])
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['issues', projectKey, page, normalizedFilter],
-    queryFn: () => fetchIssues({ projectKey, page, size: DEFAULT_PAGE_SIZE, filter }),
+  const { data, isLoading, isFetching, error } = useQuery({
+    queryKey: ['issues', projectKey, page, normalizedFilter, sort],
+    queryFn: () =>
+      fetchIssues({
+        projectKey,
+        page,
+        size: DEFAULT_PAGE_SIZE,
+        filter,
+        sort: sort ?? undefined,
+      }),
+    // GAP-5 — page/sort/filter 전환 중에도 이전 데이터를 유지해 전체 화면 로딩 플리커를 방지한다.
+    // 첫 로딩(데이터 없음)은 이 옵션과 무관하게 아래 isLoading 분기가 기존 "로딩 중..." 안내를 담당한다.
+    placeholderData: keepPreviousData,
     retry: false,
   })
 
@@ -445,6 +497,20 @@ export function IssueListPage({
       onPageChange(0)
     },
     [onFilterChange, onPageChange],
+  )
+
+  // ── 정렬 헤더 클릭 핸들러(Task 5, F2·EC3) ───────────────────────────────────
+  /**
+   * IssueTable 정렬 헤더 클릭 핸들러.
+   * nextSortState로 3-state(asc→desc→해제)를 계산해 onSortChange로 상위에 전달하고,
+   * 정렬 기준이 바뀌면 현재 page 번호는 의미가 없어지므로 page=0으로 리셋한다(EC3).
+   */
+  const handleSort = useCallback(
+    (field: IssueSortField) => {
+      onSortChange?.(nextSortState(sort, field))
+      onPageChange(0)
+    },
+    [sort, onSortChange, onPageChange],
   )
 
   // ── Dialog 열림 상태 ───────────────────────────────────────────────────────
@@ -542,6 +608,9 @@ export function IssueListPage({
           onToggle={toggle}
           onSelectAllPage={handleSelectAllPage}
           isAllPageSelected={isAllPageSelected}
+          sort={sort}
+          onSort={handleSort}
+          isFetching={isFetching}
         />
       )}
 
@@ -582,22 +651,26 @@ export function IssueListPage({
 /**
  * router.ts에 등록되는 라우트 어댑터 컴포넌트.
  *
- * useSearch로 URL의 page + status/assignee/label/component 필터 파라미터를 추출해
+ * useSearch로 URL의 page + status/assignee/label/component 필터 + sort 파라미터를 추출해
  * IssueListPage에 전달한다.
  *
  * - page → IssueListPage.page (0-indexed)
  * - status/assignee/label/component → searchToIssueFilter → IssueListPage.filter
+ * - sort → parseSortParam → IssueListPage.sort (Task 5, S2 — URL에 정렬 상태 반영)
  * - IssueFilterBar onChange → issueFilterToSearch → navigate(URL 갱신, page=0 리셋)
- * - 빈 필터 시 해당 키 자체를 URL에서 제거 (issueFilterToSearch가 처리)
+ * - IssueTable 정렬 헤더 → onSortChange → serializeSortParam → navigate(URL sort 갱신)
+ * - 빈 필터/정렬 해제 시 해당 키 자체를 URL에서 제거 (issueFilterToSearch/serializeSortParam이 처리)
  *
  * 라우터 등록은 router.ts 담당.
  */
 export function IssueListRouteAdapter(): JSX.Element {
   const search = useSearch({ strict: false }) as {
     page?: number
+    sort?: string
   } & IssueFilterSearch
   const navigate = useNavigate()
   const page = typeof search.page === 'number' ? search.page : 0
+  const sort = useMemo(() => parseSortParam(search.sort), [search.sort])
 
   // searchToIssueFilter는 매 렌더마다 새 객체를 반환하므로
   // 실제 search 값이 바뀔 때만 재계산한다 (BoardRouteAdapter 패턴 미러).
@@ -636,6 +709,19 @@ export function IssueListRouteAdapter(): JSX.Element {
     })
   }
 
+  /**
+   * 정렬 변경 핸들러(Task 5) — serializeSortParam으로 URL search params 갱신.
+   * page=0 리셋은 IssueListPage.handleSort가 onPageChange(0)로도 처리하지만(이중 안전),
+   * handleFilterChange와 동일하게 이 navigate 호출 자체에도 page=0을 포함한다.
+   * nextSort가 null(해제)이면 serializeSortParam이 undefined를 반환해 sort 키가 URL에서 제거된다.
+   */
+  function handleSortChange(nextSort: IssueTableSortState | null): void {
+    void navigate({
+      to: '/issues',
+      search: (prev) => ({ ...prev, sort: serializeSortParam(nextSort), page: 0 }),
+    })
+  }
+
   return (
     <IssueListPage
       projectKey={DEFAULT_PROJECT_KEY}
@@ -644,6 +730,8 @@ export function IssueListRouteAdapter(): JSX.Element {
       onNavigate={handleNavigate}
       filter={filter}
       onFilterChange={handleFilterChange}
+      sort={sort}
+      onSortChange={handleSortChange}
     />
   )
 }
