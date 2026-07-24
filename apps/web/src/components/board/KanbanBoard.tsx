@@ -210,6 +210,7 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
   // 접근성 공지(DR2) — board/assigneeNames가 바뀔 때만 재계산(불필요한 재구독 방지)
   const announcements = useMemo(() => buildDragAnnouncements(board, assigneeNames), [board, assigneeNames])
 
+  /** dnd-kit onDragStart — 드래그 중인 카드의 출발 컬럼·셀(스윔레인 그룹) key를 기록한다. */
   function handleDragStart(event: DragStartEvent): void {
     setActiveId(String(event.active.id))
     const current = event.active.data.current as { fromColumnId?: string; swimlaneGroupKey?: string } | undefined
@@ -217,9 +218,14 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
     setActiveSwimlaneGroupKey(current?.swimlaneGroupKey)
   }
 
+  /**
+   * dnd-kit onDragOver — 하이라이트할 컬럼 id를 계산한다.
+   *
+   * DR3(최소 구현) — 같은 컬럼 내에서 활성 카드와 다른 스윔레인 그룹(셀) 위로 드래그 중이면
+   * 이 PR에서는 noop으로 처리되므로(필드변경은 PR21b), 착시를 막기 위해 컬럼 하이라이트를
+   * 억제한다(over 대상이 없는 것처럼 취급).
+   */
   function handleDragOver(event: DragOverEvent): void {
-    // DR3(최소 구현) — 같은 컬럼 내 다른 스윔레인 그룹(셀) 위 드래그는 이번 PR에서 noop이므로
-    // 착시를 막기 위해 컬럼 하이라이트를 억제한다.
     const over = event.over
     if (over === null) {
       setOverColumnId(null)
@@ -238,6 +244,10 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
     setOverColumnId(isCrossGroupWithinSameColumn ? null : overColumnIdResolved)
   }
 
+  /**
+   * dnd-kit onDragEnd — 드래그 상태를 초기화하고 resolveDropAction 판정 결과를
+   * dispatchDropAction에 위임한다.
+   */
   function handleDragEnd(event: DragEndEvent): void {
     setActiveId(null)
     setActiveFromColumnId(null)
@@ -251,24 +261,50 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
       assigneeNames,
     )
 
-    if (action.type === 'noop') return
-
-    if (action.type === 'reorder') {
-      executeReorder(action)
-      return
-    }
-
-    const { issueKey, fromColumnId, toColumnId, expectedVersion } = action
-
-    if (action.type === 'needs-resolution') {
-      setPendingMove({ issueKey, fromColumnId, toColumnId, expectedVersion })
-      return
-    }
-
-    // type === 'move'
-    executeMutate({ issueKey, fromColumnId, toColumnId, expectedVersion })
+    dispatchDropAction(action)
   }
 
+  /**
+   * resolveDropAction 판정 결과(DropAction)에 따라 실제 부수효과를 실행한다.
+   *
+   * - `noop` → 아무 것도 하지 않는다.
+   * - `reorder` → executeReorder(useReorderCard.mutate 즉시 호출) — 셀 내 순서변경.
+   * - `needs-resolution` → pendingMove를 채워 ResolutionPickerModal을 연다(확인 시 executeMutate).
+   * - `move` → executeMutate(useMoveCard.mutate 즉시 호출) — 다른 컬럼(non-DONE)으로 이동.
+   *
+   * @param action resolveDropAction이 반환한 판정 결과
+   */
+  function dispatchDropAction(action: DropAction): void {
+    switch (action.type) {
+      case 'noop':
+        return
+      case 'reorder':
+        executeReorder(action)
+        return
+      case 'needs-resolution':
+        setPendingMove({
+          issueKey: action.issueKey,
+          fromColumnId: action.fromColumnId,
+          toColumnId: action.toColumnId,
+          expectedVersion: action.expectedVersion,
+        })
+        return
+      case 'move':
+        executeMutate({
+          issueKey: action.issueKey,
+          fromColumnId: action.fromColumnId,
+          toColumnId: action.toColumnId,
+          expectedVersion: action.expectedVersion,
+        })
+        return
+      default: {
+        const exhaustiveCheck: never = action
+        return exhaustiveCheck
+      }
+    }
+  }
+
+  /** 카드를 다른 컬럼으로 이동한다(useMoveCard.mutate). 409 등 에러는 toast로 안내한다. */
   function executeMutate(vars: MoveCardVars): void {
     moveCard.mutate(vars, {
       onError: (err: unknown) => {
@@ -279,8 +315,11 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
     })
   }
 
+  /**
+   * 셀(컬럼 × 스윔레인 그룹) 내에서 카드 순서를 변경한다(useReorderCard.mutate).
+   * 409 충돌 등 에러 toast는 useReorderCard 내부에서 처리한다(중복 안내 방지).
+   */
   function executeReorder(action: Extract<DropAction, { type: 'reorder' }>): void {
-    // 409 충돌 등 에러 toast는 useReorderCard 내부에서 처리(중복 안내 방지)
     const vars: ReorderCardVars = {
       issueKey: action.issueKey,
       columnId: action.columnId,
