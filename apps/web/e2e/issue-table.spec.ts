@@ -1,7 +1,8 @@
 // FR-UX-06 Phase 5 PR18 Task 6 E2E — 이슈 목록 테이블 전환(정렬·컬럼 선택·필터+정렬)
 //
 // 시나리오 개요.
-//   S1. 테이블 렌더       — <table> 시맨틱 + 행 클릭 상세 이동 + 체크박스 클릭 전파 차단
+//   S1. 테이블 렌더       — <table> 시맨틱 + 행 클릭 시(와이드 뷰포트) split 상세 페인 오픈
+//                          (?selected=) + 체크박스 클릭 전파 차단
 //   S2. 서버 정렬         — "키" 헤더 클릭 → ?sort=key,<dir> + 순서 변경, asc→desc→해제 3-state
 //   S3. 정렬 유지 페이지 이동 — 정렬 상태로 "다음" 클릭 시 sort 유지 + 2페이지 표시
 //   S4. 컬럼 선택         — "우선순위" 컬럼 토글 → 표시 변경 + reload 후에도 유지(localStorage)
@@ -24,6 +25,11 @@
 //   - MSW serviceWorkers:'block' 금지 ([[e2e-msw-serviceworker-block]]).
 //   - localStorage 시나리오 플래그는 addInitScript로 loginAsAlice 이후·goto 이전에
 //     주입한다 ([[e2e-msw-scenario-toggle-localstorage-flag]]).
+//   - S1의 요약 셀 클릭 단정은 PR20(split view) 도입으로 갱신됐다. 기본(와이드) 뷰포트
+//     에서 행 클릭은 더 이상 `/issues/<KEY>` 전체화면 이동이 아니라 `/issues?selected=<KEY>`
+//     로 URL이 바뀌며 우측 상세 페인이 열린다(의도된 동작 변경, 구현 버그 아님). split view
+//     자체의 상세 시나리오(닫기·직접 진입·정렬 보존·좁은 뷰포트 전체화면 등)는
+//     issue-split-view.spec.ts에서 검증하므로 여기서는 "split이 열렸다"는 최소 단정만 둔다.
 //
 // 회귀 대조(기존 e2e, 본 PR에서 직접 실행·확인만 — 별도 보고).
 //   - issue-bulk-operations.spec.ts(선택/일괄작업) — data-testid 기반이라 무회귀, 5/5 green.
@@ -34,6 +40,7 @@ import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
 import { LS_KEY_PAGINATION_EXTRA_ISSUES } from '../src/mocks/issue-handlers'
+import { issueAtlas1Fixture } from '../src/mocks/issue-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -83,12 +90,13 @@ test.describe('FR-UX-06 Phase 5 PR18 이슈 목록 테이블(정렬·컬럼 선�
   // ───────────────────────────────────────────────────────────────────────────
   // S1. 테이블 렌더
   //
-  // Given  alice 로그인 + /issues 진입 (ATLAS-1/2/3/5 4건)
+  // Given  alice 로그인 + /issues 진입 (ATLAS-1/2/3/5 4건, 기본 와이드 뷰포트)
   // When   테이블이 렌더되면
-  // Then   <table> 시맨틱으로 렌더되고, 행(요약 셀) 클릭 시 상세 페이지로 이동한다.
-  //        체크박스 클릭은 이벤트 전파를 차단해 상세 이동이 발생하지 않는다.
+  // Then   <table> 시맨틱으로 렌더되고, 행(요약 셀) 클릭 시 split 상세 페인이 열린다
+  //        (URL에 ?selected= 반영 + 우측 상세 제목이 h2로 등장, PR20). 체크박스 클릭은
+  //        이벤트 전파를 차단해 split이 열리지 않는다.
   // ───────────────────────────────────────────────────────────────────────────
-  test('S1 테이블 렌더 — <table> 시맨틱 + 행 클릭 상세 이동 + 체크박스 클릭 전파 차단', async ({ page }) => {
+  test('S1 테이블 렌더 — <table> 시맨틱 + 행 클릭 시 split 상세 페인 오픈 + 체크박스 클릭 전파 차단', async ({ page }) => {
     // Given. alice 로그인 + 이슈 목록 진입
     await loginAsAlice(page)
     await page.goto(ISSUES_URL)
@@ -100,15 +108,20 @@ test.describe('FR-UX-06 Phase 5 PR18 이슈 목록 테이블(정렬·컬럼 선�
     // When. 체크박스 클릭 (요약 셀 클릭보다 먼저 검증 — 전파 차단 확인)
     await page.getByTestId('select-ATLAS-1').click()
 
-    // Then. 체크박스는 토글됐지만(선택 상태 반영) 상세 페이지로 이동하지 않음
+    // Then. 체크박스는 토글됐지만(선택 상태 반영) split이 열리지 않음
     await expect(page.getByTestId('select-ATLAS-1')).toBeChecked()
     await expect(page).toHaveURL(new RegExp(`${ISSUES_URL}$`))
 
-    // When. 요약 셀(행 영역) 클릭 → 행 전체 클릭 네비게이션
+    // When. 요약 셀(행 영역) 클릭 → 와이드 뷰포트에서 split 상세 페인 오픈(PR20)
     await page.getByTestId('issue-summary-ATLAS-1').click()
 
-    // Then. 이슈 상세 페이지로 이동
-    await page.waitForURL(/\/issues\/ATLAS-1$/)
+    // Then. URL에 selected 파라미터 반영(전체화면 `/issues/ATLAS-1` 이동이 아님)
+    await page.waitForURL(/\/issues\?selected=ATLAS-1/)
+
+    // Then. 우측 상세 페인 등장(제목이 h2, 정본 fixture 요약 텍스트) — split이 실제로
+    // 열렸음을 명확히 검증(vacuous 회피). 상세 페인 안에는 "첨부 파일"·"변경 이력" 등
+    // 다른 h2도 있어 name으로 상세 제목 h2 하나로 한정한다.
+    await expect(page.getByRole('heading', { level: 2, name: issueAtlas1Fixture.summary })).toBeVisible()
   })
 
   // ───────────────────────────────────────────────────────────────────────────
