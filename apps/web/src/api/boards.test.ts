@@ -395,6 +395,38 @@ describe('boardCardSchema — priority 필드 파싱 (FR-BD-03 D4)', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// T-BD-14. boardCardSchema — rank 필드 파싱 (FR-UX-06 PR21 Task 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('boardCardSchema — rank 필드 파싱 (FR-UX-06 PR21 Task 3)', () => {
+  it('T-BD-14a: 유효 LexoRank 문자열을 포함한 카드는 rank 값을 보유한다', () => {
+    const card = { ...cardWithAssignee, rank: '0|hzzzzz:' }
+    const result = boardCardSchema.safeParse(card)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.rank).toBe('0|hzzzzz:')
+  })
+
+  it('T-BD-14b: rank 필드가 응답에 없으면 null로 방어된다 (백엔드 @JsonInclude(NON_NULL) 대비)', () => {
+    // rank 필드를 명시적으로 제외한 카드 객체 — 레거시/인라인 mock 응답 재현
+    const cardWithoutRank: Record<string, unknown> = { ...cardWithAssignee }
+    delete cardWithoutRank['rank']
+    const result = boardCardSchema.safeParse(cardWithoutRank)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.rank).toBeNull()
+  })
+
+  it('T-BD-14c: rank가 명시적으로 null이면 그대로 null을 반환한다', () => {
+    const card = { ...cardWithAssignee, rank: null }
+    const result = boardCardSchema.safeParse(card)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.rank).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // T-BD-12. boardColumnSchema — wipLimit / wipExceeded 필드 파싱 (FR-BD-03 D4)
 // ─────────────────────────────────────────────────────────────────────────────
 
