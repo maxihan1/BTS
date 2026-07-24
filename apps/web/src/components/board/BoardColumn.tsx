@@ -7,16 +7,9 @@ import type { BoardColumn as BoardColumnType, SwimlaneField } from '@/api/boards
 import { boardLabels } from '@/i18n/board-labels'
 import { groupCardsBySwimlane } from '@/lib/swimlane-group'
 import type { SwimlaneGroup } from '@/lib/swimlane-group'
-import { BoardCard } from './BoardCard'
+import { BoardCard, NONE_CELL_KEY } from './BoardCard'
 import type { CardAssigneeDisplay } from './BoardCard'
 import { WipCountBadge } from './WipCountBadge'
-
-/**
- * swimlaneField=NONE일 때의 셀(컬럼 × 스윔레인 그룹) key.
- * swimlane-group.ts groupByNone·board-drop.ts findGroupKey와 동일 상수 —
- * 이 파일과 BoardCard.tsx의 기본값이 서로 다른 값을 쓰지 않도록 여기서 단일 정의한다.
- */
-const NONE_CELL_KEY = 'none'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
