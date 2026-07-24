@@ -1569,3 +1569,66 @@ describe('buildIssueFilterQuery + fetchIssues — FR-SR-01 필터 query string �
     expect(params.has('component')).toBe(false)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T2. fetchIssues — sort 파라미터 (FR-UX-06 Phase 5 PR18 Task 2)
+//
+// 정렬 필드 계약 5종 — key · summary · priority · createdAt · updatedAt.
+// sort 미전달 시 기존 URL(sort 파라미터 없음) 유지 = 하위호환.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('fetchIssues — sort 파라미터 (PR18 Task 2)', () => {
+  it('T2-1a: sort 전달 시 URL에 sort=<field>,<dir> 파라미터가 추가된다 (priority,desc)', async () => {
+    let capturedUrl = ''
+    server.use(
+      http.get('/api/v1/issues', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json(pageFixture)
+      }),
+    )
+
+    await fetchIssues({
+      projectKey: 'ATLAS',
+      page: 0,
+      size: 20,
+      sort: { field: 'priority', dir: 'desc' },
+    })
+
+    const params = new URL(capturedUrl).searchParams
+    expect(params.get('sort')).toBe('priority,desc')
+  })
+
+  it('T2-1b: sort dir=asc 전달 시 URL에 sort=<field>,asc 파라미터가 추가된다 (key,asc)', async () => {
+    let capturedUrl = ''
+    server.use(
+      http.get('/api/v1/issues', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json(pageFixture)
+      }),
+    )
+
+    await fetchIssues({
+      projectKey: 'ATLAS',
+      page: 0,
+      size: 20,
+      sort: { field: 'key', dir: 'asc' },
+    })
+
+    const params = new URL(capturedUrl).searchParams
+    expect(params.get('sort')).toBe('key,asc')
+  })
+
+  it('T2-1c: sort 미전달 시 URL에 sort 파라미터가 없다 (하위호환)', async () => {
+    let capturedUrl = ''
+    server.use(
+      http.get('/api/v1/issues', ({ request }) => {
+        capturedUrl = request.url
+        return HttpResponse.json(pageFixture)
+      }),
+    )
+
+    await fetchIssues({ projectKey: 'ATLAS', page: 0, size: 20 })
+
+    const params = new URL(capturedUrl).searchParams
+    expect(params.has('sort')).toBe(false)
+  })
+})
