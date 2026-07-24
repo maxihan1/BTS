@@ -1,10 +1,12 @@
 // CSS 미디어쿼리 매칭 여부를 구독하는 훅 — matchMedia 기반, split view 폭 분기에 사용
 import { useState, useEffect } from 'react'
 
-function getMatches(query: string): boolean {
+function supportsMatchMedia(): boolean {
   return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-    ? window.matchMedia(query).matches
-    : false
+}
+
+function getMatches(query: string): boolean {
+  return supportsMatchMedia() ? window.matchMedia(query).matches : false
 }
 
 /**
@@ -21,7 +23,7 @@ export function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState<boolean>(() => getMatches(query))
 
   useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    if (!supportsMatchMedia()) {
       setMatches(false)
       return
     }
