@@ -6,6 +6,9 @@ import { CustomFieldInput } from '@/components/custom-fields/CustomFieldInput'
 import type { CustomField } from '@/api/custom-fields.types'
 import type { CustomFieldValues } from '@/api/issues'
 import { issueDetailStrings } from '@/i18n/ko'
+// FR-PM-07 필드 권한 헬퍼 — IssueMetaPanel.tsx에 정본으로 남아있는 순수 함수를 재사용한다.
+// IssueMetaPanel.tsx도 이 파일의 IssueCustomFieldsEdit를 import하지만, 두 모듈 모두
+// 이 값들을 렌더 시점(함수 호출) 에만 참조하므로 모듈 평가 시점 순환 문제는 없다.
 import { isFieldHidden, isFieldDisabled } from '@/components/issue/IssueMetaPanel'
 
 // ─────────────────────────────────────────────────────────────────────────────
