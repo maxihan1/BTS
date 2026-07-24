@@ -35,8 +35,10 @@ import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.jooq.Condition
 import org.jooq.DSLContext
+import org.jooq.Field
 import org.jooq.JSONB
 import org.jooq.Record
+import org.jooq.SortField
 import org.jooq.Table
 import org.jooq.TableField
 import org.jooq.UpdateSetMoreStep
@@ -45,6 +47,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.Pageable
+import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
@@ -1038,7 +1041,7 @@ class IssueRepository(
      * @param sort 클라이언트 요청 정렬 기준(`Pageable.sort`).
      * @return jOOQ ORDER BY 필드 목록. 항상 마지막 원소는 `ISSUES.ID.desc()` tiebreaker.
      */
-    private fun buildListOrderBy(sort: org.springframework.data.domain.Sort): List<org.jooq.SortField<*>> {
+    private fun buildListOrderBy(sort: Sort): List<SortField<*>> {
         val orders =
             sort.mapNotNull { order ->
                 val field = SORTABLE_COLUMNS[order.property] ?: return@mapNotNull null
@@ -1234,7 +1237,7 @@ class IssueRepository(
          * 실사용에서 `key` 정렬 요청 빈도는 낮을 것으로 예상되어, 별도 숫자 시퀀스 컬럼을
          * 신설하지 않고 이 한계를 KDoc 으로 명시하는 선에서 허용한다.
          */
-        private val SORTABLE_COLUMNS: Map<String, org.jooq.Field<*>> =
+        private val SORTABLE_COLUMNS: Map<String, Field<*>> =
             mapOf(
                 "key" to ISSUES.KEY,
                 "summary" to ISSUES.SUMMARY,
