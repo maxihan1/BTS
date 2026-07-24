@@ -40,11 +40,11 @@ FR-UX-06(BTS UI/UX Jira Cloud 방식 개편) Phase 5(화면)의 다섯 번째 PR
 
 - 보드 조회 rank 노출/정렬 + 컬럼 내 리랭크가 기존 리랭크 API 재사용임을 기록 (신규 리랭크 경로 없음). BC 경계: agile-planning 조회 view layer가 issue-tracking rank를 미러(백로그 선례).
 
-### ★ 스코프·의존성·FR 귀속 — Maxi 확인 대상(게이트 전 선확정)
+### ★ 스코프·의존성·FR 귀속 — Maxi 확정 (2026-07-25)
 
-1. **순수 프론트가 아니라 풀스택** — 보드 조회에 rank 노출(agile-planning) 없이는 순서 저장/복원 불가.
-2. **새 기능 성격** — 현재 noop이던 동작을 신설. FR-UX-06(개편)인지 별도 FR-BD/BL D단계 진척인지 귀속 확정 필요(전수 동기화 영향).
-3. **새 의존성 `@dnd-kit/sortable`** — DEVELOPMENT.md §외부 의존성상 Maxi 승인 필요(단 @dnd-kit 패밀리 공식 확장, 위험 낮음).
+1. **스코프 = 풀스택 완제품** ✅ — agile-planning 보드 조회에 rank 노출/정렬 추가 + 프론트 `@dnd-kit/sortable` + 기존 리랭크 API(`PATCH /api/v1/issues/{key}/rank`) 재사용. issue-tracking 변경 0(조회만).
+2. **FR 귀속 = FR-UX-06 Phase 5** ✅ — FR 총수 **129 불변**. product 문서 D단계 마킹만(신규 FR 없음). 22 PR 체인 PR21에 편입.
+3. **`@dnd-kit/sortable` 승인** ✅ — @dnd-kit/core(6.3.1)·utilities 공식 패밀리 확장, core 버전과 호환. SortableContext로 컬럼 내 정렬.
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
