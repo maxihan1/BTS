@@ -33,6 +33,9 @@ import java.util.UUID
  * - EC1. 허용목록 외 필드(`assigneeId`) — 예외 없이 기본 정렬(`created_at DESC`)로 대체.
  * - N2. 정렬 무지정(unsorted [Pageable]) — 기존 `created_at DESC` 그대로 유지(무회귀,
  *   load-bearing — 화이트리스트 도입이 기존 무정렬 호출부(보드 등)를 깨지 않는지 확인).
+ * - C1. 허용 필드 값이 동값(tie)일 때 — id 를 안정 tiebreaker 로 사용해 결과 순서가 결정적임을
+ *   보장(코드리뷰 C1). tiebreaker 가 없으면 동값 행의 순서가 DB 미정의라 페이지네이션에서
+ *   행 중복/누락 위험이 생긴다.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class IssueRepositoryListSortTest : IssueTestcontainersBase() {
@@ -208,5 +211,41 @@ class IssueRepositoryListSortTest : IssueTestcontainersBase() {
             )
 
         assertThat(page.content.map { it.key }).containsExactly("TPRJ-3", "TPRJ-2", "TPRJ-1")
+    }
+
+    // ── C1. priority 동값(tie) — id tiebreaker 로 결정적 정렬 ──────────────
+
+    /**
+     * Given  priority 값이 모두 동일(3)한 이슈 3건
+     * When   `Sort.by(DESC, "priority")` 로 listWithType 호출
+     * Then   허용 필드가 동값이라도 id 내림차순(tiebreaker)으로 항상 동일한 순서가 나온다.
+     *
+     * load-bearing — [IssueRepository.buildListOrderBy] 가 허용 필드만 반환하면 동값 tie 는
+     * DB 미정의 순서가 되어 페이지네이션에서 행 중복/누락을 유발할 수 있다(코드리뷰 C1).
+     * id 를 안정 tiebreaker 로 항상 append 해야 이 단언을 통과한다.
+     */
+    @Test
+    @Order(4)
+    fun `C1 - priority 동값일 때 id desc tiebreaker로 결정적 정렬된다`() {
+        val actor = UUID.randomUUID()
+        val inserted =
+            listOf(
+                repository.insert(buildIssue(seq = 1, priority = 3)),
+                repository.insert(buildIssue(seq = 2, priority = 3)),
+                repository.insert(buildIssue(seq = 3, priority = 3)),
+            )
+        val expectedIds = inserted.map { it.id.value }.sortedDescending()
+
+        val sort = Sort.by(Sort.Direction.DESC, "priority")
+        val page =
+            repository.listWithType(
+                "TPRJ",
+                PageRequest.of(0, 10, sort),
+                actor,
+                unrestrictedAccess,
+                BoardCardFilter.EMPTY,
+            )
+
+        assertThat(page.content.map { it.id }).containsExactlyElementsOf(expectedIds)
     }
 }
