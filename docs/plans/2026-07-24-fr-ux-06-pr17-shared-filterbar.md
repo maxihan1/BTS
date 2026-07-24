@@ -149,3 +149,9 @@ extraActiveCount?: number        // activeCount 가산(이슈 statusKeys.length)
 - ⚠️ **커버리지 회귀 리스크(리뷰 포커스)**: T3/T4가 래퍼 테스트를 슬림화하며 공통 어서션을 FilterBar.test로 이관 → **이관 누락 시 커버리지 손실**. 완화=이관 어서션 1:1 대조(게이트2 어드버서리얼). 보수적 대안=기존 래퍼 테스트 무수정 유지(순감 축소 감수).
 - ⚠️ **i18n 파생 shim 타이핑(리뷰 포커스)**: `as const` 위젯닝으로 ko.test 타입 어서션 깨질 가능 → T1 RED에 ko.test green 포함. board shim은 statusLabel 부재 shape 보존 필수.
 - **BLOCKER: 없음.** taste decision: 없음(시각 불변).
+
+### PR 단위 리뷰 (2026-07-24 — bts-codereview, PR #302)
+- **superpowers:code-reviewer**: ⚠️ CONCERNS 1건 → 수정 완료. 절대 규칙 19개 전항 PASS·byte-identical DOM/aria PASS·테스트 커버리지 이관 PASS·i18n 파생 shim PASS·idPrefix verbatim PASS. **적발**: 이슈 초기화가 로컬 검색 입력(assigneeQuery/labelInput)을 안 비우던 회귀(원본은 비웠음) — `onReset ?? handleReset` 분기 탓. **수정**: `handleReset`이 로컬 입력을 항상 clear + 값 초기화만 onReset 위임(TDD test`eb2106c4`→fix`626329239`). 보드 무영향.
+- **어드버서리얼 2차(general-purpose)**: ✅ **NO FINDINGS**. 6개 실패 모드(byte-identical·제네릭 T 필드보존·i18n shim·테스트 이관 실손·소비처 결합·고아 참조) 전수 대조·296 관련 테스트 독립 재실행 green. 머지 가 권고.
+- **/plan-ceo-review**: skip(type=ui, auth/migration 아님).
+- **결론**: BLOCKER 0. 수정 후 재검증(필터 유닛 52·필터 e2e 22 green) 완료.
