@@ -61,7 +61,7 @@ split view(목록+상세 2분할)도 이 PR과 함께 검토 (PR18에서 의도�
 - depends-on: []
 
 **RED**: `IssueActivityTabs.test.tsx` — (a) `role="tablist"` + 탭 3개(작업로그/연결/이력) 렌더, (b) 기본 활성=작업로그(`WorklogSection` 콘텐츠 보임), (c) 연결 탭 클릭 시 `IssueLinksPanel`·`LinkGraph` 보이고 작업로그 숨음, (d) 이력 탭 클릭 시 `IssueChangelog` 보임, (e) 에픽 타입일 때만 연결 탭에 `EpicChildrenSection`. 실패(컴포넌트 없음).
-**GREEN**: `IssueActivityTabs` 신설 — `ui/tabs`(controlled `value`/`onValueChange`, `defaultValue="worklog"`) 소비. 3 `TabsContent`(worklog/links/history), 비활성 패널 기본 언마운트(G3 lazy). props로 `issueKey·canUpdate·issue`(에픽/부모/epic·showEpicSection 판정) 전달. route: 그리드 아래 5개 적층 섹션(`WorklogSection`·`IssueLinksPanel`·`EpicChildrenSection`·`LinkGraph`·`IssueChangelog`)을 `<IssueActivityTabs.../>` 1개로 대체. 그리드 `lg:grid-cols-[1fr_280px]`→`[1fr_340px]`. i18n 탭 라벨 3종.
+**GREEN**: `IssueActivityTabs` 신설 — `ui/tabs` **uncontrolled `defaultValue`**(E1 리뷰: URL 동기화 불요 → `useState` 불필요, 최소 구현) 소비. 기본 탭 값=D1 게이트 결정(작업로그 vs 이력). 3 `TabsContent`(worklog/links/history), 비활성 패널 기본 언마운트(G3 lazy). props로 `issueKey·canUpdate·issue`(에픽/부모/epic·showEpicSection 판정) 전달. route: 그리드 아래 5개 적층 섹션(`WorklogSection`·`IssueLinksPanel`·`EpicChildrenSection`·`LinkGraph`·`IssueChangelog`)을 `<IssueActivityTabs.../>` 1개로 대체. 그리드 `lg:grid-cols-[1fr_280px]`→`[1fr_340px]`. i18n 탭 라벨 3종. **E2: `issues.$key.test.tsx`의 LinkGraph/Changelog eager 렌더 기대 어서션을 탭 활성 후 검증으로 갱신(lazy-mount 정합).**
 **REFACTOR**: 탭 value 상수화(`ACTIVITY_TABS`), props 타입 정리, L1 한글 헤더 주석.
 **검증**: `cd apps/web && node_modules/.bin/vitest run IssueActivityTabs issues.\$key`
 
@@ -107,4 +107,22 @@ split view(목록+상세 2분할)도 이 PR과 함께 검토 (PR18에서 의도�
 - TDD 강제: yes (분해 T2·T3은 "기존 테스트 green 유지 + 신규 서브컴포넌트 테스트"가 RED→GREEN 가드)
 - 추가 검증: typecheck·eslint·vitest 전수·playwright(qa) · FR 129 불변 · IssueMetaPanel.tsx wc 대조
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-design-review + eng self-review (2026-07-24, right-size·목업 스킵)
+
+**BLOCKER: 없음.** 방향은 ADR §D4 + 디자인 스펙 §3.3/§302로 잠김.
+
+**디자인**
+- ✅ 탭 시각/반응형은 디자인 스펙 §3.3(340px 2컬럼·§282-283 <1024px 1컬럼)·row246·§302로 규정. Radix Tabs a11y 기본.
+- ⚠️ **D1 (Maxi 취향 결정 → 게이트 1)**: 기본 활성 탭. **작업로그**는 시간추적 안 한 이슈에서 자주 비어 첫인상이 빈 화면일 수 있음. **이력**(변경 이력)은 최소 "생성" 이벤트가 항상 있어 항상 콘텐츠 존재. Jira 기본탭(댓글)이 없으니 이력이 근접 대체. → 기본탭 후보: 작업로그 vs 이력.
+
+**엔지니어링**
+- ✅ 태스크 분해/직렬화 정합: T2·T3 동일 `IssueMetaPanel.tsx` → depends-on [2] 직렬. T1 독립·T4←T1. 2 wave.
+- ✅ **E1 반영**: `ui/tabs` 첫 소비자 사용 계약 — controlled+defaultValue 모순 → **uncontrolled `defaultValue`** 확정(URL 동기화 불요, useState 제거).
+- ✅ **E2 반영**: G3 lazy-mount로 비활성 탭(연결/이력) 콘텐츠가 초기 미렌더 → `issues.$key.test.tsx`의 eager 렌더 기대 어서션을 탭 활성 후 검증으로 갱신(Task 1 files 포함).
+- ✅ **E3 확인**: 분해 TDD 순서 — 추출 서브컴포넌트 신규 테스트를 먼저(RED: 파일 없음)·추출 후 GREEN. 기존 `IssueMetaPanel` 3 테스트파일=회귀 가드(green 유지). bts-impl `test:`→`feat:` 순서 준수.
+
+### plan-eng-review 요약
+- ✅ 통과: FR 129 불변(순수 UI·D-step) · BC 격리(issue-tracking 프론트 단일) · 완제품 기준.
+- BLOCKER: 없음.
