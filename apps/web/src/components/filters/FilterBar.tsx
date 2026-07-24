@@ -42,10 +42,11 @@ export interface FilterBarProps<T extends BoardCardFilterParams> {
   /** activeCount에 가산할 값(이슈 전용 statusKeys.length 등). 기본값 0. */
   extraActiveCount?: number
   /**
-   * 초기화 버튼 클릭 시 호출할 콜백. 전달 시 이 콜백만 호출되고
-   * 기본 공통-clear(handleReset)는 호출되지 않는다 — 이슈 전용 status 등
+   * 초기화 버튼 클릭 시 값 초기화를 위임할 콜백. 전달 시 이 콜백이 값 초기화를
+   * 대신하고 기본 공통-clear onChange는 호출되지 않는다 — 이슈 전용 status 등
    * T가 추가로 가진 필드까지 함께 비워야 하는 상위 래퍼가 사용.
-   * 미전달 시 기존 공통-clear 동작을 유지한다.
+   * 미전달 시 기존 공통-clear onChange 동작을 유지한다.
+   * 로컬 검색 입력(담당자/라벨) clear는 onReset 전달 여부와 무관하게 항상 수행된다.
    */
   onReset?: () => void
 }
@@ -58,8 +59,9 @@ export interface FilterBarProps<T extends BoardCardFilterParams> {
  * 상태(status) 섹션은 이슈 전용이라 이 컴포넌트가 소유하지 않고 leadingSection/leadingChips
  * 슬롯으로 상위(이슈 래퍼)가 주입한다.
  *
- * handleReset은 공통 필드(assigneeIds/includeUnassigned/labels/componentIds)만 비운다.
- * T가 추가로 가진 필드(예: statusKeys)는 그대로 보존한다 — 해당 필드 초기화는 상위 래퍼 책임이다.
+ * handleReset은 로컬 검색 입력(assigneeQuery/labelInput)을 항상 비우고,
+ * 값 초기화는 onReset이 있으면 위임(이슈 전용 statusKeys 등 T 확장 필드 포함), 없으면
+ * 공통 필드(assigneeIds/includeUnassigned/labels/componentIds)만 onChange로 비운다.
  *
  * WCAG AA: label 연결, 칩 aria-label, 터치 타깃 44px.
  */
@@ -109,9 +111,15 @@ export function FilterBar<T extends BoardCardFilterParams>({
   }
 
   function handleReset() {
-    onChange({ ...value, assigneeIds: [], includeUnassigned: false, labels: [], componentIds: [] })
+    // 로컬 검색 입력(담당자/라벨)은 onReset 위임 여부와 무관하게 항상 비운다 —
+    // 값 초기화만 onReset(이슈 전용 status 포함)에 위임하거나 공통-clear로 폴백한다.
     setAssigneeQuery('')
     setLabelInput('')
+    if (onReset) {
+      onReset()
+    } else {
+      onChange({ ...value, assigneeIds: [], includeUnassigned: false, labels: [], componentIds: [] })
+    }
   }
 
   return (
@@ -177,7 +185,7 @@ export function FilterBar<T extends BoardCardFilterParams>({
             onChange({ ...value, labels: value.labels.filter((l) => l !== label) })
           }
         />
-        <Button type="button" variant="outline" size="sm" onClick={onReset ?? handleReset}>
+        <Button type="button" variant="outline" size="sm" onClick={handleReset}>
           {filterBarLabels.filter.reset}
         </Button>
       </div>
