@@ -27,9 +27,9 @@
 //
 // 회귀 대조(기존 e2e, 본 PR에서 직접 실행·확인만 — 별도 보고).
 //   - issue-bulk-operations.spec.ts(선택/일괄작업) — data-testid 기반이라 무회귀, 5/5 green.
-//   - issue-filter.spec.ts / issue-crud-happy.spec.ts — getByRole('list',{name:'이슈 목록'})
-//     의존이 role=table 전환으로 깨짐(PRE_EXISTING, Task 5 산출물). 본 파일의 파일
-//     범위 밖이라 직접 수정하지 않고 별도로 보고한다.
+//   - issue-filter.spec.ts / issue-crud-happy.spec.ts — 카드→테이블 전환으로 컨테이너
+//     role이 list→table로 바뀌어 getByRole('list',{name:'이슈 목록'}) 의존이 깨졌던 것을
+//     같은 PR에서 getByRole('table',{name:'이슈 목록'})로 봉합함(filter 8 + crud 1 green).
 import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'

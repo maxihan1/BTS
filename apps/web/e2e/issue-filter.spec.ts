@@ -24,8 +24,8 @@
 //       · status checkbox: aria-label=<name> (role=checkbox로 한정, e.g. "Open")
 //       · 라벨 자동완성: data-testid="label-autocomplete-input"
 //       · 초기화 버튼: role=button, name="초기화"
-//   - 이슈 목록 컨테이너: getByRole('list', {name:'이슈 목록'})
-//       IssueCard 링크: aria-label={issue.key} → getByRole('link', {name:key})
+//   - 이슈 목록 컨테이너: getByRole('table', {name:'이슈 목록'}) (PR18 카드→테이블 전환)
+//       이슈 행 링크: aria-label={issue.key} → getByRole('link', {name:key})
 //   - 이슈 목록 로딩 대기: 첫 번째 이슈 link가 보일 때까지 대기
 //   - vacuous 방지: 모든 시나리오에서 "필터 후 건수 < 전체 건수"를 숫자로 단언 (B3).
 //   - MSW 필터링: listIssuesHandler가 query param 기반 실시간 필터링 (B2).
@@ -75,15 +75,15 @@ const COMP_A_ID = '40000000-0000-4000-8000-000000000001'
 
 /**
  * 이슈 목록 내 이슈 키에 해당하는 링크 로케이터.
- * IssueCard: aria-label={issue.key}, role=link.
- * 이슈 목록 컨테이너(aria-label="이슈 목록") 내로 한정해 strict-mode 충돌 방지.
+ * 이슈 행 링크: aria-label={issue.key}, role=link.
+ * 이슈 목록 테이블(aria-label="이슈 목록") 내로 한정해 strict-mode 충돌 방지.
  */
 function getIssueLocator(
   page: import('@playwright/test').Page,
   issueKey: string,
 ) {
   return page
-    .getByRole('list', { name: '이슈 목록' })
+    .getByRole('table', { name: '이슈 목록' })
     .getByRole('link', { name: issueKey, exact: true })
 }
 
@@ -93,7 +93,7 @@ function getIssueLocator(
  */
 async function countIssues(page: import('@playwright/test').Page): Promise<number> {
   return page
-    .getByRole('list', { name: '이슈 목록' })
+    .getByRole('table', { name: '이슈 목록' })
     .getByRole('link')
     .count()
 }
