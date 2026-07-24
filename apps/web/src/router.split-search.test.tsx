@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { createRouter } from '@tanstack/react-router'
 import { routeTree } from './router'
 
-/** issuesIndexRoute.validateSearch의 반환 타입 — router.ts의 실제 선언과 1:1 미러 (selected 포함, GREEN 이후 기준) */
+/** issuesIndexRoute.validateSearch의 반환 타입 — router.ts의 실제 선언과 1:1 미러 */
 interface IssuesSearch {
   page?: number
   status?: string | string[]
