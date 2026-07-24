@@ -1,5 +1,6 @@
-// 이슈 목록 페이지 단위 테스트 — 3-상태 + 빈 상태 + 페이지네이션 + CREATE 권한 게이트 + 일괄 선택/액션 + 필터 결선 (Task 5)
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+// 이슈 목록 페이지 단위 테스트 — 3-상태 + 빈 상태 + 페이지네이션 + CREATE 권한 게이트 + 일괄 선택/액션 + 필터 결선 + 테이블/정렬/컬럼 결선 (Task 5)
+import { useState } from 'react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -21,6 +22,7 @@ import { componentHandlers } from '@/mocks/component-handlers'
 import { labelHandlers } from '@/mocks/label-handlers'
 import { IssueListPage } from './issues.index'
 import type { IssueFilterParams } from '@/api/issues'
+import type { IssueTableSortState } from '@/components/issues/IssueTable'
 
 /** bulk-update POST 202 응답 fixture */
 const bulkAcceptedFixture = {
@@ -994,6 +996,256 @@ describe('IssueListPage — 필터 결선 (Task 5)', () => {
 
     await waitFor(() =>
       expect(capturedUrl).toContain(`component=${ISSUE_FILTER_COMP_A_ID}`),
+    )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 5 — 테이블 전환 + 정렬 URL + 컬럼 선택 결선 (FR-UX-06 Phase 5 PR18)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 정렬 상태(page 포함)를 컴포넌트 내부에서 제어형으로 관리하는 테스트 전용 래퍼.
+ *
+ * IssueListPage는 sort/page 모두 controlled prop이므로, 헤더를 연속 클릭했을 때
+ * 3-state가 올바르게 순환하는지 확인하려면 실제 상태를 들고 있는 상위 컴포넌트가 필요하다
+ * (IssueListRouteAdapter의 역할을 테스트 안에서 축소 재현).
+ */
+function ControlledSortHarness({ initialPage = 0 }: { initialPage?: number } = {}) {
+  const [sort, setSort] = useState<IssueTableSortState | null>(null)
+  const [page, setPage] = useState(initialPage)
+  return (
+    <IssueListPage
+      projectKey="ATLAS"
+      page={page}
+      onPageChange={setPage}
+      onNavigate={() => undefined}
+      filter={EMPTY_FILTER}
+      onFilterChange={() => undefined}
+      sort={sort}
+      onSortChange={setSort}
+    />
+  )
+}
+
+function renderControlledSort(initialPage = 0) {
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  })
+  return render(
+    <QueryClientProvider client={client}>
+      <ControlledSortHarness initialPage={initialPage} />
+    </QueryClientProvider>,
+  )
+}
+
+describe('IssueListPage — 테이블 전환 (Task 5)', () => {
+  beforeEach(() => {
+    server.use(createTruePermissionHandler)
+  })
+
+  /**
+   * T-TBL-1. IssueListContent가 카드(<ul>/IssueCard) 대신 <table>(ui/table)로 렌더된다.
+   */
+  it('T-TBL-1: 이슈 목록이 <table>로 렌더된다(카드 아님)', async () => {
+    server.use(...issueHandlers)
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+    expect(screen.getByRole('table', { name: '이슈 목록' })).toBeInTheDocument()
+  })
+})
+
+describe('IssueListPage — 정렬 URL 결선 (Task 5)', () => {
+  beforeEach(() => {
+    server.use(createTruePermissionHandler)
+  })
+
+  /**
+   * T-SORT-1. 정렬 가능 헤더("우선순위") 클릭 시 asc → desc → 해제(3-state) 순으로 순환하고,
+   * 매 단계마다 fetchIssues 요청 URL에 반영된다(F2, S2). 해제 시 sort 파라미터 자체가 제거된다.
+   */
+  it('T-SORT-1: 정렬 헤더 클릭이 asc → desc → 해제 3-state로 순환하며 sort 쿼리에 반영된다', async () => {
+    const capturedSorts: (string | null)[] = []
+    server.use(
+      http.get('/api/v1/issues', ({ request }) => {
+        capturedSorts.push(new URL(request.url).searchParams.get('sort'))
+        return HttpResponse.json(issuePageFixture)
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderControlledSort()
+
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    const header = screen.getByRole('button', { name: '우선순위' })
+
+    await user.click(header)
+    await waitFor(() => expect(capturedSorts.at(-1)).toBe('priority,asc'))
+    expect(screen.getByRole('columnheader', { name: '우선순위' })).toHaveAttribute('aria-sort', 'ascending')
+
+    await user.click(header)
+    await waitFor(() => expect(capturedSorts.at(-1)).toBe('priority,desc'))
+    expect(screen.getByRole('columnheader', { name: '우선순위' })).toHaveAttribute('aria-sort', 'descending')
+
+    await user.click(header)
+    await waitFor(() => expect(capturedSorts.at(-1)).toBeNull())
+    expect(screen.getByRole('columnheader', { name: '우선순위' })).toHaveAttribute('aria-sort', 'none')
+  })
+
+  /**
+   * T-SORT-2. 다른 정렬 필드("요약") 클릭 시 이전 정렬과 무관하게 즉시 asc로 초기화된다.
+   */
+  it('T-SORT-2: 다른 필드 헤더를 클릭하면 그 필드의 asc로 즉시 초기화된다', async () => {
+    const capturedSorts: (string | null)[] = []
+    server.use(
+      http.get('/api/v1/issues', ({ request }) => {
+        capturedSorts.push(new URL(request.url).searchParams.get('sort'))
+        return HttpResponse.json(issuePageFixture)
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderControlledSort()
+
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: '우선순위' }))
+    await waitFor(() => expect(capturedSorts.at(-1)).toBe('priority,asc'))
+
+    await user.click(screen.getByRole('button', { name: '요약' }))
+    await waitFor(() => expect(capturedSorts.at(-1)).toBe('summary,asc'))
+  })
+
+  /**
+   * T-SORT-3. 정렬 변경 시 현재 page가 0으로 리셋된다(EC3).
+   */
+  it('T-SORT-3: 정렬 변경 시 page가 0으로 리셋된다 (EC3)', async () => {
+    const capturedPages: string[] = []
+    server.use(
+      http.get('/api/v1/issues', ({ request }) => {
+        capturedPages.push(new URL(request.url).searchParams.get('page') ?? '')
+        return HttpResponse.json(issuePageFixture)
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderControlledSort(2)
+
+    await waitFor(() => expect(capturedPages.at(-1)).toBe('2'))
+
+    await user.click(screen.getByRole('button', { name: '요약' }))
+    await waitFor(() => expect(capturedPages.at(-1)).toBe('0'))
+  })
+})
+
+describe('IssueListPage — 컬럼 선택 결선 (Task 5)', () => {
+  /** useColumnVisibility가 사용하는 localStorage 키 — issues.index.tsx 구현과 동기화 */
+  const STORAGE_KEY = 'issue-table-columns'
+
+  beforeEach(() => {
+    server.use(createTruePermissionHandler)
+    window.localStorage.removeItem(STORAGE_KEY)
+  })
+
+  afterEach(() => {
+    window.localStorage.removeItem(STORAGE_KEY)
+  })
+
+  /**
+   * T-COL-1. 컬럼 선택 드롭다운에서 "담당자"를 끄면 해당 컬럼이 사라지고
+   * localStorage에 저장된다(F4, S4).
+   */
+  it('T-COL-1: 컬럼 선택에서 담당자를 끄면 컬럼이 사라지고 localStorage에 저장된다', async () => {
+    server.use(...issueHandlers)
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+    expect(screen.getByRole('columnheader', { name: '담당자' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /컬럼/ }))
+    await user.click(await screen.findByRole('menuitemcheckbox', { name: '담당자' }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('columnheader', { name: '담당자' })).not.toBeInTheDocument(),
+    )
+
+    const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '[]') as unknown
+    expect(Array.isArray(stored) && stored.includes('assignee')).toBe(false)
+  })
+
+  /**
+   * T-COL-2. 필수 컬럼(키·요약)은 드롭다운에서 비활성 처리되어 숨길 수 없다(F4).
+   */
+  it('T-COL-2: 필수 컬럼(키·요약)은 드롭다운에서 비활성 상태로 항상 체크돼 있다', async () => {
+    server.use(...issueHandlers)
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: /컬럼/ }))
+    const keyItem = await screen.findByRole('menuitemcheckbox', { name: '키' })
+    expect(keyItem).toHaveAttribute('aria-disabled', 'true')
+    expect(keyItem).toHaveAttribute('aria-checked', 'true')
+  })
+})
+
+describe('IssueListPage — 재조회 전환 피드백 (Task 5, GAP-5)', () => {
+  beforeEach(() => {
+    server.use(createTruePermissionHandler)
+  })
+
+  /**
+   * T-FETCH-1. 페이지 전환 중에는 이전 데이터가 유지된 채(keepPreviousData) 표 영역이
+   * dim 처리(opacity-60 pointer-events-none)되고, 응답 도착 후 dim이 해제된다(GAP-5).
+   */
+  it('T-FETCH-1: 페이지 전환 중 표 영역이 dim 처리되고 이전 데이터가 유지된다', async () => {
+    let resolveSecondPage: (() => void) | undefined
+    server.use(
+      http.get('/api/v1/issues', async ({ request }) => {
+        const params = new URL(request.url).searchParams
+        if (params.get('page') === '1') {
+          await new Promise<void>((resolve) => {
+            resolveSecondPage = resolve
+          })
+          return HttpResponse.json(issuePageLastFixture)
+        }
+        return HttpResponse.json(issuePageFirstFixture)
+      }),
+    )
+
+    const { rerender, client: rerenderClient } = renderPage(0)
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    rerender(
+      <QueryClientProvider client={rerenderClient}>
+        <IssueListPage
+          projectKey="ATLAS"
+          page={1}
+          onPageChange={() => undefined}
+          onNavigate={() => undefined}
+          filter={EMPTY_FILTER}
+          onFilterChange={() => undefined}
+        />
+      </QueryClientProvider>,
+    )
+
+    // 응답이 아직 오지 않아도 이전 데이터(ATLAS-1)가 유지되며 dim 처리된다
+    await waitFor(() => {
+      expect(screen.getByText('ATLAS-1')).toBeInTheDocument()
+      expect(screen.getByTestId('issue-table-region')).toHaveClass('opacity-60')
+    })
+
+    resolveSecondPage?.()
+
+    await waitFor(() =>
+      expect(screen.getByTestId('issue-table-region')).not.toHaveClass('opacity-60'),
     )
   })
 })
