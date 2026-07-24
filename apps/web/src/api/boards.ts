@@ -51,6 +51,13 @@ export const boardCardSchema = z.object({
    * FR-EP-01 D6/D7 EPIC 스윔레인 근거 필드.
    */
   epicKey: z.string().nullable().default(null),
+  /**
+   * LexoRank 문자열. 아직 rank 미부여 시 null.
+   * 백엔드 @JsonInclude(NON_NULL) 방어 — nullish 처리
+   * (apps/web/src/api/backlog.ts backlogIssueSchema.rank 선례와 동일 패턴).
+   * FR-UX-06 PR21 — @dnd-kit/sortable 드래그 순서 유지 근거 필드.
+   */
+  rank: z.string().nullish().transform((v) => v ?? null),
 })
 
 /**

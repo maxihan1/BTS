@@ -85,13 +85,14 @@ function toResponseDetail(stored: StoredBoardDetail, params: URLSearchParams): B
       ...col,
       cards: col.cards
         .filter((card) => matchesFilter(card, params))
-        .map(({ issueKey, summary, assigneeId, version, priority, epicKey }): BoardCard => ({
+        .map(({ issueKey, summary, assigneeId, version, priority, epicKey, rank }): BoardCard => ({
           issueKey,
           summary,
           assigneeId,
           version,
           priority,
           epicKey: epicKey ?? null,
+          rank: rank ?? null,
         })),
     })),
     quickFilters: stored.quickFilters ?? [],
@@ -705,6 +706,7 @@ const QUICK_FILTER_PERM_SEED: StoredBoardDetail = {
           version: 0,
           priority: 1,
           epicKey: null,
+          rank: null,
           labels: ['bug'],
           componentIds: [],
         },
@@ -715,6 +717,7 @@ const QUICK_FILTER_PERM_SEED: StoredBoardDetail = {
           version: 0,
           priority: 2,
           epicKey: null,
+          rank: null,
           labels: ['feature'],
           componentIds: [],
         },
