@@ -1,6 +1,6 @@
 // 이슈 상세 페이지 단위 테스트 — Task 7 + FR-IS-01 Task-4 (전이 배선)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -2008,6 +2008,32 @@ describe('IssueDetailPage — Task 1 (variant page/pane, FR-UX-06 PR20)', () => 
     await user.keyboard('{Escape}')
 
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  /**
+   * T1-8: variant='pane' — 이미 다른 capture 리스너(Radix DismissableLayer 등)가
+   * preventDefault()한 Escape는 onClose를 호출하지 않는다 (CONCERNS-2).
+   * Radix 다이얼로그/드롭다운이 capture 단계에서 Escape를 dismiss 처리하며
+   * preventDefault()만 하고(stopPropagation은 안 함) 하므로, bubble 단계인 페인
+   * 리스너가 뒤늦게 도달해도 같이 닫히지 않아야 다이얼로그·페인 이중 발화가 방지된다.
+   */
+  it('T1-8: variant="pane" 시 defaultPrevented된 Escape는 onClose를 호출하지 않는다', async () => {
+    const onClose = vi.fn()
+    renderPanePage('ATLAS-1', { onClose })
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { level: 2, name: issueAtlas1Fixture.summary }),
+      ).toBeInTheDocument(),
+    )
+
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    event.preventDefault()
+    act(() => {
+      document.dispatchEvent(event)
+    })
+
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   /**

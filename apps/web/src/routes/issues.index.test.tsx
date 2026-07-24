@@ -61,6 +61,11 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
  * IssueDetailPage(issues.$key.tsx) mock — split view 어댑터의 결선(prop 전달)만 검증한다.
  * IssueDetailPage 자체 동작(variant 분기·onClose/Escape/redirect/삭제 콜백)은
  * issues.$key.test.tsx Task 1이 이미 단위 테스트하므로 중복하지 않는다(어댑터 경계만 검증).
+ *
+ * "잔여 상태 토글" 버튼 + useState(dirty) — CONCERNS-3(react-usestate-stale-key-prop) 회귀 검증용.
+ * 실제 IssueDetailPage의 confirmDelete/isEditingTitle 등 잔여 useState를 축소 시뮬레이션한다.
+ * key={selected}로 인스턴스가 재마운트되면 초기화(marker 소멸)되고, key 없이 재사용되면
+ * 다음 이슈로 이월(marker 유지)된다.
  */
 vi.mock('./issues.$key', () => ({
   IssueDetailPage: (props: {
@@ -71,12 +76,15 @@ vi.mock('./issues.$key', () => ({
     onIssueClosed?: () => void
   }) => {
     const variant = props.variant ?? 'page'
+    const [dirty, setDirty] = useState(false)
     return (
       <div data-testid="mock-issue-detail-pane">
         {variant === 'pane' ? <h2>{props.issueKey}</h2> : <h1>{props.issueKey}</h1>}
         <button type="button" onClick={() => props.onClose?.()}>페인 닫기</button>
         <button type="button" onClick={() => props.onIssueRedirect?.('NEW-1')}>페인 리다이렉트</button>
         <button type="button" onClick={() => props.onIssueClosed?.()}>페인 삭제</button>
+        <button type="button" onClick={() => setDirty(true)}>잔여 상태 토글</button>
+        {dirty && <span data-testid="pane-dirty-marker">잔여상태</span>}
       </div>
     )
   },
@@ -1324,6 +1332,23 @@ interface NavigateParamsCall {
   params: { key: string }
 }
 
+/**
+ * index번째(0-based) navigate 호출을 꺼낸다. 호출이 없으면 테스트를 명확히 실패시킨다(암묵적 undefined 금지).
+ *
+ * IssueListPage.handleFilterChange는 onFilterChange(어댑터 handleFilterChange) 직후
+ * onPageChange(어댑터 handlePageChange)를 연달아 호출해 navigate가 2회 발생한다 — 필터 변경
+ * 자체를 검증하려면 마지막(page 리셋) 호출이 아닌 첫 호출을 봐야 한다(SV9).
+ */
+function getNavigateCallAt(index: number): NavigateSearchCall | NavigateParamsCall {
+  const calls = mockNavigate.mock.calls
+  const call = calls.at(index)
+  if (call === undefined) {
+    throw new Error(`navigate가 index=${index}에서 호출되지 않았습니다`)
+  }
+  const [arg] = call
+  return arg as NavigateSearchCall | NavigateParamsCall
+}
+
 /** 마지막 navigate 호출을 꺼낸다. 호출이 없으면 테스트를 명확히 실패시킨다(암묵적 undefined 금지). */
 function getLastNavigateCall(): NavigateSearchCall | NavigateParamsCall {
   const calls = mockNavigate.mock.calls
@@ -1506,6 +1531,95 @@ describe('IssueListRouteAdapter — split view 결선 (Task 5)', () => {
    * SV8. selected 미지정(와이드) → 페인 없이 목록이 전체폭으로 렌더된다(무회귀).
    */
   it('SV8: selected 미지정 시 페인 없이 목록이 전체폭으로 렌더된다(무회귀)', async () => {
+    renderRouteAdapter()
+
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+    expect(screen.queryByTestId('mock-issue-detail-pane')).not.toBeInTheDocument()
+    expect(screen.getByRole('table', { name: '이슈 목록' })).toBeInTheDocument()
+  })
+
+  /**
+   * SV9. 필터 변경 시 selected(상세 페인)가 보존된다 (CONCERNS-1, NFR-3 — 상세 페인은
+   * selected 키 기준 독립 fetch이며 목록 필터와 무관해야 한다).
+   * handleFilterChange가 search를 통째 nextSearch로 교체하면 selected가 유실돼
+   * split 상태에서 필터를 바꾸면 페인이 닫히는 회귀가 생긴다.
+   */
+  it('SV9: 필터 변경 시 selected가 보존된다', async () => {
+    mockUseSearch.mockReturnValue({ selected: 'ATLAS-1', status: 'open' })
+    renderRouteAdapter()
+
+    await waitFor(() => expect(screen.getByTestId('mock-issue-detail-pane')).toBeInTheDocument())
+
+    const resetBtn = await screen.findByRole('button', { name: /초기화/i })
+    const user = userEvent.setup()
+    await user.click(resetBtn)
+
+    // 1번째 호출 = 어댑터 handleFilterChange의 navigate (검증 대상).
+    // 2번째 호출은 IssueListPage.handleFilterChange가 이어서 호출하는 onPageChange(0)의
+    // navigate로, search가 (prev) => ({...prev, page: nextPage})라 selected를 항상 보존한다 —
+    // 여기서 확인하면 handleFilterChange 자체의 selected 유실 버그를 놓친다.
+    const call = getNavigateCallAt(0)
+    if (!('search' in call)) throw new Error('search 콜백 기반 navigate가 아닙니다')
+    expect(call.search({ selected: 'ATLAS-1', status: 'open' })).toEqual(
+      expect.objectContaining({ selected: 'ATLAS-1', page: 0 }),
+    )
+  })
+
+  /**
+   * SV10. selected가 바뀌면 상세 페인 인스턴스가 재마운트된다(key={selected}) — CONCERNS-3.
+   * key 없이 인스턴스가 재사용되면 confirmDelete 등 잔여 state가 다음 이슈로 이월돼
+   * 잘못된 이슈가 삭제될 위험이 있다([[react-usestate-stale-key-prop]]).
+   * mock IssueDetailPage 내부 useState(dirty)로 잔여 state를 시뮬레이션한다 —
+   * 재마운트되면 초기화(marker 소멸), 인스턴스가 재사용되면 유지(marker 잔존)된다.
+   */
+  it('SV10: selected가 바뀌면 상세 페인이 재마운트되어 잔여 state가 초기화된다', async () => {
+    mockUseSearch.mockReturnValue({ selected: 'ATLAS-1' })
+    const { rerender, client } = renderRouteAdapter()
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 2, name: 'ATLAS-1' })).toBeInTheDocument(),
+    )
+
+    // mock 페인 내부 상태를 "더럽힌다" (confirmDelete 등 잔여 state 시뮬레이션)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: '잔여 상태 토글' }))
+    expect(screen.getByTestId('pane-dirty-marker')).toBeInTheDocument()
+
+    // selected가 ATLAS-2로 바뀐 상태를 반영해 재렌더 (URL 변경 시뮬레이션)
+    mockUseSearch.mockReturnValue({ selected: 'ATLAS-2' })
+    rerender(
+      <QueryClientProvider client={client}>
+        <IssueListRouteAdapter />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 2, name: 'ATLAS-2' })).toBeInTheDocument(),
+    )
+
+    // 재마운트됐다면 잔여 state(marker)가 초기화되어 사라져야 한다
+    expect(screen.queryByTestId('pane-dirty-marker')).not.toBeInTheDocument()
+  })
+
+  /**
+   * SV11. selected가 빈 문자열이면 상세 페인이 렌더되지 않는다 (CONCERNS-4, 스펙 EC-1).
+   * `/issues?selected=`처럼 값이 빈 문자열로 남아있으면 가드(`selected !== undefined`)를
+   * 통과해 issueKey=''로 페인이 열려 404가 렌더되는 회귀가 생긴다.
+   */
+  it('SV11: selected가 빈 문자열이면 페인이 렌더되지 않는다 (EC-1)', async () => {
+    mockUseSearch.mockReturnValue({ selected: '' })
+    renderRouteAdapter()
+
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+    expect(screen.queryByTestId('mock-issue-detail-pane')).not.toBeInTheDocument()
+    expect(screen.getByRole('table', { name: '이슈 목록' })).toBeInTheDocument()
+  })
+
+  /**
+   * SV11b. selected가 공백 문자열이면(트림 후 빈 값) 상세 페인이 렌더되지 않는다 (EC-1).
+   */
+  it('SV11b: selected가 공백 문자열이면 페인이 렌더되지 않는다 (EC-1)', async () => {
+    mockUseSearch.mockReturnValue({ selected: '   ' })
     renderRouteAdapter()
 
     await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
