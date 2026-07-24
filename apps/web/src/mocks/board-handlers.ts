@@ -19,6 +19,13 @@ import {
   LS_KEY_BOARD_CONFLICT,
   seedBoardWithMeta,
 } from './board-fixtures'
+// FR-UX-06 PR21 Task 8 — 셀 내 순서변경(useReorderCard) stateful 연결.
+// useReorderCard는 PATCH /api/v1/issues/:key/rank(backlog-handlers.ts rerankIssueHandler)를 호출해
+// backlogStore(issue-tracking BC 백로그 mock, 이 파일과 별개 Map)를 변이한다. board GET이 boardStore
+// 자신의 rank만 읽으면 rerank 후 invalidateQueries 재조회 시 boardStore의 옛 rank로 되돌아간다
+// (msw-mutation-stateful-refetch 회귀 — 새로고침 후 순서가 사라짐). backlogStore에 같은 issueKey가
+// 있으면 그 최신 rank를 읽기 전용으로 오버레이해 두 store가 같은 진실을 공유하도록 한다.
+import { backlogStore, findIssueInProject } from './backlog-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 필터 술어 헬퍼 (FR-BD-02)
@@ -69,11 +76,48 @@ function matchesFilter(card: StoredCard, params: URLSearchParams): boolean {
 }
 
 /**
+ * 카드의 실질 rank를 결정한다 (FR-UX-06 PR21 Task 8).
+ *
+ * backlogStore(issue-tracking BC 백로그 mock)에 같은 projectKey·issueKey 조합이 있으면
+ * 그 최신 rank를 우선 사용한다 — rerankIssueHandler가 그 store만 변이하기 때문에, board GET이
+ * boardStore 자체 rank만 읽으면 새로고침 후 순서가 재시드 값으로 되돌아간다.
+ * backlogStore에 없는 이슈(다른 fixture 프로젝트 등)는 fallback(보드 자체 rank)을 그대로 쓴다 —
+ * 기존 회귀 없음(FILTER_BOARD·WIP_BOARD·SWIMLANE_BOARD·EPIC_SWIMLANE_BOARD·
+ * REORDER_SWIMLANE_BOARD 모두 backlogStore에 대응 이슈 없음).
+ *
+ * @param projectKey 보드가 속한 프로젝트 키
+ * @param issueKey rank를 조회할 이슈 키
+ * @param fallback backlogStore에 없을 때 사용할 boardStore 자체 rank (null 가능)
+ */
+function resolveLiveRank(
+  projectKey: string,
+  issueKey: string,
+  fallback: string | null,
+): string | null {
+  const backlogProject = backlogStore.get(projectKey)
+  if (backlogProject === undefined) return fallback
+  const liveIssue = findIssueInProject(backlogProject, issueKey)
+  return liveIssue?.rank ?? fallback
+}
+
+/**
+ * rank 오름차순 정렬 — null은 맨 뒤(NULLS LAST). backlog-handlers.ts byRankNullsLast와 동일 규약.
+ * Array.prototype.sort는 안정 정렬(stable, ES2019+)이므로 rank가 같거나 둘 다 null이면
+ * 원본(스토어) 순서를 그대로 보존한다 — 기존 fixture(rank 미부여 카드들)는 회귀 없음.
+ */
+function byRankNullsLast(a: { rank: string | null }, b: { rank: string | null }): number {
+  if (a.rank === null) return b.rank === null ? 0 : 1
+  if (b.rank === null) return -1
+  return a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0
+}
+
+/**
  * StoredBoardDetail을 BoardDetail 응답 형식으로 변환한다.
  *
  * labels/componentIds는 store 내부 필터용 메타이며 응답 DTO(BoardCard)에 포함하지 않는다.
  * params가 주어지면 matchesFilter를 적용해 카드를 걸러낸다.
  * quickFilters는 store에 없으면(WIP_BOARD 등 퀵필터를 다루지 않는 기존 fixture) 빈 배열로 방어한다.
+ * 컬럼 카드는 rank(backlogStore 오버레이 적용) 오름차순으로 정렬해 반환한다(FR-UX-06 PR21 Task 8).
  *
  * @param stored store 내부 보드 데이터
  * @param params 필터 파라미터 (없으면 전체 카드 반환)
@@ -81,9 +125,8 @@ function matchesFilter(card: StoredCard, params: URLSearchParams): boolean {
 function toResponseDetail(stored: StoredBoardDetail, params: URLSearchParams): BoardDetail {
   return {
     ...stored,
-    columns: stored.columns.map((col) => ({
-      ...col,
-      cards: col.cards
+    columns: stored.columns.map((col) => {
+      const cards = col.cards
         .filter((card) => matchesFilter(card, params))
         .map(({ issueKey, summary, assigneeId, version, priority, epicKey, rank }): BoardCard => ({
           issueKey,
@@ -92,9 +135,10 @@ function toResponseDetail(stored: StoredBoardDetail, params: URLSearchParams): B
           version,
           priority,
           epicKey: epicKey ?? null,
-          rank: rank ?? null,
-        })),
-    })),
+          rank: resolveLiveRank(stored.projectKey, issueKey, rank ?? null),
+        }))
+      return { ...col, cards: [...cards].sort(byRankNullsLast) }
+    }),
     quickFilters: stored.quickFilters ?? [],
   }
 }

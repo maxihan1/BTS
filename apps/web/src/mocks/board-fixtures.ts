@@ -692,6 +692,100 @@ export const EPIC_SWIMLANE_BOARD: StoredBoardDetail = {
   unplacedCount: 0,
 }
 
+/**
+ * 셀 내 순서변경(useReorderCard) 검증용 보드 픽스처 (FR-UX-06 PR21 Task 8 E2E).
+ *
+ * TODO 컬럼에 alice 담당 2건(같은 셀) + bob 담당 1건(다른 셀)을 배치해
+ * ASSIGNEE 스윔레인 활성 시 "같은 셀 내 순서변경"(D4)과 "셀 경계를 넘는 드래그 → noop"(D5)을
+ * 하나의 컬럼에서 함께 검증할 수 있게 한다.
+ *
+ * DEFAULT_BOARD/SWIMLANE_BOARD를 재사용하지 않는 이유 — quick-filter.spec.ts의
+ * QUICK_FILTER_PERM_SEED와 동일한 격리 원칙(전역 fixture 공유 금지). 기존 보드에 카드를
+ * 추가하면 board-kanban.spec.ts/board-wip-swimlane.spec.ts 등 기존 26개 E2E 스펙의
+ * 카드 수·그룹 구성 전제가 흔들릴 위험이 있다.
+ *
+ * RT-1/RT-2/RT-3은 backlog-fixtures.ts DEFAULT_BACKLOG에 대응 이슈가 없으므로
+ * (board-handlers.ts resolveLiveRank의 backlogStore 오버레이 대상 아님) 새로고침 후
+ * 순서 유지 검증은 이 보드가 아닌 DEFAULT_BOARD(ATLAS-1/ATLAS-4)로 수행한다.
+ *
+ * UUID는 RFC4122 v4 형식 — Zod v4 z.string().uuid() 통과 보장.
+ */
+export const REORDER_SWIMLANE_BOARD: StoredBoardDetail = {
+  boardId: '10000000-0000-4000-8000-000000000007',
+  projectKey: 'REORDERTEST',
+  name: '순서변경 테스트 보드',
+  swimlaneField: 'NONE',
+  columns: [
+    {
+      columnId: 'a0000000-0000-4000-8000-000000000001',
+      stateKey: 'open',
+      name: 'TODO',
+      category: 'TODO',
+      displayOrder: 1,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [
+        {
+          issueKey: 'RT-1',
+          summary: '순서변경 테스트 이슈 1 — alice 담당(같은 셀)',
+          assigneeId: ALICE_USER_ID,
+          version: 0,
+          priority: 1,
+          epicKey: null,
+          rank: '0|hzzzzz:',
+          labels: [],
+          componentIds: [],
+        },
+        {
+          issueKey: 'RT-2',
+          summary: '순서변경 테스트 이슈 2 — alice 담당(같은 셀)',
+          assigneeId: ALICE_USER_ID,
+          version: 0,
+          priority: 2,
+          epicKey: null,
+          rank: '0|i00007:',
+          labels: [],
+          componentIds: [],
+        },
+        {
+          issueKey: 'RT-3',
+          summary: '순서변경 테스트 이슈 3 — bob 담당(다른 셀)',
+          assigneeId: BOB_USER_ID,
+          version: 0,
+          priority: 3,
+          epicKey: null,
+          rank: '0|i00010:',
+          labels: [],
+          componentIds: [],
+        },
+      ],
+    },
+    {
+      columnId: 'a0000000-0000-4000-8000-000000000002',
+      stateKey: 'in_progress',
+      name: 'IN PROGRESS',
+      category: 'IN_PROGRESS',
+      displayOrder: 2,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [],
+    },
+    {
+      columnId: 'a0000000-0000-4000-8000-000000000003',
+      stateKey: 'done',
+      name: 'DONE',
+      category: 'DONE',
+      displayOrder: 3,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [],
+    },
+  ],
+  truncated: false,
+  unplacedCount: 0,
+  quickFilters: [],
+}
+
 // 모듈 로드 시 기본 보드와 필터 보드를 자동 시드한다 — notification-policy-handlers buildSeedStore() 패턴 동일.
 // dev(pnpm dev) · E2E 진입 시 boardStore가 비어 있어 생성 폼이 노출되는 결함 방지.
 // Vitest 단위 테스트 환경(MODE='test')에서는 건너뜀 — 각 테스트가 beforeEach/reset으로 직접 제어.
@@ -701,4 +795,5 @@ if (import.meta.env.MODE !== 'test') {
   seedBoardWithMeta(WIP_BOARD)
   seedBoardWithMeta(SWIMLANE_BOARD)
   seedBoardWithMeta(EPIC_SWIMLANE_BOARD)
+  seedBoardWithMeta(REORDER_SWIMLANE_BOARD)
 }
