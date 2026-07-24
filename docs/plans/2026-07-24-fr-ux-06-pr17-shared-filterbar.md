@@ -128,4 +128,16 @@ extraActiveCount?: number        // activeCount 가산(이슈 statusKeys.length)
 - 추가 검증(controller): `pnpm --filter web verify`(lint+typecheck+test+build) + 관련 e2e(issues 필터·board 필터) 로컬. **소비처 3파일 diff 0 직접 확인**(git show 대조). FR 총수 129 불변.
 - ★리뷰 포커스: (1) 소비처 무변경 실증 (2) 슬림화가 커버리지 회귀 아님(이관 어서션 대조) (3) i18n 파생 shim이 ko.test/quick-filter 무영향 (4) idPrefix element id verbatim.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### right-size 판정 (2026-07-24)
+- TYPE=ui의 지정 리뷰는 `plan-design-review`(대화형 디자이너 눈). 그러나 본 PR은 **시각 변화 0 동작 보존 리팩터**(byte-identical 렌더가 요구사항) → 평가할 새 디자인 없음. 인터랙티브 디자인 리뷰 스킵, **엔지니어링 self plan-review**로 대체([[bts-review-plan-autoplan-overkill]]). #290·#300 right-size 선례.
+
+### 엔지니어링 self plan-review
+- ✅ **동작 보존**: 래퍼(IssueFilterBar/BoardFilterBar) props 시그니처 불변 → 소비처 무변경. 기존 래퍼 테스트가 회귀 하네스. FilterBar 코어가 classNames/DOM/aria verbatim 복제해야 함(검증=기존 테스트+FilterBar.test+게이트2 git diff -w 소비처 대조).
+- ✅ **blast radius**: `boardFilterLabels` 외부 importer 4곳(board 라우트 251·quick-filter-labels·ko.test·BoardFilterBar.test)을 파생 shim으로 무접촉. `issueFilterLabels`는 IssueFilterBar 전용.
+- ✅ **idPrefix**: element id(`issue-filter-*`/`board-filter-*`) verbatim → 셀렉터 계약 불변.
+- ✅ **status 캡슐화**: useWorkflows/StatusMultiSelect를 IssueFilterBar 래퍼로 이관(조건부 훅·보드 불필요쿼리 회피).
+- ⚠️ **커버리지 회귀 리스크(리뷰 포커스)**: T3/T4가 래퍼 테스트를 슬림화하며 공통 어서션을 FilterBar.test로 이관 → **이관 누락 시 커버리지 손실**. 완화=이관 어서션 1:1 대조(게이트2 어드버서리얼). 보수적 대안=기존 래퍼 테스트 무수정 유지(순감 축소 감수).
+- ⚠️ **i18n 파생 shim 타이핑(리뷰 포커스)**: `as const` 위젯닝으로 ko.test 타입 어서션 깨질 가능 → T1 RED에 ko.test green 포함. board shim은 statusLabel 부재 shape 보존 필수.
+- **BLOCKER: 없음.** taste decision: 없음(시각 불변).
