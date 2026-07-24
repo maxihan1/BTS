@@ -395,6 +395,9 @@ export interface IssueFilterParams {
   componentIds: string[]
 }
 
+/** 이슈 목록 정렬 필드 유니온 타입 — 정렬 필드 계약 5종 (T2/T4/T5 공유). */
+export type IssueSortField = 'key' | 'summary' | 'priority' | 'createdAt' | 'updatedAt'
+
 /** fetchIssues 쿼리 파라미터 */
 export interface FetchIssuesParams {
   projectKey: string
@@ -402,6 +405,8 @@ export interface FetchIssuesParams {
   size: number
   /** 선택적 필터. 미전달 시 기존 projectKey/page/size 쿼리만 전송 (하위호환). */
   filter?: IssueFilterParams
+  /** 선택적 정렬. 미전달 시 sort 쿼리 파라미터를 전송하지 않는다 (하위호환, 서버 기본 정렬 유지). */
+  sort?: { field: IssueSortField; dir: 'asc' | 'desc' }
 }
 
 /**
@@ -505,8 +510,10 @@ export function buildIssueFilterQuery(query: URLSearchParams, filter?: IssueFilt
  *
  * filter가 전달되면 status/assignee/label/component 파라미터를 추가한다.
  * filter 미전달 시 기존 projectKey/page/size 쿼리만 전송해 하위호환을 유지한다.
+ * sort가 전달되면 `sort=<field>,<dir>` 파라미터를 추가한다 (백엔드 `listWithType` 정렬 허용목록과 매핑).
+ * sort 미전달 시 sort 파라미터를 전송하지 않아 서버 기본 정렬(created_at desc)이 유지된다 (하위호환).
  *
- * @param params projectKey · page · size · filter(선택) 쿼리 파라미터
+ * @param params projectKey · page · size · filter(선택) · sort(선택) 쿼리 파라미터
  * @returns Spring Page 구조 — content 배열 + 페이징 메타 (래퍼 없음)
  */
 export async function fetchIssues(params: FetchIssuesParams): Promise<IssuePage> {
@@ -516,6 +523,9 @@ export async function fetchIssues(params: FetchIssuesParams): Promise<IssuePage>
     size: String(params.size),
   })
   buildIssueFilterQuery(query, params.filter)
+  if (params.sort) {
+    query.append('sort', `${params.sort.field},${params.sort.dir}`)
+  }
   return apiGet(
     `/api/v1/issues?${query.toString()}`,
     pageSchema(issueResponseSchema),
