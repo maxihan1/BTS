@@ -1,6 +1,6 @@
 // 이슈 상세 페이지 단위 테스트 — Task 7 + FR-IS-01 Task-4 (전이 배선)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -1910,5 +1910,210 @@ describe('IssueDetailPage — Task 7 (추정 카드 + WorklogSection 배선)', (
         screen.getByRole('region', { name: worklogStrings.worklogSectionTitle }),
       ).toBeInTheDocument()
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 1 — variant='page'|'pane' 분기 (FR-UX-06 PR20 split view)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * variant='pane' 렌더 헬퍼 — pane 전용 prop(onClose/onIssueRedirect/onIssueClosed)을 함께 주입한다.
+ * 기존 renderPage 시그니처는 그대로 유지 — variant 기본값('page') 무회귀 증거.
+ */
+function renderPanePage(
+  issueKey: string,
+  extraProps: Partial<Omit<Parameters<typeof IssueDetailPage>[0], 'issueKey'>> = {},
+) {
+  const client = makeClient()
+  return {
+    client,
+    ...render(
+      <QueryClientProvider client={client}>
+        <IssueDetailPage issueKey={issueKey} variant="pane" {...extraProps} />
+      </QueryClientProvider>,
+    ),
+  }
+}
+
+describe('IssueDetailPage — Task 1 (variant page/pane, FR-UX-06 PR20)', () => {
+  beforeEach(() => {
+    vi.mocked(toast.error).mockClear()
+    server.use(...issueTypeHandlers)
+    setupIssueFoundHandler()
+    setupTransitionsHandler()
+    setupUsersHandler()
+  })
+
+  /**
+   * T1-1: variant 미지정(기본값 'page') — 제목이 h1로 렌더되고 닫기 버튼이 없다.
+   * 기존 전체화면 렌더 무회귀 증거.
+   */
+  it('T1-1: variant 미지정 시 제목이 h1로 렌더되고 닫기 버튼이 없다', async () => {
+    renderPage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(issueAtlas1Fixture.summary),
+    )
+    expect(screen.queryByRole('button', { name: '닫기' })).not.toBeInTheDocument()
+  })
+
+  /**
+   * T1-2: variant='pane' — 제목이 h2로 렌더되고(문서 h1 단일 계약) h1은 없다.
+   */
+  it('T1-2: variant="pane" 시 제목이 h2로 렌더되고 h1은 없다', async () => {
+    renderPanePage('ATLAS-1')
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { level: 2, name: issueAtlas1Fixture.summary }),
+      ).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument()
+  })
+
+  /**
+   * T1-3: variant='pane' — 닫기 버튼이 렌더되고 클릭 시 onClose가 호출된다.
+   */
+  it('T1-3: variant="pane" 시 닫기 버튼 클릭으로 onClose가 호출된다', async () => {
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    renderPanePage('ATLAS-1', { onClose })
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { level: 2, name: issueAtlas1Fixture.summary }),
+      ).toBeInTheDocument(),
+    )
+
+    await user.click(screen.getByRole('button', { name: '닫기' }))
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  /**
+   * T1-4: variant='pane' — Escape 키 입력 시 onClose가 호출된다.
+   */
+  it('T1-4: variant="pane" 시 Escape 키 입력으로 onClose가 호출된다', async () => {
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    renderPanePage('ATLAS-1', { onClose })
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { level: 2, name: issueAtlas1Fixture.summary }),
+      ).toBeInTheDocument(),
+    )
+
+    await user.keyboard('{Escape}')
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  /**
+   * T1-8: variant='pane' — 이미 다른 capture 리스너(Radix DismissableLayer 등)가
+   * preventDefault()한 Escape는 onClose를 호출하지 않는다 (CONCERNS-2).
+   * Radix 다이얼로그/드롭다운이 capture 단계에서 Escape를 dismiss 처리하며
+   * preventDefault()만 하고(stopPropagation은 안 함) 하므로, bubble 단계인 페인
+   * 리스너가 뒤늦게 도달해도 같이 닫히지 않아야 다이얼로그·페인 이중 발화가 방지된다.
+   */
+  it('T1-8: variant="pane" 시 defaultPrevented된 Escape는 onClose를 호출하지 않는다', async () => {
+    const onClose = vi.fn()
+    renderPanePage('ATLAS-1', { onClose })
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { level: 2, name: issueAtlas1Fixture.summary }),
+      ).toBeInTheDocument(),
+    )
+
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    event.preventDefault()
+    act(() => {
+      document.dispatchEvent(event)
+    })
+
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  /**
+   * T1-5: variant='pane' — 마운트 시 포커스가 상세 영역(제목 또는 닫기 버튼)으로 이동한다.
+   */
+  it('T1-5: variant="pane" 마운트 시 포커스가 상세 영역으로 이동한다', async () => {
+    renderPanePage('ATLAS-1')
+
+    await waitFor(() => {
+      const heading = screen.getByRole('heading', { level: 2, name: issueAtlas1Fixture.summary })
+      const closeButton = screen.getByRole('button', { name: '닫기' })
+      expect([heading, closeButton]).toContain(document.activeElement)
+    })
+  })
+
+  /**
+   * T1-6: variant='pane' + IssueRedirectError(308 옛키→새키) — fullscreen navigate 대신
+   * onIssueRedirect(newKey)가 호출된다.
+   * MSW ServiceWorker는 opaque 308을 만들 수 없어(api/issues.test.ts T1-2c와 동일 사유) globalThis.fetch를
+   * 부분 override — 대상 GET만 redirected:true 응답으로 가로채고 나머지는 원본(MSW 경유)으로 통과시킨다.
+   */
+  it('T1-6: variant="pane"에서 IssueRedirectError 발생 시 onIssueRedirect가 호출되고 navigate는 호출되지 않는다', async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      const method = init?.method ?? 'GET'
+      if (url === '/api/v1/issues/ATLAS-1' && method === 'GET') {
+        const redirected = new Response(null, { status: 200 })
+        Object.defineProperty(redirected, 'redirected', { value: true })
+        Object.defineProperty(redirected, 'url', { value: 'http://localhost/api/v1/issues/ATLAS-2' })
+        return redirected
+      }
+      return originalFetch(input, init)
+    })
+
+    const onIssueRedirect = vi.fn()
+    mockNavigate.mockClear()
+
+    try {
+      renderPanePage('ATLAS-1', { onIssueRedirect })
+
+      await waitFor(() => {
+        expect(onIssueRedirect).toHaveBeenCalledWith('ATLAS-2')
+      })
+      expect(mockNavigate).not.toHaveBeenCalled()
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  /**
+   * T1-7: variant='pane' — 삭제 성공 시 fullscreen navigate('/issues') 대신 onIssueClosed()가 호출된다.
+   */
+  it('T1-7: variant="pane"에서 삭제 성공 시 onIssueClosed가 호출되고 navigate는 호출되지 않는다', async () => {
+    let deleteCalled = false
+    server.use(
+      http.delete('/api/v1/issues/:key', () => {
+        deleteCalled = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    mockNavigate.mockClear()
+    const onIssueClosed = vi.fn()
+    const user = userEvent.setup()
+    renderPanePage('ATLAS-1', { onIssueClosed })
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { level: 2, name: issueAtlas1Fixture.summary }),
+      ).toBeInTheDocument(),
+    )
+
+    await user.click(screen.getByRole('button', { name: /이슈 삭제/ }))
+    await user.click(screen.getByRole('button', { name: /확인/ }))
+
+    await waitFor(() => {
+      expect(deleteCalled).toBe(true)
+      expect(onIssueClosed).toHaveBeenCalledTimes(1)
+    })
+    expect(mockNavigate).not.toHaveBeenCalled()
   })
 })

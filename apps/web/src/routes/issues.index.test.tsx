@@ -20,9 +20,75 @@ import { workflowHandlers } from '@/mocks/workflow-handlers'
 import { userHandlers } from '@/mocks/user-handlers'
 import { componentHandlers } from '@/mocks/component-handlers'
 import { labelHandlers } from '@/mocks/label-handlers'
-import { IssueListPage } from './issues.index'
+import { IssueListPage, IssueListRouteAdapter } from './issues.index'
 import type { IssueFilterParams } from '@/api/issues'
 import type { IssueTableSortState } from '@/components/issues/IssueTable'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// split view 라우트 어댑터 테스트용 mock — useMediaQuery + useNavigate/useSearch
+// (FR-UX-06 Phase 5 PR20 Task 5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** IssueListRouteAdapter가 읽는 /issues search 파라미터 — router.ts validateSearch 미러 */
+interface IssuesRouteSearchMock {
+  page?: number
+  status?: string | string[]
+  assignee?: string | string[]
+  label?: string | string[]
+  component?: string | string[]
+  sort?: string
+  selected?: string
+}
+
+/** 좁은폭/와이드 분기 제어용 mock — 기본값 true(와이드) */
+const mockUseMediaQuery = vi.fn((): boolean => true)
+vi.mock('@/hooks/use-media-query', () => ({
+  useMediaQuery: () => mockUseMediaQuery(),
+}))
+
+const mockNavigate = vi.fn()
+const mockUseSearch = vi.fn((): IssuesRouteSearchMock => ({}))
+vi.mock('@tanstack/react-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-router')>()
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+    useSearch: () => mockUseSearch(),
+  }
+})
+
+/**
+ * IssueDetailPage(issues.$key.tsx) mock — split view 어댑터의 결선(prop 전달)만 검증한다.
+ * IssueDetailPage 자체 동작(variant 분기·onClose/Escape/redirect/삭제 콜백)은
+ * issues.$key.test.tsx Task 1이 이미 단위 테스트하므로 중복하지 않는다(어댑터 경계만 검증).
+ *
+ * "잔여 상태 토글" 버튼 + useState(dirty) — CONCERNS-3(react-usestate-stale-key-prop) 회귀 검증용.
+ * 실제 IssueDetailPage의 confirmDelete/isEditingTitle 등 잔여 useState를 축소 시뮬레이션한다.
+ * key={selected}로 인스턴스가 재마운트되면 초기화(marker 소멸)되고, key 없이 재사용되면
+ * 다음 이슈로 이월(marker 유지)된다.
+ */
+vi.mock('./issues.$key', () => ({
+  IssueDetailPage: (props: {
+    issueKey: string
+    variant?: 'page' | 'pane'
+    onClose?: () => void
+    onIssueRedirect?: (newKey: string) => void
+    onIssueClosed?: () => void
+  }) => {
+    const variant = props.variant ?? 'page'
+    const [dirty, setDirty] = useState(false)
+    return (
+      <div data-testid="mock-issue-detail-pane">
+        {variant === 'pane' ? <h2>{props.issueKey}</h2> : <h1>{props.issueKey}</h1>}
+        <button type="button" onClick={() => props.onClose?.()}>페인 닫기</button>
+        <button type="button" onClick={() => props.onIssueRedirect?.('NEW-1')}>페인 리다이렉트</button>
+        <button type="button" onClick={() => props.onIssueClosed?.()}>페인 삭제</button>
+        <button type="button" onClick={() => setDirty(true)}>잔여 상태 토글</button>
+        {dirty && <span data-testid="pane-dirty-marker">잔여상태</span>}
+      </div>
+    )
+  },
+}))
 
 /** bulk-update POST 202 응답 fixture */
 const bulkAcceptedFixture = {
@@ -1247,5 +1313,317 @@ describe('IssueListPage — 재조회 전환 피드백 (Task 5, GAP-5)', () => {
     await waitFor(() =>
       expect(screen.getByTestId('issue-table-region')).not.toHaveClass('opacity-60'),
     )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 5 — IssueListRouteAdapter split view 결선 (FR-UX-06 Phase 5 PR20)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** IssueListRouteAdapter가 검색(status/sort/page) 보존형 navigate에 넘기는 인자 형태 */
+interface NavigateSearchCall {
+  to: string
+  search: (prev: Record<string, unknown>) => Record<string, unknown>
+}
+
+/** IssueListRouteAdapter가 좁은폭 전체화면 이동에 넘기는 인자 형태 */
+interface NavigateParamsCall {
+  to: string
+  params: { key: string }
+}
+
+/**
+ * index번째(0-based) navigate 호출을 꺼낸다. 호출이 없으면 테스트를 명확히 실패시킨다(암묵적 undefined 금지).
+ *
+ * IssueListPage.handleFilterChange는 onFilterChange(어댑터 handleFilterChange) 직후
+ * onPageChange(어댑터 handlePageChange)를 연달아 호출해 navigate가 2회 발생한다 — 필터 변경
+ * 자체를 검증하려면 마지막(page 리셋) 호출이 아닌 첫 호출을 봐야 한다(SV9).
+ */
+function getNavigateCallAt(index: number): NavigateSearchCall | NavigateParamsCall {
+  const calls = mockNavigate.mock.calls
+  const call = calls.at(index)
+  if (call === undefined) {
+    throw new Error(`navigate가 index=${index}에서 호출되지 않았습니다`)
+  }
+  const [arg] = call
+  return arg as NavigateSearchCall | NavigateParamsCall
+}
+
+/** 마지막 navigate 호출을 꺼낸다. 호출이 없으면 테스트를 명확히 실패시킨다(암묵적 undefined 금지). */
+function getLastNavigateCall(): NavigateSearchCall | NavigateParamsCall {
+  const calls = mockNavigate.mock.calls
+  const lastCall = calls.at(-1)
+  if (lastCall === undefined) {
+    throw new Error('navigate가 호출되지 않았습니다')
+  }
+  const [arg] = lastCall
+  return arg as NavigateSearchCall | NavigateParamsCall
+}
+
+/**
+ * IssueListRouteAdapter 렌더 헬퍼 — split view 결선 테스트 전용.
+ * IssueFilterBar 종속 핸들러(workflow/user/component/label) + 이슈 목록/상세 핸들러를 등록한다.
+ */
+function renderRouteAdapter() {
+  server.use(...workflowHandlers, ...userHandlers, ...componentHandlers, ...labelHandlers, ...issueHandlers)
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  })
+  return {
+    client,
+    ...render(
+      <QueryClientProvider client={client}>
+        <IssueListRouteAdapter />
+      </QueryClientProvider>,
+    ),
+  }
+}
+
+describe('IssueListRouteAdapter — split view 결선 (Task 5)', () => {
+  beforeEach(() => {
+    server.use(createTruePermissionHandler)
+    mockUseMediaQuery.mockReturnValue(true)
+    mockUseSearch.mockReturnValue({})
+    mockNavigate.mockClear()
+  })
+
+  /**
+   * SV1. 와이드 + ?selected=ATLAS-3 초기 진입 → 우측 상세 페인(variant='pane')이 렌더되고
+   * IssueTable의 해당 행이 aria-current로 강조되며, 문서 전체 h1은 목록 제목 1개뿐이다.
+   */
+  it('SV1: 와이드 + selected=ATLAS-3 → 상세 페인 렌더 + 행 강조 + h1 1개', async () => {
+    mockUseSearch.mockReturnValue({ selected: 'ATLAS-3' })
+    renderRouteAdapter()
+
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    // 상세 페인 — mock IssueDetailPage가 variant='pane'이면 h2로 렌더한다
+    expect(screen.getByRole('heading', { level: 2, name: 'ATLAS-3' })).toBeInTheDocument()
+
+    // 문서 전체 h1은 목록 제목("이슈 목록") 1개뿐이어야 한다
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.getByRole('heading', { level: 1, name: '이슈 목록' })).toBeInTheDocument()
+
+    // IssueTable 선택 행 강조
+    const selectedRow = screen.getByTestId('select-ATLAS-3').closest('tr')
+    expect(selectedRow).not.toBeNull()
+    expect(selectedRow).toHaveAttribute('aria-current', 'true')
+  })
+
+  /**
+   * SV2. 와이드에서 행 클릭 → 기존 status/sort/page 검색 파라미터를 보존한 채 selected로 navigate한다.
+   */
+  it('SV2: 와이드에서 행 클릭 시 기존 status/sort/page를 보존하며 selected로 navigate한다', async () => {
+    renderRouteAdapter()
+
+    await waitFor(() => expect(screen.getByText('ATLAS-3')).toBeInTheDocument())
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('link', { name: 'ATLAS-3' }))
+
+    expect(mockNavigate).toHaveBeenCalledTimes(1)
+    const call = getLastNavigateCall()
+    if (!('search' in call)) throw new Error('search 콜백 기반 navigate가 아닙니다')
+    expect(call.to).toBe('/issues')
+    expect(call.search({ status: 'open', sort: 'priority,asc', page: 2 })).toEqual({
+      status: 'open',
+      sort: 'priority,asc',
+      page: 2,
+      selected: 'ATLAS-3',
+    })
+  })
+
+  /**
+   * SV3. 이미 선택된 키를 재클릭하면 selected가 제거된다(toggle off).
+   */
+  it('SV3: 이미 선택된 키를 재클릭하면 selected가 제거된다(toggle off)', async () => {
+    renderRouteAdapter()
+
+    await waitFor(() => expect(screen.getByText('ATLAS-3')).toBeInTheDocument())
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('link', { name: 'ATLAS-3' }))
+
+    const call = getLastNavigateCall()
+    if (!('search' in call)) throw new Error('search 콜백 기반 navigate가 아닙니다')
+    expect(call.search({ selected: 'ATLAS-3' })).toEqual({ selected: undefined })
+  })
+
+  /**
+   * SV4. 페인 닫기(onClose) → selected가 제거되고 다른 검색 파라미터는 보존된다.
+   */
+  it('SV4: 페인 닫기(onClose) 시 selected가 제거된다', async () => {
+    mockUseSearch.mockReturnValue({ selected: 'ATLAS-3' })
+    renderRouteAdapter()
+
+    await waitFor(() => expect(screen.getByTestId('mock-issue-detail-pane')).toBeInTheDocument())
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: '페인 닫기' }))
+
+    const call = getLastNavigateCall()
+    if (!('search' in call)) throw new Error('search 콜백 기반 navigate가 아닙니다')
+    expect(call.search({ selected: 'ATLAS-3', sort: 'priority,asc' })).toEqual({
+      selected: undefined,
+      sort: 'priority,asc',
+    })
+  })
+
+  /**
+   * SV5. 삭제(onIssueClosed) → selected가 제거된다.
+   */
+  it('SV5: 페인 삭제(onIssueClosed) 시 selected가 제거된다', async () => {
+    mockUseSearch.mockReturnValue({ selected: 'ATLAS-3' })
+    renderRouteAdapter()
+
+    await waitFor(() => expect(screen.getByTestId('mock-issue-detail-pane')).toBeInTheDocument())
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: '페인 삭제' }))
+
+    const call = getLastNavigateCall()
+    if (!('search' in call)) throw new Error('search 콜백 기반 navigate가 아닙니다')
+    expect(call.search({ selected: 'ATLAS-3' })).toEqual({ selected: undefined })
+  })
+
+  /**
+   * SV6. 리다이렉트(onIssueRedirect) → selected가 새 키로 갱신된다.
+   */
+  it('SV6: 페인 리다이렉트(onIssueRedirect) 시 selected가 새 키로 갱신된다', async () => {
+    mockUseSearch.mockReturnValue({ selected: 'ATLAS-3' })
+    renderRouteAdapter()
+
+    await waitFor(() => expect(screen.getByTestId('mock-issue-detail-pane')).toBeInTheDocument())
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: '페인 리다이렉트' }))
+
+    const call = getLastNavigateCall()
+    if (!('search' in call)) throw new Error('search 콜백 기반 navigate가 아닙니다')
+    expect(call.search({ selected: 'ATLAS-3' })).toEqual({ selected: 'NEW-1' })
+  })
+
+  /**
+   * SV7. 좁은폭(useMediaQuery=false) → 상세 페인이 렌더되지 않고, 행 클릭 시
+   * 전체화면(/issues/$key)으로 이동한다. selected가 URL에 있어도 페인은 무시한다.
+   */
+  it('SV7: 좁은폭에서는 페인이 렌더되지 않고 행 클릭이 /issues/$key로 전체화면 이동한다', async () => {
+    mockUseMediaQuery.mockReturnValue(false)
+    mockUseSearch.mockReturnValue({ selected: 'ATLAS-3' })
+    renderRouteAdapter()
+
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+    expect(screen.queryByTestId('mock-issue-detail-pane')).not.toBeInTheDocument()
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('link', { name: 'ATLAS-1' }))
+
+    const call = getLastNavigateCall()
+    if (!('params' in call)) throw new Error('params 기반 navigate가 아닙니다')
+    expect(call.to).toBe('/issues/$key')
+    expect(call.params).toEqual({ key: 'ATLAS-1' })
+  })
+
+  /**
+   * SV8. selected 미지정(와이드) → 페인 없이 목록이 전체폭으로 렌더된다(무회귀).
+   */
+  it('SV8: selected 미지정 시 페인 없이 목록이 전체폭으로 렌더된다(무회귀)', async () => {
+    renderRouteAdapter()
+
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+    expect(screen.queryByTestId('mock-issue-detail-pane')).not.toBeInTheDocument()
+    expect(screen.getByRole('table', { name: '이슈 목록' })).toBeInTheDocument()
+  })
+
+  /**
+   * SV9. 필터 변경 시 selected(상세 페인)가 보존된다 (CONCERNS-1, NFR-3 — 상세 페인은
+   * selected 키 기준 독립 fetch이며 목록 필터와 무관해야 한다).
+   * handleFilterChange가 search를 통째 nextSearch로 교체하면 selected가 유실돼
+   * split 상태에서 필터를 바꾸면 페인이 닫히는 회귀가 생긴다.
+   */
+  it('SV9: 필터 변경 시 selected가 보존된다', async () => {
+    mockUseSearch.mockReturnValue({ selected: 'ATLAS-1', status: 'open' })
+    renderRouteAdapter()
+
+    await waitFor(() => expect(screen.getByTestId('mock-issue-detail-pane')).toBeInTheDocument())
+
+    const resetBtn = await screen.findByRole('button', { name: /초기화/i })
+    const user = userEvent.setup()
+    await user.click(resetBtn)
+
+    // 1번째 호출 = 어댑터 handleFilterChange의 navigate (검증 대상).
+    // 2번째 호출은 IssueListPage.handleFilterChange가 이어서 호출하는 onPageChange(0)의
+    // navigate로, search가 (prev) => ({...prev, page: nextPage})라 selected를 항상 보존한다 —
+    // 여기서 확인하면 handleFilterChange 자체의 selected 유실 버그를 놓친다.
+    const call = getNavigateCallAt(0)
+    if (!('search' in call)) throw new Error('search 콜백 기반 navigate가 아닙니다')
+    expect(call.search({ selected: 'ATLAS-1', status: 'open' })).toEqual(
+      expect.objectContaining({ selected: 'ATLAS-1', page: 0 }),
+    )
+  })
+
+  /**
+   * SV10. selected가 바뀌면 상세 페인 인스턴스가 재마운트된다(key={selected}) — CONCERNS-3.
+   * key 없이 인스턴스가 재사용되면 confirmDelete 등 잔여 state가 다음 이슈로 이월돼
+   * 잘못된 이슈가 삭제될 위험이 있다([[react-usestate-stale-key-prop]]).
+   * mock IssueDetailPage 내부 useState(dirty)로 잔여 state를 시뮬레이션한다 —
+   * 재마운트되면 초기화(marker 소멸), 인스턴스가 재사용되면 유지(marker 잔존)된다.
+   */
+  it('SV10: selected가 바뀌면 상세 페인이 재마운트되어 잔여 state가 초기화된다', async () => {
+    mockUseSearch.mockReturnValue({ selected: 'ATLAS-1' })
+    const { rerender, client } = renderRouteAdapter()
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 2, name: 'ATLAS-1' })).toBeInTheDocument(),
+    )
+
+    // mock 페인 내부 상태를 "더럽힌다" (confirmDelete 등 잔여 state 시뮬레이션)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: '잔여 상태 토글' }))
+    expect(screen.getByTestId('pane-dirty-marker')).toBeInTheDocument()
+
+    // selected가 ATLAS-2로 바뀐 상태를 반영해 재렌더 (URL 변경 시뮬레이션)
+    mockUseSearch.mockReturnValue({ selected: 'ATLAS-2' })
+    rerender(
+      <QueryClientProvider client={client}>
+        <IssueListRouteAdapter />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 2, name: 'ATLAS-2' })).toBeInTheDocument(),
+    )
+
+    // 재마운트됐다면 잔여 state(marker)가 초기화되어 사라져야 한다
+    expect(screen.queryByTestId('pane-dirty-marker')).not.toBeInTheDocument()
+  })
+
+  /**
+   * SV11. selected가 빈 문자열이면 상세 페인이 렌더되지 않는다 (CONCERNS-4, 스펙 EC-1).
+   * `/issues?selected=`처럼 값이 빈 문자열로 남아있으면 가드(`selected !== undefined`)를
+   * 통과해 issueKey=''로 페인이 열려 404가 렌더되는 회귀가 생긴다.
+   */
+  it('SV11: selected가 빈 문자열이면 페인이 렌더되지 않는다 (EC-1)', async () => {
+    mockUseSearch.mockReturnValue({ selected: '' })
+    renderRouteAdapter()
+
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+    expect(screen.queryByTestId('mock-issue-detail-pane')).not.toBeInTheDocument()
+    expect(screen.getByRole('table', { name: '이슈 목록' })).toBeInTheDocument()
+  })
+
+  /**
+   * SV11b. selected가 공백 문자열이면(트림 후 빈 값) 상세 페인이 렌더되지 않는다 (EC-1).
+   */
+  it('SV11b: selected가 공백 문자열이면 페인이 렌더되지 않는다 (EC-1)', async () => {
+    mockUseSearch.mockReturnValue({ selected: '   ' })
+    renderRouteAdapter()
+
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+    expect(screen.queryByTestId('mock-issue-detail-pane')).not.toBeInTheDocument()
+    expect(screen.getByRole('table', { name: '이슈 목록' })).toBeInTheDocument()
   })
 })
