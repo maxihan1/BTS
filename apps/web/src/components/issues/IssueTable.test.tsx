@@ -208,3 +208,59 @@ describe('IssueTable — 컬럼 렌더 내용', () => {
     expect(screen.getByText('2026-01-03')).toBeInTheDocument()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// split view 선택 강조 (selectedKey) — bulk selection과 독립 (FR-UX-06 Phase 5 PR20 Task 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueTable — selectedKey 강조(split view 현재 상세 행)', () => {
+  it('T-21: selectedKey와 일치하는 행에 aria-current="true" + 선택 배경 강조가 붙고, 다른 행에는 붙지 않는다', () => {
+    renderTable({ selectedKey: issueAtlas1Fixture.key })
+
+    const currentRow = screen.getByRole('link', { name: issueAtlas1Fixture.key }).closest('tr')
+    expect(currentRow).not.toBeNull()
+    expect(currentRow).toHaveAttribute('aria-current', 'true')
+    expect(currentRow).toHaveAttribute('data-state', 'selected')
+
+    const otherRow = screen.getByRole('link', { name: issueAtlas2Fixture.key }).closest('tr')
+    expect(otherRow).not.toHaveAttribute('aria-current')
+    expect(otherRow).not.toHaveAttribute('data-state', 'selected')
+  })
+
+  it('T-22: selectedKey 미지정 시 어떤 행에도 강조가 없고, 기존 e2e 셀렉터는 그대로 유지된다', () => {
+    renderTable()
+
+    const row1 = screen.getByRole('link', { name: issueAtlas1Fixture.key }).closest('tr')
+    const row2 = screen.getByRole('link', { name: issueAtlas2Fixture.key }).closest('tr')
+    expect(row1).not.toHaveAttribute('aria-current')
+    expect(row2).not.toHaveAttribute('aria-current')
+
+    expect(screen.getByTestId(`select-${issueAtlas1Fixture.key}`)).toHaveAttribute('aria-label', '이슈 선택')
+    expect(screen.getByTestId(`issue-summary-${issueAtlas1Fixture.key}`)).toHaveTextContent(
+      issueAtlas1Fixture.summary,
+    )
+    expect(screen.getByRole('link', { name: issueAtlas1Fixture.key })).toHaveAttribute(
+      'href',
+      `/issues/${issueAtlas1Fixture.key}`,
+    )
+  })
+
+  it('T-23: selectedKey=null도 미지정과 동일하게 어떤 행에도 강조가 없다', () => {
+    renderTable({ selectedKey: null })
+
+    const row1 = screen.getByRole('link', { name: issueAtlas1Fixture.key }).closest('tr')
+    expect(row1).not.toHaveAttribute('aria-current')
+    expect(row1).not.toHaveAttribute('data-state', 'selected')
+  })
+
+  it('T-24: selectedKey 강조는 bulk selection.isSelected와 독립 — 체크박스 미선택이어도 강조된다', () => {
+    renderTable({
+      selectedKey: issueAtlas1Fixture.key,
+      selection: makeSelection({ isSelected: () => false }),
+    })
+
+    expect(screen.getByTestId(`select-${issueAtlas1Fixture.key}`)).not.toBeChecked()
+    const row = screen.getByRole('link', { name: issueAtlas1Fixture.key }).closest('tr')
+    expect(row).toHaveAttribute('aria-current', 'true')
+  })
+})
