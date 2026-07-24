@@ -91,24 +91,34 @@ Skill({
 
 ### Step 6. 사용자 게이트 2 진입
 
-게이트 2를 위한 요약 출력.
+게이트 2를 위한 요약 출력. **글로벌 §Explanation Style Work-Report Format(계층형 3블록)을 반드시 먼저 낸다.** Maxi가 승인 여부를 판단하는 지점이므로, 리뷰 지적은 전문용어를 풀이한 쉬운 문장으로 `✅`+`💡`에 요약하고, 원문 기술 내용은 `🔧` 아래로 격리한다. 처음 나온 약어(ReDoS·OCC·nullable 등)는 괄호 풀이 필수.
 
 ```
 🛑 게이트 2 — Maxi 검토 부탁드립니다.
 
-PR: https://github.com/maxihan1/BTS/pull/N (#<title>)
-변경 요약: <files changed>, +<additions>/-<deletions>
+✅ 한 줄
+   댓글·멘션 기능 코드 검토를 마쳤어요. 큰 문제는 없고,
+   짚어볼 점 2가지가 있어요.
 
-리뷰 결과:
-- code-reviewer agent: ✅ PASS
-- /review (gstack): ⚠️ CONCERNS 2건
-  - 1. comments.author_id가 nullable로 마이그레이션됨 (의도?)
-  - 2. mention 정규식이 ReDoS 가능 (예: @[a-zA-Z0-9_]+ → @\w{1,32})
-- /plan-ceo-review: (skip, auth/migration 아님)
+💡 의미
+   지금 그대로 합쳐도(머지) 되지만, 아래 2가지를 고치면
+   더 안전해요. 승인할지 / 고치고 다시 볼지 골라 주세요.
+
+🔧 기술 상세 (안 봐도 됨)
+   PR: https://github.com/maxihan1/BTS/pull/N (#<title>)
+   변경 요약: <files changed>, +<additions>/-<deletions>
+   - code-reviewer agent: ✅ PASS
+   - /review (gstack): ⚠️ CONCERNS 2건
+     1. 댓글 작성자 칸이 비어있어도 저장 가능하게 됨
+        (nullable — 값이 없어도 허용). 의도한 건가요?
+     2. 멘션(@이름) 인식 규칙이 특정 입력에서 서버를 느리게
+        만들 수 있음 (ReDoS — 정규식을 악용한 지연 공격).
+        예: @[a-zA-Z0-9_]+ → @\w{1,32}
+   - /plan-ceo-review: (skip, auth/migration 아님)
 
 다음 옵션:
 1. 승인 → 머지 + 배포 + sync-obsidian
-2. CONCERNS 수정 후 재리뷰 → /bts-impl loop back
+2. 짚은 점 수정 후 재리뷰 → /bts-impl 다시 (loop back)
 3. 보류
 ```
 

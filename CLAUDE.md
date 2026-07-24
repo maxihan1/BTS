@@ -112,6 +112,7 @@ docker-compose -f infra/docker-compose.dev.yml up postgres redis minio
 ## 사용자 커뮤니케이션 스타일
 
 - **글로벌 `~/.claude/CLAUDE.md` §Explanation Style·§5 준수 (정본)**. 비전문자 기준 설명, 무엇+왜 같이, 용어/약어 첫 등장 시 한 줄 풀이·비유, 콜론으로 문장 끝내지 않기. 상세 규칙은 글로벌 파일 참조.
+- **작업 보고는 계층형 3블록 필수 (§Explanation Style Work-Report Format)**. 코드 변경·조사·디버깅·리뷰 결과를 Maxi에게 보고할 때는 `✅ 한 줄` → `💡 의미` → `🔧 기술 상세(안 봐도 됨)` 순서로 연다. 전문용어·약어는 `🔧` 아래로 격리하고 첫 등장 시 괄호 풀이. **MEMORY.md·docs·PR 제목·스킬 출력 예시가 압축 은어라도 사용자 응답은 그 밀도를 따라가지 않는다.** 게이트 요약(bts-codereview 게이트 2 등)도 예외 없음.
 - **BTS 고유 용어도 풀이 대상**. BC (Bounded Context — 책임 범위로 나눈 도메인 단위), worktree per 작업, wave 병렬 dispatch, TDD red→green→refactor, classify-task, pgmq (PostgreSQL 기반 메시지 큐) 등. Testcontainers (테스트용 DB를 도커로 자동 실행하는 라이브러리), Flyway (DB 스키마 버전 관리 도구), jOOQ (SQL을 코드로 안전하게 작성하는 라이브러리) 같은 도구명도 첫 등장 시 한 줄 소개.
 - **갈림길에서는 옵션 2~3개 제시**. 추측 구현 금지 (§컨텍스트 효율). 옵션마다 한 줄 trade-off.
 

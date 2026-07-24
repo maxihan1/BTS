@@ -242,7 +242,18 @@ pnpm test:e2e                       # (qa-engineer 추가 시)
 
 ## 출력 형식
 
+**아래 진행 트리 위에 글로벌 §Explanation Style Work-Report Format(계층형 요약)을 먼저 얹는다.** 진행 트리(wave/dispatch/DRIFT 등 내부 용어)는 상태 표시용으로 유지하되, 그 앞에 비전문가용 `✅ 한 줄`+`💡 의미`를 두어 Maxi가 트리를 읽지 않아도 무엇을·왜 했는지 알게 한다.
+
 ```
+✅ 한 줄
+   이슈에서 "@이름"으로 사람을 부르면 그 사람에게
+   알림이 가는 기능을 만들었어요.
+
+💡 의미
+   이제 담당자를 콕 집어 부를 수 있어, 놓치는 알림이 줄어요.
+   테스트도 통과해서 바로 검토(게이트 2)로 넘어갑니다.
+
+🔧 기술 상세 (안 봐도 됨)
 🔄 [6/8] /bts-impl (4 tasks, 2 waves)
    ├─ wave 1 (병렬 dispatch)
    │   ├─ Task 1. parse @username — backend-engineer ✅ PASS (TDD 3 커밋)
