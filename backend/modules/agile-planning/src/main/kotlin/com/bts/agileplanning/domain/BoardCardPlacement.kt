@@ -16,7 +16,7 @@ import java.util.UUID
  * - [seedColumns] — 워크플로우 상태 목록을 보드 컬럼으로 변환 (displayOrder 오름차순 정렬).
  * - [placeCards] — 이슈 목록을 current_state_key 기준으로 컬럼에 배치.
  *   어떤 컬럼에도 매핑되지 않는 이슈는 제외된다 (E2 엣지 케이스).
- *   컬럼 내 카드 정렬 기준: priority ASC(1=최상위), 동순위는 issueKey ASC 보조.
+ *   컬럼 내 카드 정렬 기준: rank ASC NULLS LAST → priority ASC(1=최상위) → issueKey ASC 보조.
  *
  * ## BC 격리
  * [com.bts.shared.workflow.WorkflowStateView] 와 [com.bts.shared.board.BoardIssueView] 를
@@ -24,7 +24,18 @@ import java.util.UUID
  * issue-tracking · project-workflow · identity-access 내부 패키지를 직접 import 하지 않는다.
  */
 object BoardCardPlacement {
-    /** 컬럼 내 카드 정렬: rank ASC NULLS LAST → priority ASC → issueKey ASC 보조. */
+    /**
+     * 컬럼 내 카드 정렬 비교자 — rank ASC NULLS LAST → priority ASC → issueKey ASC.
+     *
+     * [BoardIssueView.rank] 가 있는 카드는 rank(LexoRank 문자열) 사전 순으로 앞에 온다.
+     * rank 가 없는 카드([BoardIssueView.rank] `null`, 현재 대다수 보드)는 `nullsLast()` 로
+     * 뒤로 밀려 [BoardIssueView.priority] ASC → [BoardIssueView.key] ASC 로 폴백 정렬된다.
+     * rank 가 동값이거나 둘 다 null 이면 priority ASC 로, priority 도 동값이면 key ASC 로 보조 정렬한다.
+     *
+     * 이 우선순위는 [com.bts.agileplanning.application.BacklogApplicationService] 의
+     * 백로그 이슈 정렬 선례(rank ASC NULLS LAST → key ASC)와 동일한 rank 규칙을 따른다.
+     * 보드는 여기에 priority 보조 tiebreaker 를 추가로 유지해, rank 미부여 시 기존 정렬을 무회귀한다.
+     */
     private val CARD_COMPARATOR: Comparator<BoardIssueView> =
         compareBy<BoardIssueView, String?>(nullsLast()) { it.rank }
             .thenBy { it.priority }
@@ -60,8 +71,9 @@ object BoardCardPlacement {
      * 모든 컬럼은 결과에 포함되며, 이슈 없는 컬럼은 빈 [PlacedColumn.cards] 를 갖는다.
      *
      * 컬럼 내 카드 정렬 기준.
-     * 1. [BoardIssueView.priority] ASC (1 = 최상위 우선순위).
-     * 2. [BoardIssueView.key] ASC (동순위 이슈의 안정 보조 기준).
+     * 1. [BoardIssueView.rank] ASC, NULLS LAST (LexoRank 문자열 사전 순, 미부여 카드는 뒤로).
+     * 2. [BoardIssueView.priority] ASC (1 = 최상위 우선순위, rank 동값·미부여 시 보조 기준).
+     * 3. [BoardIssueView.key] ASC (rank·priority 도 동값인 이슈의 안정 보조 기준).
      *
      * 미매핑 이슈 수([PlacedBoardResult.unplacedCount])는 응답에 포함되어 클라이언트가 E2 상황을 인지할 수 있다.
      *
@@ -97,7 +109,7 @@ object BoardCardPlacement {
  * [BoardCardPlacement.placeCards] 가 반환하는 읽기 전용 값 객체.
  *
  * @property column 보드 컬럼 정보.
- * @property cards 이 컬럼에 배치된 카드(이슈) 목록. priority ASC, issueKey ASC 정렬.
+ * @property cards 이 컬럼에 배치된 카드(이슈) 목록. rank ASC NULLS LAST → priority ASC → issueKey ASC 정렬.
  */
 data class PlacedColumn(
     val column: BoardColumn,
