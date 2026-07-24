@@ -41,6 +41,13 @@ export interface FilterBarProps<T extends BoardCardFilterParams> {
   leadingChips?: readonly FilterChipData[]
   /** activeCount에 가산할 값(이슈 전용 statusKeys.length 등). 기본값 0. */
   extraActiveCount?: number
+  /**
+   * 초기화 버튼 클릭 시 호출할 콜백. 전달 시 이 콜백만 호출되고
+   * 기본 공통-clear(handleReset)는 호출되지 않는다 — 이슈 전용 status 등
+   * T가 추가로 가진 필드까지 함께 비워야 하는 상위 래퍼가 사용.
+   * 미전달 시 기존 공통-clear 동작을 유지한다.
+   */
+  onReset?: () => void
 }
 
 /**
@@ -64,6 +71,7 @@ export function FilterBar<T extends BoardCardFilterParams>({
   leadingSection,
   leadingChips = [],
   extraActiveCount = 0,
+  onReset,
 }: FilterBarProps<T>): JSX.Element {
   const [assigneeQuery, setAssigneeQuery] = useState('')
   const [labelInput, setLabelInput] = useState('')
@@ -169,7 +177,7 @@ export function FilterBar<T extends BoardCardFilterParams>({
             onChange({ ...value, labels: value.labels.filter((l) => l !== label) })
           }
         />
-        <Button type="button" variant="outline" size="sm" onClick={handleReset}>
+        <Button type="button" variant="outline" size="sm" onClick={onReset ?? handleReset}>
           {filterBarLabels.filter.reset}
         </Button>
       </div>
