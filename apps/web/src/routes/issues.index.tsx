@@ -799,7 +799,7 @@ export function IssueListRouteAdapter(): JSX.Element {
       onFilterChange={handleFilterChange}
       sort={sort}
       onSortChange={handleSortChange}
-      selectedKey={isWide ? (selected ?? null) : null}
+      selectedKey={isWide ? selected : null}
     />
   )
 
