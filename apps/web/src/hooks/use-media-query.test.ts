@@ -1,5 +1,5 @@
 // useMediaQuery 훅 단위 테스트 — matchMedia 구독/해제/기본값 (FR-UX-06 Phase 5 PR20 Task-2 RED)
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useMediaQuery } from './use-media-query'
 
