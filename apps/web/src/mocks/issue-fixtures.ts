@@ -184,6 +184,42 @@ export const issuePageFixture: IssuePage = {
   empty: false,
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FR-UX-06 Phase 5 PR18 Task 6(E2E) — 정렬 유지 페이지 이동(S3) 검증용 추가 이슈 20건
+//
+// 기본 4건(ATLAS-1/2/3/5)만으로는 프론트 기본 페이지 크기(size=20)를 넘지 못해
+// 항상 1페이지로 응답되므로, "다음 페이지" 버튼을 실제로 클릭하는 e2e를 만들 수 없다.
+// issue-handlers.ts의 LS_KEY_PAGINATION_EXTRA_ISSUES 플래그가 설정된 요청에만
+// 이 20건을 추가로 포함시켜 총 24건(2페이지)을 만든다. 플래그 미설정 시 기존
+// 4건 응답에 전혀 영향을 주지 않는다(무회귀).
+//
+// 키를 'ATLAS-P01'~'ATLAS-P20'(zero-padded 2자리)로 부여 — 기본 4건의 키
+// 'ATLAS-1'~'ATLAS-5'는 문자열 비교상 항상 'ATLAS-P*'보다 앞선다('5' < 'P').
+// 'P' 접두 뒤 zero-padding 덕분에 문자열 정렬이 곧 의도한 순서와 일치한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 페이지네이션 검증용 추가 이슈 1건을 생성한다.
+ * issueAtlas1Fixture를 기반으로 key/id/summary만 인덱스별로 교체한다.
+ *
+ * @param index 1~20 범위의 순번
+ */
+function buildPaginationExtraIssue(index: number): IssueResponse {
+  const suffix = String(index).padStart(2, '0')
+  return {
+    ...issueAtlas1Fixture,
+    key: `ATLAS-P${suffix}`,
+    id: `b0000000-0000-4000-8000-0000000000${suffix}`,
+    summary: `페이지네이션 검증용 이슈 ${suffix}`,
+  }
+}
+
+/** ATLAS-P01~ATLAS-P20 — 기본 4건과 합쳐 총 24건(size=20 기준 2페이지)을 만드는 추가 fixture */
+export const issueAtlasPaginationExtraFixtures: IssueResponse[] = Array.from(
+  { length: 20 },
+  (_, i) => buildPaginationExtraIssue(i + 1),
+)
+
 /** 이슈 단건 fixture — ATLAS-4 (S6 검증용 closed 상태) */
 export const issueAtlas4Fixture: IssueResponse = {
   key: 'ATLAS-4',

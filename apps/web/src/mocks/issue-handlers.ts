@@ -22,11 +22,13 @@ import {
   issueAtlasChild1Fixture,
   issueAtlasForEpicFixture,
   issueAtlasMentionFixture,
+  issueAtlasPaginationExtraFixtures,
 } from './issue-fixtures'
 import { allIssueTypeFixtures } from './issue-type-fixtures'
 import { softwareDefaultFixture } from './workflow-fixtures'
 import { userListFixture } from './user-fixtures'
-import type { IssueResponse, IssuePage } from '@/api/issues'
+import { ISSUE_SORT_FIELDS } from '@/api/issues'
+import type { IssueResponse, IssuePage, IssueSortField } from '@/api/issues'
 
 /**
  * 이슈 생성 성공 응답 픽스처.
@@ -99,6 +101,14 @@ export const LS_KEY_FIELD_PERMISSION_SCENARIO = '__bts_e2e_field_permission_scen
  * permissionDeniedKeys(인메모리 Set)가 없을 때 fallback으로 읽어 리로드 생존을 보장한다.
  */
 export const LS_KEY_PERMISSION_DENIED_KEYS = '__bts_e2e_permission_denied_keys'
+
+/**
+ * FR-UX-06 Phase 5 PR18 Task 6(E2E) 전용 localStorage 키 — 'true' 세팅 시 이슈 목록 GET 응답에
+ * issueAtlasPaginationExtraFixtures 20건을 추가로 포함시켜 총 24건(size=20 기준 2페이지)을 만든다.
+ * "정렬 유지 페이지 이동"(S3) 검증은 실제 2페이지가 있어야 "다음" 버튼을 클릭할 수 있다.
+ * 미설정 시 기존 4건 응답에 전혀 영향을 주지 않는다(무회귀).
+ */
+export const LS_KEY_PAGINATION_EXTRA_ISSUES = '__bts_e2e_issue_pagination_extra'
 
 /**
  * 이슈 타입 카탈로그 lookup — id 로 활성 타입 조회.
@@ -192,13 +202,74 @@ function matchesIssueFilter(issue: IssueResponse, params: URLSearchParams): bool
 }
 
 /**
- * 필터 파라미터를 적용한 이슈 목록 페이지를 생성한다.
+ * FR-UX-06 Phase 5 PR18 Task 6(E2E) — `sort` 쿼리 파라미터(`<field>,<dir>`)를 파싱해
+ * 이슈 배열을 정렬한다. 프론트(api/issues.ts ISSUE_SORT_FIELDS)·백엔드 whitelist와
+ * 동일한 5개 필드(key·summary·priority·createdAt·updatedAt)만 허용한다.
+ * 값이 없거나 형식/필드가 유효하지 않으면 원본 순서를 그대로 유지한다
+ * (백엔드 listWithType의 EC1 fallback과 동일한 관대 처리 — matchesIssueFilter와 같은 기조).
+ *
+ * @param content 정렬 대상 배열 (원본을 변경하지 않고 새 배열 반환)
+ * @param sortParam URL의 sort 파라미터 원문. null이면 정렬하지 않는다.
+ */
+function applySortParam(content: IssueResponse[], sortParam: string | null): IssueResponse[] {
+  if (sortParam === null) return content
+  const [field, dir] = sortParam.split(',')
+  if (field === undefined || dir === undefined) return content
+  if (!(ISSUE_SORT_FIELDS as readonly string[]).includes(field)) return content
+  if (dir !== 'asc' && dir !== 'desc') return content
+
+  const sortField = field as IssueSortField
+  const sorted = [...content].sort((a, b) => {
+    const av = a[sortField]
+    const bv = b[sortField]
+    if (av === null && bv === null) return 0
+    if (av === null) return 1
+    if (bv === null) return -1
+    if (av < bv) return -1
+    if (av > bv) return 1
+    return 0
+  })
+  return dir === 'desc' ? sorted.reverse() : sorted
+}
+
+/**
+ * FR-UX-06 Phase 5 PR18 Task 6(E2E) — `page`/`size` 쿼리 파라미터 기준으로 정렬된 content를
+ * 슬라이스하고 Spring Page 메타(totalPages/first/last)를 계산한다.
+ *
+ * 기본 4건 시나리오는 size=20 > totalElements라 항상 1페이지로 응답돼 기존 e2e/단위
+ * 테스트에 영향이 없다(무회귀). LS_KEY_PAGINATION_EXTRA_ISSUES 플래그로 24건이 되면
+ * 실제 2페이지가 생겨 "정렬 유지 페이지 이동"(S3)을 검증할 수 있다.
+ *
+ * @param content 정렬까지 끝난 필터링 결과 전체 (슬라이스 전)
+ * @param params page/size를 읽을 URLSearchParams
+ */
+function paginateSortedContent(content: IssueResponse[], params: URLSearchParams): IssuePage {
+  const page = Number(params.get('page') ?? '0')
+  const size = Number(params.get('size') ?? '20')
+  const totalElements = content.length
+  const totalPages = Math.max(1, Math.ceil(totalElements / size))
+  const sliced = content.slice(page * size, page * size + size)
+  return {
+    content: sliced,
+    totalElements,
+    totalPages,
+    size,
+    number: page,
+    first: page === 0,
+    last: page >= totalPages - 1,
+    empty: totalElements === 0,
+  }
+}
+
+/**
+ * 필터·정렬·페이지네이션 파라미터를 적용한 이슈 목록 페이지를 생성한다.
  *
  * 조회 우선순위: issueOverrides → issuePageFixture (단건 GET과 동일 순서).
  * PATCH 후 목록 재조회 시 최신 상태(assignee/labels 등)를 필터에 올바르게 반영한다.
- * createdIssues(POST 생성 이슈)도 포함한다.
+ * createdIssues(POST 생성 이슈)도 포함한다. LS_KEY_PAGINATION_EXTRA_ISSUES 플래그가
+ * 설정되면 issueAtlasPaginationExtraFixtures 20건도 포함한다(Task 6, S3).
  *
- * @param params 필터 URLSearchParams (없으면 전체 반환)
+ * @param params 필터/정렬/페이지 URLSearchParams (없으면 전체 1페이지 반환)
  */
 function buildFilteredPage(params?: URLSearchParams): IssuePage {
   const sp = params ?? new URLSearchParams()
@@ -207,21 +278,24 @@ function buildFilteredPage(params?: URLSearchParams): IssuePage {
     .filter((i) => !deletedKeys.has(i.key))
     .map((i) => issueOverrides.get(i.key) ?? i)
     .filter((i) => matchesIssueFilter(i, sp))
+  const includePaginationExtra = globalThis.localStorage?.getItem(LS_KEY_PAGINATION_EXTRA_ISSUES) === 'true'
+  const extraContent = includePaginationExtra
+    ? issueAtlasPaginationExtraFixtures.filter((i) => matchesIssueFilter(i, sp))
+    : []
   const createdContent = Array.from(createdIssues.values())
     .filter((i) => !deletedKeys.has(i.key))
     .filter((i) => matchesIssueFilter(i, sp))
-  const content = [...fixtureContent, ...createdContent]
-  return {
-    ...issuePageFixture,
-    content,
-    totalElements: content.length,
-    empty: content.length === 0,
-  }
+  const content = applySortParam(
+    [...fixtureContent, ...extraContent, ...createdContent],
+    sp.get('sort'),
+  )
+  return paginateSortedContent(content, sp)
 }
 
 /**
  * GET /api/v1/issues — 이슈 목록 페이징 조회.
  * FR-SR-01 B2: query param(status/assignee/label/component)을 읽어 필터링 후 반환.
+ * FR-UX-06 Phase 5 PR18 Task 6: sort(`<field>,<dir>`) 정렬 + page/size 실제 페이지네이션 적용.
  * 소프트 삭제된 이슈는 응답에서 제외 (gap-H).
  */
 const listIssuesHandler = http.get('/api/v1/issues', ({ request }) => {
