@@ -198,4 +198,27 @@
 - 추가 검증: typecheck 0 · `eslint src` 0 · vitest 관련 green + 전수 무회귀 · playwright split spec green · build 0
 - FR 129 불변 (D단계 마킹 변경 없음 → dashboard regen 불요, verify-master-plan 129/129)
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-design-review (2026-07-24, 디자인 관점 집중 검토)
+
+**✅ 통과**.
+- D4 규칙 준수(라우트 이동 = URL/Link, Radix Tabs 미사용) — split 선택이 정확히 nav 성격.
+- h1 단독 계약(HC-3)을 T1 variant='pane' h2 강등으로 정면 처리 — 디자인·접근성 정합.
+- 리사이즈 가능 divider **미도입**은 올바른 스코프 규율(Jira split도 고정폭). 애니메이션 미도입도 적절.
+- 선택 행 강조를 ADS `--bg-selected`/`--text-selected` 토큰 재사용(하드코딩 색 금지) — 디자인 시스템 정합. bulk 체크박스와 시각 독립.
+- 미선택 시 전체폭(D2)은 화면 낭비 최소화 — 좋은 기본값.
+
+**⚠️ 주의(비차단)**.
+- **분할 비율**. 상세 페인 등장 시 목록:상세 비율 미명시 → **권장 기본 = 목록 좌측 고정 최소폭(가독) + 상세 flex 확장**(Jira navigator 관례, 상세가 넓음). T5에서 확정. BLOCKER 아님.
+- 페인 등장 포커스 이동이 스크롤 점프를 유발하지 않도록 `preventScroll` 고려(T1 REFACTOR).
+
+**❓ taste decision (Maxi 결정 필요) — 게이트1에서 확인**.
+- **좁아진 목록 페인의 컬럼 처리**. PR18에서 이슈 목록이 다컬럼 표(ui/table)가 됐다. split 와이드에서 목록이 좌측으로 축소되면 컬럼이 비좁아진다. 두 방향.
+  - (A) **컬럼 유지 + 가로 스크롤** — 기존 표 그대로, 좁으면 좌우 스크롤. 구현 최소·컬럼 선택 관례 유지. 단 좁은 목록에서 가로 스크롤이 번거로울 수 있음.
+  - (B) **split 모드 자동 축약(키+요약+상태만)** — 좁은 목록은 핵심 3컬럼만, 전체폭 복귀 시 사용자 컬럼 설정 복원. Jira 유사·가독 좋음. 구현 소폭 증가(반응형 컬럼 셋).
+
+**BLOCKER: 없음.**
+
+### 종합
+- BLOCKER 0. 순수 프론트·FR 129 불변·무회귀 설계(variant 기본 'page' 무변경). taste 1건은 게이트1에서 Maxi 확정.
