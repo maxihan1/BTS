@@ -35,7 +35,7 @@ test('E2E-1 이슈 생명주기 — 생성 → 조회 → 수정 → 소프트 �
 
   // ── Then 3. /issues 목록 navigate + 해당 키 목록에서 제외 (gap-H) ──────────
   await page.waitForURL(/\/issues$/)
-  await expect(page.getByRole('list', { name: '이슈 목록' })).toBeVisible()
+  await expect(page.getByRole('table', { name: '이슈 목록' })).toBeVisible()
   // 삭제된 이슈 키는 aria-label 매칭에서 제외되어야 함 (mock 핸들러 stateful 필터링).
   await expect(page.getByLabel(key)).toHaveCount(0)
 })

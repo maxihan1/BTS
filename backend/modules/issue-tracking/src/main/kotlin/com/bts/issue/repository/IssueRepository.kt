@@ -35,8 +35,10 @@ import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.jooq.Condition
 import org.jooq.DSLContext
+import org.jooq.Field
 import org.jooq.JSONB
 import org.jooq.Record
+import org.jooq.SortField
 import org.jooq.Table
 import org.jooq.TableField
 import org.jooq.UpdateSetMoreStep
@@ -45,6 +47,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.Pageable
+import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
@@ -646,7 +649,7 @@ class IssueRepository(
                 .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
                 .join(ISSUE_TYPES).on(ISSUES.TYPE_ID.eq(ISSUE_TYPES.ID))
                 .where(effectiveWhere)
-                .orderBy(ISSUES.CREATED_AT.desc())
+                .orderBy(buildListOrderBy(pageable.sort))
                 .limit(pageable.pageSize)
                 .offset(pageable.offset)
                 .fetch { record -> record.toIssueResponseWithType(projectKey) }
@@ -1025,6 +1028,33 @@ class IssueRepository(
         )
 
     /**
+     * [Pageable.sort] 를 [listWithType] ORDER BY 필드 목록으로 변환한다 (FR-UX-06 Phase 5 PR18 Task 1).
+     *
+     * 허용 필드는 [SORTABLE_COLUMNS] 화이트리스트로 제한한다. 허용목록 외 필드가 요청되면
+     * 예외를 던지지 않고 기본 정렬(`created_at DESC`)로 대체한다.
+     * 정렬을 지정하지 않은 경우(`Sort.isUnsorted`)에도 동일하게 기본 정렬을 반환한다(무회귀).
+     *
+     * `ISSUES.ID.desc()` 를 항상 마지막 tiebreaker(전순서 보장을 위한 동률 결정 기준)로 append 한다
+     * (코드리뷰 C1) — 허용 필드(예: `priority`) 값이 동률인 행이 여러 건이면 tiebreaker 없이는
+     * DB 가 순서를 보장하지 않아 페이지네이션 시 행 중복/누락이 생길 수 있다.
+     *
+     * @param sort 클라이언트 요청 정렬 기준(`Pageable.sort`).
+     * @return jOOQ ORDER BY 필드 목록. 항상 마지막 원소는 `ISSUES.ID.desc()` tiebreaker.
+     */
+    private fun buildListOrderBy(sort: Sort): List<SortField<*>> {
+        val orders =
+            sort.mapNotNull { order ->
+                val field = SORTABLE_COLUMNS[order.property] ?: return@mapNotNull null
+                if (order.isAscending) field.asc() else field.desc()
+            }
+        return if (orders.isEmpty()) {
+            listOf(ISSUES.CREATED_AT.desc(), ISSUES.ID.desc())
+        } else {
+            orders + ISSUES.ID.desc()
+        }
+    }
+
+    /**
      * [BoardCardFilter] 를 SQL WHERE 술어 [Condition] 으로 변환한다.
      *
      * 필드 내 값들은 OR, 필드 간은 AND 로 결합한다([BoardCardFilter] 규칙 동일).
@@ -1189,6 +1219,31 @@ class IssueRepository(
                 staticLevelIds = emptySet(),
                 reporterLevelIds = emptySet(),
                 assigneeLevelIds = emptySet(),
+            )
+
+        /**
+         * [listWithType] 정렬(`Pageable.sort`) 허용목록 — FR-UX-06 Phase 5 PR18 Task 1.
+         *
+         * 프론트가 보낼 수 있는 정렬 토큰 5종만 허용한다 (정렬 필드 계약 — 백엔드/프론트 공유 토큰).
+         * 화이트리스트 방식으로 [Map] 조회만 사용하고 SQL 문자열 결합은 하지 않는다 — 임의 컬럼명
+         * 주입을 원천 차단한다. 허용목록 외 필드는 [buildListOrderBy] 가 예외 없이 기본 정렬
+         * (`created_at DESC`)로 대체한다.
+         *
+         * `status` (워크플로우 상태) 는 의도적으로 제외한다 — 상태는 워크플로우 순서 개념이라
+         * `current_state_key` 값 사전순 정렬이 사용자에게 의미 있는 순서를 주지 않는다.
+         *
+         * `key` 는 포함하되 문자열(사전식) 정렬이라는 점에 주의한다 — 예: `"TPRJ-10"` 이
+         * `"TPRJ-2"` 보다 사전순으로 앞에 온다(숫자순이 아님). 기본 정렬은 `createdAt` 이고
+         * 실사용에서 `key` 정렬 요청 빈도는 낮을 것으로 예상되어, 별도 숫자 시퀀스 컬럼을
+         * 신설하지 않고 이 한계를 KDoc 으로 명시하는 선에서 허용한다.
+         */
+        private val SORTABLE_COLUMNS: Map<String, Field<*>> =
+            mapOf(
+                "key" to ISSUES.KEY,
+                "summary" to ISSUES.SUMMARY,
+                "priority" to ISSUES.PRIORITY,
+                "createdAt" to ISSUES.CREATED_AT,
+                "updatedAt" to ISSUES.UPDATED_AT,
             )
 
         // ── findByKeyWithType self LEFT JOIN alias 상수 ─────────────────────────
