@@ -47,6 +47,85 @@ FR-UX-06 Jira 재개편 Phase 5(화면)의 첫 PR. 거의 클론된 두 필터�
 
 ✅ 통과 (self, 리팩터 — 1회). gap 2건 반영: 조건부 훅 회피 위해 useWorkflows 래퍼 캡슐화 · i18n 병합 시 표시 문자열 byte 불변 명시(시각 회귀 방지). Maxi 결정 필요 항목 없음.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> 동작 보존 리팩터 — 기존 `IssueFilterBar.test`/`BoardFilterBar.test`가 **회귀 하네스**.
+> 공유 `FilterBar`는 신규 코드라 TDD red→green. 소비처(issues.index·board 라우트·projects.board.test) **무변경**.
+
+### Task 1. i18n 라벨 단일 출처 (`filter-bar-labels.ts`) — 파생 shim
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/i18n/filter-bar-labels.ts`, `apps/web/src/i18n/issue-filter-labels.ts`, `apps/web/src/i18n/board-filter-labels.ts`, `apps/web/src/i18n/filter-bar-labels.test.ts`]
+- depends-on: []
+
+**RED**: `filter-bar-labels.test.ts` — `filterBarLabels`가 공통 필터 라벨(assignee/label/component/reset/unassigned·chip.removeAriaLabel·count.applied·search)을 노출, `issueFilterLabels.filter.statusLabel==='상태'`, `boardFilterLabels`엔 statusLabel 부재(공개 shape 보존). 실패: `filterBarLabels` 없음.
+
+**GREEN**: `filter-bar-labels.ts` 신설(공통 문자열 단일 출처). `issue-filter-labels.ts`→`{ statusLabel + ...filterBarLabels.filter }` 파생(공개 shape·문자열 byte 불변). `board-filter-labels.ts`→`filterBarLabels` 재export. **외부 importer(board 라우트 251·quick-filter-labels·ko.test) 무변경**.
+
+**REFACTOR**: `as const` 타입 보존 확인, JSDoc.
+
+**검증**: `pnpm --filter web test -- filter-bar-labels ko.test` green (문자열 회귀 0).
+
+### Task 2. 공유 `FilterBar` 코어 + 서브컴포넌트 (신규, TDD)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/filters/FilterBar.tsx`, `apps/web/src/components/filters/FilterBar.test.tsx`]
+- depends-on: [1]
+
+**API 계약**(제네릭 `<T extends BoardCardFilterParams>`):
+```
+projectKey: string
+value: T
+onChange: (next: T) => void
+idPrefix: string                 // 'issue-filter' | 'board-filter'
+statusSection?: ReactNode        // 담당자 앞 슬롯(이슈 StatusMultiSelect)
+statusChips?: ReactNode          // 활성 칩 맨 앞 슬롯(이슈 상태 칩)
+extraActiveCount?: number        // activeCount 가산(이슈 statusKeys.length)
+```
+내부 소유: `AssigneeSection`·`ActiveFilterChips`·`Chip`·`handleAssigneeSelect/LabelCommit/Reset`·wrapper·count. 공통 라벨은 `filterBarLabels` 직접 import.
+
+**RED**: `FilterBar.test.tsx` — 제어형 동작 전수(담당자 typeahead 선택/중복무시/제거·라벨 commit/제거·컴포넌트 선택·초기화·activeCount(+extraActiveCount)·칩 null·`{idPrefix}-assignee-input`/`-label-input` id·chip aria `{name} 제거`·statusSection/statusChips 슬롯 렌더·useUsersByIds 이름 안정). 실패: `FilterBar` 없음.
+
+**GREEN**: `FilterBar.tsx` 구현. 담당자/라벨/컴포넌트/칩/초기화/count 코어 + 슬롯.
+
+**REFACTOR**: 서브컴포넌트 분리·KDoc·`readonly` props.
+
+**검증**: `pnpm --filter web test -- FilterBar.test`.
+
+### Task 3. `IssueFilterBar` → 얇은 위임 래퍼 (status 캡슐화)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/issues/IssueFilterBar.tsx`, `apps/web/src/components/issues/IssueFilterBar.test.tsx`]
+- depends-on: [2]
+
+**GREEN**: `IssueFilterBar` 내부를 `<FilterBar idPrefix="issue-filter" status 슬롯 주입 …>`로 위임. **래퍼가 소유**: `useWorkflows`·`extractStatusOptions`·EC7 fail-safe·`StatusMultiSelect`(이관)·statusNameMap → `statusSection`/`statusChips`/`extraActiveCount=statusKeys.length` prop으로 주입. **props 시그니처(`projectKey/value:IssueFilterParams/onChange`) 불변** → 소비처 issues.index 무변경.
+
+**RED→GREEN 순서**: 기존 `IssueFilterBar.test.tsx`가 회귀 하네스(무수정 green 우선). 공통 동작 어서션은 Task 2 `FilterBar.test`로 이관됐으므로 **래퍼 테스트는 래퍼 고유(상태 섹션 렌더·상태 칩·statusKeys activeCount·EC7)만 남기고 슬림화**(커버리지 손실 0 — 이관 대조).
+
+**검증**: `pnpm --filter web test -- IssueFilterBar` + `issues.index` 관련 green.
+
+### Task 4. `BoardFilterBar` → 얇은 위임 래퍼 (status 없음)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/board/BoardFilterBar.tsx`, `apps/web/src/components/board/BoardFilterBar.test.tsx`]
+- depends-on: [2]
+
+**GREEN**: `BoardFilterBar` 내부를 `<FilterBar idPrefix="board-filter" value:BoardCardFilterParams …>`(status 슬롯 없음)로 위임. **props 시그니처 불변** → 소비처 board 라우트·`projects.board.test` 무변경.
+
+**RED→GREEN**: 기존 `BoardFilterBar.test.tsx` 회귀 하네스. 공통 어서션 이관 후 래퍼 고유(상태 섹션 부재·위임)만 슬림 유지.
+
+**검증**: `pnpm --filter web test -- BoardFilterBar projects.board`.
+
+## Plan 메타
+
+- task 수: 4 (각 TDD 사이클)
+- wave: [T1] → [T2] → [T3 ∥ T4] (T3/T4 파일 disjoint: issues/* vs board/*). **단, 단일 worktree 병렬 git 레이스 회피 위해 직렬 우선 권장**([[worktree-lint-staged-shared-git-stash-collision]]·[[parallel-dispatch-precommit-hook-race]]).
+- TDD 강제: yes (신규 FilterBar). 래퍼는 회귀 하네스 무수정 우선 후 슬림.
+- 추가 검증(controller): `pnpm --filter web verify`(lint+typecheck+test+build) + 관련 e2e(issues 필터·board 필터) 로컬. **소비처 3파일 diff 0 직접 확인**(git show 대조). FR 총수 129 불변.
+- ★리뷰 포커스: (1) 소비처 무변경 실증 (2) 슬림화가 커버리지 회귀 아님(이관 어서션 대조) (3) i18n 파생 shim이 ko.test/quick-filter 무영향 (4) idPrefix element id verbatim.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
