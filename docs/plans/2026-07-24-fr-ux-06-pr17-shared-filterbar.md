@@ -128,6 +128,14 @@ extraActiveCount?: number        // activeCount 가산(이슈 statusKeys.length)
 - 추가 검증(controller): `pnpm --filter web verify`(lint+typecheck+test+build) + 관련 e2e(issues 필터·board 필터) 로컬. **소비처 3파일 diff 0 직접 확인**(git show 대조). FR 총수 129 불변.
 - ★리뷰 포커스: (1) 소비처 무변경 실증 (2) 슬림화가 커버리지 회귀 아님(이관 어서션 대조) (3) i18n 파생 shim이 ko.test/quick-filter 무영향 (4) idPrefix element id verbatim.
 
+## 구현 결과 (2026-07-24 — bts-impl)
+
+- **TDD 5태스크 완료**: T1 test`82e78857`→feat`e61385a5` · T2 test`0fceac67`→feat`191319b6` · T3 test`005ef4ba`→feat`31b47c9e` · T4 refactor`6021d2b1`(순수 위임, 기존 테스트=판별자) · T5 refactor`779f1ac8`(래퍼 테스트 슬림화).
+- **동작 보존 증명**: IssueFilterBar.test·BoardFilterBar.test **무수정 green**(byte-identical) → 이후 T5에서 공통 어서션만 FilterBar.test 대조 후 슬림(커버리지 순손실 0). 소비처 issues.index·board 라우트·projects.board.test **diff 0**.
+- **컴포넌트 축소**: IssueFilterBar 391→155 · BoardFilterBar 200→4 · 공유 FilterBar 332 신설. i18n 단일출처(filter-bar-labels)+파생 shim(외부 importer 4곳 무접촉).
+- **LOC**: 프로덕션 −129, 신규 공유 FilterBar 종합 테스트(+516)·i18n 테스트(+108)로 **전체 순 +176**. −350 추정 미달(엄밀 목표 아님·스펙 명시) — 중복 제거는 달성, 증가분은 신규 공유 컴포넌트 고품질 테스트.
+- **검증 전항 통과**: typecheck 0 · lint 0(PR17 파일) · 전수 유닛 **490파일/7620 green** · build 0 · 필터 e2e(issue-filter·board-filter·quick-filter) **22 passed**. FR 총수 **129 불변**.
+
 ## 리뷰 결과
 
 ### right-size 판정 (2026-07-24)
