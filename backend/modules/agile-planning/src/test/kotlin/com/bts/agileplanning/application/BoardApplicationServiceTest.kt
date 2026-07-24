@@ -10,6 +10,7 @@ import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.domain.SwimlaneField
 import com.bts.agileplanning.repository.BoardQuickFilterRepository
 import com.bts.agileplanning.repository.BoardRepository
+import com.bts.agileplanning.web.dto.BoardCardResponse
 import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.board.BoardIssueLookupPort
 import com.bts.shared.board.BoardIssuePage
@@ -49,6 +50,7 @@ import java.util.UUID
  * - (e) E3: 같은 컬럼으로 이동 → no-op 200
  * - (f) E8: 보드-이슈 프로젝트 정합 위반 → 거부
  * - (g) 보드 조회 시 BoardQuickFilterRepository 결과가 quickFilters 로 포함(FR-UX-01 Task 7)
+ * - (h) BoardCardResponse 가 BoardIssueView.rank 를 그대로 노출(FR-UX-06 PR21 Task 1)
  */
 @SpringBootTest(
     classes = [AgilePlanningTestBootApplication::class],
@@ -568,5 +570,42 @@ class BoardApplicationServiceTest {
             .isInstanceOf(ResponseStatusException::class.java)
             .extracting("statusCode.value")
             .isEqualTo(404)
+    }
+
+    // ── (h) BoardCardResponse.rank 노출 (FR-UX-06 PR21 Task 1) ──────────────────
+
+    @Test
+    fun `rank 가 부여된 BoardIssueView 는 BoardCardResponse 에 그 rank 그대로 노출된다`() {
+        val view =
+            BoardIssueView(
+                key = "RANK-1",
+                summary = "rank 부여 이슈",
+                currentStateKey = "open",
+                assigneeId = null,
+                priority = 1,
+                version = 0L,
+                rank = "0|hzzzzz:",
+            )
+
+        val response = BoardCardResponse.from(view)
+
+        assertThat(response.rank).isEqualTo("0|hzzzzz:")
+    }
+
+    @Test
+    fun `rank 가 미부여인 BoardIssueView 는 BoardCardResponse rank 도 null 이다`() {
+        val view =
+            BoardIssueView(
+                key = "RANK-2",
+                summary = "rank 미부여 이슈",
+                currentStateKey = "open",
+                assigneeId = null,
+                priority = 1,
+                version = 0L,
+            )
+
+        val response = BoardCardResponse.from(view)
+
+        assertThat(response.rank).isNull()
     }
 }
