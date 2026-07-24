@@ -83,6 +83,7 @@ function isIssueSortField(field: string): field is IssueSortField {
  * 구분자가 없거나 필드/방향이 허용 값이 아니면 안전하게 null(정렬 미적용)로 폴백한다.
  *
  * @param raw URL search의 sort 원문 문자열. undefined면 정렬 미적용.
+ * @returns 파싱된 정렬 상태. 형식이 잘못됐으면 null.
  */
 function parseSortParam(raw: string | undefined): IssueTableSortState | null {
   if (raw === undefined) return null
@@ -98,6 +99,7 @@ function parseSortParam(raw: string | undefined): IssueTableSortState | null {
  * null(정렬 해제)이면 undefined를 반환해 상위(어댑터)가 sort 키 자체를 URL에서 생략하게 한다.
  *
  * @param sort 직렬화할 정렬 상태
+ * @returns `<field>,<dir>` 형식 문자열. sort가 null이면 undefined.
  */
 function serializeSortParam(sort: IssueTableSortState | null): string | undefined {
   return sort === null ? undefined : `${sort.field},${sort.dir}`
@@ -109,12 +111,25 @@ function serializeSortParam(sort: IssueTableSortState | null): string | undefine
  *
  * @param current 현재 정렬 상태
  * @param field 클릭된 정렬 가능 컬럼의 필드
+ * @returns 다음 정렬 상태. 3번째 클릭(현재 desc)이면 null(해제).
  */
 function nextSortState(current: IssueTableSortState | null, field: IssueSortField): IssueTableSortState | null {
   if (current === null || current.field !== field) {
     return { field, dir: 'asc' }
   }
   return current.dir === 'asc' ? { field, dir: 'desc' } : null
+}
+
+/**
+ * GAP-5 — 재조회(isFetching) 중 표 영역에 적용할 dim 처리 className을 계산한다.
+ * keepPreviousData로 유지된 이전 데이터 위에 겹쳐 전환 중임을 알리되,
+ * pointer-events-none으로 전환 중 이중 클릭 등 의도치 않은 조작을 막는다.
+ *
+ * @param isFetching 재조회 진행 여부
+ * @returns dim 처리 className. 재조회 중이 아니면 undefined(클래스 없음).
+ */
+function issueTableRegionClassName(isFetching: boolean): string | undefined {
+  return isFetching ? 'opacity-60 pointer-events-none' : undefined
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -307,7 +322,7 @@ function IssueListContent({
   return (
     <div
       data-testid="issue-table-region"
-      className={isFetching ? 'opacity-60 pointer-events-none' : undefined}
+      className={issueTableRegionClassName(isFetching)}
     >
       {/* GAP-2 — 컬럼 선택 툴바(테이블 상단 우측) */}
       <div className="flex justify-end pb-2">
