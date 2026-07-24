@@ -1,5 +1,5 @@
 // 이슈 상세 페이지 라우트 — 시안 2 사이드 메타패널 (좌 본문 / 우 메타패널, 상태전이 컨트롤 포함)
-import type { JSX } from 'react'
+import type { JSX, RefObject } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -62,6 +62,45 @@ function resolveTransitionUnavailableReason({
     return error instanceof ApiError && error.status === 422 ? 'no-workflow' : null
   }
   return transitionCount === 0 ? 'terminal' : null
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 헬퍼 — pane variant 헤더/포커스/Escape (FR-UX-06 PR20 Task 1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * pane variant 전용 — Escape 키 입력 시 `onClose`를 호출하는 keydown 리스너를 등록한다.
+ * `variant !== 'pane'`이면 리스너를 등록하지 않는다. 언마운트/변경 시 자동 해제.
+ */
+function usePaneEscapeClose(variant: 'page' | 'pane', onClose: (() => void) | undefined): void {
+  useEffect(() => {
+    if (variant !== 'pane') return
+    function handleKeyDown(e: KeyboardEvent): void {
+      if (e.key === 'Escape') {
+        onClose?.()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [variant, onClose])
+}
+
+/**
+ * pane variant 전용 — 이슈 데이터 로드가 끝나면 `targetRef`(상세 영역 제목)로 1회만 포커스를 이동한다.
+ * 이후 메타필드 mutation으로 데이터가 refetch돼도 재포커스로 사용자 입력을 방해하지 않는다.
+ * `preventScroll`로 포커스 이동이 페이지 스크롤 점프를 유발하지 않도록 한다.
+ */
+function usePaneFocusOnLoad(
+  variant: 'page' | 'pane',
+  loaded: boolean,
+  targetRef: RefObject<HTMLElement | null>,
+): void {
+  const hasFocusedRef = useRef(false)
+  useEffect(() => {
+    if (variant !== 'pane' || !loaded || hasFocusedRef.current) return
+    hasFocusedRef.current = true
+    targetRef.current?.focus({ preventScroll: true })
+  }, [variant, loaded, targetRef])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -134,7 +173,6 @@ export function IssueDetailPage({
 
   // ── pane 전용 — 헤더 닫기/Escape/마운트 포커스 (FR-UX-06 PR20 Task 1) ───────
   const paneTitleRef = useRef<HTMLHeadingElement>(null)
-  const hasFocusedPaneRef = useRef(false)
 
   const { data: issue, isLoading, error } = useQuery({
     queryKey: issueQueryKey(issueKey),
@@ -163,26 +201,8 @@ export function IssueDetailPage({
     retry: false,
   })
 
-  // 페인 마운트 시 상세 영역(제목)으로 포커스 이동 — 이슈 데이터 로드 완료 후 1회만.
-  // 이후 메타필드 mutation으로 issue가 갱신돼도 재포커스로 사용자 입력을 방해하지 않는다.
-  useEffect(() => {
-    if (variant !== 'pane' || issue === undefined) return
-    if (hasFocusedPaneRef.current) return
-    hasFocusedPaneRef.current = true
-    paneTitleRef.current?.focus({ preventScroll: true })
-  }, [variant, issue])
-
-  // 페인에서 Escape 키 입력 시 닫기
-  useEffect(() => {
-    if (variant !== 'pane') return
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        onClose?.()
-      }
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [variant, onClose])
+  usePaneFocusOnLoad(variant, issue !== undefined, paneTitleRef)
+  usePaneEscapeClose(variant, onClose)
 
   // 권한 조회 — fail-closed: 로딩 중·에러·미확정이면 false(비활성)
   const {
