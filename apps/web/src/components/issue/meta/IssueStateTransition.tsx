@@ -1,6 +1,9 @@
 // 이슈 상태 전이 셀렉터 (IssueMetaPanel 분해 B, FR-IS-01)
 import type { JSX } from 'react'
 import type { IssueTransition } from '@/api/issues'
+// IssueMetaPanel.tsx가 정본으로 export하는 타입을 재사용 — type-only import라 컴파일 시
+// 소거되므로 IssueMetaPanel.tsx가 이 파일을 값으로 import해도 런타임 순환 문제는 없다
+// (meta/IssueCustomFieldsEdit.tsx의 isFieldHidden/isFieldDisabled 재사용 선례 동형).
 import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
 import { issueDetailStrings } from '@/i18n/ko'
 
