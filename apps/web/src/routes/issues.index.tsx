@@ -1,4 +1,4 @@
-// 이슈 목록 페이지 — IssueListPage(props 기반) + IssueListRouteAdapter(라우터 연결). 테이블·정렬·컬럼 선택 결선(Task 5)
+// 이슈 목록 페이지 — IssueListPage(props 기반) + IssueListRouteAdapter(라우터 연결). 테이블·정렬·컬럼 선택 + split view 결선(FR-UX-06 PR20)
 import type { JSX } from 'react'
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { useIssueSelection } from '@/hooks/use-issue-selection'
 import { useColumnVisibility } from '@/hooks/use-column-visibility'
 import { useUsersByIds } from '@/hooks/use-users'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { IssueBulkActionBar } from '@/components/issues/IssueBulkActionBar'
 import { BulkEditDialog } from '@/components/issues/BulkEditDialog'
 import { BulkTransitionDialog } from '@/components/issues/BulkTransitionDialog'
@@ -21,6 +22,7 @@ import { ColumnSelector } from '@/components/issues/ColumnSelector'
 import { ISSUE_COLUMNS } from '@/components/issues/issue-columns'
 import { normalizeIssueFilter, isEmptyIssueFilter, searchToIssueFilter, issueFilterToSearch } from '@/lib/issue-filter'
 import type { IssueFilterSearch } from '@/lib/issue-filter'
+import { IssueDetailPage } from './issues.$key'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // router.ts 등록 방법 (code-based 패턴 — PR #11 컨벤션).
@@ -262,6 +264,12 @@ interface IssueListContentProps {
   onSort: (field: IssueSortField) => void
   /** 재조회 진행 여부(GAP-5) — true면 표 영역을 dim 처리해 전환 중임을 알린다 */
   isFetching: boolean
+  /**
+   * split view(FR-UX-06 PR20 Task 5) 우측 상세 페인에 현재 열린 이슈 키.
+   * IssueTable.selectedKey로 그대로 전달돼 해당 행을 aria-current로 강조한다.
+   * undefined/null이면 어떤 행도 강조하지 않는다(bulk 체크박스 선택과는 완전히 별개).
+   */
+  selectedKey?: string | null
 }
 
 /**
@@ -289,6 +297,7 @@ function IssueListContent({
   sort,
   onSort,
   isFetching,
+  selectedKey,
 }: IssueListContentProps): JSX.Element {
   // ── 담당자 이름 해석 — 현재 페이지 assigneeId만 조회 ───────────────────────
   const assigneeIds = useMemo(
@@ -337,6 +346,7 @@ function IssueListContent({
         selection={{ isSelected, onToggle, onSelectAllPage, isAllPageSelected }}
         onNavigate={onNavigate}
         assigneeNameMap={assigneeNameMap}
+        selectedKey={selectedKey}
       />
 
       <IssuePagination
@@ -381,6 +391,11 @@ interface IssueListPageProps {
    * 정렬 변경 콜백(Task 5). IssueListRouteAdapter가 URL sort 쿼리를 갱신한다.
    */
   onSortChange?: (sort: IssueTableSortState | null) => void
+  /**
+   * split view(FR-UX-06 PR20 Task 5) 우측 상세 페인에 현재 열린 이슈 키.
+   * IssueListContent → IssueTable로 그대로 전달된다. undefined/null이면 강조 없음.
+   */
+  selectedKey?: string | null
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -454,6 +469,7 @@ export function IssueListPage({
   onFilterChange,
   sort = null,
   onSortChange,
+  selectedKey = null,
 }: IssueListPageProps): JSX.Element {
   const queryClient = useQueryClient()
 
@@ -626,6 +642,7 @@ export function IssueListPage({
           sort={sort}
           onSort={handleSort}
           isFetching={isFetching}
+          selectedKey={selectedKey}
         />
       )}
 
@@ -666,8 +683,8 @@ export function IssueListPage({
 /**
  * router.ts에 등록되는 라우트 어댑터 컴포넌트.
  *
- * useSearch로 URL의 page + status/assignee/label/component 필터 + sort 파라미터를 추출해
- * IssueListPage에 전달한다.
+ * useSearch로 URL의 page + status/assignee/label/component 필터 + sort + selected 파라미터를
+ * 추출해 IssueListPage(+ split view 우측 페인)에 전달한다.
  *
  * - page → IssueListPage.page (0-indexed)
  * - status/assignee/label/component → searchToIssueFilter → IssueListPage.filter
@@ -675,6 +692,9 @@ export function IssueListPage({
  * - IssueFilterBar onChange → issueFilterToSearch → navigate(URL 갱신, page=0 리셋)
  * - IssueTable 정렬 헤더 → onSortChange → serializeSortParam → navigate(URL sort 갱신)
  * - 빈 필터/정렬 해제 시 해당 키 자체를 URL에서 제거 (issueFilterToSearch/serializeSortParam이 처리)
+ * - selected → split view(FR-UX-06 PR20 Task 5) 우측 상세 페인에 열린 이슈 키(D1).
+ *   와이드(`useMediaQuery('(min-width: 1024px)')`)이고 selected가 있을 때만 페인이 등장한다(D2).
+ *   좁은폭(D3)은 selected를 무시하고 목록만 렌더하며, 행 클릭은 `/issues/$key` 전체화면으로 이동한다.
  *
  * 라우터 등록은 router.ts 담당.
  */
@@ -682,10 +702,13 @@ export function IssueListRouteAdapter(): JSX.Element {
   const search = useSearch({ strict: false }) as {
     page?: number
     sort?: string
+    selected?: string
   } & IssueFilterSearch
   const navigate = useNavigate()
+  const isWide = useMediaQuery('(min-width: 1024px)')
   const page = typeof search.page === 'number' ? search.page : 0
   const sort = useMemo(() => parseSortParam(search.sort), [search.sort])
+  const selected = search.selected
 
   // searchToIssueFilter는 매 렌더마다 새 객체를 반환하므로
   // 실제 search 값이 바뀔 때만 재계산한다 (BoardRouteAdapter 패턴 미러).
@@ -707,8 +730,37 @@ export function IssueListRouteAdapter(): JSX.Element {
     void navigate({ to: '/issues', search: (prev) => ({ ...prev, page: nextPage }) })
   }
 
+  /**
+   * 행 클릭 핸들러 — 폭에 따라 분기한다(D3).
+   * - 와이드: `selected` 검색 파라미터를 토글한다. 다른 검색 파라미터(status/sort/page 등)는
+   *   `prev` 스프레드로 보존한다. 같은 키를 다시 클릭하면 `selected`를 해제한다(페인 닫힘).
+   * - 좁은폭: split view를 건너뛰고 `/issues/$key` 전체화면 상세로 이동한다.
+   */
   function handleNavigate(key: string): void {
-    void navigate({ to: `/issues/${key}` })
+    if (isWide) {
+      void navigate({
+        to: '/issues',
+        search: (prev) => ({ ...prev, selected: prev.selected === key ? undefined : key }),
+      })
+      return
+    }
+    void navigate({ to: '/issues/$key', params: { key } })
+  }
+
+  /**
+   * split view 우측 페인 닫기(D2) — `selected`를 URL에서 제거해 페인을 닫고 목록을 전체폭으로 복귀시킨다.
+   * IssueDetailPage(variant='pane')의 onClose(닫기 버튼·Escape)·onIssueClosed(삭제 성공) 양쪽에서 쓰인다.
+   */
+  function clearSelected(): void {
+    void navigate({ to: '/issues', search: (prev) => ({ ...prev, selected: undefined }) })
+  }
+
+  /**
+   * split view 우측 페인에 열린 이슈 키를 교체한다.
+   * IssueDetailPage(variant='pane')가 옛 키 → 새 키 308 redirect를 감지했을 때(onIssueRedirect) 쓰인다.
+   */
+  function setSelectedKey(nextKey: string): void {
+    void navigate({ to: '/issues', search: (prev) => ({ ...prev, selected: nextKey }) })
   }
 
   /**
@@ -737,7 +789,7 @@ export function IssueListRouteAdapter(): JSX.Element {
     })
   }
 
-  return (
+  const listPage = (
     <IssueListPage
       projectKey={DEFAULT_PROJECT_KEY}
       page={page}
@@ -747,6 +799,61 @@ export function IssueListRouteAdapter(): JSX.Element {
       onFilterChange={handleFilterChange}
       sort={sort}
       onSortChange={handleSortChange}
+      selectedKey={isWide ? (selected ?? null) : null}
     />
+  )
+
+  // D2 — 와이드 + selected일 때만 split view(2컬럼)로 전환한다. 그 외(미선택/좁은폭)는 목록 전체폭.
+  if (isWide && selected !== undefined) {
+    return (
+      <IssueListSplitView
+        list={listPage}
+        detail={
+          <IssueDetailPage
+            issueKey={selected}
+            variant="pane"
+            onClose={clearSelected}
+            onIssueClosed={clearSelected}
+            onIssueRedirect={setSelectedKey}
+          />
+        }
+      />
+    )
+  }
+
+  return listPage
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IssueListSplitView — split view 2컬럼 레이아웃 (FR-UX-06 PR20 Task 5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface IssueListSplitViewProps {
+  /** 좌측 목록(축소) — IssueListPage 렌더 결과 */
+  list: JSX.Element
+  /** 우측 상세 페인 — IssueDetailPage(variant='pane') 렌더 결과 */
+  detail: JSX.Element
+}
+
+/**
+ * split view 2컬럼 레이아웃(D2, PR20-F3).
+ *
+ * - 좌측 목록과 우측 상세 페인은 각자 독립 스크롤 컨테이너(`overflow-y-auto`)다 — 긴 상세를
+ *   스크롤해도 목록 스크롤에 영향을 주지 않는다.
+ * - 좌측 목록은 폭이 줄어도 컬럼을 축약하지 않고 유지한 채 가로 스크롤한다(taste A —
+ *   반응형 컬럼 축약 도입 금지, `overflow-x-auto`).
+ * - `h-full`/`min-h-0` 조합은 ShellLayout의 `<main className="min-w-0 flex-1 overflow-y-auto">`
+ *   높이를 그대로 물려받아, 바깥 main이 아닌 이 컴포넌트의 두 자식이 각자 스크롤하게 한다.
+ */
+function IssueListSplitView({ list, detail }: IssueListSplitViewProps): JSX.Element {
+  return (
+    <div className="flex h-full min-h-0">
+      <div className="min-w-0 shrink-0 basis-[420px] overflow-x-auto overflow-y-auto border-r border-border">
+        {list}
+      </div>
+      <div className="min-w-0 flex-1 overflow-y-auto">
+        {detail}
+      </div>
+    </div>
   )
 }
