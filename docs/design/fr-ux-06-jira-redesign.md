@@ -90,6 +90,8 @@ BTS의 UI를 Jira Cloud 2025 기준으로 개편할 때 **모든 색·크기·�
 
 `grid-template-columns: minmax(0,1fr) 340px` — 현재 280px에서 확대(Jira는 ~340px). 활동 영역(댓글/히스토리/작업로그/연결)은 **탭으로 접는다** (현재는 2단 그리드 바깥에 세로 무한 적층).
 
+> **구현 deviation (PR19, 2026-07-24)**: 활동 탭은 실제 존재하는 **3영역(이력[기본]/작업로그/연결)**만 Radix Tabs로 출시했다. **댓글 탭은 제외** — 댓글은 백엔드 REST 쓰기 미노출(CommentController GET-only)로 UI가 실재하지 않고 별도 신규 FR로 분리 예정([[comment-backend-is-import-byproduct-read-only]]). 댓글 FR 도입 시 4번째 탭으로 확장한다. split view는 후속 PR로 이연.
+
 ## 4. 상태 · 타입 · 우선순위 매핑
 
 ### 4.1 상태 로젠지 — `software-default.yaml`과 1:1
