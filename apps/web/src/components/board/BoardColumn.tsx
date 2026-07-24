@@ -1,6 +1,7 @@
-// 칸반 보드 컬럼 컴포넌트 — 드롭 영역 + 카드 목록 + 빈 컬럼 placeholder + WIP 경고 + 스윔레인 그룹
+// 칸반 보드 컬럼 컴포넌트 — 드롭 영역 + 카드 목록 + 빈 컬럼 placeholder + WIP 경고 + 스윔레인 그룹 + 셀 단위 SortableContext
 import { memo } from 'react'
 import { useDroppable } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { cn } from '@/lib/utils'
 import type { BoardColumn as BoardColumnType, SwimlaneField } from '@/api/boards'
 import { boardLabels } from '@/i18n/board-labels'
@@ -9,6 +10,13 @@ import type { SwimlaneGroup } from '@/lib/swimlane-group'
 import { BoardCard } from './BoardCard'
 import type { CardAssigneeDisplay } from './BoardCard'
 import { WipCountBadge } from './WipCountBadge'
+
+/**
+ * swimlaneField=NONE일 때의 셀(컬럼 × 스윔레인 그룹) key.
+ * swimlane-group.ts groupByNone·board-drop.ts findGroupKey와 동일 상수 —
+ * 이 파일과 BoardCard.tsx의 기본값이 서로 다른 값을 쓰지 않도록 여기서 단일 정의한다.
+ */
+const NONE_CELL_KEY = 'none'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -54,6 +62,8 @@ function SwimlaneSection({
   columnId: string
 }): React.ReactElement {
   const UNASSIGNED: CardAssigneeDisplay = { state: 'unassigned' }
+  // 셀(컬럼 × 이 그룹) 안에서의 정렬 순서 — rank 순서(원본 배열 순서) 그대로
+  const cellItems = group.cards.map((card) => card.issueKey)
 
   return (
     <div
@@ -68,16 +78,19 @@ function SwimlaneSection({
         <hr className="flex-1 border-border" aria-hidden="true" />
       </div>
 
-      {/* 카드 목록 */}
+      {/* 카드 목록 — 셀(컬럼 × 그룹) 단위 SortableContext */}
       <div className="flex flex-col gap-2">
-        {group.cards.map((card) => (
-          <BoardCard
-            key={card.issueKey}
-            card={card}
-            columnId={columnId}
-            assignee={assigneeNames.get(card.issueKey) ?? UNASSIGNED}
-          />
-        ))}
+        <SortableContext items={cellItems} strategy={verticalListSortingStrategy}>
+          {group.cards.map((card) => (
+            <BoardCard
+              key={card.issueKey}
+              card={card}
+              columnId={columnId}
+              assignee={assigneeNames.get(card.issueKey) ?? UNASSIGNED}
+              swimlaneGroupKey={group.key}
+            />
+          ))}
+        </SortableContext>
       </div>
     </div>
   )
@@ -152,15 +165,21 @@ function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField
             />
           ))
         ) : (
-          // NONE — 단일 목록
-          column.cards.map((card) => (
-            <BoardCard
-              key={card.issueKey}
-              card={card}
-              columnId={column.columnId}
-              assignee={assigneeNames.get(card.issueKey) ?? UNASSIGNED}
-            />
-          ))
+          // NONE — 단일 목록. 컬럼 전체가 하나의 셀(SortableContext)
+          <SortableContext
+            items={column.cards.map((card) => card.issueKey)}
+            strategy={verticalListSortingStrategy}
+          >
+            {column.cards.map((card) => (
+              <BoardCard
+                key={card.issueKey}
+                card={card}
+                columnId={column.columnId}
+                assignee={assigneeNames.get(card.issueKey) ?? UNASSIGNED}
+                swimlaneGroupKey={NONE_CELL_KEY}
+              />
+            ))}
+          </SortableContext>
         )}
       </div>
     </div>
@@ -183,6 +202,10 @@ function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField
  * - `isOver=true`이면 ring-2 하이라이트를 적용한다.
  * - `swimlaneField`가 NONE이 아니면 그룹화된 서브헤더+카드 목록을 렌더한다.
  *   드롭 영역(data-col-id/useDroppable id)은 항상 columnId로 불변.
+ * - 셀(컬럼 × 스윔레인 그룹) 단위로 `SortableContext`를 감싼다 —
+ *   NONE이면 컬럼 카드 전체가 하나의 셀, 그 외엔 각 SwimlaneGroup이 하나의 셀.
+ *   각 BoardCard에는 그 셀의 key(`'none'` 또는 SwimlaneGroup.key)를 `swimlaneGroupKey`로 전달해
+ *   board-drop.ts의 셀 판정과 정합시킨다.
  * - `memo`로 래핑되어 column·assigneeNames·isOver·swimlaneField가 변하지 않으면 재렌더하지 않는다.
  */
 export const BoardColumn = memo(BoardColumnInner)
