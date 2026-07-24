@@ -70,7 +70,7 @@ describe('IssueTable — e2e 셀렉터 verbatim 보존', () => {
 
   it('T-4: 행 링크 — aria-label={key}, role=link, href=/issues/{key}', () => {
     renderTable()
-    const link = screen.getByRole('link', { name: issueAtlas1Fixture.key, exact: true })
+    const link = screen.getByRole('link', { name: issueAtlas1Fixture.key })
     expect(link).toHaveAttribute('href', `/issues/${issueAtlas1Fixture.key}`)
   })
 
@@ -105,7 +105,7 @@ describe('IssueTable — 네비게이션', () => {
     const onNavigate = vi.fn()
     renderTable({ onNavigate })
     const user = userEvent.setup()
-    await user.click(screen.getByRole('link', { name: issueAtlas1Fixture.key, exact: true }))
+    await user.click(screen.getByRole('link', { name: issueAtlas1Fixture.key }))
     expect(onNavigate).toHaveBeenCalledTimes(1)
     expect(onNavigate).toHaveBeenCalledWith(issueAtlas1Fixture.key)
   })
