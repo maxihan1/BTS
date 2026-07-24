@@ -476,6 +476,84 @@ describe('FilterBar — S6 초기화 버튼', () => {
     expect(onReset).toHaveBeenCalledTimes(1)
     expect(onChange).not.toHaveBeenCalled()
   })
+
+  it('S6d: onReset 미전달 시 초기화 클릭 → 담당자 검색 입력이 비워진다', async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    const input = screen.getByRole('textbox', { name: /담당자/ })
+    await user.click(input)
+    await user.type(input, '앨리스')
+    expect(input).toHaveValue('앨리스')
+
+    await user.click(screen.getByRole('button', { name: filterBarLabels.filter.reset }))
+
+    expect(input).toHaveValue('')
+  })
+
+  it('S6e: onReset 미전달 시 초기화 클릭 → 라벨 검색 입력이 비워진다', async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    const labelInput = screen.getByTestId('label-autocomplete-input')
+    await user.click(labelInput)
+    await user.type(labelInput, 'b')
+    expect(labelInput).toHaveValue('b')
+
+    await user.click(screen.getByRole('button', { name: filterBarLabels.filter.reset }))
+
+    expect(labelInput).toHaveValue('')
+  })
+
+  it('S6f: onReset 전달 시(이슈 필터 시뮬레이션)에도 초기화 클릭 → 담당자 검색 입력이 비워진다 (회귀 방지)', async () => {
+    const user = userEvent.setup()
+    const onReset = vi.fn()
+    render(
+      <FilterBar
+        projectKey="ATLAS"
+        value={emptyFilter}
+        onChange={vi.fn()}
+        idPrefix="test-filter"
+        onReset={onReset}
+      />,
+      { wrapper: makeWrapper() },
+    )
+
+    const input = screen.getByRole('textbox', { name: /담당자/ })
+    await user.click(input)
+    await user.type(input, '앨리스')
+    expect(input).toHaveValue('앨리스')
+
+    await user.click(screen.getByRole('button', { name: filterBarLabels.filter.reset }))
+
+    expect(input).toHaveValue('')
+    expect(onReset).toHaveBeenCalledTimes(1)
+  })
+
+  it('S6g: onReset 전달 시(이슈 필터 시뮬레이션)에도 초기화 클릭 → 라벨 검색 입력이 비워진다 (회귀 방지)', async () => {
+    const user = userEvent.setup()
+    const onReset = vi.fn()
+    render(
+      <FilterBar
+        projectKey="ATLAS"
+        value={emptyFilter}
+        onChange={vi.fn()}
+        idPrefix="test-filter"
+        onReset={onReset}
+      />,
+      { wrapper: makeWrapper() },
+    )
+
+    const labelInput = screen.getByTestId('label-autocomplete-input')
+    await user.click(labelInput)
+    await user.type(labelInput, 'b')
+    expect(labelInput).toHaveValue('b')
+
+    await user.click(screen.getByRole('button', { name: filterBarLabels.filter.reset }))
+
+    expect(labelInput).toHaveValue('')
+    expect(onReset).toHaveBeenCalledTimes(1)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
