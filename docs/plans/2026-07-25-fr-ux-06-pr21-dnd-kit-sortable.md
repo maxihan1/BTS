@@ -48,7 +48,20 @@ FR-UX-06(BTS UI/UX Jira Cloud 방식 개편) Phase 5(화면)의 다섯 번째 PR
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
+전체 스펙. [docs/specs/2026-07-25-fr-ux-06-pr21-dnd-kit-sortable.md](../specs/2026-07-25-fr-ux-06-pr21-dnd-kit-sortable.md)
+
+**스코프 확정(Maxi 2026-07-25) — 완전 Jira 목표를 2 PR로 분할.**
+- **PR21(이번)** = ①같은 셀(스윔레인 그룹×컬럼) 내 순서변경(rank) + ②컬럼 간 상태전이(기존 유지). 스윔레인 활성 시에도 셀 내 순서변경 지원, 그룹 경계 넘는 드래그는 noop.
+- **PR21b(다음)** = ③담당자 재할당 + ④우선순위/에픽 변경(스윔레인 간 드래그). API 모두 실재(`PATCH /assignee`·`updateIssue priority`·`epic-children`), ASSIGNEE는 UUID 역산 배선 필요.
+
+핵심 3줄.
+- 보드 조회(agile-planning)에 rank 노출 + rank ASC NULLS LAST → key ASC 정렬 추가(백로그 선례).
+- 프론트 `@dnd-kit/sortable` 도입, 셀 단위 SortableContext, 같은 셀 드롭 시 기존 `rerankIssue`(재사용) 호출.
+- issue-tracking 리랭크 API·서비스 변경 0(호출만). 낙관적 업데이트(arrayMove)+409 롤백+toast는 useMoveCard 패턴 재사용.
+
 ## Brainstorming Check (← /bts-spec Phase B 채움)
+
+✅ 통과 (코드 실측 sanity check 1회). gap 1건(스윔레인 4종 상호작용)→셀 개념+PR21b 분할로 해소. 거짓 gap 검증: EC2 null 이웃은 서버 rebalance로 처리(백엔드 완비), 필드변경 API 4종 모두 실재(phantom 아님).
 
 ## Plan (← /bts-plan 채움)
 

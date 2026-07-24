@@ -46,6 +46,12 @@
 - **프론트 로컬 순서(서버 미저장)** — 새로고침/타 사용자 간 순서 소실. 완제품 기준 위배. 기각.
 - **sortable 없이 core 직접 구현** — 새 의존성 0이나 재발명·버그 위험. 기각(Maxi).
 
+## 결정 4 — 완전 Jira 스윔레인 드래그(4종)를 2 PR로 분할
+
+최종 목표는 Jira Cloud 스윔레인 보드 드래그 4종(①셀 내 순서변경 ②컬럼 간 상태전이 ③담당자 재할당 ④우선순위/에픽 변경)이다. 실측 결과 ③④는 스윔레인 타입별 별도 mutation(담당자 UUID 역산 배선·priority·epic-children)과 낙관적 업데이트 3종을 요구해 단일 PR로는 과대하다. **PR21 = ①+②(스윔레인 활성 시 셀 내 순서변경 포함, 그룹 경계 넘는 드래그는 noop), PR21b = ③+④**로 분할한다.
+
+**근거**. 22 PR 체인 철학(큰 기능 잘게)과 일치. 각 PR 독립 검증 가능. ③④의 API(`PATCH /assignee`, `updateIssue priority`, `POST epic-children`)는 실재하나 배선 복잡도가 ①②와 분리된다. rank 순서변경만도 백엔드 rank 노출+sortable+낙관적 업데이트로 태스크 6~8개.
+
 ## 결과
 
 - agile-planning `BoardCardResponse`에 `rank` 필드 추가 + 보드 카드 조회 rank 정렬.
