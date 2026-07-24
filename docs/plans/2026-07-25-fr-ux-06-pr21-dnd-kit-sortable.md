@@ -16,6 +16,36 @@ FR-UX-06(BTS UI/UX Jira Cloud 방식 개편) Phase 5(화면)의 다섯 번째 PR
 
 ## 도메인 정리 (← /bts-domain 채움)
 
+- **BC**: 주 = agile-planning(보드 소유), 종속 = issue-tracking(rank 컬럼·리랭크 API 소유, **재사용만·변경 0**), 프론트 apps/web.
+- **grill-with-docs 생략**: 도메인 모델(LexoRank·rank 소유권)이 ADR로 이미 확립, 새 엔티티/용어 0(PR20 선례와 동일 근거).
+
+### 현 상태 실측 (코드 대조)
+
+| 항목 | 현재 상태 | 근거 |
+|---|---|---|
+| 보드 컬럼 간 이동(상태 전이) | ✅ 구현됨 | `KanbanBoard.tsx` `resolveDropAction`→`useMoveCard`(`POST /boards/{id}/cards/{key}/move`) |
+| **보드 컬럼 내 순서변경** | ❌ **미구현 — 같은 컬럼 드롭 = noop(EC1)** | `KanbanBoard.tsx:84` `fromColumnId === toColumnId → noop` |
+| 보드 카드 응답 rank 노출 | ❌ **없음** | `BoardResponses.kt` `BoardCardResponse`(issueKey/summary/assigneeId/priority/version/epicKey), rank 필드 부재 |
+| 보드 카드 컬럼 내 정렬 기준 | ❌ rank 정렬 아님 | `BoardRepository.kt` 컬럼만 DISPLAY_ORDER 정렬, 카드 정렬 기준 없음 |
+| `issues.rank` 컬럼 + 리랭크 API | ✅ **완비(재사용 가능)** | `PATCH /api/v1/issues/{key}/rank`(FR-BL-01), `BacklogRankService.rerank`(이웃 중간값+rebalance), `issues.rank` TEXT |
+| 프론트 리랭크 API 클라이언트 | ⚠️ backlog.ts에만 존재 | `api/backlog.ts`(백로그용), `api/boards.ts`엔 rank 함수 없음 |
+| `@dnd-kit/sortable` 설치 | ❌ **미설치** | package.json에 `@dnd-kit/core`·`@dnd-kit/utilities`만, sortable 없음 |
+
+### 기존 결정과의 정합
+
+- **LexoRank ADR(2026-06-23 FR-BL-01) 결정2·결정4가 "미래 보드 컬럼 내 정렬(agile-planning)에서도 재사용 가능"을 이미 명시** → PR21이 정확히 그 예견된 케이스. 결정 충돌 없음.
+- rank 소유권(issue-tracking) 불변. 보드는 조회 시 rank를 미러 노출만(백로그 `BacklogResponses.kt` 선례와 동일 패턴).
+
+### ADR 후보
+
+- 보드 조회 rank 노출/정렬 + 컬럼 내 리랭크가 기존 리랭크 API 재사용임을 기록 (신규 리랭크 경로 없음). BC 경계: agile-planning 조회 view layer가 issue-tracking rank를 미러(백로그 선례).
+
+### ★ 스코프·의존성·FR 귀속 — Maxi 확인 대상(게이트 전 선확정)
+
+1. **순수 프론트가 아니라 풀스택** — 보드 조회에 rank 노출(agile-planning) 없이는 순서 저장/복원 불가.
+2. **새 기능 성격** — 현재 noop이던 동작을 신설. FR-UX-06(개편)인지 별도 FR-BD/BL D단계 진척인지 귀속 확정 필요(전수 동기화 영향).
+3. **새 의존성 `@dnd-kit/sortable`** — DEVELOPMENT.md §외부 의존성상 Maxi 승인 필요(단 @dnd-kit 패밀리 공식 확장, 위험 낮음).
+
 ## 스펙 (← /bts-spec Phase A 채움)
 
 ## Brainstorming Check (← /bts-spec Phase B 채움)
