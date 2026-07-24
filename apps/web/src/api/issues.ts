@@ -395,8 +395,18 @@ export interface IssueFilterParams {
   componentIds: string[]
 }
 
-/** 이슈 목록 정렬 필드 유니온 타입 — 정렬 필드 계약 5종 (T2/T4/T5 공유). */
-export type IssueSortField = 'key' | 'summary' | 'priority' | 'createdAt' | 'updatedAt'
+/**
+ * 이슈 목록 정렬 허용 필드 목록 — 정렬 필드 계약 5종.
+ *
+ * `docs/plans/2026-07-24-fr-ux-06-phase-5-pr18-ui-table-split-view.md`의
+ * "정렬 필드 계약"에서 T1(백엔드 whitelist)·T2(본 파일)·T4(IssueTable 정렬 헤더)·
+ * T5(issues.index 라우트 sort URL 파싱)가 동일하게 사용하는 토큰이다.
+ * status는 워크플로우 순서 의미가 모호해 이 목록에서 제외한다(G1).
+ */
+export const ISSUE_SORT_FIELDS = ['key', 'summary', 'priority', 'createdAt', 'updatedAt'] as const
+
+/** 이슈 목록 정렬 필드 유니온 타입 — ISSUE_SORT_FIELDS에서 파생. */
+export type IssueSortField = (typeof ISSUE_SORT_FIELDS)[number]
 
 /** fetchIssues 쿼리 파라미터 */
 export interface FetchIssuesParams {
