@@ -9,7 +9,6 @@ import type { UserSummary } from '@/api/users'
 import type { Component } from '@/api/components'
 import type { WorkflowView } from '@/api/workflows'
 import * as useWorkflowsModule from '@/hooks/use-workflows'
-import * as useUsersModule from '@/hooks/use-users'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 훅 mock — 데이터 페칭 없이 순수 UI 단위 테스트
@@ -242,12 +241,9 @@ describe('IssueFilterBar — S1 status 멀티셀렉트', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('IssueFilterBar — S2 담당자 typeahead', () => {
-  it('S2a: 담당자 input이 접근 가능한 label을 갖는다', () => {
-    renderBar()
-    expect(screen.getByRole('textbox', { name: /담당자/ })).toBeInTheDocument()
-  })
-
-  it('S2b: 입력 후 검색 결과가 표시되면 클릭 시 onChange(assigneeIds 포함)가 호출된다', async () => {
+  // 담당자 접근성 라벨(FilterBar S1a)·미배정 토글(FilterBar S1d)은 FilterBar.test에 동등 커버됨.
+  // 이 케이스는 issue-filter idPrefix 경로로 담당자 위임이 실제로 동작함을 확인하는 위임 스모크로 유지.
+  it('S2b: 입력 후 검색 결과가 표시되면 클릭 시 onChange(assigneeIds 포함)가 호출된다 (위임 스모크)', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar(emptyFilter, onChange)
@@ -263,19 +259,6 @@ describe('IssueFilterBar — S2 담당자 typeahead', () => {
       expect.objectContaining({ assigneeIds: ['user-uuid-0001'] }),
     )
   })
-
-  it('S2c: "미배정" 토글 → onChange({ includeUnassigned: true })가 호출된다', async () => {
-    const user = userEvent.setup()
-    const onChange = vi.fn()
-    renderBar(emptyFilter, onChange)
-
-    const unassignedCheckbox = screen.getByRole('checkbox', { name: /미배정/ })
-    await user.click(unassignedCheckbox)
-
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ includeUnassigned: true }),
-    )
-  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -283,12 +266,9 @@ describe('IssueFilterBar — S2 담당자 typeahead', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('IssueFilterBar — S3 라벨 자동완성', () => {
-  it('S3a: 라벨 input이 DOM에 존재한다', () => {
-    renderBar()
-    expect(screen.getByTestId('label-autocomplete-input')).toBeInTheDocument()
-  })
-
-  it('S3b: 라벨 선택 → onChange(labels 포함)가 호출된다', async () => {
+  // 라벨 input 존재(FilterBar S2a/S2b)·선택 후 칩 표시(FilterBar S2c)는 FilterBar.test에 동등 커버됨.
+  // 이 케이스는 issue-filter idPrefix 경로로 라벨 위임이 실제로 동작함을 확인하는 위임 스모크로 유지.
+  it('S3b: 라벨 선택 → onChange(labels 포함)가 호출된다 (위임 스모크)', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar(emptyFilter, onChange)
@@ -304,37 +284,9 @@ describe('IssueFilterBar — S3 라벨 자동완성', () => {
       expect.objectContaining({ labels: ['bug'] }),
     )
   })
-
-  it('S3c: 라벨 선택 후 칩이 표시된다', () => {
-    renderBar({ ...emptyFilter, labels: ['bug'] })
-    const chipList = screen.getByRole('list', { name: '적용된 필터' })
-    expect(within(chipList).getByText('bug')).toBeInTheDocument()
-  })
 })
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S4. 컴포넌트 체크박스
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('IssueFilterBar — S4 컴포넌트 체크박스', () => {
-  it('S4a: useComponents 결과가 체크박스로 렌더된다', () => {
-    renderBar()
-    expect(screen.getByRole('checkbox', { name: '프론트엔드' })).toBeInTheDocument()
-    expect(screen.getByRole('checkbox', { name: '백엔드' })).toBeInTheDocument()
-  })
-
-  it('S4b: 컴포넌트 체크 → onChange({ componentIds: [id] })가 호출된다', async () => {
-    const user = userEvent.setup()
-    const onChange = vi.fn()
-    renderBar(emptyFilter, onChange)
-
-    await user.click(screen.getByRole('checkbox', { name: '프론트엔드' }))
-
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ componentIds: ['comp-uuid-0001'] }),
-    )
-  })
-})
+// 컴포넌트 체크박스 렌더·onChange(FilterBar S3a/S3b)는 FilterBar.test에 동등 커버되어 제거됨.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // S5. 칩 개별 제거
@@ -355,33 +307,7 @@ describe('IssueFilterBar — S5 칩 개별 제거', () => {
     )
   })
 
-  it('S5b: 담당자 칩 ✕ 클릭 → 해당 id만 빠진 onChange가 호출된다', async () => {
-    const user = userEvent.setup()
-    const onChange = vi.fn()
-    renderBar({ ...emptyFilter, assigneeIds: ['user-uuid-0001', 'user-uuid-0002'] }, onChange)
-
-    const chipList = screen.getByRole('list', { name: '적용된 필터' })
-    const removeBtn = within(chipList).getByRole('button', { name: /김앨리스.*제거|제거.*김앨리스/ })
-    await user.click(removeBtn)
-
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ assigneeIds: ['user-uuid-0002'] }),
-    )
-  })
-
-  it('S5c: 라벨 칩 ✕ 클릭 → 해당 라벨만 빠진 onChange가 호출된다', async () => {
-    const user = userEvent.setup()
-    const onChange = vi.fn()
-    renderBar({ ...emptyFilter, labels: ['bug', 'feature'] }, onChange)
-
-    const chipList = screen.getByRole('list', { name: '적용된 필터' })
-    const removeBtn = within(chipList).getByRole('button', { name: /bug.*제거|제거.*bug/ })
-    await user.click(removeBtn)
-
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ labels: ['feature'] }),
-    )
-  })
+  // 담당자/라벨 칩 제거(FilterBar S4c/S4d)는 FilterBar.test에 동등 커버되어 제거됨.
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -389,12 +315,8 @@ describe('IssueFilterBar — S5 칩 개별 제거', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('IssueFilterBar — S6 초기화 버튼', () => {
-  it('S6a: "초기화" 버튼이 렌더된다', () => {
-    renderBar()
-    expect(screen.getByRole('button', { name: '초기화' })).toBeInTheDocument()
-  })
-
-  it('S6b: "초기화" 클릭 → 빈 filter onChange가 호출된다', async () => {
+  // "초기화" 버튼 렌더(FilterBar S6a)는 FilterBar.test에 동등 커버되어 제거됨.
+  it('S6b: "초기화" 클릭 → statusKeys까지 비운 onChange가 호출된다 (onReset 위임)', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar({
@@ -422,19 +344,10 @@ describe('IssueFilterBar — S6 초기화 버튼', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('IssueFilterBar — S7 활성 필터 카운트', () => {
-  it('S7a: 활성 필터가 없으면 카운트 표시가 없다', () => {
-    renderBar(emptyFilter)
-    expect(screen.queryByText(/개 적용/)).not.toBeInTheDocument()
-  })
-
+  // 카운트 없음(FilterBar S7a)·includeUnassigned 반영(FilterBar S7c)은 FilterBar.test에 동등 커버되어 제거됨.
   it('S7b: statusKeys + labels 2개 → "2개 적용 중" 표시', () => {
     renderBar({ ...emptyFilter, statusKeys: ['open'], labels: ['bug'] })
     expect(screen.getByText(/2개 적용 중/)).toBeInTheDocument()
-  })
-
-  it('S7c: includeUnassigned도 카운트에 포함된다', () => {
-    renderBar({ ...emptyFilter, includeUnassigned: true })
-    expect(screen.getByText(/1개 적용 중/)).toBeInTheDocument()
   })
 
   it('S7d: status 2개 + 담당자 1개 + 미배정 + 라벨 1개 + 컴포넌트 1개 = 6개', () => {
@@ -475,40 +388,10 @@ describe('IssueFilterBar — S8 접근성', () => {
     }
   })
 
-  it('S8c: 담당자 칩 제거 버튼에 aria-label이 있다', () => {
-    renderBar({ ...emptyFilter, assigneeIds: ['user-uuid-0001'] })
-
-    const chipList = screen.getByRole('list', { name: '적용된 필터' })
-    const removeBtns = within(chipList).getAllByRole('button', { name: /제거/ })
-    expect(removeBtns.length).toBeGreaterThanOrEqual(1)
-    for (const btn of removeBtns) {
-      expect(btn).toHaveAttribute('aria-label')
-    }
-  })
+  // 담당자 칩 제거 버튼 aria-label(FilterBar S4b)은 FilterBar.test에 동등 커버되어 제거됨.
 })
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S9. 담당자 칩 라벨 안정 표시 (useUsersByIds)
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('IssueFilterBar — S9 담당자 칩 라벨 안정 표시', () => {
-  it('S9a: useUsers가 빈 배열이어도 useUsersByIds 결과로 칩에 displayName이 표시된다', () => {
-    vi.mocked(useUsersModule.useUsers).mockReturnValueOnce(
-      { data: [], isLoading: false } as unknown as ReturnType<typeof useUsersModule.useUsers>,
-    )
-    vi.mocked(useUsersModule.useUsersByIds).mockReturnValueOnce(
-      {
-        data: [{ id: 'user-uuid-0001', username: 'alice', displayName: '김앨리스', email: null }],
-        isLoading: false,
-      } as unknown as ReturnType<typeof useUsersModule.useUsersByIds>,
-    )
-
-    renderBar({ ...emptyFilter, assigneeIds: ['user-uuid-0001'] })
-
-    expect(screen.getByText('김앨리스')).toBeInTheDocument()
-    expect(screen.queryByText('user-uuid-0001')).not.toBeInTheDocument()
-  })
-})
+// 담당자 칩 라벨 안정 표시(useUsersByIds, FilterBar S1e)는 FilterBar.test에 동등 커버되어 제거됨.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // S10. EC7 fail-safe — useWorkflows 로딩/에러 시 나머지 필터 정상 동작

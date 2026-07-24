@@ -7,7 +7,6 @@ import type { ReactNode } from 'react'
 import type { BoardCardFilterParams } from '@/api/boards'
 import type { UserSummary } from '@/api/users'
 import type { Component } from '@/api/components'
-import { boardFilterLabels } from '@/i18n/board-filter-labels'
 import * as useUsersModule from '@/hooks/use-users'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -142,13 +141,9 @@ function renderBar(
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('BoardFilterBar — S1 담당자 typeahead', () => {
-  it('S1a: 담당자 input이 접근 가능한 label을 갖는다', () => {
-    renderBar()
-    // aria-label 또는 htmlFor 연결로 접근 가능해야 한다
-    expect(screen.getByRole('textbox', { name: /담당자/ })).toBeInTheDocument()
-  })
-
-  it('S1b: 입력 후 검색 결과가 표시되면 클릭 시 onChange(assigneeIds 포함)가 호출된다', async () => {
+  // 담당자 접근성 라벨(FilterBar S1a)·미배정 토글(FilterBar S1d)은 FilterBar.test에 동등 커버됨.
+  // 이 케이스는 board-filter idPrefix 경로로 담당자 위임이 실제로 동작함을 확인하는 위임 스모크로 유지.
+  it('S1b: 입력 후 검색 결과가 표시되면 클릭 시 onChange(assigneeIds 포함)가 호출된다 (위임 스모크)', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar(emptyFilter, onChange)
@@ -165,19 +160,6 @@ describe('BoardFilterBar — S1 담당자 typeahead', () => {
       expect.objectContaining({ assigneeIds: ['user-uuid-0001'] }),
     )
   })
-
-  it('S1c: "미배정" 토글 → onChange({ includeUnassigned: true })가 호출된다', async () => {
-    const user = userEvent.setup()
-    const onChange = vi.fn()
-    renderBar(emptyFilter, onChange)
-
-    const unassignedCheckbox = screen.getByRole('checkbox', { name: /미배정/ })
-    await user.click(unassignedCheckbox)
-
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ includeUnassigned: true }),
-    )
-  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -185,14 +167,9 @@ describe('BoardFilterBar — S1 담당자 typeahead', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('BoardFilterBar — S2 라벨 자동완성', () => {
-  it('S2a: 라벨 input이 접근 가능한 label을 갖는다', () => {
-    renderBar()
-    // LabelAutocompleteInput 래퍼의 data-testid로 input을 찾고, 섹션 label 텍스트가 DOM에 있어야 함
-    expect(screen.getByTestId('label-autocomplete-input')).toBeInTheDocument()
-    expect(screen.getByText(boardFilterLabels.filter.labelLabel)).toBeInTheDocument()
-  })
-
-  it('S2b: 라벨 input에 값 입력 후 드롭다운에서 라벨 선택 → onChange(labels 포함)가 호출된다', async () => {
+  // 라벨 input 존재(FilterBar S2a/S2b)·선택 후 칩 표시(FilterBar S2c)는 FilterBar.test에 동등 커버됨.
+  // 이 케이스는 board-filter idPrefix 경로로 라벨 위임이 실제로 동작함을 확인하는 위임 스모크로 유지.
+  it('S2b: 라벨 input에 값 입력 후 드롭다운에서 라벨 선택 → onChange(labels 포함)가 호출된다 (위임 스모크)', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar(emptyFilter, onChange)
@@ -209,90 +186,10 @@ describe('BoardFilterBar — S2 라벨 자동완성', () => {
       expect.objectContaining({ labels: ['bug'] }),
     )
   })
-
-  it('S2c: 라벨 선택 후 칩이 표시된다', async () => {
-    renderBar({ ...emptyFilter, labels: ['bug'] })
-
-    expect(screen.getByText('bug')).toBeInTheDocument()
-  })
 })
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S3. 컴포넌트 체크박스
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('BoardFilterBar — S3 컴포넌트 체크박스', () => {
-  it('S3a: useComponents 결과가 체크박스로 렌더된다', () => {
-    renderBar()
-    expect(screen.getByRole('checkbox', { name: '프론트엔드' })).toBeInTheDocument()
-    expect(screen.getByRole('checkbox', { name: '백엔드' })).toBeInTheDocument()
-  })
-
-  it('S3b: 컴포넌트 체크 → onChange({ componentIds: [id] })가 호출된다', async () => {
-    const user = userEvent.setup()
-    const onChange = vi.fn()
-    renderBar(emptyFilter, onChange)
-
-    const checkbox = screen.getByRole('checkbox', { name: '프론트엔드' })
-    await user.click(checkbox)
-
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ componentIds: ['comp-uuid-0001'] }),
-    )
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
-// S4. 필터 칩 제거
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('BoardFilterBar — S4 필터 칩 제거', () => {
-  it('S4a: 담당자 칩의 ✕ 버튼은 aria-label이 있다', () => {
-    const value: BoardCardFilterParams = {
-      ...emptyFilter,
-      assigneeIds: ['user-uuid-0001'],
-    }
-    renderBar(value)
-
-    // 칩 제거 버튼에 aria-label이 있어야 함
-    const removeBtn = screen.getByRole('button', { name: /김앨리스.*제거|제거.*김앨리스/ })
-    expect(removeBtn).toBeInTheDocument()
-  })
-
-  it('S4b: 담당자 칩 ✕ 클릭 → 해당 id만 빠진 onChange가 호출된다', async () => {
-    const user = userEvent.setup()
-    const onChange = vi.fn()
-    const value: BoardCardFilterParams = {
-      ...emptyFilter,
-      assigneeIds: ['user-uuid-0001', 'user-uuid-0002'],
-    }
-    renderBar(value, onChange)
-
-    const removeBtn = screen.getByRole('button', { name: /김앨리스.*제거|제거.*김앨리스/ })
-    await user.click(removeBtn)
-
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ assigneeIds: ['user-uuid-0002'] }),
-    )
-  })
-
-  it('S4c: 라벨 칩 ✕ 클릭 → 해당 라벨만 빠진 onChange가 호출된다', async () => {
-    const user = userEvent.setup()
-    const onChange = vi.fn()
-    const value: BoardCardFilterParams = {
-      ...emptyFilter,
-      labels: ['bug', 'feature'],
-    }
-    renderBar(value, onChange)
-
-    const removeBtn = screen.getByRole('button', { name: /bug.*제거|제거.*bug/ })
-    await user.click(removeBtn)
-
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ labels: ['feature'] }),
-    )
-  })
-})
+// 컴포넌트 체크박스 렌더·onChange(FilterBar S3a/S3b)는 FilterBar.test에 동등 커버되어 제거됨.
+// 담당자/라벨 칩 aria-label·제거(FilterBar S4b/S4c/S4d)도 FilterBar.test에 동등 커버되어 제거됨.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // S8. 담당자 칩 라벨 안정 표시 (P2-1 버그 수정 — useUsersByIds 사용)
@@ -300,31 +197,7 @@ describe('BoardFilterBar — S4 필터 칩 제거', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('BoardFilterBar — S8 담당자 칩 라벨 안정 표시 (useUsersByIds)', () => {
-  it('S8a: useUsers가 빈 배열이어도 useUsersByIds 결과로 칩에 displayName이 표시된다', () => {
-    // useUsers(검색)는 빈 결과 — 검색어가 비워진 상황 시뮬레이션
-    vi.mocked(useUsersModule.useUsers).mockReturnValueOnce(
-      { data: [], isLoading: false } as unknown as ReturnType<typeof useUsersModule.useUsers>,
-    )
-
-    // useUsersByIds는 선택된 담당자 정보를 반환
-    vi.mocked(useUsersModule.useUsersByIds).mockReturnValueOnce(
-      {
-        data: [{ id: 'user-uuid-0001', username: 'alice', displayName: '김앨리스', email: null }],
-        isLoading: false,
-      } as unknown as ReturnType<typeof useUsersModule.useUsersByIds>,
-    )
-
-    const value: BoardCardFilterParams = {
-      ...emptyFilter,
-      assigneeIds: ['user-uuid-0001'],
-    }
-    renderBar(value)
-
-    // 칩에 UUID가 아닌 displayName이 표시되어야 한다
-    expect(screen.getByText('김앨리스')).toBeInTheDocument()
-    expect(screen.queryByText('user-uuid-0001')).not.toBeInTheDocument()
-  })
-
+  // 담당자 칩 라벨 안정 표시(useUsersByIds, FilterBar S1e)는 FilterBar.test에 동등 커버되어 제거됨.
   it('S8b: useUsersByIds가 로딩 중일 때 칩이 크래시하지 않고 렌더된다', () => {
     // useUsers 빈 배열, useUsersByIds는 로딩 중
     vi.mocked(useUsersModule.useUsers).mockReturnValueOnce(
@@ -352,12 +225,9 @@ describe('BoardFilterBar — S8 담당자 칩 라벨 안정 표시 (useUsersById
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('BoardFilterBar — S5 초기화 버튼', () => {
-  it('S5a: "초기화" 버튼이 렌더된다', () => {
-    renderBar()
-    expect(screen.getByRole('button', { name: '초기화' })).toBeInTheDocument()
-  })
-
-  it('S5b: "초기화" 클릭 → 빈 필터 onChange가 호출된다', async () => {
+  // "초기화" 버튼 렌더(FilterBar S6a)는 FilterBar.test에 동등 커버되어 제거됨.
+  // 이 케이스는 board-filter idPrefix 경로로 초기화(공통 필드 비움) 위임이 실제로 동작함을 확인하는 위임 스모크로 유지.
+  it('S5b: "초기화" 클릭 → 빈 필터 onChange가 호출된다 (위임 스모크)', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     const value: BoardCardFilterParams = {
@@ -379,80 +249,5 @@ describe('BoardFilterBar — S5 초기화 버튼', () => {
   })
 })
 
-// ─────────────────────────────────────────────────────────────────────────────
-// S6. 활성 필터 카운트 표시 (D1/D3 디자인 보강)
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('BoardFilterBar — S6 활성 필터 카운트', () => {
-  it('S6a: 활성 필터가 없으면 카운트 표시가 없다', () => {
-    renderBar(emptyFilter)
-    expect(screen.queryByText(/개 적용/)).not.toBeInTheDocument()
-  })
-
-  it('S6b: 활성 필터가 1개 이상이면 "N개 적용 중" 텍스트가 표시된다', () => {
-    const value: BoardCardFilterParams = {
-      ...emptyFilter,
-      labels: ['bug'],
-      componentIds: ['comp-uuid-0001'],
-    }
-    renderBar(value)
-
-    expect(screen.getByText(/2개 적용 중/)).toBeInTheDocument()
-  })
-
-  it('S6c: includeUnassigned도 카운트에 포함된다', () => {
-    const value: BoardCardFilterParams = {
-      ...emptyFilter,
-      includeUnassigned: true,
-    }
-    renderBar(value)
-
-    expect(screen.getByText(/1개 적용 중/)).toBeInTheDocument()
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
-// S7. 접근성
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('BoardFilterBar — S7 접근성', () => {
-  it('S7a: 각 필터 컨트롤이 접근 가능한 label을 갖는다', () => {
-    renderBar()
-
-    // 담당자 textbox — aria-label 직접 연결
-    expect(screen.getByRole('textbox', { name: /담당자/ })).toBeInTheDocument()
-    // 라벨 textbox — LabelAutocompleteInput의 data-testid + 섹션 label 텍스트로 확인
-    expect(screen.getByTestId('label-autocomplete-input')).toBeInTheDocument()
-    expect(screen.getByText(boardFilterLabels.filter.labelLabel)).toBeInTheDocument()
-    // 미배정 체크박스
-    expect(screen.getByRole('checkbox', { name: /미배정/ })).toBeInTheDocument()
-  })
-
-  it('S7b: value에 담당자가 있을 때 칩 제거 버튼에 aria-label이 있다', () => {
-    const value: BoardCardFilterParams = {
-      ...emptyFilter,
-      assigneeIds: ['user-uuid-0001'],
-    }
-    renderBar(value)
-
-    const removeBtns = screen.getAllByRole('button', { name: /제거/ })
-    expect(removeBtns.length).toBeGreaterThanOrEqual(1)
-    for (const btn of removeBtns) {
-      expect(btn).toHaveAttribute('aria-label')
-    }
-  })
-
-  it('S7c: value에 라벨이 있을 때 칩 제거 버튼에 aria-label이 있다', () => {
-    const value: BoardCardFilterParams = {
-      ...emptyFilter,
-      labels: ['bug'],
-    }
-    renderBar(value)
-
-    const removeBtns = screen.getAllByRole('button', { name: /제거/ })
-    expect(removeBtns.length).toBeGreaterThanOrEqual(1)
-    for (const btn of removeBtns) {
-      expect(btn).toHaveAttribute('aria-label')
-    }
-  })
-})
+// 활성 필터 카운트(FilterBar S7a/S7b/S7c)·필터 컨트롤 접근성 라벨(FilterBar S1a/S2a/S1d)·
+// 칩 제거 버튼 aria-label(FilterBar S4b/S4d)은 FilterBar.test에 동등 커버되어 제거됨.
