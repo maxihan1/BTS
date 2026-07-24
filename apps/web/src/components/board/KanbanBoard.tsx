@@ -18,94 +18,13 @@ import { BoardColumn } from './BoardColumn'
 import { BoardCard } from './BoardCard'
 import type { CardAssigneeDisplay } from './BoardCard'
 import { ResolutionPickerModal } from './ResolutionPickerModal'
+import { resolveDropAction } from './board-drop'
+import type { DragActiveMin, DragOverMin } from './board-drop'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// resolveDropAction — 순수 헬퍼 (테스트 가능하도록 export)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** onDragEnd active 인자 최소 타입 — fromColumnId는 BoardCard useDraggable data */
-export interface DragActiveMin {
-  id: string
-  data: { current?: { fromColumnId?: string } }
-}
-
-/** onDragEnd over 인자 최소 타입 */
-export interface DragOverMin {
-  id: string
-}
-
-/** resolveDropAction 반환 union 타입 */
-export type DropAction =
-  | { type: 'noop' }
-  | {
-      type: 'move'
-      issueKey: string
-      fromColumnId: string
-      toColumnId: string
-      expectedVersion: number
-    }
-  | {
-      type: 'needs-resolution'
-      issueKey: string
-      fromColumnId: string
-      toColumnId: string
-      expectedVersion: number
-    }
-
-/**
- * 드래그 종료 이벤트를 분석해 수행할 동작을 결정하는 순수 헬퍼.
- *
- * - over가 null → noop
- * - 같은 컬럼 → noop (EC1)
- * - 대상 컬럼을 board에서 찾을 수 없음 → noop
- * - 카드(issueKey)를 fromColumn에서 찾을 수 없음 → noop
- * - 대상 컬럼 category === 'DONE' → needs-resolution
- * - 그 외 → move
- *
- * @param board 현재 BoardDetail
- * @param active 드래그 중인 아이템 (최소 타입)
- * @param over 드롭 대상 (최소 타입 또는 null)
- * @returns DropAction union
- */
+// board-drop.ts로 이전된 순수 헬퍼 — 기존 소비자(KanbanBoard.test.tsx) 호환을 위해 재노출
 // eslint-disable-next-line react-refresh/only-export-components
-export function resolveDropAction(
-  board: BoardDetail,
-  active: DragActiveMin,
-  over: DragOverMin | null,
-): DropAction {
-  if (over === null) return { type: 'noop' }
-
-  const fromColumnId = active.data.current?.fromColumnId
-  if (fromColumnId === undefined) return { type: 'noop' }
-
-  const toColumnId = String(over.id)
-
-  // 같은 컬럼 drop → EC1
-  if (fromColumnId === toColumnId) return { type: 'noop' }
-
-  // 대상 컬럼 탐색
-  const toColumn = board.columns.find((c) => c.columnId === toColumnId)
-  if (toColumn === undefined) return { type: 'noop' }
-
-  // 이동할 카드 탐색 — expectedVersion 확보
-  const issueKey = String(active.id)
-  const fromColumn = board.columns.find((c) => c.columnId === fromColumnId)
-  const card = fromColumn?.cards.find((c) => c.issueKey === issueKey)
-  if (card === undefined) return { type: 'noop' }
-
-  const base = {
-    issueKey,
-    fromColumnId,
-    toColumnId,
-    expectedVersion: card.version,
-  }
-
-  if (toColumn.category === 'DONE') {
-    return { type: 'needs-resolution', ...base }
-  }
-
-  return { type: 'move', ...base }
-}
+export { resolveDropAction } from './board-drop'
+export type { DragActiveMin, DragOverMin, DropAction } from './board-drop'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // KanbanBoard — 대기 이동 정보 타입
@@ -205,9 +124,19 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
     setActiveFromColumnId(null)
     setOverColumnId(null)
 
-    const action = resolveDropAction(board, event.active as DragActiveMin, event.over as DragOverMin | null)
+    const action = resolveDropAction(
+      board,
+      event.active as DragActiveMin,
+      event.over as DragOverMin | null,
+      assigneeNames,
+    )
 
     if (action.type === 'noop') return
+
+    if (action.type === 'reorder') {
+      // 셀 내 순서변경 실행 배선은 이 컴포넌트의 다른 태스크(sortable 적용) 담당 — 여기선 판정만
+      return
+    }
 
     const { issueKey, fromColumnId, toColumnId, expectedVersion } = action
 
