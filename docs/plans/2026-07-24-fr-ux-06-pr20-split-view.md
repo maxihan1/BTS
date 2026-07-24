@@ -220,3 +220,18 @@
 
 ### 종합
 - BLOCKER 0. 순수 프론트·FR 129 불변·무회귀 설계(variant 기본 'page' 무변경). taste 1건은 게이트1에서 Maxi 확정.
+
+### bts-codereview (2026-07-24, PR #305, superpowers:code-reviewer)
+
+**BLOCKER 0.** 절대 규칙 19개 위반 없음(any/`!`/빈catch/console.log/localStorage clean). TDD 커밋 순서 준수.
+
+**확정 버그 4건 봉합 (T8 hot-fix, TDD)**.
+- CONCERNS-1: `handleFilterChange`가 필터 변경 시 `selected` 유실(NFR-3 "페인은 필터와 무관" 위반) → `(prev)=>({...nextSearch, page:0, selected: prev.selected})`로 보존.
+- CONCERNS-2: 페인 Escape 리스너가 Radix 다이얼로그/드롭다운 Esc와 이중 발화(다이얼로그+페인 동시 닫힘) → keydown 핸들러에 `if (e.defaultPrevented) return`.
+- CONCERNS-3(★데이터 안전): 페인 `IssueDetailPage`에 `key` 부재 → 이슈 전환 시 삭제확인/편집 상태 이월로 **잘못된 이슈 삭제 위험** → `key={selected}` 부여(fresh 마운트). [[react-usestate-stale-key-prop]].
+- CONCERNS-4: 빈/공백 `?selected=` → 페인이 빈 키로 404 렌더(EC-1 위반) → `normalizeSelectedKey` 정규화(blank→undefined).
+
+**후속 이연 (경미)**.
+- CONCERNS-5: 페인 오픈/클로즈 시 목록 return 분기 변경으로 목록이 재마운트 → bulk 체크박스 선택·스크롤 초기화. 항상-마운트 레이아웃 리팩터 필요(비-split 케이스 레이아웃 회귀 위험)라 별도 후속 티켓. 데이터 손실 아님(react-query 캐시 유지).
+
+**검증 (T8 후)**. 유닛 5파일 143 green(+5)·typecheck 0·eslint 0 errors·e2e 11(split6+table5) green.
