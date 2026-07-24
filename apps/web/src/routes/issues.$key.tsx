@@ -1,6 +1,6 @@
 // 이슈 상세 페이지 라우트 — 시안 2 사이드 메타패널 (좌 본문 / 우 메타패널, 상태전이 컨트롤 포함)
 import type { JSX } from 'react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -21,7 +21,7 @@ import { useIssueTransitions, issueTransitionKeys } from '@/hooks/use-issue-tran
 import { useUsers, useUsersByIds } from '@/hooks/use-users'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
-import { FileDown } from 'lucide-react'
+import { FileDown, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { downloadIssuePdf } from '@/api/issues'
@@ -82,6 +82,20 @@ function resolveTransitionUnavailableReason({
 interface IssueDetailPageProps {
   /** URL params에서 추출한 이슈 식별 키 (예: "ATLAS-1") */
   issueKey: string
+  /**
+   * 렌더 모드 (FR-UX-06 PR20 split view).
+   * - `'page'`(기본) — 전체화면. 제목이 `<h1>`, 닫기 버튼 없음, redirect/삭제는 fullscreen navigate.
+   * - `'pane'` — split view 우측 페인. 제목이 `<h2>`(문서 `<h1>` 단일 계약), 헤더에 닫기 버튼 +
+   *   `Escape` 키 + 마운트 시 포커스 이동이 추가되고, redirect/삭제는 `onIssueRedirect`/`onIssueClosed`
+   *   콜백에 위임한다(부모가 페인 상태를 제어).
+   */
+  variant?: 'page' | 'pane'
+  /** pane 전용 — 닫기 버튼 클릭 또는 `Escape` 키 입력 시 호출 */
+  onClose?: () => void
+  /** pane 전용 — 308 redirect(옛 키 → 새 키) 감지 시 fullscreen navigate 대신 호출 */
+  onIssueRedirect?: (newKey: string) => void
+  /** pane 전용 — 삭제 성공 시 fullscreen navigate('/issues') 대신 호출 */
+  onIssueClosed?: () => void
 }
 
 /**
@@ -92,10 +106,18 @@ interface IssueDetailPageProps {
  * - 성공 레이아웃: 좌측 본문(breadcrumb + 제목 인라인 편집) + 우측 메타패널.
  * - 상태 전이 셀렉터 + 담당자 셀렉터(useUsersByIds 별도 조회) + debounce 검색 포함.
  * - 삭제: 확인 UI → useDeleteIssue → 목록으로 navigate.
+ * - `variant='pane'`(FR-UX-06 PR20)이면 fullscreen navigate 대신 `onClose`/`onIssueRedirect`/
+ *   `onIssueClosed` 콜백에 위임한다 — {@link IssueDetailPageProps} 참조.
  *
  * 라우터 의존 없이 props로 issueKey를 받아 단위 테스트가 가능하다.
  */
-export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element {
+export function IssueDetailPage({
+  issueKey,
+  variant = 'page',
+  onClose,
+  onIssueRedirect,
+  onIssueClosed,
+}: IssueDetailPageProps): JSX.Element {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [isEditingTitle, setIsEditingTitle] = useState(false)
@@ -110,20 +132,28 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   /** 현재 DONE 전이 대기 중인 전이 항목. null이면 모달 닫힘. */
   const [pendingDoneTransition, setPendingDoneTransition] = useState<IssueTransition | null>(null)
 
+  // ── pane 전용 — 헤더 닫기/Escape/마운트 포커스 (FR-UX-06 PR20 Task 1) ───────
+  const paneTitleRef = useRef<HTMLHeadingElement>(null)
+  const hasFocusedPaneRef = useRef(false)
+
   const { data: issue, isLoading, error } = useQuery({
     queryKey: issueQueryKey(issueKey),
     queryFn: async () => {
       try {
         return await fetchIssue(issueKey)
       } catch (err: unknown) {
-        // 308 옛 키 redirect — 새 키 라우트로 교체 이동
+        // 308 옛 키 redirect — pane이면 콜백 위임, 아니면 새 키 라우트로 교체 이동
         if (err instanceof IssueRedirectError) {
-          void navigate({
-            to: '/issues/$key' as string,
-            params: { key: err.newKey },
-            replace: true,
-          })
-          // navigate 후 query를 pending 상태로 유지하기 위해 re-throw
+          if (variant === 'pane' && onIssueRedirect !== undefined) {
+            onIssueRedirect(err.newKey)
+          } else {
+            void navigate({
+              to: '/issues/$key' as string,
+              params: { key: err.newKey },
+              replace: true,
+            })
+          }
+          // navigate/콜백 이후에도 query를 pending 상태로 유지하기 위해 re-throw
           // (undefined를 반환하면 이슈 없음 UI가 잠깐 렌더될 수 있다)
           throw err
         }
@@ -132,6 +162,27 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
     },
     retry: false,
   })
+
+  // 페인 마운트 시 상세 영역(제목)으로 포커스 이동 — 이슈 데이터 로드 완료 후 1회만.
+  // 이후 메타필드 mutation으로 issue가 갱신돼도 재포커스로 사용자 입력을 방해하지 않는다.
+  useEffect(() => {
+    if (variant !== 'pane' || issue === undefined) return
+    if (hasFocusedPaneRef.current) return
+    hasFocusedPaneRef.current = true
+    paneTitleRef.current?.focus({ preventScroll: true })
+  }, [variant, issue])
+
+  // 페인에서 Escape 키 입력 시 닫기
+  useEffect(() => {
+    if (variant !== 'pane') return
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        onClose?.()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [variant, onClose])
 
   // 권한 조회 — fail-closed: 로딩 중·에러·미확정이면 false(비활성)
   const {
@@ -230,8 +281,13 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
   const updateMutation = useUpdateIssueSummary()
   const deleteMutation = useDeleteIssue({
     onSuccess: () => {
-      // '/issues' 경로는 router.ts 등록 완료 시 타입 추론됨 — 현재 string cast로 우회
-      void navigate({ to: '/issues' as string })
+      // pane이면 콜백 위임, 아니면 fullscreen navigate — '/issues' 경로는 router.ts 등록
+      // 완료 시 타입 추론됨 — 현재 string cast로 우회
+      if (variant === 'pane' && onIssueClosed !== undefined) {
+        onIssueClosed()
+      } else {
+        void navigate({ to: '/issues' as string })
+      }
     },
   })
 
@@ -572,6 +628,18 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
             <FileDown className="size-4 mr-1.5" aria-hidden="true" />
             {issueDetailStrings.pdfDownloadButton}
           </Button>
+          {/* pane 전용 닫기 버튼 — split view 우측 페인 (FR-UX-06 PR20 Task 1) */}
+          {variant === 'pane' && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="닫기"
+              onClick={() => onClose?.()}
+            >
+              <X className="size-4" aria-hidden="true" />
+            </Button>
+          )}
         </div>
       </div>
 
@@ -610,7 +678,14 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
             </div>
           ) : (
             <>
-              <h1 className="text-2xl font-semibold leading-snug mb-1">{issue.summary}</h1>
+              {/* pane이면 h2로 강등 — 문서 h1 단일 계약 (FR-UX-06 PR20 Task 1) */}
+              {variant === 'pane' ? (
+                <h2 ref={paneTitleRef} tabIndex={-1} className="text-2xl font-semibold leading-snug mb-1">
+                  {issue.summary}
+                </h2>
+              ) : (
+                <h1 className="text-2xl font-semibold leading-snug mb-1">{issue.summary}</h1>
+              )}
               <button
                 type="button"
                 onClick={handleEditStart}
