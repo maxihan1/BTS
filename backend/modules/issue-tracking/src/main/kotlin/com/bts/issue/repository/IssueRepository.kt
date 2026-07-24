@@ -1027,24 +1027,17 @@ class IssueRepository(
     /**
      * [Pageable.sort] 를 [listWithType] ORDER BY 필드 목록으로 변환한다 (FR-UX-06 Phase 5 PR18 Task 1).
      *
-     * 허용목록 외 필드가 요청되면 예외를 던지지 않고 기본 정렬(`created_at DESC`)로 대체한다.
+     * 허용 필드는 [SORTABLE_COLUMNS] 화이트리스트로 제한한다. 허용목록 외 필드가 요청되면
+     * 예외를 던지지 않고 기본 정렬(`created_at DESC`)로 대체한다.
      * 정렬을 지정하지 않은 경우(`Sort.isUnsorted`)에도 동일하게 기본 정렬을 반환한다(무회귀).
      *
      * @param sort 클라이언트 요청 정렬 기준(`Pageable.sort`).
      * @return jOOQ ORDER BY 필드 목록. 허용 필드가 하나도 없으면 fallback 1건을 반환한다.
      */
     private fun buildListOrderBy(sort: org.springframework.data.domain.Sort): List<org.jooq.SortField<*>> {
-        val allowed: Map<String, org.jooq.Field<*>> =
-            mapOf(
-                "key" to ISSUES.KEY,
-                "summary" to ISSUES.SUMMARY,
-                "priority" to ISSUES.PRIORITY,
-                "createdAt" to ISSUES.CREATED_AT,
-                "updatedAt" to ISSUES.UPDATED_AT,
-            )
         val orders =
             sort.mapNotNull { order ->
-                val field = allowed[order.property] ?: return@mapNotNull null
+                val field = SORTABLE_COLUMNS[order.property] ?: return@mapNotNull null
                 if (order.isAscending) field.asc() else field.desc()
             }
         return orders.ifEmpty { listOf(ISSUES.CREATED_AT.desc()) }
@@ -1215,6 +1208,31 @@ class IssueRepository(
                 staticLevelIds = emptySet(),
                 reporterLevelIds = emptySet(),
                 assigneeLevelIds = emptySet(),
+            )
+
+        /**
+         * [listWithType] 정렬(`Pageable.sort`) 허용목록 — FR-UX-06 Phase 5 PR18 Task 1.
+         *
+         * 프론트가 보낼 수 있는 정렬 토큰 5종만 허용한다 (정렬 필드 계약 — 백엔드/프론트 공유 토큰).
+         * 화이트리스트 방식으로 [Map] 조회만 사용하고 SQL 문자열 결합은 하지 않는다 — 임의 컬럼명
+         * 주입을 원천 차단한다. 허용목록 외 필드는 [buildListOrderBy] 가 예외 없이 기본 정렬
+         * (`created_at DESC`)로 대체한다.
+         *
+         * `status` (워크플로우 상태) 는 의도적으로 제외한다 — 상태는 워크플로우 순서 개념이라
+         * `current_state_key` 값 사전순 정렬이 사용자에게 의미 있는 순서를 주지 않는다.
+         *
+         * `key` 는 포함하되 문자열(사전식) 정렬이라는 점에 주의한다 — 예: `"TPRJ-10"` 이
+         * `"TPRJ-2"` 보다 사전순으로 앞에 온다(숫자순이 아님). 기본 정렬은 `createdAt` 이고
+         * 실사용에서 `key` 정렬 요청 빈도는 낮을 것으로 예상되어, 별도 숫자 시퀀스 컬럼을
+         * 신설하지 않고 이 한계를 KDoc 으로 명시하는 선에서 허용한다.
+         */
+        private val SORTABLE_COLUMNS: Map<String, org.jooq.Field<*>> =
+            mapOf(
+                "key" to ISSUES.KEY,
+                "summary" to ISSUES.SUMMARY,
+                "priority" to ISSUES.PRIORITY,
+                "createdAt" to ISSUES.CREATED_AT,
+                "updatedAt" to ISSUES.UPDATED_AT,
             )
 
         // ── findByKeyWithType self LEFT JOIN alias 상수 ─────────────────────────
