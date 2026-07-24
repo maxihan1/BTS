@@ -192,6 +192,16 @@
 - ★load-bearing 가드: T1 무지정 정렬 무회귀(mutation 필수)·T4 e2e 셀렉터 verbatim 보존
 - BC 격리: 백엔드 변경은 issue-tracking 같은 BC 뷰 계층(sort)만·다른 BC 무접촉
 
+## 디자인 결정 (plan-design-review, 2026-07-24)
+
+design spec이 방향(색·hover·상태·overflow)을 잠갔으므로 목업 대신 텍스트 리뷰로 갭 5개 보강(Maxi 결정). impl(T4·T5)이 준수.
+
+- **GAP-1 정렬 헤더 어포던스** (T4) — 정렬 가능 컬럼(`key·summary·priority·createdAt·updatedAt`)의 `<TableHead>`는 `<button>` 래핑·`cursor-pointer`·hover 시 `--bg-neutral-hover` 배경·`aria-sort`. 활성 정렬 컬럼은 방향 아이콘(▲asc/▼desc) 상시 표시, 비활성 정렬가능 컬럼은 hover 시 옅은 힌트 아이콘. 비정렬 컬럼(체크박스·담당자·라벨)은 일반 `<th>`.
+- **GAP-2 컬럼 선택 배치** (T4) — 테이블 상단 툴바 우측에 트리거 = 아이콘(lucide `SlidersHorizontal`/`Columns3`) + "컬럼" 라벨, `ui/dropdown-menu`(또는 popover) + 체크박스 목록. 필수 컬럼은 disabled 체크박스(항상 표시).
+- **GAP-3 상태 프리미티브 (결정)** — PR18은 **기존 인라인 상태 컴포넌트 보존**(FilteredEmptyState·IssueEmptyState·로딩·에러). `empty-state`/`skeleton` 프리미티브 통합은 **PR22 스코프(중복 제거)로 유지**. 사유 — PR18 스코프 최소화 + design spec도 프리미티브 통합을 PR22 debt로 명시(§250·256). 예외 = GAP-5 신규 로딩 피드백은 `skeleton` 프리미티브 사용(신규라 인라인 중복 미생성).
+- **GAP-4 컬럼 폭·시각 위계** (T4) — 키(`font-mono`·좁은 고정폭·`--text-subtle`)·요약(flex-1·**시각 주역**·강조·truncate)·상태(고정·배지)·담당자(고정·아바타+이름)·우선순위(고정)·수정일(고정·`--text-subtle`). 요약이 주역, 나머지 보조.
+- **GAP-5 정렬/페이지 전환 피드백** (T5) — 재조회(isFetching·데이터 존재) 동안 표 본문 `opacity-60 pointer-events-none`(레이아웃 시프트 방지)·첫 로딩(데이터 없음)은 `skeleton` 행. 정렬/페이지 클릭 후 즉시 피드백.
+
 ## 리뷰 결과
 
 ### 엔지니어링 self-review (2026-07-24, plan-design-review 축소 — 디자인은 design spec 잠금)
@@ -211,3 +221,21 @@
 - W2 **key 정렬 사전순 함정** — 이슈 키(`PROJ-1`·`PROJ-10`·`PROJ-2`) 문자열 정렬은 숫자순과 불일치. impl에서 (a) key를 정렬 허용목록에서 제외하거나 (b) 시퀀스 숫자 컬럼으로 정렬. 기본 정렬은 created_at이라 실사용 영향 작음. T1 impl 시 결정.
 
 **BLOCKER: 없음.**
+
+### plan-design-review (2026-07-24, 텍스트 리뷰·목업 스킵 — 디자인 방향 design spec 잠금)
+
+- 완성도 초기 7/10 → 갭 5건 보강 후 목표 10/10.
+- 갭 5건 모두 `## 디자인 결정` 섹션에 반영(GAP-1 정렬 어포던스·GAP-2 컬럼 셀렉터 배치·GAP-3 상태 프리미티브 결정·GAP-4 컬럼 위계·GAP-5 전환 피드백).
+- 상태 커버리지(빈/로딩/에러)·a11y(aria-sort·h1 단일·셀렉터 보존)·반응형(overflow-x)·AI slop 위험 낮음(관례적 테이블) 확인.
+- BLOCKER: 없음.
+
+## GSTACK REVIEW REPORT
+
+| Runs | Status | Findings |
+|---|---|---|
+| 엔지니어링 self-review | ✅ PASS | 주의 2 (테이블 a11y 이름·key 사전순 정렬), BLOCKER 0 |
+| plan-design-review (텍스트) | ✅ PASS | 갭 5 보강 완료, BLOCKER 0 |
+
+**VERDICT**: 계획 승인 가능. 디자인 갭 5건 계획 반영 완료, 엔지니어링 위험(정렬 보안·무회귀·e2e 셀렉터) 안전장치 명시. CODEX/CROSS-MODEL outside voices 미실행(Maxi 미요청·디자인 잠금).
+
+NO UNRESOLVED DECISIONS
