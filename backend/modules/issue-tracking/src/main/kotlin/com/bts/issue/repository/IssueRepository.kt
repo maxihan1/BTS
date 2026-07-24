@@ -646,7 +646,7 @@ class IssueRepository(
                 .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
                 .join(ISSUE_TYPES).on(ISSUES.TYPE_ID.eq(ISSUE_TYPES.ID))
                 .where(effectiveWhere)
-                .orderBy(ISSUES.CREATED_AT.desc())
+                .orderBy(buildListOrderBy(pageable.sort))
                 .limit(pageable.pageSize)
                 .offset(pageable.offset)
                 .fetch { record -> record.toIssueResponseWithType(projectKey) }
@@ -1023,6 +1023,32 @@ class IssueRepository(
                             ?: error("issue_types.name must not be null in type join result"),
                 ),
         )
+
+    /**
+     * [Pageable.sort] 를 [listWithType] ORDER BY 필드 목록으로 변환한다 (FR-UX-06 Phase 5 PR18 Task 1).
+     *
+     * 허용목록 외 필드가 요청되면 예외를 던지지 않고 기본 정렬(`created_at DESC`)로 대체한다.
+     * 정렬을 지정하지 않은 경우(`Sort.isUnsorted`)에도 동일하게 기본 정렬을 반환한다(무회귀).
+     *
+     * @param sort 클라이언트 요청 정렬 기준(`Pageable.sort`).
+     * @return jOOQ ORDER BY 필드 목록. 허용 필드가 하나도 없으면 fallback 1건을 반환한다.
+     */
+    private fun buildListOrderBy(sort: org.springframework.data.domain.Sort): List<org.jooq.SortField<*>> {
+        val allowed: Map<String, org.jooq.Field<*>> =
+            mapOf(
+                "key" to ISSUES.KEY,
+                "summary" to ISSUES.SUMMARY,
+                "priority" to ISSUES.PRIORITY,
+                "createdAt" to ISSUES.CREATED_AT,
+                "updatedAt" to ISSUES.UPDATED_AT,
+            )
+        val orders =
+            sort.mapNotNull { order ->
+                val field = allowed[order.property] ?: return@mapNotNull null
+                if (order.isAscending) field.asc() else field.desc()
+            }
+        return orders.ifEmpty { listOf(ISSUES.CREATED_AT.desc()) }
+    }
 
     /**
      * [BoardCardFilter] 를 SQL WHERE 술어 [Condition] 으로 변환한다.
