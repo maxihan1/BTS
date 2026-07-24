@@ -10,8 +10,12 @@ import { LinkGraph } from '@/components/issue/LinkGraph'
 import { IssueChangelog } from '@/components/issue/IssueChangelog'
 import { issueDetailStrings } from '@/i18n/ko'
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 상수 — 활동 탭 value (매직스트링 금지, DEVELOPMENT.md §2.3)
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * 활동 탭 value 상수 — 매직스트링 금지(DEVELOPMENT.md §2.3).
+ * 활동 탭 value 상수.
  * TabsList 렌더 순서(작업로그 → 연결 → 이력)와 일치한다.
  */
 export const ACTIVITY_TABS = {
@@ -22,6 +26,10 @@ export const ACTIVITY_TABS = {
 
 /** ACTIVITY_TABS 값 유니온 타입 */
 export type ActivityTabValue = (typeof ACTIVITY_TABS)[keyof typeof ACTIVITY_TABS]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Props
+// ─────────────────────────────────────────────────────────────────────────────
 
 /** IssueActivityTabs props */
 export interface IssueActivityTabsProps {
@@ -34,6 +42,10 @@ export interface IssueActivityTabsProps {
   /** 변경 이력 값 표시명 해석용 참조 데이터 (이력 탭 — route가 수집해 주입) */
   changelogRefs: ChangelogRefs
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 메인 컴포넌트 — IssueActivityTabs
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * 이슈 상세 활동 영역(작업로그/연결/이력)을 Radix Tabs 3탭으로 접는 컨테이너.

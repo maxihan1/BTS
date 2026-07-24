@@ -72,20 +72,19 @@ function renderTabs(issueOverrides: Partial<typeof issueAtlas1Fixture> = {}) {
   )
 }
 
+/** 탭 트리거를 접근성 이름(한글 라벨)으로 조회한다 — 반복되는 getByRole 호출 축약 */
+function getTab(name: string) {
+  return screen.getByRole('tab', { name })
+}
+
 describe('IssueActivityTabs — 활동 3탭 Radix Tabs 배선 (Task 1)', () => {
   it('(a) role="tablist"와 탭 3개(작업로그/연결/이력)를 렌더한다', () => {
     renderTabs()
 
     expect(screen.getByRole('tablist')).toBeInTheDocument()
-    expect(
-      screen.getByRole('tab', { name: issueDetailStrings.activityWorklogTabLabel }),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('tab', { name: issueDetailStrings.activityLinksTabLabel }),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('tab', { name: issueDetailStrings.activityHistoryTabLabel }),
-    ).toBeInTheDocument()
+    expect(getTab(issueDetailStrings.activityWorklogTabLabel)).toBeInTheDocument()
+    expect(getTab(issueDetailStrings.activityLinksTabLabel)).toBeInTheDocument()
+    expect(getTab(issueDetailStrings.activityHistoryTabLabel)).toBeInTheDocument()
   })
 
   it('(b) 기본 활성 탭은 이력이다 — IssueChangelog만 초기 렌더되고 작업로그/연결은 미마운트', () => {
@@ -100,9 +99,7 @@ describe('IssueActivityTabs — 활동 3탭 Radix Tabs 배선 (Task 1)', () => {
     const user = userEvent.setup()
     renderTabs()
 
-    await user.click(
-      screen.getByRole('tab', { name: issueDetailStrings.activityWorklogTabLabel }),
-    )
+    await user.click(getTab(issueDetailStrings.activityWorklogTabLabel))
 
     expect(screen.getByTestId('mock-worklog')).toBeInTheDocument()
     expect(screen.queryByTestId('mock-changelog')).not.toBeInTheDocument()
@@ -112,9 +109,7 @@ describe('IssueActivityTabs — 활동 3탭 Radix Tabs 배선 (Task 1)', () => {
     const user = userEvent.setup()
     renderTabs()
 
-    await user.click(
-      screen.getByRole('tab', { name: issueDetailStrings.activityLinksTabLabel }),
-    )
+    await user.click(getTab(issueDetailStrings.activityLinksTabLabel))
 
     expect(screen.getByTestId('mock-links')).toBeInTheDocument()
     expect(screen.getByTestId('mock-link-graph')).toBeInTheDocument()
@@ -124,9 +119,7 @@ describe('IssueActivityTabs — 활동 3탭 Radix Tabs 배선 (Task 1)', () => {
     const user = userEvent.setup()
     renderTabs({ typeKey: 'story' })
 
-    await user.click(
-      screen.getByRole('tab', { name: issueDetailStrings.activityLinksTabLabel }),
-    )
+    await user.click(getTab(issueDetailStrings.activityLinksTabLabel))
 
     expect(screen.queryByTestId('mock-epic-children')).not.toBeInTheDocument()
   })
@@ -135,9 +128,7 @@ describe('IssueActivityTabs — 활동 3탭 Radix Tabs 배선 (Task 1)', () => {
     const user = userEvent.setup()
     renderTabs({ typeKey: 'epic' })
 
-    await user.click(
-      screen.getByRole('tab', { name: issueDetailStrings.activityLinksTabLabel }),
-    )
+    await user.click(getTab(issueDetailStrings.activityLinksTabLabel))
 
     expect(screen.getByTestId('mock-epic-children')).toBeInTheDocument()
   })
