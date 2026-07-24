@@ -44,6 +44,11 @@ export interface IssueTableProps {
   onNavigate: (key: string) => void
   /** assigneeId → 표시 이름 맵(FilterBar.tsx assigneeNameMap 관례와 동일) */
   assigneeNameMap: Map<string, string>
+  /**
+   * 우측 상세 페인(split view)에 현재 열려 있는 이슈 키 — bulk `selection`(체크박스)과는
+   * 완전히 독립된 별개 강조다. undefined/null이면 어떤 행도 강조하지 않는다.
+   */
+  selectedKey?: string | null
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -154,6 +159,8 @@ interface IssueTableDataRowProps {
   onNavigate: (key: string) => void
   assigneeNameMap: Map<string, string>
   formatDate: (iso: string | null) => string
+  /** split view 현재 선택 이슈 키(IssueTableProps.selectedKey 그대로 전파) */
+  selectedKey?: string | null
 }
 
 /**
@@ -165,6 +172,12 @@ interface IssueTableDataRowProps {
  *
  * 행(tr) 클릭 → onNavigate. 체크박스 클릭은 onClick에서 stopPropagation해
  * 행 이동으로 이어지지 않게 한다(onChange의 토글 로직은 그대로 동작).
+ *
+ * split 선택(`selectedKey` — 우측 상세 페인에 현재 열린 행)은 bulk 선택
+ * (`selection` — 일괄 작업용 체크박스)과 완전히 별개다. `isCurrent`가 true면
+ * `aria-current="true"` + `data-state="selected"`로 강조하며, 후자는 ui/table의
+ * `TableRow`에 이미 정의된 `data-[state=selected]:bg-(--bg-selected)` 관례를
+ * 그대로 재사용한다(하드코딩 색 없음). 체크박스 선택 여부와 무관하게 동시 적용될 수 있다.
  */
 function IssueTableDataRow({
   issue,
@@ -173,11 +186,18 @@ function IssueTableDataRow({
   onNavigate,
   assigneeNameMap,
   formatDate,
+  selectedKey,
 }: IssueTableDataRowProps): JSX.Element {
   const handleRowNavigate = (): void => onNavigate(issue.key)
+  const isCurrent = selectedKey != null && issue.key === selectedKey
 
   return (
-    <TableRow onClick={handleRowNavigate} className="cursor-pointer">
+    <TableRow
+      onClick={handleRowNavigate}
+      className="cursor-pointer"
+      data-state={isCurrent ? 'selected' : undefined}
+      aria-current={isCurrent ? 'true' : undefined}
+    >
       <TableCell className="w-10">
         <input
           type="checkbox"
@@ -218,6 +238,8 @@ function IssueTableDataRow({
  *   동일 계약을 유지해 기존 일괄 작업 e2e(issue-bulk-operations.spec.ts)를 보호한다.
  * - 표시 컬럼 필터링(`visibleColumnKeys`)은 required 컬럼을 무조건 포함시켜
  *   숨김 불가 계약(GAP-2)을 강제한다.
+ * - `selectedKey`(split view 현재 상세 행 강조)는 `selection`(bulk 체크박스)과 별개다.
+ *   자세한 계약은 {@link IssueTableDataRow} 참고.
  */
 export function IssueTable({
   issues,
@@ -227,6 +249,7 @@ export function IssueTable({
   selection,
   onNavigate,
   assigneeNameMap,
+  selectedKey,
 }: IssueTableProps): JSX.Element {
   const { formatDate } = useDateFormat()
   const visibleSet = new Set(visibleColumnKeys)
@@ -253,6 +276,7 @@ export function IssueTable({
             onNavigate={onNavigate}
             assigneeNameMap={assigneeNameMap}
             formatDate={formatDate}
+            selectedKey={selectedKey}
           />
         ))}
       </TableBody>
