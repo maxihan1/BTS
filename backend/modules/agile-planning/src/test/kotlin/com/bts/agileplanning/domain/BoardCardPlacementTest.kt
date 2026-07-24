@@ -34,6 +34,7 @@ class BoardCardPlacementTest {
         currentStateKey: String,
         priority: Int = 3,
         summary: String = "summary-$key",
+        rank: String? = null,
     ) = BoardIssueView(
         key = key,
         summary = summary,
@@ -41,6 +42,7 @@ class BoardCardPlacementTest {
         assigneeId = null,
         priority = priority,
         version = 1L,
+        rank = rank,
     )
 
     private fun column(
@@ -285,6 +287,106 @@ class BoardCardPlacementTest {
 
             val keys = result.columns.single().cards.map { it.key }
             assertThat(keys).containsExactly("PROJ-HIGH", "PROJ-LOW")
+        }
+
+        @Test
+        fun `rank가 있는 카드는 priority와 무관하게 rank 오름차순으로 정렬된다`() {
+            val openColumn = column("open")
+            // priority 만 보면 PROJ-LOW 가 먼저와야 하지만, rank 가 우선한다.
+            val issues =
+                listOf(
+                    issueView("PROJ-LOW", "open", priority = 1, rank = "c"),
+                    issueView("PROJ-MID", "open", priority = 2, rank = "b"),
+                    issueView("PROJ-HIGH", "open", priority = 3, rank = "a"),
+                )
+
+            val result =
+                BoardCardPlacement.placeCards(
+                    columns = listOf(openColumn),
+                    issues = issues,
+                )
+
+            val keys = result.columns.single().cards.map { it.key }
+            assertThat(keys).containsExactly("PROJ-HIGH", "PROJ-MID", "PROJ-LOW")
+        }
+
+        @Test
+        fun `rank가 없는 카드는 rank가 있는 카드보다 뒤에 정렬된다 (NULLS LAST)`() {
+            val openColumn = column("open")
+            // priority 만 보면 PROJ-NO-RANK 가 먼저와야 하지만, rank 있는 카드가 우선한다.
+            val issues =
+                listOf(
+                    issueView("PROJ-NO-RANK", "open", priority = 1, rank = null),
+                    issueView("PROJ-RANKED", "open", priority = 9, rank = "a"),
+                )
+
+            val result =
+                BoardCardPlacement.placeCards(
+                    columns = listOf(openColumn),
+                    issues = issues,
+                )
+
+            val keys = result.columns.single().cards.map { it.key }
+            assertThat(keys).containsExactly("PROJ-RANKED", "PROJ-NO-RANK")
+        }
+
+        @Test
+        fun `rank가 동일하면 priority 오름차순으로 tiebreak 한다`() {
+            val openColumn = column("open")
+            val issues =
+                listOf(
+                    issueView("PROJ-LOW", "open", priority = 3, rank = "same"),
+                    issueView("PROJ-HIGH", "open", priority = 1, rank = "same"),
+                )
+
+            val result =
+                BoardCardPlacement.placeCards(
+                    columns = listOf(openColumn),
+                    issues = issues,
+                )
+
+            val keys = result.columns.single().cards.map { it.key }
+            assertThat(keys).containsExactly("PROJ-HIGH", "PROJ-LOW")
+        }
+
+        @Test
+        fun `rank와 priority가 모두 동일하면 issueKey 오름차순으로 tiebreak 한다`() {
+            val openColumn = column("open")
+            val issues =
+                listOf(
+                    issueView("PROJ-3", "open", priority = 2, rank = "same"),
+                    issueView("PROJ-1", "open", priority = 2, rank = "same"),
+                    issueView("PROJ-2", "open", priority = 2, rank = "same"),
+                )
+
+            val result =
+                BoardCardPlacement.placeCards(
+                    columns = listOf(openColumn),
+                    issues = issues,
+                )
+
+            val keys = result.columns.single().cards.map { it.key }
+            assertThat(keys).containsExactly("PROJ-1", "PROJ-2", "PROJ-3")
+        }
+
+        @Test
+        fun `rank가 전부 null이면 기존과 동일하게 priority ASC 다음 issueKey ASC로 정렬된다 (무회귀)`() {
+            val openColumn = column("open")
+            val issues =
+                listOf(
+                    issueView("PROJ-3", "open", priority = 3, rank = null),
+                    issueView("PROJ-1", "open", priority = 1, rank = null),
+                    issueView("PROJ-2", "open", priority = 2, rank = null),
+                )
+
+            val result =
+                BoardCardPlacement.placeCards(
+                    columns = listOf(openColumn),
+                    issues = issues,
+                )
+
+            val keys = result.columns.single().cards.map { it.key }
+            assertThat(keys).containsExactly("PROJ-1", "PROJ-2", "PROJ-3")
         }
     }
 }
