@@ -152,6 +152,22 @@ function IssueTableHeaderRow({
 // 데이터 행 — 선택 체크박스 + 컬럼 셀
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * split view "현재 행" 강조에 쓸 `<TableRow>` 속성.
+ *
+ * ★split 선택(`selectedKey`) ≠ bulk 선택(`selection`) — 이 둘은 완전히 독립된
+ * 개념이다. bulk 선택은 일괄 작업(체크박스)용이고, 여기서 다루는 강조는 우측
+ * 상세 페인에 현재 열려 있는 단일 행을 표시하기 위한 것이다.
+ *
+ * `data-state="selected"`는 새 클래스를 만들지 않고 ui/table의 `TableRow`에 이미
+ * 정의된 `data-[state=selected]:bg-(--bg-selected)` 관례를 재사용한다(하드코딩
+ * 색상 없음, 사이드바 활성 항목과 동일 토큰).
+ */
+function getCurrentRowAttrs(isCurrent: boolean): { 'data-state'?: 'selected'; 'aria-current'?: 'true' } {
+  if (!isCurrent) return {}
+  return { 'data-state': 'selected', 'aria-current': 'true' }
+}
+
 interface IssueTableDataRowProps {
   issue: IssueResponse
   columns: readonly IssueColumnDef[]
@@ -173,11 +189,9 @@ interface IssueTableDataRowProps {
  * 행(tr) 클릭 → onNavigate. 체크박스 클릭은 onClick에서 stopPropagation해
  * 행 이동으로 이어지지 않게 한다(onChange의 토글 로직은 그대로 동작).
  *
- * split 선택(`selectedKey` — 우측 상세 페인에 현재 열린 행)은 bulk 선택
- * (`selection` — 일괄 작업용 체크박스)과 완전히 별개다. `isCurrent`가 true면
- * `aria-current="true"` + `data-state="selected"`로 강조하며, 후자는 ui/table의
- * `TableRow`에 이미 정의된 `data-[state=selected]:bg-(--bg-selected)` 관례를
- * 그대로 재사용한다(하드코딩 색 없음). 체크박스 선택 여부와 무관하게 동시 적용될 수 있다.
+ * ★split 선택(`selectedKey` — 우측 상세 페인에 현재 열린 행)은 bulk 선택
+ * (`selection` — 일괄 작업용 체크박스)과 완전히 별개다. 강조 속성 계산은
+ * {@link getCurrentRowAttrs} 참고 — 체크박스 선택 여부와 무관하게 동시 적용될 수 있다.
  */
 function IssueTableDataRow({
   issue,
@@ -192,12 +206,7 @@ function IssueTableDataRow({
   const isCurrent = selectedKey != null && issue.key === selectedKey
 
   return (
-    <TableRow
-      onClick={handleRowNavigate}
-      className="cursor-pointer"
-      data-state={isCurrent ? 'selected' : undefined}
-      aria-current={isCurrent ? 'true' : undefined}
-    >
+    <TableRow onClick={handleRowNavigate} className="cursor-pointer" {...getCurrentRowAttrs(isCurrent)}>
       <TableCell className="w-10">
         <input
           type="checkbox"
