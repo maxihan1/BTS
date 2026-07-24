@@ -62,6 +62,9 @@ async function navigateToIssueDetail(
   }, issueUrl)
   // 추정 패널이 마운트되면 이슈 상세 페이지가 렌더된 것으로 간주
   await expect(page.getByTestId('estimate-fields')).toBeVisible()
+  // FR-UX-06 PR19 — WorklogSection은 "작업로그" 탭 안에 lazy 마운트됨(기본 활성 탭은 "이력").
+  // 워크로그 콘텐츠 접근 전 탭 전환 필요.
+  await page.getByRole('tab', { name: '작업로그', exact: true }).click()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

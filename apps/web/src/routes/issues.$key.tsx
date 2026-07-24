@@ -26,17 +26,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { downloadIssuePdf } from '@/api/issues'
 import { triggerBlobDownload } from '@/lib/download'
-import { IssueChangelog } from '@/components/issue/IssueChangelog'
-import { IssueLinksPanel } from '@/components/issue/IssueLinksPanel'
-import { EpicChildrenSection } from '@/components/issue/EpicChildrenSection'
-import { LinkGraph } from '@/components/issue/LinkGraph'
 import { IssueDescription } from '@/components/issue/IssueDescription'
 import { AttachmentSection } from '@/components/issue/AttachmentSection'
 import { IssueMetaPanel } from '@/components/issue/IssueMetaPanel'
 import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
 import { IssueScheduleFields } from '@/components/issue/IssueScheduleFields'
 import { IssueEstimatePanel } from '@/components/issue/IssueEstimatePanel'
-import { WorklogSection } from '@/components/issue/WorklogSection'
+import { IssueActivityTabs } from '@/components/issue/IssueActivityTabs'
 import { ResolutionModal } from '@/components/issue/ResolutionModal'
 import { CloneIssueDialog } from '@/components/issues/CloneIssueDialog'
 import { MoveIssueDialog } from '@/components/issues/MoveIssueDialog'
@@ -580,7 +576,7 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
       </div>
 
       {/* 2-컬럼 그리드 — 좌 본문 / 우 메타패널 */}
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_280px] lg:items-start">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_340px] lg:items-start">
         {/* 좌측 본문 */}
         <section aria-label="이슈 상세">
           {/* 제목 영역 */}
@@ -716,30 +712,12 @@ export function IssueDetailPage({ issueKey }: IssueDetailPageProps): JSX.Element
         )}
       </div>
 
-      {/* 작업 기록 섹션 — 2단 grid 바깥 전체폭 (FR-TT-01 D6) */}
-      <WorklogSection issueKey={issue.key} canUpdate={canEdit} />
-
-      {/* 이슈 링크 패널 — 2단 grid 바깥 전체폭, 변경 이력 상단 (FR-LK-01 D6 / FR-EP-01 D6) */}
-      <IssueLinksPanel
+      {/* 활동 영역(작업로그/연결/이력) — Radix Tabs 3탭, 2단 grid 바깥 전체폭 (FR-UX-06 PR19 Task 1) */}
+      <IssueActivityTabs
         issueKey={issue.key}
-        parent={issue.parent ?? null}
-        epic={issue.epic ?? null}
-        showEpicSection={issue.typeKey !== 'epic' && issue.typeKey !== 'subtask'}
-        disabled={!canEdit}
-      />
-
-      {/* 에픽 자식 이슈 섹션 — 에픽 타입(typeKey='epic')일 때만 렌더 (FR-EP-01 D6) */}
-      {issue.typeKey === 'epic' && (
-        <EpicChildrenSection epicKey={issue.key} disabled={!canEdit} />
-      )}
-
-      {/* 링크 그래프 섹션 — 2단 grid 바깥 전체폭 (FR-LK-02 D6) */}
-      <LinkGraph issueKey={issue.key} />
-
-      {/* 변경 이력 섹션 — 2단 grid 바깥 전체폭 (FR-HS-02 Task F5) */}
-      <IssueChangelog
-        issueKey={issue.key}
-        refs={{
+        canUpdate={canEdit}
+        issue={issue}
+        changelogRefs={{
           types: availableTypes,
           components: projectComponents,
           versions: projectVersions,

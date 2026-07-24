@@ -76,6 +76,9 @@ async function navigateToIssueDetail(
     window.history.pushState({}, '', url)
     window.dispatchEvent(new PopStateEvent('popstate'))
   }, issueUrl)
+  // FR-UX-06 PR19 — IssueLinksPanel은 "연결" 탭 안에 lazy 마운트됨(기본 활성 탭은 "이력").
+  // 링크 패널 접근 전 탭 전환 필요.
+  await page.getByRole('tab', { name: '연결', exact: true }).click()
   await expect(page.getByTestId(LINKS_SECTION_TESTID)).toBeVisible()
 }
 

@@ -349,6 +349,14 @@ export const issueDetailStrings = {
   scheduleSaveAriaLabel: '일정 저장',
   /** 일정 저장 실패 에러 메시지 */
   scheduleSaveError: '일정 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+
+  // ── 활동 탭(activity tabs) — FR-UX-06 PR19 Task 1 ───────────────────────
+  /** 활동 영역 — 작업로그 탭 라벨 */
+  activityWorklogTabLabel: '작업로그',
+  /** 활동 영역 — 연결 탭 라벨 */
+  activityLinksTabLabel: '연결',
+  /** 활동 영역 — 이력 탭 라벨 (기본 활성 탭, D1) */
+  activityHistoryTabLabel: '이력',
 } as const
 
 /** 2단계 인증(TOTP) 설정 및 로그인 2단계 UI 문자열 */

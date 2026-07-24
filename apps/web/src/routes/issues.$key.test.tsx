@@ -1612,11 +1612,15 @@ describe('IssueDetailPage — Task 5 FR-LK-02 (LinkGraph 섹션 통합)', () => 
    * RED 조건: LinkGraph가 routes 파일에 배선되지 않아 버튼이 없음.
    */
   it('TLK02-1: LinkGraph 섹션 토글 버튼이 이슈 상세 페이지에 렌더된다', async () => {
+    const user = userEvent.setup()
     renderPage('ATLAS-1')
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
     )
+
+    // 탭화(FR-UX-06 PR19 Task 1) — LinkGraph는 "연결" 탭 안에서 lazy mount되므로 탭 활성화 선행
+    await user.click(screen.getByRole('tab', { name: issueDetailStrings.activityLinksTabLabel }))
 
     await waitFor(() => {
       expect(
@@ -1658,11 +1662,15 @@ describe('IssueDetailPage — Task 5 (IssueLinksPanel 통합)', () => {
    * RED 조건: IssueLinksPanel이 routes 파일에 배치되지 않아 두 섹션이 보이지 않음.
    */
   it('TLK5-1: IssueLinksPanel의 links-section과 parent-section이 렌더된다', async () => {
+    const user = userEvent.setup()
     renderPage('ATLAS-1')
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
     )
+
+    // 탭화(FR-UX-06 PR19 Task 1) — IssueLinksPanel은 "연결" 탭 안에서 lazy mount되므로 탭 활성화 선행
+    await user.click(screen.getByRole('tab', { name: issueDetailStrings.activityLinksTabLabel }))
 
     await waitFor(() => {
       // IssueLinksPanel 내부 두 섹션이 DOM에 존재해야 한다
@@ -1679,11 +1687,15 @@ describe('IssueDetailPage — Task 5 (IssueLinksPanel 통합)', () => {
    * RED 조건: 패널 미배치 → aria-label 없음.
    */
   it('TLK5-2: 패널의 대상 이슈 키 input(AddLinkForm)이 렌더된다', async () => {
+    const user = userEvent.setup()
     renderPage('ATLAS-1')
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
     )
+
+    // 탭화(FR-UX-06 PR19 Task 1) — IssueLinksPanel은 "연결" 탭 안에서 lazy mount되므로 탭 활성화 선행
+    await user.click(screen.getByRole('tab', { name: issueDetailStrings.activityLinksTabLabel }))
 
     await waitFor(() => {
       // AddLinkForm 내부 Input의 aria-label — issueLinkStrings.targetKeyLabel
@@ -1713,11 +1725,15 @@ describe('IssueDetailPage — Task 5 (IssueLinksPanel 통합)', () => {
       }),
     )
 
+    const user = userEvent.setup()
     renderPage('ATLAS-1')
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
     )
+
+    // 탭화(FR-UX-06 PR19 Task 1) — IssueLinksPanel은 "연결" 탭 안에서 lazy mount되므로 탭 활성화 선행
+    await user.click(screen.getByRole('tab', { name: issueDetailStrings.activityLinksTabLabel }))
 
     await waitFor(() => {
       const parentSection = screen.getByTestId('parent-section')
@@ -1879,11 +1895,15 @@ describe('IssueDetailPage — Task 7 (추정 카드 + WorklogSection 배선)', (
    * section[aria-label="작업 기록"]이 DOM에 존재해야 한다.
    */
   it('TTT7-3: WorklogSection(aria-label="작업 기록")이 페이지 하단에 렌더된다', async () => {
+    const user = userEvent.setup()
     renderPage('ATLAS-1')
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
     )
+
+    // 탭화(FR-UX-06 PR19 Task 1) — WorklogSection은 "작업로그" 탭 안에서 lazy mount되므로 탭 활성화 선행
+    await user.click(screen.getByRole('tab', { name: issueDetailStrings.activityWorklogTabLabel }))
 
     await waitFor(() => {
       expect(
