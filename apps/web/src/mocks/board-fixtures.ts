@@ -5,6 +5,14 @@ import type {
   BoardCreated,
 } from '@/api/boards'
 import type { QuickFilter } from '@/api/board-quick-filters'
+// FR-UX-06 PR21 Task 8 — 셀 내 순서변경(useReorderCard) E2E 지원.
+// PATCH /api/v1/issues/:key/rank(backlog-handlers.ts rerankIssueHandler)는 issueKey를
+// backlogStore(issue-tracking BC 백로그 mock) 전체에서 탐색해 없으면 404(ISSUE_NOT_FOUND)를
+// 반환한다 — 즉 보드 카드가 reorder되려면 같은 issueKey가 backlogStore에도 있어야 한다
+// (board-fixtures.ts 자체 시드만으로는 rerank가 항상 404로 실패해 낙관적 업데이트가 롤백된다).
+// seedBacklog는 backlog-fixtures.ts의 공개 API이므로 그 파일을 수정하지 않고 호출만 한다.
+import { seedBacklog } from './backlog-fixtures'
+import type { StoredBacklogProject } from './backlog-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FILTER_BOARD 담당자 UUID 상수 — user-fixtures.ts와 동기화
@@ -281,6 +289,8 @@ export const DEFAULT_BOARD: BoardDetail = {
           version: 0,
           priority: 1,
           epicKey: null,
+          // 유효 LexoRank 문자열 — dnd-kit/sortable 드래그 순서 검증용 (FR-UX-06 PR21)
+          rank: '0|hzzzzz:',
         },
         {
           issueKey: 'ATLAS-4',
@@ -289,6 +299,8 @@ export const DEFAULT_BOARD: BoardDetail = {
           version: 0,
           priority: 4,
           epicKey: null,
+          // ATLAS-1보다 뒤 순서 (LexoRank 오름차순)
+          rank: '0|i00007:',
         },
       ],
     },
@@ -308,6 +320,8 @@ export const DEFAULT_BOARD: BoardDetail = {
           version: 1,
           priority: 2,
           epicKey: null,
+          // rank 미부여 — null 방어 경로 검증용
+          rank: null,
         },
       ],
     },
@@ -327,6 +341,8 @@ export const DEFAULT_BOARD: BoardDetail = {
           version: 2,
           priority: 3,
           epicKey: null,
+          // rank 미부여 — null 방어 경로 검증용
+          rank: null,
         },
       ],
     },
@@ -387,6 +403,7 @@ export const FILTER_BOARD: StoredBoardDetail = {
           version: 0,
           priority: 1,
           epicKey: null,
+          rank: null,
           labels: ['bug'],
           componentIds: [COMPONENT_C1_ID],
         },
@@ -397,6 +414,7 @@ export const FILTER_BOARD: StoredBoardDetail = {
           version: 0,
           priority: 2,
           epicKey: null,
+          rank: null,
           labels: ['feature'],
           componentIds: [COMPONENT_C1_ID, COMPONENT_C2_ID],
         },
@@ -407,6 +425,7 @@ export const FILTER_BOARD: StoredBoardDetail = {
           version: 0,
           priority: 3,
           epicKey: null,
+          rank: null,
           labels: ['bug', 'documentation'],
           componentIds: [COMPONENT_C2_ID],
         },
@@ -417,6 +436,7 @@ export const FILTER_BOARD: StoredBoardDetail = {
           version: 0,
           priority: 4,
           epicKey: null,
+          rank: null,
           labels: [],
           componentIds: [],
         },
@@ -458,6 +478,7 @@ export const WIP_BOARD: StoredBoardDetail = {
           version: 0,
           priority: 1,
           epicKey: null,
+          rank: null,
           labels: [],
           componentIds: [],
         },
@@ -479,6 +500,7 @@ export const WIP_BOARD: StoredBoardDetail = {
           version: 0,
           priority: 2,
           epicKey: null,
+          rank: null,
           labels: [],
           componentIds: [],
         },
@@ -489,6 +511,7 @@ export const WIP_BOARD: StoredBoardDetail = {
           version: 0,
           priority: 3,
           epicKey: null,
+          rank: null,
           labels: [],
           componentIds: [],
         },
@@ -499,6 +522,7 @@ export const WIP_BOARD: StoredBoardDetail = {
           version: 0,
           priority: 1,
           epicKey: null,
+          rank: null,
           labels: [],
           componentIds: [],
         },
@@ -551,6 +575,7 @@ export const SWIMLANE_BOARD: StoredBoardDetail = {
           version: 0,
           priority: 1,
           epicKey: null,
+          rank: null,
           labels: [],
           componentIds: [],
         },
@@ -561,6 +586,7 @@ export const SWIMLANE_BOARD: StoredBoardDetail = {
           version: 0,
           priority: 2,
           epicKey: null,
+          rank: null,
           labels: [],
           componentIds: [],
         },
@@ -621,6 +647,7 @@ export const EPIC_SWIMLANE_BOARD: StoredBoardDetail = {
           version: 0,
           priority: 1,
           epicKey: 'EPICTEST-EP-1',
+          rank: null,
           labels: [],
           componentIds: [],
         },
@@ -631,6 +658,7 @@ export const EPIC_SWIMLANE_BOARD: StoredBoardDetail = {
           version: 0,
           priority: 2,
           epicKey: 'EPICTEST-EP-2',
+          rank: null,
           labels: [],
           componentIds: [],
         },
@@ -641,6 +669,7 @@ export const EPIC_SWIMLANE_BOARD: StoredBoardDetail = {
           version: 0,
           priority: 3,
           epicKey: null,
+          rank: null,
           labels: [],
           componentIds: [],
         },
@@ -671,6 +700,149 @@ export const EPIC_SWIMLANE_BOARD: StoredBoardDetail = {
   unplacedCount: 0,
 }
 
+/**
+ * 셀 내 순서변경(useReorderCard) 검증용 보드 픽스처 (FR-UX-06 PR21 Task 8 E2E).
+ *
+ * TODO 컬럼에 alice 담당 2건 + bob 담당 1건을 배치한다. **픽스처 자체의 swimlaneField는 'NONE'**
+ * 이고, 카드 summary의 "(같은 셀)/(다른 셀)" 라벨은 **E2E가 UI에서 ASSIGNEE 스윔레인으로 토글한
+ * 뒤에만** 성립하는 뷰 의존 속성이다(담당자별 서브그룹 = 셀). 그렇게 ASSIGNEE 스윔레인 활성 시
+ * "같은 셀 내 순서변경"(D4)과 "셀 경계를 넘는 드래그 → noop"(D5)을 한 컬럼에서 함께 검증한다.
+ *
+ * DEFAULT_BOARD/SWIMLANE_BOARD를 재사용하지 않는 이유 — quick-filter.spec.ts의
+ * QUICK_FILTER_PERM_SEED와 동일한 격리 원칙(전역 fixture 공유 금지). 기존 보드에 카드를
+ * 추가하면 board-kanban.spec.ts/board-wip-swimlane.spec.ts 등 기존 26개 E2E 스펙의
+ * 카드 수·그룹 구성 전제가 흔들릴 위험이 있다.
+ *
+ * RT-1/RT-2/RT-3은 이 파일 하단의 REORDER_BACKLOG로 backlogStore에도 짝을 맞춰 시드된다 —
+ * rerankIssueHandler(backlog-handlers.ts)가 issueKey를 backlogStore에서 탐색하므로, 이 시드가
+ * 없으면 PATCH /api/v1/issues/:key/rank가 항상 404(ISSUE_NOT_FOUND)로 실패해 낙관적 순서변경이
+ * 롤백된다(E2E로 실측 확인 — board-reorder.spec.ts 작성 중 발견한 실제 갭).
+ *
+ * UUID는 RFC4122 v4 형식 — Zod v4 z.string().uuid() 통과 보장.
+ */
+export const REORDER_SWIMLANE_BOARD: StoredBoardDetail = {
+  boardId: '10000000-0000-4000-8000-000000000007',
+  projectKey: 'REORDERTEST',
+  name: '순서변경 테스트 보드',
+  swimlaneField: 'NONE',
+  columns: [
+    {
+      columnId: 'a0000000-0000-4000-8000-000000000001',
+      stateKey: 'open',
+      name: 'TODO',
+      category: 'TODO',
+      displayOrder: 1,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [
+        {
+          issueKey: 'RT-1',
+          summary: '순서변경 테스트 이슈 1 — alice 담당(같은 셀)',
+          assigneeId: ALICE_USER_ID,
+          version: 0,
+          priority: 1,
+          epicKey: null,
+          rank: '0|hzzzzz:',
+          labels: [],
+          componentIds: [],
+        },
+        {
+          issueKey: 'RT-2',
+          summary: '순서변경 테스트 이슈 2 — alice 담당(같은 셀)',
+          assigneeId: ALICE_USER_ID,
+          version: 0,
+          priority: 2,
+          epicKey: null,
+          rank: '0|i00007:',
+          labels: [],
+          componentIds: [],
+        },
+        {
+          issueKey: 'RT-3',
+          summary: '순서변경 테스트 이슈 3 — bob 담당(다른 셀)',
+          assigneeId: BOB_USER_ID,
+          version: 0,
+          priority: 3,
+          epicKey: null,
+          rank: '0|i00010:',
+          labels: [],
+          componentIds: [],
+        },
+      ],
+    },
+    {
+      columnId: 'a0000000-0000-4000-8000-000000000002',
+      stateKey: 'in_progress',
+      name: 'IN PROGRESS',
+      category: 'IN_PROGRESS',
+      displayOrder: 2,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [],
+    },
+    {
+      columnId: 'a0000000-0000-4000-8000-000000000003',
+      stateKey: 'done',
+      name: 'DONE',
+      category: 'DONE',
+      displayOrder: 3,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [],
+    },
+  ],
+  truncated: false,
+  unplacedCount: 0,
+  quickFilters: [],
+}
+
+/**
+ * REORDER_SWIMLANE_BOARD(RT-1/RT-2/RT-3)와 짝을 이루는 backlogStore 시드 (FR-UX-06 PR21 Task 8).
+ *
+ * rerankIssueHandler(backlog-handlers.ts)가 issueKey를 backlogStore에서 탐색하므로,
+ * 이 시드가 없으면 useReorderCard의 PATCH /api/v1/issues/:key/rank 호출이 항상
+ * 404(ISSUE_NOT_FOUND)로 실패해 낙관적 순서변경이 롤백된다(E2E로 실측 확인).
+ * rank 값은 REORDER_SWIMLANE_BOARD 카드와 동일 문자열로 맞춰 두 store의 초기 순서가
+ * 일치하도록 한다(board-handlers.ts resolveLiveRank 오버레이와 정합).
+ */
+const REORDER_BACKLOG: StoredBacklogProject = {
+  projectKey: 'REORDERTEST',
+  backlog: [
+    {
+      key: 'RT-1',
+      summary: '순서변경 테스트 이슈 1 — alice 담당(같은 셀)',
+      currentStateKey: 'open',
+      assigneeId: ALICE_USER_ID,
+      priority: 1,
+      rank: '0|hzzzzz:',
+      version: 0,
+      epicKey: null,
+    },
+    {
+      key: 'RT-2',
+      summary: '순서변경 테스트 이슈 2 — alice 담당(같은 셀)',
+      currentStateKey: 'open',
+      assigneeId: ALICE_USER_ID,
+      priority: 2,
+      rank: '0|i00007:',
+      version: 0,
+      epicKey: null,
+    },
+    {
+      key: 'RT-3',
+      summary: '순서변경 테스트 이슈 3 — bob 담당(다른 셀)',
+      currentStateKey: 'open',
+      assigneeId: BOB_USER_ID,
+      priority: 3,
+      rank: '0|i00010:',
+      version: 0,
+      epicKey: null,
+    },
+  ],
+  sprints: [],
+  truncated: false,
+}
+
 // 모듈 로드 시 기본 보드와 필터 보드를 자동 시드한다 — notification-policy-handlers buildSeedStore() 패턴 동일.
 // dev(pnpm dev) · E2E 진입 시 boardStore가 비어 있어 생성 폼이 노출되는 결함 방지.
 // Vitest 단위 테스트 환경(MODE='test')에서는 건너뜀 — 각 테스트가 beforeEach/reset으로 직접 제어.
@@ -680,4 +852,6 @@ if (import.meta.env.MODE !== 'test') {
   seedBoardWithMeta(WIP_BOARD)
   seedBoardWithMeta(SWIMLANE_BOARD)
   seedBoardWithMeta(EPIC_SWIMLANE_BOARD)
+  seedBoardWithMeta(REORDER_SWIMLANE_BOARD)
+  seedBacklog(REORDER_BACKLOG)
 }

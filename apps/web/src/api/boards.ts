@@ -51,6 +51,18 @@ export const boardCardSchema = z.object({
    * FR-EP-01 D6/D7 EPIC 스윔레인 근거 필드.
    */
   epicKey: z.string().nullable().default(null),
+  /**
+   * LexoRank 문자열. 아직 rank 미부여 시 null.
+   * 백엔드 @JsonInclude(NON_NULL) 방어 — nullish 처리
+   * (apps/web/src/api/backlog.ts backlogIssueSchema.rank 선례와 동일 패턴).
+   * FR-UX-06 PR21 — @dnd-kit/sortable 드래그 순서 유지 근거 필드.
+   *
+   * rank는 issue-tracking BC가 소유하는 필드의 미러다. BoardCardResponse(agile-planning BC)는
+   * 조회 편의를 위해 값을 그대로 노출할 뿐 — 쓰기는 이슈 rank 변경 API
+   * (PATCH /api/v1/issues/{key}/rank, backlog.ts rerankIssue)를 통해서만 이루어진다.
+   * 보드 카드 드래그 앤 드롭도 이 API를 호출해 rank를 갱신해야 한다(직접 소유·변이 금지).
+   */
+  rank: z.string().nullish().transform((v) => v ?? null),
 })
 
 /**

@@ -37,6 +37,8 @@ interface BoardCard {
   summary: string
   assigneeId: string | null
   version: number
+  /** LexoRank 문자열. 아직 rank 미부여 시 null (FR-UX-06 PR21 Task 3) */
+  rank: string | null
 }
 
 interface BoardColumn {
@@ -163,6 +165,30 @@ describe('GET /api/v1/boards/:id', () => {
     const body = (await res.json()) as DataResponse<BoardDetail>
     expect(body.data.boardId).toBe(DEFAULT_BOARD.boardId)
     expect(body.data.columns).toHaveLength(3)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/boards/:id — rank 필드 응답 (FR-UX-06 PR21 Task 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GET /api/v1/boards/:id — rank 필드 응답 (FR-UX-06 PR21 Task 3)', () => {
+  it('유효 LexoRank가 부여된 카드는 응답에 rank 문자열을 포함한다 (dnd-kit/sortable 정렬 근거)', async () => {
+    seedBoard(DEFAULT_BOARD)
+    const res = await getBoard(DEFAULT_BOARD.boardId)
+    const body = (await res.json()) as DataResponse<BoardDetail>
+    const cards = body.data.columns.flatMap((c) => c.cards)
+    const atlas1 = cards.find((c) => c.issueKey === 'ATLAS-1')
+    expect(atlas1?.rank).toBe('0|hzzzzz:')
+  })
+
+  it('rank가 아직 부여되지 않은 카드는 응답에서 null로 반환된다', async () => {
+    seedBoard(DEFAULT_BOARD)
+    const res = await getBoard(DEFAULT_BOARD.boardId)
+    const body = (await res.json()) as DataResponse<BoardDetail>
+    const cards = body.data.columns.flatMap((c) => c.cards)
+    const atlas3 = cards.find((c) => c.issueKey === 'ATLAS-3')
+    expect(atlas3?.rank).toBeNull()
   })
 })
 

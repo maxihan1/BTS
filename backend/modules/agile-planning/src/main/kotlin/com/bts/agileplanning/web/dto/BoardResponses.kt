@@ -147,6 +147,10 @@ data class BoardSummaryResponse(
  * @property version 낙관적 락(OCC) 버전. 카드 이동 시 expectedVersion 으로 사용.
  * @property epicKey 이슈가 속한 에픽의 이슈 키. 에픽 없는 이슈는 null.
  *   동일 프로젝트 에픽만 포함 — cross-project 에픽은 null (P1-A 누출 방지).
+ * @property rank LexoRank 정렬 키. **소유는 issue-tracking BC** — agile-planning 은 이 값을
+ *   그대로 미러 노출할 뿐 생성·갱신하지 않는다(백로그 `BacklogResponses` 의 rank 노출 선례와
+ *   동일한 방식). null 이면 미부여(정렬 시 NULLS LAST). 이 필드는 노출 전용이며 카드 정렬 순서는
+ *   여전히 [PlacedColumn.cards] 가 결정한다(정렬 로직 자체의 변경은 별도 Task 소관).
  */
 data class BoardCardResponse(
     val issueKey: String,
@@ -155,6 +159,7 @@ data class BoardCardResponse(
     val priority: Int,
     val version: Long,
     val epicKey: String? = null,
+    val rank: String? = null,
 ) {
     companion object {
         /** cross-BC [BoardIssueView] 를 [BoardCardResponse] 로 변환한다. */
@@ -166,6 +171,7 @@ data class BoardCardResponse(
                 priority = card.priority,
                 version = card.version,
                 epicKey = card.epicKey,
+                rank = card.rank,
             )
     }
 }
