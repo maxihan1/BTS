@@ -136,7 +136,7 @@ FR-UX-06(BTS UI/UX Jira Cloud 방식 개편) Phase 5(화면)의 다섯 번째 PR
 - depends-on: [3, 4]
 
 **RED**: BoardCard가 `useSortable`(id=issueKey, data에 fromColumnId+swimlaneGroupKey)로 렌더되고, BoardColumn이 각 셀(스윔레인 그룹 또는 컬럼 전체)을 `SortableContext`(items=셀 내 issueKey 배열)로 감싸는지 검증. 현재 useDraggable/컨텍스트 없음으로 실패.
-**GREEN**: BoardCard useDraggable→useSortable(기존 fromColumnId data 보존 + swimlaneGroupKey 추가). BoardColumn의 각 SwimlaneSection·NONE 목록을 SortableContext로 래핑(verticalListSortingStrategy). Link 클릭 보존(PointerSensor distance:5).
+**GREEN**: BoardCard useDraggable→useSortable(기존 fromColumnId data 보존 + swimlaneGroupKey 추가). BoardColumn의 각 SwimlaneSection·NONE 목록을 SortableContext로 래핑(verticalListSortingStrategy). Link 클릭 보존(PointerSensor distance:5). **드롭 위치 피드백**: sortable transform으로 셀 내 카드 밀림 + 드래그 중 원위치 placeholder(opacity 낮춘 자리). **접근성**: KeyboardSensor 유지로 키보드 순서변경 + DndContext에 한국어 `announcements`(집기/이동/드롭/취소) 주입(스크린리더 공지). **그룹 경계 UX(DR3)**: 스윔레인 활성 시 다른 그룹 위 드래그는 이번 PR noop → 드롭 불가 커서(`cursor-not-allowed` 톤) 또는 그룹 하이라이트 억제로 "여기 못 놓음"을 시각 전달(PR21b까지 임시).
 **REFACTOR**: 셀 key 계산 헬퍼 공유(board-drop.ts와 일관).
 **검증**: `pnpm test -- BoardCard.test BoardColumn.test`
 
@@ -159,7 +159,7 @@ FR-UX-06(BTS UI/UX Jira Cloud 방식 개편) Phase 5(화면)의 다섯 번째 PR
 - files: [`apps/web/e2e/board-reorder.spec.ts`]
 - depends-on: [2, 7]
 
-**RED**: (NONE)같은 컬럼 순서변경 happy path + 새로고침 후 순서 유지 + 컬럼 간 이동(상태전이) 무회귀 + 스윔레인 활성 셀 내 순서변경 + 그룹 경계 넘는 드래그 noop E2E. 기능 부재로 실패.
+**RED**: (NONE)같은 컬럼 순서변경 happy path + 새로고침 후 순서 유지 + 컬럼 간 이동(상태전이) 무회귀 + 스윔레인 활성 셀 내 순서변경 + 그룹 경계 넘는 드래그 noop + **키보드 순서변경(KeyboardSensor, DR2)** E2E. 기능 부재로 실패.
 **GREEN**: 기능 통합 후 통과. MSW rank stateful 반영. aria/getByRole 계약 준수([[frontend-nav-aria-label-e2e-contract]]·[[playwright-getbyrole-exact-strict-mode]]).
 **REFACTOR**: 드래그 헬퍼 공유.
 **검증**: playwright 바이너리 직접 호출(파일 필터 — [[e2e-playwright-filter-arg-drop]]). **CI에 e2e 잡 없음 → 로컬 필수**([[frontend-ci-10min-timeout-nonrequired]]).
@@ -172,3 +172,18 @@ FR-UX-06(BTS UI/UX Jira Cloud 방식 개편) Phase 5(화면)의 다섯 번째 PR
 - 추가 검증: typecheck·eslint·vitest 전수·playwright(qa)·백엔드 :agile-planning:test·조립 부팅 불요(읽기 전용 rank 노출, cross-BC @Component 신설 없음)·verify-master-plan 129/129
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
+
+### plan-design-review (2026-07-25) — 상호작용/접근성/무회귀 직접 리뷰 (mockup 생략: 시각 결정 0)
+
+Maxi 결정으로 mockup 프로세스 생략. 이 PR은 순수 드래그 상호작용이라 시각 디자인(색/타이포/레이아웃) 결정이 없고, ADS v2·Jira 마스터-디테일로 확정된 위에서 동작만 추가. 상호작용/접근성/무회귀 4개 관점 리뷰.
+
+- **DR1 드롭 위치 피드백 (✅ plan T6 보강)**: dnd-kit sortable 재정렬 시 카드 밀림 transform + 원위치 placeholder로 "어디 놓일지" 명확화. 피드백 없으면 사용자가 드롭 결과 예측 불가.
+- **DR2 접근성 (✅ plan T6/T8 보강)**: KeyboardSensor 유지로 키보드 순서변경 + 한국어 announcements(스크린리더 집기/이동/드롭/취소 공지). 마우스 전용 드래그는 a11y 실패.
+- **DR3 스윔레인 그룹 경계 UX (⚠️ 주의, PR21b까지 임시)**: PR21 단독 기간 동안 스윔레인 활성 시 다른 그룹으로 끌면 noop(필드변경은 PR21b) → 사용자가 "왜 안 되지" 혼란 가능. 완화=드롭 불가 커서/그룹 하이라이트 억제로 시각 전달. **근본 해소는 PR21b(필드변경) 조속 후속**. Maxi 확정 2 PR 분할의 알려진 트레이드오프.
+- **DR4 낙관적 실패 시각 (✅ 스펙/plan 반영됨)**: 순서변경 즉시 반영(낙관적), 409/실패 시 카드 원위치 복귀 + toast 안내(기존 useMoveCard 패턴 정합). 롤백이 자연스럽도록 transition.
+- **무회귀 관점**: useDraggable→useSortable 전환이 기존 컬럼 간 이동(상태전이)·DONE resolution·DragOverlay·필터·WIP 경고를 깨지 않는지 T7·T8이 명시 검증. 카드 Link 클릭(distance:5)·기존 e2e 계약(aria-label·getByRole) 보존.
+- **BLOCKER**: 없음.
+
+### 리뷰 종합
+- BLOCKER 0. 주의 1건(DR3 스윔레인 그룹 경계 UX — PR21b까지 임시, 커서 완화). plan T6/T8 보강 반영 완료.
+- design outside voices(codex/subagent) 생략: 순수 상호작용 PR·시각 결정 0이라 과잉.
