@@ -16,7 +16,8 @@
 같은 누락이 재발하지 않도록 admin 11개 라우트 × 가드 4종을 행렬로 전수 열거해 검증하는 음성 테스트를
 신설한다. 범위는 `apps/web` 단일 BC. ATLAS-4 fixture version 불일치는 이 PR 범위 밖(별도 항목).
 
-**classify 결과.** type=auth · agent=security-engineer · primary_bc=identity-access · task_count=0
+**classify 결과.** type=auth · agent=security-engineer · primary_bc=identity-access · task_count=5
+(classify-task 최초 출력은 0이었고 `/bts-plan` Step 3에서 5로 갱신됐다)
 
 **착수 전 실측 (2026-07-25, main `0f892b0a3`).**
 
@@ -154,7 +155,7 @@ SYSTEM_ADMIN 가드를 넣고 **뮤테이션으로 검증**했다. 같은 방식
 
 **E2E 미포함 (사유 등재).** 이 변경의 검증 대상은 "라우터에 등록된 `beforeLoad` 합성"이고, 유닛 테스트가
 **앱이 실제로 쓰는 `router` 객체 자체**를 호출하므로 동일 대상을 덮는다. E2E를 추가하면 브라우저 비용만
-늘고 커버하는 로직은 같다. 메모리 `ui-pro-defer-e2e-regression-latent`가 경고하는 "UI 변경인데 E2E를
+늘고 커버하는 로직은 같다. 메모리 `ui-pr-defer-e2e-regression-latent`가 경고하는 "UI 변경인데 E2E를
 미루는" 경우와 다르다 — **시각·DOM 변화가 0**이다.
 
 ---
