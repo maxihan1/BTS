@@ -45,7 +45,9 @@ ok()   { echo "✅ $1"; }
 # 둘이 다르면 한쪽만 마스킹되므로 동일성까지 확인한다(리뷰 발견 3).
 # macOS 기본 bash 는 3.2 라 mapfile(bash 4+)이 없다. 배열 대신 개행 구분 문자열을 쓴다 —
 # CI(우분투 bash 5)만 보고 짜면 로컬에서 깨진다.
-THRESHOLDS="$(grep -oE '\[A-Za-z0-9_-\]\{[0-9]+,\}' "$NGINX_CONF" | grep -oE '[0-9]+')"
+# 중괄호 안의 반복 하한만 뽑는다. 문자군 [A-Za-z0-9_-] 자체에 0·9 가 들어 있어
+# 단순 숫자 추출을 쓰면 그것까지 임계값으로 오인한다(1차 구현에서 실제로 걸렸다).
+THRESHOLDS="$(grep -oE '\[A-Za-z0-9_-\]\{[0-9]+,\}' "$NGINX_CONF" | sed -E 's/.*\{([0-9]+),\}/\1/')"
 THRESHOLD_COUNT=$(printf '%s' "$THRESHOLDS" | grep -c . || true)
 
 if [ "$THRESHOLD_COUNT" -eq 0 ]; then
@@ -118,14 +120,17 @@ ok "다중 비밀값 라우트 부재"
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. 축 C(설정 실효) — nginx.conf 가 실제로 마스킹하는가
 # ─────────────────────────────────────────────────────────────────────────────
-grep -qE '^\s*log_format\s+bts_masked' "$NGINX_CONF" \
+# BSD sed(macOS)는 BRE 에서 \+ 를 지원하지 않는다. POSIX 문자클래스 반복으로 쓴다 —
+# GNU 전용 문법을 쓰면 CI 는 통과하고 로컬에서만 조용히 빈 결과가 나온다.
+grep -qE '^[[:space:]]*log_format[[:space:]]+bts_masked' "$NGINX_CONF" \
     || fail "log_format bts_masked 미정의 — 이미지 기본 main 포맷을 상속한다 (축 C)" 3
-grep -qE '^\s*access_log\s+\S+\s+bts_masked' "$NGINX_CONF" \
+grep -qE '^[[:space:]]*access_log[[:space:]]+[^[:space:]]+[[:space:]]+bts_masked' "$NGINX_CONF" \
     || fail "access_log 가 bts_masked 를 지정하지 않는다 — 이미지 기본 상속 (축 C)" 3
 
 # 마스킹을 우회하는 변수들. 하나라도 로그 포맷에 있으면 원문이 그대로 나간다.
 # $request = 요청 첫 줄 통째, $request_uri = 쿼리 포함 원본, $args = 쿼리 전체.
-FORMAT_BLOCK="$(sed -n '/log_format[[:space:]]\+bts_masked/,/;[[:space:]]*$/p' "$NGINX_CONF")"
+FORMAT_BLOCK="$(sed -n '/log_format[[:space:]][[:space:]]*bts_masked/,/;[[:space:]]*$/p' "$NGINX_CONF")"
+[ -n "$FORMAT_BLOCK" ] || fail "log_format bts_masked 블록을 추출하지 못했다 — 파서 고장 (축 C)" 3
 for banned in '\$request[^_a-z]' '\$request_uri' '\$args'; do
     if grep -qE "$banned" <<<"$FORMAT_BLOCK"; then
         fail "log_format 에 마스킹 우회 변수가 있다(${banned}) — 원문이 그대로 로깅된다 (축 C)" 3
@@ -153,18 +158,23 @@ T_HEX="a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
 T_QRY="SUPERSECRETCODEVALUE"
 T_UUID="3f2504e0-4f89-11d3-9a0c-0305e82c3301"
 
+# ⚠️ 프록시 대상(bts-backend)이 없는 단독 컨테이너라 /api·/ical 요청은 업스트림 해석에
+#    실패한다. 요청마다 wget 타임아웃(-T 2)을 걸지 않으면 proxy_read_timeout 120s 까지
+#    매달려 검증이 사실상 멈춘다. 응답이 502/504/499 중 무엇이든 **접속 로그 줄은 기록**되고,
+#    우리가 보는 판별자는 그 줄에 원문 토큰이 있느냐뿐이므로 검증 목적에는 충분하다.
 LOGS="$(docker run --rm -v "$NGINX_CONF:/etc/nginx/conf.d/bts.conf:ro" "$NGINX_IMAGE" sh -c "
 rm -f /etc/nginx/conf.d/default.conf
 nginx 2>/dev/null
-i=0; while [ \$i -lt 50 ]; do wget -q -O /dev/null http://127.0.0.1/ 2>/dev/null && break; i=\$((i+1)); done
-wget -q -O /dev/null 'http://127.0.0.1/api/v1/public/dashboards/$T_B64'
-wget -q -O /dev/null 'http://127.0.0.1/dashboards/shared/$T_B64'
-wget -q -O /dev/null 'http://127.0.0.1/ical/feed/$T_HEX.ics'
-wget -q -O /dev/null 'http://127.0.0.1/api/v1/webhooks/git/$T_B64'
-wget -q -O /dev/null 'http://127.0.0.1/api/v1/automation/webhooks/$T_B64'
-wget -q -O /dev/null 'http://127.0.0.1/slack/install/callback?code=$T_QRY&state=x'
-wget -q -O /dev/null --header='Referer: https://bts.example.com/dashboards/shared/$T_B64' 'http://127.0.0.1/api/v1/x'
-wget -q -O /dev/null 'http://127.0.0.1/api/v1/issues/$T_UUID'
+i=0; while [ \$i -lt 50 ]; do wget -q -T 1 -O /dev/null http://127.0.0.1/ 2>/dev/null && break; i=\$((i+1)); done
+W='wget -q -T 2 -O /dev/null'
+\$W 'http://127.0.0.1/api/v1/public/dashboards/$T_B64' 2>/dev/null
+\$W 'http://127.0.0.1/dashboards/shared/$T_B64' 2>/dev/null
+\$W 'http://127.0.0.1/ical/feed/$T_HEX.ics' 2>/dev/null
+\$W 'http://127.0.0.1/api/v1/webhooks/git/$T_B64' 2>/dev/null
+\$W 'http://127.0.0.1/api/v1/automation/webhooks/$T_B64' 2>/dev/null
+\$W 'http://127.0.0.1/slack/install/callback?code=$T_QRY&state=x' 2>/dev/null
+wget -q -T 2 -O /dev/null --header='Referer: https://bts.example.com/dashboards/shared/$T_B64' 'http://127.0.0.1/api/v1/x' 2>/dev/null
+\$W 'http://127.0.0.1/api/v1/issues/$T_UUID' 2>/dev/null
 nginx -s quit 2>/dev/null
 " 2>&1)"
 
