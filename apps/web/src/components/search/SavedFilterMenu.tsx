@@ -211,6 +211,9 @@ export const SavedFilterMenu = (): JSX.Element => {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
+          {/* PR22 — asChild 하위이므로 Radix가 aria-expanded/data-state 를 이 요소에 주입한다.
+              Button이 ...props 를 <button> 으로 전개하기 때문에 통과한다. asChild 를 떼면 트리거가
+              중첩 button 이 되어 주입이 끊긴다. */}
           <Button
             type="button"
             variant="ghost"

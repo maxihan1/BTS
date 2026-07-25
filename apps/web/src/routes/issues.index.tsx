@@ -400,6 +400,9 @@ function NewIssueButton({ canCreate }: NewIssueButtonProps): JSX.Element {
   }
 
   return (
+    // PR22 — variant 미지정(default)이 의도다. NEW_ISSUE_CLASS 는 위 canCreate=true 분기의
+    // <a> 와 공유하는 상수이므로, 중복돼 보이는 bg-primary 를 정리하면 링크 쪽 시각이 함께 깨진다.
+    // 상수는 건드리지 않고 그대로 넘긴다. 프리미티브 기본과 겹치는 disabled:opacity-50 만 뺐다.
     <Button
       type="button"
       disabled

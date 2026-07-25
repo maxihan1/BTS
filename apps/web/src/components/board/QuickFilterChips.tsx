@@ -175,6 +175,10 @@ function QuickFilterChip({
         isActive ? 'bg-primary text-primary-foreground' : 'bg-muted'
       }`}
     >
+      {/* PR22 — min-h-[44px]/min-w-[44px] 는 프리미티브 size 기본값(h-6/size-7)을 일부러 덮는다.
+          WCAG 2.5.5 터치 타깃 최소 크기 근거가 있어 유지하며, size 를 키우는 대신 min-* 로 남긴다
+          (배치1 IN 23발생 중 8건이 같은 이유로 min-* 를 갖는다 — QuickFilterChips 3 · FilterBar 1 ·
+          EpicChildrenSection 1 · IssueLinksPanel 3). */}
       <Button
         type="button"
         variant="ghost"

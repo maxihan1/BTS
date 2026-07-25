@@ -76,31 +76,54 @@ interface RawButton {
   readonly precedingLine: string
 }
 
-/** 주석 줄 판정 — JSDoc 본문(`*`), 한 줄 주석(`//`), 블록 시작(`/*`) */
-const isCommentLine = (line: string): boolean => /^\s*(\*|\/\/|\/\*)/.test(line)
+/**
+ * 주석 **내용만** 공백으로 덮고 줄 구조는 보존한다.
+ *
+ * 선례인 `state-tokens.test.ts` · `category-color-tokens.test.ts`의 `stripComments`는 주석을
+ * 통째로 삭제해 **행 번호가 밀린다**. 이 가드는 (a) 실패 메시지에 `파일:행`을 그대로 찍어야 하고
+ * (b) OUT 사유 주석을 원문에서 읽어야 하므로, 줄 수를 유지하는 변형이 필요하다.
+ *
+ * 줄 단위 판정(`^\s*(\*|\/\/)`)으로는 부족하다 — **여러 줄 주석의 이어지는 줄**은 `*`로 시작하지
+ * 않는 산문이라 코드로 오인된다. 실제로 T6 REFACTOR에서 `SavedFilterMenu`의 설명 주석 본문에
+ * `<button>` 이라 적었다가 가드가 위반으로 잡은 전례가 있다. 주석 안에 리터럴을 쓰는 것이
+ * 벌점이 되면 결국 문서화를 지우게 만드는 잘못된 유인이 생긴다.
+ */
+function blankComments(source: string): string {
+  return (
+    source
+      // 블록 주석 + JSX 주석(`{/* … */}`) — 여러 줄이라도 줄바꿈만 남기고 내용을 공백으로 덮는다
+      .replace(/\/\*[\s\S]*?\*\//g, (match) => match.replace(/[^\n]/g, ' '))
+      // 줄 앞 한 줄 주석
+      .replace(/^[ \t]*\/\/.*$/gm, (match) => ' '.repeat(match.length))
+  )
+}
 
 /**
  * 파일에서 원시 `<button` 여는 태그를 전수 추출한다.
  *
- * 주석 줄은 코드가 아니므로 제외한다 — 세션 1이 `routes/issues.index.tsx`의 JSDoc 예시 리터럴
+ * 주석은 코드가 아니므로 제외한다 — 세션 1이 `routes/issues.index.tsx`의 JSDoc 예시 리터럴
  * `<button type="button" disabled>` 을 코드로 세는 바람에 OUT 개수를 11이 아니라 12로 적은 전례가 있다.
  * 닫는 태그 `</button>`은 `<button` 과 접두사가 달라 자연히 걸리지 않는다.
+ *
+ * 탐지는 주석을 덮은 사본으로 하고, 사유 주석 판정은 **원문** 줄로 한다.
  */
 function rawButtons(file: string): RawButton[] {
-  const lines = readFileSync(resolve(SRC_ROOT, file), 'utf-8').split('\n')
+  const original = readFileSync(resolve(SRC_ROOT, file), 'utf-8')
+  const originalLines = original.split('\n')
+  const codeLines = blankComments(original).split('\n')
   const found: RawButton[] = []
 
-  lines.forEach((line, index) => {
-    if (!line.includes('<button') || isCommentLine(line)) return
+  codeLines.forEach((codeLine, index) => {
+    if (!codeLine.includes('<button')) return
 
     // 직전 "비어있지 않은" 줄을 찾는다. 빈 줄이 끼어도 사유 주석을 인정한다.
     let cursor = index - 1
-    while (cursor >= 0 && (lines[cursor] ?? '').trim() === '') cursor -= 1
+    while (cursor >= 0 && (originalLines[cursor] ?? '').trim() === '') cursor -= 1
 
     found.push({
       file,
       line: index + 1,
-      precedingLine: lines[cursor] ?? '',
+      precedingLine: originalLines[cursor] ?? '',
     })
   })
 
@@ -121,22 +144,31 @@ describe('FR-UX-06 PR22 T6 — 배치1의 원시 <button>은 Button 프리미티
     expect(withoutImport).toEqual([])
   })
 
-  it('주석 속 <button> 리터럴은 코드로 세지 않는다 (issues.index.tsx JSDoc 고정)', () => {
+  it('한 줄 주석(JSDoc) 속 <button> 리터럴은 코드로 세지 않는다 — issues.index.tsx', () => {
     const file = 'routes/issues.index.tsx'
-    const lines = readFileSync(resolve(SRC_ROOT, file), 'utf-8').split('\n')
+    const original = readFileSync(resolve(SRC_ROOT, file), 'utf-8')
 
     // 주석 리터럴이 실제로 파일에 남아 있어야 이 테스트가 의미를 갖는다(공허 통과 차단).
-    expect(lines.join('\n')).toContain('`<button type="button" disabled>`')
+    expect(original).toContain('`<button type="button" disabled>`')
 
-    const naive = lines.filter((line) => line.includes('<button'))
-    const commentOnly = naive.filter(isCommentLine)
-    expect(commentOnly).toHaveLength(1)
-
-    // 추출기는 그 주석 1건을 정확히 버린다. 순진한 grep과의 차이가 딱 그 1건이어야 한다.
+    // 순진한 grep과 주석 제외 후의 차이가 딱 그 1건이어야 한다.
     // (RED에서는 코드 1건이 남고 GREEN에서는 0건이 되므로, 절대 개수 대신 **차이**로 고정한다.)
-    const extracted = rawButtons(file)
-    expect(extracted).toHaveLength(naive.length - commentOnly.length)
-    expect(extracted.every((b) => !isCommentLine(lines[b.line - 1] ?? ''))).toBe(true)
+    const naive = original.split('\n').filter((line) => line.includes('<button')).length
+    const code = blankComments(original).split('\n').filter((line) => line.includes('<button')).length
+    expect(naive - code).toBe(1)
+    expect(rawButtons(file)).toHaveLength(code)
+  })
+
+  it('여러 줄 JSX 주석 속 <button> 리터럴도 코드로 세지 않는다 — SavedFilterMenu 회귀', () => {
+    const file = 'components/search/SavedFilterMenu.tsx'
+    const original = readFileSync(resolve(SRC_ROOT, file), 'utf-8')
+
+    // 이 파일의 PR22 설명 주석은 본문에 `<button>` 이라고 적는다. 그 줄은 `*`/`//` 로 시작하지 않는
+    // 이어지는 산문이라 줄 단위 판정으로는 코드로 오인된다 — 실제로 T6에서 한 번 오인했다.
+    expect(original).toContain('...props 를 <button> 으로 전개하기 때문에')
+
+    // 이 파일의 트리거는 IN으로 교체됐으므로 코드상 원시 button은 0이어야 한다.
+    expect(rawButtons(file)).toEqual([])
   })
 
   it('남아 있는 모든 원시 <button>은 직전 줄에 PR22 OUT 사유 주석을 갖는다', () => {

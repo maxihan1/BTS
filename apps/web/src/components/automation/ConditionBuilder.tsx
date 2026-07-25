@@ -186,6 +186,8 @@ function ConditionGroupNode({ group, depth, projectKey, onChange, onRemove, idFo
   return (
     <div data-testid="condition-group" className={GROUP_CONTAINER_CLASS}>
       <div className="flex flex-wrap items-center gap-3 mb-2">
+        {/* PR22 — IN 23발생 중 유일한 variant="outline". 원본이 border-input 을 갖고 있어
+            테두리가 형태의 일부다(나머지 IN은 투명 배경이라 ghost). 바꾸면 토글이 평평해진다. */}
         <Button
           type="button"
           variant="outline"
