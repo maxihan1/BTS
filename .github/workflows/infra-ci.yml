@@ -1,0 +1,38 @@
+# 인프라 설정 검증 CI — nginx 접속로그 경로토큰 마스킹 봉인
+#
+# 왜 필요한가. 이 레포에서 nginx.conf 는 Gradle 도 vitest 도 읽지 않는다. 이 워크플로우가
+# 없으면 봉인 스크립트는 로컬 1회성 확인으로 끝나고 썩는다 — 선행 #310 ADR 이 "범위 밖" 으로
+# 적어둔 항목이 3주 잠복해 이 PR 이 된 것과 같은 실패 양식이다.
+name: infra-ci
+
+on:
+  pull_request:
+    paths:
+      - 'infra/**'
+      # ★backend/** 는 실수로 들어간 것이 아니다 — 지우면 봉인이 뚫린다.
+      # 봉인의 축 A(토큰 길이)·축 B(토큰 알파벳)는 Kotlin 토큰 발급기 소스를 읽는다.
+      # infra/** 만 걸면 "토큰 바이트 수를 32→8 로 줄이는" 변경이 아무 검사도 안 받고 지나가고,
+      # 그 순간 nginx 판별식(40자 이상)이 토큰을 못 가리게 된다.
+      - 'backend/**'
+      - 'scripts/verify/nginx-log-masking.sh'
+      - '.github/workflows/infra-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - 'backend/**'
+      - 'scripts/verify/nginx-log-masking.sh'
+      - '.github/workflows/infra-ci.yml'
+
+jobs:
+  nginx-log-masking:
+    name: nginx 접속로그 마스킹 봉인
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # docker 는 ubuntu-latest 러너에 기본 탑재된다. 스크립트가 nginx:1.27-alpine 으로
+      # 문법 검증(nginx -t)과 실효 검증(실제 요청 → 로그에 원문 토큰 0회)을 수행한다.
+      - name: 봉인 3축 + 문법 + 실효 검증
+        run: bash scripts/verify/nginx-log-masking.sh
