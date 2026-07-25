@@ -132,14 +132,16 @@ export function LabelChip({ label, onRemove }: LabelChipProps): JSX.Element {
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
       {label}
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-xs"
         onClick={onRemove}
         aria-label={issueDetailStrings.labelRemoveLabel}
-        className="ml-0.5 rounded-full hover:bg-muted-foreground/20 focus:outline-none focus:ring-1 focus:ring-ring"
+        className="ml-0.5 rounded-full hover:bg-muted-foreground/20"
       >
         ×
-      </button>
+      </Button>
     </span>
   )
 }

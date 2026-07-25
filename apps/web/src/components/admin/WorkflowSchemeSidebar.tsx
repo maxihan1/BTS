@@ -90,6 +90,7 @@ function SchemeRow({ scheme, isSelected, onSelect }: SchemeRowProps): JSX.Elemen
   }
 
   return (
+    // PR22 OUT — P5 옵션 행: aria-current 를 갖는 사이드바 항목이라 w-full text-left 가 필요하고, Button의 inline-flex/justify-center와 충돌한다
     <button
       type="button"
       aria-current={isSelected ? 'true' : undefined}

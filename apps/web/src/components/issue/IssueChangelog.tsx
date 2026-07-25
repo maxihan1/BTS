@@ -306,6 +306,7 @@ export function IssueChangelog({ issueKey, refs }: IssueChangelogProps): JSX.Ele
       role="region"
       className="w-full"
     >
+      {/* PR22 OUT — P6 전체 클릭 영역: 섹션 헤더 전체를 누르는 디스클로저라 w-full text-left 가 필요하고, Button의 inline-flex/justify-center와 충돌한다 */}
       <button
         type="button"
         className="flex items-center gap-2 w-full text-left mb-3"

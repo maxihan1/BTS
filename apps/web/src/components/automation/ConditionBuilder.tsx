@@ -138,15 +138,17 @@ function ConditionNodeEditor({ node, depth, projectKey, onChange, onRemove, idFo
           />
         </div>
         {onRemove && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-xs"
             aria-label={TEXT.removeComparisonLabel}
             data-testid="condition-remove-node"
             onClick={onRemove}
             className="text-muted-foreground hover:text-destructive"
           >
             <span aria-hidden="true">×</span>
-          </button>
+          </Button>
         )}
       </div>
     )
@@ -184,16 +186,18 @@ function ConditionGroupNode({ group, depth, projectKey, onChange, onRemove, idFo
   return (
     <div data-testid="condition-group" className={GROUP_CONTAINER_CLASS}>
       <div className="flex flex-wrap items-center gap-3 mb-2">
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="xs"
           data-testid="condition-group-op-toggle"
           onClick={() => {
             onChange(toggleGroupOp(group))
           }}
-          className="rounded-md border border-input px-2 py-1 text-xs font-semibold uppercase hover:bg-accent"
+          className="font-semibold uppercase"
         >
           {group.op === 'and' ? 'AND' : 'OR'}
-        </button>
+        </Button>
         <label className="flex items-center gap-1 text-sm">
           <input
             type="checkbox"
@@ -209,15 +213,17 @@ function ConditionGroupNode({ group, depth, projectKey, onChange, onRemove, idFo
           {TEXT.negateLabel}
         </label>
         {onRemove && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="xs"
             aria-label={TEXT.removeGroupLabel}
             data-testid="condition-remove-node"
             onClick={onRemove}
             className="ml-auto text-muted-foreground hover:text-destructive"
           >
             {TEXT.removeGroupLabel}
-          </button>
+          </Button>
         )}
       </div>
 

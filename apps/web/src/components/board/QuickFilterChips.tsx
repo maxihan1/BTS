@@ -175,33 +175,39 @@ function QuickFilterChip({
         isActive ? 'bg-primary text-primary-foreground' : 'bg-muted'
       }`}
     >
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="xs"
         aria-pressed={isActive}
         className="min-h-[44px] px-1"
         onClick={onApply}
       >
         {filter.name}
-      </button>
+      </Button>
       {canManage && (
         <>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-sm"
             aria-label={quickFilterLabels.list.editAriaLabel(filter.name)}
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full leading-none hover:bg-muted-foreground/20"
+            className="min-h-[44px] min-w-[44px] rounded-full leading-none hover:bg-muted-foreground/20"
             onClick={onEdit}
           >
             ✎
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-sm"
             aria-label={quickFilterLabels.list.deleteAriaLabel(filter.name)}
             disabled={isDeleting}
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full leading-none hover:bg-muted-foreground/20"
+            className="min-h-[44px] min-w-[44px] rounded-full leading-none hover:bg-muted-foreground/20"
             onClick={onDelete}
           >
             ✕
-          </button>
+          </Button>
         </>
       )}
     </span>

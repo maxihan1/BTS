@@ -252,6 +252,7 @@ function AssigneeSection({
           )}
           {!isLoading && users.filter((u) => !selectedIds.includes(u.id)).map((user) => (
             <li key={user.id}>
+              {/* PR22 OUT — P5 옵션 행: 콤보박스 후보라 w-full text-left 가 필요하고, Button의 inline-flex/justify-center와 충돌한다 */}
               <button
                 type="button"
                 className="w-full min-h-[44px] text-left px-3 py-2 text-sm hover:bg-accent"
@@ -327,14 +328,16 @@ function Chip({ label, onRemove }: { readonly label: string; readonly onRemove: 
   return (
     <span role="listitem" className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs">
       {label}
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-sm"
         aria-label={filterBarLabels.chip.removeAriaLabel(label)}
-        className="ml-1 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full leading-none hover:bg-muted-foreground/20"
+        className="ml-1 min-h-[44px] min-w-[44px] rounded-full leading-none hover:bg-muted-foreground/20"
         onClick={onRemove}
       >
         ✕
-      </button>
+      </Button>
     </span>
   )
 }

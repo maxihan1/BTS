@@ -460,16 +460,18 @@ function TriggerConfigFields({
           <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="선택된 필드 목록">
             {fields.map((field) => (
               <li key={field}>
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="xs"
                   data-testid={`automation-rule-field-chip-${field}`}
                   aria-label={`${field} 제거`}
                   onClick={() => { onRemoveField(field) }}
-                  className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs"
+                  className="rounded-full bg-muted px-2 text-xs"
                 >
                   {field}
                   <span aria-hidden="true">×</span>
-                </button>
+                </Button>
               </li>
             ))}
           </ul>

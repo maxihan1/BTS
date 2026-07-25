@@ -711,15 +711,17 @@ export function IssueDetailPage({
               ) : (
                 <h1 className="text-2xl font-semibold leading-snug mb-1">{issue.summary}</h1>
               )}
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="xs"
                 onClick={handleEditStart}
                 disabled={!canEdit}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed"
                 aria-label={issueDetailStrings.editTitleButton}
               >
                 {issueDetailStrings.editTitleButton}
-              </button>
+              </Button>
             </>
           )}
 

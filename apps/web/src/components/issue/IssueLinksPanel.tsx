@@ -125,15 +125,17 @@ function LinkRow({ link, onRemove, disabled }: LinkRowProps): JSX.Element {
         <span className="text-sm text-foreground truncate">{link.otherIssue.summary}</span>
         <span className="text-xs text-muted-foreground shrink-0">({link.otherIssue.statusKey})</span>
       </div>
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="xs"
         onClick={() => onRemove(link.id)}
         disabled={disabled}
         aria-label={issueLinkStrings.removeLinkButton}
-        className="text-xs text-muted-foreground hover:text-destructive focus:outline-none focus:ring-1 focus:ring-ring min-h-[44px] px-2 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+        className="min-h-[44px] shrink-0 text-muted-foreground hover:text-destructive disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {issueLinkStrings.removeLinkButton}
-      </button>
+      </Button>
     </li>
   )
 }
@@ -311,15 +313,17 @@ function ParentSection({ issueKey, parent, disabled }: ParentSectionProps): JSX.
             {parent.key}
           </a>
           <span className="text-sm text-foreground truncate">{parent.summary}</span>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="xs"
             onClick={handleClearParent}
             disabled={disabled || isPending}
             aria-label={issueLinkStrings.clearParentButton}
-            className="text-xs text-muted-foreground hover:text-destructive focus:outline-none focus:ring-1 focus:ring-ring min-h-[44px] px-2 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="min-h-[44px] shrink-0 text-muted-foreground hover:text-destructive disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {issueLinkStrings.clearParentButton}
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="flex gap-2">
@@ -433,15 +437,17 @@ function EpicSection({ issueKey, epic, disabled }: EpicSectionProps): JSX.Elemen
             {epic.key}
           </a>
           <span className="text-sm text-foreground truncate">{epic.summary}</span>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="xs"
             onClick={handleClearEpic}
             disabled={disabled || isPending}
             aria-label={issueLinkStrings.clearEpicButton}
-            className="text-xs text-muted-foreground hover:text-destructive focus:outline-none focus:ring-1 focus:ring-ring min-h-[44px] px-2 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="min-h-[44px] shrink-0 text-muted-foreground hover:text-destructive disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {issueLinkStrings.clearEpicButton}
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="flex gap-2">

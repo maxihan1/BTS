@@ -400,15 +400,15 @@ function NewIssueButton({ canCreate }: NewIssueButtonProps): JSX.Element {
   }
 
   return (
-    <button
+    <Button
       type="button"
       disabled
       data-testid="new-issue-button"
-      className={`${NEW_ISSUE_CLASS} disabled:opacity-50 disabled:cursor-not-allowed`}
+      className={`${NEW_ISSUE_CLASS} disabled:cursor-not-allowed`}
       aria-label="새 이슈 (권한 없음)"
     >
       새 이슈
-    </button>
+    </Button>
   )
 }
 

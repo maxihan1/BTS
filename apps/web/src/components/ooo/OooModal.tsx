@@ -61,6 +61,7 @@ function DelegateResultList({ query, onSelect }: DelegateResultListProps): JSX.E
     <ul className="mt-1 max-h-40 overflow-y-auto rounded-md border divide-y">
       {results.map((user) => (
         <li key={user.id}>
+          {/* PR22 OUT — P5 옵션 행: 콤보박스 후보라 w-full text-left 가 필요하고, Button의 inline-flex/justify-center와 충돌한다 */}
           <button
             type="button"
             className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors"
@@ -225,14 +226,16 @@ export function OooModal({ open, onOpenChange }: OooModalProps): JSX.Element {
                 <span className="font-medium text-foreground">
                   {selectedDelegateLabel ?? delegateUserId}
                 </span>{' '}
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="xs"
                   aria-label="대리자 선택 해제"
-                  className="text-xs text-muted-foreground underline"
+                  className="text-muted-foreground underline"
                   onClick={handleClearDelegate}
                 >
                   ×
-                </button>
+                </Button>
               </p>
             )}
           </div>

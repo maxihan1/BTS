@@ -211,13 +211,15 @@ export const SavedFilterMenu = (): JSX.Element => {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
+          <Button
             type="button"
-            className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium hover:bg-accent"
+            variant="ghost"
+            size="icon"
+            className="rounded-md"
             aria-label={savedFilterLabels.menuTriggerAriaLabel}
           >
             <SlidersHorizontal className="size-4" aria-hidden />
-          </button>
+          </Button>
         </DropdownMenuTrigger>
 
         <DropdownMenuContent align="end" className="w-80">
