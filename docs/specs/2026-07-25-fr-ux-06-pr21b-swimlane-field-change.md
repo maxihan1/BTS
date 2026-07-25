@@ -103,10 +103,10 @@ FR-UX-06 하위 화면 작업(신규 FR 없음, **FR 129 불변**). 아래는 �
 - typecheck 0 · eslint 0 error · vitest green · build 0 · verify-master-plan 129/129.
 - PR21 회귀 0(순서변경·상태전이 E2E 유지).
 
-## 결정 포인트 (게이트 1 Maxi 확인)
+## 결정 포인트 (게이트 1 — Maxi 확정 2026-07-25)
 
-- **D1 에픽 2-step 부분 실패 처리**: (a) best-effort 재connect 롤백 + toast + refetch[권장] / (b) toast만 + refetch(복구 시도 안 함) / (c) 2-step 대신 백엔드에 원자적 reparent API 신설 요청(스코프 확대).
-- **D2 same-value 드롭(E3)**: noop 처리[권장·자명] 확인.
+- **D1 에픽 2-step 부분 실패 처리 → (a) 확정**: best-effort 재connect 롤백 + toast + refetch. 이슈가 "에픽 없음"으로 잔류하는 것을 최소화.
+- **D2 same-value 드롭(E3) → noop 확정**.
 
 ## Brainstorming Check
 
