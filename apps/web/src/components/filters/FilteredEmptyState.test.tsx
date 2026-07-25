@@ -8,7 +8,7 @@ describe('FilteredEmptyState', () => {
   it('제목과 CTA 라벨을 prop으로 받아 렌더한다', () => {
     render(<FilteredEmptyState title="조건에 맞는 카드가 없습니다" resetLabel="필터 초기화" onReset={vi.fn()} />)
     expect(screen.getByText('조건에 맞는 카드가 없습니다')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '필터 초기화', exact: true })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '필터 초기화' })).toBeInTheDocument()
   })
 
   it('description을 주면 2행으로 렌더한다 (이슈 목록 계약)', () => {

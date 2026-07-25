@@ -23,6 +23,7 @@ import { ISSUE_COLUMNS } from '@/components/issues/issue-columns'
 import { normalizeIssueFilter, isEmptyIssueFilter, searchToIssueFilter, issueFilterToSearch } from '@/lib/issue-filter'
 import type { IssueFilterSearch } from '@/lib/issue-filter'
 import { IssueDetailPage } from './issues.$key'
+import { FilteredEmptyState } from '@/components/filters/FilteredEmptyState'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // router.ts 등록 방법 (code-based 패턴 — PR #11 컨벤션).
@@ -144,39 +145,6 @@ function IssueEmptyState(): JSX.Element {
     <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
       <p className="text-base">이슈가 없습니다.</p>
       <p className="mt-1 text-sm">새 이슈를 만들어 프로젝트를 시작해 보세요.</p>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FilteredEmptyState — 필터 적용 + 0건 시 회복 안내 컴포넌트 (EC1)
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface FilteredEmptyStateProps {
-  /** "필터 초기화" 버튼 클릭 콜백 */
-  onReset: () => void
-}
-
-/**
- * 필터가 적용된 상태에서 이슈가 0건일 때 표시하는 안내 컴포넌트 (EC1).
- *
- * 기존 IssueEmptyState와 달리 "필터 초기화" CTA 버튼을 제공해
- * 사용자가 필터를 초기화하고 전체 목록으로 돌아갈 수 있다.
- */
-function FilteredEmptyState({ onReset }: FilteredEmptyStateProps): JSX.Element {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-      <p className="text-base">필터 조건에 맞는 이슈가 없습니다.</p>
-      <p className="mt-1 text-sm">다른 조건을 시도하거나 필터를 초기화하세요.</p>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="mt-4"
-        onClick={onReset}
-      >
-        필터 초기화
-      </Button>
     </div>
   )
 }
@@ -624,6 +592,10 @@ export function IssueListPage({
       {/* EC1 — 0건 + 필터 있음: 필터 초기화 CTA. 0건 + 필터 없음: 기존 IssueEmptyState */}
       {data.empty && !isEmptyIssueFilter(filter) ? (
         <FilteredEmptyState
+          title="필터 조건에 맞는 이슈가 없습니다."
+          description="다른 조건을 시도하거나 필터를 초기화하세요."
+          resetLabel="필터 초기화"
+          className="py-16"
           onReset={() => {
             onFilterChange?.(EMPTY_FILTER)
             onPageChange(0)

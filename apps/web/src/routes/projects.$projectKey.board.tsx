@@ -30,10 +30,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Button } from '@/components/ui/button'
 import { FavoriteButton } from '@/components/favorite/FavoriteButton'
 import { ProjectNavTabs, type ProjectNavTabLink } from '@/components/project/ProjectNavTabs'
 import { Skeleton } from '@/components/ui/skeleton'
+import { FilteredEmptyState } from '@/components/filters/FilteredEmptyState'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 뷰 전환 nav 링크 — ProjectNavTabs에 전달(회귀-무해 원칙: 기존 인라인 nav 링크 집합 그대로)
@@ -221,23 +221,6 @@ function BoardSelectorDropdown({ boards, currentBoardId, onSelect }: BoardSelect
           ))}
         </SelectContent>
       </Select>
-    </div>
-  )
-}
-
-/** 필터 결과 0건 빈 상태 서브컴포넌트 (D2) props */
-interface FilteredEmptyStateProps {
-  onReset: () => void
-}
-
-/** 필터 결과 0건 빈 상태 — 안내 + 초기화 CTA (D2) */
-function FilteredEmptyState({ onReset }: FilteredEmptyStateProps): JSX.Element {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-48 gap-3 text-center">
-      <p className="text-sm text-muted-foreground">조건에 맞는 카드가 없습니다</p>
-      <Button type="button" variant="outline" size="sm" onClick={onReset}>
-        {boardFilterLabels.filter.reset}
-      </Button>
     </div>
   )
 }
@@ -557,7 +540,12 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
 
       {/* 필터 결과 0건 빈 상태 (D2) */}
       {boardDetail !== undefined && isFilteredEmpty && (
-        <FilteredEmptyState onReset={handleFilterReset} />
+        <FilteredEmptyState
+          title="조건에 맞는 카드가 없습니다"
+          resetLabel={boardFilterLabels.filter.reset}
+          className="min-h-48"
+          onReset={handleFilterReset}
+        />
       )}
 
       {/* KanbanBoard — 필터 결과 있을 때만 */}
