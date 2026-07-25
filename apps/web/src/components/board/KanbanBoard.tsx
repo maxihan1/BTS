@@ -16,6 +16,8 @@ import { useMoveCard } from '@/hooks/use-move-card'
 import type { MoveCardVars } from '@/hooks/use-move-card'
 import { useReorderCard } from '@/hooks/use-reorder-card'
 import type { ReorderCardVars } from '@/hooks/use-reorder-card'
+import { useChangeCardField } from '@/hooks/use-change-card-field'
+import type { ChangeCardFieldVars } from '@/hooks/use-change-card-field'
 import { BoardColumn } from './BoardColumn'
 import { BoardCard } from './BoardCard'
 import type { CardAssigneeDisplay } from './BoardCard'
@@ -273,6 +275,43 @@ export interface KanbanBoardProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 드래그 시각 힌트 (FR-8, FR-UX-06 PR21b Task 5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * resolveDropAction 판정 결과로부터 하이라이트할 컬럼 id를 계산한다 — handleDragOver 전용.
+ *
+ * onDragEnd와 동일하게 resolveDropAction을 재사용해, 실제로 드롭 가능한 대상일 때만
+ * 컬럼을 하이라이트한다(noop이면 하이라이트하지 않는다).
+ *
+ * field-change(스윔레인 그룹 간 필드변경)는 셀은 다르지만 항상 같은 컬럼 내부에서 일어나므로
+ * DropAction에 columnId가 없다 — 드래그 시작 컬럼(activeFromColumnId)을 그대로 쓴다.
+ * 이전(PR21)엔 그룹 경계 드래그를 noop 취급해 컬럼 하이라이트를 억제했지만, field-change가
+ * 유효한 동작이 된 지금은 그 억제를 반전해 정상적으로 하이라이트한다.
+ *
+ * @param action resolveDropAction이 반환한 판정 결과
+ * @param activeFromColumnId 드래그 시작 컬럼 id (handleDragStart가 기록한 state)
+ * @returns 하이라이트할 컬럼 id. 하이라이트하지 않으면 null
+ */
+function resolveHighlightColumnId(action: DropAction, activeFromColumnId: string | null): string | null {
+  switch (action.type) {
+    case 'noop':
+      return null
+    case 'move':
+    case 'needs-resolution':
+      return action.toColumnId
+    case 'reorder':
+      return action.columnId
+    case 'field-change':
+      return activeFromColumnId
+    default: {
+      const exhaustiveCheck: never = action
+      return exhaustiveCheck
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // KanbanBoard 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -295,13 +334,14 @@ const UNASSIGNED: CardAssigneeDisplay = { state: 'unassigned' }
 export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterActive = false }: KanbanBoardProps): JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [activeFromColumnId, setActiveFromColumnId] = useState<string | null>(null)
-  const [activeSwimlaneGroupKey, setActiveSwimlaneGroupKey] = useState<string | undefined>(undefined)
   const [overColumnId, setOverColumnId] = useState<string | null>(null)
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null)
 
-  // filter-aware useMoveCard/useReorderCard — filter와 동일한 queryKey를 공유해 낙관적 업데이트 정합
+  // filter-aware useMoveCard/useReorderCard/useChangeCardField — filter와 동일한 queryKey를
+  // 공유해 낙관적 업데이트 정합 (field-change는 FR-UX-06 PR21b Task 5)
   const moveCard = useMoveCard(boardId, filter)
   const reorderCard = useReorderCard(boardId, filter)
+  const changeCardField = useChangeCardField(boardId, filter)
 
   // PointerSensor: distance 5px 이상 이동해야 드래그 시작 → 카드 Link 클릭 보존 (D-2)
   const sensors = useSensors(
@@ -322,38 +362,28 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
   // 접근성 공지(DR2) — board/assigneeNames가 바뀔 때만 재계산(불필요한 재구독 방지)
   const announcements = useMemo(() => buildDragAnnouncements(board, assigneeNames), [board, assigneeNames])
 
-  /** dnd-kit onDragStart — 드래그 중인 카드의 출발 컬럼·셀(스윔레인 그룹) key를 기록한다. */
+  /** dnd-kit onDragStart — 드래그 중인 카드의 출발 컬럼을 기록한다. */
   function handleDragStart(event: DragStartEvent): void {
     setActiveId(String(event.active.id))
-    const current = event.active.data.current as { fromColumnId?: string; swimlaneGroupKey?: string } | undefined
+    const current = event.active.data.current as { fromColumnId?: string } | undefined
     setActiveFromColumnId(current?.fromColumnId ?? null)
-    setActiveSwimlaneGroupKey(current?.swimlaneGroupKey)
   }
 
   /**
    * dnd-kit onDragOver — 하이라이트할 컬럼 id를 계산한다.
    *
-   * DR3(최소 구현) — 같은 컬럼 내에서 활성 카드와 다른 스윔레인 그룹(셀) 위로 드래그 중이면
-   * 이 PR에서는 noop으로 처리되므로(필드변경은 PR21b), 착시를 막기 위해 컬럼 하이라이트를
-   * 억제한다(over 대상이 없는 것처럼 취급).
+   * resolveDropAction과 동일 판정을 재사용해(handleDragEnd와 같은 로직), 실제로 드롭 가능한
+   * 대상일 때만 하이라이트한다(FR-8). field-change(스윔레인 그룹 간 드롭)도 유효한 드롭이므로
+   * 이제 하이라이트된다 — PR21이 그룹 경계 드래그를 noop 취급해 억제하던 로직을 반전했다.
    */
   function handleDragOver(event: DragOverEvent): void {
-    const over = event.over
-    if (over === null) {
-      setOverColumnId(null)
-      return
-    }
-
-    const overData = over.data.current as { fromColumnId?: string; swimlaneGroupKey?: string } | undefined
-    const overColumnIdResolved = overData?.fromColumnId ?? String(over.id)
-    const isCrossGroupWithinSameColumn =
-      activeFromColumnId !== null &&
-      overColumnIdResolved === activeFromColumnId &&
-      activeSwimlaneGroupKey !== undefined &&
-      overData?.swimlaneGroupKey !== undefined &&
-      overData.swimlaneGroupKey !== activeSwimlaneGroupKey
-
-    setOverColumnId(isCrossGroupWithinSameColumn ? null : overColumnIdResolved)
+    const action = resolveDropAction(
+      board,
+      event.active as DragActiveMin,
+      event.over as DragOverMin | null,
+      assigneeNames,
+    )
+    setOverColumnId(resolveHighlightColumnId(action, activeFromColumnId))
   }
 
   /**
@@ -363,7 +393,6 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
   function handleDragEnd(event: DragEndEvent): void {
     setActiveId(null)
     setActiveFromColumnId(null)
-    setActiveSwimlaneGroupKey(undefined)
     setOverColumnId(null)
 
     const action = resolveDropAction(
@@ -383,6 +412,8 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
    * - `reorder` → executeReorder(useReorderCard.mutate 즉시 호출) — 셀 내 순서변경.
    * - `needs-resolution` → pendingMove를 채워 ResolutionPickerModal을 연다(확인 시 executeMutate).
    * - `move` → executeMutate(useMoveCard.mutate 즉시 호출) — 다른 컬럼(non-DONE)으로 이동.
+   * - `field-change` → executeChangeField(useChangeCardField.mutate 즉시 호출) — 스윔레인 그룹
+   *   간 드롭으로 담당자·우선순위·에픽을 변경(FR-UX-06 PR21b Task 5).
    *
    * @param action resolveDropAction이 반환한 판정 결과
    */
@@ -408,6 +439,9 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
           toColumnId: action.toColumnId,
           expectedVersion: action.expectedVersion,
         })
+        return
+      case 'field-change':
+        executeChangeField(action)
         return
       default: {
         const exhaustiveCheck: never = action
@@ -439,6 +473,25 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
       nextIssueKey: action.nextIssueKey,
     }
     reorderCard.mutate(vars)
+  }
+
+  /**
+   * 스윔레인 그룹 간 드롭으로 카드의 담당자·우선순위·에픽을 변경한다(useChangeCardField.mutate).
+   * action의 필드를 그대로 매핑한다 — field별로 쓰이지 않는 값은 undefined로 전달되며
+   * useChangeCardField가 field로 분기해 처리한다(FR-UX-06 PR21b Task 5).
+   * 409 충돌 등 에러 toast는 useChangeCardField 내부에서 처리한다(중복 안내 방지).
+   */
+  function executeChangeField(action: Extract<DropAction, { type: 'field-change' }>): void {
+    const vars: ChangeCardFieldVars = {
+      issueKey: action.issueKey,
+      field: action.field,
+      toAssigneeId: action.toAssigneeId,
+      toPriority: action.toPriority,
+      toEpicKey: action.toEpicKey,
+      fromEpicKey: action.fromEpicKey,
+      expectedVersion: action.expectedVersion,
+    }
+    changeCardField.mutate(vars)
   }
 
   function handleResolutionConfirm(resolutionId: string): void {
