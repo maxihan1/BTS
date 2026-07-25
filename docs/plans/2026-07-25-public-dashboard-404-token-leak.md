@@ -352,6 +352,23 @@ class PublicDashboardErrorTokenLeakTest {
         assertThat(body).doesNotContain(rawToken)
         assertThat(body).doesNotContain("ENC")
     }
+
+    /**
+     * R2 고정 — `instance` 는 **토큰 세그먼트를 뺀 정확한 경로**여야 한다 (eng-review 이슈 3).
+     *
+     * 다른 테스트는 전부 "토큰이 없다" 만 본다. 그것만으로는 값이 엉뚱하게 바뀌어도 통과하므로
+     * 스펙 R2 가 검증되지 않은 채 남는다. 404·500 두 통로 모두에서 값을 고정한다.
+     */
+    @Test
+    fun `R2 — instance 는 토큰 세그먼트를 뺀 고정 경로다`() {
+        every { service.getPublicByToken(secretToken) } throws PublicDashboardNotFoundException()
+        assertThat(String(call().response.contentAsByteArray, Charsets.UTF_8))
+            .contains("\"instance\":\"/api/v1/public/dashboards\"")
+
+        every { service.getPublicByToken(secretToken) } throws IllegalStateException("boom")
+        assertThat(String(call().response.contentAsByteArray, Charsets.UTF_8))
+            .contains("\"instance\":\"/api/v1/public/dashboards\"")
+    }
 }
 ```
 
@@ -364,8 +381,13 @@ set -o pipefail
 echo "EXIT=$?"
 ```
 
-기대. `M1`·`M2` 가 **FAIL** — "응답 본문(raw bytes)에 원문 토큰이 실렸다".
-`G2`·`R3` 2건은 **PASS**(현재 동작 기록). **EXIT != 0** 이어야 한다.
+기대. 이 파일의 테스트는 **7건**(M1 · M2 · G2 · R3-404 · R3-500 · E4 · R2).
+**FAIL 4건** — `M1`·`M2`·`E4` 는 "응답 본문(raw bytes)에 원문 토큰이 실렸다", `R2` 는 instance 가
+고정 경로가 아니라 토큰이 붙은 요청 URI 라서 실패한다.
+**PASS 3건** — `G2`·`R3-404`·`R3-500`(현재 동작을 기록하는 회귀가드). **EXIT != 0** 이어야 한다.
+
+⚠️ FAIL 이 4건이 아니면 멈추고 원인을 본다. 특히 **M1·M2 가 PASS 로 나오면 오라클이 고장 난 것**이다
+(바이트 검사가 실제로 본문을 못 읽고 있을 수 있다) — 프로브에서 이미 유출을 실측했으므로 PASS 는 불가능하다.
 
 ⚠️ **G2 가 이 시점에 FAIL 하면 설계 (b) 의 전제가 깨진 것이다.** 즉시 중단하고 Maxi 에게 보고한다.
 
@@ -392,9 +414,45 @@ git -C "$WT" commit -m "test: 공개 대시보드 오류응답 토큰 유출 회
 
 `PublicDashboardController.kt` 를 다음과 같이 바꾼다.
 
-(1) import 추가 — `org.springframework.web.server.ResponseStatusException`.
+> **리뷰 반영.** eng-review 이슈 1·2·4 를 A 안으로 채택해 원안에서 3곳이 바뀌었다 —
+> ① `ResponseStatusException` 분기 **삭제**(항상 500), ② `problem()` **헬퍼 추출**(automation 정본 동형),
+> ③ 클래스 KDoc 에 **예외 해소 순서 ASCII 다이어그램** 추가. import 로 `ResponseStatusException` 을
+> 추가할 필요가 없어졌다(원안 (1) 폐기).
 
-(2) 기존 `handleNotFound` 에 `instance` 한 줄 추가.
+(1) 클래스 KDoc 에 예외 해소 순서 다이어그램을 추가한다 — 이 파일이 앞으로 오해받을 자리를 그림으로 막는다.
+
+```kotlin
+ * ## 예외 해소 순서 — 왜 이 컨트롤러가 500 핸들러를 직접 갖는가
+ * Spring 은 컨트롤러 클래스의 @ExceptionHandler 를 **먼저** 찾고, 없을 때만 @ControllerAdvice 로 간다.
+ * 이 컨트롤러가 Exception catch-all 을 가지므로 **모든 예외가 여기서 끝난다** — 의도된 설계다.
+ * 공개 경로는 정화가 기본값이어야 하고, advice 의 일반 응답이 흘러들면 instance 로 토큰이 샌다.
+ *
+ *   요청 GET /api/v1/public/dashboards/{token}
+ *          │
+ *          ├─ 정상 ─────────────────────────────▶ 200 DataResponse (ProblemDetail 아님, instance 없음)
+ *          │
+ *          └─ 예외 발생
+ *               │
+ *               ▼
+ *      ┌────────────────────────────────┐
+ *      │ ① 컨트롤러-로컬 @ExceptionHandler │ ◀── 항상 여기서 매치된다
+ *      ├────────────────────────────────┤
+ *      │ PublicDashboardNotFound → 404  │──┐
+ *      │ Exception (catch-all)   → 500  │──┤   둘 다 problem() 을 거친다
+ *      └────────────────────────────────┘  │   → instance = INSTANCE_PATH (토큰 세그먼트 없음)
+ *               ╎ (도달하지 않음)            │
+ *               ▼                          ▼
+ *      ┌────────────────────────────────┐  응답 본문·헤더에 원문 토큰 0
+ *      │ ② DashboardExceptionHandler    │
+ *      │    advice — instance 미설정     │  ◀── 인증 경로(/api/v1/dashboards/**)는 계속 여기를 쓴다.
+ *      └────────────────────────────────┘      비밀값이 없어 요청 URI 를 남기는 편이 진단에 유리하다.
+ *
+ * ⚠️ 이 컨트롤러의 catch-all 을 "advice 와 중복" 이라며 지우면 즉시 토큰 유출로 회귀한다.
+ *    `PublicDashboardErrorTokenLeakTest` 가 그 회귀를 잡는다.
+```
+
+(2) 두 핸들러를 `problem()` 헬퍼 위로 올린다 — `instance` 설정을 **단일 지점**으로 만들어,
+새 핸들러를 추가하는 사람이 그 줄을 빠뜨리는 것을 구조적으로 불가능하게 한다(이슈 2).
 
 ```kotlin
     @ExceptionHandler(PublicDashboardNotFoundException::class)
@@ -402,46 +460,68 @@ git -C "$WT" commit -m "test: 공개 대시보드 오류응답 토큰 유출 회
         @Suppress("UnusedParameter") ex: PublicDashboardNotFoundException,
     ): ProblemDetail {
         log.debug("NOTIF_DASHBOARD_404 public_not_found")
-        val pd = ProblemDetail.forStatus(HttpStatus.NOT_FOUND)
-        pd.type = URI.create("https://bts.example.com/problems/dashboard-not-found")
-        pd.instance = URI.create(INSTANCE_PATH)   // ★ 추가 — 비우면 Spring 이 원문 토큰이 든 요청 URI 로 채운다
-        pd.title = "Dashboard Not Found"
-        pd.detail = "공유된 대시보드를 찾을 수 없습니다."
-        pd.setProperty("errorCode", "NOTIF_DASHBOARD_NOT_FOUND")
-        pd.setProperty("timestamp", Instant.now().toString())
-        return pd
+        return problem(
+            status = HttpStatus.NOT_FOUND,
+            type = "dashboard-not-found",
+            title = "Dashboard Not Found",
+            errorCode = "NOTIF_DASHBOARD_NOT_FOUND",
+            detail = "공유된 대시보드를 찾을 수 없습니다.",
+        )
     }
-```
 
-(3) 컨트롤러-로컬 catch-all 신설 — advice 의 500 을 **동일한 상태·errorCode·detail 로** 흡수한다.
-
-```kotlin
     /**
      * 분류되지 않은 모든 예외 — 500. **공개 경로 전용 catch-all.**
      *
-     * `DashboardExceptionHandler` advice 가 같은 매핑을 갖고 있으나, advice 의 `problem()` 헬퍼는
-     * `instance` 를 비워 두므로 이 경로에서는 **원문 토큰이 응답에 실린다**. 컨트롤러-로컬 핸들러가
-     * advice 보다 우선 적용되는 성질을 이용해 공개 경로의 오류를 여기서 흡수하고 `instance` 를 고정한다.
-     * 인증 대시보드 경로는 그대로 advice 를 쓰므로 진단용 `instance`(요청 URI)를 잃지 않는다.
-     *
+     * `DashboardExceptionHandler` advice 도 같은 매핑을 갖지만 그 `problem()` 은 `instance` 를 비워 두므로
+     * 이 경로로 흘러가면 **원문 토큰이 응답에 실린다**. 컨트롤러-로컬이 advice 보다 먼저 매치되는 성질로
+     * 공개 경로의 오류를 여기서 흡수한다(위 KDoc 다이어그램 ①).
      * 상태·errorCode·detail 은 advice 와 **한 글자도 다르지 않게** 유지한다(응답 drift 금지).
      *
-     * ## ResponseStatusException 을 rethrow 하지 않는 이유
-     * advice 는 이를 rethrow 하지만(memory: catch-all-exceptionhandler-swallows-responsestatusexception),
-     * 여기서 rethrow 하면 Spring 기본 오류 처리로 넘어가 `/error` 응답의 `path` 필드에 **다시 원문 토큰이
-     * 실린다**. 대신 **상태 코드를 보존한 채** 본문만 정화한다 — 그 메모리가 경계한 실패 모드(상태 변질)는
-     * 일어나지 않는다.
+     * ## 상태 코드를 분기하지 않는 이유
+     * `ResponseStatusException` 의 상태를 보존하려 `HttpStatus.valueOf(...)` 를 쓰면 **비표준 코드에서
+     * 그 호출이 예외를 던져 핸들러 자체가 실패**하고, Spring 기본 오류 처리(`/error`)로 넘어가 응답
+     * `path` 에 **다시 원문 토큰이 실린다** — 막으려던 것을 되살리는 경로다. 이 경로의 서비스는
+     * `ResponseStatusException` 을 던지지 않아(=도달 불가) 상태 보존의 실익이 없으므로, 분기를 두지 않고
+     * 전부 500 으로 수렴시킨다. `SEAL` 테스트가 새 통로 추가를 감시한다.
      */
     @ExceptionHandler(Exception::class)
     fun handleUnclassified(ex: Exception): ProblemDetail {
-        val status = if (ex is ResponseStatusException) HttpStatus.valueOf(ex.statusCode.value()) else HttpStatus.INTERNAL_SERVER_ERROR
         log.error("NOTIF_DASHBOARD_500 internal_error", ex)
+        return problem(
+            status = HttpStatus.INTERNAL_SERVER_ERROR,
+            type = "dashboard-internal-error",
+            title = "Dashboard Internal Server Error",
+            errorCode = "NOTIF_DASHBOARD_INTERNAL_ERROR",
+            detail = "서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+        )
+    }
+
+    /**
+     * ProblemDetail 조립 헬퍼 (`AutomationWebhookController.problem` 동형).
+     *
+     * ## ★ `instance` 를 반드시 명시한다 — 비우면 Spring 이 원문 토큰을 응답에 싣는다
+     * `RequestResponseBodyMethodProcessor` 는 `instance` 가 `null` 이면 요청 URI 로 자동 채운다.
+     * 이 엔드포인트의 요청 URI 에는 **경로 세그먼트에 원문 공유 토큰**이 있으므로, 비워 두면 404·500
+     * **모든** 오류 응답 본문에 평문 토큰이 실려 나간다. 보낸 사람이야 아는 값이지만 그 본문이
+     * 응답 로그·프록시 캐시·에러 트래커에 적재되는 순간 그것이 **평문 토큰 저장/로깅**이다
+     * (DEVELOPMENT.md §1.1-1·§1.1-2 · ADR 2026-07-02 D1 "원문은 발급 응답에서 1회만").
+     *
+     * **모든 오류 응답이 이 한 함수를 지나게 두는 것이 설계의 핵심**이다 — 핸들러마다 `instance` 를
+     * 기억해서 넣는 구조였다면 언젠가 빠뜨린다(실제로 이 컨트롤러가 3주간 그 상태였다).
+     */
+    private fun problem(
+        status: HttpStatus,
+        type: String,
+        title: String,
+        errorCode: String,
+        detail: String,
+    ): ProblemDetail {
         val pd = ProblemDetail.forStatus(status)
-        pd.type = URI.create("https://bts.example.com/problems/dashboard-internal-error")
+        pd.type = URI.create("https://bts.example.com/problems/$type")
         pd.instance = URI.create(INSTANCE_PATH)
-        pd.title = "Dashboard Internal Server Error"
-        pd.detail = "서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
-        pd.setProperty("errorCode", "NOTIF_DASHBOARD_INTERNAL_ERROR")
+        pd.title = title
+        pd.detail = detail
+        pd.setProperty("errorCode", errorCode)
         pd.setProperty("timestamp", Instant.now().toString())
         return pd
     }
@@ -465,7 +545,7 @@ set -o pipefail
 echo "EXIT=$?"
 ```
 
-기대. `PublicDashboardErrorTokenLeakTest` 5건 + `PublicDashboardControllerTest` 5건 **전량 PASS**, `EXIT=0`.
+기대. `PublicDashboardErrorTokenLeakTest` **7건** + `PublicDashboardControllerTest` **5건** 전량 PASS, `EXIT=0`.
 
 ⚠️ 기존 5건이 깨지면 **기능 변경이 일어난 것**이다(R3 위반). 즉시 원인 규명.
 
@@ -551,7 +631,7 @@ set -o pipefail
 echo "EXIT=$?"
 ```
 
-기대. 6건 전량 PASS, `EXIT=0`.
+기대. 이 파일 **8건**(기존 7 + `SEAL`) 전량 PASS, `EXIT=0`.
 
 - [ ] **Step 3: 봉인이 진짜 작동하는지 확인 (일부러 위반)**
 
@@ -710,15 +790,21 @@ cd "$WT/backend"; set -o pipefail
 
 - [ ] **Step 2: 뮤테이션 4종**
 
+> **리뷰 반영 (이슈 3).** `problem()` 헬퍼 추출로 `instance` 설정이 **단일 지점**이 됐고,
+> `R2` 테스트가 값을 고정하게 됐다. 뮤테이션 목록을 그에 맞게 정정한다 — 특히 **D 의 기대값이
+> green → red 로 뒤집힌다**(값을 고정했으므로 대조군의 의미가 달라졌다).
+
 | # | 뮤테이션 | 기대 |
 |---|---|---|
-| A | `handleNotFound` 의 `pd.instance = …` 줄 삭제 | M1 · SEAL red |
-| B | `handleUnclassified` 의 `pd.instance = …` 줄 삭제 | M2 · SEAL red |
-| C | `handleUnclassified` 전체 삭제 (advice 로 되돌림) | M2 · SEAL red |
-| D | `INSTANCE_PATH` 를 `"/api/v1/public/dashboards/x"` 로 변경 | 전부 green **(기대)** — 토큰만 없으면 통과하는 게 정상 |
+| A | `problem()` 의 `pd.instance = …` 줄 삭제 | M1 · M2 · R2 · SEAL **red** (단일 지점이라 전 통로가 함께 무너진다) |
+| B | `handleUnclassified` 전체 삭제 (advice 로 되돌림) | M2 · R2 · SEAL **red** |
+| C | `handleNotFound` 를 `problem()` 미경유 직접 조립으로 되돌림 | M1 · R2 **red** (헬퍼 우회 회귀 탐지) |
+| D | `INSTANCE_PATH` 를 `"/api/v1/public/dashboards/x"` 로 변경 | **R2 red · M1/M2 green** — 값 고정은 R2 만, 토큰 부재 단언은 값에 무관해야 정상 |
 
 각 뮤테이션마다 테스트를 돌려 red/green 을 기록하고 **손으로 원복**한다.
-D 는 "green 이 정상" 인 대조군이다 — 전부 red 가 나오면 테스트가 과잉 결합된 것이다.
+**D 가 판별력의 핵심 대조군**이다 — R2 만 red 이고 M1/M2 가 green 이어야 한다.
+D 에서 M1/M2 까지 red 가 되면 토큰 부재 단언이 경로 문자열에 과잉 결합된 것이고,
+R2 가 green 이면 값 고정이 실제로는 작동하지 않는 것이다. **양쪽 다 실패 신호다.**
 
 - [ ] **Step 3: 원복 확인**
 
@@ -811,7 +897,9 @@ cd /Users/maxi.moff/Projects/BTS/.worktrees/public-dashboard-404-token-leak/back
 grep -ho 'tests="[0-9]*"' build/test-results/test/TEST-*.xml | grep -o '[0-9]*' | awk '{s+=$1} END {print "실행 테스트 =", s}'
 ```
 
-기대. **기준선 429 + 신규 7건(M1·M2·G2·R3×2·SEAL·R4) = 436 이상.** 감소하면 조사한다.
+기대. **기준선 429 + 신규 9건 = 438 이상.**
+신규 9건 = `PublicDashboardErrorTokenLeakTest` 8(M1·M2·G2·R3-404·R3-500·E4·R2·SEAL)
++ `DashboardExceptionHandlerInstanceTest` 1(R4). 감소하면 조사한다.
 
 - [ ] **Step 2: 린트 + 정적 분석**
 
@@ -824,7 +912,10 @@ set -o pipefail
 
 ⚠️ `ktlintFormat` 은 실행하지 않는다 (memory `bts-ktlintformat-docs-commit-traps` — 다른 파일까지 포맷).
 위반이 나오면 **해당 줄만 손으로** 고친다. detekt 는 `--rerun-tasks` 필수(캐시 false-green).
-`MaxLineLength` 가 걸리면 `handleUnclassified` 의 `status` 대입 줄을 여러 줄로 나눈다.
+`MaxLineLength` 위험은 리뷰 반영으로 사라졌다(원안의 긴 `status` 대입 줄이 제거됨).
+남은 후보는 KDoc 다이어그램 줄이므로 **박스 폭을 120자 안에** 그린다. detekt `TooManyFunctions` 는
+`DashboardExceptionHandler` 처럼 `@Suppress` 가 필요할 수 있으나, 이 컨트롤러는 함수 4개(1 매핑 + 2 핸들러
++ 1 헬퍼)라 임계 미만이다 — **실측으로 확인하고 추측으로 `@Suppress` 를 붙이지 않는다.**
 
 - [ ] **Step 3: 조립 부팅 영향 확인**
 
@@ -853,4 +944,73 @@ set -o pipefail
 - 추가 검증: ktlintCheck · detekt(--rerun-tasks) · 뮤테이션 4종 · 봉인 위반 주입 1종 · 테스트 개수 실측 대조.
 - 프론트/마이그레이션/cross-BC: **0**. `verify-master-plan.sh` 대상 파일 무변경(FR 129 불변).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-eng-review (2026-07-25)
+
+**Step 0 스코프 챌린지 — 축소 없음.** 프로덕션 코드 **1파일 수정**, 신규 서비스/클래스 **0개**,
+신규 테스트 2파일. 8파일·2클래스 임계 미만이라 복잡도 STOP 게이트 미발동.
+`instance` 를 명시하는 곳이 레포 전체에 **automation 2곳뿐**이고 나머지 44개 ProblemDetail 생산자는
+경로에 비밀값이 없어 무해 — 범위가 이미 최소다.
+
+**Architecture — 1건 (P1).** 리뷰 전 원안의 `handleUnclassified` 가
+`HttpStatus.valueOf(ex.statusCode.value())` 로 상태를 분기했다. 비표준 코드에서 이 호출이 **예외를 던져
+핸들러 자체를 실패**시키고, Spring 기본 `/error` 로 넘어가 응답 `path` 에 **원문 토큰이 다시 실린다** —
+막으려던 유출을 되살리는 경로. 덤으로 상태 404 + 제목/errorCode "Internal Server Error" 라는 비정합도 생긴다.
+→ **채택 A: 분기 삭제, 항상 500.** 이 경로의 서비스는 `ResponseStatusException` 을 던지지 않아 도달 불가라
+상태 보존의 실익이 없다.
+
+**Code Quality — 1건 (P2).** ProblemDetail 조립 6~7줄이 두 핸들러에 복붙되고, 같은 문제를 이미 푼
+`AutomationWebhookController:203-218` · `GitWebhookController:405-420` 의 `problem()` 헬퍼 정본을 따르지 않았다.
+→ **채택 A: `problem()` 헬퍼 추출.** 부수 효과가 본질 — `instance` 설정이 **단일 지점**이 되어
+새 핸들러가 그 줄을 빠뜨리는 것이 구조적으로 불가능해진다. **재발 방지가 테스트에서 구조로 올라갔다.**
+
+**Test — 커버리지 13/15(87%), gap 2건 → 1건 해소.**
+스펙 R2("instance 는 토큰 뺀 고정 경로")를 **어떤 테스트도 고정하지 않아** 값이 바뀌어도 초록이었다
+(원안 뮤테이션 D 가 "그래도 green 이 정상"이라고 적어 둔 것이 그 증거).
+→ **채택 A: `R2` 테스트 신설**(404·500 양쪽 값 고정) + **뮤테이션 D 기대값을 green → red 로 정정.**
+남은 gap 1건(`ResponseStatusException` 분기 무테스트)은 이슈 1 채택으로 **분기 자체가 사라져 소멸**.
+
+**Performance — 0건.** DB 접근·N+1 없음. 오류 경로에서 `URI.create` 상수 1회. 영향 없음.
+
+**문서 — 1건 (P3).** 이 PR 의 토대인 "컨트롤러-로컬이 advice 보다 먼저 매치된다" 는 비직관적 규칙이
+표로만 설명돼 있었다. 모르는 사람이 catch-all 을 "중복"으로 지우면 즉시 유출 회귀.
+→ **채택 A: 클래스 KDoc 에 예외 해소 순서 ASCII 다이어그램 + 삭제 경고.**
+
+**Critical gap — 1건 발생 → 0건 (해소).** 이슈 1 의 `/error` 재유출 경로가 유일한 critical gap 이었고
+A 채택으로 제거됐다.
+
+**Outside voice — 미실행.** `codex` CLI 미설치(`CODEX_MODE: not_installed`)이고, 대체 경로인 Claude
+서브에이전트는 **이 세션이 에이전트 dispatch 를 금지**하므로 실행 불가. 교차모델 검증 없음.
+→ **잔여 위험으로 등재.** #309·#308 과 동일하게 **구현자가 자기 계획을 리뷰한 편향**이 남는다.
+필요하면 `npm install -g @openai/codex` 후 재실행하거나, 게이트 2 에서 Maxi 가 별도 판단.
+
+**BLOCKER: 없음.** (auth 타입이라 BLOCKER 는 무시 옵션이 없으나, 발생 0건.)
+
+### plan-ceo-review — 생략 (사유 등재)
+
+제품 범위 결정 **0건**(기능 변경 0 · FR 129 불변 · 사용자에게 보이는 변화 0 — 오류 응답의 진단용 필드
+값 하나뿐). 메모리 `bts-review-plan-autoplan-overkill` + #309 선례 동형.
+
+### 워크플로우 편차 (리뷰 단계)
+
+- **`plan-eng-review` 의 scope gate 질의 생략** — `/bts` 체인이 리뷰 대상 plan 파일 경로를 **인자로 명시
+  전달**해 확인 질문이 순수 중복. 리뷰 본문 4섹션은 생략 없이 전부 수행.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | 생략 | 제품 범위 결정 0건 (사유 등재) |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | — |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 4 issues, 1 critical gap 발생→해소 |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | 프론트 변경 0 |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | 공개 API 변경 0 |
+
+**VERDICT:** ENG CLEARED — 4건 전부 A안 채택 후 반영 완료. BLOCKER 0 · critical gap 0 · 구현 착수 가능.
+
+**UNRESOLVED DECISIONS:**
+- Outside voice(교차모델 독립 검증) 미실행 — `codex` CLI 미설치이고 Claude 서브에이전트 대체 경로는
+  이 세션의 에이전트 dispatch 금지에 막힌다. 결과적으로 **구현자가 자기 계획을 리뷰한 편향**이 남는다.
+  선택지 — (a) 이대로 진행(#308·#309 선례 동형), (b) `npm install -g @openai/codex` 후 재실행,
+  (c) 게이트 2 에서 별도 판단. Maxi 결정 필요.
