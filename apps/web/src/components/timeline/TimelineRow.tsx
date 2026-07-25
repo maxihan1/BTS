@@ -18,7 +18,7 @@ const BAR_HEIGHT_PX = 18
 /**
  * 이슈 타입별 막대 색 클래스 맵.
  *
- * FR-UX-06 PR22에서 Tailwind 리터럴(bg-purple-500 등) → `--type-*` 토큰으로 이관.
+ * FR-UX-06 PR22에서 Tailwind 리터럴 색 → `--type-*` 토큰으로 이관.
  * 값은 디자인 스펙 §4.2 표(Epic Purple700 · Story Green600 · Task Blue700 · Bug Red700)를 따르며,
  * 이 과정에서 story(파랑→초록)·task(청록→파랑)가 스펙에 맞게 교정된다 — 의도된 시각 변화.
  * 라이트/다크 값은 토큰이 처리하므로 여기서 `dark:` 변형을 쓰지 않는다.
