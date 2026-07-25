@@ -42,7 +42,74 @@
    두 경우 모두 산출물이 있다 — "문제 없었음"으로 끝내지 않는다.
 3. 판정 오라클(슬라이스 vs 실기동)이 서로 어긋나지 않음을 확인한다.
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**: notification (단일). 대시보드 영역 `com.bts.notification.dashboard`.
+- **영향 엔티티**: DashboardShareToken (기존, 변경 없음). 신규 엔티티 0.
+- **새 용어**: 0건. 기존 용어 `공유 토큰(Dashboard Share Token)`만 사용.
+- **기존 결정 충돌**: 없음. 오히려 **기존 결정을 복원하는 작업**이다.
+
+### 근거가 된 기존 결정
+
+`docs/decisions/2026-07-02-fr-db-03-dashboard-share.md`
+- **D1** — 공유 토큰은 불투명(opaque) 랜덤 토큰. **원문은 발급 응답에서 1회만 노출**, DB엔 SHA-256 해시만
+  (유출 시 원문 복원 불가). 즉 *"원문 토큰이 나가는 응답은 발급 응답 하나뿐"* 이 확립된 불변식이다.
+- **Consequences** — "BTS 첫 비인증 읽기 경로 → 계정 열거/토큰 probe 방어를 spec에서 명시".
+
+`DEVELOPMENT.md §1.1-1 / §1.1-2` — 평문 비밀값 저장·로깅 금지.
+
+### 실증 결과 (RED 확정, 2026-07-25)
+
+MockMvc 슬라이스 프로브로 404 응답 본문을 실측했다. **postgres 기동 불요** — `instance` 자동 채움은
+Spring MVC 반환값 처리 단계라 슬라이스가 같은 경로를 탄다(체크포인트의 "dev postgres 5433 필요" 전제 정정).
+
+```json
+{"type":"...","title":"Dashboard Not Found","status":404,"detail":"...",
+ "instance":"/api/v1/public/dashboards/share_SUPERSECRETTOKEN_0123456789abcdef",
+ "errorCode":"NOTIF_DASHBOARD_NOT_FOUND","timestamp":"..."}
+```
+→ `TOKEN_IN_BODY=true`. **원문 공유 토큰이 404 본문에 실려 나간다.**
+
+### ★정본 수정 패턴이 이미 레포에 존재한다
+
+같은 결함 클래스가 **automation BC 에서는 이미 발견·봉합**돼 있었다.
+
+| 컨트롤러 | BC | `instance` 명시 | 상태 |
+|---|---|---|---|
+| `AutomationWebhookController:212` | automation | `URI.create("/api/v1/automation/webhooks")` | ✅ 봉합 |
+| `GitWebhookController:416` | automation | `URI.create("/api/v1/webhooks/git")` | ✅ 봉합 |
+| `PublicDashboardController` | notification | **없음** | ❌ **유출 확정** |
+| `IcalFeedController` | identity-access | (ProblemDetail 미사용, `ResponseStatusException`) | ⚠️ **미실증** |
+
+`AutomationWebhookController` KDoc(L187-195)이 기전·근거를 이미 문서화해 놓았다 — 인용.
+> `instance` 를 반드시 명시한다 — 비우면 Spring 이 원문 토큰을 응답에 싣는다.
+> `RequestResponseBodyMethodProcessor` 는 `instance` 가 null 이면 요청 URI 로 자동 채운다. (…)
+> 보낸 사람이야 이미 아는 값이지만, 그 본문이 **응답 로그·프록시 캐시·에러 트래커에 적재되는 순간
+> 그것이 평문 토큰 저장/로깅**이다(DEVELOPMENT.md §1.1-1·§1.1-2).
+
+→ 본 작업은 **새 설계가 아니라 확립된 패턴의 미적용 구멍을 메우는 것**이다. 수정 형태는 이미 정해져 있다.
+
+### 전수 열거 — `instance` 를 명시 설정하는 곳
+
+main 소스 전수 grep 결과 **정확히 2곳**(위 automation 2건)뿐이고, 나머지 **44개 ProblemDetail 생산자는
+전부 Spring 자동 채움에 맡긴다**. 대부분은 경로에 비밀값이 없어 무해하다(이슈키·프로젝트키는 비밀이 아니다).
+**경로에 비밀값이 있는데 `instance` 를 안 채우는 곳 = 2곳**(PublicDashboard 확정 · IcalFeed 미실증).
+
+### 구조적 재발 위험 (설계 결정 필요)
+
+automation 2건은 2026-07 중순에 고쳤는데 `PublicDashboardController`(2026-07-02 도입)는 **3주 넘게
+같은 결함으로 남아 있었다**. 개별 봉합만으로는 재발한다는 증거다
+(memory `guard-handler-matrix-blindfold` — "개수 말고 행렬 전수열거 + 판별자").
+신규 비밀-경로 엔드포인트가 `instance` 를 비우면 **자동으로 실패하는 장치**가 필요한지 게이트 1에서 판정.
+
+### grill-with-docs
+
+**미실행.** 신규 엔티티·용어·도메인 결정이 0건이고, 기존 ADR(D1)이 이미 불변식을 확정해 놓은
+"기존 결정 복원" 작업이라 도메인 문답의 산출물이 없다. #309 선례(D4 Maxi 승인) 동형.
+→ **Maxi 확인 대상** (아래 게이트 질의에 포함).
+
+- **관련 ADR**: `docs/decisions/2026-07-02-fr-db-03-dashboard-share.md` (신규 ADR 생성 없음 — 신규 결정 0.
+  단, 재발 방지 장치를 도입하기로 하면 그건 신규 결정이라 ADR 필요)
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
