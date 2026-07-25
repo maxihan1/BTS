@@ -34,10 +34,13 @@ FR-UX-06 하위 화면 작업(신규 FR 없음, **FR 129 불변**). 아래는 �
 
 - **FR-1** `board-drop.ts` `resolveSameColumnDrop`을 확장: active와 over가 **다른 스윔레인 그룹**이면
   `noop` 대신 `field-change` 액션(대상 그룹 필드값 포함)을 반환한다. 같은 그룹은 기존 reorder 유지.
-- **FR-2** 대상 필드값은 **드롭 대상 그룹의 대표 카드**에서 읽는다(그룹 key 이름 역산 불필요).
-  - ASSIGNEE: `assignee-named-*`/`assignee-unknown` → 대표 카드 `assigneeId`(UUID) · `assignee-unassigned` → `null`
-  - PRIORITY: `priority-{p}` → 대표 카드 `priority`(숫자)
-  - EPIC: `epic-{epicKey}` → 대표 카드 `epicKey` · `epic-no-epic` → `null`
+- **FR-2** 대상 필드값은 **드롭 대상 카드(over.id가 가리키는 그 카드)** 에서 읽는다(그룹 대표 카드가 아님).
+  근거: ASSIGNEE 스윔레인 그룹 key는 이름 기반이라 `unknown` 그룹은 서로 다른 미확인 UUID가,
+  `named` 그룹은 동명이인(같은 이름·다른 UUID)이 섞일 수 있다(G1). 그룹이 아닌 **드롭 대상 카드
+  자체의 값**을 읽으면 정확하다. over가 카드가 아니면(컬럼 배경) 필드변경 대상이 아니다(E4).
+  - ASSIGNEE: 대상 카드 `assigneeId`(UUID 또는 null). unassigned 그룹 카드는 assigneeId=null → 담당자 해제.
+  - PRIORITY: 대상 카드 `priority`(숫자).
+  - EPIC: 대상 카드 `epicKey`(문자열 또는 null). no-epic 그룹 카드는 epicKey=null → 에픽 해제.
 - **FR-3** 담당자 재할당: `changeAssignee(key, { assigneeId, expectedVersion })`.
 - **FR-4** 우선순위 변경: `updateIssue(key, { priority, expectedVersion })`.
 - **FR-5** 에픽 재배치: 현재 `epicKey`(from)와 대상 `epicKey`(to)에 따라
@@ -46,6 +49,11 @@ FR-UX-06 하위 화면 작업(신규 FR 없음, **FR 129 불변**). 아래는 �
   - `epicA → epicB`: `disconnectEpicChild(fromEpic, key)` **후** `connectEpicChild(toEpic, key)` (순차)
 - **FR-6** 세 필드변경 모두 **낙관적 업데이트**: board 캐시 즉시 갱신 → 성공 시 유지 → 실패 시 롤백 + toast.
   필터 인식 boardKeys(PR21 useReorderCard 선례)와 동일 키 사용.
+  - **FR-6a (G4)** 에픽 2-step은 낙관적 상태를 **최종값(newEpic 또는 null)으로 한 번에** 갱신한다.
+    중간 `epicKey=null` 상태를 UI에 노출하지 않는다(2 API가 순차로 나가도 낙관 캐시는 1회 갱신).
+  - **FR-6b (G2)** 필드변경은 **필드값만** 바꾸고 대상 그룹 내 **rank/순서는 변경하지 않는다**.
+    카드는 필드 기준 재그룹화(swimlane-group 파생)로 자연히 대상 줄에 나타나고, 줄 안 위치는
+    기존 rank 정렬을 따른다. 순서변경(rank)은 같은 그룹 내 드롭(PR21)만 담당한다.
 - **FR-7** 스크린리더 announcements(DR2 선례)에 필드변경 문구 추가(한국어).
 
 ## 비기능 요구사항 (NFR)
@@ -72,12 +80,15 @@ FR-UX-06 하위 화면 작업(신규 FR 없음, **FR 129 불변**). 아래는 �
 
 - **E1 에픽 2-step 부분 실패**: disconnect(A) 성공 후 connect(B) 실패 → 이슈가 "에픽 없음"으로 남음.
   → best-effort 복구(재connect A) + 실패 toast + board refetch(정합성 서버 기준). **[결정 D1]**
-- **E2 담당자 unknown 그룹**: 이름 미확인(unknown)이지만 `assigneeId`는 존재 → 대표 카드 assigneeId 사용. 정상 재할당.
-- **E3 same-value 드롭**: 대상 그룹 필드값 == 현재 카드 필드값 → noop(변경 없음). 예: 우선순위 3 카드를 우선순위 3 줄로.
+- **E2 담당자 unknown/동명이인 그룹(G1)**: unknown 그룹은 미확인 UUID 혼재, named 그룹은 동명이인 혼재 가능
+  → **드롭 대상 카드(over.id)의 `assigneeId`** 를 그대로 쓴다(그룹 대표 아님). 그 카드가 가리키는 실제 담당자로 재할당.
+- **E3 same-value 드롭**: PRIORITY/EPIC은 그룹 key = 값이라 다른 그룹이면 값이 항상 다름(vacuous).
+  ASSIGNEE 동명이인 named 그룹에서만 대상 카드 assigneeId == 현재 assigneeId가 가능 → noop(변경 없음).
 - **E4 컬럼 배경 드롭(overIssueKey undefined)**: 그룹 판정 불가 → 현재 그룹 유지(reorder 맨뒤), 필드변경 아님(PR21 동작 유지).
 - **E5 빈 그룹**: 빈 스윔레인 그룹은 렌더 생략(swimlane-group.ts) → 드롭 대상이 될 수 없음. 대표 카드 항상 존재.
 - **E6 필터 활성 중 필드변경**: 낙관적 갱신 후 카드가 필터에서 벗어날 수 있음 → 서버 refetch가 정리(NFR-3 롤백/invalidate).
 - **E7 컬럼 간 이동 + 다른 그룹 동시**: 다른 컬럼 드롭은 항상 move/needs-resolution(PR21) 우선. 필드변경은 **같은 컬럼·다른 그룹**만.
+- **E8 권한 거부 403(G3)**: 세 API 모두 UPDATE 권한 필요 → 403 가능. 담당자 422(ASSIGNEE_NOT_FOUND)·에픽 422(타입/프로젝트)·OCC 409와 동일하게 낙관적 롤백 + toast로 처리.
 
 ## 제약 조건
 
@@ -96,3 +107,9 @@ FR-UX-06 하위 화면 작업(신규 FR 없음, **FR 129 불변**). 아래는 �
 
 - **D1 에픽 2-step 부분 실패 처리**: (a) best-effort 재connect 롤백 + toast + refetch[권장] / (b) toast만 + refetch(복구 시도 안 함) / (c) 2-step 대신 백엔드에 원자적 reparent API 신설 요청(스코프 확대).
 - **D2 same-value 드롭(E3)**: noop 처리[권장·자명] 확인.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration). gap 5건 발견·전량 스펙 보강:
+- G1(대표 카드 모호→드롭 대상 카드 값)·G2(rank 유지)·G3(403 엣지)·G4(에픽 2-step 낙관 1회 갱신)·G5(E3 vacuous 정정).
+- 잔여 Maxi 결정: D1(에픽 2-step 부분 실패 처리)·D2(same-value noop 확인) → 게이트 1.
