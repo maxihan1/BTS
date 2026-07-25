@@ -103,6 +103,15 @@ ADR `2026-07-02-fr-db-03-dashboard-share` **D1** 은 *"원문은 발급 응답�
 - **R5. (재발 방지)** 공개 경로에 **새 오류 응답 통로가 추가되면 테스트가 실패**해야 한다.
   "핸들러를 하나 더 만들었는데 아무도 모르는" 상태를 구조적으로 불가능하게 만든다.
 
+  **판별식 (G1 해소 — 개수가 아니라 파생 열거).**
+  `PublicDashboardController` 의 `@ExceptionHandler` 메서드를 **리플렉션으로 전수 열거**하고,
+  각 메서드가 선언한 예외 타입을 실제로 발생시켜 HTTP 응답을 받은 뒤 **본문·헤더에 토큰 부재**를 단언한다.
+  기대 목록에 없는 핸들러가 발견되면 **미분류로 판정해 실패**시킨다(#309 의 "미분류 라우트 = 실패" 동형).
+  → 새 핸들러를 추가하면 기대 목록도 함께 갱신해야만 초록이 된다.
+
+  ⚠️ **`it.each(파생목록)` 무음통과 방지** — 파생 목록이 비면 테스트가 0건 실행되고도 초록이 된다
+  (memory `guard-handler-matrix-blindfold` 2차 재발). **열거된 핸들러 개수의 하한을 별도 단언**한다.
+
 ## 6. 설계 옵션 — 게이트 1 판정 대상
 
 문제의 핵심은 **`DashboardExceptionHandler` advice 가 공개 경로와 인증 경로를 함께 커버**한다는 점이다.
@@ -143,7 +152,9 @@ automation 은 컨트롤러 전용 헬퍼라 고정값을 박으면 끝이었지
 | `instance` | `/api/v1/public/dashboards/<원문토큰>` | `/api/v1/public/dashboards` |
 | 그 외 전 필드 | — | **불변** |
 
-프론트 소비 영향 — `instance` 를 읽는 코드가 있는지 확인 필요(예상 0, 계획 단계에서 grep 으로 확정).
+**프론트 소비 영향 — 0 (실증 완료, G3).** `apps/web/src` 전수 grep 결과 프로덕션 코드에서 `instance`
+필드를 읽는 곳이 **없다**(히트는 전부 테스트 픽스처이거나 `instanceof`·`instanceA` 같은 무관 식별자).
+따라서 값 변경이 화면에 미치는 영향은 없다.
 
 ## 9. 데이터 모델 변경
 
@@ -157,6 +168,29 @@ automation 은 컨트롤러 전용 헬퍼라 고정값을 박으면 끝이었지
   **이 응답은 identity-access BC 소관**이라 본 PR 범위 밖. 다만 **토큰 노출 여부는 확인해 결과를 등재**한다.
 - **E4.** 토큰이 URL 인코딩된 문자를 포함 → 디코딩된 값이 본문에 실리지 않는지 확인.
 - **E5.** 200 정상 응답에는 `instance` 자체가 없다(ProblemDetail 아님) → 회귀 없음.
+- **E6 (G6).** **응답 헤더**도 검사 대상이다. 본문만 보면 헤더로 새는 경로를 놓친다.
+  토큰 부재 단언을 본문 + 전 헤더값에 적용한다.
+- **E7 (G7).** M2(500) 경로는 `log.error("NOTIF_DASHBOARD_500 internal_error", ex)` 로 **예외 스택을 찍는다.**
+  `PublicDashboardNotFoundException` 은 고정 메시지라 토큰을 품지 않음을 확인했으나(실증),
+  `shareTokenMinter.hash()`·`layoutSanitizer.sanitize()` 등 하위 컴포넌트가 **토큰을 예외 메시지에 넣으면
+  로그에 평문이 남는다.** 해당 경로가 토큰을 예외에 싣지 않는지 확인하고 결과를 등재한다.
+
+### 도달 가능한 오류 통로 — 전수 확정 (G4)
+
+`DashboardService.getPublicByToken` 본문을 읽어 확정했다. 던지는 예외는 `PublicDashboardNotFoundException`
+**하나뿐**이고(미존재·만료·부모삭제 3분기가 모두 이 하나로 수렴), 그 외 하위 컴포넌트의 예기치 못한 예외는
+전부 advice catch-all 로 간다.
+
+| 통로 | 핸들러 | 도달 가능? | 근거 |
+|---|---|---|---|
+| M1. `PublicDashboardNotFoundException` → 404 | 컨트롤러-로컬 | ✅ | 서비스가 직접 던짐(실측 확인) |
+| M2. 분류되지 않은 예외 → 500 | advice catch-all | ✅ | 하위 컴포넌트 예외가 모두 여기로(실측 확인) |
+| `MethodArgumentTypeMismatchException` → 400 | advice | ❌ | `token` 이 `String` 이라 타입 변환 실패가 없다 |
+| `HttpMessageNotReadableException` → 400 | advice | ❌ | GET 이라 요청 본문이 없다 |
+| `DashboardDomainException` → 400 | advice | ❌ | `getPublicByToken` 경로에서 던지지 않는다 |
+| `MethodArgumentNotValidException` → 400 | advice | ❌ | `@Valid` 대상 파라미터가 없다 |
+
+→ **봉합 대상 = M1 + M2 두 통로.** 나머지는 도달 불가라 변경 불요(단, R5 판별식이 미래 추가를 감시한다).
 
 ## 11. 제약 조건
 
@@ -170,8 +204,10 @@ automation 은 컨트롤러 전용 헬퍼라 고정값을 박으면 끝이었지
 
 ## 12. 측정 가능한 완료 기준
 
-1. ✅ 공개 경로의 **오류 응답 통로를 전수 열거**하고, 각각에 대해 본문에 토큰이 없음을 HTTP 레벨 테스트로 단언.
-   (단순 개수가 아니라 **열거 + 미분류 실패** 형태 — memory `guard-handler-matrix-blindfold`)
+1. ✅ 공개 경로의 **오류 응답 통로를 전수 열거**하고, 각각에 대해 **본문 + 전 헤더**에 토큰이 없음을
+   HTTP 레벨 테스트로 단언. (단순 개수가 아니라 **열거 + 미분류 실패** — memory `guard-handler-matrix-blindfold`)
+   **토큰 검사는 `contentAsString` 이 아니라 raw 바이트(`contentAsByteArray`)로 한다** (G5) —
+   문자 인코딩 설정에 좌우되지 않고 **실제로 회선에 나가는 것**을 재기 위함이다.
 2. ✅ **뮤테이션 검증** — `instance` 설정 줄을 지우면 테스트가 **실제로 red** 가 된다(vacuous 아님 증명).
    기준선 EXIT=0 을 먼저 확인한 뒤 수행한다(memory `verify-logic-vs-verify-guard`).
 3. ✅ 200 정상 경로 기존 단언 전량 통과 + 내부식별자 부재 회귀가드 유지.
@@ -181,6 +217,9 @@ automation 은 컨트롤러 전용 헬퍼라 고정값을 박으면 끝이었지
 6. ✅ ktlintCheck · detekt 통과.
 7. ✅ ADR 생성 (설계 옵션 (b) 채택 근거).
 8. ✅ E3(비-GET 응답)·`IcalFeedController` 조사 결과를 **후속 항목으로 문서 등재**.
+9. ✅ **G2 실증** — 컨트롤러-로컬 핸들러가 advice 보다 우선 적용된다는 것을 테스트로 확정한다.
+   (advice 를 함께 등록한 컨텍스트에서 로컬 핸들러 응답이 나오는지 관측. 단정 금지 — 이게 틀리면 설계 (b) 가 무너진다.)
+10. ✅ 조사용 프로브 `PublicDashboard404BodyProbeTest.kt` 를 정식 테스트로 전환하거나 삭제(C5). PR 에 임시 파일 0.
 
 ## 13. 범위 밖 (명시)
 
@@ -194,9 +233,29 @@ automation 은 컨트롤러 전용 헬퍼라 고정값을 박으면 끝이었지
 - **`grill-with-docs` 생략** — Maxi D3=A 승인. 신규 엔티티·용어·결정 0건. #309 선례 동형.
 - **`office-hours` 대신 기술 스펙 직접 작성** — 메모리 `bts-spec-office-hours-mismatch`(2026-05-29 결정).
   제품 범위 결정이 아니라 기존 결함 봉합이라 office-hours 산출 형식이 맞지 않는다.
+- **`superpowers:brainstorming` 을 분석 체크리스트로만 사용** — 해당 스킬은 백지→설계 대화형이라
+  확정된 스펙의 sanity check 와 형식 불일치(자체 spec 신규 작성 + `writing-plans` 체이닝 시도).
+  bts-spec 지시("재작성 금지, gap 만 보고")를 우선 적용. 상세는 §Brainstorming Check.
 - **에이전트 dispatch 없이 메인이 직접 수행** — 세션 지시. #309·#308 선례 동형.
   ⚠️ **한계 — 구현자가 자기 코드를 리뷰하는 편향이 남는다.** 게이트 2 에서 Maxi 가 이를 알고 판정한다.
 
 ## Brainstorming Check
 
-(← Phase B 에서 채움)
+✅ **통과 (1회 iteration, gap 8건 발견 — 3건 즉시 실증 해소 · 4건 스펙 반영 · 1건 별건 등재)**
+
+`superpowers:brainstorming` 은 백지에서 설계를 만드는 대화형 스킬이라 **이미 확정된 스펙의 sanity check
+용도와 형식이 맞지 않았다**(자체 spec 을 `docs/superpowers/specs/` 에 새로 쓰고 `writing-plans` 로 넘어가려 한다
+— BTS 는 `bts-plan` 이 그 자리). 메모리 `bts-spec-office-hours-mismatch` 와 동일한 미스매치.
+→ BTS 지시("brainstorming 은 스펙을 재작성하지 않는다, 발견된 gap 만 보고")를 우선해 **해당 스킬의 분석
+체크리스트**(placeholder / 내부모순 / 범위 / 모호성)만 적용했다. **워크플로우 편차로 등재한다.**
+
+| # | 종류 | 발견 | 처리 |
+|---|---|---|---|
+| G1 | 모호성 | R5 "재발 방지 장치" 의 구체 형태 미명시 | §5 R5 에 **판별식 + 개수 하한 단언** 명시 |
+| G2 | 미검증 가정 | "컨트롤러-로컬 catch-all 이 advice 보다 우선" 을 근거 없이 단정 | **RED 에서 실증**하는 태스크로 전환(§12-9) |
+| G3 | 미검증 가정 | 프론트 `instance` 소비처 "예상 0" | ✅ **전수 grep 실증 → 0 확정** (§8) |
+| G4 | 전수성 | 도달 가능 오류 통로가 M1+M2 뿐인지 미확인 | ✅ **서비스 본문 판독 → 6통로 중 2개만 도달 가능 확정** (§10) |
+| G5 | 누락 | 토큰 검사를 문자열로 하면 인코딩 설정에 좌우됨 | **raw 바이트 검사**로 변경 (§12-1) |
+| G6 | 누락 | 응답 **헤더**가 검사 대상에서 빠짐 | E6 추가 · §12-1 에 헤더 포함 |
+| G7 | 누락 | 500 경로 `log.error(…, ex)` 스택에 토큰이 실릴 여지 | E7 추가 (확인 후 등재) |
+| G8 | 관측 | 프로브 출력에서 한글 `detail` 깨짐 관측 | MockMvc 읽기 인코딩 아티팩트로 **추정**(미확정). G5(바이트 검사)로 본 작업에는 무해화. **별건으로 등재** |

@@ -111,9 +111,37 @@ automation 2건은 2026-07 중순에 고쳤는데 `PublicDashboardController`(20
 - **관련 ADR**: `docs/decisions/2026-07-02-fr-db-03-dashboard-share.md` (신규 ADR 생성 없음 — 신규 결정 0.
   단, 재발 방지 장치를 도입하기로 하면 그건 신규 결정이라 ADR 필요)
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-25-public-dashboard-404-token-leak.md](../specs/2026-07-25-public-dashboard-404-token-leak.md)
+
+핵심 3줄 요약.
+- `/api/v1/public/dashboards/{token}` 의 **오류 응답 본문에 원문 공유 토큰이 실려 나간다** —
+  404(컨트롤러-로컬)와 500(advice catch-all) **두 통로 모두 실측 확인**.
+- 수정은 `instance` 를 **토큰 세그먼트를 뺀 고정 경로**로 설정하는 것. automation BC 2건에 **이미 있는 정본 패턴**.
+- 404 만 막으면 500 이 그대로 새므로 **경로 단위로 흡수**한다(설계 옵션 (b), 게이트 1 판정 대상 + ADR).
+
+범위. notification BC 단일 · FR 129 불변 · 마이그레이션 0 · 프론트 0 · 기능 변경 0.
+심각도. **P1 정보노출(위생)** — 체크포인트의 "P0" 표기를 증거 기준으로 하향(요청자는 이미 토큰을 알고 있고,
+실질 위험은 에러 트래커·프록시 캐시·버그리포트로의 **평문 2차 적재**다).
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration, gap 8건 — 3건 즉시 실증 해소 · 4건 스펙 반영 · 1건 별건 등재). 상세는 스펙 §Brainstorming Check.
+
+즉시 해소한 3건.
+- **G3** 프론트 `instance` 소비처 → 전수 grep 으로 **0 확정**(추정이었던 것을 사실로 승격).
+- **G4** 도달 가능 오류 통로 → 서비스 본문 판독으로 **6통로 중 M1·M2 2개만 도달 가능** 확정.
+- **G7 일부** `PublicDashboardNotFoundException` 은 고정 메시지라 **토큰을 품지 않음** 확인(로그 안전).
+
+스펙에 반영한 4건.
+- **G1** 재발방지 장치의 판별식 명시 + `it.each` 무음통과 방지용 **개수 하한 단언**.
+- **G2** "컨트롤러-로컬이 advice 보다 우선" 단정을 **RED 실증 태스크로 전환**(틀리면 설계가 무너지는 지점).
+- **G5** 토큰 검사를 문자열이 아니라 **raw 바이트**로 — 인코딩 설정에 좌우되지 않게.
+- **G6** 검사 대상에 **응답 헤더** 추가.
+
+별건 등재 1건.
+- **G8** 프로브 출력의 한글 `detail` 깨짐 — MockMvc 읽기 인코딩 아티팩트로 **추정(미확정)**. G5 로 본 작업엔 무해.
 
 ## Plan (← /bts-plan 채움)
 
