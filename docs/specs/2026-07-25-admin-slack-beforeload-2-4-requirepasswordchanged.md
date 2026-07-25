@@ -38,6 +38,53 @@
 지금까지 살아남은 기전이다. 메모리 `guard-handler-matrix-blindfold`("개수 말고 행렬 전수 열거")와
 `archunit-vacuous-rule-silent-pass`가 경고한 형태 그대로다.
 
+## Phase B sanity check 결과 (반증 시도 → 전제 정정 3건)
+
+### B1. `/admin/slack` 2-가드는 의도가 아니라 누락 — 문서로 확정
+
+도입 커밋 `d9e418d9b`(FR-SL-01 D6/D7 관리자 Slack 연결 페이지, #247)에서
+`composeGuards(requireAuth, requireSystemAdmin)`으로 들어왔고 JSDoc도 그렇게 적혀 있다.
+그 시점에는 이것이 정상이었다. 이후 #299(PR13)가 admin 라우트를 4-가드로 정렬했는데 slack만 빠졌다.
+
+정렬이 의도된 정책이라는 근거 — `adminIndexRoute` 블록의 주석.
+
+> 다른 admin 라우트와 동일 4-가드 (**강제변경 미완료 관리자 우회 차단**, FR-MF-04).
+> workflow-schemes와 공유하는 `requireSystemAdminFull` 재사용.
+
+즉 "관리자가 비밀번호 강제 변경을 건너뛰고 관리 화면에 들어가는 것"을 막는 것이 명시된 의도이고,
+`/admin/slack`은 그 의도에서 누락된 것이다. **본 PR의 수정 방향이 정책과 일치함이 확인됐다.**
+
+### B2. ★같은 결함 클래스가 admin 밖에 5건 — 검증 범위를 전 라우트로 넓힌다 (Maxi 확정 D5=B)
+
+전 59 라우트 × 가드를 전수 열거한 결과, admin이 아닌데도 보호가 얕은 라우트가 있다.
+
+| 라우트 | 현재 `beforeLoad` | 비교 근거 |
+|---|---|---|
+| `/` | **미선언** | 블록 주석에 `T13 라우트 가드에서 dashboard / login 으로 리다이렉트 예정` — 미완 TODO |
+| `/workflows/$key` | **미선언** | 다른 상세 화면은 3-가드 |
+| `/projects/$projectKey/settings/field-permissions` | `requireAuth` 단독 | 다른 프로젝트 설정 라우트는 3-가드 |
+| `/settings/profile` | `requireAuth` 단독 | `/settings/account-links`는 주석상 비번 차단 포함 |
+| `/settings/preferences` | `requireAuth` 단독 | 동일 |
+
+정당한 예외로 확인된 것 — `/settings/password`·`/settings/mfa`(리다이렉트 목적지 자기 경로),
+`/dashboards/shared/$token`(공개 공유 토큰, 직교 토큰 인증), `_shell`(가드 hoist 금지 대상).
+
+**위험도 표현 주의.** 이것은 프론트 화면 계층이다. 백엔드 API는 여전히 인증을 요구하므로 "인증 우회"가
+아니라 **"막혀야 할 화면이 열리고 그 화면의 요청이 401/403으로 깨지는 UX 단락"**이다
+(`docs/decisions/2026-06-12-mfa-enforcement-policy.md` §D3 — 백엔드 게이트가 권위 출처).
+
+**결정 D5=B (Maxi).** 산출법은 `/admin/slack` 1줄만 고치고, **검증 행렬은 전 라우트로 넓혀 현 상태를
+기대값으로 못 박는다**. 위 5건은 **사유를 적은 예외 항목으로 등재**해 목록에 미충족으로 보이게 만들고,
+정책 판정(어느 클래스가 맞는가)은 후속 작업으로 분리한다. 선례 — PR22의 `OUT — <사유>` 등재 패턴.
+
+### B3. 이름이 실제와 다른 상수 — 오독 유발
+
+`router.ts:6`의 `requireAuthAndPasswordChanged`는 이름에 MFA가 없지만 실제 정의는
+`composeGuards(requireAuth, requirePasswordChanged, requireMfaEnrolled)`로 **MFA를 포함**한다.
+38개 라우트가 이 상수를 쓴다. sanity check 중 이름만 보고 "38 라우트가 MFA 미검사"라고 오판했다가
+정의를 열어 정정했다. **본 PR은 이름을 바꾸지 않는다**(범위 밖·소비처 38곳). 대신 행렬 테스트가
+이 상수를 쓰는 라우트의 실제 거동을 검증하므로 이름-거동 불일치가 오판으로 이어지지 않게 된다.
+
 ## 사용자 시나리오 (Given-When-Then)
 
 - **S1 (핵심 결함).** Given 시스템 관리자이고 `mustChangePassword === true`이며 다른 조건은 통과,
@@ -64,27 +111,57 @@
 - **R1.** `/admin/slack` 라우트의 `beforeLoad`를 **`requireSystemAdminFull`로 교체**한다.
   인라인 `composeGuards(...)` 4개를 새로 쓰지 않고 공유 상수를 재사용해 **가드 집합과 순서의 동일성을
   구조적으로 보장**한다(인자 오타로 다시 갈라질 여지 제거).
-- **R2.** 검증 대상 admin 라우트 목록을 **`router.routesById`에서 파생 열거**한다. 하드코딩 배열 금지 —
-  판정식은 `routesById` 키가 admin 라우트 경로를 가리키는지이며, 새 라우트는 **등록만으로 자동 편입**된다.
-- **R3.** 파생된 전 admin 라우트 × **가드 4차원** 음성 케이스를 전수 검증한다. 각 케이스의 **판별자는
-  redirect 목적지 문자열**이며 서로 겹치지 않는다.
+- **R2. 라우트 목록을 `router.routesById`에서 파생 열거한다** (D5=B로 전 라우트 대상). 하드코딩 배열 금지.
+  새 라우트는 **등록만으로 자동 편입**된다.
+- **R3. 4개 시나리오를 각 라우트에 적용해 "거동 서명"을 관측한다.** 시나리오마다 나머지 조건은 전부 통과
+  상태로 두어 **판별자가 유일하게 특정**되도록 한다. 관측값은 redirect 목적지 문자열, 통과면 `null`이다.
 
-  | 차원 | 세팅 (나머지는 전부 통과 조건) | 기대 목적지 |
+  | # | 시나리오 세팅 | 이 시나리오가 특정하는 가드 |
   |---|---|---|
-  | `requireAuth` | `accessToken: null` | `/login` |
-  | `requireSystemAdmin` | 인증 + `isSystemAdmin: false` | `/dashboard` |
-  | `requirePasswordChanged` | 인증 + admin + `mustChangePassword: true` | `/settings/password` |
-  | `requireMfaEnrolled` | 인증 + admin + `mfaEnrollmentRequired: true` | `/settings/mfa` |
+  | S-1 | `accessToken: null` | `requireAuth` |
+  | S-2 | 인증 + `isSystemAdmin: false` (비번·MFA 통과) | `requireSystemAdmin` |
+  | S-3 | 인증 + `isSystemAdmin: true` + `mustChangePassword: true` | `requirePasswordChanged` |
+  | S-4 | 인증 + `isSystemAdmin: true` + `mfaEnrollmentRequired: true` | `requireMfaEnrolled` |
 
   "throw 되었다"만 확인하는 vacuous 어서션 금지 — 메모리
   `negative-guard-needs-body-discriminator`("여전히 401은 vacuous").
-- **R4.** 양성 케이스 — 4조건 통과 관리자에서 전 라우트 `not.toThrow()`.
-- **R5. vacuous 방지 가드.** 파생 열거 결과가 빈 배열이면 `it.each([])`가 **무음 통과**한다.
-  발견된 라우트 수의 **하한**(현재 실측 11)을 별도 어서션으로 고정한다. 상한은 두지 않는다 —
-  라우트 추가가 테스트를 깨서는 안 되고, **발견 실패**만 잡아야 한다.
-- **R6.** 기존 `router.admin-guards.test.tsx`의 하드코딩 3라우트 목록을 R2 파생 열거로 대체한다.
-  **커버리지 순손실 0** — 기존 2개 케이스(비-admin → `/dashboard`, admin → 통과)는 R3·R4에 흡수되며
-  대상 라우트는 3 → 11로 늘어난다.
+
+- **R4. 라우트를 클래스로 분류하고 클래스별 기대 서명을 명시한다.** 관측 서명이 기대 서명과
+  **정확히 일치**해야 한다(부분 일치·"적어도 하나 throw" 금지).
+
+  | 클래스 | S-1 | S-2 | S-3 | S-4 | 소속 |
+  |---|---|---|---|---|---|
+  | `ADMIN_4` | `/login` | `/dashboard` | `/settings/password` | `/settings/mfa` | admin 11개 (수정 후 slack 포함) |
+  | `PROTECTED_3` | `/login` | `null` | `/settings/password` | `/settings/mfa` | 38개 (`requireAuthAndPasswordChanged`) |
+  | `AUTH_ONLY` | `/login` | `null` | `null` | `null` | 5개 — B2 표의 3건 + 리다이렉트 목적지 2건 |
+  | `PUBLIC` | `null` | `null` | `null` | `null` | `/`·`/workflows/$key`·`/dashboards/shared/$token`·`_shell` |
+  | `LOGIN` | `null` | redirect | redirect | redirect | `/login` (`redirectIfAuth` — 인증 시 내보냄, 방향이 반대) |
+
+- **R5. 완전성 — 미분류 라우트는 실패다.** 기대 서명 맵에 없는 라우트가 `routesById`에 있으면 테스트가
+  **실패**해야 한다. 이것이 이 PR의 핵심 봉인이다 — 앞으로 누가 라우트를 추가하면 **클래스를 선언하도록
+  강제**되므로, `/admin/slack`처럼 "가드를 안 걸었는데 아무도 모르는" 상태가 구조적으로 불가능해진다.
+- **R6. vacuous 방지.** 파생 열거가 빈 배열이면 `it.each([])`는 **무음 통과**한다. 발견 라우트 수의
+  **하한**(현재 실측 59)을 별도 어서션으로 고정한다. 상한은 두지 않는다 — 라우트 추가가 테스트를 깨서는
+  안 되고 **발견 실패**만 잡아야 한다.
+- **R7. 의심 5건은 사유를 적어 등재한다.** `AUTH_ONLY`·`PUBLIC`에 속한 항목 중 **정책 판정이 필요한 것**은
+  기대 서명 맵에 사유 문자열을 함께 적는다(PR22 `OUT — <사유>` 선례). 문구로 "정당한 예외"와
+  "미해결 후속"을 구분한다.
+
+  | 라우트 | 클래스 | 사유 등재 문구 |
+  |---|---|---|
+  | `/settings/password` | `AUTH_ONLY` | 정당 — `requirePasswordChanged` 리다이렉트 목적지 자기 경로 |
+  | `/settings/mfa` | `AUTH_ONLY` | 정당 — `requireMfaEnrolled` 리다이렉트 목적지 자기 경로 |
+  | `/dashboards/shared/$token` | `PUBLIC` | 정당 — 공개 공유 토큰(직교 인증), 세션 불요 |
+  | `_shell` | `PUBLIC` | 정당 — pathless 레이아웃. ADR §70이 가드 hoist 금지 |
+  | `/settings/profile` | `AUTH_ONLY` | **후속 판정 필요** — 비번·MFA 강제 대상이 접근 가능 |
+  | `/settings/preferences` | `AUTH_ONLY` | **후속 판정 필요** — 동일 |
+  | `/projects/$projectKey/settings/field-permissions` | `AUTH_ONLY` | **후속 판정 필요** — 다른 프로젝트 설정은 3-가드 |
+  | `/` | `PUBLIC` | **후속 판정 필요** — 블록 주석의 `T13 가드 예정` 미완 |
+  | `/workflows/$key` | `PUBLIC` | **후속 판정 필요** — 다른 상세 화면은 3-가드 |
+
+- **R8.** 기존 `router.admin-guards.test.tsx`의 하드코딩 3라우트 목록을 R2 파생 열거로 대체한다.
+  **커버리지 순손실 0** — 기존 2개 케이스(비-admin → `/dashboard`, admin → 통과)는 `ADMIN_4` 클래스의
+  S-2·양성에 흡수되며, 대상은 3라우트 × 1차원 → **59라우트 × 4차원**으로 늘어난다.
 
 ## 비기능 요구사항 (NFR)
 
@@ -143,6 +220,23 @@
 - **E8. 픽스처 기본값 의존.** `makeWhoami()`의 기본은
   `mustChangePassword: false · isSystemAdmin: false · mfaEnrollmentRequired: false`(실측
   `mocks/auth-fixtures.ts:90~104`). admin 통과 케이스는 `isSystemAdmin: true`를 **명시 override**해야 한다.
+- **E9. `LOGIN` 클래스는 방향이 반대다.** `/login`은 `redirectIfAuth`라 **인증된** 사용자를 내보낸다.
+  기대 목적지는 `resolvePostLoginNav` → `resolveStartPageNav('dashboards')` 결과이며
+  픽스처 `startPage: 'dashboards'`와 폴백 모두 **`/dashboards`**다(`lib/start-page.ts:39`).
+  ⚠️ `/dashboard`(단수 — `requireSystemAdmin` 거부 목적지)와 **`/dashboards`**(복수 — 시작 페이지)는
+  다른 경로다. 서명 맵에서 오타로 뒤바뀌면 테스트가 엉뚱한 걸 통과시킨다.
+- **E10. `AUTH_ONLY`의 `null`은 "정당한 통과"가 아니라 "가드 없음"의 기록이다.** 서명 맵은 현 상태
+  특성화(characterization)이며, 정당한 예외와 미해결 후속을 가르는 것은 **R7의 사유 문구**다.
+  이 구분을 흐리면 "테스트가 초록이니 다 괜찮다"는 잘못된 안심을 만든다.
+- **E11. `staticData: { requireAuth }`는 진실 출처가 아니다.** 54 라우트가 `true`, 2개가 `false`,
+  3개가 미선언이고 **소비처는 0건**(선언 외 읽는 코드 없음 — `.staticData` 전수 grep 0). 값 기준으로
+  가드 유무와 대조한 결과 **불일치 0**이라 오해를 부르는 상태는 아니다. 본 PR은 손대지 않으며,
+  서명 맵의 근거로도 쓰지 않는다 — auth/no-auth 2값뿐이라 4클래스를 표현할 수 없다.
+- **E12. (자체 오류 기록) 존재 여부로 세면 거짓 모순이 나온다.** sanity check 1차에서 `staticData`의
+  **존재만** 세어 `/dashboards/shared/$token`을 "requireAuth 선언인데 가드 없음"으로 지목했으나,
+  실제 값은 `requireAuth: false`이고 JSDoc이 "공개(비인증) 라우트"라고 명시(FR-DB-03 EC-11
+  로그인 리다이렉트 금지)한다. **플래그는 값을 읽어야 한다.** `/login`도 `false` + `redirectIfAuth`로
+  정합이다(역방향 가드).
 
 ## 제약 조건
 
@@ -156,10 +250,16 @@
 
 ## 측정 가능한 완료 기준
 
-1. `/admin/slack`의 `beforeLoad`가 `requireSystemAdminFull`이다 (`git diff`로 1줄 변경 확인).
-2. 파생 열거된 admin 라우트가 **11개 이상**이고, 그 전부 × 4차원 음성 케이스가 green이다.
-3. 양성 케이스(4조건 통과 관리자)가 전 라우트에서 throw 0.
-4. **뮤테이션 A** — `/admin/slack`을 2-가드로 되돌리면 그 라우트의 password·MFA 케이스 **2건이 red**.
-5. **뮤테이션 B** — 파생 열거를 빈 배열로 만들면 R5 하한 어서션이 **red**(vacuous 차단 실증).
-6. `pnpm typecheck` 0 · `pnpm lint` 0 error · 기존 유닛 전량 green(기준선 대조, 순손실 0).
-7. `bash scripts/verify-master-plan.sh` EXIT 0 (129/129 불변).
+1. `/admin/slack`의 `beforeLoad`가 `requireSystemAdminFull`이다 (`git diff` 1줄 변경 — 프로덕션 변경은
+   이것뿐이다).
+2. 파생 열거된 라우트가 **59개 이상**이고 **전부 클래스에 분류**되어 있으며, 각 라우트의 관측 서명이
+   클래스 기대 서명과 **정확히 일치**한다.
+3. `ADMIN_4` 클래스가 **11개**를 포함한다(수정 후 `/admin/slack` 편입 — 이전 10개에서 증가).
+4. **뮤테이션 A (수정의 실효).** `/admin/slack`을 2-가드로 되돌리면 그 라우트의 S-3·S-4 **2건이 red**.
+5. **뮤테이션 B (vacuous 차단).** 파생 열거를 빈 배열로 만들면 R6 하한 어서션이 **red**.
+6. **뮤테이션 C (완전성 강제의 실효).** 기대 서명 맵에서 라우트 1개를 지우면 R5 미분류 검사가 **red**.
+   → 이것이 "새 라우트를 가드 없이 추가하면 자동으로 잡힌다"는 주장의 유일한 증거다.
+7. `pnpm typecheck` 0 · `pnpm lint` 0 error · 기존 유닛 전량 green(기준선 개수 대조, 순손실 0).
+8. `bash scripts/verify-master-plan.sh` EXIT 0 (129/129 불변).
+9. R7 사유 표의 **후속 판정 필요 5건**이 테스트 파일 안에 문구로 남아 있다(후속 작업자가 grep으로 찾을 수
+   있게). 이 5건은 본 PR에서 **고치지 않는다** — D5=B 결정.
