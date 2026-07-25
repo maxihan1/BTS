@@ -22,7 +22,7 @@ function BurndownSkeleton(): JSX.Element {
     <Skeleton
       role="status"
       aria-label={burndownLabels.status.loading}
-      className="h-[360px] w-full rounded-md border"
+      className="h-[360px] w-full border"
     />
   )
 }

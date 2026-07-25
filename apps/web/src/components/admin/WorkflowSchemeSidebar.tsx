@@ -164,7 +164,7 @@ function SidebarSkeleton(): JSX.Element {
       {Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
         <Skeleton
           key={i}
-          className="h-8 rounded-md"
+          className="h-8"
         />
       ))}
     </div>

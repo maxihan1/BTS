@@ -300,7 +300,7 @@ export function BackupCodesSection(): JSX.Element {
 
       {/* 상태 로딩 중이면 버튼 영역 스켈레톤 */}
       {statusLoading && (
-        <Skeleton className="h-8 w-36 rounded" />
+        <Skeleton className="h-8 w-36" />
       )}
 
       {/* 버튼 영역 — 평문 노출 중이면 숨김 */}

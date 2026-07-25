@@ -91,7 +91,7 @@ function useSharedDashboardFetch(token: string): {
 function SharedDashboardSkeleton(): JSX.Element {
   return (
     <div className="p-6 space-y-4" role="status" aria-busy="true">
-      <Skeleton className="h-7 w-48 rounded" aria-hidden="true" />
+      <Skeleton className="h-7 w-48" aria-hidden="true" />
       <Skeleton className="h-64 rounded-lg" aria-hidden="true" />
     </div>
   )

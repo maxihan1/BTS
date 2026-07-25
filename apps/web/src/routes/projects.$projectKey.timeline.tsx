@@ -95,8 +95,8 @@ function buildAssigneeNames(items: TimelineItem[], userMap: Map<string, string>)
 function TimelineLoadingSkeleton(): JSX.Element {
   return (
     <div className="p-6 space-y-4">
-      <Skeleton className="h-8 w-64 rounded-md" aria-hidden="true" />
-      <Skeleton className="h-64 w-full rounded-md" aria-hidden="true" />
+      <Skeleton className="h-8 w-64" aria-hidden="true" />
+      <Skeleton className="h-64 w-full" aria-hidden="true" />
     </div>
   )
 }

@@ -282,8 +282,8 @@ export function MfaSettings(): JSX.Element {
   if (statusLoading) {
     return (
       <div role="status" aria-label="2단계 인증 상태 로딩 중" className="space-y-4">
-        <Skeleton className="h-6 w-32 rounded" />
-        <Skeleton className="h-10 w-40 rounded" />
+        <Skeleton className="h-6 w-32" />
+        <Skeleton className="h-10 w-40" />
       </div>
     )
   }

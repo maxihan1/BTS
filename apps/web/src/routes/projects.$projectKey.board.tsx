@@ -425,11 +425,11 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
       <div>
         {projectFavoriteHeader}
         <div className="p-6 space-y-4">
-          <Skeleton className="h-8 w-48 rounded-md" aria-hidden="true" />
+          <Skeleton className="h-8 w-48" aria-hidden="true" />
           <div className="flex gap-4">
-            <Skeleton className="h-64 w-64 rounded-md" aria-hidden="true" />
-            <Skeleton className="h-64 w-64 rounded-md" aria-hidden="true" />
-            <Skeleton className="h-64 w-64 rounded-md" aria-hidden="true" />
+            <Skeleton className="h-64 w-64" aria-hidden="true" />
+            <Skeleton className="h-64 w-64" aria-hidden="true" />
+            <Skeleton className="h-64 w-64" aria-hidden="true" />
           </div>
         </div>
       </div>
@@ -550,8 +550,8 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
       {/* 보드 상세 로딩 중 */}
       {boardDetailLoading && (
         <div className="flex gap-4">
-          <Skeleton className="h-64 w-64 rounded-md" aria-hidden="true" />
-          <Skeleton className="h-64 w-64 rounded-md" aria-hidden="true" />
+          <Skeleton className="h-64 w-64" aria-hidden="true" />
+          <Skeleton className="h-64 w-64" aria-hidden="true" />
         </div>
       )}
 

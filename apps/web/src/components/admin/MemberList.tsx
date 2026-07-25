@@ -33,7 +33,7 @@ function MemberListSkeleton(): JSX.Element {
     >
       {[1, 2, 3].map((i) => (
         <li key={i}>
-          <Skeleton className="h-14 w-full rounded-md border" />
+          <Skeleton className="h-14 w-full border" />
         </li>
       ))}
     </ul>

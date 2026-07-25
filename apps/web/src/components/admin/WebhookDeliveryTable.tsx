@@ -130,7 +130,7 @@ export function WebhookDeliveryTable({ deliveries, isLoading }: WebhookDeliveryT
             {Array.from({ length: SKELETON_ROW_COUNT }, (_, index) => (
               <tr key={index} className="border-b">
                 <td className="px-4 py-3" colSpan={6}>
-                  <Skeleton className="h-4 w-full rounded" />
+                  <Skeleton className="h-4 w-full" />
                 </td>
               </tr>
             ))}

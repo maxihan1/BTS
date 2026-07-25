@@ -162,8 +162,8 @@ function ChangelogSkeleton(): JSX.Element {
     >
       {[1, 2, 3].map((i) => (
         <div key={i} className="border-l-2 border-border pl-4 py-2 space-y-2">
-          <Skeleton className="h-3 w-32 rounded" />
-          <Skeleton className="h-3 w-48 rounded" />
+          <Skeleton className="h-3 w-32" />
+          <Skeleton className="h-3 w-48" />
         </div>
       ))}
     </div>
@@ -215,7 +215,7 @@ function ChangelogPage({
           aria-label={issueDetailStrings.changelogLoading}
           className="py-2"
         >
-          <Skeleton className="h-3 w-32 rounded" />
+          <Skeleton className="h-3 w-32" />
         </div>
       )
   }

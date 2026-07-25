@@ -24,11 +24,11 @@ function SchemeDetailSkeleton(): JSX.Element {
       className="flex flex-1 flex-col gap-4 p-6"
     >
       {/* 헤더 스켈레톤 */}
-      <Skeleton className="h-7 w-48 rounded-md" />
+      <Skeleton className="h-7 w-48" />
       {/* 테이블 스켈레톤 */}
       <div className="flex flex-col gap-2">
         {Array.from({ length: 5 }).map((_, i) => (
-          <Skeleton key={i} className="h-10 rounded-md" />
+          <Skeleton key={i} className="h-10" />
         ))}
       </div>
     </div>

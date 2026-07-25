@@ -145,11 +145,11 @@ export function DashboardsListPage(): JSX.Element {
   if (isLoading) {
     return (
       <div className="p-6 space-y-4">
-        <Skeleton className="h-8 w-48 rounded-md" aria-hidden="true" />
+        <Skeleton className="h-8 w-48" aria-hidden="true" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Skeleton className="h-28 rounded-md" aria-hidden="true" />
-          <Skeleton className="h-28 rounded-md" aria-hidden="true" />
-          <Skeleton className="h-28 rounded-md" aria-hidden="true" />
+          <Skeleton className="h-28" aria-hidden="true" />
+          <Skeleton className="h-28" aria-hidden="true" />
+          <Skeleton className="h-28" aria-hidden="true" />
         </div>
       </div>
     )

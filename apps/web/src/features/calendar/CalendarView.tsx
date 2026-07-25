@@ -75,7 +75,7 @@ function CalendarSkeleton(): JSX.Element {
   return (
     <div data-testid="calendar-skeleton" aria-hidden="true" className="grid grid-cols-7 gap-1">
       {Array.from({ length: 42 }, (_, i) => (
-        <Skeleton key={i} className="h-24 rounded-md" />
+        <Skeleton key={i} className="h-24" />
       ))}
     </div>
   )

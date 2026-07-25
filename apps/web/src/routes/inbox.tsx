@@ -33,7 +33,7 @@ function InboxSkeleton(): JSX.Element {
       {Array.from({ length: SKELETON_ROW_COUNT }, (_, i) => (
         <Skeleton
           key={`skeleton-${i}`}
-          className="h-20 rounded-md border"
+          className="h-20 border"
           aria-hidden="true"
         />
       ))}

@@ -118,10 +118,10 @@ export function SessionList(): JSX.Element {
         {[1, 2].map((i) => (
           <Card key={i}>
             <CardHeader>
-              <Skeleton className="h-4 w-3/4 rounded" />
+              <Skeleton className="h-4 w-3/4" />
             </CardHeader>
             <CardContent>
-              <Skeleton className="h-16 rounded" />
+              <Skeleton className="h-16" />
             </CardContent>
           </Card>
         ))}

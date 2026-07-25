@@ -40,8 +40,8 @@ function DashboardDetailSkeleton(): JSX.Element {
   return (
     <div className="p-6 space-y-4" role="status" aria-busy="true">
       <p className="text-sm text-muted-foreground">{dashboardLabels.list.loading}</p>
-      <Skeleton className="h-7 w-48 rounded" aria-hidden="true" />
-      <Skeleton className="h-4 w-32 rounded" aria-hidden="true" />
+      <Skeleton className="h-7 w-48" aria-hidden="true" />
+      <Skeleton className="h-4 w-32" aria-hidden="true" />
       <Skeleton className="h-64 rounded-lg" aria-hidden="true" />
     </div>
   )
