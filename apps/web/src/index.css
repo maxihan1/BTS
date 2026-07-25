@@ -84,6 +84,28 @@
 
   --color-info-text: var(--info-text);
 
+  /* FR-UX-06 PR22 범주 토큰 배선 — bg-type-epic / text-neutral-bold-foreground 등 유틸리티 생성용.
+     --color-chart-1~5는 shadcn init 산출물로 이미 아래에 존재하므로 추가 배선 불필요. */
+  --color-type-epic: var(--type-epic);
+
+  --color-type-story: var(--type-story);
+
+  --color-type-task: var(--type-task);
+
+  --color-type-bug: var(--type-bug);
+
+  --color-type-default: var(--type-default);
+
+  --color-discovery: var(--discovery);
+
+  --color-discovery-foreground: var(--discovery-foreground);
+
+  --color-neutral-bold: var(--neutral-bold);
+
+  --color-neutral-bold-foreground: var(--neutral-bold-foreground);
+
+  --color-favorite: var(--favorite);
+
   --color-input: var(--input);
 
   --color-border: var(--border);
@@ -167,15 +189,18 @@
 
   --ring: #388BFF;
 
-  --chart-1: oklch(0.87 0 0);
+  /* FR-UX-06 PR22 — ADR D7 이행. PR3가 동결해 둔 무채색 placeholder를 실소비(recharts 6종)와 함께 확정.
+     역할 배정: 1=주 시리즈 / 2=강조 시리즈 / 3=중립(스코프·TODO·약속) / 4=보조 시리즈 / 5=완료 계열.
+     라이트 700번대 · 다크 400번대(중립만 Neutral600/DarkNeutral800). 전량 배경 대비 3:1 이상. */
+  --chart-1: #0C66E4;
 
-  --chart-2: oklch(0.556 0 0);
+  --chart-2: #6E5DC6;
 
-  --chart-3: oklch(0.439 0 0);
+  --chart-3: #758195;
 
-  --chart-4: oklch(0.371 0 0);
+  --chart-4: #B65C02;
 
-  --chart-5: oklch(0.269 0 0);
+  --chart-5: #1F845A;
 
   /* AQL syntax highlight 토큰 — WCAG AA 대비 4.5:1 이상 (vs oklch(1 0 0) 배경) */
   --syntax-keyword: oklch(0.38 0.15 250);
@@ -264,6 +289,33 @@
   --danger-text: #AE2A19;
 
   --info-text: #0055CC;
+
+  /* FR-UX-06 PR22 범주 토큰 — 소비처가 실재하는 것만 정의한다 (ADR D7).
+     --type-*: 타임라인 이슈타입 막대(TimelineRow). 값은 디자인 스펙 §4.2 표 그대로.
+     --type-default: 매핑에 없는 타입 폴백. 중립 Neutral600.
+     --discovery: 캘린더 Worklog 칩(§5.3 discovery 계열의 bold 짝).
+     --neutral-bold: 캘린더 TODO 칩 — WeekGrid의 "옅은 배지 대비 미달로 배제, 중간톤 solid fill" 결정 유지.
+     --favorite: 즐겨찾기 별. ADS Yellow400은 흰 배경 1.98:1 미달이라 Yellow600 채택.
+     정본: docs/plans/2026-07-25-fr-ux-06-pr22-token-values.md */
+  --type-epic: #6E5DC6;
+
+  --type-story: #22A06B;
+
+  --type-task: #0C66E4;
+
+  --type-bug: #C9372C;
+
+  --type-default: #758195;
+
+  --discovery: #6E5DC6;
+
+  --discovery-foreground: #FFFFFF;
+
+  --neutral-bold: #44546F;
+
+  --neutral-bold-foreground: #FFFFFF;
+
+  --favorite: #B38600;
 }
 
 .dark {
@@ -304,15 +356,16 @@
 
   --ring: #85B8FF;
 
-  --chart-1: oklch(0.87 0 0);
+  /* FR-UX-06 PR22 (다크) — 라이트와 동일 역할 배정, 400번대로 밝기 반전. 대비는 --card(#1D2125) 기준. */
+  --chart-1: #579DFF;
 
-  --chart-2: oklch(0.556 0 0);
+  --chart-2: #9F8FEF;
 
-  --chart-3: oklch(0.439 0 0);
+  --chart-3: #8C9BAB;
 
-  --chart-4: oklch(0.371 0 0);
+  --chart-4: #FAA53D;
 
-  --chart-5: oklch(0.269 0 0);
+  --chart-5: #4BCE97;
 
   /* AQL syntax highlight 토큰 — WCAG AA 대비 4.5:1 이상 (vs oklch(0.145 0 0) 배경) */
   --syntax-keyword: oklch(0.72 0.15 250);
@@ -394,6 +447,28 @@
   --danger-text: #FF9C8F;
 
   --info-text: #85B8FF;
+
+  /* FR-UX-06 PR22 범주 토큰 (다크) — 라이트 700번대 → 다크 400번대, §4.2 규칙 승계.
+     중립 2종만 DarkNeutral 800/850. foreground는 기존 4쌍과 동일하게 #161A1D. */
+  --type-epic: #9F8FEF;
+
+  --type-story: #4BCE97;
+
+  --type-task: #579DFF;
+
+  --type-bug: #F87168;
+
+  --type-default: #8C9BAB;
+
+  --discovery: #9F8FEF;
+
+  --discovery-foreground: #161A1D;
+
+  --neutral-bold: #9FADBC;
+
+  --neutral-bold-foreground: #161A1D;
+
+  --favorite: #F5CD47;
 }
 
 @layer base {
