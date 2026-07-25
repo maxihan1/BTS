@@ -163,7 +163,7 @@ function buildErrorMessage(field: ChangeCardFieldVars['field']): string {
  * 칸반 보드 스윔레인 간 드래그로 카드의 담당자·우선순위를 변경하는 mutation 훅.
  *
  * - onMutate: cancelQueries → 스냅샷 저장 → 낙관적 캐시 업데이트(patchCardField)
- * - onError: 스냅샷으로 롤백 + toast.error 안내 + invalidateQueries(서버 진실 회복)
+ * - onError: 스냅샷으로 롤백 + toast.error 안내
  * - onSuccess: 서버 응답(IssueResponse)의 assigneeId·priority·version으로 카드 patch
  * - onSettled: invalidateQueries — 성공/실패 관계없이 서버 진실과 최종 동기화
  *
