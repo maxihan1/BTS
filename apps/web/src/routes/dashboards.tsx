@@ -9,23 +9,11 @@ import { DashboardForm } from '@/components/dashboard/DashboardForm'
 import { dashboardLabels } from '@/i18n/dashboard-labels'
 import { useAuthUser } from '@/auth/authStore'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 인라인 Skeleton 헬퍼 — shadcn Skeleton 미설치이므로 board 라우트 패턴 차용
 // ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * animate-pulse 스켈레톤 박스.
- * shadcn Skeleton 컴포넌트 부재로 인라인 구현.
- */
-function Skeleton({ className }: { className?: string }): JSX.Element {
-  return (
-    <div
-      className={`animate-pulse rounded-md bg-muted ${className ?? ''}`}
-      aria-hidden="true"
-    />
-  )
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // visibility 배지 — shadcn Badge 미설치이므로 DESIGN 토큰 인라인 사용
@@ -157,11 +145,11 @@ export function DashboardsListPage(): JSX.Element {
   if (isLoading) {
     return (
       <div className="p-6 space-y-4">
-        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-8 w-48 rounded-md" aria-hidden="true" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
+          <Skeleton className="h-28 rounded-md" aria-hidden="true" />
+          <Skeleton className="h-28 rounded-md" aria-hidden="true" />
+          <Skeleton className="h-28 rounded-md" aria-hidden="true" />
         </div>
       </div>
     )

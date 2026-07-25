@@ -6,6 +6,7 @@ import { MappingTable } from '@/components/admin/MappingTable'
 import { SchemeMetaPanel } from '@/components/admin/SchemeMetaPanel'
 import { useWorkflowSchemeDetail } from '@/hooks/use-workflow-schemes'
 import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 스켈레톤 컴포넌트
@@ -23,11 +24,11 @@ function SchemeDetailSkeleton(): JSX.Element {
       className="flex flex-1 flex-col gap-4 p-6"
     >
       {/* 헤더 스켈레톤 */}
-      <div className="h-7 w-48 animate-pulse rounded-md bg-muted" />
+      <Skeleton className="h-7 w-48 rounded-md" />
       {/* 테이블 스켈레톤 */}
       <div className="flex flex-col gap-2">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-10 animate-pulse rounded-md bg-muted" />
+          <Skeleton key={i} className="h-10 rounded-md" />
         ))}
       </div>
     </div>

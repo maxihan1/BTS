@@ -11,6 +11,7 @@ import {
 import { mfaStrings } from '@/i18n/ko'
 import { Button } from '@/components/ui/button'
 import { useDateFormat } from '@/hooks/use-date-format'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 하위 컴포넌트 — 인라인 확인 박스
@@ -241,10 +242,10 @@ export function TrustedDevicesSection(): JSX.Element {
 
       {/* 로딩 스켈레톤 */}
       {isLoading && (
-        <div
+        <Skeleton
           role="status"
           aria-label="로딩 중"
-          className="h-16 w-full animate-pulse rounded-lg bg-muted"
+          className="h-16 w-full rounded-lg"
         />
       )}
 

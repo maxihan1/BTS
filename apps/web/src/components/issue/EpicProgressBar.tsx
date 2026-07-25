@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchEpicProgress } from '@/api/epic-children'
 import type { EpicProgress } from '@/api/epic-children'
 import { epicProgressStrings } from '@/i18n/ko'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -198,7 +199,7 @@ function EpicProgressBarFetcher({ epicKey }: EpicProgressBarFetcherProps): JSX.E
   if (isLoading) {
     return (
       <div data-testid="epic-progress-loading" className="flex flex-col gap-1">
-        <div className="h-2 w-full animate-pulse rounded-full bg-muted" />
+        <Skeleton className="h-2 w-full rounded-full" />
       </div>
     )
   }

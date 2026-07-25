@@ -7,6 +7,7 @@ import { useActorNames } from '@/api/inbox-actors'
 import { InboxListItem } from '@/components/inbox/InboxListItem'
 import { InboxFilters } from '@/components/inbox/InboxFilters'
 import { inboxLabels } from '@/i18n/inbox-labels'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -30,9 +31,9 @@ function InboxSkeleton(): JSX.Element {
   return (
     <div data-testid="inbox-skeleton" className="flex flex-col gap-2">
       {Array.from({ length: SKELETON_ROW_COUNT }, (_, i) => (
-        <div
+        <Skeleton
           key={`skeleton-${i}`}
-          className="h-20 animate-pulse rounded-md border bg-muted"
+          className="h-20 rounded-md border"
           aria-hidden="true"
         />
       ))}

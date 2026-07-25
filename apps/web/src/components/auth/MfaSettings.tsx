@@ -15,6 +15,7 @@ import { useAuthUser } from '@/auth/authStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MFA 등록 강제 안내 배너 (FR-MF-04 D6-3)
@@ -280,9 +281,9 @@ export function MfaSettings(): JSX.Element {
 
   if (statusLoading) {
     return (
-      <div role="status" aria-label="2단계 인증 상태 로딩 중" className="space-y-4 animate-pulse">
-        <div className="h-6 w-32 rounded bg-muted" />
-        <div className="h-10 w-40 rounded bg-muted" />
+      <div role="status" aria-label="2단계 인증 상태 로딩 중" className="space-y-4">
+        <Skeleton className="h-6 w-32 rounded" />
+        <Skeleton className="h-10 w-40 rounded" />
       </div>
     )
   }

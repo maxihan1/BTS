@@ -15,6 +15,7 @@ import { DashboardForm } from '@/components/dashboard/DashboardForm'
 import { FavoriteButton } from '@/components/favorite/FavoriteButton'
 import { GadgetCatalogModal } from '@/components/dashboard/GadgetCatalogModal'
 import { ShareDashboardModal } from '@/components/dashboard/ShareDashboardModal'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -39,9 +40,9 @@ function DashboardDetailSkeleton(): JSX.Element {
   return (
     <div className="p-6 space-y-4" role="status" aria-busy="true">
       <p className="text-sm text-muted-foreground">{dashboardLabels.list.loading}</p>
-      <div className="h-7 w-48 rounded bg-muted animate-pulse" aria-hidden="true" />
-      <div className="h-4 w-32 rounded bg-muted animate-pulse" aria-hidden="true" />
-      <div className="h-64 rounded-lg bg-muted animate-pulse" aria-hidden="true" />
+      <Skeleton className="h-7 w-48 rounded" aria-hidden="true" />
+      <Skeleton className="h-4 w-32 rounded" aria-hidden="true" />
+      <Skeleton className="h-64 rounded-lg" aria-hidden="true" />
     </div>
   )
 }

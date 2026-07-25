@@ -13,6 +13,7 @@ import { useTimelineZoom } from '@/hooks/use-timeline-zoom'
 import { GanttChart } from '@/components/timeline/GanttChart'
 import { TimelineZoomControl } from '@/components/timeline/TimelineZoomControl'
 import { timelineLabels } from '@/i18n/timeline-labels'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 에러 코드 상수
@@ -90,22 +91,12 @@ function buildAssigneeNames(items: TimelineItem[], userMap: Map<string, string>)
 // 내부 서브컴포넌트 — 가독성 분리 (재사용 목적 아님)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 로딩 중 플레이스홀더 — shadcn Skeleton 미설치이므로 인라인 구현 (board 패턴 동일) */
-function Skeleton({ className }: { className?: string }): JSX.Element {
-  return (
-    <div
-      className={`animate-pulse rounded-md bg-muted ${className ?? ''}`}
-      aria-hidden="true"
-    />
-  )
-}
-
 /** 타임라인 로딩 스켈레톤 — 제목 바 + Gantt 차트 영역 플레이스홀더 */
 function TimelineLoadingSkeleton(): JSX.Element {
   return (
     <div className="p-6 space-y-4">
-      <Skeleton className="h-8 w-64" />
-      <Skeleton className="h-64 w-full" />
+      <Skeleton className="h-8 w-64 rounded-md" aria-hidden="true" />
+      <Skeleton className="h-64 w-full rounded-md" aria-hidden="true" />
     </div>
   )
 }

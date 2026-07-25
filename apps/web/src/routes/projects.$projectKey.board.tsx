@@ -33,6 +33,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { FavoriteButton } from '@/components/favorite/FavoriteButton'
 import { ProjectNavTabs, type ProjectNavTabLink } from '@/components/project/ProjectNavTabs'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 뷰 전환 nav 링크 — ProjectNavTabs에 전달(회귀-무해 원칙: 기존 인라인 nav 링크 집합 그대로)
@@ -43,19 +44,6 @@ const BOARD_VIEW_NAV_LINKS: readonly ProjectNavTabLink[] = [
   { to: '/projects/$projectKey/backlog', label: boardLabels.page.backlogLink },
   { to: '/projects/$projectKey/timeline', label: boardLabels.page.timelineLink },
 ]
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 스켈레톤 헬퍼 — shadcn Skeleton 미설치이므로 인라인 구현
-// ─────────────────────────────────────────────────────────────────────────────
-
-function Skeleton({ className }: { className?: string }): JSX.Element {
-  return (
-    <div
-      className={`animate-pulse rounded-md bg-muted ${className ?? ''}`}
-      aria-hidden="true"
-    />
-  )
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 에러 코드 상수
@@ -437,11 +425,11 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
       <div>
         {projectFavoriteHeader}
         <div className="p-6 space-y-4">
-          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-8 w-48 rounded-md" aria-hidden="true" />
           <div className="flex gap-4">
-            <Skeleton className="h-64 w-64" />
-            <Skeleton className="h-64 w-64" />
-            <Skeleton className="h-64 w-64" />
+            <Skeleton className="h-64 w-64 rounded-md" aria-hidden="true" />
+            <Skeleton className="h-64 w-64 rounded-md" aria-hidden="true" />
+            <Skeleton className="h-64 w-64 rounded-md" aria-hidden="true" />
           </div>
         </div>
       </div>
@@ -562,8 +550,8 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
       {/* 보드 상세 로딩 중 */}
       {boardDetailLoading && (
         <div className="flex gap-4">
-          <Skeleton className="h-64 w-64" />
-          <Skeleton className="h-64 w-64" />
+          <Skeleton className="h-64 w-64 rounded-md" aria-hidden="true" />
+          <Skeleton className="h-64 w-64 rounded-md" aria-hidden="true" />
         </div>
       )}
 

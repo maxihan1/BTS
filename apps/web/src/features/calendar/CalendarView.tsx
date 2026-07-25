@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { calendarLabels } from '@/i18n/calendar-labels'
 import { MonthGrid } from './MonthGrid'
 import { WeekGrid, toDateKey, formatDayLabel } from './WeekGrid'
+import { Skeleton } from '@/components/ui/skeleton'
 
 /** 현재 활성 뷰 모드 */
 type CalendarViewMode = 'month' | 'week'
@@ -74,7 +75,7 @@ function CalendarSkeleton(): JSX.Element {
   return (
     <div data-testid="calendar-skeleton" aria-hidden="true" className="grid grid-cols-7 gap-1">
       {Array.from({ length: 42 }, (_, i) => (
-        <div key={i} className="h-24 animate-pulse rounded-md bg-muted" />
+        <Skeleton key={i} className="h-24 rounded-md" />
       ))}
     </div>
   )

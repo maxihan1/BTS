@@ -10,6 +10,7 @@ import { VersionRow } from './VersionRow'
 import { VersionFormDialog } from './VersionFormDialog'
 import type { Version } from '@/api/versions.types'
 import { extractVersionErrorCode } from '@/api/versions'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -41,7 +42,9 @@ function VersionListSkeleton(): JSX.Element {
       className="space-y-2"
     >
       {[1, 2, 3].map((i) => (
-        <li key={i} className="h-14 rounded-md border animate-pulse bg-muted" />
+        <li key={i}>
+          <Skeleton className="h-14 w-full rounded-md border" />
+        </li>
       ))}
     </ul>
   )

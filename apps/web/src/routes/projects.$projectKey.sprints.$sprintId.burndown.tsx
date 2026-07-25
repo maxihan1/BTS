@@ -7,6 +7,7 @@ import type { BurndownView } from '@/api/burndown'
 import { ApiError } from '@/api/client'
 import { BurndownChart } from '@/components/burndown/BurndownChart'
 import { burndownLabels } from '@/i18n/burndown-labels'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상태별 서브컴포넌트
@@ -18,10 +19,10 @@ import { burndownLabels } from '@/i18n/burndown-labels'
  */
 function BurndownSkeleton(): JSX.Element {
   return (
-    <div
+    <Skeleton
       role="status"
       aria-label={burndownLabels.status.loading}
-      className="h-[360px] w-full animate-pulse rounded-md border bg-muted"
+      className="h-[360px] w-full rounded-md border"
     />
   )
 }
