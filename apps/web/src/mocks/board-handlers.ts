@@ -125,7 +125,7 @@ interface LiveFieldSet {
  * 쓴다 — resolveLiveRank와 동일한 오버레이 패턴. 기존 26개+ 보드 fixture/E2E 스펙은 필드변경을
  * 트리거하지 않으므로 무회귀.
  *
- * @param issueKey rank를 조회할 이슈 키
+ * @param issueKey 담당자/우선순위/에픽을 조회할 이슈 키
  * @param fallback getIssueFieldOverride에 값이 없을 때 사용할 board 자체 카드 시드값
  */
 function resolveLiveField(issueKey: string, fallback: LiveFieldSet): LiveFieldSet {
