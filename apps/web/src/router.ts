@@ -614,7 +614,10 @@ const adminWebhooksDeliveriesRoute = createRoute({
 })
 
 /**
- * Slack 연결 관리자 라우트 — /admin/slack, requireAuth + requireSystemAdmin (FR-SL-01 D6/D7 Task 7).
+ * Slack 연결 관리자 라우트 — /admin/slack, 다른 admin 라우트와 동일 4-가드 `requireSystemAdminFull`.
+ * FR-SL-01 D6/D7 Task 7 도입 시엔 `requireAuth + requireSystemAdmin` 2-가드였고, admin 라우트를
+ * 4-가드로 정렬한 FR-UX-06 PR13(#299)에서 이 라우트만 누락됐다(그 PR 후속 항목에 등재된 채로 남아 있었다).
+ * 강제변경·MFA 미완료 관리자의 우회를 차단한다(FR-MF-04).
  * `?installed=`/`?error=` OAuth 콜백 쿼리 파라미터 타입 선언 — 값은 페이지가 마운트 시 캡처 후
  * navigate로 제거한다(새로고침 재표시 방지).
  */
@@ -623,7 +626,7 @@ const adminSlackRoute = createRoute({
   path: '/admin/slack',
   component: SlackConnectionSettingsRouteAdapter,
   staticData: { requireAuth: true },
-  beforeLoad: composeGuards(requireAuth, requireSystemAdmin),
+  beforeLoad: requireSystemAdminFull,
   validateSearch: (search: Record<string, unknown>): { installed?: string; error?: string } => ({
     installed: typeof search['installed'] === 'string' ? search['installed'] : undefined,
     error: typeof search['error'] === 'string' ? search['error'] : undefined,
