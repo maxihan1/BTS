@@ -4,8 +4,11 @@
 // /admin/slack 이 2-가드인 채로 초록을 유지했다(도입 d9e418d9b/#247 → #299 정렬에서 누락).
 // 이제 routesById 전 라우트 × 4시나리오를 덮고, 맵에 없는 라우트는 실패로 처리해 신규 라우트에
 // 클래스 선언을 강제한다.
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { isRedirect } from '@tanstack/react-router'
 import { router } from './router'
+import { useAuthStore } from './auth/authStore'
+import { makeWhoami } from './mocks/auth-fixtures'
 
 /** 가드 클래스 — 라우트가 요구하는 보호 수준 */
 type GuardClass = 'ADMIN_4' | 'PROTECTED_3' | 'AUTH_ONLY' | 'LOGIN' | 'PUBLIC'
@@ -138,5 +141,118 @@ describe('라우트 가드 행렬 — 맵 완전성', () => {
       .filter(([, note]) => note.startsWith('후속 판정 필요'))
       .map(([id]) => id)
     expect(pending).toHaveLength(5)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 서명 관측 — 4시나리오를 각 라우트의 실제 beforeLoad 에 적용해 redirect 목적지를 읽는다.
+// routeGuard.ts 의 개별 가드를 재조합하는 게 아니라 router.ts 에 등록된 합성 beforeLoad 를
+// 호출한다("가드 함수는 옳은데 배선을 빼먹었다" 를 잡는 것이 목적).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** beforeLoad 컨텍스트 중 가드가 쓰는 최소 형태 (routeGuard.test.tsx 와 동형) */
+interface MinimalBeforeLoadContext {
+  location: { href: string; pathname: string }
+}
+
+/** redirect() 반환 타입 — Response & { options: { to } } */
+interface RedirectResponse extends Response {
+  options: { to: string }
+}
+
+/** 관측 서명 — [S-1, S-2, S-3, S-4] 각 칸은 redirect 목적지 또는 통과(null) */
+type Signature = [string | null, string | null, string | null, string | null]
+
+/**
+ * 클래스별 기대 서명.
+ * ⚠️ /dashboard(단수 — requireSystemAdmin 거부 목적지)와 /dashboards(복수 — startPage 매핑)는 다른 경로다.
+ * LOGIN 은 방향이 반대다(redirectIfAuth — 인증된 사용자를 내보낸다).
+ */
+const EXPECTED: Record<GuardClass, Signature> = {
+  ADMIN_4: ['/login', '/dashboard', '/settings/password', '/settings/mfa'],
+  PROTECTED_3: ['/login', null, '/settings/password', '/settings/mfa'],
+  AUTH_ONLY: ['/login', null, null, null],
+  LOGIN: [null, '/dashboards', '/dashboards', '/dashboards'],
+  PUBLIC: [null, null, null, null],
+}
+
+/** 시나리오 4종 — 각 시나리오는 나머지 조건을 전부 통과 상태로 두어 판별자를 유일하게 특정한다 */
+const SCENARIOS = [
+  { label: 'S-1 미인증', apply: (): void => useAuthStore.setState({ accessToken: null, user: null }) },
+  {
+    label: 'S-2 비-admin',
+    apply: (): void =>
+      useAuthStore.setState({
+        accessToken: 'valid-token',
+        user: makeWhoami({ isSystemAdmin: false }),
+      }),
+  },
+  {
+    label: 'S-3 비밀번호 강제',
+    apply: (): void =>
+      useAuthStore.setState({
+        accessToken: 'valid-token',
+        user: makeWhoami({ isSystemAdmin: true, mustChangePassword: true }),
+      }),
+  },
+  {
+    label: 'S-4 MFA 강제',
+    apply: (): void =>
+      useAuthStore.setState({
+        accessToken: 'valid-token',
+        user: makeWhoami({ isSystemAdmin: true, mfaEnrollmentRequired: true }),
+      }),
+  },
+] as const
+
+/**
+ * routesById 키에서 실제 pathname 을 만든다.
+ * $세그먼트는 임의값으로 치환한다 — 가드가 pathname 을 읽는 곳은
+ * requirePasswordChanged/requireMfaEnrolled 의 '/settings/...' 동등 비교뿐이라 값이 판정을 바꾸지 않는다.
+ */
+function pathnameOf(routeId: string): string {
+  const stripped = routeId === '__root__' ? '' : routeId.replace(/^\/_shell/, '')
+  const withParams = stripped.replace(/\$[A-Za-z]+/g, 'x-1')
+  return withParams === '' ? '/' : withParams
+}
+
+/** 한 라우트의 관측 서명을 만든다 */
+function observe(routeId: string): Signature {
+  const byId = router.routesById as Record<
+    string,
+    { options: { beforeLoad?: (ctx: MinimalBeforeLoadContext) => void } }
+  >
+  const beforeLoad = byId[routeId]?.options.beforeLoad
+  const pathname = pathnameOf(routeId)
+  const ctx: MinimalBeforeLoadContext = { location: { href: pathname, pathname } }
+
+  return SCENARIOS.map((s) => {
+    s.apply()
+    if (beforeLoad === undefined) return null
+    try {
+      beforeLoad(ctx)
+      return null
+    } catch (e) {
+      // redirect 가 아닌 진짜 예외(예. pathnameOf 버그의 TypeError)는 원본을 그대로 올린다.
+      // 여기서 expect(isRedirect) 로 단정하면 원인 예외가 어서션 실패 메시지에 가려진다.
+      if (!isRedirect(e)) throw e
+      return (e as RedirectResponse).options.to
+    }
+  }) as Signature
+}
+
+const idsOf = (c: GuardClass): string[] =>
+  [...ROUTE_CLASS.entries()].filter(([, v]) => v === c).map(([k]) => k)
+
+describe('라우트 가드 행렬 — ADMIN_4', () => {
+  beforeEach(() => useAuthStore.setState({ accessToken: null, user: null }))
+  afterEach(() => useAuthStore.setState({ accessToken: null, user: null }))
+
+  it('ADMIN_4 클래스가 11개다 (/admin/slack 편입 확인)', () => {
+    expect(idsOf('ADMIN_4')).toHaveLength(11)
+  })
+
+  it.each(idsOf('ADMIN_4'))('%s — 관측 서명이 ADMIN_4 기대와 정확히 일치', (id) => {
+    expect(observe(id)).toEqual(EXPECTED.ADMIN_4)
   })
 })
