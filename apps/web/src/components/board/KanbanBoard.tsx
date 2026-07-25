@@ -1,6 +1,6 @@
 // 칸반 보드 루트 컴포넌트 — DndContext + 컬럼 배치 + 드래그 이동 오케스트레이션 (FR-BD-01)
 import type { JSX } from 'react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -70,9 +70,6 @@ type FieldChangeAction = Extract<DropAction, { type: 'field-change' }>
 /** 필드변경 announcement 시제 — onDragOver(예고형 "~변경합니다")·onDragEnd(완료형 "~변경했습니다") 구분 */
 type FieldChangeTense = 'preview' | 'done'
 
-/** 담당자 이름을 조회하지 못했을 때(unknown·그룹 미확인) 대체 표시 텍스트 — issue-columns.ts assigneeName 관례와 동일 */
-const ASSIGNEE_NAME_FALLBACK = '미배정'
-
 /** 우선순위 값을 읽지 못했을 때(방어적) 대체 표시 텍스트 — findColumnName 방어적 fallback 관례와 동일 */
 const PRIORITY_VALUE_FALLBACK = '알 수 없음'
 
@@ -82,6 +79,61 @@ const PRIORITY_VALUE_FALLBACK = '알 수 없음'
  */
 function pickByTense(tense: FieldChangeTense, preview: string, done: string): string {
   return tense === 'preview' ? preview : done
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 한국어 조사("으로"/"로") 판별 헬퍼 (리뷰 S1 — describeXxxFieldChange 3곳의 조사 불일치 통일)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 한글 음절 블록 시작 코드포인트('가') — 받침 유무 계산의 기준점 */
+const HANGUL_SYLLABLE_START = 0xac00
+/** 한글 음절 블록 끝 코드포인트('힣') */
+const HANGUL_SYLLABLE_END = 0xd7a3
+/** 한글 음절 하나가 가질 수 있는 종성(받침) 조합 가짓수 — 종성 없음(1가지) 포함 28가지 */
+const HANGUL_JONGSEONG_COUNT = 28
+
+/** 숫자 한 글자(0~9)의 한글 발음 — 우선순위처럼 숫자로 끝나는 단어의 받침 판정에 사용(예: '3' → '삼') */
+const DIGIT_KOREAN_READING: Readonly<Record<string, string>> = {
+  '0': '영',
+  '1': '일',
+  '2': '이',
+  '3': '삼',
+  '4': '사',
+  '5': '오',
+  '6': '육',
+  '7': '칠',
+  '8': '팔',
+  '9': '구',
+}
+
+/**
+ * 단어 끝에 붙일 한국어 조사("으로" 또는 "로")를 마지막 글자의 받침 유무로 결정한다.
+ *
+ * 한국어는 받침(종성)이 있는 글자 뒤엔 "으로", 없는 글자 뒤엔 "로"를 쓴다
+ * (예: "박밥으로"는 자연스럽지만 "박밥로"는 어색하다). 이전엔 describeAssigneeFieldChange가
+ * 항상 "(으)로", describePriorityFieldChange·describeEpicFieldChange가 항상 bare "로"를
+ * 하드코딩해 조사가 불일치했다(리뷰 S1) — 이 헬퍼로 담당자 이름·에픽 키·우선순위 숫자 표기를 통일한다.
+ *
+ * - 마지막 글자가 숫자(0~9)면 그 숫자의 한글 발음(DIGIT_KOREAN_READING)의 마지막 글자로 판정한다
+ *   (예: 우선순위 "1" → "일"의 받침 ㄹ 있음 → "으로").
+ * - 마지막 글자가 한글 음절(가~힣)이면 유니코드 코드포인트로 받침 유무를 계산한다
+ *   ((코드 - 0xAC00) % 28 !== 0 이면 받침 있음 — 종성 없는 음절이 각 초성×중성 조합의 첫 번째다).
+ * - 그 외(빈 문자열·한글도 숫자도 아닌 문자)는 안전한 기본값 "로"를 반환한다.
+ *
+ * @param word 조사를 붙일 대상 단어(담당자 이름·에픽 키·우선순위 숫자 등)
+ * @returns '으로' 또는 '로'
+ */
+function josaEuro(word: string): string {
+  const lastChar = word.at(-1)
+  if (lastChar === undefined) return '로'
+
+  const digitReading = DIGIT_KOREAN_READING[lastChar]
+  const charToCheck = digitReading !== undefined ? digitReading.at(-1) : lastChar
+  const code = charToCheck?.codePointAt(0)
+  if (code === undefined || code < HANGUL_SYLLABLE_START || code > HANGUL_SYLLABLE_END) return '로'
+
+  const hasBatchim = (code - HANGUL_SYLLABLE_START) % HANGUL_JONGSEONG_COUNT !== 0
+  return hasBatchim ? '으로' : '로'
 }
 
 /**
@@ -105,7 +157,13 @@ function findAssigneeDisplayName(
   return undefined
 }
 
-/** ASSIGNEE 필드변경 announcement 문구 — 담당자 재할당/해제 */
+/**
+ * ASSIGNEE 필드변경 announcement 문구 — 담당자 재할당/해제.
+ *
+ * toAssigneeId가 있어도(재할당) assigneeNames에서 이름을 못 찾으면(unknown·그룹 미확인)
+ * 이름 없이 중립 문구로 안내한다 — "미배정"으로 대체하면 실제 담당자 해제(toAssigneeId===null)와
+ * 같은 단어가 되어 스크린리더 사용자가 두 상황을 구분할 수 없다(리뷰 S2).
+ */
 function describeAssigneeFieldChange(
   action: FieldChangeAction,
   board: BoardDetail,
@@ -115,16 +173,19 @@ function describeAssigneeFieldChange(
   if (action.toAssigneeId === null || action.toAssigneeId === undefined) {
     return `${action.issueKey}의 담당자를 ${pickByTense(tense, '해제합니다', '해제했습니다')}.`
   }
-  const name = findAssigneeDisplayName(board, assigneeNames, action.toAssigneeId) ?? ASSIGNEE_NAME_FALLBACK
   const changeVerb = pickByTense(tense, '변경합니다', '변경했습니다')
-  return `${action.issueKey}을(를) 담당자 ${name}(으)로 ${changeVerb}`
+  const name = findAssigneeDisplayName(board, assigneeNames, action.toAssigneeId)
+  if (name === undefined) {
+    return `${action.issueKey}의 담당자를 ${changeVerb}`
+  }
+  return `${action.issueKey}을(를) 담당자 ${name}${josaEuro(name)} ${changeVerb}`
 }
 
 /** PRIORITY 필드변경 announcement 문구 */
 function describePriorityFieldChange(action: FieldChangeAction, tense: FieldChangeTense): string {
   const priorityLabel = action.toPriority !== undefined ? String(action.toPriority) : PRIORITY_VALUE_FALLBACK
   const changeVerb = pickByTense(tense, '변경합니다', '변경했습니다')
-  return `${action.issueKey}의 우선순위를 ${priorityLabel}로 ${changeVerb}`
+  return `${action.issueKey}의 우선순위를 ${priorityLabel}${josaEuro(priorityLabel)} ${changeVerb}`
 }
 
 /** EPIC 필드변경 announcement 문구 — 에픽 재배치/해제 */
@@ -133,7 +194,7 @@ function describeEpicFieldChange(action: FieldChangeAction, tense: FieldChangeTe
     return `${action.issueKey}의 에픽 연결을 ${pickByTense(tense, '해제합니다', '해제했습니다')}.`
   }
   const moveVerb = pickByTense(tense, '이동합니다', '이동했습니다')
-  return `${action.issueKey}을(를) 에픽 ${action.toEpicKey}로 ${moveVerb}`
+  return `${action.issueKey}을(를) 에픽 ${action.toEpicKey}${josaEuro(action.toEpicKey)} ${moveVerb}`
 }
 
 /**
@@ -478,11 +539,18 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
   // 접근성 공지(DR2) — board/assigneeNames가 바뀔 때만 재계산(불필요한 재구독 방지)
   const announcements = useMemo(() => buildDragAnnouncements(board, assigneeNames), [board, assigneeNames])
 
+  // handleDragOver 재계산 가드(리뷰 S4) — dnd-kit onDragOver는 포인터가 조금만 움직여도 자주
+  // 발생하는데, active/over id 쌍이 직전 호출과 같으면 resolveDropAction(내부적으로 대형 컬럼에서
+  // groupCardsBySwimlane을 2~3회 호출) 재계산 결과도 항상 같다 — 무의미한 재계산을 건너뛴다.
+  // 드래그 시작/종료마다 초기화해 이전 드래그의 값과 우연히 겹치지 않게 한다.
+  const lastDragOverRef = useRef<{ activeId: string; overId: string | null } | null>(null)
+
   /** dnd-kit onDragStart — 드래그 중인 카드의 출발 컬럼을 기록한다. */
   function handleDragStart(event: DragStartEvent): void {
     setActiveId(String(event.active.id))
     const current = event.active.data.current as { fromColumnId?: string } | undefined
     setActiveFromColumnId(current?.fromColumnId ?? null)
+    lastDragOverRef.current = null
   }
 
   /**
@@ -491,8 +559,16 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
    * resolveDropAction과 동일 판정을 재사용해(handleDragEnd와 같은 로직), 실제로 드롭 가능한
    * 대상일 때만 하이라이트한다(FR-8). field-change(스윔레인 그룹 간 드롭)도 유효한 드롭이므로
    * 이제 하이라이트된다 — PR21이 그룹 경계 드래그를 noop 취급해 억제하던 로직을 반전했다.
+   *
+   * active/over id 쌍이 직전 호출과 동일하면 resolveDropAction을 다시 부르지 않는다(리뷰 S4).
    */
   function handleDragOver(event: DragOverEvent): void {
+    const activeId = String(event.active.id)
+    const overId = event.over !== null ? String(event.over.id) : null
+    const last = lastDragOverRef.current
+    if (last !== null && last.activeId === activeId && last.overId === overId) return
+    lastDragOverRef.current = { activeId, overId }
+
     const action = resolveDropAction(
       board,
       event.active as DragActiveMin,
@@ -510,6 +586,7 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
     setActiveId(null)
     setActiveFromColumnId(null)
     setOverColumnId(null)
+    lastDragOverRef.current = null
 
     const action = resolveDropAction(
       board,

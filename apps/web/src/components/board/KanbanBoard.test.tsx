@@ -633,8 +633,24 @@ describe('KanbanBoard — S6 필드변경 announcements (FR-7, PR21b Task 4)', (
       over: fakeOver('ATLAS-4'),
     })
     expect(message).toContain('ATLAS-1')
-    expect(message).toContain('박밥')
     expect(message).toContain('변경했습니다')
+    // "박밥"은 받침(ㅂ)이 있어 "으로"가 붙는다(리뷰 S1 — josaEuro 일관성)
+    expect(message).toContain('박밥으로')
+  })
+
+  it('S6h: 담당자 스윔레인 — 받침 없는 이름 뒤에는 "로"만 붙는다("으로" 아님, 리뷰 S1)', () => {
+    renderBoard(assigneeSwimlaneBoard, assigneeSwimlaneNames)
+    const announcements = capturedAnnouncements
+    expect(announcements).toBeDefined()
+    if (announcements === undefined) return
+
+    const message = announcements.onDragEnd({
+      active: fakeActive('ATLAS-4', { fromColumnId: COL_TODO }),
+      over: fakeOver('ATLAS-1'),
+    })
+    // "김앨리스"는 받침이 없어 "로"만 붙는다 — "으로"가 섞이면 안 된다
+    expect(message).toContain('김앨리스로')
+    expect(message).not.toContain('김앨리스으로')
   })
 
   it('S6b: 담당자 스윔레인 — 미배정 줄로 드롭 완료 시 해제 문구를 공지한다', () => {
@@ -651,7 +667,7 @@ describe('KanbanBoard — S6 필드변경 announcements (FR-7, PR21b Task 4)', (
     expect(message).toContain('담당자를 해제')
   })
 
-  it('S6c: 담당자 스윔레인 — 이름 조회 실패 시 "미배정"으로 대체한 문구를 공지한다', () => {
+  it('S6c: 담당자 스윔레인 — 이름 조회 실패 시 "미배정" 없이 중립 문구로 공지한다(리뷰 S2 — 실제 해제와 구분)', () => {
     renderBoard(assigneeSwimlaneBoard, assigneeSwimlaneNames)
     const announcements = capturedAnnouncements
     expect(announcements).toBeDefined()
@@ -661,8 +677,12 @@ describe('KanbanBoard — S6 필드변경 announcements (FR-7, PR21b Task 4)', (
       active: fakeActive('ATLAS-1', { fromColumnId: COL_TODO }),
       over: fakeOver('ATLAS-5'),
     })
-    expect(message).toContain('미배정')
+    expect(message).toContain('ATLAS-1')
+    expect(message).toContain('담당자를')
     expect(message).toContain('변경했습니다')
+    // "미배정"은 실제 담당자 해제(S6b)와 같은 단어라 스크린리더로 두 상황이 구분되지 않는다 — 쓰지 않는다
+    expect(message).not.toContain('미배정')
+    expect(message).not.toContain('해제')
   })
 
   it('S6d: 담당자 스윔레인 — onDragOver는 예고형("변경합니다") 문구를 공지한다', () => {
@@ -690,8 +710,9 @@ describe('KanbanBoard — S6 필드변경 announcements (FR-7, PR21b Task 4)', (
       over: fakeOver('ATLAS-4'),
     })
     expect(message).toContain('우선순위')
-    expect(message).toContain('1')
     expect(message).toContain('변경했습니다')
+    // 우선순위 "1"은 "일"로 읽혀 받침(ㄹ)이 있다 — 담당자·에픽과 동일한 josaEuro로 "으로"가 붙는다(S1)
+    expect(message).toContain('1으로')
   })
 
   it('S6f: 에픽 스윔레인 — 다른 에픽 줄로 드롭 완료 시 대상 에픽 키를 포함한 이동 문구를 공지한다', () => {
@@ -704,8 +725,9 @@ describe('KanbanBoard — S6 필드변경 announcements (FR-7, PR21b Task 4)', (
       active: fakeActive('ATLAS-1', { fromColumnId: COL_TODO }),
       over: fakeOver('ATLAS-4'),
     })
-    expect(message).toContain('ATLAS-20')
     expect(message).toContain('이동했습니다')
+    // "ATLAS-20"은 마지막 글자 "0"→"영"의 받침이 있어 "으로"가 붙는다(리뷰 S1 — josaEuro 일관성)
+    expect(message).toContain('ATLAS-20으로')
   })
 
   it('S6g: 에픽 스윔레인 — "에픽 없음" 줄로 드롭 완료 시 해제 문구를 공지한다', () => {
