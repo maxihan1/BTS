@@ -23,7 +23,21 @@
 
 ## 2. 차트 토큰 5종 — recharts 가젯 6종이 소비
 
-역할 배정. **1 = 주 시리즈 · 2 = 강조 시리즈 · 3 = 중립 · 4 = 보조 시리즈 · 5 = 완료 계열**.
+역할 배정 (의미 기반 — 구현 실측 후 확정).
+
+| 토큰 | 역할 | 소비처 |
+|---|---|---|
+| `--chart-1` | **일반 주 지표** (완료/진행 의미가 없는 단일 지표) | Burndown 실측선 · CycleTime BoxPlot · CycleTime Histogram · Worklog 막대 |
+| `--chart-2` | **강조 참조선** | Velocity 평균완료선 |
+| `--chart-3` | **중립** (계획·범위·할 일) | Burndown 스코프선 · CFD todo · Velocity 계획막대 + 평균계획선 |
+| `--chart-4` | **진행 중 / 이상선** | Burndown 이상선 · CFD inProgress |
+| `--chart-5` | **완료** | CFD done · Velocity 완료막대 |
+
+★ 초안은 `--chart-1`을 "주 시리즈"로 두고 완료 계열까지 흡수시켰는데, 그러면 **`--chart-5`를
+아무도 소비하지 않는다** — 정의만 하고 안 쓰는 토큰이 생겨 ADR D7을 다시 어기게 된다.
+구현 중 발견해 "완료 = `--chart-5`(초록)" 의미 매핑으로 정정했고, 그 결과 CFD와 Velocity에서
+**"완료"가 같은 색으로 통일**되는 부수 효과도 얻었다. `chart-color-tokens.test.ts`의
+"6종이 `--chart-1~5`를 모두 소비한다" 어서션이 이 미소비를 잡아낸 판별자다.
 
 | 토큰 | 라이트 | 램프 | 대비 | 다크 | 램프 | 대비 |
 |---|---|---|---|---|---|---|
@@ -37,11 +51,12 @@
 
 | 현재 hex | 라이트 대비 | 판정 | 새 토큰 | 쓰이던 곳 |
 |---|---|---|---|---|
-| `#6366f1` | 4.47:1 | OK | `--chart-1` | Burndown 실측 · CFD Done · BoxPlot accent · Histogram 막대 · Velocity 완료 · Worklog 막대 |
+| `#6366f1` | 4.47:1 | OK | `--chart-1` | Burndown 실측 · BoxPlot accent · Histogram 막대 · Worklog 막대 |
+| `#6366f1` | 4.47:1 | OK | `--chart-5` | CFD done · Velocity 완료 (완료 의미로 재배정) |
 | `#f59e0b` | **2.15:1** | **미달** | `--chart-4` | Burndown 이상선 · CFD 진행중 |
-| `#94a3b8` | **2.56:1** | **미달** | `--chart-3` | Burndown 스코프선 · Velocity 약속 |
+| `#94a3b8` | **2.56:1** | **미달** | `--chart-3` | Burndown 스코프선 · Velocity 계획 |
 | `#cbd5e1` | **1.48:1** | **미달** | `--chart-3` | CFD TODO |
-| `#475569` | 7.58:1 | OK | `--chart-3` | Velocity 평균약속 |
+| `#475569` | 7.58:1 | OK | `--chart-3` | Velocity 평균계획 |
 | `#4338ca` | 7.90:1 | OK | `--chart-2` | Velocity 평균완료 |
 
 ★ **현재 6종 중 3종이 이미 1.4.11 미달**이다. 이 교체는 토큰화이자 **접근성 결함 수정**이다.
