@@ -1,4 +1,4 @@
-// 배치1 파일의 원시 <button> 잔존을 사유 주석 기준으로 전수 통제하는 회귀 가드 (FR-UX-06 PR22 T6)
+// 원시 <button> 잔존을 사유 주석 기준으로 전수 통제하는 회귀 가드 (FR-UX-06 PR22 T6 배치1 + T7 배치2)
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
@@ -7,11 +7,11 @@ import { describe, it, expect } from 'vitest'
 const SRC_ROOT = resolve(import.meta.dirname, '../..')
 
 /**
- * 배치 1 = 공용 `Button`을 **이미 소비하면서** 원시 `<button>`이 남아 있던 파일 전수.
+ * 배치 1 = 공용 `Button`을 **이미 소비하면서** 원시 `<button>`이 남아 있던 파일 전수 (T6).
  *
  * 판별식은 `grep -l "from '@/components/ui/button'"` 단 하나이며 세션 2 재열거로 확정했다.
  * 여기 적힌 21이라는 숫자를 신뢰 근거로 쓰지 않는다 — 아래 첫 테스트가 목록의 **원소 전부**를
- * 실재 여부와 import 보유 여부로 검증한다(개수 가드는 원소가 바뀌어도 숫자만 맞으면 통과한다).
+ * 실재 여부로 검증한다(개수 가드는 원소가 바뀌어도 숫자만 맞으면 통과한다).
  */
 const BATCH1_FILES = [
   'components/admin/AddMemberDialog.tsx',
@@ -36,6 +36,48 @@ const BATCH1_FILES = [
   'routes/issues.$key.tsx',
   'routes/issues.index.tsx',
 ] as const
+
+/**
+ * 배치 2 = 공용 `Button`을 **아직 안 쓰던** 파일 중 원시 `<button>`이 있던 파일 전수 (T7).
+ *
+ * 배치1과 같은 판별식의 여집합이다. 초안 plan의 `files`가 배치1과 11:11로 교차 오배정돼 있었고
+ * `DashboardGrid.tsx`는 양쪽 어디에도 없었다 — 세션 2 재열거로 30파일 / 코드 70발생을 확정했다.
+ */
+const BATCH2_FILES = [
+  'components/backlog/CreateSprintForm.tsx',
+  'components/backlog/SprintColumn.tsx',
+  'components/component/ComponentLeadSelect.tsx',
+  'components/dashboard/DashboardGrid.tsx',
+  'components/dashboard/DashboardTile.tsx',
+  'components/dashboard/GadgetCatalogModal.tsx',
+  'components/dashboard/GadgetConfigForm.tsx',
+  'components/dashboard/ShareDashboardModal.tsx',
+  'components/favorite/FavoritesMenu.tsx',
+  'components/inbox/InboxListItem.tsx',
+  'components/inbox/SenderAutocomplete.tsx',
+  'components/issue/AttachmentSection.tsx',
+  'components/issue/LinkGraph.tsx',
+  'components/issue/meta/AssigneeUserList.tsx',
+  'components/issue/meta/IssueAssigneeSelect.tsx',
+  'components/issue/WorklogSection.tsx',
+  'components/issues/IssueTable.tsx',
+  'components/layout/AccountMenu.tsx',
+  'components/layout/ProjectTree.tsx',
+  'components/layout/Sidebar.tsx',
+  'components/layout/TopBar.tsx',
+  'components/project/ProjectLeadSelect.tsx',
+  'components/timeline/GanttChart.tsx',
+  'components/workflow/PostActionConfigSection.tsx',
+  'components/workflow/PostActionFormDialog.tsx',
+  'features/calendar/MonthGrid.tsx',
+  'routes/admin.workflow-schemes.tsx',
+  'routes/dashboards.$dashboardId.tsx',
+  'routes/inbox.tsx',
+  'routes/projects.$projectKey.sprints.$sprintId.burndown.tsx',
+] as const
+
+/** 스캔 대상 전수 = 배치1 + 배치2. 두 배치는 서로소여야 한다(아래 테스트가 검증). */
+const SCANNED_FILES = [...BATCH1_FILES, ...BATCH2_FILES] as const
 
 /**
  * 남기기로 판정한 원시 `<button>`에 붙이는 사유 주석 마커.
@@ -66,6 +108,18 @@ const EXPECTED_OUT = [
   'components/issue/IssueDescription.tsx::P4',
   'components/issue/IssueDescription.tsx::P4',
   'components/ooo/OooModal.tsx::P5',
+  // ── 배치 2 (T7) 9발생 ──
+  // 판정식 `role= OR text-left OR justify-start` 으로 기계 도출했고, 같은 규칙을 완료된 배치1에
+  // 역적용해 IN=0/OUT=11 로 T6의 수동 분류를 100% 재현하는 것으로 규칙의 정확성을 확인했다.
+  'components/component/ComponentLeadSelect.tsx::P5',
+  'components/dashboard/DashboardTile.tsx::P6',
+  'components/dashboard/GadgetCatalogModal.tsx::P5',
+  'components/issue/meta/AssigneeUserList.tsx::P5',
+  'components/layout/ProjectTree.tsx::P6',
+  'components/project/ProjectLeadSelect.tsx::P5',
+  'features/calendar/MonthGrid.tsx::P6',
+  'routes/inbox.tsx::P4',
+  'routes/projects.$projectKey.sprints.$sprintId.burndown.tsx::P4',
 ] as const
 
 interface RawButton {
@@ -130,18 +184,27 @@ function rawButtons(file: string): RawButton[] {
   return found
 }
 
-const ALL_RAW_BUTTONS = BATCH1_FILES.flatMap((f) => rawButtons(f))
+const ALL_RAW_BUTTONS = SCANNED_FILES.flatMap((f) => rawButtons(f))
 
-describe('FR-UX-06 PR22 T6 — 배치1의 원시 <button>은 Button 프리미티브로 흡수하거나 사유를 남긴다', () => {
-  it('스캔 대상 21파일이 전부 실재하고 공용 Button을 소비한다 (glob/경로 오타로 인한 공허 통과 차단)', () => {
-    const missing = BATCH1_FILES.filter((f) => !existsSync(resolve(SRC_ROOT, f)))
+describe('FR-UX-06 PR22 — 원시 <button>은 Button 프리미티브로 흡수하거나 사유를 남긴다 (배치1+2)', () => {
+  it('스캔 대상 51파일이 전부 실재하고 두 배치가 서로소다 (경로 오타·중복으로 인한 공허 통과 차단)', () => {
+    const missing = SCANNED_FILES.filter((f) => !existsSync(resolve(SRC_ROOT, f)))
     expect(missing).toEqual([])
 
-    // 배치1의 정의 자체가 "Button import 보유"다. 이게 깨지면 목록이 stale이라는 뜻.
-    const withoutImport = BATCH1_FILES.filter(
-      (f) => !readFileSync(resolve(SRC_ROOT, f), 'utf-8').includes("from '@/components/ui/button'"),
-    )
-    expect(withoutImport).toEqual([])
+    // 두 배치는 여집합 관계이므로 교집합이 비어야 한다. 겹치면 EXPECTED_OUT이 중복 계산된다.
+    const overlap = BATCH1_FILES.filter((f) => (BATCH2_FILES as readonly string[]).includes(f))
+    expect(overlap).toEqual([])
+
+    // 스캐너가 조용히 아무것도 못 찾는 상태(정규식/경로 파손)를 차단한다.
+    expect(ALL_RAW_BUTTONS.length).toBeGreaterThan(0)
+  })
+
+  it('<Button> 을 쓰는 파일은 전부 프리미티브를 import 한다 (교체 누락 import 차단)', () => {
+    const usesWithoutImport = SCANNED_FILES.filter((f) => {
+      const src = readFileSync(resolve(SRC_ROOT, f), 'utf-8')
+      return src.includes('<Button') && !src.includes("from '@/components/ui/button'")
+    })
+    expect(usesWithoutImport).toEqual([])
   })
 
   it('한 줄 주석(JSDoc) 속 <button> 리터럴은 코드로 세지 않는다 — issues.index.tsx', () => {
