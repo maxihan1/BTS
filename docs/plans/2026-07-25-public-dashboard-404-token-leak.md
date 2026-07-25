@@ -143,6 +143,714 @@ automation 2건은 2026-07 중순에 고쳤는데 `PublicDashboardController`(20
 별건 등재 1건.
 - **G8** 프로브 출력의 한글 `detail` 깨짐 — MockMvc 읽기 인코딩 아티팩트로 **추정(미확정)**. G5 로 본 작업엔 무해.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+**Goal.** `/api/v1/public/dashboards/{token}` 의 모든 오류 응답에서 원문 공유 토큰을 제거하고,
+같은 결함이 이 경로에 다시 생기면 테스트가 실패하도록 봉인한다.
+
+**Architecture.** 컨트롤러-로컬 `@ExceptionHandler` 가 `@RestControllerAdvice` 보다 우선 적용되는 성질을
+이용해, 공개 경로의 오류를 **컨트롤러 안에서 전부 흡수**하고 각 핸들러가 `instance` 를 토큰 세그먼트가 없는
+고정 경로로 설정한다(automation BC 정본 패턴 동형). 인증 대시보드 경로는 기존 advice 를 그대로 쓰므로
+진단용 `instance` 를 잃지 않는다.
+
+**Tech Stack.** Kotlin 2.0 / Spring Boot 3.3.5 / MockMvc 슬라이스 / MockK / JUnit5 / Gradle.
+
+**기준선 (실측).** notification 모듈 `@Test` **429개** · `PublicDashboardControllerTest` **5개** ·
+main HEAD `011d3df9b` · 브랜치 `auth/public-dashboard-404-token-leak`.
+
+**전 task 공통.** 작업 디렉토리는 **절대 경로**로 지정한다
+(memory — `cd ..` 가 `apps/` 로 떨어져 커밋이 조용히 안 된 사고). Gradle 은 `backend/` 에서 실행한다.
+파이프 뒤 `$?` 금지, `set -o pipefail` 사용 (memory `zsh-pipestatus-1-based-false-green`).
+
+---
+
+### Task 1. RED — 오류 응답 행렬 회귀 테스트 신설
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/web/PublicDashboardErrorTokenLeakTest.kt`]
+- depends-on: []
+
+기존 `PublicDashboardControllerTest` 를 건드리지 않고 **별도 파일**로 만든다. 이유 2가지 —
+(1) 기존 파일은 advice 를 **일부러 등록 안 하는** 컨텍스트라 목적이 다르고, (2) 그 의도를 훼손하면
+"advice 없이도 컨트롤러-로컬이 404 를 낸다" 는 기존 증명이 사라진다.
+
+- [ ] **Step 1: 실패 테스트 작성**
+
+파일 `backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/web/PublicDashboardErrorTokenLeakTest.kt`
+
+```kotlin
+// 공개 대시보드 오류응답 토큰 유출 회귀 가드 — 전 오류통로 × 본문/헤더 바이트 검사
+
+package com.bts.notification.dashboard.web
+
+import com.bts.notification.dashboard.application.DashboardService
+import com.bts.notification.dashboard.application.PublicDashboardNotFoundException
+import io.mockk.every
+import io.mockk.mockk
+import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.extension.ExtendWith
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
+import org.springframework.test.context.ContextConfiguration
+import org.springframework.test.context.junit.jupiter.SpringExtension
+import org.springframework.test.context.web.WebAppConfiguration
+import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.MvcResult
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import org.springframework.web.context.WebApplicationContext
+import org.springframework.web.servlet.config.annotation.EnableWebMvc
+
+/**
+ * 공개 대시보드 오류 응답 토큰 유출 회귀 가드.
+ *
+ * ## 왜 별도 파일인가
+ * [PublicDashboardControllerTest] 는 `DashboardExceptionHandler` 를 **일부러 등록하지 않는다**
+ * (컨트롤러-로컬 404 매핑만으로 성립함을 증명하는 것이 그 파일의 목적). 이 파일은 반대로
+ * **프로덕션과 동일하게 advice 를 함께 등록**해, advice 경로로 새는 유출을 관측한다.
+ * `@RestControllerAdvice(basePackages = ["com.bts.notification.dashboard.web"])` 이고
+ * [PublicDashboardController] 가 바로 그 패키지에 있으므로 프로덕션에서는 advice 가 적용된다.
+ *
+ * ## 왜 바이트로 검사하는가
+ * `contentAsString` 은 응답 문자 인코딩 설정에 좌우된다. 실제로 **회선에 나가는 것**을 재기 위해
+ * `contentAsByteArray` 를 UTF-8 로 읽어 검사한다. 헤더도 함께 본다 — 본문만 보면 헤더 유출을 놓친다.
+ */
+@ExtendWith(SpringExtension::class)
+@ContextConfiguration(classes = [PublicDashboardErrorTokenLeakTest.TestMvcConfig::class])
+@WebAppConfiguration
+class PublicDashboardErrorTokenLeakTest {
+    @Configuration
+    @EnableWebMvc
+    open class TestMvcConfig {
+        @Bean
+        open fun dashboardService(): DashboardService = mockk(relaxed = true)
+
+        @Bean
+        open fun publicDashboardController(service: DashboardService) = PublicDashboardController(service)
+
+        /** 프로덕션과 동일하게 advice 도 등록한다 — 이 등록이 이 파일의 존재 이유다. */
+        @Bean
+        open fun dashboardExceptionHandler() = DashboardExceptionHandler()
+    }
+
+    @Autowired
+    private lateinit var webApplicationContext: WebApplicationContext
+
+    @Autowired
+    private lateinit var service: DashboardService
+
+    private lateinit var mockMvc: MockMvc
+
+    private val secretToken = "share_LEAKCANARY_0123456789abcdef"
+
+    @BeforeEach
+    fun setUp() {
+        mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
+    }
+
+    private fun call(): MvcResult = mockMvc.perform(get("/api/v1/public/dashboards/{token}", secretToken)).andReturn()
+
+    /** 본문(바이트) + 전 헤더값에 토큰이 없어야 한다. */
+    private fun assertNoTokenAnywhere(result: MvcResult) {
+        val bodyBytes = String(result.response.contentAsByteArray, Charsets.UTF_8)
+        assertThat(bodyBytes)
+            .describedAs("응답 본문(raw bytes)에 원문 토큰이 실렸다")
+            .doesNotContain(secretToken)
+
+        val headerDump =
+            result.response.headerNames.joinToString("\n") { name ->
+                "$name: ${result.response.getHeaders(name).joinToString(",")}"
+            }
+        assertThat(headerDump)
+            .describedAs("응답 헤더에 원문 토큰이 실렸다")
+            .doesNotContain(secretToken)
+    }
+
+    /** M1. 컨트롤러-로컬 404 — 무효/만료/부모삭제가 모두 수렴하는 통로. */
+    @Test
+    fun `M1 — 404 응답에 원문 토큰이 없다`() {
+        every { service.getPublicByToken(secretToken) } throws PublicDashboardNotFoundException()
+
+        val result = call()
+
+        assertThat(result.response.status).isEqualTo(404)
+        assertNoTokenAnywhere(result)
+    }
+
+    /** M2. 분류되지 않은 예외 → 500. advice catch-all 이 잡던 통로. */
+    @Test
+    fun `M2 — 500 응답에 원문 토큰이 없다`() {
+        every { service.getPublicByToken(secretToken) } throws IllegalStateException("boom")
+
+        val result = call()
+
+        assertThat(result.response.status).isEqualTo(500)
+        assertNoTokenAnywhere(result)
+    }
+
+    /**
+     * G2 실증 — 컨트롤러-로컬 핸들러가 advice 보다 **우선 적용**된다.
+     *
+     * 이 성질이 설계의 토대다. 틀리면 (b) 안 전체가 무너지므로 단정하지 않고 관측한다.
+     * advice 가 등록된 상태에서도 404 의 errorCode 가 컨트롤러-로컬 값이면 우선 적용이 확정된다.
+     */
+    @Test
+    fun `G2 — advice 가 등록돼 있어도 컨트롤러 로컬 핸들러가 우선 적용된다`() {
+        every { service.getPublicByToken(secretToken) } throws PublicDashboardNotFoundException()
+
+        val body = String(call().response.contentAsByteArray, Charsets.UTF_8)
+
+        assertThat(body).contains("NOTIF_DASHBOARD_NOT_FOUND")
+    }
+
+    /** R3 회귀가드 — 기능은 한 글자도 바뀌지 않는다(상태·errorCode·detail 불변). */
+    @Test
+    fun `R3 — 404 의 상태코드 errorCode detail 이 기존과 동일하다`() {
+        every { service.getPublicByToken(secretToken) } throws PublicDashboardNotFoundException()
+
+        val result = call()
+        val body = String(result.response.contentAsByteArray, Charsets.UTF_8)
+
+        assertThat(result.response.status).isEqualTo(404)
+        assertThat(body).contains("NOTIF_DASHBOARD_NOT_FOUND")
+        assertThat(body).contains("공유된 대시보드를 찾을 수 없습니다.")
+    }
+
+    /** R3 회귀가드 — 500 의 상태·errorCode·detail 도 advice 시절과 동일해야 한다(drift 금지). */
+    @Test
+    fun `R3 — 500 의 상태코드 errorCode detail 이 기존과 동일하다`() {
+        every { service.getPublicByToken(secretToken) } throws IllegalStateException("boom")
+
+        val result = call()
+        val body = String(result.response.contentAsByteArray, Charsets.UTF_8)
+
+        assertThat(result.response.status).isEqualTo(500)
+        assertThat(body).contains("NOTIF_DASHBOARD_INTERNAL_ERROR")
+        assertThat(body).contains("서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
+    }
+
+    /**
+     * E4 — 퍼센트 인코딩된 토큰도 디코딩된 원문이 응답에 실리지 않는다.
+     *
+     * `instance` 를 고정값으로 덮으면 인코딩 여부와 무관해지지만, **그렇다는 것을 테스트가 말해야 한다.**
+     * 이 케이스가 없으면 나중에 누가 `instance` 를 다시 요청 URI 로 되돌렸을 때
+     * "인코딩된 형태라 안전하다" 는 잘못된 안심이 가능해진다.
+     */
+    @Test
+    fun `E4 — 퍼센트 인코딩된 토큰도 응답에 실리지 않는다`() {
+        val rawToken = "share_ENC ODED+CANARY/0123"
+        every { service.getPublicByToken(rawToken) } throws PublicDashboardNotFoundException()
+
+        val result = mockMvc.perform(get("/api/v1/public/dashboards/{token}", rawToken)).andReturn()
+        val body = String(result.response.contentAsByteArray, Charsets.UTF_8)
+
+        assertThat(result.response.status).isEqualTo(404)
+        assertThat(body).doesNotContain(rawToken)
+        assertThat(body).doesNotContain("ENC")
+    }
+}
+```
+
+- [ ] **Step 2: 실패 확인 (RED)**
+
+```bash
+cd /Users/maxi.moff/Projects/BTS/.worktrees/public-dashboard-404-token-leak/backend
+set -o pipefail
+./gradlew :modules:notification:test --tests "com.bts.notification.dashboard.web.PublicDashboardErrorTokenLeakTest" 2>&1 | tail -25
+echo "EXIT=$?"
+```
+
+기대. `M1`·`M2` 가 **FAIL** — "응답 본문(raw bytes)에 원문 토큰이 실렸다".
+`G2`·`R3` 2건은 **PASS**(현재 동작 기록). **EXIT != 0** 이어야 한다.
+
+⚠️ **G2 가 이 시점에 FAIL 하면 설계 (b) 의 전제가 깨진 것이다.** 즉시 중단하고 Maxi 에게 보고한다.
+
+- [ ] **Step 3: 커밋 (test: 선행 — TDD 강제)**
+
+```bash
+WT=/Users/maxi.moff/Projects/BTS/.worktrees/public-dashboard-404-token-leak
+git -C "$WT" add backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/web/PublicDashboardErrorTokenLeakTest.kt
+git -C "$WT" commit -m "test: 공개 대시보드 오류응답 토큰 유출 회귀 가드 (RED — M1/M2 실패)"
+```
+
+**검증**. `EXIT != 0` + FAIL 2건이 M1·M2 인지 이름으로 확인.
+
+---
+
+### Task 2. GREEN — 컨트롤러-로컬 흡수 + `instance` 고정
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/notification/src/main/kotlin/com/bts/notification/dashboard/web/PublicDashboardController.kt`]
+- depends-on: [1]
+
+- [ ] **Step 1: 최소 구현**
+
+`PublicDashboardController.kt` 를 다음과 같이 바꾼다.
+
+(1) import 추가 — `org.springframework.web.server.ResponseStatusException`.
+
+(2) 기존 `handleNotFound` 에 `instance` 한 줄 추가.
+
+```kotlin
+    @ExceptionHandler(PublicDashboardNotFoundException::class)
+    fun handleNotFound(
+        @Suppress("UnusedParameter") ex: PublicDashboardNotFoundException,
+    ): ProblemDetail {
+        log.debug("NOTIF_DASHBOARD_404 public_not_found")
+        val pd = ProblemDetail.forStatus(HttpStatus.NOT_FOUND)
+        pd.type = URI.create("https://bts.example.com/problems/dashboard-not-found")
+        pd.instance = URI.create(INSTANCE_PATH)   // ★ 추가 — 비우면 Spring 이 원문 토큰이 든 요청 URI 로 채운다
+        pd.title = "Dashboard Not Found"
+        pd.detail = "공유된 대시보드를 찾을 수 없습니다."
+        pd.setProperty("errorCode", "NOTIF_DASHBOARD_NOT_FOUND")
+        pd.setProperty("timestamp", Instant.now().toString())
+        return pd
+    }
+```
+
+(3) 컨트롤러-로컬 catch-all 신설 — advice 의 500 을 **동일한 상태·errorCode·detail 로** 흡수한다.
+
+```kotlin
+    /**
+     * 분류되지 않은 모든 예외 — 500. **공개 경로 전용 catch-all.**
+     *
+     * `DashboardExceptionHandler` advice 가 같은 매핑을 갖고 있으나, advice 의 `problem()` 헬퍼는
+     * `instance` 를 비워 두므로 이 경로에서는 **원문 토큰이 응답에 실린다**. 컨트롤러-로컬 핸들러가
+     * advice 보다 우선 적용되는 성질을 이용해 공개 경로의 오류를 여기서 흡수하고 `instance` 를 고정한다.
+     * 인증 대시보드 경로는 그대로 advice 를 쓰므로 진단용 `instance`(요청 URI)를 잃지 않는다.
+     *
+     * 상태·errorCode·detail 은 advice 와 **한 글자도 다르지 않게** 유지한다(응답 drift 금지).
+     *
+     * ## ResponseStatusException 을 rethrow 하지 않는 이유
+     * advice 는 이를 rethrow 하지만(memory: catch-all-exceptionhandler-swallows-responsestatusexception),
+     * 여기서 rethrow 하면 Spring 기본 오류 처리로 넘어가 `/error` 응답의 `path` 필드에 **다시 원문 토큰이
+     * 실린다**. 대신 **상태 코드를 보존한 채** 본문만 정화한다 — 그 메모리가 경계한 실패 모드(상태 변질)는
+     * 일어나지 않는다.
+     */
+    @ExceptionHandler(Exception::class)
+    fun handleUnclassified(ex: Exception): ProblemDetail {
+        val status = if (ex is ResponseStatusException) HttpStatus.valueOf(ex.statusCode.value()) else HttpStatus.INTERNAL_SERVER_ERROR
+        log.error("NOTIF_DASHBOARD_500 internal_error", ex)
+        val pd = ProblemDetail.forStatus(status)
+        pd.type = URI.create("https://bts.example.com/problems/dashboard-internal-error")
+        pd.instance = URI.create(INSTANCE_PATH)
+        pd.title = "Dashboard Internal Server Error"
+        pd.detail = "서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
+        pd.setProperty("errorCode", "NOTIF_DASHBOARD_INTERNAL_ERROR")
+        pd.setProperty("timestamp", Instant.now().toString())
+        return pd
+    }
+
+    private companion object {
+        /**
+         * ProblemDetail `instance` 고정값 — **토큰 세그먼트를 뺀** 엔드포인트 경로.
+         * 비워 두면 Spring(`RequestResponseBodyMethodProcessor`)이 원문 토큰이 든 요청 URI 로 채운다.
+         * automation BC 의 `AutomationWebhookController.INSTANCE_PATH` · `GitWebhookController.INSTANCE_PATH` 동형.
+         */
+        const val INSTANCE_PATH = "/api/v1/public/dashboards"
+    }
+```
+
+- [ ] **Step 2: 통과 확인 (GREEN)**
+
+```bash
+cd /Users/maxi.moff/Projects/BTS/.worktrees/public-dashboard-404-token-leak/backend
+set -o pipefail
+./gradlew :modules:notification:test --tests "com.bts.notification.dashboard.web.PublicDashboard*" 2>&1 | tail -20
+echo "EXIT=$?"
+```
+
+기대. `PublicDashboardErrorTokenLeakTest` 5건 + `PublicDashboardControllerTest` 5건 **전량 PASS**, `EXIT=0`.
+
+⚠️ 기존 5건이 깨지면 **기능 변경이 일어난 것**이다(R3 위반). 즉시 원인 규명.
+
+- [ ] **Step 3: 커밋**
+
+```bash
+WT=/Users/maxi.moff/Projects/BTS/.worktrees/public-dashboard-404-token-leak
+git -C "$WT" add backend/modules/notification/src/main/kotlin/com/bts/notification/dashboard/web/PublicDashboardController.kt
+git -C "$WT" commit -m "fix: 공개 대시보드 오류응답 instance 고정 — 원문 공유 토큰 노출 봉합"
+```
+
+**검증**. `EXIT=0` + 10건 PASS.
+
+---
+
+### Task 3. 재발 방지 — `@ExceptionHandler` 파생 열거 + 미분류 실패
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/web/PublicDashboardErrorTokenLeakTest.kt`]
+- depends-on: [2]
+
+핵심 — **개수를 세지 않는다. 열거하고, 목록에 없으면 실패시킨다** (#309 "미분류 = 실패" 동형).
+
+- [ ] **Step 1: 판별식 테스트 추가**
+
+같은 파일 하단에 추가한다. import 에 `org.springframework.web.bind.annotation.ExceptionHandler` 를 더한다.
+
+```kotlin
+    /**
+     * ★ 재발 방지 봉인 — 공개 컨트롤러의 오류 통로를 **파생 열거**해 미분류를 실패시킨다.
+     *
+     * `PublicDashboardController` 에 새 `@ExceptionHandler` 를 추가하면 이 기대 맵도 함께 갱신해야만
+     * 초록이 된다. "핸들러를 하나 더 만들었는데 아무도 토큰 유출을 확인하지 않는" 상태를 구조적으로 막는다.
+     *
+     * 각 항목의 값은 그 예외 타입을 실제로 발생시키기 위한 **표본 예외**다. 표본으로 요청을 태워
+     * 본문·헤더에 토큰이 없음을 확인한다 — 선언만 세는 vacuous 검사가 아니다.
+     */
+    @Test
+    fun `SEAL — 선언된 모든 오류 통로가 분류돼 있고 각각 토큰을 흘리지 않는다`() {
+        val samples: Map<Class<out Throwable>, Throwable> =
+            mapOf(
+                PublicDashboardNotFoundException::class.java to PublicDashboardNotFoundException(),
+                Exception::class.java to IllegalStateException("boom"),
+            )
+
+        val declared: Set<Class<out Throwable>> =
+            PublicDashboardController::class.java.declaredMethods
+                .filter { it.isAnnotationPresent(ExceptionHandler::class.java) }
+                .flatMap { it.getAnnotation(ExceptionHandler::class.java).value.toList() }
+                .map { it.java }
+                .toSet()
+
+        // (1) 무음 통과 방지 — 파생 목록이 비면 아래 루프가 0회 돌고도 초록이 된다.
+        //     (memory: guard-handler-matrix-blindfold — it.each(파생목록) 무음통과 2차 재발)
+        assertThat(declared)
+            .describedAs("파생 열거가 비었다 — 리플렉션 판별식 자체가 고장 났다")
+            .hasSizeGreaterThanOrEqualTo(2)
+
+        // (2) 미분류 = 실패. 새 핸들러를 추가했다면 위 samples 에 표본을 등재해야 한다.
+        assertThat(declared)
+            .describedAs("분류되지 않은 @ExceptionHandler 가 있다 — samples 에 표본을 등재하라")
+            .containsExactlyInAnyOrderElementsOf(samples.keys)
+
+        // (3) 표본마다 실제 HTTP 응답을 받아 토큰 부재를 확인한다.
+        samples.forEach { (type, sample) ->
+            every { service.getPublicByToken(secretToken) } throws sample
+            val result = call()
+            val body = String(result.response.contentAsByteArray, Charsets.UTF_8)
+            assertThat(body)
+                .describedAs("통로 ${type.simpleName} 의 응답 본문에 원문 토큰이 실렸다")
+                .doesNotContain(secretToken)
+        }
+    }
+```
+
+- [ ] **Step 2: 통과 확인**
+
+```bash
+cd /Users/maxi.moff/Projects/BTS/.worktrees/public-dashboard-404-token-leak/backend
+set -o pipefail
+./gradlew :modules:notification:test --tests "com.bts.notification.dashboard.web.PublicDashboardErrorTokenLeakTest" 2>&1 | tail -15
+echo "EXIT=$?"
+```
+
+기대. 6건 전량 PASS, `EXIT=0`.
+
+- [ ] **Step 3: 봉인이 진짜 작동하는지 확인 (일부러 위반)**
+
+`PublicDashboardController` 에 더미 핸들러를 **임시로** 추가한다.
+
+```kotlin
+    @ExceptionHandler(IllegalArgumentException::class)
+    fun handleTemp(ex: IllegalArgumentException): ProblemDetail = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST)
+```
+
+테스트를 돌려 `SEAL` 이 **FAIL** 하는지 본다("분류되지 않은 @ExceptionHandler 가 있다").
+확인 후 **더미를 반드시 되돌린다** (`git checkout --` 이 아니라 손으로 삭제 — 미커밋 작업 소실 방지,
+memory `mutation-test-requires-committed-baseline`). 되돌린 뒤 다시 초록임을 재확인.
+
+- [ ] **Step 5: 커밋**
+
+```bash
+WT=/Users/maxi.moff/Projects/BTS/.worktrees/public-dashboard-404-token-leak
+git -C "$WT" add backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/web/PublicDashboardErrorTokenLeakTest.kt
+git -C "$WT" commit -m "test: 오류통로 파생열거 봉인 — 미분류 @ExceptionHandler 실패 + 개수 하한"
+```
+
+**검증**. 위반 주입 시 FAIL · 원복 시 PASS 둘 다 관측 (vacuous 아님 증명).
+
+---
+
+### Task 4. R4 회귀가드 — 인증 경로 `instance` 불변
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/web/DashboardExceptionHandlerInstanceTest.kt`]
+- depends-on: [2]
+
+공개 경로만 고정값으로 덮었고 **인증 경로의 진단 정보는 그대로**임을 못박는다.
+이 가드가 없으면 나중에 누가 advice 의 `problem()` 에 고정 instance 를 박아도 아무도 모른다.
+
+- [ ] **Step 1: 테스트 작성**
+
+`DashboardExceptionHandler` 를 advice 로 등록한 최소 컨텍스트에 **인증 경로를 흉내내는 테스트 전용 컨트롤러**를
+두고, 오류 응답의 `instance` 가 **요청 URI 그대로**인지 단언한다.
+
+```kotlin
+// advice 의 instance 동작 회귀 가드 — 인증(비밀값 없는) 경로는 요청 URI 를 유지해야 한다
+
+package com.bts.notification.dashboard.web
+
+import com.bts.notification.dashboard.application.DashboardNotFoundException
+import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.extension.ExtendWith
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
+import org.springframework.test.context.ContextConfiguration
+import org.springframework.test.context.junit.jupiter.SpringExtension
+import org.springframework.test.context.web.WebAppConfiguration
+import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.context.WebApplicationContext
+import org.springframework.web.servlet.config.annotation.EnableWebMvc
+
+/**
+ * `DashboardExceptionHandler` 의 `instance` 동작 회귀 가드.
+ *
+ * 공개 경로(`/api/v1/public/dashboards/{token}`)는 토큰 노출 때문에 `instance` 를 고정값으로 덮지만,
+ * **비밀값이 경로에 없는 인증 대시보드 경로는 요청 URI 를 유지**해야 한다(진단 가치 보존).
+ * 이 가드가 advice 에 고정 instance 를 박는 회귀를 막는다.
+ */
+@ExtendWith(SpringExtension::class)
+@ContextConfiguration(classes = [DashboardExceptionHandlerInstanceTest.TestMvcConfig::class])
+@WebAppConfiguration
+class DashboardExceptionHandlerInstanceTest {
+    @RestController
+    class ProbeController {
+        @GetMapping("/api/v1/dashboards/probe-not-found")
+        fun notFound(): Nothing = throw DashboardNotFoundException("probe")
+    }
+
+    @Configuration
+    @EnableWebMvc
+    open class TestMvcConfig {
+        @Bean
+        open fun probeController() = ProbeController()
+
+        @Bean
+        open fun dashboardExceptionHandler() = DashboardExceptionHandler()
+    }
+
+    @Autowired
+    private lateinit var webApplicationContext: WebApplicationContext
+
+    private lateinit var mockMvc: MockMvc
+
+    @BeforeEach
+    fun setUp() {
+        mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
+    }
+
+    /** R4 — 인증 경로 오류 응답의 instance 는 요청 URI 그대로여야 한다. */
+    @Test
+    fun `인증 경로 오류 응답의 instance 는 요청 URI 를 유지한다`() {
+        val result = mockMvc.perform(get("/api/v1/dashboards/probe-not-found")).andReturn()
+        val body = String(result.response.contentAsByteArray, Charsets.UTF_8)
+
+        assertThat(body).contains("\"instance\":\"/api/v1/dashboards/probe-not-found\"")
+    }
+}
+```
+
+⚠️ `DashboardNotFoundException` 의 생성자 시그니처를 **먼저 실물로 확인**하고 맞춘다
+(`DashboardExceptions.kt` 를 열어 확인. 추정 금지 — memory `frontend-zod-backend-dto-contract-gap` 의 결).
+advice 의 `ProbeController` 는 `com.bts.notification.dashboard.web` 패키지 안이라 basePackages 스코프에 든다.
+
+- [ ] **Step 2: 통과 확인 + 커밋**
+
+```bash
+cd /Users/maxi.moff/Projects/BTS/.worktrees/public-dashboard-404-token-leak/backend
+set -o pipefail
+./gradlew :modules:notification:test --tests "com.bts.notification.dashboard.web.DashboardExceptionHandlerInstanceTest" 2>&1 | tail -12
+echo "EXIT=$?"
+```
+
+```bash
+WT=/Users/maxi.moff/Projects/BTS/.worktrees/public-dashboard-404-token-leak
+git -C "$WT" add backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/web/DashboardExceptionHandlerInstanceTest.kt
+git -C "$WT" commit -m "test: R4 회귀가드 — 인증 경로 instance 는 요청 URI 유지"
+```
+
+**검증**. PASS + `EXIT=0`.
+
+---
+
+### Task 5. 뮤테이션 검증 — 가드가 vacuous 하지 않음을 증명
+
+**메타**.
+- agent: `security-engineer`
+- files: []  (일시 수정 후 전량 원복 — 최종 diff 0)
+- depends-on: [3, 4]
+
+**전제.** 반드시 **커밋된 상태**에서 수행한다 (memory `mutation-test-requires-committed-baseline` —
+미커밋 상태에서 원복하면 그 파일의 작업이 소실된다). 먼저 기준선이 EXIT=0 인지 확인한다
+(memory `verify-logic-vs-verify-guard`).
+
+- [ ] **Step 1: 기준선 확인**
+
+```bash
+WT=/Users/maxi.moff/Projects/BTS/.worktrees/public-dashboard-404-token-leak
+git -C "$WT" status --porcelain    # 비어 있어야 한다(프로브 파일 제외)
+cd "$WT/backend"; set -o pipefail
+./gradlew :modules:notification:test 2>&1 | tail -5; echo "BASELINE_EXIT=$?"
+```
+
+- [ ] **Step 2: 뮤테이션 4종**
+
+| # | 뮤테이션 | 기대 |
+|---|---|---|
+| A | `handleNotFound` 의 `pd.instance = …` 줄 삭제 | M1 · SEAL red |
+| B | `handleUnclassified` 의 `pd.instance = …` 줄 삭제 | M2 · SEAL red |
+| C | `handleUnclassified` 전체 삭제 (advice 로 되돌림) | M2 · SEAL red |
+| D | `INSTANCE_PATH` 를 `"/api/v1/public/dashboards/x"` 로 변경 | 전부 green **(기대)** — 토큰만 없으면 통과하는 게 정상 |
+
+각 뮤테이션마다 테스트를 돌려 red/green 을 기록하고 **손으로 원복**한다.
+D 는 "green 이 정상" 인 대조군이다 — 전부 red 가 나오면 테스트가 과잉 결합된 것이다.
+
+- [ ] **Step 3: 원복 확인**
+
+```bash
+WT=/Users/maxi.moff/Projects/BTS/.worktrees/public-dashboard-404-token-leak
+git -C "$WT" diff --stat     # 비어 있어야 한다
+cd "$WT/backend"; set -o pipefail
+./gradlew :modules:notification:test 2>&1 | tail -5; echo "RESTORED_EXIT=$?"
+```
+
+**검증**. A·B·C 가 실제로 red · D 가 green · 원복 후 diff 0 + EXIT=0.
+
+---
+
+### Task 6. ADR + 후속 등재 + 임시 파일 정리
+
+**메타**.
+- agent: `security-engineer`
+- files: [`docs/decisions/2026-07-25-public-dashboard-error-instance-sanitization.md`, `docs/specs/2026-07-25-public-dashboard-404-token-leak.md`, `backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/web/PublicDashboard404BodyProbeTest.kt`]
+- depends-on: [5]
+
+- [ ] **Step 1: ADR 작성**
+
+`docs/decisions/2026-07-25-public-dashboard-error-instance-sanitization.md` 신설. 담을 것 —
+맥락(실측 유출 2통로) · 결정(옵션 (b) 채택, (a)/(c) 기각 사유) · `ResponseStatusException` 을 rethrow 하지
+않기로 한 판단과 근거 · 결과(인증 경로 불변, 재발 방지 봉인) · 잔여 위험(경로 기반 토큰 자체는 접근로그·
+리퍼러에 남는다 — ADR D1 이 택한 설계라 본 결정의 범위 밖).
+
+- [ ] **Step 2: E7 확인 — 로그 스택에 토큰이 실릴 여지**
+
+M2(500) 경로는 `log.error("NOTIF_DASHBOARD_500 internal_error", ex)` 로 **예외 스택을 통째로 찍는다.**
+`PublicDashboardNotFoundException` 은 고정 메시지라 안전함을 이미 확인했으나, catch-all 로 흘러드는
+하위 컴포넌트가 토큰을 예외 메시지에 넣으면 **평문 토큰이 로그에 남는다**(§2 가 지적한 바로 그 위험).
+
+```bash
+WT=/Users/maxi.moff/Projects/BTS/.worktrees/public-dashboard-404-token-leak
+cd "$WT/backend/modules/notification/src/main/kotlin/com/bts/notification/dashboard"
+# getPublicByToken 이 부르는 협력자들이 예외 메시지에 원문 토큰을 넣는지 본다
+grep -rn "plaintextToken\|plaintext\b" application/ domain/ | grep -i "throw\|require\|check\|Exception\|message"
+```
+
+기대. 히트 0 (협력자가 토큰을 예외에 싣지 않음). 히트가 있으면 **본 PR 범위로 끌어와 봉합**한다 —
+로그 유출은 응답 유출과 같은 결함 클래스이고 §2 의 근거(`DEVELOPMENT.md §1.1-2`)가 동일하다.
+결과는 히트 유무와 무관하게 스펙 §10 E7 에 **확정 문구로** 기록한다("미확인" 으로 남기지 않는다).
+
+- [ ] **Step 3: 후속 항목 등재**
+
+스펙 §13 에 조사 결과를 확정 기록한다 — `IcalFeedController`(identity-access, `ResponseStatusException`
+경로라 Boot `/error` 의 `path` 필드로 샐 가능성, **미실증**) · E3 비-GET 응답 · G8 인코딩 관측.
+
+- [ ] **Step 4: 임시 프로브 삭제**
+
+```bash
+WT=/Users/maxi.moff/Projects/BTS/.worktrees/public-dashboard-404-token-leak
+rm "$WT/backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/web/PublicDashboard404BodyProbeTest.kt"
+git -C "$WT" status --porcelain     # untracked 프로브가 사라졌는지 확인
+```
+
+- [ ] **Step 5: 커밋**
+
+```bash
+WT=/Users/maxi.moff/Projects/BTS/.worktrees/public-dashboard-404-token-leak
+git -C "$WT" add docs/
+git -C "$WT" commit -m "docs: ADR — 공개 경로 오류응답 instance 정화 + 후속 항목 등재"
+```
+
+**검증**. `git status --porcelain` 이 완전히 비어 있다.
+
+---
+
+### Task 7. 최종 검증 — 전량 테스트 · 개수 대조 · 린트
+
+**메타**.
+- agent: `security-engineer`
+- files: []
+- depends-on: [6]
+
+- [ ] **Step 1: 전량 테스트 + 개수 실측 대조**
+
+```bash
+cd /Users/maxi.moff/Projects/BTS/.worktrees/public-dashboard-404-token-leak/backend
+set -o pipefail
+./gradlew :modules:notification:test --rerun-tasks 2>&1 | tail -10; echo "EXIT=$?"
+```
+
+```bash
+# 실행된 테스트 수를 산출물로 실측한다 (콘솔 마지막 줄은 증거가 약하다)
+# memory: gradle-batched-task-partial-test-run — 6/56 클래스만 돌고 SUCCESSFUL 이 난 전례가 있다
+cd /Users/maxi.moff/Projects/BTS/.worktrees/public-dashboard-404-token-leak/backend/modules/notification
+grep -ho 'tests="[0-9]*"' build/test-results/test/TEST-*.xml | grep -o '[0-9]*' | awk '{s+=$1} END {print "실행 테스트 =", s}'
+```
+
+기대. **기준선 429 + 신규 7건(M1·M2·G2·R3×2·SEAL·R4) = 436 이상.** 감소하면 조사한다.
+
+- [ ] **Step 2: 린트 + 정적 분석**
+
+```bash
+cd /Users/maxi.moff/Projects/BTS/.worktrees/public-dashboard-404-token-leak/backend
+set -o pipefail
+./gradlew :modules:notification:ktlintCheck 2>&1 | tail -10; echo "KTLINT_EXIT=$?"
+./gradlew :modules:notification:detekt --rerun-tasks 2>&1 | tail -10; echo "DETEKT_EXIT=$?"
+```
+
+⚠️ `ktlintFormat` 은 실행하지 않는다 (memory `bts-ktlintformat-docs-commit-traps` — 다른 파일까지 포맷).
+위반이 나오면 **해당 줄만 손으로** 고친다. detekt 는 `--rerun-tasks` 필수(캐시 false-green).
+`MaxLineLength` 가 걸리면 `handleUnclassified` 의 `status` 대입 줄을 여러 줄로 나눈다.
+
+- [ ] **Step 3: 조립 부팅 영향 확인**
+
+cross-BC `@Component` 추가가 없으므로 `:app:test` 는 불요.
+그래도 **컨트롤러 시그니처가 바뀌었으므로** 컴파일 회귀만 확인한다.
+
+```bash
+cd /Users/maxi.moff/Projects/BTS/.worktrees/public-dashboard-404-token-leak/backend
+set -o pipefail
+./gradlew :modules:notification:compileKotlin :modules:notification:compileTestKotlin 2>&1 | tail -5; echo "EXIT=$?"
+```
+
+**검증**. 테스트 436 이상 · ktlint EXIT=0 · detekt EXIT=0 · baseline 신규 등재 0.
+
+---
+
+## Plan 메타
+
+- task 수: **7**
+- 예상 시간: 직렬 기준 약 35분 (Gradle 실행이 대부분). 병렬 wave 적용 시에도 큰 이득 없음 —
+  T1→T2→T3/T4→T5→T6→T7 이 **본질적으로 직렬**(TDD red→green 순서 + 뮤테이션은 커밋 후에만).
+  유일한 병렬 후보는 T3·T4 이나 둘 다 T2 산출물에 의존하고 Gradle 이 모듈 단위로 직렬화되므로 이득 없음
+  (memory `bts-plan-wave-gradle-module-compile`).
+- TDD 강제: **yes** — T1(`test:`) 이 T2(`fix:`) 보다 먼저 커밋된다.
+- 병렬 dispatch: **없음.** 세션 지시에 따라 메인이 직접 순차 수행.
+- 추가 검증: ktlintCheck · detekt(--rerun-tasks) · 뮤테이션 4종 · 봉인 위반 주입 1종 · 테스트 개수 실측 대조.
+- 프론트/마이그레이션/cross-BC: **0**. `verify-master-plan.sh` 대상 파일 무변경(FR 129 불변).
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
