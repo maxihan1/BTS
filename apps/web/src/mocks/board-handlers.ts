@@ -26,6 +26,15 @@ import {
 // (msw-mutation-stateful-refetch 회귀 — 새로고침 후 순서가 사라짐). backlogStore에 같은 issueKey가
 // 있으면 그 최신 rank를 읽기 전용으로 오버레이해 두 store가 같은 진실을 공유하도록 한다.
 import { backlogStore, findIssueInProject } from './backlog-fixtures'
+// FR-UX-06 PR21b Task 6 — 스윔레인 간 드래그 필드변경(담당자/우선순위/에픽) stateful 연결.
+// useChangeCardField는 PATCH /api/v1/issues/:key/assignee(changeAssigneeHandler),
+// PATCH /api/v1/issues/:key(updateIssueHandler), POST/DELETE
+// /api/v1/issues/:epicKey/epic-children(connectEpicChildHandler/disconnectEpicChildHandler)를
+// 호출해 issue-handlers.ts의 비공개 store(issueOverrides)를 변이한다. board GET이 boardStore
+// 자신의 assigneeId/priority/epicKey만 읽으면 필드변경 후 invalidateQueries 재조회 시 boardStore의
+// 옛 시드값으로 되돌아간다(msw-mutation-stateful-refetch 회귀 — resolveLiveRank와 동일 문제).
+// getIssueFieldOverride(읽기 전용 접근자, issue-handlers.ts에 순수 추가)로 최신값을 오버레이한다.
+import { getIssueFieldOverride } from './issue-handlers'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 필터 술어 헬퍼 (FR-BD-02)
@@ -100,6 +109,29 @@ function resolveLiveRank(
   return liveIssue?.rank ?? fallback
 }
 
+/** resolveLiveField가 다루는 필드 부분집합 — BoardCard의 assignee/priority/epic 3필드. */
+interface LiveFieldSet {
+  assigneeId: string | null
+  priority: number
+  epicKey: string | null
+}
+
+/**
+ * 카드의 실질 담당자/우선순위/에픽을 결정한다 (FR-UX-06 PR21b Task 6).
+ *
+ * getIssueFieldOverride(issue-handlers.ts 읽기 전용 접근자)에 값이 있으면 — 즉 changeAssignee/
+ * updateIssue/connectEpicChild/disconnectEpicChild 핸들러가 실제로 그 이슈를 변경한 적이 있으면
+ * — 그 최신값을 우선 사용한다. 없으면(필드변경 이력 없음) board 자체 시드값(fallback)을 그대로
+ * 쓴다 — resolveLiveRank와 동일한 오버레이 패턴. 기존 26개+ 보드 fixture/E2E 스펙은 필드변경을
+ * 트리거하지 않으므로 무회귀.
+ *
+ * @param issueKey rank를 조회할 이슈 키
+ * @param fallback getIssueFieldOverride에 값이 없을 때 사용할 board 자체 카드 시드값
+ */
+function resolveLiveField(issueKey: string, fallback: LiveFieldSet): LiveFieldSet {
+  return getIssueFieldOverride(issueKey) ?? fallback
+}
+
 /**
  * rank 오름차순 정렬 — null은 맨 뒤(NULLS LAST). backlog-handlers.ts byRankNullsLast와 동일 규약.
  * Array.prototype.sort는 안정 정렬(stable, ES2019+)이므로 rank가 같거나 둘 다 null이면
@@ -118,6 +150,8 @@ function byRankNullsLast(a: { rank: string | null }, b: { rank: string | null })
  * params가 주어지면 matchesFilter를 적용해 카드를 걸러낸다.
  * quickFilters는 store에 없으면(WIP_BOARD 등 퀵필터를 다루지 않는 기존 fixture) 빈 배열로 방어한다.
  * 컬럼 카드는 rank(backlogStore 오버레이 적용) 오름차순으로 정렬해 반환한다(FR-UX-06 PR21 Task 8).
+ * assigneeId/priority/epicKey는 issueOverrides 오버레이(resolveLiveField)를 적용한다
+ * (FR-UX-06 PR21b Task 6).
  *
  * @param stored store 내부 보드 데이터
  * @param params 필터 파라미터 (없으면 전체 카드 반환)
@@ -128,15 +162,22 @@ function toResponseDetail(stored: StoredBoardDetail, params: URLSearchParams): B
     columns: stored.columns.map((col) => {
       const cards = col.cards
         .filter((card) => matchesFilter(card, params))
-        .map(({ issueKey, summary, assigneeId, version, priority, epicKey, rank }): BoardCard => ({
-          issueKey,
-          summary,
-          assigneeId,
-          version,
-          priority,
-          epicKey: epicKey ?? null,
-          rank: resolveLiveRank(stored.projectKey, issueKey, rank ?? null),
-        }))
+        .map(({ issueKey, summary, assigneeId, version, priority, epicKey, rank }): BoardCard => {
+          const liveField = resolveLiveField(issueKey, {
+            assigneeId,
+            priority,
+            epicKey: epicKey ?? null,
+          })
+          return {
+            issueKey,
+            summary,
+            assigneeId: liveField.assigneeId,
+            version,
+            priority: liveField.priority,
+            epicKey: liveField.epicKey,
+            rank: resolveLiveRank(stored.projectKey, issueKey, rank ?? null),
+          }
+        })
       return { ...col, cards: [...cards].sort(byRankNullsLast) }
     }),
     quickFilters: stored.quickFilters ?? [],
