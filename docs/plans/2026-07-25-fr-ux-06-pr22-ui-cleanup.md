@@ -835,3 +835,71 @@ _리뷰에서 새로 발견된 별도 TODO는 없음 — findings 3건 모두 �
 게이트 2의 `superpowers:code-reviewer`가 담당한다(BTS 워크플로우 규약).
 
 NO UNRESOLVED DECISIONS
+
+---
+
+## 구현 진행 상황 (2026-07-25 세션 1)
+
+### 완료 — Task 1~5 (RED→GREEN→REFACTOR 각 3커밋)
+
+| Task | 상태 | 커밋 | 결과 |
+|---|---|---|---|
+| T1 토큰 정의 + 동결 해제 | ✅ | `c51b8bc38` / `063d7e1a5` / `ed3ec0cc7` | `--chart-1~5` 확정 hex · 범주 10종 신설 · `@theme` 배선 · 값 정본 문서 · D7 자기준수 음성 테스트 |
+| T2 recharts 토큰 소비 | ✅ | `4df6ded0e` / `f47280fcc` / `1faaaba58` | 6종 하드코딩 hex 0 · 역할 매핑 정정 |
+| T3 범주색 토큰화 | ✅ | (T3 red) / `1a150a9c7` / `ec2267d8b` | 14발생/4파일 · 뮤테이션 검증 완료 |
+| T4 스켈레톤 프리미티브 | ✅ | (T4 red) / `ae48dbfeb` / `73f34355a` | 인라인 33발생 → 프리미티브 · 소비 파일 1→25 |
+| T5 빈 상태 통합 | ✅ | (T5 red) / `601ecb1aa` / `b78eb535b` | `FilteredEmptyState` 정의 2→1 · 화면별 여백 prop 보존 |
+
+**T5 시점 검증** — typecheck 0 · eslint error 0(경고 8 사전존재) · 유닛 **512파일 / 7929** green ·
+build 0 · git clean.
+
+### 남은 작업 — Task 6~10
+
+**T6 착수 준비 완료 (배치 1 = 공용 `Button` 이미 소비 중인 21파일 · 원시 button 35발생)**
+전수 분류를 마쳤다. 아래 표가 그대로 T6의 작업 목록이다.
+
+**IN 23건** — `<Button variant="ghost">` 흡수 대상.
+
+| 파일 | 행 | 형태 |
+|---|---|---|
+| `automation/ActionConfigEditor.tsx` | 318 · 495 | 라벨 칩 × · 헤더 삭제 × |
+| `automation/ActionListEditor.tsx` | 122 · 133 · 145 | ↑ · ↓ · × |
+| `automation/AutomationRuleFormDialog.tsx` | 463 | 필드 칩 × |
+| `automation/ConditionBuilder.tsx` | 141 · 187 · 212 | 비교 삭제 × · AND/OR 토글 · 그룹 삭제 |
+| `board/QuickFilterChips.tsx` | 178 · 188 · 196 | 칩 적용 · ✎ · ✕ |
+| `dashboard/DashboardForm.tsx` | 194 | 칩 제거 × |
+| `filters/FilterBar.tsx` | 330 | 칩 제거 × |
+| `issue/EpicChildrenSection.tsx` | 97 | 연결 해제 |
+| `issue/IssueLinksPanel.tsx` | 128 · 314 · 436 | 링크 삭제 · 부모 해제 · 에픽 해제 |
+| `issue/meta/IssueLabelsEdit.tsx` | 135 | 라벨 제거 × |
+| `ooo/OooModal.tsx` | 228 | 대리자 선택 해제 |
+| `search/SavedFilterMenu.tsx` | 214 | 메뉴 트리거 |
+| `routes/issues.$key.tsx` | 714 | 제목 편집 |
+| `routes/issues.index.tsx` | 403 | 새 이슈(비활성 fail-closed) |
+
+**OUT 12건** — 남기고 T8 ESLint 예외로 등재할 대상(사유 포함).
+
+| 파일 | 행 | 패턴 | 사유 |
+|---|---|---|---|
+| `admin/AddMemberDialog.tsx` | 83 | P5 옵션 행 | `w-full text-left` 콤보박스 후보 |
+| `admin/AuditLogFilters.tsx` | 89 | P5 | 좌동 |
+| `admin/WorkflowSchemeSidebar.tsx` | 93 | P5 | 사이드바 항목(`aria-current`) |
+| `dashboard/DashboardForm.tsx` | 173 | P5 | 좌동 |
+| `filters/FilterBar.tsx` | 255 | P5 | 좌동 |
+| `global-permissions/GlobalPermissionFormDialog.tsx` | 95 | P5 | 좌동 |
+| `ooo/OooModal.tsx` | 64 | P5 | 좌동 |
+| `issue/IssueDescription.tsx` | 247 · 257 | **P4 `role="tab"`** | 탭 시맨틱 — `Button`이 role 충돌 위험 |
+| `issue/IssueChangelog.tsx` | 309 | P6 전체행 디스클로저 | `w-full` 행 토글 |
+| `automation/RuleExecutionTraceRow.tsx` | 88 | P6 | 좌동 |
+
+★ **T6 구현 시 주의(세션 1에서 실제로 밟은 함정).** 배치 1 파일은 **이미 `<Button>`을 쓰고 있다.**
+`type="button"` 같은 공통 속성으로 일괄 치환하면 **기존 `<Button>` 사용처에도 variant가 주입돼
+멀쩡한 버튼의 외형이 바뀐다**(1차 시도에서 `AutomationRuleFormDialog` 1→2, `ConditionBuilder` 3→5로
+검출·전량 원복). 반드시 **`^\s*<button$` 형태의 여는 줄만** 대상으로 삼고, 치환 후
+`grep -c 'variant='` 개수를 예상치와 대조할 것.
+
+★ `cn()`이 `tailwind-merge`를 쓰므로 호출부 `className`이 variant 클래스를 덮어쓴다 — 원본 className을
+그대로 넘기면 시각 변화를 최소화할 수 있다(`min-h-[44px]`는 WCAG 2.5.5 근거가 있어 유지).
+
+**T7~T10.** 계획 본문 그대로. T7은 나머지 P1/P2 파일(~27파일), T8 ESLint 락(위 OUT 12건 + P4/P5/P6
+잔여를 `overrides` 예외로 등재), T9 전수 동기화(D단계 마킹·DESIGN.md·ADR), T10 회귀 검증.
