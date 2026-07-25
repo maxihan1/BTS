@@ -170,10 +170,13 @@ automation 은 컨트롤러 전용 헬퍼라 고정값을 박으면 끝이었지
 - **E5.** 200 정상 응답에는 `instance` 자체가 없다(ProblemDetail 아님) → 회귀 없음.
 - **E6 (G6).** **응답 헤더**도 검사 대상이다. 본문만 보면 헤더로 새는 경로를 놓친다.
   토큰 부재 단언을 본문 + 전 헤더값에 적용한다.
-- **E7 (G7).** M2(500) 경로는 `log.error("NOTIF_DASHBOARD_500 internal_error", ex)` 로 **예외 스택을 찍는다.**
-  `PublicDashboardNotFoundException` 은 고정 메시지라 토큰을 품지 않음을 확인했으나(실증),
-  `shareTokenMinter.hash()`·`layoutSanitizer.sanitize()` 등 하위 컴포넌트가 **토큰을 예외 메시지에 넣으면
-  로그에 평문이 남는다.** 해당 경로가 토큰을 예외에 싣지 않는지 확인하고 결과를 등재한다.
+- **E7 (G7). ✅ 확인 완료 — 로그 유출 없음.** M2(500) 경로는 `log.error(…, ex)` 로 예외 스택을 찍지만,
+  이 경로의 협력자가 토큰을 예외에 싣지 않는다. 실물 판독 근거 —
+  `ShareTokenMinter.hash` 는 `throw`/`require`/`check` **0건**(다이제스트 계산만) ·
+  `AnonymousLayoutSanitizer.sanitize` 는 **total 함수**로 모든 예외를 잡아 `[]` 로 fail-closed 하며
+  로그에도 `e.javaClass.simpleName` 만 남긴다(메시지 미출력) ·
+  리포지토리는 **해시**를 받으므로 최악의 DB 예외도 원문이 아닌 해시를 싣는다 ·
+  `PublicDashboardNotFoundException` 은 고정 메시지라 토큰을 품지 않는다.
 
 ### 도달 가능한 오류 통로 — 전수 확정 (G4)
 
@@ -221,9 +224,20 @@ automation 은 컨트롤러 전용 헬퍼라 고정값을 박으면 끝이었지
    (advice 를 함께 등록한 컨텍스트에서 로컬 핸들러 응답이 나오는지 관측. 단정 금지 — 이게 틀리면 설계 (b) 가 무너진다.)
 10. ✅ 조사용 프로브 `PublicDashboard404BodyProbeTest.kt` 를 정식 테스트로 전환하거나 삭제(C5). PR 에 임시 파일 0.
 
-## 13. 범위 밖 (명시)
+## 13. 범위 밖 (명시) + 후속 등재
 
-- `IcalFeedController`(identity-access BC) — 별도 PR.
+- **`IcalFeedController`(identity-access BC) — 후속 PR 필요.**
+  경로 `GET /ical/feed/{token}.ics` 에 원문 토큰이 있고, 404 를 `ResponseStatusException(HttpStatus.NOT_FOUND)`
+  으로 낸다(`ProblemDetail` 직접 반환이 아님). 이 경우 Spring 기본 오류 처리(`/error`)를 타고
+  응답의 `path` 필드로 **원문 토큰이 샐 가능성**이 있다.
+  ⚠️ **미실증.** 슬라이스로는 판정할 수 없고(Boot 의 `BasicErrorController` 가 필요) 전체 부팅 확인이 필요하다.
+  BC 격리(한 PR = 한 BC)로 본 PR 범위 밖.
+- **E3 비-GET 응답 — 후속 확인.** SecurityConfig 가 `HttpMethod.GET` 고정 permitAll 이라 비-GET 은
+  인증 체인으로 떨어진다. 그 401/403 응답 본문에 토큰이 실리는지는 identity-access BC 소관이라 미확인.
+- **G8 인코딩 관측 — 별건.** 조사 프로브에서 한글 `detail` 이 깨져 보였다. MockMvc 가 응답을
+  `contentAsString` 으로 읽을 때의 문자셋 아티팩트로 **추정**하나 확정하지 않았다.
+  본 작업은 회귀 테스트를 **raw 바이트**로 검사하므로 영향받지 않는다(G5).
+  실제 응답 인코딩이 문제인지 여부는 별도 확인 대상.
 - 나머지 44개 `ProblemDetail` 생산자 — 경로에 비밀값이 없어 무해. 변경하지 않는다.
 - 경로 기반 토큰 설계 자체(주소창·리퍼러·접근로그 노출) — ADR D1 이 택한 설계. 본 PR 은 **응답 본문**만 다룬다.
 - 전역(repo-wide) 재발 방지 장치 — BC 경계를 넘으므로 별도 논의.
