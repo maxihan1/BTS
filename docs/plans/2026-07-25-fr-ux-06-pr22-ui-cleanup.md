@@ -859,6 +859,10 @@ NO UNRESOLVED DECISIONS
 | T4 스켈레톤 프리미티브 | ✅ | (T4 red) / `ae48dbfeb` / `73f34355a` | 인라인 33발생 → 프리미티브 · 소비 파일 1→25 |
 | T5 빈 상태 통합 | ✅ | (T5 red) / `601ecb1aa` / `b78eb535b` | `FilteredEmptyState` 정의 2→1 · 화면별 여백 prop 보존 |
 | T6 원시 button 배치1 | ✅ | `8ce9de297` / `6d917f47b` / `48fcb17e3` | IN 23발생 → `Button` · OUT 11발생 사유 주석 · 21파일 · 신규 가드 1종(5테스트) |
+| T7 원시 button 배치2 | ✅ | `7406d65c0` / `0f7d1f403`+`c33d073a6` | IN 61발생 → `Button` · OUT 9발생 사유 주석 · 30파일 · `Button` import 26파일 신규 |
+| T8 ESLint 락 2종 | ✅ | `79e6e1b53` | `no-restricted-syntax` 2셀렉터 + 예외 3층 · **비어있지 않음 4중 증명** |
+| T9 전수 동기화 | ✅ | `e8512f4ec` | D단계 마킹 · `DESIGN.md §C-2` 신설 · ADR 신설 · 대시보드 **129/129 (100%)** |
+| T10 회귀 검증 | ✅ | (검증 전용) | 완료 기준 4종 측정 + 유닛 전수 + 로컬 E2E 132건 |
 
 **T5 시점 검증** — typecheck 0 · eslint error 0(경고 8 사전존재) · 유닛 **512파일 / 7929** green ·
 build 0 · git clean.
@@ -983,7 +987,37 @@ justify-center`가 들어 있어, **좌측 정렬을 요구하는 원본**과 �
 
 ★ `DashboardGrid.tsx:136` 은 세션 2 재열거가 찾아낸 **신규 등재분**(초안 T6·T7 어디에도 없었다).
 
-### 남은 작업 — Task 7~10
+### T10 회귀 검증 결과 (2026-07-25 세션 2 — 10/10 태스크 완료)
+
+**완료 기준 측정 (전부 기대치 충족).**
+
+| 기준 | 기대 | 실측 | 판정 |
+|---|---|---|---|
+| 원시 `<button>` (프로덕션·주석 제외) | OUT 판정분만 잔존 | **20** = 배치1 OUT 11 + 배치2 OUT 9 | ✅ 전수 열거로 설명됨 |
+| 인라인 `animate-pulse` (`ui/skeleton`·테스트 제외) | 0 | **0** | ✅ |
+| `FilteredEmptyState` 정의 | 1 | **1** | ✅ |
+| 차트 디렉토리 하드코딩 hex (`burndown`·`cfd`·`cycle-time`·`velocity`·`worklog`) | 0 | **0 / 0 / 0 / 0 / 0** | ✅ |
+
+**검증 체인.** typecheck `EXIT=0` · eslint `EXIT=0`(0 error / 경고 8 사전존재 유지) ·
+vitest **513파일 7935 green** `EXIT=0` · `vite build` `EXIT=0`.
+★ `zsh`에서 `| tail` 뒤의 `$?`는 파이프 마지막 명령의 코드다 — 파이프 없이 재확인해 실제 종료코드를 얻었다.
+
+**로컬 E2E (CI에 e2e 잡 없음 → 로컬 필수).** plan이 지목한 20 spec **전부 실재 확인** 후 실행.
+
+- `--list` 사전 확인 = **132 tests in 20 files** → positional 필터가 정상 작동했다.
+  ★ `pnpm exec playwright test <file>` 은 필터를 삼켜 전수가 돌아간다 — **바이너리 직접 호출**했다.
+- 결과 = **130 passed / 2 skipped** (`EXIT=0`).
+  2 skipped는 **사전존재 `test.skip`** 이다 — `dashboard.spec.ts:222` · `dashboard-gadgets.spec.ts:296`
+  의 "S3b 드래그/리사이즈 — RGL headless 제약으로 SKIP(단위 테스트 커버)". 본 PR과 무관하며
+  테스트 이름 자체에 사유가 적혀 있다. **132 = 130 + 2 로 전량 설명된다**(개수 미설명 0).
+- 유령 vite 프로세스 없음. `[WebServer] AggregateError [ECONNREFUSED]` 로그는 dev 서버가
+  백엔드로 프록시를 시도한 것이며 MSW가 API를 가로채므로 무해하다(사전존재 잡음).
+
+**PR22 최종 지표.** 원시 `<button>` **104발생 → IN 84 흡수 / OUT 20 사유 등재**(51파일) ·
+`Button` import 26파일 신규 · ESLint 락 2종 · 신규 가드 1종(6테스트) · FR 129 불변 ·
+백엔드 변경 0 · 마이그레이션 0 · 신규 npm 의존성 0.
+
+### 완료 — Task 7~10
 
 #### 재열거 정본 (2026-07-25 세션 2 — T6 착수 직전 전수 재계수)
 
