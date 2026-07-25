@@ -90,9 +90,44 @@ SYSTEM_ADMIN 가드를 넣고 **뮤테이션으로 검증**했다. 같은 방식
 지켜야 할 결정은 선행 읽기(glossary + domain/identity-access + `docs/decisions` grep 3건)에서 이미
 명문으로 확보했다. 대화형 캐묻기가 추가로 밝혀낼 도메인 재정의가 없다고 판단했고 Maxi가 승인했다.
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-25-admin-slack-beforeload-2-4-requirepasswordchanged.md](../specs/2026-07-25-admin-slack-beforeload-2-4-requirepasswordchanged.md)
+
+`office-hours` 대신 기술 스펙을 직접 작성했다 — 메모리 `bts-spec-office-hours-mismatch`
+(이미 정의된 작업엔 YC 아이디어 진단 프레임이 안 맞는다, 2026-05-29 Maxi 결정).
+
+핵심 3줄 요약.
+
+- 산출법은 **`/admin/slack`의 `beforeLoad`를 `requireSystemAdminFull`로 바꾸는 1줄**뿐이다
+  (공유 상수 재사용 = 가드 집합·순서 동일성을 구조적으로 보장).
+- 검증은 **전 라우트를 `router.routesById`에서 파생 열거**하고, 4시나리오(미인증 / 비-관리자 /
+  비밀번호 강제 / MFA 강제)의 **관측 서명**을 라우트 클래스 5종의 **기대 서명과 정확히 일치**시킨다.
+  판별자는 redirect 목적지 문자열이라 어느 가드가 걸렸는지 특정된다.
+- **미분류 라우트는 실패**로 처리해, 앞으로 라우트를 추가하면 클래스 선언을 강제한다. 이것이
+  "가드를 안 걸었는데 아무도 모르는" 상태를 구조적으로 불가능하게 만드는 봉인이다.
+
+## Brainstorming Check
+
+✅ 통과 (2회 iteration). 상세는 스펙 §Phase B sanity check.
+
+**1회 — 전제 정정 3건 + Maxi 결정 1건.**
+- **B1.** `/admin/slack` 2-가드가 **의도가 아니라 누락**임을 문서로 확정(도입 `d9e418d9b`/#247 시점엔
+  정상, #299가 4-가드로 정렬할 때 빠짐. `adminIndexRoute` 주석이 "강제변경 미완료 관리자 우회 차단"을
+  의도로 명문화). → 수정 방향이 정책과 일치함이 확인됐다.
+- **B2. ★같은 결함 클래스가 admin 밖에 5건**(`/` · `/workflows/$key` ·
+  `field-permissions` · `settings/profile` · `settings/preferences`). 원래 스펙은 admin만 봤으므로
+  **한 층 위의 눈가리개**였다. → **Maxi 결정 D5=B** — 수정은 슬랙 1줄로 유지, **검증 행렬만 전 라우트로
+  확대**하고 의심 5건은 사유를 적어 등재(정책 판정은 후속 분리).
+- **B3.** `requireAuthAndPasswordChanged`는 이름과 달리 `requireMfaEnrolled`를 **포함**한다.
+  이름만 보고 "38 라우트가 MFA 미검사"라고 오판했다가 정의를 열어 정정했다.
+
+**2회 — 개정안 자체 점검.** 런타임 `routesById` 키 집합이 정적 분석 59와 다를 수 있음(루트 라우트 항목)을
+발견해 "구현 단계가 실제 키를 1회 출력해 확인 후 확정"으로 명시(E13). 남은 미해결 gap 없음.
+
+**자체 오류 1건 기록(E12).** `staticData`를 **존재 여부**로 세어 `/dashboards/shared/$token`을 거짓
+모순으로 지목했다. 값을 읽으니 `requireAuth: false` + 공개 라우트 JSDoc으로 정합이었다.
+**플래그는 값을 읽어야 한다.**
 
 ## Plan (← /bts-plan 채움)
 
