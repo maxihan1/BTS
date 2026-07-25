@@ -526,8 +526,12 @@ export function FilteredEmptyState({
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/layout/TopBar.tsx`, `apps/web/src/components/layout/AccountMenu.tsx`, `apps/web/src/components/layout/Sidebar.tsx`, `apps/web/src/components/dashboard/DashboardTile.tsx`, `apps/web/src/components/dashboard/DashboardForm.tsx`, `apps/web/src/components/dashboard/GadgetConfigForm.tsx`, `apps/web/src/components/dashboard/GadgetCatalogModal.tsx`, `apps/web/src/components/dashboard/ShareDashboardModal.tsx`, `apps/web/src/components/issue/AttachmentSection.tsx`, `apps/web/src/components/issue/IssueLinksPanel.tsx`, `apps/web/src/components/issue/IssueDescription.tsx`, `apps/web/src/components/issue/EpicChildrenSection.tsx`, `apps/web/src/components/board/QuickFilterChips.tsx`, `apps/web/src/components/backlog/SprintColumn.tsx`, `apps/web/src/components/backlog/CreateSprintForm.tsx`, `apps/web/src/components/filters/FilterBar.tsx`, `apps/web/src/components/admin/AddMemberDialog.tsx`, `apps/web/src/components/admin/AuditLogFilters.tsx`, `apps/web/src/components/workflow/PostActionFormDialog.tsx`, `apps/web/src/components/ooo/OooModal.tsx`, `apps/web/src/components/search/SavedFilterMenu.tsx`]
+- files: [`apps/web/src/components/admin/AddMemberDialog.tsx`, `apps/web/src/components/admin/AuditLogFilters.tsx`, `apps/web/src/components/admin/WorkflowSchemeSidebar.tsx`, `apps/web/src/components/automation/ActionConfigEditor.tsx`, `apps/web/src/components/automation/ActionListEditor.tsx`, `apps/web/src/components/automation/AutomationRuleFormDialog.tsx`, `apps/web/src/components/automation/ConditionBuilder.tsx`, `apps/web/src/components/automation/RuleExecutionTraceRow.tsx`, `apps/web/src/components/board/QuickFilterChips.tsx`, `apps/web/src/components/dashboard/DashboardForm.tsx`, `apps/web/src/components/filters/FilterBar.tsx`, `apps/web/src/components/global-permissions/GlobalPermissionFormDialog.tsx`, `apps/web/src/components/issue/EpicChildrenSection.tsx`, `apps/web/src/components/issue/IssueChangelog.tsx`, `apps/web/src/components/issue/IssueDescription.tsx`, `apps/web/src/components/issue/IssueLinksPanel.tsx`, `apps/web/src/components/issue/meta/IssueLabelsEdit.tsx`, `apps/web/src/components/ooo/OooModal.tsx`, `apps/web/src/components/search/SavedFilterMenu.tsx`, `apps/web/src/routes/issues.$key.tsx`, `apps/web/src/routes/issues.index.tsx`]
 - depends-on: [5]  # FilterBar가 T5와 인접, QuickFilterChips가 board 계열 → 직렬 유지
+
+★ **위 `files`는 세션 2 재열거(§구현 진행 상황 「재열거 정본」)로 교체된 실측 목록이다.** plan 단계 초안은
+"공용 `Button` 이미 소비 중" 판정이 뒤집혀 T7 목록과 **11:11로 교차 오배정**돼 있었다. 판별식은
+`grep -l "from '@/components/ui/button'"` 단 하나 — 이 import가 있으면 배치 1, 없으면 배치 2(T7)다.
 
 **RED**. 파일별 렌더 테스트에 `data-slot="button"` 존재 어서션 추가(프리미티브 마커).
 
@@ -572,8 +576,13 @@ it('사이드바 토글이 Button 프리미티브를 쓴다 (PR22)', () => {
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/routes/dashboards.$dashboardId.tsx`, `apps/web/src/routes/inbox.tsx`, `apps/web/src/routes/issues.index.tsx`, `apps/web/src/routes/issues.$key.tsx`, `apps/web/src/routes/admin.workflow-schemes.tsx`, `apps/web/src/routes/projects.$projectKey.sprints.$sprintId.burndown.tsx`, `apps/web/src/components/issue/WorklogSection.tsx`, `apps/web/src/components/issue/IssueChangelog.tsx`, `apps/web/src/components/issue/LinkGraph.tsx`, `apps/web/src/components/issue/meta/IssueLabelsEdit.tsx`, `apps/web/src/components/issue/meta/IssueAssigneeSelect.tsx`, `apps/web/src/components/issues/IssueTable.tsx`, `apps/web/src/components/inbox/InboxListItem.tsx`, `apps/web/src/components/automation/ConditionBuilder.tsx`, `apps/web/src/components/automation/ActionListEditor.tsx`, `apps/web/src/components/automation/ActionConfigEditor.tsx`, `apps/web/src/components/automation/AutomationRuleFormDialog.tsx`, `apps/web/src/components/automation/RuleExecutionTraceRow.tsx`, `apps/web/src/components/workflow/PostActionConfigSection.tsx`, `apps/web/src/components/admin/WorkflowSchemeSidebar.tsx`, `apps/web/src/components/global-permissions/GlobalPermissionFormDialog.tsx`, `apps/web/src/components/favorite/FavoritesMenu.tsx`, `apps/web/src/components/timeline/GanttChart.tsx`, `apps/web/src/features/calendar/MonthGrid.tsx`, `apps/web/src/components/layout/ProjectTree.tsx`, `apps/web/src/components/project/ProjectLeadSelect.tsx`, `apps/web/src/components/component/ComponentLeadSelect.tsx`]
-- depends-on: [6]  # 교체 규칙 정본이 T6에서 확정된 뒤 적용. issues.index/inbox/ProjectTree가 T4·T5와 겹침
+- files: [`apps/web/src/components/backlog/CreateSprintForm.tsx`, `apps/web/src/components/backlog/SprintColumn.tsx`, `apps/web/src/components/component/ComponentLeadSelect.tsx`, `apps/web/src/components/dashboard/DashboardGrid.tsx`, `apps/web/src/components/dashboard/DashboardTile.tsx`, `apps/web/src/components/dashboard/GadgetCatalogModal.tsx`, `apps/web/src/components/dashboard/GadgetConfigForm.tsx`, `apps/web/src/components/dashboard/ShareDashboardModal.tsx`, `apps/web/src/components/favorite/FavoritesMenu.tsx`, `apps/web/src/components/inbox/InboxListItem.tsx`, `apps/web/src/components/inbox/SenderAutocomplete.tsx`, `apps/web/src/components/issue/AttachmentSection.tsx`, `apps/web/src/components/issue/LinkGraph.tsx`, `apps/web/src/components/issue/WorklogSection.tsx`, `apps/web/src/components/issue/meta/AssigneeUserList.tsx`, `apps/web/src/components/issue/meta/IssueAssigneeSelect.tsx`, `apps/web/src/components/issues/IssueTable.tsx`, `apps/web/src/components/layout/AccountMenu.tsx`, `apps/web/src/components/layout/ProjectTree.tsx`, `apps/web/src/components/layout/Sidebar.tsx`, `apps/web/src/components/layout/TopBar.tsx`, `apps/web/src/components/project/ProjectLeadSelect.tsx`, `apps/web/src/components/timeline/GanttChart.tsx`, `apps/web/src/components/workflow/PostActionConfigSection.tsx`, `apps/web/src/components/workflow/PostActionFormDialog.tsx`, `apps/web/src/features/calendar/MonthGrid.tsx`, `apps/web/src/routes/admin.workflow-schemes.tsx`, `apps/web/src/routes/dashboards.$dashboardId.tsx`, `apps/web/src/routes/inbox.tsx`, `apps/web/src/routes/projects.$projectKey.sprints.$sprintId.burndown.tsx`]
+- depends-on: [6]  # 교체 규칙 정본이 T6에서 확정된 뒤 적용. inbox/ProjectTree가 T4·T5와 겹침
+
+★ **위 `files`도 세션 2 재열거로 교체됐다 (27 → 30파일 · 코드 70발생).** 초안이 T6와 11:11 교차
+오배정돼 있었고, 그 위에 **`dashboard/DashboardGrid.tsx`(1발생) 1파일이 T6·T7 어디에도 없었다**
+(§구현 진행 상황 「재열거 정본」 정정 3). `SenderAutocomplete`·`AssigneeUserList`는 아래 GREEN 본문에
+OUT으로 명시돼 있었으나 `files`에 누락돼 있어 함께 등재했다 — OUT 사유 주석 대상이므로 파일은 열어야 한다.
 
 **RED**. Task 6과 동일 패턴으로 파일별 `data-slot="button"` 어서션.
 
@@ -855,8 +864,48 @@ build 0 · git clean.
 
 ### 남은 작업 — Task 6~10
 
-**T6 착수 준비 완료 (배치 1 = 공용 `Button` 이미 소비 중인 21파일 · 원시 button 35발생)**
-전수 분류를 마쳤다. 아래 표가 그대로 T6의 작업 목록이다.
+#### 재열거 정본 (2026-07-25 세션 2 — T6 착수 직전 전수 재계수)
+
+세션 1이 남긴 개수 표기를 **믿지 않고 직접 다시 셌다**([[spec-stated-count-becomes-blindfold]] ·
+[[orchestrator-instruction-counts-are-blindfolds]]). 판별식은 **`grep -l "from '@/components/ui/button'"`
+하나** — 이 import가 있으면 배치 1(T6), 없으면 배치 2(T7). 개수 대신 **파일 집합을 `comm`으로 대조**했다.
+
+| 축 | grep 발생 | 주석 | **코드 발생** | 파일 |
+|---|---|---|---|---|
+| 전체 `<button` (테스트·스토리 제외) | 106 | 2 | **104** | 51 |
+| 배치 1 = `Button` import 있음 (T6) | 35 | 1 | **34** | **21** |
+| 배치 2 = `Button` import 없음 (T7) | 71 | 1 | **70** | **30** |
+
+주석 2발생(교체 대상 아님). `routes/issues.index.tsx:386`(JSDoc) · `components/issues/IssueTable.tsx:68`(JSDoc).
+
+**정정 3건.**
+
+1. **「OUT 12건」 → OUT 11건.** 아래 OUT 표의 실제 행 합은 11이고 표에 빠진 항목은 **없다**.
+   세션 1이 `issues.index.tsx:386`의 **JSDoc 주석 리터럴을 코드로 세어** 12로 적었을 뿐이다.
+   따라서 배치 1은 `IN 23 + OUT 11 = 코드 34발생`(grep 35). T3에서도 같은 착오가 있었고
+   가드에 `stripComments`를 도입한 이유가 이것이다.
+2. **T6·T7 메타 `files`가 11:11로 교차 오배정돼 있었다.** plan 단계 초안이 "공용 `Button` 이미 소비 중"
+   판정을 뒤집었다. **아래 IN/OUT 표의 파일 집합은 실측 배치 1 21파일과 완전히 일치**하므로
+   **표가 정본이고 메타 `files`가 stale**이었다. 양쪽 메타를 실측 목록으로 교체했다(T6 21 · T7 30).
+   - T6 → T7로 이동(`Button` import 0). `TopBar` · `AccountMenu` · `Sidebar` · `DashboardTile` ·
+     `GadgetConfigForm` · `GadgetCatalogModal` · `ShareDashboardModal` · `AttachmentSection` ·
+     `SprintColumn` · `CreateSprintForm` · `PostActionFormDialog`
+   - T7 → T6로 이동(`Button` import 1). `issues.index` · `issues.$key` · `IssueChangelog` ·
+     `IssueLabelsEdit` · `ConditionBuilder` · `ActionListEditor` · `ActionConfigEditor` ·
+     `AutomationRuleFormDialog` · `RuleExecutionTraceRow` · `WorkflowSchemeSidebar` ·
+     `GlobalPermissionFormDialog`
+3. **★진짜 누락 1파일 — `components/dashboard/DashboardGrid.tsx:136`.** T6·T7 메타·IN/OUT 표
+   **어디에도 없었다.** 빈 대시보드의 "위젯 추가" P2 텍스트 액션(`bg-primary` + `min-h-[44px]` +
+   `aria-label` + `Plus` 아이콘)으로 **T7 IN 대상**이다. 배치 2라 T7에서 처리한다.
+   부수로 `inbox/SenderAutocomplete` · `issue/meta/AssigneeUserList`는 T7 GREEN 본문에 OUT으로
+   명시돼 있었으나 메타 `files`에 없었다 → 등재(OUT 사유 주석을 달아야 하므로 파일을 열어야 한다).
+
+★ **T8 ESLint 락 영향.** `no-restricted-syntax`는 AST(추상 구문 트리 — 코드를 구조로 파싱한 형태)
+셀렉터라 **주석 속 리터럴은 애초에 위반으로 잡지 않는다.** 따라서 위 주석 2발생은 `overrides` 예외
+목록에 넣지 않는다. 예외 목록은 **코드 OUT 11건 + T7 OUT 발생**만으로 구성한다.
+
+**T6 작업 목록 (배치 1 = 공용 `Button` 이미 소비 중인 21파일 · 코드 34발생)**
+아래 표가 그대로 T6의 작업 목록이다. 실측으로 확증됐다.
 
 **IN 23건** — `<Button variant="ghost">` 흡수 대상.
 
@@ -877,7 +926,9 @@ build 0 · git clean.
 | `routes/issues.$key.tsx` | 714 | 제목 편집 |
 | `routes/issues.index.tsx` | 403 | 새 이슈(비활성 fail-closed) |
 
-**OUT 12건** — 남기고 T8 ESLint 예외로 등재할 대상(사유 포함).
+**OUT 11발생** — 남기고 T8 ESLint 예외로 등재할 대상(사유 포함).
+★ 세션 2 검산. **표 행 10개 ≠ 발생 11건** — `IssueDescription`이 한 행에 2발생(247·257)을 담고 있다.
+"행 수"와 "발생 수"를 같은 것으로 세지 말 것. T8 예외 목록은 **발생 단위 11건**으로 만든다.
 
 | 파일 | 행 | 패턴 | 사유 |
 |---|---|---|---|
