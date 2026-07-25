@@ -159,11 +159,46 @@ function resolveDropTarget(
 }
 
 /**
+ * 컬럼 카드 목록에서 issueKey에 해당하는 카드를 찾는다.
+ * findGroupKey(그룹 key 조회)와 별개 — 이쪽은 카드 자신의 필드값을 읽기 위한 조회다.
+ */
+function findCard(columnCards: BoardCard[], issueKey: string): BoardCard | undefined {
+  return columnCards.find((c) => c.issueKey === issueKey)
+}
+
+/**
+ * ASSIGNEE 스윔레인 필드변경을 판정한다.
+ * 대상값은 `to`(드롭 대상 카드) 자신의 assigneeId — 그룹 대표값이 아니다(FR-2·E2, 아래 resolveFieldChange 참고).
+ * unassigned 그룹의 카드는 assigneeId가 null이므로 담당자 해제로 이어진다.
+ */
+function assigneeFieldChange(from: BoardCard, to: BoardCard, issueKey: string, expectedVersion: number): DropAction {
+  if (to.assigneeId === from.assigneeId) return { type: 'noop' }
+  return { type: 'field-change', issueKey, field: 'assignee', toAssigneeId: to.assigneeId, expectedVersion }
+}
+
+/** PRIORITY 스윔레인 필드변경을 판정한다. 대상값은 `to` 카드의 priority. */
+function priorityFieldChange(from: BoardCard, to: BoardCard, issueKey: string, expectedVersion: number): DropAction {
+  if (to.priority === from.priority) return { type: 'noop' }
+  return { type: 'field-change', issueKey, field: 'priority', toPriority: to.priority, expectedVersion }
+}
+
+/**
+ * EPIC 스윔레인 필드변경을 판정한다. 대상값은 `to` 카드의 epicKey, fromEpicKey는 `from`(active) 카드의
+ * 현재 epicKey — 호출 측(useChangeCardField 등)이 에픽A→에픽B 2-step(disconnect→connect) 시퀀스를
+ * 구성할 때 필요하다(스펙 FR-5).
+ */
+function epicFieldChange(from: BoardCard, to: BoardCard, issueKey: string, expectedVersion: number): DropAction {
+  if (to.epicKey === from.epicKey) return { type: 'noop' }
+  return { type: 'field-change', issueKey, field: 'epic', toEpicKey: to.epicKey, fromEpicKey: from.epicKey, expectedVersion }
+}
+
+/**
  * 스윔레인 그룹이 다른 카드 위 드롭을 필드변경(field-change) 액션으로 판정한다 (FR-UX-06 PR21b FR-1).
  *
  * 대상 필드값은 그룹 대표 카드가 아니라 **드롭 대상 카드(overIssueKey)** 자신에서 읽는다 —
  * ASSIGNEE 그룹 key는 표시 이름 기반이라 unknown/동명이인이 한 그룹에 섞일 수 있어
  * 그룹만으로는 실제 담당자를 특정할 수 없다(FR-2·E2). 대상 카드가 대상값을 정확히 가리킨다.
+ * 필드별 판정은 assigneeFieldChange/priorityFieldChange/epicFieldChange에 위임한다.
  *
  * 대상값이 현재값과 같으면(same-value) noop을 반환한다(D2·E3).
  * swimlaneField가 NONE이면 그룹이 하나뿐이라 이 함수는 호출부에서 걸러진다(방어적으로 noop).
@@ -175,29 +210,13 @@ function resolveFieldChange(
   overIssueKey: string,
   expectedVersion: number,
 ): DropAction {
-  const activeCard = columnCards.find((c) => c.issueKey === activeIssueKey)
-  const overCard = columnCards.find((c) => c.issueKey === overIssueKey)
+  const activeCard = findCard(columnCards, activeIssueKey)
+  const overCard = findCard(columnCards, overIssueKey)
   if (activeCard === undefined || overCard === undefined) return { type: 'noop' }
 
-  if (swimlaneField === 'ASSIGNEE') {
-    if (overCard.assigneeId === activeCard.assigneeId) return { type: 'noop' }
-    return { type: 'field-change', issueKey: activeIssueKey, field: 'assignee', toAssigneeId: overCard.assigneeId, expectedVersion }
-  }
-  if (swimlaneField === 'PRIORITY') {
-    if (overCard.priority === activeCard.priority) return { type: 'noop' }
-    return { type: 'field-change', issueKey: activeIssueKey, field: 'priority', toPriority: overCard.priority, expectedVersion }
-  }
-  if (swimlaneField === 'EPIC') {
-    if (overCard.epicKey === activeCard.epicKey) return { type: 'noop' }
-    return {
-      type: 'field-change',
-      issueKey: activeIssueKey,
-      field: 'epic',
-      toEpicKey: overCard.epicKey,
-      fromEpicKey: activeCard.epicKey,
-      expectedVersion,
-    }
-  }
+  if (swimlaneField === 'ASSIGNEE') return assigneeFieldChange(activeCard, overCard, activeIssueKey, expectedVersion)
+  if (swimlaneField === 'PRIORITY') return priorityFieldChange(activeCard, overCard, activeIssueKey, expectedVersion)
+  if (swimlaneField === 'EPIC') return epicFieldChange(activeCard, overCard, activeIssueKey, expectedVersion)
   return { type: 'noop' }
 }
 
