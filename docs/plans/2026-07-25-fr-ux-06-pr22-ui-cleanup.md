@@ -141,7 +141,7 @@ DOM 계약 verbatim 보존이 원칙이며, 마지막에 ESLint 락(T8)으로 �
 | `:28` | `bg-red-400` | 이슈타입 bug 막대 | `--type-bug` |
 | `:32` | `bg-gray-400` | 미지 타입 폴백 | `--type-default` |
 | `:104` | `text-amber-500` | targetDate 마일스톤 ◆ | `--warning` (기존 토큰) |
-| `features/calendar/WeekGrid.tsx:86` | `bg-slate-600` | 상태 TODO 칩 | `--bg-neutral-solid` + `--text` (기존) |
+| `features/calendar/WeekGrid.tsx:86` | `bg-slate-600` | 상태 TODO 칩 | `--neutral-bold` + `--neutral-bold-foreground` (**신설** — 리뷰 이슈 1) |
 | `:87` | `bg-blue-800` | 상태 IN_PROGRESS 칩 | `--info` + `--info-foreground` (기존) |
 | `:88` | `bg-emerald-800` | 상태 DONE 칩 | `--success` + `--success-foreground` (기존) |
 | `:249` · `:266` | `bg-violet-800` ×2 | Worklog 칩 | `--discovery` + `--discovery-foreground` (**신설**) |
@@ -182,6 +182,8 @@ DOM 계약 verbatim 보존이 원칙이며, 마지막에 ESLint 락(T8)으로 �
 | `--type-default` | `#758195` | 3.94 | `#8C9BAB` | 5.70 | Neutral 600 / DarkNeutral 800 |
 | `--discovery` | `#6E5DC6` | 5.19 | `#9F8FEF` | 5.90 | Purple 700/400 (스펙 §5.3) |
 | `--discovery-foreground` | `#FFFFFF` | 5.19† | `#161A1D` | 6.38† | 기존 4쌍과 동일 규칙 |
+| `--neutral-bold` | `#44546F` | 7.65† | `#9FADBC` | 7.65† | Neutral 800 / DarkNeutral 850 |
+| `--neutral-bold-foreground` | `#FFFFFF` | — | `#161A1D` | — | 기존 4쌍과 동일 규칙 |
 | `--favorite` | `#B38600` | 3.32 | `#F5CD47` | 10.57 | Yellow 600/300 |
 
 † `--discovery-foreground`는 bold 배경 **위 글자** 대비(AA 4.5 기준)로 계산했다.
@@ -238,6 +240,8 @@ const CATEGORY_TOKENS: ReadonlyArray<readonly [token: string, light: string, dar
   ['--type-default', '#758195', '#8C9BAB'],
   ['--discovery', '#6E5DC6', '#9F8FEF'],
   ['--discovery-foreground', '#FFFFFF', '#161A1D'],
+  ['--neutral-bold', '#44546F', '#9FADBC'],
+  ['--neutral-bold-foreground', '#FFFFFF', '#161A1D'],
   ['--favorite', '#B38600', '#F5CD47'],
 ] as const
 
@@ -286,6 +290,8 @@ describe('소비처 0인 토큰은 만들지 않는다 (ADR D7 자기준수)', (
   --color-type-default: var(--type-default);
   --color-discovery: var(--discovery);
   --color-discovery-foreground: var(--discovery-foreground);
+  --color-neutral-bold: var(--neutral-bold);
+  --color-neutral-bold-foreground: var(--neutral-bold-foreground);
   --color-favorite: var(--favorite);
 ```
 
@@ -370,14 +376,21 @@ const COLOR_FALLBACK = 'bg-(--type-default)'
 
 ```tsx
 export const STATE_CATEGORY_STYLE: Record<StateCategory, CategoryStyle> = {
-  TODO: { bgClass: 'bg-(--bg-neutral-solid) text-(--text)', Icon: Circle, label: calendarLabels.category.TODO },
+  TODO: { bgClass: 'bg-neutral-bold text-neutral-bold-foreground', Icon: Circle, label: calendarLabels.category.TODO },
   IN_PROGRESS: { bgClass: 'bg-info text-info-foreground', Icon: CircleDot, label: calendarLabels.category.IN_PROGRESS },
   DONE: { bgClass: 'bg-success text-success-foreground', Icon: CheckCircle2, label: calendarLabels.category.DONE },
 }
 ```
 
-★ WeekGrid 칩은 현재 `text-white`가 클래스에 **따로** 붙어 있으므로, `*-foreground` 페어로 바꾸면서
-중복 `text-white`를 제거해야 한다(PR4 정본 페어링 규칙).
+★ **리뷰 이슈 1 — 기존 결정을 뒤집을 뻔했다.** `WeekGrid.tsx:76` 주석이
+*"옅은 배지 대비 미달로 배제, 중간톤 solid fill 채택"*(FR-CA-01 T5 §4.1)이라고 기록하고 있다.
+초안은 TODO를 `--bg-neutral-solid`(라이트 `#F7F8F9` = 거의 흰색)로 매핑했는데, 이는 흰 배경 위에서
+칩을 사실상 소멸시켜 **그 결정을 정면으로 되돌리는 것**이었다. 중간톤 solid를 유지하는
+`--neutral-bold` 신설로 정정했다(라이트 7.65:1 · 다크 7.65:1 — 현재 `bg-slate-600` 7.58:1과 동등).
+
+★ WeekGrid 칩은 현재 `text-white`가 클래스에 **따로** 붙어 있으므로(`:194` · `:223`),
+`*-foreground` 페어로 바꾸면서 중복 `text-white`를 제거해야 한다(PR4 정본 페어링 규칙).
+이 제거를 빠뜨리면 다크 모드에서 밝은 칩 위 흰 글자가 되어 대비가 무너진다.
 
 **REFACTOR**. `--favorite` 사용처에 "Yellow400은 흰 배경 1.98:1 미달이라 Yellow600을 쓴다"는 주석을 남긴다.
 
@@ -462,13 +475,22 @@ interface FilteredEmptyStateProps {
   description?: string
   resetLabel: string
   onReset: () => void
+  /** 화면별 여백/최소높이 보존용 (리뷰 이슈 2) — EmptyState 기본 px-4 py-12에 덧씌운다 */
+  className?: string
 }
 
-export function FilteredEmptyState({ title, description, resetLabel, onReset }: FilteredEmptyStateProps): JSX.Element {
+export function FilteredEmptyState({
+  title,
+  description,
+  resetLabel,
+  onReset,
+  className,
+}: FilteredEmptyStateProps): JSX.Element {
   return (
     <EmptyState
       title={title}
       description={description}
+      className={className}
       action={
         <Button type="button" variant="outline" size="sm" onClick={onReset}>
           {resetLabel}
@@ -480,9 +502,16 @@ export function FilteredEmptyState({ title, description, resetLabel, onReset }: 
 ```
 
 - `routes/issues.index.tsx` — 로컬 정의 삭제, `title="필터 조건에 맞는 이슈가 없습니다."`
-  `description="다른 조건을 시도하거나 필터를 초기화하세요."` `resetLabel="필터 초기화"`로 호출.
+  `description="다른 조건을 시도하거나 필터를 초기화하세요."` `resetLabel="필터 초기화"`
+  **`className="py-16"`**(원본 여백 보존).
 - `routes/projects.$projectKey.board.tsx` — 로컬 정의 삭제, `title="조건에 맞는 카드가 없습니다"`
-  `resetLabel={boardFilterLabels.filter.reset}`로 호출. **description 없음**(원본 1행 계약).
+  `resetLabel={boardFilterLabels.filter.reset}`, **`className="min-h-48"`**(원본 최소높이 보존).
+  **description 없음**(원본 1행 계약).
+
+★ **리뷰 이슈 2.** `EmptyState`는 `px-4 py-12` **고정**이고 `min-height`가 없다. 그대로 흡수하면
+이슈 목록은 여백이 줄고(`py-16`→`py-12`), 보드는 최소높이(`min-h-48`)를 잃어 필터 0건일 때
+칸반 영역이 오그라들며 레이아웃이 튄다. `EmptyState`가 이미 `className`을 `cn()`으로 병합하므로
+호출부에서 원본 값을 그대로 넘겨 **시각 no-op**을 유지한다(NFR-N1·S3 준수).
 
 ★ `routes/__tests__/projects.board.test.tsx:639`가 `/조건에 맞는 카드가 없습니다/i`를 어서션 중이므로
 문구 verbatim 보존이 필수다(스펙 §14 G9).
@@ -722,4 +751,87 @@ line reporter의 `\r`가 `tail`/`wc`에 빈 출력처럼 보이므로 **개수�
 - ★ controller 책임. sub-agent 보고를 믿지 말고 각 태스크 종료 시 `git diff -w`로 실물을 직접 검증한다
   ([[subagent-ktlint-false-green-controller-verify]]).
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+### plan-design-review (2026-07-25)
+
+리뷰 대상 = 이 plan 문서. 시안 생성·외부 모델 교차검증은 **Maxi 결정으로 생략**
+(새 화면 0개 · PR1의 8화면 프로토타입 시안 존재 · 디자인 스펙 14섹션이 이미 정본).
+
+| 패스 | 초기 | 수정 후 | 근거 |
+|---|---|---|---|
+| 1. 정보 구조 | 7/10 | **9/10** | PR22는 IA를 바꾸지 않는다(네비·레이아웃·라우트 변경 0). DOM/testid/aria verbatim 보존이 NFR-N1로 명시됨. 감점 사유였던 캘린더 칩 시각 위계 붕괴는 이슈 1로 해소 |
+| 2. 상호작용 상태 커버리지 | 6/10 | **9/10** | loading(Skeleton)·empty(FilteredEmptyState) 모두 계획에 명시. 감점 사유 = 빈 상태 컨테이너 크기 손실 → 이슈 2로 해소. error/success는 PR22가 건드리지 않음(스코프 밖) |
+| 3. 사용자 여정 | 8/10 | **8/10** | 정리 PR이라 여정 변화 없음. 시각 변화 2종(차트 색·타임라인 타입색)은 S4·S5로 명시돼 있고 사내 도구라 별도 공지 불필요. **findings 없음** |
+| 4. AI slop 위험 | 9/10 | **9/10** | ADS 정본 팔레트 파생이고 생성형 패턴(3열 카드 그리드·중앙정렬·장식 blob) 도입 0. 하드 리젝션 7종 해당 없음. 이슈 3(브랜드 파랑 재사용)은 Jira 관례로 확인 후 유지 결정. **BLOCKER 없음** |
+| 5. 디자인 시스템 정합 | 5/10 | **9/10** | ★ 초기 5점 = 계획이 `WeekGrid.tsx:76`의 기존 결정("옅은 배지 대비 미달로 배제")을 **모르고 정반대로 매핑**. 이슈 1로 정정. DESIGN.md 갱신(T9·PR22-F9)과 값 정본 문서(T1)가 계획에 있어 시스템 정합은 강함 |
+| 6. 반응형 · 접근성 | 7/10 | **8/10** | 대비 13토큰 전량 계산 검증 · 44px 터치 타깃 유지(EC2) · 키보드 내비 무변경. 감점 = `Button` 기본 높이 `h-8`이 원본 아이콘 버튼(`p-1.5`)보다 커 레이아웃이 밀릴 수 있음 → T6 교체 규칙에 size 매핑 지침 존재하나 **파일별 실측은 구현 단계 몫** |
+| 7. 미해결 결정 | — | **3건 전부 해소** | 이슈 1·2·3 모두 Maxi 결정 완료 |
+
+**해소한 findings 3건.**
+
+1. **[BLOCKER급 — 기존 결정 역행]** 캘린더 TODO 칩을 `--bg-neutral-solid`(거의 흰색)로 매핑 →
+   흰 배경에서 칩 소멸. `WeekGrid.tsx:76` 주석이 이미 "옅은 배지 = 대비 미달"을 기록하고 있었다.
+   **결정 A** — `--neutral-bold` / `--neutral-bold-foreground` 신설(라이트 `#44546F` 7.65:1 · 다크 `#9FADBC` 7.65:1),
+   중간톤 solid fill이라는 기존 결정 유지. 소비처 실재(캘린더 칩)라 ADR D7 준수.
+2. **[회귀 위험]** `EmptyState` 프리미티브가 `px-4 py-12` 고정·`min-height` 없음 →
+   흡수 시 이슈 목록 여백 축소(`py-16`→`py-12`), 보드 최소높이(`min-h-48`) 소실로 칸반 영역이 튐.
+   **결정 A** — `FilteredEmptyState`가 `className`을 받아 호출부에서 원본 값을 넘긴다(시각 no-op).
+3. **[확인 후 유지]** `--chart-1` = `#0C66E4`가 `--primary`/`--brand`와 동일 →
+   차트 막대가 버튼처럼 보일 여지. **결정 A** — 유지. Atlassian 제품군 관례이고 차트는
+   카드 경계+범례 텍스트로 맥락이 분리된다.
+
+**BLOCKER 0건.** 이슈 1은 구현 전에 잡혀 계획 수정으로 해소됐다.
+
+**리뷰 한계 (정직한 기록).** 이 리뷰는 plan 작성자(메인 에이전트)가 자기 계획을 검토한 것이라
+독립 시각이 아니다([[bts-review-plan-autoplan-overkill]]가 지적한 편향). 독립 검증은
+게이트 2의 `superpowers:code-reviewer`가 담당한다.
+
+### NOT in scope (검토 후 명시적 이연)
+
+| 항목 | 이연 사유 |
+|---|---|
+| `IssueTypeIcon` 규격화 (16×16 채운 사각 + 흰 글리프) | 디자인 스펙 §4.2 규격이나 **정리가 아닌 신규 디자인 적용**. 현재는 lucide 아이콘 형태로 타입 구분(WCAG 1.4.1 충족) |
+| `--prio-*` 5종 · `--type-subtask` | **소비처 0** — 만들면 ADR §D7을 PR22가 스스로 위반 |
+| "…없습니다" 50파일 EmptyState 전면 통합 | 범위가 다시 몇 배로 커짐. `FilteredEmptyState` 2건만 통합 |
+| P4 `role="tab"` 4발생 · P5 옵션 행 · P6 카드 클릭 영역 | `Button` 프리미티브가 의도한 형태가 아님. ESLint 예외로 사유 등재 |
+| `--syntax-*` 5종 동결 해제 | AQL textarea/overlay 정렬 계약 (`DESIGN.md:130`) |
+| 차트 인터랙션(툴팁 스타일·범례 토글) | 색 토큰화만 본 PR 범위. 상호작용은 변경 0 |
+| 모션/애니메이션 가이드 | 디자인 스펙 §14가 이미 후속으로 분류 |
+| Pretendard 한글 웹폰트 | ADR 후속 — 토큰 PR과 엮지 말 것 |
+
+### What already exists (재사용 대상)
+
+| 자산 | 위치 | PR22에서의 역할 |
+|---|---|---|
+| `DESIGN.md` | 리포 루트 | 디자인 시스템 정본. §C 표에 `--chart-*` "PR22 몫" 표기가 **대기 중** → T9가 갱신 |
+| 디자인 스펙 14섹션 | `docs/design/fr-ux-06-jira-redesign.md` | §5.2 ADS 원시 팔레트(차트 색 파생 출처) · §4.2 타입 색 · §6 컴포넌트 계층 · §7 상태 매트릭스 |
+| PR3 팔레트 정본 | `docs/plans/2026-07-19-fr-ux-06-pr3-ads-palette-values.md` | "값 지어내기 방지" 선례. T1이 같은 형식으로 PR22 정본 문서 작성 |
+| `state-tokens.test.ts` | `apps/web/src/components/ui/__tests__/` | 정확-hex 행렬 가드 패턴. `declarationOf`/`rootBlock`/`darkBlock` 헬퍼 재사용 |
+| 프리미티브 3종 | `ui/button.tsx`(CVA variant 6/size 8) · `ui/skeleton.tsx` · `ui/empty-state.tsx` | 흡수 대상의 착륙지점. 전부 `cn()`으로 className 병합 지원 |
+| 시맨틱 토큰 4쌍 | `index.css` 242~266 / 372~396 | `--{name}` / `-foreground` / `-text` 3단 패턴. 신규 토큰이 따를 규칙 |
+| 8화면 프로토타입 시안 | PR1 Artifact | 이번 리뷰에서 시안 재생성이 불필요한 이유 |
+
+### 구현 태스크 (리뷰 findings → 계획 반영 완료)
+
+- [x] **R1 (P1)** — `index.css`/`state-tokens.test` — `--neutral-bold` 2종 추가 (이슈 1) → T1·T3에 반영됨
+- [x] **R2 (P1)** — `components/filters/FilteredEmptyState.tsx` — `className` prop 추가 (이슈 2) → T5에 반영됨
+- [x] **R3 (P3)** — 결정 기록만 — `--chart-1` 브랜드 파랑 유지 근거를 T9 ADR에 남긴다 (이슈 3)
+
+_리뷰에서 새로 발견된 별도 TODO는 없음 — findings 3건 모두 본 PR 계획에 흡수._
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | — |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 0 | — | — |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | CLEAR (FULL) | score: 7/10 → 9/10, 3 decisions |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+**VERDICT:** DESIGN CLEARED — 3 findings resolved into the plan, BLOCKER 0.
+`/bts-review-plan`의 type=ui 체인은 `plan-design-review` 단일 리뷰이며, 독립 엔지니어링 검증은
+게이트 2의 `superpowers:code-reviewer`가 담당한다(BTS 워크플로우 규약).
+
+NO UNRESOLVED DECISIONS
