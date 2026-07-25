@@ -896,6 +896,93 @@ build 0 · git clean.
 - **가드 목록 확장.** `BATCH1_FILES`에 T7의 30파일을 더하고 `EXPECTED_OUT`에 T7 OUT 발생을 추가해야
   한다. 확장 후 **일부러 위반을 넣어 fail을 확인**할 것(공허 통과 차단).
 
+### T7 분류 정본 (2026-07-25 세션 2 — 착수 직전 전수 열거 + 기계 판정)
+
+**배치2 = 30파일 / 코드 70발생 → IN 61 · OUT 9.** 파일 26개에 IN, 9개에 OUT(중복 5파일) = 30.
+
+#### 판정식 (하드코딩된 목록이 아니라 규칙)
+
+```
+OUT ⟺ role="…" 보유  OR  text-left 보유  OR  justify-start 보유
+```
+
+근거는 프리미티브가 **강제하는 것**이다 — `Button`의 기본 클래스에 `inline-flex items-center
+justify-center`가 들어 있어, **좌측 정렬을 요구하는 원본**과 정면 충돌한다. `w-full`은 부수 조건일
+뿐이어서 판정식에서 뺐다(`DashboardTile`은 `flex-1 text-left truncate`로 `w-full`이 없지만 충돌한다).
+
+**판정식 역검증.** 이미 완료된 **배치1에 그대로 적용해 `IN=0 / OUT=11`** 을 얻었다 — T6에서 손으로
+도출한 분류를 100% 재현한다. 사람이 만든 표와 기계 규칙이 독립적으로 일치하므로 규칙이 정확하다.
+`className`이 상수(`ACTION_BUTTON_CLASS` 등 5종)·`cn()`·배열 `.join()`으로 간접화된 발생은
+치환 후 평가했다.
+
+#### ★ plan 초안 T7 OUT 목록의 오류 3종 (정정)
+
+초안(§Task 7 GREEN)은 OUT을 "P5 4파일 + P6 2파일 + `role="tab"` 4발생"으로 적었으나 실측과 다르다.
+
+| 초안 | 실측 | 판정 |
+|---|---|---|
+| `inbox/SenderAutocomplete` P5 옵션 행 | `:190`은 선택칩의 `×` 해제 버튼(`shrink-0 text-muted-foreground`) | **IN** — 오분류 |
+| `inbox/InboxListItem` P6 전체 클릭 영역 | `:119`·`:127`은 읽음/보관 토글 2개(`rounded px-2 py-1 text-xs`) | **IN 2발생** — 오분류 |
+| `role="tab"` 4발생 | 배치2에는 **2발생**(`inbox:272`·`burndown:80`). 나머지 2는 배치1 `IssueDescription`(T6에서 처리) | 배치 혼재 계수 |
+| (누락) | `dashboard/GadgetCatalogModal:128` · `layout/ProjectTree:157` · `features/calendar/MonthGrid:104` | **OUT 3발생 누락** |
+
+#### OUT 9발생 전수 (T7에서 사유 주석 + T8 `overrides` 등재)
+
+| 파일 : 행 | 판정 근거 | 패턴 | 사유 |
+|---|---|---|---|
+| `component/ComponentLeadSelect.tsx:105` | `text-left` | P5 | 콤보박스 후보 행 |
+| `issue/meta/AssigneeUserList.tsx:34` | `text-left` | P5 | 콤보박스 후보 행 |
+| `project/ProjectLeadSelect.tsx:119` | `text-left` | P5 | 콤보박스 후보 행 |
+| `dashboard/GadgetCatalogModal.tsx:128` | `text-left` | P5 | 가젯 카탈로그 카드(`flex flex-col` + 좌측 정렬 본문) |
+| `dashboard/DashboardTile.tsx:146` | `text-left` | P6 | 타일 제목 인라인 편집 트리거(`flex-1 truncate`) |
+| `layout/ProjectTree.tsx:157` | `justify-start` | P6 | 그룹 디스클로저 행(`GROUP_DISCLOSURE_BUTTON_CLASS` = `w-full justify-start`) |
+| `features/calendar/MonthGrid.tsx:104` | `text-left` | P6 | 셀 오버플로 "+N개 더" 좌측 정렬 링크 |
+| `routes/inbox.tsx:272` | `role="tab"` | P4 | 탭 시맨틱 직접 지정 |
+| `routes/projects.$projectKey.sprints.$sprintId.burndown.tsx:80` | `role="tab"` | P4 | 탭 시맨틱 직접 지정 |
+
+#### IN 61발생 파일별 분포 (작업 목록)
+
+| 파일 | IN 발생 |
+|---|---|
+| `routes/dashboards.$dashboardId.tsx` | 8 |
+| `components/issue/WorklogSection.tsx` | 7 |
+| `components/dashboard/ShareDashboardModal.tsx` | 6 |
+| `components/issue/AttachmentSection.tsx` | 5 |
+| `components/layout/TopBar.tsx` | 4 |
+| `components/dashboard/GadgetConfigForm.tsx` | 4 |
+| `routes/inbox.tsx` | 3 |
+| `components/workflow/PostActionConfigSection.tsx` | 3 |
+| `components/workflow/PostActionFormDialog.tsx` | 2 |
+| `components/inbox/InboxListItem.tsx` | 2 |
+| `components/backlog/SprintColumn.tsx` | 2 |
+| 나머지 15파일 각 1발생 — `admin.workflow-schemes` · `GanttChart` · `ProjectLeadSelect` · `Sidebar` · `ProjectTree` · `AccountMenu` · `IssueTable` · `IssueAssigneeSelect` · `LinkGraph` · `SenderAutocomplete` · `FavoritesMenu` · `DashboardTile` · `DashboardGrid` · `ComponentLeadSelect` · `CreateSprintForm` | 15 |
+
+합계 = 8+7+6+5+4+4+3+3+2+2+2+15 = **61** ✅
+
+#### variant/size 배정 규칙 (T6 어휘 승계 — 행별 표 대신 규칙)
+
+원본 배경/여백에서 기계적으로 정한다. 예외는 구현 시 각 발생 위에 근거 주석을 남긴다.
+
+| 원본 신호 | variant |
+|---|---|
+| `bg-primary` | `default` |
+| `bg-destructive` | `destructive` |
+| `border` 보유 + 배경 없음 | `outline` |
+| `text-primary` + `hover:underline` (텍스트 링크형) | `link` |
+| 그 외(투명 + hover만) | `ghost` |
+
+| 원본 신호 | size |
+|---|---|
+| 아이콘 전용 `p-1` / `p-1.5` | `icon-xs` / `icon-sm` |
+| `text-xs` | `xs` |
+| `text-sm` + `px-3 py-1.5` | `default` |
+| `px-4 py-2` | `lg` |
+
+★ `type="submit"` 은 verbatim 이관한다 — `CreateSprintForm:63`이 유일한 submit이며 `type="button"`
+으로 바꾸면 폼 전송이 죽는다.
+
+★ `DashboardGrid.tsx:136` 은 세션 2 재열거가 찾아낸 **신규 등재분**(초안 T6·T7 어디에도 없었다).
+
 ### 남은 작업 — Task 7~10
 
 #### 재열거 정본 (2026-07-25 세션 2 — T6 착수 직전 전수 재계수)
