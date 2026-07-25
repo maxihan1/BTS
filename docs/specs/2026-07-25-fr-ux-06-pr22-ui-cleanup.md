@@ -232,3 +232,126 @@ Tailwind `text-chart-1` + `fill="currentColor"` 우회를 쓴다.
 - `--syntax-*` 5종 동결 해제.
 - `AlertDialog` 2파일(`auth/AccountLinkCard`·`admin/SchemeInUseModal`) → `ui/alert-dialog` 래퍼 신설 (별도 스코프, 기존 후속).
 - Pretendard 한글 웹폰트 (ADR §후속 — 토큰 PR과 엮지 말 것).
+
+---
+
+## 14. Brainstorming Sanity Check — gap 9건 (2026-07-25)
+
+Phase B는 스펙을 재작성하지 않고 **가정을 반증**하는 데 집중했다. 결과 2건은 스펙이 틀렸고(무회귀에 유리),
+2건은 미해결 결정이며, 2건은 스펙이 통째로 빠뜨린 필수 작업이다.
+
+### ✅ G1 (반증 — 스펙보다 유리). Tailwind 유틸리티가 이미 배선돼 있다
+
+`index.css` `@theme` 45~59행에 **`--color-chart-1~5: var(--chart-N)`가 이미 존재**한다.
+즉 `bg-chart-1` · `text-chart-1` · `fill-chart-1` 유틸리티가 **이미 생성되고 있다**(값이 무채색일 뿐).
+→ EC6의 우회안(`fill="currentColor"` + `text-chart-1`)이 **추가 배선 없이 즉시 사용 가능**하다.
+`var(--chart-1)` 직접 전달이 실패해도 대안이 확보돼 있으므로 EC6은 리스크에서 내려온다.
+
+### ✅ G2 (반증 — 스펙 §5 오류 정정). `bg-muted` → `bg-(--bg-neutral)`는 정확한 no-op
+
+스펙 §5는 "색이 미세하게 다르다"고 적었으나 **실측 결과 두 토큰 값이 완전히 동일**하다.
+
+| | 라이트 | 다크 |
+|---|---|---|
+| `--muted` (`index.css:154`/`291`) | `#F7F8F9` | `#BCD6F00A` |
+| `--bg-neutral` (`index.css:216`/`346`) | `#F7F8F9` | `#BCD6F00A` |
+
+→ **EC5 폐기.** 인라인 스켈레톤 33발생의 `bg-muted` → `Skeleton` 프리미티브 교체는 **시각 변화 0**이며
+무회귀 주장이 성립한다. 시각 변화가 남는 것은 차트(S4)와 범주색(S5)뿐이다.
+
+### ✅ G9 (반증 — EC10 해소). E2E는 색·스켈레톤 클래스에 의존하지 않는다
+
+`grep -rn 'animate-pulse|bg-purple|bg-teal|bg-violet|bg-slate|#6366f1' apps/web/e2e` = **0건**.
+`FilteredEmptyState` 문구에 의존하는 것은 **유닛 1건**뿐 — `routes/__tests__/projects.board.test.tsx:639`
+(`/조건에 맞는 카드가 없습니다/i`). e2e의 "필터 초기화" 3건은 전부 **주석·테스트 제목**이고 셀렉터가 아니다.
+→ 통합 시 보드 문구만 verbatim 보존하면 된다.
+
+### ❓ G3 (미해결 — Maxi 결정 필요). ADS 데이터 시각화 팔레트의 **정본이 존재하지 않는다**
+
+ADR §D7은 "ADS 데이터 시각화 팔레트로 채운다"고 방향만 정했고, **구체 hex가 어느 문서에도 없다.**
+디자인 스펙 §5.2는 core 팔레트(Blue/Green/Red/Orange/Purple 램프)만 담고 있다.
+게다가 §5.1이 기록하듯 `atlassian.design`은 JS 렌더링이라 **PR3에서 전수 검증에 실패한 전력**이 있다.
+
+선택지 3안.
+
+| | 출처 | 장점 | 단점 |
+|---|---|---|---|
+| **가. core 팔레트에서 파생** | 디자인 스펙 §5.2의 이미 검증된 램프에서 5 hue 선정(Blue700·Green600·Purple700·Orange600·Red700 등) | 추가 외부 조회 0 · 이미 PR3가 대비 검증한 값 · 나머지 UI와 색 일관 | ADS 공식 dataviz 팔레트와 다를 수 있음 |
+| **나. 현 하드코딩 hex를 ADS 근사로 매핑** | `#6366f1`→Purple, `#f59e0b`→Orange … | 시각 변화 최소 | 원본이 임의값이라 "왜 이 색?"의 근거가 약함 |
+| **다. atlassian.design 재조회** | 외부 | 공식성 | PR3 실패 전력 · 검증 불가 시 작업 중단 |
+
+**권장 = 가.** PR3가 "팔레트는 정본이 아니다"를 겪고 **이미 검증한 값만 쓰는** 원칙을 세웠으므로 일관된다.
+
+### ❓ G4 (미해결 — 설계 필요). 재발 방지 락(F7)이 제약과 충돌한다
+
+- `eslint-plugin-react` **미설치**(`eslint-plugin-react-hooks`·`react-refresh`만) → `react/forbid-elements` 사용 불가.
+  플러그인 추가는 **NFR-N5(신규 의존성 0)와 충돌**.
+- 게다가 §4.1의 OUT 판정분(P4 `role="tab"` 4 · P5 옵션행 · P6 카드영역)이 **정당하게 살아남으므로**
+  원시 `<button>` 전면 금지 락은 애초에 불가능하다 — 예외 목록이 필요하다.
+
+선택지.
+
+| | 방식 | 비고 |
+|---|---|---|
+| **가** | `no-restricted-syntax` (플러그인 불필요·내장 룰)로 `JSXOpeningElement[name.name='button']` 차단 + OUT 파일 `overrides`에서 off | PR8 ESLint 락과 동일 구조 · 신규 의존성 0 |
+| **나** | 테스트 기반 가드 (`state-tokens.test.ts` 선례) — 소스를 읽어 발생 수 상한을 어서션 | 개수 가드는 [[spec-stated-count-becomes-blindfold]] 위험 |
+| **다** | 락 생략, 문서 규칙만 | PR8이 "락 없으면 재발"을 이미 겪음 → 기각 |
+
+**권장 = 가.** 스켈레톤 락도 같은 룰로 `JSXAttribute[name.name='className']` 값에 `animate-pulse` 포함 시 차단 가능.
+★ 락은 반드시 **비어있지 않음을 먼저 증명**한다(락 → 위반 실재 error 확인 → 수정 → 0).
+
+### ⚠️ G5 (스펙 누락 — 필수). FR-UX-06 **D단계 체크박스가 하나도 안 채워져 있다**
+
+`docs/plan/product/personalization.md:170~176` 실측.
+
+| 단계 | 현재 | PR22에서 |
+|---|---|---|
+| D1 도메인 (디자인 토큰 + 프리미티브 15종) | `[ ]` | **PR2·PR3로 완료됨 → 체크** |
+| D2 명세 | `[x]` (#279) | 유지 |
+| D3 데이터 모델 (없음) | `[ ]` | 해당 없음 → 체크 |
+| D4 백엔드 (없음) | `[ ]` | 해당 없음 → 체크 |
+| D5 백엔드 테스트 (해당 없음) | `[ ]` | 해당 없음 → 체크 |
+| D6 프론트 UI | `[ ]` | **PR22 완료 시 체크** |
+| D7 E2E | `[ ]` | **PR22 완료 시 체크** |
+
+★ 같은 줄의 **"20 PR 체인"은 실제 22 PR과 drift** → 문구도 정정한다.
+PR22는 FR-UX-06의 **마지막 PR**이므로 D단계 전량 마킹 + **BC 완료 게이트 해제**가 본 PR의 책임이다
+(허브 메모리가 "personalization 12/13 … UX-06 개편 진행 중 → 완료게이트 해제"로 기록한 상태를 되돌리는 작업).
+CLAUDE.md §명세/범위 변경 시 전수 동기화 체크리스트 3·6·7·8번 대상.
+
+### ⚠️ G6 (스펙 누락 — 필수). `DESIGN.md`가 PR22를 명시적으로 기다리고 있다
+
+- `DESIGN.md:114` — 표 행 `| --chart-1 ~ --chart-5 | 5 | OKLCH 회색조(그대로 유지, 색 구분 없음) | **차트/시각화 도입 PR(PR22) 몫** |`
+- `DESIGN.md:106` — "여전히 §C 미소비로 남은 것은 … **범주색(이슈타입·차트, PR22 `--chart-*` 소관)**"
+
+→ **DESIGN.md 갱신이 본 PR의 필수 산출물**이다(스펙 §12 완료 기준에 누락돼 있었음).
+그리고 106행은 **범주색을 이미 PR22 소관으로 문서화**하고 있다 → §9 스코프 질문에서 **B가 문서 정합적**이라는 방증.
+
+### ℹ️ G7 (확인). 동결 배열 분리는 근거가 있다
+
+`state-tokens.test.ts:221` 동결 describe가 `--chart-*` 5 + `--syntax-*` 5를 **한 배열**로 묶고 있다.
+`DESIGN.md:130`이 `--syntax-*`를 **"동결 계약 — AQL textarea와 overlay `<pre>`가 같은 값을 참조해야
+정렬이 깨지지 않으므로 임의 변경 금지"**로 명시하므로, EC8대로 **`--chart-*`만 해제**하는 것이 정당하다.
+
+### ℹ️ G8 (스코프 방증). 문서 3곳이 범주색을 PR22 소관으로 지목
+
+ADR §D7(차트) · `DESIGN.md:106`(범주색+차트) · PR4 이연 기록. → §9 **스코프 B**가 문서 정합적.
+
+### 판정
+
+- **수정 가능 gap (G1·G2·G9·G7)** — 본 절에 정정 기록 완료. 스펙 §5 EC5는 폐기, EC6·EC10은 리스크 하향.
+- **스펙 누락 (G5·G6)** — §2 FR에 **PR22-F8(D단계 마킹 + 전수 동기화)**, **PR22-F9(DESIGN.md 갱신)** 추가로 흡수. §12 완료 기준 11·12번 추가.
+- **Maxi 결정 필요 (G3·G4)** — 게이트 1 상정. §9 스코프와 함께 묻는다.
+
+## 15. 추가 FR (Brainstorming 흡수분)
+
+| ID | 요구사항 |
+|---|---|
+| PR22-F8 | `docs/plan/product/personalization.md` FR-UX-06 **D1·D3~D7 체크박스 마킹** + "20 PR 체인"→"22 PR 체인" 정정 + **BC 완료 게이트 해제 문구 원복**. CLAUDE.md 전수 동기화 체크리스트 3·4·6·7·8 동반 확인 |
+| PR22-F9 | `DESIGN.md` §C 표(`--chart-*` 행)·106행 서술 갱신 + (스코프 B) `--type-*`/`--prio-*` 절 신설 |
+
+## 16. 추가 완료 기준
+
+11. `docs/plan/product/personalization.md`의 FR-UX-06 D1~D7이 전부 `[x]`이고 "22 PR 체인"으로 정정됐다.
+12. `DESIGN.md`에 "PR22 몫"·"PR22 소관" 미결 표기가 **0건**이다.
+13. `bash scripts/verify-master-plan.sh` EXIT 0 (129/129) — D단계 마킹 후 재확인.
