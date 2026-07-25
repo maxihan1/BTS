@@ -115,16 +115,29 @@ class PublicDashboardErrorTokenLeakTest {
     }
 
     /**
-     * G2 실증 — 컨트롤러-로컬 핸들러가 advice 보다 **우선 적용**된다.
+     * G2 실증 — 컨트롤러-로컬 catch-all 이 advice 의 **동일 시그니처** catch-all 을 이긴다.
      *
      * 이 성질이 설계의 토대다. 틀리면 봉합 방식 전체가 무너지므로 단정하지 않고 관측한다.
-     * advice 가 등록된 상태에서도 404 의 errorCode 가 컨트롤러-로컬 값이면 우선 적용이 확정된다.
+     *
+     * ## 판별자 선택 — 왜 errorCode 로는 증명이 안 되나
+     * 404 의 `errorCode` 는 판별자가 **못 된다**. advice 에는 `PublicDashboardNotFoundException` 매핑이
+     * 애초에 없어서, 컨트롤러-로컬이 이기든 지든 결과가 같기 때문이다(vacuous).
+     * 500 도 `errorCode`·`detail` 은 양쪽이 동일해 구분되지 않는다.
+     *
+     * **유일한 판별자는 500 응답의 `instance`** 다. 컨트롤러-로컬이 이기면 고정 경로가 들어가고,
+     * advice 가 이기면 `instance` 가 비어 Spring 이 **원문 토큰이 든 요청 URI** 로 채운다.
+     * 즉 이 단언이 실패하면 곧 토큰 유출이며, 우선순위 전제가 깨졌다는 뜻이다.
      */
     @Test
-    fun `G2 — advice 가 등록돼 있어도 컨트롤러 로컬 핸들러가 우선 적용된다`() {
-        every { service.getPublicByToken(secretToken) } throws PublicDashboardNotFoundException()
+    fun `G2 — 컨트롤러 로컬 catch-all 이 advice 의 동일 매핑을 이긴다`() {
+        every { service.getPublicByToken(secretToken) } throws IllegalStateException("boom")
 
-        assertThat(bodyOf(call())).contains("NOTIF_DASHBOARD_NOT_FOUND")
+        val body = bodyOf(call())
+
+        assertThat(body)
+            .describedAs("500 의 instance 가 고정 경로가 아니다 — advice 가 이겼고 요청 URI 로 채워졌다")
+            .contains("\"instance\":\"/api/v1/public/dashboards\"")
+        assertThat(body).doesNotContain(secretToken)
     }
 
     /** R3 회귀가드 — 기능은 한 글자도 바뀌지 않는다(상태·errorCode·detail 불변). */
