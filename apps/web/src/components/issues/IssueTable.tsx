@@ -6,6 +6,7 @@ import { useDateFormat } from '@/hooks/use-date-format'
 import type { IssueResponse, IssueSortField } from '@/api/issues'
 import { ISSUE_COLUMNS, getSortField } from './issue-columns'
 import type { IssueColumnDef } from './issue-columns'
+import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입
@@ -75,10 +76,14 @@ function SortableHeaderCell({ column, sortField, sort, onSort }: SortableHeaderC
 
   return (
     <TableHead className={column.className} aria-sort={ariaSort}>
-      <button
+      {/* PR22 — group/ 접두사 유틸리티(group-hover:opacity-40)가 자식 아이콘에 걸려 있어
+          className 의 `group` 클래스를 유지해야 한다. 프리미티브는 group/button 을 따로 쓴다. */}
+      <Button
         type="button"
+        variant="ghost"
+        size="xs"
         onClick={() => onSort(sortField)}
-        className="group -mx-1 inline-flex cursor-pointer items-center gap-1 rounded px-1 hover:bg-(--bg-neutral-hover)"
+        className="group -mx-1 cursor-pointer rounded px-1 hover:bg-(--bg-neutral-hover)"
       >
         {column.header}
         {isActive && sort !== null ? (
@@ -90,7 +95,7 @@ function SortableHeaderCell({ column, sortField, sort, onSort }: SortableHeaderC
         ) : (
           <ChevronsUpDown className="size-3.5 opacity-0 group-hover:opacity-40" aria-hidden="true" />
         )}
-      </button>
+      </Button>
     </TableHead>
   )
 }

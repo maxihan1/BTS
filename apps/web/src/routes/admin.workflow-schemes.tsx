@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import { useState } from 'react'
 import { WorkflowSchemeSidebar } from '@/components/admin/WorkflowSchemeSidebar'
 import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
+import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 페이지 컴포넌트
@@ -95,13 +96,15 @@ function EmptyStatePlaceholder({ onAddNew }: EmptyStatePlaceholderProps): JSX.El
           {workflowSchemeLabels.emptyState.message}
         </p>
       </div>
-      <button
+      <Button
         type="button"
+        variant="outline"
+        size="default"
         onClick={onAddNew}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
+        className="gap-1.5 px-3"
       >
         {workflowSchemeLabels.emptyState.addSchemeButton}
-      </button>
+      </Button>
     </div>
   )
 }

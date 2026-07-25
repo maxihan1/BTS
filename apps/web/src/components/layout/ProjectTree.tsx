@@ -7,6 +7,7 @@ import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
 import { navLabels } from '@/i18n/nav-labels'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { Project } from '@/api/projects'
+import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입
@@ -154,6 +155,8 @@ interface ProjectSubLinkGroupProps {
 function ProjectSubLinkGroup({ projectKey, label, links, expanded, onToggle }: ProjectSubLinkGroupProps): JSX.Element {
   return (
     <li>
+      {/* PR22 OUT — P6 전체 클릭 영역: GROUP_DISCLOSURE_BUTTON_CLASS 가 w-full justify-start 로
+          좌측 정렬 전체폭 행을 만들며, Button의 justify-center와 충돌한다 */}
       <button
         type="button"
         aria-expanded={expanded}
@@ -269,8 +272,10 @@ function ProjectTreeExpandedContent({
 function ProjectTreeRowHeader({ project, isActive, expanded, onToggle }: ProjectTreeRowProps): JSX.Element {
   return (
     <div className="flex items-center gap-1">
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-xs"
         aria-expanded={expanded}
         aria-label={`${project.name} 하위 메뉴`}
         onClick={onToggle}
@@ -281,7 +286,7 @@ function ProjectTreeRowHeader({ project, isActive, expanded, onToggle }: Project
         ) : (
           <ChevronRight aria-hidden="true" className={TREE_ICON_CLASS} />
         )}
-      </button>
+      </Button>
       <Link
         to={PROJECT_BOARD_PATH}
         params={{ projectKey: project.key }}

@@ -6,6 +6,7 @@ import type { UserSummary } from '@/api/users'
 import { inboxLabels } from '@/i18n/inbox-labels'
 import { cn } from '@/lib/utils'
 import { useDebounce } from '@/hooks/use-debounce'
+import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -187,15 +188,18 @@ export function SenderAutocomplete({ selectedSenderId, onSenderChange }: SenderA
         /* 발신자 선택 완료 상태 — 이름 + 해제 버튼 */
         <div className="flex h-9 items-center gap-1 rounded-md border border-input bg-transparent px-3 text-sm">
           <span className="flex-1 truncate">{resolveDisplayName(selectedSender)}</span>
-          <button
+          {/* PR22 — plan 초안은 이 발생을 P5 옵션 행이라 적었으나 실측은 선택칩의 × 해제 버튼이다(IN) */}
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-xs"
             onClick={handleSenderClear}
             aria-label={inboxLabels.filter.senderClear}
             className="shrink-0 text-muted-foreground hover:text-foreground"
             data-testid="inbox-filter-sender-clear"
           >
             ×
-          </button>
+          </Button>
         </div>
       ) : (
         /* 발신자 검색 입력 */

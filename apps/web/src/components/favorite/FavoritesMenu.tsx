@@ -18,6 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
+import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입별 메타 데이터 — 아이콘·라우트·그룹명 매핑 테이블 (동기 타입 3종)
@@ -198,13 +199,16 @@ export const FavoritesMenu = () => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button
+        {/* PR22 — asChild 하위: Radix가 aria-expanded/data-state 를 주입하고 Button의 ...props 전개로 통과한다 */}
+        <Button
           type="button"
-          className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium hover:bg-accent"
+          variant="ghost"
+          size="icon"
+          className="rounded-md"
           aria-label={favoriteLabels.dropdownTriggerAriaLabel}
         >
           <Star className="size-4" />
-        </button>
+        </Button>
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-64">

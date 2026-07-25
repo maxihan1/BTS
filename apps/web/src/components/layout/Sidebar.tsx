@@ -18,6 +18,7 @@ import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
 import { FavoritesMenu } from '@/components/favorite/FavoritesMenu'
 import { navLabels } from '@/i18n/nav-labels'
 import { ProjectTree } from './ProjectTree'
+import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -115,14 +116,16 @@ export function Sidebar(): JSX.Element {
         </nav>
       )}
 
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-sm"
         onClick={toggle}
         aria-label={collapsed ? navLabels.expandSidebar : navLabels.collapseSidebar}
-        className="mt-auto rounded-md p-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        className="mt-auto rounded-md text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
       >
         {collapsed ? '»' : '«'}
-      </button>
+      </Button>
     </aside>
   )
 }

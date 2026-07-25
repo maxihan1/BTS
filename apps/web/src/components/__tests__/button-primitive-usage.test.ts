@@ -126,8 +126,12 @@ interface RawButton {
   readonly file: string
   /** 1-indexed — 실패 메시지에서 바로 찾아갈 수 있게 파일 행 번호 그대로 쓴다 */
   readonly line: number
-  /** 직전 비어있지 않은 줄 — OUT 사유 주석 판정 대상 */
-  readonly precedingLine: string
+  /**
+   * 직전에 붙어 있는 **주석 블록 전체**(여러 줄 포함) — OUT 사유 판정 대상.
+   * 한 줄만 보면 `{/* … 첫 줄\n … 둘째 줄 *␘/}` 형태에서 마커가 첫 줄에 있을 때 놓친다
+   * (`ProjectTree` 에서 실제로 놓쳤다).
+   */
+  readonly precedingComment: string
 }
 
 /**
@@ -170,14 +174,22 @@ function rawButtons(file: string): RawButton[] {
   codeLines.forEach((codeLine, index) => {
     if (!codeLine.includes('<button')) return
 
-    // 직전 "비어있지 않은" 줄을 찾는다. 빈 줄이 끼어도 사유 주석을 인정한다.
-    let cursor = index - 1
-    while (cursor >= 0 && (originalLines[cursor] ?? '').trim() === '') cursor -= 1
+    // 직전에 붙은 주석 블록을 통째로 모은다.
+    // 판정식 — 원문과 블랭킹본이 다른 줄 = 그 줄에 주석이 들어 있다. 빈 줄은 건너뛴다.
+    // 이렇게 하면 한 줄 주석·JSDoc·여러 줄 JSX 주석을 형태에 무관하게 같은 방식으로 인정한다.
+    const collected: string[] = []
+    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+      const raw = originalLines[cursor] ?? ''
+      const blanked = codeLines[cursor] ?? ''
+      if (raw.trim() === '') continue
+      if (raw === blanked) break // 주석이 없는 실코드 줄 → 블록 끝
+      collected.unshift(raw)
+    }
 
     found.push({
       file,
       line: index + 1,
-      precedingLine: originalLines[cursor] ?? '',
+      precedingComment: collected.join('\n'),
     })
   })
 
@@ -236,7 +248,7 @@ describe('FR-UX-06 PR22 — 원시 <button>은 Button 프리미티브로 흡수�
 
   it('남아 있는 모든 원시 <button>은 직전 줄에 PR22 OUT 사유 주석을 갖는다', () => {
     const unjustified = ALL_RAW_BUTTONS.filter(
-      (b) => !b.precedingLine.includes(OUT_MARKER),
+      (b) => !b.precedingComment.includes(OUT_MARKER),
     ).map((b) => `${b.file}:${b.line}`)
 
     // 개수 상한이 아니라 **목록 전수 비교** — 개수 가드는 새 위반이 늘어도 숫자만 올리면 통과한다.
@@ -245,7 +257,7 @@ describe('FR-UX-06 PR22 — 원시 <button>은 Button 프리미티브로 흡수�
 
   it('사유 주석이 붙은 OUT 발생이 기대 목록과 정확히 일치한다 (누락도 초과도 차단)', () => {
     const actual = ALL_RAW_BUTTONS.map((b) => {
-      const matched = OUT_PATTERN_RE.exec(b.precedingLine)
+      const matched = OUT_PATTERN_RE.exec(b.precedingComment)
       return `${b.file}::${matched?.[1] ?? 'NO_PATTERN_CODE'}`
     }).sort()
 

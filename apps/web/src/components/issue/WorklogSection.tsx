@@ -11,6 +11,7 @@ import { useUsersByIds } from '@/hooks/use-users'
 import { useDateFormat } from '@/hooks/use-date-format'
 import { issueQueryKey } from '@/api/useUpdateIssueSummary'
 import { worklogStrings } from '@/i18n/ko'
+import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 쿼리키 팩토리
@@ -258,15 +259,17 @@ function WorklogAddForm({
       )}
 
       {/* 추가 버튼 */}
-      <button
+      <Button
         type="button"
+        variant="default"
+        size="default"
         onClick={() => { mutate() }}
         disabled={isAddDisabled || isPending}
         aria-label={worklogStrings.worklogAddAriaLabel}
-        className="px-3 py-2 min-h-[44px] bg-primary text-primary-foreground rounded text-sm font-medium hover:bg-primary/90 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40 disabled:cursor-not-allowed"
+        className="min-h-[44px] rounded px-3 hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {isPending ? '추가 중...' : worklogStrings.worklogAddButton}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -345,22 +348,26 @@ function WorklogEditForm({
         </div>
       </div>
       <div className="flex gap-2">
-        <button
+        <Button
           type="button"
+          variant="default"
+          size="xs"
           onClick={() => { onSave(hm) }}
           disabled={isSaveDisabled}
-          className="px-2 py-1 min-h-[32px] bg-primary text-primary-foreground text-xs rounded hover:bg-primary/90 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40 disabled:cursor-not-allowed"
+          className="min-h-[32px] rounded hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {worklogStrings.worklogSaveButton}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="outline"
+          size="xs"
           onClick={onCancel}
           disabled={isPending}
-          className="px-2 py-1 min-h-[32px] border border-border text-xs rounded hover:bg-muted focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40 disabled:cursor-not-allowed"
+          className="min-h-[32px] rounded disabled:opacity-40 disabled:cursor-not-allowed"
         >
           취소
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -476,46 +483,56 @@ function WorklogRow({
           {/* 수정/삭제 버튼 (본인 + canUpdate) */}
           {isOwner && !isConfirmingDelete && (
             <div className="flex gap-1 shrink-0">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="xs"
                 onClick={() => { setIsEditing(true) }}
                 aria-label={worklogStrings.worklogEditAriaLabel}
-                className="px-1.5 py-1 min-h-[32px] text-xs text-muted-foreground hover:text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                className="min-h-[32px] px-1.5 text-muted-foreground hover:text-foreground"
               >
                 {worklogStrings.worklogEditButton}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="ghost"
+                size="xs"
                 onClick={() => { setIsConfirmingDelete(true) }}
                 aria-label={worklogStrings.worklogDeleteAriaLabel}
-                className="px-1.5 py-1 min-h-[32px] text-xs text-muted-foreground hover:text-destructive focus:outline-none focus:ring-1 focus:ring-ring"
+                className="min-h-[32px] px-1.5 text-muted-foreground hover:text-destructive"
               >
                 {worklogStrings.worklogDeleteButton}
-              </button>
+              </Button>
             </div>
           )}
 
           {/* 인라인 삭제 확인 */}
           {isOwner && isConfirmingDelete && (
             <div className="flex gap-1 shrink-0">
-              <button
+              {/* PR22 — 원본이 bg-destructive 솔리드라 variant="destructive"(연한 배경)와 다르다.
+                  className 으로 솔리드를 유지해 삭제 확인의 강조 의도를 보존한다. */}
+              <Button
                 type="button"
+                variant="destructive"
+                size="xs"
                 onClick={() => { deleteMutate() }}
                 disabled={isDeleting}
                 aria-label="확인"
-                className="px-2 py-1 min-h-[32px] text-xs bg-destructive text-destructive-foreground rounded hover:bg-destructive/90 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40 disabled:cursor-not-allowed"
+                className="min-h-[32px] rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 확인
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="outline"
+                size="xs"
                 onClick={() => { setIsConfirmingDelete(false) }}
                 disabled={isDeleting}
                 aria-label="취소"
-                className="px-2 py-1 min-h-[32px] text-xs border border-border rounded hover:bg-muted focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40 disabled:cursor-not-allowed"
+                className="min-h-[32px] rounded disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 취소
-              </button>
+              </Button>
             </div>
           )}
         </div>

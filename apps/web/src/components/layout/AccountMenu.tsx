@@ -16,6 +16,7 @@ import { StatusModal } from '@/components/status/StatusModal'
 import { OooModal } from '@/components/ooo/OooModal'
 import { oooLabels } from '@/i18n/ooo-labels'
 import { formatOooReturnDate } from '@/lib/ooo-datetime'
+import { Button } from '@/components/ui/button'
 
 /**
  * 계정 트리거에 표시할 라벨을 계산한다 — displayName 우선, 없으면 username, 둘 다 없으면 빈 문자열.
@@ -68,9 +69,12 @@ export function AccountMenu() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
+          {/* PR22 — asChild 하위: Radix가 aria-expanded/data-state 를 주입하고 Button의 ...props 전개로 통과한다 */}
+          <Button
             type="button"
-            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium hover:bg-accent"
+            variant="ghost"
+            size="default"
+            className="gap-2 rounded-md px-3"
             aria-label={`${accountLabel}${statusText !== null ? `, ${statusText}` : ''}${oooSuffix} 계정 메뉴`}
           >
             {/* aria-hidden — 버튼의 aria-label이 접근 가능한 이름을 이미 제공하므로 내부 요소 중복 announce 방지 */}
@@ -102,7 +106,7 @@ export function AccountMenu() {
                 </span>
               )}
             </span>
-          </button>
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onSelect={() => { setStatusOpen(true) }}>상태 설정</DropdownMenuItem>

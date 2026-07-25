@@ -16,6 +16,7 @@ import { FavoriteButton } from '@/components/favorite/FavoriteButton'
 import { GadgetCatalogModal } from '@/components/dashboard/GadgetCatalogModal'
 import { ShareDashboardModal } from '@/components/dashboard/ShareDashboardModal'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -113,14 +114,16 @@ function SettingsModal({
       <div className="bg-background rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">대시보드 설정</h2>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-xs"
             aria-label="설정 닫기"
-            className="rounded p-1 hover:bg-muted"
+            className="rounded hover:bg-muted"
             onClick={onClose}
           >
             ✕
-          </button>
+          </Button>
         </div>
         <DashboardForm
           mode="edit"
@@ -336,81 +339,97 @@ export function DashboardDetailPage({
             {showDeleteConfirm ? (
               <>
                 <span className="text-sm text-muted-foreground">{dashboardLabels.detail.deleteConfirm}</span>
-                <button
+                {/* PR22 — 원본이 bg-destructive 솔리드라 variant="destructive"(연한 배경)와 다르다.
+                    className 으로 솔리드를 유지해 삭제 확인의 강조 의도를 보존한다. */}
+                <Button
                   type="button"
-                  className="inline-flex items-center gap-1 rounded-md bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors min-h-[44px] disabled:opacity-50"
+                  variant="destructive"
+                  size="default"
+                  className="min-h-[44px] gap-1 rounded-md bg-destructive px-3 text-destructive-foreground hover:bg-destructive/90"
                   aria-label={dashboardLabels.detail.confirmDeleteAriaLabel}
                   disabled={isDeleting}
                   onClick={handleDeleteConfirm}
                 >
                   {dashboardLabels.detail.confirmButton}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors min-h-[44px] disabled:opacity-50"
+                  variant="outline"
+                  size="default"
+                  className="min-h-[44px] gap-1 rounded-md px-3"
                   aria-label={dashboardLabels.detail.cancelDeleteAriaLabel}
                   disabled={isDeleting}
                   onClick={() => setShowDeleteConfirm(false)}
                 >
                   {dashboardLabels.detail.cancelButton}
-                </button>
+                </Button>
               </>
             ) : (
               <>
                 {/* 가젯 추가 버튼 — 카탈로그 모달 열기 (C4: 위젯 추가 일원화) */}
-                <button
+                <Button
                   type="button"
-                  className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors min-h-[44px]"
+                  variant="outline"
+                  size="default"
+                  className="min-h-[44px] gap-2 rounded-md px-3"
                   aria-label="가젯 추가"
                   onClick={() => setCatalogOpen(true)}
                 >
                   <Plus className="h-4 w-4" aria-hidden="true" />
                   가젯 추가
-                </button>
+                </Button>
 
                 {/* 공유 버튼 — 소유자 전용 (FR-8), 공유 모달을 조건부 마운트 */}
-                <button
+                <Button
                   type="button"
-                  className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors min-h-[44px]"
+                  variant="outline"
+                  size="default"
+                  className="min-h-[44px] gap-2 rounded-md px-3"
                   aria-label={dashboardLabels.share.modalTitle}
                   onClick={() => setShareOpen(true)}
                 >
                   <Share2 className="h-4 w-4" aria-hidden="true" />
                   {dashboardLabels.share.modalTitle}
-                </button>
+                </Button>
 
                 {/* 설정 버튼 */}
-                <button
+                <Button
                   type="button"
-                  className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors min-h-[44px]"
+                  variant="outline"
+                  size="default"
+                  className="min-h-[44px] gap-2 rounded-md px-3"
                   aria-label={dashboardLabels.detail.settings}
                   onClick={() => setSettingsOpen(true)}
                 >
                   <Settings className="h-4 w-4" aria-hidden="true" />
                   {dashboardLabels.detail.settings}
-                </button>
+                </Button>
 
                 {/* 삭제 버튼 */}
-                <button
+                <Button
                   type="button"
-                  className="inline-flex items-center gap-2 rounded-md border border-destructive/50 px-3 py-1.5 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
+                  variant="outline"
+                  size="default"
+                  className="min-h-[44px] gap-2 rounded-md border-destructive/50 px-3 text-destructive hover:bg-destructive/10"
                   aria-label={dashboardLabels.detail.delete}
                   onClick={() => setShowDeleteConfirm(true)}
                 >
                   <Trash2 className="h-4 w-4" aria-hidden="true" />
                   {dashboardLabels.detail.delete}
-                </button>
+                </Button>
 
                 {/* 저장 버튼 */}
-                <button
+                <Button
                   type="button"
-                  className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
+                  variant="default"
+                  size="default"
+                  className="min-h-[44px] gap-2 rounded-md px-4 hover:bg-primary/90 disabled:cursor-not-allowed"
                   aria-label={isSaving ? dashboardLabels.detail.saving : dashboardLabels.detail.save}
                   disabled={isSaving || !dirty}
                   onClick={handleSave}
                 >
                   {isSaving ? dashboardLabels.detail.saving : dashboardLabels.detail.save}
-                </button>
+                </Button>
               </>
             )}
           </div>

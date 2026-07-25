@@ -77,6 +77,7 @@ function BurndownViewToggle({ view, onChange }: BurndownViewToggleProps): JSX.El
       {options.map((option) => {
         const isActive = view === option.value
         return (
+          // PR22 OUT — P4 role="tab": 탭 시맨틱을 직접 지정하므로 Button 프리미티브의 role 처리와 충돌할 위험이 있다
           <button
             key={option.value}
             type="button"
