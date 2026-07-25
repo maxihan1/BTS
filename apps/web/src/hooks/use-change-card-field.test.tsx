@@ -7,6 +7,8 @@ import type { ReactNode } from 'react'
 
 // api/issues 전체 mock — 실제 HTTP 요청 없이 단위 테스트
 vi.mock('@/api/issues')
+// api/epic-children 전체 mock — connectEpicChild/disconnectEpicChild 단위 테스트 (Task 3)
+vi.mock('@/api/epic-children')
 // sonner toast mock — use-reorder-card.test.tsx 관례 재사용
 vi.mock('sonner', () => ({
   toast: {
@@ -17,6 +19,8 @@ vi.mock('sonner', () => ({
 
 import { changeAssignee, updateIssue } from '@/api/issues'
 import type { IssueResponse } from '@/api/issues'
+import { connectEpicChild, disconnectEpicChild } from '@/api/epic-children'
+import type { EpicChildSummary } from '@/api/epic-children'
 import { toast } from 'sonner'
 import type { BoardDetail } from '@/api/boards'
 import { useChangeCardField, patchCardField } from './use-change-card-field'
@@ -97,6 +101,49 @@ function buildPriorityChangedResponse(): IssueResponse {
     assigneeId: USER_1,
     priority: 1,
     version: 2,
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 에픽 2-step 재배치 픽스처 (Task 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const EPIC_A = 'ATLAS-10'
+const EPIC_B = 'ATLAS-20'
+
+/** 1컬럼(카드 2개) — ATLAS-1은 EPIC_A 소속, ATLAS-2는 에픽 없음 */
+const EPIC_BOARD: BoardDetail = {
+  boardId: BOARD_ID,
+  projectKey: 'ATLAS',
+  name: '기본 보드',
+  truncated: false,
+  unplacedCount: 0,
+  swimlaneField: 'EPIC',
+  quickFilters: [],
+  columns: [
+    {
+      columnId: COL_A_ID,
+      stateKey: 'TODO',
+      name: 'To Do',
+      category: 'TODO',
+      displayOrder: 1,
+      wipLimit: null,
+      wipExceeded: false,
+      cards: [
+        { issueKey: 'ATLAS-1', summary: '카드 1', assigneeId: USER_1, version: 1, priority: 3, epicKey: EPIC_A, rank: '0|100000:' },
+        { issueKey: 'ATLAS-2', summary: '카드 2', assigneeId: null, version: 1, priority: 2, epicKey: null, rank: '0|200000:' },
+      ],
+    },
+  ],
+}
+
+/** connectEpicChild 성공 응답 — epicChildSummarySchema와 1:1 대응하는 최소 픽스처 */
+function buildEpicChildSummary(childKey: string): EpicChildSummary {
+  return {
+    key: childKey,
+    summary: '카드 1',
+    typeKey: 'TASK',
+    currentStateKey: 'TODO',
   }
 }
 
@@ -434,6 +481,208 @@ describe('useChangeCardField — filter-aware queryKey', () => {
     expect(unfilteredCache).toBeUndefined()
 
     resolveChange(buildAssigneeChangedResponse())
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// useChangeCardField — 에픽 2-step 재배치 (Task 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('useChangeCardField — 에픽 2-step 재배치', () => {
+  let queryClient: QueryClient
+
+  beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    queryClient.setQueryData(boardKeys.detail(BOARD_ID), EPIC_BOARD)
+  })
+
+  afterEach(() => {
+    queryClient.clear()
+    vi.clearAllMocks()
+  })
+
+  it('T-EP-1: 없음→에픽(1-step) — connectEpicChild 1회만 호출되고 disconnectEpicChild는 호출되지 않는다', async () => {
+    vi.mocked(connectEpicChild).mockResolvedValue(buildEpicChildSummary('ATLAS-2'))
+
+    const { result } = renderHook(() => useChangeCardField(BOARD_ID), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        issueKey: 'ATLAS-2',
+        field: 'epic',
+        fromEpicKey: null,
+        toEpicKey: EPIC_B,
+        expectedVersion: 1,
+      })
+    })
+
+    expect(connectEpicChild).toHaveBeenCalledTimes(1)
+    expect(connectEpicChild).toHaveBeenCalledWith(EPIC_B, 'ATLAS-2')
+    expect(disconnectEpicChild).not.toHaveBeenCalled()
+
+    const cached = queryClient.getQueryData<BoardDetail>(boardKeys.detail(BOARD_ID))
+    const card = cached?.columns[0]?.cards.find((c) => c.issueKey === 'ATLAS-2')
+    expect(card?.epicKey).toBe(EPIC_B)
+  })
+
+  it('T-EP-2: 에픽→없음(1-step) — disconnectEpicChild 1회만 호출되고 connectEpicChild는 호출되지 않는다', async () => {
+    vi.mocked(disconnectEpicChild).mockResolvedValue(undefined)
+
+    const { result } = renderHook(() => useChangeCardField(BOARD_ID), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        issueKey: 'ATLAS-1',
+        field: 'epic',
+        fromEpicKey: EPIC_A,
+        toEpicKey: null,
+        expectedVersion: 1,
+      })
+    })
+
+    expect(disconnectEpicChild).toHaveBeenCalledTimes(1)
+    expect(disconnectEpicChild).toHaveBeenCalledWith(EPIC_A, 'ATLAS-1')
+    expect(connectEpicChild).not.toHaveBeenCalled()
+
+    const cached = queryClient.getQueryData<BoardDetail>(boardKeys.detail(BOARD_ID))
+    const card = cached?.columns[0]?.cards.find((c) => c.issueKey === 'ATLAS-1')
+    expect(card?.epicKey).toBe(null)
+  })
+
+  it('T-EP-3: 에픽A→에픽B(2-step) — disconnectEpicChild가 connectEpicChild보다 먼저 호출된다', async () => {
+    vi.mocked(disconnectEpicChild).mockResolvedValue(undefined)
+    vi.mocked(connectEpicChild).mockResolvedValue(buildEpicChildSummary('ATLAS-1'))
+
+    const { result } = renderHook(() => useChangeCardField(BOARD_ID), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        issueKey: 'ATLAS-1',
+        field: 'epic',
+        fromEpicKey: EPIC_A,
+        toEpicKey: EPIC_B,
+        expectedVersion: 1,
+      })
+    })
+
+    expect(disconnectEpicChild).toHaveBeenCalledTimes(1)
+    expect(disconnectEpicChild).toHaveBeenCalledWith(EPIC_A, 'ATLAS-1')
+    expect(connectEpicChild).toHaveBeenCalledTimes(1)
+    expect(connectEpicChild).toHaveBeenCalledWith(EPIC_B, 'ATLAS-1')
+
+    // 호출 순서 — disconnect가 connect보다 먼저 실행됐는지 invocationCallOrder로 검증
+    const disconnectOrder = vi.mocked(disconnectEpicChild).mock.invocationCallOrder[0]
+    const connectOrder = vi.mocked(connectEpicChild).mock.invocationCallOrder[0]
+    expect(disconnectOrder).toBeDefined()
+    expect(connectOrder).toBeDefined()
+    expect(disconnectOrder as number).toBeLessThan(connectOrder as number)
+
+    const cached = queryClient.getQueryData<BoardDetail>(boardKeys.detail(BOARD_ID))
+    const card = cached?.columns[0]?.cards.find((c) => c.issueKey === 'ATLAS-1')
+    expect(card?.epicKey).toBe(EPIC_B)
+  })
+
+  it('T-EP-4: 부분 실패(disconnect 성공+connect 실패) — best-effort 재connect(from) 호출 + 원에러 throw + 롤백 + toast', async () => {
+    const connectError = Object.assign(new Error('ISSUE_EPIC_CHILD_ALREADY_LINKED'), { status: 409 })
+    vi.mocked(disconnectEpicChild).mockResolvedValue(undefined)
+    vi.mocked(connectEpicChild)
+      .mockRejectedValueOnce(connectError)
+      .mockResolvedValueOnce(buildEpicChildSummary('ATLAS-1'))
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(() => useChangeCardField(BOARD_ID), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      result.current.mutate({
+        issueKey: 'ATLAS-1',
+        field: 'epic',
+        fromEpicKey: EPIC_A,
+        toEpicKey: EPIC_B,
+        expectedVersion: 1,
+      })
+    })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+
+    // disconnect(A) 1회
+    expect(disconnectEpicChild).toHaveBeenCalledTimes(1)
+    expect(disconnectEpicChild).toHaveBeenCalledWith(EPIC_A, 'ATLAS-1')
+
+    // connect는 2회 — 1차 목표(B) 실패 후 2차 best-effort 재connect(A)
+    expect(connectEpicChild).toHaveBeenCalledTimes(2)
+    expect(connectEpicChild).toHaveBeenNthCalledWith(1, EPIC_B, 'ATLAS-1')
+    expect(connectEpicChild).toHaveBeenNthCalledWith(2, EPIC_A, 'ATLAS-1')
+
+    // 낙관 캐시 롤백 — 원래 에픽(EPIC_A)으로 복원
+    const cached = queryClient.getQueryData<BoardDetail>(boardKeys.detail(BOARD_ID))
+    const card = cached?.columns[0]?.cards.find((c) => c.issueKey === 'ATLAS-1')
+    expect(card?.epicKey).toBe(EPIC_A)
+
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('에픽'))
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: boardKeys.detail(BOARD_ID) }),
+    )
+  })
+
+  it('T-EP-5: 낙관적 갱신은 최종값 1회 — disconnect가 아직 응답하지 않은 중간에도 캐시는 EPIC_B이고 null이 노출되지 않는다', async () => {
+    vi.mocked(disconnectEpicChild).mockReturnValue(new Promise<undefined>(() => { /* 응답 보류 */ }))
+    vi.mocked(connectEpicChild).mockResolvedValue(buildEpicChildSummary('ATLAS-1'))
+
+    const { result } = renderHook(() => useChangeCardField(BOARD_ID), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    act(() => {
+      result.current.mutate({
+        issueKey: 'ATLAS-1',
+        field: 'epic',
+        fromEpicKey: EPIC_A,
+        toEpicKey: EPIC_B,
+        expectedVersion: 1,
+      })
+    })
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const cached = queryClient.getQueryData<BoardDetail>(boardKeys.detail(BOARD_ID))
+    const card = cached?.columns[0]?.cards.find((c) => c.issueKey === 'ATLAS-1')
+    // 2-step 진행 중(disconnect 응답 전)에도 낙관 캐시는 최종 목표값 — 중간 null이 노출되지 않는다
+    expect(card?.epicKey).toBe(EPIC_B)
+    expect(card?.epicKey).not.toBe(null)
+  })
+
+  it('T-EP-6: same-value 방어 — from===to면 API 호출 없이 즉시 실패하고 toast.error가 호출된다', async () => {
+    const { result } = renderHook(() => useChangeCardField(BOARD_ID), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      result.current.mutate({
+        issueKey: 'ATLAS-1',
+        field: 'epic',
+        fromEpicKey: EPIC_A,
+        toEpicKey: EPIC_A,
+        expectedVersion: 1,
+      })
+    })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+
+    expect(connectEpicChild).not.toHaveBeenCalled()
+    expect(disconnectEpicChild).not.toHaveBeenCalled()
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('에픽'))
   })
 })
 
