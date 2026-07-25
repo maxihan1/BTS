@@ -245,6 +245,47 @@ RQ-1 경로 구조적 마스킹 · RQ-2 쿼리 값 미로깅(일반 규칙) · R
 3. 자동화 없이 로컬 1회 확인으로 끝내지 않는다 — **G4 가 경고한 실패 양식이고,
    선행 #310 ADR 의 "범위 밖" 항목이 3주 잠복한 것이 같은 양식이다.**
 
+### ★기전 실측 완료 — 계획 확정 전에 핵심 위험을 닫았다 (2026-07-26)
+
+"nginx `map` 단일 정규식으로 이 마스킹이 되는가" 는 **의견을 구할 문제가 아니라 돌려보면 되는 문제**라,
+`nginx:1.27-alpine` 컨테이너로 직접 검증했다. **7개 요구가 한 번에 전부 통과**했다.
+
+검증한 설정 (구현 원안 그대로).
+```nginx
+map $uri $bts_masked_uri {
+    default                             $uri;
+    "~^(.*/)[A-Za-z0-9_-]{40,}(.*)$"    "$1***$2";
+}
+map $http_referer $bts_masked_referer {
+    default                             $http_referer;
+    ""                                  "-";
+    "~^(.*/)[A-Za-z0-9_-]{40,}(.*)$"    "$1***$2";
+}
+log_format bts_masked '$remote_addr "$request_method $bts_masked_uri $server_protocol" '
+                      '$status $body_bytes_sent "$bts_masked_referer" "$http_user_agent" rt=$request_time';
+access_log /dev/stdout bts_masked;
+```
+
+실측 결과.
+
+| 입력 | 로그 출력 (실제) | 검증 요구 |
+|---|---|---|
+| `/ical/feed/<64자hex>.ics` | `/ical/feed/***.ics` | RQ-1 · **E2 확장자 보존 확인** |
+| `/dashboards/shared/<43자b64url>` | `/dashboards/shared/***` | RQ-1 · **SPA 라우트(R5) 커버 확인** |
+| `/api/v1/issues/<UUID 36자>` | `3f2504e0-4f89-11d3-9a0c-0305e82c3301` **그대로** | **E4 과잉마스킹 없음 확인** |
+| `/x/<39자>` (경계 미달 대조군) | 그대로 | **임계값 40 이 정확히 작동함** |
+| `/slack/install/callback?code=…&state=…` | `/slack/install/callback` (**쿼리 전체 소실**) | **RQ-2 목록 없이 자동 충족 확인** |
+| `Referer: …/shared/<43자>` | `…/shared/***` | **RQ-4 확인** |
+| 전 항목 | 메서드·상태·바이트·UA·`rt=` 전부 잔존 | **RQ-3 관측성 보존 확인** |
+
+`nginx -t` 문법 검증도 통과(RQ-6 수단 실증).
+
+**⇒ G1(다중 치환 불가)을 제외한 설계 전제가 전부 실증됐다. 남은 불확실성은 "구현 가능한가" 가 아니라
+"회귀를 어떻게 막는가"(봉인) 다.** Task 3 은 이 검증된 설정을 옮기는 작업이 된다.
+
+⚠️ **여백이 좁다는 사실도 함께 확인됐다.** 임계값 40 · 최대 정상 식별자 36 · 최소 토큰 43 —
+양쪽 여백이 각각 4자·3자뿐이다. **봉인 축 A(길이) 가 장식이 아니라 하중을 받는 이유가 이것이다.**
+
 ### TDD 적용 방식 (대상이 Kotlin/TS 가 아니라 nginx 설정)
 
 `red → green → refactor` 를 다음으로 사상한다.
