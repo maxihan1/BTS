@@ -489,3 +489,179 @@ describe('KanbanBoard — S5 접근성 announcements (DR2)', () => {
     ).toBe('string')
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S6. 필드변경 announcements (FR-7, FR-UX-06 PR21b Task 4)
+// 스윔레인 그룹이 다른 카드 위로 드롭 완료/드래그 중일 때 필드변경 공지 문구를 검증한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ASSIGNEE_ID_ALICE = '10000000-0000-4000-8000-000000000001'
+const ASSIGNEE_ID_BOB = '10000000-0000-4000-8000-000000000002'
+const ASSIGNEE_ID_UNRESOLVED = '10000000-0000-4000-8000-000000000003'
+
+/** ASSIGNEE 스윔레인 보드 — TODO 컬럼에 담당자가 다른 카드 4장(김앨리스·박밥·이름조회실패·미배정) */
+const assigneeSwimlaneBoard: BoardDetail = {
+  ...boardFixture,
+  swimlaneField: 'ASSIGNEE',
+  columns: boardFixture.columns.map((col) =>
+    col.columnId === COL_TODO
+      ? {
+          ...col,
+          cards: [
+            { issueKey: 'ATLAS-1', summary: '담당자 변경 대상', assigneeId: ASSIGNEE_ID_ALICE, version: 1, priority: 1, epicKey: null, rank: null },
+            { issueKey: 'ATLAS-4', summary: '담당자 박밥', assigneeId: ASSIGNEE_ID_BOB, version: 2, priority: 1, epicKey: null, rank: null },
+            { issueKey: 'ATLAS-5', summary: '담당자 이름 조회 실패', assigneeId: ASSIGNEE_ID_UNRESOLVED, version: 3, priority: 1, epicKey: null, rank: null },
+            { issueKey: 'ATLAS-6', summary: '미배정', assigneeId: null, version: 4, priority: 1, epicKey: null, rank: null },
+          ],
+        }
+      : col,
+  ),
+}
+
+// ATLAS-5는 의도적으로 map에 없음 — 이름 조회 실패("미배정" 폴백) 시나리오
+const assigneeSwimlaneNames = new Map<string, CardAssigneeDisplay>([
+  ['ATLAS-1', { state: 'named', name: '김앨리스' }],
+  ['ATLAS-4', { state: 'named', name: '박밥' }],
+])
+
+/** PRIORITY 스윔레인 보드 — TODO 컬럼에 우선순위가 다른 카드 2장 */
+const prioritySwimlaneBoard: BoardDetail = {
+  ...boardFixture,
+  swimlaneField: 'PRIORITY',
+  columns: boardFixture.columns.map((col) =>
+    col.columnId === COL_TODO
+      ? {
+          ...col,
+          cards: [
+            { issueKey: 'ATLAS-1', summary: '우선순위 3', assigneeId: null, version: 1, priority: 3, epicKey: null, rank: null },
+            { issueKey: 'ATLAS-4', summary: '우선순위 1', assigneeId: null, version: 2, priority: 1, epicKey: null, rank: null },
+          ],
+        }
+      : col,
+  ),
+}
+
+/** EPIC 스윔레인 보드 — TODO 컬럼에 에픽이 다른 카드 3장(에픽A·에픽B·에픽없음) */
+const epicSwimlaneBoard: BoardDetail = {
+  ...boardFixture,
+  swimlaneField: 'EPIC',
+  columns: boardFixture.columns.map((col) =>
+    col.columnId === COL_TODO
+      ? {
+          ...col,
+          cards: [
+            { issueKey: 'ATLAS-1', summary: '에픽 ATLAS-10', assigneeId: null, version: 1, priority: 1, epicKey: 'ATLAS-10', rank: null },
+            { issueKey: 'ATLAS-4', summary: '에픽 ATLAS-20', assigneeId: null, version: 2, priority: 1, epicKey: 'ATLAS-20', rank: null },
+            { issueKey: 'ATLAS-5', summary: '에픽 없음', assigneeId: null, version: 3, priority: 1, epicKey: null, rank: null },
+          ],
+        }
+      : col,
+  ),
+}
+
+describe('KanbanBoard — S6 필드변경 announcements (FR-7, PR21b Task 4)', () => {
+  beforeEach(() => {
+    capturedOnDragEnd = undefined
+    capturedAnnouncements = undefined
+  })
+
+  it('S6a: 담당자 스윔레인 — 다른 담당자 줄로 드롭 완료 시 대상 이름을 포함한 완료형 문구를 공지한다', () => {
+    renderBoard(assigneeSwimlaneBoard, assigneeSwimlaneNames)
+    const announcements = capturedAnnouncements
+    expect(announcements).toBeDefined()
+    if (announcements === undefined) return
+
+    const message = announcements.onDragEnd({
+      active: fakeActive('ATLAS-1', { fromColumnId: COL_TODO }),
+      over: fakeOver('ATLAS-4'),
+    })
+    expect(message).toContain('ATLAS-1')
+    expect(message).toContain('박밥')
+    expect(message).toContain('변경했습니다')
+  })
+
+  it('S6b: 담당자 스윔레인 — 미배정 줄로 드롭 완료 시 해제 문구를 공지한다', () => {
+    renderBoard(assigneeSwimlaneBoard, assigneeSwimlaneNames)
+    const announcements = capturedAnnouncements
+    expect(announcements).toBeDefined()
+    if (announcements === undefined) return
+
+    const message = announcements.onDragEnd({
+      active: fakeActive('ATLAS-4', { fromColumnId: COL_TODO }),
+      over: fakeOver('ATLAS-6'),
+    })
+    expect(message).toContain('ATLAS-4')
+    expect(message).toContain('담당자를 해제')
+  })
+
+  it('S6c: 담당자 스윔레인 — 이름 조회 실패 시 "미배정"으로 대체한 문구를 공지한다', () => {
+    renderBoard(assigneeSwimlaneBoard, assigneeSwimlaneNames)
+    const announcements = capturedAnnouncements
+    expect(announcements).toBeDefined()
+    if (announcements === undefined) return
+
+    const message = announcements.onDragEnd({
+      active: fakeActive('ATLAS-1', { fromColumnId: COL_TODO }),
+      over: fakeOver('ATLAS-5'),
+    })
+    expect(message).toContain('미배정')
+    expect(message).toContain('변경했습니다')
+  })
+
+  it('S6d: 담당자 스윔레인 — onDragOver는 예고형("변경합니다") 문구를 공지한다', () => {
+    renderBoard(assigneeSwimlaneBoard, assigneeSwimlaneNames)
+    const announcements = capturedAnnouncements
+    expect(announcements).toBeDefined()
+    if (announcements === undefined) return
+
+    const message = announcements.onDragOver({
+      active: fakeActive('ATLAS-1', { fromColumnId: COL_TODO }),
+      over: fakeOver('ATLAS-4'),
+    })
+    expect(message).toContain('변경합니다')
+    expect(message).not.toContain('변경했습니다')
+  })
+
+  it('S6e: 우선순위 스윔레인 — 다른 우선순위 줄로 드롭 완료 시 대상 숫자를 포함한 문구를 공지한다', () => {
+    renderBoard(prioritySwimlaneBoard)
+    const announcements = capturedAnnouncements
+    expect(announcements).toBeDefined()
+    if (announcements === undefined) return
+
+    const message = announcements.onDragEnd({
+      active: fakeActive('ATLAS-1', { fromColumnId: COL_TODO }),
+      over: fakeOver('ATLAS-4'),
+    })
+    expect(message).toContain('우선순위')
+    expect(message).toContain('1')
+    expect(message).toContain('변경했습니다')
+  })
+
+  it('S6f: 에픽 스윔레인 — 다른 에픽 줄로 드롭 완료 시 대상 에픽 키를 포함한 이동 문구를 공지한다', () => {
+    renderBoard(epicSwimlaneBoard)
+    const announcements = capturedAnnouncements
+    expect(announcements).toBeDefined()
+    if (announcements === undefined) return
+
+    const message = announcements.onDragEnd({
+      active: fakeActive('ATLAS-1', { fromColumnId: COL_TODO }),
+      over: fakeOver('ATLAS-4'),
+    })
+    expect(message).toContain('ATLAS-20')
+    expect(message).toContain('이동했습니다')
+  })
+
+  it('S6g: 에픽 스윔레인 — "에픽 없음" 줄로 드롭 완료 시 해제 문구를 공지한다', () => {
+    renderBoard(epicSwimlaneBoard)
+    const announcements = capturedAnnouncements
+    expect(announcements).toBeDefined()
+    if (announcements === undefined) return
+
+    const message = announcements.onDragEnd({
+      active: fakeActive('ATLAS-1', { fromColumnId: COL_TODO }),
+      over: fakeOver('ATLAS-5'),
+    })
+    expect(message).toContain('ATLAS-1')
+    expect(message).toContain('에픽 연결을 해제')
+  })
+})
