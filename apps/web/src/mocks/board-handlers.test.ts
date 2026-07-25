@@ -11,6 +11,12 @@ import {
   FILTER_BOARD,
   SWIMLANE_BOARD,
 } from './board-fixtures'
+// FR-UX-06 PR21b Task 6 — 필드변경(담당자/우선순위/에픽) MSW stateful 반영 검증.
+// issue-tracking BC 핸들러(changeAssignee/updateIssue/connectEpicChild)를 실제로 호출해
+// issueOverrides를 채운 뒤, board GET이 그 최신값을 오버레이하는지 확인한다(E2E에 가장 근접
+// — server.use로 issueHandlers를 이 테스트 파일 스코프에만 추가 등록, 같은 엔드포인트 핸들러
+// 중복 없음). resetIssueState는 issueOverrides 등 모듈-스코프 state를 테스트 간 격리한다.
+import { issueHandlers, resetIssueState } from './issue-handlers'
 
 const server = setupServer(...boardHandlers)
 
@@ -39,6 +45,10 @@ interface BoardCard {
   version: number
   /** LexoRank 문자열. 아직 rank 미부여 시 null (FR-UX-06 PR21 Task 3) */
   rank: string | null
+  /** 우선순위 (1=Highest ~ 5=Lowest). FR-UX-06 PR21b Task 6 필드변경 반영 검증용. */
+  priority: number
+  /** 소속 에픽 키. 미소속이면 null. FR-UX-06 PR21b Task 6 필드변경 반영 검증용. */
+  epicKey: string | null
 }
 
 interface BoardColumn {
@@ -686,6 +696,96 @@ describe('DELETE /api/v1/boards/:id/quick-filters/:filterId — 퀵필터 삭제
     expect(res.status).toBe(404)
     const body = (await res.json()) as ProblemDetail
     expect(body.errorCode).toBe('AGILE_BOARD_NOT_FOUND')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/boards/:id — 필드변경(담당자/우선순위/에픽) 반영 (FR-UX-06 PR21b Task 6)
+//
+// DEFAULT_BOARD(ATLAS 프로젝트) 카드 ATLAS-1/2/4는 issue-handlers.ts issueFixtureMap에
+// 이미 짝이 맞아 있어(ATLAS-1~5 전부 등록) 별도 fixture 짝시드가 필요 없다 — 실측 확인.
+// ATLAS-EPIC-1은 issueFixtureMap에는 있지만 board에는 없어도 connectEpicChildHandler가
+// resolveIssue로 issueFixtureMap까지 조회하므로 문제 없다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GET /api/v1/boards/:id — 필드변경 반영 (FR-UX-06 PR21b Task 6)', () => {
+  // 이 describe 스코프에서만 issueHandlers를 추가 등록 — 같은 엔드포인트 중복 핸들러 없음
+  // (board GET/PATCH/POST는 boardHandlers, 이슈 PATCH/POST는 issueHandlers로 경로가 겹치지 않는다).
+  beforeEach(() => {
+    server.use(...issueHandlers)
+  })
+  afterEach(() => {
+    resetIssueState()
+  })
+
+  it('changeAssignee 호출 후 → board GET 카드 assigneeId가 최신값 반영', async () => {
+    seedBoard(DEFAULT_BOARD)
+
+    const assigneeRes = await fetch('/api/v1/issues/ATLAS-1/assignee', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assigneeId: BOB_USER_ID, expectedVersion: 0 }),
+    })
+    expect(assigneeRes.status).toBe(200)
+
+    const res = await getBoard(DEFAULT_BOARD.boardId)
+    const body = (await res.json()) as DataResponse<BoardDetail>
+    const cards = body.data.columns.flatMap((c) => c.cards)
+    const atlas1 = cards.find((c) => c.issueKey === 'ATLAS-1')
+    expect(atlas1?.assigneeId).toBe(BOB_USER_ID)
+  })
+
+  it('updateIssue priority 변경 후 → board GET 카드 priority가 최신값 반영', async () => {
+    seedBoard(DEFAULT_BOARD)
+
+    const patchRes = await fetch('/api/v1/issues/ATLAS-2', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priority: 5, expectedVersion: 1 }),
+    })
+    expect(patchRes.status).toBe(200)
+
+    const res = await getBoard(DEFAULT_BOARD.boardId)
+    const body = (await res.json()) as DataResponse<BoardDetail>
+    const cards = body.data.columns.flatMap((c) => c.cards)
+    const atlas2 = cards.find((c) => c.issueKey === 'ATLAS-2')
+    expect(atlas2?.priority).toBe(5)
+  })
+
+  it('connectEpicChild 호출 후 → board GET 카드 epicKey가 최신값 반영', async () => {
+    seedBoard(DEFAULT_BOARD)
+
+    const connectRes = await fetch('/api/v1/issues/ATLAS-EPIC-1/epic-children', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ childKey: 'ATLAS-4' }),
+    })
+    expect(connectRes.status).toBe(201)
+
+    const res = await getBoard(DEFAULT_BOARD.boardId)
+    const body = (await res.json()) as DataResponse<BoardDetail>
+    const cards = body.data.columns.flatMap((c) => c.cards)
+    const atlas4 = cards.find((c) => c.issueKey === 'ATLAS-4')
+    expect(atlas4?.epicKey).toBe('ATLAS-EPIC-1')
+  })
+
+  it('필드변경 이력이 없는 카드는 board 자체 시드값을 그대로 유지 (무회귀)', async () => {
+    seedBoard(DEFAULT_BOARD)
+
+    // ATLAS-1만 변경 — ATLAS-3(DONE 컬럼)은 건드리지 않는다.
+    await fetch('/api/v1/issues/ATLAS-1/assignee', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assigneeId: null, expectedVersion: 0 }),
+    })
+
+    const res = await getBoard(DEFAULT_BOARD.boardId)
+    const body = (await res.json()) as DataResponse<BoardDetail>
+    const cards = body.data.columns.flatMap((c) => c.cards)
+    const atlas3 = cards.find((c) => c.issueKey === 'ATLAS-3')
+    // DEFAULT_BOARD ATLAS-3 시드값 그대로 (board-fixtures.ts DEFAULT_BOARD 참조)
+    expect(atlas3?.assigneeId).toBeNull()
+    expect(atlas3?.priority).toBe(3)
   })
 })
 
