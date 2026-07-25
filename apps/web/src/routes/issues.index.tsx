@@ -589,7 +589,9 @@ export function IssueListPage({
         onClear={clearAll}
       />
 
-      {/* EC1 — 0건 + 필터 있음: 필터 초기화 CTA. 0건 + 필터 없음: 기존 IssueEmptyState */}
+      {/* EC1 — 0건 + 필터 있음: 필터 초기화 CTA. 0건 + 필터 없음: 기존 IssueEmptyState.
+          문구는 흡수 전 로컬 정의의 값을 verbatim 유지한다(NFR-N1). 보드 쪽은 i18n 상수를 쓰지만
+          이슈 쪽 3개 문자열의 i18n 이관은 본 PR 범위 밖이다 — 문구 통일은 별도 판단이 필요하다. */}
       {data.empty && !isEmptyIssueFilter(filter) ? (
         <FilteredEmptyState
           title="필터 조건에 맞는 이슈가 없습니다."
