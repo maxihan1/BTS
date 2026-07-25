@@ -26,14 +26,18 @@ const CHART_HEIGHT = 360
 /** BarChart 내부 여백. */
 const CHART_MARGIN = { top: 8, right: 24, bottom: 8, left: 8 }
 
-/** 계획(commitment) 막대 색상. */
-const COLOR_COMMITMENT = '#94a3b8'
-/** 완료(completed) 막대 색상 — 계획 막대와 충분한 대비(WCAG, 색-단독 구분 회피는 Legend/Tooltip 병행). */
-const COLOR_COMPLETED = '#6366f1'
-/** 평균 계획 참조선 색상. */
-const COLOR_AVG_COMMITMENT = '#475569'
-/** 평균 완료 참조선 색상. */
-const COLOR_AVG_COMPLETED = '#4338ca'
+/** 계획(commitment) 막대 색상 — 중립 계열(FR-UX-06 PR22 토큰화). */
+const COLOR_COMMITMENT = 'var(--chart-3)'
+/** 완료(completed) 막대 색상 — 완료 계열(CFD done과 통일). 색-단독 구분 회피는 Legend/Tooltip 병행. */
+const COLOR_COMPLETED = 'var(--chart-5)'
+/**
+ * 평균 계획 참조선 색상 — 계획 막대와 같은 중립 계열을 공유한다.
+ * 막대와 참조선은 strokeDasharray(점선)와 strokeWidth로 형태가 구분되므로
+ * WCAG 1.4.1(색만으로 구분 금지)을 색 재사용으로 위반하지 않는다.
+ */
+const COLOR_AVG_COMMITMENT = 'var(--chart-3)'
+/** 평균 완료 참조선 색상 — 강조 시리즈. 완료 막대(주 시리즈)와 다른 hue로 분리. */
+const COLOR_AVG_COMPLETED = 'var(--chart-2)'
 
 /** Y축 제목. */
 const Y_AXIS_LABEL_PROPS = { value: velocityLabels.chart.yAxisTitle, angle: -90, position: 'insideLeft' } as const

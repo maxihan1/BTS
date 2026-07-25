@@ -25,12 +25,12 @@ const CHART_HEIGHT = 360
 /** LineChart 내부 여백. */
 const CHART_MARGIN = { top: 8, right: 24, bottom: 8, left: 8 }
 
-/** 실측 라인(잔여/완료) 색상 — WorklogAggregateChart 선례(#6366f1) 톤 계열. */
-const COLOR_ACTUAL = '#6366f1'
-/** 이상선(ideal) 색상 — 실측 라인과 구분 가능한 별도 색상 + 점선(WCAG 색-단독 구분 금지). */
-const COLOR_IDEAL = '#f59e0b'
-/** 범위(scope) 라인 색상 — muted 얇은 선. */
-const COLOR_SCOPE = '#94a3b8'
+/** 실측 라인(잔여/완료) 색상 — 주 시리즈(FR-UX-06 PR22 토큰화). */
+const COLOR_ACTUAL = 'var(--chart-1)'
+/** 이상선(ideal) 색상 — 보조 시리즈. 실측 라인과 구분 가능한 별도 색 + 점선(WCAG 색-단독 구분 금지). */
+const COLOR_IDEAL = 'var(--chart-4)'
+/** 범위(scope) 라인 색상 — 중립 계열 얇은 선. */
+const COLOR_SCOPE = 'var(--chart-3)'
 
 /** Y축 제목. burndown-labels.ts 는 Task-2 산출물(파일 범위 밖)이라 로컬 상수로 유지한다. */
 const Y_AXIS_LABEL_PROPS = { value: burndownLabels.chart.yAxisTitle, angle: -90, position: 'insideLeft' } as const

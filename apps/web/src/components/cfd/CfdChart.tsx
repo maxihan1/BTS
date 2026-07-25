@@ -30,12 +30,12 @@ const STACK_ID = 'cfd'
 /** Area 채움 투명도. */
 const AREA_FILL_OPACITY = 0.85
 
-/** 완료(done) 영역 색상 — 스택 맨 아래(바닥). */
-const COLOR_DONE = '#6366f1'
-/** 진행 중(inProgress) 영역 색상 — 스택 중간. */
-const COLOR_IN_PROGRESS = '#f59e0b'
-/** 할 일(todo) 영역 색상 — 스택 맨 위. */
-const COLOR_TODO = '#cbd5e1'
+/** 완료(done) 영역 색상 — 스택 맨 아래(바닥). 완료 계열(FR-UX-06 PR22 토큰화). */
+const COLOR_DONE = 'var(--chart-5)'
+/** 진행 중(inProgress) 영역 색상 — 스택 중간. 보조 시리즈. */
+const COLOR_IN_PROGRESS = 'var(--chart-4)'
+/** 할 일(todo) 영역 색상 — 스택 맨 위. 중립 계열. */
+const COLOR_TODO = 'var(--chart-3)'
 
 /** Y축 제목. */
 const Y_AXIS_LABEL_PROPS = { value: cfdLabels.chart.yAxisTitle, angle: -90, position: 'insideLeft' } as const

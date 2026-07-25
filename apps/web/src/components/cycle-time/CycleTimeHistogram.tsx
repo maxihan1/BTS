@@ -19,8 +19,8 @@ const CHART_MARGIN = { top: 8, right: 24, bottom: 8, left: 8 }
 /** 히스토그램 등간격 구간(bin) 개수. */
 const BIN_COUNT = 10
 
-/** 막대 색상 — 단일 지표(분포)라 CfdChart의 done 계열 색상 하나만 재사용. */
-const BAR_COLOR = '#6366f1'
+/** 막대 색상 — 단일 지표(분포)라 주 시리즈 토큰 하나만 쓴다(FR-UX-06 PR22 토큰화). */
+const BAR_COLOR = 'var(--chart-1)'
 
 /** 축 tick 공통 스타일. */
 const AXIS_TICK_STYLE = { fontSize: 12 }
