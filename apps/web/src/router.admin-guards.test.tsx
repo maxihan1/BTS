@@ -177,31 +177,41 @@ const EXPECTED: Record<GuardClass, Signature> = {
 }
 
 /** 시나리오 4종 — 각 시나리오는 나머지 조건을 전부 통과 상태로 두어 판별자를 유일하게 특정한다 */
+// apply 는 블록 본문이어야 한다 — `(): void => useAuthStore.setState(...)` 형태는 setState 의
+// 반환값(unknown)을 void 자리에 돌려줘 TS2322 가 된다(tsconfig.app.json 기준 error).
 const SCENARIOS = [
-  { label: 'S-1 미인증', apply: (): void => useAuthStore.setState({ accessToken: null, user: null }) },
+  {
+    label: 'S-1 미인증',
+    apply: (): void => {
+      useAuthStore.setState({ accessToken: null, user: null })
+    },
+  },
   {
     label: 'S-2 비-admin',
-    apply: (): void =>
+    apply: (): void => {
       useAuthStore.setState({
         accessToken: 'valid-token',
         user: makeWhoami({ isSystemAdmin: false }),
-      }),
+      })
+    },
   },
   {
     label: 'S-3 비밀번호 강제',
-    apply: (): void =>
+    apply: (): void => {
       useAuthStore.setState({
         accessToken: 'valid-token',
         user: makeWhoami({ isSystemAdmin: true, mustChangePassword: true }),
-      }),
+      })
+    },
   },
   {
     label: 'S-4 MFA 강제',
-    apply: (): void =>
+    apply: (): void => {
       useAuthStore.setState({
         accessToken: 'valid-token',
         user: makeWhoami({ isSystemAdmin: true, mfaEnrollmentRequired: true }),
-      }),
+      })
+    },
   },
 ] as const
 
