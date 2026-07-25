@@ -312,6 +312,119 @@ function resolveHighlightColumnId(action: DropAction, activeFromColumnId: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 드롭 액션 실행 (dispatchDropAction) — 컴포넌트 밖으로 분리해 KanbanBoard 함수 길이를 줄인다.
+// mutate 함수들은 컴포넌트 안 state/훅을 직접 참조하지 않고 deps로 주입받는다(순수 함수 유지).
+// ─────────────────────────────────────────────────────────────────────────────
+
+type MoveCardMutate = ReturnType<typeof useMoveCard>['mutate']
+type ReorderCardMutate = ReturnType<typeof useReorderCard>['mutate']
+type ChangeCardFieldMutate = ReturnType<typeof useChangeCardField>['mutate']
+
+/** dispatchDropAction이 실제 부수효과를 실행하는 데 필요한 의존성 묶음. */
+interface DropActionDeps {
+  moveCardMutate: MoveCardMutate
+  reorderCardMutate: ReorderCardMutate
+  changeCardFieldMutate: ChangeCardFieldMutate
+  setPendingMove: (move: PendingMove) => void
+}
+
+/** 카드를 다른 컬럼으로 이동한다(useMoveCard.mutate). 409 등 에러는 toast로 안내한다. */
+function executeMutate(vars: MoveCardVars, moveCardMutate: MoveCardMutate): void {
+  moveCardMutate(vars, {
+    onError: (err: unknown) => {
+      // 409 OCC 충돌 등 에러 — 사용자에게 안내 (롤백+invalidate는 useMoveCard 내부 처리)
+      void err
+      toast.error('다른 변경과 충돌이 발생했습니다. 다시 시도해 주세요.')
+    },
+  })
+}
+
+/**
+ * 셀(컬럼 × 스윔레인 그룹) 내에서 카드 순서를 변경한다(useReorderCard.mutate).
+ * 409 충돌 등 에러 toast는 useReorderCard 내부에서 처리한다(중복 안내 방지).
+ */
+function executeReorder(action: Extract<DropAction, { type: 'reorder' }>, reorderCardMutate: ReorderCardMutate): void {
+  const vars: ReorderCardVars = {
+    issueKey: action.issueKey,
+    columnId: action.columnId,
+    previousIssueKey: action.previousIssueKey,
+    nextIssueKey: action.nextIssueKey,
+  }
+  reorderCardMutate(vars)
+}
+
+/**
+ * 스윔레인 그룹 간 드롭으로 카드의 담당자·우선순위·에픽을 변경한다(useChangeCardField.mutate).
+ * action의 필드를 그대로 매핑한다 — field별로 쓰이지 않는 값은 undefined로 전달되며
+ * useChangeCardField가 field로 분기해 처리한다(FR-UX-06 PR21b Task 5).
+ * 409 충돌 등 에러 toast는 useChangeCardField 내부에서 처리한다(중복 안내 방지).
+ */
+function executeChangeField(
+  action: Extract<DropAction, { type: 'field-change' }>,
+  changeCardFieldMutate: ChangeCardFieldMutate,
+): void {
+  const vars: ChangeCardFieldVars = {
+    issueKey: action.issueKey,
+    field: action.field,
+    toAssigneeId: action.toAssigneeId,
+    toPriority: action.toPriority,
+    toEpicKey: action.toEpicKey,
+    fromEpicKey: action.fromEpicKey,
+    expectedVersion: action.expectedVersion,
+  }
+  changeCardFieldMutate(vars)
+}
+
+/**
+ * resolveDropAction 판정 결과(DropAction)에 따라 실제 부수효과를 실행한다.
+ *
+ * - `noop` → 아무 것도 하지 않는다.
+ * - `reorder` → executeReorder(useReorderCard.mutate 즉시 호출) — 셀 내 순서변경.
+ * - `needs-resolution` → pendingMove를 채워 ResolutionPickerModal을 연다(확인 시 executeMutate).
+ * - `move` → executeMutate(useMoveCard.mutate 즉시 호출) — 다른 컬럼(non-DONE)으로 이동.
+ * - `field-change` → executeChangeField(useChangeCardField.mutate 즉시 호출) — 스윔레인 그룹
+ *   간 드롭으로 담당자·우선순위·에픽을 변경(FR-UX-06 PR21b Task 5).
+ *
+ * @param action resolveDropAction이 반환한 판정 결과
+ * @param deps mutate 함수 3종 + setPendingMove 묶음(handleDragEnd가 주입)
+ */
+function dispatchDropAction(action: DropAction, deps: DropActionDeps): void {
+  switch (action.type) {
+    case 'noop':
+      return
+    case 'reorder':
+      executeReorder(action, deps.reorderCardMutate)
+      return
+    case 'needs-resolution':
+      deps.setPendingMove({
+        issueKey: action.issueKey,
+        fromColumnId: action.fromColumnId,
+        toColumnId: action.toColumnId,
+        expectedVersion: action.expectedVersion,
+      })
+      return
+    case 'move':
+      executeMutate(
+        {
+          issueKey: action.issueKey,
+          fromColumnId: action.fromColumnId,
+          toColumnId: action.toColumnId,
+          expectedVersion: action.expectedVersion,
+        },
+        deps.moveCardMutate,
+      )
+      return
+    case 'field-change':
+      executeChangeField(action, deps.changeCardFieldMutate)
+      return
+    default: {
+      const exhaustiveCheck: never = action
+      return exhaustiveCheck
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // KanbanBoard 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -322,12 +435,15 @@ const UNASSIGNED: CardAssigneeDisplay = { state: 'unassigned' }
  *
  * - DndContext 안에 컬럼들을 displayOrder asc 정렬로 가로 배치한다.
  * - DragOverlay로 드래그 중 카드 미리보기를 제공한다.
- * - onDragEnd에서 resolveDropAction을 호출해 이동 유형을 판단한다.
+ * - onDragEnd에서 resolveDropAction을 호출해 이동 유형을 판단하고 dispatchDropAction에 위임한다.
  *   - move → useMoveCard.mutate 즉시 호출
  *   - needs-resolution → ResolutionPickerModal 오픈, 확인 시 mutate
  *   - reorder → useReorderCard.mutate 즉시 호출(셀 내 순서변경)
+ *   - field-change → useChangeCardField.mutate 즉시 호출(스윔레인 그룹 간 담당자·우선순위·에픽 변경, FR-UX-06 PR21b)
  *   - noop → 아무 동작 없음
- * - 409 충돌 등 에러 시 toast.error를 표시한다(reorder는 useReorderCard 내부에서 처리).
+ * - onDragOver도 resolveDropAction을 재사용해, 실제로 드롭 가능한 대상일 때만 컬럼을
+ *   하이라이트한다(FR-8) — field-change도 유효한 드롭이므로 하이라이트된다.
+ * - 409 충돌 등 에러 시 toast.error를 표시한다(reorder·field-change는 각 훅 내부에서 처리).
  * - accessibility.announcements로 드래그 상호작용을 한국어로 스크린리더에 공지한다(DR2).
  * - 센서: PointerSensor(distance:5) + KeyboardSensor — 클릭과 드래그 구분(D-2).
  */
@@ -402,101 +518,17 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
       assigneeNames,
     )
 
-    dispatchDropAction(action)
-  }
-
-  /**
-   * resolveDropAction 판정 결과(DropAction)에 따라 실제 부수효과를 실행한다.
-   *
-   * - `noop` → 아무 것도 하지 않는다.
-   * - `reorder` → executeReorder(useReorderCard.mutate 즉시 호출) — 셀 내 순서변경.
-   * - `needs-resolution` → pendingMove를 채워 ResolutionPickerModal을 연다(확인 시 executeMutate).
-   * - `move` → executeMutate(useMoveCard.mutate 즉시 호출) — 다른 컬럼(non-DONE)으로 이동.
-   * - `field-change` → executeChangeField(useChangeCardField.mutate 즉시 호출) — 스윔레인 그룹
-   *   간 드롭으로 담당자·우선순위·에픽을 변경(FR-UX-06 PR21b Task 5).
-   *
-   * @param action resolveDropAction이 반환한 판정 결과
-   */
-  function dispatchDropAction(action: DropAction): void {
-    switch (action.type) {
-      case 'noop':
-        return
-      case 'reorder':
-        executeReorder(action)
-        return
-      case 'needs-resolution':
-        setPendingMove({
-          issueKey: action.issueKey,
-          fromColumnId: action.fromColumnId,
-          toColumnId: action.toColumnId,
-          expectedVersion: action.expectedVersion,
-        })
-        return
-      case 'move':
-        executeMutate({
-          issueKey: action.issueKey,
-          fromColumnId: action.fromColumnId,
-          toColumnId: action.toColumnId,
-          expectedVersion: action.expectedVersion,
-        })
-        return
-      case 'field-change':
-        executeChangeField(action)
-        return
-      default: {
-        const exhaustiveCheck: never = action
-        return exhaustiveCheck
-      }
-    }
-  }
-
-  /** 카드를 다른 컬럼으로 이동한다(useMoveCard.mutate). 409 등 에러는 toast로 안내한다. */
-  function executeMutate(vars: MoveCardVars): void {
-    moveCard.mutate(vars, {
-      onError: (err: unknown) => {
-        // 409 OCC 충돌 등 에러 — 사용자에게 안내 (롤백+invalidate는 useMoveCard 내부 처리)
-        void err
-        toast.error('다른 변경과 충돌이 발생했습니다. 다시 시도해 주세요.')
-      },
+    dispatchDropAction(action, {
+      moveCardMutate: moveCard.mutate,
+      reorderCardMutate: reorderCard.mutate,
+      changeCardFieldMutate: changeCardField.mutate,
+      setPendingMove,
     })
-  }
-
-  /**
-   * 셀(컬럼 × 스윔레인 그룹) 내에서 카드 순서를 변경한다(useReorderCard.mutate).
-   * 409 충돌 등 에러 toast는 useReorderCard 내부에서 처리한다(중복 안내 방지).
-   */
-  function executeReorder(action: Extract<DropAction, { type: 'reorder' }>): void {
-    const vars: ReorderCardVars = {
-      issueKey: action.issueKey,
-      columnId: action.columnId,
-      previousIssueKey: action.previousIssueKey,
-      nextIssueKey: action.nextIssueKey,
-    }
-    reorderCard.mutate(vars)
-  }
-
-  /**
-   * 스윔레인 그룹 간 드롭으로 카드의 담당자·우선순위·에픽을 변경한다(useChangeCardField.mutate).
-   * action의 필드를 그대로 매핑한다 — field별로 쓰이지 않는 값은 undefined로 전달되며
-   * useChangeCardField가 field로 분기해 처리한다(FR-UX-06 PR21b Task 5).
-   * 409 충돌 등 에러 toast는 useChangeCardField 내부에서 처리한다(중복 안내 방지).
-   */
-  function executeChangeField(action: Extract<DropAction, { type: 'field-change' }>): void {
-    const vars: ChangeCardFieldVars = {
-      issueKey: action.issueKey,
-      field: action.field,
-      toAssigneeId: action.toAssigneeId,
-      toPriority: action.toPriority,
-      toEpicKey: action.toEpicKey,
-      fromEpicKey: action.fromEpicKey,
-      expectedVersion: action.expectedVersion,
-    }
-    changeCardField.mutate(vars)
   }
 
   function handleResolutionConfirm(resolutionId: string): void {
     if (pendingMove === null) return
-    executeMutate({ ...pendingMove, resolutionId })
+    executeMutate({ ...pendingMove, resolutionId }, moveCard.mutate)
     setPendingMove(null)
   }
 
