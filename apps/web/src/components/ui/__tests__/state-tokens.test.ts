@@ -1,4 +1,6 @@
-// FR-UX-06 §7 상태 토큰 12종 + 시맨틱 토큰 4종 + 사이드바 토큰 8종(PR11)이 index.css에 ADS v2 정본 hex로 정의됐는지 검증하는 테스트
+// index.css의 디자인 토큰이 ADS v2 정본 hex로 정의됐는지 전수 대조하는 회귀 가드 (FR-UX-06 누적)
+// 커버 범위. §7 상태 12종 + §A 코어 18종 + 시맨틱 4쌍(PR3) + status-text 4종(PR4) +
+//          사이드바 8종(PR11) + 차트 5종·범주 10종(PR22) + radius + 동결 계약(syntax 5종)
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
@@ -199,7 +201,7 @@ function declarationOf(block: string, token: string): string {
   return matches[0]?.[1]?.trim() ?? ''
 }
 
-describe('FR-UX-06 PR3 ADS 팔레트 — index.css', () => {
+describe('FR-UX-06 ADS 팔레트 — index.css', () => {
   const cssPath = resolve(import.meta.dirname, '../../../index.css')
   const css = stripComments(readFileSync(cssPath, 'utf-8'))
   const rootBlock = extractBlock(css, ':root')
