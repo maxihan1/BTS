@@ -113,6 +113,11 @@ type FieldChangeResult =
   | { kind: 'issue'; data: IssueResponse }
   | { kind: 'epic'; data: EpicChildSummary | undefined }
 
+/** IssueResponse를 FieldChangeResult로 태깅한다 — 담당자·우선순위 분기에서 반복 사용. */
+function tagIssueResult(data: IssueResponse): FieldChangeResult {
+  return { kind: 'issue', data }
+}
+
 /**
  * ChangeCardFieldVars.field에 따라 실제 API 호출을 분기한다.
  *
@@ -131,7 +136,7 @@ function requestFieldChange(vars: ChangeCardFieldVars): Promise<FieldChangeResul
       return changeAssignee(vars.issueKey, {
         assigneeId: vars.toAssigneeId,
         expectedVersion: vars.expectedVersion,
-      }).then((data) => ({ kind: 'issue' as const, data }))
+      }).then(tagIssueResult)
     }
     case 'priority': {
       if (vars.toPriority === undefined) {
@@ -140,7 +145,7 @@ function requestFieldChange(vars: ChangeCardFieldVars): Promise<FieldChangeResul
       return updateIssue(vars.issueKey, {
         priority: vars.toPriority,
         expectedVersion: vars.expectedVersion,
-      }).then((data) => ({ kind: 'issue' as const, data }))
+      }).then(tagIssueResult)
     }
     case 'epic': {
       return requestEpicFieldChange(vars).then((data) => ({ kind: 'epic' as const, data }))
