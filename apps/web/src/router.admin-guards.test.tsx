@@ -256,3 +256,39 @@ describe('라우트 가드 행렬 — ADMIN_4', () => {
     expect(observe(id)).toEqual(EXPECTED.ADMIN_4)
   })
 })
+
+describe('라우트 가드 행렬 — 나머지 클래스', () => {
+  beforeEach(() => useAuthStore.setState({ accessToken: null, user: null }))
+  afterEach(() => useAuthStore.setState({ accessToken: null, user: null }))
+
+  // ★ 클래스별 개수 어서션 — 이게 없으면 idsOf 가 빈 배열을 돌려줄 때 it.each([]) 가 무음 통과한다.
+  //    "발견된 라우트 59개 이상"(routesById 기준)은 이 구멍을 막지 못한다(맵/필터가 죽어도 라우트 수는 그대로).
+  it.each([
+    ['PROTECTED_3', 38],
+    ['AUTH_ONLY', 5],
+    ['LOGIN', 1],
+  ] as const)('%s 클래스 멤버가 %i개다 (열거 붕괴 시 무음 통과 차단)', (c, n) => {
+    expect(idsOf(c)).toHaveLength(n)
+  })
+
+  // PUBLIC 은 __root__ 편입으로 5개다. 하한만 두어 라우트 추가가 테스트를 깨지 않게 한다.
+  it('PUBLIC 클래스 멤버가 4개 이상이다', () => {
+    expect(idsOf('PUBLIC').length).toBeGreaterThanOrEqual(4)
+  })
+
+  it.each(idsOf('PROTECTED_3'))('%s — PROTECTED_3 기대와 일치', (id) => {
+    expect(observe(id)).toEqual(EXPECTED.PROTECTED_3)
+  })
+
+  it.each(idsOf('AUTH_ONLY'))('%s — AUTH_ONLY 기대와 일치', (id) => {
+    expect(observe(id)).toEqual(EXPECTED.AUTH_ONLY)
+  })
+
+  it.each(idsOf('LOGIN'))('%s — LOGIN 기대와 일치 (인증 시 내보냄, 방향 반대)', (id) => {
+    expect(observe(id)).toEqual(EXPECTED.LOGIN)
+  })
+
+  it.each(idsOf('PUBLIC'))('%s — PUBLIC 기대와 일치 (가드 없음)', (id) => {
+    expect(observe(id)).toEqual(EXPECTED.PUBLIC)
+  })
+})
