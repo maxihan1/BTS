@@ -84,9 +84,10 @@ const ROUTE_CLASS = new Map<string, GuardClass>([
   ...cls('LOGIN', '/login'),
   ...cls(
     'PUBLIC',
-    // ★의도된 hedge — pathless 레이아웃/인덱스 라우트의 키 형태를 확신할 수 없어 두 변형을 병기한다.
-    // 틀린 쪽은 완전성 테스트의 stale 배열에 잡혀 RED 으로 드러난다(추측을 코드에 박지 않기).
-    '_shell',
+    // 키 형태는 task-1 RED 의 unclassified/stale 출력으로 실측했다 —
+    // 루트는 '__root__', pathless 레이아웃은 '/_shell'(선행 슬래시 있음), 인덱스는 '/_shell/'.
+    '__root__',
+    '/_shell',
     '/_shell/',
     '/_shell/workflows/$key',
     '/_shell/dashboards/shared/$token',
@@ -102,7 +103,8 @@ const CLASS_NOTES: Record<string, string> = {
   '/_shell/settings/mfa': '정당 — requireMfaEnrolled 리다이렉트 목적지 자기 경로',
   '/_shell/dashboards/shared/$token':
     '정당 — 공개 공유 토큰(직교 인증), 세션 불요. 로그인 리다이렉트 금지',
-  _shell: '정당 — pathless 레이아웃. ADR 2026-07-17 §70 이 가드 hoist 를 금지',
+  __root__: '정당 — createRootRoute. 가드 대상 아님',
+  '/_shell': '정당 — pathless 레이아웃. ADR 2026-07-17 §70 이 가드 hoist 를 금지',
   '/_shell/': '후속 판정 필요 — 블록 주석의 "가드에서 dashboard / login 으로 리다이렉트 예정" 미완',
   '/_shell/workflows/$key': '후속 판정 필요 — 다른 상세 화면은 PROTECTED_3',
   '/_shell/settings/profile': '후속 판정 필요 — 비번·MFA 강제 대상이 접근 가능',
