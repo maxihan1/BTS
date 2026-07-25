@@ -673,3 +673,89 @@ PR22(#308)에서도 Maxi가 "서브에이전트 없이 메인 에이전트 직�
 이미 명문화된 정책(4-가드, FR-MF-04)에 누락 1건을 맞추는 결함 수정이다. 재구상할 제품 결정이 없다.
 
 게이트 1에서 Maxi가 이 생략을 뒤집을 수 있다.
+
+## 구현 검증 기록 (bts-impl)
+
+**수행 방식 (deviation, 사유 등재).** 세션 지시가 에이전트 호출을 금지하므로 sub-agent implementer /
+verifier dispatch 없이 메인 에이전트가 직접 TDD 실행했다. controller 역할(git log 대조·증거 수집)은
+자기 작업에 그대로 적용했다. PR22(#308) 선례와 동일.
+
+### TDD 순서 증거 (git log, 시간 오름차순)
+
+| 커밋 | 메시지 |
+|---|---|
+| `4f049ef8c` | `test: … task-1 red` |
+| `e741e2287` | `feat: … task-1 green` |
+| `0bc7ae947` | `test: … task-2 red` |
+| `d765a7f98` | `feat: … task-2 green` |
+| `b1f1e9df9` | `test: … task-3` (프로덕션 변경 0, 특성화) |
+| `2476126a6` | `fix: … task-5 typecheck` |
+
+각 task에서 `test:` 커밋이 `feat:` 커밋보다 앞선다.
+
+### Task 1 — E13 실측 (RED 이 관측 장치로 작동)
+
+RED 실패 메시지가 런타임 키를 그대로 출력했다.
+
+```
+unclassified: [ "__root__", "/_shell" ]
+stale:        [ "_shell" ]
+```
+
+→ pathless 레이아웃 키는 `/_shell`(선행 슬래시 있음), 루트는 `__root__`. 인덱스 `/_shell/`은 stale에
+없어 추측이 맞았고 **나머지 58개 키도 전부 일치**했다. 별도 스크립트·throwaway 파일 0.
+
+### Task 2 — 결함 국소화된 RED → 1줄 GREEN
+
+```
+FAIL  /_shell/admin/slack — 관측 서명이 ADMIN_4 기대와 정확히 일치
+- Expected  ['/login', '/dashboard', '/settings/password', '/settings/mfa']
++ Received  ['/login', '/dashboard', null,                 null          ]
+Tests  1 failed | 15 passed
+```
+
+admin 10개는 통과하고 slack 1건만 실패 → 실패가 결함에 정확히 국소화됐다.
+GREEN은 `beforeLoad: requireSystemAdminFull` 1줄(+JSDoc 3줄). import 고아 0
+(`composeGuards` 9 · `requireAuth` 71 · `requireSystemAdmin` 8 잔존 사용 확인).
+
+### Task 4 — 뮤테이션 4종 (기준선 69 green에서 시작, 전부 복원 확인)
+
+| # | 뮤테이션 | 겨냥 | 결과 |
+|---|---|---|---|
+| A | `/admin/slack` 2-가드 복귀 | 수정의 실효 | **1 red** — `/_shell/admin/slack` 서명 |
+| B | `idsOf` → `[]` | vacuous 차단 | **5 red** · 총 테스트 **69 → 9 붕괴**(서명 60개 소멸) |
+| C | `ROUTE_CLASS`에서 slack 제거 | 완전성 강제 | **2 red** — 미분류 + ADMIN_4 개수 |
+| D | `EXPECTED.PROTECTED_3` S-2 오염 | 어서션 실효 | **38 red** |
+
+**★B가 이 PR의 핵심 증거다.** `idsOf`가 죽자 서명 테스트 60개가 조용히 사라졌고, 그것을 잡은 것은
+plan-eng-review에서 추가한 **클래스별 개수 어서션 5개뿐**이다. 그 어서션이 없었다면 60개 소멸이
+초록으로 통과했다 — 리뷰가 실제로 구멍을 막았음이 실증됐다.
+
+복원 후 기준선 69 green 재확인 · `git status --porcelain` 비어 있음.
+
+### Task 5 — 전체 검증
+
+| 항목 | 결과 |
+|---|---|
+| `tsc -p tsconfig.app.json --noEmit` | **exit 0** (수정 후. 아래 참조) |
+| `eslint src` | **exit 0** · 경고 8건(전부 사전 존재, 내 파일 0건 — PR22 기록과 동일) |
+| 전량 `vitest run` | **513 파일 / 7998 passed** · exit 0 |
+| 개수 대조 | PR22 기준선 **7935 → 7998 = +63**. 기존 6 테스트 → 69 이므로 `69-6=63` **정확히 일치**. 커버리지 순손실 0 |
+| `verify-master-plan.sh` | **EXIT 0** · `PASS. FR ID 129/129` |
+
+**★검증 중 자체 오류 2건 (기록).**
+1. **typecheck 실패를 처음에 놓쳤다.** `tsc … | tail -5` 뒤의 `$?`가 **`tail`의 종료코드**를 읽어
+   `exit=0`으로 보였다(메모리 `zsh-pipestatus-1-based-false-green`이 경고한 형태). 파이프 없이
+   재실행해 실제 error 4건(`TS2322`)을 확인하고 고쳤다. 원인은
+   `apply: (): void => useAuthStore.setState(...)`가 `setState` 반환값(`unknown`)을 `void` 자리에
+   돌려주는 것. **vitest는 esbuild로 타입을 벗기므로 초록이었고 tsc만 잡는다.**
+2. **Task 5의 `grep -c '후속 판정 필요' == 5` 검사는 설계가 나빴다.** 실제 8이 나온다 —
+   테스트 이름·`startsWith` 필터 문자열까지 세기 때문이다. 진짜 판별자는 그 값을 세는
+   **테스트 자체**(`toHaveLength(5)`)이고 그것이 green이다. grep은 약한 proxy라 근거로 쓰지 않는다.
+
+### E2E 미추가 (bts-impl Step 3, 사유 등재)
+
+`type=auth`라 qa-engineer E2E dispatch 조건에 걸리지만 추가하지 않았다. ① 세션 지시가 에이전트 호출을
+금지한다. ② plan에 이미 사유를 등재했다 — 유닛 테스트가 **앱이 실제로 쓰는 `router` 객체의 등록된
+`beforeLoad`**를 호출하므로 E2E와 같은 대상을 덮고, 이 PR의 시각·DOM 변화는 0이다.
+E2E를 추가하면 브라우저 비용만 늘고 커버 로직은 동일하다.
