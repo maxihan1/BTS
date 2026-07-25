@@ -943,6 +943,60 @@ build 0 · git clean.
 | `issue/IssueChangelog.tsx` | 309 | P6 전체행 디스클로저 | `w-full` 행 토글 |
 | `automation/RuleExecutionTraceRow.tsx` | 88 | P6 | 좌동 |
 
+#### 교체 정책 — D2 = B「프리미티브 표준 흡수」 (Maxi 확정, 세션 2)
+
+**T7의 70발생까지 이 정책을 그대로 상속한다.** 갈림길은 "프리미티브 기본 look을 수용할지"였고,
+A(`h-auto font-normal`로 23번 무력화 = 시각 no-op)를 기각했다. 근거 — PR22의 설정 목표가
+"버튼 생김새를 한 군데로 모으기"인데 A는 프리미티브를 도입하고 즉시 무력화해 다음 사람을 헷갈리게 한다.
+게다가 포커스링·`border-transparent`·press 애니메이션은 A로도 못 막아 **"no-op"이 애초에 성립하지 않는다.**
+
+**수용하는 시각 변화.** 높이 20→24px(칩) · `font-medium` 500 · `focus-visible:ring-3` 통일 ·
+`active:translate-y-px` press · `border border-transparent` 2px.
+
+**className 정리 규칙.**
+- **남긴다.** 색상(`bg-muted` · `text-muted-foreground` · `hover:text-destructive` …) · `rounded-full`/`rounded-md` ·
+  `min-h-[44px]`/`min-w-[44px]`(WCAG 2.5.5, EC2) · `ml-*`/`shrink-0`/`ml-auto` 레이아웃 ·
+  프리미티브와 **다른** `disabled:opacity-*` · `leading-none` · `uppercase`/`font-semibold`
+- **뺀다.** `inline-flex` · `flex` · `items-center` · `justify-center` · `gap-*` · `py-*` ·
+  `transition-colors` · `focus:outline-none`/`focus:ring-*`(프리미티브 `focus-visible:` 로 대체) ·
+  size가 이미 주는 `px-*`/`text-xs` · 프리미티브 기본과 동일한 `disabled:opacity-50`
+- **verbatim 이관(NFR-N1).** `type` · `aria-label` · `aria-pressed` · `data-testid` · `disabled` · `onClick`
+
+**23발생 variant/size 매핑 (정본).**
+
+| # | 파일 : 행 | variant | size | 남기는 className |
+|---|---|---|---|---|
+| 1 | `automation/ActionConfigEditor.tsx:318` | ghost | xs | `rounded-full bg-muted px-2 text-xs` |
+| 2 | `automation/ActionConfigEditor.tsx:495` | ghost | icon-xs | `text-muted-foreground hover:text-destructive` |
+| 3 | `automation/ActionListEditor.tsx:122` | ghost | icon-xs | `text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed` |
+| 4 | `automation/ActionListEditor.tsx:133` | ghost | icon-xs | ↑ 동일 |
+| 5 | `automation/ActionListEditor.tsx:145` | ghost | icon-xs | `text-muted-foreground hover:text-destructive` |
+| 6 | `automation/AutomationRuleFormDialog.tsx:463` | ghost | xs | `rounded-full bg-muted px-2 text-xs` |
+| 7 | `automation/ConditionBuilder.tsx:141` | ghost | icon-xs | `text-muted-foreground hover:text-destructive` |
+| 8 | `automation/ConditionBuilder.tsx:187` | **outline** | xs | `font-semibold uppercase` |
+| 9 | `automation/ConditionBuilder.tsx:212` | ghost | xs | `ml-auto text-muted-foreground hover:text-destructive` |
+| 10 | `board/QuickFilterChips.tsx:178` | ghost | xs | `min-h-[44px] px-1` |
+| 11 | `board/QuickFilterChips.tsx:188` | ghost | icon-sm | `min-h-[44px] min-w-[44px] rounded-full leading-none hover:bg-muted-foreground/20` |
+| 12 | `board/QuickFilterChips.tsx:196` | ghost | icon-sm | ↑ 동일 |
+| 13 | `dashboard/DashboardForm.tsx:194` | ghost | icon-xs | `ml-1 rounded-full hover:bg-muted` |
+| 14 | `filters/FilterBar.tsx:330` | ghost | icon-sm | `ml-1 min-h-[44px] min-w-[44px] rounded-full leading-none hover:bg-muted-foreground/20` |
+| 15 | `issue/EpicChildrenSection.tsx:97` | ghost | xs | `min-h-[44px] shrink-0 text-muted-foreground hover:text-destructive disabled:opacity-40 disabled:cursor-not-allowed` |
+| 16 | `issue/IssueLinksPanel.tsx:128` | ghost | xs | ↑ 동일 |
+| 17 | `issue/IssueLinksPanel.tsx:314` | ghost | xs | ↑ 동일 |
+| 18 | `issue/IssueLinksPanel.tsx:436` | ghost | xs | ↑ 동일 |
+| 19 | `issue/meta/IssueLabelsEdit.tsx:135` | ghost | icon-xs | `ml-0.5 rounded-full hover:bg-muted-foreground/20` |
+| 20 | `ooo/OooModal.tsx:228` | ghost | xs | `text-muted-foreground underline` |
+| 21 | `search/SavedFilterMenu.tsx:214` | ghost | icon | `rounded-md` — **P3 `DropdownMenuTrigger asChild`(L213)** |
+| 22 | `routes/issues.$key.tsx:714` | ghost | xs | `text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed` |
+| 23 | `routes/issues.index.tsx:403` | **default** | default | `` `${NEW_ISSUE_CLASS} disabled:cursor-not-allowed` `` |
+
+★ **#23 주의.** `NEW_ISSUE_CLASS`(L374)는 `canCreate=true` 분기의 `<a>`와 **공유**한다. 상수를 건드리면
+링크 쪽 시각이 함께 변하므로 **상수는 불변**으로 두고 그대로 넘긴다. 프리미티브 기본과 중복인
+`disabled:opacity-50`만 뺀다.
+
+★ **#21 주의(EC3).** `asChild` 하위이므로 Radix가 `aria-expanded`/`data-state`를 주입한다.
+`Button`이 `...props`를 `<button>`으로 전개하므로 통과하지만, **주입 생존을 렌더 테스트로 증명**한다.
+
 ★ **T6 구현 시 주의(세션 1에서 실제로 밟은 함정).** 배치 1 파일은 **이미 `<Button>`을 쓰고 있다.**
 `type="button"` 같은 공통 속성으로 일괄 치환하면 **기존 `<Button>` 사용처에도 variant가 주입돼
 멀쩡한 버튼의 외형이 바뀐다**(1차 시도에서 `AutomationRuleFormDialog` 1→2, `ConditionBuilder` 3→5로
