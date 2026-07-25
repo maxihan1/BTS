@@ -134,7 +134,7 @@
   | `ADMIN_4` | `/login` | `/dashboard` | `/settings/password` | `/settings/mfa` | admin 11개 (수정 후 slack 포함) |
   | `PROTECTED_3` | `/login` | `null` | `/settings/password` | `/settings/mfa` | 38개 (`requireAuthAndPasswordChanged`) |
   | `AUTH_ONLY` | `/login` | `null` | `null` | `null` | 5개 — B2 표의 3건 + 리다이렉트 목적지 2건 |
-  | `PUBLIC` | `null` | `null` | `null` | `null` | `/`·`/workflows/$key`·`/dashboards/shared/$token`·`_shell` |
+  | `PUBLIC` | `null` | `null` | `null` | `null` | **5개** — `/`·`/workflows/$key`·`/dashboards/shared/$token`·`/_shell`·`__root__` |
   | `LOGIN` | `null` | redirect | redirect | redirect | `/login` (`redirectIfAuth` — 인증 시 내보냄, 방향이 반대) |
 
 - **R5. 완전성 — 미분류 라우트는 실패다.** 기대 서명 맵에 없는 라우트가 `routesById`에 있으면 테스트가
@@ -152,7 +152,8 @@
   | `/settings/password` | `AUTH_ONLY` | 정당 — `requirePasswordChanged` 리다이렉트 목적지 자기 경로 |
   | `/settings/mfa` | `AUTH_ONLY` | 정당 — `requireMfaEnrolled` 리다이렉트 목적지 자기 경로 |
   | `/dashboards/shared/$token` | `PUBLIC` | 정당 — 공개 공유 토큰(직교 인증), 세션 불요 |
-  | `_shell` | `PUBLIC` | 정당 — pathless 레이아웃. ADR §70이 가드 hoist 금지 |
+  | `/_shell` | `PUBLIC` | 정당 — pathless 레이아웃. ADR §70이 가드 hoist 금지 |
+  | `__root__` | `PUBLIC` | 정당 — `createRootRoute`, 가드 대상 아님 (구현 단계 실측으로 발견·편입) |
   | `/settings/profile` | `AUTH_ONLY` | **후속 판정 필요** — 비번·MFA 강제 대상이 접근 가능 |
   | `/settings/preferences` | `AUTH_ONLY` | **후속 판정 필요** — 동일 |
   | `/projects/$projectKey/settings/field-permissions` | `AUTH_ONLY` | **후속 판정 필요** — 다른 프로젝트 설정은 3-가드 |

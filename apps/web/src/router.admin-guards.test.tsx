@@ -18,7 +18,10 @@ const cls = (c: GuardClass, ...keys: string[]): [string, GuardClass][] => keys.m
 
 /**
  * routesById 키 → 가드 클래스. 이 맵이 정책 선언이다.
- * 키는 _shell pathless 재부모화가 접두사로 붙은 형태(router.admin-guards 이전 판의 실증 형식).
+ *
+ * 키 형태(실측). shell 자식 라우트는 `/_shell` 접두사가 붙고(pathless 재부모화), 인덱스는 `/_shell/`,
+ * 레이아웃 자체는 `/_shell`, 루트는 접두사 없는 `__root__`, `/login`은 shell 밖이라 `/login` 그대로다.
+ * 맵과 실제 키가 어긋나면 아래 완전성 테스트가 unclassified/stale 로 잡는다.
  */
 const ROUTE_CLASS = new Map<string, GuardClass>([
   ...cls(
