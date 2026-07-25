@@ -1,6 +1,6 @@
 // 칸반 보드 루트 컴포넌트 — DndContext + 컬럼 배치 + 드래그 이동 오케스트레이션 (FR-BD-01)
 import type { JSX } from 'react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -16,6 +16,8 @@ import { useMoveCard } from '@/hooks/use-move-card'
 import type { MoveCardVars } from '@/hooks/use-move-card'
 import { useReorderCard } from '@/hooks/use-reorder-card'
 import type { ReorderCardVars } from '@/hooks/use-reorder-card'
+import { useChangeCardField } from '@/hooks/use-change-card-field'
+import type { ChangeCardFieldVars } from '@/hooks/use-change-card-field'
 import { BoardColumn } from './BoardColumn'
 import { BoardCard } from './BoardCard'
 import type { CardAssigneeDisplay } from './BoardCard'
@@ -58,17 +60,184 @@ function findColumnName(board: BoardDetail, columnId: string): string {
   return board.columns.find((c) => c.columnId === columnId)?.name ?? columnId
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 필드변경 announcement 문구 (FR-7, FR-UX-06 PR21b Task 4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** field-change DropAction 변형만 추출한 타입 별칭 — describeXxxFieldChange 헬퍼 시그니처에 재사용 */
+type FieldChangeAction = Extract<DropAction, { type: 'field-change' }>
+
+/** 필드변경 announcement 시제 — onDragOver(예고형 "~변경합니다")·onDragEnd(완료형 "~변경했습니다") 구분 */
+type FieldChangeTense = 'preview' | 'done'
+
+/** 우선순위 값을 읽지 못했을 때(방어적) 대체 표시 텍스트 — findColumnName 방어적 fallback 관례와 동일 */
+const PRIORITY_VALUE_FALLBACK = '알 수 없음'
+
+/**
+ * 시제(tense)에 따라 예고형/완료형 동사 문구 중 하나를 고른다.
+ * describeXxxFieldChange 3곳에서 반복되던 `tense === 'preview' ? ... : ...` 분기를 한 곳에 모은다.
+ */
+function pickByTense(tense: FieldChangeTense, preview: string, done: string): string {
+  return tense === 'preview' ? preview : done
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 한국어 조사("으로"/"로") 판별 헬퍼 (리뷰 S1 — describeXxxFieldChange 3곳의 조사 불일치 통일)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 한글 음절 블록 시작 코드포인트('가') — 받침 유무 계산의 기준점 */
+const HANGUL_SYLLABLE_START = 0xac00
+/** 한글 음절 블록 끝 코드포인트('힣') */
+const HANGUL_SYLLABLE_END = 0xd7a3
+/** 한글 음절 하나가 가질 수 있는 종성(받침) 조합 가짓수 — 종성 없음(1가지) 포함 28가지 */
+const HANGUL_JONGSEONG_COUNT = 28
+
+/** 숫자 한 글자(0~9)의 한글 발음 — 우선순위처럼 숫자로 끝나는 단어의 받침 판정에 사용(예: '3' → '삼') */
+const DIGIT_KOREAN_READING: Readonly<Record<string, string>> = {
+  '0': '영',
+  '1': '일',
+  '2': '이',
+  '3': '삼',
+  '4': '사',
+  '5': '오',
+  '6': '육',
+  '7': '칠',
+  '8': '팔',
+  '9': '구',
+}
+
+/**
+ * 단어 끝에 붙일 한국어 조사("으로" 또는 "로")를 마지막 글자의 받침 유무로 결정한다.
+ *
+ * 한국어는 받침(종성)이 있는 글자 뒤엔 "으로", 없는 글자 뒤엔 "로"를 쓴다
+ * (예: "박밥으로"는 자연스럽지만 "박밥로"는 어색하다). 이전엔 describeAssigneeFieldChange가
+ * 항상 "(으)로", describePriorityFieldChange·describeEpicFieldChange가 항상 bare "로"를
+ * 하드코딩해 조사가 불일치했다(리뷰 S1) — 이 헬퍼로 담당자 이름·에픽 키·우선순위 숫자 표기를 통일한다.
+ *
+ * - 마지막 글자가 숫자(0~9)면 그 숫자의 한글 발음(DIGIT_KOREAN_READING)의 마지막 글자로 판정한다
+ *   (예: 우선순위 "1" → "일"의 받침 ㄹ 있음 → "으로").
+ * - 마지막 글자가 한글 음절(가~힣)이면 유니코드 코드포인트로 받침 유무를 계산한다
+ *   ((코드 - 0xAC00) % 28 !== 0 이면 받침 있음 — 종성 없는 음절이 각 초성×중성 조합의 첫 번째다).
+ * - 그 외(빈 문자열·한글도 숫자도 아닌 문자)는 안전한 기본값 "로"를 반환한다.
+ *
+ * @param word 조사를 붙일 대상 단어(담당자 이름·에픽 키·우선순위 숫자 등)
+ * @returns '으로' 또는 '로'
+ */
+function josaEuro(word: string): string {
+  const lastChar = word.at(-1)
+  if (lastChar === undefined) return '로'
+
+  const digitReading = DIGIT_KOREAN_READING[lastChar]
+  const charToCheck = digitReading !== undefined ? digitReading.at(-1) : lastChar
+  const code = charToCheck?.codePointAt(0)
+  if (code === undefined || code < HANGUL_SYLLABLE_START || code > HANGUL_SYLLABLE_END) return '로'
+
+  const hasBatchim = (code - HANGUL_SYLLABLE_START) % HANGUL_JONGSEONG_COUNT !== 0
+  return hasBatchim ? '으로' : '로'
+}
+
+/**
+ * assigneeId(UUID)를 가진 카드를 board에서 찾아 assigneeNames 표시 이름을 조회한다.
+ * 그룹 key(이름 기반)가 아니라 카드 자신의 실제 assigneeId로 조회하므로
+ * 이름 기반 그룹 오분류(스펙 G1: unknown/동명이인 혼재)에 영향받지 않는다.
+ *
+ * @returns named 상태의 이름. 카드를 못 찾거나 named 상태가 아니면 undefined
+ */
+function findAssigneeDisplayName(
+  board: BoardDetail,
+  assigneeNames: Map<string, CardAssigneeDisplay>,
+  assigneeId: string,
+): string | undefined {
+  for (const column of board.columns) {
+    const card = column.cards.find((c) => c.assigneeId === assigneeId)
+    if (card === undefined) continue
+    const display = assigneeNames.get(card.issueKey)
+    if (display?.state === 'named') return display.name
+  }
+  return undefined
+}
+
+/**
+ * ASSIGNEE 필드변경 announcement 문구 — 담당자 재할당/해제.
+ *
+ * toAssigneeId가 있어도(재할당) assigneeNames에서 이름을 못 찾으면(unknown·그룹 미확인)
+ * 이름 없이 중립 문구로 안내한다 — "미배정"으로 대체하면 실제 담당자 해제(toAssigneeId===null)와
+ * 같은 단어가 되어 스크린리더 사용자가 두 상황을 구분할 수 없다(리뷰 S2).
+ */
+function describeAssigneeFieldChange(
+  action: FieldChangeAction,
+  board: BoardDetail,
+  assigneeNames: Map<string, CardAssigneeDisplay>,
+  tense: FieldChangeTense,
+): string {
+  if (action.toAssigneeId === null || action.toAssigneeId === undefined) {
+    return `${action.issueKey}의 담당자를 ${pickByTense(tense, '해제합니다', '해제했습니다')}.`
+  }
+  const changeVerb = pickByTense(tense, '변경합니다', '변경했습니다')
+  const name = findAssigneeDisplayName(board, assigneeNames, action.toAssigneeId)
+  if (name === undefined) {
+    return `${action.issueKey}의 담당자를 ${changeVerb}`
+  }
+  return `${action.issueKey}을(를) 담당자 ${name}${josaEuro(name)} ${changeVerb}`
+}
+
+/** PRIORITY 필드변경 announcement 문구 */
+function describePriorityFieldChange(action: FieldChangeAction, tense: FieldChangeTense): string {
+  const priorityLabel = action.toPriority !== undefined ? String(action.toPriority) : PRIORITY_VALUE_FALLBACK
+  const changeVerb = pickByTense(tense, '변경합니다', '변경했습니다')
+  return `${action.issueKey}의 우선순위를 ${priorityLabel}${josaEuro(priorityLabel)} ${changeVerb}`
+}
+
+/** EPIC 필드변경 announcement 문구 — 에픽 재배치/해제 */
+function describeEpicFieldChange(action: FieldChangeAction, tense: FieldChangeTense): string {
+  if (action.toEpicKey === null || action.toEpicKey === undefined) {
+    return `${action.issueKey}의 에픽 연결을 ${pickByTense(tense, '해제합니다', '해제했습니다')}.`
+  }
+  const moveVerb = pickByTense(tense, '이동합니다', '이동했습니다')
+  return `${action.issueKey}을(를) 에픽 ${action.toEpicKey}${josaEuro(action.toEpicKey)} ${moveVerb}`
+}
+
+/**
+ * field-change 액션을 시제(tense)에 맞춘 한국어 announcement 문구로 변환한다 (FR-7).
+ * 필드별 문구는 describeAssigneeFieldChange/describePriorityFieldChange/describeEpicFieldChange에 위임한다.
+ */
+function describeFieldChangeAction(
+  action: FieldChangeAction,
+  board: BoardDetail,
+  assigneeNames: Map<string, CardAssigneeDisplay>,
+  tense: FieldChangeTense,
+): string {
+  switch (action.field) {
+    case 'assignee':
+      return describeAssigneeFieldChange(action, board, assigneeNames, tense)
+    case 'priority':
+      return describePriorityFieldChange(action, tense)
+    case 'epic':
+      return describeEpicFieldChange(action, tense)
+    default: {
+      const exhaustiveCheck: never = action.field
+      return exhaustiveCheck
+    }
+  }
+}
+
 /**
  * DropAction을 드래그 진행 중(present) 공지 문구로 변환한다 — onDragOver announcement용.
  * 아직 확정되지 않은 위치를 안내한다.
  */
-function describeDragOverAction(action: DropAction, board: BoardDetail): string {
+function describeDragOverAction(
+  action: DropAction,
+  board: BoardDetail,
+  assigneeNames: Map<string, CardAssigneeDisplay>,
+): string {
   switch (action.type) {
     case 'move':
     case 'needs-resolution':
       return `${findColumnName(board, action.toColumnId)} 컬럼 위에 있습니다.`
     case 'reorder':
       return `${findColumnName(board, action.columnId)} 안에서 순서를 조정하고 있습니다.`
+    case 'field-change':
+      return describeFieldChangeAction(action, board, assigneeNames, 'preview')
     case 'noop':
       return '이동할 수 없는 위치입니다.'
     default: {
@@ -82,13 +251,19 @@ function describeDragOverAction(action: DropAction, board: BoardDetail): string 
  * DropAction을 드래그 완료(past) 공지 문구로 변환한다 — onDragEnd announcement용.
  * 실제로 반영될 변경 결과를 안내한다.
  */
-function describeDragEndAction(action: DropAction, board: BoardDetail): string {
+function describeDragEndAction(
+  action: DropAction,
+  board: BoardDetail,
+  assigneeNames: Map<string, CardAssigneeDisplay>,
+): string {
   switch (action.type) {
     case 'move':
     case 'needs-resolution':
       return `${findColumnName(board, action.toColumnId)} 컬럼으로 이동했습니다.`
     case 'reorder':
       return '순서를 변경했습니다.'
+    case 'field-change':
+      return describeFieldChangeAction(action, board, assigneeNames, 'done')
     case 'noop':
       return '변경 사항이 없습니다.'
     default: {
@@ -119,11 +294,11 @@ function buildDragAnnouncements(
     onDragOver({ active, over }) {
       if (over === null) return '드롭 가능한 영역을 벗어났습니다.'
       const action = resolveDropAction(board, active as DragActiveMin, over as DragOverMin, assigneeNames)
-      return describeDragOverAction(action, board)
+      return describeDragOverAction(action, board, assigneeNames)
     },
     onDragEnd({ active, over }) {
       const action = resolveDropAction(board, active as DragActiveMin, over as DragOverMin | null, assigneeNames)
-      return describeDragEndAction(action, board)
+      return describeDragEndAction(action, board, assigneeNames)
     },
     onDragCancel() {
       return '취소했습니다.'
@@ -161,6 +336,156 @@ export interface KanbanBoardProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 드래그 시각 힌트 (FR-8, FR-UX-06 PR21b Task 5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * resolveDropAction 판정 결과로부터 하이라이트할 컬럼 id를 계산한다 — handleDragOver 전용.
+ *
+ * onDragEnd와 동일하게 resolveDropAction을 재사용해, 실제로 드롭 가능한 대상일 때만
+ * 컬럼을 하이라이트한다(noop이면 하이라이트하지 않는다).
+ *
+ * field-change(스윔레인 그룹 간 필드변경)는 셀은 다르지만 항상 같은 컬럼 내부에서 일어나므로
+ * DropAction에 columnId가 없다 — 드래그 시작 컬럼(activeFromColumnId)을 그대로 쓴다.
+ * 이전(PR21)엔 그룹 경계 드래그를 noop 취급해 컬럼 하이라이트를 억제했지만, field-change가
+ * 유효한 동작이 된 지금은 그 억제를 반전해 정상적으로 하이라이트한다.
+ *
+ * @param action resolveDropAction이 반환한 판정 결과
+ * @param activeFromColumnId 드래그 시작 컬럼 id (handleDragStart가 기록한 state)
+ * @returns 하이라이트할 컬럼 id. 하이라이트하지 않으면 null
+ */
+function resolveHighlightColumnId(action: DropAction, activeFromColumnId: string | null): string | null {
+  switch (action.type) {
+    case 'noop':
+      return null
+    case 'move':
+    case 'needs-resolution':
+      return action.toColumnId
+    case 'reorder':
+      return action.columnId
+    case 'field-change':
+      return activeFromColumnId
+    default: {
+      const exhaustiveCheck: never = action
+      return exhaustiveCheck
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 드롭 액션 실행 (dispatchDropAction) — 컴포넌트 밖으로 분리해 KanbanBoard 함수 길이를 줄인다.
+// mutate 함수들은 컴포넌트 안 state/훅을 직접 참조하지 않고 deps로 주입받는다(순수 함수 유지).
+// ─────────────────────────────────────────────────────────────────────────────
+
+type MoveCardMutate = ReturnType<typeof useMoveCard>['mutate']
+type ReorderCardMutate = ReturnType<typeof useReorderCard>['mutate']
+type ChangeCardFieldMutate = ReturnType<typeof useChangeCardField>['mutate']
+
+/** dispatchDropAction이 실제 부수효과를 실행하는 데 필요한 의존성 묶음. */
+interface DropActionDeps {
+  moveCardMutate: MoveCardMutate
+  reorderCardMutate: ReorderCardMutate
+  changeCardFieldMutate: ChangeCardFieldMutate
+  setPendingMove: (move: PendingMove) => void
+}
+
+/** 카드를 다른 컬럼으로 이동한다(useMoveCard.mutate). 409 등 에러는 toast로 안내한다. */
+function executeMutate(vars: MoveCardVars, moveCardMutate: MoveCardMutate): void {
+  moveCardMutate(vars, {
+    onError: (err: unknown) => {
+      // 409 OCC 충돌 등 에러 — 사용자에게 안내 (롤백+invalidate는 useMoveCard 내부 처리)
+      void err
+      toast.error('다른 변경과 충돌이 발생했습니다. 다시 시도해 주세요.')
+    },
+  })
+}
+
+/**
+ * 셀(컬럼 × 스윔레인 그룹) 내에서 카드 순서를 변경한다(useReorderCard.mutate).
+ * 409 충돌 등 에러 toast는 useReorderCard 내부에서 처리한다(중복 안내 방지).
+ */
+function executeReorder(action: Extract<DropAction, { type: 'reorder' }>, reorderCardMutate: ReorderCardMutate): void {
+  const vars: ReorderCardVars = {
+    issueKey: action.issueKey,
+    columnId: action.columnId,
+    previousIssueKey: action.previousIssueKey,
+    nextIssueKey: action.nextIssueKey,
+  }
+  reorderCardMutate(vars)
+}
+
+/**
+ * 스윔레인 그룹 간 드롭으로 카드의 담당자·우선순위·에픽을 변경한다(useChangeCardField.mutate).
+ * action의 필드를 그대로 매핑한다 — field별로 쓰이지 않는 값은 undefined로 전달되며
+ * useChangeCardField가 field로 분기해 처리한다(FR-UX-06 PR21b Task 5).
+ * 409 충돌 등 에러 toast는 useChangeCardField 내부에서 처리한다(중복 안내 방지).
+ */
+function executeChangeField(
+  action: Extract<DropAction, { type: 'field-change' }>,
+  changeCardFieldMutate: ChangeCardFieldMutate,
+): void {
+  const vars: ChangeCardFieldVars = {
+    issueKey: action.issueKey,
+    field: action.field,
+    toAssigneeId: action.toAssigneeId,
+    toPriority: action.toPriority,
+    toEpicKey: action.toEpicKey,
+    fromEpicKey: action.fromEpicKey,
+    expectedVersion: action.expectedVersion,
+  }
+  changeCardFieldMutate(vars)
+}
+
+/**
+ * resolveDropAction 판정 결과(DropAction)에 따라 실제 부수효과를 실행한다.
+ *
+ * - `noop` → 아무 것도 하지 않는다.
+ * - `reorder` → executeReorder(useReorderCard.mutate 즉시 호출) — 셀 내 순서변경.
+ * - `needs-resolution` → pendingMove를 채워 ResolutionPickerModal을 연다(확인 시 executeMutate).
+ * - `move` → executeMutate(useMoveCard.mutate 즉시 호출) — 다른 컬럼(non-DONE)으로 이동.
+ * - `field-change` → executeChangeField(useChangeCardField.mutate 즉시 호출) — 스윔레인 그룹
+ *   간 드롭으로 담당자·우선순위·에픽을 변경(FR-UX-06 PR21b Task 5).
+ *
+ * @param action resolveDropAction이 반환한 판정 결과
+ * @param deps mutate 함수 3종 + setPendingMove 묶음(handleDragEnd가 주입)
+ */
+function dispatchDropAction(action: DropAction, deps: DropActionDeps): void {
+  switch (action.type) {
+    case 'noop':
+      return
+    case 'reorder':
+      executeReorder(action, deps.reorderCardMutate)
+      return
+    case 'needs-resolution':
+      deps.setPendingMove({
+        issueKey: action.issueKey,
+        fromColumnId: action.fromColumnId,
+        toColumnId: action.toColumnId,
+        expectedVersion: action.expectedVersion,
+      })
+      return
+    case 'move':
+      executeMutate(
+        {
+          issueKey: action.issueKey,
+          fromColumnId: action.fromColumnId,
+          toColumnId: action.toColumnId,
+          expectedVersion: action.expectedVersion,
+        },
+        deps.moveCardMutate,
+      )
+      return
+    case 'field-change':
+      executeChangeField(action, deps.changeCardFieldMutate)
+      return
+    default: {
+      const exhaustiveCheck: never = action
+      return exhaustiveCheck
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // KanbanBoard 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -171,25 +496,29 @@ const UNASSIGNED: CardAssigneeDisplay = { state: 'unassigned' }
  *
  * - DndContext 안에 컬럼들을 displayOrder asc 정렬로 가로 배치한다.
  * - DragOverlay로 드래그 중 카드 미리보기를 제공한다.
- * - onDragEnd에서 resolveDropAction을 호출해 이동 유형을 판단한다.
+ * - onDragEnd에서 resolveDropAction을 호출해 이동 유형을 판단하고 dispatchDropAction에 위임한다.
  *   - move → useMoveCard.mutate 즉시 호출
  *   - needs-resolution → ResolutionPickerModal 오픈, 확인 시 mutate
  *   - reorder → useReorderCard.mutate 즉시 호출(셀 내 순서변경)
+ *   - field-change → useChangeCardField.mutate 즉시 호출(스윔레인 그룹 간 담당자·우선순위·에픽 변경, FR-UX-06 PR21b)
  *   - noop → 아무 동작 없음
- * - 409 충돌 등 에러 시 toast.error를 표시한다(reorder는 useReorderCard 내부에서 처리).
+ * - onDragOver도 resolveDropAction을 재사용해, 실제로 드롭 가능한 대상일 때만 컬럼을
+ *   하이라이트한다(FR-8) — field-change도 유효한 드롭이므로 하이라이트된다.
+ * - 409 충돌 등 에러 시 toast.error를 표시한다(reorder·field-change는 각 훅 내부에서 처리).
  * - accessibility.announcements로 드래그 상호작용을 한국어로 스크린리더에 공지한다(DR2).
  * - 센서: PointerSensor(distance:5) + KeyboardSensor — 클릭과 드래그 구분(D-2).
  */
 export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterActive = false }: KanbanBoardProps): JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [activeFromColumnId, setActiveFromColumnId] = useState<string | null>(null)
-  const [activeSwimlaneGroupKey, setActiveSwimlaneGroupKey] = useState<string | undefined>(undefined)
   const [overColumnId, setOverColumnId] = useState<string | null>(null)
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null)
 
-  // filter-aware useMoveCard/useReorderCard — filter와 동일한 queryKey를 공유해 낙관적 업데이트 정합
+  // filter-aware useMoveCard/useReorderCard/useChangeCardField — filter와 동일한 queryKey를
+  // 공유해 낙관적 업데이트 정합 (field-change는 FR-UX-06 PR21b Task 5)
   const moveCard = useMoveCard(boardId, filter)
   const reorderCard = useReorderCard(boardId, filter)
+  const changeCardField = useChangeCardField(boardId, filter)
 
   // PointerSensor: distance 5px 이상 이동해야 드래그 시작 → 카드 Link 클릭 보존 (D-2)
   const sensors = useSensors(
@@ -210,38 +539,43 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
   // 접근성 공지(DR2) — board/assigneeNames가 바뀔 때만 재계산(불필요한 재구독 방지)
   const announcements = useMemo(() => buildDragAnnouncements(board, assigneeNames), [board, assigneeNames])
 
-  /** dnd-kit onDragStart — 드래그 중인 카드의 출발 컬럼·셀(스윔레인 그룹) key를 기록한다. */
+  // handleDragOver 재계산 가드(리뷰 S4) — dnd-kit onDragOver는 포인터가 조금만 움직여도 자주
+  // 발생하는데, active/over id 쌍이 직전 호출과 같으면 resolveDropAction(내부적으로 대형 컬럼에서
+  // groupCardsBySwimlane을 2~3회 호출) 재계산 결과도 항상 같다 — 무의미한 재계산을 건너뛴다.
+  // 드래그 시작/종료마다 초기화해 이전 드래그의 값과 우연히 겹치지 않게 한다.
+  const lastDragOverRef = useRef<{ activeId: string; overId: string | null } | null>(null)
+
+  /** dnd-kit onDragStart — 드래그 중인 카드의 출발 컬럼을 기록한다. */
   function handleDragStart(event: DragStartEvent): void {
     setActiveId(String(event.active.id))
-    const current = event.active.data.current as { fromColumnId?: string; swimlaneGroupKey?: string } | undefined
+    const current = event.active.data.current as { fromColumnId?: string } | undefined
     setActiveFromColumnId(current?.fromColumnId ?? null)
-    setActiveSwimlaneGroupKey(current?.swimlaneGroupKey)
+    lastDragOverRef.current = null
   }
 
   /**
    * dnd-kit onDragOver — 하이라이트할 컬럼 id를 계산한다.
    *
-   * DR3(최소 구현) — 같은 컬럼 내에서 활성 카드와 다른 스윔레인 그룹(셀) 위로 드래그 중이면
-   * 이 PR에서는 noop으로 처리되므로(필드변경은 PR21b), 착시를 막기 위해 컬럼 하이라이트를
-   * 억제한다(over 대상이 없는 것처럼 취급).
+   * resolveDropAction과 동일 판정을 재사용해(handleDragEnd와 같은 로직), 실제로 드롭 가능한
+   * 대상일 때만 하이라이트한다(FR-8). field-change(스윔레인 그룹 간 드롭)도 유효한 드롭이므로
+   * 이제 하이라이트된다 — PR21이 그룹 경계 드래그를 noop 취급해 억제하던 로직을 반전했다.
+   *
+   * active/over id 쌍이 직전 호출과 동일하면 resolveDropAction을 다시 부르지 않는다(리뷰 S4).
    */
   function handleDragOver(event: DragOverEvent): void {
-    const over = event.over
-    if (over === null) {
-      setOverColumnId(null)
-      return
-    }
+    const activeId = String(event.active.id)
+    const overId = event.over !== null ? String(event.over.id) : null
+    const last = lastDragOverRef.current
+    if (last !== null && last.activeId === activeId && last.overId === overId) return
+    lastDragOverRef.current = { activeId, overId }
 
-    const overData = over.data.current as { fromColumnId?: string; swimlaneGroupKey?: string } | undefined
-    const overColumnIdResolved = overData?.fromColumnId ?? String(over.id)
-    const isCrossGroupWithinSameColumn =
-      activeFromColumnId !== null &&
-      overColumnIdResolved === activeFromColumnId &&
-      activeSwimlaneGroupKey !== undefined &&
-      overData?.swimlaneGroupKey !== undefined &&
-      overData.swimlaneGroupKey !== activeSwimlaneGroupKey
-
-    setOverColumnId(isCrossGroupWithinSameColumn ? null : overColumnIdResolved)
+    const action = resolveDropAction(
+      board,
+      event.active as DragActiveMin,
+      event.over as DragOverMin | null,
+      assigneeNames,
+    )
+    setOverColumnId(resolveHighlightColumnId(action, activeFromColumnId))
   }
 
   /**
@@ -251,8 +585,8 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
   function handleDragEnd(event: DragEndEvent): void {
     setActiveId(null)
     setActiveFromColumnId(null)
-    setActiveSwimlaneGroupKey(undefined)
     setOverColumnId(null)
+    lastDragOverRef.current = null
 
     const action = resolveDropAction(
       board,
@@ -261,77 +595,17 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
       assigneeNames,
     )
 
-    dispatchDropAction(action)
-  }
-
-  /**
-   * resolveDropAction 판정 결과(DropAction)에 따라 실제 부수효과를 실행한다.
-   *
-   * - `noop` → 아무 것도 하지 않는다.
-   * - `reorder` → executeReorder(useReorderCard.mutate 즉시 호출) — 셀 내 순서변경.
-   * - `needs-resolution` → pendingMove를 채워 ResolutionPickerModal을 연다(확인 시 executeMutate).
-   * - `move` → executeMutate(useMoveCard.mutate 즉시 호출) — 다른 컬럼(non-DONE)으로 이동.
-   *
-   * @param action resolveDropAction이 반환한 판정 결과
-   */
-  function dispatchDropAction(action: DropAction): void {
-    switch (action.type) {
-      case 'noop':
-        return
-      case 'reorder':
-        executeReorder(action)
-        return
-      case 'needs-resolution':
-        setPendingMove({
-          issueKey: action.issueKey,
-          fromColumnId: action.fromColumnId,
-          toColumnId: action.toColumnId,
-          expectedVersion: action.expectedVersion,
-        })
-        return
-      case 'move':
-        executeMutate({
-          issueKey: action.issueKey,
-          fromColumnId: action.fromColumnId,
-          toColumnId: action.toColumnId,
-          expectedVersion: action.expectedVersion,
-        })
-        return
-      default: {
-        const exhaustiveCheck: never = action
-        return exhaustiveCheck
-      }
-    }
-  }
-
-  /** 카드를 다른 컬럼으로 이동한다(useMoveCard.mutate). 409 등 에러는 toast로 안내한다. */
-  function executeMutate(vars: MoveCardVars): void {
-    moveCard.mutate(vars, {
-      onError: (err: unknown) => {
-        // 409 OCC 충돌 등 에러 — 사용자에게 안내 (롤백+invalidate는 useMoveCard 내부 처리)
-        void err
-        toast.error('다른 변경과 충돌이 발생했습니다. 다시 시도해 주세요.')
-      },
+    dispatchDropAction(action, {
+      moveCardMutate: moveCard.mutate,
+      reorderCardMutate: reorderCard.mutate,
+      changeCardFieldMutate: changeCardField.mutate,
+      setPendingMove,
     })
-  }
-
-  /**
-   * 셀(컬럼 × 스윔레인 그룹) 내에서 카드 순서를 변경한다(useReorderCard.mutate).
-   * 409 충돌 등 에러 toast는 useReorderCard 내부에서 처리한다(중복 안내 방지).
-   */
-  function executeReorder(action: Extract<DropAction, { type: 'reorder' }>): void {
-    const vars: ReorderCardVars = {
-      issueKey: action.issueKey,
-      columnId: action.columnId,
-      previousIssueKey: action.previousIssueKey,
-      nextIssueKey: action.nextIssueKey,
-    }
-    reorderCard.mutate(vars)
   }
 
   function handleResolutionConfirm(resolutionId: string): void {
     if (pendingMove === null) return
-    executeMutate({ ...pendingMove, resolutionId })
+    executeMutate({ ...pendingMove, resolutionId }, moveCard.mutate)
     setPendingMove(null)
   }
 

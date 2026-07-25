@@ -60,16 +60,10 @@ const COLUMN_ID = 'col-uuid-0001'
 function renderCard(
   card: BoardCardType = baseCard,
   assignee: CardAssigneeDisplay = { state: 'named', name: '김철수' },
-  swimlaneGroupKey?: string,
 ) {
   return render(
     <DndContext>
-      <BoardCard
-        card={card}
-        columnId={COLUMN_ID}
-        assignee={assignee}
-        {...(swimlaneGroupKey !== undefined ? { swimlaneGroupKey } : {})}
-      />
+      <BoardCard card={card} columnId={COLUMN_ID} assignee={assignee} />
     </DndContext>,
   )
 }
@@ -165,31 +159,21 @@ describe('BoardCard — S3 드래그 affordance', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S4. useSortable 배선 — id/data(fromColumnId+swimlaneGroupKey)
+// S4. useSortable 배선 — id/data(fromColumnId)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('BoardCard — S4 useSortable 배선', () => {
-  it('S4a: useSortable을 id=issueKey, data={fromColumnId, swimlaneGroupKey}로 호출한다', () => {
-    renderCard(baseCard, { state: 'named', name: '김철수' }, 'assignee-named-김철수')
-    expect(sortableModule.useSortable).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: 'ATLAS-42',
-        data: { fromColumnId: COLUMN_ID, swimlaneGroupKey: 'assignee-named-김철수' },
-      }),
-    )
-  })
-
-  it('S4b: swimlaneGroupKey 생략 시 "none"으로 기본값 처리한다', () => {
+  it('S4a: useSortable을 id=issueKey, data={fromColumnId}로 호출한다', () => {
     renderCard()
     expect(sortableModule.useSortable).toHaveBeenCalledWith(
       expect.objectContaining({
         id: 'ATLAS-42',
-        data: { fromColumnId: COLUMN_ID, swimlaneGroupKey: 'none' },
+        data: { fromColumnId: COLUMN_ID },
       }),
     )
   })
 
-  it('S4c: 드래그 중(isDragging)이면 원위치 카드에 opacity 저하 클래스가 적용된다', () => {
+  it('S4b: 드래그 중(isDragging)이면 원위치 카드에 opacity 저하 클래스가 적용된다', () => {
     renderCard()
     const card = document.querySelector('[aria-roledescription="draggable card"]')
     // 렌더 직후(isDragging=false)에는 opacity-50이 없어야 함 — 회귀 방지용 음성 가드

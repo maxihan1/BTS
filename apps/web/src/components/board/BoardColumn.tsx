@@ -7,7 +7,7 @@ import type { BoardColumn as BoardColumnType, SwimlaneField } from '@/api/boards
 import { boardLabels } from '@/i18n/board-labels'
 import { groupCardsBySwimlane } from '@/lib/swimlane-group'
 import type { SwimlaneGroup } from '@/lib/swimlane-group'
-import { BoardCard, NONE_CELL_KEY } from './BoardCard'
+import { BoardCard } from './BoardCard'
 import type { CardAssigneeDisplay } from './BoardCard'
 import { WipCountBadge } from './WipCountBadge'
 
@@ -80,7 +80,6 @@ function SwimlaneSection({
               card={card}
               columnId={columnId}
               assignee={assigneeNames.get(card.issueKey) ?? UNASSIGNED}
-              swimlaneGroupKey={group.key}
             />
           ))}
         </SortableContext>
@@ -169,7 +168,6 @@ function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField
                 card={card}
                 columnId={column.columnId}
                 assignee={assigneeNames.get(card.issueKey) ?? UNASSIGNED}
-                swimlaneGroupKey={NONE_CELL_KEY}
               />
             ))}
           </SortableContext>
@@ -197,8 +195,8 @@ function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField
  *   드롭 영역(data-col-id/useDroppable id)은 항상 columnId로 불변.
  * - 셀(컬럼 × 스윔레인 그룹) 단위로 `SortableContext`를 감싼다 —
  *   NONE이면 컬럼 카드 전체가 하나의 셀, 그 외엔 각 SwimlaneGroup이 하나의 셀.
- *   각 BoardCard에는 그 셀의 key(`'none'` 또는 SwimlaneGroup.key)를 `swimlaneGroupKey`로 전달해
- *   board-drop.ts의 셀 판정과 정합시킨다.
+ *   셀 판정(board-drop.ts findGroupKey)은 드롭 시점에 board 상태로 다시 계산하므로
+ *   BoardCard에 드래그 데이터로 셀 key를 별도로 전달하지 않는다(리뷰 S3 — 미사용 data 제거).
  * - `memo`로 래핑되어 column·assigneeNames·isOver·swimlaneField가 변하지 않으면 재렌더하지 않는다.
  */
 export const BoardColumn = memo(BoardColumnInner)

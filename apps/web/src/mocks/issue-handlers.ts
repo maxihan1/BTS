@@ -915,6 +915,41 @@ function resolveIssue(key: string): IssueResponse | undefined {
   return issueOverrides.get(key) ?? createdIssues.get(key) ?? issueFixtureMap[key]
 }
 
+/** getIssueFieldOverride가 반환하는 필드 오버라이드 값 (FR-UX-06 PR21b Task 6). */
+export interface IssueFieldOverride {
+  /** 담당자 사용자 UUID. 미배정이면 null. */
+  assigneeId: string | null
+  /** 우선순위 (1=Highest ~ 5=Lowest). */
+  priority: number
+  /** 소속 에픽 키. 미소속이면 null. */
+  epicKey: string | null
+}
+
+/**
+ * 담당자·우선순위·에픽 필드의 최신 오버라이드 값을 읽기 전용으로 노출한다 (FR-UX-06 PR21b Task 6).
+ *
+ * changeAssignee/updateIssue/connectEpicChild/disconnectEpicChild 핸들러는 해당 필드가
+ * 실제로 변경될 때만 issueOverrides에 기록한다. board-handlers.ts의 board GET 핸들러가 이
+ * 접근자로 최신값을 읽어 카드 응답에 오버레이한다(PR21 resolveLiveRank의 필드 버전) — 그래야
+ * 스윔레인 간 드래그로 필드를 바꾼 뒤 board를 재조회해도 옛 시드값으로 되돌아가지 않는다
+ * (msw-mutation-stateful-refetch 회귀 회피).
+ *
+ * issueOverrides에 아직 기록이 없으면(해당 이슈의 필드변경 이력 없음) undefined를 반환한다 —
+ * 호출부(board-handlers.ts)가 board 자체 시드값을 그대로 쓰게 해, 필드변경이 일어난 적 없는
+ * 기존 26개+ 보드 fixture/E2E 스펙에는 무회귀다.
+ *
+ * @param key 조회할 이슈 키
+ */
+export function getIssueFieldOverride(key: string): IssueFieldOverride | undefined {
+  const override = issueOverrides.get(key)
+  if (override === undefined) return undefined
+  return {
+    assigneeId: override.assigneeId,
+    priority: override.priority,
+    epicKey: override.epic?.key ?? null,
+  }
+}
+
 /** priority 숫자 → 표시 이름 변환 (1=Highest ~ 5=Lowest, backend 기본값 3=Medium). */
 function priorityName(priority: number): string {
   const map: Record<number, string> = {
