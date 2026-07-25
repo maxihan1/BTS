@@ -997,6 +997,65 @@ A 채택으로 제거됐다.
 - **`plan-eng-review` 의 scope gate 질의 생략** — `/bts` 체인이 리뷰 대상 plan 파일 경로를 **인자로 명시
   전달**해 확인 질문이 순수 중복. 리뷰 본문 4섹션은 생략 없이 전부 수행.
 
+## 구현 실행 결과 (2026-07-25)
+
+**TDD 순서 검증됨.** `test:` `0a3491cb7` → `fix:` `7d529597f` → `refactor:` `75a3f8e6f`.
+
+**RED 실측.** 8건 중 **5 red**(M1·M2·E4·R2·SEAL) · 3 green(G2·R3×2). `EXIT=1`. 예측과 일치.
+
+**GREEN 실측.** `PublicDashboardErrorTokenLeakTest` 8/8 · `PublicDashboardControllerTest` 5/5 · 실패 0.
+
+**뮤테이션 4종 + 봉인 위반 주입 1종 — 전부 예측대로.**
+
+| # | 뮤테이션 | 결과 |
+|---|---|---|
+| A | `problem()` 의 `instance` 줄 삭제 | 9건 중 **6 red** (M1·M2·E4·R2·G2·SEAL) |
+| B | `handleUnclassified` 전체 삭제 | **4 red** (M2·R2·G2·SEAL) — 500 경로 가드만 |
+| C | `handleNotFound` 헬퍼 미경유 되돌림 | **4 red** (M1·E4·R2·SEAL) — 404 경로 가드만 |
+| D | `INSTANCE_PATH` 값 변경 | **2 red** (R2·G2), M1/M2/E4/SEAL **green** ✅ 판별 성공 |
+| 봉인 | 미등재 `@ExceptionHandler` 추가 | 8건 중 **1 red** (SEAL 단독) |
+
+전 뮤테이션 후 `git diff` 비어 있음(원복 확인) · 원복 후 재실행 green.
+
+### ★계획 대비 정정 3건 (실행 중 발견)
+
+1. **테스트 개수 기준선이 틀렸다.** 계획의 "기준선 429" 는 `grep -c "@Test"` 로 센 값인데,
+   실제 실행 수는 `@ParameterizedTest`·`@Nested` 때문에 훨씬 많다. **측정 도구가 어긋난 상태로
+   증감을 판정할 수 없어**, main(`011d3df9b`)에서 동일 방법(XML 산출물 집계)으로 진짜 기준선을 다시 쟀다.
+   - 기준선 **713건 / 59클래스** → 본 브랜치 **724건 / 62클래스**
+   - 델타 **+11건 / +3클래스** = 신규 8(ErrorTokenLeak) + 1(HandlerInstance) + 2(임시 프로브) — **정확히 일치.**
+     사라진 테스트 0건이 산출물로 확인됐다.
+2. **`DashboardNotFoundException` 생성자는 `UUID`** 다(계획 초안의 `"probe"` 문자열은 틀렸다).
+   계획이 "실물로 확인하라" 고 표시해 둔 바로 그 지점이 실제로 걸렸다.
+3. **Kotlin 은 블록 주석이 중첩된다.** KDoc 다이어그램에 경로 와일드카드를 `/` 다음 `*` 로 쓰자
+   새 주석이 열려 `Syntax error: Unclosed comment` 로 컴파일이 깨졌다(1회). 산문 표기로 회피.
+
+### G2 판별자 교정 (실행 중 발견)
+
+RED 단계에서 `G2` 가 **통과**했는데, 이는 advice 에 `PublicDashboardNotFoundException` 매핑이 애초에 없어
+컨트롤러-로컬이 이기든 지든 결과가 같았기 때문이다 — **vacuous 였다.**
+판별자를 **500 응답의 `instance`** 로 교체했다(advice 가 이기면 요청 URI 가 들어와 실패).
+뮤테이션 B·D 에서 G2 가 실제로 red 가 되는 것으로 판별력을 확인했다.
+
+### 최종 검증
+
+- `:modules:notification:test --rerun-tasks` → **724건 실행 · 실패 0 · EXIT=0**
+- `ktlintCheck` **EXIT=0** · `detekt --rerun-tasks` **EXIT=0** · **detekt baseline 변경 0건**
+- diff 범위 = 프로덕션 1파일 + 테스트 2파일 + 문서 3파일. 마이그레이션 0 · 프론트 0 · cross-BC 0.
+
+### ⚠️ 사전존재 flaky 발견 (본 변경과 무관)
+
+main 기준선 측정 중 `RecipientResolutionIntegrationTest.RR-1` 이 실패했다
+(`expected: 1L but was: 0L`). **단독 재실행 시 main 에서 통과**한다 → 동시 실행 부하에서만 깨지는
+**PRE_EXISTING flaky** 로 확정(메모리 `concurrent-testcontainers-suite-flaky` 패턴 일치).
+본 브랜치 전량 실행에서는 실패 0건이었다. **후속 항목으로 등재.**
+
+### 남은 정리 항목
+
+임시 조사 프로브 `PublicDashboard404BodyProbeTest.kt` 삭제가 **권한 거부**로 실패했다.
+**untracked 라 PR diff 에는 들어가지 않으며**, 머지 시 worktree 정리로 함께 사라진다.
+수동 삭제 시 — `rm .worktrees/public-dashboard-404-token-leak/backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/web/PublicDashboard404BodyProbeTest.kt`
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
