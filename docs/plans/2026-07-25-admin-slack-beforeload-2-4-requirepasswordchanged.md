@@ -54,7 +54,41 @@ SYSTEM_ADMIN 가드를 넣고 **뮤테이션으로 검증**했다. 같은 방식
 - 백엔드 `WorkflowSchemeController` 읽기 경로(list·get) 권한 — 별도 PR (project-workflow BC)
 - `PublicDashboardController` 404 응답 `instance` 토큰 노출 여부 — 별도 PR (notification BC)
 
-## 도메인 정리 (← /bts-domain 채움)
+## 도메인 정리
+
+- **BC**: identity-access (개념). 변경 파일은 `apps/web` (프론트 라우트 가드) — 백엔드 모듈 변경 0.
+- **영향 엔티티**: 없음. 스키마 변경 0 · 마이그레이션 0 · 백엔드 API 변경 0.
+- **새 용어**: 없음. `라우트 가드`(ADR 2026-06-08 §노출) · `MFA` · `신뢰 디바이스`(glossary:90)가 모두 기존 등재.
+- **기존 결정 충돌**: 없음. 대신 **반드시 지켜야 하는 결정 1건**을 발견했다 (아래).
+- **관련 ADR**: 신규 ADR 불필요 — 이 작업은 새 결정을 만들지 않고 기존 4-가드 관례에 미준수 라우트 1개를
+  맞추는 것이다.
+
+### ★ 지켜야 하는 기존 결정 — 가드를 공통 레이아웃으로 올리지 않는다
+
+`docs/decisions/2026-07-17-fr-ux-06-jira-redesign.md:70`.
+
+> 🔴 유일한 실패 시나리오 2개. ① `/login`을 shell에 넣기 (`redirectIfAuth` + `already-authed.spec.ts`)
+> ② **49개 `beforeLoad` 가드를 shell로 hoist** (가드 평가 순서가 바뀌어 `routeGuard.test.tsx`가 깨짐).
+> **가드는 라우트에 그대로 둔다.**
+
+따라서 "공통 `/admin` 레이아웃 라우트에 가드를 한 번만 선언해 11개 중복을 없앤다"는 리팩토링은
+**기각된 방향**이다. 본 PR은 `/admin/slack`의 가드 목록만 다른 10개와 동일하게 맞춘다.
+중복 자체는 **음성 테스트(행렬 전수 열거)로 감시**해 재발을 막는 방식으로 다룬다.
+
+### 참조된 기존 결정 (가드 의미)
+
+- `docs/decisions/2026-06-08-local-account-signup.md:57` — `whoami` 응답의 `mustChangePassword`가 `true`면
+  프론트 라우트 가드가 `/settings/password`로 강제 리다이렉트. → `requirePasswordChanged`의 근거.
+- `docs/decisions/2026-06-08-local-account-signup.md:68` — `requireSystemAdmin` 가드는 `authStore.user`의
+  `isSystemAdmin`을 동기 읽기.
+- `docs/decisions/2026-07-08-fr-pf-02-start-page.md:38` — `auth/routeGuard.ts`의 `redirectIfAuth` fallback도
+  시작 페이지 매핑과 일관화. → 가드 파일이 이미 다수 결정의 소비 지점임.
+
+### grill-with-docs 생략 (Maxi 승인, D4)
+
+`bts-domain` Step 2를 생략했다. 근거 — 새 엔티티 0 · 스키마 0 · 신규 용어 0 · 기존 결정 충돌 0이고,
+지켜야 할 결정은 선행 읽기(glossary + domain/identity-access + `docs/decisions` grep 3건)에서 이미
+명문으로 확보했다. 대화형 캐묻기가 추가로 밝혀낼 도메인 재정의가 없다고 판단했고 Maxi가 승인했다.
 
 ## 스펙 (← /bts-spec Phase A 채움)
 
