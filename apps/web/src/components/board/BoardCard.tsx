@@ -24,18 +24,6 @@ export type CardAssigneeDisplay =
   | { state: 'unknown' }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 셀(컬럼 × 스윔레인 그룹) key 상수
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * swimlaneField=NONE일 때의 셀(컬럼 × 스윔레인 그룹) key.
- * swimlane-group.ts groupByNone·board-drop.ts findGroupKey와 동일 값 `'none'` —
- * BoardColumn.tsx(NONE 분기 렌더)와 이 파일(swimlaneGroupKey 기본값)이 각자
- * 리터럴을 중복 정의하지 않도록 여기서 단일 export한다.
- */
-export const NONE_CELL_KEY = 'none'
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -50,14 +38,6 @@ export interface BoardCardProps {
    * 페이지가 userId → displayName 해석 후 주입한다.
    */
   assignee: CardAssigneeDisplay
-  /**
-   * 카드가 속한 셀(컬럼 × 스윔레인 그룹) 식별자.
-   * swimlaneField=NONE이면 `NONE_CELL_KEY`, 그 외엔 SwimlaneGroup.key —
-   * board-drop.ts findGroupKey/swimlane-group.ts groupCardsBySwimlane과 동일 규약.
-   * useSortable data에 실려 board-drop.ts의 셀 판정(resolveSameColumnDrop)과 정합된다.
-   * 옵셔널 — 생략 시 `NONE_CELL_KEY`(실제 셀 소속이 없는 DragOverlay 미리보기 등 렌더용 기본값).
-   */
-  swimlaneGroupKey?: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -109,10 +89,10 @@ function AssigneeSlot({ assignee }: { assignee: CardAssigneeDisplay }): React.Re
 // 내부 구현 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
-function BoardCardInner({ card, columnId, assignee, swimlaneGroupKey = NONE_CELL_KEY }: BoardCardProps) {
+function BoardCardInner({ card, columnId, assignee }: BoardCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card.issueKey,
-    data: { fromColumnId: columnId, swimlaneGroupKey },
+    data: { fromColumnId: columnId },
   })
 
   const style = {
