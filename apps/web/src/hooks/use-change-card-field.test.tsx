@@ -490,6 +490,8 @@ describe('useChangeCardField — filter-aware queryKey', () => {
 
 describe('useChangeCardField — 에픽 2-step 재배치', () => {
   let queryClient: QueryClient
+  // T-EP-7(재connect도 실패하는 이중 실패 경로)에서만 사용 — console.error 호출 검증 후 원복
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn> | undefined
 
   beforeEach(() => {
     queryClient = new QueryClient({
@@ -501,6 +503,8 @@ describe('useChangeCardField — 에픽 2-step 재배치', () => {
   afterEach(() => {
     queryClient.clear()
     vi.clearAllMocks()
+    consoleErrorSpy?.mockRestore()
+    consoleErrorSpy = undefined
   })
 
   it('T-EP-1: 없음→에픽(1-step) — connectEpicChild 1회만 호출되고 disconnectEpicChild는 호출되지 않는다', async () => {
@@ -624,6 +628,61 @@ describe('useChangeCardField — 에픽 2-step 재배치', () => {
     expect(connectEpicChild).toHaveBeenNthCalledWith(2, EPIC_A, 'ATLAS-1')
 
     // 낙관 캐시 롤백 — 원래 에픽(EPIC_A)으로 복원
+    const cached = queryClient.getQueryData<BoardDetail>(boardKeys.detail(BOARD_ID))
+    const card = cached?.columns[0]?.cards.find((c) => c.issueKey === 'ATLAS-1')
+    expect(card?.epicKey).toBe(EPIC_A)
+
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('에픽'))
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: boardKeys.detail(BOARD_ID) }),
+    )
+  })
+
+  it('T-EP-7: 이중 실패(disconnect 성공 → connect(B) 실패 → best-effort 재connect(A)도 실패) — console.error 기록 + 원 connectError throw + 롤백 + toast(리뷰 S5)', async () => {
+    const connectError = Object.assign(new Error('ISSUE_EPIC_CHILD_ALREADY_LINKED'), { status: 409 })
+    const rollbackError = Object.assign(new Error('네트워크 오류'), { status: 500 })
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    vi.mocked(disconnectEpicChild).mockResolvedValue(undefined)
+    vi.mocked(connectEpicChild)
+      .mockRejectedValueOnce(connectError)
+      .mockRejectedValueOnce(rollbackError)
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(() => useChangeCardField(BOARD_ID), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      result.current.mutate({
+        issueKey: 'ATLAS-1',
+        field: 'epic',
+        fromEpicKey: EPIC_A,
+        toEpicKey: EPIC_B,
+        expectedVersion: 1,
+      })
+    })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+
+    // disconnect(A) 1회
+    expect(disconnectEpicChild).toHaveBeenCalledTimes(1)
+    expect(disconnectEpicChild).toHaveBeenCalledWith(EPIC_A, 'ATLAS-1')
+
+    // connect는 2회 — 1차 목표(B) 실패 후 2차 best-effort 재connect(A)도 실패
+    expect(connectEpicChild).toHaveBeenCalledTimes(2)
+    expect(connectEpicChild).toHaveBeenNthCalledWith(1, EPIC_B, 'ATLAS-1')
+    expect(connectEpicChild).toHaveBeenNthCalledWith(2, EPIC_A, 'ATLAS-1')
+
+    // 재connect 실패는 조용히 삼키지 않고 console.error로 남긴다
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('에픽 best-effort 재연결 실패'),
+      rollbackError,
+    )
+
+    // 재connect도 실패했지만 mutation은 rollbackError가 아니라 원래 connectError(B)를 그대로 던진다
+    expect(result.current.error).toBe(connectError)
+
+    // 낙관 캐시 롤백 — 원래 에픽(EPIC_A)으로 복원 (재connect 실패와 무관하게 스냅샷으로 복원)
     const cached = queryClient.getQueryData<BoardDetail>(boardKeys.detail(BOARD_ID))
     const card = cached?.columns[0]?.cards.find((c) => c.issueKey === 'ATLAS-1')
     expect(card?.epicKey).toBe(EPIC_A)
