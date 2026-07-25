@@ -87,9 +87,32 @@ PR17~PR21b 화면 PR과 동일 판단. 시각 결정(`--chart-*` 값 확정·동
 `/bts-review-plan`의 **plan-design-review**가 정본으로 다루고, 확정 후 **ADR 신설**한다
 (`docs/decisions/2026-07-25-fr-ux-06-pr22-chart-categorical-tokens.md` 예정 — ADR D7의 이행 기록).
 
-## 스펙 (← /bts-spec Phase A 채움)
+## 스펙
 
-## Brainstorming Check (← /bts-spec Phase B 채움)
+전체 스펙. [docs/specs/2026-07-25-fr-ux-06-pr22-ui-cleanup.md](../specs/2026-07-25-fr-ux-06-pr22-ui-cleanup.md)
+
+핵심 요약.
+- **실측이 가정을 뒤집었다** — "자잘한 정리 3덩어리"가 아니라 각각 PR 하나 크기다.
+  원시 `<button>` **프로덕션 106발생/52파일** · 인라인 `animate-pulse` **33발생/25파일**(프리미티브 소비는 1파일뿐) ·
+  recharts **6종이 하드코딩 hex 6종** · 범주색 **10발생/3파일**(메모리의 "~14건"은 과다).
+- **본 PR은 "사용자 눈에 안 보이는 것"이 목표**다. 시각 변화는 차트 색(S4)과 범주색(S5) 둘뿐이며 나머지는 무회귀.
+- `FilteredEmptyState` 2중 정의는 **문구가 서로 다르다** → 통합해도 화면별 문구를 prop으로 보존한다.
+- `--chart-1~5`는 `state-tokens.test.ts:221`이 **동결 계약으로 잠그고 있다**. PR22가 자물쇠를 여는 첫 PR
+  (PR11의 `--sidebar-*` 선례). `--syntax-*`는 AQL 정렬 계약이라 **동결 유지**.
+
+## Brainstorming Check
+
+✅ 통과 (1회 iteration, gap 9건 — 반증 3 · 스펙 누락 2 · Maxi 결정 2 · 확인 2)
+
+- **반증(스펙보다 유리)**. `--muted` == `--bg-neutral` **동일값**(`#F7F8F9`/`#BCD6F00A`) → 스켈레톤 교체는
+  **정확한 시각 no-op**, 스펙 §5의 "색이 미세하게 다르다"는 오류였음(EC5 폐기) ·
+  `@theme`에 `--color-chart-1~5` **이미 배선**(EC6 리스크 하향) ·
+  **E2E는 색/스켈레톤 클래스에 0건 의존**(EC10 해소, 유닛 1건만 문구 어서션).
+- **스펙 누락 → FR 추가**. **PR22-F8** FR-UX-06 **D1·D3~D7 체크박스가 전부 미마킹**이고 "20 PR 체인" drift가
+  남아 있음(마지막 PR이므로 전량 마킹 + BC 완료 게이트 해제가 본 PR 책임) ·
+  **PR22-F9** `DESIGN.md:114`가 `--chart-*`를 "PR22 몫", `:106`이 범주색을 "PR22 소관"으로 **명시 대기 중**.
+- **Maxi 결정 3건 확정**(스펙 §17). 스코프 **B(표준·범주색 IN)** · 차트 색 **기존 검증 팔레트에서 파생** ·
+  재발방지 락 **ESLint 내장 `no-restricted-syntax` + 파일별 예외**(신규 의존성 0).
 
 ## Plan (← /bts-plan 채움)
 
