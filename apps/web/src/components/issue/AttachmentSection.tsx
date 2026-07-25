@@ -10,6 +10,7 @@ import { attachmentLabels } from '@/i18n/attachment-labels'
 import { isPreviewable } from '@/lib/attachment-preview'
 import { useDateFormat } from '@/hooks/use-date-format'
 import { AttachmentPreviewModal } from './AttachmentPreviewModal'
+import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 파일 크기 포맷 헬퍼
@@ -112,37 +113,43 @@ function AttachmentRow({ attachment, issueKey, canDelete }: AttachmentRowProps):
         <div className="flex items-center justify-end gap-1">
           {/* 미리보기 버튼 — isPreviewable 타입만 표시 */}
           {canPreview && (
-            <button
+            <Button
               type="button"
+              variant="link"
+              size="xs"
               onClick={() => { setPreviewOpen(true) }}
               aria-label={`${attachment.filename} ${attachmentLabels.previewButton}`}
-              className="text-xs text-primary hover:underline focus:outline-none focus:ring-1 focus:ring-ring px-1.5 py-1 min-h-[32px]"
+              className="min-h-[32px] px-1.5"
             >
               {attachmentLabels.previewButton}
-            </button>
+            </Button>
           )}
 
           {/* 다운로드 버튼 */}
-          <button
+          <Button
             type="button"
+            variant="link"
+            size="xs"
             onClick={() => { void handleDownload() }}
             disabled={isDownloading}
             aria-label={`${attachment.filename} ${attachmentLabels.downloadButton}`}
-            className="text-xs text-primary hover:underline focus:outline-none focus:ring-1 focus:ring-ring px-1.5 py-1 disabled:opacity-40 disabled:cursor-not-allowed min-h-[32px]"
+            className="min-h-[32px] px-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {attachmentLabels.downloadButton}
-          </button>
+          </Button>
 
           {/* 삭제 버튼 (canDelete=false 면 미표시) */}
           {canDelete && !confirmingDelete && (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="xs"
               onClick={handleDeleteClick}
               aria-label={attachmentLabels.deleteButton}
-              className="text-xs text-muted-foreground hover:text-destructive focus:outline-none focus:ring-1 focus:ring-ring px-1.5 py-1 min-h-[32px]"
+              className="min-h-[32px] px-1.5 text-muted-foreground hover:text-destructive"
             >
               {attachmentLabels.deleteButton}
-            </button>
+            </Button>
           )}
 
           {/* 인라인 삭제 확인 */}
@@ -152,24 +159,30 @@ function AttachmentRow({ attachment, issueKey, canDelete }: AttachmentRowProps):
                 {attachmentLabels.deleteWarning}
               </span>
               <span className="flex gap-1">
-                <button
+                {/* PR22 — 원본이 bg-destructive **솔리드**라 variant="destructive"(연한 배경)와
+                    다르다. className 으로 솔리드를 유지한다(경고 확인 버튼의 강조 의도 보존). */}
+                <Button
                   type="button"
+                  variant="destructive"
+                  size="xs"
                   onClick={handleDeleteConfirm}
                   disabled={isDeleting}
                   aria-label={attachmentLabels.deleteConfirmButton}
-                  className="text-xs bg-destructive text-destructive-foreground px-2 py-1 rounded hover:bg-destructive/90 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40 disabled:cursor-not-allowed min-h-[28px]"
+                  className="min-h-[28px] rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {attachmentLabels.deleteConfirmButton}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant="outline"
+                  size="xs"
                   onClick={handleDeleteCancel}
                   disabled={isDeleting}
                   aria-label={attachmentLabels.deleteCancelButton}
-                  className="text-xs border border-border px-2 py-1 rounded hover:bg-muted focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40 disabled:cursor-not-allowed min-h-[28px]"
+                  className="min-h-[28px] rounded disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {attachmentLabels.deleteCancelButton}
-                </button>
+                </Button>
               </span>
             </span>
           )}

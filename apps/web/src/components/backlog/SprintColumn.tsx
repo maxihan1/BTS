@@ -3,6 +3,7 @@ import { memo } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { Link } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import { burndownLabels } from '@/i18n/burndown-labels'
 import type { BacklogIssue, SprintMeta } from '@/api/backlog'
@@ -114,24 +115,31 @@ function SprintColumnInner({
 
         {/* 버튼 슬롯 — PLANNED이면 시작, ACTIVE이면 완료, COMPLETED이면 없음 */}
         {sprint.status === 'PLANNED' && (
-          <button
+          <Button
             type="button"
+            variant="default"
+            size="xs"
             onClick={onStart}
-            className={cn(ACTION_BASE_CLASS, 'bg-primary text-primary-foreground hover:bg-primary/90')}
+            className={cn(ACTION_BASE_CLASS, 'hover:bg-primary/90')}
             aria-label={backlogLabels.startSprint}
           >
             {backlogLabels.startSprint}
-          </button>
+          </Button>
         )}
         {sprint.status === 'ACTIVE' && (
-          <button
+          // PR22 — success 는 Button variant 에 없다. variant="default" 의 bg-primary/
+          // text-primary-foreground 를 className 의 bg-success/text-success-foreground 가
+          // tailwind-merge 로 덮는다. hover 는 default variant 가 [a]: 로만 주므로 직접 남긴다.
+          <Button
             type="button"
+            variant="default"
+            size="xs"
             onClick={onComplete}
             className={cn(ACTION_BASE_CLASS, 'bg-success text-success-foreground hover:bg-success/90')}
             aria-label={backlogLabels.completeSprint}
           >
             {backlogLabels.completeSprint}
-          </button>
+          </Button>
         )}
 
         {/* 번다운 진입 링크 — 스프린트 상태와 무관하게 항상 표시 (FR-RP-01 D6/D7) */}

@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import type { WebhookDeliveryResponse } from '@/api/webhooks'
 import { labelForEvent, labelForStatus } from '@/i18n/webhook-labels'
 import { useDateFormat } from '@/hooks/use-date-format'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 디자인 토큰 상수 — 매직 클래스 금지, status 배지 색상 매핑
@@ -129,7 +130,7 @@ export function WebhookDeliveryTable({ deliveries, isLoading }: WebhookDeliveryT
             {Array.from({ length: SKELETON_ROW_COUNT }, (_, index) => (
               <tr key={index} className="border-b">
                 <td className="px-4 py-3" colSpan={6}>
-                  <div className="h-4 w-full animate-pulse rounded bg-muted" />
+                  <Skeleton className="h-4 w-full" />
                 </td>
               </tr>
             ))}

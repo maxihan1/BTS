@@ -10,6 +10,7 @@ import { ComponentRow } from './ComponentRow'
 import { ComponentFormDialog } from './ComponentFormDialog'
 import type { Component, CreateComponentInput } from '@/api/components.types'
 import { extractComponentErrorCode } from '@/api/components'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -41,7 +42,9 @@ function ComponentListSkeleton(): JSX.Element {
       className="space-y-2"
     >
       {[1, 2, 3].map((i) => (
-        <li key={i} className="h-14 rounded-md border animate-pulse bg-muted" />
+        <li key={i}>
+          <Skeleton className="h-14 w-full border" />
+        </li>
       ))}
     </ul>
   )

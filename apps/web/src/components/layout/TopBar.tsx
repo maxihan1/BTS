@@ -5,6 +5,7 @@ import { navLabels } from '@/i18n/nav-labels'
 import { useSidebarCollapsed } from '@/hooks/use-sidebar-collapsed'
 import { InboxBell } from '@/components/inbox/InboxBell'
 import { AccountMenu } from './AccountMenu'
+import { Button } from '@/components/ui/button'
 
 /** TopBar 컴포넌트 props */
 export interface TopBarProps {
@@ -35,14 +36,16 @@ export function TopBar({ onHelpClick }: TopBarProps) {
 
   return (
     <header className="flex h-12 items-center gap-1 border-b bg-background px-3">
-      <button
+      <Button
         type="button"
-        className="rounded-md p-1.5 hover:bg-accent"
+        variant="ghost"
+        size="icon-sm"
+        className="rounded-md hover:bg-accent"
         aria-label={collapsed ? navLabels.expandSidebar : navLabels.collapseSidebar}
         onClick={toggle}
       >
         {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
-      </button>
+      </Button>
 
       <Link to="/dashboards" className="ml-1 flex items-center gap-1.5 text-sm font-semibold text-foreground">
         <span className="flex size-6 items-center justify-center rounded bg-primary text-xs font-bold text-primary-foreground">
@@ -51,37 +54,43 @@ export function TopBar({ onHelpClick }: TopBarProps) {
         Atlas
       </Link>
 
-      <button
+      <Button
         type="button"
-        className="ml-2 rounded-md p-1.5 hover:bg-accent"
+        variant="ghost"
+        size="icon-sm"
+        className="ml-2 rounded-md hover:bg-accent"
         aria-label={navLabels.search}
         onClick={() => { void navigate({ to: '/search' }) }}
       >
         <Search className="size-4" />
-      </button>
+      </Button>
 
       <div className="flex-1" />
 
-      <button
+      <Button
         type="button"
-        className="flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+        variant="default"
+        size="default"
+        className="gap-1 rounded-md px-3 hover:bg-primary/90"
         onClick={() => { void navigate({ to: '/issues/new' }) }}
       >
         <Plus className="size-4" />
         {navLabels.create}
-      </button>
+      </Button>
 
       <InboxBell />
 
       {onHelpClick !== undefined && (
-        <button
+        <Button
           type="button"
-          className="rounded-md p-1.5 hover:bg-accent"
+          variant="ghost"
+          size="icon-sm"
+          className="rounded-md hover:bg-accent"
           aria-label="도움말"
           onClick={onHelpClick}
         >
           <HelpCircle className="size-4" />
-        </button>
+        </Button>
       )}
 
       <Link to="/settings" className="rounded-md p-1.5 hover:bg-accent" aria-label="설정">

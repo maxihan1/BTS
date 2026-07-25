@@ -7,6 +7,7 @@ import { ApiError } from '@/api/client'
 import { extractErrorCode } from '@/lib/extract-error-code'
 import { mfaStrings, mfaErrorMessage } from '@/i18n/ko'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 복사/다운로드 헬퍼
@@ -299,7 +300,7 @@ export function BackupCodesSection(): JSX.Element {
 
       {/* 상태 로딩 중이면 버튼 영역 스켈레톤 */}
       {statusLoading && (
-        <div className="h-8 w-36 animate-pulse rounded bg-muted" />
+        <Skeleton className="h-8 w-36" />
       )}
 
       {/* 버튼 영역 — 평문 노출 중이면 숨김 */}

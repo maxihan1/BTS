@@ -85,6 +85,7 @@ function RuleExecutionSummaryButton({ execution, expanded, onToggle }: RuleExecu
   const statusBadge = STATUS_BADGE[execution.status]
 
   return (
+    // PR22 OUT — P6 전체 클릭 영역: 실행 이력 한 행 전체를 누르는 디스클로저라 w-full text-left 가 필요하고, Button의 inline-flex/justify-center와 충돌한다
     <button
       type="button"
       aria-expanded={expanded}

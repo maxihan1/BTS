@@ -119,31 +119,37 @@ export function ActionListEditor({ projectKey, value, onChange }: ActionListEdit
             <li key={rowId} className="rounded-md border border-input p-3">
               <div className="flex items-start justify-between gap-2 mb-3">
                 <div className="flex gap-1">
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon-xs"
                     aria-label={TEXT.moveUpLabel}
                     disabled={index === 0}
                     onClick={() => {
                       handleMove(index, -1)
                     }}
-                    className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     <span aria-hidden="true">↑</span>
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon-xs"
                     aria-label={TEXT.moveDownLabel}
                     disabled={index === value.length - 1}
                     onClick={() => {
                       handleMove(index, 1)
                     }}
-                    className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     <span aria-hidden="true">↓</span>
-                  </button>
+                  </Button>
                 </div>
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon-xs"
                   aria-label={`${index + 1}번째 액션 삭제`}
                   onClick={() => {
                     handleRemove(index)
@@ -151,7 +157,7 @@ export function ActionListEditor({ projectKey, value, onChange }: ActionListEdit
                   className="text-muted-foreground hover:text-destructive"
                 >
                   <span aria-hidden="true">×</span>
-                </button>
+                </Button>
               </div>
               <ActionConfigEditor
                 projectKey={projectKey}

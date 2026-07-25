@@ -115,7 +115,7 @@ export function ReleaseNotesDialog({
               aria-label={labels.loadingAriaLabel}
               className="flex items-center justify-center py-8"
             >
-              <span className="text-sm text-muted-foreground animate-pulse">
+              <span className="text-sm text-muted-foreground">
                 {labels.loadingText}
               </span>
             </div>

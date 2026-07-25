@@ -103,7 +103,45 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 - **bold 배경 위** (`bg-warning` 등 고강조 배경): `text-{status}-foreground`. 라이트 흰 글자, 다크 어두운 글자(`#161A1D`). warning 대표 — 라이트 진오렌지+흰 글자, 다크 밝은 노랑+검은 글자로 페어링이 뒤집힌다.
 - **tint 배경 위 / 색 텍스트** (`bg-warning/10` 배너·상태 배지·색 텍스트): `text-{status}-text` (bold 토큰 아님). `--warning`(중간명도 bold)을 tint 위 글자로 쓰면 라이트 AA 미달(4.1:1)이라, ADS `color.text.<status>`(라이트 -800 어두움 / 다크 -300 밝음)를 별도 토큰으로 신설했다. 전 tint 표면(흰·muted·bg·card) AA≥4.9 실측(§10). **배지가 같은 색 tint 배너 위에 중첩되면** 둘 다 `/10`으로 붕괴하므로 내부 배지는 bold(`bg-warning text-warning-foreground`)로 대비를 살린다.
 
-**현재 소비처.** PR4(FR-UX-06)가 하드코딩 Tailwind 색 리터럴을 §C 토큰으로 전면 이관하면서, §C는 이제 프리미티브와 화면 전반에서 소비된다. 프리미티브 `components/ui/badge.tsx`의 색 variant(blue→info·green→success·red→danger·yellow→warning)가 tint 패턴 `bg-{status}/10 text-{status}-text`로 소비하고, 상태 배너·배지 약 29개 파일(`components/automation/RuleConflictWarningModal.tsx`·`AutomationYamlImportDialog.tsx`, `components/admin/WebhookDeliveryTable.tsx`, `components/backlog/SprintColumn.tsx`, `components/auth/BackupCodesSection.tsx` 등)이 동일 패턴 또는 bold(`bg-{status} text-{status}-foreground`)로 소비한다. `components/backlog/BacklogBoard.tsx`(백로그 절단 경고 배너, `border-warning bg-warning/10`)는 PR3가 먼저 이관한 선례다. **여전히 §C 미소비**로 남은 것은 DEFER/OUT 대상 — `components/workflow/WorkflowDiagram.tsx`(mermaid flowchart가 `var()` 미지원이라 하드코딩 유지)와 범주색(이슈타입·차트, PR22 `--chart-*` 소관).
+**현재 소비처.** PR4(FR-UX-06)가 하드코딩 Tailwind 색 리터럴을 §C 토큰으로 전면 이관하면서, §C는 이제 프리미티브와 화면 전반에서 소비된다. 프리미티브 `components/ui/badge.tsx`의 색 variant(blue→info·green→success·red→danger·yellow→warning)가 tint 패턴 `bg-{status}/10 text-{status}-text`로 소비하고, 상태 배너·배지 약 29개 파일(`components/automation/RuleConflictWarningModal.tsx`·`AutomationYamlImportDialog.tsx`, `components/admin/WebhookDeliveryTable.tsx`, `components/backlog/SprintColumn.tsx`, `components/auth/BackupCodesSection.tsx` 등)이 동일 패턴 또는 bold(`bg-{status} text-{status}-foreground`)로 소비한다. `components/backlog/BacklogBoard.tsx`(백로그 절단 경고 배너, `border-warning bg-warning/10`)는 PR3가 먼저 이관한 선례다. **여전히 §C 미소비**로 남은 것은 DEFER/OUT 대상 — `components/workflow/WorkflowDiagram.tsx`(mermaid flowchart가 `var()` 미지원이라 하드코딩 유지) **1건뿐이다**. 범주색(이슈타입·차트)은 **PR22가 §C-2로 정의·소비 완료**했다.
+
+### §C-2 범주색 — 차트 5종 + 이슈타입/상태 8종 (PR22 신설)
+
+**정의 시점 원칙.** ADR §D7 — 소비자 0인 토큰은 만들지 않는다. 그래서 PR3가 `--chart-*`를 회색조로 남겨 두고 실소비 PR(PR22)에 넘겼다. PR22는 **실제 소비처가 있는 것만** 정의했다.
+
+**차트 5종** (recharts 6종 컴포넌트가 소비 — 번다운·CFD·Velocity·처리량·리드타임·산포도).
+
+| 토큰 | 라이트 | 다크 | 역할 |
+|---|---|---|---|
+| `--chart-1` | `#0C66E4` | `#579DFF` | 주 시리즈(Blue) |
+| `--chart-2` | `#6E5DC6` | `#9F8FEF` | 보조 시리즈(Purple) |
+| `--chart-3` | `#758195` | `#8C9BAB` | 중립·기준선(Neutral) |
+| `--chart-4` | `#B65C02` | `#FAA53D` | 경고·지연(Orange) |
+| `--chart-5` | `#1F845A` | `#4BCE97` | **완료(Green)** |
+
+★ `--chart-1`이 `--primary`와 같은 `#0C66E4`인 것은 **의도**다(Atlassian 제품군 관례). 차트는 카드 경계와 범례 텍스트로 맥락이 분리된다 — plan-design-review 이슈 3에서 검토 후 유지 결정.
+★ `--chart-5` = 완료(초록)는 **가드가 적발해 정정한 매핑**이다. 초안의 "1=주 시리즈" 역할 배정이 완료 계열까지 흡수해 `--chart-5` 소비처가 0이 됐고, "6종이 `--chart-1~5`를 모두 소비한다" 어서션이 이를 잡았다. 부수 효과로 CFD·Velocity의 "완료"가 같은 색으로 통일됐다.
+
+**이슈타입·상태 8종** (타임라인 막대·캘린더 칩·즐겨찾기 별이 소비).
+
+| 토큰 | 라이트 | 다크 | 소비처 |
+|---|---|---|---|
+| `--type-epic` | `#6E5DC6` | (동일) | `TimelineRow` 에픽 막대 |
+| `--type-story` | `#22A06B` | (동일) | 스토리 막대 |
+| `--type-task` | `#0C66E4` | (동일) | 태스크 막대 |
+| `--type-bug` | `#C9372C` | (동일) | 버그 막대 |
+| `--type-default` | `#758195` | (동일) | 매핑 없는 타입 폴백(Neutral600) |
+| `--discovery` / `-foreground` | `#6E5DC6` / `#FFFFFF` | (동일) | 캘린더 Worklog 칩 |
+| `--neutral-bold` / `-foreground` | `#44546F` / `#FFFFFF` | `#9FADBC` / `#FFFFFF` | 캘린더 TODO 칩 |
+| `--favorite` | `#B38600` | (동일) | 즐겨찾기 별 |
+
+★ `--neutral-bold`는 plan-design-review가 잡은 **BLOCKER급 역행**을 막은 결과다. 초안이 TODO 칩을 `--bg-neutral-solid`(거의 흰색)로 매핑해 `WeekGrid.tsx`의 기존 결정("옅은 배지는 대비 미달로 배제, 중간톤 solid fill 채택")을 정반대로 되돌릴 뻔했다. 라이트/다크 모두 7.65:1.
+★ `--favorite`는 ADS Yellow400이 흰 배경 1.98:1로 미달이라 Yellow600(`#B38600`)을 채택했다.
+★ **만들지 않은 토큰** — `--prio-*` 5종과 `--type-subtask`. 실측 소비처가 0이었다(우선순위는 `routes/search.tsx`·`IssueMetaPanel.tsx`에서 `text-muted-foreground` 글자로만 표시). 만들면 PR22가 ADR §D7을 스스로 위반한다. `state-tokens.test.ts`의 `UNCONSUMED_TOKENS` 음성 테스트로 **미정의를 고정**했다.
+
+**접근성 부수 성과.** 교체 전 하드코딩 차트 색 6종 중 3종이 이미 WCAG 1.4.11(비텍스트 대비 3:1) 미달이었다 — `#f59e0b` 2.15:1 · `#94a3b8` 2.56:1 · `#cbd5e1` 1.48:1. 이번 토큰화가 결함 수정을 겸한다.
+
+**값 정본.** `docs/plans/2026-07-25-fr-ux-06-pr22-token-values.md` (PR3 선례 — "값 지어내기 방지" 가드). ADR. `docs/decisions/2026-07-25-fr-ux-06-pr22-chart-categorical-tokens.md`.
 
 ### 🔒 동결 토큰 — 이 문서에서 다루지 않음
 
@@ -111,7 +149,7 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 
 | 토큰 | 개수 | 현재 상태 | 소관 |
 |---|---|---|---|
-| `--chart-1` ~ `--chart-5` | 5 | OKLCH 회색조(그대로 유지, 색 구분 없음) | 차트/시각화 도입 PR(PR22) 몫 |
+| ~~`--chart-1` ~ `--chart-5`~~ | 5 | **동결 해제 완료 (PR22)** — ADS v2 hex 5색으로 교체·실소비 중. 값은 아래 §C-2 참조 | — |
 | `--syntax-keyword/field/operator/string/number` (+`.dark`) | 5 | OKLCH, WCAG AA 검증 완료(§3 참조) | AQL overlay 정렬 정본 — 값 변경 금지, §3에서 별도 관리 |
 | `--font-mono` | 1 | D2Coding 기반 한글 mono 스택 | AQL overlay 정렬 정본 — §5에서 별도 관리, 값 변경 금지 |
 | `--sidebar` / `--sidebar-foreground` / `--sidebar-primary` / `--sidebar-primary-foreground` / `--sidebar-accent` / `--sidebar-accent-foreground` / `--sidebar-border` / `--sidebar-ring` | 8 | shadcn init 산출 OKLCH 그레이스케일(ADS v2 미이식) | 사이드바 리디자인 PR(PR11) 몫 — 그때 ADS v2 값으로 교체 |

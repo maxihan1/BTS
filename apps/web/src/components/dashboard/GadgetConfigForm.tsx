@@ -2,6 +2,7 @@
 import type { JSX, ChangeEvent, Dispatch, SetStateAction } from 'react'
 import { useState, useId } from 'react'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 import { validateGadgetConfig, type GadgetCatalogEntry, type ConfigField } from '@/api/gadget-catalog'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -123,23 +124,27 @@ function FieldRow({
               />
             ))}
             {rows.length > 1 && (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="xs"
                 onClick={() => removeRow(idx)}
-                className="shrink-0 rounded px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
+                className="shrink-0 rounded text-destructive hover:bg-destructive/10"
               >
                 삭제
-              </button>
+              </Button>
             )}
           </div>
         ))}
-        <button
+        <Button
           type="button"
+          variant="link"
+          size="default"
           onClick={addRow}
-          className="mt-2 text-sm text-primary hover:underline"
+          className="mt-2 self-start px-0"
         >
           항목 추가
-        </button>
+        </Button>
       </div>
     )
   }
@@ -308,20 +313,24 @@ export function GadgetConfigForm({ entry, onAdd, onBack }: GadgetConfigFormProps
 
       {/* 액션 버튼 */}
       <div className="mt-6 flex justify-between">
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="lg"
           onClick={onBack}
-          className="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+          className="rounded-md px-4"
         >
           뒤로
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="default"
+          size="lg"
           onClick={handleSubmit}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          className="rounded-md px-4 hover:bg-primary/90"
         >
           추가
-        </button>
+        </Button>
       </div>
     </div>
   )

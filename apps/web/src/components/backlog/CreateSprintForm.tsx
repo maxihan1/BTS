@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import type { JSX, FormEvent } from 'react'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 import { backlogLabels } from '@/i18n/backlog-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -60,19 +61,19 @@ export function CreateSprintForm({ onSubmit, disabled = false }: CreateSprintFor
         )}
         aria-label={backlogLabels.sprintNamePlaceholder}
       />
-      <button
+      {/* PR22 — type="submit" verbatim 유지. type="button" 으로 바꾸면 폼 전송이 죽는다.
+          disabled 시 opacity/cursor 조건부 클래스는 프리미티브의 disabled:opacity-50 +
+          disabled:pointer-events-none 이 같은 조건으로 대체한다. */}
+      <Button
         type="submit"
+        variant="default"
+        size="default"
         disabled={disabled || name.trim().length === 0}
-        className={cn(
-          'rounded-md px-3 py-1.5 text-sm font-medium',
-          'bg-primary text-primary-foreground hover:bg-primary/90',
-          'transition-colors',
-          (disabled || name.trim().length === 0) && 'cursor-not-allowed opacity-50',
-        )}
+        className="rounded-md"
         aria-label={backlogLabels.createSprint}
       >
         {backlogLabels.createSprint}
-      </button>
+      </Button>
     </form>
   )
 }

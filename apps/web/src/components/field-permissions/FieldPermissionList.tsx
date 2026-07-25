@@ -13,6 +13,7 @@ import { extractFieldPermissionErrorCode } from '@/api/field-permissions'
 import type { CreateFieldPermissionInput } from '@/api/field-permissions.types'
 import { FieldPermissionRow } from './FieldPermissionRow'
 import { FieldPermissionFormDialog } from './FieldPermissionFormDialog'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -54,7 +55,9 @@ function FieldPermissionListSkeleton(): JSX.Element {
       className="space-y-2"
     >
       {[1, 2, 3].map((i) => (
-        <li key={i} className="h-14 rounded-md border animate-pulse bg-muted" />
+        <li key={i}>
+          <Skeleton className="h-14 w-full border" />
+        </li>
       ))}
     </ul>
   )

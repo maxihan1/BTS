@@ -101,6 +101,7 @@ function DayCell({ day, isCurrentMonth, isToday, issueEvents, worklogEvents, onN
           <WorklogChip key={w.id} worklog={w} onNavigate={onNavigateIssue} />
         ))}
         {overflowCount > 0 && (
+          // PR22 OUT — P6 좌측 정렬: 셀 오버플로 "+N개 더" 는 text-left 로 셀 본문에 맞춰야 하고, Button의 justify-center와 충돌한다
           <button
             type="button"
             onClick={() => onShowMore(day)}

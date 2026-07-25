@@ -6,6 +6,7 @@ import { useAuthStore } from '@/auth/authStore'
 import { MemberRow } from './MemberRow'
 import { AddMemberDialog } from './AddMemberDialog'
 import { projectMemberLabels } from '@/i18n/project-member-labels'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -31,7 +32,9 @@ function MemberListSkeleton(): JSX.Element {
       className="space-y-2"
     >
       {[1, 2, 3].map((i) => (
-        <li key={i} className="h-14 rounded-md border animate-pulse bg-muted" />
+        <li key={i}>
+          <Skeleton className="h-14 w-full border" />
+        </li>
       ))}
     </ul>
   )

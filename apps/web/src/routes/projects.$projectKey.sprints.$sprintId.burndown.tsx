@@ -7,6 +7,7 @@ import type { BurndownView } from '@/api/burndown'
 import { ApiError } from '@/api/client'
 import { BurndownChart } from '@/components/burndown/BurndownChart'
 import { burndownLabels } from '@/i18n/burndown-labels'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상태별 서브컴포넌트
@@ -18,10 +19,10 @@ import { burndownLabels } from '@/i18n/burndown-labels'
  */
 function BurndownSkeleton(): JSX.Element {
   return (
-    <div
+    <Skeleton
       role="status"
       aria-label={burndownLabels.status.loading}
-      className="h-[360px] w-full animate-pulse rounded-md border bg-muted"
+      className="h-[360px] w-full border"
     />
   )
 }
@@ -76,6 +77,7 @@ function BurndownViewToggle({ view, onChange }: BurndownViewToggleProps): JSX.El
       {options.map((option) => {
         const isActive = view === option.value
         return (
+          // PR22 OUT — P4 role="tab": 탭 시맨틱을 직접 지정하므로 Button 프리미티브의 role 처리와 충돌할 위험이 있다
           <button
             key={option.value}
             type="button"

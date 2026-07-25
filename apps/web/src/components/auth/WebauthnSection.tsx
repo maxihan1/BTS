@@ -13,6 +13,7 @@ import { useAuthUser } from '@/auth/authStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 하위 컴포넌트 — 키 목록 항목
@@ -311,7 +312,7 @@ export function WebauthnSection(): JSX.Element {
       {/* 목록 로딩 스켈레톤 */}
       {keysLoading && (
         <div className="space-y-2">
-          <div className="h-12 w-full animate-pulse rounded-lg bg-muted" />
+          <Skeleton className="h-12 w-full rounded-lg" />
         </div>
       )}
 

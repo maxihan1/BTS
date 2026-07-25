@@ -211,13 +211,18 @@ export const SavedFilterMenu = (): JSX.Element => {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
+          {/* PR22 — asChild 하위이므로 Radix가 aria-expanded/data-state 를 이 요소에 주입한다.
+              Button이 ...props 를 <button> 으로 전개하기 때문에 통과한다. asChild 를 떼면 트리거가
+              중첩 button 이 되어 주입이 끊긴다. */}
+          <Button
             type="button"
-            className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium hover:bg-accent"
+            variant="ghost"
+            size="icon"
+            className="rounded-md"
             aria-label={savedFilterLabels.menuTriggerAriaLabel}
           >
             <SlidersHorizontal className="size-4" aria-hidden />
-          </button>
+          </Button>
         </DropdownMenuTrigger>
 
         <DropdownMenuContent align="end" className="w-80">

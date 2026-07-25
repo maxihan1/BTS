@@ -342,7 +342,7 @@ export function AccountLinksSettingsPage({
         <p
           role="status"
           aria-label={accountLinkLabels.page.loadingStatus}
-          className="text-sm text-muted-foreground animate-pulse"
+          className="text-sm text-muted-foreground"
         >
           {accountLinkLabels.page.loadingStatus}
         </p>

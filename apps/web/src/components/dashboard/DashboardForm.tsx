@@ -170,6 +170,7 @@ function SharedUserPicker({ selectedIds, onChange }: SharedUserPickerProps): JSX
         >
           {suggestions.map((u) => (
             <li key={u.id} role="option" aria-selected={false}>
+              {/* PR22 OUT — P5 옵션 행: 콤보박스 후보라 w-full text-left 가 필요하고, Button의 inline-flex/justify-center와 충돌한다 */}
               <button
                 type="button"
                 className="w-full text-left px-3 py-2 text-sm hover:bg-accent"
@@ -191,14 +192,16 @@ function SharedUserPicker({ selectedIds, onChange }: SharedUserPickerProps): JSX
               <li key={id}>
                 <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium">
                   {label}
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon-xs"
                     aria-label={`${label} 제거`}
                     className="ml-1 rounded-full hover:bg-muted"
                     onClick={() => handleRemove(id)}
                   >
                     ×
-                  </button>
+                  </Button>
                 </span>
               </li>
             )

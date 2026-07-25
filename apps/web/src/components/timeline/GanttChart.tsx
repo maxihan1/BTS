@@ -16,6 +16,7 @@ import { timelineLabels } from '@/i18n/timeline-labels'
 import { TimelineAxis, TIMELINE_AXIS_HEIGHT_PX } from './TimelineAxis'
 import { TimelineRow, ROW_HEIGHT_PX } from './TimelineRow'
 import { DependencyOverlay } from './DependencyOverlay'
+import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -84,17 +85,20 @@ function EpicGroupLabelCells({
         onClick={() => onSelectIssue(epicItem.key)}
       >
         {/* 접기/펼치기 토글 버튼 — stopPropagation으로 onSelectIssue 차단 (G2) */}
-        <button
+        {/* PR22 — w-4 h-4 는 간트 행 높이(ROW_HEIGHT_PX)에 맞춘 고정 치수라 프리미티브 size 기본을 덮는다 */}
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-xs"
           aria-expanded={!isCollapsed}
           aria-label={isCollapsed
             ? timelineLabels.group.expandAriaLabel
             : timelineLabels.group.collapseAriaLabel}
-          className="flex-shrink-0 text-xs text-muted-foreground hover:text-foreground w-4 h-4"
+          className="w-4 h-4 flex-shrink-0 text-muted-foreground hover:text-foreground"
           onClick={(e) => { e.stopPropagation(); onToggle() }}
         >
           {isCollapsed ? '▶' : '▼'}
-        </button>
+        </Button>
         <span className="flex-1 truncate text-sm font-medium">{epicItem.key}</span>
         <span className="text-xs text-muted-foreground truncate max-w-20">
           {resolveAssigneeName(epicItem, assigneeNames)}

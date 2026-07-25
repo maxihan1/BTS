@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import type { UserSummary } from '@/api/users'
 import { issueDetailStrings } from '@/i18n/ko'
 import { AssigneeUserList } from '@/components/issue/meta/AssigneeUserList'
+import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -74,15 +75,17 @@ export function IssueAssigneeSelect({
         </span>
         {/* 담당자 해제 버튼 — 할당된 경우에만 노출, canEdit=false이면 disabled (FR-PM-02) */}
         {value !== null && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="xs"
             onClick={() => onAssigneeChange(null)}
             disabled={!canEdit}
-            className="text-xs text-muted-foreground hover:text-destructive focus:outline-none focus:ring-1 focus:ring-ring min-h-[44px] px-1 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="min-h-[44px] shrink-0 px-1 text-muted-foreground hover:text-destructive disabled:opacity-40 disabled:cursor-not-allowed"
             aria-label={issueDetailStrings.assigneeUnassignButton}
           >
             {issueDetailStrings.assigneeUnassignButton}
-          </button>
+          </Button>
         )}
       </div>
 

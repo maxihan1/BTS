@@ -24,6 +24,9 @@ export const CHART_TOP_N = 20
 /** recharts ResponsiveContainer / wrapper div 의 고정 높이 (px). */
 const CHART_HEIGHT = 400
 
+/** 막대 색상 — 단일 지표(집계 시간)라 주 시리즈 토큰 하나만 쓴다(FR-UX-06 PR22 토큰화). */
+const BAR_COLOR = 'var(--chart-1)'
+
 /** label 이 빈 문자열일 때 대체 표시 문자열 (by=user displayName 누락 대비). */
 const UNKNOWN_LABEL = worklogAggregateLabels.table.unknownDisplayName
 
@@ -146,7 +149,7 @@ export function WorklogAggregateChart({
             <YAxis type="category" dataKey="label" width={76} tick={{ fontSize: 12 }} />
             <XAxis type="number" tickFormatter={formatTickSeconds} tick={{ fontSize: 12 }} />
             <Tooltip formatter={tooltipFormatter} />
-            <Bar dataKey="seconds" fill="#6366f1" radius={[0, 2, 2, 0]} />
+            <Bar dataKey="seconds" fill={BAR_COLOR} radius={[0, 2, 2, 0]} />
           </BarChart>
         </ResponsiveContainer>
       ) : (
@@ -158,7 +161,7 @@ export function WorklogAggregateChart({
             <XAxis dataKey="label" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" />
             <YAxis tickFormatter={formatTickSeconds} tick={{ fontSize: 12 }} />
             <Tooltip formatter={tooltipFormatter} />
-            <Bar dataKey="seconds" fill="#6366f1" radius={[2, 2, 0, 0]} />
+            <Bar dataKey="seconds" fill={BAR_COLOR} radius={[2, 2, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       )}

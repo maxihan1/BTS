@@ -6,6 +6,7 @@ import { useIssueGraph, extractGraphErrorCode, ISSUE_GRAPH_ERROR_CODES } from '@
 import type { IssueGraphResponse } from '@/api/issue-graph'
 import { generateGraphMermaidCode } from '@/components/issue/link-graph-mermaid'
 import { linkGraphStrings } from '@/i18n/ko'
+import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -323,14 +324,16 @@ export function LinkGraph({ issueKey }: LinkGraphProps): JSX.Element {
         <p className="text-xs font-medium text-muted-foreground">
           {linkGraphStrings.sectionTitle}
         </p>
-        <button
+        <Button
           type="button"
+          variant="link"
+          size="xs"
           onClick={handleToggle}
           aria-label={isOpen ? linkGraphStrings.collapseLabel : linkGraphStrings.expandLabel}
-          className="text-xs text-primary hover:underline focus:outline-none focus:ring-1 focus:ring-ring"
+          className="px-0"
         >
           {isOpen ? linkGraphStrings.collapseLabel : linkGraphStrings.expandLabel}
-        </button>
+        </Button>
       </div>
 
       {/* ── 패널 — 접힌 상태에서는 렌더하지 않음 ───────────────────── */}

@@ -7,6 +7,8 @@ import { useActorNames } from '@/api/inbox-actors'
 import { InboxListItem } from '@/components/inbox/InboxListItem'
 import { InboxFilters } from '@/components/inbox/InboxFilters'
 import { inboxLabels } from '@/i18n/inbox-labels'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -30,9 +32,9 @@ function InboxSkeleton(): JSX.Element {
   return (
     <div data-testid="inbox-skeleton" className="flex flex-col gap-2">
       {Array.from({ length: SKELETON_ROW_COUNT }, (_, i) => (
-        <div
+        <Skeleton
           key={`skeleton-${i}`}
-          className="h-20 animate-pulse rounded-md border bg-muted"
+          className="h-20 border"
           aria-hidden="true"
         />
       ))}
@@ -89,27 +91,31 @@ function InboxPager({ page, totalPages, onPageChange }: InboxPagerProps): JSX.El
 
   return (
     <div className="flex items-center justify-center gap-4 py-4">
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="default"
         disabled={isFirst}
         onClick={() => onPageChange(page - 1)}
-        className="rounded px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-40 hover:bg-accent"
+        className="rounded px-3 disabled:cursor-not-allowed disabled:opacity-40 hover:bg-accent"
       >
         {inboxLabels.pagination.previous}
-      </button>
+      </Button>
 
       <span className="text-sm text-muted-foreground">
         {page + 1} / {Math.max(totalPages, 1)}
       </span>
 
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="default"
         disabled={isLast}
         onClick={() => onPageChange(page + 1)}
-        className="rounded px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-40 hover:bg-accent"
+        className="rounded px-3 disabled:cursor-not-allowed disabled:opacity-40 hover:bg-accent"
       >
         {inboxLabels.pagination.next}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -268,6 +274,7 @@ export function InboxPage(): JSX.Element {
           }
           const isActive = activeTab === tab
           return (
+            // PR22 OUT — P4 role="tab": 탭 시맨틱을 직접 지정하므로 Button 프리미티브의 role 처리와 충돌할 위험이 있다
             <button
               key={tab}
               type="button"
@@ -294,13 +301,15 @@ export function InboxPage(): JSX.Element {
             onFiltersChange={handleFiltersChange}
           />
         </div>
-        <button
+        <Button
           type="button"
+          variant="default"
+          size="default"
           onClick={handleReadAll}
-          className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="shrink-0 rounded-md px-3 hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {inboxLabels.bulk.readAll}
-        </button>
+        </Button>
       </div>
 
       {/* 본문 영역 — 로딩·에러·빈 상태·목록 분기 */}

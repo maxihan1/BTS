@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import type { InboxItem } from '@/api/inbox'
 import { inboxLabels } from '@/i18n/inbox-labels'
 import { useDateFormat } from '@/hooks/use-date-format'
+import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -116,21 +117,25 @@ export const InboxListItem = ({
 
       {/* 액션 버튼 행 */}
       <div className="flex items-center gap-2">
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="xs"
           onClick={() => onToggleRead(item.id, isUnread)}
-          className="rounded px-2 py-1 text-xs hover:bg-accent"
+          className="rounded hover:bg-accent"
         >
           {isUnread ? inboxLabels.item.markRead : inboxLabels.item.markUnread}
-        </button>
+        </Button>
 
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="xs"
           onClick={() => onToggleArchive(item.id, !isArchived)}
-          className="rounded px-2 py-1 text-xs hover:bg-accent"
+          className="rounded hover:bg-accent"
         >
           {isArchived ? inboxLabels.item.unarchive : inboxLabels.item.archive}
-        </button>
+        </Button>
       </div>
     </article>
   )

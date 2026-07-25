@@ -16,6 +16,7 @@ import type { WorkflowTransitionView } from '@/components/workflow/workflow.type
 import { transitionKey } from '@/components/workflow/workflow.types'
 import { postActionLabels } from '@/i18n/post-action-labels'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -132,32 +133,36 @@ function PostActionTable({ actions, onEditClick, onDeleteClick, isDeleting }: Po
               <td className="px-4 py-2.5 text-right text-muted-foreground">{action.displayOrder}</td>
               <td className="px-4 py-2.5">
                 <div className="flex items-center gap-1">
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="xs"
                     onClick={() => onEditClick(action)}
                     disabled={!canEdit}
                     aria-label={`${action.type} post-action 수정`}
                     className={cn(
-                      'rounded px-2 py-1 text-xs font-medium transition-colors',
+                      'rounded',
                       canEdit
                         ? 'text-primary hover:bg-primary/10'
                         : 'cursor-not-allowed text-muted-foreground opacity-40',
                     )}
                   >
                     {postActionLabels.list.editButton}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="xs"
                     onClick={() => onDeleteClick(action.id)}
                     disabled={isDeleting}
                     aria-label={`${action.type} post-action 삭제`}
                     className={cn(
-                      'rounded px-2 py-1 text-xs font-medium text-destructive transition-colors',
+                      'rounded text-destructive',
                       'hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-40',
                     )}
                   >
                     {postActionLabels.list.deleteButton}
-                  </button>
+                  </Button>
                 </div>
               </td>
             </tr>
@@ -311,20 +316,22 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
           {postActionLabels.section.title}
         </h3>
         {/* D1: 전이 미선택 시 disabled + 안내 텍스트 */}
-        <button
+        <Button
           type="button"
+          variant="default"
+          size="xs"
           onClick={handleAddClick}
           disabled={selectedTxKey === ''}
           aria-label={postActionLabels.section.addWebhookButton}
           title={selectedTxKey === '' ? postActionLabels.error.selectTransitionFirst : undefined}
           className={cn(
-            'rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground',
-            'hover:bg-primary/90 transition-colors',
-            'disabled:cursor-not-allowed disabled:opacity-50',
+            'rounded-md px-3',
+            'hover:bg-primary/90',
+            'disabled:cursor-not-allowed',
           )}
         >
           {postActionLabels.section.addWebhookButton}
-        </button>
+        </Button>
       </div>
 
       {/* 전이 선택 */}

@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { postActionLabels } from '@/i18n/post-action-labels'
+import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -223,28 +224,26 @@ export function PostActionFormDialog({
         {/* 액션 버튼 */}
         <DialogFooter>
           {/* onClick이 onCancel을 직접 호출하므로 DialogClose로 미포장 (이중 호출 방지) */}
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="lg"
             onClick={onCancel}
             disabled={submitting}
-            className={cn(
-              'rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground',
-              'hover:bg-muted transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-            )}
+            className={cn('rounded-md px-4', 'disabled:cursor-not-allowed')}
           >
             {postActionLabels.dialog.cancelButton}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="default"
+            size="lg"
             onClick={handleSubmit}
             disabled={submitting}
-            className={cn(
-              'rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground',
-              'hover:bg-primary/90 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-            )}
+            className={cn('rounded-md px-4', 'hover:bg-primary/90 disabled:cursor-not-allowed')}
           >
             {submitLabel}
-          </button>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

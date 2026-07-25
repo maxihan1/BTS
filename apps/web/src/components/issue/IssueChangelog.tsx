@@ -11,6 +11,7 @@ import type { ChangeGroup, ChangeItem } from '@/api/changelog'
 import { useDateFormat } from '@/hooks/use-date-format'
 import { Button } from '@/components/ui/button'
 import { issueDetailStrings } from '@/i18n/ko'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -161,8 +162,8 @@ function ChangelogSkeleton(): JSX.Element {
     >
       {[1, 2, 3].map((i) => (
         <div key={i} className="border-l-2 border-border pl-4 py-2 space-y-2">
-          <div className="h-3 w-32 rounded bg-muted animate-pulse" />
-          <div className="h-3 w-48 rounded bg-muted animate-pulse" />
+          <Skeleton className="h-3 w-32" />
+          <Skeleton className="h-3 w-48" />
         </div>
       ))}
     </div>
@@ -214,7 +215,7 @@ function ChangelogPage({
           aria-label={issueDetailStrings.changelogLoading}
           className="py-2"
         >
-          <div className="h-3 w-32 rounded bg-muted animate-pulse" />
+          <Skeleton className="h-3 w-32" />
         </div>
       )
   }
@@ -305,6 +306,7 @@ export function IssueChangelog({ issueKey, refs }: IssueChangelogProps): JSX.Ele
       role="region"
       className="w-full"
     >
+      {/* PR22 OUT — P6 전체 클릭 영역: 섹션 헤더 전체를 누르는 디스클로저라 w-full text-left 가 필요하고, Button의 inline-flex/justify-center와 충돌한다 */}
       <button
         type="button"
         className="flex items-center gap-2 w-full text-left mb-3"

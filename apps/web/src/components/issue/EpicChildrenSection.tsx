@@ -94,15 +94,17 @@ function ChildRow({ child, disabled, onDisconnect }: ChildRowProps): JSX.Element
       </div>
 
       {/* 해제 버튼 */}
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="xs"
         onClick={() => onDisconnect(child.key)}
         disabled={disabled}
         aria-label={`${child.key} ${epicChildrenStrings.disconnectButton}`}
-        className="text-xs text-muted-foreground hover:text-destructive focus:outline-none focus:ring-1 focus:ring-ring min-h-[44px] px-2 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+        className="min-h-[44px] shrink-0 text-muted-foreground hover:text-destructive disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {epicChildrenStrings.disconnectButton}
-      </button>
+      </Button>
     </li>
   )
 }

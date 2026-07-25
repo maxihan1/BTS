@@ -7,6 +7,7 @@ import type { PublicDashboard } from '@/api/dashboards'
 import { parseLayout } from '@/lib/dashboard-layout'
 import { dashboardLabels } from '@/i18n/dashboard-labels'
 import { DashboardGrid } from '@/components/dashboard/DashboardGrid'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -90,8 +91,8 @@ function useSharedDashboardFetch(token: string): {
 function SharedDashboardSkeleton(): JSX.Element {
   return (
     <div className="p-6 space-y-4" role="status" aria-busy="true">
-      <div className="h-7 w-48 rounded bg-muted animate-pulse" aria-hidden="true" />
-      <div className="h-64 rounded-lg bg-muted animate-pulse" aria-hidden="true" />
+      <Skeleton className="h-7 w-48" aria-hidden="true" />
+      <Skeleton className="h-64 rounded-lg" aria-hidden="true" />
     </div>
   )
 }

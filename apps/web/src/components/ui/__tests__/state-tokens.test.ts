@@ -1,4 +1,6 @@
-// FR-UX-06 §7 상태 토큰 12종 + 시맨틱 토큰 4종 + 사이드바 토큰 8종(PR11)이 index.css에 ADS v2 정본 hex로 정의됐는지 검증하는 테스트
+// index.css의 디자인 토큰이 ADS v2 정본 hex로 정의됐는지 전수 대조하는 회귀 가드 (FR-UX-06 누적)
+// 커버 범위. §7 상태 12종 + §A 코어 18종 + 시맨틱 4쌍(PR3) + status-text 4종(PR4) +
+//          사이드바 8종(PR11) + 차트 5종·범주 10종(PR22) + radius + 동결 계약(syntax 5종)
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
@@ -99,6 +101,60 @@ const SIDEBAR_TOKENS: ReadonlyArray<readonly [token: string, light: string, dark
   ['--sidebar-ring', '#388BFF', '#85B8FF'],
 ] as const
 
+/**
+ * FR-UX-06 PR22 신설 — `--chart-1~5` (PR3가 동결해 둔 무채색 placeholder를 실소비와 함께 확정).
+ * ADR D7 "소비되는 PR에서 정의" 이행 — recharts 가젯 6종(Burndown·CFD·CycleTimeBoxPlot·
+ * CycleTimeHistogram·Velocity·WorklogAggregate)이 이 PR에서 실제 소비자가 된다.
+ * 값은 디자인 스펙 §5.2 ADS v2 원시 팔레트(PR3 검증분)에서 파생하고, 라이트는 700번대·
+ * 다크는 400번대(중립만 Neutral600/DarkNeutral800)를 쓴다 — §4.2 타입색과 동일 규칙.
+ * 전량 배경 대비 3:1 이상(WCAG 1.4.11 비텍스트 대비) 계산 검증.
+ * 정본: docs/plans/2026-07-25-fr-ux-06-pr22-token-values.md
+ */
+const CHART_TOKENS: ReadonlyArray<readonly [token: string, light: string, dark: string]> = [
+  ['--chart-1', '#0C66E4', '#579DFF'],
+  ['--chart-2', '#6E5DC6', '#9F8FEF'],
+  ['--chart-3', '#758195', '#8C9BAB'],
+  ['--chart-4', '#B65C02', '#FAA53D'],
+  ['--chart-5', '#1F845A', '#4BCE97'],
+] as const
+
+/**
+ * FR-UX-06 PR22 신설 범주 토큰 — PR4가 `--chart-*` 동결 때문에 이연한 하드코딩 범주색의 착륙지점.
+ * `--type-*` 4종+기본값은 타임라인 이슈타입 막대(TimelineRow), `--discovery`는 캘린더 Worklog 칩,
+ * `--neutral-bold`는 캘린더 TODO 칩, `--favorite`는 즐겨찾기 별이 소비한다.
+ * `--neutral-bold`는 WeekGrid.tsx의 기존 결정("옅은 배지 대비 미달로 배제, 중간톤 solid fill 채택")을
+ * 지키기 위한 토큰이다 — 옅은 중립(`--bg-neutral-solid`)으로 매핑하면 그 결정을 되돌리게 된다.
+ * `--favorite`가 ADS Yellow400(#E2B203)이 아니라 Yellow600인 이유: Yellow400은 흰 배경 1.98:1로 미달.
+ */
+const CATEGORY_TOKENS: ReadonlyArray<readonly [token: string, light: string, dark: string]> = [
+  ['--type-epic', '#6E5DC6', '#9F8FEF'],
+  ['--type-story', '#22A06B', '#4BCE97'],
+  ['--type-task', '#0C66E4', '#579DFF'],
+  ['--type-bug', '#C9372C', '#F87168'],
+  ['--type-default', '#758195', '#8C9BAB'],
+  ['--discovery', '#6E5DC6', '#9F8FEF'],
+  ['--discovery-foreground', '#FFFFFF', '#161A1D'],
+  ['--neutral-bold', '#44546F', '#9FADBC'],
+  ['--neutral-bold-foreground', '#FFFFFF', '#161A1D'],
+  ['--favorite', '#B38600', '#F5CD47'],
+] as const
+
+/**
+ * 소비처가 없어 **일부러 만들지 않은** 토큰 — ADR D7 자기준수 가드.
+ * 디자인 스펙 §4.3(우선순위 5색)·§4.2(서브태스크)는 값을 확정해 뒀지만, 실측 결과
+ * 우선순위는 텍스트로만 표시되고(routes/search.tsx·IssueMetaPanel) 서브태스크 색 소비처도 0이다.
+ * "소비자가 없는 토큰을 미리 채우면 그게 PoC"(ADR D7)이므로 PR22가 스스로 그 규칙을 어기지 않도록
+ * 미정의를 테스트로 고정한다. 미래에 실소비 화면이 생기는 PR에서 이 목록에서 빼고 값을 넣을 것.
+ */
+const UNCONSUMED_TOKENS = [
+  '--prio-highest',
+  '--prio-high',
+  '--prio-medium',
+  '--prio-low',
+  '--prio-lowest',
+  '--type-subtask',
+] as const
+
 /** calc 파생 폐기 후 명시 나열된 radius 스케일 (ADS 기본 3px 포함) */
 const RADIUS_TOKENS: ReadonlyArray<readonly [token: string, value: string]> = [
   ['--radius-xs', '2px'],
@@ -145,7 +201,7 @@ function declarationOf(block: string, token: string): string {
   return matches[0]?.[1]?.trim() ?? ''
 }
 
-describe('FR-UX-06 PR3 ADS 팔레트 — index.css', () => {
+describe('FR-UX-06 ADS 팔레트 — index.css', () => {
   const cssPath = resolve(import.meta.dirname, '../../../index.css')
   const css = stripComments(readFileSync(cssPath, 'utf-8'))
   const rootBlock = extractBlock(css, ':root')
@@ -218,12 +274,49 @@ describe('FR-UX-06 PR3 ADS 팔레트 — index.css', () => {
     })
   })
 
-  describe('🔒 동결 계약 — PR3가 건드리면 안 되는 토큰', () => {
-    const frozen = ['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--chart-5',
-      '--syntax-keyword', '--syntax-field', '--syntax-operator', '--syntax-string', '--syntax-number']
+  describe('🔒 동결 계약 — AQL 하이라이터 전용 syntax 토큰 5종', () => {
+    // PR22가 `--chart-*` 5종만 동결 해제했다(실소비 = recharts 6종). `--syntax-*`는
+    // AQL textarea와 overlay <pre>가 같은 값을 참조해야 정렬이 깨지지 않으므로
+    // 동결 유지 — DESIGN.md §"AQL syntax 토큰"의 동결 계약 근거 그대로.
+    const frozen = ['--syntax-keyword', '--syntax-field', '--syntax-operator', '--syntax-string', '--syntax-number']
     it.each(frozen)('%s — :root/.dark 모두 oklch 원값 유지', (token) => {
       expect(declarationOf(rootBlock, token)).toMatch(/^oklch\(/)
       expect(declarationOf(darkBlock, token)).toMatch(/^oklch\(/)
+    })
+  })
+
+  describe('차트 토큰 5종 (PR22, ADR D7 이행) — 동결 해제 + ADS 정본 hex', () => {
+    it.each(CHART_TOKENS)('%s — :root=%s', (token, light) => {
+      expect(declarationOf(rootBlock, token)).toBe(light)
+    })
+    it.each(CHART_TOKENS)('%s — .dark 확정값 일치', (token, _light, dark) => {
+      expect(declarationOf(darkBlock, token)).toBe(dark)
+    })
+    it.each(CHART_TOKENS)('%s — @theme inline 배선', (token) => {
+      const colorToken = token.replace('--', '--color-')
+      expect(declarationOf(themeInline, colorToken)).toBe(`var(${token})`)
+    })
+  })
+
+  describe('범주 토큰 10종 (PR22) — 실소비처가 있는 토큰만 정의한다', () => {
+    it.each(CATEGORY_TOKENS)('%s — :root=%s', (token, light) => {
+      expect(declarationOf(rootBlock, token)).toBe(light)
+    })
+    it.each(CATEGORY_TOKENS)('%s — .dark 확정값 일치', (token, _light, dark) => {
+      expect(declarationOf(darkBlock, token)).toBe(dark)
+    })
+    it.each(CATEGORY_TOKENS)('%s — @theme inline 배선', (token) => {
+      const colorToken = token.replace('--', '--color-')
+      expect(declarationOf(themeInline, colorToken)).toBe(`var(${token})`)
+    })
+  })
+
+  describe('소비처 0인 토큰은 만들지 않는다 (ADR D7 자기준수)', () => {
+    it.each(UNCONSUMED_TOKENS)('%s — :root에 미정의', (token) => {
+      expect(rootBlock).not.toMatch(new RegExp(`(?:^|[^-a-zA-Z])${token}\\s*:`))
+    })
+    it.each(UNCONSUMED_TOKENS)('%s — .dark에 미정의', (token) => {
+      expect(darkBlock).not.toMatch(new RegExp(`(?:^|[^-a-zA-Z])${token}\\s*:`))
     })
   })
 

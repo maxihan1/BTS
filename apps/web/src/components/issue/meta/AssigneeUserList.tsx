@@ -31,6 +31,7 @@ export function AssigneeUserList({ users, onSelect }: AssigneeUserListProps): JS
         const displayName = user.displayName ?? user.username
         return (
           <li key={user.id}>
+            {/* PR22 OUT — P5 옵션 행: 콤보박스 후보라 w-full text-left 가 필요하고, Button의 inline-flex/justify-center와 충돌한다 */}
             <button
               type="button"
               onClick={() => onSelect(user.id)}

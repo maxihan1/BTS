@@ -2,6 +2,7 @@
 import type { JSX, KeyboardEvent } from 'react'
 import { useState, useRef, useEffect } from 'react'
 import { LayoutDashboard, Trash2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { dashboardLabels, gadgetLabels } from '@/i18n/dashboard-labels'
 import type { DashboardTile as DashboardTileData } from '@/lib/dashboard-layout'
 import { GadgetRenderer } from '@/components/dashboard/gadgets/GadgetRenderer'
@@ -143,6 +144,7 @@ export function DashboardTile({
               aria-label="위젯 제목 편집"
             />
           ) : (
+            /* PR22 OUT — P6 전체 클릭 영역: 타일 제목 인라인 편집 트리거로 flex-1 text-left truncate 가 필요하고, Button의 justify-center와 충돌한다 */
             <button
               type="button"
               className={[
@@ -163,14 +165,16 @@ export function DashboardTile({
 
         {/* 삭제 버튼 — 편집 가능(effectiveCanEdit)일 때만 표시 */}
         {effectiveCanEdit && (
-          <button
+          <Button
             type="button"
-            className="ml-2 rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+            variant="ghost"
+            size="icon-sm"
+            className="ml-2 min-h-[44px] min-w-[44px] rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10"
             aria-label={deleteAriaLabel}
             onClick={() => onDelete(tile.i)}
           >
             <Trash2 className="h-4 w-4" aria-hidden="true" />
-          </button>
+          </Button>
         )}
       </div>
 

@@ -98,7 +98,7 @@ export const FavoriteButton = ({ targetType, targetId }: FavoriteButtonProps) =>
       data-testid="favorite-button"
     >
       <Star
-        className={isFavorited ? 'fill-current text-yellow-400' : 'text-muted-foreground'}
+        className={isFavorited ? 'fill-current text-favorite' : 'text-muted-foreground'}
         aria-hidden
       />
     </Button>

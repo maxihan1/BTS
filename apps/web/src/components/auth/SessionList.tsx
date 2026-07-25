@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useDateFormat } from '@/hooks/use-date-format'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 현재 세션 배지 — shadcn badge 미존재 → styled span 대체
@@ -115,12 +116,12 @@ export function SessionList(): JSX.Element {
     return (
       <div className="space-y-4">
         {[1, 2].map((i) => (
-          <Card key={i} className="animate-pulse">
+          <Card key={i}>
             <CardHeader>
-              <div className="h-4 w-3/4 rounded bg-muted" />
+              <Skeleton className="h-4 w-3/4" />
             </CardHeader>
             <CardContent>
-              <div className="h-16 rounded bg-muted" />
+              <Skeleton className="h-16" />
             </CardContent>
           </Card>
         ))}

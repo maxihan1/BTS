@@ -161,19 +161,19 @@
 
 **핵심 결정 8종 (ADR D1~D8).** ADS **v2** 팔레트 `#0C66E4`(널리 알려진 `#0052CC` 는 **구세대 v1** 이라 기각 — 2023 토큰 리프레시로 램프가 재편됐고, 신형 네비를 택했으니 세대를 맞춘다) · Jira Cloud **2025 신형 통합 사이드바** · pathless `_shell`(**파일 기반 라우팅 전환은 영구 제외**) · **라우트 이동 = `nav`+`Link` / 패널 전환 = Radix Tabs** · 논리≠물리 · **댓글은 별도 FR** · `--chart-1~5` 는 **실소비 PR 에서** 정의(소비자 0인 토큰 선채움 금지) · 동시 PR #277 과 Phase 0 선행 / Phase 4 양보.
 
-**20 PR 체인.** Phase0 기반(PR1 문서·PR2 프리미티브 15종·PR3 ADS 토큰·PR9 1줄 prep — 4개 독립·병렬) → Phase1 정착(PR4 하드코딩 색 141건) → Phase2 Dialog(PR5→PR6∥PR7→PR8+ESLint 락) → Phase3 Shell(PR9→PR10 `_shell`→PR11 사이드바→PR12→PR13) → Phase5 화면(PR17…PR22). **임계 경로** = PR2 → PR10 → PR11 → PR13 → PR17.
+**22 PR 체인.** Phase0 기반(PR1 문서·PR2 프리미티브 15종·PR3 ADS 토큰·PR9 1줄 prep — 4개 독립·병렬) → Phase1 정착(PR4 하드코딩 색 141건) → Phase2 Dialog(PR5→PR6∥PR7→PR8+ESLint 락) → Phase3 Shell(PR9→PR10 `_shell`→PR11 사이드바→PR12→PR13) → Phase4 IA(#277 PR-5/6 양보) → Phase5 화면(PR17 FilterBar→PR18 테이블→PR19 상세탭→PR20 split view→PR21+21b 칸반 드래그→**PR22 정리**). **임계 경로** = PR2 → PR10 → PR11 → PR13 → PR17.
 
 > 🛑 **PR3 의 팔레트는 시안이 정본이 아니다.** `atlassian.design` 이 JS 렌더링이라 전수 검증에 실패했고 `#E9F2FF`/`#082145`/`#172B4D` 3점만 독립 확인됐다. **PR3 에서 `atlassian.design/components/tokens/all-tokens` 전수 대조를 D단계 작업으로 수행**한다.
 >
 > 🛑 **진짜 위험은 라우터가 아니라 `aria-label` 4종이다** ([[frontend-nav-aria-label-e2e-contract]]). `getByRole('navigation')` 18건의 유일한 계약이다 — `검색` 은 Header 단일 5spec · **관리 메뉴 기본 펼침 필수**(접으면 3spec 클릭 실패) · **뷰 전환을 Tabs 로 바꾸면 `role=navigation` 이 소멸해 10건 즉사**. pathless 재부모화 자체는 저위험(`fullPath` 불변, route-id 결합 1곳).
 
-- [ ] D1. 도메인 — 프론트 전용. 디자인 토큰 + `ui/*` 프리미티브 15종 레지스트리 (책임. designer → frontend-engineer)
+- [x] D1. 도메인 — 프론트 전용. 디자인 토큰 + `ui/*` 프리미티브 15종 레지스트리 (책임. designer → frontend-engineer)
 - [x] D2. 명세 — 디자인 스펙 14섹션 (`docs/design/fr-ux-06-jira-redesign.md`) + ADR D1~D8 + plan 3종 — **#279 에서 완료** (책임. designer)
-- [ ] D3. 데이터 모델 — 없음 (프론트 전용. 프로젝트 목록 API 는 #277 PR-2~3 소관) (책임. -)
-- [ ] D4. 백엔드 — 없음 (ADR D5 — 물리 `apps/web`. identity-access 는 #277 이 담당) (책임. -)
-- [ ] D5. 백엔드 테스트 — 해당 없음 (프론트 전용) (책임. -)
-- [ ] D6. 프론트 UI — 20 PR 체인 (프리미티브 → ADS 토큰 → Dialog 흡수 → `_shell`/사이드바 → 화면 6종) (책임. frontend-engineer)
-- [ ] D7. E2E — `aria-label` 4종 계약 보존 + 뷰 전환 `role=navigation` 회귀 가드 (책임. qa-engineer)
+- [x] D3. 데이터 모델 — 없음 (프론트 전용. 프로젝트 목록 API 는 #277 PR-2~3 소관) (책임. -)
+- [x] D4. 백엔드 — 없음 (ADR D5 — 물리 `apps/web`. identity-access 는 #277 이 담당) (책임. -)
+- [x] D5. 백엔드 테스트 — 해당 없음 (프론트 전용) (책임. -)
+- [x] D6. 프론트 UI — 22 PR 체인 (프리미티브 → ADS 토큰 → Dialog 흡수 → `_shell`/사이드바 → 화면 6종 → 정리) (책임. frontend-engineer)
+- [x] D7. E2E — `aria-label` 4종 계약 보존 + 뷰 전환 `role=navigation` 회귀 가드 (책임. qa-engineer)
 
 ## §5 캘린더 (FR-CA, 2개)
 
@@ -218,7 +218,9 @@
 
 ### BC 완료 조건
 
-- [ ] §2~§5 (13 FR) 모두 `[x]` 마킹
+- [x] §2~§5 (13 FR) 모두 `[x]` 마킹 — **13/13 달성 (2026-07-25, UX 개편 PR22 머지로 D단계 91/91 완료)**
+      <!-- ★ 이 줄에 `FR-XX-NN` 형태를 쓰지 말 것 — verify-master-plan.sh 의 "§N 헤더 (FR-XX, N개)"
+           스캐너가 헤더 선언으로 오인해 `N개` 파싱에 실패하고 EXIT 1 이 된다(2026-07-25 실제 발생). -->
 - [ ] §NFR 측정표 모든 항목 임계 통과
 - [ ] CHANGELOG.md 정리
 - [ ] README.md §7 변경 이력에 "personalization BC 완료 — YYYY-MM-DD" 추가

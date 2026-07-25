@@ -315,17 +315,19 @@ function SetFieldFields({ config, onChange, idPrefix, labelDraft, onLabelDraftCh
             <ul className="mt-2 flex flex-wrap gap-1.5" aria-label={TEXT.labelsListLabel}>
               {config.value.map((label) => (
                 <li key={label}>
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="xs"
                     aria-label={`${label} 제거`}
                     onClick={() => {
                       handleRemoveLabel(label)
                     }}
-                    className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs"
+                    className="rounded-full bg-muted px-2 text-xs"
                   >
                     {label}
                     <span aria-hidden="true">×</span>
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>
@@ -492,8 +494,10 @@ function CallWebhookFields({ config, onChange, idPrefix }: TypedFieldsProps): JS
                   }}
                   className="flex-1 rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
                 />
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon-xs"
                   aria-label={`${index + 1}번째 헤더 삭제`}
                   onClick={() => {
                     handleRemoveHeader(index)
@@ -501,7 +505,7 @@ function CallWebhookFields({ config, onChange, idPrefix }: TypedFieldsProps): JS
                   className="text-muted-foreground hover:text-destructive"
                 >
                   <span aria-hidden="true">×</span>
-                </button>
+                </Button>
               </li>
             )
           })}

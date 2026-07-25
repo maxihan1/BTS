@@ -44,8 +44,8 @@ const MEDIAN_LABEL_Y = QUARTILE_LABEL_Y - 16
 /** min/max 값 라벨 y좌표(px) — 수염 아래쪽 */
 const EXTREME_LABEL_Y = BOX_BOTTOM_Y + 28
 
-/** 단일 accent 색상(FIX-3) — WorklogAggregateChart/BurndownChart 선례(#6366f1) 톤 계열 */
-const ACCENT_COLOR = '#6366f1'
+/** 단일 accent 색상(FIX-3) — 주 시리즈 토큰(FR-UX-06 PR22 토큰화) */
+const ACCENT_COLOR = 'var(--chart-1)'
 
 /** 라벨 폰트 크기(px) */
 const LABEL_FONT_SIZE = 11

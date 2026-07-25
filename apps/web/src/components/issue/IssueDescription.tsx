@@ -244,6 +244,7 @@ function EditMode({
     <div className="flex flex-col gap-2">
       {/* 탭 헤더 */}
       <div className="flex border-b border-border" role="tablist">
+        {/* PR22 OUT — P4 role="tab": 탭 시맨틱을 직접 지정하므로 Button 프리미티브의 role 처리와 충돌할 위험이 있다 */}
         <button
           type="button"
           role="tab"
@@ -254,6 +255,7 @@ function EditMode({
         >
           {issueDetailStrings.descriptionWriteTab}
         </button>
+        {/* PR22 OUT — P4 role="tab": 탭 시맨틱을 직접 지정하므로 Button 프리미티브의 role 처리와 충돌할 위험이 있다 */}
         <button
           type="button"
           role="tab"

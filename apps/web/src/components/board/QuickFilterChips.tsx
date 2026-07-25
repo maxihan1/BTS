@@ -175,33 +175,43 @@ function QuickFilterChip({
         isActive ? 'bg-primary text-primary-foreground' : 'bg-muted'
       }`}
     >
-      <button
+      {/* PR22 — min-h-[44px]/min-w-[44px] 는 프리미티브 size 기본값(h-6/size-7)을 일부러 덮는다.
+          WCAG 2.5.5 터치 타깃 최소 크기 근거가 있어 유지하며, size 를 키우는 대신 min-* 로 남긴다
+          (배치1 IN 23발생 중 8건이 같은 이유로 min-* 를 갖는다 — QuickFilterChips 3 · FilterBar 1 ·
+          EpicChildrenSection 1 · IssueLinksPanel 3). */}
+      <Button
         type="button"
+        variant="ghost"
+        size="xs"
         aria-pressed={isActive}
         className="min-h-[44px] px-1"
         onClick={onApply}
       >
         {filter.name}
-      </button>
+      </Button>
       {canManage && (
         <>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-sm"
             aria-label={quickFilterLabels.list.editAriaLabel(filter.name)}
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full leading-none hover:bg-muted-foreground/20"
+            className="min-h-[44px] min-w-[44px] rounded-full leading-none hover:bg-muted-foreground/20"
             onClick={onEdit}
           >
             ✎
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-sm"
             aria-label={quickFilterLabels.list.deleteAriaLabel(filter.name)}
             disabled={isDeleting}
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full leading-none hover:bg-muted-foreground/20"
+            className="min-h-[44px] min-w-[44px] rounded-full leading-none hover:bg-muted-foreground/20"
             onClick={onDelete}
           >
             ✕
-          </button>
+          </Button>
         </>
       )}
     </span>

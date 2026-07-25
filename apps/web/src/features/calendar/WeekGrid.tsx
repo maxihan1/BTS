@@ -81,11 +81,30 @@ interface CategoryStyle {
   label: string
 }
 
-/** 카테고리별 색/아이콘/라벨 맵(T5 §4.1, §12 DESIGN.md 패치안) */
+/**
+ * 카테고리별 색/아이콘/라벨 맵(T5 §4.1, §12 DESIGN.md 패치안).
+ *
+ * FR-UX-06 PR22에서 Tailwind 리터럴 → 토큰 페어로 이관. **중간톤 solid fill 유지**가 핵심 —
+ * 위 CategoryStyle 주석의 기존 결정("옅은 배지는 대비 미달로 배제")을 되돌리지 않기 위해
+ * TODO는 옅은 중립이 아니라 신규 `--neutral-bold`(Neutral800/DarkNeutral850)를 쓴다.
+ * 글자색은 `text-white` 하드코딩 대신 `*-foreground` 짝을 써서 다크 모드에서 자동 반전된다.
+ */
 export const STATE_CATEGORY_STYLE: Record<StateCategory, CategoryStyle> = {
-  TODO: { bgClass: 'bg-slate-600', Icon: Circle, label: calendarLabels.category.TODO },
-  IN_PROGRESS: { bgClass: 'bg-blue-800', Icon: CircleDot, label: calendarLabels.category.IN_PROGRESS },
-  DONE: { bgClass: 'bg-emerald-800', Icon: CheckCircle2, label: calendarLabels.category.DONE },
+  TODO: {
+    bgClass: 'bg-neutral-bold text-neutral-bold-foreground',
+    Icon: Circle,
+    label: calendarLabels.category.TODO,
+  },
+  IN_PROGRESS: {
+    bgClass: 'bg-info text-info-foreground',
+    Icon: CircleDot,
+    label: calendarLabels.category.IN_PROGRESS,
+  },
+  DONE: {
+    bgClass: 'bg-success text-success-foreground',
+    Icon: CheckCircle2,
+    label: calendarLabels.category.DONE,
+  },
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -191,7 +210,7 @@ export function IssueBarSegment({ event, isStart, isEnd, onNavigate }: IssueBarS
       aria-label={ariaLabel}
       onClick={activate}
       onKeyDown={(e) => handleActivationKeyDown(e, activate)}
-      className={`flex h-5 items-center gap-1 overflow-hidden px-1 text-xs font-medium text-white ${bgClass} ${rounded} ${mid} ${INTERACTIVE_CHIP_CLASSES}`}
+      className={`flex h-5 items-center gap-1 overflow-hidden px-1 text-xs font-medium ${bgClass} ${rounded} ${mid} ${INTERACTIVE_CHIP_CLASSES}`}
     >
       <Icon className="size-3 shrink-0" aria-hidden="true" />
       <span className={`truncate ${isDone ? 'line-through' : ''}`}>
@@ -220,7 +239,7 @@ export function DueDateChip({ event, onNavigate }: DueDateChipProps): JSX.Elemen
       aria-label={ariaLabel}
       onClick={activate}
       onKeyDown={(e) => handleActivationKeyDown(e, activate)}
-      className={`flex w-fit items-center gap-1 overflow-hidden rounded-full px-1.5 text-xs font-medium text-white ${bgClass} ${INTERACTIVE_CHIP_CLASSES}`}
+      className={`flex w-fit items-center gap-1 overflow-hidden rounded-full px-1.5 text-xs font-medium ${bgClass} ${INTERACTIVE_CHIP_CLASSES}`}
     >
       <Icon className="size-3 shrink-0" aria-hidden="true" />
       <span className="truncate">{event.key}</span>
@@ -246,7 +265,7 @@ export function WorklogChip({ worklog, onNavigate }: WorklogChipProps): JSX.Elem
     return (
       <span
         aria-label={calendarLabels.worklog.maskedAriaLabel(worklog.issueKey)}
-        className="flex w-fit cursor-default items-center gap-1 overflow-hidden rounded-full bg-violet-800 px-1.5 text-xs font-medium text-white opacity-70"
+        className="flex w-fit cursor-default items-center gap-1 overflow-hidden rounded-full bg-discovery px-1.5 text-xs font-medium text-discovery-foreground opacity-70"
       >
         <Clock className="size-3 shrink-0" aria-hidden="true" />
         <span className="truncate">{label}</span>
@@ -263,7 +282,7 @@ export function WorklogChip({ worklog, onNavigate }: WorklogChipProps): JSX.Elem
       title={label}
       onClick={activate}
       onKeyDown={(e) => handleActivationKeyDown(e, activate)}
-      className={`flex w-fit items-center gap-1 overflow-hidden rounded-full bg-violet-800 px-1.5 text-xs font-medium text-white ${INTERACTIVE_CHIP_CLASSES}`}
+      className={`flex w-fit items-center gap-1 overflow-hidden rounded-full bg-discovery px-1.5 text-xs font-medium text-discovery-foreground ${INTERACTIVE_CHIP_CLASSES}`}
     >
       <Clock className="size-3 shrink-0" aria-hidden="true" />
       <span className="truncate">{label}</span>

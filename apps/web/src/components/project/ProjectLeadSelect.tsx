@@ -2,6 +2,7 @@
 import type { JSX } from 'react'
 import type { UserSummary } from '../../api/users'
 import { projectLeadLabels } from '../../i18n/project-lead-labels'
+import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -87,15 +88,17 @@ export const ProjectLeadSelect = ({
 
         {/* "미지정" 해제 버튼 — 리드가 지정됐거나 알 수 없는 사용자 상태일 때 노출 */}
         {showUnassignButton && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="xs"
             onClick={() => onChange(null)}
             disabled={disabled}
-            className="text-xs text-muted-foreground hover:text-destructive focus:outline-none focus:ring-1 focus:ring-ring min-h-[44px] px-1 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="min-h-[44px] shrink-0 px-1 text-muted-foreground hover:text-destructive disabled:opacity-40 disabled:cursor-not-allowed"
             aria-label={form.leadUnassigned}
           >
             {form.leadUnassigned}
-          </button>
+          </Button>
         )}
       </div>
 
@@ -116,6 +119,7 @@ export const ProjectLeadSelect = ({
             const name = getDisplayName(user)
             return (
               <li key={user.id}>
+                {/* PR22 OUT — P5 옵션 행: 콤보박스 후보라 w-full text-left 가 필요하고, Button의 inline-flex/justify-center와 충돌한다 */}
                 <button
                   type="button"
                   onClick={() => onChange(user.id)}
