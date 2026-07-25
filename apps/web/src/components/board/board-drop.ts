@@ -47,6 +47,16 @@ export type DropAction =
       nextIssueKey?: string
       expectedVersion: number
     }
+  | {
+      type: 'field-change'
+      issueKey: string
+      field: 'assignee' | 'priority' | 'epic'
+      toAssigneeId?: string | null
+      toPriority?: number
+      toEpicKey?: string | null
+      fromEpicKey?: string | null
+      expectedVersion: number
+    }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 셀(컬럼 × 스윔레인 그룹) 판정 내부 헬퍼
@@ -149,10 +159,55 @@ function resolveDropTarget(
 }
 
 /**
+ * 스윔레인 그룹이 다른 카드 위 드롭을 필드변경(field-change) 액션으로 판정한다 (FR-UX-06 PR21b FR-1).
+ *
+ * 대상 필드값은 그룹 대표 카드가 아니라 **드롭 대상 카드(overIssueKey)** 자신에서 읽는다 —
+ * ASSIGNEE 그룹 key는 표시 이름 기반이라 unknown/동명이인이 한 그룹에 섞일 수 있어
+ * 그룹만으로는 실제 담당자를 특정할 수 없다(FR-2·E2). 대상 카드가 대상값을 정확히 가리킨다.
+ *
+ * 대상값이 현재값과 같으면(same-value) noop을 반환한다(D2·E3).
+ * swimlaneField가 NONE이면 그룹이 하나뿐이라 이 함수는 호출부에서 걸러진다(방어적으로 noop).
+ */
+function resolveFieldChange(
+  columnCards: BoardCard[],
+  swimlaneField: SwimlaneField,
+  activeIssueKey: string,
+  overIssueKey: string,
+  expectedVersion: number,
+): DropAction {
+  const activeCard = columnCards.find((c) => c.issueKey === activeIssueKey)
+  const overCard = columnCards.find((c) => c.issueKey === overIssueKey)
+  if (activeCard === undefined || overCard === undefined) return { type: 'noop' }
+
+  if (swimlaneField === 'ASSIGNEE') {
+    if (overCard.assigneeId === activeCard.assigneeId) return { type: 'noop' }
+    return { type: 'field-change', issueKey: activeIssueKey, field: 'assignee', toAssigneeId: overCard.assigneeId, expectedVersion }
+  }
+  if (swimlaneField === 'PRIORITY') {
+    if (overCard.priority === activeCard.priority) return { type: 'noop' }
+    return { type: 'field-change', issueKey: activeIssueKey, field: 'priority', toPriority: overCard.priority, expectedVersion }
+  }
+  if (swimlaneField === 'EPIC') {
+    if (overCard.epicKey === activeCard.epicKey) return { type: 'noop' }
+    return {
+      type: 'field-change',
+      issueKey: activeIssueKey,
+      field: 'epic',
+      toEpicKey: overCard.epicKey,
+      fromEpicKey: activeCard.epicKey,
+      expectedVersion,
+    }
+  }
+  return { type: 'noop' }
+}
+
+/**
  * 같은 컬럼 내 드롭을 셀(컬럼 × 스윔레인 그룹) 단위로 판정한다.
  *
  * - over가 active 자기 자신 → noop (제자리)
- * - active/over가 서로 다른 스윔레인 그룹(셀이 다름) → noop
+ * - active/over가 서로 다른 스윔레인 그룹(셀이 다름)이고 over가 카드 → field-change
+ *   (대상 카드의 실제 필드값 사용. resolveFieldChange 참고 — FR-UX-06 PR21b)
+ * - over가 컬럼 배경(카드 아님) → 항상 active의 현재 셀 안에서 처리(필드변경 아님, E4)
  * - 같은 셀이지만 이동 후 이웃(previous/next)이 이전과 동일(위치 변화 없음) → noop
  * - 그 외 → reorder (이웃 issueKey 포함)
  */
@@ -167,10 +222,14 @@ function resolveSameColumnDrop(
   if (overIssueKey === activeIssueKey) return { type: 'noop' }
 
   const activeGroupKey = findGroupKey(columnCards, ctx, activeIssueKey)
-  const overGroupKey = overIssueKey === undefined ? activeGroupKey : findGroupKey(columnCards, ctx, overIssueKey)
+  if (activeGroupKey === undefined) return { type: 'noop' }
 
-  if (activeGroupKey === undefined || overGroupKey === undefined || activeGroupKey !== overGroupKey) {
-    return { type: 'noop' }
+  if (overIssueKey !== undefined) {
+    const overGroupKey = findGroupKey(columnCards, ctx, overIssueKey)
+    if (overGroupKey === undefined) return { type: 'noop' }
+    if (overGroupKey !== activeGroupKey) {
+      return resolveFieldChange(columnCards, ctx.swimlaneField, activeIssueKey, overIssueKey, expectedVersion)
+    }
   }
 
   const cell = cardsOfCell(columnCards, ctx, activeGroupKey)
@@ -203,7 +262,7 @@ function resolveSameColumnDrop(
  * - active 카드를 board에서 찾을 수 없음(fromColumnId 누락 포함) → noop
  * - over가 카드/컬럼 어느 쪽으로도 board에서 찾을 수 없음 → noop
  * - 대상이 다른 컬럼 → move (대상 컬럼 category === 'DONE'이면 needs-resolution)
- * - 대상이 같은 컬럼·다른 스윔레인 그룹(셀) → noop
+ * - 대상이 같은 컬럼·다른 스윔레인 그룹(셀)이고 대상이 카드 → field-change (FR-UX-06 PR21b)
  * - 대상이 같은 셀이고 위치가 그대로(제자리) → noop
  * - 대상이 같은 셀이고 위치가 바뀜 → reorder (이웃 issueKey 포함, rank 계산은 서버 위임)
  *
