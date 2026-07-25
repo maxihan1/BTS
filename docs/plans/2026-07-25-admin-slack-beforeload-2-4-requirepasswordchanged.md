@@ -421,7 +421,9 @@ function observe(routeId: string): Signature {
       beforeLoad(ctx)
       return null
     } catch (e) {
-      expect(isRedirect(e)).toBe(true)
+      // redirect 가 아닌 진짜 예외(예. pathnameOf 버그로 인한 TypeError)는 원본을 그대로 올린다.
+      // 여기서 expect(isRedirect) 로 단정하면 원인 예외가 어서션 실패 메시지에 가려진다.
+      if (!isRedirect(e)) throw e
       return (e as RedirectResponse).options.to
     }
   }) as Signature
@@ -498,6 +500,21 @@ describe('라우트 가드 행렬 — ADMIN_4', () => {
 describe('라우트 가드 행렬 — 나머지 클래스', () => {
   beforeEach(() => useAuthStore.setState({ accessToken: null, user: null }))
   afterEach(() => useAuthStore.setState({ accessToken: null, user: null }))
+
+  // ★ 클래스별 개수 어서션 — 이게 없으면 idsOf 가 빈 배열을 돌려줄 때 it.each([]) 가 무음 통과한다.
+  //    R6 의 전체 하한(routesById 기준)은 이 구멍을 막지 못한다(맵/필터가 죽어도 라우트 수는 그대로).
+  it.each([
+    ['PROTECTED_3', 38],
+    ['AUTH_ONLY', 5],
+    ['LOGIN', 1],
+  ] as const)('%s 클래스 멤버가 %i개다 (열거 붕괴 시 무음 통과 차단)', (c, n) => {
+    expect(idsOf(c)).toHaveLength(n)
+  })
+
+  // PUBLIC 은 Task 1 실측에서 루트 라우트가 편입될 수 있어 하한으로 둔다(상한 없음).
+  it('PUBLIC 클래스 멤버가 4개 이상이다', () => {
+    expect(idsOf('PUBLIC').length).toBeGreaterThanOrEqual(4)
+  })
 
   it.each(idsOf('PROTECTED_3'))('%s — PROTECTED_3 기대와 일치', (id) => {
     expect(observe(id)).toEqual(EXPECTED.PROTECTED_3)
@@ -604,3 +621,54 @@ describe('라우트 가드 행렬 — 나머지 클래스', () => {
 - 프로덕션 변경: `router.ts` 1줄 + 같은 블록 JSDoc 3줄. 그 외 전부 테스트
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
+
+## 리뷰 결과
+
+### plan-eng-review (2026-07-25) — 메인 에이전트 직접 수행
+
+**수행 방식 (deviation, 사유 등재).** 메모리 `bts-review-plan-autoplan-overkill`은 독립 시각을 위해
+code-reviewer/Plan 에이전트 dispatch를 처방하지만, 본 세션은 **에이전트 호출 금지 지시**가 있고
+PR22(#308)에서도 Maxi가 "서브에이전트 없이 메인 에이전트 직접 수행"을 확정했다(파일 겹침으로 병렬 이득
+0 + sub-agent 거짓 보고 전력). 지시가 메모리보다 우선이라 직접 수행했다.
+**한계 명시** — plan 작성자가 자기 plan을 리뷰하는 편향이 남아 있다. 게이트 1에서 Maxi가 이 점을
+감안해 판단할 수 있도록 여기 적는다.
+
+**BLOCKER: 없음.**
+
+**확정 결함 1건 (수정 완료).**
+- **vacuous 구멍 — 클래스별 개수 어서션 부재.** `idsOf`가 빈 배열을 돌려주면 `it.each([])`가 무음
+  통과한다. `ADMIN_4`에는 `toHaveLength(11)`이 있었지만 `PROTECTED_3`·`AUTH_ONLY`·`LOGIN`·`PUBLIC`에는
+  없었다. R6의 전체 하한은 `routesById`를 세므로 **맵/필터가 죽어도 통과**해 이 구멍을 못 막는다.
+  → Task 3에 클래스별 개수 어서션 추가(38/5/1 정확, PUBLIC은 루트 라우트 편입 가능성 때문에 하한 4).
+  메모리 `guard-handler-matrix-blindfold`가 경고한 형태가 **내 계획 안에 다시 나타난 것**이다.
+
+**개선 1건 (수정 완료).**
+- `observe()`가 `expect(isRedirect(e)).toBe(true)`로 단정해, redirect가 아닌 진짜 예외(예. `pathnameOf`
+  버그의 `TypeError`)가 어서션 실패 메시지에 **가려지는** 문제. → `if (!isRedirect(e)) throw e`로 원본
+  예외를 그대로 올리게 변경.
+
+**주의 2건 (구현 단계에서 확인, 차단 아님).**
+- `LOGIN` 클래스 기대 목적지 `/dashboards`는 `resolveStartPageNav('dashboards', userId)`의 반환을
+  **가정한 값**이다. `lib/start-page.ts`의 `FALLBACK_NAV`가 `{to:'/dashboards'}`인 것은 실측했으나
+  `'dashboards'` 키의 정식 매핑 본문(20~36행)은 읽지 않았다. Task 3에서 실패하면 실측값으로 정정한다.
+  ⚠️ `/dashboard`(단수, admin 거부)와 `/dashboards`(복수, 시작 페이지)를 혼동하지 말 것.
+- `_shell`·인덱스 라우트의 `routesById` 키 형태는 **의도된 hedge**(두 변형 병기)로 두었고 Task 1의
+  `stale` 배열이 틀린 쪽을 RED으로 드러낸다. 추측을 코드에 박지 않았음을 확인.
+
+**통과 확인 항목.**
+- ✅ BC 격리 — `apps/web` 단일. 백엔드·마이그레이션·FR 카운트 전부 무접촉(129 불변).
+- ✅ ADR 준수 — 가드를 shell로 hoist하지 않는다(2026-07-17 §70). 공통 `/admin` 레이아웃 신설 없음.
+- ✅ 절대 규칙 — 인증 없는 경로 신설 0. 가드는 deny-by-default(`=== true` 명시 비교) 유지.
+- ✅ 회귀 표면 — 프로덕션 변경이 `beforeLoad` 1줄이라 시각·DOM·라우트 트리 변화 0.
+- ✅ 뮤테이션 3종이 "수정 실효 / vacuous 차단 / 완전성 강제"를 각각 별개로 겨냥. 커밋 후 수행 조건 명시
+  (메모리 `mutation-test-requires-committed-baseline`).
+- ✅ 병렬 위험 0 — 전 task 직렬(같은 테스트 파일). lint-staged 공유 stash·pre-commit race 무관.
+- ✅ task 5개, 메타 3필드 완비, 검증 명령 구체(파일 경로·기대 출력 명시).
+
+### plan-ceo-review — 생략 (deviation, 사유 등재)
+
+메모리 `bts-review-plan-autoplan-overkill`(2026-05-29 Maxi 결정) — CEO 리뷰("10-star 제품 재구상")는
+기술 plan에 부적합하고 토큰만 소모한다. 본 작업은 **제품 범위 결정이 0이고**(신규 FR 0·기능 추가 0)
+이미 명문화된 정책(4-가드, FR-MF-04)에 누락 1건을 맞추는 결함 수정이다. 재구상할 제품 결정이 없다.
+
+게이트 1에서 Maxi가 이 생략을 뒤집을 수 있다.
