@@ -223,6 +223,223 @@ RQ-1 경로 구조적 마스킹 · RQ-2 쿼리 값 미로깅(일반 규칙) · R
 **편차.** `superpowers:brainstorming` 은 설계 **생성** 스킬이라 완성 스펙 비평에 형식이 안 맞고
 종착점(`writing-plans`)이 `bts-plan` 과 충돌한다. 그 스킬의 `Spec Self-Review` 절만 적용했다. #310 동일 판단.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+### ★G4 해결 — 검증 실행 주체 확정 (plan 의 최우선 결정)
+
+조사 결과 이 레포의 실제 상태.
+
+| 후보 | 실물 | 판정 |
+|---|---|---|
+| `scripts/verify/` | 존재. `bootjar-no-fakes.sh` (레포 불변식 검사 셸 스크립트) **선례 1건** | ✅ **봉인의 집** |
+| `.github/workflows/` | `frontend-ci.yml` **1개뿐**. 경로 필터가 `apps/web/**` 라 **`infra/**` 변경에 안 돈다** | ⚠️ 신규 워크플로우 필요 |
+| Gradle · vitest | `nginx.conf` 를 읽지 않음 | ❌ |
+| docker | 로컬·GitHub Actions 양쪽 사용 가능 (`nginx:1.27-alpine` ~20MB) | ✅ RQ-6·RQ-7 실행기 |
+
+**확정.**
+1. 봉인 3축 + 문법·실효 검증을 **`scripts/verify/nginx-log-masking.sh`** 단일 스크립트로 만든다
+   (`bootjar-no-fakes.sh` 와 동일 패턴 — 실행 가능 셸, 종료코드로 판정).
+2. **`.github/workflows/infra-ci.yml`** 을 신설해 자동 실행한다.
+   경로 필터는 `infra/**` **+ `backend/**`** — 축 A·B 가 **Kotlin 토큰 발급기 소스를 읽기** 때문에,
+   `infra/**` 만 걸면 *토큰을 짧게 바꾸는 변경* 이 검사를 우회한다(S6 가 정확히 그 시나리오다).
+3. 자동화 없이 로컬 1회 확인으로 끝내지 않는다 — **G4 가 경고한 실패 양식이고,
+   선행 #310 ADR 의 "범위 밖" 항목이 3주 잠복한 것이 같은 양식이다.**
+
+### TDD 적용 방식 (대상이 Kotlin/TS 가 아니라 nginx 설정)
+
+`red → green → refactor` 를 다음으로 사상한다.
+
+- **RED** — 봉인 스크립트를 **먼저** 작성하고 현재 `nginx.conf` 에 대해 돌려 **실패를 확인**한다
+- **GREEN** — `nginx.conf` 를 고쳐 통과시킨다
+- **REFACTOR** — 주석·구조 정리 (동작 불변)
+
+**커밋 순서 강제** — `test:` 커밋(봉인 스크립트)이 `feat:` 커밋(nginx.conf)보다 **먼저** 와야 한다.
+
+---
+
+### Task 1. 봉인 스크립트 — 축 A(길이)·축 B(알파벳) 파생 검사
+
+**메타**.
+- agent: `security-engineer`
+- files: [`scripts/verify/nginx-log-masking.sh`]
+- depends-on: []
+
+**RED**. 스크립트를 작성하고 즉시 실행. 축 A·B 는 **현재 통과해야 정상**이다(토큰이 이미 43자 이상,
+base64url/hex 둘 다 판별 문자군 안). 통과하는 것 자체가 정상이므로 **red 는 위반 주입으로 만든다**
+(Task 4). 이 Task 의 red 판정은 **"파생 개수 하한 5 미만이면 실패"** 로 확인한다 — 파생기를 일부러
+빈 디렉토리로 향하게 해 `0건 → 실패` 를 눈으로 본다.
+
+**GREEN**. 다음을 만족하는 스크립트.
+- 토큰 발급 지점을 **코드에서 파생 열거**한다 (하드코딩 경로 목록 금지).
+  파생 기준 = `TOKEN_BYTES` 상수 + 인코딩 호출(`Base64.getUrlEncoder`·`%02x` hex)을 갖는 발급기
+- 각 발급기의 **출력 길이**를 바이트수·인코딩으로 계산해 **임계값 40 초과**를 단언 (축 A)
+- 각 발급기의 **인코딩 알파벳 ⊆ `[A-Za-z0-9_-]`** 를 단언 (축 B) — 표준 base64(`+`·`/`)·JWT(`.`) 거부
+- **미분류(길이나 알파벳을 판정할 수 없는 발급기)는 실패**
+- **파생 개수 하한 5** 단언
+- **다중 비밀값 라우트 부재** 단언 (E3 대체 조건)
+
+**REFACTOR**. 임계값·하한을 파일 상단 상수로. 각 단언에 실패 사유 한 줄 출력.
+
+**검증**. `bash scripts/verify/nginx-log-masking.sh` → 축 A·B 구간 통과, 축 C 구간 **실패**(아직 미구현)
+
+---
+
+### Task 2. 봉인 스크립트 — 축 C(설정 실효) + RQ-6 문법 검증
+
+**메타**.
+- agent: `security-engineer`
+- files: [`scripts/verify/nginx-log-masking.sh`]
+- depends-on: [1]
+
+**RED**. 축 C 를 추가하고 실행 → **현재 `nginx.conf` 에 마스킹이 없으므로 실패한다.**
+**이것이 이 PR 의 진짜 red 다.** 실패 메시지 예상 — `access_log 재정의 없음 — 이미지 기본 main 포맷 상속`
+
+**GREEN**. (Task 3 에서 `nginx.conf` 를 고쳐 통과시킨다. 이 Task 는 red 를 만드는 것까지.)
+- 축 C 검사 내용. `infra/prod/nginx.conf` 가 (a) `log_format` 을 정의하고 (b) `access_log` 로 그것을
+  명시 지정하며 (c) `$request`·`$request_uri`·`$args` 를 **로그 포맷에 쓰지 않고** (d) `map` 마스킹
+  변수를 경로와 **Referer 양쪽에** 사용하는지
+- RQ-6. `docker run --rm nginx:1.27-alpine nginx -t` 동형으로 **문법 파싱 검증**
+  (설정을 컨테이너에 마운트해 `-t` 실행. 실패 시 즉시 종료 — NFR-2 가용성 요구)
+
+**REFACTOR**. docker 미설치 환경에서 축 C 를 `SKIP` 이 아니라 **명시적 실패**로 처리
+(조용한 스킵은 vacuous 통과 경로다).
+
+**검증**. `bash scripts/verify/nginx-log-masking.sh` → **축 C 실패로 종료코드 비0** (기대된 red)
+
+---
+
+### Task 3. `nginx.conf` 마스킹 구현 (GREEN)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`infra/prod/nginx.conf`]
+- depends-on: [2]
+
+**GREEN**. `infra/prod/nginx.conf` 에 추가.
+- `map $uri $bts_masked_uri` — `[A-Za-z0-9_-]` 연속 40자 이상 세그먼트를 `***` 로 치환.
+  앵커를 붙여 백트래킹 억제 (NFR-1)
+- `map $http_referer $bts_masked_referer` — 동일 판별식 (RQ-4, Maxi 확정)
+- `log_format bts_masked` — 시각·`$remote_addr`·`$request_method`·**`$bts_masked_uri`**·
+  `$server_protocol`·`$status`·`$body_bytes_sent`·**`$bts_masked_referer`**·`$http_user_agent`·
+  `$http_x_forwarded_for`·**`$request_time`**·**`$upstream_response_time`**
+  ⚠️ `$request`·`$request_uri`·`$args` **금지** (RQ-2 는 이것만으로 자동 충족)
+- `access_log /var/log/nginx/access.log bts_masked;` — 이미지 기본 상속을 끊는다
+
+**REFACTOR**. 각 블록에 **왜 이렇게 하는지** 한글 주석. 특히 임계값 40 의 근거(UUID 36 < 40 < 토큰 43)를
+숫자와 함께 남긴다 — 나중에 누가 "왜 40?" 하고 바꾸지 못하게.
+
+**검증**. `bash scripts/verify/nginx-log-masking.sh` → **3축 전부 통과**(green)
+
+---
+
+### Task 4. 위반 주입 — 봉인이 실제로 잡는지 확인 (3축 각각)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`scripts/verify/nginx-log-masking.sh`]
+- depends-on: [3]
+
+**RED→GREEN 검증 (뮤테이션)**. 각 축에 위반을 주입해 **반드시 실패하는지** 확인한 뒤 원복한다.
+**커밋된 상태에서만 수행**한다 (메모리 `mutation-test-requires-committed-baseline` — 미커밋 상태의
+`git checkout --` 원복은 작업 소실이다).
+
+| 주입 | 기대 |
+|---|---|
+| M-A. 토큰 `TOKEN_BYTES` 를 32 → 8 로 (base64url 11자) | **축 A 단독 실패** |
+| M-B. 발급 인코딩을 `getUrlEncoder` → `getEncoder`(표준 base64, `+`·`/`) | **축 B 단독 실패** |
+| M-C. `nginx.conf` 의 `access_log` 한 줄 삭제 | **축 C 단독 실패** |
+| M-D. `log_format` 에서 `$bts_masked_referer` → `$http_referer` 로 되돌림 | **축 C 실패** (RQ-4 회귀 감지) |
+| M-E. 파생기를 빈 경로로 향하게 (0건 파생) | **하한 단언 실패** |
+
+**판별력 대조군.** M-A 에서 **축 B·C 는 green 이어야 한다.** 하나 건드렸는데 전부 red 면 과잉결합이고,
+축이 서로를 가리고 있다는 뜻이다 (#310 의 뮤테이션 D 와 동일한 대조 설계).
+
+**검증**. 5종 주입 결과가 위 표와 일치. 원복 후 3축 전부 green.
+
+---
+
+### Task 5. RQ-7 실효 검증 — 실제 요청을 흘려 로그 전문 확인
+
+**메타**.
+- agent: `security-engineer`
+- files: [`scripts/verify/nginx-log-masking.sh`]
+- depends-on: [3]
+
+**RED**. 마스킹 **이전** 설정(`git show HEAD~1:infra/prod/nginx.conf` 동형)으로 컨테이너를 띄우고
+토큰이 담긴 요청을 흘리면 **로그에 원문 토큰이 나타난다** — 대조군.
+
+**GREEN**. 새 설정으로 동일 요청 → **로그 전문에 원문 토큰 0회.**
+- 표본. **5 라우트 × 2 인코딩**(base64url 43자 · hex 64자) — 실제 형식의 더미 토큰 생성
+- 검사 축 2개. **경로**(`$bts_masked_uri`) · **Referer 헤더**(`$bts_masked_referer`)
+- **판별자 = 로그 출력 문자열에 원문 토큰 부분문자열이 존재하지 않을 것.**
+  상태코드나 `***` 존재는 판별자가 아니다 (메모리 `negative-guard-needs-body-discriminator` —
+  "여전히 401" 류의 vacuous 단언 금지)
+- **역방향 단언(RQ-3).** 같은 로그 줄에 메서드·상태코드·`$request_time` 이 **남아 있음**을 확인.
+  마스킹이 관측성을 죽이지 않았다는 증거
+
+**REFACTOR**. 더미 토큰을 상수로, 실패 시 **로그 전문을 출력**해 사후 조사가 가능하게.
+
+**검증**. 대조군에서 토큰 발견(red 재현) → 신규 설정에서 0회(green) → 관측성 필드 전부 존재
+
+---
+
+### Task 6. CI 배선 — `infra-ci.yml` 신설 (G4 자동화)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`.github/workflows/infra-ci.yml`]
+- depends-on: [4, 5]
+
+**RED**. 워크플로우 없이 `infra/prod/nginx.conf` 를 바꾸면 **아무 검사도 돌지 않는다**(현행).
+`frontend-ci.yml` 의 경로 필터가 `apps/web/**` 뿐임을 근거로 제시.
+
+**GREEN**. `.github/workflows/infra-ci.yml`.
+- 트리거. `pull_request` + `push`, **경로 필터 `infra/**` · `backend/**` · 워크플로우 자신**
+  ⚠️ **`backend/**` 를 반드시 포함** — 축 A·B 가 Kotlin 토큰 발급기를 읽으므로,
+  `infra/**` 만 걸면 *토큰을 짧게 바꾸는 변경*(S6)이 검사를 통과해 버린다
+- 잡. `ubuntu-latest` 에서 `bash scripts/verify/nginx-log-masking.sh` 단일 실행 (docker 내장)
+
+**REFACTOR**. 워크플로우 상단에 **왜 `backend/**` 가 필터에 있는지** 주석 (지우면 S6 가 뚫린다).
+
+**검증**. PR 에서 잡이 실행되고 통과. `infra/prod/nginx.conf` 를 건드리는 커밋에서 트리거 확인
+
+---
+
+### Task 7. ADR + 문서 동기화
+
+**메타**.
+- agent: `security-engineer`
+- files: [`docs/decisions/2026-07-26-nginx-access-log-token-masking.md`, `docs/plans/2026-07-26-nginx-access-log-path-token-masking.md`]
+- depends-on: [6]
+
+**작업**.
+- ADR 작성. **선행 #310 ADR §잔여 위험 1 의 분류를 번복**한다는 점을 명시적으로 기록
+  (3종 중 접근 로그만 인프라 계층에서 봉합 가능, 나머지 2종은 설계 귀결 유지)
+- **잔여 위험 등재 — `error_log`(D1=A 확정).** nginx 가 포맷 커스터마이즈를 지원하지 않아 마스킹 불가.
+  ⚠️ **"범위 밖" 으로만 적고 끝내지 않는다** — 선행 ADR 이 그렇게 적은 항목이 3주 잠복해 이 PR 이 됐다.
+  **후속 작업으로 명시 등재**하고 메모리에도 남긴다
+- **인접 미해결 등재.** `Referrer-Policy` 헤더 부재(브라우저가 외부 사이트로 토큰을 흘릴 수 있음)
+- **FR 카운트 129 불변** 확인 — `bash scripts/verify-master-plan.sh` 통과
+
+**검증**. `verify-master-plan.sh` 종료코드 0
+
+---
+
+## Plan 메타
+
+- **task 수**. 7
+- **wave 구성**. T1 → T2 → T3 → {T4, T5 병렬} → T6 → T7 (T4·T5 는 `files` 가 같은 스크립트라 실제로는 직렬화됨 → 실질 7 wave)
+- **TDD 강제**. yes — `test:` 커밋(T1·T2 봉인 스크립트)이 `feat:` 커밋(T3 nginx.conf)보다 **먼저**
+- **변경 파일 3개**. `infra/prod/nginx.conf`(수정) · `scripts/verify/nginx-log-masking.sh`(신규) ·
+  `.github/workflows/infra-ci.yml`(신규) + 문서 2
+- **백엔드 코드 0 · 프론트 코드 0 · 마이그레이션 0 · 신규 의존성 0 · FR 카운트 129 불변**
+- **추가 검증**. `verify-master-plan.sh`. ktlint/detekt/vitest 는 **대상 파일 없음**(변경이 Kotlin/TS 아님)
+
+### 워크플로우 편차 (게이트 1 확인 대상)
+
+**`superpowers:writing-plans` 미호출.** `bts-plan` SKILL 이 요구 형식(메타 블록 `agent`/`files`/
+`depends-on` + RED/GREEN/REFACTOR/검증)을 **그 자리에 전문으로 명시**하고 있어 그 형식대로 직접 작성했다.
+누적 편차 4건째이므로 게이트 1 에서 **일괄 확인 대상**이다 (앞의 3건 — grill-with-docs · office-hours ·
+brainstorming 은 형식 불일치가 사유였고 이번은 형식이 이미 주어져 있다는 사유다).
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
