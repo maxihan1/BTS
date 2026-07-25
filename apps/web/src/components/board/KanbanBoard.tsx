@@ -75,6 +75,14 @@ const ASSIGNEE_NAME_FALLBACK = '미배정'
 const PRIORITY_VALUE_FALLBACK = '알 수 없음'
 
 /**
+ * 시제(tense)에 따라 예고형/완료형 동사 문구 중 하나를 고른다.
+ * describeXxxFieldChange 3곳에서 반복되던 `tense === 'preview' ? ... : ...` 분기를 한 곳에 모은다.
+ */
+function pickByTense(tense: FieldChangeTense, preview: string, done: string): string {
+  return tense === 'preview' ? preview : done
+}
+
+/**
  * assigneeId(UUID)를 가진 카드를 board에서 찾아 assigneeNames 표시 이름을 조회한다.
  * 그룹 key(이름 기반)가 아니라 카드 자신의 실제 assigneeId로 조회하므로
  * 이름 기반 그룹 오분류(스펙 G1: unknown/동명이인 혼재)에 영향받지 않는다.
@@ -103,30 +111,26 @@ function describeAssigneeFieldChange(
   tense: FieldChangeTense,
 ): string {
   if (action.toAssigneeId === null || action.toAssigneeId === undefined) {
-    return tense === 'preview'
-      ? `${action.issueKey}의 담당자를 해제합니다.`
-      : `${action.issueKey}의 담당자를 해제했습니다.`
+    return `${action.issueKey}의 담당자를 ${pickByTense(tense, '해제합니다', '해제했습니다')}.`
   }
   const name = findAssigneeDisplayName(board, assigneeNames, action.toAssigneeId) ?? ASSIGNEE_NAME_FALLBACK
-  const changeVerb = tense === 'preview' ? '변경합니다' : '변경했습니다'
+  const changeVerb = pickByTense(tense, '변경합니다', '변경했습니다')
   return `${action.issueKey}을(를) 담당자 ${name}(으)로 ${changeVerb}`
 }
 
 /** PRIORITY 필드변경 announcement 문구 */
 function describePriorityFieldChange(action: FieldChangeAction, tense: FieldChangeTense): string {
   const priorityLabel = action.toPriority !== undefined ? String(action.toPriority) : PRIORITY_VALUE_FALLBACK
-  const changeVerb = tense === 'preview' ? '변경합니다' : '변경했습니다'
+  const changeVerb = pickByTense(tense, '변경합니다', '변경했습니다')
   return `${action.issueKey}의 우선순위를 ${priorityLabel}로 ${changeVerb}`
 }
 
 /** EPIC 필드변경 announcement 문구 — 에픽 재배치/해제 */
 function describeEpicFieldChange(action: FieldChangeAction, tense: FieldChangeTense): string {
   if (action.toEpicKey === null || action.toEpicKey === undefined) {
-    return tense === 'preview'
-      ? `${action.issueKey}의 에픽 연결을 해제합니다.`
-      : `${action.issueKey}의 에픽 연결을 해제했습니다.`
+    return `${action.issueKey}의 에픽 연결을 ${pickByTense(tense, '해제합니다', '해제했습니다')}.`
   }
-  const moveVerb = tense === 'preview' ? '이동합니다' : '이동했습니다'
+  const moveVerb = pickByTense(tense, '이동합니다', '이동했습니다')
   return `${action.issueKey}을(를) 에픽 ${action.toEpicKey}로 ${moveVerb}`
 }
 
