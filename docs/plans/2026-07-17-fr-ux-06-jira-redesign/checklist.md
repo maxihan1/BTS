@@ -99,11 +99,14 @@
 
 ## Phase 5 — 화면
 
-- [ ] **PR17** `IssueFilterBar`+`BoardFilterBar` → 공유 `FilterBar` (−350 순감)
-- [ ] **PR18** 이슈 목록 카드 → `ui/table` 네비게이터 (정렬·컬럼 선택·split view)
-- [ ] **PR19** 이슈 상세 탭화 + `IssueMetaPanel`(1204줄) 분해 — **여기선 Radix Tabs가 정답**
-- [ ] **PR21** `@dnd-kit/sortable` → 보드 컬럼 내 순서변경
-- [ ] **PR22** 원시 `<button>` 정리 + `FilteredEmptyState`/`Skeleton` 중복 제거 + **`--chart-*` 실소비 정의**
+- [x] **PR17** `IssueFilterBar`+`BoardFilterBar` → 공유 `FilterBar` (−350 순감) — #302
+- [x] **PR18** 이슈 목록 카드 → `ui/table` 네비게이터 (정렬·컬럼 선택·split view) — #303
+- [x] **PR19** 이슈 상세 탭화 + `IssueMetaPanel`(1204줄) 분해 — **여기선 Radix Tabs가 정답** — #304
+- [x] **PR20** split view (이슈 목록 + 상세 2분할) — #305
+- [x] **PR21** `@dnd-kit/sortable` → 보드 컬럼 내 순서변경 — #306
+- [x] **PR21b** 스윔레인 간 드래그 필드변경(담당자·우선순위·에픽) — #307. 완전 Jira 드래그 4종 완성
+- [x] **PR22** 원시 `<button>` 정리 + `FilteredEmptyState`/`Skeleton` 중복 제거 + **`--chart-*` 실소비 정의** — #308
+      (원시 button 104발생 → IN 84 흡수 / OUT 20 사유 등재 + ESLint 락 2종 + ADR 신설)
 
 ## 별도 FR (본 FR 범위 밖)
 
