@@ -58,17 +58,119 @@ function findColumnName(board: BoardDetail, columnId: string): string {
   return board.columns.find((c) => c.columnId === columnId)?.name ?? columnId
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 필드변경 announcement 문구 (FR-7, FR-UX-06 PR21b Task 4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** field-change DropAction 변형만 추출한 타입 별칭 — describeXxxFieldChange 헬퍼 시그니처에 재사용 */
+type FieldChangeAction = Extract<DropAction, { type: 'field-change' }>
+
+/** 필드변경 announcement 시제 — onDragOver(예고형 "~변경합니다")·onDragEnd(완료형 "~변경했습니다") 구분 */
+type FieldChangeTense = 'preview' | 'done'
+
+/** 담당자 이름을 조회하지 못했을 때(unknown·그룹 미확인) 대체 표시 텍스트 — issue-columns.ts assigneeName 관례와 동일 */
+const ASSIGNEE_NAME_FALLBACK = '미배정'
+
+/** 우선순위 값을 읽지 못했을 때(방어적) 대체 표시 텍스트 — findColumnName 방어적 fallback 관례와 동일 */
+const PRIORITY_VALUE_FALLBACK = '알 수 없음'
+
+/**
+ * assigneeId(UUID)를 가진 카드를 board에서 찾아 assigneeNames 표시 이름을 조회한다.
+ * 그룹 key(이름 기반)가 아니라 카드 자신의 실제 assigneeId로 조회하므로
+ * 이름 기반 그룹 오분류(스펙 G1: unknown/동명이인 혼재)에 영향받지 않는다.
+ *
+ * @returns named 상태의 이름. 카드를 못 찾거나 named 상태가 아니면 undefined
+ */
+function findAssigneeDisplayName(
+  board: BoardDetail,
+  assigneeNames: Map<string, CardAssigneeDisplay>,
+  assigneeId: string,
+): string | undefined {
+  for (const column of board.columns) {
+    const card = column.cards.find((c) => c.assigneeId === assigneeId)
+    if (card === undefined) continue
+    const display = assigneeNames.get(card.issueKey)
+    if (display?.state === 'named') return display.name
+  }
+  return undefined
+}
+
+/** ASSIGNEE 필드변경 announcement 문구 — 담당자 재할당/해제 */
+function describeAssigneeFieldChange(
+  action: FieldChangeAction,
+  board: BoardDetail,
+  assigneeNames: Map<string, CardAssigneeDisplay>,
+  tense: FieldChangeTense,
+): string {
+  if (action.toAssigneeId === null || action.toAssigneeId === undefined) {
+    return tense === 'preview'
+      ? `${action.issueKey}의 담당자를 해제합니다.`
+      : `${action.issueKey}의 담당자를 해제했습니다.`
+  }
+  const name = findAssigneeDisplayName(board, assigneeNames, action.toAssigneeId) ?? ASSIGNEE_NAME_FALLBACK
+  const changeVerb = tense === 'preview' ? '변경합니다' : '변경했습니다'
+  return `${action.issueKey}을(를) 담당자 ${name}(으)로 ${changeVerb}`
+}
+
+/** PRIORITY 필드변경 announcement 문구 */
+function describePriorityFieldChange(action: FieldChangeAction, tense: FieldChangeTense): string {
+  const priorityLabel = action.toPriority !== undefined ? String(action.toPriority) : PRIORITY_VALUE_FALLBACK
+  const changeVerb = tense === 'preview' ? '변경합니다' : '변경했습니다'
+  return `${action.issueKey}의 우선순위를 ${priorityLabel}로 ${changeVerb}`
+}
+
+/** EPIC 필드변경 announcement 문구 — 에픽 재배치/해제 */
+function describeEpicFieldChange(action: FieldChangeAction, tense: FieldChangeTense): string {
+  if (action.toEpicKey === null || action.toEpicKey === undefined) {
+    return tense === 'preview'
+      ? `${action.issueKey}의 에픽 연결을 해제합니다.`
+      : `${action.issueKey}의 에픽 연결을 해제했습니다.`
+  }
+  const moveVerb = tense === 'preview' ? '이동합니다' : '이동했습니다'
+  return `${action.issueKey}을(를) 에픽 ${action.toEpicKey}로 ${moveVerb}`
+}
+
+/**
+ * field-change 액션을 시제(tense)에 맞춘 한국어 announcement 문구로 변환한다 (FR-7).
+ * 필드별 문구는 describeAssigneeFieldChange/describePriorityFieldChange/describeEpicFieldChange에 위임한다.
+ */
+function describeFieldChangeAction(
+  action: FieldChangeAction,
+  board: BoardDetail,
+  assigneeNames: Map<string, CardAssigneeDisplay>,
+  tense: FieldChangeTense,
+): string {
+  switch (action.field) {
+    case 'assignee':
+      return describeAssigneeFieldChange(action, board, assigneeNames, tense)
+    case 'priority':
+      return describePriorityFieldChange(action, tense)
+    case 'epic':
+      return describeEpicFieldChange(action, tense)
+    default: {
+      const exhaustiveCheck: never = action.field
+      return exhaustiveCheck
+    }
+  }
+}
+
 /**
  * DropAction을 드래그 진행 중(present) 공지 문구로 변환한다 — onDragOver announcement용.
  * 아직 확정되지 않은 위치를 안내한다.
  */
-function describeDragOverAction(action: DropAction, board: BoardDetail): string {
+function describeDragOverAction(
+  action: DropAction,
+  board: BoardDetail,
+  assigneeNames: Map<string, CardAssigneeDisplay>,
+): string {
   switch (action.type) {
     case 'move':
     case 'needs-resolution':
       return `${findColumnName(board, action.toColumnId)} 컬럼 위에 있습니다.`
     case 'reorder':
       return `${findColumnName(board, action.columnId)} 안에서 순서를 조정하고 있습니다.`
+    case 'field-change':
+      return describeFieldChangeAction(action, board, assigneeNames, 'preview')
     case 'noop':
       return '이동할 수 없는 위치입니다.'
     default: {
@@ -82,13 +184,19 @@ function describeDragOverAction(action: DropAction, board: BoardDetail): string 
  * DropAction을 드래그 완료(past) 공지 문구로 변환한다 — onDragEnd announcement용.
  * 실제로 반영될 변경 결과를 안내한다.
  */
-function describeDragEndAction(action: DropAction, board: BoardDetail): string {
+function describeDragEndAction(
+  action: DropAction,
+  board: BoardDetail,
+  assigneeNames: Map<string, CardAssigneeDisplay>,
+): string {
   switch (action.type) {
     case 'move':
     case 'needs-resolution':
       return `${findColumnName(board, action.toColumnId)} 컬럼으로 이동했습니다.`
     case 'reorder':
       return '순서를 변경했습니다.'
+    case 'field-change':
+      return describeFieldChangeAction(action, board, assigneeNames, 'done')
     case 'noop':
       return '변경 사항이 없습니다.'
     default: {
@@ -119,11 +227,11 @@ function buildDragAnnouncements(
     onDragOver({ active, over }) {
       if (over === null) return '드롭 가능한 영역을 벗어났습니다.'
       const action = resolveDropAction(board, active as DragActiveMin, over as DragOverMin, assigneeNames)
-      return describeDragOverAction(action, board)
+      return describeDragOverAction(action, board, assigneeNames)
     },
     onDragEnd({ active, over }) {
       const action = resolveDropAction(board, active as DragActiveMin, over as DragOverMin | null, assigneeNames)
-      return describeDragEndAction(action, board)
+      return describeDragEndAction(action, board, assigneeNames)
     },
     onDragCancel() {
       return '취소했습니다.'
