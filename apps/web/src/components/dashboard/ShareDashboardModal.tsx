@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { useShareTokens, useIssueShareToken, useRevokeShareToken } from '@/hooks/use-dashboards'
 import type { IssuedShareToken, ShareTokenSummary } from '@/api/dashboards'
 import { dashboardLabels } from '@/i18n/dashboard-labels'
@@ -46,13 +47,15 @@ function CopyButton({ text }: CopyButtonProps): JSX.Element {
   }
 
   return (
-    <button
+    <Button
       type="button"
+      variant="outline"
+      size="default"
       className={ACTION_BUTTON_CLASS}
       onClick={() => { void handleCopy() }}
     >
       {copied ? dashboardLabels.share.copied : dashboardLabels.share.copy}
-    </button>
+    </Button>
   )
 }
 
@@ -103,17 +106,17 @@ function ShareTokenListItem({
       {isConfirming ? (
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-xs text-muted-foreground">{dashboardLabels.share.revokeConfirm}</span>
-          <button type="button" className={ACTION_BUTTON_CLASS} disabled={isPending} onClick={onConfirm}>
+          <Button type="button" variant="outline" size="default" className={ACTION_BUTTON_CLASS} disabled={isPending} onClick={onConfirm}>
             {dashboardLabels.detail.confirmButton}
-          </button>
-          <button type="button" className={ACTION_BUTTON_CLASS} disabled={isPending} onClick={onCancel}>
+          </Button>
+          <Button type="button" variant="outline" size="default" className={ACTION_BUTTON_CLASS} disabled={isPending} onClick={onCancel}>
             {dashboardLabels.detail.cancelButton}
-          </button>
+          </Button>
         </div>
       ) : (
-        <button type="button" className={ACTION_BUTTON_CLASS} onClick={onRevokeClick}>
+        <Button type="button" variant="outline" size="default" className={ACTION_BUTTON_CLASS} onClick={onRevokeClick}>
           {dashboardLabels.share.revoke}
-        </button>
+        </Button>
       )}
     </li>
   )
@@ -230,14 +233,16 @@ export function ShareDashboardModal({
         {/* 헤더 */}
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">{dashboardLabels.share.modalTitle}</h2>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-xs"
             aria-label="공유 닫기"
-            className="rounded p-1 hover:bg-muted"
+            className="rounded hover:bg-muted"
             onClick={onClose}
           >
             ✕
-          </button>
+          </Button>
         </div>
 
         {/* PRIVATE/TEAM 경고 배너 — warning caution, destructive 금지 */}
@@ -254,14 +259,16 @@ export function ShareDashboardModal({
         {/* 링크 생성 영역 */}
         <section className="space-y-2">
           {issuedToken === null ? (
-            <button
+            <Button
               type="button"
+              variant="default"
+              size="default"
               className={PRIMARY_BUTTON_CLASS}
               disabled={issueMutation.isPending}
               onClick={() => { void handleGenerate() }}
             >
               {dashboardLabels.share.generateLink}
-            </button>
+            </Button>
           ) : (
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">{dashboardLabels.share.copyOnceNotice}</p>

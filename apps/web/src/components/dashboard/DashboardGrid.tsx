@@ -4,6 +4,7 @@ import GridLayout, { WidthProvider } from 'react-grid-layout'
 import type { Layout } from 'react-grid-layout'
 import 'react-grid-layout/css/styles.css'
 import { Plus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { COLS, ROW_HEIGHT, MARGIN, CONTAINER_PADDING } from '@/lib/dashboard-layout'
 import type { DashboardTile as DashboardTileData } from '@/lib/dashboard-layout'
 import { dashboardLabels } from '@/i18n/dashboard-labels'
@@ -133,15 +134,18 @@ export function DashboardGrid({
             {dashboardLabels.detail.emptyGrid}
           </p>
           {effectiveCanEdit && onAddTile !== undefined && (
-            <button
+            // PR22 — 세션 2 재열거가 찾아낸 신규 등재분(초안 T6·T7 어디에도 없었다)
+            <Button
               type="button"
-              className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors min-h-[44px]"
+              variant="default"
+              size="lg"
+              className="min-h-[44px] rounded-md px-4 hover:bg-primary/90"
               aria-label={dashboardLabels.detail.addWidget}
               onClick={onAddTile}
             >
               <Plus className="h-4 w-4" aria-hidden="true" />
               {dashboardLabels.detail.addWidget}
-            </button>
+            </Button>
           )}
         </div>
       </div>

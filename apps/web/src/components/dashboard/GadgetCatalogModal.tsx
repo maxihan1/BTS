@@ -125,6 +125,7 @@ export function GadgetCatalogModal({ open, onAdd, onClose }: GadgetCatalogModalP
                       </h3>
                       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                         {items.map((entry) => (
+                          // PR22 OUT — P5 옵션 행: 가젯 카탈로그 카드로 flex flex-col + text-left 본문 정렬이 필요하고, Button의 justify-center와 충돌한다
                           <button
                             key={entry.type}
                             type="button"
