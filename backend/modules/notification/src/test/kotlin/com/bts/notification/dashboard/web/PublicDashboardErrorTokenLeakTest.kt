@@ -13,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.http.HttpStatus
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
@@ -23,6 +24,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.context.WebApplicationContext
+import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
 
 /**
@@ -197,6 +199,39 @@ class PublicDashboardErrorTokenLeakTest {
 
         every { service.getPublicByToken(secretToken) } throws IllegalStateException("boom")
         assertThat(bodyOf(call())).contains("\"instance\":\"/api/v1/public/dashboards\"")
+    }
+
+    /**
+     * D3 고정 — `ResponseStatusException` 은 **상태를 보존하지 않고 500 으로 수렴**한다.
+     *
+     * 이것은 advice 시절과 다른 **의도된 동작 변화**다(ADR 2026-07-25 D3). advice 의 catch-all 은
+     * `ResponseStatusException` 을 rethrow 했지만, rethrow 하면 Spring 기본 오류 처리(`/error`)로 넘어가
+     * 응답 `path` 에 **원문 토큰이 다시 실린다** — 막으려던 것을 되살리는 경로다.
+     *
+     * ## 왜 테스트로 고정하나
+     * 리뷰 체크리스트의 CRITICAL 항목("catch-all 이 `ResponseStatusException` 을 삼켜 401→500 변질")에
+     * 정면으로 해당하는 변화다. 현재 이 경로의 서비스는 `ResponseStatusException` 을 던지지 않아
+     * **도달 불가**지만, 도달 불가라는 사실이 미래에도 참이라는 보장은 없다.
+     * 이 테스트는 "도달하게 되면 무슨 일이 일어나는지" 를 **명시적으로 못 박아**, 나중에 누가
+     * 상태 보존이 필요해지면 이 테스트가 red 로 알려주게 한다(조용한 상태 변질 방지).
+     * `SEAL` 은 새 **핸들러** 추가만 감시할 뿐 새 **throw 지점**은 못 보므로, 그 사각을 이 테스트가 메운다.
+     */
+    @Test
+    fun `D3 — ResponseStatusException 도 상태 보존 없이 500 으로 수렴하고 토큰을 흘리지 않는다`() {
+        every { service.getPublicByToken(secretToken) } throws
+            ResponseStatusException(HttpStatus.UNAUTHORIZED, "should not surface")
+
+        val result = call()
+        val body = bodyOf(result)
+
+        assertThat(result.response.status)
+            .describedAs("상태 보존 분기가 되살아났다 — HttpStatus.valueOf 경유는 /error 재유출 경로를 연다")
+            .isEqualTo(500)
+        assertThat(body).contains("NOTIF_DASHBOARD_INTERNAL_ERROR")
+        assertThat(body).doesNotContain(secretToken)
+        assertThat(body)
+            .describedAs("예외 메시지가 응답 본문으로 새어나왔다")
+            .doesNotContain("should not surface")
     }
 
     /**
