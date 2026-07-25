@@ -106,19 +106,19 @@ function ProgressBarContent({ progress }: ProgressBarProps): JSX.Element {
         aria-label={epicProgressStrings.progressAriaLabel(donePercentage)}
         className="flex h-2 w-full overflow-hidden rounded-full bg-muted"
       >
-        {/* done — 초록 계열 */}
+        {/* done — 완료 상태 토큰 (FR-UX-06 PR22: bg-emerald-500 → bg-success) */}
         <div
           data-testid="progress-segment-done"
           aria-label={epicProgressStrings.doneLabel}
           style={{ width: `${segments.done}%` }}
-          className="bg-emerald-500 transition-all duration-300"
+          className="bg-success transition-all duration-300"
         />
-        {/* inProgress — 파랑 계열 */}
+        {/* inProgress — 진행중 상태 토큰 (FR-UX-06 PR22: bg-blue-400 → bg-info) */}
         <div
           data-testid="progress-segment-inprogress"
           aria-label={epicProgressStrings.inProgressLabel}
           style={{ width: `${segments.inProgress}%` }}
-          className="bg-blue-400 transition-all duration-300"
+          className="bg-info transition-all duration-300"
         />
         {/* todo — 회색 (bg-muted에 흡수되지 않도록 별도 렌더) */}
         <div

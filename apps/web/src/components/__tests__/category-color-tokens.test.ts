@@ -22,12 +22,22 @@ const FEATURE_SOURCES = ['calendar/WeekGrid.tsx'] as const
 const TAILWIND_LITERAL_COLOR =
   /\b(bg|text|border|fill|stroke|ring|from|to|via)-(slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}\b/g
 
+/**
+ * 주석을 제거한다 — `state-tokens.test.ts`의 stripComments와 같은 이유다.
+ * 이관 이력을 설명하는 주석("bg-purple-500 → bg-type-epic")까지 위반으로 잡으면
+ * 문서화가 벌점이 되어, 결국 주석을 지우게 만드는 잘못된 유인이 생긴다.
+ * WorkflowDiagram이 주석 리터럴이라 OUT인 것과 같은 판정 기준.
+ */
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+}
+
 function componentSource(relativePath: string): string {
-  return readFileSync(resolve(import.meta.dirname, '..', relativePath), 'utf-8')
+  return stripComments(readFileSync(resolve(import.meta.dirname, '..', relativePath), 'utf-8'))
 }
 
 function featureSource(relativePath: string): string {
-  return readFileSync(resolve(import.meta.dirname, '../../features', relativePath), 'utf-8')
+  return stripComments(readFileSync(resolve(import.meta.dirname, '../../features', relativePath), 'utf-8'))
 }
 
 describe('FR-UX-06 PR22 — 범주색은 토큰으로만 지정한다', () => {
@@ -39,10 +49,10 @@ describe('FR-UX-06 PR22 — 범주색은 토큰으로만 지정한다', () => {
     expect(featureSource(path).match(TAILWIND_LITERAL_COLOR) ?? []).toEqual([])
   })
 
-  it('TimelineRow 이슈타입 막대가 --type-* 토큰을 쓴다', () => {
+  it('TimelineRow 이슈타입 막대가 --type-* 토큰 유틸리티를 쓴다', () => {
     const source = componentSource('timeline/TimelineRow.tsx')
-    for (const token of ['--type-epic', '--type-story', '--type-task', '--type-bug', '--type-default']) {
-      expect(source).toContain(token)
+    for (const utility of ['bg-type-epic', 'bg-type-story', 'bg-type-task', 'bg-type-bug', 'bg-type-default']) {
+      expect(source).toContain(utility)
     }
   })
 
