@@ -129,6 +129,478 @@ SYSTEM_ADMIN 가드를 넣고 **뮤테이션으로 검증**했다. 같은 방식
 모순으로 지목했다. 값을 읽으니 `requireAuth: false` + 공개 라우트 JSDoc으로 정합이었다.
 **플래그는 값을 읽어야 한다.**
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+**Goal.** `/admin/slack`의 가드 누락을 1줄로 고치고, 전 라우트 가드 행렬을 클래스별 기대 서명으로
+못 박아 같은 누락이 다시 잠복할 수 없게 만든다.
+
+**Architecture.** 프로덕션 변경은 `router.ts` 1줄뿐이다. 나머지는 `router.admin-guards.test.tsx`를
+"하드코딩 3라우트 × 가드 1종" → "`routesById` 파생 전 라우트 × 4시나리오 관측 서명 × 5클래스 기대 서명"
+으로 개편한다. 미분류 라우트를 실패로 처리해 신규 라우트에 클래스 선언을 강제한다.
+
+**Tech Stack.** TanStack Router(`routesById`·`isRedirect`) · vitest · zustand `useAuthStore` ·
+`makeWhoami` 픽스처.
+
+**파일 구조** (2파일, 신규 0).
+
+| 파일 | 책임 | 변경 |
+|---|---|---|
+| `apps/web/src/router.ts` | 라우트 등록 정본 | `/admin/slack`의 `beforeLoad` 1줄 |
+| `apps/web/src/router.admin-guards.test.tsx` | 가드 배선 회귀 가드 | 전면 개편 (파일명 유지 — 소비처 없고 git 이력 연속성 우선, 범위 확대는 파일 L1 주석으로 표기) |
+
+**전 task 직렬.** 5개 task가 모두 같은 테스트 파일을 만지므로 `depends-on` 사슬로 직렬이다.
+병렬 wave가 없어 메모리 `parallel-dispatch-precommit-hook-race`·
+`worktree-lint-staged-shared-git-stash-collision` 위험이 구조적으로 없다.
+
+**E2E 미포함 (사유 등재).** 이 변경의 검증 대상은 "라우터에 등록된 `beforeLoad` 합성"이고, 유닛 테스트가
+**앱이 실제로 쓰는 `router` 객체 자체**를 호출하므로 동일 대상을 덮는다. E2E를 추가하면 브라우저 비용만
+늘고 커버하는 로직은 같다. 메모리 `ui-pro-defer-e2e-regression-latent`가 경고하는 "UI 변경인데 E2E를
+미루는" 경우와 다르다 — **시각·DOM 변화가 0**이다.
+
+---
+
+### Task 1. 완전성 + vacuous 가드 먼저 세우기 (E13 실측 해소)
+
+**메타**.
+- agent: `security-engineer`
+- files: [`apps/web/src/router.admin-guards.test.tsx`]
+- depends-on: []
+
+스펙 E13 때문에 **런타임 키 집합을 추측하지 않는다.** 별도 스크립트를 만들지 않고,
+완전성 테스트 자체를 먼저 세워 그 **실패 메시지로 실제 키를 관측**한다.
+
+**RED**. 파일 전체를 아래로 교체한다(기존 3라우트 하드코딩 제거).
+
+```tsx
+// 전 라우트 beforeLoad 가드 행렬 음성 회귀 테스트 — 라우트 클래스별 기대 서명 정확 일치 + 미분류 실패
+//
+// 범위. #299(PR13)에서 이 파일은 workflow-schemes 3라우트 × SYSTEM_ADMIN 1종만 덮었다. 그 결과
+// /admin/slack 이 2-가드인 채로 초록을 유지했다(도입 d9e418d9b/#247 → #299 정렬에서 누락).
+// 이제 routesById 전 라우트 × 4시나리오를 덮고, 맵에 없는 라우트는 실패로 처리해 신규 라우트에
+// 클래스 선언을 강제한다.
+import { describe, it, expect } from 'vitest'
+import { router } from './router'
+
+// ★ import 는 이 task 에서 쓰는 것만 넣는다 — beforeEach/afterEach 는 Task 2 가 추가한다.
+//    미사용 import 는 eslint error 이고, 각 task 는 그 시점에 커밋 가능해야 한다.
+
+/** 가드 클래스 — 라우트가 요구하는 보호 수준 */
+type GuardClass = 'ADMIN_4' | 'PROTECTED_3' | 'AUTH_ONLY' | 'LOGIN' | 'PUBLIC'
+
+/** 경로 목록을 한 클래스로 묶는 헬퍼 — 맵 리터럴의 반복 제거 */
+const cls = (c: GuardClass, ...keys: string[]): [string, GuardClass][] =>
+  keys.map((k) => [k, c])
+
+/**
+ * routesById 키 → 가드 클래스. 이 맵이 정책 선언이다.
+ * 키는 _shell pathless 재부모화가 접두사로 붙은 형태(router.admin-guards 이전 판의 실증 형식).
+ */
+const ROUTE_CLASS = new Map<string, GuardClass>([
+  ...cls(
+    'ADMIN_4',
+    '/_shell/admin',
+    '/_shell/admin/audit-logs',
+    '/_shell/admin/global-permissions',
+    '/_shell/admin/notification-policies',
+    '/_shell/admin/slack',
+    '/_shell/admin/users/new',
+    '/_shell/admin/webhooks',
+    '/_shell/admin/webhooks/$id/deliveries',
+    '/_shell/admin/workflow-schemes',
+    '/_shell/admin/workflow-schemes/new',
+    '/_shell/admin/workflow-schemes/$schemeKey',
+  ),
+  ...cls(
+    'PROTECTED_3',
+    '/_shell/dashboard',
+    '/_shell/dashboards',
+    '/_shell/dashboards/$dashboardId',
+    '/_shell/issues',
+    '/_shell/issues/new',
+    '/_shell/issues/$key',
+    '/_shell/inbox',
+    '/_shell/search',
+    '/_shell/calendar',
+    '/_shell/projects',
+    '/_shell/projects/new',
+    '/_shell/projects/$projectKey/backlog',
+    '/_shell/projects/$projectKey/board',
+    '/_shell/projects/$projectKey/timeline',
+    '/_shell/projects/$projectKey/sprints/$sprintId/burndown',
+    '/_shell/projects/$projectKey/reports/worklog',
+    '/_shell/projects/$projectKey/reports/velocity',
+    '/_shell/projects/$projectKey/reports/cfd',
+    '/_shell/projects/$projectKey/reports/cycle-time',
+    '/_shell/projects/$projectKey/settings/details',
+    '/_shell/projects/$projectKey/settings/workflow-scheme',
+    '/_shell/projects/$projectKey/settings/members',
+    '/_shell/projects/$projectKey/settings/components',
+    '/_shell/projects/$projectKey/settings/custom-fields',
+    '/_shell/projects/$projectKey/settings/issue-templates',
+    '/_shell/projects/$projectKey/settings/automation',
+    '/_shell/projects/$projectKey/settings/slack-channels',
+    '/_shell/projects/$projectKey/settings/versions',
+    '/_shell/projects/$projectKey/settings/project-lead',
+    '/_shell/projects/$projectKey/settings/import',
+    '/_shell/settings',
+    '/_shell/settings/sessions',
+    '/_shell/settings/notifications',
+    '/_shell/settings/account-links',
+    '/_shell/settings/pats',
+    '/_shell/settings/keymap',
+    '/_shell/settings/calendar',
+    '/_shell/settings/slack',
+  ),
+  ...cls(
+    'AUTH_ONLY',
+    '/_shell/settings/password',
+    '/_shell/settings/mfa',
+    '/_shell/settings/profile',
+    '/_shell/settings/preferences',
+    '/_shell/projects/$projectKey/settings/field-permissions',
+  ),
+  ...cls('LOGIN', '/login'),
+  ...cls('PUBLIC', '_shell', '/_shell/', '/_shell/workflows/$key', '/_shell/dashboards/shared/$token'),
+])
+
+/**
+ * 클래스가 PUBLIC·AUTH_ONLY 인 항목의 사유 등재.
+ * "정당" 과 "후속 판정 필요" 를 문구로 구분한다 — 초록이 곧 정당함을 뜻하지 않는다(스펙 E10).
+ */
+const CLASS_NOTES: Record<string, string> = {
+  '/_shell/settings/password': '정당 — requirePasswordChanged 리다이렉트 목적지 자기 경로',
+  '/_shell/settings/mfa': '정당 — requireMfaEnrolled 리다이렉트 목적지 자기 경로',
+  '/_shell/dashboards/shared/$token': '정당 — 공개 공유 토큰(직교 인증), 세션 불요. FR-DB-03 EC-11 로그인 리다이렉트 금지',
+  '_shell': '정당 — pathless 레이아웃. ADR 2026-07-17 §70 이 가드 hoist 를 금지',
+  '/_shell/settings/profile': '후속 판정 필요 — 비번·MFA 강제 대상이 접근 가능',
+  '/_shell/settings/preferences': '후속 판정 필요 — 비번·MFA 강제 대상이 접근 가능',
+  '/_shell/projects/$projectKey/settings/field-permissions': '후속 판정 필요 — 다른 프로젝트 설정 라우트는 PROTECTED_3',
+  '/_shell/': '후속 판정 필요 — 블록 주석의 "T13 라우트 가드에서 dashboard / login 으로 리다이렉트 예정" 미완',
+  '/_shell/workflows/$key': '후속 판정 필요 — 다른 상세 화면은 PROTECTED_3',
+}
+
+describe('라우트 가드 행렬 — 맵 완전성', () => {
+  it('routesById 의 모든 라우트가 ROUTE_CLASS 에 분류되어 있다 (미분류 = 실패)', () => {
+    const actual = Object.keys(router.routesById)
+    const unclassified = actual.filter((id) => !ROUTE_CLASS.has(id))
+    const stale = [...ROUTE_CLASS.keys()].filter((id) => !actual.includes(id))
+    expect({ unclassified, stale }).toEqual({ unclassified: [], stale: [] })
+  })
+
+  it('발견된 라우트가 59개 이상이다 (열거 실패 시 it.each 무음 통과 차단)', () => {
+    expect(Object.keys(router.routesById).length).toBeGreaterThanOrEqual(59)
+  })
+
+  // ★ 사유 등재 검증을 이 task 에 둔다 — CLASS_NOTES 를 선언만 하고 쓰지 않으면 eslint error 다.
+  it('사유 등재 — AUTH_ONLY·PUBLIC 전 항목이 CLASS_NOTES 를 가진다', () => {
+    const needNote = [...ROUTE_CLASS.entries()]
+      .filter(([, c]) => c === 'AUTH_ONLY' || c === 'PUBLIC')
+      .map(([id]) => id)
+    const missing = needNote.filter((id) => CLASS_NOTES[id] === undefined)
+    expect(missing).toEqual([])
+  })
+
+  it('후속 판정 필요 5건이 사유 문구로 남아 있다 (D5=B — 본 PR 에서 고치지 않음)', () => {
+    const pending = Object.entries(CLASS_NOTES)
+      .filter(([, note]) => note.startsWith('후속 판정 필요'))
+      .map(([id]) => id)
+    expect(pending).toHaveLength(5)
+  })
+})
+```
+
+**★의도된 hedge.** `PUBLIC`에 `'_shell'`과 `'/_shell/'`을 **둘 다** 넣어 뒀다. pathless 레이아웃 라우트의
+키 형태와 인덱스 라우트의 키 형태를 확신할 수 없기 때문이다. 틀린 쪽은 `stale` 배열에 잡혀 **RED으로
+드러나므로**, 이 hedge는 추측이 아니라 Task 1의 관측 장치다. GREEN에서 실제 형태 하나만 남긴다.
+
+**실행**. `cd apps/web && ./node_modules/.bin/vitest run src/router.admin-guards.test.tsx`
+
+**예상 실패**. 첫 테스트가 `unclassified` / `stale` 배열에 **실제 키를 나열해 출력**한다.
+`__root__`(루트 라우트)·`/_shell` vs `_shell`·인덱스 라우트 키(`/_shell/` 여부) 등이 여기서 드러난다.
+이 출력이 E13이 요구한 실측이다.
+
+**GREEN**. 실패 메시지에 나온 실제 키로 맵을 정정한다.
+- `unclassified`에 나온 키(예. `__root__`) → 알맞은 클래스로 추가하고 `CLASS_NOTES`에 사유를 적는다.
+  루트 라우트는 `PUBLIC` + `'정당 — createRootRoute, 가드 대상 아님'`.
+- `stale`에 나온 키 → 내가 추측한 형태가 틀린 것이므로 실제 형태로 교체한다.
+- 두 배열이 모두 비면 GREEN.
+
+**REFACTOR**. 없음 — 맵 자체가 산출물이다. 주석은 이미 작성돼 있다.
+
+**검증**. 위 2 테스트 green. `expect({unclassified, stale}).toEqual(...)`로 **양방향**을 한 번에 보므로
+"내 맵에만 있는 유령 키"도 잡힌다.
+
+---
+
+### Task 2. 서명 관측 + `ADMIN_4` 검증 → `/admin/slack` 결함 노출 → 1줄 수정
+
+**메타**.
+- agent: `security-engineer`
+- files: [`apps/web/src/router.admin-guards.test.tsx`, `apps/web/src/router.ts`]
+- depends-on: [1]
+
+**RED**. Task 1 파일에 아래를 추가한다.
+
+```tsx
+import { isRedirect } from '@tanstack/react-router'
+import { useAuthStore } from './auth/authStore'
+import { makeWhoami } from './mocks/auth-fixtures'
+
+/** beforeLoad 컨텍스트 중 가드가 쓰는 최소 형태 (이전 판·routeGuard.test.tsx와 동형) */
+interface MinimalBeforeLoadContext {
+  location: { href: string; pathname: string }
+}
+
+/** redirect() 반환 타입 — Response & { options: { to } } */
+interface RedirectResponse extends Response {
+  options: { to: string }
+}
+
+/** 관측 서명 — [S-1, S-2, S-3, S-4] 각 칸은 redirect 목적지 또는 통과(null) */
+type Signature = [string | null, string | null, string | null, string | null]
+
+/** 클래스별 기대 서명. LOGIN 은 방향이 반대(인증 시 내보냄)이고 목적지는 startPage 매핑 결과 /dashboards */
+const EXPECTED: Record<GuardClass, Signature> = {
+  ADMIN_4: ['/login', '/dashboard', '/settings/password', '/settings/mfa'],
+  PROTECTED_3: ['/login', null, '/settings/password', '/settings/mfa'],
+  AUTH_ONLY: ['/login', null, null, null],
+  LOGIN: [null, '/dashboards', '/dashboards', '/dashboards'],
+  PUBLIC: [null, null, null, null],
+}
+
+/** 시나리오 4종 — 각 시나리오는 나머지 조건을 전부 통과 상태로 두어 판별자를 유일하게 특정한다 */
+const SCENARIOS = [
+  { label: 'S-1 미인증', apply: () => useAuthStore.setState({ accessToken: null, user: null }) },
+  {
+    label: 'S-2 비-admin',
+    apply: () =>
+      useAuthStore.setState({
+        accessToken: 'valid-token',
+        user: makeWhoami({ isSystemAdmin: false }),
+      }),
+  },
+  {
+    label: 'S-3 비밀번호 강제',
+    apply: () =>
+      useAuthStore.setState({
+        accessToken: 'valid-token',
+        user: makeWhoami({ isSystemAdmin: true, mustChangePassword: true }),
+      }),
+  },
+  {
+    label: 'S-4 MFA 강제',
+    apply: () =>
+      useAuthStore.setState({
+        accessToken: 'valid-token',
+        user: makeWhoami({ isSystemAdmin: true, mfaEnrollmentRequired: true }),
+      }),
+  },
+] as const
+
+/** routesById 키에서 실제 pathname 을 만든다. $세그먼트는 임의값으로 치환(가드는 파라미터를 파싱하지 않음 — 스펙 E1) */
+function pathnameOf(routeId: string): string {
+  const stripped = routeId.replace(/^\/_shell/, '').replace(/^_shell$/, '')
+  const withParams = stripped.replace(/\$[A-Za-z]+/g, 'x-1')
+  return withParams === '' ? '/' : withParams
+}
+
+/** 한 라우트의 관측 서명을 만든다 */
+function observe(routeId: string): Signature {
+  const byId = router.routesById as Record<
+    string,
+    { options: { beforeLoad?: (ctx: MinimalBeforeLoadContext) => void } }
+  >
+  const beforeLoad = byId[routeId]?.options.beforeLoad
+  const pathname = pathnameOf(routeId)
+  const ctx: MinimalBeforeLoadContext = { location: { href: pathname, pathname } }
+
+  return SCENARIOS.map((s) => {
+    s.apply()
+    if (beforeLoad === undefined) return null
+    try {
+      beforeLoad(ctx)
+      return null
+    } catch (e) {
+      expect(isRedirect(e)).toBe(true)
+      return (e as RedirectResponse).options.to
+    }
+  }) as Signature
+}
+
+const idsOf = (c: GuardClass): string[] =>
+  [...ROUTE_CLASS.entries()].filter(([, v]) => v === c).map(([k]) => k)
+
+describe('라우트 가드 행렬 — ADMIN_4', () => {
+  beforeEach(() => useAuthStore.setState({ accessToken: null, user: null }))
+  afterEach(() => useAuthStore.setState({ accessToken: null, user: null }))
+
+  it('ADMIN_4 클래스가 11개다 (/admin/slack 편입 확인)', () => {
+    expect(idsOf('ADMIN_4')).toHaveLength(11)
+  })
+
+  it.each(idsOf('ADMIN_4'))('%s — 관측 서명이 ADMIN_4 기대와 정확히 일치', (id) => {
+    expect(observe(id)).toEqual(EXPECTED.ADMIN_4)
+  })
+})
+```
+
+**실행**. `cd apps/web && ./node_modules/.bin/vitest run src/router.admin-guards.test.tsx`
+
+**예상 실패**. `/_shell/admin/slack` 케이스 1건만 실패한다.
+
+```
+- Expected  ['/login', '/dashboard', '/settings/password', '/settings/mfa']
++ Received  ['/login', '/dashboard', null, null]
+```
+
+세 번째·네 번째 칸이 `null`인 것이 **비밀번호 강제·MFA 강제가 무력화된 결함 그 자체**다.
+다른 10개 라우트는 통과한다 → 실패가 결함에 정확히 국소화된다.
+
+**GREEN**. `apps/web/src/router.ts`의 `adminSlackRoute` 블록 1줄 교체.
+
+```diff
+-  beforeLoad: composeGuards(requireAuth, requireSystemAdmin),
++  beforeLoad: requireSystemAdminFull,
+```
+
+같은 블록의 JSDoc 첫 줄도 사실과 맞춘다.
+
+```diff
+- * Slack 연결 관리자 라우트 — /admin/slack, requireAuth + requireSystemAdmin (FR-SL-01 D6/D7 Task 7).
++ * Slack 연결 관리자 라우트 — /admin/slack, 다른 admin 라우트와 동일 4-가드 requireSystemAdminFull
++ * (FR-SL-01 D6/D7 Task 7 도입 시 2-가드였고 #299 정렬에서 누락 → 본 PR 봉합).
++ * 강제변경·MFA 미완료 관리자의 우회를 차단한다(FR-MF-04).
+```
+
+**REFACTOR**. `composeGuards`·`requireAuth`·`requireSystemAdmin` import가 다른 라우트에서도 쓰이는지
+확인한다. 여전히 쓰이므로 **import 제거 없음** — 확인만 하고 손대지 않는다
+(메모리 `constructor-change-cross-module-callsite-blindspot` 계열의 "내 변경이 만든 고아만 정리" 규칙).
+
+**검증**. `./node_modules/.bin/vitest run src/router.admin-guards.test.tsx` — 12 테스트 green
+(완전성 2 + 개수 1 + ADMIN_4 11 = 14개 중 이 시점 전부 green).
+
+---
+
+### Task 3. 나머지 4클래스 검증 + 사유 등재 노출
+
+**메타**.
+- agent: `security-engineer`
+- files: [`apps/web/src/router.admin-guards.test.tsx`]
+- depends-on: [2]
+
+프로덕션 변경 0. 현 상태를 기대값으로 고정하는 특성화(characterization) task다.
+**RED이 성립하지 않으므로 대신 인라인 뮤테이션으로 어서션이 살아 있음을 증명한다.**
+
+**RED (대체 — 어서션 실효 증명)**. 아래를 추가하되 **`PROTECTED_3` 기대 서명을 일부러 틀리게**
+(`['/login', '/dashboard', '/settings/password', '/settings/mfa']` — S-2를 `/dashboard`로) 넣고 실행한다.
+
+```tsx
+describe('라우트 가드 행렬 — 나머지 클래스', () => {
+  beforeEach(() => useAuthStore.setState({ accessToken: null, user: null }))
+  afterEach(() => useAuthStore.setState({ accessToken: null, user: null }))
+
+  it.each(idsOf('PROTECTED_3'))('%s — PROTECTED_3 기대와 일치', (id) => {
+    expect(observe(id)).toEqual(EXPECTED.PROTECTED_3)
+  })
+
+  it.each(idsOf('AUTH_ONLY'))('%s — AUTH_ONLY 기대와 일치', (id) => {
+    expect(observe(id)).toEqual(EXPECTED.AUTH_ONLY)
+  })
+
+  it.each(idsOf('LOGIN'))('%s — LOGIN 기대와 일치 (인증 시 내보냄, 방향 반대)', (id) => {
+    expect(observe(id)).toEqual(EXPECTED.LOGIN)
+  })
+
+  it.each(idsOf('PUBLIC'))('%s — PUBLIC 기대와 일치 (가드 없음)', (id) => {
+    expect(observe(id)).toEqual(EXPECTED.PUBLIC)
+  })
+})
+```
+
+*(사유 등재 2 테스트는 Task 1에 있다 — `CLASS_NOTES` 미사용 eslint error 회피.)*
+
+**예상 실패**. 38개 `PROTECTED_3` 케이스 전부 실패(S-2 칸이 `null`인데 `/dashboard`를 기대).
+→ 어서션이 실제 거동을 읽고 있음이 증명된다(vacuous 아님).
+
+**GREEN**. `EXPECTED.PROTECTED_3`의 S-2 칸을 `null`로 되돌린다(Task 2에서 정의한 원래 값).
+전 케이스 green.
+
+**REFACTOR**. 없음.
+
+**검증**. `./node_modules/.bin/vitest run src/router.admin-guards.test.tsx` —
+14 + 38 + 5 + 1 + 4(또는 5, Task 1에서 루트 라우트가 PUBLIC에 추가되면) + 2 = **64개 이상 green**.
+정확한 총수는 Task 1의 실측 키 개수에 따르므로 실행 결과로 확정한다.
+
+---
+
+### Task 4. 뮤테이션 3종으로 실효 입증
+
+**메타**.
+- agent: `security-engineer`
+- files: [`apps/web/src/router.admin-guards.test.tsx`, `apps/web/src/router.ts`]
+- depends-on: [3]
+
+**★선행 조건 — Task 3까지 전부 커밋된 상태에서만 시작한다.**
+메모리 `mutation-test-requires-committed-baseline` — PR22에서 미커밋 상태로 뮤테이션 후
+`git checkout --`으로 원복해 **2파일 작업이 소실**됐다. 시작 전 `git status --porcelain`이 비어 있음을
+확인한다.
+
+**RED/GREEN 없음** (검증 전용 task).
+
+**절차**.
+
+1. **기준선 확인**. `./node_modules/.bin/vitest run src/router.admin-guards.test.tsx` → 전량 green,
+   테스트 개수 기록.
+2. **뮤테이션 A (수정의 실효)**. `router.ts`의 `/admin/slack`을
+   `composeGuards(requireAuth, requireSystemAdmin)`으로 되돌린다.
+   기대 — `/_shell/admin/slack` ADMIN_4 케이스 **1건 red**, 나머지 전부 green.
+   `git checkout -- src/router.ts`로 복원 후 green 재확인.
+3. **뮤테이션 B (vacuous 차단)**. `observe`가 아니라 **열거**를 죽인다 —
+   `idsOf`를 `() => []`로 바꾼다. 기대 — "발견된 라우트가 59개 이상" 어서션과
+   "ADMIN_4 클래스가 11개다" 어서션이 **red**. 복원 후 green 재확인.
+4. **뮤테이션 C (완전성 강제의 실효)**. `ROUTE_CLASS`에서 `'/_shell/admin/slack'` 항목 1개를 지운다.
+   기대 — 완전성 테스트가 `unclassified: ['/_shell/admin/slack']`로 **red**.
+   복원 후 green 재확인.
+5. 각 뮤테이션마다 **red 케이스 이름을 기록**한다. "red 났다"만으로는 판별자가 없다
+   (메모리 `negative-guard-needs-body-discriminator`).
+
+**검증**. 뮤테이션 3종 각각 예상 위치에서만 red, 복원 후 3회 모두 green 복귀.
+`git status --porcelain`이 비어 있음(복원 완료)을 마지막에 확인.
+
+---
+
+### Task 5. 전체 검증 + 기준선 대조
+
+**메타**.
+- agent: `security-engineer`
+- files: []
+- depends-on: [4]
+
+**RED/GREEN 없음** (검증 전용).
+
+**절차**.
+
+1. `cd apps/web && ./node_modules/.bin/tsc -p tsconfig.app.json --noEmit` → 0 error.
+   ★메모리 `ci-typecheck-tsconfig-app-vs-local` — CI는 `tsconfig.app.json`을 쓴다. 그걸로 맞춘다.
+2. `cd apps/web && ./node_modules/.bin/eslint src` → 0 error (경고 8건은 사전 존재, PR22 기록).
+3. **전량 유닛 + 기준선 대조**. `cd apps/web && ./node_modules/.bin/vitest run`
+   → PR22 기준선이 **7935 passed**였다. 본 PR은 테스트를 늘리므로 `>= 7935 + (증가분)`이어야 하고
+   **감소하면 커버리지 순손실**이다. 개수를 명시 기록한다
+   (메모리 `gradle-batched-task-partial-test-run` 계열 — 초록보다 개수를 본다).
+4. `bash scripts/verify-master-plan.sh` → EXIT 0, `129/129` 출력 확인.
+   ★문서에 `FR-` + 코드 형태 문구를 새로 넣지 않았는지 확인
+   (메모리 `verify-master-plan-header-scanner-false-match`).
+5. **사유 문구 grep 확인**. `grep -c "후속 판정 필요" apps/web/src/router.admin-guards.test.tsx` → 5.
+
+**검증**. 위 5항 전부 통과. 결과 수치를 게이트 2 보고에 그대로 싣는다.
+
+## Plan 메타
+
+- task 수: 5
+- 예상 시간: 직렬 5 task × 3~5분 = 약 20분 (병렬 wave 없음 — 전 task가 같은 테스트 파일 공유)
+- TDD 강제: yes (Task 2가 진짜 red→green. Task 3은 특성화라 인라인 뮤테이션으로 대체 증명)
+- 병렬 dispatch: 없음 (depends-on 사슬 1→2→3→4→5)
+- 추가 검증: typecheck(tsconfig.app) · eslint · 전량 vitest 개수 대조 · verify-master-plan · 뮤테이션 3종
+- 프로덕션 변경: `router.ts` 1줄 + 같은 블록 JSDoc 3줄. 그 외 전부 테스트
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
