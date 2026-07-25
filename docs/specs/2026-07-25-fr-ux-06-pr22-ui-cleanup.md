@@ -355,3 +355,34 @@ ADR §D7(차트) · `DESIGN.md:106`(범주색+차트) · PR4 이연 기록. → 
 11. `docs/plan/product/personalization.md`의 FR-UX-06 D1~D7이 전부 `[x]`이고 "22 PR 체인"으로 정정됐다.
 12. `DESIGN.md`에 "PR22 몫"·"PR22 소관" 미결 표기가 **0건**이다.
 13. `bash scripts/verify-master-plan.sh` EXIT 0 (129/129) — D단계 마킹 후 재확인.
+
+---
+
+## 17. 확정 결정 (Maxi, 2026-07-25 — 게이트 1 선결)
+
+| # | 결정 | 근거 |
+|---|---|---|
+| **D1. 스코프 = B (표준)** | 버튼 ~40파일(공용 `Button` 이미 소비 중인 21파일 + P1·P2 패턴 전량) · 인라인 스켈레톤 **33발생 전량** · `FilteredEmptyState` 2→1 · 차트 6종 · **범주색 10발생 IN** · 재발방지 락. 예상 ~50파일 | DESIGN.md:106이 범주색을 PR22 소관으로 이미 문서화(G8). C의 P5·P6은 `Button` 계약을 약화시켜 기각 |
+| **D2. 차트 색 출처 = 가 (기존 검증 팔레트 파생)** | 디자인 스펙 §5.2 ADS core 램프에서 5 hue 선정. 외부 조회 없음 | PR3의 "팔레트는 정본 아님" 교훈 — **이미 대비 검증을 마친 값만 사용**. 상태색·범주색과 같은 램프라 화면 전체가 한 시스템으로 읽힘 |
+| **D3. 재발 방지 락 = 가 (ESLint 내장 `no-restricted-syntax` + 파일별 예외)** | 원시 `<button>`과 `className`의 `animate-pulse`를 error. OUT 판정 파일만 `overrides`에서 off | PR8 Dialog 락과 동일 구조 · **신규 의존성 0**(NFR-N5 충족) · `eslint-plugin-react` 미설치 회피 |
+
+### D1 확정에 따른 스코프 고정
+
+**IN.**
+- 원시 `<button>` — P1(아이콘 액션) · P2(텍스트 액션) · P3(Radix `Trigger asChild` 3발생). 공용 `Button` 이미 소비 중인 21파일 우선.
+- 인라인 `animate-pulse` **33발생 / 25파일 전량** → `Skeleton` 프리미티브. 이름충돌 로컬 `Skeleton` 3개(`dashboards`·`board`·`timeline`) 제거.
+- `FilteredEmptyState` 2중 정의 → 공용 1개. **문구는 화면별 prop 주입**(보드 "조건에 맞는 카드가 없습니다"는 `projects.board.test.tsx:639`가 어서션 중 → verbatim 보존).
+- `--chart-1~5` 실값 정의(라이트/다크) + recharts 6종 소비 + `state-tokens.test` 동결 해제(`--syntax-*`는 동결 유지).
+- `--type-*` 5 · `--prio-*` 5 신설 + 범주색 10발생 소비 (`TimelineRow` 5 · `WeekGrid` 4 · `EpicProgressBar` 1).
+- ESLint 락 2종 + 비어있지 않음 증명.
+- **PR22-F8 D단계 마킹 + PR22-F9 DESIGN.md 갱신** (전수 동기화).
+
+**OUT (§13에 이미 기재된 것 외).**
+- P4 `role="tab"` 4발생 · P5 옵션/목록 행 · P6 카드 클릭 영역 → ESLint 락 `overrides` 예외로 등재하고 **사유를 설정 파일에 주석으로 남긴다**.
+
+### D2 확정에 따른 후속 작업
+
+차트 5색의 구체 hue 선정은 **plan 단계 첫 태스크**에서 디자인 스펙 §5.2 램프를 읽어 확정하고,
+라이트/다크 각각 배경 대비 3:1(WCAG 1.4.11)을 **계산으로 검증한 값만** `index.css`에 넣는다.
+6번째 색(현 하드코딩이 6종)은 **역할 통합**으로 5종에 매핑한다(§7.2).
+확정 값과 선정 사유는 **ADR로 남긴다** — `docs/decisions/2026-07-25-fr-ux-06-pr22-chart-categorical-tokens.md` (ADR §D7의 이행 기록).
