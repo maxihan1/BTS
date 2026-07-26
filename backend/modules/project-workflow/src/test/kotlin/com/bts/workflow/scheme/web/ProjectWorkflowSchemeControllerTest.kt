@@ -2,6 +2,7 @@
 
 package com.bts.workflow.scheme.web
 
+import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.shared.permission.WorkflowSchemeScope
@@ -16,6 +17,8 @@ import com.bts.workflow.scheme.port.outbound.ProjectLookupPort
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
+import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.not
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -30,6 +33,7 @@ import org.springframework.test.context.web.WebAppConfiguration
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
@@ -68,6 +72,9 @@ class ProjectWorkflowSchemeControllerTest {
         var capturedScope: WorkflowSchemeScope? = null
         var callCount = 0
 
+        /** 설정 시 [requirePermission] 이 캡처를 마친 뒤 이 예외를 던진다(403 거부 시나리오 재현용). */
+        var denyWith: RuntimeException? = null
+
         override fun requirePermission(
             actorId: UUID,
             permission: WorkflowSchemePermission,
@@ -77,6 +84,7 @@ class ProjectWorkflowSchemeControllerTest {
             capturedPermission = permission
             capturedScope = scope
             callCount++
+            denyWith?.let { throw it }
         }
 
         fun reset() {
@@ -84,6 +92,7 @@ class ProjectWorkflowSchemeControllerTest {
             capturedPermission = null
             capturedScope = null
             callCount = 0
+            denyWith = null
         }
     }
 
@@ -112,6 +121,9 @@ class ProjectWorkflowSchemeControllerTest {
         var assignToProjectResponse: ProjectWorkflowSchemeAssignment? = null
         var findAssignedSchemeResponse: WorkflowScheme? = null
         var capturedActor: ActorId? = null
+        var listResponse: List<WorkflowScheme> = emptyList()
+
+        override fun list(): List<WorkflowScheme> = listResponse
 
         override fun assignToProject(
             actor: ActorId,
@@ -374,6 +386,107 @@ class ProjectWorkflowSchemeControllerTest {
 
         assertThat(config.permResolverStub.capturedActorId).isEqualTo(authActorUuid)
         assertThat(config.appServiceStub.capturedActor).isEqualTo(ActorId(AUTH_ACTOR_UUID_STRING))
+    }
+
+    // ── Case 9. GET assignable-workflow-schemes — 200 + 스킴 배열 ──────────────
+
+    @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+    fun `GET assignable — 200 + 스킴 배열`() {
+        val scheme =
+            WorkflowScheme.reconstruct(
+                id = schemeId,
+                key = schemeKey,
+                name = "Software 표준 스킴",
+                description = null,
+                isDefault = true,
+                createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+                updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
+                deletedAt = null,
+            )
+
+        every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId
+        config.appServiceStub.listResponse = listOf(scheme)
+
+        mockMvc.perform(get("/api/v1/projects/ATLAS/assignable-workflow-schemes"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data[0].key").value("software-scheme"))
+            .andExpect(jsonPath("$.data[0].name").value("Software 표준 스킴"))
+    }
+
+    // ── Case 10. GET assignable — ASSIGN_SCHEME + Project(projectKey) 스코프 ──
+    //
+    // ★가장 중요한 방어선. capturedPermission == ASSIGN_SCHEME 그리고
+    // capturedScope == WorkflowSchemeScope.Project("ATLAS") 를 둘 다 단언한다.
+    // 스코프를 Global 로 잘못 쓰면 프로젝트 관리자가 403 을 맞아 배정 화면이 다시 깨진다.
+
+    @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+    fun `GET assignable — ASSIGN_SCHEME + Project(projectKey) 스코프로 호출`() {
+        val scheme =
+            WorkflowScheme.reconstruct(
+                id = schemeId,
+                key = schemeKey,
+                name = "Software 표준 스킴",
+                description = null,
+                isDefault = true,
+                createdAt = Instant.now(),
+                updatedAt = Instant.now(),
+                deletedAt = null,
+            )
+
+        every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId
+        config.appServiceStub.listResponse = listOf(scheme)
+
+        mockMvc.perform(get("/api/v1/projects/ATLAS/assignable-workflow-schemes"))
+            .andExpect(status().isOk)
+
+        assertThat(config.permResolverStub.capturedPermission).isEqualTo(WorkflowSchemePermission.ASSIGN_SCHEME)
+        assertThat(config.permResolverStub.capturedScope).isEqualTo(WorkflowSchemeScope.Project("ATLAS"))
+    }
+
+    // ── Case 11. GET assignable — 권한 거부 시 403 + 본문에 스킴 key 0건 ───────
+    //
+    // 판별자는 상태코드가 아니라 응답 본문에 스킴 key 문자열이 없다는 것. "여전히 403" 은 vacuous.
+
+    @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+    fun `GET assignable — 권한 거부 시 403 + 본문에 스킴 key 0건`() {
+        val scheme =
+            WorkflowScheme.reconstruct(
+                id = schemeId,
+                key = schemeKey,
+                name = "Software 표준 스킴",
+                description = null,
+                isDefault = true,
+                createdAt = Instant.now(),
+                updatedAt = Instant.now(),
+                deletedAt = null,
+            )
+
+        every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId
+        config.appServiceStub.listResponse = listOf(scheme)
+        config.permResolverStub.denyWith =
+            WorkflowSchemeAccessDeniedException(
+                authActorUuid,
+                WorkflowSchemePermission.ASSIGN_SCHEME,
+                WorkflowSchemeScope.Project("ATLAS"),
+            )
+
+        mockMvc.perform(get("/api/v1/projects/ATLAS/assignable-workflow-schemes"))
+            .andExpect(status().isForbidden)
+            .andExpect(content().string(not(containsString(schemeKey.value))))
+    }
+
+    // ── Case 12. GET assignable — 미해석 projectKey 404 ───────────────────────
+
+    @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+    fun `GET assignable — 미해석 projectKey 404`() {
+        every { projectLookupPort.findIdByKey(ProjectKey("UNKNOWN")) } returns null
+
+        mockMvc.perform(get("/api/v1/projects/UNKNOWN/assignable-workflow-schemes"))
+            .andExpect(status().isNotFound)
     }
 
     companion object {
