@@ -96,6 +96,28 @@ issue-tracking 의 **쓰기 서비스**다. 위 표의 뒤 2경로는 그 코드
 | EC-2 | 새 전역 advice 신설 | 수용기준 2 의 열거 테스트가 미등재로 실패 |
 | EC-3 | `WorkflowExceptionHandler`(전역, `ErrorResponse`) | 통로 아님. 열거 테스트의 기대 표본에 등재만 |
 
-## Plan (← /bts-plan 채움)
+## Plan
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+| # | Task | 결과 |
+|---|---|---|
+| T1 | 착수 전 반증 — 전역 advice 정밀 열거 · 도달성 지도 | ✅ 도메인 정리 §반증 (기록 3곳 정정) |
+| T2 | RED — standalone MockMvc 로 `instance` 자동채움 실측 | ✅ `"instance":"/archive-test/archived/n3-path-token-…"` |
+| T3 | GREEN — `instance` 고정 (`INSTANCE_PATH`) | ✅ |
+| T4 | 봉인 — 선택자 없는 advice 전수 열거 + vacuous 방어 | ✅ `GlobalControllerAdviceSealTest` |
+| T5 | 뮤테이션 4종으로 판별력 확정 | ✅ ADR §검증 |
+| T6 | ADR 작성 | ✅ `docs/decisions/2026-07-26-global-advice-instance-token-leak.md` |
+| T7 | 회귀 — `:modules:issue-tracking:test` 전량 | ✅ 307클래스 3,116테스트 실패0 |
+
+**TDD 순서 준수** — `test:` → `feat:`.
+
+## 리뷰 결과
+
+`bts-review-plan` 5종 체인 생략 (축약 체인, 게이트 D2 옵션 A 연장). **실측과 뮤테이션이 리뷰를 대체했다.**
+
+특히 뮤테이션 3(선택자 있는 advice 신설 → 전부 green)이 **과잉발동 대조군**이다. 새 봉인이
+정상적인 advice 추가를 방해하지 않음을 확인했다 — 이 확인 없이는 봉인이 개발 속도를 갉아먹는
+룰이 됐을 수 있다.
+
+**남는 편향.** outside voice(`codex`) 미실행. `superpowers:code-reviewer` 독립 리뷰로 부분 보완
+(#312 에서 그 리뷰가 실제로 결함 1건을 잡았고, 동시에 그 처방은 뮤테이션으로 기각됐다 —
+**지적은 채택하고 처방은 검증**).
